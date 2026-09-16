@@ -3,6 +3,7 @@ poc should have a command line option so that the user can specify a directory t
 * TODO Relax order of declarations, so they can happen in any order.
 * TODO Compare memory model to that of voc.
 * TODO Add ASSERT (in other Oberon-2 dialects?).
+* TODO How do Appendix A and Appendix C change to account for to HUGEINT?
 * Ignore this
 Local Variables:
 eval: (visual-line-mode 1)
