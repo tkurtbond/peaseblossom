@@ -1,0 +1,12 @@
+Diagnostics.Mod:
+syntax OK
+Lexer.Mod:
+syntax OK
+SyntaxTree.Mod:
+syntax OK
+SemanticActions.Mod:
+syntax OK
+Parser.Mod:
+syntax OK
+Poc.Mod:
+syntax OK

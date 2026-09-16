@@ -135,7 +135,11 @@ Peaseblossom's own.
 
 ## Project state
 
-As of 2026-09-16 the repository is freshly initialized (`main` branch,
-`README.md` and this file only, no commits yet). No implementation
-language, build system, or directory layout has been chosen yet for `poc`
-itself, nor has the LLVM/VAX-VMS backend split been designed.
+As of 2026-09-16, `PLAN.md` lays out the full phased roadmap (directory
+layout, bootstrap terminology, phase-by-phase build order). Phase 0
+(scaffolding + conformance-test harness) and Phase 1 (`Lexer.Mod`,
+`Diagnostics.Mod`, minimal `Poc.Mod` with `-dump-tokens`) are complete.
+Phase 2 (`SyntaxTree.Mod`, `SemanticActions.Mod`, `Parser.Mod`, `Poc.Mod`
+`-check-syntax`) is also complete: the parser covers all of Appendix B and
+successfully parses its own Phase 1/2 source. See `src/front/README.md`
+for the module list.

@@ -1,13 +1,14 @@
 MODULE Poc;
 
   (* Peaseblossom Oberon Compiler - main program and CLI driver.
-     Phase 1: a single "-dump-tokens <file>" mode exercising the Lexer.
-     File reading uses only standard Oberon2.pdf types (Files.Rider,
-     ARRAY OF CHAR) at every call site, even though this module is built
-     by voc during bootstrap - see PLAN.md's "Bootstrap terminology" on
-     why poc's own source avoids Vishap-specific extensions. *)
+     Phase 1 added "-dump-tokens <file>"; Phase 2 adds "-check-syntax
+     <file>". File reading uses only standard Oberon2.pdf types
+     (Files.Rider, ARRAY OF CHAR) at every call site, even though this
+     module is built by voc during bootstrap - see PLAN.md's "Bootstrap
+     terminology" on why poc's own source avoids Vishap-specific
+     extensions. *)
 
-  IMPORT Modules, Files, Out, Lexer, Diagnostics;
+  IMPORT Modules, Files, Out, Lexer, Diagnostics, Parser, SyntaxTree;
 
   CONST
     maxLineLength = 4096;
@@ -72,9 +73,31 @@ MODULE Poc;
     END
   END DumpTokens;
 
+  PROCEDURE CheckSyntax(name: ARRAY OF CHAR);
+    VAR
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      parser: Parser.Parser;
+      module: SyntaxTree.ModuleNode;
+  BEGIN
+    IF ~ReadSource(name, buffer, length) THEN
+      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+    ELSE
+      Diagnostics.Reset;
+      Parser.InitParser(parser, buffer, length);
+      module := Parser.ParseModule(parser);
+      IF Diagnostics.errorCount > 0 THEN
+        Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
+      ELSE
+        Out.String("syntax OK"); Out.Ln
+      END
+    END
+  END CheckSyntax;
+
   PROCEDURE Usage;
   BEGIN
-    Out.String("usage: poc -dump-tokens <file>"); Out.Ln
+    Out.String("usage: poc -dump-tokens <file>"); Out.Ln;
+    Out.String("       poc -check-syntax <file>"); Out.Ln
   END Usage;
 
   PROCEDURE Run;
@@ -87,6 +110,8 @@ MODULE Poc;
       Modules.GetArg(2, fileName);
       IF option = "-dump-tokens" THEN
         DumpTokens(fileName)
+      ELSIF option = "-check-syntax" THEN
+        CheckSyntax(fileName)
       ELSE
         Usage
       END

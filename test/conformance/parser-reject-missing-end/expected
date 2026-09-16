@@ -1,0 +1,5 @@
+6:5: error: expected 'END'
+6:15: error: expected an identifier
+7:1: error: expected '.'
+1:1: error: module END identifier does not match its name
+4 error(s)
