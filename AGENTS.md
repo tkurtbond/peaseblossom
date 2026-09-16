@@ -7,7 +7,12 @@ named **`poc`** (Peaseblossom Oberon Compiler).
 
 Two desired outcomes, i.e. two backends sharing a common front end:
 
-1. An **LLVM-based** backend, for 32-bit and 64-bit machines.
+1. An **LLVM-based** backend, for 32-bit and 64-bit machines. Beyond
+   Linux, this backend must also run on **NetBSD, OpenBSD, and FreeBSD**
+   — a portability goal, not just a word-size one, so the runtime's
+   OS-facing layer (I/O, process/argv setup) needs to be written with all
+   four Unix-likes in mind rather than assuming Linux-only libc/syscall
+   behavior.
 2. A **bespoke backend** targeting **VAX/VMS 5.5-2** — a specific, dated
    VMS release on the VAX architecture (pre-dating OpenVMS/Alpha). LLVM
    does not target VAX, so this backend cannot reuse the LLVM path and
@@ -103,6 +108,30 @@ compatibility:
 `voc` CLI usage: `voc options {files {options}}`. Options before the first
 filename set defaults for all files; options after a filename apply only
 to that file. Repeating a flag toggles it.
+
+## Language extensions beyond Oberon2.pdf
+
+`Oberon2.pdf` defines no mechanism for calling procedures implemented in
+another language, only the low-level `SYSTEM` module (Appendix C) for
+memory/register access. Peaseblossom needs one anyway, so poc's language
+will need a deliberate, documented extension for declaring an **external
+procedure** — analogous in spirit to how this file documents voc's own
+extensions (see "Vishap Oberon (voc)" above), except this one is
+Peaseblossom's own.
+
+- **Simplest case**: calling external C functions on Linux/Unix-like
+  targets (including the NetBSD/OpenBSD/FreeBSD portability goal above) —
+  the C calling convention is what LLVM (and `llc`/`clang`) already speak
+  natively, so the LLVM backend mostly just needs to emit a `declare` for
+  the external symbol and call it.
+- **VAX/VMS target**: VMS has its own well-defined, documented **VMS
+  Calling Standard**. The VAX/VMS backend will need to implement that
+  calling convention for any declared external procedure — this is more
+  work than the LLVM/C case, but the convention itself is well-specified
+  and stable.
+- **Open**: the actual Oberon-2 source syntax for declaring an external
+  procedure (e.g. some kind of attribute/pragma on a `PROCEDURE` heading)
+  is not yet decided. See `PLAN.md`'s open design questions.
 
 ## Project state
 
