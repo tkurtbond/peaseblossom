@@ -109,6 +109,24 @@ compatibility:
 filename set defaults for all files; options after a filename apply only
 to that file. Repeating a flag toggles it.
 
+### Known voc bugs affecting poc's own source
+
+Bugs (not spec deviations) found in voc 2.1.0 while writing poc's own
+source, worth knowing before puzzling over a bogus-looking error again
+during Stage 0/1/2 bootstrapping:
+
+- **Self-recursive call from inside a `WITH` branch, misdiagnosed as
+  "incompatible assignment"**: if procedure `P` calls itself from inside
+  one of `P`'s own `WITH v: T DO ... END` branches, voc rejects the call
+  even when the argument's type is fine — reproduced with a minimal
+  `POINTER`/`WITH`/self-call example (not just in poc's own source).
+  Calling a *different* procedure from inside the same `WITH` branch is
+  unaffected; only literal self-recursion from inside one's own `WITH`
+  triggers it. Workaround: save whatever the recursive call needs into a
+  local variable inside the `WITH` branch, then make the recursive call
+  after the `WITH` statement ends. See
+  `src/front/SemanticActions.Mod`'s `ResolveType` for a real instance.
+
 ## Language extensions beyond Oberon2.pdf
 
 `Oberon2.pdf` defines no mechanism for calling procedures implemented in
@@ -141,5 +159,10 @@ layout, bootstrap terminology, phase-by-phase build order). Phase 0
 `Diagnostics.Mod`, minimal `Poc.Mod` with `-dump-tokens`) are complete.
 Phase 2 (`SyntaxTree.Mod`, `SemanticActions.Mod`, `Parser.Mod`, `Poc.Mod`
 `-check-syntax`) is also complete: the parser covers all of Appendix B and
-successfully parses its own Phase 1/2 source. See `src/front/README.md`
-for the module list.
+successfully parses its own Phase 1/2 source. Phase 3 (`Types.Mod`,
+`SymbolTable.Mod`, `ConstantEvaluator.Mod`, `Poc.Mod` `-check`) is also
+complete: CONST and TYPE declarations are resolved against a real scope,
+with full constant folding over the basic types (§6.1) and the numeric
+inclusion hierarchy; VAR (§7) and PROCEDURE (§10) declarations are left
+for Phase 5/6 per `PLAN.md`'s phase-to-section map. See
+`src/front/README.md` for the module list.

@@ -1,0 +1,2 @@
+cyclic-type.mod:3:12: error: illegal cyclic type declaration
+1 error(s)

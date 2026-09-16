@@ -1,12 +1,20 @@
 MODULE SemanticActions;
 
   (* Tree-construction actions invoked by Parser.Mod as it recognizes each
-     grammar production (Oberon2.pdf, Appendix B). Phase 2 stub: every
-     procedure here just allocates and fills in one SyntaxTree node from
-     already-parsed pieces - no symbol-table lookups, no type checking, no
-     constant evaluation. Those arrive in later phases (PLAN.md Phase 3
-     onward), most likely by growing these same procedures in place rather
-     than changing Parser.Mod's call sites.
+     grammar production (Oberon2.pdf, Appendix B), plus (from PLAN.md
+     Phase 3 on) a separate post-parse resolution pass over the finished
+     tree.
+
+     The New* constructors below are the Phase 2 stub: each just
+     allocates and fills in one SyntaxTree node from already-parsed
+     pieces - no symbol-table lookups, no type checking, no constant
+     evaluation - and Parser.Mod's call sites into them are untouched by
+     later phases. Growing semantic analysis in place inside these same
+     constructors, as Phase 2's comment here once speculated, turned out
+     to fight the grammar's declaration order (a POINTER TO may name a
+     type declared later in the same block - see the Phase 3 section
+     below) more than it helped; CheckModule* instead walks the completed
+     SyntaxTree separately, so Parser.Mod needs no Phase 3 changes at all.
 
      Each constructor takes the source position of the construct it builds
      (typically the position of the token that introduced it) and leaves
@@ -14,7 +22,7 @@ MODULE SemanticActions;
      sibling nodes together itself as it recognizes each "{...}" repetition
      in the grammar. *)
 
-  IMPORT SyntaxTree;
+  IMPORT SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics;
 
   (* Designators and selectors *)
 
@@ -451,5 +459,150 @@ MODULE SemanticActions;
     m.line := line; m.column := column;
     RETURN m
   END NewModule;
+
+  (* ---- Phase 3: declarations, scope, basic types (Oberon2.pdf §4, §5,
+     §6.1) ----
+
+     CheckModule* is the entry point Poc.Mod's "-check" mode calls after
+     a successful parse. It resolves CONST and TYPE declarations in a
+     fresh scope nested under SymbolTable.Universe. VAR declarations (§7)
+     and PROCEDURE declarations (§10) are left untouched even though the
+     DeclSeq already carries them - per PLAN.md's phase-to-section map
+     they belong to Phase 5 and Phase 6 respectively, since checking a
+     VAR's uses needs expressions/statements (not implemented until
+     Phase 5) and a PROCEDURE's own nested scope needs parameter/result
+     matching machinery (Phase 6). *)
+
+  PROCEDURE CheckExportMark(name: SyntaxTree.IdentDefNode);
+  BEGIN
+    IF name.exportMark = SyntaxTree.exportReadOnly THEN
+      Diagnostics.Error(name.line, name.column,
+        "the read-only export mark '-' is only allowed on a variable declaration")
+    END
+  END CheckExportMark;
+
+  PROCEDURE ResolveConstDecls(decls: SyntaxTree.ConstDeclNode; scope: SymbolTable.Scope);
+    VAR d: SyntaxTree.ConstDeclNode; v: Types.Value; obj: SymbolTable.Object;
+  BEGIN
+    d := decls;
+    WHILE d # NIL DO
+      CheckExportMark(d.name);
+      v := ConstantEvaluator.Evaluate(d.value, scope);
+      obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.constClass, v.type,
+                                 d.name.exportMark # SyntaxTree.exportNone, FALSE,
+                                 d.name.line, d.name.column);
+      obj.value := v;
+      d := d.next
+    END
+  END ResolveConstDecls;
+
+  (* base may name a type declared later in the same block (§4 rule 3);
+     ResolveType/ResolveQualidentType/ResolveNamedType are mutually
+     recursive to force such a forward reference's resolution early,
+     with obj.resolving guarding against a genuine self-reference
+     (TYPE A = POINTER TO A) looping forever. *)
+  PROCEDURE ^ ResolveType(scope: SymbolTable.Scope; node: SyntaxTree.TypeNode;
+                          allowForward: BOOLEAN): Types.Type;
+
+  PROCEDURE ResolveNamedType(scope: SymbolTable.Scope; obj: SymbolTable.Object): Types.Type;
+  BEGIN
+    IF obj.type # NIL THEN
+      RETURN obj.type
+    ELSIF obj.resolving THEN
+      Diagnostics.Error(obj.pendingTypeNode.line, obj.pendingTypeNode.column,
+                         "illegal cyclic type declaration");
+      obj.type := Types.Undefined;
+      RETURN obj.type
+    ELSE
+      obj.resolving := TRUE;
+      obj.type := ResolveType(scope, obj.pendingTypeNode, FALSE);
+      obj.resolving := FALSE;
+      obj.pendingTypeNode := NIL;
+      RETURN obj.type
+    END
+  END ResolveNamedType;
+
+  PROCEDURE ResolveQualidentType(scope: SymbolTable.Scope;
+                                 node: SyntaxTree.QualidentTypeNode;
+                                 allowForward: BOOLEAN): Types.Type;
+    VAR obj: SymbolTable.Object;
+  BEGIN
+    IF node.qualifier[0] # 0X THEN
+      Diagnostics.Error(node.line, node.column,
+                         "qualified type names are not yet supported");
+      RETURN Types.Undefined
+    END;
+    obj := SymbolTable.Find(scope, node.name);
+    IF obj = NIL THEN
+      Diagnostics.Error(node.line, node.column, "undeclared identifier");
+      RETURN Types.Undefined
+    ELSIF obj.class # SymbolTable.typeClass THEN
+      Diagnostics.Error(node.line, node.column, "not a type");
+      RETURN Types.Undefined
+    ELSIF (obj.type = NIL) & ~allowForward THEN
+      Diagnostics.Error(node.line, node.column,
+        "forward reference to a type is allowed only as a POINTER TO base type");
+      RETURN Types.Undefined
+    ELSIF obj.type = NIL THEN
+      RETURN ResolveNamedType(scope, obj)
+    ELSE
+      RETURN obj.type
+    END
+  END ResolveQualidentType;
+
+  PROCEDURE ResolveType(scope: SymbolTable.Scope; node: SyntaxTree.TypeNode;
+                        allowForward: BOOLEAN): Types.Type;
+    VAR pointerBase: SyntaxTree.TypeNode;
+  BEGIN
+    IF node = NIL THEN RETURN Types.Undefined END;
+    WITH
+      node: SyntaxTree.QualidentTypeNode DO
+        RETURN ResolveQualidentType(scope, node, allowForward)
+    | node: SyntaxTree.PointerTypeNode DO
+        pointerBase := node.base
+    ELSE
+      Diagnostics.Error(node.line, node.column,
+        "array, record, and procedure types are not yet implemented");
+      RETURN Types.Undefined
+    END;
+    (* the recursive ResolveType(pointerBase) call is kept outside the WITH
+       above deliberately: voc miscompiles a self-recursive call to the
+       enclosing procedure made from inside one of its own WITH branches
+       (reports a bogus "incompatible assignment" on the argument, even
+       though it type-checks fine everywhere else) - see AGENTS.md. *)
+    RETURN Types.NewPointerType(ResolveType(scope, pointerBase, TRUE))
+  END ResolveType;
+
+  PROCEDURE ResolveTypeDecls(decls: SyntaxTree.TypeDeclNode; scope: SymbolTable.Scope);
+    VAR d: SyntaxTree.TypeDeclNode; obj: SymbolTable.Object; resolved: Types.Type;
+  BEGIN
+    d := decls;
+    WHILE d # NIL DO (* pass 1: bind every name first, so a POINTER TO can
+                         find one declared later in this same list *)
+      CheckExportMark(d.name);
+      obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.typeClass, NIL,
+                                 d.name.exportMark # SyntaxTree.exportNone, FALSE,
+                                 d.name.line, d.name.column);
+      obj.pendingTypeNode := d.type;
+      d := d.next
+    END;
+    d := decls;
+    WHILE d # NIL DO (* pass 2: resolve each, in declaration order *)
+      obj := SymbolTable.FindLocal(scope, d.name.name);
+      resolved := ResolveNamedType(scope, obj);
+      d := d.next
+    END
+  END ResolveTypeDecls;
+
+  PROCEDURE CheckModule*(module: SyntaxTree.ModuleNode): SymbolTable.Scope;
+    VAR scope: SymbolTable.Scope;
+  BEGIN
+    scope := SymbolTable.OpenScope(SymbolTable.Universe);
+    IF module.declarations # NIL THEN
+      ResolveConstDecls(module.declarations.constDecls, scope);
+      ResolveTypeDecls(module.declarations.typeDecls, scope)
+    END;
+    RETURN scope
+  END CheckModule;
 
 END SemanticActions.

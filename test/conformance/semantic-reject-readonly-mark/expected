@@ -1,0 +1,3 @@
+readonly-mark.mod:6:5: error: the read-only export mark '-' is only allowed on a variable declaration
+readonly-mark.mod:8:5: error: the read-only export mark '-' is only allowed on a variable declaration
+2 error(s)

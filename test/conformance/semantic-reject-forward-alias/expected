@@ -1,0 +1,2 @@
+forward-alias.mod:6:9: error: forward reference to a type is allowed only as a POINTER TO base type
+1 error(s)
