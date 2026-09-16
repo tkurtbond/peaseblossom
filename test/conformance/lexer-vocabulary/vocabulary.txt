@@ -1,0 +1,7 @@
+x Scan Oberon2 GetSymbol firstLetter
+1991 0DH 12.3 4.567E8 0.57712566D-6
+41X
+"Oberon-2" "Don't worry!" "x"
+'He said "hi"'
+(* outer (* inner *) still outer *)
+tail

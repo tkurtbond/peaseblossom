@@ -1,0 +1,20 @@
+#!/bin/sh
+# Stage 0: compile poc's own source with voc, the bootstrap compiler.
+# See PLAN.md, "Bootstrap terminology". Run with no arguments from anywhere;
+# output lands in build/bin/poc.
+set -e
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+BUILD="$ROOT/build"
+VOC_BIN_DIR=${VOC_BIN_DIR:-/usr/local/sw/versions/voc/git/bin}
+
+mkdir -p "$BUILD/bin" "$BUILD/obj"
+export PATH="$VOC_BIN_DIR:$PATH"
+
+cd "$BUILD/obj"
+voc -s "$ROOT/src/front/Diagnostics.Mod"
+voc -s "$ROOT/src/front/Lexer.Mod"
+voc -m "$ROOT/src/driver/Poc.Mod"
+
+cp Poc "$BUILD/bin/poc"
+echo "Stage 0: built $BUILD/bin/poc"

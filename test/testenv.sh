@@ -1,38 +1,21 @@
 #!/bin/sh
-# '.' this file from individual test.sh scripts, before running the compiler.
+# '.' this file from individual test.sh scripts, before running any compiler.
 #
-# Selects and configures the compiler for the requested BACKEND
-# (see PLAN.md, "Phase-to-report-section map" and "Bootstrap terminology"):
+# Puts both the bootstrap compiler (voc) and poc's own build (once built by
+# tools/bootstrap/stage0) on PATH, and cleans generated build artifacts left
+# by a previous run. See PLAN.md, "Bootstrap terminology".
 #
-#   voc   - the bootstrap compiler (Vishap Oberon). Used for every test
-#           until poc can compile and run its own LLVM backend (Phase 8+).
-#   llvm  - poc's own LLVM backend, once it exists (Phase 8+).
-#   vax   - poc's VAX/VMS backend. Codegen-only per PLAN.md Phase 10; no
-#           assemble/link/run support exists, so tests are skipped.
-#
-# BACKEND defaults to voc, since that's the only backend that exists yet.
+# A BACKEND-selection variant of this file existed briefly in Phase 0, in
+# anticipation of PLAN.md Phase 8's LLVM/VAX backend split - that concern
+# doesn't exist yet (poc has no backend at all until Phase 8), so it was
+# premature and has been removed; reintroduce it when Phase 8 actually
+# needs to select between codegen targets.
 
-: "${BACKEND:=voc}"
+: "${VOC_BIN_DIR:=/usr/local/sw/versions/voc/git/bin}"
+: "${POC_BIN_DIR:=$PWD/../../../build/bin}"
 
-echo "--- conformance test $(basename "$PWD") (backend: $BACKEND) ---"
+echo "--- conformance test $(basename "$PWD") ---"
 
-case "$BACKEND" in
-  voc)
-    : "${VOC_BIN_DIR:=/usr/local/sw/versions/voc/git/bin}"
-    export PATH="$VOC_BIN_DIR:$PATH"
-    ;;
-  llvm)
-    : "${POC_BIN_DIR:=$PWD/../../../build/bin}"
-    export PATH="$POC_BIN_DIR:$PATH"
-    ;;
-  vax)
-    echo "SKIPPED: VAX/VMS backend has no runnable target yet (PLAN.md Phase 10)"
-    exit 77
-    ;;
-  *)
-    echo "unknown BACKEND: $BACKEND" >&2
-    exit 1
-    ;;
-esac
+export PATH="$POC_BIN_DIR:$VOC_BIN_DIR:$PATH"
 
 rm -f *.o *.ll *.s *.mar *.sym result "$(basename "$PWD")"

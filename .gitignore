@@ -16,3 +16,6 @@ test/conformance/**/*.s
 test/conformance/**/*.mar
 test/conformance/**/result
 test/conformance/hello/hello
+
+# Stage 0/1/2 bootstrap build output (see tools/bootstrap)
+/build/

@@ -1,5 +1,4 @@
 #!/bin/sh
 . ../../testenv.sh
-voc hello.mod -m
-./hello >result
+poc -dump-tokens vocabulary.txt >result
 . ../../testresult.sh
