@@ -1,0 +1,2 @@
+dup-field.mod:8:7: error: field already declared in this record
+1 error(s)

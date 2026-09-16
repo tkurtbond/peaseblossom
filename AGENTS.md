@@ -197,5 +197,20 @@ inclusion hierarchy; VAR (§7) and PROCEDURE (§10) declarations are left
 for Phase 5/6 per `PLAN.md`'s phase-to-section map. `HUGEINT` (see
 "Language extensions beyond Oberon2.pdf" above) was added on top of this
 afterward, requiring `tools/bootstrap/stage0` to switch to voc's `-OC`
-build flag for adequate host-integer storage. See `src/front/README.md`
-for the module list.
+build flag for adequate host-integer storage. Phase 4 (`Types.Mod`'s
+array/record/procedure forms, new `MemoryLayout.Mod`, `Poc.Mod`
+`-dump-layout`) is also complete: composite types resolve with real
+size/alignment/field-offset computation at both a 32-bit and a 64-bit
+target word size. Getting record fields to interact correctly with
+Phase 3's forward-POINTER-declaration machinery required extending it
+beyond what Phase 3 alone had exercised: named POINTER and RECORD
+declarations now register their own Type identity before resolving
+what's inside them, so the classic self-/mutually-referential linked-
+structure idiom (a record field pointing back to its own enclosing
+record, or to another record only reachable through a pointer) resolves
+correctly instead of falsely tripping the cyclic-declaration guard - see
+`src/front/SemanticActions.Mod`'s `ResolveType` header comment. Array and
+procedure types don't get this same early registration (self-reference
+through either still hits the plain cyclic guard) - a narrower,
+deliberately unaddressed limitation. See `src/front/README.md` for the
+module list.

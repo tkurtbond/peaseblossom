@@ -500,11 +500,130 @@ MODULE SemanticActions;
      ResolveType/ResolveQualidentType/ResolveNamedType are mutually
      recursive to force such a forward reference's resolution early,
      with obj.resolving guarding against a genuine self-reference
-     (TYPE A = POINTER TO A) looping forever. *)
+     (TYPE A = POINTER TO A) looping forever.
+
+     PLAN.md Phase 4 adds RECORD fields, which routinely need this same
+     forward machinery in a way Phase 3 never exercised: the classic
+     self-/mutually-referential linked-structure idiom, in both its
+     forms -
+
+       Tree = POINTER TO Node;              Node = RECORD
+       Node = RECORD                          next: POINTER TO Node
+         left, right: Tree                  END
+       END
+
+     - needs a field (Node's) to reference a POINTER (Tree, or an inline
+     "POINTER TO Node") whose own resolution is still in progress up the
+     call stack, or even IS the very record being defined. A pointer's
+     own size never depends on what it points to (always the target
+     word size; see MemoryLayout.Mod), so referencing its Type identity
+     while its base is still being worked out is always safe - only
+     using an incomplete RECORD *directly* (not through a POINTER) is
+     genuinely unsafe (infinite size). ResolveNamedType/
+     ResolveNamedRecordType below register a POINTER's or RECORD's own
+     Type identity in obj.type immediately, before resolving what's
+     inside it, specifically so a nested lookup of that same name can
+     succeed instead of hitting the pre-existing "not yet resolved"
+     guards; ResolveQualidentType's first branch is the one place that
+     still rejects a resolving RECORD used directly (not via a pointer's
+     base, i.e. allowForward FALSE) - the real infinite-size case, e.g.
+     "A = RECORD x: A END". ARRAY and PROCEDURE top-level forms get no
+     such early registration (self-reference through either, e.g. a
+     procedure type parameter naming itself, still hits the plain
+     obj.resolving guard and is rejected) - a narrower, deliberately
+     unaddressed limitation, since neither is anywhere near as common a
+     pattern as the linked-structure idiom above. *)
   PROCEDURE ^ ResolveType(scope: SymbolTable.Scope; node: SyntaxTree.TypeNode;
                           allowForward: BOOLEAN): Types.Type;
+  PROCEDURE ^ ResolveQualidentType(scope: SymbolTable.Scope;
+                                   node: SyntaxTree.QualidentTypeNode;
+                                   allowForward: BOOLEAN): Types.Type;
+
+  (* §6.4: shared by ResolveType's own inline/anonymous POINTER TO case
+     and ResolveNamedType's early-registered named-pointer case. *)
+  PROCEDURE CheckPointerBase(base: Types.Type; line, column: INTEGER): Types.Type;
+  BEGIN
+    IF (base # Types.Undefined) & ~(base IS Types.RecordType) & ~(base IS Types.ArrayType) THEN
+      Diagnostics.Error(line, column, "pointer base type must be a record or array type");
+      RETURN Types.Undefined
+    ELSE
+      RETURN base
+    END
+  END CheckPointerBase;
+
+  (* §6.3's extension rule (base must itself be a record type), shared by
+     the anonymous/inline and named RECORD resolution paths below. The
+     base itself is resolved with allowForward FALSE: an extension's base
+     must already be a complete record (its own field layout has to be
+     known), unlike a POINTER's indirection. *)
+  PROCEDURE ResolveRecordBaseType(scope: SymbolTable.Scope;
+                                  node: SyntaxTree.RecordTypeNode): Types.Type;
+    VAR baseType: Types.Type;
+  BEGIN
+    baseType := NIL;
+    IF node.baseType # NIL THEN
+      baseType := ResolveQualidentType(scope, node.baseType, FALSE);
+      IF (baseType # Types.Undefined) & ~(baseType IS Types.RecordType) THEN
+        Diagnostics.Error(node.baseType.line, node.baseType.column,
+          "record base type must be a record type");
+        baseType := NIL
+      END
+    END;
+    RETURN baseType
+  END ResolveRecordBaseType;
+
+  (* Fills in rec's own field list by mutation - rec may already be
+     visible as obj.type (ResolveNamedRecordType's early registration)
+     while this runs. Field types are resolved with allowForward FALSE,
+     like an array element's - a field's own type must be fully known
+     immediately unless it is itself a POINTER, whose indirection is
+     what makes forward/self/mutual reference safe in the first place. *)
+  PROCEDURE PopulateRecordFields(rec: Types.RecordType; node: SyntaxTree.RecordTypeNode;
+                                 scope: SymbolTable.Scope);
+    VAR
+      fieldList: SyntaxTree.FieldListNode;
+      fieldType: Types.Type;
+      idents: SyntaxTree.IdentDefNode;
+      addedField: Types.Field;
+  BEGIN
+    fieldList := node.fields;
+    WHILE fieldList # NIL DO
+      fieldType := ResolveType(scope, fieldList.type, FALSE);
+      idents := fieldList.names;
+      WHILE idents # NIL DO
+        (* record fields legitimately allow the '-' read-only export mark
+           (Appendix A/the Trees example's Node.name-) - unlike
+           CheckExportMark's callers (CONST/TYPE names), so this does not
+           call CheckExportMark. *)
+        addedField := Types.AddField(rec, idents.name, fieldType,
+                                      idents.exportMark # SyntaxTree.exportNone,
+                                      idents.exportMark = SyntaxTree.exportReadOnly,
+                                      idents.line, idents.column);
+        idents := idents.next
+      END;
+      fieldList := fieldList.next
+    END
+  END PopulateRecordFields;
+
+  (* The named (obj.pendingTypeNode) case: registers rec in obj.type
+     before populating its fields, so a field anywhere in this record's
+     own body - even one naming this very record, behind a POINTER TO -
+     can see it. Caller (ResolveNamedType) is responsible for
+     obj.resolving's bracketing, exactly like the generic path it
+     replaces for this one node kind. *)
+  PROCEDURE ResolveNamedRecordType(scope: SymbolTable.Scope; obj: SymbolTable.Object): Types.Type;
+    VAR node: SyntaxTree.RecordTypeNode; baseType: Types.Type; rec: Types.RecordType;
+  BEGIN
+    node := obj.pendingTypeNode(SyntaxTree.RecordTypeNode);
+    baseType := ResolveRecordBaseType(scope, node);
+    rec := Types.NewRecordType(baseType);
+    obj.type := rec; obj.pendingTypeNode := NIL;
+    PopulateRecordFields(rec, node, scope);
+    RETURN rec
+  END ResolveNamedRecordType;
 
   PROCEDURE ResolveNamedType(scope: SymbolTable.Scope; obj: SymbolTable.Object): Types.Type;
+    VAR ptrNode: SyntaxTree.PointerTypeNode; ptr: Types.PointerType; base: Types.Type;
   BEGIN
     IF obj.type # NIL THEN
       RETURN obj.type
@@ -512,6 +631,20 @@ MODULE SemanticActions;
       Diagnostics.Error(obj.pendingTypeNode.line, obj.pendingTypeNode.column,
                          "illegal cyclic type declaration");
       obj.type := Types.Undefined;
+      RETURN obj.type
+    ELSIF obj.pendingTypeNode IS SyntaxTree.PointerTypeNode THEN
+      obj.resolving := TRUE;
+      ptrNode := obj.pendingTypeNode(SyntaxTree.PointerTypeNode);
+      ptr := Types.NewPointerType(NIL);
+      obj.type := ptr; obj.pendingTypeNode := NIL;
+      base := ResolveType(scope, ptrNode.base, TRUE);
+      ptr.base := CheckPointerBase(base, ptrNode.line, ptrNode.column);
+      obj.resolving := FALSE;
+      RETURN ptr
+    ELSIF obj.pendingTypeNode IS SyntaxTree.RecordTypeNode THEN
+      obj.resolving := TRUE;
+      obj.type := ResolveNamedRecordType(scope, obj);
+      obj.resolving := FALSE;
       RETURN obj.type
     ELSE
       obj.resolving := TRUE;
@@ -539,30 +672,141 @@ MODULE SemanticActions;
     ELSIF obj.class # SymbolTable.typeClass THEN
       Diagnostics.Error(node.line, node.column, "not a type");
       RETURN Types.Undefined
-    ELSIF (obj.type = NIL) & ~allowForward THEN
+    ELSIF (obj.type # NIL) & obj.resolving & (obj.type IS Types.RecordType) & ~allowForward THEN
+      Diagnostics.Error(node.line, node.column,
+        "a record may not directly contain itself; use POINTER TO instead");
+      RETURN Types.Undefined
+    ELSIF obj.type # NIL THEN
+      RETURN obj.type
+    ELSIF ~allowForward THEN
       Diagnostics.Error(node.line, node.column,
         "forward reference to a type is allowed only as a POINTER TO base type");
       RETURN Types.Undefined
-    ELSIF obj.type = NIL THEN
-      RETURN ResolveNamedType(scope, obj)
     ELSE
-      RETURN obj.type
+      RETURN ResolveNamedType(scope, obj)
     END
   END ResolveQualidentType;
 
+  (* Unfolds one ArrayTypeNode's comma-separated lengths list into nested
+     Types.ArrayTypes, per Appendix B's "ARRAY m, n OF T" being sugar for
+     "ARRAY m OF ARRAY n OF T": the head length wraps the type built from
+     the rest (base case: no lengths left, just the resolved element
+     type), so recursion naturally produces the outer-to-inner nesting
+     without any list reversal. Each length must be a positive integer
+     constant (§6.2); an invalid one still produces a usable ArrayType
+     (length 0) so one bad dimension doesn't cascade into more errors
+     from callers that also want this array's element type. *)
+  PROCEDURE ResolveArrayDims(lengths: SyntaxTree.ExprNode; elementType: Types.Type;
+                             scope: SymbolTable.Scope): Types.Type;
+    VAR v: Types.Value; inner: Types.Type;
+  BEGIN
+    IF lengths = NIL THEN
+      RETURN elementType
+    ELSE
+      inner := ResolveArrayDims(lengths.next, elementType, scope);
+      v := ConstantEvaluator.Evaluate(lengths, scope);
+      IF v.type = Types.Undefined THEN
+        RETURN Types.NewArrayType(inner, 0, FALSE)
+      ELSIF (v.kind # Types.intValue) OR (v.intVal <= 0) THEN
+        Diagnostics.Error(lengths.line, lengths.column,
+          "array length must be a positive integer constant");
+        RETURN Types.NewArrayType(inner, 0, FALSE)
+      ELSE
+        RETURN Types.NewArrayType(inner, v.intVal, FALSE)
+      END
+    END
+  END ResolveArrayDims;
+
+  (* node.lengths = NIL means the node itself is one open dimension
+     (Appendix B: "ARRAY OF type", vs. "ARRAY length {, length} OF type");
+     a nested "ARRAY OF ARRAY OF T" reaches further open dimensions
+     through node.elementType being itself another ArrayTypeNode, resolved
+     recursively by the ResolveType call below. Element/component types
+     never get the POINTER TO's forward-reference exception (§4 rule 3 is
+     specific to that one case) - a composite type's own size has to be
+     known immediately, unlike a pointer's indirection. *)
+  PROCEDURE ResolveArrayType(scope: SymbolTable.Scope; node: SyntaxTree.ArrayTypeNode): Types.Type;
+    VAR elementType: Types.Type;
+  BEGIN
+    elementType := ResolveType(scope, node.elementType, FALSE);
+    IF node.lengths = NIL THEN
+      RETURN Types.NewArrayType(elementType, 0, TRUE)
+    ELSE
+      RETURN ResolveArrayDims(node.lengths, elementType, scope)
+    END
+  END ResolveArrayType;
+
+  (* The anonymous/inline case (a record type node that is not itself
+     some Object's pendingTypeNode - e.g. a VAR's or a field's type
+     written out as "RECORD ... END" directly): no name exists for
+     anything else to look up mid-resolution, so - unlike
+     ResolveNamedRecordType - there is nothing to register early. *)
+  PROCEDURE ResolveRecordType(scope: SymbolTable.Scope; node: SyntaxTree.RecordTypeNode): Types.Type;
+    VAR baseType: Types.Type; rec: Types.RecordType;
+  BEGIN
+    baseType := ResolveRecordBaseType(scope, node);
+    rec := Types.NewRecordType(baseType);
+    PopulateRecordFields(rec, node, scope);
+    RETURN rec
+  END ResolveRecordType;
+
+  (* A FormalPars' formal return type, like a field's or an array
+     element's, is resolved with allowForward FALSE - a PROCEDURE type's
+     shape must be fully known immediately, unlike a POINTER's
+     indirection. *)
+  PROCEDURE ResolveProcedureType(scope: SymbolTable.Scope;
+                                 node: SyntaxTree.ProcedureTypeNode): Types.Type;
+    VAR
+      resultType: Types.Type;
+      pt: Types.ProcedureType;
+      section: SyntaxTree.FPSectionNode;
+      paramType: Types.Type;
+      idents: SyntaxTree.IdentDefNode;
+  BEGIN
+    resultType := NIL;
+    IF (node.formals # NIL) & (node.formals.returnType # NIL) THEN
+      resultType := ResolveQualidentType(scope, node.formals.returnType, FALSE)
+    END;
+    pt := Types.NewProcedureType(resultType);
+    IF node.formals # NIL THEN
+      section := node.formals.sections;
+      WHILE section # NIL DO
+        paramType := ResolveType(scope, section.type, FALSE);
+        idents := section.names;
+        WHILE idents # NIL DO
+          Types.AddParam(pt, paramType, section.isVar);
+          idents := idents.next
+        END;
+        section := section.next
+      END
+    END;
+    RETURN pt
+  END ResolveProcedureType;
+
   PROCEDURE ResolveType(scope: SymbolTable.Scope; node: SyntaxTree.TypeNode;
                         allowForward: BOOLEAN): Types.Type;
-    VAR pointerBase: SyntaxTree.TypeNode;
+    VAR pointerBase: SyntaxTree.TypeNode; pointerBaseLine, pointerBaseColumn: INTEGER;
+        resolvedBase: Types.Type;
   BEGIN
     IF node = NIL THEN RETURN Types.Undefined END;
     WITH
       node: SyntaxTree.QualidentTypeNode DO
         RETURN ResolveQualidentType(scope, node, allowForward)
+    | node: SyntaxTree.ArrayTypeNode DO
+        (* a different procedure than ResolveType itself, so calling it
+           from inside this WITH branch is unaffected by the self-
+           recursion-in-WITH bug the PointerTypeNode branch below works
+           around - see that branch's comment and AGENTS.md. *)
+        RETURN ResolveArrayType(scope, node)
+    | node: SyntaxTree.RecordTypeNode DO
+        RETURN ResolveRecordType(scope, node)
+    | node: SyntaxTree.ProcedureTypeNode DO
+        RETURN ResolveProcedureType(scope, node)
     | node: SyntaxTree.PointerTypeNode DO
-        pointerBase := node.base
+        pointerBase := node.base;
+        pointerBaseLine := node.line; pointerBaseColumn := node.column
     ELSE
-      Diagnostics.Error(node.line, node.column,
-        "array, record, and procedure types are not yet implemented");
+      Diagnostics.Error(node.line, node.column, "expected a type");
       RETURN Types.Undefined
     END;
     (* the recursive ResolveType(pointerBase) call is kept outside the WITH
@@ -570,7 +814,9 @@ MODULE SemanticActions;
        enclosing procedure made from inside one of its own WITH branches
        (reports a bogus "incompatible assignment" on the argument, even
        though it type-checks fine everywhere else) - see AGENTS.md. *)
-    RETURN Types.NewPointerType(ResolveType(scope, pointerBase, TRUE))
+    resolvedBase := ResolveType(scope, pointerBase, TRUE);
+    resolvedBase := CheckPointerBase(resolvedBase, pointerBaseLine, pointerBaseColumn);
+    RETURN Types.NewPointerType(resolvedBase)
   END ResolveType;
 
   PROCEDURE ResolveTypeDecls(decls: SyntaxTree.TypeDeclNode; scope: SymbolTable.Scope);

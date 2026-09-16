@@ -1,0 +1,2 @@
+bad-record-base.mod:5:11: error: record base type must be a record type
+1 error(s)

@@ -1,0 +1,8 @@
+Node: size32=20 align32=4 size64=32 align64=8
+  .name: offset32=0 offset64=0
+  .value: offset32=8 offset64=8
+  .left: offset32=12 offset64=16
+  .right: offset32=16 offset64=24
+CenterNode: size32=28 align32=4 size64=40 align64=8
+  .weight: offset32=20 offset64=32
+Numbers: size32=8 align32=2 size64=8 align64=2

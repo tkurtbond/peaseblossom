@@ -1,2 +1,2 @@
-cyclic-type.mod:3:12: error: illegal cyclic type declaration
+cyclic-type.mod:9:12: error: pointer base type must be a record or array type
 1 error(s)

@@ -1,0 +1,2 @@
+direct-value-cycle.mod:8:10: error: a record may not directly contain itself; use POINTER TO instead
+1 error(s)
