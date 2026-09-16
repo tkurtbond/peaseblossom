@@ -64,7 +64,9 @@ src/
   front/
     Lexer.Mod              -- §3 vocabulary: tokens, numbers, strings, char consts, nested comments
     Diagnostics.Mod        -- error/warning reporting, source positions
-    CompilerOptions.Mod    -- option bitset, target selection (voc-style before/after-filename flag semantics)
+    CompilerOptions.Mod    -- option bitset, target selection (voc-style before/after-filename flag semantics);
+                              unlike voc, must support an output-directory flag so build artifacts
+                              (objects, executables) can be written somewhere other than the cwd
     SyntaxTree.Mod         -- AST node representation
     SymbolTable.Mod        -- Object/Type/Scope model; Insert/Find/OpenScope/CloseScope
     Types.Mod              -- type representations + Appendix A predicates (see Phase 6)
