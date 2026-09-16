@@ -320,12 +320,14 @@ MODULE SyntaxTree;
 
     ProcDeclNodeDesc* = RECORD (NodeDesc)
       isForward*: BOOLEAN;
+      isExternal*: BOOLEAN; (* PLAN.md Phase 6: "PROCEDURE [conv] Name(...);" *)
+      externalConvention*, externalName*: Ident; (* "" unless isExternal *)
       receiver*: ReceiverNode; (* NIL for a non-bound procedure *)
       name*: IdentDefNode;
       formals*: FormalParsNode; (* NIL if no formal parameter list at all *)
-      declarations*: DeclSeqNode; (* NIL for a ForwardDecl *)
-      statements*: StatementNode; (* NIL for a ForwardDecl or an empty body *)
-      endName*: Ident; (* empty for a ForwardDecl *)
+      declarations*: DeclSeqNode; (* NIL for a ForwardDecl or an external decl *)
+      statements*: StatementNode; (* NIL for a ForwardDecl, an external decl, or an empty body *)
+      endName*: Ident; (* empty for a ForwardDecl or an external decl *)
       next*: ProcDeclNode
     END;
 

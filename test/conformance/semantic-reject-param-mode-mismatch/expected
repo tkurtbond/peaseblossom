@@ -1,0 +1,2 @@
+param-mode-mismatch.mod:12:9: error: a VAR parameter requires a variable argument
+1 error(s)

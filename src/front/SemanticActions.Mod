@@ -22,7 +22,8 @@ MODULE SemanticActions;
      sibling nodes together itself as it recognizes each "{...}" repetition
      in the grammar. *)
 
-  IMPORT SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics, Lexer;
+  IMPORT SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics, Lexer,
+         PredeclaredProcedures;
 
   TYPE
     (* Private to the CASE-statement overlap check (PLAN.md Phase 5) -
@@ -420,7 +421,9 @@ MODULE SemanticActions;
     RETURN d
   END NewVarDecl;
 
-  PROCEDURE NewProcDecl*(isForward: BOOLEAN; receiver: SyntaxTree.ReceiverNode;
+  PROCEDURE NewProcDecl*(isForward, isExternal: BOOLEAN;
+                         externalConvention, externalName: SyntaxTree.Ident;
+                         receiver: SyntaxTree.ReceiverNode;
                          name: SyntaxTree.IdentDefNode; formals: SyntaxTree.FormalParsNode;
                          declarations: SyntaxTree.DeclSeqNode;
                          statements: SyntaxTree.StatementNode;
@@ -429,7 +432,9 @@ MODULE SemanticActions;
     VAR d: SyntaxTree.ProcDeclNode;
   BEGIN
     NEW(d);
-    d.isForward := isForward; d.receiver := receiver; d.name := name;
+    d.isForward := isForward; d.isExternal := isExternal;
+    d.externalConvention := externalConvention; d.externalName := externalName;
+    d.receiver := receiver; d.name := name;
     d.formals := formals; d.declarations := declarations;
     d.statements := statements; d.endName := endName; d.next := NIL;
     d.line := line; d.column := column;
@@ -766,9 +771,12 @@ MODULE SemanticActions;
   (* A FormalPars' formal return type, like a field's or an array
      element's, is resolved with allowForward FALSE - a PROCEDURE type's
      shape must be fully known immediately, unlike a POINTER's
-     indirection. *)
-  PROCEDURE ResolveProcedureType(scope: SymbolTable.Scope;
-                                 node: SyntaxTree.ProcedureTypeNode): Types.Type;
+     indirection. Shared by ResolveProcedureType below (an anonymous
+     "PROCEDURE(...)" TYPE) and, from PLAN.md Phase 6, real procedure
+     declarations (ResolveProcDecls) - both need the identical formals-to-
+     Types.ProcedureType translation. *)
+  PROCEDURE ResolveFormalPars(scope: SymbolTable.Scope;
+                              formals: SyntaxTree.FormalParsNode): Types.ProcedureType;
     VAR
       resultType: Types.Type;
       pt: Types.ProcedureType;
@@ -777,12 +785,12 @@ MODULE SemanticActions;
       idents: SyntaxTree.IdentDefNode;
   BEGIN
     resultType := NIL;
-    IF (node.formals # NIL) & (node.formals.returnType # NIL) THEN
-      resultType := ResolveQualidentType(scope, node.formals.returnType, FALSE)
+    IF (formals # NIL) & (formals.returnType # NIL) THEN
+      resultType := ResolveQualidentType(scope, formals.returnType, FALSE)
     END;
     pt := Types.NewProcedureType(resultType);
-    IF node.formals # NIL THEN
-      section := node.formals.sections;
+    IF formals # NIL THEN
+      section := formals.sections;
       WHILE section # NIL DO
         paramType := ResolveType(scope, section.type, FALSE);
         idents := section.names;
@@ -794,6 +802,12 @@ MODULE SemanticActions;
       END
     END;
     RETURN pt
+  END ResolveFormalPars;
+
+  PROCEDURE ResolveProcedureType(scope: SymbolTable.Scope;
+                                 node: SyntaxTree.ProcedureTypeNode): Types.Type;
+  BEGIN
+    RETURN ResolveFormalPars(scope, node.formals)
   END ResolveProcedureType;
 
   PROCEDURE ResolveType(scope: SymbolTable.Scope; node: SyntaxTree.TypeNode;
@@ -1016,7 +1030,23 @@ MODULE SemanticActions;
      skipped - the same UndefinedValue()-propagation idiom
      ConstantEvaluator.Mod already uses, so one bad selector doesn't
      cascade into more errors. readOnly/isVariable are described in this
-     section's own header comment above. *)
+     section's own header comment above.
+
+     PLAN.md Phase 6: a procClass Object is now also a valid base (a
+     bare reference to a procedure's own name, e.g. assigning it to a
+     procedure-typed variable per Appendix A rule 7 - isVariable stays
+     FALSE, since a procedure name is never itself assignable). A "."
+     selector that misses Types.FindField now falls through to
+     Types.FindMethod (§10.2's v.P) - a hit sets readOnly TRUE (a bound
+     procedure is never assignable) and remembers, in methodOwner/
+     methodName, the record the method was actually looked up *on* (not
+     where it was inherited from), so an immediately-following "^" can
+     reinterpret itself as §10.2's r.P^ base-dispatch ("the procedure P
+     bound to the base type of T") instead of an ordinary pointer
+     dereference - a narrow, explicit special case scoped to exactly this
+     one situation; methodOwner is cleared by every other selector
+     outcome, so it only ever survives from one FieldSelector iteration
+     to the very next selector. *)
   PROCEDURE CheckDesignator*(scope: SymbolTable.Scope; d: SyntaxTree.Designator;
                              VAR readOnly, isVariable: BOOLEAN): Types.Type;
     VAR
@@ -1024,6 +1054,10 @@ MODULE SemanticActions;
       t: Types.Type;
       sel: SyntaxTree.Selector;
       field: Types.Field;
+      method: Types.Method;
+      rec: Types.RecordType;
+      methodOwner: Types.RecordType;
+      methodName: SyntaxTree.Ident;
       idx: SyntaxTree.ExprNode;
       idxType: Types.Type;
       ptr: Types.PointerType;
@@ -1041,14 +1075,18 @@ MODULE SemanticActions;
     ELSIF (obj.class = SymbolTable.varClass) OR (obj.class = SymbolTable.constClass) THEN
       isVariable := obj.class = SymbolTable.varClass;
       t := obj.type
+    ELSIF obj.class = SymbolTable.procClass THEN
+      t := obj.type (* a real Types.ProcedureType, or Types.PredeclaredProcedureType *)
     ELSE
       Diagnostics.Error(d.line, d.column, "not a value");
       RETURN Types.Undefined
     END;
+    methodOwner := NIL;
     sel := d.selectors;
     WHILE (sel # NIL) & (t # Types.Undefined) DO
       WITH
         sel: SyntaxTree.FieldSelector DO
+          methodOwner := NIL;
           IF (t # NIL) & (t IS Types.PointerType) THEN
             ptr := t(Types.PointerType); t := ptr.base
           END;
@@ -1056,15 +1094,23 @@ MODULE SemanticActions;
             Diagnostics.Error(sel.line, sel.column, "'.' requires a record or a pointer to a record");
             t := Types.Undefined
           ELSE
-            field := Types.FindField(t(Types.RecordType), sel.name);
-            IF field = NIL THEN
-              Diagnostics.Error(sel.line, sel.column, "undeclared field");
-              t := Types.Undefined
-            ELSE
+            rec := t(Types.RecordType);
+            field := Types.FindField(rec, sel.name);
+            IF field # NIL THEN
               t := field.type; readOnly := readOnly OR field.readOnly
+            ELSE
+              method := Types.FindMethod(rec, sel.name);
+              IF method = NIL THEN
+                Diagnostics.Error(sel.line, sel.column, "undeclared field or type-bound procedure");
+                t := Types.Undefined
+              ELSE
+                t := method.procType; readOnly := TRUE;
+                methodOwner := rec; methodName := sel.name
+              END
             END
           END
       | sel: SyntaxTree.IndexSelector DO
+          methodOwner := NIL;
           idx := sel.indices;
           WHILE (idx # NIL) & (t # Types.Undefined) DO
             IF (t # NIL) & (t IS Types.PointerType) THEN
@@ -1083,13 +1129,27 @@ MODULE SemanticActions;
             idx := idx.next
           END
       | sel: SyntaxTree.DereferenceSelector DO
-          IF (t = NIL) OR ~(t IS Types.PointerType) THEN
+          IF methodOwner # NIL THEN
+            method := NIL;
+            IF (methodOwner.baseType # NIL) & (methodOwner.baseType IS Types.RecordType) THEN
+              method := Types.FindMethod(methodOwner.baseType(Types.RecordType), methodName)
+            END;
+            IF method = NIL THEN
+              Diagnostics.Error(sel.line, sel.column,
+                "'^' has no base-type type-bound procedure to dispatch to");
+              t := Types.Undefined
+            ELSE
+              t := method.procType
+            END;
+            methodOwner := NIL
+          ELSIF (t = NIL) OR ~(t IS Types.PointerType) THEN
             Diagnostics.Error(sel.line, sel.column, "'^' requires a pointer");
             t := Types.Undefined
           ELSE
             ptr := t(Types.PointerType); t := ptr.base
           END
       ELSE
+        methodOwner := NIL;
         Diagnostics.Error(sel.line, sel.column, "unsupported selector");
         t := Types.Undefined
       END;
@@ -1098,33 +1158,137 @@ MODULE SemanticActions;
     RETURN t
   END CheckDesignator;
 
+  (* No parameter list to match against - used only where a call's own
+     target already failed to resolve to a real procedure, purely so a
+     bad argument expression still gets its own diagnostic instead of
+     being silently skipped. *)
+  PROCEDURE CheckExprList(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode);
+    VAR a: SyntaxTree.ExprNode; t: Types.Type;
+  BEGIN
+    a := args;
+    WHILE a # NIL DO
+      t := CheckExpr(scope, a);
+      a := a.next
+    END
+  END CheckExprList;
+
+  (* Appendix A "matching formal parameter lists" at last has a real call
+     site (PLAN.md Phase 6) - params/args are walked together: a value
+     parameter's argument is checked via CheckExpr and required
+     Types.AssignmentCompatible, or (open-array formal) Types.
+     ArrayCompatible* - its first real caller too; a VAR parameter's
+     argument must itself be a bare, paren-free designator-expression
+     (never a literal or a computed value - VAR parameters need a real
+     variable to stand for), resolved via CheckDesignator for its type/
+     isVariable, and required either the same type or (§10.1) a record-
+     extension relationship. Wrong arity is one diagnostic at the call's
+     own position, not per missing/extra argument. *)
+  PROCEDURE CheckArguments(scope: SymbolTable.Scope; params: Types.Param;
+                           args: SyntaxTree.ExprNode; line, column: INTEGER);
+    VAR
+      p: Types.Param; a: SyntaxTree.ExprNode;
+      argType: Types.Type; readOnly, isVariable: BOOLEAN;
+      de: SyntaxTree.DesignatorExprNode;
+      isArrayParam: BOOLEAN; formalArr: Types.ArrayType;
+  BEGIN
+    p := params; a := args;
+    WHILE (p # NIL) & (a # NIL) DO
+      IF p.isVar THEN
+        (* de is bound in its own statement, never chained straight off
+           the "a(...)" cast in the same expression - Parser.Mod cannot
+           yet parse that (a documented, deferred limitation; see this
+           section's own Phase 5 header comment). *)
+        IF a IS SyntaxTree.DesignatorExprNode THEN de := a(SyntaxTree.DesignatorExprNode)
+        ELSE de := NIL
+        END;
+        IF (de = NIL) OR de.hasParens THEN
+          Diagnostics.Error(a.line, a.column, "a VAR parameter requires a variable argument")
+        ELSE
+          argType := CheckDesignator(scope, de.designator, readOnly, isVariable);
+          IF argType # Types.Undefined THEN
+            IF ~isVariable THEN
+              Diagnostics.Error(a.line, a.column, "a VAR parameter requires a variable argument")
+            ELSIF ~Types.SameType(p.type, argType)
+                & ~((p.type # NIL) & (argType # NIL) & (p.type IS Types.RecordType)
+                    & (argType IS Types.RecordType) & Types.Extends(argType, p.type)) THEN
+              Diagnostics.Error(a.line, a.column, "argument type does not match the VAR parameter")
+            END
+          END
+        END
+      ELSE
+        argType := CheckExpr(scope, a);
+        IF argType # Types.Undefined THEN
+          isArrayParam := (p.type # NIL) & (p.type IS Types.ArrayType);
+          IF isArrayParam THEN formalArr := p.type(Types.ArrayType) END;
+          IF isArrayParam & formalArr.isOpen THEN
+            (* Appendix A "array compatible" rule 3 ("f is a value
+               parameter of type ARRAY OF CHAR and a is a string") - a
+               real gap Types.ArrayCompatible* alone leaves, since it is
+               a pure type-level predicate with no notion of parameter
+               mode; AGENTS.md's own language-spec notes already flag
+               this rule as requiring a *value* parameter specifically,
+               which this branch already is (VAR parameters take the
+               other branch above). *)
+            IF ~Types.ArrayCompatible(p.type, argType)
+                & ~((formalArr.elementType = Types.Char) & (argType = Types.String)) THEN
+              Diagnostics.Error(a.line, a.column,
+                "argument is not array compatible with the open-array parameter")
+            END
+          ELSIF ~Types.AssignmentCompatible(p.type, argType) THEN
+            Diagnostics.Error(a.line, a.column, "argument is not assignment compatible with the parameter")
+          END
+        END
+      END;
+      p := p.next; a := a.next
+    END;
+    IF (p # NIL) OR (a # NIL) THEN
+      Diagnostics.Error(line, column, "wrong number of arguments")
+    END
+  END CheckArguments;
+
+  (* PLAN.md Phase 6: a Types.PredeclaredProcedureType base bypasses the
+     ordinary CheckArguments path entirely (dispatched to
+     PredeclaredProcedures.CheckCall instead - see that module's own
+     header comment) and, crucially, bypasses the type-guard/IS
+     disambiguation below it too: MAX(T)/MIN(T)/SIZE(T) take a bare type
+     name as their one argument, exactly the shape LookupBareTypeName
+     tests for, so the predeclared-procedure check must run first or
+     every such call would be misread as a type guard. *)
   PROCEDURE CheckDesignatorExpr(scope: SymbolTable.Scope; node: SyntaxTree.DesignatorExprNode): Types.Type;
     VAR
-      baseType, targetType, argType: Types.Type;
-      readOnly, isVariable: BOOLEAN;
-      arg: SyntaxTree.ExprNode;
+      baseType, targetType, resultType: Types.Type;
+      readOnly, isVariable, isProperProcedure: BOOLEAN;
       pt: Types.ProcedureType;
   BEGIN
     baseType := CheckDesignator(scope, node.designator, readOnly, isVariable);
     IF ~node.hasParens THEN RETURN baseType END;
+    IF baseType = Types.PredeclaredProcedureType THEN
+      resultType := PredeclaredProcedures.CheckCall(scope, node.designator.name, node.args,
+                                                      node.line, node.column,
+                                                      CheckExpr, CheckDesignator, isProperProcedure);
+      IF isProperProcedure THEN
+        Diagnostics.Error(node.line, node.column, "a proper procedure has no result value");
+        RETURN Types.Undefined
+      ELSE
+        RETURN resultType
+      END
+    END;
     IF (node.args # NIL) & (node.args.next = NIL) THEN
       targetType := LookupBareTypeName(scope, node.args);
       IF targetType # NIL THEN
         RETURN CheckGuard(baseType, targetType, node.line, node.column)
       END
     END;
-    arg := node.args;
-    WHILE arg # NIL DO
-      argType := CheckExpr(scope, arg);
-      arg := arg.next
-    END;
     IF baseType = Types.Undefined THEN
+      CheckExprList(scope, node.args);
       RETURN Types.Undefined
     ELSIF ~(baseType IS Types.ProcedureType) THEN
       Diagnostics.Error(node.line, node.column, "call target is not a procedure");
+      CheckExprList(scope, node.args);
       RETURN Types.Undefined
     ELSE
       pt := baseType(Types.ProcedureType);
+      CheckArguments(scope, pt.params, node.args, node.line, node.column);
       IF pt.resultType = NIL THEN
         Diagnostics.Error(node.line, node.column, "a proper procedure has no result value");
         RETURN Types.Undefined
@@ -1392,17 +1556,27 @@ MODULE SemanticActions;
     END
   END CheckAssignStatement;
 
+  (* A function procedure called as a bare statement (its result
+     discarded) is legal - Appendix B's Statement production does not
+     distinguish proper from function procedure calls, and the existing
+     CheckDesignatorExpr-only "a proper procedure has no result value"
+     check is specific to expression context - so this never makes that
+     check itself. *)
   PROCEDURE CheckCallStatement(scope: SymbolTable.Scope; s: SyntaxTree.CallStatementNode);
-    VAR baseType, argType: Types.Type; readOnly, isVariable: BOOLEAN; arg: SyntaxTree.ExprNode;
+    VAR baseType: Types.Type; readOnly, isVariable, isProperProcedure: BOOLEAN; pt: Types.ProcedureType;
   BEGIN
     baseType := CheckDesignator(scope, s.designator, readOnly, isVariable);
-    arg := s.args;
-    WHILE arg # NIL DO
-      argType := CheckExpr(scope, arg);
-      arg := arg.next
-    END;
-    IF (baseType # Types.Undefined) & ~(baseType IS Types.ProcedureType) THEN
-      Diagnostics.Error(s.line, s.column, "statement designator does not denote a procedure")
+    IF baseType = Types.PredeclaredProcedureType THEN
+      baseType := PredeclaredProcedures.CheckCall(scope, s.designator.name, s.args, s.line, s.column,
+                                                    CheckExpr, CheckDesignator, isProperProcedure)
+    ELSIF baseType = Types.Undefined THEN
+      CheckExprList(scope, s.args)
+    ELSIF ~(baseType IS Types.ProcedureType) THEN
+      Diagnostics.Error(s.line, s.column, "statement designator does not denote a procedure");
+      CheckExprList(scope, s.args)
+    ELSE
+      pt := baseType(Types.ProcedureType);
+      CheckArguments(scope, pt.params, s.args, s.line, s.column)
     END
   END CheckCallStatement;
 
@@ -1603,11 +1777,311 @@ MODULE SemanticActions;
     END
   END CheckReturnStatement;
 
+  (* ---- PLAN.md Phase 6: WITH (Oberon2.pdf §9.11) ----
+
+     Reuses Phase 5's guard-applicability pair (CheckExtensionApplicable/
+     CheckGuard) outright - no new predicate. A Guard's Qualidents are
+     already raw idents on WithGuardNode, not an ExprNode, so resolution
+     here is a direct SymbolTable.Find rather than LookupBareTypeName's
+     expression-shaped check. Each guard's body is checked in a fresh
+     scope where the tested variable's name is re-Insert'ed shadowing the
+     outer one, with the narrowed (tested) type and the original's
+     exported/readOnly copied over (§9.11: "v is regarded as if it had
+     the static type T1") - the one statement form that needs a nested
+     scope, since it is the one statement that locally rebinds an
+     existing name's static type. elseBody is checked in the original,
+     un-narrowed scope. No static check for a missing ELSE with no
+     matching guard - a runtime-abort concern, the same precedent CASE's
+     optional ELSE already set in Phase 5. *)
+  PROCEDURE CheckWithGuardBody(scope: SymbolTable.Scope; g: SyntaxTree.WithGuardNode;
+                               narrowedType: Types.Type; original: SymbolTable.Object;
+                               loopDepth: INTEGER; procResultType: Types.Type);
+    VAR narrowedScope: SymbolTable.Scope; unused: SymbolTable.Object;
+  BEGIN
+    narrowedScope := SymbolTable.OpenScope(scope);
+    unused := SymbolTable.Insert(narrowedScope, original.name, SymbolTable.varClass, narrowedType,
+                                  original.exported, original.readOnly, g.line, g.column);
+    CheckStatementSeq(narrowedScope, g.body, loopDepth, procResultType)
+  END CheckWithGuardBody;
+
+  PROCEDURE CheckWithGuard(scope: SymbolTable.Scope; g: SyntaxTree.WithGuardNode;
+                           loopDepth: INTEGER; procResultType: Types.Type);
+    VAR obj, targetObj: SymbolTable.Object; leftType, targetType, narrowed: Types.Type;
+  BEGIN
+    IF g.variableQualifier[0] # 0X THEN
+      Diagnostics.Error(g.line, g.column, "qualified names are not yet supported");
+      RETURN
+    END;
+    obj := SymbolTable.Find(scope, g.variableName);
+    IF obj = NIL THEN
+      Diagnostics.Error(g.line, g.column, "undeclared identifier");
+      RETURN
+    END;
+    leftType := obj.type;
+    IF g.typeQualifier[0] # 0X THEN
+      Diagnostics.Error(g.line, g.column, "qualified type names are not yet supported");
+      RETURN
+    END;
+    targetObj := SymbolTable.Find(scope, g.typeName);
+    IF (targetObj = NIL) OR (targetObj.class # SymbolTable.typeClass) THEN
+      Diagnostics.Error(g.line, g.column, "expected a type name");
+      RETURN
+    END;
+    targetType := targetObj.type;
+    narrowed := CheckGuard(leftType, targetType, g.line, g.column);
+    CheckWithGuardBody(scope, g, narrowed, obj, loopDepth, procResultType)
+  END CheckWithGuard;
+
+  PROCEDURE CheckWithStatement(scope: SymbolTable.Scope; s: SyntaxTree.WithStatementNode;
+                               loopDepth: INTEGER; procResultType: Types.Type);
+    VAR g: SyntaxTree.WithGuardNode;
+  BEGIN
+    g := s.guards;
+    WHILE g # NIL DO
+      CheckWithGuard(scope, g, loopDepth, procResultType);
+      g := g.next
+    END;
+    CheckStatementSeq(scope, s.elseBody, loopDepth, procResultType)
+  END CheckWithStatement;
+
+  (* ---- PLAN.md Phase 6: procedures, type-bound procedures, external
+     declarations (Oberon2.pdf §10) ----
+
+     ResolveProcDecls walks a DeclSeq's procDecls list once, in textual
+     order - unlike ResolveTypeDecls's two-pass forward machinery,
+     because Oberon-2 gives procedures an *explicit* forward-reference
+     escape hatch already parsed since Phase 2 ("PROCEDURE^ ...;",
+     ProcDeclNode.isForward): a procedure is visible from its declaration
+     point onward, exactly like CONST/VAR, unless a preceding
+     ForwardDecl introduced the name early - there is no implicit mutual-
+     visibility requirement to engineer around the way TYPE has.
+
+     Forward-declared both here as ResolveProcDecls (below) and
+     mutually with CheckProcedureBody, since a nested procedure's own
+     body (§10: "procedure declarations may be nested") resolves its own
+     DeclSeq by calling ResolveProcDecls again. *)
+  PROCEDURE ^ ResolveProcDecls(decls: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope);
+
+  (* §10.2's exactly-two-shapes rule: a receiver's second ident, looked
+     up as an ordinary type name, must resolve to either a RecordType
+     with VAR present (a variable parameter of record type) or a
+     PointerType-to-RecordType with VAR absent (a value parameter of
+     POINTER TO T, the classic "Tree = POINTER TO Node" idiom the
+     report's own worked example uses throughout) - any other
+     combination is rejected outright, no invented leniency. Returns the
+     *bound* record type (the pointer's base, in the pointer case). *)
+  PROCEDURE ResolveReceiver(scope: SymbolTable.Scope; r: SyntaxTree.ReceiverNode;
+                            VAR receiverType: Types.Type): Types.RecordType;
+    VAR obj: SymbolTable.Object; ptr: Types.PointerType;
+  BEGIN
+    obj := SymbolTable.Find(scope, r.typeName);
+    IF (obj = NIL) OR (obj.class # SymbolTable.typeClass) THEN
+      Diagnostics.Error(r.line, r.column, "receiver type must be a declared type");
+      receiverType := Types.Undefined;
+      RETURN NIL
+    END;
+    receiverType := obj.type;
+    IF r.isVar & (obj.type # NIL) & (obj.type IS Types.RecordType) THEN
+      RETURN obj.type(Types.RecordType)
+    ELSIF ~r.isVar & (obj.type # NIL) & (obj.type IS Types.PointerType) THEN
+      ptr := obj.type(Types.PointerType);
+      IF (ptr.base # NIL) & (ptr.base IS Types.RecordType) THEN
+        RETURN ptr.base(Types.RecordType)
+      ELSE
+        Diagnostics.Error(r.line, r.column, "receiver pointer type must point to a record");
+        RETURN NIL
+      END
+    ELSE
+      Diagnostics.Error(r.line, r.column,
+        "a receiver must be a VAR parameter of record type or a value parameter of POINTER TO record type");
+      RETURN NIL
+    END
+  END ResolveReceiver;
+
+  (* §10.2's override rule: if name is already bound (possibly inherited)
+     somewhere in owner's base-type chain, this redefinition must satisfy
+     Appendix A "match" (Types.ProcedureTypesMatch, EqualTypes-based -
+     see Types.Mod's own Phase 6 header comment) over the declared
+     parameters, the same receiver mode, and - "if P and T1 are exported,
+     P' must be exported too" - at least as exported as the original.
+     TRUE if this is a legal override, or there is no inherited method of
+     this name at all (not an override). *)
+  PROCEDURE CheckOverride(owner: Types.RecordType; name: SyntaxTree.Ident;
+                          procType: Types.ProcedureType; receiverIsVar, exported: BOOLEAN;
+                          line, column: INTEGER): BOOLEAN;
+    VAR inherited: Types.Method;
+  BEGIN
+    IF (owner.baseType = NIL) OR ~(owner.baseType IS Types.RecordType) THEN RETURN TRUE END;
+    inherited := Types.FindMethod(owner.baseType(Types.RecordType), name);
+    IF inherited = NIL THEN
+      RETURN TRUE
+    ELSIF ~Types.ProcedureTypesMatch(procType, inherited.procType) THEN
+      Diagnostics.Error(line, column, "redefinition's formal parameters do not match the original");
+      RETURN FALSE
+    ELSIF receiverIsVar # inherited.receiverIsVar THEN
+      Diagnostics.Error(line, column, "redefinition's receiver mode does not match the original");
+      RETURN FALSE
+    ELSIF inherited.exported & ~exported THEN
+      Diagnostics.Error(line, column, "a redefinition of an exported procedure must also be exported");
+      RETURN FALSE
+    ELSE
+      RETURN TRUE
+    END
+  END CheckOverride;
+
+  (* AGENTS.md's "External procedures": already-decided bracket-
+     attribute syntax, grammar side handled by Parser.Mod. externalName
+     defaults to the procedure's own Oberon identifier when no override
+     string was given. No body is ever checked - isExternal implies no
+     DeclSeq/statements exist (Parser.Mod's ParseProcDecl never parses
+     them for one). *)
+  PROCEDURE ResolveExternalProcDecl(d: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope);
+    VAR pt: Types.ProcedureType; obj: SymbolTable.Object; exported: BOOLEAN;
+  BEGIN
+    IF (d.externalConvention # "C") & (d.externalConvention # "VMS") THEN
+      Diagnostics.Error(d.line, d.column, "unknown external calling convention")
+    END;
+    exported := d.name.exportMark # SyntaxTree.exportNone;
+    CheckExportMark(d.name);
+    pt := ResolveFormalPars(scope, d.formals);
+    obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
+                               d.line, d.column);
+    obj.externalConvention := d.externalConvention;
+    IF d.externalName[0] # 0X THEN obj.externalName := d.externalName
+    ELSE obj.externalName := d.name.name
+    END
+  END ResolveExternalProcDecl;
+
+  (* Opens a fresh scope for d's own body, binds the receiver (if any)
+     and each formal parameter as a varClass local - drawing each
+     parameter's type from pt.params rather than re-resolving
+     d.formals.sections a second time, so a local's bound type is
+     identical (not just equal) to the very Types.Param CheckArguments
+     will later match call-site arguments against - then recursively
+     resolves d's own nested DeclSeq (§10: "procedure declarations may be
+     nested") before checking its statement sequence. A function
+     procedure (pt.resultType # NIL) with no BEGIN at all is rejected -
+     deliberately a shallow, non-flow-sensitive check, not full return-
+     reachability analysis (out of scope, the same way Phase 5 left
+     CASE's/WITH's missing ELSE as a runtime concern). *)
+  PROCEDURE CheckProcedureBody(d: SyntaxTree.ProcDeclNode; outer: SymbolTable.Scope;
+                               receiverType: Types.Type; pt: Types.ProcedureType);
+    VAR
+      bodyScope: SymbolTable.Scope;
+      section: SyntaxTree.FPSectionNode;
+      idents: SyntaxTree.IdentDefNode;
+      p: Types.Param;
+      unused: SymbolTable.Object;
+  BEGIN
+    bodyScope := SymbolTable.OpenScope(outer);
+    IF (d.receiver # NIL) & (receiverType # NIL) THEN
+      unused := SymbolTable.Insert(bodyScope, d.receiver.name, SymbolTable.varClass, receiverType,
+                                    FALSE, FALSE, d.receiver.line, d.receiver.column)
+    END;
+    p := pt.params;
+    IF d.formals # NIL THEN
+      section := d.formals.sections;
+      WHILE section # NIL DO
+        idents := section.names;
+        WHILE idents # NIL DO
+          unused := SymbolTable.Insert(bodyScope, idents.name, SymbolTable.varClass, p.type,
+                                        FALSE, FALSE, idents.line, idents.column);
+          p := p.next;
+          idents := idents.next
+        END;
+        section := section.next
+      END
+    END;
+    IF d.declarations # NIL THEN
+      ResolveConstDecls(d.declarations.constDecls, bodyScope);
+      ResolveTypeDecls(d.declarations.typeDecls, bodyScope);
+      ResolveVarDecls(d.declarations.varDecls, bodyScope);
+      ResolveProcDecls(d.declarations.procDecls, bodyScope)
+    END;
+    IF (pt.resultType # NIL) & (d.statements = NIL) THEN
+      Diagnostics.Error(d.line, d.column, "function procedure must return a value")
+    END;
+    CheckStatementSeq(bodyScope, d.statements, 0, pt.resultType)
+  END CheckProcedureBody;
+
+  (* The real body matching this section's own forward declaration
+     above. isForward/isExternal/plain-actual-declaration and
+     receiver/non-receiver are four combinations, handled in one
+     procedure rather than split further - each combination shares most
+     of its logic (resolve formals, then either register a pending
+     forward entry, register an external declaration, or check/reuse a
+     pending entry and check the body) with only the "where does the
+     name live" step (SymbolTable.Insert vs. Types.AddMethod) actually
+     differing. *)
+  PROCEDURE ResolveProcDecls(decls: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope);
+    VAR
+      d: SyntaxTree.ProcDeclNode;
+      pt: Types.ProcedureType;
+      receiverType: Types.Type;
+      owner: Types.RecordType;
+      obj: SymbolTable.Object;
+      method: Types.Method;
+      exported, unused: BOOLEAN;
+  BEGIN
+    d := decls;
+    WHILE d # NIL DO
+      IF d.isExternal THEN
+        ResolveExternalProcDecl(d, scope)
+      ELSE
+        exported := d.name.exportMark # SyntaxTree.exportNone;
+        CheckExportMark(d.name);
+        IF d.receiver # NIL THEN
+          owner := ResolveReceiver(scope, d.receiver, receiverType);
+          pt := ResolveFormalPars(scope, d.formals);
+          IF owner # NIL THEN
+            IF d.isForward THEN
+              unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
+              method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, TRUE,
+                                         d.line, d.column)
+            ELSE
+              method := Types.FindMethod(owner, d.name.name);
+              IF (method # NIL) & method.pending THEN
+                IF ~Types.ProcedureTypesMatch(pt, method.procType) OR (method.receiverIsVar # d.receiver.isVar) THEN
+                  Diagnostics.Error(d.line, d.column,
+                    "procedure body's formal parameters must be identical to its forward declaration")
+                END;
+                method.pending := FALSE; method.procType := pt
+              ELSE
+                unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
+                method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, FALSE,
+                                           d.line, d.column)
+              END;
+              CheckProcedureBody(d, scope, receiverType, pt)
+            END
+          END
+        ELSE
+          pt := ResolveFormalPars(scope, d.formals);
+          IF d.isForward THEN
+            obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
+                                       d.line, d.column);
+            obj.isForwardProc := TRUE
+          ELSE
+            obj := SymbolTable.FindLocal(scope, d.name.name);
+            IF (obj # NIL) & (obj.class = SymbolTable.procClass) & obj.isForwardProc THEN
+              IF ~Types.ProcedureTypesMatch(pt, obj.type(Types.ProcedureType)) THEN
+                Diagnostics.Error(d.line, d.column,
+                  "procedure body's formal parameters must be identical to its forward declaration")
+              END;
+              obj.isForwardProc := FALSE; obj.type := pt
+            ELSE
+              obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
+                                         d.line, d.column)
+            END;
+            CheckProcedureBody(d, scope, NIL, pt)
+          END
+        END
+      END;
+      d := d.next
+    END
+  END ResolveProcDecls;
+
   (* Every branch below calls a distinctly-named procedure, never
-     CheckStatement itself - see CheckExpr's identical rationale above. A
-     WithStatementNode reports "not yet implemented" rather than being
-     silently mishandled - the same phrasing this module's own header
-     comment says composite types used to get before PLAN.md Phase 4. *)
+     CheckStatement itself - see CheckExpr's identical rationale above. *)
   PROCEDURE CheckStatement(scope: SymbolTable.Scope; s: SyntaxTree.StatementNode;
                            loopDepth: INTEGER; procResultType: Types.Type);
   BEGIN
@@ -1622,8 +2096,7 @@ MODULE SemanticActions;
     | s: SyntaxTree.LoopStatementNode DO CheckLoopStatement(scope, s, loopDepth, procResultType)
     | s: SyntaxTree.ExitStatementNode DO CheckExitStatement(s, loopDepth)
     | s: SyntaxTree.ReturnStatementNode DO CheckReturnStatement(scope, s, procResultType)
-    | s: SyntaxTree.WithStatementNode DO
-        Diagnostics.Error(s.line, s.column, "WITH is not yet implemented")
+    | s: SyntaxTree.WithStatementNode DO CheckWithStatement(scope, s, loopDepth, procResultType)
     ELSE
       Diagnostics.Error(s.line, s.column, "unsupported statement")
     END
@@ -1646,7 +2119,8 @@ MODULE SemanticActions;
     IF module.declarations # NIL THEN
       ResolveConstDecls(module.declarations.constDecls, scope);
       ResolveTypeDecls(module.declarations.typeDecls, scope);
-      ResolveVarDecls(module.declarations.varDecls, scope)
+      ResolveVarDecls(module.declarations.varDecls, scope);
+      ResolveProcDecls(module.declarations.procDecls, scope)
     END;
     CheckStatementSeq(scope, module.statements, 0, NIL);
     RETURN scope

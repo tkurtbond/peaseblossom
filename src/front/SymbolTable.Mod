@@ -22,7 +22,17 @@ MODULE SymbolTable;
      TO reaches it first. resolving flags an in-progress forced
      resolution so a genuine self-reference (TYPE A = POINTER TO A) is
      reported once instead of recursing forever. Both fields are
-     meaningful only for typeClass Objects and are NIL/FALSE afterward. *)
+     meaningful only for typeClass Objects and are NIL/FALSE afterward.
+
+     PLAN.md Phase 6 adds isForwardProc (procClass only: a "PROCEDURE^"
+     forward declaration not yet completed by a matching actual
+     declaration - SemanticActions.ResolveProcDecls clears it once the
+     real body arrives, mirroring pendingTypeNode/resolving's own
+     "in-progress" bracketing above but for procedures instead of types)
+     and externalConvention/externalName (procClass only: set only for
+     an external procedure declaration - AGENTS.md's "External
+     procedures" - so a later backend can find the linkage info without
+     re-walking the AST; both stay empty otherwise). *)
 
   IMPORT SyntaxTree, Types, Diagnostics;
 
@@ -39,6 +49,8 @@ MODULE SymbolTable;
       exported*, readOnly*: BOOLEAN;
       pendingTypeNode*: SyntaxTree.TypeNode; (* typeClass only; see above *)
       resolving*: BOOLEAN; (* typeClass only; see above *)
+      isForwardProc*: BOOLEAN; (* procClass only; see above *)
+      externalConvention*, externalName*: SyntaxTree.Ident; (* procClass only; see above *)
       next*: Object
     END;
 
@@ -100,6 +112,7 @@ MODULE SymbolTable;
     o.name := name; o.class := class; o.type := type;
     o.value := NIL; o.exported := exported; o.readOnly := readOnly;
     o.pendingTypeNode := NIL; o.resolving := FALSE;
+    o.isForwardProc := FALSE; o.externalConvention[0] := 0X; o.externalName[0] := 0X;
     o.next := scope.objects; scope.objects := o;
     RETURN o
   END Insert;
@@ -110,6 +123,21 @@ MODULE SymbolTable;
     COPY(name, ident);
     o := Insert(Universe, ident, typeClass, type, FALSE, FALSE, 0, 0)
   END InsertPredeclared;
+
+  (* Oberon2.pdf §10.3's full predeclared-procedure vocabulary (PLAN.md
+     Phase 6) - each Insert'ed as an ordinary procClass Object, but with
+     Types.PredeclaredProcedureType as its type rather than a real
+     Types.ProcedureType: PredeclaredProcedures.Mod re-dispatches on the
+     Object's own name (its argument-checking rules are too irregular per
+     name to fit one structural ProcedureType - see that module's header
+     comment), so the type here only needs to mark "this name is one of
+     them," never to describe a signature. *)
+  PROCEDURE InsertPredeclaredProc(name: ARRAY OF CHAR);
+    VAR ident: SyntaxTree.Ident; o: Object;
+  BEGIN
+    COPY(name, ident);
+    o := Insert(Universe, ident, procClass, Types.PredeclaredProcedureType, FALSE, FALSE, 0, 0)
+  END InsertPredeclaredProc;
 
   PROCEDURE InsertPredeclaredConst(name: ARRAY OF CHAR; type: Types.Type;
                                    boolVal: BOOLEAN);
@@ -133,5 +161,15 @@ BEGIN
   InsertPredeclared("LONGREAL", Types.LongReal);
   InsertPredeclared("SET", Types.Set);
   InsertPredeclaredConst("TRUE", Types.Boolean, TRUE);
-  InsertPredeclaredConst("FALSE", Types.Boolean, FALSE)
+  InsertPredeclaredConst("FALSE", Types.Boolean, FALSE);
+  (* Oberon2.pdf §10.3, function procedures then proper procedures, in
+     the report's own table order. *)
+  InsertPredeclaredProc("ABS"); InsertPredeclaredProc("ASH"); InsertPredeclaredProc("CAP");
+  InsertPredeclaredProc("CHR"); InsertPredeclaredProc("ENTIER"); InsertPredeclaredProc("LEN");
+  InsertPredeclaredProc("LONG"); InsertPredeclaredProc("MAX"); InsertPredeclaredProc("MIN");
+  InsertPredeclaredProc("ODD"); InsertPredeclaredProc("ORD"); InsertPredeclaredProc("SHORT");
+  InsertPredeclaredProc("SIZE");
+  InsertPredeclaredProc("COPY"); InsertPredeclaredProc("DEC"); InsertPredeclaredProc("EXCL");
+  InsertPredeclaredProc("HALT"); InsertPredeclaredProc("INC"); InsertPredeclaredProc("INCL");
+  InsertPredeclaredProc("NEW")
 END SymbolTable.

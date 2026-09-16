@@ -61,7 +61,22 @@ MODULE Types;
      special case through every call site, used only by
      AssignmentCompatible*'s rule 5 and by SemanticActions.Mod's
      expression-compatible checks for "=" / "#" against a pointer or
-     procedure type. *)
+     procedure type.
+
+     PLAN.md Phase 6 (procedures, type-bound procedures, WITH) adds
+     EqualTypes* (Appendix A's own "equal types", broader than SameType* -
+     ParamListsMatch's per-parameter check switches to it, since two
+     independently-written open-array formal types are never the *same*
+     type by pointer identity but the report says they should still
+     match), Method*/AddMethod*/FindMethod* (RecordType's counterpart to
+     Field*/AddField*/FindField*, for §10.2's type-bound procedures -
+     override-checking against an inherited method of the same name is a
+     SemanticActions.Mod-level judgment, not this module's, mirroring
+     AddField*'s existing "no inherited-collision check" precedent), and
+     PredeclaredProcedureType* - a shared marker Type identifying a
+     SymbolTable.Object as one of §10.3's predeclared procedures (ABS,
+     NEW, etc.), dispatched on by name in the new PredeclaredProcedures.Mod
+     rather than by distinct Type values. *)
 
   IMPORT SyntaxTree, Diagnostics;
 
@@ -106,12 +121,6 @@ MODULE Types;
       next*: Field
     END;
 
-    RecordType* = POINTER TO RecordTypeDesc;
-    RecordTypeDesc* = RECORD (TypeDesc)
-      baseType*: Type; (* NIL if no base type was named; else a RecordType *)
-      fields*: Field (* declaration order, not insertion-order-reversed *)
-    END;
-
     Param* = POINTER TO ParamDesc;
     ParamDesc* = RECORD
       type*: Type;
@@ -119,10 +128,39 @@ MODULE Types;
       next*: Param
     END;
 
+    (* Declared here, ahead of Field/Method/RecordType below, so
+       MethodDesc.procType can name it directly - Oberon-2 requires a
+       plain (non-POINTER) field's type to already be declared, unlike
+       the POINTER-TO-forward-reference exception §4 rule 3 grants
+       TYPE declarations in general. *)
     ProcedureType* = POINTER TO ProcedureTypeDesc;
     ProcedureTypeDesc* = RECORD (TypeDesc)
       params*: Param; (* declaration order *)
       resultType*: Type (* NIL for a proper procedure *)
+    END;
+
+    (* A type-bound procedure (PLAN.md Phase 6, Oberon2.pdf §10.2).
+       procType holds only the *declared* formal parameters/result - the
+       receiver is deliberately excluded, since Appendix A's own
+       ProcedureType/"matching formal parameter lists" definitions never
+       mention a receiver at all; it is purely a binding/call-site
+       construct SemanticActions.Mod resolves separately. pending marks a
+       forward-declared ("PROCEDURE^ (...) Name...") method not yet
+       completed by a matching actual declaration - mirrors
+       SymbolTable.ObjectDesc.isForwardProc for the non-bound case. *)
+    Method* = POINTER TO MethodDesc;
+    MethodDesc* = RECORD
+      name*: SyntaxTree.Ident;
+      procType*: ProcedureType;
+      receiverIsVar*, exported*, pending*: BOOLEAN;
+      next*: Method
+    END;
+
+    RecordType* = POINTER TO RecordTypeDesc;
+    RecordTypeDesc* = RECORD (TypeDesc)
+      baseType*: Type; (* NIL if no base type was named; else a RecordType *)
+      fields*: Field; (* declaration order, not insertion-order-reversed *)
+      methods*: Method (* declaration order; see Method above *)
     END;
 
     Value* = POINTER TO ValueDesc;
@@ -140,6 +178,13 @@ MODULE Types;
   VAR
     Boolean*, Char*, ShortInt*, Integer*, LongInt*, HugeInt*, Real*, LongReal*,
       Set*, String*, Undefined*, NilType*: Type;
+    (* PLAN.md Phase 6: a shared singleton marking a SymbolTable.Object as
+       one of Oberon2.pdf §10.3's predeclared procedures. A single
+       instance suffices - PredeclaredProcedures.Mod re-dispatches on the
+       Object's own name, never on this type, so distinguishing ABS from
+       NEW does not need distinct Type values the way ordinary procedures
+       need distinct ProcedureTypes. *)
+    PredeclaredProcedureType*: Type;
 
   PROCEDURE NewBasicType(rank: INTEGER): Type;
     VAR t: BasicType;
@@ -173,7 +218,7 @@ MODULE Types;
   PROCEDURE NewRecordType*(baseType: Type): RecordType;
     VAR t: RecordType;
   BEGIN
-    NEW(t); t.baseType := baseType; t.fields := NIL;
+    NEW(t); t.baseType := baseType; t.fields := NIL; t.methods := NIL;
     RETURN t
   END NewRecordType;
 
@@ -224,6 +269,58 @@ MODULE Types;
     ELSE RETURN NIL
     END
   END FindField;
+
+  (* Appends a type-bound procedure to rec's own method list, in
+     declaration order - PLAN.md Phase 6's counterpart to AddField*.
+     Checks for a duplicate against rec's own methods *and* fields
+     (Oberon2.pdf §10.2: "considered local to it" - fields and bound
+     procedures share one namespace within a record), the same "still
+     return something usable" shape AddField*/SymbolTable.Insert* use.
+     Does not check overriding against an inherited method of the same
+     name from rec.baseType - that is a semantic judgment
+     (SemanticActions.Mod calls FindMethod* itself first and applies
+     Appendix A's "matching formal parameter lists" plus the export-mark
+     rule before ever calling this), mirroring how AddField* likewise
+     never checks inherited-field collisions. *)
+  PROCEDURE AddMethod*(rec: RecordType; name: SyntaxTree.Ident; procType: ProcedureType;
+                       receiverIsVar, exported, pending: BOOLEAN;
+                       line, column: INTEGER): Method;
+    VAR m, existing: Method; f: Field;
+  BEGIN
+    existing := rec.methods;
+    WHILE (existing # NIL) & (existing.name # name) DO existing := existing.next END;
+    f := rec.fields;
+    WHILE (f # NIL) & (f.name # name) DO f := f.next END;
+    IF (existing # NIL) OR (f # NIL) THEN
+      Diagnostics.Error(line, column, "name already declared in this record")
+    END;
+    NEW(m); m.name := name; m.procType := procType; m.receiverIsVar := receiverIsVar;
+    m.exported := exported; m.pending := pending; m.next := NIL;
+    IF rec.methods = NIL THEN
+      rec.methods := m
+    ELSE
+      existing := rec.methods;
+      WHILE existing.next # NIL DO existing := existing.next END;
+      existing.next := m
+    END;
+    RETURN m
+  END AddMethod;
+
+  (* Walks rec's own method list, then its baseType chain - AddMethod*'s
+     own header comment explains why override-checking lives in
+     SemanticActions.Mod rather than here. NIL if name is not a
+     type-bound procedure of rec or any of its bases. *)
+  PROCEDURE FindMethod*(rec: RecordType; name: SyntaxTree.Ident): Method;
+    VAR m: Method;
+  BEGIN
+    IF rec = NIL THEN RETURN NIL END;
+    m := rec.methods;
+    WHILE (m # NIL) & (m.name # name) DO m := m.next END;
+    IF m # NIL THEN RETURN m
+    ELSIF rec.baseType # NIL THEN RETURN FindMethod(rec.baseType(RecordType), name)
+    ELSE RETURN NIL
+    END
+  END FindMethod;
 
   (* Returns the narrower ProcedureType, not just Type, so callers can
      chain straight into AddParam* without a type guard on a call
@@ -301,23 +398,55 @@ MODULE Types;
     END
   END SameType;
 
+  (* Appendix A "equal types": a broader relation than SameType* - two
+     types are equal if they are the same type, or both open arrays with
+     equal element types, or both procedure types whose formal parameter
+     lists match (that last case already collapses into SameType* via
+     ProcedureTypesMatch, so only the open-array case is genuinely new
+     here). PLAN.md Phase 6: "matching formal parameter lists" rule 3
+     requires parameters at corresponding positions to have *equal*
+     types, not merely the *same* type - a real gap SameType* alone would
+     leave, since two independently-written "ARRAY OF T" formal types are
+     distinct ArrayType instances (never interned) and so are never the
+     same type by SameType*'s pointer-identity rule, even though Appendix
+     A says they should match here. *)
+  PROCEDURE EqualTypes*(a, b: Type): BOOLEAN;
+    VAR aArr, bArr: ArrayType;
+  BEGIN
+    IF SameType(a, b) THEN RETURN TRUE
+    ELSIF (a # NIL) & (b # NIL) & (a IS ArrayType) & (b IS ArrayType) THEN
+      (* aArr/bArr hold the guarded values so ".isOpen"/".elementType" are
+         never chained right after a "(...)" guard/cast in the same
+         expression - Parser.Mod cannot yet parse that (a documented,
+         deferred limitation; see SemanticActions.Mod's Phase 5 header
+         comment). *)
+      aArr := a(ArrayType); bArr := b(ArrayType);
+      RETURN aArr.isOpen & bArr.isOpen & EqualTypes(aArr.elementType, bArr.elementType)
+    ELSE
+      RETURN FALSE
+    END
+  END EqualTypes;
+
   PROCEDURE ParamListsMatch(a, b: Param): BOOLEAN;
   BEGIN
     IF (a = NIL) & (b = NIL) THEN RETURN TRUE
     ELSIF (a = NIL) OR (b = NIL) THEN RETURN FALSE
     ELSIF a.isVar # b.isVar THEN RETURN FALSE
-    ELSIF ~SameType(a.type, b.type) THEN RETURN FALSE
+    ELSIF ~EqualTypes(a.type, b.type) THEN RETURN FALSE
     ELSE RETURN ParamListsMatch(a.next, b.next)
     END
   END ParamListsMatch;
 
   (* Appendix A "matching formal parameter lists": same arity, each pair's
-     mode (VAR or not) and type identical, and identical result types
-     (both proper procedures, or both matching functions). Not yet wired
-     into any caller - exercised starting PLAN.md Phase 6, when procedure
-     variable assignment/parameter matching needs it; added now alongside
-     the ProcedureType representation itself, the same way Phase 3 added
-     Includes/WiderOf ahead of their own first real call sites. *)
+     mode (VAR or not) identical and type equal (EqualTypes* above, not
+     merely SameType* ), and same result type or none (both proper
+     procedures, or both matching functions). Oberon2.pdf's stricter
+     "identical" wording for forward-declaration/redefinition parameter
+     lists (AGENTS.md, §10/§10.2) is the same predicate, not a separate
+     stricter one - this is already exact on arity, mode, and (now) equal
+     type per position; there is no looser historical reading here to
+     tighten against. First real callers: PLAN.md Phase 6's procedure/
+     type-bound-procedure declaration and call checking. *)
   PROCEDURE ProcedureTypesMatch*(a, b: ProcedureType): BOOLEAN;
   BEGIN
     RETURN SameType(a.resultType, b.resultType) & ParamListsMatch(a.params, b.params)
@@ -426,6 +555,7 @@ MODULE Types;
     ELSIF t = Set THEN COPY("SET", name)
     ELSIF t = String THEN COPY("a string constant", name)
     ELSIF t = NilType THEN COPY("NIL", name)
+    ELSIF t = PredeclaredProcedureType THEN COPY("a predeclared procedure", name)
     ELSIF (t # NIL) & (t IS PointerType) THEN COPY("a pointer type", name)
     ELSIF (t # NIL) & (t IS ArrayType) THEN COPY("an array type", name)
     ELSIF (t # NIL) & (t IS RecordType) THEN COPY("a record type", name)
@@ -446,5 +576,6 @@ BEGIN
   Set := NewBasicType(notNumeric);
   String := NewBasicType(notNumeric);
   Undefined := NewBasicType(notNumeric);
-  NilType := NewBasicType(notNumeric)
+  NilType := NewBasicType(notNumeric);
+  PredeclaredProcedureType := NewBasicType(notNumeric)
 END Types.

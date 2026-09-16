@@ -27,7 +27,21 @@ MODULE Parser;
         pointer/record variable. This phase never treats a trailing
         parenthesized group as a type guard: every "(...)" after a
         designator parses uniformly as call arguments (SyntaxTree's
-        GuardSelector goes unused until a later phase can disambiguate). *)
+        GuardSelector goes unused until a later phase can disambiguate).
+        PLAN.md Phase 5 resolves this for a *terminal* guard/IS once real
+        symbol information exists (SemanticActions.Mod); a guard followed
+        by a chained selector still needs a grammar change here, tracked
+        alongside PLAN.md Phase 6's own type-bound-procedure work but not
+        undertaken by it (see AGENTS.md).
+
+     PLAN.md Phase 6 adds one small, unambiguous grammar addition rather
+     than resolving either simplification above: a "[" right after
+     PROCEDURE (before any Receiver/IdentDef) introduces the already-
+     decided external-procedure-declaration attribute (AGENTS.md,
+     "External procedures") - ParseDeclSeq's procedure loop checks for it
+     the same way it already checks for "^" (isForward), and
+     ParseExternalAttribute parses the "[" string [ "," string ] "]"
+     itself. *)
 
   IMPORT Lexer, Diagnostics, SyntaxTree, SemanticActions;
 
@@ -696,7 +710,35 @@ MODULE Parser;
     RETURN SemanticActions.NewVarDecl(names, type, line, column)
   END ParseVarDecl;
 
-  PROCEDURE ParseProcDecl(VAR p: Parser; isForward: BOOLEAN; line, column: INTEGER): SyntaxTree.ProcDeclNode;
+  (* "[" string [ "," string ] "]" right after PROCEDURE - the already-
+     decided external-procedure-declaration syntax (AGENTS.md, "External
+     procedures"; PLAN.md's "Open design questions"). Lexer.ScanString
+     strips the surrounding quotes itself, so p.current.lexeme is already
+     the bare convention/name text. *)
+  PROCEDURE ParseExternalAttribute(VAR p: Parser; VAR convention, name: SyntaxTree.Ident);
+  BEGIN
+    ExpectToken(p, Lexer.leftBracket, "expected '['");
+    IF p.current.kind = Lexer.string THEN
+      COPY(p.current.lexeme, convention); Advance(p)
+    ELSE
+      Diagnostics.Error(p.current.line, p.current.column, "expected a calling-convention string");
+      convention[0] := 0X
+    END;
+    name[0] := 0X;
+    IF p.current.kind = Lexer.comma THEN
+      Advance(p);
+      IF p.current.kind = Lexer.string THEN
+        COPY(p.current.lexeme, name); Advance(p)
+      ELSE
+        Diagnostics.Error(p.current.line, p.current.column, "expected an external-name string")
+      END
+    END;
+    ExpectToken(p, Lexer.rightBracket, "expected ']'")
+  END ParseExternalAttribute;
+
+  PROCEDURE ParseProcDecl(VAR p: Parser; isForward, isExternal: BOOLEAN;
+                          externalConvention, externalName: SyntaxTree.Ident;
+                          line, column: INTEGER): SyntaxTree.ProcDeclNode;
     VAR
       receiver: SyntaxTree.ReceiverNode;
       name: SyntaxTree.IdentDefNode;
@@ -706,12 +748,15 @@ MODULE Parser;
       endName: SyntaxTree.Ident;
   BEGIN
     receiver := NIL;
-    IF p.current.kind = Lexer.leftParen THEN receiver := ParseReceiver(p) END;
+    (* An external procedure is never type-bound (AGENTS.md); a receiver
+       written on one is left to misparse its "(" as FormalPars rather
+       than specially accommodated - see PLAN.md's own note on this. *)
+    IF ~isExternal & (p.current.kind = Lexer.leftParen) THEN receiver := ParseReceiver(p) END;
     name := ParseIdentDef(p);
     formals := NIL;
     IF p.current.kind = Lexer.leftParen THEN formals := ParseFormalPars(p) END;
     declarations := NIL; statements := NIL; endName[0] := 0X;
-    IF ~isForward THEN
+    IF ~isForward & ~isExternal THEN
       ExpectToken(p, Lexer.semicolon, "expected ';'");
       declarations := ParseDeclSeq(p);
       IF p.current.kind = Lexer.beginKeyword THEN
@@ -723,7 +768,8 @@ MODULE Parser;
         Diagnostics.Error(line, column, "procedure END identifier does not match its name")
       END
     END;
-    RETURN SemanticActions.NewProcDecl(isForward, receiver, name, formals,
+    RETURN SemanticActions.NewProcDecl(isForward, isExternal, externalConvention, externalName,
+                                        receiver, name, formals,
                                         declarations, statements, endName, line, column)
   END ParseProcDecl;
 
@@ -734,7 +780,8 @@ MODULE Parser;
       varHead, varTail, varNode: SyntaxTree.VarDeclNode;
       procHead, procTail, procNode: SyntaxTree.ProcDeclNode;
       line, column: INTEGER;
-      isForward: BOOLEAN;
+      isForward, isExternal: BOOLEAN;
+      externalConvention, externalName: SyntaxTree.Ident;
   BEGIN
     line := p.current.line; column := p.current.column;
     constHead := NIL; constTail := NIL;
@@ -773,9 +820,16 @@ MODULE Parser;
     WHILE p.current.kind = Lexer.procedureKeyword DO
       line := p.current.line; column := p.current.column;
       Advance(p);
-      isForward := FALSE;
-      IF p.current.kind = Lexer.caret THEN isForward := TRUE; Advance(p) END;
-      procNode := ParseProcDecl(p, isForward, line, column);
+      isForward := FALSE; isExternal := FALSE;
+      externalConvention[0] := 0X; externalName[0] := 0X;
+      IF p.current.kind = Lexer.caret THEN
+        isForward := TRUE; Advance(p)
+      ELSIF p.current.kind = Lexer.leftBracket THEN
+        isExternal := TRUE;
+        ParseExternalAttribute(p, externalConvention, externalName)
+      END;
+      procNode := ParseProcDecl(p, isForward, isExternal, externalConvention, externalName,
+                                 line, column);
       ExpectToken(p, Lexer.semicolon, "expected ';'");
       IF procTail = NIL THEN procHead := procNode ELSE procTail.next := procNode END;
       procTail := procNode

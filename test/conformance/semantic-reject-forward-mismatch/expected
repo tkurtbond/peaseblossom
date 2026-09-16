@@ -1,0 +1,2 @@
+forward-mismatch.mod:8:3: error: procedure body's formal parameters must be identical to its forward declaration
+1 error(s)

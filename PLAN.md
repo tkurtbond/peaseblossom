@@ -295,15 +295,16 @@ external-symbol names are subject to the same 31-character limit above.
 
 ## Open design questions
 
-- **External procedure declaration syntax**: decided 2026-09-16 — a
-  bracketed string-list attribute after `PROCEDURE`, body-less
-  (`PROCEDURE ["C"] Name*(...): T;`, optionally `PROCEDURE ["C",
-  "malloc"] AllocateBytes*(...): T;` to override the linkage name), per
-  `AGENTS.md`'s "External procedures". Needed by Phase 6 (see that
-  phase's note) for calling C functions on Linux/the BSDs, and by Phase
-  10 for VAX/VMS Calling Standard interop. Not yet implemented — this
-  resolves the syntax question ahead of Phase 6, per this section's own
-  gating note.
+- **External procedure declaration syntax**: decided 2026-09-16, grammar/
+  symbol-table side implemented in Phase 6 (2026-09-16) — a bracketed
+  string-list attribute after `PROCEDURE`, body-less (`PROCEDURE ["C"]
+  Name*(...): T;`, optionally `PROCEDURE ["C", "malloc"]
+  AllocateBytes*(...): T;` to override the linkage name), per
+  `AGENTS.md`'s "External procedures". Needed by Phase 6 for calling C
+  functions on Linux/the BSDs, and by Phase 10 for VAX/VMS Calling
+  Standard interop. Both backends' actual lowering is still Phase 8/10
+  work - Phase 6 only parses the declaration and records its linkage
+  info (`SymbolTable.ObjectDesc.externalConvention`/`externalName`).
 
 ## Critical files
 

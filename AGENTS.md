@@ -177,28 +177,31 @@ Peaseblossom's own.
   calling convention for any declared external procedure — this is more
   work than the LLVM/C case, but the convention itself is well-specified
   and stable.
-- **Decided (2026-09-16): a bracketed string-list attribute right after
-  the `PROCEDURE` keyword, following Component Pascal/BlackBox's own
-  precedent for declaring foreign (e.g. Win32 DLL) procedures** —
-  `PROCEDURE ["C"] Name*(...): T;` with **no body** (the missing body is
-  what marks the declaration external; a body-less `PROCEDURE` with no
-  such attribute stays a syntax error, same as today). The first string
-  names the calling convention (`"C"` for Phase 8's LLVM/C-interop case,
-  `"VMS"` for Phase 10's VMS Calling Standard case). An optional second
-  string overrides the external linkage name, since Peaseblossom's own
-  naming convention (see "Naming feedback" — descriptive, often-long
-  identifiers) routinely won't match a terse external symbol like
-  `malloc` or `printf`: `PROCEDURE ["C", "malloc"] AllocateBytes*(size:
+- **Decided (2026-09-16), implemented (2026-09-16, Phase 6's grammar/
+  `SymbolTable.Mod`/`SemanticActions.Mod` side): a bracketed string-list
+  attribute right after the `PROCEDURE` keyword, following Component
+  Pascal/BlackBox's own precedent for declaring foreign (e.g. Win32 DLL)
+  procedures** — `PROCEDURE ["C"] Name*(...): T;` with **no body** (the
+  missing body is what marks the declaration external; a body-less
+  `PROCEDURE` with no such attribute stays a syntax error, same as
+  today). The first string names the calling convention (`"C"` for
+  Phase 8's LLVM/C-interop case, `"VMS"` for Phase 10's VMS Calling
+  Standard case — both accepted now, even though nothing consumes
+  `"VMS"` until Phase 10). An optional second string overrides the
+  external linkage name, since Peaseblossom's own naming convention (see
+  "Naming feedback" — descriptive, often-long identifiers) routinely
+  won't match a terse external symbol like `malloc` or `printf`:
+  `PROCEDURE ["C", "malloc"] AllocateBytes*(size:
   LONGINT): SYSTEM.ADDRESS;`. Without the second string, the external
-  symbol is the procedure's own Oberon identifier verbatim. This
-  interacts with the VAX backend's 31-character name-mangling requirement
-  (Phase 10, below): an external procedure's linkage name is emitted
-  **verbatim, never mangled** — it has to match the real external symbol,
-  unlike poc's own internally-generated names. Implementation (grammar,
-  `SymbolTable.Mod`/`SemanticActions.Mod` linkage-info recording, both
-  backends' lowering) is Phase 6/8/10 work, not yet started — this entry
-  records the syntax decision only, per `PLAN.md`'s open design
-  questions.
+  symbol is the procedure's own Oberon identifier verbatim
+  (`SymbolTable.ObjectDesc.externalName`). This interacts with the VAX
+  backend's 31-character name-mangling requirement (Phase 10, below): an
+  external procedure's linkage name is emitted **verbatim, never
+  mangled** — it has to match the real external symbol, unlike poc's own
+  internally-generated names. Both backends' actual lowering is still
+  Phase 8/10 work; Phase 6 only records the linkage info
+  (`SymbolTable.ObjectDesc.externalConvention`/`externalName`) for a
+  later backend to consume.
 
 ## Project state
 
@@ -266,3 +269,51 @@ itself was not widened to cover `Types.Mod`/`SymbolTable.Mod`/
 `ConstantEvaluator.Mod`/`MemoryLayout.Mod`, since that is an unrelated
 test-harness completeness gap, not Phase 5's own scope. See
 `src/front/README.md` for the module list.
+
+Phase 6 (`SemanticActions.Mod`'s `ResolveProcDecls`/`CheckArguments`/
+`CheckWithStatement` families, a new `PredeclaredProcedures.Mod`,
+`Types.Mod`'s `EqualTypes*`/`Method*`/`PredeclaredProcedureType*`) is
+also complete: procedure declarations and calls with real Appendix A
+parameter-list checking (§10, §10.1 - `Types.ArrayCompatible*`/
+`ProcedureTypesMatch*`'s first real callers), type-bound procedures
+(receivers, override checking, `r.P^` base-dispatch - §10.2), `WITH`
+(§9.11, reusing Phase 5's guard-applicability pair outright), the full
+§10.3 predeclared-procedure vocabulary (20 names, confirmed against the
+report's own table, which has no `ASSERT`), and the grammar/resolution
+side of the already-decided external-procedure-declaration syntax (see
+"External procedures" above). `poc -check` now type-checks almost any
+single-module Oberon-2 program, `PLAN.md`'s own Phase 5 milestone
+finally reached in full. Implementing Appendix A's "matching formal
+parameter lists" surfaced a genuine, previously-undetected gap: the
+report's own "equal types" (used by that definition) is broader than
+`Types.SameType*` (it also covers two independently-written open-array
+formal types, which are never the *same* type by pointer identity, since
+Phase 4 never interns `ArrayType`s) - `Types.EqualTypes*` closes this and
+`ParamListsMatch` now uses it. A second gap of the same shape: Appendix
+A's "array compatible" rule 3 (`ARRAY OF CHAR` matching a string
+constant) requires the formal to be a *value* parameter specifically
+(`AGENTS.md`'s own language-spec notes already flagged this), which
+`Types.ArrayCompatible*` alone cannot know since it is a pure type-level
+predicate with no notion of parameter mode - handled instead where
+`CheckArguments` already knows a parameter's mode.
+`PredeclaredProcedures.Mod` cannot import `SemanticActions.Mod`
+(circular - `SemanticActions.Mod` is the one dispatching into it), so its
+`CheckCall*` takes `CheckExpr`/`CheckDesignator` as procedure-typed
+parameters instead - the
+standard way to break a mutual-dependency cycle between two single-pass-
+compiled modules; see that module's own header comment. Two explicit,
+narrower scope boundaries, matching how Phase 4/5 recorded their own: a
+function procedure's "must contain a return statement" check is shallow
+(rejects only a totally empty body, not a full return-reachability
+analysis), and `r.P^` base-dispatch is a narrow special case grafted onto
+`CheckDesignator`'s `DereferenceSelector` branch (triggered only
+immediately after a selector that resolved to a type-bound procedure),
+not a generalization of ordinary pointer dereference. `poc -check-syntax`
+against the new/changed front-end files themselves (`Types.Mod`,
+`SymbolTable.Mod`, the new `PredeclaredProcedures.Mod`,
+`SemanticActions.Mod`, `Parser.Mod`) caught one more real instance of the
+guard-then-selector `Parser.Mod` limitation above, freshly introduced in
+`PredeclaredProcedures.Mod`'s own `NEW` open-array-dimension check - fixed
+the same way, by binding the guarded value to a local variable first.
+`parser-self-check`'s own file list remains unwidened (still the same
+unrelated, pre-existing test-harness gap noted under Phase 5).
