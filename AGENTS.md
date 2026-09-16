@@ -157,12 +157,12 @@ against), and there's no `VAR`/parameter syntax yet (Phase 5/6) to declare
 a `HUGEINT`-typed value directly — today it's reachable only as a `TYPE`
 alias target (see `test/conformance/semantic-hugeint-type`).
 
-### External procedures (open)
+### External procedures
 
 `Oberon2.pdf` defines no mechanism for calling procedures implemented in
 another language, only the low-level `SYSTEM` module (Appendix C) for
 memory/register access. Peaseblossom needs one anyway, so poc's language
-will need a deliberate, documented extension for declaring an **external
+has a deliberate, documented extension for declaring an **external
 procedure** — analogous in spirit to how this file documents voc's own
 extensions (see "Vishap Oberon (voc)" above), except this one is
 Peaseblossom's own.
@@ -177,9 +177,28 @@ Peaseblossom's own.
   calling convention for any declared external procedure — this is more
   work than the LLVM/C case, but the convention itself is well-specified
   and stable.
-- **Open**: the actual Oberon-2 source syntax for declaring an external
-  procedure (e.g. some kind of attribute/pragma on a `PROCEDURE` heading)
-  is not yet decided. See `PLAN.md`'s open design questions.
+- **Decided (2026-09-16): a bracketed string-list attribute right after
+  the `PROCEDURE` keyword, following Component Pascal/BlackBox's own
+  precedent for declaring foreign (e.g. Win32 DLL) procedures** —
+  `PROCEDURE ["C"] Name*(...): T;` with **no body** (the missing body is
+  what marks the declaration external; a body-less `PROCEDURE` with no
+  such attribute stays a syntax error, same as today). The first string
+  names the calling convention (`"C"` for Phase 8's LLVM/C-interop case,
+  `"VMS"` for Phase 10's VMS Calling Standard case). An optional second
+  string overrides the external linkage name, since Peaseblossom's own
+  naming convention (see "Naming feedback" — descriptive, often-long
+  identifiers) routinely won't match a terse external symbol like
+  `malloc` or `printf`: `PROCEDURE ["C", "malloc"] AllocateBytes*(size:
+  LONGINT): SYSTEM.ADDRESS;`. Without the second string, the external
+  symbol is the procedure's own Oberon identifier verbatim. This
+  interacts with the VAX backend's 31-character name-mangling requirement
+  (Phase 10, below): an external procedure's linkage name is emitted
+  **verbatim, never mangled** — it has to match the real external symbol,
+  unlike poc's own internally-generated names. Implementation (grammar,
+  `SymbolTable.Mod`/`SemanticActions.Mod` linkage-info recording, both
+  backends' lowering) is Phase 6/8/10 work, not yet started — this entry
+  records the syntax decision only, per `PLAN.md`'s open design
+  questions.
 
 ## Project state
 

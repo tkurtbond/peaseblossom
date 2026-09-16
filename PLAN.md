@@ -205,11 +205,14 @@ confirming each has a corresponding function in `Types.Mod`/
 for a language extension not in `Oberon2.pdf` — declaring a procedure
 heading as implemented externally (e.g. in C), needed for both the
 Linux/BSD C-interop case and the eventual VAX/VMS Calling Standard case
-(see `AGENTS.md`, "Language extensions beyond Oberon2.pdf"). The exact
-surface syntax is an open design question (see below); `SymbolTable.Mod`/
-`SemanticActions.Mod` will need to record linkage information on such
-procedure declarations regardless of the syntax chosen, for both backends
-to consume.
+(see `AGENTS.md`, "External procedures"). Surface syntax is decided: a
+bracketed string-list attribute right after `PROCEDURE`, body-less —
+`PROCEDURE ["C"] Name*(...): T;`, or `PROCEDURE ["C", "malloc"]
+AllocateBytes*(...): T;` to override the linkage name — following
+Component Pascal/BlackBox's precedent for foreign procedure declarations.
+`SymbolTable.Mod`/`SemanticActions.Mod` will need to record linkage
+information (convention string, optional override name) on such
+procedure declarations for both backends to consume.
 
 ### Phase 7 — Modules, symbol files (§11, Appendix D4)
 `ModuleInterface.Mod`: read/write the textual, DEFINITION-style module
@@ -292,11 +295,15 @@ external-symbol names are subject to the same 31-character limit above.
 
 ## Open design questions
 
-- **External procedure declaration syntax**: not yet decided. Needed by
-  Phase 6 (see that phase's note) for calling C functions on Linux/the
-  BSDs, and by Phase 10 for VAX/VMS Calling Standard interop. Must be
-  resolved before Phase 6 implementation begins, since it's a language
-  surface-syntax decision, not just a backend detail.
+- **External procedure declaration syntax**: decided 2026-09-16 — a
+  bracketed string-list attribute after `PROCEDURE`, body-less
+  (`PROCEDURE ["C"] Name*(...): T;`, optionally `PROCEDURE ["C",
+  "malloc"] AllocateBytes*(...): T;` to override the linkage name), per
+  `AGENTS.md`'s "External procedures". Needed by Phase 6 (see that
+  phase's note) for calling C functions on Linux/the BSDs, and by Phase
+  10 for VAX/VMS Calling Standard interop. Not yet implemented — this
+  resolves the syntax question ahead of Phase 6, per this section's own
+  gating note.
 
 ## Critical files
 
