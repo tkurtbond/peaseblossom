@@ -306,6 +306,24 @@ external-symbol names are subject to the same 31-character limit above.
   work - Phase 6 only parses the declaration and records its linkage
   info (`SymbolTable.ObjectDesc.externalConvention`/`externalName`).
 
+- **No `-OC`-equivalent elementary-type-size model**: `MemoryLayout.Mod`
+  (Phase 4) parameterizes size/alignment/offset only by **target word
+  size** (32 vs 64 bit, for POINTER/PROCEDURE-sized values and the
+  alignment cap). Elementary-type sizes are hardcoded to voc's classic
+  `-O2` sizes (SHORTINT=1, INTEGER=2, LONGINT=4, SET=4, REAL=4,
+  LONGREAL=8 bytes) regardless of target word size, plus `HUGEINT`=8
+  always available. voc instead varies *elementary-type width itself* via
+  a selectable `-O2`/`-OC` flag (classic 8/16/32/32-bit vs. Component
+  Pascal 16/32/64/64-bit SHORTINT/INTEGER/LONGINT/SET) — an orthogonal
+  axis to poc's word-size parameter, not currently modeled at all.
+  Undecided whether poc should ever grow an `-OC`-equivalent mode; would
+  likely be useful for interop/compatibility with voc-compiled code and
+  for giving 64-bit targets wider native integer/set types without
+  requiring `HUGEINT` explicitly. Revisit if a concrete need (e.g. LLVM
+  backend targets wanting native 64-bit `INTEGER`, or symbol-file
+  interop with voc's `.../C/sym`) comes up; not scheduled to any phase
+  yet.
+
 ## Critical files
 
 - `AGENTS.md` — spec/toolchain context this plan builds on.
