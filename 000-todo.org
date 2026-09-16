@@ -1,0 +1,9 @@
+* TODO poc commmand line option to specify output directory for build artifacts.
+poc should have a command line option so that the user can specify a directory to put all the build artifacts (objects, executable) in an output file.
+
+
+
+* Ignore this
+Local Variables:
+eval: (visual-line-mode 1)
+End:
