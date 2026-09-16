@@ -4,6 +4,9 @@ poc should have a command line option so that the user can specify a directory t
 * DONE Compare memory model to that of voc.
 * DONE Add ASSERT (in other Oberon-2 dialects?).
 * TODO How do Appendix A and Appendix C change to account for to HUGEINT?
+* TODO Writing a round-trip-safe float-to-text formatter from scratch for REAL/LONGREAL CONST export.
+* TODO IMPORT search path.
+* TODO Type guards in designators?
 * Ignore this
 Local Variables:
 eval: (visual-line-mode 1)
