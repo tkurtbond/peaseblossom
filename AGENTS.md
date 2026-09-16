@@ -1,0 +1,112 @@
+# Peaseblossom
+
+Peaseblossom is a from-scratch Oberon-2 compiler. The compiler executable is
+named **`poc`** (Peaseblossom Oberon Compiler).
+
+## Target backends
+
+Two desired outcomes, i.e. two backends sharing a common front end:
+
+1. An **LLVM-based** backend, for 32-bit and 64-bit machines.
+2. A **bespoke backend** targeting **VAX/VMS 5.5-2** — a specific, dated
+   VMS release on the VAX architecture (pre-dating OpenVMS/Alpha). LLVM
+   does not target VAX, so this backend cannot reuse the LLVM path and
+   needs its own code generator.
+
+This implies the front end (lexer, parser, AST, semantic analysis/type
+checking) should be kept backend-agnostic from the start, with codegen
+factored out behind a clean interface, since the two backends have nothing
+in common at the instruction-selection level.
+
+## Language specification
+
+Two copies of the Oberon-2 report by H. Mössenböck and N. Wirth are kept
+locally under `~/Reference/Computer/Languages/Oberon/`, along with
+`pdftotext` extracts (`-layout` preserves columns/tables; `-no-layout` is
+plain reading order):
+
+- `Oberon2-Report.pdf` / `Oberon2-Report-{layout,no-layout}.text` — the
+  original ETH tech report, dated October 1993 in the body text. Typeset by
+  the Oberon system itself; the PDF is a frozen 2015 Ghostscript conversion
+  (creation date == mod date, never touched again).
+- `Oberon2.pdf` / `Oberon2-{layout,no-layout}.text` — a later revision.
+  Authored in WriteNow, first exported to PDF in 2007, **modified again in
+  2022**. Content-wise it refines the 1993 text in several places, all in
+  one direction (never reversed):
+  - Pointers are stated to initialize to NIL by default (§6.4).
+  - Forward declaration / redefinition parameter lists must be "identical",
+    not just "match" (§10, §10.2) — a stricter, clearer rule.
+  - The `Trees` example module's `Init(t: Tree)` (VAR-parameter
+    initializer) is replaced by `NewTree(): Tree` (allocating function) —
+    an API redesign, updated consistently in both the main example and the
+    Appendix D4 browser-output example.
+  - The array-compatibility rule (Appendix A) is tightened: `ARRAY OF CHAR`
+    parameter matching a string requires the formal to be a **value**
+    parameter.
+  - `HALT` is simplified from two overloads (`HALT(n)`, `HALT(n, code)`) to
+    one (`HALT(x)`).
+  - Assorted prose smoothing (e.g. "must be left via a return statement"
+    instead of "require the presence of a return statement").
+
+**`Oberon2.pdf` is the authoritative spec for Peaseblossom.** Use
+`Oberon2-Report.pdf` only as historical background or when explicitly
+comparing the two. Neither file carries a printed revision number, so when
+in doubt about a specific rule, treat `Oberon2.pdf`'s wording as
+controlling and check the PDF metadata (`pdfinfo`) if provenance matters
+again.
+
+## Reference implementation: Vishap Oberon (voc)
+
+Vishap Oberon is used as the reference/bootstrap implementation while
+building `poc` — for cross-checking semantics, running comparison test
+programs, and (potentially) bootstrapping.
+
+- Installed binary: `/usr/local/sw/versions/voc/git/bin/voc` (and
+  `showdef`). Add to `PATH` to use directly.
+- Installed libraries/symbol files:
+  `/usr/local/sw/versions/voc/git/lib`,
+  `/usr/local/sw/versions/voc/git/2/{include,sym}` (O2 size model),
+  `/usr/local/sw/versions/voc/git/C/{include,sym}` (OC / Component Pascal
+  size model).
+- Read-only git clone of voc's source (remote:
+  `github.com/vishapoberon/compiler.git`):
+  `/usr/local/sw/src/lang/Oberon/vishap/voc`
+  - `src/compiler/OP{B,C,M,P,S,T,V}.Mod` — the compiler passes.
+  - `src/library/{misc,ooc,ooc2,oocX11,pow,s3,ulm,v4}` — bundled libraries.
+  - `src/runtime`, `src/test`, `src/tools`.
+  - `doc/*.md` — Compiling.md, ctags.md, Features.md, Files.md, History.md,
+    Installation.md, Porting.md, Winstallation.md.
+- Version as of 2026-09-16: "Oberon-2 compiler v2.1.0 [2026/09/16] for gcc
+  LP64 on fedora", based on Ofront (J. Templ).
+
+Voc's own extensions beyond the report, documented in `doc/Features.md` —
+these are Vishap-specific, not part of the Oberon-2 standard, and should
+not be assumed required for Peaseblossom unless deliberately adopted for
+compatibility:
+
+- Selectable elementary type sizes via `-O2` (default: 8/16/32/32 bit
+  SHORTINT/INTEGER/LONGINT/SET — the classic Oberon-2 sizes) vs. `-OC`
+  (Component Pascal sizes: 16/32/64/64 bit).
+- Extra `HUGEINT` type (64-bit), available even under `-O2`.
+- `SYSTEM.ADDRESS` type, used in place of `LONGINT` for
+  `SYSTEM.ADR/BIT/GET/PUT/MOVE`, since `LONGINT` can no longer be assumed
+  address-sized on all targets.
+- `SYSTEM.INT8/16/32/64` and `SYSTEM.SET32/64` fixed-size types.
+- Read-only **value** parameters via a `-` marker (Oakwood guideline 5.13)
+  — beyond what either report PDF documents (they only allow `-` on
+  record fields / module-level exported identifiers).
+- Pointers initialize to NIL by default (`-p`, on by default) — this one
+  *does* match `Oberon2.pdf`, corroborating that it's the newer report.
+- `-a` (assert halt), `-t` (type guard halt), `-x` (index range halt) on
+  by default; `-r` (range check halt) off by default.
+
+`voc` CLI usage: `voc options {files {options}}`. Options before the first
+filename set defaults for all files; options after a filename apply only
+to that file. Repeating a flag toggles it.
+
+## Project state
+
+As of 2026-09-16 the repository is freshly initialized (`main` branch,
+`README.md` and this file only, no commits yet). No implementation
+language, build system, or directory layout has been chosen yet for `poc`
+itself, nor has the LLVM/VAX-VMS backend split been designed.
