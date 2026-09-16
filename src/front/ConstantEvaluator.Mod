@@ -201,7 +201,7 @@ MODULE ConstantEvaluator;
 
   PROCEDURE IsIntegerType(t: Types.Type): BOOLEAN;
   BEGIN
-    RETURN Types.IsNumeric(t) & (Types.Rank(t) <= Types.longIntRank)
+    RETURN Types.IsNumeric(t) & (Types.Rank(t) <= Types.hugeIntRank)
   END IsIntegerType;
 
   PROCEDURE EvaluateNumericOp(op: INTEGER; l, r: Types.Value): Types.Value;
@@ -209,7 +209,7 @@ MODULE ConstantEvaluator;
   BEGIN
     resultType := Types.WiderOf(l.type, r.type);
     NEW(result); result.type := resultType;
-    IF Types.Rank(resultType) <= Types.longIntRank THEN
+    IF Types.Rank(resultType) <= Types.hugeIntRank THEN
       result.kind := Types.intValue;
       IF op = Lexer.plus THEN result.intVal := l.intVal + r.intVal
       ELSIF op = Lexer.minus THEN result.intVal := l.intVal - r.intVal

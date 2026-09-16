@@ -55,7 +55,12 @@ same applies to procedure/variable names within them.
   strict `Oberon2.pdf` syntax/semantics — none of voc's extensions
   (`-` read-only value params, `HUGEINT`, `SYSTEM.ADDRESS`/`INT8..64`/
   `SET32/64`). Otherwise Stage 1 could never recompile poc's own source
-  until poc *also* implemented those same extensions.
+  until poc *also* implemented those same extensions. (Peaseblossom later
+  adopted `HUGEINT` itself as a *target*-language extension — see
+  AGENTS.md, "Language extensions beyond Oberon2.pdf" — implemented as
+  ordinary Oberon-2 code in `Types.Mod` that registers the identifier;
+  poc's own source never declares a variable of type `HUGEINT`, so this
+  constraint still holds.)
 
 ## Directory layout
 

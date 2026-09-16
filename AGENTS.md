@@ -91,8 +91,17 @@ compatibility:
 
 - Selectable elementary type sizes via `-O2` (default: 8/16/32/32 bit
   SHORTINT/INTEGER/LONGINT/SET — the classic Oberon-2 sizes) vs. `-OC`
-  (Component Pascal sizes: 16/32/64/64 bit).
-- Extra `HUGEINT` type (64-bit), available even under `-O2`.
+  (Component Pascal sizes: 16/32/64/64 bit). `tools/bootstrap/stage0`
+  builds poc itself with `-OC` — a codegen-only flag, not a source-syntax
+  extension, chosen so poc's own `LONGINT` variables get 8 real bytes of
+  storage (needed by `Types.Value.intVal` to hold a full-range `HUGEINT`
+  constant without wrapping; see "Language extensions beyond Oberon2.pdf"
+  below). This doesn't relax the strict-Oberon2.pdf-syntax constraint on
+  poc's own source (see `PLAN.md`, "Bootstrap terminology") — only the
+  build flag changed, not what poc's own source is allowed to write.
+- Extra `HUGEINT` type (64-bit), available even under `-O2`. Peaseblossom
+  adopted this one outright as its own extension — see "Language
+  extensions beyond Oberon2.pdf" below.
 - `SYSTEM.ADDRESS` type, used in place of `LONGINT` for
   `SYSTEM.ADR/BIT/GET/PUT/MOVE`, since `LONGINT` can no longer be assumed
   address-sized on all targets.
@@ -129,6 +138,27 @@ during Stage 0/1/2 bootstrapping:
 
 ## Language extensions beyond Oberon2.pdf
 
+### HUGEINT (implemented)
+
+An 8-byte signed integer, predeclared alongside `Oberon2.pdf`'s own basic
+types (§6.1). Adopted directly from voc's identically-named, identically-
+sized extension (see "Vishap Oberon (voc)" above) rather than inventing a
+new name — an Oberon-2 programmer reaching for "an integer wider than
+LONGINT" already expects this spelling. Implemented in `Types.Mod`
+(`HugeInt*`, ranked in the numeric inclusion hierarchy directly below
+`REAL` — `LONGREAL ⊇ REAL ⊇ HUGEINT ⊇ LONGINT ⊇ INTEGER ⊇ SHORTINT`, since
+every integer type ranks below every real type regardless of width, the
+same reason `LONGINT` already ranks below `REAL`), `SymbolTable.Mod`
+(predeclared identifier), and `ConstantEvaluator.Mod` (`IsIntegerType`/
+arithmetic folding). Not yet exercisable end-to-end: literal typing
+doesn't yet pick `HUGEINT` for large numerals (needs Phase 4's
+`MemoryLayout.Mod` to give basic types real bit widths to check literals
+against), and there's no `VAR`/parameter syntax yet (Phase 5/6) to declare
+a `HUGEINT`-typed value directly — today it's reachable only as a `TYPE`
+alias target (see `test/conformance/semantic-hugeint-type`).
+
+### External procedures (open)
+
 `Oberon2.pdf` defines no mechanism for calling procedures implemented in
 another language, only the low-level `SYSTEM` module (Appendix C) for
 memory/register access. Peaseblossom needs one anyway, so poc's language
@@ -164,5 +194,8 @@ successfully parses its own Phase 1/2 source. Phase 3 (`Types.Mod`,
 complete: CONST and TYPE declarations are resolved against a real scope,
 with full constant folding over the basic types (§6.1) and the numeric
 inclusion hierarchy; VAR (§7) and PROCEDURE (§10) declarations are left
-for Phase 5/6 per `PLAN.md`'s phase-to-section map. See
-`src/front/README.md` for the module list.
+for Phase 5/6 per `PLAN.md`'s phase-to-section map. `HUGEINT` (see
+"Language extensions beyond Oberon2.pdf" above) was added on top of this
+afterward, requiring `tools/bootstrap/stage0` to switch to voc's `-OC`
+build flag for adequate host-integer storage. See `src/front/README.md`
+for the module list.

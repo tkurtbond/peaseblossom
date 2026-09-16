@@ -2,6 +2,15 @@
 # Stage 0: compile poc's own source with voc, the bootstrap compiler.
 # See PLAN.md, "Bootstrap terminology". Run with no arguments from anywhere;
 # output lands in build/bin/poc.
+#
+# Built with voc's -OC (Component Pascal size model) rather than the -O2
+# default: this gives poc's own LONGINT variables 8 bytes of real host
+# storage instead of 4, needed so Types.Value.intVal (a LONGINT field) can
+# hold a full-range HUGEINT constant without silently wrapping. This is a
+# codegen flag only - it changes nothing about poc's own source text, so
+# it does not conflict with the strict-Oberon2.pdf-syntax constraint on
+# poc's bootstrap-era source (see "Constraint" under "Bootstrap
+# terminology" in PLAN.md).
 set -e
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -12,15 +21,15 @@ mkdir -p "$BUILD/bin" "$BUILD/obj"
 export PATH="$VOC_BIN_DIR:$PATH"
 
 cd "$BUILD/obj"
-voc -s "$ROOT/src/front/Diagnostics.Mod"
-voc -s "$ROOT/src/front/Lexer.Mod"
-voc -s "$ROOT/src/front/SyntaxTree.Mod"
-voc -s "$ROOT/src/front/Types.Mod"
-voc -s "$ROOT/src/front/SymbolTable.Mod"
-voc -s "$ROOT/src/front/ConstantEvaluator.Mod"
-voc -s "$ROOT/src/front/SemanticActions.Mod"
-voc -s "$ROOT/src/front/Parser.Mod"
-voc -m "$ROOT/src/driver/Poc.Mod"
+voc -OC -s "$ROOT/src/front/Diagnostics.Mod"
+voc -OC -s "$ROOT/src/front/Lexer.Mod"
+voc -OC -s "$ROOT/src/front/SyntaxTree.Mod"
+voc -OC -s "$ROOT/src/front/Types.Mod"
+voc -OC -s "$ROOT/src/front/SymbolTable.Mod"
+voc -OC -s "$ROOT/src/front/ConstantEvaluator.Mod"
+voc -OC -s "$ROOT/src/front/SemanticActions.Mod"
+voc -OC -s "$ROOT/src/front/Parser.Mod"
+voc -OC -m "$ROOT/src/driver/Poc.Mod"
 
 cp Poc "$BUILD/bin/poc"
 echo "Stage 0: built $BUILD/bin/poc"

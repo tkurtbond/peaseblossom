@@ -26,6 +26,9 @@ etc.).
   types (§6.1) and their numeric inclusion hierarchy; array, record, and
   procedure forms are Phase 4/6 additions, following the same
   record-extension pattern SyntaxTree.Mod uses for its node families.
+  Also defines `HUGEINT`, a Peaseblossom language extension (not in
+  §6.1) adopted from voc's own identically-named extension - see
+  AGENTS.md's "Language extensions beyond Oberon2.pdf".
 - `SymbolTable.Mod` (Phase 3): Object/Scope model (§4) - insertion,
   lookup, nested scopes. Semantics-free by design; knows nothing about
   qualidents, constant expressions, or forward POINTER references.

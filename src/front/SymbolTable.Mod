@@ -128,6 +128,7 @@ BEGIN
   InsertPredeclared("SHORTINT", Types.ShortInt);
   InsertPredeclared("INTEGER", Types.Integer);
   InsertPredeclared("LONGINT", Types.LongInt);
+  InsertPredeclared("HUGEINT", Types.HugeInt); (* Peaseblossom extension; see Types.Mod *)
   InsertPredeclared("REAL", Types.Real);
   InsertPredeclared("LONGREAL", Types.LongReal);
   InsertPredeclared("SET", Types.Set);
