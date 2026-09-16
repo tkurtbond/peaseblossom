@@ -199,11 +199,6 @@ MODULE ConstantEvaluator;
     IF v.kind = Types.intValue THEN RETURN v.intVal ELSE RETURN v.realVal END
   END AsReal;
 
-  PROCEDURE IsIntegerType(t: Types.Type): BOOLEAN;
-  BEGIN
-    RETURN Types.IsNumeric(t) & (Types.Rank(t) <= Types.hugeIntRank)
-  END IsIntegerType;
-
   PROCEDURE EvaluateNumericOp(op: INTEGER; l, r: Types.Value): Types.Value;
     VAR result: Types.Value; resultType: Types.Type;
   BEGIN
@@ -347,7 +342,7 @@ MODULE ConstantEvaluator;
         result := UndefinedValue()
       END
     ELSIF (expr.op = Lexer.divKeyword) OR (expr.op = Lexer.modKeyword) THEN
-      IF IsIntegerType(l.type) & IsIntegerType(r.type) THEN
+      IF Types.IsInteger(l.type) & Types.IsInteger(r.type) THEN
         result := EvaluateIntDivMod(expr.op, l, r, expr.line, expr.column)
       ELSE
         Diagnostics.Error(expr.line, expr.column,

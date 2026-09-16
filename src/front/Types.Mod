@@ -49,7 +49,19 @@ MODULE Types;
      not in ConstantEvaluator.Mod, because SymbolTable.Mod attaches one to
      every constClass Object and must not import the evaluator that
      produces them (SymbolTable.Mod stays semantics-free; see its own
-     header comment). *)
+     header comment).
+
+     PLAN.md Phase 5 (variables, expressions, statements) adds
+     AssignmentCompatible* and IsInteger* (both broadly-reusable Appendix
+     A primitives, following Phase 4's own precedent for Extends* and
+     ArrayCompatible* ), FindField* (AddField*'s counterpart lookup, now
+     that SemanticActions.Mod's designator resolution needs to find a
+     "." selector's field, including inherited ones), and NilType* - a
+     singleton giving NIL a real static type rather than threading a
+     special case through every call site, used only by
+     AssignmentCompatible*'s rule 5 and by SemanticActions.Mod's
+     expression-compatible checks for "=" / "#" against a pointer or
+     procedure type. *)
 
   IMPORT SyntaxTree, Diagnostics;
 
@@ -127,7 +139,7 @@ MODULE Types;
 
   VAR
     Boolean*, Char*, ShortInt*, Integer*, LongInt*, HugeInt*, Real*, LongReal*,
-      Set*, String*, Undefined*: Type;
+      Set*, String*, Undefined*, NilType*: Type;
 
   PROCEDURE NewBasicType(rank: INTEGER): Type;
     VAR t: BasicType;
@@ -193,6 +205,26 @@ MODULE Types;
     RETURN f
   END AddField;
 
+  (* Walks rec's own field list, then its baseType chain (baseType, when
+     present, is always itself a RecordType - PLAN.md Phase 4's
+     ResolveRecordBaseType/ResolveNamedRecordType already enforce that),
+     so a "." selector sees inherited fields too - AddField's own
+     duplicate check only ever needed to look at one record's own list,
+     never the base chain, so this is genuinely new rather than a rename
+     of something AddField already did. NIL if name is not a field of
+     rec or any of its bases. *)
+  PROCEDURE FindField*(rec: RecordType; name: SyntaxTree.Ident): Field;
+    VAR f: Field;
+  BEGIN
+    IF rec = NIL THEN RETURN NIL END;
+    f := rec.fields;
+    WHILE (f # NIL) & (f.name # name) DO f := f.next END;
+    IF f # NIL THEN RETURN f
+    ELSIF rec.baseType # NIL THEN RETURN FindField(rec.baseType(RecordType), name)
+    ELSE RETURN NIL
+    END
+  END FindField;
+
   (* Returns the narrower ProcedureType, not just Type, so callers can
      chain straight into AddParam* without a type guard on a call
      expression - see NewRecordType's identical rationale. *)
@@ -219,16 +251,35 @@ MODULE Types;
   END AddParam;
 
   PROCEDURE IsNumeric*(t: Type): BOOLEAN;
+    VAR bt: BasicType;
   BEGIN
-    RETURN (t # NIL) & (t IS BasicType) & (t(BasicType).rank # notNumeric)
+    IF (t = NIL) OR ~(t IS BasicType) THEN RETURN FALSE END;
+    (* bt holds the guarded value so ".rank" is never chained right
+       after a "(...)" guard/cast in the same expression - Parser.Mod
+       cannot yet parse that (a documented, deferred limitation; see
+       SemanticActions.Mod's Phase 5 header comment). *)
+    bt := t(BasicType);
+    RETURN bt.rank # notNumeric
   END IsNumeric;
 
   PROCEDURE Rank*(t: Type): INTEGER;
+    VAR bt: BasicType;
   BEGIN
-    IF (t # NIL) & (t IS BasicType) THEN RETURN t(BasicType).rank
-    ELSE RETURN notNumeric
+    IF (t = NIL) OR ~(t IS BasicType) THEN
+      RETURN notNumeric
+    ELSE
+      bt := t(BasicType);
+      RETURN bt.rank
     END
   END Rank;
+
+  (* Promoted from ConstantEvaluator.Mod's own private IsIntegerType -
+     PLAN.md Phase 5 needs the identical predicate for designator/FOR/CASE
+     checks, so this is now the one shared definition. *)
+  PROCEDURE IsInteger*(t: Type): BOOLEAN;
+  BEGIN
+    RETURN IsNumeric(t) & (Rank(t) <= hugeIntRank)
+  END IsInteger;
 
   PROCEDURE ^ ProcedureTypesMatch*(a, b: ProcedureType): BOOLEAN;
 
@@ -278,10 +329,17 @@ MODULE Types;
      also need to look through a POINTER TO wrapper (WITH/type guards,
      PLAN.md Phase 5/6) do that unwrapping themselves before calling this. *)
   PROCEDURE Extends*(sub, base: Type): BOOLEAN;
+    VAR rec: RecordType;
   BEGIN
     IF sub = NIL THEN RETURN FALSE
     ELSIF sub = base THEN RETURN TRUE
-    ELSIF sub IS RecordType THEN RETURN Extends(sub(RecordType).baseType, base)
+    ELSIF sub IS RecordType THEN
+      (* rec holds the guarded value so ".baseType" is never chained
+         right after a "(...)" guard/cast in the same expression -
+         Parser.Mod cannot yet parse that (a documented, deferred
+         limitation; see SemanticActions.Mod's Phase 5 header comment). *)
+      rec := sub(RecordType);
+      RETURN Extends(rec.baseType, base)
     ELSE RETURN FALSE
     END
   END Extends;
@@ -292,11 +350,14 @@ MODULE Types;
      PLAN.md Phase 6's parameter matching, added now alongside ArrayType
      itself for the same reason ProcedureTypesMatch is. *)
   PROCEDURE ArrayCompatible*(formal, actual: Type): BOOLEAN;
+    VAR formalArr, actualArr: ArrayType;
   BEGIN
     IF SameType(formal, actual) THEN RETURN TRUE
-    ELSIF (formal # NIL) & (actual # NIL) & (formal IS ArrayType) & (actual IS ArrayType)
-        & formal(ArrayType).isOpen THEN
-      RETURN ArrayCompatible(formal(ArrayType).elementType, actual(ArrayType).elementType)
+    ELSIF (formal # NIL) & (actual # NIL) & (formal IS ArrayType) & (actual IS ArrayType) THEN
+      (* formalArr/actualArr hold the guarded values, same rationale as
+         Extends* above. *)
+      formalArr := formal(ArrayType); actualArr := actual(ArrayType);
+      RETURN formalArr.isOpen & ArrayCompatible(formalArr.elementType, actualArr.elementType)
     ELSE
       RETURN FALSE
     END
@@ -320,6 +381,38 @@ MODULE Types;
     END
   END WiderOf;
 
+  (* Appendix A "assignment compatible", rules 1-5 and 7 (rule 6 - Tv is
+     ARRAY n OF CHAR, e a string constant with m < n characters - is
+     inherently value-dependent, needing the string's actual length, not
+     just its type; PLAN.md Phase 5's SemanticActions.Mod handles that
+     one case itself, alongside this predicate, using
+     ConstantEvaluator.Evaluate). Rule 7 ("Tv is a procedure type and e is
+     the name of a procedure whose formal parameters match") is already
+     subsumed by rule 1: SameType delegates to ProcedureTypesMatch for any
+     two ProcedureTypes, structural match included. Rules 3/4 (record/
+     pointer extension) unwrap a PointerType's base before calling
+     Extends*, per that procedure's own header comment. *)
+  PROCEDURE AssignmentCompatible*(dst, src: Type): BOOLEAN;
+    VAR dstPtr, srcPtr: PointerType;
+  BEGIN
+    IF SameType(dst, src) THEN RETURN TRUE (* rule 1 (subsumes rule 7) *)
+    ELSIF Includes(dst, src) THEN RETURN TRUE (* rule 2 *)
+    ELSIF (dst # NIL) & (src # NIL) & (dst IS RecordType) & (src IS RecordType) THEN
+      RETURN Extends(src, dst) (* rule 3 *)
+    ELSIF (dst # NIL) & (src # NIL) & (dst IS PointerType) & (src IS PointerType) THEN
+      (* dstPtr/srcPtr hold the guarded values so ".base" is never
+         chained right after a "(...)" guard/cast in the same expression -
+         Parser.Mod cannot yet parse that (a documented, deferred
+         limitation; see SemanticActions.Mod's Phase 5 header comment). *)
+      dstPtr := dst(PointerType); srcPtr := src(PointerType);
+      RETURN Extends(srcPtr.base, dstPtr.base) (* rule 4 *)
+    ELSIF (src = NilType) & (dst # NIL) & ((dst IS PointerType) OR (dst IS ProcedureType)) THEN
+      RETURN TRUE (* rule 5 *)
+    ELSE
+      RETURN FALSE
+    END
+  END AssignmentCompatible;
+
   PROCEDURE TypeName*(t: Type; VAR name: ARRAY OF CHAR);
   BEGIN
     IF t = Boolean THEN COPY("BOOLEAN", name)
@@ -332,6 +425,7 @@ MODULE Types;
     ELSIF t = LongReal THEN COPY("LONGREAL", name)
     ELSIF t = Set THEN COPY("SET", name)
     ELSIF t = String THEN COPY("a string constant", name)
+    ELSIF t = NilType THEN COPY("NIL", name)
     ELSIF (t # NIL) & (t IS PointerType) THEN COPY("a pointer type", name)
     ELSIF (t # NIL) & (t IS ArrayType) THEN COPY("an array type", name)
     ELSIF (t # NIL) & (t IS RecordType) THEN COPY("a record type", name)
@@ -351,5 +445,6 @@ BEGIN
   LongReal := NewBasicType(longRealRank);
   Set := NewBasicType(notNumeric);
   String := NewBasicType(notNumeric);
-  Undefined := NewBasicType(notNumeric)
+  Undefined := NewBasicType(notNumeric);
+  NilType := NewBasicType(notNumeric)
 END Types.

@@ -1,0 +1,2 @@
+case-duplicate-label.mod:9:5: error: case label value already used
+1 error(s)

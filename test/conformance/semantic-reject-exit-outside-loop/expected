@@ -1,0 +1,2 @@
+exit-outside-loop.mod:9:5: error: EXIT is only valid within a LOOP statement
+1 error(s)

@@ -22,7 +22,20 @@ MODULE SemanticActions;
      sibling nodes together itself as it recognizes each "{...}" repetition
      in the grammar. *)
 
-  IMPORT SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics;
+  IMPORT SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics, Lexer;
+
+  TYPE
+    (* Private to the CASE-statement overlap check (PLAN.md Phase 5) -
+       accumulates the (low, high) integer ranges already seen across
+       every Case of one CaseStatement, CHAR labels included via ORD, so
+       "no value must occur more than once" (Oberon2.pdf §9.5) can be
+       checked with one pairwise scan as labels are visited, rather than
+       a separate collection pass. *)
+    LabelRange = POINTER TO LabelRangeDesc;
+    LabelRangeDesc = RECORD
+      low, high: LONGINT;
+      next: LabelRange
+    END;
 
   (* Designators and selectors *)
 
@@ -840,14 +853,802 @@ MODULE SemanticActions;
     END
   END ResolveTypeDecls;
 
+  (* By the time VAR declarations resolve, every TYPE in this DeclSeq is
+     already fully resolved via ResolveTypeDecls above, regardless of
+     source order (SyntaxTree.DeclSeqNode already groups CONST/TYPE/VAR/
+     PROCEDURE into four separate lists) - so unlike ResolveTypeDecls, a
+     single pass suffices: no forward machinery is needed. exported/
+     readOnly come straight from each name's own export mark, exactly
+     like PopulateRecordFields already does for fields - no
+     CheckExportMark call, since VAR legitimately allows the '-' mark
+     (Appendix A; CheckExportMark exists only to reject it on CONST/TYPE
+     names). *)
+  PROCEDURE ResolveVarDecls(decls: SyntaxTree.VarDeclNode; scope: SymbolTable.Scope);
+    VAR
+      d: SyntaxTree.VarDeclNode;
+      t: Types.Type;
+      idents: SyntaxTree.IdentDefNode;
+      obj: SymbolTable.Object;
+  BEGIN
+    d := decls;
+    WHILE d # NIL DO
+      t := ResolveType(scope, d.type, FALSE);
+      idents := d.names;
+      WHILE idents # NIL DO
+        obj := SymbolTable.Insert(scope, idents.name, SymbolTable.varClass, t,
+                                   idents.exportMark # SyntaxTree.exportNone,
+                                   idents.exportMark = SyntaxTree.exportReadOnly,
+                                   idents.line, idents.column);
+        idents := idents.next
+      END;
+      d := d.next
+    END
+  END ResolveVarDecls;
+
+  (* ---- Phase 5: variables, expressions, statements (Oberon2.pdf §7, §8,
+     §9 minus WITH) ----
+
+     A second, parallel implementation of Appendix A's expression-
+     compatible operator table, deliberately not merged with
+     ConstantEvaluator.Mod: that module's own header comment restricts it
+     to compile-time-only expressions ("never a variable, a call, or a
+     selector"), load-bearing for array-length/CASE-label constant
+     folding elsewhere. CheckExpr below answers a different question
+     (this expression's static type, for any expression, constant or
+     not) and duplicates EvaluateBinary/EvaluateUnary's per-operator-group
+     shape on purpose - the same "table" from the report, computing a
+     Types.Type instead of folding a Types.Value.
+
+     Designator resolution (CheckDesignator) is one shared procedure,
+     used both by general expression-checking (CheckDesignatorExpr) and
+     directly by assignment/call-statement checking. Its readOnly output
+     is about a RECORD FIELD's own '-' mark (Types.Field.readOnly),
+     propagated through '.' selectors per §8.1 ("if ... r are read-only,
+     then also ... r.f are read-only") - never
+     SymbolTable.Object.readOnly, which means "read-only to importers"
+     (§4 export visibility, Phase 7's concern) and must not block
+     assignment to a '-'-exported local VAR from within its own
+     declaring module.
+
+     Type guard v(T) vs. an ordinary call: Parser.Mod's own header
+     comment already documents that it never builds a GuardSelector -
+     every trailing "(...)" after a designator parses uniformly as call
+     arguments on the owning DesignatorExprNode/CallStatementNode.
+     Disambiguating that needs symbol information the parser doesn't
+     have; LookupBareTypeName/CheckDesignatorExpr below do it once real
+     scope information exists. This only covers a TERMINAL guard (v(T)
+     as a whole designator-expression's outermost operation, not
+     v(T).field with a selector chained after the guard):
+     Parser.Mod's ParseDesignator loop stops at "(" entirely and never
+     resumes selector parsing afterward, so the mid-chain form the report
+     also shows (t(CenterTree).subnode) needs a Parser.Mod grammar change
+     (folding "(" Qualident ")" into the selector loop itself, matching
+     Appendix B's actual Designator grammar rather than Phase 2's
+     simplification of it) - real, additional scope closely related to
+     WITH's own guard machinery, deferred alongside Phase 6 rather than
+     attempted here.
+
+     Call/call-expression checking recognizes a Types.ProcedureType value
+     (including a procedure-typed record field - see the
+     semantic-procedure-types fixture) as callable, but deliberately
+     stops short of Appendix A's "matching formal parameter lists" check:
+     that is PLAN.md's own Phase 6 line item, and there is no way yet to
+     declare a real PROCEDURE to test the happy path against (both
+     PredeclaredProcedures.Mod and user PROCEDURE declarations are Phase
+     6). Each argument expression is still checked via CheckExpr, for
+     robustness and to exercise the procedure-typed-variable/field case
+     end to end. *)
+
+  PROCEDURE ^ CheckExpr(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
+
+  (* NIL if expr is not a bare, unqualified, selector-free, paren-free
+     designator naming a typeClass object - i.e. not usable as a type
+     guard's or IS's right-hand "type name" operand. *)
+  PROCEDURE LookupBareTypeName(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object;
+  BEGIN
+    IF ~(expr IS SyntaxTree.DesignatorExprNode) THEN RETURN NIL END;
+    de := expr(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens OR (de.designator.qualifier[0] # 0X) OR (de.designator.selectors # NIL) THEN
+      RETURN NIL
+    END;
+    obj := SymbolTable.Find(scope, de.designator.name);
+    IF (obj # NIL) & (obj.class = SymbolTable.typeClass) & (obj.type # NIL) THEN
+      RETURN obj.type
+    ELSE
+      RETURN NIL
+    END
+  END LookupBareTypeName;
+
+  (* §8.1's type-guard applicability rule 2 ("T is an extension of the
+     static type of v"), generalized to accept T spelled either as the
+     bare RecordType base or as the matching PointerType - both spellings
+     appear in the report's own designator examples (t(CenterTree) vs. a
+     bare record name); either way the two RecordType bases must be in an
+     extension relationship. Rule 1 ("v is a variable parameter of record
+     type or v is a pointer") is narrowed here to "v is a pointer" only -
+     PLAN.md Phase 5 has no VAR parameters yet (Phase 6), so the direct-
+     record-value-parameter case cannot arise. Shared by CheckGuard and
+     IS (CheckBinaryExpr). *)
+  PROCEDURE CheckExtensionApplicable(leftType, targetType: Types.Type): BOOLEAN;
+    VAR leftPtr, targetPtr: Types.PointerType;
+  BEGIN
+    IF (leftType = NIL) OR ~(leftType IS Types.PointerType) THEN
+      RETURN FALSE
+    END;
+    (* leftPtr/targetPtr hold the guarded values so ".base" is never
+       chained right after a "(...)" guard/cast in the same expression -
+       our own Parser.Mod cannot yet parse that (mid-chain guards are a
+       documented, deferred limitation; see this section's own header
+       comment). *)
+    leftPtr := leftType(Types.PointerType);
+    IF (targetType # NIL) & (targetType IS Types.PointerType) THEN
+      targetPtr := targetType(Types.PointerType);
+      RETURN Types.Extends(targetPtr.base, leftPtr.base)
+    ELSIF (targetType # NIL) & (targetType IS Types.RecordType) THEN
+      RETURN Types.Extends(targetType, leftPtr.base)
+    ELSE
+      RETURN FALSE
+    END
+  END CheckExtensionApplicable;
+
+  PROCEDURE CheckGuard(leftType, targetType: Types.Type; line, column: INTEGER): Types.Type;
+  BEGIN
+    IF leftType = Types.Undefined THEN
+      RETURN Types.Undefined
+    ELSIF ~(leftType IS Types.PointerType) THEN
+      Diagnostics.Error(line, column, "a type guard requires a pointer designator");
+      RETURN Types.Undefined
+    ELSIF ~CheckExtensionApplicable(leftType, targetType) THEN
+      Diagnostics.Error(line, column,
+        "type guard target must be an extension of the designator's type");
+      RETURN Types.Undefined
+    ELSE
+      RETURN targetType
+    END
+  END CheckGuard;
+
+  (* Resolves d's qualident (rejecting a non-empty qualifier the same way
+     ResolveQualidentType already does - qualified names are Phase 7),
+     then walks d.selectors, applying §8.1's auto-deref rule ("record and
+     array selectors imply dereferencing") before each '.'/'['. Once
+     currentType becomes Types.Undefined, remaining selectors are
+     skipped - the same UndefinedValue()-propagation idiom
+     ConstantEvaluator.Mod already uses, so one bad selector doesn't
+     cascade into more errors. readOnly/isVariable are described in this
+     section's own header comment above. *)
+  PROCEDURE CheckDesignator*(scope: SymbolTable.Scope; d: SyntaxTree.Designator;
+                             VAR readOnly, isVariable: BOOLEAN): Types.Type;
+    VAR
+      obj: SymbolTable.Object;
+      t: Types.Type;
+      sel: SyntaxTree.Selector;
+      field: Types.Field;
+      idx: SyntaxTree.ExprNode;
+      idxType: Types.Type;
+      ptr: Types.PointerType;
+      arr: Types.ArrayType;
+  BEGIN
+    readOnly := FALSE; isVariable := FALSE;
+    IF d.qualifier[0] # 0X THEN
+      Diagnostics.Error(d.line, d.column, "qualified names are not yet supported");
+      RETURN Types.Undefined
+    END;
+    obj := SymbolTable.Find(scope, d.name);
+    IF obj = NIL THEN
+      Diagnostics.Error(d.line, d.column, "undeclared identifier");
+      RETURN Types.Undefined
+    ELSIF (obj.class = SymbolTable.varClass) OR (obj.class = SymbolTable.constClass) THEN
+      isVariable := obj.class = SymbolTable.varClass;
+      t := obj.type
+    ELSE
+      Diagnostics.Error(d.line, d.column, "not a value");
+      RETURN Types.Undefined
+    END;
+    sel := d.selectors;
+    WHILE (sel # NIL) & (t # Types.Undefined) DO
+      WITH
+        sel: SyntaxTree.FieldSelector DO
+          IF (t # NIL) & (t IS Types.PointerType) THEN
+            ptr := t(Types.PointerType); t := ptr.base
+          END;
+          IF (t = NIL) OR ~(t IS Types.RecordType) THEN
+            Diagnostics.Error(sel.line, sel.column, "'.' requires a record or a pointer to a record");
+            t := Types.Undefined
+          ELSE
+            field := Types.FindField(t(Types.RecordType), sel.name);
+            IF field = NIL THEN
+              Diagnostics.Error(sel.line, sel.column, "undeclared field");
+              t := Types.Undefined
+            ELSE
+              t := field.type; readOnly := readOnly OR field.readOnly
+            END
+          END
+      | sel: SyntaxTree.IndexSelector DO
+          idx := sel.indices;
+          WHILE (idx # NIL) & (t # Types.Undefined) DO
+            IF (t # NIL) & (t IS Types.PointerType) THEN
+              ptr := t(Types.PointerType); t := ptr.base
+            END;
+            IF (t = NIL) OR ~(t IS Types.ArrayType) THEN
+              Diagnostics.Error(idx.line, idx.column, "'[' requires an array or a pointer to an array");
+              t := Types.Undefined
+            ELSE
+              idxType := CheckExpr(scope, idx);
+              IF (idxType # Types.Undefined) & ~Types.IsInteger(idxType) THEN
+                Diagnostics.Error(idx.line, idx.column, "array index must be an integer type")
+              END;
+              arr := t(Types.ArrayType); t := arr.elementType
+            END;
+            idx := idx.next
+          END
+      | sel: SyntaxTree.DereferenceSelector DO
+          IF (t = NIL) OR ~(t IS Types.PointerType) THEN
+            Diagnostics.Error(sel.line, sel.column, "'^' requires a pointer");
+            t := Types.Undefined
+          ELSE
+            ptr := t(Types.PointerType); t := ptr.base
+          END
+      ELSE
+        Diagnostics.Error(sel.line, sel.column, "unsupported selector");
+        t := Types.Undefined
+      END;
+      sel := sel.next
+    END;
+    RETURN t
+  END CheckDesignator;
+
+  PROCEDURE CheckDesignatorExpr(scope: SymbolTable.Scope; node: SyntaxTree.DesignatorExprNode): Types.Type;
+    VAR
+      baseType, targetType, argType: Types.Type;
+      readOnly, isVariable: BOOLEAN;
+      arg: SyntaxTree.ExprNode;
+      pt: Types.ProcedureType;
+  BEGIN
+    baseType := CheckDesignator(scope, node.designator, readOnly, isVariable);
+    IF ~node.hasParens THEN RETURN baseType END;
+    IF (node.args # NIL) & (node.args.next = NIL) THEN
+      targetType := LookupBareTypeName(scope, node.args);
+      IF targetType # NIL THEN
+        RETURN CheckGuard(baseType, targetType, node.line, node.column)
+      END
+    END;
+    arg := node.args;
+    WHILE arg # NIL DO
+      argType := CheckExpr(scope, arg);
+      arg := arg.next
+    END;
+    IF baseType = Types.Undefined THEN
+      RETURN Types.Undefined
+    ELSIF ~(baseType IS Types.ProcedureType) THEN
+      Diagnostics.Error(node.line, node.column, "call target is not a procedure");
+      RETURN Types.Undefined
+    ELSE
+      pt := baseType(Types.ProcedureType);
+      IF pt.resultType = NIL THEN
+        Diagnostics.Error(node.line, node.column, "a proper procedure has no result value");
+        RETURN Types.Undefined
+      ELSE
+        RETURN pt.resultType
+      END
+    END
+  END CheckDesignatorExpr;
+
+  PROCEDURE CheckLiteralExpr(node: SyntaxTree.LiteralExprNode): Types.Type;
+  BEGIN
+    IF node.literalKind = Lexer.integer THEN
+      RETURN Types.Integer
+    ELSIF node.literalKind = Lexer.real THEN
+      IF node.isLongReal THEN RETURN Types.LongReal ELSE RETURN Types.Real END
+    ELSIF node.literalKind = Lexer.charConst THEN
+      RETURN Types.Char
+    ELSE (* Lexer.string *)
+      RETURN Types.String
+    END
+  END CheckLiteralExpr;
+
+  (* Appendix A's "char. array, string" operand category (=/#/order-
+     relation rows): a fixed- or open-array of CHAR, or the pseudo-type
+     ConstantEvaluator.Mod already uses for string literal/constant
+     values. *)
+  PROCEDURE IsCharArrayOrString(t: Types.Type): BOOLEAN;
+    VAR arr: Types.ArrayType;
+  BEGIN
+    IF t = Types.String THEN RETURN TRUE
+    ELSIF (t = NIL) OR ~(t IS Types.ArrayType) THEN
+      RETURN FALSE
+    ELSE
+      arr := t(Types.ArrayType);
+      RETURN arr.elementType = Types.Char
+    END
+  END IsCharArrayOrString;
+
+  PROCEDURE CheckUnaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.UnaryExprNode): Types.Type;
+    VAR t: Types.Type;
+  BEGIN
+    t := CheckExpr(scope, node.operand);
+    IF t = Types.Undefined THEN RETURN t END;
+    IF (node.op = Lexer.plus) OR (node.op = Lexer.minus) THEN
+      IF Types.IsNumeric(t) THEN
+        RETURN t
+      ELSIF (node.op = Lexer.minus) & (t = Types.Set) THEN
+        RETURN Types.Set
+      ELSE
+        Diagnostics.Error(node.line, node.column,
+          "operand of unary '+' must be numeric, or of unary '-' numeric or SET");
+        RETURN Types.Undefined
+      END
+    ELSE (* Lexer.tilde *)
+      IF t = Types.Boolean THEN
+        RETURN Types.Boolean
+      ELSE
+        Diagnostics.Error(node.line, node.column, "operand of '~' must be BOOLEAN");
+        RETURN Types.Undefined
+      END
+    END
+  END CheckUnaryExpr;
+
+  (* Mirrors ConstantEvaluator.EvaluateBinary's own per-operator-group
+     structure (see this section's header comment) - computing a
+     Types.Type instead of folding a Types.Value. IS is handled first and
+     separately: its right operand is an ordinary Expr grammatically but
+     must name a type, so it must not be run through the general
+     CheckExpr(scope, node.right) call below (that would misreport a bare
+     type name as "not a value"). *)
+  PROCEDURE CheckBinaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.BinaryExprNode): Types.Type;
+    VAR l, r, result, targetType: Types.Type;
+  BEGIN
+    IF node.op = Lexer.isKeyword THEN
+      l := CheckExpr(scope, node.left);
+      targetType := LookupBareTypeName(scope, node.right);
+      IF targetType = NIL THEN
+        Diagnostics.Error(node.line, node.column, "right operand of IS must be a type name");
+        RETURN Types.Boolean
+      ELSIF (l # Types.Undefined) & ~CheckExtensionApplicable(l, targetType) THEN
+        Diagnostics.Error(node.line, node.column,
+          "IS target must be an extension of the left operand's type");
+        RETURN Types.Boolean
+      ELSE
+        RETURN Types.Boolean
+      END
+    END;
+    l := CheckExpr(scope, node.left); r := CheckExpr(scope, node.right);
+    IF (l = Types.Undefined) OR (r = Types.Undefined) THEN RETURN Types.Undefined END;
+    IF (node.op = Lexer.plus) OR (node.op = Lexer.minus) OR (node.op = Lexer.times) THEN
+      IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN
+        result := Types.WiderOf(l, r)
+      ELSIF (l = Types.Set) & (r = Types.Set) THEN
+        result := Types.Set
+      ELSE
+        Diagnostics.Error(node.line, node.column, "operands must both be numeric or both SET");
+        result := Types.Undefined
+      END
+    ELSIF node.op = Lexer.slash THEN
+      IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN
+        IF Types.Rank(Types.WiderOf(l, r)) = Types.longRealRank THEN result := Types.LongReal
+        ELSE result := Types.Real
+        END
+      ELSIF (l = Types.Set) & (r = Types.Set) THEN
+        result := Types.Set
+      ELSE
+        Diagnostics.Error(node.line, node.column, "operands must both be numeric or both SET");
+        result := Types.Undefined
+      END
+    ELSIF (node.op = Lexer.divKeyword) OR (node.op = Lexer.modKeyword) THEN
+      IF Types.IsInteger(l) & Types.IsInteger(r) THEN
+        result := Types.WiderOf(l, r)
+      ELSE
+        Diagnostics.Error(node.line, node.column, "operands of DIV/MOD must be integer types");
+        result := Types.Undefined
+      END
+    ELSIF (node.op = Lexer.ampersand) OR (node.op = Lexer.orKeyword) THEN
+      IF (l = Types.Boolean) & (r = Types.Boolean) THEN
+        result := Types.Boolean
+      ELSE
+        Diagnostics.Error(node.line, node.column, "operands of '&'/OR must be BOOLEAN");
+        result := Types.Undefined
+      END
+    ELSIF (node.op = Lexer.equal) OR (node.op = Lexer.notEqual) THEN
+      IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN result := Types.Boolean
+      ELSIF (l = Types.Char) & (r = Types.Char) THEN result := Types.Boolean
+      ELSIF IsCharArrayOrString(l) & IsCharArrayOrString(r) THEN result := Types.Boolean
+      ELSIF (l = Types.Boolean) & (r = Types.Boolean) THEN result := Types.Boolean
+      ELSIF (l = Types.Set) & (r = Types.Set) THEN result := Types.Boolean
+      ELSIF ((l = Types.NilType) OR (l IS Types.PointerType))
+          & ((r = Types.NilType) OR (r IS Types.PointerType)) THEN
+        result := Types.Boolean
+      ELSIF ((l = Types.NilType) OR (l IS Types.ProcedureType))
+          & ((r = Types.NilType) OR (r IS Types.ProcedureType)) THEN
+        result := Types.Boolean
+      ELSE
+        Diagnostics.Error(node.line, node.column, "operands are not comparable");
+        result := Types.Undefined
+      END
+    ELSIF (node.op = Lexer.less) OR (node.op = Lexer.lessEqual)
+        OR (node.op = Lexer.greater) OR (node.op = Lexer.greaterEqual) THEN
+      IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN result := Types.Boolean
+      ELSIF (l = Types.Char) & (r = Types.Char) THEN result := Types.Boolean
+      ELSIF IsCharArrayOrString(l) & IsCharArrayOrString(r) THEN result := Types.Boolean
+      ELSE
+        Diagnostics.Error(node.line, node.column, "operands are not ordered");
+        result := Types.Undefined
+      END
+    ELSE (* Lexer.inKeyword *)
+      IF Types.IsInteger(l) & (r = Types.Set) THEN
+        result := Types.Boolean
+      ELSE
+        Diagnostics.Error(node.line, node.column, "IN requires an integer and a SET");
+        result := Types.Undefined
+      END
+    END;
+    RETURN result
+  END CheckBinaryExpr;
+
+  (* Unlike ConstantEvaluator.EvaluateSet, elements need not be constant -
+     only integer-typed (§8.2's Set constructor accepts general
+     Expressions, unlike a ConstExpr's Set, which EvaluateSet alone still
+     handles). Always yields Types.Set, even if an element is malformed,
+     so one bad element doesn't change the enclosing expression's type. *)
+  PROCEDURE CheckSetExpr(scope: SymbolTable.Scope; node: SyntaxTree.SetExprNode): Types.Type;
+    VAR el: SyntaxTree.SetElementNode; t: Types.Type;
+  BEGIN
+    el := node.elements;
+    WHILE el # NIL DO
+      t := CheckExpr(scope, el.low);
+      IF (t # Types.Undefined) & ~Types.IsInteger(t) THEN
+        Diagnostics.Error(el.line, el.column, "set element must be an integer type")
+      END;
+      IF el.high # NIL THEN
+        t := CheckExpr(scope, el.high);
+        IF (t # Types.Undefined) & ~Types.IsInteger(t) THEN
+          Diagnostics.Error(el.line, el.column, "set element must be an integer type")
+        END
+      END;
+      el := el.next
+    END;
+    RETURN Types.Set
+  END CheckSetExpr;
+
+  (* The real body matching this section's own forward declaration above.
+     Each WITH branch below calls a distinctly-named procedure, never
+     CheckExpr itself - the same safe shape ResolveType already
+     established, since voc's documented self-recursion-in-WITH bug
+     (AGENTS.md) only fires when a procedure calls itself from inside its
+     own WITH branch. *)
+  PROCEDURE CheckExpr(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
+  BEGIN
+    IF expr = NIL THEN RETURN Types.Undefined END;
+    WITH
+      expr: SyntaxTree.LiteralExprNode DO RETURN CheckLiteralExpr(expr)
+    | expr: SyntaxTree.DesignatorExprNode DO RETURN CheckDesignatorExpr(scope, expr)
+    | expr: SyntaxTree.UnaryExprNode DO RETURN CheckUnaryExpr(scope, expr)
+    | expr: SyntaxTree.BinaryExprNode DO RETURN CheckBinaryExpr(scope, expr)
+    | expr: SyntaxTree.SetExprNode DO RETURN CheckSetExpr(scope, expr)
+    | expr: SyntaxTree.NilExprNode DO RETURN Types.NilType
+    ELSE
+      Diagnostics.Error(expr.line, expr.column, "not a valid expression");
+      RETURN Types.Undefined
+    END
+  END CheckExpr;
+
+  PROCEDURE StringLength(s: ARRAY OF CHAR): INTEGER;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE s[i] # 0X DO INC(i) END;
+    RETURN i
+  END StringLength;
+
+  (* Shared by assignment and RETURN-value checking. Appendix A's
+     assignment-compatible rules 1-5/7 are pure Types.Type predicates
+     (Types.AssignmentCompatible); rule 6 (Tv is ARRAY n OF CHAR, e a
+     string constant with m < n characters) is inherently value-
+     dependent, so it is handled here as a special case, evaluating
+     srcExpr via ConstantEvaluator.Evaluate only when srcType is
+     Types.String. *)
+  PROCEDURE CheckAssignmentCompatible(scope: SymbolTable.Scope; dstType: Types.Type;
+                                      srcExpr: SyntaxTree.ExprNode; srcType: Types.Type;
+                                      line, column: INTEGER; message: ARRAY OF CHAR);
+    VAR v: Types.Value; ok: BOOLEAN; arr: Types.ArrayType;
+  BEGIN
+    IF (dstType = Types.Undefined) OR (srcType = Types.Undefined) THEN RETURN END;
+    ok := Types.AssignmentCompatible(dstType, srcType);
+    IF ~ok & (srcType = Types.String) & (dstType # NIL) & (dstType IS Types.ArrayType) THEN
+      arr := dstType(Types.ArrayType);
+      IF (arr.elementType = Types.Char) & ~arr.isOpen THEN
+        v := ConstantEvaluator.Evaluate(srcExpr, scope);
+        ok := (v.type # Types.Undefined) & (StringLength(v.stringVal) < arr.length)
+      END
+    END;
+    IF ~ok THEN Diagnostics.Error(line, column, message) END
+  END CheckAssignmentCompatible;
+
+  PROCEDURE ^ CheckStatementSeq(scope: SymbolTable.Scope; stmt: SyntaxTree.StatementNode;
+                                loopDepth: INTEGER; procResultType: Types.Type);
+
+  PROCEDURE CheckCondition(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode; line, column: INTEGER);
+    VAR t: Types.Type;
+  BEGIN
+    t := CheckExpr(scope, expr);
+    IF (t # Types.Undefined) & (t # Types.Boolean) THEN
+      Diagnostics.Error(line, column, "condition must be BOOLEAN")
+    END
+  END CheckCondition;
+
+  PROCEDURE CheckAssignStatement(scope: SymbolTable.Scope; s: SyntaxTree.AssignStatementNode);
+    VAR dstType, srcType: Types.Type; readOnly, isVariable: BOOLEAN;
+  BEGIN
+    dstType := CheckDesignator(scope, s.target, readOnly, isVariable);
+    srcType := CheckExpr(scope, s.value);
+    IF dstType = Types.Undefined THEN
+      RETURN
+    ELSIF ~isVariable THEN
+      Diagnostics.Error(s.line, s.column, "assignment target is not a variable")
+    ELSIF readOnly THEN
+      Diagnostics.Error(s.line, s.column, "assignment target is read-only")
+    ELSE
+      CheckAssignmentCompatible(scope, dstType, s.value, srcType, s.line, s.column,
+                                 "assignment is not type-compatible")
+    END
+  END CheckAssignStatement;
+
+  PROCEDURE CheckCallStatement(scope: SymbolTable.Scope; s: SyntaxTree.CallStatementNode);
+    VAR baseType, argType: Types.Type; readOnly, isVariable: BOOLEAN; arg: SyntaxTree.ExprNode;
+  BEGIN
+    baseType := CheckDesignator(scope, s.designator, readOnly, isVariable);
+    arg := s.args;
+    WHILE arg # NIL DO
+      argType := CheckExpr(scope, arg);
+      arg := arg.next
+    END;
+    IF (baseType # Types.Undefined) & ~(baseType IS Types.ProcedureType) THEN
+      Diagnostics.Error(s.line, s.column, "statement designator does not denote a procedure")
+    END
+  END CheckCallStatement;
+
+  PROCEDURE CheckIfBranch(scope: SymbolTable.Scope; b: SyntaxTree.IfBranchNode;
+                          loopDepth: INTEGER; procResultType: Types.Type);
+  BEGIN
+    CheckCondition(scope, b.condition, b.line, b.column);
+    CheckStatementSeq(scope, b.body, loopDepth, procResultType)
+  END CheckIfBranch;
+
+  PROCEDURE CheckIfStatement(scope: SymbolTable.Scope; s: SyntaxTree.IfStatementNode;
+                             loopDepth: INTEGER; procResultType: Types.Type);
+    VAR b: SyntaxTree.IfBranchNode;
+  BEGIN
+    b := s.branches;
+    WHILE b # NIL DO
+      CheckIfBranch(scope, b, loopDepth, procResultType);
+      b := b.next
+    END;
+    CheckStatementSeq(scope, s.elseBody, loopDepth, procResultType)
+  END CheckIfStatement;
+
+  PROCEDURE RangesOverlap(low1, high1, low2, high2: LONGINT): BOOLEAN;
+  BEGIN
+    RETURN (low1 <= high2) & (low2 <= high1)
+  END RangesOverlap;
+
+  (* Appendix B/§9.5's "no value must occur more than once", checked with
+     one pairwise scan against every range already seen in this
+     CaseStatement (across every Case, not just this label's own) as
+     each new label is visited - consistent with this codebase's existing
+     preference for simple linear/quadratic scans over small lists
+     (SymbolTable.Insert's own duplicate check) over a sorted-range
+     structure. *)
+  PROCEDURE CheckCaseLabelRange(VAR seen: LabelRange; low, high: LONGINT; line, column: INTEGER);
+    VAR r, node: LabelRange;
+  BEGIN
+    r := seen;
+    WHILE r # NIL DO
+      IF RangesOverlap(low, high, r.low, r.high) THEN
+        Diagnostics.Error(line, column, "case label value already used")
+      END;
+      r := r.next
+    END;
+    NEW(node); node.low := low; node.high := high; node.next := seen;
+    seen := node
+  END CheckCaseLabelRange;
+
+  PROCEDURE CheckCaseLabelList(scope: SymbolTable.Scope; labels: SyntaxTree.CaseLabelNode;
+                               charMode: BOOLEAN; VAR seen: LabelRange);
+    VAR
+      l: SyntaxTree.CaseLabelNode;
+      lowVal, highVal: Types.Value;
+      low, high: LONGINT;
+      ok: BOOLEAN;
+  BEGIN
+    l := labels;
+    WHILE l # NIL DO
+      lowVal := ConstantEvaluator.Evaluate(l.low, scope);
+      ok := lowVal.type # Types.Undefined;
+      low := 0;
+      IF ok & charMode & (lowVal.kind = Types.charValue) THEN
+        low := ORD(lowVal.charVal)
+      ELSIF ok & ~charMode & (lowVal.kind = Types.intValue) THEN
+        low := lowVal.intVal
+      ELSIF ok THEN
+        Diagnostics.Error(l.line, l.column, "case label has the wrong type for this CASE selector");
+        ok := FALSE
+      END;
+      high := low;
+      IF ok & (l.high # NIL) THEN
+        highVal := ConstantEvaluator.Evaluate(l.high, scope);
+        IF highVal.type = Types.Undefined THEN
+          ok := FALSE
+        ELSIF charMode & (highVal.kind = Types.charValue) THEN
+          high := ORD(highVal.charVal)
+        ELSIF ~charMode & (highVal.kind = Types.intValue) THEN
+          high := highVal.intVal
+        ELSE
+          Diagnostics.Error(l.line, l.column, "case label has the wrong type for this CASE selector");
+          ok := FALSE
+        END
+      END;
+      IF ok THEN CheckCaseLabelRange(seen, low, high, l.line, l.column) END;
+      l := l.next
+    END
+  END CheckCaseLabelList;
+
+  PROCEDURE CheckCaseStatement(scope: SymbolTable.Scope; s: SyntaxTree.CaseStatementNode;
+                               loopDepth: INTEGER; procResultType: Types.Type);
+    VAR selType: Types.Type; c: SyntaxTree.CaseNode; charMode, valid: BOOLEAN; seen: LabelRange;
+  BEGIN
+    selType := CheckExpr(scope, s.selector);
+    charMode := FALSE; valid := TRUE;
+    IF selType = Types.Undefined THEN
+      valid := FALSE
+    ELSIF selType = Types.Char THEN
+      charMode := TRUE
+    ELSIF ~Types.IsInteger(selType) THEN
+      Diagnostics.Error(s.line, s.column, "case selector must be an integer type or CHAR");
+      valid := FALSE
+    END;
+    seen := NIL;
+    c := s.cases;
+    WHILE c # NIL DO
+      IF valid THEN CheckCaseLabelList(scope, c.labels, charMode, seen) END;
+      CheckStatementSeq(scope, c.body, loopDepth, procResultType);
+      c := c.next
+    END;
+    CheckStatementSeq(scope, s.elseBody, loopDepth, procResultType)
+  END CheckCaseStatement;
+
+  PROCEDURE CheckWhileStatement(scope: SymbolTable.Scope; s: SyntaxTree.WhileStatementNode;
+                                loopDepth: INTEGER; procResultType: Types.Type);
+  BEGIN
+    CheckCondition(scope, s.condition, s.line, s.column);
+    CheckStatementSeq(scope, s.body, loopDepth, procResultType)
+  END CheckWhileStatement;
+
+  PROCEDURE CheckRepeatStatement(scope: SymbolTable.Scope; s: SyntaxTree.RepeatStatementNode;
+                                 loopDepth: INTEGER; procResultType: Types.Type);
+  BEGIN
+    CheckStatementSeq(scope, s.body, loopDepth, procResultType);
+    CheckCondition(scope, s.condition, s.line, s.column)
+  END CheckRepeatStatement;
+
+  (* low must be assignment compatible with the control variable, high
+     expression-compatible/comparable (approximated as "both numeric" -
+     the order-relation row's own requirement), step a nonzero integer
+     ConstExpr (§9.8); the control variable itself must already be a
+     declared, integer-typed VAR - Appendix B's ForStatement uses a bare
+     ident, not a Designator, so there is no selector chain to walk. *)
+  PROCEDURE CheckForStatement(scope: SymbolTable.Scope; s: SyntaxTree.ForStatementNode;
+                              loopDepth: INTEGER; procResultType: Types.Type);
+    VAR obj: SymbolTable.Object; varType, startType, stopType: Types.Type; stepVal: Types.Value;
+  BEGIN
+    obj := SymbolTable.Find(scope, s.variable);
+    varType := Types.Undefined;
+    IF obj = NIL THEN
+      Diagnostics.Error(s.line, s.column, "undeclared identifier")
+    ELSIF (obj.class # SymbolTable.varClass) OR ~Types.IsInteger(obj.type) THEN
+      Diagnostics.Error(s.line, s.column, "FOR control variable must be an integer variable")
+    ELSE
+      varType := obj.type
+    END;
+    startType := CheckExpr(scope, s.start);
+    stopType := CheckExpr(scope, s.stop);
+    IF varType # Types.Undefined THEN
+      CheckAssignmentCompatible(scope, varType, s.start, startType, s.line, s.column,
+        "FOR initial value is not assignment compatible with the control variable");
+      IF (stopType # Types.Undefined) & ~Types.IsNumeric(stopType) THEN
+        Diagnostics.Error(s.line, s.column, "FOR final value must be numeric")
+      END
+    END;
+    IF s.step # NIL THEN
+      stepVal := ConstantEvaluator.Evaluate(s.step, scope);
+      IF (stepVal.type # Types.Undefined)
+          & ((stepVal.kind # Types.intValue) OR (stepVal.intVal = 0)) THEN
+        Diagnostics.Error(s.step.line, s.step.column, "FOR step must be a nonzero integer constant")
+      END
+    END;
+    CheckStatementSeq(scope, s.body, loopDepth, procResultType)
+  END CheckForStatement;
+
+  PROCEDURE CheckLoopStatement(scope: SymbolTable.Scope; s: SyntaxTree.LoopStatementNode;
+                               loopDepth: INTEGER; procResultType: Types.Type);
+  BEGIN
+    CheckStatementSeq(scope, s.body, loopDepth + 1, procResultType)
+  END CheckLoopStatement;
+
+  (* §9.9/9.10: EXIT terminates the innermost enclosing LOOP statement
+     specifically - WHILE/REPEAT/FOR are not LOOP, so loopDepth is
+     incremented only by CheckLoopStatement above. *)
+  PROCEDURE CheckExitStatement(s: SyntaxTree.ExitStatementNode; loopDepth: INTEGER);
+  BEGIN
+    IF loopDepth = 0 THEN
+      Diagnostics.Error(s.line, s.column, "EXIT is only valid within a LOOP statement")
+    END
+  END CheckExitStatement;
+
+  (* procResultType = NIL means "no result expected" - true both for a
+     module body (checked here) and, once PLAN.md Phase 6 exists, for a
+     proper procedure's own body (CheckStatement/CheckStatementSeq's
+     signatures already accept this unchanged). A bare RETURN is always
+     fine; RETURN <expr> needs a real result type to be compatible with. *)
+  PROCEDURE CheckReturnStatement(scope: SymbolTable.Scope; s: SyntaxTree.ReturnStatementNode;
+                                 procResultType: Types.Type);
+    VAR valueType: Types.Type;
+  BEGIN
+    IF s.value # NIL THEN
+      valueType := CheckExpr(scope, s.value);
+      IF procResultType = NIL THEN
+        Diagnostics.Error(s.line, s.column, "RETURN with a value is not allowed here")
+      ELSE
+        CheckAssignmentCompatible(scope, procResultType, s.value, valueType, s.line, s.column,
+          "RETURN value is not assignment compatible with the result type")
+      END
+    END
+  END CheckReturnStatement;
+
+  (* Every branch below calls a distinctly-named procedure, never
+     CheckStatement itself - see CheckExpr's identical rationale above. A
+     WithStatementNode reports "not yet implemented" rather than being
+     silently mishandled - the same phrasing this module's own header
+     comment says composite types used to get before PLAN.md Phase 4. *)
+  PROCEDURE CheckStatement(scope: SymbolTable.Scope; s: SyntaxTree.StatementNode;
+                           loopDepth: INTEGER; procResultType: Types.Type);
+  BEGIN
+    WITH
+      s: SyntaxTree.AssignStatementNode DO CheckAssignStatement(scope, s)
+    | s: SyntaxTree.CallStatementNode DO CheckCallStatement(scope, s)
+    | s: SyntaxTree.IfStatementNode DO CheckIfStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.CaseStatementNode DO CheckCaseStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.WhileStatementNode DO CheckWhileStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.RepeatStatementNode DO CheckRepeatStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.ForStatementNode DO CheckForStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.LoopStatementNode DO CheckLoopStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.ExitStatementNode DO CheckExitStatement(s, loopDepth)
+    | s: SyntaxTree.ReturnStatementNode DO CheckReturnStatement(scope, s, procResultType)
+    | s: SyntaxTree.WithStatementNode DO
+        Diagnostics.Error(s.line, s.column, "WITH is not yet implemented")
+    ELSE
+      Diagnostics.Error(s.line, s.column, "unsupported statement")
+    END
+  END CheckStatement;
+
+  (* The real body matching this cluster's own forward declaration above. *)
+  PROCEDURE CheckStatementSeq(scope: SymbolTable.Scope; stmt: SyntaxTree.StatementNode;
+                              loopDepth: INTEGER; procResultType: Types.Type);
+  BEGIN
+    WHILE stmt # NIL DO
+      CheckStatement(scope, stmt, loopDepth, procResultType);
+      stmt := stmt.next
+    END
+  END CheckStatementSeq;
+
   PROCEDURE CheckModule*(module: SyntaxTree.ModuleNode): SymbolTable.Scope;
     VAR scope: SymbolTable.Scope;
   BEGIN
     scope := SymbolTable.OpenScope(SymbolTable.Universe);
     IF module.declarations # NIL THEN
       ResolveConstDecls(module.declarations.constDecls, scope);
-      ResolveTypeDecls(module.declarations.typeDecls, scope)
+      ResolveTypeDecls(module.declarations.typeDecls, scope);
+      ResolveVarDecls(module.declarations.varDecls, scope)
     END;
+    CheckStatementSeq(scope, module.statements, 0, NIL);
     RETURN scope
   END CheckModule;
 

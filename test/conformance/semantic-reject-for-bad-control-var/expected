@@ -1,0 +1,2 @@
+for-bad-control-var.mod:7:3: error: FOR control variable must be an integer variable
+1 error(s)

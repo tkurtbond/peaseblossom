@@ -1,0 +1,4 @@
+bad-selector.mod:10:4: error: '.' requires a record or a pointer to a record
+bad-selector.mod:11:5: error: '[' requires an array or a pointer to an array
+bad-selector.mod:12:4: error: '^' requires a pointer
+3 error(s)

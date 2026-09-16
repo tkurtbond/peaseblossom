@@ -83,14 +83,22 @@ MODULE MemoryLayout;
   END RoundUp;
 
   PROCEDURE DescriptorSize(t: Types.ArrayType; wordSize: INTEGER): LONGINT;
-    VAR dims: LONGINT; cur: Types.Type; more: BOOLEAN;
+    VAR dims: LONGINT; cur: Types.Type; curArr: Types.ArrayType; more: BOOLEAN;
   BEGIN
     dims := 1; (* t itself is one open dimension *)
     cur := t.elementType; more := TRUE;
     WHILE more DO
       more := FALSE;
-      IF (cur # NIL) & (cur IS Types.ArrayType) & cur(Types.ArrayType).isOpen THEN
-        INC(dims); cur := cur(Types.ArrayType).elementType; more := TRUE
+      IF (cur # NIL) & (cur IS Types.ArrayType) THEN
+        (* curArr holds the guarded value so ".isOpen"/".elementType" are
+           never chained right after a "(...)" guard/cast in the same
+           expression - Parser.Mod cannot yet parse that (a documented,
+           deferred limitation; see SemanticActions.Mod's Phase 5 header
+           comment). *)
+        curArr := cur(Types.ArrayType);
+        IF curArr.isOpen THEN
+          INC(dims); cur := curArr.elementType; more := TRUE
+        END
       END
     END;
     RETURN wordSize + dims * 4
