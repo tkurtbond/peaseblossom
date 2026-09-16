@@ -1,4 +1,4 @@
 1:1: ident 'before'
-2:1: error: unterminated comment
+unterminated-comment.txt:2:1: error: unterminated comment
 3:1: eof
 1 error(s)

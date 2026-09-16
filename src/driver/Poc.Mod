@@ -54,6 +54,7 @@ MODULE Poc;
     IF ~ReadSource(name, buffer, length) THEN
       Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
+      Diagnostics.Reset(name);
       Lexer.InitScanner(scanner, buffer, length);
       more := TRUE;
       WHILE more DO
@@ -83,7 +84,7 @@ MODULE Poc;
     IF ~ReadSource(name, buffer, length) THEN
       Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
-      Diagnostics.Reset;
+      Diagnostics.Reset(name);
       Parser.InitParser(parser, buffer, length);
       module := Parser.ParseModule(parser);
       IF Diagnostics.errorCount > 0 THEN
