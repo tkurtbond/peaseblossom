@@ -324,6 +324,28 @@ external-symbol names are subject to the same 31-character limit above.
   interop with voc's `.../C/sym`) comes up; not scheduled to any phase
   yet.
 
+- **No `ASSERT`**: `Oberon2.pdf`'s §10.3 predeclared-procedure table has
+  no `ASSERT` entry (confirmed against the report; see
+  `PredeclaredProcedures.Mod`'s header comment), so poc doesn't have one
+  either. Every dialect surveyed beyond the strict report adds one, and
+  the dominant convention (Component Pascal, and Oberon+ copying it
+  verbatim) is a two-argument overload: `ASSERT(x)` and
+  `ASSERT(x, n: INTEGER)`, `x` a BOOLEAN condition and `n` an
+  implementation-defined exit/trap code — the report text explicitly
+  leaves `n`'s interpretation to the implementation. voc follows this
+  same two-arg form as a compiler-recognized special form gated behind
+  its `-a` flag (on by default): on failure it prints "Assertion
+  failure." (plus `n` if nonzero) and exits with `n` or 0. The one
+  outlier is Wirth's own final/"Oberon-07" report, which has only the
+  single-argument `ASSERT(b)` with no code parameter. Undecided whether
+  poc should add `ASSERT`; if it does, voc's `ASSERT(x)` /
+  `ASSERT(x, n: INTEGER)` two-arg form is the better precedent to match
+  (also consistent with `HALT`'s existing exit-code convention) —
+  possibly with an additional `ASSERT(x, msg: ARRAY OF CHAR)` overload
+  taking a message string directly, which no surveyed dialect offers but
+  would be more useful at a call site than an opaque integer code. Not
+  scheduled to any phase yet.
+
 ## Critical files
 
 - `AGENTS.md` — spec/toolchain context this plan builds on.
