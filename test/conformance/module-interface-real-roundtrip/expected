@@ -1,0 +1,14 @@
+MODULE reals;
+  CONST
+    Zero* = 0.0;
+    Pi* = 3.14159265358979;
+    Big* = 1.0E10;
+    Tiny* = 1.0E-10;
+    Neg* = -123.456;
+    Third* = 3.333333333333333E-1;
+    LongPi* = 3.14159265358979D0;
+    Huge* = 1.0E100;
+    Small* = 1.0E-100;
+    OneHundred* = 100.0;
+    NegSmall* = -0.001;
+END reals.

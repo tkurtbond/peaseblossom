@@ -5,7 +5,8 @@ poc should have a command line option so that the user can specify a directory t
 * DONE Compare memory model to that of voc.
 * DONE Add Survey ASSERT (in other Oberon-2 dialects?).
 * TODO How do Appendix A and Appendix C change to account for to HUGEINT?
-* TODO Writing a round-trip-safe float-to-text formatter from scratch for REAL/LONGREAL CONST export.
+* DONE Writing a round-trip-safe float-to-text formatter from scratch for REAL/LONGREAL CONST export.
+Two tiers: a bare (optionally signed) literal CONST echoes its own token text verbatim (always exact); anything else (a computed expression) folds to a value and searches for a text representation that verifies against ConstantEvaluator.ParseReal directly. Also found and fixed a real bug in ParseReal itself: its own internal literals (0.1, 10.0, 0.0) were untyped REAL, evaluated at single precision before widening to LONGREAL.
 * DONE IMPORT search path.
 * TODO Type guards in designators?
 * TODO Qualified WITH narrowing (WITH M.v: T DO).

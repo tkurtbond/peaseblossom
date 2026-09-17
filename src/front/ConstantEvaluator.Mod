@@ -81,18 +81,45 @@ MODULE ConstantEvaluator;
     RETURN CHR(v)
   END ParseCharConst;
 
-  PROCEDURE ParseReal(lexeme: ARRAY OF CHAR): LONGREAL;
+  (* Exported so ModuleInterface.Mod's float formatter can verify a
+     candidate decimal text round-trips through this exact (not
+     necessarily correctly-rounded, see that module's own header comment)
+     parsing algorithm before ever writing it to a .sym file - the two
+     modules must agree on what a given digit string parses to, and
+     duplicating this algorithm a second time would risk them silently
+     drifting apart. No import cycle: ModuleInterface.Mod already avoids
+     importing Parser.Mod (see its own header comment) but this module
+     isn't Parser.Mod.
+
+     Real bug found and fixed while building that formatter (confirmed
+     against real voc with a standalone repro, not just inferred): every
+     numeric literal in this procedure's own body - 0.0, 10.0, 0.1 - is,
+     per Oberon2.pdf's own real-literal typing rule, a REAL (not
+     LONGREAL) constant, since none carries a "D" scale factor. voc
+     evaluates such a literal at REAL (4-byte) precision *before* the
+     implicit widening to the LONGREAL-typed v/scale it's assigned or
+     combined into - so despite v and scale being declared LONGREAL, this
+     procedure was silently working at single-precision accuracy the
+     entire time (confirmed: "1.5" parsed back as
+     1.5000000074505800, off by ~5e-9, an exact float32-epsilon-sized
+     error, not the ~1e-16 a double computation would show). Invisible
+     since Phase 3, since nothing before this formatter ever printed a
+     folded REAL/LONGREAL constant's value with enough precision to
+     notice. Fixed by suffixing every one of this procedure's own numeral
+     literals with an explicit "D0" so none of them is ever REAL-typed to
+     begin with. *)
+  PROCEDURE ParseReal*(lexeme: ARRAY OF CHAR): LONGREAL;
     VAR i, expValue: INTEGER; v, scale: LONGREAL; negExp: BOOLEAN;
   BEGIN
-    i := 0; v := 0.0;
+    i := 0; v := 0.0D0;
     WHILE (lexeme[i] >= "0") & (lexeme[i] <= "9") DO
-      v := v * 10.0 + (ORD(lexeme[i]) - ORD("0")); INC(i)
+      v := v * 10.0D0 + (ORD(lexeme[i]) - ORD("0")); INC(i)
     END;
     IF lexeme[i] = "." THEN
-      INC(i); scale := 0.1;
+      INC(i); scale := 0.1D0;
       WHILE (lexeme[i] >= "0") & (lexeme[i] <= "9") DO
         v := v + (ORD(lexeme[i]) - ORD("0")) * scale;
-        scale := scale / 10.0; INC(i)
+        scale := scale / 10.0D0; INC(i)
       END
     END;
     IF (lexeme[i] = "E") OR (lexeme[i] = "D") THEN
@@ -105,9 +132,9 @@ MODULE ConstantEvaluator;
         expValue := expValue * 10 + (ORD(lexeme[i]) - ORD("0")); INC(i)
       END;
       IF negExp THEN
-        WHILE expValue > 0 DO v := v / 10.0; DEC(expValue) END
+        WHILE expValue > 0 DO v := v / 10.0D0; DEC(expValue) END
       ELSE
-        WHILE expValue > 0 DO v := v * 10.0; DEC(expValue) END
+        WHILE expValue > 0 DO v := v * 10.0D0; DEC(expValue) END
       END
     END;
     RETURN v

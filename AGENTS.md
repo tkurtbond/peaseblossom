@@ -422,14 +422,12 @@ directly) works around this.
 Several explicit, narrower scope boundaries, matching how every prior
 phase recorded its own: the import search path was cwd-only at first
 release (`.sym` files looked up as `Files.Old(moduleName + ".sym")`
-relative to the working directory only) - since extended, see below;
-`.sym` output itself still always lands in the current directory
-regardless (a real output-directory flag is separate, still-open future
-work per `000-todo.org`); `ModuleInterface.Mod` cannot export a
-`REAL`/`LONGREAL`-valued `CONST`
-(explicit diagnostic, not lossy text - no round-trip-safe float formatter
-exists anywhere in this codebase or in voc's own bundled libraries to
-reuse); a written `.sym`'s `IMPORT` line unconditionally re-exports every
+relative to the working directory only) - since extended, see "IMPORT
+search path" below, as is `.sym` output's own cwd-only default - see
+"Output directory" below; `ModuleInterface.Mod` could not, at first,
+export a `REAL`/`LONGREAL`-valued `CONST` at all (explicit diagnostic,
+not lossy text) - also since resolved, see "REAL/LONGREAL CONST export"
+below; a written `.sym`'s `IMPORT` line unconditionally re-exports every
 import the module itself declared, not just the ones some exported
 signature actually references (avoids a separate used/unused dry-run pass
 over every exported type, at the cost of an occasional harmless extra
@@ -513,3 +511,45 @@ fresh by `test.sh`, matching how `test/testenv.sh`'s existing artifact
 cleanup already treats generated `.sym` files) and `output-dir-missing`
 (confirms a nonexistent `-output-dir` fails cleanly rather than crashing
 the process).
+
+**REAL/LONGREAL `CONST` export** (closes `000-todo.org`'s "round-trip-
+safe float-to-text formatter" item): `ModuleInterface.Mod` can now export
+`REAL`/`LONGREAL`-valued `CONST`s, but via two tiers rather than one
+general algorithm - see `LiteralRealLexeme`'s and `FormatRealMagnitude`'s
+own header comments for the full detail each summarizes here. (1) The
+common case, a `CONST` declared as a bare literal (optionally
+unary-`+`/`-`'d) - `Pi* = 3.14159265358979;`, `Neg* = -123.456;` - just
+echoes the token's own lexeme text verbatim, via the `SyntaxTree.ExprNode`
+now threaded down from `PrintConsts` alongside the already-folded
+`Types.Value`; re-lexing/re-parsing identical characters through the
+identical `ConstantEvaluator.ParseReal` is trivially exact, no
+value-to-text algorithm needed at all. (2) Anything else (a computed
+expression like `1.0/3.0`, a reference to another constant) still needs
+one, via `FormatReal`/`FormatRealMagnitude` - search increasing precision
+(and a small window of neighboring digit values at each one, not just the
+nearest rounding) until a candidate verifies exactly against
+`ConstantEvaluator.ParseReal` itself, never assumed correct from a
+"N significant digits always round-trips" argument. That verification
+step surfaced two real, previously-invisible bugs in `ParseReal`, both
+now fixed (present since Phase 3, invisible until something finally
+printed a folded value at full precision): every numeral literal *inside
+ParseReal's own source* (`0.1`, `10.0`, `0.0`) was untyped `REAL`, not
+`LONGREAL`, per `Oberon2.pdf`'s own real-literal typing rule, so voc
+evaluated each at single-precision before ever widening it - confirmed
+with a standalone repro (`"1.5"` parsed back as `1.5000000074505800`, an
+exact float32-epsilon error) and fixed by `D0`-suffixing every one of
+those literals; and, separately, `ParseReal`'s fixed-point path (plain
+digit accumulation) and its scientific-notation path (the same, plus a
+repeated-`*10.0D0` exponent-scaling loop) can land on different `LONGREAL`
+bit patterns for "the same" number, since floating-point arithmetic isn't
+associative - the reason tier (1) exists at all, rather than routing
+every `CONST` through tier (2)'s reformat-and-verify approach. New
+conformance coverage: `module-interface-real-write` (golden-diffs a `.sym`
+with a representative literal/negative-literal/computed-expression mix,
+including an unexported one that must not appear) and
+`module-interface-real-roundtrip` (the strongest test available without a
+backend to actually run anything: `-emit-interface` twice in a row, the
+second time treating the first run's own `.sym` as input source, must
+produce byte-identical output - direct evidence that
+`ParseReal(FormatReal(v)) = v` holds for real, not just that `FormatReal`
+believed it did).
