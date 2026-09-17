@@ -30,17 +30,22 @@ MODULE MemoryLayout;
      collapsing/aliasing of HUGEINT into LONGINT under -OC), so nothing
      here needs to special-case their identity.
 
-     This module currently has exactly one caller outside itself -
-     Poc.Mod's "-dump-layout" command, poc's only golden-file testing
-     surface for this computation (poc has no codegen yet to run an
-     ASSERT-based fixture through). Since that command has no real
-     user-facing effect to gate behind a CLI flag yet, poc does not
-     expose an -O2/-OC flag at all right now; -dump-layout instead prints
-     all four wordSize x sizeModel combinations unconditionally, so this
-     module's size-model axis is exercised and golden-tested without
-     inventing a flag that would do nothing until a real backend
-     (PLAN.md Phase 8+) exists to make -O2 vs -OC an actual compile-time
-     choice.
+     This module has two callers outside itself: Poc.Mod's "-dump-layout"
+     command, poc's only golden-file testing surface for this computation
+     (poc has no codegen yet to run an ASSERT-based fixture through) -
+     that command still has no real user-facing effect to gate behind a
+     CLI flag, so it keeps printing all four wordSize x sizeModel
+     combinations unconditionally rather than just the selected one, so
+     this module's size-model axis stays exercised and golden-tested
+     regardless of what -O2/-OC (below) is set to; and
+     ConstantEvaluator.Mod's SizeBound (MAX(LONGINT)-in-CONST, PLAN.md's
+     "Open design questions"), which does use a real, user-visible
+     -O2/-OC choice (Poc.Mod's -O2/-OC flags, via
+     ConstantEvaluator.SetSizeModel, exported) for the sizeModel argument, but
+     still always passes wordSize32 - there is still no word-size flag,
+     since nothing before a real backend (PLAN.md Phase 8+) exists to
+     make a word-size choice observable the way -O2/-OC's differing
+     SHORTINT/INTEGER/LONGINT/SET ranges already are.
 
      Open-array dope-vector length words (DescriptorSize) stay a fixed 4
      bytes regardless of size model, for the same reason they already

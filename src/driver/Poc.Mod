@@ -10,11 +10,23 @@ MODULE Poc;
      computation, printed for all four combinations of a 32-bit/64-bit
      target word size and the -O2/-OC elementary-type size model (PLAN.md's
      "Open design questions" - No -OC-equivalent elementary-type-size
-     model) per TYPE declaration (see DumpLayout). poc has no -O2/-OC CLI
-     flag of its own yet - dumping all four combinations unconditionally
-     exercises MemoryLayout.Mod fully without one, since a real flag would
-     otherwise have nothing to govern until a backend exists (PLAN.md
-     Phase 8+).
+     model) per TYPE declaration (see DumpLayout). This still prints all
+     four combinations unconditionally even now that -O2/-OC (below)
+     exists as a real flag - it is a golden-file testing surface for both
+     size-model values at once, not a preview of one selected target, so
+     the flag does not change its output.
+     "-O2"/"-OC" (added alongside MAX(T)/MIN(T)/SIZE(T) constant folding,
+     PLAN.md's "Open design questions" - MAX(LONGINT)-in-CONST) select
+     which of MemoryLayout.Mod's two elementary-type size models
+     ConstantEvaluator.Mod's MAX(T)/MIN(T)/SIZE(T)/integer-literal-typing
+     use to fold a ConstExpr (see ConstantEvaluator.SetSizeModel*'s own
+     comment) - default -O2, like every other target-shaped default this
+     driver already picks absent a real backend (PLAN.md Phase 8+) to
+     make the choice for. Only the size-model axis is selectable this
+     way; there is still no word-size (32/64-bit) flag, for the same
+     reason -dump-layout above still prints all four combinations - see
+     ConstantEvaluator.SizeBound's own comment on why SIZE(T) stays
+     32-bit-only until one exists.
      File reading uses only standard Oberon2.pdf types
      (Files.Rider, ARRAY OF CHAR) at every call site, even though this
      module is built by voc during bootstrap - see PLAN.md's "Bootstrap
@@ -33,7 +45,8 @@ MODULE Poc;
      process environment on its own. *)
 
   IMPORT Modules, Files, Out, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
-         SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface;
+         SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
+         ConstantEvaluator;
 
   CONST
     maxLineLength = 4096;
@@ -262,7 +275,10 @@ MODULE Poc;
     Out.String("       command above; POC_IMPORT_PATH seeds the list (colon-separated)"); Out.Ln;
     Out.String("       before any flags are applied"); Out.Ln;
     Out.String("       -output-dir <dir> may also precede -emit-interface, to write"); Out.Ln;
-    Out.String("       <ModuleName>.sym there instead of the current directory"); Out.Ln
+    Out.String("       <ModuleName>.sym there instead of the current directory"); Out.Ln;
+    Out.String("       -O2 | -OC may also precede any command above, selecting the"); Out.Ln;
+    Out.String("       elementary-type size model MAX(T)/MIN(T)/SIZE(T) and integer"); Out.Ln;
+    Out.String("       literals fold against (default -O2); a later one wins"); Out.Ln
   END Usage;
 
   (* IMPORT search-path CLI surface (PLAN.md's "Open design questions" -
@@ -352,6 +368,17 @@ MODULE Poc;
             Out.String("poc: -output-dir requires a directory"); Out.Ln;
             done := TRUE
           END
+        (* PLAN.md's "Open design questions" - MAX(LONGINT)-in-CONST:
+           selects the elementary-type size model ConstantEvaluator.Mod
+           folds MAX(T)/MIN(T)/SIZE(T) and integer literals against (see
+           ConstantEvaluator.SetSizeModel*'s own comment) - a later flag
+           wins if given more than once, matching -output-dir above. *)
+        ELSIF arg = "-O2" THEN
+          ConstantEvaluator.SetSizeModel(MemoryLayout.sizeModelO2);
+          INC(i)
+        ELSIF arg = "-OC" THEN
+          ConstantEvaluator.SetSizeModel(MemoryLayout.sizeModelOC);
+          INC(i)
         ELSE
           IF i + 1 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, param);

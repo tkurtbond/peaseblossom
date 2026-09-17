@@ -35,33 +35,6 @@ MODULE ConstantEvaluator;
   IMPORT SyntaxTree, Types, SymbolTable, Diagnostics, Lexer, MemoryLayout;
 
   CONST
-    maxSetElement = 31; (* matches voc's default 32-bit SET (AGENTS.md);
-                            revisit once Phase 4 models target word size *)
-    (* voc's -O2 *target*-model byte widths (1/2/4 bytes - mirrored in
-       MemoryLayout.Mod's BasicSize under sizeModelO2), not poc's own host
-       build - poc has no -O2/-OC CLI flag yet to pick a target model from
-       (see MemoryLayout.Mod's header comment), so IntegerLiteralType/
-       EvaluateMaxMin below always assume the -O2 default; revisit if/when
-       such a flag exists. Module-level (not IntegerLiteralType-local, as
-       originally written) so EvaluateMaxMin's MAX(T)/MIN(T) folding can
-       share the exact same bounds rather than risk an independent,
-       driftable copy. *)
-    maxShortInt = 127; maxInteger = 32767; maxLongInt = 2147483647;
-    (* Computed as -maxX - 1, not written as a bare literal (-128 etc.) -
-       found via poc's own Phase 7 self-check (PLAN.md) type-checking
-       this very file: any two's-complement type's minimum magnitude is
-       by construction exactly one more than its own maximum, so a bare
-       "-128" literal's underlying magnitude (128) always overflows
-       SHORTINT's own positive range and folds one rank wider (INTEGER)
-       under Oberon2.pdf §5's minimal-type rule - the identical
-       asymmetry minHugeInt below already had to work around, just one
-       boundary earlier at every rank, not only HUGEINT's. Subtracting 1
-       from an already-narrow, already-negated maxX keeps the result at
-       maxX's own rank instead (Appendix A's arithmetic rules are purely
-       rank-based, not value-range-based, so WiderOf(ShortInt, ShortInt)
-       stays ShortInt regardless of the numeric result). *)
-    minShortInt = -maxShortInt - 1; minInteger = -maxInteger - 1;
-    minLongInt = -maxLongInt - 1;
     maxHugeInt = MAX(LONGINT); (* Really means MAX(HUGEINT) - HUGEINT is
                                    always 8 bytes (Types.Mod's header
                                    comment) - but poc's own source can't
@@ -96,7 +69,60 @@ MODULE ConstantEvaluator;
                                       itself, so no such literal ever
                                       needs to be written down. *)
 
+  VAR
+    (* MemoryLayout.sizeModelO2/OC currently in effect for this
+       compilation - set once via SetSizeModel* below (default -O2, this
+       module's own init at the bottom of the file) and again by Poc.Mod
+       if -O2/-OC is given on the command line, then read everywhere
+       below (IntegerLiteralType, MaxMinBound, SizeBound). Mirrors
+       Diagnostics.fileName*/errorCount*'s own "module VAR set once per
+       compilation via an exported setter, read everywhere" pattern (see
+       that module's own header comment) rather than threading a
+       size-model parameter through Evaluate*'s whole mutually-recursive
+       call graph and every one of SemanticActions.Mod's nine call
+       sites - this module already has no other per-compilation state to
+       reset the way Diagnostics.Reset* does, so a dedicated setter is
+       simpler here than growing a second Reset-shaped export. *)
+    sizeModel*: INTEGER;
+    (* SHORTINT/INTEGER/LONGINT's MAX(T)/MIN(T) bounds and MAX(SET)'s
+       highest usable element all vary with MemoryLayout's size-model
+       axis (MemoryLayout.BasicSize: SHORTINT/INTEGER/LONGINT/SET are
+       each wider under -OC than -O2), unlike HUGEINT (always 8 bytes,
+       maxHugeInt/minHugeInt above) or CHAR/BOOLEAN (always 1 byte under
+       either model) - those three stay CONST, untouched by
+       SetSizeModel* below. No longer CONST themselves (as originally
+       written, back when poc had no -O2/-OC flag to vary them with) -
+       see SetSizeModel*'s own comment. *)
+    maxSetElement, maxShortInt, maxInteger, maxLongInt: LONGINT;
+    minShortInt, minInteger, minLongInt: LONGINT;
+
   PROCEDURE ^ EvaluateExpr(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): Types.Value;
+
+  (* Recomputes every size-model-dependent bound above (VAR block just
+     above) for the given MemoryLayout.sizeModelO2/OC model - the single
+     place that ever assigns to sizeModel*/maxShortInt/etc, so nothing
+     else needs to duplicate this IF/ELSE. Min bounds are computed as
+     -maxX - 1, not written as bare negative literals, for the identical
+     two's-complement reason minHugeInt above already has to be (a
+     type's minimum magnitude is exactly one more than its own maximum,
+     which never fits that type's own positive range - see minHugeInt's
+     own comment): under -OC, LONGINT is 8 bytes, the same width as
+     HUGEINT, so its magnitude limit is reused directly from maxHugeInt
+     rather than restating the same unparseable-literal problem a
+     second time. *)
+  PROCEDURE SetSizeModel*(model: INTEGER);
+  BEGIN
+    sizeModel := model;
+    IF model = MemoryLayout.sizeModelOC THEN
+      maxShortInt := 32767; maxInteger := 2147483647; maxLongInt := maxHugeInt;
+      maxSetElement := 63
+    ELSE
+      maxShortInt := 127; maxInteger := 32767; maxLongInt := 2147483647;
+      maxSetElement := 31
+    END;
+    minShortInt := -maxShortInt - 1; minInteger := -maxInteger - 1;
+    minLongInt := -maxLongInt - 1
+  END SetSizeModel;
 
   PROCEDURE UndefinedValue(): Types.Value;
     VAR v: Types.Value;
@@ -147,8 +173,11 @@ MODULE ConstantEvaluator;
      ("incompatible assignment") since 100000 doesn't fit a 16-bit
      INTEGER, but the identical literal assigns fine to a LONGINT (32-bit)
      var - and HUGEINT's own max (9223372036854775807) matches maxHugeInt
-     above the same way. maxShortInt/maxInteger/maxLongInt (module-level,
-     above) hold the reasoning for what they represent and why. *)
+     above the same way. maxShortInt/maxInteger/maxLongInt now vary with
+     the current SetSizeModel*-selected model (see that procedure's own
+     comment), so a literal like 100000 is minimally SHORTINT/INTEGER/
+     LONGINT-typed differently depending on whether -O2 or -OC is in
+     effect, exactly like MAX(T)/MIN(T)'s own folded bounds below. *)
   PROCEDURE IntegerLiteralType*(expr: SyntaxTree.LiteralExprNode; VAR value: LONGINT): Types.Type;
     VAR overflow: BOOLEAN;
   BEGIN
@@ -301,11 +330,16 @@ MODULE ConstantEvaluator;
      already accepts, except REAL/LONGREAL (PLAN.md's own "Open design
      questions" entry has the rationale for leaving those out: verify
      against real voc first, tied to the separate correctly-rounded-
-     float work). Every bound here is a fixed, target-word-size-
-     independent language fact (SHORTINT is always -128..127 regardless
-     of target), unlike SizeBound below. Returns FALSE (v left
-     unpopulated) for a type MAX/MIN doesn't apply to, or one of the
-     REAL/LONGREAL types not yet handled. *)
+     float work). SHORTINT/INTEGER/LONGINT/SET's bounds vary with the
+     current SetSizeModel*-selected -O2/-OC model (module VARs above);
+     every other bound here is a fixed language fact regardless of
+     model (CHAR is always 0X..0FFX, HUGEINT is always 8 bytes) or of
+     target word size (neither axis - see MemoryLayout.Mod's header
+     comment - ever changes an *elementary* type's own byte width, only
+     a POINTER/PROCEDURE value's or a composite type's), unlike SizeBound
+     below, which is also word-size-dependent for those. Returns FALSE
+     (v left unpopulated) for a type MAX/MIN doesn't apply to, or one of
+     the REAL/LONGREAL types not yet handled. *)
   PROCEDURE MaxMinBound(t: Types.Type; wantMax: BOOLEAN; VAR v: Types.Value): BOOLEAN;
   BEGIN
     NEW(v);
@@ -336,24 +370,29 @@ MODULE ConstantEvaluator;
   END MaxMinBound;
 
   (* SIZE(T), unlike MaxMinBound above, is genuinely target-dependent
-     (MemoryLayout.Mod's word-size/size-model axes) - folds using poc's
-     existing "-O2, 32-bit" default absent a real CLI flag to pick a
-     target from, the same precedent IntegerLiteralType already
-     established (see maxShortInt's own header comment); revisit
-     together once such a flag exists. Result type matches
-     PredeclaredProcedures.CheckSize's own (Types.Integer) for
-     consistency, even though a large RECORD/ARRAY's actual byte count
-     could in principle exceed INTEGER's 16-bit range - a pre-existing
-     quirk of CheckSize itself, not introduced here. Accepts any type
-     (not just the basic/SET ones MAX/MIN take), matching CheckSize;
-     MemoryLayout.Size itself already handles every Types.Type kind
-     gracefully (returns 0 for NIL/anything else), so there is nothing
-     further to reject here beyond "not a type name at all". *)
+     (MemoryLayout.Mod's word-size/size-model axes) - folds using the
+     current SetSizeModel*-selected -O2/-OC model (module VAR sizeModel*
+     above) for the size-model axis, but still poc's existing "32-bit"
+     default for the word-size axis: poc has no CLI flag at all yet to
+     pick a target *word size* from (unlike size model, as of the
+     -O2/-OC flags - see Poc.Mod's own Run/Usage), since nothing before
+     a real backend (PLAN.md Phase 8+) exists to make a word-size choice
+     observable the way -O2/-OC's differing SHORTINT/INTEGER/LONGINT/SET
+     ranges already are; revisit together once such a flag exists.
+     Result type matches PredeclaredProcedures.CheckSize's own
+     (Types.Integer) for consistency, even though a large RECORD/ARRAY's
+     actual byte count could in principle exceed INTEGER's 16-bit range -
+     a pre-existing quirk of CheckSize itself, not introduced here.
+     Accepts any type (not just the basic/SET ones MAX/MIN take),
+     matching CheckSize; MemoryLayout.Size itself already handles every
+     Types.Type kind gracefully (returns 0 for NIL/anything else), so
+     there is nothing further to reject here beyond "not a type name at
+     all". *)
   PROCEDURE SizeBound(t: Types.Type; VAR v: Types.Value);
   BEGIN
     NEW(v);
     v.type := Types.Integer; v.kind := Types.intValue;
-    v.intVal := MemoryLayout.Size(t, MemoryLayout.wordSize32, MemoryLayout.sizeModelO2)
+    v.intVal := MemoryLayout.Size(t, MemoryLayout.wordSize32, sizeModel)
   END SizeBound;
 
   (* Shared MAX/MIN/SIZE dispatch, called from EvaluateDesignator below
@@ -706,4 +745,6 @@ MODULE ConstantEvaluator;
     RETURN EvaluateExpr(expr, scope)
   END Evaluate;
 
+BEGIN
+  SetSizeModel(MemoryLayout.sizeModelO2)
 END ConstantEvaluator.

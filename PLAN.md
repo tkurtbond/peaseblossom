@@ -447,10 +447,10 @@ external-symbol names are subject to the same 31-character limit above.
     (`SHORTINT`/`INTEGER`/`LONGINT`/`HUGEINT`), `SET`, `CHAR` and
     `BOOLEAN` - the same argument set `PredeclaredProcedures.CheckMaxMin`
     already accepts for ordinary type-checking, minus `REAL`/`LONGREAL`
-    (see below). Every bound folded is a fixed, target-word-size-
-    independent language fact (e.g. `SHORTINT` is always -128..127), so
-    there is no default-model ambiguity to resolve first, unlike `SIZE`
-    below.
+    (see below). `SHORTINT`/`INTEGER`/`LONGINT`/`SET`'s bounds are
+    target-word-size-independent but do vary by elementary-type size
+    model (`HUGEINT`/`CHAR`/`BOOLEAN` do not - always 8/1/1 bytes); see
+    the `-O2`/`-OC` flags entry directly below for how that's resolved.
   - `MAX(REAL)`/`MAX(LONGREAL)`/`MIN(REAL)`/`MIN(LONGREAL)` **not**
     implemented - deliberately scoped out of the above. Unlike the
     integer family, the correct bound is an IEEE 754 largest-finite-value
@@ -459,28 +459,60 @@ external-symbol names are subject to the same 31-character limit above.
     implementing" convention), not guessed at, and ties into the
     already-tracked correctly-rounded-float-formatting work (see
     `references.md`). Revisit alongside that, not as part of this pass.
-  - `SIZE(T)` **implemented** 2026-09-17, but unlike `MAX`/`MIN` its
-    result is genuinely target-dependent (word size and elementary-type
-    size model - `MemoryLayout.Mod`'s own two axes), and poc has no real
-    `-O2`/`-OC`/word-size CLI flag yet to pick one from (see this file's
-    own "`-OC`-equivalent elementary-type-size model" entry above).
-    Folds using `MemoryLayout.wordSize32`/`MemoryLayout.sizeModelO2` as a
-    fixed default, the same "assume `-O2`, poc's existing default absent
-    a real flag" precedent `ConstantEvaluator.IntegerLiteralType` already
-    established for integer-literal folding (word size 32 chosen to
-    match: voc's own `-O2` name means "Original Oberon / Oberon-2",
-    historically a 32-bit environment). Revisit once poc gets a real
-    `-O2`/`-OC`/word-size flag of its own - the same open item as
-    `IntegerLiteralType`'s own default. In practice `SIZE(T)` only works
-    for a predeclared or imported `T` right now, never a type declared in
-    the *same* module's own `TYPE` section - `CheckModuleBody` resolves
-    `CONST` declarations before `TYPE` declarations unconditionally,
-    regardless of their relative textual order (this file's own "Relax
-    order of declarations" item, `000-todo.org`), a real, concrete
-    instance of that already-tracked gap found while testing this.
+  - `SIZE(T)` **implemented** 2026-09-17. Unlike `MAX`/`MIN`'s other
+    bounds its result is genuinely target-dependent (word size and
+    elementary-type size model - `MemoryLayout.Mod`'s own two axes).
+    In practice `SIZE(T)` only works for a predeclared or imported `T`
+    right now, never a type declared in the *same* module's own `TYPE`
+    section - `CheckModuleBody` resolves `CONST` declarations before
+    `TYPE` declarations unconditionally, regardless of their relative
+    textual order (this file's own "Relax order of declarations" item,
+    `000-todo.org`), a real, concrete instance of that already-tracked
+    gap found while testing this.
     Three new conformance tests: `semantic-const-max-min-size`,
     `semantic-reject-const-max-min-too-wide`, `semantic-reject-const-max-
     min-not-a-type`.
+  - **`-O2`/`-OC` CLI flags added 2026-09-17** (`Poc.Mod`), addressing
+    the "poc has no real `-O2`/`-OC` CLI flag yet" gap the two bullets
+    above originally had to work around by assuming `-O2`. Select the
+    elementary-type size model (`MemoryLayout.sizeModelO2`/`sizeModelOC`)
+    that `MAX(T)`/`MIN(T)`/`SIZE(T)` (and, as a direct consequence,
+    ordinary integer-literal typing - `IntegerLiteralType` shares the
+    exact same bounds, see `ConstantEvaluator.Mod`'s own header comment)
+    fold against; default `-O2`, a later flag wins if given more than
+    once, matching `-output-dir`'s own precedent. Implemented as a
+    `ConstantEvaluator.SetSizeModel*` exported setter (module `VAR`s,
+    recomputed on call) rather than threading a size-model parameter
+    through `Evaluate*`'s whole mutually-recursive call graph and every
+    one of `SemanticActions.Mod`'s nine call sites - mirrors
+    `Diagnostics.fileName*`/`errorCount*`'s own existing "module `VAR`
+    set once per compilation, read everywhere" pattern. `SIZE(T)` still
+    always uses `MemoryLayout.wordSize32` - there is still no word-size
+    (32/64-bit) flag, since nothing before a real backend (Phase 8+)
+    makes that axis observable the way `-O2`/`-OC`'s differing
+    `SHORTINT`/`INTEGER`/`LONGINT`/`SET` ranges now are. `-dump-layout`
+    (Phase 4) is intentionally unaffected - it keeps printing all four
+    word-size x size-model combinations regardless of `-O2`/`-OC`, since
+    it is a golden-file testing surface for `MemoryLayout.Mod` itself,
+    not a preview of one selected target.
+    **Found, not fixed, while verifying this**: `ModuleInterface.Mod`'s
+    `FormatInt` (used by `-emit-interface` to print a folded integer
+    `CONST`'s value) negates its argument (`v := -v`) to build the digit
+    string, which overflows - and silently produces just `"-"` with no
+    digits - for any value at exactly a `LONGINT`'s two's-complement
+    minimum (the same magnitude-has-no-positive-representation asymmetry
+    `ConstantEvaluator.Mod`'s own `minHugeInt`/`minShortInt`/etc. already
+    had to route around with a computed `-maxX - 1`, never applied here).
+    Pre-existing and already reachable via `MIN(HUGEINT)` before this
+    session (confirmed: unaffected by `-O2`/`-OC`, since `HUGEINT`'s
+    bound doesn't vary by size model) - `-OC` just makes it reachable via
+    `MIN(LONGINT)` too, since `LONGINT` is 8 bytes under `-OC`, the same
+    width as `HUGEINT`. Only affects `-emit-interface`'s printed `.sym`
+    text for this one exact boundary value; `-check`'s type-checking of
+    the identical `CONST` is unaffected (confirmed correct via the
+    existing `semantic-const-max-min-size` test, which already exercises
+    `MIN(HUGEINT)` through `-check`, never `-emit-interface`). Not
+    scheduled to any phase yet.
 
 - **Constant arithmetic doesn't re-derive its result's minimal type from
   the computed value**: found 2026-09-17 while testing the `MAX(T)`/

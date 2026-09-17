@@ -1,0 +1,28 @@
+-O2:
+MODULE bounds;
+  CONST
+    MaxShort* = 127;
+    MinShort* = -128;
+    MaxInt* = 32767;
+    MinInt* = -32768;
+    MaxLong* = 2147483647;
+    MaxSet* = 31;
+    ShortSize* = 1;
+    IntSize* = 2;
+    LongSize* = 4;
+    SetSize* = 4;
+END bounds.
+-OC:
+MODULE bounds;
+  CONST
+    MaxShort* = 32767;
+    MinShort* = -32768;
+    MaxInt* = 2147483647;
+    MinInt* = -2147483648;
+    MaxLong* = 9223372036854775807;
+    MaxSet* = 63;
+    ShortSize* = 2;
+    IntSize* = 4;
+    LongSize* = 8;
+    SetSize* = 8;
+END bounds.
