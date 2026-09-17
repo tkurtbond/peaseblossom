@@ -1,4 +1,5 @@
 * Things to be done getting the compile working..
+** TODO Compare voc's handling of SIZE(Rec) where Rec is declared in the current module to poc's handling.
 ** DONE poc commmand line option to specify output directory for build artifacts.
 poc should have a command line option so that the user can specify a directory to put all the build artifacts (objects, executable) in an output file.
 -output-dir <dir> implemented, currently only affects -emit-interface (the only command that writes a file so far); a future backend command should take it too.
