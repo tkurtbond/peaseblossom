@@ -2597,7 +2597,16 @@ MODULE SemanticActions;
      .sym file are attributed to it, not to moduleName's own outer
      caller - see Diagnostics.Mod's own header comment on why this is a
      save/restore of a plain exported field rather than a second
-     Reset*-like procedure. *)
+     Reset*-like procedure. errorCountBefore/parseModule's own "did this
+     .sym text parse cleanly" check compares against a snapshot, not a
+     bare "> 0" - found while running the Phase 7 self-check milestone
+     (PLAN.md): Diagnostics.errorCount is deliberately global/cumulative
+     across a whole (possibly nested) compilation (Diagnostics.Mod's own
+     header comment), so once *any* earlier error had occurred anywhere
+     - even in a completely unrelated import processed earlier in this
+     same list - a bare "errorCount > 0" wrongly flagged every
+     subsequent import's .sym file as malformed for the rest of the
+     compilation, regardless of whether that file actually parsed fine. *)
   PROCEDURE ResolveImport(imp: SyntaxTree.ImportNode; module: SyntaxTree.ModuleNode;
                           scope: SymbolTable.Scope; parseModule: ParseModuleProc;
                           resolving: ImportChain; VAR cache: LoadedModule);
@@ -2613,6 +2622,7 @@ MODULE SemanticActions;
       loaded: LoadedModule;
       bindName: SyntaxTree.Ident;
       obj: SymbolTable.Object;
+      errorCountBefore: INTEGER;
   BEGIN
     IF imp.moduleName = module.name THEN
       Diagnostics.Error(imp.line, imp.column, "a module must not import itself")
@@ -2631,8 +2641,9 @@ MODULE SemanticActions;
       IF ~found THEN
         Diagnostics.Error(imp.line, imp.column, "unknown imported module")
       ELSE
+        errorCountBefore := Diagnostics.errorCount;
         impModule := parseModule(buffer, length);
-        IF (impModule = NIL) OR (Diagnostics.errorCount > 0) THEN
+        IF (impModule = NIL) OR (Diagnostics.errorCount > errorCountBefore) THEN
           Diagnostics.Error(imp.line, imp.column, "malformed module interface file")
         ELSE
           COPY(Diagnostics.fileName, savedFileName);

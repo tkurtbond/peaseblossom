@@ -43,7 +43,7 @@ MODULE PredeclaredProcedures;
      need only the *shape*, not a real size), each an explicit, narrow
      scope boundary noted at its own call site below. *)
 
-  IMPORT SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics;
+  IMPORT SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics, Lexer;
 
   TYPE
     CheckExprProc* = PROCEDURE(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
@@ -313,6 +313,26 @@ MODULE PredeclaredProcedures;
     RETURN Types.Boolean
   END CheckOdd;
 
+  (* Oberon2.pdf §3 vocabulary rule 4 ("a string of length 1 can be used
+     wherever a character constant is allowed and vice versa") - the same
+     small, deliberate duplication of SemanticActions.IsSingleCharString
+     Literal this module's own header comment already precedents (this
+     module cannot import SemanticActions.Mod), needed so ORD(":") (a
+     real pattern in Lexer.Mod, found while running the Phase 7 self-
+     check milestone, PLAN.md) type-checks like ORD(3AX) does. *)
+  PROCEDURE IsSingleCharStringLiteral(node: SyntaxTree.ExprNode): BOOLEAN;
+    VAR result: BOOLEAN;
+  BEGIN
+    result := FALSE;
+    IF (node # NIL) & (node IS SyntaxTree.LiteralExprNode) THEN
+      WITH node: SyntaxTree.LiteralExprNode DO
+        result := (node.literalKind = Lexer.string) & (node.lexeme[0] # 0X)
+                   & (node.lexeme[1] = 0X)
+      END
+    END;
+    RETURN result
+  END IsSingleCharStringLiteral;
+
   PROCEDURE CheckOrd(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
                      line, column: INTEGER; checkExpr: CheckExprProc): Types.Type;
     VAR t: Types.Type;
@@ -322,7 +342,8 @@ MODULE PredeclaredProcedures;
       RETURN Types.Undefined
     END;
     t := checkExpr(scope, args);
-    IF (t # Types.Undefined) & (t # Types.Char) & (t # Types.Set) THEN
+    IF (t # Types.Undefined) & (t # Types.Char) & (t # Types.Set)
+        & ~((t = Types.String) & IsSingleCharStringLiteral(args)) THEN
       Diagnostics.Error(line, column, "ORD requires a CHAR or SET argument");
       RETURN Types.Undefined
     END;
