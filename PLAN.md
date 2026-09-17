@@ -417,6 +417,25 @@ external-symbol names are subject to the same 31-character limit above.
   (`CheckExtensionApplicable`'s own header comment, PLAN.md Phase 6
   territory, pre-existing).
 
+- **Predeclared-function calls in constant expressions (e.g. `MAX(LONGINT)`,
+  `MIN(SomeType)`)**: found 2026-09-17 while running the Phase 7 self-check
+  milestone (`poc -check` against poc's own front-end source) —
+  `ConstantEvaluator.Mod`'s own `maxHugeInt = MAX(LONGINT);` CONST
+  declaration fails with "not a constant expression". `ConstantEvaluator.
+  Mod`'s own header comment already documents its scope as deliberately
+  narrow ("A ConstExpr's only possible leaves are literals, named constants
+  ..., and TRUE/FALSE — never a variable, a call, or a selector"); a
+  predeclared-function call like `MAX`/`MIN`/`ORD`/`ABS` applied to a
+  constant (or, for `MAX`/`MIN`, a *type*) argument was never added to that
+  set. Not fixed as part of the self-check pass — implementing general
+  predeclared-function constant folding is a separate, larger piece of
+  work (needs to decide how `MAX(T)`/`MIN(T)` fold per type without a
+  runtime value to evaluate, unlike every other ConstExpr leaf) — but
+  worth doing since the report's own CONST declaration examples routinely
+  use this pattern, and `ConstantEvaluator.Mod` currently works around its
+  own gap with a hand-rolled `MAX(LONGINT)` comment explaining why. Not
+  scheduled to any phase yet.
+
 ## Critical files
 
 - `AGENTS.md` — spec/toolchain context this plan builds on.
