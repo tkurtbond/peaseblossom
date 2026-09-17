@@ -420,11 +420,13 @@ own `WriteStr` (via `Files.Write`, confirmed to accept a bare `CHAR`
 directly) works around this.
 
 Several explicit, narrower scope boundaries, matching how every prior
-phase recorded its own: the import search path is cwd-only (`.sym` files
-are looked up as `Files.Old(moduleName + ".sym")` relative to the working
-directory - a real search-path flag is future work, alongside the
-existing `000-todo.org` item for an output-directory flag);
-`ModuleInterface.Mod` cannot export a `REAL`/`LONGREAL`-valued `CONST`
+phase recorded its own: the import search path was cwd-only at first
+release (`.sym` files looked up as `Files.Old(moduleName + ".sym")`
+relative to the working directory only) - since extended, see below;
+`.sym` output itself still always lands in the current directory
+regardless (a real output-directory flag is separate, still-open future
+work per `000-todo.org`); `ModuleInterface.Mod` cannot export a
+`REAL`/`LONGREAL`-valued `CONST`
 (explicit diagnostic, not lossy text - no round-trip-safe float formatter
 exists anywhere in this codebase or in voc's own bundled libraries to
 reuse); a written `.sym`'s `IMPORT` line unconditionally re-exports every
@@ -451,3 +453,30 @@ single voc compilation unit via `tools/bootstrap/stage0`), so the
 Phase-5-style self-check milestone for this phase is `tools/bootstrap/stage0`
 itself succeeding end to end with `ModuleInterface.Mod` compiled in
 (confirmed) rather than a new `-check`/`-check-syntax` invocation.
+
+**IMPORT search path** (`PLAN.md`'s "Open design questions", closing the
+`000-todo.org` item of the same name): `ModuleInterface.Mod` now searches
+the current directory first (unchanged, still required for every existing
+multi-module fixture), then a process-lifetime list of extra directories
+it owns (`searchPathHead`/`Tail`, `AddSearchPathDir*`/`AddSearchPathList*`/
+`ClearSearchPath*`/`FirstSearchPathEntry*`). `Poc.Mod` is the only caller:
+it seeds the list from the `POC_IMPORT_PATH` environment variable (colon-
+separated, read once via `Platform.GetEnv` at startup) and/or repeated
+`-import-path <dir>` flags, both of which may precede any existing command
+on the same invocation; `-clear-import-path` empties the list regardless
+of where its entries came from; `-print-import-path` prints it and exits.
+Since the list only lives for one process's `Run`, list-management flags
+only matter combined with a later flag in the *same* command line - two
+separate `poc` invocations share nothing. `Platform.GetEnv` is a deliberate,
+narrow exception to `Poc.Mod`'s own header-comment rule about avoiding
+Vishap-specific extensions: that rule is about *language syntax*
+(`HUGEINT`, read-only value params, etc.), not which library modules the
+driver may import, and `Modules.ArgCount`/`GetArg` already read the host
+environment the same way; `ModuleInterface.Mod` itself still never touches
+the environment, only the driver does. New conformance coverage:
+`module-import-path` (a library in a `lib` subdirectory, only resolvable
+via `-import-path lib`), `semantic-reject-import-not-on-path` (the same
+library, without the flag, confirming cwd-only lookup still correctly
+fails), and `import-path-print` (golden-diffs `-print-import-path`'s
+output across env-only, CLI-only, env+CLI, and clear-then-add
+combinations in one invocation each).

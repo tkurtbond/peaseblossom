@@ -1,0 +1,14 @@
+(import path is empty)
+---
+envdir1
+envdir2
+---
+foo
+bar
+---
+envdir
+cliDir
+---
+b
+---
+(import path is empty)

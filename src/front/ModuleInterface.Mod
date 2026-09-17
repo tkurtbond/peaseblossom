@@ -77,6 +77,37 @@ MODULE ModuleInterface;
   CONST
     nameBufferLength = 300; (* SyntaxTree.identLength (255) + ".sym" comfortably *)
     lineLength = 4096; (* mirrors Poc.Mod's own ReadSource *)
+    searchPathDirLength = 1024;
+    pathBufferLength = searchPathDirLength + nameBufferLength;
+
+  TYPE
+    (* One IMPORT search-path directory. Declared "T = POINTER TO T1" per
+       Oberon2.pdf §4 rule 3's exact sanctioned self-reference shape -
+       confirmed necessary the same way SymbolTable.Mod's Scope/ScopeDesc
+       pair was (see that file's own header comment) - so both types are
+       declared together rather than Scope's split standalone-then-later
+       pattern; there is no third type needing to reference this one. *)
+    SearchPathEntry* = POINTER TO SearchPathEntryDesc;
+    SearchPathEntryDesc* = RECORD
+      dir*: ARRAY searchPathDirLength OF CHAR;
+      next*: SearchPathEntry
+    END;
+
+  VAR
+    (* PLAN.md's "IMPORT search path" 000-todo.org item / PLAN.md's own
+       "Open design questions" entry: a process-lifetime, driver-managed
+       list of extra directories ReadSource* tries after the current
+       working directory (never instead of it - cwd stays unconditionally
+       searched first, matching Phase 7's original, still-relied-on
+       behavior and every existing conformance fixture). Poc.Mod seeds
+       this from the POC_IMPORT_PATH environment variable, colon-
+       separated, via a call to AddSearchPathList*, and/or repeated
+       -import-path flags before running a command; -clear-import-path empties it
+       again regardless of where entries came from. This module owns the
+       list itself (it is the one that actually opens .sym files) but
+       deliberately never reads the environment itself - see
+       AddSearchPathList*'s own comment. *)
+    searchPathHead, searchPathTail: SearchPathEntry;
 
   (* ---- File naming ---- *)
 
@@ -89,7 +120,79 @@ MODULE ModuleInterface;
     result[i + 4] := 0X
   END SymFileName;
 
+  (* ---- IMPORT search path ---- *)
+
+  PROCEDURE AddSearchPathDir*(dir: ARRAY OF CHAR);
+    VAR e: SearchPathEntry;
+  BEGIN
+    IF dir[0] # 0X THEN
+      NEW(e); COPY(dir, e.dir); e.next := NIL;
+      IF searchPathTail = NIL THEN searchPathHead := e ELSE searchPathTail.next := e END;
+      searchPathTail := e
+    END
+  END AddSearchPathDir;
+
+  (* Splits list on ":" (POSIX PATH-style, matching the project's existing
+     POSIX-only scope) and AddSearchPathDir*s each non-empty piece, left to
+     right - so "a::b:" yields "a", "b", skipping the empty pieces an
+     adjacent/leading/trailing ":" would otherwise produce. Takes the
+     already-read environment-variable text as a plain ARRAY OF CHAR
+     rather than reading the environment itself: this module's own header
+     comment already restricts it to file I/O plus (now) this list, never
+     OS-environment access, which stays Poc.Mod's job alongside its
+     existing Modules.ArgCount/GetArg command-line reading. *)
+  PROCEDURE AddSearchPathList*(list: ARRAY OF CHAR);
+    VAR i, j: INTEGER; piece: ARRAY searchPathDirLength OF CHAR;
+  BEGIN
+    i := 0;
+    WHILE list[i] # 0X DO
+      j := 0;
+      WHILE (list[i] # 0X) & (list[i] # ":") DO piece[j] := list[i]; INC(j); INC(i) END;
+      piece[j] := 0X;
+      AddSearchPathDir(piece);
+      IF list[i] = ":" THEN INC(i) END
+    END
+  END AddSearchPathList;
+
+  PROCEDURE ClearSearchPath*;
+  BEGIN
+    searchPathHead := NIL; searchPathTail := NIL
+  END ClearSearchPath;
+
+  PROCEDURE FirstSearchPathEntry*(): SearchPathEntry;
+  BEGIN
+    RETURN searchPathHead
+  END FirstSearchPathEntry;
+
+  PROCEDURE JoinPath(dir, name: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
+    VAR i, j: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE dir[i] # 0X DO result[i] := dir[i]; INC(i) END;
+    result[i] := "/"; INC(i);
+    j := 0;
+    WHILE name[j] # 0X DO result[i] := name[j]; INC(i); INC(j) END;
+    result[i] := 0X
+  END JoinPath;
+
   (* ---- Reading (pure file I/O; see header comment) ---- *)
+
+  (* Tries the current working directory first (unconditionally, matching
+     Phase 7's original cwd-only behavior - see every existing multi-
+     module conformance fixture), then each searchPathHead..Tail directory
+     in the order they were added, stopping at the first one that opens. *)
+  PROCEDURE Open(name: ARRAY OF CHAR): Files.File;
+    VAR f: Files.File; e: SearchPathEntry; path: ARRAY pathBufferLength OF CHAR;
+  BEGIN
+    f := Files.Old(name);
+    e := searchPathHead;
+    WHILE (f = NIL) & (e # NIL) DO
+      JoinPath(e.dir, name, path);
+      f := Files.Old(path);
+      e := e.next
+    END;
+    RETURN f
+  END Open;
 
   PROCEDURE ReadSource*(moduleName: SyntaxTree.Ident; VAR buffer: Lexer.CharBuffer;
                         VAR length: LONGINT; VAR found: BOOLEAN);
@@ -102,7 +205,7 @@ MODULE ModuleInterface;
       used: LONGINT;
   BEGIN
     SymFileName(moduleName, name);
-    f := Files.Old(name);
+    f := Open(name);
     IF f = NIL THEN
       found := FALSE; length := 0
     ELSE
