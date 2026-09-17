@@ -156,12 +156,42 @@ LONGINT" already expects this spelling. Implemented in `Types.Mod`
 every integer type ranks below every real type regardless of width, the
 same reason `LONGINT` already ranks below `REAL`), `SymbolTable.Mod`
 (predeclared identifier), and `ConstantEvaluator.Mod` (`IsIntegerType`/
-arithmetic folding). Not yet exercisable end-to-end: literal typing
-doesn't yet pick `HUGEINT` for large numerals (needs Phase 4's
-`MemoryLayout.Mod` to give basic types real bit widths to check literals
-against), and there's no `VAR`/parameter syntax yet (Phase 5/6) to declare
-a `HUGEINT`-typed value directly — today it's reachable only as a `TYPE`
-alias target (see `test/conformance/semantic-hugeint-type`).
+arithmetic folding). `VAR`/parameter syntax (Phase 5/6) can declare a
+`HUGEINT`-typed value directly now — today it's also reachable as a
+`TYPE` alias target (see `test/conformance/semantic-hugeint-type`).
+Numeral literal typing still doesn't pick `HUGEINT` for large decimal/hex
+numerals (`ConstantEvaluator.Mod`'s `ParseDecimalInteger`/`ParseHexInteger`
+always fold to `Types.Integer` regardless of magnitude, with no overflow
+diagnostic) — `MemoryLayout.Mod` now has the real bit widths (2026-09-16)
+this would need to check a literal's magnitude against, but nothing wires
+it into literal folding yet. That remains open, separate work, not
+scheduled to a phase.
+
+**Appendix A / Appendix C survey for `HUGEINT` (2026-09-16,
+`000-todo.org`)**: confirmed by direct inspection, not just design intent
+— `Types.Mod`'s Appendix A predicates (`IsInteger*`/`IsNumeric*`/
+`Includes*`/`WiderOf*`/`AssignmentCompatible*`) and `SemanticActions.Mod`'s
+expression-compatible operator table (`CheckBinaryExpr`) are all rank-based,
+dispatching on `BasicTypeDesc.rank` rather than enumerating specific types.
+Since `hugeIntRank` was already inserted between `longIntRank` and
+`realRank` when `HUGEINT` was first added, every Appendix A rule
+(`+ - *`, `/`, `DIV`/`MOD`, `IN`, the six relations, assignment
+compatibility, "smallest numeric/integer type including both operands")
+already treats `HUGEINT` correctly with zero additional code — the only
+textual changes Appendix A's own definitions need are the two already
+documented above: "Integer types" gains `HUGEINT`, and the type-inclusion
+hierarchy gains `HUGEINT` between `LONGINT` and `REAL`. No further Phase 5/6
+work item exists here.
+Appendix C (the `SYSTEM` module) isn't implemented in poc at all yet — no
+phase has scheduled it. When it is, two adjustments beyond the report's own
+text follow from decisions already made elsewhere in this file: `ADR`/
+`GET`/`PUT`/`MOVE`'s address arguments use `SYSTEM.ADDRESS`, not `LONGINT`
+(see "`SYSTEM.ADDRESS` type" above — an address-width concern, independent
+of `HUGEINT`), and `LSH`/`ROT`'s "`x`: integer, CHAR, BYTE" argument
+category should explicitly include `HUGEINT` alongside `SHORTINT`/
+`INTEGER`/`LONGINT`, since it is a genuine additional integer type by the
+same Appendix A definition above. Both are documentation-only conclusions
+today; there is no `SYSTEM.Mod` yet for either to apply to.
 
 ### External procedures
 
