@@ -26,7 +26,9 @@ Pointing poc's own -check at its front-end modules (PLAN.md's Phase 7 milestone)
 ** DONE Investigate fileName := name instead of COPY(name, fileName).
 Confirmed a real bug (not just worth investigating): fileName := name relied on a voc extension, violating poc's own strict-Oberon2.pdf bootstrap-source constraint. Fixed - see the Phase 7 self-check entry above.
 * Extensions - These are generally language extensions to consider adding to poc.
-** TODO Relax order of declarations, so they can happen in any order.
+** TODO Resolve CONST/TYPE/VAR declarations as one linear pass in textual order, not three separate section-wide passes, so e.g. "TYPE T = ...; CONST SizeT = SIZE(T);" works regardless of which section comes first.
+Confirmed directly against real voc (2026-09-17, see PLAN.md's "Open design questions"): voc does *not* allow general forward references - only its two standard exceptions (a POINTER's own inline base type, PROCEDURE^ forward declarations) - it just resolves CONST/TYPE/VAR declarations in one linear textual-order pass, and separately allows CONST/TYPE/VAR *sections* to appear in any order/be repeated and interleaved arbitrarily (poc's own Parser.Mod already parses that part - ParseDeclSeq's LOOP already accepts CONST/TYPE/VAR keywords in any order/repetition - the gap is purely on the SemanticActions side, which discards that interleaving by sorting everything into three separate constDecls/typeDecls/varDecls lists before CheckModuleBody resolves them as three separate whole-section passes). So this is *not* "relax order of declarations" in the sense of adding forward references - it is removing an artificial three-pass batching that currently forces every CONST to resolve before every TYPE regardless of source order.
+** TODO Consider allowing CONST/TYPE/VAR/PROCEDURE declarations to occur textually in any order.  
 ** TODO Initializers for variable declarations consisting of := after the type, followed by an expression.
 ** TODO Oberon-2 has syntax for sets literals; it would be good have syntax for record and array literals, too.
 ** TODO Investigate adding fileName := name as well as COPY(name, fileName) to poc.
