@@ -137,16 +137,38 @@ MODULE ConstantEvaluator;
     RETURN v
   END EvaluateLiteral;
 
+  (* PLAN.md Phase 7: a qualified constant reference (lib.SomeConst) is a
+     legal constant expression - resolved the same way
+     SemanticActions.FindQualified resolves any other qualified name
+     (qualifier must be a moduleClass Object; then FindLocal in its
+     moduleScope), duplicated here in miniature rather than imported:
+     ConstantEvaluator.Mod cannot import SemanticActions.Mod (compiled
+     before it in dependency order, and SemanticActions.Mod already
+     calls into ConstantEvaluator.Mod), the same "small, well-motivated
+     duplication" precedent PredeclaredProcedures.Mod's own header
+     comment already established for CheckExpr vs. this module. A
+     genuine selector chain ("." or index/deref, expr.selectors # NIL)
+     is still rejected outright - unlike a qualifier, that never denotes
+     a constant. *)
+  PROCEDURE FindQualifiedConst(scope: SymbolTable.Scope; d: SyntaxTree.Designator): SymbolTable.Object;
+    VAR modObj: SymbolTable.Object;
+  BEGIN
+    IF d.qualifier[0] = 0X THEN RETURN SymbolTable.Find(scope, d.name) END;
+    modObj := SymbolTable.Find(scope, d.qualifier);
+    IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN RETURN NIL END;
+    RETURN SymbolTable.FindLocal(modObj.moduleScope, d.name)
+  END FindQualifiedConst;
+
   PROCEDURE EvaluateDesignator(expr: SyntaxTree.DesignatorExprNode;
                                scope: SymbolTable.Scope): Types.Value;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator;
   BEGIN
     d := expr.designator;
-    IF (d.qualifier[0] # 0X) OR (d.selectors # NIL) OR expr.hasParens THEN
+    IF (d.selectors # NIL) OR expr.hasParens THEN
       Diagnostics.Error(expr.line, expr.column, "not a constant expression");
       RETURN UndefinedValue()
     END;
-    obj := SymbolTable.Find(scope, d.name);
+    obj := FindQualifiedConst(scope, d);
     IF obj = NIL THEN
       Diagnostics.Error(expr.line, expr.column, "undeclared identifier");
       RETURN UndefinedValue()

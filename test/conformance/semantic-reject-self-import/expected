@@ -1,0 +1,2 @@
+self-import.mod:3:10: error: a module must not import itself
+1 error(s)

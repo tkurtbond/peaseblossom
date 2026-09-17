@@ -317,3 +317,137 @@ guard-then-selector `Parser.Mod` limitation above, freshly introduced in
 the same way, by binding the guarded value to a local variable first.
 `parser-self-check`'s own file list remains unwidened (still the same
 unrelated, pre-existing test-harness gap noted under Phase 5).
+
+Phase 7 (`ModuleInterface.Mod` (new), `SemanticActions.Mod`'s
+`CheckModuleBody`/`ResolveImport`/`FindQualified`, a new `poc
+-emit-interface` mode) is also complete: qualified names (`Module.Ident`)
+now resolve end to end, backed by a textual, on-disk `<ModuleName>.sym`
+interface file. Per a decision confirmed with the user while planning this
+phase, a `.sym` file is literally valid Peaseblossom module source
+(`MODULE Name; ... END Name.`, exported declarations only, every
+procedure/type-bound procedure written as a permanently body-less
+`PROCEDURE^ ...;` forward declaration) rather than a separate
+Appendix-D4-style grammar - `SemanticActions.CheckModule` already
+tolerated (confirmed: no such check existed) a forward declaration never
+being completed within one compilation, which is exactly what makes an
+all-forward-declared `.sym` checkable by the same `CheckModuleBody` used
+for real programs. `ModuleInterface.Mod` owns only text I/O in both
+directions (`Write*`/`ReadSource*`) and deliberately cannot import
+`Parser.Mod` (which already imports `SemanticActions.Mod`, which now needs
+to call into `ModuleInterface.Mod` - importing `Parser.Mod` too would be a
+real cycle); `SemanticActions.CheckModuleBody` instead takes a
+`ParseModuleProc` callback, concretely supplied by `Poc.Mod` (the only
+module already importing both `Parser.Mod` and `SemanticActions.Mod`
+without creating one) - the same procedure-typed-parameter shape
+`PredeclaredProcedures.Mod` already established, one layer up (a
+module-level import cycle instead of an intra-module one). A new
+`SymbolTable.moduleClass`/`ObjectDesc.moduleScope` binds an imported
+module's name (or its alias) into the same top-level scope ordinary
+declarations go into, exactly mirroring Oberon2.pdf's own grammar
+(`ImportList` is part of the module's declaration scope) - a name clash
+between an import and a declaration is caught by `Insert`'s existing
+duplicate check for free. Genuine cross-module recursion (resolving one
+`.sym`'s own imports) is real, but reading is always from an
+already-finalized file on disk, never a re-entry into the module currently
+being checked - still, two separately-written `.sym` files can end up
+mutually referencing each other after enough separate compiles (documented
+in `SemanticActions.Mod`'s own `ImportChain` header comment with a concrete
+repro), so `CheckModuleBody` threads a small "currently resolving" name
+chain and rejects a real cycle explicitly, mirroring
+`SymbolTable.ObjectDesc.resolving`'s existing self-reference-guard idiom
+one level up.
+
+`FindQualified` (`SemanticActions.Mod`) is the one shared qualified-name
+lookup every qualifier-bearing site now routes through, replacing five
+separate "qualified names are not yet supported" rejections found while
+implementing this phase (`ResolveQualidentType`, `CheckDesignator`,
+`LookupBareTypeName`, and both of `CheckWithGuard`'s variable/type
+qualifiers) - more sites than anticipated at planning time.
+`ConstantEvaluator.Mod` and `PredeclaredProcedures.Mod` each had their own,
+separate qualifier rejection too (constant expressions; `MAX(T)`/`MIN(T)`/
+`SIZE(T)`'s bare-type-name argument) - both cannot import
+`SemanticActions.Mod` (dependency order/circularity, the same reasons
+already documented in each module's own header comment), so each got its
+own small, deliberately duplicated version of the same lookup rather than
+an injected dependency, continuing this codebase's own established
+precedent for that tradeoff.
+
+Testing this phase against the report's own `Trees` example (Ch. 11)
+surfaced a real, previously-unobservable correctness bug, now fixed: `-`
+read-only export (Oberon2.pdf §4: "read-only in importing modules")
+was being enforced unconditionally, including within the very module that
+declared the field - which made `NewTree`'s own `t.name := ...` illegal,
+even though nothing outside the module could previously reference another
+module's field at all (so the distinction was moot before this phase).
+Fixed two ways: a bare `VAR`'s own read-only mark is now gated on the
+designator's own qualifier (`d.qualifier[0] # 0X`- an unqualified
+reference can only ever resolve within the current module's own scope
+chain by construction, so this is a sufficient and exact signal); a record
+field reached via `.` is gated on a new `IsLocalType` helper (is the
+field's owning `RecordType` declared anywhere in the current scope chain,
+not just reachable through an imported module) - needed separately because
+a field can be reached *indirectly* through a local variable whose own
+type was imported (`VAR t: OtherModule.T; t.f := ...`), which a
+qualifier-only check on the outer designator would miss entirely. The
+existing `semantic-reject-assign-readonly-field` fixture (single-module,
+no imports) was testing exactly the behavior this fix removes; renamed to
+`semantic-readonly-field-same-module` and inverted to a positive
+"semantic OK" case, with `semantic-reject-readonly-import-field` (new,
+genuinely cross-module) taking over coverage of the real restriction.
+
+`Types.ParamDesc` gained a `name*` field and `Types.MethodDesc` gained a
+`receiverTypeName*` field (both already available at their existing call
+sites in `SemanticActions.Mod`) purely so `ModuleInterface.Mod` can print
+real parameter names and the receiver's literal declared type spelling
+(which may be a `POINTER TO` alias distinct from the record's own name,
+the report's own `Tree`/`Node` idiom) instead of placeholders. Building
+`SymbolTable.Mod`'s new `moduleScope` field surfaced a real Oberon2.pdf §4
+rule-3 subtlety while writing poc's own source: the forward-reference
+exception ("`T = POINTER TO T1`, `T1` declared later in the same block")
+covers only that exact top-level shape (confirmed against real `voc`) -
+an arbitrary field naming an inline, anonymous "`POINTER TO
+NotYetDeclaredRecord`" is rejected as an undeclared identifier, even
+though `Object`/`Scope` were already mutually recursive by construction.
+Fixed by declaring `Scope* = POINTER TO ScopeDesc;` on its own, ahead of
+`Object*`/`ObjectDesc*`, so `ObjectDesc` can reference the already-known
+name `Scope` directly. Separately, `Files.WriteString` (confirmed against
+real `voc`) writes its argument's terminating `0X` into the file, not just
+the characters before it - harmless for Oakwood-library callers that
+always read text back through `Files.ReadString`/`ReadLine`, but wrong for
+a plain-text `.sym` meant to be read back by `Lexer.Mod`, which would see
+a stray NUL between every single piece written; `ModuleInterface.Mod`'s
+own `WriteStr` (via `Files.Write`, confirmed to accept a bare `CHAR`
+directly) works around this.
+
+Several explicit, narrower scope boundaries, matching how every prior
+phase recorded its own: the import search path is cwd-only (`.sym` files
+are looked up as `Files.Old(moduleName + ".sym")` relative to the working
+directory - a real search-path flag is future work, alongside the
+existing `000-todo.org` item for an output-directory flag);
+`ModuleInterface.Mod` cannot export a `REAL`/`LONGREAL`-valued `CONST`
+(explicit diagnostic, not lossy text - no round-trip-safe float formatter
+exists anywhere in this codebase or in voc's own bundled libraries to
+reuse); a written `.sym`'s `IMPORT` line unconditionally re-exports every
+import the module itself declared, not just the ones some exported
+signature actually references (avoids a separate used/unused dry-run pass
+over every exported type, at the cost of an occasional harmless extra
+import); `IsLocalType` treats a local `TYPE` alias of an imported record
+(`TYPE Local = OtherModule.T`) as local too, since aliasing never creates
+a distinct `Types.Type` identity to tell apart from the original - a real
+but rare read-only-enforcement loophole with no fixture pressure yet; and
+a qualified `WITH` variable (`WITH M.v: T DO`) type-checks correctly but
+does not get the narrowing ergonomics a plain identifier does inside the
+guard's body (the existing shadow-insert trick only ever helped the
+bare-identifier case). New conformance coverage:
+`module-interface-write` (golden-diffs a `.sym` file itself, not just
+stdout), `module-cross-import` (a `Trees`-derived library plus a client
+that only ever sees its `.sym`), and four negative fixtures
+(`semantic-reject-unknown-module`, `semantic-reject-self-import`,
+`semantic-reject-not-exported`, `semantic-reject-readonly-import-field`) -
+the cross-module export-visibility tests deferred since Phase 3 land here,
+as `PLAN.md` anticipated. `poc`'s own front-end source does not yet use
+`IMPORT`-based multi-file checking itself (each module is still built as a
+single voc compilation unit via `tools/bootstrap/stage0`), so the
+Phase-5-style self-check milestone for this phase is `tools/bootstrap/stage0`
+itself succeeding end to end with `ModuleInterface.Mod` compiled in
+(confirmed) rather than a new `-check`/`-check-syntax` invocation.

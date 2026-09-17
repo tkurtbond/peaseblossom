@@ -1,4 +1,4 @@
 #!/bin/sh
 . ../../testenv.sh
-poc -check assign-readonly-field.mod >result
+poc -check self-import.mod >result
 . ../../testresult.sh

@@ -32,14 +32,43 @@ MODULE SymbolTable;
      and externalConvention/externalName (procClass only: set only for
      an external procedure declaration - AGENTS.md's "External
      procedures" - so a later backend can find the linkage info without
-     re-walking the AST; both stay empty otherwise). *)
+     re-walking the AST; both stay empty otherwise).
+
+     PLAN.md Phase 7 adds moduleClass: an Object bound to an IMPORTed
+     module's own name (or its "ident :=" alias), one per entry in a
+     module's ImportList, inserted into the same top-level scope ordinary
+     declarations go into - so a name clash between an import and a
+     top-level declaration is caught by Insert's existing duplicate check
+     for free, exactly as Oberon2.pdf's own grammar treats ImportList as
+     part of the module's declaration scope. moduleScope (moduleClass
+     only) is the flat Scope built from that module's .sym file
+     (ModuleInterface.Mod), containing exactly its exported members - a
+     qualified reference "Module.x" resolves by finding the moduleClass
+     Object, then FindLocal(-ing) x in its moduleScope, needing no
+     separate "is it exported" check since only exported members were
+     ever inserted there in the first place. *)
 
   IMPORT SyntaxTree, Types, Diagnostics;
 
   CONST
     constClass* = 0; typeClass* = 1; varClass* = 2; procClass* = 3;
+    moduleClass* = 4;
 
   TYPE
+    (* Object and Scope are mutually recursive via pointer indirection
+       (an Object's moduleScope needs Scope; ScopeDesc.objects needs
+       Object), so at least one of the two must forward-reference the
+       other. Scope* is declared first, in isolation, in exactly
+       Oberon2.pdf §4 rule 3's own sanctioned "T = POINTER TO T1" shape
+       (T1 = ScopeDesc, completed further down this same TYPE section) -
+       confirmed against real voc that this exact top-level shape is
+       what its forward-reference support expects; an arbitrary field
+       elsewhere naming "POINTER TO ScopeDesc" inline (tried first) was
+       rejected as an undeclared identifier. Object*/ObjectDesc* can then
+       use the already-known name Scope freely, and ScopeDesc* (completed
+       last) can likewise use the already-known name Object. *)
+    Scope* = POINTER TO ScopeDesc;
+
     Object* = POINTER TO ObjectDesc;
     ObjectDesc* = RECORD
       name*: SyntaxTree.Ident;
@@ -51,10 +80,16 @@ MODULE SymbolTable;
       resolving*: BOOLEAN; (* typeClass only; see above *)
       isForwardProc*: BOOLEAN; (* procClass only; see above *)
       externalConvention*, externalName*: SyntaxTree.Ident; (* procClass only; see above *)
+      moduleScope*: Scope; (* moduleClass only; see above *)
+      realModuleName*: SyntaxTree.Ident; (* moduleClass only: the module's
+        own real name, distinct from .name (the possibly-aliased local
+        binding, "ident :=" ImportList syntax) whenever an alias was
+        used - ModuleInterface.Mod's writer needs this to re-emit a
+        correct "IMPORT alias := RealName;" clause when a qualified type
+        reference crosses into this import *)
       next*: Object
     END;
 
-    Scope* = POINTER TO ScopeDesc;
     ScopeDesc* = RECORD
       objects*: Object;
       outer*: Scope
@@ -113,6 +148,7 @@ MODULE SymbolTable;
     o.value := NIL; o.exported := exported; o.readOnly := readOnly;
     o.pendingTypeNode := NIL; o.resolving := FALSE;
     o.isForwardProc := FALSE; o.externalConvention[0] := 0X; o.externalName[0] := 0X;
+    o.moduleScope := NIL; o.realModuleName[0] := 0X;
     o.next := scope.objects; scope.objects := o;
     RETURN o
   END Insert;

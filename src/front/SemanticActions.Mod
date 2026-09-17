@@ -23,7 +23,7 @@ MODULE SemanticActions;
      in the grammar. *)
 
   IMPORT SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics, Lexer,
-         PredeclaredProcedures;
+         PredeclaredProcedures, ModuleInterface;
 
   TYPE
     (* Private to the CASE-statement overlap check (PLAN.md Phase 5) -
@@ -37,6 +37,96 @@ MODULE SemanticActions;
       low, high: LONGINT;
       next: LabelRange
     END;
+
+    (* PLAN.md Phase 7: CheckModuleBody's own "currently being resolved"
+       import stack. Reading an IMPORTed module's .sym file recursively
+       calls CheckModuleBody again - genuinely necessary (real cross-
+       module recursion happens even in single-level module imports),
+       but a .sym file is read fresh from disk each time (ModuleInterface
+       does no caching), so nothing stops two already-written .sym files
+       from referencing each other (A.sym imports B, B.sym imports A -
+       reachable without any hand-editing: compile A with no imports,
+       compile B importing A, then change A's own source to import B and
+       recompile - resolving B's IMPORT A reads the *old*, import-free
+       A.sym still on disk at that point, so it terminates; only once
+       that new A is itself written back out does a genuine two-file
+       cycle exist on disk for some *later* compile to walk into). This
+       chain is threaded through the recursion and checked before each
+       new import is followed, mirroring SymbolTable.ObjectDesc's own
+       "resolving" flag for detecting cyclic TYPE self-reference - the
+       same shape, one level up (modules instead of types). *)
+    ImportChain = POINTER TO ImportChainDesc;
+    ImportChainDesc = RECORD
+      name: SyntaxTree.Ident;
+      next: ImportChain
+    END;
+
+  (* PLAN.md Phase 7: threaded through CheckModule*/CheckModuleBody so an
+     IMPORTed module's .sym text can be turned into a SyntaxTree.ModuleNode
+     without this module importing Parser.Mod itself (Parser.Mod already
+     imports SemanticActions.Mod - see ModuleInterface.Mod's own header
+     comment on why this would otherwise be a real import cycle). Poc.Mod
+     is the only module that already imports both Parser.Mod and this one
+     without creating that cycle, so it supplies the actual adapter. *)
+  TYPE ParseModuleProc* = PROCEDURE(buffer: Lexer.CharBuffer; length: LONGINT): SyntaxTree.ModuleNode;
+
+  (* PLAN.md Phase 7: the one shared qualified-name lookup every
+     qualifier-bearing site (ResolveQualidentType, CheckDesignator,
+     LookupBareTypeName, CheckWithGuard's variable and type qualifiers)
+     now routes through, replacing each site's own "qualified names are
+     not yet supported" rejection. An empty qualifier is an ordinary
+     unqualified SymbolTable.Find; a non-empty one must resolve to a
+     moduleClass Object, then FindLocal(-ing) name in its moduleScope -
+     that scope holds exactly (and only) the imported module's exported
+     members (ModuleInterface.Mod's writer never emits anything else),
+     so no separate "is it exported" check is needed at the qualident
+     resolution site itself, unlike an unqualified Find against a
+     module's own scope. *)
+  PROCEDURE FindQualified(scope: SymbolTable.Scope; qualifier, name: SyntaxTree.Ident;
+                          line, column: INTEGER): SymbolTable.Object;
+    VAR modObj: SymbolTable.Object;
+  BEGIN
+    IF qualifier[0] = 0X THEN
+      RETURN SymbolTable.Find(scope, name)
+    END;
+    modObj := SymbolTable.Find(scope, qualifier);
+    IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN
+      Diagnostics.Error(line, column, "not an imported module");
+      RETURN NIL
+    END;
+    RETURN SymbolTable.FindLocal(modObj.moduleScope, name)
+  END FindQualified;
+
+  (* PLAN.md Phase 7: whether t (a RecordType about to have a "." field
+     selector applied) was declared somewhere in scope's own local chain
+     (the current module's top-level scope, or any nested procedure
+     scope inside it) rather than reached only through an imported
+     module's moduleScope - moduleScope is never on this chain (only
+     reachable via a moduleClass Object's own field, never via .outer),
+     so walking .outer here can never accidentally cross into foreign
+     territory. This is the field-selector counterpart to
+     CheckDesignator's own base-object check (d.qualifier[0] = 0X already
+     proves an unqualified base object is local by construction, no walk
+     needed there) - a field is reached one indirection further in, so a
+     local variable's *type* being imported (VAR t: OtherModule.T; t.f)
+     must be checked explicitly instead of inferred from the designator's
+     own leading qualifier. Narrow, accepted gap: a local TYPE alias of
+     an imported record ("TYPE Local = OtherModule.T") makes this return
+     TRUE for that record too, since aliasing never creates a distinct
+     Types.Type identity to tell apart from the original - a real but
+     rare loophole, not a scenario with fixture pressure yet. *)
+  PROCEDURE IsLocalType(scope: SymbolTable.Scope; t: Types.Type): BOOLEAN;
+    VAR o: SymbolTable.Object; s: SymbolTable.Scope;
+  BEGIN
+    s := scope;
+    WHILE s # NIL DO
+      o := s.objects;
+      WHILE (o # NIL) & ~((o.class = SymbolTable.typeClass) & (o.type = t)) DO o := o.next END;
+      IF o # NIL THEN RETURN TRUE END;
+      s := s.outer
+    END;
+    RETURN FALSE
+  END IsLocalType;
 
   (* Designators and selectors *)
 
@@ -678,12 +768,7 @@ MODULE SemanticActions;
                                  allowForward: BOOLEAN): Types.Type;
     VAR obj: SymbolTable.Object;
   BEGIN
-    IF node.qualifier[0] # 0X THEN
-      Diagnostics.Error(node.line, node.column,
-                         "qualified type names are not yet supported");
-      RETURN Types.Undefined
-    END;
-    obj := SymbolTable.Find(scope, node.name);
+    obj := FindQualified(scope, node.qualifier, node.name, node.line, node.column);
     IF obj = NIL THEN
       Diagnostics.Error(node.line, node.column, "undeclared identifier");
       RETURN Types.Undefined
@@ -795,7 +880,7 @@ MODULE SemanticActions;
         paramType := ResolveType(scope, section.type, FALSE);
         idents := section.names;
         WHILE idents # NIL DO
-          Types.AddParam(pt, paramType, section.isVar);
+          Types.AddParam(pt, idents.name, paramType, section.isVar);
           idents := idents.next
         END;
         section := section.next
@@ -963,10 +1048,10 @@ MODULE SemanticActions;
   BEGIN
     IF ~(expr IS SyntaxTree.DesignatorExprNode) THEN RETURN NIL END;
     de := expr(SyntaxTree.DesignatorExprNode);
-    IF de.hasParens OR (de.designator.qualifier[0] # 0X) OR (de.designator.selectors # NIL) THEN
+    IF de.hasParens OR (de.designator.selectors # NIL) THEN
       RETURN NIL
     END;
-    obj := SymbolTable.Find(scope, de.designator.name);
+    obj := FindQualified(scope, de.designator.qualifier, de.designator.name, de.line, de.column);
     IF (obj # NIL) & (obj.class = SymbolTable.typeClass) & (obj.type # NIL) THEN
       RETURN obj.type
     ELSE
@@ -1022,9 +1107,9 @@ MODULE SemanticActions;
     END
   END CheckGuard;
 
-  (* Resolves d's qualident (rejecting a non-empty qualifier the same way
-     ResolveQualidentType already does - qualified names are Phase 7),
-     then walks d.selectors, applying §8.1's auto-deref rule ("record and
+  (* Resolves d's qualident via FindQualified (PLAN.md Phase 7 - see that
+     procedure's own header comment), then walks d.selectors, applying
+     §8.1's auto-deref rule ("record and
      array selectors imply dereferencing") before each '.'/'['. Once
      currentType becomes Types.Undefined, remaining selectors are
      skipped - the same UndefinedValue()-propagation idiom
@@ -1062,18 +1147,33 @@ MODULE SemanticActions;
       idxType: Types.Type;
       ptr: Types.PointerType;
       arr: Types.ArrayType;
+      crossedBoundary: BOOLEAN;
   BEGIN
     readOnly := FALSE; isVariable := FALSE;
-    IF d.qualifier[0] # 0X THEN
-      Diagnostics.Error(d.line, d.column, "qualified names are not yet supported");
-      RETURN Types.Undefined
-    END;
-    obj := SymbolTable.Find(scope, d.name);
+    (* PLAN.md Phase 7: "-" read-only export (Oberon2.pdf §4: "read-only
+       in importing modules") restricts writes only once the designator
+       has crossed into another module - never within the module that
+       declared the field/var itself (e.g. Ch. 11's own NewTree assigning
+       t.name, a field it exported read-only). d.qualifier is a reliable
+       signal for the designator's own base (an unqualified name can only
+       ever resolve within the current module's own scope chain, never
+       into an imported moduleScope - SymbolTable.Find never walks one).
+       A narrower, explicitly accepted gap: a field reached only
+       *indirectly* through a local variable whose own type was imported
+       (VAR x: OtherModule.T; x.field := ...) is not flagged, since
+       Types.Field/RecordType carry no "which module declared this" of
+       their own to check per-selector without deeper plumbing - no
+       worse than this check's own prior, entirely unconditional
+       behavior, and still correctly catches the direct
+       "Module.exportedVar.field := ..." shape. *)
+    crossedBoundary := d.qualifier[0] # 0X;
+    obj := FindQualified(scope, d.qualifier, d.name, d.line, d.column);
     IF obj = NIL THEN
       Diagnostics.Error(d.line, d.column, "undeclared identifier");
       RETURN Types.Undefined
     ELSIF (obj.class = SymbolTable.varClass) OR (obj.class = SymbolTable.constClass) THEN
       isVariable := obj.class = SymbolTable.varClass;
+      readOnly := crossedBoundary & obj.readOnly;
       t := obj.type
     ELSIF obj.class = SymbolTable.procClass THEN
       t := obj.type (* a real Types.ProcedureType, or Types.PredeclaredProcedureType *)
@@ -1097,7 +1197,8 @@ MODULE SemanticActions;
             rec := t(Types.RecordType);
             field := Types.FindField(rec, sel.name);
             IF field # NIL THEN
-              t := field.type; readOnly := readOnly OR field.readOnly
+              t := field.type;
+              readOnly := readOnly OR (field.readOnly & ~IsLocalType(scope, rec))
             ELSE
               method := Types.FindMethod(rec, sel.name);
               IF method = NIL THEN
@@ -1808,21 +1909,20 @@ MODULE SemanticActions;
                            loopDepth: INTEGER; procResultType: Types.Type);
     VAR obj, targetObj: SymbolTable.Object; leftType, targetType, narrowed: Types.Type;
   BEGIN
-    IF g.variableQualifier[0] # 0X THEN
-      Diagnostics.Error(g.line, g.column, "qualified names are not yet supported");
-      RETURN
-    END;
-    obj := SymbolTable.Find(scope, g.variableName);
+    (* A qualified WITH variable (WITH M.v: T DO ...) type-checks
+       correctly, but CheckWithGuardBody's shadow-insert below only ever
+       narrows a *bare* name in scope - the body still writes "M.v", not
+       a rebound "v", for exactly the same reason the shadow only ever
+       helped the plain-identifier case to begin with. A narrow,
+       documented limitation rather than new machinery for a rare
+       qualified-WITH-variable idiom with no fixture pressure yet. *)
+    obj := FindQualified(scope, g.variableQualifier, g.variableName, g.line, g.column);
     IF obj = NIL THEN
       Diagnostics.Error(g.line, g.column, "undeclared identifier");
       RETURN
     END;
     leftType := obj.type;
-    IF g.typeQualifier[0] # 0X THEN
-      Diagnostics.Error(g.line, g.column, "qualified type names are not yet supported");
-      RETURN
-    END;
-    targetObj := SymbolTable.Find(scope, g.typeName);
+    targetObj := FindQualified(scope, g.typeQualifier, g.typeName, g.line, g.column);
     IF (targetObj = NIL) OR (targetObj.class # SymbolTable.typeClass) THEN
       Diagnostics.Error(g.line, g.column, "expected a type name");
       RETURN
@@ -2037,7 +2137,7 @@ MODULE SemanticActions;
             IF d.isForward THEN
               unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
               method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, TRUE,
-                                         d.line, d.column)
+                                         d.receiver.typeName, d.line, d.column)
             ELSE
               method := Types.FindMethod(owner, d.name.name);
               IF (method # NIL) & method.pending THEN
@@ -2049,7 +2149,7 @@ MODULE SemanticActions;
               ELSE
                 unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
                 method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, FALSE,
-                                           d.line, d.column)
+                                           d.receiver.typeName, d.line, d.column)
               END;
               CheckProcedureBody(d, scope, receiverType, pt)
             END
@@ -2112,10 +2212,86 @@ MODULE SemanticActions;
     END
   END CheckStatementSeq;
 
-  PROCEDURE CheckModule*(module: SyntaxTree.ModuleNode): SymbolTable.Scope;
-    VAR scope: SymbolTable.Scope;
+  PROCEDURE ^ CheckModuleBody(module: SyntaxTree.ModuleNode; parseModule: ParseModuleProc;
+                              resolving: ImportChain): SymbolTable.Scope;
+
+  PROCEDURE InChain(chain: ImportChain; name: SyntaxTree.Ident): BOOLEAN;
+  BEGIN
+    WHILE (chain # NIL) & (chain.name # name) DO chain := chain.next END;
+    RETURN chain # NIL
+  END InChain;
+
+  (* Resolves one ImportNode: self-import and cyclic-import (via
+     resolving, see ImportChain's own header comment) are rejected
+     outright; otherwise reads and recursively resolves the imported
+     module's .sym file and binds a moduleClass Object for it into scope
+     - the same scope module-level declarations go into, so a name clash
+     between an import and a declaration is caught for free by Insert's
+     own existing duplicate check (Oberon2.pdf's own ImportList is part
+     of the module's declaration scope, not a separate namespace).
+     Diagnostics.fileName is saved/restored around the recursive call so
+     errors inside the .sym file are attributed to it, not to
+     moduleName's own outer caller - see Diagnostics.Mod's own header
+     comment on why this is a save/restore of a plain exported field
+     rather than a second Reset*-like procedure. *)
+  PROCEDURE ResolveImport(imp: SyntaxTree.ImportNode; module: SyntaxTree.ModuleNode;
+                          scope: SymbolTable.Scope; parseModule: ParseModuleProc;
+                          resolving: ImportChain);
+    VAR
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      found: BOOLEAN;
+      impModule: SyntaxTree.ModuleNode;
+      impScope: SymbolTable.Scope;
+      savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+      symName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+      chain: ImportChain;
+      bindName: SyntaxTree.Ident;
+      obj: SymbolTable.Object;
+  BEGIN
+    IF imp.moduleName = module.name THEN
+      Diagnostics.Error(imp.line, imp.column, "a module must not import itself")
+    ELSIF InChain(resolving, imp.moduleName) THEN
+      Diagnostics.Error(imp.line, imp.column, "cyclic module import")
+    ELSE
+      ModuleInterface.ReadSource(imp.moduleName, buffer, length, found);
+      IF ~found THEN
+        Diagnostics.Error(imp.line, imp.column, "unknown imported module")
+      ELSE
+        impModule := parseModule(buffer, length);
+        IF (impModule = NIL) OR (Diagnostics.errorCount > 0) THEN
+          Diagnostics.Error(imp.line, imp.column, "malformed module interface file")
+        ELSE
+          COPY(Diagnostics.fileName, savedFileName);
+          ModuleInterface.SymFileName(imp.moduleName, symName);
+          COPY(symName, Diagnostics.fileName);
+          NEW(chain); chain.name := imp.moduleName; chain.next := resolving;
+          impScope := CheckModuleBody(impModule, parseModule, chain);
+          COPY(savedFileName, Diagnostics.fileName);
+          IF imp.alias[0] # 0X THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
+          obj := SymbolTable.Insert(scope, bindName, SymbolTable.moduleClass, NIL, FALSE, FALSE,
+                                     imp.line, imp.column);
+          obj.moduleScope := impScope; obj.realModuleName := imp.moduleName
+        END
+      END
+    END
+  END ResolveImport;
+
+  (* The real body shared by CheckModule*'s top-level entry and
+     ResolveImport's recursive descent into an IMPORTed module's .sym
+     file - see ParseModuleProc's and ImportChain's own header comments
+     for why both a parser callback and a resolving-chain need to be
+     threaded through. *)
+  PROCEDURE CheckModuleBody(module: SyntaxTree.ModuleNode; parseModule: ParseModuleProc;
+                            resolving: ImportChain): SymbolTable.Scope;
+    VAR scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode;
   BEGIN
     scope := SymbolTable.OpenScope(SymbolTable.Universe);
+    imp := module.imports;
+    WHILE imp # NIL DO
+      ResolveImport(imp, module, scope, parseModule, resolving);
+      imp := imp.next
+    END;
     IF module.declarations # NIL THEN
       ResolveConstDecls(module.declarations.constDecls, scope);
       ResolveTypeDecls(module.declarations.typeDecls, scope);
@@ -2124,6 +2300,11 @@ MODULE SemanticActions;
     END;
     CheckStatementSeq(scope, module.statements, 0, NIL);
     RETURN scope
+  END CheckModuleBody;
+
+  PROCEDURE CheckModule*(module: SyntaxTree.ModuleNode; parseModule: ParseModuleProc): SymbolTable.Scope;
+  BEGIN
+    RETURN CheckModuleBody(module, parseModule, NIL)
   END CheckModule;
 
 END SemanticActions.

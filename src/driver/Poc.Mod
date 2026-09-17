@@ -16,10 +16,22 @@ MODULE Poc;
      extensions. *)
 
   IMPORT Modules, Files, Out, Lexer, Diagnostics, Parser, SyntaxTree, SemanticActions,
-         SymbolTable, Types, MemoryLayout;
+         SymbolTable, Types, MemoryLayout, ModuleInterface;
 
   CONST
     maxLineLength = 4096;
+
+  (* PLAN.md Phase 7: the concrete instance of SemanticActions.ParseModuleProc,
+     supplied here because Poc.Mod is the only module that already imports
+     both Parser.Mod and SemanticActions.Mod without creating an import
+     cycle - see ModuleInterface.Mod's and SemanticActions.Mod's own header
+     comments on why neither of those two can import Parser.Mod directly. *)
+  PROCEDURE ParseModuleAdapter(buffer: Lexer.CharBuffer; length: LONGINT): SyntaxTree.ModuleNode;
+    VAR parser: Parser.Parser;
+  BEGIN
+    Parser.InitParser(parser, buffer, length);
+    RETURN Parser.ParseModule(parser)
+  END ParseModuleAdapter;
 
   PROCEDURE ReadSource(name: ARRAY OF CHAR; VAR buffer: Lexer.CharBuffer;
                         VAR length: LONGINT): BOOLEAN;
@@ -118,7 +130,7 @@ MODULE Poc;
       Parser.InitParser(parser, buffer, length);
       module := Parser.ParseModule(parser);
       IF Diagnostics.errorCount = 0 THEN
-        scope := SemanticActions.CheckModule(module)
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
       END;
       IF Diagnostics.errorCount > 0 THEN
         Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
@@ -127,6 +139,32 @@ MODULE Poc;
       END
     END
   END Check;
+
+  PROCEDURE EmitInterface(name: ARRAY OF CHAR);
+    VAR
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      parser: Parser.Parser;
+      module: SyntaxTree.ModuleNode;
+      scope: SymbolTable.Scope;
+  BEGIN
+    IF ~ReadSource(name, buffer, length) THEN
+      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+    ELSE
+      Diagnostics.Reset(name);
+      Parser.InitParser(parser, buffer, length);
+      module := Parser.ParseModule(parser);
+      IF Diagnostics.errorCount = 0 THEN
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+      END;
+      IF Diagnostics.errorCount > 0 THEN
+        Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
+      ELSE
+        ModuleInterface.Write(module, scope);
+        Out.String("semantic OK, wrote "); Out.String(module.name); Out.String(".sym"); Out.Ln
+      END
+    END
+  END EmitInterface;
 
   PROCEDURE PrintLayoutLine(name: ARRAY OF CHAR; t: Types.Type);
   BEGIN
@@ -168,7 +206,7 @@ MODULE Poc;
       Parser.InitParser(parser, buffer, length);
       module := Parser.ParseModule(parser);
       IF Diagnostics.errorCount = 0 THEN
-        scope := SemanticActions.CheckModule(module)
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
       END;
       IF Diagnostics.errorCount > 0 THEN
         Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
@@ -191,7 +229,8 @@ MODULE Poc;
     Out.String("usage: poc -dump-tokens <file>"); Out.Ln;
     Out.String("       poc -check-syntax <file>"); Out.Ln;
     Out.String("       poc -check <file>"); Out.Ln;
-    Out.String("       poc -dump-layout <file>"); Out.Ln
+    Out.String("       poc -dump-layout <file>"); Out.Ln;
+    Out.String("       poc -emit-interface <file>"); Out.Ln
   END Usage;
 
   PROCEDURE Run;
@@ -210,6 +249,8 @@ MODULE Poc;
         Check(fileName)
       ELSIF option = "-dump-layout" THEN
         DumpLayout(fileName)
+      ELSIF option = "-emit-interface" THEN
+        EmitInterface(fileName)
       ELSE
         Usage
       END

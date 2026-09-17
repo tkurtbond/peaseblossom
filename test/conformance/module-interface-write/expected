@@ -1,0 +1,18 @@
+MODULE lib;
+  CONST
+    Limit* = 100;
+    Greeting* = "hi";
+    Flag* = TRUE;
+  TYPE
+    Base* = RECORD tag*: INTEGER END;
+    Derived* = RECORD (Base) value*: INTEGER END;
+    List* = POINTER TO RECORD data-: INTEGER; next*: List END;
+    Names* = ARRAY OF INTEGER;
+    Callback* = PROCEDURE(x: INTEGER): BOOLEAN;
+  VAR
+    Counter*: INTEGER;
+    ReadOnlyCounter-: INTEGER;
+  PROCEDURE^ (VAR self: Base) Tag*(): INTEGER;
+  PROCEDURE^ (self: List) Sum*(): INTEGER;
+  PROCEDURE^ MakeList*(n: INTEGER): List;
+END lib.

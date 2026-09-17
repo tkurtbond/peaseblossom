@@ -123,6 +123,11 @@ MODULE Types;
 
     Param* = POINTER TO ParamDesc;
     ParamDesc* = RECORD
+      name*: SyntaxTree.Ident; (* PLAN.md Phase 7: the declared parameter's
+        own spelling, meaningless to Appendix A's "matching formal
+        parameter lists" (never compared) but kept so ModuleInterface.Mod
+        can print a real, human-readable name in a .sym file instead of a
+        placeholder *)
       type*: Type;
       isVar*: BOOLEAN;
       next*: Param
@@ -153,6 +158,13 @@ MODULE Types;
       name*: SyntaxTree.Ident;
       procType*: ProcedureType;
       receiverIsVar*, exported*, pending*: BOOLEAN;
+      receiverTypeName*: SyntaxTree.Ident; (* PLAN.md Phase 7: the receiver's
+        declared type identifier verbatim (SyntaxTree.ReceiverNode.typeName),
+        not just the resolved RecordType it dereferences to - the same
+        name could be a POINTER TO alias distinct from the record's own
+        name (the report's own "(t: Tree) ... Tree = POINTER TO Node"
+        idiom), and ModuleInterface.Mod's writer needs that exact spelling
+        to print a re-parseable receiver clause *)
       next*: Method
     END;
 
@@ -284,6 +296,7 @@ MODULE Types;
      never checks inherited-field collisions. *)
   PROCEDURE AddMethod*(rec: RecordType; name: SyntaxTree.Ident; procType: ProcedureType;
                        receiverIsVar, exported, pending: BOOLEAN;
+                       receiverTypeName: SyntaxTree.Ident;
                        line, column: INTEGER): Method;
     VAR m, existing: Method; f: Field;
   BEGIN
@@ -295,7 +308,8 @@ MODULE Types;
       Diagnostics.Error(line, column, "name already declared in this record")
     END;
     NEW(m); m.name := name; m.procType := procType; m.receiverIsVar := receiverIsVar;
-    m.exported := exported; m.pending := pending; m.next := NIL;
+    m.exported := exported; m.pending := pending; m.receiverTypeName := receiverTypeName;
+    m.next := NIL;
     IF rec.methods = NIL THEN
       rec.methods := m
     ELSE
@@ -334,10 +348,10 @@ MODULE Types;
 
   (* Appends a parameter to pt's own list, in declaration order (needed by
      ParamListsMatch/Appendix A's "matching formal parameter lists"). *)
-  PROCEDURE AddParam*(pt: ProcedureType; type: Type; isVar: BOOLEAN);
+  PROCEDURE AddParam*(pt: ProcedureType; name: SyntaxTree.Ident; type: Type; isVar: BOOLEAN);
     VAR p, tail: Param;
   BEGIN
-    NEW(p); p.type := type; p.isVar := isVar; p.next := NIL;
+    NEW(p); p.name := name; p.type := type; p.isVar := isVar; p.next := NIL;
     IF pt.params = NIL THEN
       pt.params := p
     ELSE

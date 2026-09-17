@@ -56,14 +56,25 @@ MODULE PredeclaredProcedures;
      SemanticActions.LookupBareTypeName rather than an injected
      dependency. *)
   PROCEDURE LookupBareTypeName(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
-    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object;
+    VAR de: SyntaxTree.DesignatorExprNode; obj, modObj: SymbolTable.Object;
   BEGIN
     IF ~(expr IS SyntaxTree.DesignatorExprNode) THEN RETURN NIL END;
     de := expr(SyntaxTree.DesignatorExprNode);
-    IF de.hasParens OR (de.designator.qualifier[0] # 0X) OR (de.designator.selectors # NIL) THEN
+    IF de.hasParens OR (de.designator.selectors # NIL) THEN
       RETURN NIL
     END;
-    obj := SymbolTable.Find(scope, de.designator.name);
+    (* PLAN.md Phase 7: a qualified bare type name (MAX(OtherModule.T))
+       resolves the same small way SemanticActions.FindQualified/
+       ConstantEvaluator.FindQualifiedConst do - see this procedure's own
+       header comment on why that lookup is duplicated here rather than
+       injected. *)
+    IF de.designator.qualifier[0] = 0X THEN
+      obj := SymbolTable.Find(scope, de.designator.name)
+    ELSE
+      modObj := SymbolTable.Find(scope, de.designator.qualifier);
+      IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN RETURN NIL END;
+      obj := SymbolTable.FindLocal(modObj.moduleScope, de.designator.name)
+    END;
     IF (obj # NIL) & (obj.class = SymbolTable.typeClass) & (obj.type # NIL) THEN
       RETURN obj.type
     ELSE
