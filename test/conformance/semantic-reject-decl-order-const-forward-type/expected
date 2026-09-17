@@ -1,0 +1,2 @@
+reject-decl-order-const-forward-type.mod:19:9: error: MAX/MIN/SIZE requires a type name argument
+1 error(s)

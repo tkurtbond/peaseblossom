@@ -322,8 +322,29 @@ MODULE ConstantEvaluator;
     de := expr(SyntaxTree.DesignatorExprNode);
     IF de.hasParens OR (de.designator.selectors # NIL) THEN RETURN NIL END;
     obj := FindQualifiedConst(scope, de.designator);
-    IF (obj = NIL) OR (obj.class # SymbolTable.typeClass) THEN RETURN NIL END;
-    RETURN obj.type
+    IF (obj = NIL) OR (obj.class # SymbolTable.typeClass) THEN
+      RETURN NIL
+    ELSIF (de.designator.qualifier[0] = 0X) & (obj.declLine >= expr.line) THEN
+      (* A same-module (unqualified) forward reference - PLAN.md's
+         "Declaration order": now that CONST/TYPE/VAR resolve in one
+         merged textual-order pass (SemanticActions.ResolveDeclSeq),
+         MAX/MIN/SIZE's type-name argument could otherwise sometimes
+         resolve early anyway, as a side effect of an unrelated earlier
+         POINTER's own base lookup elsewhere in the module - but unlike a
+         POINTER's own base, this argument position is never the one
+         Oberon2.pdf-sanctioned forward-reference exception, so it must
+         still be rejected regardless of whether obj.type already happens
+         to be populated (mirrors SemanticActions.ResolveQualidentType's
+         own identical fix, same root cause, confirmed against real voc
+         2026-09-17). A *qualified* (M.T) reference is skipped here - it
+         names a type in an already-fully-checked imported module (every
+         IMPORT resolves before this module's own declarations do), so
+         obj.declLine is a line number in that other file's own text, not
+         comparable to expr.line at all. *)
+      RETURN NIL
+    ELSE
+      RETURN obj.type
+    END
   END LookupBareTypeName;
 
   (* MAX/MIN(T)'s bound for every T PredeclaredProcedures.CheckMaxMin

@@ -642,20 +642,25 @@ MODULE SemanticActions;
     END
   END CheckExportMark;
 
-  PROCEDURE ResolveConstDecls(decls: SyntaxTree.ConstDeclNode; scope: SymbolTable.Scope);
-    VAR d: SyntaxTree.ConstDeclNode; v: Types.Value; obj: SymbolTable.Object;
+  (* Resolves one CONST declaration - called from ResolveDeclSeq's merged
+     textual-order walk (below ResolveOneVarDecl further down), not looped
+     over a whole CONST section here anymore. PLAN.md's "Open design
+     questions" - "Declaration order": a CONST's value may reference an
+     earlier TYPE from anywhere in this DeclSeq (e.g. SIZE(Rec)), which
+     resolving every CONST before any TYPE (the old whole-section-pass
+     order) could never support regardless of source order - confirmed
+     against real voc, which resolves CONST/TYPE/VAR in one linear
+     textual-order pass, not three separate section-wide ones. *)
+  PROCEDURE ResolveOneConstDecl(d: SyntaxTree.ConstDeclNode; scope: SymbolTable.Scope);
+    VAR v: Types.Value; obj: SymbolTable.Object;
   BEGIN
-    d := decls;
-    WHILE d # NIL DO
-      CheckExportMark(d.name);
-      v := ConstantEvaluator.Evaluate(d.value, scope);
-      obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.constClass, v.type,
-                                 d.name.exportMark # SyntaxTree.exportNone, FALSE,
-                                 d.name.line, d.name.column);
-      obj.value := v;
-      d := d.next
-    END
-  END ResolveConstDecls;
+    CheckExportMark(d.name);
+    v := ConstantEvaluator.Evaluate(d.value, scope);
+    obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.constClass, v.type,
+                               d.name.exportMark # SyntaxTree.exportNone, FALSE,
+                               d.name.line, d.name.column);
+    obj.value := v
+  END ResolveOneConstDecl;
 
   (* base may name a type declared later in the same block (§4 rule 3);
      ResolveType/ResolveQualidentType/ResolveNamedType are mutually
@@ -705,7 +710,8 @@ MODULE SemanticActions;
      ...). A field like DesignatorDesc.selectors: Selector is *not* a
      forward reference in the report's sense at all - Selector's own
      declaration (line 33) is textually well before DesignatorDesc's
-     (line 89) - but ResolveTypeDecls's pass 2 still visits Designator
+     (line 89) - but TYPE resolution (ResolveDeclSeq's merged walk below,
+     formerly a dedicated ResolveTypeDecls) still visits Designator
      (item 2 in the list) before Selector (item 3) ever gets its own
      turn, and Designator's POINTER resolution eagerly recurses into
      DesignatorDesc's fields right away (the allowForward-TRUE base
@@ -868,12 +874,42 @@ MODULE SemanticActions;
       Diagnostics.Error(node.line, node.column,
         "a record may not directly contain itself; use POINTER TO instead");
       RETURN Types.Undefined
-    ELSIF obj.type # NIL THEN
-      RETURN obj.type
-    ELSIF ~allowForward & (obj.pendingTypeNode.line >= node.line) THEN
+    ELSIF ~allowForward & (node.qualifier[0] = 0X) & (obj.declLine >= node.line) THEN
+      (* Checked before the obj.type # NIL fast path below, not after -
+         found while implementing "Declaration order" (PLAN.md's "Open
+         design questions"): once CONST/TYPE/VAR resolve in one merged
+         textual-order pass (ResolveDeclSeq below) instead of three
+         whole-section passes, an earlier POINTER's own base (allowForward
+         TRUE, exempt from this check entirely) can eagerly resolve some
+         later type's obj.type as a side effect, before that type's own
+         textual turn in the pass - obj.pendingTypeNode.line (the old
+         source of this check) is cleared to NIL the moment that happens,
+         so a check gated behind "obj.type = NIL" loses the ability to
+         even ask the question. obj.declLine (SymbolTable.ObjectDesc, set
+         once by Insert and never cleared) survives resolution, so the
+         check can still run regardless of whether obj.type is already
+         resolved. Confirmed against real voc (2026-09-17): "TYPE P =
+         POINTER TO PDesc; VAR r: PDesc; TYPE PDesc = ...;" is rejected -
+         an earlier pointer's presence does not make its base name visible
+         to anything else ahead of the base's own textual position, even
+         though poc's own eager-resolution implementation (unlike voc's,
+         apparently) already has PDesc's Types.Type sitting right there in
+         scope by the time "VAR r: PDesc" is reached. Only applies to an
+         unqualified (same-module) reference (node.qualifier empty) - a
+         qualified M.T reference names a type in an already-fully-checked
+         imported module (every IMPORT resolves before this module's own
+         declarations do), so obj.declLine is a line number in that other
+         file's own text, not comparable to this file's node.line at all;
+         found by this exact mistake initially breaking
+         semantic-reject-readonly-import-field (a legitimate cross-module
+         "VAR t: trees.Tree" wrongly rejected as "forward"), fixed by
+         adding this guard - mirrors ConstantEvaluator.LookupBareTypeName's
+         own identical qualifier check, added alongside this. *)
       Diagnostics.Error(node.line, node.column,
         "forward reference to a type is allowed only as a POINTER TO base type");
       RETURN Types.Undefined
+    ELSIF obj.type # NIL THEN
+      RETURN obj.type
     ELSE
       RETURN ResolveNamedType(scope, obj)
     END
@@ -1020,58 +1056,135 @@ MODULE SemanticActions;
     RETURN Types.NewPointerType(resolvedBase)
   END ResolveType;
 
-  PROCEDURE ResolveTypeDecls(decls: SyntaxTree.TypeDeclNode; scope: SymbolTable.Scope);
-    VAR d: SyntaxTree.TypeDeclNode; obj: SymbolTable.Object; resolved: Types.Type;
+  (* Pre-declares every TYPE name in decls (a whole DeclSeq's typeDecls
+     list, possibly assembled from several separate, interleaved TYPE
+     sections - Parser.Mod's ParseDeclSeq already accepts that, matching
+     voc's own DeclSeq extension), with obj.pendingTypeNode set but
+     nothing resolved yet - so a POINTER's own inline base can find any
+     other name in the same DeclSeq regardless of its own textual
+     position (Oberon2.pdf §4 rule 3's one sanctioned forward-reference
+     exception), before ResolveDeclSeq's own merged pass below resolves
+     anything. Split out from the old ResolveTypeDecls (which combined
+     this with its own "pass 2" loop) so ResolveDeclSeq can run this
+     once, up front, before interleaving TYPE resolution with CONST/VAR
+     in true textual order - see ResolveDeclSeq's own comment below (and
+     PLAN.md's "Declaration order" entry) for the voc evidence this is
+     based on. *)
+  PROCEDURE PredeclareTypeNames(decls: SyntaxTree.TypeDeclNode; scope: SymbolTable.Scope);
+    VAR d: SyntaxTree.TypeDeclNode; obj: SymbolTable.Object;
   BEGIN
     d := decls;
-    WHILE d # NIL DO (* pass 1: bind every name first, so a POINTER TO can
-                         find one declared later in this same list *)
-      CheckExportMark(d.name);
+    WHILE d # NIL DO
+      (* CheckExportMark deliberately NOT called here - it's a pure "-"
+         export-mark validity check with no bearing on name resolution
+         order at all, so running it during this up-front pre-declare
+         pass (needed only for the POINTER-forward-reference exception,
+         see this procedure's own header comment) would report it out of
+         textual order relative to CONST/VAR's own export-mark errors,
+         which the merged walk below only reaches later. Deferred to
+         ResolveOneTypeDecl instead, so it fires at this type's own turn
+         in the merged pass, like every other diagnostic. Found by
+         semantic-reject-readonly-mark's own two expected errors coming
+         back swapped once this pre-pass existed. *)
       obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.typeClass, NIL,
                                  d.name.exportMark # SyntaxTree.exportNone, FALSE,
                                  d.name.line, d.name.column);
       obj.pendingTypeNode := d.type;
       d := d.next
-    END;
-    d := decls;
-    WHILE d # NIL DO (* pass 2: resolve each, in declaration order *)
-      obj := SymbolTable.FindLocal(scope, d.name.name);
-      resolved := ResolveNamedType(scope, obj);
-      d := d.next
     END
-  END ResolveTypeDecls;
+  END PredeclareTypeNames;
 
-  (* By the time VAR declarations resolve, every TYPE in this DeclSeq is
-     already fully resolved via ResolveTypeDecls above, regardless of
-     source order (SyntaxTree.DeclSeqNode already groups CONST/TYPE/VAR/
-     PROCEDURE into four separate lists) - so unlike ResolveTypeDecls, a
-     single pass suffices: no forward machinery is needed. exported/
-     readOnly come straight from each name's own export mark, exactly
-     like PopulateRecordFields already does for fields - no
-     CheckExportMark call, since VAR legitimately allows the '-' mark
-     (Appendix A; CheckExportMark exists only to reject it on CONST/TYPE
-     names). *)
-  PROCEDURE ResolveVarDecls(decls: SyntaxTree.VarDeclNode; scope: SymbolTable.Scope);
-    VAR
-      d: SyntaxTree.VarDeclNode;
-      t: Types.Type;
-      idents: SyntaxTree.IdentDefNode;
-      obj: SymbolTable.Object;
+  (* Resolves one TYPE declaration whose name PredeclareTypeNames already
+     registered - called from ResolveDeclSeq's merged textual-order walk
+     below. A thin wrapper so that walk's dispatch reads uniformly
+     (ResolveOneConstDecl/ResolveOneTypeDecl/ResolveOneVarDecl), even
+     though the real work is just the existing FindLocal + ResolveNamedType
+     pair. *)
+  PROCEDURE ResolveOneTypeDecl(d: SyntaxTree.TypeDeclNode; scope: SymbolTable.Scope);
+    VAR obj: SymbolTable.Object; resolved: Types.Type;
   BEGIN
-    d := decls;
-    WHILE d # NIL DO
-      t := ResolveType(scope, d.type, FALSE);
-      idents := d.names;
-      WHILE idents # NIL DO
-        obj := SymbolTable.Insert(scope, idents.name, SymbolTable.varClass, t,
-                                   idents.exportMark # SyntaxTree.exportNone,
-                                   idents.exportMark = SyntaxTree.exportReadOnly,
-                                   idents.line, idents.column);
-        idents := idents.next
-      END;
-      d := d.next
+    CheckExportMark(d.name); (* deferred from PredeclareTypeNames - see its
+                                 own comment on why *)
+    obj := SymbolTable.FindLocal(scope, d.name.name);
+    resolved := ResolveNamedType(scope, obj)
+  END ResolveOneTypeDecl;
+
+  (* Resolves one VAR declaration (one comma-separated name group sharing
+     a type, e.g. "a, b: INTEGER") - called from ResolveDeclSeq's merged
+     textual-order walk below. exported/readOnly come straight from each
+     name's own export mark, exactly like PopulateRecordFields already
+     does for fields - no CheckExportMark call, since VAR legitimately
+     allows the '-' mark (Appendix A; CheckExportMark exists only to
+     reject it on CONST/TYPE names). *)
+  PROCEDURE ResolveOneVarDecl(d: SyntaxTree.VarDeclNode; scope: SymbolTable.Scope);
+    VAR t: Types.Type; idents: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
+  BEGIN
+    t := ResolveType(scope, d.type, FALSE);
+    idents := d.names;
+    WHILE idents # NIL DO
+      obj := SymbolTable.Insert(scope, idents.name, SymbolTable.varClass, t,
+                                 idents.exportMark # SyntaxTree.exportNone,
+                                 idents.exportMark = SyntaxTree.exportReadOnly,
+                                 idents.line, idents.column);
+      idents := idents.next
     END
-  END ResolveVarDecls;
+  END ResolveOneVarDecl;
+
+  PROCEDURE EarlierPosition(aLine, aColumn, bLine, bColumn: INTEGER): BOOLEAN;
+  BEGIN
+    RETURN (aLine < bLine) OR ((aLine = bLine) & (aColumn < bColumn))
+  END EarlierPosition;
+
+  (* Resolves an entire DeclSeq's CONST/TYPE/VAR declarations (PROCEDURE
+     decls are handled separately by ResolveProcDecls, unaffected - they
+     must textually follow every CONST/TYPE/VAR section regardless,
+     confirmed against real voc, which rejects a TYPE/VAR section
+     appearing after the first PROCEDURE). PLAN.md's "Open design
+     questions" - "Declaration order": replaces what used to be three
+     separate whole-section passes (every CONST, then every TYPE, then
+     every VAR) with one merged pass in actual textual order, a three-way
+     merge over decls.constDecls/typeDecls/varDecls (each already in its
+     own textual order - SyntaxTree.DeclSeqNode's own header comment
+     explains why cross-list order isn't tracked directly - so this only
+     needs to interleave the three, using each node's own line/column,
+     always populated by NewConstDecl/NewTypeDecl/NewVarDecl). Confirmed
+     against real voc (2026-09-17, a battery of targeted fixtures, not
+     just one accepting case): voc allows CONST/TYPE/VAR *sections* in any
+     order, repeated and interleaved arbitrarily, but still enforces
+     strict declare-before-use, single-pass resolution throughout - no
+     general forward references, only its two standard exceptions
+     (POINTER's own inline base, PROCEDURE^), both already implemented
+     and untouched by this change. TYPE names are still all pre-declared
+     up front (PredeclareTypeNames) before any of the three kinds resolve
+     - that pre-declaration is what the POINTER exception actually runs
+     on (see PredeclareTypeNames's own comment); it does not, on its own,
+     let CONST or VAR see a TYPE early - ResolveQualidentType's and
+     ConstantEvaluator.LookupBareTypeName's own forward-position checks
+     (both using the new SymbolTable.ObjectDesc.declLine/declColumn,
+     added alongside this) still reject that regardless of whether
+     eager resolution already happened to populate obj.type early as a
+     side effect of resolving some unrelated pointer elsewhere. *)
+  PROCEDURE ResolveDeclSeq(decls: SyntaxTree.DeclSeqNode; scope: SymbolTable.Scope);
+    VAR
+      c: SyntaxTree.ConstDeclNode; t: SyntaxTree.TypeDeclNode; v: SyntaxTree.VarDeclNode;
+      pickConst, pickType: BOOLEAN;
+  BEGIN
+    PredeclareTypeNames(decls.typeDecls, scope);
+    c := decls.constDecls; t := decls.typeDecls; v := decls.varDecls;
+    WHILE (c # NIL) OR (t # NIL) OR (v # NIL) DO
+      pickConst := (c # NIL) & ((t = NIL) OR EarlierPosition(c.line, c.column, t.line, t.column))
+                              & ((v = NIL) OR EarlierPosition(c.line, c.column, v.line, v.column));
+      pickType := ~pickConst & (t # NIL)
+                  & ((v = NIL) OR EarlierPosition(t.line, t.column, v.line, v.column));
+      IF pickConst THEN
+        ResolveOneConstDecl(c, scope); c := c.next
+      ELSIF pickType THEN
+        ResolveOneTypeDecl(t, scope); t := t.next
+      ELSE
+        ResolveOneVarDecl(v, scope); v := v.next
+      END
+    END
+  END ResolveDeclSeq;
 
   (* ---- Phase 5: variables, expressions, statements (Oberon2.pdf §7, §8,
      §9 minus WITH) ----
@@ -2294,8 +2407,9 @@ MODULE SemanticActions;
      declarations (Oberon2.pdf §10) ----
 
      ResolveProcDecls walks a DeclSeq's procDecls list once, in textual
-     order - unlike ResolveTypeDecls's two-pass forward machinery,
-     because Oberon-2 gives procedures an *explicit* forward-reference
+     order - unlike TYPE's own PredeclareTypeNames-then-resolve forward
+     machinery (ResolveDeclSeq above), because Oberon-2 gives procedures
+     an *explicit* forward-reference
      escape hatch already parsed since Phase 2 ("PROCEDURE^ ...;",
      ProcDeclNode.isForward): a procedure is visible from its declaration
      point onward, exactly like CONST/VAR, unless a preceding
@@ -2443,9 +2557,7 @@ MODULE SemanticActions;
       END
     END;
     IF d.declarations # NIL THEN
-      ResolveConstDecls(d.declarations.constDecls, bodyScope);
-      ResolveTypeDecls(d.declarations.typeDecls, bodyScope);
-      ResolveVarDecls(d.declarations.varDecls, bodyScope);
+      ResolveDeclSeq(d.declarations, bodyScope);
       ResolveProcDecls(d.declarations.procDecls, bodyScope, nonLocalAssigns)
     END;
     IF (pt.resultType # NIL) & (d.statements = NIL) THEN
@@ -2694,9 +2806,7 @@ MODULE SemanticActions;
          module-qualified guard unconditionally regardless of what this
          set contains. *)
       CollectProcAssignedNames(module.declarations.procDecls, nonLocalAssigns);
-      ResolveConstDecls(module.declarations.constDecls, scope);
-      ResolveTypeDecls(module.declarations.typeDecls, scope);
-      ResolveVarDecls(module.declarations.varDecls, scope);
+      ResolveDeclSeq(module.declarations, scope);
       ResolveProcDecls(module.declarations.procDecls, scope, nonLocalAssigns)
     END;
     CheckStatementSeq(scope, module.statements, nonLocalAssigns, 0, NIL);

@@ -78,6 +78,15 @@ MODULE SymbolTable;
       exported*, readOnly*: BOOLEAN;
       pendingTypeNode*: SyntaxTree.TypeNode; (* typeClass only; see above *)
       resolving*: BOOLEAN; (* typeClass only; see above *)
+      declLine*, declColumn*: INTEGER; (* every class: this Object's own
+        declaration site, set once by Insert and never cleared -
+        SemanticActions.ResolveQualidentType's forward-reference check
+        needs this instead of pendingTypeNode's line: pendingTypeNode is
+        cleared the moment a typeClass Object resolves, but eager
+        resolution (a POINTER's own base, chasing into whatever it names)
+        can resolve an Object well before that name's own textual turn
+        comes up elsewhere, so the position has to survive resolution to
+        still be checkable afterward. *)
       isForwardProc*: BOOLEAN; (* procClass only; see above *)
       isVarParam*: BOOLEAN; (* varClass only: TRUE for a VAR-kind formal
         parameter or receiver (SemanticActions.Mod's CheckProcedureBody
@@ -156,6 +165,7 @@ MODULE SymbolTable;
     o.name := name; o.class := class; o.type := type;
     o.value := NIL; o.exported := exported; o.readOnly := readOnly;
     o.pendingTypeNode := NIL; o.resolving := FALSE;
+    o.declLine := line; o.declColumn := column;
     o.isForwardProc := FALSE; o.isVarParam := FALSE;
     o.externalConvention[0] := 0X; o.externalName[0] := 0X;
     o.moduleScope := NIL; o.realModuleName[0] := 0X;

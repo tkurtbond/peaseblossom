@@ -580,9 +580,62 @@ external-symbol names are subject to the same 31-character limit above.
   number of times) - the gap is that it then sorts every declaration into
   three separate `SyntaxTree.DeclSeqNode` lists (`constDecls`/`typeDecls`/
   `varDecls`), discarding the cross-section textual order `CheckModuleBody`
-  would need to walk them in one pass. Not yet implemented - this entry
-  records the design decision and the voc evidence behind it, in advance
-  of the actual `SemanticActions.Mod`/`SyntaxTree.Mod` change.
+  would need to walk them in one pass.
+
+  **Implemented 2026-09-17.** `SemanticActions.Mod`'s old
+  `ResolveConstDecls`/`ResolveTypeDecls`/`ResolveVarDecls` (three whole-
+  section passes) are replaced by `ResolveDeclSeq`: a `PredeclareTypeNames`
+  pre-pass (unchanged in spirit - registers every `TYPE` name across the
+  whole `DeclSeq` up front, `obj.pendingTypeNode` set but nothing resolved
+  yet, so the `POINTER`-base exception still works regardless of source
+  order), then one merged pass dispatching to `ResolveOneConstDecl`/
+  `ResolveOneTypeDecl`/`ResolveOneVarDecl` in actual textual order - a
+  three-way merge over the three still-separately-typed lists (each
+  already in its own order), keyed on each node's own `line`/`column`
+  (`SyntaxTree.DeclSeqNodeDesc`'s own header comment has the rationale for
+  merging rather than restructuring the AST into one polymorphic list).
+  `SyntaxTree.Mod`, `ModuleInterface.Mod`, `Poc.Mod` (`-dump-layout`) are
+  untouched - none of them cared about cross-kind order.
+
+  Two real correctness gaps surfaced while implementing this, both fixed
+  alongside it, not deferred: the merge makes it newly possible for an
+  *earlier* `POINTER`'s own base resolution to eagerly resolve some
+  *later* type as a side effect, before that type's own textual turn in
+  the pass - `SemanticActions.ResolveQualidentType`'s existing forward-
+  reference check was gated behind `obj.pendingTypeNode.line` (cleared to
+  `NIL` the moment eager resolution happens) and its first branch
+  (`obj.type # NIL`) already short-circuited past the check entirely once
+  that happened, so this was actually a **pre-existing** bug, reachable
+  even before this change (confirmed with a standalone repro not
+  involving `CONST`/`VAR` merging at all: `TYPE P = POINTER TO PDesc; VAR
+  r: PDesc; TYPE PDesc = ...;` - poc accepted it, real voc rejects it).
+  Fixed by adding `SymbolTable.ObjectDesc.declLine*/declColumn*` (an
+  Object's own declaration site, set once by `Insert`, never cleared) and
+  checking that instead, before the `obj.type # NIL` fast path rather
+  than after; `ConstantEvaluator.LookupBareTypeName` (`MAX`/`MIN`/`SIZE`'s
+  own separate lookup, can't import `SemanticActions.Mod`) needed the
+  identical fix for the same reason, applied only to unqualified
+  (same-module) references - a qualified `M.T` reference's `declLine` is
+  a line number in that other, already-fully-checked file's own text, not
+  comparable to this module's `expr.line` at all; missing that qualifier
+  guard in `SemanticActions.ResolveQualidentType`'s own first attempt at
+  this fix broke `semantic-reject-readonly-import-field` (a legitimate
+  cross-module `VAR t: trees.Tree` wrongly flagged "forward reference"),
+  caught immediately by the conformance suite and fixed by adding the
+  guard. Separately, moving `TYPE`'s `CheckExportMark` (the `-` mark
+  validity check) into the new up-front pre-declare pass initially
+  reported it out of textual order relative to `CONST`/`VAR`'s own
+  export-mark errors (caught by `semantic-reject-readonly-mark`'s two
+  expected errors coming back swapped); fixed by deferring that call to
+  `ResolveOneTypeDecl` instead, so it fires at each type's own turn in the
+  merged pass like every other diagnostic, leaving only name registration
+  itself in the pre-declare pass. Three new conformance tests:
+  `semantic-decl-order-const-refs-later-section-type` (the original
+  `SIZE(Rec)` motivating case), `semantic-decl-order-interleaved-sections`
+  (`CONST`/`TYPE`/`CONST`/`VAR` in one `DeclSeq`), `semantic-reject-decl-
+  order-const-forward-type` (the still-illegal genuine forward case). All
+  94 conformance tests pass; the Phase 7 self-check sweep (`000-todo.org`)
+  still self-checks the same 8 modules clean as before, unaffected.
 
 ## Critical files
 
