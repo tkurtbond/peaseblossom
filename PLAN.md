@@ -466,9 +466,10 @@ external-symbol names are subject to the same 31-character limit above.
     right now, never a type declared in the *same* module's own `TYPE`
     section - `CheckModuleBody` resolves `CONST` declarations before
     `TYPE` declarations unconditionally, regardless of their relative
-    textual order (this file's own "Relax order of declarations" item,
-    `000-todo.org`), a real, concrete instance of that already-tracked
-    gap found while testing this.
+    textual order (`000-todo.org`'s "Relax order of declarations" item,
+    this file's own "Declaration order" entry below has the full
+    voc-verified rationale), a real, concrete instance of that
+    already-tracked gap found while testing this.
     Three new conformance tests: `semantic-const-max-min-size`,
     `semantic-reject-const-max-min-too-wide`, `semantic-reject-const-max-
     min-not-a-type`.
@@ -537,6 +538,51 @@ external-symbol names are subject to the same 31-character limit above.
   types - worth doing, but a separate, general `ConstantEvaluator.Mod`
   correctness fix, not specific to `MAX`/`MIN`. Not scheduled to any
   phase yet.
+
+- **Declaration order: voc relaxes CONST/TYPE/VAR *section* order, never
+  reference order** (`000-todo.org`'s "Relax order of declarations", the
+  general form of the `SIZE(Rec)` finding two entries above): tested
+  directly against real voc 2026-09-17 with a battery of targeted
+  fixtures, not just the one accepting case already known. Two
+  independent findings, easy to conflate but not the same thing:
+  - voc accepts `CONST`/`TYPE`/`VAR` *sections* in any order, repeated and
+    interleaved arbitrarily many times in a single `DeclSeq`
+    (`CONST A; TYPE Rec; CONST B = A+1; TYPE Rec2; VAR ...` all compiles) -
+    a real extension beyond `Oberon2.pdf`'s grammar, which fixes one
+    optional section each, in `CONST`, `TYPE`, `VAR` order. `PROCEDURE`
+    declarations, though, must still come after every `CONST`/`TYPE`/`VAR`
+    section - voc rejects a `TYPE`/`VAR` section appearing after the first
+    `PROCEDURE` (`err 41 END missing`), matching the grammar's own
+    `{ProcedureDecl ";" ...}` tail position.
+  - Despite that, voc still enforces strict declare-before-use, single-pass
+    name resolution throughout - confirmed rejected: a `CONST` forward-
+    referencing a later `CONST` in the same section, a `TYPE` forward-
+    referencing a later `TYPE` by value (inline field, no pointer), a
+    `CONST` referencing a `TYPE` declared in a *later* section, and a
+    procedure body referencing a `CONST` or another procedure declared
+    later (the latter needs the standard `PROCEDURE^` forward declaration,
+    same as poc already requires). The only two forward-reference
+    exceptions in the entire language are the two `Oberon2.pdf` already
+    documents and poc already implements: a `POINTER`'s own inline base
+    type, and `PROCEDURE^`.
+  So `SIZE(Rec)` (two entries above) works in voc not because voc allows a
+  `CONST` to forward-reference a `TYPE`, but because that fixture happened
+  to declare `TYPE Rec` *before* the `CONST` referencing it - a section-
+  order relaxation, not a reference-order one. **Decided** (discussion
+  2026-09-17): poc should match this precisely - no new forward-reference
+  mechanism, just resolve `CONST`/`TYPE`/`VAR` declarations as one linear
+  pass over the `DeclSeq` in actual textual order (regardless of which
+  keyword introduces each one), instead of `CheckModuleBody`'s current
+  three separate whole-section passes (`ResolveConstDecls` then
+  `ResolveTypeDecls` then `ResolveVarDecls`). `Parser.Mod`'s `ParseDeclSeq`
+  already parses interleaved/repeated `CONST`/`TYPE`/`VAR` sections
+  correctly (its outer `LOOP` accepts any of the three keywords, any
+  number of times) - the gap is that it then sorts every declaration into
+  three separate `SyntaxTree.DeclSeqNode` lists (`constDecls`/`typeDecls`/
+  `varDecls`), discarding the cross-section textual order `CheckModuleBody`
+  would need to walk them in one pass. Not yet implemented - this entry
+  records the design decision and the voc evidence behind it, in advance
+  of the actual `SemanticActions.Mod`/`SyntaxTree.Mod` change.
 
 ## Critical files
 
