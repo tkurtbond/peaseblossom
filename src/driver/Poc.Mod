@@ -18,9 +18,13 @@ MODULE Poc;
      library modules the driver may import - Modules.ArgCount/GetArg
      already reads the OS argv this way, and Platform.GetEnv (added for
      the IMPORT search path, PLAN.md's "Open design questions") is the
-     same kind of host-environment access, needed only here, never by
-     ModuleInterface.Mod or any other front-end module - see
-     ModuleInterface.Mod's own AddSearchPathList* comment. *)
+     same kind of host-environment access, needed only here - see
+     ModuleInterface.Mod's own AddSearchPathList* comment.
+     ModuleInterface.Mod separately imports Platform itself, but only for
+     Platform.Chdir/CWD (the -output-dir directory-validation workaround
+     documented on its own Write* - see 000-todo.org's "output directory
+     for build artifacts" item), never GetEnv - it still never reads the
+     process environment on its own. *)
 
   IMPORT Modules, Files, Out, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface;
@@ -148,13 +152,14 @@ MODULE Poc;
     END
   END Check;
 
-  PROCEDURE EmitInterface(name: ARRAY OF CHAR);
+  PROCEDURE EmitInterface(name, outputDir: ARRAY OF CHAR);
     VAR
       buffer: Lexer.CharBuffer;
       length: LONGINT;
       parser: Parser.Parser;
       module: SyntaxTree.ModuleNode;
       scope: SymbolTable.Scope;
+      path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
   BEGIN
     IF ~ReadSource(name, buffer, length) THEN
       Out.String("poc: cannot open "); Out.String(name); Out.Ln
@@ -167,9 +172,10 @@ MODULE Poc;
       END;
       IF Diagnostics.errorCount > 0 THEN
         Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
+      ELSIF ModuleInterface.Write(module, scope, outputDir, path) THEN
+        Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
       ELSE
-        ModuleInterface.Write(module, scope);
-        Out.String("semantic OK, wrote "); Out.String(module.name); Out.String(".sym"); Out.Ln
+        Out.String("poc: cannot write "); Out.String(path); Out.Ln
       END
     END
   END EmitInterface;
@@ -242,7 +248,9 @@ MODULE Poc;
     Out.String("       poc [-import-path <dir> | -clear-import-path]... -print-import-path"); Out.Ln;
     Out.String("       -import-path <dir> and -clear-import-path may also precede any"); Out.Ln;
     Out.String("       command above; POC_IMPORT_PATH seeds the list (colon-separated)"); Out.Ln;
-    Out.String("       before any flags are applied"); Out.Ln
+    Out.String("       before any flags are applied"); Out.Ln;
+    Out.String("       -output-dir <dir> may also precede -emit-interface, to write"); Out.Ln;
+    Out.String("       <ModuleName>.sym there instead of the current directory"); Out.Ln
   END Usage;
 
   (* IMPORT search-path CLI surface (PLAN.md's "Open design questions" -
@@ -274,7 +282,7 @@ MODULE Poc;
     IF value[0] # 0X THEN ModuleInterface.AddSearchPathList(value) END
   END InitImportPathFromEnvironment;
 
-  PROCEDURE RunCommand(option, fileName: ARRAY OF CHAR);
+  PROCEDURE RunCommand(option, fileName, outputDir: ARRAY OF CHAR);
   BEGIN
     IF option = "-dump-tokens" THEN
       DumpTokens(fileName)
@@ -285,20 +293,21 @@ MODULE Poc;
     ELSIF option = "-dump-layout" THEN
       DumpLayout(fileName)
     ELSIF option = "-emit-interface" THEN
-      EmitInterface(fileName)
+      EmitInterface(fileName, outputDir)
     ELSE
       Usage
     END
   END RunCommand;
 
   PROCEDURE Run;
-    VAR i: INTEGER; arg, param: ARRAY 256 OF CHAR; done: BOOLEAN;
+    VAR i: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR; done: BOOLEAN;
   BEGIN
     InitImportPathFromEnvironment;
     IF Modules.ArgCount < 2 THEN
       Usage
     ELSE
       i := 1;
+      outputDir[0] := 0X;
       done := FALSE;
       WHILE (i < Modules.ArgCount) & ~done DO
         Modules.GetArg(i, arg);
@@ -317,10 +326,24 @@ MODULE Poc;
         ELSIF arg = "-print-import-path" THEN
           PrintImportPath;
           INC(i); done := TRUE
+        (* 000-todo.org's "output directory for build artifacts" item:
+           today the only artifact is -emit-interface's .sym file, so this
+           just overrides ModuleInterface.Write*'s default of the current
+           directory; a later flag wins if given more than once. It has
+           no env-var seed (unlike -import-path) since the request that
+           prompted this was CLI-only. *)
+        ELSIF arg = "-output-dir" THEN
+          IF i + 1 < Modules.ArgCount THEN
+            Modules.GetArg(i + 1, outputDir);
+            INC(i, 2)
+          ELSE
+            Out.String("poc: -output-dir requires a directory"); Out.Ln;
+            done := TRUE
+          END
         ELSE
           IF i + 1 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, param);
-            RunCommand(arg, param)
+            RunCommand(arg, param, outputDir)
           ELSE
             Usage
           END;

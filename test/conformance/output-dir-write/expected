@@ -1,0 +1,5 @@
+semantic OK, wrote out/lib.sym
+MODULE lib;
+  CONST
+    X* = 1;
+END lib.

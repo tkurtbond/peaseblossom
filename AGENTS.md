@@ -472,11 +472,44 @@ narrow exception to `Poc.Mod`'s own header-comment rule about avoiding
 Vishap-specific extensions: that rule is about *language syntax*
 (`HUGEINT`, read-only value params, etc.), not which library modules the
 driver may import, and `Modules.ArgCount`/`GetArg` already read the host
-environment the same way; `ModuleInterface.Mod` itself still never touches
-the environment, only the driver does. New conformance coverage:
+environment the same way; `ModuleInterface.Mod` itself never reads the
+`POC_IMPORT_PATH` environment variable directly (only `Poc.Mod` does),
+though it does import `Platform` itself for an unrelated reason - see
+"Output directory" below. New conformance coverage:
 `module-import-path` (a library in a `lib` subdirectory, only resolvable
 via `-import-path lib`), `semantic-reject-import-not-on-path` (the same
 library, without the flag, confirming cwd-only lookup still correctly
 fails), and `import-path-print` (golden-diffs `-print-import-path`'s
 output across env-only, CLI-only, env+CLI, and clear-then-add
 combinations in one invocation each).
+
+**Output directory** (closes `000-todo.org`'s "output directory for build
+artifacts" item): `-output-dir <dir>` may precede `-emit-interface` (the
+only command that writes a file today - a future Phase 8 codegen command
+would take the same parameter) to write `<ModuleName>.sym` there instead
+of the current directory; unlike `-import-path` it has no environment-
+variable seed (not asked for) and no list (a later `-output-dir` simply
+overrides an earlier one). Implementing this surfaced a real, sharp voc
+behavioral difference: `Files.Old` (used throughout `ReadSource*`/`Open`)
+returns `NIL` cleanly on a missing file or directory, confirmed and relied
+on since Phase 7, but `Files.New` does **not** - confirmed against real
+voc that writing into a nonexistent directory instead runs the runtime's
+own uncatchable `Halt(99)`, which would have taken the whole `poc`
+process down. `ModuleInterface.Mod`'s `Write*` now validates the
+directory first via `Platform.Chdir` (which does return a plain,
+non-crashing error code - confirmed `res=2`/`ENOENT` on a bad path),
+saving and restoring the real working directory via `Platform.CWD-`
+around the write, and only calling `Files.New` (with a bare file name,
+now relative to whatever the current directory is) once `Chdir` has
+already succeeded; a `Chdir` failure is reported as an ordinary write
+failure with no crash. This is `ModuleInterface.Mod`'s own first `Platform`
+import (previously only `Poc.Mod` needed it, for `GetEnv`) - documented on
+`Write*`'s own header comment as the same kind of narrow, deliberate
+exception to the "no Vishap extensions" rule as `Platform.GetEnv` already
+was, and still nothing to do with reading environment variables. New
+conformance coverage: `output-dir-write` (golden-diffs both the stdout
+message and the written file's contents from a `lib` subdirectory built
+fresh by `test.sh`, matching how `test/testenv.sh`'s existing artifact
+cleanup already treats generated `.sym` files) and `output-dir-missing`
+(confirms a nonexistent `-output-dir` fails cleanly rather than crashing
+the process).

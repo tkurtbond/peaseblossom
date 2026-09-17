@@ -72,13 +72,13 @@ MODULE ModuleInterface;
      no existing helper to reuse in this codebase or in voc's own bundled
      libraries (checked ethReals: hex conversions only, no formatter). *)
 
-  IMPORT SyntaxTree, SymbolTable, Types, Diagnostics, Lexer, Files;
+  IMPORT SyntaxTree, SymbolTable, Types, Diagnostics, Lexer, Files, Platform;
 
   CONST
     nameBufferLength = 300; (* SyntaxTree.identLength (255) + ".sym" comfortably *)
     lineLength = 4096; (* mirrors Poc.Mod's own ReadSource *)
     searchPathDirLength = 1024;
-    pathBufferLength = searchPathDirLength + nameBufferLength;
+    pathBufferLength* = searchPathDirLength + nameBufferLength;
 
   TYPE
     (* One IMPORT search-path directory. Declared "T = POINTER TO T1" per
@@ -691,25 +691,73 @@ MODULE ModuleInterface;
      would need a separate dry-run pass over every exported type first;
      an occasional harmless extra IMPORT is a fair trade against that
      complexity, and every name it introduces is genuinely a real,
-     already-resolved import of this exact module. *)
-  PROCEDURE Write*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope);
-    VAR name: ARRAY nameBufferLength OF CHAR; f: Files.File; w: Files.Rider;
+     already-resolved import of this exact module.
+
+     outputDir (PLAN.md's "Open design questions" / 000-todo.org's
+     "output directory for build artifacts" item), when non-empty,
+     replaces the current-working-directory default this always used
+     before. pathOut (built via JoinPath, the same helper the IMPORT
+     search path uses) always receives the path this attempted to write,
+     success or not, for the caller to report either way.
+
+     The directory itself must already exist: Files.New cannot create
+     one, and neither Files.Mod nor Platform.Mod (checked via showdef)
+     exposes a mkdir-equivalent. Unlike Files.Old (used throughout
+     ReadSource*/Open above, confirmed to return NIL cleanly on a missing
+     file or directory), Files.New does NOT fail gracefully on a missing
+     *directory* - confirmed against real voc that it instead runs the
+     runtime's own Halt(99), which cannot be caught from within poc's own
+     Oberon-2 source. So the directory is validated first via
+     Platform.Chdir - which does return a plain, non-crashing error code
+     (confirmed: res=2/ENOENT on a bad path) - before Files.New is ever
+     called: chdir into outputDir (saving the real cwd via Platform.CWD
+     first), call Files.New with the bare file name so it always writes
+     into whatever the current directory now is, then chdir back. A
+     Chdir failure means outputDir doesn't exist (or isn't a directory)
+     and is reported as an ordinary write failure (RETURN FALSE) without
+     ever reaching Files.New. This is the one place in this module that
+     needs Platform.Mod, not just Files.Mod - see Poc.Mod's own header
+     comment on why a Vishap library import like this is a documented,
+     narrow exception, not a violation of poc's own
+     strict-Oberon2.pdf-syntax bootstrap constraint (that constraint is
+     about syntax, not which library modules are used). *)
+  PROCEDURE Write*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
+                   outputDir: ARRAY OF CHAR; VAR pathOut: ARRAY OF CHAR): BOOLEAN;
+    VAR
+      name: ARRAY nameBufferLength OF CHAR;
+      f: Files.File; w: Files.Rider; ok: BOOLEAN;
+      savedDir, dir: ARRAY searchPathDirLength OF CHAR;
+      chdirResult: INTEGER;
   BEGIN
     SymFileName(module.name, name);
-    f := Files.New(name);
-    Files.Set(w, f, 0);
-    WriteStr(w, "MODULE "); WriteStr(w, module.name); WriteStr(w, ";");
-    WriteLn(w);
-    PrintImports(w, scope);
-    IF module.declarations # NIL THEN
-      PrintConsts(w, scope, module.declarations.constDecls);
-      PrintTypes(w, scope, module.declarations.typeDecls);
-      PrintVars(w, scope, module.declarations.varDecls);
-      PrintMethods(w, scope, module.declarations.typeDecls);
-      PrintFreeProcs(w, scope, module.declarations.procDecls)
+    ok := TRUE;
+    IF outputDir[0] # 0X THEN
+      JoinPath(outputDir, name, pathOut);
+      COPY(Platform.CWD, savedDir);
+      COPY(outputDir, dir);
+      chdirResult := Platform.Chdir(dir);
+      ok := chdirResult = 0
+    ELSE
+      COPY(name, pathOut)
     END;
-    WriteStr(w, "END "); WriteStr(w, module.name); WriteStr(w, "."); WriteLn(w);
-    Files.Register(f)
+    IF ok THEN
+      f := Files.New(name);
+      Files.Set(w, f, 0);
+      WriteStr(w, "MODULE "); WriteStr(w, module.name); WriteStr(w, ";");
+      WriteLn(w);
+      PrintImports(w, scope);
+      IF module.declarations # NIL THEN
+        PrintConsts(w, scope, module.declarations.constDecls);
+        PrintTypes(w, scope, module.declarations.typeDecls);
+        PrintVars(w, scope, module.declarations.varDecls);
+        PrintMethods(w, scope, module.declarations.typeDecls);
+        PrintFreeProcs(w, scope, module.declarations.procDecls)
+      END;
+      WriteStr(w, "END "); WriteStr(w, module.name); WriteStr(w, "."); WriteLn(w);
+      Files.Register(f);
+      IF outputDir[0] # 0X THEN chdirResult := Platform.Chdir(savedDir) END
+    END;
+    RETURN ok
   END Write;
 
 END ModuleInterface.
