@@ -7,8 +7,14 @@ MODULE Poc;
      4 adds "-dump-layout <file>": poc has no codegen yet to run an
      ASSERT-based fixture through, so this is instead the golden-file
      testing surface for MemoryLayout.Mod's size/alignment/offset
-     computation, printed for both a 32-bit and a 64-bit target word size
-     per TYPE declaration (see DumpLayout).
+     computation, printed for all four combinations of a 32-bit/64-bit
+     target word size and the -O2/-OC elementary-type size model (PLAN.md's
+     "Open design questions" - No -OC-equivalent elementary-type-size
+     model) per TYPE declaration (see DumpLayout). poc has no -O2/-OC CLI
+     flag of its own yet - dumping all four combinations unconditionally
+     exercises MemoryLayout.Mod fully without one, since a real flag would
+     otherwise have nothing to govern until a backend exists (PLAN.md
+     Phase 8+).
      File reading uses only standard Oberon2.pdf types
      (Files.Rider, ARRAY OF CHAR) at every call site, even though this
      module is built by voc during bootstrap - see PLAN.md's "Bootstrap
@@ -183,10 +189,14 @@ MODULE Poc;
   PROCEDURE PrintLayoutLine(name: ARRAY OF CHAR; t: Types.Type);
   BEGIN
     Out.String(name);
-    Out.String(": size32="); Out.Int(MemoryLayout.Size(t, MemoryLayout.wordSize32), 0);
-    Out.String(" align32="); Out.Int(MemoryLayout.Align(t, MemoryLayout.wordSize32), 0);
-    Out.String(" size64="); Out.Int(MemoryLayout.Size(t, MemoryLayout.wordSize64), 0);
-    Out.String(" align64="); Out.Int(MemoryLayout.Align(t, MemoryLayout.wordSize64), 0);
+    Out.String(": sizeO2_32="); Out.Int(MemoryLayout.Size(t, MemoryLayout.wordSize32, MemoryLayout.sizeModelO2), 0);
+    Out.String(" alignO2_32="); Out.Int(MemoryLayout.Align(t, MemoryLayout.wordSize32, MemoryLayout.sizeModelO2), 0);
+    Out.String(" sizeO2_64="); Out.Int(MemoryLayout.Size(t, MemoryLayout.wordSize64, MemoryLayout.sizeModelO2), 0);
+    Out.String(" alignO2_64="); Out.Int(MemoryLayout.Align(t, MemoryLayout.wordSize64, MemoryLayout.sizeModelO2), 0);
+    Out.String(" sizeOC_32="); Out.Int(MemoryLayout.Size(t, MemoryLayout.wordSize32, MemoryLayout.sizeModelOC), 0);
+    Out.String(" alignOC_32="); Out.Int(MemoryLayout.Align(t, MemoryLayout.wordSize32, MemoryLayout.sizeModelOC), 0);
+    Out.String(" sizeOC_64="); Out.Int(MemoryLayout.Size(t, MemoryLayout.wordSize64, MemoryLayout.sizeModelOC), 0);
+    Out.String(" alignOC_64="); Out.Int(MemoryLayout.Align(t, MemoryLayout.wordSize64, MemoryLayout.sizeModelOC), 0);
     Out.Ln
   END PrintLayoutLine;
 
@@ -196,8 +206,10 @@ MODULE Poc;
     f := rec.fields;
     WHILE f # NIL DO
       Out.String("  ."); Out.String(f.name);
-      Out.String(": offset32="); Out.Int(MemoryLayout.FieldOffset(rec, f, MemoryLayout.wordSize32), 0);
-      Out.String(" offset64="); Out.Int(MemoryLayout.FieldOffset(rec, f, MemoryLayout.wordSize64), 0);
+      Out.String(": offsetO2_32="); Out.Int(MemoryLayout.FieldOffset(rec, f, MemoryLayout.wordSize32, MemoryLayout.sizeModelO2), 0);
+      Out.String(" offsetO2_64="); Out.Int(MemoryLayout.FieldOffset(rec, f, MemoryLayout.wordSize64, MemoryLayout.sizeModelO2), 0);
+      Out.String(" offsetOC_32="); Out.Int(MemoryLayout.FieldOffset(rec, f, MemoryLayout.wordSize32, MemoryLayout.sizeModelOC), 0);
+      Out.String(" offsetOC_64="); Out.Int(MemoryLayout.FieldOffset(rec, f, MemoryLayout.wordSize64, MemoryLayout.sizeModelOC), 0);
       Out.Ln;
       f := f.next
     END

@@ -306,23 +306,26 @@ external-symbol names are subject to the same 31-character limit above.
   work - Phase 6 only parses the declaration and records its linkage
   info (`SymbolTable.ObjectDesc.externalConvention`/`externalName`).
 
-- **No `-OC`-equivalent elementary-type-size model**: `MemoryLayout.Mod`
-  (Phase 4) parameterizes size/alignment/offset only by **target word
-  size** (32 vs 64 bit, for POINTER/PROCEDURE-sized values and the
-  alignment cap). Elementary-type sizes are hardcoded to voc's classic
-  `-O2` sizes (SHORTINT=1, INTEGER=2, LONGINT=4, SET=4, REAL=4,
-  LONGREAL=8 bytes) regardless of target word size, plus `HUGEINT`=8
-  always available. voc instead varies *elementary-type width itself* via
-  a selectable `-O2`/`-OC` flag (classic 8/16/32/32-bit vs. Component
-  Pascal 16/32/64/64-bit SHORTINT/INTEGER/LONGINT/SET) — an orthogonal
-  axis to poc's word-size parameter, not currently modeled at all.
-  Undecided whether poc should ever grow an `-OC`-equivalent mode; would
-  likely be useful for interop/compatibility with voc-compiled code and
-  for giving 64-bit targets wider native integer/set types without
-  requiring `HUGEINT` explicitly. Revisit if a concrete need (e.g. LLVM
-  backend targets wanting native 64-bit `INTEGER`, or symbol-file
-  interop with voc's `.../C/sym`) comes up; not scheduled to any phase
-  yet.
+- **`-OC`-equivalent elementary-type-size model**: resolved 2026-09-16 —
+  `MemoryLayout.Mod` now parameterizes size/alignment/offset by two
+  independent axes, target word size (32/64 bit, unchanged from Phase 4)
+  and elementary-type size model (`sizeModelO2*`/`sizeModelOC*`), mirroring
+  voc's own selectable `-O2` (classic 8/16/32/32-bit SHORTINT/INTEGER/
+  LONGINT/SET) vs `-OC` (Component Pascal 16/32/64/64-bit) sizes. `REAL`,
+  `LONGREAL`, `BOOLEAN`, `CHAR`, and `HUGEINT` don't vary by size model;
+  under `-OC`, `LONGINT` and `HUGEINT` both end up 8 bytes but stay
+  distinct named types (no aliasing/collapsing between them). poc does
+  **not** get its own `-O2`/`-OC` CLI flag yet — `MemoryLayout.Mod`'s only
+  caller is `Poc.Mod`'s `-dump-layout` debug/golden-file command (poc has
+  no codegen yet), which has no real effect for a flag to govern until a
+  backend exists, so it instead prints all four word-size × size-model
+  combinations unconditionally. Revisit adding a real `-O2`/`-OC` flag once
+  Phase 8's backend needs to pick one, or `.sym` interop with voc's
+  `.../C/sym` requires it. When that flag is added, its `Usage` text
+  should spell out the names rather than leaving them as bare letters —
+  confirmed straight from voc's own `OPM.Mod` help text: `-O2` is
+  "Original Oberon / Oberon-2", `-OC` is "Component Pascal". Match voc's
+  own wording rather than inventing new phrasing.
 
 - **No `ASSERT`**: `Oberon2.pdf`'s §10.3 predeclared-procedure table has
   no `ASSERT` entry (confirmed against the report; see

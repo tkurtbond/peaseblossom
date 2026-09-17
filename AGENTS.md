@@ -99,6 +99,12 @@ compatibility:
   below). This doesn't relax the strict-Oberon2.pdf-syntax constraint on
   poc's own source (see `PLAN.md`, "Bootstrap terminology") — only the
   build flag changed, not what poc's own source is allowed to write.
+  `MemoryLayout.Mod` (Phase 4) separately models this same `-O2`/`-OC`
+  axis for the *target* language poc itself compiles — orthogonal to this
+  voc build flag, which only affects how poc's own source is compiled by
+  voc. See `PLAN.md`'s "Open design questions" for that resolution;
+  poc has no `-O2`/`-OC` CLI flag of its own yet, since there is no
+  codegen for one to govern until Phase 8.
 - Extra `HUGEINT` type (64-bit), available even under `-O2`. Peaseblossom
   adopted this one outright as its own extension — see "Language
   extensions beyond Oberon2.pdf" below.

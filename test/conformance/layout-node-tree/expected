@@ -1,8 +1,8 @@
-Node: size32=20 align32=4 size64=32 align64=8
-  .name: offset32=0 offset64=0
-  .value: offset32=8 offset64=8
-  .left: offset32=12 offset64=16
-  .right: offset32=16 offset64=24
-CenterNode: size32=28 align32=4 size64=40 align64=8
-  .weight: offset32=20 offset64=32
-Numbers: size32=8 align32=2 size64=8 align64=2
+Node: sizeO2_32=20 alignO2_32=4 sizeO2_64=32 alignO2_64=8 sizeOC_32=24 alignOC_32=4 sizeOC_64=32 alignOC_64=8
+  .name: offsetO2_32=0 offsetO2_64=0 offsetOC_32=0 offsetOC_64=0
+  .value: offsetO2_32=8 offsetO2_64=8 offsetOC_32=8 offsetOC_64=8
+  .left: offsetO2_32=12 offsetO2_64=16 offsetOC_32=16 offsetOC_64=16
+  .right: offsetO2_32=16 offsetO2_64=24 offsetOC_32=20 offsetOC_64=24
+CenterNode: sizeO2_32=28 alignO2_32=4 sizeO2_64=40 alignO2_64=8 sizeOC_32=32 alignOC_32=4 sizeOC_64=40 alignOC_64=8
+  .weight: offsetO2_32=20 offsetO2_64=32 offsetOC_32=24 offsetOC_64=32
+Numbers: sizeO2_32=8 alignO2_32=2 sizeO2_64=8 alignO2_64=2 sizeOC_32=16 alignOC_32=4 sizeOC_64=16 alignOC_64=4

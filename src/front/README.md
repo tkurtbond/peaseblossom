@@ -106,8 +106,13 @@ etc.).
   operators, and the numeric inclusion hierarchy.
 - `MemoryLayout.Mod` (Phase 4): size/alignment/field-offset computation
   for Types.Mod's representations, parameterized by an explicit target
-  word size (4 or 8 bytes) on every call rather than cached on a Type -
-  see its own header comment for the alignment-capping rule and the
-  open-array dope-vector convention. `Poc.Mod`'s `-dump-layout` is its
-  golden-file testing surface, standing in for the ASSERT-based fixtures
-  PLAN.md envisioned, since poc has no codegen yet to run one through.
+  word size (4 or 8 bytes) and, since 2026-09-16, an elementary-type size
+  model (`sizeModelO2*`/`sizeModelOC*`, mirroring voc's own `-O2`/`-OC`
+  SHORTINT/INTEGER/LONGINT/SET widths - PLAN.md's "Open design
+  questions") on every call rather than cached on a Type - see its own
+  header comment for the alignment-capping rule and the open-array
+  dope-vector convention. `Poc.Mod`'s `-dump-layout` is its golden-file
+  testing surface, standing in for the ASSERT-based fixtures PLAN.md
+  envisioned, since poc has no codegen yet to run one through; it prints
+  all four word-size x size-model combinations unconditionally, since
+  poc has no `-O2`/`-OC` CLI flag of its own yet.
