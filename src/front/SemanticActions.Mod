@@ -41,9 +41,11 @@ MODULE SemanticActions;
     (* PLAN.md Phase 7: CheckModuleBody's own "currently being resolved"
        import stack. Reading an IMPORTed module's .sym file recursively
        calls CheckModuleBody again - genuinely necessary (real cross-
-       module recursion happens even in single-level module imports),
-       but a .sym file is read fresh from disk each time (ModuleInterface
-       does no caching), so nothing stops two already-written .sym files
+       module recursion happens even in single-level module imports).
+       A .sym file naming an *already-finished* module is served from
+       the LoadedModule cache below instead of being re-read (see its
+       own header comment), but a module still being resolved is not in
+       that cache yet, so nothing stops two already-written .sym files
        from referencing each other (A.sym imports B, B.sym imports A -
        reachable without any hand-editing: compile A with no imports,
        compile B importing A, then change A's own source to import B and
@@ -59,6 +61,39 @@ MODULE SemanticActions;
     ImportChainDesc = RECORD
       name: SyntaxTree.Ident;
       next: ImportChain
+    END;
+
+    (* Found while running the Phase 7 self-check milestone (poc -check
+       against poc's own front-end source, PLAN.md): without this,
+       ResolveImport re-read, re-parsed and re-CheckModuleBody'd the
+       *same* .sym file once per distinct import edge reaching it (a
+       diamond import - e.g. C IMPORTs A and B, and B itself IMPORTs A -
+       is an entirely ordinary shape, not an edge case), producing two
+       independent Types.Type/SymbolTable.Object graphs for what is
+       supposed to be the *same* declared module. Nothing in Types.Mod
+       interns structurally-identical types across separate parses (the
+       same reason Types.EqualTypes had to be added alongside
+       Types.SameType for "matching formal parameter lists" - see that
+       procedure's own header comment), so a value reaching CheckArguments/
+       CheckAssignmentCompatible via one copy of A and a formal parameter
+       reaching it via the other copy failed "assignment compatible"
+       outright, even though both names trace back to the identical
+       declaration. Confirmed with a minimal 3-module repro against real
+       voc (which resolves this correctly) before fixing. One
+       LoadedModule list is created once per top-level CheckModule* call
+       and threaded (by VAR, since every import edge in the whole
+       compilation shares and mutates the same list) through
+       CheckModuleBody/ResolveImport's recursion; ResolveImport consults
+       it before reading a .sym file at all, and only a module that has
+       *finished* CheckModuleBody (never one still on the ImportChain
+       above, which would not be safe to reuse yet) is added to it -
+       keyed by the module's own real name (imp.moduleName), not a local
+       import alias, matching ImportChain's own keying above. *)
+    LoadedModule = POINTER TO LoadedModuleDesc;
+    LoadedModuleDesc = RECORD
+      name: SyntaxTree.Ident;
+      scope: SymbolTable.Scope;
+      next: LoadedModule
     END;
 
     (* CheckModuleBody's own WITH-guard safety net (see the "PLAN.md
@@ -2531,7 +2566,7 @@ MODULE SemanticActions;
   END CheckStatementSeq;
 
   PROCEDURE ^ CheckModuleBody(module: SyntaxTree.ModuleNode; parseModule: ParseModuleProc;
-                              resolving: ImportChain): SymbolTable.Scope;
+                              resolving: ImportChain; VAR cache: LoadedModule): SymbolTable.Scope;
 
   PROCEDURE InChain(chain: ImportChain; name: SyntaxTree.Ident): BOOLEAN;
   BEGIN
@@ -2539,22 +2574,33 @@ MODULE SemanticActions;
     RETURN chain # NIL
   END InChain;
 
+  (* LoadedModule's own header comment (top of this module) has the full
+     rationale; this is a plain linear lookup over the same small-list
+     shape InChain/IsProcAssigned already use here. *)
+  PROCEDURE FindLoadedModule(cache: LoadedModule; name: SyntaxTree.Ident): SymbolTable.Scope;
+  BEGIN
+    WHILE (cache # NIL) & (cache.name # name) DO cache := cache.next END;
+    IF cache = NIL THEN RETURN NIL ELSE RETURN cache.scope END
+  END FindLoadedModule;
+
   (* Resolves one ImportNode: self-import and cyclic-import (via
      resolving, see ImportChain's own header comment) are rejected
      outright; otherwise reads and recursively resolves the imported
-     module's .sym file and binds a moduleClass Object for it into scope
-     - the same scope module-level declarations go into, so a name clash
-     between an import and a declaration is caught for free by Insert's
-     own existing duplicate check (Oberon2.pdf's own ImportList is part
-     of the module's declaration scope, not a separate namespace).
-     Diagnostics.fileName is saved/restored around the recursive call so
-     errors inside the .sym file are attributed to it, not to
-     moduleName's own outer caller - see Diagnostics.Mod's own header
-     comment on why this is a save/restore of a plain exported field
-     rather than a second Reset*-like procedure. *)
+     module's .sym file (or reuses an already-finished resolution from
+     cache - see LoadedModule's own header comment) and binds a
+     moduleClass Object for it into scope - the same scope module-level
+     declarations go into, so a name clash between an import and a
+     declaration is caught for free by Insert's own existing duplicate
+     check (Oberon2.pdf's own ImportList is part of the module's
+     declaration scope, not a separate namespace). Diagnostics.fileName
+     is saved/restored around the recursive call so errors inside the
+     .sym file are attributed to it, not to moduleName's own outer
+     caller - see Diagnostics.Mod's own header comment on why this is a
+     save/restore of a plain exported field rather than a second
+     Reset*-like procedure. *)
   PROCEDURE ResolveImport(imp: SyntaxTree.ImportNode; module: SyntaxTree.ModuleNode;
                           scope: SymbolTable.Scope; parseModule: ParseModuleProc;
-                          resolving: ImportChain);
+                          resolving: ImportChain; VAR cache: LoadedModule);
     VAR
       buffer: Lexer.CharBuffer;
       length: LONGINT;
@@ -2564,6 +2610,7 @@ MODULE SemanticActions;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       symName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       chain: ImportChain;
+      loaded: LoadedModule;
       bindName: SyntaxTree.Ident;
       obj: SymbolTable.Object;
   BEGIN
@@ -2572,6 +2619,14 @@ MODULE SemanticActions;
     ELSIF InChain(resolving, imp.moduleName) THEN
       Diagnostics.Error(imp.line, imp.column, "cyclic module import")
     ELSE
+      impScope := FindLoadedModule(cache, imp.moduleName);
+      IF impScope # NIL THEN
+        IF imp.alias[0] # 0X THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
+        obj := SymbolTable.Insert(scope, bindName, SymbolTable.moduleClass, NIL, FALSE, FALSE,
+                                   imp.line, imp.column);
+        obj.moduleScope := impScope; obj.realModuleName := imp.moduleName;
+        RETURN
+      END;
       ModuleInterface.ReadSource(imp.moduleName, buffer, length, found);
       IF ~found THEN
         Diagnostics.Error(imp.line, imp.column, "unknown imported module")
@@ -2584,8 +2639,10 @@ MODULE SemanticActions;
           ModuleInterface.SymFileName(imp.moduleName, symName);
           COPY(symName, Diagnostics.fileName);
           NEW(chain); chain.name := imp.moduleName; chain.next := resolving;
-          impScope := CheckModuleBody(impModule, parseModule, chain);
+          impScope := CheckModuleBody(impModule, parseModule, chain, cache);
           COPY(savedFileName, Diagnostics.fileName);
+          NEW(loaded); loaded.name := imp.moduleName; loaded.scope := impScope;
+          loaded.next := cache; cache := loaded;
           IF imp.alias[0] # 0X THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
           obj := SymbolTable.Insert(scope, bindName, SymbolTable.moduleClass, NIL, FALSE, FALSE,
                                      imp.line, imp.column);
@@ -2597,11 +2654,14 @@ MODULE SemanticActions;
 
   (* The real body shared by CheckModule*'s top-level entry and
      ResolveImport's recursive descent into an IMPORTed module's .sym
-     file - see ParseModuleProc's and ImportChain's own header comments
-     for why both a parser callback and a resolving-chain need to be
-     threaded through. *)
+     file - see ParseModuleProc's, ImportChain's and LoadedModule's own
+     header comments for why a parser callback, a resolving-chain and a
+     cache all need to be threaded through. cache is a VAR parameter
+     (unlike resolving, a plain value) since it must accumulate across
+     the *whole* compilation, not just the branch of the import tree
+     currently being descended. *)
   PROCEDURE CheckModuleBody(module: SyntaxTree.ModuleNode; parseModule: ParseModuleProc;
-                            resolving: ImportChain): SymbolTable.Scope;
+                            resolving: ImportChain; VAR cache: LoadedModule): SymbolTable.Scope;
     VAR
       scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode;
       nonLocalAssigns: ProcAssignedName;
@@ -2609,7 +2669,7 @@ MODULE SemanticActions;
     scope := SymbolTable.OpenScope(SymbolTable.Universe);
     imp := module.imports;
     WHILE imp # NIL DO
-      ResolveImport(imp, module, scope, parseModule, resolving);
+      ResolveImport(imp, module, scope, parseModule, resolving, cache);
       imp := imp.next
     END;
     nonLocalAssigns := NIL;
@@ -2633,8 +2693,10 @@ MODULE SemanticActions;
   END CheckModuleBody;
 
   PROCEDURE CheckModule*(module: SyntaxTree.ModuleNode; parseModule: ParseModuleProc): SymbolTable.Scope;
+    VAR cache: LoadedModule;
   BEGIN
-    RETURN CheckModuleBody(module, parseModule, NIL)
+    cache := NIL;
+    RETURN CheckModuleBody(module, parseModule, NIL, cache)
   END CheckModule;
 
 END SemanticActions.
