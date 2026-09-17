@@ -21,6 +21,7 @@ Oberon2.pdf §5: "the type of an integer constant is the minimal type to which t
 ** TODO Relax order of declarations, so they can happen in any order.
 ** TODO Initializers for variable declarations consisting of := after the type, followed by an expression.
 ** TODO Oberon-2 has syntax for sets literals; it would be good have syntax for record and array literals, too.
+** TODO Investigate fileName := name instead of COPY(name, fileName).
 * Ignore this
 Local Variables:
 eval: (visual-line-mode 1)
