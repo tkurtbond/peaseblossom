@@ -7,6 +7,7 @@ poc should have a command line option so that the user can specify a directory t
 * TODO Writing a round-trip-safe float-to-text formatter from scratch for REAL/LONGREAL CONST export.
 * TODO IMPORT search path.
 * TODO Type guards in designators?
+* TODO Qualified WITH narrowing (WITH M.v: T DO).
 * Ignore this
 Local Variables:
 eval: (visual-line-mode 1)
