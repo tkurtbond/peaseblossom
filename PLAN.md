@@ -378,21 +378,44 @@ external-symbol names are subject to the same 31-character limit above.
   call sites in the Appendix A predicates (the semantic crux of the
   whole front end) for a purely cosmetic win isn't worth the risk to
   already-tested code; revisit opportunistically, not as its own task.
-  (2) **A qualified `WITH` variable** (`WITH M.v: T DO ...`) type-checks
-  correctly (`CheckWithGuard` resolves `M.v` via the same `FindQualified`
-  every other qualified name uses) but doesn't get narrowed inside the
-  guard's body: `CheckWithGuardBody`'s shadow-`Insert` trick only ever
-  rebinds a *bare* name in a fresh scope, so the body still sees `M.v`
-  under its original, unnarrowed static type. A fix would either extend
-  the narrowed scope to also carry a module-qualified shadow entry keyed
-  by `(qualifier, name)` that `FindQualified` checks first, or formally
-  restrict `WITH`'s guard variable to bare names and document the
-  qualified form as legal-but-unnarrowed on purpose. Found while
-  implementing Phase 7's `FindQualified` unification, with no fixture
-  forcing a choice yet. Doesn't block any current `PLAN.md` phase and
-  isn't scheduled to one yet — revisit if a fixture or real program
-  needs it; it's also `000-todo.org`'s separate "Qualified WITH
-  narrowing" line.
+  (2) **A qualified `WITH` variable** (`WITH M.v: T DO ...`) — resolved
+  2026-09-17, but not the way it was first framed above (extend the
+  shadow-`Insert` trick to narrow `M.v` too). Direct experiment against
+  real voc found `WITH M.v: T DO` isn't a narrowing gap at all: voc
+  rejects it outright (err 245, "guarded pointer variable may be
+  manipulated by non-local operations; use auxiliary pointer variable"),
+  because an imported module's exported pointer variable could be
+  reassigned by any of *that* module's own procedures during the guarded
+  body's execution — a real memory-safety hazard (the guard's narrowed
+  type could no longer match what the variable actually points to), not
+  a convenience gap. `Oberon2.pdf` §9.11 is silent on this either way
+  (its grammar, `Guard = Qualident ":" Qualident`, happily allows the
+  qualified spelling). Testing every shape directly against voc (not
+  guessed at) showed this rejection is broader than just the qualified
+  case — voc runs the same "could this be reassigned by a non-local
+  operation" check for *every* pointer-typed WITH guard: it also rejects
+  a VAR parameter of pointer type (an alias to the caller's storage) and
+  a variable assigned by bare name inside some *other* `PROCEDURE`
+  anywhere in the module (even one never called from the guarded body —
+  a static check, not real call-graph reachability), while accepting a
+  local variable, or a module-global, never assigned inside any
+  `PROCEDURE` at all. `SemanticActions.Mod`'s `CheckWithGuard` now
+  implements the same three rejections (see its own header comment for
+  the full case-by-case table and the new `SymbolTable.ObjectDesc.
+  isVarParam` field/`CollectProcAssignedNames` whole-module pre-pass that
+  back it), deliberately the simpler, strictly *more conservative* half
+  of voc's own rule (it doesn't special-case "except this same
+  procedure's own straight-line code" the way voc does, so it also
+  rejects that one narrow shape voc happens to allow — never less safe,
+  only occasionally stricter). Four new conformance tests:
+  `semantic-reject-with-qualified-guard`, `semantic-reject-with-var-
+  param-guard`, `semantic-reject-with-global-reassigned`,
+  `semantic-with-value-param-guard` (the accepting counterpart to the
+  VAR-parameter rejection). The RECORD-typed guard case (VAR record
+  parameter/receiver) is exempt from all of this and untouched - poc
+  doesn't support RECORD guard variables at all yet regardless
+  (`CheckExtensionApplicable`'s own header comment, PLAN.md Phase 6
+  territory, pre-existing).
 
 ## Critical files
 

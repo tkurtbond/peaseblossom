@@ -79,6 +79,15 @@ MODULE SymbolTable;
       pendingTypeNode*: SyntaxTree.TypeNode; (* typeClass only; see above *)
       resolving*: BOOLEAN; (* typeClass only; see above *)
       isForwardProc*: BOOLEAN; (* procClass only; see above *)
+      isVarParam*: BOOLEAN; (* varClass only: TRUE for a VAR-kind formal
+        parameter or receiver (SemanticActions.Mod's CheckProcedureBody
+        sets it from FPSectionNode.isVar/ReceiverNode.isVar as each
+        parameter Object is inserted). Lets a WITH guard's own "may this
+        variable be manipulated by non-local operations" safety check
+        (Oberon2.pdf §9.11 is silent on it; voc's own err 245 enforces
+        it) recognize a VAR parameter without re-deriving it from the
+        enclosing ProcDeclNode, which CheckWithGuard has no reach into
+        from a plain SymbolTable.Object. *)
       externalConvention*, externalName*: SyntaxTree.Ident; (* procClass only; see above *)
       moduleScope*: Scope; (* moduleClass only; see above *)
       realModuleName*: SyntaxTree.Ident; (* moduleClass only: the module's
@@ -147,7 +156,8 @@ MODULE SymbolTable;
     o.name := name; o.class := class; o.type := type;
     o.value := NIL; o.exported := exported; o.readOnly := readOnly;
     o.pendingTypeNode := NIL; o.resolving := FALSE;
-    o.isForwardProc := FALSE; o.externalConvention[0] := 0X; o.externalName[0] := 0X;
+    o.isForwardProc := FALSE; o.isVarParam := FALSE;
+    o.externalConvention[0] := 0X; o.externalName[0] := 0X;
     o.moduleScope := NIL; o.realModuleName[0] := 0X;
     o.next := scope.objects; scope.objects := o;
     RETURN o

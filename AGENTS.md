@@ -477,10 +477,10 @@ import); `IsLocalType` treats a local `TYPE` alias of an imported record
 (`TYPE Local = OtherModule.T`) as local too, since aliasing never creates
 a distinct `Types.Type` identity to tell apart from the original - a real
 but rare read-only-enforcement loophole with no fixture pressure yet; and
-a qualified `WITH` variable (`WITH M.v: T DO`) type-checks correctly but
-does not get the narrowing ergonomics a plain identifier does inside the
-guard's body (the existing shadow-insert trick only ever helped the
-bare-identifier case). New conformance coverage:
+a qualified `WITH` variable (`WITH M.v: T DO`) - resolved 2026-09-17, not
+by narrowing it but by rejecting it outright, matching real voc: see
+`PLAN.md`'s "Type guards in designators" entry, gap (2), and
+`CheckWithGuard`'s own header comment in `SemanticActions.Mod`. New conformance coverage:
 `module-interface-write` (golden-diffs a `.sym` file itself, not just
 stdout), `module-cross-import` (a `Trees`-derived library plus a client
 that only ever sees its `.sym`), and four negative fixtures
