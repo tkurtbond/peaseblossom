@@ -1,0 +1,2 @@
+reject-const-max-min-not-a-type.mod:6:17: error: MAX/MIN/SIZE requires a type name argument
+1 error(s)

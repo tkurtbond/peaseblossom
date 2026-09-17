@@ -417,24 +417,94 @@ external-symbol names are subject to the same 31-character limit above.
   (`CheckExtensionApplicable`'s own header comment, PLAN.md Phase 6
   territory, pre-existing).
 
-- **Predeclared-function calls in constant expressions (e.g. `MAX(LONGINT)`,
-  `MIN(SomeType)`)**: found 2026-09-17 while running the Phase 7 self-check
+- **Predeclared "functions" in constant expressions — really two separate
+  gaps, not one**: found 2026-09-17 while running the Phase 7 self-check
   milestone (`poc -check` against poc's own front-end source) —
   `ConstantEvaluator.Mod`'s own `maxHugeInt = MAX(LONGINT);` CONST
   declaration fails with "not a constant expression". `ConstantEvaluator.
   Mod`'s own header comment already documents its scope as deliberately
   narrow ("A ConstExpr's only possible leaves are literals, named constants
-  ..., and TRUE/FALSE — never a variable, a call, or a selector"); a
-  predeclared-function call like `MAX`/`MIN`/`ORD`/`ABS` applied to a
-  constant (or, for `MAX`/`MIN`, a *type*) argument was never added to that
-  set. Not fixed as part of the self-check pass — implementing general
-  predeclared-function constant folding is a separate, larger piece of
-  work (needs to decide how `MAX(T)`/`MIN(T)` fold per type without a
-  runtime value to evaluate, unlike every other ConstExpr leaf) — but
-  worth doing since the report's own CONST declaration examples routinely
-  use this pattern, and `ConstantEvaluator.Mod` currently works around its
-  own gap with a hand-rolled `MAX(LONGINT)` comment explaining why. Not
-  scheduled to any phase yet.
+  ..., and TRUE/FALSE — never a variable, a call, or a selector"); no
+  predeclared name was ever added to that set. Revisiting the framing
+  (2026-09-17): `MAX`/`MIN`/`SIZE` are not really *calls* at all in the
+  report's sense — their argument position holds a bare *type name*, not
+  a value expression (`PredeclaredProcedures.Mod`'s own header comment
+  already treats this as a distinct shape for ordinary, non-constant
+  type-checking: "MAX/MIN/SIZE take a bare *type name* argument", handled
+  by a small local `SymbolTable.Find` + typeClass check rather than
+  through the injected `CheckExprProc`). Constant-folding this needs no
+  general "evaluate a call's argument, then apply the function" machinery
+  at all - just one more `ConstExpr` leaf shape (a predeclared name plus a
+  bare type-name argument), resolved directly against a fixed, target-
+  independent bound. This is a fundamentally smaller problem than folding
+  a *value*-argument predeclared function (`ORD`/`ABS`/`CHR`/`ASH`/`CAP`/
+  `ENTIER`/`LONG`/`ODD`/`SHORT`), which genuinely would need the general
+  machinery (recursively evaluate the argument via `Evaluate`, then apply
+  the function's own value transform) - that piece is deferred, not
+  currently blocking anything found so far, and is real, separate,
+  future work.
+  - `MAX(T)`/`MIN(T)` **implemented** 2026-09-17 for the integer family
+    (`SHORTINT`/`INTEGER`/`LONGINT`/`HUGEINT`), `SET`, `CHAR` and
+    `BOOLEAN` - the same argument set `PredeclaredProcedures.CheckMaxMin`
+    already accepts for ordinary type-checking, minus `REAL`/`LONGREAL`
+    (see below). Every bound folded is a fixed, target-word-size-
+    independent language fact (e.g. `SHORTINT` is always -128..127), so
+    there is no default-model ambiguity to resolve first, unlike `SIZE`
+    below.
+  - `MAX(REAL)`/`MAX(LONGREAL)`/`MIN(REAL)`/`MIN(LONGREAL)` **not**
+    implemented - deliberately scoped out of the above. Unlike the
+    integer family, the correct bound is an IEEE 754 largest-finite-value
+    fact that should be verified against real voc's own actual behavior
+    first (this project's standing "verify against voc before
+    implementing" convention), not guessed at, and ties into the
+    already-tracked correctly-rounded-float-formatting work (see
+    `references.md`). Revisit alongside that, not as part of this pass.
+  - `SIZE(T)` **implemented** 2026-09-17, but unlike `MAX`/`MIN` its
+    result is genuinely target-dependent (word size and elementary-type
+    size model - `MemoryLayout.Mod`'s own two axes), and poc has no real
+    `-O2`/`-OC`/word-size CLI flag yet to pick one from (see this file's
+    own "`-OC`-equivalent elementary-type-size model" entry above).
+    Folds using `MemoryLayout.wordSize32`/`MemoryLayout.sizeModelO2` as a
+    fixed default, the same "assume `-O2`, poc's existing default absent
+    a real flag" precedent `ConstantEvaluator.IntegerLiteralType` already
+    established for integer-literal folding (word size 32 chosen to
+    match: voc's own `-O2` name means "Original Oberon / Oberon-2",
+    historically a 32-bit environment). Revisit once poc gets a real
+    `-O2`/`-OC`/word-size flag of its own - the same open item as
+    `IntegerLiteralType`'s own default. In practice `SIZE(T)` only works
+    for a predeclared or imported `T` right now, never a type declared in
+    the *same* module's own `TYPE` section - `CheckModuleBody` resolves
+    `CONST` declarations before `TYPE` declarations unconditionally,
+    regardless of their relative textual order (this file's own "Relax
+    order of declarations" item, `000-todo.org`), a real, concrete
+    instance of that already-tracked gap found while testing this.
+    Three new conformance tests: `semantic-const-max-min-size`,
+    `semantic-reject-const-max-min-too-wide`, `semantic-reject-const-max-
+    min-not-a-type`.
+
+- **Constant arithmetic doesn't re-derive its result's minimal type from
+  the computed value**: found 2026-09-17 while testing the `MAX(T)`/
+  `MIN(T)` work above. `ConstantEvaluator.EvaluateNumericOp` types an
+  arithmetic result via `Types.WiderOf(l.type, r.type)` alone (purely
+  rank-based, matching Appendix A's arithmetic-operator table), never by
+  re-examining the computed value the way `IntegerLiteralType` already
+  does for a bare literal token. So `CONST TooWide = MAX(SHORTINT) + 1;`
+  (value 128) stays `SHORTINT`-typed in poc, even though 128 does not fit
+  `SHORTINT`'s own range - but real voc (confirmed 2026-09-17) rejects
+  `s := TooWide` (`s: SHORTINT`) with "incompatible assignment", meaning
+  voc *does* re-derive the minimal type from 128 itself. `Oberon2.pdf`
+  §5's wording ("the type of an integer constant is the minimal type to
+  which the constant value belongs") is about "an integer constant"
+  generally, arguably not just a literal token, which would support
+  voc's broader reading. Not fixed - found by a test, not by design
+  review, and deliberately routed around rather than papered over (see
+  `semantic-reject-const-max-min-too-wide`'s own header comment for how).
+  Would need `EvaluateNumericOp` (and presumably `EvaluateUnary`'s
+  negation case) to re-run something like `IntegerLiteralType`'s own
+  digit-range logic against the computed value, not just the operand
+  types - worth doing, but a separate, general `ConstantEvaluator.Mod`
+  correctness fix, not specific to `MAX`/`MIN`. Not scheduled to any
+  phase yet.
 
 ## Critical files
 

@@ -32,11 +32,36 @@ MODULE ConstantEvaluator;
      and duplicating the magnitude/overflow logic there would risk the
      two silently drifting apart. *)
 
-  IMPORT SyntaxTree, Types, SymbolTable, Diagnostics, Lexer;
+  IMPORT SyntaxTree, Types, SymbolTable, Diagnostics, Lexer, MemoryLayout;
 
   CONST
     maxSetElement = 31; (* matches voc's default 32-bit SET (AGENTS.md);
                             revisit once Phase 4 models target word size *)
+    (* voc's -O2 *target*-model byte widths (1/2/4 bytes - mirrored in
+       MemoryLayout.Mod's BasicSize under sizeModelO2), not poc's own host
+       build - poc has no -O2/-OC CLI flag yet to pick a target model from
+       (see MemoryLayout.Mod's header comment), so IntegerLiteralType/
+       EvaluateMaxMin below always assume the -O2 default; revisit if/when
+       such a flag exists. Module-level (not IntegerLiteralType-local, as
+       originally written) so EvaluateMaxMin's MAX(T)/MIN(T) folding can
+       share the exact same bounds rather than risk an independent,
+       driftable copy. *)
+    maxShortInt = 127; maxInteger = 32767; maxLongInt = 2147483647;
+    (* Computed as -maxX - 1, not written as a bare literal (-128 etc.) -
+       found via poc's own Phase 7 self-check (PLAN.md) type-checking
+       this very file: any two's-complement type's minimum magnitude is
+       by construction exactly one more than its own maximum, so a bare
+       "-128" literal's underlying magnitude (128) always overflows
+       SHORTINT's own positive range and folds one rank wider (INTEGER)
+       under Oberon2.pdf §5's minimal-type rule - the identical
+       asymmetry minHugeInt below already had to work around, just one
+       boundary earlier at every rank, not only HUGEINT's. Subtracting 1
+       from an already-narrow, already-negated maxX keeps the result at
+       maxX's own rank instead (Appendix A's arithmetic rules are purely
+       rank-based, not value-range-based, so WiderOf(ShortInt, ShortInt)
+       stays ShortInt regardless of the numeric result). *)
+    minShortInt = -maxShortInt - 1; minInteger = -maxInteger - 1;
+    minLongInt = -maxLongInt - 1;
     maxHugeInt = MAX(LONGINT); (* Really means MAX(HUGEINT) - HUGEINT is
                                    always 8 bytes (Types.Mod's header
                                    comment) - but poc's own source can't
@@ -56,6 +81,20 @@ MODULE ConstantEvaluator;
                                    9223372036854775807 to a HUGEINT var
                                    compiles, one digit further overflows
                                    with voc's own "number too large". *)
+    minHugeInt = -maxHugeInt - 1; (* Computed, not written as a literal:
+                                      the magnitude 9223372036854775808
+                                      itself overflows a signed 64-bit
+                                      LONGINT (poc's own bootstrap-host
+                                      stand-in for HUGEINT, see maxHugeInt
+                                      above), so it cannot be parsed as an
+                                      ordinary positive numeral either -
+                                      the classic "most negative value has
+                                      no representable positive magnitude"
+                                      two's-complement asymmetry. voc (the
+                                      bootstrap compiler) folds this
+                                      ordinary CONST arithmetic expression
+                                      itself, so no such literal ever
+                                      needs to be written down. *)
 
   PROCEDURE ^ EvaluateExpr(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): Types.Value;
 
@@ -108,14 +147,9 @@ MODULE ConstantEvaluator;
      ("incompatible assignment") since 100000 doesn't fit a 16-bit
      INTEGER, but the identical literal assigns fine to a LONGINT (32-bit)
      var - and HUGEINT's own max (9223372036854775807) matches maxHugeInt
-     above the same way. maxShortInt/maxInteger/maxLongInt below are
-     voc's -O2 *target*-model byte widths (1/2/4 bytes - mirrored in
-     MemoryLayout.Mod's BasicSize under sizeModelO2), not poc's own host
-     build - poc has no -O2/-OC CLI flag yet to pick a target model from
-     (see MemoryLayout.Mod's header comment), so this always assumes the
-     -O2 default; revisit if/when such a flag exists. *)
+     above the same way. maxShortInt/maxInteger/maxLongInt (module-level,
+     above) hold the reasoning for what they represent and why. *)
   PROCEDURE IntegerLiteralType*(expr: SyntaxTree.LiteralExprNode; VAR value: LONGINT): Types.Type;
-    CONST maxShortInt = 127; maxInteger = 32767; maxLongInt = 2147483647;
     VAR overflow: BOOLEAN;
   BEGIN
     IF expr.isHex THEN ParseHexInteger(expr.lexeme, value, overflow)
@@ -244,11 +278,124 @@ MODULE ConstantEvaluator;
     RETURN SymbolTable.FindLocal(modObj.moduleScope, d.name)
   END FindQualifiedConst;
 
+  (* MAX(T)/MIN(T)/SIZE(T)'s argument position holds a bare *type* name,
+     never a value - PredeclaredProcedures.Mod's own CheckMaxMin/CheckSize
+     duplicate this same small lookup for the identical reason (that
+     module also cannot import SemanticActions.Mod, whose own
+     LookupBareTypeName this mirrors). Reuses FindQualifiedConst above
+     (despite the name, it is really "find any qualified Object", not
+     constClass-specific - the constClass check happens at its own call
+     sites) rather than adding a second near-identical qualname resolver. *)
+  PROCEDURE LookupBareTypeName(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object;
+  BEGIN
+    IF (expr = NIL) OR ~(expr IS SyntaxTree.DesignatorExprNode) THEN RETURN NIL END;
+    de := expr(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens OR (de.designator.selectors # NIL) THEN RETURN NIL END;
+    obj := FindQualifiedConst(scope, de.designator);
+    IF (obj = NIL) OR (obj.class # SymbolTable.typeClass) THEN RETURN NIL END;
+    RETURN obj.type
+  END LookupBareTypeName;
+
+  (* MAX/MIN(T)'s bound for every T PredeclaredProcedures.CheckMaxMin
+     already accepts, except REAL/LONGREAL (PLAN.md's own "Open design
+     questions" entry has the rationale for leaving those out: verify
+     against real voc first, tied to the separate correctly-rounded-
+     float work). Every bound here is a fixed, target-word-size-
+     independent language fact (SHORTINT is always -128..127 regardless
+     of target), unlike SizeBound below. Returns FALSE (v left
+     unpopulated) for a type MAX/MIN doesn't apply to, or one of the
+     REAL/LONGREAL types not yet handled. *)
+  PROCEDURE MaxMinBound(t: Types.Type; wantMax: BOOLEAN; VAR v: Types.Value): BOOLEAN;
+  BEGIN
+    NEW(v);
+    IF t = Types.Set THEN
+      v.type := Types.Integer; v.kind := Types.intValue;
+      IF wantMax THEN v.intVal := maxSetElement ELSE v.intVal := 0 END
+    ELSIF t = Types.ShortInt THEN
+      v.type := t; v.kind := Types.intValue;
+      IF wantMax THEN v.intVal := maxShortInt ELSE v.intVal := minShortInt END
+    ELSIF t = Types.Integer THEN
+      v.type := t; v.kind := Types.intValue;
+      IF wantMax THEN v.intVal := maxInteger ELSE v.intVal := minInteger END
+    ELSIF t = Types.LongInt THEN
+      v.type := t; v.kind := Types.intValue;
+      IF wantMax THEN v.intVal := maxLongInt ELSE v.intVal := minLongInt END
+    ELSIF t = Types.HugeInt THEN
+      v.type := t; v.kind := Types.intValue;
+      IF wantMax THEN v.intVal := maxHugeInt ELSE v.intVal := minHugeInt END
+    ELSIF t = Types.Char THEN
+      v.type := t; v.kind := Types.charValue;
+      IF wantMax THEN v.charVal := 0FFX ELSE v.charVal := 0X END
+    ELSIF t = Types.Boolean THEN
+      v.type := t; v.kind := Types.boolValue; v.boolVal := wantMax
+    ELSE
+      RETURN FALSE
+    END;
+    RETURN TRUE
+  END MaxMinBound;
+
+  (* SIZE(T), unlike MaxMinBound above, is genuinely target-dependent
+     (MemoryLayout.Mod's word-size/size-model axes) - folds using poc's
+     existing "-O2, 32-bit" default absent a real CLI flag to pick a
+     target from, the same precedent IntegerLiteralType already
+     established (see maxShortInt's own header comment); revisit
+     together once such a flag exists. Result type matches
+     PredeclaredProcedures.CheckSize's own (Types.Integer) for
+     consistency, even though a large RECORD/ARRAY's actual byte count
+     could in principle exceed INTEGER's 16-bit range - a pre-existing
+     quirk of CheckSize itself, not introduced here. Accepts any type
+     (not just the basic/SET ones MAX/MIN take), matching CheckSize;
+     MemoryLayout.Size itself already handles every Types.Type kind
+     gracefully (returns 0 for NIL/anything else), so there is nothing
+     further to reject here beyond "not a type name at all". *)
+  PROCEDURE SizeBound(t: Types.Type; VAR v: Types.Value);
+  BEGIN
+    NEW(v);
+    v.type := Types.Integer; v.kind := Types.intValue;
+    v.intVal := MemoryLayout.Size(t, MemoryLayout.wordSize32, MemoryLayout.sizeModelO2)
+  END SizeBound;
+
+  (* Shared MAX/MIN/SIZE dispatch, called from EvaluateDesignator below
+     once it has confirmed expr's base designator really is the
+     predeclared MAX/MIN/SIZE Object (not a user identifier of the same
+     name shadowing it - Oberon-2 permits that, and SemanticActions.Mod's
+     own CheckDesignatorExpr/CheckCallStatement make the identical check
+     before dispatching to PredeclaredProcedures.CheckCall). *)
+  PROCEDURE EvaluateTypeBoundCall(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode;
+                                  scope: SymbolTable.Scope; line, column: INTEGER): Types.Value;
+    VAR t: Types.Type; v: Types.Value;
+  BEGIN
+    IF (args = NIL) OR (args.next # NIL) THEN
+      Diagnostics.Error(line, column, "MAX/MIN/SIZE expects one argument");
+      RETURN UndefinedValue()
+    END;
+    t := LookupBareTypeName(scope, args);
+    IF t = NIL THEN
+      Diagnostics.Error(line, column, "MAX/MIN/SIZE requires a type name argument");
+      RETURN UndefinedValue()
+    ELSIF name = "SIZE" THEN
+      SizeBound(t, v); RETURN v
+    ELSIF ~MaxMinBound(t, name = "MAX", v) THEN
+      Diagnostics.Error(line, column, "MAX/MIN requires a basic type or SET");
+      RETURN UndefinedValue()
+    ELSE
+      RETURN v
+    END
+  END EvaluateTypeBoundCall;
+
   PROCEDURE EvaluateDesignator(expr: SyntaxTree.DesignatorExprNode;
                                scope: SymbolTable.Scope): Types.Value;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator;
   BEGIN
     d := expr.designator;
+    IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X)
+        & ((d.name = "MAX") OR (d.name = "MIN") OR (d.name = "SIZE")) THEN
+      obj := SymbolTable.Find(scope, d.name);
+      IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
+        RETURN EvaluateTypeBoundCall(d.name, expr.args, scope, expr.line, expr.column)
+      END
+    END;
     IF (d.selectors # NIL) OR expr.hasParens THEN
       Diagnostics.Error(expr.line, expr.column, "not a constant expression");
       RETURN UndefinedValue()
