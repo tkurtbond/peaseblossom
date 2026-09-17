@@ -38,7 +38,14 @@ MODULE Diagnostics;
 
   PROCEDURE Reset*(name: ARRAY OF CHAR);
   BEGIN
-    fileName := name;
+    (* Appendix A's "assignment compatible" rule 6 only covers a *string
+       constant*, not a general ARRAY OF CHAR value (name is an open-array
+       formal, not a literal) - real voc accepts "fileName := name" anyway
+       as an extension, but poc's own bootstrap-era source must stay
+       strict Oberon2.pdf (PLAN.md's "Constraint"), so this uses the
+       report's own predeclared COPY instead (§10.3). Found by the Phase 7
+       self-check milestone rejecting this exact line. *)
+    COPY(name, fileName);
     errorCount := 0
   END Reset;
 

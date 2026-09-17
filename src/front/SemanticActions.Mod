@@ -658,7 +658,43 @@ MODULE SemanticActions;
      procedure type parameter naming itself, still hits the plain
      obj.resolving guard and is rejected) - a narrower, deliberately
      unaddressed limitation, since neither is anywhere near as common a
-     pattern as the linked-structure idiom above. *)
+     pattern as the linked-structure idiom above.
+
+     A separate wrinkle, found by the Phase 7 self-check milestone
+     (pointing poc's own "-check" at this module's own source, per
+     PLAN.md - this module had silently relied on voc accepting it the
+     whole time): this module's own type section uses the classic
+     "every POINTER declared up front, each XxxDesc RECORD given a body
+     only afterward" idiom throughout (Node, Designator, Selector, ...
+     all declared before any of NodeDesc, DesignatorDesc, SelectorDesc,
+     ...). A field like DesignatorDesc.selectors: Selector is *not* a
+     forward reference in the report's sense at all - Selector's own
+     declaration (line 33) is textually well before DesignatorDesc's
+     (line 89) - but ResolveTypeDecls's pass 2 still visits Designator
+     (item 2 in the list) before Selector (item 3) ever gets its own
+     turn, and Designator's POINTER resolution eagerly recurses into
+     DesignatorDesc's fields right away (the allowForward-TRUE base
+     resolution above), so Selector's obj.type is still NIL - not
+     because it is illegally forward, but purely because of this
+     module's own eager-recursion resolution order, which can run ahead
+     of pass 2's textual traversal. Using obj.type = NIL as a stand-in
+     for "not yet declared" is wrong here: it conflates "genuinely not
+     yet declared" with "declared already, just not resolved yet by
+     this recursive algorithm's own timing." Checked directly against
+     real voc (2026-09-17): voc rejects a field naming a record type
+     declared later in the same TYPE list (no pointer involved), and -
+     more surprisingly - *also* rejects a field naming an already-named
+     POINTER type that is itself declared later in the list (i.e. being
+     a pointer is not on its own a forward-reference exemption; only
+     the base of an inline "POINTER TO X" is), while accepting exactly
+     this module's own up-front-pointers idiom, where every POINTER
+     name is declared before any field that uses it. So the correct
+     test is textual position, not resolution state: ResolveQualidentType
+     compares the *reference's* own line (node.line) against the
+     unresolved target's declaration line (obj.pendingTypeNode.line,
+     still populated whenever obj.type = NIL) and only rejects when the
+     target's declaration does not precede the reference - matching
+     voc's real rule instead of poc's own incidental recursion order. *)
   PROCEDURE ^ ResolveType(scope: SymbolTable.Scope; node: SyntaxTree.TypeNode;
                           allowForward: BOOLEAN): Types.Type;
   PROCEDURE ^ ResolveQualidentType(scope: SymbolTable.Scope;
@@ -799,7 +835,7 @@ MODULE SemanticActions;
       RETURN Types.Undefined
     ELSIF obj.type # NIL THEN
       RETURN obj.type
-    ELSIF ~allowForward THEN
+    ELSIF ~allowForward & (obj.pendingTypeNode.line >= node.line) THEN
       Diagnostics.Error(node.line, node.column,
         "forward reference to a type is allowed only as a POINTER TO base type");
       RETURN Types.Undefined
@@ -1056,6 +1092,14 @@ MODULE SemanticActions;
      end to end. *)
 
   PROCEDURE ^ CheckExpr(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
+
+  (* Forward-declared so CheckArguments (below) can share it for a value
+     parameter's own assignment-compatibility check, rather than
+     duplicating rule 6/the §3 vocabulary rule inline - see its own
+     definition further down for why. *)
+  PROCEDURE ^ CheckAssignmentCompatible(scope: SymbolTable.Scope; dstType: Types.Type;
+                                        srcExpr: SyntaxTree.ExprNode; srcType: Types.Type;
+                                        line, column: INTEGER; message: ARRAY OF CHAR);
 
   (* NIL if qualifier/name doesn't resolve to a typeClass object - shared
      by LookupBareTypeName (terminal guard/IS disambiguation, where a bare
@@ -1384,8 +1428,9 @@ MODULE SemanticActions;
               Diagnostics.Error(a.line, a.column,
                 "argument is not array compatible with the open-array parameter")
             END
-          ELSIF ~Types.AssignmentCompatible(p.type, argType) THEN
-            Diagnostics.Error(a.line, a.column, "argument is not assignment compatible with the parameter")
+          ELSE
+            CheckAssignmentCompatible(scope, p.type, a, argType, a.line, a.column,
+              "argument is not assignment compatible with the parameter")
           END
         END
       END;
@@ -1483,6 +1528,31 @@ MODULE SemanticActions;
     END
   END IsCharArrayOrString;
 
+  (* Oberon2.pdf §3 vocabulary rule 4: "A string of length 1 can be used
+     wherever a character constant is allowed and vice versa" - a lexical
+     rule about the *token* itself (a quoted string spelled with exactly
+     one character), so this only recognizes literal syntax, not a
+     general String-typed expression or even a named CONST alias of one;
+     CheckAssignmentCompatible/CheckCaseLabelList below cover that wider,
+     value-dependent case separately since they already work from an
+     evaluated Types.Value rather than syntax. Found missing while
+     self-checking poc's own source (PLAN.md's Phase 7 milestone):
+     Diagnostics.Mod's Out.Char(":") and dozens of similar single-quoted-
+     character comparisons/CASE labels throughout Lexer.Mod all rely on
+     this exact rule, which poc had never implemented. *)
+  PROCEDURE IsSingleCharStringLiteral(node: SyntaxTree.ExprNode): BOOLEAN;
+    VAR result: BOOLEAN;
+  BEGIN
+    result := FALSE;
+    IF (node # NIL) & (node IS SyntaxTree.LiteralExprNode) THEN
+      WITH node: SyntaxTree.LiteralExprNode DO
+        result := (node.literalKind = Lexer.string) & (node.lexeme[0] # 0X)
+                   & (node.lexeme[1] = 0X)
+      END
+    END;
+    RETURN result
+  END IsSingleCharStringLiteral;
+
   PROCEDURE CheckUnaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.UnaryExprNode): Types.Type;
     VAR t: Types.Type;
   BEGIN
@@ -1571,6 +1641,10 @@ MODULE SemanticActions;
     ELSIF (node.op = Lexer.equal) OR (node.op = Lexer.notEqual) THEN
       IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN result := Types.Boolean
       ELSIF (l = Types.Char) & (r = Types.Char) THEN result := Types.Boolean
+      ELSIF (l = Types.Char) & (r = Types.String) & IsSingleCharStringLiteral(node.right) THEN
+        result := Types.Boolean
+      ELSIF (l = Types.String) & (r = Types.Char) & IsSingleCharStringLiteral(node.left) THEN
+        result := Types.Boolean
       ELSIF IsCharArrayOrString(l) & IsCharArrayOrString(r) THEN result := Types.Boolean
       ELSIF (l = Types.Boolean) & (r = Types.Boolean) THEN result := Types.Boolean
       ELSIF (l = Types.Set) & (r = Types.Set) THEN result := Types.Boolean
@@ -1588,6 +1662,10 @@ MODULE SemanticActions;
         OR (node.op = Lexer.greater) OR (node.op = Lexer.greaterEqual) THEN
       IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN result := Types.Boolean
       ELSIF (l = Types.Char) & (r = Types.Char) THEN result := Types.Boolean
+      ELSIF (l = Types.Char) & (r = Types.String) & IsSingleCharStringLiteral(node.right) THEN
+        result := Types.Boolean
+      ELSIF (l = Types.String) & (r = Types.Char) & IsSingleCharStringLiteral(node.left) THEN
+        result := Types.Boolean
       ELSIF IsCharArrayOrString(l) & IsCharArrayOrString(r) THEN result := Types.Boolean
       ELSE
         Diagnostics.Error(node.line, node.column, "operands are not ordered");
@@ -1659,13 +1737,18 @@ MODULE SemanticActions;
     RETURN i
   END StringLength;
 
-  (* Shared by assignment and RETURN-value checking. Appendix A's
-     assignment-compatible rules 1-5/7 are pure Types.Type predicates
-     (Types.AssignmentCompatible); rule 6 (Tv is ARRAY n OF CHAR, e a
-     string constant with m < n characters) is inherently value-
-     dependent, so it is handled here as a special case, evaluating
-     srcExpr via ConstantEvaluator.Evaluate only when srcType is
-     Types.String. *)
+  (* Shared by assignment, RETURN-value and (via CheckArguments) value-
+     parameter checking. Appendix A's assignment-compatible rules 1-5/7
+     are pure Types.Type predicates (Types.AssignmentCompatible); rule 6
+     (Tv is ARRAY n OF CHAR, e a string constant with m < n characters)
+     is inherently value-dependent, so it is handled here as a special
+     case, evaluating srcExpr via ConstantEvaluator.Evaluate only when
+     srcType is Types.String. The §3 vocabulary rule ("a string of length
+     1 can be used wherever a character constant is allowed") is handled
+     the same value-dependent way when dstType is Types.Char - unlike
+     IsSingleCharStringLiteral's syntax-only check (CheckBinaryExpr),
+     this also accepts a named CONST alias of a length-1 string, since an
+     evaluated Types.Value is already on hand here regardless. *)
   PROCEDURE CheckAssignmentCompatible(scope: SymbolTable.Scope; dstType: Types.Type;
                                       srcExpr: SyntaxTree.ExprNode; srcType: Types.Type;
                                       line, column: INTEGER; message: ARRAY OF CHAR);
@@ -1679,6 +1762,9 @@ MODULE SemanticActions;
         v := ConstantEvaluator.Evaluate(srcExpr, scope);
         ok := (v.type # Types.Undefined) & (StringLength(v.stringVal) < arr.length)
       END
+    ELSIF ~ok & (srcType = Types.String) & (dstType = Types.Char) THEN
+      v := ConstantEvaluator.Evaluate(srcExpr, scope);
+      ok := (v.type # Types.Undefined) & (StringLength(v.stringVal) = 1)
     END;
     IF ~ok THEN Diagnostics.Error(line, column, message) END
   END CheckAssignmentCompatible;
@@ -1799,6 +1885,14 @@ MODULE SemanticActions;
       low := 0;
       IF ok & charMode & (lowVal.kind = Types.charValue) THEN
         low := ORD(lowVal.charVal)
+      ELSIF ok & charMode & (lowVal.kind = Types.stringValue) & (StringLength(lowVal.stringVal) = 1) THEN
+        (* Oberon2.pdf §3 vocabulary rule 4: a length-1 string constant is
+           interchangeable with a character constant - see
+           IsSingleCharStringLiteral's own header comment. This path also
+           covers a named CONST alias of one, since lowVal is already a
+           fully evaluated Types.Value regardless of whether l.low was a
+           literal or a qualident. *)
+        low := ORD(lowVal.stringVal[0])
       ELSIF ok & ~charMode & (lowVal.kind = Types.intValue) THEN
         low := lowVal.intVal
       ELSIF ok THEN
@@ -1812,6 +1906,8 @@ MODULE SemanticActions;
           ok := FALSE
         ELSIF charMode & (highVal.kind = Types.charValue) THEN
           high := ORD(highVal.charVal)
+        ELSIF charMode & (highVal.kind = Types.stringValue) & (StringLength(highVal.stringVal) = 1) THEN
+          high := ORD(highVal.stringVal[0])
         ELSIF ~charMode & (highVal.kind = Types.intValue) THEN
           high := highVal.intVal
         ELSE
