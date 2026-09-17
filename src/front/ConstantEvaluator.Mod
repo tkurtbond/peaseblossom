@@ -25,13 +25,37 @@ MODULE ConstantEvaluator;
      Lexer.Mod, per that module's own header comment: the lexer only
      records a literal's lexeme text (plus its integer isHex flag and its
      real isLongReal flag), leaving interpretation to whichever later
-     phase first needs the actual value. *)
+     phase first needs the actual value. IntegerLiteralType* is exported
+     for the same reason ParseReal* is (see that procedure's own header
+     comment): SemanticActions.CheckLiteralExpr needs an integer literal's
+     minimal type outside a ConstExpr too (e.g. a plain assignment's RHS),
+     and duplicating the magnitude/overflow logic there would risk the
+     two silently drifting apart. *)
 
   IMPORT SyntaxTree, Types, SymbolTable, Diagnostics, Lexer;
 
   CONST
     maxSetElement = 31; (* matches voc's default 32-bit SET (AGENTS.md);
                             revisit once Phase 4 models target word size *)
+    maxHugeInt = MAX(LONGINT); (* Really means MAX(HUGEINT) - HUGEINT is
+                                   always 8 bytes (Types.Mod's header
+                                   comment) - but poc's own source can't
+                                   write HUGEINT itself: PLAN.md's
+                                   "Bootstrap terminology" constraint
+                                   requires strict Oberon2.pdf syntax here
+                                   (HUGEINT is a voc extension), so Stage 1
+                                   (poc compiling itself) doesn't need
+                                   HUGEINT support to even get off the
+                                   ground. MAX(LONGINT) stands in for it
+                                   because poc is *built* with voc's -OC
+                                   flag (a codegen choice, not a syntax
+                                   relaxation - AGENTS.md), which makes the
+                                   host LONGINT 8 bytes too, so the two
+                                   MAX()es coincide numerically. Confirmed
+                                   against real voc (2026-09-17): assigning
+                                   9223372036854775807 to a HUGEINT var
+                                   compiles, one digit further overflows
+                                   with voc's own "number too large". *)
 
   PROCEDURE ^ EvaluateExpr(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): Types.Value;
 
@@ -51,25 +75,61 @@ MODULE ConstantEvaluator;
     END
   END HexDigitValue;
 
-  PROCEDURE ParseDecimalInteger(lexeme: ARRAY OF CHAR): LONGINT;
-    VAR i: INTEGER; v: LONGINT;
+  (* VAR overflow (never reset to FALSE once set) flags a lexeme whose
+     value exceeds maxHugeInt - checked digit-by-digit, before each
+     multiply, so the check itself never overflows value. *)
+  PROCEDURE ParseDecimalInteger(lexeme: ARRAY OF CHAR; VAR value: LONGINT; VAR overflow: BOOLEAN);
+    VAR i, digit: INTEGER;
   BEGIN
-    v := 0; i := 0;
+    value := 0; overflow := FALSE; i := 0;
     WHILE lexeme[i] # 0X DO
-      v := v * 10 + (ORD(lexeme[i]) - ORD("0")); INC(i)
-    END;
-    RETURN v
+      digit := ORD(lexeme[i]) - ORD("0");
+      IF value > (maxHugeInt - digit) DIV 10 THEN overflow := TRUE END;
+      value := value * 10 + digit; INC(i)
+    END
   END ParseDecimalInteger;
 
-  PROCEDURE ParseHexInteger(lexeme: ARRAY OF CHAR): LONGINT;
-    VAR i: INTEGER; v: LONGINT;
+  PROCEDURE ParseHexInteger(lexeme: ARRAY OF CHAR; VAR value: LONGINT; VAR overflow: BOOLEAN);
+    VAR i, digit: INTEGER;
   BEGIN
-    v := 0; i := 0;
+    value := 0; overflow := FALSE; i := 0;
     WHILE (lexeme[i] # 0X) & (lexeme[i] # "H") DO
-      v := v * 16 + HexDigitValue(lexeme[i]); INC(i)
-    END;
-    RETURN v
+      digit := HexDigitValue(lexeme[i]);
+      IF value > (maxHugeInt - digit) DIV 16 THEN overflow := TRUE END;
+      value := value * 16 + digit; INC(i)
+    END
   END ParseHexInteger;
+
+  (* Oberon2.pdf §5: "The type of an integer constant is the minimal type
+     to which the constant value belongs" (see §6.1's SHORTINT/INTEGER/
+     LONGINT ranges, plus HUGEINT - AGENTS.md's "Language extensions
+     beyond Oberon2.pdf"). Confirmed against real voc (2026-09-17): under
+     its default -O2 sizes, "VAR y: INTEGER; y := 100000" is rejected
+     ("incompatible assignment") since 100000 doesn't fit a 16-bit
+     INTEGER, but the identical literal assigns fine to a LONGINT (32-bit)
+     var - and HUGEINT's own max (9223372036854775807) matches maxHugeInt
+     above the same way. maxShortInt/maxInteger/maxLongInt below are
+     voc's -O2 *target*-model byte widths (1/2/4 bytes - mirrored in
+     MemoryLayout.Mod's BasicSize under sizeModelO2), not poc's own host
+     build - poc has no -O2/-OC CLI flag yet to pick a target model from
+     (see MemoryLayout.Mod's header comment), so this always assumes the
+     -O2 default; revisit if/when such a flag exists. *)
+  PROCEDURE IntegerLiteralType*(expr: SyntaxTree.LiteralExprNode; VAR value: LONGINT): Types.Type;
+    CONST maxShortInt = 127; maxInteger = 32767; maxLongInt = 2147483647;
+    VAR overflow: BOOLEAN;
+  BEGIN
+    IF expr.isHex THEN ParseHexInteger(expr.lexeme, value, overflow)
+    ELSE ParseDecimalInteger(expr.lexeme, value, overflow)
+    END;
+    IF overflow THEN
+      Diagnostics.Error(expr.line, expr.column, "integer literal too large for HUGEINT");
+      RETURN Types.Undefined
+    ELSIF value <= maxShortInt THEN RETURN Types.ShortInt
+    ELSIF value <= maxInteger THEN RETURN Types.Integer
+    ELSIF value <= maxLongInt THEN RETURN Types.LongInt
+    ELSE RETURN Types.HugeInt
+    END
+  END IntegerLiteralType;
 
   PROCEDURE ParseCharConst(lexeme: ARRAY OF CHAR): CHAR;
     VAR i: INTEGER; v: LONGINT;
@@ -145,10 +205,8 @@ MODULE ConstantEvaluator;
   BEGIN
     NEW(v);
     IF expr.literalKind = Lexer.integer THEN
-      v.kind := Types.intValue; v.type := Types.Integer;
-      IF expr.isHex THEN v.intVal := ParseHexInteger(expr.lexeme)
-      ELSE v.intVal := ParseDecimalInteger(expr.lexeme)
-      END
+      v.kind := Types.intValue;
+      v.type := IntegerLiteralType(expr, v.intVal)
     ELSIF expr.literalKind = Lexer.real THEN
       v.kind := Types.realValue;
       IF expr.isLongReal THEN v.type := Types.LongReal ELSE v.type := Types.Real END;

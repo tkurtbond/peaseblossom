@@ -1399,10 +1399,16 @@ MODULE SemanticActions;
     END
   END CheckDesignatorExpr;
 
+  (* Integer case delegates to ConstantEvaluator.IntegerLiteralType - see
+     that procedure's own header comment - rather than always returning
+     Types.Integer, so a literal outside a ConstExpr (e.g. a plain
+     assignment's RHS) gets the same Oberon2.pdf §5 minimal-type rule a
+     CONST declaration's value already does. *)
   PROCEDURE CheckLiteralExpr(node: SyntaxTree.LiteralExprNode): Types.Type;
+    VAR value: LONGINT;
   BEGIN
     IF node.literalKind = Lexer.integer THEN
-      RETURN Types.Integer
+      RETURN ConstantEvaluator.IntegerLiteralType(node, value)
     ELSIF node.literalKind = Lexer.real THEN
       IF node.isLongReal THEN RETURN Types.LongReal ELSE RETURN Types.Real END
     ELSIF node.literalKind = Lexer.charConst THEN

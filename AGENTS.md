@@ -159,13 +159,19 @@ same reason `LONGINT` already ranks below `REAL`), `SymbolTable.Mod`
 arithmetic folding). `VAR`/parameter syntax (Phase 5/6) can declare a
 `HUGEINT`-typed value directly now — today it's also reachable as a
 `TYPE` alias target (see `test/conformance/semantic-hugeint-type`).
-Numeral literal typing still doesn't pick `HUGEINT` for large decimal/hex
-numerals (`ConstantEvaluator.Mod`'s `ParseDecimalInteger`/`ParseHexInteger`
-always fold to `Types.Integer` regardless of magnitude, with no overflow
-diagnostic) — `MemoryLayout.Mod` now has the real bit widths (2026-09-16)
-this would need to check a literal's magnitude against, but nothing wires
-it into literal folding yet. That remains open, separate work, not
-scheduled to a phase.
+Numeral literal typing (2026-09-17) now picks the minimal type per
+`Oberon2.pdf` §5 — `ConstantEvaluator.IntegerLiteralType` (shared by
+`EvaluateLiteral`'s `CONST` folding and `SemanticActions.CheckLiteralExpr`'s
+general expression typing) selects the narrowest of `SHORTINT`/`INTEGER`/
+`LONGINT`/`HUGEINT` a decimal/hex numeral's value fits, using voc's `-O2`
+default byte widths (poc has no `-O2`/`-OC` CLI flag of its own yet — see
+"`-OC`-equivalent elementary-type-size model" below), and reports "integer
+literal too large for HUGEINT" for a numeral past even `HUGEINT`'s own
+max instead of silently wrapping. Verified against real voc, including
+its own boundary rejections and its "number too large" overflow
+diagnostic. See `test/conformance/semantic-integer-literal-minimal-type`,
+`semantic-reject-integer-literal-too-wide`,
+`semantic-reject-integer-literal-overflow`.
 
 **Appendix A / Appendix C survey for `HUGEINT` (2026-09-16,
 `000-todo.org`)**: confirmed by direct inspection, not just design intent

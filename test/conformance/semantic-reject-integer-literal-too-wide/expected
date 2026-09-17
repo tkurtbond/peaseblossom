@@ -1,0 +1,2 @@
+integer-literal-too-wide.mod:11:3: error: assignment is not type-compatible
+1 error(s)

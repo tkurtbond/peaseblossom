@@ -1,0 +1,2 @@
+integer-literal-overflow.mod:8:20: error: integer literal too large for HUGEINT
+1 error(s)
