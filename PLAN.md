@@ -349,26 +349,35 @@ external-symbol names are subject to the same 31-character limit above.
   would be more useful at a call site than an opaque integer code. Not
   scheduled to any phase yet.
 
-- **Type guards in designators — two separate, deliberately unaddressed
-  gaps** (`000-todo.org`'s bare "Type guards in designators?" line refers
-  to both): (1) **mid-chain guards** (`v(T).field`, e.g. the report's own
-  `t(CenterTree).subnode`) don't parse at all. `Parser.Mod`'s
-  `ParseDesignator` loop stops dead at `"("` and never resumes selector
-  parsing afterward — every trailing `(...)` becomes call arguments on the
-  whole enclosing expression, so `LookupBareTypeName`/`CheckDesignatorExpr`
-  (`SemanticActions.Mod`) can only disambiguate guard-vs-call for a
-  *terminal* `v(T)`. Fixing this needs a real `Parser.Mod` grammar change —
-  folding `"(" Qualident ")"` into the selector loop itself, matching
-  Appendix B's actual `Designator` grammar instead of Phase 2's
-  simplification — plus a new `SyntaxTree` selector node (there is no
-  `GuardSelector` today), plus a `CheckDesignator` case that applies the
-  already-existing `CheckGuard`/`CheckExtensionApplicable` mid-chain
-  instead of only at the end. Discovered as a real, then-undetected gap in
-  Phase 5 (several already-committed Phase 3/4 procedures — `Types.Mod`'s
-  `IsNumeric`/`Rank`/`Extends*`/`ArrayCompatible*`,
-  `MemoryLayout.Mod`'s `DescriptorSize` — had unknowingly relied on the
-  exact pattern; all were rewritten to bind the guarded value to a local
-  variable first rather than chaining a selector onto a guard/cast).
+- **Type guards in designators — two separate gaps**
+  (`000-todo.org`'s bare "Type guards in designators?" line refers to
+  both): (1) **mid-chain guards** (`v(T).field`, e.g. the report's own
+  `t(CenterTree).subnode`) — resolved 2026-09-17. `Parser.Mod`'s
+  `ParseDesignator` selector loop now folds `"(" Qualident ")"` in
+  directly via a speculative `TryParseGuardSelector` (checkpoint the
+  parser, commit to a `GuardSelector` node only when the closing `")"` is
+  immediately followed by another selector token — the one shape
+  Factor's own grammar, `Designator [ActualParameters]`, proves can
+  never be `ActualParameters` instead, since a call's argument list is
+  never followed by more selectors; every other shape rolls back
+  unchanged, leaving the existing *terminal* guard-vs-call
+  disambiguation, `LookupBareTypeName`/`CheckDesignatorExpr`, untouched).
+  `CheckDesignator` (`SemanticActions.Mod`) applies the already-existing
+  `CheckGuard`/`CheckExtensionApplicable` pair mid-chain via a new
+  `GuardSelector` case, sharing a `ResolveTypeName` helper with
+  `LookupBareTypeName` and `CheckWithGuard`. Three new conformance
+  tests: `semantic-mid-chain-guard`, `semantic-reject-mid-chain-
+  guard-not-type`, `semantic-reject-mid-chain-guard-not-extension`. Not
+  revisited as part of this fix: several already-committed Phase 3/4
+  procedures (`Types.Mod`'s `IsNumeric`/`EqualTypes`/`Extends*`/
+  `ArrayCompatible*`/`AssignmentCompatible*`, `MemoryLayout.Mod`'s
+  `DescriptorSize`, `SemanticActions.Mod`'s `CheckExtensionApplicable`)
+  still bind a guarded value to a local variable before selecting a
+  field off it, a workaround this fix makes optional but does not
+  require removing — left alone deliberately, since simplifying eight
+  call sites in the Appendix A predicates (the semantic crux of the
+  whole front end) for a purely cosmetic win isn't worth the risk to
+  already-tested code; revisit opportunistically, not as its own task.
   (2) **A qualified `WITH` variable** (`WITH M.v: T DO ...`) type-checks
   correctly (`CheckWithGuard` resolves `M.v` via the same `FindQualified`
   every other qualified name uses) but doesn't get narrowed inside the
@@ -380,12 +389,10 @@ external-symbol names are subject to the same 31-character limit above.
   restrict `WITH`'s guard variable to bare names and document the
   qualified form as legal-but-unnarrowed on purpose. Found while
   implementing Phase 7's `FindQualified` unification, with no fixture
-  forcing a choice yet. Neither gap blocks any current `PLAN.md` phase;
-  (1) is the more invasive (parser + AST + resolver, likely its own small
-  phase, possibly paired with revisiting the guard/selector workarounds
-  above); (2) is confined to `CheckWithGuard`/`FindQualified`. Not
-  scheduled to any phase yet — revisit if a fixture or real program needs
-  either.
+  forcing a choice yet. Doesn't block any current `PLAN.md` phase and
+  isn't scheduled to one yet — revisit if a fixture or real program
+  needs it; it's also `000-todo.org`'s separate "Qualified WITH
+  narrowing" line.
 
 ## Critical files
 

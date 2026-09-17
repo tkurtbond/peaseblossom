@@ -1009,23 +1009,22 @@ MODULE SemanticActions;
      assignment to a '-'-exported local VAR from within its own
      declaring module.
 
-     Type guard v(T) vs. an ordinary call: Parser.Mod's own header
-     comment already documents that it never builds a GuardSelector -
-     every trailing "(...)" after a designator parses uniformly as call
-     arguments on the owning DesignatorExprNode/CallStatementNode.
-     Disambiguating that needs symbol information the parser doesn't
-     have; LookupBareTypeName/CheckDesignatorExpr below do it once real
-     scope information exists. This only covers a TERMINAL guard (v(T)
-     as a whole designator-expression's outermost operation, not
-     v(T).field with a selector chained after the guard):
-     Parser.Mod's ParseDesignator loop stops at "(" entirely and never
-     resumes selector parsing afterward, so the mid-chain form the report
-     also shows (t(CenterTree).subnode) needs a Parser.Mod grammar change
-     (folding "(" Qualident ")" into the selector loop itself, matching
-     Appendix B's actual Designator grammar rather than Phase 2's
-     simplification of it) - real, additional scope closely related to
-     WITH's own guard machinery, deferred alongside Phase 6 rather than
-     attempted here.
+     Type guard v(T) vs. an ordinary call, two cases per Parser.Mod's own
+     header comment (simplification 2): a TERMINAL guard (v(T) as a whole
+     designator-expression's outermost operation) still parses as
+     ordinary call syntax - every "(...)" that ends a designator parses
+     uniformly as call arguments on the owning DesignatorExprNode/
+     CallStatementNode, and LookupBareTypeName/CheckDesignatorExpr below
+     decide after the fact whether the sole argument was really a type
+     name, since nothing else can disambiguate the shared "(" without
+     symbol information. A MID-CHAIN guard (t(CenterTree).subnode) is
+     unambiguous by construction instead - Parser.Mod's ParseDesignator
+     only ever builds a GuardSelector when "(" Qualident ")" is
+     immediately followed by another selector, the one shape a call's own
+     ActualParameters can never be - so CheckDesignator's own
+     GuardSelector case below applies the guard directly via the same
+     ResolveTypeName/CheckGuard pair, with no call-reinterpretation
+     fallback to consider.
 
      Call/call-expression checking recognizes a Types.ProcedureType value
      (including a procedure-typed record field - see the
@@ -1040,23 +1039,36 @@ MODULE SemanticActions;
 
   PROCEDURE ^ CheckExpr(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
 
+  (* NIL if qualifier/name doesn't resolve to a typeClass object - shared
+     by LookupBareTypeName (terminal guard/IS disambiguation, where a bare
+     designator expression's own qualifier/name are passed straight
+     through), CheckDesignator's own GuardSelector case (mid-chain
+     guards, which already carry qualifier/name directly - see
+     SyntaxTree.GuardSelectorDesc), and CheckWithGuard (WITH v: T DO). *)
+  PROCEDURE ResolveTypeName(scope: SymbolTable.Scope; qualifier, name: SyntaxTree.Ident;
+                            line, column: INTEGER): Types.Type;
+    VAR obj: SymbolTable.Object;
+  BEGIN
+    obj := FindQualified(scope, qualifier, name, line, column);
+    IF (obj # NIL) & (obj.class = SymbolTable.typeClass) & (obj.type # NIL) THEN
+      RETURN obj.type
+    ELSE
+      RETURN NIL
+    END
+  END ResolveTypeName;
+
   (* NIL if expr is not a bare, unqualified, selector-free, paren-free
      designator naming a typeClass object - i.e. not usable as a type
      guard's or IS's right-hand "type name" operand. *)
   PROCEDURE LookupBareTypeName(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
-    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object;
+    VAR de: SyntaxTree.DesignatorExprNode;
   BEGIN
     IF ~(expr IS SyntaxTree.DesignatorExprNode) THEN RETURN NIL END;
     de := expr(SyntaxTree.DesignatorExprNode);
     IF de.hasParens OR (de.designator.selectors # NIL) THEN
       RETURN NIL
     END;
-    obj := FindQualified(scope, de.designator.qualifier, de.designator.name, de.line, de.column);
-    IF (obj # NIL) & (obj.class = SymbolTable.typeClass) & (obj.type # NIL) THEN
-      RETURN obj.type
-    ELSE
-      RETURN NIL
-    END
+    RETURN ResolveTypeName(scope, de.designator.qualifier, de.designator.name, de.line, de.column)
   END LookupBareTypeName;
 
   (* §8.1's type-guard applicability rule 2 ("T is an extension of the
@@ -1148,6 +1160,7 @@ MODULE SemanticActions;
       ptr: Types.PointerType;
       arr: Types.ArrayType;
       crossedBoundary: BOOLEAN;
+      targetType: Types.Type;
   BEGIN
     readOnly := FALSE; isVariable := FALSE;
     (* PLAN.md Phase 7: "-" read-only export (Oberon2.pdf §4: "read-only
@@ -1248,6 +1261,24 @@ MODULE SemanticActions;
             t := Types.Undefined
           ELSE
             ptr := t(Types.PointerType); t := ptr.base
+          END
+      | sel: SyntaxTree.GuardSelector DO
+          (* Mid-chain "(" Qualident ")" - see Parser.Mod's own header
+             comment, simplification 2, and PLAN.md's "Type guards in
+             designators" for why this is unambiguously a guard rather
+             than a call by construction, so no ActualParameters
+             fallback belongs here the way CheckDesignatorExpr's terminal
+             case needs one. No auto-deref first (unlike '.'/'['):
+             CheckGuard itself already requires t to be a pointer
+             directly, matching the report's own guard examples
+             (t(CenterTree), never t^(CenterTree)). *)
+          methodOwner := NIL;
+          targetType := ResolveTypeName(scope, sel.qualifier, sel.name, sel.line, sel.column);
+          IF targetType = NIL THEN
+            Diagnostics.Error(sel.line, sel.column, "expected a type name");
+            t := Types.Undefined
+          ELSE
+            t := CheckGuard(t, targetType, sel.line, sel.column)
           END
       ELSE
         methodOwner := NIL;
@@ -1887,10 +1918,12 @@ MODULE SemanticActions;
   (* ---- PLAN.md Phase 6: WITH (Oberon2.pdf §9.11) ----
 
      Reuses Phase 5's guard-applicability pair (CheckExtensionApplicable/
-     CheckGuard) outright - no new predicate. A Guard's Qualidents are
-     already raw idents on WithGuardNode, not an ExprNode, so resolution
-     here is a direct SymbolTable.Find rather than LookupBareTypeName's
-     expression-shaped check. Each guard's body is checked in a fresh
+     CheckGuard) outright - no new predicate. A Guard's target Qualident
+     is already raw qualifier/name idents on WithGuardNode, not an
+     ExprNode, so resolution here is ResolveTypeName directly (the same
+     helper CheckDesignator's own GuardSelector case and
+     LookupBareTypeName use) rather than LookupBareTypeName's
+     expression-shaped wrapper around it. Each guard's body is checked in a fresh
      scope where the tested variable's name is re-Insert'ed shadowing the
      outer one, with the narrowed (tested) type and the original's
      exported/readOnly copied over (§9.11: "v is regarded as if it had
@@ -1913,7 +1946,7 @@ MODULE SemanticActions;
 
   PROCEDURE CheckWithGuard(scope: SymbolTable.Scope; g: SyntaxTree.WithGuardNode;
                            loopDepth: INTEGER; procResultType: Types.Type);
-    VAR obj, targetObj: SymbolTable.Object; leftType, targetType, narrowed: Types.Type;
+    VAR obj: SymbolTable.Object; leftType, targetType, narrowed: Types.Type;
   BEGIN
     (* A qualified WITH variable (WITH M.v: T DO ...) type-checks
        correctly, but CheckWithGuardBody's shadow-insert below only ever
@@ -1928,12 +1961,11 @@ MODULE SemanticActions;
       RETURN
     END;
     leftType := obj.type;
-    targetObj := FindQualified(scope, g.typeQualifier, g.typeName, g.line, g.column);
-    IF (targetObj = NIL) OR (targetObj.class # SymbolTable.typeClass) THEN
+    targetType := ResolveTypeName(scope, g.typeQualifier, g.typeName, g.line, g.column);
+    IF targetType = NIL THEN
       Diagnostics.Error(g.line, g.column, "expected a type name");
       RETURN
     END;
-    targetType := targetObj.type;
     narrowed := CheckGuard(leftType, targetType, g.line, g.column);
     CheckWithGuardBody(scope, g, narrowed, obj, loopDepth, procResultType)
   END CheckWithGuard;

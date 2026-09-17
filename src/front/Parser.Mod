@@ -24,15 +24,31 @@ MODULE Parser;
         allow a trailing "(" [ExprList] ")" (a call) after any designator -
         the same token can start either, and telling them apart in general
         needs to know whether the designator denotes a procedure or a
-        pointer/record variable. This phase never treats a trailing
-        parenthesized group as a type guard: every "(...)" after a
-        designator parses uniformly as call arguments (SyntaxTree's
-        GuardSelector goes unused until a later phase can disambiguate).
-        PLAN.md Phase 5 resolves this for a *terminal* guard/IS once real
-        symbol information exists (SemanticActions.Mod); a guard followed
-        by a chained selector still needs a grammar change here, tracked
-        alongside PLAN.md Phase 6's own type-bound-procedure work but not
-        undertaken by it (see AGENTS.md).
+        pointer/record variable. PLAN.md Phase 5 resolves this for a
+        *terminal* guard/IS once real symbol information exists
+        (SemanticActions.Mod's LookupBareTypeName/CheckDesignatorExpr):
+        every "(...)" that ends a designator (nothing selector-shaped
+        follows) still parses uniformly as call arguments there, and
+        semantic checking decides after the fact whether the sole
+        argument was really a type name.
+
+        A *mid-chain* guard (t(CenterTree).subnode) needs the parser
+        itself to disambiguate, since nothing later ever gets a chance to
+        reinterpret a selector that already has more selectors chained
+        after it. ParseDesignator's selector loop resolves this
+        syntactically, with no symbol-table lookup needed: Factor's own
+        grammar (Designator [ActualParameters]) guarantees ActualParameters
+        can never be followed by another selector, so whenever "(" Qualident
+        ")" is immediately followed by another selector token
+        ("." "[" "^" "("), it cannot be anything other than a guard -
+        TryParseGuardSelector below commits to a GuardSelector node in
+        exactly that situation (checkpointing the parser state and
+        rolling back to try ActualParameters instead for every other
+        shape: multiple/complex arguments, or a lone Qualident with
+        nothing selector-shaped after it, which stays simplification 2's
+        existing terminal case, untouched). GuardSelector previously went
+        unused for exactly this reason - see AGENTS.md and PLAN.md's
+        "Type guards in designators" for the fuller history.
 
      PLAN.md Phase 6 adds one small, unambiguous grammar addition rather
      than resolving either simplification above: a "[" right after
@@ -178,6 +194,45 @@ MODULE Parser;
     RETURN head
   END ParseExprList;
 
+  (* Speculatively parses a mid-chain type guard "(" Qualident ")" - see
+     this module's own header comment, simplification 2. Only ever
+     commits (returns TRUE, with sel holding the new GuardSelector) when
+     the parenthesized content is exactly a bare, possibly
+     module-qualified identifier immediately followed by another
+     selector token - the one shape that can never be ActualParameters
+     instead. Every other shape rolls the parser all the way back to
+     before "(" (a plain record assignment, no pointers mutated in
+     between - see Parser's own field comments - so this is an exact,
+     cheap restore) and returns FALSE, leaving the "(" for the caller's
+     existing ActualParameters/terminal-guard handling. Mirrors
+     ParseQualident's own module-qualifier check (IsKnownAlias) rather
+     than calling ParseQualident/ExpectIdent/ExpectToken directly, since
+     those report diagnostics on a mismatch - an abandoned trial must
+     leave no trace. *)
+  PROCEDURE TryParseGuardSelector(VAR p: Parser; VAR sel: SyntaxTree.Selector): BOOLEAN;
+    VAR saved: Parser; qualifier, name: SyntaxTree.Ident; line, column: INTEGER;
+  BEGIN
+    saved := p;
+    line := p.current.line; column := p.current.column;
+    Advance(p); (* past "(" *)
+    IF p.current.kind # Lexer.ident THEN p := saved; RETURN FALSE END;
+    COPY(p.current.lexeme, name); Advance(p);
+    qualifier[0] := 0X;
+    IF (p.current.kind = Lexer.period) & IsKnownAlias(p, name) THEN
+      Advance(p);
+      IF p.current.kind # Lexer.ident THEN p := saved; RETURN FALSE END;
+      qualifier := name; COPY(p.current.lexeme, name); Advance(p)
+    END;
+    IF p.current.kind # Lexer.rightParen THEN p := saved; RETURN FALSE END;
+    Advance(p); (* past ")" *)
+    IF (p.current.kind # Lexer.period) & (p.current.kind # Lexer.leftBracket)
+        & (p.current.kind # Lexer.caret) & (p.current.kind # Lexer.leftParen) THEN
+      p := saved; RETURN FALSE
+    END;
+    sel := SemanticActions.NewGuardSelector(qualifier, name, line, column);
+    RETURN TRUE
+  END TryParseGuardSelector;
+
   PROCEDURE ParseDesignator(VAR p: Parser): SyntaxTree.Designator;
     VAR
       qualifier, name, fieldName: SyntaxTree.Ident;
@@ -190,8 +245,7 @@ MODULE Parser;
     ParseQualident(p, qualifier, name);
     d := SemanticActions.NewDesignator(qualifier, name, line, column);
     tail := NIL;
-    WHILE (p.current.kind = Lexer.period) OR (p.current.kind = Lexer.leftBracket)
-        OR (p.current.kind = Lexer.caret) DO
+    LOOP
       line := p.current.line; column := p.current.column;
       IF p.current.kind = Lexer.period THEN
         Advance(p);
@@ -202,9 +256,13 @@ MODULE Parser;
         indices := ParseExprList(p);
         ExpectToken(p, Lexer.rightBracket, "expected ']'");
         sel := SemanticActions.NewIndexSelector(indices, line, column)
-      ELSE
+      ELSIF p.current.kind = Lexer.caret THEN
         Advance(p);
         sel := SemanticActions.NewDereferenceSelector(line, column)
+      ELSIF (p.current.kind = Lexer.leftParen) & TryParseGuardSelector(p, sel) THEN
+        (* sel already built by TryParseGuardSelector *)
+      ELSE
+        EXIT
       END;
       IF tail = NIL THEN d.selectors := sel ELSE tail.next := sel END;
       tail := sel

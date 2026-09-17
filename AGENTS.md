@@ -280,36 +280,36 @@ deliberately unaddressed limitation. Phase 5 (`SemanticActions.Mod`'s
 `CheckExpr`/`CheckStatement` families, `Types.Mod`'s
 `AssignmentCompatible*`/`IsInteger*`/`FindField*`/`NilType*`) is also
 complete: VAR declarations (§7), general (not-necessarily-constant)
-expression/designator type-checking (§8, including a terminal-only
-`v(T)`/`IS` type guard - see below), and every statement form except
-WITH (§9 - WITH is deferred to Phase 6 alongside type-bound procedure
-dispatch, which it shares machinery with) are all checked by `poc
--check`. Two scope boundaries are deliberately narrower than the full
-report, both documented in `SemanticActions.Mod`'s own Phase 5 header
-comment: a type guard/`IS` only works as a designator-expression's
-*outermost* operation (`v(T)`), not with a selector chained after it
-(`v(T).field`) - `Parser.Mod`'s `ParseDesignator` loop stops at `"("`
-entirely and never resumes selector parsing afterward, so the mid-chain
-form needs a grammar change there, deferred alongside Phase 6's own
-guard/dispatch machinery; and a call through a `Types.ProcedureType`
-value checks each argument expression but does not yet match the
-argument list against the formal parameters (Appendix A's "matching
-formal parameter lists" is `PLAN.md`'s own Phase 6 line item, and there
+expression/designator type-checking (§8, including `v(T)`/`IS` type
+guards - see below), and every statement form except WITH (§9 - WITH is
+deferred to Phase 6 alongside type-bound procedure dispatch, which it
+shares machinery with) are all checked by `poc -check`. One scope
+boundary is deliberately narrower than the full report, documented in
+`SemanticActions.Mod`'s own Phase 5 header comment: a call through a
+`Types.ProcedureType` value checks each argument expression but does not
+yet match the argument list against the formal parameters (Appendix A's
+"matching formal parameter lists" is `PLAN.md`'s own Phase 6 line item, and there
 is no way yet to declare a real `PROCEDURE` to test the happy path
 against). Writing Phase 5's `CheckExtensionApplicable` surfaced a real,
 pre-existing gap in `Parser.Mod` itself while it was being smoke-tested
 against poc's own source (`test/conformance/parser-self-check`): a type
 guard/cast immediately followed by a selector in the *same* expression
-(`x(T).field`) cannot be parsed at all today, for exactly the reason
-above. Several already-committed Phase 3/4 procedures had unknowingly
-relied on this exact pattern (`Types.Mod`'s `IsNumeric`/`Rank`/`Extends*`/
+(`x(T).field`) couldn't be parsed at all, for exactly the reason above.
+Several already-committed Phase 3/4 procedures had unknowingly relied on
+this exact pattern (`Types.Mod`'s `IsNumeric`/`Rank`/`Extends*`/
 `ArrayCompatible*`, `MemoryLayout.Mod`'s `DescriptorSize`) - undetected
 because none of those files are in `parser-self-check`'s own file list.
-All were rewritten to bind the guarded value to a local variable first,
-never chaining a selector directly onto a guard/cast; `parser-self-check`
-itself was not widened to cover `Types.Mod`/`SymbolTable.Mod`/
-`ConstantEvaluator.Mod`/`MemoryLayout.Mod`, since that is an unrelated
-test-harness completeness gap, not Phase 5's own scope. See
+All were rewritten at the time to bind the guarded value to a local
+variable first, never chaining a selector directly onto a guard/cast.
+Resolved 2026-09-17 (`Parser.Mod`'s `TryParseGuardSelector`,
+`SemanticActions.Mod`'s `CheckDesignator` `GuardSelector` case - see
+`PLAN.md`'s "Type guards in designators") - `x(T).field` parses and
+type-checks correctly now, but those Phase 3/4 workarounds were left as
+they were rather than revisited, since simplifying already-tested
+Appendix A predicates for a purely cosmetic win wasn't worth the risk;
+`parser-self-check` itself was not widened to cover `Types.Mod`/
+`SymbolTable.Mod`/`ConstantEvaluator.Mod`/`MemoryLayout.Mod` either,
+since that remains an unrelated test-harness completeness gap. See
 `src/front/README.md` for the module list.
 
 Phase 6 (`SemanticActions.Mod`'s `ResolveProcDecls`/`CheckArguments`/

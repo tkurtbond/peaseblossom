@@ -2,10 +2,14 @@ MODULE typeGuard;
   (* Terminal type guard v(T) (Oberon2.pdf §8.1, PLAN.md Phase 5), in both
      spellings the report's own designator examples use: T named as the
      matching POINTER type, and T named as the bare RECORD base - either
-     way Types.Extends checks the two RecordType bases. Only the terminal
-     form is supported (v(T) as a designator-expression's outermost
-     operation, not v(T).field with a selector chained afterward) - see
-     SemanticActions.Mod's Phase 5 header comment. *)
+     way Types.Extends checks the two RecordType bases. This only
+     exercises the terminal form (v(T) as a designator-expression's
+     outermost operation) - see SemanticActions.Mod's own header comment
+     on LookupBareTypeName/CheckDesignatorExpr. A *mid-chain* guard
+     (v(T).field, e.g. the report's own t(CenterTree).subnode) is a
+     separate case (Parser.Mod's TryParseGuardSelector,
+     SemanticActions.Mod's CheckDesignator GuardSelector case) - see
+     semantic-mid-chain-guard. *)
 
   TYPE
     Node = RECORD value: INTEGER END;
