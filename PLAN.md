@@ -228,23 +228,158 @@ Attempt `poc -check` on poc's own front-end source tree (`Lexer` through
 codegen yet.
 
 ### Phase 8 — LLVM backend, first vertical slice
-`LLVMTypes.Mod` (type mapping + Appendix D5 tag/ProcTab/BaseTypes layout,
-parameterized by word size), `LLVMCodeGenerator.Mod`,
-`LLVMToolchainDriver.Mod` (shells to `llc`/`clang`, 32- and 64-bit
-triples). Minimal `rtl/llvm/Console.Mod` for the first runnable "hello
-world" — deliberately no GC/pointers/dispatch yet. Straight-line code,
-IF/WHILE/CASE, arrays/records only; pointers/`NEW`/dispatch/GC held to
-Phase 9. `rtl/llvm/Console.Mod` is the first real consumer of the
-external-procedure-declaration extension from Phase 6, since printing a
-string means calling out to the host libc (or making a raw syscall) —
-this is also the earliest point the NetBSD/OpenBSD/FreeBSD portability
-goal becomes concrete, not theoretical.
-**Testing**: promote a subset of earlier fixtures from type-check-only to
-compile+link+run+diff; cross-check output against voc compiling the same
-source where practical. Run the same fixtures on Linux and on at least
-one BSD (ideally all three of NetBSD/OpenBSD/FreeBSD) — a distinct `llc`/
-`clang` target triple per OS, so this must be verified by actually
-running there, not assumed from POSIX compatibility alone.
+
+**Goal**: a hand-verifiable path from a single user module (plus a small,
+fixed runtime module set) to a running native executable that prints
+text — the first point `poc` produces an executable at all, on Linux and
+at least one BSD.
+
+**Explicit non-goals**, unchanged from the phase-to-report-section map but
+worth restating precisely since they bound every design choice below:
+`POINTER`/`NEW`/GC, type-bound-procedure dispatch, open-array dope
+vectors, full `Out.Mod`/`In.Mod`. **Correction to this file's earlier
+wording**: Appendix D5's tag/ProcTab/BaseTypes layout was previously
+listed under Phase 8's `LLVMTypes.Mod`; it has no reason to exist before
+dispatch does and is moved to Phase 9 below. In scope: fixed-size
+arrays/records (as values, never behind a pointer), straight-line code,
+module-level and local `VAR`s, ordinary (non-type-bound) `PROCEDURE`s,
+IF/CASE/WHILE/REPEAT/FOR/LOOP+EXIT/RETURN, and the subset of §10.3
+predeclared procedures that don't presuppose `POINTER`/`NEW` (`ABS`, `ODD`,
+`CHR`, `ORD`, `CAP`, `LEN`, `INC`, `DEC`, `COPY`, `HALT` — not `NEW`,
+`DISPOSE`, or anything `SYSTEM.*`).
+
+**Proposed build order** — each numbered step lands its own conformance
+fixtures before the next starts, matching every earlier phase's
+incremental style. Three design choices below are marked **Decided**
+(confirmed 2026-09-18): clang single-step build (step 1), LLVM-native
+struct/array layout plus a cross-check fixture rather than manual packing
+(step 4), and a fixed rtl module set first, with general multi-module
+`IMPORT` linking deferred to step 12 (step 6).
+
+1. **Toolchain smoke test, no `poc` code involved.** Hand-write a trivial
+   `.ll` "hello world" and drive it through the real toolchain on this
+   machine to settle the invocation strategy before any codegen exists to
+   depend on it. **Decided**: `LLVMToolchainDriver.Mod` shells to `clang
+   foo.ll -o foo` directly, one step — clang accepts `.ll` input and
+   handles assembling+linking itself. `llc -S` is reserved as an
+   optional, separate `-dump-asm`-style debug aid for reading generated
+   assembly in golden-file tests, not part of the normal build path. This
+   step also confirms `llc`/`clang` are actually installed and records
+   their versions/default target triple in `AGENTS.md`, the same way
+   `voc_toolchain`-style version pinning is already tracked for `voc`.
+
+2. **CLI and driver scaffolding**, codegen still stubbed. `Poc.Mod` gains
+   `-emit-llvm-ir <file>` (write textual `.ll` only, no toolchain call —
+   portable/CI-safe, the LLVM analogue of `-emit-interface`) and `-o
+   <path>` (full build via `LLVMToolchainDriver.Mod`, invoking the step-1
+   pipeline). Add a `-target <triple>` flag, default to the host triple
+   (auto-detected once via the installed `clang`, cached); `LLVMTypes.Mod`
+   derives word size (32 vs. 64) from a small table of recognized arch
+   prefixes in the triple rather than a separate flag, since the triple is
+   already the single source of truth `clang`/`llc` themselves consume.
+   The already-implemented `-O2`/`-OC` size-model flag is reused unchanged
+   for elementary-type sizing — Phase 8 is its first real consumer beyond
+   `-dump-layout`. Validate the whole pipeline with a stub
+   `LLVMCodeGenerator.Mod` that emits a fixed, hand-written "hello world"
+   `.ll` regardless of input, so the CLI/driver/test-harness plumbing is
+   exercised before any real tree-walking codegen exists — the same
+   "harness before logic" sequencing Phase 0 used for `testenv.sh`.
+
+3. **Test harness generalization.** `test/testenv.sh` was already
+   parameterized over a `BACKEND` variable back in Phase 0 (later
+   simplified away once it had nothing to select between — see the
+   project-overview memory of that decision) but never actually exercised
+   for LLVM. Reintroduce it properly here: a `BACKEND=llvm` fixture mode
+   invokes `poc -o`, runs the resulting binary, and diffs captured stdout
+   against `expected`, alongside the existing type-check-only and
+   voc-comparison modes.
+
+4. **`LLVMTypes.Mod`.** Oberon type → LLVM type for the in-scope type set
+   only (basic types, fixed arrays, records — no pointer/procedure types
+   yet beyond what external-procedure declarations need). **Decided**:
+   let LLVM's own struct/array types lay themselves out naturally for the
+   target data layout (simpler, and it's LLVM's job) rather than manually
+   forcing byte offsets to match `MemoryLayout.Mod`'s own hand-computed
+   offsets; add a dedicated cross-check fixture per composite-type test
+   case instead, comparing `MemoryLayout.Mod`'s computed field offsets
+   against `llvm-as`/a tiny probe program's actual `sizeof`/offset
+   results — a regression test for layout *agreement*, not a
+   manual-packing mechanism.
+
+5. **Straight-line codegen: the smallest useful slice.** Module-level
+   `VAR`s as LLVM globals, local `VAR`s as `alloca`s, arithmetic/
+   relational/boolean expression evaluation to SSA form, assignment
+   statements. First target: a module whose entire body is a `BEGIN...END`
+   init block doing arithmetic, no calls, no output yet — verified only by
+   inspecting/golden-diffing the emitted `.ll`, since there's nothing to
+   print until step 6.
+
+6. **External-procedure FFI lowering + `rtl/llvm/Console.Mod`.**
+   `LLVMCodeGenerator.Mod` emits an LLVM `declare` plus a C-calling-
+   convention `call` for every `PROCEDURE ["C"] ...` declared external
+   (Phase 6's FFI extension, its first real consumer per the existing
+   text below). `rtl/llvm/Console.Mod` is written using this mechanism —
+   proposed minimal interface `PrintString(s: ARRAY OF CHAR)` and
+   `PrintLn`, implemented by declaring libc's `write(2)` externally
+   (portable across Linux/the BSDs; avoids pulling in buffered-stdio
+   semantics `printf`/`puts` would add). This is also where a minimal
+   `rtl/llvm/Runtime.Mod` (or a few more exports on `Console.Mod`) is
+   needed for `HALT` and for the runtime traps codegen will need in step
+   9 (index-range, no-matching-`CASE`-label) — an external-linked
+   `write`+`exit` abort path, matching voc's own halt-code convention (see
+   the `ASSERT` open design question above). **Decided**: start with a
+   *fixed* rtl module set (just `Console.Mod`, maybe `Runtime.Mod`)
+   alongside the one user module under test — general multi-user-module
+   `IMPORT` linking (transitively compiling every user-authored import
+   found via `ModuleInterface.Mod`, not just this fixed rtl set) is real,
+   valuable Phase 8 scope but lands later, as its own step (12), rather
+   than blocking the first runnable program. First genuine "hello world"
+   fixture (compile+link+run+diff stdout) lands here.
+
+7. **Control flow.** IF/CASE/WHILE/REPEAT/FOR/LOOP+EXIT/RETURN lowered to
+   basic blocks and branches.
+
+8. **Fixed-size arrays and records.** Local/global storage, element/field
+   access via `getelementptr`. No open arrays, no dynamic allocation.
+
+9. **Runtime traps.** Index-range checks and CASE-without-matching-label,
+   using the `Runtime.Mod`/`Console.Mod` abort path from step 6. Match
+   voc's own default-flag posture where there's a direct analogue (`-t`
+   type-guard/`-a` assert on by default, `-r` range-check off by default —
+   see the `voc_toolchain` reference notes); NIL-dereference trapping
+   (`-p`) doesn't apply yet since there are no pointers in scope.
+
+10. **Ordinary procedure calls.** User-defined (non-external,
+    non-type-bound) `PROCEDURE` declarations: parameter passing (value vs.
+    `VAR`), local storage, `RETURN`.
+
+11. **Predeclared-procedure lowering.** The in-scope §10.3 subset listed
+    above, each getting its own lowering in `LLVMCodeGenerator.Mod` per
+    `PredeclaredProcedures.Mod`'s existing header-comment split
+    ("semantic checking lives in the front end, lowering lives in the
+    backend").
+
+12. **General multi-module user programs + program entry.** Extend the
+    driver to transitively discover and compile every user-authored
+    `IMPORT` (via `ModuleInterface.Mod`'s already-resolved import graph),
+    not just the fixed rtl set from step 6. Generate a native `main` that
+    calls each imported module's init function in import-dependency
+    order, then the top (command-line-specified) module's own
+    `BEGIN...END` sequence — the same ordering `Oberon2.pdf` §11
+    prescribes for module initialization generally.
+
+13. **Fixture promotion + portability verification.** Promote a subset of
+    earlier type-check-only fixtures to compile+link+run+diff;
+    cross-check output against `voc` compiling the same source where
+    practical. Run the same fixtures on Linux and on at least one BSD
+    (ideally all three of NetBSD/OpenBSD/FreeBSD) — a distinct `clang`
+    target triple per OS from step 2's `-target` flag, so this must be
+    verified by actually running there, not assumed from POSIX
+    compatibility alone.
+
+**Testing summary**: golden-file `.ll` diffs for steps 1–5 (nothing runs
+yet), promoted to compile+link+run+diff from step 6 onward per the
+`BACKEND=llvm` harness mode from step 3.
 
 ### Phase 9 — LLVM backend, full parity + self-hosting
 Full pointer/`NEW`/GC support (`GarbageCollectedHeap.Mod`,
