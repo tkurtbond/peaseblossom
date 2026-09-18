@@ -42,11 +42,25 @@ MODULE Poc;
      Platform.Chdir/CWD (the -output-dir directory-validation workaround
      documented on its own Write* - see 000-todo.org's "output directory
      for build artifacts" item), never GetEnv - it still never reads the
-     process environment on its own. *)
+     process environment on its own.
+
+     PLAN.md Phase 8 step 2 adds "-emit-llvm-ir <file>" (writes
+     <ModuleName>.ll via LLVMToolchainDriver.EmitIR, respecting
+     -output-dir exactly like -emit-interface) and "-o <path>" (a flag,
+     not its own command - parsed alongside -output-dir/-import-path in
+     Run's flag-scanning loop - that must precede the new "-build <file>"
+     command, which additionally shells to clang via
+     LLVMToolchainDriver.Build to produce a native executable at <path>).
+     Both resolve a target triple the same way: an explicit "-target
+     <triple>" flag if given, else LLVMToolchainDriver.HostTriple's
+     auto-detected default (see ResolveTriple below). Both commands
+     currently drive LLVMCodeGenerator.Mod's step-2 stub, which ignores
+     the checked module/scope entirely - see that module's own header
+     comment. *)
 
   IMPORT Modules, Files, Out, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
-         ConstantEvaluator;
+         ConstantEvaluator, LLVMToolchainDriver;
 
   CONST
     maxLineLength = 4096;
@@ -199,6 +213,80 @@ MODULE Poc;
     END
   END EmitInterface;
 
+  (* Explicit -target flag wins; otherwise LLVMToolchainDriver.HostTriple's
+     auto-detected default (PLAN.md Phase 8 step 2). *)
+  PROCEDURE ResolveTriple(explicitTriple: ARRAY OF CHAR; VAR triple: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    IF explicitTriple[0] # 0X THEN
+      COPY(explicitTriple, triple);
+      RETURN TRUE
+    END;
+    RETURN LLVMToolchainDriver.HostTriple(triple)
+  END ResolveTriple;
+
+  PROCEDURE EmitLLVMIR(name, outputDir, explicitTriple: ARRAY OF CHAR);
+    VAR
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      parser: Parser.Parser;
+      module: SyntaxTree.ModuleNode;
+      scope: SymbolTable.Scope;
+      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+      path: ARRAY LLVMToolchainDriver.pathBufferLength OF CHAR;
+  BEGIN
+    IF ~ReadSource(name, buffer, length) THEN
+      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+    ELSE
+      Diagnostics.Reset(name);
+      Parser.InitParser(parser, buffer, length);
+      module := Parser.ParseModule(parser);
+      IF Diagnostics.errorCount = 0 THEN
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+      END;
+      IF Diagnostics.errorCount > 0 THEN
+        Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
+      ELSIF ~ResolveTriple(explicitTriple, triple) THEN
+        Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
+      ELSIF LLVMToolchainDriver.EmitIR(module, scope, triple, outputDir, path) THEN
+        Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
+      ELSE
+        Out.String("poc: cannot write "); Out.String(path); Out.Ln
+      END
+    END
+  END EmitLLVMIR;
+
+  PROCEDURE Build(name, outputDir, explicitTriple, exePath: ARRAY OF CHAR);
+    VAR
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      parser: Parser.Parser;
+      module: SyntaxTree.ModuleNode;
+      scope: SymbolTable.Scope;
+      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+  BEGIN
+    IF ~ReadSource(name, buffer, length) THEN
+      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+    ELSE
+      Diagnostics.Reset(name);
+      Parser.InitParser(parser, buffer, length);
+      module := Parser.ParseModule(parser);
+      IF Diagnostics.errorCount = 0 THEN
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+      END;
+      IF Diagnostics.errorCount > 0 THEN
+        Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
+      ELSIF exePath[0] = 0X THEN
+        Out.String("poc: -build requires -o <path>"); Out.Ln
+      ELSIF ~ResolveTriple(explicitTriple, triple) THEN
+        Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
+      ELSIF LLVMToolchainDriver.Build(module, scope, triple, outputDir, exePath) THEN
+        Out.String("semantic OK, wrote "); Out.String(exePath); Out.Ln
+      ELSE
+        Out.String("poc: build failed"); Out.Ln
+      END
+    END
+  END Build;
+
   PROCEDURE PrintLayoutLine(name: ARRAY OF CHAR; t: Types.Type);
   BEGIN
     Out.String(name);
@@ -270,15 +358,22 @@ MODULE Poc;
     Out.String("       poc -check <file>"); Out.Ln;
     Out.String("       poc -dump-layout <file>"); Out.Ln;
     Out.String("       poc -emit-interface <file>"); Out.Ln;
+    Out.String("       poc -emit-llvm-ir <file>"); Out.Ln;
+    Out.String("       poc -o <exe> -build <file>"); Out.Ln;
     Out.String("       poc [-import-path <dir> | -clear-import-path]... -print-import-path"); Out.Ln;
     Out.String("       -import-path <dir> and -clear-import-path may also precede any"); Out.Ln;
     Out.String("       command above; POC_IMPORT_PATH seeds the list (colon-separated)"); Out.Ln;
     Out.String("       before any flags are applied"); Out.Ln;
-    Out.String("       -output-dir <dir> may also precede -emit-interface, to write"); Out.Ln;
-    Out.String("       <ModuleName>.sym there instead of the current directory"); Out.Ln;
+    Out.String("       -output-dir <dir> may also precede -emit-interface or"); Out.Ln;
+    Out.String("       -emit-llvm-ir, to write <ModuleName>.sym/.ll there instead of the"); Out.Ln;
+    Out.String("       current directory"); Out.Ln;
     Out.String("       -O2 | -OC may also precede any command above, selecting the"); Out.Ln;
     Out.String("       elementary-type size model MAX(T)/MIN(T)/SIZE(T) and integer"); Out.Ln;
-    Out.String("       literals fold against (default -O2); a later one wins"); Out.Ln
+    Out.String("       literals fold against (default -O2); a later one wins"); Out.Ln;
+    Out.String("       -target <triple> may precede -emit-llvm-ir or -build, selecting the"); Out.Ln;
+    Out.String("       LLVM target triple (default: clang's own default for this host)"); Out.Ln;
+    Out.String("       -o <exe> may precede -build, giving the executable's output path"); Out.Ln;
+    Out.String("       (required - -build has no default)"); Out.Ln
   END Usage;
 
   (* IMPORT search-path CLI surface (PLAN.md's "Open design questions" -
@@ -310,7 +405,7 @@ MODULE Poc;
     IF value[0] # 0X THEN ModuleInterface.AddSearchPathList(value) END
   END InitImportPathFromEnvironment;
 
-  PROCEDURE RunCommand(option, fileName, outputDir: ARRAY OF CHAR);
+  PROCEDURE RunCommand(option, fileName, outputDir, targetTriple, exePath: ARRAY OF CHAR);
   BEGIN
     IF option = "-dump-tokens" THEN
       DumpTokens(fileName)
@@ -322,13 +417,21 @@ MODULE Poc;
       DumpLayout(fileName)
     ELSIF option = "-emit-interface" THEN
       EmitInterface(fileName, outputDir)
+    ELSIF option = "-emit-llvm-ir" THEN
+      EmitLLVMIR(fileName, outputDir, targetTriple)
+    ELSIF option = "-build" THEN
+      Build(fileName, outputDir, targetTriple, exePath)
     ELSE
       Usage
     END
   END RunCommand;
 
   PROCEDURE Run;
-    VAR i: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR; done: BOOLEAN;
+    VAR
+      i: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR;
+      targetTriple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+      exePath: ARRAY 256 OF CHAR;
+      done: BOOLEAN;
   BEGIN
     InitImportPathFromEnvironment;
     IF Modules.ArgCount < 2 THEN
@@ -336,6 +439,8 @@ MODULE Poc;
     ELSE
       i := 1;
       outputDir[0] := 0X;
+      targetTriple[0] := 0X;
+      exePath[0] := 0X;
       done := FALSE;
       WHILE (i < Modules.ArgCount) & ~done DO
         Modules.GetArg(i, arg);
@@ -355,11 +460,12 @@ MODULE Poc;
           PrintImportPath;
           INC(i); done := TRUE
         (* 000-todo.org's "output directory for build artifacts" item:
-           today the only artifact is -emit-interface's .sym file, so this
-           just overrides ModuleInterface.Write*'s default of the current
-           directory; a later flag wins if given more than once. It has
-           no env-var seed (unlike -import-path) since the request that
-           prompted this was CLI-only. *)
+           -emit-interface's .sym file and -emit-llvm-ir's .ll file (PLAN.md
+           Phase 8 step 2) both use this, overriding ModuleInterface.Write*/
+           LLVMToolchainDriver.EmitIR*'s default of the current directory;
+           a later flag wins if given more than once. It has no env-var
+           seed (unlike -import-path) since the request that prompted this
+           was CLI-only. *)
         ELSIF arg = "-output-dir" THEN
           IF i + 1 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, outputDir);
@@ -379,10 +485,30 @@ MODULE Poc;
         ELSIF arg = "-OC" THEN
           ConstantEvaluator.SetSizeModel(MemoryLayout.sizeModelOC);
           INC(i)
+        (* PLAN.md Phase 8 step 2: -target/-o are flags, not commands,
+           consumed by -emit-llvm-ir/-build the same way -output-dir is -
+           see RunCommand/ResolveTriple. A later flag wins if given more
+           than once, matching every other flag above. *)
+        ELSIF arg = "-target" THEN
+          IF i + 1 < Modules.ArgCount THEN
+            Modules.GetArg(i + 1, targetTriple);
+            INC(i, 2)
+          ELSE
+            Out.String("poc: -target requires a triple"); Out.Ln;
+            done := TRUE
+          END
+        ELSIF arg = "-o" THEN
+          IF i + 1 < Modules.ArgCount THEN
+            Modules.GetArg(i + 1, exePath);
+            INC(i, 2)
+          ELSE
+            Out.String("poc: -o requires a path"); Out.Ln;
+            done := TRUE
+          END
         ELSE
           IF i + 1 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, param);
-            RunCommand(arg, param, outputDir)
+            RunCommand(arg, param, outputDir, targetTriple, exePath)
           ELSE
             Usage
           END;

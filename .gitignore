@@ -16,6 +16,7 @@ test/conformance/**/*.s
 test/conformance/**/*.mar
 test/conformance/**/result
 test/conformance/hello/hello
+test/conformance/llvm-build-run/llvm-stub-out
 
 # Stage 0/1/2 bootstrap build output (see tools/bootstrap)
 /build/

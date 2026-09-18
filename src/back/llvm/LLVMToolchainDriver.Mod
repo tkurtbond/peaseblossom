@@ -1,0 +1,178 @@
+MODULE LLVMToolchainDriver;
+
+  (* Shells out to clang (PLAN.md Phase 8). Decided in step 1's toolchain
+     smoke test (AGENTS.md, "Toolchain: LLVM (clang/llc)"): a single-step
+     `clang <file>.ll -o <exe>` build - clang accepts textual LLVM IR
+     directly and handles assembling+linking itself. `llc` is
+     deliberately never invoked from here; it is reserved as a separate,
+     optional debug aid (reading generated assembly in golden-file
+     tests), not part of this driver.
+
+     Owns two responsibilities: writing LLVMCodeGenerator.Generate's
+     output to a real `<ModuleName>.ll` file (EmitIR*, the same
+     Platform.Chdir-then-Files.New-then-chdir-back dance
+     ModuleInterface.Write* already uses, and for the identical reason -
+     see that procedure's own header comment: Files.New does not fail
+     gracefully on a missing *directory*, unlike Files.Old), and then
+     optionally handing that file to clang to produce a native executable
+     (Build, below). This mirrors PLAN.md's directory-layout comment for
+     this module ("shells to llc/clang") while keeping
+     LLVMCodeGenerator.Mod itself a pure tree-walker with no file-path/
+     directory concerns of its own. *)
+
+  IMPORT Files, Platform, SyntaxTree, SymbolTable, LLVMCodeGenerator;
+
+  CONST
+    dirBufferLength = 1024;
+    nameBufferLength = 300; (* SyntaxTree.identLength (255) + ".ll" comfortably *)
+    pathBufferLength* = dirBufferLength + nameBufferLength;
+    tripleBufferLength* = 128;
+
+  VAR
+    hostTripleCache: ARRAY tripleBufferLength OF CHAR;
+    hostTripleCached: BOOLEAN;
+
+  PROCEDURE JoinPath(dir, name: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
+    VAR i, j: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE dir[i] # 0X DO result[i] := dir[i]; INC(i) END;
+    result[i] := "/"; INC(i);
+    j := 0;
+    WHILE name[j] # 0X DO result[i] := name[j]; INC(i); INC(j) END;
+    result[i] := 0X
+  END JoinPath;
+
+  PROCEDURE AppendInt(VAR s: ARRAY OF CHAR; x: INTEGER);
+    (* x is always non-negative here (a PID) - no sign handling needed,
+       unlike ModuleInterface.Mod's FormatInt (which has to route around
+       the two's-complement minimum-magnitude asymmetry documented in
+       PLAN.md's "Open design questions" - Predeclared functions in
+       constant expressions). *)
+    VAR digits: ARRAY 12 OF CHAR; n, i, j: INTEGER;
+  BEGIN
+    j := 0;
+    WHILE s[j] # 0X DO INC(j) END;
+    IF x = 0 THEN
+      s[j] := "0"; INC(j)
+    ELSE
+      n := 0;
+      WHILE x > 0 DO
+        digits[n] := CHR(ORD("0") + x MOD 10);
+        x := x DIV 10;
+        INC(n)
+      END;
+      FOR i := n - 1 TO 0 BY -1 DO s[j] := digits[i]; INC(j) END
+    END;
+    s[j] := 0X
+  END AppendInt;
+
+  PROCEDURE Strcat(VAR s: ARRAY OF CHAR; suffix: ARRAY OF CHAR);
+    VAR i, j: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE s[i] # 0X DO INC(i) END;
+    j := 0;
+    WHILE suffix[j] # 0X DO s[i] := suffix[j]; INC(i); INC(j) END;
+    s[i] := 0X
+  END Strcat;
+
+  PROCEDURE ReadFirstLine(name: ARRAY OF CHAR; VAR line: ARRAY OF CHAR): BOOLEAN;
+    VAR f: Files.File; r: Files.Rider;
+  BEGIN
+    f := Files.Old(name);
+    IF f = NIL THEN RETURN FALSE END;
+    Files.Set(r, f, 0);
+    Files.ReadLine(r, line);
+    Files.Close(f);
+    RETURN TRUE
+  END ReadFirstLine;
+
+  (* Detects clang's own default target triple by shelling
+     `clang -dumpmachine`, redirected to a PID-scoped scratch file under
+     /tmp (present on Linux and every BSD in PLAN.md's portability list;
+     Platform.Mod exposes no dedicated temp-directory accessor), then
+     reading that single line back. Cached after the first successful
+     call - PLAN.md Phase 8 step 12's multi-module builds would otherwise
+     re-shell out once per compiled module for no reason, since the host
+     triple cannot change mid-process. *)
+  PROCEDURE HostTriple*(VAR triple: ARRAY OF CHAR): BOOLEAN;
+    VAR
+      path, cmd: ARRAY 128 OF CHAR;
+      status, unlinkResult: INTEGER;
+      ok: BOOLEAN;
+  BEGIN
+    IF hostTripleCached THEN
+      COPY(hostTripleCache, triple);
+      RETURN TRUE
+    END;
+    path := "/tmp/poc-llvm-host-triple-";
+    AppendInt(path, Platform.PID);
+    cmd := "clang -dumpmachine >";
+    Strcat(cmd, path);
+    status := Platform.System(cmd);
+    ok := ReadFirstLine(path, triple);
+    unlinkResult := Platform.Unlink(path);
+    IF ok THEN
+      COPY(triple, hostTripleCache);
+      hostTripleCached := TRUE
+    END;
+    RETURN ok
+  END HostTriple;
+
+  (* Writes LLVMCodeGenerator.Generate's output to <outputDir>/
+     <module.name>.ll (cwd if outputDir is empty) - see this module's own
+     header comment for why this needs the same chdir dance
+     ModuleInterface.Write* already established. *)
+  PROCEDURE EmitIR*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
+                    triple, outputDir: ARRAY OF CHAR; VAR pathOut: ARRAY OF CHAR): BOOLEAN;
+    VAR
+      name: ARRAY nameBufferLength OF CHAR;
+      f: Files.File; w: Files.Rider; ok: BOOLEAN;
+      savedDir, dir: ARRAY dirBufferLength OF CHAR;
+      chdirResult: INTEGER;
+      i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE module.name[i] # 0X DO name[i] := module.name[i]; INC(i) END;
+    name[i] := "."; name[i + 1] := "l"; name[i + 2] := "l"; name[i + 3] := 0X;
+    ok := TRUE;
+    IF outputDir[0] # 0X THEN
+      JoinPath(outputDir, name, pathOut);
+      COPY(Platform.CWD, savedDir);
+      COPY(outputDir, dir);
+      chdirResult := Platform.Chdir(dir);
+      ok := chdirResult = 0
+    ELSE
+      COPY(name, pathOut)
+    END;
+    IF ok THEN
+      f := Files.New(name);
+      Files.Set(w, f, 0);
+      LLVMCodeGenerator.Generate(module, scope, triple, w);
+      Files.Register(f);
+      IF outputDir[0] # 0X THEN chdirResult := Platform.Chdir(savedDir) END
+    END;
+    RETURN ok
+  END EmitIR;
+
+  (* Full build: EmitIR* first, then a single-step `clang <ll> -o
+     <exePath>` (Platform.System) - see this module's own header comment
+     for why single-step, not a separate llc+link. *)
+  PROCEDURE Build*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
+                   triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
+    VAR
+      llPath: ARRAY pathBufferLength OF CHAR;
+      cmd: ARRAY 512 OF CHAR;
+      status: INTEGER;
+  BEGIN
+    IF ~EmitIR(module, scope, triple, outputDir, llPath) THEN RETURN FALSE END;
+    cmd := "clang ";
+    Strcat(cmd, llPath);
+    Strcat(cmd, " -o ");
+    Strcat(cmd, exePath);
+    status := Platform.System(cmd);
+    RETURN status = 0
+  END Build;
+
+END LLVMToolchainDriver.

@@ -285,6 +285,45 @@ struct/array layout plus a cross-check fixture rather than manual packing
    exercised before any real tree-walking codegen exists — the same
    "harness before logic" sequencing Phase 0 used for `testenv.sh`.
 
+   **Implemented 2026-09-18.** `src/back/llvm/LLVMCodeGenerator.Mod`
+   (the stub described above - `Generate*(module, scope, triple, w:
+   Files.Rider)` writes straight to a caller-opened `Files.Rider`,
+   matching `ModuleInterface.Write*`'s own style rather than building an
+   in-memory string) and `src/back/llvm/LLVMToolchainDriver.Mod`
+   (`HostTriple*`, `EmitIR*`, `Build*`) both added; `tools/bootstrap/
+   stage0` extended to compile them. Two CLI-grammar decisions not fully
+   pinned down by this file's original wording, resolved during
+   implementation: (1) `-o <path>` is a *flag*, parsed in `Run`'s
+   existing flag-scanning loop exactly like `-output-dir`/`-target`
+   itself, not a command in its own right - the command that consumes it
+   is a new `-build <file>`, giving the CLI grammar `poc -o <exe> -build
+   <file>` (clang's own `-o` convention, adapted onto poc's existing
+   "flags before a command word" shape rather than clang's "flags
+   anywhere around positional source files" shape); `-build` without a
+   preceding `-o` is a reported error (`-build has no default`), not a
+   derived-name fallback. (2) `HostTriple*` shells `clang -dumpmachine`
+   via `Platform.System`, redirected to a PID-scoped scratch file under
+   `/tmp` (`Platform.Mod` exposes no dedicated temp-directory accessor),
+   then reads that single line back with `Files.Old`/`Files.ReadLine` -
+   `Platform.System` has no stdout-capture mode of its own, only a
+   process exit code, so this is the only way to get its output back
+   into poc's own address space without a real pipe/fork primitive -
+   confirmed by inspecting `Platform.Mod`'s full exported procedure list
+   directly (its installed `.sym`/build-generated `.h`, not `showdef`,
+   which wasn't run for this): no `Popen`/`Pipe`/`Fork`/`Exec`-shaped
+   export exists, only `System`. `LLVMTypes.Mod`
+   and its word-size-from-triple table are genuinely **not** built yet -
+   nothing in step 2's own scope needs word size (the stub ignores its
+   inputs entirely), so that's deferred to step 4 as originally planned,
+   not implemented early. Two new conformance fixtures: `llvm-emit-ir`
+   (golden-diffs the stub's `.ll` output against a fixed, non-host
+   `-target` so the fixture doesn't depend on which machine's `clang`
+   auto-detection ran) and `llvm-build-run` (the first real
+   compile+link+run+diff fixture in this suite - relies on real
+   auto-detection and an actual `clang` invocation, diffing the running
+   binary's own stdout). All 96 conformance tests pass (94 prior + these
+   2).
+
 3. **Test harness generalization.** `test/testenv.sh` was already
    parameterized over a `BACKEND` variable back in Phase 0 (later
    simplified away once it had nothing to select between — see the
