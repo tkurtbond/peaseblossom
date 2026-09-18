@@ -1652,7 +1652,7 @@ MODULE LLVMCodeGenerator;
     ELSIF name = "HALT" THEN GenerateHalt(w, cg, args, result)
     ELSE
       Unsupported(w, cg,
-        "predeclared procedure outside Phase 8 step 11's own scope (ASH/ENTIER/LONG/MAX/MIN/SHORT/SIZE/EXCL/INCL - Phase 9; NEW/DISPOSE/SYSTEM.* need POINTER, also Phase 9)",
+        "predeclared procedure outside Phase 8 step 11's own scope (ASH/ENTIER/LONG/MAX/MIN/SHORT/SIZE/EXCL/INCL - Phase 9; NEW needs POINTER, also Phase 9; SYSTEM.* is Phase 10)",
         Types.Undefined, result)
     END
   END GeneratePredeclaredCall;

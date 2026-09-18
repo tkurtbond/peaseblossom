@@ -215,8 +215,11 @@ textual changes Appendix A's own definitions need are the two already
 documented above: "Integer types" gains `HUGEINT`, and the type-inclusion
 hierarchy gains `HUGEINT` between `LONGINT` and `REAL`. No further Phase 5/6
 work item exists here.
-Appendix C (the `SYSTEM` module) isn't implemented in poc at all yet — no
-phase has scheduled it. When it is, two adjustments beyond the report's own
+Appendix C (the `SYSTEM` module) isn't implemented in poc at all yet —
+scheduled for `PLAN.md` Phase 10 step 7 (grouped with the runtime-library
+phase rather than the VAX/VMS one, since `SYSTEM` needs a real LLVM
+lowering just as much as a VAX one, and has no dependency on the VAX
+backend existing). When it is, two adjustments beyond the report's own
 text follow from decisions already made elsewhere in this file: `ADR`/
 `GET`/`PUT`/`MOVE`'s address arguments use `SYSTEM.ADDRESS`, not `LONGINT`
 (see "`SYSTEM.ADDRESS` type" above — an address-width concern, independent
@@ -254,9 +257,9 @@ Peaseblossom's own.
   missing body is what marks the declaration external; a body-less
   `PROCEDURE` with no such attribute stays a syntax error, same as
   today). The first string names the calling convention (`"C"` for
-  Phase 8's LLVM/C-interop case, `"VMS"` for Phase 10's VMS Calling
+  Phase 8's LLVM/C-interop case, `"VMS"` for Phase 11's VMS Calling
   Standard case — both accepted now, even though nothing consumes
-  `"VMS"` until Phase 10). An optional second string overrides the
+  `"VMS"` until Phase 11). An optional second string overrides the
   external linkage name, since Peaseblossom's own naming convention (see
   "Naming feedback" — descriptive, often-long identifiers) routinely
   won't match a terse external symbol like `malloc` or `printf`:
@@ -264,11 +267,11 @@ Peaseblossom's own.
   LONGINT): SYSTEM.ADDRESS;`. Without the second string, the external
   symbol is the procedure's own Oberon identifier verbatim
   (`SymbolTable.ObjectDesc.externalName`). This interacts with the VAX
-  backend's 31-character name-mangling requirement (Phase 10, below): an
+  backend's 31-character name-mangling requirement (Phase 11, below): an
   external procedure's linkage name is emitted **verbatim, never
   mangled** — it has to match the real external symbol, unlike poc's own
   internally-generated names. Both backends' actual lowering is still
-  Phase 8/10 work; Phase 6 only records the linkage info
+  Phase 8/11 work; Phase 6 only records the linkage info
   (`SymbolTable.ObjectDesc.externalConvention`/`externalName`) for a
   later backend to consume.
 

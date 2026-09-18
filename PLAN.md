@@ -124,8 +124,8 @@ tools/
 | 7 | §11, Appendix D4 | `ModuleInterface` | none | voc |
 | 8 | LLVM vertical slice | `LLVMTypes`, `LLVMCodeGenerator`, `LLVMToolchainDriver`, `rtl/llvm` (minimal) | LLVM | voc |
 | 9 | LLVM full parity | Appendix D5 descriptors, REAL/SET codegen, GC, dispatch, open arrays | LLVM | voc |
-| 10 | Oakwood library + voc-compatibility | `rtl/llvm` (`Console`, `Platform`, `Files`, `Modules`, `Out`, `In`, `Strings`, `Math`, `MathL`) | LLVM | voc → **Stage 1/2 bootstrap** |
-| 11 | Appendix C (optional) + MACRO-32 | `VaxTypes`, `VaxCodeGenerator`, `VaxToolchainDriver` (stub) | VAX (scoped, unverified) | poc (self-hosted) |
+| 10 | Oakwood library + voc-compatibility + Appendix C | `rtl/llvm` (`Console`, `Platform`, `Files`, `Modules`, `Out`, `In`, `Strings`, `Math`, `MathL`), `SYSTEM` lowering | LLVM | voc → **Stage 1/2 bootstrap** |
+| 11 | MACRO-32 | `VaxTypes`, `VaxCodeGenerator`, `VaxToolchainDriver` (stub) | VAX (scoped, unverified) | poc (self-hosted) |
 
 ## Phase details
 
@@ -1660,9 +1660,10 @@ promoted) can compile+link+run+diff. Deliberately *not* the point poc can
 compile itself — see Phase 10 below for why self-hosting is a separate,
 later gate.
 
-**Explicit non-goals**: `SYSTEM.*` (Appendix C — `ADR`/`VAL`/`BIT`/etc.)
-and everything MACRO-32/VAX are Phase 11 scope per the phase-to-report
-map, not this phase's; `DISPOSE` isn't added because it doesn't exist in
+**Explicit non-goals**: `SYSTEM.*` (Appendix C — `ADR`/`VAL`/`BIT`/etc.,
+see Phase 10 below) and everything MACRO-32/VAX (Phase 11) are out of
+scope per the phase-to-report map, not this phase's; `DISPOSE` isn't
+added because it doesn't exist in
 `Oberon2.pdf` at all (§10.3's `NEW` has no explicit-free counterpart —
 Appendix D3 is explicit that a collector, not the programmer, reclaims
 unreachable blocks); `ASSERT` stays whatever this file's own "No
@@ -1889,7 +1890,7 @@ matching Phase 8's own testing posture — culminating in step 9's
 whole-suite/whole-platform-matrix gate. Self-hosting is Phase 10's own
 exit gate, not this phase's.
 
-### Phase 10 — LLVM runtime library (voc-compatibility + Oakwood) + self-hosting
+### Phase 10 — LLVM runtime library (voc-compatibility + Oakwood + Appendix C) + self-hosting
 
 **Goal**: a real `rtl/llvm` module set, built as genuine Oberon-2 source
 compiled by poc itself (not hand-written IR), covering (a) every voc
@@ -1900,11 +1901,20 @@ module name: `Out` (`Diagnostics.Mod`), and `Modules`, `Files`, `Out`,
 also import `Files`/`Platform` — and (b) the Oakwood Guidelines' own
 "basic" library modules (`In`, `Out`, `Files`, `Strings`, `Math`,
 `MathL` — see below for `XYplane`/`Input`, the two basic modules this
-phase deliberately excludes). This phase exists because Phase 9's own
-exit gate never needed real formatted I/O or file access — every Phase
-8/9 fixture prints via a direct `SysWrite` FFI declaration — but poc's
-own source genuinely does, and self-hosting (this phase's own final
-step) cannot get off the ground without it.
+phase deliberately excludes). Also covers (c) `SYSTEM` (Appendix C):
+unlike (a)/(b), not a real `.mod` source file (`SYSTEM` has no body in
+any Oberon-2 implementation — every procedure it exports is compiler
+magic, the same way `PredeclaredProcedures.Mod`'s ordinary ~20 names
+are), but grouped into this phase rather than Phase 11 because it's the
+same kind of "give the LLVM backend a capability it has never had"
+work as (a)/(b), and because `AGENTS.md`'s own "Appendix C" section has
+flagged it as genuinely unscheduled ("no phase has scheduled it") since
+before this file described any phase past 9 — see step 7 below. This
+phase exists because Phase 9's own exit gate never needed real formatted
+I/O, file access, or raw memory access — every Phase 8/9 fixture prints
+via a direct `SysWrite` FFI declaration — but poc's own source genuinely
+needs (a), and self-hosting (this phase's own final step) cannot get
+off the ground without it.
 
 **Why this is its own phase, not folded into Phase 9 or deferred to
 "later, as fixtures need it"** (this file's own "Decisions locked in"
@@ -2038,29 +2048,133 @@ work already being in place.
    **Testing**: one fixture per module exercising each exported
    procedure against a hand-checked expected value.
 
-7. **Self-hosting bootstrap.** Stage 0 (`voc`) compiles all of poc
+7. **`SYSTEM` (Appendix C), full list.** Unscheduled until now —
+   `AGENTS.md`'s own "Appendix C" section has said so explicitly since
+   before this file described any phase past 9. Unlike every other step
+   in this phase, `SYSTEM` isn't a real `.mod` source file to write: no
+   Oberon-2 implementation gives it one, every exported name is
+   compiler magic, the same way `PredeclaredProcedures.Mod`'s ordinary
+   ~20 names are — so this step is front-end recognition
+   (`SymbolTable.Mod`/`SemanticActions.Mod` treating `SYSTEM` as an
+   always-available pseudo-module, the same way `Universe` pre-
+   populates the ordinary predeclared names, plus argument-shape
+   checking for each procedure) *and* `LLVMCodeGenerator.Mod` lowering,
+   together, both from a standing start. The full list below was
+   re-checked directly against the report's own Appendix C text
+   (`pdftotext` on `Oberon2.pdf`, not assumed from memory or from a
+   partial/summarized version of the list) — it's larger than this
+   step's own first draft had it, which only carried over `ADR`/`VAL`/
+   `BIT`/`GET`/`PUT`/`MOVE`/`LSH`/`ROT` and mistakenly also listed
+   `SIZE`/`COPY` as if they were `SYSTEM`'s own; neither actually
+   appears in Appendix C at all — both are ordinary §10.3 predeclared
+   procedures already, no `SYSTEM.` disambiguation ever needed.
+
+   **Two types**: `SYSTEM.BYTE` (`CHAR`/`SHORTINT` assignable to it; a
+   formal `VAR` parameter of type `ARRAY OF BYTE` accepts an actual
+   parameter of *any* type) and `SYSTEM.PTR` (any pointer type
+   assignable to it; a formal `VAR` parameter of type `PTR` accepts any
+   pointer type). Both are genuinely new front-end work beyond a bare
+   "recognize `SYSTEM` as a pseudo-module" pass — permissive assignment-
+   /parameter-compatibility carve-outs in `Types.Mod`, not just argument-
+   shape checks on a procedure call.
+
+   **Six function procedures**: `ADR(v)` (address of a variable — typed
+   `SYSTEM.ADDRESS`, not the report's own literal `LONGINT`, per
+   `AGENTS.md`'s already-recorded follow-up decision, since `LONGINT`
+   can't be assumed address-sized once 32-/64-bit parity, Phase 9, is
+   real), `BIT(a, n): BOOLEAN` (bit `n` of `Mem[a]`), `LSH(x, n)`/
+   `ROT(x, n)` (logical shift/rotation, result typed like `x`; the
+   report's own "integer, CHAR, BYTE" argument category explicitly
+   includes `HUGEINT` alongside `SHORTINT`/`INTEGER`/`LONGINT`, per
+   `AGENTS.md`'s other already-recorded follow-up decision), `VAL(T, x)`
+   (reinterpret `x` as type `T`) — and `CC(n): BOOLEAN`, explicitly
+   **not** implemented (see below).
+
+   **Five proper procedures**: `GET(a, v)`/`PUT(a, x)` (raw load/store
+   at address `a`), `MOVE(a0, a1, n)` (`M[a1..a1+n-1] := M[a0..a0+n-1]`),
+   and `SYSTEM.NEW(v, n)` — a *second*, distinct `NEW` overload from the
+   ordinary predeclared one (`v: any pointer; n: integer` — allocate a
+   raw `n`-byte block and assign its address to `v`, no type/dope-vector
+   involvement at all, unlike the ordinary `NEW(v)`/`NEW(v, x0, ...,
+   xn-1)` forms Phase 9 step 5/7 build) — needing its own disambiguation
+   in both `PredeclaredProcedures.Mod`'s existing `NEW` checking and
+   `LLVMCodeGenerator.Mod`'s existing `NEW` lowering, keyed on whether
+   the call resolves through `SYSTEM` or through `Universe`. `GETREG(n,
+   v)`/`PUTREG(n, x)` are the other two the report defines — explicitly
+   **not** implemented, alongside `CC`, for the same reason (below).
+
+   **Explicit non-goal within this step: `CC`, `GETREG`, `PUTREG`.** All
+   three are tied to a specific machine's raw register/condition-code
+   model — the report's own Appendix C header says so directly ("The
+   following specifications hold for the implementation of Oberon-2 on
+   the Ceres computer"), and `GETREG`/`PUTREG`'s own definition
+   (`v := Register_n` / `Register_n := x`) presupposes a fixed, numbered
+   physical register file to index into. LLVM IR has no such thing to
+   expose: it's virtual, SSA-form, and register-allocation-agnostic by
+   design, with no "register n" or raw condition-code bit surviving
+   past an arbitrary instruction sequence for `CC` to test. voc itself
+   only type-checks these three (confirmed by reading `OPB.Mod` in
+   voc's own source — argument-shape validation only, e.g. `GETREG`/
+   `PUTREG`'s register-number-in-range check), not something this
+   project has any evidence it lowers to anything meaningful on a
+   non-Ceres target either. Nothing in poc's own source, no Oakwood
+   module, and no fixture needs them — revisit only if a real, concrete
+   need for one surfaces.
+
+   The remaining nine (two types, four function procedures, three
+   proper procedures) lower straightforwardly: `ADR` to `ptrtoint`,
+   `VAL` to a bitcast-shaped reinterpretation between same-width types,
+   `GET`/`PUT` to a raw `inttoptr`-then-load/store at the given address,
+   `MOVE` to a byte-by-byte or `llvm.memmove`-backed copy, `BIT` to a
+   loaded byte plus a shift/mask test, `LSH`/`ROT` to LLVM's own shift/
+   funnel-shift instructions, `SYSTEM.NEW(v, n)` to the same allocator
+   Phase 9 step 4 built, called with a raw byte count instead of a
+   type-derived size. Does not touch `SYSTEM.INT8..64`/`SYSTEM.SET32/64`
+   — those are voc's own extensions beyond `Oberon2.pdf`/Appendix C, not
+   something poc's own language needs to match (this file's own
+   bootstrap-terminology section already excludes them from what poc's
+   source may use).
+   **Testing**: fixtures for each implemented procedure — `ADR`/`GET`/
+   `PUT` round-tripping a known value through a raw address, `MOVE`
+   copying between two arrays and confirming the byte contents, `BIT`
+   testing known-set/known-clear bits, `LSH`/`ROT` against hand-computed
+   results for both directions, `VAL` reinterpreting between two same-
+   width types, `SYSTEM.NEW(v, n)` allocating a raw block and writing/
+   reading through it, `SYSTEM.BYTE`/`SYSTEM.PTR` accepting the
+   permissive actual-parameter shapes the front-end carve-out allows —
+   all on both the 32-bit/64-bit word-size axis (this step's own
+   address-width dependence makes it a second, independent place -
+   alongside Phase 9's own cross-cutting discipline - where getting the
+   size-dependent axis right from the start matters).
+
+8. **Self-hosting bootstrap.** Stage 0 (`voc`) compiles all of poc
    (front end + LLVM backend + every `rtl/llvm` module built in steps
-   1–6 and Phase 9's own GC) → Stage 1 poc compiles poc's own source
-   again, now genuinely linked against `rtl/llvm` rather than voc's own
-   runtime → Stage 2 poc compiles it a third time; diff Stage 1 vs.
-   Stage 2 output (modulo embedded timestamps/paths) for the classic
-   self-hosting fixed point. This is the final step of this phase (and
-   of the LLVM-backend line of work generally) precisely because it's
-   the one step needing *both* Phase 9's full language parity *and*
-   this phase's own runtime library — the bootstrap terminology section
-   at the top of this file has described Stage 0/1/2 since Phase 0, but
-   Stage 1 was never reachable until both were done. Once Stage 1 passes
-   the full conformance suite, `voc` is retired from the day-to-day
-   build loop and kept only as a comparison oracle (per the bootstrap
-   terminology's own existing wording) — `tools/bootstrap/` gains its
-   Stage 1/Stage 2 scripts here, alongside Stage 0's existing ones.
+   1–6, `SYSTEM` lowering from step 7, and Phase 9's own GC) → Stage 1
+   poc compiles poc's own source again, now genuinely linked against
+   `rtl/llvm` rather than voc's own runtime → Stage 2 poc compiles it a
+   third time; diff Stage 1 vs. Stage 2 output (modulo embedded
+   timestamps/paths) for the classic self-hosting fixed point. This is
+   the final step of this phase (and of the LLVM-backend line of work
+   generally) precisely because it's the one step needing *both* Phase
+   9's full language parity *and* this phase's own runtime library —
+   the bootstrap terminology section at the top of this file has
+   described Stage 0/1/2 since Phase 0, but Stage 1 was never reachable
+   until both were done. `SYSTEM` (step 7) isn't itself a bootstrap
+   prerequisite — poc's own source doesn't import it (confirmed by the
+   same `IMPORT` grep this phase's own Goal cites) — it's grouped into
+   this phase for the reasons given there, not because self-hosting
+   needs it. Once Stage 1 passes the full conformance suite, `voc` is
+   retired from the day-to-day build loop and kept only as a comparison
+   oracle (per the bootstrap terminology's own existing wording) —
+   `tools/bootstrap/` gains its Stage 1/Stage 2 scripts here, alongside
+   Stage 0's existing ones.
    **Testing**: Stage 1 vs. Stage 2 output diff as the fixed-point
    proof; full conformance suite must pass under Stage 1 before `voc`
    is retired from day-to-day use.
 
 **Testing summary**: compile+link+run+diff fixtures throughout (no
 purely-static/golden-IR step this time — every module here is either OS-
-facing or produces directly observable output), culminating in step 7's
+facing or produces directly observable output), culminating in step 8's
 Stage 1/Stage 2 self-hosting fixed point — the point this file's
 "Decisions locked in" table's `voc` framing ("bootstrap compiler...
 until poc can compile itself") finally stops applying.
