@@ -371,6 +371,93 @@ struct/array layout plus a cross-check fixture rather than manual packing
    results — a regression test for layout *agreement*, not a
    manual-packing mechanism.
 
+   **Implemented 2026-09-18.** `src/back/llvm/LLVMTypes.Mod` adds
+   `TypeString*(t, sizeModel, VAR result)`, covering exactly Phase 8's
+   in-scope type set (basic types, fixed arrays, base-less records) and
+   returning the literal string `"<unsupported>"` for anything else
+   (POINTER, PROCEDURE, open arrays, record extension) rather than
+   failing — nothing calls it with one of those yet, so a total function
+   was simpler to reason about than a partial one. Fixed arrays/records
+   become literal, anonymous LLVM types (`"[n x T]"` / `"{ T1, T2, ... }"`)
+   with no offsets computed by this module at all, per this step's own
+   "Decided" note above — `TypeString*` does not vary by target word
+   size (none of Phase 8's in-scope types are word-size-dependent; only
+   POINTER/PROCEDURE are, and both are out of scope). Golden-diffed via
+   `Poc.Mod`'s new `-dump-llvm-types <file>` command and the
+   `llvm-types-dump` conformance fixture (mirrors `-dump-layout`/
+   `layout-node-tree`'s role exactly, but only the O2/OC size-model axis,
+   not word size).
+
+   `LLVMTypes.Mod` also adds `WordSizeForTriple*(triple, VAR wordSize):
+   BOOLEAN`, recognizing an LLVM target triple's arch component — not for
+   `TypeString*` itself, but for a different, real consumer:
+   `ConstantEvaluator.Mod`'s pre-existing, already-documented gap that
+   `SIZE(T)`/`MAX(T)`/`MIN(T)` folding stayed hardcoded to
+   `MemoryLayout.wordSize32` "until a real target/word-size choice
+   exists" — now that `-target` resolves a real triple (step 2),
+   `ConstantEvaluator.Mod` gained a `wordSize*` module `VAR` and
+   `SetWordSize*` setter (mirroring its existing `sizeModel*`/
+   `SetSizeModel*` pattern), and `Poc.Mod` wires
+   `LLVMTypes.WordSizeForTriple*` into that setter — for `-emit-llvm-ir`/
+   `-build` unconditionally (via `SetWordSizeFromTriple`, called right
+   after `ResolveTriple` and before parsing, so `CheckModule`'s constant
+   folding sees it), and for `-emit-interface` only when the caller
+   passes `-target` explicitly, so that command keeps its pre-existing
+   "no clang required" behavior by default (`ResolveTriple`'s
+   auto-detect fallback is the only path that needs clang; an explicit
+   `-target` never reaches it). An unrecognized arch is not an error —
+   word size just stays at whatever it already was, the same fallback
+   `SIZE(T)` already had. Verified end to end with an exported
+   `CONST s* = SIZE(P)` (`P` a `POINTER` type) compiled via
+   `-emit-interface -target i686-unknown-linux-gnu` (`s* = 4`) vs.
+   `-target x86_64-unknown-linux-gnu` (`s* = 8`) vs. no `-target` at all
+   (`s* = 4`, the `wordSize32` default) — the `.sym` file makes a folded
+   `CONST`'s numeric value directly observable, which neither `-check`
+   nor `-emit-llvm-ir`/`-build` (no codegen for constant values exists
+   yet) can do.
+
+   The `llvm-layout-cross-check` fixture (`mixed.mod`, a `RECORD` mixing
+   a 1-byte `CHAR`, two 8-byte `HUGEINT`/`LONGINT`-under-OC fields, and a
+   2-byte `SHORTINT`-under-OC field to force non-trivial OC-model
+   padding) empirically confirms `MemoryLayout.Mod`'s hand-computed
+   offsets agree with LLVM's own target-datalayout-driven layout
+   algorithm for real x86 targets, via
+   `clang -Xclang -fdump-record-layouts -ffreestanding -target <triple>
+   -c <file>.c -o <file>.o` — a real, ABI-verified struct layout dump
+   requiring no linking or running (and no target sysroot/multilib,
+   thanks to `-ffreestanding` plus hand-rolled `int8_t`/`int16_t`/
+   `int64_t` typedefs standing in for `<stdint.h>`, which needs
+   `gnu/stubs-32.h` for `-target i686-...` that this host doesn't have
+   installed). Confirmed for a C struct with the OC-model-equivalent
+   fixed-width fields at both `i686-unknown-linux-gnu` (`sizeof=24,
+   align=4`, offsets 0/4/12/16 — matching `sizeOC_32`/`offsetOC_32`
+   exactly) and `x86_64-unknown-linux-gnu` (`sizeof=32, align=8`, offsets
+   0/8/16/24 — matching `sizeOC_64`/`offsetOC_64` exactly), including the
+   specific empirical fact (found while working out this technique) that
+   an 8-byte field only gets 4-byte alignment inside a struct on 32-bit
+   x86, matching `MemoryLayout.Align`'s "natural alignment capped at word
+   size" rule precisely. This validation is one-time and static (the
+   algorithm being checked is deterministic compiler code, not something
+   that drifts per test run) — the fixture itself only runs `poc
+   -dump-layout`, with the clang-verified numbers encoded directly into
+   its golden `expected` file, so `make test` keeps no runtime clang
+   dependency for this fixture (matching `layout-node-tree`/
+   `layout-size-model`, and unlike `llvm-emit-ir`/`llvm-build-run`, which
+   genuinely need the toolchain at test time).
+
+   One real bug found and fixed along the way: `TypeString*`'s `result`
+   parameter is `VAR result: ARRAY OF CHAR` — an open-array `VAR`
+   parameter, whose actual length is the caller's own actual argument and
+   unknowable at compile time. Oberon2.pdf's assignment-compatibility
+   rule 6 (a string constant may be assigned via `:=` to an
+   `ARRAY OF CHAR`) only applies to a *fixed-size* array variable, not
+   this shape — every `result := "<literal>"` in the module (originally
+   ~16 of them) had to become `COPY("<literal>", result)` instead. This
+   is the same distinction `Diagnostics.Mod`'s "`fileName := name`" bug
+   (`AGENTS.md`, "Known voc bugs") turned on, just the
+   constant-into-open-array case of it rather than variable-into-variable.
+   All 98 conformance tests pass (96 plus the two new fixtures above).
+
 5. **Straight-line codegen: the smallest useful slice.** Module-level
    `VAR`s as LLVM globals, local `VAR`s as `alloca`s, arithmetic/
    relational/boolean expression evaluation to SSA form, assignment

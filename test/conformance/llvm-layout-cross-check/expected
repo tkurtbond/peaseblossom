@@ -1,0 +1,5 @@
+Mixed: sizeO2_32=20 alignO2_32=4 sizeO2_64=24 alignO2_64=8 sizeOC_32=24 alignOC_32=4 sizeOC_64=32 alignOC_64=8
+  .a: offsetO2_32=0 offsetO2_64=0 offsetOC_32=0 offsetOC_64=0
+  .b: offsetO2_32=4 offsetO2_64=8 offsetOC_32=4 offsetOC_64=8
+  .c: offsetO2_32=12 offsetO2_64=16 offsetOC_32=12 offsetOC_64=16
+  .d: offsetO2_32=16 offsetO2_64=20 offsetOC_32=16 offsetOC_64=24

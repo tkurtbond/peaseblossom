@@ -60,7 +60,7 @@ MODULE Poc;
 
   IMPORT Modules, Files, Out, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
-         ConstantEvaluator, LLVMToolchainDriver;
+         ConstantEvaluator, LLVMToolchainDriver, LLVMTypes;
 
   CONST
     maxLineLength = 4096;
@@ -185,7 +185,38 @@ MODULE Poc;
     END
   END Check;
 
-  PROCEDURE EmitInterface(name, outputDir: ARRAY OF CHAR);
+  (* Explicit -target flag wins; otherwise LLVMToolchainDriver.HostTriple's
+     auto-detected default (PLAN.md Phase 8 step 2). *)
+  PROCEDURE ResolveTriple(explicitTriple: ARRAY OF CHAR; VAR triple: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    IF explicitTriple[0] # 0X THEN
+      COPY(explicitTriple, triple);
+      RETURN TRUE
+    END;
+    RETURN LLVMToolchainDriver.HostTriple(triple)
+  END ResolveTriple;
+
+  (* PLAN.md Phase 8 step 4: sets ConstantEvaluator's word size from the
+     resolved triple before parsing even starts, so SIZE(T)/MAX(T)/MIN(T)
+     folding during CheckModule (below) sees it - see
+     ConstantEvaluator.SetWordSize*'s own comment. An unrecognized arch
+     (LLVMTypes.WordSizeForTriple* returns FALSE) is not an error here -
+     word size just stays at whatever it already was (wordSize32 by
+     default), the same fallback SIZE(T) already had before this existed. *)
+  PROCEDURE SetWordSizeFromTriple(triple: ARRAY OF CHAR);
+    VAR wordSize: INTEGER; recognized: BOOLEAN;
+  BEGIN
+    recognized := LLVMTypes.WordSizeForTriple(triple, wordSize);
+    IF recognized THEN ConstantEvaluator.SetWordSize(wordSize) END
+  END SetWordSizeFromTriple;
+
+  (* PLAN.md Phase 8 step 4: -target is optional here, unlike
+     EmitLLVMIR/Build below - this command has no real dependency on clang
+     at all, and must not start requiring it installed just to gain
+     SIZE(T)'s word-size sensitivity. Only resolved (and only reaches
+     ResolveTriple's clang-dependent auto-detect fallback at all) when the
+     caller actually passes -target explicitly. *)
+  PROCEDURE EmitInterface(name, outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
       buffer: Lexer.CharBuffer;
       length: LONGINT;
@@ -193,7 +224,11 @@ MODULE Poc;
       module: SyntaxTree.ModuleNode;
       scope: SymbolTable.Scope;
       path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
+      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
   BEGIN
+    IF explicitTriple[0] # 0X THEN
+      IF ResolveTriple(explicitTriple, triple) THEN SetWordSizeFromTriple(triple) END
+    END;
     IF ~ReadSource(name, buffer, length) THEN
       Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
@@ -213,17 +248,6 @@ MODULE Poc;
     END
   END EmitInterface;
 
-  (* Explicit -target flag wins; otherwise LLVMToolchainDriver.HostTriple's
-     auto-detected default (PLAN.md Phase 8 step 2). *)
-  PROCEDURE ResolveTriple(explicitTriple: ARRAY OF CHAR; VAR triple: ARRAY OF CHAR): BOOLEAN;
-  BEGIN
-    IF explicitTriple[0] # 0X THEN
-      COPY(explicitTriple, triple);
-      RETURN TRUE
-    END;
-    RETURN LLVMToolchainDriver.HostTriple(triple)
-  END ResolveTriple;
-
   PROCEDURE EmitLLVMIR(name, outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
       buffer: Lexer.CharBuffer;
@@ -234,9 +258,12 @@ MODULE Poc;
       triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
       path: ARRAY LLVMToolchainDriver.pathBufferLength OF CHAR;
   BEGIN
-    IF ~ReadSource(name, buffer, length) THEN
+    IF ~ResolveTriple(explicitTriple, triple) THEN
+      Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
+    ELSIF ~ReadSource(name, buffer, length) THEN
       Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
+      SetWordSizeFromTriple(triple);
       Diagnostics.Reset(name);
       Parser.InitParser(parser, buffer, length);
       module := Parser.ParseModule(parser);
@@ -245,8 +272,6 @@ MODULE Poc;
       END;
       IF Diagnostics.errorCount > 0 THEN
         Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
-      ELSIF ~ResolveTriple(explicitTriple, triple) THEN
-        Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
       ELSIF LLVMToolchainDriver.EmitIR(module, scope, triple, outputDir, path) THEN
         Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
       ELSE
@@ -264,9 +289,14 @@ MODULE Poc;
       scope: SymbolTable.Scope;
       triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
   BEGIN
-    IF ~ReadSource(name, buffer, length) THEN
+    IF exePath[0] = 0X THEN
+      Out.String("poc: -build requires -o <path>"); Out.Ln
+    ELSIF ~ResolveTriple(explicitTriple, triple) THEN
+      Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
+    ELSIF ~ReadSource(name, buffer, length) THEN
       Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
+      SetWordSizeFromTriple(triple);
       Diagnostics.Reset(name);
       Parser.InitParser(parser, buffer, length);
       module := Parser.ParseModule(parser);
@@ -275,10 +305,6 @@ MODULE Poc;
       END;
       IF Diagnostics.errorCount > 0 THEN
         Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
-      ELSIF exePath[0] = 0X THEN
-        Out.String("poc: -build requires -o <path>"); Out.Ln
-      ELSIF ~ResolveTriple(explicitTriple, triple) THEN
-        Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
       ELSIF LLVMToolchainDriver.Build(module, scope, triple, outputDir, exePath) THEN
         Out.String("semantic OK, wrote "); Out.String(exePath); Out.Ln
       ELSE
@@ -351,12 +377,61 @@ MODULE Poc;
     END
   END DumpLayout;
 
+  PROCEDURE PrintLLVMTypeLine(name: ARRAY OF CHAR; t: Types.Type);
+    VAR s: ARRAY 512 OF CHAR;
+  BEGIN
+    Out.String(name);
+    LLVMTypes.TypeString(t, MemoryLayout.sizeModelO2, s);
+    Out.String(": O2="); Out.String(s);
+    LLVMTypes.TypeString(t, MemoryLayout.sizeModelOC, s);
+    Out.String(" OC="); Out.String(s);
+    Out.Ln
+  END PrintLLVMTypeLine;
+
+  (* PLAN.md Phase 8 step 4: golden-file testing surface for
+     LLVMTypes.TypeString*, mirroring DumpLayout above exactly except for
+     the axis printed - only sizeModel (O2/OC), not word size, since
+     TypeString* doesn't vary by word size for Phase 8's in-scope type set
+     (see LLVMTypes.Mod's own header comment). *)
+  PROCEDURE DumpLLVMTypes(name: ARRAY OF CHAR);
+    VAR
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      parser: Parser.Parser;
+      module: SyntaxTree.ModuleNode;
+      scope: SymbolTable.Scope;
+      d: SyntaxTree.TypeDeclNode;
+      obj: SymbolTable.Object;
+  BEGIN
+    IF ~ReadSource(name, buffer, length) THEN
+      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+    ELSE
+      Diagnostics.Reset(name);
+      Parser.InitParser(parser, buffer, length);
+      module := Parser.ParseModule(parser);
+      IF Diagnostics.errorCount = 0 THEN
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+      END;
+      IF Diagnostics.errorCount > 0 THEN
+        Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
+      ELSIF module.declarations # NIL THEN
+        d := module.declarations.typeDecls;
+        WHILE d # NIL DO
+          obj := SymbolTable.FindLocal(scope, d.name.name);
+          PrintLLVMTypeLine(d.name.name, obj.type);
+          d := d.next
+        END
+      END
+    END
+  END DumpLLVMTypes;
+
   PROCEDURE Usage;
   BEGIN
     Out.String("usage: poc -dump-tokens <file>"); Out.Ln;
     Out.String("       poc -check-syntax <file>"); Out.Ln;
     Out.String("       poc -check <file>"); Out.Ln;
     Out.String("       poc -dump-layout <file>"); Out.Ln;
+    Out.String("       poc -dump-llvm-types <file>"); Out.Ln;
     Out.String("       poc -emit-interface <file>"); Out.Ln;
     Out.String("       poc -emit-llvm-ir <file>"); Out.Ln;
     Out.String("       poc -o <exe> -build <file>"); Out.Ln;
@@ -371,7 +446,9 @@ MODULE Poc;
     Out.String("       elementary-type size model MAX(T)/MIN(T)/SIZE(T) and integer"); Out.Ln;
     Out.String("       literals fold against (default -O2); a later one wins"); Out.Ln;
     Out.String("       -target <triple> may precede -emit-llvm-ir or -build, selecting the"); Out.Ln;
-    Out.String("       LLVM target triple (default: clang's own default for this host)"); Out.Ln;
+    Out.String("       LLVM target triple (default: clang's own default for this host);"); Out.Ln;
+    Out.String("       it may also precede -emit-interface, to fold SIZE(T)/MAX(T)/MIN(T)"); Out.Ln;
+    Out.String("       for that target's word size (default: no effect, no clang needed)"); Out.Ln;
     Out.String("       -o <exe> may precede -build, giving the executable's output path"); Out.Ln;
     Out.String("       (required - -build has no default)"); Out.Ln
   END Usage;
@@ -415,8 +492,10 @@ MODULE Poc;
       Check(fileName)
     ELSIF option = "-dump-layout" THEN
       DumpLayout(fileName)
+    ELSIF option = "-dump-llvm-types" THEN
+      DumpLLVMTypes(fileName)
     ELSIF option = "-emit-interface" THEN
-      EmitInterface(fileName, outputDir)
+      EmitInterface(fileName, outputDir, targetTriple)
     ELSIF option = "-emit-llvm-ir" THEN
       EmitLLVMIR(fileName, outputDir, targetTriple)
     ELSIF option = "-build" THEN

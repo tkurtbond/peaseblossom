@@ -95,6 +95,20 @@ MODULE ConstantEvaluator;
        see SetSizeModel*'s own comment. *)
     maxSetElement, maxShortInt, maxInteger, maxLongInt: LONGINT;
     minShortInt, minInteger, minLongInt: LONGINT;
+    (* MemoryLayout.wordSize32/64 currently in effect for SIZE(T)'s own
+       POINTER/PROCEDURE-sized-value case (SizeBound below) - set once via
+       SetWordSize* below (default wordSize32, this module's own init at
+       the bottom of the file, unchanged from before this VAR existed) and
+       again by Poc.Mod's "-emit-llvm-ir"/"-build" commands once a real
+       "-target" triple is resolved (PLAN.md Phase 8 step 4, via
+       LLVMTypes.WordSizeForTriple) - the word-size analogue of
+       sizeModel* above, closing the gap SizeBound's own previous comment
+       flagged ("stays 32-bit-only until [a real target choice] exists").
+       "-check"/"-emit-interface"/"-dump-layout" have no "-target" flag of
+       their own to resolve a triple from, so they never call
+       SetWordSize*, leaving this at its wordSize32 default - unchanged
+       behavior for those commands. *)
+    wordSize*: INTEGER;
 
   PROCEDURE ^ EvaluateExpr(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): Types.Value;
 
@@ -123,6 +137,11 @@ MODULE ConstantEvaluator;
     minShortInt := -maxShortInt - 1; minInteger := -maxInteger - 1;
     minLongInt := -maxLongInt - 1
   END SetSizeModel;
+
+  PROCEDURE SetWordSize*(size: INTEGER);
+  BEGIN
+    wordSize := size
+  END SetWordSize;
 
   PROCEDURE UndefinedValue(): Types.Value;
     VAR v: Types.Value;
@@ -413,7 +432,7 @@ MODULE ConstantEvaluator;
   BEGIN
     NEW(v);
     v.type := Types.Integer; v.kind := Types.intValue;
-    v.intVal := MemoryLayout.Size(t, MemoryLayout.wordSize32, sizeModel)
+    v.intVal := MemoryLayout.Size(t, wordSize, sizeModel)
   END SizeBound;
 
   (* Shared MAX/MIN/SIZE dispatch, called from EvaluateDesignator below
@@ -767,5 +786,6 @@ MODULE ConstantEvaluator;
   END Evaluate;
 
 BEGIN
-  SetSizeModel(MemoryLayout.sizeModelO2)
+  SetSizeModel(MemoryLayout.sizeModelO2);
+  SetWordSize(MemoryLayout.wordSize32)
 END ConstantEvaluator.
