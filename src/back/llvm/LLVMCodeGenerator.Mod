@@ -218,6 +218,46 @@ MODULE LLVMCodeGenerator;
       next: LocalBinding
     END;
 
+    (* PLAN.md Phase 8 step 12: once a program can compile more than one
+       module into a single link unit, two independent modules each
+       externally declaring the same C symbol (e.g. both wrapping
+       "write" under their own Oberon name) would otherwise each emit
+       their own "declare" line for it - clang/LLVM rejects two
+       "declare"s of the same symbol outright, even with identical
+       signatures (EmitRuntimeSupport's own header comment already
+       documented this once, confirmed empirically, for exactly this
+       reason). Tracks every C symbol name a "declare" has already been
+       emitted for, across the *whole* program (never reset between
+       modules, unlike LocalBinding/currentProcResultType, which reset
+       per-procedure) - EmitExternalDeclares checks/updates it before
+       emitting each one, and EmitRuntimeSupport's own write/exit
+       declares (now emitted exactly once for the whole program, not
+       once per module) check it the same way, replacing the old
+       per-module HasExternalNamed. *)
+    DeclaredExternal = POINTER TO DeclaredExternalDesc;
+    DeclaredExternalDesc = RECORD
+      name: SyntaxTree.Ident;
+      next: DeclaredExternal
+    END;
+
+    (* PLAN.md Phase 8 step 12: one entry per module in a whole program's
+       own dependency-ordered compile list (GenerateProgram*'s own
+       parameter, near this file's end) - imports before importers, the
+       real top (command-line) module always last, matching
+       Oberon2.pdf §11's own module-initialization order. Built entirely
+       outside this module (Poc.Mod's own driver owns Parser/
+       SemanticActions/ModuleInterface, none of which this backend
+       imports - see this module's own header comment on why
+       LLVMCodeGenerator.Mod stays a pure tree-walker); exported purely
+       as a transport type between that discovery pass and
+       GenerateProgram*. *)
+    ModuleList* = POINTER TO ModuleListDesc;
+    ModuleListDesc* = RECORD
+      module*: SyntaxTree.ModuleNode;
+      scope*: SymbolTable.Scope;
+      next*: ModuleList
+    END;
+
     (* Threaded explicitly through every codegen procedure below, VAR w:
        Files.Rider stays a separate parameter rather than a field of this
        record - Files.Rider is a plain RECORD whose mutable position
@@ -255,7 +295,8 @@ MODULE LLVMCodeGenerator;
          real, if narrow, gap codegen must still emit *valid* IR for,
          even though it can't happen in a well-formed program). *)
       currentProcResultType: Types.Type;
-      locals: LocalBinding
+      locals: LocalBinding;
+      declaredExternals: DeclaredExternal
     END;
 
   (* Files.WriteString (confirmed against real voc, see
@@ -582,11 +623,65 @@ MODULE LLVMCodeGenerator;
      name" text independently - now the one place that decides "is this
      local or global" at all. *)
   (* "@Module.name" - every module-level global (a VAR's own storage, an
-     ordinary procedure's own function symbol) is named this way. *)
+     ordinary procedure's own function symbol) is named this way. Takes
+     the home module's own name explicitly rather than always reading
+     cg.moduleName (the module currently being compiled) - PLAN.md Phase
+     8 step 12's own qualified-reference codegen needs to name a symbol
+     declared in a *different* module than the one currently being
+     walked (e.g. "Trees.NewTree" referenced from inside "client"'s own
+     body must still become "@trees.NewTree", not "@client.NewTree"). *)
+  PROCEDURE QualifiedName(homeModule, name: ARRAY OF CHAR; VAR text: ValueText);
+  BEGIN
+    COPY("@", text); Strcat(text, homeModule); Strcat(text, "."); Strcat(text, name)
+  END QualifiedName;
+
+  (* The common case - a reference to something declared in the module
+     currently being compiled - matching every call site that predates
+     step 12's own qualified-reference support, all of which are only
+     ever reached for an *unqualified* designator by construction (an
+     unqualified SymbolTable.Find(cg.scope, ...) can never resolve to an
+     imported module's own moduleScope - see IsLocalType's own comment
+     for the identical reasoning one level up, types instead of values -
+     so "the object I'm naming belongs to the module I'm compiling" is
+     still always true here). *)
   PROCEDURE ModuleQualifiedName(VAR cg: Codegen; name: ARRAY OF CHAR; VAR text: ValueText);
   BEGIN
-    COPY("@", text); Strcat(text, cg.moduleName); Strcat(text, "."); Strcat(text, name)
+    QualifiedName(cg.moduleName, name, text)
   END ModuleQualifiedName;
+
+  (* PLAN.md Phase 8 step 12: resolves a designator's base name - bare or
+     qualified alike - to its SymbolTable.Object, exactly mirroring
+     SemanticActions.FindQualified's own front-end logic (private there,
+     small enough to duplicate rather than export, the same call this
+     module's own StringConstName/PredeclaredProcedures precedent
+     already made for an analogous small helper) - an empty qualifier is
+     an ordinary SymbolTable.Find; a non-empty one must resolve to a
+     moduleClass Object first, then FindLocal(-ing) name in its own
+     moduleScope (exactly the exported members ModuleInterface.Mod's
+     writer ever emitted for it, so no separate "is it exported" check
+     is needed here either, matching FindQualified's own comment).
+     Also returns the resolved object's own *home* module's real name
+     (VAR homeModule) - cg.moduleName for the unqualified case, or the
+     imported module's own realModuleName (not its local alias) for the
+     qualified one - every caller needs this to build a correct LLVM
+     symbol via QualifiedName above. Returns NIL (homeModule undefined)
+     if qualifier names something that isn't an imported module at all -
+     unreachable in a module that already passed CheckModule cleanly,
+     the same "re-deriving a already-checked result" safety argument
+     OpenProcedureBodyScope's own header comment makes. *)
+  PROCEDURE ResolveQualifiedObject(VAR cg: Codegen; qualifier, name: SyntaxTree.Ident;
+                                   VAR homeModule: SyntaxTree.Ident): SymbolTable.Object;
+    VAR modObj: SymbolTable.Object;
+  BEGIN
+    IF qualifier[0] = 0X THEN
+      COPY(cg.moduleName, homeModule);
+      RETURN SymbolTable.Find(cg.scope, name)
+    END;
+    modObj := SymbolTable.Find(cg.scope, qualifier);
+    IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN RETURN NIL END;
+    COPY(modObj.realModuleName, homeModule);
+    RETURN SymbolTable.FindLocal(modObj.moduleScope, name)
+  END ResolveQualifiedObject;
 
   PROCEDURE ResolveVarAddress(VAR cg: Codegen; obj: SymbolTable.Object; VAR addrText: ValueText);
     VAR b: LocalBinding;
@@ -866,12 +961,19 @@ MODULE LLVMCodeGenerator;
     VAR
       obj: SymbolTable.Object; sel: SyntaxTree.Selector; idx: SyntaxTree.ExprNode;
       rec: Types.RecordType; arr: Types.ArrayType; field: Types.Field; idxVal: Value;
-      pointeeType: ARRAY 256 OF CHAR; idxText: ValueText;
+      pointeeType: ARRAY 256 OF CHAR; idxText: ValueText; homeModule: SyntaxTree.Ident;
   BEGIN
-    IF d.qualifier[0] # 0X THEN RETURN FALSE END;
-    obj := SymbolTable.Find(cg.scope, d.name);
+    obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
-    ResolveVarAddress(cg, obj, addrText);
+    IF d.qualifier[0] = 0X THEN
+      ResolveVarAddress(cg, obj, addrText)
+    ELSE
+      (* A qualified VAR can never be a local binding - cg.locals only
+         ever holds the *current* procedure's own alloca'd params/locals,
+         never anything reached through an imported module's own
+         moduleScope. *)
+      QualifiedName(homeModule, obj.name, addrText)
+    END;
     addrType := obj.type;
     sel := d.selectors;
     WHILE sel # NIL DO
@@ -919,12 +1021,8 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE GenerateDesignatorValue(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                                     VAR result: Value);
-    VAR obj: SymbolTable.Object; addrText: ValueText; addrType: Types.Type;
+    VAR obj: SymbolTable.Object; addrText: ValueText; addrType: Types.Type; homeModule: SyntaxTree.Ident;
   BEGIN
-    IF d.qualifier[0] # 0X THEN
-      Unsupported(w, cg, "qualified designators (PLAN.md Phase 8 step 12+)", Types.Undefined, result);
-      RETURN
-    END;
     IF d.selectors # NIL THEN
       IF GenerateDesignatorAddress(w, cg, d, addrText, addrType) THEN
         LoadAtAddress(w, cg, addrText, addrType, result)
@@ -933,14 +1031,19 @@ MODULE LLVMCodeGenerator;
       END;
       RETURN
     END;
-    obj := SymbolTable.Find(cg.scope, d.name);
+    obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
     IF obj = NIL THEN
       Unsupported(w, cg, "undeclared identifier (should be unreachable post-CheckModule)",
                   Types.Undefined, result)
     ELSIF obj.class = SymbolTable.constClass THEN
       GenerateConstValue(w, cg, obj, result)
     ELSIF obj.class = SymbolTable.varClass THEN
-      LoadVar(w, cg, obj, result)
+      IF d.qualifier[0] = 0X THEN
+        LoadVar(w, cg, obj, result)
+      ELSE
+        QualifiedName(homeModule, obj.name, addrText);
+        LoadAtAddress(w, cg, addrText, obj.type, result)
+      END
     ELSE
       Unsupported(w, cg, "designator referring to a procedure/module (PLAN.md Phase 8 steps 6+)",
                   Types.Undefined, result)
@@ -979,10 +1082,17 @@ MODULE LLVMCodeGenerator;
 
   (* Named from the literal's own source position, not a counter - see
      this module's header comment on why (two independent passes need to
-     derive the identical name with no shared state). *)
-  PROCEDURE StringConstName(lit: SyntaxTree.LiteralExprNode; VAR name: ARRAY OF CHAR);
+     derive the identical name with no shared state). Also carries the
+     current module's own name (PLAN.md Phase 8 step 12): line/column
+     alone are only unique *within* one module's own source file - once
+     a whole program can compile several modules into one link unit, two
+     modules each happening to have a string literal at the same
+     line/column would otherwise collide on the identical global name. *)
+  PROCEDURE StringConstName(VAR cg: Codegen; lit: SyntaxTree.LiteralExprNode; VAR name: ARRAY OF CHAR);
   BEGIN
-    COPY("@.str.L", name);
+    COPY("@.str.", name);
+    Strcat(name, cg.moduleName);
+    Strcat(name, ".L");
     AppendLongInt(name, lit.line);
     Strcat(name, ".C");
     AppendLongInt(name, lit.column)
@@ -1023,7 +1133,7 @@ MODULE LLVMCodeGenerator;
     CONST backslash = 5CX; quoteChar = 22X;
     VAR name, lenText: ValueText; len, i: INTEGER;
   BEGIN
-    StringConstName(lit, name);
+    StringConstName(cg, lit, name);
     len := 0;
     WHILE lit.lexeme[len] # 0X DO INC(len) END;
     lenText[0] := 0X; AppendLongInt(lenText, len + 1);
@@ -1081,14 +1191,14 @@ MODULE LLVMCodeGenerator;
      result.text) was found and fixed here during step 11's own testing,
      once a scratch test finally exercised this ELSE branch from inside
      a call-argument position for the first time. *)
-  PROCEDURE GenerateStringArgValue(VAR w: Files.Rider; a: SyntaxTree.ExprNode; VAR result: Value);
+  PROCEDURE GenerateStringArgValue(VAR w: Files.Rider; VAR cg: Codegen; a: SyntaxTree.ExprNode; VAR result: Value);
     VAR name: ValueText;
   BEGIN
     COPY("ptr", result.llvmType); result.oberonType := Types.Undefined;
     WITH
       a: SyntaxTree.LiteralExprNode DO
         IF a.literalKind = Lexer.string THEN
-          StringConstName(a, name); COPY(name, result.text)
+          StringConstName(cg, a, name); COPY(name, result.text)
         ELSE
           WriteStr(w, "  ; unsupported: non-string ARRAY OF CHAR argument (PLAN.md Phase 8 step 8+)"); WriteLn(w);
           COPY("null", result.text)
@@ -1140,7 +1250,7 @@ MODULE LLVMCodeGenerator;
     IF p.isVar THEN
       GenerateVarArgValue(w, cg, a, result)
     ELSIF IsOpenCharArray(p.type) THEN
-      GenerateStringArgValue(w, a, result)
+      GenerateStringArgValue(w, cg, a, result)
     ELSE
       GenerateExpr(w, cg, a, v);
       IF Types.IsInteger(p.type) THEN ExtendTo(w, cg, v, p.type, ev) ELSE ev := v END;
@@ -1199,18 +1309,21 @@ MODULE LLVMCodeGenerator;
   END GenerateExternalCall;
 
   (* Mirrors GenerateExternalCall exactly, targeting "@Module.procName"
-     (GenerateProcedureDecl's own function symbol, ModuleQualifiedName's
-     shared naming convention) instead of an external's own C symbol
-     name - every other piece (GenerateCallArgList, ParamLLVMType-driven
-     signature matching) is already fully generic over Types.Param/
-     Types.ProcedureType and needed no change at all to serve an
-     ordinary, user-defined procedure too. *)
+     (GenerateProcedureDecl's own function symbol, QualifiedName's shared
+     naming convention, given homeModule explicitly - PLAN.md Phase 8
+     step 12: obj's own declaring module, not necessarily cg.moduleName,
+     once a qualified cross-module call is possible) instead of an
+     external's own C symbol name - every other piece (GenerateCallArgList,
+     ParamLLVMType-driven signature matching) is already fully generic
+     over Types.Param/Types.ProcedureType and needed no change at all to
+     serve an ordinary, user-defined procedure too. *)
   PROCEDURE GenerateOrdinaryCall(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
+                                 homeModule: SyntaxTree.Ident;
                                  args: SyntaxTree.ExprNode; VAR result: Value);
     VAR pt: Types.ProcedureType; retType, destTemp, fnSymbol: ValueText; argsText: ARRAY 256 OF CHAR;
   BEGIN
     pt := obj.type(Types.ProcedureType);
-    ModuleQualifiedName(cg, obj.name, fnSymbol);
+    QualifiedName(homeModule, obj.name, fnSymbol);
     IF pt.resultType = NIL THEN
       GenerateCallArgList(w, cg, pt.params, args, argsText);
       WriteStr(w, "  call void "); WriteStr(w, fnSymbol); WriteStr(w, "(");
@@ -1534,19 +1647,19 @@ MODULE LLVMCodeGenerator;
      procClass Object but never an external/ordinary one. *)
   PROCEDURE GenerateCall(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                         args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR obj: SymbolTable.Object;
+    VAR obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
   BEGIN
-    IF (d.qualifier[0] # 0X) OR (d.selectors # NIL) THEN
-      Unsupported(w, cg, "qualified/selector call target (PLAN.md Phase 8 step 8+/12)", Types.Undefined, result);
+    IF d.selectors # NIL THEN
+      Unsupported(w, cg, "selector call target (type-bound dispatch, Phase 9)", Types.Undefined, result);
       RETURN
     END;
-    obj := SymbolTable.Find(cg.scope, d.name);
+    obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
     IF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.type = Types.PredeclaredProcedureType) THEN
       GeneratePredeclaredCall(w, cg, obj.name, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.externalConvention[0] # 0X) THEN
       GenerateExternalCall(w, cg, obj, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) THEN
-      GenerateOrdinaryCall(w, cg, obj, args, result)
+      GenerateOrdinaryCall(w, cg, obj, homeModule, args, result)
     ELSE
       Unsupported(w, cg, "call target is not a plain procedure", Types.Undefined, result)
     END
@@ -1570,12 +1683,8 @@ MODULE LLVMCodeGenerator;
   END GenerateExpr;
 
   PROCEDURE GenerateAssignStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.AssignStatementNode);
-    VAR obj: SymbolTable.Object; v: Value; addrText: ValueText; addrType: Types.Type;
+    VAR obj: SymbolTable.Object; v: Value; addrText: ValueText; addrType: Types.Type; homeModule: SyntaxTree.Ident;
   BEGIN
-    IF s.target.qualifier[0] # 0X THEN
-      WriteStr(w, "  ; unsupported: qualified assignment target (PLAN.md Phase 8 step 12+)"); WriteLn(w);
-      RETURN
-    END;
     IF s.target.selectors # NIL THEN
       IF GenerateDesignatorAddress(w, cg, s.target, addrText, addrType) THEN
         GenerateExpr(w, cg, s.value, v);
@@ -1585,13 +1694,18 @@ MODULE LLVMCodeGenerator;
       END;
       RETURN
     END;
-    obj := SymbolTable.Find(cg.scope, s.target.name);
+    obj := ResolveQualifiedObject(cg, s.target.qualifier, s.target.name, homeModule);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
       WriteStr(w, "  ; unsupported: assignment target is not a plain module VAR"); WriteLn(w);
       RETURN
     END;
     GenerateExpr(w, cg, s.value, v);
-    StoreIntoVar(w, cg, obj, v)
+    IF s.target.qualifier[0] = 0X THEN
+      StoreIntoVar(w, cg, obj, v)
+    ELSE
+      QualifiedName(homeModule, obj.name, addrText);
+      StoreAtAddress(w, cg, addrText, obj.type, v)
+    END
   END GenerateAssignStatement;
 
   (* A function procedure called as a bare statement discards its result -
@@ -2004,6 +2118,20 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateStatementSeq;
 
+  PROCEDURE HasDeclaredExternal(VAR cg: Codegen; cName: ARRAY OF CHAR): BOOLEAN;
+    VAR e: DeclaredExternal;
+  BEGIN
+    e := cg.declaredExternals;
+    WHILE (e # NIL) & (e.name # cName) DO e := e.next END;
+    RETURN e # NIL
+  END HasDeclaredExternal;
+
+  PROCEDURE MarkDeclaredExternal(VAR cg: Codegen; cName: ARRAY OF CHAR);
+    VAR e: DeclaredExternal;
+  BEGIN
+    NEW(e); COPY(cName, e.name); e.next := cg.declaredExternals; cg.declaredExternals := e
+  END MarkDeclaredExternal;
+
   PROCEDURE EmitGlobals(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
     VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object; llvmType: ValueText;
   BEGIN
@@ -2026,7 +2154,14 @@ MODULE LLVMCodeGenerator;
   (* Unconditional for every external procedure the module declares, not
      just the ones actually called - see this module's own header
      comment on why (an unused "declare" is harmless; there is no "used
-     externals" set built yet to check against). *)
+     externals" set built yet to check against). PLAN.md Phase 8 step
+     12: now checked/tracked against cg.declaredExternals rather than
+     just this one module's own declarations - once a whole program can
+     compile several modules into one link unit, a second module
+     externally declaring the identical C symbol under its own Oberon
+     name must be silently skipped, not re-"declare"d (clang rejects two
+     "declare"s of the same symbol outright - see DeclaredExternal's own
+     header comment). *)
   PROCEDURE EmitExternalDeclares(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
     VAR pd: SyntaxTree.ProcDeclNode; obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param;
         retType, paramType: ValueText; first: BOOLEAN;
@@ -2036,70 +2171,60 @@ MODULE LLVMCodeGenerator;
     WHILE pd # NIL DO
       IF pd.isExternal THEN
         obj := SymbolTable.FindLocal(cg.scope, pd.name.name);
-        pt := obj.type(Types.ProcedureType);
-        IF pt.resultType = NIL THEN COPY("void", retType)
-        ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
-        END;
-        WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " @"); WriteStr(w, obj.externalName);
-        WriteStr(w, "(");
-        p := pt.params; first := TRUE;
-        WHILE p # NIL DO
-          IF ~first THEN WriteStr(w, ", ") END;
-          first := FALSE;
-          ParamLLVMType(cg, p, paramType);
-          WriteStr(w, paramType);
-          p := p.next
-        END;
-        WriteStr(w, ")"); WriteLn(w)
+        IF ~HasDeclaredExternal(cg, obj.externalName) THEN
+          pt := obj.type(Types.ProcedureType);
+          IF pt.resultType = NIL THEN COPY("void", retType)
+          ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
+          END;
+          WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " @"); WriteStr(w, obj.externalName);
+          WriteStr(w, "(");
+          p := pt.params; first := TRUE;
+          WHILE p # NIL DO
+            IF ~first THEN WriteStr(w, ", ") END;
+            first := FALSE;
+            ParamLLVMType(cg, p, paramType);
+            WriteStr(w, paramType);
+            p := p.next
+          END;
+          WriteStr(w, ")"); WriteLn(w);
+          MarkDeclaredExternal(cg, obj.externalName)
+        END
       END;
       pd := pd.next
     END
   END EmitExternalDeclares;
 
-  (* TRUE iff the module's own FFI declarations already declare an
-     external procedure mapping to the C symbol cName (e.g. "write") -
-     checked the same way EmitExternalDeclares itself resolves each
-     pd.name.name to its Object, then compares obj.externalName (a plain
-     ARRAY OF CHAR "=" comparison, the same pattern LLVMTypes.Mod's own
-     arch-name matching already uses). *)
-  PROCEDURE HasExternalNamed(VAR cg: Codegen; module: SyntaxTree.ModuleNode; cName: ARRAY OF CHAR): BOOLEAN;
-    VAR pd: SyntaxTree.ProcDeclNode; obj: SymbolTable.Object;
-  BEGIN
-    IF module.declarations = NIL THEN RETURN FALSE END;
-    pd := module.declarations.procDecls;
-    WHILE pd # NIL DO
-      IF pd.isExternal THEN
-        obj := SymbolTable.FindLocal(cg.scope, pd.name.name);
-        IF obj.externalName = cName THEN RETURN TRUE END
-      END;
-      pd := pd.next
-    END;
-    RETURN FALSE
-  END HasExternalNamed;
-
   (* PLAN.md Phase 8 step 9's own runtime-trap support: declares
      write(2)/exit(2) (fixed x86_64 System V shapes, the same known,
      documented ABI-correctness caveat step 6's own SysWrite FFI
-     fixtures already accept) unless the module's own FFI declarations
+     fixtures already accept) unless some module's own FFI declarations
      already declare one of those C symbols - several existing fixtures
      (llvm-hello-world, llvm-control-flow, llvm-arrays-records) already
      declare `PROCEDURE ["C", "write"] ...`, and LLVM/clang rejects two
      "declare" lines for the same symbol outright, even with identical
      signatures ("invalid redefinition of function", confirmed
-     empirically during this step's own development) - so this can never
+     empirically during step 9's own development) - so this can never
      unconditionally emit its own. EmitTrap below always calls write/
      exit with this fixed i32/ptr/i64 (write) and i32 (exit) shape
      regardless of which declaration is actually in scope; this is a
      real, narrow limitation (a fixture that declared "write"/"exit"
      with an incompatible signature of its own would produce a type-
      mismatched call), not exercised by any fixture this project has
-     written. *)
-  PROCEDURE EmitRuntimeSupport(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
+     written. PLAN.md Phase 8 step 12: called exactly once per whole
+     program now (GenerateProgram*'s own driver), not once per module -
+     both the write/exit check and the two trap-message globals below
+     would themselves collide across modules the same way a duplicate
+     external declare would, so the old per-module "module" parameter
+     and its own HasExternalNamed check are gone, replaced by the same
+     whole-program cg.declaredExternals set EmitExternalDeclares now
+     populates (every module's own EmitExternalDeclares call happens
+     before this one - see GenerateProgram* below). *)
+  PROCEDURE EmitRuntimeSupport(VAR w: Files.Rider; VAR cg: Codegen);
   BEGIN
-    IF ~HasExternalNamed(cg, module, "write") THEN
+    IF ~HasDeclaredExternal(cg, "write") THEN
       WriteStr(w, "declare void @write(i32, ptr, i64)"); WriteLn(w)
     END;
-    IF ~HasExternalNamed(cg, module, "exit") THEN
+    IF ~HasDeclaredExternal(cg, "exit") THEN
       WriteStr(w, "declare void @exit(i32)"); WriteLn(w)
     END;
     EmitRuntimeStringGlobal(w, indexRangeTrapGlobal, indexRangeTrapMsg);
@@ -2374,46 +2499,94 @@ MODULE LLVMCodeGenerator;
     cg.scope := savedScope; cg.locals := NIL; cg.currentProcResultType := NIL
   END GenerateProcedureDecl;
 
-  PROCEDURE Generate*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
-                       triple: ARRAY OF CHAR; VAR w: Files.Rider);
-    VAR cg: Codegen; pd: SyntaxTree.ProcDeclNode;
+  (* The whole-program driver (PLAN.md Phase 8 step 12), generalizing
+     what used to be this module's own single-module Generate* (removed -
+     its only caller, LLVMToolchainDriver.Mod, now always builds a
+     ModuleList, a one-element list for the every-fixture-before-step-12
+     case of a module with no real IMPORTs). For a one-element list this
+     produces byte-identical IR to the old Generate*: each of the four
+     passes below degenerates to exactly what Generate* used to do
+     directly, in the same order (globals+external-declares, ONE
+     EmitRuntimeSupport call, string constants, procedures, then that
+     one module's own "_init"), with "main" calling that one "_init" -
+     confirmed against every pre-step-12 golden-file fixture, unchanged.
+     For more than one module, every pass below runs across the *whole*
+     list before moving to the next pass (all modules' own globals/
+     declares first, then all their string constants, then all their
+     procedures, then all their "_init"s) rather than fully finishing one
+     module before starting the next - this still produces well-formed
+     IR (LLVM tolerates any relative order between a global's definition
+     and its use, this module's own CollectStringConstantsSeq header
+     comment already established that), and keeps each pass's own
+     internal structure (and the dedup state threaded through it -
+     cg.declaredExternals) identical to before, just looped once per
+     module instead of run once. cg.moduleName/cg.scope are reassigned
+     at the top of every pass's own loop iteration - nothing else needs
+     saving/restoring around that swap, since this is the outermost
+     loop, never itself nested inside another module's own emission. *)
+  PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w: Files.Rider);
+    VAR cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode;
   BEGIN
-    cg.nextTemp := 0; cg.nextLabel := 0; cg.moduleName := module.name; cg.scope := scope;
-    cg.sizeModel := ConstantEvaluator.sizeModel; cg.loopExitLabel[0] := 0X;
-    cg.currentProcResultType := NIL; cg.locals := NIL;
+    cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
+    cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL;
+    cg.declaredExternals := NIL;
     WriteStr(w, 'target datalayout = "'); WriteStr(w, hostDataLayout); WriteStr(w, '"'); WriteLn(w);
     WriteStr(w, 'target triple = "'); WriteStr(w, triple); WriteStr(w, '"'); WriteLn(w);
     WriteLn(w);
-    EmitGlobals(w, cg, module);
-    EmitExternalDeclares(w, cg, module);
-    EmitRuntimeSupport(w, cg, module);
-    CollectStringConstantsSeq(w, cg, module.statements);
-    IF module.declarations # NIL THEN
-      pd := module.declarations.procDecls;
-      WHILE pd # NIL DO
-        IF IsOrdinaryProcDecl(pd) THEN CollectStringConstantsSeq(w, cg, pd.statements) END;
-        pd := pd.next
-      END
+    m := modules;
+    WHILE m # NIL DO
+      cg.moduleName := m.module.name; cg.scope := m.scope;
+      EmitGlobals(w, cg, m.module);
+      EmitExternalDeclares(w, cg, m.module);
+      m := m.next
+    END;
+    EmitRuntimeSupport(w, cg);
+    m := modules;
+    WHILE m # NIL DO
+      cg.moduleName := m.module.name; cg.scope := m.scope;
+      CollectStringConstantsSeq(w, cg, m.module.statements);
+      IF m.module.declarations # NIL THEN
+        pd := m.module.declarations.procDecls;
+        WHILE pd # NIL DO
+          IF IsOrdinaryProcDecl(pd) THEN CollectStringConstantsSeq(w, cg, pd.statements) END;
+          pd := pd.next
+        END
+      END;
+      m := m.next
     END;
     WriteLn(w);
-    IF module.declarations # NIL THEN
-      pd := module.declarations.procDecls;
-      WHILE pd # NIL DO
-        IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(w, cg, scope, pd) END;
-        pd := pd.next
-      END
+    m := modules;
+    WHILE m # NIL DO
+      cg.moduleName := m.module.name; cg.scope := m.scope;
+      IF m.module.declarations # NIL THEN
+        pd := m.module.declarations.procDecls;
+        WHILE pd # NIL DO
+          IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(w, cg, m.scope, pd) END;
+          pd := pd.next
+        END
+      END;
+      m := m.next
     END;
-    WriteStr(w, "define void @"); WriteStr(w, module.name); WriteStr(w, "_init() {"); WriteLn(w);
-    WriteStr(w, "entry:"); WriteLn(w);
-    GenerateStatementSeq(w, cg, module.statements);
-    WriteStr(w, "  ret void"); WriteLn(w);
-    WriteStr(w, "}"); WriteLn(w);
-    WriteLn(w);
+    m := modules;
+    WHILE m # NIL DO
+      cg.moduleName := m.module.name; cg.scope := m.scope;
+      WriteStr(w, "define void @"); WriteStr(w, m.module.name); WriteStr(w, "_init() {"); WriteLn(w);
+      WriteStr(w, "entry:"); WriteLn(w);
+      GenerateStatementSeq(w, cg, m.module.statements);
+      WriteStr(w, "  ret void"); WriteLn(w);
+      WriteStr(w, "}"); WriteLn(w);
+      WriteLn(w);
+      m := m.next
+    END;
     WriteStr(w, "define i32 @main() {"); WriteLn(w);
     WriteStr(w, "entry:"); WriteLn(w);
-    WriteStr(w, "  call void @"); WriteStr(w, module.name); WriteStr(w, "_init()"); WriteLn(w);
+    m := modules;
+    WHILE m # NIL DO
+      WriteStr(w, "  call void @"); WriteStr(w, m.module.name); WriteStr(w, "_init()"); WriteLn(w);
+      m := m.next
+    END;
     WriteStr(w, "  ret i32 0"); WriteLn(w);
     WriteStr(w, "}"); WriteLn(w)
-  END Generate;
+  END GenerateProgram;
 
 END LLVMCodeGenerator.

@@ -277,6 +277,64 @@ MODULE ModuleInterface;
     END
   END ReadSource;
 
+  (* Mirrors SymFileName* exactly, but for a module's own real ".mod"
+     source rather than its ".sym" interface - PLAN.md Phase 8 step 12's
+     whole-program driver needs this: a .sym file (ReadSource* above) is
+     a type-checking surface only, with no procedure bodies or statement
+     sequences to generate code from (this module's own header comment),
+     so compiling an IMPORTed module for real needs its own genuine
+     source, found the same way (cwd first, then the search path). *)
+  PROCEDURE ModFileName*(moduleName: SyntaxTree.Ident; VAR result: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE moduleName[i] # 0X DO result[i] := moduleName[i]; INC(i) END;
+    result[i] := "."; result[i + 1] := "m"; result[i + 2] := "o"; result[i + 3] := "d";
+    result[i + 4] := 0X
+  END ModFileName;
+
+  (* Mirrors ReadSource* exactly except for the file name it opens (see
+     ModFileName* above) - deliberately duplicated rather than factored
+     together with ReadSource* through a shared "read by constructed
+     name" helper, matching Poc.Mod's own ReadSource (a third, textually
+     identical copy of this same read-a-whole-file-via-ReadLine loop) -
+     three small, independent copies cost nothing here and each stays
+     obviously correct on its own, the same tradeoff this project has
+     already made once before. *)
+  PROCEDURE ReadModuleSource*(moduleName: SyntaxTree.Ident; VAR buffer: Lexer.CharBuffer;
+                              VAR length: LONGINT; VAR found: BOOLEAN);
+    VAR
+      name: ARRAY nameBufferLength OF CHAR;
+      f: Files.File;
+      r: Files.Rider;
+      line: ARRAY lineLength OF CHAR;
+      i: INTEGER;
+      used: LONGINT;
+  BEGIN
+    ModFileName(moduleName, name);
+    f := Open(name);
+    IF f = NIL THEN
+      found := FALSE; length := 0
+    ELSE
+      found := TRUE;
+      NEW(buffer, Files.Length(f) + 1);
+      Files.Set(r, f, 0);
+      used := 0;
+      REPEAT
+        Files.ReadLine(r, line);
+        i := 0;
+        IF ~r.eof THEN
+          WHILE line[i] # 0X DO buffer[used] := line[i]; INC(used); INC(i) END;
+          buffer[used] := 0AX; INC(used)
+        ELSIF line[0] # 0X THEN
+          WHILE line[i] # 0X DO buffer[used] := line[i]; INC(used); INC(i) END
+        END
+      UNTIL r.eof;
+      Files.Close(f);
+      length := used
+    END
+  END ReadModuleSource;
+
   (* ---- Small text-formatting helpers ---- *)
 
   (* Files.WriteString (confirmed against real voc) writes its argument's

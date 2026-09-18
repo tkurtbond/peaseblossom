@@ -20,7 +20,7 @@ MODULE LLVMToolchainDriver;
      LLVMCodeGenerator.Mod itself a pure tree-walker with no file-path/
      directory concerns of its own. *)
 
-  IMPORT Files, Platform, SyntaxTree, SymbolTable, LLVMCodeGenerator;
+  IMPORT Files, Platform, LLVMCodeGenerator;
 
   CONST
     dirBufferLength = 1024;
@@ -120,11 +120,22 @@ MODULE LLVMToolchainDriver;
     RETURN ok
   END HostTriple;
 
-  (* Writes LLVMCodeGenerator.Generate's output to <outputDir>/
-     <module.name>.ll (cwd if outputDir is empty) - see this module's own
+  (* Writes LLVMCodeGenerator.GenerateProgram*'s output to <outputDir>/
+     <topName>.ll (cwd if outputDir is empty) - see this module's own
      header comment for why this needs the same chdir dance
-     ModuleInterface.Write* already established. *)
-  PROCEDURE EmitIR*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
+     ModuleInterface.Write* already established. PLAN.md Phase 8 step 12:
+     takes the whole program's own dependency-ordered ModuleList (built
+     by Poc.Mod's own transitive-IMPORT discovery, this module never
+     doing that discovery itself - see this module's own header comment
+     on why file-path/directory concerns live here but front-end
+     concerns don't) instead of a single module/scope pair; topName
+     names the output file since GenerateProgram*'s own list no longer
+     carries one bare "the module" to derive it from - it's always the
+     list's own last entry (the real top, command-line-specified module,
+     see ModuleList's own header comment), but the caller already knows
+     that name directly, so it is passed rather than re-derived by
+     walking the list here. *)
+  PROCEDURE EmitIR*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
                     triple, outputDir: ARRAY OF CHAR; VAR pathOut: ARRAY OF CHAR): BOOLEAN;
     VAR
       name: ARRAY nameBufferLength OF CHAR;
@@ -134,7 +145,7 @@ MODULE LLVMToolchainDriver;
       i: INTEGER;
   BEGIN
     i := 0;
-    WHILE module.name[i] # 0X DO name[i] := module.name[i]; INC(i) END;
+    WHILE topName[i] # 0X DO name[i] := topName[i]; INC(i) END;
     name[i] := "."; name[i + 1] := "l"; name[i + 2] := "l"; name[i + 3] := 0X;
     ok := TRUE;
     IF outputDir[0] # 0X THEN
@@ -149,7 +160,7 @@ MODULE LLVMToolchainDriver;
     IF ok THEN
       f := Files.New(name);
       Files.Set(w, f, 0);
-      LLVMCodeGenerator.Generate(module, scope, triple, w);
+      LLVMCodeGenerator.GenerateProgram(modules, triple, w);
       Files.Register(f);
       IF outputDir[0] # 0X THEN chdirResult := Platform.Chdir(savedDir) END
     END;
@@ -159,14 +170,14 @@ MODULE LLVMToolchainDriver;
   (* Full build: EmitIR* first, then a single-step `clang <ll> -o
      <exePath>` (Platform.System) - see this module's own header comment
      for why single-step, not a separate llc+link. *)
-  PROCEDURE Build*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
+  PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
                    triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
     VAR
       llPath: ARRAY pathBufferLength OF CHAR;
       cmd: ARRAY 512 OF CHAR;
       status: INTEGER;
   BEGIN
-    IF ~EmitIR(module, scope, triple, outputDir, llPath) THEN RETURN FALSE END;
+    IF ~EmitIR(modules, topName, triple, outputDir, llPath) THEN RETURN FALSE END;
     cmd := "clang ";
     Strcat(cmd, llPath);
     Strcat(cmd, " -o ");

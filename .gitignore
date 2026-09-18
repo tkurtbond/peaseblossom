@@ -25,6 +25,7 @@ test/conformance/llvm-case-trap/llvm-case-trap
 test/conformance/llvm-procedures/llvm-procedures
 test/conformance/llvm-predeclared/llvm-predeclared
 test/conformance/llvm-predeclared-halt/llvm-predeclared-halt
+test/conformance/llvm-multi-module/llvm-multi-module
 
 # Stage 0/1/2 bootstrap build output (see tools/bootstrap)
 /build/

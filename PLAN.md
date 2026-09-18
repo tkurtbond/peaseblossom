@@ -1367,6 +1367,151 @@ struct/array layout plus a cross-check fixture rather than manual packing
     `BEGIN...END` sequence — the same ordering `Oberon2.pdf` §11
     prescribes for module initialization generally.
 
+    **Implemented 2026-09-18.** Two genuinely separate problems turned out
+    to be bundled under this one step's own heading, discovered in order
+    by trying to write the first real multi-module fixture: qualified-
+    reference codegen (`Module.Name`) had never been built at all -
+    `GenerateDesignatorAddress`/`GenerateDesignatorValue`/`GenerateCall`/
+    `GenerateAssignStatement` each already had their own explicit
+    `d.qualifier[0] # 0X` bailout, every one hand-labeled "PLAN.md Phase 8
+    step 12+" back when it was written - and the existing `.sym`-based
+    `IMPORT` resolution (`SemanticActions.ResolveImport`) only ever reads
+    an imported module's *interface*, with no procedure bodies or
+    statement sequences to generate real code from at all, so a second,
+    independent "read and check the module's own real `.mod` source"
+    pass was needed before any of that qualified-reference codegen had
+    anything to target.
+
+    **Qualified-reference codegen.** `SymbolTable.ObjectDesc` already
+    carried everything needed - a `moduleClass` Object's own
+    `moduleScope`/`realModuleName` fields (present since Phase 7, for
+    `ModuleInterface.Mod`'s own `.sym`-reprinting needs) are exactly
+    "the imported module's exported scope" and "its real name, distinct
+    from whatever local alias this module imported it under" - so no
+    front-end changes were needed, just a new `ResolveQualifiedObject`
+    (mirroring `SemanticActions.FindQualified`'s own private logic,
+    small enough to duplicate rather than export, the same call
+    `StringConstName`'s own precedent already made) that resolves a
+    designator's base name, qualified or not, and returns *both* its
+    `SymbolTable.Object` and its home module's own real name. A second
+    new helper, `QualifiedName` (an explicit-home-module sibling of the
+    existing `ModuleQualifiedName`, which stays exactly as it was for
+    every one of its existing, still-only-ever-unqualified call sites),
+    builds the correct `"@realModuleName.name"` LLVM symbol from that -
+    critically *not* `cg.moduleName` (the module currently being
+    compiled), which is what every symbol-building call site used
+    unconditionally before this step, harmlessly until a qualified
+    reference could name something declared somewhere else. Every one of
+    the four bailouts became real codegen by threading `homeModule`
+    through to whichever of `ResolveVarAddress`/`StoreIntoVar`/
+    `GenerateOrdinaryCall` it needed (a qualified VAR can never be a
+    local binding - `cg.locals` only ever holds the *current* procedure's
+    own alloca'd params/locals - so the qualified path skips
+    `ResolveVarAddress`'s own local-binding check entirely and calls
+    `QualifiedName` directly, a small but real asymmetry from the
+    unqualified path worth calling out explicitly in each of the three
+    call sites' own comments).
+
+    **Whole-program discovery.** A new `ModuleInterface.ReadModuleSource*`
+    (mirrors `ReadSource*` exactly, reading `"<name>.mod"` instead of
+    `"<name>.sym"` via the identical cwd-then-search-path `Open`) gives
+    Poc.Mod's new `DiscoverModule` a way to find each imported module's
+    own real source. `DiscoverModule` is a straightforward post-order
+    recursive descent over `SyntaxTree.ModuleNode.imports` - recurse into
+    a module's own imports first, append itself to the accumulated list
+    only afterward - which is exactly topological order for a DAG
+    (imports before importers), matching `Oberon2.pdf` §11 directly, and
+    skips a module already present in the list (a diamond import - two
+    independent modules both importing a shared third one - must not be
+    compiled or linked twice, confirmed against a real diamond-shaped
+    scratch program: the shared module's own init ran exactly once,
+    visible in `main`'s own generated call sequence). Real import cycles
+    can't reach this walk at all: it only ever runs after the top
+    module's own `.sym`-based `CheckModule` has already succeeded, and
+    `SemanticActions.ResolveImport`'s own `ImportChain` already rejects
+    any cycle during that pass - so no separate "currently being
+    visited" guard was needed on top of the diamond-dedup check.
+    `Diagnostics.fileName`/`errorCount` are saved/restored and
+    snapshotted around each recursive call, mirroring `ResolveImport`'s
+    own established reasoning exactly (a plain `Reset*` would wrongly
+    wipe out errors from an unrelated, already-completed part of the
+    same compilation).
+
+    **One link unit, several modules.** `LLVMCodeGenerator.Generate*`
+    (single-module) is gone, replaced by `GenerateProgram*`, taking a new
+    exported `ModuleList` (module+scope pairs, in the dependency order
+    `DiscoverModule` already produced) instead of one module/scope pair -
+    its only caller, `LLVMToolchainDriver.EmitIR*`/`Build*`, is updated
+    to match, and Poc.Mod always builds a `ModuleList` now (a one-element
+    list for the ordinary, no-real-`IMPORT`s case every fixture before
+    this step is). For a one-element list `GenerateProgram*` produces
+    byte-identical IR to the old `Generate*` - confirmed against every
+    pre-step-12 golden-file fixture unchanged, one (`llvm-predeclared-ir`)
+    needing its own golden file regenerated for a real, deliberate
+    reason given below, not a regression. Compiling more than one module
+    into a single link unit surfaced two latent bugs that a single-module
+    program could never have hit:
+      - `EmitRuntimeSupport`'s own `write`/`exit` "declare" lines and its
+        two trap-message globals used to be emitted once *per module*
+        (guarded only against that same module's own FFI declarations
+        already covering the same C symbol - step 9's own retrospective
+        already documents `clang` rejecting two "declare"s of the same
+        symbol outright). Two modules in the same program, each
+        possibly declaring "write" externally under their own Oberon
+        name, would have collided. Fixed by a new whole-program
+        `Codegen.declaredExternals` set (never reset between modules,
+        unlike `locals`/`currentProcResultType`), checked/updated by
+        `EmitExternalDeclares` for every module before `EmitRuntimeSupport`
+        (now called exactly once, no longer taking a `module` parameter
+        at all) checks the same set for `write`/`exit`.
+      - `StringConstName`'s own global names were derived from a string
+        literal's source line/column alone - unique *within* one
+        module's own file, not across a whole program: two modules each
+        happening to have a string literal at the same line/column would
+        have collided on the identical global name. Fixed by folding
+        `cg.moduleName` into the name too (`"@.str.<Module>.L<line>.
+        C<col>"`) - the one change that regenerated `llvm-predeclared-
+        ir`'s own golden file above, its only two string constants now
+        correctly reading `@.str.predeclaredir.L24.C17`/`...L34.C8`
+        instead of the old, module-less `@.str.L24.C17`/`...L34.C8`.
+
+    Neither gap could have been found by any fixture before this step -
+    every one of them compiled exactly one module, where "once per
+    module" and "once per program" are the same thing.
+
+    A third, purely mechanical bug cost real time during this step's own
+    development, worth recording since it will recur: writing an
+    Oberon-2 comment that names an *exported* identifier immediately
+    followed by a closing parenthesis - `"...see GenerateProgram*)."` -
+    accidentally spells the token that closes a `(* ... *)` comment
+    early (the export marker `*` plus the parenthesis together read as
+    `*)`), silently truncating the comment and leaving its own remaining
+    text as bare, malformed source. Both instances this step introduced
+    were caught immediately by `make build` itself (a real `END missing`
+    parse error, not a silent miscompile), fixed by rewording rather than
+    ever writing `Name*)` adjacently again.
+
+    One real fixture, `llvm-multi-module` (compile+link+run+diff-stdout,
+    matching `test/conformance/module-cross-import`'s own two-`.mod`-file
+    layout but promoted to real codegen rather than semantic-check-only):
+    a library module (`lib.mod`) exporting a VAR and two ordinary
+    procedures, and a client module (`client.mod`) importing it under a
+    *different* alias (`IMPORT Lib := lib`) specifically to prove every
+    generated symbol comes out `"@lib.*"`, never `"@Lib.*"` or
+    `"@client.*"` - exercising a qualified call with a result
+    (`Lib.Add`), a qualified call used as a statement (`Lib.Accumulate`),
+    and a qualified VAR used as both a read and an assignment target in
+    the same statement (`Lib.total := Lib.total + 1`). `test.sh` first
+    runs `-emit-interface` on `lib.mod` (still needed for client.mod's
+    own ordinary `.sym`-based type checking, unchanged by this step) before
+    `poc_build_run`'s own `-build client.mod`, which now transitively
+    discovers and compiles `lib.mod`'s real source on its own. IR
+    determinism (regenerate twice, diff) and the diamond-import scratch
+    program mentioned above were both verified by hand rather than
+    turned into their own fixtures, matching this step's own "prove the
+    driver-level mechanism once, thoroughly, rather than one fixture per
+    behavior" scope. All 112 conformance tests pass (111 prior + 1 new).
+
 13. **Fixture promotion + portability verification.** Promote a subset of
     earlier type-check-only fixtures to compile+link+run+diff;
     cross-check output against `voc` compiling the same source where
