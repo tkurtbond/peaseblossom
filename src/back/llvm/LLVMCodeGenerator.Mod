@@ -155,7 +155,7 @@ MODULE LLVMCodeGenerator;
      territory, once cross-target FFI actually needs verifying), not
      attempted here. *)
 
-  IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer;
+  IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions;
 
   CONST
     (* Confirmed against `clang -S -emit-llvm` on an empty C program,
@@ -198,6 +198,26 @@ MODULE LLVMCodeGenerator;
       oberonType: Types.Type
     END;
 
+    (* PLAN.md Phase 8 step 10's local-storage side table: SymbolTable's
+       own ObjectDesc is deliberately semantics-free (its own header
+       comment) and carries no backend field to hang an LLVM address on,
+       so this module tracks "which Objects are this procedure's own
+       alloca'd params/locals, and what's each one's address text"
+       itself, in a small linked list scoped to the procedure currently
+       being generated (cleared between procedures - see
+       GenerateProcedureDecl). A plain linked list, searched linearly,
+       matches SymbolTable.Mod's own stated reasoning for its identical
+       choice ("rarely more than a few dozen names deep"). Consulted by
+       ResolveVarAddress before falling back to the module-global "@Mod-
+       ule.name" naming convention every VAR used at module level still
+       uses. *)
+    LocalBinding = POINTER TO LocalBindingDesc;
+    LocalBindingDesc = RECORD
+      obj: SymbolTable.Object;
+      addrText: ValueText;
+      next: LocalBinding
+    END;
+
     (* Threaded explicitly through every codegen procedure below, VAR w:
        Files.Rider stays a separate parameter rather than a field of this
        record - Files.Rider is a plain RECORD whose mutable position
@@ -223,7 +243,19 @@ MODULE LLVMCodeGenerator;
          "mutate, recurse, restore" pattern a real stack would give,
          without needing one - LOOP nesting is already a tree via the
          AST's own recursion. *)
-      loopExitLabel: ValueText
+      loopExitLabel: ValueText;
+      (* PLAN.md Phase 8 step 10: NIL at module level (and reset to NIL
+         between procedures) - GenerateReturnStatement consults this to
+         decide "ret void" vs. "ret <type> <value>", and to fall back to
+         a well-typed placeholder return when a function procedure's
+         body falls off the end without an explicit RETURN on every path
+         (SemanticActions.CheckProcedureBody's own "function procedure
+         must return a value" check is deliberately shallow - not full
+         reachability analysis, see its header comment - so this is a
+         real, if narrow, gap codegen must still emit *valid* IR for,
+         even though it can't happen in a well-formed program). *)
+      currentProcResultType: Types.Type;
+      locals: LocalBinding
     END;
 
   (* Files.WriteString (confirmed against real voc, see
@@ -525,6 +557,48 @@ MODULE LLVMCodeGenerator;
     WriteLn(w)
   END StoreAtAddress;
 
+  PROCEDURE FindLocalBinding(VAR cg: Codegen; obj: SymbolTable.Object): LocalBinding;
+    VAR b: LocalBinding;
+  BEGIN
+    b := cg.locals;
+    WHILE (b # NIL) & (b.obj # obj) DO b := b.next END;
+    RETURN b
+  END FindLocalBinding;
+
+  PROCEDURE BindLocal(VAR cg: Codegen; obj: SymbolTable.Object; addrText: ARRAY OF CHAR);
+    VAR b: LocalBinding;
+  BEGIN
+    NEW(b); b.obj := obj; COPY(addrText, b.addrText); b.next := cg.locals; cg.locals := b
+  END BindLocal;
+
+  (* Every varClass Object's own LLVM address, in one place: a
+     procedure's own alloca'd parameter/local (found in cg.locals - see
+     LocalBinding's own header comment) uses that binding's address
+     text directly (already a plain SSA register, needing no further
+     construction); anything else is a module-level VAR, addressed the
+     way every step before step 10 already did, "@Module.name". Shared
+     by LoadVar/StoreIntoVar and GenerateDesignatorAddress's own base-
+     object resolution, which used to each build this same "@Module.
+     name" text independently - now the one place that decides "is this
+     local or global" at all. *)
+  (* "@Module.name" - every module-level global (a VAR's own storage, an
+     ordinary procedure's own function symbol) is named this way. *)
+  PROCEDURE ModuleQualifiedName(VAR cg: Codegen; name: ARRAY OF CHAR; VAR text: ValueText);
+  BEGIN
+    COPY("@", text); Strcat(text, cg.moduleName); Strcat(text, "."); Strcat(text, name)
+  END ModuleQualifiedName;
+
+  PROCEDURE ResolveVarAddress(VAR cg: Codegen; obj: SymbolTable.Object; VAR addrText: ValueText);
+    VAR b: LocalBinding;
+  BEGIN
+    b := FindLocalBinding(cg, obj);
+    IF b # NIL THEN
+      COPY(b.addrText, addrText)
+    ELSE
+      ModuleQualifiedName(cg, obj.name, addrText)
+    END
+  END ResolveVarAddress;
+
   (* Factored out of GenerateDesignatorValue/GenerateAssignStatement -
      PLAN.md Phase 8 step 7's FOR-loop codegen needs to load/store its
      own control variable at points that aren't a Designator AST node at
@@ -533,14 +607,14 @@ MODULE LLVMCodeGenerator;
   PROCEDURE LoadVar(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object; VAR result: Value);
     VAR addr: ValueText;
   BEGIN
-    COPY("@", addr); Strcat(addr, cg.moduleName); Strcat(addr, "."); Strcat(addr, obj.name);
+    ResolveVarAddress(cg, obj, addr);
     LoadAtAddress(w, cg, addr, obj.type, result)
   END LoadVar;
 
   PROCEDURE StoreIntoVar(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object; v: Value);
     VAR addr: ValueText;
   BEGIN
-    COPY("@", addr); Strcat(addr, cg.moduleName); Strcat(addr, "."); Strcat(addr, obj.name);
+    ResolveVarAddress(cg, obj, addr);
     StoreAtAddress(w, cg, addr, obj.type, v)
   END StoreIntoVar;
 
@@ -797,7 +871,7 @@ MODULE LLVMCodeGenerator;
     IF d.qualifier[0] # 0X THEN RETURN FALSE END;
     obj := SymbolTable.Find(cg.scope, d.name);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
-    COPY("@", addrText); Strcat(addrText, cg.moduleName); Strcat(addrText, "."); Strcat(addrText, obj.name);
+    ResolveVarAddress(cg, obj, addrText);
     addrType := obj.type;
     sel := d.selectors;
     WHILE sel # NIL DO
@@ -1020,24 +1094,29 @@ MODULE LLVMCodeGenerator;
      "@Module.name" directly, the same reference GenerateDesignatorValue
      already loads from. Builds into a Value - see GenerateStringArgValue's
      own comment above on why. *)
-  PROCEDURE GenerateVarArgValue(VAR cg: Codegen; a: SyntaxTree.ExprNode; VAR result: Value);
-    VAR obj: SymbolTable.Object; addr: ValueText;
+  (* Delegates straight to GenerateDesignatorAddress - any addressable
+     designator (a bare local/global VAR, or a selector chain into one,
+     "p.x"/"arr[i]"/both) is a valid VAR actual argument, the identical
+     address computation an assignment target already needs (step 8's
+     GenerateAssignStatement), not a separately hand-rolled "bare module
+     VAR only" special case the way this used to work before step 10
+     generalized it - a selector chain's own index expressions may need
+     to emit instructions of their own first (an index-range check, a
+     GEP), which is exactly why this now takes VAR w: Files.Rider, where
+     it didn't before. *)
+  PROCEDURE GenerateVarArgValue(VAR w: Files.Rider; VAR cg: Codegen; a: SyntaxTree.ExprNode; VAR result: Value);
+    VAR addrText: ValueText; addrType: Types.Type;
   BEGIN
     COPY("ptr", result.llvmType); result.oberonType := Types.Undefined;
     WITH
       a: SyntaxTree.DesignatorExprNode DO
-        obj := NIL;
-        IF (a.designator.qualifier[0] = 0X) & (a.designator.selectors = NIL) THEN
-          obj := SymbolTable.Find(cg.scope, a.designator.name)
-        END;
-        IF (obj # NIL) & (obj.class = SymbolTable.varClass) THEN
-          COPY("@", addr); Strcat(addr, cg.moduleName); Strcat(addr, "."); Strcat(addr, a.designator.name);
-          COPY(addr, result.text)
+        IF (a.designator.qualifier[0] = 0X) & GenerateDesignatorAddress(w, cg, a.designator, addrText, addrType) THEN
+          COPY(addrText, result.text)
         ELSE
-          COPY("null  ; unsupported: VAR argument shape (PLAN.md Phase 8 step 8+)", result.text)
+          COPY("null  ; unsupported: VAR argument shape (PLAN.md Phase 8 step 12/Phase 9)", result.text)
         END
     ELSE
-      COPY("null  ; unsupported: VAR argument shape (PLAN.md Phase 8 step 8+)", result.text)
+      COPY("null  ; unsupported: VAR argument shape (not a designator)", result.text)
     END
   END GenerateVarArgValue;
 
@@ -1046,7 +1125,7 @@ MODULE LLVMCodeGenerator;
     VAR v, ev: Value;
   BEGIN
     IF p.isVar THEN
-      GenerateVarArgValue(cg, a, result)
+      GenerateVarArgValue(w, cg, a, result)
     ELSIF IsOpenCharArray(p.type) THEN
       GenerateStringArgValue(a, result)
     ELSE
@@ -1106,11 +1185,42 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateExternalCall;
 
-  (* A non-external (ordinary, user-defined) procedure call is real
-     Oberon-2 the front end already fully accepts, but this module has no
-     function-definition codegen for one yet (PLAN.md Phase 8 step 10) -
-     routed to Unsupported rather than emitting a call to a symbol that
-     was never declared or defined anywhere in this translation unit. *)
+  (* Mirrors GenerateExternalCall exactly, targeting "@Module.procName"
+     (GenerateProcedureDecl's own function symbol, ModuleQualifiedName's
+     shared naming convention) instead of an external's own C symbol
+     name - every other piece (GenerateCallArgList, ParamLLVMType-driven
+     signature matching) is already fully generic over Types.Param/
+     Types.ProcedureType and needed no change at all to serve an
+     ordinary, user-defined procedure too. *)
+  PROCEDURE GenerateOrdinaryCall(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
+                                 args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR pt: Types.ProcedureType; retType, destTemp, fnSymbol: ValueText; argsText: ARRAY 256 OF CHAR;
+  BEGIN
+    pt := obj.type(Types.ProcedureType);
+    ModuleQualifiedName(cg, obj.name, fnSymbol);
+    IF pt.resultType = NIL THEN
+      GenerateCallArgList(w, cg, pt.params, args, argsText);
+      WriteStr(w, "  call void "); WriteStr(w, fnSymbol); WriteStr(w, "(");
+      WriteStr(w, argsText); WriteStr(w, ")"); WriteLn(w);
+      result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X
+    ELSE
+      GenerateCallArgList(w, cg, pt.params, args, argsText);
+      LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType);
+      NewTemp(cg, destTemp);
+      WriteStr(w, "  "); WriteStr(w, destTemp); WriteStr(w, " = call "); WriteStr(w, retType);
+      WriteStr(w, " "); WriteStr(w, fnSymbol); WriteStr(w, "(");
+      WriteStr(w, argsText); WriteStr(w, ")"); WriteLn(w);
+      result.text := destTemp; COPY(retType, result.llvmType); result.oberonType := pt.resultType
+    END
+  END GenerateOrdinaryCall;
+
+  (* A type-bound method call ("receiver.Method(...)", a selector-based
+     target) still isn't lowered here - real Oberon-2 the front end
+     accepts, dispatch-shaped work Phase 8 excludes entirely (this
+     module's own header comment's "Explicit non-goals"), matching
+     Phase 9 instead, same as GenerateDesignatorAddress's own POINTER/
+     dispatch exclusions. A plain (non-type-bound) procedure, external
+     or ordinary, is the only call target this step's scope reaches. *)
   PROCEDURE GenerateCall(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                         args: SyntaxTree.ExprNode; VAR result: Value);
     VAR obj: SymbolTable.Object;
@@ -1122,8 +1232,10 @@ MODULE LLVMCodeGenerator;
     obj := SymbolTable.Find(cg.scope, d.name);
     IF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.externalConvention[0] # 0X) THEN
       GenerateExternalCall(w, cg, obj, args, result)
+    ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) THEN
+      GenerateOrdinaryCall(w, cg, obj, args, result)
     ELSE
-      Unsupported(w, cg, "non-external procedure calls (PLAN.md Phase 8 step 10+)", Types.Undefined, result)
+      Unsupported(w, cg, "call target is not a plain procedure", Types.Undefined, result)
     END
   END GenerateCall;
 
@@ -1509,15 +1621,40 @@ MODULE LLVMCodeGenerator;
      rather than one silently relying on today's scope forever; it will
      become live and get a real "ret <type> <value>" once step 10 gives
      it an actual function-procedure result to return. *)
+  (* cg.currentProcResultType (NIL at module level, or inside a proper
+     procedure) decides "ret void" vs. "ret <type> <value>" - not
+     s.value's own NIL-ness alone: CheckReturnStatement (SemanticActions.
+     Mod) only diagnoses a value where none is allowed, never the
+     opposite (a bare RETURN inside a function procedure), so
+     "s.value = NIL yet cg.currentProcResultType # NIL" is real,
+     front-end-accepted Oberon-2 this codegen must still emit *valid* IR
+     for - routed to the same "ret <type> <zero>" placeholder a function
+     procedure falling off the end without any RETURN at all needs
+     (GenerateProcedureDecl's own trailing return), not treated as an
+     error here either. *)
   PROCEDURE GenerateReturnStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.ReturnStatementNode);
-    VAR deadLabel: ValueText;
+    VAR deadLabel, retType: ValueText; v, ev: Value;
   BEGIN
-    IF s.value = NIL THEN
+    IF cg.currentProcResultType = NIL THEN
       WriteStr(w, "  ret void"); WriteLn(w)
+    ELSIF s.value = NIL THEN
+      WriteStr(w, "  ; RETURN with no value in a function procedure - undefined result (front end doesn't"); WriteLn(w);
+      WriteStr(w, "  ; reject this; see GenerateReturnStatement's own header comment)"); WriteLn(w);
+      LLVMTypes.TypeString(cg.currentProcResultType, cg.sizeModel, retType);
+      WriteStr(w, "  ret "); WriteStr(w, retType); WriteStr(w, " ");
+      IF (cg.currentProcResultType = Types.Real) OR (cg.currentProcResultType = Types.LongReal) THEN
+        WriteStr(w, "0.0")
+      ELSE
+        WriteStr(w, "0")
+      END;
+      WriteLn(w)
     ELSE
-      WriteStr(w, "  ; unsupported: RETURN <expr> (PLAN.md Phase 8 step 10+ - no function procedures exist yet)");
-      WriteLn(w);
-      WriteStr(w, "  ret void"); WriteLn(w)
+      GenerateExpr(w, cg, s.value, v);
+      IF Types.IsInteger(cg.currentProcResultType) THEN ExtendTo(w, cg, v, cg.currentProcResultType, ev)
+      ELSE ev := v
+      END;
+      LLVMTypes.TypeString(cg.currentProcResultType, cg.sizeModel, retType);
+      WriteStr(w, "  ret "); WriteStr(w, retType); WriteStr(w, " "); WriteStr(w, ev.text); WriteLn(w)
     END;
     NewLabel(cg, deadLabel);
     EmitLabel(w, deadLabel)
@@ -1770,12 +1907,167 @@ MODULE LLVMCodeGenerator;
     END
   END CollectStringConstantsSeq;
 
+  (* TRUE for exactly the ProcDeclNodes PLAN.md Phase 8 step 10's own
+     scope covers: an ordinary (non-type-bound), fully-defined (not a
+     forward-only stub, not an external FFI declaration) procedure.
+     module.declarations.procDecls holds a forward stub and its later
+     matching actual declaration as two separate entries (Semantic-
+     Actions.ResolveProcDecls's own structure) - only the latter has a
+     real d.statements/d.declarations to generate from. A type-bound
+     method (d.receiver # NIL) is dispatch-shaped work Phase 8 excludes
+     entirely (this module's own header comment's "Explicit non-
+     goals"), matching Phase 9 instead. *)
+  PROCEDURE IsOrdinaryProcDecl(pd: SyntaxTree.ProcDeclNode): BOOLEAN;
+  BEGIN
+    RETURN ~pd.isExternal & ~pd.isForward & (pd.receiver = NIL)
+  END IsOrdinaryProcDecl;
+
+  (* "define <retType> <fnSymbol>(<formal LLVM types, named %<paramName>
+     each>) {" plus the mandatory opening "entry:" label - mirrors
+     EmitExternalDeclares' own signature-writing loop exactly (same
+     ParamLLVMType-driven VAR/open-CHAR-array-as-"ptr" convention), just
+     "define ... { entry:" instead of "declare ...;". *)
+  PROCEDURE EmitProcSignature(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR);
+    VAR retType, paramType: ValueText; p: Types.Param; first: BOOLEAN;
+  BEGIN
+    IF pt.resultType = NIL THEN COPY("void", retType)
+    ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
+    END;
+    WriteStr(w, "define "); WriteStr(w, retType); WriteStr(w, " "); WriteStr(w, fnSymbol); WriteStr(w, "(");
+    p := pt.params; first := TRUE;
+    WHILE p # NIL DO
+      IF ~first THEN WriteStr(w, ", ") END;
+      first := FALSE;
+      ParamLLVMType(cg, p, paramType);
+      WriteStr(w, paramType); WriteStr(w, " %"); WriteStr(w, p.name);
+      p := p.next
+    END;
+    WriteStr(w, ") {"); WriteLn(w);
+    WriteStr(w, "entry:"); WriteLn(w)
+  END EmitProcSignature;
+
+  (* Binds each formal parameter into cg.locals: a VAR parameter's own
+     incoming argument (already an address, "ptr" - ParamLLVMType) is
+     the binding directly, no alloca needed; a value parameter gets a
+     fresh alloca'd local slot, with the incoming argument stored into
+     it immediately, so every later read/write of it (LoadVar/
+     StoreIntoVar, via ResolveVarAddress) goes through the exact same
+     address-based path a module-level VAR or an array/record selector
+     chain already does - nothing about LoadAtAddress/StoreAtAddress
+     needed to change for this (see their own header comment: "a local
+     ... VAR gets the identical machinery for free"). bodyScope's own
+     Objects (not pt.params directly) are the binding keys, since
+     that's what SymbolTable.Find(cg.scope, ...) will actually return
+     while generating this procedure's body. *)
+  PROCEDURE BindFormalParams(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType);
+    VAR p: Types.Param; obj: SymbolTable.Object; llvmType: ValueText; argName, addrText: ValueText;
+  BEGIN
+    p := pt.params;
+    WHILE p # NIL DO
+      obj := SymbolTable.FindLocal(bodyScope, p.name);
+      COPY("%", argName); Strcat(argName, p.name);
+      IF p.isVar THEN
+        BindLocal(cg, obj, argName)
+      ELSE
+        ParamLLVMType(cg, p, llvmType);
+        NewTemp(cg, addrText);
+        WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
+        WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " "); WriteStr(w, argName);
+        WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+        BindLocal(cg, obj, addrText)
+      END;
+      p := p.next
+    END
+  END BindFormalParams;
+
+  (* One alloca per local VAR, left uninitialized (no "store" after it)
+     - real Oberon-2 gives a local variable no defined initial value,
+     unlike a module-level VAR (Oberon2.pdf's own zero-initialization is
+     a module-scope guarantee; EmitGlobals' own "zeroinitializer" is
+     specific to that, not extended here). Walks declarations.varDecls
+     the same way EmitGlobals walks module.declarations.varDecls, just
+     binding into cg.locals (an alloca'd address) instead of writing a
+     "@Module.name = global ..." line. *)
+  PROCEDURE BindLocalVars(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
+                          declarations: SyntaxTree.DeclSeqNode);
+    VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
+        llvmType, addrText: ValueText;
+  BEGIN
+    IF declarations = NIL THEN RETURN END;
+    vd := declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(bodyScope, nm.name);
+        LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
+        NewTemp(cg, addrText);
+        WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
+        BindLocal(cg, obj, addrText);
+        nm := nm.next
+      END;
+      vd := vd.next
+    END
+  END BindLocalVars;
+
+  (* One user-defined procedure's own "define ... { ... }". Reopens the
+     exact params+locals scope SemanticActions.CheckProcedureBody itself
+     built while checking pd's body (SemanticActions.OpenProcedureBody-
+     Scope, exported for exactly this reuse - see its own header comment
+     on why re-deriving it here, rather than stashing the original on
+     the AST, is the only option SyntaxTree.Mod's own "zero imports, pure
+     data" design leaves open). The trailing "ret" after GenerateState-
+     mentSeq is unconditional, the same way Generate*'s own "_init" body
+     already unconditionally appends "ret void" after its own
+     GenerateStatementSeq call: GenerateStatementSeq always leaves the
+     writer positioned in a fresh, open block when it returns (this
+     module's own "always leave an open block" invariant), whether or
+     not the body's last statement was itself a RETURN, so appending one
+     more terminator here is always well-formed - for a function
+     procedure, this is also the fallback for a body that falls off the
+     end without returning on every path (a real but narrow gap in
+     CheckProcedureBody's own shallow, non-flow-sensitive check - see
+     its header comment), using the same well-typed zero placeholder
+     GenerateReturnStatement's own "bare RETURN in a function procedure"
+     case does. cg.locals/cg.currentProcResultType/cg.scope are all
+     reset back to their module-level values afterward, so the next
+     procedure (or "_init", once every procedure is done) starts clean. *)
+  PROCEDURE GenerateProcedureDecl(VAR w: Files.Rider; VAR cg: Codegen; moduleScope: SymbolTable.Scope;
+                                  pd: SyntaxTree.ProcDeclNode);
+    VAR
+      obj: SymbolTable.Object; pt: Types.ProcedureType; bodyScope, savedScope: SymbolTable.Scope;
+      fnSymbol, retType: ValueText;
+  BEGIN
+    obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
+    pt := obj.type(Types.ProcedureType);
+    ModuleQualifiedName(cg, obj.name, fnSymbol);
+    EmitProcSignature(w, cg, pt, fnSymbol);
+    bodyScope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, NIL, pt);
+    savedScope := cg.scope;
+    cg.scope := bodyScope; cg.locals := NIL; cg.currentProcResultType := pt.resultType;
+    BindFormalParams(w, cg, bodyScope, pt);
+    BindLocalVars(w, cg, bodyScope, pd.declarations);
+    GenerateStatementSeq(w, cg, pd.statements);
+    IF pt.resultType = NIL THEN
+      WriteStr(w, "  ret void"); WriteLn(w)
+    ELSE
+      LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType);
+      WriteStr(w, "  ret "); WriteStr(w, retType); WriteStr(w, " ");
+      IF (pt.resultType = Types.Real) OR (pt.resultType = Types.LongReal) THEN WriteStr(w, "0.0")
+      ELSE WriteStr(w, "0")
+      END;
+      WriteLn(w)
+    END;
+    WriteStr(w, "}"); WriteLn(w); WriteLn(w);
+    cg.scope := savedScope; cg.locals := NIL; cg.currentProcResultType := NIL
+  END GenerateProcedureDecl;
+
   PROCEDURE Generate*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
                        triple: ARRAY OF CHAR; VAR w: Files.Rider);
-    VAR cg: Codegen;
+    VAR cg: Codegen; pd: SyntaxTree.ProcDeclNode;
   BEGIN
     cg.nextTemp := 0; cg.nextLabel := 0; cg.moduleName := module.name; cg.scope := scope;
     cg.sizeModel := ConstantEvaluator.sizeModel; cg.loopExitLabel[0] := 0X;
+    cg.currentProcResultType := NIL; cg.locals := NIL;
     WriteStr(w, 'target datalayout = "'); WriteStr(w, hostDataLayout); WriteStr(w, '"'); WriteLn(w);
     WriteStr(w, 'target triple = "'); WriteStr(w, triple); WriteStr(w, '"'); WriteLn(w);
     WriteLn(w);
@@ -1783,7 +2075,21 @@ MODULE LLVMCodeGenerator;
     EmitExternalDeclares(w, cg, module);
     EmitRuntimeSupport(w, cg, module);
     CollectStringConstantsSeq(w, cg, module.statements);
+    IF module.declarations # NIL THEN
+      pd := module.declarations.procDecls;
+      WHILE pd # NIL DO
+        IF IsOrdinaryProcDecl(pd) THEN CollectStringConstantsSeq(w, cg, pd.statements) END;
+        pd := pd.next
+      END
+    END;
     WriteLn(w);
+    IF module.declarations # NIL THEN
+      pd := module.declarations.procDecls;
+      WHILE pd # NIL DO
+        IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(w, cg, scope, pd) END;
+        pd := pd.next
+      END
+    END;
     WriteStr(w, "define void @"); WriteStr(w, module.name); WriteStr(w, "_init() {"); WriteLn(w);
     WriteStr(w, "entry:"); WriteLn(w);
     GenerateStatementSeq(w, cg, module.statements);

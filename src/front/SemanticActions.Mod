@@ -2519,16 +2519,28 @@ MODULE SemanticActions;
      parameter's type from pt.params rather than re-resolving
      d.formals.sections a second time, so a local's bound type is
      identical (not just equal) to the very Types.Param CheckArguments
-     will later match call-site arguments against - then recursively
-     resolves d's own nested DeclSeq (§10: "procedure declarations may be
-     nested") before checking its statement sequence. A function
-     procedure (pt.resultType # NIL) with no BEGIN at all is rejected -
-     deliberately a shallow, non-flow-sensitive check, not full return-
-     reachability analysis (out of scope, the same way Phase 5 left
-     CASE's/WITH's missing ELSE as a runtime concern). *)
-  PROCEDURE CheckProcedureBody(d: SyntaxTree.ProcDeclNode; outer: SymbolTable.Scope;
-                               receiverType: Types.Type; pt: Types.ProcedureType;
-                               nonLocalAssigns: ProcAssignedName);
+     will later match call-site arguments against - then resolves d's
+     own local CONST/TYPE/VAR declarations (but not nested PROCEDUREs -
+     see CheckProcedureBody's own call site below for why that's kept
+     separate). Exported, not just an inline step of CheckProcedureBody,
+     so PLAN.md Phase 8 step 10's backend can reuse it verbatim:
+     LLVMCodeGenerator.Mod needs the *identical* params+locals scope
+     CheckProcedureBody already built once during checking (same names,
+     same resolved Types.Type for each local VAR's TypeNode) to resolve
+     designators inside a procedure body's own codegen, but SyntaxTree.Mod
+     is a deliberately import-free leaf module (its own header comment:
+     "No symbol resolution, type checking ... happens here"), so a
+     resolved SymbolTable.Scope can never be stashed directly on a
+     SyntaxTree.ProcDeclNode for the backend to find later - re-deriving
+     it via this one exported, already-battle-tested entry point avoids
+     either a circular import or a second, independently-maintained copy
+     of this resolution logic in the backend. Safe to call a second time
+     on an already-checked module: by the time codegen runs, the source
+     has already passed CheckModule with zero diagnostics, so re-running
+     the exact same resolution against the exact same AST just rebuilds
+     an equivalent (fresh Scope object) result, not new errors. *)
+  PROCEDURE OpenProcedureBodyScope*(d: SyntaxTree.ProcDeclNode; outer: SymbolTable.Scope;
+                                    receiverType: Types.Type; pt: Types.ProcedureType): SymbolTable.Scope;
     VAR
       bodyScope: SymbolTable.Scope;
       section: SyntaxTree.FPSectionNode;
@@ -2557,8 +2569,27 @@ MODULE SemanticActions;
         section := section.next
       END
     END;
+    IF d.declarations # NIL THEN ResolveDeclSeq(d.declarations, bodyScope) END;
+    RETURN bodyScope
+  END OpenProcedureBodyScope;
+
+  (* A function procedure (pt.resultType # NIL) with no BEGIN at all is
+     rejected - deliberately a shallow, non-flow-sensitive check, not
+     full return-reachability analysis (out of scope, the same way
+     Phase 5 left CASE's/WITH's missing ELSE as a runtime concern).
+     Nested PROCEDURE declarations (§10: "procedure declarations may be
+     nested") are resolved here, against OpenProcedureBodyScope's own
+     result, rather than inside OpenProcedureBodyScope itself - nested-
+     procedure checking needs the full nonLocalAssigns/diagnostic
+     machinery this step's own codegen reuse doesn't need or want (no
+     nested-procedure codegen exists yet either - PLAN.md Phase 9+). *)
+  PROCEDURE CheckProcedureBody(d: SyntaxTree.ProcDeclNode; outer: SymbolTable.Scope;
+                               receiverType: Types.Type; pt: Types.ProcedureType;
+                               nonLocalAssigns: ProcAssignedName);
+    VAR bodyScope: SymbolTable.Scope;
+  BEGIN
+    bodyScope := OpenProcedureBodyScope(d, outer, receiverType, pt);
     IF d.declarations # NIL THEN
-      ResolveDeclSeq(d.declarations, bodyScope);
       ResolveProcDecls(d.declarations.procDecls, bodyScope, nonLocalAssigns)
     END;
     IF (pt.resultType # NIL) & (d.statements = NIL) THEN

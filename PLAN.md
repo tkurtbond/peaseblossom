@@ -1128,6 +1128,128 @@ struct/array layout plus a cross-check fixture rather than manual packing
     non-type-bound) `PROCEDURE` declarations: parameter passing (value vs.
     `VAR`), local storage, `RETURN`.
 
+    **Implemented 2026-09-18.** A real architectural gap surfaced before
+    any codegen could be written: a procedure body's own params/locals
+    scope (`SemanticActions.CheckProcedureBody`'s `bodyScope`) is opened
+    and discarded entirely within one checking-time call frame, never
+    persisted anywhere the backend could find it again, and
+    `SyntaxTree.Mod` is a deliberately import-free "pure data" leaf
+    module (its own header comment) - no resolved `Types.Type`,
+    `SymbolTable.Scope`, or anything else from the front end's own
+    resolution passes can ever be stashed directly on a `SyntaxTree`
+    node, so a field like `ProcDeclNode.bodyScope` was never an option.
+    Fixed by extracting the scope-opening half of `CheckProcedureBody`
+    (receiver/formals/local-VAR resolution, not the nested-procedure or
+    statement checking) into a newly-exported
+    `SemanticActions.OpenProcedureBodyScope*`, callable a second time,
+    safely: by the time codegen runs, the module already passed
+    `CheckModule` with zero diagnostics, so re-deriving the identical
+    scope from the identical AST a second time just rebuilds an
+    equivalent result, not new errors. `LLVMCodeGenerator.Mod` now
+    imports `SemanticActions` (no cycle - `SemanticActions.Mod` has no
+    reach into the backend at all) and calls this once per procedure.
+
+    Local/parameter *storage* needed a second real extension: every VAR
+    codegen since step 5 addressed a `SymbolTable.Object` by building
+    "@Module.name" unconditionally (`LoadVar`/`StoreIntoVar`/
+    `GenerateDesignatorAddress`'s own base-object resolution, each
+    independently), which is simply wrong for a local, alloca'd
+    variable. Fixed by centralizing all three into one new
+    `ResolveVarAddress`, backed by a small `LocalBinding` side table on
+    `Codegen` (SymbolTable's own `ObjectDesc` is deliberately semantics-
+    free - its own header comment - so it carries no field to hang a
+    backend address on): a local hit resolves to its own alloca'd
+    address; a miss falls back to the "@Module.name" convention every
+    module-level VAR still uses. This is exactly what step 8's own
+    retrospective anticipated when it built `LoadAtAddress`/
+    `StoreAtAddress` as the genuinely primitive address+type operations
+    ("a local ... VAR gets the identical machinery for free ... nothing
+    here is hardcoded to 'global'") - true this time with no changes
+    needed to either of them.
+
+    A VAR parameter's own incoming LLVM argument *is* the address
+    already (always `ptr`, `ParamLLVMType`'s own existing convention) -
+    bound directly into `LocalBinding`, no alloca. A value parameter
+    gets a fresh alloca'd slot with the incoming argument stored into it
+    immediately; a local VAR gets an alloca left deliberately
+    uninitialized (real Oberon-2 gives a local no defined initial value,
+    unlike a module-level VAR's own `zeroinitializer`). `GenerateVarArg-
+    Value` - previously hand-rolling its own "bare module VAR only"
+    address logic - now just delegates to `GenerateDesignatorAddress`
+    directly: a VAR argument reached through a record field or an array
+    index (`Increment(p.x, 1)`, `Increment(v[1], 5)`) now works for
+    free, through the identical address computation (and, for an array
+    index, the identical step 9 range check) an assignment target
+    already uses - not a new, narrower capability, a deleted limitation.
+
+    `RETURN`'s own codegen (step 7) only ever emitted `ret void`,
+    correctly, because nothing before this step could reach the
+    `s.value # NIL` arm at all (module-level code can't RETURN a value).
+    Now gated on a new `Codegen.currentProcResultType` (NIL at module
+    level and inside a proper procedure) rather than `s.value`'s own
+    NIL-ness alone, because `SemanticActions.CheckReturnStatement` only
+    ever diagnoses a value where none is allowed, never the reverse - a
+    bare `RETURN` inside a function procedure is real, front-end-
+    accepted Oberon-2, and so is a function procedure whose body falls
+    off the end with no `RETURN` on some path at all (`CheckProcedureBody`'s
+    own "must return a value" check is deliberately shallow, not full
+    reachability analysis - its own header comment). Both cases now
+    lower to the same well-typed placeholder `Unsupported` already
+    established for out-of-scope constructs (`ret <type> 0`/`0.0`) -
+    verified in this step's own `MaybeReturn` fixture procedure, whose
+    `n <= 0` path takes exactly this fallback.
+
+    Call-site codegen needed almost nothing new: `GenerateCallArgList`/
+    `EvaluateCallArg`/`ParamLLVMType` (steps 6/8) were already fully
+    generic over `Types.Param`/`Types.ProcedureType`, so the new
+    `GenerateOrdinaryCall` is a near-verbatim copy of `GenerateExternal-
+    Call`, targeting `@Module.procName` (a new shared `ModuleQualified-
+    Name` helper, also now used by `ResolveVarAddress`'s own global
+    fallback) instead of an external's own C symbol name. Recursive
+    calls (`Fact` calling itself) needed no special handling at all - by
+    the time any procedure's own body is generated, every procedure in
+    the module (regardless of textual order) is already a fully-
+    resolved `procClass` Object in the module's own top-level scope
+    (built by `CheckModule`, a complete, earlier pass), reachable via
+    ordinary scope-chain lookup from a body's own `bodyScope`.
+
+    `Generate*`'s own driver gained a genuine gap that had to be fixed
+    before testing could even start: the string-constant pre-pass
+    (`CollectStringConstantsSeq`) only ever walked `module.statements`
+    (the module's own top-level body) - once a procedure body could
+    itself contain a string-literal FFI argument, that string's global
+    was never emitted while real codegen still referenced it. Fixed by
+     walking every ordinary procedure's own body through the identical
+    pre-pass too, before any `define` is emitted (module-level globals/
+    declares/string-constants, in the same order step 9 already
+    established, now come first; each procedure's own `define` next;
+    `_init`/`main` unchanged, last).
+
+    Open-array value/VAR parameters (`s: ARRAY OF CHAR` used as more
+    than an opaque FFI `ptr`, needing a real length/dope-vector
+    convention to be usable via `LEN` or indexing) are a known, narrow,
+    *not* exercised gap - `ParamLLVMType`'s existing "ptr" convention
+    for one produces syntactically valid but semantically incomplete IR
+    if such a parameter were ever read from, not attempted here; no
+    fixture needs it, and nothing else in Phase 8's own scope
+    (`PredeclaredProcedures` lowering, step 11) forces the question yet.
+
+    Two fixtures, matching steps 7/8/9's own dual-verification pattern:
+    `llvm-procedures`, a compile+link+run+diff-stdout fixture (value/VAR
+    params, local storage, recursion via `Fact`, a VAR argument through
+    a record-field and an array-index selector, and `MaybeReturn`'s own
+    deliberate fall-off-the-end path) branching on a computed result to
+    print one of two literal markers; and `llvm-procedures-ir`, a pure
+    `-emit-llvm-ir` golden `.ll` diff exercising the same constructs
+    (minus the fall-off-the-end case, which has no defined value to
+    check), independently verified via the same C-harness linking
+    technique steps 5/7/8 already established - `total=137 p.x=2 v[1]=5`
+    confirmed by hand, not by inspection of the IR alone. IR determinism
+    (regenerating the same fixture twice and diffing) was re-checked by
+    hand given this step's much larger surface area - clean, no repeat
+    of step 7's own uninitialized-counter bug. All 108 conformance tests
+    pass (106 prior + 2 new).
+
 11. **Predeclared-procedure lowering.** The in-scope §10.3 subset listed
     above, each getting its own lowering in `LLVMCodeGenerator.Mod` per
     `PredeclaredProcedures.Mod`'s existing header-comment split

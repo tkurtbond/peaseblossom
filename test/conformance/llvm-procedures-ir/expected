@@ -1,0 +1,123 @@
+semantic OK, wrote procsir.ll
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+@procsir.total = global i16 zeroinitializer
+@procsir.p = global { i16, i16 } zeroinitializer
+@procsir.v = global [3 x i16] zeroinitializer
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+
+define i16 @procsir.Add(i16 %a, i16 %b) {
+entry:
+  %t1 = alloca i16
+  store i16 %a, ptr %t1
+  %t2 = alloca i16
+  store i16 %b, ptr %t2
+  %t3 = alloca i16
+  %t4 = load i16, ptr %t1
+  %t5 = load i16, ptr %t2
+  %t6 = add i16 %t4, %t5
+  store i16 %t6, ptr %t3
+  %t7 = load i16, ptr %t3
+  ret i16 %t7
+L1:
+  ret i16 0
+}
+
+define void @procsir.Increment(ptr %x, i16 %by) {
+entry:
+  %t8 = alloca i16
+  store i16 %by, ptr %t8
+  %t9 = load i16, ptr %x
+  %t10 = load i16, ptr %t8
+  %t11 = add i16 %t9, %t10
+  store i16 %t11, ptr %x
+  ret void
+}
+
+define i16 @procsir.Fact(i16 %n) {
+entry:
+  %t12 = alloca i16
+  store i16 %n, ptr %t12
+  %t13 = load i16, ptr %t12
+  %t14 = sext i8 1 to i16
+  %t15 = icmp sle i16 %t13, %t14
+  %t16 = zext i1 %t15 to i8
+  %t17 = icmp ne i8 %t16, 0
+  br i1 %t17, label %L3, label %L4
+L3:
+  %t18 = sext i8 1 to i16
+  ret i16 %t18
+L5:
+  br label %L2
+L4:
+  %t19 = load i16, ptr %t12
+  %t20 = load i16, ptr %t12
+  %t21 = sext i8 1 to i16
+  %t22 = sub i16 %t20, %t21
+  %t23 = call i16 @procsir.Fact(i16 %t22)
+  %t24 = mul i16 %t19, %t23
+  ret i16 %t24
+L6:
+  br label %L2
+L2:
+  ret i16 0
+}
+
+define void @procsir_init() {
+entry:
+  %t25 = sext i8 3 to i16
+  %t26 = sext i8 4 to i16
+  %t27 = call i16 @procsir.Add(i16 %t25, i16 %t26)
+  store i16 %t27, ptr @procsir.total
+  %t28 = sext i8 10 to i16
+  call void @procsir.Increment(ptr @procsir.total, i16 %t28)
+  %t29 = load i16, ptr @procsir.total
+  %t30 = sext i8 5 to i16
+  %t31 = call i16 @procsir.Fact(i16 %t30)
+  %t32 = add i16 %t29, %t31
+  store i16 %t32, ptr @procsir.total
+  %t33 = getelementptr { i16, i16 }, ptr @procsir.p, i32 0, i32 0
+  %t34 = sext i8 1 to i16
+  store i16 %t34, ptr %t33
+  %t35 = getelementptr { i16, i16 }, ptr @procsir.p, i32 0, i32 1
+  %t36 = sext i8 2 to i16
+  store i16 %t36, ptr %t35
+  %t37 = getelementptr { i16, i16 }, ptr @procsir.p, i32 0, i32 0
+  %t38 = sext i8 1 to i16
+  call void @procsir.Increment(ptr %t37, i16 %t38)
+  %t39 = icmp sge i8 1, 0
+  %t40 = icmp slt i8 1, 3
+  %t41 = and i1 %t39, %t40
+  br i1 %t41, label %L7, label %L8
+L8:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L7:
+  %t42 = getelementptr [3 x i16], ptr @procsir.v, i32 0, i8 1
+  %t43 = sext i8 0 to i16
+  store i16 %t43, ptr %t42
+  %t44 = icmp sge i8 1, 0
+  %t45 = icmp slt i8 1, 3
+  %t46 = and i1 %t44, %t45
+  br i1 %t46, label %L9, label %L10
+L10:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L9:
+  %t47 = getelementptr [3 x i16], ptr @procsir.v, i32 0, i8 1
+  %t48 = sext i8 5 to i16
+  call void @procsir.Increment(ptr %t47, i16 %t48)
+  ret void
+}
+
+define i32 @main() {
+entry:
+  call void @procsir_init()
+  ret i32 0
+}

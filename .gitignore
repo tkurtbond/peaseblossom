@@ -22,6 +22,7 @@ test/conformance/llvm-control-flow/llvm-control-flow
 test/conformance/llvm-arrays-records/llvm-arrays-records
 test/conformance/llvm-index-range-trap/llvm-index-range-trap
 test/conformance/llvm-case-trap/llvm-case-trap
+test/conformance/llvm-procedures/llvm-procedures
 
 # Stage 0/1/2 bootstrap build output (see tools/bootstrap)
 /build/
