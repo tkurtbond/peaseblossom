@@ -333,6 +333,32 @@ struct/array layout plus a cross-check fixture rather than manual packing
    against `expected`, alongside the existing type-check-only and
    voc-comparison modes.
 
+   **Implemented 2026-09-18, revised.** Re-examined the `BACKEND`
+   variable this step's own wording anticipated reintroducing, now that
+   the LLVM backend actually exists — and found it still isn't needed.
+   Phase 1's simplification (removing Phase 0's original `BACKEND`
+   case-statement) put both `voc` and `poc`'s own build on `PATH`
+   unconditionally, so every fixture already names whichever compiler it
+   wants directly; `llvm-build-run` (step 2) already does this, calling
+   `poc` by name exactly as every `voc`-based fixture calls `voc` by
+   name — there was never a per-test "which backend" choice for a
+   variable to make. What step 3 actually needed, and now has, is
+   `test/testenv.sh`'s new `poc_build_run` shell function: the one
+   genuinely new *repeated pattern* LLVM fixtures introduce (`poc -o
+   <exe> -build <file>`, then run `<exe>`), now centralized so future
+   compile+link+run+diff fixtures (steps 6 and 13) don't each hand-roll
+   the exact clang-backed CLI incantation. `poc_build_run` names its
+   executable after the fixture's own directory
+   (`$(basename "$PWD")`), matching `test/conformance/hello`'s existing
+   convention for `voc`'s `-m` build — this also fixed a real, if minor,
+   correctness gap in step 2's own `llvm-build-run` fixture, which had
+   named its executable `llvm-stub-out` (not matching its directory), so
+   `testenv.sh`'s existing `rm -f ... "$(basename "$PWD")"` cleanup line
+   never actually removed it between runs; a failed rebuild could have
+   silently re-run a stale binary from a previous pass. `llvm-build-run`
+   migrated to call `poc_build_run` and its golden `expected` file/
+   `.gitignore` entry updated to match. All 96 conformance tests pass.
+
 4. **`LLVMTypes.Mod`.** Oberon type → LLVM type for the in-scope type set
    only (basic types, fixed arrays, records — no pointer/procedure types
    yet beyond what external-procedure declarations need). **Decided**:
