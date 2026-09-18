@@ -1,0 +1,77 @@
+semantic OK, wrote predeclaredir.ll
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+@predeclaredir.v = global [5 x i16] zeroinitializer
+@predeclaredir.m = global [3 x [4 x i16]] zeroinitializer
+@predeclaredir.s = global [10 x i8] zeroinitializer
+@predeclaredir.absVal = global i16 zeroinitializer
+@predeclaredir.ordVal = global i16 zeroinitializer
+@predeclaredir.lenVal = global i32 zeroinitializer
+@predeclaredir.dim0 = global i32 zeroinitializer
+@predeclaredir.dim1 = global i32 zeroinitializer
+@predeclaredir.oddVal = global i8 zeroinitializer
+@predeclaredir.chrVal = global i8 zeroinitializer
+@predeclaredir.capVal = global i8 zeroinitializer
+@predeclaredir.lowerCh = global i8 zeroinitializer
+@predeclaredir.i = global i16 zeroinitializer
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.str.L24.C17 = private unnamed_addr constant [2 x i8] c"Z\00"
+@.str.L34.C8 = private unnamed_addr constant [3 x i8] c"hi\00"
+
+define void @predeclaredir_init() {
+entry:
+  %t1 = sub i8 0, 7
+  %t2 = sub i8 0, %t1
+  %t3 = icmp slt i8 %t1, 0
+  %t4 = select i1 %t3, i8 %t2, i8 %t1
+  %t5 = sext i8 %t4 to i16
+  store i16 %t5, ptr @predeclaredir.absVal
+  %t6 = and i8 5, 1
+  store i8 %t6, ptr @predeclaredir.oddVal
+  store i8 65, ptr @predeclaredir.chrVal
+  store i16 90, ptr @predeclaredir.ordVal
+  store i8 113, ptr @predeclaredir.lowerCh
+  %t7 = load i8, ptr @predeclaredir.lowerCh
+  %t8 = icmp sge i8 %t7, 97
+  %t9 = icmp sle i8 %t7, 122
+  %t10 = and i1 %t8, %t9
+  %t11 = sub i8 %t7, 32
+  %t12 = select i1 %t10, i8 %t11, i8 %t7
+  store i8 %t12, ptr @predeclaredir.capVal
+  %t13 = sext i16 5 to i32
+  store i32 %t13, ptr @predeclaredir.lenVal
+  %t14 = sext i16 3 to i32
+  store i32 %t14, ptr @predeclaredir.dim0
+  %t15 = sext i16 4 to i32
+  store i32 %t15, ptr @predeclaredir.dim1
+  %t16 = sext i8 3 to i16
+  store i16 %t16, ptr @predeclaredir.i
+  %t17 = load i16, ptr @predeclaredir.i
+  %t18 = add i16 %t17, 1
+  store i16 %t18, ptr @predeclaredir.i
+  %t19 = load i16, ptr @predeclaredir.i
+  %t20 = sext i8 10 to i16
+  %t21 = add i16 %t19, %t20
+  store i16 %t21, ptr @predeclaredir.i
+  %t22 = load i16, ptr @predeclaredir.i
+  %t23 = sext i8 4 to i16
+  %t24 = sub i16 %t22, %t23
+  store i16 %t24, ptr @predeclaredir.i
+  %t25 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 0
+  store i8 104, ptr %t25
+  %t26 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 1
+  store i8 105, ptr %t26
+  %t27 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 2
+  store i8 0, ptr %t27
+  ret void
+}
+
+define i32 @main() {
+entry:
+  call void @predeclaredir_init()
+  ret i32 0
+}

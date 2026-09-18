@@ -1071,8 +1071,17 @@ MODULE LLVMCodeGenerator;
      keeps the emitted IR well-typed rather than ill-formed. Builds into
      a Value rather than writing straight to w - see GenerateCallArgList's
      own header comment on why an argument's text can no longer be
-     written directly into a partially-written "call ...(" line. *)
-  PROCEDURE GenerateStringArgValue(a: SyntaxTree.ExprNode; VAR result: Value);
+     written directly into a partially-written "call ...(" line. Takes
+     VAR w: Files.Rider (unlike before step 11) so the "unsupported"
+     diagnostic can be written as its own comment line, matching
+     Unsupported's own pattern - result.text must stay a clean, bare
+     value (just "null"), never a comment fragment, since it gets
+     spliced mid-line into a "call ...(" argument list by
+     GenerateCallArgList; a real bug (embedding the comment directly in
+     result.text) was found and fixed here during step 11's own testing,
+     once a scratch test finally exercised this ELSE branch from inside
+     a call-argument position for the first time. *)
+  PROCEDURE GenerateStringArgValue(VAR w: Files.Rider; a: SyntaxTree.ExprNode; VAR result: Value);
     VAR name: ValueText;
   BEGIN
     COPY("ptr", result.llvmType); result.oberonType := Types.Undefined;
@@ -1081,10 +1090,12 @@ MODULE LLVMCodeGenerator;
         IF a.literalKind = Lexer.string THEN
           StringConstName(a, name); COPY(name, result.text)
         ELSE
-          COPY("null  ; unsupported: non-string ARRAY OF CHAR argument (PLAN.md Phase 8 step 8+)", result.text)
+          WriteStr(w, "  ; unsupported: non-string ARRAY OF CHAR argument (PLAN.md Phase 8 step 8+)"); WriteLn(w);
+          COPY("null", result.text)
         END
     ELSE
-      COPY("null  ; unsupported: non-literal ARRAY OF CHAR argument (PLAN.md Phase 8 step 8+)", result.text)
+      WriteStr(w, "  ; unsupported: non-literal ARRAY OF CHAR argument (PLAN.md Phase 8 step 8+)"); WriteLn(w);
+      COPY("null", result.text)
     END
   END GenerateStringArgValue;
 
@@ -1113,10 +1124,12 @@ MODULE LLVMCodeGenerator;
         IF (a.designator.qualifier[0] = 0X) & GenerateDesignatorAddress(w, cg, a.designator, addrText, addrType) THEN
           COPY(addrText, result.text)
         ELSE
-          COPY("null  ; unsupported: VAR argument shape (PLAN.md Phase 8 step 12/Phase 9)", result.text)
+          WriteStr(w, "  ; unsupported: VAR argument shape (PLAN.md Phase 8 step 12/Phase 9)"); WriteLn(w);
+          COPY("null", result.text)
         END
     ELSE
-      COPY("null  ; unsupported: VAR argument shape (not a designator)", result.text)
+      WriteStr(w, "  ; unsupported: VAR argument shape (not a designator)"); WriteLn(w);
+      COPY("null", result.text)
     END
   END GenerateVarArgValue;
 
@@ -1127,7 +1140,7 @@ MODULE LLVMCodeGenerator;
     IF p.isVar THEN
       GenerateVarArgValue(w, cg, a, result)
     ELSIF IsOpenCharArray(p.type) THEN
-      GenerateStringArgValue(a, result)
+      GenerateStringArgValue(w, a, result)
     ELSE
       GenerateExpr(w, cg, a, v);
       IF Types.IsInteger(p.type) THEN ExtendTo(w, cg, v, p.type, ev) ELSE ev := v END;
@@ -1214,13 +1227,311 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateOrdinaryCall;
 
+  (* ABS(x): |x|, same type as x - branch-free via select, mirroring
+     GenerateDivMod's own select-based correction (this module's
+     established "straightforward, no optimizer" stance). Only integer
+     x is reachable here - REAL/LONGREAL arithmetic is out of scope
+     throughout this backend (see ExtendTo's own header comment), so a
+     real-typed argument routes to the same Unsupported placeholder
+     every other out-of-scope construct does. *)
+  PROCEDURE GenerateAbs(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR v: Value; negText, isNegText, selText: ValueText;
+  BEGIN
+    GenerateExpr(w, cg, args, v);
+    IF ~Types.IsInteger(v.oberonType) THEN
+      Unsupported(w, cg, "ABS on a non-integer type (REAL/LONGREAL arithmetic out of scope)", v.oberonType, result);
+      RETURN
+    END;
+    EmitBinOp(w, cg, "sub", v.llvmType, "0", v.text, negText);
+    EmitBinOp(w, cg, "icmp slt", v.llvmType, v.text, "0", isNegText);
+    EmitSelect(w, cg, isNegText, v.llvmType, negText, v.text, selText);
+    result.text := selText; result.llvmType := v.llvmType; result.oberonType := v.oberonType
+  END GenerateAbs;
+
+  (* ODD(x): the low bit of x, as BOOLEAN's own i8 representation - only
+     ever a truncate-or-no-op, never a widen: SHORTINT, this backend's
+     narrowest integer type, is already exactly i8 under -O2 (matching
+     BOOLEAN's own width), and every other integer type is wider. *)
+  PROCEDURE GenerateOdd(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR v: Value; loBit, boolText: ValueText;
+  BEGIN
+    GenerateExpr(w, cg, args, v);
+    EmitBinOp(w, cg, "and", v.llvmType, v.text, "1", loBit);
+    IF v.llvmType = "i8" THEN COPY(loBit, boolText)
+    ELSE EmitConvert(w, cg, "trunc", v.llvmType, loBit, "i8", boolText)
+    END;
+    result.text := boolText; COPY("i8", result.llvmType); result.oberonType := Types.Boolean
+  END GenerateOdd;
+
+  (* CHR(x): the low 8 bits of x, as CHAR - always a truncate-or-no-op,
+     for the same width reason GenerateOdd's own header comment gives. *)
+  PROCEDURE GenerateChr(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR v: Value; charText: ValueText;
+  BEGIN
+    GenerateExpr(w, cg, args, v);
+    IF v.llvmType = "i8" THEN COPY(v.text, charText)
+    ELSE EmitConvert(w, cg, "trunc", v.llvmType, v.text, "i8", charText)
+    END;
+    result.text := charText; COPY("i8", result.llvmType); result.oberonType := Types.Char
+  END GenerateChr;
+
+  (* ORD(x): x CHAR -> zero-extend (a CHAR byte is an unsigned 0..255
+     code, never sign-extended); x SET -> truncate (INTEGER's own width
+     is always <= SET's, in both size models, so this is unconditional,
+     no width comparison needed); x a single-char STRING literal
+     (Oberon2.pdf §3's "a string of length 1 can be used wherever a
+     character constant is allowed" - PredeclaredProcedures.Mod's own
+     IsSingleCharStringLiteral) -> that one byte's own ORD value, a
+     compile-time constant read directly off the AST rather than
+     through GenerateExpr at all - a string literal is never a loadable
+     "value" anywhere else in this backend (see GenerateStringArgValue's
+     own header comment: only a *pointer* to one is ever produced). *)
+  PROCEDURE GenerateOrd(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR v: Value; ordText, integerLLVMType: ValueText; isSingleCharString: BOOLEAN; ch: CHAR;
+  BEGIN
+    LLVMTypes.TypeString(Types.Integer, cg.sizeModel, integerLLVMType);
+    isSingleCharString := FALSE; ch := 0X;
+    WITH args: SyntaxTree.LiteralExprNode DO
+      IF (args.literalKind = Lexer.string) & (args.lexeme[0] # 0X) & (args.lexeme[1] = 0X) THEN
+        isSingleCharString := TRUE; ch := args.lexeme[0]
+      END
+    ELSE
+    END;
+    IF isSingleCharString THEN
+      ordText[0] := 0X; AppendLongInt(ordText, ORD(ch));
+      result.text := ordText; COPY(integerLLVMType, result.llvmType); result.oberonType := Types.Integer;
+      RETURN
+    END;
+    GenerateExpr(w, cg, args, v);
+    IF v.llvmType = "i8" THEN EmitConvert(w, cg, "zext", "i8", v.text, integerLLVMType, ordText)
+    ELSE EmitConvert(w, cg, "trunc", v.llvmType, v.text, integerLLVMType, ordText)
+    END;
+    result.text := ordText; COPY(integerLLVMType, result.llvmType); result.oberonType := Types.Integer
+  END GenerateOrd;
+
+  (* CAP(x): x CHAR -> if 'a'<=x<='z' then x-32 (uppercase) else x
+     unchanged - branch-free via select, matching GenerateAbs's own
+     approach. 'a'..'z' (97..122) are all < 128, so signed vs. unsigned
+     i8 comparison agree here; "sge"/"sle" (signed) is used simply to
+     match this module's own default predicate choice elsewhere. *)
+  PROCEDURE GenerateCap(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR v: Value; geA, leZ, isLower, shifted, selText: ValueText;
+  BEGIN
+    GenerateExpr(w, cg, args, v);
+    EmitBinOp(w, cg, "icmp sge", "i8", v.text, "97", geA);
+    EmitBinOp(w, cg, "icmp sle", "i8", v.text, "122", leZ);
+    EmitBinOp(w, cg, "and", "i1", geA, leZ, isLower);
+    EmitBinOp(w, cg, "sub", "i8", v.text, "32", shifted);
+    EmitSelect(w, cg, isLower, "i8", shifted, v.text, selText);
+    result.text := selText; COPY("i8", result.llvmType); result.oberonType := Types.Char
+  END GenerateCap;
+
+  (* LEN(v) / LEN(v, n): v's own compile-time-known array length (only
+     fixed-size arrays ever reach codegen - this backend's own scope),
+     walked n levels deep through nested elementTypes exactly the way
+     PredeclaredProcedures.CheckLen's own shape-walk already does (both
+     need only the *shape*, not any run-time computation - LEN never
+     loads v's own value, just its static type). v must be a designator
+     GenerateDesignatorAddress can resolve the address of - the only
+     shape LEN's own front-end check allows in practice, since an
+     array-typed *value* doesn't otherwise exist in this language. *)
+  PROCEDURE GenerateLen(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR
+      de: SyntaxTree.DesignatorExprNode; addrText: ValueText; addrType: Types.Type;
+      arr: Types.ArrayType; nExpr: SyntaxTree.ExprNode; nVal: Types.Value; i: LONGINT;
+      lenText, integerLLVMType: ValueText; ok: BOOLEAN;
+  BEGIN
+    LLVMTypes.TypeString(Types.Integer, cg.sizeModel, integerLLVMType);
+    ok := (args IS SyntaxTree.DesignatorExprNode);
+    IF ok THEN
+      de := args(SyntaxTree.DesignatorExprNode);
+      ok := ~de.hasParens & GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType)
+            & (addrType # NIL) & (addrType IS Types.ArrayType)
+    END;
+    IF ~ok THEN
+      Unsupported(w, cg, "LEN argument shape (PLAN.md Phase 9+)", Types.Integer, result);
+      RETURN
+    END;
+    arr := addrType(Types.ArrayType);
+    nExpr := args.next;
+    IF nExpr # NIL THEN
+      nVal := ConstantEvaluator.Evaluate(nExpr, cg.scope);
+      i := 0;
+      WHILE (i < nVal.intVal) & (arr.elementType # NIL) & (arr.elementType IS Types.ArrayType) DO
+        arr := arr.elementType(Types.ArrayType); INC(i)
+      END
+    END;
+    lenText[0] := 0X; AppendLongInt(lenText, arr.length);
+    result.text := lenText; COPY(integerLLVMType, result.llvmType); result.oberonType := Types.Integer
+  END GenerateLen;
+
+  (* INC(v) / INC(v, n) (n defaults to 1) - v := v + n; DEC likewise
+     with "-" (opText). v's own address is resolved through
+     GenerateDesignatorAddress - any addressable designator (a bare
+     var, a record field, an array element), the identical shape
+     PredeclaredProcedures.Mod's own ResolveVarArg already accepts via
+     its injected checkDesignator. n, when given, is widened to v's own
+     type first (mirroring StoreAtAddress's own "extend before
+     combining" pattern), since CheckIncDec only requires IsInteger, not
+     an exact width match; when omitted, the literal "1" is used
+     directly - LLVM's own textual IR accepts an untyped integer literal
+     for any integer width, so no extension is needed for the default
+     case. Narrow, documented limitation: if n's own type is *wider*
+     than v's (legal per CheckIncDec's own looser rule, though not
+     exercised by any fixture here), ExtendTo's "always widening" own
+     assumption (its header comment) would misbehave - every other
+     ExtendTo call site in this codegen shares the identical assumption,
+     true by construction there because ordinary assignment compat-
+     ibility only ever narrows-into-wider, unlike INC/DEC's own rule. *)
+  PROCEDURE GenerateIncDec(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; opText: ARRAY OF CHAR;
+                           VAR result: Value);
+    VAR
+      de: SyntaxTree.DesignatorExprNode; addrText: ValueText; addrType: Types.Type;
+      old, amount, amountExt, sum: Value; amountText: ValueText; nExpr: SyntaxTree.ExprNode;
+  BEGIN
+    result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
+    IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
+    de := args(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens OR ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN RETURN END;
+    LoadAtAddress(w, cg, addrText, addrType, old);
+    nExpr := args.next;
+    IF nExpr = NIL THEN
+      COPY("1", amountText)
+    ELSE
+      GenerateExpr(w, cg, nExpr, amount);
+      ExtendTo(w, cg, amount, addrType, amountExt);
+      COPY(amountExt.text, amountText)
+    END;
+    EmitBinOp(w, cg, opText, old.llvmType, old.text, amountText, sum.text);
+    sum.llvmType := old.llvmType; sum.oberonType := old.oberonType;
+    StoreAtAddress(w, cg, addrText, addrType, sum)
+  END GenerateIncDec;
+
+  (* COPY(x, v): x a STRING LITERAL (the one ARRAY OF CHAR value-
+     argument shape this backend fully supports - see
+     GenerateStringArgValue's own header comment on why; any other
+     source shape is Unsupported for now, the same scope boundary that
+     step already established), v a writable CHAR-array designator.
+     Oberon2.pdf §10.3's own COPY semantics: copy MIN(LEN(x), LEN(v)-1)
+     characters, then terminate with 0X - both lengths are compile-
+     time-known here (x's own literal length; v's own declared, fixed
+     ArrayType.length - only fixed-size arrays ever reach codegen), so
+     the whole copy unrolls into a fixed sequence of single-byte
+     GEP+store pairs at compile time, no runtime loop needed (matching
+     this backend's own "no optimizer, straightforward over general"
+     stance elsewhere - e.g. EmitGEP's one-GEP-per-selector-step
+     design). *)
+  PROCEDURE GenerateCopy(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR
+      xExpr, vExpr: SyntaxTree.ExprNode; lit: SyntaxTree.LiteralExprNode;
+      de: SyntaxTree.DesignatorExprNode; addrText: ValueText; addrType: Types.Type;
+      arr: Types.ArrayType; xLen, copyLen, i: LONGINT; pointeeType: ARRAY 256 OF CHAR;
+      idxText, byteText, gepText: ValueText; ok: BOOLEAN;
+  BEGIN
+    result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
+    xExpr := args; vExpr := args.next;
+    ok := (xExpr # NIL) & (xExpr IS SyntaxTree.LiteralExprNode);
+    IF ok THEN
+      lit := xExpr(SyntaxTree.LiteralExprNode); ok := lit.literalKind = Lexer.string
+    END;
+    IF ~ok THEN
+      WriteStr(w, "  ; unsupported: COPY's source is not a string literal (Phase 9+)"); WriteLn(w);
+      RETURN
+    END;
+    ok := (vExpr # NIL) & (vExpr IS SyntaxTree.DesignatorExprNode);
+    IF ok THEN
+      de := vExpr(SyntaxTree.DesignatorExprNode);
+      ok := ~de.hasParens & GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType)
+            & (addrType # NIL) & (addrType IS Types.ArrayType)
+    END;
+    IF ~ok THEN
+      WriteStr(w, "  ; unsupported: COPY's destination shape (Phase 9+)"); WriteLn(w);
+      RETURN
+    END;
+    arr := addrType(Types.ArrayType);
+    xLen := 0;
+    WHILE lit.lexeme[xLen] # 0X DO INC(xLen) END;
+    copyLen := xLen;
+    IF copyLen > arr.length - 1 THEN copyLen := arr.length - 1 END;
+    IF copyLen < 0 THEN copyLen := 0 END;
+    IF arr.length > 0 THEN
+      LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
+      i := 0;
+      WHILE i <= copyLen DO
+        idxText[0] := 0X; AppendLongInt(idxText, i);
+        EmitGEP(w, cg, pointeeType, addrText, "i32", idxText, gepText);
+        byteText[0] := 0X;
+        IF i < copyLen THEN AppendLongInt(byteText, ORD(lit.lexeme[i])) ELSE COPY("0", byteText) END;
+        WriteStr(w, "  store i8 "); WriteStr(w, byteText); WriteStr(w, ", ptr "); WriteStr(w, gepText); WriteLn(w);
+        INC(i)
+      END
+    END
+  END GenerateCopy;
+
+  (* HALT(n): n a compile-time integer constant (PredeclaredProcedures.
+     CheckHalt already verified this via ConstantEvaluator.Evaluate;
+     safe to re-derive here the same way OpenProcedureBodyScope's own
+     header comment justifies re-deriving already-checked front-end
+     results). Lowers to the identical "call exit, then unreachable"
+     shape step 9's own EmitTrap uses, minus the write() diagnostic -
+     HALT is a deliberate, user-directed termination, not a runtime
+     safety trap (Oberon2.pdf's own wording: the exit code "is made
+     available to the calling environment," nothing about printing a
+     message). @exit is already guaranteed declared by
+     EmitRuntimeSupport (step 9, unconditional for every module), so
+     this can call it directly. *)
+  PROCEDURE GenerateHalt(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR v: Types.Value; codeText, deadLabel: ValueText;
+  BEGIN
+    result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
+    v := ConstantEvaluator.Evaluate(args, cg.scope);
+    codeText[0] := 0X; AppendLongInt(codeText, v.intVal);
+    WriteStr(w, "  call void @exit(i32 "); WriteStr(w, codeText); WriteStr(w, ")"); WriteLn(w);
+    WriteStr(w, "  unreachable"); WriteLn(w);
+    NewLabel(cg, deadLabel);
+    EmitLabel(w, deadLabel)
+  END GenerateHalt;
+
+  (* PLAN.md Phase 8 step 11's own in-scope Oberon2.pdf §10.3 subset -
+     ABS ODD CHR ORD CAP LEN INC DEC COPY HALT, the exact list this
+     phase's own header comment gives (not NEW/DISPOSE/SYSTEM.*, which
+     presuppose POINTER - Phase 9). PredeclaredProcedures.Mod's own
+     CheckCall accepts a wider, 20-name vocabulary than this - every
+     other predeclared name (ASH/ENTIER/LONG/MAX/MIN/SHORT/SIZE/EXCL/
+     INCL/NEW) is real Oberon-2 the front end already fully checks, just
+     not lowered here yet, so it routes to the same Unsupported
+     placeholder every other out-of-scope construct does rather than
+     falling through silently. *)
+  PROCEDURE GeneratePredeclaredCall(VAR w: Files.Rider; VAR cg: Codegen; name: SyntaxTree.Ident;
+                                    args: SyntaxTree.ExprNode; VAR result: Value);
+  BEGIN
+    IF name = "ABS" THEN GenerateAbs(w, cg, args, result)
+    ELSIF name = "ODD" THEN GenerateOdd(w, cg, args, result)
+    ELSIF name = "CHR" THEN GenerateChr(w, cg, args, result)
+    ELSIF name = "ORD" THEN GenerateOrd(w, cg, args, result)
+    ELSIF name = "CAP" THEN GenerateCap(w, cg, args, result)
+    ELSIF name = "LEN" THEN GenerateLen(w, cg, args, result)
+    ELSIF name = "INC" THEN GenerateIncDec(w, cg, args, "add", result)
+    ELSIF name = "DEC" THEN GenerateIncDec(w, cg, args, "sub", result)
+    ELSIF name = "COPY" THEN GenerateCopy(w, cg, args, result)
+    ELSIF name = "HALT" THEN GenerateHalt(w, cg, args, result)
+    ELSE
+      Unsupported(w, cg,
+        "predeclared procedure outside Phase 8 step 11's own scope (ASH/ENTIER/LONG/MAX/MIN/SHORT/SIZE/EXCL/INCL - Phase 9; NEW/DISPOSE/SYSTEM.* need POINTER, also Phase 9)",
+        Types.Undefined, result)
+    END
+  END GeneratePredeclaredCall;
+
   (* A type-bound method call ("receiver.Method(...)", a selector-based
      target) still isn't lowered here - real Oberon-2 the front end
      accepts, dispatch-shaped work Phase 8 excludes entirely (this
      module's own header comment's "Explicit non-goals"), matching
      Phase 9 instead, same as GenerateDesignatorAddress's own POINTER/
      dispatch exclusions. A plain (non-type-bound) procedure, external
-     or ordinary, is the only call target this step's scope reaches. *)
+     or ordinary, is the only user-defined call target this step's
+     scope reaches - a predeclared procedure (Types.PredeclaredProcedure-
+     Type, PLAN.md Phase 8 step 11) is checked first, since it is also a
+     procClass Object but never an external/ordinary one. *)
   PROCEDURE GenerateCall(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                         args: SyntaxTree.ExprNode; VAR result: Value);
     VAR obj: SymbolTable.Object;
@@ -1230,7 +1541,9 @@ MODULE LLVMCodeGenerator;
       RETURN
     END;
     obj := SymbolTable.Find(cg.scope, d.name);
-    IF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.externalConvention[0] # 0X) THEN
+    IF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.type = Types.PredeclaredProcedureType) THEN
+      GeneratePredeclaredCall(w, cg, obj.name, args, result)
+    ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.externalConvention[0] # 0X) THEN
       GenerateExternalCall(w, cg, obj, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) THEN
       GenerateOrdinaryCall(w, cg, obj, args, result)

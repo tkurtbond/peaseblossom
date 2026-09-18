@@ -1256,6 +1256,108 @@ struct/array layout plus a cross-check fixture rather than manual packing
     ("semantic checking lives in the front end, lowering lives in the
     backend").
 
+    **Implemented 2026-09-18.** `ABS`, `ODD`, `CHR`, `ORD`, `CAP`, `LEN`
+    (both the one- and two-argument forms), `INC`/`DEC` (both the
+    default-`+1`/`-1` and explicit-amount forms), `COPY`, and `HALT` -
+    `NEW`/`DISPOSE`/`SYSTEM.*` stay out of scope (Phase 9, they
+    presuppose `POINTER`). Dispatch reuses the front end's own marker:
+    `SymbolTable.Find` already resolves a bare name to a `procClass`
+    Object whose `.type = Types.PredeclaredProcedureType`
+    (`SymbolTable.Mod`'s module body inserts all 20 predeclared names
+    into `Universe` this way), so `GenerateCall` just checks that marker
+    *before* its existing external/ordinary `procClass` checks (a
+    predeclared procedure is neither) and routes to a new
+    `GeneratePredeclaredCall`, a string-comparison dispatcher over the
+    10 in-scope names.
+
+    Every one of the 10 reuses existing primitives rather than inventing
+    new machinery - `EmitBinOp`/`EmitSelect`/`EmitConvert` for the
+    arithmetic-shaped ones, `GenerateDesignatorAddress`/`LoadAtAddress`/
+    `StoreAtAddress` for anything reading or writing a variable,
+    `EmitGEP` for `COPY`'s own byte-by-byte unrolled store sequence,
+    `ConstantEvaluator.Evaluate` for `HALT`'s compile-time constant. The
+    one genuinely new question each answered was *width*: several
+    operations (`ORD(CHAR)`'s `zext`, `ORD(SET)`'s `trunc`, `CHR`/`ODD`'s
+    `trunc`-or-no-op) turn out to be unconditionally correct across both
+    `-O2`/`-OC` size models without any runtime branching on width, once
+    `LLVMTypes.BasicTypeString`'s own width table is checked directly:
+    `CHAR` is always `i8` in both models, and `Integer`'s width is always
+    strictly less than `Set`'s in both models, so the direction of the
+    conversion never depends on which model is active. `ORD` additionally
+    special-cases a single-char STRING literal argument directly against
+    the `SyntaxTree.LiteralExprNode` shape (bypassing `GenerateExpr`
+    entirely, the same way `GenerateStringArgValue` already treats a
+    string literal as never a loadable "value" elsewhere in this
+    backend) - `CAP`, unlike `ORD`, has no such exception
+    (`PredeclaredProcedures.CheckCap`'s own check requires a bare `CHAR`),
+    so `CAP` only ever sees a loaded `CHAR` value. `COPY` only lowers a
+    literal-string-source/plain-designator-CHAR-array-destination shape,
+    unrolling a fixed `EmitGEP`+`store i8` sequence (source length known
+    at compile time, destination clamped to the array's own declared
+    length) rather than a runtime loop - no fixture needs more. `HALT`
+    reuses `@exit`, already unconditionally declared by step 9's
+    `EmitRuntimeSupport` for the two traps, followed by `unreachable` and
+    step 9's own dead-block-after-terminator pattern.
+
+    A real, pre-existing bug (not in any of the 10 procedures above, but
+    surfaced while testing them) was found and fixed:
+    `GenerateStringArgValue`/`GenerateVarArgValue`'s own fallback for an
+    out-of-scope string/VAR call argument used to embed its
+    `"; unsupported: ..."` diagnostic *directly inside `result.text`*,
+    unlike the shared `Unsupported` procedure itself, which always writes
+    its diagnostic as its own separate comment line and returns a clean
+    placeholder value. Since a call argument's `.text` gets spliced
+    mid-line into a `"call ...("` argument list by `GenerateCallArgList`,
+    the embedded comment corrupted the IR - a `;` mid-argument-list
+    comments out everything after it on the line, including the closing
+    `)`, and `clang` correctly rejected the result with `expected ','
+    in argument list`. This had been latent since string/VAR call
+    arguments were first introduced (step 6/8): every fixture before now
+    happened to only pass literal strings/bare VARs to external calls,
+    never a shape that reached either fallback branch from inside a call
+    argument position. It surfaced once a scratch test forwarded a
+    procedure's own `ARRAY OF CHAR` value parameter into another call's
+    `ARRAY OF CHAR` argument - a real, still out-of-scope shape (open
+    arrays remain step 10's own documented gap), but the *fallback
+    text itself* being malformed was an independent, worth-fixing bug.
+    Fixed by giving `GenerateStringArgValue` a `VAR w: Files.Rider`
+    parameter (matching `GenerateVarArgValue`'s existing signature) and
+    having both write their diagnostic as a standalone line via
+    `WriteStr`/`WriteLn` before returning a bare `"null"` as `result.text`
+    - exactly `Unsupported`'s own established pattern, just not
+    previously applied here.
+
+    Two more pre-existing, unrelated-to-this-step gaps were hit (and
+    routed around, not fixed) while designing this step's own fixtures:
+    a single-char STRING literal used as a plain `CHAR` value *outside*
+    a call argument or `ORD`'s own special-cased position (e.g. `CHAR
+    variable := "q"`, or `<CHAR value> = "A"` in a general comparison)
+    has no general lowering in `GenerateExpr` at all - only `ORD`'s own
+    codegen intercepts that one literal shape directly - so both
+    fixtures use hex `CHAR` literals (`nnX`) instead, everywhere except
+    `ORD`'s own argument (kept as `ORD("Z")`, still exercising that
+    dedicated path). And forwarding an `ARRAY OF CHAR` *value parameter*
+    into another call (the shape that originally surfaced the bug above)
+    stays unexercised in the real fixtures for the same reason step 10's
+    own retrospective already gives it a pass: open arrays are a known,
+    narrow, not-yet-built convention, out of this step's own scope.
+
+    Three fixtures: `llvm-predeclared`, a compile+link+run+diff-stdout
+    fixture covering the 9 non-`HALT` procedures (`HALT` terminates the
+    process, incompatible with an "OK"/"FAIL" trailing write) including
+    both `LEN` forms via a 2-D array (`dim0`/`dim1`); `llvm-predeclared-
+    halt`, HALT's own dedicated exit-status fixture (matching
+    `llvm-index-range-trap`'s own "capture stdout + exit status, not
+    `poc_build_run`" pattern) confirming `HALT(3)` prints exactly
+    `"before"`, exits `3`, and never reaches the statement after it; and
+    `llvm-predeclared-ir`, a pure `-emit-llvm-ir` golden `.ll` diff over
+    the same 9 non-`HALT` procedures, independently verified via the same
+    C-harness linking technique steps 5/7/8/10 already established
+    (`absVal=7 oddVal=1 chrVal=65 ordVal=90 capVal=81 lenVal=5 dim0=3
+    dim1=4 i=10 s="hi"` confirmed by hand). IR determinism re-checked by
+    hand (regenerate twice, diff both the driver message and the `.ll` -
+    clean). All 111 conformance tests pass (108 prior + 3 new).
+
 12. **General multi-module user programs + program entry.** Extend the
     driver to transitively discover and compile every user-authored
     `IMPORT` (via `ModuleInterface.Mod`'s already-resolved import graph),
