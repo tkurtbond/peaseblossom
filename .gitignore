@@ -19,6 +19,7 @@ test/conformance/hello/hello
 test/conformance/llvm-build-run/llvm-build-run
 test/conformance/llvm-hello-world/llvm-hello-world
 test/conformance/llvm-control-flow/llvm-control-flow
+test/conformance/llvm-arrays-records/llvm-arrays-records
 
 # Stage 0/1/2 bootstrap build output (see tools/bootstrap)
 /build/

@@ -902,6 +902,112 @@ struct/array layout plus a cross-check fixture rather than manual packing
 8. **Fixed-size arrays and records.** Local/global storage, element/field
    access via `getelementptr`. No open arrays, no dynamic allocation.
 
+   **Implemented.** "Local... storage" is still aspirational, same
+   caveat every step before step 10 has had: no procedure-with-body
+   codegen exists yet to own a local (`alloca`-backed) VAR, so this
+   step's actual reachable scope, like every one before it, is
+   module-level global VARs only - by design, though, nothing here is
+   global-specific: `GenerateDesignatorAddress` (below) and the new
+   `LoadAtAddress`/`StoreAtAddress` primitives it's built on take an
+   arbitrary computed address, not a global name, so a local VAR gets
+   this step's own array/record machinery for free the moment step 10
+   adds one, no changes needed here.
+
+   Element/field access lowers to one `getelementptr` per selector step
+   - `r.arr[i].field` becomes three separate GEPs, not one fused multi-
+   index GEP - simpler to generate and reason about, and this backend
+   runs no optimization passes to care about the extra instructions
+   either way, the same "straightforward over optimal" stance
+   `GenerateDivMod`'s own unfused `select`-based correction already
+   took back in step 5. `GenerateDesignatorAddress` walks a
+   `Designator`'s own selector chain generally (any mix of
+   `FieldSelector`/`IndexSelector` in any order/depth), returning
+   `FALSE` the moment it meets a shape needing a capability this
+   backend doesn't have: a `PointerType` anywhere along the chain
+   (`CheckDesignator` auto-dereferences one for *both* `.` and `[`, so
+   a plain array/record VAR's own selector chain can still legitimately
+   lead into one), a `DereferenceSelector`/`GuardSelector`, a
+   `FieldSelector` resolving to a type-bound method instead of a data
+   field, or - a real bug found and fixed during this step's own
+   testing - a `FieldSelector` into a record *with* a base type
+   (extension): `LLVMTypes.RecordTypeString` already refuses to
+   describe an extended record's layout at all (the literal text
+   `"<unsupported>"`, not a real LLVM type, unchanged since step 4),
+   but `GenerateDesignatorAddress` didn't originally re-check that
+   before emitting a GEP against whichever record type `Types.FindField`
+   happened to resolve the field in - producing a GEP whose own pointee-
+   type operand was the bare, ill-formed text `<unsupported>`, caught by
+   a scratch `RECORD (Base) ... END` fixture during development, not by
+   any golden-file diff (nothing existing exercised record extension at
+   all). Fixed by refusing any `FieldSelector` whose record has a
+   non-`NIL` `baseType`, mirroring `RecordTypeString`'s own check
+   exactly, before it ever reaches `EmitGEP`. A struct GEP's own index
+   is always `i32` (an LLVM `getelementptr` requirement specific to
+   struct indices, confirmed against the LLVM Language Reference, not
+   assumed) and is the field's 0-based position among `rec.fields`
+   (declaration order - the same order `RecordTypeString` already used
+   to build the struct literal, so a field's position there is exactly
+   its struct index); an array GEP's own index reuses the index
+   expression's own already-computed value/type unchanged (LLVM
+   tolerates any integer width for an array index, so no widening is
+   needed there), and naturally composes across a multi-dimensional
+   `a[i,j]`-style chained index list or a genuinely nested `ARRAY OF
+   ARRAY` by re-checking `IS Types.ArrayType` on the newly-descended
+   element type at each step.
+
+   Whole-value `ARRAY`/`RECORD` assignment (`v2 := v`, `p2 := p`, same
+   declared type on both sides - the only shape Appendix A's own
+   assignment-compatibility rules ever allow here, since Phase 8 has no
+   RECORD extension in its backend's own reachable scope for a
+   projection-style partial copy to even apply) needed **no new codegen
+   at all**: `LoadVar`/`StoreIntoVar` (step 7) were already fully
+   generic over `LLVMTypes.TypeString`'s own output, and LLVM's `load`/
+   `store` instructions already support an aggregate (`[N x T]`/
+   `{ T1, T2, ... }`) type directly, by value, same as any scalar -
+   confirmed, not assumed, by generating IR for a scratch fixture before
+   writing a single line of new code for it. `LoadVar`/`StoreIntoVar`
+   themselves became thin wrappers over the two new, genuinely primitive
+   `LoadAtAddress`/`StoreAtAddress` procedures (keyed on an address+type
+   pair, not a `SymbolTable.Object`) - `GenerateDesignatorValue`'s own
+   selector-chain read path reuses `LoadAtAddress` directly on whatever
+   address `GenerateDesignatorAddress` computes, and `GenerateAssign-
+   Statement`'s selector-chain write path reuses `StoreAtAddress` the
+   same way, so a selector-chain assignment target/expression is treated
+   identically to a bare one once its own address is known.
+
+   Deliberately left open, not attempted: extending the step 6 FFI's
+   `ARRAY OF CHAR` value-argument handling (`GenerateStringArgValue`) to
+   accept a general fixed-`CHAR`-array-typed designator (e.g. a record
+   field or array element holding text) rather than only a literal
+   string constant - real, in-scope-adjacent Oberon-2, but not this
+   step's own stated scope ("element/field access via `getelementptr`"),
+   and broadening it would have blurred step 8's own boundary rather
+   than sharpened it; still cited as future work by
+   `GenerateStringArgValue`'s own header comment, unchanged. Likewise
+   left open: a *bare* (non-selector) `VAR` of `POINTER`/extended-
+   `RECORD` type already reaches `LoadVar`/`StoreIntoVar` with the same
+   literal `"<unsupported>"` type text this step's own record-extension
+   bug hit - but that gap predates this step entirely (any bare
+   assignment to such a VAR was already reachable, unchanged, since step
+   5, well before selectors existed) and is orthogonal to what this step
+   actually added, so it's documented here rather than silently carried
+   forward or fixed as a drive-by.
+
+   Two new fixtures, matching step 7's own two-fixture pattern:
+   `llvm-arrays-records` (compile+link+run+diff-stdout, branching on a
+   computed array/record result to print one of two literal markers per
+   check - step 6's FFI still can't print a computed `ARRAY OF CHAR`
+   value directly, per the deliberately-left-open gap above) and
+   `llvm-arrays-records-ir` (a pure `-emit-llvm-ir` golden `.ll` diff
+   covering a 1D array, a 2D array via the `ARRAY m, n OF T` comma
+   sugar, a plain record, a record nested inside another record, and an
+   array of records - whole-value assignment of both an array and a
+   record, and every read/write combination `GenerateDesignatorAddress`
+   needs to compose correctly - independently verified during
+   development via the same C-harness linking technique step 5/7 already
+   established: `sum=312`, confirmed by hand). All 104 conformance tests
+   pass (102 prior, two new).
+
 9. **Runtime traps.** Index-range checks and CASE-without-matching-label,
    using the `Runtime.Mod`/`Console.Mod` abort path from step 6. Match
    voc's own default-flag posture where there's a direct analogue (`-t`

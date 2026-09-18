@@ -378,6 +378,32 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, ", "); WriteStr(w, ty); WriteStr(w, " "); WriteStr(w, bText); WriteLn(w)
   END EmitSelect;
 
+  (* "%dest = getelementptr <pointeeType>, ptr <basePtr>, i32 0, <idxType>
+     <idxText>" - PLAN.md Phase 8 step 8's one address-computing
+     instruction, always emitted with exactly two indices: the leading
+     "i32 0" steps into the single <pointeeType> value basePtr already
+     points at (never treats it as the start of an array of them), and
+     idxText selects the field/element within it. One GEP per selector
+     step (a record-then-array-then-record chain becomes three separate
+     GEPs, not one fused multi-index GEP) - simpler to generate and
+     reason about than fusing, and this backend runs no optimization
+     passes to care about the extra instructions either way, the same
+     "straightforward over optimal" stance every prior step already
+     took (e.g. GenerateDivMod's own select-based, branch-free but
+     unfused correction). idxType/idxText is "i32 <constant>" for a
+     struct field (LLVM requires a struct GEP index to be an i32
+     constant specifically) or an array index expression's own already-
+     computed Value's type/text unchanged (GEP tolerates any integer
+     width for an array index, so no widening is needed there). *)
+  PROCEDURE EmitGEP(VAR w: Files.Rider; VAR cg: Codegen; pointeeType, basePtr, idxType, idxText: ARRAY OF CHAR;
+                    VAR destText: ARRAY OF CHAR);
+  BEGIN
+    NewTemp(cg, destText);
+    WriteStr(w, "  "); WriteStr(w, destText); WriteStr(w, " = getelementptr "); WriteStr(w, pointeeType);
+    WriteStr(w, ", ptr "); WriteStr(w, basePtr); WriteStr(w, ", i32 0, "); WriteStr(w, idxType);
+    WriteStr(w, " "); WriteStr(w, idxText); WriteLn(w)
+  END EmitGEP;
+
   (* Widens v up to targetType's own LLVM width via sext, or returns v
      unchanged if it's already there - only ever called with an
      Types.IsInteger* target (see this module's header comment on why
@@ -395,29 +421,53 @@ MODULE LLVMCodeGenerator;
     END
   END ExtendTo;
 
+  (* The two genuinely primitive load/store operations, keyed on an
+     arbitrary computed address rather than a named global directly -
+     PLAN.md Phase 8 step 8's own GenerateDesignatorAddress (an array
+     element's or a record field's address, from a chain of EmitGEPs)
+     needs exactly this, and LoadVar/StoreIntoVar below are now just
+     thin wrappers over these two for the "bare module VAR" case, so a
+     local (alloca-backed) VAR gets the identical machinery for free
+     once step 10 adds one - nothing here is hardcoded to "global". *)
+  PROCEDURE LoadAtAddress(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; addrType: Types.Type;
+                          VAR result: Value);
+    VAR temp: ValueText;
+  BEGIN
+    LLVMTypes.TypeString(addrType, cg.sizeModel, result.llvmType);
+    NewTemp(cg, temp);
+    WriteStr(w, "  "); WriteStr(w, temp); WriteStr(w, " = load "); WriteStr(w, result.llvmType);
+    WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+    result.text := temp; result.oberonType := addrType
+  END LoadAtAddress;
+
+  PROCEDURE StoreAtAddress(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; addrType: Types.Type;
+                           v: Value);
+    VAR ev: Value; targetLLVMType: ValueText;
+  BEGIN
+    IF Types.IsInteger(addrType) THEN ExtendTo(w, cg, v, addrType, ev) ELSE ev := v END;
+    LLVMTypes.TypeString(addrType, cg.sizeModel, targetLLVMType);
+    WriteStr(w, "  store "); WriteStr(w, targetLLVMType); WriteStr(w, " "); WriteStr(w, ev.text);
+    WriteStr(w, ", ptr "); WriteStr(w, addrText);
+    WriteLn(w)
+  END StoreAtAddress;
+
   (* Factored out of GenerateDesignatorValue/GenerateAssignStatement -
      PLAN.md Phase 8 step 7's FOR-loop codegen needs to load/store its
      own control variable at points that aren't a Designator AST node at
      all (the loop header's own comparison, the per-iteration increment),
-     so this pair now takes a resolved SymbolTable.Object directly. *)
+     so this pair takes a resolved SymbolTable.Object directly. *)
   PROCEDURE LoadVar(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object; VAR result: Value);
-    VAR temp: ValueText;
+    VAR addr: ValueText;
   BEGIN
-    LLVMTypes.TypeString(obj.type, cg.sizeModel, result.llvmType);
-    NewTemp(cg, temp);
-    WriteStr(w, "  "); WriteStr(w, temp); WriteStr(w, " = load "); WriteStr(w, result.llvmType);
-    WriteStr(w, ", ptr @"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, obj.name); WriteLn(w);
-    result.text := temp; result.oberonType := obj.type
+    COPY("@", addr); Strcat(addr, cg.moduleName); Strcat(addr, "."); Strcat(addr, obj.name);
+    LoadAtAddress(w, cg, addr, obj.type, result)
   END LoadVar;
 
   PROCEDURE StoreIntoVar(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object; v: Value);
-    VAR ev: Value; targetLLVMType: ValueText;
+    VAR addr: ValueText;
   BEGIN
-    IF Types.IsInteger(obj.type) THEN ExtendTo(w, cg, v, obj.type, ev) ELSE ev := v END;
-    LLVMTypes.TypeString(obj.type, cg.sizeModel, targetLLVMType);
-    WriteStr(w, "  store "); WriteStr(w, targetLLVMType); WriteStr(w, " "); WriteStr(w, ev.text);
-    WriteStr(w, ", ptr @"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, obj.name);
-    WriteLn(w)
+    COPY("@", addr); Strcat(addr, cg.moduleName); Strcat(addr, "."); Strcat(addr, obj.name);
+    StoreAtAddress(w, cg, addr, obj.type, v)
   END StoreIntoVar;
 
   (* Oberon-2 floored DIV/MOD (see header comment) from LLVM's truncating
@@ -633,12 +683,105 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateConstValue;
 
+  (* rec.fields' own declaration order is exactly the field order
+     RecordTypeString used to build the LLVM struct literal ("{ T1, T2,
+     ... }"), so a field's 0-based position in this list is exactly its
+     struct GEP index - walked by pointer identity against the Types.
+     Field CheckDesignator/CheckDesignatorExpr already resolved (via
+     Types.FindField), not re-matched by name, since it is already known
+     to be a real member of this exact list. *)
+  PROCEDURE FieldIndex(rec: Types.RecordType; field: Types.Field): INTEGER;
+    VAR f: Types.Field; i: INTEGER;
+  BEGIN
+    f := rec.fields; i := 0;
+    WHILE f # field DO INC(i); f := f.next END;
+    RETURN i
+  END FieldIndex;
+
+  (* Computes the address of an array element or a record field, one
+     EmitGEP per selector step (see EmitGEP's own header comment). FALSE
+     means some selector in the chain needs a capability Phase 8's
+     backend doesn't have - a PointerType anywhere (auto-dereferenced by
+     CheckDesignator for both "." and "[", so a plain array/record VAR's
+     selector chain can still legitimately lead into one), a
+     DereferenceSelector, a GuardSelector, or a FieldSelector resolving
+     to a type-bound method rather than a data field - every one of them
+     is real Oberon-2 the front end already accepts, just POINTER/
+     dispatch-shaped work Phase 8 excludes entirely (this module's own
+     header comment's "Explicit non-goals"), matching Phase 9 instead.
+     An open array can never appear here either (CheckDesignator only
+     ever resolves a module VAR's own declared, always-fixed-size array
+     type through "[" - an open array only exists as a formal parameter,
+     and Phase 8 has no procedure-with-body codegen to own one yet). *)
+  PROCEDURE GenerateDesignatorAddress(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
+                                      VAR addrText: ValueText; VAR addrType: Types.Type): BOOLEAN;
+    VAR
+      obj: SymbolTable.Object; sel: SyntaxTree.Selector; idx: SyntaxTree.ExprNode;
+      rec: Types.RecordType; arr: Types.ArrayType; field: Types.Field; idxVal: Value;
+      pointeeType: ARRAY 256 OF CHAR; idxText: ValueText;
+  BEGIN
+    IF d.qualifier[0] # 0X THEN RETURN FALSE END;
+    obj := SymbolTable.Find(cg.scope, d.name);
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
+    COPY("@", addrText); Strcat(addrText, cg.moduleName); Strcat(addrText, "."); Strcat(addrText, obj.name);
+    addrType := obj.type;
+    sel := d.selectors;
+    WHILE sel # NIL DO
+      WITH
+        sel: SyntaxTree.FieldSelector DO
+          IF (addrType = NIL) OR ~(addrType IS Types.RecordType) THEN RETURN FALSE END;
+          rec := addrType(Types.RecordType);
+          (* A record with a base type has an undefined layout to this
+             backend - RecordTypeString already refuses one, returning
+             the literal text "<unsupported>" rather than a real LLVM
+             type, so a field access into one must refuse right here
+             too, not just when the record's own global is declared: a
+             real bug found and fixed during this step's own testing
+             (a scratch RECORD-extension fixture) - without this check,
+             GenerateDesignatorAddress happily used that same literal
+             "<unsupported>" text as a GEP's pointee type, producing
+             ill-formed IR instead of a graceful Unsupported fallback. *)
+          IF rec.baseType # NIL THEN RETURN FALSE END;
+          field := Types.FindField(rec, sel.name);
+          IF field = NIL THEN RETURN FALSE END;
+          LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
+          idxText[0] := 0X; AppendLongInt(idxText, FieldIndex(rec, field));
+          EmitGEP(w, cg, pointeeType, addrText, "i32", idxText, addrText);
+          addrType := field.type
+      | sel: SyntaxTree.IndexSelector DO
+          idx := sel.indices;
+          WHILE idx # NIL DO
+            IF (addrType = NIL) OR ~(addrType IS Types.ArrayType) THEN RETURN FALSE END;
+            arr := addrType(Types.ArrayType);
+            IF arr.isOpen THEN RETURN FALSE END;
+            GenerateExpr(w, cg, idx, idxVal);
+            LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
+            EmitGEP(w, cg, pointeeType, addrText, idxVal.llvmType, idxVal.text, addrText);
+            addrType := arr.elementType;
+            idx := idx.next
+          END
+      ELSE
+        RETURN FALSE (* DereferenceSelector/GuardSelector: pointer-only *)
+      END;
+      sel := sel.next
+    END;
+    RETURN TRUE
+  END GenerateDesignatorAddress;
+
   PROCEDURE GenerateDesignatorValue(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                                     VAR result: Value);
-    VAR obj: SymbolTable.Object;
+    VAR obj: SymbolTable.Object; addrText: ValueText; addrType: Types.Type;
   BEGIN
-    IF (d.qualifier[0] # 0X) OR (d.selectors # NIL) THEN
-      Unsupported(w, cg, "qualified/selector designators (PLAN.md Phase 8 step 8+)", Types.Undefined, result);
+    IF d.qualifier[0] # 0X THEN
+      Unsupported(w, cg, "qualified designators (PLAN.md Phase 8 step 12+)", Types.Undefined, result);
+      RETURN
+    END;
+    IF d.selectors # NIL THEN
+      IF GenerateDesignatorAddress(w, cg, d, addrText, addrType) THEN
+        LoadAtAddress(w, cg, addrText, addrType, result)
+      ELSE
+        Unsupported(w, cg, "selector needing POINTER/dispatch (Phase 9)", Types.Undefined, result)
+      END;
       RETURN
     END;
     obj := SymbolTable.Find(cg.scope, d.name);
@@ -903,11 +1046,19 @@ MODULE LLVMCodeGenerator;
   END GenerateExpr;
 
   PROCEDURE GenerateAssignStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.AssignStatementNode);
-    VAR obj: SymbolTable.Object; v: Value;
+    VAR obj: SymbolTable.Object; v: Value; addrText: ValueText; addrType: Types.Type;
   BEGIN
-    IF (s.target.qualifier[0] # 0X) OR (s.target.selectors # NIL) THEN
-      WriteStr(w, "  ; unsupported: qualified/selector assignment target (PLAN.md Phase 8 step 8+)");
-      WriteLn(w);
+    IF s.target.qualifier[0] # 0X THEN
+      WriteStr(w, "  ; unsupported: qualified assignment target (PLAN.md Phase 8 step 12+)"); WriteLn(w);
+      RETURN
+    END;
+    IF s.target.selectors # NIL THEN
+      IF GenerateDesignatorAddress(w, cg, s.target, addrText, addrType) THEN
+        GenerateExpr(w, cg, s.value, v);
+        StoreAtAddress(w, cg, addrText, addrType, v)
+      ELSE
+        WriteStr(w, "  ; unsupported: selector needing POINTER/dispatch (Phase 9)"); WriteLn(w)
+      END;
       RETURN
     END;
     obj := SymbolTable.Find(cg.scope, s.target.name);
