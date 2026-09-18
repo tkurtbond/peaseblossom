@@ -167,6 +167,23 @@ MODULE LLVMCodeGenerator;
     hostDataLayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
     textLength = 63;
 
+    (* PLAN.md Phase 8 step 9's two runtime traps: fixed, backend-
+       synthesized diagnostic strings (no SyntaxTree.LiteralExprNode to
+       hang a StringConstName position-derived global name off, unlike
+       every other string constant this module emits - see
+       EmitRuntimeStringGlobal's own header comment). Written to fd 2
+       (stderr), keeping a fixture's own stdout output (SysWrite-style
+       FFI calls) cleanly separable from a trap firing. Exit codes are
+       this backend's own convention, not a voc one - no corresponding
+       voc runtime source was found on this machine to match against
+       (see PLAN.md step 9's own retrospective). *)
+    indexRangeTrapGlobal = "@.trap.indexrange";
+    indexRangeTrapMsg = "index out of range";
+    indexRangeExitCode = 2;
+    noCaseLabelTrapGlobal = "@.trap.nocaselabel";
+    noCaseLabelTrapMsg = "no matching CASE label";
+    noCaseLabelExitCode = 3;
+
   TYPE
     ValueText = ARRAY textLength + 1 OF CHAR;
 
@@ -274,6 +291,14 @@ MODULE LLVMCodeGenerator;
     WHILE suffix[j] # 0X DO s[i] := suffix[j]; INC(i); INC(j) END;
     s[i] := 0X
   END Strcat;
+
+  PROCEDURE StrLen(s: ARRAY OF CHAR): INTEGER;
+    VAR n: INTEGER;
+  BEGIN
+    n := 0;
+    WHILE s[n] # 0X DO INC(n) END;
+    RETURN n
+  END StrLen;
 
   (* SET's host (voc-compiled) representation only needs to cover
      0..maxSetElement (31 under -O2, 63 under -OC - ConstantEvaluator.Mod's
@@ -403,6 +428,55 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, ", ptr "); WriteStr(w, basePtr); WriteStr(w, ", i32 0, "); WriteStr(w, idxType);
     WriteStr(w, " "); WriteStr(w, idxText); WriteLn(w)
   END EmitGEP;
+
+  (* Prints msgText to stderr (fd 2) and terminates with exitCode - the
+     shared abort sequence both of PLAN.md Phase 8 step 9's traps use.
+     "unreachable" after the exit() call keeps every caller's own
+     "always leave an open block" invariant intact without pretending
+     control can fall through: LLVM's "unreachable" is itself a real
+     terminator, so the caller's own EmitLabel for the next (dead) block
+     still lands somewhere syntactically valid, exactly like RETURN/
+     EXIT's own dead-block-after-terminator pattern. Declared here,
+     ahead of GenerateDesignatorAddress/GenerateCaseStatement below
+     (both call it, directly or via EmitIndexRangeCheck) - this
+     compiler enforces top-down declaration order with no forward
+     reference except via an explicit "PROCEDURE ^" (see
+     CollectStringConstants/CollectStringConstantsSeq's own forward
+     declaration further down), so a plain call target must already be
+     declared above its caller. *)
+  PROCEDURE EmitTrap(VAR w: Files.Rider; VAR cg: Codegen; msgGlobal, msgText: ARRAY OF CHAR; exitCode: INTEGER);
+    VAR lenText, codeText: ValueText;
+  BEGIN
+    lenText[0] := 0X; AppendLongInt(lenText, StrLen(msgText));
+    codeText[0] := 0X; AppendLongInt(codeText, exitCode);
+    WriteStr(w, "  call void @write(i32 2, ptr "); WriteStr(w, msgGlobal); WriteStr(w, ", i64 ");
+    WriteStr(w, lenText); WriteStr(w, ")"); WriteLn(w);
+    WriteStr(w, "  call void @exit(i32 "); WriteStr(w, codeText); WriteStr(w, ")"); WriteLn(w);
+    WriteStr(w, "  unreachable"); WriteLn(w)
+  END EmitTrap;
+
+  (* idx >= 0 AND idx < length, branching to the trap on failure -
+     GenerateDesignatorAddress's own IndexSelector branch calls this
+     immediately before each EmitGEP it emits, one check per selector
+     step (matching EmitGEP's own "one GEP per selector step" design).
+     Reuses idx's own already-computed llvmType/text unchanged for both
+     comparisons, the same "no widening needed" reasoning EmitGEP's own
+     header comment already gives for using an array index's type as-is;
+     "length" is always arr.length, a compile-time-known LONGINT already
+     guaranteed non-negative (Types.ArrayType's own header comment). *)
+  PROCEDURE EmitIndexRangeCheck(VAR w: Files.Rider; VAR cg: Codegen; idx: Value; length: LONGINT);
+    VAR lenText, geOk, ltOk, inBounds, okLabel, trapLabel: ValueText;
+  BEGIN
+    lenText[0] := 0X; AppendLongInt(lenText, length);
+    EmitBinOp(w, cg, "icmp sge", idx.llvmType, idx.text, "0", geOk);
+    EmitBinOp(w, cg, "icmp slt", idx.llvmType, idx.text, lenText, ltOk);
+    EmitBinOp(w, cg, "and", "i1", geOk, ltOk, inBounds);
+    NewLabel(cg, okLabel); NewLabel(cg, trapLabel);
+    EmitCondBr(w, inBounds, okLabel, trapLabel);
+    EmitLabel(w, trapLabel);
+    EmitTrap(w, cg, indexRangeTrapGlobal, indexRangeTrapMsg, indexRangeExitCode);
+    EmitLabel(w, okLabel)
+  END EmitIndexRangeCheck;
 
   (* Widens v up to targetType's own LLVM width via sext, or returns v
      unchanged if it's already there - only ever called with an
@@ -755,6 +829,7 @@ MODULE LLVMCodeGenerator;
             arr := addrType(Types.ArrayType);
             IF arr.isOpen THEN RETURN FALSE END;
             GenerateExpr(w, cg, idx, idxVal);
+            EmitIndexRangeCheck(w, cg, idxVal, arr.length);
             LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
             EmitGEP(w, cg, pointeeType, addrText, idxVal.llvmType, idxVal.text, addrText);
             addrType := arr.elementType;
@@ -887,6 +962,30 @@ MODULE LLVMCodeGenerator;
     Files.Write(w, quoteChar);
     WriteLn(w)
   END EmitStringConstantGlobal;
+
+  (* Mirrors EmitStringConstantGlobal above exactly, for a message with
+     no SyntaxTree.LiteralExprNode to hang a StringConstName position-
+     derived global name off (step 9's own two trap messages are
+     synthesized directly by the backend, not parsed from any user
+     source) - name is given directly instead, and len is recomputed via
+     StrLen rather than trusting a caller-supplied count, the same
+     "single source of truth" reasoning EmitTrap below relies on for its
+     own write() byte count. *)
+  PROCEDURE EmitRuntimeStringGlobal(VAR w: Files.Rider; name, text: ARRAY OF CHAR);
+    CONST backslash = 5CX; quoteChar = 22X;
+    VAR lenText: ValueText; len, i: INTEGER;
+  BEGIN
+    len := StrLen(text);
+    lenText[0] := 0X; AppendLongInt(lenText, len + 1);
+    WriteStr(w, name); WriteStr(w, " = private unnamed_addr constant [");
+    WriteStr(w, lenText); WriteStr(w, " x i8] c");
+    Files.Write(w, quoteChar);
+    i := 0;
+    WHILE i < len DO EmitEscapedByte(w, text[i]); INC(i) END;
+    Files.Write(w, backslash); Files.Write(w, "0"); Files.Write(w, "0");
+    Files.Write(w, quoteChar);
+    WriteLn(w)
+  END EmitRuntimeStringGlobal;
 
   (* The one ARRAY OF CHAR value-argument shape this step lowers: a
      literal string constant, referencing the global
@@ -1238,8 +1337,21 @@ MODULE LLVMCodeGenerator;
       EmitLabel(w, elseLabel);
       c := c.next
     END;
-    GenerateStatementSeq(w, cg, s.elseBody);
-    EmitBr(w, endLabel);
+    (* s.hasElse, not "s.elseBody # NIL", decides trap-vs-fallthrough:
+       an explicit-but-empty "ELSE END" and "no ELSE clause at all" both
+       parse to s.elseBody = NIL (ParseStatementSeq returns NIL for zero
+       statements either way), but they are not the same statement -
+       only the latter should trap, matching voc's own OPV.Mod:717
+       CaseStat, which gates its unconditional "__CASECHK" on whether an
+       ELSE branch is present at all, not on whether its body is empty.
+       See SyntaxTree.CaseStatementNodeDesc.hasElse's own header
+       comment. *)
+    IF s.hasElse THEN
+      GenerateStatementSeq(w, cg, s.elseBody);
+      EmitBr(w, endLabel)
+    ELSE
+      EmitTrap(w, cg, noCaseLabelTrapGlobal, noCaseLabelTrapMsg, noCaseLabelExitCode)
+    END;
     EmitLabel(w, endLabel)
   END GenerateCaseStatement;
 
@@ -1494,6 +1606,56 @@ MODULE LLVMCodeGenerator;
     END
   END EmitExternalDeclares;
 
+  (* TRUE iff the module's own FFI declarations already declare an
+     external procedure mapping to the C symbol cName (e.g. "write") -
+     checked the same way EmitExternalDeclares itself resolves each
+     pd.name.name to its Object, then compares obj.externalName (a plain
+     ARRAY OF CHAR "=" comparison, the same pattern LLVMTypes.Mod's own
+     arch-name matching already uses). *)
+  PROCEDURE HasExternalNamed(VAR cg: Codegen; module: SyntaxTree.ModuleNode; cName: ARRAY OF CHAR): BOOLEAN;
+    VAR pd: SyntaxTree.ProcDeclNode; obj: SymbolTable.Object;
+  BEGIN
+    IF module.declarations = NIL THEN RETURN FALSE END;
+    pd := module.declarations.procDecls;
+    WHILE pd # NIL DO
+      IF pd.isExternal THEN
+        obj := SymbolTable.FindLocal(cg.scope, pd.name.name);
+        IF obj.externalName = cName THEN RETURN TRUE END
+      END;
+      pd := pd.next
+    END;
+    RETURN FALSE
+  END HasExternalNamed;
+
+  (* PLAN.md Phase 8 step 9's own runtime-trap support: declares
+     write(2)/exit(2) (fixed x86_64 System V shapes, the same known,
+     documented ABI-correctness caveat step 6's own SysWrite FFI
+     fixtures already accept) unless the module's own FFI declarations
+     already declare one of those C symbols - several existing fixtures
+     (llvm-hello-world, llvm-control-flow, llvm-arrays-records) already
+     declare `PROCEDURE ["C", "write"] ...`, and LLVM/clang rejects two
+     "declare" lines for the same symbol outright, even with identical
+     signatures ("invalid redefinition of function", confirmed
+     empirically during this step's own development) - so this can never
+     unconditionally emit its own. EmitTrap below always calls write/
+     exit with this fixed i32/ptr/i64 (write) and i32 (exit) shape
+     regardless of which declaration is actually in scope; this is a
+     real, narrow limitation (a fixture that declared "write"/"exit"
+     with an incompatible signature of its own would produce a type-
+     mismatched call), not exercised by any fixture this project has
+     written. *)
+  PROCEDURE EmitRuntimeSupport(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
+  BEGIN
+    IF ~HasExternalNamed(cg, module, "write") THEN
+      WriteStr(w, "declare void @write(i32, ptr, i64)"); WriteLn(w)
+    END;
+    IF ~HasExternalNamed(cg, module, "exit") THEN
+      WriteStr(w, "declare void @exit(i32)"); WriteLn(w)
+    END;
+    EmitRuntimeStringGlobal(w, indexRangeTrapGlobal, indexRangeTrapMsg);
+    EmitRuntimeStringGlobal(w, noCaseLabelTrapGlobal, noCaseLabelTrapMsg)
+  END EmitRuntimeSupport;
+
   (* A pre-pass, run once before any function body is emitted: every
      string-literal leaf reachable from the module's own statement
      sequence gets its own global constant (EmitStringConstantGlobal)
@@ -1619,6 +1781,7 @@ MODULE LLVMCodeGenerator;
     WriteLn(w);
     EmitGlobals(w, cg, module);
     EmitExternalDeclares(w, cg, module);
+    EmitRuntimeSupport(w, cg, module);
     CollectStringConstantsSeq(w, cg, module.statements);
     WriteLn(w);
     WriteStr(w, "define void @"); WriteStr(w, module.name); WriteStr(w, "_init() {"); WriteLn(w);

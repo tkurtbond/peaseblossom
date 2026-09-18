@@ -244,7 +244,18 @@ MODULE SyntaxTree;
     CaseStatementNodeDesc* = RECORD (StatementNodeDesc)
       selector*: ExprNode;
       cases*: CaseNode;
-      elseBody*: StatementNode
+      elseBody*: StatementNode;
+      (* elseBody alone can't distinguish "no ELSE clause at all" from an
+         explicit-but-empty "ELSE END" - Oberon-2's grammar allows a
+         StatementSequence to parse to NIL either way (Parser.ParseState-
+         mentSeq returns NIL for zero statements). The two are NOT
+         semantically the same: the report's own CASE statement (9.5)
+         traps at run time only when no label matches *and there is no
+         ELSE clause*; an explicit empty ELSE means "do nothing",
+         matching voc's own OPV.Mod:717 CaseStat, which gates its
+         unconditional "__CASECHK" trap on whether an ELSE branch is
+         present at all, not on whether its body has any statements. *)
+      hasElse*: BOOLEAN
     END;
 
     CaseNodeDesc* = RECORD (NodeDesc)

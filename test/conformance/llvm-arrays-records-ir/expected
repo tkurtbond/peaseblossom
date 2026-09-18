@@ -12,173 +12,330 @@ target triple = "x86_64-unknown-linux-gnu"
 @arrrec.sum = global i16 zeroinitializer
 @arrrec.i = global i16 zeroinitializer
 @arrrec.j = global i16 zeroinitializer
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
 
 define void @arrrec_init() {
 entry:
-  %t1 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 0
-  %t2 = sext i8 10 to i16
-  store i16 %t2, ptr %t1
-  %t3 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 1
-  %t4 = sext i8 20 to i16
-  store i16 %t4, ptr %t3
-  %t5 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 2
-  %t6 = sext i8 30 to i16
-  store i16 %t6, ptr %t5
-  %t7 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 0
-  %t8 = load i16, ptr %t7
-  %t9 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 1
-  %t10 = load i16, ptr %t9
-  %t11 = add i16 %t8, %t10
-  %t12 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 2
-  %t13 = load i16, ptr %t12
-  %t14 = add i16 %t11, %t13
-  store i16 %t14, ptr @arrrec.sum
-  %t15 = load [3 x i16], ptr @arrrec.v
-  store [3 x i16] %t15, ptr @arrrec.v2
-  %t16 = getelementptr [3 x i16], ptr @arrrec.v2, i32 0, i8 1
-  %t17 = sext i8 99 to i16
-  store i16 %t17, ptr %t16
-  %t18 = load i16, ptr @arrrec.sum
-  %t19 = getelementptr [3 x i16], ptr @arrrec.v2, i32 0, i8 1
-  %t20 = load i16, ptr %t19
-  %t21 = add i16 %t18, %t20
-  %t22 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 1
-  %t23 = load i16, ptr %t22
-  %t24 = add i16 %t21, %t23
-  store i16 %t24, ptr @arrrec.sum
-  %t25 = sext i8 0 to i16
-  store i16 %t25, ptr @arrrec.i
-  %t26 = sext i8 1 to i16
-  br label %L1
-L1:
-  %t27 = load i16, ptr @arrrec.i
-  %t28 = icmp sle i16 %t27, %t26
-  br i1 %t28, label %L2, label %L3
+  %t1 = icmp sge i8 0, 0
+  %t2 = icmp slt i8 0, 3
+  %t3 = and i1 %t1, %t2
+  br i1 %t3, label %L1, label %L2
 L2:
-  %t29 = sext i8 0 to i16
-  store i16 %t29, ptr @arrrec.j
-  %t30 = sext i8 2 to i16
-  br label %L4
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L1:
+  %t4 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 0
+  %t5 = sext i8 10 to i16
+  store i16 %t5, ptr %t4
+  %t6 = icmp sge i8 1, 0
+  %t7 = icmp slt i8 1, 3
+  %t8 = and i1 %t6, %t7
+  br i1 %t8, label %L3, label %L4
 L4:
-  %t31 = load i16, ptr @arrrec.j
-  %t32 = icmp sle i16 %t31, %t30
-  br i1 %t32, label %L5, label %L6
-L5:
-  %t33 = load i16, ptr @arrrec.i
-  %t34 = getelementptr [2 x [3 x i16]], ptr @arrrec.g, i32 0, i16 %t33
-  %t35 = load i16, ptr @arrrec.j
-  %t36 = getelementptr [3 x i16], ptr %t34, i32 0, i16 %t35
-  %t37 = load i16, ptr @arrrec.i
-  %t38 = sext i8 10 to i16
-  %t39 = mul i16 %t37, %t38
-  %t40 = load i16, ptr @arrrec.j
-  %t41 = add i16 %t39, %t40
-  store i16 %t41, ptr %t36
-  %t42 = load i16, ptr @arrrec.j
-  %t43 = add i16 %t42, 1
-  store i16 %t43, ptr @arrrec.j
-  br label %L4
-L6:
-  %t44 = load i16, ptr @arrrec.i
-  %t45 = add i16 %t44, 1
-  store i16 %t45, ptr @arrrec.i
-  br label %L1
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
 L3:
-  %t46 = load i16, ptr @arrrec.sum
-  %t47 = getelementptr [2 x [3 x i16]], ptr @arrrec.g, i32 0, i8 1
-  %t48 = getelementptr [3 x i16], ptr %t47, i32 0, i8 2
-  %t49 = load i16, ptr %t48
-  %t50 = add i16 %t46, %t49
-  store i16 %t50, ptr @arrrec.sum
-  %t51 = getelementptr { i16, i16 }, ptr @arrrec.p, i32 0, i32 0
-  %t52 = sext i8 5 to i16
-  store i16 %t52, ptr %t51
-  %t53 = getelementptr { i16, i16 }, ptr @arrrec.p, i32 0, i32 1
-  %t54 = sext i8 7 to i16
-  store i16 %t54, ptr %t53
-  %t55 = load { i16, i16 }, ptr @arrrec.p
-  store { i16, i16 } %t55, ptr @arrrec.p2
-  %t56 = getelementptr { i16, i16 }, ptr @arrrec.p2, i32 0, i32 0
-  %t57 = sext i8 100 to i16
-  store i16 %t57, ptr %t56
-  %t58 = load i16, ptr @arrrec.sum
-  %t59 = getelementptr { i16, i16 }, ptr @arrrec.p, i32 0, i32 0
-  %t60 = load i16, ptr %t59
-  %t61 = add i16 %t58, %t60
-  %t62 = getelementptr { i16, i16 }, ptr @arrrec.p2, i32 0, i32 0
-  %t63 = load i16, ptr %t62
-  %t64 = add i16 %t61, %t63
-  store i16 %t64, ptr @arrrec.sum
-  %t65 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
-  %t66 = getelementptr { i16, i16 }, ptr %t65, i32 0, i32 0
-  %t67 = sext i8 1 to i16
-  store i16 %t67, ptr %t66
-  %t68 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
-  %t69 = getelementptr { i16, i16 }, ptr %t68, i32 0, i32 1
-  %t70 = sext i8 2 to i16
-  store i16 %t70, ptr %t69
-  %t71 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
-  %t72 = getelementptr { i16, i16 }, ptr %t71, i32 0, i32 0
-  %t73 = sext i8 3 to i16
-  store i16 %t73, ptr %t72
-  %t74 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
-  %t75 = getelementptr { i16, i16 }, ptr %t74, i32 0, i32 1
-  %t76 = sext i8 4 to i16
-  store i16 %t76, ptr %t75
-  %t77 = load i16, ptr @arrrec.sum
-  %t78 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
-  %t79 = getelementptr { i16, i16 }, ptr %t78, i32 0, i32 0
-  %t80 = load i16, ptr %t79
-  %t81 = add i16 %t77, %t80
-  %t82 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
-  %t83 = getelementptr { i16, i16 }, ptr %t82, i32 0, i32 1
-  %t84 = load i16, ptr %t83
-  %t85 = add i16 %t81, %t84
-  %t86 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
-  %t87 = getelementptr { i16, i16 }, ptr %t86, i32 0, i32 0
-  %t88 = load i16, ptr %t87
-  %t89 = add i16 %t85, %t88
-  %t90 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
-  %t91 = getelementptr { i16, i16 }, ptr %t90, i32 0, i32 1
-  %t92 = load i16, ptr %t91
-  %t93 = add i16 %t89, %t92
-  store i16 %t93, ptr @arrrec.sum
-  %t94 = sext i8 0 to i16
-  store i16 %t94, ptr @arrrec.i
-  %t95 = sext i8 2 to i16
-  br label %L7
-L7:
-  %t96 = load i16, ptr @arrrec.i
-  %t97 = icmp sle i16 %t96, %t95
-  br i1 %t97, label %L8, label %L9
+  %t9 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 1
+  %t10 = sext i8 20 to i16
+  store i16 %t10, ptr %t9
+  %t11 = icmp sge i8 2, 0
+  %t12 = icmp slt i8 2, 3
+  %t13 = and i1 %t11, %t12
+  br i1 %t13, label %L5, label %L6
+L6:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L5:
+  %t14 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 2
+  %t15 = sext i8 30 to i16
+  store i16 %t15, ptr %t14
+  %t16 = icmp sge i8 0, 0
+  %t17 = icmp slt i8 0, 3
+  %t18 = and i1 %t16, %t17
+  br i1 %t18, label %L7, label %L8
 L8:
-  %t98 = load i16, ptr @arrrec.i
-  %t99 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i16 %t98
-  %t100 = getelementptr { i16, i16 }, ptr %t99, i32 0, i32 0
-  %t101 = load i16, ptr @arrrec.i
-  store i16 %t101, ptr %t100
-  %t102 = load i16, ptr @arrrec.i
-  %t103 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i16 %t102
-  %t104 = getelementptr { i16, i16 }, ptr %t103, i32 0, i32 1
-  %t105 = load i16, ptr @arrrec.i
-  %t106 = sext i8 2 to i16
-  %t107 = mul i16 %t105, %t106
-  store i16 %t107, ptr %t104
-  %t108 = load i16, ptr @arrrec.i
-  %t109 = add i16 %t108, 1
-  store i16 %t109, ptr @arrrec.i
-  br label %L7
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L7:
+  %t19 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 0
+  %t20 = load i16, ptr %t19
+  %t21 = icmp sge i8 1, 0
+  %t22 = icmp slt i8 1, 3
+  %t23 = and i1 %t21, %t22
+  br i1 %t23, label %L9, label %L10
+L10:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
 L9:
-  %t110 = load i16, ptr @arrrec.sum
-  %t111 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i8 2
-  %t112 = getelementptr { i16, i16 }, ptr %t111, i32 0, i32 0
-  %t113 = load i16, ptr %t112
-  %t114 = add i16 %t110, %t113
-  %t115 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i8 2
-  %t116 = getelementptr { i16, i16 }, ptr %t115, i32 0, i32 1
-  %t117 = load i16, ptr %t116
-  %t118 = add i16 %t114, %t117
-  store i16 %t118, ptr @arrrec.sum
+  %t24 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 1
+  %t25 = load i16, ptr %t24
+  %t26 = add i16 %t20, %t25
+  %t27 = icmp sge i8 2, 0
+  %t28 = icmp slt i8 2, 3
+  %t29 = and i1 %t27, %t28
+  br i1 %t29, label %L11, label %L12
+L12:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L11:
+  %t30 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 2
+  %t31 = load i16, ptr %t30
+  %t32 = add i16 %t26, %t31
+  store i16 %t32, ptr @arrrec.sum
+  %t33 = load [3 x i16], ptr @arrrec.v
+  store [3 x i16] %t33, ptr @arrrec.v2
+  %t34 = icmp sge i8 1, 0
+  %t35 = icmp slt i8 1, 3
+  %t36 = and i1 %t34, %t35
+  br i1 %t36, label %L13, label %L14
+L14:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L13:
+  %t37 = getelementptr [3 x i16], ptr @arrrec.v2, i32 0, i8 1
+  %t38 = sext i8 99 to i16
+  store i16 %t38, ptr %t37
+  %t39 = load i16, ptr @arrrec.sum
+  %t40 = icmp sge i8 1, 0
+  %t41 = icmp slt i8 1, 3
+  %t42 = and i1 %t40, %t41
+  br i1 %t42, label %L15, label %L16
+L16:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L15:
+  %t43 = getelementptr [3 x i16], ptr @arrrec.v2, i32 0, i8 1
+  %t44 = load i16, ptr %t43
+  %t45 = add i16 %t39, %t44
+  %t46 = icmp sge i8 1, 0
+  %t47 = icmp slt i8 1, 3
+  %t48 = and i1 %t46, %t47
+  br i1 %t48, label %L17, label %L18
+L18:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L17:
+  %t49 = getelementptr [3 x i16], ptr @arrrec.v, i32 0, i8 1
+  %t50 = load i16, ptr %t49
+  %t51 = add i16 %t45, %t50
+  store i16 %t51, ptr @arrrec.sum
+  %t52 = sext i8 0 to i16
+  store i16 %t52, ptr @arrrec.i
+  %t53 = sext i8 1 to i16
+  br label %L19
+L19:
+  %t54 = load i16, ptr @arrrec.i
+  %t55 = icmp sle i16 %t54, %t53
+  br i1 %t55, label %L20, label %L21
+L20:
+  %t56 = sext i8 0 to i16
+  store i16 %t56, ptr @arrrec.j
+  %t57 = sext i8 2 to i16
+  br label %L22
+L22:
+  %t58 = load i16, ptr @arrrec.j
+  %t59 = icmp sle i16 %t58, %t57
+  br i1 %t59, label %L23, label %L24
+L23:
+  %t60 = load i16, ptr @arrrec.i
+  %t61 = icmp sge i16 %t60, 0
+  %t62 = icmp slt i16 %t60, 2
+  %t63 = and i1 %t61, %t62
+  br i1 %t63, label %L25, label %L26
+L26:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L25:
+  %t64 = getelementptr [2 x [3 x i16]], ptr @arrrec.g, i32 0, i16 %t60
+  %t65 = load i16, ptr @arrrec.j
+  %t66 = icmp sge i16 %t65, 0
+  %t67 = icmp slt i16 %t65, 3
+  %t68 = and i1 %t66, %t67
+  br i1 %t68, label %L27, label %L28
+L28:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L27:
+  %t69 = getelementptr [3 x i16], ptr %t64, i32 0, i16 %t65
+  %t70 = load i16, ptr @arrrec.i
+  %t71 = sext i8 10 to i16
+  %t72 = mul i16 %t70, %t71
+  %t73 = load i16, ptr @arrrec.j
+  %t74 = add i16 %t72, %t73
+  store i16 %t74, ptr %t69
+  %t75 = load i16, ptr @arrrec.j
+  %t76 = add i16 %t75, 1
+  store i16 %t76, ptr @arrrec.j
+  br label %L22
+L24:
+  %t77 = load i16, ptr @arrrec.i
+  %t78 = add i16 %t77, 1
+  store i16 %t78, ptr @arrrec.i
+  br label %L19
+L21:
+  %t79 = load i16, ptr @arrrec.sum
+  %t80 = icmp sge i8 1, 0
+  %t81 = icmp slt i8 1, 2
+  %t82 = and i1 %t80, %t81
+  br i1 %t82, label %L29, label %L30
+L30:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L29:
+  %t83 = getelementptr [2 x [3 x i16]], ptr @arrrec.g, i32 0, i8 1
+  %t84 = icmp sge i8 2, 0
+  %t85 = icmp slt i8 2, 3
+  %t86 = and i1 %t84, %t85
+  br i1 %t86, label %L31, label %L32
+L32:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L31:
+  %t87 = getelementptr [3 x i16], ptr %t83, i32 0, i8 2
+  %t88 = load i16, ptr %t87
+  %t89 = add i16 %t79, %t88
+  store i16 %t89, ptr @arrrec.sum
+  %t90 = getelementptr { i16, i16 }, ptr @arrrec.p, i32 0, i32 0
+  %t91 = sext i8 5 to i16
+  store i16 %t91, ptr %t90
+  %t92 = getelementptr { i16, i16 }, ptr @arrrec.p, i32 0, i32 1
+  %t93 = sext i8 7 to i16
+  store i16 %t93, ptr %t92
+  %t94 = load { i16, i16 }, ptr @arrrec.p
+  store { i16, i16 } %t94, ptr @arrrec.p2
+  %t95 = getelementptr { i16, i16 }, ptr @arrrec.p2, i32 0, i32 0
+  %t96 = sext i8 100 to i16
+  store i16 %t96, ptr %t95
+  %t97 = load i16, ptr @arrrec.sum
+  %t98 = getelementptr { i16, i16 }, ptr @arrrec.p, i32 0, i32 0
+  %t99 = load i16, ptr %t98
+  %t100 = add i16 %t97, %t99
+  %t101 = getelementptr { i16, i16 }, ptr @arrrec.p2, i32 0, i32 0
+  %t102 = load i16, ptr %t101
+  %t103 = add i16 %t100, %t102
+  store i16 %t103, ptr @arrrec.sum
+  %t104 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
+  %t105 = getelementptr { i16, i16 }, ptr %t104, i32 0, i32 0
+  %t106 = sext i8 1 to i16
+  store i16 %t106, ptr %t105
+  %t107 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
+  %t108 = getelementptr { i16, i16 }, ptr %t107, i32 0, i32 1
+  %t109 = sext i8 2 to i16
+  store i16 %t109, ptr %t108
+  %t110 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
+  %t111 = getelementptr { i16, i16 }, ptr %t110, i32 0, i32 0
+  %t112 = sext i8 3 to i16
+  store i16 %t112, ptr %t111
+  %t113 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
+  %t114 = getelementptr { i16, i16 }, ptr %t113, i32 0, i32 1
+  %t115 = sext i8 4 to i16
+  store i16 %t115, ptr %t114
+  %t116 = load i16, ptr @arrrec.sum
+  %t117 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
+  %t118 = getelementptr { i16, i16 }, ptr %t117, i32 0, i32 0
+  %t119 = load i16, ptr %t118
+  %t120 = add i16 %t116, %t119
+  %t121 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
+  %t122 = getelementptr { i16, i16 }, ptr %t121, i32 0, i32 1
+  %t123 = load i16, ptr %t122
+  %t124 = add i16 %t120, %t123
+  %t125 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
+  %t126 = getelementptr { i16, i16 }, ptr %t125, i32 0, i32 0
+  %t127 = load i16, ptr %t126
+  %t128 = add i16 %t124, %t127
+  %t129 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
+  %t130 = getelementptr { i16, i16 }, ptr %t129, i32 0, i32 1
+  %t131 = load i16, ptr %t130
+  %t132 = add i16 %t128, %t131
+  store i16 %t132, ptr @arrrec.sum
+  %t133 = sext i8 0 to i16
+  store i16 %t133, ptr @arrrec.i
+  %t134 = sext i8 2 to i16
+  br label %L33
+L33:
+  %t135 = load i16, ptr @arrrec.i
+  %t136 = icmp sle i16 %t135, %t134
+  br i1 %t136, label %L34, label %L35
+L34:
+  %t137 = load i16, ptr @arrrec.i
+  %t138 = icmp sge i16 %t137, 0
+  %t139 = icmp slt i16 %t137, 3
+  %t140 = and i1 %t138, %t139
+  br i1 %t140, label %L36, label %L37
+L37:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L36:
+  %t141 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i16 %t137
+  %t142 = getelementptr { i16, i16 }, ptr %t141, i32 0, i32 0
+  %t143 = load i16, ptr @arrrec.i
+  store i16 %t143, ptr %t142
+  %t144 = load i16, ptr @arrrec.i
+  %t145 = icmp sge i16 %t144, 0
+  %t146 = icmp slt i16 %t144, 3
+  %t147 = and i1 %t145, %t146
+  br i1 %t147, label %L38, label %L39
+L39:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L38:
+  %t148 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i16 %t144
+  %t149 = getelementptr { i16, i16 }, ptr %t148, i32 0, i32 1
+  %t150 = load i16, ptr @arrrec.i
+  %t151 = sext i8 2 to i16
+  %t152 = mul i16 %t150, %t151
+  store i16 %t152, ptr %t149
+  %t153 = load i16, ptr @arrrec.i
+  %t154 = add i16 %t153, 1
+  store i16 %t154, ptr @arrrec.i
+  br label %L33
+L35:
+  %t155 = load i16, ptr @arrrec.sum
+  %t156 = icmp sge i8 2, 0
+  %t157 = icmp slt i8 2, 3
+  %t158 = and i1 %t156, %t157
+  br i1 %t158, label %L40, label %L41
+L41:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L40:
+  %t159 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i8 2
+  %t160 = getelementptr { i16, i16 }, ptr %t159, i32 0, i32 0
+  %t161 = load i16, ptr %t160
+  %t162 = add i16 %t155, %t161
+  %t163 = icmp sge i8 2, 0
+  %t164 = icmp slt i8 2, 3
+  %t165 = and i1 %t163, %t164
+  br i1 %t165, label %L42, label %L43
+L43:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @exit(i32 2)
+  unreachable
+L42:
+  %t166 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i8 2
+  %t167 = getelementptr { i16, i16 }, ptr %t166, i32 0, i32 1
+  %t168 = load i16, ptr %t167
+  %t169 = add i16 %t162, %t168
+  store i16 %t169, ptr @arrrec.sum
   ret void
 }
 

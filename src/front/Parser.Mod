@@ -587,6 +587,7 @@ MODULE Parser;
       args: SyntaxTree.ExprNode;
       branches, branchTail, branch: SyntaxTree.IfBranchNode;
       elseBody, body: SyntaxTree.StatementNode;
+      hasElse: BOOLEAN;
       cases, caseTail, caseNode: SyntaxTree.CaseNode;
       variable: SyntaxTree.Ident;
       start, stop, step: SyntaxTree.ExprNode;
@@ -642,12 +643,12 @@ MODULE Parser;
         IF caseTail = NIL THEN cases := caseNode ELSE caseTail.next := caseNode END;
         IF caseNode # NIL THEN caseTail := caseNode END
       END;
-      elseBody := NIL;
+      elseBody := NIL; hasElse := FALSE;
       IF p.current.kind = Lexer.elseKeyword THEN
-        Advance(p); elseBody := ParseStatementSeq(p)
+        Advance(p); elseBody := ParseStatementSeq(p); hasElse := TRUE
       END;
       ExpectToken(p, Lexer.endKeyword, "expected 'END'");
-      RETURN SemanticActions.NewCaseStatement(expr, cases, elseBody, line, column)
+      RETURN SemanticActions.NewCaseStatement(expr, cases, elseBody, hasElse, line, column)
     ELSIF p.current.kind = Lexer.whileKeyword THEN
       Advance(p);
       expr := ParseExpr(p);

@@ -25,6 +25,10 @@ target triple = "x86_64-unknown-linux-gnu"
 @arith.sComp = global i32 zeroinitializer
 @arith.negQ = global i16 zeroinitializer
 @arith.negR = global i16 zeroinitializer
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
 
 define void @arith_init() {
 entry:

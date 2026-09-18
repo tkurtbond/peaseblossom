@@ -433,11 +433,12 @@ MODULE SemanticActions;
   END NewIfBranch;
 
   PROCEDURE NewCaseStatement*(selector: SyntaxTree.ExprNode; cases: SyntaxTree.CaseNode;
-                              elseBody: SyntaxTree.StatementNode;
+                              elseBody: SyntaxTree.StatementNode; hasElse: BOOLEAN;
                               line, column: INTEGER): SyntaxTree.CaseStatementNode;
     VAR s: SyntaxTree.CaseStatementNode;
   BEGIN
     NEW(s); s.selector := selector; s.cases := cases; s.elseBody := elseBody;
+    s.hasElse := hasElse;
     s.next := NIL; s.line := line; s.column := column;
     RETURN s
   END NewCaseStatement;

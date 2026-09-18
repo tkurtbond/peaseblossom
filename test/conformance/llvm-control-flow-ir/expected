@@ -12,6 +12,10 @@ target triple = "x86_64-unknown-linux-gnu"
 @ctrl.loopCount = global i16 zeroinitializer
 @ctrl.i = global i16 zeroinitializer
 @ctrl.ch = global i8 zeroinitializer
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
 
 define void @ctrl_init() {
 entry:

@@ -1009,11 +1009,120 @@ struct/array layout plus a cross-check fixture rather than manual packing
    pass (102 prior, two new).
 
 9. **Runtime traps.** Index-range checks and CASE-without-matching-label,
-   using the `Runtime.Mod`/`Console.Mod` abort path from step 6. Match
-   voc's own default-flag posture where there's a direct analogue (`-t`
-   type-guard/`-a` assert on by default, `-r` range-check off by default —
-   see the `voc_toolchain` reference notes); NIL-dereference trapping
-   (`-p`) doesn't apply yet since there are no pointers in scope.
+   using a `write(2)`/`exit(2)` abort path declared directly by the
+   backend itself, the same direct-FFI style step 6's own `SysWrite`
+   fixtures already used (there is no separate `Runtime.Mod`/
+   `Console.Mod` module yet — see step 6's own retrospective, "no
+   `Console.Mod` needed"). Match voc's actual, source-verified flag
+   posture, not `AGENTS.md`'s own paraphrase: voc's `OPM.Mod`/`OPV.Mod`
+   show `-x`/`inxchk` (index-range check) is ON by default and is the
+   flag that actually governs array-index bounds checking
+   (`OPV.Mod:300`); `-r`/`ranchk`, OFF by default, governs a different,
+   narrowing-conversion-style check (`OPV.Mod:246`, plus `CHR()` bounds)
+   that is out of this step's scope. CASE-without-matching-label
+   (`__CASECHK`, `OPV.Mod:717`) has no gating flag at all — voc emits it
+   unconditionally whenever a CASE has no ELSE branch. NIL-dereference
+   trapping (`-p`) doesn't apply yet since there are no pointers in
+   scope.
+
+   **Implemented 2026-09-18.** Two traps, both lowering to a shared
+   `EmitTrap` abort sequence (`LLVMCodeGenerator.Mod`): print a fixed
+   diagnostic string to stderr (fd 2, keeping trap output cleanly
+   separable from a fixture's own stdout markers), `exit()` with a
+   dedicated per-trap code (2 for index-range, 3 for CASE — this
+   backend's own convention; no voc runtime source was available on
+   this machine to match against), then `unreachable` — a real LLVM
+   terminator, so the caller's own next `EmitLabel` still lands
+   somewhere syntactically valid, preserving the "always leave an open
+   block" invariant step 7 established, the same way RETURN/EXIT's own
+   dead-block-after-terminator already does.
+
+   The index-range check (`EmitIndexRangeCheck`) is one `icmp sge`/
+   `icmp slt`/`and`/`br i1` sequence per `IndexSelector` step, inserted
+   into `GenerateDesignatorAddress` immediately before the `EmitGEP` it
+   already emits there — `arr.length` is always a compile-time-known
+   constant, so no dynamic length lookup is needed. The CASE trap fires
+   from `GenerateCaseStatement` when no label matched and there is no
+   ELSE branch.
+
+   Two real design problems surfaced during this step, neither of which
+   was visible until actually building it:
+
+   - **Duplicate-`declare` collision.** `write`/`exit` need declaring
+     once for the trap's own abort path to call, but several existing
+     fixtures (`llvm-hello-world`, `llvm-control-flow`,
+     `llvm-arrays-records`) already declare an external `PROCEDURE ["C",
+     "write"] SysWrite(...)` mapping to the same C symbol "write" -
+     confirmed empirically that `clang`/LLVM rejects two `declare` lines
+     for the same symbol outright (`error: invalid redefinition of
+     function 'write'`), even with identical signatures. Fixed by
+     `HasExternalNamed`, which scans the module's own FFI declarations
+     first; `EmitRuntimeSupport` only emits its own `declare` for
+     `write`/`exit` when the user's module hasn't already declared one
+     under that same C name. This is a real, narrow, documented
+     limitation, not airtight in general (a fixture that declared
+     `write`/`exit` with an incompatible signature of its own would
+     produce a type-mismatched call - `EmitTrap` always calls with a
+     fixed i32/ptr/i64 shape, it doesn't dynamically re-derive one from
+     whichever declaration is actually in scope), but every fixture this
+     project has written declares a compatible shape already, and this
+     matches the same fixed, x86_64-only ABI caveat step 6's own
+     `SysWrite` fixtures already accept.
+
+   - **`elseBody = NIL` is ambiguous.** `GenerateCaseStatement` needs to
+     distinguish "no ELSE clause at all" (must trap on an unmatched
+     value, matching voc's own unconditional `__CASECHK`) from an
+     explicit-but-empty `ELSE END` (must do nothing - legal Oberon-2, no
+     trap). Both parse to `s.elseBody = NIL`:
+     `Parser.ParseStatementSeq` returns `NIL` for a zero-statement
+     sequence regardless of whether the `ELSE` keyword was present at
+     all. This is a real, previously-latent gap in `SyntaxTree`'s own
+     `CaseStatementNodeDesc` (not something step 9 could route around
+     locally) - fixed by adding a `hasElse: BOOLEAN` field, set by
+     `Parser.Mod`'s own case-statement parsing based on whether it
+     actually consumed the `ELSE` token (not by inspecting the parsed
+     body), threaded through `SemanticActions.NewCaseStatement`.
+     `GenerateCaseStatement` now branches on `s.hasElse`, not
+     `s.elseBody # NIL`. IF doesn't need the same fix: an IF with no
+     ELSE and an IF with an empty ELSE are genuinely the same statement
+     ("do nothing" either way), with no trap semantics to distinguish
+     them.
+
+   Two fixtures, both compile+link+run, each deliberately triggering
+   exactly one trap (a module can only ever observe *one* trap firing
+   per run, since `exit()` ends the process - there's no argv/stdin
+   input mechanism yet to pick a code path at run time, so "both traps
+   in one fixture" isn't possible): `llvm-index-range-trap` indexes an
+   array one past its bound (via a VAR read-back, not a literal, so the
+   out-of-range index survives semantic checking and the trap actually
+   fires at run time) and `llvm-case-trap` runs a non-exhaustive,
+   ELSE-less CASE against a value matching neither label. Neither
+   fixture reuses `testenv.sh`'s own `poc_build_run` helper - both need
+   the built program's exit status and stderr output, which
+   `poc_build_run`'s stdout-only plumbing doesn't capture; each `test.sh`
+   redirects the program's stderr into the same "result" stream as
+   stdout (`2>&1`) and appends `exit=$?`, relying on both `write(2)`
+   targets being unbuffered raw syscalls in a single-threaded program,
+   so their combined byte order is exactly execution order. Each
+   fixture's own `expected` confirms all three things at once: the
+   marker printed just before the trigger appears (the check point was
+   reached), the marker after it does *not* (the trap's own
+   `write`/`exit`/`unreachable` sequence really does stop the program),
+   and the exit status matches the trap's own documented code.
+
+   `llvm-arrays-records-ir`'s own golden `.ll` (already exercising
+   several array-index accesses) needed regenerating to include the new
+   range-check instructions before each GEP - inspected by hand before
+   accepting: every check compares a compile-time-constant index
+   against the correct declared array length. `llvm-straight-line-
+   arithmetic`, `llvm-emit-ir`, and `llvm-control-flow-ir`'s own goldens
+   also needed regenerating, purely for `EmitRuntimeSupport`'s new
+   unconditional `write`/`exit` declares and the two trap-message
+   globals appearing in every module now, the same "unconditional for
+   every module, harmless if unused" stance `EmitExternalDeclares`
+   already established for user-declared externals - none of those
+   three fixtures' own generated code changed. All 106 conformance tests
+   pass (104 prior + 2 new).
 
 10. **Ordinary procedure calls.** User-defined (non-external,
     non-type-bound) `PROCEDURE` declarations: parameter passing (value vs.
