@@ -1521,6 +1521,123 @@ struct/array layout plus a cross-check fixture rather than manual packing
     verified by actually running there, not assumed from POSIX
     compatibility alone.
 
+    **Implemented 2026-09-18.** Two genuinely separate halves, taken in
+    the order the step's own heading lists them.
+
+    **Portability verification found a real, previously-deferred bug.**
+    No BSD host was available locally (no VM/container can run a real
+    BSD kernel on this machine - Docker shares the Linux host kernel).
+    Asked the user directly rather than skipping or assuming; given real
+    SSH access to two machines - `erekose` (OpenBSD 7.9, i386) and
+    `terhali` (NetBSD 11.0, amd64) - covering two of the three OSes this
+    step names, both a 32-bit and a 64-bit target. Compared real
+    `clang -S -emit-llvm` output on an empty C program across Linux
+    x86_64, NetBSD x86_64, and OpenBSD i386: NetBSD's datalayout string
+    is byte-identical to Linux's, but OpenBSD's is genuinely different
+    (explicit `p:32:32` pointer-size spelling, different f64/f80
+    alignment, no `:64` in the natural-widths list) - confirming
+    `hostDataLayout`, the single hardcoded x86_64-Linux string step 2's
+    own stub introduced and explicitly flagged as "not this step's job
+    either," was silently wrong for any 32-bit target. Fixed by
+    replacing it with two constants, `dataLayoutW64`/`dataLayoutW32`,
+    selected in `GenerateProgram*` by `ConstantEvaluator.wordSize` -
+    already set correctly from the same `-target` triple by `Poc.Mod`'s
+    own `SetWordSizeFromTriple` before codegen starts, so no new
+    triple-parsing logic was needed. Deliberately scoped to only the two
+    triples actually verified on real hardware, not a full
+    per-architecture table: `LLVMTypes.WordSizeForTriple*` recognizes
+    other architecture names for word-size purposes only, and nothing in
+    Phase 8 has built or verified codegen for one. `make test` (112,
+    unchanged) confirmed zero regressions - every existing fixture is
+    x86_64, so exercises only the unchanged `dataLayoutW64` path.
+
+    Verified end-to-end, not just by inspecting `.ll` text: all 9
+    existing LLVM runtime fixtures (`llvm-hello-world` through
+    `llvm-multi-module`) were cross-compiled locally with the correct
+    `-target` triple, copied to each real machine, and built+run there
+    with that machine's own native `clang` - `i386-unknown-openbsd7.9`
+    on erekose, `x86_64-unknown-netbsd10.0` on terhali (multi-module
+    needed its own `-emit-interface` pre-step on each host first, same
+    as locally). All 18 runs (9 fixtures × 2 hosts) produced the exact
+    expected stdout and exit code, including the trap/HALT fixtures'
+    exit-code checks. One test-harness mistake of this session's own
+    making was caught and fixed along the way, worth recording since it
+    recurred: an `ssh host 'prog; echo; echo EXIT=$?'`-style invocation
+    captures the intervening bare `echo`'s own (always-zero) exit
+    status, not the program's - the exact same mistake this session had
+    already made once locally testing HALT. Fixed by capturing
+    `ec=$?` as its own statement immediately after the program runs,
+    before any other command. All generated artifacts (`.ll`s,
+    executables, `/tmp/empty.c`) were removed from both remote hosts and
+    locally afterward; this ad hoc scp/ssh sweep was not turned into
+    durable tooling or a script in the repository, since it needs real
+    external hosts to mean anything and can't run as part of `make
+    test`.
+
+    **Fixture promotion found voc genuinely can't cross-check most of
+    Phase 8's own fixtures.** AGENTS.md's own "External procedures"
+    section already states poc's `["C", ...]`-bracket external-procedure
+    syntax is Peaseblossom's own invented extension, not one voc shares;
+    confirmed directly by handing voc a module using it and getting a
+    real parse error (`err 38 identifier expected` at the `[` token).
+    Combined with there being no `rtl/llvm` `Console`/`Out` module yet
+    (poc's LLVM backend has no voc-compatible I/O path at all), every
+    runtime fixture built across steps 6–12 is unrunnable under voc,
+    because every one of them needs that exact FFI mechanism just to
+    print an observable result. "Cross-check against `voc` ... where
+    practical" is therefore not achievable for those fixtures without
+    first building real standard-library I/O (out of Phase 8's own
+    scope, deferred to Phase 9's "full `Out.Mod`/`In.Mod`").
+
+    It *is* achievable for a narrower kind of fixture: one whose own
+    core logic needs no FFI at all, only its final result print does.
+    `semantic-const-decls`'s own CONST section is exactly this shape,
+    but as written it isn't codegen-promotable outright - it uses
+    REAL/LONGREAL arithmetic and SET constructors, both explicitly
+    `Unsupported` in `GenerateConstValue`/`GenerateSetExpr` (PLAN.md
+    Phase 8 step 5 scope), and a named string CONST, which hits the same
+    `Unsupported` path since only *literal* strings passed directly to a
+    call are handled (`GenerateStringArgValue`, step 11). Trimmed to
+    exactly the INTEGER/BOOLEAN/CHAR subset codegen does support -
+    arithmetic including DIV/MOD, a later constant referencing an
+    earlier one, BOOLEAN `&`/`OR`/`~` over TRUE/FALSE, a hex CHAR literal
+    - and promoted as `llvm-const-decls` (compile+link+run+diff-stdout,
+    `SysWrite`/OK-vs-FAIL pattern, matching every earlier Phase 8 runtime
+    fixture). A second, deliberately near-identical module,
+    `test/conformance/crosscheck/crosscheck.mod`, folds the exact same
+    CONST expressions and runs the exact same OK/FAIL check under real
+    voc, printing via `Console.String`/`Console.Ln` instead of the FFI
+    hack (directory named after the module itself, `crosscheck`, rather
+    than something more descriptive, purely so `testenv.sh`'s own
+    generic per-directory-name executable cleanup actually removes it -
+    voc names the executable after the MODULE identifier, which can't
+    contain hyphens, the same reason `test/conformance/hello` is a bare
+    single word). Both independently print "OK" - a real, if narrow,
+    confirmation that poc and voc agree on Oberon-2 CONST-folding
+    semantics (Oberon2.pdf Appendix A/§5) for this subset, not just on
+    either compiler's own idiosyncrasies. `semantic-statements` was
+    surveyed as a second promotion candidate but dropped: every
+    statement form it exercises (IF/ELSIF, CASE over INTEGER and CHAR
+    with range labels, WHILE, REPEAT, FOR with and without BY, LOOP+EXIT)
+    is already covered, construct-for-construct, by the existing
+    `llvm-control-flow` fixture from step 7 - promoting it would have
+    been pure duplication, not new coverage. `semantic-expressions` was
+    also surveyed and dropped for the same REAL/SET-out-of-scope reason
+    as the original `semantic-const-decls`, compounded by its own
+    ARRAY-OF-CHAR relational comparisons (`name1 = name2`, `name1 <
+    name2`), which codegen has never implemented at all (no
+    `memcmp`/`strcmp`-equivalent lowering exists) - trimming it down
+    would have left little not already exercised elsewhere by
+    `llvm-control-flow`'s and `llvm-predeclared`'s own relational/
+    boolean checks.
+
+    114 conformance tests pass (112 prior + `llvm-const-decls` +
+    `crosscheck`), confirmed via `make test` after both fixtures were
+    added and again after `make clean-tests` removed every generated
+    artifact. This is Phase 8's final step; Phase 9 (full pointer/`NEW`/
+    GC, type-bound dispatch, complete `Out.Mod`/`In.Mod`, 32-/64-bit
+    parity across the whole suite) is next.
+
 **Testing summary**: golden-file `.ll` diffs for steps 1–5 (nothing runs
 yet), promoted to compile+link+run+diff from step 6 onward per the
 `BACKEND=llvm` harness mode from step 3.

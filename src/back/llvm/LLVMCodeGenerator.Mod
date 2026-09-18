@@ -155,16 +155,38 @@ MODULE LLVMCodeGenerator;
      territory, once cross-target FFI actually needs verifying), not
      attempted here. *)
 
-  IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions;
+  IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions,
+         MemoryLayout;
 
   CONST
-    (* Confirmed against `clang -S -emit-llvm` on an empty C program,
-       2026-09-18 - see AGENTS.md. Still hardcoded to the host x86_64
-       Linux value regardless of the triple argument, same known,
-       documented limitation step 2's own stub already had - a real
-       datalayout-per-triple table is still unbuilt; not this step's job
-       either. *)
-    hostDataLayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+    (* PLAN.md Phase 8 step 13: two, not one - confirmed against real
+       `clang -S -emit-llvm` on an empty C program on three actual
+       machines (2026-09-18, portability-verification step, not just the
+       original 2026-09-18 Linux-only check AGENTS.md records): x86_64
+       Linux and x86_64 NetBSD emit the byte-identical string (dataLayo-
+       utW64 below covers both, and every other x86_64 target this
+       backend has ever generated for), but i386 OpenBSD emits a
+       genuinely different one (dataLayoutW32) - different pointer-size
+       spelling ("p:32:32" appears explicitly, absent from the 64-bit
+       string), different f64/f80 alignment, and no ":64" natural-width
+       suffix on "n8:16:32". Emitting the 64-bit string unconditionally
+       (this step's own predecessor, hostDataLayout, a known, explicitly
+       documented gap since step 2's own stub) would have been silently
+       wrong for any 32-bit target - not exercised until this step
+       actually ran a fixture on 32-bit OpenBSD hardware, matching this
+       step's own "verified by actually running there, not assumed"
+       mandate exactly. Selected in GenerateProgram* by
+       ConstantEvaluator.wordSize, already set correctly from the same
+       -target triple by Poc.Mod's own SetWordSizeFromTriple before
+       codegen ever starts - no separate word-size-from-triple parsing
+       needed here. A real per-architecture (ARM/RISC-V/etc.) datalayout
+       table remains out of scope - WordSizeForTriple* recognizes those
+       architectures' names for word-size purposes only, and nothing in
+       Phase 8 has ever built or verified codegen for one; this fix is
+       scoped to exactly the two triples this project can actually test
+       against real hardware. *)
+    dataLayoutW64 = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+    dataLayoutW32 = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128";
     textLength = 63;
 
     (* PLAN.md Phase 8 step 9's two runtime traps: fixed, backend-
@@ -2530,7 +2552,11 @@ MODULE LLVMCodeGenerator;
     cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
     cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL;
     cg.declaredExternals := NIL;
-    WriteStr(w, 'target datalayout = "'); WriteStr(w, hostDataLayout); WriteStr(w, '"'); WriteLn(w);
+    WriteStr(w, 'target datalayout = "');
+    IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN WriteStr(w, dataLayoutW32)
+    ELSE WriteStr(w, dataLayoutW64)
+    END;
+    WriteStr(w, '"'); WriteLn(w);
     WriteStr(w, 'target triple = "'); WriteStr(w, triple); WriteStr(w, '"'); WriteLn(w);
     WriteLn(w);
     m := modules;
