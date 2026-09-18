@@ -447,15 +447,21 @@ struct/array layout plus a cross-check fixture rather than manual packing
 
    One real bug found and fixed along the way: `TypeString*`'s `result`
    parameter is `VAR result: ARRAY OF CHAR` — an open-array `VAR`
-   parameter, whose actual length is the caller's own actual argument and
-   unknowable at compile time. Oberon2.pdf's assignment-compatibility
-   rule 6 (a string constant may be assigned via `:=` to an
-   `ARRAY OF CHAR`) only applies to a *fixed-size* array variable, not
-   this shape — every `result := "<literal>"` in the module (originally
-   ~16 of them) had to become `COPY("<literal>", result)` instead. This
-   is the same distinction `Diagnostics.Mod`'s "`fileName := name`" bug
-   (`AGENTS.md`, "Known voc bugs") turned on, just the
-   constant-into-open-array case of it rather than variable-into-variable.
+   parameter. Its length is a genuine run-time value (voc's calling
+   convention passes an open array's actual length to the procedure as a
+   hidden parameter, so it *is* known inside the procedure at run time),
+   but that length isn't part of `result`'s own type — and that's what
+   actually matters: Oberon2.pdf's assignment-compatibility rule 6 lets a
+   string constant be assigned via `:=` only to a *fixed-size*
+   `ARRAY OF CHAR` variable, one whose length is fixed by its own
+   declaration rather than by whatever's passed at a given call. An
+   open-array formal parameter's type is never fixed-size, however well
+   its length is known at run time, so rule 6 still doesn't apply — every
+   `result := "<literal>"` in the module (originally ~16 of them) had to
+   become `COPY("<literal>", result)` instead. `Diagnostics.Mod`'s own
+   `Reset*` hits the mirror-image failure of the same rule (a *variable*,
+   not a constant, on the right-hand side — rule 6 only ever covers a
+   literal string constant — assigned into a fixed-size array field).
    All 98 conformance tests pass (96 plus the two new fixtures above).
 
 5. **Straight-line codegen: the smallest useful slice.** Module-level

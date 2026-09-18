@@ -89,15 +89,23 @@ MODULE LLVMTypes;
      style exactly, for the same reason: BasicTypeDesc.rank alone cannot
      distinguish BOOLEAN/CHAR/SET (all notNumeric). *)
   (* result is always a VAR ARRAY OF CHAR (open array) formal parameter
-     here and throughout this module - its actual length is whatever the
-     caller's own actual argument happens to be, unknowable at compile
-     time, so Oberon2.pdf's assignment-compatible rule 6 (a *fixed-size*
-     ARRAY OF CHAR variable may be assigned a string constant directly)
-     does not apply; COPY (§10.3, a runtime-bounded copy respecting
-     LEN(v)) is the correct predeclared procedure for this, not ":=" -
-     the same distinction Diagnostics.Mod's own "fileName := name" bug
-     (AGENTS.md, "Known voc bugs") turned on, just the constant-vs-
-     variable-source case of it rather than the array-vs-array one. *)
+     here and throughout this module. Its length is a genuine run-time
+     value - voc's own calling convention passes an open array's actual
+     length to the procedure as a hidden parameter alongside the array
+     itself, so it is known inside the procedure at run time - but that
+     length isn't part of result's own *type*, which is what actually
+     matters here: Oberon2.pdf's assignment-compatible rule 6 lets a
+     string constant be assigned directly only to a *fixed-size*
+     ARRAY OF CHAR variable, one whose length is fixed by its own
+     declaration, not by whatever happens to be passed at a given call -
+     an open-array formal parameter's type is never fixed-size, no matter
+     how well its length is known at run time, so rule 6 still doesn't
+     apply; COPY (§10.3, itself a run-time-bounded copy respecting
+     LEN(v)) is the correct predeclared procedure here, not ":=" -
+     Diagnostics.Mod's own Reset* hits the mirror-image failure of the
+     same rule (a *variable*, not a constant, on the right-hand side -
+     rule 6 only ever covers a literal string constant - assigned into a
+     fixed-size array field). *)
   PROCEDURE BasicTypeString(t: Types.BasicType; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
   BEGIN
     IF t = Types.Boolean THEN COPY("i8", result)
