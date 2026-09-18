@@ -759,6 +759,146 @@ struct/array layout plus a cross-check fixture rather than manual packing
 7. **Control flow.** IF/CASE/WHILE/REPEAT/FOR/LOOP+EXIT/RETURN lowered to
    basic blocks and branches.
 
+   **Implemented.** This is the module's first genuinely basic-block-
+   producing step - every prior step's codegen wrote into one unlabeled
+   `entry:` block only. Every new statement generator
+   (`GenerateIfStatement` onward) shares one invariant that makes the
+   whole thing compose with zero backpatching: whenever a generator
+   returns, the writer is positioned inside a fresh, still-open
+   (unterminated) block - the "join"/"end" label it just wrote.
+   `GenerateStatementSeq` itself stays completely ignorant of control
+   flow as a result; it just keeps calling `GenerateStatement` for the
+   next statement in the list, and whatever block that instruction lands
+   in is already the right one, because everything is emitted in strict
+   program order. `GenerateExitStatement`/`GenerateReturnStatement` (hard
+   terminators, no fallthrough of their own) keep the same invariant by
+   opening a fresh - if unreachable - block right after their own
+   terminator, so that dead code textually following a RETURN/EXIT
+   (legal Oberon-2, just pointless) still lands somewhere syntactically
+   valid instead of after an already-terminated block's terminator.
+
+   IF lowers its `IfBranchNode` chain iteratively (elsif falls through to
+   the next branch's own test), not recursively - this project's own
+   front end has no WHILE-ELSIF form at all (`Parser.Mod` only ever
+   parses a single condition/body for WHILE), confirmed against
+   `Oberon2.pdf` itself (`WhileStatement = WHILE Expression DO
+   StatementSequence END` — no ELSIF there either, unlike `IfStatement`,
+   which the report's own grammar does give one), so IF is the only
+   construct here that needed an elsif chain. CASE lowers each case's
+   label list (which may mix single values and ranges, e.g. `1, 3..5,
+   9:`) into a chain of `icmp`/`and`/`or` range tests reusing the exact
+   same iterative "test, then, else" shape as IF, rather than LLVM's own
+   `switch` instruction - `switch` only matches exact values, and a CASE
+   label range (`CaseLabels = ConstExpression [".." ConstExpression]`,
+   confirmed against `Oberon2.pdf` 9.5) needs a real `>=`/`<=` pair, not
+   an enumeration. `Oberon2.pdf` 9.5's own "if the value of the
+   expression does not occur as a label of any case,... the program is
+   aborted" (when there's no ELSE) is PLAN.md Phase 8 step 9's own job
+   ("CASE-without-matching-label") - this step just falls through with
+   no effect in that case, exactly as if it were a final, unconditional,
+   empty ELSE, matching how every other construct here lands ahead of
+   its own eventual step 9 trap.
+
+   FOR is lowered exactly per `Oberon2.pdf` 9.8's own stated equivalence
+   (confirmed by reading the report directly, not assumed): `v := low;
+   temp := high; IF step > 0 THEN WHILE v <= temp DO statements; v := v
+   + step END ELSE WHILE v >= temp DO statements; v := v + step END END`
+   - `stop`/`temp` is evaluated once, before the loop, exactly as the
+   report's own "temp := high" shows (not re-evaluated per iteration);
+   its computed register value is simply reused directly in the loop
+   header on every iteration with no `phi` node or memory spill needed,
+   since it is defined exactly once in the block that dominates every
+   one of its uses (the loop preheader dominates the header, which
+   dominates the body/back-edge) - ordinary SSA reuse across blocks,
+   nothing loop-specific about it. `step`'s sign, needed to choose `<=`
+   vs. `>=`, is resolved once at Oberon-*compile*-time via
+   `ConstantEvaluator.Evaluate` rather than compared at IR run time - the
+   report's own "IF step > 0" is itself already a compile-time fact here,
+   since `CheckForStatement` already guarantees `step` folds to a nonzero
+   integer constant (§9.8) before codegen ever runs. The control variable
+   itself is *not* kept in an SSA register across iterations, unlike
+   `stop` - reloaded/stored through its own global on every iteration
+   instead (via two small factored-out helpers, `LoadVar`/`StoreIntoVar`,
+   now also shared by `GenerateDesignatorValue`/`GenerateAssignStatement`),
+   the same memory-backed model every other mutable module `VAR` already
+   uses in this codegen - no SSA form for ordinary variables anywhere in
+   this backend yet, FOR's own control variable included.
+
+   EXIT branches to `Codegen.loopExitLabel`, a new field holding the
+   *current innermost* LOOP's own exit-block label, saved and restored by
+   `GenerateLoopStatement` around its own body - a LOOP nested inside
+   another's body sets and restores its own, so an EXIT textually inside
+   the inner one always targets the inner one. Confirmed directly against
+   `Oberon2.pdf` 9.9/9.10 that this project's own front-end rule (already
+   in place before this step; `SemanticActions.CheckExitStatement`) is
+   correct, not just an assumption: "An exit statement... specifies
+   termination of the enclosing loop statement" - the report's own prose
+   literally names `LoopStatement` (LOOP), not WHILE/REPEAT/FOR, matching
+   `loopDepth` already being incremented only by `CheckLoopStatement`.
+   RETURN's own scope this step is just `ret void` for a bare RETURN -
+   the only form `CheckReturnStatement` lets reach codegen at all today,
+   since a module body (`procResultType = NIL`) is the only place with
+   statement codegen until step 10 gives a function procedure a real
+   result type to return a value for; the `s.value # NIL` arm is real
+   code, not a stub, but genuinely unreachable until then - kept rather
+   than omitted so this stays a total function instead of one silently
+   relying on today's scope forever.
+
+   Two real bugs were found and fixed this step, neither caught by
+   `make build`/`make test` alone - both surfaced only by actually
+   running this step's own new fixtures, the same "verify by running,
+   not just by compiling" discipline steps 5/6 already established:
+
+   - `Codegen.nextLabel` (the new basic-block label counter) was never
+     initialized in `Generate*` - `cg.nextTemp := 0` was extended in
+     place to `cg.nextTemp := 0; cg.nextLabel := 0`, but before that fix,
+     every generated label number started from whatever garbage integer
+     happened to be on the stack, producing IR that still happened to be
+     *valid* (labels were still unique within a single run) but not
+     *deterministic* across runs - caught by literally regenerating the
+     same fixture's `.ll` twice and diffing, which would have silently
+     broken every golden-file fixture this step adds the moment the
+     compiler's own stack layout ever shifted.
+   - The string-constant pre-pass from step 6 (`CollectStringConstantsStmt`)
+     only ever walked `AssignStatementNode`/`CallStatementNode` - step
+     6's own complete statement-kind set at the time it was written. Once
+     this step added IF/CASE/WHILE/REPEAT/FOR/LOOP, a string-literal FFI
+     argument nested inside any of their bodies (exactly what
+     `llvm-control-flow`'s own fixture does throughout) produced a
+     reference to a global this pre-pass never emitted, while real
+     codegen (which *does* walk every nested body via
+     `GenerateStatementSeq`) still generated a reference to it by name -
+     caught by `clang` itself refusing to link ("use of undefined
+     value"), not by any narrower earlier test. Fixed by extending
+     `CollectStringConstantsStmt` to walk the exact same statement/
+     expression shapes `GenerateStatement`'s own dispatch now does.
+
+   Two new fixtures, matching this step's own two natural verification
+   styles: `llvm-control-flow`, a compile+link+run+diff-stdout fixture
+   (step 6's `SysWrite`-over-`write(2)` FFI, no `Console.Mod` needed)
+   printing a one-letter marker for whichever IF/CASE/WHILE/REPEAT/FOR/
+   LOOP branch or iteration actually ran; and `llvm-control-flow-ir`, a
+   pure `-emit-llvm-ir` golden `.ll` diff (`llvm-straight-line-
+   arithmetic`'s own style) whose computed final values were
+   independently verified during development via the same C-harness
+   linking technique step 5 established - `extern` declarations asm-
+   renamed to each global's real, dotted LLVM name (e.g. `extern int16_t
+   ctrl_ifResult __asm__("ctrl.ifResult");`, since "." is a valid
+   unquoted LLVM identifier character but not a valid C one) - confirming
+   `ifResult=2 caseResult1=20 caseResult2=1 caseResult3=99 whileSum=12
+   repeatSum=10 forSum=30 loopCount=7` by hand, not by inspection of the
+   IR alone. A genuine WITH-statement fixture was attempted and abandoned
+   as currently impossible, not merely unwritten: `Oberon2.pdf` 9.11's
+   own guard rule requires the tested variable to be "a variable
+   parameter of record type or a pointer variable," and Phase 8 has
+   neither VAR parameters (no procedure-with-body codegen until step 10)
+   nor pointers (Phase 9) reachable from a module body yet - confirmed
+   directly (`poc -check` rejects a plain record `VAR` guard with "a type
+   guard requires a pointer designator"), so `GenerateStatement`'s own
+   WITH fallback stays genuinely dead code for now, the same as RETURN's
+   `s.value # NIL` arm, until Phase 9/10 make it reachable. All 102
+   conformance tests pass (100 prior, two new).
+
 8. **Fixed-size arrays and records.** Local/global storage, element/field
    access via `getelementptr`. No open arrays, no dynamic allocation.
 

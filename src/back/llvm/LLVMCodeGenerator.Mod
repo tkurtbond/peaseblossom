@@ -191,9 +191,22 @@ MODULE LLVMCodeGenerator;
        Rider. *)
     Codegen = RECORD
       nextTemp: INTEGER;
+      nextLabel: INTEGER;
       moduleName: SyntaxTree.Ident;
       scope: SymbolTable.Scope;
-      sizeModel: INTEGER
+      sizeModel: INTEGER;
+      (* The current innermost enclosing LOOP statement's exit-block
+         label, for EXIT to branch to (empty when not inside one).
+         WHILE/REPEAT/FOR do *not* set this - Oberon2.pdf's own 9.10
+         defines EXIT as terminating "the enclosing loop statement"
+         specifically, i.e. LoopStatementNode, matching
+         SemanticActions.CheckExitStatement's own loopDepth rule (only
+         CheckLoopStatement increments it). Saved/restored by
+         GenerateLoopStatement around its own body, the same simple
+         "mutate, recurse, restore" pattern a real stack would give,
+         without needing one - LOOP nesting is already a tree via the
+         AST's own recursion. *)
+      loopExitLabel: ValueText
     END;
 
   (* Files.WriteString (confirmed against real voc, see
@@ -285,6 +298,36 @@ MODULE LLVMCodeGenerator;
     AppendLongInt(text, cg.nextTemp)
   END NewTemp;
 
+  (* A separate counter from NewTemp's - "LN" (a basic block label) and
+     "%tN" (an SSA register) never collide textually even sharing one
+     counter, but keeping them distinct avoids a reader ever wondering
+     whether some "L3"/"%t3" pairing means anything (PLAN.md Phase 8
+     step 7: this is this module's first basic-block-producing step -
+     every prior step's codegen was genuinely straight-line, a single
+     unlabeled "entry:" block, so no label generator existed yet). *)
+  PROCEDURE NewLabel(VAR cg: Codegen; VAR text: ARRAY OF CHAR);
+  BEGIN
+    INC(cg.nextLabel);
+    COPY("L", text);
+    AppendLongInt(text, cg.nextLabel)
+  END NewLabel;
+
+  PROCEDURE EmitLabel(VAR w: Files.Rider; label: ARRAY OF CHAR);
+  BEGIN
+    WriteStr(w, label); WriteStr(w, ":"); WriteLn(w)
+  END EmitLabel;
+
+  PROCEDURE EmitBr(VAR w: Files.Rider; label: ARRAY OF CHAR);
+  BEGIN
+    WriteStr(w, "  br label %"); WriteStr(w, label); WriteLn(w)
+  END EmitBr;
+
+  PROCEDURE EmitCondBr(VAR w: Files.Rider; condText, thenLabel, elseLabel: ARRAY OF CHAR);
+  BEGIN
+    WriteStr(w, "  br i1 "); WriteStr(w, condText); WriteStr(w, ", label %"); WriteStr(w, thenLabel);
+    WriteStr(w, ", label %"); WriteStr(w, elseLabel); WriteLn(w)
+  END EmitCondBr;
+
   (* "; unsupported: ..." IR comment plus a well-typed zero placeholder -
      see this module's own header comment. Every codegen procedure below
      that meets a construct outside this step's scope routes here rather
@@ -351,6 +394,31 @@ MODULE LLVMCodeGenerator;
       result.oberonType := targetType
     END
   END ExtendTo;
+
+  (* Factored out of GenerateDesignatorValue/GenerateAssignStatement -
+     PLAN.md Phase 8 step 7's FOR-loop codegen needs to load/store its
+     own control variable at points that aren't a Designator AST node at
+     all (the loop header's own comparison, the per-iteration increment),
+     so this pair now takes a resolved SymbolTable.Object directly. *)
+  PROCEDURE LoadVar(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object; VAR result: Value);
+    VAR temp: ValueText;
+  BEGIN
+    LLVMTypes.TypeString(obj.type, cg.sizeModel, result.llvmType);
+    NewTemp(cg, temp);
+    WriteStr(w, "  "); WriteStr(w, temp); WriteStr(w, " = load "); WriteStr(w, result.llvmType);
+    WriteStr(w, ", ptr @"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, obj.name); WriteLn(w);
+    result.text := temp; result.oberonType := obj.type
+  END LoadVar;
+
+  PROCEDURE StoreIntoVar(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object; v: Value);
+    VAR ev: Value; targetLLVMType: ValueText;
+  BEGIN
+    IF Types.IsInteger(obj.type) THEN ExtendTo(w, cg, v, obj.type, ev) ELSE ev := v END;
+    LLVMTypes.TypeString(obj.type, cg.sizeModel, targetLLVMType);
+    WriteStr(w, "  store "); WriteStr(w, targetLLVMType); WriteStr(w, " "); WriteStr(w, ev.text);
+    WriteStr(w, ", ptr @"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, obj.name);
+    WriteLn(w)
+  END StoreIntoVar;
 
   (* Oberon-2 floored DIV/MOD (see header comment) from LLVM's truncating
      sdiv/srem, via "select" rather than a branch: correct whenever the
@@ -567,7 +635,7 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE GenerateDesignatorValue(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                                     VAR result: Value);
-    VAR obj: SymbolTable.Object; temp: ValueText;
+    VAR obj: SymbolTable.Object;
   BEGIN
     IF (d.qualifier[0] # 0X) OR (d.selectors # NIL) THEN
       Unsupported(w, cg, "qualified/selector designators (PLAN.md Phase 8 step 8+)", Types.Undefined, result);
@@ -580,11 +648,7 @@ MODULE LLVMCodeGenerator;
     ELSIF obj.class = SymbolTable.constClass THEN
       GenerateConstValue(w, cg, obj, result)
     ELSIF obj.class = SymbolTable.varClass THEN
-      LLVMTypes.TypeString(obj.type, cg.sizeModel, result.llvmType);
-      NewTemp(cg, temp);
-      WriteStr(w, "  "); WriteStr(w, temp); WriteStr(w, " = load "); WriteStr(w, result.llvmType);
-      WriteStr(w, ", ptr @"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, d.name); WriteLn(w);
-      result.text := temp; result.oberonType := obj.type
+      LoadVar(w, cg, obj, result)
     ELSE
       Unsupported(w, cg, "designator referring to a procedure/module (PLAN.md Phase 8 steps 6+)",
                   Types.Undefined, result)
@@ -839,7 +903,7 @@ MODULE LLVMCodeGenerator;
   END GenerateExpr;
 
   PROCEDURE GenerateAssignStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.AssignStatementNode);
-    VAR obj: SymbolTable.Object; v, ev: Value; targetLLVMType: ValueText;
+    VAR obj: SymbolTable.Object; v: Value;
   BEGIN
     IF (s.target.qualifier[0] # 0X) OR (s.target.selectors # NIL) THEN
       WriteStr(w, "  ; unsupported: qualified/selector assignment target (PLAN.md Phase 8 step 8+)");
@@ -852,15 +916,7 @@ MODULE LLVMCodeGenerator;
       RETURN
     END;
     GenerateExpr(w, cg, s.value, v);
-    IF Types.IsInteger(obj.type) THEN
-      ExtendTo(w, cg, v, obj.type, ev)
-    ELSE
-      ev := v
-    END;
-    LLVMTypes.TypeString(obj.type, cg.sizeModel, targetLLVMType);
-    WriteStr(w, "  store "); WriteStr(w, targetLLVMType); WriteStr(w, " "); WriteStr(w, ev.text);
-    WriteStr(w, ", ptr @"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, s.target.name);
-    WriteLn(w)
+    StoreIntoVar(w, cg, obj, v)
   END GenerateAssignStatement;
 
   (* A function procedure called as a bare statement discards its result -
@@ -872,13 +928,358 @@ MODULE LLVMCodeGenerator;
     GenerateCall(w, cg, s.designator, s.args, result)
   END GenerateCallStatement;
 
+  (* PLAN.md Phase 8 step 7: control flow, via genuine basic blocks and
+     branches for the first time in this module - every prior step's
+     codegen only ever wrote into one unlabeled "entry:" block. Every
+     generator below (GenerateIfStatement onward) shares one invariant,
+     the same one a hand-written recursive-descent codegen for any
+     structured-statement language needs: whenever it returns, the
+     writer is positioned inside a fresh, still-open (unterminated)
+     block - the "join"/"end" label it just wrote. That is what lets
+     GenerateStatementSeq below stay completely ignorant of control flow:
+     it just keeps calling GenerateStatement for the next statement in
+     the list, and whatever block that next statement's own instructions
+     land in is already the right one, with no backpatching needed,
+     because everything is emitted in strict program order. GenerateExit/
+     ReturnStatement (hard terminators, no fallthrough of their own) keep
+     the same invariant by opening a fresh - if unreachable - block right
+     after their own terminator, so that dead code textually following a
+     RETURN/EXIT (legal Oberon-2, just pointless) still lands somewhere
+     syntactically valid instead of after an already-terminated block's
+     terminator. *)
+  PROCEDURE ^ GenerateStatementSeq(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
+
+  (* IF cond1 THEN body1 ELSIF cond2 THEN body2 ... ELSE elseBody END -
+     an iterative elsif chain (IfBranchNode's own next-linked list),
+     not recursive: each branch's "false" edge just falls into the next
+     branch's own condition test, ending at elseBody (possibly empty)
+     for the final "false". This project's own front end doesn't support
+     WHILE's ELSIF form (Parser.Mod parses only a single condition/body
+     for WHILE, confirmed against real Oberon2.pdf's own WhileStatement
+     grammar - no ELSIF there either), so IF is the only construct here
+     that needs one. A BOOLEAN condition value is always carried as i8
+     (this module's own header comment) - "icmp ne i8 %v, 0" recovers
+     the i1 "br" itself needs. *)
+  PROCEDURE GenerateIfStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.IfStatementNode);
+    VAR branch: SyntaxTree.IfBranchNode; cond: Value; i1cond, thenLabel, elseLabel, endLabel: ValueText;
+  BEGIN
+    NewLabel(cg, endLabel);
+    branch := s.branches;
+    WHILE branch # NIL DO
+      GenerateExpr(w, cg, branch.condition, cond);
+      EmitBinOp(w, cg, "icmp ne", "i8", cond.text, "0", i1cond);
+      NewLabel(cg, thenLabel); NewLabel(cg, elseLabel);
+      EmitCondBr(w, i1cond, thenLabel, elseLabel);
+      EmitLabel(w, thenLabel);
+      GenerateStatementSeq(w, cg, branch.body);
+      EmitBr(w, endLabel);
+      EmitLabel(w, elseLabel);
+      branch := branch.next
+    END;
+    GenerateStatementSeq(w, cg, s.elseBody);
+    EmitBr(w, endLabel);
+    EmitLabel(w, endLabel)
+  END GenerateIfStatement;
+
+  (* ge=TRUE picks ">=", ge=FALSE picks "<=" - CHAR compares unsigned
+     (matching GenerateRelational's own CHAR predicate choice), the
+     SHORTINT..HUGEINT family signed. CheckCaseStatement already
+     guarantees the case selector's type is exactly one of these two
+     (an integer type or CHAR, never BOOLEAN/SET/REAL/pointer), so no
+     further fallback is needed here. *)
+  PROCEDURE CaseRangePredicate(oberonType: Types.Type; ge: BOOLEAN; VAR pred: ARRAY OF CHAR);
+  BEGIN
+    IF oberonType = Types.Char THEN
+      IF ge THEN COPY("icmp uge", pred) ELSE COPY("icmp ule", pred) END
+    ELSIF ge THEN COPY("icmp sge", pred)
+    ELSE COPY("icmp sle", pred)
+    END
+  END CaseRangePredicate;
+
+  (* A CASE label constant (CheckCaseLabelList: always ConstantEvaluator-
+     foldable) reaches codegen through the same GenerateExpr path an
+     ordinary CONST designator or literal already does - no separate
+     constant-folding needed here, mirroring how GenerateBinaryExpr etc.
+     already reuse GenerateExpr for CONST-typed operands generally. Its
+     LLVM type won't generally match the selector's own (e.g. a small
+     INTEGER label against a HUGEINT selector) - widened up via a direct
+     sext, not ExtendTo, since ExtendTo's own contract is "always an
+     IsInteger* target" and CHAR (a legal selector/label type here) is
+     not IsInteger; the widen is otherwise identical; llvmType already
+     matching is the common case for CHAR (both always "i8") and needs
+     no conversion at all. *)
+  PROCEDURE WidenCaseLabel(VAR w: Files.Rider; VAR cg: Codegen; v: Value; targetLLVMType: ARRAY OF CHAR;
+                           VAR result: ValueText);
+  BEGIN
+    IF v.llvmType = targetLLVMType THEN result := v.text
+    ELSE EmitConvert(w, cg, "sext", v.llvmType, v.text, targetLLVMType, result)
+    END
+  END WidenCaseLabel;
+
+  (* A single CaseLabelNode: "low" alone (high = NIL) tests equality;
+     "low..high" tests the closed range via (sel >= low) AND (sel <=
+     high) - LLVM's own "and i1" needs no short-circuit concern here
+     unlike Oberon-2's "&", since neither operand can trap or have a
+     side effect (both are pure icmp results). *)
+  PROCEDURE GenerateCaseLabelRangeTest(VAR w: Files.Rider; VAR cg: Codegen; sel: Value; lbl: SyntaxTree.CaseLabelNode;
+                                       VAR result: ValueText);
+    VAR lowVal, highVal: Value; lowText, highText, geResult, leResult: ValueText; pred: ARRAY 16 OF CHAR;
+  BEGIN
+    GenerateExpr(w, cg, lbl.low, lowVal);
+    WidenCaseLabel(w, cg, lowVal, sel.llvmType, lowText);
+    IF lbl.high = NIL THEN
+      EmitBinOp(w, cg, "icmp eq", sel.llvmType, sel.text, lowText, result)
+    ELSE
+      GenerateExpr(w, cg, lbl.high, highVal);
+      WidenCaseLabel(w, cg, highVal, sel.llvmType, highText);
+      CaseRangePredicate(sel.oberonType, TRUE, pred);
+      EmitBinOp(w, cg, pred, sel.llvmType, sel.text, lowText, geResult);
+      CaseRangePredicate(sel.oberonType, FALSE, pred);
+      EmitBinOp(w, cg, pred, sel.llvmType, sel.text, highText, leResult);
+      EmitBinOp(w, cg, "and", "i1", geResult, leResult, result)
+    END
+  END GenerateCaseLabelRangeTest;
+
+  (* A CaseNode's own label list ("1, 3..5, 9: body") ORs every one of
+     its range tests together - any match selects this case. *)
+  PROCEDURE GenerateCaseLabelListTest(VAR w: Files.Rider; VAR cg: Codegen; sel: Value; labels: SyntaxTree.CaseLabelNode;
+                                      VAR result: ValueText);
+    VAR l: SyntaxTree.CaseLabelNode; one, acc: ValueText; first: BOOLEAN;
+  BEGIN
+    l := labels; first := TRUE;
+    WHILE l # NIL DO
+      GenerateCaseLabelRangeTest(w, cg, sel, l, one);
+      IF first THEN acc := one; first := FALSE
+      ELSE EmitBinOp(w, cg, "or", "i1", acc, one, acc)
+      END;
+      l := l.next
+    END;
+    result := acc
+  END GenerateCaseLabelListTest;
+
+  (* CASE selector OF label-list-1: body1 | label-list-2: body2 ... ELSE
+     elseBody END - the same iterative "test, then, else" chain
+     GenerateIfStatement uses, just with each branch's condition built
+     from a case's own label ranges instead of an Oberon BOOLEAN
+     expression. Oberon2.pdf's 9.5: "If the value of the expression does
+     not occur as a label of any case,... the program is aborted" when
+     there's no ELSE - that trap is PLAN.md Phase 8 step 9's own job
+     ("CASE-without-matching-label"); this step just falls through to
+     elseBody (empty if there wasn't one) exactly as if it were the
+     final, unconditional "ELSE" arm - matching every other construct
+     this step lands before its own step 9 traps exist. Parser.Mod's
+     ParseCase already drops a genuinely empty case arm ("| |") rather
+     than linking a CaseNode with labels = NIL into s.cases, so no
+     defensive NIL check is needed on c.labels here. *)
+  PROCEDURE GenerateCaseStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.CaseStatementNode);
+    VAR sel: Value; c: SyntaxTree.CaseNode; cond, thenLabel, elseLabel, endLabel: ValueText;
+  BEGIN
+    GenerateExpr(w, cg, s.selector, sel);
+    NewLabel(cg, endLabel);
+    c := s.cases;
+    WHILE c # NIL DO
+      GenerateCaseLabelListTest(w, cg, sel, c.labels, cond);
+      NewLabel(cg, thenLabel); NewLabel(cg, elseLabel);
+      EmitCondBr(w, cond, thenLabel, elseLabel);
+      EmitLabel(w, thenLabel);
+      GenerateStatementSeq(w, cg, c.body);
+      EmitBr(w, endLabel);
+      EmitLabel(w, elseLabel);
+      c := c.next
+    END;
+    GenerateStatementSeq(w, cg, s.elseBody);
+    EmitBr(w, endLabel);
+    EmitLabel(w, endLabel)
+  END GenerateCaseStatement;
+
+  (* WHILE cond DO body END - guard tested before every execution,
+     matching Oberon2.pdf's 9.6 exactly ("The guard is checked before
+     every execution of the statement sequence"). This project's own
+     front end has no WHILE-ELSIF form (see GenerateIfStatement's own
+     comment), so a plain head/body/end shape is all this needs. *)
+  PROCEDURE GenerateWhileStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.WhileStatementNode);
+    VAR cond: Value; i1cond, headLabel, bodyLabel, endLabel: ValueText;
+  BEGIN
+    NewLabel(cg, headLabel); NewLabel(cg, bodyLabel); NewLabel(cg, endLabel);
+    EmitBr(w, headLabel);
+    EmitLabel(w, headLabel);
+    GenerateExpr(w, cg, s.condition, cond);
+    EmitBinOp(w, cg, "icmp ne", "i8", cond.text, "0", i1cond);
+    EmitCondBr(w, i1cond, bodyLabel, endLabel);
+    EmitLabel(w, bodyLabel);
+    GenerateStatementSeq(w, cg, s.body);
+    EmitBr(w, headLabel);
+    EmitLabel(w, endLabel)
+  END GenerateWhileStatement;
+
+  (* REPEAT body UNTIL cond - body always runs at least once (Oberon2.pdf
+     9.7), condition tested at the bottom; loops back while FALSE. *)
+  PROCEDURE GenerateRepeatStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.RepeatStatementNode);
+    VAR cond: Value; i1cond, bodyLabel, endLabel: ValueText;
+  BEGIN
+    NewLabel(cg, bodyLabel); NewLabel(cg, endLabel);
+    EmitBr(w, bodyLabel);
+    EmitLabel(w, bodyLabel);
+    GenerateStatementSeq(w, cg, s.body);
+    GenerateExpr(w, cg, s.condition, cond);
+    EmitBinOp(w, cg, "icmp ne", "i8", cond.text, "0", i1cond);
+    EmitCondBr(w, i1cond, endLabel, bodyLabel);
+    EmitLabel(w, endLabel)
+  END GenerateRepeatStatement;
+
+  (* CheckForStatement already guarantees s.step, when present, folds to
+     a nonzero integer constant (Oberon2.pdf 9.8: "step must be a
+     nonzero constant expression of an integer type") - trusted here
+     the same way GenerateConstValue already trusts an Object's own
+     already-folded obj.value, rather than re-validated. Defaults to 1
+     when BY was omitted, matching the report's own "If step is not
+     specified, it is assumed to be 1." *)
+  PROCEDURE ForStepValue(VAR cg: Codegen; s: SyntaxTree.ForStatementNode): LONGINT;
+    VAR v: Types.Value;
+  BEGIN
+    IF s.step = NIL THEN RETURN 1 END;
+    v := ConstantEvaluator.Evaluate(s.step, cg.scope);
+    RETURN v.intVal
+  END ForStepValue;
+
+  (* FOR v := start TO stop BY step DO body END, lowered exactly per
+     Oberon2.pdf 9.8's own equivalence:
+       v := low; temp := high;
+       IF step > 0 THEN WHILE v <= temp DO statements; v := v + step END
+       ELSE WHILE v >= temp DO statements; v := v + step END END
+     "high"/temp is evaluated once, before the loop (per the report's own
+     "temp := high" up front, not re-evaluated per iteration) - its
+     computed register value is reused directly in the header block on
+     every iteration without needing a PHI node or a memory spill: it's
+     defined exactly once, in the block that dominates every use (the
+     loop preheader dominates the header, which dominates the body/back-
+     edge), which is all plain SSA reuse across blocks ever requires.
+     "step"'s sign, needed to choose <= vs. >=, is resolved once at
+     compile time via ForStepValue rather than compared at runtime - the
+     report's own IF-step-attributes are themselves compile-time facts
+     here since step is always a constant. The control variable itself
+     is never kept in a register across iterations, unlike stop -
+     reloaded/stored through its own global on every iteration via
+     LoadVar/StoreIntoVar instead, the same memory-backed model every
+     other mutable VAR in this module already uses (no SSA form for
+     ordinary variables anywhere in this codegen yet). CheckForStatement
+     already guarantees the control variable is a plain, integer-typed
+     module VAR (never CHAR - "must be an integer variable"), so the
+     loop test's predicate is always the signed one, unlike CASE's own
+     (which must also cover CHAR). *)
+  PROCEDURE GenerateForStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.ForStatementNode);
+    VAR
+      obj: SymbolTable.Object; startVal, stopVal, stopExt, vVal, incVal: Value;
+      stepAmount: LONGINT; stepText, condText: ValueText;
+      headLabel, bodyLabel, endLabel: ValueText; pred: ARRAY 16 OF CHAR;
+  BEGIN
+    obj := SymbolTable.Find(cg.scope, s.variable);
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
+      WriteStr(w, "  ; unsupported: FOR control variable is not a plain module VAR"); WriteLn(w);
+      RETURN
+    END;
+    GenerateExpr(w, cg, s.start, startVal);
+    StoreIntoVar(w, cg, obj, startVal);
+    GenerateExpr(w, cg, s.stop, stopVal);
+    ExtendTo(w, cg, stopVal, obj.type, stopExt);
+    stepAmount := ForStepValue(cg, s);
+    stepText[0] := 0X; AppendLongInt(stepText, stepAmount);
+    NewLabel(cg, headLabel); NewLabel(cg, bodyLabel); NewLabel(cg, endLabel);
+    EmitBr(w, headLabel);
+    EmitLabel(w, headLabel);
+    LoadVar(w, cg, obj, vVal);
+    IF stepAmount > 0 THEN COPY("icmp sle", pred) ELSE COPY("icmp sge", pred) END;
+    EmitBinOp(w, cg, pred, vVal.llvmType, vVal.text, stopExt.text, condText);
+    EmitCondBr(w, condText, bodyLabel, endLabel);
+    EmitLabel(w, bodyLabel);
+    GenerateStatementSeq(w, cg, s.body);
+    LoadVar(w, cg, obj, vVal);
+    EmitBinOp(w, cg, "add", vVal.llvmType, vVal.text, stepText, incVal.text);
+    incVal.llvmType := vVal.llvmType; incVal.oberonType := vVal.oberonType;
+    StoreIntoVar(w, cg, obj, incVal);
+    EmitBr(w, headLabel);
+    EmitLabel(w, endLabel)
+  END GenerateForStatement;
+
+  (* LOOP body END - runs forever; only an EXIT inside body (at any
+     nesting depth, as long as no other LOOP is nested strictly between
+     it and this one) escapes, to the statement following this LOOP
+     (Oberon2.pdf 9.9/9.10). loopExitLabel save/restore around the body
+     is what makes "any nesting depth" correct: a LOOP nested inside
+     this one's body sets its own loopExitLabel for its own body, then
+     restores this LOOP's before returning, so an EXIT textually inside
+     the inner LOOP targets the inner one, never this outer one. *)
+  PROCEDURE GenerateLoopStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.LoopStatementNode);
+    VAR bodyLabel, endLabel, savedExit: ValueText;
+  BEGIN
+    NewLabel(cg, bodyLabel); NewLabel(cg, endLabel);
+    savedExit := cg.loopExitLabel;
+    cg.loopExitLabel := endLabel;
+    EmitBr(w, bodyLabel);
+    EmitLabel(w, bodyLabel);
+    GenerateStatementSeq(w, cg, s.body);
+    EmitBr(w, bodyLabel);
+    cg.loopExitLabel := savedExit;
+    EmitLabel(w, endLabel)
+  END GenerateLoopStatement;
+
+  (* CheckExitStatement already guarantees cg.loopExitLabel is non-empty
+     here (EXIT outside a LOOP is a real diagnostic error, so codegen is
+     never reached at all when it would be) - see this procedure group's
+     own header comment on the "always leave an open block" invariant
+     for why a fresh dead label follows the unconditional branch. *)
+  PROCEDURE GenerateExitStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.ExitStatementNode);
+    VAR deadLabel: ValueText;
+  BEGIN
+    EmitBr(w, cg.loopExitLabel);
+    NewLabel(cg, deadLabel);
+    EmitLabel(w, deadLabel)
+  END GenerateExitStatement;
+
+  (* CheckReturnStatement already guarantees s.value = NIL whenever
+     procResultType = NIL - true of every RETURN this step's codegen can
+     actually reach, since a module body is the only place with
+     statement codegen at all today (no PROCEDURE-with-body codegen
+     exists until step 10, the only other context procResultType could
+     ever be non-NIL). The s.value # NIL arm below is accordingly dead
+     code today - kept, not omitted, so this stays a total function
+     rather than one silently relying on today's scope forever; it will
+     become live and get a real "ret <type> <value>" once step 10 gives
+     it an actual function-procedure result to return. *)
+  PROCEDURE GenerateReturnStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.ReturnStatementNode);
+    VAR deadLabel: ValueText;
+  BEGIN
+    IF s.value = NIL THEN
+      WriteStr(w, "  ret void"); WriteLn(w)
+    ELSE
+      WriteStr(w, "  ; unsupported: RETURN <expr> (PLAN.md Phase 8 step 10+ - no function procedures exist yet)");
+      WriteLn(w);
+      WriteStr(w, "  ret void"); WriteLn(w)
+    END;
+    NewLabel(cg, deadLabel);
+    EmitLabel(w, deadLabel)
+  END GenerateReturnStatement;
+
   PROCEDURE GenerateStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
   BEGIN
     WITH
       s: SyntaxTree.AssignStatementNode DO GenerateAssignStatement(w, cg, s)
     | s: SyntaxTree.CallStatementNode DO GenerateCallStatement(w, cg, s)
+    | s: SyntaxTree.IfStatementNode DO GenerateIfStatement(w, cg, s)
+    | s: SyntaxTree.CaseStatementNode DO GenerateCaseStatement(w, cg, s)
+    | s: SyntaxTree.WhileStatementNode DO GenerateWhileStatement(w, cg, s)
+    | s: SyntaxTree.RepeatStatementNode DO GenerateRepeatStatement(w, cg, s)
+    | s: SyntaxTree.ForStatementNode DO GenerateForStatement(w, cg, s)
+    | s: SyntaxTree.LoopStatementNode DO GenerateLoopStatement(w, cg, s)
+    | s: SyntaxTree.ExitStatementNode DO GenerateExitStatement(w, cg, s)
+    | s: SyntaxTree.ReturnStatementNode DO GenerateReturnStatement(w, cg, s)
     ELSE
-      WriteStr(w, "  ; unsupported statement kind (PLAN.md Phase 8 steps 7-11)"); WriteLn(w)
+      (* WithStatementNode only, by elimination - real Oberon-2 but out
+         of Phase 8 entirely, not just deferred a step: a type guard's
+         narrowing only matters together with RECORD extension/dispatch,
+         which needs POINTER support Phase 8 never adds (this module's
+         own header comment's "Explicit non-goals"); revisit in Phase 9. *)
+      WriteStr(w, "  ; unsupported: WITH statement (Phase 9 - needs POINTER/RECORD extension)"); WriteLn(w)
     END
   END GenerateStatement;
 
@@ -948,12 +1349,19 @@ MODULE LLVMCodeGenerator;
      emitted up front - LLVM IR itself tolerates a global's definition
      appearing anywhere relative to its uses (unlike C), but NOT nested
      inside a "define ... { ... }" body, so a string constant discovered
-     mid-function-body could not simply be emitted in place. Walks
-     exactly the statement/expression shapes this step's codegen itself
-     handles (AssignStatementNode/CallStatementNode; Designator call
-     args, Unary/Binary operand trees) - anything this step doesn't
-     lower has no string-literal call argument to find inside it either,
-     so nothing is missed by not walking IF/WHILE/etc. bodies too. *)
+     mid-function-body could not simply be emitted in place. Must walk
+     exactly the statement/expression shapes the real GenerateStatement
+     dispatch below actually reaches, or a literal nested inside one
+     would never get its own global emitted while real codegen still
+     references it by name - a real bug PLAN.md Phase 8 step 7 hit and
+     fixed: this pre-pass originally only handled AssignStatementNode/
+     CallStatementNode (step 6's own complete statement-kind set at the
+     time), and once step 7 added IF/CASE/WHILE/REPEAT/FOR/LOOP, a
+     string-literal argument nested inside any of their bodies (e.g. an
+     FFI call inside an IF branch) produced a reference to a global this
+     pre-pass never emitted - caught by `clang` itself refusing to link
+     this step's own llvm-control-flow fixture ("use of undefined
+     value"), not by any earlier, narrower golden-diff test. *)
   PROCEDURE ^ CollectStringConstants(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.ExprNode);
 
   PROCEDURE CollectStringConstantsList(VAR w: Files.Rider; VAR cg: Codegen; list: SyntaxTree.ExprNode);
@@ -990,12 +1398,54 @@ MODULE LLVMCodeGenerator;
     CollectStringConstants(w, cg, child2)
   END CollectStringConstants;
 
+  PROCEDURE ^ CollectStringConstantsSeq(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
+
+  (* ExitStatementNode/WithStatementNode are the only statement kinds
+     with nothing to walk: EXIT has no expressions or nested body at
+     all, and WITH's own body never reaches real codegen either (still
+     Unsupported - Phase 9, not just a later Phase 8 step), so the real
+     pass can never reference a string constant found only inside one.
+     ReturnStatementNode's s.value is walked unconditionally even though
+     it is always NIL in this step's own reachable scope (a bare RETURN
+     is the only kind that type-checks at module level) - CollectString-
+     Constants already no-ops on NIL, and this keeps the pre-pass correct
+     by construction once step 10 gives a function procedure's RETURN a
+     real value expression, rather than needing a second fix then. *)
   PROCEDURE CollectStringConstantsStmt(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
+    VAR branch: SyntaxTree.IfBranchNode; c: SyntaxTree.CaseNode;
   BEGIN
     WITH
       s: SyntaxTree.AssignStatementNode DO CollectStringConstants(w, cg, s.value)
     | s: SyntaxTree.CallStatementNode DO CollectStringConstantsList(w, cg, s.args)
-    ELSE (* an unsupported statement kind has nothing this pass needs to find *)
+    | s: SyntaxTree.IfStatementNode DO
+        branch := s.branches;
+        WHILE branch # NIL DO
+          CollectStringConstants(w, cg, branch.condition);
+          CollectStringConstantsSeq(w, cg, branch.body);
+          branch := branch.next
+        END;
+        CollectStringConstantsSeq(w, cg, s.elseBody)
+    | s: SyntaxTree.CaseStatementNode DO
+        CollectStringConstants(w, cg, s.selector);
+        c := s.cases;
+        WHILE c # NIL DO
+          CollectStringConstantsSeq(w, cg, c.body);
+          c := c.next
+        END;
+        CollectStringConstantsSeq(w, cg, s.elseBody)
+    | s: SyntaxTree.WhileStatementNode DO
+        CollectStringConstants(w, cg, s.condition);
+        CollectStringConstantsSeq(w, cg, s.body)
+    | s: SyntaxTree.RepeatStatementNode DO
+        CollectStringConstantsSeq(w, cg, s.body);
+        CollectStringConstants(w, cg, s.condition)
+    | s: SyntaxTree.ForStatementNode DO
+        CollectStringConstants(w, cg, s.start);
+        CollectStringConstants(w, cg, s.stop);
+        CollectStringConstantsSeq(w, cg, s.body)
+    | s: SyntaxTree.LoopStatementNode DO CollectStringConstantsSeq(w, cg, s.body)
+    | s: SyntaxTree.ReturnStatementNode DO CollectStringConstants(w, cg, s.value)
+    ELSE (* ExitStatementNode/WithStatementNode: see header comment *)
     END
   END CollectStringConstantsStmt;
 
@@ -1011,8 +1461,8 @@ MODULE LLVMCodeGenerator;
                        triple: ARRAY OF CHAR; VAR w: Files.Rider);
     VAR cg: Codegen;
   BEGIN
-    cg.nextTemp := 0; cg.moduleName := module.name; cg.scope := scope;
-    cg.sizeModel := ConstantEvaluator.sizeModel;
+    cg.nextTemp := 0; cg.nextLabel := 0; cg.moduleName := module.name; cg.scope := scope;
+    cg.sizeModel := ConstantEvaluator.sizeModel; cg.loopExitLabel[0] := 0X;
     WriteStr(w, 'target datalayout = "'); WriteStr(w, hostDataLayout); WriteStr(w, '"'); WriteLn(w);
     WriteStr(w, 'target triple = "'); WriteStr(w, triple); WriteStr(w, '"'); WriteLn(w);
     WriteLn(w);

@@ -1,0 +1,190 @@
+semantic OK, wrote ctrl.ll
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+@ctrl.ifResult = global i16 zeroinitializer
+@ctrl.caseResult1 = global i16 zeroinitializer
+@ctrl.caseResult2 = global i16 zeroinitializer
+@ctrl.caseResult3 = global i16 zeroinitializer
+@ctrl.whileSum = global i16 zeroinitializer
+@ctrl.repeatSum = global i16 zeroinitializer
+@ctrl.forSum = global i16 zeroinitializer
+@ctrl.loopCount = global i16 zeroinitializer
+@ctrl.i = global i16 zeroinitializer
+@ctrl.ch = global i8 zeroinitializer
+
+define void @ctrl_init() {
+entry:
+  %t1 = icmp sgt i8 5, 10
+  %t2 = zext i1 %t1 to i8
+  %t3 = icmp ne i8 %t2, 0
+  br i1 %t3, label %L2, label %L3
+L2:
+  %t4 = sext i8 1 to i16
+  store i16 %t4, ptr @ctrl.ifResult
+  br label %L1
+L3:
+  %t5 = icmp eq i8 5, 5
+  %t6 = zext i1 %t5 to i8
+  %t7 = icmp ne i8 %t6, 0
+  br i1 %t7, label %L4, label %L5
+L4:
+  %t8 = sext i8 2 to i16
+  store i16 %t8, ptr @ctrl.ifResult
+  br label %L1
+L5:
+  %t9 = sext i8 3 to i16
+  store i16 %t9, ptr @ctrl.ifResult
+  br label %L1
+L1:
+  %t10 = sext i8 0 to i16
+  store i16 %t10, ptr @ctrl.caseResult1
+  %t11 = icmp eq i8 4, 1
+  %t12 = icmp eq i8 4, 2
+  %t13 = or i1 %t11, %t12
+  br i1 %t13, label %L7, label %L8
+L7:
+  %t14 = sext i8 10 to i16
+  store i16 %t14, ptr @ctrl.caseResult1
+  br label %L6
+L8:
+  %t15 = icmp sge i8 4, 3
+  %t16 = icmp sle i8 4, 5
+  %t17 = and i1 %t15, %t16
+  br i1 %t17, label %L9, label %L10
+L9:
+  %t18 = sext i8 20 to i16
+  store i16 %t18, ptr @ctrl.caseResult1
+  br label %L6
+L10:
+  %t19 = sext i8 30 to i16
+  store i16 %t19, ptr @ctrl.caseResult1
+  br label %L6
+L6:
+  store i8 66, ptr @ctrl.ch
+  %t20 = load i8, ptr @ctrl.ch
+  %t21 = icmp uge i8 %t20, 65
+  %t22 = icmp ule i8 %t20, 90
+  %t23 = and i1 %t21, %t22
+  br i1 %t23, label %L12, label %L13
+L12:
+  %t24 = sext i8 1 to i16
+  store i16 %t24, ptr @ctrl.caseResult2
+  br label %L11
+L13:
+  %t25 = sext i8 2 to i16
+  store i16 %t25, ptr @ctrl.caseResult2
+  br label %L11
+L11:
+  %t26 = icmp eq i8 99, 1
+  br i1 %t26, label %L15, label %L16
+L15:
+  %t27 = sext i8 1 to i16
+  store i16 %t27, ptr @ctrl.caseResult3
+  br label %L14
+L16:
+  %t28 = sext i8 99 to i16
+  store i16 %t28, ptr @ctrl.caseResult3
+  br label %L14
+L14:
+  %t29 = sext i8 0 to i16
+  store i16 %t29, ptr @ctrl.whileSum
+  br label %L17
+L17:
+  %t30 = load i16, ptr @ctrl.whileSum
+  %t31 = sext i8 10 to i16
+  %t32 = icmp slt i16 %t30, %t31
+  %t33 = zext i1 %t32 to i8
+  %t34 = icmp ne i8 %t33, 0
+  br i1 %t34, label %L18, label %L19
+L18:
+  %t35 = load i16, ptr @ctrl.whileSum
+  %t36 = sext i8 3 to i16
+  %t37 = add i16 %t35, %t36
+  store i16 %t37, ptr @ctrl.whileSum
+  br label %L17
+L19:
+  %t38 = sext i8 0 to i16
+  store i16 %t38, ptr @ctrl.repeatSum
+  br label %L20
+L20:
+  %t39 = load i16, ptr @ctrl.repeatSum
+  %t40 = sext i8 2 to i16
+  %t41 = add i16 %t39, %t40
+  store i16 %t41, ptr @ctrl.repeatSum
+  %t42 = load i16, ptr @ctrl.repeatSum
+  %t43 = sext i8 9 to i16
+  %t44 = icmp sge i16 %t42, %t43
+  %t45 = zext i1 %t44 to i8
+  %t46 = icmp ne i8 %t45, 0
+  br i1 %t46, label %L21, label %L20
+L21:
+  %t47 = sext i8 0 to i16
+  store i16 %t47, ptr @ctrl.forSum
+  %t48 = sext i8 1 to i16
+  store i16 %t48, ptr @ctrl.i
+  %t49 = sext i8 5 to i16
+  br label %L22
+L22:
+  %t50 = load i16, ptr @ctrl.i
+  %t51 = icmp sle i16 %t50, %t49
+  br i1 %t51, label %L23, label %L24
+L23:
+  %t52 = load i16, ptr @ctrl.forSum
+  %t53 = load i16, ptr @ctrl.i
+  %t54 = add i16 %t52, %t53
+  store i16 %t54, ptr @ctrl.forSum
+  %t55 = load i16, ptr @ctrl.i
+  %t56 = add i16 %t55, 1
+  store i16 %t56, ptr @ctrl.i
+  br label %L22
+L24:
+  %t57 = sext i8 5 to i16
+  store i16 %t57, ptr @ctrl.i
+  %t58 = sext i8 1 to i16
+  br label %L25
+L25:
+  %t59 = load i16, ptr @ctrl.i
+  %t60 = icmp sge i16 %t59, %t58
+  br i1 %t60, label %L26, label %L27
+L26:
+  %t61 = load i16, ptr @ctrl.forSum
+  %t62 = load i16, ptr @ctrl.i
+  %t63 = add i16 %t61, %t62
+  store i16 %t63, ptr @ctrl.forSum
+  %t64 = load i16, ptr @ctrl.i
+  %t65 = add i16 %t64, -1
+  store i16 %t65, ptr @ctrl.i
+  br label %L25
+L27:
+  %t66 = sext i8 0 to i16
+  store i16 %t66, ptr @ctrl.loopCount
+  br label %L28
+L28:
+  %t67 = load i16, ptr @ctrl.loopCount
+  %t68 = sext i8 1 to i16
+  %t69 = add i16 %t67, %t68
+  store i16 %t69, ptr @ctrl.loopCount
+  %t70 = load i16, ptr @ctrl.loopCount
+  %t71 = sext i8 7 to i16
+  %t72 = icmp sge i16 %t70, %t71
+  %t73 = zext i1 %t72 to i8
+  %t74 = icmp ne i8 %t73, 0
+  br i1 %t74, label %L31, label %L32
+L31:
+  br label %L29
+L33:
+  br label %L30
+L32:
+  br label %L30
+L30:
+  br label %L28
+L29:
+  ret void
+}
+
+define i32 @main() {
+entry:
+  call void @ctrl_init()
+  ret i32 0
+}
