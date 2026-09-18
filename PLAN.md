@@ -1643,19 +1643,291 @@ yet), promoted to compile+link+run+diff from step 6 onward per the
 `BACKEND=llvm` harness mode from step 3.
 
 ### Phase 9 — LLVM backend, full parity + self-hosting
-Full pointer/`NEW`/GC support (`GarbageCollectedHeap.Mod`,
-`ModuleTable.Mod` — bespoke mark-sweep, reusing the type descriptors from
-Phase 8), type-bound-procedure dispatch via ProcTab/BaseTypes, open-array
-dope vectors, complete `PredeclaredProcedures.Mod` lowering, full
-`Out.Mod`/`In.Mod`, 32-/64-bit parity.
-**Testing**: entire conformance suite must compile+run+diff on both
-32-bit and 64-bit LLVM targets — the explicit gate before VAX/VMS work per
-the locked-in sequencing decision.
-**Bootstrap milestone**: Stage 0 (voc) compiles all of poc (front end +
-LLVM backend) → Stage 1 poc compiles poc's own source again → Stage 2 poc
-compiles it a third time; diff Stage 1 vs Stage 2 output for the fixed
-point. Once Stage 1 passes the full suite, voc is retired from the
-day-to-day build loop and kept only as a comparison oracle.
+
+**Goal**: every construct `Oberon2.pdf` defines, compiling and running
+correctly through the LLVM backend, on both 32-bit and 64-bit targets, on
+Linux and at least one BSD — the point at which the *entire* conformance
+suite (not just a hand-picked subset, as Phase 8 step 13 promoted) can
+compile+link+run+diff, and at which poc can finally compile itself.
+
+**Explicit non-goals**: `SYSTEM.*` (Appendix C — `ADR`/`VAL`/`BIT`/etc.)
+and everything MACRO-32/VAX are Phase 10 scope per the phase-to-report
+map, not this phase's; `DISPOSE` isn't added because it doesn't exist in
+`Oberon2.pdf` at all (§10.3's `NEW` has no explicit-free counterpart —
+Appendix D3 is explicit that a collector, not the programmer, reclaims
+unreachable blocks); `ASSERT` stays whatever this file's own "No
+`ASSERT`" open design question above says when a step below reaches
+`PredeclaredProcedures.Mod` lowering — not decided by this plan, and
+picking it up is opportunistic, not required for this phase's own exit
+gate, unless that question is resolved before then.
+
+**Two carried-over gaps from Phase 8, not new Phase 9 work but blocking
+it**: (1) `rtl/llvm/Console.Mod` was never actually built — every Phase 8
+fixture that needed output declared `PROCEDURE ["C", "write"] SysWrite`
+directly instead (step 6's own retrospective: "`Console.Mod`'s real
+wrapper body is deferred to step 10"; step 10 shipped ordinary
+procedure-with-body codegen but never came back to write it; steps 7 and
+9 both explicitly note "no `Console.Mod` needed" and used the FFI hack
+again). `rtl/llvm/` currently holds nothing but a `README.md`. Phase 9
+needs a working self-hosted-rtl-module mechanism early — `Out.Mod`/
+`In.Mod` and the GC's own `ModuleTable.Mod` are all the same shape
+(real `.mod` source, compiled by poc itself, `IMPORT`ed by a user or
+other rtl module) — so finishing `Console.Mod` first, now that ordinary
+procedure-with-body codegen (step 10) and general multi-module `IMPORT`
+(step 12) both genuinely exist, is this phase's own step 1, not
+optional cleanup. (2) The Phase 8 step 13 retrospective found `voc`
+cannot parse poc's own `["C", ...]` external-procedure syntax at all —
+irrelevant to Phase 9's own work, but worth remembering: once real
+`Console`/`Out`/`In` modules exist, cross-checking *those* fixtures
+against `voc` (which has its own real `Console.Mod`, used by
+`test/conformance/hello` since Phase 0) becomes practical again in a way
+it wasn't for any FFI-based Phase 8 fixture.
+
+**A scope correction Phase 8's own retrospectives already exposed but
+this file never updated**: `LLVMCodeGenerator.Mod`'s `Unsupported`
+fallback is hit today by REAL/LONGREAL arithmetic and literals, named
+STRING constants, and SET constructors (every one tagged "PLAN.md Phase
+8 step 5 scope" in its own source) — plus ARRAY-OF-CHAR and RECORD
+relational comparison, which was never lowered at all (no
+`memcmp`-equivalent exists). None of these presuppose `POINTER`/`NEW`/GC
+the way this phase's headline items do, but the "entire conformance
+suite must compile+run+diff" exit gate below can't be met while they
+stay `Unsupported` — `semantic-expressions`, `semantic-const-decls`'s
+full (untrimmed) form, and others depend on them. Folded into this
+phase's build order below (steps 3–4) rather than left implicit, since
+Phase 8 step 13 already had to explicitly trim them back out of two
+promotion candidates for exactly this reason.
+
+**Cross-cutting discipline, not its own step**: every new size-dependent
+quantity this phase introduces — pointer width, a type descriptor's own
+address width, `ProcTab`/`BaseTypes`/pointer-offset table entry widths,
+a dope vector's length-field width — must be parameterized by
+`MemoryLayout.Mod`'s existing word-size axis from the moment it's
+written, not retrofitted once 32-bit support is checked at the end. This
+is the same discipline Phase 4 built `MemoryLayout.Mod` around in the
+first place (voc's own `History.md` warning about retrofitting this is
+quoted there) and the same axis step 13's real datalayout bug was found
+and fixed against — treat that bug as this phase's own cautionary
+precedent, not just Phase 8's. The already-separate `-O2`/`-OC`
+elementary-size-model axis is unrelated to pointer width and shouldn't
+be conflated with it.
+
+**Proposed build order** — each numbered step lands its own conformance
+fixtures before the next starts, matching Phase 8's own incremental
+style exactly.
+
+1. **Finish `rtl/llvm/Console.Mod` for real.** `PrintString(s: ARRAY OF
+   CHAR)`/`PrintLn`, wrapping the same `write(2)` FFI call every Phase 8
+   fixture already declares inline, but as genuine Oberon-2 source
+   compiled by poc and `IMPORT`ed by a small new fixture — proves the
+   self-hosted-rtl-module mechanism (ordinary procedure-with-body
+   codegen, step 10, plus general multi-module `IMPORT`, step 12,
+   working together on a *library* module for the first time, not just
+   two peer user modules the way `llvm-multi-module` exercised it).
+   Existing Phase 8 fixtures are not required to migrate off their own
+   direct `SysWrite` declarations (low value, high busywork); new
+   fixtures from step 2 onward should prefer `Console.Mod` where it's a
+   natural fit.
+   **Testing**: one fixture (`llvm-console`, compile+link+run+diff-stdout)
+   proving `Console.String`/`Console.Ln` end-to-end.
+
+2. **Runtime type descriptors (Appendix D5).** `LLVMTypes.Mod` emits one
+   type descriptor per record type at run time: a `tag` value (the
+   descriptor's own address), a `ProcTab` (bound-procedure addresses,
+   indexed by a compile-time-known per-type-bound-procedure index),
+   a `BaseTypes` table (one entry per extension level, `BaseTypes[i]` =
+   the type descriptor address of the ancestor at extension level `i`,
+   used for `v IS T`/type guards as `v^.tag^.BaseTypes[ExtensionLevelT]
+   = TypeDescrAdrT`), and a pointer-offset table (byte offsets of every
+   pointer-typed field in the record, feeding step 5's collector). Per
+   the report's own Fig. D5.1, `ProcTab` and the pointer-offset table
+   grow from opposite ends of the descriptor as extension adds more
+   procedures/pointers — `RecordType`'s own `baseType`/`methods` chain
+   (already fully built by Phase 4/6's front end) gives everything
+   needed to compute both an extension level and cumulative
+   `ProcTab`/offset-table contents by walking it. Purely static: no
+   allocation, no dispatch call, no `NEW` yet — every descriptor is
+   emitted as its own LLVM global constant, verified by golden
+   `-emit-llvm-ir` diff plus hand-checking one non-trivial extension
+   chain's layout against Fig. D5.1's own worked example (the report's
+   `Node`/`CenterNode` family — already this project's own go-to fixture
+   source, Phase 4/6/8 all having already used it).
+   **Testing**: `llvm-type-descriptors-ir`, golden `.ll` diff over a
+   base type, a one-level extension, and a two-level extension (to
+   confirm growth direction and level numbering, not just presence).
+
+3. **REAL/LONGREAL arithmetic, literals, and conversions.** Floating-
+   point `EmitBinOp`/`EmitConvert`/`EmitCompare` lowering, replacing the
+   REAL/LONGREAL branches of `Unsupported` named above. `-O2`/`-OC`
+   don't affect `REAL`/`LONGREAL` width (this file's own resolved open
+   design question already says so), so this is the one area in this
+   phase genuinely independent of the word-size/size-model discipline
+   above.
+   **Testing**: promote (or extend) a runtime fixture exercising
+   arithmetic, real division (`/`), `DIV`/`MOD` still integer-only,
+   comparisons, and `LONG`/`SHORT` conversions between `REAL`/`LONGREAL`.
+
+4. **SET constructors/operators, named STRING constants, and
+   ARRAY-OF-CHAR/RECORD relational comparison.** The remaining
+   `Unsupported` fallbacks named above: `{...}` SET constructor codegen
+   (element/range list to bitmask), a named STRING `CONST`'s own value
+   (`GenerateConstValue`'s `stringValue` branch — distinct from a
+   literal passed directly to a call, already handled since step 11),
+   and `=`/`#`/`<`/`<=` over `ARRAY OF CHAR` and record-field-wise
+   equality where the front end already permits it. Once this and step
+   3 land, revisit Phase 8 step 13's own trimmed `llvm-const-decls`/
+   `crosscheck` pair and the fixtures it explicitly passed over
+   (`semantic-expressions`, the untrimmed `semantic-const-decls`) — some
+   should now promote cleanly without trimming.
+   **Testing**: a SET-operations fixture, a named-string-CONST fixture,
+   an ARRAY-OF-CHAR-comparison fixture; re-run the step-13 promotion
+   survey and land whichever candidates are now unblocked.
+
+5. **Bespoke mark-sweep GC (`rtl/llvm/GarbageCollectedHeap.Mod`,
+   `ModuleTable.Mod`).** A bump-allocating heap plus a mark-sweep
+   collector (the locked-in decision: no external C allocator/collector
+   dependency), using step 2's pointer-offset tables to trace a live
+   record's own outgoing pointers during mark, and a whole-program root
+   set assembled from every loaded module's global pointer-typed `VAR`s
+   — `ModuleTable.Mod` is the registry each module's init function
+   registers itself into (mirroring voc's own module-table precedent
+   named in this file's directory layout), and `LLVMCodeGenerator.Mod`
+   gains its own per-module "which globals are GC roots, and at what
+   offsets" table generation, the module-scope analogue of step 2's
+   per-record one. Written as genuine Oberon-2 source per step 1's now-
+   proven mechanism, not hand-written IR — self-hosting (this phase's
+   own final step) requires the GC to be poc-compilable like everything
+   else in `rtl/llvm/`. Collection can be purely allocation-triggered
+   (no separate `SYSTEM`-level manual trigger — nothing in
+   `Oberon2.pdf` exposes one); no compaction, no generations, no
+   finalization — matching the "bespoke mark-sweep... no external C
+   dependency" decision's own evident scope, nothing fancier.
+   **Testing**: a standalone allocation/collection stress fixture
+   (allocate many short-lived records in a loop, confirm memory is
+   actually reclaimed — e.g. via a `SYSTEM`-free observable proxy like
+   allocation count vs. a small fixed heap ceiling, not raw RSS) proven
+   before any `poc`-generated `NEW` call exists to exercise it end to
+   end, mirroring step 1's own "prove the toolchain/mechanism smallest
+   useful slice first" precedent.
+
+6. **`NEW` (fixed record/array), `POINTER`, `NIL`, `^` dereference,
+   `IS`/type guards, and the `WITH` pointer guard.** `NEW(v)` lowers to
+   step 5's allocator plus writing `v^`'s tag from step 2's descriptor;
+   `v^.field`/`v^[i]` dereference through the allocated block (NIL-
+   checked and trapped before every dereference — matching voc's own
+   `-p` pointer-check convention, referenced but explicitly out of
+   scope in step 9's own retrospective "NIL-dereference trapping...
+   doesn't apply yet since there are no pointers in scope" — it applies
+   now); `v IS T`/`v(T)` lower to the `BaseTypes` check step 2's own
+   descriptors exist for. `GenerateStatement`'s own dormant `WITH`
+   fallback and `RETURN`'s `s.value # NIL` arm (both flagged "until
+   Phase 9/10 make it reachable" in step 7's retrospective) become real
+   here. First step where a fixture can allocate, mutate, and observe a
+   real heap-resident data structure.
+   **Testing**: a linked-structure fixture (a small self-referential
+   record chain — the report's own `Node`/list-building style examples
+   are the natural source), a `NIL`-dereference trap fixture (matching
+   the existing index-range/CASE trap fixtures' own pattern), a type-
+   guard/`IS` fixture, and a real `WITH` fixture (abandoned as
+   impossible in Phase 8 step 7, now buildable).
+
+7. **Type-bound procedures and dispatch.** Each record type's `ProcTab`
+   (step 2) is populated at module-init time with the addresses of its
+   own bound procedures (inherited entries filled in from the base
+   type's own slots where not overridden, per Fig. D5.1's layout);
+   `t.P(...)` lowers to `t^.tag^.ProcTab[IndexP](...)`, and `P^(...)`
+   (explicit base-method call, §10.3) indexes the *declared* receiver
+   type's own `ProcTab` slot directly rather than dispatching. Receiver
+   binding (`PROCEDURE (t: Tree) Insert...`) reuses ordinary-parameter
+   codegen (step 10) with the receiver as an implicit first parameter.
+   **Testing**: the report's own `Tree`/`CenterTree`/`Node` dispatch
+   example (already this project's Phase 6 exit-gate fixture family) as
+   a real compile+link+run+diff fixture — the natural capstone for
+   dispatch, since it's the report's own canonical worked example and
+   this project already has the front-end-only version of it checked.
+
+8. **Open-array dope vectors.** Open-array formal parameters (`VAR`
+   and value) pass a hidden length parameter per dimension alongside
+   the data pointer, matching voc's own convention already cited in
+   Phase 8 step 4's retrospective; `NEW(v, x0, ..., xn-1)` (§10.3's
+   multi-dimensional open-array allocation form, Appendix A's own
+   table) allocates and populates the dope vector accordingly; `LEN`'s
+   existing two-argument form (already lowered in step 11 for fixed
+   arrays) extends to read a real dope-vector length at those
+   dimensions rather than a compile-time-known one. Directly closes the
+   one gap step 11's own retrospective explicitly called out and routed
+   around ("forwarding an `ARRAY OF CHAR` value parameter into another
+   call... stays unexercised... open arrays are a known, narrow,
+   not-yet-built convention").
+   **Testing**: an open-array `VAR`-parameter fixture forwarding a
+   value between two procedures (step 11's own deferred case, finally
+   exercised for real), and a multi-dimensional `NEW(v, x0, x1)`
+   fixture.
+
+9. **Complete `PredeclaredProcedures.Mod` lowering.** Sweep whatever
+   remains `Unsupported` once steps 1–8 land — expected to be a short
+   list by this point, since `NEW` (step 6), `LEN`'s open-array form
+   (step 8), and every REAL/SET-related gap (steps 3–4) are the only
+   §10.3 procedures step 11's own retrospective named as out of scope.
+   Pick up `ASSERT` here only if this file's own open design question
+   above has been resolved by then; otherwise leave it exactly as
+   undecided as it is now.
+   **Testing**: whatever fixture gaps steps 1–8 didn't already close on
+   their own.
+
+10. **Full `Out.Mod`/`In.Mod` (Oakwood-style).** Built as genuine
+    Oberon-2 `rtl/llvm` source per step 1's mechanism, now with real
+    formatted output available (`Out.Int`, `Out.Real`, `Out.Char`,
+    `Out.String`, `Out.Ln` at minimum; `In.Int`, `In.Real`, `In.Char`,
+    `In.String`, `In.Done` for input) — the fuller interface this
+    file's own "Decisions locked in" table always described as coming
+    "later, as fixtures need formatted output," now that formatted
+    values (REAL from step 3, records/pointers from steps 5–7) actually
+    exist to print. `Console.Mod` (step 1) is not superseded — it stays
+    the minimal, always-available print-a-string module; `Out.Mod` is
+    additive.
+    **Testing**: fixtures covering each `Out`/`In` procedure exercised,
+    matching the predeclared-procedure fixtures' own one-fixture-covers-
+    the-whole-set style where practical.
+
+11. **32-/64-bit parity sweep.** Run the *entire* conformance suite —
+    not a promoted subset — compile+link+run+diff on both a 32-bit and
+    a 64-bit LLVM target, on Linux and at least one BSD (reusing step
+    13's real-hardware access, `erekose`/OpenBSD-i386 and
+    `terhali`/NetBSD-x86_64, rather than assuming portability from a
+    single platform). This is the phase's own explicit exit gate,
+    listed here as its own step rather than folded into the individual
+    feature steps above precisely because it must run *after* all of
+    them, over everything at once, the same way step 13 only found the
+    datalayout bug once real fixtures actually ran on real 32-bit
+    hardware.
+    **Testing**: `make test` clean on every combination; any fixture
+    that only passes on one word size or platform is a real bug, not an
+    acceptable gap, at this point in the project.
+
+12. **Self-hosting bootstrap.** Stage 0 (`voc`) compiles all of poc
+    (front end + LLVM backend + every `rtl/llvm` module written in
+    steps 1–10) → Stage 1 poc compiles poc's own source again → Stage 2
+    poc compiles it a third time; diff Stage 1 vs. Stage 2 output
+    (modulo embedded timestamps/paths) for the classic self-hosting
+    fixed point. Requires every language feature poc's *own* source
+    uses to already work end to end through steps 1–11 — this is why
+    it's the final step, not an earlier one, even though the bootstrap
+    terminology section at the top of this file has described Stage
+    0/1/2 since Phase 0. Once Stage 1 passes the full conformance suite,
+    `voc` is retired from the day-to-day build loop and kept only as a
+    comparison oracle (per the bootstrap terminology's own existing
+    wording) — `tools/bootstrap/` gains its Stage 1/Stage 2 scripts
+    here, alongside Stage 0's existing ones.
+    **Testing**: Stage 1 vs. Stage 2 output diff as the fixed-point
+    proof; full conformance suite must pass under Stage 1 before `voc`
+    is retired from day-to-day use.
+
+**Testing summary**: golden-`.ll`-diff fixtures for the purely static
+piece (step 2), promoted to compile+link+run+diff everywhere else,
+matching Phase 8's own testing posture — culminating in step 11's
+whole-suite/whole-platform-matrix gate and step 12's self-hosting fixed
+point.
 
 ### Phase 10 — VAX/VMS MACRO-32 backend (scoped, deferred, non-executable)
 `VaxTypes.Mod`, `VaxCodeGenerator.Mod`, `VaxToolchainDriver.Mod` (stub
