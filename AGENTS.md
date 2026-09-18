@@ -124,6 +124,33 @@ compatibility:
 filename set defaults for all files; options after a filename apply only
 to that file. Repeating a flag toggles it.
 
+## Toolchain: LLVM (clang/llc)
+
+Used by `poc`'s Phase 8+ LLVM backend (`PLAN.md`) — `LLVMToolchainDriver.Mod`
+shells out to these rather than linking against LLVM's own C++ API.
+
+- Installed via system packages (Fedora), both on `PATH`: `/usr/bin/clang`,
+  `/usr/bin/llc`.
+- Version confirmed 2026-09-18: `clang version 22.1.8 (Fedora
+  22.1.8-4.fc44)`, matching `llc`'s `LLVM version 22.1.8`. Host target
+  triple: `x86_64-redhat-linux-gnu`; host default data layout:
+  `e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128`
+  (from `clang -S -emit-llvm` on an empty `int main(){return 0;}`).
+- **Build invocation, decided (`PLAN.md` Phase 8 step 1): single-step
+  `clang`.** `clang <file>.ll -o <exe>` accepts textual LLVM IR directly and
+  handles assembling+linking itself (confirmed with a hand-written
+  `write(2)`-based "hello world" `.ll`, compiled and run successfully). A
+  `.ll` file emitted by `LLVMCodeGenerator.Mod` must set its own `target
+  datalayout`/`target triple` explicitly (matching the values above for the
+  host, or the `-target` flag's chosen triple) — omitting them makes clang
+  silently substitute the host triple with a `-Woverride-module` warning,
+  which would mask a real target mismatch on cross-compiles.
+- `llc` is **not** part of the normal build path — reserved as an optional
+  `-dump-asm`-style debug aid for reading generated assembly in golden-file
+  tests. Usage: `llc <file>.ll -o <file>.s` (its default output filetype is
+  already textual assembly; unlike `clang`, it has no `-S` flag — passing
+  one is a hard CLI error, `Unknown command line argument '-S'`).
+
 ### Known voc bugs affecting poc's own source
 
 Bugs (not spec deviations) found in voc 2.1.0 while writing poc's own
