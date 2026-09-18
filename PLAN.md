@@ -472,6 +472,143 @@ struct/array layout plus a cross-check fixture rather than manual packing
    inspecting/golden-diffing the emitted `.ll`, since there's nothing to
    print until step 6.
 
+   **Implemented 2026-09-18.** `src/back/llvm/LLVMCodeGenerator.Mod`'s
+   step-2 stub is replaced with real tree-walking codegen, deliberately
+   narrower than this step's own header text anticipated in two ways,
+   both documented directly in the module's own header comment rather
+   than silently: no `alloca`s (there are no local `VAR`s to put in one —
+   Oberon-2 only has *module*-level and *procedure*-level `VAR` sections,
+   and procedures don't exist until step 10, so "local `VAR`s as
+   `alloca`s" has nothing to apply to yet), and REAL/LONGREAL arithmetic
+   is out of scope even though `Types.IsNumeric` accepts it — every
+   "is this arithmetic operand handled" check in the new code
+   deliberately uses `Types.IsInteger*` (`SHORTINT`..`HUGEINT` only), not
+   `Types.IsNumeric*`, specifically to route `REAL`/`LONGREAL` to the
+   same `"; unsupported: ..."`-comment-plus-well-typed-placeholder
+   fallback every other out-of-scope construct gets (procedure calls,
+   `IF`/`WHILE`/etc., array/record field access) — because a nonzero
+   `REAL`/`LONGREAL` literal needs a verified-safe decimal-to-LLVM-text
+   conversion that doesn't exist yet: `ModuleInterface.Mod`'s
+   `FormatRealMagnitude` already solves the adjacent "round-trip safely
+   through Oberon's own `ParseReal`" problem for `.sym` files, but has
+   not been verified against LLVM's own (APFloat-based) decimal literal
+   parser, nor adapted to LLVM's `e`/`E`-only exponent syntax (no
+   Oberon `D0` suffix) — deferred as its own increment rather than
+   built, and left unverified, as a side effect of this one.
+
+   In scope, and implemented: module-level `VAR`s of any Phase-8 type
+   become `@<ModuleName>.<name>` LLVM globals (`zeroinitializer` —
+   costs nothing extra even for array/record `VAR`s, though nothing
+   reads/writes their fields until step 8); assignment statements
+   targeting a bare, unqualified, selector-free module `VAR`; and
+   expressions built from integer/`CHAR` literals, bare `VAR`/`CONST`
+   designators (a `CONST`'s value is already fully folded by
+   `ConstantEvaluator.Mod` — formatted directly as an LLVM immediate,
+   never loaded from memory, since Oberon `CONST`s have no runtime
+   storage at all), unary `+`/`-`/`~`, and binary `+ - * DIV MOD` /
+   `= # < <= > >=` / `& OR` — for the `SHORTINT`..`HUGEINT` integer
+   family, `CHAR`, `BOOLEAN`, and `SET`. Every live codegen value is
+   carried at its full `LLVMTypes.TypeString*` width (`i8` for
+   `BOOLEAN`/`CHAR`, `i16`/`i32`/`i64` for the integer family per
+   `-O2`/`-OC`, `i32`/`i64` for `SET`) — `i1` only ever appears as
+   `icmp`'s immediate result, `zext`'d to `i8` in the same instruction
+   group that produced it, trading a handful of avoidable `zext`s for
+   never having two representations of the same kind of value. Mixed-
+   width integer arithmetic/assignment (e.g. `SHORTINT + INTEGER`, or
+   assigning an `INTEGER`-typed expression into a `LONGINT` `VAR`)
+   widens via `sext` up to `Types.WiderOf*`'s result — verified in a
+   scratch fixture with `sa: SHORTINT; wide: LONGINT; wide := sa + a`
+   (`a: INTEGER`), producing exactly `sext i8 → i16` then `sext i16 →
+   i32`, matching Appendix A's numeric-inclusion widening rule exactly.
+
+   `DIV`/`MOD` lower Oberon-2's *floored* division semantics — not
+   assumed, confirmed 2026-09-18 against real `voc` first (this
+   project's standing practice): `(-7) DIV 2 = -4`, `(-7) MOD 2 = 1`,
+   `7 DIV (-2) = -4`, `7 MOD (-2) = -1`, `(-7) DIV (-2) = 3`,
+   `(-7) MOD (-2) = -1` — the remainder's sign always matches the
+   divisor's, exactly the report's own
+   `x = (x DIV y)*y + x MOD y, 0 <= x MOD y < y` (for `y > 0`; `y < x MOD
+   y <= 0` for `y < 0`) definition, i.e. genuine floored division, not
+   the truncating division LLVM's own `sdiv`/`srem` implement (those
+   truncate toward zero, like C). `GenerateDivMod` derives floored
+   `DIV`/`MOD` from `sdiv`/`srem` via the standard correction — adjust by
+   1/by the divisor whenever the truncated remainder is nonzero and has
+   a different sign than the divisor — expressed with LLVM's `select`
+   instruction rather than a branch, so this step's codegen stays
+   genuinely straight-line (no basic blocks/labels anywhere). `&`/`OR`
+   are lowered *eagerly* (plain `and`/`or` on the operands' already-
+   computed `i8` values), not with Oberon-2's required short-circuit
+   evaluation — a deliberate, documented simplification, not a latent
+   bug: nothing this step's codegen can itself construct has a side
+   effect or a trap (no calls, no array/pointer access exist yet), so
+   eager and short-circuit evaluation are observably identical for every
+   expression reachable today; revisit once step 6 (calls) or step 8
+   (array access) make the difference observable, at which point real
+   short-circuiting will need this module's first actual basic
+   blocks/branches.
+
+   `ConstantEvaluator.ParseCharConst` gained a `*` export mark (previously
+   private), for the same reason `IntegerLiteralType*`/`ParseReal*`
+   already had one: `LLVMCodeGenerator.GenerateLiteral` needs a `CHAR`
+   literal's actual value, and this is a pure, context-free lexeme
+   parser (no `Scope`, no diagnostic), not a constant-*expression*
+   evaluator — reusing it is the same kind of front-end reuse the other
+   two already established, not a new layering violation.
+   `ConstantEvaluator.Evaluate*` itself is deliberately **not** reused for
+   live (non-`CONST`) subexpressions — it rejects any designator that
+   isn't `constClass` with a real diagnostic ("not a constant"), so
+   calling it on a tree containing a live `VAR` reference would corrupt
+   `Diagnostics.errorCount` after the module already checked out clean.
+
+   No new module-level correctness gaps found this step (unlike steps 3/
+   4's own real bugs) — the one real mistake, `WriteStr(w, "..." + "...")`
+   (attempting the C-style string-literal concatenation Oberon-2 doesn't
+   have, in one `Unsupported` fallback's message), was caught immediately
+   by `voc`'s own parser during the first compile attempt, never reached
+   runtime.
+
+   Verification went beyond golden-`.ll`-diffing alone: PLAN.md's own
+   text for this step assumed correctness could only be *inspected*,
+   since there is still no `Console`-style output until step 6 — but
+   exit codes need no I/O at all. During development (not as a permanent
+   fixture), a scratch module's generated globals were inspected directly
+   by linking its `.ll` (with its own generated `@main` stripped) against
+   a small hand-written C harness that called `<Module>_init()` and
+   `printf`'d every global afterward — confirming every one of the
+   arithmetic/relational/boolean/`SET` operators above against hand-
+   computed expected values, not just plausible-looking IR. Two real
+   fixture-authoring mistakes surfaced this way, both about *this
+   step's own scope boundary*, not the codegen itself: a double-quoted
+   `"A"` lexes as a `STRING` literal even at length 1 (Oberon-2's real,
+   separate single-char-string-to-`CHAR` assignment-compatibility rule,
+   deferred alongside array/string support to step 8 — fixed by using
+   proper `41X`-style `CHAR`-literal syntax instead), and a `{0,1,2,5}`
+   `SET` constructor expression is `SyntaxTree.SetExprNode`, whose live
+   (non-`CONST`) construction this step also doesn't lower — fixed by
+   moving the same set literals into `CONST` declarations instead (a
+   `CONST`'s already-folded value reaches codegen through the ordinary
+   designator path, `GenerateConstValue`, with no `SetExprNode` codegen
+   needed at all).
+
+   Two conformance-fixture updates were required, not just additions,
+   since `llvm-emit-ir`/`llvm-build-run` (step 2) both depended on the
+   now-removed stub's fixed behavior: `llvm-emit-ir`'s `stub.mod` keeps
+   its trivial empty body (still the right minimal case for exercising
+   CLI/file-writing plumbing alone) but its golden `expected` now reflects
+   real (if content-free) codegen's actual `@llvmStub_init`/`@main`
+   output instead of the old hand-written "Hello, world!" stand-in;
+   `llvm-build-run` similarly now expects the built binary to run
+   successfully and print *nothing* (no FFI exists yet to print
+   anything), rather than the stub's hardcoded greeting. A new,
+   dedicated fixture, `llvm-straight-line-arithmetic`, golden-diffs
+   `-emit-llvm-ir`'s real output for the arithmetic/relational/boolean/
+   `SET` module described above (the same one manually verified via the
+   C-harness technique) — a pure `.ll` diff, matching this step's own
+   "verified only by inspecting/golden-diffing" plan text, since
+   `llvm-build-run`-style execution still has nothing observable to
+   check until step 6. All 99 conformance tests pass (98 prior, two
+   updated, one new).
+
 6. **External-procedure FFI lowering + `rtl/llvm/Console.Mod`.**
    `LLVMCodeGenerator.Mod` emits an LLVM `declare` plus a C-calling-
    convention `call` for every `PROCEDURE ["C"] ...` declared external

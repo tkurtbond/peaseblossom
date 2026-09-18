@@ -1,0 +1,160 @@
+semantic OK, wrote arith.ll
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+@arith.a = global i16 zeroinitializer
+@arith.b = global i16 zeroinitializer
+@arith.sum = global i16 zeroinitializer
+@arith.diff = global i16 zeroinitializer
+@arith.prod = global i16 zeroinitializer
+@arith.q = global i16 zeroinitializer
+@arith.r = global i16 zeroinitializer
+@arith.sa = global i8 zeroinitializer
+@arith.wide = global i32 zeroinitializer
+@arith.c1 = global i8 zeroinitializer
+@arith.c2 = global i8 zeroinitializer
+@arith.flagCmp = global i8 zeroinitializer
+@arith.flagBool = global i8 zeroinitializer
+@arith.flagNot = global i8 zeroinitializer
+@arith.s1 = global i32 zeroinitializer
+@arith.s2 = global i32 zeroinitializer
+@arith.sUnion = global i32 zeroinitializer
+@arith.sDiff = global i32 zeroinitializer
+@arith.sInter = global i32 zeroinitializer
+@arith.sSym = global i32 zeroinitializer
+@arith.sComp = global i32 zeroinitializer
+@arith.negQ = global i16 zeroinitializer
+@arith.negR = global i16 zeroinitializer
+
+define void @arith_init() {
+entry:
+  %t1 = sext i8 17 to i16
+  store i16 %t1, ptr @arith.a
+  %t2 = sext i8 5 to i16
+  store i16 %t2, ptr @arith.b
+  %t3 = load i16, ptr @arith.a
+  %t4 = load i16, ptr @arith.b
+  %t5 = add i16 %t3, %t4
+  store i16 %t5, ptr @arith.sum
+  %t6 = load i16, ptr @arith.a
+  %t7 = load i16, ptr @arith.b
+  %t8 = sub i16 %t6, %t7
+  store i16 %t8, ptr @arith.diff
+  %t9 = load i16, ptr @arith.a
+  %t10 = load i16, ptr @arith.b
+  %t11 = mul i16 %t9, %t10
+  store i16 %t11, ptr @arith.prod
+  %t12 = load i16, ptr @arith.a
+  %t13 = load i16, ptr @arith.b
+  %t14 = sdiv i16 %t12, %t13
+  %t15 = srem i16 %t12, %t13
+  %t16 = xor i16 %t15, %t13
+  %t17 = icmp slt i16 %t16, 0
+  %t18 = icmp ne i16 %t15, 0
+  %t19 = and i1 %t18, %t17
+  %t20 = sub i16 %t14, 1
+  %t21 = select i1 %t19, i16 %t20, i16 %t14
+  %t22 = add i16 %t15, %t13
+  %t23 = select i1 %t19, i16 %t22, i16 %t15
+  store i16 %t21, ptr @arith.q
+  %t24 = load i16, ptr @arith.a
+  %t25 = load i16, ptr @arith.b
+  %t26 = sdiv i16 %t24, %t25
+  %t27 = srem i16 %t24, %t25
+  %t28 = xor i16 %t27, %t25
+  %t29 = icmp slt i16 %t28, 0
+  %t30 = icmp ne i16 %t27, 0
+  %t31 = and i1 %t30, %t29
+  %t32 = sub i16 %t26, 1
+  %t33 = select i1 %t31, i16 %t32, i16 %t26
+  %t34 = add i16 %t27, %t25
+  %t35 = select i1 %t31, i16 %t34, i16 %t27
+  store i16 %t35, ptr @arith.r
+  %t36 = sub i8 0, 7
+  %t37 = sdiv i8 %t36, 2
+  %t38 = srem i8 %t36, 2
+  %t39 = xor i8 %t38, 2
+  %t40 = icmp slt i8 %t39, 0
+  %t41 = icmp ne i8 %t38, 0
+  %t42 = and i1 %t41, %t40
+  %t43 = sub i8 %t37, 1
+  %t44 = select i1 %t42, i8 %t43, i8 %t37
+  %t45 = add i8 %t38, 2
+  %t46 = select i1 %t42, i8 %t45, i8 %t38
+  %t47 = sext i8 %t44 to i16
+  store i16 %t47, ptr @arith.negQ
+  %t48 = sub i8 0, 7
+  %t49 = sdiv i8 %t48, 2
+  %t50 = srem i8 %t48, 2
+  %t51 = xor i8 %t50, 2
+  %t52 = icmp slt i8 %t51, 0
+  %t53 = icmp ne i8 %t50, 0
+  %t54 = and i1 %t53, %t52
+  %t55 = sub i8 %t49, 1
+  %t56 = select i1 %t54, i8 %t55, i8 %t49
+  %t57 = add i8 %t50, 2
+  %t58 = select i1 %t54, i8 %t57, i8 %t50
+  %t59 = sext i8 %t58 to i16
+  store i16 %t59, ptr @arith.negR
+  store i8 3, ptr @arith.sa
+  %t60 = load i8, ptr @arith.sa
+  %t61 = load i16, ptr @arith.a
+  %t62 = sext i8 %t60 to i16
+  %t63 = add i16 %t62, %t61
+  %t64 = sext i16 %t63 to i32
+  store i32 %t64, ptr @arith.wide
+  store i8 65, ptr @arith.c1
+  store i8 66, ptr @arith.c2
+  %t65 = load i16, ptr @arith.a
+  %t66 = load i16, ptr @arith.b
+  %t67 = icmp sgt i16 %t65, %t66
+  %t68 = zext i1 %t67 to i8
+  %t69 = load i8, ptr @arith.c1
+  %t70 = load i8, ptr @arith.c2
+  %t71 = icmp ult i8 %t69, %t70
+  %t72 = zext i1 %t71 to i8
+  %t73 = and i8 %t68, %t72
+  store i8 %t73, ptr @arith.flagCmp
+  %t74 = load i16, ptr @arith.a
+  %t75 = sext i8 17 to i16
+  %t76 = icmp eq i16 %t74, %t75
+  %t77 = zext i1 %t76 to i8
+  %t78 = load i16, ptr @arith.b
+  %t79 = sext i8 99 to i16
+  %t80 = icmp eq i16 %t78, %t79
+  %t81 = zext i1 %t80 to i8
+  %t82 = or i8 %t77, %t81
+  store i8 %t82, ptr @arith.flagBool
+  %t83 = load i8, ptr @arith.flagBool
+  %t84 = xor i8 %t83, 1
+  store i8 %t84, ptr @arith.flagNot
+  store i32 39, ptr @arith.s1
+  store i32 44, ptr @arith.s2
+  %t85 = load i32, ptr @arith.s1
+  %t86 = load i32, ptr @arith.s2
+  %t87 = or i32 %t85, %t86
+  store i32 %t87, ptr @arith.sUnion
+  %t88 = load i32, ptr @arith.s1
+  %t89 = load i32, ptr @arith.s2
+  %t90 = xor i32 %t89, -1
+  %t91 = and i32 %t88, %t90
+  store i32 %t91, ptr @arith.sDiff
+  %t92 = load i32, ptr @arith.s1
+  %t93 = load i32, ptr @arith.s2
+  %t94 = and i32 %t92, %t93
+  store i32 %t94, ptr @arith.sInter
+  %t95 = load i32, ptr @arith.s1
+  %t96 = load i32, ptr @arith.s2
+  %t97 = xor i32 %t95, %t96
+  store i32 %t97, ptr @arith.sSym
+  %t98 = load i32, ptr @arith.s1
+  %t99 = xor i32 %t98, -1
+  store i32 %t99, ptr @arith.sComp
+  ret void
+}
+
+define i32 @main() {
+entry:
+  call void @arith_init()
+  ret i32 0
+}

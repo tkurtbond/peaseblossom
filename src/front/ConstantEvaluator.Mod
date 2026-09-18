@@ -213,7 +213,16 @@ MODULE ConstantEvaluator;
     END
   END IntegerLiteralType;
 
-  PROCEDURE ParseCharConst(lexeme: ARRAY OF CHAR): CHAR;
+  (* Exported (PLAN.md Phase 8 step 5) for the same reason IntegerLiteralType*/
+     ParseReal* already are: LLVMCodeGenerator.Mod needs a char-literal
+     LiteralExprNode's actual CHAR value to emit an i8 constant for it, and
+     this lexeme-parsing logic - like the other two - is a pure, context-
+     free leaf-token parser, not a constant-*expression* evaluator (unlike
+     Evaluate*/EvaluateLiteral, it never touches a Scope or reports a
+     diagnostic), so calling it directly from codegen for a live,
+     non-constant CHAR literal is exactly the kind of reuse the other two
+     already established, not a layering violation. *)
+  PROCEDURE ParseCharConst*(lexeme: ARRAY OF CHAR): CHAR;
     VAR i: INTEGER; v: LONGINT;
   BEGIN
     v := 0; i := 0;
