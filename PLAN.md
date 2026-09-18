@@ -631,6 +631,131 @@ struct/array layout plus a cross-check fixture rather than manual packing
    than blocking the first runnable program. First genuine "hello world"
    fixture (compile+link+run+diff stdout) lands here.
 
+   **Implemented**, with one real design revision along the way: a
+   dedicated `rtl/llvm/Console.Mod` wrapper (`PrintString`/`PrintLn`
+   calling `write` internally) needs ordinary, non-external procedure-
+   with-body codegen to compile its own wrapper bodies — genuinely step
+   10's scope, not yet built. Rather than block step 6 on step 10, this
+   step instead proves the FFI `declare`/`call` mechanism directly: its
+   own milestone fixture, `llvm-hello-world`, declares
+   `PROCEDURE ["C", "write"] SysWrite(...)` and calls it itself, with no
+   `Console.Mod` in between — `Console.Mod`'s real wrapper body is
+   deferred to (folded into) step 10. `SemanticActions.Mod`'s external-
+   procedure front end (Phase 6) needed no changes at all — confirmed by
+   `poc -check` on a scratch fixture before writing any codegen — so this
+   step is pure backend work: `EmitExternalDeclares` emits an
+   unconditional LLVM `declare` for every `PROCEDURE [conv] ...`
+   external declaration the module has (whether or not it's actually
+   called — there's no "used externals" set built to check against, and
+   an unused `declare` is harmless), and `GenerateCall`/
+   `GenerateExternalCall` lower a call through it: `VAR` actual arguments
+   pass as the address of a bare module-`VAR` designator (`ptr
+   @Module.name`, the same reference `GenerateDesignatorValue` already
+   loads from); an `ARRAY OF CHAR` value parameter only handles a literal
+   string-constant actual argument, materialized as its own private
+   global constant and passed as a bare `ptr` (deliberately *not* the
+   hidden-length-parameter convention Oberon-internal open-array value
+   parameters need — a C-ABI external declaration's real callee has no
+   room in its prototype for one); every other parameter shape passes by
+   value, `sext`-widened via the existing `ExtendTo` where the parameter
+   type is a wider integer. Every declared external procedure's "VMS"
+   calling convention (Phase 6's third option, besides "C" and none) is
+   parsed and recorded but not specially handled yet — treated like "C",
+   wrong but harmless until Phase 10 gives it a real, different lowering.
+
+   A string-literal argument's global needs a name derivable
+   independently by two separate, uncoordinated passes — a pre-pass,
+   `CollectStringConstantsSeq`, walks the module's own statement/
+   expression tree once to emit every string-literal global *before* any
+   function body is written (required because LLVM tolerates a global
+   definition appearing anywhere relative to its uses, but never nested
+   inside a `define ... { ... }` body, and this module's `Files.Rider`
+   writes strictly sequentially with no way to insert content out of
+   order later), and the real codegen pass re-encounters the same
+   literals later and must reference the identical global. Solved by
+   naming each string constant from its own source position
+   (`@.str.L<line>.C<column>`) rather than a shared counter, so both
+   passes derive the same name with no mutable state threaded between
+   them.
+
+   A real, load-bearing ABI-correctness gap surfaced and is deliberately
+   left open, not solved: this project has no target-native "C
+   `int`"/"`size_t`"-equivalent Oberon type that varies by triple the way
+   C's own types do. `HUGEINT` is always LLVM `i64` regardless of target
+   word size (`LLVMTypes.BasicTypeString`) — correct for `write(2)`'s
+   `size_t count` on a 64-bit x86 target, but not on `i686-...` or
+   similar. `llvm-hello-world`'s own header comment documents this
+   explicitly: its Oberon parameter types (`LONGINT` for `write`'s `int
+   fd`, `HUGEINT` for its `size_t count`) were hand-picked to match real
+   `write(2)`'s C ABI only for a 64-bit x86 target — `LONGINT` happens to
+   be LLVM `i32` under this project's default `sizeModelO2`, matching
+   C's 32-bit `int`, but that's this step's default, not something an
+   external declaration's author is guided toward or warned about if it
+   doesn't hold.
+
+   Two real bugs were found and fixed this step, neither caught by any
+   existing golden-file fixture (both surfaced only while dogfooding
+   `llvm-hello-world` itself during development):
+
+   - `CollectStringConstants`'s own recursive descent (`WITH expr:
+     SyntaxTree.UnaryExprNode DO ... | expr: SyntaxTree.BinaryExprNode DO
+     ...`) originally called itself directly from inside those `WITH`
+     branches — hitting a known, already-documented `voc` compiler bug
+     (see `AGENTS.md`'s "Known `voc` bugs affecting `poc`'s own source"):
+     a procedure calling *itself* from inside one of its own `WITH`
+     branches is misdiagnosed `err 113 incompatible assignment`, even
+     when the argument's type is fine. Worked around exactly as that
+     entry recommends: each `WITH` branch now only stashes the child
+     subexpression(s) it needs into local variables, and the actual
+     recursive calls happen after the `WITH` block closes (harmless when
+     a branch leaves a child variable `NIL`, since `CollectStringConstants`
+     already treats a `NIL` argument as a no-op).
+   - `GenerateCallArgList` originally wrote each argument's `"type text"`
+     pair directly to the output stream while the caller had already
+     started (but not finished) writing the `"call ...("` line itself —
+     but evaluating a non-`VAR`/non-string argument can itself need to
+     emit a whole separate instruction line first (e.g. `ExtendTo`'s
+     `sext`, via `GenerateExpr`'s own ordinary "write instructions as you
+     go" style). Emitting that instruction line while a `"call ...("`
+     line was only half-written spliced a bare `%tN = sext ...`
+     instruction into the middle of the call's own parenthesized argument
+     list, producing syntactically invalid LLVM IR — caught immediately
+     by inspecting `llvm-hello-world`'s own generated `.ll` by hand, not
+     by any test failure (nothing prior exercised a call needing an
+     integer-widening argument). Fixed by making argument evaluation and
+     argument-list *writing* two strictly separate phases:
+     `GenerateCallArgList` now evaluates every argument first (emitting
+     any instructions to `w` as it goes) and builds the full, already-
+     joined `"type text, type text, ..."` text into a caller-owned
+     buffer, and only after every argument is fully evaluated does
+     `GenerateExternalCall` write the `"call ...("` line itself, in one
+     unbroken sequence of `WriteStr` calls with no interleaved
+     instruction output possible.
+
+   `EmitExternalDeclares`/`CollectStringConstantsSeq` also each briefly
+   introduced two unconditional trailing blank lines even for a module
+   with no external declarations and no string literals (a `WriteLn`
+   after each section regardless of whether it emitted anything),
+   regressing `llvm-emit-ir`'s golden diff by two extra blank lines
+   before `define`; fixed by removing each section's own `WriteLn` and
+   keeping exactly one, unconditional blank line right before the
+   `define` line, the same single-blank-line behavior `EmitGlobals`
+   already had for an empty module.
+
+   Verified beyond the golden-`.ll`-diff style steps 1–5 used: `poc -o
+   llvm-hello-world -build hello.mod` actually compiles, links (via
+   `clang`, `LLVMToolchainDriver.Build`), and runs, printing the real
+   string `Hello, world!` to stdout — the first genuine compile+link+
+   run+diff-stdout fixture in this suite, using `testenv.sh`'s
+   `poc_build_run` helper exactly as `llvm-build-run` (step 3) already
+   established the pattern for. Also confirmed, via a scratch (not
+   committed) fixture calling a locally-declared, non-external
+   `PROCEDURE`, that `GenerateCall`'s fallback for a real Oberon-2 shape
+   this step still doesn't lower degrades cleanly to `Unsupported`
+   (`"non-external procedure calls (PLAN.md Phase 8 step 10+)"`) rather
+   than emitting a call to an undeclared symbol or crashing the
+   generator. All 100 conformance tests pass (99 prior, one new).
+
 7. **Control flow.** IF/CASE/WHILE/REPEAT/FOR/LOOP+EXIT/RETURN lowered to
    basic blocks and branches.
 
