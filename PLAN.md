@@ -2849,7 +2849,8 @@ style exactly.
      program it accepts.
    - *Not done*: `CONST` `ASH(...)`/`MAX(REAL)`, and folding of *integer
      literal arithmetic* (`2 * 100 + 2 * 10` wraps at `SHORTINT` width
-     where voc folds it) - both pre-existing and unrelated to this step.
+     where voc folds it) - both pre-existing and unrelated to this step;
+     they are step 10's (Catching Up).
 
 9. **32-/64-bit parity sweep.** Run the *entire* conformance suite —
    not a promoted subset — compile+link+run+diff on both a 32-bit and
@@ -2866,11 +2867,84 @@ style exactly.
    that only passes on one word size or platform is a real bug, not an
    acceptable gap, at this point in the project.
 
+10. **Catching Up.** Three constant-folding gaps found while
+    implementing steps 5-8, each pre-existing and none in those steps' own
+    scope; all three make poc reject, or mis-type, something real voc
+    accepts and folds. Listed after step 9 because none blocks the parity
+    sweep (every fixture so far avoids them), but the sweep is re-run over
+    the whole suite once this lands - see **Testing** below. Every
+    behavior below is to be probed against real voc first (this file's
+    standing convention), not assumed from the notes that found the gaps.
+    - *Folding of integer literal arithmetic.* `2 * 100 + 2 * 10` is typed
+      `SHORTINT` and wraps at 8 bits at run time; voc folds it to 220.
+      `ConstantEvaluator.IntegerLiteralType` gives a bare numeral its
+      minimal type (Oberon2.pdf §5), but a *computed* constant keeps the
+      type of its operands: `Types.WiderOf` of two `SHORTINT`s, whatever the
+      result's value needs. Two halves: (a) an ordinary *expression* whose
+      operands are all constants (`SemanticActions.CheckExpr` and
+      `LLVMCodeGenerator`, which never fold - the wrapping above happens
+      there) is folded to a constant of the minimal type its value fits,
+      as voc's `OPB` does; (b) `CONST` folding likewise re-derives the
+      minimal type from the computed value instead of keeping the
+      operands' (`000-todo.org`'s `MAX(SHORTINT) + 1` entry, which real voc
+      rejects and poc types `SHORTINT`). Decide from voc's own behavior
+      what happens when the value fits no type (`HUGEINT` overflow -
+      `ConstantEvaluator` already reports "integer literal too large" for a
+      numeral, so a computed overflow should be the same kind of error, not
+      a silent wrap), and whether `DIV`/`MOD`, unary minus and the six
+      relations fold too (they should: a constant expression is a constant
+      expression). Both size models (`-O2`/`-OC`) change which type a value
+      lands in, so the folder must use the current model, as
+      `IntegerLiteralType` already does.
+    - *`CONST` `ASH(x, n)`.* The first *value-argument* predeclared
+      function `ConstantEvaluator` has to fold: `MAX`/`MIN`/`SIZE` take a
+      bare type name and needed no general machinery (see "Open design
+      questions"), but `ASH` must evaluate its two arguments as constant
+      expressions and apply the shift. Same result type as
+      `PredeclaredProcedures.CheckAsh` (the wider of `LONGINT` and `x`'s
+      type). voc reports a constant `ASH` whose count is beyond the
+      machine's `maxExp`, or whose left shift overflows 64 bits, as
+      error 208 (numerical overflow) - probe the exact boundaries and match
+      them rather than the run-time semantics `GenerateAsh` gives (which
+      define a count past the width as 0/sign). Whether the same machinery
+      is then extended to the other value-argument functions (`ORD`/`ABS`/
+      `CHR`/`CAP`/`ODD`/`LONG`/`SHORT`/`ENTIER`, all deferred alongside)
+      is optional here: `ASH` is what this step commits to, built so the
+      others are one small case each.
+    - *`CONST` `MAX(REAL)`/`MIN(REAL)`/`MAX(LONGREAL)`/`MIN(LONGREAL)`.*
+      `ConstantEvaluator.MaxMinBound` still returns FALSE for these; the
+      run-time expression form is done (`GenerateMaxMin`: IEEE 754's largest
+      finite values, 3.4028234663852886D38 and 1.7976931348623157D308 - voc's
+      own `MAX(LONGREAL)` is deliberately a little low, so poc's value
+      differs from voc's by design, documented in AGENTS.md). The constant
+      form has to build those two `LONGREAL` values inside poc's own
+      source *without* writing them as literals - voc rejects a `REAL`
+      literal with exponent 38 and a `LONGREAL` one with exponent 308
+      (AGENTS.md, "Known voc bugs"), the same workaround
+      `LLVMCodeGenerator.DoubleBitsText`'s `twoTo52` loop already uses (or
+      assemble them arithmetically from their bit patterns). Then the
+      folded value must round-trip through `ModuleInterface.Mod`'s
+      `.sym` writer (a `CONST` exported from a module: tier 2's
+      `FormatReal`, since it is not a bare literal) and be emitted by
+      `RealConstant` exactly, including at `REAL`'s single precision.
+    **Testing**: for each gap a positive fixture (`poc -check`, plus a
+    compile+link+run one where the value is observable at run time -
+    `2 * 100 + 2 * 10` compared with 220 is the direct regression), a
+    negative one for what voc rejects (a folded overflow, `MAX(SHORTINT) +
+    1` in a `CONST`, an `ASH` past `maxExp`), a `.sym` round-trip for a
+    `CONST` of each new kind, all under both `-O2` and `-OC` where the
+    size model matters, and cross-checked against real voc (the `MAX`
+    constants excepted, by design, for `LONGREAL`). This step's fixtures
+    are ordinary `make test` fixtures, so **the step 9 sweep is re-run in
+    full** - both word sizes, Linux and at least one BSD - after it lands,
+    and Phase 9 is not done until it is clean.
+
 **Testing summary**: golden-`.ll`-diff fixtures for the purely static
 pieces (step 1, and step 4a's `.sym` writer/checker fixtures plus its one
 cross-module descriptor golden), promoted to compile+link+run+diff everywhere else,
 matching Phase 8's own testing posture — culminating in step 9's
-whole-suite/whole-platform-matrix gate. Self-hosting is Phase 10's own
+whole-suite/whole-platform-matrix gate, re-run once step 10 (Catching Up)
+has added its own fixtures. Self-hosting is Phase 10's own
 exit gate, not this phase's.
 
 ### Phase 10 — LLVM runtime library (voc-compatibility + Oakwood + Appendix C) + self-hosting
@@ -3365,6 +3439,8 @@ external-symbol names are subject to the same 31-character limit above.
     implementing" convention), not guessed at, and ties into the
     already-tracked correctly-rounded-float-formatting work (see
     `references.md`). Revisit alongside that, not as part of this pass.
+    (Phase 9 step 8 lowered the run-time form; the `CONST` form is Phase 9
+    step 10's.)
   - `SIZE(T)` **implemented** 2026-09-17. Unlike `MAX`/`MIN`'s other
     bounds its result is genuinely target-dependent (word size and
     elementary-type size model - `MemoryLayout.Mod`'s own two axes).
