@@ -1,4 +1,5 @@
 * Things to be done while getting the compile working..
+** TODO Can poc garbage collection do better than conservatively scanning the stack?
 ** TODO Add debugging support, so one can debug poc produced code in gdb or lldb.
 ** TODO voc has command line options for setting machine address size and alignment.  Figure out if poc needs them too.
  Target machine address size and alignment (default is that of the running compiler binary)
