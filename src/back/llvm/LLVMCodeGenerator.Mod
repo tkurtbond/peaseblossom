@@ -64,17 +64,13 @@ MODULE LLVMCodeGenerator;
      nonzero and has a different sign than the divisor (GenerateDivMod).
 
      Short-circuit evaluation for "&"/"OR" (Oberon-2 requires it,
-     Appendix A) was deferred at first - GenerateBooleanOp lowers both to
-     plain, eager "and"/"or" on the operands' already-computed i8 0/1
-     values, which is unobservable as long as the right operand can
-     neither trap nor have an effect. Since PLAN.md Phase 9 step 5 (a NIL
-     check, an index check, a call can all be in that operand) it is used
-     only when IsSideEffectFree says the right operand is that simple;
-     any other right operand is generated inside its own block, reached
-     only when the left operand does not already decide the result, and
-     joined with a phi (GenerateShortCircuit). The branch-free form is
-     kept for the simple case so the IR of every program that never
-     needed the branches is unchanged.
+     Appendix A) was deferred at first - both were lowered to plain,
+     eager "and"/"or" on the operands' already-computed i8 0/1 values,
+     unobservable while no operand could trap or have an effect. Since
+     PLAN.md Phase 9 step 5 (a NIL check, an index check, a call can all
+     be in that operand) both always evaluate the right operand in its own
+     block, reached only when the left operand does not already decide
+     the result, joined with a phi (GenerateShortCircuit).
 
      Every live codegen value is carried at its full LLVMTypes.TypeString*
      width (i8 for BOOLEAN/CHAR, i16/i32/i64 for the integer family per
@@ -232,9 +228,6 @@ MODULE LLVMCodeGenerator;
     withTrapGlobal = "@.trap.nowith";
     withTrapMsg = "no matching WITH guard";
     withTrapExitCode = 6;
-    heapTrapGlobal = "@.trap.heapfull";
-    heapTrapMsg = "heap exhausted";
-    heapTrapExitCode = 7;
 
   TYPE
     ValueText = ARRAY textLength + 1 OF CHAR;
@@ -432,7 +425,7 @@ MODULE LLVMCodeGenerator;
          for naming anonymous records; and whether the program contains
          GarbageCollectedHeap itself (NEW declares its Allocate if not). *)
       currentBlock: ValueText;
-      needNilTrap, needGuardTrap, needWithTrap, needHeapTrap: BOOLEAN;
+      needNilTrap, needGuardTrap, needWithTrap, usedAllocate: BOOLEAN;
       narrowings: Narrowing;
       arrayDescs: ArrayDescEntry;
       lateRecords: TypeDescEntry;
@@ -1144,18 +1137,16 @@ MODULE LLVMCodeGenerator;
     EmitBinOp(w, cg, "icmp eq", "ptr", entry, target, resultText)
   END EmitTagTest;
 
-  (* The type guard v(T): a value that is not NIL must be a T or an
-     extension of one, else the program is aborted. NIL passes (it has no
-     dynamic type to contradict the guard; using it is then caught by the
-     NIL check on its first dereference). *)
+  (* The type guard v(T): v must be a T or an extension of one, else the
+     program is aborted. Reading the dynamic type of NIL is a NIL access,
+     as in voc (whose guard, test and WITH all trap on it), so NIL is
+     trapped by the NIL check first. *)
   PROCEDURE EmitTypeGuard(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR; rec: Types.RecordType);
-    VAR isNil, matches, testLabel, failLabel, okLabel: ValueText;
+    VAR matches, failLabel, okLabel: ValueText;
   BEGIN
     cg.needGuardTrap := TRUE;
-    NewLabel(cg, testLabel); NewLabel(cg, failLabel); NewLabel(cg, okLabel);
-    EmitBinOp(w, cg, "icmp eq", "ptr", ptrText, "null", isNil);
-    EmitCondBr(w, isNil, okLabel, testLabel);
-    EmitLabel(w, cg, testLabel);
+    EmitNilCheck(w, cg, ptrText);
+    NewLabel(cg, failLabel); NewLabel(cg, okLabel);
     EmitTagTest(w, cg, ptrText, rec, matches);
     EmitCondBr(w, matches, okLabel, failLabel);
     EmitLabel(w, cg, failLabel);
@@ -1163,25 +1154,14 @@ MODULE LLVMCodeGenerator;
     EmitLabel(w, cg, okLabel)
   END EmitTypeGuard;
 
-  (* The test v IS T (and WITH's branch selector) as an i1: FALSE for NIL,
-     since NIL has no dynamic type - where voc traps on a NIL operand, this
-     answers FALSE, so any program voc accepts means the same thing here. *)
+  (* The test v IS T (and WITH's branch selector) as an i1. Like the guard
+     it needs v's dynamic type, so a NIL v is a NIL-access trap, not FALSE:
+     that is what voc does, and the report does not say. *)
   PROCEDURE EmitTypeTest(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR; rec: Types.RecordType;
                          VAR resultText: ARRAY OF CHAR);
-    VAR isNil, matches, testLabel, joinLabel, startBlock: ValueText;
   BEGIN
-    COPY(cg.currentBlock, startBlock);
-    NewLabel(cg, testLabel); NewLabel(cg, joinLabel);
-    EmitBinOp(w, cg, "icmp eq", "ptr", ptrText, "null", isNil);
-    EmitCondBr(w, isNil, joinLabel, testLabel);
-    EmitLabel(w, cg, testLabel);
-    EmitTagTest(w, cg, ptrText, rec, matches);
-    EmitBr(w, joinLabel);
-    EmitLabel(w, cg, joinLabel);
-    NewTemp(cg, resultText);
-    WriteStr(w, "  "); WriteStr(w, resultText); WriteStr(w, " = phi i1 [ false, %"); WriteStr(w, startBlock);
-    WriteStr(w, " ], [ "); WriteStr(w, matches); WriteStr(w, ", %"); WriteStr(w, testLabel); WriteStr(w, " ]");
-    WriteLn(w)
+    EmitNilCheck(w, cg, ptrText);
+    EmitTagTest(w, cg, ptrText, rec, resultText)
   END EmitTypeTest;
 
   PROCEDURE FindLocalBinding(VAR cg: Codegen; obj: SymbolTable.Object): LocalBinding;
@@ -1434,16 +1414,6 @@ MODULE LLVMCodeGenerator;
     COPY("i8", result.llvmType); result.oberonType := Types.Boolean
   END GenerateRelational;
 
-  (* Eager: only reached when the right operand is side-effect free (see
-     IsSideEffectFree); anything else goes through GenerateShortCircuit. *)
-  PROCEDURE GenerateBooleanOp(VAR w: Files.Rider; VAR cg: Codegen; op: INTEGER; l, r: Value; VAR result: Value);
-  BEGIN
-    COPY("i8", result.llvmType); result.oberonType := Types.Boolean;
-    IF op = Lexer.ampersand THEN EmitBinOp(w, cg, "and", "i8", l.text, r.text, result.text)
-    ELSE EmitBinOp(w, cg, "or", "i8", l.text, r.text, result.text)
-    END
-  END GenerateBooleanOp;
-
   (* An integer LLVM type's width in bits - only ever asked about the
      i8..i64 family every Oberon integer/CHAR/BOOLEAN/SET is spelled
      with. *)
@@ -1679,40 +1649,6 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateUnary;
 
-  (* Whether evaluating e can neither trap nor have any effect - a
-     literal, NIL, a plain variable or constant, and arithmetic/
-     comparison over those, apart from DIV/MOD (a zero divisor traps) and
-     IS. GenerateBinaryExpr evaluates "&"/"OR" eagerly, as one plain
-     and/or, exactly when the right operand is like this, since then
-     skipping it is unobservable; anything else (a call, an index or
-     pointer access, whose NIL/range check must not run when the left
-     operand already decides the result) is short-circuited with real
-     branches, as Oberon2.pdf Appendix A requires. Keeping the branch-
-     free form for the simple case leaves the IR of every program that
-     never needed short-circuiting unchanged. *)
-  PROCEDURE IsSideEffectFree(e: SyntaxTree.ExprNode): BOOLEAN;
-    VAR de: SyntaxTree.DesignatorExprNode; un: SyntaxTree.UnaryExprNode; bin: SyntaxTree.BinaryExprNode;
-  BEGIN
-    IF e = NIL THEN RETURN TRUE END;
-    IF (e IS SyntaxTree.LiteralExprNode) OR (e IS SyntaxTree.NilExprNode) THEN RETURN TRUE END;
-    IF e IS SyntaxTree.DesignatorExprNode THEN
-      de := e(SyntaxTree.DesignatorExprNode);
-      RETURN ~de.hasParens & (de.designator.selectors = NIL)
-    END;
-    IF e IS SyntaxTree.UnaryExprNode THEN
-      un := e(SyntaxTree.UnaryExprNode);
-      RETURN IsSideEffectFree(un.operand)
-    END;
-    IF e IS SyntaxTree.BinaryExprNode THEN
-      bin := e(SyntaxTree.BinaryExprNode);
-      IF (bin.op = Lexer.divKeyword) OR (bin.op = Lexer.modKeyword) OR (bin.op = Lexer.isKeyword) THEN
-        RETURN FALSE
-      END;
-      RETURN IsSideEffectFree(bin.left) & IsSideEffectFree(bin.right)
-    END;
-    RETURN FALSE
-  END IsSideEffectFree;
-
   (* "a & b" / "a OR b" with b evaluated only when a does not already
      decide the result. b's code may itself open blocks (an index check, a
      NIL check), so the phi's incoming block for b is whichever block b
@@ -1785,7 +1721,7 @@ MODULE LLVMCodeGenerator;
       GenerateIsExpr(w, cg, expr, result);
       RETURN
     END;
-    IF ((expr.op = Lexer.ampersand) OR (expr.op = Lexer.orKeyword)) & ~IsSideEffectFree(expr.right) THEN
+    IF (expr.op = Lexer.ampersand) OR (expr.op = Lexer.orKeyword) THEN
       GenerateShortCircuit(w, cg, expr, result);
       RETURN
     END;
@@ -1808,8 +1744,6 @@ MODULE LLVMCodeGenerator;
     ELSIF (expr.op = Lexer.equal) OR (expr.op = Lexer.notEqual) OR (expr.op = Lexer.less)
         OR (expr.op = Lexer.lessEqual) OR (expr.op = Lexer.greater) OR (expr.op = Lexer.greaterEqual) THEN
       GenerateRelational(w, cg, expr.op, l, r, result)
-    ELSIF (expr.op = Lexer.ampersand) OR (expr.op = Lexer.orKeyword) THEN
-      GenerateBooleanOp(w, cg, expr.op, l, r, result)
     ELSIF expr.op = Lexer.inKeyword THEN
       GenerateIn(w, cg, l, r, result)
     ELSE
@@ -3084,14 +3018,14 @@ MODULE LLVMCodeGenerator;
 
   (* NEW(p) for a pointer to a record or to a fixed array: the block comes
      from GarbageCollectedHeap.Allocate (zero-filled, tagged with the
-     record's type descriptor), a failed allocation is a trap, and the
-     result is stored through p's designator. The unsupported cases are
+     record's type descriptor), and the result - NIL if the heap could not
+     supply one - is stored through p's designator. The unsupported cases are
      decided from the declared types alone, before anything is emitted. *)
   PROCEDURE GenerateNew(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
       de: SyntaxTree.DesignatorExprNode; t, base: Types.Type; ptr: Types.PointerType;
-      rec: Types.RecordType; arr: Types.ArrayType; addrText, wordInt, sizeText, tagText, allocated, isZero,
-      okLabel, trapLabel, pointer: ValueText; longTag: LongText; addrType: Types.Type;
+      rec: Types.RecordType; arr: Types.ArrayType; addrText, wordInt, sizeText, tagText, allocated,
+      pointer: ValueText; longTag: LongText; addrType: Types.Type;
   BEGIN
     result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
     IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
@@ -3130,7 +3064,7 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, "  ; unsupported: NEW on a designator this backend cannot address"); WriteLn(w);
       RETURN
     END;
-    cg.needHeapTrap := TRUE;
+    cg.usedAllocate := TRUE;
     WordIntType(wordInt);
     sizeText[0] := 0X; AppendLongInt(sizeText, MemoryLayout.Size(base, ConstantEvaluator.wordSize, cg.sizeModel));
     IF rec # NIL THEN
@@ -3144,12 +3078,9 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, "  "); WriteStr(w, allocated); WriteStr(w, " = call "); WriteStr(w, wordInt);
     WriteStr(w, " @GarbageCollectedHeap.Allocate("); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, sizeText);
     WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, tagText); WriteStr(w, ")"); WriteLn(w);
-    EmitBinOp(w, cg, "icmp eq", wordInt, allocated, "0", isZero);
-    NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
-    EmitCondBr(w, isZero, trapLabel, okLabel);
-    EmitLabel(w, cg, trapLabel);
-    EmitTrap(w, cg, heapTrapGlobal, heapTrapMsg, heapTrapExitCode);
-    EmitLabel(w, cg, okLabel);
+    (* a heap that cannot satisfy the request answers 0, which becomes NIL:
+       as in voc, NEW does not trap, the program finds a NIL pointer (or
+       the NIL check on its first use does) *)
     EmitConvert(w, cg, "inttoptr", wordInt, allocated, "ptr", pointer);
     WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
   END GenerateNew;
@@ -4637,13 +4568,10 @@ MODULE LLVMCodeGenerator;
     IF cg.needNilTrap THEN EmitRuntimeStringGlobal(w, nilTrapGlobal, nilTrapMsg) END;
     IF cg.needGuardTrap THEN EmitRuntimeStringGlobal(w, guardTrapGlobal, guardTrapMsg) END;
     IF cg.needWithTrap THEN EmitRuntimeStringGlobal(w, withTrapGlobal, withTrapMsg) END;
-    IF cg.needHeapTrap THEN
-      EmitRuntimeStringGlobal(w, heapTrapGlobal, heapTrapMsg);
-      IF ~cg.heapPresent THEN
-        WordIntType(wordInt);
-        WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");
-        WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ")"); WriteLn(w)
-      END
+    IF cg.usedAllocate & ~cg.heapPresent THEN
+      WordIntType(wordInt);
+      WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");
+      WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ")"); WriteLn(w)
     END;
     e := cg.lateRecords;
     WHILE e # NIL DO EmitDescriptor(w, cg, e.rec); e := e.next END;
@@ -4765,7 +4693,7 @@ MODULE LLVMCodeGenerator;
     cg.needCharCompare := FALSE; cg.needCharCopy := FALSE; cg.pendingStrings := NIL;
     cg.needMemmove := FALSE;
     cg.currentBlock[0] := 0X;
-    cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.needHeapTrap := FALSE;
+    cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
     cg.heapPresent := withHeap;
     WriteStr(w, 'target datalayout = "');

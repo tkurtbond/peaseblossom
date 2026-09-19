@@ -42,92 +42,117 @@ entry:
   %t21 = fptrunc double 1.5 to float
   %t22 = fcmp olt float %t20, %t21
   %t23 = zext i1 %t22 to i8
-  %t24 = load double, ptr %t2
-  %t25 = sitofp i8 2 to double
-  %t26 = fcmp oge double %t24, %t25
-  %t27 = zext i1 %t26 to i8
-  %t28 = or i8 %t23, %t27
-  %t29 = load i16, ptr %t3
-  %t30 = sext i8 0 to i16
-  %t31 = icmp ne i16 %t29, %t30
-  %t32 = zext i1 %t31 to i8
-  %t33 = or i8 %t28, %t32
-  %t34 = load float, ptr %t1
-  %t35 = load double, ptr %t2
-  %t36 = fpext float %t34 to double
-  %t37 = fcmp oeq double %t36, %t35
-  %t38 = zext i1 %t37 to i8
-  %t39 = or i8 %t33, %t38
-  %t40 = load float, ptr %t1
-  %t41 = load double, ptr %t2
-  %t42 = fpext float %t40 to double
-  %t43 = fcmp ogt double %t42, %t41
-  %t44 = zext i1 %t43 to i8
-  %t45 = or i8 %t39, %t44
-  %t46 = load float, ptr %t1
-  %t47 = load double, ptr %t2
-  %t48 = fpext float %t46 to double
-  %t49 = fcmp ole double %t48, %t47
-  %t50 = zext i1 %t49 to i8
-  %t51 = or i8 %t45, %t50
-  %t52 = icmp ne i8 %t51, 0
-  br i1 %t52, label %L2, label %L3
+  %t24 = icmp ne i8 %t23, 0
+  br i1 %t24, label %L3, label %L2
 L2:
-  %t53 = load double, ptr %t4
-  %t54 = bitcast double %t53 to i64
-  %t55 = and i64 %t54, 9223372036854775807
-  %t56 = bitcast i64 %t55 to double
-  store double %t56, ptr %t4
-  br label %L1
+  %t25 = load double, ptr %t2
+  %t26 = sitofp i8 2 to double
+  %t27 = fcmp oge double %t25, %t26
+  %t28 = zext i1 %t27 to i8
+  br label %L3
 L3:
+  %t29 = phi i8 [ 1, %entry ], [ %t28, %L2 ]
+  %t30 = icmp ne i8 %t29, 0
+  br i1 %t30, label %L5, label %L4
+L4:
+  %t31 = load i16, ptr %t3
+  %t32 = sext i8 0 to i16
+  %t33 = icmp ne i16 %t31, %t32
+  %t34 = zext i1 %t33 to i8
+  br label %L5
+L5:
+  %t35 = phi i8 [ 1, %L3 ], [ %t34, %L4 ]
+  %t36 = icmp ne i8 %t35, 0
+  br i1 %t36, label %L7, label %L6
+L6:
+  %t37 = load float, ptr %t1
+  %t38 = load double, ptr %t2
+  %t39 = fpext float %t37 to double
+  %t40 = fcmp oeq double %t39, %t38
+  %t41 = zext i1 %t40 to i8
+  br label %L7
+L7:
+  %t42 = phi i8 [ 1, %L5 ], [ %t41, %L6 ]
+  %t43 = icmp ne i8 %t42, 0
+  br i1 %t43, label %L9, label %L8
+L8:
+  %t44 = load float, ptr %t1
+  %t45 = load double, ptr %t2
+  %t46 = fpext float %t44 to double
+  %t47 = fcmp ogt double %t46, %t45
+  %t48 = zext i1 %t47 to i8
+  br label %L9
+L9:
+  %t49 = phi i8 [ 1, %L7 ], [ %t48, %L8 ]
+  %t50 = icmp ne i8 %t49, 0
+  br i1 %t50, label %L11, label %L10
+L10:
+  %t51 = load float, ptr %t1
+  %t52 = load double, ptr %t2
+  %t53 = fpext float %t51 to double
+  %t54 = fcmp ole double %t53, %t52
+  %t55 = zext i1 %t54 to i8
+  br label %L11
+L11:
+  %t56 = phi i8 [ 1, %L9 ], [ %t55, %L10 ]
+  %t57 = icmp ne i8 %t56, 0
+  br i1 %t57, label %L12, label %L13
+L12:
+  %t58 = load double, ptr %t4
+  %t59 = bitcast double %t58 to i64
+  %t60 = and i64 %t59, 9223372036854775807
+  %t61 = bitcast i64 %t60 to double
+  store double %t61, ptr %t4
+  br label %L1
+L13:
   br label %L1
 L1:
-  %t57 = load double, ptr %t4
-  %t58 = fptosi double %t57 to i32
-  %t59 = sitofp i32 %t58 to double
-  %t60 = fcmp ogt double %t59, %t57
-  %t61 = sub i32 %t58, 1
-  %t62 = select i1 %t60, i32 %t61, i32 %t58
-  store i32 %t62, ptr @realsir.lx
-  %t63 = load float, ptr %t1
-  %t64 = bitcast float %t63 to i32
-  %t65 = and i32 %t64, 2147483647
-  %t66 = bitcast i32 %t65 to float
-  %t67 = load i16, ptr %t3
-  %t68 = sitofp i16 %t67 to float
-  %t69 = fdiv float %t66, %t68
-  store float %t69, ptr @realsir.fx
-  %t70 = load double, ptr %t4
-  %t71 = fptrunc double %t70 to float
-  store float %t71, ptr @realsir.fx
-  %t72 = load float, ptr @realsir.fx
-  %t73 = fpext float %t72 to double
-  store double %t73, ptr @realsir.dx
-  %t74 = load double, ptr %t4
-  ret double %t74
-L4:
+  %t62 = load double, ptr %t4
+  %t63 = fptosi double %t62 to i32
+  %t64 = sitofp i32 %t63 to double
+  %t65 = fcmp ogt double %t64, %t62
+  %t66 = sub i32 %t63, 1
+  %t67 = select i1 %t65, i32 %t66, i32 %t63
+  store i32 %t67, ptr @realsir.lx
+  %t68 = load float, ptr %t1
+  %t69 = bitcast float %t68 to i32
+  %t70 = and i32 %t69, 2147483647
+  %t71 = bitcast i32 %t70 to float
+  %t72 = load i16, ptr %t3
+  %t73 = sitofp i16 %t72 to float
+  %t74 = fdiv float %t71, %t73
+  store float %t74, ptr @realsir.fx
+  %t75 = load double, ptr %t4
+  %t76 = fptrunc double %t75 to float
+  store float %t76, ptr @realsir.fx
+  %t77 = load float, ptr @realsir.fx
+  %t78 = fpext float %t77 to double
+  store double %t78, ptr @realsir.dx
+  %t79 = load double, ptr %t4
+  ret double %t79
+L14:
   ret double 0.0
 }
 
 define void @realsir_init() {
 entry:
-  %t75 = fptrunc double 0.1 to float
-  store float %t75, ptr @realsir.fx
+  %t80 = fptrunc double 0.1 to float
+  store float %t80, ptr @realsir.fx
   store double 0.1e0, ptr @realsir.dx
   store double -1.5e-3, ptr @realsir.dx
-  %t76 = fptrunc double -0.0 to float
-  %t77 = fpext float %t76 to double
-  store double %t77, ptr @realsir.dx
+  %t81 = fptrunc double -0.0 to float
+  %t82 = fpext float %t81 to double
+  store double %t82, ptr @realsir.dx
   store double 0x3FD5555555555555, ptr @realsir.dx
   store double 0xBFD5555555555555, ptr @realsir.dx
   store float 0x3FD5555560000000, ptr @realsir.fx
   store double 0x0000000400000000, ptr @realsir.dx
   store double 0x7E70000000000000, ptr @realsir.dx
-  %t78 = load float, ptr @realsir.fx
-  %t79 = load double, ptr @realsir.dx
-  %t80 = sext i8 2 to i16
-  %t81 = call double @realsir.Forms(float %t78, double %t79, i16 %t80)
-  store double %t81, ptr @realsir.dx
+  %t83 = load float, ptr @realsir.fx
+  %t84 = load double, ptr @realsir.dx
+  %t85 = sext i8 2 to i16
+  %t86 = call double @realsir.Forms(float %t83, double %t84, i16 %t85)
+  store double %t86, ptr @realsir.dx
   ret void
 }
 
@@ -181,92 +206,117 @@ entry:
   %t21 = fptrunc double 1.5 to float
   %t22 = fcmp olt float %t20, %t21
   %t23 = zext i1 %t22 to i8
-  %t24 = load double, ptr %t2
-  %t25 = sitofp i8 2 to double
-  %t26 = fcmp oge double %t24, %t25
-  %t27 = zext i1 %t26 to i8
-  %t28 = or i8 %t23, %t27
-  %t29 = load i16, ptr %t3
-  %t30 = sext i8 0 to i16
-  %t31 = icmp ne i16 %t29, %t30
-  %t32 = zext i1 %t31 to i8
-  %t33 = or i8 %t28, %t32
-  %t34 = load float, ptr %t1
-  %t35 = load double, ptr %t2
-  %t36 = fpext float %t34 to double
-  %t37 = fcmp oeq double %t36, %t35
-  %t38 = zext i1 %t37 to i8
-  %t39 = or i8 %t33, %t38
-  %t40 = load float, ptr %t1
-  %t41 = load double, ptr %t2
-  %t42 = fpext float %t40 to double
-  %t43 = fcmp ogt double %t42, %t41
-  %t44 = zext i1 %t43 to i8
-  %t45 = or i8 %t39, %t44
-  %t46 = load float, ptr %t1
-  %t47 = load double, ptr %t2
-  %t48 = fpext float %t46 to double
-  %t49 = fcmp ole double %t48, %t47
-  %t50 = zext i1 %t49 to i8
-  %t51 = or i8 %t45, %t50
-  %t52 = icmp ne i8 %t51, 0
-  br i1 %t52, label %L2, label %L3
+  %t24 = icmp ne i8 %t23, 0
+  br i1 %t24, label %L3, label %L2
 L2:
-  %t53 = load double, ptr %t4
-  %t54 = bitcast double %t53 to i64
-  %t55 = and i64 %t54, 9223372036854775807
-  %t56 = bitcast i64 %t55 to double
-  store double %t56, ptr %t4
-  br label %L1
+  %t25 = load double, ptr %t2
+  %t26 = sitofp i8 2 to double
+  %t27 = fcmp oge double %t25, %t26
+  %t28 = zext i1 %t27 to i8
+  br label %L3
 L3:
+  %t29 = phi i8 [ 1, %entry ], [ %t28, %L2 ]
+  %t30 = icmp ne i8 %t29, 0
+  br i1 %t30, label %L5, label %L4
+L4:
+  %t31 = load i16, ptr %t3
+  %t32 = sext i8 0 to i16
+  %t33 = icmp ne i16 %t31, %t32
+  %t34 = zext i1 %t33 to i8
+  br label %L5
+L5:
+  %t35 = phi i8 [ 1, %L3 ], [ %t34, %L4 ]
+  %t36 = icmp ne i8 %t35, 0
+  br i1 %t36, label %L7, label %L6
+L6:
+  %t37 = load float, ptr %t1
+  %t38 = load double, ptr %t2
+  %t39 = fpext float %t37 to double
+  %t40 = fcmp oeq double %t39, %t38
+  %t41 = zext i1 %t40 to i8
+  br label %L7
+L7:
+  %t42 = phi i8 [ 1, %L5 ], [ %t41, %L6 ]
+  %t43 = icmp ne i8 %t42, 0
+  br i1 %t43, label %L9, label %L8
+L8:
+  %t44 = load float, ptr %t1
+  %t45 = load double, ptr %t2
+  %t46 = fpext float %t44 to double
+  %t47 = fcmp ogt double %t46, %t45
+  %t48 = zext i1 %t47 to i8
+  br label %L9
+L9:
+  %t49 = phi i8 [ 1, %L7 ], [ %t48, %L8 ]
+  %t50 = icmp ne i8 %t49, 0
+  br i1 %t50, label %L11, label %L10
+L10:
+  %t51 = load float, ptr %t1
+  %t52 = load double, ptr %t2
+  %t53 = fpext float %t51 to double
+  %t54 = fcmp ole double %t53, %t52
+  %t55 = zext i1 %t54 to i8
+  br label %L11
+L11:
+  %t56 = phi i8 [ 1, %L9 ], [ %t55, %L10 ]
+  %t57 = icmp ne i8 %t56, 0
+  br i1 %t57, label %L12, label %L13
+L12:
+  %t58 = load double, ptr %t4
+  %t59 = bitcast double %t58 to i64
+  %t60 = and i64 %t59, 9223372036854775807
+  %t61 = bitcast i64 %t60 to double
+  store double %t61, ptr %t4
+  br label %L1
+L13:
   br label %L1
 L1:
-  %t57 = load double, ptr %t4
-  %t58 = fptosi double %t57 to i32
-  %t59 = sitofp i32 %t58 to double
-  %t60 = fcmp ogt double %t59, %t57
-  %t61 = sub i32 %t58, 1
-  %t62 = select i1 %t60, i32 %t61, i32 %t58
-  store i32 %t62, ptr @realsir.lx
-  %t63 = load float, ptr %t1
-  %t64 = bitcast float %t63 to i32
-  %t65 = and i32 %t64, 2147483647
-  %t66 = bitcast i32 %t65 to float
-  %t67 = load i16, ptr %t3
-  %t68 = sitofp i16 %t67 to float
-  %t69 = fdiv float %t66, %t68
-  store float %t69, ptr @realsir.fx
-  %t70 = load double, ptr %t4
-  %t71 = fptrunc double %t70 to float
-  store float %t71, ptr @realsir.fx
-  %t72 = load float, ptr @realsir.fx
-  %t73 = fpext float %t72 to double
-  store double %t73, ptr @realsir.dx
-  %t74 = load double, ptr %t4
-  ret double %t74
-L4:
+  %t62 = load double, ptr %t4
+  %t63 = fptosi double %t62 to i32
+  %t64 = sitofp i32 %t63 to double
+  %t65 = fcmp ogt double %t64, %t62
+  %t66 = sub i32 %t63, 1
+  %t67 = select i1 %t65, i32 %t66, i32 %t63
+  store i32 %t67, ptr @realsir.lx
+  %t68 = load float, ptr %t1
+  %t69 = bitcast float %t68 to i32
+  %t70 = and i32 %t69, 2147483647
+  %t71 = bitcast i32 %t70 to float
+  %t72 = load i16, ptr %t3
+  %t73 = sitofp i16 %t72 to float
+  %t74 = fdiv float %t71, %t73
+  store float %t74, ptr @realsir.fx
+  %t75 = load double, ptr %t4
+  %t76 = fptrunc double %t75 to float
+  store float %t76, ptr @realsir.fx
+  %t77 = load float, ptr @realsir.fx
+  %t78 = fpext float %t77 to double
+  store double %t78, ptr @realsir.dx
+  %t79 = load double, ptr %t4
+  ret double %t79
+L14:
   ret double 0.0
 }
 
 define void @realsir_init() {
 entry:
-  %t75 = fptrunc double 0.1 to float
-  store float %t75, ptr @realsir.fx
+  %t80 = fptrunc double 0.1 to float
+  store float %t80, ptr @realsir.fx
   store double 0.1e0, ptr @realsir.dx
   store double -1.5e-3, ptr @realsir.dx
-  %t76 = fptrunc double -0.0 to float
-  %t77 = fpext float %t76 to double
-  store double %t77, ptr @realsir.dx
+  %t81 = fptrunc double -0.0 to float
+  %t82 = fpext float %t81 to double
+  store double %t82, ptr @realsir.dx
   store double 0x3FD5555555555555, ptr @realsir.dx
   store double 0xBFD5555555555555, ptr @realsir.dx
   store float 0x3FD5555560000000, ptr @realsir.fx
   store double 0x0000000400000000, ptr @realsir.dx
   store double 0x7E70000000000000, ptr @realsir.dx
-  %t78 = load float, ptr @realsir.fx
-  %t79 = load double, ptr @realsir.dx
-  %t80 = sext i8 2 to i16
-  %t81 = call double @realsir.Forms(float %t78, double %t79, i16 %t80)
-  store double %t81, ptr @realsir.dx
+  %t83 = load float, ptr @realsir.fx
+  %t84 = load double, ptr @realsir.dx
+  %t85 = sext i8 2 to i16
+  %t86 = call double @realsir.Forms(float %t83, double %t84, i16 %t85)
+  store double %t86, ptr @realsir.dx
   ret void
 }
 

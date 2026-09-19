@@ -272,14 +272,18 @@ has the full account; all probed against real voc 2026-09-19):
 
 - **NIL handling**: every dereference (`p^`, and the implied one in `p.f`
   and `p[i]`) is NIL-checked and traps ("NIL pointer dereference", exit
-  status 4), like voc's default `-p`. `NIL IS T` is **FALSE**, a type guard
-  `NIL(T)` **passes**, and a NIL `WITH` variable matches no branch - where
-  voc traps "NIL access" on all three. Anything voc accepts therefore means
-  the same here. A failed guard exits 5, a `WITH` with no matching branch
-  and no `ELSE` exits 6, a `NEW` the heap cannot satisfy exits 7 (the
-  report says nothing about running out of memory).
-- **`&` and `OR` short-circuit** (Appendix A requires it; poc kept them
-  eager through Phase 8 while nothing could observe the difference).
+  status 4), like voc's default `-p`. So are `NIL IS T`, the type guard
+  `NIL(T)` and a NIL `WITH` variable - all three take the same trap, where
+  voc says "NIL access" (Halt(-10)); the report is silent on them, and
+  poc matches voc's behavior. A failed guard exits 5 and a `WITH` with no
+  matching branch and no `ELSE` exits 6. A `NEW` the heap cannot satisfy
+  is **not** a trap: the pointer is left NIL, as in voc, and the next
+  dereference traps. Only the *behavior* matches voc's; the exit statuses
+  are poc's own numbering (voc's Halt codes come out as 246 for NIL, 251
+  for a failed guard, 249 for `WITH`).
+- **`&` and `OR` always short-circuit** (Appendix A requires it; poc kept
+  them eager through Phase 8 while nothing could observe the difference,
+  and there is no eager path any more).
 - **`NEW` needs the runtime on the import path**: no module imports
   `GarbageCollectedHeap`/`ModuleTable` for it - `poc` adds both to the
   program itself whenever any module calls `NEW`, finding them like any

@@ -113,47 +113,57 @@ entry:
   %t66 = load i16, ptr @arith.b
   %t67 = icmp sgt i16 %t65, %t66
   %t68 = zext i1 %t67 to i8
-  %t69 = load i8, ptr @arith.c1
-  %t70 = load i8, ptr @arith.c2
-  %t71 = icmp ult i8 %t69, %t70
-  %t72 = zext i1 %t71 to i8
-  %t73 = and i8 %t68, %t72
-  store i8 %t73, ptr @arith.flagCmp
-  %t74 = load i16, ptr @arith.a
-  %t75 = sext i8 17 to i16
-  %t76 = icmp eq i16 %t74, %t75
-  %t77 = zext i1 %t76 to i8
-  %t78 = load i16, ptr @arith.b
-  %t79 = sext i8 99 to i16
-  %t80 = icmp eq i16 %t78, %t79
-  %t81 = zext i1 %t80 to i8
-  %t82 = or i8 %t77, %t81
-  store i8 %t82, ptr @arith.flagBool
-  %t83 = load i8, ptr @arith.flagBool
-  %t84 = xor i8 %t83, 1
-  store i8 %t84, ptr @arith.flagNot
+  %t69 = icmp ne i8 %t68, 0
+  br i1 %t69, label %L1, label %L2
+L1:
+  %t70 = load i8, ptr @arith.c1
+  %t71 = load i8, ptr @arith.c2
+  %t72 = icmp ult i8 %t70, %t71
+  %t73 = zext i1 %t72 to i8
+  br label %L2
+L2:
+  %t74 = phi i8 [ 0, %entry ], [ %t73, %L1 ]
+  store i8 %t74, ptr @arith.flagCmp
+  %t75 = load i16, ptr @arith.a
+  %t76 = sext i8 17 to i16
+  %t77 = icmp eq i16 %t75, %t76
+  %t78 = zext i1 %t77 to i8
+  %t79 = icmp ne i8 %t78, 0
+  br i1 %t79, label %L4, label %L3
+L3:
+  %t80 = load i16, ptr @arith.b
+  %t81 = sext i8 99 to i16
+  %t82 = icmp eq i16 %t80, %t81
+  %t83 = zext i1 %t82 to i8
+  br label %L4
+L4:
+  %t84 = phi i8 [ 1, %L2 ], [ %t83, %L3 ]
+  store i8 %t84, ptr @arith.flagBool
+  %t85 = load i8, ptr @arith.flagBool
+  %t86 = xor i8 %t85, 1
+  store i8 %t86, ptr @arith.flagNot
   store i32 39, ptr @arith.s1
   store i32 44, ptr @arith.s2
-  %t85 = load i32, ptr @arith.s1
-  %t86 = load i32, ptr @arith.s2
-  %t87 = or i32 %t85, %t86
-  store i32 %t87, ptr @arith.sUnion
-  %t88 = load i32, ptr @arith.s1
-  %t89 = load i32, ptr @arith.s2
-  %t90 = xor i32 %t89, -1
-  %t91 = and i32 %t88, %t90
-  store i32 %t91, ptr @arith.sDiff
-  %t92 = load i32, ptr @arith.s1
-  %t93 = load i32, ptr @arith.s2
-  %t94 = and i32 %t92, %t93
-  store i32 %t94, ptr @arith.sInter
-  %t95 = load i32, ptr @arith.s1
-  %t96 = load i32, ptr @arith.s2
-  %t97 = xor i32 %t95, %t96
-  store i32 %t97, ptr @arith.sSym
-  %t98 = load i32, ptr @arith.s1
-  %t99 = xor i32 %t98, -1
-  store i32 %t99, ptr @arith.sComp
+  %t87 = load i32, ptr @arith.s1
+  %t88 = load i32, ptr @arith.s2
+  %t89 = or i32 %t87, %t88
+  store i32 %t89, ptr @arith.sUnion
+  %t90 = load i32, ptr @arith.s1
+  %t91 = load i32, ptr @arith.s2
+  %t92 = xor i32 %t91, -1
+  %t93 = and i32 %t90, %t92
+  store i32 %t93, ptr @arith.sDiff
+  %t94 = load i32, ptr @arith.s1
+  %t95 = load i32, ptr @arith.s2
+  %t96 = and i32 %t94, %t95
+  store i32 %t96, ptr @arith.sInter
+  %t97 = load i32, ptr @arith.s1
+  %t98 = load i32, ptr @arith.s2
+  %t99 = xor i32 %t97, %t98
+  store i32 %t99, ptr @arith.sSym
+  %t100 = load i32, ptr @arith.s1
+  %t101 = xor i32 %t100, -1
+  store i32 %t101, ptr @arith.sComp
   ret void
 }
 

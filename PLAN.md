@@ -2425,7 +2425,7 @@ style exactly.
      record has a base. `DesignatorStaticType` mirrors it (and a WITH-
      narrowed variable, `Codegen.narrowings`). A NIL check is a compare and
      a branch to a trap: `nilderef` (exit 4). The trap-message globals for
-     NIL/guard/WITH/heap-full (exits 4/5/6/7) are emitted lazily, like
+     NIL/guard/WITH (exits 4/5/6) are emitted lazily, like
      step 3's helpers, so programs without pointers keep byte-identical IR.
      Pointer `=`/`#` needed nothing new (`icmp` on `ptr`); `NIL` is `null`.
    - *`NEW`*: `GenerateNew` for a pointer to a record or to a fixed array
@@ -2433,9 +2433,12 @@ style exactly.
      `.tag` alias; for an array, 0 when its elements hold no pointers, else
      a synthesized `@.arraydesc.<n>` - the record-descriptor layout with
      size = ONE ELEMENT and no ProcTab, which is what the collector's
-     "elements = dataSize DIV size" rule wants), traps on a 0 result
-     (`heapfull`, exit 7 - poc's choice; the report is silent) and stores
-     the pointer. `NEW` of an open array is still step 7's
+     "elements = dataSize DIV size" rule wants) and stores the result
+     as the pointer - a 0 result (heap exhausted) becomes NIL, with no
+     trap, exactly as voc's `NEWREC` does (an earlier draft trapped with
+     exit 7; the report is silent, so voc's behavior wins). The next
+     dereference of the NIL then traps like any other. `NEW` of an open
+     array is still step 7's
      (`; unsupported`). **The runtime is linked in implicitly**: a source
      module never imports `GarbageCollectedHeap`/`ModuleTable` for `NEW`,
      so `PredeclaredProcedures.NewWasCalled` (a process-lifetime flag set
@@ -2461,28 +2464,36 @@ style exactly.
      `BaseTypes[0]`, which can never equal a non-root `T`'s tag), so the
      one-line report translation is branch-free after the NIL test.
      **NIL semantics** (the report is silent; probed against voc, which
-     traps "NIL access" on all three): here `NIL IS T` is FALSE, `NIL(T)`
-     passes (a later dereference then traps), and a NIL `WITH` variable
-     matches no branch (ELSE, else the `nowith` trap, exit 6) - a program
-     voc accepts means the same thing, and one written for a system where
-     `NIL IS T` is FALSE also works. A guard fails with `typeguard` (exit
-     5). Both the pointer and the bare-record spelling of `T` are
+     traps "NIL access" on all three, and matched exactly): `NIL IS T`,
+     the guard `NIL(T)` and a NIL `WITH` variable all take the ordinary
+     NIL-dereference trap (`nilderef`, exit 4) - `EmitTypeTest`/
+     `EmitTypeGuard`/the WITH tests call `EmitNilCheck` first, so
+     `EmitTagTest` never sees NIL. (An earlier draft made `NIL IS T`
+     FALSE, the guard pass and the WITH variable match nothing; that
+     accepted programs voc rejects at run time, so it was dropped.) A
+     guard on a non-NIL pointer of the wrong type fails with `typeguard`
+     (exit 5). Both the pointer and the bare-record spelling of `T` are
      accepted, as in the checker. `WITH` is an IF-chain; the branch body
      is generated with a `Narrowing` pushed, the string-literal pre-pass
      now walks `WITH` bodies (it did not - a literal inside a branch would
      have named an undefined global). Guards on a `VAR` record parameter
      (needs the hidden tag argument) are step 6's.
-   - *`&`/`OR` are short-circuited at last* (the Phase 8 step 5
+   - *`&`/`OR` are short-circuited at last, always* (the Phase 8 step 5
      simplification was flagged "revisit once a call or a trap makes it
      observable" - a NIL check makes it observable): `GenerateShortCircuit`
      branches around the right operand and joins with a `phi` naming the
      block the right operand *finished* in (`Codegen.currentBlock`, kept by
-     `EmitLabel`, whose signature therefore gained `cg`). The eager
-     `and`/`or` stays for a side-effect-free right operand
-     (`IsSideEffectFree`: literals, plain variables, arithmetic and
-     comparisons except `DIV`/`MOD`/`IS`), so only programs that needed it
-     change: `llvm-system-ir`'s golden (array-index operands) was
-     regenerated.
+     `EmitLabel`, whose signature therefore gained `cg`). A first version
+     kept the eager `and`/`or` for a side-effect-free right operand
+     (`IsSideEffectFree`); it was removed - two code paths for one
+     operator bought only smaller IR for trivial operands, at the price of
+     a purity predicate that had to track every future trapping operation
+     (each new one, like an index or a NIL check, would have had to be
+     added to it). Regenerated goldens: `llvm-reals-ir`,
+     `llvm-straight-line-arithmetic` and `llvm-system-ir` (each diff only
+     `and`/`or` becoming branch + `phi`), plus `llvm-pointers-ir` and
+     `llvm-type-guards` (that, and `IS`/guards now NIL-checking instead
+     of carrying a NIL branch).
    - *Other changes*: a local variable holding a pointer (or a record/
      array containing one) is `zeroinitializer`ed on entry - Oberon2.pdf
      6.4 says every pointer starts NIL, and it makes a never-assigned
@@ -2498,12 +2509,17 @@ style exactly.
      record's embedded pointer array, function results), `llvm-pointer-
      fields` (string compare/`COPY`/`INC`/`INCL`/`LEN`/`CASE`/`FOR` through
      a pointer), `llvm-type-guards` (a three-level hierarchy plus a sibling:
-     `IS`, guards as expressions and designators, `WITH` incl. `ELSE`, NIL;
-     the voc-checkable subset was cross-checked against real voc),
+     `IS`, guards as expressions and designators, `WITH` incl. `ELSE`; NIL
+     operands live in `llvm-pointer-traps`, so the whole fixture now runs
+     under real voc too and was cross-checked against it),
      `llvm-short-circuit` (call counters, index and NIL operands, the
      classic `WHILE (p # NIL) & ...` loops), `llvm-pointer-traps` (one
      program per trap: NIL through `.`, `^`, a chain, `[`, an unassigned
-     local; a failed guard; an unmatched `WITH`; heap exhaustion),
+     local; `NIL IS T`, a guard and a `WITH` on NIL, each cross-checked
+     against voc's own "NIL access" trap; a failed guard; an unmatched
+     `WITH`; heap exhaustion, which is *not* a trap - `NEW` leaves NIL,
+     as voc's does, and the program then prints and exits 0 until it
+     dereferences it, while `heapfull` does so and traps with exit 4),
      `llvm-pointers-multi-module` (a pointer type, constructor and hidden
      field from an imported module; `NEW` of the imported record and of a
      local extension of it, laid out from the `.sym`; `IS`/guards/`WITH`
