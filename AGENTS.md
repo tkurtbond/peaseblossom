@@ -265,6 +265,32 @@ sign-extends or truncates - the report leaves it undefined and voc warns.
 `BYTE`, `PTR`, `BIT`, `LSH`, `ROT`, `SYSTEM.NEW` and the fixed-width types
 are still Phase 10 step 7's.
 
+### Pointers, `NEW` and the runtime (implemented, Phase 9 step 5)
+
+Points where `Oberon2.pdf` is silent and poc made a choice (`PLAN.md` step 5
+has the full account; all probed against real voc 2026-09-19):
+
+- **NIL handling**: every dereference (`p^`, and the implied one in `p.f`
+  and `p[i]`) is NIL-checked and traps ("NIL pointer dereference", exit
+  status 4), like voc's default `-p`. `NIL IS T` is **FALSE**, a type guard
+  `NIL(T)` **passes**, and a NIL `WITH` variable matches no branch - where
+  voc traps "NIL access" on all three. Anything voc accepts therefore means
+  the same here. A failed guard exits 5, a `WITH` with no matching branch
+  and no `ELSE` exits 6, a `NEW` the heap cannot satisfy exits 7 (the
+  report says nothing about running out of memory).
+- **`&` and `OR` short-circuit** (Appendix A requires it; poc kept them
+  eager through Phase 8 while nothing could observe the difference).
+- **`NEW` needs the runtime on the import path**: no module imports
+  `GarbageCollectedHeap`/`ModuleTable` for it - `poc` adds both to the
+  program itself whenever any module calls `NEW`, finding them like any
+  imported module (`POC_IMPORT_PATH=<repo>/rtl/llvm` or `-import-path`).
+  There is no built-in default directory; a missing runtime is an error
+  message naming the module.
+- Pointer variables start NIL, locals included (a local holding a pointer
+  is zeroed on entry). Heap blocks come back zero-filled.
+- Not yet: `NEW(p, n)` and pointers to open arrays (step 7), type-bound
+  calls and guards on `VAR` record parameters (step 6), procedure values.
+
 ### External procedures
 
 `Oberon2.pdf` defines no mechanism for calling procedures implemented in

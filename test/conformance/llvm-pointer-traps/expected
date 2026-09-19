@@ -1,0 +1,24 @@
+== nilfield
+ANIL pointer dereference
+exit=4
+== nilcaret
+ANIL pointer dereference
+exit=4
+== nilchain
+ANIL pointer dereference
+exit=4
+== nilindex
+ANIL pointer dereference
+exit=4
+== nillocal
+ANIL pointer dereference
+exit=4
+== guardfail
+Atype guard failed
+exit=5
+== withnomatch
+Ano matching WITH guard
+exit=6
+== heapfull
+Aheap exhausted
+exit=7

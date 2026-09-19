@@ -54,4 +54,10 @@ check llvm-string-consts client.mod
 check llvm-system system.mod
 check llvm-gc-collect gc.mod
 check llvm-gc-tracing gctracing.mod
+check llvm-pointers pointers.mod
+check llvm-type-guards guards.mod
+check llvm-pointer-shapes shapes.mod
+check llvm-short-circuit shortcircuit.mod
+check llvm-gc-new gcnew.mod
+check llvm-pointers-multi-module client.mod
 . ../../testresult.sh

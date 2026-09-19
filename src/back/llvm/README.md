@@ -17,7 +17,14 @@ LLVM backend: lowers the front end's typed tree to textual LLVM IR
   (`GenerateAdr`/`GenerateGet`/`GeneratePut`/`GenerateVal`/`GenerateMove`,
   plus `SIZE`) and, when the program contains `ModuleTable`/
   `GarbageCollectedHeap`, per-module GC root tables (`EmitRootTable`) and
-  `main`'s stack-base call.
+  `main`'s stack-base call, and (Phase 9 step 5) pointers: `NIL`, NIL-
+  checked dereference through `.`/`[`/`^` (`DereferencePointer`,
+  `GenerateFieldAddress`), `NEW` (`GenerateNew`, `EmitArrayDescriptors`),
+  `IS`/type guards/`WITH` (`EmitTagTest`, `EmitTypeGuard`,
+  `GenerateWithStatement`), descriptors for anonymous and procedure-local
+  records (`EnsureTypeTag`), lazily emitted trap messages
+  (`EmitPointerSupport`) and short-circuit `&`/`OR`
+  (`GenerateShortCircuit`).
 - `LLVMToolchainDriver.Mod` — host-triple auto-detection
   (`clang -dumpmachine`), writing `Generate*`'s output to a real
   `<ModuleName>.ll` file, and the single-step `clang <file>.ll -o <exe>`

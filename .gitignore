@@ -33,6 +33,14 @@ test/conformance/llvm-system/llvm-system
 test/conformance/llvm-narrow-index/llvm-narrow-index
 test/conformance/llvm-gc-collect/llvm-gc-collect
 test/conformance/llvm-gc-tracing/llvm-gc-tracing
+test/conformance/llvm-gc-new/llvm-gc-new
+test/conformance/llvm-pointers/llvm-pointers
+test/conformance/llvm-pointers-multi-module/llvm-pointers-multi-module
+test/conformance/llvm-pointer-shapes/llvm-pointer-shapes
+test/conformance/llvm-pointer-fields/llvm-pointer-fields
+test/conformance/llvm-type-guards/llvm-type-guards
+test/conformance/llvm-short-circuit/llvm-short-circuit
+test/conformance/llvm-pointer-traps/*.exe
 test/conformance/llvm-string-consts/llvm-string-consts
 test/conformance/llvm-char-arrays/llvm-char-arrays
 test/conformance/crosscheck/crosscheck

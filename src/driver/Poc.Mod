@@ -60,7 +60,7 @@ MODULE Poc;
 
   IMPORT Modules, Files, Out, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
-         ConstantEvaluator, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator;
+         ConstantEvaluator, PredeclaredProcedures, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator;
 
   CONST
     maxLineLength = 4096;
@@ -344,44 +344,6 @@ MODULE Poc;
     COPY(savedFileName, Diagnostics.fileName)
   END DiscoverModule;
 
-  (* Builds the whole program's own dependency-ordered ModuleList: every
-     module topModule transitively IMPORTs (via DiscoverModule above),
-     then topModule itself, always last - matching ModuleList's own
-     header comment. topModule/topScope are already fully parsed and
-     checked by the caller (EmitLLVMIR/Build below, exactly as before
-     step 12), so this only discovers and compiles the *rest* of the
-     program. *)
-  PROCEDURE BuildProgramModuleList(topModule: SyntaxTree.ModuleNode; topScope: SymbolTable.Scope;
-                                   VAR modules: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
-    VAR imp: SyntaxTree.ImportNode; tail, entry: LLVMCodeGenerator.ModuleList;
-  BEGIN
-    ok := TRUE; modules := NIL; tail := NIL;
-    imp := topModule.imports;
-    WHILE (imp # NIL) & ok DO
-      DiscoverModule(imp.moduleName, modules, tail, ok);
-      imp := imp.next
-    END;
-    IF ok THEN
-      NEW(entry); entry.module := topModule; entry.scope := topScope; entry.next := NIL;
-      IF tail = NIL THEN modules := entry ELSE tail.next := entry END
-    END
-  END BuildProgramModuleList;
-
-  (* The top (command-line-specified) module's own name - always the
-     last entry BuildProgramModuleList's own list, per its header
-     comment - needed by LLVMToolchainDriver.EmitIR*/Build* to name the
-     output ".ll"/executable file after. Never called with modules = NIL -
-     ok is only ever TRUE (the precondition every caller checks first)
-     once BuildProgramModuleList has appended at least the top module
-     itself. *)
-  PROCEDURE ProgramTopName(modules: LLVMCodeGenerator.ModuleList; VAR name: SyntaxTree.Ident);
-    VAR m: LLVMCodeGenerator.ModuleList;
-  BEGIN
-    m := modules;
-    WHILE m.next # NIL DO m := m.next END;
-    COPY(m.module.name, name)
-  END ProgramTopName;
-
   (* PLAN.md Phase 9 step 4a: brings <name>.sym (and, first, every
      transitive import's) up to date from real source, post-order, before
      anything is type-checked against it. A .sym now carries an imported
@@ -449,6 +411,108 @@ MODULE Poc;
     COPY(savedFileName, Diagnostics.fileName)
   END RegenerateInterfaces;
 
+  (* Unlinks and returns the entry for the module called name from the
+     list, or NIL if it is not there. *)
+  PROCEDURE TakeModule(VAR modules: LLVMCodeGenerator.ModuleList; name: SyntaxTree.Ident):
+      LLVMCodeGenerator.ModuleList;
+    VAR m, previous: LLVMCodeGenerator.ModuleList;
+  BEGIN
+    previous := NIL; m := modules;
+    WHILE (m # NIL) & (m.module.name # name) DO previous := m; m := m.next END;
+    IF m # NIL THEN
+      IF previous = NIL THEN modules := m.next ELSE previous.next := m.next END;
+      m.next := NIL
+    END;
+    RETURN m
+  END TakeModule;
+
+  (* PLAN.md Phase 9 step 5: NEW allocates through the runtime's collector
+     (rtl/llvm's GarbageCollectedHeap, which registers module root tables
+     through ModuleTable), which no source module has to IMPORT for it - so
+     when any module in the program calls NEW, those two are added to the
+     program here, and placed first: every other module's initialization
+     may already allocate. A copy the program imported itself is moved to
+     the front rather than duplicated. They are found on the import path
+     like any other module (POC_IMPORT_PATH / -import-path), so a program
+     using NEW needs the runtime directory on it. *)
+  PROCEDURE AddRuntimeModules(outputDir: ARRAY OF CHAR; VAR modules: LLVMCodeGenerator.ModuleList;
+                              VAR ok: BOOLEAN);
+    VAR
+      table, heap, front, frontTail: LLVMCodeGenerator.ModuleList; visited: VisitedModule;
+  BEGIN
+    IF ~ok OR ~PredeclaredProcedures.NewWasCalled() THEN RETURN END;
+    (* their .sym files, which the program's own imports did not ask for *)
+    visited := NIL;
+    RegenerateInterfaces("GarbageCollectedHeap", outputDir, visited, ok);
+    IF ~ok THEN
+      Out.String("poc: NEW needs the runtime module GarbageCollectedHeap; put rtl/llvm on the import path");
+      Out.Ln;
+      RETURN
+    END;
+    table := TakeModule(modules, "ModuleTable");
+    heap := TakeModule(modules, "GarbageCollectedHeap");
+    front := NIL; frontTail := NIL;
+    IF table # NIL THEN front := table; frontTail := table
+    ELSE DiscoverModule("ModuleTable", front, frontTail, ok)
+    END;
+    IF ~ok THEN
+      Out.String("poc: NEW needs the runtime module ModuleTable; put rtl/llvm on the import path"); Out.Ln;
+      RETURN
+    END;
+    IF heap # NIL THEN
+      frontTail.next := heap; frontTail := heap
+    ELSE
+      DiscoverModule("GarbageCollectedHeap", front, frontTail, ok)
+    END;
+    IF ~ok THEN
+      Out.String("poc: NEW needs the runtime module GarbageCollectedHeap; put rtl/llvm on the import path");
+      Out.Ln;
+      RETURN
+    END;
+    frontTail.next := modules;
+    modules := front
+  END AddRuntimeModules;
+
+  (* Builds the whole program's own dependency-ordered ModuleList: every
+     module topModule transitively IMPORTs (via DiscoverModule above),
+     then topModule itself, always last - matching ModuleList's own
+     header comment. topModule/topScope are already fully parsed and
+     checked by the caller (EmitLLVMIR/Build below, exactly as before
+     step 12), so this only discovers and compiles the *rest* of the
+     program. *)
+  PROCEDURE BuildProgramModuleList(topModule: SyntaxTree.ModuleNode; topScope: SymbolTable.Scope;
+                                   outputDir: ARRAY OF CHAR; VAR modules: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
+    VAR imp: SyntaxTree.ImportNode; tail, entry: LLVMCodeGenerator.ModuleList;
+  BEGIN
+    ok := TRUE; modules := NIL; tail := NIL;
+    imp := topModule.imports;
+    WHILE (imp # NIL) & ok DO
+      DiscoverModule(imp.moduleName, modules, tail, ok);
+      imp := imp.next
+    END;
+    IF ok THEN
+      NEW(entry); entry.module := topModule; entry.scope := topScope; entry.next := NIL;
+      IF tail = NIL THEN modules := entry ELSE tail.next := entry END
+    END;
+    AddRuntimeModules(outputDir, modules, ok)
+  END BuildProgramModuleList;
+
+  (* The top (command-line-specified) module's own name - always the
+     last entry BuildProgramModuleList's own list, per its header
+     comment - needed by LLVMToolchainDriver.EmitIR*/Build* to name the
+     output ".ll"/executable file after. Never called with modules = NIL -
+     ok is only ever TRUE (the precondition every caller checks first)
+     once BuildProgramModuleList has appended at least the top module
+     itself. *)
+  PROCEDURE ProgramTopName(modules: LLVMCodeGenerator.ModuleList; VAR name: SyntaxTree.Ident);
+    VAR m: LLVMCodeGenerator.ModuleList;
+  BEGIN
+    m := modules;
+    WHILE m.next # NIL DO m := m.next END;
+    COPY(m.module.name, name)
+  END ProgramTopName;
+
+
   (* PLAN.md Phase 8 step 12: shared by EmitLLVMIR/Build below - both
      need the identical "parse+check the top module, then transitively
      discover+compile every real IMPORT" sequence before handing the
@@ -494,7 +558,7 @@ MODULE Poc;
       ELSIF Diagnostics.errorCount > 0 THEN
         Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
       ELSE
-        BuildProgramModuleList(module, scope, modules, ok)
+        BuildProgramModuleList(module, scope, outputDir, modules, ok)
       END
     END
   END CheckAndDiscoverProgram;

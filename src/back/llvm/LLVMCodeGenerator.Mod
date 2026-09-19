@@ -41,6 +41,15 @@ MODULE LLVMCodeGenerator;
      end of the program only if something called one
      (EmitCharacterHelpers).
 
+     POINTER, NIL, NEW, dereference, IS/type guards and WITH are in scope
+     since PLAN.md Phase 9 step 5. A pointer is a "ptr" to the data of a
+     heap block whose tag word (a record's type descriptor address, see
+     the descriptor section below) sits one word before it; every
+     dereference is NIL-checked first (EmitNilCheck); NEW calls
+     GarbageCollectedHeap.Allocate; a type test reads BaseTypes through
+     the tag (EmitTagTest). Type-bound procedures and dispatch (step 6) and
+     open arrays (step 7) are not lowered yet.
+
      DIV/MOD lower Oberon-2's floored-division semantics (confirmed
      2026-09-18 against real voc, not assumed: (-7) DIV 2 = -4, (-7) MOD
      2 = 1, 7 DIV (-2) = -4, 7 MOD (-2) = -1, (-7) DIV (-2) = 3, (-7) MOD
@@ -55,18 +64,17 @@ MODULE LLVMCodeGenerator;
      nonzero and has a different sign than the divisor (GenerateDivMod).
 
      Short-circuit evaluation for "&"/"OR" (Oberon-2 requires it,
-     Appendix A) is NOT implemented this step - GenerateBooleanOp lowers
-     both to plain, eager "and"/"or" on the operands' already-computed
-     i8 0/1 values. This is observably indistinguishable from true
-     short-circuit evaluation for every expression this step's codegen
-     can itself construct (no calls, no array/pointer access - nothing
-     with a side effect or a trap exists yet to make eager evaluation of
-     the "shouldn't run" branch observable), so it is a safe, deliberate
-     simplification for now, not a latent bug - revisit once side-
-     effecting subexpressions (calls: step 6; array access: step 8) can
-     actually make the difference observable, at which point real
-     short-circuiting will need actual basic blocks/branches (this
-     module's first, since everything above is branch-free).
+     Appendix A) was deferred at first - GenerateBooleanOp lowers both to
+     plain, eager "and"/"or" on the operands' already-computed i8 0/1
+     values, which is unobservable as long as the right operand can
+     neither trap nor have an effect. Since PLAN.md Phase 9 step 5 (a NIL
+     check, an index check, a call can all be in that operand) it is used
+     only when IsSideEffectFree says the right operand is that simple;
+     any other right operand is generated inside its own block, reached
+     only when the left operand does not already decide the result, and
+     joined with a phi (GenerateShortCircuit). The branch-free form is
+     kept for the simple case so the IR of every program that never
+     needed the branches is unchanged.
 
      Every live codegen value is carried at its full LLVMTypes.TypeString*
      width (i8 for BOOLEAN/CHAR, i16/i32/i64 for the integer family per
@@ -211,6 +219,22 @@ MODULE LLVMCodeGenerator;
     noCaseLabelTrapGlobal = "@.trap.nocaselabel";
     noCaseLabelTrapMsg = "no matching CASE label";
     noCaseLabelExitCode = 3;
+    (* PLAN.md Phase 9 step 5's traps. Unlike the two above these globals
+       are only emitted when some code generated can reach one (see the
+       Codegen "need...Trap" flags), so a program with no pointers has
+       none of them and every earlier golden .ll is unchanged. *)
+    nilTrapGlobal = "@.trap.nilderef";
+    nilTrapMsg = "NIL pointer dereference";
+    nilTrapExitCode = 4;
+    guardTrapGlobal = "@.trap.typeguard";
+    guardTrapMsg = "type guard failed";
+    guardTrapExitCode = 5;
+    withTrapGlobal = "@.trap.nowith";
+    withTrapMsg = "no matching WITH guard";
+    withTrapExitCode = 6;
+    heapTrapGlobal = "@.trap.heapfull";
+    heapTrapMsg = "heap exhausted";
+    heapTrapExitCode = 7;
 
   TYPE
     ValueText = ARRAY textLength + 1 OF CHAR;
@@ -288,6 +312,33 @@ MODULE LLVMCodeGenerator;
     TypeDescEntryDesc = RECORD
       rec: Types.RecordType;
       next: TypeDescEntry
+    END;
+
+    (* PLAN.md Phase 9 step 5: "WITH v: T DO S END" makes every reference
+       to v inside S have static type T. The AST carries no resolved
+       types (codegen re-derives them from declarations), so the
+       narrowing is a stack of (variable, type) pairs GenerateWithStatement
+       pushes around each branch body and DesignatorStaticType/
+       GenerateDesignatorAddress consult when they resolve a variable. *)
+    Narrowing = POINTER TO NarrowingDesc;
+    NarrowingDesc = RECORD
+      obj: SymbolTable.Object;
+      type: Types.Type;
+      next: Narrowing
+    END;
+
+    (* One synthesized run-time descriptor per fixed-array type NEW
+       allocates that holds pointers, so the collector can trace the
+       elements (a record's descriptor is the record's own - see
+       EmitDescriptor). Matched by ArrayType identity: a type is resolved
+       once per declaration, so two NEWs through one pointer type share
+       it. Emitted at the end of the program (EmitArrayDescriptors), like
+       the other lazily-needed globals. *)
+    ArrayDescEntry = POINTER TO ArrayDescEntryDesc;
+    ArrayDescEntryDesc = RECORD
+      arr: Types.ArrayType;
+      name: ValueText;
+      next: ArrayDescEntry
     END;
 
     (* PLAN.md Phase 9 step 3: a named STRING CONST's text, or any other
@@ -373,7 +424,20 @@ MODULE LLVMCodeGenerator;
       (* PLAN.md Phase 9 step 4: SYSTEM.MOVE lowers to the llvm.memmove
          intrinsic, declared once at the end of the program if used. *)
       needMemmove: BOOLEAN;
-      pendingStrings: PendingString
+      pendingStrings: PendingString;
+      (* PLAN.md Phase 9 step 5: the label of the basic block the writer
+         is in (EmitLabel keeps it), for phi nodes; which lazily-emitted
+         trap-message globals some generated code refers to; the active
+         WITH narrowings; the array descriptors NEW asked for; a counter
+         for naming anonymous records; and whether the program contains
+         GarbageCollectedHeap itself (NEW declares its Allocate if not). *)
+      currentBlock: ValueText;
+      needNilTrap, needGuardTrap, needWithTrap, needHeapTrap: BOOLEAN;
+      narrowings: Narrowing;
+      arrayDescs: ArrayDescEntry;
+      lateRecords: TypeDescEntry;
+      arrayDescCount, anonymousRecordCount: INTEGER;
+      heapPresent: BOOLEAN
     END;
 
   (* Files.WriteString (confirmed against real voc, see
@@ -572,10 +636,21 @@ MODULE LLVMCodeGenerator;
     AppendLongInt(text, cg.nextLabel)
   END NewLabel;
 
-  PROCEDURE EmitLabel(VAR w: Files.Rider; label: ARRAY OF CHAR);
+  (* Also records which block the instructions that follow land in
+     (cg.currentBlock): a phi node names the block each incoming value
+     was computed in, and once an expression can itself open blocks (a
+     NIL check, a short-circuit "&"), that is no longer the block its
+     evaluation started in. *)
+  PROCEDURE EmitLabel(VAR w: Files.Rider; VAR cg: Codegen; label: ARRAY OF CHAR);
   BEGIN
-    WriteStr(w, label); WriteStr(w, ":"); WriteLn(w)
+    WriteStr(w, label); WriteStr(w, ":"); WriteLn(w);
+    COPY(label, cg.currentBlock)
   END EmitLabel;
+
+  PROCEDURE EmitEntryLabel(VAR w: Files.Rider; VAR cg: Codegen);
+  BEGIN
+    EmitLabel(w, cg, "entry")
+  END EmitEntryLabel;
 
   PROCEDURE EmitBr(VAR w: Files.Rider; label: ARRAY OF CHAR);
   BEGIN
@@ -690,6 +765,56 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, " "); WriteStr(w, idxText); WriteLn(w)
   END EmitGEP;
 
+  (* "@<Module>.<Type>" - a record type's own prefix for every symbol
+     that belongs to it (.tdesc, .tag, and its type-bound procedures). *)
+  PROCEDURE RecordSymbolBase(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
+  BEGIN
+    COPY("@", text); Strcat(text, rec.moduleName); Strcat(text, "."); Strcat(text, rec.name)
+  END RecordSymbolBase;
+
+  (* The one thing the rest of Phase 9 (NEW, IS, guards, dispatch) needs
+     from this section: the operand text naming rec's tag. *)
+  PROCEDURE TagSymbol(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
+  BEGIN
+    RecordSymbolBase(rec, text); Strcat(text, ".tag")
+  END TagSymbol;
+
+  PROCEDURE WordIntType(VAR text: ARRAY OF CHAR);
+  BEGIN
+    IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN COPY("i32", text) ELSE COPY("i64", text) END
+  END WordIntType;
+
+  (* Number of pointer-typed locations inside a value of type t: one per
+     POINTER, summed through record fields (inherited ones too) and
+     multiplied through fixed-array lengths. PROCEDURE-typed values are
+     not counted - a procedure variable holds code, never a heap address
+     for the collector to trace. *)
+  PROCEDURE CountPointerSlots(t: Types.Type): LONGINT;
+    VAR
+      count: LONGINT; f: Types.Field; rec: Types.RecordType; arr: Types.ArrayType;
+      isPtr: BOOLEAN;
+  BEGIN
+    IF t = NIL THEN RETURN 0 END;
+    rec := NIL; arr := NIL; isPtr := FALSE;
+    WITH
+      t: Types.PointerType DO isPtr := TRUE
+    | t: Types.RecordType DO rec := t
+    | t: Types.ArrayType DO arr := t
+    ELSE
+    END;
+    IF isPtr THEN RETURN 1 END;
+    IF arr # NIL THEN
+      IF arr.isOpen THEN RETURN 0 END;
+      RETURN arr.length * CountPointerSlots(arr.elementType)
+    END;
+    IF rec = NIL THEN RETURN 0 END;
+    count := 0;
+    IF rec.baseType # NIL THEN count := CountPointerSlots(rec.baseType) END;
+    f := rec.fields;
+    WHILE f # NIL DO count := count + CountPointerSlots(f.type); f := f.next END;
+    RETURN count
+  END CountPointerSlots;
+
   (* Prints msgText to stderr (fd 2) and terminates with exitCode - the
      shared abort sequence both of PLAN.md Phase 8 step 9's traps use.
      "unreachable" after the exit() call keeps every caller's own
@@ -755,9 +880,9 @@ MODULE LLVMCodeGenerator;
     EmitBinOp(w, cg, "and", "i1", geOk, ltOk, inBounds);
     NewLabel(cg, okLabel); NewLabel(cg, trapLabel);
     EmitCondBr(w, inBounds, okLabel, trapLabel);
-    EmitLabel(w, trapLabel);
+    EmitLabel(w, cg, trapLabel);
     EmitTrap(w, cg, indexRangeTrapGlobal, indexRangeTrapMsg, indexRangeExitCode);
-    EmitLabel(w, okLabel)
+    EmitLabel(w, cg, okLabel)
   END EmitIndexRangeCheck;
 
   (* Converts v up to targetType's own LLVM representation, or returns v
@@ -873,6 +998,192 @@ MODULE LLVMCodeGenerator;
     WriteLn(w)
   END StoreAtAddress;
 
+  (* ---- Pointers (PLAN.md Phase 9 step 5) ----
+
+     A POINTER value is an LLVM "ptr" to the first byte of the record or
+     array it designates - the heap block's *data*, with the collector's
+     one-word tag (a record's type descriptor address, or 0) sitting in
+     the word just before it (GarbageCollectedHeap.Mod). NIL is "null".
+     Every dereference - "p^", and the implied one in "p.f"/"p[i]" - is
+     preceded by EmitNilCheck, matching voc's default (-p) rather than
+     leaving a NIL access to whatever the machine does with address 0. *)
+
+  (* Branches to a trap ("NIL pointer dereference", exit 4) when ptrText
+     is null, and otherwise falls through. *)
+  PROCEDURE EmitNilCheck(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR);
+    VAR isNil, okLabel, trapLabel: ValueText;
+  BEGIN
+    cg.needNilTrap := TRUE;
+    EmitBinOp(w, cg, "icmp eq", "ptr", ptrText, "null", isNil);
+    NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+    EmitCondBr(w, isNil, trapLabel, okLabel);
+    EmitLabel(w, cg, trapLabel);
+    EmitTrap(w, cg, nilTrapGlobal, nilTrapMsg, nilTrapExitCode);
+    EmitLabel(w, cg, okLabel)
+  END EmitNilCheck;
+
+  (* "%dest = getelementptr i8, ptr <base>, <offType> <off>" - a raw byte
+     offset, unlike EmitGEP's element-typed, always-"0"-first form. *)
+  PROCEDURE EmitByteGEP(VAR w: Files.Rider; VAR cg: Codegen; basePtr, offType, offText: ARRAY OF CHAR;
+                        VAR destText: ARRAY OF CHAR);
+  BEGIN
+    NewTemp(cg, destText);
+    WriteStr(w, "  "); WriteStr(w, destText); WriteStr(w, " = getelementptr i8, ptr "); WriteStr(w, basePtr);
+    WriteStr(w, ", "); WriteStr(w, offType); WriteStr(w, " "); WriteStr(w, offText); WriteLn(w)
+  END EmitByteGEP;
+
+  PROCEDURE EmitLoad(VAR w: Files.Rider; VAR cg: Codegen; llvmType, addrText: ARRAY OF CHAR;
+                     VAR destText: ARRAY OF CHAR);
+  BEGIN
+    NewTemp(cg, destText);
+    WriteStr(w, "  "); WriteStr(w, destText); WriteStr(w, " = load "); WriteStr(w, llvmType);
+    WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
+  END EmitLoad;
+
+  (* The type WITH has given obj inside the branch being generated, or NIL. *)
+  PROCEDURE FindNarrowing(VAR cg: Codegen; obj: SymbolTable.Object): Types.Type;
+    VAR n: Narrowing;
+  BEGIN
+    n := cg.narrowings;
+    WHILE (n # NIL) & (n.obj # obj) DO n := n.next END;
+    IF n = NIL THEN RETURN NIL ELSE RETURN n.type END
+  END FindNarrowing;
+
+  (* A variable's static type here: its declared one, unless an enclosing
+     WITH has narrowed it. *)
+  PROCEDURE EffectiveVarType(VAR cg: Codegen; obj: SymbolTable.Object): Types.Type;
+    VAR narrowed: Types.Type;
+  BEGIN
+    narrowed := FindNarrowing(cg, obj);
+    IF narrowed # NIL THEN RETURN narrowed ELSE RETURN obj.type END
+  END EffectiveVarType;
+
+  (* The record a guard/IS/WITH target type names: T's own base if T is a
+     pointer, T itself if it is spelled as the bare record (the checker
+     accepts both), NIL otherwise. *)
+  PROCEDURE TargetRecord(t: Types.Type): Types.RecordType;
+    VAR ptr: Types.PointerType;
+  BEGIN
+    IF t = NIL THEN RETURN NIL END;
+    IF t IS Types.RecordType THEN RETURN t(Types.RecordType) END;
+    IF t IS Types.PointerType THEN
+      ptr := t(Types.PointerType);
+      IF (ptr.base # NIL) & (ptr.base IS Types.RecordType) THEN RETURN ptr.base(Types.RecordType) END
+    END;
+    RETURN NIL
+  END TargetRecord;
+
+  (* The static type a value has after being guarded by t: always a
+     pointer, so field selection through it still auto-dereferences. *)
+  PROCEDURE TargetPointer(t: Types.Type): Types.Type;
+  BEGIN
+    IF (t # NIL) & (t IS Types.RecordType) THEN RETURN Types.NewPointerType(t) ELSE RETURN t END
+  END TargetPointer;
+
+  (* Whether rec has a run-time type descriptor a test or NEW can name,
+     making one if it can: a module-level record has one already (the
+     checker named it - Types.RecordTypeDesc.name; EmitTypeDescriptors
+     emits it), and any other record of the module being compiled - one
+     written inline under a POINTER TO, or declared inside a procedure -
+     is given the (unwritable) name "$anon<N>" now and its descriptor is
+     emitted at the end of the program (EmitPointerSupport), after its base
+     record, if it has one, has been dealt with the same way. FALSE only
+     for an unnamed record of some other module, which this module has no
+     way to name. *)
+  PROCEDURE EnsureTypeTag(VAR cg: Codegen; rec: Types.RecordType): BOOLEAN;
+    VAR entry, tail: TypeDescEntry;
+  BEGIN
+    IF rec = NIL THEN RETURN FALSE END;
+    IF rec.name[0] # 0X THEN RETURN rec.moduleName[0] # 0X END;
+    IF (rec.moduleName[0] # 0X) & (rec.moduleName # cg.moduleName) THEN RETURN FALSE END;
+    IF (rec.baseType # NIL) & ~EnsureTypeTag(cg, rec.baseType(Types.RecordType)) THEN RETURN FALSE END;
+    INC(cg.anonymousRecordCount);
+    COPY(cg.moduleName, rec.moduleName);
+    COPY("$anon", rec.name); AppendLongInt(rec.name, cg.anonymousRecordCount);
+    NEW(entry); entry.rec := rec; entry.next := NIL;
+    IF cg.lateRecords = NIL THEN cg.lateRecords := entry
+    ELSE
+      tail := cg.lateRecords;
+      WHILE tail.next # NIL DO tail := tail.next END;
+      tail.next := entry
+    END;
+    RETURN TRUE
+  END EnsureTypeTag;
+
+  (* For a pointer already known not to be NIL: an i1 that is true when the
+     record it points to is rec or an extension of rec (Appendix D5's
+     "v.tag.BaseTypes[Level(T)] = T's tag", made safe: BaseTypes has one
+     entry per level up to the record's own, so it is only read at
+     Level(T) when the record is at least that deep; otherwise entry 0 is
+     read instead, which can never equal the tag of a non-root T - and a
+     root T is never too deep for anything). The tag word is the one
+     before the data; the descriptor's first three words are size,
+     extension level and pointer count, then BaseTypes. *)
+  PROCEDURE EmitTagTest(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR; rec: Types.RecordType;
+                        VAR resultText: ARRAY OF CHAR);
+    VAR
+      wordInt, negBytes, wordBytes, tagSlot, tag, levelSlot, level, levelText, deepEnough: ValueText;
+      atLevel, atRoot, offset, entrySlot, entry: ValueText; target: LongText; wordSize: LONGINT;
+  BEGIN
+    WordIntType(wordInt);
+    wordSize := ConstantEvaluator.wordSize;
+    negBytes[0] := 0X; AppendLongInt(negBytes, -wordSize);
+    wordBytes[0] := 0X; AppendLongInt(wordBytes, wordSize);
+    EmitByteGEP(w, cg, ptrText, "i32", negBytes, tagSlot);
+    EmitLoad(w, cg, "ptr", tagSlot, tag);
+    EmitByteGEP(w, cg, tag, "i32", wordBytes, levelSlot);
+    EmitLoad(w, cg, wordInt, levelSlot, level);
+    levelText[0] := 0X; AppendLongInt(levelText, LLVMTypes.ExtensionLevel(rec));
+    EmitBinOp(w, cg, "icmp sge", wordInt, level, levelText, deepEnough);
+    atLevel[0] := 0X; AppendLongInt(atLevel, (3 + LLVMTypes.ExtensionLevel(rec)) * wordSize);
+    atRoot[0] := 0X; AppendLongInt(atRoot, 3 * wordSize);
+    EmitSelect(w, cg, deepEnough, "i32", atLevel, atRoot, offset);
+    EmitByteGEP(w, cg, tag, "i32", offset, entrySlot);
+    EmitLoad(w, cg, "ptr", entrySlot, entry);
+    TagSymbol(rec, target);
+    EmitBinOp(w, cg, "icmp eq", "ptr", entry, target, resultText)
+  END EmitTagTest;
+
+  (* The type guard v(T): a value that is not NIL must be a T or an
+     extension of one, else the program is aborted. NIL passes (it has no
+     dynamic type to contradict the guard; using it is then caught by the
+     NIL check on its first dereference). *)
+  PROCEDURE EmitTypeGuard(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR; rec: Types.RecordType);
+    VAR isNil, matches, testLabel, failLabel, okLabel: ValueText;
+  BEGIN
+    cg.needGuardTrap := TRUE;
+    NewLabel(cg, testLabel); NewLabel(cg, failLabel); NewLabel(cg, okLabel);
+    EmitBinOp(w, cg, "icmp eq", "ptr", ptrText, "null", isNil);
+    EmitCondBr(w, isNil, okLabel, testLabel);
+    EmitLabel(w, cg, testLabel);
+    EmitTagTest(w, cg, ptrText, rec, matches);
+    EmitCondBr(w, matches, okLabel, failLabel);
+    EmitLabel(w, cg, failLabel);
+    EmitTrap(w, cg, guardTrapGlobal, guardTrapMsg, guardTrapExitCode);
+    EmitLabel(w, cg, okLabel)
+  END EmitTypeGuard;
+
+  (* The test v IS T (and WITH's branch selector) as an i1: FALSE for NIL,
+     since NIL has no dynamic type - where voc traps on a NIL operand, this
+     answers FALSE, so any program voc accepts means the same thing here. *)
+  PROCEDURE EmitTypeTest(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR; rec: Types.RecordType;
+                         VAR resultText: ARRAY OF CHAR);
+    VAR isNil, matches, testLabel, joinLabel, startBlock: ValueText;
+  BEGIN
+    COPY(cg.currentBlock, startBlock);
+    NewLabel(cg, testLabel); NewLabel(cg, joinLabel);
+    EmitBinOp(w, cg, "icmp eq", "ptr", ptrText, "null", isNil);
+    EmitCondBr(w, isNil, joinLabel, testLabel);
+    EmitLabel(w, cg, testLabel);
+    EmitTagTest(w, cg, ptrText, rec, matches);
+    EmitBr(w, joinLabel);
+    EmitLabel(w, cg, joinLabel);
+    NewTemp(cg, resultText);
+    WriteStr(w, "  "); WriteStr(w, resultText); WriteStr(w, " = phi i1 [ false, %"); WriteStr(w, startBlock);
+    WriteStr(w, " ], [ "); WriteStr(w, matches); WriteStr(w, ", %"); WriteStr(w, testLabel); WriteStr(w, " ]");
+    WriteLn(w)
+  END EmitTypeTest;
+
   PROCEDURE FindLocalBinding(VAR cg: Codegen; obj: SymbolTable.Object): LocalBinding;
     VAR b: LocalBinding;
   BEGIN
@@ -980,7 +1291,7 @@ MODULE LLVMCodeGenerator;
     VAR addr: ValueText;
   BEGIN
     ResolveVarAddress(cg, obj, addr);
-    LoadAtAddress(w, cg, addr, obj.type, result)
+    LoadAtAddress(w, cg, addr, EffectiveVarType(cg, obj), result)
   END LoadVar;
 
   PROCEDURE StoreIntoVar(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object; v: Value);
@@ -1123,7 +1434,8 @@ MODULE LLVMCodeGenerator;
     COPY("i8", result.llvmType); result.oberonType := Types.Boolean
   END GenerateRelational;
 
-  (* Eager, not short-circuit - see header comment. *)
+  (* Eager: only reached when the right operand is side-effect free (see
+     IsSideEffectFree); anything else goes through GenerateShortCircuit. *)
   PROCEDURE GenerateBooleanOp(VAR w: Files.Rider; VAR cg: Codegen; op: INTEGER; l, r: Value; VAR result: Value);
   BEGIN
     COPY("i8", result.llvmType); result.oberonType := Types.Boolean;
@@ -1184,14 +1496,16 @@ MODULE LLVMCodeGenerator;
      no instruction emitted - the AST carries no resolved types, and
      whether an operand is a character sequence has to be known *before*
      it is generated (GenerateBinaryExpr picks the whole lowering from
-     it). NIL if it cannot tell: an unresolvable name, a pointer
-     dereference or guard, a call. Walks exactly the selector shapes
-     GenerateDesignatorAddress does; where that gives up on a record
-     with a base type, this does not, so a "yes" here is a claim about
-     the type, not a promise the address can be computed. *)
+     it). NIL if it cannot tell: an unresolvable name, a call, a selector
+     shape GenerateDesignatorAddress cannot lower. Walks exactly the
+     selector shapes GenerateDesignatorAddress does - including the
+     implied dereference of "." and "[" on a pointer, an explicit "^", a
+     type guard, and a WITH-narrowed variable - so a "yes" here is a claim
+     about the type, not a promise the address can be computed. *)
   PROCEDURE DesignatorStaticType(VAR cg: Codegen; d: SyntaxTree.Designator): Types.Type;
     VAR obj: SymbolTable.Object; sel: SyntaxTree.Selector; t: Types.Type; homeModule: SyntaxTree.Ident;
         rec: Types.RecordType; arr: Types.ArrayType; field: Types.Field; idx: SyntaxTree.ExprNode;
+        ptr: Types.PointerType; guardObj: SymbolTable.Object; guardHome: SyntaxTree.Ident;
   BEGIN
     obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
     IF obj = NIL THEN RETURN NIL END;
@@ -1199,10 +1513,13 @@ MODULE LLVMCodeGenerator;
       IF d.selectors = NIL THEN RETURN obj.type ELSE RETURN NIL END
     END;
     IF obj.class # SymbolTable.varClass THEN RETURN NIL END;
-    t := obj.type; sel := d.selectors;
+    t := EffectiveVarType(cg, obj); sel := d.selectors;
     WHILE sel # NIL DO
       WITH
         sel: SyntaxTree.FieldSelector DO
+          IF (t # NIL) & (t IS Types.PointerType) THEN
+            ptr := t(Types.PointerType); t := ptr.base
+          END;
           IF (t = NIL) OR ~(t IS Types.RecordType) THEN RETURN NIL END;
           rec := t(Types.RecordType);
           field := Types.FindField(rec, sel.name);
@@ -1211,11 +1528,21 @@ MODULE LLVMCodeGenerator;
       | sel: SyntaxTree.IndexSelector DO
           idx := sel.indices;
           WHILE idx # NIL DO
+            IF (t # NIL) & (t IS Types.PointerType) THEN
+              ptr := t(Types.PointerType); t := ptr.base
+            END;
             IF (t = NIL) OR ~(t IS Types.ArrayType) THEN RETURN NIL END;
             arr := t(Types.ArrayType);
             t := arr.elementType;
             idx := idx.next
           END
+      | sel: SyntaxTree.DereferenceSelector DO
+          IF (t = NIL) OR ~(t IS Types.PointerType) THEN RETURN NIL END;
+          ptr := t(Types.PointerType); t := ptr.base
+      | sel: SyntaxTree.GuardSelector DO
+          guardObj := ResolveQualifiedObject(cg, sel.qualifier, sel.name, guardHome);
+          IF (guardObj = NIL) OR (guardObj.class # SymbolTable.typeClass) THEN RETURN NIL END;
+          t := TargetPointer(guardObj.type)
       ELSE
         RETURN NIL
       END;
@@ -1352,6 +1679,98 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateUnary;
 
+  (* Whether evaluating e can neither trap nor have any effect - a
+     literal, NIL, a plain variable or constant, and arithmetic/
+     comparison over those, apart from DIV/MOD (a zero divisor traps) and
+     IS. GenerateBinaryExpr evaluates "&"/"OR" eagerly, as one plain
+     and/or, exactly when the right operand is like this, since then
+     skipping it is unobservable; anything else (a call, an index or
+     pointer access, whose NIL/range check must not run when the left
+     operand already decides the result) is short-circuited with real
+     branches, as Oberon2.pdf Appendix A requires. Keeping the branch-
+     free form for the simple case leaves the IR of every program that
+     never needed short-circuiting unchanged. *)
+  PROCEDURE IsSideEffectFree(e: SyntaxTree.ExprNode): BOOLEAN;
+    VAR de: SyntaxTree.DesignatorExprNode; un: SyntaxTree.UnaryExprNode; bin: SyntaxTree.BinaryExprNode;
+  BEGIN
+    IF e = NIL THEN RETURN TRUE END;
+    IF (e IS SyntaxTree.LiteralExprNode) OR (e IS SyntaxTree.NilExprNode) THEN RETURN TRUE END;
+    IF e IS SyntaxTree.DesignatorExprNode THEN
+      de := e(SyntaxTree.DesignatorExprNode);
+      RETURN ~de.hasParens & (de.designator.selectors = NIL)
+    END;
+    IF e IS SyntaxTree.UnaryExprNode THEN
+      un := e(SyntaxTree.UnaryExprNode);
+      RETURN IsSideEffectFree(un.operand)
+    END;
+    IF e IS SyntaxTree.BinaryExprNode THEN
+      bin := e(SyntaxTree.BinaryExprNode);
+      IF (bin.op = Lexer.divKeyword) OR (bin.op = Lexer.modKeyword) OR (bin.op = Lexer.isKeyword) THEN
+        RETURN FALSE
+      END;
+      RETURN IsSideEffectFree(bin.left) & IsSideEffectFree(bin.right)
+    END;
+    RETURN FALSE
+  END IsSideEffectFree;
+
+  (* "a & b" / "a OR b" with b evaluated only when a does not already
+     decide the result. b's code may itself open blocks (an index check, a
+     NIL check), so the phi's incoming block for b is whichever block b
+     finished in, not the one it started in (cg.currentBlock). *)
+  PROCEDURE GenerateShortCircuit(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.BinaryExprNode;
+                                 VAR result: Value);
+    VAR l, r: Value; leftTrue, rhsLabel, endLabel, leftBlock, rhsBlock, decided: ValueText;
+  BEGIN
+    GenerateExpr(w, cg, expr.left, l);
+    COPY(cg.currentBlock, leftBlock);
+    NewLabel(cg, rhsLabel); NewLabel(cg, endLabel);
+    EmitBinOp(w, cg, "icmp ne", "i8", l.text, "0", leftTrue);
+    IF expr.op = Lexer.ampersand THEN
+      EmitCondBr(w, leftTrue, rhsLabel, endLabel); COPY("0", decided)
+    ELSE
+      EmitCondBr(w, leftTrue, endLabel, rhsLabel); COPY("1", decided)
+    END;
+    EmitLabel(w, cg, rhsLabel);
+    GenerateExpr(w, cg, expr.right, r);
+    COPY(cg.currentBlock, rhsBlock);
+    EmitBr(w, endLabel);
+    EmitLabel(w, cg, endLabel);
+    NewTemp(cg, result.text);
+    WriteStr(w, "  "); WriteStr(w, result.text); WriteStr(w, " = phi i8 [ "); WriteStr(w, decided);
+    WriteStr(w, ", %"); WriteStr(w, leftBlock); WriteStr(w, " ], [ "); WriteStr(w, r.text);
+    WriteStr(w, ", %"); WriteStr(w, rhsBlock); WriteStr(w, " ]"); WriteLn(w);
+    COPY("i8", result.llvmType); result.oberonType := Types.Boolean
+  END GenerateShortCircuit;
+
+  (* The type a bare type-name operand (IS's right side, a guard's
+     argument) names, or NIL. *)
+  PROCEDURE NamedType(VAR cg: Codegen; e: SyntaxTree.ExprNode): Types.Type;
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
+  BEGIN
+    IF (e = NIL) OR ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN NIL END;
+    de := e(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens OR (de.designator.selectors # NIL) THEN RETURN NIL END;
+    obj := ResolveQualifiedObject(cg, de.designator.qualifier, de.designator.name, homeModule);
+    IF (obj # NIL) & (obj.class = SymbolTable.typeClass) THEN RETURN obj.type ELSE RETURN NIL END
+  END NamedType;
+
+  (* v IS T. *)
+  PROCEDURE GenerateIsExpr(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.BinaryExprNode;
+                           VAR result: Value);
+    VAR rec: Types.RecordType; v: Value; test: ValueText;
+  BEGIN
+    rec := TargetRecord(NamedType(cg, expr.right));
+    IF ~EnsureTypeTag(cg, rec) THEN
+      Unsupported(w, cg, "IS against a record type with no nameable run-time descriptor",
+                  Types.Boolean, result);
+      RETURN
+    END;
+    GenerateExpr(w, cg, expr.left, v);
+    EmitTypeTest(w, cg, v.text, rec, test);
+    EmitConvert(w, cg, "zext", "i1", test, "i8", result.text);
+    COPY("i8", result.llvmType); result.oberonType := Types.Boolean
+  END GenerateIsExpr;
+
   PROCEDURE GenerateBinaryExpr(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.BinaryExprNode;
                                VAR result: Value);
     VAR l, r: Value;
@@ -1360,6 +1779,14 @@ MODULE LLVMCodeGenerator;
         OR (expr.op = Lexer.lessEqual) OR (expr.op = Lexer.greater) OR (expr.op = Lexer.greaterEqual))
        & IsCharSequenceExpr(cg, expr.left) & IsCharSequenceExpr(cg, expr.right) THEN
       GenerateCharCompare(w, cg, expr.op, expr.left, expr.right, result);
+      RETURN
+    END;
+    IF expr.op = Lexer.isKeyword THEN
+      GenerateIsExpr(w, cg, expr, result);
+      RETURN
+    END;
+    IF ((expr.op = Lexer.ampersand) OR (expr.op = Lexer.orKeyword)) & ~IsSideEffectFree(expr.right) THEN
+      GenerateShortCircuit(w, cg, expr, result);
       RETURN
     END;
     GenerateExpr(w, cg, expr.left, l);
@@ -1472,27 +1899,96 @@ MODULE LLVMCodeGenerator;
     RETURN i
   END FieldIndex;
 
+  (* The pointer stored at addrText, loaded and NIL-checked: afterwards
+     addrText holds the address of what it pointed to and addrType that
+     thing's type. FALSE when addrType is not a pointer to a record or a
+     fixed array (a pointer to an open array is NEW(p, n)'s - step 7). *)
+  PROCEDURE DereferencePointer(VAR w: Files.Rider; VAR cg: Codegen; VAR addrText: ValueText;
+                               VAR addrType: Types.Type): BOOLEAN;
+    VAR ptr: Types.PointerType; base: Types.Type; loaded: Value; arr: Types.ArrayType;
+  BEGIN
+    IF (addrType = NIL) OR ~(addrType IS Types.PointerType) THEN RETURN FALSE END;
+    ptr := addrType(Types.PointerType);
+    base := ptr.base;
+    IF base = NIL THEN RETURN FALSE END;
+    IF base IS Types.ArrayType THEN
+      arr := base(Types.ArrayType);
+      IF arr.isOpen THEN RETURN FALSE END
+    ELSIF ~(base IS Types.RecordType) THEN
+      RETURN FALSE
+    END;
+    LoadAtAddress(w, cg, addrText, addrType, loaded);
+    EmitNilCheck(w, cg, loaded.text);
+    COPY(loaded.text, addrText);
+    addrType := base;
+    RETURN TRUE
+  END DereferencePointer;
+
+  (* "." and "[" on a pointer designate through it (Oberon2.pdf 8.1: "p.f
+     and p[e] may be abbreviated" from "p^.f"/"p^[e]"). *)
+  PROCEDURE AutoDereference(VAR w: Files.Rider; VAR cg: Codegen; VAR addrText: ValueText;
+                            VAR addrType: Types.Type): BOOLEAN;
+  BEGIN
+    IF (addrType # NIL) & (addrType IS Types.PointerType) THEN
+      RETURN DereferencePointer(w, cg, addrText, addrType)
+    END;
+    RETURN TRUE
+  END AutoDereference;
+
+  (* The address of field name of the record at addrText, whose type is
+     addrType: a record with a base type is the base's struct nested as its
+     first element (RecordTypeString), so a field inherited from a base
+     is reached through one "element 0" step per level, and an own field's
+     struct index is one more than its declaration position when there is
+     a base. FALSE if the name is not a data field (a type-bound
+     procedure is step 6's). *)
+  PROCEDURE GenerateFieldAddress(VAR w: Files.Rider; VAR cg: Codegen; VAR addrText: ValueText;
+                                 VAR addrType: Types.Type; name: SyntaxTree.Ident): BOOLEAN;
+    VAR rec, owner, current: Types.RecordType; field: Types.Field; pointeeType: ARRAY 256 OF CHAR; idxText: ValueText;
+        position: INTEGER;
+  BEGIN
+    IF (addrType = NIL) OR ~(addrType IS Types.RecordType) THEN RETURN FALSE END;
+    rec := addrType(Types.RecordType);
+    field := Types.FindField(rec, name);
+    IF field = NIL THEN RETURN FALSE END;
+    owner := Types.FieldOwner(rec, field);
+    IF owner = NIL THEN RETURN FALSE END;
+    current := rec;
+    WHILE current # owner DO
+      LLVMTypes.TypeString(current, cg.sizeModel, pointeeType);
+      EmitGEP(w, cg, pointeeType, addrText, "i32", "0", addrText);
+      current := current.baseType(Types.RecordType)
+    END;
+    position := FieldIndex(owner, field);
+    IF owner.baseType # NIL THEN INC(position) END;
+    LLVMTypes.TypeString(owner, cg.sizeModel, pointeeType);
+    idxText[0] := 0X; AppendLongInt(idxText, position);
+    EmitGEP(w, cg, pointeeType, addrText, "i32", idxText, addrText);
+    addrType := field.type;
+    RETURN TRUE
+  END GenerateFieldAddress;
+
   (* Computes the address of an array element or a record field, one
-     EmitGEP per selector step (see EmitGEP's own header comment). FALSE
-     means some selector in the chain needs a capability Phase 8's
-     backend doesn't have - a PointerType anywhere (auto-dereferenced by
-     CheckDesignator for both "." and "[", so a plain array/record VAR's
-     selector chain can still legitimately lead into one), a
-     DereferenceSelector, a GuardSelector, or a FieldSelector resolving
-     to a type-bound method rather than a data field - every one of them
-     is real Oberon-2 the front end already accepts, just POINTER/
-     dispatch-shaped work Phase 8 excludes entirely (this module's own
-     header comment's "Explicit non-goals"), matching Phase 9 instead.
-     An open array can never appear here either (CheckDesignator only
-     ever resolves a module VAR's own declared, always-fixed-size array
-     type through "[" - an open array only exists as a formal parameter,
-     and Phase 8 has no procedure-with-body codegen to own one yet). *)
+     EmitGEP per selector step (see EmitGEP's own header comment), through
+     pointers where the designator goes through them: "." and "[" on a
+     pointer load it, NIL-check it and continue from what it points to;
+     "^" does the same explicitly; a type guard v(T) checks the pointer's
+     dynamic type and continues with static type T. FALSE means some
+     selector in the chain needs a capability this backend does not have
+     yet - a guard on a record VAR parameter or a dereference of a pointer
+     to an open array (step 7), or a FieldSelector resolving to a type-
+     bound method rather than a data field (step 6). An open array can
+     never appear here either (CheckDesignator only ever resolves a
+     module VAR's own declared, always-fixed-size array type through "["
+     - an open array only exists as a formal parameter, and array-
+     parameter indexing is step 7's). *)
   PROCEDURE GenerateDesignatorAddress(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                                       VAR addrText: ValueText; VAR addrType: Types.Type): BOOLEAN;
     VAR
       obj: SymbolTable.Object; sel: SyntaxTree.Selector; idx: SyntaxTree.ExprNode;
-      rec: Types.RecordType; arr: Types.ArrayType; field: Types.Field; idxVal: Value;
-      pointeeType: ARRAY 256 OF CHAR; idxText: ValueText; homeModule: SyntaxTree.Ident;
+      arr: Types.ArrayType; idxVal, loaded: Value;
+      pointeeType: ARRAY 256 OF CHAR; homeModule: SyntaxTree.Ident;
+      guardObj: SymbolTable.Object; guardHome: SyntaxTree.Ident; guardRec: Types.RecordType;
   BEGIN
     obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
@@ -1505,33 +2001,17 @@ MODULE LLVMCodeGenerator;
          moduleScope. *)
       QualifiedName(homeModule, obj.name, addrText)
     END;
-    addrType := obj.type;
+    addrType := EffectiveVarType(cg, obj);
     sel := d.selectors;
     WHILE sel # NIL DO
       WITH
         sel: SyntaxTree.FieldSelector DO
-          IF (addrType = NIL) OR ~(addrType IS Types.RecordType) THEN RETURN FALSE END;
-          rec := addrType(Types.RecordType);
-          (* A record with a base type has an undefined layout to this
-             backend - RecordTypeString already refuses one, returning
-             the literal text "<unsupported>" rather than a real LLVM
-             type, so a field access into one must refuse right here
-             too, not just when the record's own global is declared: a
-             real bug found and fixed during this step's own testing
-             (a scratch RECORD-extension fixture) - without this check,
-             GenerateDesignatorAddress happily used that same literal
-             "<unsupported>" text as a GEP's pointee type, producing
-             ill-formed IR instead of a graceful Unsupported fallback. *)
-          IF rec.baseType # NIL THEN RETURN FALSE END;
-          field := Types.FindField(rec, sel.name);
-          IF field = NIL THEN RETURN FALSE END;
-          LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
-          idxText[0] := 0X; AppendLongInt(idxText, FieldIndex(rec, field));
-          EmitGEP(w, cg, pointeeType, addrText, "i32", idxText, addrText);
-          addrType := field.type
+          IF ~AutoDereference(w, cg, addrText, addrType) THEN RETURN FALSE END;
+          IF ~GenerateFieldAddress(w, cg, addrText, addrType, sel.name) THEN RETURN FALSE END
       | sel: SyntaxTree.IndexSelector DO
           idx := sel.indices;
           WHILE idx # NIL DO
+            IF ~AutoDereference(w, cg, addrText, addrType) THEN RETURN FALSE END;
             IF (addrType = NIL) OR ~(addrType IS Types.ArrayType) THEN RETURN FALSE END;
             arr := addrType(Types.ArrayType);
             IF arr.isOpen THEN RETURN FALSE END;
@@ -1542,8 +2022,19 @@ MODULE LLVMCodeGenerator;
             addrType := arr.elementType;
             idx := idx.next
           END
+      | sel: SyntaxTree.DereferenceSelector DO
+          IF ~DereferencePointer(w, cg, addrText, addrType) THEN RETURN FALSE END
+      | sel: SyntaxTree.GuardSelector DO
+          IF (addrType = NIL) OR ~(addrType IS Types.PointerType) THEN RETURN FALSE END;
+          guardObj := ResolveQualifiedObject(cg, sel.qualifier, sel.name, guardHome);
+          IF (guardObj = NIL) OR (guardObj.class # SymbolTable.typeClass) THEN RETURN FALSE END;
+          guardRec := TargetRecord(guardObj.type);
+          IF ~EnsureTypeTag(cg, guardRec) THEN RETURN FALSE END;
+          LoadAtAddress(w, cg, addrText, addrType, loaded);
+          EmitTypeGuard(w, cg, loaded.text, guardRec);
+          addrType := TargetPointer(guardObj.type)
       ELSE
-        RETURN FALSE (* DereferenceSelector/GuardSelector: pointer-only *)
+        RETURN FALSE
       END;
       sel := sel.next
     END;
@@ -1703,6 +2194,33 @@ MODULE LLVMCodeGenerator;
      target's declared type, not the value's. Everything else, including
      assigning one whole array or record to another of the same type
      (an aggregate load and store), is unchanged. *)
+  (* Oberon2.pdf Appendix A rule 3: a record value of an extended type may
+     be assigned to a variable of its base type, and only the base's part
+     is copied. An extended record is its base's struct nested as element 0
+     (RecordTypeString), so the base part of the value is one extractvalue
+     of element 0 per extension level between the two types. Types are
+     matched by their LLVM spelling rather than by identity, since a record
+     imported from a .sym is a different Types.RecordType from the one its
+     own module built. *)
+  PROCEDURE NarrowRecordValue(VAR w: Files.Rider; VAR cg: Codegen; target: Types.Type; VAR v: Value);
+    VAR targetText, currentText: ARRAY 256 OF CHAR; rec: Types.RecordType; narrowed: ValueText; base: Types.Type;
+  BEGIN
+    LLVMTypes.TypeString(target, cg.sizeModel, targetText);
+    LOOP
+      IF (v.oberonType = NIL) OR ~(v.oberonType IS Types.RecordType) THEN EXIT END;
+      rec := v.oberonType(Types.RecordType);
+      IF rec.baseType = NIL THEN EXIT END;
+      LLVMTypes.TypeString(rec, cg.sizeModel, currentText);
+      IF currentText = targetText THEN EXIT END;
+      NewTemp(cg, narrowed);
+      WriteStr(w, "  "); WriteStr(w, narrowed); WriteStr(w, " = extractvalue "); WriteStr(w, currentText);
+      WriteStr(w, " "); WriteStr(w, v.text); WriteStr(w, ", 0"); WriteLn(w);
+      base := rec.baseType;
+      COPY(narrowed, v.text); v.oberonType := base;
+      LLVMTypes.TypeString(base, cg.sizeModel, v.llvmType)
+    END
+  END NarrowRecordValue;
+
   PROCEDURE AssignToAddress(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; addrType: Types.Type;
                             value: SyntaxTree.ExprNode);
     VAR text: LongText; arr: Types.ArrayType; v: Value; isCharArray: BOOLEAN;
@@ -1716,6 +2234,7 @@ MODULE LLVMCodeGenerator;
       EmitStringStores(w, cg, addrText, arr, text)
     ELSE
       GenerateExpr(w, cg, value, v);
+      IF (addrType # NIL) & (addrType IS Types.RecordType) THEN NarrowRecordValue(w, cg, addrType, v) END;
       StoreAtAddress(w, cg, addrText, addrType, v)
     END
   END AssignToAddress;
@@ -2342,7 +2861,7 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, "  call void @exit(i32 "); WriteStr(w, codeText); WriteStr(w, ")"); WriteLn(w);
     WriteStr(w, "  unreachable"); WriteLn(w);
     NewLabel(cg, deadLabel);
-    EmitLabel(w, deadLabel)
+    EmitLabel(w, cg, deadLabel)
   END GenerateHalt;
 
   (* ---- The SYSTEM subset (PLAN.md Phase 9 step 4): ADR GET PUT VAL MOVE.
@@ -2541,6 +3060,132 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, ", i1 false)"); WriteLn(w)
   END GenerateMove;
 
+  (* The tag operand NEW passes for a fixed array: 0 when the elements
+     hold no pointers (nothing for the collector to trace), else the
+     address of a descriptor synthesized for the array's element type
+     (EmitArrayDescriptors), registered here the first time this array
+     type is allocated. *)
+  PROCEDURE ArrayTagOperand(VAR cg: Codegen; arr: Types.ArrayType; VAR text: ARRAY OF CHAR);
+    VAR e: ArrayDescEntry; wordInt: ValueText;
+  BEGIN
+    IF CountPointerSlots(arr) = 0 THEN COPY("0", text); RETURN END;
+    e := cg.arrayDescs;
+    WHILE (e # NIL) & (e.arr # arr) DO e := e.next END;
+    IF e = NIL THEN
+      NEW(e); e.arr := arr;
+      INC(cg.arrayDescCount);
+      COPY("@.arraydesc.", e.name); AppendLongInt(e.name, cg.arrayDescCount);
+      e.next := cg.arrayDescs; cg.arrayDescs := e
+    END;
+    WordIntType(wordInt);
+    COPY("ptrtoint (ptr ", text); Strcat(text, e.name); Strcat(text, " to "); Strcat(text, wordInt);
+    Strcat(text, ")")
+  END ArrayTagOperand;
+
+  (* NEW(p) for a pointer to a record or to a fixed array: the block comes
+     from GarbageCollectedHeap.Allocate (zero-filled, tagged with the
+     record's type descriptor), a failed allocation is a trap, and the
+     result is stored through p's designator. The unsupported cases are
+     decided from the declared types alone, before anything is emitted. *)
+  PROCEDURE GenerateNew(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR
+      de: SyntaxTree.DesignatorExprNode; t, base: Types.Type; ptr: Types.PointerType;
+      rec: Types.RecordType; arr: Types.ArrayType; addrText, wordInt, sizeText, tagText, allocated, isZero,
+      okLabel, trapLabel, pointer: ValueText; longTag: LongText; addrType: Types.Type;
+  BEGIN
+    result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
+    IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
+    de := args(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens THEN RETURN END;
+    IF args.next # NIL THEN
+      WriteStr(w, "  ; unsupported: NEW of an open array (PLAN.md Phase 9 step 7)"); WriteLn(w);
+      RETURN
+    END;
+    t := DesignatorStaticType(cg, de.designator);
+    IF (t = NIL) OR ~(t IS Types.PointerType) THEN
+      WriteStr(w, "  ; unsupported: NEW on a designator this backend cannot address"); WriteLn(w);
+      RETURN
+    END;
+    ptr := t(Types.PointerType);
+    base := ptr.base;
+    rec := NIL; arr := NIL;
+    IF (base # NIL) & (base IS Types.RecordType) THEN
+      rec := base(Types.RecordType);
+      IF ~EnsureTypeTag(cg, rec) THEN
+        WriteStr(w, "  ; unsupported: NEW of a record type with no nameable run-time descriptor");
+        WriteLn(w);
+        RETURN
+      END
+    ELSIF (base # NIL) & (base IS Types.ArrayType) THEN
+      arr := base(Types.ArrayType);
+      IF arr.isOpen THEN
+        WriteStr(w, "  ; unsupported: NEW of an open array (PLAN.md Phase 9 step 7)"); WriteLn(w);
+        RETURN
+      END
+    ELSE
+      WriteStr(w, "  ; unsupported: NEW of a pointer to this type"); WriteLn(w);
+      RETURN
+    END;
+    IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
+      WriteStr(w, "  ; unsupported: NEW on a designator this backend cannot address"); WriteLn(w);
+      RETURN
+    END;
+    cg.needHeapTrap := TRUE;
+    WordIntType(wordInt);
+    sizeText[0] := 0X; AppendLongInt(sizeText, MemoryLayout.Size(base, ConstantEvaluator.wordSize, cg.sizeModel));
+    IF rec # NIL THEN
+      TagSymbol(rec, longTag);
+      COPY("ptrtoint (ptr ", tagText); Strcat(tagText, longTag); Strcat(tagText, " to ");
+      Strcat(tagText, wordInt); Strcat(tagText, ")")
+    ELSE
+      ArrayTagOperand(cg, arr, tagText)
+    END;
+    NewTemp(cg, allocated);
+    WriteStr(w, "  "); WriteStr(w, allocated); WriteStr(w, " = call "); WriteStr(w, wordInt);
+    WriteStr(w, " @GarbageCollectedHeap.Allocate("); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, sizeText);
+    WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, tagText); WriteStr(w, ")"); WriteLn(w);
+    EmitBinOp(w, cg, "icmp eq", wordInt, allocated, "0", isZero);
+    NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+    EmitCondBr(w, isZero, trapLabel, okLabel);
+    EmitLabel(w, cg, trapLabel);
+    EmitTrap(w, cg, heapTrapGlobal, heapTrapMsg, heapTrapExitCode);
+    EmitLabel(w, cg, okLabel);
+    EmitConvert(w, cg, "inttoptr", wordInt, allocated, "ptr", pointer);
+    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
+  END GenerateNew;
+
+  (* Whether de is a type guard "v(T)" rather than a call: a variable
+     followed by one bare type name in parentheses (a predeclared
+     procedure like SIZE(T) also takes a type name, but its base is a
+     procedure, not a variable). *)
+  PROCEDURE IsGuardExpr(VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode): BOOLEAN;
+    VAR obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
+  BEGIN
+    IF ~de.hasParens OR (de.args = NIL) OR (de.args.next # NIL) THEN RETURN FALSE END;
+    IF NamedType(cg, de.args) = NIL THEN RETURN FALSE END;
+    obj := ResolveQualifiedObject(cg, de.designator.qualifier, de.designator.name, homeModule);
+    RETURN (obj # NIL) & (obj.class = SymbolTable.varClass)
+  END IsGuardExpr;
+
+  (* v(T) as an expression: v itself, after checking its dynamic type;
+     what follows it sees static type T. *)
+  PROCEDURE GenerateGuardExpr(VAR w: Files.Rider; VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode;
+                              VAR result: Value);
+    VAR targetType: Types.Type; rec: Types.RecordType; v: Value;
+  BEGIN
+    targetType := NamedType(cg, de.args);
+    rec := TargetRecord(targetType);
+    IF ~EnsureTypeTag(cg, rec) THEN
+      Unsupported(w, cg, "type guard to a record type with no nameable run-time descriptor",
+                  Types.Undefined, result);
+      RETURN
+    END;
+    GenerateDesignatorValue(w, cg, de.designator, v);
+    EmitTypeGuard(w, cg, v.text, rec);
+    result := v;
+    result.oberonType := TargetPointer(targetType)
+  END GenerateGuardExpr;
+
   (* PLAN.md Phase 8 step 11's own in-scope Oberon2.pdf §10.3 subset -
      ABS ODD CHR ORD CAP LEN INC DEC COPY HALT - plus, from Phase 9 step
      2, the three numeric conversions LONG SHORT ENTIER, and, from step 3,
@@ -2575,9 +3220,10 @@ MODULE LLVMCodeGenerator;
     ELSIF name = "PUT" THEN GeneratePut(w, cg, args, result)
     ELSIF name = "VAL" THEN GenerateVal(w, cg, args, result)
     ELSIF name = "MOVE" THEN GenerateMove(w, cg, args, result)
+    ELSIF name = "NEW" THEN GenerateNew(w, cg, args, result)
     ELSE
       Unsupported(w, cg,
-        "predeclared procedure outside the lowered set (ASH/MAX/MIN - Phase 9; NEW needs POINTER, also Phase 9; SYSTEM's BYTE/PTR/BIT/LSH/ROT/NEW are Phase 10)",
+        "predeclared procedure outside the lowered set (ASH/MAX/MIN - Phase 9; SYSTEM's BYTE/PTR/BIT/LSH/ROT/NEW are Phase 10)",
         Types.Undefined, result)
     END
   END GeneratePredeclaredCall;
@@ -2617,7 +3263,9 @@ MODULE LLVMCodeGenerator;
     WITH
       expr: SyntaxTree.LiteralExprNode DO GenerateLiteral(w, cg, expr, result)
     | expr: SyntaxTree.DesignatorExprNode DO
-        IF expr.hasParens THEN
+        IF IsGuardExpr(cg, expr) THEN
+          GenerateGuardExpr(w, cg, expr, result)
+        ELSIF expr.hasParens THEN
           GenerateCall(w, cg, expr.designator, expr.args, result)
         ELSE
           GenerateDesignatorValue(w, cg, expr.designator, result)
@@ -2626,7 +3274,7 @@ MODULE LLVMCodeGenerator;
     | expr: SyntaxTree.BinaryExprNode DO GenerateBinaryExpr(w, cg, expr, result)
     | expr: SyntaxTree.SetExprNode DO GenerateSetExpr(w, cg, expr, result)
     ELSE (* NilExprNode *)
-      Unsupported(w, cg, "NIL (PLAN.md Phase 9 step 5)", Types.Undefined, result)
+      COPY("null", result.text); COPY("ptr", result.llvmType); result.oberonType := Types.NilType
     END
   END GenerateExpr;
 
@@ -2705,15 +3353,15 @@ MODULE LLVMCodeGenerator;
       EmitBinOp(w, cg, "icmp ne", "i8", cond.text, "0", i1cond);
       NewLabel(cg, thenLabel); NewLabel(cg, elseLabel);
       EmitCondBr(w, i1cond, thenLabel, elseLabel);
-      EmitLabel(w, thenLabel);
+      EmitLabel(w, cg, thenLabel);
       GenerateStatementSeq(w, cg, branch.body);
       EmitBr(w, endLabel);
-      EmitLabel(w, elseLabel);
+      EmitLabel(w, cg, elseLabel);
       branch := branch.next
     END;
     GenerateStatementSeq(w, cg, s.elseBody);
     EmitBr(w, endLabel);
-    EmitLabel(w, endLabel)
+    EmitLabel(w, cg, endLabel)
   END GenerateIfStatement;
 
   (* ge=TRUE picks ">=", ge=FALSE picks "<=" - CHAR compares unsigned
@@ -2816,10 +3464,10 @@ MODULE LLVMCodeGenerator;
       GenerateCaseLabelListTest(w, cg, sel, c.labels, cond);
       NewLabel(cg, thenLabel); NewLabel(cg, elseLabel);
       EmitCondBr(w, cond, thenLabel, elseLabel);
-      EmitLabel(w, thenLabel);
+      EmitLabel(w, cg, thenLabel);
       GenerateStatementSeq(w, cg, c.body);
       EmitBr(w, endLabel);
-      EmitLabel(w, elseLabel);
+      EmitLabel(w, cg, elseLabel);
       c := c.next
     END;
     (* s.hasElse, not "s.elseBody # NIL", decides trap-vs-fallthrough:
@@ -2837,7 +3485,7 @@ MODULE LLVMCodeGenerator;
     ELSE
       EmitTrap(w, cg, noCaseLabelTrapGlobal, noCaseLabelTrapMsg, noCaseLabelExitCode)
     END;
-    EmitLabel(w, endLabel)
+    EmitLabel(w, cg, endLabel)
   END GenerateCaseStatement;
 
   (* WHILE cond DO body END - guard tested before every execution,
@@ -2850,14 +3498,14 @@ MODULE LLVMCodeGenerator;
   BEGIN
     NewLabel(cg, headLabel); NewLabel(cg, bodyLabel); NewLabel(cg, endLabel);
     EmitBr(w, headLabel);
-    EmitLabel(w, headLabel);
+    EmitLabel(w, cg, headLabel);
     GenerateExpr(w, cg, s.condition, cond);
     EmitBinOp(w, cg, "icmp ne", "i8", cond.text, "0", i1cond);
     EmitCondBr(w, i1cond, bodyLabel, endLabel);
-    EmitLabel(w, bodyLabel);
+    EmitLabel(w, cg, bodyLabel);
     GenerateStatementSeq(w, cg, s.body);
     EmitBr(w, headLabel);
-    EmitLabel(w, endLabel)
+    EmitLabel(w, cg, endLabel)
   END GenerateWhileStatement;
 
   (* REPEAT body UNTIL cond - body always runs at least once (Oberon2.pdf
@@ -2867,12 +3515,12 @@ MODULE LLVMCodeGenerator;
   BEGIN
     NewLabel(cg, bodyLabel); NewLabel(cg, endLabel);
     EmitBr(w, bodyLabel);
-    EmitLabel(w, bodyLabel);
+    EmitLabel(w, cg, bodyLabel);
     GenerateStatementSeq(w, cg, s.body);
     GenerateExpr(w, cg, s.condition, cond);
     EmitBinOp(w, cg, "icmp ne", "i8", cond.text, "0", i1cond);
     EmitCondBr(w, i1cond, endLabel, bodyLabel);
-    EmitLabel(w, endLabel)
+    EmitLabel(w, cg, endLabel)
   END GenerateRepeatStatement;
 
   (* CheckForStatement already guarantees s.step, when present, folds to
@@ -2934,19 +3582,19 @@ MODULE LLVMCodeGenerator;
     stepText[0] := 0X; AppendLongInt(stepText, stepAmount);
     NewLabel(cg, headLabel); NewLabel(cg, bodyLabel); NewLabel(cg, endLabel);
     EmitBr(w, headLabel);
-    EmitLabel(w, headLabel);
+    EmitLabel(w, cg, headLabel);
     LoadVar(w, cg, obj, vVal);
     IF stepAmount > 0 THEN COPY("icmp sle", pred) ELSE COPY("icmp sge", pred) END;
     EmitBinOp(w, cg, pred, vVal.llvmType, vVal.text, stopExt.text, condText);
     EmitCondBr(w, condText, bodyLabel, endLabel);
-    EmitLabel(w, bodyLabel);
+    EmitLabel(w, cg, bodyLabel);
     GenerateStatementSeq(w, cg, s.body);
     LoadVar(w, cg, obj, vVal);
     EmitBinOp(w, cg, "add", vVal.llvmType, vVal.text, stepText, incVal.text);
     incVal.llvmType := vVal.llvmType; incVal.oberonType := vVal.oberonType;
     StoreIntoVar(w, cg, obj, incVal);
     EmitBr(w, headLabel);
-    EmitLabel(w, endLabel)
+    EmitLabel(w, cg, endLabel)
   END GenerateForStatement;
 
   (* LOOP body END - runs forever; only an EXIT inside body (at any
@@ -2964,11 +3612,11 @@ MODULE LLVMCodeGenerator;
     savedExit := cg.loopExitLabel;
     cg.loopExitLabel := endLabel;
     EmitBr(w, bodyLabel);
-    EmitLabel(w, bodyLabel);
+    EmitLabel(w, cg, bodyLabel);
     GenerateStatementSeq(w, cg, s.body);
     EmitBr(w, bodyLabel);
     cg.loopExitLabel := savedExit;
-    EmitLabel(w, endLabel)
+    EmitLabel(w, cg, endLabel)
   END GenerateLoopStatement;
 
   (* CheckExitStatement already guarantees cg.loopExitLabel is non-empty
@@ -2981,7 +3629,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     EmitBr(w, cg.loopExitLabel);
     NewLabel(cg, deadLabel);
-    EmitLabel(w, deadLabel)
+    EmitLabel(w, cg, deadLabel)
   END GenerateExitStatement;
 
   (* CheckReturnStatement already guarantees s.value = NIL whenever
@@ -3033,8 +3681,56 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, "  ret "); WriteStr(w, retType); WriteStr(w, " "); WriteStr(w, ev.text); WriteLn(w)
     END;
     NewLabel(cg, deadLabel);
-    EmitLabel(w, deadLabel)
+    EmitLabel(w, cg, deadLabel)
   END GenerateReturnStatement;
+
+  (* WITH v1: T1 DO S1 | v2: T2 DO S2 ... ELSE S END - the first branch
+     whose variable's dynamic type is its T (or an extension of it) runs,
+     with the variable statically narrowed to T inside (cg.narrowings); a
+     NIL variable matches no branch; with no branch taken the ELSE part
+     runs, or, if there is none, the program is aborted. Each branch is a
+     test-and-branch exactly like an IF/ELSIF chain. A branch whose type
+     has no descriptor to test against (see HasTypeTag) is skipped with a
+     comment rather than mis-generated. *)
+  PROCEDURE GenerateWithStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.WithStatementNode);
+    VAR
+      guard: SyntaxTree.WithGuardNode; obj, typeObj: SymbolTable.Object; homeModule, typeHome: SyntaxTree.Ident;
+      rec: Types.RecordType; endLabel, bodyLabel, nextLabel, cond: ValueText; current: Value;
+      narrowing: Narrowing;
+  BEGIN
+    NewLabel(cg, endLabel);
+    guard := s.guards;
+    WHILE guard # NIL DO
+      obj := ResolveQualifiedObject(cg, guard.variableQualifier, guard.variableName, homeModule);
+      typeObj := ResolveQualifiedObject(cg, guard.typeQualifier, guard.typeName, typeHome);
+      rec := NIL;
+      IF (typeObj # NIL) & (typeObj.class = SymbolTable.typeClass) THEN rec := TargetRecord(typeObj.type) END;
+      IF (obj = NIL) OR (obj.class # SymbolTable.varClass) OR ~EnsureTypeTag(cg, rec) THEN
+        WriteStr(w, "  ; unsupported: WITH guard on this variable or type (no nameable run-time descriptor)"); WriteLn(w)
+      ELSE
+        LoadVar(w, cg, obj, current);
+        EmitTypeTest(w, cg, current.text, rec, cond);
+        NewLabel(cg, bodyLabel); NewLabel(cg, nextLabel);
+        EmitCondBr(w, cond, bodyLabel, nextLabel);
+        EmitLabel(w, cg, bodyLabel);
+        NEW(narrowing); narrowing.obj := obj; narrowing.type := TargetPointer(typeObj.type);
+        narrowing.next := cg.narrowings; cg.narrowings := narrowing;
+        GenerateStatementSeq(w, cg, guard.body);
+        cg.narrowings := narrowing.next;
+        EmitBr(w, endLabel);
+        EmitLabel(w, cg, nextLabel)
+      END;
+      guard := guard.next
+    END;
+    IF s.elseBody # NIL THEN
+      GenerateStatementSeq(w, cg, s.elseBody);
+      EmitBr(w, endLabel)
+    ELSE
+      cg.needWithTrap := TRUE;
+      EmitTrap(w, cg, withTrapGlobal, withTrapMsg, withTrapExitCode)
+    END;
+    EmitLabel(w, cg, endLabel)
+  END GenerateWithStatement;
 
   PROCEDURE GenerateStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
   BEGIN
@@ -3049,13 +3745,8 @@ MODULE LLVMCodeGenerator;
     | s: SyntaxTree.LoopStatementNode DO GenerateLoopStatement(w, cg, s)
     | s: SyntaxTree.ExitStatementNode DO GenerateExitStatement(w, cg, s)
     | s: SyntaxTree.ReturnStatementNode DO GenerateReturnStatement(w, cg, s)
-    ELSE
-      (* WithStatementNode only, by elimination - real Oberon-2 but out
-         of Phase 8 entirely, not just deferred a step: a type guard's
-         narrowing only matters together with RECORD extension/dispatch,
-         which needs POINTER support Phase 8 never adds (this module's
-         own header comment's "Explicit non-goals"); revisit in Phase 9. *)
-      WriteStr(w, "  ; unsupported: WITH statement (Phase 9 - needs POINTER/RECORD extension)"); WriteLn(w)
+    ELSE (* WithStatementNode only, by elimination *)
+      GenerateWithStatement(w, cg, s(SyntaxTree.WithStatementNode))
     END
   END GenerateStatement;
 
@@ -3203,33 +3894,18 @@ MODULE LLVMCodeGenerator;
      Scope of this step: module-level record types only - a named
      record (Types.RecordTypeDesc.name set by SemanticActions.Mod's
      NameRecordType), or the anonymous record directly under a
-     module-level named POINTER TO. Procedure-local record types and other
-     anonymous records get no descriptor yet (nothing can allocate or
-     test one before step 5/6 anyway). Type-bound procedure *bodies* are
+     module-level named POINTER TO. Any other record - one written inline
+     under a POINTER TO, or declared inside a procedure - gets one only
+     when NEW, IS, a guard or WITH names it (PLAN.md Phase 9 step 5:
+     EnsureTypeTag names it "$anon<N>" and EmitPointerSupport emits its
+     descriptor at the end of the program). Type-bound procedure *bodies* are
      not generated yet either (step 6) - ProcTab entries name their
      eventual symbols (@<Module>.<RecordName>.<ProcName>), and each is
      "declare"d here so the reference is valid IR meanwhile; step 6 must
      drop those declares when it starts emitting the real "define"s
      (LLVM rejects a "declare" and a "define" of one symbol). *)
 
-  (* "@<Module>.<Type>" - a record type's own prefix for every symbol
-     that belongs to it (.tdesc, .tag, and its type-bound procedures). *)
-  PROCEDURE RecordSymbolBase(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
-  BEGIN
-    COPY("@", text); Strcat(text, rec.moduleName); Strcat(text, "."); Strcat(text, rec.name)
-  END RecordSymbolBase;
 
-  (* The one thing the rest of Phase 9 (NEW, IS, guards, dispatch) needs
-     from this section: the operand text naming rec's tag. *)
-  PROCEDURE TagSymbol(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
-  BEGIN
-    RecordSymbolBase(rec, text); Strcat(text, ".tag")
-  END TagSymbol;
-
-  PROCEDURE WordIntType(VAR text: ARRAY OF CHAR);
-  BEGIN
-    IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN COPY("i32", text) ELSE COPY("i64", text) END
-  END WordIntType;
 
   PROCEDURE IsRegistered(VAR cg: Codegen; rec: Types.RecordType): BOOLEAN;
     VAR e: TypeDescEntry;
@@ -3287,36 +3963,6 @@ MODULE LLVMCodeGenerator;
     END
   END CollectRecordTypes;
 
-  (* Number of pointer-typed locations inside a value of type t: one per
-     POINTER, summed through record fields (inherited ones too) and
-     multiplied through fixed-array lengths. PROCEDURE-typed values are
-     not counted - a procedure variable holds code, never a heap address
-     for the collector to trace. *)
-  PROCEDURE CountPointerSlots(t: Types.Type): LONGINT;
-    VAR
-      count: LONGINT; f: Types.Field; rec: Types.RecordType; arr: Types.ArrayType;
-      isPtr: BOOLEAN;
-  BEGIN
-    IF t = NIL THEN RETURN 0 END;
-    rec := NIL; arr := NIL; isPtr := FALSE;
-    WITH
-      t: Types.PointerType DO isPtr := TRUE
-    | t: Types.RecordType DO rec := t
-    | t: Types.ArrayType DO arr := t
-    ELSE
-    END;
-    IF isPtr THEN RETURN 1 END;
-    IF arr # NIL THEN
-      IF arr.isOpen THEN RETURN 0 END;
-      RETURN arr.length * CountPointerSlots(arr.elementType)
-    END;
-    IF rec = NIL THEN RETURN 0 END;
-    count := 0;
-    IF rec.baseType # NIL THEN count := CountPointerSlots(rec.baseType) END;
-    f := rec.fields;
-    WHILE f # NIL DO count := count + CountPointerSlots(f.type); f := f.next END;
-    RETURN count
-  END CountPointerSlots;
 
   (* Writes "<wordInt> <offset>" entries, ", "-separated (first says
      whether one has been written yet), for every pointer location inside
@@ -3695,11 +4341,10 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE ^ CollectStringConstantsSeq(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
 
-  (* ExitStatementNode/WithStatementNode are the only statement kinds
-     with nothing to walk: EXIT has no expressions or nested body at
-     all, and WITH's own body never reaches real codegen either (still
-     Unsupported - Phase 9, not just a later Phase 8 step), so the real
-     pass can never reference a string constant found only inside one.
+  (* ExitStatementNode is the only statement kind with nothing to walk:
+     EXIT has no expressions or nested body at all. (WITH was too until
+     PLAN.md Phase 9 step 5 made its branches real code - a literal
+     inside one now needs its global like any other.)
      ReturnStatementNode's s.value is walked unconditionally even though
      it is always NIL in this step's own reachable scope (a bare RETURN
      is the only kind that type-checks at module level) - CollectString-
@@ -3707,7 +4352,7 @@ MODULE LLVMCodeGenerator;
      by construction once step 10 gives a function procedure's RETURN a
      real value expression, rather than needing a second fix then. *)
   PROCEDURE CollectStringConstantsStmt(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
-    VAR branch: SyntaxTree.IfBranchNode; c: SyntaxTree.CaseNode;
+    VAR branch: SyntaxTree.IfBranchNode; c: SyntaxTree.CaseNode; guard: SyntaxTree.WithGuardNode;
   BEGIN
     WITH
       s: SyntaxTree.AssignStatementNode DO CollectStringConstants(w, cg, s.value)
@@ -3740,7 +4385,14 @@ MODULE LLVMCodeGenerator;
         CollectStringConstantsSeq(w, cg, s.body)
     | s: SyntaxTree.LoopStatementNode DO CollectStringConstantsSeq(w, cg, s.body)
     | s: SyntaxTree.ReturnStatementNode DO CollectStringConstants(w, cg, s.value)
-    ELSE (* ExitStatementNode/WithStatementNode: see header comment *)
+    | s: SyntaxTree.WithStatementNode DO
+        guard := s.guards;
+        WHILE guard # NIL DO
+          CollectStringConstantsSeq(w, cg, guard.body);
+          guard := guard.next
+        END;
+        CollectStringConstantsSeq(w, cg, s.elseBody)
+    ELSE (* ExitStatementNode: no expressions *)
     END
   END CollectStringConstantsStmt;
 
@@ -3788,7 +4440,7 @@ MODULE LLVMCodeGenerator;
       p := p.next
     END;
     WriteStr(w, ") {"); WriteLn(w);
-    WriteStr(w, "entry:"); WriteLn(w)
+    EmitEntryLabel(w, cg)
   END EmitProcSignature;
 
   (* Binds each formal parameter into cg.locals: a VAR parameter's own
@@ -3847,6 +4499,14 @@ MODULE LLVMCodeGenerator;
         LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
         NewTemp(cg, addrText);
         WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
+        IF CountPointerSlots(obj.type) > 0 THEN
+          (* Oberon2.pdf 6.4: every pointer starts out NIL - a local one
+             too, which is what makes a dereference of a never-assigned
+             pointer a NIL trap rather than a wild access (and keeps
+             stack garbage out of the collector's conservative scan) *)
+          WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer, ptr ");
+          WriteStr(w, addrText); WriteLn(w)
+        END;
         BindLocal(cg, obj, addrText);
         nm := nm.next
       END;
@@ -3932,6 +4592,64 @@ MODULE LLVMCodeGenerator;
      at the top of every pass's own loop iteration - nothing else needs
      saving/restoring around that swap, since this is the outermost
      loop, never itself nested inside another module's own emission. *)
+  (* One descriptor per fixed-array type NEW allocated (ArrayTagOperand),
+     in the record-descriptor layout with no ProcTab and extension level 0:
+     "size" is the byte size of ONE ELEMENT and the offsets locate the
+     pointers inside one element, so the collector - which walks a block
+     as (block size DIV size) elements - traces an array of any length
+     without a table as long as the array itself. Its tag is the address
+     of the constant itself (size is its first word), and BaseTypes names
+     that tag, as a record's does. *)
+  PROCEDURE EmitArrayDescriptors(VAR w: Files.Rider; VAR cg: Codegen);
+    VAR
+      e: ArrayDescEntry; wordInt, text, countText: ValueText; first: BOOLEAN;
+  BEGIN
+    WordIntType(wordInt);
+    e := cg.arrayDescs;
+    WHILE e # NIL DO
+      countText[0] := 0X; AppendLongInt(countText, CountPointerSlots(e.arr.elementType));
+      WriteLn(w);
+      WriteStr(w, e.name); WriteStr(w, " = internal constant { "); WriteStr(w, wordInt); WriteStr(w, ", ");
+      WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ", [1 x ptr], [");
+      WriteStr(w, countText); WriteStr(w, " x "); WriteStr(w, wordInt); WriteStr(w, "] } {"); WriteLn(w);
+      text[0] := 0X;
+      AppendLongInt(text, MemoryLayout.Size(e.arr.elementType, ConstantEvaluator.wordSize, cg.sizeModel));
+      WriteStr(w, "  "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, text); WriteStr(w, ","); WriteLn(w);
+      WriteStr(w, "  "); WriteStr(w, wordInt); WriteStr(w, " 0,"); WriteLn(w);
+      WriteStr(w, "  "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, countText); WriteStr(w, ","); WriteLn(w);
+      WriteStr(w, "  [1 x ptr] [ptr "); WriteStr(w, e.name); WriteStr(w, "],"); WriteLn(w);
+      WriteStr(w, "  ["); WriteStr(w, countText); WriteStr(w, " x "); WriteStr(w, wordInt); WriteStr(w, "] [");
+      first := TRUE; EmitPointerOffsets(w, wordInt, "", e.arr.elementType, 0, first);
+      WriteStr(w, "]"); WriteLn(w);
+      WriteStr(w, "}"); WriteLn(w);
+      e := e.next
+    END
+  END EmitArrayDescriptors;
+
+  (* Everything PLAN.md Phase 9 step 5's pointer code needs that could not
+     be emitted until all of it had been generated: the trap-message
+     globals it referred to (each only if some code did), the declaration
+     of GarbageCollectedHeap.Allocate when NEW is used in a program that
+     does not itself contain that module, and the array descriptors. *)
+  PROCEDURE EmitPointerSupport(VAR w: Files.Rider; VAR cg: Codegen);
+    VAR wordInt: ValueText; e: TypeDescEntry;
+  BEGIN
+    IF cg.needNilTrap THEN EmitRuntimeStringGlobal(w, nilTrapGlobal, nilTrapMsg) END;
+    IF cg.needGuardTrap THEN EmitRuntimeStringGlobal(w, guardTrapGlobal, guardTrapMsg) END;
+    IF cg.needWithTrap THEN EmitRuntimeStringGlobal(w, withTrapGlobal, withTrapMsg) END;
+    IF cg.needHeapTrap THEN
+      EmitRuntimeStringGlobal(w, heapTrapGlobal, heapTrapMsg);
+      IF ~cg.heapPresent THEN
+        WordIntType(wordInt);
+        WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");
+        WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ")"); WriteLn(w)
+      END
+    END;
+    e := cg.lateRecords;
+    WHILE e # NIL DO EmitDescriptor(w, cg, e.rec); e := e.next END;
+    EmitArrayDescriptors(w, cg)
+  END EmitPointerSupport;
+
   (* Everything that has to come after all the functions have been
      generated, because nothing knew it was needed until then: the string
      globals StringConstGlobal handed out, and the two runtime loops
@@ -4046,6 +4764,10 @@ MODULE LLVMCodeGenerator;
     cg.declaredExternals := NIL; cg.tdescs := NIL;
     cg.needCharCompare := FALSE; cg.needCharCopy := FALSE; cg.pendingStrings := NIL;
     cg.needMemmove := FALSE;
+    cg.currentBlock[0] := 0X;
+    cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.needHeapTrap := FALSE;
+    cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
+    cg.heapPresent := withHeap;
     WriteStr(w, 'target datalayout = "');
     IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN WriteStr(w, dataLayoutW32)
     ELSE WriteStr(w, dataLayoutW64)
@@ -4093,7 +4815,7 @@ MODULE LLVMCodeGenerator;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope;
       WriteStr(w, "define void @"); WriteStr(w, m.module.name); WriteStr(w, "_init() {"); WriteLn(w);
-      WriteStr(w, "entry:"); WriteLn(w);
+      EmitEntryLabel(w, cg);
       IF withRootTables THEN EmitRootTableRegistration(w, cg, m.module) END;
       GenerateStatementSeq(w, cg, m.module.statements);
       WriteStr(w, "  ret void"); WriteLn(w);
@@ -4102,7 +4824,7 @@ MODULE LLVMCodeGenerator;
       m := m.next
     END;
     WriteStr(w, "define i32 @main() {"); WriteLn(w);
-    WriteStr(w, "entry:"); WriteLn(w);
+    EmitEntryLabel(w, cg);
     IF withHeap THEN
       (* the outermost frame anything can live in: the collector scans the
          stack from its own frame up to here *)
@@ -4120,6 +4842,7 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, "  ret i32 0"); WriteLn(w);
     WriteStr(w, "}"); WriteLn(w);
     EmitCharacterHelpers(w, cg);
+    EmitPointerSupport(w, cg);
     IF withHeap THEN
       WriteLn(w);
       EmitLine(w, "declare ptr @llvm.frameaddress.p0(i32 immarg)")

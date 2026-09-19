@@ -2414,6 +2414,121 @@ style exactly.
    guard/`IS` fixture, and a real `WITH` fixture (abandoned as
    impossible in Phase 8 step 7, now buildable).
 
+   **Implemented 2026-09-19.** Everything above, with these outcomes and
+   departures:
+   - *Dereference*: `GenerateDesignatorAddress` walks `.`/`[`/`^`/`v(T)`
+     through pointers - `.`/`[` on a pointer load it, NIL-check it and
+     continue from what it points to; `^` does the same explicitly; a
+     field inherited from a base record is reached through one "element
+     0" GEP per extension level (`GenerateFieldAddress`), an own field's
+     struct index being one more than its declaration position when the
+     record has a base. `DesignatorStaticType` mirrors it (and a WITH-
+     narrowed variable, `Codegen.narrowings`). A NIL check is a compare and
+     a branch to a trap: `nilderef` (exit 4). The trap-message globals for
+     NIL/guard/WITH/heap-full (exits 4/5/6/7) are emitted lazily, like
+     step 3's helpers, so programs without pointers keep byte-identical IR.
+     Pointer `=`/`#` needed nothing new (`icmp` on `ptr`); `NIL` is `null`.
+   - *`NEW`*: `GenerateNew` for a pointer to a record or to a fixed array
+     calls `GarbageCollectedHeap.Allocate(size, tag)` (tag = the record's
+     `.tag` alias; for an array, 0 when its elements hold no pointers, else
+     a synthesized `@.arraydesc.<n>` - the record-descriptor layout with
+     size = ONE ELEMENT and no ProcTab, which is what the collector's
+     "elements = dataSize DIV size" rule wants), traps on a 0 result
+     (`heapfull`, exit 7 - poc's choice; the report is silent) and stores
+     the pointer. `NEW` of an open array is still step 7's
+     (`; unsupported`). **The runtime is linked in implicitly**: a source
+     module never imports `GarbageCollectedHeap`/`ModuleTable` for `NEW`,
+     so `PredeclaredProcedures.NewWasCalled` (a process-lifetime flag set
+     by `CheckNew`) tells `Poc.AddRuntimeModules` to discover the two on
+     the import path (regenerating their `.sym` first), and to put them at
+     the *front* of the module list (a program that imports them itself
+     has them moved there). The runtime directory therefore has to be on
+     `POC_IMPORT_PATH`/`-import-path`; there is no built-in default - a
+     missing runtime is reported as an error naming the module, not
+     silently mislinked. If the program lacks the module (a hand-built
+     `ModuleList`), `Allocate` is `declare`d instead.
+   - *Records with no descriptor*: `EnsureTypeTag` gives a record written
+     inline under a `POINTER TO`, or declared inside a procedure, the
+     unwritable name `$anon<n>` the first time `NEW`/`IS`/a guard/`WITH`
+     names it (its base record first), and `EmitPointerSupport` emits the
+     descriptor at the end of the program. Module-level records are as in
+     step 1. Only a record of *another* module that is itself unnamed on
+     this side (an inline record under an imported pointer) still cannot
+     be named - `; unsupported`.
+   - *`IS`, guards, `WITH`*: `EmitTagTest` reads the tag word before the
+     data, then `BaseTypes[Level(T)]` - but only when the record is at
+     least that deep (`extLevel >= Level(T)`; otherwise it reads
+     `BaseTypes[0]`, which can never equal a non-root `T`'s tag), so the
+     one-line report translation is branch-free after the NIL test.
+     **NIL semantics** (the report is silent; probed against voc, which
+     traps "NIL access" on all three): here `NIL IS T` is FALSE, `NIL(T)`
+     passes (a later dereference then traps), and a NIL `WITH` variable
+     matches no branch (ELSE, else the `nowith` trap, exit 6) - a program
+     voc accepts means the same thing, and one written for a system where
+     `NIL IS T` is FALSE also works. A guard fails with `typeguard` (exit
+     5). Both the pointer and the bare-record spelling of `T` are
+     accepted, as in the checker. `WITH` is an IF-chain; the branch body
+     is generated with a `Narrowing` pushed, the string-literal pre-pass
+     now walks `WITH` bodies (it did not - a literal inside a branch would
+     have named an undefined global). Guards on a `VAR` record parameter
+     (needs the hidden tag argument) are step 6's.
+   - *`&`/`OR` are short-circuited at last* (the Phase 8 step 5
+     simplification was flagged "revisit once a call or a trap makes it
+     observable" - a NIL check makes it observable): `GenerateShortCircuit`
+     branches around the right operand and joins with a `phi` naming the
+     block the right operand *finished* in (`Codegen.currentBlock`, kept by
+     `EmitLabel`, whose signature therefore gained `cg`). The eager
+     `and`/`or` stays for a side-effect-free right operand
+     (`IsSideEffectFree`: literals, plain variables, arithmetic and
+     comparisons except `DIV`/`MOD`/`IS`), so only programs that needed it
+     change: `llvm-system-ir`'s golden (array-index operands) was
+     regenerated.
+   - *Other changes*: a local variable holding a pointer (or a record/
+     array containing one) is `zeroinitializer`ed on entry - Oberon2.pdf
+     6.4 says every pointer starts NIL, and it makes a never-assigned
+     local a NIL trap rather than a wild access
+     (`llvm-type-descriptors-hidden-members-ir`'s golden gained the store);
+     `r1 := r2` where `r2` is an extension of `r1`'s type copies the base
+     part (`extractvalue ..., 0` per level, `NarrowRecordValue`) - `clang`
+     rejected the first attempt at the golden IR, which is what found it.
+   - *Fixtures*: `llvm-pointers` (a `NEW`-built chain, zero-filled blocks,
+     `^` record copy, pointers to fixed arrays, extension fields, `&`/`OR`
+     over NIL), `llvm-pointer-shapes` (inline-anonymous and procedure-local
+     records, `VAR` pointer and `p^` parameters, arrays of pointers, a
+     record's embedded pointer array, function results), `llvm-pointer-
+     fields` (string compare/`COPY`/`INC`/`INCL`/`LEN`/`CASE`/`FOR` through
+     a pointer), `llvm-type-guards` (a three-level hierarchy plus a sibling:
+     `IS`, guards as expressions and designators, `WITH` incl. `ELSE`, NIL;
+     the voc-checkable subset was cross-checked against real voc),
+     `llvm-short-circuit` (call counters, index and NIL operands, the
+     classic `WHILE (p # NIL) & ...` loops), `llvm-pointer-traps` (one
+     program per trap: NIL through `.`, `^`, a chain, `[`, an unassigned
+     local; a failed guard; an unmatched `WITH`; heap exhaustion),
+     `llvm-pointers-multi-module` (a pointer type, constructor and hidden
+     field from an imported module; `NEW` of the imported record and of a
+     local extension of it, laid out from the `.sym`; `IS`/guards/`WITH`
+     across the boundary; objects from both modules linked into one chain
+     under a small heap cap), `llvm-gc-new` (the collector driven by compiler-emitted descriptors
+     and root tables: a 1 MB cap, several MB of garbage, a chain, an array
+     of pointers, an embedded pointer array and a tree held only by a
+     local survive; the same negative experiments as step 4 - no stack
+     scan, no module tables - fail it), `llvm-pointers-ir` (golden `.ll` of
+     the fixture's own part at both word sizes with register/label numbers
+     normalized, so runtime changes cannot renumber it; `clang -c`
+     validated), and all the runtime ones added to `llvm-i686-runtime`.
+     `llvm-gc-new`'s reclamation checks are deliberately relative: the
+     stack scan is conservative, and on i686 a stale word in a live frame
+     kept a suffix of the chain alive (33 KB after dropping it, against 1
+     KB on x86-64) - a real property of the design, not a bug.
+   - *Known gaps, none new to this step*: `NEW(p, n)` and a pointer to an
+     open array (step 7); type-bound calls (step 6); a procedure *value*
+     (`proc := P`; comparing a procedure variable with `NIL` works, but
+     naming a procedure as a value is `; unsupported` and, because
+     `Unsupported` gives a mistyped placeholder, invalid IR; no step owned
+     this, so it is listed under step 8); a record value's LLVM type text is cut at 63
+     characters (`ValueText`) - only a huge record loaded whole is
+     affected, and it predates this step.
+
 6. **Type-bound procedures and dispatch.** Each record type's `ProcTab`
    (step 1) is populated at module-init time with the addresses of its
    own bound procedures (inherited entries filled in from the base
@@ -2456,6 +2571,11 @@ style exactly.
    scope. Pick up `ASSERT` here only if this file's own open design
    question above has been resolved by then; otherwise leave it exactly
    as undecided as it is now.
+   Also here: procedure *values* (`proc := P`, passing a procedure as an
+   argument), found unlowered by step 5's testing - `GenerateDesignatorValue`
+   reports a procedure name `; unsupported`, and `Unsupported`'s placeholder
+   for an untyped result is `0`, which is invalid IR where a `ptr` is
+   stored.
    **Testing**: whatever fixture gaps steps 1–7 didn't already close on
    their own.
 

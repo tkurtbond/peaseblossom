@@ -12,3 +12,9 @@ llvm-string-consts: same
 llvm-system: same
 llvm-gc-collect: same
 llvm-gc-tracing: same
+llvm-pointers: same
+llvm-type-guards: same
+llvm-pointer-shapes: same
+llvm-short-circuit: same
+llvm-gc-new: same
+llvm-pointers-multi-module: same

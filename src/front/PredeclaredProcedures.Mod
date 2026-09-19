@@ -50,6 +50,20 @@ MODULE PredeclaredProcedures;
     CheckDesignatorProc* = PROCEDURE(scope: SymbolTable.Scope; d: SyntaxTree.Designator;
                                      VAR readOnly, isVariable: BOOLEAN): Types.Type;
 
+  VAR
+    newCalled: BOOLEAN; (* set the first time any module's NEW is checked; never reset *)
+
+  (* PLAN.md Phase 9 step 5: whether any module type-checked so far in
+     this process contains a call to NEW. A whole-program build asks once
+     every module has been checked, to decide whether the runtime's
+     allocator must be linked in even though no module IMPORTs it - it
+     is a process-lifetime flag rather than a per-module one because the
+     question is about the *program*, whichever of its modules asked. *)
+  PROCEDURE NewWasCalled*(): BOOLEAN;
+  BEGIN
+    RETURN newCalled
+  END NewWasCalled;
+
   (* NIL if expr is not a bare, unqualified, selector-free, paren-free
      designator naming a typeClass object - see this module's own header
      comment for why this is a small, deliberate duplicate of
@@ -486,6 +500,7 @@ MODULE PredeclaredProcedures;
       extraCount, openDims: INTEGER;
       isOpenArrayBase: BOOLEAN;
   BEGIN
+    newCalled := TRUE;
     IF ArgCount(args) < 1 THEN
       Diagnostics.Error(line, column, "NEW expects at least one argument"); RETURN
     END;

@@ -14,7 +14,9 @@ for the first "hello world" milestone, and later fuller Oberon-2-style
   granules, bump allocation plus a first-fit free list, mark-sweep with
   precise heap/global tracing (type descriptors, root tables) and a
   conservative machine-stack scan. `Allocate(size, tag)` is the interface
-  step 5's `NEW` will call; nothing else is needed to use it. The module's
+  `NEW` calls (Phase 9 step 5); `poc` adds both this and `ModuleTable` to
+  any program that calls `NEW`, so a source module never imports them for
+  that - it only needs this directory on the import path. The module's
   own header comment has the layout and the policy.
 
 Written in ordinary Oberon-2 over `SYSTEM.ADDRESS` (no pointer variables),

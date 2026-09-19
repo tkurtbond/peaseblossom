@@ -99,6 +99,7 @@ declare void @exit(i32)
 define ptr @lib.Make() {
 entry:
   %t1 = alloca ptr
+  store ptr zeroinitializer, ptr %t1
   %t2 = load ptr, ptr %t1
   ret ptr %t2
 L1:
@@ -229,6 +230,7 @@ declare void @exit(i32)
 define ptr @lib.Make() {
 entry:
   %t1 = alloca ptr
+  store ptr zeroinitializer, ptr %t1
   %t2 = load ptr, ptr %t1
   ret ptr %t2
 L1:

@@ -29,7 +29,7 @@ export PATH="$POC_BIN_DIR:$VOC_BIN_DIR:$PATH"
 # GNUmakefile's clean-tests target (which reuses this exact line via a
 # standalone `. testenv.sh`, not by duplicating it) surfaced real,
 # already-gitignored leftovers this never actually removed.
-rm -f *.o *.c *.h *.ll *.s *.mar *.sym result "$(basename "$PWD")"
+rm -f *.o *.c *.h *.ll *.s *.mar *.sym *.exe result "$(basename "$PWD")"
 
 # PLAN.md Phase 8 step 3: compiles $1 (an Oberon-2 source file) via poc's
 # LLVM backend into an executable named after this fixture's own
