@@ -5,7 +5,13 @@ MODULE LLVMTypes;
      records - no POINTER, PROCEDURE, open array, or record-with-a-
      base-type (record extension only matters together with dispatch,
      which Phase 8 excludes for the same reason pointers are excluded;
-     see Phase 8's own "Explicit non-goals"). TypeString* returns the
+     see Phase 8's own "Explicit non-goals"). PLAN.md Phase 9 step 1
+     lifts three of those: a record with a base type (nested first-element
+     struct - RecordTypeString's own comment), and POINTER and PROCEDURE
+     types (both a bare "ptr" - LLVM's opaque pointer type; a POINTER's
+     pointee and a procedure's signature are never part of the type).
+     Only an open array is still "<unsupported>" (Phase 9 step 7).
+     TypeString* returns the
      literal string "<unsupported>" for any of those shapes rather than
      failing outright - nothing calls it with one yet (no real codegen
      exists before step 5), so there is no wrong-output risk today, but
@@ -48,7 +54,7 @@ MODULE LLVMTypes;
      have real target information (see `ConstantEvaluator.SetWordSize*`
      and its own header comment). *)
 
-  IMPORT Types, MemoryLayout;
+  IMPORT SyntaxTree, Types, MemoryLayout;
 
   PROCEDURE ^ TypeString*(t: Types.Type; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
 
@@ -137,12 +143,27 @@ MODULE LLVMTypes;
     Strcat(result, "]")
   END ArrayTypeString;
 
+  (* PLAN.md Phase 9 step 1: a record with a base type is the base's own
+     literal struct type nested as the first element - "{ { i8, i32 }, i8
+     }" for a base "{ i8, i32 }" plus one more CHAR field - not the base's
+     fields spliced flat into one struct. Nesting reproduces
+     MemoryLayout.RecordSize's own rule exactly (an extension's own
+     fields start after the base's *whole* size, tail padding included -
+     a flat struct would instead reuse that padding, placing the first
+     extension field earlier), so a record's descriptor-recorded size and
+     pointer offsets (LLVMCodeGenerator.EmitTypeDescriptors) agree with
+     what LLVM's own datalayout-driven layout gives the very same struct
+     type. *)
   PROCEDURE RecordTypeString(rec: Types.RecordType; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
     VAR f: Types.Field; fieldStr: ARRAY 256 OF CHAR; first: BOOLEAN;
   BEGIN
-    IF rec.baseType # NIL THEN COPY("<unsupported>", result); RETURN END;
     first := TRUE;
     COPY("{ ", result);
+    IF rec.baseType # NIL THEN
+      TypeString(rec.baseType, sizeModel, fieldStr);
+      Strcat(result, fieldStr);
+      first := FALSE
+    END;
     f := rec.fields;
     WHILE f # NIL DO
       IF ~first THEN Strcat(result, ", ") END;
@@ -163,12 +184,117 @@ MODULE LLVMTypes;
       t: Types.BasicType DO BasicTypeString(t, sizeModel, result); RETURN
     | t: Types.ArrayType DO arr := t
     | t: Types.RecordType DO rec := t
-    ELSE COPY("<unsupported>", result); RETURN (* PointerType/ProcedureType: Phase 9 *)
+    | t: Types.PointerType DO COPY("ptr", result); RETURN
+    | t: Types.ProcedureType DO COPY("ptr", result); RETURN
+    ELSE COPY("<unsupported>", result); RETURN
     END;
     IF arr # NIL THEN ArrayTypeString(arr, sizeModel, result)
     ELSE RecordTypeString(rec, sizeModel, result)
     END
   END TypeString;
+
+  (* ---- Run-time type descriptor layout (PLAN.md Phase 9 step 1) ----
+
+     The pure, backend-independent half of Oberon2.pdf Appendix D5's type
+     descriptors: everything a code generator needs to know about a record
+     type's *shape* - how far down its extension chain it sits, and which
+     type-bound procedure lives in which ProcTab slot - computed straight
+     from Types.RecordType's own baseType/methods chain, with no target
+     word size involved (LLVMCodeGenerator.EmitTypeDescriptors adds that).
+
+     A slot is a type-bound procedure's fixed ProcTab index: the base
+     type's own slots come first, in the base's own order, then this
+     record's *new* type-bound procedures (those not overriding one it
+     already inherits) in declaration order. An overriding procedure
+     reuses its base's slot, so a call through any ancestor's static type
+     lands in the same slot of whichever descendant's descriptor the
+     receiver's dynamic type selects - Appendix D5's "the procedure table
+     index of every type-bound procedure is known at compile time". *)
+
+  (* Number of base-type links above rec: 0 for a record with no base
+     type, 1 for a direct extension of one, and so on - Appendix D5's
+     "extension level" (Node = 0, CenterNode = 1). *)
+  PROCEDURE ExtensionLevel*(rec: Types.RecordType): INTEGER;
+    VAR level: INTEGER; r: Types.Type;
+  BEGIN
+    level := 0; r := rec.baseType;
+    WHILE r # NIL DO
+      INC(level);
+      r := r(Types.RecordType).baseType
+    END;
+    RETURN level
+  END ExtensionLevel;
+
+  (* Total number of ProcTab slots for rec: every inherited slot plus each
+     of rec's own type-bound procedures that does not override an inherited
+     one. *)
+  PROCEDURE MethodSlotCount*(rec: Types.RecordType): INTEGER;
+    VAR count: INTEGER; m: Types.Method; base: Types.RecordType;
+  BEGIN
+    count := 0;
+    IF rec.baseType # NIL THEN
+      base := rec.baseType(Types.RecordType);
+      count := MethodSlotCount(base)
+    ELSE
+      base := NIL
+    END;
+    m := rec.methods;
+    WHILE m # NIL DO
+      IF (base = NIL) OR (Types.FindMethod(base, m.name) = NIL) THEN INC(count) END;
+      m := m.next
+    END;
+    RETURN count
+  END MethodSlotCount;
+
+  (* The type-bound procedure occupying ProcTab slot index for rec, and
+     the record type (rec itself or one of its ancestors) whose own
+     declaration supplies the implementation rec's descriptor must point
+     at: the most-derived override, found by checking rec's own methods
+     first, then falling back to whatever the base's own slot resolves to.
+     NIL (owner undefined) if index is out of range. *)
+  PROCEDURE SlotMethod*(rec: Types.RecordType; index: INTEGER; VAR owner: Types.RecordType): Types.Method;
+    VAR
+      m, hit: Types.Method; base, baseOwner: Types.RecordType;
+      baseCount, position: INTEGER; inherited: Types.Method;
+  BEGIN
+    owner := NIL;
+    baseCount := 0; base := NIL;
+    IF rec.baseType # NIL THEN
+      base := rec.baseType(Types.RecordType);
+      baseCount := MethodSlotCount(base)
+    END;
+    IF index < baseCount THEN
+      inherited := SlotMethod(base, index, baseOwner);
+      hit := rec.methods;
+      WHILE (hit # NIL) & (hit.name # inherited.name) DO hit := hit.next END;
+      IF hit # NIL THEN owner := rec; RETURN hit
+      ELSE owner := baseOwner; RETURN inherited
+      END
+    END;
+    position := baseCount;
+    m := rec.methods;
+    WHILE m # NIL DO
+      IF (base = NIL) OR (Types.FindMethod(base, m.name) = NIL) THEN
+        IF position = index THEN owner := rec; RETURN m END;
+        INC(position)
+      END;
+      m := m.next
+    END;
+    RETURN NIL
+  END SlotMethod;
+
+  (* The ProcTab slot of the type-bound procedure named name as seen from
+     rec (own or inherited), or -1 if rec has none by that name. *)
+  PROCEDURE MethodSlot*(rec: Types.RecordType; name: SyntaxTree.Ident): INTEGER;
+    VAR i, count: INTEGER; owner: Types.RecordType; m: Types.Method;
+  BEGIN
+    count := MethodSlotCount(rec);
+    FOR i := 0 TO count - 1 DO
+      m := SlotMethod(rec, i, owner);
+      IF m.name = name THEN RETURN i END
+    END;
+    RETURN -1
+  END MethodSlot;
 
   (* Recognizes the arch component of an LLVM target triple (the text
      before its first "-"). Not exhaustive - just the architectures

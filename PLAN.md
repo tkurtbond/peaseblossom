@@ -1750,6 +1750,75 @@ style exactly.
    base type, a one-level extension, and a two-level extension (to
    confirm growth direction and level numbering, not just presence).
 
+   **Implemented 2026-09-19.** `LLVMCodeGenerator.Mod`'s
+   `EmitTypeDescriptors` emits one LLVM constant per module-level record
+   type, `@<Module>.<Type>.tdesc`, plus an alias `@<Module>.<Type>.tag`
+   for its "tag" (the address a heap block will store and a type test
+   will compare) — the section comment above `RecordSymbolBase` is the
+   authoritative layout reference. Departures from Fig. D5.1's exact
+   picture, all recorded there: every field is one target word wide
+   (`iW`, so no padding on any target); `BaseTypes` is exactly
+   `level+1` entries long rather than NIL-padded to a maximum depth (so
+   `v IS T` must compare `extLevel` first — `v.extLevel >= T.level AND
+   v.BaseTypes[T.level] = T's tag` — never read `BaseTypes` unguarded);
+   and a three-word header (`size`, `extLevel`, `ptrCount`) sits at the
+   tag so the collector can locate the pointer-offset table without a
+   maximum extension depth. Pointer offsets are flattened through
+   inherited fields, nested records, and fixed arrays (an `ARRAY n OF
+   POINTER` contributes `n` entries). Verified against Fig. D5.1 by hand:
+   `Node`/`CenterNode` on `i686` give offsets `4, 8` / `4, 8, 16`,
+   exactly the figure's. Supporting changes: `Types.RecordTypeDesc` gained
+   `moduleName`/`name` (set by `SemanticActions.NameRecordType` for a
+   module-level named record, or the anonymous record directly under a
+   module-level named `POINTER TO`, called `<pointer name>.base`), because
+   a record imported through a `.sym` file is a *different*
+   `RecordType` object than its home module built, so a descriptor symbol
+   cannot be found by identity across modules; `LLVMTypes.TypeString*` now
+   handles a record with a base type (a nested first-element struct,
+   which reproduces `MemoryLayout.RecordSize`'s "extension starts after
+   the base's whole size" rule exactly) and gives `POINTER`/`PROCEDURE`
+   the bare type `ptr` (with `Unsupported`'s placeholder becoming `null`
+   for it); `LLVMTypes.ExtensionLevel*/MethodSlotCount*/SlotMethod*/
+   MethodSlot*` compute the shape (an override reuses its base's slot).
+   Fixtures: `llvm-type-descriptors-ir` (both word sizes, each also
+   handed to `clang -c`, since a golden diff alone doesn't prove the IR is
+   valid), `llvm-type-descriptors-cross-module-ir`.
+
+   **Known gaps carried forward, not fixed by this step:**
+   - **Hidden members.** `ModuleInterface.Mod`'s writer omits unexported
+     record fields and unexported type-bound procedures from a `.sym`
+     (only exported ones are printed). For ordinary use that is the right
+     thing, but a record *extending* an imported one needs the base's full
+     layout: an omitted field changes the extension's field offsets and
+     `size`, and an omitted type-bound procedure changes which `ProcTab`
+     slots the extension's own new procedures get (the importer's
+     `MethodSlotCount(base)` comes up short). The base's own `.tag` alias
+     is unaffected (that is exactly why it exists), but any cross-module
+     extension of a base with hidden members will compute wrong offsets
+     and slots. Needs `.sym` to carry hidden fields/methods (ETH symbol
+     files do), e.g. as extra unexported entries the reader keeps but
+     export-checking still rejects. Do this before step 6 (dispatch) or
+     step 5 (`NEW` needs a correct `size` for an imported base).
+   - **Procedure-local and other anonymous records** get no descriptor
+     and no name (`SemanticActions` names only module-level ones;
+     `OpenProcedureBodyScope` re-resolves a procedure's local `TYPE`s at
+     codegen time, so they aren't even the same `RecordType` objects the
+     checker built). Nothing can allocate or test one until steps 5/6, at
+     which point either a naming scheme (procedure-qualified) or an
+     explicit refusal is needed.
+   - **Type-bound procedure bodies** are not generated (step 6); each
+     `ProcTab` entry names its eventual symbol
+     (`@<Module>.<RecordName>.<ProcName>`) and step 1 `declare`s it so the
+     IR is valid. Step 6 **must drop those declares** as it starts
+     emitting the real `define`s — LLVM rejects a `declare` and `define`
+     of one symbol.
+   - Unrelated pre-existing front-end quirk seen while writing the
+     fixture: `ResolveQualidentType`'s forward-reference check compares
+     `obj.declLine >= node.line`, so a type used on the *same source line*
+     it is declared on (`Anon = POINTER TO RECORD next: Anon END;`, or
+     `A = INTEGER; B = ARRAY 3 OF A;` on one line) is rejected as a
+     forward reference. voc accepts it.
+
 2. **REAL/LONGREAL arithmetic, literals, and conversions.** Floating-
    point `EmitBinOp`/`EmitConvert`/`EmitCompare` lowering, replacing the
    REAL/LONGREAL branches of `Unsupported` named above. `-O2`/`-OC`

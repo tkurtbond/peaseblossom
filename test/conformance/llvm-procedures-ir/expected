@@ -5,6 +5,16 @@ target triple = "x86_64-unknown-linux-gnu"
 @procsir.total = global i16 zeroinitializer
 @procsir.p = global { i16, i16 } zeroinitializer
 @procsir.v = global [3 x i16] zeroinitializer
+@procsir.Point.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
+  [0 x ptr] [],
+  i64 4,
+  i64 0,
+  i64 0,
+  [1 x ptr] [ptr @procsir.Point.tag],
+  [0 x i64] []
+}
+@procsir.Point.tag = alias ptr, getelementptr inbounds (i8, ptr @procsir.Point.tdesc, i32 0)
+
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"

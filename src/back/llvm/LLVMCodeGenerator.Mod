@@ -208,6 +208,12 @@ MODULE LLVMCodeGenerator;
 
   TYPE
     ValueText = ARRAY textLength + 1 OF CHAR;
+    (* Room for "@<module>.<type>.<procedure>" built from three full-length
+       (255-character) identifiers plus separators - ValueText's own 64
+       characters comfortably fit a typical "@Module.name" but not that
+       worst case, and this project's own naming convention (descriptive,
+       often-long identifiers) makes a long one likelier than usual. *)
+    LongText = ARRAY 800 OF CHAR;
 
     (* One live codegen value: its LLVM-IR text (an SSA register "%tN" or
        a literal constant), its LLVM type spelling, and the Oberon type
@@ -262,6 +268,22 @@ MODULE LLVMCodeGenerator;
       next: DeclaredExternal
     END;
 
+    (* PLAN.md Phase 9 step 1: every module-level record type that gets a
+       run-time type descriptor, in registration order - see
+       CollectRecordTypes/EmitTypeDescriptors. A plain linked list,
+       searched linearly, the same precedent DeclaredExternal already set
+       for "a set this small needs no hash table". Records are compared
+       by pointer identity, which is sound here (unlike across modules -
+       see Types.RecordTypeDesc.name's own comment) because collection
+       only ever registers records belonging to the module currently
+       being compiled, and only ever reaches them through that module's
+       own scope. *)
+    TypeDescEntry = POINTER TO TypeDescEntryDesc;
+    TypeDescEntryDesc = RECORD
+      rec: Types.RecordType;
+      next: TypeDescEntry
+    END;
+
     (* PLAN.md Phase 8 step 12: one entry per module in a whole program's
        own dependency-ordered compile list (GenerateProgram*'s own
        parameter, near this file's end) - imports before importers, the
@@ -289,6 +311,7 @@ MODULE LLVMCodeGenerator;
        of it into Codegen would silently stop updating the caller's own
        Rider. *)
     Codegen = RECORD
+      tdescs: TypeDescEntry;
       nextTemp: INTEGER;
       nextLabel: INTEGER;
       moduleName: SyntaxTree.Ident;
@@ -457,12 +480,14 @@ MODULE LLVMCodeGenerator;
                         oberonType: Types.Type; VAR result: Value);
   BEGIN
     WriteStr(w, "  ; unsupported: "); WriteStr(w, reason); WriteLn(w);
+    LLVMTypes.TypeString(oberonType, cg.sizeModel, result.llvmType);
     IF (oberonType = Types.Real) OR (oberonType = Types.LongReal) THEN
       COPY("0.0", result.text)
+    ELSIF result.llvmType = "ptr" THEN
+      COPY("null", result.text) (* PLAN.md Phase 9: POINTER/PROCEDURE now type-string as "ptr" *)
     ELSE
       COPY("0", result.text)
     END;
-    LLVMTypes.TypeString(oberonType, cg.sizeModel, result.llvmType);
     result.oberonType := oberonType
   END Unsupported;
 
@@ -2216,6 +2241,366 @@ MODULE LLVMCodeGenerator;
     END
   END EmitExternalDeclares;
 
+  (* ---- Run-time type descriptors (PLAN.md Phase 9 step 1) ----
+
+     Oberon2.pdf Appendix D5: one type descriptor per record type,
+     holding everything a run-time type test, a type-bound procedure
+     call, or the collector needs to know about a record. The report
+     fixes the *information* and its access pattern - "a type-bound
+     procedure t.P is called as t^.tag^.ProcTab[Index P]", "a type test
+     v IS T is translated into v^.tag^.BaseTypes[ExtensionLevelT] =
+     TypeDescrAdrT", the collector reads "offsets of pointers in t^" - and
+     says only that "the tables are located at the opposite ends of the
+     type descriptor and grow in different directions" (its Fig. D5.1);
+     it is explicit that this is "one possible implementation". This
+     module's concrete choice, as ONE LLVM constant per record type
+     (@<Module>.<Type>.tdesc), every field the width of a target word
+     (iW, W = 32 or 64, from ConstantEvaluator.wordSize - so the whole
+     descriptor has no padding on any target, and every field offset is
+     a plain multiple of the word size):
+
+       ProcTab    [M x ptr]   slot i at (tag - (i+1)*wordBytes): grows
+                              DOWNWARD from the tag as M grows
+       size       iW          <- the tag points here ("the type
+                                 descriptor address"): byte size of the
+                                 record's data, excluding the tag word a
+                                 heap block adds in front (step 5)
+       extLevel   iW          the record's own extension level
+       ptrCount   iW          P, the number of entries in ptrOffsets
+       BaseTypes  [L+1 x ptr] BaseTypes[i] = tag of the ancestor at
+                              extension level i, BaseTypes[extLevel] =
+                              the record's own tag: grows UPWARD
+       ptrOffsets [P x iW]    byte offset, from the start of the record's
+                              data, of every pointer-typed location in it
+                              (own fields, inherited fields, and any
+                              inside nested records/fixed arrays - all
+                              flattened), for step 4's collector
+
+     Two deliberate departures from Fig. D5.1's exact picture, both
+     because a table that grows with the extension level cannot also sit
+     at a fixed offset past another one that does: BaseTypes is exactly
+     L+1 entries long (no NIL padding to some maximum depth - so a type
+     test must compare extLevel first, "v IS T" = v.extLevel >= T.level
+     AND v.BaseTypes[T.level] = T's tag, never read BaseTypes[T.level]
+     unguarded the way the report's one-line translation does), and
+     extLevel/ptrCount live in a fixed three-word header so the
+     collector can find ptrOffsets at a computable position rather than a
+     fixed one. Neither imposes a maximum extension depth or record
+     pointer count.
+
+     A record's "tag" is what a value's dynamic type is compared against
+     and what NEW will store in front of a heap record (step 5) - exposed
+     as its own symbol, @<Module>.<Type>.tag, an LLVM alias to the
+     header's own address, rather than left for every user to rebuild
+     from @...tdesc plus M*wordBytes: an importing module's view of a
+     base record may not know M (a .sym file omits unexported type-bound
+     procedures - see PLAN.md Phase 9's "hidden members" note), but it
+     can always name the base's alias.
+
+     Scope of this step: module-level record types only - a named
+     record (Types.RecordTypeDesc.name set by SemanticActions.Mod's
+     NameRecordType), or the anonymous record directly under a
+     module-level named POINTER TO. Procedure-local record types and other
+     anonymous records get no descriptor yet (nothing can allocate or
+     test one before step 5/6 anyway). Type-bound procedure *bodies* are
+     not generated yet either (step 6) - ProcTab entries name their
+     eventual symbols (@<Module>.<RecordName>.<ProcName>), and each is
+     "declare"d here so the reference is valid IR meanwhile; step 6 must
+     drop those declares when it starts emitting the real "define"s
+     (LLVM rejects a "declare" and a "define" of one symbol). *)
+
+  (* "@<Module>.<Type>" - a record type's own prefix for every symbol
+     that belongs to it (.tdesc, .tag, and its type-bound procedures). *)
+  PROCEDURE RecordSymbolBase(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
+  BEGIN
+    COPY("@", text); Strcat(text, rec.moduleName); Strcat(text, "."); Strcat(text, rec.name)
+  END RecordSymbolBase;
+
+  (* The one thing the rest of Phase 9 (NEW, IS, guards, dispatch) needs
+     from this section: the operand text naming rec's tag. *)
+  PROCEDURE TagSymbol(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
+  BEGIN
+    RecordSymbolBase(rec, text); Strcat(text, ".tag")
+  END TagSymbol;
+
+  PROCEDURE WordIntType(VAR text: ARRAY OF CHAR);
+  BEGIN
+    IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN COPY("i32", text) ELSE COPY("i64", text) END
+  END WordIntType;
+
+  PROCEDURE IsRegistered(VAR cg: Codegen; rec: Types.RecordType): BOOLEAN;
+    VAR e: TypeDescEntry;
+  BEGIN
+    e := cg.tdescs;
+    WHILE (e # NIL) & (e.rec # rec) DO e := e.next END;
+    RETURN e # NIL
+  END IsRegistered;
+
+  PROCEDURE Register(VAR cg: Codegen; rec: Types.RecordType);
+    VAR e, tail: TypeDescEntry;
+  BEGIN
+    NEW(e); e.rec := rec; e.next := NIL;
+    IF cg.tdescs = NIL THEN cg.tdescs := e
+    ELSE
+      tail := cg.tdescs;
+      WHILE tail.next # NIL DO tail := tail.next END;
+      tail.next := e
+    END
+  END Register;
+
+  PROCEDURE ^ CollectRecordTypes(VAR cg: Codegen; t: Types.Type);
+
+  (* Registers rec (if it is one of *this* module's own named records and
+     not already registered), then whatever it reaches: its base type and
+     each field's type. Registered before descending, so a record reaching
+     itself through a POINTER field terminates. *)
+  PROCEDURE CollectFromRecord(VAR cg: Codegen; rec: Types.RecordType);
+    VAR f: Types.Field;
+  BEGIN
+    IF (rec.name[0] = 0X) OR (rec.moduleName # cg.moduleName) OR IsRegistered(cg, rec) THEN RETURN END;
+    Register(cg, rec);
+    IF rec.baseType # NIL THEN CollectRecordTypes(cg, rec.baseType) END;
+    f := rec.fields;
+    WHILE f # NIL DO CollectRecordTypes(cg, f.type); f := f.next END
+  END CollectFromRecord;
+
+  (* The WITH branches only pick out what to recurse on; the recursive
+     call itself happens after the WITH ends (AGENTS.md's documented voc
+     bug: a procedure calling itself from inside its own WITH branch is
+     misdiagnosed as a bad argument). *)
+  PROCEDURE CollectRecordTypes(VAR cg: Codegen; t: Types.Type);
+    VAR rec: Types.RecordType; next: Types.Type;
+  BEGIN
+    IF t = NIL THEN RETURN END;
+    rec := NIL; next := NIL;
+    WITH
+      t: Types.RecordType DO rec := t
+    | t: Types.PointerType DO next := t.base
+    | t: Types.ArrayType DO next := t.elementType
+    ELSE
+    END;
+    IF rec # NIL THEN CollectFromRecord(cg, rec)
+    ELSIF next # NIL THEN CollectRecordTypes(cg, next)
+    END
+  END CollectRecordTypes;
+
+  (* Number of pointer-typed locations inside a value of type t: one per
+     POINTER, summed through record fields (inherited ones too) and
+     multiplied through fixed-array lengths. PROCEDURE-typed values are
+     not counted - a procedure variable holds code, never a heap address
+     for the collector to trace. *)
+  PROCEDURE CountPointerSlots(t: Types.Type): LONGINT;
+    VAR
+      count: LONGINT; f: Types.Field; rec: Types.RecordType; arr: Types.ArrayType;
+      isPtr: BOOLEAN;
+  BEGIN
+    IF t = NIL THEN RETURN 0 END;
+    rec := NIL; arr := NIL; isPtr := FALSE;
+    WITH
+      t: Types.PointerType DO isPtr := TRUE
+    | t: Types.RecordType DO rec := t
+    | t: Types.ArrayType DO arr := t
+    ELSE
+    END;
+    IF isPtr THEN RETURN 1 END;
+    IF arr # NIL THEN
+      IF arr.isOpen THEN RETURN 0 END;
+      RETURN arr.length * CountPointerSlots(arr.elementType)
+    END;
+    IF rec = NIL THEN RETURN 0 END;
+    count := 0;
+    IF rec.baseType # NIL THEN count := CountPointerSlots(rec.baseType) END;
+    f := rec.fields;
+    WHILE f # NIL DO count := count + CountPointerSlots(f.type); f := f.next END;
+    RETURN count
+  END CountPointerSlots;
+
+  (* Writes "<wordInt> <offset>" entries, ", "-separated (first says
+     whether one has been written yet), for every pointer location inside
+     a value of type t placed at byte offset base, in ascending offset
+     order: the record's inherited part first (it always sits at offset 0
+     of the record), then each field at MemoryLayout's own FieldOffset.
+     Fixed arrays are walked element by element, so an ARRAY OF POINTER of
+     length n contributes n entries - simple and exact, if verbose for a
+     huge array (a run-length form is a possible later optimization once
+     step 4's collector exists to say whether it matters). *)
+  PROCEDURE EmitPointerOffsets(VAR w: Files.Rider; wordInt: ARRAY OF CHAR; t: Types.Type;
+                               base: LONGINT; VAR first: BOOLEAN);
+    VAR
+      f: Types.Field; rec: Types.RecordType; arr: Types.ArrayType; k, elemSize: LONGINT;
+      isPtr: BOOLEAN; text: ValueText;
+  BEGIN
+    IF t = NIL THEN RETURN END;
+    rec := NIL; arr := NIL; isPtr := FALSE;
+    WITH
+      t: Types.PointerType DO isPtr := TRUE
+    | t: Types.RecordType DO rec := t
+    | t: Types.ArrayType DO arr := t
+    ELSE
+    END;
+    IF isPtr THEN
+      IF ~first THEN WriteStr(w, ", ") END;
+      first := FALSE;
+      text[0] := 0X; AppendLongInt(text, base);
+      WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, text)
+    ELSIF arr # NIL THEN
+      IF ~arr.isOpen THEN
+        elemSize := MemoryLayout.Size(arr.elementType, ConstantEvaluator.wordSize, ConstantEvaluator.sizeModel);
+        FOR k := 0 TO arr.length - 1 DO
+          EmitPointerOffsets(w, wordInt, arr.elementType, base + k * elemSize, first)
+        END
+      END
+    ELSIF rec # NIL THEN
+      IF rec.baseType # NIL THEN EmitPointerOffsets(w, wordInt, rec.baseType, base, first) END;
+      f := rec.fields;
+      WHILE f # NIL DO
+        EmitPointerOffsets(w, wordInt, f.type,
+          base + MemoryLayout.FieldOffset(rec, f, ConstantEvaluator.wordSize, ConstantEvaluator.sizeModel), first);
+        f := f.next
+      END
+    END
+  END EmitPointerOffsets;
+
+  (* "@<Module>.<Type>.<Proc>" for a type-bound procedure whose
+     implementation is owner's own declaration. *)
+  PROCEDURE MethodSymbol(owner: Types.RecordType; procName: ARRAY OF CHAR; VAR text: ARRAY OF CHAR);
+  BEGIN
+    RecordSymbolBase(owner, text); Strcat(text, "."); Strcat(text, procName)
+  END MethodSymbol;
+
+  (* One "declare" per type-bound procedure rec itself declares (never an
+     inherited one - the base's own EmitTypeDescriptors already did) -
+     see the section header above on why, and on step 6 dropping these.
+     The receiver is always the first parameter, a bare "ptr" whether it
+     is a VAR record or a pointer-to-record value receiver. *)
+  PROCEDURE EmitMethodDeclares(VAR w: Files.Rider; VAR cg: Codegen; rec: Types.RecordType);
+    VAR
+      m: Types.Method; p: Types.Param; retType, paramType: ValueText; sym: LongText;
+  BEGIN
+    m := rec.methods;
+    WHILE m # NIL DO
+      IF m.procType.resultType = NIL THEN COPY("void", retType)
+      ELSE LLVMTypes.TypeString(m.procType.resultType, cg.sizeModel, retType)
+      END;
+      MethodSymbol(rec, m.name, sym);
+      WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " "); WriteStr(w, sym);
+      WriteStr(w, "(ptr");
+      p := m.procType.params;
+      WHILE p # NIL DO
+        WriteStr(w, ", ");
+        ParamLLVMType(cg, p, paramType);
+        WriteStr(w, paramType);
+        p := p.next
+      END;
+      WriteStr(w, ")"); WriteLn(w);
+      m := m.next
+    END
+  END EmitMethodDeclares;
+
+  (* BaseTypes' entries, root ancestor first, ending with rec's own tag:
+     one "ptr <tag>" each, comma-separated, recursing up the base chain
+     before writing rec's own. *)
+  PROCEDURE EmitBaseTypeEntries(VAR w: Files.Rider; rec: Types.RecordType; VAR first: BOOLEAN);
+    VAR tag: LongText; base: Types.RecordType;
+  BEGIN
+    IF rec.baseType # NIL THEN
+      base := rec.baseType(Types.RecordType);
+      EmitBaseTypeEntries(w, base, first)
+    END;
+    IF ~first THEN WriteStr(w, ", ") END;
+    first := FALSE;
+    TagSymbol(rec, tag);
+    WriteStr(w, "ptr "); WriteStr(w, tag)
+  END EmitBaseTypeEntries;
+
+  (* ProcTab entries in memory order: ascending address, i.e. slot M-1
+     first down to slot 0 last (slot i sits at tag - (i+1)*wordBytes). *)
+  PROCEDURE EmitProcTabEntries(VAR w: Files.Rider; rec: Types.RecordType; slotCount: INTEGER);
+    VAR i: INTEGER; owner: Types.RecordType; m: Types.Method; sym: LongText;
+  BEGIN
+    FOR i := slotCount - 1 TO 0 BY -1 DO
+      m := LLVMTypes.SlotMethod(rec, i, owner);
+      MethodSymbol(owner, m.name, sym);
+      WriteStr(w, "ptr "); WriteStr(w, sym);
+      IF i > 0 THEN WriteStr(w, ", ") END
+    END
+  END EmitProcTabEntries;
+
+  PROCEDURE EmitDescriptor(VAR w: Files.Rider; VAR cg: Codegen; rec: Types.RecordType);
+    VAR
+      base, tdesc, tag: LongText; wordInt: ValueText; slotCount, level: INTEGER;
+      pointerCount: LONGINT; first: BOOLEAN; text: ValueText;
+  BEGIN
+    WordIntType(wordInt);
+    slotCount := LLVMTypes.MethodSlotCount(rec);
+    level := LLVMTypes.ExtensionLevel(rec);
+    pointerCount := CountPointerSlots(rec);
+    RecordSymbolBase(rec, base);
+    COPY(base, tdesc); Strcat(tdesc, ".tdesc");
+    TagSymbol(rec, tag);
+    EmitMethodDeclares(w, cg, rec);
+    (* the struct type, spelled once and reused for the initializer *)
+    WriteStr(w, tdesc); WriteStr(w, " = constant { [");
+    text[0] := 0X; AppendLongInt(text, slotCount); WriteStr(w, text);
+    WriteStr(w, " x ptr], "); WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt);
+    WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ", [");
+    text[0] := 0X; AppendLongInt(text, level + 1); WriteStr(w, text);
+    WriteStr(w, " x ptr], ["); text[0] := 0X; AppendLongInt(text, pointerCount); WriteStr(w, text);
+    WriteStr(w, " x "); WriteStr(w, wordInt); WriteStr(w, "] } {"); WriteLn(w);
+    WriteStr(w, "  [");
+    text[0] := 0X; AppendLongInt(text, slotCount); WriteStr(w, text);
+    WriteStr(w, " x ptr] ["); EmitProcTabEntries(w, rec, slotCount); WriteStr(w, "],"); WriteLn(w);
+    WriteStr(w, "  "); WriteStr(w, wordInt); WriteStr(w, " ");
+    text[0] := 0X; AppendLongInt(text, MemoryLayout.Size(rec, ConstantEvaluator.wordSize, ConstantEvaluator.sizeModel));
+    WriteStr(w, text); WriteStr(w, ","); WriteLn(w);
+    WriteStr(w, "  "); WriteStr(w, wordInt); WriteStr(w, " ");
+    text[0] := 0X; AppendLongInt(text, level); WriteStr(w, text); WriteStr(w, ","); WriteLn(w);
+    WriteStr(w, "  "); WriteStr(w, wordInt); WriteStr(w, " ");
+    text[0] := 0X; AppendLongInt(text, pointerCount); WriteStr(w, text); WriteStr(w, ","); WriteLn(w);
+    WriteStr(w, "  [");
+    text[0] := 0X; AppendLongInt(text, level + 1); WriteStr(w, text);
+    WriteStr(w, " x ptr] ["); first := TRUE; EmitBaseTypeEntries(w, rec, first); WriteStr(w, "],"); WriteLn(w);
+    WriteStr(w, "  ["); text[0] := 0X; AppendLongInt(text, pointerCount); WriteStr(w, text);
+    WriteStr(w, " x "); WriteStr(w, wordInt); WriteStr(w, "] [");
+    first := TRUE; EmitPointerOffsets(w, wordInt, rec, 0, first); WriteStr(w, "]"); WriteLn(w);
+    WriteStr(w, "}"); WriteLn(w);
+    (* the tag: the header's own address, slotCount words past the start *)
+    WriteStr(w, tag); WriteStr(w, " = alias ptr, getelementptr inbounds (i8, ptr "); WriteStr(w, tdesc);
+    WriteStr(w, ", i32 ");
+    text[0] := 0X; AppendLongInt(text, slotCount * ConstantEvaluator.wordSize); WriteStr(w, text);
+    WriteStr(w, ")"); WriteLn(w); WriteLn(w)
+  END EmitDescriptor;
+
+  (* Registers every record type this module's own declarations reach,
+     TYPE declarations first (declaration order, so output order is
+     deterministic and follows the source) then VAR declarations, then
+     emits a descriptor for each. *)
+  PROCEDURE EmitTypeDescriptors(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
+    VAR td: SyntaxTree.TypeDeclNode; vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode;
+        obj: SymbolTable.Object; e: TypeDescEntry;
+  BEGIN
+    cg.tdescs := NIL;
+    IF module.declarations = NIL THEN RETURN END;
+    td := module.declarations.typeDecls;
+    WHILE td # NIL DO
+      obj := SymbolTable.FindLocal(cg.scope, td.name.name);
+      IF obj # NIL THEN CollectRecordTypes(cg, obj.type) END;
+      td := td.next
+    END;
+    vd := module.declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        IF obj # NIL THEN CollectRecordTypes(cg, obj.type) END;
+        nm := nm.next
+      END;
+      vd := vd.next
+    END;
+    e := cg.tdescs;
+    WHILE e # NIL DO EmitDescriptor(w, cg, e.rec); e := e.next END
+  END EmitTypeDescriptors;
+
   (* PLAN.md Phase 8 step 9's own runtime-trap support: declares
      write(2)/exit(2) (fixed x86_64 System V shapes, the same known,
      documented ABI-correctness caveat step 6's own SysWrite FFI
@@ -2551,7 +2936,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
     cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL;
-    cg.declaredExternals := NIL;
+    cg.declaredExternals := NIL; cg.tdescs := NIL;
     WriteStr(w, 'target datalayout = "');
     IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN WriteStr(w, dataLayoutW32)
     ELSE WriteStr(w, dataLayoutW64)
@@ -2564,6 +2949,7 @@ MODULE LLVMCodeGenerator;
       cg.moduleName := m.module.name; cg.scope := m.scope;
       EmitGlobals(w, cg, m.module);
       EmitExternalDeclares(w, cg, m.module);
+      EmitTypeDescriptors(w, cg, m.module);
       m := m.next
     END;
     EmitRuntimeSupport(w, cg);

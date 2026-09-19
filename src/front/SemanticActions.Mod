@@ -135,6 +135,13 @@ MODULE SemanticActions;
      so no separate "is it exported" check is needed at the qualident
      resolution site itself, unlike an unqualified Find against a
      module's own scope. *)
+  VAR
+    (* PLAN.md Phase 9 step 1: the name of the module CheckModuleBody is
+       currently checking, for NameRecordType. Saved/restored around
+       CheckModuleBody's own body, since ResolveImport recurses into it
+       for each imported module's .sym file. *)
+    currentModuleName: SyntaxTree.Ident;
+
   PROCEDURE FindQualified(scope: SymbolTable.Scope; qualifier, name: SyntaxTree.Ident;
                           line, column: INTEGER): SymbolTable.Object;
     VAR modObj: SymbolTable.Object;
@@ -776,6 +783,30 @@ MODULE SemanticActions;
     RETURN baseType
   END ResolveRecordBaseType;
 
+  (* PLAN.md Phase 9 step 1: records rec's canonical (declaring module,
+     name) identity - see Types.RecordTypeDesc.name's own comment. Only
+     ever called for a module-level record (the caller checks scope.outer
+     = SymbolTable.Universe): a procedure-local record type would need a
+     name qualified by its enclosing procedure to be unique program-wide,
+     which no consumer needs yet (Phase 9 step 1 emits type descriptors
+     for module-level records only; see LLVMCodeGenerator.Mod's own
+     EmitTypeDescriptors). *)
+  PROCEDURE NameRecordType(rec: Types.RecordType; name: SyntaxTree.Ident);
+  BEGIN
+    COPY(currentModuleName, rec.moduleName); COPY(name, rec.name)
+  END NameRecordType;
+
+  PROCEDURE AppendBaseSuffix(VAR name: SyntaxTree.Ident);
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE name[i] # 0X DO INC(i) END;
+    IF i + 5 < LEN(name) THEN
+      name[i] := "."; name[i + 1] := "b"; name[i + 2] := "a"; name[i + 3] := "s";
+      name[i + 4] := "e"; name[i + 5] := 0X
+    END
+  END AppendBaseSuffix;
+
   (* Fills in rec's own field list by mutation - rec may already be
      visible as obj.type (ResolveNamedRecordType's early registration)
      while this runs. Field types are resolved with allowForward FALSE,
@@ -821,6 +852,7 @@ MODULE SemanticActions;
     node := obj.pendingTypeNode(SyntaxTree.RecordTypeNode);
     baseType := ResolveRecordBaseType(scope, node);
     rec := Types.NewRecordType(baseType);
+    IF scope.outer = SymbolTable.Universe THEN NameRecordType(rec, obj.name) END;
     obj.type := rec; obj.pendingTypeNode := NIL;
     PopulateRecordFields(rec, node, scope);
     RETURN rec
@@ -828,6 +860,7 @@ MODULE SemanticActions;
 
   PROCEDURE ResolveNamedType(scope: SymbolTable.Scope; obj: SymbolTable.Object): Types.Type;
     VAR ptrNode: SyntaxTree.PointerTypeNode; ptr: Types.PointerType; base: Types.Type;
+      anonBase: Types.RecordType; baseName: SyntaxTree.Ident;
   BEGIN
     IF obj.type # NIL THEN
       RETURN obj.type
@@ -843,6 +876,13 @@ MODULE SemanticActions;
       obj.type := ptr; obj.pendingTypeNode := NIL;
       base := ResolveType(scope, ptrNode.base, TRUE);
       ptr.base := CheckPointerBase(base, ptrNode.line, ptrNode.column);
+      IF (scope.outer = SymbolTable.Universe) & (base IS Types.RecordType) THEN
+        anonBase := base(Types.RecordType);
+        IF anonBase.name[0] = 0X THEN
+          COPY(obj.name, baseName); AppendBaseSuffix(baseName);
+          NameRecordType(anonBase, baseName)
+        END
+      END;
       obj.resolving := FALSE;
       RETURN ptr
     ELSIF obj.pendingTypeNode IS SyntaxTree.RecordTypeNode THEN
@@ -2819,8 +2859,9 @@ MODULE SemanticActions;
                             resolving: ImportChain; VAR cache: LoadedModule): SymbolTable.Scope;
     VAR
       scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode;
-      nonLocalAssigns: ProcAssignedName;
+      nonLocalAssigns: ProcAssignedName; savedModuleName: SyntaxTree.Ident;
   BEGIN
+    COPY(currentModuleName, savedModuleName); COPY(module.name, currentModuleName);
     scope := SymbolTable.OpenScope(SymbolTable.Universe);
     imp := module.imports;
     WHILE imp # NIL DO
@@ -2842,6 +2883,7 @@ MODULE SemanticActions;
       ResolveProcDecls(module.declarations.procDecls, scope, nonLocalAssigns)
     END;
     CheckStatementSeq(scope, module.statements, nonLocalAssigns, 0, NIL);
+    COPY(savedModuleName, currentModuleName);
     RETURN scope
   END CheckModuleBody;
 

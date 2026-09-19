@@ -172,7 +172,22 @@ MODULE Types;
     RecordTypeDesc* = RECORD (TypeDesc)
       baseType*: Type; (* NIL if no base type was named; else a RecordType *)
       fields*: Field; (* declaration order, not insertion-order-reversed *)
-      methods*: Method (* declaration order; see Method above *)
+      methods*: Method; (* declaration order; see Method above *)
+      (* PLAN.md Phase 9 step 1: the record's canonical identity - the
+         module that declared it and the name it was declared under -
+         from which a backend derives one program-wide symbol for its
+         run-time type descriptor (Appendix D5). Set by
+         SemanticActions.Mod only for a *module-level* named record
+         type, or for the anonymous record directly under a module-level
+         named POINTER TO (named "<pointer name>.base"); empty otherwise
+         (a procedure-local or otherwise-anonymous record). Deliberately
+         a property of the type itself, not recovered by a backend
+         searching scopes for a matching Object: a record imported from
+         another module's .sym file is a *different* RecordType object
+         than that module's own compilation built, so pointer identity
+         cannot connect the two - but the (moduleName, name) pair, being
+         derived from the declaring source text both times, can. *)
+      moduleName*, name*: SyntaxTree.Ident
     END;
 
     Value* = POINTER TO ValueDesc;
@@ -231,6 +246,7 @@ MODULE Types;
     VAR t: RecordType;
   BEGIN
     NEW(t); t.baseType := baseType; t.fields := NIL; t.methods := NIL;
+    t.moduleName[0] := 0X; t.name[0] := 0X;
     RETURN t
   END NewRecordType;
 

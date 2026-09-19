@@ -12,6 +12,26 @@ target triple = "x86_64-unknown-linux-gnu"
 @arrrec.sum = global i16 zeroinitializer
 @arrrec.i = global i16 zeroinitializer
 @arrrec.j = global i16 zeroinitializer
+@arrrec.Point.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
+  [0 x ptr] [],
+  i64 4,
+  i64 0,
+  i64 0,
+  [1 x ptr] [ptr @arrrec.Point.tag],
+  [0 x i64] []
+}
+@arrrec.Point.tag = alias ptr, getelementptr inbounds (i8, ptr @arrrec.Point.tdesc, i32 0)
+
+@arrrec.Line.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
+  [0 x ptr] [],
+  i64 8,
+  i64 0,
+  i64 0,
+  [1 x ptr] [ptr @arrrec.Line.tag],
+  [0 x i64] []
+}
+@arrrec.Line.tag = alias ptr, getelementptr inbounds (i8, ptr @arrrec.Line.tdesc, i32 0)
+
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
