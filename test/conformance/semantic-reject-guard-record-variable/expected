@@ -1,0 +1,4 @@
+recguard.mod:13:16: error: the left operand of IS must be a pointer or a VAR record parameter
+recguard.mod:16:10: error: the left operand of IS must be a pointer or a VAR record parameter
+recguard.mod:17:9: error: a type guard requires a pointer or a VAR record parameter
+3 error(s)

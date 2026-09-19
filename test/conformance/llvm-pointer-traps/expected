@@ -28,6 +28,21 @@ exit=4
 == nilwith
 ANIL pointer dereference
 exit=4
+== nilmethod
+ANIL pointer dereference
+exit=4
+== nilvarrecv
+ANIL pointer dereference
+exit=4
+== nilvararg
+ANIL pointer dereference
+exit=4
+== varguardfail
+Atype guard failed
+exit=5
+== varwithnomatch
+Ano matching WITH guard
+exit=6
 == heapfull
 ANIL pointer dereference
 exit=4

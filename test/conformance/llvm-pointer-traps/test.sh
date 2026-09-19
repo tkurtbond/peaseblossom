@@ -8,7 +8,7 @@
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 : >result
-for name in nilfield nilcaret nilchain nilindex nillocal guardfail withnomatch nilis nilguard nilwith heapfull heapnil
+for name in nilfield nilcaret nilchain nilindex nillocal guardfail withnomatch nilis nilguard nilwith nilmethod nilvarrecv nilvararg varguardfail varwithnomatch heapfull heapnil
 do
   echo "== $name" >>result
   poc -o "$name.exe" -build "$name.mod" >/dev/null

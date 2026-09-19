@@ -36,7 +36,9 @@ etc.).
   (Appendix A "matching formal parameter lists" - `Types.
   ArrayCompatible*`/`ProcedureTypesMatch*`'s first real callers), `v.P`/
   `r.P^` dispatch folded into `CheckDesignator`'s existing selector walk,
-  `WITH` (reusing Phase 5's guard-applicability pair outright), and
+  `WITH` (reusing Phase 5's guard-applicability pair outright; since
+  Phase 9 step 6 all three also apply to a VAR parameter of record type,
+  via `lastDesignatorIsVarParam`), and
   dispatch to `PredeclaredProcedures.Mod` for §10.3's builtins. Two
   explicit, narrower scope boundaries: a function procedure's "must
   contain a return statement" check is shallow (no `BEGIN` at all is

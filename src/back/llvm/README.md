@@ -24,7 +24,12 @@ LLVM backend: lowers the front end's typed tree to textual LLVM IR
   `GenerateWithStatement`), descriptors for anonymous and procedure-local
   records (`EnsureTypeTag`), lazily emitted trap messages
   (`EmitPointerSupport`) and short-circuit `&`/`OR`
-  (`GenerateShortCircuit`).
+  (`GenerateShortCircuit`), and (Phase 9 step 6) type-bound procedures:
+  bodies (`GenerateMethodDecl`), calls - direct when the receiver's type is
+  exact, through the ProcTab otherwise (`GenerateMethodCall`) - and the
+  hidden type-descriptor argument of a VAR record parameter
+  (`NeedsHiddenTag`, `DynamicType`, `EmitDynamicTag`), which also lets
+  `IS`/guards/`WITH` apply to one (`EmitTagTestOnTag`).
 - `LLVMToolchainDriver.Mod` — host-triple auto-detection
   (`clang -dumpmachine`), writing `Generate*`'s output to a real
   `<ModuleName>.ll` file, and the single-step `clang <file>.ll -o <exe>`
@@ -34,4 +39,5 @@ LLVM backend: lowers the front end's typed tree to textual LLVM IR
   arrays, records incl. extensions as nested structs, POINTER/PROCEDURE as
   `ptr`), target word size from a triple, and (Phase 9 step 1) the pure
   shape of a record's run-time type descriptor: extension level and
-  type-bound-procedure slot numbering.
+  type-bound-procedure slot numbering (`SlotOfMethod`, step 6, finds the
+  slot of a resolved procedure).

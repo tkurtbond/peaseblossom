@@ -292,8 +292,35 @@ has the full account; all probed against real voc 2026-09-19):
   message naming the module.
 - Pointer variables start NIL, locals included (a local holding a pointer
   is zeroed on entry). Heap blocks come back zero-filled.
-- Not yet: `NEW(p, n)` and pointers to open arrays (step 7), type-bound
-  calls and guards on `VAR` record parameters (step 6), procedure values.
+- Not yet: `NEW(p, n)` and pointers to open arrays (step 7), procedure
+  values.
+
+### Type-bound procedures and `VAR` record parameters (implemented, Phase 9 step 6)
+
+`PLAN.md` step 6 has the full account; all probed against real voc
+2026-09-19. What a program can observe:
+
+- **Dispatch** follows the receiver's *dynamic* type: `v.P(...)` calls the
+  procedure bound to what `v` really is, `v.P^(...)` the one bound to the
+  base of `v`'s static type. A NIL pointer receiver is a NIL-dereference
+  trap (exit 4, "NIL access" in voc), before the procedure starts.
+- **`VAR` parameters of record type carry their actual's type** (voc does
+  too): a hidden second argument, the actual's type descriptor, follows
+  each such parameter - part of the calling convention of every Oberon
+  procedure that has one (procedure values, when they arrive, included),
+  but not of an external `["C"]` one, which gets the bare address. That is
+  what lets `IS`, a guard `v(T)` and `WITH` apply to "a variable parameter
+  of record type" (§8.1), which the front end now accepts. Like voc, only
+  the parameter's own name qualifies: a plain record variable or a value
+  parameter is rejected, and so is a guard of a guard (`x(T)(U)`) or a test
+  on a guard (`x(T) IS U`); inside a `WITH` branch the narrowed parameter
+  may be guarded and tested again, and `v(T)` may be passed on as a `VAR`
+  argument.
+- **Two places voc itself falls short**, so poc follows the report: a value
+  record parameter accepts an extension of its type (voc's generated C does
+  not compile), and a bound procedure of a record written inline under a
+  `POINTER TO` can be called (voc gives that record no descriptor and traps
+  "NIL access").
 
 ### External procedures
 

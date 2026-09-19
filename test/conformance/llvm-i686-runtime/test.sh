@@ -60,4 +60,8 @@ check llvm-pointer-shapes shapes.mod
 check llvm-short-circuit shortcircuit.mod
 check llvm-gc-new gcnew.mod
 check llvm-pointers-multi-module client.mod
+check llvm-type-bound bound.mod
+check llvm-var-record-params varrec.mod
+check llvm-type-bound-multi-module client.mod
+check llvm-trees-dispatch trees.mod
 . ../../testresult.sh

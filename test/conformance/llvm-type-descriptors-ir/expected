@@ -4,8 +4,6 @@ target triple = "i686-unknown-linux-gnu"
 
 @typedesc.root = global ptr zeroinitializer
 @typedesc.ring = global { [3 x ptr], { ptr, i16 }, i8 } zeroinitializer
-declare void @typedesc.Node.Draw(ptr)
-declare i16 @typedesc.Node.Area(ptr, i16)
 @typedesc.Node.tdesc = constant { [2 x ptr], i32, i32, i32, [1 x ptr], [2 x i32] } {
   [2 x ptr] [ptr @typedesc.Node.Area, ptr @typedesc.Node.Draw],
   i32 12,
@@ -16,8 +14,6 @@ declare i16 @typedesc.Node.Area(ptr, i16)
 }
 @typedesc.Node.tag = alias ptr, getelementptr inbounds (i8, ptr @typedesc.Node.tdesc, i32 8)
 
-declare void @typedesc.CenterNode.Draw(ptr)
-declare void @typedesc.CenterNode.Shrink(ptr)
 @typedesc.CenterNode.tdesc = constant { [3 x ptr], i32, i32, i32, [2 x ptr], [3 x i32] } {
   [3 x ptr] [ptr @typedesc.CenterNode.Shrink, ptr @typedesc.Node.Area, ptr @typedesc.CenterNode.Draw],
   i32 20,
@@ -28,7 +24,6 @@ declare void @typedesc.CenterNode.Shrink(ptr)
 }
 @typedesc.CenterNode.tag = alias ptr, getelementptr inbounds (i8, ptr @typedesc.CenterNode.tdesc, i32 12)
 
-declare i16 @typedesc.FarNode.Area(ptr, i16)
 @typedesc.FarNode.tdesc = constant { [3 x ptr], i32, i32, i32, [3 x ptr], [3 x i32] } {
   [3 x ptr] [ptr @typedesc.CenterNode.Shrink, ptr @typedesc.FarNode.Area, ptr @typedesc.CenterNode.Draw],
   i32 24,
@@ -84,6 +79,53 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
 @.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
 
+define void @typedesc.Node.Draw(ptr %n) {
+entry:
+  %t1 = alloca ptr
+  store ptr %n, ptr %t1
+  ret void
+}
+
+define i16 @typedesc.Node.Area(ptr %n, i16 %scale) {
+entry:
+  %t2 = alloca ptr
+  store ptr %n, ptr %t2
+  %t3 = alloca i16
+  store i16 %scale, ptr %t3
+  %t4 = load i16, ptr %t3
+  ret i16 %t4
+L1:
+  ret i16 0
+}
+
+define void @typedesc.CenterNode.Draw(ptr %n) {
+entry:
+  %t5 = alloca ptr
+  store ptr %n, ptr %t5
+  ret void
+}
+
+define void @typedesc.CenterNode.Shrink(ptr %n) {
+entry:
+  %t6 = alloca ptr
+  store ptr %n, ptr %t6
+  ret void
+}
+
+define i16 @typedesc.FarNode.Area(ptr %n, i16 %scale) {
+entry:
+  %t7 = alloca ptr
+  store ptr %n, ptr %t7
+  %t8 = alloca i16
+  store i16 %scale, ptr %t8
+  %t9 = load i16, ptr %t8
+  %t10 = sext i8 1 to i16
+  %t11 = add i16 %t9, %t10
+  ret i16 %t11
+L2:
+  ret i16 0
+}
+
 define void @typedesc_init() {
 entry:
   ret void
@@ -101,8 +143,6 @@ target triple = "x86_64-unknown-linux-gnu"
 
 @typedesc.root = global ptr zeroinitializer
 @typedesc.ring = global { [3 x ptr], { ptr, i16 }, i8 } zeroinitializer
-declare void @typedesc.Node.Draw(ptr)
-declare i16 @typedesc.Node.Area(ptr, i16)
 @typedesc.Node.tdesc = constant { [2 x ptr], i64, i64, i64, [1 x ptr], [2 x i64] } {
   [2 x ptr] [ptr @typedesc.Node.Area, ptr @typedesc.Node.Draw],
   i64 24,
@@ -113,8 +153,6 @@ declare i16 @typedesc.Node.Area(ptr, i16)
 }
 @typedesc.Node.tag = alias ptr, getelementptr inbounds (i8, ptr @typedesc.Node.tdesc, i32 16)
 
-declare void @typedesc.CenterNode.Draw(ptr)
-declare void @typedesc.CenterNode.Shrink(ptr)
 @typedesc.CenterNode.tdesc = constant { [3 x ptr], i64, i64, i64, [2 x ptr], [3 x i64] } {
   [3 x ptr] [ptr @typedesc.CenterNode.Shrink, ptr @typedesc.Node.Area, ptr @typedesc.CenterNode.Draw],
   i64 40,
@@ -125,7 +163,6 @@ declare void @typedesc.CenterNode.Shrink(ptr)
 }
 @typedesc.CenterNode.tag = alias ptr, getelementptr inbounds (i8, ptr @typedesc.CenterNode.tdesc, i32 24)
 
-declare i16 @typedesc.FarNode.Area(ptr, i16)
 @typedesc.FarNode.tdesc = constant { [3 x ptr], i64, i64, i64, [3 x ptr], [3 x i64] } {
   [3 x ptr] [ptr @typedesc.CenterNode.Shrink, ptr @typedesc.FarNode.Area, ptr @typedesc.CenterNode.Draw],
   i64 48,
@@ -180,6 +217,53 @@ declare void @write(i32, ptr, i64)
 declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
 @.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+
+define void @typedesc.Node.Draw(ptr %n) {
+entry:
+  %t1 = alloca ptr
+  store ptr %n, ptr %t1
+  ret void
+}
+
+define i16 @typedesc.Node.Area(ptr %n, i16 %scale) {
+entry:
+  %t2 = alloca ptr
+  store ptr %n, ptr %t2
+  %t3 = alloca i16
+  store i16 %scale, ptr %t3
+  %t4 = load i16, ptr %t3
+  ret i16 %t4
+L1:
+  ret i16 0
+}
+
+define void @typedesc.CenterNode.Draw(ptr %n) {
+entry:
+  %t5 = alloca ptr
+  store ptr %n, ptr %t5
+  ret void
+}
+
+define void @typedesc.CenterNode.Shrink(ptr %n) {
+entry:
+  %t6 = alloca ptr
+  store ptr %n, ptr %t6
+  ret void
+}
+
+define i16 @typedesc.FarNode.Area(ptr %n, i16 %scale) {
+entry:
+  %t7 = alloca ptr
+  store ptr %n, ptr %t7
+  %t8 = alloca i16
+  store i16 %scale, ptr %t8
+  %t9 = load i16, ptr %t8
+  %t10 = sext i8 1 to i16
+  %t11 = add i16 %t9, %t10
+  ret i16 %t11
+L2:
+  ret i16 0
+}
 
 define void @typedesc_init() {
 entry:

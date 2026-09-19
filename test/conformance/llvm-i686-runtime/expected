@@ -18,3 +18,7 @@ llvm-pointer-shapes: same
 llvm-short-circuit: same
 llvm-gc-new: same
 llvm-pointers-multi-module: same
+llvm-type-bound: same
+llvm-var-record-params: same
+llvm-type-bound-multi-module: same
+llvm-trees-dispatch: same

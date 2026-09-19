@@ -1800,12 +1800,12 @@ style exactly.
      checker built). Nothing can allocate or test one until steps 5/6, at
      which point either a naming scheme (procedure-qualified) or an
      explicit refusal is needed.
-   - **Type-bound procedure bodies** are not generated (step 6); each
-     `ProcTab` entry names its eventual symbol
-     (`@<Module>.<RecordName>.<ProcName>`) and step 1 `declare`s it so the
-     IR is valid. Step 6 **must drop those declares** as it starts
-     emitting the real `define`s — LLVM rejects a `declare` and `define`
-     of one symbol.
+   - **Type-bound procedure bodies** - *resolved by step 6 below
+     (2026-09-19).* Each `ProcTab` entry names its symbol
+     (`@<Module>.<RecordName>.<ProcName>`); step 1 `declare`d it so the
+     IR was valid, and step 6 dropped the declares as it began emitting
+     the real `define`s (LLVM rejects a `declare` and `define` of one
+     symbol).
    - Unrelated pre-existing front-end quirk seen while writing the
      fixture: `ResolveQualidentType`'s forward-reference check compares
      `obj.declLine >= node.line`, so a type used on the *same source line*
@@ -2477,7 +2477,7 @@ style exactly.
      is generated with a `Narrowing` pushed, the string-literal pre-pass
      now walks `WITH` bodies (it did not - a literal inside a branch would
      have named an undefined global). Guards on a `VAR` record parameter
-     (needs the hidden tag argument) are step 6's.
+     (which needed the hidden tag argument) came with step 6.
    - *`&`/`OR` are short-circuited at last, always* (the Phase 8 step 5
      simplification was flagged "revisit once a call or a trap makes it
      observable" - a NIL check makes it observable): `GenerateShortCircuit`
@@ -2560,6 +2560,91 @@ style exactly.
    a real compile+link+run+diff fixture — the natural capstone for
    dispatch, since it's the report's own canonical worked example and
    this project already has the front-end-only version of it checked.
+
+   **Implemented 2026-09-19.** Points where `Oberon2.pdf` is silent or
+   poc had to choose (all probed against real voc the same day):
+   - *Bodies and symbols*: `GenerateMethodDecl` defines each type-bound
+     procedure as `@<Module>.<Record>.<Procedure>` (a pointer-receiver
+     `(t: Tree)` binds to `Tree`'s record; a record written inline under
+     `Tree = POINTER TO RECORD` is `Tree.base`), receiver first, sharing
+     `GenerateProcedureBody` with ordinary procedures - so step 1's
+     `declare`s are gone (`EmitMethodDeclares` removed) and three
+     descriptor goldens (`llvm-type-descriptors-*-ir`) gained the real
+     bodies. The receiver is a bare `ptr` either way: a VAR record
+     receiver is the record's address, a pointer receiver the pointer,
+     which is the same address, so one calling sequence serves both.
+   - *Hidden tag argument* (`NeedsHiddenTag`, decided here - the step 5
+     note left it open): every VAR parameter of **record** type, a VAR
+     receiver included, is passed as `ptr %x, ptr %x.tag` - the actual's
+     type descriptor - because the actual may be an extension of the
+     declared type and the callee must dispatch on, and test, what it
+     really is (voc does the same). It sits right after its parameter; a
+     `["C"]` external procedure gets the bare address (a fixture writes a
+     record through `write(2)` to prove a tag would shift its
+     arguments). VAR pointers, VAR arrays and value parameters carry none.
+     The convention is part of the ABI of any procedure with such a
+     parameter, so **procedure values** (step 8) must pass the tag too.
+     `DynamicType` says where an actual's tag comes from: a record
+     variable, field or element is exactly its declared type (its own
+     descriptor), `p^` is whatever the heap block says, a VAR parameter
+     passes its own hidden tag on. Value record parameters take an
+     extension too, copying only the base part (`NarrowRecordValue` now
+     also applies to call arguments; real voc's generated C rejects this
+     one).
+   - *Dispatch* (`GenerateMethodCall`): `v.P(...)` calls through
+     `tag - (slot+1)*W` when the receiver's dynamic type is not known
+     exactly, straight to the procedure that slot holds for the static
+     type when it is (`SlotOfMethod`, matched by `Method` identity, not
+     name - hidden and new same-named procedures hold different slots).
+     `v.P^(...)` is a direct call of the procedure `Types.FindMethod`
+     finds on the base of `v`'s static type. A NIL pointer receiver is the
+     ordinary NIL trap (exit 4), before the procedure starts; voc traps
+     the same ("NIL access"). A pointer-receiver procedure needs a real
+     heap block behind it (a callee may read the tag word), so calling it
+     on a record variable is `; unsupported` rather than handed a
+     "pointer" to a variable.
+   - *Guards on VAR record parameters* (the front-end half was missing
+     too; step 5 had assumed it existed): `IS`, `v(T)` and `WITH` accept
+     a VAR parameter of record type, judged by
+     `SemanticActions.lastDesignatorIsVarParam` since a designator's type
+     alone cannot say. Matched to voc's own rules (its error 87): only
+     the parameter's own name qualifies - a plain record variable, a value
+     parameter, and `x(T)(U)` / `x(T) IS U` are rejected - while a guard
+     and a test on the WITH-narrowed parameter inside its branch are
+     accepted, and `v(T)` may be passed on as a VAR argument. The
+     codegen tests the hidden tag (`EmitTagTestOnTag`,
+     `EmitTypeGuardOnTag`).
+   - *Discovered along the way, fixed*: an extension record passed to a
+     value record parameter emitted an ill-typed call; a qualified
+     variable (`M.v`) as a VAR argument was `; unsupported` for no reason.
+   - *Fixtures*: `llvm-type-bound` (pointer receivers three levels deep
+     plus a sibling, `^` chains, self-dispatch, receivers that are fields,
+     array elements, guards, `WITH` variables and locals, VAR receivers on
+     variables, fields, elements and heap blocks, a base pointer holding
+     an extension, a bound procedure's own VAR record parameter, dispatch
+     inside a short-circuited operand), `llvm-var-record-params` (the hidden tag: relayed,
+     from `p^`/fields/elements/locals, two per call, `IS`/`WITH`/guards,
+     a procedure-local record type, the external-`write` regression),
+     `llvm-type-bound-multi-module` (overriding an imported procedure, a
+     hidden imported procedure holding a slot its importer cannot
+     override, library code dispatching to importer overrides, VAR
+     receivers and VAR arguments of imported types, imported variables as
+     receivers), `llvm-trees-dispatch` (the report's own `Tree`/
+     `CenterTree` example with a recursive bound `Write` dispatching
+     through pointer fields; its `Trees` module proper needs step 7's open
+     arrays), `llvm-type-bound-ir` (golden `.ll` at both word sizes, `clang -c`
+     validated), five `llvm-pointer-traps` programs (NIL through a
+     pointer receiver, a VAR receiver and a `p^` VAR argument; a failed
+     guard and an unmatched `WITH` on a VAR parameter) and three `semantic-*`
+     fixtures. All the runtime ones also run as real i686 executables.
+     Every behavior above was cross-checked against real voc except two
+     things voc cannot do: a bound call through a record written inline
+     under a `POINTER TO` (voc gives it no descriptor and traps "NIL
+     access"; it is the fixture's last check for that reason) and
+     extension-to-value-parameter (its C does not compile).
+   - *Found, not fixed (pre-existing, unrelated)*: constant arithmetic on
+     literals is not folded - `2 * 100 + 2 * 10` is typed `SHORTINT` and
+     wraps at 8 bits at run time, where voc folds it to 220.
 
 7. **Open-array dope vectors.** Open-array formal parameters (`VAR`
    and value) pass a hidden length parameter per dimension alongside

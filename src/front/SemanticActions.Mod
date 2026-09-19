@@ -145,6 +145,17 @@ MODULE SemanticActions;
        "not exported"), so a caller's own generic "undeclared identifier"
        does not pile a second, less precise error on the same position. *)
     lookupDiagnosed: BOOLEAN;
+    (* PLAN.md Phase 9 step 6: set by every CheckDesignator call - TRUE
+       when the designator is a VAR parameter (a type-bound procedure's VAR
+       receiver included), possibly under type guards but with no
+       selector applied to it. Oberon2.pdf 8.1 lets a type guard, IS and
+       WITH apply to "a variable parameter of record type" as well as to a
+       pointer, and only to *that* kind of record designator: the
+       parameter carries its actual argument's run-time type, which a
+       plain record variable, field or element (always exactly its
+       declared type) does not. The designator's *type* cannot say which
+       it is, so the caller reads this right after the call. *)
+    lastDesignatorIsVarParam: BOOLEAN;
 
   PROCEDURE FindQualified(scope: SymbolTable.Scope; qualifier, name: SyntaxTree.Ident;
                           line, column: INTEGER): SymbolTable.Object;
@@ -1324,19 +1335,24 @@ MODULE SemanticActions;
     RETURN ResolveTypeName(scope, de.designator.qualifier, de.designator.name, de.line, de.column)
   END LookupBareTypeName;
 
-  (* §8.1's type-guard applicability rule 2 ("T is an extension of the
+  (* §8.1's type-guard applicability: rule 2 ("T is an extension of the
      static type of v"), generalized to accept T spelled either as the
      bare RecordType base or as the matching PointerType - both spellings
      appear in the report's own designator examples (t(CenterTree) vs. a
      bare record name); either way the two RecordType bases must be in an
-     extension relationship. Rule 1 ("v is a variable parameter of record
-     type or v is a pointer") is narrowed here to "v is a pointer" only -
-     PLAN.md Phase 5 has no VAR parameters yet (Phase 6), so the direct-
-     record-value-parameter case cannot arise. Shared by CheckGuard and
-     IS (CheckBinaryExpr). *)
-  PROCEDURE CheckExtensionApplicable(leftType, targetType: Types.Type): BOOLEAN;
+     extension relationship - and rule 1 ("v is a variable parameter of
+     record type or v is a pointer"). A pointer v is judged by its type
+     alone; a record v qualifies only if viaVarParam says it is a VAR
+     parameter (PLAN.md Phase 9 step 6; see lastDesignatorIsVarParam), and
+     then T must itself be a record type. Shared by CheckGuard and IS
+     (CheckBinaryExpr). *)
+  PROCEDURE CheckExtensionApplicable(leftType, targetType: Types.Type; viaVarParam: BOOLEAN): BOOLEAN;
     VAR leftPtr, targetPtr: Types.PointerType;
   BEGIN
+    IF (leftType # NIL) & (leftType IS Types.RecordType) THEN
+      RETURN viaVarParam & (targetType # NIL) & (targetType IS Types.RecordType)
+             & Types.Extends(targetType, leftType)
+    END;
     IF (leftType = NIL) OR ~(leftType IS Types.PointerType) THEN
       RETURN FALSE
     END;
@@ -1356,14 +1372,15 @@ MODULE SemanticActions;
     END
   END CheckExtensionApplicable;
 
-  PROCEDURE CheckGuard(leftType, targetType: Types.Type; line, column: INTEGER): Types.Type;
+  PROCEDURE CheckGuard(leftType, targetType: Types.Type; viaVarParam: BOOLEAN;
+                       line, column: INTEGER): Types.Type;
   BEGIN
     IF leftType = Types.Undefined THEN
       RETURN Types.Undefined
-    ELSIF ~(leftType IS Types.PointerType) THEN
-      Diagnostics.Error(line, column, "a type guard requires a pointer designator");
+    ELSIF ~(leftType IS Types.PointerType) & ~(viaVarParam & (leftType IS Types.RecordType)) THEN
+      Diagnostics.Error(line, column, "a type guard requires a pointer or a VAR record parameter");
       RETURN Types.Undefined
-    ELSIF ~CheckExtensionApplicable(leftType, targetType) THEN
+    ELSIF ~CheckExtensionApplicable(leftType, targetType, viaVarParam) THEN
       Diagnostics.Error(line, column,
         "type guard target must be an extension of the designator's type");
       RETURN Types.Undefined
@@ -1414,8 +1431,10 @@ MODULE SemanticActions;
       arr: Types.ArrayType;
       crossedBoundary: BOOLEAN;
       targetType: Types.Type;
+      viaVarParam: BOOLEAN;
   BEGIN
     readOnly := FALSE; isVariable := FALSE;
+    viaVarParam := FALSE; lastDesignatorIsVarParam := FALSE;
     (* PLAN.md Phase 7: "-" read-only export (Oberon2.pdf §4: "read-only
        in importing modules") restricts writes only once the designator
        has crossed into another module - never within the module that
@@ -1439,6 +1458,7 @@ MODULE SemanticActions;
       RETURN Types.Undefined
     ELSIF (obj.class = SymbolTable.varClass) OR (obj.class = SymbolTable.constClass) THEN
       isVariable := obj.class = SymbolTable.varClass;
+      viaVarParam := isVariable & obj.isVarParam;
       readOnly := crossedBoundary & obj.readOnly;
       t := obj.type
     ELSIF obj.class = SymbolTable.procClass THEN
@@ -1452,7 +1472,7 @@ MODULE SemanticActions;
     WHILE (sel # NIL) & (t # Types.Undefined) DO
       WITH
         sel: SyntaxTree.FieldSelector DO
-          methodOwner := NIL;
+          methodOwner := NIL; viaVarParam := FALSE;
           IF (t # NIL) & (t IS Types.PointerType) THEN
             ptr := t(Types.PointerType); t := ptr.base
           END;
@@ -1490,7 +1510,7 @@ MODULE SemanticActions;
             END
           END
       | sel: SyntaxTree.IndexSelector DO
-          methodOwner := NIL;
+          methodOwner := NIL; viaVarParam := FALSE;
           idx := sel.indices;
           WHILE (idx # NIL) & (t # Types.Undefined) DO
             IF (t # NIL) & (t IS Types.PointerType) THEN
@@ -1509,6 +1529,7 @@ MODULE SemanticActions;
             idx := idx.next
           END
       | sel: SyntaxTree.DereferenceSelector DO
+          viaVarParam := FALSE;
           IF methodOwner # NIL THEN
             method := NIL;
             IF (methodOwner.baseType # NIL) & (methodOwner.baseType IS Types.RecordType) THEN
@@ -1535,7 +1556,8 @@ MODULE SemanticActions;
              than a call by construction, so no ActualParameters
              fallback belongs here the way CheckDesignatorExpr's terminal
              case needs one. No auto-deref first (unlike '.'/'['):
-             CheckGuard itself already requires t to be a pointer
+             CheckGuard itself already requires t to be a pointer (or,
+             since PLAN.md Phase 9 step 6, a VAR record parameter)
              directly, matching the report's own guard examples
              (t(CenterTree), never t^(CenterTree)). *)
           methodOwner := NIL;
@@ -1544,7 +1566,11 @@ MODULE SemanticActions;
             Diagnostics.Error(sel.line, sel.column, "expected a type name");
             t := Types.Undefined
           ELSE
-            t := CheckGuard(t, targetType, sel.line, sel.column)
+            t := CheckGuard(t, targetType, viaVarParam, sel.line, sel.column);
+            (* voc (2026-09-19): "x(T)" is not itself a variable parameter,
+               so it takes no further guard or IS - only the parameter
+               name (or its WITH-narrowed self) does *)
+            viaVarParam := FALSE
           END
       ELSE
         methodOwner := NIL;
@@ -1553,6 +1579,7 @@ MODULE SemanticActions;
       END;
       sel := sel.next
     END;
+    lastDesignatorIsVarParam := viaVarParam;
     RETURN t
   END CheckDesignator;
 
@@ -1587,7 +1614,7 @@ MODULE SemanticActions;
       p: Types.Param; a: SyntaxTree.ExprNode;
       argType: Types.Type; readOnly, isVariable: BOOLEAN;
       de: SyntaxTree.DesignatorExprNode;
-      isArrayParam: BOOLEAN; formalArr: Types.ArrayType;
+      isArrayParam, viaVarParam: BOOLEAN; formalArr: Types.ArrayType; guardTarget: Types.Type;
   BEGIN
     p := params; a := args;
     WHILE (p # NIL) & (a # NIL) DO
@@ -1599,10 +1626,26 @@ MODULE SemanticActions;
         IF a IS SyntaxTree.DesignatorExprNode THEN de := a(SyntaxTree.DesignatorExprNode)
         ELSE de := NIL
         END;
-        IF (de = NIL) OR de.hasParens THEN
+        (* The one call-shaped variable is a guard on a VAR record
+           parameter, v(T): it designates v itself, so it may be passed on
+           as a VAR argument (PLAN.md Phase 9 step 6). *)
+        guardTarget := NIL;
+        IF (de # NIL) & de.hasParens & (de.args # NIL) & (de.args.next = NIL) THEN
+          guardTarget := LookupBareTypeName(scope, de.args)
+        END;
+        IF (de = NIL) OR (de.hasParens & (guardTarget = NIL)) THEN
           Diagnostics.Error(a.line, a.column, "a VAR parameter requires a variable argument")
         ELSE
           argType := CheckDesignator(scope, de.designator, readOnly, isVariable);
+          IF (guardTarget # NIL) & (argType # Types.Undefined) THEN
+            viaVarParam := lastDesignatorIsVarParam;
+            argType := CheckGuard(argType, guardTarget, viaVarParam, a.line, a.column);
+            IF (argType # Types.Undefined) & ~((argType IS Types.RecordType) & viaVarParam) THEN
+              Diagnostics.Error(a.line, a.column,
+                "only a guarded VAR record parameter can be passed as a VAR argument");
+              argType := Types.Undefined
+            END
+          END;
           IF argType # Types.Undefined THEN
             IF ~isVariable THEN
               Diagnostics.Error(a.line, a.column, "a VAR parameter requires a variable argument")
@@ -1656,10 +1699,11 @@ MODULE SemanticActions;
   PROCEDURE CheckDesignatorExpr(scope: SymbolTable.Scope; node: SyntaxTree.DesignatorExprNode): Types.Type;
     VAR
       baseType, targetType, resultType: Types.Type;
-      readOnly, isVariable, isProperProcedure: BOOLEAN;
+      readOnly, isVariable, isProperProcedure, viaVarParam: BOOLEAN;
       pt: Types.ProcedureType;
   BEGIN
     baseType := CheckDesignator(scope, node.designator, readOnly, isVariable);
+    viaVarParam := lastDesignatorIsVarParam;
     IF ~node.hasParens THEN RETURN baseType END;
     IF baseType = Types.PredeclaredProcedureType THEN
       resultType := PredeclaredProcedures.CheckCall(scope, node.designator.name, node.args,
@@ -1675,7 +1719,9 @@ MODULE SemanticActions;
     IF (node.args # NIL) & (node.args.next = NIL) THEN
       targetType := LookupBareTypeName(scope, node.args);
       IF targetType # NIL THEN
-        RETURN CheckGuard(baseType, targetType, node.line, node.column)
+        resultType := CheckGuard(baseType, targetType, viaVarParam, node.line, node.column);
+        lastDesignatorIsVarParam := FALSE; (* see CheckDesignator's guard case *)
+        RETURN resultType
       END
     END;
     IF baseType = Types.Undefined THEN
@@ -1790,15 +1836,21 @@ MODULE SemanticActions;
      CheckExpr(scope, node.right) call below (that would misreport a bare
      type name as "not a value"). *)
   PROCEDURE CheckBinaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.BinaryExprNode): Types.Type;
-    VAR l, r, result, targetType: Types.Type;
+    VAR l, r, result, targetType: Types.Type; leftIsVarParam: BOOLEAN;
   BEGIN
     IF node.op = Lexer.isKeyword THEN
+      lastDesignatorIsVarParam := FALSE;
       l := CheckExpr(scope, node.left);
+      leftIsVarParam := lastDesignatorIsVarParam;
       targetType := LookupBareTypeName(scope, node.right);
       IF targetType = NIL THEN
         Diagnostics.Error(node.line, node.column, "right operand of IS must be a type name");
         RETURN Types.Boolean
-      ELSIF (l # Types.Undefined) & ~CheckExtensionApplicable(l, targetType) THEN
+      ELSIF (l # Types.Undefined) & ~(l IS Types.PointerType) & ~(leftIsVarParam & (l IS Types.RecordType)) THEN
+        Diagnostics.Error(node.line, node.column,
+          "the left operand of IS must be a pointer or a VAR record parameter");
+        RETURN Types.Boolean
+      ELSIF (l # Types.Undefined) & ~CheckExtensionApplicable(l, targetType, leftIsVarParam) THEN
         Diagnostics.Error(node.line, node.column,
           "IS target must be an extension of the left operand's type");
         RETURN Types.Boolean
@@ -2402,10 +2454,10 @@ MODULE SemanticActions;
      of the module-wide scan. The RECORD-typed guard case (VAR record
      parameter/receiver) needs none of this - it isn't a pointer
      redirection risk the same way, and voc's own withreceiver2 test
-     (2026-09-17) confirms it's exempt; poc doesn't support RECORD guard
-     variables at all yet regardless (CheckExtensionApplicable's own
-     header comment; Rule 1's "or a variable parameter of record type" half, PLAN.md
-     Phase 6 territory, pre-existing and untouched here). *)
+     (2026-09-17) confirms it's exempt; supported since PLAN.md Phase 9
+     step 6 (CheckExtensionApplicable's rule 1, "a variable parameter of
+     record type"), with the narrowed variable staying that parameter so a
+     nested guard or test inside the branch is legal, as in voc. *)
   PROCEDURE CheckWithGuardBody(scope: SymbolTable.Scope; g: SyntaxTree.WithGuardNode;
                                narrowedType: Types.Type; original: SymbolTable.Object;
                                nonLocalAssigns: ProcAssignedName;
@@ -2415,6 +2467,9 @@ MODULE SemanticActions;
     narrowedScope := SymbolTable.OpenScope(scope);
     unused := SymbolTable.Insert(narrowedScope, original.name, SymbolTable.varClass, narrowedType,
                                   original.exported, original.readOnly, g.line, g.column);
+    (* a narrowed VAR record parameter is still that parameter (a nested
+       guard on it stays legal) *)
+    unused.isVarParam := original.isVarParam;
     CheckStatementSeq(narrowedScope, g.body, nonLocalAssigns, loopDepth, procResultType)
   END CheckWithGuardBody;
 
@@ -2434,8 +2489,10 @@ MODULE SemanticActions;
       Diagnostics.Error(g.line, g.column, "expected a type name");
       RETURN
     END;
-    narrowed := CheckGuard(leftType, targetType, g.line, g.column);
-    IF narrowed # Types.Undefined THEN
+    narrowed := CheckGuard(leftType, targetType,
+                           (g.variableQualifier[0] = 0X) & (obj.class = SymbolTable.varClass) & obj.isVarParam,
+                           g.line, g.column);
+    IF (narrowed # Types.Undefined) & (leftType IS Types.PointerType) THEN
       IF (g.variableQualifier[0] # 0X) OR obj.isVarParam
           OR IsProcAssigned(nonLocalAssigns, g.variableName) THEN
         Diagnostics.Error(g.line, g.column,

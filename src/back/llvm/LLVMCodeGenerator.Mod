@@ -47,8 +47,15 @@ MODULE LLVMCodeGenerator;
      the descriptor section below) sits one word before it; every
      dereference is NIL-checked first (EmitNilCheck); NEW calls
      GarbageCollectedHeap.Allocate; a type test reads BaseTypes through
-     the tag (EmitTagTest). Type-bound procedures and dispatch (step 6) and
-     open arrays (step 7) are not lowered yet.
+     the tag (EmitTagTest). Type-bound procedures and dispatch are in
+     scope since step 6: a bound procedure is an ordinary function
+     "@<Module>.<Record>.<Procedure>" whose first parameter is the
+     receiver (GenerateMethodDecl), called directly when the receiver's
+     type is known exactly and through its type descriptor's ProcTab
+     otherwise (GenerateMethodCall); a VAR parameter of record type also
+     carries a hidden second argument, its actual's type descriptor
+     (NeedsHiddenTag), so it can be dispatched on and tested. Open
+     arrays (step 7) are not lowered yet.
 
      DIV/MOD lower Oberon-2's floored-division semantics (confirmed
      2026-09-18 against real voc, not assumed: (-7) DIV 2 = -4, (-7) MOD
@@ -229,6 +236,11 @@ MODULE LLVMCodeGenerator;
     withTrapMsg = "no matching WITH guard";
     withTrapExitCode = 6;
 
+    (* DynamicType.kind - see DynamicType. *)
+    dynStatic = 0;
+    dynBlock = 1;
+    dynParam = 2;
+
   TYPE
     ValueText = ARRAY textLength + 1 OF CHAR;
     (* Room for "@<module>.<type>.<procedure>" built from three full-length
@@ -266,7 +278,25 @@ MODULE LLVMCodeGenerator;
     LocalBindingDesc = RECORD
       obj: SymbolTable.Object;
       addrText: ValueText;
+      (* PLAN.md Phase 9 step 6: the hidden run-time-type argument that
+         travels with a VAR parameter of record type (empty for every
+         other binding) - see NeedsHiddenTag. *)
+      tagText: ValueText;
       next: LocalBinding
+    END;
+
+    (* PLAN.md Phase 9 step 6: where the *dynamic* type of the record a
+       designator resolved to comes from. A record variable, a field or an
+       array element has exactly its declared type (dynStatic); a record
+       reached through a pointer is whatever the heap block's tag word
+       says (dynBlock, text = the block's address); and a VAR parameter of
+       record type is whatever its caller's actual argument was, passed
+       along as a hidden second argument (dynParam, text = that
+       argument's name) - the reason a bound procedure or a type test on a
+       VAR record must not be resolved from the declared type alone. *)
+    DynamicType = RECORD
+      kind: INTEGER;
+      text: ValueText
     END;
 
     (* PLAN.md Phase 8 step 12: once a program can compile more than one
@@ -772,6 +802,13 @@ MODULE LLVMCodeGenerator;
     RecordSymbolBase(rec, text); Strcat(text, ".tag")
   END TagSymbol;
 
+  (* "@<Module>.<Type>.<Proc>" for a type-bound procedure whose
+     implementation is owner's own declaration. *)
+  PROCEDURE MethodSymbol(owner: Types.RecordType; procName: ARRAY OF CHAR; VAR text: ARRAY OF CHAR);
+  BEGIN
+    RecordSymbolBase(owner, text); Strcat(text, "."); Strcat(text, procName)
+  END MethodSymbol;
+
   PROCEDURE WordIntType(VAR text: ARRAY OF CHAR);
   BEGIN
     IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN COPY("i32", text) ELSE COPY("i64", text) END
@@ -1103,8 +1140,10 @@ MODULE LLVMCodeGenerator;
     RETURN TRUE
   END EnsureTypeTag;
 
-  (* For a pointer already known not to be NIL: an i1 that is true when the
-     record it points to is rec or an extension of rec (Appendix D5's
+  (* Given the tag (type descriptor address) of a record's dynamic type -
+     of a heap block whose pointer is already known not to be NIL, or a
+     VAR record parameter's hidden argument - an i1 that is true when that
+     record is rec or an extension of rec (Appendix D5's
      "v.tag.BaseTypes[Level(T)] = T's tag", made safe: BaseTypes has one
      entry per level up to the record's own, so it is only read at
      Level(T) when the record is at least that deep; otherwise entry 0 is
@@ -1112,18 +1151,15 @@ MODULE LLVMCodeGenerator;
      root T is never too deep for anything). The tag word is the one
      before the data; the descriptor's first three words are size,
      extension level and pointer count, then BaseTypes. *)
-  PROCEDURE EmitTagTest(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR; rec: Types.RecordType;
-                        VAR resultText: ARRAY OF CHAR);
+  PROCEDURE EmitTagTestOnTag(VAR w: Files.Rider; VAR cg: Codegen; tag: ARRAY OF CHAR; rec: Types.RecordType;
+                             VAR resultText: ARRAY OF CHAR);
     VAR
-      wordInt, negBytes, wordBytes, tagSlot, tag, levelSlot, level, levelText, deepEnough: ValueText;
+      wordInt, wordBytes, levelSlot, level, levelText, deepEnough: ValueText;
       atLevel, atRoot, offset, entrySlot, entry: ValueText; target: LongText; wordSize: LONGINT;
   BEGIN
     WordIntType(wordInt);
     wordSize := ConstantEvaluator.wordSize;
-    negBytes[0] := 0X; AppendLongInt(negBytes, -wordSize);
     wordBytes[0] := 0X; AppendLongInt(wordBytes, wordSize);
-    EmitByteGEP(w, cg, ptrText, "i32", negBytes, tagSlot);
-    EmitLoad(w, cg, "ptr", tagSlot, tag);
     EmitByteGEP(w, cg, tag, "i32", wordBytes, levelSlot);
     EmitLoad(w, cg, wordInt, levelSlot, level);
     levelText[0] := 0X; AppendLongInt(levelText, LLVMTypes.ExtensionLevel(rec));
@@ -1135,23 +1171,64 @@ MODULE LLVMCodeGenerator;
     EmitLoad(w, cg, "ptr", entrySlot, entry);
     TagSymbol(rec, target);
     EmitBinOp(w, cg, "icmp eq", "ptr", entry, target, resultText)
+  END EmitTagTestOnTag;
+
+  (* The tag (type descriptor address) of the heap block whose data starts
+     at ptrText, a pointer already known not to be NIL: the word just
+     before the data (GarbageCollectedHeap.Mod). *)
+  PROCEDURE EmitBlockTag(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR; VAR tag: ARRAY OF CHAR);
+    VAR negBytes, tagSlot: ValueText;
+  BEGIN
+    negBytes[0] := 0X; AppendLongInt(negBytes, -ConstantEvaluator.wordSize);
+    EmitByteGEP(w, cg, ptrText, "i32", negBytes, tagSlot);
+    EmitLoad(w, cg, "ptr", tagSlot, tag)
+  END EmitBlockTag;
+
+  PROCEDURE EmitTagTest(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR; rec: Types.RecordType;
+                        VAR resultText: ARRAY OF CHAR);
+    VAR tag: ValueText;
+  BEGIN
+    EmitBlockTag(w, cg, ptrText, tag);
+    EmitTagTestOnTag(w, cg, tag, rec, resultText)
   END EmitTagTest;
+
+  (* The tag operand for dyn, the dynamic type of a record whose static
+     type is rec: rec's own descriptor for a dynStatic record (a null
+     stand-in if rec has none this module can name - nothing can then
+     be dispatched or tested through it), the heap block's tag word for a
+     dynBlock one, the hidden argument itself for a dynParam one. *)
+  PROCEDURE EmitDynamicTag(VAR w: Files.Rider; VAR cg: Codegen; dyn: DynamicType; rec: Types.RecordType;
+                           VAR tag: ARRAY OF CHAR);
+  BEGIN
+    IF dyn.kind = dynBlock THEN EmitBlockTag(w, cg, dyn.text, tag)
+    ELSIF dyn.kind = dynParam THEN COPY(dyn.text, tag)
+    ELSIF EnsureTypeTag(cg, rec) THEN TagSymbol(rec, tag)
+    ELSE COPY("null", tag)
+    END
+  END EmitDynamicTag;
 
   (* The type guard v(T): v must be a T or an extension of one, else the
      program is aborted. Reading the dynamic type of NIL is a NIL access,
      as in voc (whose guard, test and WITH all trap on it), so NIL is
      trapped by the NIL check first. *)
-  PROCEDURE EmitTypeGuard(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR; rec: Types.RecordType);
+  PROCEDURE EmitTypeGuardOnTag(VAR w: Files.Rider; VAR cg: Codegen; tag: ARRAY OF CHAR; rec: Types.RecordType);
     VAR matches, failLabel, okLabel: ValueText;
   BEGIN
     cg.needGuardTrap := TRUE;
-    EmitNilCheck(w, cg, ptrText);
     NewLabel(cg, failLabel); NewLabel(cg, okLabel);
-    EmitTagTest(w, cg, ptrText, rec, matches);
+    EmitTagTestOnTag(w, cg, tag, rec, matches);
     EmitCondBr(w, matches, okLabel, failLabel);
     EmitLabel(w, cg, failLabel);
     EmitTrap(w, cg, guardTrapGlobal, guardTrapMsg, guardTrapExitCode);
     EmitLabel(w, cg, okLabel)
+  END EmitTypeGuardOnTag;
+
+  PROCEDURE EmitTypeGuard(VAR w: Files.Rider; VAR cg: Codegen; ptrText: ARRAY OF CHAR; rec: Types.RecordType);
+    VAR tag: ValueText;
+  BEGIN
+    EmitNilCheck(w, cg, ptrText);
+    EmitBlockTag(w, cg, ptrText, tag);
+    EmitTypeGuardOnTag(w, cg, tag, rec)
   END EmitTypeGuard;
 
   (* The test v IS T (and WITH's branch selector) as an i1. Like the guard
@@ -1175,8 +1252,16 @@ MODULE LLVMCodeGenerator;
   PROCEDURE BindLocal(VAR cg: Codegen; obj: SymbolTable.Object; addrText: ARRAY OF CHAR);
     VAR b: LocalBinding;
   BEGIN
-    NEW(b); b.obj := obj; COPY(addrText, b.addrText); b.next := cg.locals; cg.locals := b
+    NEW(b); b.obj := obj; COPY(addrText, b.addrText); b.tagText[0] := 0X; b.next := cg.locals; cg.locals := b
   END BindLocal;
+
+  (* BindLocal for a VAR parameter of record type, which also carries its
+     hidden tag argument. *)
+  PROCEDURE BindLocalWithTag(VAR cg: Codegen; obj: SymbolTable.Object; addrText, tagText: ARRAY OF CHAR);
+  BEGIN
+    BindLocal(cg, obj, addrText);
+    COPY(tagText, cg.locals.tagText)
+  END BindLocalWithTag;
 
   (* Every varClass Object's own LLVM address, in one place: a
      procedure's own alloca'd parameter/local (found in cg.locals - see
@@ -1472,7 +1557,8 @@ MODULE LLVMCodeGenerator;
      implied dereference of "." and "[" on a pointer, an explicit "^", a
      type guard, and a WITH-narrowed variable - so a "yes" here is a claim
      about the type, not a promise the address can be computed. *)
-  PROCEDURE DesignatorStaticType(VAR cg: Codegen; d: SyntaxTree.Designator): Types.Type;
+  PROCEDURE DesignatorStaticTypeTo(VAR cg: Codegen; d: SyntaxTree.Designator;
+                                   stopAt: SyntaxTree.Selector): Types.Type;
     VAR obj: SymbolTable.Object; sel: SyntaxTree.Selector; t: Types.Type; homeModule: SyntaxTree.Ident;
         rec: Types.RecordType; arr: Types.ArrayType; field: Types.Field; idx: SyntaxTree.ExprNode;
         ptr: Types.PointerType; guardObj: SymbolTable.Object; guardHome: SyntaxTree.Ident;
@@ -1480,11 +1566,11 @@ MODULE LLVMCodeGenerator;
     obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
     IF obj = NIL THEN RETURN NIL END;
     IF obj.class = SymbolTable.constClass THEN
-      IF d.selectors = NIL THEN RETURN obj.type ELSE RETURN NIL END
+      IF d.selectors = stopAt THEN RETURN obj.type ELSE RETURN NIL END
     END;
     IF obj.class # SymbolTable.varClass THEN RETURN NIL END;
     t := EffectiveVarType(cg, obj); sel := d.selectors;
-    WHILE sel # NIL DO
+    WHILE sel # stopAt DO
       WITH
         sel: SyntaxTree.FieldSelector DO
           IF (t # NIL) & (t IS Types.PointerType) THEN
@@ -1519,6 +1605,11 @@ MODULE LLVMCodeGenerator;
       sel := sel.next
     END;
     RETURN t
+  END DesignatorStaticTypeTo;
+
+  PROCEDURE DesignatorStaticType(VAR cg: Codegen; d: SyntaxTree.Designator): Types.Type;
+  BEGIN
+    RETURN DesignatorStaticTypeTo(cg, d, NIL)
   END DesignatorStaticType;
 
   (* Text known at compile time and usable as a string: a string literal,
@@ -1680,6 +1771,26 @@ MODULE LLVMCodeGenerator;
 
   (* The type a bare type-name operand (IS's right side, a guard's
      argument) names, or NIL. *)
+  (* Whether e is a bare reference to a VAR parameter of record type - one
+     carrying a hidden tag (NeedsHiddenTag) - and, if so, that tag's
+     operand. Such a record is what IS, a guard and WITH test when they
+     are applied to a record rather than to a pointer (Oberon2.pdf 8.1:
+     "a variable parameter of record type"). *)
+  PROCEDURE VarRecordTag(VAR cg: Codegen; e: SyntaxTree.ExprNode; VAR tag: ARRAY OF CHAR): BOOLEAN;
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
+        binding: LocalBinding;
+  BEGIN
+    IF (e = NIL) OR ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
+    de := e(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens OR (de.designator.selectors # NIL) OR (de.designator.qualifier[0] # 0X) THEN RETURN FALSE END;
+    obj := ResolveQualifiedObject(cg, de.designator.qualifier, de.designator.name, homeModule);
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
+    binding := FindLocalBinding(cg, obj);
+    IF (binding = NIL) OR (binding.tagText[0] = 0X) THEN RETURN FALSE END;
+    COPY(binding.tagText, tag);
+    RETURN TRUE
+  END VarRecordTag;
+
   PROCEDURE NamedType(VAR cg: Codegen; e: SyntaxTree.ExprNode): Types.Type;
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
   BEGIN
@@ -1690,10 +1801,23 @@ MODULE LLVMCodeGenerator;
     IF (obj # NIL) & (obj.class = SymbolTable.typeClass) THEN RETURN obj.type ELSE RETURN NIL END
   END NamedType;
 
+  (* Whether de is a type guard "v(T)" rather than a call: a variable
+     followed by one bare type name in parentheses (a predeclared
+     procedure like SIZE(T) also takes a type name, but its base is a
+     procedure, not a variable). *)
+  PROCEDURE IsGuardExpr(VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode): BOOLEAN;
+    VAR obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
+  BEGIN
+    IF ~de.hasParens OR (de.args = NIL) OR (de.args.next # NIL) THEN RETURN FALSE END;
+    IF NamedType(cg, de.args) = NIL THEN RETURN FALSE END;
+    obj := ResolveQualifiedObject(cg, de.designator.qualifier, de.designator.name, homeModule);
+    RETURN (obj # NIL) & (obj.class = SymbolTable.varClass)
+  END IsGuardExpr;
+
   (* v IS T. *)
   PROCEDURE GenerateIsExpr(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.BinaryExprNode;
                            VAR result: Value);
-    VAR rec: Types.RecordType; v: Value; test: ValueText;
+    VAR rec: Types.RecordType; v: Value; test, tag: ValueText;
   BEGIN
     rec := TargetRecord(NamedType(cg, expr.right));
     IF ~EnsureTypeTag(cg, rec) THEN
@@ -1701,8 +1825,12 @@ MODULE LLVMCodeGenerator;
                   Types.Boolean, result);
       RETURN
     END;
-    GenerateExpr(w, cg, expr.left, v);
-    EmitTypeTest(w, cg, v.text, rec, test);
+    IF VarRecordTag(cg, expr.left, tag) THEN
+      EmitTagTestOnTag(w, cg, tag, rec, test)
+    ELSE
+      GenerateExpr(w, cg, expr.left, v);
+      EmitTypeTest(w, cg, v.text, rec, test)
+    END;
     EmitConvert(w, cg, "zext", "i1", test, "i8", result.text);
     COPY("i8", result.llvmType); result.oberonType := Types.Boolean
   END GenerateIsExpr;
@@ -1875,7 +2003,7 @@ MODULE LLVMCodeGenerator;
      is reached through one "element 0" step per level, and an own field's
      struct index is one more than its declaration position when there is
      a base. FALSE if the name is not a data field (a type-bound
-     procedure is step 6's). *)
+     procedure is called through GenerateMethodCall, never addressed). *)
   PROCEDURE GenerateFieldAddress(VAR w: Files.Rider; VAR cg: Codegen; VAR addrText: ValueText;
                                  VAR addrType: Types.Type; name: SyntaxTree.Ident): BOOLEAN;
     VAR rec, owner, current: Types.RecordType; field: Types.Field; pointeeType: ARRAY 256 OF CHAR; idxText: ValueText;
@@ -1907,27 +2035,39 @@ MODULE LLVMCodeGenerator;
      pointers where the designator goes through them: "." and "[" on a
      pointer load it, NIL-check it and continue from what it points to;
      "^" does the same explicitly; a type guard v(T) checks the pointer's
-     dynamic type and continues with static type T. FALSE means some
-     selector in the chain needs a capability this backend does not have
-     yet - a guard on a record VAR parameter or a dereference of a pointer
-     to an open array (step 7), or a FieldSelector resolving to a type-
-     bound method rather than a data field (step 6). An open array can
+     (or a VAR record parameter's) dynamic type and continues with static
+     type T. stopAt ends the walk before that selector (NIL: walk them
+     all) - a type-bound call evaluates its receiver by stopping at the
+     procedure's name - and dyn reports where the resulting record's
+     *dynamic* type comes from (DynamicType). FALSE means some selector in
+     the chain needs a capability this backend does not have yet - a
+     dereference of a pointer to an open array (step 7) - or names
+     something that is not a data field (a type-bound procedure, which
+     GenerateMethodCall handles instead). An open array can
      never appear here either (CheckDesignator only ever resolves a
      module VAR's own declared, always-fixed-size array type through "["
      - an open array only exists as a formal parameter, and array-
      parameter indexing is step 7's). *)
-  PROCEDURE GenerateDesignatorAddress(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
-                                      VAR addrText: ValueText; VAR addrType: Types.Type): BOOLEAN;
+  PROCEDURE GenerateDesignatorAddressTo(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
+                                        stopAt: SyntaxTree.Selector;
+                                        VAR addrText: ValueText; VAR addrType: Types.Type;
+                                        VAR dyn: DynamicType): BOOLEAN;
     VAR
       obj: SymbolTable.Object; sel: SyntaxTree.Selector; idx: SyntaxTree.ExprNode;
       arr: Types.ArrayType; idxVal, loaded: Value;
       pointeeType: ARRAY 256 OF CHAR; homeModule: SyntaxTree.Ident;
       guardObj: SymbolTable.Object; guardHome: SyntaxTree.Ident; guardRec: Types.RecordType;
+      binding: LocalBinding; wasPointer: BOOLEAN;
   BEGIN
+    dyn.kind := dynStatic; dyn.text[0] := 0X;
     obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
     IF d.qualifier[0] = 0X THEN
-      ResolveVarAddress(cg, obj, addrText)
+      ResolveVarAddress(cg, obj, addrText);
+      binding := FindLocalBinding(cg, obj);
+      IF (binding # NIL) & (binding.tagText[0] # 0X) THEN
+        dyn.kind := dynParam; COPY(binding.tagText, dyn.text)
+      END
     ELSE
       (* A qualified VAR can never be a local binding - cg.locals only
          ever holds the *current* procedure's own alloca'd params/locals,
@@ -1937,11 +2077,14 @@ MODULE LLVMCodeGenerator;
     END;
     addrType := EffectiveVarType(cg, obj);
     sel := d.selectors;
-    WHILE sel # NIL DO
+    WHILE sel # stopAt DO
       WITH
         sel: SyntaxTree.FieldSelector DO
+          wasPointer := (addrType # NIL) & (addrType IS Types.PointerType);
           IF ~AutoDereference(w, cg, addrText, addrType) THEN RETURN FALSE END;
-          IF ~GenerateFieldAddress(w, cg, addrText, addrType, sel.name) THEN RETURN FALSE END
+          IF wasPointer THEN dyn.kind := dynBlock; COPY(addrText, dyn.text) END;
+          IF ~GenerateFieldAddress(w, cg, addrText, addrType, sel.name) THEN RETURN FALSE END;
+          dyn.kind := dynStatic
       | sel: SyntaxTree.IndexSelector DO
           idx := sel.indices;
           WHILE idx # NIL DO
@@ -1954,25 +2097,42 @@ MODULE LLVMCodeGenerator;
             LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
             EmitGEP(w, cg, pointeeType, addrText, idxVal.llvmType, idxVal.text, addrText);
             addrType := arr.elementType;
+            dyn.kind := dynStatic;
             idx := idx.next
           END
       | sel: SyntaxTree.DereferenceSelector DO
-          IF ~DereferencePointer(w, cg, addrText, addrType) THEN RETURN FALSE END
+          IF ~DereferencePointer(w, cg, addrText, addrType) THEN RETURN FALSE END;
+          dyn.kind := dynBlock; COPY(addrText, dyn.text)
       | sel: SyntaxTree.GuardSelector DO
-          IF (addrType = NIL) OR ~(addrType IS Types.PointerType) THEN RETURN FALSE END;
           guardObj := ResolveQualifiedObject(cg, sel.qualifier, sel.name, guardHome);
           IF (guardObj = NIL) OR (guardObj.class # SymbolTable.typeClass) THEN RETURN FALSE END;
           guardRec := TargetRecord(guardObj.type);
           IF ~EnsureTypeTag(cg, guardRec) THEN RETURN FALSE END;
-          LoadAtAddress(w, cg, addrText, addrType, loaded);
-          EmitTypeGuard(w, cg, loaded.text, guardRec);
-          addrType := TargetPointer(guardObj.type)
+          IF (addrType # NIL) & (addrType IS Types.PointerType) THEN
+            LoadAtAddress(w, cg, addrText, addrType, loaded);
+            EmitTypeGuard(w, cg, loaded.text, guardRec);
+            addrType := TargetPointer(guardObj.type)
+          ELSIF (addrType # NIL) & (addrType IS Types.RecordType) & (dyn.kind = dynParam) THEN
+            (* a VAR record parameter: same address, tested against its
+               hidden tag, statically the guard's record from here on *)
+            EmitTypeGuardOnTag(w, cg, dyn.text, guardRec);
+            addrType := guardRec
+          ELSE
+            RETURN FALSE
+          END
       ELSE
         RETURN FALSE
       END;
       sel := sel.next
     END;
     RETURN TRUE
+  END GenerateDesignatorAddressTo;
+
+  PROCEDURE GenerateDesignatorAddress(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
+                                      VAR addrText: ValueText; VAR addrType: Types.Type): BOOLEAN;
+    VAR dyn: DynamicType;
+  BEGIN
+    RETURN GenerateDesignatorAddressTo(w, cg, d, NIL, addrText, addrType, dyn)
   END GenerateDesignatorAddress;
 
   PROCEDURE GenerateDesignatorValue(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
@@ -1983,7 +2143,7 @@ MODULE LLVMCodeGenerator;
       IF GenerateDesignatorAddress(w, cg, d, addrText, addrType) THEN
         LoadAtAddress(w, cg, addrText, addrType, result)
       ELSE
-        Unsupported(w, cg, "selector needing POINTER/dispatch (Phase 9)", Types.Undefined, result)
+        Unsupported(w, cg, "selector this backend cannot address (a pointer to an open array, step 7)", Types.Undefined, result)
       END;
       RETURN
     END;
@@ -2192,6 +2352,22 @@ MODULE LLVMCodeGenerator;
      CHAR array's real Oberon dope-vector/length convention does not
      apply to a C-ABI external declaration); anything else uses its
      ordinary LLVMTypes.TypeString*. *)
+  (* PLAN.md Phase 9 step 6: a VAR parameter of record type is passed as
+     the record's address *and* the address of its run-time type
+     descriptor - a second, hidden argument right after it (named
+     "%<param>.tag" in the callee) - because the record the caller
+     passed may be an extension of the parameter's declared type, and the
+     callee needs the type it really is to dispatch a type-bound
+     procedure on it or to test it. (voc does the same.) Applies to every
+     Oberon procedure with such a parameter, a type-bound procedure's
+     receiver included; an external ["C"] one takes the bare address like
+     any C function, since C has no descriptor to pass. Every other
+     parameter, a VAR pointer or a VAR array included, is unchanged. *)
+  PROCEDURE NeedsHiddenTag(p: Types.Param): BOOLEAN;
+  BEGIN
+    RETURN p.isVar & (p.type # NIL) & (p.type IS Types.RecordType)
+  END NeedsHiddenTag;
+
   PROCEDURE ParamLLVMType(VAR cg: Codegen; p: Types.Param; VAR llvmType: ARRAY OF CHAR);
   BEGIN
     IF p.isVar THEN
@@ -2324,35 +2500,57 @@ MODULE LLVMCodeGenerator;
      to emit instructions of their own first (an index-range check, a
      GEP), which is exactly why this now takes VAR w: Files.Rider, where
      it didn't before. *)
-  PROCEDURE GenerateVarArgValue(VAR w: Files.Rider; VAR cg: Codegen; a: SyntaxTree.ExprNode; VAR result: Value);
-    VAR addrText: ValueText; addrType: Types.Type;
+  PROCEDURE GenerateVarArgValue(VAR w: Files.Rider; VAR cg: Codegen; a: SyntaxTree.ExprNode;
+                                wantTag: BOOLEAN; VAR result: Value; VAR tagText: ValueText);
+    VAR addrText: ValueText; addrType: Types.Type; dyn: DynamicType; de: SyntaxTree.DesignatorExprNode;
+        rec: Types.RecordType;
   BEGIN
     COPY("ptr", result.llvmType); result.oberonType := Types.Undefined;
-    WITH
-      a: SyntaxTree.DesignatorExprNode DO
-        IF (a.designator.qualifier[0] = 0X) & GenerateDesignatorAddress(w, cg, a.designator, addrText, addrType) THEN
-          COPY(addrText, result.text)
-        ELSE
-          WriteStr(w, "  ; unsupported: VAR argument shape (PLAN.md Phase 8 step 12/Phase 9)"); WriteLn(w);
-          COPY("null", result.text)
+    tagText[0] := 0X;
+    IF (a # NIL) & (a IS SyntaxTree.DesignatorExprNode) THEN
+      de := a(SyntaxTree.DesignatorExprNode);
+      IF de.hasParens & IsGuardExpr(cg, de) THEN
+        (* P(v(T)) with v a VAR record parameter: v itself, once its own
+           tag has passed the guard *)
+        rec := TargetRecord(NamedType(cg, de.args));
+        IF EnsureTypeTag(cg, rec)
+           & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addrText, addrType, dyn)
+           & (dyn.kind = dynParam) & (addrType # NIL) & (addrType IS Types.RecordType) THEN
+          EmitTypeGuardOnTag(w, cg, dyn.text, rec);
+          COPY(addrText, result.text);
+          IF wantTag THEN COPY(dyn.text, tagText) END;
+          RETURN
         END
-    ELSE
-      WriteStr(w, "  ; unsupported: VAR argument shape (not a designator)"); WriteLn(w);
-      COPY("null", result.text)
-    END
+      ELSIF ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addrText, addrType, dyn) THEN
+        COPY(addrText, result.text);
+        IF wantTag THEN
+          rec := NIL;
+          IF (addrType # NIL) & (addrType IS Types.RecordType) THEN rec := addrType(Types.RecordType) END;
+          EmitDynamicTag(w, cg, dyn, rec, tagText)
+        END;
+        RETURN
+      END
+    END;
+    WriteStr(w, "  ; unsupported: VAR argument shape (PLAN.md Phase 9 step 7)"); WriteLn(w);
+    COPY("null", result.text);
+    IF wantTag THEN COPY("null", tagText) END
   END GenerateVarArgValue;
 
   PROCEDURE EvaluateCallArg(VAR w: Files.Rider; VAR cg: Codegen; p: Types.Param; a: SyntaxTree.ExprNode;
-                            VAR result: Value);
+                            withTags: BOOLEAN; VAR result: Value; VAR tagText: ValueText);
     VAR v, ev: Value;
   BEGIN
+    tagText[0] := 0X;
     IF p.isVar THEN
-      GenerateVarArgValue(w, cg, a, result)
+      GenerateVarArgValue(w, cg, a, withTags & NeedsHiddenTag(p), result, tagText)
     ELSIF IsOpenCharArray(p.type) THEN
       GenerateStringArgValue(w, cg, a, result)
     ELSE
       GenerateExpr(w, cg, a, v);
       IF Types.IsInteger(p.type) OR IsRealType(p.type) THEN ExtendTo(w, cg, v, p.type, ev) ELSE ev := v END;
+      (* a value record parameter takes an extension of its type too - only
+         the base part is passed, as in an assignment (Appendix A rule 3) *)
+      IF (p.type # NIL) & (p.type IS Types.RecordType) THEN NarrowRecordValue(w, cg, p.type, ev) END;
       LLVMTypes.TypeString(p.type, cg.sizeModel, result.llvmType);
       COPY(ev.text, result.text);
       result.oberonType := p.type
@@ -2372,16 +2570,17 @@ MODULE LLVMCodeGenerator;
      llvm-hello-world fixture and finding the call's argument list
      literally contained a "%tN = sext ..." line pasted mid-parenthesis). *)
   PROCEDURE GenerateCallArgList(VAR w: Files.Rider; VAR cg: Codegen; params: Types.Param; args: SyntaxTree.ExprNode;
-                                VAR text: ARRAY OF CHAR);
-    VAR p: Types.Param; a: SyntaxTree.ExprNode; v: Value; first: BOOLEAN;
+                                withTags: BOOLEAN; VAR text: ARRAY OF CHAR);
+    VAR p: Types.Param; a: SyntaxTree.ExprNode; v: Value; first: BOOLEAN; tagText: ValueText;
   BEGIN
     text[0] := 0X;
     p := params; a := args; first := TRUE;
     WHILE p # NIL DO
-      EvaluateCallArg(w, cg, p, a, v);
+      EvaluateCallArg(w, cg, p, a, withTags, v, tagText);
       IF ~first THEN Strcat(text, ", ") END;
       first := FALSE;
       Strcat(text, v.llvmType); Strcat(text, " "); Strcat(text, v.text);
+      IF tagText[0] # 0X THEN Strcat(text, ", ptr "); Strcat(text, tagText) END;
       p := p.next; a := a.next
     END
   END GenerateCallArgList;
@@ -2392,12 +2591,12 @@ MODULE LLVMCodeGenerator;
   BEGIN
     pt := obj.type(Types.ProcedureType);
     IF pt.resultType = NIL THEN
-      GenerateCallArgList(w, cg, pt.params, args, argsText);
+      GenerateCallArgList(w, cg, pt.params, args, FALSE, argsText);
       WriteStr(w, "  call void @"); WriteStr(w, obj.externalName); WriteStr(w, "(");
       WriteStr(w, argsText); WriteStr(w, ")"); WriteLn(w);
       result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X
     ELSE
-      GenerateCallArgList(w, cg, pt.params, args, argsText);
+      GenerateCallArgList(w, cg, pt.params, args, FALSE, argsText);
       LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType);
       NewTemp(cg, destTemp);
       WriteStr(w, "  "); WriteStr(w, destTemp); WriteStr(w, " = call "); WriteStr(w, retType);
@@ -2424,12 +2623,12 @@ MODULE LLVMCodeGenerator;
     pt := obj.type(Types.ProcedureType);
     QualifiedName(homeModule, obj.name, fnSymbol);
     IF pt.resultType = NIL THEN
-      GenerateCallArgList(w, cg, pt.params, args, argsText);
+      GenerateCallArgList(w, cg, pt.params, args, TRUE, argsText);
       WriteStr(w, "  call void "); WriteStr(w, fnSymbol); WriteStr(w, "(");
       WriteStr(w, argsText); WriteStr(w, ")"); WriteLn(w);
       result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X
     ELSE
-      GenerateCallArgList(w, cg, pt.params, args, argsText);
+      GenerateCallArgList(w, cg, pt.params, args, TRUE, argsText);
       LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType);
       NewTemp(cg, destTemp);
       WriteStr(w, "  "); WriteStr(w, destTemp); WriteStr(w, " = call "); WriteStr(w, retType);
@@ -2438,6 +2637,147 @@ MODULE LLVMCodeGenerator;
       result.text := destTemp; COPY(retType, result.llvmType); result.oberonType := pt.resultType
     END
   END GenerateOrdinaryCall;
+
+  (* Whether the designator d, called, ends in a type-bound procedure -
+     "v.P" (Oberon2.pdf 10.2) or "v.P^", the base-type form - rather than
+     a field of procedure type: nameSelector is the selector naming it,
+     baseCall says it was followed by "^", rec is the record the name was
+     looked up on (v's own static type, through a pointer if v is one) and
+     method what it resolved to there - the very lookup the checker made
+     (Types.FindMethod: rec's own procedure, else the nearest
+     ancestor's). *)
+  PROCEDURE FindMethodTarget(VAR cg: Codegen; d: SyntaxTree.Designator;
+                             VAR nameSelector: SyntaxTree.Selector; VAR baseCall: BOOLEAN;
+                             VAR rec: Types.RecordType; VAR method: Types.Method): BOOLEAN;
+    VAR
+      sel, last, beforeLast: SyntaxTree.Selector; t: Types.Type; ptr: Types.PointerType;
+      nameNode: SyntaxTree.FieldSelector;
+  BEGIN
+    sel := d.selectors; last := NIL; beforeLast := NIL;
+    WHILE sel # NIL DO beforeLast := last; last := sel; sel := sel.next END;
+    IF last = NIL THEN RETURN FALSE END;
+    nameSelector := NIL; baseCall := FALSE;
+    IF last IS SyntaxTree.FieldSelector THEN
+      nameSelector := last
+    ELSIF (last IS SyntaxTree.DereferenceSelector) & (beforeLast # NIL) & (beforeLast IS SyntaxTree.FieldSelector) THEN
+      nameSelector := beforeLast; baseCall := TRUE
+    END;
+    IF nameSelector = NIL THEN RETURN FALSE END;
+    nameNode := nameSelector(SyntaxTree.FieldSelector);
+    t := DesignatorStaticTypeTo(cg, d, nameSelector);
+    IF (t # NIL) & (t IS Types.PointerType) THEN ptr := t(Types.PointerType); t := ptr.base END;
+    IF (t = NIL) OR ~(t IS Types.RecordType) THEN RETURN FALSE END;
+    rec := t(Types.RecordType);
+    IF Types.FindField(rec, nameNode.name) # NIL THEN RETURN FALSE END;
+    method := Types.FindMethod(rec, nameNode.name);
+    RETURN method # NIL
+  END FindMethodTarget;
+
+  (* A call of a type-bound procedure (Oberon2.pdf 10.2, Appendix D5).
+     The receiver designator - everything before the procedure's name - is
+     evaluated first and dereferenced if it is a pointer (a NIL one traps
+     there, like any dereference), leaving the address of the record and
+     where its *dynamic* type comes from (DynamicType). Then:
+
+       v.P(...)   the procedure bound to v's dynamic type. If that type
+                  is known exactly (v is a record variable, field or
+                  element: dynStatic) the call goes straight to the
+                  procedure the static type's own table would hold;
+                  otherwise it is the indirect call Appendix D5 describes,
+                  "v^.tag^.ProcTab[Index P]" - the slot P has in every
+                  extension of the receiver's static type, read from
+                  the tag at tag - (slot+1) words.
+       v.P^(...)  the procedure bound to the *base type* of v's static
+                  type (the report's own "calls the Insert procedure bound
+                  to Tree"): never dispatched, a direct call.
+
+     A VAR receiver goes first as the record's address plus its type
+     descriptor (the hidden argument, NeedsHiddenTag); a pointer receiver
+     as the pointer alone, which is the same address (a pointer designates
+     the record's own data), so one call works for both. A pointer
+     receiver needs a real heap block behind it, so only a pointer or an
+     explicitly dereferenced one may be passed for it; anything else is
+     rejected rather than handed a "pointer" to a variable with no tag. *)
+  PROCEDURE GenerateMethodCall(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
+                               args: SyntaxTree.ExprNode; nameSelector: SyntaxTree.Selector; baseCall: BOOLEAN;
+                               rec: Types.RecordType; method: Types.Method; VAR result: Value);
+    VAR
+      addrText, tag, slotAddr, slotBytes, wordBytes, callee, destTemp, retType: ValueText;
+      addrType: Types.Type; dyn: DynamicType; called: Types.Method; owner, baseRec: Types.RecordType;
+      slot: INTEGER; symbol: LongText; argsText, receiverText: ARRAY 512 OF CHAR;
+      nameNode: SyntaxTree.FieldSelector; indirect: BOOLEAN;
+  BEGIN
+    IF ~GenerateDesignatorAddressTo(w, cg, d, nameSelector, addrText, addrType, dyn) THEN
+      Unsupported(w, cg, "type-bound call on a receiver this backend cannot address", Types.Undefined, result);
+      RETURN
+    END;
+    IF (addrType # NIL) & (addrType IS Types.PointerType) THEN
+      IF ~DereferencePointer(w, cg, addrText, addrType) THEN
+        Unsupported(w, cg, "type-bound call through a pointer to a non-record", Types.Undefined, result);
+        RETURN
+      END;
+      dyn.kind := dynBlock; COPY(addrText, dyn.text)
+    END;
+    nameNode := nameSelector(SyntaxTree.FieldSelector);
+    indirect := FALSE;
+    IF baseCall THEN
+      called := NIL;
+      IF rec.baseType # NIL THEN
+        baseRec := rec.baseType(Types.RecordType);
+        called := Types.FindMethod(baseRec, nameNode.name);
+        IF called # NIL THEN owner := Types.MethodOwner(baseRec, called) END
+      END;
+      IF called = NIL THEN
+        Unsupported(w, cg, "base-type call with no base procedure", Types.Undefined, result);
+        RETURN
+      END
+    ELSE
+      called := method;
+      slot := LLVMTypes.SlotOfMethod(rec, method);
+      IF slot < 0 THEN
+        Unsupported(w, cg, "type-bound procedure with no ProcTab slot", Types.Undefined, result);
+        RETURN
+      END;
+      IF dyn.kind = dynStatic THEN
+        called := LLVMTypes.SlotMethod(rec, slot, owner)
+      ELSE
+        indirect := TRUE
+      END
+    END;
+    IF ~called.receiverIsVar & (dyn.kind # dynBlock) THEN
+      Unsupported(w, cg, "pointer receiver called on a record that is not a heap block", Types.Undefined, result);
+      RETURN
+    END;
+    (* receiver argument: address, and the tag if it is a VAR receiver *)
+    receiverText[0] := 0X;
+    Strcat(receiverText, "ptr "); Strcat(receiverText, addrText);
+    tag[0] := 0X;
+    IF called.receiverIsVar OR indirect THEN EmitDynamicTag(w, cg, dyn, rec, tag) END;
+    IF called.receiverIsVar THEN Strcat(receiverText, ", ptr "); Strcat(receiverText, tag) END;
+    IF indirect THEN
+      wordBytes[0] := 0X; AppendLongInt(wordBytes, ConstantEvaluator.wordSize);
+      slotBytes[0] := 0X; AppendLongInt(slotBytes, -(slot + 1) * ConstantEvaluator.wordSize);
+      EmitByteGEP(w, cg, tag, "i32", slotBytes, slotAddr);
+      EmitLoad(w, cg, "ptr", slotAddr, callee)
+    ELSE
+      MethodSymbol(owner, called.name, symbol);
+      COPY(symbol, callee)
+    END;
+    GenerateCallArgList(w, cg, called.procType.params, args, TRUE, argsText);
+    IF argsText[0] # 0X THEN Strcat(receiverText, ", "); Strcat(receiverText, argsText) END;
+    IF called.procType.resultType = NIL THEN
+      WriteStr(w, "  call void "); WriteStr(w, callee); WriteStr(w, "("); WriteStr(w, receiverText);
+      WriteStr(w, ")"); WriteLn(w);
+      result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X
+    ELSE
+      LLVMTypes.TypeString(called.procType.resultType, cg.sizeModel, retType);
+      NewTemp(cg, destTemp);
+      WriteStr(w, "  "); WriteStr(w, destTemp); WriteStr(w, " = call "); WriteStr(w, retType);
+      WriteStr(w, " "); WriteStr(w, callee); WriteStr(w, "("); WriteStr(w, receiverText);
+      WriteStr(w, ")"); WriteLn(w);
+      result.text := destTemp; COPY(retType, result.llvmType); result.oberonType := called.procType.resultType
+    END
+  END GenerateMethodCall;
 
   (* ABS(x): |x|, same type as x. An integer x is branch-free via select,
      mirroring GenerateDivMod's own select-based correction (this
@@ -2830,7 +3170,7 @@ MODULE LLVMCodeGenerator;
         RETURN
       END
     END;
-    Unsupported(w, cg, "SYSTEM.ADR of a designator needing POINTER/dispatch", Types.Address, result)
+    Unsupported(w, cg, "SYSTEM.ADR of a designator this backend cannot address", Types.Address, result)
   END GenerateAdr;
 
   PROCEDURE GenerateGet(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
@@ -2844,7 +3184,7 @@ MODULE LLVMCodeGenerator;
     IF de.hasParens THEN RETURN END;
     AddressToPointer(w, cg, args, ptrText);
     IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
-      WriteStr(w, "  ; unsupported: SYSTEM.GET into a designator needing POINTER/dispatch"); WriteLn(w);
+      WriteStr(w, "  ; unsupported: SYSTEM.GET into a designator this backend cannot address"); WriteLn(w);
       RETURN
     END;
     LLVMTypes.TypeString(addrType, cg.sizeModel, v.llvmType);
@@ -3085,30 +3425,25 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
   END GenerateNew;
 
-  (* Whether de is a type guard "v(T)" rather than a call: a variable
-     followed by one bare type name in parentheses (a predeclared
-     procedure like SIZE(T) also takes a type name, but its base is a
-     procedure, not a variable). *)
-  PROCEDURE IsGuardExpr(VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode): BOOLEAN;
-    VAR obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
-  BEGIN
-    IF ~de.hasParens OR (de.args = NIL) OR (de.args.next # NIL) THEN RETURN FALSE END;
-    IF NamedType(cg, de.args) = NIL THEN RETURN FALSE END;
-    obj := ResolveQualifiedObject(cg, de.designator.qualifier, de.designator.name, homeModule);
-    RETURN (obj # NIL) & (obj.class = SymbolTable.varClass)
-  END IsGuardExpr;
-
   (* v(T) as an expression: v itself, after checking its dynamic type;
      what follows it sees static type T. *)
   PROCEDURE GenerateGuardExpr(VAR w: Files.Rider; VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode;
                               VAR result: Value);
-    VAR targetType: Types.Type; rec: Types.RecordType; v: Value;
+    VAR targetType, staticType: Types.Type; rec: Types.RecordType; v: Value;
   BEGIN
     targetType := NamedType(cg, de.args);
     rec := TargetRecord(targetType);
     IF ~EnsureTypeTag(cg, rec) THEN
       Unsupported(w, cg, "type guard to a record type with no nameable run-time descriptor",
                   Types.Undefined, result);
+      RETURN
+    END;
+    staticType := DesignatorStaticType(cg, de.designator);
+    IF (staticType # NIL) & (staticType IS Types.RecordType) THEN
+      (* a guarded VAR record parameter has no value of its own to produce
+         here; it works as a selector's base, an IS operand, a WITH
+         variable and a VAR argument, which do not come through here *)
+      Unsupported(w, cg, "type guard on a VAR record parameter used as a value", Types.Undefined, result);
       RETURN
     END;
     GenerateDesignatorValue(w, cg, de.designator, v);
@@ -3159,22 +3494,24 @@ MODULE LLVMCodeGenerator;
     END
   END GeneratePredeclaredCall;
 
-  (* A type-bound method call ("receiver.Method(...)", a selector-based
-     target) still isn't lowered here - real Oberon-2 the front end
-     accepts, dispatch-shaped work Phase 8 excludes entirely (this
-     module's own header comment's "Explicit non-goals"), matching
-     Phase 9 instead, same as GenerateDesignatorAddress's own POINTER/
-     dispatch exclusions. A plain (non-type-bound) procedure, external
-     or ordinary, is the only user-defined call target this step's
-     scope reaches - a predeclared procedure (Types.PredeclaredProcedure-
-     Type, PLAN.md Phase 8 step 11) is checked first, since it is also a
-     procClass Object but never an external/ordinary one. *)
+  (* A call: a type-bound procedure ("receiver.P(...)" - see
+     GenerateMethodCall), a predeclared procedure (Types.PredeclaredProcedure-
+     Type, PLAN.md Phase 8 step 11 - checked before the external/ordinary
+     ones, since it is also a procClass Object), an external one, or an
+     ordinary user-defined one. *)
   PROCEDURE GenerateCall(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                         args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
+    VAR
+      obj: SymbolTable.Object; homeModule: SyntaxTree.Ident; nameSelector: SyntaxTree.Selector;
+      baseCall: BOOLEAN; rec: Types.RecordType; method: Types.Method;
   BEGIN
     IF d.selectors # NIL THEN
-      Unsupported(w, cg, "selector call target (type-bound dispatch, Phase 9)", Types.Undefined, result);
+      IF FindMethodTarget(cg, d, nameSelector, baseCall, rec, method) THEN
+        GenerateMethodCall(w, cg, d, args, nameSelector, baseCall, rec, method, result)
+      ELSE
+        Unsupported(w, cg, "selector call target that is not a type-bound procedure (a procedure value, Phase 9 step 8)",
+                    Types.Undefined, result)
+      END;
       RETURN
     END;
     obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
@@ -3216,7 +3553,7 @@ MODULE LLVMCodeGenerator;
       IF GenerateDesignatorAddress(w, cg, s.target, addrText, addrType) THEN
         AssignToAddress(w, cg, addrText, addrType, s.value)
       ELSE
-        WriteStr(w, "  ; unsupported: selector needing POINTER/dispatch (Phase 9)"); WriteLn(w)
+        WriteStr(w, "  ; unsupported: selector this backend cannot address (a pointer to an open array, step 7)"); WriteLn(w)
       END;
       RETURN
     END;
@@ -3627,7 +3964,7 @@ MODULE LLVMCodeGenerator;
     VAR
       guard: SyntaxTree.WithGuardNode; obj, typeObj: SymbolTable.Object; homeModule, typeHome: SyntaxTree.Ident;
       rec: Types.RecordType; endLabel, bodyLabel, nextLabel, cond: ValueText; current: Value;
-      narrowing: Narrowing;
+      narrowing: Narrowing; binding: LocalBinding;
   BEGIN
     NewLabel(cg, endLabel);
     guard := s.guards;
@@ -3639,12 +3976,21 @@ MODULE LLVMCodeGenerator;
       IF (obj = NIL) OR (obj.class # SymbolTable.varClass) OR ~EnsureTypeTag(cg, rec) THEN
         WriteStr(w, "  ; unsupported: WITH guard on this variable or type (no nameable run-time descriptor)"); WriteLn(w)
       ELSE
-        LoadVar(w, cg, obj, current);
-        EmitTypeTest(w, cg, current.text, rec, cond);
+        binding := FindLocalBinding(cg, obj);
+        IF (binding # NIL) & (binding.tagText[0] # 0X) THEN
+          (* a VAR record parameter: its hidden tag says what it is *)
+          EmitTagTestOnTag(w, cg, binding.tagText, rec, cond)
+        ELSE
+          LoadVar(w, cg, obj, current);
+          EmitTypeTest(w, cg, current.text, rec, cond)
+        END;
         NewLabel(cg, bodyLabel); NewLabel(cg, nextLabel);
         EmitCondBr(w, cond, bodyLabel, nextLabel);
         EmitLabel(w, cg, bodyLabel);
-        NEW(narrowing); narrowing.obj := obj; narrowing.type := TargetPointer(typeObj.type);
+        NEW(narrowing); narrowing.obj := obj;
+        IF (binding # NIL) & (binding.tagText[0] # 0X) THEN narrowing.type := rec
+        ELSE narrowing.type := TargetPointer(typeObj.type)
+        END;
         narrowing.next := cg.narrowings; cg.narrowings := narrowing;
         GenerateStatementSeq(w, cg, guard.body);
         cg.narrowings := narrowing.next;
@@ -3829,12 +4175,11 @@ MODULE LLVMCodeGenerator;
      under a POINTER TO, or declared inside a procedure - gets one only
      when NEW, IS, a guard or WITH names it (PLAN.md Phase 9 step 5:
      EnsureTypeTag names it "$anon<N>" and EmitPointerSupport emits its
-     descriptor at the end of the program). Type-bound procedure *bodies* are
-     not generated yet either (step 6) - ProcTab entries name their
-     eventual symbols (@<Module>.<RecordName>.<ProcName>), and each is
-     "declare"d here so the reference is valid IR meanwhile; step 6 must
-     drop those declares when it starts emitting the real "define"s
-     (LLVM rejects a "declare" and a "define" of one symbol). *)
+     descriptor at the end of the program). ProcTab entries name the
+     symbols of the type-bound procedures' bodies
+     (@<Module>.<RecordName>.<ProcName>), which GenerateMethodDecl
+     defines with the rest of the module's procedures (PLAN.md Phase 9
+     step 6; until then each was a "declare" written here). *)
 
 
 
@@ -3951,42 +4296,6 @@ MODULE LLVMCodeGenerator;
     END
   END EmitPointerOffsets;
 
-  (* "@<Module>.<Type>.<Proc>" for a type-bound procedure whose
-     implementation is owner's own declaration. *)
-  PROCEDURE MethodSymbol(owner: Types.RecordType; procName: ARRAY OF CHAR; VAR text: ARRAY OF CHAR);
-  BEGIN
-    RecordSymbolBase(owner, text); Strcat(text, "."); Strcat(text, procName)
-  END MethodSymbol;
-
-  (* One "declare" per type-bound procedure rec itself declares (never an
-     inherited one - the base's own EmitTypeDescriptors already did) -
-     see the section header above on why, and on step 6 dropping these.
-     The receiver is always the first parameter, a bare "ptr" whether it
-     is a VAR record or a pointer-to-record value receiver. *)
-  PROCEDURE EmitMethodDeclares(VAR w: Files.Rider; VAR cg: Codegen; rec: Types.RecordType);
-    VAR
-      m: Types.Method; p: Types.Param; retType, paramType: ValueText; sym: LongText;
-  BEGIN
-    m := rec.methods;
-    WHILE m # NIL DO
-      IF m.procType.resultType = NIL THEN COPY("void", retType)
-      ELSE LLVMTypes.TypeString(m.procType.resultType, cg.sizeModel, retType)
-      END;
-      MethodSymbol(rec, m.name, sym);
-      WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " "); WriteStr(w, sym);
-      WriteStr(w, "(ptr");
-      p := m.procType.params;
-      WHILE p # NIL DO
-        WriteStr(w, ", ");
-        ParamLLVMType(cg, p, paramType);
-        WriteStr(w, paramType);
-        p := p.next
-      END;
-      WriteStr(w, ")"); WriteLn(w);
-      m := m.next
-    END
-  END EmitMethodDeclares;
-
   (* BaseTypes' entries, root ancestor first, ending with rec's own tag:
      one "ptr <tag>" each, comma-separated, recursing up the base chain
      before writing rec's own. *)
@@ -4028,7 +4337,6 @@ MODULE LLVMCodeGenerator;
     RecordSymbolBase(rec, base);
     COPY(base, tdesc); Strcat(tdesc, ".tdesc");
     TagSymbol(rec, tag);
-    EmitMethodDeclares(w, cg, rec);
     (* the struct type, spelled once and reused for the initializer *)
     WriteStr(w, tdesc); WriteStr(w, " = constant { [");
     text[0] := 0X; AppendLongInt(text, slotCount); WriteStr(w, text);
@@ -4342,32 +4650,49 @@ MODULE LLVMCodeGenerator;
      matching actual declaration as two separate entries (Semantic-
      Actions.ResolveProcDecls's own structure) - only the latter has a
      real d.statements/d.declarations to generate from. A type-bound
-     method (d.receiver # NIL) is dispatch-shaped work Phase 8 excludes
-     entirely (this module's own header comment's "Explicit non-
-     goals"), matching Phase 9 instead. *)
+     method (d.receiver # NIL) is not "ordinary" - GenerateMethodDecl
+     generates it (PLAN.md Phase 9 step 6). *)
   PROCEDURE IsOrdinaryProcDecl(pd: SyntaxTree.ProcDeclNode): BOOLEAN;
   BEGIN
     RETURN ~pd.isExternal & ~pd.isForward & (pd.receiver = NIL)
   END IsOrdinaryProcDecl;
+
+  (* Every procedure declaration that has a body to generate: an ordinary
+     one or (PLAN.md Phase 9 step 6) a type-bound one. *)
+  PROCEDURE HasBody(pd: SyntaxTree.ProcDeclNode): BOOLEAN;
+  BEGIN
+    RETURN ~pd.isExternal & ~pd.isForward
+  END HasBody;
 
   (* "define <retType> <fnSymbol>(<formal LLVM types, named %<paramName>
      each>) {" plus the mandatory opening "entry:" label - mirrors
      EmitExternalDeclares' own signature-writing loop exactly (same
      ParamLLVMType-driven VAR/open-CHAR-array-as-"ptr" convention), just
      "define ... { entry:" instead of "declare ...;". *)
-  PROCEDURE EmitProcSignature(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR);
+  PROCEDURE EmitProcSignature(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
+                              receiver: SyntaxTree.ReceiverNode);
     VAR retType, paramType: ValueText; p: Types.Param; first: BOOLEAN;
   BEGIN
     IF pt.resultType = NIL THEN COPY("void", retType)
     ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
     END;
     WriteStr(w, "define "); WriteStr(w, retType); WriteStr(w, " "); WriteStr(w, fnSymbol); WriteStr(w, "(");
-    p := pt.params; first := TRUE;
+    first := TRUE;
+    IF receiver # NIL THEN
+      (* the receiver is always the first parameter, a bare "ptr": the
+         record's address for a VAR receiver (then followed by its hidden
+         tag), the pointer for a pointer receiver *)
+      WriteStr(w, "ptr %"); WriteStr(w, receiver.name);
+      IF receiver.isVar THEN WriteStr(w, ", ptr %"); WriteStr(w, receiver.name); WriteStr(w, ".tag") END;
+      first := FALSE
+    END;
+    p := pt.params;
     WHILE p # NIL DO
       IF ~first THEN WriteStr(w, ", ") END;
       first := FALSE;
       ParamLLVMType(cg, p, paramType);
       WriteStr(w, paramType); WriteStr(w, " %"); WriteStr(w, p.name);
+      IF NeedsHiddenTag(p) THEN WriteStr(w, ", ptr %"); WriteStr(w, p.name); WriteStr(w, ".tag") END;
       p := p.next
     END;
     WriteStr(w, ") {"); WriteLn(w);
@@ -4388,14 +4713,19 @@ MODULE LLVMCodeGenerator;
      that's what SymbolTable.Find(cg.scope, ...) will actually return
      while generating this procedure's body. *)
   PROCEDURE BindFormalParams(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType);
-    VAR p: Types.Param; obj: SymbolTable.Object; llvmType: ValueText; argName, addrText: ValueText;
+    VAR p: Types.Param; obj: SymbolTable.Object; llvmType: ValueText; argName, tagName, addrText: ValueText;
   BEGIN
     p := pt.params;
     WHILE p # NIL DO
       obj := SymbolTable.FindLocal(bodyScope, p.name);
       COPY("%", argName); Strcat(argName, p.name);
       IF p.isVar THEN
-        BindLocal(cg, obj, argName)
+        IF NeedsHiddenTag(p) THEN
+          COPY(argName, tagName); Strcat(tagName, ".tag");
+          BindLocalWithTag(cg, obj, argName, tagName)
+        ELSE
+          BindLocal(cg, obj, argName)
+        END
       ELSE
         ParamLLVMType(cg, p, llvmType);
         NewTemp(cg, addrText);
@@ -4407,6 +4737,28 @@ MODULE LLVMCodeGenerator;
       p := p.next
     END
   END BindFormalParams;
+
+  (* A type-bound procedure's receiver, bound like the parameter of the
+     same kind: a VAR receiver (a record) is its incoming address plus its
+     hidden tag; a value receiver (a pointer) gets a private slot holding
+     the incoming pointer, so the body can assign to it like any value
+     parameter. *)
+  PROCEDURE BindReceiver(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
+                         receiver: SyntaxTree.ReceiverNode);
+    VAR obj: SymbolTable.Object; argName, tagName, addrText: ValueText;
+  BEGIN
+    obj := SymbolTable.FindLocal(bodyScope, receiver.name);
+    COPY("%", argName); Strcat(argName, receiver.name);
+    IF receiver.isVar THEN
+      COPY(argName, tagName); Strcat(tagName, ".tag");
+      BindLocalWithTag(cg, obj, argName, tagName)
+    ELSE
+      NewTemp(cg, addrText);
+      WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca ptr"); WriteLn(w);
+      WriteStr(w, "  store ptr "); WriteStr(w, argName); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+      BindLocal(cg, obj, addrText)
+    END
+  END BindReceiver;
 
   (* One alloca per local VAR, left uninitialized (no "store" after it)
      - real Oberon-2 gives a local variable no defined initial value,
@@ -4467,19 +4819,16 @@ MODULE LLVMCodeGenerator;
      case does. cg.locals/cg.currentProcResultType/cg.scope are all
      reset back to their module-level values afterward, so the next
      procedure (or "_init", once every procedure is done) starts clean. *)
-  PROCEDURE GenerateProcedureDecl(VAR w: Files.Rider; VAR cg: Codegen; moduleScope: SymbolTable.Scope;
-                                  pd: SyntaxTree.ProcDeclNode);
-    VAR
-      obj: SymbolTable.Object; pt: Types.ProcedureType; bodyScope, savedScope: SymbolTable.Scope;
-      fnSymbol, retType: ValueText;
+  PROCEDURE GenerateProcedureBody(VAR w: Files.Rider; VAR cg: Codegen; moduleScope: SymbolTable.Scope;
+                                  pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
+                                  receiverType: Types.Type);
+    VAR bodyScope, savedScope: SymbolTable.Scope; retType: ValueText;
   BEGIN
-    obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
-    pt := obj.type(Types.ProcedureType);
-    ModuleQualifiedName(cg, obj.name, fnSymbol);
-    EmitProcSignature(w, cg, pt, fnSymbol);
-    bodyScope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, NIL, pt);
+    EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver);
+    bodyScope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, receiverType, pt);
     savedScope := cg.scope;
     cg.scope := bodyScope; cg.locals := NIL; cg.currentProcResultType := pt.resultType;
+    IF pd.receiver # NIL THEN BindReceiver(w, cg, bodyScope, pd.receiver) END;
     BindFormalParams(w, cg, bodyScope, pt);
     BindLocalVars(w, cg, bodyScope, pd.declarations);
     GenerateStatementSeq(w, cg, pd.statements);
@@ -4496,7 +4845,35 @@ MODULE LLVMCodeGenerator;
     END;
     WriteStr(w, "}"); WriteLn(w); WriteLn(w);
     cg.scope := savedScope; cg.locals := NIL; cg.currentProcResultType := NIL
+  END GenerateProcedureBody;
+
+  PROCEDURE GenerateProcedureDecl(VAR w: Files.Rider; VAR cg: Codegen; moduleScope: SymbolTable.Scope;
+                                  pd: SyntaxTree.ProcDeclNode);
+    VAR obj: SymbolTable.Object; fnSymbol: ValueText;
+  BEGIN
+    obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
+    ModuleQualifiedName(cg, obj.name, fnSymbol);
+    GenerateProcedureBody(w, cg, moduleScope, pd, obj.type(Types.ProcedureType), fnSymbol, NIL)
   END GenerateProcedureDecl;
+
+  (* One type-bound procedure's own "define": the receiver's declared
+     type (a pointer to a record, or the record itself for a VAR
+     receiver) names the record the procedure is bound to, which holds
+     the Types.Method carrying the resolved signature. Named
+     "@<Module>.<Record>.<Procedure>", exactly the symbol every ProcTab
+     entry (EmitProcTabEntries) and every statically resolved call
+     already refers to. *)
+  PROCEDURE GenerateMethodDecl(VAR w: Files.Rider; VAR cg: Codegen; moduleScope: SymbolTable.Scope;
+                               pd: SyntaxTree.ProcDeclNode);
+    VAR
+      typeObj: SymbolTable.Object; owner: Types.RecordType; method: Types.Method; sym: LongText;
+  BEGIN
+    typeObj := SymbolTable.FindLocal(moduleScope, pd.receiver.typeName);
+    owner := TargetRecord(typeObj.type);
+    method := Types.FindOwnMethod(owner, pd.name.name);
+    MethodSymbol(owner, method.name, sym);
+    GenerateProcedureBody(w, cg, moduleScope, pd, method.procType, sym, typeObj.type)
+  END GenerateMethodDecl;
 
   (* The whole-program driver (PLAN.md Phase 8 step 12), generalizing
      what used to be this module's own single-module Generate* (removed -
@@ -4720,7 +5097,7 @@ MODULE LLVMCodeGenerator;
       IF m.module.declarations # NIL THEN
         pd := m.module.declarations.procDecls;
         WHILE pd # NIL DO
-          IF IsOrdinaryProcDecl(pd) THEN CollectStringConstantsSeq(w, cg, pd.statements) END;
+          IF HasBody(pd) THEN CollectStringConstantsSeq(w, cg, pd.statements) END;
           pd := pd.next
         END
       END;
@@ -4733,7 +5110,9 @@ MODULE LLVMCodeGenerator;
       IF m.module.declarations # NIL THEN
         pd := m.module.declarations.procDecls;
         WHILE pd # NIL DO
-          IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(w, cg, m.scope, pd) END;
+          IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(w, cg, m.scope, pd)
+          ELSIF HasBody(pd) THEN GenerateMethodDecl(w, cg, m.scope, pd)
+          END;
           pd := pd.next
         END
       END;

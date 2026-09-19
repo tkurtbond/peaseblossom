@@ -311,6 +311,25 @@ MODULE LLVMTypes;
     RETURN -1
   END MethodSlot;
 
+  (* The ProcTab slot of m, a type-bound procedure a call on static type
+     rec resolved to (Types.FindMethod: rec's own procedure of that name,
+     else the nearest ancestor's). The slot is the one m holds in the
+     record that declares it - an override reuses its base's - and every
+     extension keeps it, so it is also m's slot in rec's own table. Matched
+     by Method identity, not by name (see MethodSlot above); -1 if m is
+     not one of rec's procedures at all. *)
+  PROCEDURE SlotOfMethod*(rec: Types.RecordType; m: Types.Method): INTEGER;
+    VAR declarer: Types.RecordType; i, count: INTEGER; owner: Types.RecordType;
+  BEGIN
+    declarer := Types.MethodOwner(rec, m);
+    IF declarer = NIL THEN RETURN -1 END;
+    count := MethodSlotCount(declarer);
+    FOR i := 0 TO count - 1 DO
+      IF SlotMethod(declarer, i, owner) = m THEN RETURN i END
+    END;
+    RETURN -1
+  END SlotOfMethod;
+
   (* Recognizes the arch component of an LLVM target triple (the text
      before its first "-"). Not exhaustive - just the architectures
      plausibly reachable from PLAN.md's own portability list
