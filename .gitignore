@@ -48,6 +48,7 @@ test/conformance/llvm-open-array-params/llvm-open-array-params
 test/conformance/llvm-open-array-new/llvm-open-array-new
 test/conformance/llvm-trees-strings/llvm-trees-strings
 test/conformance/llvm-open-array-traps/*.exe
+test/conformance/llvm-ash-max-min/llvm-ash-max-min
 test/conformance/llvm-procedure-values/llvm-procedure-values
 test/conformance/llvm-procedure-values-import/llvm-procedure-values-import
 test/conformance/llvm-procedure-value-traps/*.exe
