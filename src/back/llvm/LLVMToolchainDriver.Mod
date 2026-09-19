@@ -167,8 +167,8 @@ MODULE LLVMToolchainDriver;
     RETURN ok
   END EmitIR;
 
-  (* Full build: EmitIR* first, then a single-step `clang <ll> -o
-     <exePath>` (Platform.System) - see this module's own header comment
+  (* Full build: EmitIR* first, then a single-step `clang --target=<triple>
+     <ll> -o <exePath>` (Platform.System) - see this module's own header comment
      for why single-step, not a separate llc+link. *)
   PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
                    triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
@@ -178,7 +178,13 @@ MODULE LLVMToolchainDriver;
       status: INTEGER;
   BEGIN
     IF ~EmitIR(modules, topName, triple, outputDir, llPath) THEN RETURN FALSE END;
-    cmd := "clang ";
+    (* --target matters for a cross build: the .ll file names its own
+       triple, but clang only warns about that ("overriding the module
+       target triple") and links for the host - a -target i686 build used
+       to silently produce a 64-bit executable. *)
+    cmd := "clang --target=";
+    Strcat(cmd, triple);
+    Strcat(cmd, " ");
     Strcat(cmd, llPath);
     Strcat(cmd, " -o ");
     Strcat(cmd, exePath);

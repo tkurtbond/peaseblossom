@@ -2124,9 +2124,18 @@ style exactly.
    - **Limits, recorded in the collector's own header:** one object at
      most 2^27 bytes; a chunk must not straddle the 32-bit signed
      boundary (address tests are offsets from the chunk start otherwise);
-     chunks are never returned; no `free`. i686 cannot be *run* here (no
-     32-bit C runtime to link), so the 32-bit story is `clang -c` on the
-     IR of both fixtures plus the goldens.
+     chunks are never returned; no `free`. **32-bit verification
+     (2026-09-19, after `glibc-devel.i686` was installed):** `llvm-i686-
+     runtime` builds every runtime fixture (Phase 8's, steps 2-3's and
+     both collector fixtures) as a real `i686-unknown-linux-gnu` ELF,
+     runs it, and requires the output to equal its 64-bit sibling's
+     `expected`; it skips itself (still passing, with a `SKIPPED` line)
+     where `testenv.sh`'s `i686_can_run` finds no runnable 32-bit x86
+     runtime. All 14 agree. It also found that `-target ... -build` had
+     been linking for the *host*: `LLVMToolchainDriver.Build` never passed
+     `--target` to `clang`, which merely warns about a module whose
+     triple differs - fixed. `llvm-system`'s check 21 had assumed a
+     64-bit address; it now compares against `SIZE` of a pointer.
    - **Fixtures** (133 tests pass): `llvm-system` (34 checks, 32 also
      under voc at `-O2` and `-OC`; two poc-only checks for `VAL` between
      widths), `llvm-system-ir` (golden at both word sizes, clang-checked),

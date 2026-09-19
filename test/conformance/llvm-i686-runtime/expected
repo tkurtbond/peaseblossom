@@ -1,0 +1,14 @@
+llvm-hello-world: same
+llvm-const-decls: same
+llvm-arrays-records: same
+llvm-control-flow: same
+llvm-procedures: same
+llvm-predeclared: same
+llvm-multi-module: same
+llvm-reals: same
+llvm-sets: same
+llvm-char-arrays: same
+llvm-string-consts: same
+llvm-system: same
+llvm-gc-collect: same
+llvm-gc-tracing: same

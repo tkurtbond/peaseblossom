@@ -45,3 +45,17 @@ poc_build_run() {
   poc -o "$exe" -build "$1" >result
   "./$exe" >>result
 }
+
+# PLAN.md Phase 9: succeeds if clang can link and the kernel can run a
+# 32-bit x86 executable here - needs the 32-bit C runtime (Fedora:
+# glibc-devel.i686), which is absent from many machines, and an x86 host.
+# Used by fixtures that build for i686-unknown-linux-gnu so they can skip
+# themselves cleanly instead of failing on a box that cannot run them.
+i686_can_run() {
+  probe=$(mktemp -d) || return 1
+  printf 'int main(void){return 0;}\n' >"$probe/probe.c"
+  if clang -m32 "$probe/probe.c" -o "$probe/probe" >/dev/null 2>&1 && "$probe/probe" >/dev/null 2>&1
+  then rm -rf "$probe"; return 0
+  else rm -rf "$probe"; return 1
+  fi
+}

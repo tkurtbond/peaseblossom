@@ -13,6 +13,7 @@ MODULE system;
   IMPORT SYSTEM;
   TYPE
     Pair = RECORD a, b: INTEGER END;
+    PairRef = POINTER TO Pair;
   VAR
     addr, other: SYSTEM.ADDRESS;
     i, j, k: INTEGER;
@@ -90,7 +91,7 @@ BEGIN
   i := 5; addr := addr + i; l := 3; addr := addr + l;
   IF addr # 1008 THEN SysWrite(1, "FAIL 19 ", 8) END;
   h := addr; IF h # 1008 THEN SysWrite(1, "FAIL 20 ", 8) END;
-  IF SIZE(SYSTEM.ADDRESS) # 8 THEN SysWrite(1, "FAIL 21 ", 8) END;
+  IF SIZE(SYSTEM.ADDRESS) # SIZE(PairRef) THEN SysWrite(1, "FAIL 21 ", 8) END;
   (* VAL *)
   l := -2; m := SYSTEM.VAL(LONGINT, l);
   IF m # -2 THEN SysWrite(1, "FAIL 22 ", 8) END;
