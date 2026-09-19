@@ -30,6 +30,17 @@ MODULE LLVMCodeGenerator;
      never hand one family's instruction to the other's operand type -
      that would emit ill-typed IR, not just wrong IR.
 
+     SET constructors, IN, INCL/EXCL, named STRING CONSTs, ARRAY OF CHAR
+     comparison and string-to-array assignment are in scope since PLAN.md
+     Phase 9 step 3 (GenerateSetExpr, GenerateIn, GenerateInclExcl,
+     GenerateCharSequence/GenerateCharCompare, AssignToAddress). Since
+     the AST carries no resolved types, "is this operand a character
+     sequence" is decided from the declarations before anything is
+     generated (IsCharSequenceExpr), and the two runtime loops that
+     comparison and COPY need are private helper functions emitted at the
+     end of the program only if something called one
+     (EmitCharacterHelpers).
+
      DIV/MOD lower Oberon-2's floored-division semantics (confirmed
      2026-09-18 against real voc, not assumed: (-7) DIV 2 = -4, (-7) MOD
      2 = 1, 7 DIV (-2) = -4, 7 MOD (-2) = -1, (-7) DIV (-2) = 3, (-7) MOD
@@ -279,6 +290,20 @@ MODULE LLVMCodeGenerator;
       next: TypeDescEntry
     END;
 
+    (* PLAN.md Phase 9 step 3: a named STRING CONST's text, or any other
+       string this backend has to materialize from a place with no
+       SyntaxTree.LiteralExprNode to name a global after - one entry per
+       *distinct* text (StringConstGlobal deduplicates), emitted once at
+       the very end of the program (EmitCharacterHelpers), since a global
+       cannot be emitted from inside the function body being generated
+       when it is discovered. *)
+    PendingString = POINTER TO PendingStringDesc;
+    PendingStringDesc = RECORD
+      text: LongText;
+      name: ValueText;
+      next: PendingString
+    END;
+
     (* PLAN.md Phase 8 step 12: one entry per module in a whole program's
        own dependency-ordered compile list (GenerateProgram*'s own
        parameter, near this file's end) - imports before importers, the
@@ -336,7 +361,16 @@ MODULE LLVMCodeGenerator;
          even though it can't happen in a well-formed program). *)
       currentProcResultType: Types.Type;
       locals: LocalBinding;
-      declaredExternals: DeclaredExternal
+      declaredExternals: DeclaredExternal;
+      (* PLAN.md Phase 9 step 3: ARRAY OF CHAR comparison and COPY from
+         a non-literal source are runtime loops, written once as
+         private helper functions (@.charcmp/@.charcopy) - but only
+         when some code generated actually calls one, so a program that
+         never compares a string carries none of it, and every earlier
+         golden .ll stays byte-identical. Set by the call sites, read
+         by EmitCharacterHelpers at the end of the program. *)
+      needCharCompare, needCharCopy: BOOLEAN;
+      pendingStrings: PendingString
     END;
 
   (* Files.WriteString (confirmed against real voc, see
@@ -602,6 +636,30 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, ", "); WriteStr(w, ty); WriteStr(w, " "); WriteStr(w, aText);
     WriteStr(w, ", "); WriteStr(w, ty); WriteStr(w, " "); WriteStr(w, bText); WriteLn(w)
   END EmitSelect;
+
+  (* One whole line of fixed text - the runtime helper functions below are
+     written out as plain IR text, several dozen lines of it. *)
+  PROCEDURE EmitLine(VAR w: Files.Rider; text: ARRAY OF CHAR);
+  BEGIN
+    WriteStr(w, text); WriteLn(w)
+  END EmitLine;
+
+  (* The global holding text (plus a terminating 0X) as a constant, by
+     name, registering it for EmitCharacterHelpers to emit if this exact
+     text has not been seen before - see PendingString. *)
+  PROCEDURE StringConstGlobal(VAR cg: Codegen; text: ARRAY OF CHAR; VAR name: ARRAY OF CHAR);
+    VAR p, last: PendingString; count: INTEGER;
+  BEGIN
+    p := cg.pendingStrings; last := NIL; count := 0;
+    WHILE p # NIL DO
+      IF p.text = text THEN COPY(p.name, name); RETURN END;
+      last := p; p := p.next; INC(count)
+    END;
+    NEW(p); COPY(text, p.text); p.next := NIL;
+    COPY("@.strconst.", p.name); AppendLongInt(p.name, count);
+    IF last = NIL THEN cg.pendingStrings := p ELSE last.next := p END;
+    COPY(p.name, name)
+  END StringConstGlobal;
 
   (* "%dest = getelementptr <pointeeType>, ptr <basePtr>, i32 0, <idxType>
      <idxText>" - PLAN.md Phase 8 step 8's one address-computing
@@ -1043,7 +1101,201 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateBooleanOp;
 
+  (* An integer LLVM type's width in bits - only ever asked about the
+     i8..i64 family every Oberon integer/CHAR/BOOLEAN/SET is spelled
+     with. *)
+  PROCEDURE IntWidth(llvmType: ARRAY OF CHAR): INTEGER;
+  BEGIN
+    IF llvmType = "i8" THEN RETURN 8
+    ELSIF llvmType = "i16" THEN RETURN 16
+    ELSIF llvmType = "i32" THEN RETURN 32
+    ELSE RETURN 64
+    END
+  END IntWidth;
+
+  (* v (an integer value: a SET element, or the left operand of IN) at
+     the SET type's own width - sext up, trunc down, or unchanged. Only
+     ever the *shift amount* of a shl/lshr on a SET, so which of the two
+     extensions is used never matters for a legal element (0..MAX(SET),
+     already non-negative and small); a negative or oversized one is an
+     error in the program (Oberon2.pdf leaves it undefined) and, for IN,
+     is filtered out by GenerateIn's own range check first. *)
+  PROCEDURE ToSetWidth(VAR w: Files.Rider; VAR cg: Codegen; v: Value; VAR result: Value);
+    VAR setLLVMType: ValueText; fromWidth, toWidth: INTEGER; opText: ARRAY 8 OF CHAR;
+  BEGIN
+    LLVMTypes.TypeString(Types.Set, cg.sizeModel, setLLVMType);
+    fromWidth := IntWidth(v.llvmType); toWidth := IntWidth(setLLVMType);
+    IF fromWidth = toWidth THEN
+      result := v
+    ELSE
+      IF fromWidth < toWidth THEN COPY("sext", opText) ELSE COPY("trunc", opText) END;
+      EmitConvert(w, cg, opText, v.llvmType, v.text, setLLVMType, result.text);
+      COPY(setLLVMType, result.llvmType);
+      result.oberonType := v.oberonType
+    END
+  END ToSetWidth;
+
+  (* "x IN s": bit x of s. Shifting by x >= the SET's width is poison in
+     LLVM, and Oberon2.pdf only defines IN for 0 <= x <= MAX(SET) - but
+     "not in the set" is the only sensible answer for anything else, and
+     cheap to give: the range check runs on x at its *own* width (an
+     unsigned compare, so a negative x is huge and fails too) and a
+     select discards the shift's result when it fails, which - unlike an
+     "and" - is not itself poisoned by a poison operand it does not
+     pick. *)
+  PROCEDURE GenerateIn(VAR w: Files.Rider; VAR cg: Codegen; x, s: Value; VAR result: Value);
+    VAR setTy, widthText, inRange, shifted, bit, isSet, chosen: ValueText; xExt: Value;
+  BEGIN
+    LLVMTypes.TypeString(Types.Set, cg.sizeModel, setTy);
+    widthText[0] := 0X; AppendLongInt(widthText, IntWidth(setTy));
+    EmitBinOp(w, cg, "icmp ult", x.llvmType, x.text, widthText, inRange);
+    ToSetWidth(w, cg, x, xExt);
+    EmitBinOp(w, cg, "lshr", setTy, s.text, xExt.text, shifted);
+    EmitBinOp(w, cg, "and", setTy, shifted, "1", bit);
+    EmitBinOp(w, cg, "icmp ne", setTy, bit, "0", isSet);
+    EmitSelect(w, cg, inRange, "i1", isSet, "false", chosen);
+    EmitConvert(w, cg, "zext", "i1", chosen, "i8", result.text);
+    COPY("i8", result.llvmType); result.oberonType := Types.Boolean
+  END GenerateIn;
+
+  (* The type of a designator, worked out from the declarations alone with
+     no instruction emitted - the AST carries no resolved types, and
+     whether an operand is a character sequence has to be known *before*
+     it is generated (GenerateBinaryExpr picks the whole lowering from
+     it). NIL if it cannot tell: an unresolvable name, a pointer
+     dereference or guard, a call. Walks exactly the selector shapes
+     GenerateDesignatorAddress does; where that gives up on a record
+     with a base type, this does not, so a "yes" here is a claim about
+     the type, not a promise the address can be computed. *)
+  PROCEDURE DesignatorStaticType(VAR cg: Codegen; d: SyntaxTree.Designator): Types.Type;
+    VAR obj: SymbolTable.Object; sel: SyntaxTree.Selector; t: Types.Type; homeModule: SyntaxTree.Ident;
+        rec: Types.RecordType; arr: Types.ArrayType; field: Types.Field; idx: SyntaxTree.ExprNode;
+  BEGIN
+    obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
+    IF obj = NIL THEN RETURN NIL END;
+    IF obj.class = SymbolTable.constClass THEN
+      IF d.selectors = NIL THEN RETURN obj.type ELSE RETURN NIL END
+    END;
+    IF obj.class # SymbolTable.varClass THEN RETURN NIL END;
+    t := obj.type; sel := d.selectors;
+    WHILE sel # NIL DO
+      WITH
+        sel: SyntaxTree.FieldSelector DO
+          IF (t = NIL) OR ~(t IS Types.RecordType) THEN RETURN NIL END;
+          rec := t(Types.RecordType);
+          field := Types.FindField(rec, sel.name);
+          IF field = NIL THEN RETURN NIL END;
+          t := field.type
+      | sel: SyntaxTree.IndexSelector DO
+          idx := sel.indices;
+          WHILE idx # NIL DO
+            IF (t = NIL) OR ~(t IS Types.ArrayType) THEN RETURN NIL END;
+            arr := t(Types.ArrayType);
+            t := arr.elementType;
+            idx := idx.next
+          END
+      ELSE
+        RETURN NIL
+      END;
+      sel := sel.next
+    END;
+    RETURN t
+  END DesignatorStaticType;
+
+  (* Text known at compile time and usable as a string: a string literal,
+     or a bare reference to a named STRING CONST. *)
+  PROCEDURE StringSourceText(VAR cg: Codegen; e: SyntaxTree.ExprNode; VAR text: ARRAY OF CHAR): BOOLEAN;
+    VAR lit: SyntaxTree.LiteralExprNode; de: SyntaxTree.DesignatorExprNode;
+        obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
+  BEGIN
+    IF e = NIL THEN RETURN FALSE END;
+    IF e IS SyntaxTree.LiteralExprNode THEN
+      lit := e(SyntaxTree.LiteralExprNode);
+      IF lit.literalKind # Lexer.string THEN RETURN FALSE END;
+      COPY(lit.lexeme, text);
+      RETURN TRUE
+    ELSIF e IS SyntaxTree.DesignatorExprNode THEN
+      de := e(SyntaxTree.DesignatorExprNode);
+      IF de.hasParens OR (de.designator.selectors # NIL) THEN RETURN FALSE END;
+      obj := ResolveQualifiedObject(cg, de.designator.qualifier, de.designator.name, homeModule);
+      IF (obj # NIL) & (obj.class = SymbolTable.constClass) & (obj.value # NIL)
+          & (obj.value.kind = Types.stringValue) THEN
+        COPY(obj.value.stringVal, text);
+        RETURN TRUE
+      END
+    END;
+    RETURN FALSE
+  END StringSourceText;
+
+  (* TRUE for an operand ARRAY OF CHAR comparison/passing/COPY treats as a
+     character sequence: a string literal, a named STRING CONST, or a
+     designator of fixed-length ARRAY n OF CHAR type (a variable, a
+     record field, an array element). An open ARRAY OF CHAR is not one
+     yet - its length is a run-time value, which needs Phase 9 step 7's
+     dope vectors. *)
+  PROCEDURE IsCharSequenceExpr(VAR cg: Codegen; e: SyntaxTree.ExprNode): BOOLEAN;
+    VAR lit: SyntaxTree.LiteralExprNode; de: SyntaxTree.DesignatorExprNode; t: Types.Type; arr: Types.ArrayType;
+  BEGIN
+    IF e = NIL THEN RETURN FALSE END;
+    IF e IS SyntaxTree.LiteralExprNode THEN
+      lit := e(SyntaxTree.LiteralExprNode);
+      RETURN lit.literalKind = Lexer.string
+    ELSIF e IS SyntaxTree.DesignatorExprNode THEN
+      de := e(SyntaxTree.DesignatorExprNode);
+      IF de.hasParens THEN RETURN FALSE END;
+      t := DesignatorStaticType(cg, de.designator);
+      IF t = Types.String THEN RETURN TRUE END;
+      IF (t # NIL) & (t IS Types.ArrayType) THEN
+        arr := t(Types.ArrayType);
+        RETURN ~arr.isOpen & (arr.elementType = Types.Char)
+      END
+    END;
+    RETURN FALSE
+  END IsCharSequenceExpr;
+
+  PROCEDURE ^ GenerateCharCompare(VAR w: Files.Rider; VAR cg: Codegen; op: INTEGER;
+                                  left, right: SyntaxTree.ExprNode; VAR result: Value);
+
   PROCEDURE ^ GenerateExpr(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.ExprNode; VAR result: Value);
+
+  (* {e1, e2, lo..hi}: the OR of one mask per element. A lone element is
+     "1 shl e"; a range lo..hi is the bits at or above lo AND the bits
+     at or below hi - "-1 shl lo" and "-1 lshr (W-1-hi)" - which comes
+     out empty by itself when lo > hi. Elements need not be constant
+     (§8.2), so each is a real instruction; an empty {} is the constant
+     0. *)
+  PROCEDURE GenerateSetExpr(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.SetExprNode; VAR result: Value);
+    VAR
+      el: SyntaxTree.SetElementNode; setTy, lastBit, maskText, aboveLow, belowHigh, shift, acc, merged: ValueText;
+      lo, hi, loExt, hiExt: Value; first: BOOLEAN;
+  BEGIN
+    LLVMTypes.TypeString(Types.Set, cg.sizeModel, setTy);
+    lastBit[0] := 0X; AppendLongInt(lastBit, IntWidth(setTy) - 1);
+    COPY("0", acc); first := TRUE;
+    el := expr.elements;
+    WHILE el # NIL DO
+      GenerateExpr(w, cg, el.low, lo);
+      ToSetWidth(w, cg, lo, loExt);
+      IF el.high = NIL THEN
+        EmitBinOp(w, cg, "shl", setTy, "1", loExt.text, maskText)
+      ELSE
+        GenerateExpr(w, cg, el.high, hi);
+        ToSetWidth(w, cg, hi, hiExt);
+        EmitBinOp(w, cg, "shl", setTy, "-1", loExt.text, aboveLow);
+        EmitBinOp(w, cg, "sub", setTy, lastBit, hiExt.text, shift);
+        EmitBinOp(w, cg, "lshr", setTy, "-1", shift, belowHigh);
+        EmitBinOp(w, cg, "and", setTy, aboveLow, belowHigh, maskText)
+      END;
+      IF first THEN
+        COPY(maskText, acc); first := FALSE
+      ELSE
+        EmitBinOp(w, cg, "or", setTy, acc, maskText, merged);
+        COPY(merged, acc)
+      END;
+      el := el.next
+    END;
+    COPY(acc, result.text); COPY(setTy, result.llvmType); result.oberonType := Types.Set
+  END GenerateSetExpr;
 
   PROCEDURE GenerateUnary(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.UnaryExprNode; VAR result: Value);
     VAR v: Value; ty: ValueText;
@@ -1082,6 +1334,12 @@ MODULE LLVMCodeGenerator;
                                VAR result: Value);
     VAR l, r: Value;
   BEGIN
+    IF ((expr.op = Lexer.equal) OR (expr.op = Lexer.notEqual) OR (expr.op = Lexer.less)
+        OR (expr.op = Lexer.lessEqual) OR (expr.op = Lexer.greater) OR (expr.op = Lexer.greaterEqual))
+       & IsCharSequenceExpr(cg, expr.left) & IsCharSequenceExpr(cg, expr.right) THEN
+      GenerateCharCompare(w, cg, expr.op, expr.left, expr.right, result);
+      RETURN
+    END;
     GenerateExpr(w, cg, expr.left, l);
     GenerateExpr(w, cg, expr.right, r);
     IF (expr.op = Lexer.plus) OR (expr.op = Lexer.minus) OR (expr.op = Lexer.times) THEN
@@ -1103,6 +1361,8 @@ MODULE LLVMCodeGenerator;
       GenerateRelational(w, cg, expr.op, l, r, result)
     ELSIF (expr.op = Lexer.ampersand) OR (expr.op = Lexer.orKeyword) THEN
       GenerateBooleanOp(w, cg, expr.op, l, r, result)
+    ELSIF expr.op = Lexer.inKeyword THEN
+      GenerateIn(w, cg, l, r, result)
     ELSE
       Unsupported(w, cg, "unrecognized binary operator", l.oberonType, result)
     END
@@ -1124,8 +1384,22 @@ MODULE LLVMCodeGenerator;
       result.oberonType := Types.Char
     ELSIF lit.literalKind = Lexer.real THEN
       RealConstant(w, cg, lit.lexeme, 0.0D0, ~lit.isLongReal, result)
-    ELSE (* Lexer.string *)
-      Unsupported(w, cg, "string literals (PLAN.md Phase 8 step 8+)", Types.String, result)
+    ELSIF lit.lexeme[0] # 0X THEN
+      IF lit.lexeme[1] = 0X THEN
+        (* Oberon2.pdf §3: a string of length 1 can be used wherever a
+           character constant is allowed. Only reached where a scalar is
+           wanted - a string in a character-sequence position (a
+           comparison against another sequence, an ARRAY OF CHAR
+           argument, COPY, assignment to an array) never comes through
+           GenerateExpr at all. *)
+        COPY("i8", result.llvmType);
+        result.text[0] := 0X; AppendLongInt(result.text, ORD(lit.lexeme[0]));
+        result.oberonType := Types.Char
+      ELSE
+        Unsupported(w, cg, "string literal longer than one character in a scalar position", Types.String, result)
+      END
+    ELSE
+      Unsupported(w, cg, "empty string literal in a scalar position", Types.String, result)
     END
   END GenerateLiteral;
 
@@ -1150,8 +1424,14 @@ MODULE LLVMCodeGenerator;
       result.text[0] := 0X; SetToText(obj.value.setVal, result.text)
     ELSIF obj.value.kind = Types.realValue THEN
       RealConstant(w, cg, obj.value.realText, obj.value.realVal, obj.type = Types.Real, result)
-    ELSE (* stringValue *)
-      Unsupported(w, cg, "string CONSTs (PLAN.md Phase 8 step 8+)", obj.type, result)
+    ELSIF (obj.value.stringVal[0] # 0X) & (obj.value.stringVal[1] = 0X) THEN
+      (* A one-character named STRING CONST used as a character, as a
+         literal of that length would be - see GenerateLiteral. *)
+      COPY("i8", result.llvmType);
+      result.text[0] := 0X; AppendLongInt(result.text, ORD(obj.value.stringVal[0]));
+      result.oberonType := Types.Char
+    ELSE (* a longer named STRING CONST *)
+      Unsupported(w, cg, "named STRING CONST in a scalar position", obj.type, result)
     END
   END GenerateConstValue;
 
@@ -1279,6 +1559,145 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateDesignatorValue;
 
+
+  (* Named from the literal's own source position, not a counter - see
+     this module's header comment on why (two independent passes need to
+     derive the identical name with no shared state). Also carries the
+     current module's own name (PLAN.md Phase 8 step 12): line/column
+     alone are only unique *within* one module's own source file - once
+     a whole program can compile several modules into one link unit, two
+     modules each happening to have a string literal at the same
+     line/column would otherwise collide on the identical global name. *)
+  PROCEDURE StringConstName(VAR cg: Codegen; lit: SyntaxTree.LiteralExprNode; VAR name: ARRAY OF CHAR);
+  BEGIN
+    COPY("@.str.", name);
+    Strcat(name, cg.moduleName);
+    Strcat(name, ".L");
+    AppendLongInt(name, lit.line);
+    Strcat(name, ".C");
+    AppendLongInt(name, lit.column)
+  END StringConstName;
+
+  (* An operand IsCharSequenceExpr accepted, as a pointer to its bytes
+     plus how many of them there are *including room for the terminator*:
+     a string literal or named STRING CONST is its characters plus 0X (a
+     compile-time-known length), a fixed array is its declared length. The
+     comparison/copy helpers treat running off the end of either side the
+     same as meeting a 0X, which is exactly Oberon-2's rule for an array
+     with no terminator inside it. FALSE (nothing usable produced) when
+     the address cannot be computed - the array sits behind a pointer, or
+     inside a record with a base type. A string literal's global was
+     already emitted by CollectStringConstants's own pre-pass; a named
+     constant's goes through StringConstGlobal. *)
+  PROCEDURE GenerateCharSequence(VAR w: Files.Rider; VAR cg: Codegen; e: SyntaxTree.ExprNode;
+                                 VAR addr: ValueText; VAR length: LONGINT): BOOLEAN;
+    VAR text: LongText; lit: SyntaxTree.LiteralExprNode; de: SyntaxTree.DesignatorExprNode;
+        addrType: Types.Type; arr: Types.ArrayType;
+  BEGIN
+    IF e IS SyntaxTree.LiteralExprNode THEN
+      lit := e(SyntaxTree.LiteralExprNode);
+      StringConstName(cg, lit, addr);
+      length := StrLen(lit.lexeme) + 1;
+      RETURN TRUE
+    END;
+    IF StringSourceText(cg, e, text) THEN
+      StringConstGlobal(cg, text, addr);
+      length := StrLen(text) + 1;
+      RETURN TRUE
+    END;
+    IF ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
+    de := e(SyntaxTree.DesignatorExprNode);
+    IF ~GenerateDesignatorAddress(w, cg, de.designator, addr, addrType) THEN RETURN FALSE END;
+    IF (addrType = NIL) OR ~(addrType IS Types.ArrayType) THEN RETURN FALSE END;
+    arr := addrType(Types.ArrayType);
+    length := arr.length;
+    RETURN TRUE
+  END GenerateCharSequence;
+
+  (* left <op> right over two character sequences, by one call to the
+     @.charcmp helper (EmitCharacterHelpers) - a three-way compare, -1/0/1
+     on the first differing byte taken as unsigned (CHAR is 0..255) -
+     and an icmp of that against 0 for the wanted relation. *)
+  PROCEDURE GenerateCharCompare(VAR w: Files.Rider; VAR cg: Codegen; op: INTEGER;
+                                left, right: SyntaxTree.ExprNode; VAR result: Value);
+    VAR aAddr, bAddr, aLenText, bLenText, cmp, i1temp: ValueText; aLen, bLen: LONGINT;
+        pred: ARRAY 16 OF CHAR;
+  BEGIN
+    IF ~GenerateCharSequence(w, cg, left, aAddr, aLen) OR ~GenerateCharSequence(w, cg, right, bAddr, bLen) THEN
+      Unsupported(w, cg, "character-array operand whose address cannot be computed (PLAN.md Phase 9 steps 5-7)",
+                  Types.Boolean, result);
+      RETURN
+    END;
+    cg.needCharCompare := TRUE;
+    aLenText[0] := 0X; AppendLongInt(aLenText, aLen);
+    bLenText[0] := 0X; AppendLongInt(bLenText, bLen);
+    NewTemp(cg, cmp);
+    WriteStr(w, "  "); WriteStr(w, cmp); WriteStr(w, " = call i32 @.charcmp(ptr "); WriteStr(w, aAddr);
+    WriteStr(w, ", i32 "); WriteStr(w, aLenText); WriteStr(w, ", ptr "); WriteStr(w, bAddr);
+    WriteStr(w, ", i32 "); WriteStr(w, bLenText); WriteStr(w, ")"); WriteLn(w);
+    IF op = Lexer.equal THEN COPY("icmp eq", pred)
+    ELSIF op = Lexer.notEqual THEN COPY("icmp ne", pred)
+    ELSIF op = Lexer.less THEN COPY("icmp slt", pred)
+    ELSIF op = Lexer.lessEqual THEN COPY("icmp sle", pred)
+    ELSIF op = Lexer.greater THEN COPY("icmp sgt", pred)
+    ELSE COPY("icmp sge", pred)
+    END;
+    EmitBinOp(w, cg, pred, "i32", cmp, "0", i1temp);
+    EmitConvert(w, cg, "zext", "i1", i1temp, "i8", result.text);
+    COPY("i8", result.llvmType); result.oberonType := Types.Boolean
+  END GenerateCharCompare;
+
+  (* Stores text into the fixed CHAR array at addrText, exactly as COPY
+     does (Oberon2.pdf §10.3): MIN(LEN(text), LEN(array)-1) characters,
+     then 0X. Both lengths are known now, so the whole copy is a fixed
+     run of single-byte GEP+store pairs, no loop. Shared by COPY and by
+     assignment of a string to a CHAR array (Appendix A's assignment
+     rule 6), which mean the same thing. *)
+  PROCEDURE EmitStringStores(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR;
+                             arr: Types.ArrayType; text: ARRAY OF CHAR);
+    VAR copyLen, i: LONGINT; pointeeType: ARRAY 256 OF CHAR; idxText, byteText, gepText: ValueText;
+  BEGIN
+    copyLen := StrLen(text);
+    IF copyLen > arr.length - 1 THEN copyLen := arr.length - 1 END;
+    IF copyLen < 0 THEN copyLen := 0 END;
+    IF arr.length > 0 THEN
+      LLVMTypes.TypeString(arr, cg.sizeModel, pointeeType);
+      i := 0;
+      WHILE i <= copyLen DO
+        idxText[0] := 0X; AppendLongInt(idxText, i);
+        EmitGEP(w, cg, pointeeType, addrText, "i32", idxText, gepText);
+        byteText[0] := 0X;
+        IF i < copyLen THEN AppendLongInt(byteText, ORD(text[i])) ELSE COPY("0", byteText) END;
+        WriteStr(w, "  store i8 "); WriteStr(w, byteText); WriteStr(w, ", ptr "); WriteStr(w, gepText); WriteLn(w);
+        INC(i)
+      END
+    END
+  END EmitStringStores;
+
+  (* target := value, for a target already resolved to an address. The one
+     case that is not a plain load-and-store is a string (literal or
+     named CONST) assigned to a fixed CHAR array - a run of byte stores,
+     not a value of the array's own type - and it is decided from the
+     target's declared type, not the value's. Everything else, including
+     assigning one whole array or record to another of the same type
+     (an aggregate load and store), is unchanged. *)
+  PROCEDURE AssignToAddress(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; addrType: Types.Type;
+                            value: SyntaxTree.ExprNode);
+    VAR text: LongText; arr: Types.ArrayType; v: Value; isCharArray: BOOLEAN;
+  BEGIN
+    isCharArray := FALSE;
+    IF (addrType # NIL) & (addrType IS Types.ArrayType) THEN
+      arr := addrType(Types.ArrayType);
+      isCharArray := ~arr.isOpen & (arr.elementType = Types.Char)
+    END;
+    IF isCharArray & StringSourceText(cg, value, text) THEN
+      EmitStringStores(w, cg, addrText, arr, text)
+    ELSE
+      GenerateExpr(w, cg, value, v);
+      StoreAtAddress(w, cg, addrText, addrType, v)
+    END
+  END AssignToAddress;
+
   (* Avoids chaining a selector right after a "(...)" type guard/cast in
      one expression - matches the safe idiom Types.Mod's own IsNumeric/
      Rank already established (see their header comment) rather than
@@ -1308,24 +1727,6 @@ MODULE LLVMCodeGenerator;
       LLVMTypes.TypeString(p.type, cg.sizeModel, llvmType)
     END
   END ParamLLVMType;
-
-  (* Named from the literal's own source position, not a counter - see
-     this module's header comment on why (two independent passes need to
-     derive the identical name with no shared state). Also carries the
-     current module's own name (PLAN.md Phase 8 step 12): line/column
-     alone are only unique *within* one module's own source file - once
-     a whole program can compile several modules into one link unit, two
-     modules each happening to have a string literal at the same
-     line/column would otherwise collide on the identical global name. *)
-  PROCEDURE StringConstName(VAR cg: Codegen; lit: SyntaxTree.LiteralExprNode; VAR name: ARRAY OF CHAR);
-  BEGIN
-    COPY("@.str.", name);
-    Strcat(name, cg.moduleName);
-    Strcat(name, ".L");
-    AppendLongInt(name, lit.line);
-    Strcat(name, ".C");
-    AppendLongInt(name, lit.column)
-  END StringConstName;
 
   (* LLVM's "c\"...\"" constant syntax: printable ASCII (32-126) appears
      literally except '"'/'\', which - like every other byte, including
@@ -1421,19 +1822,13 @@ MODULE LLVMCodeGenerator;
      once a scratch test finally exercised this ELSE branch from inside
      a call-argument position for the first time. *)
   PROCEDURE GenerateStringArgValue(VAR w: Files.Rider; VAR cg: Codegen; a: SyntaxTree.ExprNode; VAR result: Value);
-    VAR name: ValueText;
+    VAR addr: ValueText; length: LONGINT;
   BEGIN
     COPY("ptr", result.llvmType); result.oberonType := Types.Undefined;
-    WITH
-      a: SyntaxTree.LiteralExprNode DO
-        IF a.literalKind = Lexer.string THEN
-          StringConstName(cg, a, name); COPY(name, result.text)
-        ELSE
-          WriteStr(w, "  ; unsupported: non-string ARRAY OF CHAR argument (PLAN.md Phase 8 step 8+)"); WriteLn(w);
-          COPY("null", result.text)
-        END
+    IF IsCharSequenceExpr(cg, a) & GenerateCharSequence(w, cg, a, addr, length) THEN
+      COPY(addr, result.text)
     ELSE
-      WriteStr(w, "  ; unsupported: non-literal ARRAY OF CHAR argument (PLAN.md Phase 8 step 8+)"); WriteLn(w);
+      WriteStr(w, "  ; unsupported: ARRAY OF CHAR argument that is not a string, a named STRING CONST or a fixed CHAR array (PLAN.md Phase 9 step 7)"); WriteLn(w);
       COPY("null", result.text)
     END
   END GenerateStringArgValue;
@@ -1828,35 +2223,55 @@ MODULE LLVMCodeGenerator;
     StoreAtAddress(w, cg, addrText, addrType, sum)
   END GenerateIncDec;
 
-  (* COPY(x, v): x a STRING LITERAL (the one ARRAY OF CHAR value-
-     argument shape this backend fully supports - see
-     GenerateStringArgValue's own header comment on why; any other
-     source shape is Unsupported for now, the same scope boundary that
-     step already established), v a writable CHAR-array designator.
-     Oberon2.pdf §10.3's own COPY semantics: copy MIN(LEN(x), LEN(v)-1)
-     characters, then terminate with 0X - both lengths are compile-
-     time-known here (x's own literal length; v's own declared, fixed
-     ArrayType.length - only fixed-size arrays ever reach codegen), so
-     the whole copy unrolls into a fixed sequence of single-byte
-     GEP+store pairs at compile time, no runtime loop needed (matching
-     this backend's own "no optimizer, straightforward over general"
-     stance elsewhere - e.g. EmitGEP's one-GEP-per-selector-step
-     design). *)
+  (* INCL(s, x) / EXCL(s, x): s := s + {x} / s := s - {x}, on the SET
+     variable's own address (any addressable designator, like INC/DEC).
+     x is converted to the SET's width first; an x outside 0..MAX(SET) is
+     undefined, as in the report. *)
+  PROCEDURE GenerateInclExcl(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; include: BOOLEAN;
+                             VAR result: Value);
+    VAR
+      de: SyntaxTree.DesignatorExprNode; addrText, setTy, bit, notBit: ValueText; addrType: Types.Type;
+      old, element, elementExt, updated: Value;
+  BEGIN
+    result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
+    IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
+    de := args(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens OR ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN RETURN END;
+    LoadAtAddress(w, cg, addrText, addrType, old);
+    GenerateExpr(w, cg, args.next, element);
+    ToSetWidth(w, cg, element, elementExt);
+    COPY(old.llvmType, setTy);
+    EmitBinOp(w, cg, "shl", setTy, "1", elementExt.text, bit);
+    IF include THEN
+      EmitBinOp(w, cg, "or", setTy, old.text, bit, updated.text)
+    ELSE
+      EmitBinOp(w, cg, "xor", setTy, bit, "-1", notBit);
+      EmitBinOp(w, cg, "and", setTy, old.text, notBit, updated.text)
+    END;
+    COPY(setTy, updated.llvmType); updated.oberonType := old.oberonType;
+    StoreAtAddress(w, cg, addrText, addrType, updated)
+  END GenerateInclExcl;
+
+  (* COPY(x, v): x a string (literal or named STRING CONST) or a fixed
+     CHAR array, v a writable fixed CHAR-array designator. Oberon2.pdf
+     §10.3's own COPY semantics: copy up to MIN(LEN(x), LEN(v)-1)
+     characters - stopping early at a 0X in x - then terminate with 0X.
+     When x is a string its text and length are known at compile time
+     and the copy is a fixed run of byte stores (EmitStringStores); when
+     it is an array, only its declared length is, so the copy is a call
+     to the @.charcopy helper. *)
   PROCEDURE GenerateCopy(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
-      xExpr, vExpr: SyntaxTree.ExprNode; lit: SyntaxTree.LiteralExprNode;
-      de: SyntaxTree.DesignatorExprNode; addrText: ValueText; addrType: Types.Type;
-      arr: Types.ArrayType; xLen, copyLen, i: LONGINT; pointeeType: ARRAY 256 OF CHAR;
-      idxText, byteText, gepText: ValueText; ok: BOOLEAN;
+      xExpr, vExpr: SyntaxTree.ExprNode; text: LongText; knownText: BOOLEAN;
+      de: SyntaxTree.DesignatorExprNode; addrText, srcAddr, dstLenText, srcLenText: ValueText;
+      addrType: Types.Type; arr: Types.ArrayType; srcLen: LONGINT; ok: BOOLEAN;
   BEGIN
     result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
     xExpr := args; vExpr := args.next;
-    ok := (xExpr # NIL) & (xExpr IS SyntaxTree.LiteralExprNode);
-    IF ok THEN
-      lit := xExpr(SyntaxTree.LiteralExprNode); ok := lit.literalKind = Lexer.string
-    END;
-    IF ~ok THEN
-      WriteStr(w, "  ; unsupported: COPY's source is not a string literal (Phase 9+)"); WriteLn(w);
+    knownText := StringSourceText(cg, xExpr, text);
+    IF ~knownText & ~IsCharSequenceExpr(cg, xExpr) THEN
+      WriteStr(w, "  ; unsupported: COPY's source is not a string, a named STRING CONST or a fixed CHAR array (PLAN.md Phase 9 step 7)");
+      WriteLn(w);
       RETURN
     END;
     ok := (vExpr # NIL) & (vExpr IS SyntaxTree.DesignatorExprNode);
@@ -1870,22 +2285,17 @@ MODULE LLVMCodeGenerator;
       RETURN
     END;
     arr := addrType(Types.ArrayType);
-    xLen := 0;
-    WHILE lit.lexeme[xLen] # 0X DO INC(xLen) END;
-    copyLen := xLen;
-    IF copyLen > arr.length - 1 THEN copyLen := arr.length - 1 END;
-    IF copyLen < 0 THEN copyLen := 0 END;
-    IF arr.length > 0 THEN
-      LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
-      i := 0;
-      WHILE i <= copyLen DO
-        idxText[0] := 0X; AppendLongInt(idxText, i);
-        EmitGEP(w, cg, pointeeType, addrText, "i32", idxText, gepText);
-        byteText[0] := 0X;
-        IF i < copyLen THEN AppendLongInt(byteText, ORD(lit.lexeme[i])) ELSE COPY("0", byteText) END;
-        WriteStr(w, "  store i8 "); WriteStr(w, byteText); WriteStr(w, ", ptr "); WriteStr(w, gepText); WriteLn(w);
-        INC(i)
-      END
+    IF knownText THEN
+      EmitStringStores(w, cg, addrText, arr, text)
+    ELSIF GenerateCharSequence(w, cg, xExpr, srcAddr, srcLen) THEN
+      cg.needCharCopy := TRUE;
+      dstLenText[0] := 0X; AppendLongInt(dstLenText, arr.length);
+      srcLenText[0] := 0X; AppendLongInt(srcLenText, srcLen);
+      WriteStr(w, "  call void @.charcopy(ptr "); WriteStr(w, addrText); WriteStr(w, ", i32 "); WriteStr(w, dstLenText);
+      WriteStr(w, ", ptr "); WriteStr(w, srcAddr); WriteStr(w, ", i32 "); WriteStr(w, srcLenText);
+      WriteStr(w, ")"); WriteLn(w)
+    ELSE
+      WriteStr(w, "  ; unsupported: COPY's source address (PLAN.md Phase 9 steps 5-7)"); WriteLn(w)
     END
   END GenerateCopy;
 
@@ -1915,10 +2325,11 @@ MODULE LLVMCodeGenerator;
 
   (* PLAN.md Phase 8 step 11's own in-scope Oberon2.pdf §10.3 subset -
      ABS ODD CHR ORD CAP LEN INC DEC COPY HALT - plus, from Phase 9 step
-     2, the three numeric conversions LONG SHORT ENTIER. Not NEW/DISPOSE/
+     2, the three numeric conversions LONG SHORT ENTIER, and, from step 3,
+     the SET updates INCL EXCL. Not NEW/DISPOSE/
      SYSTEM.*, which presuppose POINTER. PredeclaredProcedures.Mod's own
      CheckCall accepts a wider, 20-name vocabulary than this - every
-     other predeclared name (ASH/MAX/MIN/SIZE/EXCL/INCL/NEW) is real
+     other predeclared name (ASH/MAX/MIN/SIZE/NEW) is real
      Oberon-2 the front end already fully checks, just not lowered here
      yet, so it routes to the same Unsupported placeholder every other
      out-of-scope construct does rather than falling through silently. *)
@@ -1938,9 +2349,11 @@ MODULE LLVMCodeGenerator;
     ELSIF name = "LONG" THEN GenerateLong(w, cg, args, result)
     ELSIF name = "SHORT" THEN GenerateShort(w, cg, args, result)
     ELSIF name = "ENTIER" THEN GenerateEntier(w, cg, args, result)
+    ELSIF name = "INCL" THEN GenerateInclExcl(w, cg, args, TRUE, result)
+    ELSIF name = "EXCL" THEN GenerateInclExcl(w, cg, args, FALSE, result)
     ELSE
       Unsupported(w, cg,
-        "predeclared procedure outside the lowered set (ASH/MAX/MIN/SIZE/EXCL/INCL - Phase 9; NEW needs POINTER, also Phase 9; SYSTEM.* is Phase 10)",
+        "predeclared procedure outside the lowered set (ASH/MAX/MIN/SIZE - Phase 9; NEW needs POINTER, also Phase 9; SYSTEM.* is Phase 10)",
         Types.Undefined, result)
     END
   END GeneratePredeclaredCall;
@@ -1987,18 +2400,18 @@ MODULE LLVMCodeGenerator;
         END
     | expr: SyntaxTree.UnaryExprNode DO GenerateUnary(w, cg, expr, result)
     | expr: SyntaxTree.BinaryExprNode DO GenerateBinaryExpr(w, cg, expr, result)
-    ELSE (* SetExprNode, NilExprNode *)
-      Unsupported(w, cg, "SET constructors / NIL (PLAN.md Phase 8 step 5 scope)", Types.Undefined, result)
+    | expr: SyntaxTree.SetExprNode DO GenerateSetExpr(w, cg, expr, result)
+    ELSE (* NilExprNode *)
+      Unsupported(w, cg, "NIL (PLAN.md Phase 9 step 5)", Types.Undefined, result)
     END
   END GenerateExpr;
 
   PROCEDURE GenerateAssignStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.AssignStatementNode);
-    VAR obj: SymbolTable.Object; v: Value; addrText: ValueText; addrType: Types.Type; homeModule: SyntaxTree.Ident;
+    VAR obj: SymbolTable.Object; addrText: ValueText; addrType: Types.Type; homeModule: SyntaxTree.Ident;
   BEGIN
     IF s.target.selectors # NIL THEN
       IF GenerateDesignatorAddress(w, cg, s.target, addrText, addrType) THEN
-        GenerateExpr(w, cg, s.value, v);
-        StoreAtAddress(w, cg, addrText, addrType, v)
+        AssignToAddress(w, cg, addrText, addrType, s.value)
       ELSE
         WriteStr(w, "  ; unsupported: selector needing POINTER/dispatch (Phase 9)"); WriteLn(w)
       END;
@@ -2009,13 +2422,12 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, "  ; unsupported: assignment target is not a plain module VAR"); WriteLn(w);
       RETURN
     END;
-    GenerateExpr(w, cg, s.value, v);
     IF s.target.qualifier[0] = 0X THEN
-      StoreIntoVar(w, cg, obj, v)
+      ResolveVarAddress(cg, obj, addrText)
     ELSE
-      QualifiedName(homeModule, obj.name, addrText);
-      StoreAtAddress(w, cg, addrText, obj.type, v)
-    END
+      QualifiedName(homeModule, obj.name, addrText)
+    END;
+    AssignToAddress(w, cg, addrText, obj.type, s.value)
   END GenerateAssignStatement;
 
   (* A function procedure called as a bare statement discards its result -
@@ -3199,12 +3611,115 @@ MODULE LLVMCodeGenerator;
      at the top of every pass's own loop iteration - nothing else needs
      saving/restoring around that swap, since this is the outermost
      loop, never itself nested inside another module's own emission. *)
+  (* Everything that has to come after all the functions have been
+     generated, because nothing knew it was needed until then: the string
+     globals StringConstGlobal handed out, and the two runtime loops
+     (see Codegen.needCharCompare). Emitted only when used, so a program
+     with no string comparison carries none of it.
+
+     @.charcmp is a three-way compare of two byte sequences, each given
+     as a pointer and a length that includes room for the terminator:
+     the first differing byte decides (taken as unsigned - CHAR is
+     0..255, so 0FFX sorts after "z"), a 0X on both sides at the same
+     position means equal, and running off the end of one side counts as
+     a 0X on it. That is Oberon-2's rule for an array with no 0X inside
+     it, and for a string literal shorter than the array it is compared
+     against. @.charcopy is COPY: characters up to the first 0X in the
+     source, or room-1 of them, then a 0X - and, like EmitStringStores,
+     nothing at all into a zero-length destination. *)
+  PROCEDURE EmitCharacterHelpers(VAR w: Files.Rider; VAR cg: Codegen);
+    VAR p: PendingString;
+  BEGIN
+    p := cg.pendingStrings;
+    WHILE p # NIL DO
+      EmitRuntimeStringGlobal(w, p.name, p.text);
+      p := p.next
+    END;
+    IF cg.needCharCompare THEN
+      WriteLn(w);
+      EmitLine(w, "define internal i32 @.charcmp(ptr %a, i32 %alen, ptr %b, i32 %blen) {");
+      EmitLine(w, "entry:");
+      EmitLine(w, "  br label %loop");
+      EmitLine(w, "loop:");
+      EmitLine(w, "  %i = phi i32 [ 0, %entry ], [ %next, %step ]");
+      EmitLine(w, "  %ain = icmp slt i32 %i, %alen");
+      EmitLine(w, "  br i1 %ain, label %loada, label %nota");
+      EmitLine(w, "loada:");
+      EmitLine(w, "  %pa = getelementptr i8, ptr %a, i32 %i");
+      EmitLine(w, "  %la = load i8, ptr %pa");
+      EmitLine(w, "  br label %havea");
+      EmitLine(w, "nota:");
+      EmitLine(w, "  br label %havea");
+      EmitLine(w, "havea:");
+      EmitLine(w, "  %ca = phi i8 [ %la, %loada ], [ 0, %nota ]");
+      EmitLine(w, "  %bin = icmp slt i32 %i, %blen");
+      EmitLine(w, "  br i1 %bin, label %loadb, label %notb");
+      EmitLine(w, "loadb:");
+      EmitLine(w, "  %pb = getelementptr i8, ptr %b, i32 %i");
+      EmitLine(w, "  %lb = load i8, ptr %pb");
+      EmitLine(w, "  br label %haveb");
+      EmitLine(w, "notb:");
+      EmitLine(w, "  br label %haveb");
+      EmitLine(w, "haveb:");
+      EmitLine(w, "  %cb = phi i8 [ %lb, %loadb ], [ 0, %notb ]");
+      EmitLine(w, "  %ne = icmp ne i8 %ca, %cb");
+      EmitLine(w, "  br i1 %ne, label %differ, label %same");
+      EmitLine(w, "differ:");
+      EmitLine(w, "  %lt = icmp ult i8 %ca, %cb");
+      EmitLine(w, "  %order = select i1 %lt, i32 -1, i32 1");
+      EmitLine(w, "  ret i32 %order");
+      EmitLine(w, "same:");
+      EmitLine(w, "  %atend = icmp eq i8 %ca, 0");
+      EmitLine(w, "  br i1 %atend, label %equal, label %step");
+      EmitLine(w, "step:");
+      EmitLine(w, "  %next = add i32 %i, 1");
+      EmitLine(w, "  br label %loop");
+      EmitLine(w, "equal:");
+      EmitLine(w, "  ret i32 0");
+      EmitLine(w, "}")
+    END;
+    IF cg.needCharCopy THEN
+      WriteLn(w);
+      EmitLine(w, "define internal void @.charcopy(ptr %dst, i32 %dstlen, ptr %src, i32 %srclen) {");
+      EmitLine(w, "entry:");
+      EmitLine(w, "  %room = sub i32 %dstlen, 1");
+      EmitLine(w, "  br label %loop");
+      EmitLine(w, "loop:");
+      EmitLine(w, "  %i = phi i32 [ 0, %entry ], [ %next, %copy ]");
+      EmitLine(w, "  %roomok = icmp slt i32 %i, %room");
+      EmitLine(w, "  %srcok = icmp slt i32 %i, %srclen");
+      EmitLine(w, "  %both = and i1 %roomok, %srcok");
+      EmitLine(w, "  br i1 %both, label %load, label %done");
+      EmitLine(w, "load:");
+      EmitLine(w, "  %ps = getelementptr i8, ptr %src, i32 %i");
+      EmitLine(w, "  %c = load i8, ptr %ps");
+      EmitLine(w, "  %atend = icmp eq i8 %c, 0");
+      EmitLine(w, "  br i1 %atend, label %done, label %copy");
+      EmitLine(w, "copy:");
+      EmitLine(w, "  %pd = getelementptr i8, ptr %dst, i32 %i");
+      EmitLine(w, "  store i8 %c, ptr %pd");
+      EmitLine(w, "  %next = add i32 %i, 1");
+      EmitLine(w, "  br label %loop");
+      EmitLine(w, "done:");
+      EmitLine(w, "  %has = icmp sgt i32 %dstlen, 0");
+      EmitLine(w, "  br i1 %has, label %term, label %exit");
+      EmitLine(w, "term:");
+      EmitLine(w, "  %pt = getelementptr i8, ptr %dst, i32 %i");
+      EmitLine(w, "  store i8 0, ptr %pt");
+      EmitLine(w, "  br label %exit");
+      EmitLine(w, "exit:");
+      EmitLine(w, "  ret void");
+      EmitLine(w, "}")
+    END
+  END EmitCharacterHelpers;
+
   PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w: Files.Rider);
     VAR cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode;
   BEGIN
     cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
     cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL;
     cg.declaredExternals := NIL; cg.tdescs := NIL;
+    cg.needCharCompare := FALSE; cg.needCharCopy := FALSE; cg.pendingStrings := NIL;
     WriteStr(w, 'target datalayout = "');
     IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN WriteStr(w, dataLayoutW32)
     ELSE WriteStr(w, dataLayoutW64)
@@ -3266,7 +3781,8 @@ MODULE LLVMCodeGenerator;
       m := m.next
     END;
     WriteStr(w, "  ret i32 0"); WriteLn(w);
-    WriteStr(w, "}"); WriteLn(w)
+    WriteStr(w, "}"); WriteLn(w);
+    EmitCharacterHelpers(w, cg)
   END GenerateProgram;
 
 END LLVMCodeGenerator.

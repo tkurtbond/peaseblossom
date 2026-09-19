@@ -1888,6 +1888,80 @@ style exactly.
    **Testing**: a SET-operations fixture, a named-string-CONST fixture,
    an ARRAY-OF-CHAR-comparison fixture; re-run the Phase 8 step 13
    promotion survey and land whichever candidates are now unblocked.
+   **Implemented 2026-09-19.** All of the above, plus `IN` and
+   `INCL`/`EXCL` (which `PLAN.md` step 8 had earmarked for its sweep, but
+   are SET operators no less than the constructor is), and assignment of
+   a string to a `CHAR` array. Outcomes worth knowing:
+   - **`IN` was not lowered at all** before this step - not just for
+     sets built from constructors: `GenerateBinaryExpr` had no branch
+     for it, so it fell to "unrecognized binary operator". `x IN s`
+     checks `0 <= x < width` at x's own width first (an unsigned
+     compare, so a negative x fails too) and `select`s the shift's
+     result away when it does not hold, giving "not in the set" for an
+     out-of-range element instead of an LLVM poison value (Oberon2.pdf
+     leaves it undefined; voc's C shifts and inherits C's undefined
+     behavior). A `select` rather than an `and`, since `and` would itself
+     be poisoned.
+   - **A SET constructor** is the OR of one mask per element: `1 shl e`,
+     or, for a range `lo..hi`, `(-1 shl lo) and (-1 lshr (W-1-hi))`, which
+     is empty by itself when lo > hi. Elements are converted to the SET's
+     width first (`sext`/`trunc`) - an element may be any integer type,
+     including `HUGEINT` under `-O2`'s 32-bit SET - and need not be
+     constant.
+   - **The AST has no resolved types**, so whether an operand is a
+     character sequence has to be decided before it is generated:
+     `DesignatorStaticType`/`IsCharSequenceExpr` walk the declarations
+     without emitting anything, and `GenerateBinaryExpr` picks the whole
+     lowering from that. (`GenerateDesignatorValue` for an array still
+     loads the aggregate, which whole-array assignment relies on; a
+     character sequence is instead used by address plus a compile-time
+     length, never as a loaded value.)
+   - **Character-sequence comparison** is one call to a private
+     `@.charcmp` helper (three-way, unsigned bytes, a sequence ends at
+     its first `0X` *or* at the end of its array). `COPY` from a
+     non-literal source calls `@.charcopy`; from a string or named
+     constant it stays the unrolled byte stores it always was, now shared
+     with assignment (`EmitStringStores`). Both helpers, and the string
+     globals, are emitted *at the end of the program and only if used*
+     (`Codegen.needCharCompare`/`needCharCopy`/`pendingStrings`), so
+     every earlier golden `.ll` stayed byte-identical.
+   - **A named STRING `CONST` has no storage**, so its text becomes a
+     private global on first use, deduplicated by content
+     (`@.strconst.N`, `StringConstGlobal`) - by content rather than by
+     position because an imported constant's position in a regenerated
+     `.sym` bears no relation to its home module's. A one-character
+     string, literal or named, in a *scalar* position (`ch := "x"`,
+     `ch = "x"`, a `CHAR` argument) is a `CHAR` immediate, which also
+     closes the gap `llvm-predeclared`'s header comment documents.
+   - **Records:** `Oberon2.pdf` has no record comparison and the front
+     end (correctly) rejects it, so there is nothing to lower - the
+     "record-field-wise equality" in this step's own text was a
+     misreading of "where the front end already permits it".
+   - **Still not done**, for later steps: a character sequence behind a
+     pointer or in a record with a base type (steps 5-6 - the address
+     cannot be computed yet), and an *open* `ARRAY OF CHAR` operand or
+     parameter (step 7's dope vectors) - either falls back to the same
+     `; unsupported` placeholder as before.
+   - **Two voc differences found**: voc rejects a *constant* SET range
+     with lo > hi at compile time (`{5 .. 2}`), which poc's front end
+     does not, so the fixture uses a non-constant one; and voc's
+     character-array comparison scans past the end of an array with no
+     `0X` in it (undefined), where poc stops at the array's end - the one
+     check of `llvm-char-arrays` (21) that fails under voc, everything
+     else in it and all of `llvm-string-consts` agree.
+   - **Fixtures** (127 tests pass): `llvm-sets` (35 checks; 32 also under
+     voc), `llvm-string-consts` (two modules, identical output under
+     voc), `llvm-char-arrays` (43 checks), `llvm-sets-strings-ir`
+     (golden `.ll` at both word sizes, clang-validated, including both
+     helper functions). **Promotion survey redone:** `llvm-const-decls`
+     and `crosscheck` regained everything Phase 8 step 13 trimmed
+     (`pi`/`widened`/`half`, `greeting`, `aSet`/`combinedSet`/
+     `isMember`) - the CONST section is now `semantic-const-decls`'s own,
+     complete, and voc and poc still both print `OK`; and
+     `semantic-expressions` is promoted as `llvm-expressions-supported`
+     (not run - its VARs are never assigned, so `i DIV j` would divide
+     by zero - but every expression in it now lowers with no
+     `; unsupported` marker, and clang accepts the IR).
 
 4. **Bespoke mark-sweep GC (`rtl/llvm/GarbageCollectedHeap.Mod`,
    `ModuleTable.Mod`).** A bump-allocating heap plus a mark-sweep

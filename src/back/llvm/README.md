@@ -10,7 +10,10 @@ LLVM backend: lowers the front end's typed tree to textual LLVM IR
   (`EmitTypeDescriptors`; layout documented in the comment above
   `RecordSymbolBase`), and (Phase 9 step 2) REAL/LONGREAL arithmetic,
   comparison, literals and `LONG`/`SHORT`/`ENTIER` conversions
-  (`ExtendTo`, `RealConstant`, `DoubleBitsText`).
+  (`ExtendTo`, `RealConstant`, `DoubleBitsText`), and (Phase 9 step 3)
+  SET constructors/`IN`/`INCL`/`EXCL`, named STRING constants and
+  ARRAY OF CHAR comparison/assignment/`COPY` (`GenerateSetExpr`,
+  `GenerateCharCompare`, `EmitCharacterHelpers`).
 - `LLVMToolchainDriver.Mod` — host-triple auto-detection
   (`clang -dumpmachine`), writing `Generate*`'s output to a real
   `<ModuleName>.ll` file, and the single-step `clang <file>.ll -o <exe>`

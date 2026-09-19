@@ -1,0 +1,360 @@
+== i686-unknown-linux-gnu
+target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"
+target triple = "i686-unknown-linux-gnu"
+
+@setsstrings.s = global i32 zeroinitializer
+@setsstrings.small = global i8 zeroinitializer
+@setsstrings.wide = global i64 zeroinitializer
+@setsstrings.ok = global i8 zeroinitializer
+@setsstrings.buf = global [8 x i8] zeroinitializer
+@setsstrings.other = global [8 x i8] zeroinitializer
+@setsstrings.ch = global i8 zeroinitializer
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.str.setsstrings.L31.C20 = private unnamed_addr constant [3 x i8] c"yo\00"
+
+define void @setsstrings_init() {
+entry:
+  %t1 = sext i8 1 to i32
+  %t2 = shl i32 1, %t1
+  %t3 = sext i8 3 to i32
+  %t4 = sext i8 5 to i32
+  %t5 = shl i32 -1, %t3
+  %t6 = sub i32 31, %t4
+  %t7 = lshr i32 -1, %t6
+  %t8 = and i32 %t5, %t7
+  %t9 = or i32 %t2, %t8
+  %t10 = load i8, ptr @setsstrings.small
+  %t11 = sext i8 %t10 to i32
+  %t12 = shl i32 1, %t11
+  %t13 = or i32 %t9, %t12
+  %t14 = load i64, ptr @setsstrings.wide
+  %t15 = trunc i64 %t14 to i32
+  %t16 = shl i32 1, %t15
+  %t17 = or i32 %t13, %t16
+  store i32 %t17, ptr @setsstrings.s
+  %t18 = load i8, ptr @setsstrings.small
+  %t19 = load i32, ptr @setsstrings.s
+  %t20 = icmp ult i8 %t18, 32
+  %t21 = sext i8 %t18 to i32
+  %t22 = lshr i32 %t19, %t21
+  %t23 = and i32 %t22, 1
+  %t24 = icmp ne i32 %t23, 0
+  %t25 = select i1 %t20, i1 %t24, i1 false
+  %t26 = zext i1 %t25 to i8
+  store i8 %t26, ptr @setsstrings.ok
+  %t27 = load i64, ptr @setsstrings.wide
+  %t28 = load i32, ptr @setsstrings.s
+  %t29 = icmp ult i64 %t27, 32
+  %t30 = trunc i64 %t27 to i32
+  %t31 = lshr i32 %t28, %t30
+  %t32 = and i32 %t31, 1
+  %t33 = icmp ne i32 %t32, 0
+  %t34 = select i1 %t29, i1 %t33, i1 false
+  %t35 = zext i1 %t34 to i8
+  store i8 %t35, ptr @setsstrings.ok
+  %t36 = load i32, ptr @setsstrings.s
+  %t37 = sext i8 2 to i32
+  %t38 = shl i32 1, %t37
+  %t39 = or i32 %t36, %t38
+  store i32 %t39, ptr @setsstrings.s
+  %t40 = load i32, ptr @setsstrings.s
+  %t41 = load i8, ptr @setsstrings.small
+  %t42 = sext i8 %t41 to i32
+  %t43 = shl i32 1, %t42
+  %t44 = xor i32 %t43, -1
+  %t45 = and i32 %t40, %t44
+  store i32 %t45, ptr @setsstrings.s
+  %t46 = sext i8 1 to i32
+  %t47 = sext i8 2 to i64
+  call void @write(i32 %t46, ptr @.strconst.0, i64 %t47)
+  %t48 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 0
+  store i8 104, ptr %t48
+  %t49 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 1
+  store i8 105, ptr %t49
+  %t50 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 2
+  store i8 0, ptr %t50
+  %t51 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 0
+  store i8 104, ptr %t51
+  %t52 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 1
+  store i8 105, ptr %t52
+  %t53 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 2
+  store i8 0, ptr %t53
+  %t54 = call i32 @.charcmp(ptr @setsstrings.buf, i32 8, ptr @.strconst.0, i32 3)
+  %t55 = icmp eq i32 %t54, 0
+  %t56 = zext i1 %t55 to i8
+  store i8 %t56, ptr @setsstrings.ok
+  %t57 = call i32 @.charcmp(ptr @.strconst.0, i32 3, ptr @.str.setsstrings.L31.C20, i32 3)
+  %t58 = icmp ne i32 %t57, 0
+  %t59 = zext i1 %t58 to i8
+  store i8 %t59, ptr @setsstrings.ok
+  %t60 = call i32 @.charcmp(ptr @setsstrings.buf, i32 8, ptr @setsstrings.other, i32 8)
+  %t61 = icmp slt i32 %t60, 0
+  %t62 = zext i1 %t61 to i8
+  store i8 %t62, ptr @setsstrings.ok
+  call void @.charcopy(ptr @setsstrings.other, i32 8, ptr @setsstrings.buf, i32 8)
+  store i8 120, ptr @setsstrings.ch
+  ret void
+}
+
+define i32 @main() {
+entry:
+  call void @setsstrings_init()
+  ret i32 0
+}
+@.strconst.0 = private unnamed_addr constant [3 x i8] c"hi\00"
+
+define internal i32 @.charcmp(ptr %a, i32 %alen, ptr %b, i32 %blen) {
+entry:
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %next, %step ]
+  %ain = icmp slt i32 %i, %alen
+  br i1 %ain, label %loada, label %nota
+loada:
+  %pa = getelementptr i8, ptr %a, i32 %i
+  %la = load i8, ptr %pa
+  br label %havea
+nota:
+  br label %havea
+havea:
+  %ca = phi i8 [ %la, %loada ], [ 0, %nota ]
+  %bin = icmp slt i32 %i, %blen
+  br i1 %bin, label %loadb, label %notb
+loadb:
+  %pb = getelementptr i8, ptr %b, i32 %i
+  %lb = load i8, ptr %pb
+  br label %haveb
+notb:
+  br label %haveb
+haveb:
+  %cb = phi i8 [ %lb, %loadb ], [ 0, %notb ]
+  %ne = icmp ne i8 %ca, %cb
+  br i1 %ne, label %differ, label %same
+differ:
+  %lt = icmp ult i8 %ca, %cb
+  %order = select i1 %lt, i32 -1, i32 1
+  ret i32 %order
+same:
+  %atend = icmp eq i8 %ca, 0
+  br i1 %atend, label %equal, label %step
+step:
+  %next = add i32 %i, 1
+  br label %loop
+equal:
+  ret i32 0
+}
+
+define internal void @.charcopy(ptr %dst, i32 %dstlen, ptr %src, i32 %srclen) {
+entry:
+  %room = sub i32 %dstlen, 1
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %next, %copy ]
+  %roomok = icmp slt i32 %i, %room
+  %srcok = icmp slt i32 %i, %srclen
+  %both = and i1 %roomok, %srcok
+  br i1 %both, label %load, label %done
+load:
+  %ps = getelementptr i8, ptr %src, i32 %i
+  %c = load i8, ptr %ps
+  %atend = icmp eq i8 %c, 0
+  br i1 %atend, label %done, label %copy
+copy:
+  %pd = getelementptr i8, ptr %dst, i32 %i
+  store i8 %c, ptr %pd
+  %next = add i32 %i, 1
+  br label %loop
+done:
+  %has = icmp sgt i32 %dstlen, 0
+  br i1 %has, label %term, label %exit
+term:
+  %pt = getelementptr i8, ptr %dst, i32 %i
+  store i8 0, ptr %pt
+  br label %exit
+exit:
+  ret void
+}
+clang accepted i686-unknown-linux-gnu
+== x86_64-unknown-linux-gnu
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+@setsstrings.s = global i32 zeroinitializer
+@setsstrings.small = global i8 zeroinitializer
+@setsstrings.wide = global i64 zeroinitializer
+@setsstrings.ok = global i8 zeroinitializer
+@setsstrings.buf = global [8 x i8] zeroinitializer
+@setsstrings.other = global [8 x i8] zeroinitializer
+@setsstrings.ch = global i8 zeroinitializer
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.str.setsstrings.L31.C20 = private unnamed_addr constant [3 x i8] c"yo\00"
+
+define void @setsstrings_init() {
+entry:
+  %t1 = sext i8 1 to i32
+  %t2 = shl i32 1, %t1
+  %t3 = sext i8 3 to i32
+  %t4 = sext i8 5 to i32
+  %t5 = shl i32 -1, %t3
+  %t6 = sub i32 31, %t4
+  %t7 = lshr i32 -1, %t6
+  %t8 = and i32 %t5, %t7
+  %t9 = or i32 %t2, %t8
+  %t10 = load i8, ptr @setsstrings.small
+  %t11 = sext i8 %t10 to i32
+  %t12 = shl i32 1, %t11
+  %t13 = or i32 %t9, %t12
+  %t14 = load i64, ptr @setsstrings.wide
+  %t15 = trunc i64 %t14 to i32
+  %t16 = shl i32 1, %t15
+  %t17 = or i32 %t13, %t16
+  store i32 %t17, ptr @setsstrings.s
+  %t18 = load i8, ptr @setsstrings.small
+  %t19 = load i32, ptr @setsstrings.s
+  %t20 = icmp ult i8 %t18, 32
+  %t21 = sext i8 %t18 to i32
+  %t22 = lshr i32 %t19, %t21
+  %t23 = and i32 %t22, 1
+  %t24 = icmp ne i32 %t23, 0
+  %t25 = select i1 %t20, i1 %t24, i1 false
+  %t26 = zext i1 %t25 to i8
+  store i8 %t26, ptr @setsstrings.ok
+  %t27 = load i64, ptr @setsstrings.wide
+  %t28 = load i32, ptr @setsstrings.s
+  %t29 = icmp ult i64 %t27, 32
+  %t30 = trunc i64 %t27 to i32
+  %t31 = lshr i32 %t28, %t30
+  %t32 = and i32 %t31, 1
+  %t33 = icmp ne i32 %t32, 0
+  %t34 = select i1 %t29, i1 %t33, i1 false
+  %t35 = zext i1 %t34 to i8
+  store i8 %t35, ptr @setsstrings.ok
+  %t36 = load i32, ptr @setsstrings.s
+  %t37 = sext i8 2 to i32
+  %t38 = shl i32 1, %t37
+  %t39 = or i32 %t36, %t38
+  store i32 %t39, ptr @setsstrings.s
+  %t40 = load i32, ptr @setsstrings.s
+  %t41 = load i8, ptr @setsstrings.small
+  %t42 = sext i8 %t41 to i32
+  %t43 = shl i32 1, %t42
+  %t44 = xor i32 %t43, -1
+  %t45 = and i32 %t40, %t44
+  store i32 %t45, ptr @setsstrings.s
+  %t46 = sext i8 1 to i32
+  %t47 = sext i8 2 to i64
+  call void @write(i32 %t46, ptr @.strconst.0, i64 %t47)
+  %t48 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 0
+  store i8 104, ptr %t48
+  %t49 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 1
+  store i8 105, ptr %t49
+  %t50 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 2
+  store i8 0, ptr %t50
+  %t51 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 0
+  store i8 104, ptr %t51
+  %t52 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 1
+  store i8 105, ptr %t52
+  %t53 = getelementptr [8 x i8], ptr @setsstrings.buf, i32 0, i32 2
+  store i8 0, ptr %t53
+  %t54 = call i32 @.charcmp(ptr @setsstrings.buf, i32 8, ptr @.strconst.0, i32 3)
+  %t55 = icmp eq i32 %t54, 0
+  %t56 = zext i1 %t55 to i8
+  store i8 %t56, ptr @setsstrings.ok
+  %t57 = call i32 @.charcmp(ptr @.strconst.0, i32 3, ptr @.str.setsstrings.L31.C20, i32 3)
+  %t58 = icmp ne i32 %t57, 0
+  %t59 = zext i1 %t58 to i8
+  store i8 %t59, ptr @setsstrings.ok
+  %t60 = call i32 @.charcmp(ptr @setsstrings.buf, i32 8, ptr @setsstrings.other, i32 8)
+  %t61 = icmp slt i32 %t60, 0
+  %t62 = zext i1 %t61 to i8
+  store i8 %t62, ptr @setsstrings.ok
+  call void @.charcopy(ptr @setsstrings.other, i32 8, ptr @setsstrings.buf, i32 8)
+  store i8 120, ptr @setsstrings.ch
+  ret void
+}
+
+define i32 @main() {
+entry:
+  call void @setsstrings_init()
+  ret i32 0
+}
+@.strconst.0 = private unnamed_addr constant [3 x i8] c"hi\00"
+
+define internal i32 @.charcmp(ptr %a, i32 %alen, ptr %b, i32 %blen) {
+entry:
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %next, %step ]
+  %ain = icmp slt i32 %i, %alen
+  br i1 %ain, label %loada, label %nota
+loada:
+  %pa = getelementptr i8, ptr %a, i32 %i
+  %la = load i8, ptr %pa
+  br label %havea
+nota:
+  br label %havea
+havea:
+  %ca = phi i8 [ %la, %loada ], [ 0, %nota ]
+  %bin = icmp slt i32 %i, %blen
+  br i1 %bin, label %loadb, label %notb
+loadb:
+  %pb = getelementptr i8, ptr %b, i32 %i
+  %lb = load i8, ptr %pb
+  br label %haveb
+notb:
+  br label %haveb
+haveb:
+  %cb = phi i8 [ %lb, %loadb ], [ 0, %notb ]
+  %ne = icmp ne i8 %ca, %cb
+  br i1 %ne, label %differ, label %same
+differ:
+  %lt = icmp ult i8 %ca, %cb
+  %order = select i1 %lt, i32 -1, i32 1
+  ret i32 %order
+same:
+  %atend = icmp eq i8 %ca, 0
+  br i1 %atend, label %equal, label %step
+step:
+  %next = add i32 %i, 1
+  br label %loop
+equal:
+  ret i32 0
+}
+
+define internal void @.charcopy(ptr %dst, i32 %dstlen, ptr %src, i32 %srclen) {
+entry:
+  %room = sub i32 %dstlen, 1
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %next, %copy ]
+  %roomok = icmp slt i32 %i, %room
+  %srcok = icmp slt i32 %i, %srclen
+  %both = and i1 %roomok, %srcok
+  br i1 %both, label %load, label %done
+load:
+  %ps = getelementptr i8, ptr %src, i32 %i
+  %c = load i8, ptr %ps
+  %atend = icmp eq i8 %c, 0
+  br i1 %atend, label %done, label %copy
+copy:
+  %pd = getelementptr i8, ptr %dst, i32 %i
+  store i8 %c, ptr %pd
+  %next = add i32 %i, 1
+  br label %loop
+done:
+  %has = icmp sgt i32 %dstlen, 0
+  br i1 %has, label %term, label %exit
+term:
+  %pt = getelementptr i8, ptr %dst, i32 %i
+  store i8 0, ptr %pt
+  br label %exit
+exit:
+  ret void
+}
+clang accepted x86_64-unknown-linux-gnu

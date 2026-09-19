@@ -21,6 +21,9 @@ MODULE predeclared;
          Worked around below by using hex CHAR literals (nnX) for every
          CHAR value/comparison except ORD's own argument, which keeps
          exercising ORD's dedicated single-char-string-literal path.
+         (Resolved by PLAN.md Phase 9 step 3: a one-character string in a
+         scalar position is now a CHAR immediate; this fixture keeps its
+         hex literals rather than being rewritten.)
        - forwarding an ARRAY OF CHAR *value parameter* (as opposed to a
          literal) into another call's own ARRAY OF CHAR argument -
          GenerateStringArgValue only lowers a literal string constant

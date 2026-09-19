@@ -27,6 +27,10 @@ test/conformance/llvm-predeclared/llvm-predeclared
 test/conformance/llvm-predeclared-halt/llvm-predeclared-halt
 test/conformance/llvm-multi-module/llvm-multi-module
 test/conformance/llvm-const-decls/llvm-const-decls
+test/conformance/llvm-reals/llvm-reals
+test/conformance/llvm-sets/llvm-sets
+test/conformance/llvm-string-consts/llvm-string-consts
+test/conformance/llvm-char-arrays/llvm-char-arrays
 test/conformance/crosscheck/crosscheck
 
 # Stage 0/1/2 bootstrap build output (see tools/bootstrap)
