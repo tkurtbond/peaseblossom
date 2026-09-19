@@ -92,7 +92,7 @@ MODULE MemoryLayout;
   PROCEDURE ^ NaturalAlign(t: Types.Type; wordSize, sizeModel: INTEGER): LONGINT;
   PROCEDURE ^ Align*(t: Types.Type; wordSize, sizeModel: INTEGER): LONGINT;
 
-  PROCEDURE BasicSize(t: Types.BasicType; sizeModel: INTEGER): LONGINT;
+  PROCEDURE BasicSize(t: Types.BasicType; wordSize, sizeModel: INTEGER): LONGINT;
   BEGIN
     (* dispatches on the named singleton Type vars, exactly like
        Types.TypeName already does, since BasicTypeDesc.rank alone
@@ -105,6 +105,7 @@ MODULE MemoryLayout;
       IF sizeModel = sizeModelOC THEN RETURN 4 ELSE RETURN 2 END
     ELSIF t = Types.LongInt THEN
       IF sizeModel = sizeModelOC THEN RETURN 8 ELSE RETURN 4 END
+    ELSIF t = Types.Address THEN RETURN wordSize (* SYSTEM.ADDRESS: as wide as a pointer *)
     ELSIF t = Types.HugeInt THEN RETURN 8
     ELSIF t = Types.Real THEN RETURN 4
     ELSIF t = Types.LongReal THEN RETURN 8
@@ -180,7 +181,7 @@ MODULE MemoryLayout;
     | t: Types.ProcedureType DO RETURN wordSize
     | t: Types.ArrayType DO arr := t
     | t: Types.RecordType DO rec := t
-    | t: Types.BasicType DO RETURN BasicSize(t, sizeModel)
+    | t: Types.BasicType DO RETURN BasicSize(t, wordSize, sizeModel)
     ELSE RETURN 0
     END;
     (* moved outside the WITH above: see this module's header comment on
@@ -204,7 +205,7 @@ MODULE MemoryLayout;
     | t: Types.ProcedureType DO RETURN wordSize
     | t: Types.ArrayType DO arr := t
     | t: Types.RecordType DO rec := t
-    | t: Types.BasicType DO RETURN BasicSize(t, sizeModel)
+    | t: Types.BasicType DO RETURN BasicSize(t, wordSize, sizeModel)
     ELSE RETURN 1
     END;
     IF arr # NIL THEN RETURN NaturalAlign(arr.elementType, wordSize, sizeModel)

@@ -83,8 +83,14 @@ MODULE Types;
   CONST
     (* BasicType*.rank; wider absorbs narrower per Appendix A *)
     notNumeric* = 0;
-    shortIntRank* = 1; integerRank* = 2; longIntRank* = 3; hugeIntRank* = 4;
-    realRank* = 5; longRealRank* = 6;
+    shortIntRank* = 1; integerRank* = 2; longIntRank* = 3;
+    (* PLAN.md Phase 9 step 4: SYSTEM.ADDRESS, an integer type as wide as a
+       pointer (the target's word size), ranked directly below HUGEINT:
+       LONGINT is included in it (any LONGINT, however wide, may be
+       assigned to an address) and it is included in HUGEINT (a 64-bit
+       integer holds an address on every target). *)
+    addressRank* = 4; hugeIntRank* = 5;
+    realRank* = 6; longRealRank* = 7;
 
     (* Value*.kind *)
     intValue* = 0; realValue* = 1; boolValue* = 2; charValue* = 3;
@@ -212,7 +218,7 @@ MODULE Types;
     END;
 
   VAR
-    Boolean*, Char*, ShortInt*, Integer*, LongInt*, HugeInt*, Real*, LongReal*,
+    Boolean*, Char*, ShortInt*, Integer*, LongInt*, Address*, HugeInt*, Real*, LongReal*,
       Set*, String*, Undefined*, NilType*: Type;
     (* PLAN.md Phase 6: a shared singleton marking a SymbolTable.Object as
        one of Oberon2.pdf §10.3's predeclared procedures. A single
@@ -657,6 +663,7 @@ MODULE Types;
     ELSIF t = ShortInt THEN COPY("SHORTINT", name)
     ELSIF t = Integer THEN COPY("INTEGER", name)
     ELSIF t = LongInt THEN COPY("LONGINT", name)
+    ELSIF t = Address THEN COPY("SYSTEM.ADDRESS", name)
     ELSIF t = HugeInt THEN COPY("HUGEINT", name)
     ELSIF t = Real THEN COPY("REAL", name)
     ELSIF t = LongReal THEN COPY("LONGREAL", name)
@@ -678,6 +685,7 @@ BEGIN
   ShortInt := NewBasicType(shortIntRank);
   Integer := NewBasicType(integerRank);
   LongInt := NewBasicType(longIntRank);
+  Address := NewBasicType(addressRank);
   HugeInt := NewBasicType(hugeIntRank);
   Real := NewBasicType(realRank);
   LongReal := NewBasicType(longRealRank);

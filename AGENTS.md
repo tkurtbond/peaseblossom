@@ -232,8 +232,9 @@ textual changes Appendix A's own definitions need are the two already
 documented above: "Integer types" gains `HUGEINT`, and the type-inclusion
 hierarchy gains `HUGEINT` between `LONGINT` and `REAL`. No further Phase 5/6
 work item exists here.
-Appendix C (the `SYSTEM` module) isn't implemented in poc at all yet —
-scheduled for `PLAN.md` Phase 10 step 7 (grouped with the runtime-library
+Appendix C (the `SYSTEM` module): a subset was pulled forward into Phase 9
+step 4 (2026-09-19) - see "SYSTEM subset (partly implemented)" below. The
+rest is scheduled for `PLAN.md` Phase 10 step 7 (grouped with the runtime-library
 phase rather than the VAX/VMS one, since `SYSTEM` needs a real LLVM
 lowering just as much as a VAX one, and has no dependency on the VAX
 backend existing). When it is, two adjustments beyond the report's own
@@ -245,6 +246,24 @@ category should explicitly include `HUGEINT` alongside `SHORTINT`/
 `INTEGER`/`LONGINT`, since it is a genuine additional integer type by the
 same Appendix A definition above. Both are documentation-only conclusions
 today; there is no `SYSTEM.Mod` yet for either to apply to.
+
+### SYSTEM subset (partly implemented)
+
+`IMPORT SYSTEM` binds a pseudo-module (no source, no `.sym`;
+`SymbolTable.SystemScope`) offering `ADDRESS`, `ADR`, `GET`, `PUT`, `VAL`
+and `MOVE`, pulled forward from Phase 10 step 7 because the garbage
+collector (`rtl/llvm/GarbageCollectedHeap.Mod`, written as ordinary Oberon-2
+over raw addresses) needs them. `SYSTEM.ADDRESS` is deliberately **not**
+voc's `LONGINT` alias: it is its own integer type, as wide as a pointer on
+the target, ranked between `LONGINT` and `HUGEINT` in the numeric hierarchy
+(`LONGINT ⊆ ADDRESS ⊆ HUGEINT` - a `LONGINT` can be assigned to an address,
+not the reverse). `GET`/`PUT` access memory with no alignment assumption;
+`PUT(a, x)` stores `x` at `x`'s own type, so a bare numeral is stored at
+its minimal integer type's width (`PUT(a, 5)` writes a `SHORTINT`-sized
+value under `-O2`). `VAL(T, x)` between scalars of different widths
+sign-extends or truncates - the report leaves it undefined and voc warns.
+`BYTE`, `PTR`, `BIT`, `LSH`, `ROT`, `SYSTEM.NEW` and the fixed-width types
+are still Phase 10 step 7's.
 
 ### External procedures
 

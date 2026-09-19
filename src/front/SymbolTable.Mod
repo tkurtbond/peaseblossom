@@ -117,6 +117,14 @@ MODULE SymbolTable;
 
   VAR
     Universe*: Scope;
+    (* PLAN.md Phase 9 step 4: the pseudo-module SYSTEM's own scope -
+       Oberon2.pdf Appendix C's SYSTEM has no source or .sym file, so
+       "IMPORT SYSTEM" (SemanticActions.Mod's ResolveImport) binds a
+       moduleClass Object to this scope instead of reading a file. Every
+       member is exported; only the subset the runtime library needs is
+       here (ADDRESS, ADR, GET, PUT, VAL, MOVE), the rest of Appendix C
+       being Phase 10 step 7's. *)
+    SystemScope*: Scope;
 
   PROCEDURE OpenScope*(outer: Scope): Scope;
     VAR s: Scope;
@@ -207,6 +215,20 @@ MODULE SymbolTable;
     o.value := v
   END InsertPredeclaredConst;
 
+  PROCEDURE InsertSystemType(name: ARRAY OF CHAR; type: Types.Type);
+    VAR ident: SyntaxTree.Ident; o: Object;
+  BEGIN
+    COPY(name, ident);
+    o := Insert(SystemScope, ident, typeClass, type, TRUE, FALSE, 0, 0)
+  END InsertSystemType;
+
+  PROCEDURE InsertSystemProc(name: ARRAY OF CHAR);
+    VAR ident: SyntaxTree.Ident; o: Object;
+  BEGIN
+    COPY(name, ident);
+    o := Insert(SystemScope, ident, procClass, Types.PredeclaredProcedureType, TRUE, FALSE, 0, 0)
+  END InsertSystemProc;
+
 BEGIN
   Universe := OpenScope(NIL);
   InsertPredeclared("BOOLEAN", Types.Boolean);
@@ -229,5 +251,9 @@ BEGIN
   InsertPredeclaredProc("SIZE");
   InsertPredeclaredProc("COPY"); InsertPredeclaredProc("DEC"); InsertPredeclaredProc("EXCL");
   InsertPredeclaredProc("HALT"); InsertPredeclaredProc("INC"); InsertPredeclaredProc("INCL");
-  InsertPredeclaredProc("NEW")
+  InsertPredeclaredProc("NEW");
+  SystemScope := OpenScope(NIL);
+  InsertSystemType("ADDRESS", Types.Address);
+  InsertSystemProc("ADR"); InsertSystemProc("GET"); InsertSystemProc("PUT");
+  InsertSystemProc("VAL"); InsertSystemProc("MOVE")
 END SymbolTable.

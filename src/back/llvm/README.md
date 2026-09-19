@@ -13,7 +13,11 @@ LLVM backend: lowers the front end's typed tree to textual LLVM IR
   (`ExtendTo`, `RealConstant`, `DoubleBitsText`), and (Phase 9 step 3)
   SET constructors/`IN`/`INCL`/`EXCL`, named STRING constants and
   ARRAY OF CHAR comparison/assignment/`COPY` (`GenerateSetExpr`,
-  `GenerateCharCompare`, `EmitCharacterHelpers`).
+  `GenerateCharCompare`, `EmitCharacterHelpers`), and (Phase 9 step 4) the `SYSTEM` subset
+  (`GenerateAdr`/`GenerateGet`/`GeneratePut`/`GenerateVal`/`GenerateMove`,
+  plus `SIZE`) and, when the program contains `ModuleTable`/
+  `GarbageCollectedHeap`, per-module GC root tables (`EmitRootTable`) and
+  `main`'s stack-base call.
 - `LLVMToolchainDriver.Mod` — host-triple auto-detection
   (`clang -dumpmachine`), writing `Generate*`'s output to a real
   `<ModuleName>.ll` file, and the single-step `clang <file>.ll -o <exe>`

@@ -2838,6 +2838,13 @@ MODULE SemanticActions;
       Diagnostics.Error(imp.line, imp.column, "a module must not import itself")
     ELSIF InChain(resolving, imp.moduleName) THEN
       Diagnostics.Error(imp.line, imp.column, "cyclic module import")
+    ELSIF imp.moduleName = "SYSTEM" THEN
+      (* PLAN.md Phase 9 step 4: a pseudo-module with no source or .sym
+         file, bound straight to SymbolTable.SystemScope. *)
+      IF imp.alias[0] # 0X THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
+      obj := SymbolTable.Insert(scope, bindName, SymbolTable.moduleClass, NIL, FALSE, FALSE,
+                                 imp.line, imp.column);
+      obj.moduleScope := SymbolTable.SystemScope; obj.realModuleName := imp.moduleName
     ELSE
       impScope := FindLoadedModule(cache, imp.moduleName);
       IF impScope # NIL THEN

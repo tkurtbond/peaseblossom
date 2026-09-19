@@ -1,0 +1,609 @@
+MODULE GarbageCollectedHeap;
+
+  (* PLAN.md Phase 9 step 4: the bespoke mark-sweep collector every
+     LLVM-targeted program that allocates on the heap links in. Written
+     as ordinary Oberon-2 over SYSTEM.ADDRESS - no pointer variables, no
+     NEW - so it can be compiled by poc itself, and depends on the C
+     library only for calloc (chunk memory) and LLVM's own
+     llvm.eh.unwind.init (register spilling).
+
+     HEAP SHAPE. Memory comes from calloc in *chunks*. A chunk holds, in
+     order: a small header (the ChunkNext.. words below), a *start map* -
+     one byte per 16-byte granule of the block area, non-zero where a
+     block starts - and the block area itself. Blocks are whole multiples
+     of the 16-byte granule:
+
+       block + 0           header word: size * 4 + inUse * 2 + marked,
+                           where size is the object's data size in bytes
+                           for an allocated block, the whole block's
+                           size in bytes for a free one
+       block + word        the tag word: 0, or the address of a type
+                           descriptor (LLVMCodeGenerator.Mod's "tag" -
+                           see the section on run-time type descriptors
+                           there for the layout this file reads)
+       block + 2 * word    the object's data; Allocate returns this
+                           address, so an object's tag sits at
+                           address - word, where the report's own
+                           v^.tag expects it
+
+     A free block reuses its first two words for the header and a link to
+     the next free block. The block area of a chunk is used from the
+     bottom (a *bump pointer* moves up as fresh blocks are cut) and swept
+     memory is threaded onto one address-ordered free list that is
+     searched first-fit before the bump pointers.
+
+     TRACING. What a live object's outgoing pointers are comes from its
+     tag: a descriptor's `size` (one element's bytes), `ptrCount` and
+     pointer-offset table. An object may be several elements of that
+     description end to end (an array of records) - the block's data size
+     divided by `size` is the element count. A tag of 0 marks an object
+     with no pointers in it. Module-level pointer variables come from the
+     per-module root tables registered in ModuleTable. And - since poc has
+     no stack maps - the machine stack is scanned *conservatively*: any
+     word on it that points anywhere into an allocated block, interior
+     included, keeps that block alive. The registers are spilled into the
+     collector's own frame first (llvm.eh.unwind.init). The base of the
+     stack is what the program's `main` reports through SetStackBase, so
+     a program whose `main` does not is scanned by roots only.
+
+     Marking uses an explicit mark stack (a calloc'd array, so a long list
+     cannot overflow the machine stack). If even that overflows, marking
+     falls back to re-tracing every marked block until a pass overflows
+     nothing - slow, but exact.
+
+     THE POLICY. A collection runs when neither the free list nor a bump
+     pointer can supply a request; if that still leaves the request
+     unsatisfied, or leaves under a quarter of the heap free, the heap
+     grows by a chunk - up to a ceiling (SetHeapLimit) - and Allocate
+     answers 0 only when the ceiling stops it. Nothing moves, nothing
+     finalizes, and chunks are never given back.
+
+     LIMITS worth knowing. The collector assumes no chunk straddles the
+     boundary between the low and high halves of a 32-bit address space
+     (all address tests below are offsets from a chunk's start, so a
+     single chunk is otherwise safe), and one object may not exceed
+     maxObjectSize bytes. A pointer the compiler has shifted, masked or
+     split is invisible to a conservative scan; poc's own output never
+     does that. *)
+
+  IMPORT SYSTEM, ModuleTable;
+
+  CONST
+    granule = 16;
+    (* header word = data or block size * sizeUnit + flag bits *)
+    sizeUnit = 4;
+    markFlag = 1;
+    inUseFlag = 2;
+    maxObjectSize = 134217728; (* 2^27; keeps size * sizeUnit inside a signed 32-bit word *)
+    defaultChunkBytes = 262144;
+    maxChunkBytes = 268435456; (* 2^28; keeps a whole free block's size * sizeUnit in range too *)
+    defaultHeapLimit = 1073741824;
+    defaultMarkStackEntries = 16384;
+    (* a chunk's own header, in words from the chunk's start *)
+    chunkNext = 0; (* the next chunk, 0 for the last *)
+    chunkTotalBytes = 1;
+    chunkStartMap = 2; (* address of the start map *)
+    chunkFirstBlock = 3;
+    chunkBump = 4; (* address just past the last block cut so far *)
+    chunkLimit = 5; (* end of the block area *)
+    chunkHeaderBytes = 64;
+    chunkSlack = 96; (* alignment padding plus rounding, in AddChunk's arithmetic *)
+
+  VAR
+    word: SYSTEM.ADDRESS; (* SIZE(SYSTEM.ADDRESS), set by the module body *)
+    chunkHead, chunkTail: SYSTEM.ADDRESS;
+    freeHead, freeTail: SYSTEM.ADDRESS;
+    totalChunkBytes: SYSTEM.ADDRESS; (* what has been asked of calloc, for the ceiling *)
+    blockAreaBytes: SYSTEM.ADDRESS; (* the sum of every chunk's block area *)
+    heapLimit, chunkBytes: SYSTEM.ADDRESS;
+    stackBase: SYSTEM.ADDRESS;
+    markStack, markStackCapacity, markStackCount: SYSTEM.ADDRESS;
+    markStackOverflowed: BOOLEAN;
+    collecting: BOOLEAN;
+    collections: LONGINT;
+    liveBytesAtLastCollection: SYSTEM.ADDRESS;
+    liveBytesAccumulator: SYSTEM.ADDRESS;
+
+  PROCEDURE ["C", "calloc"] CAllocate(count, size: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+  PROCEDURE ["C", "llvm.eh.unwind.init"] SpillRegisters;
+
+  (* ---- word and byte access ---- *)
+
+  PROCEDURE GetWord(address: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+    VAR value: SYSTEM.ADDRESS;
+  BEGIN
+    SYSTEM.GET(address, value);
+    RETURN value
+  END GetWord;
+
+  PROCEDURE PutWord(address, value: SYSTEM.ADDRESS);
+  BEGIN
+    SYSTEM.PUT(address, value)
+  END PutWord;
+
+  PROCEDURE GetByte(address: SYSTEM.ADDRESS): CHAR;
+    VAR value: CHAR;
+  BEGIN
+    SYSTEM.GET(address, value);
+    RETURN value
+  END GetByte;
+
+  PROCEDURE PutByte(address: SYSTEM.ADDRESS; value: CHAR);
+  BEGIN
+    SYSTEM.PUT(address, value)
+  END PutByte;
+
+  PROCEDURE ChunkField(chunk: SYSTEM.ADDRESS; field: INTEGER): SYSTEM.ADDRESS;
+  BEGIN
+    RETURN GetWord(chunk + field * word)
+  END ChunkField;
+
+  PROCEDURE SetChunkField(chunk: SYSTEM.ADDRESS; field: INTEGER; value: SYSTEM.ADDRESS);
+  BEGIN
+    PutWord(chunk + field * word, value)
+  END SetChunkField;
+
+  (* ---- block headers ---- *)
+
+  PROCEDURE IsInUse(header: SYSTEM.ADDRESS): BOOLEAN;
+  BEGIN
+    RETURN (header DIV inUseFlag) MOD 2 = 1
+  END IsInUse;
+
+  PROCEDURE IsMarked(header: SYSTEM.ADDRESS): BOOLEAN;
+  BEGIN
+    RETURN header MOD 2 = 1
+  END IsMarked;
+
+  (* The whole block size an object of dataSize bytes occupies: its two
+     header words plus its data, rounded up to the granule. *)
+  PROCEDURE BlockBytesFor(dataSize: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+    VAR bytes: SYSTEM.ADDRESS;
+  BEGIN
+    bytes := dataSize + 2 * word;
+    RETURN ((bytes + granule - 1) DIV granule) * granule
+  END BlockBytesFor;
+
+  (* The size in bytes of the block whose header word is header. *)
+  PROCEDURE BlockBytesOf(header: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+  BEGIN
+    IF IsInUse(header) THEN RETURN BlockBytesFor(header DIV sizeUnit)
+    ELSE RETURN header DIV sizeUnit
+    END
+  END BlockBytesOf;
+
+  (* ---- the start map ---- *)
+
+  PROCEDURE SetStartBit(chunk, block: SYSTEM.ADDRESS; present: BOOLEAN);
+    VAR index: SYSTEM.ADDRESS; flag: CHAR;
+  BEGIN
+    index := (block - ChunkField(chunk, chunkFirstBlock)) DIV granule;
+    IF present THEN flag := 1X ELSE flag := 0X END;
+    PutByte(ChunkField(chunk, chunkStartMap) + index, flag)
+  END SetStartBit;
+
+  (* ---- chunks ---- *)
+
+  (* The chunk whose *used* block area holds address, or 0. *)
+  PROCEDURE ChunkOf(address: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+    VAR chunk, offset, first: SYSTEM.ADDRESS;
+  BEGIN
+    chunk := chunkHead;
+    WHILE chunk # 0 DO
+      first := ChunkField(chunk, chunkFirstBlock);
+      offset := address - first;
+      IF (offset >= 0) & (offset < ChunkField(chunk, chunkBump) - first) THEN RETURN chunk END;
+      chunk := ChunkField(chunk, chunkNext)
+    END;
+    RETURN 0
+  END ChunkOf;
+
+  (* The start of the block of chunk that contains address, or 0 if
+     address lies in the used area of no block (it cannot: every byte
+     below the bump pointer belongs to some block, so 0 means "before the
+     first block", unreachable for a caller that got chunk from ChunkOf). *)
+  PROCEDURE FindBlock(chunk, address: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+    VAR first, map, index: SYSTEM.ADDRESS;
+  BEGIN
+    first := ChunkField(chunk, chunkFirstBlock);
+    map := ChunkField(chunk, chunkStartMap);
+    index := (address - first) DIV granule;
+    WHILE index >= 0 DO
+      IF GetByte(map + index) # 0X THEN RETURN first + index * granule END;
+      DEC(index)
+    END;
+    RETURN 0
+  END FindBlock;
+
+  (* Obtains a chunk with room for at least one block of blockBytes and
+     links it in; FALSE (and no change) if calloc refuses or the ceiling
+     would be passed. *)
+  PROCEDURE AddChunk(blockBytes: SYSTEM.ADDRESS): BOOLEAN;
+    VAR
+      bytes, raw, chunk, granules, mapBytes, first: SYSTEM.ADDRESS;
+  BEGIN
+    (* every granule of block area costs 16 bytes plus one map byte *)
+    bytes := (blockBytes DIV granule) * (granule + 1) + chunkHeaderBytes + chunkSlack;
+    IF bytes < chunkBytes THEN bytes := chunkBytes END;
+    IF totalChunkBytes + bytes > heapLimit THEN RETURN FALSE END;
+    raw := CAllocate(1, bytes + granule);
+    IF raw = 0 THEN RETURN FALSE END;
+    chunk := ((raw + granule - 1) DIV granule) * granule;
+    granules := (bytes - chunkHeaderBytes - 2 * granule) DIV (granule + 1);
+    mapBytes := ((granules + granule - 1) DIV granule) * granule;
+    first := chunk + chunkHeaderBytes + mapBytes;
+    SetChunkField(chunk, chunkNext, 0);
+    SetChunkField(chunk, chunkTotalBytes, bytes);
+    SetChunkField(chunk, chunkStartMap, chunk + chunkHeaderBytes);
+    SetChunkField(chunk, chunkFirstBlock, first);
+    SetChunkField(chunk, chunkBump, first);
+    SetChunkField(chunk, chunkLimit, first + granules * granule);
+    IF chunkTail = 0 THEN chunkHead := chunk ELSE SetChunkField(chunkTail, chunkNext, chunk) END;
+    chunkTail := chunk;
+    totalChunkBytes := totalChunkBytes + bytes;
+    blockAreaBytes := blockAreaBytes + granules * granule;
+    RETURN TRUE
+  END AddChunk;
+
+  (* ---- taking blocks ---- *)
+
+  (* A free block of at least need bytes, first fit, split when it is
+     bigger; its start bit stays set. 0 if none. *)
+  PROCEDURE TakeFromFreeList(need: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+    VAR block, previous, bytes, following, remainder, chunk: SYSTEM.ADDRESS;
+  BEGIN
+    previous := 0; block := freeHead;
+    WHILE block # 0 DO
+      bytes := GetWord(block) DIV sizeUnit;
+      following := GetWord(block + word);
+      IF bytes >= need THEN
+        IF bytes - need >= granule THEN
+          (* the tail of the block stays on the list in its place *)
+          remainder := block + need;
+          PutWord(remainder, (bytes - need) * sizeUnit);
+          PutWord(remainder + word, following);
+          chunk := ChunkOf(remainder);
+          SetStartBit(chunk, remainder, TRUE);
+          IF freeTail = block THEN freeTail := remainder END;
+          following := remainder
+        ELSIF freeTail = block THEN
+          freeTail := previous
+        END;
+        IF previous = 0 THEN freeHead := following ELSE PutWord(previous + word, following) END;
+        RETURN block
+      END;
+      previous := block; block := following
+    END;
+    RETURN 0
+  END TakeFromFreeList;
+
+  (* A fresh block of need bytes cut from the first chunk with room. *)
+  PROCEDURE TakeFromBump(need: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+    VAR chunk, bump: SYSTEM.ADDRESS;
+  BEGIN
+    chunk := chunkHead;
+    WHILE chunk # 0 DO
+      bump := ChunkField(chunk, chunkBump);
+      IF ChunkField(chunk, chunkLimit) - bump >= need THEN
+        SetChunkField(chunk, chunkBump, bump + need);
+        SetStartBit(chunk, bump, TRUE);
+        RETURN bump
+      END;
+      chunk := ChunkField(chunk, chunkNext)
+    END;
+    RETURN 0
+  END TakeFromBump;
+
+  PROCEDURE TakeBlock(need: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+    VAR block: SYSTEM.ADDRESS;
+  BEGIN
+    block := TakeFromFreeList(need);
+    IF block = 0 THEN block := TakeFromBump(need) END;
+    RETURN block
+  END TakeBlock;
+
+  (* ---- marking ---- *)
+
+  PROCEDURE PushBlock(block: SYSTEM.ADDRESS);
+  BEGIN
+    IF markStackCount < markStackCapacity THEN
+      PutWord(markStack + markStackCount * word, block);
+      INC(markStackCount)
+    ELSE
+      markStackOverflowed := TRUE
+    END
+  END PushBlock;
+
+  (* Any word that may be a pointer: if it points into an allocated,
+     not yet marked block, marks the block and queues it for tracing. *)
+  PROCEDURE MarkCandidate(candidate: SYSTEM.ADDRESS);
+    VAR chunk, block, header: SYSTEM.ADDRESS;
+  BEGIN
+    chunk := ChunkOf(candidate);
+    IF chunk # 0 THEN
+      block := FindBlock(chunk, candidate);
+      IF block # 0 THEN
+        header := GetWord(block);
+        IF IsInUse(header) & ~IsMarked(header) THEN
+          PutWord(block, header + markFlag);
+          PushBlock(block)
+        END
+      END
+    END
+  END MarkCandidate;
+
+  (* Marks everything the block's tag says its data points to. *)
+  PROCEDURE TraceBlock(block: SYSTEM.ADDRESS);
+    VAR
+      tag, data, dataSize, elementSize, pointerCount, offsets, elements, element, index: SYSTEM.ADDRESS;
+      elementBase: SYSTEM.ADDRESS;
+  BEGIN
+    tag := GetWord(block + word);
+    IF tag = 0 THEN RETURN END;
+    pointerCount := GetWord(tag + 2 * word);
+    IF pointerCount <= 0 THEN RETURN END;
+    dataSize := GetWord(block) DIV sizeUnit;
+    data := block + 2 * word;
+    elementSize := GetWord(tag);
+    (* the offset table follows the three header words and BaseTypes,
+       which has extLevel + 1 entries *)
+    offsets := tag + (4 + GetWord(tag + word)) * word;
+    IF elementSize <= 0 THEN elements := 1 ELSE elements := dataSize DIV elementSize END;
+    element := 0;
+    WHILE element < elements DO
+      elementBase := data + element * elementSize;
+      index := 0;
+      WHILE index < pointerCount DO
+        MarkCandidate(GetWord(elementBase + GetWord(offsets + index * word)));
+        INC(index)
+      END;
+      INC(element)
+    END
+  END TraceBlock;
+
+  PROCEDURE DrainMarkStack;
+    VAR block: SYSTEM.ADDRESS;
+  BEGIN
+    WHILE markStackCount > 0 DO
+      DEC(markStackCount);
+      block := GetWord(markStack + markStackCount * word);
+      TraceBlock(block)
+    END
+  END DrainMarkStack;
+
+  (* One pass of the overflow fallback: traces every marked block. *)
+  PROCEDURE RetraceMarkedBlocks;
+    VAR chunk, block, end, header: SYSTEM.ADDRESS;
+  BEGIN
+    chunk := chunkHead;
+    WHILE chunk # 0 DO
+      block := ChunkField(chunk, chunkFirstBlock);
+      end := ChunkField(chunk, chunkBump);
+      WHILE end - block > 0 DO
+        header := GetWord(block);
+        IF IsInUse(header) & IsMarked(header) THEN
+          TraceBlock(block);
+          DrainMarkStack
+        END;
+        block := block + BlockBytesOf(header)
+      END;
+      chunk := ChunkField(chunk, chunkNext)
+    END
+  END RetraceMarkedBlocks;
+
+  PROCEDURE MarkFromModuleTables;
+    VAR table, count, index: SYSTEM.ADDRESS;
+  BEGIN
+    table := ModuleTable.First();
+    WHILE table # 0 DO
+      count := ModuleTable.SlotCount(table);
+      index := 0;
+      WHILE index < count DO
+        MarkCandidate(GetWord(ModuleTable.Slot(table, index)));
+        INC(index)
+      END;
+      table := ModuleTable.Next(table)
+    END
+  END MarkFromModuleTables;
+
+  (* Scans the machine stack, from this frame's own local up to the base
+     SetStackBase recorded. Called from Collect *after* the registers
+     were spilled into Collect's frame, so that everything a caller kept
+     in a register is somewhere between here and the base. *)
+  PROCEDURE MarkFromStack;
+    VAR marker: LONGINT; top, count, index: SYSTEM.ADDRESS;
+  BEGIN
+    IF stackBase = 0 THEN RETURN END;
+    top := SYSTEM.ADR(marker);
+    top := top - top MOD word;
+    count := (stackBase - top) DIV word;
+    index := 0;
+    WHILE index < count DO
+      MarkCandidate(GetWord(top + index * word));
+      INC(index)
+    END
+  END MarkFromStack;
+
+  (* ---- sweeping ---- *)
+
+  PROCEDURE EndRun(chunk, runStart, runBytes: SYSTEM.ADDRESS; reachesBump: BOOLEAN);
+  BEGIN
+    IF runStart = 0 THEN RETURN END;
+    IF reachesBump THEN
+      (* the run is the top of the used area: give it back to the bump pointer *)
+      SetStartBit(chunk, runStart, FALSE);
+      SetChunkField(chunk, chunkBump, runStart)
+    ELSE
+      PutWord(runStart, runBytes * sizeUnit);
+      PutWord(runStart + word, 0);
+      IF freeTail = 0 THEN freeHead := runStart ELSE PutWord(freeTail + word, runStart) END;
+      freeTail := runStart
+    END
+  END EndRun;
+
+  (* Walks one chunk's blocks in address order, clearing survivors' marks
+     and coalescing every run of dead or already-free blocks into one
+     free block (or back into the bump area, at the top of the chunk). *)
+  PROCEDURE SweepChunk(chunk: SYSTEM.ADDRESS);
+    VAR block, end, header, bytes, runStart, runBytes: SYSTEM.ADDRESS;
+  BEGIN
+    block := ChunkField(chunk, chunkFirstBlock);
+    end := ChunkField(chunk, chunkBump);
+    runStart := 0; runBytes := 0;
+    WHILE end - block > 0 DO
+      header := GetWord(block);
+      bytes := BlockBytesOf(header);
+      IF IsInUse(header) & IsMarked(header) THEN
+        PutWord(block, header - markFlag);
+        liveBytesAccumulator := liveBytesAccumulator + bytes;
+        EndRun(chunk, runStart, runBytes, FALSE);
+        runStart := 0; runBytes := 0
+      ELSIF runStart = 0 THEN
+        runStart := block; runBytes := bytes
+      ELSE
+        SetStartBit(chunk, block, FALSE);
+        runBytes := runBytes + bytes
+      END;
+      block := block + bytes
+    END;
+    EndRun(chunk, runStart, runBytes, TRUE)
+  END SweepChunk;
+
+  PROCEDURE Sweep;
+    VAR chunk: SYSTEM.ADDRESS;
+  BEGIN
+    freeHead := 0; freeTail := 0;
+    liveBytesAccumulator := 0;
+    chunk := chunkHead;
+    WHILE chunk # 0 DO
+      SweepChunk(chunk);
+      chunk := ChunkField(chunk, chunkNext)
+    END;
+    liveBytesAtLastCollection := liveBytesAccumulator
+  END Sweep;
+
+  (* ---- the public interface ---- *)
+
+  (* One full collection: roots, then the machine stack, then whatever
+     they reach, then the sweep. Called by Allocate when it has run out
+     of room, and directly by anything that wants one. *)
+  PROCEDURE Collect*;
+  BEGIN
+    IF collecting THEN RETURN END;
+    collecting := TRUE;
+    IF markStack = 0 THEN
+      markStack := CAllocate(markStackCapacity, word)
+    END;
+    IF markStack # 0 THEN
+      markStackCount := 0;
+      markStackOverflowed := FALSE;
+      MarkFromModuleTables;
+      SpillRegisters;
+      MarkFromStack;
+      DrainMarkStack;
+      WHILE markStackOverflowed DO
+        markStackOverflowed := FALSE;
+        RetraceMarkedBlocks
+      END;
+      Sweep;
+      INC(collections)
+    END;
+    collecting := FALSE
+  END Collect;
+
+  (* dataSize bytes of zeroed memory whose tag word (at the returned
+     address - one word) is tag - 0, or the address of a type descriptor.
+     0 if the request is out of range or the heap ceiling stops it. *)
+  PROCEDURE Allocate*(dataSize, tag: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+    VAR need, block, cursor, end: SYSTEM.ADDRESS; grown: BOOLEAN;
+  BEGIN
+    IF (dataSize < 0) OR (dataSize > maxObjectSize) THEN RETURN 0 END;
+    need := BlockBytesFor(dataSize);
+    block := TakeBlock(need);
+    IF block = 0 THEN
+      (* with no chunk at all there is nothing to collect *)
+      IF chunkHead # 0 THEN Collect END;
+      block := TakeBlock(need);
+      IF block = 0 THEN
+        IF AddChunk(need) THEN block := TakeBlock(need) END
+      ELSIF blockAreaBytes - liveBytesAtLastCollection < blockAreaBytes DIV 4 THEN
+        (* the collection freed too little to be worth repeating soon *)
+        grown := AddChunk(need)
+      END
+    END;
+    IF block = 0 THEN RETURN 0 END;
+    PutWord(block, dataSize * sizeUnit + inUseFlag);
+    PutWord(block + word, tag);
+    cursor := block + 2 * word;
+    end := block + need;
+    WHILE end - cursor > 0 DO
+      PutWord(cursor, 0);
+      cursor := cursor + word
+    END;
+    RETURN block + 2 * word
+  END Allocate;
+
+  (* The base of the machine stack, as the program's `main` sees it. *)
+  PROCEDURE SetStackBase*(base: SYSTEM.ADDRESS);
+  BEGIN
+    stackBase := base
+  END SetStackBase;
+
+  (* The most bytes the heap may ask calloc for in total. A limit already
+     below what is held is accepted; the heap just cannot grow. *)
+  PROCEDURE SetHeapLimit*(bytes: SYSTEM.ADDRESS);
+  BEGIN
+    heapLimit := bytes
+  END SetHeapLimit;
+
+  (* The size the heap grows by (a bigger request gets a chunk of its
+     own size). Takes effect for the next chunk. *)
+  PROCEDURE SetChunkSize*(bytes: SYSTEM.ADDRESS);
+  BEGIN
+    IF (bytes >= 1024) & (bytes <= maxChunkBytes) THEN chunkBytes := bytes END
+  END SetChunkSize;
+
+  (* How many entries the mark stack holds - a tiny one exercises the
+     overflow fallback. Only effective before the first collection. *)
+  PROCEDURE SetMarkStackCapacity*(entries: SYSTEM.ADDRESS);
+  BEGIN
+    IF (entries >= 1) & (markStack = 0) THEN markStackCapacity := entries END
+  END SetMarkStackCapacity;
+
+  (* ---- observation, for tests and tools ---- *)
+
+  PROCEDURE CollectionCount*(): LONGINT;
+  BEGIN
+    RETURN collections
+  END CollectionCount;
+
+  (* Bytes obtained from calloc so far. *)
+  PROCEDURE HeapBytes*(): SYSTEM.ADDRESS;
+  BEGIN
+    RETURN totalChunkBytes
+  END HeapBytes;
+
+  (* Bytes in allocated blocks - headers and rounding included - the last
+     collection found reachable. *)
+  PROCEDURE LiveBytes*(): SYSTEM.ADDRESS;
+  BEGIN
+    RETURN liveBytesAtLastCollection
+  END LiveBytes;
+
+  (* TRUE if address lies anywhere inside a block that is allocated now. *)
+  PROCEDURE IsAllocated*(address: SYSTEM.ADDRESS): BOOLEAN;
+    VAR chunk, block: SYSTEM.ADDRESS;
+  BEGIN
+    chunk := ChunkOf(address);
+    IF chunk = 0 THEN RETURN FALSE END;
+    block := FindBlock(chunk, address);
+    IF block = 0 THEN RETURN FALSE END;
+    RETURN IsInUse(GetWord(block))
+  END IsAllocated;
+
+BEGIN
+  word := SIZE(SYSTEM.ADDRESS);
+  heapLimit := defaultHeapLimit;
+  chunkBytes := defaultChunkBytes;
+  markStackCapacity := defaultMarkStackEntries
+END GarbageCollectedHeap.

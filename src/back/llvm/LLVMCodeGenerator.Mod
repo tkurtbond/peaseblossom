@@ -370,6 +370,9 @@ MODULE LLVMCodeGenerator;
          golden .ll stays byte-identical. Set by the call sites, read
          by EmitCharacterHelpers at the end of the program. *)
       needCharCompare, needCharCopy: BOOLEAN;
+      (* PLAN.md Phase 9 step 4: SYSTEM.MOVE lowers to the llvm.memmove
+         intrinsic, declared once at the end of the program if used. *)
+      needMemmove: BOOLEAN;
       pendingStrings: PendingString
     END;
 
@@ -713,21 +716,42 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, "  unreachable"); WriteLn(w)
   END EmitTrap;
 
+  PROCEDURE IntWidth(llvmType: ARRAY OF CHAR): INTEGER;
+  BEGIN
+    IF llvmType = "i8" THEN RETURN 8
+    ELSIF llvmType = "i16" THEN RETURN 16
+    ELSIF llvmType = "i32" THEN RETURN 32
+    ELSE RETURN 64
+    END
+  END IntWidth;
+
   (* idx >= 0 AND idx < length, branching to the trap on failure -
      GenerateDesignatorAddress's own IndexSelector branch calls this
      immediately before each EmitGEP it emits, one check per selector
      step (matching EmitGEP's own "one GEP per selector step" design).
-     Reuses idx's own already-computed llvmType/text unchanged for both
-     comparisons, the same "no widening needed" reasoning EmitGEP's own
-     header comment already gives for using an array index's type as-is;
+     Reuses idx's own already-computed llvmType/text for both
+     comparisons - widened only when its own width cannot hold length -
+     and, for the GEP itself, needs no widening (see EmitGEP's own
+     header comment);
      "length" is always arr.length, a compile-time-known LONGINT already
      guaranteed non-negative (Types.ArrayType's own header comment). *)
   PROCEDURE EmitIndexRangeCheck(VAR w: Files.Rider; VAR cg: Codegen; idx: Value; length: LONGINT);
-    VAR lenText, geOk, ltOk, inBounds, okLabel, trapLabel: ValueText;
+    VAR lenText, geOk, ltOk, inBounds, okLabel, trapLabel, wideText: ValueText; width: INTEGER;
+        checked: Value;
   BEGIN
+    checked := idx;
+    (* a narrow index (a literal 99 is an i8) cannot be compared against a
+       length its own width cannot hold - "icmp slt i8 99, 1024" reads the
+       1024 as 0 - so it is sign-extended for the check first *)
+    width := IntWidth(idx.llvmType);
+    IF ((width = 8) & (length > 127)) OR ((width = 16) & (length > 32767))
+       OR ((width = 32) & (length > 2147483647)) THEN
+      EmitConvert(w, cg, "sext", idx.llvmType, idx.text, "i64", wideText);
+      COPY(wideText, checked.text); COPY("i64", checked.llvmType)
+    END;
     lenText[0] := 0X; AppendLongInt(lenText, length);
-    EmitBinOp(w, cg, "icmp sge", idx.llvmType, idx.text, "0", geOk);
-    EmitBinOp(w, cg, "icmp slt", idx.llvmType, idx.text, lenText, ltOk);
+    EmitBinOp(w, cg, "icmp sge", checked.llvmType, checked.text, "0", geOk);
+    EmitBinOp(w, cg, "icmp slt", checked.llvmType, checked.text, lenText, ltOk);
     EmitBinOp(w, cg, "and", "i1", geOk, ltOk, inBounds);
     NewLabel(cg, okLabel); NewLabel(cg, trapLabel);
     EmitCondBr(w, inBounds, okLabel, trapLabel);
@@ -741,8 +765,9 @@ MODULE LLVMCodeGenerator;
      sitofp from an integer to REAL/LONGREAL (Appendix A's numeric
      inclusion: an integer operand of a real operation or a real
      assignment target is converted, never the other way around), and
-     fpext from REAL to LONGREAL. Only ever widens - narrowing is
-     SHORT's own job (GenerateShort), never an implicit conversion. *)
+     fpext from REAL to LONGREAL. Only ever widens, apart from the one
+     ADDRESS case noted below - narrowing is SHORT's own job
+     (GenerateShort), never an implicit conversion. *)
   PROCEDURE ExtendTo(VAR w: Files.Rider; VAR cg: Codegen; v: Value; targetType: Types.Type; VAR result: Value);
     VAR targetLLVMType: ValueText; opText: ARRAY 8 OF CHAR;
   BEGIN
@@ -750,7 +775,13 @@ MODULE LLVMCodeGenerator;
     IF v.llvmType = targetLLVMType THEN
       result := v
     ELSE
-      IF ~IsRealType(targetType) THEN COPY("sext", opText)
+      IF ~IsRealType(targetType) THEN
+        (* trunc only when SYSTEM.ADDRESS is narrower than the LONGINT it
+           includes (a 32-bit target under -OC); every other integer
+           inclusion widens *)
+        IF IntWidth(targetLLVMType) < IntWidth(v.llvmType) THEN COPY("trunc", opText)
+        ELSE COPY("sext", opText)
+        END
       ELSIF IsRealType(v.oberonType) THEN COPY("fpext", opText)
       ELSE COPY("sitofp", opText)
       END;
@@ -1104,15 +1135,6 @@ MODULE LLVMCodeGenerator;
   (* An integer LLVM type's width in bits - only ever asked about the
      i8..i64 family every Oberon integer/CHAR/BOOLEAN/SET is spelled
      with. *)
-  PROCEDURE IntWidth(llvmType: ARRAY OF CHAR): INTEGER;
-  BEGIN
-    IF llvmType = "i8" THEN RETURN 8
-    ELSIF llvmType = "i16" THEN RETURN 16
-    ELSIF llvmType = "i32" THEN RETURN 32
-    ELSE RETURN 64
-    END
-  END IntWidth;
-
   (* v (an integer value: a SET element, or the left operand of IN) at
      the SET type's own width - sext up, trunc down, or unchanged. Only
      ever the *shift amount* of a shl/lshr on a SET, so which of the two
@@ -2323,13 +2345,209 @@ MODULE LLVMCodeGenerator;
     EmitLabel(w, deadLabel)
   END GenerateHalt;
 
+  (* ---- The SYSTEM subset (PLAN.md Phase 9 step 4): ADR GET PUT VAL MOVE.
+     Addresses are integers of the target's word size (Types.Address),
+     turned into a pointer with inttoptr wherever memory is touched.
+     GET/PUT loads and stores say "align 1": the report puts no alignment
+     requirement on an address, and the default (the type's natural
+     alignment) would make a misaligned access undefined. A PUT stores x
+     at x's own type, so PUT(a, 5) writes a SHORTINT-sized 5 - convert
+     first (VAL, or a typed variable) for another width. ---- *)
+
+  (* The integer at addrArg, as a pointer. *)
+  PROCEDURE AddressToPointer(VAR w: Files.Rider; VAR cg: Codegen; addrArg: SyntaxTree.ExprNode;
+                             VAR ptrText: ValueText);
+    VAR a, wide: Value; wordType: ValueText;
+  BEGIN
+    GenerateExpr(w, cg, addrArg, a);
+    ExtendTo(w, cg, a, Types.Address, wide);
+    LLVMTypes.TypeString(Types.Address, cg.sizeModel, wordType);
+    EmitConvert(w, cg, "inttoptr", wordType, wide.text, "ptr", ptrText)
+  END AddressToPointer;
+
+  PROCEDURE GenerateAdr(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR de: SyntaxTree.DesignatorExprNode; addrText: ValueText; addrType: Types.Type; wordType: ValueText;
+  BEGIN
+    IF (args IS SyntaxTree.DesignatorExprNode) THEN
+      de := args(SyntaxTree.DesignatorExprNode);
+      IF ~de.hasParens & GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
+        LLVMTypes.TypeString(Types.Address, cg.sizeModel, wordType);
+        EmitConvert(w, cg, "ptrtoint", "ptr", addrText, wordType, result.text);
+        COPY(wordType, result.llvmType); result.oberonType := Types.Address;
+        RETURN
+      END
+    END;
+    Unsupported(w, cg, "SYSTEM.ADR of a designator needing POINTER/dispatch", Types.Address, result)
+  END GenerateAdr;
+
+  PROCEDURE GenerateGet(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR
+      de: SyntaxTree.DesignatorExprNode; ptrText, addrText, loaded: ValueText; addrType: Types.Type;
+      v: Value;
+  BEGIN
+    result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
+    IF ~(args.next IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
+    de := args.next(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens THEN RETURN END;
+    AddressToPointer(w, cg, args, ptrText);
+    IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
+      WriteStr(w, "  ; unsupported: SYSTEM.GET into a designator needing POINTER/dispatch"); WriteLn(w);
+      RETURN
+    END;
+    LLVMTypes.TypeString(addrType, cg.sizeModel, v.llvmType);
+    NewTemp(cg, loaded);
+    WriteStr(w, "  "); WriteStr(w, loaded); WriteStr(w, " = load "); WriteStr(w, v.llvmType);
+    WriteStr(w, ", ptr "); WriteStr(w, ptrText); WriteStr(w, ", align 1"); WriteLn(w);
+    COPY(loaded, v.text); v.oberonType := addrType;
+    StoreAtAddress(w, cg, addrText, addrType, v)
+  END GenerateGet;
+
+  PROCEDURE GeneratePut(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR ptrText: ValueText; x: Value;
+  BEGIN
+    result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
+    AddressToPointer(w, cg, args, ptrText);
+    IF args.next IS SyntaxTree.NilExprNode THEN
+      COPY("null", x.text); COPY("ptr", x.llvmType); x.oberonType := Types.NilType
+    ELSE
+      GenerateExpr(w, cg, args.next, x)
+    END;
+    WriteStr(w, "  store "); WriteStr(w, x.llvmType); WriteStr(w, " "); WriteStr(w, x.text);
+    WriteStr(w, ", ptr "); WriteStr(w, ptrText); WriteStr(w, ", align 1"); WriteLn(w)
+  END GeneratePut;
+
+  (* The number of bits an LLVM scalar type holds. *)
+  PROCEDURE ScalarBits(VAR cg: Codegen; llvmType: ARRAY OF CHAR): INTEGER;
+  BEGIN
+    IF llvmType = "ptr" THEN
+      IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN RETURN 32 ELSE RETURN 64 END
+    ELSIF llvmType = "float" THEN RETURN 32
+    ELSIF llvmType = "double" THEN RETURN 64
+    ELSE RETURN IntWidth(llvmType)
+    END
+  END ScalarBits;
+
+  PROCEDURE IntegerTypeOfWidth(bits: INTEGER; VAR text: ARRAY OF CHAR);
+  BEGIN
+    IF bits = 8 THEN COPY("i8", text) ELSIF bits = 16 THEN COPY("i16", text)
+    ELSIF bits = 32 THEN COPY("i32", text) ELSE COPY("i64", text)
+    END
+  END IntegerTypeOfWidth;
+
+  (* The type a bare type-name argument (VAL's first, SIZE's only)
+     denotes, NIL if the argument is not one. *)
+  PROCEDURE BareTypeArgument(VAR cg: Codegen; arg: SyntaxTree.ExprNode): Types.Type;
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
+  BEGIN
+    IF arg IS SyntaxTree.DesignatorExprNode THEN
+      de := arg(SyntaxTree.DesignatorExprNode);
+      obj := ResolveQualifiedObject(cg, de.designator.qualifier, de.designator.name, homeModule);
+      IF (obj # NIL) & (obj.class = SymbolTable.typeClass) THEN RETURN obj.type END
+    END;
+    RETURN NIL
+  END BareTypeArgument;
+
+  (* SIZE(T): T's byte size at the target's word size and size model, as
+     an INTEGER immediate (the type CheckSize gives it). *)
+  PROCEDURE GenerateSize(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR t: Types.Type;
+  BEGIN
+    t := BareTypeArgument(cg, args);
+    IF t = NIL THEN
+      Unsupported(w, cg, "SIZE of something that is not a type name", Types.Integer, result)
+    ELSE
+      result.text[0] := 0X;
+      AppendLongInt(result.text, MemoryLayout.Size(t, ConstantEvaluator.wordSize, cg.sizeModel));
+      LLVMTypes.TypeString(Types.Integer, cg.sizeModel, result.llvmType);
+      result.oberonType := Types.Integer
+    END
+  END GenerateSize;
+
+  (* VAL(T, x): x's bits read as a T. x is first turned into a plain
+     integer (ptrtoint, or a same-width bitcast of a real), resized to
+     the width T occupies (trunc, or sext/zext by whether x is a signed
+     integer), then turned into T (inttoptr, or a bitcast to a real). *)
+  PROCEDURE GenerateVal(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR
+      target: Types.Type; x: Value; targetLLVM, xInt, intType, resized: ValueText;
+      xBits, tBits: INTEGER; opText: ARRAY 8 OF CHAR; resizedText: ValueText;
+  BEGIN
+    target := BareTypeArgument(cg, args);
+    IF target = NIL THEN
+      Unsupported(w, cg, "SYSTEM.VAL with an unresolvable target type", Types.Undefined, result);
+      RETURN
+    END;
+    IF args.next IS SyntaxTree.NilExprNode THEN
+      COPY("null", x.text); COPY("ptr", x.llvmType); x.oberonType := Types.NilType
+    ELSE
+      GenerateExpr(w, cg, args.next, x)
+    END;
+    LLVMTypes.TypeString(target, cg.sizeModel, targetLLVM);
+    IF x.llvmType = targetLLVM THEN
+      COPY(x.text, result.text)
+    ELSE
+      xBits := ScalarBits(cg, x.llvmType); tBits := ScalarBits(cg, targetLLVM);
+      (* x as an integer *)
+      IF x.llvmType = "ptr" THEN
+        IntegerTypeOfWidth(xBits, intType);
+        EmitConvert(w, cg, "ptrtoint", "ptr", x.text, intType, xInt)
+      ELSIF (x.llvmType = "float") OR (x.llvmType = "double") THEN
+        IntegerTypeOfWidth(xBits, intType);
+        EmitConvert(w, cg, "bitcast", x.llvmType, x.text, intType, xInt)
+      ELSE
+        COPY(x.llvmType, intType); COPY(x.text, xInt)
+      END;
+      (* resized to T's width *)
+      IntegerTypeOfWidth(tBits, resizedText);
+      IF xBits = tBits THEN
+        COPY(xInt, resized)
+      ELSE
+        IF xBits > tBits THEN COPY("trunc", opText)
+        ELSIF Types.IsInteger(x.oberonType) THEN COPY("sext", opText)
+        ELSE COPY("zext", opText)
+        END;
+        EmitConvert(w, cg, opText, intType, xInt, resizedText, resized)
+      END;
+      (* and into T *)
+      IF targetLLVM = "ptr" THEN
+        EmitConvert(w, cg, "inttoptr", resizedText, resized, "ptr", result.text)
+      ELSIF (targetLLVM = "float") OR (targetLLVM = "double") THEN
+        EmitConvert(w, cg, "bitcast", resizedText, resized, targetLLVM, result.text)
+      ELSE
+        COPY(resized, result.text)
+      END
+    END;
+    COPY(targetLLVM, result.llvmType); result.oberonType := target
+  END GenerateVal;
+
+  (* MOVE(src, dst, n): n bytes from src to dst, overlap allowed (memmove);
+     a negative n moves nothing. *)
+  PROCEDURE GenerateMove(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR
+      srcPtr, dstPtr, positive, count: ValueText; n, nWide: Value; wordType: ValueText;
+  BEGIN
+    result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
+    AddressToPointer(w, cg, args, srcPtr);
+    AddressToPointer(w, cg, args.next, dstPtr);
+    GenerateExpr(w, cg, args.next.next, n);
+    ExtendTo(w, cg, n, Types.Address, nWide);
+    LLVMTypes.TypeString(Types.Address, cg.sizeModel, wordType);
+    EmitBinOp(w, cg, "icmp sgt", wordType, nWide.text, "0", positive);
+    EmitSelect(w, cg, positive, wordType, nWide.text, "0", count);
+    cg.needMemmove := TRUE;
+    WriteStr(w, "  call void @llvm.memmove.p0.p0.");
+    WriteStr(w, wordType); WriteStr(w, "(ptr "); WriteStr(w, dstPtr); WriteStr(w, ", ptr ");
+    WriteStr(w, srcPtr); WriteStr(w, ", "); WriteStr(w, wordType); WriteStr(w, " "); WriteStr(w, count);
+    WriteStr(w, ", i1 false)"); WriteLn(w)
+  END GenerateMove;
+
   (* PLAN.md Phase 8 step 11's own in-scope Oberon2.pdf §10.3 subset -
      ABS ODD CHR ORD CAP LEN INC DEC COPY HALT - plus, from Phase 9 step
      2, the three numeric conversions LONG SHORT ENTIER, and, from step 3,
      the SET updates INCL EXCL. Not NEW/DISPOSE/
      SYSTEM.*, which presuppose POINTER. PredeclaredProcedures.Mod's own
      CheckCall accepts a wider, 20-name vocabulary than this - every
-     other predeclared name (ASH/MAX/MIN/SIZE/NEW) is real
+     other predeclared name (ASH/MAX/MIN/NEW) is real
      Oberon-2 the front end already fully checks, just not lowered here
      yet, so it routes to the same Unsupported placeholder every other
      out-of-scope construct does rather than falling through silently. *)
@@ -2351,9 +2569,15 @@ MODULE LLVMCodeGenerator;
     ELSIF name = "ENTIER" THEN GenerateEntier(w, cg, args, result)
     ELSIF name = "INCL" THEN GenerateInclExcl(w, cg, args, TRUE, result)
     ELSIF name = "EXCL" THEN GenerateInclExcl(w, cg, args, FALSE, result)
+    ELSIF name = "SIZE" THEN GenerateSize(w, cg, args, result)
+    ELSIF name = "ADR" THEN GenerateAdr(w, cg, args, result)
+    ELSIF name = "GET" THEN GenerateGet(w, cg, args, result)
+    ELSIF name = "PUT" THEN GeneratePut(w, cg, args, result)
+    ELSIF name = "VAL" THEN GenerateVal(w, cg, args, result)
+    ELSIF name = "MOVE" THEN GenerateMove(w, cg, args, result)
     ELSE
       Unsupported(w, cg,
-        "predeclared procedure outside the lowered set (ASH/MAX/MIN/SIZE - Phase 9; NEW needs POINTER, also Phase 9; SYSTEM.* is Phase 10)",
+        "predeclared procedure outside the lowered set (ASH/MAX/MIN - Phase 9; NEW needs POINTER, also Phase 9; SYSTEM's BYTE/PTR/BIT/LSH/ROT/NEW are Phase 10)",
         Types.Undefined, result)
     END
   END GeneratePredeclaredCall;
@@ -3102,9 +3326,12 @@ MODULE LLVMCodeGenerator;
      Fixed arrays are walked element by element, so an ARRAY OF POINTER of
      length n contributes n entries - simple and exact, if verbose for a
      huge array (a run-length form is a possible later optimization once
-     step 4's collector exists to say whether it matters). *)
-  PROCEDURE EmitPointerOffsets(VAR w: Files.Rider; wordInt: ARRAY OF CHAR; t: Types.Type;
-                               base: LONGINT; VAR first: BOOLEAN);
+     step 4's collector exists to say whether it matters). A non-empty
+     symbol (a global's name) makes each entry the *address* of the
+     pointer location instead of its offset - the per-module GC root
+     tables (EmitRootTable) use that. *)
+  PROCEDURE EmitPointerOffsets(VAR w: Files.Rider; wordInt: ARRAY OF CHAR; symbol: ARRAY OF CHAR;
+                               t: Types.Type; base: LONGINT; VAR first: BOOLEAN);
     VAR
       f: Types.Field; rec: Types.RecordType; arr: Types.ArrayType; k, elemSize: LONGINT;
       isPtr: BOOLEAN; text: ValueText;
@@ -3121,19 +3348,26 @@ MODULE LLVMCodeGenerator;
       IF ~first THEN WriteStr(w, ", ") END;
       first := FALSE;
       text[0] := 0X; AppendLongInt(text, base);
-      WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, text)
+      IF symbol[0] = 0X THEN
+        WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, text)
+      ELSE
+        (* a root table entry: the *address* of the pointer location *)
+        WriteStr(w, wordInt); WriteStr(w, " ptrtoint (ptr getelementptr inbounds (i8, ptr ");
+        WriteStr(w, symbol); WriteStr(w, ", i32 "); WriteStr(w, text); WriteStr(w, ") to ");
+        WriteStr(w, wordInt); WriteStr(w, ")")
+      END
     ELSIF arr # NIL THEN
       IF ~arr.isOpen THEN
         elemSize := MemoryLayout.Size(arr.elementType, ConstantEvaluator.wordSize, ConstantEvaluator.sizeModel);
         FOR k := 0 TO arr.length - 1 DO
-          EmitPointerOffsets(w, wordInt, arr.elementType, base + k * elemSize, first)
+          EmitPointerOffsets(w, wordInt, symbol, arr.elementType, base + k * elemSize, first)
         END
       END
     ELSIF rec # NIL THEN
-      IF rec.baseType # NIL THEN EmitPointerOffsets(w, wordInt, rec.baseType, base, first) END;
+      IF rec.baseType # NIL THEN EmitPointerOffsets(w, wordInt, symbol, rec.baseType, base, first) END;
       f := rec.fields;
       WHILE f # NIL DO
-        EmitPointerOffsets(w, wordInt, f.type,
+        EmitPointerOffsets(w, wordInt, symbol, f.type,
           base + MemoryLayout.FieldOffset(rec, f, ConstantEvaluator.wordSize, ConstantEvaluator.sizeModel), first);
         f := f.next
       END
@@ -3241,7 +3475,7 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, " x ptr] ["); first := TRUE; EmitBaseTypeEntries(w, rec, first); WriteStr(w, "],"); WriteLn(w);
     WriteStr(w, "  ["); text[0] := 0X; AppendLongInt(text, pointerCount); WriteStr(w, text);
     WriteStr(w, " x "); WriteStr(w, wordInt); WriteStr(w, "] [");
-    first := TRUE; EmitPointerOffsets(w, wordInt, rec, 0, first); WriteStr(w, "]"); WriteLn(w);
+    first := TRUE; EmitPointerOffsets(w, wordInt, "", rec, 0, first); WriteStr(w, "]"); WriteLn(w);
     WriteStr(w, "}"); WriteLn(w);
     (* the tag: the header's own address, slotCount words past the start *)
     WriteStr(w, tag); WriteStr(w, " = alias ptr, getelementptr inbounds (i8, ptr "); WriteStr(w, tdesc);
@@ -3279,6 +3513,93 @@ MODULE LLVMCodeGenerator;
     e := cg.tdescs;
     WHILE e # NIL DO EmitDescriptor(w, cg, e.rec); e := e.next END
   END EmitTypeDescriptors;
+
+  (* ---- GC root tables (PLAN.md Phase 9 step 4) ----
+
+     Only in a program that contains the module ModuleTable: for every
+     module with pointer-typed module-level VARs, one global
+     @.roots.<Module> laid out as ModuleTable.Mod documents ({ next,
+     count, slots }, every field one target word), each slot the address
+     of one pointer location of one such VAR, flattened through records
+     and fixed arrays like a type descriptor's offset table. The module's
+     `_init` registers the table before running the module body. *)
+
+  (* How many pointer locations the module's own VARs hold in all. *)
+  PROCEDURE CountRootSlots(VAR cg: Codegen; module: SyntaxTree.ModuleNode): LONGINT;
+    VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object; total: LONGINT;
+  BEGIN
+    total := 0;
+    IF module.declarations = NIL THEN RETURN 0 END;
+    vd := module.declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        IF obj # NIL THEN total := total + CountPointerSlots(obj.type) END;
+        nm := nm.next
+      END;
+      vd := vd.next
+    END;
+    RETURN total
+  END CountRootSlots;
+
+  PROCEDURE RootTableName(module: SyntaxTree.ModuleNode; VAR text: ARRAY OF CHAR);
+  BEGIN
+    COPY("@.roots.", text); Strcat(text, module.name)
+  END RootTableName;
+
+  PROCEDURE EmitRootTable(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
+    VAR
+      slots: LONGINT; wordInt, countText, name, global: ValueText; vd: SyntaxTree.VarDeclNode;
+      nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object; first: BOOLEAN;
+  BEGIN
+    slots := CountRootSlots(cg, module);
+    IF slots = 0 THEN RETURN END;
+    WordIntType(wordInt);
+    countText[0] := 0X; AppendLongInt(countText, slots);
+    RootTableName(module, name);
+    WriteStr(w, name); WriteStr(w, " = internal global { "); WriteStr(w, wordInt); WriteStr(w, ", ");
+    WriteStr(w, wordInt); WriteStr(w, ", ["); WriteStr(w, countText); WriteStr(w, " x "); WriteStr(w, wordInt);
+    WriteStr(w, "] } { "); WriteStr(w, wordInt); WriteStr(w, " 0, "); WriteStr(w, wordInt); WriteStr(w, " ");
+    WriteStr(w, countText); WriteStr(w, ", ["); WriteStr(w, countText); WriteStr(w, " x "); WriteStr(w, wordInt);
+    WriteStr(w, "] ["); WriteLn(w);
+    first := TRUE;
+    vd := module.declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        IF (obj # NIL) & (CountPointerSlots(obj.type) > 0) THEN
+          ModuleQualifiedName(cg, obj.name, global);
+          EmitPointerOffsets(w, wordInt, global, obj.type, 0, first)
+        END;
+        nm := nm.next
+      END;
+      vd := vd.next
+    END;
+    WriteLn(w); WriteStr(w, "] }"); WriteLn(w); WriteLn(w)
+  END EmitRootTable;
+
+  (* The call at the top of a module's `_init` that hands its root table
+     to ModuleTable. *)
+  PROCEDURE EmitRootTableRegistration(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
+    VAR wordInt, name: ValueText;
+  BEGIN
+    IF CountRootSlots(cg, module) = 0 THEN RETURN END;
+    WordIntType(wordInt);
+    RootTableName(module, name);
+    WriteStr(w, "  call void @ModuleTable.Register("); WriteStr(w, wordInt);
+    WriteStr(w, " ptrtoint (ptr "); WriteStr(w, name); WriteStr(w, " to "); WriteStr(w, wordInt);
+    WriteStr(w, "))"); WriteLn(w)
+  END EmitRootTableRegistration;
+
+  PROCEDURE HasModuleNamed(modules: ModuleList; name: ARRAY OF CHAR): BOOLEAN;
+    VAR m: ModuleList;
+  BEGIN
+    m := modules;
+    WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
+    RETURN m # NIL
+  END HasModuleNamed;
 
   (* PLAN.md Phase 8 step 9's own runtime-trap support: declares
      write(2)/exit(2) (fixed x86_64 System V shapes, the same known,
@@ -3714,12 +4035,17 @@ MODULE LLVMCodeGenerator;
   END EmitCharacterHelpers;
 
   PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w: Files.Rider);
-    VAR cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode;
+    VAR
+      cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap: BOOLEAN;
+      wordInt: ValueText;
   BEGIN
+    withRootTables := HasModuleNamed(modules, "ModuleTable");
+    withHeap := HasModuleNamed(modules, "GarbageCollectedHeap");
     cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
     cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL;
     cg.declaredExternals := NIL; cg.tdescs := NIL;
     cg.needCharCompare := FALSE; cg.needCharCopy := FALSE; cg.pendingStrings := NIL;
+    cg.needMemmove := FALSE;
     WriteStr(w, 'target datalayout = "');
     IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN WriteStr(w, dataLayoutW32)
     ELSE WriteStr(w, dataLayoutW64)
@@ -3733,6 +4059,7 @@ MODULE LLVMCodeGenerator;
       EmitGlobals(w, cg, m.module);
       EmitExternalDeclares(w, cg, m.module);
       EmitTypeDescriptors(w, cg, m.module);
+      IF withRootTables THEN EmitRootTable(w, cg, m.module) END;
       m := m.next
     END;
     EmitRuntimeSupport(w, cg);
@@ -3767,6 +4094,7 @@ MODULE LLVMCodeGenerator;
       cg.moduleName := m.module.name; cg.scope := m.scope;
       WriteStr(w, "define void @"); WriteStr(w, m.module.name); WriteStr(w, "_init() {"); WriteLn(w);
       WriteStr(w, "entry:"); WriteLn(w);
+      IF withRootTables THEN EmitRootTableRegistration(w, cg, m.module) END;
       GenerateStatementSeq(w, cg, m.module.statements);
       WriteStr(w, "  ret void"); WriteLn(w);
       WriteStr(w, "}"); WriteLn(w);
@@ -3775,6 +4103,15 @@ MODULE LLVMCodeGenerator;
     END;
     WriteStr(w, "define i32 @main() {"); WriteLn(w);
     WriteStr(w, "entry:"); WriteLn(w);
+    IF withHeap THEN
+      (* the outermost frame anything can live in: the collector scans the
+         stack from its own frame up to here *)
+      WordIntType(wordInt);
+      WriteStr(w, "  %stackbase = call ptr @llvm.frameaddress.p0(i32 0)"); WriteLn(w);
+      WriteStr(w, "  %stackbaseint = ptrtoint ptr %stackbase to "); WriteStr(w, wordInt); WriteLn(w);
+      WriteStr(w, "  call void @GarbageCollectedHeap.SetStackBase("); WriteStr(w, wordInt);
+      WriteStr(w, " %stackbaseint)"); WriteLn(w)
+    END;
     m := modules;
     WHILE m # NIL DO
       WriteStr(w, "  call void @"); WriteStr(w, m.module.name); WriteStr(w, "_init()"); WriteLn(w);
@@ -3782,7 +4119,19 @@ MODULE LLVMCodeGenerator;
     END;
     WriteStr(w, "  ret i32 0"); WriteLn(w);
     WriteStr(w, "}"); WriteLn(w);
-    EmitCharacterHelpers(w, cg)
+    EmitCharacterHelpers(w, cg);
+    IF withHeap THEN
+      WriteLn(w);
+      EmitLine(w, "declare ptr @llvm.frameaddress.p0(i32 immarg)")
+    END;
+    IF cg.needMemmove THEN
+      WriteLn(w);
+      IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN
+        EmitLine(w, "declare void @llvm.memmove.p0.p0.i32(ptr, ptr, i32, i1)")
+      ELSE
+        EmitLine(w, "declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)")
+      END
+    END
   END GenerateProgram;
 
 END LLVMCodeGenerator.

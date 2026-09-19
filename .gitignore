@@ -29,6 +29,10 @@ test/conformance/llvm-multi-module/llvm-multi-module
 test/conformance/llvm-const-decls/llvm-const-decls
 test/conformance/llvm-reals/llvm-reals
 test/conformance/llvm-sets/llvm-sets
+test/conformance/llvm-system/llvm-system
+test/conformance/llvm-narrow-index/llvm-narrow-index
+test/conformance/llvm-gc-collect/llvm-gc-collect
+test/conformance/llvm-gc-tracing/llvm-gc-tracing
 test/conformance/llvm-string-consts/llvm-string-consts
 test/conformance/llvm-char-arrays/llvm-char-arrays
 test/conformance/crosscheck/crosscheck

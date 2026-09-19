@@ -1661,7 +1661,8 @@ compile itself — see Phase 10 below for why self-hosting is a separate,
 later gate.
 
 **Explicit non-goals**: `SYSTEM.*` (Appendix C — `ADR`/`VAL`/`BIT`/etc.,
-see Phase 10 below) and everything MACRO-32/VAX (Phase 11) are out of
+see Phase 10 below; a subset, `ADDRESS`/`ADR`/`GET`/`PUT`/`VAL`/`MOVE`, was
+pulled forward into Phase 9 step 4) and everything MACRO-32/VAX (Phase 11) are out of
 scope per the phase-to-report map, not this phase's; `DISPOSE` isn't
 added because it doesn't exist in
 `Oberon2.pdf` at all (§10.3's `NEW` has no explicit-free counterpart —
@@ -1988,6 +1989,158 @@ style exactly.
    (allocate many short-lived records in a loop, confirm memory is
    actually reclaimed — e.g. via a `SYSTEM`-free observable proxy like
    allocation count vs. a small fixed heap ceiling, not raw RSS).
+
+   **Revised design (2026-09-19, decided with the user).** Two things in
+   the text above do not survive contact with the code, and a third was
+   missing:
+   1. *"Genuine Oberon-2 source" needs raw memory access, and the only
+      spelling of that in `Oberon2.pdf` is `SYSTEM` (Appendix C) - which
+      Phase 10 step 7 schedules after this step, while `POINTER`/`NEW`/
+      dereference codegen is step 5.* Resolved by **pulling a `SYSTEM`
+      subset forward into this step**: the pseudo-module itself,
+      `SYSTEM.ADDRESS`, `ADR`, `GET`, `PUT`, `VAL`, `MOVE`. Phase 10
+      step 7 keeps the rest (`BYTE`, `PTR`, `BIT`, `LSH`, `ROT`,
+      `SYSTEM.NEW`) and its own fixtures; nothing there changes except
+      that it starts from a working front-end/back-end foundation.
+      `SYSTEM.ADDRESS` is an integer type of *target word width*, ranked
+      between `LONGINT` and `HUGEINT` in the numeric hierarchy.
+   2. *The plan's root set (module-level pointer `VAR`s) omits the
+      stack.* A pointer held only in a procedure's local or parameter is
+      just as live, and a collector that misses it frees objects out
+      from under running code. Poc has no stack maps, so the collector
+      scans the stack **conservatively** (any word that points into a
+      heap block keeps that block alive), the same approach voc's own
+      `Heap.Mod` takes. Registers are spilled by a `setjmp` in the
+      collector; the stack base is recorded by the program's `main`
+      (`llvm.frameaddress`), which is the outermost frame anything can
+      live in. Heap objects and module globals stay *precise* (step 1's
+      pointer-offset tables and the new per-module root tables).
+   3. *`ModuleTable` is a registry, not a module the program always
+      has.* A program pays for none of this unless it imports
+      `GarbageCollectedHeap`/`ModuleTable` (explicitly for now - step 5's
+      `NEW` lowering adds the import implicitly): the backend emits each
+      module's root table and its registration call only when
+      `ModuleTable` is in the program.
+   Heap shape: chunks obtained from libc (`calloc`, the one OS-facing
+   dependency, declared through the existing FFI), each carved into
+   16-byte-granule blocks laid out `[size|mark word][tag word][data]`;
+   bump allocation within the current chunk, a first-fit free list of
+   swept blocks ahead of it, collection when both fail, then a new
+   chunk (up to a settable ceiling, so a fixture can prove reclamation
+   against a small fixed heap). A per-chunk bitmap of block starts makes
+   the conservative scan able to ask "is this word inside a block, and
+   which". Marking is iterative with an explicit mark stack (deep lists
+   cannot overflow the machine stack), falling back to a heap rescan if
+   the mark stack itself overflows. No compaction, generations or
+   finalization, as above.
+
+   **Implemented 2026-09-19.** Everything above, with these departures
+   and findings (`rtl/llvm/GarbageCollectedHeap.Mod`, `ModuleTable.Mod`;
+   the `SYSTEM` subset; per-module root tables in `LLVMCodeGenerator.Mod`):
+   - **`SYSTEM` subset.** `SYSTEM` is a pseudo-module with no source or
+     `.sym`: `SymbolTable.SystemScope` holds `ADDRESS`, `ADR`, `GET`,
+     `PUT`, `VAL`, `MOVE` (all exported), and `ResolveImport` binds
+     `IMPORT SYSTEM` (or an alias) straight to it - the whole-program
+     walks in `Poc.Mod` skip the name. The procedures reuse
+     `PredeclaredProcedures.CheckCall`'s by-name dispatch (no predeclared
+     name collides with them, so a qualified `SYSTEM.ADR(x)` needs nothing
+     else; the `.sym` writer prints `SYSTEM.ADDRESS` through its ordinary
+     imported-type lookup). **`Types.Address`** is a distinct integer type,
+     rank between `LONGINT` and `HUGEINT` (`hugeIntRank`/`realRank`/
+     `longRealRank` moved up one): a `LONGINT` may be assigned to an
+     address, not the reverse - unlike voc, where it is `LONGINT`'s
+     alias. Its width is the target word (`LLVMTypes` reads
+     `ConstantEvaluator.wordSize`, `MemoryLayout.BasicSize` takes it as a
+     parameter now); `ExtendTo` gained the `trunc` case for the one shape
+     where the included type is *wider* (`-OC`'s 64-bit `LONGINT` on a
+     32-bit target). Lowering: `ADR` = `ptrtoint` of the designator's
+     address (so, for now, only designators `GenerateDesignatorAddress`
+     can address - no pointer dereference until step 5), `GET`/`PUT` =
+     `inttoptr` + a load/store **`align 1`** (an address has no alignment
+     requirement in the report), `VAL(T, x)` = `ptrtoint`/real bitcast to
+     an integer, `sext`/`zext`/`trunc` to `T`'s width, then `inttoptr`/
+     bitcast (defined by poc for differing widths, where the report and
+     voc leave it undefined), `MOVE` = `llvm.memmove` (declared once, at
+     the end, only if used; a negative count moves nothing). `SIZE(T)`,
+     which no earlier step had lowered, came along: it is a constant.
+     Still Phase 10 step 7's: `BYTE`, `PTR`, `BIT`, `LSH`, `ROT`,
+     `SYSTEM.NEW`, `GETREG`/`PUTREG`, `INT8..64`/`SET32/64`.
+   - **Register spilling is `llvm.eh.unwind.init`, not `setjmp`.** It is
+     declared as an ordinary external procedure
+     (`PROCEDURE ["C", "llvm.eh.unwind.init"] SpillRegisters;` - LLVM
+     symbol names may contain dots), needs no libc, no `returns_twice`
+     attribute, and cannot hide a pointer behind glibc's pointer-mangling of
+     the saved registers. `Collect` calls it, then a *deeper* procedure
+     (`MarkFromStack`) takes the address of one of its own locals as the
+     top of the range to scan, so the spill slots sit inside it.
+   - **The start map is one byte per granule**, not one bit: no bit
+     operations to write (poc's `SET` is 32/64 bits and `ASH`/`LSH` are not
+     lowered), for 1/16 of the block area. **Object size lives in the
+     block header** (`size * 4 + inUse * 2 + marked`), and a tag describes
+     *one element* - an object of several elements (an array of records)
+     is traced element by element, `dataSize DIV size` of them, so step 5
+     can give an array of pointers or of records the element type's
+     descriptor; tag 0 = no pointers. The mark-stack overflow fallback is
+     "re-trace every marked block until a pass does not overflow", rather
+     than a per-block "scanned" bit the header has no room for on a 32-bit
+     target.
+   - **Root tables and the stack base are generated only when the
+     program contains the module**: `@.roots.<Module>` (`{ next, count,
+     slots }`, slot = address of a pointer location, flattened by the same
+     `EmitPointerOffsets` the descriptors use, now taking an optional
+     global symbol) is emitted, and registered at the top of `<Module>_init`,
+     only if `ModuleTable` is in the program; `main` calls
+     `GarbageCollectedHeap.SetStackBase(llvm.frameaddress(0))` only if
+     `GarbageCollectedHeap` is. A program using neither has byte-identical
+     output to before (every earlier golden held).
+   - **No `NEW` yet, so the fixtures build descriptors by hand.** There
+     is no source-level way to name a record's `.tag` (`SYSTEM.TYP` is not
+     in Appendix C), so `llvm-gc-*` lay a descriptor out in a global array
+     in the layout the section above `RecordSymbolBase` documents and pass
+     its address to `Allocate`; objects are read and written through
+     `SYSTEM.GET/PUT`. That layout is the *contract* the collector reads,
+     and step 5's `NEW` is what first exercises it against a compiler-
+     emitted descriptor - keep that in mind when it lands.
+   - **Conservative scanning means false retention is possible, and the
+     fixtures are written around it**: a stale stack slot can keep one
+     dead object (and, precisely traced, whatever it points to) alive, so
+     nothing asserts that a *specific* dead object is gone - only
+     aggregate reclamation (a ceiling of 64 KB never exceeded while 3 MB
+     are allocated, `LiveBytes` back near zero) and that live objects
+     survive.
+   - **Three things found and fixed on the way.** (1) `EmitIndexRangeCheck`
+     compared a narrow index against the array length *in the index's own
+     type*: a constant index is typed by its value, so `a[99]` is an `i8`
+     and `icmp slt i8 99, 1024` reads the 1024 as 0 - every in-range access
+     to such an array by a small constant trapped. It now widens first
+     (`llvm-narrow-index`). (2) `ModuleInterface.ReadModuleSource` now
+     tries `<Module>.Mod` after `<Module>.mod`, so the runtime library keeps
+     the repository's spelling. (3) `Poc.Mod`'s whole-program walks skip
+     `SYSTEM`. **Not fixed, found**: `SHORT` rejects a `HUGEINT` argument
+     (`PredeclaredProcedures.CheckShort` lists only `LONGINT`/`INTEGER`/
+     `LONGREAL`); open-array *parameters* still cannot be indexed or
+     passed on (step 7's dope vectors), which is why the collector and its
+     fixtures pass only fixed arrays and scalars.
+   - **Limits, recorded in the collector's own header:** one object at
+     most 2^27 bytes; a chunk must not straddle the 32-bit signed
+     boundary (address tests are offsets from the chunk start otherwise);
+     chunks are never returned; no `free`. i686 cannot be *run* here (no
+     32-bit C runtime to link), so the 32-bit story is `clang -c` on the
+     IR of both fixtures plus the goldens.
+   - **Fixtures** (133 tests pass): `llvm-system` (34 checks, 32 also
+     under voc at `-O2` and `-OC`; two poc-only checks for `VAL` between
+     widths), `llvm-system-ir` (golden at both word sizes, clang-checked),
+     `llvm-gc-collect` (roots: plain/array/record; stack: local and interior
+     pointer; reclamation against a ceiling; the ceiling stopping a program
+     that keeps everything), `llvm-gc-tracing` (a 100-way fan-out against a
+     4-entry mark stack, an object of four record elements, an object bigger
+     than a chunk, coalescing of dead neighbours), `llvm-gc-roots-ir`
+     (golden root table + `main`'s stack-base call at both word sizes),
+     `llvm-narrow-index`. Disabling the stack scan, the
+     module-table scan or the overflow fallback in a scratch copy of the
+     collector makes the fixtures fail (the last, and the stack scan's
+     knock-on damage, by hanging in a loop over a corrupted heap - there is
+     no timeout in `poc_build_run`).
 
 4a. **Hidden members in `.sym` files.** *(Numbered "4a" rather than
    renumbering steps 5–9, whose numbers are cited from source comments
@@ -2477,7 +2630,12 @@ work already being in place.
    **Testing**: one fixture per module exercising each exported
    procedure against a hand-checked expected value.
 
-7. **`SYSTEM` (Appendix C), full list.** Unscheduled until now —
+7. **`SYSTEM` (Appendix C), full list.** *(Phase 9 step 4 already
+   pulled forward the pseudo-module itself and `ADDRESS`, `ADR`, `GET`,
+   `PUT`, `VAL`, `MOVE`, with their lowering - see there; what is left
+   below is `BYTE`, `PTR`, `BIT`, `LSH`, `ROT`, `SYSTEM.NEW`, `GETREG`/
+   `PUTREG` and the fixed-width types, starting from that foundation.)*
+   Unscheduled until now —
    `AGENTS.md`'s own "Appendix C" section has said so explicitly since
    before this file described any phase past 9. Unlike every other step
    in this phase, `SYSTEM` isn't a real `.mod` source file to write: no

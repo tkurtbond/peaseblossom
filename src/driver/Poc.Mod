@@ -306,6 +306,8 @@ MODULE Poc;
       m, entry: LLVMCodeGenerator.ModuleList;
   BEGIN
     IF ~ok THEN RETURN END;
+    (* SYSTEM is a pseudo-module with no source (SymbolTable.SystemScope) *)
+    IF name = "SYSTEM" THEN RETURN END;
     m := modules;
     WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
     IF m # NIL THEN RETURN END;
@@ -411,6 +413,7 @@ MODULE Poc;
       errorCountBefore: INTEGER;
   BEGIN
     IF ~ok THEN RETURN END;
+    IF name = "SYSTEM" THEN RETURN END; (* a pseudo-module: no source, no .sym *)
     v := visited;
     WHILE (v # NIL) & (v.name # name) DO v := v.next END;
     IF v # NIL THEN RETURN END;

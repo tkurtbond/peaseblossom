@@ -390,6 +390,15 @@ MODULE ModuleInterface;
     ModFileName(moduleName, name);
     f := Open(name);
     IF f = NIL THEN
+      (* PLAN.md Phase 9 step 4: the runtime library (rtl/llvm) keeps the
+         "<Module>.Mod" spelling every other source in this repository
+         uses; a test program's own modules use ".mod". Try both. *)
+      i := 0;
+      WHILE name[i] # 0X DO INC(i) END;
+      name[i - 3] := "M";
+      f := Open(name)
+    END;
+    IF f = NIL THEN
       found := FALSE; length := 0
     ELSE
       found := TRUE;

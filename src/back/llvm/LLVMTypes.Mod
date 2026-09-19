@@ -54,7 +54,7 @@ MODULE LLVMTypes;
      have real target information (see `ConstantEvaluator.SetWordSize*`
      and its own header comment). *)
 
-  IMPORT SyntaxTree, Types, MemoryLayout;
+  IMPORT SyntaxTree, Types, MemoryLayout, ConstantEvaluator;
 
   PROCEDURE ^ TypeString*(t: Types.Type; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
 
@@ -122,6 +122,9 @@ MODULE LLVMTypes;
       IF sizeModel = MemoryLayout.sizeModelOC THEN COPY("i32", result) ELSE COPY("i16", result) END
     ELSIF t = Types.LongInt THEN
       IF sizeModel = MemoryLayout.sizeModelOC THEN COPY("i64", result) ELSE COPY("i32", result) END
+    ELSIF t = Types.Address THEN
+      (* the one basic type whose width follows the target's word size *)
+      IF ConstantEvaluator.wordSize = MemoryLayout.wordSize64 THEN COPY("i64", result) ELSE COPY("i32", result) END
     ELSIF t = Types.HugeInt THEN COPY("i64", result)
     ELSIF t = Types.Real THEN COPY("float", result)
     ELSIF t = Types.LongReal THEN COPY("double", result)

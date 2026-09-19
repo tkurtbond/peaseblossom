@@ -544,6 +544,124 @@ MODULE PredeclaredProcedures;
      procedure" against the call's own context, mirroring the existing
      check it already makes for an ordinary user procedure's
      Types.ProcedureType.resultType. *)
+  (* PLAN.md Phase 9 step 4: the SYSTEM subset (ADR, GET, PUT, VAL, MOVE -
+     see SymbolTable.SystemScope), reached through CheckCall exactly like
+     the predeclared procedures, since SymbolTable.Mod inserts them with
+     the same Types.PredeclaredProcedureType marker; a qualified
+     SYSTEM.ADR(x) needs no other special handling here, because
+     dispatch is by the Object's own name and no predeclared procedure
+     shares one of these five names. *)
+
+  (* A value the SYSTEM procedures may move as raw bytes: a basic type
+     (CHAR, BOOLEAN, any integer or real, SET), a pointer or a
+     procedure value. NIL's own type counts too - PUT(a, NIL) is fine. *)
+  PROCEDURE IsScalar(t: Types.Type): BOOLEAN;
+  BEGIN
+    IF (t = NIL) OR (t = Types.Undefined) OR (t = Types.String)
+       OR (t = Types.PredeclaredProcedureType) THEN RETURN FALSE
+    ELSE
+      RETURN (t IS Types.BasicType) OR (t IS Types.PointerType) OR (t IS Types.ProcedureType)
+    END
+  END IsScalar;
+
+  PROCEDURE CheckAdr(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
+                     line, column: INTEGER; checkDesignator: CheckDesignatorProc): Types.Type;
+    VAR t: Types.Type; readOnly, isVariable: BOOLEAN;
+  BEGIN
+    IF ArgCount(args) # 1 THEN
+      Diagnostics.Error(line, column, "SYSTEM.ADR expects one argument");
+      RETURN Types.Undefined
+    END;
+    t := ResolveVarArg(scope, checkDesignator, args, readOnly, isVariable);
+    IF t = Types.Undefined THEN RETURN Types.Undefined END;
+    IF ~isVariable THEN
+      Diagnostics.Error(line, column, "SYSTEM.ADR requires a variable");
+      RETURN Types.Undefined
+    END;
+    RETURN Types.Address
+  END CheckAdr;
+
+  PROCEDURE CheckGet(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
+                     line, column: INTEGER;
+                     checkExpr: CheckExprProc; checkDesignator: CheckDesignatorProc);
+    VAR at, vt: Types.Type; readOnly, isVariable: BOOLEAN;
+  BEGIN
+    IF ArgCount(args) # 2 THEN
+      Diagnostics.Error(line, column, "SYSTEM.GET expects two arguments"); RETURN
+    END;
+    at := checkExpr(scope, Arg(args, 0));
+    vt := ResolveVarArg(scope, checkDesignator, Arg(args, 1), readOnly, isVariable);
+    IF (at # Types.Undefined) & ~Types.IsInteger(at) THEN
+      Diagnostics.Error(line, column, "SYSTEM.GET's first argument must be an integer address")
+    END;
+    IF vt = Types.Undefined THEN RETURN END;
+    IF ~isVariable OR readOnly THEN
+      Diagnostics.Error(line, column, "SYSTEM.GET's second argument must be a writable variable")
+    ELSIF ~IsScalar(vt) THEN
+      Diagnostics.Error(line, column, "SYSTEM.GET reads a basic, pointer or procedure value")
+    END
+  END CheckGet;
+
+  PROCEDURE CheckPut(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
+                     line, column: INTEGER; checkExpr: CheckExprProc);
+    VAR at, xt: Types.Type;
+  BEGIN
+    IF ArgCount(args) # 2 THEN
+      Diagnostics.Error(line, column, "SYSTEM.PUT expects two arguments"); RETURN
+    END;
+    at := checkExpr(scope, Arg(args, 0));
+    xt := checkExpr(scope, Arg(args, 1));
+    IF (at # Types.Undefined) & ~Types.IsInteger(at) THEN
+      Diagnostics.Error(line, column, "SYSTEM.PUT's first argument must be an integer address")
+    END;
+    IF (xt # Types.Undefined) & ~IsScalar(xt) & (xt # Types.NilType)
+       & ~IsSingleCharStringLiteral(Arg(args, 1)) THEN
+      Diagnostics.Error(line, column, "SYSTEM.PUT writes a basic, pointer or procedure value")
+    END
+  END CheckPut;
+
+  (* VAL(T, x): x's bytes read as a T. Both must be scalars (IsScalar);
+     the backend widens or truncates an integer-class value to T's width
+     and moves between integers, pointers and same-width reals bit for
+     bit. *)
+  PROCEDURE CheckVal(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
+                     line, column: INTEGER; checkExpr: CheckExprProc): Types.Type;
+    VAR target, xt: Types.Type;
+  BEGIN
+    IF ArgCount(args) # 2 THEN
+      Diagnostics.Error(line, column, "SYSTEM.VAL expects two arguments");
+      RETURN Types.Undefined
+    END;
+    target := LookupBareTypeName(scope, args);
+    IF target = NIL THEN
+      Diagnostics.Error(line, column, "SYSTEM.VAL's first argument must be a type");
+      RETURN Types.Undefined
+    END;
+    xt := checkExpr(scope, Arg(args, 1));
+    IF xt = Types.Undefined THEN RETURN Types.Undefined END;
+    IF ~IsScalar(target) OR (~IsScalar(xt) & (xt # Types.NilType)
+                              & ~IsSingleCharStringLiteral(Arg(args, 1))) THEN
+      Diagnostics.Error(line, column, "SYSTEM.VAL converts between basic, pointer and procedure values");
+      RETURN Types.Undefined
+    END;
+    RETURN target
+  END CheckVal;
+
+  PROCEDURE CheckMove(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
+                      line, column: INTEGER; checkExpr: CheckExprProc);
+    VAR i: INTEGER; t: Types.Type;
+  BEGIN
+    IF ArgCount(args) # 3 THEN
+      Diagnostics.Error(line, column, "SYSTEM.MOVE expects three arguments"); RETURN
+    END;
+    FOR i := 0 TO 2 DO
+      t := checkExpr(scope, Arg(args, i));
+      IF (t # Types.Undefined) & ~Types.IsInteger(t) THEN
+        Diagnostics.Error(line, column, "SYSTEM.MOVE's arguments must be integers")
+      END
+    END
+  END CheckMove;
+
   PROCEDURE CheckCall*(scope: SymbolTable.Scope; name: SyntaxTree.Ident; args: SyntaxTree.ExprNode;
                        line, column: INTEGER;
                        checkExpr: CheckExprProc; checkDesignator: CheckDesignatorProc;
@@ -582,6 +700,20 @@ MODULE PredeclaredProcedures;
     ELSIF name = "NEW" THEN
       isProperProcedure := TRUE;
       CheckNew(scope, args, line, column, checkExpr, checkDesignator);
+      RETURN NIL
+    ELSIF name = "ADR" THEN RETURN CheckAdr(scope, args, line, column, checkDesignator)
+    ELSIF name = "VAL" THEN RETURN CheckVal(scope, args, line, column, checkExpr)
+    ELSIF name = "GET" THEN
+      isProperProcedure := TRUE;
+      CheckGet(scope, args, line, column, checkExpr, checkDesignator);
+      RETURN NIL
+    ELSIF name = "PUT" THEN
+      isProperProcedure := TRUE;
+      CheckPut(scope, args, line, column, checkExpr);
+      RETURN NIL
+    ELSIF name = "MOVE" THEN
+      isProperProcedure := TRUE;
+      CheckMove(scope, args, line, column, checkExpr);
       RETURN NIL
     ELSE
       Diagnostics.Error(line, column, "unknown predeclared procedure");
