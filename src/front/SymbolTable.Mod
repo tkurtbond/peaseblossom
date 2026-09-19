@@ -42,11 +42,13 @@ MODULE SymbolTable;
      for free, exactly as Oberon2.pdf's own grammar treats ImportList as
      part of the module's declaration scope. moduleScope (moduleClass
      only) is the flat Scope built from that module's .sym file
-     (ModuleInterface.Mod), containing exactly its exported members - a
-     qualified reference "Module.x" resolves by finding the moduleClass
-     Object, then FindLocal(-ing) x in its moduleScope, needing no
-     separate "is it exported" check since only exported members were
-     ever inserted there in the first place. *)
+     (ModuleInterface.Mod). Since PLAN.md Phase 9 step 4a that scope holds
+     the module's exported members *and* the unexported declarations an
+     importer's record layout depends on (hidden fields' and procedures'
+     types), so a qualified reference "Module.x" - found by the moduleClass
+     Object, then FindLocal(-ing) x in its moduleScope - must be checked
+     for Object.exported by the caller (SemanticActions.FindQualified
+     does); the scope is no longer exported-only by construction. *)
 
   IMPORT SyntaxTree, Types, Diagnostics;
 

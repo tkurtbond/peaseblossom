@@ -1,4 +1,3 @@
 client.mod:2:10: error: unknown imported module
 client.mod:8:10: error: not an imported module
-client.mod:8:10: error: undeclared identifier
-3 error(s)
+2 error(s)

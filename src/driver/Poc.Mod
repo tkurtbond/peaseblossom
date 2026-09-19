@@ -66,6 +66,16 @@ MODULE Poc;
     maxLineLength = 4096;
     importPathEnvVar = "POC_IMPORT_PATH";
 
+  TYPE
+    (* PLAN.md Phase 9 step 4a: the module names RegenerateInterfaces has
+       already handled in this run (a diamond import must not be
+       regenerated twice). Linear search; import graphs are small. *)
+    VisitedModule = POINTER TO VisitedModuleDesc;
+    VisitedModuleDesc = RECORD
+      name: SyntaxTree.Ident;
+      next: VisitedModule
+    END;
+
   (* PLAN.md Phase 7: the concrete instance of SemanticActions.ParseModuleProc,
      supplied here because Poc.Mod is the only module that already imports
      both Parser.Mod and SemanticActions.Mod without creating an import
@@ -370,19 +380,91 @@ MODULE Poc;
     COPY(m.module.name, name)
   END ProgramTopName;
 
+  (* PLAN.md Phase 9 step 4a: brings <name>.sym (and, first, every
+     transitive import's) up to date from real source, post-order, before
+     anything is type-checked against it. A .sym now carries an imported
+     record's whole layout, and this program's code for the importer is
+     generated from that view while the imported module's own code is
+     generated from its real source (DiscoverModule below) - a stale .sym
+     would make the two disagree about a record's size and field offsets
+     silently, so whole-program commands never trust an existing one when
+     the source is at hand. A module with no source anywhere on the search
+     path (a precompiled library shipped as just a .sym) is left alone and
+     its existing .sym used as-is. Written to outputDir (the current
+     directory when empty - where every hand-run "poc -emit-interface"
+     already put them), which the caller has also made ReadSource*'s
+     first place to look. Errors in an imported module's source are
+     reported here, the same way DiscoverModule would have later. *)
+  PROCEDURE RegenerateInterfaces(name: SyntaxTree.Ident; outputDir: ARRAY OF CHAR;
+                                 VAR visited: VisitedModule; VAR ok: BOOLEAN);
+    VAR
+      v: VisitedModule;
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      found: BOOLEAN;
+      parser: Parser.Parser;
+      module: SyntaxTree.ModuleNode;
+      scope: SymbolTable.Scope;
+      imp: SyntaxTree.ImportNode;
+      fname, savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+      path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
+      errorCountBefore: INTEGER;
+  BEGIN
+    IF ~ok THEN RETURN END;
+    v := visited;
+    WHILE (v # NIL) & (v.name # name) DO v := v.next END;
+    IF v # NIL THEN RETURN END;
+    NEW(v); COPY(name, v.name); v.next := visited; visited := v;
+    ModuleInterface.ReadModuleSource(name, buffer, length, found);
+    IF ~found THEN RETURN END;
+    COPY(Diagnostics.fileName, savedFileName);
+    ModuleInterface.ModFileName(name, fname);
+    COPY(fname, Diagnostics.fileName);
+    errorCountBefore := Diagnostics.errorCount;
+    Parser.InitParser(parser, buffer, length);
+    module := Parser.ParseModule(parser);
+    IF Diagnostics.errorCount = errorCountBefore THEN
+      imp := module.imports;
+      WHILE (imp # NIL) & ok DO
+        RegenerateInterfaces(imp.moduleName, outputDir, visited, ok);
+        imp := imp.next
+      END;
+      IF ok THEN
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+      END
+    END;
+    IF ~ok THEN
+      (* an import of this module already reported its own failure *)
+    ELSIF Diagnostics.errorCount > errorCountBefore THEN
+      Out.Int(Diagnostics.errorCount - errorCountBefore, 0);
+      Out.String(" error(s) in imported module "); Out.String(name); Out.Ln;
+      ok := FALSE
+    ELSIF ~ModuleInterface.Write(module, scope, outputDir, path) THEN
+      Out.String("poc: cannot write "); Out.String(path); Out.Ln;
+      ok := FALSE
+    END;
+    COPY(savedFileName, Diagnostics.fileName)
+  END RegenerateInterfaces;
+
   (* PLAN.md Phase 8 step 12: shared by EmitLLVMIR/Build below - both
      need the identical "parse+check the top module, then transitively
      discover+compile every real IMPORT" sequence before handing the
      result to LLVMToolchainDriver, differing only in which of its two
-     entry points, EmitIR* or Build*, they go on to call. *)
-  PROCEDURE CheckAndDiscoverProgram(name: ARRAY OF CHAR; VAR modules: LLVMCodeGenerator.ModuleList;
-                                    VAR ok: BOOLEAN);
+     entry points, EmitIR* or Build*, they go on to call. PLAN.md Phase 9
+     step 4a: the top module is parsed first, then its imports' .sym
+     files are regenerated from source (RegenerateInterfaces above), and
+     only then is the top module type-checked against them. *)
+  PROCEDURE CheckAndDiscoverProgram(name, outputDir: ARRAY OF CHAR;
+                                    VAR modules: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
     VAR
       buffer: Lexer.CharBuffer;
       length: LONGINT;
       parser: Parser.Parser;
       module: SyntaxTree.ModuleNode;
       scope: SymbolTable.Scope;
+      imp: SyntaxTree.ImportNode;
+      visited: VisitedModule;
+      regenerated: BOOLEAN;
   BEGIN
     ok := FALSE;
     IF ~ReadSource(name, buffer, length) THEN
@@ -391,10 +473,22 @@ MODULE Poc;
       Diagnostics.Reset(name);
       Parser.InitParser(parser, buffer, length);
       module := Parser.ParseModule(parser);
+      regenerated := TRUE;
       IF Diagnostics.errorCount = 0 THEN
-        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+        ModuleInterface.SetInterfaceDir(outputDir);
+        visited := NIL;
+        imp := module.imports;
+        WHILE (imp # NIL) & regenerated DO
+          RegenerateInterfaces(imp.moduleName, outputDir, visited, regenerated);
+          imp := imp.next
+        END;
+        IF regenerated THEN
+          scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+        END
       END;
-      IF Diagnostics.errorCount > 0 THEN
+      IF ~regenerated THEN
+        (* already reported by RegenerateInterfaces *)
+      ELSIF Diagnostics.errorCount > 0 THEN
         Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
       ELSE
         BuildProgramModuleList(module, scope, modules, ok)
@@ -414,7 +508,7 @@ MODULE Poc;
       Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
     ELSE
       SetWordSizeFromTriple(triple);
-      CheckAndDiscoverProgram(name, modules, ok);
+      CheckAndDiscoverProgram(name, outputDir, modules, ok);
       IF ok THEN
         ProgramTopName(modules, topName);
         IF LLVMToolchainDriver.EmitIR(modules, topName, triple, outputDir, path) THEN
@@ -439,7 +533,7 @@ MODULE Poc;
       Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
     ELSE
       SetWordSizeFromTriple(triple);
-      CheckAndDiscoverProgram(name, modules, ok);
+      CheckAndDiscoverProgram(name, outputDir, modules, ok);
       IF ok THEN
         ProgramTopName(modules, topName);
         IF LLVMToolchainDriver.Build(modules, topName, triple, outputDir, exePath) THEN

@@ -1,0 +1,14 @@
+== field
+field.mod:6:6: error: field is not exported by its module
+1 error(s)
+== method
+method.mod:6:6: error: type-bound procedure is not exported by its module
+1 error(s)
+== type
+type.mod:3:10: error: identifier is not exported by its module
+1 error(s)
+== extfield
+extfield.mod:11:6: error: field is not exported by its module
+1 error(s)
+== exttype
+semantic OK

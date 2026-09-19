@@ -7,7 +7,20 @@ MODULE ModuleInterface;
 
      A "<ModuleName>.sym" file is deliberately just ordinary, valid
      Peaseblossom module source - "MODULE <Name>; ... END <Name>.",
-     containing only the module's *exported* declarations - rather than a
+     containing the module's *exported* declarations plus (PLAN.md Phase
+     9 step 4a) the unexported ones a record's layout and type-bound-
+     procedure numbering depend on: every field and every type-bound
+     procedure of every printed record, exported or not (unexported ones
+     carry no export mark), and every unexported TYPE those members or
+     any exported signature reach, transitively. An importer that
+     extends an imported record must reproduce its base's layout and
+     ProcTab slots exactly, and target-independent source is what lets
+     it compute them itself at its own word size (voc instead stores
+     numeric sizes/offsets/method numbers, which is why it needs
+     separate symbol trees per size model - see PLAN.md step 4a). The
+     reading side (SemanticActions.FindQualified, field and type-bound-
+     procedure selection) enforces export; nothing unexported is
+     reachable by name from an importer. Not a separate grammar - rather than a
      separate grammar mimicking Appendix D4's nested-methods-inside-RECORD
      browser convention (not real Oberon-2 grammar; Parser.Mod does not
      parse it). This lets SemanticActions.Mod parse and resolve a .sym
@@ -27,7 +40,8 @@ MODULE ModuleInterface;
        fidelity - Scope's own object list is reverse-insertion-order,
        same reason Poc.Mod's DumpLayout already walks
        module.declarations directly rather than the scope alone) and
-       prints its exported members.
+       prints its exported members (and, PLAN.md Phase 9 step 4a, the
+       unexported ones an importer's layout depends on - see below).
      - ReadSource* is pure file I/O (open "<ModuleName>.sym", read its
        full text into a Lexer.CharBuffer) - deliberately not "parse
        source into a Scope". This module cannot import Parser.Mod:
@@ -136,6 +150,25 @@ MODULE ModuleInterface;
        pair was (see that file's own header comment) - so both types are
        declared together rather than Scope's split standalone-then-later
        pattern; there is no third type needing to reference this one. *)
+    (* PLAN.md Phase 9 step 4a: the writer's two small identity-keyed
+       lists - the unexported TYPE declarations it has found it must
+       print (NeededType, "P" in PLAN.md's step 4a text), and, while
+       printing methods, the record types whose methods it has already
+       printed (DoneRecord: several named types - a record and a pointer
+       to it, an alias - lead to one RecordType, whose methods must be
+       printed once). Plain linked lists, searched linearly, for the same
+       reason SearchPathEntry below is. *)
+    NeededType = POINTER TO NeededTypeDesc;
+    NeededTypeDesc = RECORD
+      obj: SymbolTable.Object;
+      next: NeededType
+    END;
+    DoneRecord = POINTER TO DoneRecordDesc;
+    DoneRecordDesc = RECORD
+      rec: Types.RecordType;
+      next: DoneRecord
+    END;
+
     SearchPathEntry* = POINTER TO SearchPathEntryDesc;
     SearchPathEntryDesc* = RECORD
       dir*: ARRAY searchPathDirLength OF CHAR;
@@ -157,6 +190,38 @@ MODULE ModuleInterface;
        deliberately never reads the environment itself - see
        AddSearchPathList*'s own comment. *)
     searchPathHead, searchPathTail: SearchPathEntry;
+    (* PLAN.md Phase 9 step 4a: when non-empty, ReadSource* looks for a
+       .sym file here *before* the current directory and the search
+       path. Poc.Mod's whole-program commands regenerate every imported
+       module's .sym from its real source into the output directory and
+       set this to it, so a stale copy elsewhere can never shadow the
+       fresh one (an out-of-date .sym now skews an importer's record
+       layout, not just its type check). Empty (the default) keeps the
+       original cwd-then-search-path behavior every other command and
+       fixture relies on. *)
+    interfaceDir: ARRAY searchPathDirLength OF CHAR;
+
+    (* PLAN.md Phase 9 step 4a - writer state, valid only during one Write*
+       call (reset at its start). Write* runs the whole declaration-
+       printing pass repeatedly with dryRun TRUE (WriteStr/WriteLn then
+       write nothing at all) until a pass finds no further unexported type
+       it must print (needChanged stays FALSE), then once more for real.
+       Marking and printing therefore share every lookup and traversal
+       rule by construction - there is no separate "mark" walker to keep
+       in sync with the printer. *)
+    neededHead: NeededType;
+    dryRun, needChanged: BOOLEAN;
+    (* The TYPE declaration currently being printed (NIL while printing
+       anything after the TYPE section): a name may only be used for a
+       type inside a declaration if it is declared *earlier* in the
+       source (or is the declaration's own name), or - forwardBaseOK, set
+       only around a POINTER declaration's own direct base - later, per
+       Oberon2.pdf §4 rule 3's forward-POINTER exception. Without this an
+       alias declared after the record it aliases can be picked to print
+       that very record ("A* = B; B* = A;", a real, previously-latent
+       bug whenever two exported names share a type). *)
+    printingDecl: SymbolTable.Object;
+    forwardBaseOK: BOOLEAN;
 
   (* ---- File naming ---- *)
 
@@ -243,10 +308,16 @@ MODULE ModuleInterface;
     RETURN f
   END Open;
 
+  PROCEDURE SetInterfaceDir*(dir: ARRAY OF CHAR);
+  BEGIN
+    COPY(dir, interfaceDir)
+  END SetInterfaceDir;
+
   PROCEDURE ReadSource*(moduleName: SyntaxTree.Ident; VAR buffer: Lexer.CharBuffer;
                         VAR length: LONGINT; VAR found: BOOLEAN);
     VAR
       name: ARRAY nameBufferLength OF CHAR;
+      path: ARRAY pathBufferLength OF CHAR;
       f: Files.File;
       r: Files.Rider;
       line: ARRAY lineLength OF CHAR;
@@ -254,7 +325,12 @@ MODULE ModuleInterface;
       used: LONGINT;
   BEGIN
     SymFileName(moduleName, name);
-    f := Open(name);
+    f := NIL;
+    IF interfaceDir[0] # 0X THEN
+      JoinPath(interfaceDir, name, path);
+      f := Files.Old(path)
+    END;
+    IF f = NIL THEN f := Open(name) END;
     IF f = NIL THEN
       found := FALSE; length := 0
     ELSE
@@ -349,13 +425,14 @@ MODULE ModuleInterface;
   PROCEDURE WriteStr(VAR w: Files.Rider; s: ARRAY OF CHAR);
     VAR i: INTEGER;
   BEGIN
+    IF dryRun THEN RETURN END;
     i := 0;
     WHILE s[i] # 0X DO Files.Write(w, s[i]); INC(i) END
   END WriteStr;
 
   PROCEDURE WriteLn(VAR w: Files.Rider);
   BEGIN
-    Files.Write(w, 0AX)
+    IF ~dryRun THEN Files.Write(w, 0AX) END
   END WriteLn;
 
   PROCEDURE FormatInt(x: LONGINT; VAR result: ARRAY OF CHAR);
@@ -725,20 +802,17 @@ MODULE ModuleInterface;
 
   (* ---- Type-reference printing (see header comment) ---- *)
 
-  (* requireExported gates out an unexported local type (e.g. an opaque
-     RECORD only ever reached through an exported POINTER alias, exactly
-     the Node/Tree idiom - see PrintMethods's own header comment): only
-     an exported name will actually exist anywhere in the printed .sym
-     text, so referencing an unexported one here would print a dangling,
-     unparseable identifier. Universe's own predeclared basics (INTEGER,
-     etc.) are always available regardless - SymbolTable.Mod inserts
-     every one of them with exported = FALSE (module-level export marks
-     don't apply to them at all), so the Universe search below passes
-     FALSE; the current module's own scope search passes TRUE. Imported
-     modules' scopes need no such filter - every Object there already
-     came from parsing an exported*/readOnly- mark in that module's own
-     .sym text (see this module's header comment), so it is exported by
-     construction. *)
+  (* requireExported applies to an *imported* module's scope (and, as
+     FALSE, to Universe): since PLAN.md Phase 9 step 4a an imported
+     moduleScope also holds that module's unexported declarations (the
+     hidden members' types), which this .sym may not name - Other.Priv
+     is not a legal reference from here, so a type bound only to an
+     unexported foreign name falls back to structural printing, exactly
+     like any anonymous type. Universe's own predeclared basics
+     (INTEGER, etc.) are always available regardless -
+     SymbolTable.Mod inserts every one of them with exported = FALSE
+     (module-level export marks don't apply to them at all), so the
+     Universe search passes FALSE. *)
   PROCEDURE FindInScope(scope: SymbolTable.Scope; t: Types.Type; skip: SymbolTable.Object;
                         requireExported: BOOLEAN; VAR name: SyntaxTree.Ident): BOOLEAN;
     VAR o: SymbolTable.Object;
@@ -751,18 +825,78 @@ MODULE ModuleInterface;
     IF o # NIL THEN name := o.name; RETURN TRUE ELSE RETURN FALSE END
   END FindInScope;
 
+  PROCEDURE IsNeeded(obj: SymbolTable.Object): BOOLEAN;
+    VAR n: NeededType;
+  BEGIN
+    n := neededHead;
+    WHILE (n # NIL) & (n.obj # obj) DO n := n.next END;
+    RETURN n # NIL
+  END IsNeeded;
+
+  (* Records that the current module's unexported type declaration obj
+     must be printed (a hidden member, an exported signature, or a
+     method receiver reaches it). Idempotent; sets needChanged only when
+     it actually adds, which is what drives Write*'s fixpoint loop. *)
+  PROCEDURE NeedType(obj: SymbolTable.Object);
+    VAR n: NeededType;
+  BEGIN
+    IF ~obj.exported & ~IsNeeded(obj) THEN
+      NEW(n); n.obj := obj; n.next := neededHead; neededHead := n;
+      needChanged := TRUE
+    END
+  END NeedType;
+
+  PROCEDURE DeclaredBefore(a, b: SymbolTable.Object): BOOLEAN;
+  BEGIN
+    RETURN (a.declLine < b.declLine) OR ((a.declLine = b.declLine) & (a.declColumn < b.declColumn))
+  END DeclaredBefore;
+
+  (* The current module's own TYPE declaration binding t, exported or
+     not (an unexported one is NeedType'd - printed as an ordinary
+     unexported TYPE declaration, which keeps two uses of one type one
+     type, and keeps a record's declared name, from which step 1's
+     descriptor symbols derive, identical in every importer's view).
+     Pass 0 accepts only names usable inside printingDecl (see its
+     comment); pass 1 - only when forwardBaseOK - accepts any. Within a
+     pass the first match in scope.objects order (reverse declaration
+     order) wins. *)
+  PROCEDURE FindOwnBound(scope: SymbolTable.Scope; t: Types.Type; skip: SymbolTable.Object;
+                         VAR name: SyntaxTree.Ident): BOOLEAN;
+    VAR o: SymbolTable.Object; pass: INTEGER;
+  BEGIN
+    FOR pass := 0 TO 1 DO
+      IF (pass = 0) OR forwardBaseOK THEN
+        o := scope.objects;
+        WHILE o # NIL DO
+          IF (o.class = SymbolTable.typeClass) & (o.type = t) & (o # skip)
+             & ((pass = 1) OR (printingDecl = NIL) OR (o = printingDecl)
+                OR DeclaredBefore(o, printingDecl)) THEN
+            NeedType(o);
+            name := o.name; RETURN TRUE
+          END;
+          o := o.next
+        END
+      END
+    END;
+    RETURN FALSE
+  END FindOwnBound;
+
   PROCEDURE FindBoundName(scope: SymbolTable.Scope; t: Types.Type; skip: SymbolTable.Object;
                           VAR result: ARRAY OF CHAR): BOOLEAN;
     VAR name: SyntaxTree.Ident; o: SymbolTable.Object; i, j: INTEGER;
   BEGIN
-    IF FindInScope(scope, t, skip, TRUE, name) THEN
+    (* A predeclared basic type is always spelled by its Universe name:
+       a module-local alias of one ("Index = INTEGER") is never worth
+       naming - it would make every INTEGER in the file print as Index,
+       and drag the alias into the .sym for no reason. *)
+    IF ~(t IS Types.BasicType) & FindOwnBound(scope, t, skip, name) THEN
       COPY(name, result); RETURN TRUE
     ELSIF (scope.outer # NIL) & FindInScope(scope.outer, t, skip, FALSE, name) THEN
       COPY(name, result); RETURN TRUE
     ELSE
       o := scope.objects;
       WHILE o # NIL DO
-        IF (o.class = SymbolTable.moduleClass) & FindInScope(o.moduleScope, t, NIL, FALSE, name) THEN
+        IF (o.class = SymbolTable.moduleClass) & FindInScope(o.moduleScope, t, NIL, TRUE, name) THEN
           i := 0;
           WHILE o.name[i] # 0X DO result[i] := o.name[i]; INC(i) END;
           result[i] := "."; INC(i);
@@ -805,14 +939,19 @@ MODULE ModuleInterface;
       END;
       first := TRUE;
       f := rt.fields;
+      (* Every field, exported or not, in declaration order: the layout
+         an importer's own extension of this record must reproduce
+         depends on all of them (PLAN.md Phase 9 step 4a). Unexported
+         ones carry no export mark, so an importer's checker can still
+         tell them apart and refuse access. *)
       WHILE f # NIL DO
+        IF ~first THEN WriteStr(w, "; ") END;
+        WriteStr(w, f.name);
         IF f.exported THEN
-          IF ~first THEN WriteStr(w, "; ") END;
-          WriteStr(w, f.name);
-          IF f.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END;
-          WriteStr(w, ": "); PrintTypeRef(w, scope, f.type);
-          first := FALSE
+          IF f.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END
         END;
+        WriteStr(w, ": "); PrintTypeRef(w, scope, f.type);
+        first := FALSE;
         f := f.next
       END;
       WriteStr(w, " END")
@@ -858,19 +997,33 @@ MODULE ModuleInterface;
   END PrintTypeRef;
 
   (* Only the outermost call of a TYPE declaration's own RHS must skip
-     the identifier being declared - see header comment. *)
+     the identifier being declared - see header comment. An unexported
+     declaration (one NeedType found reachable) carries no export mark.
+     A POINTER declaration's own direct base is the one place a name
+     declared later than this declaration may be used (forwardBaseOK). *)
   PROCEDURE PrintTypeDecl(VAR w: Files.Rider; scope: SymbolTable.Scope; obj: SymbolTable.Object);
-    VAR name: ARRAY 512 OF CHAR;
+    VAR name: ARRAY 512 OF CHAR; pt: Types.PointerType; found: BOOLEAN;
   BEGIN
+    printingDecl := obj;
     WriteStr(w, obj.name);
-    IF obj.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END;
+    IF obj.exported THEN
+      IF obj.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END
+    END;
     WriteStr(w, " = ");
     IF FindBoundName(scope, obj.type, obj, name) THEN
       WriteStr(w, name)
+    ELSIF obj.type IS Types.PointerType THEN
+      pt := obj.type(Types.PointerType);
+      WriteStr(w, "POINTER TO ");
+      forwardBaseOK := TRUE;
+      found := FindBoundName(scope, pt.base, NIL, name);
+      forwardBaseOK := FALSE;
+      IF found THEN WriteStr(w, name) ELSE PrintStructural(w, scope, pt.base) END
     ELSE
       PrintStructural(w, scope, obj.type)
     END;
-    WriteStr(w, ";")
+    WriteStr(w, ";");
+    printingDecl := NIL
   END PrintTypeDecl;
 
   (* ---- Top-level declaration sections ---- *)
@@ -898,7 +1051,7 @@ MODULE ModuleInterface;
     any := FALSE; d := decls;
     WHILE d # NIL DO
       obj := SymbolTable.FindLocal(scope, d.name.name);
-      IF (obj # NIL) & obj.exported THEN
+      IF (obj # NIL) & (obj.exported OR IsNeeded(obj)) THEN
         IF ~any THEN WriteStr(w, "  TYPE"); WriteLn(w) END;
         WriteStr(w, "    "); PrintTypeDecl(w, scope, obj); WriteLn(w);
         any := TRUE
@@ -934,12 +1087,19 @@ MODULE ModuleInterface;
   END PrintVars;
 
   PROCEDURE PrintMethod(VAR w: Files.Rider; scope: SymbolTable.Scope; m: Types.Method);
-    VAR p: Types.Param; first: BOOLEAN;
+    VAR p: Types.Param; first: BOOLEAN; recvObj: SymbolTable.Object;
   BEGIN
+    (* The receiver clause names m.receiverTypeName verbatim, so that
+       declaration must exist in the file - print it too if it is not
+       exported. *)
+    recvObj := SymbolTable.FindLocal(scope, m.receiverTypeName);
+    IF recvObj # NIL THEN NeedType(recvObj) END;
     WriteStr(w, "  PROCEDURE^ (");
     IF m.receiverIsVar THEN WriteStr(w, "VAR ") END;
     WriteStr(w, "self: "); WriteStr(w, m.receiverTypeName);
-    WriteStr(w, ") "); WriteStr(w, m.name); WriteStr(w, "*(");
+    WriteStr(w, ") "); WriteStr(w, m.name);
+    IF m.exported THEN WriteStr(w, "*") END;
+    WriteStr(w, "(");
     first := TRUE;
     p := m.procType.params;
     WHILE p # NIL DO
@@ -963,25 +1123,48 @@ MODULE ModuleInterface;
      type identifier being independently exported and findable - the
      exact identifier PrintMethod will print in the receiver clause, so
      a reader can always resolve it. *)
+  (* The record type t denotes, directly or as the base of a POINTER
+     TO - the two shapes a type-bound procedure's receiver can name. *)
+  PROCEDURE RecordOf(t: Types.Type): Types.RecordType;
+    VAR pt: Types.PointerType;
+  BEGIN
+    IF t = NIL THEN RETURN NIL END;
+    IF t IS Types.RecordType THEN RETURN t(Types.RecordType) END;
+    IF t IS Types.PointerType THEN
+      pt := t(Types.PointerType);
+      IF (pt.base # NIL) & (pt.base IS Types.RecordType) THEN RETURN pt.base(Types.RecordType) END
+    END;
+    RETURN NIL
+  END RecordOf;
+
+  PROCEDURE IsDone(list: DoneRecord; rec: Types.RecordType): BOOLEAN;
+  BEGIN
+    WHILE (list # NIL) & (list.rec # rec) DO list := list.next END;
+    RETURN list # NIL
+  END IsDone;
+
+  (* PLAN.md Phase 9 step 4a: every type-bound procedure of every record
+     the file prints - exported or not, in declaration order (ProcTab
+     slot numbering depends on it) - once per record even when several
+     printed declarations lead to it (a record and the POINTER TO it, or
+     an alias). A record is "printed" when a TYPE declaration leading to
+     it is: exported, or unexported-but-needed. Unexported procedures
+     carry no mark. *)
   PROCEDURE PrintMethods(VAR w: Files.Rider; scope: SymbolTable.Scope; decls: SyntaxTree.TypeDeclNode);
     VAR
-      d: SyntaxTree.TypeDeclNode; obj, recvObj: SymbolTable.Object;
-      rt: Types.RecordType; m: Types.Method;
+      d: SyntaxTree.TypeDeclNode; obj: SymbolTable.Object;
+      rt: Types.RecordType; m: Types.Method; done, entry: DoneRecord;
   BEGIN
+    done := NIL;
     d := decls;
     WHILE d # NIL DO
       obj := SymbolTable.FindLocal(scope, d.name.name);
-      IF (obj # NIL) & (obj.type # NIL) & (obj.type IS Types.RecordType) THEN
-        rt := obj.type(Types.RecordType);
-        m := rt.methods;
-        WHILE m # NIL DO
-          IF m.exported THEN
-            recvObj := SymbolTable.FindLocal(scope, m.receiverTypeName);
-            IF (recvObj # NIL) & recvObj.exported THEN
-              PrintMethod(w, scope, m)
-            END
-          END;
-          m := m.next
+      IF (obj # NIL) & (obj.exported OR IsNeeded(obj)) THEN
+        rt := RecordOf(obj.type);
+        IF (rt # NIL) & ~IsDone(done, rt) THEN
+          NEW(entry); entry.rec := rt; entry.next := done; done := entry;
+          m := rt.methods;
+          WHILE m # NIL DO PrintMethod(w, scope, m); m := m.next END
         END
       END;
       d := d.next
@@ -1050,13 +1233,25 @@ MODULE ModuleInterface;
     IF any THEN WriteStr(w, ";"); WriteLn(w) END
   END PrintImports;
 
+  PROCEDURE PrintDeclarations(VAR w: Files.Rider; module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope);
+  BEGIN
+    IF module.declarations # NIL THEN
+      IF ~dryRun THEN PrintConsts(w, scope, module.declarations.constDecls) END;
+      PrintTypes(w, scope, module.declarations.typeDecls);
+      PrintVars(w, scope, module.declarations.varDecls);
+      PrintMethods(w, scope, module.declarations.typeDecls);
+      PrintFreeProcs(w, scope, module.declarations.procDecls)
+    END
+  END PrintDeclarations;
+
   (* Writes "<module.name>.sym" - see header comment for the overall
      format and why the IMPORT line unconditionally re-exports every
      import the module itself declared (not just the ones an exported
      signature actually references): computing the used/unused subset
-     would need a separate dry-run pass over every exported type first;
-     an occasional harmless extra IMPORT is a fair trade against that
-     complexity, and every name it introduces is genuinely a real,
+     would need a separate pass over every printed type first; and since
+     PLAN.md Phase 9 step 4a a hidden member's type may come from a third
+     module, so the re-export is load-bearing rather than merely
+     harmless - every name it introduces is genuinely a real,
      already-resolved import of this exact module.
 
      outputDir (PLAN.md's "Open design questions" / 000-todo.org's
@@ -1109,16 +1304,23 @@ MODULE ModuleInterface;
     IF ok THEN
       f := Files.New(name);
       Files.Set(w, f, 0);
+      (* Dry passes first (nothing is written), to a fixpoint: each one
+         may find another unexported type some already-marked declaration
+         reaches - see the writer-state comment on neededHead. The
+         constants pass is skipped while dry (it can never mark a type,
+         and its real-number formatting can report diagnostics that must
+         not be reported once per pass). *)
+      neededHead := NIL; printingDecl := NIL; forwardBaseOK := FALSE;
+      dryRun := TRUE;
+      REPEAT
+        needChanged := FALSE;
+        PrintDeclarations(w, module, scope)
+      UNTIL ~needChanged;
+      dryRun := FALSE;
       WriteStr(w, "MODULE "); WriteStr(w, module.name); WriteStr(w, ";");
       WriteLn(w);
       PrintImports(w, scope);
-      IF module.declarations # NIL THEN
-        PrintConsts(w, scope, module.declarations.constDecls);
-        PrintTypes(w, scope, module.declarations.typeDecls);
-        PrintVars(w, scope, module.declarations.varDecls);
-        PrintMethods(w, scope, module.declarations.typeDecls);
-        PrintFreeProcs(w, scope, module.declarations.procDecls)
-      END;
+      PrintDeclarations(w, module, scope);
       WriteStr(w, "END "); WriteStr(w, module.name); WriteStr(w, "."); WriteLn(w);
       Files.Register(f);
       IF outputDir[0] # 0X THEN chdirResult := Platform.Chdir(savedDir) END

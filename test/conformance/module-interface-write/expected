@@ -5,8 +5,9 @@ MODULE lib;
     Flag* = TRUE;
   TYPE
     Base* = RECORD tag*: INTEGER END;
-    Derived* = RECORD (Base) value*: INTEGER END;
-    List* = POINTER TO RECORD data-: INTEGER; next*: List END;
+    Derived* = RECORD (Base) value*: INTEGER; secret: INTEGER END;
+    List* = POINTER TO ListNode;
+    ListNode = RECORD data-: INTEGER; next*: List END;
     Names* = ARRAY OF INTEGER;
     Callback* = PROCEDURE(x: INTEGER): BOOLEAN;
   VAR

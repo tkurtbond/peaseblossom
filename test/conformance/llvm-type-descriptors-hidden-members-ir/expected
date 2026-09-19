@@ -1,0 +1,260 @@
+== i686-unknown-linux-gnu
+target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"
+target triple = "i686-unknown-linux-gnu"
+
+@third.Stamp.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
+  [0 x ptr] [],
+  i32 8,
+  i32 0,
+  i32 0,
+  [1 x ptr] [ptr @third.Stamp.tag],
+  [0 x i32] []
+}
+@third.Stamp.tag = alias ptr, getelementptr inbounds (i8, ptr @third.Stamp.tdesc, i32 0)
+
+@lib.keep = global ptr zeroinitializer
+@lib.ignore = global { i8 } zeroinitializer
+@lib.Deep.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
+  [0 x ptr] [],
+  i32 4,
+  i32 0,
+  i32 0,
+  [1 x ptr] [ptr @lib.Deep.tag],
+  [0 x i32] []
+}
+@lib.Deep.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.Deep.tdesc, i32 0)
+
+declare void @lib.PrivDesc.Reset(ptr)
+@lib.PrivDesc.tdesc = constant { [1 x ptr], i32, i32, i32, [1 x ptr], [1 x i32] } {
+  [1 x ptr] [ptr @lib.PrivDesc.Reset],
+  i32 8,
+  i32 0,
+  i32 1,
+  [1 x ptr] [ptr @lib.PrivDesc.tag],
+  [1 x i32] [i32 4]
+}
+@lib.PrivDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.PrivDesc.tdesc, i32 4)
+
+@lib.Unrelated.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
+  [0 x ptr] [],
+  i32 1,
+  i32 0,
+  i32 0,
+  [1 x ptr] [ptr @lib.Unrelated.tag],
+  [0 x i32] []
+}
+@lib.Unrelated.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.Unrelated.tdesc, i32 0)
+
+declare void @lib.ShapeDesc.Draw(ptr)
+declare void @lib.ShapeDesc.Audit(ptr)
+declare i16 @lib.ShapeDesc.Area(ptr, i16)
+@lib.ShapeDesc.tdesc = constant { [3 x ptr], i32, i32, i32, [1 x ptr], [2 x i32] } {
+  [3 x ptr] [ptr @lib.ShapeDesc.Area, ptr @lib.ShapeDesc.Audit, ptr @lib.ShapeDesc.Draw],
+  i32 24,
+  i32 0,
+  i32 2,
+  [1 x ptr] [ptr @lib.ShapeDesc.tag],
+  [2 x i32] [i32 8, i32 20]
+}
+@lib.ShapeDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.ShapeDesc.tdesc, i32 12)
+
+@lib.Base.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
+  [0 x ptr] [],
+  i32 2,
+  i32 0,
+  i32 0,
+  [1 x ptr] [ptr @lib.Base.tag],
+  [0 x i32] []
+}
+@lib.Base.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.Base.tdesc, i32 0)
+
+declare void @client.CircleDesc.Draw(ptr)
+declare void @client.CircleDesc.Audit(ptr, i16)
+declare void @client.CircleDesc.Extra(ptr)
+@client.CircleDesc.tdesc = constant { [5 x ptr], i32, i32, i32, [2 x ptr], [3 x i32] } {
+  [5 x ptr] [ptr @client.CircleDesc.Extra, ptr @client.CircleDesc.Audit, ptr @lib.ShapeDesc.Area, ptr @lib.ShapeDesc.Audit, ptr @client.CircleDesc.Draw],
+  i32 32,
+  i32 1,
+  i32 3,
+  [2 x ptr] [ptr @lib.ShapeDesc.tag, ptr @client.CircleDesc.tag],
+  [3 x i32] [i32 8, i32 20, i32 28]
+}
+@client.CircleDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @client.CircleDesc.tdesc, i32 20)
+
+@client.View.tdesc = constant { [3 x ptr], i32, i32, i32, [2 x ptr], [2 x i32] } {
+  [3 x ptr] [ptr @lib.ShapeDesc.Area, ptr @lib.ShapeDesc.Audit, ptr @lib.ShapeDesc.Draw],
+  i32 24,
+  i32 1,
+  i32 2,
+  [2 x ptr] [ptr @lib.ShapeDesc.tag, ptr @client.View.tag],
+  [2 x i32] [i32 8, i32 20]
+}
+@client.View.tag = alias ptr, getelementptr inbounds (i8, ptr @client.View.tdesc, i32 12)
+
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+
+define ptr @lib.Make() {
+entry:
+  %t1 = alloca ptr
+  %t2 = load ptr, ptr %t1
+  ret ptr %t2
+L1:
+  ret ptr null
+}
+
+define void @third_init() {
+entry:
+  ret void
+}
+
+define void @lib_init() {
+entry:
+  ret void
+}
+
+define void @client_init() {
+entry:
+  ret void
+}
+
+define i32 @main() {
+entry:
+  call void @third_init()
+  call void @lib_init()
+  call void @client_init()
+  ret i32 0
+}
+clang accepted i686-unknown-linux-gnu
+== x86_64-unknown-linux-gnu
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+@third.Stamp.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
+  [0 x ptr] [],
+  i64 8,
+  i64 0,
+  i64 0,
+  [1 x ptr] [ptr @third.Stamp.tag],
+  [0 x i64] []
+}
+@third.Stamp.tag = alias ptr, getelementptr inbounds (i8, ptr @third.Stamp.tdesc, i32 0)
+
+@lib.keep = global ptr zeroinitializer
+@lib.ignore = global { i8 } zeroinitializer
+@lib.Deep.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
+  [0 x ptr] [],
+  i64 4,
+  i64 0,
+  i64 0,
+  [1 x ptr] [ptr @lib.Deep.tag],
+  [0 x i64] []
+}
+@lib.Deep.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.Deep.tdesc, i32 0)
+
+declare void @lib.PrivDesc.Reset(ptr)
+@lib.PrivDesc.tdesc = constant { [1 x ptr], i64, i64, i64, [1 x ptr], [1 x i64] } {
+  [1 x ptr] [ptr @lib.PrivDesc.Reset],
+  i64 16,
+  i64 0,
+  i64 1,
+  [1 x ptr] [ptr @lib.PrivDesc.tag],
+  [1 x i64] [i64 8]
+}
+@lib.PrivDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.PrivDesc.tdesc, i32 8)
+
+@lib.Unrelated.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
+  [0 x ptr] [],
+  i64 1,
+  i64 0,
+  i64 0,
+  [1 x ptr] [ptr @lib.Unrelated.tag],
+  [0 x i64] []
+}
+@lib.Unrelated.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.Unrelated.tdesc, i32 0)
+
+declare void @lib.ShapeDesc.Draw(ptr)
+declare void @lib.ShapeDesc.Audit(ptr)
+declare i16 @lib.ShapeDesc.Area(ptr, i16)
+@lib.ShapeDesc.tdesc = constant { [3 x ptr], i64, i64, i64, [1 x ptr], [2 x i64] } {
+  [3 x ptr] [ptr @lib.ShapeDesc.Area, ptr @lib.ShapeDesc.Audit, ptr @lib.ShapeDesc.Draw],
+  i64 32,
+  i64 0,
+  i64 2,
+  [1 x ptr] [ptr @lib.ShapeDesc.tag],
+  [2 x i64] [i64 8, i64 24]
+}
+@lib.ShapeDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.ShapeDesc.tdesc, i32 24)
+
+@lib.Base.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
+  [0 x ptr] [],
+  i64 2,
+  i64 0,
+  i64 0,
+  [1 x ptr] [ptr @lib.Base.tag],
+  [0 x i64] []
+}
+@lib.Base.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.Base.tdesc, i32 0)
+
+declare void @client.CircleDesc.Draw(ptr)
+declare void @client.CircleDesc.Audit(ptr, i16)
+declare void @client.CircleDesc.Extra(ptr)
+@client.CircleDesc.tdesc = constant { [5 x ptr], i64, i64, i64, [2 x ptr], [3 x i64] } {
+  [5 x ptr] [ptr @client.CircleDesc.Extra, ptr @client.CircleDesc.Audit, ptr @lib.ShapeDesc.Area, ptr @lib.ShapeDesc.Audit, ptr @client.CircleDesc.Draw],
+  i64 48,
+  i64 1,
+  i64 3,
+  [2 x ptr] [ptr @lib.ShapeDesc.tag, ptr @client.CircleDesc.tag],
+  [3 x i64] [i64 8, i64 24, i64 40]
+}
+@client.CircleDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @client.CircleDesc.tdesc, i32 40)
+
+@client.View.tdesc = constant { [3 x ptr], i64, i64, i64, [2 x ptr], [2 x i64] } {
+  [3 x ptr] [ptr @lib.ShapeDesc.Area, ptr @lib.ShapeDesc.Audit, ptr @lib.ShapeDesc.Draw],
+  i64 32,
+  i64 1,
+  i64 2,
+  [2 x ptr] [ptr @lib.ShapeDesc.tag, ptr @client.View.tag],
+  [2 x i64] [i64 8, i64 24]
+}
+@client.View.tag = alias ptr, getelementptr inbounds (i8, ptr @client.View.tdesc, i32 24)
+
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+
+define ptr @lib.Make() {
+entry:
+  %t1 = alloca ptr
+  %t2 = load ptr, ptr %t1
+  ret ptr %t2
+L1:
+  ret ptr null
+}
+
+define void @third_init() {
+entry:
+  ret void
+}
+
+define void @lib_init() {
+entry:
+  ret void
+}
+
+define void @client_init() {
+entry:
+  ret void
+}
+
+define i32 @main() {
+entry:
+  call void @third_init()
+  call void @lib_init()
+  call void @client_init()
+  ret i32 0
+}
+clang accepted x86_64-unknown-linux-gnu

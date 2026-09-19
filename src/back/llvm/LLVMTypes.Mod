@@ -205,8 +205,12 @@ MODULE LLVMTypes;
      A slot is a type-bound procedure's fixed ProcTab index: the base
      type's own slots come first, in the base's own order, then this
      record's *new* type-bound procedures (those not overriding one it
-     already inherits) in declaration order. An overriding procedure
-     reuses its base's slot, so a call through any ancestor's static type
+     already inherits) in declaration order. "Overriding" is judged by
+     what the record's own module can *see* (Types.FindOverridable): a
+     hidden procedure inherited from another module holds a slot but
+     cannot be overridden, so a same-named procedure declared here is a
+     new one - PLAN.md Phase 9 step 4a, matching real voc. An overriding
+     procedure reuses its base's slot, so a call through any ancestor's static type
      lands in the same slot of whichever descendant's descriptor the
      receiver's dynamic type selects - Appendix D5's "the procedure table
      index of every type-bound procedure is known at compile time". *)
@@ -240,7 +244,7 @@ MODULE LLVMTypes;
     END;
     m := rec.methods;
     WHILE m # NIL DO
-      IF (base = NIL) OR (Types.FindMethod(base, m.name) = NIL) THEN INC(count) END;
+      IF (base = NIL) OR (Types.FindOverridable(base, m.name, rec.moduleName) = NIL) THEN INC(count) END;
       m := m.next
     END;
     RETURN count
@@ -265,16 +269,22 @@ MODULE LLVMTypes;
     END;
     IF index < baseCount THEN
       inherited := SlotMethod(base, index, baseOwner);
-      hit := rec.methods;
-      WHILE (hit # NIL) & (hit.name # inherited.name) DO hit := hit.next END;
-      IF hit # NIL THEN owner := rec; RETURN hit
-      ELSE owner := baseOwner; RETURN inherited
+      hit := Types.FindOwnMethod(rec, inherited.name);
+      (* An override only when rec's own procedure of that name is one
+         that *overrides this very slot's current implementation* - see
+         the visibility note above: a same-named procedure in another
+         module than a hidden inherited one is a new procedure in its own
+         slot, leaving the hidden one's slot untouched. *)
+      IF (hit # NIL) & (Types.FindOverridable(base, hit.name, rec.moduleName) = inherited) THEN
+        owner := rec; RETURN hit
+      ELSE
+        owner := baseOwner; RETURN inherited
       END
     END;
     position := baseCount;
     m := rec.methods;
     WHILE m # NIL DO
-      IF (base = NIL) OR (Types.FindMethod(base, m.name) = NIL) THEN
+      IF (base = NIL) OR (Types.FindOverridable(base, m.name, rec.moduleName) = NIL) THEN
         IF position = index THEN owner := rec; RETURN m END;
         INC(position)
       END;
@@ -283,8 +293,10 @@ MODULE LLVMTypes;
     RETURN NIL
   END SlotMethod;
 
-  (* The ProcTab slot of the type-bound procedure named name as seen from
-     rec (own or inherited), or -1 if rec has none by that name. *)
+  (* The first ProcTab slot whose current implementation is named name,
+     or -1 if none. Ambiguous when hidden members give two slots the same
+     name (see above) - a caller with a resolved Types.Method in hand
+     (step 6's dispatch) must match by Method identity instead. *)
   PROCEDURE MethodSlot*(rec: Types.RecordType; name: SyntaxTree.Ident): INTEGER;
     VAR i, count: INTEGER; owner: Types.RecordType; m: Types.Method;
   BEGIN

@@ -1,0 +1,7 @@
+MODULE field;
+  IMPORT lib;
+  VAR s: lib.Shape;
+  BEGIN
+    s := lib.Make();
+    s.weight := 1
+END field.

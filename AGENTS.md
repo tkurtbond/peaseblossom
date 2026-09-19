@@ -75,7 +75,7 @@ programs, and (potentially) bootstrapping.
   size model).
 - Read-only git clone of voc's source (remote:
   `github.com/vishapoberon/compiler.git`):
-  `/usr/local/sw/src/lang/Oberon/vishap/voc`
+  `/usr/local/sw/src/lang/Oberon/vishap/compiler`
   - `src/compiler/OP{B,C,M,P,S,T,V}.Mod` — the compiler passes.
   - `src/library/{misc,ooc,ooc2,oocX11,pow,s3,ulm,v4}` — bundled libraries.
   - `src/runtime`, `src/test`, `src/tools`.
@@ -396,7 +396,9 @@ Phase 7 (`ModuleInterface.Mod` (new), `SemanticActions.Mod`'s
 now resolve end to end, backed by a textual, on-disk `<ModuleName>.sym`
 interface file. Per a decision confirmed with the user while planning this
 phase, a `.sym` file is literally valid Peaseblossom module source
-(`MODULE Name; ... END Name.`, exported declarations only, every
+(`MODULE Name; ... END Name.`, exported declarations plus - since Phase 9
+step 4a - the unexported ones an importer's layout depends on, see "Hidden
+members in `.sym` files" below, every
 procedure/type-bound procedure written as a permanently body-less
 `PROCEDURE^ ...;` forward declaration) rather than a separate
 Appendix-D4-style grammar - `SemanticActions.CheckModule` already
@@ -455,9 +457,10 @@ Fixed two ways: a bare `VAR`'s own read-only mark is now gated on the
 designator's own qualifier (`d.qualifier[0] # 0X`- an unqualified
 reference can only ever resolve within the current module's own scope
 chain by construction, so this is a sufficient and exact signal); a record
-field reached via `.` is gated on a new `IsLocalType` helper (is the
-field's owning `RecordType` declared anywhere in the current scope chain,
-not just reachable through an imported module) - needed separately because
+field reached via `.` is gated on whether the field's *owning* record was
+declared by the current module (`IsLocalType` when written, since replaced
+by an exact `rec.moduleName` test - see "Hidden members in `.sym` files"
+below) - needed separately because
 a field can be reached *indirectly* through a local variable whose own
 type was imported (`VAR t: OtherModule.T; t.f := ...`), which a
 qualifier-only check on the outer designator would miss entirely. The
@@ -501,12 +504,13 @@ export a `REAL`/`LONGREAL`-valued `CONST` at all (explicit diagnostic,
 not lossy text) - also since resolved, see "REAL/LONGREAL CONST export"
 below; a written `.sym`'s `IMPORT` line unconditionally re-exports every
 import the module itself declared, not just the ones some exported
-signature actually references (avoids a separate used/unused dry-run pass
-over every exported type, at the cost of an occasional harmless extra
-import); `IsLocalType` treats a local `TYPE` alias of an imported record
-(`TYPE Local = OtherModule.T`) as local too, since aliasing never creates
-a distinct `Types.Type` identity to tell apart from the original - a real
-but rare read-only-enforcement loophole with no fixture pressure yet; and
+signature actually references (avoids a separate used/unused pass over
+every printed type - and, since Phase 9 step 4a, load-bearing rather than
+merely harmless: a hidden member's type may come from a third module);
+`IsLocalType` treated a local `TYPE` alias of an imported record
+(`TYPE Local = OtherModule.T`) as local too - a real but rare
+read-only-enforcement loophole, closed by Phase 9 step 4a's exact
+`rec.moduleName` test; and
 a qualified `WITH` variable (`WITH M.v: T DO`) - resolved 2026-09-17, not
 by narrowing it but by rejecting it outright, matching real voc: see
 `PLAN.md`'s "Type guards in designators" entry, gap (2), and
@@ -625,3 +629,44 @@ second time treating the first run's own `.sym` as input source, must
 produce byte-identical output - direct evidence that
 `ParseReal(FormatReal(v)) = v` holds for real, not just that `FormatReal`
 believed it did).
+
+**Hidden members in `.sym` files** (Phase 9 step 4a, 2026-09-19 - `PLAN.md`
+has the full design and the voc comparison): a `.sym` now carries every
+field and type-bound procedure of every record it prints, exported or not
+(unexported ones carry no export mark), plus every unexported `TYPE` those
+members or any exported signature reach, transitively, printed as ordinary
+unexported declarations - so a module extending an imported record can
+reproduce its base's layout and `ProcTab` slot numbering itself, at its own
+word size and size model. (voc instead stores computed sizes, offsets and
+method numbers in a binary `.sym`, which is why it ships one symbol tree
+per size model; poc keeps one target-independent, valid-source `.sym`.)
+`ModuleInterface.Write*` finds the needed unexported types by running its
+whole printing pass repeatedly with output suppressed until nothing new is
+found, then once for real, so marking and printing share every lookup rule.
+The invariant "`moduleScope` holds only exported members" no longer holds,
+so the reading side enforces export explicitly: `FindQualified` rejects an
+unexported name ("identifier is not exported by its module"), and field /
+type-bound-procedure selection rejects an unexported member unless the
+record that *declared* it (`Types.FieldOwner`/`MethodOwner`, not the record
+the access went through) belongs to the current module (`IsLocalRecord`:
+every `RecordType` is stamped with its declaring module at creation). An
+unexported CONST/VAR/PROCEDURE is still simply absent from a `.sym`, so
+naming one still says "undeclared identifier". Verified against real voc
+(2026-09-19): hidden base members take no part in an importer's *name*
+rules - an extension may declare a field of the same name as a hidden base
+field (two distinct fields) and a type-bound procedure of the same name as
+a hidden base one with any signature (a new procedure in its own slot, not
+an override) - so `Types.FindOverridable` (exported, or declared in the
+same module) decides what an extension can override, shared by the checker
+and `LLVMTypes`' slot numbering. Whole-program commands (`-emit-llvm-ir`,
+`-build`) now regenerate every transitive import's `.sym` from real source
+(post-order, into the output directory, which `ReadSource*` searches first)
+before checking the top module, since a stale `.sym` would otherwise give an
+importer a different record layout than the imported module's own code.
+Three previously latent bugs surfaced and were fixed along the way: two
+exported names sharing one type printed as the cyclic `A* = B; B* = A;`;
+`ResolveProcDecls` treated an override of an *imported* procedure as
+completing that procedure's forward declaration (mutating the base's
+method and never recording the override); and a function returning a
+pointer emitted the invalid placeholder `ret ptr 0`. Not done: the optional
+`-show-interface` (exported-view-only) mode.

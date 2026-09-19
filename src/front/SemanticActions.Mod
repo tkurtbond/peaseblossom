@@ -130,63 +130,48 @@ MODULE SemanticActions;
      not yet supported" rejection. An empty qualifier is an ordinary
      unqualified SymbolTable.Find; a non-empty one must resolve to a
      moduleClass Object, then FindLocal(-ing) name in its moduleScope -
-     that scope holds exactly (and only) the imported module's exported
-     members (ModuleInterface.Mod's writer never emits anything else),
-     so no separate "is it exported" check is needed at the qualident
-     resolution site itself, unlike an unqualified Find against a
-     module's own scope. *)
+     that scope holds the imported module's exported members and, since
+     PLAN.md Phase 9 step 4a, also the unexported declarations its record
+     layouts depend on (ModuleInterface.Mod's writer), so an unexported
+     result is rejected here rather than assumed impossible. *)
   VAR
     (* PLAN.md Phase 9 step 1: the name of the module CheckModuleBody is
        currently checking, for NameRecordType. Saved/restored around
        CheckModuleBody's own body, since ResolveImport recurses into it
        for each imported module's .sym file. *)
     currentModuleName: SyntaxTree.Ident;
+    (* PLAN.md Phase 9 step 4a: set by every FindQualified call - TRUE when
+       it already reported why it returned NIL ("not an imported module",
+       "not exported"), so a caller's own generic "undeclared identifier"
+       does not pile a second, less precise error on the same position. *)
+    lookupDiagnosed: BOOLEAN;
 
   PROCEDURE FindQualified(scope: SymbolTable.Scope; qualifier, name: SyntaxTree.Ident;
                           line, column: INTEGER): SymbolTable.Object;
-    VAR modObj: SymbolTable.Object;
+    VAR modObj, obj: SymbolTable.Object;
   BEGIN
+    lookupDiagnosed := FALSE;
     IF qualifier[0] = 0X THEN
       RETURN SymbolTable.Find(scope, name)
     END;
     modObj := SymbolTable.Find(scope, qualifier);
     IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN
       Diagnostics.Error(line, column, "not an imported module");
+      lookupDiagnosed := TRUE;
       RETURN NIL
     END;
-    RETURN SymbolTable.FindLocal(modObj.moduleScope, name)
-  END FindQualified;
-
-  (* PLAN.md Phase 7: whether t (a RecordType about to have a "." field
-     selector applied) was declared somewhere in scope's own local chain
-     (the current module's top-level scope, or any nested procedure
-     scope inside it) rather than reached only through an imported
-     module's moduleScope - moduleScope is never on this chain (only
-     reachable via a moduleClass Object's own field, never via .outer),
-     so walking .outer here can never accidentally cross into foreign
-     territory. This is the field-selector counterpart to
-     CheckDesignator's own base-object check (d.qualifier[0] = 0X already
-     proves an unqualified base object is local by construction, no walk
-     needed there) - a field is reached one indirection further in, so a
-     local variable's *type* being imported (VAR t: OtherModule.T; t.f)
-     must be checked explicitly instead of inferred from the designator's
-     own leading qualifier. Narrow, accepted gap: a local TYPE alias of
-     an imported record ("TYPE Local = OtherModule.T") makes this return
-     TRUE for that record too, since aliasing never creates a distinct
-     Types.Type identity to tell apart from the original - a real but
-     rare loophole, not a scenario with fixture pressure yet. *)
-  PROCEDURE IsLocalType(scope: SymbolTable.Scope; t: Types.Type): BOOLEAN;
-    VAR o: SymbolTable.Object; s: SymbolTable.Scope;
-  BEGIN
-    s := scope;
-    WHILE s # NIL DO
-      o := s.objects;
-      WHILE (o # NIL) & ~((o.class = SymbolTable.typeClass) & (o.type = t)) DO o := o.next END;
-      IF o # NIL THEN RETURN TRUE END;
-      s := s.outer
+    obj := SymbolTable.FindLocal(modObj.moduleScope, name);
+    IF (obj # NIL) & ~obj.exported THEN
+      (* PLAN.md Phase 9 step 4a: a .sym file now also carries the
+         unexported declarations an importer's layout depends on, so
+         moduleScope no longer holds only exported members and this check
+         is no longer implied by construction. *)
+      Diagnostics.Error(line, column, "identifier is not exported by its module");
+      lookupDiagnosed := TRUE;
+      RETURN NIL
     END;
-    RETURN FALSE
-  END IsLocalType;
+    RETURN obj
+  END FindQualified;
 
   (* Designators and selectors *)
 
@@ -796,6 +781,21 @@ MODULE SemanticActions;
     COPY(currentModuleName, rec.moduleName); COPY(name, rec.name)
   END NameRecordType;
 
+  (* PLAN.md Phase 9 step 4a: whether rec was declared by the module
+     currently being checked - every RecordType is stamped with its
+     declaring module (rec.moduleName) when it is created, named or not,
+     so this is exact for records anywhere: module-level, procedure-local,
+     or anonymous. It replaces the old IsLocalType scope walk, which
+     matched a *type object* bound to the record and so (a) missed an
+     anonymous record reached only through a local POINTER TO, and (b)
+     treated a local alias of an imported record as local. The two hidden-
+     member rules and the read-only-export rule all need "may this module
+     touch this record's non-exported members". *)
+  PROCEDURE IsLocalRecord(rec: Types.RecordType): BOOLEAN;
+  BEGIN
+    RETURN rec.moduleName = currentModuleName
+  END IsLocalRecord;
+
   PROCEDURE AppendBaseSuffix(VAR name: SyntaxTree.Ident);
     VAR i: INTEGER;
   BEGIN
@@ -852,6 +852,7 @@ MODULE SemanticActions;
     node := obj.pendingTypeNode(SyntaxTree.RecordTypeNode);
     baseType := ResolveRecordBaseType(scope, node);
     rec := Types.NewRecordType(baseType);
+    COPY(currentModuleName, rec.moduleName);
     IF scope.outer = SymbolTable.Universe THEN NameRecordType(rec, obj.name) END;
     obj.type := rec; obj.pendingTypeNode := NIL;
     PopulateRecordFields(rec, node, scope);
@@ -906,7 +907,7 @@ MODULE SemanticActions;
   BEGIN
     obj := FindQualified(scope, node.qualifier, node.name, node.line, node.column);
     IF obj = NIL THEN
-      Diagnostics.Error(node.line, node.column, "undeclared identifier");
+      IF ~lookupDiagnosed THEN Diagnostics.Error(node.line, node.column, "undeclared identifier") END;
       RETURN Types.Undefined
     ELSIF obj.class # SymbolTable.typeClass THEN
       Diagnostics.Error(node.line, node.column, "not a type");
@@ -1015,6 +1016,7 @@ MODULE SemanticActions;
   BEGIN
     baseType := ResolveRecordBaseType(scope, node);
     rec := Types.NewRecordType(baseType);
+    COPY(currentModuleName, rec.moduleName);
     PopulateRecordFields(rec, node, scope);
     RETURN rec
   END ResolveRecordType;
@@ -1403,7 +1405,7 @@ MODULE SemanticActions;
       sel: SyntaxTree.Selector;
       field: Types.Field;
       method: Types.Method;
-      rec: Types.RecordType;
+      rec, fieldOwner: Types.RecordType;
       methodOwner: Types.RecordType;
       methodName: SyntaxTree.Ident;
       idx: SyntaxTree.ExprNode;
@@ -1433,7 +1435,7 @@ MODULE SemanticActions;
     crossedBoundary := d.qualifier[0] # 0X;
     obj := FindQualified(scope, d.qualifier, d.name, d.line, d.column);
     IF obj = NIL THEN
-      Diagnostics.Error(d.line, d.column, "undeclared identifier");
+      IF ~lookupDiagnosed THEN Diagnostics.Error(d.line, d.column, "undeclared identifier") END;
       RETURN Types.Undefined
     ELSIF (obj.class = SymbolTable.varClass) OR (obj.class = SymbolTable.constClass) THEN
       isVariable := obj.class = SymbolTable.varClass;
@@ -1461,12 +1463,25 @@ MODULE SemanticActions;
             rec := t(Types.RecordType);
             field := Types.FindField(rec, sel.name);
             IF field # NIL THEN
-              t := field.type;
-              readOnly := readOnly OR (field.readOnly & ~IsLocalType(scope, rec))
+              (* Judged against the record that *declared* the field, not
+                 the (possibly local extension) record it was reached
+                 through - a local extension of an imported base does not
+                 make the base's own hidden or read-only fields local. *)
+              fieldOwner := Types.FieldOwner(rec, field);
+              IF ~field.exported & ~IsLocalRecord(fieldOwner) THEN
+                Diagnostics.Error(sel.line, sel.column, "field is not exported by its module");
+                t := Types.Undefined
+              ELSE
+                t := field.type;
+                readOnly := readOnly OR (field.readOnly & ~IsLocalRecord(fieldOwner))
+              END
             ELSE
               method := Types.FindMethod(rec, sel.name);
               IF method = NIL THEN
                 Diagnostics.Error(sel.line, sel.column, "undeclared field or type-bound procedure");
+                t := Types.Undefined
+              ELSIF ~method.exported & ~IsLocalRecord(Types.MethodOwner(rec, method)) THEN
+                Diagnostics.Error(sel.line, sel.column, "type-bound procedure is not exported by its module");
                 t := Types.Undefined
               ELSE
                 t := method.procType; readOnly := TRUE;
@@ -2308,7 +2323,7 @@ MODULE SemanticActions;
      directly). A syntax-only scan (SyntaxTree.ProcDeclNode, not
      SymbolTable.Object): matching purely by name text, not by resolved
      identity, is a deliberate, documented over-approximation, the same
-     kind IsLocalType's own header comment already accepts elsewhere -
+     kind (an unrelated same-named variable) this pass already accepts -
      it can only make CheckWithGuard reject a guard voc would still
      accept (an unrelated same-named variable in a different scope), never
      the reverse, so it stays sound. An external or forward PROCEDURE
@@ -2410,7 +2425,7 @@ MODULE SemanticActions;
   BEGIN
     obj := FindQualified(scope, g.variableQualifier, g.variableName, g.line, g.column);
     IF obj = NIL THEN
-      Diagnostics.Error(g.line, g.column, "undeclared identifier");
+      IF ~lookupDiagnosed THEN Diagnostics.Error(g.line, g.column, "undeclared identifier") END;
       RETURN
     END;
     leftType := obj.type;
@@ -2514,7 +2529,11 @@ MODULE SemanticActions;
     VAR inherited: Types.Method;
   BEGIN
     IF (owner.baseType = NIL) OR ~(owner.baseType IS Types.RecordType) THEN RETURN TRUE END;
-    inherited := Types.FindMethod(owner.baseType(Types.RecordType), name);
+    (* Only an inherited procedure this module can *see*: a hidden one
+       declared in another module is not overridable - a same-named
+       procedure here is a new one (confirmed against real voc,
+       2026-09-19; see Types.FindOverridable). *)
+    inherited := Types.FindOverridable(owner.baseType(Types.RecordType), name, currentModuleName);
     IF inherited = NIL THEN
       RETURN TRUE
     ELSIF ~Types.ProcedureTypesMatch(procType, inherited.procType) THEN
@@ -2674,7 +2693,14 @@ MODULE SemanticActions;
               method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, TRUE,
                                          d.receiver.typeName, d.line, d.column)
             ELSE
-              method := Types.FindMethod(owner, d.name.name);
+              (* owner's *own* list only: FindMethod's walk up the base
+                 chain would find an *imported* base's forward-declared
+                 (.sym-loaded, so permanently pending) procedure of the
+                 same name and wrongly treat this body as completing it -
+                 mutating the base's method instead of recording an
+                 override on owner. Latent until PLAN.md Phase 9 step 4a's
+                 fixtures first overrode an imported procedure. *)
+              method := Types.FindOwnMethod(owner, d.name.name);
               IF (method # NIL) & method.pending THEN
                 IF ~Types.ProcedureTypesMatch(pt, method.procType) OR (method.receiverIsVar # d.receiver.isVar) THEN
                   Diagnostics.Error(d.line, d.column,

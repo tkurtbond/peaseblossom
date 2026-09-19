@@ -1785,17 +1785,13 @@ style exactly.
    valid), `llvm-type-descriptors-cross-module-ir`.
 
    **Known gaps carried forward, not fixed by this step:**
-   - **Hidden members.** `ModuleInterface.Mod`'s writer omits unexported
-     record fields and unexported type-bound procedures from a `.sym`
-     (only exported ones are printed), so a record *extending* an
-     imported one sees a partial base: wrong field offsets and `size`,
-     wrong `ProcTab` slots, and missing hidden pointers in the offset
-     table. The base's own `.tag` alias is unaffected (that is exactly why
-     it exists). **Decided 2026-09-19 and planned as step 4a below** —
-     write the hidden declarations into `.sym` and enforce export on the
-     reading side; must land before step 5. (voc does not do this: it
-     stores computed layout facts instead — see step 4a for why poc
-     differs.)
+   - **Hidden members** - *resolved by step 4a below (2026-09-19).* A
+     `.sym` used to omit unexported record fields and type-bound
+     procedures, so a record extending an imported one saw a partial base
+     (wrong field offsets, `size`, `ProcTab` slots, and missing hidden
+     pointers in the offset table). It now carries them; see step 4a for
+     the design, why poc differs from voc's numeric-fact `.sym`, and the
+     enforcement that keeps them unreachable by name.
    - **Procedure-local and other anonymous records** get no descriptor
      and no name (`SemanticActions` names only module-level ones;
      `OpenProcedureBodyScope` re-resolves a procedure's local `TYPE`s at
@@ -2021,6 +2017,95 @@ style exactly.
    `/usr/local/sw/src/lang/Oberon/vishap/voc` but is actually
    `.../vishap/compiler`; `ModuleInterface.Mod`'s and
    `SymbolTable.Mod`'s header comments; `FindQualified`'s comment.
+
+   **Implemented 2026-09-19.** Design as above, with these outcomes and
+   deviations:
+   - *Writer*: `ModuleInterface.Write*` runs its whole declaration-printing
+     pass to a fixpoint with output suppressed (`dryRun`; `WriteStr`/
+     `WriteLn` write nothing), collecting unexported types into a
+     `NeededType` list (`NeedType`), then once for real - so marking and
+     printing share `FindBoundName`/`FindOwnBound` by construction instead
+     of a second, separate "mark" walker. Reachable types now include
+     those referenced by exported `VAR`s and free-procedure signatures
+     too, not only by hidden members, so an unexported record reached
+     through an exported pointer (the `Tree`/`Node` idiom) is printed as a
+     *named* unexported declaration instead of inline. That also fixes a
+     step 1 mismatch: the inline form gave the importer's record the name
+     `Tree.base` while the home module's was `Node`, i.e. two different
+     descriptor symbols for one type. A name is only usable inside a TYPE
+     declaration if declared earlier (or is the declaration's own name), or
+     - a POINTER declaration's own direct base only - later (§4 rule 3);
+     a predeclared basic type is always spelled by its Universe name. The
+     former rule-free lookup also had a latent bug, fixed by this: two
+     exported names sharing one type printed as the cyclic `A* = B;
+     B* = A;`. Unexported types' own procedures travel with them; an
+     unexported receiver type is printed too, so exported methods on it
+     now reach importers (they used to be dropped).
+   - *Reader*: `FindQualified` rejects an unexported object; a new
+     `lookupDiagnosed` flag stops callers piling "undeclared identifier"
+     on top of an already-reported "not exported"/"not an imported module"
+     (`semantic-reject-import-not-on-path` lost that redundant second
+     error). Field and type-bound-procedure selection judge the record that
+     *declared* the member (`Types.FieldOwner`/`MethodOwner`), and locality
+     is `rec.moduleName = currentModuleName` (`IsLocalRecord`; every
+     `RecordType` is now stamped with its declaring module, named or not),
+     which **replaces `IsLocalType`** and closes both its known loopholes
+     (a local alias of an imported record; an anonymous record under a
+     local pointer). The read-only `-` rule now uses the same owner-based
+     test, so a local extension no longer makes an imported base's
+     read-only field writable. An unexported CONST/VAR/PROCEDURE is still
+     just absent from a `.sym` ("undeclared identifier"); only hidden
+     types/members give the new "not exported" wording.
+   - *Open questions, settled against real voc (probed 2026-09-19)*: (i) an
+     extension may declare a field named like a hidden base field - two
+     distinct fields; (ii) it may declare a type-bound procedure named like
+     a hidden base one, any signature - a *new* procedure in its own slot,
+     not an override, and no clash; (iii) an importer's own declarations
+     never collide with a `.sym`'s hidden type names (`Insert` only ever
+     runs against the importer's own scope). So hidden members count for
+     layout and slot numbering but are invisible to name resolution and to
+     overriding: `Types.FindOverridable` (exported, or declared by a record
+     of the same module) decides what a declaration can override, and both
+     the checker's `CheckOverride` and `LLVMTypes`' slot numbering use it,
+     so they cannot disagree.
+   - *Stale `.sym`*: `Poc.Mod`'s `RegenerateInterfaces` regenerates each
+     transitive import's `.sym` from real source, post-order, before the
+     top module is checked, for `-emit-llvm-ir` and `-build`; a source-less
+     import keeps its existing `.sym`. Output goes to `-output-dir` (cwd by
+     default) and `ModuleInterface.SetInterfaceDir` makes `ReadSource*` look
+     there *first*, so a stale copy elsewhere cannot shadow a fresh one -
+     this settled the precedence question flagged above. Fixtures for the
+     whole-program path no longer hand-run `poc -emit-interface` for
+     imports (older fixtures still do, harmlessly).
+   - *Two further latent bugs* found while testing, both fixed:
+     `ResolveProcDecls` used `FindMethod` (which walks the base chain) to
+     decide whether a procedure body completes a forward declaration, so an
+     override of an *imported* method found the base's `.sym`-loaded,
+     permanently pending method and mutated it instead of recording the
+     override (`Types.FindOwnMethod` now); and a function returning a
+     pointer emitted the invalid placeholder `ret ptr 0` (now `null`, in
+     both `GenerateProcedureDecl` and `GenerateReturnStatement`, alongside
+     `Unsupported`'s).
+   - *Fixtures* (names differ slightly from the plan above):
+     `module-hidden-members` (golden `.sym` incl. transitive types, a
+     third-module type, an unreachable type that must not appear, the
+     alias fix; `.sym` round trip; importer/home layout agreement at all
+     four word-size x size-model combinations), `semantic-reject-hidden-
+     members` (hidden field, hidden method, unexported qualified type,
+     hidden field through a local extension, plus the exported field of the
+     same extension as the accepting control), `llvm-type-descriptors-
+     hidden-members-ir` (cross-module golden `.ll` at both word sizes,
+     `clang -c`-validated: the importer's size, pointer offsets including
+     the hidden pointer, and `ProcTab` slots incl. a same-named new
+     procedure beside the hidden one), `module-rebuild-stale-sym` (edits a
+     hidden 8-byte field without re-emitting `.sym`; sized so a stale view
+     would visibly disagree), and updated goldens for `module-interface-
+     write` and `semantic-reject-import-not-on-path`.
+   - *Not done*: the optional exported-view-only `-show-interface` mode -
+     the writer would need only an `includeHidden` flag, but nothing needs
+     it yet. `AGENTS.md`, `SymbolTable.Mod`'s header, `ModuleInterface.Mod`'s
+     header, and the `FindQualified` comments are updated; the stale voc
+     source path in `AGENTS.md` is fixed.
 
 5. **`NEW` (fixed record/array), `POINTER`, `NIL`, `^` dereference,
    `IS`/type guards, and the `WITH` pointer guard.** `NEW(v)` lowers to

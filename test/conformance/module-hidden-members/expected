@@ -1,0 +1,22 @@
+MODULE lib;
+  IMPORT third;
+  TYPE
+    Deep = RECORD level: INTEGER; mark: CHAR END;
+    Priv = POINTER TO PrivDesc;
+    PrivDesc = RECORD deep: Deep; link: Priv END;
+    Shape* = POINTER TO ShapeDesc;
+    ShapeDesc* = RECORD id*: INTEGER; weight: LONGINT; inner: Priv; stamp: third.Stamp; next*: Shape END;
+    Base* = RECORD tag*: INTEGER END;
+    Same* = Base;
+  VAR
+    keep*: Priv;
+  PROCEDURE^ (self: Priv) Reset();
+  PROCEDURE^ (self: Shape) Draw*();
+  PROCEDURE^ (self: Shape) Audit();
+  PROCEDURE^ (self: Shape) Area*(scale: INTEGER): INTEGER;
+  PROCEDURE^ Make*(): Shape;
+END lib.
+roundtrip: identical
+lib.ShapeDesc: sizeO2_32=24 alignO2_32=4 sizeO2_64=32 alignO2_64=8 sizeOC_32=32 alignOC_32=4 sizeOC_64=48 alignOC_64=8
+client.View:   sizeO2_32=24 alignO2_32=4 sizeO2_64=32 alignO2_64=8 sizeOC_32=32 alignOC_32=4 sizeOC_64=48 alignOC_64=8
+layouts agree

@@ -352,6 +352,75 @@ MODULE Types;
     END
   END FindMethod;
 
+  (* PLAN.md Phase 9 step 4a: hidden members. A .sym file now carries a
+     record's unexported fields and type-bound procedures (they take
+     part in layout and ProcTab slot numbering, which an importer that
+     extends the record must reproduce exactly), but real voc confirms
+     (probed 2026-09-19) they must stay out of the importer's *name*
+     rules: an extension in another module may declare a field of the
+     same name as a hidden base field (two distinct fields), and a
+     type-bound procedure of the same name as a hidden base one with any
+     signature (a new procedure in its own slot, not an override). The
+     four helpers below give SemanticActions.Mod and LLVMTypes.Mod one
+     shared definition of "visible from module M": a member is visible
+     when it is exported, or when the record that declares it belongs to
+     module M itself. *)
+
+  (* rec's own method list only - unlike FindMethod*, never its bases. *)
+  PROCEDURE FindOwnMethod*(rec: RecordType; name: SyntaxTree.Ident): Method;
+    VAR m: Method;
+  BEGIN
+    IF rec = NIL THEN RETURN NIL END;
+    m := rec.methods;
+    WHILE (m # NIL) & (m.name # name) DO m := m.next END;
+    RETURN m
+  END FindOwnMethod;
+
+  (* The nearest type-bound procedure named name at or above rec that a
+     declaration in module fromModule could override: exported, or
+     declared by a record belonging to fromModule itself. NIL if none. *)
+  PROCEDURE FindOverridable*(rec: RecordType; name, fromModule: SyntaxTree.Ident): Method;
+    VAR m: Method; r: RecordType;
+  BEGIN
+    r := rec;
+    WHILE r # NIL DO
+      m := FindOwnMethod(r, name);
+      IF (m # NIL) & (m.exported OR (r.moduleName = fromModule)) THEN RETURN m END;
+      IF r.baseType = NIL THEN r := NIL ELSE r := r.baseType(RecordType) END
+    END;
+    RETURN NIL
+  END FindOverridable;
+
+  (* The record at or above rec whose own field list contains field
+     itself (by identity) - FindField* returns only the Field, and
+     whether an access is legal depends on which record declared it. *)
+  PROCEDURE FieldOwner*(rec: RecordType; field: Field): RecordType;
+    VAR r: RecordType; f: Field;
+  BEGIN
+    r := rec;
+    WHILE r # NIL DO
+      f := r.fields;
+      WHILE (f # NIL) & (f # field) DO f := f.next END;
+      IF f # NIL THEN RETURN r END;
+      IF r.baseType = NIL THEN r := NIL ELSE r := r.baseType(RecordType) END
+    END;
+    RETURN NIL
+  END FieldOwner;
+
+  (* MethodOwner*: FieldOwner*'s counterpart for a Method. *)
+  PROCEDURE MethodOwner*(rec: RecordType; method: Method): RecordType;
+    VAR r: RecordType; m: Method;
+  BEGIN
+    r := rec;
+    WHILE r # NIL DO
+      m := r.methods;
+      WHILE (m # NIL) & (m # method) DO m := m.next END;
+      IF m # NIL THEN RETURN r END;
+      IF r.baseType = NIL THEN r := NIL ELSE r := r.baseType(RecordType) END
+    END;
+    RETURN NIL
+  END MethodOwner;
+
   (* Returns the narrower ProcedureType, not just Type, so callers can
      chain straight into AddParam* without a type guard on a call
      expression - see NewRecordType's identical rationale. *)

@@ -687,8 +687,9 @@ MODULE LLVMCodeGenerator;
      step 12's own qualified-reference support, all of which are only
      ever reached for an *unqualified* designator by construction (an
      unqualified SymbolTable.Find(cg.scope, ...) can never resolve to an
-     imported module's own moduleScope - see IsLocalType's own comment
-     for the identical reasoning one level up, types instead of values -
+     imported module's own moduleScope - the same reasoning one level up,
+     types instead of values, is why SemanticActions.IsLocalRecord tests a
+     record's declaring module rather than searching scopes -
      so "the object I'm naming belongs to the module I'm compiling" is
      still always true here). *)
   PROCEDURE ModuleQualifiedName(VAR cg: Codegen; name: ARRAY OF CHAR; VAR text: ValueText);
@@ -704,9 +705,10 @@ MODULE LLVMCodeGenerator;
      already made for an analogous small helper) - an empty qualifier is
      an ordinary SymbolTable.Find; a non-empty one must resolve to a
      moduleClass Object first, then FindLocal(-ing) name in its own
-     moduleScope (exactly the exported members ModuleInterface.Mod's
-     writer ever emitted for it, so no separate "is it exported" check
-     is needed here either, matching FindQualified's own comment).
+     moduleScope (which may also hold unexported declarations since
+     PLAN.md Phase 9 step 4a, but this only ever runs after the checker
+     already rejected any reference to one, so no export check is needed
+     here, matching FindQualified's own comment).
      Also returns the resolved object's own *home* module's real name
      (VAR homeModule) - cg.moduleName for the unqualified case, or the
      imported module's own realModuleName (not its local alias) for the
@@ -2118,6 +2120,8 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, "  ret "); WriteStr(w, retType); WriteStr(w, " ");
       IF (cg.currentProcResultType = Types.Real) OR (cg.currentProcResultType = Types.LongReal) THEN
         WriteStr(w, "0.0")
+      ELSIF retType = "ptr" THEN
+        WriteStr(w, "null") (* PLAN.md Phase 9: a POINTER/PROCEDURE result is "ptr" now *)
       ELSE
         WriteStr(w, "0")
       END;
@@ -2293,9 +2297,10 @@ MODULE LLVMCodeGenerator;
      as its own symbol, @<Module>.<Type>.tag, an LLVM alias to the
      header's own address, rather than left for every user to rebuild
      from @...tdesc plus M*wordBytes: an importing module's view of a
-     base record may not know M (a .sym file omits unexported type-bound
-     procedures until PLAN.md Phase 9 step 4a lands), but it can always
-     name the base's alias.
+     base record may not know M (before PLAN.md Phase 9 step 4a a .sym file
+     omitted unexported type-bound procedures; it now carries them, but the
+     alias keeps every reference independent of that), and can always name
+     the base's alias.
 
      Scope of this step: module-level record types only - a named
      record (Types.RecordTypeDesc.name set by SemanticActions.Mod's
@@ -2898,6 +2903,7 @@ MODULE LLVMCodeGenerator;
       LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType);
       WriteStr(w, "  ret "); WriteStr(w, retType); WriteStr(w, " ");
       IF (pt.resultType = Types.Real) OR (pt.resultType = Types.LongReal) THEN WriteStr(w, "0.0")
+      ELSIF retType = "ptr" THEN WriteStr(w, "null")
       ELSE WriteStr(w, "0")
       END;
       WriteLn(w)
