@@ -301,7 +301,8 @@ MODULE ConstantEvaluator;
     ELSIF expr.literalKind = Lexer.real THEN
       v.kind := Types.realValue;
       IF expr.isLongReal THEN v.type := Types.LongReal ELSE v.type := Types.Real END;
-      v.realVal := ParseReal(expr.lexeme)
+      v.realVal := ParseReal(expr.lexeme);
+      COPY(expr.lexeme, v.realText)
     ELSIF expr.literalKind = Lexer.charConst THEN
       v.kind := Types.charValue; v.type := Types.Char;
       v.charVal := ParseCharConst(expr.lexeme)
@@ -500,6 +501,31 @@ MODULE ConstantEvaluator;
     END
   END EvaluateDesignator;
 
+  (* Types.ValueDesc.realText's own negation: "1.5" becomes "-1.5" and
+     "-1.5" becomes "1.5"; an empty source stays empty (a computed value
+     has no numeral to negate), and a source too long to take one more
+     character is dropped too (empty), which only costs the backend its
+     exact-numeral shortcut, never correctness. *)
+  PROCEDURE NegateRealText(source: ARRAY OF CHAR; VAR negated: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    negated[0] := 0X;
+    IF source[0] = "-" THEN
+      i := 1;
+      WHILE source[i] # 0X DO negated[i - 1] := source[i]; INC(i) END;
+      negated[i - 1] := 0X
+    ELSIF source[0] # 0X THEN
+      i := 0;
+      WHILE source[i] # 0X DO INC(i) END;
+      IF i < LEN(negated) - 1 THEN
+        negated[0] := "-";
+        i := 0;
+        WHILE source[i] # 0X DO negated[i + 1] := source[i]; INC(i) END;
+        negated[i + 1] := 0X
+      END
+    END
+  END NegateRealText;
+
   PROCEDURE EvaluateUnary(expr: SyntaxTree.UnaryExprNode;
                           scope: SymbolTable.Scope): Types.Value;
     VAR v, result: Types.Value;
@@ -510,7 +536,9 @@ MODULE ConstantEvaluator;
       IF Types.IsNumeric(v.type) THEN
         NEW(result); result.type := v.type; result.kind := v.kind;
         IF v.kind = Types.intValue THEN result.intVal := -v.intVal
-        ELSE result.realVal := -v.realVal
+        ELSE
+          result.realVal := -v.realVal;
+          NegateRealText(v.realText, result.realText)
         END;
         RETURN result
       ELSIF v.type = Types.Set THEN

@@ -9,31 +9,26 @@ MODULE LLVMCodeGenerator;
      +/-/~, and binary arithmetic/relational/boolean operators - for the
      SHORTINT..HUGEINT integer family, CHAR, BOOLEAN, and SET only.
      Everything else (procedure calls, IF/WHILE/etc., array/record field
-     access, REAL/LONGREAL arithmetic) is out of scope for this step and
+     access) was out of scope for this step and
      emits an "; unsupported: ..." IR comment plus a well-typed zero
      placeholder instead of crashing - the same total-function-over-an-
      "<unsupported>" fallback LLVMTypes.TypeString* already established,
      applied to codegen instead of type-string formatting.
 
-     REAL/LONGREAL are deliberately excluded from this step even though
-     Types.IsNumeric(REAL) is TRUE and the front end fully accepts them:
-     emitting a nonzero REAL/LONGREAL literal as LLVM IR text needs a
-     verified-safe decimal-to-IR-literal conversion, and while
-     ModuleInterface.Mod's FormatRealMagnitude already solves the
-     adjacent "round-trip safely through Oberon's own ParseReal" problem
-     for .sym files, it has not been verified to round-trip through
-     LLVM's own (APFloat-based) decimal literal parser too, nor adapted
-     to LLVM's "e"/"E"-only exponent syntax (no Oberon "D0" suffix). Given
-     this step's own "smallest useful slice" framing, real-to-LLVM-text
-     conversion is deferred as its own, separate increment rather than
-     built (and left unverified) as a side effect of this one - see
-     Types.IsInteger* (SHORTINT..HUGEINT only) vs. Types.IsNumeric*
-     (also REAL/LONGREAL) below: every "is this arithmetic operand
-     handled" check in this module deliberately uses IsInteger*, not
-     IsNumeric*, specifically to keep REAL/LONGREAL routed to the
-     "unsupported" fallback rather than silently miscompiled (icmp/add/
-     etc. require an integer operand type; calling them with "float"/
-     "double" would emit ill-typed IR).
+     REAL/LONGREAL were deliberately excluded from that step, and are in
+     scope since PLAN.md Phase 9 step 2: LLVM `float`/`double`, with the
+     numeric inclusion hierarchy's implicit conversions (sitofp from an
+     integer, fpext REAL to LONGREAL - ExtendTo), fadd/fsub/fmul/fdiv,
+     fneg, fcmp (GenerateRelational), ABS/LONG/SHORT/ENTIER, and real
+     immediates (RealConstant: a numeral is echoed as text so LLVM's own
+     correctly-rounded parser sees exactly what the programmer wrote,
+     since ConstantEvaluator.ParseReal is not; a computed CONST is
+     emitted as its own IEEE-754 bit pattern, DoubleBitsText). The
+     "is this arithmetic operand handled" checks below therefore mix
+     Types.IsInteger* (icmp/add/... need an integer operand type) and
+     IsRealType (fadd/fcmp/... need a floating-point one), and must
+     never hand one family's instruction to the other's operand type -
+     that would emit ill-typed IR, not just wrong IR.
 
      DIV/MOD lower Oberon-2's floored-division semantics (confirmed
      2026-09-18 against real voc, not assumed: (-7) DIV 2 = -4, (-7) MOD
@@ -434,6 +429,91 @@ MODULE LLVMCodeGenerator;
     AppendLongInt(text, acc)
   END SetToText;
 
+  PROCEDURE IsRealType(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (t = Types.Real) OR (t = Types.LongReal)
+  END IsRealType;
+
+  PROCEDURE HexDigitChar(d: INTEGER): CHAR;
+  BEGIN
+    IF d < 10 THEN RETURN CHR(ORD("0") + d) ELSE RETURN CHR(ORD("A") + d - 10) END
+  END HexDigitChar;
+
+  (* x's own IEEE-754 binary64 bit pattern as LLVM's "0x" + 16 hex digits
+     double-literal syntax - the one spelling LLVM accepts for a float/
+     double constant regardless of whether it is a "nice" decimal, and
+     the only one it accepts for a `float` that is not a decimal exactly
+     representable in single precision (confirmed against clang 22:
+     "floating point constant invalid for type" for `float 0.1`). Built
+     by arithmetic on x itself, not by reinterpreting its bytes -
+     Oberon2.pdf has no bit-cast outside SYSTEM, and poc's own source
+     must stay strict Oberon2.pdf: scaling a double by a power of two is
+     always exact, so dividing/multiplying x into [1, 2) loses nothing,
+     and the 52 fraction bits are then a plain integer (ENTIER of an
+     exactly-integral value). A subnormal x (biased exponent 0) scales
+     the same way to exponent -1022; infinity and NaN, which the folder
+     can only produce by overflowing, get their own fixed patterns. A
+     folded -0.0 comes out as +0.0 (a comparison cannot tell them apart
+     and this module deliberately avoids 1/x tricks); a numeral written
+     -0.0 never reaches here, RealConstant echoes its own text instead. *)
+  PROCEDURE DoubleBitsText(x: LONGREAL; VAR text: ARRAY OF CHAR);
+    VAR negative: BOOLEAN; exponent, top, i: INTEGER; mantissa: LONGINT; digits: ARRAY 13 OF CHAR;
+        twoTo52: LONGREAL;
+  BEGIN
+    (* 2^52, the scale of a binary64 fraction, built by doubling rather
+       than written as a literal: voc 2.1.0 rejects a LONGREAL literal
+       whose value is integral and at least 2^31 (2147483648.0D0, 1.0D10
+       and 4.5D15 all fail with "Value out of range" - 2147483647.0D0 and
+       1.0D38 do not), see AGENTS.md's "Known voc bugs". *)
+    twoTo52 := 1.0D0;
+    FOR i := 1 TO 52 DO twoTo52 := twoTo52 * 2.0D0 END;
+    negative := x < 0.0D0;
+    IF negative THEN x := -x END;
+    mantissa := 0;
+    IF x # x THEN top := 2047; mantissa := 2251799813685248 (* 2^51: the quiet-NaN bit *)
+    ELSIF x - x # 0.0D0 THEN top := 2047 (* infinity: the only non-NaN x with x - x not 0 *)
+    ELSIF x = 0.0D0 THEN top := 0
+    ELSE
+      exponent := 0;
+      WHILE x >= 2.0D0 DO x := x / 2.0D0; INC(exponent) END;
+      WHILE x < 1.0D0 DO x := x * 2.0D0; DEC(exponent) END;
+      IF exponent >= -1022 THEN
+        top := exponent + 1023;
+        mantissa := ENTIER((x - 1.0D0) * twoTo52)
+      ELSE
+        top := 0;
+        WHILE exponent < -1022 DO x := x / 2.0D0; INC(exponent) END;
+        mantissa := ENTIER(x * twoTo52)
+      END
+    END;
+    IF negative THEN top := top + 2048 END;
+    FOR i := 12 TO 0 BY -1 DO
+      digits[i] := HexDigitChar(SHORT(mantissa MOD 16)); mantissa := mantissa DIV 16
+    END;
+    text[0] := "0"; text[1] := "x";
+    text[2] := HexDigitChar(top DIV 256);
+    text[3] := HexDigitChar((top DIV 16) MOD 16);
+    text[4] := HexDigitChar(top MOD 16);
+    FOR i := 0 TO 12 DO text[5 + i] := digits[i] END;
+    text[18] := 0X
+  END DoubleBitsText;
+
+  (* An Oberon real numeral ("1.5", "12.", "2.5E-3", "1.0D10") in LLVM's
+     decimal FP syntax: identical except that Oberon's "D" scale-factor
+     letter is spelled "e" (LLVM has no "D"), so a straight copy with that
+     one substitution. Oberon's own optional "+"/"-" after the letter and
+     digit-less fraction ("12.") are both LLVM-legal as is. *)
+  PROCEDURE NumeralToLLVMDecimal(numeral: ARRAY OF CHAR; VAR decimal: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE numeral[i] # 0X DO
+      IF numeral[i] = "D" THEN decimal[i] := "e" ELSE decimal[i] := numeral[i] END;
+      INC(i)
+    END;
+    decimal[i] := 0X
+  END NumeralToLLVMDecimal;
+
   PROCEDURE NewTemp(VAR cg: Codegen; VAR text: ARRAY OF CHAR);
   BEGIN
     INC(cg.nextTemp);
@@ -598,22 +678,81 @@ MODULE LLVMCodeGenerator;
     EmitLabel(w, okLabel)
   END EmitIndexRangeCheck;
 
-  (* Widens v up to targetType's own LLVM width via sext, or returns v
-     unchanged if it's already there - only ever called with an
-     Types.IsInteger* target (see this module's header comment on why
-     REAL/LONGREAL never reach here). *)
+  (* Converts v up to targetType's own LLVM representation, or returns v
+     unchanged if it is already there: sext between integer widths,
+     sitofp from an integer to REAL/LONGREAL (Appendix A's numeric
+     inclusion: an integer operand of a real operation or a real
+     assignment target is converted, never the other way around), and
+     fpext from REAL to LONGREAL. Only ever widens - narrowing is
+     SHORT's own job (GenerateShort), never an implicit conversion. *)
   PROCEDURE ExtendTo(VAR w: Files.Rider; VAR cg: Codegen; v: Value; targetType: Types.Type; VAR result: Value);
-    VAR targetLLVMType: ValueText;
+    VAR targetLLVMType: ValueText; opText: ARRAY 8 OF CHAR;
   BEGIN
     LLVMTypes.TypeString(targetType, cg.sizeModel, targetLLVMType);
     IF v.llvmType = targetLLVMType THEN
       result := v
     ELSE
-      EmitConvert(w, cg, "sext", v.llvmType, v.text, targetLLVMType, result.text);
+      IF ~IsRealType(targetType) THEN COPY("sext", opText)
+      ELSIF IsRealType(v.oberonType) THEN COPY("fpext", opText)
+      ELSE COPY("sitofp", opText)
+      END;
+      EmitConvert(w, cg, opText, v.llvmType, v.text, targetLLVMType, result.text);
       COPY(targetLLVMType, result.llvmType);
       result.oberonType := targetType
     END
   END ExtendTo;
+
+  (* A REAL/LONGREAL immediate as a Value. numeral is the source text of
+     the number the programmer wrote (a literal's lexeme, or
+     Types.ValueDesc.realText for a CONST folded from one), empty for a
+     computed CONST, and folded its ParseReal-or-arithmetic value, which
+     is only trusted when numeral is empty (ConstantEvaluator.ParseReal
+     is not correctly rounded, so it can be an ulp off the number the
+     programmer wrote; LLVM's own decimal parser is). LONGREAL echoes
+     the numeral straight into the operand (or, if it is too long for a
+     ValueText, routes it through an identity fadd so the text can be
+     written to the file without being stored). REAL cannot echo it:
+     LLVM 22 rejects a decimal `float` literal that is not exactly
+     representable in single precision and no longer supports fptrunc
+     constant expressions, so a REAL numeral is an fptrunc *instruction*
+     from the (correctly rounded) double - decimal to double to float,
+     the same double rounding a C compiler's own `(float)1.1` would
+     do, where it differs from a direct decimal-to-float conversion only
+     for a numeral within 2^-29 (relative) of a float midpoint. A
+     computed value has no numeral to round from, so it is emitted as
+     its own bit pattern (DoubleBitsText), first rounded to single
+     precision for a REAL. *)
+  PROCEDURE RealConstant(VAR w: Files.Rider; VAR cg: Codegen; numeral: ARRAY OF CHAR; folded: LONGREAL;
+                         single: BOOLEAN; VAR result: Value);
+    VAR decimal: LongText; rounded: REAL;
+  BEGIN
+    IF single THEN
+      result.oberonType := Types.Real; COPY("float", result.llvmType)
+    ELSE
+      result.oberonType := Types.LongReal; COPY("double", result.llvmType)
+    END;
+    IF numeral[0] # 0X THEN
+      NumeralToLLVMDecimal(numeral, decimal);
+      IF single THEN
+        NewTemp(cg, result.text);
+        WriteStr(w, "  "); WriteStr(w, result.text); WriteStr(w, " = fptrunc double ");
+        WriteStr(w, decimal); WriteStr(w, " to float"); WriteLn(w)
+      ELSIF StrLen(decimal) <= textLength THEN
+        COPY(decimal, result.text)
+      ELSE
+        NewTemp(cg, result.text);
+        WriteStr(w, "  "); WriteStr(w, result.text); WriteStr(w, " = fadd double -0.0, ");
+        WriteStr(w, decimal); WriteLn(w)
+      END
+    ELSE
+      IF single THEN
+        (* Through a REAL variable, not LONG(SHORT(folded)): voc folds
+           that chain away, skipping the very rounding it exists for. *)
+        rounded := SHORT(folded); folded := rounded
+      END;
+      DoubleBitsText(folded, result.text)
+    END
+  END RealConstant;
 
   (* The two genuinely primitive load/store operations, keyed on an
      arbitrary computed address rather than a named global directly -
@@ -638,7 +777,7 @@ MODULE LLVMCodeGenerator;
                            v: Value);
     VAR ev: Value; targetLLVMType: ValueText;
   BEGIN
-    IF Types.IsInteger(addrType) THEN ExtendTo(w, cg, v, addrType, ev) ELSE ev := v END;
+    IF Types.IsInteger(addrType) OR IsRealType(addrType) THEN ExtendTo(w, cg, v, addrType, ev) ELSE ev := v END;
     LLVMTypes.TypeString(addrType, cg.sizeModel, targetLLVMType);
     WriteStr(w, "  store "); WriteStr(w, targetLLVMType); WriteStr(w, " "); WriteStr(w, ev.text);
     WriteStr(w, ", ptr "); WriteStr(w, addrText);
@@ -792,7 +931,14 @@ MODULE LLVMCodeGenerator;
     ExtendTo(w, cg, r, target, re);
     LLVMTypes.TypeString(target, cg.sizeModel, ty);
     result.oberonType := target; COPY(ty, result.llvmType);
-    IF op = Lexer.plus THEN EmitBinOp(w, cg, "add", ty, le.text, re.text, result.text)
+    IF IsRealType(target) THEN
+      (* DIV/MOD never reach here with a real target - the front end
+         rejects them on anything but integer operands. *)
+      IF op = Lexer.plus THEN EmitBinOp(w, cg, "fadd", ty, le.text, re.text, result.text)
+      ELSIF op = Lexer.minus THEN EmitBinOp(w, cg, "fsub", ty, le.text, re.text, result.text)
+      ELSE EmitBinOp(w, cg, "fmul", ty, le.text, re.text, result.text)
+      END
+    ELSIF op = Lexer.plus THEN EmitBinOp(w, cg, "add", ty, le.text, re.text, result.text)
     ELSIF op = Lexer.minus THEN EmitBinOp(w, cg, "sub", ty, le.text, re.text, result.text)
     ELSIF op = Lexer.times THEN EmitBinOp(w, cg, "mul", ty, le.text, re.text, result.text)
     ELSIF op = Lexer.divKeyword THEN
@@ -801,6 +947,25 @@ MODULE LLVMCodeGenerator;
       GenerateDivMod(w, cg, ty, le, re, divText, remText); COPY(remText, result.text)
     END
   END GenerateBinaryNumeric;
+
+  (* "/" on numeric operands: the result is always REAL or LONGREAL
+     (SemanticActions.CheckBinaryExpr, Appendix A) - LONGREAL if either
+     operand ranks at LONGREAL, REAL otherwise, so even 7 / 2 on two
+     integers is a real division. Both operands are converted up to the
+     result type first (sitofp for an integer, fpext REAL to LONGREAL),
+     then a single fdiv. *)
+  PROCEDURE GenerateRealDivision(VAR w: Files.Rider; VAR cg: Codegen; l, r: Value; VAR result: Value);
+    VAR target: Types.Type; ty: ValueText; le, re: Value;
+  BEGIN
+    IF Types.Rank(Types.WiderOf(l.oberonType, r.oberonType)) = Types.longRealRank THEN target := Types.LongReal
+    ELSE target := Types.Real
+    END;
+    ExtendTo(w, cg, l, target, le);
+    ExtendTo(w, cg, r, target, re);
+    LLVMTypes.TypeString(target, cg.sizeModel, ty);
+    result.oberonType := target; COPY(ty, result.llvmType);
+    EmitBinOp(w, cg, "fdiv", ty, le.text, re.text, result.text)
+  END GenerateRealDivision;
 
   (* SET +/-/*// as OR/AND-NOT/AND/XOR on the SET's own integer
      representation - the report's own union/difference/intersection/
@@ -819,18 +984,17 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateBinarySet;
 
-  (* REAL/LONGREAL operands are turned away before this ever reaches
-     icmp (see header comment) - icmp requires an integer/pointer
-     operand type, so letting a "float"/"double" ty value through here
-     would emit ill-typed IR, not just semantically wrong IR. *)
+  (* Numeric operands of different types are first converted to the
+     wider one (Appendix A: the comparison is done "in the type of the
+     smaller of the two that includes both"), integer through icmp and
+     real through fcmp. The floating-point predicates are the ordered
+     ones except "#", which is "une" (true when either side is NaN), so
+     every relation but "#" is false against a NaN, matching C - which
+     is also what voc's own generated C does. *)
   PROCEDURE GenerateRelational(VAR w: Files.Rider; VAR cg: Codegen; op: INTEGER; l, r: Value; VAR result: Value);
     VAR target: Types.Type; ty: ValueText; le, re: Value; pred: ARRAY 16 OF CHAR; i1temp: ValueText;
   BEGIN
-    IF (l.oberonType = Types.Real) OR (l.oberonType = Types.LongReal) THEN
-      Unsupported(w, cg, "REAL/LONGREAL comparison (PLAN.md Phase 8 step 5 scope)", Types.Boolean, result);
-      RETURN
-    END;
-    IF Types.IsInteger(l.oberonType) THEN
+    IF Types.IsNumeric(l.oberonType) & Types.IsNumeric(r.oberonType) THEN
       target := Types.WiderOf(l.oberonType, r.oberonType);
       ExtendTo(w, cg, l, target, le);
       ExtendTo(w, cg, r, target, re)
@@ -838,7 +1002,15 @@ MODULE LLVMCodeGenerator;
       le := l; re := r
     END;
     COPY(le.llvmType, ty);
-    IF op = Lexer.equal THEN COPY("icmp eq", pred)
+    IF IsRealType(le.oberonType) THEN
+      IF op = Lexer.equal THEN COPY("fcmp oeq", pred)
+      ELSIF op = Lexer.notEqual THEN COPY("fcmp une", pred)
+      ELSIF op = Lexer.less THEN COPY("fcmp olt", pred)
+      ELSIF op = Lexer.lessEqual THEN COPY("fcmp ole", pred)
+      ELSIF op = Lexer.greater THEN COPY("fcmp ogt", pred)
+      ELSE COPY("fcmp oge", pred)
+      END
+    ELSIF op = Lexer.equal THEN COPY("icmp eq", pred)
     ELSIF op = Lexer.notEqual THEN COPY("icmp ne", pred)
     ELSIF Types.IsInteger(le.oberonType) THEN
       IF op = Lexer.less THEN COPY("icmp slt", pred)
@@ -883,6 +1055,11 @@ MODULE LLVMCodeGenerator;
       IF Types.IsInteger(v.oberonType) THEN
         COPY(v.llvmType, ty); result.oberonType := v.oberonType; COPY(ty, result.llvmType);
         EmitBinOp(w, cg, "sub", ty, "0", v.text, result.text)
+      ELSIF IsRealType(v.oberonType) THEN
+        COPY(v.llvmType, ty); result.oberonType := v.oberonType; COPY(ty, result.llvmType);
+        NewTemp(cg, result.text);
+        WriteStr(w, "  "); WriteStr(w, result.text); WriteStr(w, " = fneg "); WriteStr(w, ty);
+        WriteStr(w, " "); WriteStr(w, v.text); WriteLn(w)
       ELSIF v.oberonType = Types.Set THEN
         LLVMTypes.TypeString(Types.Set, cg.sizeModel, ty);
         result.oberonType := Types.Set; COPY(ty, result.llvmType);
@@ -908,14 +1085,16 @@ MODULE LLVMCodeGenerator;
     GenerateExpr(w, cg, expr.left, l);
     GenerateExpr(w, cg, expr.right, r);
     IF (expr.op = Lexer.plus) OR (expr.op = Lexer.minus) OR (expr.op = Lexer.times) THEN
-      IF Types.IsInteger(l.oberonType) THEN GenerateBinaryNumeric(w, cg, expr.op, l, r, result)
+      IF Types.IsNumeric(l.oberonType) THEN GenerateBinaryNumeric(w, cg, expr.op, l, r, result)
       ELSIF l.oberonType = Types.Set THEN GenerateBinarySet(w, cg, expr.op, l, r, result)
       ELSE Unsupported(w, cg, "arithmetic on this operand type (PLAN.md Phase 8 step 5 scope)",
                         l.oberonType, result)
       END
     ELSIF expr.op = Lexer.slash THEN
       IF l.oberonType = Types.Set THEN GenerateBinarySet(w, cg, expr.op, l, r, result)
-      ELSE Unsupported(w, cg, "REAL division (PLAN.md Phase 8 step 5 scope)", l.oberonType, result)
+      ELSIF Types.IsNumeric(l.oberonType) THEN GenerateRealDivision(w, cg, l, r, result)
+      ELSE Unsupported(w, cg, "'/' on this operand type (should be unreachable post-CheckModule)",
+                       l.oberonType, result)
       END
     ELSIF (expr.op = Lexer.divKeyword) OR (expr.op = Lexer.modKeyword) THEN
       GenerateBinaryNumeric(w, cg, expr.op, l, r, result)
@@ -944,8 +1123,7 @@ MODULE LLVMCodeGenerator;
       result.text[0] := 0X; AppendLongInt(result.text, ORD(ch));
       result.oberonType := Types.Char
     ELSIF lit.literalKind = Lexer.real THEN
-      IF lit.isLongReal THEN t := Types.LongReal ELSE t := Types.Real END;
-      Unsupported(w, cg, "REAL/LONGREAL literals (PLAN.md Phase 8 step 5 scope)", t, result)
+      RealConstant(w, cg, lit.lexeme, 0.0D0, ~lit.isLongReal, result)
     ELSE (* Lexer.string *)
       Unsupported(w, cg, "string literals (PLAN.md Phase 8 step 8+)", Types.String, result)
     END
@@ -970,8 +1148,10 @@ MODULE LLVMCodeGenerator;
     ELSIF obj.value.kind = Types.setValue THEN
       LLVMTypes.TypeString(Types.Set, cg.sizeModel, result.llvmType);
       result.text[0] := 0X; SetToText(obj.value.setVal, result.text)
-    ELSE (* realValue, stringValue *)
-      Unsupported(w, cg, "REAL/LONGREAL or string CONSTs (PLAN.md Phase 8 step 5 scope)", obj.type, result)
+    ELSIF obj.value.kind = Types.realValue THEN
+      RealConstant(w, cg, obj.value.realText, obj.value.realVal, obj.type = Types.Real, result)
+    ELSE (* stringValue *)
+      Unsupported(w, cg, "string CONSTs (PLAN.md Phase 8 step 8+)", obj.type, result)
     END
   END GenerateConstValue;
 
@@ -1302,7 +1482,7 @@ MODULE LLVMCodeGenerator;
       GenerateStringArgValue(w, cg, a, result)
     ELSE
       GenerateExpr(w, cg, a, v);
-      IF Types.IsInteger(p.type) THEN ExtendTo(w, cg, v, p.type, ev) ELSE ev := v END;
+      IF Types.IsInteger(p.type) OR IsRealType(p.type) THEN ExtendTo(w, cg, v, p.type, ev) ELSE ev := v END;
       LLVMTypes.TypeString(p.type, cg.sizeModel, result.llvmType);
       COPY(ev.text, result.text);
       result.oberonType := p.type
@@ -1389,19 +1569,34 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateOrdinaryCall;
 
-  (* ABS(x): |x|, same type as x - branch-free via select, mirroring
-     GenerateDivMod's own select-based correction (this module's
-     established "straightforward, no optimizer" stance). Only integer
-     x is reachable here - REAL/LONGREAL arithmetic is out of scope
-     throughout this backend (see ExtendTo's own header comment), so a
-     real-typed argument routes to the same Unsupported placeholder
-     every other out-of-scope construct does. *)
+  (* ABS(x): |x|, same type as x. An integer x is branch-free via select,
+     mirroring GenerateDivMod's own select-based correction (this
+     module's established "straightforward, no optimizer" stance). A real
+     x clears its own sign bit instead - bitcast to the same-width
+     integer, AND with everything but the top bit, bitcast back - which
+     is exact for every value including -0.0 and NaN, where a
+     compare-and-negate select would leave -0.0 negative, and needs no
+     llvm.fabs intrinsic declaration (a `declare` per program that the
+     module-wide once-only bookkeeping would otherwise have to track). *)
   PROCEDURE GenerateAbs(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR v: Value; negText, isNegText, selText: ValueText;
+    VAR v: Value; negText, isNegText, selText, bitsText, maskedText: ValueText;
+        bitsType, signClearMask: ARRAY 24 OF CHAR;
   BEGIN
     GenerateExpr(w, cg, args, v);
+    IF IsRealType(v.oberonType) THEN
+      IF v.oberonType = Types.Real THEN
+        COPY("i32", bitsType); COPY("2147483647", signClearMask)
+      ELSE
+        COPY("i64", bitsType); COPY("9223372036854775807", signClearMask)
+      END;
+      EmitConvert(w, cg, "bitcast", v.llvmType, v.text, bitsType, bitsText);
+      EmitBinOp(w, cg, "and", bitsType, bitsText, signClearMask, maskedText);
+      EmitConvert(w, cg, "bitcast", bitsType, maskedText, v.llvmType, selText);
+      result.text := selText; result.llvmType := v.llvmType; result.oberonType := v.oberonType;
+      RETURN
+    END;
     IF ~Types.IsInteger(v.oberonType) THEN
-      Unsupported(w, cg, "ABS on a non-integer type (REAL/LONGREAL arithmetic out of scope)", v.oberonType, result);
+      Unsupported(w, cg, "ABS on a non-numeric type (should be unreachable post-CheckModule)", v.oberonType, result);
       RETURN
     END;
     EmitBinOp(w, cg, "sub", v.llvmType, "0", v.text, negText);
@@ -1409,6 +1604,70 @@ MODULE LLVMCodeGenerator;
     EmitSelect(w, cg, isNegText, v.llvmType, negText, v.text, selText);
     result.text := selText; result.llvmType := v.llvmType; result.oberonType := v.oberonType
   END GenerateAbs;
+
+  (* LONG(x): the next wider type up, exactly what
+     PredeclaredProcedures.CheckLong types it as - SHORTINT to INTEGER,
+     INTEGER to LONGINT (sext), REAL to LONGREAL (fpext), all of which
+     ExtendTo already does; only the result's Oberon type needs setting
+     explicitly, since ExtendTo hands v back unchanged when the two
+     types happen to share an LLVM width. *)
+  PROCEDURE GenerateLong(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR v: Value; target: Types.Type;
+  BEGIN
+    GenerateExpr(w, cg, args, v);
+    IF v.oberonType = Types.ShortInt THEN target := Types.Integer
+    ELSIF v.oberonType = Types.Integer THEN target := Types.LongInt
+    ELSE target := Types.LongReal
+    END;
+    ExtendTo(w, cg, v, target, result);
+    result.oberonType := target
+  END GenerateLong;
+
+  (* SHORT(x): the next narrower type down - LONGINT to INTEGER, INTEGER
+     to SHORTINT (trunc; an out-of-range x keeps its low bits, which
+     Oberon2.pdf leaves undefined), LONGREAL to REAL (fptrunc, rounding
+     to nearest). *)
+  PROCEDURE GenerateShort(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR v: Value; target: Types.Type; targetLLVMType: ValueText; opText: ARRAY 8 OF CHAR;
+  BEGIN
+    GenerateExpr(w, cg, args, v);
+    IF v.oberonType = Types.LongInt THEN target := Types.Integer
+    ELSIF v.oberonType = Types.Integer THEN target := Types.ShortInt
+    ELSE target := Types.Real
+    END;
+    LLVMTypes.TypeString(target, cg.sizeModel, targetLLVMType);
+    IF v.llvmType = targetLLVMType THEN
+      result := v
+    ELSE
+      IF target = Types.Real THEN COPY("fptrunc", opText) ELSE COPY("trunc", opText) END;
+      EmitConvert(w, cg, opText, v.llvmType, v.text, targetLLVMType, result.text);
+      COPY(targetLLVMType, result.llvmType)
+    END;
+    result.oberonType := target
+  END GenerateShort;
+
+  (* ENTIER(x): the largest LONGINT not greater than the real x - a
+     floor, not fptosi's truncation toward zero, which differs for a
+     negative non-integral x. fptosi first, then subtract one whenever
+     converting that result back overshoots x (only ever true for a
+     negative x with a fractional part); a select, not a branch, like
+     GenerateDivMod's own correction. The round trip back to REAL is
+     exact wherever it matters: a float has 24 mantissa bits, so a
+     value with a fractional part is small enough to convert exactly,
+     and a value too large to have one is already integral. An x
+     outside LONGINT's own range is undefined, as in C. *)
+  PROCEDURE GenerateEntier(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR v: Value; intType, truncated, back, overshoots, lowered, floored: ValueText;
+  BEGIN
+    GenerateExpr(w, cg, args, v);
+    LLVMTypes.TypeString(Types.LongInt, cg.sizeModel, intType);
+    EmitConvert(w, cg, "fptosi", v.llvmType, v.text, intType, truncated);
+    EmitConvert(w, cg, "sitofp", intType, truncated, v.llvmType, back);
+    EmitBinOp(w, cg, "fcmp ogt", v.llvmType, back, v.text, overshoots);
+    EmitBinOp(w, cg, "sub", intType, truncated, "1", lowered);
+    EmitSelect(w, cg, overshoots, intType, lowered, truncated, floored);
+    result.text := floored; COPY(intType, result.llvmType); result.oberonType := Types.LongInt
+  END GenerateEntier;
 
   (* ODD(x): the low bit of x, as BOOLEAN's own i8 representation - only
      ever a truncate-or-no-op, never a widen: SHORTINT, this backend's
@@ -1655,15 +1914,14 @@ MODULE LLVMCodeGenerator;
   END GenerateHalt;
 
   (* PLAN.md Phase 8 step 11's own in-scope Oberon2.pdf §10.3 subset -
-     ABS ODD CHR ORD CAP LEN INC DEC COPY HALT, the exact list this
-     phase's own header comment gives (not NEW/DISPOSE/SYSTEM.*, which
-     presuppose POINTER - Phase 9). PredeclaredProcedures.Mod's own
+     ABS ODD CHR ORD CAP LEN INC DEC COPY HALT - plus, from Phase 9 step
+     2, the three numeric conversions LONG SHORT ENTIER. Not NEW/DISPOSE/
+     SYSTEM.*, which presuppose POINTER. PredeclaredProcedures.Mod's own
      CheckCall accepts a wider, 20-name vocabulary than this - every
-     other predeclared name (ASH/ENTIER/LONG/MAX/MIN/SHORT/SIZE/EXCL/
-     INCL/NEW) is real Oberon-2 the front end already fully checks, just
-     not lowered here yet, so it routes to the same Unsupported
-     placeholder every other out-of-scope construct does rather than
-     falling through silently. *)
+     other predeclared name (ASH/MAX/MIN/SIZE/EXCL/INCL/NEW) is real
+     Oberon-2 the front end already fully checks, just not lowered here
+     yet, so it routes to the same Unsupported placeholder every other
+     out-of-scope construct does rather than falling through silently. *)
   PROCEDURE GeneratePredeclaredCall(VAR w: Files.Rider; VAR cg: Codegen; name: SyntaxTree.Ident;
                                     args: SyntaxTree.ExprNode; VAR result: Value);
   BEGIN
@@ -1677,9 +1935,12 @@ MODULE LLVMCodeGenerator;
     ELSIF name = "DEC" THEN GenerateIncDec(w, cg, args, "sub", result)
     ELSIF name = "COPY" THEN GenerateCopy(w, cg, args, result)
     ELSIF name = "HALT" THEN GenerateHalt(w, cg, args, result)
+    ELSIF name = "LONG" THEN GenerateLong(w, cg, args, result)
+    ELSIF name = "SHORT" THEN GenerateShort(w, cg, args, result)
+    ELSIF name = "ENTIER" THEN GenerateEntier(w, cg, args, result)
     ELSE
       Unsupported(w, cg,
-        "predeclared procedure outside Phase 8 step 11's own scope (ASH/ENTIER/LONG/MAX/MIN/SHORT/SIZE/EXCL/INCL - Phase 9; NEW needs POINTER, also Phase 9; SYSTEM.* is Phase 10)",
+        "predeclared procedure outside the lowered set (ASH/MAX/MIN/SIZE/EXCL/INCL - Phase 9; NEW needs POINTER, also Phase 9; SYSTEM.* is Phase 10)",
         Types.Undefined, result)
     END
   END GeneratePredeclaredCall;
@@ -2128,7 +2389,8 @@ MODULE LLVMCodeGenerator;
       WriteLn(w)
     ELSE
       GenerateExpr(w, cg, s.value, v);
-      IF Types.IsInteger(cg.currentProcResultType) THEN ExtendTo(w, cg, v, cg.currentProcResultType, ev)
+      IF Types.IsInteger(cg.currentProcResultType) OR IsRealType(cg.currentProcResultType) THEN
+        ExtendTo(w, cg, v, cg.currentProcResultType, ev)
       ELSE ev := v
       END;
       LLVMTypes.TypeString(cg.currentProcResultType, cg.sizeModel, retType);

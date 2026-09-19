@@ -1822,6 +1822,56 @@ style exactly.
    **Testing**: promote (or extend) a runtime fixture exercising
    arithmetic, real division (`/`), `DIV`/`MOD` still integer-only,
    comparisons, and `LONG`/`SHORT` conversions between `REAL`/`LONGREAL`.
+   **Implemented 2026-09-19.** Everything above, plus `ENTIER` and the
+   integer forms of `LONG`/`SHORT` (the same instructions, a few lines
+   more, and `ENTIER` is the only real-to-integer conversion). Outcomes
+   worth knowing:
+   - **A real numeral is echoed as text, not re-derived from its folded
+     value.** `ConstantEvaluator.ParseReal` accumulates error (`0.1`
+     is built from a running `scale / 10`), so `Types.Value.realVal` can
+     be an ulp off the number the programmer wrote — harmless for
+     folding, wrong for emission. `Types.ValueDesc` gained `realText`,
+     the numeral's own source text (kept through unary minus by
+     `ConstantEvaluator.NegateRealText`, empty for a computed value), and
+     `LLVMCodeGenerator.RealConstant` writes that to LLVM's own
+     correctly-rounded parser (`D` exponent letter → `e`). Only a
+     computed `CONST` (`1.0D0 / 3.0D0`, `-third`) falls back to the folded
+     value, emitted as its IEEE-754 bit pattern (`0x…`, built by exact
+     power-of-two scaling rather than a bit-cast, which strict
+     Oberon2.pdf source has no spelling for).
+   - **`REAL` cannot use either obvious spelling in LLVM 22.** A decimal
+     `float` literal must be exactly representable in single precision
+     (`float 0.1` is "floating point constant invalid for type"), and
+     `fptrunc` constant expressions no longer exist. A `REAL` numeral is
+     therefore an `fptrunc double <numeral> to float` *instruction* —
+     decimal to double to float, a double rounding that differs from a
+     direct decimal-to-float conversion only for a numeral within 2^-29
+     (relative) of a float midpoint. A computed `REAL` `CONST` is
+     rounded to single precision first, then emitted as hex.
+   - **Real division is always real**: `7 / 2` is `3.5` (`REAL`), so `/`
+     on two integers converts both with `sitofp`; `DIV`/`MOD` stay
+     integer-only (the front end already rejects real operands).
+   - Comparisons use ordered `fcmp` predicates and `une` for `#`, so
+     every relation but `#` is false against a NaN — C's behavior, and
+     what voc's generated C does.
+   - `ABS` on a real clears the sign bit through bitcast-and-mask rather
+     than an `llvm.fabs` call, which would need a `declare` tracked
+     program-wide; this also gets `-0.0` right.
+   - The new fixtures: `llvm-reals` (56 run-time checks, all with exact
+     or deliberately-chosen rounding cases; also cross-checked against
+     real voc — see below) and `llvm-reals-ir` (golden `.ll` at both word
+     sizes with clang validation, including the bit patterns of a
+     subnormal and a large power of two, checked independently).
+   - **Three voc quirks found**, recorded in `AGENTS.md`'s "Known voc
+     bugs": voc rejects a `LONGREAL` literal that is integral and at
+     least 2^31 (`1.0D10`) with "Value out of range"; it constant-folds
+     `LONG(SHORT(x))` to `x`; and it prints REAL/LONGREAL constants into
+     its generated C with only 8/15 significant digits. The last is why
+     three of `llvm-reals`'s checks (27, 44, 51 — exactly the
+     single-precision-rounding ones) fail under voc but pass under poc.
+   - Still `Unsupported`: `MAX`/`MIN` on `REAL`/`LONGREAL` (also not
+     folded by `ConstantEvaluator`), `ASH`, `SIZE`, `INCL`/`EXCL` — step
+     8's sweep.
 
 3. **SET constructors/operators, named STRING constants, and
    ARRAY-OF-CHAR/RECORD relational comparison.** The remaining

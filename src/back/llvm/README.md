@@ -5,10 +5,12 @@ LLVM backend: lowers the front end's typed tree to textual LLVM IR
 
 - `LLVMCodeGenerator.Mod` — tree walk -> textual `.ll` for a whole
   program (`GenerateProgram*`): globals, procedures, control flow,
-  predeclared procedures, FFI, and (Phase 9 step 1) one run-time type
+  predeclared procedures, FFI, (Phase 9 step 1) one run-time type
   descriptor plus `.tag` alias per module-level record type
   (`EmitTypeDescriptors`; layout documented in the comment above
-  `RecordSymbolBase`).
+  `RecordSymbolBase`), and (Phase 9 step 2) REAL/LONGREAL arithmetic,
+  comparison, literals and `LONG`/`SHORT`/`ENTIER` conversions
+  (`ExtendTo`, `RealConstant`, `DoubleBitsText`).
 - `LLVMToolchainDriver.Mod` — host-triple auto-detection
   (`clang -dumpmachine`), writing `Generate*`'s output to a real
   `<ModuleName>.ll` file, and the single-step `clang <file>.ll -o <exe>`

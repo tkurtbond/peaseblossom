@@ -169,6 +169,23 @@ during Stage 0/1/2 bootstrapping:
   after the `WITH` statement ends. See
   `src/front/SemanticActions.Mod`'s `ResolveType` for a real instance.
 
+- **`LONGREAL` literal rejected with "Value out of range"**: a `LONGREAL`
+  literal whose value is integral and at least 2^31 fails to compile —
+  `2147483648.0D0`, `1.0D10`, `4.5D15` all fail; `2147483647.0D0`,
+  `1.0D38`, `1.0D300` and any non-integral value compile. Workaround:
+  build the number arithmetically (see `LLVMCodeGenerator.DoubleBitsText`'s
+  `twoTo52` loop).
+- **`LONG(SHORT(x))` folded away**: voc simplifies that chain to `x`,
+  skipping the narrowing to single precision it exists for. Assign
+  through a `REAL` variable instead (see `LLVMCodeGenerator.RealConstant`).
+- **Lossy real constants in generated C**: voc prints each `REAL`
+  constant with 8 significant digits and each `LONGREAL` one with 15
+  (`1.0000000e-001`, `1.00000001490116e-001`), so a constant that needs
+  more digits to round-trip reads back as a different value in the C
+  compiler. Only matters when cross-checking poc's output against voc's:
+  three of `test/conformance/llvm-reals`'s checks fail under voc for
+  this reason and pass under poc.
+
 ## Language extensions beyond Oberon2.pdf
 
 ### HUGEINT (implemented)

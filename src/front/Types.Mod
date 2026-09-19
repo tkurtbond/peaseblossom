@@ -196,6 +196,15 @@ MODULE Types;
       kind*: INTEGER;
       intVal*: LONGINT;
       realVal*: LONGREAL;
+      (* PLAN.md Phase 9 step 2: for a realValue folded from a bare numeral
+         (optionally unary-minus'd), that numeral's own source text, in
+         Oberon syntax ("1.5D-3", "-2.0"); empty for a value computed by
+         arithmetic. realVal alone is not trustworthy as a source of the
+         literal's exact bits - ConstantEvaluator.ParseReal is not
+         correctly rounded (see its header comment) - so a backend that
+         wants the number the programmer actually wrote reads this
+         instead, and only falls back to realVal for a computed value. *)
+      realText*: ARRAY stringValueLength + 1 OF CHAR;
       boolVal*: BOOLEAN;
       charVal*: CHAR;
       stringVal*: ARRAY stringValueLength + 1 OF CHAR;
