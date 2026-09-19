@@ -452,9 +452,9 @@ Peaseblossom's own.
   missing body is what marks the declaration external; a body-less
   `PROCEDURE` with no such attribute stays a syntax error, same as
   today). The first string names the calling convention (`"C"` for
-  Phase 8's LLVM/C-interop case, `"VMS"` for Phase 11's VMS Calling
+  Phase 8's LLVM/C-interop case, `"VMS"` for Phase 12's VMS Calling
   Standard case — both accepted now, even though nothing consumes
-  `"VMS"` until Phase 11). An optional second string overrides the
+  `"VMS"` until Phase 12). An optional second string overrides the
   external linkage name, since Peaseblossom's own naming convention (see
   "Naming feedback" — descriptive, often-long identifiers) routinely
   won't match a terse external symbol like `malloc` or `printf`:
@@ -462,7 +462,7 @@ Peaseblossom's own.
   LONGINT): SYSTEM.ADDRESS;`. Without the second string, the external
   symbol is the procedure's own Oberon identifier verbatim
   (`SymbolTable.ObjectDesc.externalName`). This interacts with the VAX
-  backend's 31-character name-mangling requirement (Phase 11, below): an
+  backend's 31-character name-mangling requirement (Phase 12, below): an
   external procedure's linkage name is emitted **verbatim, never
   mangled** — it has to match the real external symbol, unlike poc's own
   internally-generated names. Both backends' actual lowering is still

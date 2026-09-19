@@ -89,7 +89,7 @@ src/
     vax/
       VaxTypes.Mod           -- VAX word-size/alignment/descriptor layout (hand-designed, no LLVM analogue)
       VaxCodeGenerator.Mod   -- textual MACRO-32 emission
-      VaxToolchainDriver.Mod -- stub only; no assemble/link/run (Phase 11)
+      VaxToolchainDriver.Mod -- stub only; no assemble/link/run (Phase 12)
   driver/
     Poc.Mod                -- main program; CLI parsing (`poc options {files {options}}`, voc-style)
 rtl/
@@ -666,7 +666,7 @@ struct/array layout plus a cross-check fixture rather than manual packing
    type is a wider integer. Every declared external procedure's "VMS"
    calling convention (Phase 6's third option, besides "C" and none) is
    parsed and recorded but not specially handled yet — treated like "C",
-   wrong but harmless until Phase 11 gives it a real, different lowering.
+   wrong but harmless until Phase 12 gives it a real, different lowering.
 
    A string-literal argument's global needs a name derivable
    independently by two separate, uncoordinated passes — a pre-pass,
@@ -1664,7 +1664,7 @@ later gate.
 
 **Explicit non-goals**: `SYSTEM.*` (Appendix C — `ADR`/`VAL`/`BIT`/etc.,
 see Phase 10 below; a subset, `ADDRESS`/`ADR`/`GET`/`PUT`/`VAL`/`MOVE`, was
-pulled forward into Phase 9 step 4) and everything MACRO-32/VAX (Phase 11) are out of
+pulled forward into Phase 9 step 4) and everything MACRO-32/VAX (Phase 12) are out of
 scope per the phase-to-report map, not this phase's; `DISPOSE` isn't
 added because it doesn't exist in
 `Oberon2.pdf` at all (§10.3's `NEW` has no explicit-free counterpart —
@@ -1679,7 +1679,7 @@ this phase's job, despite being directly downstream of it: any real
 `Files.Mod`, `Platform.Mod`, `Modules.Mod`, `Strings.Mod`, `Math.Mod`)
 and the self-hosting bootstrap itself — both now Phase 10's own scope,
 inserted between this phase and the former Phase 10 (VAX/VMS, renumbered
-11 below) specifically because self-hosting cannot succeed without a
+11 and then 12 below) specifically because self-hosting cannot succeed without a
 real runtime library first (see Phase 10's own opening for the concrete
 dependency: `voc`'s own `Files.Mod` represents an open file as `POINTER
 TO FileDesc`, so even a from-scratch `rtl/llvm/Files.Mod` needs this
@@ -2962,7 +2962,7 @@ phase deliberately excludes). Also covers (c) `SYSTEM` (Appendix C):
 unlike (a)/(b), not a real `.mod` source file (`SYSTEM` has no body in
 any Oberon-2 implementation — every procedure it exports is compiler
 magic, the same way `PredeclaredProcedures.Mod`'s ordinary ~20 names
-are), but grouped into this phase rather than Phase 11 because it's the
+are), but grouped into this phase rather than Phase 12 because it's the
 same kind of "give the LLVM backend a capability it has never had"
 work as (a)/(b), and because `AGENTS.md`'s own "Appendix C" section has
 flagged it as genuinely unscheduled ("no phase has scheduled it") since
@@ -3241,7 +3241,158 @@ Stage 1/Stage 2 self-hosting fixed point — the point this file's
 "Decisions locked in" table's `voc` framing ("bootstrap compiler...
 until poc can compile itself") finally stops applying.
 
-### Phase 11 — VAX/VMS MACRO-32 backend (scoped, deferred, non-executable)
+### Phase 11 — Detailed library/module support (voc's options, static/dynamic libraries, voc's module inventory)
+
+**Goal**: decide, from primary sources and not from memory, what poc must
+offer *beyond* what Phases 9-10 already give it - the command-line
+surface a voc user expects, a way to build the libraries a program links
+against, and which of the libraries and modules voc supplies are worth
+having - and then build what the decisions call for. Phase 10 covers
+exactly what poc's own source needs plus the Oakwood basic modules and
+`SYSTEM`; this phase is everything else, and it starts as investigation:
+steps 1-3 produce written inventories and decisions (recorded here and in
+`AGENTS.md`), and only steps 4-6 write code. Placed before the VAX/VMS
+backend (Phase 12) because the library question is an LLVM/Unix one and
+nothing in the VAX work depends on it.
+
+**Explicit non-goals**: the VAX/VMS backend, which needs its own answer to
+"what is a library" (VMS shareable images, object libraries) and is not
+decided here; and the self-hosting bootstrap itself, which is Phase 10's
+own exit gate - this phase may assume it has been reached, or not, as
+convenient, but must not be a prerequisite of it.
+
+1. **Which of voc's command-line options poc needs.** Go through every
+   option `voc` accepts and decide, for each, whether poc implements it,
+   implements it differently, or does not. The sources are the option
+   list `voc` itself prints with no arguments, `doc/Compiling.md` and
+   `doc/Features.md` in the clone under `/usr/local/sw/src/lang/Oberon/
+   vishap/compiler`, and - since the printed list may be incomplete -
+   `OPM.Mod`'s own option parsing (the source of truth: probe anything it
+   accepts that the usage text does not mention). As of voc 2.1.0 the
+   printed groups are: run-time safety (`-p` NIL-initialize pointers, `-a`
+   halt on assertion failure, `-r` range checks, `-t` type-guard halt,
+   `-x` index-range halt); symbol-file management (`-e`, `-s`, `-F`);
+   C-compiler and linker control (`-m`/`-M` main module linked
+   dynamically/statically, `-S` do not call the C compiler, `-c` do not
+   link); miscellaneous (`-f` no VT100 control characters, `-V`
+   debugging messages); the size model (`-O2`, `-OC`, and `-OV`, which poc
+   does not have); and target address size and alignment (`-A44`,
+   `-A48`, `-A88`). poc already has `-O2`/`-OC`, `-target <triple>`,
+   `-build`, `-o`, `-emit-llvm-ir`, `-emit-interface`, `-import-path`,
+   `-output-dir`. Questions the triage must answer with evidence rather
+   than assume: which safety checks poc emits unconditionally today (NIL,
+   index, type guard, `WITH`, `CASE`, array length) and which of them
+   voc's switches would let a user turn off or on (`-r` range checking
+   has no poc counterpart at all); how `-A44/48/88` relate to `-target`'s
+   word size and to alignment, which poc derives from the triple; what
+   `-e`/`-s`/`-F` mean for a `.sym` poc always regenerates whole-program
+   (Phase 9 step 4a); how `-m`/`-M`/`-S`/`-c` map onto `-build`,
+   `-emit-llvm-ir` and step 2's library modes; and whether `-OV` is worth a
+   third size model. The result is a table - option, voc meaning, poc
+   decision (adopt as-is / adopt with a different meaning / not
+   applicable / deferred), reason - kept in `PLAN.md` (or a file it names),
+   plus the flags it adopts, each implemented in `Poc.Mod` with a fixture
+   and cross-checked against real voc where voc's behavior is
+   observable. **Testing**: a golden `-help`/usage fixture, and a fixture
+   per adopted flag that would otherwise be untested.
+
+2. **Building static and dynamic libraries with poc.** Decide how a
+   program compiled by poc links against libraries poc itself built, and
+   build it. voc's answer is the reference (`libvoc-O2.a`/`.so` and
+   `libvoc-OC.a`/`.so` in its install `lib` directory - one library per
+   size model, since its `.sym` files carry computed sizes and offsets);
+   poc's differs at the root, since a `.sym` is target-independent source
+   (Phase 7, Phase 9 step 4a) but the object code is not - it is specific
+   to word size, size model and target triple, so a library's identity
+   is that whole tuple and the layout of its output directory has to say
+   so. Questions to settle: what the unit of a library is (a set of
+   modules with their `.sym` files, found through `-import-path`); the
+   command-line shape (a "compile these modules into a library" mode and
+   the "link against it" flags, informed by step 1's triage of `-m`/`-M`/
+   `-c`); a static library as an `ar` archive of per-module objects
+   (`clang -c`, then `ar`) and a dynamic one as `clang -shared` over
+   position-independent objects - on Linux, NetBSD, OpenBSD and FreeBSD,
+   which differ in the details (runtime search path, `-rpath`, symbol
+   versioning) more than they will look like they do; exported-symbol
+   visibility, given that every Oberon procedure is `@Module.Proc`; what
+   module initialization and `ModuleTable`'s root registry do when the
+   modules are in a library, including in a shared one loaded by more than
+   one program (Phase 9 step 4's per-module GC root tables); where the
+   collector and the rest of `rtl/llvm` live (in every library that needs
+   it? in one library of their own? - two copies of the collector in one
+   process would each be blind to the other's heap); how the `main`
+   generated for a program finds the initializers of every module it
+   links, library or not; and record-layout and `ProcTab` stability
+   across a library rebuild, since Phase 9 step 4a's importer reproduces a
+   base type's layout from the `.sym`. The deliverable is the design,
+   written into `PLAN.md`, then the implementation: `poc` builds `rtl/llvm`
+   itself as a library and a program links against it both ways.
+   **Testing**: build a small library of two or three modules with
+   dependencies between them; link a program against it statically and
+   dynamically; run both, at both word sizes, on Linux and on the BSD
+   hosts (the same real-hardware access as Phase 9 step 9); and the
+   negative cases - a `.sym` that does not match the library it names, a
+   missing library - fail with a message and not a crash.
+
+3. **A complete inventory of the libraries and modules voc supplies.**
+   From the sources, not from memory: enumerate every module under the
+   voc clone's `src/runtime` (`SYSTEM`, `Heap`, `Files`, `In`, `Out`,
+   `Math`, `MathL`, `Modules`, `Oberon`, `Platformunix`/`Platformwindows`,
+   `Reals`, `Strings`, `Texts`, `VT100`, as of this writing), every
+   library directory under `src/library` (`misc`, `ooc`, `ooc2`,
+   `oocX11`, `pow`, `s3`, `ulm`, `v4`), the modules the install actually
+   ships (`showdef` on the installed symbol files under
+   `/usr/local/sw/versions/voc/git/{2,C}/sym`, which also shows what each
+   one exports), and the programs under `src/tools` (`autobuild`,
+   `beautifier`, `browser`, `coco`, `HeapDump`, `make`, `ocat`,
+   `testcoordinator`, `vmake` - to be classified as library, program, or
+   neither). For each module record: name and the directory it lives in;
+   what it is for; its imports (so the dependency graph, and so which
+   modules can be taken without dragging in others); whether it depends on
+   the platform (`Platformunix`, `oocwrapperlibc`, `oocFilesHost`,
+   `oocProgramArgsHost`), on the C library, on X11, on zlib, or on the
+   size model; whether it is part of a standard (Oakwood, the ooc library
+   family) or voc's own; whether it is already in Phase 10's scope; and
+   its licence, since poc cannot ship what it cannot legally ship. The
+   result is a table kept as a file the plan names, not prose - the
+   *complete* list the plan has been missing, with `ulm` and `v4`
+   (not yet looked at at all) filled in like the rest.
+
+4. **Deciding what poc supports.** Using step 3's table, sort every
+   module into: already covered by Phase 10; wanted, with a priority;
+   deferred; or not wanted, with the reason. Criteria: how useful it is to
+   a program written against voc (the existing Oberon-2 corpus poc should
+   be able to compile); whether it can be written portably to all four
+   Unix-likes (no Linux-only syscalls, no library the BSDs lack); whether
+   it needs an external C library poc would then have to link
+   (zlib for `ethGZReaders`/`ethZip`, X11 for `oocX11`/`oocXYplane`); how
+   much of the module is really the host Oberon *system* (`Oberon`, `Texts`
+   rely on it) and so would need a substitute; and the cost. Record the
+   decisions, and the ones deliberately left open, in `PLAN.md`'s open
+   design questions and `AGENTS.md`.
+
+5. **Implementing the modules chosen.** Write each as ordinary Oberon-2
+   compiled by poc, into step 2's library, in the order dependencies and
+   step 4's priorities give; the exact list is step 4's output, and this
+   step is updated with it rather than guessed at now. Platform-dependent
+   ones get an OS layer written with all four Unix-likes in mind (the
+   standing portability rule for `rtl/llvm`), not Linux-only libc
+   behavior. **Testing**: per module, compile+link+run+diff fixtures
+   cross-checked against the same module under real voc wherever both
+   exist, the way Phase 9's fixtures were; behavior that differs from voc
+   on purpose is documented where it differs.
+
+6. **Exit gate.** Every module step 4 selected builds into both the
+   static and the dynamic library and passes its fixtures, at both word
+   sizes, on Linux and at least one BSD, with `make test` clean on every
+   combination - the same bar as Phase 9 step 9.
+
+**Testing summary**: steps 1-4 are decisions with written artifacts
+(tables and a design), verified against the primary sources they cite;
+steps 2 and 5 are compile+link+run+diff fixtures; step 6 is the
+whole-matrix gate.
+
+### Phase 12 — VAX/VMS MACRO-32 backend (scoped, deferred, non-executable)
 `VaxTypes.Mod`, `VaxCodeGenerator.Mod`, `VaxToolchainDriver.Mod` (stub
 only — no assemble/link/run, per the locked-in decision).
 **Explicit scope bound** (to prevent drift): targets exactly Phase 8's
@@ -3250,7 +3401,7 @@ arrays/records) — *not* full GC/dispatch parity. "Done" means
 hand-reviewed `.mar` output checked into
 `test/conformance/*/expected-vax.mar`-style fixtures with a reviewer
 rationale comment, not an automated pass/fail. Assembling/linking/running
-under SIMH-hosted VMS 5.5-2 is tracked only as a future, undated Phase 12
+under SIMH-hosted VMS 5.5-2 is tracked only as a future, undated Phase 13
 placeholder — not detailed further here.
 
 **Symbol-name mangling is required, not optional**: VAX MACRO-32 symbols
@@ -3262,7 +3413,7 @@ backend, which has no such restriction and can emit names close to
 verbatim. `VaxTypes.Mod`/`VaxCodeGenerator.Mod` must therefore implement a
 deterministic name-mangling scheme (e.g. truncate-plus-hash-suffix) for
 every emitted MACRO-32 symbol, and this scheme needs its own fixtures
-(long/colliding names deliberately included in the Phase 11 test set) to
+(long/colliding names deliberately included in the Phase 12 test set) to
 confirm two distinct Oberon-2 names never mangle to the same 31-character
 symbol.
 
@@ -3281,7 +3432,7 @@ external-symbol names are subject to the same 31-character limit above.
   Name*(...): T;`, optionally `PROCEDURE ["C", "malloc"]
   AllocateBytes*(...): T;` to override the linkage name), per
   `AGENTS.md`'s "External procedures". Needed by Phase 6 for calling C
-  functions on Linux/the BSDs, and by Phase 11 for VAX/VMS Calling
+  functions on Linux/the BSDs, and by Phase 12 for VAX/VMS Calling
   Standard interop. Both backends' actual lowering is still Phase 8/11
   work - Phase 6 only parses the declaration and records its linkage
   info (`SymbolTable.ObjectDesc.externalConvention`/`externalName`).
@@ -3648,5 +3799,8 @@ external-symbol names are subject to the same 31-character limit above.
 - **Phase 10 self-hosting**: Stage 1 vs. Stage 2 output diff as the
   fixed-point proof; full conformance suite must pass under Stage 1 before
   voc is retired from the day-to-day build loop.
-- **Phase 11**: manual review only (no automated run), explicitly bounded
+- **Phase 11**: the option triage, library design and module inventory
+  written down and verified against voc's own sources; then the whole-
+  matrix gate (both library kinds, both word sizes, Linux and a BSD).
+- **Phase 12**: manual review only (no automated run), explicitly bounded
   in scope as described above.
