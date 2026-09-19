@@ -2540,9 +2540,9 @@ style exactly.
    - *Known gaps, none new to this step*: `NEW(p, n)` and a pointer to an
      open array (step 7, done); type-bound calls (step 6, done); a procedure *value*
      (`proc := P`; comparing a procedure variable with `NIL` works, but
-     naming a procedure as a value is `; unsupported` and, because
+     naming a procedure as a value was `; unsupported` and, because
      `Unsupported` gives a mistyped placeholder, invalid IR; no step owned
-     this, so it is listed under step 8); a record value's LLVM type text is cut at 63
+     this, so it was listed under step 8, where it is done); a record value's LLVM type text is cut at 63
      characters (`ValueText`) - only a huge record loaded whole is
      affected, and it predates this step.
 
@@ -2584,7 +2584,7 @@ style exactly.
      record through `write(2)` to prove a tag would shift its
      arguments). VAR pointers, VAR arrays and value parameters carry none.
      The convention is part of the ABI of any procedure with such a
-     parameter, so **procedure values** (step 8) must pass the tag too.
+     parameter, so **procedure values** (step 8, done) pass the tag too.
      `DynamicType` says where an actual's tag comes from: a record
      variable, field or element is exactly its declared type (its own
      descriptor), `p^` is whatever the heap block says, a VAR parameter
@@ -2765,6 +2765,91 @@ style exactly.
    stored.
    **Testing**: whatever fixture gaps steps 1–7 didn't already close on
    their own.
+
+   **Implemented** (2026-09-19; all probed against real voc). What
+   changed, and what a program can observe:
+   - *Procedure values.* A procedure's name used as a value is the address
+     of its function (`ptr @Module.Proc`, `GenerateDesignatorValue`); it can
+     be assigned to a variable, record field or array element, passed as an
+     argument (a `VAR` parameter of procedure type too), returned from a
+     function, compared with `=`/`#` against another procedure-typed *value*
+     or NIL, and called through any of them (`GenerateProcedureValueCall`:
+     the designator is loaded, NIL-checked - the usual exit-4 trap, voc's
+     "NIL access" - and called indirectly). The arguments are laid out from
+     the procedure *type's* parameter list, hidden arguments included (a
+     `VAR` record's tag, an open array's lengths), which is exactly what
+     every procedure that matches the type expects - so `Inspect(VAR s:
+     Shape)` called through a value still sees `s`'s real type. A local
+     variable of procedure type (or a record/array holding one) is zeroed on
+     entry like a local pointer (`ContainsProcedureValue`): poc guarantees
+     that calling one never assigned traps, where voc leaves it as stack
+     garbage. The collector is unaffected - a procedure holds no heap
+     address, `CountPointerSlots` still skips it, and a record mixing
+     procedure and pointer fields is traced whole (checked).
+   - *Front end.* `CheckProcedureValue` (Oberon2.pdf 6.5: "P must not be a
+     predeclared or type-bound procedure nor may it be local to another
+     procedure") rejects a type-bound procedure (`CheckDesignator` now
+     reports whether a designator ended in one, `lastDesignatorIsBoundProcedure`)
+     and a nested one used as a value; poc also rejects an *external* one
+     (it is called with the C convention, a procedure value with the Oberon
+     one - there is no such thing in voc). A predeclared one already failed
+     as not having a procedure type. And a procedure's *name* is no operand
+     of `=`/`#` (`NamesProcedure`): Appendix A lets it stand for the
+     procedure only in an assignment or as an argument, and voc agrees
+     ("this expression cannot be a type or a procedure") - poc used to
+     accept `f = P`. voc rejects the same forms with the same reasons
+     (`semantic-reject-procedure-value`).
+   - *ASH.* `ASH(x, n)` shifts left for `n >= 0` and right, sign-filling,
+     for `n < 0`, in the wider of `LONGINT` and `x`'s own type -
+     `CheckAsh` used to say `LONGINT` always, losing a `HUGEINT` operand's
+     top bits; voc's own rule is "LONGINT, or INT64 if larger". A count of
+     the type's width or more is not left to LLVM (poison): everything is
+     shifted out, leaving 0 (or the sign, for a right shift) - identical to
+     voc for counts up to 63, past which its C shift is undefined (those
+     checks are `poc only` in the fixture). Branch-free, via `select`.
+     voc computes in 64 bits and truncates on assignment, so a `LONGINT`
+     result that overflowed compares differently *unnamed* (`ASH(1, 31) =
+     MIN(LONGINT)` is false under voc) - the fixture stores it first.
+   - *MAX/MIN.* `MaxMinBound` (now exported) already gave the constant
+     folder every bound but REAL/LONGREAL; `GenerateMaxMin` emits them for
+     the run-time expression form (`i := MAX(SHORTINT)`), and the two real
+     types as their IEEE largest finite values and negations. voc's
+     `MAX(LONGREAL)` is a deliberate underestimate (`OPM.Mod`:
+     `1.7976931348623157D307 * 9.999999`, "should be ...D308"); poc gives
+     the true one. `CONST` folding of `MAX(REAL)`/`MAX(LONGREAL)` is still
+     not done (the entry under "Open design questions" stands).
+   - *ASSERT* left exactly as undecided as before.
+   - *Found and fixed on the way*: `AppendLongInt` emitted a bare `-` for
+     the most negative `LONGINT` (`MIN(HUGEINT)`, or a `HUGEINT` constant of
+     that value) since it negated the value to build the digits.
+     `EmitConstantValue` split out of `GenerateConstValue` so a folded bound
+     is emitted like a `CONST`.
+   - *Testing.* `llvm-procedure-values` (41 checks: every place a value can
+     live and be called through, argument passing two levels deep, results
+     of each kind including a pointer and a procedure, hidden tag and
+     lengths, locals, recursion through a variable, the collector),
+     `llvm-procedure-values-import` (`Calc.Add` as a value, an exported
+     procedure-typed variable and record field, across a module boundary),
+     `llvm-procedure-value-traps` (a NIL procedure called as a global, a
+     never-assigned local, a heap record's field, an array element, a
+     proper procedure, a `NIL` argument, and through a NIL pointer - all
+     exit 4, and all "NIL access" under voc), `llvm-procedure-values-ir`
+     (golden `.ll` at both word sizes, `clang -c` validated),
+     `llvm-ash-max-min` (62 checks, all three integer widths, `HUGEINT`
+     operands and counts, every `MAX`/`MIN`) and
+     `semantic-reject-procedure-value`; the three runtime fixtures also run
+     as i686 executables (`llvm-i686-runtime`). Cross-checked against real
+     voc (`llvm-procedure-values` and `llvm-ash-max-min` - minus the `poc
+     only` part - print `OK` under it; the trap programs give "NIL access"
+     each).
+   - *The `Unsupported` placeholder* is no longer reachable with a pointer
+     or procedure result: the sites that produced one (a procedure name as
+     a value, a call through a value) are lowered, and the remaining ones
+     take a type the checker has already fixed or are unreachable for a
+     program it accepts.
+   - *Not done*: `CONST` `ASH(...)`/`MAX(REAL)`, and folding of *integer
+     literal arithmetic* (`2 * 100 + 2 * 10` wraps at `SHORTINT` width
+     where voc folds it) - both pre-existing and unrelated to this step.
 
 9. **32-/64-bit parity sweep.** Run the *entire* conformance suite —
    not a promoted subset — compile+link+run+diff on both a 32-bit and

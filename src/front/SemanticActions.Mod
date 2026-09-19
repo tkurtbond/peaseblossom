@@ -156,6 +156,11 @@ MODULE SemanticActions;
        declared type) does not. The designator's *type* cannot say which
        it is, so the caller reads this right after the call. *)
     lastDesignatorIsVarParam: BOOLEAN;
+    (* Likewise: whether the designator CheckDesignator just resolved
+       ends in a type-bound procedure ("v.P", or the base-type "v.P^") -
+       which, written without a call's parentheses, would be a procedure
+       *value*, and Oberon2.pdf 6.5 forbids that for one. *)
+    lastDesignatorIsBoundProcedure: BOOLEAN;
 
   PROCEDURE FindQualified(scope: SymbolTable.Scope; qualifier, name: SyntaxTree.Ident;
                           line, column: INTEGER): SymbolTable.Object;
@@ -1431,10 +1436,11 @@ MODULE SemanticActions;
       arr: Types.ArrayType;
       crossedBoundary: BOOLEAN;
       targetType: Types.Type;
-      viaVarParam: BOOLEAN;
+      viaVarParam, boundProc: BOOLEAN;
   BEGIN
     readOnly := FALSE; isVariable := FALSE;
     viaVarParam := FALSE; lastDesignatorIsVarParam := FALSE;
+    boundProc := FALSE; lastDesignatorIsBoundProcedure := FALSE;
     (* PLAN.md Phase 7: "-" read-only export (Oberon2.pdf §4: "read-only
        in importing modules") restricts writes only once the designator
        has crossed into another module - never within the module that
@@ -1470,6 +1476,7 @@ MODULE SemanticActions;
     methodOwner := NIL;
     sel := d.selectors;
     WHILE (sel # NIL) & (t # Types.Undefined) DO
+      boundProc := FALSE;
       WITH
         sel: SyntaxTree.FieldSelector DO
           methodOwner := NIL; viaVarParam := FALSE;
@@ -1504,7 +1511,7 @@ MODULE SemanticActions;
                 Diagnostics.Error(sel.line, sel.column, "type-bound procedure is not exported by its module");
                 t := Types.Undefined
               ELSE
-                t := method.procType; readOnly := TRUE;
+                t := method.procType; readOnly := TRUE; boundProc := TRUE;
                 methodOwner := rec; methodName := sel.name
               END
             END
@@ -1540,7 +1547,7 @@ MODULE SemanticActions;
                 "'^' has no base-type type-bound procedure to dispatch to");
               t := Types.Undefined
             ELSE
-              t := method.procType
+              t := method.procType; boundProc := TRUE
             END;
             methodOwner := NIL
           ELSIF (t = NIL) OR ~(t IS Types.PointerType) THEN
@@ -1580,6 +1587,7 @@ MODULE SemanticActions;
       sel := sel.next
     END;
     lastDesignatorIsVarParam := viaVarParam;
+    lastDesignatorIsBoundProcedure := boundProc;
     RETURN t
   END CheckDesignator;
 
@@ -1708,6 +1716,61 @@ MODULE SemanticActions;
     END
   END CheckArguments;
 
+  (* Whether name, as an unqualified reference from scope, is a procedure
+     declared inside another procedure: found in a scope whose outer scope
+     is not the Universe. (The module's own scope is the only one whose
+     outer scope is; a procedure's body, and a WITH branch's narrowed
+     scope, nest inside it.) *)
+  PROCEDURE IsNestedProcedureName(scope: SymbolTable.Scope; name: SyntaxTree.Ident): BOOLEAN;
+    VAR s: SymbolTable.Scope;
+  BEGIN
+    s := scope;
+    WHILE (s # NIL) & (SymbolTable.FindLocal(s, name) = NIL) DO s := s.outer END;
+    RETURN (s # NIL) & (s.outer # SymbolTable.Universe)
+  END IsNestedProcedureName;
+
+  (* Oberon2.pdf 6.5: a procedure may be assigned to a procedure variable
+     (or passed on, or compared) as a value only if it "is not a
+     predeclared or type-bound procedure nor ... local to another
+     procedure" - a predeclared one already fails as not having a
+     procedure type; the rest are caught here, where a procedure-typed
+     designator is written with no parentheses. (A variable, field or
+     element of procedure type is of course a value too, and passes: only
+     a designator that *names* a procedure is examined.) An external
+     procedure is refused as well: it takes the C calling convention, while
+     a procedure value is always called as an Oberon procedure, with the
+     hidden VAR-record tag and open-array length arguments an external one
+     never receives. *)
+  PROCEDURE CheckProcedureValue(scope: SymbolTable.Scope; d: SyntaxTree.Designator; boundProc: BOOLEAN);
+    VAR obj: SymbolTable.Object;
+  BEGIN
+    IF boundProc THEN
+      Diagnostics.Error(d.line, d.column, "a type-bound procedure cannot be used as a procedure value")
+    ELSIF d.selectors = NIL THEN
+      obj := FindQualified(scope, d.qualifier, d.name, d.line, d.column);
+      IF (obj # NIL) & (obj.class = SymbolTable.procClass) THEN
+        IF obj.externalConvention[0] # 0X THEN
+          Diagnostics.Error(d.line, d.column, "an external procedure cannot be used as a procedure value")
+        ELSIF (d.qualifier[0] = 0X) & IsNestedProcedureName(scope, d.name) THEN
+          Diagnostics.Error(d.line, d.column,
+            "a procedure local to another procedure cannot be used as a procedure value")
+        END
+      END
+    END
+  END CheckProcedureValue;
+
+  (* Whether e is a bare designator naming a procedure (not a variable of
+     procedure type, and not a call). *)
+  PROCEDURE NamesProcedure(scope: SymbolTable.Scope; e: SyntaxTree.ExprNode): BOOLEAN;
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object;
+  BEGIN
+    IF ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
+    de := e(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens OR (de.designator.selectors # NIL) THEN RETURN FALSE END;
+    obj := FindQualified(scope, de.designator.qualifier, de.designator.name, de.line, de.column);
+    RETURN (obj # NIL) & (obj.class = SymbolTable.procClass)
+  END NamesProcedure;
+
   (* PLAN.md Phase 6: a Types.PredeclaredProcedureType base bypasses the
      ordinary CheckArguments path entirely (dispatched to
      PredeclaredProcedures.CheckCall instead - see that module's own
@@ -1719,12 +1782,18 @@ MODULE SemanticActions;
   PROCEDURE CheckDesignatorExpr(scope: SymbolTable.Scope; node: SyntaxTree.DesignatorExprNode): Types.Type;
     VAR
       baseType, targetType, resultType: Types.Type;
-      readOnly, isVariable, isProperProcedure, viaVarParam: BOOLEAN;
+      readOnly, isVariable, isProperProcedure, viaVarParam, boundProc: BOOLEAN;
       pt: Types.ProcedureType;
   BEGIN
     baseType := CheckDesignator(scope, node.designator, readOnly, isVariable);
     viaVarParam := lastDesignatorIsVarParam;
-    IF ~node.hasParens THEN RETURN baseType END;
+    boundProc := lastDesignatorIsBoundProcedure;
+    IF ~node.hasParens THEN
+      IF (baseType # Types.Undefined) & (baseType IS Types.ProcedureType) THEN
+        CheckProcedureValue(scope, node.designator, boundProc)
+      END;
+      RETURN baseType
+    END;
     IF baseType = Types.PredeclaredProcedureType THEN
       resultType := PredeclaredProcedures.CheckCall(scope, node.designator.name, node.args,
                                                       node.line, node.column,
@@ -1929,6 +1998,15 @@ MODULE SemanticActions;
         result := Types.Boolean
       ELSIF ((l = Types.NilType) OR (l IS Types.ProcedureType))
           & ((r = Types.NilType) OR (r IS Types.ProcedureType)) THEN
+        (* Appendix A lets a procedure's *name* stand for it only where a
+           value is assigned to (or passed for) a procedure type - not as
+           an operand: "f = P" compares two values of procedure type, and
+           P alone is not one (voc: "this expression cannot be a type or a
+           procedure"). *)
+        IF NamesProcedure(scope, node.left) OR NamesProcedure(scope, node.right) THEN
+          Diagnostics.Error(node.line, node.column,
+            "a procedure name cannot be compared - only a procedure-typed value or NIL")
+        END;
         result := Types.Boolean
       ELSE
         Diagnostics.Error(node.line, node.column, "operands are not comparable");

@@ -25,3 +25,6 @@ llvm-trees-dispatch: same
 llvm-open-array-params: same
 llvm-open-array-new: same
 llvm-trees-strings: same
+llvm-procedure-values: same
+llvm-procedure-values-import: same
+llvm-ash-max-min: same

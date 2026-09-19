@@ -175,6 +175,12 @@ during Stage 0/1/2 bootstrapping:
   `1.0D38`, `1.0D300` and any non-integral value compile. Workaround:
   build the number arithmetically (see `LLVMCodeGenerator.DoubleBitsText`'s
   `twoTo52` loop).
+- **A `REAL` literal with decimal exponent 38, or a `LONGREAL` one with
+  exponent 308, is rejected as "number too large"**, though both are within
+  what the type holds: `1.0E38`, `1.5E38`, `3.4E38`, `1.0D308`, `1.7D308`
+  fail; `9.9E37`, `1.0D300` compile. There is no way to write a value near
+  `MAX(REAL)`/`MAX(LONGREAL)` as a literal - `llvm-ash-max-min` compares
+  against `1.0D300`-sized numbers instead (found while writing it).
 - **`LONG(SHORT(x))` folded away**: voc simplifies that chain to `x`,
   skipping the narrowing to single precision it exists for. Assign
   through a `REAL` variable instead (see `LLVMCodeGenerator.RealConstant`).
@@ -300,8 +306,9 @@ has the full account; all probed against real voc 2026-09-19):
   message naming the module.
 - Pointer variables start NIL, locals included (a local holding a pointer
   is zeroed on entry). Heap blocks come back zero-filled.
-- Not yet: procedure values. (`NEW(p, n0, ...)` and pointers to open
-  arrays are Phase 9 step 7's - next section.)
+- Procedure values are Phase 9 step 8's - see "Procedure values, `ASH`,
+  `MAX` and `MIN`" below. (`NEW(p, n0, ...)` and pointers to open arrays
+  are Phase 9 step 7's.)
 
 ### Type-bound procedures and `VAR` record parameters (implemented, Phase 9 step 6)
 
@@ -315,7 +322,7 @@ has the full account; all probed against real voc 2026-09-19):
 - **`VAR` parameters of record type carry their actual's type** (voc does
   too): a hidden second argument, the actual's type descriptor, follows
   each such parameter - part of the calling convention of every Oberon
-  procedure that has one (procedure values, when they arrive, included),
+  procedure that has one (a call through a procedure value included),
   but not of an external `["C"]` one, which gets the bare address. That is
   what lets `IS`, a guard `v(T)` and `WITH` apply to "a variable parameter
   of record type" (§8.1), which the front end now accepts. Like voc, only
@@ -374,10 +381,48 @@ like voc's), outermost dimension first:
 - **Collector**: the block is tagged with the array descriptor of the
   innermost element type, like a fixed array of pointers (see
   `llvm-open-array-new`, which fails without it).
-- Not done: more than 8 open dimensions (`; unsupported`), an open array as
-  a *value* of a procedure type (procedure values are step 8's), and the
-  copy of a value parameter is never skipped even when the procedure only
-  reads it.
+- Not done: more than 8 open dimensions (`; unsupported`), and the copy of
+  a value parameter is never skipped even when the procedure only reads it.
+  (A procedure *type* with open-array parameters works: a call through a
+  value passes the lengths like any other call - step 8.)
+
+### Procedure values, `ASH`, `MAX` and `MIN` (implemented, Phase 9 step 8)
+
+`PLAN.md` step 8 has the full account; all probed against real voc
+2026-09-19. What a program can observe:
+
+- **A procedure name is a value** (`f := Add`, `Apply(Add, 1, 2)`, `RETURN
+  Add`, a record field or array element of procedure type) and a value can
+  be called (`f(1, 2)`, `t.op(x)`, `tbl[i](x)`, a bare `act` for a proper
+  procedure with no parameters). Oberon2.pdf 6.5 forbids a predeclared,
+  type-bound or nested (local to another procedure) procedure as a value,
+  and poc and voc both reject them; poc also rejects an *external* `["C"]`
+  procedure, whose C calling convention differs from the Oberon one a
+  procedure value is always called with. A procedure's *name* is not an
+  operand of `=`/`#` (`f = Add` is an error, as in voc: compare `f = g`,
+  `f = NIL`); a procedure-typed value is.
+- **Calling a NIL procedure value** is the NIL trap (exit 4; "NIL access" in
+  voc), for a variable, a field (through a NIL pointer too), an element or
+  a parameter. A procedure variable that is local (or inside a local record
+  or array) starts NIL, like a local pointer - poc's guarantee; in voc it is
+  stack garbage.
+- **Calling convention**: a value is called with the arguments its
+  *type's* parameter list lays out, hidden ones included (a `VAR` record's
+  type tag, an open array's lengths) - the same as a direct call of any
+  procedure matching the type.
+- **`ASH(x, n)`** shifts `x` left by `n`, or right (flooring) for negative
+  `n`, and has the wider of `LONGINT` and `x`'s type (so `HUGEINT` keeps
+  its 64 bits; voc's own rule). A count of the result type's width or more
+  leaves 0 (the sign, for a right shift); voc agrees to 63 and is
+  undefined beyond. voc computes in 64 bits, so an `ASH` that overflows
+  `LONGINT` and is compared *without* first being stored disagrees with poc.
+- **`MAX(T)`/`MIN(T)`** as run-time expressions are the same constants a
+  `CONST` folds to, plus `REAL`/`LONGREAL`: IEEE 754's largest finite value
+  and its negation (3.4028234663852886D38 and 1.7976931348623157D308). voc's
+  `MAX(LONGREAL)` is deliberately a little low, 1.79769296342094D308 (its
+  own `OPM.Mod` says so); poc gives the true one. `CONST` `MAX(REAL)`
+  is still not folded.
+- `ASSERT` remains undecided (`PLAN.md`'s open design question).
 
 ### External procedures
 

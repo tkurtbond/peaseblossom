@@ -177,7 +177,11 @@ MODULE PredeclaredProcedures;
       Diagnostics.Error(line, column, "ASH requires two integer arguments");
       RETURN Types.Undefined
     END;
-    RETURN Types.LongInt
+    (* LONGINT, or x's own type if that is wider (HUGEINT, SYSTEM.ADDRESS) -
+       voc's "LONGINT, or INT64 if larger", so ASH(hugeVal, 1) does not
+       lose the top of a 64-bit x. *)
+    IF (xt = Types.Undefined) OR (nt = Types.Undefined) THEN RETURN Types.LongInt END;
+    RETURN Types.WiderOf(Types.LongInt, xt)
   END CheckAsh;
 
   PROCEDURE CheckCap(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;

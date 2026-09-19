@@ -43,7 +43,11 @@ etc.).
   step 7 fixed a `CheckArguments` gap it surfaced: a VAR parameter of open
   array type demanded the *same* type of its argument, which no
   independently written open-array type ever is - it now takes any
-  array-compatible one (`IsOpenArrayFormal`). Two
+  array-compatible one (`IsOpenArrayFormal`). Step 8 adds the report's
+  6.5 restriction on procedure *values* (`CheckProcedureValue`: no
+  type-bound, nested or - poc's own rule - external procedure) and
+  refuses a procedure's bare name as an operand of `=`/`#`
+  (`NamesProcedure`). Two
   explicit, narrower scope boundaries: a function procedure's "must
   contain a return statement" check is shallow (no `BEGIN` at all is
   rejected, not a full return-reachability analysis), and `r.P^`

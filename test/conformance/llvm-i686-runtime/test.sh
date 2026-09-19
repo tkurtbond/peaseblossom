@@ -67,4 +67,7 @@ check llvm-trees-dispatch trees.mod
 check llvm-open-array-params openparams.mod
 check llvm-open-array-new opennew.mod
 check llvm-trees-strings treesclient.mod
+check llvm-procedure-values procvals.mod
+check llvm-procedure-values-import client.mod
+check llvm-ash-max-min ashmaxmin.mod
 . ../../testresult.sh

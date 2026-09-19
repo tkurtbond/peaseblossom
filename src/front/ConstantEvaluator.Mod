@@ -389,8 +389,10 @@ MODULE ConstantEvaluator;
      a POINTER/PROCEDURE value's or a composite type's), unlike SizeBound
      below, which is also word-size-dependent for those. Returns FALSE
      (v left unpopulated) for a type MAX/MIN doesn't apply to, or one of
-     the REAL/LONGREAL types not yet handled. *)
-  PROCEDURE MaxMinBound(t: Types.Type; wantMax: BOOLEAN; VAR v: Types.Value): BOOLEAN;
+     the REAL/LONGREAL types not yet handled (LLVMCodeGenerator's
+     GenerateMaxMin, which calls this for the rest, emits those two itself
+     for a run-time MAX(REAL); a CONST of one is still not folded). *)
+  PROCEDURE MaxMinBound*(t: Types.Type; wantMax: BOOLEAN; VAR v: Types.Value): BOOLEAN;
   BEGIN
     NEW(v);
     IF t = Types.Set THEN

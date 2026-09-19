@@ -528,21 +528,32 @@ MODULE LLVMCodeGenerator;
      needs one. Duplicated rather than imported for the same reason
      WriteStr/WriteLn above are: LLVMTypes.AppendLongInt isn't exported,
      and it's a small enough leaf helper that a second copy is cheaper
-     than a layering change. Negating x to build the digit string
-     overflows at LONGINT's own two's-complement minimum - the same,
-     still-unfixed edge case ModuleInterface.Mod's FormatInt already has
-     (PLAN.md's step 4 retrospective), not solved here either. *)
+     than a layering change. It handles LONGINT's own
+     two's-complement minimum (MIN(HUGEINT) is emitted through it), which
+     negating x to build the digit string would overflow - the still-
+     unfixed edge case ModuleInterface.Mod's FormatInt has (PLAN.md's
+     step 4 retrospective). *)
   PROCEDURE AppendLongInt(VAR s: ARRAY OF CHAR; x: LONGINT);
-    VAR digits: ARRAY 24 OF CHAR; n, i, j, d: INTEGER; negative: BOOLEAN;
+    VAR digits: ARRAY 24 OF CHAR; n, i, j, d: INTEGER; negative: BOOLEAN; q: LONGINT;
   BEGIN
     j := 0;
     WHILE s[j] # 0X DO INC(j) END;
     negative := x < 0;
-    IF negative THEN s[j] := "-"; INC(j); x := -x END;
-    IF x = 0 THEN
+    n := 0;
+    IF negative THEN
+      (* |x| is q + 1 for q = -(x + 1), which cannot overflow where -x
+         does at the minimum; the last digit and the rest of |x| come from
+         q's, with the 1 carried by hand *)
+      s[j] := "-"; INC(j);
+      q := -(x + 1); d := SHORT(q MOD 10); q := q DIV 10;
+      IF d = 9 THEN digits[0] := "0"; x := q + 1
+      ELSE digits[0] := CHR(ORD("0") + d + 1); x := q
+      END;
+      n := 1
+    END;
+    IF (x = 0) & (n = 0) THEN
       s[j] := "0"; INC(j)
     ELSE
-      n := 0;
       WHILE x > 0 DO
         d := SHORT(x MOD 10);
         digits[n] := CHR(ORD("0") + d);
@@ -881,6 +892,30 @@ MODULE LLVMCodeGenerator;
     WHILE f # NIL DO count := count + CountPointerSlots(f.type); f := f.next END;
     RETURN count
   END CountPointerSlots;
+
+  (* Whether a variable of type t holds a procedure value anywhere inside
+     it (t itself, a record field, an array element). CountPointerSlots does
+     not count these - the collector has nothing to trace in one - but a
+     local variable that does must still start out NIL, so that calling it
+     before it is assigned is the NIL trap and not a jump to whatever the
+     stack held. *)
+  PROCEDURE ContainsProcedureValue(t: Types.Type): BOOLEAN;
+    VAR f: Types.Field; rec: Types.RecordType; arr: Types.ArrayType; found: BOOLEAN;
+  BEGIN
+    IF t = NIL THEN RETURN FALSE END;
+    IF t IS Types.ProcedureType THEN RETURN TRUE END;
+    found := FALSE;
+    IF t IS Types.ArrayType THEN
+      arr := t(Types.ArrayType);
+      found := ~arr.isOpen & ContainsProcedureValue(arr.elementType)
+    ELSIF t IS Types.RecordType THEN
+      rec := t(Types.RecordType);
+      found := ContainsProcedureValue(rec.baseType);
+      f := rec.fields;
+      WHILE ~found & (f # NIL) DO found := ContainsProcedureValue(f.type); f := f.next END
+    END;
+    RETURN found
+  END ContainsProcedureValue;
 
   (* ---- Open arrays (PLAN.md Phase 9 step 7) ----
 
@@ -2122,36 +2157,42 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateLiteral;
 
-  (* obj.value is already fully folded by ConstantEvaluator.Mod during
-     CheckModule - an Oberon CONST has no runtime storage at all, so this
-     never loads from memory, just formats obj.value's own already-known
-     value as an LLVM immediate. *)
-  PROCEDURE GenerateConstValue(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object; VAR result: Value);
+  (* cv - a CONST's obj.value, or a folded MAX/MIN bound - is already fully
+     folded by ConstantEvaluator.Mod. An Oberon CONST has no runtime
+     storage at all, so this never loads from memory, just formats cv as
+     an LLVM immediate of type. *)
+  PROCEDURE EmitConstantValue(VAR w: Files.Rider; VAR cg: Codegen; type: Types.Type; cv: Types.Value;
+                              VAR result: Value);
   BEGIN
-    result.oberonType := obj.type;
-    IF obj.value.kind = Types.intValue THEN
-      LLVMTypes.TypeString(obj.type, cg.sizeModel, result.llvmType);
-      result.text[0] := 0X; AppendLongInt(result.text, obj.value.intVal)
-    ELSIF obj.value.kind = Types.charValue THEN
+    result.oberonType := type;
+    IF cv.kind = Types.intValue THEN
+      LLVMTypes.TypeString(type, cg.sizeModel, result.llvmType);
+      result.text[0] := 0X; AppendLongInt(result.text, cv.intVal)
+    ELSIF cv.kind = Types.charValue THEN
       COPY("i8", result.llvmType);
-      result.text[0] := 0X; AppendLongInt(result.text, ORD(obj.value.charVal))
-    ELSIF obj.value.kind = Types.boolValue THEN
+      result.text[0] := 0X; AppendLongInt(result.text, ORD(cv.charVal))
+    ELSIF cv.kind = Types.boolValue THEN
       COPY("i8", result.llvmType);
-      IF obj.value.boolVal THEN COPY("1", result.text) ELSE COPY("0", result.text) END
-    ELSIF obj.value.kind = Types.setValue THEN
+      IF cv.boolVal THEN COPY("1", result.text) ELSE COPY("0", result.text) END
+    ELSIF cv.kind = Types.setValue THEN
       LLVMTypes.TypeString(Types.Set, cg.sizeModel, result.llvmType);
-      result.text[0] := 0X; SetToText(obj.value.setVal, result.text)
-    ELSIF obj.value.kind = Types.realValue THEN
-      RealConstant(w, cg, obj.value.realText, obj.value.realVal, obj.type = Types.Real, result)
-    ELSIF (obj.value.stringVal[0] # 0X) & (obj.value.stringVal[1] = 0X) THEN
+      result.text[0] := 0X; SetToText(cv.setVal, result.text)
+    ELSIF cv.kind = Types.realValue THEN
+      RealConstant(w, cg, cv.realText, cv.realVal, type = Types.Real, result)
+    ELSIF (cv.stringVal[0] # 0X) & (cv.stringVal[1] = 0X) THEN
       (* A one-character named STRING CONST used as a character, as a
          literal of that length would be - see GenerateLiteral. *)
       COPY("i8", result.llvmType);
-      result.text[0] := 0X; AppendLongInt(result.text, ORD(obj.value.stringVal[0]));
+      result.text[0] := 0X; AppendLongInt(result.text, ORD(cv.stringVal[0]));
       result.oberonType := Types.Char
     ELSE (* a longer named STRING CONST *)
-      Unsupported(w, cg, "named STRING CONST in a scalar position", obj.type, result)
+      Unsupported(w, cg, "named STRING CONST in a scalar position", type, result)
     END
+  END EmitConstantValue;
+
+  PROCEDURE GenerateConstValue(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object; VAR result: Value);
+  BEGIN
+    EmitConstantValue(w, cg, obj.type, obj.value, result)
   END GenerateConstValue;
 
   (* rec.fields' own declaration order is exactly the field order
@@ -2418,8 +2459,16 @@ MODULE LLVMCodeGenerator;
         QualifiedName(homeModule, obj.name, addrText);
         LoadAtAddress(w, cg, addrText, obj.type, result)
       END
+    ELSIF (obj.class = SymbolTable.procClass) & (obj.type # Types.PredeclaredProcedureType)
+        & (obj.externalConvention[0] = 0X) THEN
+      (* a procedure used as a value (Oberon2.pdf 6.5): the address of its
+         function, which the checker has already restricted to a module-level
+         Oberon procedure with the type's own parameter list, so a call
+         through it lays its arguments out exactly as the function expects *)
+      QualifiedName(homeModule, obj.name, result.text);
+      COPY("ptr", result.llvmType); result.oberonType := obj.type
     ELSE
-      Unsupported(w, cg, "designator referring to a procedure/module (PLAN.md Phase 8 steps 6+)",
+      Unsupported(w, cg, "designator referring to a predeclared or external procedure, or a module",
                   Types.Undefined, result)
     END
   END GenerateDesignatorValue;
@@ -2947,6 +2996,42 @@ MODULE LLVMCodeGenerator;
       result.text := destTemp; COPY(retType, result.llvmType); result.oberonType := pt.resultType
     END
   END GenerateOrdinaryCall;
+
+  (* A call through a procedure value (Oberon2.pdf 6.5, PLAN.md Phase 9
+     step 8): a variable, parameter, record field or array element of
+     procedure type. The value is a plain "ptr" to an Oberon function, or
+     null for NIL, which - as voc does, "NIL access" - is the usual NIL
+     trap (exit 4) rather than a jump to address 0. The arguments are laid
+     out from the procedure *type's* parameter list, hidden tag and length
+     arguments included: every procedure a value of that type can hold has
+     a parameter list that matches it (Appendix A), so it is exactly what
+     the function expects. The designator is evaluated before the
+     arguments. *)
+  PROCEDURE GenerateProcedureValueCall(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
+                                       args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR callee: Value; pt: Types.ProcedureType; retType, destTemp: ValueText; argsText: LongText;
+  BEGIN
+    GenerateDesignatorValue(w, cg, d, callee);
+    IF (callee.oberonType = NIL) OR ~(callee.oberonType IS Types.ProcedureType) THEN
+      Unsupported(w, cg, "call target is not a procedure value", Types.Undefined, result);
+      RETURN
+    END;
+    pt := callee.oberonType(Types.ProcedureType);
+    EmitNilCheck(w, cg, callee.text);
+    GenerateCallArgList(w, cg, pt.params, args, TRUE, argsText);
+    IF pt.resultType = NIL THEN
+      WriteStr(w, "  call void "); WriteStr(w, callee.text); WriteStr(w, "(");
+      WriteStr(w, argsText); WriteStr(w, ")"); WriteLn(w);
+      result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X
+    ELSE
+      LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType);
+      NewTemp(cg, destTemp);
+      WriteStr(w, "  "); WriteStr(w, destTemp); WriteStr(w, " = call "); WriteStr(w, retType);
+      WriteStr(w, " "); WriteStr(w, callee.text); WriteStr(w, "(");
+      WriteStr(w, argsText); WriteStr(w, ")"); WriteLn(w);
+      result.text := destTemp; COPY(retType, result.llvmType); result.oberonType := pt.resultType
+    END
+  END GenerateProcedureValueCall;
 
   (* Whether the designator d, called, ends in a type-bound procedure -
      "v.P" (Oberon2.pdf 10.2) or "v.P^", the base-type form - rather than
@@ -3590,6 +3675,81 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateSize;
 
+  (* MAX(T) / MIN(T): a compile-time constant, always. The integer family,
+     SET (as an INTEGER, MAX(SET) = 31 or 63 by size model), CHAR and
+     BOOLEAN come from ConstantEvaluator.MaxMinBound - the very bounds a
+     CONST MAX(T) folds to - and emit exactly like any other constant.
+     REAL/LONGREAL are the IEEE 754 largest finite values, written as bit
+     patterns (a float literal is the double's pattern in hex, so MAX(REAL)
+     is 0x47EFFFFFE0000000 = 3.4028234663852886D38) and MIN is its negation.
+     voc's own MAX(LONGREAL) is 1.79769296342094D308, a deliberate
+     underestimate (OPM.Mod: "should be 1.7976931348623157D308"); poc
+     gives the true one. *)
+  PROCEDURE GenerateMaxMin(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; wantMax: BOOLEAN;
+                           VAR result: Value);
+    VAR t: Types.Type; bound: Types.Value;
+  BEGIN
+    t := BareTypeArgument(cg, args);
+    IF t = NIL THEN
+      Unsupported(w, cg, "MAX/MIN of something that is not a type name", Types.Undefined, result)
+    ELSIF t = Types.Real THEN
+      result.oberonType := Types.Real; COPY("float", result.llvmType);
+      IF wantMax THEN COPY("0x47EFFFFFE0000000", result.text) ELSE COPY("0xC7EFFFFFE0000000", result.text) END
+    ELSIF t = Types.LongReal THEN
+      result.oberonType := Types.LongReal; COPY("double", result.llvmType);
+      IF wantMax THEN COPY("0x7FEFFFFFFFFFFFFF", result.text) ELSE COPY("0xFFEFFFFFFFFFFFFF", result.text) END
+    ELSIF ConstantEvaluator.MaxMinBound(t, wantMax, bound) THEN
+      EmitConstantValue(w, cg, bound.type, bound, result)
+    ELSE
+      Unsupported(w, cg, "MAX/MIN of a type outside the basic types and SET", Types.Undefined, result)
+    END
+  END GenerateMaxMin;
+
+  (* ASH(x, n): x * 2^n as an arithmetic shift - left for n >= 0, right
+     (sign-filling, so it floors) for n < 0 - in the wider of LONGINT and
+     x's own type, the type PredeclaredProcedures.CheckAsh gives it. A
+     shift by the type's width or more is not left to LLVM (shl/ashr with
+     such a count is poison): everything is shifted out, leaving 0, or for a
+     right shift the sign - the same as voc's, which computes in 64 bits, for
+     any count up to 63 (past that, C's shift is itself undefined). Branch-
+     free, via select, like ABS and DIV/MOD; the count is taken as an i64 so
+     that a HUGEINT n is not truncated before the comparison, and its
+     magnitude is compared unsigned, which also covers -2^63. *)
+  PROCEDURE GenerateAsh(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR
+      x, n, xe: Value; target: Types.Type;
+      ty, bitsText, lastBitText, count, isNeg, negCount, absCount, big, safeCount, narrowCount,
+      left, right, shifted, signFill, fill, final: ValueText;
+      bits: INTEGER;
+  BEGIN
+    GenerateExpr(w, cg, args, x);
+    GenerateExpr(w, cg, args.next, n);
+    target := Types.WiderOf(Types.LongInt, x.oberonType);
+    IF target = NIL THEN
+      Unsupported(w, cg, "ASH of a non-integer (should be unreachable post-CheckModule)", Types.LongInt, result);
+      RETURN
+    END;
+    ExtendTo(w, cg, x, target, xe);
+    LLVMTypes.TypeString(target, cg.sizeModel, ty);
+    bits := IntWidth(ty);
+    bitsText[0] := 0X; AppendLongInt(bitsText, bits);
+    lastBitText[0] := 0X; AppendLongInt(lastBitText, bits - 1);
+    EmitResizeInt(w, cg, n.llvmType, n.text, "i64", count);
+    EmitBinOp(w, cg, "icmp slt", "i64", count, "0", isNeg);
+    EmitBinOp(w, cg, "sub", "i64", "0", count, negCount);
+    EmitSelect(w, cg, isNeg, "i64", negCount, count, absCount);
+    EmitBinOp(w, cg, "icmp uge", "i64", absCount, bitsText, big);
+    EmitSelect(w, cg, big, "i64", "0", absCount, safeCount);
+    EmitResizeInt(w, cg, "i64", safeCount, ty, narrowCount);
+    EmitBinOp(w, cg, "shl", ty, xe.text, narrowCount, left);
+    EmitBinOp(w, cg, "ashr", ty, xe.text, narrowCount, right);
+    EmitSelect(w, cg, isNeg, ty, right, left, shifted);
+    EmitBinOp(w, cg, "ashr", ty, xe.text, lastBitText, signFill);
+    EmitSelect(w, cg, isNeg, ty, signFill, "0", fill);
+    EmitSelect(w, cg, big, ty, fill, shifted, final);
+    result.text := final; COPY(ty, result.llvmType); result.oberonType := target
+  END GenerateAsh;
+
   (* VAL(T, x): x's bits read as a T. x is first turned into a plain
      integer (ptrtoint, or a same-width bitcast of a real), resized to
      the width T occupies (trunc, or sext/zext by whether x is a signed
@@ -3894,16 +4054,18 @@ MODULE LLVMCodeGenerator;
     result.oberonType := TargetPointer(targetType)
   END GenerateGuardExpr;
 
-  (* PLAN.md Phase 8 step 11's own in-scope Oberon2.pdf §10.3 subset -
-     ABS ODD CHR ORD CAP LEN INC DEC COPY HALT - plus, from Phase 9 step
-     2, the three numeric conversions LONG SHORT ENTIER, and, from step 3,
-     the SET updates INCL EXCL. Not NEW/DISPOSE/
-     SYSTEM.*, which presuppose POINTER. PredeclaredProcedures.Mod's own
-     CheckCall accepts a wider, 20-name vocabulary than this - every
-     other predeclared name (ASH/MAX/MIN/NEW) is real
-     Oberon-2 the front end already fully checks, just not lowered here
-     yet, so it routes to the same Unsupported placeholder every other
-     out-of-scope construct does rather than falling through silently. *)
+  (* The Oberon2.pdf §10.3 predeclared procedures this backend lowers:
+     from PLAN.md Phase 8 step 11 ABS ODD CHR ORD CAP LEN INC DEC COPY
+     HALT, from Phase 9 step 2 the numeric conversions LONG SHORT ENTIER,
+     from step 3 the SET updates INCL EXCL, SIZE, from step 5 NEW and from
+     step 8 ASH MAX MIN - all twenty of §10.3's own - plus the SYSTEM
+     subset ADR GET PUT VAL MOVE (step 4). What is left is SYSTEM's BYTE/
+     PTR/BIT/LSH/ROT/NEW (Phase 10 step 7), which
+     PredeclaredProcedures.Mod's CheckCall does not accept yet either, so
+     the ELSE below is only ever reached by a name added there before its
+     lowering exists: it routes to the same Unsupported placeholder every
+     other out-of-scope construct does rather than falling through
+     silently. *)
   PROCEDURE GeneratePredeclaredCall(VAR w: Files.Rider; VAR cg: Codegen; name: SyntaxTree.Ident;
                                     args: SyntaxTree.ExprNode; VAR result: Value);
   BEGIN
@@ -3929,9 +4091,12 @@ MODULE LLVMCodeGenerator;
     ELSIF name = "VAL" THEN GenerateVal(w, cg, args, result)
     ELSIF name = "MOVE" THEN GenerateMove(w, cg, args, result)
     ELSIF name = "NEW" THEN GenerateNew(w, cg, args, result)
+    ELSIF name = "ASH" THEN GenerateAsh(w, cg, args, result)
+    ELSIF name = "MAX" THEN GenerateMaxMin(w, cg, args, TRUE, result)
+    ELSIF name = "MIN" THEN GenerateMaxMin(w, cg, args, FALSE, result)
     ELSE
       Unsupported(w, cg,
-        "predeclared procedure outside the lowered set (ASH/MAX/MIN - Phase 9; SYSTEM's BYTE/PTR/BIT/LSH/ROT/NEW are Phase 10)",
+        "predeclared procedure outside the lowered set (SYSTEM's BYTE/PTR/BIT/LSH/ROT/NEW are Phase 10)",
         Types.Undefined, result)
     END
   END GeneratePredeclaredCall;
@@ -3939,8 +4104,10 @@ MODULE LLVMCodeGenerator;
   (* A call: a type-bound procedure ("receiver.P(...)" - see
      GenerateMethodCall), a predeclared procedure (Types.PredeclaredProcedure-
      Type, PLAN.md Phase 8 step 11 - checked before the external/ordinary
-     ones, since it is also a procClass Object), an external one, or an
-     ordinary user-defined one. *)
+     ones, since it is also a procClass Object), an external one, an
+     ordinary user-defined one, or - a variable, field or element of
+     procedure type - a call through a procedure value (Phase 9 step 8,
+     GenerateProcedureValueCall). *)
   PROCEDURE GenerateCall(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                         args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
@@ -3951,13 +4118,14 @@ MODULE LLVMCodeGenerator;
       IF FindMethodTarget(cg, d, nameSelector, baseCall, rec, method) THEN
         GenerateMethodCall(w, cg, d, args, nameSelector, baseCall, rec, method, result)
       ELSE
-        Unsupported(w, cg, "selector call target that is not a type-bound procedure (a procedure value, Phase 9 step 8)",
-                    Types.Undefined, result)
+        GenerateProcedureValueCall(w, cg, d, args, result)
       END;
       RETURN
     END;
     obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
-    IF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.type = Types.PredeclaredProcedureType) THEN
+    IF (obj # NIL) & (obj.class = SymbolTable.varClass) THEN
+      GenerateProcedureValueCall(w, cg, d, args, result)
+    ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.type = Types.PredeclaredProcedureType) THEN
       GeneratePredeclaredCall(w, cg, obj.name, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.externalConvention[0] # 0X) THEN
       GenerateExternalCall(w, cg, obj, args, result)
@@ -5253,11 +5421,14 @@ MODULE LLVMCodeGenerator;
         LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
         NewTemp(cg, addrText);
         WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
-        IF CountPointerSlots(obj.type) > 0 THEN
+        IF (CountPointerSlots(obj.type) > 0) OR ContainsProcedureValue(obj.type) THEN
           (* Oberon2.pdf 6.4: every pointer starts out NIL - a local one
              too, which is what makes a dereference of a never-assigned
              pointer a NIL trap rather than a wild access (and keeps
-             stack garbage out of the collector's conservative scan) *)
+             stack garbage out of the collector's conservative scan). A
+             procedure variable is treated the same, so that calling one
+             never assigned is that trap too (the report says nothing;
+             a local one is garbage in voc) *)
           WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer, ptr ");
           WriteStr(w, addrText); WriteLn(w)
         END;

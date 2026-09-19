@@ -37,7 +37,13 @@ LLVM backend: lowers the front end's typed tree to textual LLVM IR
   `EmitOpenIndexCheck`), pointers to open arrays whose block header holds
   the lengths (`OpenDataOffset`, `DereferencePointer`) and
   `NEW(p, n0, ..., nk-1)` with overflow-checked sizing
-  (`GenerateNewOpenArray`).
+  (`GenerateNewOpenArray`), and (Phase 9 step 8) procedure values - a
+  procedure's name is the address of its function, a call through one is
+  NIL-checked and indirect with the *type's* hidden arguments
+  (`GenerateDesignatorValue`, `GenerateProcedureValueCall`), locals holding
+  them start NIL (`ContainsProcedureValue`) - and the last three
+  predeclared procedures, `ASH` (branch-free, `GenerateAsh`) and
+  `MAX`/`MIN` (`GenerateMaxMin`).
 - `LLVMToolchainDriver.Mod` — host-triple auto-detection
   (`clang -dumpmachine`), writing `Generate*`'s output to a real
   `<ModuleName>.ll` file, and the single-step `clang <file>.ll -o <exe>`

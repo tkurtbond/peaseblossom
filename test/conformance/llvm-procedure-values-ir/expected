@@ -1,0 +1,227 @@
+== i686-unknown-linux-gnu
+@procir.f = global ptr zeroinitializer
+@procir.ins = global ptr zeroinitializer
+@procir.act = global ptr zeroinitializer
+@procir.shape = global { i16 } zeroinitializer
+@procir.data = global [3 x i16] zeroinitializer
+@procir.n = global i16 zeroinitializer
+@procir.Shape.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
+  [0 x ptr] [],
+  i32 2,
+  i32 0,
+  i32 0,
+  [1 x ptr] [ptr @procir.Shape.tag],
+  [0 x i32] []
+}
+@procir.Shape.tag = alias ptr, getelementptr inbounds (i8, ptr @procir.Shape.tdesc, i32 0)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+define i16 @procir.Add(i16 %a, i16 %b) {
+entry:
+  %tN = alloca i16
+  store i16 %a, ptr %tN
+  %tN = alloca i16
+  store i16 %b, ptr %tN
+  %tN = load i16, ptr %tN
+  %tN = load i16, ptr %tN
+  %tN = add i16 %tN, %tN
+  ret i16 %tN
+LN:
+  ret i16 0
+}
+define i16 @procir.Inspect(ptr %s, ptr %s.tag, ptr %a, i32 %a.len0) {
+entry:
+  %tN = getelementptr { i16 }, ptr %s, i32 0, i32 0
+  %tN = load i16, ptr %tN
+  %tN = trunc i32 %a.len0 to i16
+  %tN = add i16 %tN, %tN
+  ret i16 %tN
+LN:
+  ret i16 0
+}
+define void @procir.Nothing() {
+entry:
+  ret void
+}
+define i16 @procir.Apply(ptr %op, i16 %x) {
+entry:
+  %tN = alloca ptr
+  store ptr %op, ptr %tN
+  %tN = alloca i16
+  store i16 %x, ptr %tN
+  %tN = alloca ptr
+  store ptr zeroinitializer, ptr %tN
+  %tN = load ptr, ptr %tN
+  store ptr %tN, ptr %tN
+  %tN = load ptr, ptr %tN
+  %tN = icmp eq ptr %tN, null
+  br i1 %tN, label %LN, label %LN
+LN:
+  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @exit(i32 4)
+  unreachable
+LN:
+  %tN = load i16, ptr %tN
+  %tN = load i16, ptr %tN
+  %tN = call i16 %tN(i16 %tN, i16 %tN)
+  ret i16 %tN
+LN:
+  ret i16 0
+}
+define void @procir_init() {
+entry:
+  store ptr @procir.Add, ptr @procir.f
+  %tN = load ptr, ptr @procir.f
+  %tN = icmp eq ptr %tN, null
+  br i1 %tN, label %LN, label %LN
+LN:
+  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @exit(i32 4)
+  unreachable
+LN:
+  %tN = sext i8 1 to i16
+  %tN = sext i8 2 to i16
+  %tN = call i16 %tN(i16 %tN, i16 %tN)
+  store i16 %tN, ptr @procir.n
+  store ptr @procir.Inspect, ptr @procir.ins
+  %tN = load ptr, ptr @procir.ins
+  %tN = icmp eq ptr %tN, null
+  br i1 %tN, label %LN, label %LN
+LN:
+  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @exit(i32 4)
+  unreachable
+LN:
+  %tN = call i16 %tN(ptr @procir.shape, ptr @procir.Shape.tag, ptr @procir.data, i32 3)
+  store i16 %tN, ptr @procir.n
+  store ptr @procir.Nothing, ptr @procir.act
+  %tN = load ptr, ptr @procir.act
+  %tN = icmp eq ptr %tN, null
+  br i1 %tN, label %LN, label %LN
+LN:
+  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @exit(i32 4)
+  unreachable
+LN:
+  call void %tN()
+  %tN = sext i8 4 to i16
+  %tN = call i16 @procir.Apply(ptr @procir.Add, i16 %tN)
+  store i16 %tN, ptr @procir.n
+  ret void
+}
+@.trap.nilderef = private unnamed_addr constant [24 x i8] c"NIL pointer dereference\00"
+clang accepted i686-unknown-linux-gnu
+== x86_64-unknown-linux-gnu
+@procir.f = global ptr zeroinitializer
+@procir.ins = global ptr zeroinitializer
+@procir.act = global ptr zeroinitializer
+@procir.shape = global { i16 } zeroinitializer
+@procir.data = global [3 x i16] zeroinitializer
+@procir.n = global i16 zeroinitializer
+@procir.Shape.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
+  [0 x ptr] [],
+  i64 2,
+  i64 0,
+  i64 0,
+  [1 x ptr] [ptr @procir.Shape.tag],
+  [0 x i64] []
+}
+@procir.Shape.tag = alias ptr, getelementptr inbounds (i8, ptr @procir.Shape.tdesc, i32 0)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+define i16 @procir.Add(i16 %a, i16 %b) {
+entry:
+  %tN = alloca i16
+  store i16 %a, ptr %tN
+  %tN = alloca i16
+  store i16 %b, ptr %tN
+  %tN = load i16, ptr %tN
+  %tN = load i16, ptr %tN
+  %tN = add i16 %tN, %tN
+  ret i16 %tN
+LN:
+  ret i16 0
+}
+define i16 @procir.Inspect(ptr %s, ptr %s.tag, ptr %a, i64 %a.len0) {
+entry:
+  %tN = getelementptr { i16 }, ptr %s, i32 0, i32 0
+  %tN = load i16, ptr %tN
+  %tN = trunc i64 %a.len0 to i32
+  %tN = trunc i32 %tN to i16
+  %tN = add i16 %tN, %tN
+  ret i16 %tN
+LN:
+  ret i16 0
+}
+define void @procir.Nothing() {
+entry:
+  ret void
+}
+define i16 @procir.Apply(ptr %op, i16 %x) {
+entry:
+  %tN = alloca ptr
+  store ptr %op, ptr %tN
+  %tN = alloca i16
+  store i16 %x, ptr %tN
+  %tN = alloca ptr
+  store ptr zeroinitializer, ptr %tN
+  %tN = load ptr, ptr %tN
+  store ptr %tN, ptr %tN
+  %tN = load ptr, ptr %tN
+  %tN = icmp eq ptr %tN, null
+  br i1 %tN, label %LN, label %LN
+LN:
+  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @exit(i32 4)
+  unreachable
+LN:
+  %tN = load i16, ptr %tN
+  %tN = load i16, ptr %tN
+  %tN = call i16 %tN(i16 %tN, i16 %tN)
+  ret i16 %tN
+LN:
+  ret i16 0
+}
+define void @procir_init() {
+entry:
+  store ptr @procir.Add, ptr @procir.f
+  %tN = load ptr, ptr @procir.f
+  %tN = icmp eq ptr %tN, null
+  br i1 %tN, label %LN, label %LN
+LN:
+  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @exit(i32 4)
+  unreachable
+LN:
+  %tN = sext i8 1 to i16
+  %tN = sext i8 2 to i16
+  %tN = call i16 %tN(i16 %tN, i16 %tN)
+  store i16 %tN, ptr @procir.n
+  store ptr @procir.Inspect, ptr @procir.ins
+  %tN = load ptr, ptr @procir.ins
+  %tN = icmp eq ptr %tN, null
+  br i1 %tN, label %LN, label %LN
+LN:
+  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @exit(i32 4)
+  unreachable
+LN:
+  %tN = call i16 %tN(ptr @procir.shape, ptr @procir.Shape.tag, ptr @procir.data, i64 3)
+  store i16 %tN, ptr @procir.n
+  store ptr @procir.Nothing, ptr @procir.act
+  %tN = load ptr, ptr @procir.act
+  %tN = icmp eq ptr %tN, null
+  br i1 %tN, label %LN, label %LN
+LN:
+  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @exit(i32 4)
+  unreachable
+LN:
+  call void %tN()
+  %tN = sext i8 4 to i16
+  %tN = call i16 @procir.Apply(ptr @procir.Add, i16 %tN)
+  store i16 %tN, ptr @procir.n
+  ret void
+}
+@.trap.nilderef = private unnamed_addr constant [24 x i8] c"NIL pointer dereference\00"
+clang accepted x86_64-unknown-linux-gnu
