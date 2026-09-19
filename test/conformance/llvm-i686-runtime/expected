@@ -22,3 +22,6 @@ llvm-type-bound: same
 llvm-var-record-params: same
 llvm-type-bound-multi-module: same
 llvm-trees-dispatch: same
+llvm-open-array-params: same
+llvm-open-array-new: same
+llvm-trees-strings: same

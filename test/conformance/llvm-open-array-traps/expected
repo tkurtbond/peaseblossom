@@ -1,0 +1,33 @@
+== paramindex
+Aindex out of range
+exit=2
+== paramnegative
+Aindex out of range
+exit=2
+== pointerindex
+Aindex out of range
+exit=2
+== matrixindex
+Aindex out of range
+exit=2
+== nilelement
+ANIL pointer dereference
+exit=4
+== nillength
+ANIL pointer dereference
+exit=4
+== zerolength
+AToo many, or negative number of, elements in dynamic array
+exit=7
+== negativelength
+AToo many, or negative number of, elements in dynamic array
+exit=7
+== zeroinner
+AToo many, or negative number of, elements in dynamic array
+exit=7
+== overflow
+AToo many, or negative number of, elements in dynamic array
+exit=7
+== toobig
+ANB
+exit=0

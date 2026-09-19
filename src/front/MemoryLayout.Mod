@@ -47,11 +47,8 @@ MODULE MemoryLayout;
      make a word-size choice observable the way -O2/-OC's differing
      SHORTINT/INTEGER/LONGINT/SET ranges already are.
 
-     Open-array dope-vector length words (DescriptorSize) stay a fixed 4
-     bytes regardless of size model, for the same reason they already
-     stay 4 bytes regardless of word size (see DescriptorSize below) -
-     consistent with the existing word-size precedent rather than a new
-     design decision.
+     Open-array dope-vector length words (DescriptorSize) do not depend on
+     the size model, only on the word size - see DescriptorSize below.
 
      Alignment rule: a type's natural alignment equals its own size,
      capped at wordSize - so an 8-byte LONGREAL/HUGEINT/record aligns to
@@ -68,9 +65,12 @@ MODULE MemoryLayout;
 
      An open array has no static size. DescriptorSize instead reports
      the size of its *dope vector* - one address-sized pointer to the
-     data plus one 4-byte length word per open dimension (walking nested
+     data plus one word-sized length per open dimension (walking nested
      ARRAY OF ARRAY OF ... open dimensions) - "open-array dope-vector
-     bookkeeping" per PLAN.md.
+     bookkeeping" per PLAN.md. The lengths are word-sized, not a fixed 4
+     bytes as this first said, because that is what the LLVM backend
+     passes and stores (Phase 9 step 7, LLVMCodeGenerator.Mod's section on
+     open arrays; voc's are ADDRESS-sized too).
 
      Size and NaturalAlign both dispatch on a type's concrete form via
      WITH. Where a branch would otherwise recurse into Size/NaturalAlign
@@ -139,7 +139,7 @@ MODULE MemoryLayout;
         END
       END
     END;
-    RETURN wordSize + dims * 4
+    RETURN wordSize + dims * wordSize
   END DescriptorSize;
 
   PROCEDURE RecordNaturalAlign(rec: Types.RecordType; wordSize, sizeModel: INTEGER): LONGINT;

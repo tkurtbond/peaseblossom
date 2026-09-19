@@ -185,6 +185,14 @@ during Stage 0/1/2 bootstrapping:
   compiler. Only matters when cross-checking poc's output against voc's:
   three of `test/conformance/llvm-reals`'s checks fail under voc for
   this reason and pass under poc.
+- **A row of a multi-dimensional open array passed on as an open array
+  ignores the row stride**: with `a: ARRAY OF ARRAY OF INTEGER`,
+  `Sum(a[r])` (a call whose parameter is `VAR ARRAY OF INTEGER`) makes voc
+  pass `&a[r]` as if `a` were one-dimensional, so it hands over elements
+  `r`..`r+n-1` of the flat data instead of row `r` - `Sum(grid[2])` on a
+  fixed array is right, `RowSum(grid, 2)` inside a procedure is not. poc
+  computes the stride (`test/conformance/llvm-open-array-params` check 8
+  is the one check voc gets wrong).
 
 ## Language extensions beyond Oberon2.pdf
 
@@ -292,8 +300,8 @@ has the full account; all probed against real voc 2026-09-19):
   message naming the module.
 - Pointer variables start NIL, locals included (a local holding a pointer
   is zeroed on entry). Heap blocks come back zero-filled.
-- Not yet: `NEW(p, n)` and pointers to open arrays (step 7), procedure
-  values.
+- Not yet: procedure values. (`NEW(p, n0, ...)` and pointers to open
+  arrays are Phase 9 step 7's - next section.)
 
 ### Type-bound procedures and `VAR` record parameters (implemented, Phase 9 step 6)
 
@@ -321,6 +329,55 @@ has the full account; all probed against real voc 2026-09-19):
   not compile), and a bound procedure of a record written inline under a
   `POINTER TO` can be called (voc gives that record no descriptor and traps
   "NIL access").
+
+### Open arrays (implemented, Phase 9 step 7)
+
+`PLAN.md` step 7 has the full account; all probed against real voc
+2026-09-19. An open array - `ARRAY OF T`, or several dimensions
+`ARRAY OF ARRAY OF T` - has lengths only known at run time, carried as a
+*dope vector* of word-sized integers (as wide as a pointer on the target,
+like voc's), outermost dimension first:
+
+- **A formal parameter** (`VAR` or value) is the address of the first
+  element, then one hidden length per open dimension - part of every Oberon
+  procedure's calling convention, like a `VAR` record parameter's tag, but
+  not of an external `["C"]` one, which gets the bare address. A *value*
+  parameter is copied into the callee's frame on entry (voc does the same),
+  so assigning to it never reaches the caller's array.
+- **What may be passed** is what Appendix A calls array compatible: any
+  array whose element types are compatible - a fixed array, an open array
+  parameter of the caller's own (forwarding), what a pointer to an open
+  array points at, a row or element of a larger array - not only the
+  identical type, which the checker used to demand of a `VAR` parameter
+  (it now matches voc). Fixed element types must still be the *same named
+  type*: an anonymous `ARRAY 3 OF INTEGER` inside the formal is not the
+  one inside the actual (voc rejects that too). A string literal or named
+  `STRING` constant may be passed to a value `ARRAY OF CHAR`; `LEN` of it
+  counts the terminating `0X` (`LEN("abc") = 4`), as in voc.
+- **Indexing** checks the index against the run-time length (a negative
+  index too) and traps like a fixed array's, exit 2; `LEN(a, n)` reads the
+  length. `LEN` now has type `LONGINT`, as the checker always said (the
+  code generator had typed it `INTEGER`, wrapping a length above 32767).
+  `COPY`, string comparison and `NEW` accept open `ARRAY OF CHAR`s too.
+- **A pointer to an open array** points at a block that starts with the
+  lengths, one word each, then the elements from a fixed offset on (voc's
+  own layout, `SYSTEM_NEWARR`); `p[i]`, `p[i, j]` and `p^` work through it
+  and a NIL `p` is the usual NIL trap.
+- **`NEW(p, n0, ..., nk-1)`** allocates it, one length per open dimension.
+  Like voc a length that is not positive - zero included, though the report
+  says nothing - traps, exit 7 ("Too many, or negative number of, elements
+  in dynamic array", voc's Halt(-20)); so does a size that overflows, which
+  voc silently wraps. A heap that cannot supply the block is not a trap:
+  the pointer is NIL, as for a record. voc also rejects a *constant*
+  length <= 0 at compile time ("illegal value of constant"); poc traps at
+  run time instead.
+- **Collector**: the block is tagged with the array descriptor of the
+  innermost element type, like a fixed array of pointers (see
+  `llvm-open-array-new`, which fails without it).
+- Not done: more than 8 open dimensions (`; unsupported`), an open array as
+  a *value* of a procedure type (procedure values are step 8's), and the
+  copy of a value parameter is never skipped even when the procedure only
+  reads it.
 
 ### External procedures
 

@@ -42,31 +42,28 @@ entry:
   %t11 = sub i8 %t7, 32
   %t12 = select i1 %t10, i8 %t11, i8 %t7
   store i8 %t12, ptr @predeclaredir.capVal
-  %t13 = sext i16 5 to i32
-  store i32 %t13, ptr @predeclaredir.lenVal
-  %t14 = sext i16 3 to i32
-  store i32 %t14, ptr @predeclaredir.dim0
-  %t15 = sext i16 4 to i32
-  store i32 %t15, ptr @predeclaredir.dim1
-  %t16 = sext i8 3 to i16
-  store i16 %t16, ptr @predeclaredir.i
-  %t17 = load i16, ptr @predeclaredir.i
-  %t18 = add i16 %t17, 1
+  store i32 5, ptr @predeclaredir.lenVal
+  store i32 3, ptr @predeclaredir.dim0
+  store i32 4, ptr @predeclaredir.dim1
+  %t13 = sext i8 3 to i16
+  store i16 %t13, ptr @predeclaredir.i
+  %t14 = load i16, ptr @predeclaredir.i
+  %t15 = add i16 %t14, 1
+  store i16 %t15, ptr @predeclaredir.i
+  %t16 = load i16, ptr @predeclaredir.i
+  %t17 = sext i8 10 to i16
+  %t18 = add i16 %t16, %t17
   store i16 %t18, ptr @predeclaredir.i
   %t19 = load i16, ptr @predeclaredir.i
-  %t20 = sext i8 10 to i16
-  %t21 = add i16 %t19, %t20
+  %t20 = sext i8 4 to i16
+  %t21 = sub i16 %t19, %t20
   store i16 %t21, ptr @predeclaredir.i
-  %t22 = load i16, ptr @predeclaredir.i
-  %t23 = sext i8 4 to i16
-  %t24 = sub i16 %t22, %t23
-  store i16 %t24, ptr @predeclaredir.i
-  %t25 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 0
-  store i8 104, ptr %t25
-  %t26 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 1
-  store i8 105, ptr %t26
-  %t27 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 2
-  store i8 0, ptr %t27
+  %t22 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 0
+  store i8 104, ptr %t22
+  %t23 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 1
+  store i8 105, ptr %t23
+  %t24 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 2
+  store i8 0, ptr %t24
   ret void
 }
 

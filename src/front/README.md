@@ -39,7 +39,11 @@ etc.).
   `WITH` (reusing Phase 5's guard-applicability pair outright; since
   Phase 9 step 6 all three also apply to a VAR parameter of record type,
   via `lastDesignatorIsVarParam`), and
-  dispatch to `PredeclaredProcedures.Mod` for §10.3's builtins. Two
+  dispatch to `PredeclaredProcedures.Mod` for §10.3's builtins. Phase 9
+  step 7 fixed a `CheckArguments` gap it surfaced: a VAR parameter of open
+  array type demanded the *same* type of its argument, which no
+  independently written open-array type ever is - it now takes any
+  array-compatible one (`IsOpenArrayFormal`). Two
   explicit, narrower scope boundaries: a function procedure's "must
   contain a return statement" check is shallow (no `BEGIN` at all is
   rejected, not a full return-reachability analysis), and `r.P^`

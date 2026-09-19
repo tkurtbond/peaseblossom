@@ -10,7 +10,10 @@ MODULE LLVMTypes;
      struct - RecordTypeString's own comment), and POINTER and PROCEDURE
      types (both a bare "ptr" - LLVM's opaque pointer type; a POINTER's
      pointee and a procedure's signature are never part of the type).
-     Only an open array is still "<unsupported>" (Phase 9 step 7).
+     Only an open array is still "<unsupported>" - it has no single LLVM
+     type: its elements are addressed through a pointer and its lengths
+     are separate values (LLVMCodeGenerator.Mod's section on open arrays,
+     Phase 9 step 7), so nothing asks for its type string.
      TypeString* returns the
      literal string "<unsupported>" for any of those shapes rather than
      failing outright - nothing calls it with one yet (no real codegen

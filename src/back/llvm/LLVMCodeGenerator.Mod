@@ -55,7 +55,11 @@ MODULE LLVMCodeGenerator;
      otherwise (GenerateMethodCall); a VAR parameter of record type also
      carries a hidden second argument, its actual's type descriptor
      (NeedsHiddenTag), so it can be dispatched on and tested. Open
-     arrays (step 7) are not lowered yet.
+     arrays are in scope since step 7: an open-array parameter is its
+     address plus one hidden length per open dimension, a pointer to an
+     open array points at a block whose header holds the lengths
+     (the section on open arrays, OpenDimCount), and indexing, LEN, COPY,
+     comparison, passing on and NEW(p, n0, ..., nk-1) all work on them.
 
      DIV/MOD lower Oberon-2's floored-division semantics (confirmed
      2026-09-18 against real voc, not assumed: (-7) DIV 2 = -4, (-7) MOD
@@ -235,6 +239,19 @@ MODULE LLVMCodeGenerator;
     withTrapGlobal = "@.trap.nowith";
     withTrapMsg = "no matching WITH guard";
     withTrapExitCode = 6;
+    (* Phase 9 step 7: NEW(p, n0, ..., nk-1) with a length that is not
+       positive, or a product too large for the address space. voc's own
+       runtime halts here too (Halt(-20), "Too many, or negative number
+       of, elements in dynamic array" - and also for a zero length, which
+       the report leaves open), so poc traps rather than hand back a
+       block too small for the lengths it records. *)
+    lengthTrapGlobal = "@.trap.arraylength";
+    lengthTrapMsg = "Too many, or negative number of, elements in dynamic array";
+    lengthTrapExitCode = 7;
+
+    (* the most open dimensions (ARRAY OF ARRAY OF ... T) one designator
+       may carry lengths for - see DopeVector *)
+    maxOpenDims = 8;
 
     (* DynamicType.kind - see DynamicType. *)
     dynStatic = 0;
@@ -261,6 +278,18 @@ MODULE LLVMCodeGenerator;
       oberonType: Types.Type
     END;
 
+    (* PLAN.md Phase 9 step 7: the run-time lengths of an open array a
+       designator resolved to - one word-sized integer (an SSA value or a
+       constant) per open dimension, outermost first; count = 0 whenever
+       the designator's type is not an open array. They come from where
+       the array's dope vector lives: an open-array parameter's hidden
+       length arguments, or the header of the heap block a pointer to an
+       open array points at (OpenDataOffset). *)
+    DopeVector = RECORD
+      count: INTEGER;
+      len: ARRAY maxOpenDims OF ValueText
+    END;
+
     (* PLAN.md Phase 8 step 10's local-storage side table: SymbolTable's
        own ObjectDesc is deliberately semantics-free (its own header
        comment) and carries no backend field to hang an LLVM address on,
@@ -282,6 +311,8 @@ MODULE LLVMCodeGenerator;
          travels with a VAR parameter of record type (empty for every
          other binding) - see NeedsHiddenTag. *)
       tagText: ValueText;
+      (* PLAN.md Phase 9 step 7: an open-array parameter's hidden lengths *)
+      dope: DopeVector;
       next: LocalBinding
     END;
 
@@ -296,7 +327,10 @@ MODULE LLVMCodeGenerator;
        VAR record must not be resolved from the declared type alone. *)
     DynamicType = RECORD
       kind: INTEGER;
-      text: ValueText
+      text: ValueText;
+      (* PLAN.md Phase 9 step 7: the lengths of the open array the
+         designator resolved to, if it did *)
+      dope: DopeVector
     END;
 
     (* PLAN.md Phase 8 step 12: once a program can compile more than one
@@ -456,6 +490,9 @@ MODULE LLVMCodeGenerator;
          GarbageCollectedHeap itself (NEW declares its Allocate if not). *)
       currentBlock: ValueText;
       needNilTrap, needGuardTrap, needWithTrap, usedAllocate: BOOLEAN;
+      (* Phase 9 step 7: the array-length trap, and the overflow-checking
+         arithmetic intrinsics NEW's size computation calls *)
+      needLengthTrap, needOverflowMath: BOOLEAN;
       narrowings: Narrowing;
       arrayDescs: ArrayDescEntry;
       lateRecords: TypeDescEntry;
@@ -845,6 +882,104 @@ MODULE LLVMCodeGenerator;
     RETURN count
   END CountPointerSlots;
 
+  (* ---- Open arrays (PLAN.md Phase 9 step 7) ----
+
+     An open array (ARRAY OF T, or ARRAY OF ARRAY OF ... T) has lengths
+     the compiler cannot know; they travel with the data as a *dope
+     vector*, one word-sized integer per open dimension, outermost first.
+     Two places hold one:
+
+       a formal parameter   the data pointer, then the lengths as hidden
+                            arguments right after it ("%a", "%a.len0",
+                            "%a.len1" - the way a VAR record parameter
+                            carries its tag). A value parameter is copied
+                            into the callee's own frame on entry, so the
+                            caller's array is never touched through it.
+                            An external ["C"] procedure gets the bare
+                            pointer, as C expects.
+       a heap block         POINTER TO ARRAY OF T points at the lengths,
+                            which are followed by the elements from
+                            OpenDataOffset on - voc's own layout
+                            (SYSTEM_NEWARR), and the reason a pointer to
+                            an open array still needs no tag word of
+                            its own beyond the collector's array
+                            descriptor (ArrayTagOperand). The lengths
+                            are word-sized (voc's are ADDRESS-sized too),
+                            so they follow the target's word size like
+                            every other size-dependent quantity here.
+
+     A designator that resolves to an open array reports its lengths in
+     DopeVector; indexing checks against them at run time and steps by
+     the product of the inner ones (GenerateDesignatorAddressTo). *)
+
+  PROCEDURE IsOpenArrayType(t: Types.Type): BOOLEAN;
+    VAR arr: Types.ArrayType;
+  BEGIN
+    IF (t = NIL) OR ~(t IS Types.ArrayType) THEN RETURN FALSE END;
+    arr := t(Types.ArrayType);
+    RETURN arr.isOpen
+  END IsOpenArrayType;
+
+  (* How many open dimensions t starts with: ARRAY OF ARRAY OF T is two,
+     ARRAY OF ARRAY 4 OF T one, anything else none. *)
+  PROCEDURE OpenDimCount(t: Types.Type): INTEGER;
+    VAR arr: Types.ArrayType; n: INTEGER;
+  BEGIN
+    n := 0;
+    WHILE IsOpenArrayType(t) DO
+      INC(n); arr := t(Types.ArrayType); t := arr.elementType
+    END;
+    RETURN n
+  END OpenDimCount;
+
+  (* What is left of t below its open dimensions: the type of one
+     innermost element (which may itself be a fixed array or a record). *)
+  PROCEDURE OpenElementType(t: Types.Type): Types.Type;
+    VAR arr: Types.ArrayType;
+  BEGIN
+    WHILE IsOpenArrayType(t) DO
+      arr := t(Types.ArrayType); t := arr.elementType
+    END;
+    RETURN t
+  END OpenElementType;
+
+  (* The last open array in t's chain, the one whose element type is the
+     innermost one - what the collector's array descriptor is made for. *)
+  PROCEDURE InnermostOpenArray(t: Types.Type): Types.ArrayType;
+    VAR arr, last: Types.ArrayType;
+  BEGIN
+    last := NIL;
+    WHILE IsOpenArrayType(t) DO
+      arr := t(Types.ArrayType); last := arr; t := arr.elementType
+    END;
+    RETURN last
+  END InnermostOpenArray;
+
+  (* Bytes from the start of a heap-allocated open array (where its
+     lengths are) to its first element: the lengths, rounded up to the
+     element's alignment. When the elements contain pointers the offset
+     is a whole number of elements instead, because the collector walks
+     the block as a run of elements from its very start (see
+     ArrayTagOperand); it then reads the lengths as if they were a few
+     elements' pointer fields. That costs nothing but a spurious
+     candidate at worst: a length of such an array is at most 2^25 (an
+     object may not exceed 2^27 bytes), well below any address the
+     allocator hands out, and the collector ignores a word that is not
+     inside one of its chunks. *)
+  PROCEDURE OpenDataOffset(arr: Types.ArrayType; sizeModel: INTEGER): LONGINT;
+    VAR elem: Types.Type; headerBytes, unit: LONGINT;
+  BEGIN
+    elem := OpenElementType(arr);
+    headerBytes := OpenDimCount(arr) * ConstantEvaluator.wordSize;
+    IF CountPointerSlots(elem) > 0 THEN
+      unit := MemoryLayout.Size(elem, ConstantEvaluator.wordSize, sizeModel)
+    ELSE
+      unit := MemoryLayout.Align(elem, ConstantEvaluator.wordSize, sizeModel)
+    END;
+    IF unit < 1 THEN unit := 1 END;
+    RETURN ((headerBytes + unit - 1) DIV unit) * unit
+  END OpenDataOffset;
+
   (* Prints msgText to stderr (fd 2) and terminates with exitCode - the
      shared abort sequence both of PLAN.md Phase 8 step 9's traps use.
      "unreachable" after the exit() call keeps every caller's own
@@ -914,6 +1049,69 @@ MODULE LLVMCodeGenerator;
     EmitTrap(w, cg, indexRangeTrapGlobal, indexRangeTrapMsg, indexRangeExitCode);
     EmitLabel(w, cg, okLabel)
   END EmitIndexRangeCheck;
+
+  (* text, an integer of LLVM type fromType, as one of toType: truncated,
+     sign-extended or as it is. *)
+  PROCEDURE EmitResizeInt(VAR w: Files.Rider; VAR cg: Codegen; fromType, text, toType: ARRAY OF CHAR;
+                          VAR dest: ARRAY OF CHAR);
+  BEGIN
+    IF fromType = toType THEN COPY(text, dest)
+    ELSIF IntWidth(fromType) > IntWidth(toType) THEN EmitConvert(w, cg, "trunc", fromType, text, toType, dest)
+    ELSE EmitConvert(w, cg, "sext", fromType, text, toType, dest)
+    END
+  END EmitResizeInt;
+
+  (* The element check of an open array, whose length is a run-time value
+     (a word-sized SSA value or constant): idx < length as unsigned
+     numbers, which also catches a negative index. Both are compared at
+     the wider of the two widths, so an index wider than a word (a
+     HUGEINT on a 32-bit target) is not truncated first. *)
+  PROCEDURE EmitOpenIndexCheck(VAR w: Files.Rider; VAR cg: Codegen; idx: Value; lenText: ARRAY OF CHAR);
+    VAR wordInt, common, idxWide, lenWide, inBounds, okLabel, trapLabel: ValueText;
+  BEGIN
+    WordIntType(wordInt);
+    IF IntWidth(idx.llvmType) > IntWidth(wordInt) THEN COPY(idx.llvmType, common) ELSE COPY(wordInt, common) END;
+    EmitResizeInt(w, cg, idx.llvmType, idx.text, common, idxWide);
+    EmitResizeInt(w, cg, wordInt, lenText, common, lenWide);
+    EmitBinOp(w, cg, "icmp ult", common, idxWide, lenWide, inBounds);
+    NewLabel(cg, okLabel); NewLabel(cg, trapLabel);
+    EmitCondBr(w, inBounds, okLabel, trapLabel);
+    EmitLabel(w, cg, trapLabel);
+    EmitTrap(w, cg, indexRangeTrapGlobal, indexRangeTrapMsg, indexRangeExitCode);
+    EmitLabel(w, cg, okLabel)
+  END EmitOpenIndexCheck;
+
+  (* The address of element idx of the array of elemType at basePtr - one
+     step of elemType's own size, unlike EmitGEP, whose pointee is the
+     whole (fixed-size) array. *)
+  PROCEDURE EmitElementGEP(VAR w: Files.Rider; VAR cg: Codegen; elemType, basePtr, idxType, idxText: ARRAY OF CHAR;
+                           VAR destText: ARRAY OF CHAR);
+  BEGIN
+    NewTemp(cg, destText);
+    WriteStr(w, "  "); WriteStr(w, destText); WriteStr(w, " = getelementptr "); WriteStr(w, elemType);
+    WriteStr(w, ", ptr "); WriteStr(w, basePtr); WriteStr(w, ", "); WriteStr(w, idxType);
+    WriteStr(w, " "); WriteStr(w, idxText); WriteLn(w)
+  END EmitElementGEP;
+
+  (* Bytes in the elements the open dimensions from `from` on describe:
+     the product of those lengths and the size of one innermost element
+     (a word-sized value). from = 0 is a whole array's size, from = 1
+     the stride of its first index. *)
+  PROCEDURE EmitOpenBytes(VAR w: Files.Rider; VAR cg: Codegen; arrType: Types.Type; VAR dope: DopeVector;
+                          from: INTEGER; VAR bytes: ARRAY OF CHAR);
+    VAR wordInt, acc, product: ValueText; j: INTEGER;
+  BEGIN
+    WordIntType(wordInt);
+    acc[0] := 0X;
+    AppendLongInt(acc, MemoryLayout.Size(OpenElementType(arrType), ConstantEvaluator.wordSize, cg.sizeModel));
+    j := from;
+    WHILE j < dope.count DO
+      EmitBinOp(w, cg, "mul", wordInt, acc, dope.len[j], product);
+      COPY(product, acc);
+      INC(j)
+    END;
+    COPY(acc, bytes)
+  END EmitOpenBytes;
 
   (* Converts v up to targetType's own LLVM representation, or returns v
      unchanged if it is already there: sext between integer widths,
@@ -1252,8 +1450,18 @@ MODULE LLVMCodeGenerator;
   PROCEDURE BindLocal(VAR cg: Codegen; obj: SymbolTable.Object; addrText: ARRAY OF CHAR);
     VAR b: LocalBinding;
   BEGIN
-    NEW(b); b.obj := obj; COPY(addrText, b.addrText); b.tagText[0] := 0X; b.next := cg.locals; cg.locals := b
+    NEW(b); b.obj := obj; COPY(addrText, b.addrText); b.tagText[0] := 0X; b.dope.count := 0;
+    b.next := cg.locals; cg.locals := b
   END BindLocal;
+
+  (* BindLocal for an open-array parameter, which also carries its hidden
+     lengths. *)
+  PROCEDURE BindLocalWithDope(VAR cg: Codegen; obj: SymbolTable.Object; addrText: ARRAY OF CHAR;
+                              VAR dope: DopeVector);
+  BEGIN
+    BindLocal(cg, obj, addrText);
+    cg.locals.dope := dope
+  END BindLocalWithDope;
 
   (* BindLocal for a VAR parameter of record type, which also carries its
      hidden tag argument. *)
@@ -1639,10 +1847,10 @@ MODULE LLVMCodeGenerator;
 
   (* TRUE for an operand ARRAY OF CHAR comparison/passing/COPY treats as a
      character sequence: a string literal, a named STRING CONST, or a
-     designator of fixed-length ARRAY n OF CHAR type (a variable, a
-     record field, an array element). An open ARRAY OF CHAR is not one
-     yet - its length is a run-time value, which needs Phase 9 step 7's
-     dope vectors. *)
+     designator of ARRAY n OF CHAR type (a variable, a record field, an
+     array element) or ARRAY OF CHAR type (an open-array parameter, or an
+     array a pointer designates - whose length is a run-time value from
+     its dope vector, GenerateCharSequence). *)
   PROCEDURE IsCharSequenceExpr(VAR cg: Codegen; e: SyntaxTree.ExprNode): BOOLEAN;
     VAR lit: SyntaxTree.LiteralExprNode; de: SyntaxTree.DesignatorExprNode; t: Types.Type; arr: Types.ArrayType;
   BEGIN
@@ -1657,7 +1865,7 @@ MODULE LLVMCodeGenerator;
       IF t = Types.String THEN RETURN TRUE END;
       IF (t # NIL) & (t IS Types.ArrayType) THEN
         arr := t(Types.ArrayType);
-        RETURN ~arr.isOpen & (arr.elementType = Types.Char)
+        RETURN arr.elementType = Types.Char
       END
     END;
     RETURN FALSE
@@ -1963,25 +2171,52 @@ MODULE LLVMCodeGenerator;
 
   (* The pointer stored at addrText, loaded and NIL-checked: afterwards
      addrText holds the address of what it pointed to and addrType that
-     thing's type. FALSE when addrType is not a pointer to a record or a
-     fixed array (a pointer to an open array is NEW(p, n)'s - step 7). *)
+     thing's type. For a pointer to an open array the address is that of
+     its first element, and dope receives the lengths read from the block's
+     header (OpenDataOffset); dope.count is 0 for anything else. FALSE
+     when addrType is not a pointer to a record or an array. *)
   PROCEDURE DereferencePointer(VAR w: Files.Rider; VAR cg: Codegen; VAR addrText: ValueText;
-                               VAR addrType: Types.Type): BOOLEAN;
-    VAR ptr: Types.PointerType; base: Types.Type; loaded: Value; arr: Types.ArrayType;
+                               VAR addrType: Types.Type; VAR dope: DopeVector): BOOLEAN;
+    VAR
+      ptr: Types.PointerType; base: Types.Type; loaded, lenValue: Value; arr: Types.ArrayType;
+      wordInt, offText, lenAddr, dataAddr: ValueText; j, dims: INTEGER;
   BEGIN
+    dope.count := 0;
     IF (addrType = NIL) OR ~(addrType IS Types.PointerType) THEN RETURN FALSE END;
     ptr := addrType(Types.PointerType);
     base := ptr.base;
     IF base = NIL THEN RETURN FALSE END;
+    arr := NIL; dims := 0;
     IF base IS Types.ArrayType THEN
       arr := base(Types.ArrayType);
-      IF arr.isOpen THEN RETURN FALSE END
+      IF arr.isOpen THEN
+        dims := OpenDimCount(arr);
+        IF dims > maxOpenDims THEN RETURN FALSE END
+      END
     ELSIF ~(base IS Types.RecordType) THEN
       RETURN FALSE
     END;
     LoadAtAddress(w, cg, addrText, addrType, loaded);
     EmitNilCheck(w, cg, loaded.text);
-    COPY(loaded.text, addrText);
+    IF dims > 0 THEN
+      WordIntType(wordInt);
+      FOR j := 0 TO dims - 1 DO
+        IF j = 0 THEN
+          COPY(loaded.text, lenAddr)
+        ELSE
+          offText[0] := 0X; AppendLongInt(offText, j * ConstantEvaluator.wordSize);
+          EmitByteGEP(w, cg, loaded.text, wordInt, offText, lenAddr)
+        END;
+        EmitLoad(w, cg, wordInt, lenAddr, lenValue.text);
+        COPY(lenValue.text, dope.len[j])
+      END;
+      dope.count := dims;
+      offText[0] := 0X; AppendLongInt(offText, OpenDataOffset(arr, cg.sizeModel));
+      EmitByteGEP(w, cg, loaded.text, wordInt, offText, dataAddr);
+      COPY(dataAddr, addrText)
+    ELSE
+      COPY(loaded.text, addrText)
+    END;
     addrType := base;
     RETURN TRUE
   END DereferencePointer;
@@ -1989,10 +2224,10 @@ MODULE LLVMCodeGenerator;
   (* "." and "[" on a pointer designate through it (Oberon2.pdf 8.1: "p.f
      and p[e] may be abbreviated" from "p^.f"/"p^[e]"). *)
   PROCEDURE AutoDereference(VAR w: Files.Rider; VAR cg: Codegen; VAR addrText: ValueText;
-                            VAR addrType: Types.Type): BOOLEAN;
+                            VAR addrType: Types.Type; VAR dope: DopeVector): BOOLEAN;
   BEGIN
     IF (addrType # NIL) & (addrType IS Types.PointerType) THEN
-      RETURN DereferencePointer(w, cg, addrText, addrType)
+      RETURN DereferencePointer(w, cg, addrText, addrType, dope)
     END;
     RETURN TRUE
   END AutoDereference;
@@ -2039,15 +2274,16 @@ MODULE LLVMCodeGenerator;
      type T. stopAt ends the walk before that selector (NIL: walk them
      all) - a type-bound call evaluates its receiver by stopping at the
      procedure's name - and dyn reports where the resulting record's
-     *dynamic* type comes from (DynamicType). FALSE means some selector in
-     the chain needs a capability this backend does not have yet - a
-     dereference of a pointer to an open array (step 7) - or names
+     *dynamic* type comes from (DynamicType) - and, if it is an open
+     array, its lengths (dyn.dope). An open array is an open-array
+     parameter or what a pointer to one points at: "[" on it is
+     checked against the run-time length, and steps by the element's size
+     - or, when the element is itself an open array, by the product of
+     the inner lengths, leaving the address of the inner array and the
+     remaining lengths. FALSE means some selector in the chain names
      something that is not a data field (a type-bound procedure, which
-     GenerateMethodCall handles instead). An open array can
-     never appear here either (CheckDesignator only ever resolves a
-     module VAR's own declared, always-fixed-size array type through "["
-     - an open array only exists as a formal parameter, and array-
-     parameter indexing is step 7's). *)
+     GenerateMethodCall handles instead) or otherwise cannot be
+     addressed. *)
   PROCEDURE GenerateDesignatorAddressTo(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                                         stopAt: SyntaxTree.Selector;
                                         VAR addrText: ValueText; VAR addrType: Types.Type;
@@ -2058,8 +2294,9 @@ MODULE LLVMCodeGenerator;
       pointeeType: ARRAY 256 OF CHAR; homeModule: SyntaxTree.Ident;
       guardObj: SymbolTable.Object; guardHome: SyntaxTree.Ident; guardRec: Types.RecordType;
       binding: LocalBinding; wasPointer: BOOLEAN;
+      wordInt, strideText, idxWord, offsetText: ValueText; level: INTEGER;
   BEGIN
-    dyn.kind := dynStatic; dyn.text[0] := 0X;
+    dyn.kind := dynStatic; dyn.text[0] := 0X; dyn.dope.count := 0;
     obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
     IF d.qualifier[0] = 0X THEN
@@ -2067,7 +2304,8 @@ MODULE LLVMCodeGenerator;
       binding := FindLocalBinding(cg, obj);
       IF (binding # NIL) & (binding.tagText[0] # 0X) THEN
         dyn.kind := dynParam; COPY(binding.tagText, dyn.text)
-      END
+      END;
+      IF binding # NIL THEN dyn.dope := binding.dope END
     ELSE
       (* A qualified VAR can never be a local binding - cg.locals only
          ever holds the *current* procedure's own alloca'd params/locals,
@@ -2081,27 +2319,47 @@ MODULE LLVMCodeGenerator;
       WITH
         sel: SyntaxTree.FieldSelector DO
           wasPointer := (addrType # NIL) & (addrType IS Types.PointerType);
-          IF ~AutoDereference(w, cg, addrText, addrType) THEN RETURN FALSE END;
+          IF ~AutoDereference(w, cg, addrText, addrType, dyn.dope) THEN RETURN FALSE END;
           IF wasPointer THEN dyn.kind := dynBlock; COPY(addrText, dyn.text) END;
           IF ~GenerateFieldAddress(w, cg, addrText, addrType, sel.name) THEN RETURN FALSE END;
-          dyn.kind := dynStatic
+          dyn.kind := dynStatic; dyn.dope.count := 0
       | sel: SyntaxTree.IndexSelector DO
           idx := sel.indices;
           WHILE idx # NIL DO
-            IF ~AutoDereference(w, cg, addrText, addrType) THEN RETURN FALSE END;
+            IF ~AutoDereference(w, cg, addrText, addrType, dyn.dope) THEN RETURN FALSE END;
             IF (addrType = NIL) OR ~(addrType IS Types.ArrayType) THEN RETURN FALSE END;
             arr := addrType(Types.ArrayType);
-            IF arr.isOpen THEN RETURN FALSE END;
-            GenerateExpr(w, cg, idx, idxVal);
-            EmitIndexRangeCheck(w, cg, idxVal, arr.length);
-            LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
-            EmitGEP(w, cg, pointeeType, addrText, idxVal.llvmType, idxVal.text, addrText);
+            IF arr.isOpen THEN
+              IF dyn.dope.count < 1 THEN RETURN FALSE END;
+              GenerateExpr(w, cg, idx, idxVal);
+              EmitOpenIndexCheck(w, cg, idxVal, dyn.dope.len[0]);
+              IF IsOpenArrayType(arr.elementType) THEN
+                (* the element is an array of its own: skip whole inner
+                   arrays, and keep the inner lengths *)
+                EmitOpenBytes(w, cg, arr, dyn.dope, 1, strideText);
+                WordIntType(wordInt);
+                EmitResizeInt(w, cg, idxVal.llvmType, idxVal.text, wordInt, idxWord);
+                EmitBinOp(w, cg, "mul", wordInt, idxWord, strideText, offsetText);
+                EmitByteGEP(w, cg, addrText, wordInt, offsetText, addrText);
+                FOR level := 1 TO dyn.dope.count - 1 DO dyn.dope.len[level - 1] := dyn.dope.len[level] END;
+                DEC(dyn.dope.count)
+              ELSE
+                LLVMTypes.TypeString(arr.elementType, cg.sizeModel, pointeeType);
+                EmitElementGEP(w, cg, pointeeType, addrText, idxVal.llvmType, idxVal.text, addrText);
+                dyn.dope.count := 0
+              END
+            ELSE
+              GenerateExpr(w, cg, idx, idxVal);
+              EmitIndexRangeCheck(w, cg, idxVal, arr.length);
+              LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
+              EmitGEP(w, cg, pointeeType, addrText, idxVal.llvmType, idxVal.text, addrText)
+            END;
             addrType := arr.elementType;
             dyn.kind := dynStatic;
             idx := idx.next
           END
       | sel: SyntaxTree.DereferenceSelector DO
-          IF ~DereferencePointer(w, cg, addrText, addrType) THEN RETURN FALSE END;
+          IF ~DereferencePointer(w, cg, addrText, addrType, dyn.dope) THEN RETURN FALSE END;
           dyn.kind := dynBlock; COPY(addrText, dyn.text)
       | sel: SyntaxTree.GuardSelector DO
           guardObj := ResolveQualifiedObject(cg, sel.qualifier, sel.name, guardHome);
@@ -2111,7 +2369,7 @@ MODULE LLVMCodeGenerator;
           IF (addrType # NIL) & (addrType IS Types.PointerType) THEN
             LoadAtAddress(w, cg, addrText, addrType, loaded);
             EmitTypeGuard(w, cg, loaded.text, guardRec);
-            addrType := TargetPointer(guardObj.type)
+            addrType := TargetPointer(guardObj.type); dyn.dope.count := 0
           ELSIF (addrType # NIL) & (addrType IS Types.RecordType) & (dyn.kind = dynParam) THEN
             (* a VAR record parameter: same address, tested against its
                hidden tag, statically the guard's record from here on *)
@@ -2143,7 +2401,7 @@ MODULE LLVMCodeGenerator;
       IF GenerateDesignatorAddress(w, cg, d, addrText, addrType) THEN
         LoadAtAddress(w, cg, addrText, addrType, result)
       ELSE
-        Unsupported(w, cg, "selector this backend cannot address (a pointer to an open array, step 7)", Types.Undefined, result)
+        Unsupported(w, cg, "selector this backend cannot address", Types.Undefined, result)
       END;
       RETURN
     END;
@@ -2186,40 +2444,65 @@ MODULE LLVMCodeGenerator;
   END StringConstName;
 
   (* An operand IsCharSequenceExpr accepted, as a pointer to its bytes
-     plus how many of them there are *including room for the terminator*:
-     a string literal or named STRING CONST is its characters plus 0X (a
-     compile-time-known length), a fixed array is its declared length. The
-     comparison/copy helpers treat running off the end of either side the
-     same as meeting a 0X, which is exactly Oberon-2's rule for an array
-     with no terminator inside it. FALSE (nothing usable produced) when
-     the address cannot be computed - the array sits behind a pointer, or
-     inside a record with a base type. A string literal's global was
-     already emitted by CollectStringConstants's own pre-pass; a named
-     constant's goes through StringConstGlobal. *)
+     plus how many of them there are *including room for the terminator*
+     (lenText, a word-sized integer: a constant for a string literal or
+     named STRING CONST - its characters plus 0X - and a fixed array, its
+     declared length; an SSA value for an open array, read from its dope
+     vector). The comparison/copy helpers treat running off the end of
+     either side the same as meeting a 0X, which is exactly Oberon-2's
+     rule for an array with no terminator inside it. FALSE (nothing
+     usable produced) when the address cannot be computed. A string
+     literal's global was already emitted by CollectStringConstants's own
+     pre-pass; a named constant's goes through StringConstGlobal. *)
   PROCEDURE GenerateCharSequence(VAR w: Files.Rider; VAR cg: Codegen; e: SyntaxTree.ExprNode;
-                                 VAR addr: ValueText; VAR length: LONGINT): BOOLEAN;
+                                 VAR addr: ValueText; VAR lenText: ValueText): BOOLEAN;
     VAR text: LongText; lit: SyntaxTree.LiteralExprNode; de: SyntaxTree.DesignatorExprNode;
-        addrType: Types.Type; arr: Types.ArrayType;
+        addrType: Types.Type; arr: Types.ArrayType; dyn: DynamicType;
   BEGIN
+    lenText[0] := 0X;
     IF e IS SyntaxTree.LiteralExprNode THEN
       lit := e(SyntaxTree.LiteralExprNode);
       StringConstName(cg, lit, addr);
-      length := StrLen(lit.lexeme) + 1;
+      AppendLongInt(lenText, StrLen(lit.lexeme) + 1);
       RETURN TRUE
     END;
     IF StringSourceText(cg, e, text) THEN
       StringConstGlobal(cg, text, addr);
-      length := StrLen(text) + 1;
+      AppendLongInt(lenText, StrLen(text) + 1);
       RETURN TRUE
     END;
     IF ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
     de := e(SyntaxTree.DesignatorExprNode);
-    IF ~GenerateDesignatorAddress(w, cg, de.designator, addr, addrType) THEN RETURN FALSE END;
+    IF ~GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addr, addrType, dyn) THEN RETURN FALSE END;
     IF (addrType = NIL) OR ~(addrType IS Types.ArrayType) THEN RETURN FALSE END;
     arr := addrType(Types.ArrayType);
-    length := arr.length;
+    IF arr.isOpen THEN
+      IF dyn.dope.count < 1 THEN RETURN FALSE END;
+      COPY(dyn.dope.len[0], lenText)
+    ELSE
+      AppendLongInt(lenText, arr.length)
+    END;
     RETURN TRUE
   END GenerateCharSequence;
+
+  (* A length, as the i32 the character helpers (@.charcmp, @.charcopy)
+     take: a constant is as it is, a word-sized value is narrowed - on a
+     64-bit target one past 2^31-1 is clamped there instead of wrapping
+     negative and reading as an empty sequence. *)
+  PROCEDURE EmitLengthAsI32(VAR w: Files.Rider; VAR cg: Codegen; lenText: ARRAY OF CHAR; VAR dest: ARRAY OF CHAR);
+    VAR wordInt, tooBig, clamped: ValueText;
+  BEGIN
+    WordIntType(wordInt);
+    IF (lenText[0] >= "0") & (lenText[0] <= "9") THEN
+      COPY(lenText, dest)
+    ELSIF wordInt = "i32" THEN
+      COPY(lenText, dest)
+    ELSE
+      EmitBinOp(w, cg, "icmp sgt", wordInt, lenText, "2147483647", tooBig);
+      EmitSelect(w, cg, tooBig, wordInt, "2147483647", lenText, clamped);
+      EmitConvert(w, cg, "trunc", wordInt, clamped, "i32", dest)
+    END
+  END EmitLengthAsI32;
 
   (* left <op> right over two character sequences, by one call to the
      @.charcmp helper (EmitCharacterHelpers) - a three-way compare, -1/0/1
@@ -2227,17 +2510,17 @@ MODULE LLVMCodeGenerator;
      and an icmp of that against 0 for the wanted relation. *)
   PROCEDURE GenerateCharCompare(VAR w: Files.Rider; VAR cg: Codegen; op: INTEGER;
                                 left, right: SyntaxTree.ExprNode; VAR result: Value);
-    VAR aAddr, bAddr, aLenText, bLenText, cmp, i1temp: ValueText; aLen, bLen: LONGINT;
+    VAR aAddr, bAddr, aWord, bWord, aLenText, bLenText, cmp, i1temp: ValueText;
         pred: ARRAY 16 OF CHAR;
   BEGIN
-    IF ~GenerateCharSequence(w, cg, left, aAddr, aLen) OR ~GenerateCharSequence(w, cg, right, bAddr, bLen) THEN
-      Unsupported(w, cg, "character-array operand whose address cannot be computed (PLAN.md Phase 9 steps 5-7)",
+    IF ~GenerateCharSequence(w, cg, left, aAddr, aWord) OR ~GenerateCharSequence(w, cg, right, bAddr, bWord) THEN
+      Unsupported(w, cg, "character-array operand whose address cannot be computed",
                   Types.Boolean, result);
       RETURN
     END;
     cg.needCharCompare := TRUE;
-    aLenText[0] := 0X; AppendLongInt(aLenText, aLen);
-    bLenText[0] := 0X; AppendLongInt(bLenText, bLen);
+    EmitLengthAsI32(w, cg, aWord, aLenText);
+    EmitLengthAsI32(w, cg, bWord, bLenText);
     NewTemp(cg, cmp);
     WriteStr(w, "  "); WriteStr(w, cmp); WriteStr(w, " = call i32 @.charcmp(ptr "); WriteStr(w, aAddr);
     WriteStr(w, ", i32 "); WriteStr(w, aLenText); WriteStr(w, ", ptr "); WriteStr(w, bAddr);
@@ -2333,25 +2616,13 @@ MODULE LLVMCodeGenerator;
     END
   END AssignToAddress;
 
-  (* Avoids chaining a selector right after a "(...)" type guard/cast in
-     one expression - matches the safe idiom Types.Mod's own IsNumeric/
-     Rank already established (see their header comment) rather than
-     risking whatever gap prompted it. *)
-  PROCEDURE IsOpenCharArray(t: Types.Type): BOOLEAN;
-    VAR arr: Types.ArrayType;
-  BEGIN
-    IF (t = NIL) OR ~(t IS Types.ArrayType) THEN RETURN FALSE END;
-    arr := t(Types.ArrayType);
-    RETURN arr.isOpen & (arr.elementType = Types.Char)
-  END IsOpenCharArray;
-
   (* A formal parameter's ABI representation at a call boundary (used for
      both an external "declare"'s own signature and a call site's actual-
-     argument type) - VAR params and value ARRAY OF CHAR params both pass
-     as a bare "ptr" (see this module's header comment on why an open
-     CHAR array's real Oberon dope-vector/length convention does not
-     apply to a C-ABI external declaration); anything else uses its
-     ordinary LLVMTypes.TypeString*. *)
+     argument type) - VAR params and open-array params (value or VAR) pass
+     as a bare "ptr": an external C procedure has no use for the hidden
+     lengths an Oberon procedure takes after it (see the section on open
+     arrays, OpenDimCount); anything else uses its ordinary
+     LLVMTypes.TypeString*. *)
   (* PLAN.md Phase 9 step 6: a VAR parameter of record type is passed as
      the record's address *and* the address of its run-time type
      descriptor - a second, hidden argument right after it (named
@@ -2370,9 +2641,7 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE ParamLLVMType(VAR cg: Codegen; p: Types.Param; VAR llvmType: ARRAY OF CHAR);
   BEGIN
-    IF p.isVar THEN
-      COPY("ptr", llvmType)
-    ELSIF IsOpenCharArray(p.type) THEN
+    IF p.isVar OR IsOpenArrayType(p.type) THEN
       COPY("ptr", llvmType)
     ELSE
       LLVMTypes.TypeString(p.type, cg.sizeModel, llvmType)
@@ -2452,43 +2721,78 @@ MODULE LLVMCodeGenerator;
     WriteLn(w)
   END EmitRuntimeStringGlobal;
 
-  (* The one ARRAY OF CHAR value-argument shape this step lowers: a
-     literal string constant, referencing the global
-     CollectStringConstantsSeq's own pre-pass already emitted for it, by
-     the same line/column-derived name. Any
-     other actual argument shape (a VAR of array type, a designator, ...)
-     is real Oberon but not yet lowered here (PLAN.md Phase 8 step 8+, for
-     the same reason array/record VARs generally aren't) - "ptr null"
-     keeps the emitted IR well-typed rather than ill-formed. Builds into
-     a Value rather than writing straight to w - see GenerateCallArgList's
-     own header comment on why an argument's text can no longer be
-     written directly into a partially-written "call ...(" line. Takes
-     VAR w: Files.Rider (unlike before step 11) so the "unsupported"
-     diagnostic can be written as its own comment line, matching
-     Unsupported's own pattern - result.text must stay a clean, bare
-     value (just "null"), never a comment fragment, since it gets
-     spliced mid-line into a "call ...(" argument list by
-     GenerateCallArgList; a real bug (embedding the comment directly in
-     result.text) was found and fixed here during step 11's own testing,
-     once a scratch test finally exercised this ELSE branch from inside
-     a call-argument position for the first time. *)
-  PROCEDURE GenerateStringArgValue(VAR w: Files.Rider; VAR cg: Codegen; a: SyntaxTree.ExprNode; VAR result: Value);
-    VAR addr: ValueText; length: LONGINT;
+  (* The actual argument for an open-array formal parameter p - a VAR
+     parameter or a value one: a pointer to the array's first element
+     (result), and, for an Oberon procedure (passLengths), the hidden
+     length arguments that follow it, one per open dimension of p, as the
+     text ", <word> <length>" ... (lengths). What may be passed is what
+     Appendix A's "array compatible" allows: an array designator - fixed,
+     an open-array parameter of the caller's own, or reached through a
+     pointer - whose lengths are its declared ones or its dope vector's
+     (a fixed dimension under an open one contributes its constant), or,
+     for a value parameter of ARRAY OF CHAR, a string literal or named
+     STRING CONST (its characters and the terminating 0X, so LEN of it is
+     one more than the text's length, as in voc). An external procedure
+     gets the bare pointer. Built into strings, not written to w - see
+     GenerateCallArgList on why an argument's own text cannot be written
+     straight into a half-written "call ...(" line. *)
+  PROCEDURE GenerateOpenArrayArg(VAR w: Files.Rider; VAR cg: Codegen; p: Types.Param; a: SyntaxTree.ExprNode;
+                                 passLengths: BOOLEAN; VAR result: Value; VAR lengths: LongText);
+    VAR
+      addr, lenText, wordInt: ValueText; dyn: DynamicType; addrType, cur: Types.Type; arr: Types.ArrayType;
+      de: SyntaxTree.DesignatorExprNode; dims, level: INTEGER; text: LongText; ok: BOOLEAN;
   BEGIN
-    COPY("ptr", result.llvmType); result.oberonType := Types.Undefined;
-    IF IsCharSequenceExpr(cg, a) & GenerateCharSequence(w, cg, a, addr, length) THEN
+    COPY("ptr", result.llvmType); result.oberonType := Types.Undefined; lengths[0] := 0X;
+    WordIntType(wordInt);
+    dims := OpenDimCount(p.type);
+    ok := FALSE;
+    IF ~p.isVar & StringSourceText(cg, a, text) THEN
+      ok := GenerateCharSequence(w, cg, a, addr, lenText);
+      IF ok THEN
+        Strcat(lengths, ", "); Strcat(lengths, wordInt); Strcat(lengths, " "); Strcat(lengths, lenText)
+      END
+    ELSIF (a # NIL) & (a IS SyntaxTree.DesignatorExprNode) THEN
+      de := a(SyntaxTree.DesignatorExprNode);
+      IF ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addr, addrType, dyn) THEN
+        cur := addrType; ok := TRUE; level := 0;
+        WHILE ok & (level < dims) DO
+          IF (cur # NIL) & (cur IS Types.ArrayType) THEN
+            arr := cur(Types.ArrayType);
+            lenText[0] := 0X;
+            IF arr.isOpen THEN
+              IF level < dyn.dope.count THEN COPY(dyn.dope.len[level], lenText) ELSE ok := FALSE END
+            ELSE
+              AppendLongInt(lenText, arr.length)
+            END;
+            IF ok THEN
+              Strcat(lengths, ", "); Strcat(lengths, wordInt); Strcat(lengths, " "); Strcat(lengths, lenText);
+              cur := arr.elementType
+            END
+          ELSE
+            ok := FALSE
+          END;
+          INC(level)
+        END
+      END
+    END;
+    IF ok THEN
       COPY(addr, result.text)
     ELSE
-      WriteStr(w, "  ; unsupported: ARRAY OF CHAR argument that is not a string, a named STRING CONST or a fixed CHAR array (PLAN.md Phase 9 step 7)"); WriteLn(w);
-      COPY("null", result.text)
-    END
-  END GenerateStringArgValue;
+      WriteStr(w, "  ; unsupported: open-array argument that is not an array designator or a string"); WriteLn(w);
+      COPY("null", result.text);
+      lengths[0] := 0X;
+      FOR level := 1 TO dims DO
+        Strcat(lengths, ", "); Strcat(lengths, wordInt); Strcat(lengths, " 0")
+      END
+    END;
+    IF ~passLengths THEN lengths[0] := 0X END
+  END GenerateOpenArrayArg;
 
   (* A VAR actual argument must itself be a bare, unqualified, selector-
      free module VAR designator, matching every other designator this
      module's codegen handles (step 5's own scope) - its address is just
      "@Module.name" directly, the same reference GenerateDesignatorValue
-     already loads from. Builds into a Value - see GenerateStringArgValue's
+     already loads from. Builds into a Value - see GenerateOpenArrayArg's
      own comment above on why. *)
   (* Delegates straight to GenerateDesignatorAddress - any addressable
      designator (a bare local/global VAR, or a selector chain into one,
@@ -2531,20 +2835,26 @@ MODULE LLVMCodeGenerator;
         RETURN
       END
     END;
-    WriteStr(w, "  ; unsupported: VAR argument shape (PLAN.md Phase 9 step 7)"); WriteLn(w);
+    WriteStr(w, "  ; unsupported: VAR argument shape"); WriteLn(w);
     COPY("null", result.text);
     IF wantTag THEN COPY("null", tagText) END
   END GenerateVarArgValue;
 
+  (* One actual argument: its value (result) and the text of the hidden
+     arguments that follow it (hidden), each written ", <type> <value>":
+     a VAR record parameter's tag, an open array's lengths. Only an Oberon
+     procedure takes them (oberonCall); an external one gets the argument
+     alone. *)
   PROCEDURE EvaluateCallArg(VAR w: Files.Rider; VAR cg: Codegen; p: Types.Param; a: SyntaxTree.ExprNode;
-                            withTags: BOOLEAN; VAR result: Value; VAR tagText: ValueText);
-    VAR v, ev: Value;
+                            oberonCall: BOOLEAN; VAR result: Value; VAR hidden: LongText);
+    VAR v, ev: Value; tagText: ValueText;
   BEGIN
-    tagText[0] := 0X;
-    IF p.isVar THEN
-      GenerateVarArgValue(w, cg, a, withTags & NeedsHiddenTag(p), result, tagText)
-    ELSIF IsOpenCharArray(p.type) THEN
-      GenerateStringArgValue(w, cg, a, result)
+    hidden[0] := 0X;
+    IF IsOpenArrayType(p.type) THEN
+      GenerateOpenArrayArg(w, cg, p, a, oberonCall, result, hidden)
+    ELSIF p.isVar THEN
+      GenerateVarArgValue(w, cg, a, oberonCall & NeedsHiddenTag(p), result, tagText);
+      IF tagText[0] # 0X THEN COPY(", ptr ", hidden); Strcat(hidden, tagText) END
     ELSE
       GenerateExpr(w, cg, a, v);
       IF Types.IsInteger(p.type) OR IsRealType(p.type) THEN ExtendTo(w, cg, v, p.type, ev) ELSE ev := v END;
@@ -2570,24 +2880,24 @@ MODULE LLVMCodeGenerator;
      llvm-hello-world fixture and finding the call's argument list
      literally contained a "%tN = sext ..." line pasted mid-parenthesis). *)
   PROCEDURE GenerateCallArgList(VAR w: Files.Rider; VAR cg: Codegen; params: Types.Param; args: SyntaxTree.ExprNode;
-                                withTags: BOOLEAN; VAR text: ARRAY OF CHAR);
-    VAR p: Types.Param; a: SyntaxTree.ExprNode; v: Value; first: BOOLEAN; tagText: ValueText;
+                                oberonCall: BOOLEAN; VAR text: ARRAY OF CHAR);
+    VAR p: Types.Param; a: SyntaxTree.ExprNode; v: Value; first: BOOLEAN; hidden: LongText;
   BEGIN
     text[0] := 0X;
     p := params; a := args; first := TRUE;
     WHILE p # NIL DO
-      EvaluateCallArg(w, cg, p, a, withTags, v, tagText);
+      EvaluateCallArg(w, cg, p, a, oberonCall, v, hidden);
       IF ~first THEN Strcat(text, ", ") END;
       first := FALSE;
       Strcat(text, v.llvmType); Strcat(text, " "); Strcat(text, v.text);
-      IF tagText[0] # 0X THEN Strcat(text, ", ptr "); Strcat(text, tagText) END;
+      Strcat(text, hidden);
       p := p.next; a := a.next
     END
   END GenerateCallArgList;
 
   PROCEDURE GenerateExternalCall(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
                                  args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR pt: Types.ProcedureType; retType, destTemp: ValueText; argsText: ARRAY 256 OF CHAR;
+    VAR pt: Types.ProcedureType; retType, destTemp: ValueText; argsText: LongText;
   BEGIN
     pt := obj.type(Types.ProcedureType);
     IF pt.resultType = NIL THEN
@@ -2618,7 +2928,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE GenerateOrdinaryCall(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
                                  homeModule: SyntaxTree.Ident;
                                  args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR pt: Types.ProcedureType; retType, destTemp, fnSymbol: ValueText; argsText: ARRAY 256 OF CHAR;
+    VAR pt: Types.ProcedureType; retType, destTemp, fnSymbol: ValueText; argsText: LongText;
   BEGIN
     pt := obj.type(Types.ProcedureType);
     QualifiedName(homeModule, obj.name, fnSymbol);
@@ -2704,7 +3014,7 @@ MODULE LLVMCodeGenerator;
     VAR
       addrText, tag, slotAddr, slotBytes, wordBytes, callee, destTemp, retType: ValueText;
       addrType: Types.Type; dyn: DynamicType; called: Types.Method; owner, baseRec: Types.RecordType;
-      slot: INTEGER; symbol: LongText; argsText, receiverText: ARRAY 512 OF CHAR;
+      slot: INTEGER; symbol: LongText; argsText, receiverText: LongText;
       nameNode: SyntaxTree.FieldSelector; indirect: BOOLEAN;
   BEGIN
     IF ~GenerateDesignatorAddressTo(w, cg, d, nameSelector, addrText, addrType, dyn) THEN
@@ -2712,7 +3022,7 @@ MODULE LLVMCodeGenerator;
       RETURN
     END;
     IF (addrType # NIL) & (addrType IS Types.PointerType) THEN
-      IF ~DereferencePointer(w, cg, addrText, addrType) THEN
+      IF ~DereferencePointer(w, cg, addrText, addrType, dyn.dope) THEN
         Unsupported(w, cg, "type-bound call through a pointer to a non-record", Types.Undefined, result);
         RETURN
       END;
@@ -2915,7 +3225,7 @@ MODULE LLVMCodeGenerator;
      IsSingleCharStringLiteral) -> that one byte's own ORD value, a
      compile-time constant read directly off the AST rather than
      through GenerateExpr at all - a string literal is never a loadable
-     "value" anywhere else in this backend (see GenerateStringArgValue's
+     "value" anywhere else in this backend (see GenerateOpenArrayArg's
      own header comment: only a *pointer* to one is ever produced). *)
   PROCEDURE GenerateOrd(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR v: Value; ordText, integerLLVMType: ValueText; isSingleCharString: BOOLEAN; ch: CHAR;
@@ -2957,43 +3267,56 @@ MODULE LLVMCodeGenerator;
     result.text := selText; COPY("i8", result.llvmType); result.oberonType := Types.Char
   END GenerateCap;
 
-  (* LEN(v) / LEN(v, n): v's own compile-time-known array length (only
-     fixed-size arrays ever reach codegen - this backend's own scope),
-     walked n levels deep through nested elementTypes exactly the way
-     PredeclaredProcedures.CheckLen's own shape-walk already does (both
-     need only the *shape*, not any run-time computation - LEN never
-     loads v's own value, just its static type). v must be a designator
-     GenerateDesignatorAddress can resolve the address of - the only
-     shape LEN's own front-end check allows in practice, since an
-     array-typed *value* doesn't otherwise exist in this language. *)
+  (* LEN(v) / LEN(v, n): the length of v's array, or - LEN(v, n) - of the
+     one n levels down through nested element types, walked exactly the
+     way PredeclaredProcedures.CheckLen's own shape-walk does. A fixed
+     dimension's length is its declared one, a constant; an open one is
+     read from the dope vector the designator resolved with (open
+     dimensions are always the outermost, so the nth one is entry n),
+     widened or narrowed to LONGINT, which is the result type the checker
+     gave it. v must be a designator GenerateDesignatorAddressTo can
+     resolve - the only shape LEN's own front-end check allows in
+     practice, since an array-typed *value* doesn't otherwise exist in
+     this language. *)
   PROCEDURE GenerateLen(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
-      de: SyntaxTree.DesignatorExprNode; addrText: ValueText; addrType: Types.Type;
-      arr: Types.ArrayType; nExpr: SyntaxTree.ExprNode; nVal: Types.Value; i: LONGINT;
-      lenText, integerLLVMType: ValueText; ok: BOOLEAN;
+      de: SyntaxTree.DesignatorExprNode; addrText, lenText, longIntType, wordInt, sized: ValueText;
+      addrType: Types.Type; dyn: DynamicType;
+      arr: Types.ArrayType; nExpr: SyntaxTree.ExprNode; nVal: Types.Value; i: LONGINT; ok: BOOLEAN;
   BEGIN
-    LLVMTypes.TypeString(Types.Integer, cg.sizeModel, integerLLVMType);
+    LLVMTypes.TypeString(Types.LongInt, cg.sizeModel, longIntType);
     ok := (args IS SyntaxTree.DesignatorExprNode);
     IF ok THEN
       de := args(SyntaxTree.DesignatorExprNode);
-      ok := ~de.hasParens & GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType)
+      ok := ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addrText, addrType, dyn)
             & (addrType # NIL) & (addrType IS Types.ArrayType)
     END;
     IF ~ok THEN
-      Unsupported(w, cg, "LEN argument shape (PLAN.md Phase 9+)", Types.Integer, result);
+      Unsupported(w, cg, "LEN argument shape", Types.LongInt, result);
       RETURN
     END;
     arr := addrType(Types.ArrayType);
+    i := 0;
     nExpr := args.next;
     IF nExpr # NIL THEN
       nVal := ConstantEvaluator.Evaluate(nExpr, cg.scope);
-      i := 0;
       WHILE (i < nVal.intVal) & (arr.elementType # NIL) & (arr.elementType IS Types.ArrayType) DO
         arr := arr.elementType(Types.ArrayType); INC(i)
       END
     END;
-    lenText[0] := 0X; AppendLongInt(lenText, arr.length);
-    result.text := lenText; COPY(integerLLVMType, result.llvmType); result.oberonType := Types.Integer
+    IF arr.isOpen THEN
+      IF i >= dyn.dope.count THEN
+        Unsupported(w, cg, "LEN of an open dimension whose length is not known", Types.LongInt, result);
+        RETURN
+      END;
+      WordIntType(wordInt);
+      EmitResizeInt(w, cg, wordInt, dyn.dope.len[SHORT(i)], longIntType, sized);
+      COPY(sized, result.text)
+    ELSE
+      lenText[0] := 0X; AppendLongInt(lenText, arr.length);
+      COPY(lenText, result.text)
+    END;
+    COPY(longIntType, result.llvmType); result.oberonType := Types.LongInt
   END GenerateLen;
 
   (* INC(v) / INC(v, n) (n defaults to 1) - v := v + n; DEC likewise
@@ -3067,32 +3390,33 @@ MODULE LLVMCodeGenerator;
     StoreAtAddress(w, cg, addrText, addrType, updated)
   END GenerateInclExcl;
 
-  (* COPY(x, v): x a string (literal or named STRING CONST) or a fixed
-     CHAR array, v a writable fixed CHAR-array designator. Oberon2.pdf
+  (* COPY(x, v): x a string (literal or named STRING CONST) or a CHAR
+     array, v a writable CHAR-array designator - fixed, or an open-array
+     parameter, whose length comes from its dope vector. Oberon2.pdf
      §10.3's own COPY semantics: copy up to MIN(LEN(x), LEN(v)-1)
      characters - stopping early at a 0X in x - then terminate with 0X.
-     When x is a string its text and length are known at compile time
-     and the copy is a fixed run of byte stores (EmitStringStores); when
-     it is an array, only its declared length is, so the copy is a call
-     to the @.charcopy helper. *)
+     When x is a string and v a fixed array both lengths are known at
+     compile time and the copy is a fixed run of byte stores
+     (EmitStringStores); otherwise it is a call to the @.charcopy helper,
+     given both lengths. *)
   PROCEDURE GenerateCopy(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
       xExpr, vExpr: SyntaxTree.ExprNode; text: LongText; knownText: BOOLEAN;
-      de: SyntaxTree.DesignatorExprNode; addrText, srcAddr, dstLenText, srcLenText: ValueText;
-      addrType: Types.Type; arr: Types.ArrayType; srcLen: LONGINT; ok: BOOLEAN;
+      de: SyntaxTree.DesignatorExprNode; addrText, srcAddr, dstWord, srcWord, dstLenText, srcLenText: ValueText;
+      addrType: Types.Type; arr: Types.ArrayType; ok: BOOLEAN; dyn: DynamicType;
   BEGIN
     result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
     xExpr := args; vExpr := args.next;
     knownText := StringSourceText(cg, xExpr, text);
     IF ~knownText & ~IsCharSequenceExpr(cg, xExpr) THEN
-      WriteStr(w, "  ; unsupported: COPY's source is not a string, a named STRING CONST or a fixed CHAR array (PLAN.md Phase 9 step 7)");
+      WriteStr(w, "  ; unsupported: COPY's source is not a string, a named STRING CONST or a CHAR array");
       WriteLn(w);
       RETURN
     END;
     ok := (vExpr # NIL) & (vExpr IS SyntaxTree.DesignatorExprNode);
     IF ok THEN
       de := vExpr(SyntaxTree.DesignatorExprNode);
-      ok := ~de.hasParens & GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType)
+      ok := ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addrText, addrType, dyn)
             & (addrType # NIL) & (addrType IS Types.ArrayType)
     END;
     IF ~ok THEN
@@ -3100,17 +3424,27 @@ MODULE LLVMCodeGenerator;
       RETURN
     END;
     arr := addrType(Types.ArrayType);
-    IF knownText THEN
+    IF knownText & ~arr.isOpen THEN
       EmitStringStores(w, cg, addrText, arr, text)
-    ELSIF GenerateCharSequence(w, cg, xExpr, srcAddr, srcLen) THEN
+    ELSIF GenerateCharSequence(w, cg, xExpr, srcAddr, srcWord) THEN
       cg.needCharCopy := TRUE;
-      dstLenText[0] := 0X; AppendLongInt(dstLenText, arr.length);
-      srcLenText[0] := 0X; AppendLongInt(srcLenText, srcLen);
+      dstWord[0] := 0X;
+      IF arr.isOpen THEN
+        IF dyn.dope.count < 1 THEN
+          WriteStr(w, "  ; unsupported: COPY into an open array whose length is not known"); WriteLn(w);
+          RETURN
+        END;
+        COPY(dyn.dope.len[0], dstWord)
+      ELSE
+        AppendLongInt(dstWord, arr.length)
+      END;
+      EmitLengthAsI32(w, cg, dstWord, dstLenText);
+      EmitLengthAsI32(w, cg, srcWord, srcLenText);
       WriteStr(w, "  call void @.charcopy(ptr "); WriteStr(w, addrText); WriteStr(w, ", i32 "); WriteStr(w, dstLenText);
       WriteStr(w, ", ptr "); WriteStr(w, srcAddr); WriteStr(w, ", i32 "); WriteStr(w, srcLenText);
       WriteStr(w, ")"); WriteLn(w)
     ELSE
-      WriteStr(w, "  ; unsupported: COPY's source address (PLAN.md Phase 9 steps 5-7)"); WriteLn(w)
+      WriteStr(w, "  ; unsupported: COPY's source address"); WriteLn(w)
     END
   END GenerateCopy;
 
@@ -3334,15 +3668,16 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, ", i1 false)"); WriteLn(w)
   END GenerateMove;
 
-  (* The tag operand NEW passes for a fixed array: 0 when the elements
-     hold no pointers (nothing for the collector to trace), else the
-     address of a descriptor synthesized for the array's element type
+  (* The tag operand NEW passes for an array - a fixed one, or (the
+     innermost open array of) an open one: 0 when the elements hold no
+     pointers (nothing for the collector to trace), else the address of a
+     descriptor synthesized for the array's element type
      (EmitArrayDescriptors), registered here the first time this array
      type is allocated. *)
   PROCEDURE ArrayTagOperand(VAR cg: Codegen; arr: Types.ArrayType; VAR text: ARRAY OF CHAR);
     VAR e: ArrayDescEntry; wordInt: ValueText;
   BEGIN
-    IF CountPointerSlots(arr) = 0 THEN COPY("0", text); RETURN END;
+    IF CountPointerSlots(arr.elementType) = 0 THEN COPY("0", text); RETURN END;
     e := cg.arrayDescs;
     WHILE (e # NIL) & (e.arr # arr) DO e := e.next END;
     IF e = NIL THEN
@@ -3355,6 +3690,117 @@ MODULE LLVMCodeGenerator;
     COPY("ptrtoint (ptr ", text); Strcat(text, e.name); Strcat(text, " to "); Strcat(text, wordInt);
     Strcat(text, ")")
   END ArrayTagOperand;
+
+  (* An unsigned 64-bit multiply ("umul") or add ("uadd") whose overflow
+     is reported rather than wrapped: the result and the overflow flag (an
+     i1) of the intrinsic call. *)
+  PROCEDURE EmitCheckedOp(VAR w: Files.Rider; VAR cg: Codegen; intrinsic, aText, bText: ARRAY OF CHAR;
+                          VAR value, overflow: ARRAY OF CHAR);
+    VAR pair: ValueText;
+  BEGIN
+    cg.needOverflowMath := TRUE;
+    NewTemp(cg, pair);
+    WriteStr(w, "  "); WriteStr(w, pair); WriteStr(w, " = call { i64, i1 } @llvm."); WriteStr(w, intrinsic);
+    WriteStr(w, ".with.overflow.i64(i64 "); WriteStr(w, aText); WriteStr(w, ", i64 "); WriteStr(w, bText);
+    WriteStr(w, ")"); WriteLn(w);
+    NewTemp(cg, value);
+    WriteStr(w, "  "); WriteStr(w, value); WriteStr(w, " = extractvalue { i64, i1 } "); WriteStr(w, pair);
+    WriteStr(w, ", 0"); WriteLn(w);
+    NewTemp(cg, overflow);
+    WriteStr(w, "  "); WriteStr(w, overflow); WriteStr(w, " = extractvalue { i64, i1 } "); WriteStr(w, pair);
+    WriteStr(w, ", 1"); WriteLn(w)
+  END EmitCheckedOp;
+
+  (* NEW(p, n0, ..., nk-1) for a pointer to an open array (Oberon2.pdf
+     10.3), one length per open dimension. The block is the lengths (one
+     word each) padded to OpenDataOffset, then the elements, all
+     zero-filled by the collector, and tagged with the array descriptor of
+     the innermost element type (ArrayTagOperand); the lengths are stored
+     into its header, then the pointer into p. Like voc's SYSTEM_NEWARR
+     this traps when the number of elements is not positive - a zero or
+     negative length in any dimension - and, since a wrapped product would
+     record lengths the block cannot hold, when the size overflows: all
+     of it is computed in 64 bits with overflow checks, and on a 32-bit
+     target must also fit a word. A heap that cannot supply the block is
+     not a trap: the pointer becomes NIL, as for a record. *)
+  PROCEDURE GenerateNewOpenArray(VAR w: Files.Rider; VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode;
+                                 lengths: SyntaxTree.ExprNode; arr: Types.ArrayType);
+    VAR
+      dims, j: INTEGER; wordInt, bad, acc, n64, nonPositive, merged, product, overflow, sizeText, total,
+      tooBig, okLabel, trapLabel, fillLabel, doneLabel, size, tagText, allocated, pointer, nonNull, addrText,
+      slot, offText: ValueText;
+      lenWord: ARRAY maxOpenDims OF ValueText; e: SyntaxTree.ExprNode; v: Value; addrType: Types.Type;
+      wide: ValueText;
+  BEGIN
+    dims := OpenDimCount(arr);
+    IF dims > maxOpenDims THEN
+      WriteStr(w, "  ; unsupported: NEW of an open array with too many dimensions"); WriteLn(w);
+      RETURN
+    END;
+    cg.usedAllocate := TRUE; cg.needLengthTrap := TRUE;
+    WordIntType(wordInt);
+    (* the lengths, widened to 64 bits for the checks, narrowed to a word
+       for the header *)
+    COPY("false", bad); COPY("1", acc);
+    e := lengths; j := 0;
+    WHILE (e # NIL) & (j < dims) DO
+      GenerateExpr(w, cg, e, v);
+      EmitResizeInt(w, cg, v.llvmType, v.text, "i64", n64);
+      EmitBinOp(w, cg, "icmp sle", "i64", n64, "0", nonPositive);
+      EmitBinOp(w, cg, "or", "i1", bad, nonPositive, merged); COPY(merged, bad);
+      EmitCheckedOp(w, cg, "umul", acc, n64, product, overflow);
+      EmitBinOp(w, cg, "or", "i1", bad, overflow, merged); COPY(merged, bad);
+      COPY(product, acc);
+      EmitResizeInt(w, cg, "i64", n64, wordInt, lenWord[j]);
+      e := e.next; INC(j)
+    END;
+    (* the size: header, then the elements *)
+    sizeText[0] := 0X;
+    AppendLongInt(sizeText, MemoryLayout.Size(OpenElementType(arr), ConstantEvaluator.wordSize, cg.sizeModel));
+    EmitCheckedOp(w, cg, "umul", acc, sizeText, product, overflow);
+    EmitBinOp(w, cg, "or", "i1", bad, overflow, merged); COPY(merged, bad);
+    offText[0] := 0X; AppendLongInt(offText, OpenDataOffset(arr, cg.sizeModel));
+    EmitCheckedOp(w, cg, "uadd", product, offText, total, overflow);
+    EmitBinOp(w, cg, "or", "i1", bad, overflow, merged); COPY(merged, bad);
+    IF wordInt = "i32" THEN
+      EmitBinOp(w, cg, "icmp ugt", "i64", total, "4294967295", tooBig);
+      EmitBinOp(w, cg, "or", "i1", bad, tooBig, merged); COPY(merged, bad)
+    END;
+    NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+    EmitCondBr(w, bad, trapLabel, okLabel);
+    EmitLabel(w, cg, trapLabel);
+    EmitTrap(w, cg, lengthTrapGlobal, lengthTrapMsg, lengthTrapExitCode);
+    EmitLabel(w, cg, okLabel);
+    EmitResizeInt(w, cg, "i64", total, wordInt, size);
+    IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
+      WriteStr(w, "  ; unsupported: NEW on a designator this backend cannot address"); WriteLn(w);
+      RETURN
+    END;
+    ArrayTagOperand(cg, InnermostOpenArray(arr), tagText);
+    NewTemp(cg, allocated);
+    WriteStr(w, "  "); WriteStr(w, allocated); WriteStr(w, " = call "); WriteStr(w, wordInt);
+    WriteStr(w, " @GarbageCollectedHeap.Allocate("); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, size);
+    WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, tagText); WriteStr(w, ")"); WriteLn(w);
+    EmitConvert(w, cg, "inttoptr", wordInt, allocated, "ptr", pointer);
+    (* only a block that exists has a header to fill in *)
+    EmitBinOp(w, cg, "icmp ne", wordInt, allocated, "0", nonNull);
+    NewLabel(cg, fillLabel); NewLabel(cg, doneLabel);
+    EmitCondBr(w, nonNull, fillLabel, doneLabel);
+    EmitLabel(w, cg, fillLabel);
+    FOR j := 0 TO dims - 1 DO
+      IF j = 0 THEN
+        COPY(pointer, slot)
+      ELSE
+        offText[0] := 0X; AppendLongInt(offText, j * ConstantEvaluator.wordSize);
+        EmitByteGEP(w, cg, pointer, wordInt, offText, slot)
+      END;
+      WriteStr(w, "  store "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, lenWord[j]);
+      WriteStr(w, ", ptr "); WriteStr(w, slot); WriteLn(w)
+    END;
+    EmitBr(w, doneLabel);
+    EmitLabel(w, cg, doneLabel);
+    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
+  END GenerateNewOpenArray;
 
   (* NEW(p) for a pointer to a record or to a fixed array: the block comes
      from GarbageCollectedHeap.Allocate (zero-filled, tagged with the
@@ -3371,10 +3817,6 @@ MODULE LLVMCodeGenerator;
     IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
     de := args(SyntaxTree.DesignatorExprNode);
     IF de.hasParens THEN RETURN END;
-    IF args.next # NIL THEN
-      WriteStr(w, "  ; unsupported: NEW of an open array (PLAN.md Phase 9 step 7)"); WriteLn(w);
-      RETURN
-    END;
     t := DesignatorStaticType(cg, de.designator);
     IF (t = NIL) OR ~(t IS Types.PointerType) THEN
       WriteStr(w, "  ; unsupported: NEW on a designator this backend cannot address"); WriteLn(w);
@@ -3393,7 +3835,7 @@ MODULE LLVMCodeGenerator;
     ELSIF (base # NIL) & (base IS Types.ArrayType) THEN
       arr := base(Types.ArrayType);
       IF arr.isOpen THEN
-        WriteStr(w, "  ; unsupported: NEW of an open array (PLAN.md Phase 9 step 7)"); WriteLn(w);
+        GenerateNewOpenArray(w, cg, de, args.next, arr);
         RETURN
       END
     ELSE
@@ -3553,7 +3995,7 @@ MODULE LLVMCodeGenerator;
       IF GenerateDesignatorAddress(w, cg, s.target, addrText, addrType) THEN
         AssignToAddress(w, cg, addrText, addrType, s.value)
       ELSE
-        WriteStr(w, "  ; unsupported: selector this backend cannot address (a pointer to an open array, step 7)"); WriteLn(w)
+        WriteStr(w, "  ; unsupported: selector this backend cannot address"); WriteLn(w)
       END;
       RETURN
     END;
@@ -4671,8 +5113,9 @@ MODULE LLVMCodeGenerator;
      "define ... { entry:" instead of "declare ...;". *)
   PROCEDURE EmitProcSignature(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
                               receiver: SyntaxTree.ReceiverNode);
-    VAR retType, paramType: ValueText; p: Types.Param; first: BOOLEAN;
+    VAR retType, paramType, wordInt: ValueText; p: Types.Param; first: BOOLEAN; dim: INTEGER;
   BEGIN
+    WordIntType(wordInt);
     IF pt.resultType = NIL THEN COPY("void", retType)
     ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
     END;
@@ -4693,6 +5136,10 @@ MODULE LLVMCodeGenerator;
       ParamLLVMType(cg, p, paramType);
       WriteStr(w, paramType); WriteStr(w, " %"); WriteStr(w, p.name);
       IF NeedsHiddenTag(p) THEN WriteStr(w, ", ptr %"); WriteStr(w, p.name); WriteStr(w, ".tag") END;
+      FOR dim := 0 TO OpenDimCount(p.type) - 1 DO
+        WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " %"); WriteStr(w, p.name);
+        WriteStr(w, ".len"); Files.Write(w, CHR(ORD("0") + dim))
+      END;
       p := p.next
     END;
     WriteStr(w, ") {"); WriteLn(w);
@@ -4713,13 +5160,37 @@ MODULE LLVMCodeGenerator;
      that's what SymbolTable.Find(cg.scope, ...) will actually return
      while generating this procedure's body. *)
   PROCEDURE BindFormalParams(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType);
-    VAR p: Types.Param; obj: SymbolTable.Object; llvmType: ValueText; argName, tagName, addrText: ValueText;
+    VAR
+      p: Types.Param; obj: SymbolTable.Object; llvmType: ValueText; argName, tagName, addrText: ValueText;
+      wordInt, bytes, copied: ValueText; dope: DopeVector; dim: INTEGER;
   BEGIN
     p := pt.params;
     WHILE p # NIL DO
       obj := SymbolTable.FindLocal(bodyScope, p.name);
       COPY("%", argName); Strcat(argName, p.name);
-      IF p.isVar THEN
+      IF IsOpenArrayType(p.type) THEN
+        (* the hidden lengths follow the pointer (EmitProcSignature) *)
+        dope.count := OpenDimCount(p.type);
+        FOR dim := 0 TO dope.count - 1 DO
+          COPY(argName, dope.len[dim]); Strcat(dope.len[dim], ".len"); AppendLongInt(dope.len[dim], dim)
+        END;
+        IF p.isVar THEN
+          BindLocalWithDope(cg, obj, argName, dope)
+        ELSE
+          (* a value parameter is the callee's own copy: made here, in
+             the entry block, of as many bytes as the lengths say *)
+          WordIntType(wordInt);
+          EmitOpenBytes(w, cg, p.type, dope, 0, bytes);
+          NewTemp(cg, copied);
+          WriteStr(w, "  "); WriteStr(w, copied); WriteStr(w, " = alloca i8, "); WriteStr(w, wordInt);
+          WriteStr(w, " "); WriteStr(w, bytes); WriteStr(w, ", align 8"); WriteLn(w);
+          cg.needMemmove := TRUE;
+          WriteStr(w, "  call void @llvm.memmove.p0.p0."); WriteStr(w, wordInt); WriteStr(w, "(ptr ");
+          WriteStr(w, copied); WriteStr(w, ", ptr "); WriteStr(w, argName); WriteStr(w, ", ");
+          WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, bytes); WriteStr(w, ", i1 false)"); WriteLn(w);
+          BindLocalWithDope(cg, obj, copied, dope)
+        END
+      ELSIF p.isVar THEN
         IF NeedsHiddenTag(p) THEN
           COPY(argName, tagName); Strcat(tagName, ".tag");
           BindLocalWithTag(cg, obj, argName, tagName)
@@ -4945,6 +5416,7 @@ MODULE LLVMCodeGenerator;
     IF cg.needNilTrap THEN EmitRuntimeStringGlobal(w, nilTrapGlobal, nilTrapMsg) END;
     IF cg.needGuardTrap THEN EmitRuntimeStringGlobal(w, guardTrapGlobal, guardTrapMsg) END;
     IF cg.needWithTrap THEN EmitRuntimeStringGlobal(w, withTrapGlobal, withTrapMsg) END;
+    IF cg.needLengthTrap THEN EmitRuntimeStringGlobal(w, lengthTrapGlobal, lengthTrapMsg) END;
     IF cg.usedAllocate & ~cg.heapPresent THEN
       WordIntType(wordInt);
       WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");
@@ -5071,6 +5543,7 @@ MODULE LLVMCodeGenerator;
     cg.needMemmove := FALSE;
     cg.currentBlock[0] := 0X;
     cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
+    cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
     cg.heapPresent := withHeap;
     WriteStr(w, 'target datalayout = "');
@@ -5153,6 +5626,11 @@ MODULE LLVMCodeGenerator;
     IF withHeap THEN
       WriteLn(w);
       EmitLine(w, "declare ptr @llvm.frameaddress.p0(i32 immarg)")
+    END;
+    IF cg.needOverflowMath THEN
+      WriteLn(w);
+      EmitLine(w, "declare { i64, i1 } @llvm.umul.with.overflow.i64(i64, i64)");
+      EmitLine(w, "declare { i64, i1 } @llvm.uadd.with.overflow.i64(i64, i64)")
     END;
     IF cg.needMemmove THEN
       WriteLn(w);

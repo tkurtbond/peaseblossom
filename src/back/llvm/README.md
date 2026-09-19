@@ -29,7 +29,15 @@ LLVM backend: lowers the front end's typed tree to textual LLVM IR
   exact, through the ProcTab otherwise (`GenerateMethodCall`) - and the
   hidden type-descriptor argument of a VAR record parameter
   (`NeedsHiddenTag`, `DynamicType`, `EmitDynamicTag`), which also lets
-  `IS`/guards/`WITH` apply to one (`EmitTagTestOnTag`).
+  `IS`/guards/`WITH` apply to one (`EmitTagTestOnTag`), and (Phase 9
+  step 7) open arrays: hidden length arguments after an open-array
+  parameter (`OpenDimCount`, `EmitProcSignature`, `GenerateOpenArrayArg`),
+  a value parameter copied on entry (`BindFormalParams`), `DopeVector`
+  lengths carried by designators (`GenerateDesignatorAddressTo`,
+  `EmitOpenIndexCheck`), pointers to open arrays whose block header holds
+  the lengths (`OpenDataOffset`, `DereferencePointer`) and
+  `NEW(p, n0, ..., nk-1)` with overflow-checked sizing
+  (`GenerateNewOpenArray`).
 - `LLVMToolchainDriver.Mod` — host-triple auto-detection
   (`clang -dumpmachine`), writing `Generate*`'s output to a real
   `<ModuleName>.ll` file, and the single-step `clang <file>.ll -o <exe>`

@@ -1597,6 +1597,25 @@ MODULE SemanticActions;
     END
   END CheckExprList;
 
+  (* Appendix A "array compatible", for a VAR parameter: a formal of open
+     array type takes an actual of any array type whose element types are
+     compatible, recursively (Types.ArrayCompatible) - a fixed array, an
+     open array parameter of the caller's own, an array reached through a
+     pointer - not only the identical type, which is all a non-array VAR
+     parameter accepts (the string-constant rule does not apply: a VAR
+     parameter needs a variable). PLAN.md Phase 9 step 7 - forwarding an
+     open array to another open-array VAR parameter is what first needed
+     this. *)
+  PROCEDURE IsOpenArrayFormal(formal, actual: Types.Type): BOOLEAN;
+    VAR formalArr: Types.ArrayType;
+  BEGIN
+    IF (formal = NIL) OR (actual = NIL) OR ~(formal IS Types.ArrayType) OR ~(actual IS Types.ArrayType) THEN
+      RETURN FALSE
+    END;
+    formalArr := formal(Types.ArrayType);
+    RETURN formalArr.isOpen & Types.ArrayCompatible(formal, actual)
+  END IsOpenArrayFormal;
+
   (* Appendix A "matching formal parameter lists" at last has a real call
      site (PLAN.md Phase 6) - params/args are walked together: a value
      parameter's argument is checked via CheckExpr and required
@@ -1651,7 +1670,8 @@ MODULE SemanticActions;
               Diagnostics.Error(a.line, a.column, "a VAR parameter requires a variable argument")
             ELSIF ~Types.SameType(p.type, argType)
                 & ~((p.type # NIL) & (argType # NIL) & (p.type IS Types.RecordType)
-                    & (argType IS Types.RecordType) & Types.Extends(argType, p.type)) THEN
+                    & (argType IS Types.RecordType) & Types.Extends(argType, p.type))
+                & ~IsOpenArrayFormal(p.type, argType) THEN
               Diagnostics.Error(a.line, a.column, "argument type does not match the VAR parameter")
             END
           END

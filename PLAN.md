@@ -1238,6 +1238,7 @@ struct/array layout plus a cross-check fixture rather than manual packing
     if such a parameter were ever read from, not attempted here; no
     fixture needs it, and nothing else in Phase 8's own scope
     (`PredeclaredProcedures` lowering, step 11) forces the question yet.
+    (Built in Phase 9 step 7.)
 
     Two fixtures, matching steps 7/8/9's own dual-verification pattern:
     `llvm-procedures`, a compile+link+run+diff-stdout fixture (value/VAR
@@ -1346,6 +1347,7 @@ struct/array layout plus a cross-check fixture rather than manual packing
     stays unexercised in the real fixtures for the same reason step 10's
     own retrospective already gives it a pass: open arrays are a known,
     narrow, not-yet-built convention, out of this step's own scope.
+    (Exercised for real by Phase 9 step 7's `llvm-open-array-params`.)
 
     Three fixtures: `llvm-predeclared`, a compile+link+run+diff-stdout
     fixture covering the 9 non-`HALT` procedures (`HALT` terminates the
@@ -1942,7 +1944,7 @@ style exactly.
      pointer or in a record with a base type (steps 5-6 - the address
      cannot be computed yet), and an *open* `ARRAY OF CHAR` operand or
      parameter (step 7's dope vectors) - either falls back to the same
-     `; unsupported` placeholder as before.
+     `; unsupported` placeholder as before. (All three done by steps 5-7.)
    - **Two voc differences found**: voc rejects a *constant* SET range
      with lo > hi at compile time (`{5 .. 2}`), which poc's front end
      does not, so the fixture uses a non-constant one; and voc's
@@ -2119,8 +2121,8 @@ style exactly.
      `SYSTEM`. **Not fixed, found**: `SHORT` rejects a `HUGEINT` argument
      (`PredeclaredProcedures.CheckShort` lists only `LONGINT`/`INTEGER`/
      `LONGREAL`); open-array *parameters* still cannot be indexed or
-     passed on (step 7's dope vectors), which is why the collector and its
-     fixtures pass only fixed arrays and scalars.
+     passed on (step 7's dope vectors, since built), which is why the
+     collector and its fixtures pass only fixed arrays and scalars.
    - **Limits, recorded in the collector's own header:** one object at
      most 2^27 bytes; a chunk must not straddle the 32-bit signed
      boundary (address tests are offsets from the chunk start otherwise);
@@ -2438,8 +2440,7 @@ style exactly.
      trap, exactly as voc's `NEWREC` does (an earlier draft trapped with
      exit 7; the report is silent, so voc's behavior wins). The next
      dereference of the NIL then traps like any other. `NEW` of an open
-     array is still step 7's
-     (`; unsupported`). **The runtime is linked in implicitly**: a source
+     array was step 7's (`; unsupported` until then). **The runtime is linked in implicitly**: a source
      module never imports `GarbageCollectedHeap`/`ModuleTable` for `NEW`,
      so `PredeclaredProcedures.NewWasCalled` (a process-lifetime flag set
      by `CheckNew`) tells `Poc.AddRuntimeModules` to discover the two on
@@ -2537,7 +2538,7 @@ style exactly.
      kept a suffix of the chain alive (33 KB after dropping it, against 1
      KB on x86-64) - a real property of the design, not a bug.
    - *Known gaps, none new to this step*: `NEW(p, n)` and a pointer to an
-     open array (step 7); type-bound calls (step 6); a procedure *value*
+     open array (step 7, done); type-bound calls (step 6, done); a procedure *value*
      (`proc := P`; comparing a procedure variable with `NIL` works, but
      naming a procedure as a value is `; unsupported` and, because
      `Unsupported` gives a mistyped placeholder, invalid IR; no step owned
@@ -2631,8 +2632,8 @@ style exactly.
      receivers and VAR arguments of imported types, imported variables as
      receivers), `llvm-trees-dispatch` (the report's own `Tree`/
      `CenterTree` example with a recursive bound `Write` dispatching
-     through pointer fields; its `Trees` module proper needs step 7's open
-     arrays), `llvm-type-bound-ir` (golden `.ll` at both word sizes, `clang -c`
+     through pointer fields; its `Trees` module proper needed step 7's open
+     arrays - `llvm-trees-strings` has it), `llvm-type-bound-ir` (golden `.ll` at both word sizes, `clang -c`
      validated), five `llvm-pointer-traps` programs (NIL through a
      pointer receiver, a VAR receiver and a `p^` VAR argument; a failed
      guard and an unmatched `WITH` on a VAR parameter) and three `semantic-*`
@@ -2663,6 +2664,91 @@ style exactly.
    value between two procedures (Phase 8 step 11's own deferred case,
    finally exercised for real), and a multi-dimensional `NEW(v, x0, x1)`
    fixture.
+
+   **Implemented 2026-09-19.** The convention (`LLVMCodeGenerator.Mod`'s
+   section on open arrays has the reference text; every point probed
+   against real voc, whose runtime source was read for the heap layout):
+   - *Parameters.* An open-array parameter, `VAR` or value, is
+     `ptr %a` then one `%a.len<d>` per open dimension (`OpenDimCount`),
+     each a word-sized integer - the target's word size, like every other
+     size-dependent quantity this phase (voc's are `ADDRESS`); an external
+     `["C"]` procedure keeps the bare `ptr` (Phase 8 step 6's decision,
+     unchanged - `ParamLLVMType`). A *value* parameter is copied on entry
+     into an `alloca` of `product(lengths) * sizeof(element)` bytes with
+     `llvm.memmove` (voc copies too - probed: assigning to the parameter
+     leaves the caller's array alone). `MemoryLayout.DescriptorSize`'s
+     "4-byte length words" became word-sized to match.
+   - *Designators.* `DesignatorAddressTo`'s `DynamicType` gained a
+     `DopeVector`: an open-array parameter's binding carries its lengths,
+     `[` on one checks `idx <u len` (`EmitOpenIndexCheck`, at the wider of
+     the index and the word, so a `HUGEINT` index on 32 bits is not
+     truncated) and steps by the element (`EmitElementGEP`) - or, when the
+     element is itself an open array, by the product of the inner lengths
+     in bytes, leaving the address of the inner array and the remaining
+     lengths (so `a[i, j]`, `a[i][j]` and `a[i]` passed on all work).
+   - *Arguments.* `GenerateOpenArrayArg` takes any array designator (fixed
+     dimensions contribute their constant length, open ones the dope
+     vector's) and, for a value `ARRAY OF CHAR`, a string literal or named
+     `STRING` constant (length = characters + 0X, as voc's `LEN("abc")`).
+     `GenerateStringArgValue` is gone; `GenerateCharSequence` reports a
+     word-sized length text instead of a `LONGINT`, so comparison and
+     `COPY` take open `ARRAY OF CHAR`s (`EmitLengthAsI32` narrows, clamping,
+     for the `i32` helpers).
+   - *Pointers.* `POINTER TO ARRAY OF ...` points at a block laid out as in
+     voc: the lengths (one word per open dimension), then the elements at
+     `OpenDataOffset` (the lengths rounded up to the element's alignment).
+     `DereferencePointer` loads the lengths into the designator's dope
+     vector and continues from the first element. `NEW(p, n0, ..., nk-1)`
+     (`GenerateNewOpenArray`) does the size arithmetic in 64 bits with
+     `llvm.umul/uadd.with.overflow` (a 32-bit target must also fit a word),
+     traps - new exit 7, voc's own message for its `Halt(-20)` - when any
+     length is not positive or the size overflows, allocates through
+     `GarbageCollectedHeap.Allocate`, stores the lengths if a block came
+     back (NIL, not a trap, if not - as for a record) and then the pointer.
+   - *Collector.* The block's tag is the array descriptor of the innermost
+     element type (`ArrayTagOperand`, `InnermostOpenArray`), as for a fixed
+     array of pointers. The collector walks a block as a run of elements
+     from its start, so when the elements hold pointers `OpenDataOffset`
+     rounds the header up to a whole number of elements: the lengths are
+     then read as a few elements' pointer fields, a spurious candidate at
+     worst (they are at most 2^25, below any heap address).
+     `llvm-open-array-new` fails if the descriptor is dropped (checked).
+   - *Front end.* One gap surfaced: `CheckArguments` demanded the *same*
+     type of a `VAR` open-array parameter's argument (`Types.SameType`,
+     which two independently written open-array types never satisfy),
+     so an open array could not be forwarded, and a fixed one could not be
+     passed to a `VAR ARRAY OF` at all - now `IsOpenArrayFormal`
+     (`Types.ArrayCompatible`). voc accepts and rejects exactly the same
+     sets (both semantic fixtures were run through it).
+   - *Also fixed*: `LEN` was typed `INTEGER` by the code generator but
+     `LONGINT` by the checker, so a length above 32767 wrapped -
+     `GenerateLen` now returns `LONGINT` (`llvm-predeclared-ir`'s golden
+     changed by exactly that).
+   - *Testing.* `llvm-open-array-params` (`VAR` and value parameters,
+     forwarding, a value parameter's private copy, 1- and 2-dimensional
+     arrays given fixed arrays and rows, strings, `COPY`, comparison,
+     records as elements, recursion, a bound procedure, an open array
+     handed to an external C procedure), `llvm-open-array-new`
+     (`NEW(v, n)`, `NEW(m, n, k)`, a 3-dimensional one, an open outer
+     dimension over a fixed element, characters, arrays reached through
+     record fields, an index wider than a word, and the collector run over
+     50 pointer-holding arrays), `llvm-trees-strings` (Chapter 11's `Trees`
+     as a library - `Insert(name: ARRAY OF CHAR)`, `NEW(p.name,
+     LEN(name)+1)`, `COPY`, `name = p.name^` - across a module boundary),
+     `llvm-open-array-traps` (index past either end, through a parameter, a
+     pointer and the inner dimension; NIL element and NIL `LEN`; zero,
+     negative, inner-zero and overflowing lengths; a too-big request
+     answering NIL), `llvm-open-array-ir` (golden `.ll` at both word
+     sizes, `clang -c` validated) and two `semantic-*` fixtures; the
+     runtime ones also run as real i686 executables (the trap programs by
+     hand). Cross-checked against real voc: every check of the first three
+     agrees except the one below.
+   - *Found, not fixed*: voc passes `a[r]` of a multi-dimensional open
+     array with no row stride (AGENTS.md, "Known voc bugs"), so one check
+     of `llvm-open-array-params` differs under voc - poc is right. voc
+     rejects a constant length <= 0 in `NEW` at compile time; poc traps at
+     run time. An open array with more than 8 dimensions, and elision of a
+     value parameter's copy when it is never written, are not done.
 
 8. **Complete `PredeclaredProcedures.Mod` lowering.** Sweep whatever
    remains `Unsupported` once steps 1–7 land — expected to be a short

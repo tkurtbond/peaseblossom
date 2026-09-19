@@ -64,4 +64,7 @@ check llvm-type-bound bound.mod
 check llvm-var-record-params varrec.mod
 check llvm-type-bound-multi-module client.mod
 check llvm-trees-dispatch trees.mod
+check llvm-open-array-params openparams.mod
+check llvm-open-array-new opennew.mod
+check llvm-trees-strings treesclient.mod
 . ../../testresult.sh
