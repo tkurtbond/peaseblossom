@@ -2294,8 +2294,8 @@ MODULE LLVMCodeGenerator;
      header's own address, rather than left for every user to rebuild
      from @...tdesc plus M*wordBytes: an importing module's view of a
      base record may not know M (a .sym file omits unexported type-bound
-     procedures - see PLAN.md Phase 9's "hidden members" note), but it
-     can always name the base's alias.
+     procedures until PLAN.md Phase 9 step 4a lands), but it can always
+     name the base's alias.
 
      Scope of this step: module-level record types only - a named
      record (Types.RecordTypeDesc.name set by SemanticActions.Mod's

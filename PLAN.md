@@ -1787,18 +1787,15 @@ style exactly.
    **Known gaps carried forward, not fixed by this step:**
    - **Hidden members.** `ModuleInterface.Mod`'s writer omits unexported
      record fields and unexported type-bound procedures from a `.sym`
-     (only exported ones are printed). For ordinary use that is the right
-     thing, but a record *extending* an imported one needs the base's full
-     layout: an omitted field changes the extension's field offsets and
-     `size`, and an omitted type-bound procedure changes which `ProcTab`
-     slots the extension's own new procedures get (the importer's
-     `MethodSlotCount(base)` comes up short). The base's own `.tag` alias
-     is unaffected (that is exactly why it exists), but any cross-module
-     extension of a base with hidden members will compute wrong offsets
-     and slots. Needs `.sym` to carry hidden fields/methods (ETH symbol
-     files do), e.g. as extra unexported entries the reader keeps but
-     export-checking still rejects. Do this before step 6 (dispatch) or
-     step 5 (`NEW` needs a correct `size` for an imported base).
+     (only exported ones are printed), so a record *extending* an
+     imported one sees a partial base: wrong field offsets and `size`,
+     wrong `ProcTab` slots, and missing hidden pointers in the offset
+     table. The base's own `.tag` alias is unaffected (that is exactly why
+     it exists). **Decided 2026-09-19 and planned as step 4a below** —
+     write the hidden declarations into `.sym` and enforce export on the
+     reading side; must land before step 5. (voc does not do this: it
+     stores computed layout facts instead — see step 4a for why poc
+     differs.)
    - **Procedure-local and other anonymous records** get no descriptor
      and no name (`SemanticActions` names only module-level ones;
      `OpenProcedureBodyScope` re-resolves a procedure's local `TYPE`s at
@@ -1871,6 +1868,159 @@ style exactly.
    (allocate many short-lived records in a loop, confirm memory is
    actually reclaimed — e.g. via a `SYSTEM`-free observable proxy like
    allocation count vs. a small fixed heap ceiling, not raw RSS).
+
+4a. **Hidden members in `.sym` files.** *(Numbered "4a" rather than
+   renumbering steps 5–9, whose numbers are cited from source comments
+   and from this file; it has no dependency on steps 2–4 and can land
+   any time before step 5 — `NEW` needs a correct `size` for an imported
+   base, and step 6's dispatch needs correct `ProcTab` slots. Found by
+   step 1's cross-module work; decided with the user 2026-09-19.)*
+   **The problem.** `ModuleInterface.Mod`'s writer prints only exported
+   fields and exported type-bound procedures, so a module extending an
+   *imported* record sees a partial base: missing fields shift the
+   extension's own field offsets and its `size`; missing type-bound
+   procedures shift the `ProcTab` slots its own new procedures get and
+   under-count `MethodSlotCount(base)`. Any pointer-typed hidden field is
+   also missing from the extension's descriptor offset table, which the
+   step 4 collector would then fail to trace. (The base's own `.tag`
+   symbol is unaffected — step 1 made that immune on purpose — but
+   everything derived from the base's *shape* is wrong.)
+
+   **What voc does, and why poc deliberately differs.** Checked against
+   voc's own exporter (`OPT.Mod`'s `OutStr`/`OutFlds`/`OutHdFld`/
+   `OutTProcs`, and `OPM.Mod`'s `ExpHdPtrFld = TRUE`, `ExpHdProcFld =
+   FALSE`, `ExpHdTProc = FALSE`, `MaxHdFld = 2048`): voc does not export
+   hidden members as declarations at all. Its binary `.sym` stores the
+   record's computed `size`, `align`, and method-slot count `n`, each
+   exported field with its numeric byte offset, each exported
+   type-bound procedure with its explicit method number, and — the one
+   hidden thing it does export — an anonymous `@ptr` entry (offset only)
+   per hidden pointer, flattened through hidden nested records/arrays,
+   for the importer's own descriptor. So `showdef` shows only the
+   exported part because the format never held more, not because it
+   filters; the compiler reads *computed layout facts*, not the hidden
+   declarations. Those facts bake in a target: voc ships separate
+   `2/sym` and `C/sym` trees per size model for exactly this reason. Poc
+   wants one target-independent `.sym` usable at both word sizes and
+   both size models (a stated Phase 4/8/9 goal), and Phase 7 decided
+   `.sym` is valid Peaseblossom module source. Both are preserved by
+   carrying the hidden *declarations* and letting the importer compute
+   layout with `MemoryLayout` at its own target — the home module and
+   every importer then use one algorithm and cannot disagree. Rejected:
+   numeric-fact `.sym` (needs per-target files plus syntax the parser
+   doesn't have), and a binary `.sym` (gives up "`.sym` is source", needs
+   a separate dump tool, buys nothing this design lacks).
+
+   **Design.**
+   1. *Writer (`ModuleInterface.Mod`)*: print **every** field of every
+      printed record type, in declaration order (layout depends on it) —
+      exported ones with their `*`/`-` mark exactly as today, unexported
+      ones as bare `name: T`. Likewise every type-bound procedure of every
+      printed record type, in declaration order (slot numbering depends on
+      it), unexported ones without a mark and still as permanently
+      body-less `PROCEDURE^` forward declarations with their real
+      signatures. `PrintMethods`' current gate (the receiver's own type
+      identifier must be exported) goes away for methods of any record
+      type that gets printed.
+   2. *Unexported types the hidden members need*: print, as ordinary
+      unexported `TYPE` declarations, every unexported named type
+      reachable (transitively — a fixpoint, not one level) from a printed
+      record's field types or a printed method's signature, in their
+      original relative declaration order (so a definition precedes its
+      uses exactly as in the source, and §4 rule 3's forward-`POINTER`
+      exception still applies). Reachable-only, not "all private types":
+      keeps `.sym` minimal and never drags in an unexported type nothing
+      exported depends on. This replaces `FindInScope`'s
+      `requireExported` structural-inline fallback for those cases — that
+      fallback prints an unexported record *inline*, which would give two
+      uses of one type two distinct anonymous `RecordType`s in the
+      importer, breaking type identity; a named unexported declaration
+      preserves it. It also preserves step 1's descriptor naming, since
+      `Types.RecordTypeDesc.name` derives from the *declared* name, which
+      must therefore round-trip through `.sym` unchanged. Types a hidden
+      member takes from a third module need nothing new: the existing
+      unconditional re-export of every import already covers them (what
+      was an "occasional harmless extra import" is now load-bearing —
+      update that comment).
+   3. *Restore the export invariant on the reading side.*
+      `SymbolTable.ObjectDesc.moduleScope`'s documented invariant —
+      "holds exactly the exported members, so no separate export check is
+      needed" — no longer holds. Every site that relied on it needs an
+      explicit rule: (a) `SemanticActions.FindQualified` rejects an
+      unexported object with a "not exported by module" diagnostic
+      (`semantic-reject-not-exported` currently passes only because the
+      name is *absent*, so its expected message changes); (b)
+      `ModuleInterface.FindInScope` on an *imported* scope now needs
+      `requireExported` too (its own comment currently says an imported
+      scope is exported "by construction"); (c) field selection and
+      type-bound-procedure calls across modules reject an unexported
+      member unless `IsLocalType` says the record is local — the same
+      helper the `-` read-only rule already uses (`CheckDesignator`'s
+      `field.readOnly & ~IsLocalType(...)`); an unexported *method* needs
+      the same gate in its own lookup path; (d) the backend's
+      `ResolveQualifiedObject` runs only after the checker passed, so it
+      needs no change, but its comment should stop claiming the scope is
+      exported-only.
+   4. *A stale `.sym` is now a correctness bug, not just a type-check
+      one.* `-build`/`-emit-llvm-ir` type-check a module against its
+      imports' *existing* `.sym` files (`ResolveImport`) but compile each
+      import from its *real source* (`DiscoverModule`) — so an
+      out-of-date `.sym` would give the importer's codegen a different
+      record layout than the imported module's own. Fix: in the
+      whole-program commands, regenerate `<Import>.sym` from real source
+      for every transitive import that has source (post-order, before the
+      importer is checked; into `-output-dir`, which lookup already
+      consults ahead of the import path only via cwd, so verify that
+      precedence when implementing) and fall back to a bare pre-existing
+      `.sym` only for a source-less imported module. This also retires the
+      "run `poc -emit-interface lib.mod` first" step every multi-module
+      fixture currently repeats by hand. voc's answer to the same hazard
+      is fingerprints (`pvfp` etc.); regenerating from source is simpler
+      and is enough while every whole-program build has the source.
+   5. *Optional, not a gate*: a `-show-interface` (stdout, exported view
+      only) mode — the `showdef` analogue — by threading an
+      `includeHidden` flag through the same writer. Cheap once the writer
+      distinguishes the two; skip if it costs more than that.
+
+   **Open questions to settle against `Oberon2.pdf`/real voc while
+   implementing** (each becomes a fixture either way): (i) may an
+   extension in another module declare a field or type-bound procedure
+   whose name equals a *hidden* base member's? `Types.AddField` doesn't
+   check inherited names today, and until now an importer couldn't even
+   see the base's hidden ones; (ii) hidden-and-overriding type-bound
+   procedures — voc reports its error 109 for one it "did not detect in
+   OPP because record exported indirectly or via aliasing", so there is a
+   real rule to match; (iii) whether an unexported type reachable only
+   from a hidden member must itself avoid clashing with an importer's own
+   declaration of that name — it must not, since it is never visible
+   unqualified, but confirm `Insert`'s duplicate check is only ever run
+   against the importer's own scope, not `moduleScope`.
+
+   **Testing.** `module-interface-hidden-write` (golden `.sym`: a hidden
+   field, a hidden pointer field, a hidden type-bound procedure, an
+   unexported type reachable only through a hidden field, and one
+   unreachable unexported type that must *not* appear); `semantic-reject-
+   hidden-field-access`, `semantic-reject-hidden-method-call`,
+   `semantic-reject-qualified-unexported-type` (plus the updated
+   `semantic-reject-not-exported`); `module-hidden-extension-layout` (an
+   importer extends a base with hidden members; its `SIZE`/`-dump-layout`
+   view of the base equals the base's own, at both word sizes and both
+   size models); `llvm-type-descriptors-hidden-members-ir` (cross-module
+   golden `.ll`, extending step 1's `llvm-type-descriptors-cross-module-
+   ir`: the importer's descriptor `size`, pointer-offset table including
+   the hidden pointer, and `ProcTab` slot numbering all match the base's
+   own, `clang -c`-validated); `module-hidden-roundtrip` (`-emit-interface`
+   twice, the second time on the first's own `.sym`, byte-identical — the
+   same technique `module-interface-real-roundtrip` uses); and
+   `module-rebuild-stale-sym` (edit a hidden field in the library
+   *without* re-emitting its `.sym`; `-build` must still lay the importer
+   out against the new field). **On landing**, update: this file's step 1
+   "Known gaps" bullet (remove it), `AGENTS.md`'s Phase 7 paragraph
+   ("exported declarations only" is no longer true) and — a stale fact
+   found while researching this — its voc source path, which says
+   `/usr/local/sw/src/lang/Oberon/vishap/voc` but is actually
+   `.../vishap/compiler`; `ModuleInterface.Mod`'s and
+   `SymbolTable.Mod`'s header comments; `FindQualified`'s comment.
 
 5. **`NEW` (fixed record/array), `POINTER`, `NIL`, `^` dereference,
    `IS`/type guards, and the `WITH` pointer guard.** `NEW(v)` lowers to
@@ -1954,7 +2104,8 @@ style exactly.
    acceptable gap, at this point in the project.
 
 **Testing summary**: golden-`.ll`-diff fixtures for the purely static
-piece (step 1), promoted to compile+link+run+diff everywhere else,
+pieces (step 1, and step 4a's `.sym` writer/checker fixtures plus its one
+cross-module descriptor golden), promoted to compile+link+run+diff everywhere else,
 matching Phase 8's own testing posture — culminating in step 9's
 whole-suite/whole-platform-matrix gate. Self-hosting is Phase 10's own
 exit gate, not this phase's.
