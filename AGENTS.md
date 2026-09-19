@@ -124,6 +124,21 @@ compatibility:
 filename set defaults for all files; options after a filename apply only
 to that file. Repeating a flag toggles it.
 
+## VAX/VMS documentation: the target is VMS 5.5-2
+
+The VMS target is **VAX/VMS 5.5-2** (August 1992). Take facts about the
+system - the linker, MACRO-32, the RTLs, system services, RMS, DCL, the
+calling standard - only from manuals for that release or, where its set
+does not carry the manual, the nearest earlier 5.x release, checked against
+the 5.5 and 5.5-2 release notes. Manuals for later releases
+(`OVMS_PROG_ENVIRON.PDF` is VAX 6.0/AXP 1.5, `OpenVMS_RMS_RTL_Library.pdf`
+is 7.3, `HP OpenVMS Programming Concepts Volume II` is 2005, and everything
+under `VSI/` and the `HPE_*` files) are context for a concept at most.
+`~/Reference/Computer/OS/VMS/` holds what we have; a manual found later is
+saved there under its original file name. `vax-vms-manuals-to-get.md` lists
+which release each local file belongs to, what to fetch and why, and where
+(bitsavers); none of it has been downloaded yet.
+
 ## Toolchain: LLVM (clang/llc)
 
 Used by `poc`'s Phase 8+ LLVM backend (`PLAN.md`) — `LLVMToolchainDriver.Mod`
@@ -452,9 +467,9 @@ Peaseblossom's own.
   missing body is what marks the declaration external; a body-less
   `PROCEDURE` with no such attribute stays a syntax error, same as
   today). The first string names the calling convention (`"C"` for
-  Phase 8's LLVM/C-interop case, `"VMS"` for Phase 12's VMS Calling
+  Phase 8's LLVM/C-interop case, `"VMS"` for Phase 13's VMS Calling
   Standard case — both accepted now, even though nothing consumes
-  `"VMS"` until Phase 12). An optional second string overrides the
+  `"VMS"` until Phase 13). An optional second string overrides the
   external linkage name, since Peaseblossom's own naming convention (see
   "Naming feedback" — descriptive, often-long identifiers) routinely
   won't match a terse external symbol like `malloc` or `printf`:
@@ -462,11 +477,11 @@ Peaseblossom's own.
   LONGINT): SYSTEM.ADDRESS;`. Without the second string, the external
   symbol is the procedure's own Oberon identifier verbatim
   (`SymbolTable.ObjectDesc.externalName`). This interacts with the VAX
-  backend's 31-character name-mangling requirement (Phase 12, below): an
+  backend's 31-character name-mangling requirement (Phase 13, below): an
   external procedure's linkage name is emitted **verbatim, never
   mangled** — it has to match the real external symbol, unlike poc's own
   internally-generated names. Both backends' actual lowering is still
-  Phase 8/11 work; Phase 6 only records the linkage info
+  Phase 8/13 work; Phase 6 only records the linkage info
   (`SymbolTable.ObjectDesc.externalConvention`/`externalName`) for a
   later backend to consume.
 
