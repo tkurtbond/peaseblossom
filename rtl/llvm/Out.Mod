@@ -34,7 +34,7 @@ MODULE Out;
   VAR
     IsConsole-: BOOLEAN;
 
-  PROCEDURE ["C", "isatty"] CIsATerminal(descriptor: LONGINT): LONGINT;
+  PROCEDURE ["C", "isatty"] CIsATerminal(descriptor: SYSTEM.INT32): SYSTEM.INT32;
 
   (* Initializes the output stream; there is nothing to do. *)
   PROCEDURE Open*;

@@ -2181,6 +2181,13 @@ MODULE SemanticActions;
     ELSIF ~ok & (srcType = Types.String) & (dstType = Types.Char) THEN
       v := ConstantEvaluator.Evaluate(srcExpr, scope);
       ok := (v.type # Types.Undefined) & (StringLength(v.stringVal) = 1)
+    ELSIF ~ok & Types.IsInteger(dstType) & Types.IsInteger(srcType)
+        & ConstantEvaluator.IsConstantExpr(srcExpr, scope) THEN
+      (* an integer constant whose *value* fits a SYSTEM.INTn is assignable
+         to it whatever its own (minimal) type: under -OC that is never
+         narrower than SHORTINT's two bytes, which is not included in INT8 *)
+      v := ConstantEvaluator.Evaluate(srcExpr, scope);
+      ok := (v.type # Types.Undefined) & (v.kind = Types.intValue) & Types.FixedIntFits(dstType, v.intVal)
     END;
     IF ~ok THEN Diagnostics.Error(line, column, message) END
   END CheckAssignmentCompatible;

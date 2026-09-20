@@ -48,7 +48,7 @@ MODULE In;
     nextch: CHAR;
     readstate: INTEGER;
 
-  PROCEDURE ["C", "getchar"] CGetChar(): LONGINT;
+  PROCEDURE ["C", "getchar"] CGetChar(): SYSTEM.INT32;
   PROCEDURE ["C", "strtod"] CStrToD(text, end: SYSTEM.ADDRESS): LONGREAL;
   PROCEDURE ["C", "strtof"] CStrToF(text, end: SYSTEM.ADDRESS): REAL;
 

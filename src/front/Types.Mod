@@ -104,7 +104,14 @@ MODULE Types;
 
     BasicType* = POINTER TO BasicTypeDesc;
     BasicTypeDesc* = RECORD (TypeDesc)
-      rank*: INTEGER (* notNumeric, or one of the ranks above *)
+      rank*: INTEGER; (* notNumeric, or one of the ranks above *)
+      (* 0 for a type whose width follows the -O2/-OC size model (SHORTINT,
+         INTEGER, LONGINT, SET) or does not matter here; else the exact
+         width in bytes of one of SYSTEM.INT8/INT16/INT32/INT64, whatever
+         the model. Such a type's rank only says "an integer" (IsInteger,
+         Rank <= hugeIntRank): where it sits in the inclusion hierarchy
+         depends on the model, and is Order's job. *)
+      fixedBytes*: INTEGER
     END;
 
     PointerType* = POINTER TO PointerTypeDesc;
@@ -228,6 +235,18 @@ MODULE Types;
        pointer slots) needs no change; its base is an empty record no
        program can name, and the checker refuses to dereference it. *)
     Byte*, Ptr*: Type;
+    (* Phase 11: SYSTEM.INT8/INT16/INT32/INT64, integers of exactly 1/2/4/8
+       bytes under both size models - a C `int` is INT32 on every target,
+       which LONGINT (8 bytes under -OC) is not. Distinct types, not
+       aliases of the model's own (see Order). *)
+    Int8*, Int16*, Int32*, Int64*: Type;
+    (* Whether the -OC size model is in effect (set once per compilation by
+       ConstantEvaluator.SetSizeModel, which MemoryLayout's own sizeModel
+       argument feeds; -O2 by default): Order needs it to say where a
+       fixed-width integer sits among SHORTINT/INTEGER/LONGINT, whose
+       widths follow it. Types cannot import MemoryLayout (the other way
+       round), hence this copy of one bit. *)
+    sizeModelIsOC: BOOLEAN;
     (* PLAN.md Phase 6: a shared singleton marking a SymbolTable.Object as
        one of Oberon2.pdf §10.3's predeclared procedures. A single
        instance suffices - PredeclaredProcedures.Mod re-dispatches on the
@@ -239,9 +258,21 @@ MODULE Types;
   PROCEDURE NewBasicType(rank: INTEGER): Type;
     VAR t: BasicType;
   BEGIN
-    NEW(t); t.rank := rank;
+    NEW(t); t.rank := rank; t.fixedBytes := 0;
     RETURN t
   END NewBasicType;
+
+  PROCEDURE NewFixedIntType(rank, bytes: INTEGER): Type;
+    VAR t: BasicType;
+  BEGIN
+    NEW(t); t.rank := rank; t.fixedBytes := bytes;
+    RETURN t
+  END NewFixedIntType;
+
+  PROCEDURE SetSizeModelIsOC*(isOC: BOOLEAN);
+  BEGIN
+    sizeModelIsOC := isOC
+  END SetSizeModelIsOC;
 
   (* Returns the narrower PointerType, not just Type: SemanticActions
      needs to register a pointer's own Type identity before its base is
@@ -614,12 +645,74 @@ MODULE Types;
     END
   END ArrayCompatible;
 
+  (* Byte width of SHORTINT/INTEGER/LONGINT (rank 1/2/3) under the size
+     model in effect, as MemoryLayout.BasicSize has it; HUGEINT is 8 under
+     both. *)
+  PROCEDURE ModelBytes(rank: INTEGER): INTEGER;
+  BEGIN
+    IF rank = shortIntRank THEN
+      IF sizeModelIsOC THEN RETURN 2 ELSE RETURN 1 END
+    ELSIF rank = integerRank THEN
+      IF sizeModelIsOC THEN RETURN 4 ELSE RETURN 2 END
+    ELSIF rank = longIntRank THEN
+      IF sizeModelIsOC THEN RETURN 8 ELSE RETURN 4 END
+    ELSE
+      RETURN 8
+    END
+  END ModelBytes;
+
+  (* Where a numeric type sits in the inclusion hierarchy, as a number that
+     only ever compares: twice its rank for a type whose width follows the
+     size model, so the odd numbers between are free. A fixed-width integer
+     of w bytes takes the place of the widest of SHORTINT/INTEGER/LONGINT/
+     HUGEINT that is no wider than it - two types of one width include each
+     other, as in voc, where inclusion goes by size (INT32 and LONGINT are
+     one type to it under -O2, INT32 and INTEGER under -OC; INT64 is
+     HUGEINT's equal under both) - or the odd number just above the
+     narrowest that is narrower (INT8 under -OC, below SHORTINT's two
+     bytes: SHORTINT includes it, it does not include SHORTINT). SYSTEM.
+     ADDRESS keeps rank 4, between LONGINT and HUGEINT, as always. 0 for a
+     type that is not numeric. *)
+  PROCEDURE Order*(t: Type): INTEGER;
+    VAR bt: BasicType; order, r: INTEGER;
+  BEGIN
+    IF (t = NIL) OR ~(t IS BasicType) THEN RETURN 0 END;
+    bt := t(BasicType);
+    IF bt.rank = notNumeric THEN RETURN 0 END;
+    IF bt.fixedBytes = 0 THEN RETURN 2 * bt.rank END;
+    order := 1;
+    FOR r := shortIntRank TO hugeIntRank DO
+      IF (r # addressRank) & (ModelBytes(r) <= bt.fixedBytes) THEN
+        IF ModelBytes(r) = bt.fixedBytes THEN order := 2 * r ELSE order := 2 * r + 1 END
+      END
+    END;
+    RETURN order
+  END Order;
+
+  (* Whether the integer value fits t, if t is one of SYSTEM.INT8..INT64.
+     Such a type's Order alone cannot say: a constant's own type is the
+     minimal one its value fits *under the size model* (SHORTINT is two
+     bytes under -OC), so 100 is no INT8 by type though it is one by value.
+     SemanticActions.CheckAssignmentCompatible applies this to a constant
+     the type rules refuse. FALSE for any other type. *)
+  PROCEDURE FixedIntFits*(t: Type; value: LONGINT): BOOLEAN;
+    VAR bt: BasicType;
+  BEGIN
+    IF (t = NIL) OR ~(t IS BasicType) THEN RETURN FALSE END;
+    bt := t(BasicType);
+    IF bt.fixedBytes = 1 THEN RETURN (value >= -128) & (value <= 127)
+    ELSIF bt.fixedBytes = 2 THEN RETURN (value >= -32768) & (value <= 32767)
+    ELSIF bt.fixedBytes = 4 THEN RETURN (value >= -2147483647 - 1) & (value <= 2147483647)
+    ELSE RETURN bt.fixedBytes = 8
+    END
+  END FixedIntFits;
+
   (* TRUE if "wider" is numeric and includes "narrower" in the Appendix A
      hierarchy (LONGREAL >= REAL >= LONGINT >= INTEGER >= SHORTINT); a
      type always includes itself. *)
   PROCEDURE Includes*(wider, narrower: Type): BOOLEAN;
   BEGIN
-    RETURN IsNumeric(wider) & IsNumeric(narrower) & (Rank(wider) >= Rank(narrower))
+    RETURN IsNumeric(wider) & IsNumeric(narrower) & (Order(wider) >= Order(narrower))
   END Includes;
 
   (* The type Appendix A assigns to a binary arithmetic operation on two
@@ -627,7 +720,7 @@ MODULE Types;
   PROCEDURE WiderOf*(a, b: Type): Type;
   BEGIN
     IF ~IsNumeric(a) OR ~IsNumeric(b) THEN RETURN NIL
-    ELSIF Rank(a) >= Rank(b) THEN RETURN a
+    ELSIF Order(a) >= Order(b) THEN RETURN a
     ELSE RETURN b
     END
   END WiderOf;
@@ -679,6 +772,10 @@ MODULE Types;
     ELSIF t = Byte THEN COPY("SYSTEM.BYTE", name)
     ELSIF t = Ptr THEN COPY("SYSTEM.PTR", name)
     ELSIF t = HugeInt THEN COPY("HUGEINT", name)
+    ELSIF t = Int8 THEN COPY("SYSTEM.INT8", name)
+    ELSIF t = Int16 THEN COPY("SYSTEM.INT16", name)
+    ELSIF t = Int32 THEN COPY("SYSTEM.INT32", name)
+    ELSIF t = Int64 THEN COPY("SYSTEM.INT64", name)
     ELSIF t = Real THEN COPY("REAL", name)
     ELSIF t = LongReal THEN COPY("LONGREAL", name)
     ELSIF t = Set THEN COPY("SET", name)
@@ -703,6 +800,13 @@ BEGIN
   LongInt := NewBasicType(longIntRank);
   Address := NewBasicType(addressRank);
   HugeInt := NewBasicType(hugeIntRank);
+  (* the rank is the -O2 one, only so IsInteger holds: see BasicTypeDesc.
+     fixedBytes *)
+  Int8 := NewFixedIntType(shortIntRank, 1);
+  Int16 := NewFixedIntType(integerRank, 2);
+  Int32 := NewFixedIntType(longIntRank, 4);
+  Int64 := NewFixedIntType(hugeIntRank, 8);
+  sizeModelIsOC := FALSE;
   Real := NewBasicType(realRank);
   LongReal := NewBasicType(longRealRank);
   Set := NewBasicType(notNumeric);

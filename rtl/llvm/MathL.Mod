@@ -19,7 +19,7 @@ MODULE MathL;
      - voc's MathL raises no Underflow; here exp and power report it when
        the result is 0, as Math does. *)
 
-  IMPORT Math;
+  IMPORT SYSTEM, Math;
 
   CONST
     pi* = 3.14159265358979323846D0;
@@ -50,7 +50,7 @@ MODULE MathL;
   PROCEDURE ["C", "asinh"] CAsinh(x: LONGREAL): LONGREAL;
   PROCEDURE ["C", "acosh"] CAcosh(x: LONGREAL): LONGREAL;
   PROCEDURE ["C", "atanh"] CAtanh(x: LONGREAL): LONGREAL;
-  PROCEDURE ["C", "ldexp"] CLdexp(x: LONGREAL; n: LONGINT): LONGREAL;
+  PROCEDURE ["C", "ldexp"] CLdexp(x: LONGREAL; n: SYSTEM.INT32): LONGREAL;
   PROCEDURE ["C", "logb"] CLogb(x: LONGREAL): LONGREAL;
   PROCEDURE ["C", "nextafter"] CNextAfter(x, toward: LONGREAL): LONGREAL;
 

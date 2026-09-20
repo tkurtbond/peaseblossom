@@ -27,12 +27,11 @@ MODULE Platform;
        negative number; here the pid is reduced modulo 2^15 first when it
        does not fit, so the temporary file names built from it stay
        readable. (It stays whole under a size model with a 32-bit INTEGER.)
-     - The C type `int` is written LONGINT in the external declarations,
-       which is what it is under the -O2 size model, the only one poc
-       generates code for so far. SYSTEM.INT32 exists (step 7) but is only an
-       alias of LONGINT, so it would not be right under -OC either; they
-       should move to a real fixed-width INT32 when there is one
-       (PLAN.md's Phase 11 table).
+     - The C type `int` is written SYSTEM.INT32 in the external
+       declarations here and in Console, Files, In, Out, Math and MathL:
+       exactly four bytes under -O2 and -OC alike, as LONGINT (eight bytes
+       under -OC) is not - which is wrong at once on a 32-bit target, whose
+       calling convention puts every argument on the stack at its own width.
 
      A string handed to a C function must end in 0X within its array; one
      that does not is treated as naming nothing (Chdir and Unlink fail,
@@ -52,11 +51,11 @@ MODULE Platform;
     CWD-: ARRAY cwdLength OF CHAR;
 
   PROCEDURE ["C", "getenv"] CGetEnv(name: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
-  PROCEDURE ["C", "getpid"] CGetPid(): LONGINT;
-  PROCEDURE ["C", "chdir"] CChdir(path: SYSTEM.ADDRESS): LONGINT;
+  PROCEDURE ["C", "getpid"] CGetPid(): SYSTEM.INT32;
+  PROCEDURE ["C", "chdir"] CChdir(path: SYSTEM.ADDRESS): SYSTEM.INT32;
   PROCEDURE ["C", "getcwd"] CGetCwd(buffer, size: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
-  PROCEDURE ["C", "system"] CSystem(command: SYSTEM.ADDRESS): LONGINT;
-  PROCEDURE ["C", "unlink"] CUnlink(path: SYSTEM.ADDRESS): LONGINT;
+  PROCEDURE ["C", "system"] CSystem(command: SYSTEM.ADDRESS): SYSTEM.INT32;
+  PROCEDURE ["C", "unlink"] CUnlink(path: SYSTEM.ADDRESS): SYSTEM.INT32;
 
   (* Whether s has a terminating 0X inside its array. *)
   PROCEDURE Terminated(s: ARRAY OF CHAR): BOOLEAN;
@@ -114,9 +113,11 @@ MODULE Platform;
      could be run. Narrowed to an INTEGER as voc's is, so a large status
      may wrap; it does not wrap to 0. *)
   PROCEDURE System*(cmd: ARRAY OF CHAR): INTEGER;
+    VAR status: LONGINT;
   BEGIN
     IF ~Terminated(cmd) THEN RETURN failure END;
-    RETURN SHORT(CSystem(SYSTEM.ADR(cmd)))
+    status := CSystem(SYSTEM.ADR(cmd)); (* a C int, widened to LONGINT for SHORT *)
+    RETURN SHORT(status)
   END System;
 
   (* Deletes the file n. *)

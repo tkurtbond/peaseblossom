@@ -281,14 +281,14 @@ BEGIN
   InsertSystemType("ADDRESS", Types.Address);
   InsertSystemType("BYTE", Types.Byte);
   InsertSystemType("PTR", Types.Ptr);
-  (* voc's fixed-width types, as the basic type of that width under the
-     size model poc generates code for (-O2: SHORTINT is 8 bits, INTEGER
-     16, LONGINT 32); HUGEINT is 64 under both. SET32 is SET under -O2.
-     There is no SET64: a 64-bit set is not a type poc has. *)
-  InsertSystemType("INT8", Types.ShortInt);
-  InsertSystemType("INT16", Types.Integer);
-  InsertSystemType("INT32", Types.LongInt);
-  InsertSystemType("INT64", Types.HugeInt);
+  (* voc's fixed-width types: INT8..INT64 are integers of exactly 1/2/4/8
+     bytes under either size model (Phase 11; before it they were aliases of
+     SHORTINT/INTEGER/LONGINT/HUGEINT, the -O2 widths, so SYSTEM.INT32 was 64
+     bits under -OC). SET32 is still SET, the -O2 width; there is no SET64. *)
+  InsertSystemType("INT8", Types.Int8);
+  InsertSystemType("INT16", Types.Int16);
+  InsertSystemType("INT32", Types.Int32);
+  InsertSystemType("INT64", Types.Int64);
   InsertSystemType("SET32", Types.Set);
   InsertSystemProc("ADR"); InsertSystemProc("GET"); InsertSystemProc("PUT");
   InsertSystemProc("VAL"); InsertSystemProc("MOVE");

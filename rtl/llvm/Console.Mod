@@ -33,7 +33,7 @@ MODULE Console;
     newline = 0AX;
     spaceChunk = 32; (* how many blanks Spaces writes at a time *)
 
-  PROCEDURE ["C", "write"] SysWrite(descriptor: LONGINT; buffer, count: SYSTEM.ADDRESS);
+  PROCEDURE ["C", "write"] SysWrite(descriptor: SYSTEM.INT32; buffer, count: SYSTEM.ADDRESS);
 
   (* Nothing is buffered, so there is nothing to flush. *)
   PROCEDURE Flush*;
@@ -83,7 +83,7 @@ MODULE Console;
   (* i in decimal, right-aligned in a field n characters wide (a shorter
      number is padded with blanks on the left, a longer one is not
      truncated). Takes a HUGEINT so every integer type widens to it; voc's
-     takes SYSTEM.INT64, an alias of HUGEINT in poc. The smallest HUGEINT
+     takes SYSTEM.INT64, which poc has too, HUGEINT's equal. The smallest HUGEINT
      has no positive counterpart to print digit by digit, so it is written
      out whole. *)
   PROCEDURE Int*(i: HUGEINT; n: LONGINT);

@@ -130,6 +130,9 @@ MODULE ConstantEvaluator;
   PROCEDURE SetSizeModel*(model: INTEGER);
   BEGIN
     sizeModel := model;
+    (* where SYSTEM.INT8..INT64 sit among SHORTINT/INTEGER/LONGINT depends
+       on it: see Types.Order *)
+    Types.SetSizeModelIsOC(model = MemoryLayout.sizeModelOC);
     IF model = MemoryLayout.sizeModelOC THEN
       maxShortInt := 32767; maxInteger := 2147483647; maxLongInt := maxHugeInt;
       maxSetElement := 63
@@ -461,6 +464,18 @@ MODULE ConstantEvaluator;
       v.type := t; v.kind := Types.intValue;
       IF wantMax THEN v.intVal := maxLongInt ELSE v.intVal := minLongInt END
     ELSIF t = Types.HugeInt THEN
+      v.type := t; v.kind := Types.intValue;
+      IF wantMax THEN v.intVal := maxHugeInt ELSE v.intVal := minHugeInt END
+    ELSIF t = Types.Int8 THEN
+      v.type := t; v.kind := Types.intValue;
+      IF wantMax THEN v.intVal := 127 ELSE v.intVal := -128 END
+    ELSIF t = Types.Int16 THEN
+      v.type := t; v.kind := Types.intValue;
+      IF wantMax THEN v.intVal := 32767 ELSE v.intVal := -32768 END
+    ELSIF t = Types.Int32 THEN
+      v.type := t; v.kind := Types.intValue;
+      IF wantMax THEN v.intVal := 2147483647 ELSE v.intVal := -2147483647 - 1 END
+    ELSIF t = Types.Int64 THEN
       v.type := t; v.kind := Types.intValue;
       IF wantMax THEN v.intVal := maxHugeInt ELSE v.intVal := minHugeInt END
     ELSIF t = Types.Char THEN

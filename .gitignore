@@ -80,6 +80,7 @@ test/conformance/llvm-short-circuit/llvm-short-circuit
 test/conformance/llvm-pointer-traps/*.exe
 test/conformance/llvm-string-consts/llvm-string-consts
 test/conformance/llvm-char-arrays/llvm-char-arrays
+test/conformance/llvm-system-fixed-width/llvm-system-fixed-width
 test/conformance/crosscheck/crosscheck
 
 # Stage 0/1/2 bootstrap build output (see tools/bootstrap)

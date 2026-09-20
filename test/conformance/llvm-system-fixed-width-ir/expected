@@ -1,0 +1,28 @@
+== -O2 i686-unknown-linux-gnu
+declare i8 @ext8(i8)
+declare i16 @ext16(i16)
+declare i32 @ext32(i32, i32)
+declare i64 @ext64(i64)
+declare i32 @extlong(i32)
+clang accepted
+== -O2 x86_64-unknown-linux-gnu
+declare i8 @ext8(i8)
+declare i16 @ext16(i16)
+declare i32 @ext32(i32, i32)
+declare i64 @ext64(i64)
+declare i32 @extlong(i32)
+clang accepted
+== -OC i686-unknown-linux-gnu
+declare i8 @ext8(i8)
+declare i16 @ext16(i16)
+declare i32 @ext32(i32, i32)
+declare i64 @ext64(i64)
+declare i64 @extlong(i64)
+clang accepted
+== -OC x86_64-unknown-linux-gnu
+declare i8 @ext8(i8)
+declare i16 @ext16(i16)
+declare i32 @ext32(i32, i32)
+declare i64 @ext64(i64)
+declare i64 @extlong(i64)
+clang accepted

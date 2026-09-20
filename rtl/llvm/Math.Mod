@@ -59,12 +59,14 @@ MODULE Math;
        as in voc. fraction/exponent/scale/ulp are right for denormals too:
        the exponent of a denormal is below expoMin, since it is the exponent
        the number would have with a longer exponent field.
-     - Lengths and codes are INTEGER, and round is LONGINT (voc's INT16 and
-       INT32, the same widths under the size model poc generates code for;
-       SYSTEM.INT16/INT32 exist, but as these same aliases, so they are not
-       used). round rounds halves away
+     - Lengths and codes are INTEGER, and round is LONGINT - the Oakwood
+       interface's own types, which follow the size model, so they are not
+       SYSTEM.INT16/INT32 (fixed-width; used only for the C `int` of ldexp).
+       round rounds halves away
        from zero and gives MAX(LONGINT)/MIN(LONGINT) for a number out of
        range. *)
+
+  IMPORT SYSTEM;
 
   CONST
     pi* = 3.14159265358979323846;
@@ -112,7 +114,7 @@ MODULE Math;
   PROCEDURE ["C", "asinh"] CAsinh(x: LONGREAL): LONGREAL;
   PROCEDURE ["C", "acosh"] CAcosh(x: LONGREAL): LONGREAL;
   PROCEDURE ["C", "atanh"] CAtanh(x: LONGREAL): LONGREAL;
-  PROCEDURE ["C", "ldexp"] CLdexp(x: LONGREAL; n: LONGINT): LONGREAL;
+  PROCEDURE ["C", "ldexp"] CLdexp(x: LONGREAL; n: SYSTEM.INT32): LONGREAL;
   PROCEDURE ["C", "logb"] CLogb(x: LONGREAL): LONGREAL;
   PROCEDURE ["C", "nextafterf"] CNextAfterF(x, toward: REAL): REAL;
 

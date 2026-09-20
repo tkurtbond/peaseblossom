@@ -152,6 +152,10 @@ MODULE LLVMTypes;
       (* the one basic type whose width follows the target's word size *)
       IF ConstantEvaluator.wordSize = MemoryLayout.wordSize64 THEN COPY("i64", result) ELSE COPY("i32", result) END
     ELSIF t = Types.HugeInt THEN COPY("i64", result)
+    ELSIF t = Types.Int8 THEN COPY("i8", result) (* SYSTEM.INT8..INT64: the same under either model *)
+    ELSIF t = Types.Int16 THEN COPY("i16", result)
+    ELSIF t = Types.Int32 THEN COPY("i32", result)
+    ELSIF t = Types.Int64 THEN COPY("i64", result)
     ELSIF t = Types.Real THEN COPY("float", result)
     ELSIF t = Types.LongReal THEN COPY("double", result)
     ELSIF t = Types.Set THEN

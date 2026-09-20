@@ -98,18 +98,18 @@ MODULE Files;
     temporaryCount: LONGINT;
 
   PROCEDURE ["C", "fopen"] FOpen(path, mode: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
-  PROCEDURE ["C", "fclose"] FClose(stream: SYSTEM.ADDRESS): LONGINT;
-  PROCEDURE ["C", "fflush"] FFlush(stream: SYSTEM.ADDRESS): LONGINT;
+  PROCEDURE ["C", "fclose"] FClose(stream: SYSTEM.ADDRESS): SYSTEM.INT32;
+  PROCEDURE ["C", "fflush"] FFlush(stream: SYSTEM.ADDRESS): SYSTEM.INT32;
   PROCEDURE ["C", "fread"] FRead(buffer, size, count, stream: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
   PROCEDURE ["C", "fwrite"] FWrite(buffer, size, count, stream: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
-  PROCEDURE ["C", "fseek"] FSeek(stream, offset: SYSTEM.ADDRESS; whence: LONGINT): LONGINT;
-  PROCEDURE ["C", "ferror"] FError(stream: SYSTEM.ADDRESS): LONGINT;
+  PROCEDURE ["C", "fseek"] FSeek(stream, offset: SYSTEM.ADDRESS; whence: SYSTEM.INT32): SYSTEM.INT32;
+  PROCEDURE ["C", "ferror"] FError(stream: SYSTEM.ADDRESS): SYSTEM.INT32;
   PROCEDURE ["C", "ftell"] FTell(stream: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
-  PROCEDURE ["C", "rename"] CRename(old, new: SYSTEM.ADDRESS): LONGINT;
+  PROCEDURE ["C", "rename"] CRename(old, new: SYSTEM.ADDRESS): SYSTEM.INT32;
   (* Directory detection for Old (see its own comment): opendir succeeds
      only for a directory, on Linux and all three BSDs. *)
   PROCEDURE ["C", "opendir"] OpenDirectory(path: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
-  PROCEDURE ["C", "closedir"] CloseDirectory(dir: SYSTEM.ADDRESS): LONGINT;
+  PROCEDURE ["C", "closedir"] CloseDirectory(dir: SYSTEM.ADDRESS): SYSTEM.INT32;
 
   (* An error nothing above can be told about: says what and where, and
      stops the program. *)
@@ -282,7 +282,11 @@ MODULE Files;
         IF stream # 0 THEN
           size := -1;
           IF Readable(stream) & (FSeek(stream, 0, seekEnd) = 0) THEN size := FTell(stream) END;
-          IF (size >= 0) & (size <= MAX(LONGINT)) THEN
+          (* compared as a HUGEINT: SYSTEM.ADDRESS ranks above LONGINT, so
+             "size <= MAX(LONGINT)" would be done at the address's width -
+             32 bits on a 32-bit target, where -OC's MAX(LONGINT) (2^63-1)
+             truncates to -1 and no file would open *)
+          IF (size >= 0) & (SYSTEM.VAL(HUGEINT, size) <= MAX(LONGINT)) THEN
             NEW(f);
             COPY(path, f.workName);
             f.stream := stream;

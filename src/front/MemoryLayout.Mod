@@ -108,6 +108,10 @@ MODULE MemoryLayout;
       IF sizeModel = sizeModelOC THEN RETURN 8 ELSE RETURN 4 END
     ELSIF t = Types.Address THEN RETURN wordSize (* SYSTEM.ADDRESS: as wide as a pointer *)
     ELSIF t = Types.HugeInt THEN RETURN 8
+    ELSIF t = Types.Int8 THEN RETURN 1 (* SYSTEM.INT8..INT64: the same under either model *)
+    ELSIF t = Types.Int16 THEN RETURN 2
+    ELSIF t = Types.Int32 THEN RETURN 4
+    ELSIF t = Types.Int64 THEN RETURN 8
     ELSIF t = Types.Real THEN RETURN 4
     ELSIF t = Types.LongReal THEN RETURN 8
     ELSIF t = Types.Set THEN
