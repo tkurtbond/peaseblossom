@@ -92,4 +92,7 @@ check llvm-strings-extra stringsextra.mod
 check llvm-math mathtest.mod
 check llvm-mathl mathltest.mod
 check llvm-math-extra mathextra.mod
+check llvm-system-shifts shiftstest.mod
+check llvm-system-bytes bytestest.mod
+check llvm-system-extra systemextra.mod
 . ../../testresult.sh

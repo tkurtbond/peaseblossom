@@ -121,9 +121,11 @@ MODULE SymbolTable;
        Oberon2.pdf Appendix C's SYSTEM has no source or .sym file, so
        "IMPORT SYSTEM" (SemanticActions.Mod's ResolveImport) binds a
        moduleClass Object to this scope instead of reading a file. Every
-       member is exported; only the subset the runtime library needs is
-       here (ADDRESS, ADR, GET, PUT, VAL, MOVE), the rest of Appendix C
-       being Phase 10 step 7's. *)
+       member is exported: ADDRESS, BYTE, PTR, the fixed-width names
+       INT8/16/32/64 and SET32 (types) and ADR, GET, PUT, VAL, MOVE, BIT,
+       LSH, ROT, NEW (procedures). GETREG, PUTREG and CC, which name a
+       machine's registers and condition codes, are not here (PLAN.md
+       Phase 10 step 7). *)
     SystemScope*: Scope;
 
   PROCEDURE OpenScope*(outer: Scope): Scope;
@@ -254,6 +256,19 @@ BEGIN
   InsertPredeclaredProc("NEW");
   SystemScope := OpenScope(NIL);
   InsertSystemType("ADDRESS", Types.Address);
+  InsertSystemType("BYTE", Types.Byte);
+  InsertSystemType("PTR", Types.Ptr);
+  (* voc's fixed-width types, as the basic type of that width under the
+     size model poc generates code for (-O2: SHORTINT is 8 bits, INTEGER
+     16, LONGINT 32); HUGEINT is 64 under both. SET32 is SET under -O2.
+     There is no SET64: a 64-bit set is not a type poc has. *)
+  InsertSystemType("INT8", Types.ShortInt);
+  InsertSystemType("INT16", Types.Integer);
+  InsertSystemType("INT32", Types.LongInt);
+  InsertSystemType("INT64", Types.HugeInt);
+  InsertSystemType("SET32", Types.Set);
   InsertSystemProc("ADR"); InsertSystemProc("GET"); InsertSystemProc("PUT");
-  InsertSystemProc("VAL"); InsertSystemProc("MOVE")
+  InsertSystemProc("VAL"); InsertSystemProc("MOVE");
+  InsertSystemProc("BIT"); InsertSystemProc("LSH"); InsertSystemProc("ROT");
+  InsertSystemProc("NEW")
 END SymbolTable.

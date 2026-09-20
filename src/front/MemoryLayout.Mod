@@ -99,6 +99,7 @@ MODULE MemoryLayout;
        cannot distinguish BOOLEAN/CHAR/SET (all notNumeric). *)
     IF t = Types.Boolean THEN RETURN 1
     ELSIF t = Types.Char THEN RETURN 1
+    ELSIF t = Types.Byte THEN RETURN 1 (* SYSTEM.BYTE *)
     ELSIF t = Types.ShortInt THEN
       IF sizeModel = sizeModelOC THEN RETURN 2 ELSE RETURN 1 END
     ELSIF t = Types.Integer THEN

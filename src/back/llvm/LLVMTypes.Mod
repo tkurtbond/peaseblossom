@@ -119,6 +119,7 @@ MODULE LLVMTypes;
   BEGIN
     IF t = Types.Boolean THEN COPY("i8", result)
     ELSIF t = Types.Char THEN COPY("i8", result)
+    ELSIF t = Types.Byte THEN COPY("i8", result) (* SYSTEM.BYTE *)
     ELSIF t = Types.ShortInt THEN
       IF sizeModel = MemoryLayout.sizeModelOC THEN COPY("i16", result) ELSE COPY("i8", result) END
     ELSIF t = Types.Integer THEN

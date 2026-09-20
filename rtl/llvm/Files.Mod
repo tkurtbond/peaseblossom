@@ -7,8 +7,8 @@ MODULE Files;
      ReadLine, WriteString, Delete and Rename. Not here: the typed
      read/write procedures (ReadInt, WriteReal, ...), ReadBytes/WriteBytes
      and Purge, GetDate, GetName and SetSearchPath. Read and Write take a
-     CHAR where voc's take SYSTEM.BYTE, which poc does not have until
-     Phase 10 step 7.
+     CHAR where voc's take SYSTEM.BYTE, which poc has had since Phase 10
+     step 7; changing them is a Phase 11 question (a BYTE is not a CHAR).
 
      THE MODEL. A File is a byte sequence with a length; a Rider is a
      position in one (r.position, set by Set) and the result of the last
@@ -62,7 +62,7 @@ MODULE Files;
        Halt(99), as voc does; Delete and Rename report failure as -1
        rather than errno (see Platform.Mod);
      - the C `int` results below are declared LONGINT, right under the -O2
-       size model only (see Platform.Mod); SYSTEM.INT32 will fix that. *)
+       size model only (see Platform.Mod). *)
 
   IMPORT SYSTEM, Platform, Console;
 

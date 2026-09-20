@@ -1254,7 +1254,9 @@ MODULE LLVMCodeGenerator;
                            v: Value);
     VAR ev: Value; targetLLVMType: ValueText;
   BEGIN
-    IF Types.IsInteger(addrType) OR IsRealType(addrType) THEN ExtendTo(w, cg, v, addrType, ev) ELSE ev := v END;
+    IF Types.IsInteger(addrType) OR IsRealType(addrType) OR (addrType = Types.Byte) THEN
+      ExtendTo(w, cg, v, addrType, ev)
+    ELSE ev := v END;
     LLVMTypes.TypeString(addrType, cg.sizeModel, targetLLVMType);
     WriteStr(w, "  store "); WriteStr(w, targetLLVMType); WriteStr(w, " "); WriteStr(w, ev.text);
     WriteStr(w, ", ptr "); WriteStr(w, addrText);
@@ -2804,6 +2806,18 @@ MODULE LLVMCodeGenerator;
       de := a(SyntaxTree.DesignatorExprNode);
       IF ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addr, addrType, dyn) THEN
         cur := addrType; ok := TRUE; level := 0;
+        IF p.isVar & (dims = 1) & (OpenElementType(p.type) = Types.Byte) THEN
+          (* VAR ARRAY OF SYSTEM.BYTE: the actual is any variable, seen as
+             its bytes - the length is its size (Appendix C) *)
+          lenText[0] := 0X;
+          IF IsOpenArrayType(addrType) & (dyn.dope.count > 0) THEN
+            EmitOpenBytes(w, cg, addrType, dyn.dope, 0, lenText)
+          ELSE
+            AppendLongInt(lenText, MemoryLayout.Size(addrType, ConstantEvaluator.wordSize, cg.sizeModel))
+          END;
+          Strcat(lengths, ", "); Strcat(lengths, wordInt); Strcat(lengths, " "); Strcat(lengths, lenText);
+          level := dims (* the loop below has nothing left to add *)
+        END;
         WHILE ok & (level < dims) DO
           IF (cur # NIL) & (cur IS Types.ArrayType) THEN
             arr := cur(Types.ArrayType);
@@ -2906,7 +2920,9 @@ MODULE LLVMCodeGenerator;
       IF tagText[0] # 0X THEN COPY(", ptr ", hidden); Strcat(hidden, tagText) END
     ELSE
       GenerateExpr(w, cg, a, v);
-      IF Types.IsInteger(p.type) OR IsRealType(p.type) THEN ExtendTo(w, cg, v, p.type, ev) ELSE ev := v END;
+      IF Types.IsInteger(p.type) OR IsRealType(p.type) OR (p.type = Types.Byte) THEN
+        ExtendTo(w, cg, v, p.type, ev)
+      ELSE ev := v END;
       (* a value record parameter takes an extension of its type too - only
          the base part is passed, as in an assignment (Appendix A rule 3) *)
       IF (p.type # NIL) & (p.type IS Types.RecordType) THEN NarrowRecordValue(w, cg, p.type, ev) END;
@@ -4047,22 +4063,146 @@ MODULE LLVMCodeGenerator;
     result.oberonType := TargetPointer(targetType)
   END GenerateGuardExpr;
 
+  (* PLAN.md Phase 10 step 7. SYSTEM.LSH(x, n) and SYSTEM.ROT(x, n): x
+     shifted or rotated left by n places (right for a negative n) within
+     its own width - 8 bits for a CHAR, a BYTE or a SHORTINT under -O2,
+     and so on - filling with zeros, so LSH(-1, -1) is the largest number
+     of the type, not -1 (voc's LSH agrees; ASH is the arithmetic shift).
+     The result has x's own type. A count of the width or more leaves 0 for
+     LSH and is taken modulo the width for ROT (voc leaves both undefined,
+     C's shift being so); shl/lshr with such a count is poison in LLVM, so
+     nothing is left to it - branch-free, like ASH. The count is widened to
+     i64 first so that a HUGEINT count is not truncated. *)
+  PROCEDURE GenerateShift(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode;
+                          rotate: BOOLEAN; VAR result: Value);
+    VAR
+      x, n: Value; ty, bitsText, count, isNeg, negCount, absCount, big, safeCount, narrow, left, right,
+      shifted, final, rem, plus, k, back, rk, kNarrow, rkNarrow: ValueText;
+      bits: INTEGER;
+  BEGIN
+    GenerateExpr(w, cg, args, x);
+    GenerateExpr(w, cg, args.next, n);
+    COPY(x.llvmType, ty);
+    bits := IntWidth(ty);
+    bitsText[0] := 0X; AppendLongInt(bitsText, bits);
+    EmitResizeInt(w, cg, n.llvmType, n.text, "i64", count);
+    IF ~rotate THEN
+      EmitBinOp(w, cg, "icmp slt", "i64", count, "0", isNeg);
+      EmitBinOp(w, cg, "sub", "i64", "0", count, negCount);
+      EmitSelect(w, cg, isNeg, "i64", negCount, count, absCount);
+      EmitBinOp(w, cg, "icmp uge", "i64", absCount, bitsText, big);
+      EmitSelect(w, cg, big, "i64", "0", absCount, safeCount);
+      EmitResizeInt(w, cg, "i64", safeCount, ty, narrow);
+      EmitBinOp(w, cg, "shl", ty, x.text, narrow, left);
+      EmitBinOp(w, cg, "lshr", ty, x.text, narrow, right);
+      EmitSelect(w, cg, isNeg, ty, right, left, shifted);
+      EmitSelect(w, cg, big, ty, "0", shifted, final)
+    ELSE
+      (* k = count mod bits in 0..bits-1, whatever count's sign; rk = the
+         complementary right count, also below bits (0 when k is), so both
+         shifts are legal and k = 0 gives x | x *)
+      EmitBinOp(w, cg, "srem", "i64", count, bitsText, rem);
+      EmitBinOp(w, cg, "add", "i64", rem, bitsText, plus);
+      EmitBinOp(w, cg, "srem", "i64", plus, bitsText, k);
+      EmitBinOp(w, cg, "sub", "i64", bitsText, k, back);
+      EmitBinOp(w, cg, "urem", "i64", back, bitsText, rk);
+      EmitResizeInt(w, cg, "i64", k, ty, kNarrow);
+      EmitResizeInt(w, cg, "i64", rk, ty, rkNarrow);
+      EmitBinOp(w, cg, "shl", ty, x.text, kNarrow, left);
+      EmitBinOp(w, cg, "lshr", ty, x.text, rkNarrow, right);
+      EmitBinOp(w, cg, "or", ty, left, right, final)
+    END;
+    result.text := final; COPY(ty, result.llvmType); result.oberonType := x.oberonType
+  END GenerateShift;
+
+  (* SYSTEM.BIT(a, n): whether bit n of the SET-sized word at address a is
+     set - voc's meaning (a word, not the report's byte), the same on a
+     little-endian machine for n < 8. Read with no alignment assumption,
+     like GET; a bit number outside the word is FALSE, not poison. *)
+  PROCEDURE GenerateBit(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR
+      n: Value; ptrText, setType, bitsText, loaded, count, inRange, safeCount, narrow, shifted, low, isSet,
+      both: ValueText;
+  BEGIN
+    AddressToPointer(w, cg, args, ptrText);
+    GenerateExpr(w, cg, args.next, n);
+    LLVMTypes.TypeString(Types.Set, cg.sizeModel, setType);
+    bitsText[0] := 0X; AppendLongInt(bitsText, IntWidth(setType));
+    NewTemp(cg, loaded);
+    WriteStr(w, "  "); WriteStr(w, loaded); WriteStr(w, " = load "); WriteStr(w, setType);
+    WriteStr(w, ", ptr "); WriteStr(w, ptrText); WriteStr(w, ", align 1"); WriteLn(w);
+    EmitResizeInt(w, cg, n.llvmType, n.text, "i64", count);
+    (* unsigned, so a negative number is out of range too *)
+    EmitBinOp(w, cg, "icmp ult", "i64", count, bitsText, inRange);
+    EmitSelect(w, cg, inRange, "i64", count, "0", safeCount);
+    EmitResizeInt(w, cg, "i64", safeCount, setType, narrow);
+    EmitBinOp(w, cg, "lshr", setType, loaded, narrow, shifted);
+    EmitBinOp(w, cg, "and", setType, shifted, "1", low);
+    EmitBinOp(w, cg, "icmp ne", setType, low, "0", isSet);
+    EmitBinOp(w, cg, "and", "i1", inRange, isSet, both);
+    EmitConvert(w, cg, "zext", "i1", both, "i8", result.text);
+    COPY("i8", result.llvmType); result.oberonType := Types.Boolean
+  END GenerateBit;
+
+  (* SYSTEM.NEW(v, n): a zero-filled raw block of n bytes from the
+     collector, its address stored in the pointer variable v; NIL if the
+     heap cannot supply it, as for NEW. The block has tag 0 - the collector
+     keeps it alive while something points at it but never looks inside, so
+     a pointer stored in it is not seen (the program's own business, as in
+     voc). A size that is not positive, or does not fit a word, is NEW's own
+     length trap (exit 7). *)
+  PROCEDURE GenerateSystemNew(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode;
+                              VAR result: Value);
+    VAR
+      de: SyntaxTree.DesignatorExprNode; v: Value; addrType: Types.Type;
+      wordInt, n64, bad, tooBig, merged, trapLabel, okLabel, size, addrText, allocated, pointer: ValueText;
+  BEGIN
+    result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
+    IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
+    de := args(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens THEN RETURN END;
+    cg.usedAllocate := TRUE; cg.needLengthTrap := TRUE;
+    WordIntType(wordInt);
+    GenerateExpr(w, cg, args.next, v);
+    EmitResizeInt(w, cg, v.llvmType, v.text, "i64", n64);
+    EmitBinOp(w, cg, "icmp sle", "i64", n64, "0", bad);
+    IF wordInt = "i32" THEN
+      EmitBinOp(w, cg, "icmp ugt", "i64", n64, "4294967295", tooBig);
+      EmitBinOp(w, cg, "or", "i1", bad, tooBig, merged); COPY(merged, bad)
+    END;
+    NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+    EmitCondBr(w, bad, trapLabel, okLabel);
+    EmitLabel(w, cg, trapLabel);
+    EmitTrap(w, cg, lengthTrapGlobal, lengthTrapMsg, lengthTrapExitCode);
+    EmitLabel(w, cg, okLabel);
+    EmitResizeInt(w, cg, "i64", n64, wordInt, size);
+    IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
+      WriteStr(w, "  ; unsupported: SYSTEM.NEW on a designator this backend cannot address"); WriteLn(w);
+      RETURN
+    END;
+    NewTemp(cg, allocated);
+    WriteStr(w, "  "); WriteStr(w, allocated); WriteStr(w, " = call "); WriteStr(w, wordInt);
+    WriteStr(w, " @GarbageCollectedHeap.Allocate("); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, size);
+    WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " 0)"); WriteLn(w);
+    EmitConvert(w, cg, "inttoptr", wordInt, allocated, "ptr", pointer);
+    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
+  END GenerateSystemNew;
+
   (* The Oberon2.pdf §10.3 predeclared procedures this backend lowers:
      from PLAN.md Phase 8 step 11 ABS ODD CHR ORD CAP LEN INC DEC COPY
      HALT, from Phase 9 step 2 the numeric conversions LONG SHORT ENTIER,
      from step 3 the SET updates INCL EXCL, SIZE, from step 5 NEW and from
      step 8 ASH MAX MIN - all twenty of §10.3's own - plus the SYSTEM
-     subset ADR GET PUT VAL MOVE (step 4). What is left is SYSTEM's BYTE/
-     PTR/BIT/LSH/ROT/NEW (Phase 10 step 7), which
-     PredeclaredProcedures.Mod's CheckCall does not accept yet either, so
-     the ELSE below is only ever reached by a name added there before its
-     lowering exists: it routes to the same Unsupported placeholder every
-     other out-of-scope construct does rather than falling through
-     silently. *)
+     subset ADR GET PUT VAL MOVE (step 4) and BIT LSH ROT and SYSTEM.NEW
+     (Phase 10 step 7). The ELSE below is only ever reached by a name
+     added to PredeclaredProcedures.Mod's CheckCall before its lowering
+     exists: it routes to the same Unsupported placeholder every other
+     out-of-scope construct does rather than falling through silently. *)
   PROCEDURE GeneratePredeclaredCall(VAR w: Files.Rider; VAR cg: Codegen; name: SyntaxTree.Ident;
-                                    args: SyntaxTree.ExprNode; VAR result: Value);
+                                    args: SyntaxTree.ExprNode; qualified: BOOLEAN; VAR result: Value);
   BEGIN
-    IF name = "ABS" THEN GenerateAbs(w, cg, args, result)
+    IF qualified & (name = "NEW") THEN GenerateSystemNew(w, cg, args, result)
+    ELSIF name = "ABS" THEN GenerateAbs(w, cg, args, result)
     ELSIF name = "ODD" THEN GenerateOdd(w, cg, args, result)
     ELSIF name = "CHR" THEN GenerateChr(w, cg, args, result)
     ELSIF name = "ORD" THEN GenerateOrd(w, cg, args, result)
@@ -4083,14 +4223,15 @@ MODULE LLVMCodeGenerator;
     ELSIF name = "PUT" THEN GeneratePut(w, cg, args, result)
     ELSIF name = "VAL" THEN GenerateVal(w, cg, args, result)
     ELSIF name = "MOVE" THEN GenerateMove(w, cg, args, result)
+    ELSIF name = "BIT" THEN GenerateBit(w, cg, args, result)
+    ELSIF name = "LSH" THEN GenerateShift(w, cg, args, FALSE, result)
+    ELSIF name = "ROT" THEN GenerateShift(w, cg, args, TRUE, result)
     ELSIF name = "NEW" THEN GenerateNew(w, cg, args, result)
     ELSIF name = "ASH" THEN GenerateAsh(w, cg, args, result)
     ELSIF name = "MAX" THEN GenerateMaxMin(w, cg, args, TRUE, result)
     ELSIF name = "MIN" THEN GenerateMaxMin(w, cg, args, FALSE, result)
     ELSE
-      Unsupported(w, cg,
-        "predeclared procedure outside the lowered set (SYSTEM's BYTE/PTR/BIT/LSH/ROT/NEW are Phase 10)",
-        Types.Undefined, result)
+      Unsupported(w, cg, "predeclared procedure outside the lowered set", Types.Undefined, result)
     END
   END GeneratePredeclaredCall;
 
@@ -4119,7 +4260,7 @@ MODULE LLVMCodeGenerator;
     IF (obj # NIL) & (obj.class = SymbolTable.varClass) THEN
       GenerateProcedureValueCall(w, cg, d, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.type = Types.PredeclaredProcedureType) THEN
-      GeneratePredeclaredCall(w, cg, obj.name, args, result)
+      GeneratePredeclaredCall(w, cg, obj.name, args, d.qualifier[0] # 0X, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.externalConvention[0] # 0X) THEN
       GenerateExternalCall(w, cg, obj, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) THEN

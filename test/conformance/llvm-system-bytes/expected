@@ -1,0 +1,24 @@
+semantic OK, wrote llvm-system-bytes
+Z
+-3
+-3
+1 65
+1 255
+2 3
+4 10
+10 15
+10 15
+2 3
+12 33
+4 67
+8 294
+1 253
+xxxxxxxx
+0 0
+set
+nil
+set
+set
+nil
+p cleared
+nil

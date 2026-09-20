@@ -61,7 +61,8 @@ MODULE Math;
        the number would have with a longer exponent field.
      - Lengths and codes are INTEGER, and round is LONGINT (voc's INT16 and
        INT32, the same widths under the size model poc generates code for;
-       they become SYSTEM.INT16/INT32 with step 7). round rounds halves away
+       SYSTEM.INT16/INT32 exist, but as these same aliases, so they are not
+       used). round rounds halves away
        from zero and gives MAX(LONGINT)/MIN(LONGINT) for a number out of
        range. *)
 

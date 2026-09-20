@@ -52,6 +52,10 @@ test/conformance/llvm-strings-extra/llvm-strings-extra
 test/conformance/llvm-math/llvm-math
 test/conformance/llvm-mathl/llvm-mathl
 test/conformance/llvm-math-extra/llvm-math-extra
+test/conformance/llvm-system-shifts/llvm-system-shifts
+test/conformance/llvm-system-bytes/llvm-system-bytes
+test/conformance/llvm-system-extra/llvm-system-extra
+test/conformance/llvm-system-new-trap/llvm-system-new-trap
 test/conformance/llvm-pointers/llvm-pointers
 test/conformance/llvm-pointers-multi-module/llvm-pointers-multi-module
 test/conformance/llvm-pointer-shapes/llvm-pointer-shapes

@@ -83,7 +83,7 @@ MODULE Console;
   (* i in decimal, right-aligned in a field n characters wide (a shorter
      number is padded with blanks on the left, a longer one is not
      truncated). Takes a HUGEINT so every integer type widens to it; voc's
-     takes SYSTEM.INT64, which poc does not have yet. The smallest HUGEINT
+     takes SYSTEM.INT64, an alias of HUGEINT in poc. The smallest HUGEINT
      has no positive counterpart to print digit by digit, so it is written
      out whole. *)
   PROCEDURE Int*(i: HUGEINT; n: LONGINT);

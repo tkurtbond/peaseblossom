@@ -45,3 +45,6 @@ llvm-strings-extra: same
 llvm-math: same
 llvm-mathl: same
 llvm-math-extra: same
+llvm-system-shifts: same
+llvm-system-bytes: same
+llvm-system-extra: same

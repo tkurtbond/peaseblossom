@@ -516,6 +516,9 @@ MODULE PredeclaredProcedures;
     ELSIF ~(vt IS Types.PointerType) THEN
       Diagnostics.Error(line, column, "NEW requires a pointer variable");
       RETURN
+    ELSIF vt = Types.Ptr THEN
+      Diagnostics.Error(line, column, "NEW cannot make a SYSTEM.PTR: it has no type to allocate; use SYSTEM.NEW");
+      RETURN
     END;
     ptr := vt(Types.PointerType); base := ptr.base;
     extraCount := ArgCount(args) - 1;
@@ -681,13 +684,89 @@ MODULE PredeclaredProcedures;
     END
   END CheckMove;
 
+  (* Appendix C: BIT(a, n) - bit n of the SET-sized word at address a.
+     Like GET, the address is any integer. *)
+  PROCEDURE CheckBit(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
+                     line, column: INTEGER; checkExpr: CheckExprProc): Types.Type;
+    VAR at, nt: Types.Type;
+  BEGIN
+    IF ArgCount(args) # 2 THEN
+      Diagnostics.Error(line, column, "SYSTEM.BIT expects two arguments");
+      RETURN Types.Undefined
+    END;
+    at := checkExpr(scope, Arg(args, 0));
+    nt := checkExpr(scope, Arg(args, 1));
+    IF (at # Types.Undefined) & ~Types.IsInteger(at) THEN
+      Diagnostics.Error(line, column, "SYSTEM.BIT's first argument must be an integer address")
+    END;
+    IF (nt # Types.Undefined) & ~Types.IsInteger(nt) THEN
+      Diagnostics.Error(line, column, "SYSTEM.BIT's second argument must be an integer bit number")
+    END;
+    RETURN Types.Boolean
+  END CheckBit;
+
+  (* Appendix C: LSH(x, n) and ROT(x, n) - x is an integer, a CHAR or a
+     BYTE, n an integer, and the result has x's own type. *)
+  PROCEDURE CheckShift(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
+                       line, column: INTEGER; checkExpr: CheckExprProc;
+                       name: ARRAY OF CHAR): Types.Type;
+    VAR xt, nt: Types.Type;
+  BEGIN
+    IF ArgCount(args) # 2 THEN
+      Diagnostics.Error(line, column, "SYSTEM.LSH and SYSTEM.ROT expect two arguments");
+      RETURN Types.Undefined
+    END;
+    xt := checkExpr(scope, Arg(args, 0));
+    nt := checkExpr(scope, Arg(args, 1));
+    IF (nt # Types.Undefined) & ~Types.IsInteger(nt) THEN
+      Diagnostics.Error(line, column, "the shift count must be an integer")
+    END;
+    IF xt = Types.Undefined THEN RETURN Types.Undefined END;
+    IF ~Types.IsInteger(xt) & (xt # Types.Char) & (xt # Types.Byte) THEN
+      Diagnostics.Error(line, column, "SYSTEM.LSH and SYSTEM.ROT shift an integer, a CHAR or a BYTE");
+      RETURN Types.Undefined
+    END;
+    RETURN xt
+  END CheckShift;
+
+  (* Appendix C: SYSTEM.NEW(v, n) - not the predeclared NEW: v is any
+     pointer variable, and n the size in bytes of the raw block that
+     becomes what it points to. Needs the collector, like NEW. *)
+  PROCEDURE CheckSystemNew(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
+                           line, column: INTEGER;
+                           checkExpr: CheckExprProc; checkDesignator: CheckDesignatorProc);
+    VAR vt, nt: Types.Type; readOnly, isVariable: BOOLEAN;
+  BEGIN
+    newCalled := TRUE;
+    IF ArgCount(args) # 2 THEN
+      Diagnostics.Error(line, column, "SYSTEM.NEW expects two arguments"); RETURN
+    END;
+    vt := ResolveVarArg(scope, checkDesignator, Arg(args, 0), readOnly, isVariable);
+    nt := checkExpr(scope, Arg(args, 1));
+    IF (nt # Types.Undefined) & ~Types.IsInteger(nt) THEN
+      Diagnostics.Error(line, column, "SYSTEM.NEW's size must be an integer")
+    END;
+    IF vt = Types.Undefined THEN RETURN END;
+    IF ~isVariable OR readOnly THEN
+      Diagnostics.Error(line, column, "SYSTEM.NEW's first argument must be a writable variable")
+    ELSIF ~(vt IS Types.PointerType) THEN
+      Diagnostics.Error(line, column, "SYSTEM.NEW requires a pointer variable")
+    END
+  END CheckSystemNew;
+
   PROCEDURE CheckCall*(scope: SymbolTable.Scope; name: SyntaxTree.Ident; args: SyntaxTree.ExprNode;
                        line, column: INTEGER;
                        checkExpr: CheckExprProc; checkDesignator: CheckDesignatorProc;
-                       VAR isProperProcedure: BOOLEAN): Types.Type;
+                       qualified: BOOLEAN; VAR isProperProcedure: BOOLEAN): Types.Type;
   BEGIN
     isProperProcedure := FALSE;
-    IF name = "ABS" THEN RETURN CheckAbs(scope, args, line, column, checkExpr)
+    IF qualified & (name = "NEW") THEN
+      (* only SYSTEM has procedures a qualified name can reach, and its
+         NEW is not the predeclared one *)
+      isProperProcedure := TRUE;
+      CheckSystemNew(scope, args, line, column, checkExpr, checkDesignator);
+      RETURN NIL
+    ELSIF name = "ABS" THEN RETURN CheckAbs(scope, args, line, column, checkExpr)
     ELSIF name = "ASH" THEN RETURN CheckAsh(scope, args, line, column, checkExpr)
     ELSIF name = "CAP" THEN RETURN CheckCap(scope, args, line, column, checkExpr)
     ELSIF name = "CHR" THEN RETURN CheckChr(scope, args, line, column, checkExpr)
@@ -734,6 +813,9 @@ MODULE PredeclaredProcedures;
       isProperProcedure := TRUE;
       CheckMove(scope, args, line, column, checkExpr);
       RETURN NIL
+    ELSIF name = "BIT" THEN RETURN CheckBit(scope, args, line, column, checkExpr)
+    ELSIF (name = "LSH") OR (name = "ROT") THEN
+      RETURN CheckShift(scope, args, line, column, checkExpr, name)
     ELSE
       Diagnostics.Error(line, column, "unknown predeclared procedure");
       RETURN Types.Undefined

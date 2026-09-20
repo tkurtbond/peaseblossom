@@ -220,6 +220,14 @@ MODULE Types;
   VAR
     Boolean*, Char*, ShortInt*, Integer*, LongInt*, Address*, HugeInt*, Real*, LongReal*,
       Set*, String*, Undefined*, NilType*: Type;
+    (* PLAN.md Phase 10 step 7: SYSTEM.BYTE, a one-byte value CHAR and
+       SHORTINT are assignable to (and that an ARRAY OF BYTE VAR parameter
+       stands in front of any variable for), and SYSTEM.PTR, a pointer any
+       pointer is assignable to. Ptr is a real PointerType so every place
+       that treats pointers alike (NIL, comparison, the collector's
+       pointer slots) needs no change; its base is an empty record no
+       program can name, and the checker refuses to dereference it. *)
+    Byte*, Ptr*: Type;
     (* PLAN.md Phase 6: a shared singleton marking a SymbolTable.Object as
        one of Oberon2.pdf §10.3's predeclared procedures. A single
        instance suffices - PredeclaredProcedures.Mod re-dispatches on the
@@ -640,6 +648,10 @@ MODULE Types;
   BEGIN
     IF SameType(dst, src) THEN RETURN TRUE (* rule 1 (subsumes rule 7) *)
     ELSIF Includes(dst, src) THEN RETURN TRUE (* rule 2 *)
+    ELSIF (dst = Byte) & ((src = Char) OR (src = ShortInt)) THEN
+      RETURN TRUE (* Appendix C: SYSTEM.BYTE takes a CHAR or a SHORTINT *)
+    ELSIF (dst = Ptr) & (src # NIL) & (src IS PointerType) THEN
+      RETURN TRUE (* Appendix C: SYSTEM.PTR takes any pointer *)
     ELSIF (dst # NIL) & (src # NIL) & (dst IS RecordType) & (src IS RecordType) THEN
       RETURN Extends(src, dst) (* rule 3 *)
     ELSIF (dst # NIL) & (src # NIL) & (dst IS PointerType) & (src IS PointerType) THEN
@@ -664,6 +676,8 @@ MODULE Types;
     ELSIF t = Integer THEN COPY("INTEGER", name)
     ELSIF t = LongInt THEN COPY("LONGINT", name)
     ELSIF t = Address THEN COPY("SYSTEM.ADDRESS", name)
+    ELSIF t = Byte THEN COPY("SYSTEM.BYTE", name)
+    ELSIF t = Ptr THEN COPY("SYSTEM.PTR", name)
     ELSIF t = HugeInt THEN COPY("HUGEINT", name)
     ELSIF t = Real THEN COPY("REAL", name)
     ELSIF t = LongReal THEN COPY("LONGREAL", name)
@@ -680,6 +694,8 @@ MODULE Types;
   END TypeName;
 
 BEGIN
+  Byte := NewBasicType(notNumeric);
+  Ptr := NewPointerType(NewRecordType(NIL));
   Boolean := NewBasicType(notNumeric);
   Char := NewBasicType(notNumeric);
   ShortInt := NewBasicType(shortIntRank);

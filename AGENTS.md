@@ -274,21 +274,16 @@ documented above: "Integer types" gains `HUGEINT`, and the type-inclusion
 hierarchy gains `HUGEINT` between `LONGINT` and `REAL`. No further Phase 5/6
 work item exists here.
 Appendix C (the `SYSTEM` module): a subset was pulled forward into Phase 9
-step 4 (2026-09-19) - see "SYSTEM subset (partly implemented)" below. The
-rest is scheduled for `PLAN.md` Phase 10 step 7 (grouped with the runtime-library
-phase rather than the VAX/VMS one, since `SYSTEM` needs a real LLVM
-lowering just as much as a VAX one, and has no dependency on the VAX
-backend existing). When it is, two adjustments beyond the report's own
-text follow from decisions already made elsewhere in this file: `ADR`/
-`GET`/`PUT`/`MOVE`'s address arguments use `SYSTEM.ADDRESS`, not `LONGINT`
-(see "`SYSTEM.ADDRESS` type" above — an address-width concern, independent
-of `HUGEINT`), and `LSH`/`ROT`'s "`x`: integer, CHAR, BYTE" argument
-category should explicitly include `HUGEINT` alongside `SHORTINT`/
-`INTEGER`/`LONGINT`, since it is a genuine additional integer type by the
-same Appendix A definition above. Both are documentation-only conclusions
-today; there is no `SYSTEM.Mod` yet for either to apply to.
+step 4 (2026-09-19) and the rest done in Phase 10 step 7 (2026-09-20) - see
+"SYSTEM subset (implemented)" below. Two adjustments beyond the report's
+own text follow from decisions made elsewhere in this file: `ADR`/`GET`/
+`PUT`/`MOVE`'s address arguments use `SYSTEM.ADDRESS`, not `LONGINT` (see
+"`SYSTEM.ADDRESS` type" above - an address-width concern, independent of
+`HUGEINT`), and `LSH`/`ROT`'s "`x`: integer, CHAR, BYTE" argument category
+includes `HUGEINT` alongside `SHORTINT`/`INTEGER`/`LONGINT`, since it is a
+genuine additional integer type by the same Appendix A definition above.
 
-### SYSTEM subset (partly implemented)
+### SYSTEM subset (implemented)
 
 `IMPORT SYSTEM` binds a pseudo-module (no source, no `.sym`;
 `SymbolTable.SystemScope`) offering `ADDRESS`, `ADR`, `GET`, `PUT`, `VAL`
@@ -303,8 +298,34 @@ not the reverse). `GET`/`PUT` access memory with no alignment assumption;
 its minimal integer type's width (`PUT(a, 5)` writes a `SHORTINT`-sized
 value under `-O2`). `VAL(T, x)` between scalars of different widths
 sign-extends or truncates - the report leaves it undefined and voc warns.
-`BYTE`, `PTR`, `BIT`, `LSH`, `ROT`, `SYSTEM.NEW` and the fixed-width types
-are still Phase 10 step 7's.
+
+Phase 10 step 7 added the rest (`PLAN.md` step 7 has the full account; probed
+against real voc 2026-09-20). What a program can observe:
+
+- **`SYSTEM.BYTE`** is one byte; `CHAR` and `SHORTINT` are assignable to it,
+  not back (use `VAL`). A `VAR x: ARRAY OF BYTE` parameter takes a variable of
+  any type, its hidden length the actual's size in bytes.
+- **`SYSTEM.PTR`** is a pointer to an empty record: any pointer is assignable
+  to it and a `VAR p: PTR` takes any pointer variable; it may be compared
+  with any pointer or `NIL` (voc rejects that). **Unlike voc, a `PTR` cannot
+  be dereferenced, type-guarded, `IS`-tested or used as a `WITH` variable** -
+  assign it to a typed pointer first.
+- **`LSH`/`ROT`** work at `x`'s own width and the result has `x`'s type (a
+  shifted `CHAR` is a `CHAR`; voc gives a signed integer); a negative count
+  goes the other way, and a `LSH` count of the width or more is 0, a `ROT`
+  count is taken modulo the width - defined, where voc's are C's undefined
+  shifts.
+- **`BIT(a, n)`** is voc's: bit `n` of the `SET`-sized word at `a`, `FALSE`
+  for `n` outside it.
+- **`SYSTEM.NEW(v, n)`** allocates `n` zero-filled bytes for any pointer
+  variable, untraced by the collector (tag 0); `n <= 0` or too large traps
+  (exit 7, as `NEW` of an open array), no heap leaves `v` NIL. Told from the
+  ordinary `NEW` by the `SYSTEM.` qualifier.
+- **`SYSTEM.INT8/16/32/64` and `SET32`** exist, as aliases of `SHORTINT`/
+  `INTEGER`/`LONGINT`/`HUGEINT`/`SET` - the `-O2` widths, so under `-OC`
+  `SYSTEM.INT32` is 64 bits. There is no `SET64`; a real fixed-width family
+  is a Phase 11 item. `CC`, `GETREG` and `PUTREG` are not implemented: they
+  name a machine's registers and condition codes, which LLVM IR has none of.
 
 ### Pointers, `NEW` and the runtime (implemented, Phase 9 step 5)
 

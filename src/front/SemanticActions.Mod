@@ -1385,6 +1385,11 @@ MODULE SemanticActions;
     ELSIF ~(leftType IS Types.PointerType) & ~(viaVarParam & (leftType IS Types.RecordType)) THEN
       Diagnostics.Error(line, column, "a type guard requires a pointer or a VAR record parameter");
       RETURN Types.Undefined
+    ELSIF leftType = Types.Ptr THEN
+      (* voc allows it, but a SYSTEM.PTR may point at an array, whose block
+         has no record type descriptor for the check to read *)
+      Diagnostics.Error(line, column, "a SYSTEM.PTR cannot be type-guarded: assign it to a typed pointer first");
+      RETURN Types.Undefined
     ELSIF ~CheckExtensionApplicable(leftType, targetType, viaVarParam) THEN
       Diagnostics.Error(line, column,
         "type guard target must be an extension of the designator's type");
@@ -1553,6 +1558,9 @@ MODULE SemanticActions;
           ELSIF (t = NIL) OR ~(t IS Types.PointerType) THEN
             Diagnostics.Error(sel.line, sel.column, "'^' requires a pointer");
             t := Types.Undefined
+          ELSIF t = Types.Ptr THEN
+            Diagnostics.Error(sel.line, sel.column, "SYSTEM.PTR cannot be dereferenced");
+            t := Types.Undefined
           ELSE
             ptr := t(Types.PointerType); t := ptr.base
           END
@@ -1624,6 +1632,17 @@ MODULE SemanticActions;
     RETURN formalArr.isOpen & Types.ArrayCompatible(formal, actual)
   END IsOpenArrayFormal;
 
+  (* Appendix C: a VAR parameter of type ARRAY OF SYSTEM.BYTE takes an
+     actual parameter of any type - the procedure sees its bytes (the
+     hidden length is the actual's size in bytes). *)
+  PROCEDURE IsByteArrayFormal(formal: Types.Type): BOOLEAN;
+    VAR arr: Types.ArrayType;
+  BEGIN
+    IF (formal = NIL) OR ~(formal IS Types.ArrayType) THEN RETURN FALSE END;
+    arr := formal(Types.ArrayType);
+    RETURN arr.isOpen & (arr.elementType = Types.Byte)
+  END IsByteArrayFormal;
+
   (* Appendix A "matching formal parameter lists" at last has a real call
      site (PLAN.md Phase 6) - params/args are walked together: a value
      parameter's argument is checked via CheckExpr and required
@@ -1679,7 +1698,9 @@ MODULE SemanticActions;
             ELSIF ~Types.SameType(p.type, argType)
                 & ~((p.type # NIL) & (argType # NIL) & (p.type IS Types.RecordType)
                     & (argType IS Types.RecordType) & Types.Extends(argType, p.type))
-                & ~IsOpenArrayFormal(p.type, argType) THEN
+                & ~IsOpenArrayFormal(p.type, argType)
+                & ~IsByteArrayFormal(p.type)
+                & ~((p.type = Types.Ptr) & (argType # NIL) & (argType IS Types.PointerType)) THEN
               Diagnostics.Error(a.line, a.column, "argument type does not match the VAR parameter")
             END
           END
@@ -1823,7 +1844,8 @@ MODULE SemanticActions;
     IF baseType = Types.PredeclaredProcedureType THEN
       resultType := PredeclaredProcedures.CheckCall(scope, node.designator.name, node.args,
                                                       node.line, node.column,
-                                                      CheckExpr, CheckDesignator, isProperProcedure);
+                                                      CheckExpr, CheckDesignator,
+                                                      node.designator.qualifier[0] # 0X, isProperProcedure);
       IF isProperProcedure THEN
         Diagnostics.Error(node.line, node.column, "a proper procedure has no result value");
         RETURN Types.Undefined
@@ -2205,7 +2227,8 @@ MODULE SemanticActions;
     baseType := CheckDesignator(scope, s.designator, readOnly, isVariable);
     IF baseType = Types.PredeclaredProcedureType THEN
       baseType := PredeclaredProcedures.CheckCall(scope, s.designator.name, s.args, s.line, s.column,
-                                                    CheckExpr, CheckDesignator, isProperProcedure)
+                                                    CheckExpr, CheckDesignator,
+                                                    s.designator.qualifier[0] # 0X, isProperProcedure)
     ELSIF baseType = Types.Undefined THEN
       CheckExprList(scope, s.args)
     ELSIF ~(baseType IS Types.ProcedureType) THEN

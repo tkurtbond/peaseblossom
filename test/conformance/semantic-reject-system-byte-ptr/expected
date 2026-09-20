@@ -1,0 +1,20 @@
+bad.mod:20:3: error: assignment is not type-compatible
+bad.mod:21:3: error: assignment is not type-compatible
+bad.mod:22:8: error: ORD requires a CHAR or SET argument
+bad.mod:23:11: error: SYSTEM.PTR cannot be dereferenced
+bad.mod:24:3: error: NEW cannot make a SYSTEM.PTR: it has no type to allocate; use SYSTEM.NEW
+bad.mod:25:3: error: assignment is not type-compatible
+bad.mod:26:6: error: IS target must be an extension of the left operand's type
+bad.mod:27:8: error: a SYSTEM.PTR cannot be type-guarded: assign it to a typed pointer first
+bad.mod:28:14: error: argument is not array compatible with the open-array parameter
+bad.mod:29:9: error: a VAR parameter requires a variable argument
+bad.mod:30:12: error: argument type does not match the VAR parameter
+bad.mod:32:16: error: argument type does not match the VAR parameter
+bad.mod:33:8: error: SYSTEM.LSH and SYSTEM.ROT shift an integer, a CHAR or a BYTE
+bad.mod:34:8: error: the shift count must be an integer
+bad.mod:35:8: error: SYSTEM.LSH and SYSTEM.ROT expect two arguments
+bad.mod:36:6: error: SYSTEM.BIT's first argument must be an integer address
+bad.mod:37:3: error: SYSTEM.NEW requires a pointer variable
+bad.mod:38:3: error: SYSTEM.NEW's size must be an integer
+bad.mod:39:3: error: NEW takes extra length arguments only for a pointer to an open array
+19 error(s)

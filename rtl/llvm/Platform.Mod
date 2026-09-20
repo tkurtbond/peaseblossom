@@ -29,8 +29,10 @@ MODULE Platform;
        readable. (It stays whole under a size model with a 32-bit INTEGER.)
      - The C type `int` is written LONGINT in the external declarations,
        which is what it is under the -O2 size model, the only one poc
-       generates code for so far. Once SYSTEM.INT32 exists (step 7) they
-       should say that instead, which is right under any size model.
+       generates code for so far. SYSTEM.INT32 exists (step 7) but is only an
+       alias of LONGINT, so it would not be right under -OC either; they
+       should move to a real fixed-width INT32 when there is one
+       (PLAN.md's Phase 11 table).
 
      A string handed to a C function must end in 0X within its array; one
      that does not is treated as naming nothing (Chdir and Unlink fail,

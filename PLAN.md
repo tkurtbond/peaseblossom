@@ -2070,8 +2070,8 @@ style exactly.
      voc leave it undefined), `MOVE` = `llvm.memmove` (declared once, at
      the end, only if used; a negative count moves nothing). `SIZE(T)`,
      which no earlier step had lowered, came along: it is a constant.
-     Still Phase 10 step 7's: `BYTE`, `PTR`, `BIT`, `LSH`, `ROT`,
-     `SYSTEM.NEW`, `GETREG`/`PUTREG`, `INT8..64`/`SET32/64`.
+     Phase 10 step 7 has since done the rest, bar `GETREG`/`PUTREG`/`CC`
+     and `SET64`.
    - **Register spilling is `llvm.eh.unwind.init`, not `setjmp`.** It is
      declared as an ordinary external procedure
      (`PROCEDURE ["C", "llvm.eh.unwind.init"] SpillRegisters;` - LLVM
@@ -3214,10 +3214,11 @@ work already being in place.
    - **C `int` is written `LONGINT`** in the external declarations, right
      under the `-O2` model poc generates code for, wrong under `-OC` (a
      64-bit `LONGINT` reads a return register's upper half, which the
-     ABI leaves undefined). `SYSTEM.INT32` (step 7) is the size-model-
-     independent spelling; these declarations, and `Console`'s `write`,
-     should move to it then, and step 8's self-hosting under the `-OC`
-     model needs that done first.
+     ABI leaves undefined). Step 7's `SYSTEM.INT32` is only an alias of
+     `LONGINT` (the `-O2` width), so it is *not* the size-model-independent
+     spelling this needed and the move was not made; step 8's self-hosting
+     under the `-OC` model needs a real fixed-width `INT32` (Phase 11 table)
+     and these declarations, and `Console`'s `write`, moved to it.
    **Testing**: `llvm-platform` (25 checks over `GetEnv` - a set, an empty,
    an unset and a truncated variable; `System`'s status; `Unlink` of a real
    file twice; `Chdir` into a real directory and back, seen from the
@@ -3485,7 +3486,7 @@ work already being in place.
      at or past +-1 gives +-`arctanh(1 - 2^-places)` (voc: another
      approximation of the same idea); `power` and `arctan2` follow `Math`'s
      rules in `MathL` too (voc's `MathL` returns `-large` for a negative
-     base). `INT16`/`INT32` are `INTEGER`/`LONGINT` until step 7.
+     base). `INT16`/`INT32` are `INTEGER`/`LONGINT` (`SYSTEM.INT16`/`INT32` exist since step 7, as the same aliases).
    - **`Strings`** is Oberon-2 over an array and length, all in `LONGINT`
      so nothing wraps, and never writes beyond `dest` or reads beyond a
      string with no `0X`: a result too long is cut to fit *with* its `0X`
@@ -3622,6 +3623,68 @@ work already being in place.
    alongside Phase 9's own cross-cutting discipline - where getting the
    size-dependent axis right from the start matters).
 
+   **Implemented** (`SymbolTable.SystemScope`, `PredeclaredProcedures.Mod`,
+   `SemanticActions.Mod`, `Types.Mod`, `LLVMCodeGenerator.Mod`; probed against
+   real voc 2026-09-20). Resolving the contradiction above (the step's
+   parenthetical lists the fixed-width types, a later paragraph excludes
+   them): `INT8`/`INT16`/`INT32`/`INT64` and `SET32` are **implemented**, as
+   plain aliases of `SHORTINT`/`INTEGER`/`LONGINT`/`HUGEINT`/`SET`; there is no
+   `SET64`. Being aliases they have the `-O2` widths (8/16/32/64 bits) and
+   are *not* size-model-aware: under `-OC` `SYSTEM.INT32` is a 64-bit `LONGINT`
+   and `SYSTEM.INT16` a 32-bit `INTEGER`. That is enough for what the runtime
+   needed them for, but the promised migration of the FFI declarations in
+   `Platform.Mod`/`Files.Mod`/`Math.Mod` (C `int` written as `LONGINT`) is
+   **not done**, since it would only be right under `-O2`; a real fixed-width
+   `INT32` (a distinct type, whose width does not follow the model) is a
+   Phase 11 row. `CC`, `GETREG` and `PUTREG` are not implemented, as decided.
+   What a program can observe:
+
+   - **`SYSTEM.BYTE`** is one byte. `CHAR` and `SHORTINT` values are assignable
+     to it, not back (use `VAL`), and it has no `ORD`. A `VAR x: ARRAY OF
+     BYTE` parameter takes a variable of any type: the hidden length is the
+     actual's size in bytes (for an open-array actual, its element count
+     times the element size), so `Copy(x, y)` over two records works like
+     voc's. Value `ARRAY OF BYTE` takes only byte arrays (voc too).
+   - **`SYSTEM.PTR`** is a pointer to an empty record. Any pointer is assignable
+     to it and a `VAR p: PTR` parameter takes any pointer variable;
+     `=`/`#` between a `PTR` and any pointer (or `NIL`) is allowed (voc
+     rejects the mixed comparison). **Deviation from voc**: a `PTR` cannot be
+     dereferenced, type-guarded, tested with `IS`, or be a `WITH` variable
+     ("assign it to a typed pointer first"), nor be `NEW`'d as an ordinary
+     pointer - voc accepts some of these and the backend cannot lower them
+     soundly.
+   - **`LSH(x, n)`/`ROT(x, n)`** work at `x`'s own width (`CHAR`/`BYTE`: 8 bits,
+     unsigned; `HUGEINT`: 64) and the result has `x`'s type - a `CHAR` shifted
+     is a `CHAR` (voc gives a signed integer). A negative `n` shifts or
+     rotates the other way. A `LSH` count of the width or more gives 0 and
+     `ROT` counts are taken modulo the width; both are defined (voc's are the
+     C shifts, undefined there). Lowered branch-free.
+   - **`BIT(a, n)`** is voc's, not the report's byte-at-`a`: bit `n` of the
+     `SET`-sized word at `a`; `n` outside the word is `FALSE`.
+   - **`SYSTEM.NEW(v, n)`** allocates `n` zero-filled bytes (tag 0: the block is
+     untraced by the collector, so it must not hold the only reference to
+     anything) and assigns the address to any pointer variable `v`. `n <= 0`
+     or a size that overflows is the length trap of step 7 of Phase 9 (exit 7,
+     "Too many, or negative number of, elements in dynamic array"); a heap
+     that cannot supply the block leaves `v` NIL. The call is told from the
+     ordinary `NEW` by its designator having a qualifier (`SYSTEM.NEW` - the
+     bare `NEW` stays the predeclared one).
+   - **Not lowered** (found, not fixed): a guard followed by an index
+     (`any(T)[i]`) and a guard to a pointer-to-array type stay `; unsupported`
+     in the backend; with `PTR` guards rejected only this reaches user code
+     through ordinary pointer types, where it already did.
+
+   **Testing**: `llvm-system-shifts` and `llvm-system-bytes` (shared with voc,
+   output equal: every `LSH`/`ROT` direction and width, `BIT`, byte-array
+   parameters over scalars, records and open arrays, `BYTE` narrowing),
+   `llvm-system-extra` (poc only: counts at or past the width, `CHAR`/`BYTE`
+   operands, an out-of-range `BIT`, the `INTn`/`SET32` aliases, `PTR`
+   comparisons, `SYSTEM.NEW` blocks including a reclaim loop of 20000 blocks
+   of 100000 bytes), `llvm-system-new-trap` (exit status 7),
+   `semantic-reject-system-byte-ptr` (19 diagnostics). All three run
+   fixtures are in `llvm-i686-runtime` and match the 64-bit output; all
+   three also build and run under `-OC`. 198 pass.
+
 8. **Self-hosting bootstrap.** Stage 0 (`voc`) compiles all of poc
    (front end + LLVM backend + every `rtl/llvm` module built in steps
    1–6, `SYSTEM` lowering from step 7, and Phase 9's own GC) → Stage 1
@@ -3691,6 +3754,9 @@ as it stands when the phase starts, and adds what it finds):
 | `Out.Real`/`Out.LongReal` are voc's algorithm, not correctly rounded (a decimal exponent estimated as 77/256 of the binary one, scaling by a floating-point power of ten exact only to 10^22): the last digits of a number outside about 10^-22..10^22, or the 17th of a LONGREAL, can be off. The same shortcoming as `ParseReal`'s; one correctly rounded converter each way would close both | Phase 10 step 5 | gap, found not fixed |
 | `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | decision |
 | A call of a nested procedure is emitted as `; unsupported: call target is not a plain procedure` and the build succeeds, with the call missing: make it an error, or lower it (static link) | Phase 10 step 6 | bug (silent), decision |
+| `SYSTEM.INT8..INT64`/`SET32` are aliases of the `-O2` types, so `SYSTEM.INT32` is 64 bits under `-OC`; a real fixed-width family (and `SET64`), after which the C `int` declarations in `Platform`/`Files`/`Console`/`Math` move to `SYSTEM.INT32` and `-OC` self-hosting can work | Phase 10 step 7 | gap, decision |
+| `SYSTEM.PTR` cannot be dereferenced, guarded, `IS`-tested or a `WITH` variable (voc allows some); a guard followed by an index, or to a pointer-to-array type, is unsupported in the backend | Phase 10 step 7 | decision, gap |
+| `BIT`'s word-based meaning (voc's) differs from the report's `Mem[a]` bit; `SYSTEM.NEW` blocks are untraced by the collector | Phase 10 step 7 | decision |
 | A constant `NEW` length <= 0: poc traps at run time, voc rejects it at compile time | `000-todo.org`; Phase 9 step 7 | decision |
 | An option to make `NEW` trap when the heap cannot satisfy it (today: the pointer is NIL) | `000-todo.org`; Phase 9 step 5 | decision + implementation |
 | `ASSERT`: add it or not, which form, and what `-a` means | Open design questions | decision (+ implementation) |
@@ -3866,8 +3932,8 @@ as it stands when the phase starts, and adds what it finds):
    - *`HUGESET`.* Under `-O2` a `SET` is 32 bits and a `LONGINT` 32 bits,
      under `-OC` both 64: `SET` follows `LONGINT`. Whether a set as wide as
      `HUGEINT` on every model is wanted is answered from voc's own answer,
-     `SYSTEM.SET32`/`SYSTEM.SET64` (Phase 10 step 7's fixed-width types),
-     which if sufficient means no new predeclared name.
+     `SYSTEM.SET32`/`SYSTEM.SET64` (voc's; step 7 made `SET32` an alias of
+     `SET` and has no `SET64`), which if sufficient means no new predeclared name.
    - *Initializers on `VAR` declarations.* Decide the syntax and its
      reach: module variables and locals; scalars only or any type; whether
      an exported variable may carry one; how it interacts with the NIL
