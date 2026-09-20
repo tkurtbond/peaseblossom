@@ -34,6 +34,8 @@ test/conformance/llvm-narrow-index/llvm-narrow-index
 test/conformance/llvm-gc-collect/llvm-gc-collect
 test/conformance/llvm-gc-tracing/llvm-gc-tracing
 test/conformance/llvm-gc-new/llvm-gc-new
+test/conformance/llvm-console/llvm-console
+test/conformance/llvm-console-extra/llvm-console-extra
 test/conformance/llvm-pointers/llvm-pointers
 test/conformance/llvm-pointers-multi-module/llvm-pointers-multi-module
 test/conformance/llvm-pointer-shapes/llvm-pointer-shapes

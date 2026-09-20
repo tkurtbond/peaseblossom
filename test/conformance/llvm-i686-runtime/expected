@@ -30,3 +30,5 @@ llvm-procedure-values-import: same
 llvm-ash-max-min: same
 llvm-const-fold: same
 llvm-const-fold-import: same
+llvm-console: same
+llvm-console-extra: same

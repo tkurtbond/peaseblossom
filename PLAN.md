@@ -3111,7 +3111,9 @@ fixtures before the next starts, matching Phase 8/9's own incremental
 style exactly. Every step here builds on Phase 9's `POINTER`/`NEW`/GC
 work already being in place.
 
-1. **`Console.Mod`.** `PrintString(s: ARRAY OF CHAR)`/`PrintLn`, wrapping
+1. **`Console.Mod`.** `String(s: ARRAY OF CHAR)`/`Ln` (voc's own names, not
+   the `PrintString`/`PrintLn` this step first proposed - so a program using
+   them runs under both compilers), wrapping
    the same `write(2)` FFI call every Phase 8/9 fixture already declares
    inline, but as genuine Oberon-2 source compiled by poc and `IMPORT`ed
    by a small new fixture — proves the self-hosted-rtl-module mechanism
@@ -3127,6 +3129,40 @@ work already being in place.
    step in this phase needs the same mechanism proven to work.
    **Testing**: one fixture (`llvm-console`, compile+link+run+diff-stdout)
    proving `Console.String`/`Console.Ln` end-to-end.
+   **Implemented (2026-09-19)**: `rtl/llvm/Console.Mod` has voc's
+   `Console` interface minus its input half - `Flush`, `Char`, `String`,
+   `Int(i, n)`, `Ln`, `Bool`, `Hex` (`Read`/`ReadLine` belong to step 5's
+   `In`). Decisions, probed against voc's `src/library/v4/Console.Mod`:
+   - **Unbuffered**: voc line-buffers (128 characters, flushed at each
+     newline) and, by its source, never flushes at exit, so output without
+     a final `Ln` would be lost. Here every call writes before it returns, so nothing is lost
+     to a trap or a plain end of program and it interleaves with other
+     writers of descriptor 1; `Flush` is empty, kept for compatibility.
+   - **One external `write(2)`**, declared `(descriptor: LONGINT; buffer,
+     count: SYSTEM.ADDRESS)` with no result - the backend declares a C
+     symbol once per program (first declaring module wins) and its trap
+     support calls `write` as a `void` function, so a `Console` `write`
+     returning a value would mismatch it. The price: a short write is not
+     noticed. The count is `SYSTEM.ADDRESS`, `size_t`-wide, so it is right
+     on i686 too (the older fixtures' `HUGEINT` count is passed as two words
+     there, which works only because the low one comes first).
+   - **`Int(i: HUGEINT; n: LONGINT)`** where voc's takes `SYSTEM.INT64`
+     (poc has none yet; `HUGEINT` widens from every integer type). voc's
+     goes through a `LONGINT`, so a value beyond it prints wrong (under
+     `-O2`, `MAX(HUGEINT)` prints `1`) and it prints a fixed wrong string
+     for the smallest one (read from its source, not run; its own "todo.
+     support int64 properly"); poc's prints them right. The smallest `HUGEINT` is written whole,
+     having no positive counterpart to print digit by digit. Padding is
+     written as one write per 32 blanks, then the digits in one write.
+   - **`Hex(i: LONGINT)`** prints two digits per byte of a `LONGINT`
+     (8 under `-O2`), as voc's does.
+   **Testing**: `llvm-console` (compile+link+run, and its output must equal
+   what voc's own `Console` prints for the same source, checked in
+   `test.sh` - voc runs first because poc leaves `Console.sym` in the
+   working directory, which voc would find and reject); `llvm-console-extra`
+   (poc only: `HUGEINT` beyond `LONGINT`, an unterminated `ARRAY OF CHAR`,
+   and a program that imports `Console` while declaring `write` itself);
+   both also run as i686 executables in `llvm-i686-runtime`. 176 pass.
 
 2. **`Platform.Mod`.** The voc-only, non-Oakwood extension module poc's
    own driver depends on directly: `Chdir`/`CWD` (import-path/output-

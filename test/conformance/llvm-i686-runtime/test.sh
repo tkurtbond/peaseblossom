@@ -72,4 +72,6 @@ check llvm-procedure-values-import client.mod
 check llvm-ash-max-min ashmaxmin.mod
 check llvm-const-fold constfold.mod
 check llvm-const-fold-import client.mod
+check llvm-console consoletest.mod
+check llvm-console-extra consoleextra.mod
 . ../../testresult.sh

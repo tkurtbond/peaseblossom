@@ -1,0 +1,25 @@
+semantic OK, wrote llvm-console
+Hello, Peaseblossom!
+
+abcabc
+no newline yet, still the same line
+xy z
+0
+7|
+-7
+1234
+   -1234|
+1234
+                                       5|
+                                                                     5|
+32767
+-32768
+2147483647
+-2147483648
+00000000
+000000FF
+3054CDEF
+FFFFFFFF
+80000000
+TRUE FALSE
+done
