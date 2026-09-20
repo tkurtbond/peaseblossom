@@ -4102,6 +4102,30 @@ as it stands when the phase starts, and adds what it finds):
    interleave; see "Declaration order" below). Ask the user about the
    items whose intent the file does not pin down (see step 6) before
    spending time on them.
+   - *Done (2026-09-20).* The inventory is `doc/phase-11-inventory.md`: the 27
+     rows of the table above (A), five items only the step text names (B),
+     thirteen `000-todo.org` entries the table lacks (C) and nine notes from
+     Phases 8-10 in neither (D), each with source, owning step, kind and a
+     verdict (`done`, `proposed`, `open`, `phase 12`, or `decided (user,
+     date)`). It found four table rows no step owns (`Out.Real` rounding, `ENTIER`
+     beyond `LONGINT`, the `SYSTEM.PTR` limits, `BIT`/`SYSTEM.NEW`; A3, A4,
+     A10, A11: to be given a step, or dropped, when step 2 starts), two
+     bugs still present that the plan only mentioned in passing (a type used on
+     the line it is declared on is rejected as a forward reference; `SHORT`
+     rejects a `HUGEINT`), and two it could not confirm (a procedure-local record
+     without a descriptor, a record type text cut at 63 characters). `000-todo.org` is
+     reconciled: the rule-6 entries merged and the `111 < n` paste error
+     fixed, the stale `fileName := name` duplicate dropped, the declaration-order
+     entry split, ten entries added for what was only here. (The remark above
+     that integer-literal folding is still a TODO was already out of date: it
+     is `DONE`.) User verdicts so far: a compiler switch for `NEW` on an
+     exhausted heap (A13); file and line reporting for traps as a compiler
+     switch, off by default, separate from step 5 (C7); documenting what poc
+     does and does not trap (C9); no change to the deliberately silent
+     `SIGFPE`/`SIGSEGV`/`HALT(n)` endings (C6); and surveys of other Oberon
+     and Oberon-2 compilers before deciding overflow/underflow behavior (C5) and
+     rule 6 with `ARRAY OF CHAR` assignment (A21). The remaining items keep
+     their `proposed`/`open` verdicts until their steps run.
 
 2. **Known defects and unfinished corners.** Small, concrete, each with a
    fixture that fails first.
