@@ -19,6 +19,12 @@ and later fuller Oberon-2-style
   is one libc call (`chdir`, `getcwd`, `getenv`, `getpid`, `system`,
   `unlink`, the same on Linux and the three BSDs); an error is -1, not
   voc's errno.
+- `Files.Mod` - Oberon files (`File`, `Rider`, `New`, `Old`, `Register`,
+  `Close`, `Length`, `Set`, `Read`, `Write`, `ReadString`, `ReadLine`,
+  `WriteString`, ...) over C stdio, which is what keeps it portable across
+  Linux and the BSDs. A new file is a temporary one until `Register`.
+  Needs `NEW`, so the collector modules below are added to any program
+  that imports it.
 - `GarbageCollectedHeap.Mod` - the collector: calloc'd chunks of 16-byte
   granules, bump allocation plus a first-fit free list, mark-sweep with
   precise heap/global tracing (type descriptors, root tables) and a

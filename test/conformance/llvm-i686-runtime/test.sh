@@ -75,4 +75,6 @@ check llvm-const-fold-import client.mod
 check llvm-console consoletest.mod
 check llvm-console-extra consoleextra.mod
 check llvm-platform-extra platformextra.mod
+check llvm-files filestest.mod
+check llvm-files-extra filesextra.mod
 . ../../testresult.sh

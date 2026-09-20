@@ -1,0 +1,5 @@
+semantic OK, wrote llvm-files-fail
+before
+
+-- file not created: <cwd>/no-such-directory/data
+exit=99

@@ -33,3 +33,5 @@ llvm-const-fold-import: same
 llvm-console: same
 llvm-console-extra: same
 llvm-platform-extra: same
+llvm-files: same
+llvm-files-extra: same

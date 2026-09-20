@@ -3245,6 +3245,83 @@ work already being in place.
    **Testing**: a fixture that creates a file, writes through a
    `Rider`, closes it, reopens it, and reads the same bytes back via
    `ReadString`/`ReadLine`.
+   **Implemented (2026-09-20)**: `rtl/llvm/Files.Mod` has the twelve
+   procedures above plus `Read`, `Pos`, `Base`, `Delete` and `Rename`, with
+   voc's signatures except that `Read`/`Write` take a `CHAR` where voc's
+   take `SYSTEM.BYTE` (step 7). Not brought over: `ReadBytes`/`WriteBytes`
+   (need `BYTE` too), the typed `ReadInt`/`WriteReal`/... family, `Purge`,
+   `GetDate`, `GetName`, `SetSearchPath`. `File` is
+   `POINTER TO FileDesc` as planned, so the module needs `NEW` and the
+   collector. The Oakwood interface is therefore *not* mostly covered, as
+   this step expected: what poc calls is a small slice, and the rest is
+   Phase 11's if wanted. Decisions, read from voc's `Files.Mod`:
+   - **stdio, not `open`/`lseek`, as planned.** The bytes move through
+     `fopen`/`fread`/`fwrite`/`fseek`/`fclose`/`rename`. `open(2)` takes
+     flag bits that differ between Linux and the BSDs (`O_CREAT` is 0x40 on
+     Linux and 0x200 on the BSDs, `O_TRUNC` 0x200 and 0x400), and `lseek`'s
+     `off_t` is 32 bits on 32-bit Linux and 64 on 32-bit NetBSD, OpenBSD
+     and FreeBSD, so an external declaration right for one is wrong for
+     another, and there is no conditional compilation to pick. stdio has a
+     mode *string* and a `long` offset, a word on all of them. (The BSD
+     values are from memory: to be confirmed on the BSD hosts.) The
+     `i686` run of both fixtures below passes with the 32-bit `long`.
+   - **No buffers of its own** - voc keeps four 4 KB buffers per file and
+     a table of open files, to share them between `File`s of one OS file,
+     and a `Deregister` that moves an open file out of the way; libc's
+     buffering replaces the first and Unix's `rename` semantics the third.
+     A `File` is a stream, a length and a position; a `Rider` is a
+     position. The operations seek when the stream is somewhere else or was
+     last used the other way.
+   - **`New` writes to a temporary file** (`.tmp.<n>.<pid>` beside the
+     final name, created at the first write) and `Register` renames it, so
+     a registered file replaces the old one in one step and never appears
+     half written; voc does the same once it has more than four buffers
+     of data, and writes directly otherwise. Names are made absolute
+     when given, so a `Chdir` between `New` and `Register` does no harm
+     (by its source, voc renames its absolute temporary name onto the
+     relative final one, i.e. into the wrong directory).
+   - **`Close` closes the stream**, and the `File` reopens itself if used
+     again. Nothing here finalizes a `File` (the collector has no
+     finalizers), so this is what keeps a program from running out of
+     descriptors; a dropped `File` still keeps its stream until the
+     program ends.
+   - **Failures**: `Old` gives `NIL` for a missing file, an empty or too
+     long name, or a directory (which `fopen` accepts for reading on
+     Linux; a one-byte probe read finds it). What cannot be reported - a
+     file that cannot be created, a write that fails - prints
+     `-- <what>: <name>` and stops with `Halt(99)`, as voc does.
+   - **Where voc differs and poc does not follow**: two `Old` calls for one
+     file give two independent `File`s (voc shares one); `ReadString`/
+     `ReadLine` cut an over-long value short where voc overruns the array;
+     files are limited to a `LONGINT`'s range (voc's too under `-O2`).
+   - **voc quirks met while cross-checking**: `Rename` or `Delete` of a
+     file that this process has open as a `File` makes voc rename it to a
+     temporary name first, so, apparently, `Delete` fails (errcode 2)
+     and `Rename` halts ("Couldn't rename previous version of file being
+     registered"); the shared fixture only renames and deletes files it has not
+     opened, and looks at the result with the shell.
+   **Testing**: `llvm-files` (37 checks: a new file's length as it grows,
+   register, reopen, `ReadString`, `ReadLine` over LF, CR LF, empty and
+   unterminated lines, `Set` clamping, overwriting and extending, a
+   20000-byte file probed at the 4096-byte block boundaries voc uses, two
+   riders on one file, `Old` of nothing, registering over a file, use
+   after `Close`, `Delete`/`Rename` - run under poc and voc, which must
+   print the same); `llvm-files-extra` (19 checks, poc only: values cut
+   short, the temporary file and where it lives, `Chdir` between `New`
+   and `Register`, a directory and a 300-character name given to `Old`,
+   2500 opens in a row with `Close`, failures being -1); `llvm-files-fail`
+   (an uncreatable file: message and exit status 99). `llvm-files` and
+   `llvm-files-extra` also run as i686 executables in `llvm-i686-runtime`.
+   181 pass. **Checked against poc's own source**: `poc -emit-llvm-ir` of
+   `ModuleInterface.Mod`, the heaviest user of `Files`/`Platform`, with the
+   whole front end below it and a throwaway `Out` standing in for step
+   5's, compiles against these two modules. `LLVMToolchainDriver.Mod` does
+   not get that far, for a reason that has nothing to do with them:
+   poc's checker rejects poc's own `SemanticActions.Mod` (29 x "guarded
+   pointer variable may be manipulated by non-local operations", the
+   `WITH` rule that `CheckWithGuard` applies more strictly than voc
+   does). Step 8 must settle that - by loosening the rule to voc's, or by
+   rewriting those `WITH`s - before poc can compile itself.
 
 4. **`Modules.Mod`.** `ArgCount-` (a read-only exported `VAR`, set once
    at process start) and `GetArg*(n: INTEGER; VAR val: ARRAY OF CHAR)` —
