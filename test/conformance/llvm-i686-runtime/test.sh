@@ -1,7 +1,8 @@
 #!/bin/sh
 . ../../testenv.sh
 # Builds every runtime fixture that has a program to run as a real 32-bit
-# executable (-target i686-unknown-linux-gnu, which also proves -build now
+# executable (-target i686-unknown-linux-gnu on Linux, the -m32 triple of
+# the host on a BSD - see i686_triple; it also proves -build now
 # links for the target rather than the host) and checks that its output is
 # exactly what its 64-bit sibling fixture expects: the word size must not
 # change what a program prints. Skips itself, still passing, on a machine
@@ -14,7 +15,7 @@ then
 fi
 
 here=$PWD
-triple=i686-unknown-linux-gnu
+triple=$(i686_triple)
 : >result
 
 # name of a sibling fixture, its main source file, the arguments it is

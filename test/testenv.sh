@@ -61,16 +61,24 @@ poc_build_run() {
 # glibc-devel.i686), which is absent from many machines, and an x86 host.
 # Used by fixtures that build for i686-unknown-linux-gnu so they can skip
 # themselves cleanly instead of failing on a box that cannot run them.
-#
-# Only on Linux: the fixtures build for i686-unknown-linux-gnu, which cannot
-# link on a BSD even when that BSD runs 32-bit programs (NetBSD amd64 does,
-# through netbsd32, so the probe below alone passes there).
 i686_can_run() {
-  [ "$(uname -s)" = Linux ] || return 1
   probe=$(mktemp -d) || return 1
   printf 'int main(void){return 0;}\n' >"$probe/probe.c"
   if clang -m32 "$probe/probe.c" -o "$probe/probe" >/dev/null 2>&1 && "$probe/probe" >/dev/null 2>&1
   then rm -rf "$probe"; return 0
   else rm -rf "$probe"; return 1
+  fi
+}
+
+# The 32-bit x86 target triple to build i686_can_run's fixtures for: the one
+# this project has always used on Linux, and on any other system the triple
+# clang itself picks for -m32 - the host's own on a 32-bit machine (OpenBSD
+# i386: i386-unknown-openbsd7.9), the 32-bit personality of a 64-bit one
+# (NetBSD amd64: i386-unknown-netbsd10.0). A Linux triple cannot link on a BSD
+# even when that BSD runs 32-bit programs.
+i686_triple() {
+  if [ "$(uname -s)" = Linux ]
+  then echo i686-unknown-linux-gnu
+  else clang -m32 -dumpmachine
   fi
 }

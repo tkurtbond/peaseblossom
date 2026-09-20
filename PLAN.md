@@ -3562,7 +3562,10 @@ work already being in place.
    `grep 'a\|b'`, a GNU BRE extension OpenBSD's `grep` lacks - now `grep -E`;
    (4) `llvm-i686-runtime` builds for `i686-unknown-linux-gnu`, which cannot
    link on a BSD even one that runs 32-bit programs (NetBSD amd64 does) -
-   `i686_can_run` now requires a Linux host; (5) `llvm-system-shifts`
+   it now builds for `i686_triple`: that triple on Linux, and on any other
+   system the one `clang -m32 -dumpmachine` gives (`i386-unknown-netbsd10.0`
+   on terhali, the host's own `i386-unknown-openbsd7.9` on erekose), so all
+   three hosts run its 50 checks for real; (5) `llvm-system-shifts`
    compared poc with voc on `ROT(l, 0)`, which voc's C expands to a shift by
    the full width - undefined, and clang on i386 folds it differently from
    x86-64 (its own warning says so) - moved to `llvm-system-extra`, the
