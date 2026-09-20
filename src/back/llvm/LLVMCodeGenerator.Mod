@@ -266,6 +266,19 @@ MODULE LLVMCodeGenerator;
        worst case, and this project's own naming convention (descriptive,
        often-long identifiers) makes a long one likelier than usual. *)
     LongText = ARRAY 800 OF CHAR;
+    (* GenerateCallArgList's own "type value, type value, ..." text, built
+       across *every* argument of one call before any of it is written -
+       needs more room than any single argument's own text ever does
+       (LongText already covers that, per AppendStringLiteralArrayConstant's
+       own bound check against the buffer it is actually given), since a
+       call can have more than one such argument at once: found live,
+       SemanticActions.NewQualidentType("", "", ...) passes *two* 256-
+       character SyntaxTree.Ident value parameters as array constants in
+       one call, ~1564 characters together before the trailing INTEGER
+       arguments are even appended - already past LongText's own 800
+       (PLAN.md Phase 10 step 8). Comfortably covers several such
+       arguments at once, not just two. *)
+    ArgsText = ARRAY 4096 OF CHAR;
 
     (* One live codegen value: its LLVM-IR text (an SSA register "%tN" or
        a literal constant), its LLVM type spelling, and the Oberon type
@@ -2938,6 +2951,93 @@ MODULE LLVMCodeGenerator;
     END
   END EvaluateCallArg;
 
+  PROCEDURE AppendChar(VAR s: ARRAY OF CHAR; ch: CHAR);
+    VAR i: LONGINT;
+  BEGIN
+    i := 0;
+    WHILE s[i] # 0X DO INC(i) END;
+    s[i] := ch; s[i + 1] := 0X
+  END AppendChar;
+
+  (* AppendChar-based twin of EmitEscapedByte above, appending to a
+     buffer instead of writing straight to w - see
+     AppendStringLiteralArrayConstant's own header comment for why this
+     one case needs to build its text rather than stream it. *)
+  PROCEDURE AppendEscapedByte(VAR s: ARRAY OF CHAR; ch: CHAR);
+    CONST backslash = 5CX; quoteChar = 22X;
+    VAR hexDigits: ARRAY 17 OF CHAR; code: INTEGER;
+  BEGIN
+    code := ORD(ch);
+    IF (code >= 32) & (code <= 126) & (ch # quoteChar) & (ch # backslash) THEN
+      AppendChar(s, ch)
+    ELSE
+      COPY("0123456789ABCDEF", hexDigits);
+      AppendChar(s, backslash);
+      AppendChar(s, hexDigits[code DIV 16]);
+      AppendChar(s, hexDigits[code MOD 16])
+    END
+  END AppendEscapedByte;
+
+  (* Oberon2.pdf Appendix A rule 3: a string constant is assignment-
+     compatible with a *value* ARRAY OF CHAR parameter (AGENTS.md's own
+     language-spec notes single this rule out explicitly). A fixed
+     (non-open) CHAR array taken by value needs an actual LLVM array
+     *value* at the call site, not an address to store through the way
+     an assignment or COPY target has - so this can't reuse EmitStringStores,
+     and builds a literal "[N x i8] c\"...\"" constant instead, appended
+     straight into GenerateCallArgList's own text buffer (LongText at
+     every real call site) rather than routed through EvaluateCallArg's
+     ordinary Value (whose own .text field is ValueText-sized, 64
+     characters - nowhere near enough once the array's own unwritten
+     tail is zero-padded byte by byte out to its full declared length:
+     poc's own Parser.Mod calling SemanticActions.NewQualidentType("", "",
+     ...) - two 256-character SyntaxTree.Ident value parameters, both
+     empty strings - is the real repro that found this, PLAN.md Phase 10
+     step 8). Mirrors EmitStringStores' own clamping (copyLen capped to
+     arr.length - 1, so the array's own trailing 0X terminator byte is
+     never itself overwritten) for exactly the same reason: an
+     over-length string still fits, silently truncated, matching every
+     other fixed-array string destination in this codebase (ReadString/
+     ReadLine's own documented behavior).
+     Defensively bounded: an array too large for even LongText's own 800
+     characters (roughly 260+ characters, three-per-byte in the worst
+     case of an all-unprintable tail) returns FALSE rather than risk
+     overflowing text a second way - GenerateCallArgList's own caller
+     falls back to EvaluateCallArg's ordinary handling, which is wrong for
+     this shape but at least stays inside its own, already-safe bound. *)
+  PROCEDURE AppendStringLiteralArrayConstant(VAR text: ARRAY OF CHAR; VAR cg: Codegen;
+                                             arr: Types.ArrayType;
+                                             lit: SyntaxTree.LiteralExprNode): BOOLEAN;
+    VAR copyLen, i, used, needed: LONGINT; llvmType: LongText;
+  BEGIN
+    LLVMTypes.TypeString(arr, cg.sizeModel, llvmType);
+    (* text already holds whatever earlier arguments in this same call
+       wrote (GenerateCallArgList appends one argument at a time into the
+       same buffer) - the bound has to be against the room *left*, not
+       text's own total declared length, or a second literal argument in
+       the same call overruns exactly what the first one already used.
+       Exact prefix/suffix length (StrLen(llvmType) + ' c' + two quote
+       characters) plus the worst-case escaped body (three characters per
+       byte, every one needing a "\XX" escape) - not the rough estimate
+       an earlier version of this check used, which happened to still
+       read as "fits" with poc's own real SyntaxTree.Ident (256) only
+       because it was never checked against a second argument's already-
+       used space at all (found live: NewQualidentType("", "", ...), two
+       such arguments in one call, PLAN.md Phase 10 step 8). *)
+    used := StrLen(text);
+    needed := StrLen(llvmType) + 3 + arr.length * 3 + 1;
+    IF used + needed >= LEN(text) THEN RETURN FALSE END;
+    copyLen := StrLen(lit.lexeme);
+    IF copyLen > arr.length - 1 THEN copyLen := arr.length - 1 END;
+    IF copyLen < 0 THEN copyLen := 0 END;
+    Strcat(text, llvmType); Strcat(text, " c"); AppendChar(text, 22X);
+    i := 0;
+    WHILE i < copyLen DO AppendEscapedByte(text, lit.lexeme[i]); INC(i) END;
+    WHILE i < arr.length DO AppendEscapedByte(text, 0X); INC(i) END;
+    AppendChar(text, 22X);
+    RETURN TRUE
+  END AppendStringLiteralArrayConstant;
+
   (* Builds the full ", "-joined "type text" argument-list text into
      `text` instead of writing it straight to w, and does so *before*
      the caller writes any part of the "call ...(" line itself - a
@@ -2949,26 +3049,40 @@ MODULE LLVMCodeGenerator;
      ill-formed IR (a real bug hit and fixed during step 6's own
      development - confirmed by generating IR for this step's own
      llvm-hello-world fixture and finding the call's argument list
-     literally contained a "%tN = sext ..." line pasted mid-parenthesis). *)
+     literally contained a "%tN = sext ..." line pasted mid-parenthesis).
+     A string-literal argument matched against a fixed value ARRAY OF
+     CHAR parameter is handled before ever reaching EvaluateCallArg, for
+     AppendStringLiteralArrayConstant's own reasons. *)
   PROCEDURE GenerateCallArgList(VAR w: Files.Rider; VAR cg: Codegen; params: Types.Param; args: SyntaxTree.ExprNode;
                                 oberonCall: BOOLEAN; VAR text: ARRAY OF CHAR);
     VAR p: Types.Param; a: SyntaxTree.ExprNode; v: Value; first: BOOLEAN; hidden: LongText;
+        arr: Types.ArrayType; handled: BOOLEAN;
   BEGIN
     text[0] := 0X;
     p := params; a := args; first := TRUE;
     WHILE p # NIL DO
-      EvaluateCallArg(w, cg, p, a, oberonCall, v, hidden);
+      handled := FALSE;
       IF ~first THEN Strcat(text, ", ") END;
       first := FALSE;
-      Strcat(text, v.llvmType); Strcat(text, " "); Strcat(text, v.text);
-      Strcat(text, hidden);
+      IF ~p.isVar & (p.type # NIL) & (p.type IS Types.ArrayType) & ~IsOpenArrayType(p.type)
+          & (a # NIL) & (a IS SyntaxTree.LiteralExprNode) THEN
+        arr := p.type(Types.ArrayType);
+        IF (arr.elementType = Types.Char) & (a(SyntaxTree.LiteralExprNode).literalKind = Lexer.string) THEN
+          handled := AppendStringLiteralArrayConstant(text, cg, arr, a(SyntaxTree.LiteralExprNode))
+        END
+      END;
+      IF ~handled THEN
+        EvaluateCallArg(w, cg, p, a, oberonCall, v, hidden);
+        Strcat(text, v.llvmType); Strcat(text, " "); Strcat(text, v.text);
+        Strcat(text, hidden)
+      END;
       p := p.next; a := a.next
     END
   END GenerateCallArgList;
 
   PROCEDURE GenerateExternalCall(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
                                  args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR pt: Types.ProcedureType; retType: LongText; destTemp: ValueText; argsText: LongText;
+    VAR pt: Types.ProcedureType; retType: LongText; destTemp: ValueText; argsText: ArgsText;
   BEGIN
     pt := obj.type(Types.ProcedureType);
     IF pt.resultType = NIL THEN
@@ -2999,7 +3113,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE GenerateOrdinaryCall(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
                                  homeModule: SyntaxTree.Ident;
                                  args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR pt: Types.ProcedureType; retType: LongText; destTemp, fnSymbol: ValueText; argsText: LongText;
+    VAR pt: Types.ProcedureType; retType: LongText; destTemp, fnSymbol: ValueText; argsText: ArgsText;
   BEGIN
     pt := obj.type(Types.ProcedureType);
     QualifiedName(homeModule, obj.name, fnSymbol);
@@ -3031,7 +3145,7 @@ MODULE LLVMCodeGenerator;
      arguments. *)
   PROCEDURE GenerateProcedureValueCall(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                                        args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR callee: Value; pt: Types.ProcedureType; retType: LongText; destTemp: ValueText; argsText: LongText;
+    VAR callee: Value; pt: Types.ProcedureType; retType: LongText; destTemp: ValueText; argsText: ArgsText;
   BEGIN
     GenerateDesignatorValue(w, cg, d, callee);
     IF (callee.oberonType = NIL) OR ~(callee.oberonType IS Types.ProcedureType) THEN
@@ -3121,7 +3235,7 @@ MODULE LLVMCodeGenerator;
     VAR
       addrText, tag, slotAddr, slotBytes, wordBytes, callee, destTemp: ValueText; retType: LongText;
       addrType: Types.Type; dyn: DynamicType; called: Types.Method; owner, baseRec: Types.RecordType;
-      slot: INTEGER; symbol: LongText; argsText, receiverText: LongText;
+      slot: INTEGER; symbol: LongText; argsText, receiverText: ArgsText;
       nameNode: SyntaxTree.FieldSelector; indirect: BOOLEAN;
   BEGIN
     IF ~GenerateDesignatorAddressTo(w, cg, d, nameSelector, addrText, addrType, dyn) THEN

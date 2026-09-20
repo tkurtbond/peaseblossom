@@ -3432,12 +3432,66 @@ work already being in place.
    generated `Poc.ll` outright - `%t26751 = call ptr
    @SemanticActions.NewQualidentType([256 x i8] 0, [256 x i8] 0, i32
    %t26749, i32 %t26750)`, an integer literal `0` where an `[256 x i8]`
-   array constant belongs. A third, different, not-yet-investigated bug:
-   passing an empty string literal ("") as a value `ARRAY OF CHAR`
-   argument emits invalid IR instead of a real zero-filled array constant
-   - not yet isolated to a specific procedure. `make test` (198) unaffected
-   (no existing fixture happens to pass an empty string literal to a value
-   array parameter this way).
+   array constant belongs.
+
+   **A third bug, a real gap rather than a buffer size, found and fixed
+   (2026-09-20): passing a string literal to a *value* `ARRAY OF CHAR`
+   parameter (Oberon2.pdf Appendix A rule 3 - AGENTS.md's own language-
+   spec notes) never had real codegen at all.** `EvaluateCallArg`'s plain
+   (non-`VAR`, non-open-array) branch always routed through `GenerateExpr`/
+   `GenerateLiteral`, whose own header comment already documented the
+   invariant it silently violated here: "a string in a character-sequence
+   position ... never comes through GenerateExpr at all" - true for
+   assignment, COPY and comparisons, each with their own dedicated path,
+   but never actually enforced for a call argument. An empty string hit
+   `GenerateLiteral`'s own "empty string literal in a scalar position"
+   placeholder (a bare `0`, meant for genuinely unsupported shapes);
+   poc's own `Parser.Mod` calling `SemanticActions.NewQualidentType("", "",
+   ...)` - two 256-character `SyntaxTree.Ident` value parameters - is the
+   real repro. Fixed with a new `GenerateCallArgList`-level special case
+   (`AppendStringLiteralArrayConstant`, `AppendChar`/`AppendEscapedByte`)
+   that builds a real `[N x i8] c"..."` LLVM array constant directly -
+   bypassing `EvaluateCallArg`/`Value` entirely, since the escaped text
+   (the array's own unwritten tail zero-padded byte by byte, three
+   characters per `\XX` escape) runs well past `Value.text`'s own
+   `ValueText` bound for any real fixed array, and widening `Value.text`
+   itself turned out far too invasive (17 existing `:=` assignment sites
+   broke, reverted). A second problem surfaced immediately after fixing
+   the first, live against poc's own source rather than a hand-written
+   repro: `GenerateCallArgList`'s own accumulated `text` buffer (`LongText`,
+   800 characters) comfortably holds *one* such constant (782 characters
+   for a 256-length array) but not `NewQualidentType`'s own *two* in one
+   call (~1564 characters together, before the trailing `INTEGER`
+   arguments) - `AppendStringLiteralArrayConstant`'s own defensive bound
+   check (against the room actually *left* in the buffer, not the buffer's
+   total declared size - an earlier version of the check missed this and
+   still passed every hand-written repro, which never happened to chain
+   two such arguments in one call) correctly refused the second one and
+   fell back to the old, still-broken path, which then overflowed the
+   now-nearly-full 800-character buffer for real, tripping the exact same
+   index-range trap as the first two bugs. Fixed with a new, dedicated
+   `ArgsText` (4096 characters, comfortably holds several such arguments
+   at once) replacing `LongText` for every `GenerateCallArgList`-facing
+   `argsText`/`receiverText` variable - `AppendStringLiteralArrayConstant`
+   itself needed no change, since its own bound check already reads the
+   buffer's real size via `LEN(text)`. Both steps isolated the same way as
+   the earlier two bugs: temporary `Out.String` progress prints (this time
+   inside `EvaluateCallArg`/`AppendStringLiteralArrayConstant` themselves,
+   not just `GenerateProcedureDecl`), rebuilt via Stage 0 and re-run
+   against the real file each time, removed once each fix was confirmed.
+   `make test` (198) clean throughout.
+
+   **Stage 1 reached (2026-09-20): `poc -build src/driver/Poc.Mod`, using
+   `poc` itself, produces a real, working executable.** `poc-stage1` runs
+   (`poc-stage1 -check-syntax ...` succeeds against real source) - the
+   first time poc has ever compiled itself into a working binary, not just
+   type-checked its own source. Stage 2 (`poc-stage1` compiling poc's own
+   source a second time, toward the classic self-hosting fixed point) is
+   not yet reached: `poc-stage1` itself traps at run time with "no matching
+   WITH guard" (exit 6 - a `WITH` statement with no matching branch and no
+   `ELSE`, AGENTS.md's own documented trap), a fourth, different, not-yet-
+   investigated bug - a real front-end/backend logic gap this time, not
+   another fixed-buffer overflow. Not yet isolated to a specific `WITH`.
 
    **BSD-verified (2026-09-20), and a real, NetBSD-only bug found and
    fixed along the way.** All 23 of Phase 10 steps 1-7's runnable rtl
