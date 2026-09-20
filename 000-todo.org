@@ -11,6 +11,8 @@ In general, it's better to report an error message with a string rather than a n
 ** TODO Double check things that can trap.
 ** TODO LONGINT is included in SYSTEM.ADDRESS by rank, but on a 32-bit target under -OC a LONGINT is 64 bits: a mixed ADDRESS/LONGINT operation is done at 32 bits and truncates (Files.Old's size <= MAX(LONGINT) compared against -1).  Worked around in Files.Mod; fix in the type hierarchy.  (PLAN.md Phase 11 step 2.)
 ** TODO LONG and SHORT of SYSTEM.INT8..INT64 (rejected today).  (PLAN.md Phase 11 step 2.)
+** TODO Nested procedures (a procedure declared inside another): a declaration or a call is now a compile error; implement them by lambda lifting by reference.  (PLAN.md Phase 11 step 2.)
+** TODO poc exits with status 0 even after reporting errors; make it exit 1.  (PLAN.md Phase 11 step 2.)
 ** TODO Under -OC an INT8 combined with an integer literal (b + 1) is a SHORTINT, not assignable back to the INT8.  Probe voc; probably a constant should take the other operand's fixed-width type when it fits.  (PLAN.md Phase 11 step 3.)
 ** TODO Should poc reject a constant NEW length of <= 0 at compile time.
 ** TODO Add command line option to poc to have NEW on an exhaused heap trap.

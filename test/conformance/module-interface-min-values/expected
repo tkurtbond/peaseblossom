@@ -1,0 +1,40 @@
+== -O2
+MODULE minvalues;
+  IMPORT SYSTEM;
+  CONST
+    LowestHuge* = -9223372036854775807 - 1;
+    NextHuge* = -9223372036854775807;
+    HighestHuge* = 9223372036854775807;
+    LowestLong* = -2147483648;
+    HighestLong* = 2147483647;
+    LowestInteger* = -32768;
+    LowestShort* = -128;
+    LowestInt64* = -9223372036854775807 - 1;
+    LowestInt32* = -2147483648;
+    Zero* = 0;
+    MinusOne* = -1;
+    MinusTen* = -10;
+    MinusNineteen* = -19;
+    MinusPow2* = -4294967296;
+END minvalues.
+round trip: identical
+== -OC
+MODULE minvalues;
+  IMPORT SYSTEM;
+  CONST
+    LowestHuge* = -9223372036854775807 - 1;
+    NextHuge* = -9223372036854775807;
+    HighestHuge* = 9223372036854775807;
+    LowestLong* = -9223372036854775807 - 1;
+    HighestLong* = 9223372036854775807;
+    LowestInteger* = -2147483648;
+    LowestShort* = -32768;
+    LowestInt64* = -9223372036854775807 - 1;
+    LowestInt32* = -2147483648;
+    Zero* = 0;
+    MinusOne* = -1;
+    MinusTen* = -10;
+    MinusNineteen* = -19;
+    MinusPow2* = -4294967296;
+END minvalues.
+round trip: identical

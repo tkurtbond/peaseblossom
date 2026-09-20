@@ -177,7 +177,17 @@ MODULE LLVMCodeGenerator;
      attempted here. *)
 
   IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions,
-         MemoryLayout;
+         MemoryLayout, Diagnostics;
+
+  VAR
+    (* How many constructs GenerateProgram met that this backend cannot lower
+       (Unsupported, and a nested procedure declaration), each already
+       reported as an error naming module and line. A program that has any is
+       not a program: the IR has the code missing, so the drivers refuse to
+       write it (LLVMToolchainDriver.EmitIR/Build) instead of producing an
+       executable that quietly does less than its source says. Reset at the
+       start of every GenerateProgram. *)
+    unsupportedCount*: INTEGER;
 
   CONST
     (* PLAN.md Phase 8 step 13: two, not one - confirmed against real
@@ -464,6 +474,9 @@ MODULE LLVMCodeGenerator;
       moduleName: SyntaxTree.Ident;
       scope: SymbolTable.Scope;
       sizeModel: INTEGER;
+      (* The source position of the statement being generated, for the error
+         Unsupported reports (an expression has no position of its own here). *)
+      currentLine, currentColumn: INTEGER;
       (* The current innermost enclosing LOOP statement's exit-block
          label, for EXIT to branch to (empty when not inside one).
          WHILE/REPEAT/FOR do *not* set this - Oberon2.pdf's own 9.10
@@ -758,9 +771,19 @@ MODULE LLVMCodeGenerator;
      that meets a construct outside this step's scope routes here rather
      than failing outright, the same total-function stance
      LLVMTypes.TypeString* already established for out-of-scope types. *)
+  PROCEDURE ReportUnsupported(VAR cg: Codegen; line, column: INTEGER; reason: ARRAY OF CHAR);
+    VAR message: LongText;
+  BEGIN
+    COPY("module ", message); Strcat(message, cg.moduleName);
+    Strcat(message, ": the LLVM backend cannot lower this yet: "); Strcat(message, reason);
+    Diagnostics.Error(line, column, message);
+    INC(unsupportedCount)
+  END ReportUnsupported;
+
   PROCEDURE Unsupported(VAR w: Files.Rider; VAR cg: Codegen; reason: ARRAY OF CHAR;
                         oberonType: Types.Type; VAR result: Value);
   BEGIN
+    ReportUnsupported(cg, cg.currentLine, cg.currentColumn, reason);
     WriteStr(w, "  ; unsupported: "); WriteStr(w, reason); WriteLn(w);
     LLVMTypes.TypeString(oberonType, cg.sizeModel, result.llvmType);
     IF (oberonType = Types.Real) OR (oberonType = Types.LongReal) THEN
@@ -4386,7 +4409,7 @@ MODULE LLVMCodeGenerator;
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) THEN
       GenerateOrdinaryCall(w, cg, obj, homeModule, args, result)
     ELSE
-      Unsupported(w, cg, "call target is not a plain procedure", Types.Undefined, result)
+      Unsupported(w, cg, "call of something that is not a module-level procedure (a nested one?)", Types.Undefined, result)
     END
   END GenerateCall;
 
@@ -4906,6 +4929,7 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE GenerateStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
   BEGIN
+    cg.currentLine := s.line; cg.currentColumn := s.column;
     WITH
       s: SyntaxTree.AssignStatementNode DO GenerateAssignStatement(w, cg, s)
     | s: SyntaxTree.CallStatementNode DO GenerateCallStatement(w, cg, s)
@@ -5746,6 +5770,26 @@ MODULE LLVMCodeGenerator;
      case does. cg.locals/cg.currentProcResultType/cg.scope are all
      reset back to their module-level values afterward, so the next
      procedure (or "_init", once every procedure is done) starts clean. *)
+  (* Oberon2.pdf 10: "procedure declarations may be nested", and by 4's scope
+     rules a nested procedure sees the enclosing procedure's variables. That
+     takes a static link or lambda lifting, which this backend does not have:
+     such a procedure is never emitted, so every call of it used to compile to
+     a comment and make the program quietly do less than its source says.
+     Reported instead, here and at each call. PLAN.md Phase 11 step 2 has the
+     design that would lower them. *)
+  PROCEDURE ReportNestedProcedures(VAR cg: Codegen; pd: SyntaxTree.ProcDeclNode);
+    VAR nested: SyntaxTree.ProcDeclNode;
+  BEGIN
+    IF pd.declarations # NIL THEN
+      nested := pd.declarations.procDecls;
+      WHILE nested # NIL DO
+        ReportUnsupported(cg, nested.line, nested.column,
+          "a procedure declared inside another procedure (nested procedures need a static link)");
+        nested := nested.next
+      END
+    END
+  END ReportNestedProcedures;
+
   PROCEDURE GenerateProcedureBody(VAR w: Files.Rider; VAR cg: Codegen; moduleScope: SymbolTable.Scope;
                                   pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
                                   receiverType: Types.Type);
@@ -5754,6 +5798,7 @@ MODULE LLVMCodeGenerator;
     EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver);
     bodyScope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, receiverType, pt);
     savedScope := cg.scope;
+    ReportNestedProcedures(cg, pd);
     cg.scope := bodyScope; cg.locals := NIL; cg.currentProcResultType := pt.resultType;
     IF pd.receiver # NIL THEN BindReceiver(w, cg, bodyScope, pd.receiver) END;
     BindFormalParams(w, cg, bodyScope, pt);
@@ -5993,6 +6038,8 @@ MODULE LLVMCodeGenerator;
     withRootTables := HasModuleNamed(modules, "ModuleTable");
     withHeap := HasModuleNamed(modules, "GarbageCollectedHeap");
     withArguments := HasModuleNamed(modules, "Modules");
+    unsupportedCount := 0;
+    cg.currentLine := 0; cg.currentColumn := 0;
     cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
     cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL;
     cg.declaredExternals := NIL; cg.tdescs := NIL;

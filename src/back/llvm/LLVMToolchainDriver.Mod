@@ -161,7 +161,10 @@ MODULE LLVMToolchainDriver;
       f := Files.New(name);
       Files.Set(w, f, 0);
       LLVMCodeGenerator.GenerateProgram(modules, triple, w);
-      Files.Register(f);
+      (* IR with a construct missing is worse than none: not written (the
+         file was never registered, so nothing is left behind), and the
+         caller finds out through LLVMCodeGenerator.unsupportedCount *)
+      IF LLVMCodeGenerator.unsupportedCount = 0 THEN Files.Register(f) ELSE ok := FALSE END;
       IF outputDir[0] # 0X THEN chdirResult := Platform.Chdir(savedDir) END
     END;
     RETURN ok

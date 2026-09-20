@@ -453,17 +453,30 @@ MODULE ModuleInterface;
     IF ~dryRun THEN Files.Write(w, 0AX) END
   END WriteLn;
 
+  (* Digits for a negative x are not taken from -x, which does not exist at
+     the smallest LONGINT (MIN(HUGEINT), and MIN(LONGINT) under -OC): that
+     printed "-" with no digits, a .sym that is not valid source. |x| is
+     q + 1 for q = -(x + 1), which cannot overflow; the last digit and the
+     rest of |x| come from q's, the 1 carried by hand - what LLVMCodeGenerator.
+     AppendLongInt does for the same reason. It also never divides a value
+     near the minimum, where voc's 64-bit DIV and MOD are wrong (AGENTS.md). *)
   PROCEDURE FormatInt(x: LONGINT; VAR result: ARRAY OF CHAR);
-    VAR digits: ARRAY 24 OF CHAR; i, j: INTEGER; neg: BOOLEAN; v: LONGINT;
+    VAR digits: ARRAY 24 OF CHAR; i, j, d: INTEGER; neg: BOOLEAN; q: LONGINT;
   BEGIN
-    neg := x < 0; v := x;
+    neg := x < 0;
     i := 0;
-    IF v = 0 THEN
+    IF neg THEN
+      q := -(x + 1); d := SHORT(q MOD 10); q := q DIV 10;
+      IF d = 9 THEN digits[0] := "0"; x := q + 1
+      ELSE digits[0] := CHR(ORD("0") + d + 1); x := q
+      END;
+      i := 1
+    END;
+    IF (x = 0) & (i = 0) THEN
       digits[0] := "0"; i := 1
     ELSE
-      IF neg THEN v := -v END;
-      WHILE v > 0 DO
-        digits[i] := CHR(ORD("0") + SHORT(v MOD 10)); INC(i); v := v DIV 10
+      WHILE x > 0 DO
+        digits[i] := CHR(ORD("0") + SHORT(x MOD 10)); INC(i); x := x DIV 10
       END
     END;
     j := 0;
@@ -807,7 +820,15 @@ MODULE ModuleInterface;
     VAR buf: ARRAY 320 OF CHAR; ok: BOOLEAN;
   BEGIN
     IF v.kind = Types.intValue THEN
-      FormatInt(v.intVal, buf); WriteStr(w, buf)
+      IF v.intVal = MIN(LONGINT) THEN
+        (* -2^63, HUGEINT's minimum (the host's LONGINT is its stand-in, see
+           ConstantEvaluator.maxHugeInt): its digits are a numeral no type
+           holds - "integer literal too large for HUGEINT" - so written as
+           the value the reader can fold back, as -2^63 + 1, less one *)
+        WriteStr(w, "-9223372036854775807 - 1")
+      ELSE
+        FormatInt(v.intVal, buf); WriteStr(w, buf)
+      END
     ELSIF v.kind = Types.boolValue THEN
       IF v.boolVal THEN WriteStr(w, "TRUE") ELSE WriteStr(w, "FALSE") END
     ELSIF v.kind = Types.charValue THEN
