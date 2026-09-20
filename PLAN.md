@@ -4067,7 +4067,6 @@ as it stands when the phase starts, and adds what it finds):
 | `Out.Real`/`Out.LongReal` are voc's algorithm, not correctly rounded (a decimal exponent estimated as 77/256 of the binary one, scaling by a floating-point power of ten exact only to 10^22): the last digits of a number outside about 10^-22..10^22, or the 17th of a LONGREAL, can be off. The same shortcoming as `ParseReal`'s; one correctly rounded converter each way would close both | Phase 10 step 5 | gap, found not fixed |
 | `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | decision |
 | Nested procedures (a procedure declared inside another) are not lowered at all: a declaration or a call is now a compile error (2026-09-20; it used to be a comment in the IR and a program quietly missing the call), and the feature - `Oberon2.pdf` §10: "procedure declarations may be nested" - needs implementing: lambda lifting by reference (below) | Phase 10 step 6; found 2026-09-20 | gap, implementation |
-| `poc` exits with status 0 after reporting errors (`poc -check` of a type error, a failed `-build`), so `make` and scripts cannot tell; needs an exit primitive in both runtimes (voc's `Platform`, `rtl/llvm`'s), and the fixtures, which read output, keep working | found 2026-09-20 | bug |
 | `LONG`/`SHORT` reject `SYSTEM.INT8..INT64` ("requires a SHORTINT, INTEGER, or REAL argument"); voc's go by size along the model's chain (`OPT.ShorterOrLongerType`) | Phase 10 step 8 (fixed-width `INTn`, 2026-09-20) | gap |
 | Under `-OC` an `INT8` met by an integer literal in an expression (`b + 1`) is a `SHORTINT` - the literal's own type is at least two bytes there - and cannot be assigned back to an `INT8` without `SYSTEM.VAL` | Phase 10 step 8 (fixed-width `INTn`) | gap, decision |
 | `SYSTEM.SET32` is `SET` (the `-O2` width, 64 bits under `-OC`) and there is no `SET64`: the fixed-width sets `INT8..INT64` got | Phase 10 step 8 (fixed-width `INTn`); `000-todo.org` | gap, decision (with `HUGESET`) |
@@ -4193,13 +4192,22 @@ as it stands when the phase starts, and adds what it finds):
      could be emitted first as a plain function under a mangled name. The VAX
      backend (Phase 13) needs the same, as a static link. Fixture first:
      `llvm-reject-nested-procedure`'s program prints `ok` once it works.
-   - *Exit status.* `poc` returns 0 whatever happened (`Poc.Mod` ends in
-     `Run`, nothing calls an exit). Add `Exit(code)` to voc's `Platform` use
-     and `rtl/llvm/Platform.Mod`, exit 1 when `Diagnostics.errorCount` or
-     `LLVMCodeGenerator.unsupportedCount` is nonzero or a build fails, and
-     make `make`/`check` rely on it. The fixtures read output, not status, so
-     they keep passing; a `make check` that fails on a compile error is the
-     point.
+   - *Done (2026-09-20): exit status.* `poc` returned 0 whatever happened, so
+     `make` and scripts could not tell a failed build from a good one. A
+     module-level `failed` in `Poc.Mod` is set at every place a failure is
+     reported (every "poc: ..." message, bad usage, the unsupported-construct
+     summary), and after `Run` the process ends with `Platform.Exit(1)` if it
+     is set or `Diagnostics.errorCount` or `LLVMCodeGenerator.unsupportedCount`
+     is nonzero. `Platform.Exit(code: LONGINT)` is voc's, which
+     `rtl/llvm/Platform.Mod` now has too (C `exit`, which flushes stdio); the
+     poc built by voc and the one built by poc behave alike. New fixture
+     `poc-exit-status` (18 command lines, status only). The bootstrap scripts
+     (`set -e`) now stop on a failing `poc`. Found on the way: an unregistered
+     `Files.New` file is left behind as `.tmp.<n>.<pid>` in both runtimes, and
+     voc's `Files.Delete` renames rather than unlinks, so a failed `-emit-llvm-ir`
+     registers its file and `Platform.Unlink`s it (which also removes a stale
+     `.ll` from an earlier run); the two new fixtures fail on a leftover temp
+     file, and `.gitignore` covers them.
    - Close the two "revisit opportunistically" notes by decision, not by
      work: the guard-then-selector workarounds in `Types.Mod`,
      `MemoryLayout.Mod` and `SemanticActions.Mod` stay as written (they

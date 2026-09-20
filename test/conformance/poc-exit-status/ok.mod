@@ -1,0 +1,2 @@
+MODULE ok;
+END ok.

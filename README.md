@@ -28,6 +28,10 @@ make clean      # removes both poc's own build output and test artifacts
                  # (clean-build and clean-tests individually)
 ```
 
+`poc` exits with status 1 after reporting an error of any kind (a type error, a
+file that will not open, a failed build, a construct the LLVM backend cannot
+lower yet) and 0 otherwise.
+
 `make test` runs the suite under the voc-built poc only: it is the fast loop,
 and voc stays the bootstrap root and the comparison oracle. Use `make check`
 before a commit that touches the compiler or the runtime (`rtl/llvm`).

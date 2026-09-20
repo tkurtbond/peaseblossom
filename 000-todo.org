@@ -12,12 +12,13 @@ In general, it's better to report an error message with a string rather than a n
 ** TODO LONGINT is included in SYSTEM.ADDRESS by rank, but on a 32-bit target under -OC a LONGINT is 64 bits: a mixed ADDRESS/LONGINT operation is done at 32 bits and truncates (Files.Old's size <= MAX(LONGINT) compared against -1).  Worked around in Files.Mod; fix in the type hierarchy.  (PLAN.md Phase 11 step 2.)
 ** TODO LONG and SHORT of SYSTEM.INT8..INT64 (rejected today).  (PLAN.md Phase 11 step 2.)
 ** TODO Nested procedures (a procedure declared inside another): a declaration or a call is now a compile error; implement them by lambda lifting by reference.  (PLAN.md Phase 11 step 2.)
-** TODO poc exits with status 0 even after reporting errors; make it exit 1.  (PLAN.md Phase 11 step 2.)
 ** TODO Under -OC an INT8 combined with an integer literal (b + 1) is a SHORTINT, not assignable back to the INT8.  Probe voc; probably a constant should take the other operand's fixed-width type when it fits.  (PLAN.md Phase 11 step 3.)
 ** TODO Should poc reject a constant NEW length of <= 0 at compile time.
 ** TODO Add command line option to poc to have NEW on an exhaused heap trap.
 ** TODO Can poc garbage collection do better than conservatively scanning the stack?
 ** TODO Add debugging support, so one can debug poc produced code in gdb or lldb.
+** DONE poc exits with status 1 after reporting an error (it used to exit 0 always).
+Phase 11 (2026-09-20): Platform.Exit in rtl/llvm/Platform.Mod, a failed flag in Poc.Mod; fixture poc-exit-status.  See PLAN.md Phase 11 step 2.
 ** DONE Implement constant folding on integer literals.
 Phase 9 step 10 (2026-09-19): a constant integer expression - in a CONST or in a statement - is folded in 64 bits to the minimal type its value fits (2 * 100 + 2 * 10 is the INTEGER 220, MAX(SHORTINT) + 1 an INTEGER, -128 a SHORTINT); overflow past HUGEINT is a compile error, as in voc. Also CONST ASH and CONST MAX/MIN of REAL/LONGREAL. See PLAN.md's step 10 account.
 ** DONE voc has command line options for setting machine address size and alignment.  Figure out if poc needs them too.

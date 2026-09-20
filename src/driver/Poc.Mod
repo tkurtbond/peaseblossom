@@ -66,6 +66,14 @@ MODULE Poc;
     maxLineLength = 4096;
     importPathEnvVar = "POC_IMPORT_PATH";
 
+  VAR
+    (* Whether anything went wrong that is not counted in Diagnostics.errorCount
+       (a file that would not open, a build that failed, bad usage): set where
+       it is reported, and with errorCount and LLVMCodeGenerator.unsupportedCount
+       what makes the process exit with status 1 (below, after Run). Until
+       2026-09-20 poc always exited 0, so make and scripts could not tell. *)
+    failed: BOOLEAN;
+
   TYPE
     (* PLAN.md Phase 9 step 4a: the module names RegenerateInterfaces has
        already handled in this run (a diamond import must not be
@@ -127,7 +135,7 @@ MODULE Poc;
       more: BOOLEAN;
   BEGIN
     IF ~ReadSource(name, buffer, length) THEN
-      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+      failed := TRUE; Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
       Diagnostics.Reset(name);
       Lexer.InitScanner(scanner, buffer, length);
@@ -157,7 +165,7 @@ MODULE Poc;
       module: SyntaxTree.ModuleNode;
   BEGIN
     IF ~ReadSource(name, buffer, length) THEN
-      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+      failed := TRUE; Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
       Diagnostics.Reset(name);
       Parser.InitParser(parser, buffer, length);
@@ -179,7 +187,7 @@ MODULE Poc;
       scope: SymbolTable.Scope;
   BEGIN
     IF ~ReadSource(name, buffer, length) THEN
-      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+      failed := TRUE; Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
       Diagnostics.Reset(name);
       Parser.InitParser(parser, buffer, length);
@@ -240,7 +248,7 @@ MODULE Poc;
       IF ResolveTriple(explicitTriple, triple) THEN SetWordSizeFromTriple(triple) END
     END;
     IF ~ReadSource(name, buffer, length) THEN
-      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+      failed := TRUE; Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
       Diagnostics.Reset(name);
       Parser.InitParser(parser, buffer, length);
@@ -253,7 +261,7 @@ MODULE Poc;
       ELSIF ModuleInterface.Write(module, scope, outputDir, path) THEN
         Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
       ELSE
-        Out.String("poc: cannot write "); Out.String(path); Out.Ln
+        failed := TRUE; Out.String("poc: cannot write "); Out.String(path); Out.Ln
       END
     END
   END EmitInterface;
@@ -313,7 +321,7 @@ MODULE Poc;
     IF m # NIL THEN RETURN END;
     ModuleInterface.ReadModuleSource(name, buffer, length, found);
     IF ~found THEN
-      Out.String("poc: cannot find source for imported module "); Out.String(name); Out.Ln;
+      failed := TRUE; Out.String("poc: cannot find source for imported module "); Out.String(name); Out.Ln;
       ok := FALSE; RETURN
     END;
     COPY(Diagnostics.fileName, savedFileName);
@@ -405,7 +413,7 @@ MODULE Poc;
       Out.String(" error(s) in imported module "); Out.String(name); Out.Ln;
       ok := FALSE
     ELSIF ~ModuleInterface.Write(module, scope, outputDir, path) THEN
-      Out.String("poc: cannot write "); Out.String(path); Out.Ln;
+      failed := TRUE; Out.String("poc: cannot write "); Out.String(path); Out.Ln;
       ok := FALSE
     END;
     COPY(savedFileName, Diagnostics.fileName)
@@ -445,7 +453,7 @@ MODULE Poc;
     visited := NIL;
     RegenerateInterfaces("GarbageCollectedHeap", outputDir, visited, ok);
     IF ~ok THEN
-      Out.String("poc: NEW needs the runtime module GarbageCollectedHeap; put rtl/llvm on the import path");
+      failed := TRUE; Out.String("poc: NEW needs the runtime module GarbageCollectedHeap; put rtl/llvm on the import path");
       Out.Ln;
       RETURN
     END;
@@ -456,7 +464,7 @@ MODULE Poc;
     ELSE DiscoverModule("ModuleTable", front, frontTail, ok)
     END;
     IF ~ok THEN
-      Out.String("poc: NEW needs the runtime module ModuleTable; put rtl/llvm on the import path"); Out.Ln;
+      failed := TRUE; Out.String("poc: NEW needs the runtime module ModuleTable; put rtl/llvm on the import path"); Out.Ln;
       RETURN
     END;
     IF heap # NIL THEN
@@ -465,7 +473,7 @@ MODULE Poc;
       DiscoverModule("GarbageCollectedHeap", front, frontTail, ok)
     END;
     IF ~ok THEN
-      Out.String("poc: NEW needs the runtime module GarbageCollectedHeap; put rtl/llvm on the import path");
+      failed := TRUE; Out.String("poc: NEW needs the runtime module GarbageCollectedHeap; put rtl/llvm on the import path");
       Out.Ln;
       RETURN
     END;
@@ -535,7 +543,7 @@ MODULE Poc;
   BEGIN
     ok := FALSE;
     IF ~ReadSource(name, buffer, length) THEN
-      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+      failed := TRUE; Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
       Diagnostics.Reset(name);
       Parser.InitParser(parser, buffer, length);
@@ -567,6 +575,7 @@ MODULE Poc;
      ReportUnsupported); this is the summary, after which nothing is written. *)
   PROCEDURE ReportUnsupportedConstructs;
   BEGIN
+    failed := TRUE;
     Out.Int(LLVMCodeGenerator.unsupportedCount, 0);
     Out.String(" construct(s) the LLVM backend cannot lower yet; nothing written"); Out.Ln
   END ReportUnsupportedConstructs;
@@ -580,7 +589,7 @@ MODULE Poc;
       topName: SyntaxTree.Ident;
   BEGIN
     IF ~ResolveTriple(explicitTriple, triple) THEN
-      Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
+      failed := TRUE; Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
     ELSE
       SetWordSizeFromTriple(triple);
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
@@ -591,7 +600,7 @@ MODULE Poc;
         ELSIF LLVMCodeGenerator.unsupportedCount > 0 THEN
           ReportUnsupportedConstructs
         ELSE
-          Out.String("poc: cannot write "); Out.String(path); Out.Ln
+          failed := TRUE; Out.String("poc: cannot write "); Out.String(path); Out.Ln
         END
       END
     END
@@ -605,9 +614,9 @@ MODULE Poc;
       topName: SyntaxTree.Ident;
   BEGIN
     IF exePath[0] = 0X THEN
-      Out.String("poc: -build requires -o <path>"); Out.Ln
+      failed := TRUE; Out.String("poc: -build requires -o <path>"); Out.Ln
     ELSIF ~ResolveTriple(explicitTriple, triple) THEN
-      Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
+      failed := TRUE; Out.String("poc: cannot determine target triple (is clang installed?)"); Out.Ln
     ELSE
       SetWordSizeFromTriple(triple);
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
@@ -618,7 +627,7 @@ MODULE Poc;
         ELSIF LLVMCodeGenerator.unsupportedCount > 0 THEN
           ReportUnsupportedConstructs
         ELSE
-          Out.String("poc: build failed"); Out.Ln
+          failed := TRUE; Out.String("poc: build failed"); Out.Ln
         END
       END
     END
@@ -664,7 +673,7 @@ MODULE Poc;
       obj: SymbolTable.Object;
   BEGIN
     IF ~ReadSource(name, buffer, length) THEN
-      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+      failed := TRUE; Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
       Diagnostics.Reset(name);
       Parser.InitParser(parser, buffer, length);
@@ -715,7 +724,7 @@ MODULE Poc;
       obj: SymbolTable.Object;
   BEGIN
     IF ~ReadSource(name, buffer, length) THEN
-      Out.String("poc: cannot open "); Out.String(name); Out.Ln
+      failed := TRUE; Out.String("poc: cannot open "); Out.String(name); Out.Ln
     ELSE
       Diagnostics.Reset(name);
       Parser.InitParser(parser, buffer, length);
@@ -738,6 +747,7 @@ MODULE Poc;
 
   PROCEDURE Usage;
   BEGIN
+    failed := TRUE;
     Out.String("usage: poc -dump-tokens <file>"); Out.Ln;
     Out.String("       poc -check-syntax <file>"); Out.Ln;
     Out.String("       poc -check <file>"); Out.Ln;
@@ -840,7 +850,7 @@ MODULE Poc;
             ModuleInterface.AddSearchPathDir(param);
             INC(i, 2)
           ELSE
-            Out.String("poc: -import-path requires a directory"); Out.Ln;
+            failed := TRUE; Out.String("poc: -import-path requires a directory"); Out.Ln;
             done := TRUE
           END
         ELSIF arg = "-clear-import-path" THEN
@@ -861,7 +871,7 @@ MODULE Poc;
             Modules.GetArg(i + 1, outputDir);
             INC(i, 2)
           ELSE
-            Out.String("poc: -output-dir requires a directory"); Out.Ln;
+            failed := TRUE; Out.String("poc: -output-dir requires a directory"); Out.Ln;
             done := TRUE
           END
         (* PLAN.md's "Open design questions" - MAX(LONGINT)-in-CONST:
@@ -884,7 +894,7 @@ MODULE Poc;
             Modules.GetArg(i + 1, targetTriple);
             INC(i, 2)
           ELSE
-            Out.String("poc: -target requires a triple"); Out.Ln;
+            failed := TRUE; Out.String("poc: -target requires a triple"); Out.Ln;
             done := TRUE
           END
         ELSIF arg = "-o" THEN
@@ -892,7 +902,7 @@ MODULE Poc;
             Modules.GetArg(i + 1, exePath);
             INC(i, 2)
           ELSE
-            Out.String("poc: -o requires a path"); Out.Ln;
+            failed := TRUE; Out.String("poc: -o requires a path"); Out.Ln;
             done := TRUE
           END
         ELSE
@@ -909,5 +919,9 @@ MODULE Poc;
   END Run;
 
 BEGIN
-  Run
+  failed := FALSE;
+  Run;
+  IF failed OR (Diagnostics.errorCount > 0) OR (LLVMCodeGenerator.unsupportedCount > 0) THEN
+    Platform.Exit(1)
+  END
 END Poc.

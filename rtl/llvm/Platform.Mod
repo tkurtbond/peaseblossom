@@ -10,7 +10,7 @@ MODULE Platform;
      needs is here; voc's file-handle, clock and signal procedures are not.
      (Files.Mod, step 3, will bring what it needs of them.)
 
-     Every libc name used - chdir, getcwd, getenv, getpid, system, unlink -
+     Every libc name used - chdir, exit, getcwd, getenv, getpid, system, unlink -
      is the same on Linux, NetBSD, OpenBSD and FreeBSD.
 
      Where this differs from voc's:
@@ -56,6 +56,7 @@ MODULE Platform;
   PROCEDURE ["C", "getcwd"] CGetCwd(buffer, size: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
   PROCEDURE ["C", "system"] CSystem(command: SYSTEM.ADDRESS): SYSTEM.INT32;
   PROCEDURE ["C", "unlink"] CUnlink(path: SYSTEM.ADDRESS): SYSTEM.INT32;
+  PROCEDURE ["C", "exit"] CExit(code: SYSTEM.INT32);
 
   (* Whether s has a terminating 0X inside its array. *)
   PROCEDURE Terminated(s: ARRAY OF CHAR): BOOLEAN;
@@ -119,6 +120,13 @@ MODULE Platform;
     status := CSystem(SYSTEM.ADR(cmd)); (* a C int, widened to LONGINT for SHORT *)
     RETURN SHORT(status)
   END System;
+
+  (* Ends the process with status code, flushing C's buffered output first
+     (voc's Platform.Exit, whose parameter is a LONGINT too). *)
+  PROCEDURE Exit*(code: LONGINT);
+  BEGIN
+    CExit(SYSTEM.VAL(SYSTEM.INT32, code))
+  END Exit;
 
   (* Deletes the file n. *)
   PROCEDURE Unlink*(VAR n: ARRAY OF CHAR): ErrorCode;

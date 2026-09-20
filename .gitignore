@@ -12,6 +12,8 @@ test/conformance/**/*.h
 test/conformance/**/*.sym
 test/conformance/**/*.o
 test/conformance/**/*.ll
+# a Files.New file that was never registered (poc's or voc's runtime)
+test/conformance/**/.tmp.*
 test/conformance/**/*.s
 test/conformance/**/*.mar
 test/conformance/**/result

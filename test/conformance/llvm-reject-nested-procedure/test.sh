@@ -13,4 +13,6 @@ poc -o "$exe" -build nested.mod >result
 poc -emit-llvm-ir nested.mod >>result
 [ -e nested.ll ] && echo "IR WAS WRITTEN" >>result
 echo "done" >>result
+# a failed run must not leave its half-written IR behind
+ls -A | grep '^[.]tmp' >/dev/null && echo "LEFTOVER TEMP FILE" >>result
 . ../../testresult.sh

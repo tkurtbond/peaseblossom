@@ -141,7 +141,7 @@ MODULE LLVMToolchainDriver;
       name: ARRAY nameBufferLength OF CHAR;
       f: Files.File; w: Files.Rider; ok: BOOLEAN;
       savedDir, dir: ARRAY dirBufferLength OF CHAR;
-      chdirResult: INTEGER;
+      chdirResult, deleteResult: INTEGER;
       i: INTEGER;
   BEGIN
     i := 0;
@@ -161,10 +161,16 @@ MODULE LLVMToolchainDriver;
       f := Files.New(name);
       Files.Set(w, f, 0);
       LLVMCodeGenerator.GenerateProgram(modules, triple, w);
-      (* IR with a construct missing is worse than none: not written (the
-         file was never registered, so nothing is left behind), and the
-         caller finds out through LLVMCodeGenerator.unsupportedCount *)
-      IF LLVMCodeGenerator.unsupportedCount = 0 THEN Files.Register(f) ELSE ok := FALSE END;
+      (* IR with a construct missing is worse than none, and so is a stale
+         file from an earlier run beside it: it is written and deleted again,
+         not just left unregistered (an unregistered Files.New file stays behind
+         as ".tmp.<n>.<pid>" in both runtimes), and the caller finds out
+         through LLVMCodeGenerator.unsupportedCount *)
+      Files.Register(f);
+      IF LLVMCodeGenerator.unsupportedCount > 0 THEN
+        deleteResult := Platform.Unlink(name); (* not Files.Delete: voc's renames to a temp name *)
+        ok := FALSE
+      END;
       IF outputDir[0] # 0X THEN chdirResult := Platform.Chdir(savedDir) END
     END;
     RETURN ok

@@ -1,0 +1,18 @@
+exit 0: poc -check ok.mod
+exit 0: poc -check-syntax ok.mod
+exit 0: poc -dump-tokens ok.mod
+exit 0: poc -emit-llvm-ir ok.mod
+exit 1: poc -check typeerror.mod
+exit 1: poc -check-syntax syntaxerror.mod
+exit 1: poc -emit-interface typeerror.mod
+exit 1: poc -emit-llvm-ir typeerror.mod
+exit 1: poc -check missing.mod
+exit 1: poc -emit-llvm-ir missing.mod
+exit 0: poc -o prog -build ok.mod
+exit 1: poc -o prog -build typeerror.mod
+exit 1: poc -o prog -build nested.mod
+exit 1: poc -o prog -build missing.mod
+exit 1: poc -output-dir no-such-directory -emit-interface ok.mod
+exit 1: poc -frobnicate ok.mod
+exit 1: poc 
+exit 0: poc -print-import-path
