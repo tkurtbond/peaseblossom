@@ -4,6 +4,8 @@ Phase 9 step 10 (2026-09-19): a constant integer expression - in a CONST or in a
 ** TODO Pragmas so that Math.Mod and MathL.Mod can specify -lm.  Does voc have anything like that?
 ** TODO check that everything that should raise underflow or overflow does.
 ** TODO Better error messsages than voc's Halt(99).
+In general, it's better to report an error message with a string rather than a number.
+** TODO source location for traps, etc.
 ** TODO Finish the parts of voc's modules (Console, Platrom, etc.) that poc doesn't support yet.
 ** TODO Double check things that can trap.
 ** TODO Should poc reject a constant NEW length of <= 0 at compile time.
