@@ -112,7 +112,25 @@ MODULE SymbolTable;
 
     ScopeDesc* = RECORD
       objects*: Object;
-      outer*: Scope
+      outer*: Scope;
+      (* NIL at module level (Universe's own value, propagated down by
+         OpenScope until something overrides it); set to that PROCEDURE's
+         own ProcDeclNode by SemanticActions.OpenProcedureBodyScope every
+         time *any* procedure's body scope opens, top-level or nested -
+         so a scope opened some other way (a WITH guard's narrowed scope)
+         instead carries forward, via OpenScope's own propagation below,
+         whichever procedure it already sits inside. Lets CheckWithGuard's
+         pointer-guard safety check (Oberon2.pdf 9.11 is silent on it;
+         voc's own err 245 enforces it) tell "declared directly inside
+         procedure P" from "a module-level global" for a variable it is
+         about to guard, without needing to re-derive an enclosing
+         ProcDeclNode by any other means - the exact thing that Object's
+         own externalConvention/externalName comment above once flagged as
+         unreachable from a plain SymbolTable.Object. Only a *declaring*
+         scope's own value matters; a value found by walking up from some
+         other, unrelated scope proves nothing, since two different scopes
+         can each sit inside their own, different, procedure. *)
+      enclosingProc*: SyntaxTree.ProcDeclNode
     END;
 
   VAR
@@ -132,6 +150,11 @@ MODULE SymbolTable;
     VAR s: Scope;
   BEGIN
     NEW(s); s.objects := NIL; s.outer := outer;
+    (* propagate the enclosing top-level procedure, if any - see
+       ScopeDesc.enclosingProc's own comment. outer = NIL only for
+       Universe/SystemScope themselves, which stay at their NEW-given
+       NIL. *)
+    IF outer # NIL THEN s.enclosingProc := outer.enclosingProc END;
     RETURN s
   END OpenScope;
 

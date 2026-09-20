@@ -2587,32 +2587,55 @@ MODULE SemanticActions;
      treats it as the narrowed type, a genuine memory-safety hole (e.g.
      reading a field that doesn't exist on whatever v now actually points
      to), not just a style nit. voc's own rule, reverse-engineered by
-     testing each shape directly rather than guessed at: allowed - a
-     local variable never assigned (by bare name, ":=") inside any
-     PROCEDURE in the module, or a module-level global likewise never
-     assigned inside a PROCEDURE (only ever in a module/procedure body's
-     own straight-line code); rejected - a VAR parameter of pointer type
-     (an alias to the caller's own storage), *any* module-qualified
-     variable "M.v" unconditionally (an imported module's exported var -
-     voc can't/won't trust another module's procedures, now or after a
-     future recompile, from just its .sym interface), or a variable
-     assigned by bare name inside some *other* PROCEDURE anywhere in the
-     module (even one never called from the guarded body - a purely
-     static check, not real call-graph reachability; confirmed a
-     same-procedure straight-line reassignment *before* the guard is
-     fine, but a value passed through a VAR-pointer-typed parameter can't
-     reach this vector at all, since a narrowed guard variable's static
-     type inside the body no longer matches the original type a VAR
-     parameter would require identically). poc's own version is
-     deliberately the simpler, strictly *more* conservative half of
-     that: CollectProcAssignedNames's pre-pass (built once per module,
-     see CheckModuleBody) doesn't special-case "except this same
-     procedure's own straight-line code" the way voc does, so poc also
-     rejects that one narrow same-procedure-reassignment-before-the-guard
-     shape voc happens to allow - never less safe than voc, only
-     occasionally stricter, in exchange for not needing to thread "which
-     procedure currently encloses this WITH" through the checker on top
-     of the module-wide scan. The RECORD-typed guard case (VAR record
+     testing each shape directly rather than guessed at, and re-verified
+     directly (PLAN.md Phase 10 step 8, 2026-09-20) rather than trusted
+     from memory when this section's own precision was revisited: allowed
+     - a local variable reassigned by bare name only inside its own
+     *declaring* PROCEDURE, anywhere at all in that procedure's own body,
+     even textually inside the very guarded branch being checked (voc
+     accepts "sel := other" placed directly inside a WITH sel: T DO ...
+     branch, confirmed with a standalone repro - no statement-order or
+     reachability distinction is drawn within the declaring procedure's
+     own body at all); rejected - a VAR parameter of pointer type (an
+     alias to the caller's own storage), *any* module-qualified variable
+     "M.v" unconditionally (an imported module's exported var - voc
+     can't/won't trust another module's procedures, now or after a future
+     recompile, from just its .sym interface), a module-level global
+     reassigned anywhere in the module, or a local reassigned by bare name
+     inside any PROCEDURE *nested inside* its declaring one, at any
+     nesting depth, called from the guarded body or not (confirmed with a
+     doubly-nested repro too - a purely static check, not real call-graph
+     reachability) - and, symmetrically, confirmed *not* rejected when an
+     unrelated procedure elsewhere in the module happens to declare its
+     own, different local of the same bare name (voc resolves by real
+     declared identity, never by name text, so two same-named-but-
+     unrelated locals never interact).
+
+     PLAN.md Phase 10 step 8 (self-hosting) hit CheckWithGuard rejecting
+     29 genuine type-case dispatches in poc's own source - WITH node:
+     ...ArrayTypeNode DO, WITH sel: ...FieldSelector DO, and the like -
+     because CollectProcAssignedNames's original pre-pass flattened every
+     bare assignment in the *whole module* into one set with no notion of
+     which procedure declared which variable, so it could tell neither
+     "an unrelated procedure's same-named local" (harmless) from "this
+     local's own family" (voc's real distinction) nor "this local's own
+     declaring procedure" (always harmless) from "a procedure nested
+     inside it" (voc's real, only-if-nested-and-different distinction)
+     apart - node/sel/s are used constantly across this file, so the
+     first collision alone accounted for all 29. SymbolTable.ScopeDesc.
+     enclosingProc (set fresh at every procedure's own body scope, top-
+     level or nested, and carried by OpenScope through every scope opened
+     some other way, such as a WITH guard's own narrowed scope) gives
+     MayBeReassignedElsewhere below exactly the identity voc's real rule
+     needs at no extra bookkeeping cost: a *global* (enclosingProc = NIL
+     at its declaring scope) still uses the whole-module nonLocalAssigns
+     scan - genuinely reachable from any procedure, so no narrowing is
+     sound there - but a *local*'s declaring scope names its own
+     declaring ProcDeclNode P directly, and only P's *nested* procedures
+     (P.declarations.procDecls, recursively - never P's own direct
+     statements) are scanned via the unmodified CollectProcAssignedNames
+     above, matching voc's tested behavior exactly rather than merely
+     approximating it more closely. The RECORD-typed guard case (VAR record
      parameter/receiver) needs none of this - it isn't a pointer
      redirection risk the same way, and voc's own withreceiver2 test
      (2026-09-17) confirms it's exempt; supported since PLAN.md Phase 9
@@ -2633,6 +2656,43 @@ MODULE SemanticActions;
     unused.isVarParam := original.isVarParam;
     CheckStatementSeq(narrowedScope, g.body, nonLocalAssigns, loopDepth, procResultType)
   END CheckWithGuardBody;
+
+  (* Whether name might be reassigned by bare name somewhere this WITH
+     guard cannot rule out, given the scope it was declared in - see this
+     section's own header comment for the full rationale. declaringScope
+     is where FindLocal(name) actually succeeds walking outward from
+     scope (matching IsNestedProcedureName's own idiom above), i.e. the
+     variable's own declaring scope, not necessarily where the guard
+     itself textually sits (a nested PROCEDURE may guard an outer
+     local it can see by lexical scoping). *)
+  PROCEDURE MayBeReassignedElsewhere(scope: SymbolTable.Scope; name: SyntaxTree.Ident;
+                                     nonLocalAssigns: ProcAssignedName): BOOLEAN;
+    VAR declaringScope: SymbolTable.Scope; declaringProc: SyntaxTree.ProcDeclNode;
+        nestedAssigns: ProcAssignedName;
+  BEGIN
+    declaringScope := scope;
+    WHILE (declaringScope # NIL) & (SymbolTable.FindLocal(declaringScope, name) = NIL) DO
+      declaringScope := declaringScope.outer
+    END;
+    IF declaringScope = NIL THEN RETURN IsProcAssigned(nonLocalAssigns, name) END;
+    declaringProc := declaringScope.enclosingProc;
+    IF declaringProc = NIL THEN
+      (* a module-level global: genuinely reachable from any procedure, so
+         only the whole-module scan is sound here *)
+      RETURN IsProcAssigned(nonLocalAssigns, name)
+    ELSE
+      (* a local: only a PROCEDURE nested inside its own declaring one can
+         reach it by bare name at all (voc's real, tested rule - this
+         section's own header comment) - never declaringProc's own direct
+         statements, which CollectProcAssignedNames never sees since it
+         only starts from declaringProc's *nested* procDecls *)
+      nestedAssigns := NIL;
+      IF declaringProc.declarations # NIL THEN
+        CollectProcAssignedNames(declaringProc.declarations.procDecls, nestedAssigns)
+      END;
+      RETURN IsProcAssigned(nestedAssigns, name)
+    END
+  END MayBeReassignedElsewhere;
 
   PROCEDURE CheckWithGuard(scope: SymbolTable.Scope; g: SyntaxTree.WithGuardNode;
                            nonLocalAssigns: ProcAssignedName;
@@ -2655,7 +2715,7 @@ MODULE SemanticActions;
                            g.line, g.column);
     IF (narrowed # Types.Undefined) & (leftType IS Types.PointerType) THEN
       IF (g.variableQualifier[0] # 0X) OR obj.isVarParam
-          OR IsProcAssigned(nonLocalAssigns, g.variableName) THEN
+          OR MayBeReassignedElsewhere(scope, g.variableName, nonLocalAssigns) THEN
         Diagnostics.Error(g.line, g.column,
           "guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable");
         narrowed := Types.Undefined
@@ -2826,6 +2886,12 @@ MODULE SemanticActions;
       paramObj: SymbolTable.Object;
   BEGIN
     bodyScope := SymbolTable.OpenScope(outer);
+    (* d's own body scope names d itself (SymbolTable.ScopeDesc.
+       enclosingProc's own comment) - unconditionally, top-level or
+       nested: OpenScope's propagation only matters for a scope opened
+       some *other* way (a WITH guard's narrowed scope), which should
+       keep naming whichever procedure it already sits inside. *)
+    bodyScope.enclosingProc := d;
     IF (d.receiver # NIL) & (receiverType # NIL) THEN
       paramObj := SymbolTable.Insert(bodyScope, d.receiver.name, SymbolTable.varClass, receiverType,
                                       FALSE, FALSE, d.receiver.line, d.receiver.column);

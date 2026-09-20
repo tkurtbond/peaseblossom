@@ -3321,8 +3321,42 @@ work already being in place.
    poc's checker rejects poc's own `SemanticActions.Mod` (29 x "guarded
    pointer variable may be manipulated by non-local operations", the
    `WITH` rule that `CheckWithGuard` applies more strictly than voc
-   does). Step 8 must settle that - by loosening the rule to voc's, or by
-   rewriting those `WITH`s - before poc can compile itself.
+   does).
+
+   **Settled (2026-09-20, step 8): `CheckWithGuard` now matches voc's real
+   rule exactly, not just more closely.** The 29 rejections were plain
+   type-case dispatches in poc's own source (`WITH node: ...ArrayTypeNode
+   DO`, `WITH sel: ...FieldSelector DO`, and the like) over an ordinary,
+   non-`VAR` local - never genuinely reachable from another procedure by
+   Oberon-2's own scoping rules, only flagged because `CollectProcAssigned
+   Names`'s original whole-module pre-pass matched by bare name text with
+   no notion of which procedure declared which variable, and `node`/`sel`/
+   `s` are used constantly across this file. Probed voc directly (six
+   standalone repros, `/tmp/vocwg/vocwg1..6.mod`) rather than trusting the
+   header comment's own account from memory, and found voc's real rule is
+   both simpler and more precise than what poc had approximated: a local
+   may be reassigned by bare name *anywhere at all in its own declaring
+   procedure*, including textually inside the very guarded branch (voc
+   accepts that directly - no statement-order or reachability distinction
+   is drawn within the declaring procedure itself); only a reassignment
+   inside a procedure *nested inside* the declaring one (any depth) is
+   rejected; an unrelated procedure's own same-named-but-different local
+   never interacts at all (voc resolves by declared identity, never text).
+   New `SymbolTable.ScopeDesc.enclosingProc` (set at every procedure's own
+   body scope, top-level or nested, and carried through any scope opened
+   another way - a `WITH`'s own narrowed scope) gives `CheckWithGuard` this
+   distinction for free: a global still uses the whole-module scan
+   (genuinely reachable from anywhere), a local uses a scan of just its
+   declaring procedure's own *nested* procedures (never its own direct
+   statements). Re-verified against all six voc repros: exact agreement.
+   `SemanticActions.Mod` now checks clean under real `poc -check`, and so
+   does `Parser.Mod` and `src/back/llvm/LLVMTypes.Mod` right after it in
+   Stage 0's own build order; `LLVMCodeGenerator.Mod` hits a new, unrelated
+   blocker next (`mantissa: LONGINT` too narrow for a `HUGEINT`-typed
+   numeral under poc's own default `-O2` target-language assumption - see
+   "`-OC`-equivalent elementary-type-size model" above; poc has no
+   `-O2`/`-OC` CLI flag of its own yet, so step 8 still has more to settle
+   before Stage 1 is reachable). `make test` (198) stays clean throughout.
 
    **BSD-verified (2026-09-20), and a real, NetBSD-only bug found and
    fixed along the way.** All 23 of Phase 10 steps 1-7's runnable rtl
