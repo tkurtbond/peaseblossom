@@ -3179,6 +3179,56 @@ work already being in place.
    **Testing**: a fixture exercising `System` (run a trivial shell
    command, check its exit status) and `GetEnv`/`Unlink`/`Chdir`/`CWD`
    round-tripping a real environment variable and a real temp file.
+   **Implemented (2026-09-19)**: `rtl/llvm/Platform.Mod` has exactly the
+   six named above plus the `ErrorCode` type, with voc's own signatures
+   (`Chdir(VAR n: ARRAY OF CHAR): ErrorCode`, `GetEnv(var: ARRAY OF CHAR;
+   VAR val: ARRAY OF CHAR)`, `System(cmd: ARRAY OF CHAR): INTEGER`,
+   `Unlink(VAR n): ErrorCode`, `PID-: INTEGER`, `CWD-: ARRAY 256 OF
+   CHAR`) so poc's source compiles against either module. Not brought
+   over: voc's file-handle, clock, signal and error-classification
+   procedures - step 3's `Files.Mod` will add whatever it needs. Decisions,
+   read from voc's `Platformunix.Mod`:
+   - **An error is -1, not errno.** voc returns the errno value. The
+     portable way to read it does not exist: `errno` is reached through
+     `__errno_location` on Linux, `__error` on FreeBSD and `__errno` on
+     NetBSD and OpenBSD, and an external declaration of a symbol the
+     system lacks fails to link, with no conditional compilation to choose
+     between them. Nothing in poc's source looks at more than `= 0`
+     (the one place that mentions a code, `ModuleInterface.Write*`'s
+     comment, only says what it happened to be). If a later module needs
+     the reason, the fix is per-system - a small C shim, or a build-time
+     choice - and belongs to Phase 11.
+   - **`PID` is never negative.** voc keeps it in an `INTEGER`, so under
+     its 16-bit `-O2` model a pid above 32767 wraps, possibly to a
+     negative number, which `LLVMToolchainDriver.AppendInt` (documented as
+     taking a non-negative number) would print wrongly. Here a pid that
+     does not fit is reduced modulo 2^15 (one that fits is left whole,
+     under a 32-bit `INTEGER` all of them).
+   - **Strings must end in `0X` inside their array**: a `Chdir`, `Unlink`
+     or `System` argument that does not is refused (-1) and a `GetEnv`
+     name that does not finds nothing, instead of running `getenv`/`chdir`
+     off the end of the array.
+   - **`System` returns the raw wait status**, exit code times 256, as voc
+     does, narrowed to `INTEGER` - `exit 255` (65280) wraps to -256,
+     nonzero, which is all poc's own caller tests.
+   - **C `int` is written `LONGINT`** in the external declarations, right
+     under the `-O2` model poc generates code for, wrong under `-OC` (a
+     64-bit `LONGINT` reads a return register's upper half, which the
+     ABI leaves undefined). `SYSTEM.INT32` (step 7) is the size-model-
+     independent spelling; these declarations, and `Console`'s `write`,
+     should move to it then, and step 8's self-hosting under the `-OC`
+     model needs that done first.
+   **Testing**: `llvm-platform` (25 checks over `GetEnv` - a set, an empty,
+   an unset and a truncated variable; `System`'s status; `Unlink` of a real
+   file twice; `Chdir` into a real directory and back, seen from the
+   shell a `System` call starts and from `CWD`, and a failing one - run
+   under poc and voc, which must print the same; `test.sh` exports the
+   variables and builds the directory, and, as for `Console`, runs voc first
+   because poc leaves `Platform.sym` in the working directory); `llvm-platform-extra`
+   (poc only: `PID` against the shell's own `$PPID`, `-1` as the failure
+   code, unterminated strings), also run as an i686 executable in
+   `llvm-i686-runtime` (`llvm-platform` needs its environment and
+   directory, which that harness does not set up). 178 pass.
 
 3. **`Files.Mod`.** The subset poc's own source actually calls (again
    confirmed by grep, not assumed): `File`, `Rider`, `New`, `Old`,

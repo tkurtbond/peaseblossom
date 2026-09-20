@@ -14,6 +14,11 @@ and later fuller Oberon-2-style
   interface (`Flush`, `Char`, `String`, `Int`, `Ln`, `Bool`, `Hex`), unbuffered,
   over one `write(2)`. Imported like any module; needs only this directory
   on the import path.
+- `Platform.Mod` - the OS services poc's driver uses, with voc's `Platform`
+  signatures: `Chdir`/`CWD`, `GetEnv`, `PID`, `System`, `Unlink`. Each
+  is one libc call (`chdir`, `getcwd`, `getenv`, `getpid`, `system`,
+  `unlink`, the same on Linux and the three BSDs); an error is -1, not
+  voc's errno.
 - `GarbageCollectedHeap.Mod` - the collector: calloc'd chunks of 16-byte
   granules, bump allocation plus a first-fit free list, mark-sweep with
   precise heap/global tracing (type descriptors, root tables) and a
