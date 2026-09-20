@@ -106,6 +106,10 @@ MODULE Files;
   PROCEDURE ["C", "ferror"] FError(stream: SYSTEM.ADDRESS): LONGINT;
   PROCEDURE ["C", "ftell"] FTell(stream: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
   PROCEDURE ["C", "rename"] CRename(old, new: SYSTEM.ADDRESS): LONGINT;
+  (* Directory detection for Old (see its own comment): opendir succeeds
+     only for a directory, on Linux and all three BSDs. *)
+  PROCEDURE ["C", "opendir"] OpenDirectory(path: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+  PROCEDURE ["C", "closedir"] CloseDirectory(dir: SYSTEM.ADDRESS): LONGINT;
 
   (* An error nothing above can be told about: says what and where, and
      stops the program. *)
@@ -231,8 +235,9 @@ MODULE Files;
     RETURN f
   END New;
 
-  (* Whether the stream can be read from at all - a directory opens, on
-     some systems, but cannot be read. Leaves it at the start. *)
+  (* Whether the stream can be read from at all - kept as a second guard
+     after IsDirectory below, since a directory is not the only thing that
+     opens but cannot be read. Leaves it at the start. *)
   PROCEDURE Readable(stream: SYSTEM.ADDRESS): BOOLEAN;
     VAR one: ARRAY 1 OF CHAR; count: SYSTEM.ADDRESS; ok: BOOLEAN;
   BEGIN
@@ -240,6 +245,27 @@ MODULE Files;
     count := FRead(SYSTEM.ADR(one), 1, 1, stream);
     RETURN ok & ((count = 1) OR (FError(stream) = 0))
   END Readable;
+
+  (* Whether path names a directory. On Linux and OpenBSD, fopen(path,
+     "rb") of a directory succeeds but a one-byte fread of it fails
+     (ferror set) - Readable above used to be the only guard, relying on
+     that. Probed live on NetBSD 11.0/terhali (2026-09-20) after a real
+     BSD-hardware run of llvm-files-extra caught check 14 failing there:
+     NetBSD's fread happily returns a byte read out of a directory stream
+     (count=1, ferror=0) - an old BSD read(2)-on-a-directory allowance
+     Linux and OpenBSD's libc no longer honor - so Readable alone cannot
+     tell a directory from an ordinary file there. opendir/closedir give a
+     platform-independent answer instead of relying on that fread quirk:
+     POSIX opendir succeeds only for a directory, confirmed the same way
+     on Linux, OpenBSD and NetBSD (not yet on FreeBSD - no host to check
+     against). *)
+  PROCEDURE IsDirectory(VAR path: FileName): BOOLEAN;
+    VAR dir: SYSTEM.ADDRESS; ignored: LONGINT;
+  BEGIN
+    dir := OpenDirectory(SYSTEM.ADR(path));
+    IF dir # 0 THEN ignored := CloseDirectory(dir) END;
+    RETURN dir # 0
+  END IsDirectory;
 
   (* The file called name, or NIL if there is none or it cannot be opened.
      It is opened for reading and writing if the system allows, else for
@@ -250,19 +276,21 @@ MODULE Files;
     f := NIL;
     IF (StringLength(name) > 0) & (StringLength(name) < nameLength) THEN
       MakeAbsolute(name, path);
-      stream := OpenStream(path, "r+b");
-      IF stream = 0 THEN stream := OpenStream(path, "rb") END;
-      IF stream # 0 THEN
-        size := -1;
-        IF Readable(stream) & (FSeek(stream, 0, seekEnd) = 0) THEN size := FTell(stream) END;
-        IF (size >= 0) & (size <= MAX(LONGINT)) THEN
-          NEW(f);
-          COPY(path, f.workName);
-          f.stream := stream;
-          f.created := TRUE;
-          f.length := SYSTEM.VAL(LONGINT, size)
-        ELSE
-          ignored := FClose(stream)
+      IF ~IsDirectory(path) THEN
+        stream := OpenStream(path, "r+b");
+        IF stream = 0 THEN stream := OpenStream(path, "rb") END;
+        IF stream # 0 THEN
+          size := -1;
+          IF Readable(stream) & (FSeek(stream, 0, seekEnd) = 0) THEN size := FTell(stream) END;
+          IF (size >= 0) & (size <= MAX(LONGINT)) THEN
+            NEW(f);
+            COPY(path, f.workName);
+            f.stream := stream;
+            f.created := TRUE;
+            f.length := SYSTEM.VAL(LONGINT, size)
+          ELSE
+            ignored := FClose(stream)
+          END
         END
       END
     END;

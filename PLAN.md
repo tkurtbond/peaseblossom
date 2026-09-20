@@ -3324,6 +3324,33 @@ work already being in place.
    does). Step 8 must settle that - by loosening the rule to voc's, or by
    rewriting those `WITH`s - before poc can compile itself.
 
+   **BSD-verified (2026-09-20), and a real, NetBSD-only bug found and
+   fixed along the way.** All 23 of Phase 10 steps 1-7's runnable rtl
+   fixtures (`llvm-console` through `llvm-system-shifts`, the full list
+   in "SYSTEM subset" and this step and steps 1/2/4-7's own "Testing"
+   entries) were cross-compiled with `-target i386-unknown-openbsd7.9`/
+   `-target x86_64-unknown-netbsd10.0`, copied to `erekose`/`terhali`
+   (see "Vishap Oberon"/[[reference-bsd-test-hosts]]), and built+run there
+   with each machine's own native `clang`, same method as Phase 8 step
+   13's original sweep. First pass: 23/23 on erekose, 22/23 on terhali -
+   `llvm-files-extra` check 14 (`Files.Old` of a directory name must be
+   `NIL`) failed there. Root cause, confirmed with a standalone C probe
+   run on both machines: `Old`'s directory rejection (the `Readable`
+   procedure above) relies on a one-byte `fread` of an `fopen`'d directory
+   failing - true on Linux and OpenBSD (`count=0`, `ferror=1`), but
+   NetBSD's libc lets that `fread` succeed (`count=1`, `ferror=0`) - an
+   old BSD allowance for reading raw bytes off a directory stream that
+   Linux and OpenBSD's libc no longer honor, not a poc bug in the usual
+   sense. Fixed with a new `IsDirectory` check ahead of the `fopen` path,
+   using `opendir`/`closedir` instead of the `fread` probe - POSIX
+   `opendir` succeeds only for a directory, confirmed identically on
+   Linux, OpenBSD and NetBSD (no FreeBSD host to check against yet).
+   `Readable` is kept as a second guard for whatever else might open but
+   not read. Re-run after the fix: 23/23 on both erekose and terhali, and
+   `make test` (198, unchanged) still clean on Linux. The O_CREAT/
+   O_TRUNC/off_t values mentioned above remain unconfirmed on the BSDs -
+   moot, since `Files.Mod` never calls `open`/`lseek` at all, only stdio.
+
 4. **`Modules.Mod`.** `ArgCount-` (a read-only exported `VAR`, set once
    at process start) and `GetArg*(n: INTEGER; VAR val: ARRAY OF CHAR)` —
    command-line argument access, the second concrete example the user
