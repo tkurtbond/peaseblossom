@@ -1,6 +1,6 @@
 #!/bin/sh
-# Stage 2: the Stage 1 poc (build/stage1/poc, made by tools/bootstrap/
-# stage1) compiles poc's own source again, giving build/stage2/poc, and the
+# Stage 2: the Stage 1 poc (build/stage1/bin/poc, made by tools/bootstrap/
+# stage1) compiles poc's own source again, giving build/stage2/bin/poc, and the
 # two builds are compared - the self-hosting fixed point (PLAN.md,
 # "Bootstrap terminology"). Stage 1 and Stage 2 are the same program
 # compiled by two different builds of the same compiler, so if the
@@ -12,16 +12,16 @@ set -e
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BUILD="$ROOT/build"
-STAGE1_POC=${STAGE1_POC:-$BUILD/stage1/poc}
+STAGE1_POC=${STAGE1_POC:-$BUILD/stage1/bin/poc}
 
 rm -rf "$BUILD/stage2"
-mkdir -p "$BUILD/stage2/obj"
+mkdir -p "$BUILD/stage2/obj" "$BUILD/stage2/bin"
 cd "$BUILD/stage2/obj"
 "$STAGE1_POC" -OC \
   -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
   -import-path "$ROOT/rtl/llvm" \
-  -o "$BUILD/stage2/poc" -build "$ROOT/src/driver/Poc.Mod"
-echo "Stage 2: built $BUILD/stage2/poc"
+  -o "$BUILD/stage2/bin/poc" -build "$ROOT/src/driver/Poc.Mod"
+echo "Stage 2: built $BUILD/stage2/bin/poc"
 
 status=0
 for f in "$BUILD"/stage1/obj/*; do
@@ -34,7 +34,7 @@ for f in "$BUILD"/stage2/obj/*; do
   name=$(basename "$f")
   [ -e "$BUILD/stage1/obj/$name" ] || { echo "ONLY IN STAGE 2: obj/$name"; status=1; }
 done
-cmp -s "$BUILD/stage1/poc" "$BUILD/stage2/poc" || { echo "DIFFERS: poc executable"; status=1; }
+cmp -s "$BUILD/stage1/bin/poc" "$BUILD/stage2/bin/poc" || { echo "DIFFERS: poc executable"; status=1; }
 
 if [ $status -eq 0 ]; then
   echo "Fixed point: Stage 1 and Stage 2 output is identical"

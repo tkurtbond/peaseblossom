@@ -16,6 +16,8 @@ FRONT_SRCS := $(wildcard src/front/*.Mod)
 BACK_LLVM_SRCS := $(wildcard src/back/llvm/*.Mod)
 BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod)
 DRIVER_SRCS := src/driver/Poc.Mod
+RTL_SRCS := $(wildcard rtl/llvm/*.Mod)
+STAGE1_BIN := $(BUILD_DIR)/stage1/bin/poc
 SRCS := $(FRONT_SRCS) $(BACK_LLVM_SRCS) $(BACK_VAX_SRCS) $(DRIVER_SRCS)
 
 # Conformance fixtures grouped by which part of poc they exercise, mirroring
@@ -40,7 +42,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: all build stage1 stage2 test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: all build stage1 stage2 test-stage1 check test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN)
 
@@ -51,12 +53,33 @@ all: build
 
 # Self-hosting (PLAN.md, "Bootstrap terminology"): stage1 builds poc with the
 # Stage 0 poc, stage2 builds it again with Stage 1's and checks the two
-# builds' output is identical (the fixed point).
-stage1: $(BIN)
+# builds' output is identical (the fixed point). Stage 1 is compiled by poc
+# itself, so it links rtl/llvm and is rebuilt when that changes too; stage2
+# always reruns, being a comparison.
+stage1: $(STAGE1_BIN)
+
+$(STAGE1_BIN): $(BIN) $(SRCS) $(RTL_SRCS)
 	tools/bootstrap/stage1
 
-stage2: stage1
+stage2: $(STAGE1_BIN)
 	tools/bootstrap/stage2
+
+# The whole suite under the poc that poc built (POC_BIN_DIR is what
+# test/testenv.sh puts on PATH first; the tests cd, so it must be absolute).
+# `make test` stays Stage 0 only - the fast loop, and voc remains the
+# bootstrap root and the comparison oracle.
+test-stage1: $(STAGE1_BIN)
+	POC_BIN_DIR=$(abspath $(BUILD_DIR)/stage1/bin) test/run-tests.sh $(ALL_TESTS)
+
+# Both compilers and the fixed point: the suite under the voc-built poc, the
+# suite under the poc-built one, then the Stage 1/Stage 2 comparison. Each
+# part runs whatever an earlier one did, so a single run shows every failure.
+check:
+	@status=0; \
+	$(MAKE) test || status=1; \
+	$(MAKE) test-stage1 || status=1; \
+	$(MAKE) stage2 || status=1; \
+	exit $$status
 
 # Runs every fixture in one pass (not category-by-category as separate
 # make prerequisites) so one "make test" always reports the full picture,

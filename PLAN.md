@@ -3515,7 +3515,11 @@ work already being in place.
    (199/199, `POC_BIN_DIR` pointing at it) as it does under Stage 0's.
    `tools/bootstrap/stage1` and `stage2` (the latter does the comparison
    and exits non-zero on any difference), and `make stage1`/`make stage2`,
-   are the scripts this step promised.
+   are the scripts this step promised. `make test-stage1` runs the suite
+   under the poc-built poc (`POC_BIN_DIR=build/stage1/bin`) and `make check`
+   runs both suites and the Stage 2 comparison, whatever fails along the way;
+   `make test` stays voc-built only, the fast loop - voc is still the only way
+   to bootstrap and the oracle for the comparison.
 
    **BSD-verified (2026-09-20), and a real, NetBSD-only bug found and
    fixed along the way.** All 23 of Phase 10 steps 1-7's runnable rtl

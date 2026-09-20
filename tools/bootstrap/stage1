@@ -1,13 +1,15 @@
 #!/bin/sh
 # Stage 1: the Stage-0-built poc (build/bin/poc, made by tools/bootstrap/
-# stage0) compiles poc's own source, giving build/stage1/poc - poc built by
+# stage0) compiles poc's own source, giving build/stage1/bin/poc - poc built by
 # poc, linked against rtl/llvm instead of voc's runtime. See PLAN.md,
 # "Bootstrap terminology". Run with no arguments from anywhere.
 #
 # -OC matches Stage 0's own voc -OC (see stage0's comment): poc's LONGINT
 # must be 8 bytes wide for Types.Value.intVal. The build leaves its
 # intermediate Poc.ll and the .sym files it generated in build/stage1/obj,
-# which stage2 compares against its own.
+# which stage2 compares against its own. The binary sits in bin/ so that
+# POC_BIN_DIR=build/stage1/bin runs the conformance suite under it
+# (make test-stage1).
 set -e
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -15,10 +17,10 @@ BUILD="$ROOT/build"
 STAGE0_POC=${STAGE0_POC:-$BUILD/bin/poc}
 
 rm -rf "$BUILD/stage1"
-mkdir -p "$BUILD/stage1/obj"
+mkdir -p "$BUILD/stage1/obj" "$BUILD/stage1/bin"
 cd "$BUILD/stage1/obj"
 "$STAGE0_POC" -OC \
   -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
   -import-path "$ROOT/rtl/llvm" \
-  -o "$BUILD/stage1/poc" -build "$ROOT/src/driver/Poc.Mod"
-echo "Stage 1: built $BUILD/stage1/poc"
+  -o "$BUILD/stage1/bin/poc" -build "$ROOT/src/driver/Poc.Mod"
+echo "Stage 1: built $BUILD/stage1/bin/poc"
