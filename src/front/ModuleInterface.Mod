@@ -98,6 +98,15 @@ MODULE ModuleInterface;
      is trivially, unconditionally exact; no value-to-text algorithm,
      correctly-rounded or not, is even needed for this case.
 
+     (1b) A value that is exactly IEEE 754's largest finite REAL or
+     LONGREAL (or its negation) - what MAX/MIN of the type folds to
+     (PLAN.md Phase 9 step 10), however the CONST was written - is
+     printed as "MAX(REAL)", "MIN(LONGREAL)" and so on (ExtremeRealSpelling):
+     the reader folds the same constant back, exactly. Tier 2 cannot do it
+     for MAX(LONGREAL): ParseReal's repeated multiplication by ten, 308
+     times, lands a few units in the last place away from the value
+     whatever digits are tried, or overflows, so no text verifies.
+
      (2) FormatReal/FormatRealMagnitude, the fallback for anything else
      (a binary op, a reference to another constant, ...): these fold to
      a self-contained LONGREAL value with no remaining tie to the
@@ -774,6 +783,25 @@ MODULE ModuleInterface;
     RETURN found
   END LiteralRealLexeme;
 
+  (* "MAX(REAL)" and the like for a value that is exactly the largest
+     finite value of its own REAL/LONGREAL type or its negation - by value
+     and by v's type, not by how the CONST was written, so the type read
+     back is the type written. *)
+  PROCEDURE ExtremeRealSpelling(v: Types.Value; VAR text: ARRAY OF CHAR): BOOLEAN;
+    VAR bound: Types.Value; found: BOOLEAN;
+  BEGIN
+    IF (v.type # Types.Real) & (v.type # Types.LongReal) THEN RETURN FALSE END;
+    found := ConstantEvaluator.MaxMinBound(v.type, TRUE, bound);
+    IF v.realVal = bound.realVal THEN
+      IF v.type = Types.Real THEN COPY("MAX(REAL)", text) ELSE COPY("MAX(LONGREAL)", text) END;
+      RETURN TRUE
+    ELSIF v.realVal = -bound.realVal THEN
+      IF v.type = Types.Real THEN COPY("MIN(REAL)", text) ELSE COPY("MIN(LONGREAL)", text) END;
+      RETURN TRUE
+    END;
+    RETURN FALSE
+  END ExtremeRealSpelling;
+
   PROCEDURE PrintConstValue(VAR w: Files.Rider; v: Types.Value; expr: SyntaxTree.ExprNode;
                             line, column: INTEGER);
     VAR buf: ARRAY 320 OF CHAR; ok: BOOLEAN;
@@ -796,6 +824,8 @@ MODULE ModuleInterface;
     ELSIF v.kind = Types.setValue THEN
       FormatSetLiteral(v.setVal, buf); WriteStr(w, buf)
     ELSIF (v.kind = Types.realValue) & LiteralRealLexeme(expr, buf) THEN
+      WriteStr(w, buf)
+    ELSIF (v.kind = Types.realValue) & ExtremeRealSpelling(v, buf) THEN
       WriteStr(w, buf)
     ELSE (* Types.realValue, not a bare (optionally-signed) literal *)
       FormatReal(v.realVal, v.type = Types.LongReal, buf, ok);

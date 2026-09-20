@@ -28,3 +28,5 @@ llvm-trees-strings: same
 llvm-procedure-values: same
 llvm-procedure-values-import: same
 llvm-ash-max-min: same
+llvm-const-fold: same
+llvm-const-fold-import: same

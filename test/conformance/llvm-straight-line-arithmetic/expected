@@ -25,6 +25,7 @@ target triple = "x86_64-unknown-linux-gnu"
 @arith.sComp = global i32 zeroinitializer
 @arith.negQ = global i16 zeroinitializer
 @arith.negR = global i16 zeroinitializer
+@arith.minusSeven = global i16 zeroinitializer
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
@@ -74,96 +75,98 @@ entry:
   %t34 = add i16 %t27, %t25
   %t35 = select i1 %t31, i16 %t34, i16 %t27
   store i16 %t35, ptr @arith.r
-  %t36 = sub i8 0, 7
-  %t37 = sdiv i8 %t36, 2
-  %t38 = srem i8 %t36, 2
-  %t39 = xor i8 %t38, 2
-  %t40 = icmp slt i8 %t39, 0
-  %t41 = icmp ne i8 %t38, 0
-  %t42 = and i1 %t41, %t40
-  %t43 = sub i8 %t37, 1
-  %t44 = select i1 %t42, i8 %t43, i8 %t37
-  %t45 = add i8 %t38, 2
-  %t46 = select i1 %t42, i8 %t45, i8 %t38
-  %t47 = sext i8 %t44 to i16
-  store i16 %t47, ptr @arith.negQ
-  %t48 = sub i8 0, 7
-  %t49 = sdiv i8 %t48, 2
-  %t50 = srem i8 %t48, 2
-  %t51 = xor i8 %t50, 2
-  %t52 = icmp slt i8 %t51, 0
-  %t53 = icmp ne i8 %t50, 0
-  %t54 = and i1 %t53, %t52
-  %t55 = sub i8 %t49, 1
-  %t56 = select i1 %t54, i8 %t55, i8 %t49
-  %t57 = add i8 %t50, 2
-  %t58 = select i1 %t54, i8 %t57, i8 %t50
-  %t59 = sext i8 %t58 to i16
-  store i16 %t59, ptr @arith.negR
+  %t36 = sext i8 -7 to i16
+  store i16 %t36, ptr @arith.minusSeven
+  %t37 = load i16, ptr @arith.minusSeven
+  %t38 = sext i8 2 to i16
+  %t39 = sdiv i16 %t37, %t38
+  %t40 = srem i16 %t37, %t38
+  %t41 = xor i16 %t40, %t38
+  %t42 = icmp slt i16 %t41, 0
+  %t43 = icmp ne i16 %t40, 0
+  %t44 = and i1 %t43, %t42
+  %t45 = sub i16 %t39, 1
+  %t46 = select i1 %t44, i16 %t45, i16 %t39
+  %t47 = add i16 %t40, %t38
+  %t48 = select i1 %t44, i16 %t47, i16 %t40
+  store i16 %t46, ptr @arith.negQ
+  %t49 = load i16, ptr @arith.minusSeven
+  %t50 = sext i8 2 to i16
+  %t51 = sdiv i16 %t49, %t50
+  %t52 = srem i16 %t49, %t50
+  %t53 = xor i16 %t52, %t50
+  %t54 = icmp slt i16 %t53, 0
+  %t55 = icmp ne i16 %t52, 0
+  %t56 = and i1 %t55, %t54
+  %t57 = sub i16 %t51, 1
+  %t58 = select i1 %t56, i16 %t57, i16 %t51
+  %t59 = add i16 %t52, %t50
+  %t60 = select i1 %t56, i16 %t59, i16 %t52
+  store i16 %t60, ptr @arith.negR
   store i8 3, ptr @arith.sa
-  %t60 = load i8, ptr @arith.sa
-  %t61 = load i16, ptr @arith.a
-  %t62 = sext i8 %t60 to i16
-  %t63 = add i16 %t62, %t61
-  %t64 = sext i16 %t63 to i32
-  store i32 %t64, ptr @arith.wide
+  %t61 = load i8, ptr @arith.sa
+  %t62 = load i16, ptr @arith.a
+  %t63 = sext i8 %t61 to i16
+  %t64 = add i16 %t63, %t62
+  %t65 = sext i16 %t64 to i32
+  store i32 %t65, ptr @arith.wide
   store i8 65, ptr @arith.c1
   store i8 66, ptr @arith.c2
-  %t65 = load i16, ptr @arith.a
-  %t66 = load i16, ptr @arith.b
-  %t67 = icmp sgt i16 %t65, %t66
-  %t68 = zext i1 %t67 to i8
-  %t69 = icmp ne i8 %t68, 0
-  br i1 %t69, label %L1, label %L2
+  %t66 = load i16, ptr @arith.a
+  %t67 = load i16, ptr @arith.b
+  %t68 = icmp sgt i16 %t66, %t67
+  %t69 = zext i1 %t68 to i8
+  %t70 = icmp ne i8 %t69, 0
+  br i1 %t70, label %L1, label %L2
 L1:
-  %t70 = load i8, ptr @arith.c1
-  %t71 = load i8, ptr @arith.c2
-  %t72 = icmp ult i8 %t70, %t71
-  %t73 = zext i1 %t72 to i8
+  %t71 = load i8, ptr @arith.c1
+  %t72 = load i8, ptr @arith.c2
+  %t73 = icmp ult i8 %t71, %t72
+  %t74 = zext i1 %t73 to i8
   br label %L2
 L2:
-  %t74 = phi i8 [ 0, %entry ], [ %t73, %L1 ]
-  store i8 %t74, ptr @arith.flagCmp
-  %t75 = load i16, ptr @arith.a
-  %t76 = sext i8 17 to i16
-  %t77 = icmp eq i16 %t75, %t76
-  %t78 = zext i1 %t77 to i8
-  %t79 = icmp ne i8 %t78, 0
-  br i1 %t79, label %L4, label %L3
+  %t75 = phi i8 [ 0, %entry ], [ %t74, %L1 ]
+  store i8 %t75, ptr @arith.flagCmp
+  %t76 = load i16, ptr @arith.a
+  %t77 = sext i8 17 to i16
+  %t78 = icmp eq i16 %t76, %t77
+  %t79 = zext i1 %t78 to i8
+  %t80 = icmp ne i8 %t79, 0
+  br i1 %t80, label %L4, label %L3
 L3:
-  %t80 = load i16, ptr @arith.b
-  %t81 = sext i8 99 to i16
-  %t82 = icmp eq i16 %t80, %t81
-  %t83 = zext i1 %t82 to i8
+  %t81 = load i16, ptr @arith.b
+  %t82 = sext i8 99 to i16
+  %t83 = icmp eq i16 %t81, %t82
+  %t84 = zext i1 %t83 to i8
   br label %L4
 L4:
-  %t84 = phi i8 [ 1, %L2 ], [ %t83, %L3 ]
-  store i8 %t84, ptr @arith.flagBool
-  %t85 = load i8, ptr @arith.flagBool
-  %t86 = xor i8 %t85, 1
-  store i8 %t86, ptr @arith.flagNot
+  %t85 = phi i8 [ 1, %L2 ], [ %t84, %L3 ]
+  store i8 %t85, ptr @arith.flagBool
+  %t86 = load i8, ptr @arith.flagBool
+  %t87 = xor i8 %t86, 1
+  store i8 %t87, ptr @arith.flagNot
   store i32 39, ptr @arith.s1
   store i32 44, ptr @arith.s2
-  %t87 = load i32, ptr @arith.s1
-  %t88 = load i32, ptr @arith.s2
-  %t89 = or i32 %t87, %t88
-  store i32 %t89, ptr @arith.sUnion
-  %t90 = load i32, ptr @arith.s1
-  %t91 = load i32, ptr @arith.s2
-  %t92 = xor i32 %t91, -1
-  %t93 = and i32 %t90, %t92
-  store i32 %t93, ptr @arith.sDiff
-  %t94 = load i32, ptr @arith.s1
-  %t95 = load i32, ptr @arith.s2
-  %t96 = and i32 %t94, %t95
-  store i32 %t96, ptr @arith.sInter
-  %t97 = load i32, ptr @arith.s1
-  %t98 = load i32, ptr @arith.s2
-  %t99 = xor i32 %t97, %t98
-  store i32 %t99, ptr @arith.sSym
-  %t100 = load i32, ptr @arith.s1
-  %t101 = xor i32 %t100, -1
-  store i32 %t101, ptr @arith.sComp
+  %t88 = load i32, ptr @arith.s1
+  %t89 = load i32, ptr @arith.s2
+  %t90 = or i32 %t88, %t89
+  store i32 %t90, ptr @arith.sUnion
+  %t91 = load i32, ptr @arith.s1
+  %t92 = load i32, ptr @arith.s2
+  %t93 = xor i32 %t92, -1
+  %t94 = and i32 %t91, %t93
+  store i32 %t94, ptr @arith.sDiff
+  %t95 = load i32, ptr @arith.s1
+  %t96 = load i32, ptr @arith.s2
+  %t97 = and i32 %t95, %t96
+  store i32 %t97, ptr @arith.sInter
+  %t98 = load i32, ptr @arith.s1
+  %t99 = load i32, ptr @arith.s2
+  %t100 = xor i32 %t98, %t99
+  store i32 %t100, ptr @arith.sSym
+  %t101 = load i32, ptr @arith.s1
+  %t102 = xor i32 %t101, -1
+  store i32 %t102, ptr @arith.sComp
   ret void
 }
 

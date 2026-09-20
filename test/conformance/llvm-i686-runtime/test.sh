@@ -70,4 +70,6 @@ check llvm-trees-strings treesclient.mod
 check llvm-procedure-values procvals.mod
 check llvm-procedure-values-import client.mod
 check llvm-ash-max-min ashmaxmin.mod
+check llvm-const-fold constfold.mod
+check llvm-const-fold-import client.mod
 . ../../testresult.sh

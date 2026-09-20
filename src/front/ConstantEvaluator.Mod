@@ -69,6 +69,8 @@ MODULE ConstantEvaluator;
                                       itself, so no such literal ever
                                       needs to be written down. *)
 
+    maxAshCount = 62; (* voc's maxExp: see EvaluateAsh *)
+
   VAR
     (* MemoryLayout.sizeModelO2/OC currently in effect for this
        compilation - set once via SetSizeModel* below (default -O2, this
@@ -111,6 +113,7 @@ MODULE ConstantEvaluator;
     wordSize*: INTEGER;
 
   PROCEDURE ^ EvaluateExpr(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): Types.Value;
+  PROCEDURE ^ IsConstant(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): BOOLEAN;
 
   (* Recomputes every size-model-dependent bound above (VAR block just
      above) for the given MemoryLayout.sizeModelO2/OC model - the single
@@ -184,6 +187,23 @@ MODULE ConstantEvaluator;
     END
   END ParseHexInteger;
 
+  (* The narrowest of SHORTINT/INTEGER/LONGINT/HUGEINT whose range, under
+     the current -O2/-OC model, holds value - negative values included
+     (voc's OPT.IntSize takes -(n+1) for those, the same range test). A
+     bare numeral takes this type (IntegerLiteralType below), and so does
+     the result of every integer operation a constant expression folds:
+     PLAN.md Phase 9 step 10 - voc re-derives the type after each such
+     operation (OPB.ConstOp's SetIntType), so 2 * 100 is an INTEGER 200,
+     not a SHORTINT that wrapped, and MAX(SHORTINT) + 1 is an INTEGER. *)
+  PROCEDURE MinimalIntegerType*(value: LONGINT): Types.Type;
+  BEGIN
+    IF (value >= minShortInt) & (value <= maxShortInt) THEN RETURN Types.ShortInt
+    ELSIF (value >= minInteger) & (value <= maxInteger) THEN RETURN Types.Integer
+    ELSIF (value >= minLongInt) & (value <= maxLongInt) THEN RETURN Types.LongInt
+    ELSE RETURN Types.HugeInt
+    END
+  END MinimalIntegerType;
+
   (* Oberon2.pdf §5: "The type of an integer constant is the minimal type
      to which the constant value belongs" (see §6.1's SHORTINT/INTEGER/
      LONGINT ranges, plus HUGEINT - AGENTS.md's "Language extensions
@@ -206,10 +226,8 @@ MODULE ConstantEvaluator;
     IF overflow THEN
       Diagnostics.Error(expr.line, expr.column, "integer literal too large for HUGEINT");
       RETURN Types.Undefined
-    ELSIF value <= maxShortInt THEN RETURN Types.ShortInt
-    ELSIF value <= maxInteger THEN RETURN Types.Integer
-    ELSIF value <= maxLongInt THEN RETURN Types.LongInt
-    ELSE RETURN Types.HugeInt
+    ELSE
+      RETURN MinimalIntegerType(value)
     END
   END IntegerLiteralType;
 
@@ -376,26 +394,61 @@ MODULE ConstantEvaluator;
     END
   END LookupBareTypeName;
 
+  (* 2^exponent, by repeated doubling - exact for any exponent a LONGREAL
+     holds. The two largest finite values below are built from powers of
+     two rather than written as literals because voc rejects a REAL
+     literal with decimal exponent 38 and a LONGREAL one with exponent 308
+     (AGENTS.md, "Known voc bugs"), the same reason
+     LLVMCodeGenerator.DoubleBitsText assembles its own constants. *)
+  PROCEDURE PowerOfTwo(exponent: INTEGER): LONGREAL;
+    VAR result: LONGREAL;
+  BEGIN
+    result := 1.0D0;
+    WHILE exponent > 0 DO result := result * 2.0D0; DEC(exponent) END;
+    RETURN result
+  END PowerOfTwo;
+
+  (* IEEE 754 single precision's largest finite value, (2 - 2^-23) * 2^127
+     = 2^128 - 2^104 = 3.4028234663852886D38, held in a LONGREAL: 24
+     significant bits, so both terms and their difference are exact. *)
+  PROCEDURE MaxReal(): LONGREAL;
+  BEGIN
+    RETURN PowerOfTwo(128) - PowerOfTwo(104)
+  END MaxReal;
+
+  (* Double precision's, (2 - 2^-52) * 2^1023 = 2^1024 - 2^971 =
+     1.7976931348623157D308. 2^1024 is not itself a double, so the value is
+     built as 2 * (2^1023 - 2^970), the difference having 53 significant
+     bits. poc's MAX(LONGREAL) is the true value; voc's is deliberately a
+     little low (its OPM.Mod says so) - AGENTS.md. *)
+  PROCEDURE MaxLongReal(): LONGREAL;
+  BEGIN
+    RETURN (PowerOfTwo(1023) - PowerOfTwo(970)) * 2.0D0
+  END MaxLongReal;
+
   (* MAX/MIN(T)'s bound for every T PredeclaredProcedures.CheckMaxMin
-     already accepts, except REAL/LONGREAL (PLAN.md's own "Open design
-     questions" entry has the rationale for leaving those out: verify
-     against real voc first, tied to the separate correctly-rounded-
-     float work). SHORTINT/INTEGER/LONGINT/SET's bounds vary with the
-     current SetSizeModel*-selected -O2/-OC model (module VARs above);
-     every other bound here is a fixed language fact regardless of
-     model (CHAR is always 0X..0FFX, HUGEINT is always 8 bytes) or of
-     target word size (neither axis - see MemoryLayout.Mod's header
-     comment - ever changes an *elementary* type's own byte width, only
-     a POINTER/PROCEDURE value's or a composite type's), unlike SizeBound
-     below, which is also word-size-dependent for those. Returns FALSE
-     (v left unpopulated) for a type MAX/MIN doesn't apply to, or one of
-     the REAL/LONGREAL types not yet handled (LLVMCodeGenerator's
-     GenerateMaxMin, which calls this for the rest, emits those two itself
-     for a run-time MAX(REAL); a CONST of one is still not folded). *)
+     accepts. SHORTINT/INTEGER/LONGINT/SET's bounds vary with the current
+     SetSizeModel*-selected -O2/-OC model (module VARs above); every other
+     integer-like bound here is a fixed language fact regardless of model
+     (CHAR is always 0X..0FFX, HUGEINT is always 8 bytes) or of target
+     word size (neither axis - see MemoryLayout.Mod's header comment - ever
+     changes an *elementary* type's own byte width, only a POINTER/
+     PROCEDURE value's or a composite type's), unlike SizeBound below,
+     which is also word-size-dependent for those. REAL/LONGREAL (PLAN.md
+     Phase 9 step 10) are IEEE 754's largest finite value and its
+     negation - see MaxReal/MaxLongReal. The Value carries no numeral
+     (realText stays empty), so a backend emits it from realVal alone, and
+     ModuleInterface writes a CONST holding one through FormatReal.
+     Returns FALSE (v left unpopulated) for a type MAX/MIN doesn't apply
+     to. LLVMCodeGenerator's GenerateMaxMin uses this for every type. *)
   PROCEDURE MaxMinBound*(t: Types.Type; wantMax: BOOLEAN; VAR v: Types.Value): BOOLEAN;
   BEGIN
     NEW(v);
-    IF t = Types.Set THEN
+    IF (t = Types.Real) OR (t = Types.LongReal) THEN
+      v.type := t; v.kind := Types.realValue;
+      IF t = Types.Real THEN v.realVal := MaxReal() ELSE v.realVal := MaxLongReal() END;
+      IF ~wantMax THEN v.realVal := -v.realVal END
+    ELSIF t = Types.Set THEN
       v.type := Types.Integer; v.kind := Types.intValue;
       IF wantMax THEN v.intVal := maxSetElement ELSE v.intVal := 0 END
     ELSIF t = Types.ShortInt THEN
@@ -475,11 +528,68 @@ MODULE ConstantEvaluator;
     END
   END EvaluateTypeBoundCall;
 
+  (* CONST ASH(x, n) (PLAN.md Phase 9 step 10): the first predeclared
+     function here whose arguments are *values*. Both are constant integer
+     expressions; the result is x * 2^n, the shift rounding toward minus
+     infinity for a negative n. The bounds are voc's own (OPB.StPar1,
+     probed 2026-09-19): a count outside -62..62 - voc's maxExp, the
+     largest n with ASH(1, n) a positive 64-bit value - is error 208, and so
+     is a left shift with ABS(x) > MAX(HUGEINT) DIV 2^n. That is not what
+     the run-time ASH does with a count of the type's width or more
+     (GenerateAsh gives 0 or the sign), and both stand: a constant expression
+     that can only be an overflow is an error, not a quiet 0.
+     The type is the wider of LONGINT and x's type, as PredeclaredProcedures.
+     CheckAsh gives the call - and no narrower than the value needs: voc
+     types the result LONGINT even where 2^40 does not fit its 32 bits
+     and silently truncates (probed), where poc widens the type, so that
+     assigning it to a LONGINT under -O2 is the compile-time error it
+     should be, not a wrong number. Unlike +, - and *, the result is not
+     re-typed downward: ASH(1, 3) stays a LONGINT (also voc's). *)
+  PROCEDURE EvaluateAsh(args: SyntaxTree.ExprNode; scope: SymbolTable.Scope;
+                        line, column: INTEGER): Types.Value;
+    VAR x, n, result: Types.Value; factor, value: LONGINT; i: INTEGER;
+  BEGIN
+    IF (args = NIL) OR (args.next = NIL) OR (args.next.next # NIL) THEN
+      Diagnostics.Error(line, column, "ASH expects two arguments");
+      RETURN UndefinedValue()
+    END;
+    x := EvaluateExpr(args, scope); n := EvaluateExpr(args.next, scope);
+    IF (x.type = Types.Undefined) OR (n.type = Types.Undefined) THEN RETURN UndefinedValue() END;
+    IF ~Types.IsInteger(x.type) OR ~Types.IsInteger(n.type) THEN
+      Diagnostics.Error(line, column, "ASH requires integer arguments");
+      RETURN UndefinedValue()
+    END;
+    IF (n.intVal < -maxAshCount) OR (n.intVal > maxAshCount) THEN
+      Diagnostics.Error(line, column, "constant ASH count out of range");
+      RETURN UndefinedValue()
+    END;
+    IF n.intVal >= 0 THEN
+      factor := 1; i := 0;
+      WHILE i < n.intVal DO factor := factor * 2; INC(i) END;
+      IF (n.intVal > 0) & ((x.intVal = minHugeInt) OR (ABS(x.intVal) > maxHugeInt DIV factor)) THEN
+        Diagnostics.Error(line, column, "constant ASH result too large for HUGEINT");
+        RETURN UndefinedValue()
+      END;
+      value := x.intVal * factor
+    ELSE
+      value := ASH(x.intVal, n.intVal) (* an arithmetic shift: floors *)
+    END;
+    NEW(result); result.kind := Types.intValue; result.intVal := value;
+    result.type := Types.WiderOf(Types.WiderOf(Types.LongInt, x.type), MinimalIntegerType(value));
+    RETURN result
+  END EvaluateAsh;
+
   PROCEDURE EvaluateDesignator(expr: SyntaxTree.DesignatorExprNode;
                                scope: SymbolTable.Scope): Types.Value;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator;
   BEGIN
     d := expr.designator;
+    IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X) & (d.name = "ASH") THEN
+      obj := SymbolTable.Find(scope, d.name);
+      IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
+        RETURN EvaluateAsh(expr.args, scope, expr.line, expr.column)
+      END
+    END;
     IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X)
         & ((d.name = "MAX") OR (d.name = "MIN") OR (d.name = "SIZE")) THEN
       obj := SymbolTable.Find(scope, d.name);
@@ -528,20 +638,112 @@ MODULE ConstantEvaluator;
     END
   END NegateRealText;
 
+  (* ---- integer constant arithmetic ----
+
+     PLAN.md Phase 9 step 10. A constant integer operation is carried out
+     on the host's LONGINT, which is as wide as HUGEINT (see maxHugeInt
+     above), whatever the operands' own types: a result is an error only
+     when it does not fit HUGEINT, exactly where voc's OPB.ConstOp reports
+     one (errors 203-207), and otherwise it takes the minimal type its
+     value fits (MinimalIntegerType above) - never the operands' type,
+     which is what made 2 * 100 + 2 * 10 wrap at SHORTINT width. Each test
+     below is written so that it cannot itself overflow. *)
+
+  PROCEDURE SumOverflows(x, y: LONGINT): BOOLEAN;
+  BEGIN
+    IF y >= 0 THEN RETURN x > maxHugeInt - y ELSE RETURN x < minHugeInt - y END
+  END SumOverflows;
+
+  PROCEDURE DifferenceOverflows(x, y: LONGINT): BOOLEAN;
+  BEGIN
+    IF y >= 0 THEN RETURN x < minHugeInt + y ELSE RETURN x > maxHugeInt + y END
+  END DifferenceOverflows;
+
+  (* x * y overflows HUGEINT? Both positive: x > MAX DIV y. Both negative:
+     the same on the magnitudes, minHugeInt itself being an overflow at
+     once. Of opposite signs the result is negative and may reach -2^63,
+     one further than the positive side allows, so with p the positive
+     factor and n the negative one, n * p >= -2^63 exactly when
+     n >= -(2^63 DIV p) - written without 2^63 (which no LONGINT holds) as
+     MAX DIV p, plus one when p divides 2^63 (MAX MOD p = p - 1). No
+     division below has a negative dividend: voc's DIV/MOD, which poc is
+     built with, overflows internally for one within |divisor| of the
+     minimum (MIN(LONGINT) DIV 2 comes out positive). *)
+  PROCEDURE ProductOverflows(x, y: LONGINT): BOOLEAN;
+    VAR positive, negative, bound: LONGINT;
+  BEGIN
+    IF (x = 0) OR (y = 0) THEN RETURN FALSE END;
+    IF (x > 0) & (y > 0) THEN
+      RETURN x > maxHugeInt DIV y
+    ELSIF (x < 0) & (y < 0) THEN
+      IF (x = minHugeInt) OR (y = minHugeInt) THEN RETURN TRUE END;
+      RETURN -x > maxHugeInt DIV (-y)
+    ELSE
+      IF x > 0 THEN positive := x; negative := y ELSE positive := y; negative := x END;
+      IF positive = 1 THEN RETURN FALSE END;
+      bound := maxHugeInt DIV positive;
+      IF maxHugeInt MOD positive = positive - 1 THEN INC(bound) END;
+      RETURN negative < -bound
+    END
+  END ProductOverflows;
+
+  (* x DIV y and x MOD y for any y > 0 and any x, floored as Oberon-2
+     defines them. voc's own DIV/MOD, which poc is built with, are wrong
+     for a negative x within y of MIN(LONGINT) (see ProductOverflows), so a
+     negative x is divided as -(-(x + 1) DIV y) - 1 and its remainder is
+     y - 1 - (-(x + 1) MOD y), where -(x + 1) is never an overflow. A
+     divisor <= 0 is outside what the report defines (x MOD y is to lie
+     in 0..y-1) and is left to the host, as voc leaves it. *)
+  PROCEDURE FloorQuotient(x, y: LONGINT): LONGINT;
+  BEGIN
+    IF (y > 0) & (x < 0) THEN RETURN -((-(x + 1)) DIV y) - 1
+    ELSE RETURN x DIV y
+    END
+  END FloorQuotient;
+
+  PROCEDURE FloorRemainder(x, y: LONGINT): LONGINT;
+  BEGIN
+    IF (y > 0) & (x < 0) THEN RETURN y - 1 - ((-(x + 1)) MOD y)
+    ELSE RETURN x MOD y
+    END
+  END FloorRemainder;
+
+  (* An integer constant of value, typed by that value: the shared tail of
+     every operation above. *)
+  PROCEDURE IntegerResult(value: LONGINT): Types.Value;
+    VAR result: Types.Value;
+  BEGIN
+    NEW(result); result.kind := Types.intValue; result.intVal := value;
+    result.type := MinimalIntegerType(value);
+    RETURN result
+  END IntegerResult;
+
   PROCEDURE EvaluateUnary(expr: SyntaxTree.UnaryExprNode;
                           scope: SymbolTable.Scope): Types.Value;
     VAR v, result: Types.Value;
   BEGIN
     v := EvaluateExpr(expr.operand, scope);
     IF v.type = Types.Undefined THEN RETURN v END;
-    IF expr.op = Lexer.minus THEN
+    IF expr.op = Lexer.plus THEN
       IF Types.IsNumeric(v.type) THEN
-        NEW(result); result.type := v.type; result.kind := v.kind;
-        IF v.kind = Types.intValue THEN result.intVal := -v.intVal
-        ELSE
-          result.realVal := -v.realVal;
-          NegateRealText(v.realText, result.realText)
+        RETURN v
+      ELSE
+        Diagnostics.Error(expr.line, expr.column, "operand of unary '+' must be numeric");
+        RETURN UndefinedValue()
+      END
+    ELSIF expr.op = Lexer.minus THEN
+      IF Types.IsNumeric(v.type) THEN
+        IF v.kind = Types.intValue THEN
+          IF v.intVal = minHugeInt THEN
+            Diagnostics.Error(expr.line, expr.column, "constant negation too large for HUGEINT");
+            RETURN UndefinedValue()
+          END;
+          (* -128 is a SHORTINT though 128 is an INTEGER *)
+          RETURN IntegerResult(-v.intVal)
         END;
+        NEW(result); result.type := v.type; result.kind := v.kind;
+        result.realVal := -v.realVal;
+        NegateRealText(v.realText, result.realText);
         RETURN result
       ELSIF v.type = Types.Set THEN
         NEW(result); result.type := Types.Set; result.kind := Types.setValue;
@@ -571,23 +773,35 @@ MODULE ConstantEvaluator;
     IF v.kind = Types.intValue THEN RETURN v.intVal ELSE RETURN v.realVal END
   END AsReal;
 
-  PROCEDURE EvaluateNumericOp(op: INTEGER; l, r: Types.Value): Types.Value;
+  PROCEDURE EvaluateNumericOp(op: INTEGER; l, r: Types.Value; line, column: INTEGER): Types.Value;
     VAR result: Types.Value; resultType: Types.Type;
   BEGIN
     resultType := Types.WiderOf(l.type, r.type);
-    NEW(result); result.type := resultType;
     IF Types.Rank(resultType) <= Types.hugeIntRank THEN
-      result.kind := Types.intValue;
-      IF op = Lexer.plus THEN result.intVal := l.intVal + r.intVal
-      ELSIF op = Lexer.minus THEN result.intVal := l.intVal - r.intVal
-      ELSE result.intVal := l.intVal * r.intVal
+      IF op = Lexer.plus THEN
+        IF SumOverflows(l.intVal, r.intVal) THEN
+          Diagnostics.Error(line, column, "constant sum too large for HUGEINT");
+          RETURN UndefinedValue()
+        END;
+        RETURN IntegerResult(l.intVal + r.intVal)
+      ELSIF op = Lexer.minus THEN
+        IF DifferenceOverflows(l.intVal, r.intVal) THEN
+          Diagnostics.Error(line, column, "constant difference too large for HUGEINT");
+          RETURN UndefinedValue()
+        END;
+        RETURN IntegerResult(l.intVal - r.intVal)
+      ELSE
+        IF ProductOverflows(l.intVal, r.intVal) THEN
+          Diagnostics.Error(line, column, "constant product too large for HUGEINT");
+          RETURN UndefinedValue()
+        END;
+        RETURN IntegerResult(l.intVal * r.intVal)
       END
-    ELSE
-      result.kind := Types.realValue;
-      IF op = Lexer.plus THEN result.realVal := AsReal(l) + AsReal(r)
-      ELSIF op = Lexer.minus THEN result.realVal := AsReal(l) - AsReal(r)
-      ELSE result.realVal := AsReal(l) * AsReal(r)
-      END
+    END;
+    NEW(result); result.type := resultType; result.kind := Types.realValue;
+    IF op = Lexer.plus THEN result.realVal := AsReal(l) + AsReal(r)
+    ELSIF op = Lexer.minus THEN result.realVal := AsReal(l) - AsReal(r)
+    ELSE result.realVal := AsReal(l) * AsReal(r)
     END;
     RETURN result
   END EvaluateNumericOp;
@@ -611,17 +825,22 @@ MODULE ConstantEvaluator;
 
   PROCEDURE EvaluateIntDivMod(op: INTEGER; l, r: Types.Value;
                               line, column: INTEGER): Types.Value;
-    VAR result: Types.Value;
   BEGIN
     IF r.intVal = 0 THEN
       Diagnostics.Error(line, column, "division by zero");
       RETURN UndefinedValue()
     END;
-    NEW(result); result.type := Types.WiderOf(l.type, r.type); result.kind := Types.intValue;
-    IF op = Lexer.divKeyword THEN result.intVal := l.intVal DIV r.intVal
-    ELSE result.intVal := l.intVal MOD r.intVal
-    END;
-    RETURN result
+    IF op = Lexer.divKeyword THEN
+      IF (l.intVal = minHugeInt) & (r.intVal = -1) THEN
+        Diagnostics.Error(line, column, "constant quotient too large for HUGEINT");
+        RETURN UndefinedValue()
+      END;
+      RETURN IntegerResult(FloorQuotient(l.intVal, r.intVal))
+    ELSIF r.intVal = -1 THEN
+      RETURN IntegerResult(0)
+    ELSE
+      RETURN IntegerResult(FloorRemainder(l.intVal, r.intVal))
+    END
   END EvaluateIntDivMod;
 
   PROCEDURE EvaluateSetOp(op: INTEGER; l, r: Types.Value): Types.Value;
@@ -641,7 +860,11 @@ MODULE ConstantEvaluator;
     VAR result: Types.Value; eq: BOOLEAN;
   BEGIN
     IF Types.IsNumeric(l.type) & Types.IsNumeric(r.type) THEN
-      eq := AsReal(l) = AsReal(r)
+      (* two integers compare as integers: as LONGREALs, values beyond
+         2^53 would compare equal to a neighbor *)
+      IF (l.kind = Types.intValue) & (r.kind = Types.intValue) THEN eq := l.intVal = r.intVal
+      ELSE eq := AsReal(l) = AsReal(r)
+      END
     ELSIF (l.type = Types.Char) & (r.type = Types.Char) THEN
       eq := l.charVal = r.charVal
     ELSIF (l.type = Types.Boolean) & (r.type = Types.Boolean) THEN
@@ -664,8 +887,13 @@ MODULE ConstantEvaluator;
     VAR result: Types.Value; lt, le, gt, ge: BOOLEAN;
   BEGIN
     IF Types.IsNumeric(l.type) & Types.IsNumeric(r.type) THEN
-      lt := AsReal(l) < AsReal(r); le := AsReal(l) <= AsReal(r);
-      gt := AsReal(l) > AsReal(r); ge := AsReal(l) >= AsReal(r)
+      IF (l.kind = Types.intValue) & (r.kind = Types.intValue) THEN
+        lt := l.intVal < r.intVal; le := l.intVal <= r.intVal;
+        gt := l.intVal > r.intVal; ge := l.intVal >= r.intVal
+      ELSE
+        lt := AsReal(l) < AsReal(r); le := AsReal(l) <= AsReal(r);
+        gt := AsReal(l) > AsReal(r); ge := AsReal(l) >= AsReal(r)
+      END
     ELSIF (l.type = Types.Char) & (r.type = Types.Char) THEN
       lt := l.charVal < r.charVal; le := l.charVal <= r.charVal;
       gt := l.charVal > r.charVal; ge := l.charVal >= r.charVal
@@ -695,7 +923,7 @@ MODULE ConstantEvaluator;
     END;
     IF (expr.op = Lexer.plus) OR (expr.op = Lexer.minus) OR (expr.op = Lexer.times) THEN
       IF Types.IsNumeric(l.type) & Types.IsNumeric(r.type) THEN
-        result := EvaluateNumericOp(expr.op, l, r)
+        result := EvaluateNumericOp(expr.op, l, r, expr.line, expr.column)
       ELSIF (l.type = Types.Set) & (r.type = Types.Set) THEN
         result := EvaluateSetOp(expr.op, l, r)
       ELSE
@@ -813,6 +1041,85 @@ MODULE ConstantEvaluator;
     END;
     RETURN v
   END EvaluateExpr;
+
+  (* ---- is this expression a constant expression? ----
+
+     PLAN.md Phase 9 step 10. Evaluate* above reports an error for what is
+     not constant, which is right for a CONST declaration but not for
+     deciding whether an ordinary expression - the right-hand side of an
+     assignment, an argument - can be folded. This answers that question
+     silently: TRUE exactly when every leaf is a literal, a named constant
+     (local, or qualified by an import), a MAX/MIN/SIZE of a type name, or
+     an ASH whose two arguments are themselves constant. Nothing here
+     checks that the operators fit the operands' types (SemanticActions
+     has already done, or will report, that), so a TRUE answer means
+     "Evaluate will not say not-a-constant", not "Evaluate will succeed":
+     a constant division by zero, or an overflow, is still reported by
+     Evaluate. *)
+
+  PROCEDURE IsConstantDesignator(expr: SyntaxTree.DesignatorExprNode;
+                                 scope: SymbolTable.Scope): BOOLEAN;
+    VAR obj: SymbolTable.Object; d: SyntaxTree.Designator;
+  BEGIN
+    d := expr.designator;
+    IF d.selectors # NIL THEN RETURN FALSE END;
+    IF expr.hasParens THEN
+      IF d.qualifier[0] # 0X THEN RETURN FALSE END;
+      obj := SymbolTable.Find(scope, d.name);
+      IF (obj = NIL) OR (obj.type # Types.PredeclaredProcedureType) THEN RETURN FALSE END;
+      IF (d.name = "MAX") OR (d.name = "MIN") OR (d.name = "SIZE") THEN
+        RETURN (expr.args # NIL) & (expr.args.next = NIL) & (LookupBareTypeName(scope, expr.args) # NIL)
+      ELSIF d.name = "ASH" THEN
+        RETURN (expr.args # NIL) & (expr.args.next # NIL) & (expr.args.next.next = NIL)
+               & IsConstant(expr.args, scope) & IsConstant(expr.args.next, scope)
+      ELSE
+        RETURN FALSE
+      END
+    END;
+    obj := FindQualifiedConst(scope, d);
+    RETURN (obj # NIL) & (obj.class = SymbolTable.constClass)
+  END IsConstantDesignator;
+
+  PROCEDURE IsConstantUnary(expr: SyntaxTree.UnaryExprNode; scope: SymbolTable.Scope): BOOLEAN;
+  BEGIN
+    RETURN IsConstant(expr.operand, scope)
+  END IsConstantUnary;
+
+  PROCEDURE IsConstantBinary(expr: SyntaxTree.BinaryExprNode; scope: SymbolTable.Scope): BOOLEAN;
+  BEGIN
+    RETURN (expr.op # Lexer.isKeyword) & IsConstant(expr.left, scope) & IsConstant(expr.right, scope)
+  END IsConstantBinary;
+
+  PROCEDURE IsConstantSet(expr: SyntaxTree.SetExprNode; scope: SymbolTable.Scope): BOOLEAN;
+    VAR el: SyntaxTree.SetElementNode;
+  BEGIN
+    el := expr.elements;
+    WHILE el # NIL DO
+      IF ~IsConstant(el.low, scope) THEN RETURN FALSE END;
+      IF (el.high # NIL) & ~IsConstant(el.high, scope) THEN RETURN FALSE END;
+      el := el.next
+    END;
+    RETURN TRUE
+  END IsConstantSet;
+
+  PROCEDURE IsConstant(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): BOOLEAN;
+  BEGIN
+    IF expr = NIL THEN RETURN FALSE END;
+    WITH
+      expr: SyntaxTree.LiteralExprNode DO RETURN TRUE
+    | expr: SyntaxTree.DesignatorExprNode DO RETURN IsConstantDesignator(expr, scope)
+    | expr: SyntaxTree.UnaryExprNode DO RETURN IsConstantUnary(expr, scope)
+    | expr: SyntaxTree.BinaryExprNode DO RETURN IsConstantBinary(expr, scope)
+    | expr: SyntaxTree.SetExprNode DO RETURN IsConstantSet(expr, scope)
+    ELSE
+      RETURN FALSE
+    END
+  END IsConstant;
+
+  PROCEDURE IsConstantExpr*(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): BOOLEAN;
+  BEGIN
+    RETURN IsConstant(expr, scope)
+  END IsConstantExpr;
 
   (* The sole exported entry point; kept a thin wrapper around the
      forward-declared EvaluateExpr so that name, not this one, carries the

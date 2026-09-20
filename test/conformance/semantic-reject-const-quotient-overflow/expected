@@ -1,0 +1,2 @@
+const-quotient-overflow.mod:8:27: error: constant quotient too large for HUGEINT
+1 error(s)

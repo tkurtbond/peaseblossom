@@ -1,5 +1,8 @@
 * Things to be done while getting the compile working..
-** TODO Implement constant folding on integer literals.
+** DONE Implement constant folding on integer literals.
+Phase 9 step 10 (2026-09-19): a constant integer expression - in a CONST or in a statement - is folded in 64 bits to the minimal type its value fits (2 * 100 + 2 * 10 is the INTEGER 220, MAX(SHORTINT) + 1 an INTEGER, -128 a SHORTINT); overflow past HUGEINT is a compile error, as in voc. Also CONST ASH and CONST MAX/MIN of REAL/LONGREAL. See PLAN.md's step 10 account.
+** TODO check that everything that should raise underflow or overflow does.
+** TODO Double check things that can trap.
 ** TODO Should poc reject a constant NEW length of <= 0 at compile time.
 ** TODO Add command line option to poc to have NEW on an exhaused heap trap.
 ** TODO Can poc garbage collection do better than conservatively scanning the stack?

@@ -206,6 +206,15 @@ during Stage 0/1/2 bootstrapping:
   compiler. Only matters when cross-checking poc's output against voc's:
   three of `test/conformance/llvm-reals`'s checks fail under voc for
   this reason and pass under poc.
+- **`DIV`/`MOD` overflow near `MIN(LONGINT)`**: with a 64-bit `LONGINT`
+  (`-OC`), voc's generated `DIV`/`MOD` of a negative dividend within the
+  divisor of the minimum give wrong, positive results - `MIN(LONGINT) DIV 2`
+  is 4611686018427387903 and `(MIN(LONGINT) + 1) DIV 2` positive too. poc is
+  built with voc, so `ConstantEvaluator` never divides such a value
+  (`FloorQuotient`/`FloorRemainder`, `ProductOverflows`). voc's own constant
+  folder seems to suffer the same way: it rejects the product
+  `(-4611686018427387904) * 2` (exactly -2^63, which fits), and its compiler
+  dies of SIGFPE folding `MIN(HUGEINT) DIV (-1)`.
 - **A row of a multi-dimensional open array passed on as an open array
   ignores the row stride**: with `a: ARRAY OF ARRAY OF INTEGER`,
   `Sum(a[r])` (a call whose parameter is `VAR ARRAY OF INTEGER`) makes voc
@@ -435,9 +444,47 @@ like voc's), outermost dimension first:
   `CONST` folds to, plus `REAL`/`LONGREAL`: IEEE 754's largest finite value
   and its negation (3.4028234663852886D38 and 1.7976931348623157D308). voc's
   `MAX(LONGREAL)` is deliberately a little low, 1.79769296342094D308 (its
-  own `OPM.Mod` says so); poc gives the true one. `CONST` `MAX(REAL)`
-  is still not folded.
+  own `OPM.Mod` says so); poc gives the true one. The `CONST` form folds
+  to the same values (Phase 9 step 10; see "Constant expressions" below).
 - `ASSERT` remains undecided (`PLAN.md`'s open design question).
+
+### Constant expressions (implemented, Phase 9 step 10)
+
+`PLAN.md` step 10 has the full account; all probed against real voc
+2026-09-19, under both size models. What a program can observe:
+
+- **A constant integer expression has the minimal type its value fits**, not
+  the wider of its operands' types (Oberon2.pdf 5 says so of "an integer
+  constant"; voc re-types after every folded operation). `2 * 100 + 2 * 10`
+  is the INTEGER 220 (it used to wrap at SHORTINT width), `MAX(SHORTINT) + 1`
+  an INTEGER, `-128` a SHORTINT though `128` is an INTEGER, `100000 * 100000`
+  a HUGEINT. The same rule applies in a `CONST` declaration and in an
+  ordinary expression (`s := 127 + 1` is rejected for a SHORTINT `s`), and
+  the bounds follow `-O2`/`-OC`. A real, BOOLEAN or SET constant expression,
+  and a relation between constants, is not folded outside a `CONST`; nothing
+  observable depends on it.
+- **Folding is done in 64 bits and is an error only past HUGEINT**: "constant
+  sum/difference/product/negation/quotient too large for HUGEINT" (voc's
+  errors 203-207), and "division by zero" for a constant `DIV`/`MOD`. The
+  error is reported at compile time in a statement as well as in a `CONST`.
+  `DIV`/`MOD` of constants floor. Integer constants compare exactly.
+- **`ASH(x, n)` of constants folds**: a count outside -62..62, or a left
+  shift whose result does not fit HUGEINT, is an error (voc's error 208,
+  same boundaries). The result is at least a LONGINT, wider if `x` or the
+  value needs it - voc keeps LONGINT and silently truncates (`l := ASH(1, 40)`
+  stores 0 under `-O2`), poc types it HUGEINT, making that assignment a
+  compile error - and, like voc, is not shrunk afterwards: `ASH(1, 3)` is a
+  LONGINT. The other value-argument predeclared functions (`ORD`, `ABS`,
+  `CHR`, ...) are not folded in a `CONST` yet.
+- **`MAX`/`MIN` of `REAL` and `LONGREAL` are constants**: IEEE 754's
+  largest finite values and their negations, as at run time.
+- **`.sym` files**: a folded integer is written as its value, so an importer
+  re-types it minimally (`ASH(1, 3)` is a SHORTINT there); a real constant
+  that is exactly `MAX`/`MIN` of `REAL` or `LONGREAL` is written as
+  `MAX(LONGREAL)` and so on. Not exportable, as before: a computed real of
+  extreme magnitude such as `1.0D300 * 1.5`, since `ParseReal` cannot read
+  its text back exactly ("failed to find a round-trip-safe text
+  representation"); `PLAN.md` Phase 11 step 2 has it.
 
 ### External procedures
 

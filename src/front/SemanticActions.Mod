@@ -1779,6 +1779,32 @@ MODULE SemanticActions;
      name as their one argument, exactly the shape LookupBareTypeName
      tests for, so the predeclared-procedure check must run first or
      every such call would be misread as a type guard. *)
+  (* PLAN.md Phase 9 step 10. An integer expression whose leaves are all
+     constants is a constant, and its type is the minimal one its value
+     fits - not the wider of its operands' types, which is all the rank
+     rules of CheckBinaryExpr know: 2 * 100 + 2 * 10 is an INTEGER 220,
+     -128 a SHORTINT, MAX(SHORTINT) + 1 an INTEGER, exactly as voc's
+     OPB.ConstOp re-types each folded operation. ConstantEvaluator does the
+     folding (and reports what cannot be folded: an overflow past HUGEINT,
+     a constant division by zero); the type comes back from the value, so
+     the checker and the code generator, which folds the same expression the
+     same way, cannot disagree. Only an integer-typed result is folded
+     here: a constant real, BOOLEAN or SET expression takes its type from
+     the rank rules already, and a relation of two constants is left to run
+     time (it can neither wrap nor be mistyped). A subexpression that
+     already failed leaves t Undefined, which passes through untouched. *)
+  PROCEDURE FoldIntegerConstant(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode;
+                                t: Types.Type): Types.Type;
+    VAR v: Types.Value;
+  BEGIN
+    IF (t # Types.Undefined) & Types.IsInteger(t)
+       & ConstantEvaluator.IsConstantExpr(expr, scope) THEN
+      v := ConstantEvaluator.Evaluate(expr, scope);
+      RETURN v.type
+    END;
+    RETURN t
+  END FoldIntegerConstant;
+
   PROCEDURE CheckDesignatorExpr(scope: SymbolTable.Scope; node: SyntaxTree.DesignatorExprNode): Types.Type;
     VAR
       baseType, targetType, resultType: Types.Type;
@@ -1801,6 +1827,10 @@ MODULE SemanticActions;
       IF isProperProcedure THEN
         Diagnostics.Error(node.line, node.column, "a proper procedure has no result value");
         RETURN Types.Undefined
+      ELSIF node.designator.name = "ASH" THEN
+        (* the one predeclared function of values ConstantEvaluator folds:
+           a constant ASH is typed by its value, as a constant + is *)
+        RETURN FoldIntegerConstant(scope, node, resultType)
       ELSE
         RETURN resultType
       END
@@ -2061,6 +2091,16 @@ MODULE SemanticActions;
     RETURN Types.Set
   END CheckSetExpr;
 
+  PROCEDURE CheckFoldedUnaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.UnaryExprNode): Types.Type;
+  BEGIN
+    RETURN FoldIntegerConstant(scope, node, CheckUnaryExpr(scope, node))
+  END CheckFoldedUnaryExpr;
+
+  PROCEDURE CheckFoldedBinaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.BinaryExprNode): Types.Type;
+  BEGIN
+    RETURN FoldIntegerConstant(scope, node, CheckBinaryExpr(scope, node))
+  END CheckFoldedBinaryExpr;
+
   (* The real body matching this section's own forward declaration above.
      Each WITH branch below calls a distinctly-named procedure, never
      CheckExpr itself - the same safe shape ResolveType already
@@ -2073,8 +2113,8 @@ MODULE SemanticActions;
     WITH
       expr: SyntaxTree.LiteralExprNode DO RETURN CheckLiteralExpr(expr)
     | expr: SyntaxTree.DesignatorExprNode DO RETURN CheckDesignatorExpr(scope, expr)
-    | expr: SyntaxTree.UnaryExprNode DO RETURN CheckUnaryExpr(scope, expr)
-    | expr: SyntaxTree.BinaryExprNode DO RETURN CheckBinaryExpr(scope, expr)
+    | expr: SyntaxTree.UnaryExprNode DO RETURN CheckFoldedUnaryExpr(scope, expr)
+    | expr: SyntaxTree.BinaryExprNode DO RETURN CheckFoldedBinaryExpr(scope, expr)
     | expr: SyntaxTree.SetExprNode DO RETURN CheckSetExpr(scope, expr)
     | expr: SyntaxTree.NilExprNode DO RETURN Types.NilType
     ELSE

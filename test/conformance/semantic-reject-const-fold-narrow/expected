@@ -1,0 +1,10 @@
+const-fold-narrow.mod:19:3: error: assignment is not type-compatible
+const-fold-narrow.mod:20:3: error: assignment is not type-compatible
+const-fold-narrow.mod:21:3: error: assignment is not type-compatible
+const-fold-narrow.mod:22:3: error: assignment is not type-compatible
+const-fold-narrow.mod:23:3: error: assignment is not type-compatible
+const-fold-narrow.mod:24:3: error: assignment is not type-compatible
+const-fold-narrow.mod:25:3: error: assignment is not type-compatible
+const-fold-narrow.mod:26:3: error: assignment is not type-compatible
+const-fold-narrow.mod:27:3: error: assignment is not type-compatible
+9 error(s)

@@ -1,0 +1,31 @@
+-O2:
+semantic OK, wrote round1/limits.sym
+MODULE limits;
+  CONST
+    bigReal* = MAX(REAL);
+    lowReal* = MIN(REAL);
+    bigLongReal* = MAX(LONGREAL);
+    lowLongReal* = MIN(LONGREAL);
+    total* = 220;
+    negShort* = -128;
+    beyondShort* = 128;
+    shifted* = 1048576;
+    hugeShift* = 1099511627776;
+    wide* = 10000000000;
+END limits.
+-OC:
+semantic OK, wrote oc1/limits.sym
+MODULE limits;
+  CONST
+    bigReal* = MAX(REAL);
+    lowReal* = MIN(REAL);
+    bigLongReal* = MAX(LONGREAL);
+    lowLongReal* = MIN(LONGREAL);
+    total* = 220;
+    negShort* = -128;
+    beyondShort* = 32768;
+    shifted* = 1048576;
+    hugeShift* = 1099511627776;
+    wide* = 10000000000;
+END limits.
+round trip exact

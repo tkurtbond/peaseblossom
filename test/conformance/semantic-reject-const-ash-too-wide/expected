@@ -1,0 +1,3 @@
+const-ash-too-wide.mod:18:3: error: assignment is not type-compatible
+const-ash-too-wide.mod:19:3: error: assignment is not type-compatible
+2 error(s)

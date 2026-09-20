@@ -1,0 +1,6 @@
+-O2:
+fits.mod:12:3: error: assignment is not type-compatible
+fits.mod:13:3: error: assignment is not type-compatible
+2 error(s)
+-OC:
+semantic OK

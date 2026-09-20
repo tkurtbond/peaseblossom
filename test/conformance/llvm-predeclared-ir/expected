@@ -24,46 +24,45 @@ declare void @exit(i32)
 
 define void @predeclaredir_init() {
 entry:
-  %t1 = sub i8 0, 7
-  %t2 = sub i8 0, %t1
-  %t3 = icmp slt i8 %t1, 0
-  %t4 = select i1 %t3, i8 %t2, i8 %t1
-  %t5 = sext i8 %t4 to i16
-  store i16 %t5, ptr @predeclaredir.absVal
-  %t6 = and i8 5, 1
-  store i8 %t6, ptr @predeclaredir.oddVal
+  %t1 = sub i8 0, -7
+  %t2 = icmp slt i8 -7, 0
+  %t3 = select i1 %t2, i8 %t1, i8 -7
+  %t4 = sext i8 %t3 to i16
+  store i16 %t4, ptr @predeclaredir.absVal
+  %t5 = and i8 5, 1
+  store i8 %t5, ptr @predeclaredir.oddVal
   store i8 65, ptr @predeclaredir.chrVal
   store i16 90, ptr @predeclaredir.ordVal
   store i8 113, ptr @predeclaredir.lowerCh
-  %t7 = load i8, ptr @predeclaredir.lowerCh
-  %t8 = icmp sge i8 %t7, 97
-  %t9 = icmp sle i8 %t7, 122
-  %t10 = and i1 %t8, %t9
-  %t11 = sub i8 %t7, 32
-  %t12 = select i1 %t10, i8 %t11, i8 %t7
-  store i8 %t12, ptr @predeclaredir.capVal
+  %t6 = load i8, ptr @predeclaredir.lowerCh
+  %t7 = icmp sge i8 %t6, 97
+  %t8 = icmp sle i8 %t6, 122
+  %t9 = and i1 %t7, %t8
+  %t10 = sub i8 %t6, 32
+  %t11 = select i1 %t9, i8 %t10, i8 %t6
+  store i8 %t11, ptr @predeclaredir.capVal
   store i32 5, ptr @predeclaredir.lenVal
   store i32 3, ptr @predeclaredir.dim0
   store i32 4, ptr @predeclaredir.dim1
-  %t13 = sext i8 3 to i16
-  store i16 %t13, ptr @predeclaredir.i
-  %t14 = load i16, ptr @predeclaredir.i
-  %t15 = add i16 %t14, 1
-  store i16 %t15, ptr @predeclaredir.i
-  %t16 = load i16, ptr @predeclaredir.i
-  %t17 = sext i8 10 to i16
-  %t18 = add i16 %t16, %t17
-  store i16 %t18, ptr @predeclaredir.i
-  %t19 = load i16, ptr @predeclaredir.i
-  %t20 = sext i8 4 to i16
-  %t21 = sub i16 %t19, %t20
-  store i16 %t21, ptr @predeclaredir.i
-  %t22 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 0
-  store i8 104, ptr %t22
-  %t23 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 1
-  store i8 105, ptr %t23
-  %t24 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 2
-  store i8 0, ptr %t24
+  %t12 = sext i8 3 to i16
+  store i16 %t12, ptr @predeclaredir.i
+  %t13 = load i16, ptr @predeclaredir.i
+  %t14 = add i16 %t13, 1
+  store i16 %t14, ptr @predeclaredir.i
+  %t15 = load i16, ptr @predeclaredir.i
+  %t16 = sext i8 10 to i16
+  %t17 = add i16 %t15, %t16
+  store i16 %t17, ptr @predeclaredir.i
+  %t18 = load i16, ptr @predeclaredir.i
+  %t19 = sext i8 4 to i16
+  %t20 = sub i16 %t18, %t19
+  store i16 %t20, ptr @predeclaredir.i
+  %t21 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 0
+  store i8 104, ptr %t21
+  %t22 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 1
+  store i8 105, ptr %t22
+  %t23 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 2
+  store i8 0, ptr %t23
   ret void
 }
 

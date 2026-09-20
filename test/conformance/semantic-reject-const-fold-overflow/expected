@@ -1,0 +1,18 @@
+const-fold-overflow.mod:13:30: error: constant sum too large for HUGEINT
+const-fold-overflow.mod:14:39: error: constant difference too large for HUGEINT
+const-fold-overflow.mod:15:32: error: constant product too large for HUGEINT
+const-fold-overflow.mod:16:22: error: constant negation too large for HUGEINT
+const-fold-overflow.mod:17:22: error: division by zero
+const-fold-overflow.mod:18:20: error: division by zero
+const-fold-overflow.mod:19:19: error: constant ASH count out of range
+const-fold-overflow.mod:20:21: error: constant ASH count out of range
+const-fold-overflow.mod:21:22: error: constant ASH result too large for HUGEINT
+const-fold-overflow.mod:29:21: error: constant sum too large for HUGEINT
+const-fold-overflow.mod:30:21: error: constant difference too large for HUGEINT
+const-fold-overflow.mod:31:19: error: constant product too large for HUGEINT
+const-fold-overflow.mod:32:8: error: constant negation too large for HUGEINT
+const-fold-overflow.mod:33:10: error: division by zero
+const-fold-overflow.mod:34:10: error: division by zero
+const-fold-overflow.mod:35:8: error: constant ASH result too large for HUGEINT
+const-fold-overflow.mod:36:8: error: constant ASH count out of range
+17 error(s)

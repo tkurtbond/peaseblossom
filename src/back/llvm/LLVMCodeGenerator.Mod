@@ -3675,16 +3675,15 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateSize;
 
-  (* MAX(T) / MIN(T): a compile-time constant, always. The integer family,
-     SET (as an INTEGER, MAX(SET) = 31 or 63 by size model), CHAR and
-     BOOLEAN come from ConstantEvaluator.MaxMinBound - the very bounds a
-     CONST MAX(T) folds to - and emit exactly like any other constant.
-     REAL/LONGREAL are the IEEE 754 largest finite values, written as bit
-     patterns (a float literal is the double's pattern in hex, so MAX(REAL)
-     is 0x47EFFFFFE0000000 = 3.4028234663852886D38) and MIN is its negation.
-     voc's own MAX(LONGREAL) is 1.79769296342094D308, a deliberate
-     underestimate (OPM.Mod: "should be 1.7976931348623157D308"); poc
-     gives the true one. *)
+  (* MAX(T) / MIN(T): a compile-time constant, always, and the very one a
+     CONST MAX(T) folds to: every type comes from ConstantEvaluator.
+     MaxMinBound and is emitted like any other constant. That includes
+     REAL and LONGREAL, IEEE 754's largest finite values (RealConstant
+     writes a computed real as its bit pattern, first rounded to single
+     precision for a REAL: MAX(REAL) is 0x47EFFFFFE0000000 =
+     3.4028234663852886D38). voc's own MAX(LONGREAL) is 1.79769296342094D308,
+     a deliberate underestimate (OPM.Mod: "should be
+     1.7976931348623157D308"); poc gives the true one. *)
   PROCEDURE GenerateMaxMin(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; wantMax: BOOLEAN;
                            VAR result: Value);
     VAR t: Types.Type; bound: Types.Value;
@@ -3692,12 +3691,6 @@ MODULE LLVMCodeGenerator;
     t := BareTypeArgument(cg, args);
     IF t = NIL THEN
       Unsupported(w, cg, "MAX/MIN of something that is not a type name", Types.Undefined, result)
-    ELSIF t = Types.Real THEN
-      result.oberonType := Types.Real; COPY("float", result.llvmType);
-      IF wantMax THEN COPY("0x47EFFFFFE0000000", result.text) ELSE COPY("0xC7EFFFFFE0000000", result.text) END
-    ELSIF t = Types.LongReal THEN
-      result.oberonType := Types.LongReal; COPY("double", result.llvmType);
-      IF wantMax THEN COPY("0x7FEFFFFFFFFFFFFF", result.text) ELSE COPY("0xFFEFFFFFFFFFFFFF", result.text) END
     ELSIF ConstantEvaluator.MaxMinBound(t, wantMax, bound) THEN
       EmitConstantValue(w, cg, bound.type, bound, result)
     ELSE
@@ -4136,6 +4129,30 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateCall;
 
+  (* PLAN.md Phase 9 step 10: an integer expression all of whose leaves are
+     constants is emitted as the one constant ConstantEvaluator folds it to,
+     of the type that value needs - the very type SemanticActions'
+     FoldIntegerConstant gave the expression, so what the checker accepted is
+     what is generated. Without this 2 * 100 + 2 * 10 was three i8
+     instructions that wrapped. TRUE when result has been filled in; FALSE
+     leaves the expression to the ordinary code below (not constant, or not
+     integer: a constant real, BOOLEAN or SET expression is generated
+     operation by operation, and LLVM folds it). *)
+  PROCEDURE GenerateFoldedInteger(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.ExprNode;
+                                  VAR result: Value): BOOLEAN;
+    VAR folded: Types.Value;
+  BEGIN
+    IF ConstantEvaluator.IsConstantExpr(expr, cg.scope) THEN
+      folded := ConstantEvaluator.Evaluate(expr, cg.scope);
+      IF (folded.type # Types.Undefined) & (folded.kind = Types.intValue)
+         & Types.IsInteger(folded.type) THEN
+        EmitConstantValue(w, cg, folded.type, folded, result);
+        RETURN TRUE
+      END
+    END;
+    RETURN FALSE
+  END GenerateFoldedInteger;
+
   PROCEDURE GenerateExpr(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.ExprNode; VAR result: Value);
   BEGIN
     WITH
@@ -4144,12 +4161,16 @@ MODULE LLVMCodeGenerator;
         IF IsGuardExpr(cg, expr) THEN
           GenerateGuardExpr(w, cg, expr, result)
         ELSIF expr.hasParens THEN
-          GenerateCall(w, cg, expr.designator, expr.args, result)
+          IF ~((expr.designator.name = "ASH") & GenerateFoldedInteger(w, cg, expr, result)) THEN
+            GenerateCall(w, cg, expr.designator, expr.args, result)
+          END
         ELSE
           GenerateDesignatorValue(w, cg, expr.designator, result)
         END
-    | expr: SyntaxTree.UnaryExprNode DO GenerateUnary(w, cg, expr, result)
-    | expr: SyntaxTree.BinaryExprNode DO GenerateBinaryExpr(w, cg, expr, result)
+    | expr: SyntaxTree.UnaryExprNode DO
+        IF ~GenerateFoldedInteger(w, cg, expr, result) THEN GenerateUnary(w, cg, expr, result) END
+    | expr: SyntaxTree.BinaryExprNode DO
+        IF ~GenerateFoldedInteger(w, cg, expr, result) THEN GenerateBinaryExpr(w, cg, expr, result) END
     | expr: SyntaxTree.SetExprNode DO GenerateSetExpr(w, cg, expr, result)
     ELSE (* NilExprNode *)
       COPY("null", result.text); COPY("ptr", result.llvmType); result.oberonType := Types.NilType

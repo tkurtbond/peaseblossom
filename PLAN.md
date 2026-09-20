@@ -2944,6 +2944,98 @@ style exactly.
     full** - both word sizes, Linux and at least one BSD - after it lands,
     and Phase 9 is not done until it is clean.
 
+    **Implemented** (2026-09-19; every behavior below probed against real
+    voc, both size models). What changed, and what a program can observe:
+    - *Folding integer arithmetic.* A constant integer operation is carried
+      out in 64 bits (`ConstantEvaluator`: `SumOverflows`/
+      `DifferenceOverflows`/`ProductOverflows`, `IntegerResult`), whatever
+      the operands' types, and its result takes the *minimal type its value
+      fits* (`MinimalIntegerType`, which `IntegerLiteralType` now shares) -
+      `2 * 100 + 2 * 10` is the INTEGER 220, `MAX(SHORTINT) + 1` an INTEGER,
+      and `-128` a SHORTINT though `128` is an INTEGER (unary minus re-types
+      too; unary `+` folds now). It is an error only when the value does not
+      fit HUGEINT, where voc's `OPB.ConstOp` reports errors 203-207: "constant
+      sum/difference/product/negation too large for HUGEINT". A constant
+      `DIV`/`MOD` folds floored; a zero divisor is "division by zero", as
+      before. Integer constants compare as integers now (`EvaluateEquality`/
+      `EvaluateOrder` went through LONGREAL, so a `CONST` `MAX(HUGEINT) =
+      MAX(HUGEINT) - 1` was TRUE). This is one mechanism for `CONST`
+      declarations and for ordinary expressions: `ConstantEvaluator.
+      IsConstantExpr` (silent - `Evaluate` reports) says whether every leaf
+      is a literal, a named constant, `MAX`/`MIN`/`SIZE` of a type name or a
+      constant `ASH`; `SemanticActions.FoldIntegerConstant` (`CheckExpr`,
+      for a unary or binary expression or an `ASH` call) then gives the
+      expression the folded value's type, and `LLVMCodeGenerator.
+      GenerateFoldedInteger` emits the folded value as one immediate of that
+      type, so the checker and the generator cannot disagree. Only an
+      *integer-typed* result is folded: a constant real, BOOLEAN or SET
+      expression is left to the rank rules and to LLVM (it can neither wrap
+      nor be mistyped), and so is a relation of two constants - an error
+      inside one (a division by zero) is still found, in the operand.
+    - *Two host bugs worked around, one voc bug not reproduced.* poc is built
+      with voc, whose `DIV`/`MOD` are wrong for a negative dividend within
+      the divisor of `MIN(LONGINT)` (`MIN(LONGINT) DIV 2` comes out positive),
+      so `FloorQuotient`/`FloorRemainder` never divide such a value, and
+      `ProductOverflows` uses no negative dividend either. As a result poc
+      accepts a product of exactly -2^63 (`(-2^62) * 2`), which voc rejects
+      (its own check divides `MIN(INT64)`, apparently through the same bug). `MIN(HUGEINT) DIV (-1)` is "constant quotient
+      too large" - voc's compiler dies of SIGFPE folding it.
+    - *`CONST` `ASH(x, n)`* (`EvaluateAsh`): both arguments constant
+      integer expressions; a count outside -62..62 (voc's `maxExp`) or a left
+      shift with `ABS(x) > MAX(HUGEINT) DIV 2^n` is an error ("constant ASH
+      count out of range" / "result too large") - the same boundaries as
+      voc's error 208, probed at 62/63, -62/-63, `ASH(3, 62)`, `ASH(MAX(
+      HUGEINT), 1)` - and a right shift floors. The type is the wider of
+      LONGINT and `x`'s, *and no narrower than the value needs*: voc types
+      `ASH(1, 40)` a LONGINT under `-O2` and silently keeps 32 bits (0),
+      where poc makes it a HUGEINT, so assigning it to a LONGINT is a
+      compile-time error (`semantic-reject-const-ash-too-wide`; under `-OC`
+      it is fine, `oc-flag-const-ash-fits-longint`). Like voc, and unlike
+      `+`, the result is not re-typed *downward*: `ASH(1, 3)` stays a
+      LONGINT. The other value-argument functions are not folded (Phase
+      11 step 2), though `IsConstantExpr`/`EvaluateDesignator` now have the
+      shape each would be one case of.
+    - *`CONST` `MAX`/`MIN` of `REAL` and `LONGREAL`* (`MaxMinBound`): IEEE
+      754's largest finite value and its negation, built from powers of two
+      (`MaxReal` = 2^128 - 2^104, `MaxLongReal` = 2 * (2^1023 - 2^970), both
+      exact) since voc rejects the literals. `GenerateMaxMin` now takes every
+      type from `MaxMinBound` and `RealConstant` writes the value's bit
+      pattern (`0x47EFFFFFE0000000`, `0x7FEFFFFFFFFFFFFF`), so the constant
+      and the run-time form cannot differ. The value written to a `.sym`:
+      `ConstantEvaluator.ParseReal` cannot read `1.7976931348623157D308`
+      back exactly (308 multiplications by ten drift), so tier 2 of the real
+      exporter fails for it; `ModuleInterface.ExtremeRealSpelling` prints a
+      value that is exactly the largest finite one of its own type, or its
+      negation, as `MAX(LONGREAL)`, `MIN(REAL)` and so on, which the reader
+      folds back exactly (`module-interface-const-fold`, `-O2` and `-OC`,
+      with the interface read back as source and required to reproduce
+      itself). *Not fixed*: any other computed real of extreme magnitude
+      (`MAX(LONGREAL) / 2`, `1.0D300 * 1.5`) still cannot be exported, for
+      the same reason - it was so before this step; Phase 11 step 2 has it.
+      A folded integer prints as its value, so its type after a `.sym`
+      round trip is the minimal one (`ASH(1, 3)` is a SHORTINT to an
+      importer, a LONGINT at home); every other constant already worked so.
+    - *Fixtures* (174 pass): `semantic-const-fold-integer` (accepted, voc-
+      clean), `semantic-reject-const-fold-narrow` (nine assignments, each
+      rejected by voc too), `semantic-reject-const-fold-overflow` (every
+      error class, in `CONST` and in statements), `semantic-reject-const-
+      quotient-overflow`, `semantic-reject-const-ash-too-wide`, `oc-flag-
+      const-ash-fits-longint`, `module-interface-const-fold`, `llvm-const-
+      fold` (52 checks, 50 of them cross-checked under voc - the rest are
+      poc-only: voc's `MAX(REAL)` reaches the C compiler at 8 digits and
+      its `MAX(LONGREAL)` is low by design), `llvm-const-fold-import` (the
+      constants through a `.sym`), `llvm-const-fold-ir` (`-O2` and `-OC`
+      goldens), and both new run fixtures in `llvm-i686-runtime`. Three
+      existing IR goldens changed only by folding (`llvm-predeclared-ir`,
+      `llvm-system-ir`, `llvm-straight-line-arithmetic`); the last one's
+      `(-7) DIV 2` is now `minusSeven DIV 2` on a variable, so its floored
+      DIV/MOD code is still generated and checked.
+    - *The step 9 sweep after this step*: the whole suite passes on Linux at
+      both word sizes (64-bit, and the 32-bit `i686` runs in `llvm-i686-
+      runtime`). **Not run: any BSD** - the BSD hosts were unreachable this
+      session - so Phase 9 is not yet done by its own criterion; Phase 11
+      step 8 carries the outstanding BSD runs.
+
 **Testing summary**: golden-`.ll`-diff fixtures for the purely static
 pieces (step 1, and step 4a's `.sym` writer/checker fixtures plus its one
 cross-module descriptor golden), promoted to compile+link+run+diff everywhere else,
@@ -3278,7 +3370,8 @@ as it stands when the phase starts, and adds what it finds):
 | Item | Source | Kind |
 |---|---|---|
 | `ModuleInterface.FormatInt` negates its argument, so a `CONST` at a `LONGINT`'s minimum prints as a bare `-` in a `.sym` (`MIN(HUGEINT)`, or `MIN(LONGINT)` under `-OC`) | Open design questions | bug, found not fixed |
-| Value-argument predeclared functions in a `CONST` (`ORD`, `ABS`, `CHR`, `CAP`, `ENTIER`, `LONG`, `SHORT`, `ODD`) | Open design questions | gap, "real, separate, future work" |
+| Value-argument predeclared functions in a `CONST` (`ORD`, `ABS`, `CHR`, `CAP`, `ENTIER`, `LONG`, `SHORT`, `ODD`) - `ASH` is done | Open design questions | gap, "real, separate, future work" |
+| A computed `REAL`/`LONGREAL` constant of extreme magnitude (`MAX(LONGREAL) / 2`, `1.0D300 * 1.5`) cannot be exported to a `.sym`: `ParseReal` is not correctly rounded, so no text verifies | Phase 9 step 10 | bug, found not fixed |
 | A constant `NEW` length <= 0: poc traps at run time, voc rejects it at compile time | `000-todo.org`; Phase 9 step 7 | decision |
 | An option to make `NEW` trap when the heap cannot satisfy it (today: the pointer is NIL) | `000-todo.org`; Phase 9 step 5 | decision + implementation |
 | `ASSERT`: add it or not, which form, and what `-a` means | Open design questions | decision (+ implementation) |
@@ -3323,9 +3416,18 @@ as it stands when the phase starts, and adds what it finds):
      `-target`, so it uses the 32-bit default. If that is real, decide
      between printing the expression instead of the value and rejecting
      the combination, and test it at both word sizes.
+   - Export extreme computed real constants: tier 2 of `ModuleInterface`'s
+     real formatter searches for decimal text that `ConstantEvaluator.
+     ParseReal` reads back exactly, and for a value like `1.5D300` written
+     as `1.0D300 * 1.5` none does (the bound itself, `MAX(LONGREAL)`, is
+     handled by name since Phase 9 step 10). Either make `ParseReal`
+     correctly rounded - `references.md` lists Clinger and Steele-White for
+     exactly this - or export such a constant as an expression, or refuse
+     it with a clear message instead of the current "failed to find a
+     round-trip-safe text representation".
    - Fold value-argument predeclared functions in `CONST`s, sharing what
-     step 10 builds for `ASH`: recursively evaluate the argument, apply
-     the function's own value transform. Probe voc for each one - which
+     Phase 9 step 10 built for `ASH`: recursively evaluate the argument,
+     apply the function's own value transform. Probe voc for each one - which
      it folds, and what it rejects (`CHR` of a value out of range, `ENTIER`
      of a value that does not fit) - and match it.
    - Close the two "revisit opportunistically" notes by decision, not by
@@ -4205,7 +4307,8 @@ over object files is the gate.
   machinery (recursively evaluate the argument via `Evaluate`, then apply
   the function's own value transform) - that piece is deferred, not
   currently blocking anything found so far, and is real, separate,
-  future work.
+  future work. (`ASH` was the first, Phase 9 step 10, 2026-09-19; the
+  rest are Phase 11 step 2.)
   - `MAX(T)`/`MIN(T)` **implemented** 2026-09-17 for the integer family
     (`SHORTINT`/`INTEGER`/`LONGINT`/`HUGEINT`), `SET`, `CHAR` and
     `BOOLEAN` - the same argument set `PredeclaredProcedures.CheckMaxMin`
@@ -4222,8 +4325,9 @@ over object files is the gate.
     implementing" convention), not guessed at, and ties into the
     already-tracked correctly-rounded-float-formatting work (see
     `references.md`). Revisit alongside that, not as part of this pass.
-    (Phase 9 step 8 lowered the run-time form; the `CONST` form is Phase 9
-    step 10's.)
+    (Phase 9 step 8 lowered the run-time form; the `CONST` form was
+    **implemented 2026-09-19, Phase 9 step 10** - see that step's account,
+    including how a `.sym` carries it.)
   - `SIZE(T)` **implemented** 2026-09-17. Unlike `MAX`/`MIN`'s other
     bounds its result is genuinely target-dependent (word size and
     elementary-type size model - `MemoryLayout.Mod`'s own two axes).
@@ -4301,8 +4405,11 @@ over object files is the gate.
   negation case) to re-run something like `IntegerLiteralType`'s own
   digit-range logic against the computed value, not just the operand
   types - worth doing, but a separate, general `ConstantEvaluator.Mod`
-  correctness fix, not specific to `MAX`/`MIN`. Not scheduled to any
-  phase yet.
+  correctness fix, not specific to `MAX`/`MIN`. **Resolved 2026-09-19,
+  Phase 9 step 10**: every integer operation a constant expression folds
+  re-derives its result's minimal type from the value (voc's `SetIntType`),
+  in `CONST` declarations and in ordinary expressions alike; `CONST TooWide
+  = MAX(SHORTINT) + 1` is now an INTEGER, and `s := TooWide` is rejected.
 
 - **Declaration order: voc relaxes CONST/TYPE/VAR *section* order, never
   reference order** (`000-todo.org`'s "Relax order of declarations", the

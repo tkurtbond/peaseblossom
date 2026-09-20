@@ -12,7 +12,10 @@ MODULE arith;
      that printed every global after calling arith_init(), confirmed
      correct by hand (including DIV/MOD's floored semantics for negative
      operands, cross-checked against real voc directly: (-7) DIV 2 = -4,
-     (-7) MOD 2 = 1), not by inspection alone.
+     (-7) MOD 2 = 1), not by inspection alone. The -7 sits in a variable,
+     since PLAN.md Phase 9 step 10: (-7) DIV 2 written out is a constant
+     expression, folded to -4 at compile time, and this fixture is about
+     the code generated for a negative operand.
 
      41X/42X are CHAR literals (Oberon-2's §3 hex-digit-sequence-plus-"X"
      form: 41X = 0x41 = "A", 42X = 0x42 = "B") - not the double-quoted
@@ -39,7 +42,7 @@ MODULE arith;
     c1, c2: CHAR;
     flagCmp, flagBool, flagNot: BOOLEAN;
     s1, s2, sUnion, sDiff, sInter, sSym, sComp: SET;
-    negQ, negR: INTEGER;
+    negQ, negR, minusSeven: INTEGER;
 BEGIN
   a := 17; b := 5;
   sum := a + b;
@@ -47,8 +50,9 @@ BEGIN
   prod := a * b;
   q := a DIV b;
   r := a MOD b;
-  negQ := (-7) DIV 2;
-  negR := (-7) MOD 2;
+  minusSeven := -7;
+  negQ := minusSeven DIV 2;
+  negR := minusSeven MOD 2;
   sa := 3;
   wide := sa + a;
   c1 := 41X; c2 := 42X;
