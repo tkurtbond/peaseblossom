@@ -3349,14 +3349,32 @@ work already being in place.
    (genuinely reachable from anywhere), a local uses a scan of just its
    declaring procedure's own *nested* procedures (never its own direct
    statements). Re-verified against all six voc repros: exact agreement.
-   `SemanticActions.Mod` now checks clean under real `poc -check`, and so
-   does `Parser.Mod` and `src/back/llvm/LLVMTypes.Mod` right after it in
-   Stage 0's own build order; `LLVMCodeGenerator.Mod` hits a new, unrelated
-   blocker next (`mantissa: LONGINT` too narrow for a `HUGEINT`-typed
-   numeral under poc's own default `-O2` target-language assumption - see
-   "`-OC`-equivalent elementary-type-size model" above; poc has no
-   `-O2`/`-OC` CLI flag of its own yet, so step 8 still has more to settle
-   before Stage 1 is reachable). `make test` (198) stays clean throughout.
+   `SemanticActions.Mod` now checks clean under real `poc -check`.
+
+   **Every front-end/backend/driver file checks clean under `poc -check
+   -OC` (2026-09-20).** Pushing on past `SemanticActions.Mod` hit what
+   looked like a second, genuine blocker: `LLVMCodeGenerator.DoubleBitsText`
+   declares `mantissa: LONGINT` and assigns it `2251799813685248` (2^51,
+   the quiet-NaN bit) - too wide for a 32-bit `LONGINT`, so poc's own
+   minimal-integer-literal-type rule types the numeral `HUGEINT` and
+   correctly rejects the assignment under poc's *default* `-O2` model.
+   This turned out not to be missing functionality at all: `Poc.Mod`
+   already has real `-O2`/`-OC` flags (`ConstantEvaluator.SetSizeModel*`,
+   built in Phase 9 step 10 for `MAX`/`MIN`/`SIZE` constant folding) -
+   this session's own self-check commands simply weren't passing `-OC`,
+   the same flag `tools/bootstrap/stage0` already builds poc's own source
+   with (its own header comment already says why: `Types.Value.intVal`
+   needs a real 8-byte host `LONGINT` to hold a full-range `HUGEINT`
+   constant). Re-running every front-end file, every `rtl/llvm` module
+   poc's own source imports, both backend files and `src/driver/Poc.Mod`
+   itself through `poc -check -OC` (not just `-emit-interface`, so every
+   procedure body is checked, not just signatures) - all clean, zero
+   errors. `Poc.Mod` compiling clean under its own checker is real
+   evidence Stage 1 *type-checking* is unblocked; actually building an
+   executable (`-build`/`-emit-llvm-ir` end to end, then the Stage 1 vs.
+   Stage 2 fixed point this step's own testing plan calls for) is
+   untried past this point and may still surface real codegen bugs
+   `-check` alone cannot catch. `make test` (198) stays clean throughout.
 
    **BSD-verified (2026-09-20), and a real, NetBSD-only bug found and
    fixed along the way.** All 23 of Phase 10 steps 1-7's runnable rtl
@@ -4091,8 +4109,17 @@ convenient, but must not be a prerequisite of it.
    than assume: which safety checks poc emits unconditionally today (NIL,
    index, type guard, `WITH`, `CASE`, array length) and which of them
    voc's switches would let a user turn off or on (`-r` range checking
-   has no poc counterpart at all); how `-A44/48/88` relate to `-target`'s
-   word size and to alignment, which poc derives from the triple; what
+   has no poc counterpart at all). **`-A44`/`-A48`/`-A88` answered
+   (2026-09-20, `000-todo.org`): not applicable, and poc needs no
+   counterpart.** voc's `-A` exists because it generates portable C and
+   has no other way to tell the *downstream* C compiler's ABI (address
+   size and struct alignment are genuinely independent there - `-A48`,
+   32-bit addresses with 64-bit alignment, is a real 32-bit-Windows/ARM
+   quirk); poc emits an explicit LLVM `target datalayout` string per
+   `-target` triple (`LLVMCodeGenerator.dataLayoutW64`/`dataLayoutW32`,
+   verified against real hardware, Phase 8 step 13) that already pins
+   down both axes together - choosing the triple chooses both at once,
+   with nothing downstream left to infer them independently. What
    `-e`/`-s`/`-F` mean for a `.sym` poc always regenerates whole-program
    (Phase 9 step 4a); how `-m`/`-M`/`-S`/`-c` map onto `-build`,
    `-emit-llvm-ir` and step 2's library modes; and whether `-OV` is worth a
