@@ -24,6 +24,16 @@ echo "--- conformance test $(basename "$PWD") ---"
 
 export PATH="$POC_BIN_DIR:$VOC_BIN_DIR:$PATH"
 
+# A program voc builds is linked against voc's shared runtime (libvoc-O2.so,
+# libvoc-OC.so), which lives next to bin. Linux finds it by itself here, but
+# NetBSD and OpenBSD do not, and a non-interactive shell (ssh host cmd) does
+# not read the profile that sets LD_LIBRARY_PATH for a login one - so a
+# crosscheck fixture's voc-built program died with 'Shared object
+# "libvoc-O2.so" not found' there.
+: "${VOC_LIB_DIR:=$VOC_BIN_DIR/../lib}"
+LD_LIBRARY_PATH="$VOC_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH
+
 
 # *.c/*.h (voc's own C intermediates) were missing from this list until
 # GNUmakefile's clean-tests target (which reuses this exact line via a
@@ -51,7 +61,12 @@ poc_build_run() {
 # glibc-devel.i686), which is absent from many machines, and an x86 host.
 # Used by fixtures that build for i686-unknown-linux-gnu so they can skip
 # themselves cleanly instead of failing on a box that cannot run them.
+#
+# Only on Linux: the fixtures build for i686-unknown-linux-gnu, which cannot
+# link on a BSD even when that BSD runs 32-bit programs (NetBSD amd64 does,
+# through netbsd32, so the probe below alone passes there).
 i686_can_run() {
+  [ "$(uname -s)" = Linux ] || return 1
   probe=$(mktemp -d) || return 1
   printf 'int main(void){return 0;}\n' >"$probe/probe.c"
   if clang -m32 "$probe/probe.c" -o "$probe/probe" >/dev/null 2>&1 && "$probe/probe" >/dev/null 2>&1

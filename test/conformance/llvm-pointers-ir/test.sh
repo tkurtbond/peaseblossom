@@ -14,7 +14,7 @@ for triple in i686-unknown-linux-gnu x86_64-unknown-linux-gnu; do
   awk '
     keep { print; if ($0 ~ /^}/) keep = 0; next }
     /^(@ptrir\.|@\.arraydesc\.|@\.trap\.|define .* @ptrir\.)/ { print; if ($0 ~ /[{]$/) keep = 1 }
-  ' ptrir.ll | sed -E 's/%t[0-9]+/%tN/g; s/\bL[0-9]+\b/LN/g' >>result
+  ' ptrir.ll | sed -E 's/%t[0-9]+/%tN/g; s/(^|[^A-Za-z0-9_])L[0-9]+([^A-Za-z0-9_]|$)/\1LN\2/g' >>result
   if clang -target $triple -c ptrir.ll -o /dev/null 2>clang.err
   then echo "clang accepted $triple" >>result
   else echo "clang REJECTED $triple" >>result; cat clang.err >>result

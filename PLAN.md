@@ -3544,6 +3544,49 @@ work already being in place.
    O_TRUNC/off_t values mentioned above remain unconfirmed on the BSDs -
    moot, since `Files.Mod` never calls `open`/`lseek` at all, only stdio.
 
+   **Self-hosted poc on the BSDs (2026-09-20).** poc's own `Poc.ll` was
+   cross-compiled here for `x86_64-unknown-netbsd10.0` and
+   `i386-unknown-openbsd7.9`, copied over and built with each host's own
+   `clang`. *NetBSD amd64*: the result runs, rebuilds poc there
+   (`-OC -target x86_64-unknown-netbsd10.0 -build`), and emits a `Poc.ll`
+   byte-identical to the Linux cross-compile - the fixed point holds across
+   an OS. The conformance suite under that binary: **199/199** once the
+   harness's own Linux assumptions were fixed, all found by this run and
+   none a poc bug: (1) a program voc builds needs voc's shared runtime
+   (`libvoc-O2.so`), which Linux finds by itself but NetBSD/OpenBSD do not,
+   and which a non-interactive `ssh host cmd` gets only from the login
+   profile's `LD_LIBRARY_PATH` - `testenv.sh` now sets it from the voc
+   directory (`VOC_LIB_DIR`); (2) four `*-ir` fixtures normalized labels
+   with `sed`'s GNU-only `\b` (BSD `sed`: "trailing backslash") - now an
+   explicit boundary class, goldens unchanged; (3) `llvm-gc-roots-ir` used
+   `grep 'a\|b'`, a GNU BRE extension OpenBSD's `grep` lacks - now `grep -E`;
+   (4) `llvm-i686-runtime` builds for `i686-unknown-linux-gnu`, which cannot
+   link on a BSD even one that runs 32-bit programs (NetBSD amd64 does) -
+   `i686_can_run` now requires a Linux host; (5) `llvm-system-shifts`
+   compared poc with voc on `ROT(l, 0)`, which voc's C expands to a shift by
+   the full width - undefined, and clang on i386 folds it differently from
+   x86-64 (its own warning says so) - moved to `llvm-system-extra`, the
+   poc-only fixture, so the voc-compared one has only cases voc defines.
+   NetBSD's linker also warns that `Files.IsDirectory` references a
+   *compatibility* `opendir()` (the symbol before NetBSD 3's `dirent`
+   change; `dirent.h` renames it) - works, but should be declared the way
+   the header does. *OpenBSD i386* also passes **199/199**, with a Stage 0
+   poc built there by voc (`tools/bootstrap/stage0`, ILP32, `-OC`); the
+   self-hosted one does not run, below.
+   *OpenBSD i386*: the cross-built poc **builds but does nothing** - every
+   `write` fails (`ktrace`: `write(1, 0, <stack address>)`, EINVAL). Cause,
+   from the IR: `declare void @write(i64, i32, i32)`. Under `-OC` `LONGINT`
+   is 64 bits, and `rtl/llvm` declares its C `int` parameters and results
+   (`Console`'s `write`, `Platform`, `Files`, `Out`'s `isatty`, `Math`) as
+   `LONGINT`; on x86-64 the extra width is invisible (register arguments),
+   on i386 the 64-bit `fd` takes two stack words and shifts the rest. So
+   poc built with `-OC` - which it needs, for `Types.Value.intVal` - cannot
+   run on a 32-bit target until the Phase 11 item "real fixed-width
+   `SYSTEM.INT32` family, then move the C `int` declarations to it" is done;
+   it is that item's first real customer (the small runtime fixtures still
+   pass there, built under the default `-O2`, where `LONGINT` is 32 bits).
+   Not fixed here.
+
 4. **`Modules.Mod`.** `ArgCount-` (a read-only exported `VAR`, set once
    at process start) and `GetArg*(n: INTEGER; VAR val: ARRAY OF CHAR)` —
    command-line argument access, the second concrete example the user

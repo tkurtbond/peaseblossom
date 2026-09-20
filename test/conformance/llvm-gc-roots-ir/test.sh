@@ -17,7 +17,7 @@ for triple in i686-unknown-linux-gnu x86_64-unknown-linux-gnu; do
   else echo "clang REJECTED $triple" >>result; cat clang.err >>result
   fi
   poc -target $triple -emit-llvm-ir heapmain.mod >/dev/null
-  grep 'stackbase\|frameaddress\|SetStackBase' heapmain.ll >>result
+  grep -E 'stackbase|frameaddress|SetStackBase' heapmain.ll >>result
   if clang -target $triple -c heapmain.ll -o /dev/null 2>clang.err
   then echo "clang accepted heapmain $triple" >>result
   else echo "clang REJECTED heapmain $triple" >>result; cat clang.err >>result

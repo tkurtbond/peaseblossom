@@ -34,7 +34,7 @@ MODULE systemextra;
     Show(SYSTEM.LSH(l, 32)); Show(SYSTEM.LSH(l, -32)); Show(SYSTEM.LSH(l, 40)); Show(SYSTEM.LSH(l, -1000)); Out.Ln;
     Show(SYSTEM.LSH(l, 31)); Show(SYSTEM.LSH(l, -31)); Show(SYSTEM.LSH(l, MAX(HUGEINT))); Show(SYSTEM.LSH(l, MIN(HUGEINT))); Out.Ln;
     l := 1;
-    Show(SYSTEM.ROT(l, 32)); Show(SYSTEM.ROT(l, 33)); Show(SYSTEM.ROT(l, -33)); Show(SYSTEM.ROT(l, 1000)); Show(SYSTEM.ROT(l, -1000)); Out.Ln;
+    Show(SYSTEM.ROT(l, 0)); Show(SYSTEM.ROT(l, 32)); Show(SYSTEM.ROT(l, 33)); Show(SYSTEM.ROT(l, -33)); Show(SYSTEM.ROT(l, 1000)); Show(SYSTEM.ROT(l, -1000)); Out.Ln;
     Show(SYSTEM.ROT(l, MAX(HUGEINT))); Show(SYSTEM.ROT(l, MIN(HUGEINT))); Out.Ln;
     s := -127; (* 81H *)
     Show(SYSTEM.LSH(s, 8)); Show(SYSTEM.LSH(s, -8)); Show(SYSTEM.ROT(s, 8)); Show(SYSTEM.ROT(s, 9)); Show(SYSTEM.ROT(s, -9)); Out.Ln;

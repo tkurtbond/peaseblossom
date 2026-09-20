@@ -45,7 +45,7 @@ MODULE shiftstest;
   PROCEDURE Rotations;
   BEGIN
     l := 1;
-    Show(SYSTEM.ROT(l, 31)); Show(SYSTEM.ROT(l, -1)); Show(SYSTEM.ROT(l, 0)); Show(SYSTEM.ROT(l, 1)); Out.Ln;
+    Show(SYSTEM.ROT(l, 31)); Show(SYSTEM.ROT(l, -1)); Show(SYSTEM.ROT(l, 1)); Out.Ln;
     l := 12345678H;
     Show(SYSTEM.ROT(l, 8)); Show(SYSTEM.ROT(l, -8)); Show(SYSTEM.ROT(l, 16)); Show(SYSTEM.ROT(l, 4)); Out.Ln;
     s := -1;

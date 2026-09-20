@@ -82,7 +82,16 @@ programs, and (potentially) bootstrapping.
   - `doc/*.md` — Compiling.md, ctags.md, Features.md, Files.md, History.md,
     Installation.md, Porting.md, Winstallation.md.
 - Version as of 2026-09-16: "Oberon-2 compiler v2.1.0 [2026/09/16] for gcc
-  LP64 on fedora", based on Ofront (J. Templ).
+  LP64 on fedora", based on Ofront (J. Templ). Rebuilt since (2026/09/18).
+- **The same two paths - the binary and the source clone above - hold on
+  every machine poc is developed and tested on** (checked 2026-09-20): atla
+  (Linux, the development host), `erekose` (OpenBSD 7.9 i386, "clang ILP32")
+  and `terhali` (NetBSD 11 amd64, "gcc LP64"). A program voc builds is linked
+  against `<voc>/lib/libvoc-O2.so` (or `-OC`), which only Linux finds by
+  itself; BSD needs `LD_LIBRARY_PATH`. A login shell gets it (and voc's `bin`
+  on `PATH`) from `~/.bash_profile`, a non-interactive `ssh host cmd` does
+  not - so `test/testenv.sh` sets both itself (`VOC_BIN_DIR`, `VOC_LIB_DIR`)
+  and the conformance suite does not depend on the caller's profile.
 
 Voc's own extensions beyond the report, documented in `doc/Features.md` —
 these are Vishap-specific, not part of the Oberon-2 standard, and should
