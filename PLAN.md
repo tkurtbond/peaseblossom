@@ -3575,8 +3575,9 @@ work already being in place.
    change; `dirent.h` renames it) - works, but should be declared the way
    the header does. *OpenBSD i386* also passes **199/199**, with a Stage 0
    poc built there by voc (`tools/bootstrap/stage0`, ILP32, `-OC`); the
-   self-hosted one does not run, below.
-   *OpenBSD i386*: the cross-built poc **builds but does nothing** - every
+   self-hosted one did not run at first, below - it does now, see "Fixed-width
+   `SYSTEM.INT8..INT64`" after this.
+   *OpenBSD i386*: the cross-built poc **built but did nothing** - every
    `write` fails (`ktrace`: `write(1, 0, <stack address>)`, EINVAL). Cause,
    from the IR: `declare void @write(i64, i32, i32)`. Under `-OC` `LONGINT`
    is 64 bits, and `rtl/llvm` declares its C `int` parameters and results
@@ -3588,7 +3589,50 @@ work already being in place.
    `SYSTEM.INT32` family, then move the C `int` declarations to it" is done;
    it is that item's first real customer (the small runtime fixtures still
    pass there, built under the default `-O2`, where `LONGINT` is 32 bits).
-   Not fixed here.
+   Not fixed at that point; done next.
+
+   **Fixed-width `SYSTEM.INT8..INT64`, and the self-hosted poc on 32 bits
+   (Phase 11, 2026-09-20).** `SYSTEM.INT8/16/32/64` are now distinct integer
+   types of exactly 1/2/4/8 bytes under both size models
+   (`Types.BasicTypeDesc.fixedBytes`; `MemoryLayout.BasicSize`,
+   `LLVMTypes.BasicTypeString`, `ConstantEvaluator.MaxMinBound` know them),
+   and `rtl/llvm`'s C `int` declarations (`Console`, `Files`, `In`, `Out`,
+   `Platform`, `Math`, `MathL`) are written `SYSTEM.INT32`, so the IR says
+   `declare void @write(i32, i32, i32)` under `-OC` on i386 as on x86-64.
+   *Inclusion* goes by byte width, as in voc (which stores a size on each
+   integer type and compares sizes): `Types.Order` gives every numeric type a
+   position - twice its rank for the model's own types, which the size model
+   moves - and a fixed-width one the position of the widest model type no
+   wider than it, so two of one width include each other (`INT32` and
+   `LONGINT` under `-O2`, `INT32` and `INTEGER` under `-OC`, `INT64` and
+   `HUGEINT` always) and INT8 under `-OC`, narrower than any model type, sits
+   below `SHORTINT`. `Types.SetSizeModelIsOC`, called from
+   `ConstantEvaluator.SetSizeModel`, is how `Types` (which cannot import
+   `MemoryLayout`) learns the model. A constant is typed by the minimal type
+   its value fits *under the model*, which under `-OC` is never narrower than
+   `SHORTINT`'s two bytes, so `b := 127` for an `INT8` would be refused by
+   type; `CheckAssignmentCompatible` accepts an integer constant whose value
+   fits a fixed-width type (`Types.FixedIntFits`), the same value-dependent
+   escape hatch its string cases already are. Found and fixed on the way:
+   `Files.Old` compared a `SYSTEM.ADDRESS` with `MAX(LONGINT)`; `ADDRESS`
+   ranks *above* `LONGINT`, so the comparison ran at the address's 32 bits
+   and `-OC`'s 2^63-1 truncated to -1 - no file opened on a 32-bit target -
+   now compared as a `HUGEINT`. That is a real hole in the `LONGINT <=
+   ADDRESS` hierarchy for a 32-bit target under `-OC` (a mixed operation is
+   done at the narrower width), left as it is; nothing else in the runtime
+   mixes them. Not done: `LONG`/`SHORT` of a fixed-width type (rejected with
+   a message), an `INT8` combined with an integer literal under `-OC` (the
+   result is a `SHORTINT`; narrow with `SYSTEM.VAL`), `SET32` (still `SET`)
+   and `SET64`. **Result: the self-hosted poc runs on OpenBSD i386.** Built
+   there from the Linux cross-compile, it rebuilds itself and emits a
+   `Poc.ll` byte-identical to that cross-compile, twice - a fixed point on a
+   32-bit machine, the executables byte for byte the same - and the whole
+   conformance suite (202 fixtures now: `semantic-system-fixed-width`, a
+   model-by-statement table; `llvm-system-fixed-width`, one program built and
+   run under both models, only the `LONGINT` line differing;
+   `llvm-system-fixed-width-ir`, the declared C signatures at both word sizes
+   and both models) passes 202/202 under it, as under the voc-built Stage 0
+   there, under the self-hosted poc on NetBSD amd64 and on Linux.
 
 4. **`Modules.Mod`.** `ArgCount-` (a read-only exported `VAR`, set once
    at process start) and `GetArg*(n: INTEGER; VAR val: ARRAY OF CHAR)` —
@@ -4020,7 +4064,7 @@ as it stands when the phase starts, and adds what it finds):
 | `Out.Real`/`Out.LongReal` are voc's algorithm, not correctly rounded (a decimal exponent estimated as 77/256 of the binary one, scaling by a floating-point power of ten exact only to 10^22): the last digits of a number outside about 10^-22..10^22, or the 17th of a LONGREAL, can be off. The same shortcoming as `ParseReal`'s; one correctly rounded converter each way would close both | Phase 10 step 5 | gap, found not fixed |
 | `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | decision |
 | A call of a nested procedure is emitted as `; unsupported: call target is not a plain procedure` and the build succeeds, with the call missing: make it an error, or lower it (static link) | Phase 10 step 6 | bug (silent), decision |
-| `SYSTEM.INT8..INT64`/`SET32` are aliases of the `-O2` types, so `SYSTEM.INT32` is 64 bits under `-OC`; a real fixed-width family (and `SET64`), after which the C `int` declarations in `Platform`/`Files`/`Console`/`Math` move to `SYSTEM.INT32` and `-OC` self-hosting can work | Phase 10 step 7 | gap, decision |
+| ~~`SYSTEM.INT8..INT64`/`SET32` are aliases of the `-O2` types~~ - **INT8..INT64 done 2026-09-20** (fixed-width, the runtime's C `int`s moved to `INT32`, the self-hosted poc runs on 32-bit; see "Fixed-width `SYSTEM.INT8..INT64`" under Phase 10 step 8). Left: `SET32` is `SET` (the `-O2` width) and there is no `SET64`; `LONG`/`SHORT` of an `INTn`; an `INT8` with an integer literal under `-OC` | Phase 10 step 7 | gap, decision |
 | `SYSTEM.PTR` cannot be dereferenced, guarded, `IS`-tested or a `WITH` variable (voc allows some); a guard followed by an index, or to a pointer-to-array type, is unsupported in the backend | Phase 10 step 7 | decision, gap |
 | `BIT`'s word-based meaning (voc's) differs from the report's `Mem[a]` bit; `SYSTEM.NEW` blocks are untraced by the collector | Phase 10 step 7 | decision |
 | A constant `NEW` length <= 0: poc traps at run time, voc rejects it at compile time | `000-todo.org`; Phase 9 step 7 | decision |

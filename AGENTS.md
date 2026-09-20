@@ -330,10 +330,23 @@ against real voc 2026-09-20). What a program can observe:
   variable, untraced by the collector (tag 0); `n <= 0` or too large traps
   (exit 7, as `NEW` of an open array), no heap leaves `v` NIL. Told from the
   ordinary `NEW` by the `SYSTEM.` qualifier.
-- **`SYSTEM.INT8/16/32/64` and `SET32`** exist, as aliases of `SHORTINT`/
-  `INTEGER`/`LONGINT`/`HUGEINT`/`SET` - the `-O2` widths, so under `-OC`
-  `SYSTEM.INT32` is 64 bits. There is no `SET64`; a real fixed-width family
-  is a Phase 11 item. `CC`, `GETREG` and `PUTREG` are not implemented: they
+- **`SYSTEM.INT8/16/32/64`** are integers of exactly 1/2/4/8 bytes under both
+  size models (Phase 11; they were aliases of the `-O2` types, so under `-OC`
+  `SYSTEM.INT32` was 64 bits, which is what kept a C `int` from being spelled
+  right - and poc built with `-OC` from running on a 32-bit target). They are
+  distinct types, and as in voc, where inclusion goes by size, they take their
+  place among `SHORTINT`/`INTEGER`/`LONGINT`/`HUGEINT` by byte width
+  (`Types.Order`): two of one width include each other (`INT32` and `LONGINT`
+  under `-O2`, `INT32` and `INTEGER` under `-OC`; `INT64` and `HUGEINT` under
+  both), a wider includes a narrower and not the reverse. An integer constant
+  whose *value* fits is assignable to any of them, since a constant's own type
+  is its minimal one under the model. `MAX`/`MIN`/`SIZE` work. Two gaps:
+  `LONG`/`SHORT` reject them (say "requires a SHORTINT, INTEGER, or REAL
+  argument"), and under `-OC` an `INT8` met by an integer *literal* in an
+  expression (`b + 1`) is a `SHORTINT`, the literal's own type being at least
+  two bytes there, so it cannot be assigned back to an `INT8` without
+  `SYSTEM.VAL(SYSTEM.INT8, ...)`. `SET32` is still `SET` (the `-O2` width) and
+  there is no `SET64`. `CC`, `GETREG` and `PUTREG` are not implemented: they
   name a machine's registers and condition codes, which LLVM IR has none of.
 
 ### Pointers, `NEW` and the runtime (implemented, Phase 9 step 5)
