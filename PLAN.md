@@ -4066,7 +4066,7 @@ as it stands when the phase starts, and adds what it finds):
 | A computed `REAL`/`LONGREAL` constant of extreme magnitude (`MAX(LONGREAL) / 2`, `1.0D300 * 1.5`) cannot be exported to a `.sym`: `ParseReal` is not correctly rounded, so no text verifies | Phase 9 step 10 | bug, found not fixed |
 | `Out.Real`/`Out.LongReal` are voc's algorithm, not correctly rounded (a decimal exponent estimated as 77/256 of the binary one, scaling by a floating-point power of ten exact only to 10^22): the last digits of a number outside about 10^-22..10^22, or the 17th of a LONGREAL, can be off. The same shortcoming as `ParseReal`'s; one correctly rounded converter each way would close both | Phase 10 step 5 | gap, found not fixed |
 | `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | decision |
-| Nested procedures (a procedure declared inside another) are not lowered at all: a declaration or a call is now a compile error (2026-09-20; it used to be a comment in the IR and a program quietly missing the call), and the feature - `Oberon2.pdf` §10: "procedure declarations may be nested" - needs implementing: lambda lifting by reference (below) | Phase 10 step 6; found 2026-09-20 | gap, implementation |
+| Nested procedures (a procedure declared inside another) are not lowered by the LLVM backend: a declaration or a call is a compile error (2026-09-20; it used to be a comment in the IR and a program quietly missing the call). `Oberon2.pdf` §10: "procedure declarations may be nested". Planned in full in `doc/nested-procedures.md`: lambda lifting by reference, step 8 | Phase 10 step 6; found 2026-09-20 | gap, implementation |
 | `LONG`/`SHORT` reject `SYSTEM.INT8..INT64` ("requires a SHORTINT, INTEGER, or REAL argument"); voc's go by size along the model's chain (`OPT.ShorterOrLongerType`) | Phase 10 step 8 (fixed-width `INTn`, 2026-09-20) | gap |
 | Under `-OC` an `INT8` met by an integer literal in an expression (`b + 1`) is a `SHORTINT` - the literal's own type is at least two bytes there - and cannot be assigned back to an `INT8` without `SYSTEM.VAL` | Phase 10 step 8 (fixed-width `INTn`) | gap, decision |
 | `SYSTEM.SET32` is `SET` (the `-O2` width, 64 bits under `-OC`) and there is no `SET64`: the fixed-width sets `INT8..INT64` got | Phase 10 step 8 (fixed-width `INTn`); `000-todo.org` | gap, decision (with `HUGESET`) |
@@ -4176,22 +4176,8 @@ as it stands when the phase starts, and adds what it finds):
      (`unsupportedCount`), and `EmitIR`/`Build` write nothing when any was met.
      Poc's own IR and every fixture's had none, so nothing else moved. New
      fixture `llvm-reject-nested-procedure`.
-   - *Nested procedures.* The feature the change above makes visible. They are
-     only ever called by name (`Oberon2.pdf` 6.5 forbids one as a procedure
-     value, and poc rejects it), so no closure needs to escape, and lambda
-     lifting by reference is enough: an enclosing procedure's variable that a
-     nested one uses (or a nested one it calls uses) becomes an extra hidden
-     `ptr` parameter of the nested procedure, passed by every caller - the
-     enclosing procedure's own alloca, so no frame struct. The work is the
-     free-variable analysis (closed over the call graph among the nested
-     procedures, so a caller that never names `x` still passes it on),
-     binding an enclosed name to its hidden parameter in `cg.locals`, and the
-     awkward variables: a `VAR` parameter (already a pointer), an open-array
-     parameter (its dope vector too), a `WITH`-narrowed variable, a receiver.
-     A nested procedure that uses no enclosing variable needs none of that and
-     could be emitted first as a plain function under a mangled name. The VAX
-     backend (Phase 13) needs the same, as a static link. Fixture first:
-     `llvm-reject-nested-procedure`'s program prints `ok` once it works.
+   - *Nested procedures.* The feature the change above makes visible: now
+     step 8 below, planned in `doc/nested-procedures.md`.
    - *Done (2026-09-20): exit status.* `poc` returned 0 whatever happened, so
      `make` and scripts could not tell a failed build from a good one. A
      module-level `failed` in `Poc.Mod` is set at every place a failure is
@@ -4378,7 +4364,41 @@ as it stands when the phase starts, and adds what it finds):
    supplies that voc does not. **Testing**: a fixture that writes to both
    streams and checks each goes to its own file descriptor.
 
-8. **Close-out.** `000-todo.org` is brought up to date entry by entry
+8. **Nested procedures.** Lower them in the LLVM backend; the full plan, with
+   the design decisions and their reasons, is `doc/nested-procedures.md`. In
+   short: they are only ever called by name (`Oberon2.pdf` 6.5 forbids one as a
+   procedure value, and the checker enforces it), so none outlives its enclosing
+   activation, and **lambda lifting by reference** is enough - each nested
+   procedure becomes an ordinary function that takes, as hidden trailing
+   parameters, the addresses of the enclosing variables it needs, bound in
+   `cg.locals` under the same objects so no designator codegen changes. What a
+   procedure needs is a fixed point over the nested call graph (its own uses,
+   what its nested procedures need, what the nested procedures it calls need),
+   ordered deterministically so the IR is byte-stable for the fixed point, and
+   found by *exact* name resolution against the real scope chain (decided
+   2026-09-20), not by matching spellings as the `WITH` safety check does: a
+   false match there only rejects too much, here it would pair a call with a
+   binding that does not exist; a long list of hidden parameters is accepted
+   until measured (decided 2026-09-20), the fallback being one pointer to a
+   frame record. The
+   analysis is a new backend-independent module `NestedProcedures.Mod`
+   (`src/front/`, which the VAX backend will reuse) with a `poc -dump-nested`
+   mode, so it is golden-tested before any code generation exists. Steps, each
+   with fixtures that fail first and a green `make check`: (0) groundwork with
+   no behaviour change (`SemanticActions.DeclareLocalProcedures`, a body scope
+   passed in rather than opened); (1) the analysis and `-dump-nested`; (2)
+   nested procedures that need nothing; (3) hidden parameters for scalars and
+   aggregates; (4) `VAR`, `VAR` record (tag), open-array (lengths) and receiver
+   variables, and `WITH`; (5) depth, siblings, mutual recursion through a
+   forward declaration, recursion of the enclosing procedure; (6) remove the
+   error, `AGENTS.md`, both BSD hosts, both word sizes. **Exit gate**: the
+   fixtures of the plan's section 6 pass under both compilers, both size
+   models, at both word sizes, on Linux, NetBSD amd64 and OpenBSD i386; the
+   program in `llvm-reject-nested-procedure` prints `ok` (it becomes
+   `llvm-nested-basic`); the fixed point still exact; no nested-procedure
+   error left in the backend.
+
+9. **Close-out.** `000-todo.org` is brought up to date entry by entry
    (each item `DONE` with a one-line account, or `DROPPED` with the reason;
    the Phase 12 entries left open and marked as such); the "Open design
    questions" section keeps only resolved records, each stating what was
@@ -4395,7 +4415,7 @@ as it stands when the phase starts, and adds what it finds):
 **Testing summary**: each decision comes with the voc probe that supports
 it, recorded where the decision is; each implemented item has a fixture
 that fails before the change and passes after; the step 4 measurement and
-the step 5 debugger sessions are fixtures too; step 8's whole-suite run
+the step 5 debugger sessions are fixtures too; step 9's whole-suite run
 and the bootstrap fixed point are the gate.
 
 ### Phase 12 — Detailed library/module support (voc's options, static/dynamic libraries, voc's module inventory)
