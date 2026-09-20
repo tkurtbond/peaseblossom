@@ -1,0 +1,29 @@
+semantic OK, wrote llvm-in-extra
+HugeInt 12345678901 done
+HugeInt -9223372036854775807 done
+HugeInt 549755813887 done
+HugeInt -31 done
+HugeInt 0 not done
+HugeInt 12 done
+rest [x] done
+Name [word1] done
+Name [word2] done
+Line [  end] done
+Line [windows line] done
+LongReal 0000000000000000 not done
+LongReal 3FB999999999999A done
+LongReal 7FEFFFFFFFFFFFFF done
+LongReal 0000000000000001 done
+LongReal 3FD0000000000000 done
+LongReal 3FD0000000000000 not done
+LongReal 3FD0000000000000 not done
+LongReal 3FD0000000000000 not done
+LongReal 4014000000000000 done
+LongReal 3FE0000000000000 done
+LongReal 3FD0000000000000 done
+Real 44BB8000 done
+Real 4B800000 done
+Real 7E967699 done
+LongReal at the end not done
+Name at the end not done
+Char at the end not done

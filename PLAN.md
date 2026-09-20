@@ -3382,6 +3382,62 @@ work already being in place.
    the Phase 8 predeclared-procedure fixtures' own one-fixture-covers-
    the-whole-set style where practical; at least one cross-checked
    against real `voc` per the paragraph above.
+   **Implemented (2026-09-20)**: `rtl/llvm/Out.Mod` has voc's `Out`
+   (`Open`, `Flush`, `Char`, `String`, `Int`, `Hex`, `Ln`, `Real`,
+   `LongReal`, `Ten`, `IsConsole`) and `rtl/llvm/In.Mod` voc's `In` (`Open`,
+   `Char`, `Int`, `LongInt`, `HugeInt`, `Real`, `LongReal`, `Line`, `String`,
+   `Name`, `Done`). With them and `Modules`, poc's own `Poc.Mod` and
+   everything below it now type-check up to the one known obstacle, the
+   `WITH` rule in `SemanticActions.Mod` (step 3's note): `poc
+   -emit-llvm-ir` of `ModuleInterface.Mod` is clean and the other two stop
+   at exactly those 29 errors. Decisions, read from voc's `Out.Mod`/
+   `In.Mod`:
+   - **`Out` writes through `Console`** and is as unbuffered as it is, so
+     output interleaves with `Console`'s and the trap messages in the order
+     of the calls and none is lost when a program ends without an `Ln`
+     (voc's `Out` buffers 128 characters and flushes at each line end).
+     `Flush` and `Open` do nothing.
+   - **`Out.Real`/`LongReal` are voc's algorithm step for step**, so they
+     print what voc prints - 40 magnitudes at six field widths agree, on
+     x86_64 and i686 - and are not always correctly rounded (see the
+     Phase 11 table). Two things had to change to carry it over: `ENTIER`
+     gives a `LONGINT`, too narrow for the 17 digits, so the whole part is
+     cut from the bits of the number (`WholePart`); and the result is
+     written in one call, not character by character. `Hex` needs no
+     `SYSTEM.LSH`/`ROT`; a negative number gets exactly the `n` low digits
+     asked for, as in voc.
+   - **`Int` has no wrong answer for the smallest `HUGEINT`**, where voc
+     (by its source, not run) prints a fixed wrong string.
+   - **`In` reads with `getchar`**, one character ahead except at a line
+     end, as voc's does. `Real`/`LongReal` read a line, check it is
+     `[+-] digits [. digits] [E|D [+-] digits]`, and hand it to libc's
+     `strtof`/`strtod`, so the value is correctly rounded (`0.1`,
+     `1.7976931348623157E308`, `4.9E-324` and a float tie all come out
+     right, checked by their bits); voc goes through `Strings`, cuts the
+     line to 15 characters and never sets `Done`. A line that is not a
+     number leaves the variable alone and `Done` FALSE.
+   - **`In.Name` reads a word**; voc's stops the program ("Not
+     implemented"). **`In.HugeInt`** treats hexadecimal digits without an `H`
+     as an error, where voc reads them as a garbage decimal number.
+     **`In.Open`** only resets the reader: voc also seeks stdin to the
+     start, which cannot be done portably and does nothing for a pipe.
+   - **voc's own quirks met**: its `In.HugeInt` takes a `SYSTEM.INT64` -
+     a variable of type `HUGEINT` is not accepted (err 123) - so `HugeInt`
+     is tested only under poc; and voc folds a constant real expression
+     such as `1.0D0 / 3.0D0` into its C with 15 digits (the known lossy-
+     constants bug), so the shared `Out` test divides values only known at
+     run time.
+   **Testing**: `llvm-out` and `llvm-in` (run under poc and voc, output
+   equal: strings, integers in decimal and hex, 40 powers of ten and their
+   reciprocals and other reals at six widths, infinity and not-a-number;
+   `In` fed `input.txt` with numbers, hex, lines, a too-long line, a quoted
+   string, reals and single characters to the end of the input);
+   `llvm-out-extra` (poc only: the smallest `HUGEINT`, a negative field
+   width, output with no final line end, interleaving with `Console`);
+   `llvm-in-extra` (poc only: `HugeInt`, hex, `Name`, CR LF, reals read
+   exactly or refused). All four run as i686 executables in
+   `llvm-i686-runtime`, whose `check` now feeds a fixture's `input.txt` as
+   standard input. 188 pass.
 
 6. **`Strings.Mod`, `Math.Mod`, `MathL.Mod`.** The remaining Oakwood
    basic modules poc's own source doesn't itself need but the
@@ -3563,6 +3619,8 @@ as it stands when the phase starts, and adds what it finds):
 | `ModuleInterface.FormatInt` negates its argument, so a `CONST` at a `LONGINT`'s minimum prints as a bare `-` in a `.sym` (`MIN(HUGEINT)`, or `MIN(LONGINT)` under `-OC`) | Open design questions | bug, found not fixed |
 | Value-argument predeclared functions in a `CONST` (`ORD`, `ABS`, `CHR`, `CAP`, `ENTIER`, `LONG`, `SHORT`, `ODD`) - `ASH` is done | Open design questions | gap, "real, separate, future work" |
 | A computed `REAL`/`LONGREAL` constant of extreme magnitude (`MAX(LONGREAL) / 2`, `1.0D300 * 1.5`) cannot be exported to a `.sym`: `ParseReal` is not correctly rounded, so no text verifies | Phase 9 step 10 | bug, found not fixed |
+| `Out.Real`/`Out.LongReal` are voc's algorithm, not correctly rounded (a decimal exponent estimated as 77/256 of the binary one, scaling by a floating-point power of ten exact only to 10^22): the last digits of a number outside about 10^-22..10^22, or the 17th of a LONGREAL, can be off. The same shortcoming as `ParseReal`'s; one correctly rounded converter each way would close both | Phase 10 step 5 | gap, found not fixed |
+| `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | decision |
 | A constant `NEW` length <= 0: poc traps at run time, voc rejects it at compile time | `000-todo.org`; Phase 9 step 7 | decision |
 | An option to make `NEW` trap when the heap cannot satisfy it (today: the pointer is NIL) | `000-todo.org`; Phase 9 step 5 | decision + implementation |
 | `ASSERT`: add it or not, which form, and what `-a` means | Open design questions | decision (+ implementation) |

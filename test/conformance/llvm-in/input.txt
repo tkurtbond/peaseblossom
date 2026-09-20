@@ -1,0 +1,9 @@
+42 -7 1FH -1FH 2147483647 0FFH
+  hello world
+abcdefghij
+"quoted string" tail
+3.5
+-1.25E2
+0.1
+125E-1
+xy

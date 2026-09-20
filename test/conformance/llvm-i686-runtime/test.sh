@@ -30,7 +30,10 @@ check() {
   if [ -x program.i686 ]
   then
     file program.i686 | grep -q 'ELF 32-bit' || echo "$dir: NOT A 32-BIT EXECUTABLE" >>result
-    ./program.i686 "$@" >program.out 2>&1
+    # standard input is the fixture's input.txt if it has one
+    input=/dev/null
+    [ -f "../$dir/input.txt" ] && input="../$dir/input.txt"
+    ./program.i686 "$@" <"$input" >program.out 2>&1
     tail -n +2 "../$dir/expected" >want.out
     if diff -b want.out program.out >/dev/null
     then echo "$dir: same" >>result
@@ -80,4 +83,8 @@ check llvm-platform-extra platformextra.mod
 check llvm-files filestest.mod
 check llvm-files-extra filesextra.mod
 check llvm-modules modulestest.mod alpha "two words" "" 42 -7
+check llvm-out outtest.mod
+check llvm-out-extra outextra.mod
+check llvm-in intest.mod
+check llvm-in-extra inextra.mod
 . ../../testresult.sh

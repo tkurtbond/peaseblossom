@@ -1,0 +1,24 @@
+semantic OK, wrote llvm-in
+Int 42 done
+Int -7 done
+LongInt 31 done
+LongInt -31 done
+LongInt 2147483647 done
+LongInt 255 done
+rest [] done
+Line [  hello world] done
+Line [abcde] done
+rest [fghij] done
+String [quoted string] done
+rest [ tail] done
+Real 3.5E+00 done
+LongReal -1.25D+002 done
+LongReal 1.0D-001 done
+LongReal 1.25D+001 done
+Char 120 done
+Char 121 done
+Char 10 done
+Char 0 not done
+Char 0 not done
+Int after the end not done
+Line after the end not done

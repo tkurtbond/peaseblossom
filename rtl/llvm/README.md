@@ -29,6 +29,10 @@ and later fuller Oberon-2-style
   `ArgPos`. A program that contains this module gets a `main` taking argc
   and argv, which it passes to `Modules.Init` before any module body runs;
   other programs keep an argument-less `main`.
+- `Out.Mod`, `In.Mod` - the Oakwood formatted output and input, with voc's
+  interfaces. `Out` writes through `Console` (unbuffered), and prints
+  `REAL`/`LONGREAL` with voc's algorithm; `In` reads standard input with
+  `getchar` and real numbers with libc's `strtod`/`strtof`.
 - `GarbageCollectedHeap.Mod` - the collector: calloc'd chunks of 16-byte
   granules, bump allocation plus a first-fit free list, mark-sweep with
   precise heap/global tracing (type descriptors, root tables) and a

@@ -43,6 +43,10 @@ test/conformance/llvm-files-extra/llvm-files-extra
 test/conformance/llvm-files-fail/llvm-files-fail
 test/conformance/llvm-modules/llvm-modules
 test/conformance/llvm-modules-extra/llvm-modules-extra
+test/conformance/llvm-out/llvm-out
+test/conformance/llvm-out-extra/llvm-out-extra
+test/conformance/llvm-in/llvm-in
+test/conformance/llvm-in-extra/llvm-in-extra
 test/conformance/llvm-pointers/llvm-pointers
 test/conformance/llvm-pointers-multi-module/llvm-pointers-multi-module
 test/conformance/llvm-pointer-shapes/llvm-pointer-shapes

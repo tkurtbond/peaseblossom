@@ -36,3 +36,7 @@ llvm-platform-extra: same
 llvm-files: same
 llvm-files-extra: same
 llvm-modules: same
+llvm-out: same
+llvm-out-extra: same
+llvm-in: same
+llvm-in-extra: same

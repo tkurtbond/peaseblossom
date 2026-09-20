@@ -1,0 +1,8 @@
+semantic OK, wrote llvm-out-extra
+-9223372036854775808
+     -9223372036854775808|
+9223372036854775807
+12|
+one two three four
+abc
+no line end at the end
