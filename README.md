@@ -2,7 +2,7 @@
 
 This is a project to develop an Oberon-2 compiler.
 
-There are two desired outcomes: a LLVM based compiler that can be used on 32- and 64-bit computers, and another compiler with a bespoke backend that will run on VAX/VMS 5.5-2.
+There are two desired outcomes: a compiler with a LLVM based backend that can be used on 32- and 64-bit computers, and another bespoke backend that will run on VAX/VMS 5.5-2.
 
 The LLVM-based compiler should run on Linux as well as NetBSD, OpenBSD, and FreeBSD.
 
