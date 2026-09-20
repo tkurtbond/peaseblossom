@@ -698,12 +698,12 @@ MODULE Parser;
                                                typeQualifier, typeName, body, line, column);
         guardTail.next := guard; guardTail := guard
       END;
-      elseBody := NIL;
+      elseBody := NIL; hasElse := FALSE;
       IF p.current.kind = Lexer.elseKeyword THEN
-        Advance(p); elseBody := ParseStatementSeq(p)
+        Advance(p); elseBody := ParseStatementSeq(p); hasElse := TRUE
       END;
       ExpectToken(p, Lexer.endKeyword, "expected 'END'");
-      RETURN SemanticActions.NewWithStatement(guards, elseBody, line, column)
+      RETURN SemanticActions.NewWithStatement(guards, elseBody, hasElse, line, column)
     ELSIF p.current.kind = Lexer.exitKeyword THEN
       Advance(p);
       RETURN SemanticActions.NewExitStatement(line, column)

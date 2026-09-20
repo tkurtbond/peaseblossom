@@ -291,7 +291,13 @@ MODULE SyntaxTree;
 
     WithStatementNodeDesc* = RECORD (StatementNodeDesc)
       guards*: WithGuardNode;
-      elseBody*: StatementNode
+      elseBody*: StatementNode;
+      (* As CaseStatementNodeDesc.hasElse: elseBody is NIL both when there
+         is no ELSE clause and for an explicit empty "ELSE END", but only
+         the first traps at run time when no guard matches (9.11; voc's
+         OPV.Mod WITH statement gates its trap on the ELSE being present,
+         not on its body having statements). *)
+      hasElse*: BOOLEAN
     END;
 
     WithGuardNodeDesc* = RECORD (NodeDesc)

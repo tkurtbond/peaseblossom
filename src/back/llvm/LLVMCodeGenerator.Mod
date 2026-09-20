@@ -4891,7 +4891,10 @@ MODULE LLVMCodeGenerator;
       END;
       guard := guard.next
     END;
-    IF s.elseBody # NIL THEN
+    (* s.hasElse, not "s.elseBody # NIL": an explicit empty "ELSE END"
+       parses to a NIL body but must not trap (see
+       SyntaxTree.WithStatementNodeDesc.hasElse). *)
+    IF s.hasElse THEN
       GenerateStatementSeq(w, cg, s.elseBody);
       EmitBr(w, endLabel)
     ELSE

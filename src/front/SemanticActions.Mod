@@ -508,11 +508,11 @@ MODULE SemanticActions;
   END NewLoopStatement;
 
   PROCEDURE NewWithStatement*(guards: SyntaxTree.WithGuardNode;
-                              elseBody: SyntaxTree.StatementNode;
+                              elseBody: SyntaxTree.StatementNode; hasElse: BOOLEAN;
                               line, column: INTEGER): SyntaxTree.WithStatementNode;
     VAR s: SyntaxTree.WithStatementNode;
   BEGIN
-    NEW(s); s.guards := guards; s.elseBody := elseBody; s.next := NIL;
+    NEW(s); s.guards := guards; s.elseBody := elseBody; s.hasElse := hasElse; s.next := NIL;
     s.line := line; s.column := column;
     RETURN s
   END NewWithStatement;
