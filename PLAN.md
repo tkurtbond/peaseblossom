@@ -4064,7 +4064,10 @@ as it stands when the phase starts, and adds what it finds):
 | `Out.Real`/`Out.LongReal` are voc's algorithm, not correctly rounded (a decimal exponent estimated as 77/256 of the binary one, scaling by a floating-point power of ten exact only to 10^22): the last digits of a number outside about 10^-22..10^22, or the 17th of a LONGREAL, can be off. The same shortcoming as `ParseReal`'s; one correctly rounded converter each way would close both | Phase 10 step 5 | gap, found not fixed |
 | `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | decision |
 | A call of a nested procedure is emitted as `; unsupported: call target is not a plain procedure` and the build succeeds, with the call missing: make it an error, or lower it (static link) | Phase 10 step 6 | bug (silent), decision |
-| ~~`SYSTEM.INT8..INT64`/`SET32` are aliases of the `-O2` types~~ - **INT8..INT64 done 2026-09-20** (fixed-width, the runtime's C `int`s moved to `INT32`, the self-hosted poc runs on 32-bit; see "Fixed-width `SYSTEM.INT8..INT64`" under Phase 10 step 8). Left: `SET32` is `SET` (the `-O2` width) and there is no `SET64`; `LONG`/`SHORT` of an `INTn`; an `INT8` with an integer literal under `-OC` | Phase 10 step 7 | gap, decision |
+| `LONG`/`SHORT` reject `SYSTEM.INT8..INT64` ("requires a SHORTINT, INTEGER, or REAL argument"); voc's go by size along the model's chain (`OPT.ShorterOrLongerType`) | Phase 10 step 8 (fixed-width `INTn`, 2026-09-20) | gap |
+| Under `-OC` an `INT8` met by an integer literal in an expression (`b + 1`) is a `SHORTINT` - the literal's own type is at least two bytes there - and cannot be assigned back to an `INT8` without `SYSTEM.VAL` | Phase 10 step 8 (fixed-width `INTn`) | gap, decision |
+| `SYSTEM.SET32` is `SET` (the `-O2` width, 64 bits under `-OC`) and there is no `SET64`: the fixed-width sets `INT8..INT64` got | Phase 10 step 8 (fixed-width `INTn`); `000-todo.org` | gap, decision (with `HUGESET`) |
+| `LONGINT` is included in `SYSTEM.ADDRESS` by rank, so on a 32-bit target under `-OC` a mixed `ADDRESS`/`LONGINT` operation is done at the address's 32 bits and truncates the 64-bit operand: `size <= MAX(LONGINT)` in `Files.Old` compared against -1 and no file opened (worked around there, not fixed) | Phase 10 step 8 (fixed-width `INTn`) | bug, found not fixed |
 | `SYSTEM.PTR` cannot be dereferenced, guarded, `IS`-tested or a `WITH` variable (voc allows some); a guard followed by an index, or to a pointer-to-array type, is unsupported in the backend | Phase 10 step 7 | decision, gap |
 | `BIT`'s word-based meaning (voc's) differs from the report's `Mem[a]` bit; `SYSTEM.NEW` blocks are untraced by the collector | Phase 10 step 7 | decision |
 | A constant `NEW` length <= 0: poc traps at run time, voc rejects it at compile time | `000-todo.org`; Phase 9 step 7 | decision |
@@ -4125,6 +4128,38 @@ as it stands when the phase starts, and adds what it finds):
      apply the function's own value transform. Probe voc for each one - which
      it folds, and what it rejects (`CHR` of a value out of range, `ENTIER`
      of a value that does not fit) - and match it.
+   - *`LONGINT` included in `SYSTEM.ADDRESS`, at a width it does not fit.*
+     `Types.Order` puts `ADDRESS` between `LONGINT` and `HUGEINT` by rank,
+     whatever the target: right when both are 32 bits or `ADDRESS` is 64, wrong
+     on a 32-bit target under `-OC`, where `LONGINT` is 64 bits and a mixed
+     comparison or arithmetic operation is emitted at `i32`, truncating it
+     (`AGENTS.md`: "a `LONGINT` can be assigned to an address"). The fixture
+     that fails first is a program built with `-OC -target i686-...` that
+     compares an `ADDRESS` with `MAX(LONGINT)`; `llvm-i686-runtime`'s
+     `i686_can_run`/`i686_triple` run it for real where a 32-bit runtime
+     exists, and the IR is golden-checkable everywhere. Two ways out, decide
+     between them: place `ADDRESS` by its actual byte width the way `INTn`
+     are (`Types` would learn the word size as it learned the size model, via
+     `ConstantEvaluator.SetWordSize`; but then a `LONGINT` is no longer
+     assignable to an `ADDRESS` on that target, and the runtime's few uses need
+     `SYSTEM.VAL`), or keep the hierarchy for assignment and do a mixed
+     *operation* at the wider actual width. Either way sweep `rtl/llvm` for
+     the same shape (only `Files.Old` was found, by grepping `MAX(LONGINT)`;
+     `Files.Mod` compares through `SYSTEM.VAL(HUGEINT, ...)` meanwhile).
+   - *`LONG` and `SHORT` of `SYSTEM.INT8..INT64`.* voc's rule (read in
+     `OPT.ShorterOrLongerType`, 2026-09-20; probe it before relying on this
+     summary) goes by *size along the size model's own chain*: `LONG(x)` of
+     an integer is the narrowest of `SHORTINT`/`INTEGER`/`LONGINT` strictly
+     wider than `x`, else `INT64`; `SHORT(x)` the widest strictly narrower,
+     else `INT8`. So `LONG(INT32)` is a `LONGINT` under `-OC` and an `INT64`
+     under `-O2`, and the result is a model type, not an `INTn` of the next
+     width. poc's `CheckLong`/`CheckShort` (`PredeclaredProcedures.Mod`) and
+     `GenerateLong`/`GenerateShort` (`LLVMCodeGenerator.Mod`) identify their
+     operand by type identity (`SHORTINT`, `INTEGER`, `LONGINT`, `REAL`
+     only) and refuse anything else, so both grow a size-driven branch for a
+     fixed-width operand; the two `LONG(i)`/`SHORT(q)` rows of
+     `semantic-system-fixed-width` record the current refusal and change with
+     it.
    - Close the two "revisit opportunistically" notes by decision, not by
      work: the guard-then-selector workarounds in `Types.Mod`,
      `MemoryLayout.Mod` and `SemanticActions.Mod` stay as written (they
@@ -4136,6 +4171,19 @@ as it stands when the phase starts, and adds what it finds):
 3. **Run-time semantics.** Each of these is a place the report is silent
    and voc chose something; the step probes voc, writes down what it does
    and what poc does, and decides.
+   - *An integer literal next to a `SYSTEM.INT8`, under `-OC`.* A constant's
+     type is the minimal one its value fits *under the size model*, which under
+     `-OC` is never narrower than `SHORTINT`'s two bytes, so `b + 1` for an
+     `INT8` `b` is a `SHORTINT` and `b := b + 1` is refused (a constant *by
+     itself* is already assignable to an `INTn` if its value fits, via
+     `Types.FixedIntFits`). Probe voc: how does it type a constant met by a
+     narrower operand, and does `b := b + 1` compile there under `-OC`? The
+     likely rule to adopt is that a constant operand takes the other operand's
+     fixed-width type when its value fits it. It has to be applied in two
+     places that each pick the operation's type from `Types.WiderOf` on types
+     alone - `SemanticActions.CheckBinaryExpr` and `LLVMCodeGenerator.
+     GenerateBinaryNumeric`/`GenerateRelational` (whose callers, unlike they,
+     hold the expression node to test for constness) - or the two disagree.
    - *A constant `NEW` length <= 0.* voc rejects it at compile time
      ("illegal value of constant"); poc's `NEW` traps at run time (exit 7)
      for any non-positive length. Default to matching voc - reject a
@@ -4244,6 +4292,10 @@ as it stands when the phase starts, and adds what it finds):
      `HUGEINT` on every model is wanted is answered from voc's own answer,
      `SYSTEM.SET32`/`SYSTEM.SET64` (voc's; step 7 made `SET32` an alias of
      `SET` and has no `SET64`), which if sufficient means no new predeclared name.
+     If so, make them real fixed-width types the way `SYSTEM.INT8..INT64`
+     became (Phase 10 step 8: `fixedBytes`, `MemoryLayout`/`LLVMTypes` sizes,
+     inclusion by width, `MAX(SET32)`), rather than an alias of `SET`, which is
+     32 bits under `-O2` and 64 under `-OC`; `SET32` is then 32 bits under both.
    - *Initializers on `VAR` declarations.* Decide the syntax and its
      reach: module variables and locals; scalars only or any type; whether
      an exported variable may carry one; how it interacts with the NIL
