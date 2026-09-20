@@ -1,7 +1,7 @@
 * Things to be done while getting the compile working..
-** DONE Implement constant folding on integer literals.
-Phase 9 step 10 (2026-09-19): a constant integer expression - in a CONST or in a statement - is folded in 64 bits to the minimal type its value fits (2 * 100 + 2 * 10 is the INTEGER 220, MAX(SHORTINT) + 1 an INTEGER, -128 a SHORTINT); overflow past HUGEINT is a compile error, as in voc. Also CONST ASH and CONST MAX/MIN of REAL/LONGREAL. See PLAN.md's step 10 account.
 ** TODO Pragmas so that Math.Mod and MathL.Mod can specify -lm.  Does voc have anything like that?
+** TODO Implement HUGEINT arithmetic on 32 bits.
+** TODO Implement HUGEINT arithmetic on VAX/VMS.  (Use LIB$ and OTS$ routines?)
 ** TODO check that everything that should raise underflow or overflow does.
 ** TODO Better error messsages than voc's Halt(99).
 In general, it's better to report an error message with a string rather than a number.
@@ -12,6 +12,8 @@ In general, it's better to report an error message with a string rather than a n
 ** TODO Add command line option to poc to have NEW on an exhaused heap trap.
 ** TODO Can poc garbage collection do better than conservatively scanning the stack?
 ** TODO Add debugging support, so one can debug poc produced code in gdb or lldb.
+** DONE Implement constant folding on integer literals.
+Phase 9 step 10 (2026-09-19): a constant integer expression - in a CONST or in a statement - is folded in 64 bits to the minimal type its value fits (2 * 100 + 2 * 10 is the INTEGER 220, MAX(SHORTINT) + 1 an INTEGER, -128 a SHORTINT); overflow past HUGEINT is a compile error, as in voc. Also CONST ASH and CONST MAX/MIN of REAL/LONGREAL. See PLAN.md's step 10 account.
 ** DONE voc has command line options for setting machine address size and alignment.  Figure out if poc needs them too.
  Target machine address size and alignment (default is that of the running compiler binary)
     -A44   32 bit addresses, 32 bit alignment (e.g. Unix/linux 32 bit on x86).
