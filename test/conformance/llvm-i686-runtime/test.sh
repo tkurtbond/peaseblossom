@@ -17,9 +17,11 @@ here=$PWD
 triple=i686-unknown-linux-gnu
 : >result
 
-# name of a sibling fixture, its main source file
+# name of a sibling fixture, its main source file, the arguments it is
+# started with
 check() {
   dir=$1; src=$2
+  shift 2
   # the sibling's own directory, so its library modules are found; every
   # generated file goes to this fixture's directory instead
   ( cd "../$dir" &&
@@ -28,7 +30,7 @@ check() {
   if [ -x program.i686 ]
   then
     file program.i686 | grep -q 'ELF 32-bit' || echo "$dir: NOT A 32-BIT EXECUTABLE" >>result
-    ./program.i686 >program.out 2>&1
+    ./program.i686 "$@" >program.out 2>&1
     tail -n +2 "../$dir/expected" >want.out
     if diff -b want.out program.out >/dev/null
     then echo "$dir: same" >>result
@@ -77,4 +79,5 @@ check llvm-console-extra consoleextra.mod
 check llvm-platform-extra platformextra.mod
 check llvm-files filestest.mod
 check llvm-files-extra filesextra.mod
+check llvm-modules modulestest.mod alpha "two words" "" 42 -7
 . ../../testresult.sh

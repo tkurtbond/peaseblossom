@@ -5723,11 +5723,12 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w: Files.Rider);
     VAR
-      cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap: BOOLEAN;
+      cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments: BOOLEAN;
       wordInt: ValueText;
   BEGIN
     withRootTables := HasModuleNamed(modules, "ModuleTable");
     withHeap := HasModuleNamed(modules, "GarbageCollectedHeap");
+    withArguments := HasModuleNamed(modules, "Modules");
     cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
     cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL;
     cg.declaredExternals := NIL; cg.tdescs := NIL;
@@ -5795,8 +5796,27 @@ MODULE LLVMCodeGenerator;
       WriteLn(w);
       m := m.next
     END;
-    WriteStr(w, "define i32 @main() {"); WriteLn(w);
+    (* A program that contains rtl/llvm/Modules.Mod gets the command line:
+       main takes argc and argv, and hands both to Modules.Init - as
+       words, the way every ADDRESS travels - before any module body runs,
+       since a body may read them. Any other program keeps the
+       argument-less main. *)
+    IF withArguments THEN WriteStr(w, "define i32 @main(i32 %argc, ptr %argv) {")
+    ELSE WriteStr(w, "define i32 @main() {")
+    END;
+    WriteLn(w);
     EmitEntryLabel(w, cg);
+    IF withArguments THEN
+      WordIntType(wordInt);
+      IF wordInt = "i32" THEN
+        WriteStr(w, "  %argcword = add i32 %argc, 0"); WriteLn(w)
+      ELSE
+        WriteStr(w, "  %argcword = sext i32 %argc to "); WriteStr(w, wordInt); WriteLn(w)
+      END;
+      WriteStr(w, "  %argvword = ptrtoint ptr %argv to "); WriteStr(w, wordInt); WriteLn(w);
+      WriteStr(w, "  call void @Modules.Init("); WriteStr(w, wordInt);
+      WriteStr(w, " %argcword, "); WriteStr(w, wordInt); WriteStr(w, " %argvword)"); WriteLn(w)
+    END;
     IF withHeap THEN
       (* the outermost frame anything can live in: the collector scans the
          stack from its own frame up to here *)

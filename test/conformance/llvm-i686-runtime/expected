@@ -35,3 +35,4 @@ llvm-console-extra: same
 llvm-platform-extra: same
 llvm-files: same
 llvm-files-extra: same
+llvm-modules: same

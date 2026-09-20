@@ -41,6 +41,8 @@ test/conformance/llvm-platform-extra/llvm-platform-extra
 test/conformance/llvm-files/llvm-files
 test/conformance/llvm-files-extra/llvm-files-extra
 test/conformance/llvm-files-fail/llvm-files-fail
+test/conformance/llvm-modules/llvm-modules
+test/conformance/llvm-modules-extra/llvm-modules-extra
 test/conformance/llvm-pointers/llvm-pointers
 test/conformance/llvm-pointers-multi-module/llvm-pointers-multi-module
 test/conformance/llvm-pointer-shapes/llvm-pointer-shapes

@@ -3334,6 +3334,34 @@ work already being in place.
    semantics here too.
    **Testing**: a fixture that echoes its own `ArgCount`/`GetArg` values
    back, run with a fixed, known argument list from `test.sh`.
+   **Implemented (2026-09-20)**: `rtl/llvm/Modules.Mod` has `ArgCount-`,
+   `GetArg`, and from voc's module also `ArgVector-`, `GetIntArg` and
+   `ArgPos` (the same kind of thing, a few lines each). Not brought over:
+   voc's module list and command loading (`ThisMod`, `ThisCommand`,
+   `Free`), `BinaryDir` and `MainStackFrame`. The piece that was not just a
+   library module: **the program's `main` had no arguments**, so there was
+   nothing to read. `LLVMCodeGenerator.GenerateProgram` now emits `define
+   i32 @main(i32 %argc, ptr %argv)` for a program that contains a module
+   named `Modules`, and its first act is `Modules.Init(argc, argv)` (both
+   as words, sign-extended on a 64-bit target), before any module body, the
+   same pattern as the collector's stack base. A program without `Modules`
+   keeps the argument-less `main`, so no other IR changes. (A user module
+   that is itself called `Modules` would get the call too - the same hazard
+   as `GarbageCollectedHeap`.) Decisions:
+   - **`GetArg` out of range gives `""`**; voc leaves the value as it was,
+     so a caller that ignores `ArgCount` reads the previous argument again.
+   - **The address of argument `n` is computed in `LONGINT`**: `n *
+     SIZE(SYSTEM.ADDRESS)` in `INTEGER` arithmetic wraps at 4096 arguments
+     under the 16-bit `-O2` model, and a command line may hold more (voc's C
+     promotes to `int`, so presumably it does not have the problem).
+   **Testing**: `llvm-modules` (10 checks and a listing, run under poc and
+   voc with the arguments `alpha "two words" "" 42 -7`, output equal;
+   argument 0, the program's name, is only checked to be there);
+   `llvm-modules-extra` (poc only: out-of-range numbers, a 3000-character
+   argument, cut to 15 characters or read whole); `llvm-modules-ir` (golden
+   `main` for x86_64 and i686); `llvm-modules` also runs as an i686
+   executable in `llvm-i686-runtime`, whose `check` now takes the
+   arguments to start a program with. 184 pass.
 
 5. **`Out.Mod`/`In.Mod` (Oakwood's own basic pair).** `Out.Char`/
    `Out.Int`/`Out.Ln`/`Out.String` at minimum (exactly poc's own

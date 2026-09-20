@@ -25,6 +25,10 @@ and later fuller Oberon-2-style
   Linux and the BSDs. A new file is a temporary one until `Register`.
   Needs `NEW`, so the collector modules below are added to any program
   that imports it.
+- `Modules.Mod` - the command line: `ArgCount`, `GetArg`, `GetIntArg`,
+  `ArgPos`. A program that contains this module gets a `main` taking argc
+  and argv, which it passes to `Modules.Init` before any module body runs;
+  other programs keep an argument-less `main`.
 - `GarbageCollectedHeap.Mod` - the collector: calloc'd chunks of 16-byte
   granules, bump allocation plus a first-fit free list, mark-sweep with
   precise heap/global tracing (type descriptors, root tables) and a
