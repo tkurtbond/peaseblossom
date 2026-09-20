@@ -274,7 +274,13 @@ MODULE LLVMCodeGenerator;
        only "llvmType" is left). *)
     Value = RECORD
       text: ValueText;
-      llvmType: ValueText;
+      (* LongText, not ValueText: llvmType can be a whole record's own
+         struct type string (LLVMTypes.TypeString), which - unlike an SSA
+         register name or a symbol - has no natural short bound; see
+         LLVMTypes.typeStringLength's own comment for the real repro
+         that found this (poc's own Parser record) too big for
+         ValueText's 64 characters. *)
+      llvmType: LongText;
       oberonType: Types.Type
     END;
 
@@ -1252,7 +1258,7 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE StoreAtAddress(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; addrType: Types.Type;
                            v: Value);
-    VAR ev: Value; targetLLVMType: ValueText;
+    VAR ev: Value; targetLLVMType: LongText;
   BEGIN
     IF Types.IsInteger(addrType) OR IsRealType(addrType) OR (addrType = Types.Byte) THEN
       ExtendTo(w, cg, v, addrType, ev)
@@ -2284,7 +2290,7 @@ MODULE LLVMCodeGenerator;
      procedure is called through GenerateMethodCall, never addressed). *)
   PROCEDURE GenerateFieldAddress(VAR w: Files.Rider; VAR cg: Codegen; VAR addrText: ValueText;
                                  VAR addrType: Types.Type; name: SyntaxTree.Ident): BOOLEAN;
-    VAR rec, owner, current: Types.RecordType; field: Types.Field; pointeeType: ARRAY 256 OF CHAR; idxText: ValueText;
+    VAR rec, owner, current: Types.RecordType; field: Types.Field; pointeeType: LongText; idxText: ValueText;
         position: INTEGER;
   BEGIN
     IF (addrType = NIL) OR ~(addrType IS Types.RecordType) THEN RETURN FALSE END;
@@ -2334,7 +2340,7 @@ MODULE LLVMCodeGenerator;
     VAR
       obj: SymbolTable.Object; sel: SyntaxTree.Selector; idx: SyntaxTree.ExprNode;
       arr: Types.ArrayType; idxVal, loaded: Value;
-      pointeeType: ARRAY 256 OF CHAR; homeModule: SyntaxTree.Ident;
+      pointeeType: LongText; homeModule: SyntaxTree.Ident;
       guardObj: SymbolTable.Object; guardHome: SyntaxTree.Ident; guardRec: Types.RecordType;
       binding: LocalBinding; wasPointer: BOOLEAN;
       wordInt, strideText, idxWord, offsetText: ValueText; level: INTEGER;
@@ -2596,7 +2602,7 @@ MODULE LLVMCodeGenerator;
      rule 6), which mean the same thing. *)
   PROCEDURE EmitStringStores(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR;
                              arr: Types.ArrayType; text: ARRAY OF CHAR);
-    VAR copyLen, i: LONGINT; pointeeType: ARRAY 256 OF CHAR; idxText, byteText, gepText: ValueText;
+    VAR copyLen, i: LONGINT; pointeeType: LongText; idxText, byteText, gepText: ValueText;
   BEGIN
     copyLen := StrLen(text);
     IF copyLen > arr.length - 1 THEN copyLen := arr.length - 1 END;
@@ -2631,7 +2637,7 @@ MODULE LLVMCodeGenerator;
      imported from a .sym is a different Types.RecordType from the one its
      own module built. *)
   PROCEDURE NarrowRecordValue(VAR w: Files.Rider; VAR cg: Codegen; target: Types.Type; VAR v: Value);
-    VAR targetText, currentText: ARRAY 256 OF CHAR; rec: Types.RecordType; narrowed: ValueText; base: Types.Type;
+    VAR targetText, currentText: LongText; rec: Types.RecordType; narrowed: ValueText; base: Types.Type;
   BEGIN
     LLVMTypes.TypeString(target, cg.sizeModel, targetText);
     LOOP
@@ -2962,7 +2968,7 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE GenerateExternalCall(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
                                  args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR pt: Types.ProcedureType; retType, destTemp: ValueText; argsText: LongText;
+    VAR pt: Types.ProcedureType; retType: LongText; destTemp: ValueText; argsText: LongText;
   BEGIN
     pt := obj.type(Types.ProcedureType);
     IF pt.resultType = NIL THEN
@@ -2993,7 +2999,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE GenerateOrdinaryCall(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
                                  homeModule: SyntaxTree.Ident;
                                  args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR pt: Types.ProcedureType; retType, destTemp, fnSymbol: ValueText; argsText: LongText;
+    VAR pt: Types.ProcedureType; retType: LongText; destTemp, fnSymbol: ValueText; argsText: LongText;
   BEGIN
     pt := obj.type(Types.ProcedureType);
     QualifiedName(homeModule, obj.name, fnSymbol);
@@ -3025,7 +3031,7 @@ MODULE LLVMCodeGenerator;
      arguments. *)
   PROCEDURE GenerateProcedureValueCall(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                                        args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR callee: Value; pt: Types.ProcedureType; retType, destTemp: ValueText; argsText: LongText;
+    VAR callee: Value; pt: Types.ProcedureType; retType: LongText; destTemp: ValueText; argsText: LongText;
   BEGIN
     GenerateDesignatorValue(w, cg, d, callee);
     IF (callee.oberonType = NIL) OR ~(callee.oberonType IS Types.ProcedureType) THEN
@@ -3113,7 +3119,7 @@ MODULE LLVMCodeGenerator;
                                args: SyntaxTree.ExprNode; nameSelector: SyntaxTree.Selector; baseCall: BOOLEAN;
                                rec: Types.RecordType; method: Types.Method; VAR result: Value);
     VAR
-      addrText, tag, slotAddr, slotBytes, wordBytes, callee, destTemp, retType: ValueText;
+      addrText, tag, slotAddr, slotBytes, wordBytes, callee, destTemp: ValueText; retType: LongText;
       addrType: Types.Type; dyn: DynamicType; called: Types.Method; owner, baseRec: Types.RecordType;
       slot: INTEGER; symbol: LongText; argsText, receiverText: LongText;
       nameNode: SyntaxTree.FieldSelector; indirect: BOOLEAN;
@@ -3979,8 +3985,8 @@ MODULE LLVMCodeGenerator;
   PROCEDURE GenerateNew(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
       de: SyntaxTree.DesignatorExprNode; t, base: Types.Type; ptr: Types.PointerType;
-      rec: Types.RecordType; arr: Types.ArrayType; addrText, wordInt, sizeText, tagText, allocated,
-      pointer: ValueText; longTag: LongText; addrType: Types.Type;
+      rec: Types.RecordType; arr: Types.ArrayType; addrText, wordInt, sizeText, allocated,
+      pointer: ValueText; longTag, tagText: LongText; addrType: Types.Type;
   BEGIN
     result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
     IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
@@ -4694,7 +4700,7 @@ MODULE LLVMCodeGenerator;
      (GenerateProcedureDecl's own trailing return), not treated as an
      error here either. *)
   PROCEDURE GenerateReturnStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.ReturnStatementNode);
-    VAR deadLabel, retType: ValueText; v, ev: Value;
+    VAR deadLabel: ValueText; retType: LongText; v, ev: Value;
   BEGIN
     IF cg.currentProcResultType = NIL THEN
       WriteStr(w, "  ret void"); WriteLn(w)
@@ -4822,7 +4828,7 @@ MODULE LLVMCodeGenerator;
   END MarkDeclaredExternal;
 
   PROCEDURE EmitGlobals(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
-    VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object; llvmType: ValueText;
+    VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object; llvmType: LongText;
   BEGIN
     IF module.declarations # NIL THEN
       vd := module.declarations.varDecls;
@@ -4853,7 +4859,7 @@ MODULE LLVMCodeGenerator;
      header comment). *)
   PROCEDURE EmitExternalDeclares(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
     VAR pd: SyntaxTree.ProcDeclNode; obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param;
-        retType, paramType: ValueText; first: BOOLEAN;
+        retType, paramType: LongText; first: BOOLEAN;
   BEGIN
     IF module.declarations = NIL THEN RETURN END;
     pd := module.declarations.procDecls;
@@ -5443,7 +5449,7 @@ MODULE LLVMCodeGenerator;
      "define ... { entry:" instead of "declare ...;". *)
   PROCEDURE EmitProcSignature(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
                               receiver: SyntaxTree.ReceiverNode);
-    VAR retType, paramType, wordInt: ValueText; p: Types.Param; first: BOOLEAN; dim: INTEGER;
+    VAR retType, paramType: LongText; wordInt: ValueText; p: Types.Param; first: BOOLEAN; dim: INTEGER;
   BEGIN
     WordIntType(wordInt);
     IF pt.resultType = NIL THEN COPY("void", retType)
@@ -5491,7 +5497,7 @@ MODULE LLVMCodeGenerator;
      while generating this procedure's body. *)
   PROCEDURE BindFormalParams(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType);
     VAR
-      p: Types.Param; obj: SymbolTable.Object; llvmType: ValueText; argName, tagName, addrText: ValueText;
+      p: Types.Param; obj: SymbolTable.Object; llvmType: LongText; argName, tagName, addrText: ValueText;
       wordInt, bytes, copied: ValueText; dope: DopeVector; dim: INTEGER;
   BEGIN
     p := pt.params;
@@ -5572,7 +5578,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE BindLocalVars(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
                           declarations: SyntaxTree.DeclSeqNode);
     VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
-        llvmType, addrText: ValueText;
+        llvmType: LongText; addrText: ValueText;
   BEGIN
     IF declarations = NIL THEN RETURN END;
     vd := declarations.varDecls;
@@ -5626,7 +5632,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE GenerateProcedureBody(VAR w: Files.Rider; VAR cg: Codegen; moduleScope: SymbolTable.Scope;
                                   pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
                                   receiverType: Types.Type);
-    VAR bodyScope, savedScope: SymbolTable.Scope; retType: ValueText;
+    VAR bodyScope, savedScope: SymbolTable.Scope; retType: LongText;
   BEGIN
     EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver);
     bodyScope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, receiverType, pt);

@@ -3370,11 +3370,74 @@ work already being in place.
    itself through `poc -check -OC` (not just `-emit-interface`, so every
    procedure body is checked, not just signatures) - all clean, zero
    errors. `Poc.Mod` compiling clean under its own checker is real
-   evidence Stage 1 *type-checking* is unblocked; actually building an
-   executable (`-build`/`-emit-llvm-ir` end to end, then the Stage 1 vs.
-   Stage 2 fixed point this step's own testing plan calls for) is
-   untried past this point and may still surface real codegen bugs
-   `-check` alone cannot catch. `make test` (198) stays clean throughout.
+   evidence Stage 1 *type-checking* is unblocked.
+
+   **A real `poc -build`/`-emit-llvm-ir` attempt on the whole program found
+   two genuine codegen bugs, both the same class, both fixed (2026-09-20).**
+   `poc -build src/driver/Poc.Mod` (whole program, `-OC`) crashed `poc`
+   itself with an opaque `Terminated by Halt(-2). Index out of range.` -
+   poc's own array-bounds check, working as designed, catching an
+   out-of-bounds write rather than corrupting memory, but with no stack
+   trace to say where. Isolated with temporary `Out.String` progress
+   prints in `GenerateProcedureDecl` (rebuilt via Stage 0 after each
+   change) plus bisection on scratch copies of the real source (neuter a
+   suspect procedure's body down to nothing, confirm the crash disappears,
+   restore statements one at a time) - the standard technique this session
+   used earlier for the `WITH`-guard bug, reapplied here twice:
+   - **`LLVMTypes.TypeString`'s recursive struct-type-string builder had no
+     bounds check** against its `VAR result: ARRAY OF CHAR` destination -
+     fine for every fixture built so far (all short, hand-written test
+     programs), but poc's own `Parser` record (`src/front/Parser.Mod`) -
+     an ordinary three-field record, nothing exotic - built a struct type
+     string over 64 characters once nested, overflowing the 64-character
+     `ValueText` buffer essentially every call site passed. Minimal repro:
+     a `VAR` parameter of a record type containing a nested pointer-
+     bearing sub-record, a plain non-pointer middle field, and a second
+     direct pointer field, with a same-typed local declared - `/tmp/wgtest`
+     and `/tmp/recbug`'s `rb4`..`rb12` narrowed this down live. Fixed: a
+     new `LLVMTypes.typeStringLength*` (799, comfortably larger than any
+     record type this project's own source produces - see its own header
+     comment for the full account) replaces the internal 256-character
+     buffers in `RecordTypeString`/`ArrayTypeString`, and `Value.llvmType`
+     plus every other `LLVMCodeGenerator.Mod` local/field that receives an
+     arbitrary (not hardcoded-basic) type's string - `EmitGlobals`,
+     `BindLocalVars`, `BindFormalParams`, `ParamLLVMType`, pointer-
+     dereference/guard/narrowing sites, function-result-type sites - moved
+     from `ValueText` (64) to the existing `LongText` (800). Purely
+     numeric-only sites (`GenerateDivMod`, relational ops, `SHORT`/`ASH`,
+     `SET` operations, `CASE` label widening) were left alone: Appendix A
+     restricts those operators to basic types, so a record type can never
+     reach them - confirmed by reasoning about the report's own rules, not
+     assumed.
+   - **A second, different instance same class, found by pushing on past
+     the first fix**: `GenerateNew`'s own `tagText: ValueText` wraps the
+     already-`LongText`-sized `longTag` (a type's full `ptrtoint (ptr
+     @Module.Type.tag to iN)` operand) in a second buffer sized like the
+     first bug's - safe for any external test fixture's short module name,
+     but `LLVMCodeGenerator.Mod` compiling *itself* embeds its own 18-
+     character module name in every symbol it generates for its own
+     types, pushing `NEW` of one of its own record types (`DeclaredExternal
+     Desc`, found processing `MarkDeclaredExternal`) over 64 characters.
+     Fixed the same way: `tagText` moved to `LongText`. `QualifiedName`/
+     `ModuleQualifiedName` use the identical pattern but were checked and
+     left alone - poc's own longest procedure name (`InitImportPath
+     FromEnvironment`, 29 characters) plus its longest module name
+     (`LLVMToolchainDriver`, 19) stays well under 64, confirmed by grepping
+     every declared procedure name in the project, not assumed safe.
+     `make test` (198) clean after each fix; both verified by re-running
+     the exact triggering `-emit-llvm-ir` command on the real file.
+
+   Past both fixes, `poc -build` on the whole program gets measurably
+   further: `poc` itself no longer crashes, and `clang` now rejects the
+   generated `Poc.ll` outright - `%t26751 = call ptr
+   @SemanticActions.NewQualidentType([256 x i8] 0, [256 x i8] 0, i32
+   %t26749, i32 %t26750)`, an integer literal `0` where an `[256 x i8]`
+   array constant belongs. A third, different, not-yet-investigated bug:
+   passing an empty string literal ("") as a value `ARRAY OF CHAR`
+   argument emits invalid IR instead of a real zero-filled array constant
+   - not yet isolated to a specific procedure. `make test` (198) unaffected
+   (no existing fixture happens to pass an empty string literal to a value
+   array parameter this way).
 
    **BSD-verified (2026-09-20), and a real, NetBSD-only bug found and
    fixed along the way.** All 23 of Phase 10 steps 1-7's runnable rtl

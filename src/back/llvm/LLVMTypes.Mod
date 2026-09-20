@@ -59,6 +59,28 @@ MODULE LLVMTypes;
 
   IMPORT SyntaxTree, Types, MemoryLayout, ConstantEvaluator;
 
+  CONST
+    (* Found 2026-09-20 (PLAN.md Phase 10 step 8, self-hosting): poc's own
+       Parser record (src/front/Parser.Mod) - a scanner, a token and an
+       alias list, three plain fields, none of them individually large -
+       still produces a struct type string over 64 characters once
+       nested and concatenated ("{ { ptr, i32, i32 }, { i32, i32, i32,
+       [256 x i8], i8, i8 }, ptr }"), overflowing the 64-character buffer
+       every call site used to pass, an out-of-bounds write poc's own
+       index-range check (on by default) caught as an opaque "Index out
+       of range" halt rather than silent corruption - but a real record
+       this ordinary should never have hit any fixed ceiling at all.
+       Every recursive buffer in this module (elem/fieldStr below, and
+       every caller's own result buffer in LLVMCodeGenerator.Mod) now
+       uses this size, comfortably larger than any record type this
+       project's own source produces - not a fully general fix (a
+       pathological enough record could still exceed it, still safely
+       caught by the same index-range check, never silently), but this
+       module intentionally builds a type's whole string as one piece
+       rather than streaming it (TypeString*'s own header comment), so
+       *some* fixed ceiling is inherent to that design either way. *)
+    typeStringLength* = 799;
+
   PROCEDURE ^ TypeString*(t: Types.Type; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
 
   PROCEDURE Strcat(VAR s: ARRAY OF CHAR; suffix: ARRAY OF CHAR);
@@ -139,7 +161,7 @@ MODULE LLVMTypes;
   END BasicTypeString;
 
   PROCEDURE ArrayTypeString(arr: Types.ArrayType; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
-    VAR elem: ARRAY 256 OF CHAR;
+    VAR elem: ARRAY typeStringLength OF CHAR;
   BEGIN
     IF arr.isOpen THEN COPY("<unsupported>", result); RETURN END;
     TypeString(arr.elementType, sizeModel, elem);
@@ -162,7 +184,7 @@ MODULE LLVMTypes;
      what LLVM's own datalayout-driven layout gives the very same struct
      type. *)
   PROCEDURE RecordTypeString(rec: Types.RecordType; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
-    VAR f: Types.Field; fieldStr: ARRAY 256 OF CHAR; first: BOOLEAN;
+    VAR f: Types.Field; fieldStr: ARRAY typeStringLength OF CHAR; first: BOOLEAN;
   BEGIN
     first := TRUE;
     COPY("{ ", result);
