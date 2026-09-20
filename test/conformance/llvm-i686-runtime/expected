@@ -40,3 +40,8 @@ llvm-out: same
 llvm-out-extra: same
 llvm-in: same
 llvm-in-extra: same
+llvm-strings: same
+llvm-strings-extra: same
+llvm-math: same
+llvm-mathl: same
+llvm-math-extra: same

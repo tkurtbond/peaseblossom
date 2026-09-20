@@ -1,0 +1,73 @@
+semantic OK, wrote llvm-strings-extra
+[abXYZ]
+!
+[adebc]
+!
+[Xabcd]
+!
+[abcde]
+!
+[abcde]
+!
+[cdefg]
+!
+[abc]
+!
+[a1234]
+!
+[bcde]
+abcdef
+[abcXY]
+[aXYdef]
+[abcdXY]
+[abcZ]
+[cdef]
+[abcdef]
+[abcdef]
+[a]
+[]
+[ab]
+0
+5
+0
+6
+QQQQQQz
+0
+-1
+-1
+32767
+32767
+aab *ab yes
+ababab *abab yes
+mississippi m*iss*ppi yes
+mississippi m*iss*ppx no
+mississippi *ss*ss* yes
+mississippi *ss*ss*ss* no
+ *** yes
+a *** yes
+abc abc* yes
+abc *abcd no
+a*c a*c yes
+axxxxb a*b* yes
+4591870180066957722
+9218868437227405311
+1
+5042042089369253694
+4503599627370496
+1036831949
+4634802150889750528
+-4588569885965025280
+4607182418800017408
+4609434218613702656
+4654311885213007872
+4602678819172646912
+4617315517961601024
+4647503709213818880
+4607182418800017408
+0
+0
+0
+0
+0
+4631107791820423168
+7.00E+00

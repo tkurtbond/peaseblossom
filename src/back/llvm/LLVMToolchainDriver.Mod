@@ -168,7 +168,7 @@ MODULE LLVMToolchainDriver;
   END EmitIR;
 
   (* Full build: EmitIR* first, then a single-step `clang --target=<triple>
-     <ll> -o <exePath>` (Platform.System) - see this module's own header comment
+     <ll> -o <exePath> -lm` (Platform.System) - see this module's own header comment
      for why single-step, not a separate llc+link. *)
   PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
                    triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
@@ -188,6 +188,9 @@ MODULE LLVMToolchainDriver;
     Strcat(cmd, llPath);
     Strcat(cmd, " -o ");
     Strcat(cmd, exePath);
+    (* libm, for rtl/llvm's Math and MathL: on every supported system it is
+       a library apart from libc, and -lm links nothing that is not used *)
+    Strcat(cmd, " -lm");
     status := Platform.System(cmd);
     RETURN status = 0
   END Build;

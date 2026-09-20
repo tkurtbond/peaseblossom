@@ -159,7 +159,10 @@ shells out to these rather than linking against LLVM's own C++ API.
   datalayout`/`target triple` explicitly (matching the values above for the
   host, or the `-target` flag's chosen triple) — omitting them makes clang
   silently substitute the host triple with a `-Woverride-module` warning,
-  which would mask a real target mismatch on cross-compiles.
+  which would mask a real target mismatch on cross-compiles. The driver
+  also passes `-lm` (Phase 10 step 6): `rtl/llvm`'s `Math`/`MathL` call libm,
+  a library apart from libc on Linux and all three BSDs, and `clang` does not
+  link it by itself (an undefined `sin` at link time).
 - `llc` is **not** part of the normal build path — reserved as an optional
   `-dump-asm`-style debug aid for reading generated assembly in golden-file
   tests. Usage: `llc <file>.ll -o <file>.s` (its default output filetype is

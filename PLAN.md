@@ -3449,6 +3449,75 @@ work already being in place.
    **Testing**: one fixture per module exercising each exported
    procedure against a hand-checked expected value.
 
+   **Implemented** (`rtl/llvm/Strings.Mod`, `Math.Mod`, `MathL.Mod`; all
+   probed against real voc 2026-09-20; the module header comments have the
+   full account). Interfaces are voc's - the Oakwood ones plus `Strings.Match`/
+   `StrToReal`/`StrToLongReal` and `Math`'s `log`, `ipower`, `sincos`,
+   `arctan2`, `fcmp`, `ErrorHandler`/`err`/`ClearError` - so a program
+   compiles under either compiler. What a program can observe:
+
+   - **Neither is a copy of voc's.** voc's `Math`/`MathL` are the OOC
+     library's polynomial approximations under the LGPL, and poc is
+     BSD-3-Clause, so both are written afresh over libm's double functions
+     (`sqrt`, `sin`, `exp`, ..., `ldexp`, `logb`, `nextafter[f]`), the same
+     names on Linux and the three BSDs. A `REAL` function widens, calls the
+     double function and rounds once. **The build now links `-lm`**
+     (`LLVMToolchainDriver.Build`; without it `sin` is undefined at link
+     time). The error handling is voc's: a call outside its domain reports a
+     code through `Math.ErrorHandler` (default: store it in `Math.err`) and
+     returns a fixed value (`ln(x <= 0)`: `IllegalLog`, `-large`; the table
+     is in `Math.Mod`'s header); `MathL` reports through the same handler.
+   - **Where voc is wrong and poc is not**: `sincos` gives voc's cosine as
+     `sqrt(1 - sin^2)`, never negative; `succ` of a negative number moves
+     down; `pred(1)` is `1 - ulp(1)`, not the true predecessor; `ulp(1)` is
+     inexact in both `Math` and `MathL`; `MathL.power(0, 3)` fails; `MathL.small`
+     is 0 and its `MathL.large` a little below the true `MAX(LONGREAL)`; `sin`/`cos` give up
+     (`LossOfAccuracy`, result 0) beyond about 9099 in `Math`; a denormal's
+     `exponent` is -127. Poc's values are exact or correctly rounded, and
+     `fraction`/`exponent`/`scale`/`ulp`/`succ`/`pred` are right for
+     denormals and zero (`ulp(0)` is the smallest number). `round` (halves
+     away from zero, as voc) clamps to `MIN(LONGINT)`/`MAX(LONGINT)` for a
+     number that rounds beyond them.
+   - **Differences from voc a program could notice**: `exp` reports
+     `Underflow` only when the result is really 0 (voc from about e^-88, in the
+     denormal range; `MathL.exp` reports none in voc); `sinh`/`cosh`/`arcsinh`
+     have no `HypInvTrigClipped`; `log(x, 1)` is `IllegalLogBase`; `arctanh`
+     at or past +-1 gives +-`arctanh(1 - 2^-places)` (voc: another
+     approximation of the same idea); `power` and `arctan2` follow `Math`'s
+     rules in `MathL` too (voc's `MathL` returns `-large` for a negative
+     base). `INT16`/`INT32` are `INTEGER`/`LONGINT` until step 7.
+   - **`Strings`** is Oberon-2 over an array and length, all in `LONGINT`
+     so nothing wraps, and never writes beyond `dest` or reads beyond a
+     string with no `0X`: a result too long is cut to fit *with* its `0X`
+     (voc's `Append`/`Extract` can leave it unterminated or write past the
+     end). voc's `Insert` past the end of `dest` and `Replace` at a position
+     other than 0 do the wrong thing (swapped arguments in a call; too many
+     characters deleted) - poc does what the description says. `StrToReal`/
+     `StrToLongReal` accept blanks, a sign, either exponent letter in either
+     case, and hand the numeral to `strtof`/`strtod`, so they are correctly
+     rounded (voc's digit-by-digit conversion can be an ulp off); no numeral
+     gives 0, and a numeral over 511 characters leaves the result alone.
+   - **A finding for step 8/Phase 11, not fixed here**: a call of a
+     *nested* procedure (one declared inside another) compiles to
+     `; unsupported: call target is not a plain procedure` and the build
+     still succeeds, running with the call silently missing; found when a
+     test helper was nested. poc's own source declares none (checked), so
+     self-hosting is not blocked, but a silently missing call is a bad way
+     to fail; it should be an error at least (or nested procedures should be
+     lowered, which needs a static link).
+   **Testing**: `llvm-strings`, `llvm-math`, `llvm-mathl` (run under poc
+   and voc, output equal: every procedure, compared with the exact value -
+   from Python's `math` - to a relative 1e-5 (`REAL`) or 1e-12 (`LONGREAL`),
+   the error codes and the values that come back where voc agrees, a
+   handler installed in `Math.ErrorHandler`); `llvm-strings-extra` (poc only:
+   truncation with a guard byte after `dest`, an insert past the end, a
+   replace not at 0, arrays with no `0X`, a string longer than
+   `MAX(INTEGER)`, numerals converted exactly, checked by their bits) and
+   `llvm-math-extra` (poc only: the constants and `sqrt(2)` by their bits,
+   denormals, `succ`/`pred` around 0 and powers of two, the largest number,
+   every error at the edge of the range, `round`'s clamps). All five run as
+   i686 executables in `llvm-i686-runtime`. 193 pass.
+
 7. **`SYSTEM` (Appendix C), full list.** *(Phase 9 step 4 already
    pulled forward the pseudo-module itself and `ADDRESS`, `ADR`, `GET`,
    `PUT`, `VAL`, `MOVE`, with their lowering - see there; what is left
@@ -3621,6 +3690,7 @@ as it stands when the phase starts, and adds what it finds):
 | A computed `REAL`/`LONGREAL` constant of extreme magnitude (`MAX(LONGREAL) / 2`, `1.0D300 * 1.5`) cannot be exported to a `.sym`: `ParseReal` is not correctly rounded, so no text verifies | Phase 9 step 10 | bug, found not fixed |
 | `Out.Real`/`Out.LongReal` are voc's algorithm, not correctly rounded (a decimal exponent estimated as 77/256 of the binary one, scaling by a floating-point power of ten exact only to 10^22): the last digits of a number outside about 10^-22..10^22, or the 17th of a LONGREAL, can be off. The same shortcoming as `ParseReal`'s; one correctly rounded converter each way would close both | Phase 10 step 5 | gap, found not fixed |
 | `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | decision |
+| A call of a nested procedure is emitted as `; unsupported: call target is not a plain procedure` and the build succeeds, with the call missing: make it an error, or lower it (static link) | Phase 10 step 6 | bug (silent), decision |
 | A constant `NEW` length <= 0: poc traps at run time, voc rejects it at compile time | `000-todo.org`; Phase 9 step 7 | decision |
 | An option to make `NEW` trap when the heap cannot satisfy it (today: the pointer is NIL) | `000-todo.org`; Phase 9 step 5 | decision + implementation |
 | `ASSERT`: add it or not, which form, and what `-a` means | Open design questions | decision (+ implementation) |

@@ -1,9 +1,8 @@
 # rtl/llvm
 
 Runtime linked into LLVM-targeted programs: bespoke mark-sweep GC
-(`GarbageCollectedHeap.Mod`, `ModuleTable.Mod`), a minimal `Console.Mod`,
-and later fuller Oberon-2-style
-`Out.Mod`/`In.Mod`. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
+(`GarbageCollectedHeap.Mod`, `ModuleTable.Mod`) and the library modules
+listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
 `AGENTS.md`).
 
 - `ModuleTable.Mod` - the registry of per-module GC root tables. The
@@ -33,6 +32,12 @@ and later fuller Oberon-2-style
   interfaces. `Out` writes through `Console` (unbuffered), and prints
   `REAL`/`LONGREAL` with voc's algorithm; `In` reads standard input with
   `getchar` and real numbers with libc's `strtod`/`strtof`.
+- `Strings.Mod`, `Math.Mod`, `MathL.Mod` - the remaining Oakwood basic
+  modules, with voc's interfaces. `Strings` is plain Oberon-2 (plus
+  `strtod`/`strtof` for `StrToReal`/`StrToLongReal`); `Math` and `MathL` are
+  written over libm's double functions (the build links `-lm`), with voc's
+  error codes and handler (`Math.ErrorHandler`, `Math.err`), and are not
+  derived from voc's LGPL ones.
 - `GarbageCollectedHeap.Mod` - the collector: calloc'd chunks of 16-byte
   granules, bump allocation plus a first-fit free list, mark-sweep with
   precise heap/global tracing (type descriptors, root tables) and a

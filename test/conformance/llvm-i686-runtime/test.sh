@@ -87,4 +87,9 @@ check llvm-out outtest.mod
 check llvm-out-extra outextra.mod
 check llvm-in intest.mod
 check llvm-in-extra inextra.mod
+check llvm-strings stringstest.mod
+check llvm-strings-extra stringsextra.mod
+check llvm-math mathtest.mod
+check llvm-mathl mathltest.mod
+check llvm-math-extra mathextra.mod
 . ../../testresult.sh
