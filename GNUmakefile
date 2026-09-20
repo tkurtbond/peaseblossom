@@ -40,7 +40,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: all build test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: all build stage1 stage2 test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN)
 
@@ -48,6 +48,15 @@ $(BIN): $(SRCS)
 	tools/bootstrap/stage0
 
 all: build
+
+# Self-hosting (PLAN.md, "Bootstrap terminology"): stage1 builds poc with the
+# Stage 0 poc, stage2 builds it again with Stage 1's and checks the two
+# builds' output is identical (the fixed point).
+stage1: $(BIN)
+	tools/bootstrap/stage1
+
+stage2: stage1
+	tools/bootstrap/stage2
 
 # Runs every fixture in one pass (not category-by-category as separate
 # make prerequisites) so one "make test" always reports the full picture,

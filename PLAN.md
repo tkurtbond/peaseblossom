@@ -3485,13 +3485,37 @@ work already being in place.
    `poc` itself, produces a real, working executable.** `poc-stage1` runs
    (`poc-stage1 -check-syntax ...` succeeds against real source) - the
    first time poc has ever compiled itself into a working binary, not just
-   type-checked its own source. Stage 2 (`poc-stage1` compiling poc's own
-   source a second time, toward the classic self-hosting fixed point) is
-   not yet reached: `poc-stage1` itself traps at run time with "no matching
-   WITH guard" (exit 6 - a `WITH` statement with no matching branch and no
-   `ELSE`, AGENTS.md's own documented trap), a fourth, different, not-yet-
-   investigated bug - a real front-end/backend logic gap this time, not
-   another fixed-buffer overflow. Not yet isolated to a specific `WITH`.
+   type-checked its own source.
+
+   **Stage 2 and the fixed point reached (2026-09-20).** `poc-stage1` first
+   trapped at run time with "no matching WITH guard" (exit 6), on any
+   module with a module-level `VAR`. `gdb -batch -ex 'break exit' -ex run
+   -ex bt` on the Stage 1 binary named the procedure at once
+   (`LLVMCodeGenerator.CollectRecordTypes`; the binary keeps its symbols) -
+   quicker than the print-and-bisect method the three earlier bugs needed,
+   since a poc-built program, unlike a voc-built one, is an ordinary native
+   executable. The cause was not a logic gap in that procedure: its `WITH`
+   ends in an explicit empty `ELSE END`, which parses to a NIL `elseBody`
+   exactly like no `ELSE` at all, and `GenerateWithStatement` chose
+   trap-versus-fall-through by `s.elseBody # NIL`. The same ambiguity had
+   been fixed for `CASE` in Phase 8 (`hasElse`); `WITH` never got the
+   flag. Fixed the same way: `WithStatementNodeDesc.hasElse`, set by
+   `Parser.Mod`, passed through `SemanticActions.NewWithStatement`, tested
+   by `GenerateWithStatement`. poc's own source is full of `ELSE END`
+   `WITH`s (a `WITH` used only to pick out what to do next, falling through
+   for any other node), so every one that fell through trapped, and no
+   existing fixture had one. New fixture `llvm-with-empty-else` (fails
+   without the fix, with the trap; 199 fixtures now).
+
+   With that, Stage 2 builds, and a third generation from it too. The
+   whole-program `Poc.ll` (3.6 MB), every generated `.sym` and the
+   executable are byte for byte identical across Stage 1, Stage 2 and
+   Stage 3 - nothing in them carries a timestamp or a path, so no "modulo"
+   was needed. The full conformance suite passes under the Stage 1 binary
+   (199/199, `POC_BIN_DIR` pointing at it) as it does under Stage 0's.
+   `tools/bootstrap/stage1` and `stage2` (the latter does the comparison
+   and exits non-zero on any difference), and `make stage1`/`make stage2`,
+   are the scripts this step promised.
 
    **BSD-verified (2026-09-20), and a real, NetBSD-only bug found and
    fixed along the way.** All 23 of Phase 10 steps 1-7's runnable rtl

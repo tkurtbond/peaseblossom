@@ -1,0 +1,44 @@
+#!/bin/sh
+# Stage 2: the Stage 1 poc (build/stage1/poc, made by tools/bootstrap/
+# stage1) compiles poc's own source again, giving build/stage2/poc, and the
+# two builds are compared - the self-hosting fixed point (PLAN.md,
+# "Bootstrap terminology"). Stage 1 and Stage 2 are the same program
+# compiled by two different builds of the same compiler, so if the
+# compiler is deterministic and both builds behave alike, everything they
+# emit is byte for byte the same: the whole-program Poc.ll, every .sym
+# file, and the executable itself (nothing in them carries a timestamp or
+# a path). Exits non-zero if any of it differs.
+set -e
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+BUILD="$ROOT/build"
+STAGE1_POC=${STAGE1_POC:-$BUILD/stage1/poc}
+
+rm -rf "$BUILD/stage2"
+mkdir -p "$BUILD/stage2/obj"
+cd "$BUILD/stage2/obj"
+"$STAGE1_POC" -OC \
+  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
+  -import-path "$ROOT/rtl/llvm" \
+  -o "$BUILD/stage2/poc" -build "$ROOT/src/driver/Poc.Mod"
+echo "Stage 2: built $BUILD/stage2/poc"
+
+status=0
+for f in "$BUILD"/stage1/obj/*; do
+  name=$(basename "$f")
+  if ! cmp -s "$f" "$BUILD/stage2/obj/$name"; then
+    echo "DIFFERS: obj/$name"; status=1
+  fi
+done
+for f in "$BUILD"/stage2/obj/*; do
+  name=$(basename "$f")
+  [ -e "$BUILD/stage1/obj/$name" ] || { echo "ONLY IN STAGE 2: obj/$name"; status=1; }
+done
+cmp -s "$BUILD/stage1/poc" "$BUILD/stage2/poc" || { echo "DIFFERS: poc executable"; status=1; }
+
+if [ $status -eq 0 ]; then
+  echo "Fixed point: Stage 1 and Stage 2 output is identical"
+else
+  echo "NOT a fixed point: see above" >&2
+fi
+exit $status
