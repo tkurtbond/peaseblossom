@@ -1,4 +1,5 @@
 MODULE nestedbasic;
+  IMPORT SYSTEM; (* write's int and size_t are 4 bytes on a 32-bit target under -OC too *)
   (* Phase 11 step 8, step 2 (doc/nested-procedures.md): procedures declared
      inside procedures that use nothing of the enclosing ones - only globals,
      their own parameters and locals, and other procedures. Each is lifted to
@@ -18,7 +19,7 @@ MODULE nestedbasic;
     x, y: INTEGER;
     acc: Acc;
 
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
+  PROCEDURE ["C", "write"] SysWrite(fd: SYSTEM.INT32; s: ARRAY OF CHAR; n: SYSTEM.ADDRESS);
 
   PROCEDURE Newline;
     VAR c: ARRAY 2 OF CHAR;

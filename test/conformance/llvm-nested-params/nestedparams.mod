@@ -1,4 +1,5 @@
 MODULE nestedparams;
+  IMPORT SYSTEM; (* write's int and size_t are 4 bytes on a 32-bit target under -OC too *)
   (* Phase 11 step 8, steps 3-4 (doc/nested-procedures.md): the variables of an
      enclosing procedure that are not plain locals - what a nested procedure
      must be handed besides an address. A VAR parameter (its actual argument's
@@ -20,7 +21,7 @@ MODULE nestedparams;
     Matrix = ARRAY 2, 3 OF INTEGER;
   VAR grown: INTEGER;
 
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
+  PROCEDURE ["C", "write"] SysWrite(fd: SYSTEM.INT32; s: ARRAY OF CHAR; n: SYSTEM.ADDRESS);
 
   PROCEDURE Report(number: INTEGER; ok: BOOLEAN);
     VAR line: ARRAY 12 OF CHAR;

@@ -1,4 +1,5 @@
 MODULE nestedfeatures;
+  IMPORT SYSTEM; (* write's int and size_t are 4 bytes on a 32-bit target under -OC too *)
   (* Phase 11 step 8, step 2: what a nested function can do on its own, with
      no variable of an enclosing procedure - NEW and the collector (a nested
      procedure allocating more than the heap starts with, one block kept), a
@@ -14,7 +15,7 @@ MODULE nestedfeatures;
     SquareDesc = RECORD (ShapeDesc) size: INTEGER END;
     Operation = PROCEDURE (v: INTEGER): INTEGER;
 
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
+  PROCEDURE ["C", "write"] SysWrite(fd: SYSTEM.INT32; s: ARRAY OF CHAR; n: SYSTEM.ADDRESS);
 
   PROCEDURE Report(number: INTEGER; ok: BOOLEAN);
     VAR line: ARRAY 12 OF CHAR;

@@ -62,6 +62,12 @@ poc_build_run() {
 # Used by fixtures that build for i686-unknown-linux-gnu so they can skip
 # themselves cleanly instead of failing on a box that cannot run them.
 i686_can_run() {
+  # only an x86 machine runs 32-bit *x86* code: on FreeBSD/arm64 `clang -m32`
+  # builds (and the kernel may run) 32-bit ARM, a different program altogether
+  case $(uname -m) in
+    i386|i686|amd64|x86_64) ;;
+    *) return 1 ;;
+  esac
   probe=$(mktemp -d) || return 1
   printf 'int main(void){return 0;}\n' >"$probe/probe.c"
   if clang -m32 "$probe/probe.c" -o "$probe/probe" >/dev/null 2>&1 && "$probe/probe" >/dev/null 2>&1

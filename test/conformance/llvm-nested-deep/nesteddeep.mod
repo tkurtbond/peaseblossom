@@ -1,4 +1,5 @@
 MODULE nesteddeep;
+  IMPORT SYSTEM; (* write's int and size_t are 4 bytes on a 32-bit target under -OC too *)
   (* Phase 11 step 8, steps 3-5 (doc/nested-procedures.md): how nested
      procedures reach each other's and their enclosing procedures' variables.
      Three and four levels; a variable reached through a level that never names
@@ -9,7 +10,7 @@ MODULE nesteddeep;
      declared after use in its body only through a sibling. "NN ok" or "NN BAD"
      per check. *)
 
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
+  PROCEDURE ["C", "write"] SysWrite(fd: SYSTEM.INT32; s: ARRAY OF CHAR; n: SYSTEM.ADDRESS);
 
   PROCEDURE Report(number: INTEGER; ok: BOOLEAN);
     VAR line: ARRAY 12 OF CHAR;

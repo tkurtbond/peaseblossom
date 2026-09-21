@@ -1,9 +1,9 @@
 MODULE client;
   (* Phase 11 step 8, step 3: procedures of another module that use nested
      procedures, called through Tally.sym alone. "NN ok" or "NN BAD". *)
-  IMPORT Tally;
+  IMPORT SYSTEM, Tally; (* write's int and size_t are 4 bytes on a 32-bit target under -OC too *)
 
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
+  PROCEDURE ["C", "write"] SysWrite(fd: SYSTEM.INT32; s: ARRAY OF CHAR; n: SYSTEM.ADDRESS);
 
   PROCEDURE Report(number: INTEGER; ok: BOOLEAN);
     VAR line: ARRAY 12 OF CHAR;

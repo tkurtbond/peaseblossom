@@ -348,6 +348,21 @@ BSD hosts before step 6.
    `llvm-reject-external-vms` (the same "nothing written" checks, with an external
    `["VMS"]` procedure, which the LLVM backend used to lower as a C call and now
    reports), and `poc-exit-status`'s unsupported-program case moved to it too.
+   **BSD run, 2026-09-20** (the three local VMs of `reference-bsd-test-hosts`,
+   tree of `218522b`): `cymoril` (OpenBSD i386) all nested fixtures pass, `-O2` and
+   `-OC`, after the fixtures' own `write` declaration was fixed (`SysWrite(fd:
+   LONGINT; ...; n: HUGEINT)` is wrong for a C `int`/`size_t` under `-OC` on a
+   32-bit target - the same 32-bit ABI point as `SYSTEM.INT32` for the runtime's
+   C ints - now `SYSTEM.INT32`/`SYSTEM.ADDRESS`); `artos` (NetBSD amd64) and
+   `rackhir` (FreeBSD arm64) pass everything except `llvm-i686-runtime`: on
+   `rackhir` that fixture ran 32-bit *ARM* code because `i686_can_run` only asked
+   whether `clang -m32` works, and now requires an x86 host (it skips); on `artos`
+   its `llvm-math-extra` check, built for `i386-unknown-netbsd11.0` and run
+   through NetBSD's 32-bit compatibility on amd64, segfaults every time, inside
+   the C library's `sin` (`__ieee754_rem_pio2`, an aligned `movapd` on a stack
+   slot). Not nested-procedure related and not seen on real i386 OpenBSD or on
+   Linux; a plain C `sin(1e10)` built the same way does not crash, and neither
+   `override-stack-alignment=16` nor `"stackrealign"` on `main` cures it. Open.
 6. **Close.** The error and its message are already gone (step 3) and
    `llvm-reject-nested-procedure` is now `llvm-reject-external-vms` (its
    program, printing `ok`, is in `llvm-nested-uplevel`); left: `AGENTS.md` gets "Nested procedures (implemented)" with

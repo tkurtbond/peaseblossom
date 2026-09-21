@@ -1,4 +1,5 @@
 MODULE nestedgc;
+  IMPORT SYSTEM; (* write's int and size_t are 4 bytes on a 32-bit target under -OC too *)
   (* Phase 11 step 8, step 3 (doc/nested-procedures.md): the collector and a
      nested procedure's access to an enclosing variable. The pointers here live
      only in variables of an enclosing procedure (a local, a VAR parameter, a
@@ -11,7 +12,7 @@ MODULE nestedgc;
     NodeDesc = RECORD next: Node; value: INTEGER END;
     Box = RECORD held: Node END;
 
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
+  PROCEDURE ["C", "write"] SysWrite(fd: SYSTEM.INT32; s: ARRAY OF CHAR; n: SYSTEM.ADDRESS);
 
   PROCEDURE Report(number: INTEGER; ok: BOOLEAN);
     VAR line: ARRAY 12 OF CHAR;
