@@ -1,0 +1,9 @@
+withleaf.mod:33:5: error: guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable
+withleaf.mod:38:5: error: guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable
+withleaf.mod:46:5: error: guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable
+withleaf.mod:54:5: error: guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable
+withleaf.mod:62:5: error: guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable
+withleaf.mod:68:7: error: guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable
+withleaf.mod:106:3: error: guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable
+withleaf.mod:108:3: error: guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable
+8 error(s)

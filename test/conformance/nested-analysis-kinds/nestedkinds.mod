@@ -2,13 +2,16 @@ MODULE nestedkinds;
   (* One nested procedure per way a statement or expression can name a
      variable of the enclosing procedure - assignment, RETURN, a VAR
      parameter, a record field, an index, an open array parameter, FOR, CASE,
-     WITH, predeclared procedures, SYSTEM.ADR, a set, IS, loops, a string
-     comparison, LEN, a pointer, unary and relational operators - and the
-     receiver of a type-bound procedure. Each needs exactly what it names. *)
+     WITH (over a VAR record parameter: a pointer that a nested procedure
+     mentions cannot be narrowed at all, as in voc), predeclared procedures,
+     SYSTEM.ADR, a set, IS, loops, a string comparison, LEN, a pointer, unary
+     and relational operators - and the receiver of a type-bound procedure.
+     Each needs exactly what it names. *)
   IMPORT SYSTEM;
 
   TYPE
     Rec = RECORD f: INTEGER END;
+    RecExt = RECORD (Rec) g: INTEGER END;
     RecPtr = POINTER TO Rec;
     Base = POINTER TO BaseDesc;
     BaseDesc = RECORD END;
@@ -65,7 +68,7 @@ MODULE nestedkinds;
 
     PROCEDURE ByWith;
     BEGIN
-      WITH base: Ext DO base.e := 1 END
+      WITH rec: RecExt DO rec.g := 1 END
     END ByWith;
 
     PROCEDURE ByPredeclared;

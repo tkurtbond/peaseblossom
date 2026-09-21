@@ -96,24 +96,6 @@ MODULE SemanticActions;
       next: LoadedModule
     END;
 
-    (* CheckModuleBody's own WITH-guard safety net (see the "PLAN.md
-       Phase 6: WITH" section's header comment below for the full
-       rationale). A flat, unordered, possibly-duplicate-bearing set of
-       every bare (unqualified) name that ResolveProcDecls' own
-       CollectProcAssignedNames pre-pass found on the left of some ":="
-       *inside a PROCEDURE body* anywhere in the module (any nesting
-       depth) - membership means "some procedure, reachable or not, could
-       reassign a variable of this name", the only thing CheckWithGuard's
-       new safety check needs to know. Built once per module, before any
-       statement is type-checked, and never mutated afterward - a linear
-       scan is fine at this size, the same precedent
-       CheckCaseLabelRange's LabelRange above already set. *)
-    ProcAssignedName = POINTER TO ProcAssignedNameDesc;
-    ProcAssignedNameDesc = RECORD
-      name: SyntaxTree.Ident;
-      next: ProcAssignedName
-    END;
-
   (* PLAN.md Phase 7: threaded through CheckModule*/CheckModuleBody so an
      IMPORTed module's .sym text can be turned into a SyntaxTree.ModuleNode
      without this module importing Parser.Mod itself (Parser.Mod already
@@ -188,6 +170,28 @@ MODULE SemanticActions;
     END;
     RETURN obj
   END FindQualified;
+
+  (* voc's "leaf" rule for WITH (CheckWithGuard's section comment): records
+     on obj, a variable that a bare name in scope resolved to, that some
+     procedure other than its declaring one mentions it. "Which procedure" is
+     SymbolTable.ScopeDesc.enclosingProc of the scope the variable was
+     declared in against that of the scope the name is used in (NIL at the
+     module level), and the declaring scope is the one FindLocal gives this very Object
+     for, walking outward - so a WITH-narrowed copy of a name, which
+     shadows it in a scope of its own procedure, counts as that procedure's
+     own. Anything but a variable is not noted. *)
+  PROCEDURE NoteVariableUse(scope: SymbolTable.Scope; name: SyntaxTree.Ident; obj: SymbolTable.Object);
+    VAR declaringScope: SymbolTable.Scope;
+  BEGIN
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
+    declaringScope := scope;
+    WHILE (declaringScope # NIL) & (SymbolTable.FindLocal(declaringScope, name) # obj) DO
+      declaringScope := declaringScope.outer
+    END;
+    IF (declaringScope # NIL) & (declaringScope.enclosingProc # scope.enclosingProc) THEN
+      obj.usedAtOtherLevel := TRUE
+    END
+  END NoteVariableUse;
 
   (* Designators and selectors *)
 
@@ -1472,6 +1476,7 @@ MODULE SemanticActions;
        "Module.exportedVar.field := ..." shape. *)
     crossedBoundary := d.qualifier[0] # 0X;
     obj := FindQualified(scope, d.qualifier, d.name, d.line, d.column);
+    IF (obj # NIL) & (d.qualifier[0] = 0X) THEN NoteVariableUse(scope, d.name, obj) END;
     IF obj = NIL THEN
       IF ~lookupDiagnosed THEN Diagnostics.Error(d.line, d.column, "undeclared identifier") END;
       RETURN Types.Undefined
@@ -2201,7 +2206,6 @@ MODULE SemanticActions;
   END CheckAssignmentCompatible;
 
   PROCEDURE ^ CheckStatementSeq(scope: SymbolTable.Scope; stmt: SyntaxTree.StatementNode;
-                                nonLocalAssigns: ProcAssignedName;
                                 loopDepth: INTEGER; procResultType: Types.Type);
 
   PROCEDURE CheckCondition(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode; line, column: INTEGER);
@@ -2256,24 +2260,22 @@ MODULE SemanticActions;
   END CheckCallStatement;
 
   PROCEDURE CheckIfBranch(scope: SymbolTable.Scope; b: SyntaxTree.IfBranchNode;
-                          nonLocalAssigns: ProcAssignedName;
                           loopDepth: INTEGER; procResultType: Types.Type);
   BEGIN
     CheckCondition(scope, b.condition, b.line, b.column);
-    CheckStatementSeq(scope, b.body, nonLocalAssigns, loopDepth, procResultType)
+    CheckStatementSeq(scope, b.body, loopDepth, procResultType)
   END CheckIfBranch;
 
   PROCEDURE CheckIfStatement(scope: SymbolTable.Scope; s: SyntaxTree.IfStatementNode;
-                             nonLocalAssigns: ProcAssignedName;
                              loopDepth: INTEGER; procResultType: Types.Type);
     VAR b: SyntaxTree.IfBranchNode;
   BEGIN
     b := s.branches;
     WHILE b # NIL DO
-      CheckIfBranch(scope, b, nonLocalAssigns, loopDepth, procResultType);
+      CheckIfBranch(scope, b, loopDepth, procResultType);
       b := b.next
     END;
-    CheckStatementSeq(scope, s.elseBody, nonLocalAssigns, loopDepth, procResultType)
+    CheckStatementSeq(scope, s.elseBody, loopDepth, procResultType)
   END CheckIfStatement;
 
   PROCEDURE RangesOverlap(low1, high1, low2, high2: LONGINT): BOOLEAN;
@@ -2353,7 +2355,6 @@ MODULE SemanticActions;
   END CheckCaseLabelList;
 
   PROCEDURE CheckCaseStatement(scope: SymbolTable.Scope; s: SyntaxTree.CaseStatementNode;
-                               nonLocalAssigns: ProcAssignedName;
                                loopDepth: INTEGER; procResultType: Types.Type);
     VAR selType: Types.Type; c: SyntaxTree.CaseNode; charMode, valid: BOOLEAN; seen: LabelRange;
   BEGIN
@@ -2371,25 +2372,23 @@ MODULE SemanticActions;
     c := s.cases;
     WHILE c # NIL DO
       IF valid THEN CheckCaseLabelList(scope, c.labels, charMode, seen) END;
-      CheckStatementSeq(scope, c.body, nonLocalAssigns, loopDepth, procResultType);
+      CheckStatementSeq(scope, c.body, loopDepth, procResultType);
       c := c.next
     END;
-    CheckStatementSeq(scope, s.elseBody, nonLocalAssigns, loopDepth, procResultType)
+    CheckStatementSeq(scope, s.elseBody, loopDepth, procResultType)
   END CheckCaseStatement;
 
   PROCEDURE CheckWhileStatement(scope: SymbolTable.Scope; s: SyntaxTree.WhileStatementNode;
-                                nonLocalAssigns: ProcAssignedName;
                                 loopDepth: INTEGER; procResultType: Types.Type);
   BEGIN
     CheckCondition(scope, s.condition, s.line, s.column);
-    CheckStatementSeq(scope, s.body, nonLocalAssigns, loopDepth, procResultType)
+    CheckStatementSeq(scope, s.body, loopDepth, procResultType)
   END CheckWhileStatement;
 
   PROCEDURE CheckRepeatStatement(scope: SymbolTable.Scope; s: SyntaxTree.RepeatStatementNode;
-                                 nonLocalAssigns: ProcAssignedName;
                                  loopDepth: INTEGER; procResultType: Types.Type);
   BEGIN
-    CheckStatementSeq(scope, s.body, nonLocalAssigns, loopDepth, procResultType);
+    CheckStatementSeq(scope, s.body, loopDepth, procResultType);
     CheckCondition(scope, s.condition, s.line, s.column)
   END CheckRepeatStatement;
 
@@ -2400,11 +2399,11 @@ MODULE SemanticActions;
      declared, integer-typed VAR - Appendix B's ForStatement uses a bare
      ident, not a Designator, so there is no selector chain to walk. *)
   PROCEDURE CheckForStatement(scope: SymbolTable.Scope; s: SyntaxTree.ForStatementNode;
-                              nonLocalAssigns: ProcAssignedName;
                               loopDepth: INTEGER; procResultType: Types.Type);
     VAR obj: SymbolTable.Object; varType, startType, stopType: Types.Type; stepVal: Types.Value;
   BEGIN
     obj := SymbolTable.Find(scope, s.variable);
+    NoteVariableUse(scope, s.variable, obj);
     varType := Types.Undefined;
     IF obj = NIL THEN
       Diagnostics.Error(s.line, s.column, "undeclared identifier")
@@ -2429,14 +2428,13 @@ MODULE SemanticActions;
         Diagnostics.Error(s.step.line, s.step.column, "FOR step must be a nonzero integer constant")
       END
     END;
-    CheckStatementSeq(scope, s.body, nonLocalAssigns, loopDepth, procResultType)
+    CheckStatementSeq(scope, s.body, loopDepth, procResultType)
   END CheckForStatement;
 
   PROCEDURE CheckLoopStatement(scope: SymbolTable.Scope; s: SyntaxTree.LoopStatementNode;
-                               nonLocalAssigns: ProcAssignedName;
                                loopDepth: INTEGER; procResultType: Types.Type);
   BEGIN
-    CheckStatementSeq(scope, s.body, nonLocalAssigns, loopDepth + 1, procResultType)
+    CheckStatementSeq(scope, s.body, loopDepth + 1, procResultType)
   END CheckLoopStatement;
 
   (* §9.9/9.10: EXIT terminates the innermost enclosing LOOP statement
@@ -2469,108 +2467,6 @@ MODULE SemanticActions;
     END
   END CheckReturnStatement;
 
-  (* CheckWithGuard's own safety net (see that procedure's header comment
-     for the full rationale): does set contain name? A plain linear scan,
-     matching ProcAssignedName's own header comment on why no hash table
-     is warranted here. *)
-  PROCEDURE IsProcAssigned(set: ProcAssignedName; name: SyntaxTree.Ident): BOOLEAN;
-  BEGIN
-    WHILE (set # NIL) & (set.name # name) DO set := set.next END;
-    RETURN set # NIL
-  END IsProcAssigned;
-
-  PROCEDURE AddProcAssignedName(VAR set: ProcAssignedName; name: SyntaxTree.Ident);
-    VAR node: ProcAssignedName;
-  BEGIN
-    IF ~IsProcAssigned(set, name) THEN
-      NEW(node); node.name := name; node.next := set; set := node
-    END
-  END AddProcAssignedName;
-
-  (* CollectProcAssignedStatement/CollectProcAssignedSeq are mutually
-     recursive (a statement's own nested body is itself a sequence), the
-     same shape CheckStatement/CheckStatementSeq already use - one
-     forward declaration, following that exact precedent. *)
-  PROCEDURE ^ CollectProcAssignedSeq(stmt: SyntaxTree.StatementNode; VAR set: ProcAssignedName);
-
-  PROCEDURE CollectProcAssignedStatement(s: SyntaxTree.StatementNode; VAR set: ProcAssignedName);
-    VAR b: SyntaxTree.IfBranchNode; c: SyntaxTree.CaseNode; g: SyntaxTree.WithGuardNode;
-  BEGIN
-    WITH
-      s: SyntaxTree.AssignStatementNode DO
-        (* Only a bare, selector-free target actually reassigns the
-           variable itself ("t := ...") - a field/array/pointer selector
-           ("t^.value := ...", "t[i] := ...") mutates what t already
-           points to or contains, not t's own binding, so it poses no
-           risk to a WITH guard narrowing t elsewhere; a qualified target
-           ("M.v := ...") belongs to a *different* module's own scan of
-           *its own* source, never this one's - CheckWithGuard's
-           separate, unconditional qualified-guard rejection (see its
-           own header comment) covers that case without this set's
-           help. *)
-        IF (s.target.qualifier[0] = 0X) & (s.target.selectors = NIL) THEN
-          AddProcAssignedName(set, s.target.name)
-        END
-    | s: SyntaxTree.IfStatementNode DO
-        b := s.branches;
-        WHILE b # NIL DO CollectProcAssignedSeq(b.body, set); b := b.next END;
-        CollectProcAssignedSeq(s.elseBody, set)
-    | s: SyntaxTree.CaseStatementNode DO
-        c := s.cases;
-        WHILE c # NIL DO CollectProcAssignedSeq(c.body, set); c := c.next END;
-        CollectProcAssignedSeq(s.elseBody, set)
-    | s: SyntaxTree.WhileStatementNode DO CollectProcAssignedSeq(s.body, set)
-    | s: SyntaxTree.RepeatStatementNode DO CollectProcAssignedSeq(s.body, set)
-    | s: SyntaxTree.ForStatementNode DO CollectProcAssignedSeq(s.body, set)
-    | s: SyntaxTree.LoopStatementNode DO CollectProcAssignedSeq(s.body, set)
-    | s: SyntaxTree.WithStatementNode DO
-        g := s.guards;
-        WHILE g # NIL DO CollectProcAssignedSeq(g.body, set); g := g.next END;
-        CollectProcAssignedSeq(s.elseBody, set)
-    ELSE
-      (* CallStatementNode/ExitStatementNode/ReturnStatementNode: no
-         nested statement sequence to descend into. *)
-    END
-  END CollectProcAssignedStatement;
-
-  PROCEDURE CollectProcAssignedSeq(stmt: SyntaxTree.StatementNode; VAR set: ProcAssignedName);
-  BEGIN
-    WHILE stmt # NIL DO
-      CollectProcAssignedStatement(stmt, set);
-      stmt := stmt.next
-    END
-  END CollectProcAssignedSeq;
-
-  (* CheckModuleBody's whole-module pre-pass (see CheckWithGuard's header
-     comment): walks every PROCEDURE declared anywhere in the module,
-     at every nesting depth, recording every bare-name assignment target
-     found in its body - including nested PROCEDUREs declared *inside*
-     it, so a WITH guard on an outer procedure's own local variable still
-     sees a nested procedure's reassignment of it (Oberon-2 lexical
-     scoping lets a nested procedure write an enclosing one's locals
-     directly). A syntax-only scan (SyntaxTree.ProcDeclNode, not
-     SymbolTable.Object): matching purely by name text, not by resolved
-     identity, is a deliberate, documented over-approximation, the same
-     kind (an unrelated same-named variable) this pass already accepts -
-     it can only make CheckWithGuard reject a guard voc would still
-     accept (an unrelated same-named variable in a different scope), never
-     the reverse, so it stays sound. An external or forward PROCEDURE
-     declaration has no body (d.statements/d.declarations are NIL/absent)
-     and is silently skipped, exactly like CheckProcedureBody never being
-     called for one. *)
-  PROCEDURE CollectProcAssignedNames(decls: SyntaxTree.ProcDeclNode; VAR set: ProcAssignedName);
-    VAR d: SyntaxTree.ProcDeclNode;
-  BEGIN
-    d := decls;
-    WHILE d # NIL DO
-      CollectProcAssignedSeq(d.statements, set);
-      IF d.declarations # NIL THEN
-        CollectProcAssignedNames(d.declarations.procDecls, set)
-      END;
-      d := d.next
-    END
-  END CollectProcAssignedNames;
-
   (* ---- PLAN.md Phase 6: WITH (Oberon2.pdf §9.11) ----
 
      Reuses Phase 5's guard-applicability pair (CheckExtensionApplicable/
@@ -2601,68 +2497,48 @@ MODULE SemanticActions;
      value of a *different*, non-extending type while the compiler still
      treats it as the narrowed type, a genuine memory-safety hole (e.g.
      reading a field that doesn't exist on whatever v now actually points
-     to), not just a style nit. voc's own rule, reverse-engineered by
-     testing each shape directly rather than guessed at, and re-verified
-     directly (PLAN.md Phase 10 step 8, 2026-09-20) rather than trusted
-     from memory when this section's own precision was revisited: allowed
-     - a local variable reassigned by bare name only inside its own
-     *declaring* PROCEDURE, anywhere at all in that procedure's own body,
-     even textually inside the very guarded branch being checked (voc
-     accepts "sel := other" placed directly inside a WITH sel: T DO ...
-     branch, confirmed with a standalone repro - no statement-order or
-     reachability distinction is drawn within the declaring procedure's
-     own body at all); rejected - a VAR parameter of pointer type (an
-     alias to the caller's own storage), *any* module-qualified variable
-     "M.v" unconditionally (an imported module's exported var - voc
-     can't/won't trust another module's procedures, now or after a future
-     recompile, from just its .sym interface), a module-level global
-     reassigned anywhere in the module, or a local reassigned by bare name
-     inside any PROCEDURE *nested inside* its declaring one, at any
-     nesting depth, called from the guarded body or not (confirmed with a
-     doubly-nested repro too - a purely static check, not real call-graph
-     reachability) - and, symmetrically, confirmed *not* rejected when an
-     unrelated procedure elsewhere in the module happens to declare its
-     own, different local of the same bare name (voc resolves by real
-     declared identity, never by name text, so two same-named-but-
-     unrelated locals never interact).
+     to), not just a style nit.
 
-     PLAN.md Phase 10 step 8 (self-hosting) hit CheckWithGuard rejecting
-     29 genuine type-case dispatches in poc's own source - WITH node:
-     ...ArrayTypeNode DO, WITH sel: ...FieldSelector DO, and the like -
-     because CollectProcAssignedNames's original pre-pass flattened every
-     bare assignment in the *whole module* into one set with no notion of
-     which procedure declared which variable, so it could tell neither
-     "an unrelated procedure's same-named local" (harmless) from "this
-     local's own family" (voc's real distinction) nor "this local's own
-     declaring procedure" (always harmless) from "a procedure nested
-     inside it" (voc's real, only-if-nested-and-different distinction)
-     apart - node/sel/s are used constantly across this file, so the
-     first collision alone accounted for all 29. SymbolTable.ScopeDesc.
-     enclosingProc (set fresh at every procedure's own body scope, top-
-     level or nested, and carried by OpenScope through every scope opened
-     some other way, such as a WITH guard's own narrowed scope) gives
-     MayBeReassignedElsewhere below exactly the identity voc's real rule
-     needs at no extra bookkeeping cost: a *global* (enclosingProc = NIL
-     at its declaring scope) still uses the whole-module nonLocalAssigns
-     scan - genuinely reachable from any procedure, so no narrowing is
-     sound there - but a *local*'s declaring scope names its own
-     declaring ProcDeclNode P directly, and only P's *nested* procedures
-     (P.declarations.procDecls, recursively - never P's own direct
-     statements) are scanned via the unmodified CollectProcAssignedNames
-     above. That is narrower than voc's own rule, which (OPP.Mod, qualident
-     and the WITH statement) rejects a local pointer that any nested procedure
-     mentions at all, read or write, and it is not sound: only a bare-name
-     assignment is seen, so a nested procedure that passes the variable on as a
-     VAR argument (or NEW's it) reassigns it unnoticed (000-todo.org). The RECORD-typed guard case (VAR record
-     parameter/receiver) needs none of this - it isn't a pointer
-     redirection risk the same way, and voc's own withreceiver2 test
-     (2026-09-17) confirms it's exempt; supported since PLAN.md Phase 9
-     step 6 (CheckExtensionApplicable's rule 1, "a variable parameter of
-     record type"), with the narrowed variable staying that parameter so a
-     nested guard or test inside the branch is legal, as in voc. *)
+     The rule is voc's own, taken from its source (OPP.Mod, `qualident` and
+     the WITH statement) and probed against it (2026-09-21): a variable is
+     *never* narrowed if it is mentioned - read or written, in any
+     expression, as an argument, as a FOR variable, as the WITH variable
+     itself - from a different procedure than the one that declares it (a
+     procedure nested inside the declaring one, at any depth; or, for a
+     module-level variable, any procedure at all, so a WITH on a global
+     written inside a procedure is always rejected). NoteVariableUse
+     records that, by real declared identity and never by name text, on
+     the Object (SymbolTable.ObjectDesc.usedAtOtherLevel); it works because
+     procedures are checked before the statements of the body they sit in,
+     exactly the order voc's single pass sees them. Also rejected: a VAR
+     parameter of pointer type (an alias to the caller's own storage) and
+     *any* module-qualified variable "M.v" (another module's procedures
+     cannot be trusted, now or after a recompile, from just its .sym).
+     Allowed: a local mentioned only by its own declaring procedure, even
+     inside the very guarded branch (voc accepts "sel := other" placed
+     directly inside a WITH sel: T DO ... branch), and, with no
+     interaction at all, an unrelated procedure's own same-named variable
+     (identity, not spelling).
+
+     Until 2026-09-21 poc used a weaker rule of its own: a pre-pass that
+     collected the names on the left of a bare ":=" in procedure bodies,
+     which missed a nested procedure passing the variable on as a VAR
+     argument (or NEW'ing it) - the guarded body could then treat a plain
+     base-type pointer as the extension, a read past the record (see
+     semantic-with-leaf-rule) - and accepted a variable that a
+     procedure only reads, which voc rejects. PLAN.md Phase 10 step 8's
+     first attempt at the rule, before identity was tracked, rejected 29
+     genuine type-case dispatches in poc's own source (node/sel/s are used
+     constantly), which is why it is by identity now. The RECORD-typed
+     guard case (VAR record parameter/receiver) needs none of this - it
+     isn't a pointer redirection risk the same way, and voc's own
+     withreceiver2 test (2026-09-17) confirms it's exempt; supported since
+     PLAN.md Phase 9 step 6 (CheckExtensionApplicable's rule 1, "a
+     variable parameter of record type"), with the narrowed variable
+     staying that parameter so a nested guard or test inside the branch
+     is legal, as in voc. *)
   PROCEDURE CheckWithGuardBody(scope: SymbolTable.Scope; g: SyntaxTree.WithGuardNode;
                                narrowedType: Types.Type; original: SymbolTable.Object;
-                               nonLocalAssigns: ProcAssignedName;
                                loopDepth: INTEGER; procResultType: Types.Type);
     VAR narrowedScope: SymbolTable.Scope; unused: SymbolTable.Object;
   BEGIN
@@ -2672,48 +2548,11 @@ MODULE SemanticActions;
     (* a narrowed VAR record parameter is still that parameter (a nested
        guard on it stays legal) *)
     unused.isVarParam := original.isVarParam;
-    CheckStatementSeq(narrowedScope, g.body, nonLocalAssigns, loopDepth, procResultType)
+    unused.usedAtOtherLevel := original.usedAtOtherLevel;
+    CheckStatementSeq(narrowedScope, g.body, loopDepth, procResultType)
   END CheckWithGuardBody;
 
-  (* Whether name might be reassigned by bare name somewhere this WITH
-     guard cannot rule out, given the scope it was declared in - see this
-     section's own header comment for the full rationale. declaringScope
-     is where FindLocal(name) actually succeeds walking outward from
-     scope (matching IsNestedProcedureName's own idiom above), i.e. the
-     variable's own declaring scope, not necessarily where the guard
-     itself textually sits (a nested PROCEDURE may guard an outer
-     local it can see by lexical scoping). *)
-  PROCEDURE MayBeReassignedElsewhere(scope: SymbolTable.Scope; name: SyntaxTree.Ident;
-                                     nonLocalAssigns: ProcAssignedName): BOOLEAN;
-    VAR declaringScope: SymbolTable.Scope; declaringProc: SyntaxTree.ProcDeclNode;
-        nestedAssigns: ProcAssignedName;
-  BEGIN
-    declaringScope := scope;
-    WHILE (declaringScope # NIL) & (SymbolTable.FindLocal(declaringScope, name) = NIL) DO
-      declaringScope := declaringScope.outer
-    END;
-    IF declaringScope = NIL THEN RETURN IsProcAssigned(nonLocalAssigns, name) END;
-    declaringProc := declaringScope.enclosingProc;
-    IF declaringProc = NIL THEN
-      (* a module-level global: genuinely reachable from any procedure, so
-         only the whole-module scan is sound here *)
-      RETURN IsProcAssigned(nonLocalAssigns, name)
-    ELSE
-      (* a local: only a PROCEDURE nested inside its own declaring one can
-         reach it by bare name at all (voc's real, tested rule - this
-         section's own header comment) - never declaringProc's own direct
-         statements, which CollectProcAssignedNames never sees since it
-         only starts from declaringProc's *nested* procDecls *)
-      nestedAssigns := NIL;
-      IF declaringProc.declarations # NIL THEN
-        CollectProcAssignedNames(declaringProc.declarations.procDecls, nestedAssigns)
-      END;
-      RETURN IsProcAssigned(nestedAssigns, name)
-    END
-  END MayBeReassignedElsewhere;
-
   PROCEDURE CheckWithGuard(scope: SymbolTable.Scope; g: SyntaxTree.WithGuardNode;
-                           nonLocalAssigns: ProcAssignedName;
                            loopDepth: INTEGER; procResultType: Types.Type);
     VAR obj: SymbolTable.Object; leftType, targetType, narrowed: Types.Type;
   BEGIN
@@ -2722,6 +2561,7 @@ MODULE SemanticActions;
       IF ~lookupDiagnosed THEN Diagnostics.Error(g.line, g.column, "undeclared identifier") END;
       RETURN
     END;
+    IF g.variableQualifier[0] = 0X THEN NoteVariableUse(scope, g.variableName, obj) END;
     leftType := obj.type;
     targetType := ResolveTypeName(scope, g.typeQualifier, g.typeName, g.line, g.column);
     IF targetType = NIL THEN
@@ -2732,27 +2572,25 @@ MODULE SemanticActions;
                            (g.variableQualifier[0] = 0X) & (obj.class = SymbolTable.varClass) & obj.isVarParam,
                            g.line, g.column);
     IF (narrowed # Types.Undefined) & (leftType IS Types.PointerType) THEN
-      IF (g.variableQualifier[0] # 0X) OR obj.isVarParam
-          OR MayBeReassignedElsewhere(scope, g.variableName, nonLocalAssigns) THEN
+      IF (g.variableQualifier[0] # 0X) OR obj.isVarParam OR obj.usedAtOtherLevel THEN
         Diagnostics.Error(g.line, g.column,
           "guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable");
         narrowed := Types.Undefined
       END
     END;
-    CheckWithGuardBody(scope, g, narrowed, obj, nonLocalAssigns, loopDepth, procResultType)
+    CheckWithGuardBody(scope, g, narrowed, obj, loopDepth, procResultType)
   END CheckWithGuard;
 
   PROCEDURE CheckWithStatement(scope: SymbolTable.Scope; s: SyntaxTree.WithStatementNode;
-                               nonLocalAssigns: ProcAssignedName;
                                loopDepth: INTEGER; procResultType: Types.Type);
     VAR g: SyntaxTree.WithGuardNode;
   BEGIN
     g := s.guards;
     WHILE g # NIL DO
-      CheckWithGuard(scope, g, nonLocalAssigns, loopDepth, procResultType);
+      CheckWithGuard(scope, g, loopDepth, procResultType);
       g := g.next
     END;
-    CheckStatementSeq(scope, s.elseBody, nonLocalAssigns, loopDepth, procResultType)
+    CheckStatementSeq(scope, s.elseBody, loopDepth, procResultType)
   END CheckWithStatement;
 
   (* ---- PLAN.md Phase 6: procedures, type-bound procedures, external
@@ -2772,8 +2610,7 @@ MODULE SemanticActions;
      mutually with CheckProcedureBody, since a nested procedure's own
      body (§10: "procedure declarations may be nested") resolves its own
      DeclSeq by calling ResolveProcDecls again. *)
-  PROCEDURE ^ ResolveProcDecls(decls: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope;
-                               nonLocalAssigns: ProcAssignedName);
+  PROCEDURE ^ ResolveProcDecls(decls: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope);
 
   (* §10.2's exactly-two-shapes rule: a receiver's second ident, looked
      up as an ordinary type name, must resolve to either a RecordType
@@ -2941,22 +2778,22 @@ MODULE SemanticActions;
      Nested PROCEDURE declarations (§10: "procedure declarations may be
      nested") are resolved here, against OpenProcedureBodyScope's own
      result, rather than inside OpenProcedureBodyScope itself - nested-
-     procedure checking needs the full nonLocalAssigns/diagnostic
-     machinery this step's own codegen reuse doesn't need or want (no
-     nested-procedure codegen exists yet either - PLAN.md Phase 9+). *)
+     procedure checking needs the full diagnostics and body checks the
+     backend's own reuse of OpenProcedureBodyScope doesn't want (the
+     backend re-opens scopes and resolves nested signatures silently,
+     DeclareLocalProcedures). *)
   PROCEDURE CheckProcedureBody(d: SyntaxTree.ProcDeclNode; outer: SymbolTable.Scope;
-                               receiverType: Types.Type; pt: Types.ProcedureType;
-                               nonLocalAssigns: ProcAssignedName);
+                               receiverType: Types.Type; pt: Types.ProcedureType);
     VAR bodyScope: SymbolTable.Scope;
   BEGIN
     bodyScope := OpenProcedureBodyScope(d, outer, receiverType, pt);
     IF d.declarations # NIL THEN
-      ResolveProcDecls(d.declarations.procDecls, bodyScope, nonLocalAssigns)
+      ResolveProcDecls(d.declarations.procDecls, bodyScope)
     END;
     IF (pt.resultType # NIL) & (d.statements = NIL) THEN
       Diagnostics.Error(d.line, d.column, "function procedure must return a value")
     END;
-    CheckStatementSeq(bodyScope, d.statements, nonLocalAssigns, 0, pt.resultType)
+    CheckStatementSeq(bodyScope, d.statements, 0, pt.resultType)
   END CheckProcedureBody;
 
   (* The real body matching this section's own forward declaration
@@ -2968,8 +2805,7 @@ MODULE SemanticActions;
      pending entry and check the body) with only the "where does the
      name live" step (SymbolTable.Insert vs. Types.AddMethod) actually
      differing. *)
-  PROCEDURE ResolveProcDecls(decls: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope;
-                             nonLocalAssigns: ProcAssignedName);
+  PROCEDURE ResolveProcDecls(decls: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope);
     VAR
       d: SyntaxTree.ProcDeclNode;
       pt: Types.ProcedureType;
@@ -3014,7 +2850,7 @@ MODULE SemanticActions;
                 method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, FALSE,
                                            d.receiver.typeName, d.line, d.column)
               END;
-              CheckProcedureBody(d, scope, receiverType, pt, nonLocalAssigns)
+              CheckProcedureBody(d, scope, receiverType, pt)
             END
           END
         ELSE
@@ -3035,7 +2871,7 @@ MODULE SemanticActions;
               obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
                                          d.line, d.column)
             END;
-            CheckProcedureBody(d, scope, NIL, pt, nonLocalAssigns)
+            CheckProcedureBody(d, scope, NIL, pt)
           END
         END
       END;
@@ -3099,21 +2935,20 @@ MODULE SemanticActions;
   (* Every branch below calls a distinctly-named procedure, never
      CheckStatement itself - see CheckExpr's identical rationale above. *)
   PROCEDURE CheckStatement(scope: SymbolTable.Scope; s: SyntaxTree.StatementNode;
-                           nonLocalAssigns: ProcAssignedName;
                            loopDepth: INTEGER; procResultType: Types.Type);
   BEGIN
     WITH
       s: SyntaxTree.AssignStatementNode DO CheckAssignStatement(scope, s)
     | s: SyntaxTree.CallStatementNode DO CheckCallStatement(scope, s)
-    | s: SyntaxTree.IfStatementNode DO CheckIfStatement(scope, s, nonLocalAssigns, loopDepth, procResultType)
-    | s: SyntaxTree.CaseStatementNode DO CheckCaseStatement(scope, s, nonLocalAssigns, loopDepth, procResultType)
-    | s: SyntaxTree.WhileStatementNode DO CheckWhileStatement(scope, s, nonLocalAssigns, loopDepth, procResultType)
-    | s: SyntaxTree.RepeatStatementNode DO CheckRepeatStatement(scope, s, nonLocalAssigns, loopDepth, procResultType)
-    | s: SyntaxTree.ForStatementNode DO CheckForStatement(scope, s, nonLocalAssigns, loopDepth, procResultType)
-    | s: SyntaxTree.LoopStatementNode DO CheckLoopStatement(scope, s, nonLocalAssigns, loopDepth, procResultType)
+    | s: SyntaxTree.IfStatementNode DO CheckIfStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.CaseStatementNode DO CheckCaseStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.WhileStatementNode DO CheckWhileStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.RepeatStatementNode DO CheckRepeatStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.ForStatementNode DO CheckForStatement(scope, s, loopDepth, procResultType)
+    | s: SyntaxTree.LoopStatementNode DO CheckLoopStatement(scope, s, loopDepth, procResultType)
     | s: SyntaxTree.ExitStatementNode DO CheckExitStatement(s, loopDepth)
     | s: SyntaxTree.ReturnStatementNode DO CheckReturnStatement(scope, s, procResultType)
-    | s: SyntaxTree.WithStatementNode DO CheckWithStatement(scope, s, nonLocalAssigns, loopDepth, procResultType)
+    | s: SyntaxTree.WithStatementNode DO CheckWithStatement(scope, s, loopDepth, procResultType)
     ELSE
       Diagnostics.Error(s.line, s.column, "unsupported statement")
     END
@@ -3121,11 +2956,10 @@ MODULE SemanticActions;
 
   (* The real body matching this cluster's own forward declaration above. *)
   PROCEDURE CheckStatementSeq(scope: SymbolTable.Scope; stmt: SyntaxTree.StatementNode;
-                              nonLocalAssigns: ProcAssignedName;
                               loopDepth: INTEGER; procResultType: Types.Type);
   BEGIN
     WHILE stmt # NIL DO
-      CheckStatement(scope, stmt, nonLocalAssigns, loopDepth, procResultType);
+      CheckStatement(scope, stmt, loopDepth, procResultType);
       stmt := stmt.next
     END
   END CheckStatementSeq;
@@ -3246,8 +3080,7 @@ MODULE SemanticActions;
   PROCEDURE CheckModuleBody(module: SyntaxTree.ModuleNode; parseModule: ParseModuleProc;
                             resolving: ImportChain; VAR cache: LoadedModule): SymbolTable.Scope;
     VAR
-      scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode;
-      nonLocalAssigns: ProcAssignedName; savedModuleName: SyntaxTree.Ident;
+      scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode; savedModuleName: SyntaxTree.Ident;
   BEGIN
     COPY(currentModuleName, savedModuleName); COPY(module.name, currentModuleName);
     scope := SymbolTable.OpenScope(SymbolTable.Universe);
@@ -3256,21 +3089,11 @@ MODULE SemanticActions;
       ResolveImport(imp, module, scope, parseModule, resolving, cache);
       imp := imp.next
     END;
-    nonLocalAssigns := NIL;
     IF module.declarations # NIL THEN
-      (* A pure syntax scan (CheckWithGuard's own header comment), so it
-         can run before any declaration is resolved - for a module read
-         from a .sym file (ResolveImport's recursive call into here),
-         module.declarations.procDecls carries signatures only, no
-         bodies, so this always and harmlessly collects nothing for an
-         imported module; that's fine, since CheckWithGuard rejects every
-         module-qualified guard unconditionally regardless of what this
-         set contains. *)
-      CollectProcAssignedNames(module.declarations.procDecls, nonLocalAssigns);
       ResolveDeclSeq(module.declarations, scope);
-      ResolveProcDecls(module.declarations.procDecls, scope, nonLocalAssigns)
+      ResolveProcDecls(module.declarations.procDecls, scope)
     END;
-    CheckStatementSeq(scope, module.statements, nonLocalAssigns, 0, NIL);
+    CheckStatementSeq(scope, module.statements, 0, NIL);
     COPY(savedModuleName, currentModuleName);
     RETURN scope
   END CheckModuleBody;

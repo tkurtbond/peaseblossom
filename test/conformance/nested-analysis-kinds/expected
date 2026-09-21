@@ -6,7 +6,7 @@ Outer.ByIndex: Outer.i Outer.v
 Outer.ByOpenArray: Outer.open
 Outer.ByFor: Outer.i
 Outer.ByCase: Outer.ch Outer.flag
-Outer.ByWith: Outer.base
+Outer.ByWith: Outer.rec
 Outer.ByPredeclared: Outer.value Outer.open Outer.n Outer.str Outer.ptr
 Outer.ByAddress: Outer.r
 Outer.BySet: Outer.i Outer.n Outer.s

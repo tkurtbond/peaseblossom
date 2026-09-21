@@ -90,6 +90,12 @@ MODULE SymbolTable;
         comes up elsewhere, so the position has to survive resolution to
         still be checkable afterward. *)
       isForwardProc*: BOOLEAN; (* procClass only; see above *)
+      usedAtOtherLevel*: BOOLEAN; (* varClass only: TRUE once a bare name
+        in a procedure other than the one that declares this variable (a
+        nested procedure; for a module-level variable, any procedure)
+        resolved to it - voc's "leaf" flag, cleared. A variable so used is
+        never narrowed by WITH (SemanticActions.CheckWithGuard, its section
+        comment). Set by SemanticActions.NoteVariableUse. *)
       isVarParam*: BOOLEAN; (* varClass only: TRUE for a VAR-kind formal
         parameter or receiver (SemanticActions.Mod's CheckProcedureBody
         sets it from FPSectionNode.isVar/ReceiverNode.isVar as each
@@ -201,7 +207,7 @@ MODULE SymbolTable;
     o.value := NIL; o.exported := exported; o.readOnly := readOnly;
     o.pendingTypeNode := NIL; o.resolving := FALSE;
     o.declLine := line; o.declColumn := column;
-    o.isForwardProc := FALSE; o.isVarParam := FALSE;
+    o.isForwardProc := FALSE; o.isVarParam := FALSE; o.usedAtOtherLevel := FALSE;
     o.externalConvention[0] := 0X; o.externalName[0] := 0X;
     o.moduleScope := NIL; o.realModuleName[0] := 0X;
     o.next := scope.objects; scope.objects := o;

@@ -609,6 +609,18 @@ error (before that it dropped the calls silently). What a program can observe:
   variable's type tag if it is a `VAR` record or its lengths if it is an open
   array. A call passes its own bindings' addresses on. There is no static link
   and no closure: an activation never outlives the one that declared it.
+- **`WITH` on a pointer variable follows voc's rule**: a pointer that is
+  mentioned, read or written, from a procedure other than the one that
+  declares it is never narrowed - a nested procedure of the declaring one, or,
+  for a module-level pointer, any procedure (so a `WITH` on a global inside a
+  procedure is always an error) - nor is a `VAR` parameter or a qualified
+  `M.v`; a `VAR` record parameter or receiver is exempt. "Declares" is by
+  identity, so a nested procedure's own same-named variable does not count.
+  The error is voc's ("guarded pointer variable may be manipulated by non-local
+  operations; use an auxiliary pointer variable"). Until 2026-09-21 poc only
+  looked for bare `:=` in nested procedures, missing a `VAR` argument (a
+  memory-unsafe program was accepted) and accepting a mere read that voc
+  rejects (`semantic-with-leaf-rule`).
 - **Limits**: an open array type with more than 8 open dimensions is an error
   (the section above), as anywhere else; a procedure that uses very many
   enclosing variables has that many hidden parameters, which is legal and

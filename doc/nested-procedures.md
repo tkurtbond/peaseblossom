@@ -53,7 +53,7 @@ one (`.sym` files never mention a local procedure, as now).
 | Piece | State |
 |---|---|
 | Parser, `SyntaxTree.ProcDeclNode.declarations.procDecls` | complete; nested lists are ordinary `ProcDeclNode` chains |
-| Checker: scoping, uplevel names, calls, recursion, forward declarations, the procedure-value ban, the `WITH` safety check that already reasons about nested reassignment (`MayBeReassignedElsewhere`) | complete; fixtures `semantic-procedures`, `semantic-reject-procedure-value` |
+| Checker: scoping, uplevel names, calls, recursion, forward declarations, the procedure-value ban, the `WITH` safety check that already reasons about nested procedures (then `MayBeReassignedElsewhere`, now `NoteVariableUse`) | complete; fixtures `semantic-procedures`, `semantic-reject-procedure-value` |
 | `SymbolTable.ScopeDesc.enclosingProc` — the `ProcDeclNode` a scope sits inside, set by `OpenProcedureBodyScope` for every procedure, nested or not | exists; already used to tell "declared directly inside procedure P" from "module-level" |
 | `SemanticActions.OpenProcedureBodyScope` (used by the backend to re-open a body scope) | resolves the body's CONST/TYPE/VAR and the parameters, **not** its nested procedures: those are resolved only inside the checker's own `CheckProcedureBody`, with full diagnostics |
 | Backend `cg.locals` (`LocalBinding`: object → address text, plus a hidden tag and open-array lengths) | the single place that decides where a variable lives; a designator's codegen only ever asks `FindLocalBinding(obj)` |
@@ -122,7 +122,7 @@ and so the emitted IR, and `make stage2` compares that byte for byte. Order by
 declaring procedure from outermost to innermost, then by declaration order within
 it (`declLine`, `declColumn`). Never by pointer or by discovery order.
 
-**Exact, not by name (decided 2026-09-20).** `MayBeReassignedElsewhere` gets by with matching bare
+**Exact, not by name (decided 2026-09-20).** The checker's `WITH` safety check (`MayBeReassignedElsewhere`, since replaced by `NoteVariableUse`) got by with matching bare
 names (an over-approximation is safe for a check that only rejects). Here an
 over-approximation costs a hidden parameter that is never used, and a *wrong*
 match (a same-named variable in an unrelated scope) is a correctness bug in the
@@ -418,10 +418,10 @@ BSD hosts before step 6.
 - **`WITH` inside a nested procedure narrowing an enclosing variable**: the
   narrowing list (`cg.narrowings`) is keyed by object like the bindings, so it
   should just work; step 4 tests it rather than assuming.
-- **The checker's own `nonLocalAssigns`** already treats a nested procedure's
-  assignment to an enclosing variable as reaching it, and rejects a `WITH` on a
-  variable that could be reassigned that way (`MayBeReassignedElsewhere`). That is
-  unchanged by this work.
+- **The checker's `WITH` rule** (`SemanticActions.NoteVariableUse`, voc's
+  "leaf" rule) rejects narrowing a pointer that a nested procedure mentions at
+  all. It used to look only for bare assignments (`nonLocalAssigns`), which
+  missed a `VAR` argument; replaced 2026-09-21, see `AGENTS.md`.
 - **Cost.** One more pass over each procedure that has nested ones, and none for
   those that do not (the analysis starts from `procDecls` and returns at once if
   it is empty). poc's own source has no nested procedures, so the fixed point is
@@ -444,7 +444,7 @@ BSD hosts before step 6.
 - **Keep the error and rewrite the few users.** Poc's own source has none, and
   this is legal Oberon-2 that other programs will use; the point of the compiler
   is to compile them.
-- **Name-based free-variable analysis**, as `MayBeReassignedElsewhere` does:
+- **Name-based free-variable analysis**, as the checker's old `WITH` pre-pass did:
   rejected in §3.1.
 
 ## 9. The VAX/VMS backend (Phase 13)
