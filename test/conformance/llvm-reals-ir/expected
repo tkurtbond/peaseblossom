@@ -108,51 +108,60 @@ L13:
   br label %L1
 L1:
   %t62 = load double, ptr %t4
-  %t63 = fptosi double %t62 to i32
-  %t64 = sitofp i32 %t63 to double
-  %t65 = fcmp ogt double %t64, %t62
-  %t66 = sub i32 %t63, 1
-  %t67 = select i1 %t65, i32 %t66, i32 %t63
-  store i32 %t67, ptr @realsir.lx
-  %t68 = load float, ptr %t1
-  %t69 = bitcast float %t68 to i32
-  %t70 = and i32 %t69, 2147483647
-  %t71 = bitcast i32 %t70 to float
-  %t72 = load i16, ptr %t3
-  %t73 = sitofp i16 %t72 to float
-  %t74 = fdiv float %t71, %t73
-  store float %t74, ptr @realsir.fx
-  %t75 = load double, ptr %t4
-  %t76 = fptrunc double %t75 to float
-  store float %t76, ptr @realsir.fx
-  %t77 = load float, ptr @realsir.fx
-  %t78 = fpext float %t77 to double
-  store double %t78, ptr @realsir.dx
-  %t79 = load double, ptr %t4
-  ret double %t79
+  %t63 = fcmp oge double %t62, -2147483648.0
+  %t64 = fcmp olt double %t62, 2147483648.0
+  %t65 = and i1 %t63, %t64
+  br i1 %t65, label %L15, label %L14
 L14:
+  call void @write(i32 2, ptr @.trap.entier, i64 40)
+  call void @exit(i32 8)
+  unreachable
+L15:
+  %t66 = fptosi double %t62 to i32
+  %t67 = sitofp i32 %t66 to double
+  %t68 = fcmp ogt double %t67, %t62
+  %t69 = sub i32 %t66, 1
+  %t70 = select i1 %t68, i32 %t69, i32 %t66
+  store i32 %t70, ptr @realsir.lx
+  %t71 = load float, ptr %t1
+  %t72 = bitcast float %t71 to i32
+  %t73 = and i32 %t72, 2147483647
+  %t74 = bitcast i32 %t73 to float
+  %t75 = load i16, ptr %t3
+  %t76 = sitofp i16 %t75 to float
+  %t77 = fdiv float %t74, %t76
+  store float %t77, ptr @realsir.fx
+  %t78 = load double, ptr %t4
+  %t79 = fptrunc double %t78 to float
+  store float %t79, ptr @realsir.fx
+  %t80 = load float, ptr @realsir.fx
+  %t81 = fpext float %t80 to double
+  store double %t81, ptr @realsir.dx
+  %t82 = load double, ptr %t4
+  ret double %t82
+L16:
   ret double 0.0
 }
 
 define void @realsir_init() {
 entry:
-  %t80 = fptrunc double 0.1 to float
-  store float %t80, ptr @realsir.fx
+  %t83 = fptrunc double 0.1 to float
+  store float %t83, ptr @realsir.fx
   store double 0.1e0, ptr @realsir.dx
   store double -1.5e-3, ptr @realsir.dx
-  %t81 = fptrunc double -0.0 to float
-  %t82 = fpext float %t81 to double
-  store double %t82, ptr @realsir.dx
+  %t84 = fptrunc double -0.0 to float
+  %t85 = fpext float %t84 to double
+  store double %t85, ptr @realsir.dx
   store double 0x3FD5555555555555, ptr @realsir.dx
   store double 0xBFD5555555555555, ptr @realsir.dx
   store float 0x3FD5555560000000, ptr @realsir.fx
   store double 0x0000000400000000, ptr @realsir.dx
   store double 0x7E70000000000000, ptr @realsir.dx
-  %t83 = load float, ptr @realsir.fx
-  %t84 = load double, ptr @realsir.dx
-  %t85 = sext i8 2 to i16
-  %t86 = call double @realsir.Forms(float %t83, double %t84, i16 %t85)
-  store double %t86, ptr @realsir.dx
+  %t86 = load float, ptr @realsir.fx
+  %t87 = load double, ptr @realsir.dx
+  %t88 = sext i8 2 to i16
+  %t89 = call double @realsir.Forms(float %t86, double %t87, i16 %t88)
+  store double %t89, ptr @realsir.dx
   ret void
 }
 
@@ -161,6 +170,7 @@ entry:
   call void @realsir_init()
   ret i32 0
 }
+@.trap.entier = private unnamed_addr constant [41 x i8] c"ENTIER argument out of range for LONGINT\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
@@ -272,51 +282,60 @@ L13:
   br label %L1
 L1:
   %t62 = load double, ptr %t4
-  %t63 = fptosi double %t62 to i32
-  %t64 = sitofp i32 %t63 to double
-  %t65 = fcmp ogt double %t64, %t62
-  %t66 = sub i32 %t63, 1
-  %t67 = select i1 %t65, i32 %t66, i32 %t63
-  store i32 %t67, ptr @realsir.lx
-  %t68 = load float, ptr %t1
-  %t69 = bitcast float %t68 to i32
-  %t70 = and i32 %t69, 2147483647
-  %t71 = bitcast i32 %t70 to float
-  %t72 = load i16, ptr %t3
-  %t73 = sitofp i16 %t72 to float
-  %t74 = fdiv float %t71, %t73
-  store float %t74, ptr @realsir.fx
-  %t75 = load double, ptr %t4
-  %t76 = fptrunc double %t75 to float
-  store float %t76, ptr @realsir.fx
-  %t77 = load float, ptr @realsir.fx
-  %t78 = fpext float %t77 to double
-  store double %t78, ptr @realsir.dx
-  %t79 = load double, ptr %t4
-  ret double %t79
+  %t63 = fcmp oge double %t62, -2147483648.0
+  %t64 = fcmp olt double %t62, 2147483648.0
+  %t65 = and i1 %t63, %t64
+  br i1 %t65, label %L15, label %L14
 L14:
+  call void @write(i32 2, ptr @.trap.entier, i64 40)
+  call void @exit(i32 8)
+  unreachable
+L15:
+  %t66 = fptosi double %t62 to i32
+  %t67 = sitofp i32 %t66 to double
+  %t68 = fcmp ogt double %t67, %t62
+  %t69 = sub i32 %t66, 1
+  %t70 = select i1 %t68, i32 %t69, i32 %t66
+  store i32 %t70, ptr @realsir.lx
+  %t71 = load float, ptr %t1
+  %t72 = bitcast float %t71 to i32
+  %t73 = and i32 %t72, 2147483647
+  %t74 = bitcast i32 %t73 to float
+  %t75 = load i16, ptr %t3
+  %t76 = sitofp i16 %t75 to float
+  %t77 = fdiv float %t74, %t76
+  store float %t77, ptr @realsir.fx
+  %t78 = load double, ptr %t4
+  %t79 = fptrunc double %t78 to float
+  store float %t79, ptr @realsir.fx
+  %t80 = load float, ptr @realsir.fx
+  %t81 = fpext float %t80 to double
+  store double %t81, ptr @realsir.dx
+  %t82 = load double, ptr %t4
+  ret double %t82
+L16:
   ret double 0.0
 }
 
 define void @realsir_init() {
 entry:
-  %t80 = fptrunc double 0.1 to float
-  store float %t80, ptr @realsir.fx
+  %t83 = fptrunc double 0.1 to float
+  store float %t83, ptr @realsir.fx
   store double 0.1e0, ptr @realsir.dx
   store double -1.5e-3, ptr @realsir.dx
-  %t81 = fptrunc double -0.0 to float
-  %t82 = fpext float %t81 to double
-  store double %t82, ptr @realsir.dx
+  %t84 = fptrunc double -0.0 to float
+  %t85 = fpext float %t84 to double
+  store double %t85, ptr @realsir.dx
   store double 0x3FD5555555555555, ptr @realsir.dx
   store double 0xBFD5555555555555, ptr @realsir.dx
   store float 0x3FD5555560000000, ptr @realsir.fx
   store double 0x0000000400000000, ptr @realsir.dx
   store double 0x7E70000000000000, ptr @realsir.dx
-  %t83 = load float, ptr @realsir.fx
-  %t84 = load double, ptr @realsir.dx
-  %t85 = sext i8 2 to i16
-  %t86 = call double @realsir.Forms(float %t83, double %t84, i16 %t85)
-  store double %t86, ptr @realsir.dx
+  %t86 = load float, ptr @realsir.fx
+  %t87 = load double, ptr @realsir.dx
+  %t88 = sext i8 2 to i16
+  %t89 = call double @realsir.Forms(float %t86, double %t87, i16 %t88)
+  store double %t89, ptr @realsir.dx
   ret void
 }
 
@@ -325,4 +344,5 @@ entry:
   call void @realsir_init()
   ret i32 0
 }
+@.trap.entier = private unnamed_addr constant [41 x i8] c"ENTIER argument out of range for LONGINT\00"
 clang accepted x86_64-unknown-linux-gnu

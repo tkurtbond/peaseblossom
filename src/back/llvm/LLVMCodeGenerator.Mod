@@ -257,6 +257,14 @@ MODULE LLVMCodeGenerator;
     lengthTrapGlobal = "@.trap.arraylength";
     lengthTrapMsg = "Too many, or negative number of, elements in dynamic array";
     lengthTrapExitCode = 7;
+    (* Phase 11 step 3 (inventory A4): ENTIER(x) whose value does not fit a
+       LONGINT - too large, too small, infinite or a NaN. The report defines
+       ENTIER only for a value that fits and no dialect surveyed checks it
+       (voc wraps, the A2 and obc compilers take the hardware's word), so poc
+       traps, like the constant ENTIER that is a compile-time error. *)
+    entierTrapGlobal = "@.trap.entier";
+    entierTrapMsg = "ENTIER argument out of range for LONGINT";
+    entierTrapExitCode = 8;
 
     (* the most open dimensions (ARRAY OF ARRAY OF ... T) one designator
        may carry lengths for - see DopeVector *)
@@ -528,7 +536,7 @@ MODULE LLVMCodeGenerator;
       needNilTrap, needGuardTrap, needWithTrap, usedAllocate: BOOLEAN;
       (* Phase 9 step 7: the array-length trap, and the overflow-checking
          arithmetic intrinsics NEW's size computation calls *)
-      needLengthTrap, needOverflowMath: BOOLEAN;
+      needLengthTrap, needOverflowMath, needEntierTrap: BOOLEAN;
       narrowings: Narrowing;
       arrayDescs: ArrayDescEntry;
       lateRecords: TypeDescEntry;
@@ -3611,13 +3619,35 @@ MODULE LLVMCodeGenerator;
      GenerateDivMod's own correction. The round trip back to REAL is
      exact wherever it matters: a float has 24 mantissa bits, so a
      value with a fractional part is small enough to convert exactly,
-     and a value too large to have one is already integral. An x
-     outside LONGINT's own range is undefined, as in C. *)
+     and a value too large to have one is already integral.
+     An x whose floor does not fit a LONGINT - x >= 2^(w-1), x < -2^(w-1)
+     for a LONGINT of w bits, an infinity or a NaN - is a trap (exit 8),
+     tested first: fptosi of such a value is poison, not merely wrong. Both
+     bounds are powers of two, exact in a float, and the compares are the
+     ordered ones, so a NaN fails them and traps too. Under -O2 (w = 32) this
+     is what voc wraps and poc used to answer -2147483648 for. *)
   PROCEDURE GenerateEntier(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR v: Value; intType, truncated, back, overshoots, lowered, floored: ValueText;
+    VAR
+      v: Value; intType, truncated, back, overshoots, lowered, floored, aboveLow, belowHigh, fits,
+      trapLabel, okLabel: ValueText;
+      lowBound, highBound: ARRAY 32 OF CHAR;
   BEGIN
     GenerateExpr(w, cg, args, v);
     LLVMTypes.TypeString(Types.LongInt, cg.sizeModel, intType);
+    IF intType = "i32" THEN
+      COPY("-2147483648.0", lowBound); COPY("2147483648.0", highBound)
+    ELSE
+      COPY("-9223372036854775808.0", lowBound); COPY("9223372036854775808.0", highBound)
+    END;
+    cg.needEntierTrap := TRUE;
+    EmitBinOp(w, cg, "fcmp oge", v.llvmType, v.text, lowBound, aboveLow);
+    EmitBinOp(w, cg, "fcmp olt", v.llvmType, v.text, highBound, belowHigh);
+    EmitBinOp(w, cg, "and", "i1", aboveLow, belowHigh, fits);
+    NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+    EmitCondBr(w, fits, okLabel, trapLabel);
+    EmitLabel(w, cg, trapLabel);
+    EmitTrap(w, cg, entierTrapGlobal, entierTrapMsg, entierTrapExitCode);
+    EmitLabel(w, cg, okLabel);
     EmitConvert(w, cg, "fptosi", v.llvmType, v.text, intType, truncated);
     EmitConvert(w, cg, "sitofp", intType, truncated, v.llvmType, back);
     EmitBinOp(w, cg, "fcmp ogt", v.llvmType, back, v.text, overshoots);
@@ -6210,6 +6240,7 @@ MODULE LLVMCodeGenerator;
     IF cg.needGuardTrap THEN EmitRuntimeStringGlobal(w, guardTrapGlobal, guardTrapMsg) END;
     IF cg.needWithTrap THEN EmitRuntimeStringGlobal(w, withTrapGlobal, withTrapMsg) END;
     IF cg.needLengthTrap THEN EmitRuntimeStringGlobal(w, lengthTrapGlobal, lengthTrapMsg) END;
+    IF cg.needEntierTrap THEN EmitRuntimeStringGlobal(w, entierTrapGlobal, entierTrapMsg) END;
     IF cg.usedAllocate & ~cg.heapPresent THEN
       WordIntType(wordInt);
       WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");
@@ -6339,7 +6370,7 @@ MODULE LLVMCodeGenerator;
     cg.needMemmove := FALSE;
     cg.currentBlock[0] := 0X;
     cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
-    cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE;
+    cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE; cg.needEntierTrap := FALSE;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
     cg.heapPresent := withHeap;
     WriteStr(w, 'target datalayout = "');

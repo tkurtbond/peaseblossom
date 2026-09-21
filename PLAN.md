@@ -4064,7 +4064,7 @@ as it stands when the phase starts, and adds what it finds):
 | Value-argument predeclared functions in a `CONST` (`ORD`, `ABS`, `CHR`, `CAP`, `ENTIER`, `LONG`, `SHORT`, `ODD`) - `ASH` is done | Open design questions | gap, "real, separate, future work" |
 | A computed `REAL`/`LONGREAL` constant of extreme magnitude (`MAX(LONGREAL) / 2`, `1.0D300 * 1.5`) cannot be exported to a `.sym`: `ParseReal` is not correctly rounded, so no text verifies | Phase 9 step 10 | bug, found not fixed |
 | `Out.Real`/`Out.LongReal` are voc's algorithm, not correctly rounded (a decimal exponent estimated as 77/256 of the binary one, scaling by a floating-point power of ten exact only to 10^22): the last digits of a number outside about 10^-22..10^22, or the 17th of a LONGREAL, can be off. The same shortcoming as `ParseReal`'s; one correctly rounded converter each way would close both | Phase 10 step 5 | gap, found not fixed |
-| `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | decision |
+| `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | **done 2026-09-21** (step 3: a trap, exit 8) |
 | Nested procedures (a procedure declared inside another) were not lowered by the LLVM backend: a declaration or a call was a compile error (2026-09-20; before that a comment in the IR and a program quietly missing the call). `Oberon2.pdf` §10: "procedure declarations may be nested". Done in Phase 11 step 8 (2026-09-20/21): lambda lifting by reference, `doc/nested-procedures.md`; what a program can observe is in `AGENTS.md` ("Nested procedures") | Phase 10 step 6; found 2026-09-20 | **done** |
 | `LONG`/`SHORT` reject `SYSTEM.INT8..INT64` ("requires a SHORTINT, INTEGER, or REAL argument"); voc's go by size along the model's chain (`OPT.ShorterOrLongerType`) | Phase 10 step 8 (fixed-width `INTn`, 2026-09-20) | gap |
 | Under `-OC` an `INT8` met by an integer literal in an expression (`b + 1`) is a `SHORTINT` - the literal's own type is at least two bytes there - and cannot be assigned back to an `INT8` without `SYSTEM.VAL` | Phase 10 step 8 (fixed-width `INTn`) | done 2026-09-21 (step 3) |
@@ -4445,6 +4445,17 @@ as it stands when the phase starts, and adds what it finds):
      `ENTIER` folded in a `CONST` already rejects what does not fit, per voc)
      and a run-time trap in the style of this step's other traps; probe voc
      under both models first, and let A1's `CONST` folding follow the choice.
+     **Done 2026-09-21, decided with the user: a trap.** voc's `SYSTEM_ENTIER`
+     is a bare C cast (32-bit wrap under `-O2`, INT64_MIN under `-OC`); the A2
+     and Oberon V4 compilers (`fistp`) and obc do not check either, and all type
+     the result as the standard integer type, as do the report, Component Pascal
+     and (as `FLOOR`) Oberon-07. So the result stays `LONGINT` (a `HUGEINT` one
+     helps only `-O2` and breaks `n := ENTIER(x)`), and `GenerateEntier` checks
+     the range first - 2^(w-1) as an exact float bound, ordered compares so a NaN
+     fails - and traps, exit 8, "ENTIER argument out of range for LONGINT"
+     (`entierTrapGlobal`, `needEntierTrap`); the `fptosi` it replaces was poison
+     for such a value. The `CONST` folder already rejected the same values at
+     compile time. Fixture `llvm-entier-trap`; `AGENTS.md` has the behavior.
 
 4. **Can the collector do better than scanning the stack conservatively?**
    An investigation with a written answer. The collector already traces

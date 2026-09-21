@@ -617,8 +617,20 @@ like voc's), outermost dimension first:
   integer constant is always an error (a constant's type is minimal, so its
   value never fits the shorter one). An argument that does not fit is a
   compile-time error, in a statement as well as in a `CONST`. `ENTIER` of a
-  value beyond the model's `LONGINT` is an error, until the run-time decision
-  (`doc/phase-11-inventory.md` A4) is made.
+  value beyond the model's `LONGINT` is an error too, and at run time a trap
+  (next bullet).
+- **`ENTIER` of a value that does not fit a `LONGINT` is a trap** (Phase 11
+  step 3, `doc/phase-11-inventory.md` A4, decided with the user 2026-09-21):
+  x >= 2^31 or < -2^31 under `-O2`, 2^63 under `-OC`, an infinity or a NaN
+  stops the program with "ENTIER argument out of range for LONGINT" on stderr,
+  exit status 8. The result stays a `LONGINT`, as in the report (which defines
+  `ENTIER` only for a value that fits) and in every dialect surveyed - voc, the
+  A2 and Oberon V4 compilers, obc, Component Pascal - none of which checks it: voc
+  wraps under `-O2` (`ENTIER(10^12)` is -727379968) and gives the hardware's word
+  (INT64_MIN) under `-OC`; poc used to answer -2147483648, from an LLVM `fptosi`
+  whose result for such a value is poison. A `HUGEINT` result was rejected: it
+  helps only `-O2`, and breaks `n := ENTIER(x)` for a `LONGINT` `n`. Checked by
+  `llvm-entier-trap` under both models.
 - **`MAX`/`MIN` of `REAL` and `LONGREAL` are constants**: IEEE 754's
   largest finite values and their negations, as at run time.
 - **A `CASE` label must lie in the range of the selector's type** (Phase 11

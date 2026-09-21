@@ -603,8 +603,8 @@ MODULE ConstantEvaluator;
        literal's exact text (NegateRealText) so ABS(-0.1) is 0.1 to the bit.
      - ENTIER of a real is a LONGINT, whatever its value's own size, and an
        error when the floor does not fit the model's LONGINT (voc dies of a
-       "Halt(-8)" in that range and says "number too large" past 2^63; a
-       HUGEINT-valued ENTIER waits on the run-time question, inventory A4).
+       "Halt(-8)" in that range and says "number too large" past 2^63; the
+       run-time ENTIER traps on the same values, inventory A4).
      - LONG and SHORT follow the same type rules as the checker
        (PredeclaredProcedures.CheckLong/CheckShort): no re-typing, so LONG of
        an INTEGER-typed 500 is a LONGINT. SHORT is an error when the value
