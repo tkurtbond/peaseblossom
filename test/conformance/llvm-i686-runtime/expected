@@ -5,6 +5,11 @@ llvm-control-flow: same
 llvm-procedures: same
 llvm-nested-basic: same
 llvm-nested-features: same
+llvm-nested-uplevel: same
+llvm-nested-params: same
+llvm-nested-deep: same
+llvm-nested-gc: same
+llvm-nested-import: same
 llvm-predeclared: same
 llvm-multi-module: same
 llvm-reals: same

@@ -21,7 +21,7 @@ run -check missing.mod
 run -emit-llvm-ir missing.mod
 run -o prog -build ok.mod
 run -o prog -build typeerror.mod
-run -o prog -build nested.mod
+run -o prog -build wide.mod
 run -o prog -build missing.mod
 run -output-dir no-such-directory -emit-interface ok.mod
 run -frobnicate ok.mod

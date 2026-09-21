@@ -92,3 +92,8 @@ test/conformance/llvm-const-value-functions/llvm-const-value-functions
 test/conformance/llvm-real-digits/llvm-real-digits
 test/conformance/llvm-nested-basic/llvm-nested-basic
 test/conformance/llvm-nested-features/llvm-nested-features
+test/conformance/llvm-nested-uplevel/llvm-nested-uplevel
+test/conformance/llvm-nested-params/llvm-nested-params
+test/conformance/llvm-nested-deep/llvm-nested-deep
+test/conformance/llvm-nested-gc/llvm-nested-gc
+test/conformance/llvm-nested-import/llvm-nested-import

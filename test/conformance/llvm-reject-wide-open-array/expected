@@ -1,0 +1,5 @@
+wide.mod:4:3: error: module wide: the LLVM backend cannot lower this yet: an open array parameter with more than 8 dimensions
+1 construct(s) the LLVM backend cannot lower yet; nothing written
+wide.mod:4:3: error: module wide: the LLVM backend cannot lower this yet: an open array parameter with more than 8 dimensions
+1 construct(s) the LLVM backend cannot lower yet; nothing written
+done

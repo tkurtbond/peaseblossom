@@ -2747,6 +2747,25 @@ MODULE LLVMCodeGenerator;
     RETURN p.isVar & (p.type # NIL) & (p.type IS Types.RecordType)
   END NeedsHiddenTag;
 
+  (* The hidden parameters a nested procedure takes for a variable of an
+     enclosing procedure (doc/nested-procedures.md 3.2), one group per entry of
+     its needs list, in order, after the ordinary parameters: the variable's
+     address as "%up.<k>" for the k-th, then - exactly as an ordinary
+     parameter of the same kind is passed - its hidden type tag "%up.<k>.tag"
+     if it is a VAR parameter of record type (a VAR receiver included), or one
+     word-sized length "%up.<k>.len<d>" per open dimension if it is an open
+     array. Numbered, not named after the variable: a path of procedure names
+     can outgrow ValueText, and no Oberon identifier holds a dot. *)
+  PROCEDURE NeedHasTag(obj: SymbolTable.Object): BOOLEAN;
+  BEGIN
+    RETURN obj.isVarParam & (obj.type # NIL) & (obj.type IS Types.RecordType)
+  END NeedHasTag;
+
+  PROCEDURE NeedParamName(k: INTEGER; VAR text: ARRAY OF CHAR);
+  BEGIN
+    COPY("%up.", text); AppendLongInt(text, k)
+  END NeedParamName;
+
   PROCEDURE ParamLLVMType(VAR cg: Codegen; p: Types.Param; VAR llvmType: ARRAY OF CHAR);
   BEGIN
     IF p.isVar OR IsOpenArrayType(p.type) THEN
@@ -3148,17 +3167,49 @@ MODULE LLVMCodeGenerator;
      ParamLLVMType-driven signature matching) is already fully generic
      over Types.Param/Types.ProcedureType and needed no change at all to
      serve an ordinary, user-defined procedure too. *)
+  (* The hidden arguments of a call of a nested procedure: for each variable
+     of an enclosing procedure it needs, in its needs order, what the caller
+     itself has for that very variable - its own alloca, or the hidden
+     parameter it was handed - with the variable's type tag and open-array
+     lengths if it has them. The caller has one by construction: what a
+     procedure needs includes what the nested procedures it calls need, less
+     what it declares itself. *)
+  PROCEDURE AppendHiddenArguments(VAR cg: Codegen; needs: NestedProcedures.Need; VAR text: ARRAY OF CHAR);
+    VAR need: NestedProcedures.Need; b: LocalBinding; wordInt: ValueText; dim: INTEGER;
+  BEGIN
+    WordIntType(wordInt);
+    need := needs;
+    WHILE need # NIL DO
+      b := FindLocalBinding(cg, need.obj);
+      IF b = NIL THEN
+        ReportUnsupported(cg, cg.currentLine, cg.currentColumn,
+          "internal error: a variable a nested procedure needs has no address here")
+      ELSE
+        IF text[0] # 0X THEN Strcat(text, ", ") END;
+        Strcat(text, "ptr "); Strcat(text, b.addrText);
+        IF b.tagText[0] # 0X THEN Strcat(text, ", ptr "); Strcat(text, b.tagText) END;
+        FOR dim := 0 TO b.dope.count - 1 DO
+          Strcat(text, ", "); Strcat(text, wordInt); Strcat(text, " "); Strcat(text, b.dope.len[dim])
+        END
+      END;
+      need := need.next
+    END
+  END AppendHiddenArguments;
+
   PROCEDURE GenerateDirectCall(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType;
-                               fnSymbol: ARRAY OF CHAR; args: SyntaxTree.ExprNode; VAR result: Value);
+                               fnSymbol: ARRAY OF CHAR; args: SyntaxTree.ExprNode;
+                               hidden: NestedProcedures.Need; VAR result: Value);
     VAR retType: LongText; destTemp: ValueText; argsText: ArgsText;
   BEGIN
     IF pt.resultType = NIL THEN
       GenerateCallArgList(w, cg, pt.params, args, TRUE, argsText);
+      AppendHiddenArguments(cg, hidden, argsText);
       WriteStr(w, "  call void "); WriteStr(w, fnSymbol); WriteStr(w, "(");
       WriteStr(w, argsText); WriteStr(w, ")"); WriteLn(w);
       result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X
     ELSE
       GenerateCallArgList(w, cg, pt.params, args, TRUE, argsText);
+      AppendHiddenArguments(cg, hidden, argsText);
       LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType);
       NewTemp(cg, destTemp);
       WriteStr(w, "  "); WriteStr(w, destTemp); WriteStr(w, " = call "); WriteStr(w, retType);
@@ -3174,7 +3225,7 @@ MODULE LLVMCodeGenerator;
     VAR fnSymbol: ValueText;
   BEGIN
     QualifiedName(homeModule, obj.name, fnSymbol);
-    GenerateDirectCall(w, cg, obj.type(Types.ProcedureType), fnSymbol, args, result)
+    GenerateDirectCall(w, cg, obj.type(Types.ProcedureType), fnSymbol, args, NIL, result)
   END GenerateOrdinaryCall;
 
   (* "@Module.Outer.Inner": the function a nested procedure is lifted to
@@ -3187,22 +3238,14 @@ MODULE LLVMCodeGenerator;
     QualifiedName(cg.moduleName, np.pathName, text)
   END NestedFunctionSymbol;
 
-  (* A call of a procedure declared inside another. One that uses no variable
-     of an enclosing procedure is an ordinary direct call of its lifted
-     function; one that does still cannot be lowered (step 3 of the plan gives
-     it the hidden parameters), which is reported at the call as at the
-     declaration. *)
+  (* A call of a procedure declared inside another: a direct call of its
+     lifted function, with the hidden arguments its needs list asks for. *)
   PROCEDURE GenerateNestedCall(VAR w: Files.Rider; VAR cg: Codegen; np: NestedProcedures.NestedProc;
                                args: SyntaxTree.ExprNode; VAR result: Value);
     VAR fnSymbol: ValueText;
   BEGIN
-    IF np.needs # NIL THEN
-      Unsupported(w, cg, "call of a nested procedure that uses variables of an enclosing procedure (not lowered yet)",
-                  Types.Undefined, result)
-    ELSE
-      NestedFunctionSymbol(cg, np, fnSymbol);
-      GenerateDirectCall(w, cg, np.procType, fnSymbol, args, result)
-    END
+    NestedFunctionSymbol(cg, np, fnSymbol);
+    GenerateDirectCall(w, cg, np.procType, fnSymbol, args, np.needs, result)
   END GenerateNestedCall;
 
   (* A call through a procedure value (Oberon2.pdf 6.5, PLAN.md Phase 9
@@ -5662,8 +5705,9 @@ MODULE LLVMCodeGenerator;
      ParamLLVMType-driven VAR/open-CHAR-array-as-"ptr" convention), just
      "define ... { entry:" instead of "declare ...;". *)
   PROCEDURE EmitProcSignature(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
-                              receiver: SyntaxTree.ReceiverNode);
-    VAR retType, paramType: LongText; wordInt: ValueText; p: Types.Param; first: BOOLEAN; dim: INTEGER;
+                              receiver: SyntaxTree.ReceiverNode; needs: NestedProcedures.Need);
+    VAR retType, paramType: LongText; wordInt, hiddenName: ValueText; p: Types.Param; first: BOOLEAN;
+        dim, k: INTEGER; need: NestedProcedures.Need;
   BEGIN
     WordIntType(wordInt);
     IF pt.resultType = NIL THEN COPY("void", retType)
@@ -5692,9 +5736,50 @@ MODULE LLVMCodeGenerator;
       END;
       p := p.next
     END;
+    (* a nested procedure's hidden parameters, see NeedHasTag *)
+    need := needs; k := 0;
+    WHILE need # NIL DO
+      IF ~first THEN WriteStr(w, ", ") END;
+      first := FALSE;
+      NeedParamName(k, hiddenName);
+      WriteStr(w, "ptr "); WriteStr(w, hiddenName);
+      IF NeedHasTag(need.obj) THEN WriteStr(w, ", ptr "); WriteStr(w, hiddenName); WriteStr(w, ".tag") END;
+      FOR dim := 0 TO OpenDimCount(need.obj.type) - 1 DO
+        WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, hiddenName);
+        WriteStr(w, ".len"); Files.Write(w, CHR(ORD("0") + dim))
+      END;
+      need := need.next; INC(k)
+    END;
     WriteStr(w, ") {"); WriteLn(w);
     EmitEntryLabel(w, cg)
   END EmitProcSignature;
+
+  (* Binds each variable of an enclosing procedure a nested one needs to the
+     hidden parameters EmitProcSignature gave it, under the very Object the
+     enclosing procedure's own binding uses, so every access to it in the body
+     is the ordinary load or store through an address. *)
+  PROCEDURE BindNeeds(VAR cg: Codegen; needs: NestedProcedures.Need);
+    VAR need: NestedProcedures.Need; k, dim: INTEGER; name, tagName: ValueText; dope: DopeVector;
+  BEGIN
+    need := needs; k := 0;
+    WHILE need # NIL DO
+      NeedParamName(k, name);
+      IF NeedHasTag(need.obj) THEN
+        COPY(name, tagName); Strcat(tagName, ".tag");
+        BindLocalWithTag(cg, need.obj, name, tagName)
+      ELSIF OpenDimCount(need.obj.type) > 0 THEN
+        dope.count := OpenDimCount(need.obj.type);
+        IF dope.count > maxOpenDims THEN dope.count := maxOpenDims END;
+        FOR dim := 0 TO dope.count - 1 DO
+          COPY(name, dope.len[dim]); Strcat(dope.len[dim], ".len"); AppendLongInt(dope.len[dim], dim)
+        END;
+        BindLocalWithDope(cg, need.obj, name, dope)
+      ELSE
+        BindLocal(cg, need.obj, name)
+      END;
+      need := need.next; INC(k)
+    END
+  END BindNeeds;
 
   (* Binds each formal parameter into cg.locals: a VAR parameter's own
      incoming argument (already an address, "ptr" - ParamLLVMType) is
@@ -5709,7 +5794,8 @@ MODULE LLVMCodeGenerator;
      Objects (not pt.params directly) are the binding keys, since
      that's what SymbolTable.Find(cg.scope, ...) will actually return
      while generating this procedure's body. *)
-  PROCEDURE BindFormalParams(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType);
+  PROCEDURE BindFormalParams(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType;
+                             line, column: INTEGER);
     VAR
       p: Types.Param; obj: SymbolTable.Object; llvmType: LongText; argName, tagName, addrText: ValueText;
       wordInt, bytes, copied: ValueText; dope: DopeVector; dim: INTEGER;
@@ -5721,6 +5807,10 @@ MODULE LLVMCodeGenerator;
       IF IsOpenArrayType(p.type) THEN
         (* the hidden lengths follow the pointer (EmitProcSignature) *)
         dope.count := OpenDimCount(p.type);
+        IF dope.count > maxOpenDims THEN
+          ReportUnsupported(cg, line, column, "an open array parameter with more than 8 dimensions");
+          dope.count := maxOpenDims
+        END;
         FOR dim := 0 TO dope.count - 1 DO
           COPY(argName, dope.len[dim]); Strcat(dope.len[dim], ".len"); AppendLongInt(dope.len[dim], dim)
         END;
@@ -5849,14 +5939,16 @@ MODULE LLVMCodeGenerator;
      reset back to their module-level values afterward, so the next
      procedure (or "_init", once every procedure is done) starts clean. *)
   PROCEDURE GenerateFunction(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
-                             pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR);
+                             pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
+                             needs: NestedProcedures.Need);
     VAR savedScope: SymbolTable.Scope; retType: LongText;
   BEGIN
-    EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver);
+    EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver, needs);
     savedScope := cg.scope;
     cg.scope := bodyScope; cg.locals := NIL; cg.currentProcResultType := pt.resultType;
     IF pd.receiver # NIL THEN BindReceiver(w, cg, bodyScope, pd.receiver) END;
-    BindFormalParams(w, cg, bodyScope, pt);
+    BindFormalParams(w, cg, bodyScope, pt, pd.line, pd.column);
+    BindNeeds(cg, needs);
     BindLocalVars(w, cg, bodyScope, pd.declarations);
     GenerateStatementSeq(w, cg, pd.statements);
     IF pt.resultType = NIL THEN
@@ -5880,10 +5972,9 @@ MODULE LLVMCodeGenerator;
      The nested ones go first because the IR is written in one pass and a
      function cannot be started in the middle of another; LLVM does not care
      about the order of the functions of a module. A nested procedure that
-     uses no variable of an enclosing procedure needs nothing more than an
-     ordinary function; one that does (its NestedProcedures needs list is not
-     empty) is reported and left out, and so is each call of it - step 3 of
-     the plan gives it its hidden parameters. The body scopes come from
+     uses variables of an enclosing procedure takes their addresses as hidden
+     parameters, one group per entry of its needs list (NeedHasTag); a call of
+     it passes the caller's own bindings of the same Objects. The body scopes come from
      NestedProcedures, which opened them: bindings are keyed by Object
      identity, so the code for a nested procedure must use the very scope the
      analysis did. *)
@@ -5895,16 +5986,11 @@ MODULE LLVMCodeGenerator;
     cg.nestedRoot := root;
     np := root.following;
     WHILE np # NIL DO
-      IF np.needs # NIL THEN
-        ReportUnsupported(cg, np.decl.line, np.decl.column,
-          "a nested procedure that uses variables of an enclosing procedure (not lowered yet)")
-      ELSE
-        NestedFunctionSymbol(cg, np, symbol);
-        GenerateFunction(w, cg, np.scope, np.decl, np.procType, symbol)
-      END;
+      NestedFunctionSymbol(cg, np, symbol);
+      GenerateFunction(w, cg, np.scope, np.decl, np.procType, symbol, np.needs);
       np := np.following
     END;
-    GenerateFunction(w, cg, bodyScope, pd, pt, fnSymbol);
+    GenerateFunction(w, cg, bodyScope, pd, pt, fnSymbol, NIL);
     cg.nestedRoot := NIL
   END GenerateProcedureBody;
 

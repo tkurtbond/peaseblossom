@@ -1,7 +1,0 @@
-nested.mod:9:5: error: module nested: the LLVM backend cannot lower this yet: a nested procedure that uses variables of an enclosing procedure (not lowered yet)
-nested.mod:15:5: error: module nested: the LLVM backend cannot lower this yet: call of a nested procedure that uses variables of an enclosing procedure (not lowered yet)
-2 construct(s) the LLVM backend cannot lower yet; nothing written
-nested.mod:9:5: error: module nested: the LLVM backend cannot lower this yet: a nested procedure that uses variables of an enclosing procedure (not lowered yet)
-nested.mod:15:5: error: module nested: the LLVM backend cannot lower this yet: call of a nested procedure that uses variables of an enclosing procedure (not lowered yet)
-2 construct(s) the LLVM backend cannot lower yet; nothing written
-done

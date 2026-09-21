@@ -4311,7 +4311,8 @@ as it stands when the phase starts, and adds what it finds):
      statement line (`ReportUnsupported`), `GenerateProgram` counts them
      (`unsupportedCount`), and `EmitIR`/`Build` write nothing when any was met.
      Poc's own IR and every fixture's had none, so nothing else moved. New
-     fixture `llvm-reject-nested-procedure`.
+     fixture `llvm-reject-nested-procedure` (since renamed
+     `llvm-reject-wide-open-array`, once nested procedures were lowered).
    - *Nested procedures.* The feature the change above makes visible: now
      step 8 below, planned in `doc/nested-procedures.md`.
    - *Done (2026-09-20): exit status.* `poc` returned 0 whatever happened, so
@@ -4565,16 +4566,19 @@ as it stands when the phase starts, and adds what it finds):
    error, `AGENTS.md`, both BSD hosts, both word sizes. **Exit gate**: the
    fixtures of the plan's section 6 pass under both compilers, both size
    models, at both word sizes, on Linux, NetBSD amd64 and OpenBSD i386; the
-   program in `llvm-reject-nested-procedure` prints `ok` (it becomes
-   `llvm-nested-basic`); the fixed point still exact; no nested-procedure
+   program that `llvm-reject-nested-procedure` used to reject prints `ok` (it
+   is in `llvm-nested-uplevel`); the fixed point still exact; no nested-procedure
    error left in the backend.
-   *Progress (2026-09-20):* steps 0, 1 and 2 are done (step 2: nested procedures
-   that use nothing of their enclosing ones are lowered - `llvm-nested-basic`,
-   `llvm-nested-features`; the others are still an error until step 3); see
-   `doc/nested-procedures.md` section 5. Step 1 added `NestedProcedures.Mod`
+   *Progress (2026-09-20):* steps 0 to 5 are done: nested procedures are lowered
+   in full (hidden trailing address parameters, with a tag or lengths where the
+   variable is a `VAR` record or an open array; step 3 did steps 4 and 5's
+   mechanism too), the error is gone, and the fixtures `llvm-nested-basic`,
+   `-features`, `-uplevel`, `-params`, `-deep`, `-gc`, `-import` and `-ir` pass
+   (the runtime ones also as i686 executables). Step 1 added `NestedProcedures.Mod`
    (also built by `tools/bootstrap/stage0`), `poc -dump-nested`, and six
    `nested-analysis-*` fixtures; poc's own source, which has no nested
-   procedure, gives an empty analysis for every file.
+   procedure, gives an empty analysis for every file. Left: step 6, `AGENTS.md`
+   and the BSD hosts; see `doc/nested-procedures.md` section 5.
 
 9. **Close-out.** `000-todo.org` is brought up to date entry by entry
    (each item `DONE` with a one-line account, or `DROPPED` with the reason;

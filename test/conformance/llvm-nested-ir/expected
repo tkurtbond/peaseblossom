@@ -1,0 +1,141 @@
+== i686-unknown-linux-gnu
+target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"
+target triple = "i686-unknown-linux-gnu"
+
+@nestedir.Rec.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
+  [0 x ptr] [],
+  i32 2,
+  i32 0,
+  i32 0,
+  [1 x ptr] [ptr @nestedir.Rec.tag],
+  [0 x i32] []
+}
+@nestedir.Rec.tag = alias ptr, getelementptr inbounds (i8, ptr @nestedir.Rec.tdesc, i32 0)
+
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+
+define void @nestedir.Outer.Add(i16 %k, ptr %up.0, ptr %up.0.tag, ptr %up.1, i32 %up.1.len0, ptr %up.2) {
+entry:
+  %t1 = alloca i16
+  store i16 %k, ptr %t1
+  %t2 = load i16, ptr %up.2
+  %t3 = load i16, ptr %t1
+  %t4 = add i16 %t2, %t3
+  %t5 = getelementptr { i16 }, ptr %up.0, i32 0, i32 0
+  %t6 = load i16, ptr %t5
+  %t7 = add i16 %t4, %t6
+  %t8 = trunc i32 %up.1.len0 to i16
+  %t9 = add i16 %t7, %t8
+  store i16 %t9, ptr %up.2
+  ret void
+}
+
+define void @nestedir.Outer.Twice(i16 %k, ptr %up.0, ptr %up.0.tag, ptr %up.1, i32 %up.1.len0, ptr %up.2) {
+entry:
+  %t10 = alloca i16
+  store i16 %k, ptr %t10
+  %t11 = load i16, ptr %t10
+  call void @nestedir.Outer.Add(i16 %t11, ptr %up.0, ptr %up.0.tag, ptr %up.1, i32 %up.1.len0, ptr %up.2)
+  %t12 = load i16, ptr %t10
+  call void @nestedir.Outer.Add(i16 %t12, ptr %up.0, ptr %up.0.tag, ptr %up.1, i32 %up.1.len0, ptr %up.2)
+  ret void
+}
+
+define i16 @nestedir.Outer(ptr %r, ptr %r.tag, ptr %a, i32 %a.len0) {
+entry:
+  %t13 = alloca i16
+  %t14 = sext i8 0 to i16
+  store i16 %t14, ptr %t13
+  %t15 = sext i8 1 to i16
+  call void @nestedir.Outer.Twice(i16 %t15, ptr %r, ptr %r.tag, ptr %a, i32 %a.len0, ptr %t13)
+  %t16 = load i16, ptr %t13
+  ret i16 %t16
+L1:
+  ret i16 0
+}
+
+define void @nestedir_init() {
+entry:
+  ret void
+}
+
+define i32 @main() {
+entry:
+  call void @nestedir_init()
+  ret i32 0
+}
+clang accepted i686-unknown-linux-gnu
+== x86_64-unknown-linux-gnu
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+@nestedir.Rec.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
+  [0 x ptr] [],
+  i64 2,
+  i64 0,
+  i64 0,
+  [1 x ptr] [ptr @nestedir.Rec.tag],
+  [0 x i64] []
+}
+@nestedir.Rec.tag = alias ptr, getelementptr inbounds (i8, ptr @nestedir.Rec.tdesc, i32 0)
+
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
+@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+
+define void @nestedir.Outer.Add(i16 %k, ptr %up.0, ptr %up.0.tag, ptr %up.1, i64 %up.1.len0, ptr %up.2) {
+entry:
+  %t1 = alloca i16
+  store i16 %k, ptr %t1
+  %t2 = load i16, ptr %up.2
+  %t3 = load i16, ptr %t1
+  %t4 = add i16 %t2, %t3
+  %t5 = getelementptr { i16 }, ptr %up.0, i32 0, i32 0
+  %t6 = load i16, ptr %t5
+  %t7 = add i16 %t4, %t6
+  %t8 = trunc i64 %up.1.len0 to i32
+  %t9 = trunc i32 %t8 to i16
+  %t10 = add i16 %t7, %t9
+  store i16 %t10, ptr %up.2
+  ret void
+}
+
+define void @nestedir.Outer.Twice(i16 %k, ptr %up.0, ptr %up.0.tag, ptr %up.1, i64 %up.1.len0, ptr %up.2) {
+entry:
+  %t11 = alloca i16
+  store i16 %k, ptr %t11
+  %t12 = load i16, ptr %t11
+  call void @nestedir.Outer.Add(i16 %t12, ptr %up.0, ptr %up.0.tag, ptr %up.1, i64 %up.1.len0, ptr %up.2)
+  %t13 = load i16, ptr %t11
+  call void @nestedir.Outer.Add(i16 %t13, ptr %up.0, ptr %up.0.tag, ptr %up.1, i64 %up.1.len0, ptr %up.2)
+  ret void
+}
+
+define i16 @nestedir.Outer(ptr %r, ptr %r.tag, ptr %a, i64 %a.len0) {
+entry:
+  %t14 = alloca i16
+  %t15 = sext i8 0 to i16
+  store i16 %t15, ptr %t14
+  %t16 = sext i8 1 to i16
+  call void @nestedir.Outer.Twice(i16 %t16, ptr %r, ptr %r.tag, ptr %a, i64 %a.len0, ptr %t14)
+  %t17 = load i16, ptr %t14
+  ret i16 %t17
+L1:
+  ret i16 0
+}
+
+define void @nestedir_init() {
+entry:
+  ret void
+}
+
+define i32 @main() {
+entry:
+  call void @nestedir_init()
+  ret i32 0
+}
+clang accepted x86_64-unknown-linux-gnu

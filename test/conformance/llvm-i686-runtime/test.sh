@@ -53,6 +53,11 @@ check llvm-control-flow ctrlflow.mod
 check llvm-procedures procs.mod
 check llvm-nested-basic nestedbasic.mod
 check llvm-nested-features nestedfeatures.mod
+check llvm-nested-uplevel nesteduplevel.mod
+check llvm-nested-params nestedparams.mod
+check llvm-nested-deep nesteddeep.mod
+check llvm-nested-gc nestedgc.mod
+check llvm-nested-import client.mod
 check llvm-predeclared predeclared.mod
 check llvm-multi-module client.mod
 check llvm-reals reals.mod

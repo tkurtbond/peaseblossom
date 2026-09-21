@@ -291,23 +291,63 @@ BSD hosts before step 6.
    also built with `-OC`) and `llvm-nested-features` (`NEW` and the collector,
    `WITH`, `IS`, a type-bound call, a local `TYPE`, `CASE`, string comparison, a
    `VAR` record parameter, a procedure value, all inside nested functions), both
-   also run as real i686 executables; `llvm-reject-nested-procedure` now checks
-   only what is still rejected (a nested procedure using an enclosing variable,
-   and its call).
+   also run as real i686 executables; `llvm-reject-nested-procedure` checked
+   what was still rejected then (a nested procedure using an enclosing variable,
+   and its call) until step 3 lowered that too.
 3. **Hidden parameters for scalars and aggregates.** Read and write of enclosing
    locals and value parameters, in every context (`:=`, `INC`, `FOR`, `CASE`,
    `SYSTEM.ADR`, `COPY`, `NEW`). Fixture `llvm-nested-uplevel`.
+   **Done 2026-09-20**, together with steps 4 and 5: the mechanism is one for all
+   kinds of variable, so there was nothing to stage. A nested function takes its
+   `needs` as trailing hidden parameters, `%up.<k>` (the address), `%up.<k>.tag`
+   (for a `VAR` record parameter or a `VAR` receiver) and `%up.<k>.len<d>` (an
+   open array's lengths), after its own parameters, and `BindNeeds` binds them
+   under the very `SymbolTable.Object` the enclosing procedure's own binding
+   uses, so the body's accesses are the ordinary loads and stores through an
+   address. A call passes its own binding's address, tag and lengths
+   (`AppendHiddenArguments`), whether it is made by the enclosing procedure or by
+   another nested one that has the variable as a hidden parameter itself.
+   Fixture `llvm-nested-uplevel` (23 checks, built under `-O2` and `-OC` and the
+   outputs compared) covers `INTEGER`, `REAL`, `BOOLEAN`, `SET`, `CHAR`, a
+   record, an array, a pointer and `NEW` through it, `COPY` of a string, a `FOR`
+   variable, a value parameter, `CASE`, `SYSTEM.ADR`, an enclosing variable
+   passed on as a `VAR` argument, and shadowing.
 4. **The awkward variable kinds.** `VAR` parameters, `VAR` record parameters
    (tag), open-array parameters (dope, indexing, passing on as an argument),
    the receiver of a type-bound procedure, a `WITH`-narrowed variable used from a
    nested procedure. Fixture `llvm-nested-params`.
+   **Done 2026-09-20** (see step 3). `llvm-nested-params` has 11 checks: a `VAR`
+   `INTEGER`; a `VAR` record parameter tested with `IS`, narrowed by `WITH`, and
+   passed on as a `VAR` argument from the nested procedure (so its tag really
+   travels); a `VAR` and a value open array (`LEN`, indexing, passing on; the
+   value copy stays the callee's own); a two-dimensional one; a `VAR` receiver
+   and a pointer receiver that the nested procedure assigns; a `WITH` over an
+   enclosing pointer, `-OC` compared with `-O2`.
 5. **Depth and recursion.** Three levels; a variable reached through a level that
    never names it; siblings calling each other; mutual recursion through a forward
    declaration; a nested procedure calling its enclosing one; deep recursion
    (each activation with its own locals). Fixture `llvm-nested-deep`.
-6. **Close.** Remove the error and its message; delete
-   `llvm-reject-nested-procedure` (its program is now `llvm-nested-basic`'s and
-   must print `ok`); `AGENTS.md` gets "Nested procedures (implemented)" with
+   **Done 2026-09-20** (see step 3). `llvm-nested-deep` (8 checks): three and four
+   levels, a sibling relay that reaches a variable only through two procedures
+   that never name it, mutual recursion through `PROCEDURE ^`, a nested procedure
+   calling its enclosing one and a recursive enclosing one, and two unrelated
+   procedures with a nested procedure of the same name. Also written for this
+   step: `llvm-nested-gc` (an enclosing local, `VAR` parameter, record field and
+   array element that only a frame holds, across collections started by nested
+   procedures), `llvm-nested-import` (`Tally.mod`'s exported procedures, one
+   type-bound, use nested ones; the `.sym` has none of them) and `llvm-nested-ir`
+   (golden IR, both word sizes, `clang` accepts both). All the runtime ones are
+   in `llvm-i686-runtime`.
+   One thing the tests found: an open array parameter of more than 8
+   dimensions - which a dope vector cannot hold - crashed `poc` itself with a
+   run-time index error (unrelated to nested procedures, since the code is older);
+   it is now an ordinary "cannot lower this yet" error naming the procedure.
+   `llvm-reject-nested-procedure` became `llvm-reject-wide-open-array` (the
+   same "nothing written" checks, with this construct), and `poc-exit-status`'s
+   unsupported-program case moved to it too.
+6. **Close.** The error and its message are already gone (step 3) and
+   `llvm-reject-nested-procedure` is now `llvm-reject-wide-open-array` (its
+   program, printing `ok`, is in `llvm-nested-uplevel`); left: `AGENTS.md` gets "Nested procedures (implemented)" with
    what a program can observe; `PLAN.md`, `000-todo.org`; the suite on both BSD
    hosts and at both word sizes; the fixed point re-run. Exit gate below.
 
@@ -401,8 +441,8 @@ both. That is why the analysis lives in `src/front/` and knows nothing about LLV
 - Every fixture in §6 passes under the voc-built and the poc-built `poc`, under
   `-O2` and `-OC`, at both word sizes, on Linux, NetBSD amd64 and OpenBSD i386.
 - `make check`: the fixed point still exact.
-- The program in `llvm-reject-nested-procedure` (now `llvm-nested-basic`) prints
-  `ok`.
+- The program that `llvm-reject-nested-procedure` used to reject (now in
+  `llvm-nested-uplevel`) prints `ok`. (Met, step 3.)
 - No `ReportNestedProcedures`, and no "nested" message left in the backend.
 - `AGENTS.md` documents nested procedures as implemented, including the two
   observable limits that remain by design: a nested procedure is not a value, and
