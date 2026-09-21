@@ -545,9 +545,11 @@ like voc's), outermost dimension first:
   says nothing - traps, exit 7 ("Too many, or negative number of, elements
   in dynamic array", voc's Halt(-20)); so does a size that overflows, which
   voc silently wraps. A heap that cannot supply the block is not a trap:
-  the pointer is NIL, as for a record. voc also rejects a *constant*
-  length <= 0 at compile time ("illegal value of constant"); poc traps at
-  run time instead.
+  the pointer is NIL, as for a record. voc rejects a *constant*
+  length <= 0 at compile time ("illegal value of constant"), and so does poc
+  since Phase 11 ("constant length of NEW must be positive"; `SYSTEM.NEW(v, n)`
+  with a constant `n <= 0` too, which voc lets by); a length that is not
+  constant traps at run time.
 - **Collector**: the block is tagged with the array descriptor of the
   innermost element type, like a fixed array of pointers (see
   `llvm-open-array-new`, which fails without it).
@@ -636,7 +638,11 @@ like voc's), outermost dimension first:
   checker's types and round a real through single precision; `SHORT` of an
   integer constant is always an error (a constant's type is minimal, so its
   value never fits the shorter one). An argument that does not fit is a
-  compile-time error, in a statement as well as in a `CONST`. `ENTIER` of a
+  compile-time error, in a statement as well as in a `CONST`, and in an argument
+  where nothing is assigned (`Take(SHORT(100000))`). Until 2026-09-21 that was
+  so only where the result was assigned to an integer variable, which `CHR`'s
+  `CHAR` never is: `c := CHR(300)` compiled and stored 44 (voc: err 220
+  everywhere). `ENTIER` of a
   value beyond the model's `LONGINT` is an error too, and at run time a trap
   (next bullet).
 - **`ENTIER` of a value that does not fit a `LONGINT` is a trap** (Phase 11
@@ -690,8 +696,14 @@ and poc, both models):
 - **`DIV` and `MOD` floor for every non-zero divisor**, negative ones included
   (`7 DIV -2` is -4, `7 MOD -2` is -1). A zero divisor and `MIN(T) DIV -1` end
   the program with the hardware's signal (`SIGFPE`, status 136), no message,
-  on purpose (C6). Where poc differs from voc: `0 DIV 0` is a `SIGFPE` here,
-  0 in voc (its `SYSTEM_DIV` returns early for a zero dividend).
+  on purpose (C6) - **on x86 only**: LLVM's `sdiv`/`srem` by zero is undefined
+  and poc adds no check, so where the divide instruction does not fault (ARM:
+  FreeBSD arm64 was probed 2026-09-21) `7 DIV 0` is 0, `7 MOD 0` is 7 and
+  `MIN(LONGINT) DIV -1` is `MIN(LONGINT)`, silently. Where poc differs from
+  voc: `0 DIV 0` is a `SIGFPE` here, 0 in voc (its `SYSTEM_DIV` returns early
+  for a zero dividend), and at `-O2` voc's `MIN(LONGINT) DIV -1` is 2147483648
+  (computed wider). A program must not depend on either; "What traps, and what
+  does not" below has the whole list.
 - **Real arithmetic is IEEE 754 and silent**: overflow and a division by zero
   give an infinity, `0.0/0.0` a NaN, underflow a zero or a denormal, `SHORT`
   of a `LONGREAL` too large for a `REAL` an infinity; no trap. (The VAX backend
@@ -760,6 +772,82 @@ definitions). What a program can observe:
   size models by `llvm-array-assign`; `llvm-array-assign-trap` (both models)
   covers the trap; `semantic-reject-array-assign` and
   `semantic-reject-open-array-assign` the errors.
+
+### What traps, and what does not (Phase 11 C9)
+
+A list of what happens when a program does something the report leaves
+undefined or calls an error, each row probed against the built `poc` on
+2026-09-21 (Linux x86_64 under `-O2` and `-OC`, and OpenBSD i386, NetBSD amd64
+and FreeBSD arm64 for the rows that depend on the machine) and against voc,
+whose behavior is in the last column where it differs. It documents; it is not
+a promise beyond what the rows say. Statuses are the process's exit status (a
+signal death is 128 + the signal number, as a shell reports it).
+
+**What poc traps.** The program writes the message and a newline to stderr
+(until 2026-09-21 the newline was missing, and the shell's prompt landed on the
+message's line) and exits with the status; the numbers are poc's own (voc's Halt codes
+in the last column are `Halt(n)` printed as "Terminated by Halt(n)", exit 256-n).
+No location is reported; C7 (a switch for file and line) would add one to
+exactly these. Each status is pinned by a fixture.
+
+| Status | What | Message | voc |
+|---|---|---|---|
+| 2 | Index out of range: a fixed array, an open array, what a pointer to an open array points at; a negative index too (`llvm-index-range-trap`, `llvm-open-array-traps`) | `index out of range` | Halt(-2), 254 |
+| 3 | `CASE` with no matching label and no `ELSE` (`llvm-case-trap`) | `no matching CASE label` | Halt(-4), 252 |
+| 4 | NIL dereference: `p^`, `p.f`, `p[i]`, `NIL IS T`, `NIL(T)`, a NIL `WITH` variable, a call of a NIL procedure value, a type-bound call on a NIL receiver (`llvm-pointer-traps`, `llvm-procedure-value-traps`) | `NIL pointer dereference` | Halt(-10), 246 |
+| 5 | Failed type guard (`llvm-pointer-traps`) | `type guard failed` | Halt(-5), 251 |
+| 6 | `WITH` with no matching branch and no `ELSE` (`llvm-pointer-traps`) | `no matching WITH guard` | Halt(-7), 249 |
+| 7 | `NEW(p, n, ...)` or `SYSTEM.NEW(v, n)` with a length that is not positive, or a size that overflows the address space (`llvm-open-array-traps`, `llvm-system-new-trap`) | `Too many, or negative number of, elements in dynamic array` | `NEW`: Halt(-20), 236; `SYSTEM.NEW(v, 0)` is no trap |
+| 8 | `ENTIER` of a value that does not fit a `LONGINT`, an infinity or a NaN (`llvm-entier-trap`) | `ENTIER argument out of range for LONGINT` | none: wraps |
+| 9 | An open array assigned to a fixed array with fewer elements (`llvm-array-assign-trap`) | `open array assigned to an array too short for it` | Halt(-2), 254 |
+
+**What ends the program without a message, or not at all.** Nothing says what
+happened; deliberate (C6) where noted.
+
+| What | Result | Notes |
+|---|---|---|
+| Integer `DIV`/`MOD` by zero, `MIN(T) DIV -1` | `SIGFPE`, status 136, **on x86 only** | LLVM leaves it undefined; on ARM (FreeBSD arm64) `7 DIV 0` is 0, `7 MOD 0` is 7, `MIN(LONGINT) DIV -1` is `MIN(LONGINT)`, no fault. voc: `SIGFPE`, except `0 DIV 0` is 0 and `-O2`'s `MIN(LONGINT) DIV -1` is 2147483648. Not pinned by a fixture (host-dependent). **Left as it is** (user, 2026-09-21): `SIGFPE` on x86, no fault on ARM, documented here and nowhere enforced |
+| Unbounded recursion; a frame or a value open-array parameter larger than the stack | `SIGSEGV`, status 139, no message | how much fits is the host's stack limit (`ulimit -s`: 8 MB on Linux, 4 MB on OpenBSD and NetBSD, 1 GB on the FreeBSD VM, where a 400 MB local and a 300 MB value parameter both succeeded); a value open-array parameter is copied into the callee's frame, so each level costs `LEN` bytes. voc: same. `llvm-no-trap-behavior` case 12 |
+| `SYSTEM.GET`/`PUT`/`MOVE` at an address that is not mapped | `SIGSEGV`, status 139 | voc's handler turns it into "NIL access" (Halt(-10), 246). `llvm-no-trap-behavior` case 11 |
+| `HALT(n)` | exit status `n`, silent (C6) | `n` is a constant in **0..255**, anything else is a compile-time error (as voc's err 218): the status keeps only its low 8 bits on every host poc runs on (C `exit(30000)` is 48, `exit(256)` is 0 - success - and `exit(-1)` is 255, checked on Linux, OpenBSD, NetBSD and FreeBSD 2026-09-21), while Windows keeps 32 (a `DWORD`). The report leaves the meaning of `n` to the system. VMS is different again, see `000-todo.org`. voc prints "Terminated by Halt(n)". `llvm-predeclared-halt`, `llvm-no-trap-behavior` |
+| `NEW` the heap cannot satisfy | the pointer is NIL, no message; the next dereference is trap 4 | as in voc; a switch is A13. Which requests "cannot" be satisfied depends on the size model and the machine's limits: `NEW(p, MAX(LONGINT))` of 4-byte elements under `-OC` overflows the address space (trap 7), under `-O2` it asks for 8 GB, which was NIL under a 1.2 GB address-space limit |
+| `ASSERT` | not provided | the report has none (`PLAN.md`'s open design question); voc's halts |
+
+**What nothing stops.** The program goes on with a value; the second column is
+what that value is.
+
+| What | Result |
+|---|---|
+| Integer `+ - *`, unary `-`, `ABS`, `INC`, `DEC` out of range | wraps at the type's width (a promise, C5) |
+| `x IN s` with `x` outside `0..MAX(SET)` | `FALSE` (`llvm-no-trap-behavior` case 7) |
+| `INCL`/`EXCL` with an element outside the set, `{n}` with a variable `n` >= 32 | undefined: the shift wraps at the machine's width (`INCL(s, 33)` set bit 1 on x86), unchecked; constant ones are compile-time errors |
+| Real overflow, underflow, `x/0.0`, `0.0/0.0` | infinity, 0, infinity, NaN, silently (C5); `llvm-no-trap-behavior` case 9 |
+| `SHORT` or `CHR` of a value that does not fit | truncates (`CHR(300)` is 44), as voc without `-r` |
+| `FOR v := a TO b` when `b` is `MAX` of `v`'s type | never ends: `v` wraps to `MIN` and the loop runs on, as the report's own expansion (`v <= b`) says once overflow is undefined; voc the same (`llvm-no-trap-behavior` case 8) |
+| `ASH(x, n)`, `LSH`, `ROT` with a count of the type's width or more | defined and not a trap: `ASH` gives 0 (the sign for a right shift), `LSH` 0, `ROT` counts modulo the width; voc's are C's undefined shifts (`ROT(1, 33)` is 0 there, 2 here) |
+| `MOVE(a, b, n)` with `n <= 0` | moves nothing (voc, probed with `n = -4`, copied) (`llvm-no-trap-behavior` case 6) |
+| `COPY(x, v)` | copies up to the source's `0X`, at most `LEN(v) - 1` characters, and always terminates `v`; a source without a `0X` is read to its end (`llvm-no-trap-behavior` case 4) |
+| `=`, `<`, ... on character arrays with no `0X` | the array's end counts as a `0X`, so two equal unterminated arrays are equal; voc reads past the end. `LEN` is the declared length whatever the contents (`llvm-no-trap-behavior` case 5) |
+| A variable never assigned | module variables (all kinds) are zero; **pointers and procedure values are NIL, locals too** (the local ones are zeroed on entry); any other local - a number, `BOOLEAN`, `SET`, a record's or array's non-pointer part - holds whatever was in the frame (a probe read the 77s a previous call had left), as in voc (`llvm-no-trap-behavior` case 0) |
+
+**Compile time: what is an error before the program runs.** Where the compiler
+can see a trap or an undefined result coming, it says so - as voc does, apart
+from `SYSTEM.NEW`. Errors: a constant `DIV`/`MOD` by zero, a constant real
+division by zero (`1.0/0.0`, in a `CONST` and in a statement, and reported by
+`poc -check`), a constant `CHR`, `SHORT`, `ENTIER` or `ASH` argument that does
+not fit, a constant `INCL` element out of range, `FOR ... BY 0`, `LEN(a, n)`
+past the rank, `HALT` outside 0..255, **a constant index outside a fixed array**
+(`a[10]` on 4 elements, `g[1][4]`, through a pointer to a fixed array too), and
+**a constant length of `NEW(p, ...)` or a constant size of `SYSTEM.NEW` that is
+not positive** (`semantic-reject-constant-traps`). Not errors, because nothing
+constant is involved: an index or length held in a variable is a run-time trap
+(status 2 and 7), and an open array has no length to compare with. All of this
+was found probing C9 and decided with the user on 2026-09-21; poc used to
+compile the constant index and `NEW(p, 0)` and trap when they ran, and to
+report a constant real `x / 0.0` in a statement only from the code generator
+(`poc -check` said "semantic OK", and `-build` printed the error yet still wrote
+an executable). A build that meets an error while generating code now writes
+neither the `.ll` nor an executable, whatever raised it.
 
 ### Nested procedures (implemented, Phase 11 step 8)
 

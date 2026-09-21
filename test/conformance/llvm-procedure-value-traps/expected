@@ -1,21 +1,28 @@
 == nilglobal
 ANIL pointer dereference
+
 exit=4
 == nillocal
 ANIL pointer dereference
+
 exit=4
 == nilfield
 ANIL pointer dereference
+
 exit=4
 == nilelement
 ANIL pointer dereference
+
 exit=4
 == nilproper
 ANIL pointer dereference
+
 exit=4
 == nilargument
 ANIL pointer dereference
+
 exit=4
 == nilpointer
 ANIL pointer dereference
+
 exit=4

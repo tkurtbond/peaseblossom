@@ -1,0 +1,24 @@
+bad.mod:29:5: error: constant array index is out of range
+bad.mod:30:5: error: constant array index is out of range
+bad.mod:31:5: error: constant array index is out of range
+bad.mod:32:7: error: constant array index is out of range
+bad.mod:34:5: error: constant array index is out of range
+bad.mod:35:8: error: constant array index is out of range
+bad.mod:36:8: error: constant array index is out of range
+bad.mod:37:6: error: constant array index is out of range
+bad.mod:41:3: error: constant length of NEW must be positive
+bad.mod:42:3: error: constant length of NEW must be positive
+bad.mod:43:3: error: constant length of NEW must be positive
+bad.mod:45:3: error: constant size of SYSTEM.NEW must be positive
+bad.mod:48:19: error: HALT argument must be in 0..255
+bad.mod:49:19: error: HALT argument must be in 0..255
+bad.mod:50:19: error: HALT argument must be in 0..255
+bad.mod:52:8: error: constant CHR argument out of range
+bad.mod:53:8: error: constant CHR argument out of range
+bad.mod:54:8: error: constant CHR argument out of range
+bad.mod:55:8: error: constant SHORT result too large for its type
+bad.mod:56:8: error: constant SHORT result too large for its type
+bad.mod:59:12: error: division by zero
+bad.mod:60:14: error: division by zero
+bad.mod:61:18: error: division by zero
+23 error(s)

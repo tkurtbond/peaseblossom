@@ -589,6 +589,14 @@ MODULE Poc;
     Out.String(" construct(s) the LLVM backend cannot lower yet; nothing written"); Out.Ln
   END ReportUnsupportedConstructs;
 
+  (* Errors found while generating code (constant folding finds what the
+     checker did not): reported as they were met; nothing is written. *)
+  PROCEDURE ReportGenerationErrors;
+  BEGIN
+    failed := TRUE;
+    Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s); nothing written"); Out.Ln
+  END ReportGenerationErrors;
+
   PROCEDURE EmitLLVMIR(name, outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
       modules: LLVMCodeGenerator.ModuleList;
@@ -608,6 +616,8 @@ MODULE Poc;
           Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
         ELSIF LLVMCodeGenerator.unsupportedCount > 0 THEN
           ReportUnsupportedConstructs
+        ELSIF Diagnostics.errorCount > 0 THEN
+          ReportGenerationErrors
         ELSE
           failed := TRUE; Out.String("poc: cannot write "); Out.String(path); Out.Ln
         END
@@ -635,6 +645,8 @@ MODULE Poc;
           Out.String("semantic OK, wrote "); Out.String(exePath); Out.Ln
         ELSIF LLVMCodeGenerator.unsupportedCount > 0 THEN
           ReportUnsupportedConstructs
+        ELSIF Diagnostics.errorCount > 0 THEN
+          ReportGenerationErrors
         ELSE
           failed := TRUE; Out.String("poc: build failed"); Out.Ln
         END

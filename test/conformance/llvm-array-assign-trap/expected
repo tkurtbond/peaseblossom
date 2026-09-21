@@ -11,18 +11,23 @@ reached the end
 exit=0
 == -O2 case 2
 open array assigned to an array too short for it
+
 exit=9
 == -O2 case 3
 open array assigned to an array too short for it
+
 exit=9
 == -O2 case 4
 open array assigned to an array too short for it
+
 exit=9
 == -O2 case 5
 open array assigned to an array too short for it
+
 exit=9
 == -O2 case 6
 open array assigned to an array too short for it
+
 exit=9
 == -OC case 0
 copied: abc
@@ -37,16 +42,21 @@ reached the end
 exit=0
 == -OC case 2
 open array assigned to an array too short for it
+
 exit=9
 == -OC case 3
 open array assigned to an array too short for it
+
 exit=9
 == -OC case 4
 open array assigned to an array too short for it
+
 exit=9
 == -OC case 5
 open array assigned to an array too short for it
+
 exit=9
 == -OC case 6
 open array assigned to an array too short for it
+
 exit=9

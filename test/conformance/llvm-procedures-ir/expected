@@ -17,8 +17,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
 define i16 @procsir.Add(i16 %a, i16 %b) {
 entry:
@@ -104,7 +104,7 @@ entry:
   %t41 = and i1 %t39, %t40
   br i1 %t41, label %L7, label %L8
 L8:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L7:
@@ -116,7 +116,7 @@ L7:
   %t46 = and i1 %t44, %t45
   br i1 %t46, label %L9, label %L10
 L10:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L9:

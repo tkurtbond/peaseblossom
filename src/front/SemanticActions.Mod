@@ -1467,7 +1467,7 @@ MODULE SemanticActions;
       methodOwner: Types.RecordType;
       methodName: SyntaxTree.Ident;
       idx: SyntaxTree.ExprNode;
-      idxType: Types.Type;
+      idxType: Types.Type; indexValue: Types.Value;
       ptr: Types.PointerType;
       arr: Types.ArrayType;
       crossedBoundary: BOOLEAN;
@@ -1568,7 +1568,17 @@ MODULE SemanticActions;
               IF (idxType # Types.Undefined) & ~Types.IsInteger(idxType) THEN
                 Diagnostics.Error(idx.line, idx.column, "array index must be an integer type")
               END;
-              arr := t(Types.ArrayType); t := arr.elementType
+              arr := t(Types.ArrayType); t := arr.elementType;
+              IF ~arr.isOpen & (idxType # Types.Undefined) & Types.IsInteger(idxType)
+                 & ConstantEvaluator.IsConstantExpr(idx, scope) THEN
+                (* Phase 11 (C9): a constant index outside a fixed array is
+                   a trap that cannot be avoided; voc rejects it (err 81) *)
+                indexValue := ConstantEvaluator.Evaluate(idx, scope);
+                IF (indexValue.type # Types.Undefined) & (indexValue.kind = Types.intValue)
+                   & ((indexValue.intVal < 0) OR (indexValue.intVal >= arr.length)) THEN
+                  Diagnostics.Error(idx.line, idx.column, "constant array index is out of range")
+                END
+              END
             END;
             idx := idx.next
           END
@@ -1850,12 +1860,22 @@ MODULE SemanticActions;
      Undefined, which passes through untouched. *)
   PROCEDURE FoldConstantType(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode;
                                 t: Types.Type): Types.Type;
-    VAR v: Types.Value;
+    VAR v: Types.Value; errorsBefore: INTEGER;
   BEGIN
-    IF (t # Types.Undefined) & (Types.IsInteger(t) OR Types.IsSet(t))
-       & ConstantEvaluator.IsConstantExpr(expr, scope) THEN
-      v := ConstantEvaluator.Evaluate(expr, scope);
-      RETURN v.type
+    IF (t # Types.Undefined) & ConstantEvaluator.IsConstantExpr(expr, scope) THEN
+      IF Types.IsInteger(t) OR Types.IsSet(t) THEN
+        v := ConstantEvaluator.Evaluate(expr, scope);
+        RETURN v.type
+      ELSIF (t = Types.Real) OR (t = Types.LongReal) THEN
+        (* Phase 11 (C9): a constant real expression keeps the type the rank
+           rules gave it, but is folded all the same, for what folding
+           reports - 1.0 / 0.0 in a statement was found only by the code
+           generator, so poc -check said "semantic OK" - and a failed one
+           passes through as Undefined, like an integer's *)
+        errorsBefore := Diagnostics.errorCount;
+        v := ConstantEvaluator.Evaluate(expr, scope);
+        IF Diagnostics.errorCount > errorsBefore THEN RETURN Types.Undefined END
+      END
     END;
     RETURN t
   END FoldConstantType;
@@ -1864,7 +1884,7 @@ MODULE SemanticActions;
     VAR
       baseType, targetType, resultType: Types.Type;
       readOnly, isVariable, isProperProcedure, viaVarParam, boundProc: BOOLEAN;
-      pt: Types.ProcedureType;
+      pt: Types.ProcedureType; folded: Types.Value; errorsBefore: INTEGER;
   BEGIN
     baseType := CheckDesignator(scope, node.designator, readOnly, isVariable);
     viaVarParam := lastDesignatorIsVarParam;
@@ -1884,9 +1904,21 @@ MODULE SemanticActions;
         Diagnostics.Error(node.line, node.column, "a proper procedure has no result value");
         RETURN Types.Undefined
       ELSIF node.designator.name = "ASH" THEN
-        (* the one predeclared function of values ConstantEvaluator folds:
-           a constant ASH is typed by its value, as a constant + is *)
+        (* a constant ASH is typed by its value, as a constant + is *)
         RETURN FoldConstantType(scope, node, resultType)
+      ELSIF (resultType # Types.Undefined) & (node.designator.qualifier[0] = 0X)
+            & ConstantEvaluator.IsValueFunctionName(node.designator.name)
+            & ConstantEvaluator.IsConstantExpr(node, scope) THEN
+        (* Phase 11 (C9): ORD ABS CHR CAP ENTIER LONG SHORT ODD of a constant
+           are folded here too, so an argument that does not fit (CHR(300),
+           SHORT(100000)) is an error wherever the call stands; it used to be
+           found only where the result was assigned to an integer variable
+           (CheckAssignmentCompatible), which CHR's CHAR result never was. A
+           failed one is Undefined, as after any error. *)
+        errorsBefore := Diagnostics.errorCount;
+        folded := ConstantEvaluator.Evaluate(node, scope);
+        IF Diagnostics.errorCount > errorsBefore THEN RETURN Types.Undefined END;
+        RETURN resultType
       ELSE
         RETURN resultType
       END

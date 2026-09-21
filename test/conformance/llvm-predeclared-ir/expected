@@ -17,8 +17,8 @@ target triple = "x86_64-unknown-linux-gnu"
 @predeclaredir.i = global i16 zeroinitializer
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 @.str.predeclaredir.L24.C17 = private unnamed_addr constant [2 x i8] c"Z\00"
 @.str.predeclaredir.L34.C8 = private unnamed_addr constant [3 x i8] c"hi\00"
 

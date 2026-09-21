@@ -1,0 +1,88 @@
+== -O2 case 0
+module variables start as zero: 0 0 0 0 0
+BOOLEAN FALSE
+SET empty TRUE
+pointer and procedure value NIL TRUE
+local pointer, procedure value, record's pointer field: 3 of 3 are NIL
+exit=0
+== -O2 case 1
+exit=3
+== -O2 case 2
+exit=0
+== -O2 case 3
+exit=255
+== -O2 case 4
+COPY into a shorter array: abc
+COPY of an unterminated source: ABC
+COPY of the empty string: []
+exit=0
+== -O2 case 5
+two equal arrays without a 0X are equal: TRUE
+ABCDEFGH < ABCDEFGZ: TRUE
+LEN of an array without a 0X: 8
+exit=0
+== -O2 case 6
+MOVE with a negative count moves nothing: 0
+... and so does a count of 0: 0
+exit=0
+== -O2 case 7
+32 IN {0..31}: FALSE
+40 IN {0..31}: FALSE
+-1 IN {0..31}: FALSE
+exit=0
+== -O2 case 8
+32766 32767 -32768 -32767 -32766 -32765 
+the loop went on past MAX(INTEGER)
+exit=77
+== -O2 case 9
+REAL 1.0/0.0 survived, is large: TRUE
+0.0/0.0 survived, is not equal to itself: TRUE
+exit=0
+== -O2 case 11
+killed by a signal
+== -O2 case 12
+killed by a signal
+== -OC case 0
+module variables start as zero: 0 0 0 0 0
+BOOLEAN FALSE
+SET empty TRUE
+pointer and procedure value NIL TRUE
+local pointer, procedure value, record's pointer field: 3 of 3 are NIL
+exit=0
+== -OC case 1
+exit=3
+== -OC case 2
+exit=0
+== -OC case 3
+exit=255
+== -OC case 4
+COPY into a shorter array: abc
+COPY of an unterminated source: ABC
+COPY of the empty string: []
+exit=0
+== -OC case 5
+two equal arrays without a 0X are equal: TRUE
+ABCDEFGH < ABCDEFGZ: TRUE
+LEN of an array without a 0X: 8
+exit=0
+== -OC case 6
+MOVE with a negative count moves nothing: 0
+... and so does a count of 0: 0
+exit=0
+== -OC case 7
+32 IN {0..31}: FALSE
+40 IN {0..31}: FALSE
+-1 IN {0..31}: FALSE
+exit=0
+== -OC case 8
+2147483646 2147483647 -2147483648 -2147483647 -2147483646 -2147483645 
+the loop went on past MAX(INTEGER)
+exit=77
+== -OC case 9
+REAL 1.0/0.0 survived, is large: TRUE
+0.0/0.0 survived, is not equal to itself: TRUE
+exit=0
+== -OC case 11
+killed by a signal
+== -OC case 12
+killed by a signal

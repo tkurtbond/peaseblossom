@@ -40,8 +40,8 @@
   [0 x i32] []
 }
 @boundir.Point3.tag = alias ptr, getelementptr inbounds (i8, ptr @boundir.Point3.tdesc, i32 4)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 define i16 @boundir.ShapeDesc.Area(ptr %s) {
 entry:
   %tN = alloca ptr
@@ -50,7 +50,7 @@ entry:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -68,7 +68,7 @@ entry:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -77,7 +77,7 @@ LN:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -131,7 +131,7 @@ LN:
   %tN = icmp eq ptr %tN, @boundir.Point3.tag
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.typeguard, i64 17)
+  call void @write(i32 2, ptr @.trap.typeguard, i64 18)
   call void @exit(i32 5)
   unreachable
 LN:
@@ -158,7 +158,7 @@ LN:
   store i16 %tN, ptr %tN
   br label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nowith, i64 22)
+  call void @write(i32 2, ptr @.trap.nowith, i64 23)
   call void @exit(i32 6)
   unreachable
 LN:
@@ -183,7 +183,7 @@ entry:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -197,7 +197,7 @@ LN:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -217,9 +217,9 @@ LN:
   store i16 %tN, ptr @boundir.result
   ret void
 }
-@.trap.nilderef = private unnamed_addr constant [24 x i8] c"NIL pointer dereference\00"
-@.trap.typeguard = private unnamed_addr constant [18 x i8] c"type guard failed\00"
-@.trap.nowith = private unnamed_addr constant [23 x i8] c"no matching WITH guard\00"
+@.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
+@.trap.typeguard = private unnamed_addr constant [19 x i8] c"type guard failed\0A\00"
+@.trap.nowith = private unnamed_addr constant [24 x i8] c"no matching WITH guard\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 @boundir.s = global ptr zeroinitializer
@@ -263,8 +263,8 @@ clang accepted i686-unknown-linux-gnu
   [0 x i64] []
 }
 @boundir.Point3.tag = alias ptr, getelementptr inbounds (i8, ptr @boundir.Point3.tdesc, i32 8)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 define i16 @boundir.ShapeDesc.Area(ptr %s) {
 entry:
   %tN = alloca ptr
@@ -273,7 +273,7 @@ entry:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -291,7 +291,7 @@ entry:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -300,7 +300,7 @@ LN:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -354,7 +354,7 @@ LN:
   %tN = icmp eq ptr %tN, @boundir.Point3.tag
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.typeguard, i64 17)
+  call void @write(i32 2, ptr @.trap.typeguard, i64 18)
   call void @exit(i32 5)
   unreachable
 LN:
@@ -381,7 +381,7 @@ LN:
   store i16 %tN, ptr %tN
   br label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nowith, i64 22)
+  call void @write(i32 2, ptr @.trap.nowith, i64 23)
   call void @exit(i32 6)
   unreachable
 LN:
@@ -406,7 +406,7 @@ entry:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -420,7 +420,7 @@ LN:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -440,7 +440,7 @@ LN:
   store i16 %tN, ptr @boundir.result
   ret void
 }
-@.trap.nilderef = private unnamed_addr constant [24 x i8] c"NIL pointer dereference\00"
-@.trap.typeguard = private unnamed_addr constant [18 x i8] c"type guard failed\00"
-@.trap.nowith = private unnamed_addr constant [23 x i8] c"no matching WITH guard\00"
+@.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
+@.trap.typeguard = private unnamed_addr constant [19 x i8] c"type guard failed\0A\00"
+@.trap.nowith = private unnamed_addr constant [24 x i8] c"no matching WITH guard\0A\00"
 clang accepted x86_64-unknown-linux-gnu

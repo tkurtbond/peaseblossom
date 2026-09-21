@@ -14,8 +14,8 @@
   [0 x i32] []
 }
 @procir.Shape.tag = alias ptr, getelementptr inbounds (i8, ptr @procir.Shape.tdesc, i32 0)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 define i16 @procir.Add(i16 %a, i16 %b) {
 entry:
   %tN = alloca i16
@@ -57,7 +57,7 @@ entry:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -75,7 +75,7 @@ entry:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -88,7 +88,7 @@ LN:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -99,7 +99,7 @@ LN:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -109,7 +109,7 @@ LN:
   store i16 %tN, ptr @procir.n
   ret void
 }
-@.trap.nilderef = private unnamed_addr constant [24 x i8] c"NIL pointer dereference\00"
+@.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 @procir.f = global ptr zeroinitializer
@@ -127,8 +127,8 @@ clang accepted i686-unknown-linux-gnu
   [0 x i64] []
 }
 @procir.Shape.tag = alias ptr, getelementptr inbounds (i8, ptr @procir.Shape.tdesc, i32 0)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 define i16 @procir.Add(i16 %a, i16 %b) {
 entry:
   %tN = alloca i16
@@ -171,7 +171,7 @@ entry:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -189,7 +189,7 @@ entry:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -202,7 +202,7 @@ LN:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -213,7 +213,7 @@ LN:
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
 LN:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 LN:
@@ -223,5 +223,5 @@ LN:
   store i16 %tN, ptr @procir.n
   ret void
 }
-@.trap.nilderef = private unnamed_addr constant [24 x i8] c"NIL pointer dereference\00"
+@.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 clang accepted x86_64-unknown-linux-gnu

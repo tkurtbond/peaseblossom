@@ -14,30 +14,39 @@ reached the end
 exit=0
 == -O2 case 1
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -O2 case 2
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -O2 case 3
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -O2 case 4
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -O2 case 5
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -O2 case 6
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -O2 case 7
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -O2 case 8
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -O2 case 9
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -OC case 0
 3
@@ -65,18 +74,23 @@ reached the end
 exit=0
 == -OC case 3
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -OC case 4
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -OC case 5
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -OC case 6
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -OC case 7
 ENTIER argument out of range for LONGINT
+
 exit=8
 == -OC case 8
 3000000000

@@ -7,8 +7,8 @@ target triple = "i686-unknown-linux-gnu"
 @realsir.lx = global i32 zeroinitializer
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
 define double @realsir.Forms(float %a, double %b, i16 %n) {
 entry:
@@ -113,7 +113,7 @@ L1:
   %t65 = and i1 %t63, %t64
   br i1 %t65, label %L15, label %L14
 L14:
-  call void @write(i32 2, ptr @.trap.entier, i64 40)
+  call void @write(i32 2, ptr @.trap.entier, i64 41)
   call void @exit(i32 8)
   unreachable
 L15:
@@ -170,7 +170,7 @@ entry:
   call void @realsir_init()
   ret i32 0
 }
-@.trap.entier = private unnamed_addr constant [41 x i8] c"ENTIER argument out of range for LONGINT\00"
+@.trap.entier = private unnamed_addr constant [42 x i8] c"ENTIER argument out of range for LONGINT\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
@@ -181,8 +181,8 @@ target triple = "x86_64-unknown-linux-gnu"
 @realsir.lx = global i32 zeroinitializer
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
 define double @realsir.Forms(float %a, double %b, i16 %n) {
 entry:
@@ -287,7 +287,7 @@ L1:
   %t65 = and i1 %t63, %t64
   br i1 %t65, label %L15, label %L14
 L14:
-  call void @write(i32 2, ptr @.trap.entier, i64 40)
+  call void @write(i32 2, ptr @.trap.entier, i64 41)
   call void @exit(i32 8)
   unreachable
 L15:
@@ -344,5 +344,5 @@ entry:
   call void @realsir_init()
   ret i32 0
 }
-@.trap.entier = private unnamed_addr constant [41 x i8] c"ENTIER argument out of range for LONGINT\00"
+@.trap.entier = private unnamed_addr constant [42 x i8] c"ENTIER argument out of range for LONGINT\0A\00"
 clang accepted x86_64-unknown-linux-gnu

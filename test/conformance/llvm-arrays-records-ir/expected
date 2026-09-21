@@ -34,8 +34,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
 define void @arrrec_init() {
 entry:
@@ -44,7 +44,7 @@ entry:
   %t3 = and i1 %t1, %t2
   br i1 %t3, label %L1, label %L2
 L2:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L1:
@@ -56,7 +56,7 @@ L1:
   %t8 = and i1 %t6, %t7
   br i1 %t8, label %L3, label %L4
 L4:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L3:
@@ -68,7 +68,7 @@ L3:
   %t13 = and i1 %t11, %t12
   br i1 %t13, label %L5, label %L6
 L6:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L5:
@@ -80,7 +80,7 @@ L5:
   %t18 = and i1 %t16, %t17
   br i1 %t18, label %L7, label %L8
 L8:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L7:
@@ -91,7 +91,7 @@ L7:
   %t23 = and i1 %t21, %t22
   br i1 %t23, label %L9, label %L10
 L10:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L9:
@@ -103,7 +103,7 @@ L9:
   %t29 = and i1 %t27, %t28
   br i1 %t29, label %L11, label %L12
 L12:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L11:
@@ -118,7 +118,7 @@ L11:
   %t36 = and i1 %t34, %t35
   br i1 %t36, label %L13, label %L14
 L14:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L13:
@@ -131,7 +131,7 @@ L13:
   %t42 = and i1 %t40, %t41
   br i1 %t42, label %L15, label %L16
 L16:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L15:
@@ -143,7 +143,7 @@ L15:
   %t48 = and i1 %t46, %t47
   br i1 %t48, label %L17, label %L18
 L18:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L17:
@@ -175,7 +175,7 @@ L23:
   %t63 = and i1 %t61, %t62
   br i1 %t63, label %L25, label %L26
 L26:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L25:
@@ -186,7 +186,7 @@ L25:
   %t68 = and i1 %t66, %t67
   br i1 %t68, label %L27, label %L28
 L28:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L27:
@@ -213,7 +213,7 @@ L21:
   %t82 = and i1 %t80, %t81
   br i1 %t82, label %L29, label %L30
 L30:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L29:
@@ -223,7 +223,7 @@ L29:
   %t86 = and i1 %t84, %t85
   br i1 %t86, label %L31, label %L32
 L32:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L31:
@@ -299,7 +299,7 @@ L34:
   %t140 = and i1 %t138, %t139
   br i1 %t140, label %L36, label %L37
 L37:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L36:
@@ -313,7 +313,7 @@ L36:
   %t147 = and i1 %t145, %t146
   br i1 %t147, label %L38, label %L39
 L39:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L38:
@@ -334,7 +334,7 @@ L35:
   %t158 = and i1 %t156, %t157
   br i1 %t158, label %L40, label %L41
 L41:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L40:
@@ -347,7 +347,7 @@ L40:
   %t165 = and i1 %t163, %t164
   br i1 %t165, label %L42, label %L43
 L43:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 18)
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L42:

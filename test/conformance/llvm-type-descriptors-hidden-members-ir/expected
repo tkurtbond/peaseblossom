@@ -86,8 +86,8 @@ target triple = "i686-unknown-linux-gnu"
 
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
 define void @lib.ShapeDesc.Draw(ptr %s) {
 entry:
@@ -140,7 +140,7 @@ entry:
   %t11 = icmp eq ptr %t10, null
   br i1 %t11, label %L3, label %L4
 L3:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 L4:
@@ -188,7 +188,7 @@ entry:
   call void @client_init()
   ret i32 0
 }
-@.trap.nilderef = private unnamed_addr constant [24 x i8] c"NIL pointer dereference\00"
+@.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
@@ -278,8 +278,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
-@.trap.indexrange = private unnamed_addr constant [19 x i8] c"index out of range\00"
-@.trap.nocaselabel = private unnamed_addr constant [23 x i8] c"no matching CASE label\00"
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
 define void @lib.ShapeDesc.Draw(ptr %s) {
 entry:
@@ -332,7 +332,7 @@ entry:
   %t11 = icmp eq ptr %t10, null
   br i1 %t11, label %L3, label %L4
 L3:
-  call void @write(i32 2, ptr @.trap.nilderef, i64 23)
+  call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 L4:
@@ -380,5 +380,5 @@ entry:
   call void @client_init()
   ret i32 0
 }
-@.trap.nilderef = private unnamed_addr constant [24 x i8] c"NIL pointer dereference\00"
+@.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 clang accepted x86_64-unknown-linux-gnu

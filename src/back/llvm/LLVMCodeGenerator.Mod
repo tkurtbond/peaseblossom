@@ -1124,7 +1124,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE EmitTrap(VAR w: Files.Rider; VAR cg: Codegen; msgGlobal, msgText: ARRAY OF CHAR; exitCode: INTEGER);
     VAR lenText, codeText: ValueText;
   BEGIN
-    lenText[0] := 0X; AppendLongInt(lenText, StrLen(msgText));
+    lenText[0] := 0X; AppendLongInt(lenText, StrLen(msgText) + 1); (* and its newline: EmitTrapMessageGlobal *)
     codeText[0] := 0X; AppendLongInt(codeText, exitCode);
     WriteStr(w, "  call void @write(i32 2, ptr "); WriteStr(w, msgGlobal); WriteStr(w, ", i64 ");
     WriteStr(w, lenText); WriteStr(w, ")"); WriteLn(w);
@@ -2998,21 +2998,36 @@ MODULE LLVMCodeGenerator;
      StrLen rather than trusting a caller-supplied count, the same
      "single source of truth" reasoning EmitTrap below relies on for its
      own write() byte count. *)
-  PROCEDURE EmitRuntimeStringGlobal(VAR w: Files.Rider; name, text: ARRAY OF CHAR);
+  PROCEDURE EmitStringGlobalText(VAR w: Files.Rider; name, text: ARRAY OF CHAR; newline: BOOLEAN);
     CONST backslash = 5CX; quoteChar = 22X;
     VAR lenText: ValueText; len, i: INTEGER;
   BEGIN
     len := StrLen(text);
-    lenText[0] := 0X; AppendLongInt(lenText, len + 1);
+    lenText[0] := 0X;
+    IF newline THEN AppendLongInt(lenText, len + 2) ELSE AppendLongInt(lenText, len + 1) END;
     WriteStr(w, name); WriteStr(w, " = private unnamed_addr constant [");
     WriteStr(w, lenText); WriteStr(w, " x i8] c");
     Files.Write(w, quoteChar);
     i := 0;
     WHILE i < len DO EmitEscapedByte(w, text[i]); INC(i) END;
+    IF newline THEN EmitEscapedByte(w, 0AX) END;
     Files.Write(w, backslash); Files.Write(w, "0"); Files.Write(w, "0");
     Files.Write(w, quoteChar);
     WriteLn(w)
+  END EmitStringGlobalText;
+
+  PROCEDURE EmitRuntimeStringGlobal(VAR w: Files.Rider; name, text: ARRAY OF CHAR);
+  BEGIN
+    EmitStringGlobalText(w, name, text, FALSE)
   END EmitRuntimeStringGlobal;
+
+  (* A trap's message (EmitTrap writes it, and the newline after it, to
+     stderr - Phase 11, C9: without one the shell's prompt landed on the same
+     line). *)
+  PROCEDURE EmitTrapMessageGlobal(VAR w: Files.Rider; name, text: ARRAY OF CHAR);
+  BEGIN
+    EmitStringGlobalText(w, name, text, TRUE)
+  END EmitTrapMessageGlobal;
 
   (* The actual argument for an open-array formal parameter p - a VAR
      parameter or a value one: a pointer to the array's first element
@@ -5739,8 +5754,8 @@ MODULE LLVMCodeGenerator;
     IF ~HasDeclaredExternal(cg, "exit") THEN
       WriteStr(w, "declare void @exit(i32)"); WriteLn(w)
     END;
-    EmitRuntimeStringGlobal(w, indexRangeTrapGlobal, indexRangeTrapMsg);
-    EmitRuntimeStringGlobal(w, noCaseLabelTrapGlobal, noCaseLabelTrapMsg)
+    EmitTrapMessageGlobal(w, indexRangeTrapGlobal, indexRangeTrapMsg);
+    EmitTrapMessageGlobal(w, noCaseLabelTrapGlobal, noCaseLabelTrapMsg)
   END EmitRuntimeSupport;
 
   (* A pre-pass, run once before any function body is emitted: every
@@ -6291,12 +6306,12 @@ MODULE LLVMCodeGenerator;
   PROCEDURE EmitPointerSupport(VAR w: Files.Rider; VAR cg: Codegen);
     VAR wordInt: ValueText; e: TypeDescEntry;
   BEGIN
-    IF cg.needNilTrap THEN EmitRuntimeStringGlobal(w, nilTrapGlobal, nilTrapMsg) END;
-    IF cg.needGuardTrap THEN EmitRuntimeStringGlobal(w, guardTrapGlobal, guardTrapMsg) END;
-    IF cg.needWithTrap THEN EmitRuntimeStringGlobal(w, withTrapGlobal, withTrapMsg) END;
-    IF cg.needLengthTrap THEN EmitRuntimeStringGlobal(w, lengthTrapGlobal, lengthTrapMsg) END;
-    IF cg.needEntierTrap THEN EmitRuntimeStringGlobal(w, entierTrapGlobal, entierTrapMsg) END;
-    IF cg.needArrayAssignTrap THEN EmitRuntimeStringGlobal(w, arrayAssignTrapGlobal, arrayAssignTrapMsg) END;
+    IF cg.needNilTrap THEN EmitTrapMessageGlobal(w, nilTrapGlobal, nilTrapMsg) END;
+    IF cg.needGuardTrap THEN EmitTrapMessageGlobal(w, guardTrapGlobal, guardTrapMsg) END;
+    IF cg.needWithTrap THEN EmitTrapMessageGlobal(w, withTrapGlobal, withTrapMsg) END;
+    IF cg.needLengthTrap THEN EmitTrapMessageGlobal(w, lengthTrapGlobal, lengthTrapMsg) END;
+    IF cg.needEntierTrap THEN EmitTrapMessageGlobal(w, entierTrapGlobal, entierTrapMsg) END;
+    IF cg.needArrayAssignTrap THEN EmitTrapMessageGlobal(w, arrayAssignTrapGlobal, arrayAssignTrapMsg) END;
     IF cg.usedAllocate & ~cg.heapPresent THEN
       WordIntType(wordInt);
       WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");

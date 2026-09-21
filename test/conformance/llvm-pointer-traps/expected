@@ -1,50 +1,66 @@
 == nilfield
 ANIL pointer dereference
+
 exit=4
 == nilcaret
 ANIL pointer dereference
+
 exit=4
 == nilchain
 ANIL pointer dereference
+
 exit=4
 == nilindex
 ANIL pointer dereference
+
 exit=4
 == nillocal
 ANIL pointer dereference
+
 exit=4
 == guardfail
 Atype guard failed
+
 exit=5
 == withnomatch
 Ano matching WITH guard
+
 exit=6
 == nilis
 ANIL pointer dereference
+
 exit=4
 == nilguard
 ANIL pointer dereference
+
 exit=4
 == nilwith
 ANIL pointer dereference
+
 exit=4
 == nilmethod
 ANIL pointer dereference
+
 exit=4
 == nilvarrecv
 ANIL pointer dereference
+
 exit=4
 == nilvararg
 ANIL pointer dereference
+
 exit=4
 == varguardfail
 Atype guard failed
+
 exit=5
 == varwithnomatch
 Ano matching WITH guard
+
 exit=6
 == heapfull
 ANIL pointer dereference
+
 exit=4
 == heapnil
 ANB

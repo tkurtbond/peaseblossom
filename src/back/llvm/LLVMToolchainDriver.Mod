@@ -20,7 +20,7 @@ MODULE LLVMToolchainDriver;
      LLVMCodeGenerator.Mod itself a pure tree-walker with no file-path/
      directory concerns of its own. *)
 
-  IMPORT Files, Platform, LLVMCodeGenerator;
+  IMPORT Files, Platform, Diagnostics, LLVMCodeGenerator;
 
   CONST
     dirBufferLength = 1024;
@@ -142,8 +142,9 @@ MODULE LLVMToolchainDriver;
       f: Files.File; w: Files.Rider; ok: BOOLEAN;
       savedDir, dir: ARRAY dirBufferLength OF CHAR;
       chdirResult, deleteResult: INTEGER;
-      i: INTEGER;
+      i, errorsBefore: INTEGER;
   BEGIN
+    errorsBefore := Diagnostics.errorCount;
     i := 0;
     WHILE topName[i] # 0X DO name[i] := topName[i]; INC(i) END;
     name[i] := "."; name[i + 1] := "l"; name[i + 2] := "l"; name[i + 3] := 0X;
@@ -165,9 +166,13 @@ MODULE LLVMToolchainDriver;
          file from an earlier run beside it: it is written and deleted again,
          not just left unregistered (an unregistered Files.New file stays behind
          as ".tmp.<n>.<pid>" in both runtimes), and the caller finds out
-         through LLVMCodeGenerator.unsupportedCount *)
+         through LLVMCodeGenerator.unsupportedCount. The same goes for an
+         error reported while generating (Diagnostics.errorCount grew): the
+         constant folding the generator does can find what the checker did not,
+         and a program with an error in it must not get an object file or
+         an executable (Phase 11, C9). *)
       Files.Register(f);
-      IF LLVMCodeGenerator.unsupportedCount > 0 THEN
+      IF (LLVMCodeGenerator.unsupportedCount > 0) OR (Diagnostics.errorCount > errorsBefore) THEN
         deleteResult := Platform.Unlink(name); (* not Files.Delete: voc's renames to a temp name *)
         ok := FALSE
       END;

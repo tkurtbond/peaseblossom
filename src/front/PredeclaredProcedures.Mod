@@ -496,6 +496,11 @@ MODULE PredeclaredProcedures;
     v := ConstantEvaluator.Evaluate(Arg(args, 0), scope);
     IF (v.type # Types.Undefined) & (v.kind # Types.intValue) THEN
       Diagnostics.Error(line, column, "HALT requires an integer constant argument")
+    ELSIF (v.type # Types.Undefined) & ((v.intVal < 0) OR (v.intVal > 255)) THEN
+      (* Phase 11 (C9): the argument becomes the exit status, and every host
+         poc runs on keeps its low 8 bits (exit(30000) is 48, exit(256) is 0,
+         which looks like success); voc says the same (err 218) *)
+      Diagnostics.Error(line, column, "HALT argument must be in 0..255")
     END
   END CheckHalt;
 
@@ -515,7 +520,7 @@ MODULE PredeclaredProcedures;
       cur: Types.ArrayType;
       extra: SyntaxTree.ExprNode;
       extraCount, openDims: INTEGER;
-      isOpenArrayBase: BOOLEAN;
+      isOpenArrayBase: BOOLEAN; lengthValue: Types.Value;
   BEGIN
     newCalled := TRUE;
     IF ArgCount(args) < 1 THEN
@@ -563,6 +568,14 @@ MODULE PredeclaredProcedures;
         xt := checkExpr(scope, extra);
         IF (xt # Types.Undefined) & ~Types.IsInteger(xt) THEN
           Diagnostics.Error(line, column, "NEW's length arguments must be integers")
+        ELSIF (xt # Types.Undefined) & ConstantEvaluator.IsConstantExpr(extra, scope) THEN
+          (* Phase 11 (C9): a constant length that is not positive is a trap
+             that cannot be avoided (exit 7); voc rejects it (err 63) *)
+          lengthValue := ConstantEvaluator.Evaluate(extra, scope);
+          IF (lengthValue.type # Types.Undefined) & (lengthValue.kind = Types.intValue)
+             & (lengthValue.intVal <= 0) THEN
+            Diagnostics.Error(line, column, "constant length of NEW must be positive")
+          END
         END;
         extra := extra.next
       END
@@ -749,7 +762,7 @@ MODULE PredeclaredProcedures;
   PROCEDURE CheckSystemNew(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
                            line, column: INTEGER;
                            checkExpr: CheckExprProc; checkDesignator: CheckDesignatorProc);
-    VAR vt, nt: Types.Type; readOnly, isVariable: BOOLEAN;
+    VAR vt, nt: Types.Type; readOnly, isVariable: BOOLEAN; sizeValue: Types.Value;
   BEGIN
     newCalled := TRUE;
     IF ArgCount(args) # 2 THEN
@@ -759,6 +772,13 @@ MODULE PredeclaredProcedures;
     nt := checkExpr(scope, Arg(args, 1));
     IF (nt # Types.Undefined) & ~Types.IsInteger(nt) THEN
       Diagnostics.Error(line, column, "SYSTEM.NEW's size must be an integer")
+    ELSIF (nt # Types.Undefined) & ConstantEvaluator.IsConstantExpr(Arg(args, 1), scope) THEN
+      (* Phase 11 (C9): as for NEW, a constant size that is not positive is a
+         trap that cannot be avoided (exit 7); voc lets SYSTEM.NEW(v, 0) by *)
+      sizeValue := ConstantEvaluator.Evaluate(Arg(args, 1), scope);
+      IF (sizeValue.type # Types.Undefined) & (sizeValue.kind = Types.intValue) & (sizeValue.intVal <= 0) THEN
+        Diagnostics.Error(line, column, "constant size of SYSTEM.NEW must be positive")
+      END
     END;
     IF vt = Types.Undefined THEN RETURN END;
     IF ~isVariable OR readOnly THEN
