@@ -27,7 +27,7 @@ the built `poc` in this inventory pass (2026-09-20).
 | A4 | `ENTIER` of a real beyond a `LONGINT` gives garbage (poc `-2147483648`, voc wraps) | Phase 10 step 5 | 3 | decision | open: `HUGEINT` result, or a trap |
 | A5 | Nested procedures not lowered (declaration or call is a compile error) | Phase 10 step 6 | 8 | gap, implementation | proposed: lambda lifting by reference, `doc/nested-procedures.md` |
 | A6 | `LONG`/`SHORT` reject `SYSTEM.INT8..INT64` | Phase 10 step 8 | 2 | gap | **done** 2026-09-20: by width along the model's chain, as voc; `LONG(LONGINT)`/`SHORT(SHORTINT)` stay errors; `semantic-long-short-width`, `llvm-long-short-width` |
-| A7 | Under `-OC`, `INT8` plus an integer literal (`b + 1`) is a `SHORTINT`, not assignable back | Phase 10 step 8 | 3 | gap, decision | proposed: a constant operand takes the other operand's fixed-width type when its value fits; probe voc |
+| A7 | Under `-OC`, `INT8` plus an integer literal (`b + 1`) is a `SHORTINT`, not assignable back | Phase 10 step 8 | 3 | gap, decision | **done 2026-09-21**: a constant operand takes the other operand's fixed-width type when its value fits (`Types.ConstantAdoptsType`, `SemanticActions.AdoptConstantOperandType`, `LLVMCodeGenerator.AdoptConstantOperands`); probed against voc under both models (voc types every constant by the fewest bytes its value needs, `OPT.IntType`); `semantic-system-fixed-width` rows, `llvm-system-int8-constants`. Found on the way: `CASE` on an `INT8` under `-OC` did not build, and a `CASE` label outside the selector type's range was accepted (now voc's error 60, `semantic-case-label-range`) |
 | A8 | `SYSTEM.SET32` is `SET`; no `SET64` | Phase 10 step 8; `000-todo.org` | 6 | gap, decision | open: merge with A20 (`HUGESET`) |
 | A9 | `LONGINT` included in `SYSTEM.ADDRESS` by rank; on 32-bit under `-OC` a mixed operation truncates the 64-bit operand | Phase 10 step 8 | 2 | bug | **decided (user, 2026-09-20): place `ADDRESS` by actual width; done 2026-09-20** (`semantic-address-width`, `llvm-address-width-ir`; seven `rtl/llvm` sites now `SYSTEM.VAL`; a 32-bit `-OC` build of poc itself built and checked on Linux 2026-09-20: identical to Stage 1, suite passes under it; BSD run 2026-09-21 on OpenBSD i386: Stage 1 built there, Stage 2 identical, `Poc.ll` byte-identical to the Linux cross-compile for `i386-unknown-openbsd7.9`, 237/237 under it) |
 | A10 | `SYSTEM.PTR` cannot be dereferenced/guarded/`IS`-tested/a `WITH` variable (voc allows some); a guard followed by an index (`any(T)[i]`), or to a pointer-to-array type, is unsupported in the backend (now a compile error) | Phase 10 step 7 | 6 | decision, gap | open: decide whether either is wanted |
@@ -93,7 +93,7 @@ Not one of them has a home in Phase 11's steps.
 | D6 | The `SYSTEM.INT32` migration of the FFI declarations (`Platform`/`Files`/`Math`, C `int` written as `LONGINT`) | Phase 10 step 8 note | commit `7212aae` | **done** (the runtime's C ints are `INT32`) |
 | D7 | A `PROCEDURE` whose call target is not a plain procedure (nested) silently dropped | Phase 10 step 8 note | - | **done** by B4; the real fix is A5 |
 | D8 | Not exportable: a computed real of extreme magnitude | = A2 | | see A2 |
-| D9 | The `-OC` `INT8`-with-literal gap, stated in `AGENTS.md`'s SYSTEM notes | = A7 | | see A7 |
+| D9 | The `-OC` `INT8`-with-literal gap, stated in `AGENTS.md`'s SYSTEM notes | = A7 | | done with A7 |
 
 ## E. Reconciliation notes for `000-todo.org` (edits made 2026-09-20)
 

@@ -377,11 +377,15 @@ against real voc 2026-09-20). What a program can observe:
   `INTEGER`/`LONGINT` strictly wider than `x`, else `HUGEINT`; `SHORT(x)` the
   widest strictly narrower, else `SYSTEM.INT8`. So `LONG` of an `INT32` is a
   `LONGINT` under `-OC` and a `HUGEINT` under `-O2`. `LONG(LONGINT)` and
-  `SHORT(SHORTINT)` stay errors, as in the report (voc accepts both). One gap:
-  under `-OC` an `INT8` met by an integer *literal* in an
-  expression (`b + 1`) is a `SHORTINT`, the literal's own type being at least
-  two bytes there, so it cannot be assigned back to an `INT8` without
-  `SYSTEM.VAL(SYSTEM.INT8, ...)`. `SET32` is still `SET` (the `-O2` width) and
+  `SHORT(SHORTINT)` stay errors, as in the report (voc accepts both). An integer
+  *constant* met by an `INT8` in `+ - * DIV MOD` takes the `INT8`'s type when
+  its value fits it (Phase 11 step 3), so `b := b + 1` works under `-OC`, where
+  a constant is otherwise at least two bytes; `b + 200` or `b + 128` is a
+  `SHORTINT` or wider and is not assignable back, as in voc (probed under both
+  models, `semantic-system-fixed-width`, `llvm-system-int8-constants`). The
+  operation is done at one byte, so an overflow of the *sum* (`l := b + 100`
+  with `b = 100`) wraps as it does for every narrow type, where voc's C
+  promotes to `int` first - undefined in the report. `SET32` is still `SET` (the `-O2` width) and
   there is no `SET64`. `CC`, `GETREG` and `PUTREG` are not implemented: they
   name a machine's registers and condition codes, which LLVM IR has none of.
 
@@ -577,6 +581,13 @@ like voc's), outermost dimension first:
   (`doc/phase-11-inventory.md` A4) is made.
 - **`MAX`/`MIN` of `REAL` and `LONGREAL` are constants**: IEEE 754's
   largest finite values and their negations, as at run time.
+- **A `CASE` label must lie in the range of the selector's type** (Phase 11
+  step 3): `CASE b OF 128:` for a `SYSTEM.INT8`, or `CASE s OF 200:` for a
+  `SHORTINT` under `-O2` (one byte), is an error, voc's err 60 "wrong type of
+  case label" - poc's message is "case label is outside the range of the CASE
+  selector's type", and it checks both ends of a range where voc looks only at
+  the low end (`CASE b OF 1..300:` compiles under voc). It used to be accepted
+  and produced IR clang refused (`semantic-case-label-range`).
 - **`.sym` files**: a folded integer is written as its value, so an importer
   re-types it minimally (`ASH(1, 3)` is a SHORTINT there); a real constant
   that is exactly `MAX`/`MIN` of `REAL` or `LONGREAL` is written as

@@ -3624,8 +3624,8 @@ work already being in place.
    ADDRESS` hierarchy for a 32-bit target under `-OC` (a mixed operation is
    done at the narrower width), left as it is; nothing else in the runtime
    mixes them. Not done: `LONG`/`SHORT` of a fixed-width type (rejected with
-   a message), an `INT8` combined with an integer literal under `-OC` (the
-   result is a `SHORTINT`; narrow with `SYSTEM.VAL`), `SET32` (still `SET`)
+   a message), an `INT8` combined with an integer literal under `-OC` (done
+   afterwards, Phase 11 step 3: the constant takes the `INT8`'s type), `SET32` (still `SET`)
    and `SET64`. **Result: the self-hosted poc runs on OpenBSD i386.** Built
    there from the Linux cross-compile, it rebuilds itself and emits a
    `Poc.ll` byte-identical to that cross-compile, twice - a fixed point on a
@@ -4067,7 +4067,7 @@ as it stands when the phase starts, and adds what it finds):
 | `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | decision |
 | Nested procedures (a procedure declared inside another) were not lowered by the LLVM backend: a declaration or a call was a compile error (2026-09-20; before that a comment in the IR and a program quietly missing the call). `Oberon2.pdf` §10: "procedure declarations may be nested". Done in Phase 11 step 8 (2026-09-20/21): lambda lifting by reference, `doc/nested-procedures.md`; what a program can observe is in `AGENTS.md` ("Nested procedures") | Phase 10 step 6; found 2026-09-20 | **done** |
 | `LONG`/`SHORT` reject `SYSTEM.INT8..INT64` ("requires a SHORTINT, INTEGER, or REAL argument"); voc's go by size along the model's chain (`OPT.ShorterOrLongerType`) | Phase 10 step 8 (fixed-width `INTn`, 2026-09-20) | gap |
-| Under `-OC` an `INT8` met by an integer literal in an expression (`b + 1`) is a `SHORTINT` - the literal's own type is at least two bytes there - and cannot be assigned back to an `INT8` without `SYSTEM.VAL` | Phase 10 step 8 (fixed-width `INTn`) | gap, decision |
+| Under `-OC` an `INT8` met by an integer literal in an expression (`b + 1`) is a `SHORTINT` - the literal's own type is at least two bytes there - and cannot be assigned back to an `INT8` without `SYSTEM.VAL` | Phase 10 step 8 (fixed-width `INTn`) | done 2026-09-21 (step 3) |
 | `SYSTEM.SET32` is `SET` (the `-O2` width, 64 bits under `-OC`) and there is no `SET64`: the fixed-width sets `INT8..INT64` got | Phase 10 step 8 (fixed-width `INTn`); `000-todo.org` | gap, decision (with `HUGESET`) |
 | `LONGINT` is included in `SYSTEM.ADDRESS` by rank, so on a 32-bit target under `-OC` a mixed `ADDRESS`/`LONGINT` operation is done at the address's 32 bits and truncates the 64-bit operand: `size <= MAX(LONGINT)` in `Files.Old` compared against -1 and no file opened (worked around there, not fixed) | Phase 10 step 8 (fixed-width `INTn`) | bug, found not fixed |
 | `SYSTEM.PTR` cannot be dereferenced, guarded, `IS`-tested or a `WITH` variable (voc allows some); a guard followed by an index, or to a pointer-to-array type, is unsupported in the backend | Phase 10 step 7 | decision, gap |
@@ -4367,7 +4367,33 @@ as it stands when the phase starts, and adds what it finds):
 3. **Run-time semantics.** Each of these is a place the report is silent
    and voc chose something; the step probes voc, writes down what it does
    and what poc does, and decides.
-   - *An integer literal next to a `SYSTEM.INT8`, under `-OC`.* A constant's
+   - *Done (2026-09-21): an integer literal next to a `SYSTEM.INT8`, under
+     `-OC`.* voc's rule, read in `OPB.Op`/`OPT.IntType` and probed under both
+     models (a matrix of `+ - * DIV MOD`, comparisons, `INC`/`DEC`, `FOR`,
+     `CASE`, arguments and `RETURN` over `INT8`..`INT64`, `SHORTINT`, named
+     constants and constant subexpressions): voc types every constant by the
+     fewest bytes its value needs whatever the model (`b + 1` is an `INT8`
+     under `-OC`), and a constant that does not fit leaves the sum at the wider
+     type, so `b + 127` compiles and `b + 128`/`b + 200` do not. poc keeps its
+     model-minimal constant types (they show elsewhere) and adds only the
+     adoption: `Types.ConstantAdoptsType(constType, otherType, value)` - an
+     integer constant whose type is wider than a `SYSTEM.INTn` operand's, and
+     whose value fits it, takes it - applied where the operation's type is
+     chosen, `SemanticActions.AdoptConstantOperandType` in `CheckBinaryExpr`
+     and `LLVMCodeGenerator.AdoptConstantOperands` in `GenerateBinaryExpr`
+     (re-emitting the constant, always one immediate, at the other's type), for
+     `+ - * DIV MOD` only: a comparison's BOOLEAN result and the fit make
+     widening the other operand equivalent. Every probed line accepts or
+     rejects as voc does. **Found on the way:** `CASE` on an `INT8` under `-OC`
+     built invalid IR (`sext i16 1 to i8`; a label constant is at least two
+     bytes there), the same for a one-byte `SHORTINT` under `-O2` with a label
+     above 127, because the checker never compared a label with the selector's
+     range; voc rejects such a label (err 60), so poc now does
+     (`CaseLabelFits`; both ends of a range, where voc looks only at the low
+     end) and the code generator narrows a label with `trunc`. Fixtures
+     `semantic-system-fixed-width` (21 rows), `llvm-system-int8-constants`
+     (poc and voc, both models, one output), `semantic-case-label-range`. The
+     earlier plan text follows. A constant's
      type is the minimal one its value fits *under the size model*, which under
      `-OC` is never narrower than `SHORTINT`'s two bytes, so `b + 1` for an
      `INT8` `b` is a `SHORTINT` and `b := b + 1` is refused (a constant *by

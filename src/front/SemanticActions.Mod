@@ -1989,6 +1989,30 @@ MODULE SemanticActions;
      must name a type, so it must not be run through the general
      CheckExpr(scope, node.right) call below (that would misreport a bare
      type name as "not a value"). *)
+  (* Types.ConstantAdoptsType: in an arithmetic operation an integer constant
+     whose own type is wider than the other operand's (an INT8, under -OC)
+     but whose value fits that type is typed as it, so "b + 1" is an INT8.
+     l and r are the operands' types, changed accordingly. *)
+  PROCEDURE AdoptConstantOperandType(scope: SymbolTable.Scope; node: SyntaxTree.BinaryExprNode;
+                                     VAR l, r: Types.Type);
+    VAR v: Types.Value;
+  BEGIN
+    IF ~Types.IsInteger(l) OR ~Types.IsInteger(r) THEN RETURN END;
+    IF Types.Order(l) < Types.Order(r) THEN
+      IF ConstantEvaluator.IsConstantExpr(node.right, scope) THEN
+        v := ConstantEvaluator.Evaluate(node.right, scope);
+        IF (v.type # Types.Undefined) & (v.kind = Types.intValue)
+           & Types.ConstantAdoptsType(r, l, v.intVal) THEN r := l END
+      END
+    ELSIF Types.Order(r) < Types.Order(l) THEN
+      IF ConstantEvaluator.IsConstantExpr(node.left, scope) THEN
+        v := ConstantEvaluator.Evaluate(node.left, scope);
+        IF (v.type # Types.Undefined) & (v.kind = Types.intValue)
+           & Types.ConstantAdoptsType(l, r, v.intVal) THEN l := r END
+      END
+    END
+  END AdoptConstantOperandType;
+
   PROCEDURE CheckBinaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.BinaryExprNode): Types.Type;
     VAR l, r, result, targetType: Types.Type; leftIsVarParam: BOOLEAN;
   BEGIN
@@ -2014,6 +2038,10 @@ MODULE SemanticActions;
     END;
     l := CheckExpr(scope, node.left); r := CheckExpr(scope, node.right);
     IF (l = Types.Undefined) OR (r = Types.Undefined) THEN RETURN Types.Undefined END;
+    IF (node.op = Lexer.plus) OR (node.op = Lexer.minus) OR (node.op = Lexer.times)
+       OR (node.op = Lexer.divKeyword) OR (node.op = Lexer.modKeyword) THEN
+      AdoptConstantOperandType(scope, node, l, r)
+    END;
     IF (node.op = Lexer.plus) OR (node.op = Lexer.minus) OR (node.op = Lexer.times) THEN
       IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN
         result := Types.WiderOf(l, r)
@@ -2304,8 +2332,27 @@ MODULE SemanticActions;
     seen := node
   END CheckCaseLabelRange;
 
+  (* Whether both ends of an integer case label lie in the range of the
+     selector's own type: a label the selector could never hold is an error
+     in voc too (err 60, "wrong type of case label": 128 or 200 for an INT8, 200
+     for a SHORTINT under -O2, where it is one byte; voc looks only at the low
+     end of a range, poc at both). Without it the generated code compared a
+     one-byte selector with a two-byte constant. TRUE for a type
+     ConstantEvaluator.MaxMinBound has no bounds for. *)
+  PROCEDURE CaseLabelFits(selType: Types.Type; low, high: LONGINT): BOOLEAN;
+    VAR minValue, maxValue: Types.Value;
+  BEGIN
+    IF ConstantEvaluator.MaxMinBound(selType, FALSE, minValue)
+       & ConstantEvaluator.MaxMinBound(selType, TRUE, maxValue)
+       & (minValue.kind = Types.intValue) & (maxValue.kind = Types.intValue) THEN
+      RETURN (low >= minValue.intVal) & (low <= maxValue.intVal)
+           & (high >= minValue.intVal) & (high <= maxValue.intVal)
+    END;
+    RETURN TRUE
+  END CaseLabelFits;
+
   PROCEDURE CheckCaseLabelList(scope: SymbolTable.Scope; labels: SyntaxTree.CaseLabelNode;
-                               charMode: BOOLEAN; VAR seen: LabelRange);
+                               selType: Types.Type; charMode: BOOLEAN; VAR seen: LabelRange);
     VAR
       l: SyntaxTree.CaseLabelNode;
       lowVal, highVal: Types.Value;
@@ -2349,6 +2396,10 @@ MODULE SemanticActions;
           ok := FALSE
         END
       END;
+      IF ok & ~charMode & ~CaseLabelFits(selType, low, high) THEN
+        Diagnostics.Error(l.line, l.column, "case label is outside the range of the CASE selector's type");
+        ok := FALSE
+      END;
       IF ok THEN CheckCaseLabelRange(seen, low, high, l.line, l.column) END;
       l := l.next
     END
@@ -2371,7 +2422,7 @@ MODULE SemanticActions;
     seen := NIL;
     c := s.cases;
     WHILE c # NIL DO
-      IF valid THEN CheckCaseLabelList(scope, c.labels, charMode, seen) END;
+      IF valid THEN CheckCaseLabelList(scope, c.labels, selType, charMode, seen) END;
       CheckStatementSeq(scope, c.body, loopDepth, procResultType);
       c := c.next
     END;

@@ -806,6 +806,27 @@ MODULE Types;
     END
   END FixedIntFits;
 
+  (* Whether an integer constant - of type constType, whose own minimal type
+     under the size model may be wider than it needs - takes the type of the
+     integer operand it meets in an arithmetic operation. It does when that
+     operand is a SYSTEM.INTn strictly narrower than the constant's type and
+     the constant's value fits it: then "b + 1" is an INT8, not a SHORTINT.
+     Only INT8 under -OC can be such an operand (nothing else is narrower than
+     the narrowest model type, and INT16..INT64 are at least as wide as one).
+     voc gets there by typing every constant by the fewest bytes its value
+     needs, whatever the model (OPT.IntType; probed 2026-09-21: under -OC
+     "b := b + 1" compiles, "b + 127" too, "b + 128" and "b + 200" give an
+     INTEGER-or-wider sum that is not assignable back). Applied by
+     SemanticActions.CheckBinaryExpr and by LLVMCodeGenerator's arithmetic
+     from this one predicate, so the two type the operation alike; a
+     comparison needs neither (its result is BOOLEAN either way and the
+     value fits, so widening the other operand compares the same). *)
+  PROCEDURE ConstantAdoptsType*(constType, otherType: Type; value: LONGINT): BOOLEAN;
+  BEGIN
+    RETURN IsInteger(constType) & IsInteger(otherType)
+       & (Order(otherType) < Order(constType)) & FixedIntFits(otherType, value)
+  END ConstantAdoptsType;
+
   (* TRUE if "wider" is numeric and includes "narrower" in the Appendix A
      hierarchy (LONGREAL >= REAL >= LONGINT >= INTEGER >= SHORTINT); a
      type always includes itself. *)

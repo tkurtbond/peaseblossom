@@ -2136,6 +2136,40 @@ MODULE LLVMCodeGenerator;
     COPY("i8", result.llvmType); result.oberonType := Types.Boolean
   END GenerateIsExpr;
 
+  PROCEDURE ^ EmitConstantValue(VAR w: Files.Rider; VAR cg: Codegen; type: Types.Type; cv: Types.Value;
+                                VAR result: Value);
+
+  (* Types.ConstantAdoptsType, the code generator's side of it (the checker's
+     is SemanticActions.AdoptConstantOperandType): an integer constant operand
+     wider than the other but fitting it - "1" next to an INT8 under -OC - is
+     emitted at the other operand's type, so the operation is at that type and
+     its result is the INT8 the checker gave it. A constant expression is
+     always one immediate here (GenerateFoldedInteger), so it is simply
+     emitted again. *)
+  PROCEDURE AdoptConstantOperands(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.BinaryExprNode;
+                                  VAR l, r: Value);
+    VAR v: Types.Value;
+  BEGIN
+    IF ~Types.IsInteger(l.oberonType) OR ~Types.IsInteger(r.oberonType) THEN RETURN END;
+    IF Types.Order(l.oberonType) < Types.Order(r.oberonType) THEN
+      IF ConstantEvaluator.IsConstantExpr(expr.right, cg.scope) THEN
+        v := ConstantEvaluator.Evaluate(expr.right, cg.scope);
+        IF (v.type # Types.Undefined) & (v.kind = Types.intValue)
+           & Types.ConstantAdoptsType(r.oberonType, l.oberonType, v.intVal) THEN
+          EmitConstantValue(w, cg, l.oberonType, v, r)
+        END
+      END
+    ELSIF Types.Order(r.oberonType) < Types.Order(l.oberonType) THEN
+      IF ConstantEvaluator.IsConstantExpr(expr.left, cg.scope) THEN
+        v := ConstantEvaluator.Evaluate(expr.left, cg.scope);
+        IF (v.type # Types.Undefined) & (v.kind = Types.intValue)
+           & Types.ConstantAdoptsType(l.oberonType, r.oberonType, v.intVal) THEN
+          EmitConstantValue(w, cg, r.oberonType, v, l)
+        END
+      END
+    END
+  END AdoptConstantOperands;
+
   PROCEDURE GenerateBinaryExpr(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.BinaryExprNode;
                                VAR result: Value);
     VAR l, r: Value;
@@ -2156,6 +2190,10 @@ MODULE LLVMCodeGenerator;
     END;
     GenerateExpr(w, cg, expr.left, l);
     GenerateExpr(w, cg, expr.right, r);
+    IF (expr.op = Lexer.plus) OR (expr.op = Lexer.minus) OR (expr.op = Lexer.times)
+       OR (expr.op = Lexer.divKeyword) OR (expr.op = Lexer.modKeyword) THEN
+      AdoptConstantOperands(w, cg, expr, l, r)
+    END;
     IF (expr.op = Lexer.plus) OR (expr.op = Lexer.minus) OR (expr.op = Lexer.times) THEN
       IF Types.IsNumeric(l.oberonType) THEN GenerateBinaryNumeric(w, cg, expr.op, l, r, result)
       ELSIF l.oberonType = Types.Set THEN GenerateBinarySet(w, cg, expr.op, l, r, result)
@@ -4678,9 +4716,10 @@ MODULE LLVMCodeGenerator;
   PROCEDURE WidenCaseLabel(VAR w: Files.Rider; VAR cg: Codegen; v: Value; targetLLVMType: ARRAY OF CHAR;
                            VAR result: ValueText);
   BEGIN
-    IF v.llvmType = targetLLVMType THEN result := v.text
-    ELSE EmitConvert(w, cg, "sext", v.llvmType, v.text, targetLLVMType, result)
-    END
+    (* narrower too: a label typed wider than the selector (200-odd against
+       an INT8 under -OC, where a constant is at least two bytes) always
+       fits it - SemanticActions.CaseLabelFits - so truncating is exact *)
+    EmitResizeInt(w, cg, v.llvmType, v.text, targetLLVMType, result)
   END WidenCaseLabel;
 
   (* A single CaseLabelNode: "low" alone (high = NIL) tests equality;
