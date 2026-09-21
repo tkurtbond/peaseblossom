@@ -1,11 +1,13 @@
 # Nested procedures — plan
 
-Status (2026-09-20): **not implemented in the LLVM backend; the front end
-accepts them.** A nested procedure declaration, or a call of one, is a compile
-error from the LLVM backend (`LLVMCodeGenerator.ReportNestedProcedures`, and
-`Unsupported` at each call). Before that change it compiled to a comment in the
-IR and a program quietly missing the call. This document is the plan for
-lowering them properly. It is listed in `PLAN.md` as Phase 11 step 8.
+Status (2026-09-21): **implemented** (Phase 11 step 8). The front end always
+accepted nested procedures; the LLVM backend used to reject them (before that,
+compile them to a comment in the IR and a program quietly missing the call) and
+now lowers them, by lambda lifting by reference, as §3 designs. Section 5 records
+each step as it was done, and what the BSD hosts said. The rest of this document
+is the plan as it was written, with the state-of-things tables (§2) left as they
+were before step 0. What a program can observe is in `AGENTS.md`. It is listed in
+`PLAN.md` as Phase 11 step 8.
 
 ## 1. What the language says
 
@@ -46,7 +48,7 @@ Not in scope: nested procedures as procedure values (illegal), nested
 procedures as type-bound procedures (the grammar does not allow it), export of
 one (`.sym` files never mention a local procedure, as now).
 
-## 2. Where things stand
+## 2. Where things stand (before step 0)
 
 | Piece | State |
 |---|---|

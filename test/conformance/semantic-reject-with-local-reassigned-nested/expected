@@ -1,0 +1,2 @@
+withnested.mod:25:5: error: guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable
+1 error(s)

@@ -2649,8 +2649,11 @@ MODULE SemanticActions;
      declaring ProcDeclNode P directly, and only P's *nested* procedures
      (P.declarations.procDecls, recursively - never P's own direct
      statements) are scanned via the unmodified CollectProcAssignedNames
-     above, matching voc's tested behavior exactly rather than merely
-     approximating it more closely. The RECORD-typed guard case (VAR record
+     above. That is narrower than voc's own rule, which (OPP.Mod, qualident
+     and the WITH statement) rejects a local pointer that any nested procedure
+     mentions at all, read or write, and it is not sound: only a bare-name
+     assignment is seen, so a nested procedure that passes the variable on as a
+     VAR argument (or NEW's it) reassigns it unnoticed (000-todo.org). The RECORD-typed guard case (VAR record
      parameter/receiver) needs none of this - it isn't a pointer
      redirection risk the same way, and voc's own withreceiver2 test
      (2026-09-17) confirms it's exempt; supported since PLAN.md Phase 9

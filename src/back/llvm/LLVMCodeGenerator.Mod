@@ -180,7 +180,7 @@ MODULE LLVMCodeGenerator;
 
   VAR
     (* How many constructs GenerateProgram met that this backend cannot lower
-       (Unsupported, and a nested procedure declaration), each already
+       (Unsupported), each already
        reported as an error naming module and line. A program that has any is
        not a program: the IR has the code missing, so the drivers refuse to
        write it (LLVMToolchainDriver.EmitIR/Build) instead of producing an

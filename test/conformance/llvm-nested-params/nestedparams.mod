@@ -10,8 +10,9 @@ MODULE nestedparams;
      them, passing it on as an open array argument); a VAR receiver (its tag
      too, so a bound procedure is dispatched on the real type); a pointer
      receiver; a value parameter of pointer type assigned inside the nested
-     procedure; WITH in a nested procedure over an enclosing pointer. "NN ok"
-     or "NN BAD" per check. *)
+     procedure; WITH in a nested procedure over an enclosing pointer, and
+     nested procedures called from inside the enclosing procedure's WITH
+     body. "NN ok" or "NN BAD" per check. *)
   TYPE
     Shape = POINTER TO ShapeDesc;
     ShapeDesc = RECORD kind: INTEGER END;
@@ -147,6 +148,24 @@ MODULE nestedparams;
     Radius
   END ByWith;
 
+  (* nested procedures called from inside the enclosing procedure's own WITH
+     body: they see the variable's declared type (Shape), not the narrowing,
+     and what they write through it is there when the WITH goes on *)
+  PROCEDURE InsideWith(s: Shape; VAR result: INTEGER);
+    VAR r: INTEGER;
+    PROCEDURE Kind(): INTEGER;
+    BEGIN RETURN s.kind
+    END Kind;
+    PROCEDURE Bump;
+    BEGIN INC(s.kind)
+    END Bump;
+  BEGIN
+    WITH s: Circle DO
+      r := s.radius * 10 + Kind(); Bump; r := r + Kind() * 100
+    END;
+    result := r
+  END InsideWith;
+
   PROCEDURE Main;
     VAR
       x, seen, radius, total, length, first, rows, columns, corner: INTEGER;
@@ -163,7 +182,8 @@ MODULE nestedparams;
     c.Twice; Report(8, c.n = 6);
     NEW(sh); sh.kind := 1; grown := 0; sh.Grow; Report(9, (sh.kind = 50) & (grown = 77));
     NEW(ci); ci.radius := 4; ByWith(ci, radius); Report(10, radius = 4);
-    NEW(sh); ByWith(sh, radius); Report(11, radius = -1)
+    NEW(sh); ByWith(sh, radius); Report(11, radius = -1);
+    NEW(ci); ci.kind := 7; ci.radius := 3; InsideWith(ci, radius); Report(12, (radius = 837) & (ci.kind = 8))
   END Main;
 
 BEGIN

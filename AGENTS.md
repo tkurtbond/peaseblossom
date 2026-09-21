@@ -575,6 +575,49 @@ like voc's), outermost dimension first:
   big-integer arithmetic), and the `.sym` text is the shortest digits, at most
   17, that read back to the very value (`module-interface-extreme-reals`).
 
+### Nested procedures (implemented, Phase 11 step 8)
+
+`PLAN.md` step 8 and `doc/nested-procedures.md` have the full account; the
+front end always accepted them, the LLVM backend used to reject them with an
+error (before that it dropped the calls silently). What a program can observe:
+
+- **A procedure may be declared inside another, to any depth, and use the
+  variables of every procedure around it**: locals, value and `VAR`
+  parameters (a `VAR` record parameter keeps its run-time type, an open array
+  its lengths), the receiver of a type-bound procedure, and `FOR` control
+  variables. Access is
+  by reference: what a nested procedure writes is what the enclosing one reads
+  next, a pointer variable of the enclosing procedure stays a collector root
+  where it is, and each activation of a recursive procedure has its own
+  variables, seen by the nested procedure it called. Names are resolved by
+  Oberon's scope rules, so a nested procedure's own declaration of the same
+  name hides the enclosing one.
+- **A nested procedure is called by name only**, from the procedure that
+  declares it or from anything declared inside that, itself included, siblings,
+  and the enclosing procedure (recursion); forward declarations (`PROCEDURE ^`)
+  work among them for mutual recursion. It is never a procedure value (the
+  report forbids it and poc rejects it), never type-bound, and never exported:
+  a `.sym` never mentions one. A module-level or type-bound procedure may
+  contain nested ones and be exported as usual.
+- **How it is done**, visible only in the IR, a debugger or `poc -dump-nested
+  <file>` (which prints, for each nested procedure, the enclosing variables it
+  needs): a nested procedure becomes a function `@Module.Outer.Inner` (`@Module.
+  Type.Method.Inner` inside a type-bound procedure) that takes, after its own
+  parameters, one hidden `ptr` per enclosing variable it uses - or reaches
+  through the nested procedures it calls - in a fixed order (outermost
+  declaring procedure first, then declaration order), each followed by the
+  variable's type tag if it is a `VAR` record or its lengths if it is an open
+  array. A call passes its own bindings' addresses on. There is no static link
+  and no closure: an activation never outlives the one that declared it.
+- **Limits**: an open array type with more than 8 open dimensions is an error
+  (the section above), as anywhere else; a procedure that uses very many
+  enclosing variables has that many hidden parameters, which is legal and
+  untested at scale. Nothing else is specific to nested procedures.
+- Checked (`llvm-nested-*`, `nested-analysis-*`) on Linux x86_64 under `-O2`
+  and `-OC`, as 32-bit x86 executables (`llvm-i686-runtime`), and on the local
+  VMs: OpenBSD i386 (both size models), NetBSD amd64 and FreeBSD arm64. The
+  only BSD failure is the unrelated `llvm-math-extra` one in `000-todo.org`.
+
 ### External procedures
 
 `Oberon2.pdf` defines no mechanism for calling procedures implemented in
