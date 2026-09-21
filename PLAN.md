@@ -4240,9 +4240,13 @@ as it stands when the phase starts, and adds what it finds):
      `-OC`: seven sites passing a `LONGINT` length or offset to a `size_t`/
      `long` parameter (`Console.Mod`, `Platform.Mod`, `Files.Mod`), now
      `SYSTEM.VAL(SYSTEM.ADDRESS, ...)`, and `Files.Old`'s `HUGEINT` workaround
-     went back to the plain `size <= MAX(LONGINT)`. Still to run: a 32-bit
-     `-OC` build of poc itself and the i686 runtime suite, on a BSD host
-     (unreachable from home). The plan text follows.
+     went back to the plain `size <= MAX(LONGINT)`. Run on Linux
+     (2026-09-20, with `glibc-devel.i686`): the Stage 0 poc built poc itself
+     as a 32-bit `-OC` executable (`-OC -target i686-unknown-linux-gnu`, 5 s);
+     that i686 poc, run on the x86_64 target, rebuilt poc with every `.ll`,
+     every `.sym` and the executable byte for byte those of Stage 1, and the
+     whole suite (219 fixtures) passes under it. Still to run: the same on a
+     BSD host (unreachable from home). The plan text follows.
    - *`LONGINT` included in `SYSTEM.ADDRESS`, at a width it does not fit.*
      `Types.Order` puts `ADDRESS` between `LONGINT` and `HUGEINT` by rank,
      whatever the target: right when both are 32 bits or `ADDRESS` is 64, wrong
