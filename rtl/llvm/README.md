@@ -30,8 +30,14 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   other programs keep an argument-less `main`.
 - `Out.Mod`, `In.Mod` - the Oakwood formatted output and input, with voc's
   interfaces. `Out` writes through `Console` (unbuffered), and prints
-  `REAL`/`LONGREAL` with voc's algorithm; `In` reads standard input with
+  `REAL`/`LONGREAL` correctly rounded (`RealDigits.Mod`, big-integer
+  arithmetic, no floating point); `In` reads standard input with
   `getchar` and real numbers with libc's `strtod`/`strtof`.
+- `RealDigits.Mod` - the exact decimal digits of a `LONGREAL`, rounded to
+  any number of significant digits (nearest, ties to even): what `Out.Real`/
+  `Out.LongReal` print from. Internal, not part of Oakwood. The same
+  algorithm as `src/front/DecimalToDouble.Digits`, kept apart because poc's
+  own source is strict Oberon-2 and this one uses `HUGEINT` and `SYSTEM`.
 - `Strings.Mod`, `Math.Mod`, `MathL.Mod` - the remaining Oakwood basic
   modules, with voc's interfaces. `Strings` is plain Oberon-2 (plus
   `strtod`/`strtof` for `StrToReal`/`StrToLongReal`); `Math` and `MathL` are

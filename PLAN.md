@@ -3711,13 +3711,13 @@ work already being in place.
      of the calls and none is lost when a program ends without an `Ln`
      (voc's `Out` buffers 128 characters and flushes at each line end).
      `Flush` and `Open` do nothing.
-   - **`Out.Real`/`LongReal` are voc's algorithm step for step**, so they
-     print what voc prints - 40 magnitudes at six field widths agree, on
-     x86_64 and i686 - and are not always correctly rounded (see the
-     Phase 11 table). Two things had to change to carry it over: `ENTIER`
-     gives a `LONGINT`, too narrow for the 17 digits, so the whole part is
-     cut from the bits of the number (`WholePart`); and the result is
-     written in one call, not character by character. `Hex` needs no
+   - **`Out.Real`/`LongReal` began as voc's algorithm step for step** and
+     printed what voc prints (40 magnitudes at six field widths agreed, on
+     x86_64 and i686), not always correctly rounded; Phase 11 step 2 (A3)
+     replaced the digit generation by `RealDigits.Digits`, so they are
+     correctly rounded and differ from voc where voc is wrong (see there).
+     The layout - sign, field width, exponent form - is still voc's, and
+     the result is written in one call, not character by character. `Hex` needs no
      `SYSTEM.LSH`/`ROT`; a negative number gets exactly the `n` low digits
      asked for, as in voc.
    - **`Int` has no wrong answer for the smallest `HUGEINT`**, where voc
@@ -4181,7 +4181,23 @@ as it stands when the phase starts, and adds what it finds):
      to an identical one. The old export of `4.94D-324 * 3.0D0` was wrong
      (`1.3D-323`, now `1.5D-323`). Not done: a REAL literal is still parsed to
      a double first (`realVal`), its exact single-precision rounding left to
-     LLVM through `realText`; `Out.Real`/`Out.LongReal` (A3, next).
+     LLVM through `realText`; `Out.Real`/`Out.LongReal` are the next bullet.
+   - **A3, done (2026-09-20): `Out.Real`/`Out.LongReal` are correctly
+     rounded** (the user asked for it ported rather than dropped as a voc
+     compatibility). `rtl/llvm/RealDigits.Mod` is `DecimalToDouble.Digits`
+     over `HUGEINT` limbs: the digits of the exact m * 2^e, rounded to the
+     precision asked (nearest, ties to even), no floating-point arithmetic
+     and so no dependence on the size model or the host. It stays a
+     separate module because poc's own source may not use `HUGEINT`/`SYSTEM`,
+     and Stage 0 has no way to link a runtime module for voc. `Out` keeps
+     voc's layout; a subnormal now prints its digits, the whole-part
+     workaround is gone, and the exponent is right where voc's estimate was
+     off by one (voc printed `1.0E-21` for the REAL nearest 1E-20, and
+     `1.0D+299` for the product of 300 tens). Fixture `llvm-real-digits`
+     checks 1080 lines against a Python oracle (`generate.py`, committed);
+     the old routine gets 261 of them wrong. `llvm-out`, which requires the
+     same output from voc and poc, now holds only numbers voc prints
+     correctly; the ones it gets wrong went to `llvm-out-extra`.
    - The plan text of the item above: export extreme computed real constants: tier 2 of `ModuleInterface`'s
      real formatter searches for decimal text that `ConstantEvaluator.
      ParseReal` reads back exactly, and for a value like `1.5D300` written

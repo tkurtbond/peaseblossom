@@ -2,10 +2,12 @@ MODULE outtest;
   (* PLAN.md Phase 10 step 5: rtl/llvm/Out.Mod - characters, strings,
      integers in decimal and hexadecimal, REAL and LONGREAL in exponential
      form, through what poc's Out shares with voc's own (test.sh runs this
-     same source under both and requires the same output - for the real
-     numbers that means the algorithm was carried over exactly, right or
-     wrong in the last digit). No real literal is large or integral, which
-     voc's compiler rejects; the numbers are built by arithmetic. *)
+     same source under both and requires the same output). poc's real
+     numbers are correctly rounded and voc's are not always (the last digit,
+     rarely the exponent), so only numbers voc gets right are here; the ones
+     it gets wrong are in llvm-out-extra and llvm-real-digits. No real
+     literal is large or integral, which voc's compiler rejects; the numbers
+     are built by arithmetic. *)
   IMPORT Out;
   VAR
     k, n: INTEGER;
@@ -72,13 +74,10 @@ BEGIN
   x := -1.0D0; Show(x);
   x := 0.5D0; Show(x);
   x := 3.14159265358979D0; Show(x);
-  x := one / three; Show(x);
-  x := -two / three; Show(x);
-  x := 12345.6789D0; Show(x);
   x := one;
   FOR k := 1 TO 40 DO
     x := x * ten;
-    IF (k = 1) OR (k = 9) OR (k = 15) OR (k = 22) OR (k = 23) OR (k = 30) OR (k = 40) THEN Show(x) END
+    IF (k = 1) OR (k = 9) OR (k = 15) OR (k = 22) THEN Show(x) END
   END;
   y := one;
   FOR k := 1 TO 40 DO
@@ -87,7 +86,6 @@ BEGIN
   END;
   x := one;
   FOR k := 1 TO 300 DO x := x * ten END;
-  Out.LongReal(x, 0); Out.Ln;
   y := x / three; Out.LongReal(y, 0); Out.Ln;
   x := one;
   FOR k := 1 TO 300 DO x := x / ten END;
@@ -108,7 +106,7 @@ BEGIN
   x := one;
   FOR k := 1 TO 30 DO
     x := x / ten;
-    IF (k = 3) OR (k = 10) OR (k = 20) OR (k = 30) THEN r := SHORT(x); Out.Real(r, 0); Out.Ln END
+    IF (k = 3) OR (k = 10) OR (k = 30) THEN r := SHORT(x); Out.Real(r, 0); Out.Ln END
   END;
 
   (* infinity and not a number, and their sign *)

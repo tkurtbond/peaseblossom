@@ -89,3 +89,4 @@ test/conformance/crosscheck/crosscheck
 /build/
 test/conformance/llvm-long-short-width/llvm-long-short-width
 test/conformance/llvm-const-value-functions/llvm-const-value-functions
+test/conformance/llvm-real-digits/llvm-real-digits

@@ -15,18 +15,18 @@ MODULE Out;
      Where this differs from voc's:
      - Int has no wrong answer for the smallest HUGEINT (voc's prints a
        fixed, wrong string), and Hex needs no SYSTEM.LSH/ROT;
-     - Real and LongReal are voc's algorithm, step for step, so they print
-       what voc's do, and so, for the same reasons, they are *not always
-       correctly rounded*: the decimal exponent is estimated as 77/256 of
-       the binary one and the number is scaled by a power of ten computed
-       in floating point (Ten), which is exact only up to 10^22, so the
-       last digits of a number outside about 10^-22..10^22 - or the last
-       of the 17 a LONGREAL can be asked for - may be off by a few units.
-       A correctly rounded conversion (and a correctly rounded reading of
-       text, which In gets from the C library) is Phase 11 work; the same
-       one is missing from ConstantEvaluator.ParseReal. *)
+     - Real and LongReal are correctly rounded (Phase 11 step 2, inventory
+       A3): the digits are the exact decimal expansion of the number,
+       rounded to nearest, ties to even (RealDigits), where voc's code
+       estimates the decimal exponent as 77/256 of the binary one and scales
+       by a power of ten computed in floating point, exact only up to 10^22, so the
+       last digits of a number outside about 10^-22..10^22, or the last of
+       the 17 a LONGREAL can be asked for, may be off by a few units there.
+       The layout, the digit counts and the dropping of trailing zeros are
+       voc's; a denormal prints its digits (voc's prints zero). The reading
+       of text, In's, is the C library's, which is correct. *)
 
-  IMPORT SYSTEM, Console;
+  IMPORT SYSTEM, Console, RealDigits;
 
   CONST
     spaceChunk = 32;
@@ -143,21 +143,6 @@ MODULE Out;
     RETURN r
   END Ten;
 
-  (* The whole number part of x, for 0 <= x < 2^63, cut from the bits of x
-     (ENTIER gives a LONGINT, too narrow for the 17 digits wanted here) *)
-  PROCEDURE WholePart(x: LONGREAL): HUGEINT;
-    VAR bits, fraction: HUGEINT; e: INTEGER;
-  BEGIN
-    bits := SYSTEM.VAL(HUGEINT, x);
-    e := SYSTEM.VAL(INTEGER, (bits DIV 10000000000000H) MOD 800H);
-    fraction := bits MOD 10000000000000H;
-    IF e = 0 THEN RETURN 0 END; (* zero, or a denormal: below 1 *)
-    e := e - 1075; (* x = (2^52 + fraction) * 2^e *)
-    IF e > 10 THEN RETURN MAX(HUGEINT) END;
-    IF e < -63 THEN RETURN 0 END;
-    RETURN ASH(10000000000000H + fraction, e)
-  END WholePart;
-
   (* x in exponential form - d.dddE+dd, or d.dddD+ddd for a long one -
      right-aligned in a field of n characters, with as many digits as fit
      (at most 9, or 17 if long, and at least 2); voc's algorithm *)
@@ -168,7 +153,8 @@ MODULE Out;
       s: ARRAY 30 OF CHAR; (* buffer built backwards *)
       i: INTEGER; (* index into s *)
       el: INTEGER; (* exponent length *)
-      x0: LONGREAL;
+      e10: INTEGER; (* decimal exponent *)
+      digitText: ARRAY 20 OF CHAR; (* the digits, RealDigits' *)
       nn: BOOLEAN; (* number negative *)
       en: BOOLEAN; (* exponent negative *)
       m: HUGEINT; (* mantissa digits *)
@@ -202,33 +188,22 @@ MODULE Out;
         IF d < 6 THEN d := 6 END
       END;
 
-      IF e = 0 THEN
+      IF (e = 0) & (f = 0) THEN
         WHILE el > 0 DO DEC(i); s[i] := "0"; DEC(el) END;
         DEC(i); s[i] := "+";
         m := 0
       ELSE
         IF nn THEN x := -x END;
-
-        (* e as a power of ten, not of two *)
-        e := SHORT(LONG(e - 1023) * 77 DIV 256);
-        IF e >= 0 THEN x := x / Ten(e) ELSE x := Ten(-e) * x END;
-        IF x >= 10.0D0 THEN x := 0.1D0 * x; INC(e) END;
+        RealDigits.Digits(x, d, digitText, e10);
+        m := 0; k := 0;
+        WHILE k < d DO m := m * 10 + (ORD(digitText[k]) - 48); INC(k) END;
 
         (* the exponent's digits *)
-        en := e < 0;
-        IF en THEN e := -e END;
-        WHILE el > 0 DO digit(e, s, i); e := e DIV 10; DEC(el) END;
+        en := e10 < 0;
+        IF en THEN e10 := -e10 END;
+        WHILE el > 0 DO digit(e10, s, i); e10 := e10 DIV 10; DEC(el) END;
         DEC(i);
-        IF en THEN s[i] := "-" ELSE s[i] := "+" END;
-
-        (* x scaled to enough digits to tell trailing zeros, or as many as
-           there is room for *)
-        x0 := Ten(d - 1);
-        x := x0 * x;
-        x := x + 0.5D0; (* not folded into the line above: doing so changes the
-                           last bit between 32- and 64-bit builds (voc's note) *)
-        IF x >= 10.0D0 * x0 THEN x := 0.1D0 * x; INC(e) END;
-        m := WholePart(x)
+        IF en THEN s[i] := "-" ELSE s[i] := "+" END
       END;
 
       DEC(i);
