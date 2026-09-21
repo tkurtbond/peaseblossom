@@ -351,9 +351,18 @@ against real voc 2026-09-20). What a program can observe:
   any type, its hidden length the actual's size in bytes.
 - **`SYSTEM.PTR`** is a pointer to an empty record: any pointer is assignable
   to it and a `VAR p: PTR` takes any pointer variable; it may be compared
-  with any pointer or `NIL` (voc rejects that). **Unlike voc, a `PTR` cannot
-  be dereferenced, type-guarded, `IS`-tested or used as a `WITH` variable** -
-  assign it to a typed pointer first.
+  with any pointer or `NIL` (voc rejects that). **A `PTR` is opaque**: it
+  cannot be dereferenced or `NEW`'d (voc rejects both too, errs 57 and 111),
+  and **unlike voc it cannot be type-guarded, `IS`-tested or used as a `WITH`
+  variable** (voc accepts these for a pointer to a record; for a pointer to an
+  array its generated C does not compile) - assign it to a typed pointer
+  first. Decided with the user 2026-09-21 (Phase 11, A10): a heap block's tag
+  is read through to test its type, which is unsound for a block with tag 0
+  (`SYSTEM.NEW`) or an array descriptor. **A guard, `IS` or `WITH` on a
+  pointer to an array is a compile error too** (voc's err 85): only records
+  extend, so such a test could only name the pointer's own type. It used to
+  pass the checker, then either "cannot lower" in the backend or, for `WITH`,
+  compile and always exit 6 (`semantic-reject-guard-array-pointer`).
 - **`LSH`/`ROT`** work at `x`'s own width and the result has `x`'s type (a
   shifted `CHAR` is a `CHAR`; voc gives a signed integer); a negative count
   goes the other way, and a `LSH` count of the width or more is 0, a `ROT`

@@ -1389,6 +1389,22 @@ MODULE SemanticActions;
     END
   END CheckExtensionApplicable;
 
+  (* Whether t is a pointer to something other than a record - an array, in
+     practice. Only records are extensible, so a guard, IS or WITH on such a
+     pointer could only name its own type: the test is always true for a
+     non-NIL pointer, and the backend keeps no run-time descriptor of an
+     array type to make it with. voc rejects them (err 85: "guard or test
+     type is not an extension of variable type"), as does poc since Phase 11
+     (before that WITH on one compiled and then always failed at run time,
+     exit 6). *)
+  PROCEDURE IsPointerToNonRecord(t: Types.Type): BOOLEAN;
+    VAR ptr: Types.PointerType;
+  BEGIN
+    IF (t = NIL) OR ~(t IS Types.PointerType) THEN RETURN FALSE END;
+    ptr := t(Types.PointerType);
+    RETURN (ptr.base # NIL) & (ptr.base # Types.Undefined) & ~(ptr.base IS Types.RecordType)
+  END IsPointerToNonRecord;
+
   PROCEDURE CheckGuard(leftType, targetType: Types.Type; viaVarParam: BOOLEAN;
                        line, column: INTEGER): Types.Type;
   BEGIN
@@ -1396,6 +1412,9 @@ MODULE SemanticActions;
       RETURN Types.Undefined
     ELSIF ~(leftType IS Types.PointerType) & ~(viaVarParam & (leftType IS Types.RecordType)) THEN
       Diagnostics.Error(line, column, "a type guard requires a pointer or a VAR record parameter");
+      RETURN Types.Undefined
+    ELSIF IsPointerToNonRecord(leftType) THEN
+      Diagnostics.Error(line, column, "a type guard requires a pointer to a record or a VAR record parameter");
       RETURN Types.Undefined
     ELSIF leftType = Types.Ptr THEN
       (* voc allows it, but a SYSTEM.PTR may point at an array, whose block
@@ -2029,6 +2048,15 @@ MODULE SemanticActions;
       ELSIF (l # Types.Undefined) & ~(l IS Types.PointerType) & ~(leftIsVarParam & (l IS Types.RecordType)) THEN
         Diagnostics.Error(node.line, node.column,
           "the left operand of IS must be a pointer or a VAR record parameter");
+        RETURN Types.Boolean
+      ELSIF (l # Types.Undefined) & IsPointerToNonRecord(l) THEN
+        Diagnostics.Error(node.line, node.column,
+          "the left operand of IS must be a pointer to a record or a VAR record parameter");
+        RETURN Types.Boolean
+      ELSIF l = Types.Ptr THEN
+        (* same reason as CheckGuard's: see there *)
+        Diagnostics.Error(node.line, node.column,
+          "a SYSTEM.PTR cannot be tested with IS: assign it to a typed pointer first");
         RETURN Types.Boolean
       ELSIF (l # Types.Undefined) & ~CheckExtensionApplicable(l, targetType, leftIsVarParam) THEN
         Diagnostics.Error(node.line, node.column,

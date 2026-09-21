@@ -1,0 +1,8 @@
+bad.mod:21:8: error: a type guard requires a pointer to a record or a VAR record parameter
+bad.mod:22:9: error: a type guard requires a pointer to a record or a VAR record parameter
+bad.mod:23:8: error: a type guard requires a pointer to a record or a VAR record parameter
+bad.mod:24:6: error: the left operand of IS must be a pointer to a record or a VAR record parameter
+bad.mod:25:6: error: the left operand of IS must be a pointer to a record or a VAR record parameter
+bad.mod:26:3: error: a type guard requires a pointer to a record or a VAR record parameter
+bad.mod:27:3: error: a type guard requires a pointer to a record or a VAR record parameter
+7 error(s)

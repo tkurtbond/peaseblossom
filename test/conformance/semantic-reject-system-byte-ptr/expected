@@ -4,7 +4,7 @@ bad.mod:22:8: error: ORD requires a CHAR or SET argument
 bad.mod:23:11: error: SYSTEM.PTR cannot be dereferenced
 bad.mod:24:3: error: NEW cannot make a SYSTEM.PTR: it has no type to allocate; use SYSTEM.NEW
 bad.mod:25:3: error: assignment is not type-compatible
-bad.mod:26:6: error: IS target must be an extension of the left operand's type
+bad.mod:26:6: error: a SYSTEM.PTR cannot be tested with IS: assign it to a typed pointer first
 bad.mod:27:8: error: a SYSTEM.PTR cannot be type-guarded: assign it to a typed pointer first
 bad.mod:28:14: error: argument is not array compatible with the open-array parameter
 bad.mod:29:9: error: a VAR parameter requires a variable argument

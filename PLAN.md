@@ -3982,10 +3982,12 @@ work already being in place.
      that cannot supply the block leaves `v` NIL. The call is told from the
      ordinary `NEW` by its designator having a qualifier (`SYSTEM.NEW` - the
      bare `NEW` stays the predeclared one).
-   - **Not lowered** (found, not fixed): a guard followed by an index
-     (`any(T)[i]`) and a guard to a pointer-to-array type stay `; unsupported`
-     in the backend; with `PTR` guards rejected only this reaches user code
-     through ordinary pointer types, where it already did.
+   - **Not lowered** (found, not fixed; closed in Phase 11, A10): a guard
+     followed by an index (`any(T)[i]`) and a guard to a pointer-to-array type
+     stay `; unsupported` in the backend; with `PTR` guards rejected only this
+     reaches user code through ordinary pointer types, where it already did.
+     Phase 11 made every guard, `IS` and `WITH` on a pointer to an array a
+     front-end error, as in voc, so the backend never sees one.
 
    **Testing**: `llvm-system-shifts` and `llvm-system-bytes` (shared with voc,
    output equal: every `LSH`/`ROT` direction and width, `BIT`, byte-array
@@ -4538,6 +4540,24 @@ as it stands when the phase starts, and adds what it finds):
      and `SYSTEM.NEW` blocks are untraced by the collector: both were chosen
      with voc probed, so the proposal is to record them as decided in
      `AGENTS.md` (they are already described there) and close them.
+     **Part (1) done 2026-09-21, decided with the user.** Probed voc (source and
+     binary): `p^` and `NEW(p)` on a `PTR` are errors there as well (errs 57,
+     111), so `AGENTS.md`'s "unlike voc" was wrong for them; a guard, `IS` or
+     `WITH` on a `PTR` is accepted for a record pointer and runs, and for an
+     array pointer is accepted but its C does not compile. poc keeps the `PTR`
+     opaque: `EmitTagTestOnTag` reads through the block's tag word, which is
+     unsound for tag 0 (`SYSTEM.NEW`) or an array descriptor, and supporting
+     the record case would need a way to tell those apart. The second half was
+     not `PTR`-specific: `a(ArrPtr)[1]`, `a IS ArrPtr` and `WITH a: ArrPtr` on an
+     ordinary pointer to an array (the pointer's own type is the only possible
+     target, arrays do not extend) all passed the checker - the report's
+     "same types" reading - and then failed in the backend, `WITH` compiling
+     to a branch that can never be taken (exit 6). voc rejects all three (err
+     85). They are a front-end error now (`SemanticActions.IsPointerToNonRecord`,
+     used by `CheckGuard`, which serves a designator guard, an argument guard
+     and `WITH`, and by `IS`); nothing needs lowering. Fixture
+     `semantic-reject-guard-array-pointer`. Part (2), `BIT` and `SYSTEM.NEW`,
+     is still open.
    - *`HUGESET`.* Under `-O2` a `SET` is 32 bits and a `LONGINT` 32 bits,
      under `-OC` both 64: `SET` follows `LONGINT`. Whether a set as wide as
      `HUGEINT` on every model is wanted is answered from voc's own answer,
