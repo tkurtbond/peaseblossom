@@ -1,0 +1,36 @@
+== i686-unknown-linux-gnu realign
+define i32 @main(i32 %argc, ptr %argv) {
+== i686-unknown-linux-gnu plain
+define i32 @main() {
+== i386-unknown-netbsd11.0 realign
+!llvm.module.flags = !{!0}
+!0 = !{i32 1, !"override-stack-alignment", i32 16}
+define i32 @main(i32 %argc, ptr %argv) "stackrealign" {
+== i386-unknown-netbsd11.0 plain
+!llvm.module.flags = !{!0}
+!0 = !{i32 1, !"override-stack-alignment", i32 16}
+define i32 @main() "stackrealign" {
+== i386-unknown-openbsd7.9 realign
+!llvm.module.flags = !{!0}
+!0 = !{i32 1, !"override-stack-alignment", i32 16}
+define i32 @main(i32 %argc, ptr %argv) "stackrealign" {
+== i386-unknown-openbsd7.9 plain
+!llvm.module.flags = !{!0}
+!0 = !{i32 1, !"override-stack-alignment", i32 16}
+define i32 @main() "stackrealign" {
+== i386-unknown-freebsd15.0 realign
+!llvm.module.flags = !{!0}
+!0 = !{i32 1, !"override-stack-alignment", i32 16}
+define i32 @main(i32 %argc, ptr %argv) "stackrealign" {
+== i386-unknown-freebsd15.0 plain
+!llvm.module.flags = !{!0}
+!0 = !{i32 1, !"override-stack-alignment", i32 16}
+define i32 @main() "stackrealign" {
+== x86_64-unknown-netbsd11.0 realign
+define i32 @main(i32 %argc, ptr %argv) {
+== x86_64-unknown-netbsd11.0 plain
+define i32 @main() {
+== armv7-unknown-freebsd15.0 realign
+define i32 @main(i32 %argc, ptr %argv) {
+== armv7-unknown-freebsd15.0 plain
+define i32 @main() {

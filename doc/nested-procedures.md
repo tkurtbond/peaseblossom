@@ -365,6 +365,9 @@ BSD hosts before step 6.
    slot). Not nested-procedure related and not seen on real i386 OpenBSD or on
    Linux; a plain C `sin(1e10)` built the same way does not crash, and neither
    `override-stack-alignment=16` nor `"stackrealign"` on `main` cures it. Open.
+   (Resolved afterwards, 2026-09-21: it was a stack alignment mismatch of
+   LLVM's for 32-bit x86 BSD targets, cured by both together; see
+   `000-todo.org` and AGENTS.md's toolchain section.)
 6. **Close.** The error and its message are already gone (step 3) and
    `llvm-reject-nested-procedure` is now `llvm-reject-external-vms` (its
    program, printing `ok`, is in `llvm-nested-uplevel`); left: `AGENTS.md` gets "Nested procedures (implemented)" with

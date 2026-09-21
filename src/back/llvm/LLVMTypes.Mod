@@ -389,4 +389,61 @@ MODULE LLVMTypes;
     END
   END WordSizeForTriple;
 
+  (* Whether "component" (the text between one "-" and the next) of an LLVM
+     triple starts with "prefix". *)
+  PROCEDURE TripleComponentStartsWith(triple: ARRAY OF CHAR; component: INTEGER;
+                                      prefix: ARRAY OF CHAR): BOOLEAN;
+    VAR i, start, seen, k: INTEGER;
+  BEGIN
+    i := 0; seen := 0;
+    WHILE (seen < component) & (triple[i] # 0X) DO
+      IF triple[i] = "-" THEN INC(seen) END;
+      INC(i)
+    END;
+    IF seen < component THEN RETURN FALSE END;
+    start := i; k := 0;
+    WHILE (prefix[k] # 0X) & (triple[start + k] = prefix[k]) DO INC(k) END;
+    RETURN prefix[k] = 0X
+  END TripleComponentStartsWith;
+
+  (* Whether the code for this target must realign the stack itself: a
+     32-bit x86 target whose operating system is one of the BSDs. The i386
+     System V ABI has a call keep the stack 16-byte aligned, and that is
+     what the C library there is built on (NetBSD's libm does SSE `movapd`
+     through the frame pointer), but LLVM only assumes it on Linux: for
+     NetBSD, OpenBSD and FreeBSD i386 it assumes 4, so a call it emits has
+     the stack anywhere. Process entry leaves `main` with the stack at 4
+     modulo 16, and every frame poc's code builds on that stays there -
+     `sin` dies in a misaligned `movapd` (llvm-math-extra, NetBSD i386; the
+     other two BSDs' C libraries happen not to trip on it). The codegen
+     answers by telling LLVM the truth (module flag
+     "override-stack-alignment" 16) and by having `main` realign its own
+     frame ("stackrealign"), which fixes the one frame that was
+     misaligned from the start. Linux and every 64-bit target are left as
+     they are. *)
+  PROCEDURE NeedsStackRealignment*(triple: ARRAY OF CHAR): BOOLEAN;
+    VAR wordSize, i: INTEGER; arch: ARRAY 32 OF CHAR; found: BOOLEAN;
+  BEGIN
+    IF ~WordSizeForTriple(triple, wordSize) OR (wordSize # MemoryLayout.wordSize32) THEN
+      RETURN FALSE
+    END;
+    i := 0;
+    WHILE (triple[i] # 0X) & (triple[i] # "-") & (i < 31) DO arch[i] := triple[i]; INC(i) END;
+    arch[i] := 0X;
+    IF ~((arch = "i386") OR (arch = "i486") OR (arch = "i586") OR (arch = "i686") OR (arch = "x86")) THEN
+      RETURN FALSE
+    END;
+    (* the operating system is the third component, or the second when the
+       vendor is left out *)
+    found := FALSE; i := 1;
+    WHILE ~found & (i <= 2) DO
+      found := TripleComponentStartsWith(triple, i, "netbsd")
+            OR TripleComponentStartsWith(triple, i, "openbsd")
+            OR TripleComponentStartsWith(triple, i, "freebsd")
+            OR TripleComponentStartsWith(triple, i, "dragonfly");
+      INC(i)
+    END;
+    RETURN found
+  END NeedsStackRealignment;
+
 END LLVMTypes.

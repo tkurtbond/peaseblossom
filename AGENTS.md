@@ -181,6 +181,17 @@ shells out to these rather than linking against LLVM's own C++ API.
   also passes `-lm` (Phase 10 step 6): `rtl/llvm`'s `Math`/`MathL` call libm,
   a library apart from libc on Linux and all three BSDs, and `clang` does not
   link it by itself (an undefined `sin` at link time).
+  **Stack alignment on 32-bit x86 BSDs** (2026-09-21): the i386 System V ABI
+  keeps the stack 16-byte aligned at a call, and the C library there is built
+  on it (NetBSD's libm does aligned SSE moves through the frame pointer), but
+  LLVM assumes it only for i386 Linux - for NetBSD, OpenBSD and FreeBSD i386 it
+  assumes 4 - and a process starts `main` with the stack at 4 modulo 16. So
+  for a 32-bit x86 triple whose OS is one of those BSDs (`LLVMTypes.
+  NeedsStackRealignment`) poc emits the module flag
+  `override-stack-alignment` = 16 (LLVM keeps every call it emits aligned) and
+  `"stackrealign"` on `@main` (the one frame that starts misaligned); either
+  alone still crashed `sin` on NetBSD. Linux and all 64-bit and ARM targets get
+  neither, so their IR is unchanged (`llvm-stack-realign`).
 - `llc` is **not** part of the normal build path — reserved as an optional
   `-dump-asm`-style debug aid for reading generated assembly in golden-file
   tests. Usage: `llc <file>.ll -o <file>.s` (its default output filetype is
@@ -627,8 +638,7 @@ error (before that it dropped the calls silently). What a program can observe:
   untested at scale. Nothing else is specific to nested procedures.
 - Checked (`llvm-nested-*`, `nested-analysis-*`) on Linux x86_64 under `-O2`
   and `-OC`, as 32-bit x86 executables (`llvm-i686-runtime`), and on the local
-  VMs: OpenBSD i386 (both size models), NetBSD amd64 and FreeBSD arm64. The
-  only BSD failure is the unrelated `llvm-math-extra` one in `000-todo.org`.
+  VMs: OpenBSD i386 (both size models), NetBSD amd64 and FreeBSD arm64.
 
 ### External procedures
 

@@ -6215,7 +6215,7 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w: Files.Rider);
     VAR
-      cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments: BOOLEAN;
+      cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments, realign: BOOLEAN;
       wordInt: ValueText;
   BEGIN
     withRootTables := HasModuleNamed(modules, "ModuleTable");
@@ -6239,6 +6239,13 @@ MODULE LLVMCodeGenerator;
     END;
     WriteStr(w, '"'); WriteLn(w);
     WriteStr(w, 'target triple = "'); WriteStr(w, triple); WriteStr(w, '"'); WriteLn(w);
+    realign := LLVMTypes.NeedsStackRealignment(triple);
+    IF realign THEN
+      (* see LLVMTypes.NeedsStackRealignment: LLVM assumes a 4-byte aligned
+         stack at a call on this target, the C library needs 16 *)
+      WriteStr(w, "!llvm.module.flags = !{!0}"); WriteLn(w);
+      WriteStr(w, '!0 = !{i32 1, !"override-stack-alignment", i32 16}'); WriteLn(w)
+    END;
     WriteLn(w);
     m := modules;
     WHILE m # NIL DO
@@ -6295,10 +6302,13 @@ MODULE LLVMCodeGenerator;
        words, the way every ADDRESS travels - before any module body runs,
        since a body may read them. Any other program keeps the
        argument-less main. *)
-    IF withArguments THEN WriteStr(w, "define i32 @main(i32 %argc, ptr %argv) {")
-    ELSE WriteStr(w, "define i32 @main() {")
+    IF withArguments THEN WriteStr(w, "define i32 @main(i32 %argc, ptr %argv)")
+    ELSE WriteStr(w, "define i32 @main()")
     END;
-    WriteLn(w);
+    (* the process starts main with the stack 4 modulo 16, where a 16-byte
+       aligned frame is assumed below it (LLVMTypes.NeedsStackRealignment) *)
+    IF realign THEN WriteStr(w, ' "stackrealign"') END;
+    WriteStr(w, " {"); WriteLn(w);
     EmitEntryLabel(w, cg);
     IF withArguments THEN
       WordIntType(wordInt);
