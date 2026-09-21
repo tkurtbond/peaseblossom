@@ -176,7 +176,7 @@ MODULE LLVMCodeGenerator;
      attempted here. *)
 
   IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions,
-         MemoryLayout, Diagnostics, NestedProcedures;
+         MemoryLayout, Diagnostics, NestedProcedures, SYSTEM;
 
   VAR
     (* How many constructs GenerateProgram met that this backend cannot lower
@@ -621,20 +621,41 @@ MODULE LLVMCodeGenerator;
     RETURN n
   END StrLen;
 
-  (* SET's host (voc-compiled) representation only needs to cover
-     0..maxSetElement (31 under -O2, 63 under -OC - ConstantEvaluator.Mod's
-     own maxSetElement); bit 63 itself is skipped (2^63 overflows a
-     signed LONGINT accumulator) - a narrow, documented limitation, not
-     expected to bite any fixture this step actually writes. *)
-  PROCEDURE SetToText(s: SET; VAR text: ARRAY OF CHAR);
-    VAR i: INTEGER; bit, acc: LONGINT;
+  (* A SET is 32 bits under either model and a SYSTEM.SET64 64 (Types.Set,
+     Types.Set64), so s, which the host holds as a 64-bit set (voc makes SYSTEM.SET64
+     that under -O2 and -OC alike), has every element either can. A 32-bit
+     set is a decimal integer of at most 2^32 - 1, which a LONGINT of 8 bytes
+     (poc is built with -OC) holds. A 64-bit one is written in LLVM's hexadecimal
+     form, u0x and 16 digits, a bit pattern with no sign: a decimal would need
+     a LONGINT of more than 32 bits, which poc's own source must not assume
+     (it type-checks under -O2 too). *)
+  PROCEDURE SetToText(s: SYSTEM.SET64; wide: BOOLEAN; VAR text: ARRAY OF CHAR);
+    VAR i, nibble, weight, place, position: INTEGER; bit, acc: LONGINT; digits: ARRAY 20 OF CHAR;
   BEGIN
-    acc := 0; bit := 1;
-    FOR i := 0 TO 62 DO
-      IF i IN s THEN acc := acc + bit END;
-      bit := bit * 2
-    END;
-    AppendLongInt(text, acc)
+    IF wide THEN
+      Strcat(text, "u0x");
+      position := 0;
+      FOR nibble := 15 TO 0 BY -1 DO
+        weight := 0; place := 1;
+        FOR i := 0 TO 3 DO
+          IF nibble * 4 + i IN s THEN weight := weight + place END;
+          place := place * 2
+        END;
+        IF weight < 10 THEN digits[position] := CHR(ORD("0") + weight)
+        ELSE digits[position] := CHR(ORD("A") + weight - 10)
+        END;
+        INC(position)
+      END;
+      digits[position] := 0X;
+      Strcat(text, digits)
+    ELSE
+      acc := 0; bit := 1;
+      FOR i := 0 TO 31 DO
+        IF i IN s THEN acc := acc + bit END;
+        bit := bit * 2
+      END;
+      AppendLongInt(text, acc)
+    END
   END SetToText;
 
   PROCEDURE IsRealType(t: Types.Type): BOOLEAN;
@@ -1218,7 +1239,10 @@ MODULE LLVMCodeGenerator;
     IF v.llvmType = targetLLVMType THEN
       result := v
     ELSE
-      IF ~IsRealType(targetType) THEN
+      IF Types.IsSet(targetType) THEN
+        (* a SET into a SYSTEM.SET64: the elements stay where they are *)
+        COPY("zext", opText)
+      ELSIF ~IsRealType(targetType) THEN
         (* trunc only when SYSTEM.ADDRESS is narrower than the LONGINT it
            includes (a 32-bit target under -OC); every other integer
            inclusion widens *)
@@ -1310,7 +1334,7 @@ MODULE LLVMCodeGenerator;
                            v: Value);
     VAR ev: Value; targetLLVMType: LongText;
   BEGIN
-    IF Types.IsInteger(addrType) OR IsRealType(addrType) OR (addrType = Types.Byte) THEN
+    IF Types.IsInteger(addrType) OR IsRealType(addrType) OR (addrType = Types.Byte) OR Types.IsSet(addrType) THEN
       ExtendTo(w, cg, v, addrType, ev)
     ELSE ev := v END;
     LLVMTypes.TypeString(addrType, cg.sizeModel, targetLLVMType);
@@ -1737,16 +1761,20 @@ MODULE LLVMCodeGenerator;
      representation - the report's own union/difference/intersection/
      symmetric-difference meaning for these operators on SET operands. *)
   PROCEDURE GenerateBinarySet(VAR w: Files.Rider; VAR cg: Codegen; op: INTEGER; l, r: Value; VAR result: Value);
-    VAR ty: ValueText; notR: ValueText;
+    VAR ty: ValueText; notR: ValueText; target: Types.Type; le, re: Value;
   BEGIN
-    LLVMTypes.TypeString(Types.Set, cg.sizeModel, ty);
-    result.oberonType := Types.Set; COPY(ty, result.llvmType);
-    IF op = Lexer.plus THEN EmitBinOp(w, cg, "or", ty, l.text, r.text, result.text)
-    ELSIF op = Lexer.times THEN EmitBinOp(w, cg, "and", ty, l.text, r.text, result.text)
-    ELSIF op = Lexer.slash THEN EmitBinOp(w, cg, "xor", ty, l.text, r.text, result.text)
+    (* the wider of the two, a SET widened by zeros into a SYSTEM.SET64 *)
+    target := Types.WiderSet(l.oberonType, r.oberonType);
+    ExtendTo(w, cg, l, target, le);
+    ExtendTo(w, cg, r, target, re);
+    LLVMTypes.TypeString(target, cg.sizeModel, ty);
+    result.oberonType := target; COPY(ty, result.llvmType);
+    IF op = Lexer.plus THEN EmitBinOp(w, cg, "or", ty, le.text, re.text, result.text)
+    ELSIF op = Lexer.times THEN EmitBinOp(w, cg, "and", ty, le.text, re.text, result.text)
+    ELSIF op = Lexer.slash THEN EmitBinOp(w, cg, "xor", ty, le.text, re.text, result.text)
     ELSE (* Lexer.minus: l - r = l AND NOT r *)
-      EmitBinOp(w, cg, "xor", ty, r.text, "-1", notR);
-      EmitBinOp(w, cg, "and", ty, l.text, notR, result.text)
+      EmitBinOp(w, cg, "xor", ty, re.text, "-1", notR);
+      EmitBinOp(w, cg, "and", ty, le.text, notR, result.text)
     END
   END GenerateBinarySet;
 
@@ -1762,6 +1790,10 @@ MODULE LLVMCodeGenerator;
   BEGIN
     IF Types.IsNumeric(l.oberonType) & Types.IsNumeric(r.oberonType) THEN
       target := Types.WiderOf(l.oberonType, r.oberonType);
+      ExtendTo(w, cg, l, target, le);
+      ExtendTo(w, cg, r, target, re)
+    ELSIF Types.IsSet(l.oberonType) & Types.IsSet(r.oberonType) THEN
+      target := Types.WiderSet(l.oberonType, r.oberonType);
       ExtendTo(w, cg, l, target, le);
       ExtendTo(w, cg, r, target, re)
     ELSE
@@ -1810,10 +1842,10 @@ MODULE LLVMCodeGenerator;
      already non-negative and small); a negative or oversized one is an
      error in the program (Oberon2.pdf leaves it undefined) and, for IN,
      is filtered out by GenerateIn's own range check first. *)
-  PROCEDURE ToSetWidth(VAR w: Files.Rider; VAR cg: Codegen; v: Value; VAR result: Value);
+  PROCEDURE ToSetWidth(VAR w: Files.Rider; VAR cg: Codegen; v: Value; setType: Types.Type; VAR result: Value);
     VAR setLLVMType: ValueText; fromWidth, toWidth: INTEGER; opText: ARRAY 8 OF CHAR;
   BEGIN
-    LLVMTypes.TypeString(Types.Set, cg.sizeModel, setLLVMType);
+    LLVMTypes.TypeString(setType, cg.sizeModel, setLLVMType);
     fromWidth := IntWidth(v.llvmType); toWidth := IntWidth(setLLVMType);
     IF fromWidth = toWidth THEN
       result := v
@@ -1836,10 +1868,10 @@ MODULE LLVMCodeGenerator;
   PROCEDURE GenerateIn(VAR w: Files.Rider; VAR cg: Codegen; x, s: Value; VAR result: Value);
     VAR setTy, widthText, inRange, shifted, bit, isSet, chosen: ValueText; xExt: Value;
   BEGIN
-    LLVMTypes.TypeString(Types.Set, cg.sizeModel, setTy);
+    LLVMTypes.TypeString(s.oberonType, cg.sizeModel, setTy);
     widthText[0] := 0X; AppendLongInt(widthText, IntWidth(setTy));
     EmitBinOp(w, cg, "icmp ult", x.llvmType, x.text, widthText, inRange);
-    ToSetWidth(w, cg, x, xExt);
+    ToSetWidth(w, cg, x, s.oberonType, xExt);
     EmitBinOp(w, cg, "lshr", setTy, s.text, xExt.text, shifted);
     EmitBinOp(w, cg, "and", setTy, shifted, "1", bit);
     EmitBinOp(w, cg, "icmp ne", setTy, bit, "0", isSet);
@@ -1969,6 +2001,34 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE ^ GenerateExpr(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.ExprNode; VAR result: Value);
 
+  (* Whether e is a constant expression whose value is above MAX(SET): the
+     one thing that makes a constructor with non-constant elements a
+     SYSTEM.SET64 (SemanticActions.CheckConstantSetElement). *)
+  PROCEDURE ElementAboveSet(VAR cg: Codegen; e: SyntaxTree.ExprNode): BOOLEAN;
+    VAR v: Types.Value;
+  BEGIN
+    IF (e # NIL) & ConstantEvaluator.IsConstantExpr(e, cg.scope) THEN
+      v := ConstantEvaluator.Evaluate(e, cg.scope);
+      RETURN (v.type # Types.Undefined) & (v.kind = Types.intValue) & (v.intVal > Types.MaxSetElement(Types.Set))
+    END;
+    RETURN FALSE
+  END ElementAboveSet;
+
+  (* The type SemanticActions.CheckSetExpr gave a constructor with at least
+     one element that is not constant (an all-constant one is folded before
+     it gets here, by GenerateFoldedInteger, and typed by its value): a SET
+     unless a constant element is above 31. *)
+  PROCEDURE ConstructorSetType(VAR cg: Codegen; expr: SyntaxTree.SetExprNode): Types.Type;
+    VAR el: SyntaxTree.SetElementNode;
+  BEGIN
+    el := expr.elements;
+    WHILE el # NIL DO
+      IF ElementAboveSet(cg, el.low) OR ElementAboveSet(cg, el.high) THEN RETURN Types.Set64 END;
+      el := el.next
+    END;
+    RETURN Types.Set
+  END ConstructorSetType;
+
   (* {e1, e2, lo..hi}: the OR of one mask per element. A lone element is
      "1 shl e"; a range lo..hi is the bits at or above lo AND the bits
      at or below hi - "-1 shl lo" and "-1 lshr (W-1-hi)" - which comes
@@ -1978,20 +2038,21 @@ MODULE LLVMCodeGenerator;
   PROCEDURE GenerateSetExpr(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.SetExprNode; VAR result: Value);
     VAR
       el: SyntaxTree.SetElementNode; setTy, lastBit, maskText, aboveLow, belowHigh, shift, acc, merged: ValueText;
-      lo, hi, loExt, hiExt: Value; first: BOOLEAN;
+      lo, hi, loExt, hiExt: Value; first: BOOLEAN; setType: Types.Type;
   BEGIN
-    LLVMTypes.TypeString(Types.Set, cg.sizeModel, setTy);
+    setType := ConstructorSetType(cg, expr);
+    LLVMTypes.TypeString(setType, cg.sizeModel, setTy);
     lastBit[0] := 0X; AppendLongInt(lastBit, IntWidth(setTy) - 1);
     COPY("0", acc); first := TRUE;
     el := expr.elements;
     WHILE el # NIL DO
       GenerateExpr(w, cg, el.low, lo);
-      ToSetWidth(w, cg, lo, loExt);
+      ToSetWidth(w, cg, lo, setType, loExt);
       IF el.high = NIL THEN
         EmitBinOp(w, cg, "shl", setTy, "1", loExt.text, maskText)
       ELSE
         GenerateExpr(w, cg, el.high, hi);
-        ToSetWidth(w, cg, hi, hiExt);
+        ToSetWidth(w, cg, hi, setType, hiExt);
         EmitBinOp(w, cg, "shl", setTy, "-1", loExt.text, aboveLow);
         EmitBinOp(w, cg, "sub", setTy, lastBit, hiExt.text, shift);
         EmitBinOp(w, cg, "lshr", setTy, "-1", shift, belowHigh);
@@ -2005,7 +2066,7 @@ MODULE LLVMCodeGenerator;
       END;
       el := el.next
     END;
-    COPY(acc, result.text); COPY(setTy, result.llvmType); result.oberonType := Types.Set
+    COPY(acc, result.text); COPY(setTy, result.llvmType); result.oberonType := setType
   END GenerateSetExpr;
 
   PROCEDURE GenerateUnary(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.UnaryExprNode; VAR result: Value);
@@ -2023,9 +2084,9 @@ MODULE LLVMCodeGenerator;
         NewTemp(cg, result.text);
         WriteStr(w, "  "); WriteStr(w, result.text); WriteStr(w, " = fneg "); WriteStr(w, ty);
         WriteStr(w, " "); WriteStr(w, v.text); WriteLn(w)
-      ELSIF v.oberonType = Types.Set THEN
-        LLVMTypes.TypeString(Types.Set, cg.sizeModel, ty);
-        result.oberonType := Types.Set; COPY(ty, result.llvmType);
+      ELSIF Types.IsSet(v.oberonType) THEN
+        COPY(v.llvmType, ty);
+        result.oberonType := v.oberonType; COPY(ty, result.llvmType);
         EmitBinOp(w, cg, "xor", ty, v.text, "-1", result.text)
       ELSE
         Unsupported(w, cg, "unary '-' on this operand type (PLAN.md Phase 8 step 5 scope)", v.oberonType, result)
@@ -2196,12 +2257,12 @@ MODULE LLVMCodeGenerator;
     END;
     IF (expr.op = Lexer.plus) OR (expr.op = Lexer.minus) OR (expr.op = Lexer.times) THEN
       IF Types.IsNumeric(l.oberonType) THEN GenerateBinaryNumeric(w, cg, expr.op, l, r, result)
-      ELSIF l.oberonType = Types.Set THEN GenerateBinarySet(w, cg, expr.op, l, r, result)
+      ELSIF Types.IsSet(l.oberonType) THEN GenerateBinarySet(w, cg, expr.op, l, r, result)
       ELSE Unsupported(w, cg, "arithmetic on this operand type (PLAN.md Phase 8 step 5 scope)",
                         l.oberonType, result)
       END
     ELSIF expr.op = Lexer.slash THEN
-      IF l.oberonType = Types.Set THEN GenerateBinarySet(w, cg, expr.op, l, r, result)
+      IF Types.IsSet(l.oberonType) THEN GenerateBinarySet(w, cg, expr.op, l, r, result)
       ELSIF Types.IsNumeric(l.oberonType) THEN GenerateRealDivision(w, cg, l, r, result)
       ELSE Unsupported(w, cg, "'/' on this operand type (should be unreachable post-CheckModule)",
                        l.oberonType, result)
@@ -2271,8 +2332,9 @@ MODULE LLVMCodeGenerator;
       COPY("i8", result.llvmType);
       IF cv.boolVal THEN COPY("1", result.text) ELSE COPY("0", result.text) END
     ELSIF cv.kind = Types.setValue THEN
-      LLVMTypes.TypeString(Types.Set, cg.sizeModel, result.llvmType);
-      result.text[0] := 0X; SetToText(cv.setVal, result.text)
+      IF ~Types.IsSet(type) THEN result.oberonType := ConstantEvaluator.SetValueType(cv.setVal) END;
+      LLVMTypes.TypeString(result.oberonType, cg.sizeModel, result.llvmType);
+      result.text[0] := 0X; SetToText(cv.setVal, result.oberonType = Types.Set64, result.text)
     ELSIF cv.kind = Types.realValue THEN
       RealConstant(w, cg, cv.realText, cv.realVal, type = Types.Real, result)
     ELSIF (cv.stringVal[0] # 0X) & (cv.stringVal[1] = 0X) THEN
@@ -3033,7 +3095,7 @@ MODULE LLVMCodeGenerator;
       IF tagText[0] # 0X THEN COPY(", ptr ", hidden); Strcat(hidden, tagText) END
     ELSE
       GenerateExpr(w, cg, a, v);
-      IF Types.IsInteger(p.type) OR IsRealType(p.type) OR (p.type = Types.Byte) THEN
+      IF Types.IsInteger(p.type) OR IsRealType(p.type) OR (p.type = Types.Byte) OR Types.IsSet(p.type) THEN
         ExtendTo(w, cg, v, p.type, ev)
       ELSE ev := v END;
       (* a value record parameter takes an extension of its type too - only
@@ -3619,6 +3681,11 @@ MODULE LLVMCodeGenerator;
       RETURN
     END;
     GenerateExpr(w, cg, args, v);
+    IF v.oberonType = Types.Set64 THEN
+      (* all 64 bits, as a HUGEINT (PredeclaredProcedures.CheckOrd) *)
+      result.text := v.text; COPY("i64", result.llvmType); result.oberonType := Types.HugeInt;
+      RETURN
+    END;
     IF v.llvmType = "i8" THEN EmitConvert(w, cg, "zext", "i8", v.text, integerLLVMType, ordText)
     ELSE EmitConvert(w, cg, "trunc", v.llvmType, v.text, integerLLVMType, ordText)
     END;
@@ -3752,7 +3819,7 @@ MODULE LLVMCodeGenerator;
     IF de.hasParens OR ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN RETURN END;
     LoadAtAddress(w, cg, addrText, addrType, old);
     GenerateExpr(w, cg, args.next, element);
-    ToSetWidth(w, cg, element, elementExt);
+    ToSetWidth(w, cg, element, old.oberonType, elementExt);
     COPY(old.llvmType, setTy);
     EmitBinOp(w, cg, "shl", setTy, "1", elementExt.text, bit);
     IF include THEN
@@ -4566,8 +4633,9 @@ MODULE LLVMCodeGenerator;
   BEGIN
     IF ConstantEvaluator.IsConstantExpr(expr, cg.scope) THEN
       folded := ConstantEvaluator.Evaluate(expr, cg.scope);
-      IF (folded.type # Types.Undefined) & (folded.kind = Types.intValue)
-         & Types.IsInteger(folded.type) THEN
+      IF (folded.type # Types.Undefined)
+         & (((folded.kind = Types.intValue) & Types.IsInteger(folded.type))
+            OR ((folded.kind = Types.setValue) & Types.IsSet(folded.type))) THEN
         EmitConstantValue(w, cg, folded.type, folded, result);
         RETURN TRUE
       END
@@ -4594,7 +4662,8 @@ MODULE LLVMCodeGenerator;
         IF ~GenerateFoldedInteger(w, cg, expr, result) THEN GenerateUnary(w, cg, expr, result) END
     | expr: SyntaxTree.BinaryExprNode DO
         IF ~GenerateFoldedInteger(w, cg, expr, result) THEN GenerateBinaryExpr(w, cg, expr, result) END
-    | expr: SyntaxTree.SetExprNode DO GenerateSetExpr(w, cg, expr, result)
+    | expr: SyntaxTree.SetExprNode DO
+        IF ~GenerateFoldedInteger(w, cg, expr, result) THEN GenerateSetExpr(w, cg, expr, result) END
     ELSE (* NilExprNode *)
       COPY("null", result.text); COPY("ptr", result.llvmType); result.oberonType := Types.NilType
     END
@@ -4996,7 +5065,8 @@ MODULE LLVMCodeGenerator;
       WriteLn(w)
     ELSE
       GenerateExpr(w, cg, s.value, v);
-      IF Types.IsInteger(cg.currentProcResultType) OR IsRealType(cg.currentProcResultType) THEN
+      IF Types.IsInteger(cg.currentProcResultType) OR IsRealType(cg.currentProcResultType)
+         OR Types.IsSet(cg.currentProcResultType) THEN
         ExtendTo(w, cg, v, cg.currentProcResultType, ev)
       ELSE ev := v
       END;

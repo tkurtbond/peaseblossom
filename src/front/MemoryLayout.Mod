@@ -21,8 +21,11 @@ MODULE MemoryLayout;
      Basic-type sizes are fixed regardless of word size, but do vary by
      size model - mirroring voc's own selectable -O2 (default: classic
      Oberon-2 sizes, SHORTINT=1, INTEGER=2, LONGINT=4, SET=4 bytes) vs.
-     -OC (Component Pascal sizes, SHORTINT=2, INTEGER=4, LONGINT=8, SET=8
-     bytes) - see AGENTS.md's "Vishap Oberon (voc)" section. REAL=4,
+     -OC (Component Pascal sizes, SHORTINT=2, INTEGER=4, LONGINT=8, and SET
+     still 4 bytes: voc's OPM.Mod gives -OC a 32-bit SET, as Component
+     Pascal has, whatever its Features.md table says; only its separate -OV
+     model has a 64-bit one) - see AGENTS.md's "Vishap Oberon (voc)"
+     section. REAL=4,
      LONGREAL=8, BOOLEAN=1, CHAR=1, and HUGEINT=8 (always available; see
      Types.Mod's header comment on the HUGEINT extension) do not vary by
      size model - under -OC, LONGINT and HUGEINT both end up 8 bytes, but
@@ -114,8 +117,8 @@ MODULE MemoryLayout;
     ELSIF t = Types.Int64 THEN RETURN 8
     ELSIF t = Types.Real THEN RETURN 4
     ELSIF t = Types.LongReal THEN RETURN 8
-    ELSIF t = Types.Set THEN
-      IF sizeModel = sizeModelOC THEN RETURN 8 ELSE RETURN 4 END
+    ELSIF t = Types.Set THEN RETURN 4 (* the same under either model, as in voc *)
+    ELSIF t = Types.Set64 THEN RETURN 8
     ELSE RETURN 0 (* String, Undefined: never a variable's actual type *)
     END
   END BasicSize;

@@ -124,7 +124,7 @@ MODULE ModuleInterface;
      scientific notation, D.DDD followed by a scale factor. Out of scope:
      non-finite values. *)
 
-  IMPORT SyntaxTree, SymbolTable, Types, Diagnostics, Lexer, Files, Platform,
+  IMPORT SYSTEM, SyntaxTree, SymbolTable, Types, Diagnostics, Lexer, Files, Platform,
          ConstantEvaluator, DecimalToDouble, Out;
 
   CONST
@@ -523,12 +523,12 @@ MODULE ModuleInterface;
     END
   END FormatStringLiteral;
 
-  PROCEDURE FormatSetLiteral(v: SET; VAR result: ARRAY OF CHAR);
+  PROCEDURE FormatSetLiteral(v: SYSTEM.SET64; VAR result: ARRAY OF CHAR);
     VAR i, j, k: INTEGER; first: BOOLEAN; num: ARRAY 12 OF CHAR;
   BEGIN
     j := 0; result[j] := "{"; INC(j);
     first := TRUE; i := 0;
-    WHILE i <= 31 DO
+    WHILE i <= 63 DO
       IF i IN v THEN
         IF ~first THEN result[j] := ","; INC(j); result[j] := " "; INC(j) END;
         FormatInt(i, num);

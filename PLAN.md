@@ -4068,7 +4068,7 @@ as it stands when the phase starts, and adds what it finds):
 | Nested procedures (a procedure declared inside another) were not lowered by the LLVM backend: a declaration or a call was a compile error (2026-09-20; before that a comment in the IR and a program quietly missing the call). `Oberon2.pdf` §10: "procedure declarations may be nested". Done in Phase 11 step 8 (2026-09-20/21): lambda lifting by reference, `doc/nested-procedures.md`; what a program can observe is in `AGENTS.md` ("Nested procedures") | Phase 10 step 6; found 2026-09-20 | **done** |
 | `LONG`/`SHORT` reject `SYSTEM.INT8..INT64` ("requires a SHORTINT, INTEGER, or REAL argument"); voc's go by size along the model's chain (`OPT.ShorterOrLongerType`) | Phase 10 step 8 (fixed-width `INTn`, 2026-09-20) | gap |
 | Under `-OC` an `INT8` met by an integer literal in an expression (`b + 1`) is a `SHORTINT` - the literal's own type is at least two bytes there - and cannot be assigned back to an `INT8` without `SYSTEM.VAL` | Phase 10 step 8 (fixed-width `INTn`) | done 2026-09-21 (step 3) |
-| `SYSTEM.SET32` is `SET` (the `-O2` width, 64 bits under `-OC`) and there is no `SET64`: the fixed-width sets `INT8..INT64` got | Phase 10 step 8 (fixed-width `INTn`); `000-todo.org` | gap, decision (with `HUGESET`) |
+| `SYSTEM.SET32` is `SET` (the `-O2` width, 64 bits under `-OC`) and there is no `SET64`: the fixed-width sets `INT8..INT64` got | Phase 10 step 8 (fixed-width `INTn`); `000-todo.org` | **done 2026-09-21** (step 6, with `HUGESET`) |
 | `LONGINT` is included in `SYSTEM.ADDRESS` by rank, so on a 32-bit target under `-OC` a mixed `ADDRESS`/`LONGINT` operation is done at the address's 32 bits and truncates the 64-bit operand: `size <= MAX(LONGINT)` in `Files.Old` compared against -1 and no file opened (worked around there, not fixed) | Phase 10 step 8 (fixed-width `INTn`) | bug, found not fixed |
 | `SYSTEM.PTR` cannot be dereferenced, guarded, `IS`-tested or a `WITH` variable (voc allows some); a guard followed by an index, or to a pointer-to-array type, is unsupported in the backend | Phase 10 step 7 | decision, gap |
 | `BIT`'s word-based meaning (voc's) differs from the report's `Mem[a]` bit; `SYSTEM.NEW` blocks are untraced by the collector | Phase 10 step 7 | decision |
@@ -4536,6 +4536,26 @@ as it stands when the phase starts, and adds what it finds):
      became (Phase 10 step 8: `fixedBytes`, `MemoryLayout`/`LLVMTypes` sizes,
      inclusion by width, `MAX(SET32)`), rather than an alias of `SET`, which is
      32 bits under `-O2` and 64 under `-OC`; `SET32` is then 32 bits under both.
+     **Done 2026-09-21, decided with the user.** The premise was wrong: voc's
+     `OPM.Mod` (lines 382-385) gives `SET` 4 bytes under `-O2` *and* `-OC`
+     (`doc/Features.md`'s 64 for `-OC` is not what the compiler does; probed on
+     the binary too), so `SET` is 32 bits under both here (`MemoryLayout.BasicSize`,
+     `LLVMTypes.BasicTypeString`; goldens `layout-size-model`, `llvm-types-dump`,
+     `module-interface-*` regenerated) and `HUGESET` needs no new name: voc's own
+     `SYSTEM.SET64` is adopted, a distinct 8-byte type (`Types.Set64`) with
+     elements 0..63. A `SET` is included in it (zero-extended) and not the
+     reverse; a mixed operation is at 64 bits. A constant set is typed by its
+     value, as an integer constant is (`FoldConstantType`,
+     `ConstantEvaluator.SetValueType`; the code generator folds a constant set
+     expression to one immediate, `GenerateFoldedInteger`, written as an
+     unsigned `u0x` hex for 64 bits so poc's own source needs no 64-bit
+     `LONGINT`); a constructor with a variable element is a `SET64` only if a
+     constant element is above 31 (`CheckConstantSetElement`,
+     `ConstructorSetType`). Where voc is wrong poc is not: voc types a constant
+     range as `SET32` and drops its high bits. `ORD` of a `SET64` is a
+     `HUGEINT`. Fixtures `semantic-set64`, `llvm-set64` (both models, same
+     output), `llvm-set64-import`; the folded constant sets changed
+     `llvm-system-ir`'s golden. `AGENTS.md` has what a program can observe.
    - *Initializers on `VAR` declarations.* Decide the syntax and its
      reach: module variables and locals; scalars only or any type; whether
      an exported variable may carry one; how it interacts with the NIL

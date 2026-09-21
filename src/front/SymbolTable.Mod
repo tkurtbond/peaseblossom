@@ -146,7 +146,7 @@ MODULE SymbolTable;
        "IMPORT SYSTEM" (SemanticActions.Mod's ResolveImport) binds a
        moduleClass Object to this scope instead of reading a file. Every
        member is exported: ADDRESS, BYTE, PTR, the fixed-width names
-       INT8/16/32/64 and SET32 (types) and ADR, GET, PUT, VAL, MOVE, BIT,
+       INT8/16/32/64 and SET32/SET64 (types) and ADR, GET, PUT, VAL, MOVE, BIT,
        LSH, ROT, NEW (procedures). GETREG, PUTREG and CC, which name a
        machine's registers and condition codes, are not here (PLAN.md
        Phase 10 step 7). *)
@@ -301,12 +301,14 @@ BEGIN
   (* voc's fixed-width types: INT8..INT64 are integers of exactly 1/2/4/8
      bytes under either size model (Phase 11; before it they were aliases of
      SHORTINT/INTEGER/LONGINT/HUGEINT, the -O2 widths, so SYSTEM.INT32 was 64
-     bits under -OC). SET32 is still SET, the -O2 width; there is no SET64. *)
+     bits under -OC). SET32 is SET itself (32 bits under both models, as in voc:
+     Phase 11); SET64 is a distinct 64-bit set. *)
   InsertSystemType("INT8", Types.Int8);
   InsertSystemType("INT16", Types.Int16);
   InsertSystemType("INT32", Types.Int32);
   InsertSystemType("INT64", Types.Int64);
   InsertSystemType("SET32", Types.Set);
+  InsertSystemType("SET64", Types.Set64);
   InsertSystemProc("ADR"); InsertSystemProc("GET"); InsertSystemProc("PUT");
   InsertSystemProc("VAL"); InsertSystemProc("MOVE");
   InsertSystemProc("BIT"); InsertSystemProc("LSH"); InsertSystemProc("ROT");

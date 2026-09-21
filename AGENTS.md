@@ -100,7 +100,11 @@ compatibility:
 
 - Selectable elementary type sizes via `-O2` (default: 8/16/32/32 bit
   SHORTINT/INTEGER/LONGINT/SET — the classic Oberon-2 sizes) vs. `-OC`
-  (Component Pascal sizes: 16/32/64/64 bit). `tools/bootstrap/stage0`
+  (Component Pascal sizes: 16/32/64 bit, and a `SET` that stays 32 bits -
+  `doc/Features.md`'s table says 64 for `-OC`, but voc's `OPM.Mod` sets
+  `SET` to 4 bytes under both, which is what the compiler and its own
+  generated C do; poc follows the source, see "`SYSTEM.SET32` and
+  `SYSTEM.SET64`" below). `tools/bootstrap/stage0`
   builds poc itself with `-OC` — a codegen-only flag, not a source-syntax
   extension, chosen so poc's own `LONGINT` variables get 8 real bytes of
   storage (needed by `Types.Value.intVal` to hold a full-range `HUGEINT`
@@ -385,9 +389,45 @@ against real voc 2026-09-20). What a program can observe:
   models, `semantic-system-fixed-width`, `llvm-system-int8-constants`). The
   operation is done at one byte, so an overflow of the *sum* (`l := b + 100`
   with `b = 100`) wraps as it does for every narrow type, where voc's C
-  promotes to `int` first - undefined in the report. `SET32` is still `SET` (the `-O2` width) and
-  there is no `SET64`. `CC`, `GETREG` and `PUTREG` are not implemented: they
+  promotes to `int` first - undefined in the report. `CC`, `GETREG` and
+  `PUTREG` are not implemented: they
   name a machine's registers and condition codes, which LLVM IR has none of.
+
+### `SYSTEM.SET32` and `SYSTEM.SET64` (implemented, Phase 11 step 6)
+
+`PLAN.md` Phase 11 step 6 has the full account; probed against voc's source and
+binary 2026-09-21 (decided with the user). A `SET` has 32 bits under **both**
+size models, as in voc (`OPM.Mod`: `-O2` 1/2/4/4 bytes, `-OC` 2/4/8/4) - it
+used to follow `LONGINT` and be 64 bits under `-OC`, so `MAX(SET)` was 63 there.
+What a program can observe:
+
+- **`SYSTEM.SET32` is `SET`; `SYSTEM.SET64` is a distinct 8-byte set** with
+  elements 0..63 (`MAX` 63, `MIN` 0, `SIZE` 8, 64-bit LLVM integer). Neither
+  is ordered (`<` is an error) and both take `=`, `#`, `IN`, `+ - * /`, unary
+  `-`, `INCL`/`EXCL`, `ORD`, and `SYSTEM.VAL` like any set.
+- **A `SET` is included in a `SYSTEM.SET64`, not the reverse**: it is assigned,
+  passed by value, returned and compared by widening with zeros; a mixed
+  operation is done at 64 bits. `-x` of a `SET` is its 32-bit complement, so
+  `a := -{}` for a `SET64` `a` has 32 elements, not 64.
+- **A constant set has the narrowest set type its value fits** (voc types a
+  constant by the bytes it needs, as it does for integers): `{}`, `{0, 31}` and
+  `{40..30}` are `SET`s, `{0, 32}` and `{0..63}` are `SET64`s, and a computed
+  one (`{2, 40} * {2, 31}`, `-{2, 31}`) is typed by what it comes out as. A
+  constructor with a *variable* element is a `SET`, or a `SET64` if it has a
+  constant element above 31: `{n, 40}` is a `SET64`, `{n}` a `SET`, and a
+  variable element that is 32 or more is not detected (`{n}` with `n = 40` is
+  a shift past the set's 32 bits, undefined - build it with `INCL` on a
+  `SET64`). A constant element outside 0..63 is a compile-time error, and
+  `INCL`/`EXCL` reject a constant one outside their own variable's range
+  (`INCL(s, 63)` for a `SET`). `ORD` of a `SET64` is a `HUGEINT` (voc rejected
+  `ORD` of a `SET64` constant when probed).
+- **Where poc differs from voc**: voc types a constant *range* `{35..37}` as a
+  `SET32` and loses the bits (its `a + {35..37}` on a `SET64` is wrong); poc
+  types it by its value. Both are checked in `semantic-set64` and
+  `llvm-set64`, which run under `-O2` and `-OC` with the same output.
+- **`.sym` files** name the type `SYSTEM.SET64` and write `IMPORT SYSTEM`;
+  a constant set is written as its elements, so an importer types it again by
+  value (`llvm-set64-import`).
 
 ### Pointers, `NEW` and the runtime (implemented, Phase 9 step 5)
 

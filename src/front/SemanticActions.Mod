@@ -1822,22 +1822,24 @@ MODULE SemanticActions;
      folding (and reports what cannot be folded: an overflow past HUGEINT,
      a constant division by zero); the type comes back from the value, so
      the checker and the code generator, which folds the same expression the
-     same way, cannot disagree. Only an integer-typed result is folded
-     here: a constant real, BOOLEAN or SET expression takes its type from
-     the rank rules already, and a relation of two constants is left to run
-     time (it can neither wrap nor be mistyped). A subexpression that
-     already failed leaves t Undefined, which passes through untouched. *)
-  PROCEDURE FoldIntegerConstant(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode;
+     same way, cannot disagree. An integer-typed or set-typed result is
+     folded here (Phase 11: a constant set is a SET or a SET64 by its
+     value, as a constant integer's type is by its): a constant real or
+     BOOLEAN expression takes its type from the rank rules already, and a
+     relation of two constants is left to run time (it can neither wrap
+     nor be mistyped). A subexpression that already failed leaves t
+     Undefined, which passes through untouched. *)
+  PROCEDURE FoldConstantType(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode;
                                 t: Types.Type): Types.Type;
     VAR v: Types.Value;
   BEGIN
-    IF (t # Types.Undefined) & Types.IsInteger(t)
+    IF (t # Types.Undefined) & (Types.IsInteger(t) OR Types.IsSet(t))
        & ConstantEvaluator.IsConstantExpr(expr, scope) THEN
       v := ConstantEvaluator.Evaluate(expr, scope);
       RETURN v.type
     END;
     RETURN t
-  END FoldIntegerConstant;
+  END FoldConstantType;
 
   PROCEDURE CheckDesignatorExpr(scope: SymbolTable.Scope; node: SyntaxTree.DesignatorExprNode): Types.Type;
     VAR
@@ -1865,7 +1867,7 @@ MODULE SemanticActions;
       ELSIF node.designator.name = "ASH" THEN
         (* the one predeclared function of values ConstantEvaluator folds:
            a constant ASH is typed by its value, as a constant + is *)
-        RETURN FoldIntegerConstant(scope, node, resultType)
+        RETURN FoldConstantType(scope, node, resultType)
       ELSE
         RETURN resultType
       END
@@ -1965,8 +1967,8 @@ MODULE SemanticActions;
     IF (node.op = Lexer.plus) OR (node.op = Lexer.minus) THEN
       IF Types.IsNumeric(t) THEN
         RETURN t
-      ELSIF (node.op = Lexer.minus) & (t = Types.Set) THEN
-        RETURN Types.Set
+      ELSIF (node.op = Lexer.minus) & Types.IsSet(t) THEN
+        RETURN t
       ELSE
         Diagnostics.Error(node.line, node.column,
           "operand of unary '+' must be numeric, or of unary '-' numeric or SET");
@@ -2045,8 +2047,8 @@ MODULE SemanticActions;
     IF (node.op = Lexer.plus) OR (node.op = Lexer.minus) OR (node.op = Lexer.times) THEN
       IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN
         result := Types.WiderOf(l, r)
-      ELSIF (l = Types.Set) & (r = Types.Set) THEN
-        result := Types.Set
+      ELSIF Types.IsSet(l) & Types.IsSet(r) THEN
+        result := Types.WiderSet(l, r)
       ELSE
         Diagnostics.Error(node.line, node.column, "operands must both be numeric or both SET");
         result := Types.Undefined
@@ -2056,8 +2058,8 @@ MODULE SemanticActions;
         IF Types.Rank(Types.WiderOf(l, r)) = Types.longRealRank THEN result := Types.LongReal
         ELSE result := Types.Real
         END
-      ELSIF (l = Types.Set) & (r = Types.Set) THEN
-        result := Types.Set
+      ELSIF Types.IsSet(l) & Types.IsSet(r) THEN
+        result := Types.WiderSet(l, r)
       ELSE
         Diagnostics.Error(node.line, node.column, "operands must both be numeric or both SET");
         result := Types.Undefined
@@ -2085,7 +2087,7 @@ MODULE SemanticActions;
         result := Types.Boolean
       ELSIF IsCharArrayOrString(l) & IsCharArrayOrString(r) THEN result := Types.Boolean
       ELSIF (l = Types.Boolean) & (r = Types.Boolean) THEN result := Types.Boolean
-      ELSIF (l = Types.Set) & (r = Types.Set) THEN result := Types.Boolean
+      ELSIF Types.IsSet(l) & Types.IsSet(r) THEN result := Types.Boolean
       ELSIF ((l = Types.NilType) OR (l IS Types.PointerType))
           & ((r = Types.NilType) OR (r IS Types.PointerType)) THEN
         result := Types.Boolean
@@ -2119,7 +2121,7 @@ MODULE SemanticActions;
         result := Types.Undefined
       END
     ELSE (* Lexer.inKeyword *)
-      IF Types.IsInteger(l) & (r = Types.Set) THEN
+      IF Types.IsInteger(l) & Types.IsSet(r) THEN
         result := Types.Boolean
       ELSE
         Diagnostics.Error(node.line, node.column, "IN requires an integer and a SET");
@@ -2129,39 +2131,75 @@ MODULE SemanticActions;
     RETURN result
   END CheckBinaryExpr;
 
+  (* An element (or either end of a range) that is a constant: out of 0..63
+     is an error, above 31 makes the set constructor a SET64 - the only place
+     a constructor learns its width (voc: "todo: syntax for specifying set
+     type"). A non-constant element says nothing; it is done at the
+     constructor's own width, so {n} with n = 40 is no SET64 element (build
+     that with INCL on a SET64, or add a constant one: {n, 40}). *)
+  PROCEDURE CheckConstantSetElement(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode;
+                                    line, column: INTEGER; VAR result: Types.Type);
+    VAR v: Types.Value;
+  BEGIN
+    IF ConstantEvaluator.IsConstantExpr(expr, scope) THEN
+      v := ConstantEvaluator.Evaluate(expr, scope);
+      IF (v.type # Types.Undefined) & (v.kind = Types.intValue) THEN
+        IF (v.intVal < 0) OR (v.intVal > Types.MaxSetElement(Types.Set64)) THEN
+          Diagnostics.Error(line, column, "set element out of range 0..63")
+        ELSIF v.intVal > Types.MaxSetElement(Types.Set) THEN
+          result := Types.Set64
+        END
+      END
+    END
+  END CheckConstantSetElement;
+
   (* Unlike ConstantEvaluator.EvaluateSet, elements need not be constant -
      only integer-typed (§8.2's Set constructor accepts general
      Expressions, unlike a ConstExpr's Set, which EvaluateSet alone still
-     handles). Always yields Types.Set, even if an element is malformed,
-     so one bad element doesn't change the enclosing expression's type. *)
+     handles). Yields a SET, or a SET64 if a constant element is above 31,
+     even if another element is malformed, so one bad element doesn't
+     change the enclosing expression's type. A constructor of constants
+     only is typed by ConstantEvaluator, by its value, like every constant
+     set (an empty range {40..30} is a SET), and that is where an element out
+     of range is reported. *)
   PROCEDURE CheckSetExpr(scope: SymbolTable.Scope; node: SyntaxTree.SetExprNode): Types.Type;
-    VAR el: SyntaxTree.SetElementNode; t: Types.Type;
+    VAR el: SyntaxTree.SetElementNode; t, result: Types.Type; allConstant: BOOLEAN;
   BEGIN
+    result := Types.Set;
+    allConstant := ConstantEvaluator.IsConstantExpr(node, scope);
     el := node.elements;
     WHILE el # NIL DO
       t := CheckExpr(scope, el.low);
       IF (t # Types.Undefined) & ~Types.IsInteger(t) THEN
         Diagnostics.Error(el.line, el.column, "set element must be an integer type")
+      ELSIF ~allConstant THEN
+        CheckConstantSetElement(scope, el.low, el.line, el.column, result)
       END;
       IF el.high # NIL THEN
         t := CheckExpr(scope, el.high);
         IF (t # Types.Undefined) & ~Types.IsInteger(t) THEN
           Diagnostics.Error(el.line, el.column, "set element must be an integer type")
+        ELSIF ~allConstant THEN
+          CheckConstantSetElement(scope, el.high, el.line, el.column, result)
         END
       END;
       el := el.next
     END;
-    RETURN Types.Set
+    IF allConstant THEN
+      t := FoldConstantType(scope, node, result);
+      IF t # Types.Undefined THEN result := t END
+    END;
+    RETURN result
   END CheckSetExpr;
 
   PROCEDURE CheckFoldedUnaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.UnaryExprNode): Types.Type;
   BEGIN
-    RETURN FoldIntegerConstant(scope, node, CheckUnaryExpr(scope, node))
+    RETURN FoldConstantType(scope, node, CheckUnaryExpr(scope, node))
   END CheckFoldedUnaryExpr;
 
   PROCEDURE CheckFoldedBinaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.BinaryExprNode): Types.Type;
   BEGIN
-    RETURN FoldIntegerConstant(scope, node, CheckBinaryExpr(scope, node))
+    RETURN FoldConstantType(scope, node, CheckBinaryExpr(scope, node))
   END CheckFoldedBinaryExpr;
 
   (* The real body matching this section's own forward declaration above.

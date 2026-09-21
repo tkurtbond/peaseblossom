@@ -78,7 +78,7 @@ MODULE Types;
      NEW, etc.), dispatched on by name in the new PredeclaredProcedures.Mod
      rather than by distinct Type values. *)
 
-  IMPORT SyntaxTree, Diagnostics;
+  IMPORT SYSTEM, SyntaxTree, Diagnostics;
 
   CONST
     (* BasicType*.rank; wider absorbs narrower per Appendix A *)
@@ -114,7 +114,7 @@ MODULE Types;
     BasicTypeDesc* = RECORD (TypeDesc)
       rank*: INTEGER; (* notNumeric, or one of the ranks above *)
       (* 0 for a type whose width follows the -O2/-OC size model (SHORTINT,
-         INTEGER, LONGINT, SET) or does not matter here; else the exact
+         INTEGER, LONGINT) or does not matter here; else the exact
          width in bytes of one of SYSTEM.INT8/INT16/INT32/INT64, whatever
          the model. Such a type's rank only says "an integer" (IsInteger,
          Rank <= hugeIntRank): where it sits in the inclusion hierarchy
@@ -231,12 +231,14 @@ MODULE Types;
       boolVal*: BOOLEAN;
       charVal*: CHAR;
       stringVal*: ARRAY stringValueLength + 1 OF CHAR;
-      setVal*: SET
+      (* a set constant's elements: a SYSTEM.SET64 holds every element of
+         either set type (0..63), whatever the size model or the host *)
+      setVal*: SYSTEM.SET64
     END;
 
   VAR
     Boolean*, Char*, ShortInt*, Integer*, LongInt*, Address*, HugeInt*, Real*, LongReal*,
-      Set*, String*, Undefined*, NilType*: Type;
+      Set*, Set64*, String*, Undefined*, NilType*: Type;
     (* PLAN.md Phase 10 step 7: SYSTEM.BYTE, a one-byte value CHAR and
        SHORTINT are assignable to (and that an ARRAY OF BYTE VAR parameter
        stands in front of any variable for), and SYSTEM.PTR, a pointer any
@@ -856,11 +858,37 @@ MODULE Types;
      two ProcedureTypes, structural match included. Rules 3/4 (record/
      pointer extension) unwrap a PointerType's base before calling
      Extends*, per that procedure's own header comment. *)
+  (* Phase 11: SET is 32 bits under both size models (voc's, and Component
+     Pascal's), and SYSTEM.SET32 is the same type; SYSTEM.SET64 is a distinct
+     64-bit one. A set type includes another the way integer types do, by
+     width: a SET64 takes a SET (zero-extended), never the other way. *)
+  PROCEDURE IsSet*(t: Type): BOOLEAN;
+  BEGIN
+    RETURN (t = Set) OR (t = Set64)
+  END IsSet;
+
+  (* The highest element a set type holds: 31 for SET, 63 for SET64, and -1
+     for a type that is not a set. *)
+  PROCEDURE MaxSetElement*(t: Type): INTEGER;
+  BEGIN
+    IF t = Set THEN RETURN 31
+    ELSIF t = Set64 THEN RETURN 63
+    ELSE RETURN -1
+    END
+  END MaxSetElement;
+
+  (* The wider of two set types: what an operation on both is done at. *)
+  PROCEDURE WiderSet*(a, b: Type): Type;
+  BEGIN
+    IF (a = Set64) OR (b = Set64) THEN RETURN Set64 ELSE RETURN Set END
+  END WiderSet;
+
   PROCEDURE AssignmentCompatible*(dst, src: Type): BOOLEAN;
     VAR dstPtr, srcPtr: PointerType;
   BEGIN
     IF SameType(dst, src) THEN RETURN TRUE (* rule 1 (subsumes rule 7) *)
     ELSIF Includes(dst, src) THEN RETURN TRUE (* rule 2 *)
+    ELSIF (dst = Set64) & (src = Set) THEN RETURN TRUE (* a SET is included in a SET64 *)
     ELSIF (dst = Byte) & ((src = Char) OR (src = ShortInt)) THEN
       RETURN TRUE (* Appendix C: SYSTEM.BYTE takes a CHAR or a SHORTINT *)
     ELSIF (dst = Ptr) & (src # NIL) & (src IS PointerType) THEN
@@ -899,6 +927,7 @@ MODULE Types;
     ELSIF t = Real THEN COPY("REAL", name)
     ELSIF t = LongReal THEN COPY("LONGREAL", name)
     ELSIF t = Set THEN COPY("SET", name)
+    ELSIF t = Set64 THEN COPY("SYSTEM.SET64", name)
     ELSIF t = String THEN COPY("a string constant", name)
     ELSIF t = NilType THEN COPY("NIL", name)
     ELSIF t = PredeclaredProcedureType THEN COPY("a predeclared procedure", name)
@@ -931,6 +960,7 @@ BEGIN
   Real := NewBasicType(realRank);
   LongReal := NewBasicType(longRealRank);
   Set := NewBasicType(notNumeric);
+  Set64 := NewBasicType(notNumeric);
   String := NewBasicType(notNumeric);
   Undefined := NewBasicType(notNumeric);
   NilType := NewBasicType(notNumeric);

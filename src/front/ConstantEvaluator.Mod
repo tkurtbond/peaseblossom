@@ -32,7 +32,7 @@ MODULE ConstantEvaluator;
      and duplicating the magnitude/overflow logic there would risk the
      two silently drifting apart. *)
 
-  IMPORT SyntaxTree, Types, SymbolTable, Diagnostics, Lexer, MemoryLayout, DecimalToDouble;
+  IMPORT SYSTEM, SyntaxTree, Types, SymbolTable, Diagnostics, Lexer, MemoryLayout, DecimalToDouble;
 
   CONST
     maxHugeInt = MAX(LONGINT); (* Really means MAX(HUGEINT) - HUGEINT is
@@ -95,7 +95,7 @@ MODULE ConstantEvaluator;
        SetSizeModel* below. No longer CONST themselves (as originally
        written, back when poc had no -O2/-OC flag to vary them with) -
        see SetSizeModel*'s own comment. *)
-    maxSetElement, maxShortInt, maxInteger, maxLongInt: LONGINT;
+    maxShortInt, maxInteger, maxLongInt: LONGINT;
     minShortInt, minInteger, minLongInt: LONGINT;
     (* MemoryLayout.wordSize32/64 currently in effect for SIZE(T)'s own
        POINTER/PROCEDURE-sized-value case (SizeBound below) - set once via
@@ -134,12 +134,13 @@ MODULE ConstantEvaluator;
        on it: see Types.Order *)
     Types.SetSizeModelIsOC(model = MemoryLayout.sizeModelOC);
     IF model = MemoryLayout.sizeModelOC THEN
-      maxShortInt := 32767; maxInteger := 2147483647; maxLongInt := maxHugeInt;
-      maxSetElement := 63
+      maxShortInt := 32767; maxInteger := 2147483647; maxLongInt := maxHugeInt
     ELSE
-      maxShortInt := 127; maxInteger := 32767; maxLongInt := 2147483647;
-      maxSetElement := 31
+      maxShortInt := 127; maxInteger := 32767; maxLongInt := 2147483647
     END;
+    (* a SET is 32 bits under -O2 and -OC alike (voc: OPM.SetSize is 4 for
+       both; only its -OV model has 64), so no set bound depends on the model:
+       see Types.MaxSetElement *)
     minShortInt := -maxShortInt - 1; minInteger := -maxInteger - 1;
     minLongInt := -maxLongInt - 1
   END SetSizeModel;
@@ -416,9 +417,9 @@ MODULE ConstantEvaluator;
       v.type := t; v.kind := Types.realValue;
       IF t = Types.Real THEN v.realVal := MaxReal() ELSE v.realVal := MaxLongReal() END;
       IF ~wantMax THEN v.realVal := -v.realVal END
-    ELSIF t = Types.Set THEN
+    ELSIF Types.IsSet(t) THEN
       v.type := Types.Integer; v.kind := Types.intValue;
-      IF wantMax THEN v.intVal := maxSetElement ELSE v.intVal := 0 END
+      IF wantMax THEN v.intVal := Types.MaxSetElement(t) ELSE v.intVal := 0 END
     ELSIF t = Types.ShortInt THEN
       v.type := t; v.kind := Types.intValue;
       IF wantMax THEN v.intVal := maxShortInt ELSE v.intVal := minShortInt END
@@ -906,6 +907,31 @@ MODULE ConstantEvaluator;
     END
   END FloorRemainder;
 
+  (* The type a set constant has, by its value as an integer constant's is
+     (voc's rule for the result of an operation on constants): a SET if every
+     element is 0..31, else a SET64. Element by element, and no set constant
+     of the other width in an expression, since voc's C for a SET64 minus a
+     SET is exactly where the widths meet. *)
+  PROCEDURE SetValueType*(v: SYSTEM.SET64): Types.Type;
+    VAR i: INTEGER;
+  BEGIN
+    FOR i := 32 TO 63 DO
+      IF i IN v THEN RETURN Types.Set64 END
+    END;
+    RETURN Types.Set
+  END SetValueType;
+
+  (* The complement of v within the elements of a set type: 0..maxElement. *)
+  PROCEDURE ComplementSet(v: SYSTEM.SET64; maxElement: INTEGER): SYSTEM.SET64;
+    VAR i: INTEGER; result: SYSTEM.SET64;
+  BEGIN
+    result := {};
+    FOR i := 0 TO maxElement DO
+      IF ~(i IN v) THEN INCL(result, i) END
+    END;
+    RETURN result
+  END ComplementSet;
+
   (* An integer constant of value, typed by that value: the shared tail of
      every operation above. *)
   PROCEDURE IntegerResult(value: LONGINT): Types.Value;
@@ -943,9 +969,12 @@ MODULE ConstantEvaluator;
         result.realVal := -v.realVal;
         NegateRealText(v.realText, result.realText);
         RETURN result
-      ELSIF v.type = Types.Set THEN
-        NEW(result); result.type := Types.Set; result.kind := Types.setValue;
-        result.setVal := {0 .. maxSetElement} - v.setVal;
+      ELSIF Types.IsSet(v.type) THEN
+        (* within the operand's own type - a SET's 0..31, a SET64's 0..63 -
+           as at run time and as in voc: -{0} is {1..31} *)
+        NEW(result); result.kind := Types.setValue;
+        result.setVal := ComplementSet(v.setVal, Types.MaxSetElement(v.type));
+        result.type := SetValueType(result.setVal);
         RETURN result
       ELSE
         Diagnostics.Error(expr.line, expr.column,
@@ -1044,12 +1073,13 @@ MODULE ConstantEvaluator;
   PROCEDURE EvaluateSetOp(op: INTEGER; l, r: Types.Value): Types.Value;
     VAR result: Types.Value;
   BEGIN
-    NEW(result); result.type := Types.Set; result.kind := Types.setValue;
+    NEW(result); result.kind := Types.setValue;
     IF op = Lexer.plus THEN result.setVal := l.setVal + r.setVal
     ELSIF op = Lexer.minus THEN result.setVal := l.setVal - r.setVal
     ELSIF op = Lexer.times THEN result.setVal := l.setVal * r.setVal
     ELSE result.setVal := l.setVal / r.setVal
     END;
+    result.type := SetValueType(result.setVal);
     RETURN result
   END EvaluateSetOp;
 
@@ -1067,7 +1097,7 @@ MODULE ConstantEvaluator;
       eq := l.charVal = r.charVal
     ELSIF (l.type = Types.Boolean) & (r.type = Types.Boolean) THEN
       eq := l.boolVal = r.boolVal
-    ELSIF (l.type = Types.Set) & (r.type = Types.Set) THEN
+    ELSIF Types.IsSet(l.type) & Types.IsSet(r.type) THEN
       eq := l.setVal = r.setVal
     ELSIF (l.type = Types.String) & (r.type = Types.String) THEN
       eq := l.stringVal = r.stringVal
@@ -1122,7 +1152,7 @@ MODULE ConstantEvaluator;
     IF (expr.op = Lexer.plus) OR (expr.op = Lexer.minus) OR (expr.op = Lexer.times) THEN
       IF Types.IsNumeric(l.type) & Types.IsNumeric(r.type) THEN
         result := EvaluateNumericOp(expr.op, l, r, expr.line, expr.column)
-      ELSIF (l.type = Types.Set) & (r.type = Types.Set) THEN
+      ELSIF Types.IsSet(l.type) & Types.IsSet(r.type) THEN
         result := EvaluateSetOp(expr.op, l, r)
       ELSE
         Diagnostics.Error(expr.line, expr.column,
@@ -1132,7 +1162,7 @@ MODULE ConstantEvaluator;
     ELSIF expr.op = Lexer.slash THEN
       IF Types.IsNumeric(l.type) & Types.IsNumeric(r.type) THEN
         result := EvaluateDivide(l, r, expr.line, expr.column)
-      ELSIF (l.type = Types.Set) & (r.type = Types.Set) THEN
+      ELSIF Types.IsSet(l.type) & Types.IsSet(r.type) THEN
         result := EvaluateSetOp(expr.op, l, r)
       ELSE
         Diagnostics.Error(expr.line, expr.column,
@@ -1163,9 +1193,10 @@ MODULE ConstantEvaluator;
         OR (expr.op = Lexer.greater) OR (expr.op = Lexer.greaterEqual) THEN
       result := EvaluateOrder(expr.op, l, r, expr.line, expr.column)
     ELSIF expr.op = Lexer.inKeyword THEN
-      IF (l.kind = Types.intValue) & (r.type = Types.Set) THEN
+      IF (l.kind = Types.intValue) & Types.IsSet(r.type) THEN
         NEW(result); result.type := Types.Boolean; result.kind := Types.boolValue;
-        result.boolVal := SHORT(l.intVal) IN r.setVal
+        (* an element outside 0..63 is in no set, as at run time *)
+        result.boolVal := (l.intVal >= 0) & (l.intVal <= 63) & (SHORT(l.intVal) IN r.setVal)
       ELSE
         Diagnostics.Error(expr.line, expr.column, "IN requires an integer and a SET");
         result := UndefinedValue()
@@ -1207,8 +1238,8 @@ MODULE ConstantEvaluator;
           highVal := lowVal
         END
       END;
-      IF ok & ((lowVal < 0) OR (highVal > maxSetElement)) THEN
-        Diagnostics.Error(el.line, el.column, "set element out of range 0..31");
+      IF ok & ((lowVal < 0) OR (highVal > Types.MaxSetElement(Types.Set64))) THEN
+        Diagnostics.Error(el.line, el.column, "set element out of range 0..63");
         ok := FALSE
       END;
       IF ok THEN
@@ -1217,6 +1248,7 @@ MODULE ConstantEvaluator;
       END;
       el := el.next
     END;
+    result.type := SetValueType(result.setVal);
     RETURN result
   END EvaluateSet;
 

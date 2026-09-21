@@ -6,6 +6,6 @@ LI: O2=i32 OC=i64
 HI: O2=i64 OC=i64
 R: O2=float OC=float
 LR: O2=double OC=double
-S: O2=i32 OC=i64
+S: O2=i32 OC=i32
 Arr: O2=[10 x i16] OC=[10 x i32]
 Rec: O2={ i8, i32 } OC={ i8, i64 }

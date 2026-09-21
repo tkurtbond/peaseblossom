@@ -9,7 +9,8 @@ MODULE bounds;
      test instead exports every bound via -emit-interface and diffs the
      printed decimal text between an -O2 and an -OC run (test.sh) -
      confirmed against real voc (2026-09-17): under -O2, SHORTINT/
-     INTEGER/LONGINT/SET are 1/2/4/4 bytes; under -OC, 2/4/8/8.
+     INTEGER/LONGINT/SET are 1/2/4/4 bytes; under -OC, 2/4/8/4 (voc gives
+     -OC a 32-bit SET too: OPM.Mod, and its usage text).
      Deliberately excludes MIN(LONGINT)/MIN(HUGEINT): both hit a
      separate, pre-existing, undocumented-until-now ModuleInterface.
      FormatInt bug (see PLAN.md) that silently prints "-" with no digits

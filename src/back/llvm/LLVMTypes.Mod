@@ -158,8 +158,8 @@ MODULE LLVMTypes;
     ELSIF t = Types.Int64 THEN COPY("i64", result)
     ELSIF t = Types.Real THEN COPY("float", result)
     ELSIF t = Types.LongReal THEN COPY("double", result)
-    ELSIF t = Types.Set THEN
-      IF sizeModel = MemoryLayout.sizeModelOC THEN COPY("i64", result) ELSE COPY("i32", result) END
+    ELSIF t = Types.Set THEN COPY("i32", result) (* the same under either model, as in voc *)
+    ELSIF t = Types.Set64 THEN COPY("i64", result)
     ELSE COPY("<unsupported>", result) (* String, Undefined: never a variable's actual type *)
     END
   END BasicTypeString;

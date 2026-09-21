@@ -305,7 +305,7 @@ MODULE PredeclaredProcedures;
     IF t = NIL THEN
       Diagnostics.Error(line, column, "MAX/MIN requires a type name argument");
       RETURN Types.Undefined
-    ELSIF t = Types.Set THEN
+    ELSIF Types.IsSet(t) THEN
       RETURN Types.Integer
     ELSIF (t IS Types.BasicType) & (t # Types.String) & (t # Types.Undefined)
         & (t # Types.NilType) & (t # Types.PredeclaredProcedureType) THEN
@@ -361,11 +361,13 @@ MODULE PredeclaredProcedures;
       RETURN Types.Undefined
     END;
     t := checkExpr(scope, args);
-    IF (t # Types.Undefined) & (t # Types.Char) & (t # Types.Set)
+    IF (t # Types.Undefined) & (t # Types.Char) & ~Types.IsSet(t)
         & ~((t = Types.String) & IsSingleCharStringLiteral(args)) THEN
       Diagnostics.Error(line, column, "ORD requires a CHAR or SET argument");
       RETURN Types.Undefined
     END;
+    (* a SET64's 64 bits do not fit an INTEGER *)
+    IF t = Types.Set64 THEN RETURN Types.HugeInt END;
     RETURN Types.Integer
   END CheckOrd;
 
@@ -457,7 +459,7 @@ MODULE PredeclaredProcedures;
   PROCEDURE CheckInclExcl(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
                           line, column: INTEGER;
                           checkExpr: CheckExprProc; checkDesignator: CheckDesignatorProc);
-    VAR vt, xt: Types.Type; readOnly, isVariable: BOOLEAN;
+    VAR vt, xt: Types.Type; readOnly, isVariable: BOOLEAN; v: Types.Value;
   BEGIN
     IF ArgCount(args) # 2 THEN
       Diagnostics.Error(line, column, "INCL/EXCL expects two arguments"); RETURN
@@ -467,11 +469,20 @@ MODULE PredeclaredProcedures;
     IF vt = Types.Undefined THEN RETURN END;
     IF ~isVariable OR readOnly THEN
       Diagnostics.Error(line, column, "INCL/EXCL's first argument must be a writable variable")
-    ELSIF vt # Types.Set THEN
+    ELSIF ~Types.IsSet(vt) THEN
       Diagnostics.Error(line, column, "INCL/EXCL requires a SET variable")
     END;
     IF (xt # Types.Undefined) & ~Types.IsInteger(xt) THEN
       Diagnostics.Error(line, column, "INCL/EXCL's second argument must be an integer")
+    ELSIF (xt # Types.Undefined) & Types.IsSet(vt)
+        & ConstantEvaluator.IsConstantExpr(Arg(args, 1), scope) THEN
+      (* a constant element the variable's set cannot hold: INCL(s, 40) for a
+         SET is an error in voc too (err 202) *)
+      v := ConstantEvaluator.Evaluate(Arg(args, 1), scope);
+      IF (v.type # Types.Undefined) & (v.kind = Types.intValue)
+         & ((v.intVal < 0) OR (v.intVal > Types.MaxSetElement(vt))) THEN
+        Diagnostics.Error(line, column, "set element is outside the range of the variable's set type")
+      END
     END
   END CheckInclExcl;
 

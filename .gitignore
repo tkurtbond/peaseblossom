@@ -84,6 +84,8 @@ test/conformance/llvm-string-consts/llvm-string-consts
 test/conformance/llvm-char-arrays/llvm-char-arrays
 test/conformance/llvm-system-fixed-width/llvm-system-fixed-width
 test/conformance/llvm-system-int8-constants/llvm-system-int8-constants
+test/conformance/llvm-set64/llvm-set64
+test/conformance/llvm-set64-import/llvm-set64-import
 test/conformance/llvm-with-empty-else/llvm-with-empty-else
 test/conformance/crosscheck/crosscheck
 

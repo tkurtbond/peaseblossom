@@ -1,0 +1,59 @@
+s := {2, 31}
+s := {2, 32}
+s := {}
+s := {40..30}
+s := small
+s := big
+q := big
+q := small
+q := s
+s := q
+t := s
+s := t
+t := q
+q := t
+s := {n}
+q := {n}
+q := {n, 40}
+s := {n, 40}
+s := {n..40}
+q := {0..63}
+q := {64}
+q := {-1}
+s := {-1}
+q := {n, 64}
+q := big + s
+s := big + s
+s := s + q
+q := s + q
+q := q - {1}
+q := -q
+s := -s
+s := -big
+q := -small
+q := big * small
+s := big * small
+h := ORD(q)
+n := ORD(s)
+n := ORD(q)
+INCL(q, 63)
+INCL(s, 63)
+INCL(s, 31)
+INCL(q, 64)
+EXCL(q, n)
+EXCL(t, 32)
+INCL(r.f, 40)
+n := MAX(SYSTEM.SET64)
+n := MAX(SET)
+n := MIN(SYSTEM.SET64)
+n := SIZE(SYSTEM.SET64)
+IF (q = s) & (s = q) THEN END
+IF q < s THEN END
+IF 40 IN q THEN END
+IF 40 IN s THEN END
+IF q IN s THEN END
+IF s = big THEN END
+IF q = big THEN END
+n := SYSTEM.VAL(INTEGER, q)
+h := SYSTEM.VAL(HUGEINT, q)
+q := SYSTEM.VAL(SYSTEM.SET64, h)

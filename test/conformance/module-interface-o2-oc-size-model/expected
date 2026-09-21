@@ -20,9 +20,9 @@ MODULE bounds;
     MaxInt* = 2147483647;
     MinInt* = -2147483648;
     MaxLong* = 9223372036854775807;
-    MaxSet* = 63;
+    MaxSet* = 31;
     ShortSize* = 2;
     IntSize* = 4;
     LongSize* = 8;
-    SetSize* = 8;
+    SetSize* = 4;
 END bounds.

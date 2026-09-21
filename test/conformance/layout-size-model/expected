@@ -1,10 +1,10 @@
-Widths: sizeO2_32=36 alignO2_32=4 sizeO2_64=40 alignO2_64=8 sizeOC_32=48 alignOC_32=4 sizeOC_64=48 alignOC_64=8
+Widths: sizeO2_32=36 alignO2_32=4 sizeO2_64=40 alignO2_64=8 sizeOC_32=44 alignOC_32=4 sizeOC_64=48 alignOC_64=8
   .s: offsetO2_32=0 offsetO2_64=0 offsetOC_32=0 offsetOC_64=0
   .i: offsetO2_32=2 offsetO2_64=2 offsetOC_32=4 offsetOC_64=4
   .l: offsetO2_32=4 offsetO2_64=4 offsetOC_32=8 offsetOC_64=8
   .h: offsetO2_32=8 offsetO2_64=8 offsetOC_32=16 offsetOC_64=16
   .set: offsetO2_32=16 offsetO2_64=16 offsetOC_32=24 offsetOC_64=24
-  .b: offsetO2_32=20 offsetO2_64=20 offsetOC_32=32 offsetOC_64=32
-  .c: offsetO2_32=21 offsetO2_64=21 offsetOC_32=33 offsetOC_64=33
-  .r: offsetO2_32=24 offsetO2_64=24 offsetOC_32=36 offsetOC_64=36
-  .lr: offsetO2_32=28 offsetO2_64=32 offsetOC_32=40 offsetOC_64=40
+  .b: offsetO2_32=20 offsetO2_64=20 offsetOC_32=28 offsetOC_64=28
+  .c: offsetO2_32=21 offsetO2_64=21 offsetOC_32=29 offsetOC_64=29
+  .r: offsetO2_32=24 offsetO2_64=24 offsetOC_32=32 offsetOC_64=32
+  .lr: offsetO2_32=28 offsetO2_64=32 offsetOC_32=36 offsetOC_64=40

@@ -13,9 +13,12 @@ MODULE sets;
      after it are IN with an element outside 0..MAX(SET): Oberon2.pdf
      leaves that undefined and voc's C (a plain shift) does too, but
      poc's IN is defined to be FALSE there rather than an LLVM poison
-     value, and this pins it. Checks 14 and 19, whose complements are
-     {0 .. 31} and {31}, assume the default -O2 32-bit SET too: under
-     -OC's 64-bit SET exactly those two differ, correctly. *)
+     value, and this pins it. A SET is 32 bits under -O2 and -OC
+     alike (voc's, and Component Pascal's), so test.sh builds and runs the
+     program under both and the output must be the same - checks 14 and 19,
+     whose complements are {0 .. 31} and {31}, would differ under a 64-bit
+     SET. *)
+  IMPORT SYSTEM;
   CONST
     evens = {0, 2, 4, 6};
   VAR
@@ -25,7 +28,9 @@ MODULE sets;
     i, count: INTEGER;
     sh: SHORTINT;
     li: LONGINT;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
+  PROCEDURE ["C", "write"] SysWrite(fd: SYSTEM.INT32; s: ARRAY OF CHAR; n: SYSTEM.ADDRESS);
+  (* the C types: a LONGINT is 8 bytes under -OC, which shifts the arguments of a
+     32-bit target's write *)
 
   PROCEDURE Union(x, y: SET): SET;
   BEGIN
