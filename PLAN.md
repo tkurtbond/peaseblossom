@@ -4125,7 +4125,12 @@ as it stands when the phase starts, and adds what it finds):
      switch, off by default, separate from step 5 (C7); documenting what poc
      does and does not trap (C9); no change to the deliberately silent
      `SIGFPE`/`SIGSEGV`/`HALT(n)` endings (C6); and surveys of other Oberon
-     and Oberon-2 compilers before deciding overflow/underflow behavior (C5) and
+     and Oberon-2 compilers before deciding overflow/underflow behavior (C5,
+     **done 2026-09-21**: `doc/overflow-survey.md`; decided with the user: no new
+     checks - integer overflow wraps and is documented as doing so, reals are
+     IEEE and silent, `DIV`/`MOD` by zero stays `SIGFPE`, `SHORT`/`CHR`/`SET`
+     element range stay unchecked, an optional `-r` left to Phase 12 step 1;
+     `AGENTS.md` "Overflow, division and reals", fixture `llvm-overflow-wrap`) and
      rule 6 with `ARRAY OF CHAR` assignment (A21). The remaining items keep
      their `proposed`/`open` verdicts until their steps run.
 

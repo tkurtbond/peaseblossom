@@ -669,6 +669,38 @@ like voc's), outermost dimension first:
   big-integer arithmetic), and the `.sym` text is the shortest digits, at most
   17, that read back to the very value (`module-interface-extreme-reals`).
 
+### Overflow, division and reals (decided, Phase 11 C5)
+
+`Oberon2.pdf` says nothing about arithmetic that leaves a type's range, so
+this is poc's own promise, decided with the user 2026-09-21 after a survey of
+other Oberons (`doc/overflow-survey.md` has the sources and the probes; every
+surveyed dialect that has a default leaves integer overflow unchecked, ETH's
+OP2 family defaulted its `V` pragma off, and no dialect traps underflow).
+What a program can observe, the same under `-O2` and `-OC` at each type's own
+width, and the same as voc's (`llvm-overflow-wrap` runs one source under voc
+and poc, both models):
+
+- **Integer `+ - *`, unary `-`, `ABS`, `INC` and `DEC` that leave the range of
+  their type wrap around** (two's complement, at the type's width - `MAX(T)+1`
+  is `MIN(T)`, `-MIN(T)` and `ABS(MIN(T))` are `MIN(T)`), and nothing traps.
+  This is a promise, not luck: poc emits plain LLVM `add`/`sub`/`mul` (no
+  `nsw`), which wrap at any optimization level, where voc's C only happens to.
+  An opt-in overflow trap is not offered; it waits for Phase 12 step 1's
+  safety-check triage, and for Phase 13 (the VAX's `IV` bit).
+- **`DIV` and `MOD` floor for every non-zero divisor**, negative ones included
+  (`7 DIV -2` is -4, `7 MOD -2` is -1). A zero divisor and `MIN(T) DIV -1` end
+  the program with the hardware's signal (`SIGFPE`, status 136), no message,
+  on purpose (C6). Where poc differs from voc: `0 DIV 0` is a `SIGFPE` here,
+  0 in voc (its `SYSTEM_DIV` returns early for a zero dividend).
+- **Real arithmetic is IEEE 754 and silent**: overflow and a division by zero
+  give an infinity, `0.0/0.0` a NaN, underflow a zero or a denormal, `SHORT`
+  of a `LONGREAL` too large for a `REAL` an infinity; no trap. (The VAX backend
+  cannot promise this - VAX floats have no infinity or NaN; Phase 13 decides.)
+- **`SHORT`, `CHR` and `SET` elements out of range are unchecked**: `SHORT`
+  and `CHR` truncate (`CHR(300)` is `","`), `INCL(s, 40)` on a 32-bit `SET`
+  shifts past its width. voc's `-r` would halt on the first two; poc has no
+  such switch (Phase 12 step 1 may add one).
+
 ### Nested procedures (implemented, Phase 11 step 8)
 
 `PLAN.md` step 8 and `doc/nested-procedures.md` have the full account; the
