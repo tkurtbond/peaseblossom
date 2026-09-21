@@ -32,7 +32,7 @@ MODULE ConstantEvaluator;
      and duplicating the magnitude/overflow logic there would risk the
      two silently drifting apart. *)
 
-  IMPORT SyntaxTree, Types, SymbolTable, Diagnostics, Lexer, MemoryLayout;
+  IMPORT SyntaxTree, Types, SymbolTable, Diagnostics, Lexer, MemoryLayout, DecimalToDouble;
 
   CONST
     maxHugeInt = MAX(LONGINT); (* Really means MAX(HUGEINT) - HUGEINT is
@@ -256,63 +256,25 @@ MODULE ConstantEvaluator;
     RETURN CHR(v)
   END ParseCharConst;
 
-  (* Exported so ModuleInterface.Mod's float formatter can verify a
-     candidate decimal text round-trips through this exact (not
-     necessarily correctly-rounded, see that module's own header comment)
-     parsing algorithm before ever writing it to a .sym file - the two
-     modules must agree on what a given digit string parses to, and
-     duplicating this algorithm a second time would risk them silently
-     drifting apart. No import cycle: ModuleInterface.Mod already avoids
-     importing Parser.Mod (see its own header comment) but this module
-     isn't Parser.Mod.
+  (* The correctly rounded LONGREAL value of a real numeral's text (a
+     non-negative decimal with an optional fraction and "E"/"D" exponent):
+     DecimalToDouble.Parse, the exact big-integer conversion (Phase 11 step
+     2, inventory A2). Exported so ModuleInterface.Mod's float formatter can
+     verify that a candidate decimal text reads back to the value it was
+     written from - the two must agree on what a digit string parses to,
+     and since this is now exact, the text of the shortest digits that
+     round-trip always exists.
 
-     Real bug found and fixed while building that formatter (confirmed
-     against real voc with a standalone repro, not just inferred): every
-     numeric literal in this procedure's own body - 0.0, 10.0, 0.1 - is,
-     per Oberon2.pdf's own real-literal typing rule, a REAL (not
-     LONGREAL) constant, since none carries a "D" scale factor. voc
-     evaluates such a literal at REAL (4-byte) precision *before* the
-     implicit widening to the LONGREAL-typed v/scale it's assigned or
-     combined into - so despite v and scale being declared LONGREAL, this
-     procedure was silently working at single-precision accuracy the
-     entire time (confirmed: "1.5" parsed back as
-     1.5000000074505800, off by ~5e-9, an exact float32-epsilon-sized
-     error, not the ~1e-16 a double computation would show). Invisible
-     since Phase 3, since nothing before this formatter ever printed a
-     folded REAL/LONGREAL constant's value with enough precision to
-     notice. Fixed by suffixing every one of this procedure's own numeral
-     literals with an explicit "D0" so none of them is ever REAL-typed to
-     begin with. *)
+     History worth keeping: this routine used to accumulate digits and
+     scale by repeated multiplication, which is not correctly rounded, and
+     had two faults of its own: every numeral literal in its body was a REAL
+     (no "D" scale factor), so voc evaluated it at single precision before
+     widening, and the fixed-point and the exponent paths could land on
+     different bit patterns for the same number. Neither can occur now: no
+     floating-point arithmetic decides any digit. *)
   PROCEDURE ParseReal*(lexeme: ARRAY OF CHAR): LONGREAL;
-    VAR i, expValue: INTEGER; v, scale: LONGREAL; negExp: BOOLEAN;
   BEGIN
-    i := 0; v := 0.0D0;
-    WHILE (lexeme[i] >= "0") & (lexeme[i] <= "9") DO
-      v := v * 10.0D0 + (ORD(lexeme[i]) - ORD("0")); INC(i)
-    END;
-    IF lexeme[i] = "." THEN
-      INC(i); scale := 0.1D0;
-      WHILE (lexeme[i] >= "0") & (lexeme[i] <= "9") DO
-        v := v + (ORD(lexeme[i]) - ORD("0")) * scale;
-        scale := scale / 10.0D0; INC(i)
-      END
-    END;
-    IF (lexeme[i] = "E") OR (lexeme[i] = "D") THEN
-      INC(i); negExp := FALSE;
-      IF lexeme[i] = "-" THEN negExp := TRUE; INC(i)
-      ELSIF lexeme[i] = "+" THEN INC(i)
-      END;
-      expValue := 0;
-      WHILE (lexeme[i] >= "0") & (lexeme[i] <= "9") DO
-        expValue := expValue * 10 + (ORD(lexeme[i]) - ORD("0")); INC(i)
-      END;
-      IF negExp THEN
-        WHILE expValue > 0 DO v := v / 10.0D0; DEC(expValue) END
-      ELSE
-        WHILE expValue > 0 DO v := v * 10.0D0; DEC(expValue) END
-      END
-    END;
-    RETURN v
+    RETURN DecimalToDouble.Parse(lexeme)
   END ParseReal;
 
   PROCEDURE EvaluateLiteral(expr: SyntaxTree.LiteralExprNode): Types.Value;

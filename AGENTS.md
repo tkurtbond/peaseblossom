@@ -554,10 +554,11 @@ like voc's), outermost dimension first:
 - **`.sym` files**: a folded integer is written as its value, so an importer
   re-types it minimally (`ASH(1, 3)` is a SHORTINT there); a real constant
   that is exactly `MAX`/`MIN` of `REAL` or `LONGREAL` is written as
-  `MAX(LONGREAL)` and so on. Not exportable, as before: a computed real of
-  extreme magnitude such as `1.0D300 * 1.5`, since `ParseReal` cannot read
-  its text back exactly ("failed to find a round-trip-safe text
-  representation"); `PLAN.md` Phase 11 step 2 has it.
+  `MAX(LONGREAL)` and so on. Any other computed real exports too, whatever
+  its magnitude (`1.0D300 * 1.5`, subnormals): since Phase 11 step 2
+  `ConstantEvaluator.ParseReal` is correctly rounded (`DecimalToDouble`, exact
+  big-integer arithmetic), and the `.sym` text is the shortest digits, at most
+  17, that read back to the very value (`module-interface-extreme-reals`).
 
 ### External procedures
 

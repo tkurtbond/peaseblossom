@@ -1,0 +1,20 @@
+semantic OK, wrote round1/extreme.sym
+MODULE extreme;
+  CONST
+    half* = 8.988465674311579D307;
+    big* = 1.5D300;
+    tiny* = 3.3333333333333334D-301;
+    third* = 3.333333333333333D-1;
+    twoThirds* = 6.666666666666666D-1;
+    tenth* = 1.0D-1;
+    sub* = 1.5D-323;
+    smallest* = 5.0D-324;
+    largestNormalBelow* = 2.2250738585072014D-308;
+    sum* = 3.0000000000000004D-1;
+    negative* = -1.4285714285714285D-1;
+    exact* = 7.5D-1;
+    single* = 3.333333333333333E-1;
+    singleBig* = 3.0000000000000003E30;
+    huge* = 9.0D307;
+END extreme.
+round trip exact

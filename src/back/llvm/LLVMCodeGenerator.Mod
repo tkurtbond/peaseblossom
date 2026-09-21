@@ -1225,9 +1225,10 @@ MODULE LLVMCodeGenerator;
      the number the programmer wrote (a literal's lexeme, or
      Types.ValueDesc.realText for a CONST folded from one), empty for a
      computed CONST, and folded its ParseReal-or-arithmetic value, which
-     is only trusted when numeral is empty (ConstantEvaluator.ParseReal
-     is not correctly rounded, so it can be an ulp off the number the
-     programmer wrote; LLVM's own decimal parser is). LONGREAL echoes
+     is used when numeral is empty (ConstantEvaluator.ParseReal is
+     correctly rounded since Phase 11, so it is the number the programmer
+     wrote for a LONGREAL; for a REAL the numeral still goes to LLVM, which
+     rounds it once, to single precision, where a double could not). LONGREAL echoes
      the numeral straight into the operand (or, if it is too long for a
      ValueText, routes it through an identity fadd so the text can be
      written to the file without being stored). REAL cannot echo it:

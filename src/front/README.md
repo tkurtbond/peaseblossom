@@ -114,6 +114,10 @@ etc.).
   over the basic types, including numeral text-to-value conversion
   (deferred here from Lexer.Mod) and the six relations, BOOLEAN and SET
   operators, and the numeric inclusion hierarchy.
+- `DecimalToDouble.Mod` (Phase 11): the exact decimal-text-to-double
+  conversion behind `ConstantEvaluator.ParseReal` (big-integer arithmetic,
+  correctly rounded, ties to even) and its inverse, the correctly rounded
+  decimal digits of a double, which `ModuleInterface`'s real formatter uses.
 - `MemoryLayout.Mod` (Phase 4): size/alignment/field-offset computation
   for Types.Mod's representations, parameterized by an explicit target
   word size (4 or 8 bytes) and, since 2026-09-16, an elementary-type size

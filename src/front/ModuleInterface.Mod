@@ -102,45 +102,30 @@ MODULE ModuleInterface;
      LONGREAL (or its negation) - what MAX/MIN of the type folds to
      (PLAN.md Phase 9 step 10), however the CONST was written - is
      printed as "MAX(REAL)", "MIN(LONGREAL)" and so on (ExtremeRealSpelling):
-     the reader folds the same constant back, exactly. Tier 2 cannot do it
-     for MAX(LONGREAL): ParseReal's repeated multiplication by ten, 308
-     times, lands a few units in the last place away from the value
-     whatever digits are tried, or overflows, so no text verifies.
+     the reader folds the same constant back, exactly, and the name says
+     more than 309 digits would.
 
      (2) FormatReal/FormatRealMagnitude, the fallback for anything else
      (a binary op, a reference to another constant, ...): these fold to
      a self-contained LONGREAL value with no remaining tie to the
      original expression's text or the names it referenced (which might
-     not even be exported), so they still need a real value-to-text
-     algorithm. ConstantEvaluator.ParseReal (confirmed by reading it) is
-     a hand-written digit-by-digit accumulator, not a correctly-rounded
-     strtod-equivalent - and, more subtly, not even internally
-     consistent: its fixed-point path (digit loop only) and its
-     scientific-notation path (digit loop plus a separate repeated-*10.0D0
-     exponent-scaling loop) can land on different LONGREAL bit patterns
-     for "the same" number, since floating-point arithmetic isn't
-     associative. FormatRealMagnitude always emits scientific notation,
-     so this tier's "round-trip-safe" is deliberately narrower than
-     general IEEE-754-correct formatting: text T is correct exactly when
-     ConstantEvaluator.ParseReal(T) = the original LONGREAL bit pattern,
-     verified directly before ever writing T to a file - a "17
-     significant digits always round-trips" argument doesn't hold here,
-     since that assumes a correctly-rounded reader. The algorithm
-     normalizes v to a mantissa in [1,10) and a base-10 exponent (tried
-     at a rough guess and +-1, to absorb that normalization's own drift),
-     extracts digits via repeated "take the integer part, multiply the
-     remainder by 10" (never forming one large "17-digit integer" in a
-     single LONGREAL, which loses exactness well past 2^53), then
-     searches a small window of neighboring digit values - not just the
-     one nearest-rounding candidate - since the fixed-point/scientific
-     mismatch above showed that nearest-rounding alone isn't reliably
-     enough. Out of scope, matching this project's usual narrow-and-
-     documented-boundary style: non-finite values (Inf/NaN) and
-     magnitudes near LONGREAL's extreme exponent range (denormals) are
-     not specially handled - Pow10 can underflow/overflow there. *)
+     not even be exported), so they need a value-to-text algorithm. Since
+     Phase 11 step 2 (inventory A2) both directions are exact:
+     DecimalToDouble.Digits gives the correctly rounded decimal digits of
+     a value at any precision (the exact expansion of m * 2^e, rounded,
+     ties to even) and DecimalToDouble.Parse - ConstantEvaluator.ParseReal
+     - is correctly rounded, so the shortest precision whose text reads
+     back to the value exactly is found by trying 1, 2, ... digits, at
+     most 17 for a LONGREAL, for every finite magnitude, subnormals
+     included. (Before, ParseReal accumulated digits in floating point and
+     was not correctly rounded, so no such argument held: the formatter
+     searched neighbouring digit strings for one that happened to verify,
+     and found none for values of extreme magnitude.) The text is always
+     scientific notation, D.DDD followed by a scale factor. Out of scope:
+     non-finite values. *)
 
   IMPORT SyntaxTree, SymbolTable, Types, Diagnostics, Lexer, Files, Platform,
-         ConstantEvaluator, Out;
+         ConstantEvaluator, DecimalToDouble, Out;
 
   CONST
     nameBufferLength = 300; (* SyntaxTree.identLength (255) + ".sym" comfortably *)
@@ -148,9 +133,9 @@ MODULE ModuleInterface;
     searchPathDirLength = 1024;
     pathBufferLength* = searchPathDirLength + nameBufferLength;
     maxSignificantDigits = 19; (* IEEE double needs at most 17 to round-trip
-      through a correctly-rounded parser; ParseReal isn't one (see header
-      comment), so a couple of extra digits of search headroom are cheap
-      insurance, not a precisely-derived bound. *)
+      through a correctly-rounded parser, which ParseReal is; the extra two
+      only bound the search should that ever be wrong, and the text is
+      verified either way. *)
 
   TYPE
     (* One IMPORT search-path directory. Declared "T = POINTER TO T1" per
@@ -558,86 +543,6 @@ MODULE ModuleInterface;
 
   (* ---- REAL/LONGREAL formatting (see header comment) ---- *)
 
-  (* Every LONGREAL literal below is written "D0"-suffixed on purpose,
-     even 1.0/10.0 (exactly representable in any precision, so it cannot
-     actually matter here) - see ConstantEvaluator.ParseReal*'s own
-     header comment for the real bug this project already hit once from
-     assuming a bare, un-suffixed real literal like "0.1" is evaluated at
-     full LONGREAL precision just because it's used in LONGREAL
-     arithmetic (it isn't: Oberon2.pdf types a scale-factor-less real
-     literal as REAL, and voc evaluates it at that narrower precision
-     before ever widening it). Consistently suffixing every literal here
-     removes the need for a future reader (or editor) to re-derive, site
-     by site, which ones happen to be safe. *)
-  PROCEDURE Pow10(n: INTEGER): LONGREAL;
-    VAR r: LONGREAL; i: INTEGER;
-  BEGIN
-    r := 1.0D0; i := 0;
-    IF n >= 0 THEN
-      WHILE i < n DO r := r * 10.0D0; INC(i) END
-    ELSE
-      WHILE i > n DO r := r / 10.0D0; DEC(i) END
-    END;
-    RETURN r
-  END Pow10;
-
-  (* v > 0. Returns a rough base-10 exponent guess only - the caller
-     (FormatRealMagnitude) tries this value and its two neighbors against
-     a direct division, since this loop's own repeated *10.0/10.0 drift
-     is exactly the kind of imprecision this whole formatter is built to
-     tolerate rather than rely on being exact. *)
-  PROCEDURE RoughExponent(v: LONGREAL): INTEGER;
-    VAR e: INTEGER;
-  BEGIN
-    e := 0;
-    WHILE v >= 10.0D0 DO v := v / 10.0D0; INC(e) END;
-    WHILE v < 1.0D0 DO v := v * 10.0D0; DEC(e) END;
-    RETURN e
-  END RoughExponent;
-
-  PROCEDURE Pow10Int(n: INTEGER): LONGINT;
-    VAR r: LONGINT; i: INTEGER;
-  BEGIN
-    r := 1; i := 0;
-    WHILE i < n DO r := r * 10; INC(i) END;
-    RETURN r
-  END Pow10Int;
-
-  (* mantissa in [1.0, 10.0). Extracts precision digits one at a time
-     (take the integer part, multiply the remainder by 10 - never forming
-     one large "precision-digit integer" in a single LONGREAL, which
-     loses exactness well before 17 digits), rounding the last kept digit
-     from one extra guard digit. Returns a plain LONGINT, not text -
-     FormatRealMagnitude's neighbor search below just adds/subtracts a
-     small delta to this, far simpler than carry-propagating char-array
-     arithmetic; a result of exactly 10^precision (all-9s rounded up) is
-     deliberately left as-is, since the caller's own range check against
-     Pow10Int(precision) already treats that the same as any other
-     delta that overflows the precision-digit range - one exponent
-     higher, no separate special case needed. *)
-  PROCEDURE RoundedDigitsValue(mantissa: LONGREAL; precision: INTEGER): LONGINT;
-    VAR i: INTEGER; d: LONGINT; r: LONGREAL; v: LONGINT;
-  BEGIN
-    r := mantissa; v := 0; i := 0;
-    WHILE i < precision DO
-      d := ENTIER(r);
-      v := v * 10 + d;
-      r := (r - d) * 10.0D0;
-      INC(i)
-    END;
-    IF ENTIER(r) >= 5 THEN INC(v) END;
-    RETURN v
-  END RoundedDigitsValue;
-
-  PROCEDURE IntToDigits(v: LONGINT; precision: INTEGER; VAR digits: ARRAY OF CHAR);
-    VAR i: INTEGER;
-  BEGIN
-    i := precision;
-    WHILE i > 0 DO
-      DEC(i); digits[i] := CHR(ORD("0") + SHORT(v MOD 10)); v := v DIV 10
-    END
-  END IntToDigits;
-
   (* Always "D.DDD" + scale factor, one digit before the point (padded
      with a single "0" after it when precision = 1) - see header comment
      on why fixed-point output isn't attempted. *)
@@ -662,77 +567,29 @@ MODULE ModuleInterface;
     result[len] := 0X
   END BuildCandidate;
 
-  (* v > 0 (sign and zero are FormatReal*'s job). Tries increasing
-     precision (shortest-that-works preferred), and at each precision the
-     rough exponent plus its two neighbors (absorbing RoughExponent's own
-     drift) - every candidate verified against ConstantEvaluator.ParseReal
-     directly (see header comment for why that verification, not the
-     digit math itself, is what makes this "round-trip-safe").
-
-     RoundedDigitsValue's own single "nearest" rounding isn't trusted to
-     be the winning candidate on its own: a real, empirically-confirmed
-     case (the report's own style of constant, e.g. "123.456" with no
-     exponent) showed the naturally-rounded digits verifying false even
-     though they were only 1-2 in the last place away from a candidate
-     that does verify. The reason is structural, not a rounding-precision
-     shortfall: ParseReal parses fixed-point text like "123.456" via its
-     integer-part/fractional-part loops alone, but every candidate this
-     procedure builds is scientific notation, D.DDDDEn, which additionally
-     runs ParseReal's exponent-scaling loop (repeated *10.0D0) -
-     floating-point operations don't associate, so the *extra* multiplies
-     an E/D-suffixed candidate goes through can land on a different exact
-     bit pattern than the fixed-point original even given "the same"
-     digits. So each precision/exponent combination also searches a small
-     window of neighboring digit-string integers (maxDelta below) via
-     plain LONGINT arithmetic, not just the one RoundedDigitsValue
-     produces - cheap (a few dozen ParseReal calls per constant, compile-
-     time only) and turns "hope the nearest rounding happens to verify"
-     into "actually search nearby until one does." A delta pushing the
-     digit value at or past 10^precision is folded into the next decade
-     (one exponent higher) the same way an ordinary rounding carry would
-     be; a delta pushing it below 10^(precision-1) (losing the leading
-     digit) is simply skipped rather than renormalized into the decade
-     below - a real but narrow gap in how much of the neighborhood this
-     searches, acceptable since increasing precision or trying the next
-     exponent neighbor covers the same ground another way. ok = FALSE on
-     the (expected to be essentially unreachable) case that nothing up to
-     maxSignificantDigits verifies. *)
+  (* v > 0 (sign and zero are FormatReal*'s job). The shortest text, in
+     scientific notation, of the digits of v correctly rounded to 1, 2, ...
+     significant digits (DecimalToDouble.Digits, exact) that
+     ConstantEvaluator.ParseReal (DecimalToDouble.Parse, exact) reads back to
+     exactly v: at most 17 digits for a LONGREAL, whatever its magnitude,
+     subnormals included, so ok is always TRUE (Phase 11 step 2, inventory
+     A2; before it, both directions were approximate and this searched a
+     window of neighbouring digit strings for one that happened to verify,
+     which failed for values of extreme magnitude). The text is verified
+     rather than trusted: nothing here assumes 17 digits suffice. *)
   PROCEDURE FormatRealMagnitude(v: LONGREAL; isLongReal: BOOLEAN;
                                 VAR result: ARRAY OF CHAR; VAR ok: BOOLEAN);
-    CONST maxDelta = 4;
     VAR
-      baseExponent, e, precision, expTry, delta, adjExponent: INTEGER;
-      mantissa: LONGREAL;
-      baseValue, candidateValue, lo, hi: LONGINT;
-      digits: ARRAY maxSignificantDigits OF CHAR;
+      precision, exponent: INTEGER;
+      digits: ARRAY maxSignificantDigits + 1 OF CHAR;
       candidate: ARRAY 64 OF CHAR;
   BEGIN
-    baseExponent := RoughExponent(v);
     ok := FALSE;
     precision := 1;
     WHILE ~ok & (precision <= maxSignificantDigits) DO
-      lo := Pow10Int(precision - 1); hi := Pow10Int(precision);
-      expTry := -1;
-      WHILE ~ok & (expTry <= 1) DO
-        e := baseExponent + expTry;
-        mantissa := v / Pow10(e);
-        IF (mantissa >= 1.0D0) & (mantissa < 10.0D0) THEN
-          baseValue := RoundedDigitsValue(mantissa, precision);
-          delta := -maxDelta;
-          WHILE ~ok & (delta <= maxDelta) DO
-            candidateValue := baseValue + delta;
-            adjExponent := e;
-            IF candidateValue >= hi THEN candidateValue := candidateValue DIV 10; INC(adjExponent) END;
-            IF (candidateValue >= lo) & (candidateValue < hi) THEN
-              IntToDigits(candidateValue, precision, digits);
-              BuildCandidate(digits, precision, adjExponent, isLongReal, candidate);
-              ok := ConstantEvaluator.ParseReal(candidate) = v
-            END;
-            INC(delta)
-          END
-        END;
-        INC(expTry)
-      END;
+      DecimalToDouble.Digits(v, precision, digits, exponent);
+      BuildCandidate(digits, precision, exponent, isLongReal, candidate);
+      ok := ConstantEvaluator.ParseReal(candidate) = v;
       INC(precision)
     END;
     IF ok THEN COPY(candidate, result) END

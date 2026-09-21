@@ -212,11 +212,13 @@ MODULE Types;
       (* PLAN.md Phase 9 step 2: for a realValue folded from a bare numeral
          (optionally unary-minus'd), that numeral's own source text, in
          Oberon syntax ("1.5D-3", "-2.0"); empty for a value computed by
-         arithmetic. realVal alone is not trustworthy as a source of the
-         literal's exact bits - ConstantEvaluator.ParseReal is not
-         correctly rounded (see its header comment) - so a backend that
-         wants the number the programmer actually wrote reads this
-         instead, and only falls back to realVal for a computed value. *)
+         arithmetic. realVal is a correctly rounded LONGREAL (Phase 11:
+         ConstantEvaluator.ParseReal is exact), but a REAL numeral must be
+         rounded once, straight to single precision, which a value already
+         rounded to double cannot give, and a decimal string is the one thing
+         LLVM reads exactly - so a backend that wants the number the
+         programmer actually wrote reads this instead, and only falls back to
+         realVal for a computed value. *)
       realText*: ARRAY stringValueLength + 1 OF CHAR;
       boolVal*: BOOLEAN;
       charVal*: CHAR;

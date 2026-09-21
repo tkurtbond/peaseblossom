@@ -60,7 +60,12 @@ MODULE Poc;
 
   IMPORT Modules, Files, Out, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
-         ConstantEvaluator, PredeclaredProcedures, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator;
+         ConstantEvaluator, PredeclaredProcedures, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator,
+         DecimalToDouble;
+  (* DecimalToDouble is used only inside ConstantEvaluator's procedure
+     bodies, and voc's symbol file records only the imports an exported
+     declaration needs, so Stage 0's link line would otherwise miss it: this
+     import is that line's only source for it. *)
 
   CONST
     maxLineLength = 4096;
