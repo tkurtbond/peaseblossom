@@ -1,0 +1,20 @@
+### i686-unknown-linux-gnu -O2
+  SHORTINT  to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
+  INTEGER   to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
+  LONGINT   to ADDRESS: yes  from ADDRESS: yes  a + x: ADDRESS
+  HUGEINT   to ADDRESS: no   from ADDRESS: yes  a + x: wider
+### i686-unknown-linux-gnu -OC
+  SHORTINT  to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
+  INTEGER   to ADDRESS: yes  from ADDRESS: yes  a + x: ADDRESS
+  LONGINT   to ADDRESS: no   from ADDRESS: yes  a + x: wider
+  HUGEINT   to ADDRESS: no   from ADDRESS: yes  a + x: wider
+### x86_64-unknown-linux-gnu -O2
+  SHORTINT  to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
+  INTEGER   to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
+  LONGINT   to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
+  HUGEINT   to ADDRESS: yes  from ADDRESS: yes  a + x: ADDRESS
+### x86_64-unknown-linux-gnu -OC
+  SHORTINT  to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
+  INTEGER   to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
+  LONGINT   to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
+  HUGEINT   to ADDRESS: yes  from ADDRESS: yes  a + x: ADDRESS

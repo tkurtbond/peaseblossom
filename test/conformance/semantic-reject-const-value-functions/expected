@@ -1,0 +1,15 @@
+const-value-functions.mod:7:17: error: ORD of a constant requires a CHAR constant
+const-value-functions.mod:8:18: error: ORD of a constant requires a CHAR constant
+const-value-functions.mod:9:15: error: constant CHR argument out of range
+const-value-functions.mod:10:19: error: constant CHR argument out of range
+const-value-functions.mod:11:17: error: CAP requires a CHAR argument
+const-value-functions.mod:12:14: error: ABS requires a numeric argument
+const-value-functions.mod:13:14: error: constant ABS result too large for HUGEINT
+const-value-functions.mod:14:17: error: constant ENTIER result too large for LONGINT
+const-value-functions.mod:15:21: error: ENTIER requires a real argument
+const-value-functions.mod:16:17: error: constant SHORT result too large for its type
+const-value-functions.mod:17:17: error: constant SHORT result too large for REAL
+const-value-functions.mod:18:16: error: LONG requires a SHORTINT, INTEGER, REAL, HUGEINT, or fixed-width integer argument
+const-value-functions.mod:19:15: error: ODD requires an integer argument
+const-value-functions.mod:20:20: error: a constant function call expects one argument
+14 error(s)

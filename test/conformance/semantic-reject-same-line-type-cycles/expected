@@ -1,0 +1,3 @@
+reject-same-line-type-cycles.mod:11:23: error: forward reference to a type is allowed only as a POINTER TO base type
+reject-same-line-type-cycles.mod:12:12: error: illegal cyclic type declaration
+2 error(s)

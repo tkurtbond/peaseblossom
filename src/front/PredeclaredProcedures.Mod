@@ -282,12 +282,13 @@ MODULE PredeclaredProcedures;
       RETURN Types.Undefined
     END;
     t := checkExpr(scope, args);
-    IF t = Types.ShortInt THEN RETURN Types.Integer
+    IF Types.LongShortByWidth(t) THEN RETURN Types.LongerInteger(t)
+    ELSIF t = Types.ShortInt THEN RETURN Types.Integer
     ELSIF t = Types.Integer THEN RETURN Types.LongInt
     ELSIF t = Types.Real THEN RETURN Types.LongReal
     ELSIF t = Types.Undefined THEN RETURN Types.Undefined
     ELSE
-      Diagnostics.Error(line, column, "LONG requires a SHORTINT, INTEGER, or REAL argument");
+      Diagnostics.Error(line, column, "LONG requires a SHORTINT, INTEGER, REAL, HUGEINT, or fixed-width integer argument");
       RETURN Types.Undefined
     END
   END CheckLong;
@@ -377,12 +378,13 @@ MODULE PredeclaredProcedures;
       RETURN Types.Undefined
     END;
     t := checkExpr(scope, args);
-    IF t = Types.LongInt THEN RETURN Types.Integer
+    IF Types.LongShortByWidth(t) THEN RETURN Types.ShorterInteger(t)
+    ELSIF t = Types.LongInt THEN RETURN Types.Integer
     ELSIF t = Types.Integer THEN RETURN Types.ShortInt
     ELSIF t = Types.LongReal THEN RETURN Types.Real
     ELSIF t = Types.Undefined THEN RETURN Types.Undefined
     ELSE
-      Diagnostics.Error(line, column, "SHORT requires a LONGINT, INTEGER, or LONGREAL argument");
+      Diagnostics.Error(line, column, "SHORT requires a LONGINT, INTEGER, LONGREAL, HUGEINT, or fixed-width integer argument");
       RETURN Types.Undefined
     END
   END CheckShort;

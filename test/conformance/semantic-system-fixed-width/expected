@@ -64,7 +64,7 @@
 -OC  h := MIN(SYSTEM.INT16)                         ok
 -O2  n := SIZE(SYSTEM.INT8) + SIZE(SYSTEM.INT16) + SIZE(SYSTEM.INT32) + SIZE(SYSTEM.INT64) ok
 -OC  n := SIZE(SYSTEM.INT8) + SIZE(SYSTEM.INT16) + SIZE(SYSTEM.INT32) + SIZE(SYSTEM.INT64) ok
--O2  n := LONG(i)                                   LONG requires a SHORTINT, INTEGER, or REAL argument
--OC  n := LONG(i)                                   LONG requires a SHORTINT, INTEGER, or REAL argument
--O2  i := SHORT(q)                                  SHORT requires a LONGINT, INTEGER, or LONGREAL argument
--OC  i := SHORT(q)                                  SHORT requires a LONGINT, INTEGER, or LONGREAL argument
+-O2  n := LONG(i)                                   assignment is not type-compatible
+-OC  n := LONG(i)                                   assignment is not type-compatible
+-O2  i := SHORT(q)                                  ok
+-OC  i := SHORT(q)                                  ok

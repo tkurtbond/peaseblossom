@@ -208,6 +208,17 @@ MODULE SymbolTable;
     RETURN o
   END Insert;
 
+  (* TRUE when obj was declared at or after the source position (line,
+     column) - a use there is a forward reference (or a name's own use
+     inside its declaration). Compares the column too, not only the line:
+     `A = INTEGER; B = ARRAY 3 OF A;` on one line is a backward reference
+     that a line-only test wrongly called forward (voc accepts it). Only
+     meaningful for a use in the same file as obj's declaration. *)
+  PROCEDURE DeclaredAtOrAfter*(obj: Object; line, column: INTEGER): BOOLEAN;
+  BEGIN
+    RETURN (obj.declLine > line) OR ((obj.declLine = line) & (obj.declColumn >= column))
+  END DeclaredAtOrAfter;
+
   PROCEDURE InsertPredeclared(name: ARRAY OF CHAR; type: Types.Type);
     VAR ident: SyntaxTree.Ident; o: Object;
   BEGIN

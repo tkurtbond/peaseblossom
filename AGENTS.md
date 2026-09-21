@@ -227,6 +227,11 @@ during Stage 0/1/2 bootstrapping:
   folder seems to suffer the same way: it rejects the product
   `(-4611686018427387904) * 2` (exactly -2^63, which fits), and its compiler
   dies of SIGFPE folding `MIN(HUGEINT) DIV (-1)`.
+- **`CAP` of a character that is not a lower-case letter is masked**: voc's
+  `CAP(x)` is C's `x & 0x5F`, so `CAP("7")` is 17X and `CAP("{")` is `[`, in a
+  `CONST` and at run time alike. The report defines `CAP` only for letters;
+  poc's, folded or generated, changes a lower-case letter and leaves anything
+  else as it is (`test/conformance/llvm-const-value-functions`).
 - **A row of a multi-dimensional open array passed on as an open array
   ignores the row stride**: with `a: ARRAY OF ARRAY OF INTEGER`,
   `Sum(a[r])` (a call whose parameter is `VAR ARRAY OF INTEGER`) makes voc
@@ -300,9 +305,15 @@ and `MOVE`, pulled forward from Phase 10 step 7 because the garbage
 collector (`rtl/llvm/GarbageCollectedHeap.Mod`, written as ordinary Oberon-2
 over raw addresses) needs them. `SYSTEM.ADDRESS` is deliberately **not**
 voc's `LONGINT` alias: it is its own integer type, as wide as a pointer on
-the target, ranked between `LONGINT` and `HUGEINT` in the numeric hierarchy
-(`LONGINT ⊆ ADDRESS ⊆ HUGEINT` - a `LONGINT` can be assigned to an address,
-not the reverse). `GET`/`PUT` access memory with no alignment assumption;
+the target, and placed among the integers by that width (Phase 11): as wide as
+a `LONGINT` or narrower and it is the same as `SYSTEM.INTn` - two types of one
+width include each other, a wider includes a narrower and not the reverse.
+So a `LONGINT` is assignable to an address where it is no wider (always,
+except under `-OC` on a 32-bit target, where it is 8 bytes to the address's
+4 and needs `SYSTEM.VAL(SYSTEM.ADDRESS, ...)`), a mixed `ADDRESS`/`LONGINT`
+operation is done at the wider width, and on a 64-bit target `ADDRESS` and
+`HUGEINT` include each other (`semantic-address-width` has the whole
+table). `GET`/`PUT` access memory with no alignment assumption;
 `PUT(a, x)` stores `x` at `x`'s own type, so a bare numeral is stored at
 its minimal integer type's width (`PUT(a, 5)` writes a `SHORTINT`-sized
 value under `-O2`). `VAL(T, x)` between scalars of different widths
@@ -340,9 +351,14 @@ against real voc 2026-09-20). What a program can observe:
   under `-O2`, `INT32` and `INTEGER` under `-OC`; `INT64` and `HUGEINT` under
   both), a wider includes a narrower and not the reverse. An integer constant
   whose *value* fits is assignable to any of them, since a constant's own type
-  is its minimal one under the model. `MAX`/`MIN`/`SIZE` work. Two gaps:
-  `LONG`/`SHORT` reject them (say "requires a SHORTINT, INTEGER, or REAL
-  argument"), and under `-OC` an `INT8` met by an integer *literal* in an
+  is its minimal one under the model. `MAX`/`MIN`/`SIZE` work. `LONG` and
+  `SHORT` of them, and of `HUGEINT`, go by byte width as in voc (probed under
+  both models, Phase 11 step 2): `LONG(x)` is the narrowest of `SHORTINT`/
+  `INTEGER`/`LONGINT` strictly wider than `x`, else `HUGEINT`; `SHORT(x)` the
+  widest strictly narrower, else `SYSTEM.INT8`. So `LONG` of an `INT32` is a
+  `LONGINT` under `-OC` and a `HUGEINT` under `-O2`. `LONG(LONGINT)` and
+  `SHORT(SHORTINT)` stay errors, as in the report (voc accepts both). One gap:
+  under `-OC` an `INT8` met by an integer *literal* in an
   expression (`b + 1`) is a `SHORTINT`, the literal's own type being at least
   two bytes there, so it cannot be assigned back to an `INT8` without
   `SYSTEM.VAL(SYSTEM.INT8, ...)`. `SET32` is still `SET` (the `-O2` width) and
@@ -520,8 +536,19 @@ like voc's), outermost dimension first:
   value needs it - voc keeps LONGINT and silently truncates (`l := ASH(1, 40)`
   stores 0 under `-O2`), poc types it HUGEINT, making that assignment a
   compile error - and, like voc, is not shrunk afterwards: `ASH(1, 3)` is a
-  LONGINT. The other value-argument predeclared functions (`ORD`, `ABS`,
-  `CHR`, ...) are not folded in a `CONST` yet.
+  LONGINT.
+- **`ORD`, `ABS`, `CHR`, `CAP`, `ENTIER`, `LONG`, `SHORT` and `ODD` of
+  constants fold** (Phase 11 step 2, probed against voc under both models: the
+  table is `test/conformance/semantic-const-value-functions`, which also lists
+  the rows where poc differs). `ORD` takes a `CHAR` or a one-character string
+  and is an `INTEGER`; `CHR` takes 0..255; `ABS` of an integer has the minimal
+  type its value fits and `ENTIER` is a `LONGINT`; `LONG`/`SHORT` follow the
+  checker's types and round a real through single precision; `SHORT` of an
+  integer constant is always an error (a constant's type is minimal, so its
+  value never fits the shorter one). An argument that does not fit is a
+  compile-time error, in a statement as well as in a `CONST`. `ENTIER` of a
+  value beyond the model's `LONGINT` is an error, until the run-time decision
+  (`doc/phase-11-inventory.md` A4) is made.
 - **`MAX`/`MIN` of `REAL` and `LONGREAL` are constants**: IEEE 754's
   largest finite values and their negations, as at run time.
 - **`.sym` files**: a folded integer is written as its value, so an importer
@@ -642,8 +669,14 @@ they were rather than revisited, since simplifying already-tested
 Appendix A predicates for a purely cosmetic win wasn't worth the risk;
 `parser-self-check` itself was not widened to cover `Types.Mod`/
 `SymbolTable.Mod`/`ConstantEvaluator.Mod`/`MemoryLayout.Mod` either,
-since that remains an unrelated test-harness completeness gap. See
-`src/front/README.md` for the module list.
+since that remains an unrelated test-harness completeness gap. (Decided
+2026-09-20, Phase 11: the workarounds stay as written for good. Where they
+are: the Appendix A predicates in `Types.Mod` (`IsNumeric`, `Rank`,
+`Extends*`, `ArrayCompatible*`, ...), `MemoryLayout.Mod`'s `DescriptorSize` and
+a few sites in `SemanticActions.Mod`; each binds the guarded value to a local
+variable instead of writing `x(T).field`. Poc's own parser now accepts the
+chained form, so new code may use it; nobody needs to go back and rewrite the
+old.) See `src/front/README.md` for the module list.
 
 Phase 6 (`SemanticActions.Mod`'s `ResolveProcDecls`/`CheckArguments`/
 `CheckWithStatement` families, a new `PredeclaredProcedures.Mod`,
@@ -942,7 +975,12 @@ unexported declarations - so a module extending an imported record can
 reproduce its base's layout and `ProcTab` slot numbering itself, at its own
 word size and size model. (voc instead stores computed sizes, offsets and
 method numbers in a binary `.sym`, which is why it ships one symbol tree
-per size model; poc keeps one target-independent, valid-source `.sym`.)
+per size model; poc keeps one valid-source `.sym` that carries no layout.
+A folded constant in it - `SIZE(T)` of a pointer, a size-model `MAX`/`MIN` -
+is a number for the target and size model of the run that wrote it, so
+`-emit-interface` output differs by word size and size model there; the
+whole-program commands regenerate every import's `.sym` for the actual target,
+so a client never reads a foreign one - see `module-interface-target-constants`.)
 `ModuleInterface.Write*` finds the needed unexported types by running its
 whole printing pass repeatedly with output suppressed until nothing new is
 found, then once for real, so marking and printing share every lookup rule.
@@ -971,5 +1009,8 @@ exported names sharing one type printed as the cyclic `A* = B; B* = A;`;
 `ResolveProcDecls` treated an override of an *imported* procedure as
 completing that procedure's forward declaration (mutating the base's
 method and never recording the override); and a function returning a
-pointer emitted the invalid placeholder `ret ptr 0`. Not done: the optional
-`-show-interface` (exported-view-only) mode.
+pointer emitted the invalid placeholder `ret ptr 0`. `poc -show-interface <file>` (2026-09-20) prints the exported-only
+view, as voc's `showdef` does, since a `.sym` no longer is one: only the
+exported fields and type-bound procedures of each record, plain `PROCEDURE`
+headings, unexported types named but not declared; like `-emit-interface`
+it reads its imports' `.sym` files and writes nothing.

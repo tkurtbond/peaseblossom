@@ -140,7 +140,7 @@ MODULE ModuleInterface;
      not specially handled - Pow10 can underflow/overflow there. *)
 
   IMPORT SyntaxTree, SymbolTable, Types, Diagnostics, Lexer, Files, Platform,
-         ConstantEvaluator;
+         ConstantEvaluator, Out;
 
   CONST
     nameBufferLength = 300; (* SyntaxTree.identLength (255) + ".sym" comfortably *)
@@ -231,6 +231,14 @@ MODULE ModuleInterface;
        bug whenever two exported names share a type). *)
     printingDecl: SymbolTable.Object;
     forwardBaseOK: BOOLEAN;
+    (* Show* (poc -show-interface, PLAN.md Phase 11 step 2): the exported
+       view, printed to standard output. exportedView leaves out every
+       member a .sym carries only for an importer's layout (hidden fields,
+       hidden type-bound procedures) and never prints an unexported TYPE,
+       though an exported signature may still *name* one; toConsole sends
+       WriteStr/WriteLn to Out instead of the file. Both are FALSE outside
+       one Show* call. *)
+    exportedView, toConsole: BOOLEAN;
 
   (* ---- File naming ---- *)
 
@@ -444,13 +452,15 @@ MODULE ModuleInterface;
     VAR i: INTEGER;
   BEGIN
     IF dryRun THEN RETURN END;
+    IF toConsole THEN Out.String(s); RETURN END;
     i := 0;
     WHILE s[i] # 0X DO Files.Write(w, s[i]); INC(i) END
   END WriteStr;
 
   PROCEDURE WriteLn(VAR w: Files.Rider);
   BEGIN
-    IF ~dryRun THEN Files.Write(w, 0AX) END
+    IF dryRun THEN RETURN END;
+    IF toConsole THEN Out.Ln ELSE Files.Write(w, 0AX) END
   END WriteLn;
 
   (* Digits for a negative x are not taken from -x, which does not exist at
@@ -900,6 +910,7 @@ MODULE ModuleInterface;
   PROCEDURE NeedType(obj: SymbolTable.Object);
     VAR n: NeededType;
   BEGIN
+    IF exportedView THEN RETURN END;
     IF ~obj.exported & ~IsNeeded(obj) THEN
       NEW(n); n.obj := obj; n.next := neededHead; neededHead := n;
       needChanged := TRUE
@@ -1005,13 +1016,15 @@ MODULE ModuleInterface;
          ones carry no export mark, so an importer's checker can still
          tell them apart and refuse access. *)
       WHILE f # NIL DO
-        IF ~first THEN WriteStr(w, "; ") END;
-        WriteStr(w, f.name);
-        IF f.exported THEN
-          IF f.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END
+        IF f.exported OR ~exportedView THEN
+          IF ~first THEN WriteStr(w, "; ") END;
+          WriteStr(w, f.name);
+          IF f.exported THEN
+            IF f.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END
+          END;
+          WriteStr(w, ": "); PrintTypeRef(w, scope, f.type);
+          first := FALSE
         END;
-        WriteStr(w, ": "); PrintTypeRef(w, scope, f.type);
-        first := FALSE;
         f := f.next
       END;
       WriteStr(w, " END")
@@ -1154,7 +1167,7 @@ MODULE ModuleInterface;
        exported. *)
     recvObj := SymbolTable.FindLocal(scope, m.receiverTypeName);
     IF recvObj # NIL THEN NeedType(recvObj) END;
-    WriteStr(w, "  PROCEDURE^ (");
+    IF exportedView THEN WriteStr(w, "  PROCEDURE (") ELSE WriteStr(w, "  PROCEDURE^ (") END;
     IF m.receiverIsVar THEN WriteStr(w, "VAR ") END;
     WriteStr(w, "self: "); WriteStr(w, m.receiverTypeName);
     WriteStr(w, ") "); WriteStr(w, m.name);
@@ -1224,7 +1237,10 @@ MODULE ModuleInterface;
         IF (rt # NIL) & ~IsDone(done, rt) THEN
           NEW(entry); entry.rec := rt; entry.next := done; done := entry;
           m := rt.methods;
-          WHILE m # NIL DO PrintMethod(w, scope, m); m := m.next END
+          WHILE m # NIL DO
+            IF m.exported OR ~exportedView THEN PrintMethod(w, scope, m) END;
+            m := m.next
+          END
         END
       END;
       d := d.next
@@ -1253,7 +1269,8 @@ MODULE ModuleInterface;
         IF (obj # NIL) & obj.exported & (obj.class = SymbolTable.procClass)
            & (d.isForward = obj.isForwardProc) THEN
           pt := obj.type(Types.ProcedureType);
-          WriteStr(w, "  PROCEDURE^ "); WriteStr(w, obj.name);
+          IF exportedView THEN WriteStr(w, "  PROCEDURE ") ELSE WriteStr(w, "  PROCEDURE^ ") END;
+          WriteStr(w, obj.name);
           WriteStr(w, "*(");
           first := TRUE; p := pt.params;
           WHILE p # NIL DO
@@ -1387,5 +1404,29 @@ MODULE ModuleInterface;
     END;
     RETURN ok
   END Write;
+
+  (* poc -show-interface: the exported view of a checked module, on standard
+     output - what voc's showdef prints for an imported one, and what a
+     reader wants that a .sym no longer is since Phase 9 step 4a: exported
+     constants, types, variables and procedures, and of each record only its
+     exported fields and type-bound procedures. Built from the very printers
+     Write* uses, with exportedView set (see the writer-state comment), so
+     the two cannot disagree about how a declaration reads. An unexported
+     type an exported signature mentions is named, not declared: the view is
+     for reading, and is not source an importer could check - which is also why
+     a procedure reads as a plain PROCEDURE heading, without the ^ a .sym
+     puts on every body-less one. *)
+  PROCEDURE Show*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope);
+    VAR w: Files.Rider;
+  BEGIN
+    neededHead := NIL; printingDecl := NIL; forwardBaseOK := FALSE;
+    dryRun := FALSE; exportedView := TRUE; toConsole := TRUE;
+    WriteStr(w, "MODULE "); WriteStr(w, module.name); WriteStr(w, ";");
+    WriteLn(w);
+    PrintImports(w, scope);
+    PrintDeclarations(w, module, scope);
+    WriteStr(w, "END "); WriteStr(w, module.name); WriteStr(w, "."); WriteLn(w);
+    exportedView := FALSE; toConsole := FALSE
+  END Show;
 
 END ModuleInterface.

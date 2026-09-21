@@ -1,0 +1,11 @@
+-target i686-unknown-linux-gnu:
+ PtrSize* = 4;  RecSize* = 8;  LongMax* = 2147483647;  SetMax* = 31; 
+-target i686-unknown-linux-gnu -OC:
+ PtrSize* = 4;  RecSize* = 8;  LongMax* = 9223372036854775807;  SetMax* = 63; 
+-target x86_64-unknown-linux-gnu:
+ PtrSize* = 8;  RecSize* = 16;  LongMax* = 2147483647;  SetMax* = 31; 
+-target x86_64-unknown-linux-gnu -OC:
+ PtrSize* = 8;  RecSize* = 16;  LongMax* = 9223372036854775807;  SetMax* = 63; 
+whole-program: lib.sym regenerated:
+ PtrSize* = 8;  RecSize* = 16;  LongMax* = 2147483647;  SetMax* = 31; 
+@client.a = global [8 x i8] zeroinitializer

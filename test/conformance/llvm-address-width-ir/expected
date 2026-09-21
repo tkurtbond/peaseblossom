@@ -1,0 +1,6 @@
+  %t1 = sext i16 5 to i32
+  %t2 = sext i16 7 to i64
+  %t4 = sext i32 %t3 to i64
+  %t5 = icmp sle i64 %t4, 9223372036854775807
+  %t9 = sext i32 %t7 to i64
+  %t10 = icmp eq i64 %t9, %t8

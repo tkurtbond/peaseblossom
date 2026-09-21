@@ -1,0 +1,40 @@
+MODULE shapes;
+  CONST
+    Max* = 100;
+  TYPE
+    Shape* = POINTER TO ShapeDesc;
+    ShapeDesc* = RECORD id*: INTEGER; label-: ARRAY 8 OF CHAR; next*: Shape END;
+    Counter* = RECORD visible*: INTEGER END;
+  VAR
+    count*: INTEGER;
+    total-: LONGINT;
+  PROCEDURE (self: Shape) Area*(): INTEGER;
+  PROCEDURE Make*(id: INTEGER): Shape;
+  PROCEDURE Take*(p: PrivPtr; VAR c: Counter);
+END shapes.
+--- .sym:
+MODULE shapes;
+  CONST
+    Max* = 100;
+  TYPE
+    Shape* = POINTER TO ShapeDesc;
+    ShapeDesc* = RECORD id*: INTEGER; weight: HUGEINT; label-: ARRAY 8 OF CHAR; next*: Shape END;
+    Priv = RECORD n: INTEGER END;
+    PrivPtr = POINTER TO Priv;
+    Counter* = RECORD hidden: INTEGER; visible*: INTEGER END;
+  VAR
+    count*: INTEGER;
+    total-: LONGINT;
+  PROCEDURE^ (self: Shape) Area*(): INTEGER;
+  PROCEDURE^ (self: Shape) Reset();
+  PROCEDURE^ Make*(id: INTEGER): Shape;
+  PROCEDURE^ Take*(p: PrivPtr; VAR c: Counter);
+END shapes.
+--- client (imports shapes):
+MODULE client;
+  IMPORT shapes;
+  TYPE
+    Holder* = RECORD item*: shapes.Shape END;
+  PROCEDURE Use*(h: Holder): shapes.Shape;
+END client.
+client.sym not written

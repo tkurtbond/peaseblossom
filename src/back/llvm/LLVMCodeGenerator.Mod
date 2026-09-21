@@ -3379,7 +3379,8 @@ MODULE LLVMCodeGenerator;
     VAR v: Value; target: Types.Type;
   BEGIN
     GenerateExpr(w, cg, args, v);
-    IF v.oberonType = Types.ShortInt THEN target := Types.Integer
+    IF Types.LongShortByWidth(v.oberonType) THEN target := Types.LongerInteger(v.oberonType)
+    ELSIF v.oberonType = Types.ShortInt THEN target := Types.Integer
     ELSIF v.oberonType = Types.Integer THEN target := Types.LongInt
     ELSE target := Types.LongReal
     END;
@@ -3395,7 +3396,8 @@ MODULE LLVMCodeGenerator;
     VAR v: Value; target: Types.Type; targetLLVMType: ValueText; opText: ARRAY 8 OF CHAR;
   BEGIN
     GenerateExpr(w, cg, args, v);
-    IF v.oberonType = Types.LongInt THEN target := Types.Integer
+    IF Types.LongShortByWidth(v.oberonType) THEN target := Types.ShorterInteger(v.oberonType)
+    ELSIF v.oberonType = Types.LongInt THEN target := Types.Integer
     ELSIF v.oberonType = Types.Integer THEN target := Types.ShortInt
     ELSE target := Types.Real
     END;
@@ -4445,7 +4447,8 @@ MODULE LLVMCodeGenerator;
         IF IsGuardExpr(cg, expr) THEN
           GenerateGuardExpr(w, cg, expr, result)
         ELSIF expr.hasParens THEN
-          IF ~((expr.designator.name = "ASH") & GenerateFoldedInteger(w, cg, expr, result)) THEN
+          IF ~(((expr.designator.name = "ASH") OR ConstantEvaluator.IsIntegerValueFunctionName(expr.designator.name))
+               & GenerateFoldedInteger(w, cg, expr, result)) THEN
             GenerateCall(w, cg, expr.designator, expr.args, result)
           END
         ELSE

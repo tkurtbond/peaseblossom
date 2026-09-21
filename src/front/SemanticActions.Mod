@@ -932,7 +932,7 @@ MODULE SemanticActions;
       Diagnostics.Error(node.line, node.column,
         "a record may not directly contain itself; use POINTER TO instead");
       RETURN Types.Undefined
-    ELSIF ~allowForward & (node.qualifier[0] = 0X) & (obj.declLine >= node.line) THEN
+    ELSIF ~allowForward & (node.qualifier[0] = 0X) & SymbolTable.DeclaredAtOrAfter(obj, node.line, node.column) THEN
       (* Checked before the obj.type # NIL fast path below, not after -
          found while implementing "Declaration order" (PLAN.md's "Open
          design questions"): once CONST/TYPE/VAR resolve in one merged

@@ -146,7 +146,10 @@ MODULE ConstantEvaluator;
 
   PROCEDURE SetWordSize*(size: INTEGER);
   BEGIN
-    wordSize := size
+    wordSize := size;
+    (* where SYSTEM.ADDRESS sits among the integers depends on it: see
+       Types.Order *)
+    Types.SetAddressBytes(size)
   END SetWordSize;
 
   PROCEDURE UndefinedValue(): Types.Value;
@@ -374,7 +377,7 @@ MODULE ConstantEvaluator;
     obj := FindQualifiedConst(scope, de.designator);
     IF (obj = NIL) OR (obj.class # SymbolTable.typeClass) THEN
       RETURN NIL
-    ELSIF (de.designator.qualifier[0] = 0X) & (obj.declLine >= expr.line) THEN
+    ELSIF (de.designator.qualifier[0] = 0X) & SymbolTable.DeclaredAtOrAfter(obj, expr.line, expr.column) THEN
       (* A same-module (unqualified) forward reference - PLAN.md's
          "Declaration order": now that CONST/TYPE/VAR resolve in one
          merged textual-order pass (SemanticActions.ResolveDeclSeq),
@@ -594,6 +597,242 @@ MODULE ConstantEvaluator;
     RETURN result
   END EvaluateAsh;
 
+  (* Types.ValueDesc.realText's own negation: "1.5" becomes "-1.5" and
+     "-1.5" becomes "1.5"; an empty source stays empty (a computed value
+     has no numeral to negate), and a source too long to take one more
+     character is dropped too (empty), which only costs the backend its
+     exact-numeral shortcut, never correctness. *)
+  PROCEDURE NegateRealText(source: ARRAY OF CHAR; VAR negated: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    negated[0] := 0X;
+    IF source[0] = "-" THEN
+      i := 1;
+      WHILE source[i] # 0X DO negated[i - 1] := source[i]; INC(i) END;
+      negated[i - 1] := 0X
+    ELSIF source[0] # 0X THEN
+      i := 0;
+      WHILE source[i] # 0X DO INC(i) END;
+      IF i < LEN(negated) - 1 THEN
+        negated[0] := "-";
+        i := 0;
+        WHILE source[i] # 0X DO negated[i + 1] := source[i]; INC(i) END;
+        negated[i + 1] := 0X
+      END
+    END
+  END NegateRealText;
+
+  (* ---- CONST ORD, ABS, CHR, CAP, ENTIER, LONG, SHORT, ODD ----
+
+     Phase 11 step 2 (inventory A1): the rest of the predeclared functions
+     that take a *value*, folded the way EvaluateAsh folds ASH. All probed
+     against voc 2026-09-20 under -O2 and -OC (the matrix is in
+     doc/phase-11-inventory.md's A1 row); what a program can observe:
+     - ORD takes a CHAR constant or a one-character string (not a BOOLEAN or
+       a SET, which voc rejects) and is an INTEGER, never re-typed smaller;
+       CHR takes an integer in 0..255 ("constant CHR argument out of range"
+       outside it, voc's "illegal value of parameter") and CAP a CHAR or
+       one-character string, both giving a CHAR (a CAP of a character that is
+       not a lower-case letter is that character - voc's masks it).
+     - ABS of an integer takes the minimal type its value fits (ABS(-500) is
+       an INTEGER under -O2, a SHORTINT under -OC), and is an error only
+       past HUGEINT (ABS(MIN(HUGEINT))); of a real it keeps the type, and a
+       literal's exact text (NegateRealText) so ABS(-0.1) is 0.1 to the bit.
+     - ENTIER of a real is a LONGINT, whatever its value's own size, and an
+       error when the floor does not fit the model's LONGINT (voc dies of a
+       "Halt(-8)" in that range and says "number too large" past 2^63; a
+       HUGEINT-valued ENTIER waits on the run-time question, inventory A4).
+     - LONG and SHORT follow the same type rules as the checker
+       (PredeclaredProcedures.CheckLong/CheckShort): no re-typing, so LONG of
+       an INTEGER-typed 500 is a LONGINT. SHORT is an error when the value
+       does not fit the shorter type ("number too large" in voc: SHORT(500)
+       under -O2 fits no SHORTINT), and LONG of a REAL, SHORT of a LONGREAL
+       round through single precision. Two differences from voc, both in
+       what poc keeps of the report: LONG(LONGINT) and SHORT(SHORTINT) are
+       errors here, and under -OC voc types a small integer constant as a
+       one-byte integer of its own, so LONG(3) is a SHORTINT there and an
+       INTEGER here.
+     - ODD of an integer is a BOOLEAN.
+     A real result carries no numeral text but ABS's. *)
+
+  PROCEDURE IsValueFunctionName*(name: SyntaxTree.Ident): BOOLEAN;
+  BEGIN
+    RETURN (name = "ORD") OR (name = "ABS") OR (name = "CHR") OR (name = "CAP")
+        OR (name = "ENTIER") OR (name = "LONG") OR (name = "SHORT") OR (name = "ODD")
+  END IsValueFunctionName;
+
+  (* Whether the function's result is an integer, for a caller that folds
+     only integer-typed expressions (the code generator's
+     GenerateFoldedInteger) and would otherwise Evaluate for nothing. ABS
+     is integer or real by its argument; this says yes for it, and the
+     caller tests the folded value's own kind. *)
+  PROCEDURE IsIntegerValueFunctionName*(name: SyntaxTree.Ident): BOOLEAN;
+  BEGIN
+    RETURN (name = "ORD") OR (name = "ABS") OR (name = "ENTIER")
+        OR (name = "LONG") OR (name = "SHORT")
+  END IsIntegerValueFunctionName;
+
+  PROCEDURE TypedInteger(value: LONGINT; type: Types.Type): Types.Value;
+    VAR v: Types.Value;
+  BEGIN
+    NEW(v); v.kind := Types.intValue; v.type := type; v.intVal := value;
+    RETURN v
+  END TypedInteger;
+
+  (* x as a CHAR: a CHAR constant, or a string of exactly one character
+     (Oberon2.pdf §3: "a string of length 1 can be used wherever a
+     character constant is allowed"). *)
+  PROCEDURE ConstantChar(x: Types.Value; VAR ch: CHAR): BOOLEAN;
+  BEGIN
+    IF x.kind = Types.charValue THEN ch := x.charVal; RETURN TRUE
+    ELSIF (x.kind = Types.stringValue) & (x.stringVal[0] # 0X) & (x.stringVal[1] = 0X) THEN
+      ch := x.stringVal[0]; RETURN TRUE
+    ELSE
+      RETURN FALSE
+    END
+  END ConstantChar;
+
+  (* value fits a two's-complement integer of the given byte width. *)
+  PROCEDURE FitsBytes(value: LONGINT; bytes: INTEGER): BOOLEAN;
+    VAR bound: LONGINT; i: INTEGER;
+  BEGIN
+    IF bytes >= 8 THEN RETURN TRUE END;
+    bound := 1; i := 1;
+    WHILE i < 8 * bytes DO bound := bound * 2; INC(i) END;
+    RETURN (value >= -bound) & (value < bound)
+  END FitsBytes;
+
+  (* x rounded to the nearest single-precision value, held in a LONGREAL.
+     Written through a REAL variable: voc folds LONG(SHORT(x)) to x
+     (AGENTS.md, "Known voc bugs"), and x must not survive unrounded. *)
+  PROCEDURE RoundToSingle(x: LONGREAL): LONGREAL;
+    VAR r: REAL;
+  BEGIN
+    r := SHORT(x);
+    RETURN r
+  END RoundToSingle;
+
+  PROCEDURE EvaluateValueFunction(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode;
+                                  scope: SymbolTable.Scope; line, column: INTEGER): Types.Value;
+    VAR x, result: Types.Value; ch: CHAR; value: LONGINT; limit: LONGREAL;
+  BEGIN
+    IF (args = NIL) OR (args.next # NIL) THEN
+      Diagnostics.Error(line, column, "a constant function call expects one argument");
+      RETURN UndefinedValue()
+    END;
+    x := EvaluateExpr(args, scope);
+    IF x.type = Types.Undefined THEN RETURN UndefinedValue() END;
+    IF name = "ORD" THEN
+      IF ~ConstantChar(x, ch) THEN
+        Diagnostics.Error(line, column, "ORD of a constant requires a CHAR constant");
+        RETURN UndefinedValue()
+      END;
+      RETURN TypedInteger(ORD(ch), Types.Integer)
+    ELSIF name = "ABS" THEN
+      IF Types.IsInteger(x.type) THEN
+        IF x.intVal = minHugeInt THEN
+          Diagnostics.Error(line, column, "constant ABS result too large for HUGEINT");
+          RETURN UndefinedValue()
+        END;
+        value := x.intVal;
+        IF value < 0 THEN value := -value END;
+        RETURN TypedInteger(value, MinimalIntegerType(value))
+      ELSIF (x.type = Types.Real) OR (x.type = Types.LongReal) THEN
+        NEW(result); result.kind := Types.realValue; result.type := x.type;
+        result.realVal := ABS(x.realVal);
+        IF x.realText[0] = "-" THEN NegateRealText(x.realText, result.realText)
+        ELSE COPY(x.realText, result.realText)
+        END;
+        RETURN result
+      ELSE
+        Diagnostics.Error(line, column, "ABS requires a numeric argument");
+        RETURN UndefinedValue()
+      END
+    ELSIF name = "CHR" THEN
+      IF ~Types.IsInteger(x.type) THEN
+        Diagnostics.Error(line, column, "CHR requires an integer argument");
+        RETURN UndefinedValue()
+      ELSIF (x.intVal < 0) OR (x.intVal > 255) THEN
+        Diagnostics.Error(line, column, "constant CHR argument out of range");
+        RETURN UndefinedValue()
+      END;
+      NEW(result); result.kind := Types.charValue; result.type := Types.Char;
+      result.charVal := CHR(x.intVal);
+      RETURN result
+    ELSIF name = "CAP" THEN
+      IF ~ConstantChar(x, ch) THEN
+        Diagnostics.Error(line, column, "CAP requires a CHAR argument");
+        RETURN UndefinedValue()
+      END;
+      NEW(result); result.kind := Types.charValue; result.type := Types.Char;
+      (* only a lower-case letter changes, as in the generated code; voc's
+         CAP masks with 0x5F, so CAP("7") is 17X there (AGENTS.md) *)
+      IF (ch >= "a") & (ch <= "z") THEN result.charVal := CHR(ORD(ch) - 32)
+      ELSE result.charVal := ch
+      END;
+      RETURN result
+    ELSIF name = "ENTIER" THEN
+      IF (x.type # Types.Real) & (x.type # Types.LongReal) THEN
+        Diagnostics.Error(line, column, "ENTIER requires a real argument");
+        RETURN UndefinedValue()
+      END;
+      limit := PowerOfTwo(63);
+      IF (x.realVal >= limit) OR (x.realVal < -limit) THEN
+        Diagnostics.Error(line, column, "constant ENTIER result too large for LONGINT");
+        RETURN UndefinedValue()
+      END;
+      value := ENTIER(x.realVal);
+      IF (value < minLongInt) OR (value > maxLongInt) THEN
+        Diagnostics.Error(line, column, "constant ENTIER result too large for LONGINT");
+        RETURN UndefinedValue()
+      END;
+      RETURN TypedInteger(value, Types.LongInt)
+    ELSIF name = "LONG" THEN
+      IF x.type = Types.Real THEN
+        NEW(result); result.kind := Types.realValue; result.type := Types.LongReal;
+        result.realVal := RoundToSingle(x.realVal);
+        RETURN result
+      ELSIF Types.LongShortByWidth(x.type) THEN
+        RETURN TypedInteger(x.intVal, Types.LongerInteger(x.type))
+      ELSIF x.type = Types.ShortInt THEN RETURN TypedInteger(x.intVal, Types.Integer)
+      ELSIF x.type = Types.Integer THEN RETURN TypedInteger(x.intVal, Types.LongInt)
+      ELSE
+        Diagnostics.Error(line, column, "LONG requires a SHORTINT, INTEGER, REAL, HUGEINT, or fixed-width integer argument");
+        RETURN UndefinedValue()
+      END
+    ELSIF name = "SHORT" THEN
+      IF x.type = Types.LongReal THEN
+        IF (x.realVal > MaxReal()) OR (x.realVal < -MaxReal()) THEN
+          Diagnostics.Error(line, column, "constant SHORT result too large for REAL");
+          RETURN UndefinedValue()
+        END;
+        NEW(result); result.kind := Types.realValue; result.type := Types.Real;
+        result.realVal := RoundToSingle(x.realVal);
+        RETURN result
+      END;
+      IF Types.LongShortByWidth(x.type) THEN result := TypedInteger(x.intVal, Types.ShorterInteger(x.type))
+      ELSIF x.type = Types.LongInt THEN result := TypedInteger(x.intVal, Types.Integer)
+      ELSIF x.type = Types.Integer THEN result := TypedInteger(x.intVal, Types.ShortInt)
+      ELSE
+        Diagnostics.Error(line, column, "SHORT requires a LONGINT, INTEGER, LONGREAL, HUGEINT, or fixed-width integer argument");
+        RETURN UndefinedValue()
+      END;
+      IF ~FitsBytes(result.intVal, Types.IntegerBytes(result.type)) THEN
+        Diagnostics.Error(line, column, "constant SHORT result too large for its type");
+        RETURN UndefinedValue()
+      END;
+      RETURN result
+    ELSE (* ODD *)
+      IF ~Types.IsInteger(x.type) THEN
+        Diagnostics.Error(line, column, "ODD requires an integer argument");
+        RETURN UndefinedValue()
+      END;
+      NEW(result); result.kind := Types.boolValue; result.type := Types.Boolean;
+      result.boolVal := ODD(x.intVal);
+      RETURN result
+    END
+  END EvaluateValueFunction;
+
   PROCEDURE EvaluateDesignator(expr: SyntaxTree.DesignatorExprNode;
                                scope: SymbolTable.Scope): Types.Value;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator;
@@ -603,6 +842,12 @@ MODULE ConstantEvaluator;
       obj := SymbolTable.Find(scope, d.name);
       IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
         RETURN EvaluateAsh(expr.args, scope, expr.line, expr.column)
+      END
+    END;
+    IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X) & IsValueFunctionName(d.name) THEN
+      obj := SymbolTable.Find(scope, d.name);
+      IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
+        RETURN EvaluateValueFunction(d.name, expr.args, scope, expr.line, expr.column)
       END
     END;
     IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X)
@@ -628,30 +873,6 @@ MODULE ConstantEvaluator;
     END
   END EvaluateDesignator;
 
-  (* Types.ValueDesc.realText's own negation: "1.5" becomes "-1.5" and
-     "-1.5" becomes "1.5"; an empty source stays empty (a computed value
-     has no numeral to negate), and a source too long to take one more
-     character is dropped too (empty), which only costs the backend its
-     exact-numeral shortcut, never correctness. *)
-  PROCEDURE NegateRealText(source: ARRAY OF CHAR; VAR negated: ARRAY OF CHAR);
-    VAR i: INTEGER;
-  BEGIN
-    negated[0] := 0X;
-    IF source[0] = "-" THEN
-      i := 1;
-      WHILE source[i] # 0X DO negated[i - 1] := source[i]; INC(i) END;
-      negated[i - 1] := 0X
-    ELSIF source[0] # 0X THEN
-      i := 0;
-      WHILE source[i] # 0X DO INC(i) END;
-      IF i < LEN(negated) - 1 THEN
-        negated[0] := "-";
-        i := 0;
-        WHILE source[i] # 0X DO negated[i + 1] := source[i]; INC(i) END;
-        negated[i + 1] := 0X
-      END
-    END
-  END NegateRealText;
 
   (* ---- integer constant arithmetic ----
 
@@ -1065,12 +1286,32 @@ MODULE ConstantEvaluator;
      assignment, an argument - can be folded. This answers that question
      silently: TRUE exactly when every leaf is a literal, a named constant
      (local, or qualified by an import), a MAX/MIN/SIZE of a type name, or
-     an ASH whose two arguments are themselves constant. Nothing here
+     an ASH whose two arguments are themselves constant, or an ORD/ABS/CHR/
+     CAP/ENTIER/LONG/SHORT/ODD (EvaluateValueFunction) of a constant. Nothing here
      checks that the operators fit the operands' types (SemanticActions
      has already done, or will report, that), so a TRUE answer means
      "Evaluate will not say not-a-constant", not "Evaluate will succeed":
      a constant division by zero, or an overflow, is still reported by
      Evaluate. *)
+
+  (* A shallow test - a set constructor, or a name bound to a set constant -
+     used only to keep ORD of a constant SET (which the checker accepts at
+     run time, and EvaluateValueFunction does not fold) out of the constant
+     expressions: it stays the run-time call it always was. *)
+  PROCEDURE IsSetConstantExpr(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): BOOLEAN;
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object;
+  BEGIN
+    IF expr IS SyntaxTree.SetExprNode THEN RETURN TRUE END;
+    IF expr IS SyntaxTree.DesignatorExprNode THEN
+      de := expr(SyntaxTree.DesignatorExprNode);
+      IF ~de.hasParens & (de.designator.selectors = NIL) THEN
+        obj := FindQualifiedConst(scope, de.designator);
+        RETURN (obj # NIL) & (obj.class = SymbolTable.constClass) & (obj.value # NIL)
+               & (obj.value.kind = Types.setValue)
+      END
+    END;
+    RETURN FALSE
+  END IsSetConstantExpr;
 
   PROCEDURE IsConstantDesignator(expr: SyntaxTree.DesignatorExprNode;
                                  scope: SymbolTable.Scope): BOOLEAN;
@@ -1087,6 +1328,9 @@ MODULE ConstantEvaluator;
       ELSIF d.name = "ASH" THEN
         RETURN (expr.args # NIL) & (expr.args.next # NIL) & (expr.args.next.next = NIL)
                & IsConstant(expr.args, scope) & IsConstant(expr.args.next, scope)
+      ELSIF IsValueFunctionName(d.name) THEN
+        RETURN (expr.args # NIL) & (expr.args.next = NIL) & IsConstant(expr.args, scope)
+               & ~((d.name = "ORD") & IsSetConstantExpr(expr.args, scope))
       ELSE
         RETURN FALSE
       END

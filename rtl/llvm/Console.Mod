@@ -54,7 +54,7 @@ MODULE Console;
   BEGIN
     length := 0;
     WHILE (length < LEN(s)) & (s[length] # 0X) DO INC(length) END;
-    IF length > 0 THEN SysWrite(standardOutput, SYSTEM.ADR(s), length) END
+    IF length > 0 THEN SysWrite(standardOutput, SYSTEM.ADR(s), SYSTEM.VAL(SYSTEM.ADDRESS, length)) END
   END String;
 
   PROCEDURE Ln*;
@@ -77,7 +77,7 @@ MODULE Console;
       SysWrite(standardOutput, SYSTEM.ADR(blanks), spaceChunk);
       DEC(count, spaceChunk)
     END;
-    IF count > 0 THEN SysWrite(standardOutput, SYSTEM.ADR(blanks), count) END
+    IF count > 0 THEN SysWrite(standardOutput, SYSTEM.ADR(blanks), SYSTEM.VAL(SYSTEM.ADDRESS, count)) END
   END Spaces;
 
   (* i in decimal, right-aligned in a field n characters wide (a shorter
@@ -104,7 +104,8 @@ MODULE Console;
       IF i < 0 THEN DEC(first); text[first] := "-" END;
       length := LEN(text) - first;
       Spaces(n - length);
-      SysWrite(standardOutput, SYSTEM.ADR(text) + first, length)
+      SysWrite(standardOutput, SYSTEM.ADR(text) + SYSTEM.VAL(SYSTEM.ADDRESS, first),
+               SYSTEM.VAL(SYSTEM.ADDRESS, length))
     END
   END Int;
 

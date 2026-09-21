@@ -71,7 +71,7 @@ MODULE Platform;
      (a path longer than CWD holds, for one). *)
   PROCEDURE RefreshCWD(): BOOLEAN;
   BEGIN
-    IF CGetCwd(SYSTEM.ADR(CWD), LEN(CWD)) = 0 THEN
+    IF CGetCwd(SYSTEM.ADR(CWD), SYSTEM.VAL(SYSTEM.ADDRESS, LEN(CWD))) = 0 THEN
       CWD[0] := 0X;
       RETURN FALSE
     END;

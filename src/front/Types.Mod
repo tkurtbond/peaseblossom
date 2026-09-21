@@ -247,6 +247,11 @@ MODULE Types;
        widths follow it. Types cannot import MemoryLayout (the other way
        round), hence this copy of one bit. *)
     sizeModelIsOC: BOOLEAN;
+    (* The target's word size in bytes, 4 or 8 (set once per compilation by
+       ConstantEvaluator.SetWordSize, from the -target triple): the width of
+       SYSTEM.ADDRESS, which Order needs to place it among the integers - a
+       copy of one number, for the reason sizeModelIsOC is one of one bit. *)
+    addressBytes: INTEGER;
     (* PLAN.md Phase 6: a shared singleton marking a SymbolTable.Object as
        one of Oberon2.pdf §10.3's predeclared procedures. A single
        instance suffices - PredeclaredProcedures.Mod re-dispatches on the
@@ -268,6 +273,11 @@ MODULE Types;
     NEW(t); t.rank := rank; t.fixedBytes := bytes;
     RETURN t
   END NewFixedIntType;
+
+  PROCEDURE SetAddressBytes*(bytes: INTEGER);
+  BEGIN
+    addressBytes := bytes
+  END SetAddressBytes;
 
   PROCEDURE SetSizeModelIsOC*(isOC: BOOLEAN);
   BEGIN
@@ -661,6 +671,66 @@ MODULE Types;
     END
   END ModelBytes;
 
+  (* Byte width of an integer type - SHORTINT/INTEGER/LONGINT under the
+     size model, HUGEINT, or a fixed-width SYSTEM.INT8..INT64 - and 0 for
+     anything else (SYSTEM.ADDRESS included: its width is the target's, not
+     the size model's, so LONG/SHORT do not chain through it). *)
+  PROCEDURE IntegerBytes*(t: Type): INTEGER;
+    VAR bt: BasicType;
+  BEGIN
+    IF (t = NIL) OR ~(t IS BasicType) THEN RETURN 0 END;
+    bt := t(BasicType);
+    IF bt.fixedBytes > 0 THEN RETURN bt.fixedBytes
+    ELSIF (bt.rank >= shortIntRank) & (bt.rank <= hugeIntRank) & (bt.rank # addressRank) THEN
+      RETURN ModelBytes(bt.rank)
+    ELSE
+      RETURN 0
+    END
+  END IntegerBytes;
+
+  (* Whether LONG/SHORT of a t-typed operand go by byte width (voc's
+     OPT.ShorterOrLongerType) instead of by the report's fixed steps
+     SHORTINT -> INTEGER -> LONGINT: a fixed-width SYSTEM.INTn, whose width
+     does not follow the size model, and HUGEINT, which the report does not
+     have. SHORTINT/INTEGER/LONGINT keep the report's steps. *)
+  PROCEDURE LongShortByWidth*(t: Type): BOOLEAN;
+    VAR bt: BasicType;
+  BEGIN
+    IF (t = NIL) OR ~(t IS BasicType) THEN RETURN FALSE END;
+    bt := t(BasicType);
+    RETURN (bt.fixedBytes > 0) OR (bt.rank = hugeIntRank)
+  END LongShortByWidth;
+
+  (* What LONG(x) is for an integer x of type t, by width: the narrowest of
+     SHORTINT/INTEGER/LONGINT strictly wider than t under the size model,
+     else HUGEINT (voc: SYSTEM.INT64, which HUGEINT and INT64 include each
+     other). So LONG of an INT32 is a LONGINT under -OC and a HUGEINT under
+     -O2. Probed against voc 2026-09-20 under both models. *)
+  PROCEDURE LongerInteger*(t: Type): Type;
+    VAR w: INTEGER;
+  BEGIN
+    w := IntegerBytes(t);
+    IF w < ModelBytes(shortIntRank) THEN RETURN ShortInt
+    ELSIF w < ModelBytes(integerRank) THEN RETURN Integer
+    ELSIF w < ModelBytes(longIntRank) THEN RETURN LongInt
+    ELSE RETURN HugeInt
+    END
+  END LongerInteger;
+
+  (* What SHORT(x) is for an integer x of type t, by width: the widest of
+     LONGINT/INTEGER/SHORTINT strictly narrower than t under the size
+     model, else SYSTEM.INT8 (voc's own floor). *)
+  PROCEDURE ShorterInteger*(t: Type): Type;
+    VAR w: INTEGER;
+  BEGIN
+    w := IntegerBytes(t);
+    IF w > ModelBytes(longIntRank) THEN RETURN LongInt
+    ELSIF w > ModelBytes(integerRank) THEN RETURN Integer
+    ELSIF w > ModelBytes(shortIntRank) THEN RETURN ShortInt
+    ELSE RETURN Int8
+    END
+  END ShorterInteger;
+
   (* Where a numeric type sits in the inclusion hierarchy, as a number that
      only ever compares: twice its rank for a type whose width follows the
      size model, so the odd numbers between are free. A fixed-width integer
@@ -671,19 +741,25 @@ MODULE Types;
      HUGEINT's equal under both) - or the odd number just above the
      narrowest that is narrower (INT8 under -OC, below SHORTINT's two
      bytes: SHORTINT includes it, it does not include SHORTINT). SYSTEM.
-     ADDRESS keeps rank 4, between LONGINT and HUGEINT, as always. 0 for a
-     type that is not numeric. *)
+     ADDRESS is placed the same way, by the target's word size (Phase 11,
+     inventory A9): it used to sit between LONGINT and HUGEINT whatever the
+     target, which put a 64-bit LONGINT (-OC) below a 32-bit ADDRESS, and a
+     mixed operation was done - truncating - at the address's 32 bits. Now a
+     LONGINT is assignable to an ADDRESS only where it is no wider, and a
+     mixed operation is done at the wider width. 0 for a type that is not
+     numeric. *)
   PROCEDURE Order*(t: Type): INTEGER;
-    VAR bt: BasicType; order, r: INTEGER;
+    VAR bt: BasicType; order, r, width: INTEGER;
   BEGIN
     IF (t = NIL) OR ~(t IS BasicType) THEN RETURN 0 END;
     bt := t(BasicType);
     IF bt.rank = notNumeric THEN RETURN 0 END;
-    IF bt.fixedBytes = 0 THEN RETURN 2 * bt.rank END;
+    IF bt.rank = addressRank THEN width := addressBytes ELSE width := bt.fixedBytes END;
+    IF width = 0 THEN RETURN 2 * bt.rank END;
     order := 1;
     FOR r := shortIntRank TO hugeIntRank DO
-      IF (r # addressRank) & (ModelBytes(r) <= bt.fixedBytes) THEN
-        IF ModelBytes(r) = bt.fixedBytes THEN order := 2 * r ELSE order := 2 * r + 1 END
+      IF (r # addressRank) & (ModelBytes(r) <= width) THEN
+        IF ModelBytes(r) = width THEN order := 2 * r ELSE order := 2 * r + 1 END
       END
     END;
     RETURN order
@@ -807,6 +883,7 @@ BEGIN
   Int32 := NewFixedIntType(longIntRank, 4);
   Int64 := NewFixedIntType(hugeIntRank, 8);
   sizeModelIsOC := FALSE;
+  addressBytes := 4;
   Real := NewBasicType(realRank);
   LongReal := NewBasicType(longRealRank);
   Set := NewBasicType(notNumeric);

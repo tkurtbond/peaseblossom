@@ -87,3 +87,5 @@ test/conformance/crosscheck/crosscheck
 
 # Stage 0/1/2 bootstrap build output (see tools/bootstrap)
 /build/
+test/conformance/llvm-long-short-width/llvm-long-short-width
+test/conformance/llvm-const-value-functions/llvm-const-value-functions

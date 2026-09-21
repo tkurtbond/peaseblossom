@@ -14,7 +14,8 @@ Decided 2026-09-20: a compiler switch that turns on file name and line number re
 ** TODO Double check things that can trap.
 Decided 2026-09-20: document which things poc traps (NIL pointer accesses, index range, CASE, type guard, WITH, NEW length, ...) and which it does not (division by 0, ...), as one table in AGENTS.md, after the overflow survey above.  No change to what poc does.  (doc/phase-11-inventory.md C9.)
 ** TODO LONGINT is included in SYSTEM.ADDRESS by rank, but on a 32-bit target under -OC a LONGINT is 64 bits: a mixed ADDRESS/LONGINT operation is done at 32 bits and truncates (Files.Old's size <= MAX(LONGINT) compared against -1).  Worked around in Files.Mod; fix in the type hierarchy.  (PLAN.md Phase 11 step 2.)
-** TODO LONG and SHORT of SYSTEM.INT8..INT64 (rejected today).  (PLAN.md Phase 11 step 2.)
+** DONE LONG and SHORT of SYSTEM.INT8..INT64 and of HUGEINT.
+Phase 11 step 2 (2026-09-20): by byte width along the size model's chain, as voc does (Types.LongerInteger/ShorterInteger; probed under -O2 and -OC, the 28 SYSTEM.INTn/HUGEINT rows identical to voc).  LONG(LONGINT) and SHORT(SHORTINT) stay rejected, as in the report.  Fixtures semantic-long-short-width, llvm-long-short-width.
 ** TODO Nested procedures (a procedure declared inside another): a declaration or a call is now a compile error; implement them by lambda lifting by reference.  Planned in doc/nested-procedures.md (PLAN.md Phase 11 step 8).
 ** TODO Under -OC an INT8 combined with an integer literal (b + 1) is a SHORTINT, not assignable back to the INT8.  Probe voc; probably a constant should take the other operand's fixed-width type when it fits.  (PLAN.md Phase 11 step 3.)
 ** TODO Should poc reject a constant NEW length of <= 0 at compile time.
@@ -26,12 +27,14 @@ Decided 2026-09-20: a compiler switch chooses between leaving the pointer NIL (t
 ** TODO ENTIER of a real beyond LONGINT gives garbage (poc -2147483648; voc wraps).  Decide: a HUGEINT result, or a trap.  (doc/phase-11-inventory.md A4.)
 ** TODO SYSTEM.PTR cannot be dereferenced, type-guarded, IS-tested or used as a WITH variable (voc allows some); a guard followed by an index (any(T)[i]) and a guard to a pointer-to-array type are unsupported in the LLVM backend (now a compile error).  Decide whether either is wanted.  (doc/phase-11-inventory.md A10.)
 ** TODO BIT's word-based meaning (voc's) differs from the report's Mem[a] bit, and SYSTEM.NEW blocks are untraced by the collector.  Proposed: keep both and record them as decided.  (doc/phase-11-inventory.md A11.)
-** TODO Can a .sym carry a number that depends on the target (SIZE(T) of a pointer, a size-model MAX/MIN folded to a value)?  AGENTS.md says a .sym is target-independent, but -emit-interface resolves no -target.  Test at both word sizes; then print the expression or reject.  (doc/phase-11-inventory.md B1.)
+** DONE Can a .sym carry a number that depends on the target (SIZE(T) of a pointer, a size-model MAX/MIN folded to a value)?  AGENTS.md says a .sym is target-independent, but -emit-interface resolves no -target.  Test at both word sizes; then print the expression or reject.  (doc/phase-11-inventory.md B1.)
 ** TODO A -strict switch: reject everything beyond Oberon2.pdf (HUGEINT, SYSTEM.ADDRESS, external procedures, whatever Phase 11 adds), so poc's own source can be checked to stay strict.  (doc/phase-11-inventory.md B2; PLAN.md Phase 11 step 6.)
-** TODO A type used on the same source line it is declared on (A = INTEGER; B = ARRAY 3 OF A;) is rejected as a forward reference; voc accepts it.  Probed 2026-09-20: still rejected.  ResolveQualidentType compares only declLine; compare declColumn too.  (doc/phase-11-inventory.md D2.)
+** DONE A type used on the same source line it is declared on (A = INTEGER; B = ARRAY 3 OF A;) was rejected as a forward reference.
+Phase 11 step 2 (2026-09-20): SymbolTable.DeclaredAtOrAfter compares the column as well as the line, in ResolveQualidentType and ConstantEvaluator.LookupBareTypeName.  voc accepts the backward use and rejects the forward one; poc now agrees, and a type used by value inside its own declaration is reported as a cyclic declaration.  Fixtures semantic-same-line-type-use, semantic-reject-same-line-type-cycles.  (doc/phase-11-inventory.md D2.)
 ** TODO Procedure-local and other anonymous records get no descriptor and no name (PLAN.md Phase 9 step 1 note); check whether a local TYPE record can be NEWed, type-guarded or extended.  (doc/phase-11-inventory.md D3.)
 ** TODO A record value's LLVM type text is cut at 63 characters (LLVMCodeGenerator ValueText, textLength = 63): a huge record loaded whole may give invalid IR or a miscompile.  (doc/phase-11-inventory.md D4.)
-** TODO SHORT rejects a HUGEINT argument ("SHORT requires a LONGINT, INTEGER, or LONGREAL argument").  Probed 2026-09-20: still true.  Same fix as the LONG/SHORT of SYSTEM.INT8..INT64 entry above.  (doc/phase-11-inventory.md D1.)
+** DONE SHORT rejects a HUGEINT argument.
+Fixed with the LONG/SHORT-by-width entry above (2026-09-20).  (doc/phase-11-inventory.md D1.)
 ** DONE poc exits with status 1 after reporting an error (it used to exit 0 always).
 Phase 11 (2026-09-20): Platform.Exit in rtl/llvm/Platform.Mod, a failed flag in Poc.Mod; fixture poc-exit-status.  See PLAN.md Phase 11 step 2.
 ** DONE Implement constant folding on integer literals.

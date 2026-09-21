@@ -234,7 +234,7 @@ MODULE Poc;
      SIZE(T)'s word-size sensitivity. Only resolved (and only reaches
      ResolveTriple's clang-dependent auto-detect fallback at all) when the
      caller actually passes -target explicitly. *)
-  PROCEDURE EmitInterface(name, outputDir, explicitTriple: ARRAY OF CHAR);
+  PROCEDURE EmitInterface(name, outputDir, explicitTriple: ARRAY OF CHAR; show: BOOLEAN);
     VAR
       buffer: Lexer.CharBuffer;
       length: LONGINT;
@@ -258,6 +258,10 @@ MODULE Poc;
       END;
       IF Diagnostics.errorCount > 0 THEN
         Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
+      ELSIF show THEN
+        (* -show-interface: the exported view on standard output, nothing
+           written and nothing else said *)
+        ModuleInterface.Show(module, scope)
       ELSIF ModuleInterface.Write(module, scope, outputDir, path) THEN
         Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
       ELSE
@@ -754,6 +758,7 @@ MODULE Poc;
     Out.String("       poc -dump-layout <file>"); Out.Ln;
     Out.String("       poc -dump-llvm-types <file>"); Out.Ln;
     Out.String("       poc -emit-interface <file>"); Out.Ln;
+    Out.String("       poc -show-interface <file>"); Out.Ln;
     Out.String("       poc -emit-llvm-ir <file>"); Out.Ln;
     Out.String("       poc -o <exe> -build <file>"); Out.Ln;
     Out.String("       poc [-import-path <dir> | -clear-import-path]... -print-import-path"); Out.Ln;
@@ -768,7 +773,8 @@ MODULE Poc;
     Out.String("       literals fold against (default -O2); a later one wins"); Out.Ln;
     Out.String("       -target <triple> may precede -emit-llvm-ir or -build, selecting the"); Out.Ln;
     Out.String("       LLVM target triple (default: clang's own default for this host);"); Out.Ln;
-    Out.String("       it may also precede -emit-interface, to fold SIZE(T)/MAX(T)/MIN(T)"); Out.Ln;
+    Out.String("       it may also precede -emit-interface or -show-interface, to fold"); Out.Ln;
+    Out.String("       SIZE(T)/MAX(T)/MIN(T)"); Out.Ln;
     Out.String("       for that target's word size (default: no effect, no clang needed)"); Out.Ln;
     Out.String("       -o <exe> may precede -build, giving the executable's output path"); Out.Ln;
     Out.String("       (required - -build has no default)"); Out.Ln
@@ -816,7 +822,9 @@ MODULE Poc;
     ELSIF option = "-dump-llvm-types" THEN
       DumpLLVMTypes(fileName)
     ELSIF option = "-emit-interface" THEN
-      EmitInterface(fileName, outputDir, targetTriple)
+      EmitInterface(fileName, outputDir, targetTriple, FALSE)
+    ELSIF option = "-show-interface" THEN
+      EmitInterface(fileName, outputDir, targetTriple, TRUE)
     ELSIF option = "-emit-llvm-ir" THEN
       EmitLLVMIR(fileName, outputDir, targetTriple)
     ELSIF option = "-build" THEN

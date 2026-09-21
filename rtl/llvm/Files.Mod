@@ -220,7 +220,7 @@ MODULE Files;
   PROCEDURE PositionStream(f: File; position: LONGINT; use: INTEGER);
   BEGIN
     IF (f.mode # use) OR (f.position # position) THEN
-      IF FSeek(f.stream, position, seekSet) # 0 THEN Fail("seek failed", f) END;
+      IF FSeek(f.stream, SYSTEM.VAL(SYSTEM.ADDRESS, position), seekSet) # 0 THEN Fail("seek failed", f) END;
       f.position := position;
       f.mode := use
     END
@@ -282,11 +282,7 @@ MODULE Files;
         IF stream # 0 THEN
           size := -1;
           IF Readable(stream) & (FSeek(stream, 0, seekEnd) = 0) THEN size := FTell(stream) END;
-          (* compared as a HUGEINT: SYSTEM.ADDRESS ranks above LONGINT, so
-             "size <= MAX(LONGINT)" would be done at the address's width -
-             32 bits on a 32-bit target, where -OC's MAX(LONGINT) (2^63-1)
-             truncates to -1 and no file would open *)
-          IF (size >= 0) & (SYSTEM.VAL(HUGEINT, size) <= MAX(LONGINT)) THEN
+          IF (size >= 0) & (size <= MAX(LONGINT)) THEN
             NEW(f);
             COPY(path, f.workName);
             f.stream := stream;
@@ -408,7 +404,7 @@ MODULE Files;
   BEGIN
     n := StringLength(x);
     IF n < LEN(x) THEN INC(n) END;
-    WriteBlock(r, SYSTEM.ADR(x), n)
+    WriteBlock(r, SYSTEM.ADR(x), SYSTEM.VAL(SYSTEM.ADDRESS, n))
   END WriteString;
 
   (* Reads up to the next 0X (or the end of the file) into x, cutting it
