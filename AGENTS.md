@@ -476,8 +476,14 @@ like voc's), outermost dimension first:
 - **Collector**: the block is tagged with the array descriptor of the
   innermost element type, like a fixed array of pointers (see
   `llvm-open-array-new`, which fails without it).
-- Not done: more than 8 open dimensions (`; unsupported`), and the copy of
-  a value parameter is never skipped even when the procedure only reads it.
+- **At most 8 open dimensions**: an open array type with more (`ARRAY OF
+  ... OF T`, nine `ARRAY OF`s) is a compile error where the type is written
+  (`Types.maxOpenDimensions`), for a parameter, a pointer base and a named type
+  alike; fixed dimensions are not limited. voc's own limit is 127 (its
+  `OPB.Mod`; 12 probed), so poc rejects some programs voc accepts. The length
+  vector the backend keeps holds eight (Phase 11).
+- Not done: the copy of a value parameter is never skipped even when the
+  procedure only reads it.
   (A procedure *type* with open-array parameters works: a call through a
   value passes the lengths like any other call - step 8.)
 
@@ -599,7 +605,9 @@ Peaseblossom's own.
   today). The first string names the calling convention (`"C"` for
   Phase 8's LLVM/C-interop case, `"VMS"` for Phase 13's VMS Calling
   Standard case — both accepted now, even though nothing consumes
-  `"VMS"` until Phase 13). An optional second string overrides the
+  `"VMS"` until Phase 13; the LLVM backend reports an external `["VMS"]`
+  procedure as something it cannot lower rather than calling it as C, Phase
+  11). An optional second string overrides the
   external linkage name, since Peaseblossom's own naming convention (see
   "Naming feedback" — descriptive, often-long identifiers) routinely
   won't match a terse external symbol like `malloc` or `printf`:

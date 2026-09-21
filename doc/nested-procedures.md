@@ -339,14 +339,17 @@ BSD hosts before step 6.
    (golden IR, both word sizes, `clang` accepts both). All the runtime ones are
    in `llvm-i686-runtime`.
    One thing the tests found: an open array parameter of more than 8
-   dimensions - which a dope vector cannot hold - crashed `poc` itself with a
-   run-time index error (unrelated to nested procedures, since the code is older);
-   it is now an ordinary "cannot lower this yet" error naming the procedure.
-   `llvm-reject-nested-procedure` became `llvm-reject-wide-open-array` (the
-   same "nothing written" checks, with this construct), and `poc-exit-status`'s
-   unsupported-program case moved to it too.
+   dimensions - which the length vector cannot hold - crashed `poc` itself with a
+   run-time index error (unrelated to nested procedures, the code is older), and
+   `NEW` of such a pointer was quietly accepted. An open array type with more than
+   `Types.maxOpenDimensions` (8) open dimensions is now an error where the checker
+   resolves it (fixture `semantic-reject-open-array-dimensions`); fixed dimensions
+   are not limited. `llvm-reject-nested-procedure` became
+   `llvm-reject-external-vms` (the same "nothing written" checks, with an external
+   `["VMS"]` procedure, which the LLVM backend used to lower as a C call and now
+   reports), and `poc-exit-status`'s unsupported-program case moved to it too.
 6. **Close.** The error and its message are already gone (step 3) and
-   `llvm-reject-nested-procedure` is now `llvm-reject-wide-open-array` (its
+   `llvm-reject-nested-procedure` is now `llvm-reject-external-vms` (its
    program, printing `ok`, is in `llvm-nested-uplevel`); left: `AGENTS.md` gets "Nested procedures (implemented)" with
    what a program can observe; `PLAN.md`, `000-todo.org`; the suite on both BSD
    hosts and at both word sizes; the fixed point re-run. Exit gate below.

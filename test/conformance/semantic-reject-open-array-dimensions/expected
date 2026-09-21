@@ -1,0 +1,5 @@
+wide.mod:9:12: error: an open array type may have at most 8 open dimensions
+wide.mod:10:20: error: an open array type may have at most 8 open dimensions
+wide.mod:11:32: error: an open array type may have at most 8 open dimensions
+wide.mod:18:26: error: an open array type may have at most 8 open dimensions
+4 error(s)

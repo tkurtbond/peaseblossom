@@ -10,7 +10,7 @@ exit 1: poc -check missing.mod
 exit 1: poc -emit-llvm-ir missing.mod
 exit 0: poc -o prog -build ok.mod
 exit 1: poc -o prog -build typeerror.mod
-exit 1: poc -o prog -build wide.mod
+exit 1: poc -o prog -build vms.mod
 exit 1: poc -o prog -build missing.mod
 exit 1: poc -output-dir no-such-directory -emit-interface ok.mod
 exit 1: poc -frobnicate ok.mod

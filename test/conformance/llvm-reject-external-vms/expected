@@ -1,0 +1,5 @@
+vms.mod:4:3: error: module vms: the LLVM backend cannot lower this yet: an external procedure with the VMS calling convention
+1 construct(s) the LLVM backend cannot lower yet; nothing written
+vms.mod:4:3: error: module vms: the LLVM backend cannot lower this yet: an external procedure with the VMS calling convention
+1 construct(s) the LLVM backend cannot lower yet; nothing written
+done

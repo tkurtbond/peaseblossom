@@ -98,6 +98,14 @@ MODULE Types;
 
     stringValueLength* = 255; (* mirrors SyntaxTree.identLength *)
 
+    (* Most open dimensions (ARRAY OF ARRAY OF ... T) one array type may
+       have: an open array travels with one length per open dimension, and
+       the LLVM backend's length vector (LLVMCodeGenerator.DopeVector) holds
+       this many. Fixed dimensions are not limited. SemanticActions rejects a
+       type past it, so no backend meets one; another backend may raise the
+       constant. *)
+    maxOpenDimensions* = 8;
+
   TYPE
     Type* = POINTER TO TypeDesc;
     TypeDesc* = RECORD END;
@@ -298,6 +306,19 @@ MODULE Types;
     NEW(t); t.base := base;
     RETURN t
   END NewPointerType;
+
+  (* How many open dimensions t starts with: ARRAY OF ARRAY OF T is two,
+     ARRAY OF ARRAY 4 OF T one, anything else none. *)
+  PROCEDURE OpenDimensions*(t: Type): INTEGER;
+    VAR arr: ArrayType; n: INTEGER;
+  BEGIN
+    n := 0;
+    WHILE (t # NIL) & (t IS ArrayType) DO
+      arr := t(ArrayType);
+      IF arr.isOpen THEN INC(n); t := arr.elementType ELSE t := NIL END
+    END;
+    RETURN n
+  END OpenDimensions;
 
   PROCEDURE NewArrayType*(elementType: Type; length: LONGINT; isOpen: BOOLEAN): Type;
     VAR t: ArrayType;

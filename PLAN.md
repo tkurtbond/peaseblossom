@@ -4312,7 +4312,7 @@ as it stands when the phase starts, and adds what it finds):
      (`unsupportedCount`), and `EmitIR`/`Build` write nothing when any was met.
      Poc's own IR and every fixture's had none, so nothing else moved. New
      fixture `llvm-reject-nested-procedure` (since renamed
-     `llvm-reject-wide-open-array`, once nested procedures were lowered).
+     `llvm-reject-external-vms`, once nested procedures were lowered).
    - *Nested procedures.* The feature the change above makes visible: now
      step 8 below, planned in `doc/nested-procedures.md`.
    - *Done (2026-09-20): exit status.* `poc` returned 0 whatever happened, so
@@ -5165,6 +5165,41 @@ existing text path and against the assembler; steps 4 and 6 are
 over object files is the gate.
 
 ## Open design questions
+
+- **Open array dimension limit**: decided 2026-09-20 (Phase 11) - an open
+  array type may have at most **8 open dimensions** (`Types.maxOpenDimensions`),
+  and the checker says so where the ninth is written (`ResolveArrayType`; one
+  error per type; fixture `semantic-reject-open-array-dimensions`). Fixed
+  dimensions are not limited (nine fixed ones build and run). Found while
+  writing the nested-procedure fixtures: a ninth open dimension on a parameter
+  crashed poc with a run-time index error, and on `NEW` was accepted and
+  silently did nothing. voc's own limit is 127 (`OPB.Mod`: "Hard limit of 127
+  dimensions"; 12 probed), so poc rejects programs voc accepts; that is
+  accepted. **Considered and left at 8: raising it to voc's 127.** What it
+  would take, should a program ever need it:
+  1. `LLVMCodeGenerator.DopeVector` embeds `ARRAY maxOpenDims OF ValueText`, and
+     a `ValueText` is 64 bytes: 512 bytes now, about 8 KB at 127, copied by value
+     in `LocalBinding` (one per parameter and local, scalars too), `DynamicType`,
+     and locals of `BindNeeds`, `BindFormalParams` and `NEW`, on every
+     designator resolution. The length vector would have to be allocated at its
+     exact size (one place shifts `dope.len` in place, so it would need a copy,
+     not sharing).
+  2. Text buffers, the larger risk: a call is built into a `LongText` (800
+     characters) and each hidden length is about 20 (`, i64 %t123`), so about 35
+     dimensions in one call, fewer with several open array parameters, would
+     overflow it. Not tested whether that truncates or traps. Either a bigger
+     buffer for argument lists or writing them straight to the file. (Related:
+     `doc/phase-11-inventory.md` D4, the 63-character `ValueText`.)
+  3. The `.len<d>` names of the hidden parameters are built in
+     `EmitProcSignature` with `CHR(ORD("0") + dim)`, wrong from dimension 10 on,
+     while `BindFormalParams`/`BindNeeds` use `AppendLongInt`; both sides would
+     need the number formatter.
+  4. The diagnostic text hardcodes "8" (build it from the constant), and a
+     fixture would generate 127- and 128-dimension sources with a shell loop and
+     run at both word sizes.
+  Cheaper middle: 16 or 32 needs only the constant, the message and item 3, and
+  stays under the buffer limit of item 2. The VAX backend may choose its own
+  number, which is why the constant lives in `Types.Mod`.
 
 - **External procedure declaration syntax**: decided 2026-09-16, grammar/
   symbol-table side implemented in Phase 6 (2026-09-16) — a bracketed

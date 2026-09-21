@@ -120,9 +120,8 @@ MODULE LLVMCodeGenerator;
      "C" calling convention directly (LLVM's default) - "VMS" is parsed
      and recorded by the front end already but has no real target this
      early (VAX/VMS is Phase 10), so it is not specially handled here
-     either (an external ["VMS"] procedure would reach GenerateCall and
-     just get lowered exactly like a ["C"] one - "wrong but harmless"
-     for now, since nothing exercises it before Phase 10 exists).
+     either (an external ["VMS"] procedure used to be lowered exactly like
+     a ["C"] one; since Phase 11 it is an error, EmitExternalDeclares).
 
      Deliberately still out of scope, per this step's own "fixed rtl
      module set" decision and the discovery below: ordinary (non-
@@ -261,7 +260,7 @@ MODULE LLVMCodeGenerator;
 
     (* the most open dimensions (ARRAY OF ARRAY OF ... T) one designator
        may carry lengths for - see DopeVector *)
-    maxOpenDims = 8;
+    maxOpenDims = Types.maxOpenDimensions;
 
     (* DynamicType.kind - see DynamicType. *)
     dynStatic = 0;
@@ -4140,7 +4139,8 @@ MODULE LLVMCodeGenerator;
   BEGIN
     dims := OpenDimCount(arr);
     IF dims > maxOpenDims THEN
-      WriteStr(w, "  ; unsupported: NEW of an open array with too many dimensions"); WriteLn(w);
+      (* the checker rejects such a type, so this is not reached *)
+      ReportUnsupported(cg, cg.currentLine, cg.currentColumn, "NEW of an open array with too many dimensions");
       RETURN
     END;
     cg.usedAllocate := TRUE; cg.needLengthTrap := TRUE;
@@ -5108,7 +5108,13 @@ MODULE LLVMCodeGenerator;
     WHILE pd # NIL DO
       IF pd.isExternal THEN
         obj := SymbolTable.FindLocal(cg.scope, pd.name.name);
-        IF ~HasDeclaredExternal(cg, obj.externalName) THEN
+        IF obj.externalConvention = "VMS" THEN
+          (* the VMS Calling Standard is the VAX backend's (Phase 13); called as
+             a C function here it would link against a symbol nothing defines
+             or, worse, one that exists and means something else *)
+          ReportUnsupported(cg, pd.line, pd.column,
+                            "an external procedure with the VMS calling convention")
+        ELSIF ~HasDeclaredExternal(cg, obj.externalName) THEN
           pt := obj.type(Types.ProcedureType);
           IF pt.resultType = NIL THEN COPY("void", retType)
           ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
