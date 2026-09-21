@@ -162,3 +162,15 @@ step 1). Recorded in `AGENTS.md` ("Overflow, division and reals"), pinned by
 4. **`SHORT`/`CHR` out of range and `SET` elements out of range**: leave as
    they are (unchecked); list an optional `-r` in the Phase 12 step 1 triage.
 5. Then write C9's table from section 4 above, and record 1-4 in `AGENTS.md`.
+
+### Note: `ENTIER` (2026-09-21)
+
+`ENTIER` of a value outside `LONGINT` traps (A4, exit status 8) although the
+decision above leaves every other arithmetic operation silent. Reconsidered
+right after this survey and **kept, on purpose** (user): a wrapped sum is the
+correct result modulo 2^n and programs use it deliberately, while no value is
+right for `ENTIER(1E30)` - the report defines it only for a value that fits, and
+voc's answer differs between `-O2` and `-OC` - so the trap loses nothing
+legitimate; and relaxing it to saturation later could never break a working
+program, where tightening a silent value could. C9's table lists it as the one
+arithmetic conversion that traps.

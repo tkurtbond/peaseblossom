@@ -696,6 +696,19 @@ and poc, both models):
   give an infinity, `0.0/0.0` a NaN, underflow a zero or a denormal, `SHORT`
   of a `LONGREAL` too large for a `REAL` an infinity; no trap. (The VAX backend
   cannot promise this - VAX floats have no infinity or NaN; Phase 13 decides.)
+- **`ENTIER` is the one exception, on purpose: a value that does not fit a
+  `LONGINT` (or a NaN or infinity) traps** - "ENTIER argument out of range for
+  LONGINT", exit status 8 (see "Constant expressions" above). It is not
+  arithmetic that has a right answer: a wrapped sum is the correct result
+  modulo 2^n, and programs use that deliberately (hashes, random number
+  generators), but no value is right for `ENTIER(1E30)`, the report defines it
+  only for a value that fits, and voc's own answer differs between `-O2` and
+  `-OC`. So nothing legitimate is lost, and a silent value would hide what is
+  almost always a bug. Reconsidered 2026-09-21 once the rule above was settled
+  (poc's other arithmetic never traps, so `ENTIER` is the odd one out, and
+  saturating would be the consistent choice); the user kept the trap.
+  Loosening it later, to saturation, could never break a working program;
+  tightening a silent value later could.
 - **`SHORT`, `CHR` and `SET` elements out of range are unchecked**: `SHORT`
   and `CHR` truncate (`CHR(300)` is `","`), `INCL(s, 40)` on a 32-bit `SET`
   shifts past its width. voc's `-r` would halt on the first two; poc has no
