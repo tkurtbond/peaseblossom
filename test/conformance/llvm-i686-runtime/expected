@@ -3,6 +3,8 @@ llvm-const-decls: same
 llvm-arrays-records: same
 llvm-control-flow: same
 llvm-procedures: same
+llvm-nested-basic: same
+llvm-nested-features: same
 llvm-predeclared: same
 llvm-multi-module: same
 llvm-reals: same

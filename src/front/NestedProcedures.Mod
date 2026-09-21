@@ -431,13 +431,17 @@ MODULE NestedProcedures;
      SemanticActions.OpenProcedureBodyScope opened for it. The result is the
      root, standing for pd: its scope is bodyScope, and it needs nothing, by
      construction (nothing encloses it but the module). A procedure with no
-     nested one gives a tree of just the root. *)
+     nested one gives a tree of just the root, at the cost of declaring
+     nothing and walking nothing. *)
   PROCEDURE Analyze*(pd: SyntaxTree.ProcDeclNode; bodyScope: SymbolTable.Scope): NestedProc;
     VAR root, np, child: NestedProc; changed, grew: BOOLEAN;
   BEGIN
     root := NewProc(NIL, NIL, pd, NIL, NIL, bodyScope);
     BuildChildren(root);
-    np := root;
+    IF root.firstChild = NIL THEN RETURN root END;
+    (* the root needs nothing (nothing but the module encloses it), so its own
+       statements are not walked: its calls and its children could add nothing *)
+    np := root.following;
     WHILE np # NIL DO
       WalkStatementSeq(np, np.decl.statements);
       child := np.firstChild;

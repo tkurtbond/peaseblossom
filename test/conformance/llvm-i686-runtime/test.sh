@@ -51,6 +51,8 @@ check llvm-const-decls const-decls.mod
 check llvm-arrays-records arrrecflow.mod
 check llvm-control-flow ctrlflow.mod
 check llvm-procedures procs.mod
+check llvm-nested-basic nestedbasic.mod
+check llvm-nested-features nestedfeatures.mod
 check llvm-predeclared predeclared.mod
 check llvm-multi-module client.mod
 check llvm-reals reals.mod

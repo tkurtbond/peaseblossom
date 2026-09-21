@@ -4568,7 +4568,9 @@ as it stands when the phase starts, and adds what it finds):
    program in `llvm-reject-nested-procedure` prints `ok` (it becomes
    `llvm-nested-basic`); the fixed point still exact; no nested-procedure
    error left in the backend.
-   *Progress (2026-09-20):* steps 0 and 1 are done - see
+   *Progress (2026-09-20):* steps 0, 1 and 2 are done (step 2: nested procedures
+   that use nothing of their enclosing ones are lowered - `llvm-nested-basic`,
+   `llvm-nested-features`; the others are still an error until step 3); see
    `doc/nested-procedures.md` section 5. Step 1 added `NestedProcedures.Mod`
    (also built by `tools/bootstrap/stage0`), `poc -dump-nested`, and six
    `nested-analysis-*` fixtures; poc's own source, which has no nested

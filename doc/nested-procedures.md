@@ -276,6 +276,24 @@ BSD hosts before step 6.
    whose `Needs` is empty; everything else stays the error. Fixture
    `llvm-nested-basic`. This exercises symbols, emission order, the
    function-versus-proper-procedure return, and calls in expressions.
+   **Done 2026-09-20.** `GenerateProcedureBody` runs `NestedProcedures.Analyze`,
+   generates a function for every nested procedure (`GenerateFunction`, the old
+   body of `GenerateProcedureBody`) in the tree's order before the enclosing
+   one's own, and leaves out - with an error at the declaration and one at each
+   call - any whose `needs` is not empty. The symbol is `@Module.Outer.Inner`
+   (`NestedProcedures`' `pathName`; `Type.Method.Inner` for one inside a
+   type-bound procedure). A call of a nested procedure is found by its Object in
+   `cg.nestedRoot`, and the string literals of nested bodies are collected too.
+   `ReportNestedProcedures` and its message are gone; the replacement message
+   names the remaining limit. `Analyze` returns at once for a procedure with no
+   nested one, and IR for every fixture without nested procedures is unchanged
+   (825 compilations, three settings). Fixtures: `llvm-nested-basic` (15 checks,
+   also built with `-OC`) and `llvm-nested-features` (`NEW` and the collector,
+   `WITH`, `IS`, a type-bound call, a local `TYPE`, `CASE`, string comparison, a
+   `VAR` record parameter, a procedure value, all inside nested functions), both
+   also run as real i686 executables; `llvm-reject-nested-procedure` now checks
+   only what is still rejected (a nested procedure using an enclosing variable,
+   and its call).
 3. **Hidden parameters for scalars and aggregates.** Read and write of enclosing
    locals and value parameters, in every context (`:=`, `INC`, `FOR`, `CASE`,
    `SYSTEM.ADR`, `COPY`, `NEW`). Fixture `llvm-nested-uplevel`.

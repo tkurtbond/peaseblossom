@@ -90,3 +90,5 @@ test/conformance/crosscheck/crosscheck
 test/conformance/llvm-long-short-width/llvm-long-short-width
 test/conformance/llvm-const-value-functions/llvm-const-value-functions
 test/conformance/llvm-real-digits/llvm-real-digits
+test/conformance/llvm-nested-basic/llvm-nested-basic
+test/conformance/llvm-nested-features/llvm-nested-features

@@ -177,7 +177,7 @@ MODULE LLVMCodeGenerator;
      attempted here. *)
 
   IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions,
-         MemoryLayout, Diagnostics;
+         MemoryLayout, Diagnostics, NestedProcedures;
 
   VAR
     (* How many constructs GenerateProgram met that this backend cannot lower
@@ -500,6 +500,11 @@ MODULE LLVMCodeGenerator;
          real, if narrow, gap codegen must still emit *valid* IR for,
          even though it can't happen in a well-formed program). *)
       currentProcResultType: Types.Type;
+      (* Phase 11 step 8 (doc/nested-procedures.md): the procedures declared
+         inside the module-level or type-bound procedure being generated, and
+         what each needs of its enclosing ones - NIL outside one. A call finds
+         a nested procedure's entry here by its Object. *)
+      nestedRoot: NestedProcedures.NestedProc;
       locals: LocalBinding;
       declaredExternals: DeclaredExternal;
       (* PLAN.md Phase 9 step 3: ARRAY OF CHAR comparison and COPY from
@@ -3143,13 +3148,10 @@ MODULE LLVMCodeGenerator;
      ParamLLVMType-driven signature matching) is already fully generic
      over Types.Param/Types.ProcedureType and needed no change at all to
      serve an ordinary, user-defined procedure too. *)
-  PROCEDURE GenerateOrdinaryCall(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
-                                 homeModule: SyntaxTree.Ident;
-                                 args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR pt: Types.ProcedureType; retType: LongText; destTemp, fnSymbol: ValueText; argsText: ArgsText;
+  PROCEDURE GenerateDirectCall(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType;
+                               fnSymbol: ARRAY OF CHAR; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR retType: LongText; destTemp: ValueText; argsText: ArgsText;
   BEGIN
-    pt := obj.type(Types.ProcedureType);
-    QualifiedName(homeModule, obj.name, fnSymbol);
     IF pt.resultType = NIL THEN
       GenerateCallArgList(w, cg, pt.params, args, TRUE, argsText);
       WriteStr(w, "  call void "); WriteStr(w, fnSymbol); WriteStr(w, "(");
@@ -3164,7 +3166,44 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, argsText); WriteStr(w, ")"); WriteLn(w);
       result.text := destTemp; COPY(retType, result.llvmType); result.oberonType := pt.resultType
     END
+  END GenerateDirectCall;
+
+  PROCEDURE GenerateOrdinaryCall(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
+                                 homeModule: SyntaxTree.Ident;
+                                 args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR fnSymbol: ValueText;
+  BEGIN
+    QualifiedName(homeModule, obj.name, fnSymbol);
+    GenerateDirectCall(w, cg, obj.type(Types.ProcedureType), fnSymbol, args, result)
   END GenerateOrdinaryCall;
+
+  (* "@Module.Outer.Inner": the function a nested procedure is lifted to
+     (doc/nested-procedures.md 3.4) - the module, then the chain of procedure
+     names from the module-level one inward (a type-bound one is Type.Method),
+     which NestedProcedures records as pathName. Identifiers hold no dot, so
+     no module-level name can collide with it. *)
+  PROCEDURE NestedFunctionSymbol(VAR cg: Codegen; np: NestedProcedures.NestedProc; VAR text: ValueText);
+  BEGIN
+    QualifiedName(cg.moduleName, np.pathName, text)
+  END NestedFunctionSymbol;
+
+  (* A call of a procedure declared inside another. One that uses no variable
+     of an enclosing procedure is an ordinary direct call of its lifted
+     function; one that does still cannot be lowered (step 3 of the plan gives
+     it the hidden parameters), which is reported at the call as at the
+     declaration. *)
+  PROCEDURE GenerateNestedCall(VAR w: Files.Rider; VAR cg: Codegen; np: NestedProcedures.NestedProc;
+                               args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR fnSymbol: ValueText;
+  BEGIN
+    IF np.needs # NIL THEN
+      Unsupported(w, cg, "call of a nested procedure that uses variables of an enclosing procedure (not lowered yet)",
+                  Types.Undefined, result)
+    ELSE
+      NestedFunctionSymbol(cg, np, fnSymbol);
+      GenerateDirectCall(w, cg, np.procType, fnSymbol, args, result)
+    END
+  END GenerateNestedCall;
 
   (* A call through a procedure value (Oberon2.pdf 6.5, PLAN.md Phase 9
      step 8): a variable, parameter, record field or array element of
@@ -4401,7 +4440,7 @@ MODULE LLVMCodeGenerator;
                         args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
       obj: SymbolTable.Object; homeModule: SyntaxTree.Ident; nameSelector: SyntaxTree.Selector;
-      baseCall: BOOLEAN; rec: Types.RecordType; method: Types.Method;
+      baseCall: BOOLEAN; rec: Types.RecordType; method: Types.Method; nested: NestedProcedures.NestedProc;
   BEGIN
     IF d.selectors # NIL THEN
       IF FindMethodTarget(cg, d, nameSelector, baseCall, rec, method) THEN
@@ -4419,9 +4458,15 @@ MODULE LLVMCodeGenerator;
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.externalConvention[0] # 0X) THEN
       GenerateExternalCall(w, cg, obj, args, result)
     ELSIF (obj # NIL) & (obj.class = SymbolTable.procClass) THEN
-      GenerateOrdinaryCall(w, cg, obj, homeModule, args, result)
+      nested := NIL;
+      IF cg.nestedRoot # NIL THEN nested := NestedProcedures.Find(cg.nestedRoot, obj) END;
+      IF nested # NIL THEN
+        GenerateNestedCall(w, cg, nested, args, result)
+      ELSE
+        GenerateOrdinaryCall(w, cg, obj, homeModule, args, result)
+      END
     ELSE
-      Unsupported(w, cg, "call of something that is not a module-level procedure (a nested one?)", Types.Undefined, result)
+      Unsupported(w, cg, "call of something that is not a procedure", Types.Undefined, result)
     END
   END GenerateCall;
 
@@ -5575,6 +5620,21 @@ MODULE LLVMCodeGenerator;
     END
   END CollectStringConstantsSeq;
 
+  (* The string literals of a procedure's own body, and of every procedure
+     declared inside it, at any depth. *)
+  PROCEDURE CollectProcedureStringConstants(VAR w: Files.Rider; VAR cg: Codegen; pd: SyntaxTree.ProcDeclNode);
+    VAR nested: SyntaxTree.ProcDeclNode;
+  BEGIN
+    CollectStringConstantsSeq(w, cg, pd.statements);
+    IF pd.declarations # NIL THEN
+      nested := pd.declarations.procDecls;
+      WHILE nested # NIL DO
+        IF ~nested.isExternal & ~nested.isForward THEN CollectProcedureStringConstants(w, cg, nested) END;
+        nested := nested.next
+      END
+    END
+  END CollectProcedureStringConstants;
+
   (* TRUE for exactly the ProcDeclNodes PLAN.md Phase 8 step 10's own
      scope covers: an ordinary (non-type-bound), fully-defined (not a
      forward-only stub, not an external FFI declaration) procedure.
@@ -5788,33 +5848,12 @@ MODULE LLVMCodeGenerator;
      case does. cg.locals/cg.currentProcResultType/cg.scope are all
      reset back to their module-level values afterward, so the next
      procedure (or "_init", once every procedure is done) starts clean. *)
-  (* Oberon2.pdf 10: "procedure declarations may be nested", and by 4's scope
-     rules a nested procedure sees the enclosing procedure's variables. That
-     takes a static link or lambda lifting, which this backend does not have:
-     such a procedure is never emitted, so every call of it used to compile to
-     a comment and make the program quietly do less than its source says.
-     Reported instead, here and at each call. PLAN.md Phase 11 step 2 has the
-     design that would lower them. *)
-  PROCEDURE ReportNestedProcedures(VAR cg: Codegen; pd: SyntaxTree.ProcDeclNode);
-    VAR nested: SyntaxTree.ProcDeclNode;
-  BEGIN
-    IF pd.declarations # NIL THEN
-      nested := pd.declarations.procDecls;
-      WHILE nested # NIL DO
-        ReportUnsupported(cg, nested.line, nested.column,
-          "a procedure declared inside another procedure (nested procedures need a static link)");
-        nested := nested.next
-      END
-    END
-  END ReportNestedProcedures;
-
-  PROCEDURE GenerateProcedureBody(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
-                                  pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR);
+  PROCEDURE GenerateFunction(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
+                             pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR);
     VAR savedScope: SymbolTable.Scope; retType: LongText;
   BEGIN
     EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver);
     savedScope := cg.scope;
-    ReportNestedProcedures(cg, pd);
     cg.scope := bodyScope; cg.locals := NIL; cg.currentProcResultType := pt.resultType;
     IF pd.receiver # NIL THEN BindReceiver(w, cg, bodyScope, pd.receiver) END;
     BindFormalParams(w, cg, bodyScope, pt);
@@ -5833,6 +5872,40 @@ MODULE LLVMCodeGenerator;
     END;
     WriteStr(w, "}"); WriteLn(w); WriteLn(w);
     cg.scope := savedScope; cg.locals := NIL; cg.currentProcResultType := NIL
+  END GenerateFunction;
+
+  (* A module-level or type-bound procedure's functions: first one for every
+     procedure declared inside it, at any depth, then its own (Oberon2.pdf 10:
+     "procedure declarations may be nested"; doc/nested-procedures.md 3.5).
+     The nested ones go first because the IR is written in one pass and a
+     function cannot be started in the middle of another; LLVM does not care
+     about the order of the functions of a module. A nested procedure that
+     uses no variable of an enclosing procedure needs nothing more than an
+     ordinary function; one that does (its NestedProcedures needs list is not
+     empty) is reported and left out, and so is each call of it - step 3 of
+     the plan gives it its hidden parameters. The body scopes come from
+     NestedProcedures, which opened them: bindings are keyed by Object
+     identity, so the code for a nested procedure must use the very scope the
+     analysis did. *)
+  PROCEDURE GenerateProcedureBody(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
+                                  pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR);
+    VAR root, np: NestedProcedures.NestedProc; symbol: ValueText;
+  BEGIN
+    root := NestedProcedures.Analyze(pd, bodyScope);
+    cg.nestedRoot := root;
+    np := root.following;
+    WHILE np # NIL DO
+      IF np.needs # NIL THEN
+        ReportUnsupported(cg, np.decl.line, np.decl.column,
+          "a nested procedure that uses variables of an enclosing procedure (not lowered yet)")
+      ELSE
+        NestedFunctionSymbol(cg, np, symbol);
+        GenerateFunction(w, cg, np.scope, np.decl, np.procType, symbol)
+      END;
+      np := np.following
+    END;
+    GenerateFunction(w, cg, bodyScope, pd, pt, fnSymbol);
+    cg.nestedRoot := NIL
   END GenerateProcedureBody;
 
   PROCEDURE GenerateProcedureDecl(VAR w: Files.Rider; VAR cg: Codegen; moduleScope: SymbolTable.Scope;
@@ -6059,7 +6132,7 @@ MODULE LLVMCodeGenerator;
     unsupportedCount := 0;
     cg.currentLine := 0; cg.currentColumn := 0;
     cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
-    cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL;
+    cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL; cg.nestedRoot := NIL;
     cg.declaredExternals := NIL; cg.tdescs := NIL;
     cg.needCharCompare := FALSE; cg.needCharCopy := FALSE; cg.pendingStrings := NIL;
     cg.needMemmove := FALSE;
@@ -6092,7 +6165,7 @@ MODULE LLVMCodeGenerator;
       IF m.module.declarations # NIL THEN
         pd := m.module.declarations.procDecls;
         WHILE pd # NIL DO
-          IF HasBody(pd) THEN CollectStringConstantsSeq(w, cg, pd.statements) END;
+          IF HasBody(pd) THEN CollectProcedureStringConstants(w, cg, pd) END;
           pd := pd.next
         END
       END;
