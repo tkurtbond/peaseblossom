@@ -888,7 +888,7 @@ MODULE ModuleInterface;
     ELSIF t IS Types.ProcedureType THEN
       pct := t(Types.ProcedureType);
       WriteStr(w, "PROCEDURE");
-      IF pct.params # NIL THEN
+      IF (pct.params # NIL) OR (pct.resultType # NIL) THEN
         WriteStr(w, "(");
         first := TRUE;
         p := pct.params;
