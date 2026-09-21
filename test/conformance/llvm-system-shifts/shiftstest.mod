@@ -3,7 +3,7 @@ MODULE shiftstest;
      counts and types where voc's are defined (test.sh runs this same
      source under both and requires the same output; llvm-system-extra has
      a count of the width or more, CHAR and BYTE operands, and a bit
-     number out of range). A logical shift fills with zeros at the width of
+     number before the address). A logical shift fills with zeros at the width of
      the operand's own type - under -O2 SHORTINT is 8 bits, INTEGER 16,
      LONGINT 32 - so LSH(-1, -1) is the largest number of the type. *)
   IMPORT SYSTEM, Out;
@@ -75,7 +75,11 @@ MODULE shiftstest;
     (* any address will do, not only a variable's own: an element *)
     FOR k := 0 TO 7 DO bytes[k] := 0 END; bytes[1] := 8;
     Bit(SYSTEM.BIT(SYSTEM.ADR(bytes[1]), 3)); Bit(SYSTEM.BIT(SYSTEM.ADR(bytes[1]), 2));
-    Bit(SYSTEM.BIT(SYSTEM.ADR(bytes[0]), 11)); Bit(SYSTEM.BIT(SYSTEM.ADR(bytes[0]), 10)); Out.Ln
+    Bit(SYSTEM.BIT(SYSTEM.ADR(bytes[0]), 11)); Bit(SYSTEM.BIT(SYSTEM.ADR(bytes[0]), 10)); Out.Ln;
+    (* a bit string: 32 and up are the following bytes (voc reads a 64-bit word) *)
+    FOR k := 0 TO 7 DO bytes[k] := 0 END; bytes[4] := -1; bytes[7] := -128;
+    FOR k := 28 TO 36 DO Bit(SYSTEM.BIT(SYSTEM.ADR(bytes[0]), k)) END; Out.Ln;
+    Bit(SYSTEM.BIT(SYSTEM.ADR(bytes[0]), 62)); Bit(SYSTEM.BIT(SYSTEM.ADR(bytes[0]), 63)); Out.Ln
   END Bits;
 
 BEGIN

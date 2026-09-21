@@ -368,10 +368,21 @@ against real voc 2026-09-20). What a program can observe:
   goes the other way, and a `LSH` count of the width or more is 0, a `ROT`
   count is taken modulo the width - defined, where voc's are C's undefined
   shifts.
-- **`BIT(a, n)`** is voc's: bit `n` of the `SET`-sized word at `a`, `FALSE`
-  for `n` outside it.
+- **`BIT(a, n)`** is a bit string starting at `a`: bit `n` mod 8 of the byte
+  at `a + n DIV 8` (floored), bit 0 the low bit of the byte at `a`. Defined
+  for every `n` - 32 and up are the following bytes, a negative `n` the bytes
+  before `a` - and only the one byte is read, no alignment assumed. Decided
+  with the user 2026-09-21 (Phase 11, A11). On a little-endian machine, every
+  target poc has, it is voc's result for `n` in 0..63 (voc's `__BIT` reads a
+  64-bit word, undefined beyond) and A2's, and it is what the VAX's `BBS`/
+  `BBC` do with their signed bit position (VAX Architecture Handbook, 1986,
+  ch. 4). Until then poc tested a 32-bit `SET`-sized word and answered `FALSE`
+  outside 0..31, which the docs called voc's - true only below 32.
 - **`SYSTEM.NEW(v, n)`** allocates `n` zero-filled bytes for any pointer
-  variable, untraced by the collector (tag 0); `n <= 0` or too large traps
+  variable, untraced by the collector (tag 0: kept while something points at
+  it, never scanned inside, exactly voc's `NEWBLK`/`NoPtrSntl`, decided with
+  the user 2026-09-21 - it must not hold the only reference to anything);
+  `n <= 0` or too large traps
   (exit 7, as `NEW` of an open array), no heap leaves `v` NIL. Told from the
   ordinary `NEW` by the `SYSTEM.` qualifier.
 - **`SYSTEM.INT8/16/32/64`** are integers of exactly 1/2/4/8 bytes under both

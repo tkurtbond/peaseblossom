@@ -3972,8 +3972,9 @@ work already being in place.
      rotates the other way. A `LSH` count of the width or more gives 0 and
      `ROT` counts are taken modulo the width; both are defined (voc's are the
      C shifts, undefined there). Lowered branch-free.
-   - **`BIT(a, n)`** is voc's, not the report's byte-at-`a`: bit `n` of the
-     `SET`-sized word at `a`; `n` outside the word is `FALSE`.
+   - **`BIT(a, n)`** was voc's, as thought: bit `n` of the `SET`-sized word at
+     `a`, `FALSE` outside it. Phase 11 (A11) replaced it by a bit string from
+     `a`; see the Phase 11 step 2 bullet on the `SYSTEM` leftovers.
    - **`SYSTEM.NEW(v, n)`** allocates `n` zero-filled bytes (tag 0: the block is
      untraced by the collector, so it must not hold the only reference to
      anything) and assigns the address to any pointer variable `v`. `n <= 0`
@@ -3993,7 +3994,7 @@ work already being in place.
    output equal: every `LSH`/`ROT` direction and width, `BIT`, byte-array
    parameters over scalars, records and open arrays, `BYTE` narrowing),
    `llvm-system-extra` (poc only: counts at or past the width, `CHAR`/`BYTE`
-   operands, an out-of-range `BIT`, the `INTn`/`SET32` aliases, `PTR`
+   operands, `BIT` numbers past a word or negative, the `INTn`/`SET32` aliases, `PTR`
    comparisons, `SYSTEM.NEW` blocks including a reclaim loop of 20000 blocks
    of 100000 bytes), `llvm-system-new-trap` (exit status 7),
    `semantic-reject-system-byte-ptr` (19 diagnostics). All three run
@@ -4556,8 +4557,30 @@ as it stands when the phase starts, and adds what it finds):
      85). They are a front-end error now (`SemanticActions.IsPointerToNonRecord`,
      used by `CheckGuard`, which serves a designator guard, an argument guard
      and `WITH`, and by `IS`); nothing needs lowering. Fixture
-     `semantic-reject-guard-array-pointer`. Part (2), `BIT` and `SYSTEM.NEW`,
-     is still open.
+     `semantic-reject-guard-array-pointer`.
+     **Part (2) done 2026-09-21, decided with the user.** *`SYSTEM.NEW`*: kept.
+     voc's `Heap.NEWBLK` tags the block `NoPtrSntl` - freed when nothing points
+     at it, never scanned inside - which is poc's tag 0 (`TraceBlock` returns
+     for it); recorded as decided. *`BIT`*: the docs' "voc's word test" was
+     true only for `n` below 32. voc's `__BIT(x, n)` is `*(UINT64*)x >> n & 1`,
+     a 64-bit read (`n` of 64 or more is a C shift too wide, the hardware
+     wrapping it; probed on a buffer of eight `FF` bytes: voc `111111111`,
+     poc `111100000` for `n` = 28..36), A2's is a word of address width
+     rotated right by `n`, so no dialect answers `FALSE` out of range, and the
+     word size differs. The VAX's `BBS`/`BBC` take a *signed* bit position
+     relative to bit zero of the byte at the base address (VAX Architecture
+     Handbook, 1986: the bit field "specified by ... a base address, a bit
+     position" and "the bit position (P) is the signed longword specifying the
+     bit displacement ... with respect to bit zero of the byte at address A").
+     So `BIT(a, n)` is now that: bit `n` mod 8 of the byte at `a + n DIV 8`
+     (floored), defined for every `n`, one byte read. On a little-endian
+     machine it is voc's for `n` in 0..63; a big-endian target would differ
+     from the word dialects (none is planned). `GenerateBit` is branch-free
+     now. Fixtures `llvm-system-shifts` (shared with voc: bits 28..36, 62, 63
+     of an eight-byte array) and `llvm-system-extra` (negative `n`, `n` >= 32,
+     an `n` of type `HUGEINT` and `SHORTINT`; its old check of `MAX(HUGEINT)`
+     as a bit number, which read a wild address under the new meaning, is
+     gone).
    - *`HUGESET`.* Under `-O2` a `SET` is 32 bits and a `LONGINT` 32 bits,
      under `-OC` both 64: `SET` follows `LONGINT`. Whether a set as wide as
      `HUGEINT` on every model is wanted is answered from voc's own answer,

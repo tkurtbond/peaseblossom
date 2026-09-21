@@ -697,8 +697,9 @@ MODULE PredeclaredProcedures;
     END
   END CheckMove;
 
-  (* Appendix C: BIT(a, n) - bit n of the SET-sized word at address a.
-     Like GET, the address is any integer. *)
+  (* Appendix C: BIT(a, n) - bit n of the memory that starts at address a (a bit
+     string; see LLVMCodeGenerator.GenerateBit). Like GET, the address is any
+     integer. *)
   PROCEDURE CheckBit(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
                      line, column: INTEGER; checkExpr: CheckExprProc): Types.Type;
     VAR at, nt: Types.Type;

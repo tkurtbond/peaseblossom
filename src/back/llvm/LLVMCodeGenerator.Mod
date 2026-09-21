@@ -4487,32 +4487,28 @@ MODULE LLVMCodeGenerator;
     result.text := final; COPY(ty, result.llvmType); result.oberonType := x.oberonType
   END GenerateShift;
 
-  (* SYSTEM.BIT(a, n): whether bit n of the SET-sized word at address a is
-     set - voc's meaning (a word, not the report's byte), the same on a
-     little-endian machine for n < 8. Read with no alignment assumption,
-     like GET; a bit number outside the word is FALSE, not poison. *)
+  (* SYSTEM.BIT(a, n): whether bit n of the memory that starts at address a is
+     set - a bit string, bit 0 the low bit of the byte at a, so the byte read
+     is the one at a + n DIV 8 (floored: a negative n reaches back before a).
+     Defined for every n, and only that one byte is read, so nothing past the
+     bit tested is touched. On a little-endian machine it is voc's word test
+     (a 64-bit word there) for n in 0..63 and A2's; it is also what the VAX's
+     BBS/BBC do with their signed bit position (VAX Architecture Handbook,
+     1986, ch. 4). Phase 11, A11. *)
   PROCEDURE GenerateBit(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
-      n: Value; ptrText, setType, bitsText, loaded, count, inRange, safeCount, narrow, shifted, low, isSet,
-      both: ValueText;
+      n: Value; ptrText, count, byteIndex, bitInByte, slot, loaded, bitNarrow, shifted: ValueText;
   BEGIN
     AddressToPointer(w, cg, args, ptrText);
     GenerateExpr(w, cg, args.next, n);
-    LLVMTypes.TypeString(Types.Set, cg.sizeModel, setType);
-    bitsText[0] := 0X; AppendLongInt(bitsText, IntWidth(setType));
-    NewTemp(cg, loaded);
-    WriteStr(w, "  "); WriteStr(w, loaded); WriteStr(w, " = load "); WriteStr(w, setType);
-    WriteStr(w, ", ptr "); WriteStr(w, ptrText); WriteStr(w, ", align 1"); WriteLn(w);
     EmitResizeInt(w, cg, n.llvmType, n.text, "i64", count);
-    (* unsigned, so a negative number is out of range too *)
-    EmitBinOp(w, cg, "icmp ult", "i64", count, bitsText, inRange);
-    EmitSelect(w, cg, inRange, "i64", count, "0", safeCount);
-    EmitResizeInt(w, cg, "i64", safeCount, setType, narrow);
-    EmitBinOp(w, cg, "lshr", setType, loaded, narrow, shifted);
-    EmitBinOp(w, cg, "and", setType, shifted, "1", low);
-    EmitBinOp(w, cg, "icmp ne", setType, low, "0", isSet);
-    EmitBinOp(w, cg, "and", "i1", inRange, isSet, both);
-    EmitConvert(w, cg, "zext", "i1", both, "i8", result.text);
+    EmitBinOp(w, cg, "ashr", "i64", count, "3", byteIndex);
+    EmitBinOp(w, cg, "and", "i64", count, "7", bitInByte);
+    EmitByteGEP(w, cg, ptrText, "i64", byteIndex, slot);
+    EmitLoad(w, cg, "i8", slot, loaded);
+    EmitResizeInt(w, cg, "i64", bitInByte, "i8", bitNarrow);
+    EmitBinOp(w, cg, "lshr", "i8", loaded, bitNarrow, shifted);
+    EmitBinOp(w, cg, "and", "i8", shifted, "1", result.text);
     COPY("i8", result.llvmType); result.oberonType := Types.Boolean
   END GenerateBit;
 

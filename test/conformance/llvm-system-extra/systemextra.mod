@@ -1,7 +1,7 @@
 MODULE systemextra;
   (* PLAN.md Phase 10 step 7: SYSTEM where poc's differs from voc's or voc
      leaves it undefined - a shift count of the operand's width or more, CHAR
-     and BYTE operands, a bit number outside the word, PTR compared with a
+     and BYTE operands, a bit number of 32 or more or negative, PTR compared with a
      typed pointer, raw blocks from SYSTEM.NEW, and the fixed-width names.
      Poc only. Nothing printed depends on the size of a pointer. *)
   IMPORT SYSTEM, Out;
@@ -59,12 +59,23 @@ MODULE systemextra;
   END Characters;
 
   PROCEDURE Bits;
+    VAR raw: ARRAY 8 OF CHAR;
   BEGIN
-    (* a bit number outside the word is FALSE, whatever is in memory *)
-    l := -1;
-    Bit(SYSTEM.BIT(SYSTEM.ADR(l), 31)); Bit(SYSTEM.BIT(SYSTEM.ADR(l), 32)); Bit(SYSTEM.BIT(SYSTEM.ADR(l), 100));
-    Bit(SYSTEM.BIT(SYSTEM.ADR(l), -1)); Bit(SYSTEM.BIT(SYSTEM.ADR(l), MAX(HUGEINT))); Bit(SYSTEM.BIT(SYSTEM.ADR(l), MIN(HUGEINT)));
-    Out.Ln
+    (* BIT is a bit string from the address: bit n is bit n MOD 8 of the byte
+       at a + n DIV 8, floored, so a number of 32 or more is further bytes and a
+       negative one is bytes before the address (the VAX's BBS) *)
+    FOR k := 0 TO 7 DO raw[k] := 0X END;
+    raw[3] := 080X; raw[4] := 0FFX; raw[7] := 080X;
+    FOR k := 28 TO 36 DO Bit(SYSTEM.BIT(SYSTEM.ADR(raw[0]), k)) END; Out.Ln;
+    Bit(SYSTEM.BIT(SYSTEM.ADR(raw[0]), 39)); Bit(SYSTEM.BIT(SYSTEM.ADR(raw[0]), 40));
+    Bit(SYSTEM.BIT(SYSTEM.ADR(raw[0]), 62)); Bit(SYSTEM.BIT(SYSTEM.ADR(raw[0]), 63)); Out.Ln;
+    (* from the middle: bits before the address, and one far after *)
+    Bit(SYSTEM.BIT(SYSTEM.ADR(raw[4]), -1)); Bit(SYSTEM.BIT(SYSTEM.ADR(raw[4]), -2));
+    Bit(SYSTEM.BIT(SYSTEM.ADR(raw[4]), -8)); Bit(SYSTEM.BIT(SYSTEM.ADR(raw[4]), -9));
+    Bit(SYSTEM.BIT(SYSTEM.ADR(raw[4]), 27)); Bit(SYSTEM.BIT(SYSTEM.ADR(raw[4]), 31)); Out.Ln;
+    (* the bit number may be of any integer type *)
+    h := 33; Bit(SYSTEM.BIT(SYSTEM.ADR(raw[0]), h));
+    s := -1; Bit(SYSTEM.BIT(SYSTEM.ADR(raw[4]), s)); Out.Ln
   END Bits;
 
   PROCEDURE FixedWidth;
