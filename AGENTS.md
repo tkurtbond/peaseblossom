@@ -108,6 +108,15 @@ compatibility:
   below). This doesn't relax the strict-Oberon2.pdf-syntax constraint on
   poc's own source (see `PLAN.md`, "Bootstrap terminology") — only the
   build flag changed, not what poc's own source is allowed to write.
+  Since 2026-09-20 poc's own source also *type-checks* under `-O2` (`poc -O2
+  -build src/driver/Poc.Mod` succeeds; the one place that needed a 52-bit
+  integer, `LLVMCodeGenerator.DoubleBitsText`, now cuts the fraction into
+  two parts that fit 32 bits - fixture `llvm-real-constant-bits`). That is
+  only about what the compiler accepts: a poc *built* that way has a 4-byte
+  `LONGINT` where it needs 8 (`Types.Value.intVal`, the constant folder,
+  `DecimalToDouble`), gets constants wrong and hangs on
+  `module-interface-extreme-reals` (35 fixtures fail before it stops), so
+  Stage 0/1/2 stay `-OC`.
   `MemoryLayout.Mod` (Phase 4) separately models this same `-O2`/`-OC`
   axis for the *target* language poc itself compiles — orthogonal to this
   voc build flag, which only affects how poc's own source is compiled by

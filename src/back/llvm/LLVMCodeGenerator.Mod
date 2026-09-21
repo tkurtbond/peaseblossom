@@ -653,16 +653,18 @@ MODULE LLVMCodeGenerator;
      Oberon2.pdf has no bit-cast outside SYSTEM, and poc's own source
      must stay strict Oberon2.pdf: scaling a double by a power of two is
      always exact, so dividing/multiplying x into [1, 2) loses nothing,
-     and the 52 fraction bits are then a plain integer (ENTIER of an
-     exactly-integral value). A subnormal x (biased exponent 0) scales
+     and the 52 fraction bits are then an exactly integral LONGREAL, cut
+     into a 24-bit and a 28-bit part before they become integers (a 52-bit
+     LONGINT would need the -OC size model; under -O2 it is 32 bits, and poc's
+     own source compiles under both). A subnormal x (biased exponent 0) scales
      the same way to exponent -1022; infinity and NaN, which the folder
      can only produce by overflowing, get their own fixed patterns. A
      folded -0.0 comes out as +0.0 (a comparison cannot tell them apart
      and this module deliberately avoids 1/x tricks); a numeral written
      -0.0 never reaches here, RealConstant echoes its own text instead. *)
   PROCEDURE DoubleBitsText(x: LONGREAL; VAR text: ARRAY OF CHAR);
-    VAR negative: BOOLEAN; exponent, top, i: INTEGER; mantissa: LONGINT; digits: ARRAY 13 OF CHAR;
-        twoTo52: LONGREAL;
+    VAR negative: BOOLEAN; exponent, top, i: INTEGER; digits: ARRAY 13 OF CHAR;
+        fraction, twoTo52: LONGREAL; high, low: LONGINT;
   BEGIN
     (* 2^52, the scale of a binary64 fraction, built by doubling rather
        than written as a literal: voc 2.1.0 rejects a LONGREAL literal
@@ -673,8 +675,8 @@ MODULE LLVMCodeGenerator;
     FOR i := 1 TO 52 DO twoTo52 := twoTo52 * 2.0D0 END;
     negative := x < 0.0D0;
     IF negative THEN x := -x END;
-    mantissa := 0;
-    IF x # x THEN top := 2047; mantissa := 2251799813685248 (* 2^51: the quiet-NaN bit *)
+    fraction := 0.0D0;
+    IF x # x THEN top := 2047; fraction := twoTo52 / 2.0D0 (* 2^51: the quiet-NaN bit *)
     ELSIF x - x # 0.0D0 THEN top := 2047 (* infinity: the only non-NaN x with x - x not 0 *)
     ELSIF x = 0.0D0 THEN top := 0
     ELSE
@@ -683,16 +685,23 @@ MODULE LLVMCodeGenerator;
       WHILE x < 1.0D0 DO x := x * 2.0D0; DEC(exponent) END;
       IF exponent >= -1022 THEN
         top := exponent + 1023;
-        mantissa := ENTIER((x - 1.0D0) * twoTo52)
+        fraction := (x - 1.0D0) * twoTo52
       ELSE
         top := 0;
         WHILE exponent < -1022 DO x := x / 2.0D0; INC(exponent) END;
-        mantissa := ENTIER(x * twoTo52)
+        fraction := x * twoTo52
       END
     END;
     IF negative THEN top := top + 2048 END;
-    FOR i := 12 TO 0 BY -1 DO
-      digits[i] := HexDigitChar(SHORT(mantissa MOD 16)); mantissa := mantissa DIV 16
+    (* fraction < 2^52 is exactly integral, and so is every step here: 2^28 is
+       a power of two and high * 2^28 is below 2^52 *)
+    high := ENTIER(fraction / 268435456.0D0);
+    low := ENTIER(fraction - high * 268435456.0D0);
+    FOR i := 12 TO 6 BY -1 DO
+      digits[i] := HexDigitChar(SHORT(low MOD 16)); low := low DIV 16
+    END;
+    FOR i := 5 TO 0 BY -1 DO
+      digits[i] := HexDigitChar(SHORT(high MOD 16)); high := high DIV 16
     END;
     text[0] := "0"; text[1] := "x";
     text[2] := HexDigitChar(top DIV 256);
