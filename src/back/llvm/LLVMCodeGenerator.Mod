@@ -5752,13 +5752,18 @@ MODULE LLVMCodeGenerator;
     END
   END BindLocalVars;
 
-  (* One user-defined procedure's own "define ... { ... }". Reopens the
+  (* One user-defined procedure's own "define ... { ... }". bodyScope is the
      exact params+locals scope SemanticActions.CheckProcedureBody itself
-     built while checking pd's body (SemanticActions.OpenProcedureBody-
-     Scope, exported for exactly this reuse - see its own header comment
-     on why re-deriving it here, rather than stashing the original on
-     the AST, is the only option SyntaxTree.Mod's own "zero imports, pure
-     data" design leaves open). The trailing "ret" after GenerateState-
+     built while checking pd's body, re-derived by the caller
+     (SemanticActions.OpenProcedureBodyScope, exported for exactly this reuse
+     - see its own header comment on why re-deriving it, rather than stashing
+     the original on the AST, is the only option SyntaxTree.Mod's own "zero
+     imports, pure data" design leaves open). It is a parameter, not opened
+     here, because OpenProcedureBodyScope makes fresh Objects on every call
+     and every backend binding is keyed by Object identity, so anything that
+     looks at pd's variables before the body is generated (the nested-
+     procedure analysis, doc/nested-procedures.md) must share the one scope
+     with it. The trailing "ret" after GenerateState-
      mentSeq is unconditional, the same way Generate*'s own "_init" body
      already unconditionally appends "ret void" after its own
      GenerateStatementSeq call: GenerateStatementSeq always leaves the
@@ -5794,13 +5799,11 @@ MODULE LLVMCodeGenerator;
     END
   END ReportNestedProcedures;
 
-  PROCEDURE GenerateProcedureBody(VAR w: Files.Rider; VAR cg: Codegen; moduleScope: SymbolTable.Scope;
-                                  pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
-                                  receiverType: Types.Type);
-    VAR bodyScope, savedScope: SymbolTable.Scope; retType: LongText;
+  PROCEDURE GenerateProcedureBody(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
+                                  pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR);
+    VAR savedScope: SymbolTable.Scope; retType: LongText;
   BEGIN
     EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver);
-    bodyScope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, receiverType, pt);
     savedScope := cg.scope;
     ReportNestedProcedures(cg, pd);
     cg.scope := bodyScope; cg.locals := NIL; cg.currentProcResultType := pt.resultType;
@@ -5825,11 +5828,12 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE GenerateProcedureDecl(VAR w: Files.Rider; VAR cg: Codegen; moduleScope: SymbolTable.Scope;
                                   pd: SyntaxTree.ProcDeclNode);
-    VAR obj: SymbolTable.Object; fnSymbol: ValueText;
+    VAR obj: SymbolTable.Object; fnSymbol: ValueText; pt: Types.ProcedureType;
   BEGIN
     obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
     ModuleQualifiedName(cg, obj.name, fnSymbol);
-    GenerateProcedureBody(w, cg, moduleScope, pd, obj.type(Types.ProcedureType), fnSymbol, NIL)
+    pt := obj.type(Types.ProcedureType);
+    GenerateProcedureBody(w, cg, SemanticActions.OpenProcedureBodyScope(pd, moduleScope, NIL, pt), pd, pt, fnSymbol)
   END GenerateProcedureDecl;
 
   (* One type-bound procedure's own "define": the receiver's declared
@@ -5848,7 +5852,8 @@ MODULE LLVMCodeGenerator;
     owner := TargetRecord(typeObj.type);
     method := Types.FindOwnMethod(owner, pd.name.name);
     MethodSymbol(owner, method.name, sym);
-    GenerateProcedureBody(w, cg, moduleScope, pd, method.procType, sym, typeObj.type)
+    GenerateProcedureBody(w, cg, SemanticActions.OpenProcedureBodyScope(pd, moduleScope, typeObj.type, method.procType),
+                          pd, method.procType, sym)
   END GenerateMethodDecl;
 
   (* The whole-program driver (PLAN.md Phase 8 step 12), generalizing

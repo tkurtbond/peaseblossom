@@ -253,12 +253,25 @@ BSD hosts before step 6.
 0. **Groundwork, no behaviour change.** `SemanticActions.DeclareLocalProcedures`;
    `GenerateProcedureBody` takes its scope as a parameter. Proof: `make check`
    is byte-identical (same IR for every existing fixture).
+   **Done 2026-09-20.** `DeclareLocalProcedures` is in `SemanticActions.Mod` (no
+   caller yet: step 1 is the first, and its test); `GenerateProcedureBody` now
+   takes `bodyScope`, and its two callers (`GenerateProcedureDecl`,
+   `GenerateMethodDecl`) open it. Proof: every fixture source, at the default
+   model, `-OC` and `-target i686-unknown-linux-gnu` (807 compilations), gives
+   the same `.ll`, `.sym` and messages before and after; `make check` green,
+   fixed point exact.
 1. **The analysis alone.** `NestedProcedures.Mod` and `-dump-nested`. Fixtures
    `nested-analysis-*`: golden `Needs` lists for the cases in §6, including the
    ones that are easy to get wrong (a level-3 use routed through a level-2
    procedure that never names it; a sibling call that pulls a variable in; mutual
    recursion; a shadowed name that must *not* be needed; a module-level variable
    and a constant that must not be). No codegen.
+   **Done 2026-09-20**: fixtures `nested-analysis-basic`, `-recursion`, `-order`,
+   `-scopes`, `-kinds` and `-none`. `-kinds` has one nested procedure for each
+   statement and expression form that can name a variable, and the receivers of a
+   pointer and of a `VAR` type-bound procedure. Stage 0 builds the module before
+   `Poc`, which imports it for `-dump-nested`. `-dump-nested` over every source
+   file of `src/` and `rtl/llvm` prints nothing, since none has a nested procedure.
 2. **Nested procedures with no needs.** Emit the functions and calls for the ones
    whose `Needs` is empty; everything else stays the error. Fixture
    `llvm-nested-basic`. This exercises symbols, emission order, the

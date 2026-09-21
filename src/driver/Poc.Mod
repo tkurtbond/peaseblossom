@@ -61,7 +61,7 @@ MODULE Poc;
   IMPORT Modules, Files, Out, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
          ConstantEvaluator, PredeclaredProcedures, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator,
-         DecimalToDouble;
+         DecimalToDouble, NestedProcedures;
   (* DecimalToDouble is used only inside ConstantEvaluator's procedure
      bodies, and voc's symbol file records only the imports an exported
      declaration needs, so Stage 0's link line would otherwise miss it: this
@@ -754,6 +754,97 @@ MODULE Poc;
     END
   END DumpLLVMTypes;
 
+  (* The record a receiver's declared type names: the pointer's base, or the
+     record itself for a VAR receiver. LLVMCodeGenerator.TargetRecord's own
+     four lines, since this debugging mode cannot import a backend. *)
+  PROCEDURE ReceiverRecord(t: Types.Type): Types.RecordType;
+    VAR ptr: Types.PointerType;
+  BEGIN
+    IF t = NIL THEN RETURN NIL END;
+    IF t IS Types.RecordType THEN RETURN t(Types.RecordType) END;
+    IF t IS Types.PointerType THEN
+      ptr := t(Types.PointerType);
+      IF (ptr.base # NIL) & (ptr.base IS Types.RecordType) THEN RETURN ptr.base(Types.RecordType) END
+    END;
+    RETURN NIL
+  END ReceiverRecord;
+
+  (* One line per procedure nested inside pd, in source order, parents before
+     the procedures they contain: its path, then the variables it needs of the
+     enclosing procedures, each written as its declaring procedure's path and
+     its own name, in the order a backend will pass them. *)
+  PROCEDURE PrintNestedProcedures(pd: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope);
+    VAR
+      root, np: NestedProcedures.NestedProc;
+      need: NestedProcedures.Need;
+      obj, typeObj: SymbolTable.Object;
+      pt: Types.ProcedureType;
+      method: Types.Method;
+      bodyScope: SymbolTable.Scope;
+  BEGIN
+    IF pd.receiver = NIL THEN
+      obj := SymbolTable.FindLocal(scope, pd.name.name);
+      pt := obj.type(Types.ProcedureType);
+      bodyScope := SemanticActions.OpenProcedureBodyScope(pd, scope, NIL, pt)
+    ELSE
+      typeObj := SymbolTable.FindLocal(scope, pd.receiver.typeName);
+      method := Types.FindOwnMethod(ReceiverRecord(typeObj.type), pd.name.name);
+      bodyScope := SemanticActions.OpenProcedureBodyScope(pd, scope, typeObj.type, method.procType)
+    END;
+    root := NestedProcedures.Analyze(pd, bodyScope);
+    np := root.following;
+    WHILE np # NIL DO
+      Out.String(np.pathName); Out.String(":");
+      need := np.needs;
+      IF need = NIL THEN Out.String(" (none)") END;
+      WHILE need # NIL DO
+        Out.String(" "); Out.String(need.owner.pathName); Out.String("."); Out.String(need.obj.name);
+        need := need.next
+      END;
+      Out.Ln;
+      np := np.following
+    END
+  END PrintNestedProcedures;
+
+  (* PLAN.md Phase 11 step 8 (doc/nested-procedures.md): the golden-file
+     testing surface for NestedProcedures.Mod, which finds what each nested
+     procedure needs of its enclosing ones before any backend uses it. Checks
+     the module first; for every module-level or type-bound procedure that
+     has a body and declares procedures inside itself, prints
+     PrintNestedProcedures' lines. A module with no nested procedure prints
+     nothing. *)
+  PROCEDURE DumpNested(name: ARRAY OF CHAR);
+    VAR
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      parser: Parser.Parser;
+      module: SyntaxTree.ModuleNode;
+      scope: SymbolTable.Scope;
+      d: SyntaxTree.ProcDeclNode;
+  BEGIN
+    IF ~ReadSource(name, buffer, length) THEN
+      failed := TRUE; Out.String("poc: cannot open "); Out.String(name); Out.Ln
+    ELSE
+      Diagnostics.Reset(name);
+      Parser.InitParser(parser, buffer, length);
+      module := Parser.ParseModule(parser);
+      IF Diagnostics.errorCount = 0 THEN
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+      END;
+      IF Diagnostics.errorCount > 0 THEN
+        Out.Int(Diagnostics.errorCount, 0); Out.String(" error(s)"); Out.Ln
+      ELSIF module.declarations # NIL THEN
+        d := module.declarations.procDecls;
+        WHILE d # NIL DO
+          IF ~d.isForward & ~d.isExternal & (d.declarations # NIL) & (d.declarations.procDecls # NIL) THEN
+            PrintNestedProcedures(d, scope)
+          END;
+          d := d.next
+        END
+      END
+    END
+  END DumpNested;
+
   PROCEDURE Usage;
   BEGIN
     failed := TRUE;
@@ -762,6 +853,7 @@ MODULE Poc;
     Out.String("       poc -check <file>"); Out.Ln;
     Out.String("       poc -dump-layout <file>"); Out.Ln;
     Out.String("       poc -dump-llvm-types <file>"); Out.Ln;
+    Out.String("       poc -dump-nested <file>"); Out.Ln;
     Out.String("       poc -emit-interface <file>"); Out.Ln;
     Out.String("       poc -show-interface <file>"); Out.Ln;
     Out.String("       poc -emit-llvm-ir <file>"); Out.Ln;
@@ -826,6 +918,8 @@ MODULE Poc;
       DumpLayout(fileName)
     ELSIF option = "-dump-llvm-types" THEN
       DumpLLVMTypes(fileName)
+    ELSIF option = "-dump-nested" THEN
+      DumpNested(fileName)
     ELSIF option = "-emit-interface" THEN
       EmitInterface(fileName, outputDir, targetTriple, FALSE)
     ELSIF option = "-show-interface" THEN

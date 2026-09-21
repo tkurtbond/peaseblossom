@@ -1,0 +1,6 @@
+Outer.UsesA: Outer.a
+Outer.UsesParams: Outer.p Outer.q
+Outer.NothingLocal: (none)
+Outer.Middle: Outer.b
+Outer.Middle.Deep: Outer.b Outer.Middle.m
+Outer.CallsUsesA: Outer.a

@@ -3032,6 +3032,59 @@ MODULE SemanticActions;
     END
   END ResolveProcDecls;
 
+  (* The procedures declared directly inside pd's body (Oberon2.pdf 10:
+     "procedure declarations may be nested"), entered into bodyScope - which
+     must be the scope OpenProcedureBodyScope returned for pd, and stays the
+     one every later lookup of them goes through. Each gets its own
+     procClass Object (its signature resolved exactly as ResolveProcDecls
+     does, a forward declaration's Object completed rather than duplicated by
+     the body that follows it); no body is opened or checked and nothing is
+     reported. That is the point of it being separate from ResolveProcDecls:
+     OpenProcedureBodyScope leaves nested procedures out, CheckProcedureBody
+     resolves them with full diagnostics into a scope it then throws away,
+     and a backend needs the same Objects a second time, silently, in a scope
+     it keeps - by the same premise OpenProcedureBodyScope's own comment
+     states, the source has passed CheckModule with no error, so there is
+     nothing to report. Bindings are keyed by Object identity, so whoever
+     calls this owns the resulting Objects for as long as it needs any.
+     A declaration with a receiver is skipped: a type-bound procedure lives
+     in its record's method list, not in a scope. *)
+  PROCEDURE DeclareLocalProcedures*(pd: SyntaxTree.ProcDeclNode; bodyScope: SymbolTable.Scope);
+    VAR
+      d: SyntaxTree.ProcDeclNode;
+      pt: Types.ProcedureType;
+      obj: SymbolTable.Object;
+      exported: BOOLEAN;
+  BEGIN
+    IF pd.declarations # NIL THEN
+      d := pd.declarations.procDecls;
+      WHILE d # NIL DO
+        IF d.receiver = NIL THEN
+          IF d.isExternal THEN
+            ResolveExternalProcDecl(d, bodyScope)
+          ELSE
+            exported := d.name.exportMark # SyntaxTree.exportNone;
+            pt := ResolveFormalPars(bodyScope, d.formals);
+            IF d.isForward THEN
+              obj := SymbolTable.Insert(bodyScope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
+                                         d.line, d.column);
+              obj.isForwardProc := TRUE
+            ELSE
+              obj := SymbolTable.FindLocal(bodyScope, d.name.name);
+              IF (obj # NIL) & (obj.class = SymbolTable.procClass) & obj.isForwardProc THEN
+                obj.isForwardProc := FALSE; obj.type := pt
+              ELSE
+                obj := SymbolTable.Insert(bodyScope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
+                                           d.line, d.column)
+              END
+            END
+          END
+        END;
+        d := d.next
+      END
+    END
+  END DeclareLocalProcedures;
+
   (* Every branch below calls a distinctly-named procedure, never
      CheckStatement itself - see CheckExpr's identical rationale above. *)
   PROCEDURE CheckStatement(scope: SymbolTable.Scope; s: SyntaxTree.StatementNode;

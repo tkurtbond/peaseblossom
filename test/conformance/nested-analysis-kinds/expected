@@ -1,0 +1,20 @@
+Outer.ByAssign: Outer.n
+Outer.ByReturn: Outer.value
+Outer.ByVarParam: Outer.ref
+Outer.ByField: Outer.rec
+Outer.ByIndex: Outer.i Outer.v
+Outer.ByOpenArray: Outer.open
+Outer.ByFor: Outer.i
+Outer.ByCase: Outer.ch Outer.flag
+Outer.ByWith: Outer.base
+Outer.ByPredeclared: Outer.value Outer.open Outer.n Outer.str Outer.ptr
+Outer.ByAddress: Outer.r
+Outer.BySet: Outer.i Outer.n Outer.s
+Outer.ByTypeTest: Outer.flag Outer.base
+Outer.ByLoops: Outer.n Outer.r Outer.flag
+Outer.ByString: Outer.flag Outer.str
+Outer.ByLength: Outer.open Outer.n
+Outer.ByPointer: Outer.ptr
+Outer.ByOperators: Outer.value Outer.n Outer.flag
+Counter.Bump.Add: Counter.Bump.c Counter.Bump.by Counter.Bump.total
+Cell.Reset.Zero: Cell.Reset.cell

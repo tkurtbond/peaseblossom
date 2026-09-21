@@ -118,6 +118,12 @@ etc.).
   conversion behind `ConstantEvaluator.ParseReal` (big-integer arithmetic,
   correctly rounded, ties to even) and its inverse, the correctly rounded
   decimal digits of a double, which `ModuleInterface`'s real formatter uses.
+- `NestedProcedures.Mod` (Phase 11 step 8): for a procedure that contains
+  procedures, the tree of them and what each needs of the variables of the
+  procedures enclosing it (a fixed point over containment and calls, names
+  resolved exactly against the scope chain, lists in a fixed source order);
+  backend-independent, printed by `poc -dump-nested`. No code generation
+  uses it yet. `doc/nested-procedures.md` has the plan.
 - `MemoryLayout.Mod` (Phase 4): size/alignment/field-offset computation
   for Types.Mod's representations, parameterized by an explicit target
   word size (4 or 8 bytes) and, since 2026-09-16, an elementary-type size
