@@ -16,6 +16,15 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BUILD="$ROOT/build"
 STAGE0_POC=${STAGE0_POC:-$BUILD/bin/poc}
 
+# The Stage 0 poc is a voc program, linked against voc's shared runtime
+# (libvoc-OC.so), which Linux finds by itself and NetBSD/OpenBSD do not - and a
+# non-interactive shell (ssh host cmd) has no login profile to set
+# LD_LIBRARY_PATH. Same as test/testenv.sh.
+VOC_BIN_DIR=${VOC_BIN_DIR:-/usr/local/sw/versions/voc/git/bin}
+VOC_LIB_DIR=${VOC_LIB_DIR:-$VOC_BIN_DIR/../lib}
+LD_LIBRARY_PATH="$VOC_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH
+
 rm -rf "$BUILD/stage1"
 mkdir -p "$BUILD/stage1/obj" "$BUILD/stage1/bin"
 cd "$BUILD/stage1/obj"

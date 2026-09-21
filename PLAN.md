@@ -4246,7 +4246,15 @@ as it stands when the phase starts, and adds what it finds):
      that i686 poc, run on the x86_64 target, rebuilt poc with every `.ll`,
      every `.sym` and the executable byte for byte those of Stage 1, and the
      whole suite (219 fixtures) passes under it. Still to run: the same on a
-     BSD host (unreachable from home). The plan text follows.
+     BSD host (unreachable from home) - done 2026-09-21 on the local OpenBSD
+     i386 VM (`cymoril`): its voc-built Stage 0 built poc there as a 32-bit
+     `-OC` executable (Stage 1, 10 s), which rebuilt itself (Stage 2: every
+     `.sym`, the `Poc.ll` and the executable identical), the `Poc.ll` is
+     byte for byte the Linux cross-compile for `i386-unknown-openbsd7.9`
+     (`-OC -target ...  -emit-llvm-ir`), and all 237 fixtures pass under it.
+     (`tools/bootstrap/stage1` now sets voc's library path itself, as
+     `test/testenv.sh` does: a non-interactive `ssh` on a BSD found no
+     `libvoc-OC.so` for the voc-built Stage 0 poc.) The plan text follows.
    - *`LONGINT` included in `SYSTEM.ADDRESS`, at a width it does not fit.*
      `Types.Order` puts `ADDRESS` between `LONGINT` and `HUGEINT` by rank,
      whatever the target: right when both are 32 bits or `ADDRESS` is 64, wrong
