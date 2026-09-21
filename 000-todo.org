@@ -97,18 +97,20 @@ SET is 32 bits under both models, SET32 is SET, SYSTEM.SET64 is a distinct 8-byt
 ** TODO Look at all of voc's command line switches, and decide which ones poc should have.
 ** TODO Create an Err module, that is essentially equivalent to the Out module, but writes on stderr.
 ** TODO Consider supporting voc's eth, ooc, and ulm RTLs.
-** TODO Consider relaxing assignment compatibility rule 6, and allowing assignment of one ARRAY OF CHAR to another.
+** DONE Consider relaxing assignment compatibility rule 6, and allowing assignment of one ARRAY OF CHAR to another.
+Decided and done 2026-09-21 (survey: doc/array-assignment-survey.md; AGENTS.md "Array assignment").  Rule 6 stays (no dialect relaxes it).  voc's array rule is adopted for every element type: a fixed array target takes a same-element-type fixed array no longer than it, or an open array (trap, exit 9, if longer), copied whole by size.  An open array is never a target (fixing a defect: d := s for two open arrays was accepted and then failed in the backend).
 Starts with a survey (user, 2026-09-20), not implementation: how existing Oberon and Oberon-2 compilers (the Oberon System's own, voc, and the others) treat a string constant that exactly fills or is longer than the destination, one ARRAY OF CHAR assigned to another (fixed to fixed, open to fixed, fixed to open), and a too-short destination (truncate, trap, compile-time error).  Written down with sources, as the ASSERT survey was; only then decide.  Shares its compiler set and source gathering with the overflow/underflow survey above.  (doc/phase-11-inventory.md A21; PLAN.md Phase 11 step 6.)
 Rule 6 (Appendix A: Definition of terms, Oberon2.pdf, p. 20): Tv is ARRAY n OF CHAR, e is a string constant with m characters, and m < n.
 Voc accepts fileName := name (open array to fixed array) as an extension; that use in poc's own source was already replaced by COPY (see the Phase 7 self-check entry below).
-*** TODO Rule 6 itself: which way to relax it (exact fit m = n, or a longer string truncated).
-*** TODO Assignment of one ARRAY OF CHAR to another, like COPY (from, to) does; what a too-short destination does.
-*** TODO Expand to any ARRAY.  Needs a use that is not ARRAY OF CHAR before it is worth the semantics of a partial copy.
+*** DONE Rule 6 itself: which way to relax it (exact fit m = n, or a longer string truncated).
+*** DONE Assignment of one ARRAY OF CHAR to another, like COPY (from, to) does; what a too-short destination does.
+*** DONE Expand to any ARRAY (voc's rule, every element type).  Needs a use that is not ARRAY OF CHAR before it is worth the semantics of a partial copy.
 ** TODO Consider allowing CONST/TYPE/VAR/PROCEDURE declarations to occur textually in any order.
 The section-order half is DONE (2026-09-17, voc-verified): CONST/TYPE/VAR sections may repeat and interleave, resolved in one textual-order pass; see the DONE entry "Resolve CONST/TYPE/VAR declarations as one linear pass" above.  What remains is true forward references and putting a PROCEDURE before a TYPE/VAR.  Proposed verdict: close at what voc does (voc rejects both; the PROCEDURE^ forward declaration already covers the case that matters); reopen only for a concrete need.  (doc/phase-11-inventory.md A22; PLAN.md Phase 11 step 6.)
 ** TODO Initializers for variable declarations consisting of := after the type, followed by an expression.
 ** TODO Oberon-2 has syntax for sets literals; it would be good have syntax for record and array literals, too.
 ** TODO Underscores and dollarsigns in names.  (Useful for VMS.)
+** TODO Slices for one dimensional arrays.
 * Ignore this
 Local Variables:
 eval: (visual-line-mode 1)
