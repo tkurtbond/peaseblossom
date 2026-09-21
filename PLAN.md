@@ -4131,7 +4131,11 @@ as it stands when the phase starts, and adds what it finds):
      IEEE and silent, `DIV`/`MOD` by zero stays `SIGFPE`, `SHORT`/`CHR`/`SET`
      element range stay unchecked, an optional `-r` left to Phase 12 step 1;
      `AGENTS.md` "Overflow, division and reals", fixture `llvm-overflow-wrap`) and
-     rule 6 with `ARRAY OF CHAR` assignment (A21). The remaining items keep
+     rule 6 with `ARRAY OF CHAR` assignment (A21, **done 2026-09-21**:
+     `doc/array-assignment-survey.md`; rule 6 stays, voc's array rule is
+     adopted for every element type, an open array is never assigned - which
+     fixed a defect - and an open source too long for its target traps, exit
+     9; `AGENTS.md` "Array assignment"). The remaining items keep
      their `proposed`/`open` verdicts until their steps run.
 
 2. **Known defects and unfinished corners.** Small, concrete, each with a
@@ -4516,7 +4520,14 @@ as it stands when the phase starts, and adds what it finds):
    `SYSTEM.ADDRESS`, external procedures, and whatever this step adds -
    included), which is how poc's own source can be *checked* to stay
    strict instead of relying on convention.
-   - *Assignment of one `ARRAY OF CHAR` to another, and rule 6.* The three
+   - *Assignment of one `ARRAY OF CHAR` to another, and rule 6.* **Done
+     2026-09-21 (inventory A21):** the survey is `doc/array-assignment-survey.md`;
+     rule 6 stays as it is, voc's array rule is adopted for every element type
+     (fixed array no longer than the target, or an open array; whole array
+     copied by size; a longer open source is a trap, exit 9), an open array is
+     never assignable (a checker/backend defect fixed), and `-strict` must
+     reject the extension. `AGENTS.md` "Array assignment". What follows is the
+     original plan. The three
      overlapping `000-todo.org` entries. `000-todo.org` does not say in
      which direction rule 6 ("a string constant with m characters assigns
      to an `ARRAY n OF CHAR` when m < n") is to be relaxed - exact fit

@@ -883,10 +883,29 @@ MODULE Types;
     IF (a = Set64) OR (b = Set64) THEN RETURN Set64 ELSE RETURN Set END
   END WiderSet;
 
+  (* Phase 11 (A21): whether t is an open array type. *)
+  PROCEDURE IsOpenArray*(t: Type): BOOLEAN;
+    VAR arr: ArrayType;
+  BEGIN
+    IF (t # NIL) & (t IS ArrayType) THEN
+      arr := t(ArrayType);
+      RETURN arr.isOpen
+    ELSE
+      RETURN FALSE
+    END
+  END IsOpenArray;
+
+  (* Rule 1 does not cover an open array: Appendix A's "same type" excludes
+     open arrays (a formal parameter list's `d, s: ARRAY OF CHAR` shares one
+     ArrayType, so SameType is true for it, but the two are not the same
+     type), and an open array cannot be copied, having no size of its own.
+     voc rejects `d := s` too (err 113); poc used to accept it and then
+     emitted IR clang refused. Passing an open array as an argument is a
+     different check (ArrayCompatible, above) and is not affected. *)
   PROCEDURE AssignmentCompatible*(dst, src: Type): BOOLEAN;
     VAR dstPtr, srcPtr: PointerType;
   BEGIN
-    IF SameType(dst, src) THEN RETURN TRUE (* rule 1 (subsumes rule 7) *)
+    IF SameType(dst, src) THEN RETURN ~IsOpenArray(dst) (* rule 1 (subsumes rule 7) *)
     ELSIF Includes(dst, src) THEN RETURN TRUE (* rule 2 *)
     ELSIF (dst = Set64) & (src = Set) THEN RETURN TRUE (* a SET is included in a SET64 *)
     ELSIF (dst = Byte) & ((src = Char) OR (src = ShortInt)) THEN
@@ -908,6 +927,22 @@ MODULE Types;
       RETURN FALSE
     END
   END AssignmentCompatible;
+
+  (* Phase 11 (A21), voc's rule (OPB.CheckAssign): an array assignment `v := e`
+     beyond rule 1 - v a fixed array, e an array of the same element type (the
+     same Type, as everywhere) that is either a fixed array no longer than v
+     or an open array (its length is tested at run time). The whole of e is
+     copied by size, whatever it holds; what follows it in v is left alone.
+     Only an assignment statement takes it, not a value parameter, whose
+     argument is passed by the type it has. The report has no such rule. *)
+  PROCEDURE ArrayAssignable*(dst, src: Type): BOOLEAN;
+    VAR dstArr, srcArr: ArrayType;
+  BEGIN
+    IF (dst = NIL) OR (src = NIL) OR ~(dst IS ArrayType) OR ~(src IS ArrayType) THEN RETURN FALSE END;
+    dstArr := dst(ArrayType); srcArr := src(ArrayType);
+    RETURN ~dstArr.isOpen & SameType(dstArr.elementType, srcArr.elementType)
+           & (srcArr.isOpen OR (srcArr.length <= dstArr.length))
+  END ArrayAssignable;
 
   PROCEDURE TypeName*(t: Type; VAR name: ARRAY OF CHAR);
   BEGIN

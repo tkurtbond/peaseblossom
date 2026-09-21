@@ -714,6 +714,53 @@ and poc, both models):
   shifts past its width. voc's `-r` would halt on the first two; poc has no
   such switch (Phase 12 step 1 may add one).
 
+### Array assignment (decided and implemented, Phase 11 A21)
+
+`doc/array-assignment-survey.md` has the sources and the probes (voc, OfrontPlus,
+A2, obc, and the Oberon-2, Oberon-07, Active Oberon, Component Pascal and Oberon+
+definitions). What a program can observe:
+
+- **Rule 6 is unchanged**: `v := "abc"` needs `m < n`, so a string that exactly
+  fills the array or is longer is a compile-time error (voc's err 114). Every
+  surveyed dialect agrees, and `COPY` is the tool for truncating.
+- **An open array is never a target**, and never assignable to another open
+  array, `d := s` for two open-array parameters included (`d, s: ARRAY OF
+  CHAR`), nor a row `d[i] := s[i]` of an open array of arrays, nor `p^ := q^`
+  through a pointer to an open array. Appendix A's "same type" excludes open
+  arrays (voc: err 113). poc used to accept `d := s` and then emit IR clang
+  refused, because two open arrays declared together share one `ArrayType`.
+- **voc's array rule is adopted, beyond `Oberon2.pdf`** (user, 2026-09-21; the
+  report has nothing like it): `v := e` where `v` is a *fixed* array and `e` an
+  array with the **same element type** (the same `Type`; two anonymous
+  `ARRAY 3 OF INTEGER` are the same element type only where the element is
+  `INTEGER`, never as a nested anonymous array) that is either a **fixed array
+  no longer than `v`** or an **open array**. All of `e` is copied, by size
+  (`memmove`) and **whatever it holds** - a `0X` in the middle of a character
+  array makes no difference - and what follows it in `v` is left as it was.
+  It works for every element type, `CHAR` included, so `fileName := name` (open
+  `ARRAY OF CHAR` into a fixed one) is accepted, as are `s1 := s2` for two
+  separately declared arrays of equal length (voc treats those as one type;
+  poc, per the report, as two, and this rule then copies) and `big := small`.
+  Rows and elements of arrays and record fields are targets and sources like
+  any variable. Only an *assignment statement* takes it: a value parameter of
+  fixed array type still needs its own type, a longer array is still an error,
+  and so is another element type (`ARRAY OF LONGINT` into `ARRAY OF INTEGER`).
+- **An open source longer than the fixed target stops the program** ("open
+  array assigned to an array too short for it", exit status 9), by *length*
+  alone: an 8-element buffer holding the two-character string `"ab"` cannot be
+  assigned to a 4-element array, as in voc (which reports an index out of
+  range, Halt(-2)). Use `COPY` to take what fits.
+- **Not done, on purpose**: the terminator-based rule of Component Pascal and
+  Oberon+ (copy up to the source's `0X`, halt if it does not fit), which would
+  accept the buffer above; an open array as a target (Active Oberon and Oberon+
+  accept a string constant there); assignment of a string constant to an open
+  array. The survey (section 6) has the reasons. `COPY` is unchanged.
+- poc's own source stays inside `Oberon2.pdf`'s rules and does not use it;
+  `-strict` (Phase 11 step 6) must reject it. Checked against voc under both
+  size models by `llvm-array-assign`; `llvm-array-assign-trap` (both models)
+  covers the trap; `semantic-reject-array-assign` and
+  `semantic-reject-open-array-assign` the errors.
+
 ### Nested procedures (implemented, Phase 11 step 8)
 
 `PLAN.md` step 8 and `doc/nested-procedures.md` have the full account; the

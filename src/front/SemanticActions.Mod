@@ -409,7 +409,7 @@ MODULE SemanticActions;
                                 line, column: INTEGER): SyntaxTree.AssignStatementNode;
     VAR s: SyntaxTree.AssignStatementNode;
   BEGIN
-    NEW(s); s.target := target; s.value := value; s.next := NIL;
+    NEW(s); s.target := target; s.value := value; s.copiesArray := FALSE; s.next := NIL;
     s.line := line; s.column := column;
     RETURN s
   END NewAssignStatement;
@@ -2322,6 +2322,10 @@ MODULE SemanticActions;
       Diagnostics.Error(s.line, s.column, "assignment target is not a variable")
     ELSIF readOnly THEN
       Diagnostics.Error(s.line, s.column, "assignment target is read-only")
+    ELSIF (srcType # Types.Undefined) & ~Types.AssignmentCompatible(dstType, srcType)
+          & Types.ArrayAssignable(dstType, srcType) THEN
+      (* voc's array rule, beyond Appendix A (Phase 11, A21) *)
+      s.copiesArray := TRUE
     ELSE
       CheckAssignmentCompatible(scope, dstType, s.value, srcType, s.line, s.column,
                                  "assignment is not type-compatible")

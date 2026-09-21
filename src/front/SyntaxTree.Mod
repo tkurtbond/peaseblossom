@@ -221,7 +221,11 @@ MODULE SyntaxTree;
 
     AssignStatementNodeDesc* = RECORD (StatementNodeDesc)
       target*: Designator;
-      value*: ExprNode
+      value*: ExprNode;
+      (* set by the checker (Phase 11, A21) when the array on the right is
+         not of the target's own type but one Types.ArrayAssignable takes: the
+         backend copies its bytes instead of loading and storing a value *)
+      copiesArray*: BOOLEAN
     END;
 
     CallStatementNodeDesc* = RECORD (StatementNodeDesc)

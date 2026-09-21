@@ -1,0 +1,7 @@
+bad.mod:19:5: error: assignment is not type-compatible
+bad.mod:23:3: error: assignment is not type-compatible
+bad.mod:24:3: error: assignment is not type-compatible
+bad.mod:25:3: error: assignment is not type-compatible
+bad.mod:26:3: error: assignment is not type-compatible
+bad.mod:27:14: error: argument is not assignment compatible with the parameter
+6 error(s)

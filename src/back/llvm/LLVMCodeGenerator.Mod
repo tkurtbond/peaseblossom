@@ -265,6 +265,13 @@ MODULE LLVMCodeGenerator;
     entierTrapGlobal = "@.trap.entier";
     entierTrapMsg = "ENTIER argument out of range for LONGINT";
     entierTrapExitCode = 8;
+    (* Phase 11 step 3 (inventory A21): v := e for a fixed array v and an open
+       array e (voc's array assignment) that has more elements than v. voc
+       traps here as an index out of range (Halt(-2)), by length alone, even
+       when the string e holds is short; poc says what happened. *)
+    arrayAssignTrapGlobal = "@.trap.arrayassign";
+    arrayAssignTrapMsg = "open array assigned to an array too short for it";
+    arrayAssignTrapExitCode = 9;
 
     (* the most open dimensions (ARRAY OF ARRAY OF ... T) one designator
        may carry lengths for - see DopeVector *)
@@ -536,7 +543,7 @@ MODULE LLVMCodeGenerator;
       needNilTrap, needGuardTrap, needWithTrap, usedAllocate: BOOLEAN;
       (* Phase 9 step 7: the array-length trap, and the overflow-checking
          arithmetic intrinsics NEW's size computation calls *)
-      needLengthTrap, needOverflowMath, needEntierTrap: BOOLEAN;
+      needLengthTrap, needOverflowMath, needEntierTrap, needArrayAssignTrap: BOOLEAN;
       narrowings: Narrowing;
       arrayDescs: ArrayDescEntry;
       lateRecords: TypeDescEntry;
@@ -2813,10 +2820,62 @@ MODULE LLVMCodeGenerator;
     END
   END NarrowRecordValue;
 
+  (* Phase 11 (A21), voc's array assignment: the whole of an array e that is
+     not of the target's own type - a fixed array no longer than the target,
+     or an open one - copied by size (memmove, so an overlap is harmless), the
+     rest of the target left as it was. The checker already established that
+     the element types are the same (Types.ArrayAssignable). An open source
+     longer than the target stops the program (exit 9); a fixed one cannot be,
+     the checker compared the lengths. *)
+  PROCEDURE CopyArrayBlock(VAR w: Files.Rider; VAR cg: Codegen; dstAddr: ARRAY OF CHAR; dstType: Types.Type;
+                           value: SyntaxTree.ExprNode);
+    VAR
+      de: SyntaxTree.DesignatorExprNode; srcAddr, bytes, dstBytes, tooLong, trapLabel, okLabel, wordInt: ValueText;
+      srcType: Types.Type; dyn: DynamicType; ok: BOOLEAN;
+  BEGIN
+    ok := FALSE;
+    IF (value # NIL) & (value IS SyntaxTree.DesignatorExprNode) THEN
+      de := value(SyntaxTree.DesignatorExprNode);
+      ok := GenerateDesignatorAddressTo(w, cg, de.designator, NIL, srcAddr, srcType, dyn)
+            & (srcType # NIL) & (srcType IS Types.ArrayType)
+    END;
+    IF ~ok THEN
+      WriteStr(w, "  ; unsupported: array assignment from something that is not an array designator");
+      WriteLn(w);
+      RETURN
+    END;
+    WordIntType(wordInt);
+    bytes[0] := 0X;
+    IF IsOpenArrayType(srcType) THEN
+      IF dyn.dope.count < 1 THEN
+        WriteStr(w, "  ; unsupported: open array without lengths"); WriteLn(w);
+        RETURN
+      END;
+      EmitOpenBytes(w, cg, srcType, dyn.dope, 0, bytes);
+      dstBytes[0] := 0X;
+      AppendLongInt(dstBytes, MemoryLayout.Size(dstType, ConstantEvaluator.wordSize, cg.sizeModel));
+      EmitBinOp(w, cg, "icmp ugt", wordInt, bytes, dstBytes, tooLong);
+      NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+      EmitCondBr(w, tooLong, trapLabel, okLabel);
+      EmitLabel(w, cg, trapLabel);
+      cg.needArrayAssignTrap := TRUE;
+      EmitTrap(w, cg, arrayAssignTrapGlobal, arrayAssignTrapMsg, arrayAssignTrapExitCode);
+      EmitLabel(w, cg, okLabel)
+    ELSE
+      AppendLongInt(bytes, MemoryLayout.Size(srcType, ConstantEvaluator.wordSize, cg.sizeModel))
+    END;
+    cg.needMemmove := TRUE;
+    WriteStr(w, "  call void @llvm.memmove.p0.p0."); WriteStr(w, wordInt);
+    WriteStr(w, "(ptr "); WriteStr(w, dstAddr); WriteStr(w, ", ptr "); WriteStr(w, srcAddr);
+    WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, bytes);
+    WriteStr(w, ", i1 false)"); WriteLn(w)
+  END CopyArrayBlock;
+
   PROCEDURE AssignToAddress(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; addrType: Types.Type;
-                            value: SyntaxTree.ExprNode);
+                            value: SyntaxTree.ExprNode; copiesArray: BOOLEAN);
     VAR text: LongText; arr: Types.ArrayType; v: Value; isCharArray: BOOLEAN;
   BEGIN
+    IF copiesArray THEN CopyArrayBlock(w, cg, addrText, addrType, value); RETURN END;
     isCharArray := FALSE;
     IF (addrType # NIL) & (addrType IS Types.ArrayType) THEN
       arr := addrType(Types.ArrayType);
@@ -4700,7 +4759,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     IF s.target.selectors # NIL THEN
       IF GenerateDesignatorAddress(w, cg, s.target, addrText, addrType) THEN
-        AssignToAddress(w, cg, addrText, addrType, s.value)
+        AssignToAddress(w, cg, addrText, addrType, s.value, s.copiesArray)
       ELSE
         WriteStr(w, "  ; unsupported: selector this backend cannot address"); WriteLn(w)
       END;
@@ -4716,7 +4775,7 @@ MODULE LLVMCodeGenerator;
     ELSE
       QualifiedName(homeModule, obj.name, addrText)
     END;
-    AssignToAddress(w, cg, addrText, obj.type, s.value)
+    AssignToAddress(w, cg, addrText, obj.type, s.value, s.copiesArray)
   END GenerateAssignStatement;
 
   (* A function procedure called as a bare statement discards its result -
@@ -6237,6 +6296,7 @@ MODULE LLVMCodeGenerator;
     IF cg.needWithTrap THEN EmitRuntimeStringGlobal(w, withTrapGlobal, withTrapMsg) END;
     IF cg.needLengthTrap THEN EmitRuntimeStringGlobal(w, lengthTrapGlobal, lengthTrapMsg) END;
     IF cg.needEntierTrap THEN EmitRuntimeStringGlobal(w, entierTrapGlobal, entierTrapMsg) END;
+    IF cg.needArrayAssignTrap THEN EmitRuntimeStringGlobal(w, arrayAssignTrapGlobal, arrayAssignTrapMsg) END;
     IF cg.usedAllocate & ~cg.heapPresent THEN
       WordIntType(wordInt);
       WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");
@@ -6367,6 +6427,7 @@ MODULE LLVMCodeGenerator;
     cg.currentBlock[0] := 0X;
     cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
     cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE; cg.needEntierTrap := FALSE;
+    cg.needArrayAssignTrap := FALSE;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
     cg.heapPresent := withHeap;
     WriteStr(w, 'target datalayout = "');
