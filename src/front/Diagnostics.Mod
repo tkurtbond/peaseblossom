@@ -22,7 +22,9 @@ MODULE Diagnostics;
   IMPORT Out;
 
   CONST
-    fileNameLength* = 255;
+    (* room for a path an import-path directory makes, not just a module's
+       file name (ModuleInterface.pathBufferLength is 1324) *)
+    fileNameLength* = 1399;
 
   VAR
     errorCount*: INTEGER;

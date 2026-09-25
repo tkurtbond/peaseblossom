@@ -316,7 +316,6 @@ MODULE Poc;
       parser: Parser.Parser;
       module: SyntaxTree.ModuleNode;
       scope: SymbolTable.Scope;
-      fname: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       sourcePath: LLVMCodeGenerator.SourcePath;
       errorCountBefore: INTEGER;
@@ -336,8 +335,9 @@ MODULE Poc;
     END;
     COPY(ModuleInterface.sourcePath, sourcePath); (* before an import reads another *)
     COPY(Diagnostics.fileName, savedFileName);
-    ModuleInterface.ModFileName(name, fname);
-    COPY(fname, Diagnostics.fileName);
+    (* the file ReadModuleSource opened, so that an error names it as it is:
+       lib/Bad.Mod, not the Bad.mod ModFileName would make *)
+    COPY(sourcePath, Diagnostics.fileName);
     errorCountBefore := Diagnostics.errorCount;
     Parser.InitParser(parser, buffer, length);
     module := Parser.ParseModule(parser);
@@ -390,7 +390,7 @@ MODULE Poc;
       module: SyntaxTree.ModuleNode;
       scope: SymbolTable.Scope;
       imp: SyntaxTree.ImportNode;
-      fname, savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+      savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
       errorCountBefore: INTEGER;
   BEGIN
@@ -403,8 +403,7 @@ MODULE Poc;
     ModuleInterface.ReadModuleSource(name, buffer, length, found);
     IF ~found THEN RETURN END;
     COPY(Diagnostics.fileName, savedFileName);
-    ModuleInterface.ModFileName(name, fname);
-    COPY(fname, Diagnostics.fileName);
+    COPY(ModuleInterface.sourcePath, Diagnostics.fileName); (* the file opened, as DiscoverModule *)
     errorCountBefore := Diagnostics.errorCount;
     Parser.InitParser(parser, buffer, length);
     module := Parser.ParseModule(parser);
