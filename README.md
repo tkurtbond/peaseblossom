@@ -11,10 +11,13 @@ The LLVM-based compiler should run on Linux as well as NetBSD, OpenBSD, and Free
 ## Building and testing
 
 Requires GNU Make and `voc` (Vishap Oberon, the bootstrap compiler - see
-`AGENTS.md`) on `PATH`, or `VOC_BIN_DIR` set to its `bin` directory.
+`AGENTS.md`) on `PATH`, or `VOC_BIN_DIR` set to its `bin` directory. The
+LLVM backend's fixtures, `make stage1` and `make stage2` also need `clang`
+on `PATH`: poc hands it the `.ll` it writes.
 
 ```
-make             # builds poc into build/bin/poc (the default target)
+make             # builds poc into build/bin/poc (the default target;
+                 # make build and make all are the same)
 make test        # runs the full conformance suite (test/conformance/)
 make test-lexer  # runs just one part of it - see GNUmakefile for the
                  # full list (test-parser, test-semantic, test-modules,

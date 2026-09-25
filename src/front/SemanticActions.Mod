@@ -1625,16 +1625,26 @@ MODULE SemanticActions;
              directly, matching the report's own guard examples
              (t(CenterTree), never t^(CenterTree)). *)
           methodOwner := NIL;
-          targetType := ResolveTypeName(scope, sel.qualifier, sel.name, sel.line, sel.column);
-          IF targetType = NIL THEN
-            Diagnostics.Error(sel.line, sel.column, "expected a type name");
+          IF (t # NIL) & ((t IS Types.ProcedureType) OR (t = Types.PredeclaredProcedureType)) THEN
+            (* Nothing of procedure type can be guarded, so this is the
+               Pick(n) of Pick(n)(3, 4): a call whose result is called in
+               turn, which the parser can tell from a guard only by what n
+               is (Parser.SkipCallOfResult reports the other shapes). *)
+            Diagnostics.Error(sel.line, sel.column,
+              "the result of a call cannot be called directly; assign it to a variable first");
             t := Types.Undefined
           ELSE
-            t := CheckGuard(t, targetType, viaVarParam, sel.line, sel.column);
-            (* voc (2026-09-19): "x(T)" is not itself a variable parameter,
-               so it takes no further guard or IS - only the parameter
-               name (or its WITH-narrowed self) does *)
-            viaVarParam := FALSE
+            targetType := ResolveTypeName(scope, sel.qualifier, sel.name, sel.line, sel.column);
+            IF targetType = NIL THEN
+              Diagnostics.Error(sel.line, sel.column, "expected a type name");
+              t := Types.Undefined
+            ELSE
+              t := CheckGuard(t, targetType, viaVarParam, sel.line, sel.column);
+              (* voc (2026-09-19): "x(T)" is not itself a variable parameter,
+                 so it takes no further guard or IS - only the parameter
+                 name (or its WITH-narrowed self) does *)
+              viaVarParam := FALSE
+            END
           END
       ELSE
         methodOwner := NIL;

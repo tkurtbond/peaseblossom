@@ -47,7 +47,7 @@ the built `poc` in this inventory pass (2026-09-20).
 | A24 | Record and array literals | `000-todo.org` | 6 | decision + implementation | open: survey; dropping is a legitimate result |
 | A25 | Underscores and dollar signs in identifiers (VMS) | `000-todo.org` | 6 | decision + implementation | open |
 | A26 | An `Err` module (`Out` on standard error) | `000-todo.org` | 7 | implementation | proposed: `rtl/llvm/Err.Mod`, unbuffered |
-| A27 | BSD runs skipped while the BSD hosts were unreachable | Phase 9 step 8 | 9 (and 8's exit gate) | verification | open: **blocked while at home** |
+| A27 | BSD runs skipped while the BSD hosts were unreachable | Phase 9 step 8 | 9 (and 8's exit gate) | verification | **done** 2026-09-25: no longer blocked - the local VMs (cymoril OpenBSD i386, artos NetBSD amd64, rackhir FreeBSD arm64) need no office network. The whole suite has run on all three after every change since 2026-09-20, most recently 255/255 each at `ca3a754`, plus Stage 1/2 on cymoril |
 
 (A8 and A20 are one decision; A6's fix also closes D1.)
 
@@ -67,7 +67,7 @@ Not one of them has a home in Phase 11's steps.
 
 | # | Entry | What the tree shows | Verdict |
 |---|---|---|---|
-| C1 | Update `README.md` with the current list of make targets | `README.md` already lists `make`, `test`, `test-lexer`, `stage1`, `test-stage1`, `stage2`, `check`, `clean`. `GNUmakefile` also has `test-parser`, `test-semantic`, `test-modules`, `test-layout`, `test-llvm`, `test-misc`, `clean-build`, `clean-tests` | open: small; the README's "see GNUmakefile" may already cover it. Check and close |
+| C1 | Update `README.md` with the current list of make targets | `README.md` already lists `make`, `test`, `test-lexer`, `stage1`, `test-stage1`, `stage2`, `check`, `clean`. `GNUmakefile` also has `test-parser`, `test-semantic`, `test-modules`, `test-layout`, `test-llvm`, `test-misc`, `clean-build`, `clean-tests` | **done** 2026-09-25: the README already named every target (the parts of the suite as a list after `test-lexer`, `clean-build`/`clean-tests` after `clean`); it now also says `make build`/`make all` are the default, and that `clang` is needed |
 | C2 | Pragmas so `Math.Mod`/`MathL.Mod` can specify `-lm` | The driver passes `-lm` itself (`AGENTS.md`, Phase 10 step 6), so the need that prompted it is met. A per-module link-library mechanism is a library-design question | proposed: decided (driver-level `-lm`); the general mechanism goes to phase 12 |
 | C3 | Implement `HUGEINT` arithmetic on 32 bits | `HUGEINT` is `i64` in LLVM IR, which a 32-bit target lowers itself. poc's own source uses no `HUGEINT` (its `LONGINT` is 8 bytes under `-OC`), so the self-host does not exercise it | proposed: done for the LLVM backend; verify with a 32-bit `HUGEINT` fixture (none in `llvm-i686-runtime` found by grep) |
 | C4 | Implement `HUGEINT` arithmetic on VAX/VMS (`LIB$`/`OTS$`?) | No VAX backend yet | phase 13 (out of scope) |
@@ -125,4 +125,5 @@ requirements recorded above, so `000-todo.org` and this file agree.
 - Items outside the table that need a verdict: B1, B2, C1-C7, C9, D1-D4 (C5 starts with a survey).
 - Out of scope (phase 12 or later): C4, C8, C10, C11, and the general form of C2.
 - Already resolved, just needing the record: B3-B5, D5-D7, C13's `fileName := name`.
-- Blocked while at home: A27 and the BSD parts of A5's exit gate.
+- Blocked while at home: A27 and the BSD parts of A5's exit gate - both unblocked
+  by the local BSD VMs and done (2026-09-25).

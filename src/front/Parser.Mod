@@ -329,6 +329,29 @@ MODULE Parser;
     RETURN SemanticActions.NewSetExpr(head, line, column)
   END ParseSet;
 
+  (* Designator [ActualParameters] (Oberon2.pdf 8.1, 9.2) takes one
+     parameter list, so the procedure a function call returns cannot be
+     called in the same expression or statement: Pick(0)(3, 4) is an error.
+     Said once, at the second "(", and every further parameter list is
+     skipped to its matching ")" - otherwise the next token a caller
+     expects is missing and a run of unrelated errors follows, the last at
+     line 1 (000-todo.org). *)
+  PROCEDURE SkipCallOfResult(VAR p: Parser);
+    VAR depth: INTEGER;
+  BEGIN
+    Diagnostics.Error(p.current.line, p.current.column,
+      "the result of a call cannot be called directly; assign it to a variable first");
+    WHILE p.current.kind = Lexer.leftParen DO
+      depth := 0;
+      REPEAT
+        IF p.current.kind = Lexer.leftParen THEN INC(depth)
+        ELSIF p.current.kind = Lexer.rightParen THEN DEC(depth)
+        END;
+        Advance(p)
+      UNTIL (depth = 0) OR (p.current.kind = Lexer.eof)
+    END
+  END SkipCallOfResult;
+
   PROCEDURE ParseFactor(VAR p: Parser): SyntaxTree.ExprNode;
     VAR
       designator: SyntaxTree.Designator;
@@ -346,7 +369,8 @@ MODULE Parser;
       IF p.current.kind = Lexer.leftParen THEN
         hasParens := TRUE; Advance(p);
         IF p.current.kind # Lexer.rightParen THEN args := ParseExprList(p) END;
-        ExpectToken(p, Lexer.rightParen, "expected ')'")
+        ExpectToken(p, Lexer.rightParen, "expected ')'");
+        IF p.current.kind = Lexer.leftParen THEN SkipCallOfResult(p) END
       END;
       RETURN SemanticActions.NewDesignatorExpr(designator, hasParens, args, line, column)
     ELSIF (p.current.kind = Lexer.integer) OR (p.current.kind = Lexer.real)
@@ -637,7 +661,8 @@ MODULE Parser;
         IF p.current.kind = Lexer.leftParen THEN
           hasParens := TRUE; Advance(p);
           IF p.current.kind # Lexer.rightParen THEN args := ParseExprList(p) END;
-          ExpectToken(p, Lexer.rightParen, "expected ')'")
+          ExpectToken(p, Lexer.rightParen, "expected ')'");
+          IF p.current.kind = Lexer.leftParen THEN SkipCallOfResult(p) END
         END;
         RETURN SemanticActions.NewCallStatement(designator, hasParens, args, line, column)
       END

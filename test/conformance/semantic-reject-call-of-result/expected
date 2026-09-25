@@ -1,0 +1,5 @@
+call-of-result.mod:16:12: error: the result of a call cannot be called directly; assign it to a variable first
+call-of-result.mod:17:4: error: the result of a call cannot be called directly; assign it to a variable first
+call-of-result.mod:18:11: error: the result of a call cannot be called directly; assign it to a variable first
+call-of-result.mod:19:9: error: expected a type name
+4 error(s)
