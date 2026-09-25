@@ -62,7 +62,7 @@ MODULE Diagnostics;
   BEGIN
     IF strict THEN
       i := 0; message[0] := 0X;
-      Append(what); Append(" is not in Oberon2.pdf (-strict)");
+      Append(what); Append(" is not in the Oberon-2 report (-strict)");
       Error(line, column, message)
     END
   END NotInReport;

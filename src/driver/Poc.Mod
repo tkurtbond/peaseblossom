@@ -898,7 +898,7 @@ MODULE Poc;
     Out.String("       -trap-location may precede -emit-llvm-ir or -build: a trap's message"); Out.Ln;
     Out.String("       starts with its file:line:column and names its procedure"); Out.Ln;
     Out.String("       -strict may precede any command above: the module named rejects"); Out.Ln;
-    Out.String("       everything beyond Oberon2.pdf (its imports are not checked)"); Out.Ln
+    Out.String("       everything beyond the Oberon-2 report (its imports are not checked)"); Out.Ln
   END Usage;
 
   (* IMPORT search-path CLI surface (PLAN.md's "Open design questions" -

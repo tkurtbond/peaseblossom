@@ -785,7 +785,8 @@ module named on the command line, in any command (`-check`, `-emit-interface`,
 `-emit-llvm-ir`, `-build`). What that module imports is not checked - an
 import's source or `.sym` may use extensions, and a strict module may use what
 it exports - since the question is what the strict module's own text says.
-Each use is an error, "<construct> is not in Oberon2.pdf (-strict)":
+Each use is an error, "<construct> is not in the Oberon-2 report (-strict)"
+(the report meant is `Oberon2.pdf`):
 
 - the predeclared `HUGEINT` and `ASSERT` (a module's own declaration of either
   name is fine), and `SYSTEM`'s names beyond Appendix C: `ADDRESS`,
