@@ -144,13 +144,35 @@ MODULE SemanticActions;
        *value*, and Oberon2.pdf 6.5 forbids that for one. *)
     lastDesignatorIsBoundProcedure: BOOLEAN;
 
+  (* Under -strict, a use of a name that is poc's extension (HUGEINT,
+     ASSERT, SYSTEM.ADDRESS, ...: SymbolTable.ObjectDesc.isExtension) is an
+     error, named as written. *)
+  PROCEDURE NoteExtensionName(obj: SymbolTable.Object; qualifier, name: SyntaxTree.Ident;
+                              line, column: INTEGER);
+    VAR what: ARRAY 600 OF CHAR; i, j: INTEGER;
+  BEGIN
+    IF (obj # NIL) & obj.isExtension THEN
+      i := 0;
+      IF qualifier[0] # 0X THEN
+        WHILE qualifier[i] # 0X DO what[i] := qualifier[i]; INC(i) END;
+        what[i] := "."; INC(i)
+      END;
+      j := 0;
+      WHILE name[j] # 0X DO what[i] := name[j]; INC(i); INC(j) END;
+      what[i] := 0X;
+      Diagnostics.NotInReport(line, column, what)
+    END
+  END NoteExtensionName;
+
   PROCEDURE FindQualified(scope: SymbolTable.Scope; qualifier, name: SyntaxTree.Ident;
                           line, column: INTEGER): SymbolTable.Object;
     VAR modObj, obj: SymbolTable.Object;
   BEGIN
     lookupDiagnosed := FALSE;
     IF qualifier[0] = 0X THEN
-      RETURN SymbolTable.Find(scope, name)
+      obj := SymbolTable.Find(scope, name);
+      NoteExtensionName(obj, qualifier, name, line, column);
+      RETURN obj
     END;
     modObj := SymbolTable.Find(scope, qualifier);
     IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN
@@ -168,6 +190,7 @@ MODULE SemanticActions;
       lookupDiagnosed := TRUE;
       RETURN NIL
     END;
+    NoteExtensionName(obj, qualifier, name, line, column);
     RETURN obj
   END FindQualified;
 
@@ -669,6 +692,11 @@ MODULE SemanticActions;
   BEGIN
     CheckExportMark(d.name);
     v := ConstantEvaluator.Evaluate(d.value, scope);
+    IF v.type = Types.HugeInt THEN
+      Diagnostics.NotInReport(d.name.line, d.name.column, "an integer constant too large for LONGINT")
+    ELSIF v.type = Types.Set64 THEN
+      Diagnostics.NotInReport(d.name.line, d.name.column, "a set constant with an element above MAX(SET)")
+    END;
     obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.constClass, v.type,
                                d.name.exportMark # SyntaxTree.exportNone, FALSE,
                                d.name.line, d.name.column);
@@ -1360,15 +1388,19 @@ MODULE SemanticActions;
   END LookupBareTypeName;
 
   (* §8.1's type-guard applicability: rule 2 ("T is an extension of the
-     static type of v"), generalized to accept T spelled either as the
-     bare RecordType base or as the matching PointerType - both spellings
-     appear in the report's own designator examples (t(CenterTree) vs. a
-     bare record name); either way the two RecordType bases must be in an
-     extension relationship - and rule 1 ("v is a variable parameter of
-     record type or v is a pointer"). A pointer v is judged by its type
-     alone; a record v qualifies only if viaVarParam says it is a VAR
-     parameter (PLAN.md Phase 9 step 6; see lastDesignatorIsVarParam), and
-     then T must itself be a record type. Shared by CheckGuard and IS
+     static type of v") and rule 1 ("v is a variable parameter of record
+     type or v is a pointer"). For a pointer v, T must be a pointer type
+     whose base extends v's base - pointer types "adopt the extension
+     relation of their base types" (6.4), and every example in the report
+     names the pointer type (t(CenterTree), t IS CenterTree, WITH t:
+     CenterTree). Until 2026-09-25 a record T was accepted for a pointer v
+     too (a comment claimed the report's examples used both spellings; they
+     do not), and inside the guard v then had the record type - neither
+     assignable to a pointer nor dereferenceable; voc (err 86), Component
+     Pascal and A2 reject it (RecordNamedForPointer gives the error). A
+     record v qualifies only if viaVarParam says it is a VAR parameter
+     (PLAN.md Phase 9 step 6; see lastDesignatorIsVarParam), and then T
+     must itself be a record type. Shared by CheckGuard and IS
      (CheckBinaryExpr). *)
   PROCEDURE CheckExtensionApplicable(leftType, targetType: Types.Type; viaVarParam: BOOLEAN): BOOLEAN;
     VAR leftPtr, targetPtr: Types.PointerType;
@@ -1389,12 +1421,19 @@ MODULE SemanticActions;
     IF (targetType # NIL) & (targetType IS Types.PointerType) THEN
       targetPtr := targetType(Types.PointerType);
       RETURN Types.Extends(targetPtr.base, leftPtr.base)
-    ELSIF (targetType # NIL) & (targetType IS Types.RecordType) THEN
-      RETURN Types.Extends(targetType, leftPtr.base)
     ELSE
       RETURN FALSE
     END
   END CheckExtensionApplicable;
+
+  (* A guard, IS or WITH on a pointer that names a record type (p IS E for
+     E = RECORD (R) ...) - the pointer type (EP = POINTER TO E) is what
+     must be named: CheckExtensionApplicable. *)
+  PROCEDURE RecordNamedForPointer(leftType, targetType: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (leftType # NIL) & (leftType IS Types.PointerType)
+           & (targetType # NIL) & (targetType IS Types.RecordType)
+  END RecordNamedForPointer;
 
   (* Whether t is a pointer to something other than a record - an array, in
      practice. Only records are extensible, so a guard, IS or WITH on such a
@@ -1427,6 +1466,10 @@ MODULE SemanticActions;
       (* voc allows it, but a SYSTEM.PTR may point at an array, whose block
          has no record type descriptor for the check to read *)
       Diagnostics.Error(line, column, "a SYSTEM.PTR cannot be type-guarded: assign it to a typed pointer first");
+      RETURN Types.Undefined
+    ELSIF RecordNamedForPointer(leftType, targetType) THEN
+      Diagnostics.Error(line, column,
+        "a guard on a pointer must name a pointer type, not a record type");
       RETURN Types.Undefined
     ELSIF ~CheckExtensionApplicable(leftType, targetType, viaVarParam) THEN
       Diagnostics.Error(line, column,
@@ -1882,6 +1925,14 @@ MODULE SemanticActions;
     IF (t # Types.Undefined) & ConstantEvaluator.IsConstantExpr(expr, scope) THEN
       IF Types.IsInteger(t) OR Types.IsSet(t) THEN
         v := ConstantEvaluator.Evaluate(expr, scope);
+        (* -strict: where a constant first needs HUGEINT or SET64 - its
+           operands' own types were narrower, so a larger expression around
+           it is not reported again *)
+        IF (v.type = Types.HugeInt) & (t # Types.HugeInt) THEN
+          Diagnostics.NotInReport(expr.line, expr.column, "an integer constant too large for LONGINT")
+        ELSIF (v.type = Types.Set64) & (t # Types.Set64) THEN
+          Diagnostics.NotInReport(expr.line, expr.column, "a set constant with an element above MAX(SET)")
+        END;
         RETURN v.type
       ELSIF (t = Types.Real) OR (t = Types.LongReal) THEN
         (* Phase 11 (C9): a constant real expression keeps the type the rank
@@ -1973,10 +2024,14 @@ MODULE SemanticActions;
      assignment's RHS) gets the same Oberon2.pdf §5 minimal-type rule a
      CONST declaration's value already does. *)
   PROCEDURE CheckLiteralExpr(node: SyntaxTree.LiteralExprNode): Types.Type;
-    VAR value: LONGINT;
+    VAR value: LONGINT; t: Types.Type;
   BEGIN
     IF node.literalKind = Lexer.integer THEN
-      RETURN ConstantEvaluator.IntegerLiteralType(node, value)
+      t := ConstantEvaluator.IntegerLiteralType(node, value);
+      IF t = Types.HugeInt THEN
+        Diagnostics.NotInReport(node.line, node.column, "an integer constant too large for LONGINT")
+      END;
+      RETURN t
     ELSIF node.literalKind = Lexer.real THEN
       IF node.isLongReal THEN RETURN Types.LongReal ELSE RETURN Types.Real END
     ELSIF node.literalKind = Lexer.charConst THEN
@@ -2107,6 +2162,10 @@ MODULE SemanticActions;
         Diagnostics.Error(node.line, node.column,
           "a SYSTEM.PTR cannot be tested with IS: assign it to a typed pointer first");
         RETURN Types.Boolean
+      ELSIF RecordNamedForPointer(l, targetType) THEN
+        Diagnostics.Error(node.line, node.column,
+          "IS on a pointer must name a pointer type, not a record type");
+        RETURN Types.Boolean
       ELSIF (l # Types.Undefined) & ~CheckExtensionApplicable(l, targetType, leftIsVarParam) THEN
         Diagnostics.Error(node.line, node.column,
           "IS target must be an extension of the left operand's type");
@@ -2167,6 +2226,17 @@ MODULE SemanticActions;
       ELSIF Types.IsSet(l) & Types.IsSet(r) THEN result := Types.Boolean
       ELSIF ((l = Types.NilType) OR (l IS Types.PointerType))
           & ((r = Types.NilType) OR (r IS Types.PointerType)) THEN
+        (* Appendix A: "NIL, pointer type T0 or T1", T1 an extension of T0 -
+           the pairs assignment already accepts one way or the other. Until
+           2026-09-25 any two pointers compared, unrelated ones too (voc: err
+           100). SYSTEM.PTR with any pointer is poc's extension (voc rejects
+           it), which -strict reports. *)
+        IF ~Types.AssignmentCompatible(l, r) & ~Types.AssignmentCompatible(r, l) THEN
+          Diagnostics.Error(node.line, node.column,
+            "pointers of unrelated types cannot be compared")
+        ELSIF ((l = Types.Ptr) # (r = Types.Ptr)) & (l # Types.NilType) & (r # Types.NilType) THEN
+          Diagnostics.NotInReport(node.line, node.column, "comparing SYSTEM.PTR with another pointer type")
+        END;
         result := Types.Boolean
       ELSIF ((l = Types.NilType) OR (l IS Types.ProcedureType))
           & ((r = Types.NilType) OR (r IS Types.ProcedureType)) THEN
@@ -2174,10 +2244,15 @@ MODULE SemanticActions;
            value is assigned to (or passed for) a procedure type - not as
            an operand: "f = P" compares two values of procedure type, and
            P alone is not one (voc: "this expression cannot be a type or a
-           procedure"). *)
+           procedure"). Two values compare only when of one type ("procedure
+           type T, NIL"), again as assignment has it; until 2026-09-25 any
+           two did (voc: err 100). *)
         IF NamesProcedure(scope, node.left) OR NamesProcedure(scope, node.right) THEN
           Diagnostics.Error(node.line, node.column,
             "a procedure name cannot be compared - only a procedure-typed value or NIL")
+        ELSIF ~Types.AssignmentCompatible(l, r) & ~Types.AssignmentCompatible(r, l) THEN
+          Diagnostics.Error(node.line, node.column,
+            "procedure values of different types cannot be compared")
         END;
         result := Types.Boolean
       ELSE
@@ -2224,6 +2299,7 @@ MODULE SemanticActions;
         IF (v.intVal < 0) OR (v.intVal > Types.MaxSetElement(Types.Set64)) THEN
           Diagnostics.Error(line, column, "set element out of range 0..63")
         ELSIF v.intVal > Types.MaxSetElement(Types.Set) THEN
+          Diagnostics.NotInReport(line, column, "a set element above MAX(SET)");
           result := Types.Set64
         END
       END
@@ -2374,6 +2450,7 @@ MODULE SemanticActions;
     ELSIF (srcType # Types.Undefined) & ~Types.AssignmentCompatible(dstType, srcType)
           & Types.ArrayAssignable(dstType, srcType) THEN
       (* voc's array rule, beyond Appendix A (Phase 11, A21) *)
+      Diagnostics.NotInReport(s.line, s.column, "assigning an array of another type (voc's array rule)");
       s.copiesArray := TRUE
     ELSE
       CheckAssignmentCompatible(scope, dstType, s.value, srcType, s.line, s.column,
@@ -2862,6 +2939,7 @@ MODULE SemanticActions;
   PROCEDURE ResolveExternalProcDecl(d: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope);
     VAR pt: Types.ProcedureType; obj: SymbolTable.Object; exported: BOOLEAN;
   BEGIN
+    Diagnostics.NotInReport(d.line, d.column, "an external procedure");
     IF (d.externalConvention # "C") & (d.externalConvention # "VMS") THEN
       Diagnostics.Error(d.line, d.column, "unknown external calling convention")
     END;
@@ -3187,6 +3265,7 @@ MODULE SemanticActions;
       impScope: SymbolTable.Scope;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       symName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+      savedStrict: BOOLEAN;
       chain: ImportChain;
       loaded: LoadedModule;
       bindName: SyntaxTree.Ident;
@@ -3226,7 +3305,9 @@ MODULE SemanticActions;
           ModuleInterface.SymFileName(imp.moduleName, symName);
           COPY(symName, Diagnostics.fileName);
           NEW(chain); chain.name := imp.moduleName; chain.next := resolving;
+          savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE; (* a .sym is not the strict module's text *)
           impScope := CheckModuleBody(impModule, parseModule, chain, cache);
+          Diagnostics.strict := savedStrict;
           COPY(savedFileName, Diagnostics.fileName);
           NEW(loaded); loaded.name := imp.moduleName; loaded.scope := impScope;
           loaded.next := cache; cache := loaded;

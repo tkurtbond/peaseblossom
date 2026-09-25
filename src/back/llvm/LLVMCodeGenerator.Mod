@@ -689,14 +689,14 @@ MODULE LLVMCodeGenerator;
   END StrLen;
 
   (* A SET is 32 bits under either model and a SYSTEM.SET64 64 (Types.Set,
-     Types.Set64), so s, which the host holds as a 64-bit set (voc makes SYSTEM.SET64
-     that under -O2 and -OC alike), has every element either can. A 32-bit
+     Types.Set64), so s, a set constant (Types.Value.setLow/setHigh), has
+     every element either can. A 32-bit
      set is a decimal integer of at most 2^32 - 1, which a LONGINT of 8 bytes
      (poc is built with -OC) holds. A 64-bit one is written in LLVM's hexadecimal
      form, u0x and 16 digits, a bit pattern with no sign: a decimal would need
      a LONGINT of more than 32 bits, which poc's own source must not assume
      (it type-checks under -O2 too). *)
-  PROCEDURE SetToText(s: SYSTEM.SET64; wide: BOOLEAN; VAR text: ARRAY OF CHAR);
+  PROCEDURE SetToText(s: Types.Value; wide: BOOLEAN; VAR text: ARRAY OF CHAR);
     VAR i, nibble, weight, place, position: INTEGER; bit, acc: LONGINT; digits: ARRAY 20 OF CHAR;
   BEGIN
     IF wide THEN
@@ -705,7 +705,7 @@ MODULE LLVMCodeGenerator;
       FOR nibble := 15 TO 0 BY -1 DO
         weight := 0; place := 1;
         FOR i := 0 TO 3 DO
-          IF nibble * 4 + i IN s THEN weight := weight + place END;
+          IF Types.SetValueHas(s, nibble * 4 + i) THEN weight := weight + place END;
           place := place * 2
         END;
         IF weight < 10 THEN digits[position] := CHR(ORD("0") + weight)
@@ -718,7 +718,7 @@ MODULE LLVMCodeGenerator;
     ELSE
       acc := 0; bit := 1;
       FOR i := 0 TO 31 DO
-        IF i IN s THEN acc := acc + bit END;
+        IF Types.SetValueHas(s, i) THEN acc := acc + bit END;
         bit := bit * 2
       END;
       AppendLongInt(text, acc)
@@ -2437,9 +2437,9 @@ MODULE LLVMCodeGenerator;
       COPY("i8", result.llvmType);
       IF cv.boolVal THEN COPY("1", result.text) ELSE COPY("0", result.text) END
     ELSIF cv.kind = Types.setValue THEN
-      IF ~Types.IsSet(type) THEN result.oberonType := ConstantEvaluator.SetValueType(cv.setVal) END;
+      IF ~Types.IsSet(type) THEN result.oberonType := ConstantEvaluator.SetValueType(cv) END;
       LLVMTypes.TypeString(result.oberonType, cg.sizeModel, result.llvmType);
-      result.text[0] := 0X; SetToText(cv.setVal, result.oberonType = Types.Set64, result.text)
+      result.text[0] := 0X; SetToText(cv, result.oberonType = Types.Set64, result.text)
     ELSIF cv.kind = Types.realValue THEN
       RealConstant(w, cg, cv.realText, cv.realVal, type = Types.Real, result)
     ELSIF (cv.stringVal[0] # 0X) & (cv.stringVal[1] = 0X) THEN

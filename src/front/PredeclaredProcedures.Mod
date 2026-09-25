@@ -71,7 +71,7 @@ MODULE PredeclaredProcedures;
      SemanticActions.LookupBareTypeName rather than an injected
      dependency. *)
   PROCEDURE LookupBareTypeName(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
-    VAR de: SyntaxTree.DesignatorExprNode; obj, modObj: SymbolTable.Object;
+    VAR de: SyntaxTree.DesignatorExprNode; obj, modObj: SymbolTable.Object; what: ARRAY 600 OF CHAR; i, j: INTEGER;
   BEGIN
     IF ~(expr IS SyntaxTree.DesignatorExprNode) THEN RETURN NIL END;
     de := expr(SyntaxTree.DesignatorExprNode);
@@ -89,6 +89,17 @@ MODULE PredeclaredProcedures;
       modObj := SymbolTable.Find(scope, de.designator.qualifier);
       IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN RETURN NIL END;
       obj := SymbolTable.FindLocal(modObj.moduleScope, de.designator.name)
+    END;
+    IF (obj # NIL) & obj.isExtension THEN (* -strict: MAX(HUGEINT), SIZE(SYSTEM.INT32) *)
+      IF de.designator.qualifier[0] # 0X THEN
+        COPY(de.designator.qualifier, what); i := 0;
+        WHILE what[i] # 0X DO INC(i) END;
+        what[i] := "."; INC(i); j := 0;
+        WHILE de.designator.name[j] # 0X DO what[i] := de.designator.name[j]; INC(i); INC(j) END;
+        what[i] := 0X
+      ELSE COPY(de.designator.name, what)
+      END;
+      Diagnostics.NotInReport(de.line, de.column, what)
     END;
     IF (obj # NIL) & (obj.class = SymbolTable.typeClass) & (obj.type # NIL) THEN
       RETURN obj.type
@@ -368,6 +379,7 @@ MODULE PredeclaredProcedures;
       RETURN Types.Undefined
     END;
     (* a SET64's 64 bits do not fit an INTEGER *)
+    IF Types.IsSet(t) THEN Diagnostics.NotInReport(line, column, "ORD of a SET") END;
     IF t = Types.Set64 THEN RETURN Types.HugeInt END;
     RETURN Types.Integer
   END CheckOrd;

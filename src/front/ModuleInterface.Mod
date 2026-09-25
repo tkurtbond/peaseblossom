@@ -536,13 +536,13 @@ MODULE ModuleInterface;
     END
   END FormatStringLiteral;
 
-  PROCEDURE FormatSetLiteral(v: SYSTEM.SET64; VAR result: ARRAY OF CHAR);
+  PROCEDURE FormatSetLiteral(v: Types.Value; VAR result: ARRAY OF CHAR);
     VAR i, j, k: INTEGER; first: BOOLEAN; num: ARRAY 12 OF CHAR;
   BEGIN
     j := 0; result[j] := "{"; INC(j);
     first := TRUE; i := 0;
     WHILE i <= 63 DO
-      IF i IN v THEN
+      IF Types.SetValueHas(v, i) THEN
         IF ~first THEN result[j] := ","; INC(j); result[j] := " "; INC(j) END;
         FormatInt(i, num);
         k := 0;
@@ -723,7 +723,7 @@ MODULE ModuleInterface;
         WriteStr(w, '""')
       END
     ELSIF v.kind = Types.setValue THEN
-      FormatSetLiteral(v.setVal, buf); WriteStr(w, buf)
+      FormatSetLiteral(v, buf); WriteStr(w, buf)
     ELSIF (v.kind = Types.realValue) & LiteralRealLexeme(expr, buf) THEN
       WriteStr(w, buf)
     ELSIF (v.kind = Types.realValue) & ExtremeRealSpelling(v, buf) THEN

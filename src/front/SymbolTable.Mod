@@ -78,6 +78,11 @@ MODULE SymbolTable;
       type*: Types.Type;
       value*: Types.Value; (* meaningful only when class = constClass *)
       exported*, readOnly*: BOOLEAN;
+      (* a predeclared or SYSTEM name that is poc's extension, not
+         Oberon2.pdf's (HUGEINT, ASSERT, SYSTEM.ADDRESS, INT8..INT64, SET32,
+         SET64): a use of it is an error under -strict
+         (Diagnostics.NotInReport) *)
+      isExtension*: BOOLEAN;
       pendingTypeNode*: SyntaxTree.TypeNode; (* typeClass only; see above *)
       resolving*: BOOLEAN; (* typeClass only; see above *)
       declLine*, declColumn*: INTEGER; (* every class: this Object's own
@@ -207,7 +212,7 @@ MODULE SymbolTable;
     o.value := NIL; o.exported := exported; o.readOnly := readOnly;
     o.pendingTypeNode := NIL; o.resolving := FALSE;
     o.declLine := line; o.declColumn := column;
-    o.isForwardProc := FALSE; o.isVarParam := FALSE; o.usedAtOtherLevel := FALSE;
+    o.isForwardProc := FALSE; o.isVarParam := FALSE; o.usedAtOtherLevel := FALSE; o.isExtension := FALSE;
     o.externalConvention[0] := 0X; o.externalName[0] := 0X;
     o.moduleScope := NIL; o.realModuleName[0] := 0X;
     o.next := scope.objects; scope.objects := o;
@@ -264,6 +269,13 @@ MODULE SymbolTable;
     o := Insert(SystemScope, ident, typeClass, type, TRUE, FALSE, 0, 0)
   END InsertSystemType;
 
+  (* The name, already inserted in scope, is poc's extension (isExtension). *)
+  PROCEDURE MarkExtension(scope: Scope; name: ARRAY OF CHAR);
+    VAR ident: SyntaxTree.Ident; o: Object;
+  BEGIN
+    COPY(name, ident); o := FindLocal(scope, ident); o.isExtension := TRUE
+  END MarkExtension;
+
   PROCEDURE InsertSystemProc(name: ARRAY OF CHAR);
     VAR ident: SyntaxTree.Ident; o: Object;
   BEGIN
@@ -313,5 +325,10 @@ BEGIN
   InsertSystemProc("ADR"); InsertSystemProc("GET"); InsertSystemProc("PUT");
   InsertSystemProc("VAL"); InsertSystemProc("MOVE");
   InsertSystemProc("BIT"); InsertSystemProc("LSH"); InsertSystemProc("ROT");
-  InsertSystemProc("NEW")
+  InsertSystemProc("NEW");
+  MarkExtension(Universe, "HUGEINT"); MarkExtension(Universe, "ASSERT");
+  MarkExtension(SystemScope, "ADDRESS");
+  MarkExtension(SystemScope, "INT8"); MarkExtension(SystemScope, "INT16");
+  MarkExtension(SystemScope, "INT32"); MarkExtension(SystemScope, "INT64");
+  MarkExtension(SystemScope, "SET32"); MarkExtension(SystemScope, "SET64")
 END SymbolTable.

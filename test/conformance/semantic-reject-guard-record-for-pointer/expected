@@ -1,0 +1,4 @@
+guard-record.mod:22:8: error: IS on a pointer must name a pointer type, not a record type
+guard-record.mod:23:9: error: a guard on a pointer must name a pointer type, not a record type
+guard-record.mod:24:3: error: a guard on a pointer must name a pointer type, not a record type
+3 error(s)

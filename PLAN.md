@@ -807,6 +807,11 @@ as it stands when the phase starts, and adds what it finds):
    `SYSTEM.ADDRESS`, external procedures, and whatever this step adds -
    included), which is how poc's own source can be *checked* to stay
    strict instead of relying on convention.
+   **`-strict` done 2026-09-25** (user, as recommended): the command-line
+   module's own source, not its imports; `make check-strict` over `src/` in
+   `make check`; see `doc/language-extensions.md`, "-strict", for the list,
+   the `SYSTEM.SET64` poc's own source used, and the two leniencies fixed for
+   every mode.
    - *Assignment of one `ARRAY OF CHAR` to another, and rule 6.* **Done
      2026-09-21 (inventory A21):** the survey is `doc/array-assignment-survey.md`;
      rule 6 stays as it is, voc's array rule is adopted for every element type

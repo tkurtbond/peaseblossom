@@ -178,8 +178,10 @@ What a program can observe:
   a shift past the set's 32 bits, undefined - build it with `INCL` on a
   `SET64`). A constant element outside 0..63 is a compile-time error, and
   `INCL`/`EXCL` reject a constant one outside their own variable's range
-  (`INCL(s, 63)` for a `SET`). `ORD` of a `SET64` is a `HUGEINT` (voc rejected
-  `ORD` of a `SET64` constant when probed).
+  (`INCL(s, 63)` for a `SET`). `ORD` of a set is poc's own extension - the
+  report defines `ORD` only for `CHAR`, and voc rejects it for any set (err
+  111), which `-strict` does too; `ORD` of a `SET` is an `INTEGER`, of a
+  `SET64` a `HUGEINT`.
 - **Where poc differs from voc**: voc types a constant *range* `{35..37}` as a
   `SET32` and loses the bits (its `a + {35..37}` on a `SET64` is wrong); poc
   types it by its value. Both are checked in `semantic-set64` and
@@ -512,7 +514,7 @@ definitions). What a program can observe:
   accept a string constant there); assignment of a string constant to an open
   array. The survey (section 6) has the reasons. `COPY` is unchanged.
 - poc's own source stays inside `Oberon2.pdf`'s rules and does not use it;
-  `-strict` (Phase 11 step 6) must reject it. Checked against voc under both
+  `-strict` rejects it. Checked against voc under both
   size models by `llvm-array-assign`; `llvm-array-assign-trap` (both models)
   covers the trap; `semantic-reject-array-assign` and
   `semantic-reject-open-array-assign` the errors.
@@ -641,8 +643,8 @@ every other dialect surveyed does. What a program can observe:
   having no `HALT`). So a constant condition is a static check:
   `ASSERT(SIZE(T) = 8)` fails at compile time. Use `HALT` for code that must
   not be reached.
-- There is no message-string form. `-strict` (Phase 11 step 6) must reject
-  `ASSERT`; poc's own source does not use it. Checked by `llvm-assert` (both
+- There is no message-string form. `-strict` rejects `ASSERT`; poc's own
+  source does not use it. Checked by `llvm-assert` (both
   size models, the same assertion firing as in voc) and
   `semantic-reject-assert` (the lines voc rejects).
 
@@ -748,6 +750,62 @@ Peaseblossom's own.
   (`SymbolTable.ObjectDesc.externalConvention`/`externalName`) for a
   later backend to consume.
 
+## `-strict` (decided and implemented, Phase 11 B2, 2026-09-25)
+
+**`poc -strict`** rejects everything beyond `Oberon2.pdf` in the source of the
+module named on the command line, in any command (`-check`, `-emit-interface`,
+`-emit-llvm-ir`, `-build`). What that module imports is not checked - an
+import's source or `.sym` may use extensions, and a strict module may use what
+it exports - since the question is what the strict module's own text says.
+Each use is an error, "<construct> is not in Oberon2.pdf (-strict)":
+
+- the predeclared `HUGEINT` and `ASSERT` (a module's own declaration of either
+  name is fine), and `SYSTEM`'s names beyond Appendix C: `ADDRESS`,
+  `INT8`/`INT16`/`INT32`/`INT64`, `SET32`, `SET64` - wherever written, types,
+  `MAX`/`MIN`/`SIZE` arguments and `SYSTEM.VAL` included (`SymbolTable.
+  ObjectDesc.isExtension`);
+- an external procedure (`PROCEDURE ["C", ...]`);
+- voc's array assignment (an array of another type assigned whole);
+- an integer constant that needs `HUGEINT` (a literal, or where folding first
+  goes past `LONGINT` - so it depends on the size model), and a set constant or
+  constructor element above `MAX(SET)`;
+- `ORD` of a set;
+- comparing a `SYSTEM.PTR` with a pointer of another type.
+
+Not on the list, because they change what a legal program *does*, not which
+programs are legal: overflow wrapping, the `ENTIER` trap, `ADR`'s result being
+a `SYSTEM.ADDRESS`, `BIT`'s byte meaning; nor poc's restrictions (`HALT` in
+0..255). `SYSTEM` itself, as Appendix C has it, is in the report.
+
+**poc's own source is checked with it**: `make check-strict` runs `poc -OC
+-strict -check` on every module of `src/`, against the `.sym` files Stage 1
+leaves, and `make check` runs it. `rtl/llvm`, the runtime, is exempt (it needs
+`SYSTEM.ADDRESS` and external procedures). Its first run found poc's own
+constant folder holding a set constant in a `SYSTEM.SET64` (since the `SET64`
+work, 2026-09-21), which voc, poc's Stage 0, accepts; `Types.Value` now holds
+it as two `SET`s (`setLow`, `setHigh`). Fixtures `semantic-strict` (every item,
+rejected with the switch and accepted without) and `semantic-strict-import`
+(a strict module importing one that uses extensions).
+
+Found by the survey and fixed for every mode, not only `-strict` (user,
+2026-09-25), since the report and voc reject them and poc accepted them by
+accident:
+
+- **A guard, `IS` or `WITH` on a pointer names a pointer type**: `p IS E`,
+  `p(E)` and `WITH p: E` with `E` a record type are errors ("a guard on a
+  pointer must name a pointer type, not a record type"); write `p IS EP` for
+  `EP = POINTER TO E`. The report says "T is an extension of the static type
+  of v", and all its examples name the pointer type; voc (err 86), Component
+  Pascal and A2 agree. poc accepted the record type, and inside the guard `p`
+  then had the record type - neither assignable to a pointer nor
+  dereferenceable. A `VAR` record parameter is still tested with a record type
+  (`semantic-reject-guard-record-for-pointer`).
+- **`=` and `#` compare pointers only of related types, and procedure values
+  only of one type**, as Appendix A says ("NIL, pointer type T0 or T1", "procedure
+  type T, NIL") and voc (err 100): two unrelated pointer types, or two different
+  procedure types, are an error. The rule is assignment's, either way round; a
+  `SYSTEM.PTR` still compares with any pointer, which `-strict` rejects.
+
 ## Read-only parameters (considered, not adopted)
 
 voc has an extension neither report has: a formal parameter written `x-`
@@ -779,5 +837,5 @@ syntax error, "a formal parameter cannot have an export mark", since
 (`parser-reject-param-export-mark`). Until 2026-09-25 poc parsed the names as
 `IdentDef`s and dropped the mark, so `x-` compiled as an ordinary, assignable
 value parameter. Adopting voc's version later is a separate decision, recorded
-in `000-todo.org`: poc's own source would not use it, and `-strict` (Phase 11
-step 6) would have to reject it.
+in `000-todo.org`: poc's own source would not use it, and `-strict` would have
+to reject it.

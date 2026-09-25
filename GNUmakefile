@@ -42,7 +42,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: all build stage1 stage2 test-stage1 check test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: all build stage1 stage2 test-stage1 check check-strict test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN)
 
@@ -79,6 +79,24 @@ check:
 	$(MAKE) test || status=1; \
 	$(MAKE) test-stage1 || status=1; \
 	$(MAKE) stage2 || status=1; \
+	$(MAKE) check-strict || status=1; \
+	exit $$status
+
+# poc's own source stays inside Oberon2.pdf (PLAN.md, "Bootstrap
+# terminology"): every module of src/ checked with -strict (Phase 11 B2),
+# against the .sym files Stage 1 leaves in build/stage1/obj, under -OC, the
+# size model poc is built with, by the Stage 1 poc (which, unlike voc's build,
+# needs no LD_LIBRARY_PATH on the BSDs). rtl/llvm is the runtime, which needs
+# SYSTEM.ADDRESS and external procedures, and is not checked.
+check-strict: $(STAGE1_BIN)
+	@status=0; \
+	for f in $(SRCS); do \
+	  out=$$($(STAGE1_BIN) -OC -strict -import-path $(BUILD_DIR)/stage1/obj -check $$f 2>&1); \
+	  if [ "$$out" != "semantic OK" ]; then \
+	    echo "$$out"; echo "check-strict: $$f uses more than Oberon2.pdf"; status=1; \
+	  fi; \
+	done; \
+	if [ $$status = 0 ]; then echo "check-strict: poc's own source is strict Oberon2.pdf"; fi; \
 	exit $$status
 
 # Runs every fixture in one pass (not category-by-category as separate

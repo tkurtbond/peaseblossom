@@ -912,24 +912,19 @@ MODULE ConstantEvaluator;
      element is 0..31, else a SET64. Element by element, and no set constant
      of the other width in an expression, since voc's C for a SET64 minus a
      SET is exactly where the widths meet. *)
-  PROCEDURE SetValueType*(v: SYSTEM.SET64): Types.Type;
-    VAR i: INTEGER;
+  PROCEDURE SetValueType*(v: Types.Value): Types.Type;
   BEGIN
-    FOR i := 32 TO 63 DO
-      IF i IN v THEN RETURN Types.Set64 END
-    END;
-    RETURN Types.Set
+    IF v.setHigh # {} THEN RETURN Types.Set64 ELSE RETURN Types.Set END
   END SetValueType;
 
   (* The complement of v within the elements of a set type: 0..maxElement. *)
-  PROCEDURE ComplementSet(v: SYSTEM.SET64; maxElement: INTEGER): SYSTEM.SET64;
-    VAR i: INTEGER; result: SYSTEM.SET64;
+  PROCEDURE ComplementSet(v: Types.Value; maxElement: INTEGER; result: Types.Value);
+    VAR i: INTEGER;
   BEGIN
-    result := {};
+    result.setLow := {}; result.setHigh := {};
     FOR i := 0 TO maxElement DO
-      IF ~(i IN v) THEN INCL(result, i) END
-    END;
-    RETURN result
+      IF ~Types.SetValueHas(v, i) THEN Types.InclSetValue(result, i) END
+    END
   END ComplementSet;
 
   (* An integer constant of value, typed by that value: the shared tail of
@@ -973,8 +968,8 @@ MODULE ConstantEvaluator;
         (* within the operand's own type - a SET's 0..31, a SET64's 0..63 -
            as at run time and as in voc: -{0} is {1..31} *)
         NEW(result); result.kind := Types.setValue;
-        result.setVal := ComplementSet(v.setVal, Types.MaxSetElement(v.type));
-        result.type := SetValueType(result.setVal);
+        ComplementSet(v, Types.MaxSetElement(v.type), result);
+        result.type := SetValueType(result);
         RETURN result
       ELSE
         Diagnostics.Error(expr.line, expr.column,
@@ -1074,12 +1069,13 @@ MODULE ConstantEvaluator;
     VAR result: Types.Value;
   BEGIN
     NEW(result); result.kind := Types.setValue;
-    IF op = Lexer.plus THEN result.setVal := l.setVal + r.setVal
-    ELSIF op = Lexer.minus THEN result.setVal := l.setVal - r.setVal
-    ELSIF op = Lexer.times THEN result.setVal := l.setVal * r.setVal
-    ELSE result.setVal := l.setVal / r.setVal
+    (* elementwise, so each half on its own *)
+    IF op = Lexer.plus THEN result.setLow := l.setLow + r.setLow; result.setHigh := l.setHigh + r.setHigh
+    ELSIF op = Lexer.minus THEN result.setLow := l.setLow - r.setLow; result.setHigh := l.setHigh - r.setHigh
+    ELSIF op = Lexer.times THEN result.setLow := l.setLow * r.setLow; result.setHigh := l.setHigh * r.setHigh
+    ELSE result.setLow := l.setLow / r.setLow; result.setHigh := l.setHigh / r.setHigh
     END;
-    result.type := SetValueType(result.setVal);
+    result.type := SetValueType(result);
     RETURN result
   END EvaluateSetOp;
 
@@ -1098,7 +1094,7 @@ MODULE ConstantEvaluator;
     ELSIF (l.type = Types.Boolean) & (r.type = Types.Boolean) THEN
       eq := l.boolVal = r.boolVal
     ELSIF Types.IsSet(l.type) & Types.IsSet(r.type) THEN
-      eq := l.setVal = r.setVal
+      eq := (l.setLow = r.setLow) & (l.setHigh = r.setHigh)
     ELSIF (l.type = Types.String) & (r.type = Types.String) THEN
       eq := l.stringVal = r.stringVal
     ELSE
@@ -1196,7 +1192,7 @@ MODULE ConstantEvaluator;
       IF (l.kind = Types.intValue) & Types.IsSet(r.type) THEN
         NEW(result); result.type := Types.Boolean; result.kind := Types.boolValue;
         (* an element outside 0..63 is in no set, as at run time *)
-        result.boolVal := (l.intVal >= 0) & (l.intVal <= 63) & (SHORT(l.intVal) IN r.setVal)
+        result.boolVal := (l.intVal >= 0) & (l.intVal <= 63) & Types.SetValueHas(r, SHORT(l.intVal))
       ELSE
         Diagnostics.Error(expr.line, expr.column, "IN requires an integer and a SET");
         result := UndefinedValue()
@@ -1213,7 +1209,7 @@ MODULE ConstantEvaluator;
     VAR result, low, high: Types.Value; el: SyntaxTree.SetElementNode;
         lowVal, highVal, i: LONGINT; ok: BOOLEAN;
   BEGIN
-    NEW(result); result.type := Types.Set; result.kind := Types.setValue; result.setVal := {};
+    NEW(result); result.type := Types.Set; result.kind := Types.setValue; result.setLow := {}; result.setHigh := {};
     el := expr.elements;
     WHILE el # NIL DO
       low := EvaluateExpr(el.low, scope);
@@ -1244,11 +1240,11 @@ MODULE ConstantEvaluator;
       END;
       IF ok THEN
         i := lowVal;
-        WHILE i <= highVal DO INCL(result.setVal, SHORT(i)); INC(i) END
+        WHILE i <= highVal DO Types.InclSetValue(result, SHORT(i)); INC(i) END
       END;
       el := el.next
     END;
-    result.type := SetValueType(result.setVal);
+    result.type := SetValueType(result);
     RETURN result
   END EvaluateSet;
 

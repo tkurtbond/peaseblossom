@@ -99,7 +99,8 @@ programs it compiles (`-O2`/`-OC` flags, default `-O2`; `MemoryLayout.Mod`).
 `LONGINT` (`Types.Value.intVal` holds a full-range `HUGEINT` constant; the
 constant folder and `DecimalToDouble` depend on it too). This is only a build
 flag. poc's own source stays strict `Oberon2.pdf` (`PLAN.md`, "Bootstrap
-terminology"), and it must also **type-check under `-O2`**: no literal or
+terminology"), which `make check-strict` (part of `make check`) enforces with
+`poc -strict`, and it must also **type-check under `-O2`**: no literal or
 constant needs more than 32 bits (`poc -O2 -build src/driver/Poc.Mod`
 succeeds; `doc/project-history.md`, "poc's own source under `-O2`").
 
@@ -294,6 +295,14 @@ be called by name. `WITH` follows voc's rule for non-local pointers.
 procedure. An optional second string gives the linkage name, emitted
 verbatim and never mangled: `PROCEDURE ["C", "malloc"] AllocateBytes*(size:
 SYSTEM.ADDRESS): SYSTEM.ADDRESS;`. `"VMS"` is accepted but not yet lowered.
+
+### `-strict` (decided and implemented, Phase 11 B2, 2026-09-25)
+
+`poc -strict` makes each extension above an error in the command-line module's
+own source (not in its imports). `make check-strict`, run by `make check`,
+applies it to all of `src/`. Found with it and fixed for everyone: a guard,
+`IS` or `WITH` on a pointer must name a pointer type, and `=`/`#` compare only
+related pointers and procedure values of one type.
 
 ### Read-only parameters (considered, not adopted)
 

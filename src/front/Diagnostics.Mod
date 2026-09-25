@@ -29,6 +29,15 @@ MODULE Diagnostics;
   VAR
     errorCount*: INTEGER;
     fileName*: ARRAY fileNameLength + 1 OF CHAR;
+    (* poc -strict (Phase 11 B2, decided with the user 2026-09-25): TRUE
+       while the module named on the command line is checked, so that
+       NotInReport reports each use of a construct beyond Oberon2.pdf in
+       its source. FALSE for everything read on its behalf - an imported
+       module's source, a .sym file - since what an import uses is not the
+       strict module's own text. Here rather than in SemanticActions
+       because PredeclaredProcedures, which SemanticActions calls, needs it
+       too. *)
+    strict*: BOOLEAN;
 
   PROCEDURE Error*(line, column: INTEGER; message: ARRAY OF CHAR);
   BEGIN
@@ -37,6 +46,26 @@ MODULE Diagnostics;
     Out.String(": error: "); Out.String(message); Out.Ln;
     INC(errorCount)
   END Error;
+
+  (* Under -strict: the construct at line:column, described by what (such
+     as "HUGEINT" or "an external procedure"), is poc's extension, not
+     Oberon2.pdf's; an error. Otherwise nothing. *)
+  PROCEDURE NotInReport*(line, column: INTEGER; what: ARRAY OF CHAR);
+    VAR message: ARRAY 256 OF CHAR; i: INTEGER;
+    PROCEDURE Append(text: ARRAY OF CHAR);
+      VAR k: INTEGER;
+    BEGIN
+      k := 0;
+      WHILE (text[k] # 0X) & (i < LEN(message) - 1) DO message[i] := text[k]; INC(i); INC(k) END;
+      message[i] := 0X
+    END Append;
+  BEGIN
+    IF strict THEN
+      i := 0; message[0] := 0X;
+      Append(what); Append(" is not in Oberon2.pdf (-strict)");
+      Error(line, column, message)
+    END
+  END NotInReport;
 
   PROCEDURE Reset*(name: ARRAY OF CHAR);
   BEGIN
@@ -52,6 +81,6 @@ MODULE Diagnostics;
   END Reset;
 
 BEGIN
-  errorCount := 0;
+  errorCount := 0; strict := FALSE;
   fileName := ""
 END Diagnostics.

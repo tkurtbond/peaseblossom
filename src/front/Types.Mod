@@ -237,9 +237,12 @@ MODULE Types;
       boolVal*: BOOLEAN;
       charVal*: CHAR;
       stringVal*: ARRAY stringValueLength + 1 OF CHAR;
-      (* a set constant's elements: a SYSTEM.SET64 holds every element of
-         either set type (0..63), whatever the size model or the host *)
-      setVal*: SYSTEM.SET64
+      (* a set constant's elements, 0..63 - enough for either set type,
+         whatever the size model or the host: setLow holds 0..31 and setHigh
+         32..63 (element e as e - 32). Two SETs, not a SYSTEM.SET64, so that
+         poc's own source stays inside Oberon2.pdf (-strict; SET is 32 bits
+         under both size models). SetValueHas, InclSetValue. *)
+      setLow*, setHigh*: SET
     END;
 
   VAR
@@ -337,6 +340,21 @@ MODULE Types;
 
   (* Returns the narrower RecordType, not just Type, so callers can chain
      straight into AddField* without a type guard on a call expression. *)
+  (* Whether element e (0..63) is in the set constant v (Value.setLow/setHigh). *)
+  PROCEDURE SetValueHas*(v: Value; e: INTEGER): BOOLEAN;
+  BEGIN
+    IF (e < 0) OR (e > 63) THEN RETURN FALSE
+    ELSIF e < 32 THEN RETURN e IN v.setLow
+    ELSE RETURN (e - 32) IN v.setHigh
+    END
+  END SetValueHas;
+
+  (* Adds element e (0..63) to the set constant v. *)
+  PROCEDURE InclSetValue*(v: Value; e: INTEGER);
+  BEGIN
+    IF e < 32 THEN INCL(v.setLow, e) ELSE INCL(v.setHigh, e - 32) END
+  END InclSetValue;
+
   PROCEDURE NewRecordType*(baseType: Type): RecordType;
     VAR t: RecordType;
   BEGIN

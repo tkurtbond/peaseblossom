@@ -318,7 +318,7 @@ MODULE Poc;
       scope: SymbolTable.Scope;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       sourcePath: LLVMCodeGenerator.SourcePath;
-      errorCountBefore: INTEGER;
+      errorCountBefore: INTEGER; savedStrict: BOOLEAN;
       imp: SyntaxTree.ImportNode;
       m, entry: LLVMCodeGenerator.ModuleList;
   BEGIN
@@ -338,6 +338,7 @@ MODULE Poc;
     (* the file ReadModuleSource opened, so that an error names it as it is:
        lib/Bad.Mod, not the Bad.mod ModFileName would make *)
     COPY(sourcePath, Diagnostics.fileName);
+    savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE; (* -strict is for the command line's module *)
     errorCountBefore := Diagnostics.errorCount;
     Parser.InitParser(parser, buffer, length);
     module := Parser.ParseModule(parser);
@@ -361,7 +362,7 @@ MODULE Poc;
         tail := entry
       END
     END;
-    COPY(savedFileName, Diagnostics.fileName)
+    COPY(savedFileName, Diagnostics.fileName); Diagnostics.strict := savedStrict
   END DiscoverModule;
 
   (* PLAN.md Phase 9 step 4a: brings <name>.sym (and, first, every
@@ -392,7 +393,7 @@ MODULE Poc;
       imp: SyntaxTree.ImportNode;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
-      errorCountBefore: INTEGER;
+      errorCountBefore: INTEGER; savedStrict: BOOLEAN;
   BEGIN
     IF ~ok THEN RETURN END;
     IF name = "SYSTEM" THEN RETURN END; (* a pseudo-module: no source, no .sym *)
@@ -404,6 +405,7 @@ MODULE Poc;
     IF ~found THEN RETURN END;
     COPY(Diagnostics.fileName, savedFileName);
     COPY(ModuleInterface.sourcePath, Diagnostics.fileName); (* the file opened, as DiscoverModule *)
+    savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE; (* as DiscoverModule *)
     errorCountBefore := Diagnostics.errorCount;
     Parser.InitParser(parser, buffer, length);
     module := Parser.ParseModule(parser);
@@ -427,7 +429,7 @@ MODULE Poc;
       failed := TRUE; Out.String("poc: cannot write "); Out.String(path); Out.Ln;
       ok := FALSE
     END;
-    COPY(savedFileName, Diagnostics.fileName)
+    COPY(savedFileName, Diagnostics.fileName); Diagnostics.strict := savedStrict
   END RegenerateInterfaces;
 
   (* Unlinks and returns the entry for the module called name from the
@@ -894,7 +896,9 @@ MODULE Poc;
     Out.String("       the heap cannot satisfy stops the program (exit status 11)"); Out.Ln;
     Out.String("       instead of leaving the pointer NIL"); Out.Ln;
     Out.String("       -trap-location may precede -emit-llvm-ir or -build: a trap's message"); Out.Ln;
-    Out.String("       starts with its file:line:column and names its procedure"); Out.Ln
+    Out.String("       starts with its file:line:column and names its procedure"); Out.Ln;
+    Out.String("       -strict may precede any command above: the module named rejects"); Out.Ln;
+    Out.String("       everything beyond Oberon2.pdf (its imports are not checked)"); Out.Ln
   END Usage;
 
   (* IMPORT search-path CLI surface (PLAN.md's "Open design questions" -
@@ -1011,6 +1015,11 @@ MODULE Poc;
           INC(i)
         ELSIF arg = "-OC" THEN
           ConstantEvaluator.SetSizeModel(MemoryLayout.sizeModelOC);
+          INC(i)
+        ELSIF arg = "-strict" THEN
+          (* Phase 11 B2: the module named on the command line may use only
+             Oberon2.pdf; its imports are exempt (Diagnostics.strict) *)
+          Diagnostics.strict := TRUE;
           INC(i)
         ELSIF arg = "-trap-location" THEN
           (* Phase 11 C7: every trap message names its file, line, column and procedure *)

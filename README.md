@@ -28,7 +28,10 @@ make test-stage1 # the full suite under that poc-built poc
 make stage2      # poc builds itself again with Stage 1's, and the two
                  # builds' output is compared (the self-hosting fixed point)
 make check       # both compilers and the fixed point: make test,
-                 # make test-stage1 and make stage2, reporting every failure
+                 # make test-stage1, make stage2 and make check-strict,
+                 # reporting every failure
+make check-strict # poc -strict on every module of src/: poc's own source
+                 # uses only Oberon2.pdf
 make clean       # removes both poc's own build output and test artifacts
                  # (clean-build and clean-tests individually)
 ```

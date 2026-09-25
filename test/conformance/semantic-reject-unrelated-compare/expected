@@ -1,0 +1,3 @@
+unrelated-compare.mod:18:8: error: pointers of unrelated types cannot be compared
+unrelated-compare.mod:19:8: error: procedure values of different types cannot be compared
+2 error(s)
