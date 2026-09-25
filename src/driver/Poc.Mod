@@ -318,6 +318,7 @@ MODULE Poc;
       scope: SymbolTable.Scope;
       fname: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+      sourcePath: LLVMCodeGenerator.SourcePath;
       errorCountBefore: INTEGER;
       imp: SyntaxTree.ImportNode;
       m, entry: LLVMCodeGenerator.ModuleList;
@@ -333,6 +334,7 @@ MODULE Poc;
       failed := TRUE; Out.String("poc: cannot find source for imported module "); Out.String(name); Out.Ln;
       ok := FALSE; RETURN
     END;
+    COPY(ModuleInterface.sourcePath, sourcePath); (* before an import reads another *)
     COPY(Diagnostics.fileName, savedFileName);
     ModuleInterface.ModFileName(name, fname);
     COPY(fname, Diagnostics.fileName);
@@ -354,6 +356,7 @@ MODULE Poc;
       END;
       IF ok THEN
         NEW(entry); entry.module := module; entry.scope := scope; entry.next := NIL;
+        COPY(sourcePath, entry.fileName);
         IF tail = NIL THEN modules := entry ELSE tail.next := entry END;
         tail := entry
       END
@@ -509,6 +512,7 @@ MODULE Poc;
     END;
     IF ok THEN
       NEW(entry); entry.module := topModule; entry.scope := topScope; entry.next := NIL;
+      COPY(Diagnostics.fileName, entry.fileName); (* the file named on the command line *)
       IF tail = NIL THEN modules := entry ELSE tail.next := entry END
     END;
     AddRuntimeModules(outputDir, modules, ok)
@@ -889,7 +893,9 @@ MODULE Poc;
     Out.String("       (required - -build has no default)"); Out.Ln;
     Out.String("       -trap-heap-exhausted may precede -emit-llvm-ir or -build: a NEW"); Out.Ln;
     Out.String("       the heap cannot satisfy stops the program (exit status 11)"); Out.Ln;
-    Out.String("       instead of leaving the pointer NIL"); Out.Ln
+    Out.String("       instead of leaving the pointer NIL"); Out.Ln;
+    Out.String("       -trap-location may precede -emit-llvm-ir or -build: a trap's message"); Out.Ln;
+    Out.String("       starts with its file:line:column and names its procedure"); Out.Ln
   END Usage;
 
   (* IMPORT search-path CLI surface (PLAN.md's "Open design questions" -
@@ -1006,6 +1012,10 @@ MODULE Poc;
           INC(i)
         ELSIF arg = "-OC" THEN
           ConstantEvaluator.SetSizeModel(MemoryLayout.sizeModelOC);
+          INC(i)
+        ELSIF arg = "-trap-location" THEN
+          (* Phase 11 C7: every trap message names its file, line, column and procedure *)
+          LLVMCodeGenerator.trapLocation := TRUE;
           INC(i)
         ELSIF arg = "-trap-heap-exhausted" THEN
           (* Phase 11 A13: a NEW the heap cannot satisfy stops the program *)

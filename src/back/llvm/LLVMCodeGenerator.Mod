@@ -193,6 +193,12 @@ MODULE LLVMCodeGenerator;
        pointer NIL, as voc and poc do by default. Set before GenerateProgram;
        FALSE leaves the IR as it was without the switch. *)
     trapHeapExhausted*: BOOLEAN;
+    (* poc -trap-location (Phase 11 C7, decided with the user 2026-09-25):
+       every trap message starts with the source position of the trap and
+       ends with the procedure it is in - "list.mod:42:15: index out of range
+       (in List.Insert)". Each trap site gets a message of its own
+       (EmitTrapAt); FALSE leaves the IR as it was without the switch. *)
+    trapLocation*: BOOLEAN;
 
   CONST
     (* PLAN.md Phase 8 step 13: two, not one - confirmed against real
@@ -303,6 +309,7 @@ MODULE LLVMCodeGenerator;
     dynParam = 2;
 
   TYPE
+    SourcePath* = ARRAY 1400 OF CHAR; (* ModuleInterface.sourcePath fits *)
     ValueText = ARRAY textLength + 1 OF CHAR;
     (* Room for "@<module>.<type>.<procedure>" built from three full-length
        (255-character) identifiers plus separators - ValueText's own 64
@@ -490,7 +497,19 @@ MODULE LLVMCodeGenerator;
     ModuleListDesc* = RECORD
       module*: SyntaxTree.ModuleNode;
       scope*: SymbolTable.Scope;
+      (* the module's source file, as poc opened it - named in trap messages
+         under -trap-location *)
+      fileName*: SourcePath;
       next*: ModuleList
+    END;
+
+    (* A -trap-location message: one per trap site, emitted with the other
+       trap messages (EmitPointerSupport). *)
+    TrapSite = POINTER TO TrapSiteDesc;
+    TrapSiteDesc = RECORD
+      global: ValueText;
+      text: ARRAY 3 * 1024 OF CHAR;
+      next: TrapSite
     END;
 
     (* Threaded explicitly through every codegen procedure below, VAR w:
@@ -568,6 +587,15 @@ MODULE LLVMCodeGenerator;
          and noAssertCode for ASSERT(x) *)
       assertCodes: ARRAY noAssertCode + 1 OF BOOLEAN;
       needHeapTrap: BOOLEAN; (* some NEW checks its result: trapHeapExhausted *)
+      (* -trap-location: the file and procedure being generated ("" in a
+         module body), the position of the statement being generated (a
+         statement's own traps name it: CASE, WITH, NEW, ASSERT, array
+         assignment), and the messages made so far *)
+      currentFile: SourcePath;
+      currentProc: LongText;
+      statementLine, statementColumn: INTEGER;
+      trapSites, trapSitesTail: TrapSite;
+      trapSiteCount: INTEGER;
       narrowings: Narrowing;
       arrayDescs: ArrayDescEntry;
       lateRecords: TypeDescEntry;
@@ -1145,16 +1173,54 @@ MODULE LLVMCodeGenerator;
      CollectStringConstants/CollectStringConstantsSeq's own forward
      declaration further down), so a plain call target must already be
      declared above its caller. *)
-  PROCEDURE EmitTrap(VAR w: Files.Rider; VAR cg: Codegen; msgGlobal, msgText: ARRAY OF CHAR; exitCode: INTEGER);
-    VAR lenText, codeText: ValueText;
+  (* A trap at source position line:column of the module being generated:
+     write the message and stop. Under -trap-location the message is one
+     made for this site, "<file>:<line>:<column>: <message> (in <procedure>)",
+     with "(in <Module>, module body)" outside any procedure; otherwise it
+     is msgGlobal, shared by every site of its kind. *)
+  PROCEDURE EmitTrapAt(VAR w: Files.Rider; VAR cg: Codegen; msgGlobal, msgText: ARRAY OF CHAR; exitCode: INTEGER;
+                       line, column: INTEGER);
+    VAR lenText, codeText: ValueText; site: TrapSite;
   BEGIN
-    lenText[0] := 0X; AppendLongInt(lenText, StrLen(msgText) + 1); (* and its newline: EmitTrapMessageGlobal *)
-    codeText[0] := 0X; AppendLongInt(codeText, exitCode);
-    WriteStr(w, "  call void @write(i32 2, ptr "); WriteStr(w, msgGlobal); WriteStr(w, ", i64 ");
+    IF trapLocation THEN
+      NEW(site); site.next := NIL;
+      INC(cg.trapSiteCount);
+      COPY(msgGlobal, site.global); Strcat(site.global, ".at"); AppendLongInt(site.global, cg.trapSiteCount);
+      COPY(cg.currentFile, site.text); Strcat(site.text, ":");
+      AppendLongInt(site.text, line); Strcat(site.text, ":"); AppendLongInt(site.text, column);
+      Strcat(site.text, ": "); Strcat(site.text, msgText); Strcat(site.text, " (in ");
+      IF cg.currentProc[0] # 0X THEN Strcat(site.text, cg.currentProc)
+      ELSE Strcat(site.text, cg.moduleName); Strcat(site.text, ", module body")
+      END;
+      Strcat(site.text, ")");
+      IF cg.trapSites = NIL THEN cg.trapSites := site ELSE cg.trapSitesTail.next := site END;
+      cg.trapSitesTail := site;
+      lenText[0] := 0X; AppendLongInt(lenText, StrLen(site.text) + 1);
+      codeText[0] := 0X; AppendLongInt(codeText, exitCode);
+      WriteStr(w, "  call void @write(i32 2, ptr "); WriteStr(w, site.global); WriteStr(w, ", i64 ")
+    ELSE
+      lenText[0] := 0X; AppendLongInt(lenText, StrLen(msgText) + 1); (* and its newline: EmitTrapMessageGlobal *)
+      codeText[0] := 0X; AppendLongInt(codeText, exitCode);
+      WriteStr(w, "  call void @write(i32 2, ptr "); WriteStr(w, msgGlobal); WriteStr(w, ", i64 ")
+    END;
     WriteStr(w, lenText); WriteStr(w, ")"); WriteLn(w);
     WriteStr(w, "  call void @exit(i32 "); WriteStr(w, codeText); WriteStr(w, ")"); WriteLn(w);
     WriteStr(w, "  unreachable"); WriteLn(w)
+  END EmitTrapAt;
+
+  (* A trap in the expression being generated (GenerateExpr keeps its
+     position in cg.currentLine/currentColumn). *)
+  PROCEDURE EmitTrap(VAR w: Files.Rider; VAR cg: Codegen; msgGlobal, msgText: ARRAY OF CHAR; exitCode: INTEGER);
+  BEGIN
+    EmitTrapAt(w, cg, msgGlobal, msgText, exitCode, cg.currentLine, cg.currentColumn)
   END EmitTrap;
+
+  (* A trap of the statement being generated itself. *)
+  PROCEDURE EmitStatementTrap(VAR w: Files.Rider; VAR cg: Codegen; msgGlobal, msgText: ARRAY OF CHAR;
+                              exitCode: INTEGER);
+  BEGIN
+    EmitTrapAt(w, cg, msgGlobal, msgText, exitCode, cg.statementLine, cg.statementColumn)
+  END EmitStatementTrap;
 
   PROCEDURE IntWidth(llvmType: ARRAY OF CHAR): INTEGER;
   BEGIN
@@ -2883,7 +2949,7 @@ MODULE LLVMCodeGenerator;
       EmitCondBr(w, tooLong, trapLabel, okLabel);
       EmitLabel(w, cg, trapLabel);
       cg.needArrayAssignTrap := TRUE;
-      EmitTrap(w, cg, arrayAssignTrapGlobal, arrayAssignTrapMsg, arrayAssignTrapExitCode);
+      EmitStatementTrap(w, cg, arrayAssignTrapGlobal, arrayAssignTrapMsg, arrayAssignTrapExitCode);
       EmitLabel(w, cg, okLabel)
     ELSE
       AppendLongInt(bytes, MemoryLayout.Size(srcType, ConstantEvaluator.wordSize, cg.sizeModel))
@@ -3728,8 +3794,9 @@ MODULE LLVMCodeGenerator;
     VAR
       v: Value; intType, truncated, back, overshoots, lowered, floored, aboveLow, belowHigh, fits,
       trapLabel, okLabel: ValueText;
-      lowBound, highBound: ARRAY 32 OF CHAR;
+      lowBound, highBound: ARRAY 32 OF CHAR; line, column: INTEGER;
   BEGIN
+    line := cg.currentLine; column := cg.currentColumn; (* ENTIER's own, not its argument's *)
     GenerateExpr(w, cg, args, v);
     LLVMTypes.TypeString(Types.LongInt, cg.sizeModel, intType);
     IF intType = "i32" THEN
@@ -3744,7 +3811,7 @@ MODULE LLVMCodeGenerator;
     NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
     EmitCondBr(w, fits, okLabel, trapLabel);
     EmitLabel(w, cg, trapLabel);
-    EmitTrap(w, cg, entierTrapGlobal, entierTrapMsg, entierTrapExitCode);
+    EmitTrapAt(w, cg, entierTrapGlobal, entierTrapMsg, entierTrapExitCode, line, column);
     EmitLabel(w, cg, okLabel);
     EmitConvert(w, cg, "fptosi", v.llvmType, v.text, intType, truncated);
     EmitConvert(w, cg, "sitofp", intType, truncated, v.llvmType, back);
@@ -4042,7 +4109,7 @@ MODULE LLVMCodeGenerator;
       NewLabel(cg, okLabel); NewLabel(cg, trapLabel);
       EmitCondBr(w, failed, trapLabel, okLabel);
       EmitLabel(w, cg, trapLabel);
-      EmitTrap(w, cg, heapTrapGlobal, heapTrapMsg, heapTrapExitCode);
+      EmitStatementTrap(w, cg, heapTrapGlobal, heapTrapMsg, heapTrapExitCode);
       EmitLabel(w, cg, okLabel)
     END
   END EmitHeapCheck;
@@ -4079,7 +4146,7 @@ MODULE LLVMCodeGenerator;
     EmitCondBr(w, i1cond, okLabel, trapLabel);
     EmitLabel(w, cg, trapLabel);
     AssertTrapMessage(code, global, msg);
-    EmitTrap(w, cg, global, msg, assertTrapExitCode);
+    EmitStatementTrap(w, cg, global, msg, assertTrapExitCode);
     EmitLabel(w, cg, okLabel)
   END GenerateAssert;
 
@@ -4461,7 +4528,7 @@ MODULE LLVMCodeGenerator;
     NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
     EmitCondBr(w, bad, trapLabel, okLabel);
     EmitLabel(w, cg, trapLabel);
-    EmitTrap(w, cg, lengthTrapGlobal, lengthTrapMsg, lengthTrapExitCode);
+    EmitStatementTrap(w, cg, lengthTrapGlobal, lengthTrapMsg, lengthTrapExitCode);
     EmitLabel(w, cg, okLabel);
     EmitResizeInt(w, cg, "i64", total, wordInt, size);
     IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
@@ -4694,7 +4761,7 @@ MODULE LLVMCodeGenerator;
     NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
     EmitCondBr(w, bad, trapLabel, okLabel);
     EmitLabel(w, cg, trapLabel);
-    EmitTrap(w, cg, lengthTrapGlobal, lengthTrapMsg, lengthTrapExitCode);
+    EmitStatementTrap(w, cg, lengthTrapGlobal, lengthTrapMsg, lengthTrapExitCode);
     EmitLabel(w, cg, okLabel);
     EmitResizeInt(w, cg, "i64", n64, wordInt, size);
     IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
@@ -4826,6 +4893,7 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE GenerateExpr(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.ExprNode; VAR result: Value);
   BEGIN
+    IF expr.line > 0 THEN cg.currentLine := expr.line; cg.currentColumn := expr.column END;
     WITH
       expr: SyntaxTree.LiteralExprNode DO GenerateLiteral(w, cg, expr, result)
     | expr: SyntaxTree.DesignatorExprNode DO
@@ -5056,7 +5124,7 @@ MODULE LLVMCodeGenerator;
       GenerateStatementSeq(w, cg, s.elseBody);
       EmitBr(w, endLabel)
     ELSE
-      EmitTrap(w, cg, noCaseLabelTrapGlobal, noCaseLabelTrapMsg, noCaseLabelExitCode)
+      EmitTrapAt(w, cg, noCaseLabelTrapGlobal, noCaseLabelTrapMsg, noCaseLabelExitCode, s.line, s.column)
     END;
     EmitLabel(w, cg, endLabel)
   END GenerateCaseStatement;
@@ -5313,7 +5381,7 @@ MODULE LLVMCodeGenerator;
       EmitBr(w, endLabel)
     ELSE
       cg.needWithTrap := TRUE;
-      EmitTrap(w, cg, withTrapGlobal, withTrapMsg, withTrapExitCode)
+      EmitTrapAt(w, cg, withTrapGlobal, withTrapMsg, withTrapExitCode, s.line, s.column)
     END;
     EmitLabel(w, cg, endLabel)
   END GenerateWithStatement;
@@ -5321,6 +5389,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE GenerateStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
   BEGIN
     cg.currentLine := s.line; cg.currentColumn := s.column;
+    cg.statementLine := s.line; cg.statementColumn := s.column;
     WITH
       s: SyntaxTree.AssignStatementNode DO GenerateAssignStatement(w, cg, s)
     | s: SyntaxTree.CallStatementNode DO GenerateCallStatement(w, cg, s)
@@ -6237,8 +6306,11 @@ MODULE LLVMCodeGenerator;
   PROCEDURE GenerateFunction(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
                              pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
                              needs: NestedProcedures.Need);
-    VAR savedScope: SymbolTable.Scope; retType: LongText;
+    VAR savedScope: SymbolTable.Scope; retType: LongText; i: INTEGER;
   BEGIN
+    i := 0; (* the symbol without its "@": "List.Insert", "List.Insert.Find" *)
+    WHILE (fnSymbol[i + 1] # 0X) & (i < LEN(cg.currentProc) - 1) DO cg.currentProc[i] := fnSymbol[i + 1]; INC(i) END;
+    cg.currentProc[i] := 0X;
     EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver, needs);
     savedScope := cg.scope;
     cg.scope := bodyScope; cg.locals := NIL; cg.currentProcResultType := pt.resultType;
@@ -6259,7 +6331,8 @@ MODULE LLVMCodeGenerator;
       WriteLn(w)
     END;
     WriteStr(w, "}"); WriteLn(w); WriteLn(w);
-    cg.scope := savedScope; cg.locals := NIL; cg.currentProcResultType := NIL
+    cg.scope := savedScope; cg.locals := NIL; cg.currentProcResultType := NIL;
+    cg.currentProc[0] := 0X
   END GenerateFunction;
 
   (* A module-level or type-bound procedure's functions: first one for every
@@ -6385,7 +6458,7 @@ MODULE LLVMCodeGenerator;
      of GarbageCollectedHeap.Allocate when NEW is used in a program that
      does not itself contain that module, and the array descriptors. *)
   PROCEDURE EmitPointerSupport(VAR w: Files.Rider; VAR cg: Codegen);
-    VAR wordInt: ValueText; e: TypeDescEntry; code: INTEGER; global, msg: LongText;
+    VAR wordInt: ValueText; e: TypeDescEntry; code: INTEGER; global, msg: LongText; site: TrapSite;
   BEGIN
     FOR code := 0 TO noAssertCode DO
       IF cg.assertCodes[code] THEN
@@ -6399,6 +6472,8 @@ MODULE LLVMCodeGenerator;
     IF cg.needEntierTrap THEN EmitTrapMessageGlobal(w, entierTrapGlobal, entierTrapMsg) END;
     IF cg.needArrayAssignTrap THEN EmitTrapMessageGlobal(w, arrayAssignTrapGlobal, arrayAssignTrapMsg) END;
     IF cg.needHeapTrap THEN EmitTrapMessageGlobal(w, heapTrapGlobal, heapTrapMsg) END;
+    site := cg.trapSites;
+    WHILE site # NIL DO EmitTrapMessageGlobal(w, site.global, site.text); site := site.next END;
     IF cg.usedAllocate & ~cg.heapPresent THEN
       WordIntType(wordInt);
       WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");
@@ -6566,6 +6641,8 @@ MODULE LLVMCodeGenerator;
     cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
     cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE; cg.needEntierTrap := FALSE;
     cg.needArrayAssignTrap := FALSE; cg.needHeapTrap := FALSE;
+    cg.currentFile[0] := 0X; cg.currentProc[0] := 0X; cg.statementLine := 0; cg.statementColumn := 0;
+    cg.trapSites := NIL; cg.trapSitesTail := NIL; cg.trapSiteCount := 0;
     FOR i := 0 TO noAssertCode DO cg.assertCodes[i] := FALSE END;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
     cg.heapPresent := withHeap;
@@ -6585,7 +6662,7 @@ MODULE LLVMCodeGenerator;
     WriteLn(w);
     m := modules;
     WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope;
+      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
       EmitGlobals(body, cg, m.module);
       EmitExternalDeclares(body, cg, m.module);
       EmitTypeDescriptors(body, cg, m.module);
@@ -6595,7 +6672,7 @@ MODULE LLVMCodeGenerator;
     EmitRuntimeSupport(body, cg);
     m := modules;
     WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope;
+      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
       CollectStringConstantsSeq(body, cg, m.module.statements);
       IF m.module.declarations # NIL THEN
         pd := m.module.declarations.procDecls;
@@ -6609,7 +6686,7 @@ MODULE LLVMCodeGenerator;
     WriteLn(body);
     m := modules;
     WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope;
+      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
       IF m.module.declarations # NIL THEN
         pd := m.module.declarations.procDecls;
         WHILE pd # NIL DO
@@ -6623,7 +6700,7 @@ MODULE LLVMCodeGenerator;
     END;
     m := modules;
     WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope;
+      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
       WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init() {"); WriteLn(body);
       EmitEntryLabel(body, cg);
       IF withRootTables THEN EmitRootTableRegistration(body, cg, m.module) END;

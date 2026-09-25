@@ -184,6 +184,10 @@ MODULE ModuleInterface;
        deliberately never reads the environment itself - see
        AddSearchPathList*'s own comment. *)
     searchPathHead, searchPathTail: SearchPathEntry;
+    (* The file the last ReadModuleSource* opened, as it was opened (the
+       name, or <search-path dir>/name): what poc -trap-location names in a
+       trap message (Phase 11 C7). *)
+    sourcePath*: ARRAY pathBufferLength OF CHAR;
     (* PLAN.md Phase 9 step 4a: when non-empty, ReadSource* looks for a
        .sym file here *before* the current directory and the search
        path. Poc.Mod's whole-program commands regenerate every imported
@@ -297,9 +301,12 @@ MODULE ModuleInterface;
      Phase 7's original cwd-only behavior - see every existing multi-
      module conformance fixture), then each searchPathHead..Tail directory
      in the order they were added, stopping at the first one that opens. *)
-  PROCEDURE Open(name: ARRAY OF CHAR): Files.File;
-    VAR f: Files.File; e: SearchPathEntry; path: ARRAY pathBufferLength OF CHAR;
+  (* name in the current directory, else in each search-path directory in
+     turn; path is what was opened (name itself, or <dir>/name) *)
+  PROCEDURE OpenFound(name: ARRAY OF CHAR; VAR path: ARRAY OF CHAR): Files.File;
+    VAR f: Files.File; e: SearchPathEntry;
   BEGIN
+    COPY(name, path);
     f := Files.Old(name);
     e := searchPathHead;
     WHILE (f = NIL) & (e # NIL) DO
@@ -308,6 +315,12 @@ MODULE ModuleInterface;
       e := e.next
     END;
     RETURN f
+  END OpenFound;
+
+  PROCEDURE Open(name: ARRAY OF CHAR): Files.File;
+    VAR path: ARRAY pathBufferLength OF CHAR;
+  BEGIN
+    RETURN OpenFound(name, path)
   END Open;
 
   PROCEDURE SetInterfaceDir*(dir: ARRAY OF CHAR);
@@ -390,7 +403,7 @@ MODULE ModuleInterface;
       used: LONGINT;
   BEGIN
     ModFileName(moduleName, name);
-    f := Open(name);
+    f := OpenFound(name, sourcePath);
     IF f = NIL THEN
       (* PLAN.md Phase 9 step 4: the runtime library (rtl/llvm) keeps the
          "<Module>.Mod" spelling every other source in this repository
@@ -398,7 +411,7 @@ MODULE ModuleInterface;
       i := 0;
       WHILE name[i] # 0X DO INC(i) END;
       name[i - 3] := "M";
-      f := Open(name)
+      f := OpenFound(name, sourcePath)
     END;
     IF f = NIL THEN
       found := FALSE; length := 0

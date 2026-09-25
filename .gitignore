@@ -109,3 +109,4 @@ test/conformance/llvm-nested-import/llvm-nested-import
 test/conformance/llvm-large-records/llvm-large-records
 test/conformance/llvm-assert/llvm-assert
 test/conformance/llvm-heap-exhausted/llvm-heap-exhausted
+test/conformance/llvm-trap-location/llvm-trap-location

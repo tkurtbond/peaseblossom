@@ -531,8 +531,8 @@ signal death is 128 + the signal number, as a shell reports it).
 (until 2026-09-21 the newline was missing, and the shell's prompt landed on the
 message's line) and exits with the status; the numbers are poc's own (voc's Halt codes
 in the last column are `Halt(n)` printed as "Terminated by Halt(n)", exit 256-n).
-No location is reported; C7 (a switch for file and line) would add one to
-exactly these. Each status is pinned by a fixture.
+No location is reported by default; **`poc -trap-location`** (C7, below) adds
+one to every trap in this table. Each status is pinned by a fixture.
 
 | Status | What | Message | voc |
 |---|---|---|---|
@@ -546,6 +546,32 @@ exactly these. Each status is pinned by a fixture.
 | 9 | An open array assigned to a fixed array with fewer elements (`llvm-array-assign-trap`) | `open array assigned to an array too short for it` | Halt(-2), 254 |
 | 10 | A failed `ASSERT(x)` or `ASSERT(x, n)` (`llvm-assert`) | `assertion failed`, or `assertion failed (n)` | "Assertion failure." and " ASSERT code n."; exit `n`, 255 for none or 0 |
 | 11 | With `-trap-heap-exhausted` only: `NEW`, `NEW(p, n, ...)` or `SYSTEM.NEW` the heap cannot satisfy (`llvm-heap-exhausted`) | `heap exhausted: NEW cannot allocate the block` | no switch: the pointer is NIL |
+
+**`-trap-location`** (Phase 11 C7, decided with the user 2026-09-25). With it,
+every trap message above starts with where the trap is and ends with the
+procedure it is in:
+
+    list.mod:42:15: index out of range (in List.Insert)
+    lib/traplib.mod:19:7: assertion failed (20) (in traplib.Get.Check)
+    traplocation.mod:36:8: no matching CASE label (in traplocation, module body)
+
+- The file is the module's source as poc opened it: the name on the command
+  line for the top module, `<import-path dir>/<name>` for an imported one found
+  through the search path, so a trap in `rtl/llvm` names that file. The
+  procedure is the one the code is in: `Module.Proc`, `Module.Outer.Inner` for
+  a nested one, `Module.Record.Proc` for a type-bound one (named after the
+  record it is bound to, as its symbol is), "`Module`, module body" outside any.
+- The position is the expression that traps where there is one - the index of
+  `a[i]` (on its own line if the expression spans lines), the designator
+  dereferenced, the guard, the `ENTIER` call - and the statement for a trap of
+  the statement itself: `CASE`, `WITH` (their own line, not that of a branch),
+  `NEW`, `SYSTEM.NEW`, `ASSERT`, an array assignment.
+- The exit statuses do not change, and nothing else does: `HALT` stays silent,
+  a signal death (`SIGFPE`, `SIGSEGV`) has no message. Each trap site has its
+  own message string, written into the program, so no formatting happens at
+  run time; the program grows by one string per site. Without the switch the
+  IR is what it was. The switch goes with `-emit-llvm-ir` or `-build`, and with
+  `-trap-heap-exhausted` too (`llvm-trap-location`, both size models).
 
 **What ends the program without a message, or not at all.** Nothing says what
 happened; deliberate (C6) where noted.

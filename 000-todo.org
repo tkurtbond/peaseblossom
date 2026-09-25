@@ -12,7 +12,8 @@ Overflow and underflow behavior is undefined in Oberon-2 (Oberon2.pdf never ment
 ** TODO Better error messsages than voc's Halt(99).
 In general, it's better to report an error message with a string rather than a number.
 Decided 2026-09-20: a run-time error poc reports says in text what happened.  Audited: the seven backend traps and Files' unreportable errors already print a message.  Deliberately silent, no change: integer DIV/MOD by zero and MIN(LONGINT) DIV -1 (SIGFPE), unbounded recursion (SIGSEGV), HALT(n) (Oberon2.pdf leaves n to the operating system).  The one change wanted is the NEW-on-an-exhausted-heap switch below.  Still to do: say so in AGENTS.md.  (doc/phase-11-inventory.md C6.)
-** TODO source location for traps, etc.
+** DONE source location for traps, etc.
+Done 2026-09-25 (user chose the name and the form): `poc -trap-location`, off by default; every trap message (statuses 2..11) becomes "<file>:<line>:<column>: <message> (in <procedure>)", "(in <Module>, module body)" outside any; one message string per trap site, so the IR without the switch is unchanged (LLVMCodeGenerator.EmitTrapAt; fixture llvm-trap-location).  Original text follows.
 Decided 2026-09-20: a compiler switch that turns on file name and line number reporting when a trap fires, so a trap can be located without a debugger (as GNAT does for an unhandled exception).  Off by default: the plain "just exit" strategy, which costs no code size or time.  Separate from the gdb/lldb debugging support below (Phase 11 step 5).  Still to settle: the switch's name, the message form, which traps carry it, how the location reaches the trap (with the switch off the IR must stay identical to today's).  (doc/phase-11-inventory.md C7.)
 ** TODO Finish the parts of voc's modules (Console, Platrom, etc.) that poc doesn't support yet.
 ** DONE A formal parameter accepts an export mark (`x-` or `x*`), and `x-` is not read-only.

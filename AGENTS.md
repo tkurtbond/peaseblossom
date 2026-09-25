@@ -271,7 +271,9 @@ array is never an assignment target. An open source that is too long traps
 ### What traps, and what does not (Phase 11 C9)
 
 The tables of trap statuses 2-11, what ends a program silently, what nothing
-stops, and what is a compile-time error.
+stops, and what is a compile-time error. `poc -trap-location` (C7) prefixes
+every trap message with `file:line:column:` and ends it with the procedure,
+"(in List.Insert)".
 
 ### ASSERT (decided and implemented, 2026-09-25)
 

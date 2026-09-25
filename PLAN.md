@@ -398,7 +398,8 @@ as it stands when the phase starts, and adds what it finds):
      that integer-literal folding is still a TODO was already out of date: it
      is `DONE`.) User verdicts so far: a compiler switch for `NEW` on an
      exhausted heap (A13); file and line reporting for traps as a compiler
-     switch, off by default, separate from step 5 (C7); documenting what poc
+     switch, off by default, separate from step 5 (C7, **done 2026-09-25**:
+     `-trap-location`, fixture `llvm-trap-location`); documenting what poc
      does and does not trap (C9, **done 2026-09-21**: `AGENTS.md` "What traps,
      and what does not", fixture `llvm-no-trap-behavior`; it found six things,
      all decided with the user and done: see `000-todo.org`); no change to the deliberately silent
