@@ -1,5 +1,7 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
 * Things to be done while getting the compiler working
+** TODO Change mentions of Oberon2.pdf in the compiler messages to something like "the Oberon-2 report".
+** TODO Check Oberon2.pdf against the version in "A. Oberon-2 Language Definition" on page 221 of "Object-Oriented Programming in Oberon-2, Second Edition".
 ** TODO Add an equivalent of voc's Args module to poc's RTL.
 ** DONE Update the README.md with the current valid  list of make targets.
 Done 2026-09-25: it already listed them all; it now says `make build`/`make all` are the default and that `clang` is needed.  (doc/phase-11-inventory.md C1.)
