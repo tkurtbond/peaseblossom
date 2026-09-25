@@ -19,7 +19,9 @@ source does, what was probed and what was only read, and ends with the decision
 
 | Source (local file) | Says |
 |---|---|
-| `Oberon2.pdf`, `Oberon2-Report.pdf` | No `ASSERT`. |
+| `Oberon2.pdf` | No `ASSERT`. |
+| `Oberon2-Report.pdf` (1993) | §10.3's table has `ASSERT(x)` and `ASSERT(x, n)` (`n` an integer constant), "terminate program execution if not x", and `HALT(n)`: "In ASSERT(x, n) and HALT(n), the interpretation of n is left to the underlying system implementation." Not in §4's list of predeclared identifiers. `Oberon2.pdf` dropped both rows. |
+| `oop_in_oberon-2_book.pdf` (Mössenböck, 2nd ed., Appendix A) | Both forms, "terminate with error n if not x", and `ASSERT` in the §A.4 predeclared list too. |
 | `Oberon-2012/Oberon07.Report.pdf` (Wirth, 2016) | `ASSERT(b)`, BOOLEAN: "abort, if ~b". One argument only. |
 | `Oberon-2-2020/The-Revised-Oberon2-Programming-Language.pdf` (Pirklbauer, 2023) | Describes only its additions to Oberon-07, so it inherits `ASSERT(b)`. |
 | `Active-OberonLanguageReport.pdf` | `ASSERT(x)`: "raise trap, if x not true". |

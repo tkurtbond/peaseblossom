@@ -41,17 +41,34 @@ plain reading order):
   - Pointers are stated to initialize to NIL by default (§6.4).
   - Forward declaration / redefinition parameter lists must be "identical",
     not just "match" (§10, §10.2) — a stricter, clearer rule.
-  - The `Trees` example module's `Init(t: Tree)` (VAR-parameter
-    initializer) is replaced by `NewTree(): Tree` (allocating function) —
-    an API redesign, updated consistently in both the main example and the
-    Appendix D4 browser-output example.
+  - The `Trees` example module's `Init*(t: Tree)` (initializes a tree the
+    caller already allocated; 1993's Appendix D4 browser output
+    inconsistently shows it as `Init(VAR t: Tree)`) is replaced by
+    `NewTree*(): Tree` (allocating function) — an API redesign, updated
+    consistently in both the main example and the D4 browser-output example.
   - The array-compatibility rule (Appendix A) is tightened: `ARRAY OF CHAR`
     parameter matching a string requires the formal to be a **value**
     parameter.
-  - `HALT` is simplified from two overloads (`HALT(n)`, `HALT(n, code)`) to
-    one (`HALT(x)`).
+  - `ASSERT` is removed: the 1993 §10.3 table has `ASSERT(x)`,
+    `ASSERT(x, n)` and `HALT(n)` (though `ASSERT` is missing from its §4
+    list of predeclared identifiers); `Oberon2.pdf` has only `HALT(x)`.
+  - The FOR statement (§9.8) is redefined: the equivalence evaluates the
+    start value first (`v := low; temp := high`, where 1993 has
+    `temp := end; v := beg`), and 1993's "temp has the same type as v"
+    becomes: low assignment compatible with v, high expression compatible
+    with v, step a nonzero constant "of an integer type".
   - Assorted prose smoothing (e.g. "must be left via a return statement"
     instead of "require the presence of a return statement").
+
+A third text, Appendix A of Mössenböck's *Object-Oriented Programming in
+Oberon-2*, 2nd ed. (`oop_in_oberon-2_book.pdf`, book pp. 221-254 = PDF pp.
+231-264; OCR'd, so its `oop_in_oberon-2_book-{layout,nolayout}.text`
+extracts have character errors), is an intermediate state between the two.
+It already has the value-parameter array rule, `HALT(x)`, "must be left
+via" and "for a fixed number of times"; it still has 1993's FOR
+equivalence, "match" for parameter lists, `Init`, and no NIL-initialization
+sentence; and it alone lists `ASSERT` among the predeclared identifiers.
+It is background only, like `Oberon2-Report.pdf`.
 
 **`Oberon2.pdf` is the authoritative spec for Peaseblossom.** Use
 `Oberon2-Report.pdf` only as historical background or when explicitly
