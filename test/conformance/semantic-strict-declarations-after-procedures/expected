@@ -1,0 +1,5 @@
+strict.mod:8:3: error: a CONST, TYPE or VAR section after a procedure is not in the Oberon-2 report (-strict)
+strict.mod:9:3: error: a CONST, TYPE or VAR section after a procedure is not in the Oberon-2 report (-strict)
+strict.mod:13:5: error: a CONST, TYPE or VAR section after a procedure is not in the Oberon-2 report (-strict)
+strict.mod:16:3: error: a CONST, TYPE or VAR section after a procedure is not in the Oberon-2 report (-strict)
+4 error(s)

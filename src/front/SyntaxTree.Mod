@@ -354,15 +354,16 @@ MODULE SyntaxTree;
 
     DeclSeqNodeDesc* = RECORD (NodeDesc)
       (* Parser.ParseDeclSeq accepts CONST/TYPE/VAR keyword sections in
-         any order, repeated/interleaved arbitrarily (matching voc's own
-         DeclSeq extension - PLAN.md's "Declaration order"), but still
-         sorts every declaration into one of these three separately-typed
-         lists by kind - each stays in its own textual order, but the
-         *relative* order between, say, a CONST and a TYPE that were
-         actually interleaved in the source is not tracked structurally
-         here. SemanticActions.ResolveDeclSeq recovers it at resolution
-         time instead, via a three-way merge keyed on each node's own
-         line/column (NodeDesc, set by New*Decl) - cheaper than
+         any order, repeated/interleaved arbitrarily (as Oberon2.pdf 10's
+         grammar allows), and, as poc's extension, after and between
+         procedures too (doc/language-extensions.md, "Declarations after
+         procedures"), but still sorts every declaration into one of these
+         four separately-typed lists by kind - each stays in its own
+         textual order, but the *relative* order between, say, a CONST and
+         a PROCEDURE that were actually interleaved in the source is not
+         tracked structurally here. SemanticActions.CheckDeclarations
+         recovers it at resolution time instead, via a merge keyed on each
+         node's own line/column (NodeDesc, set by New*Decl) - cheaper than
          restructuring these into one polymorphic list, and leaves every
          other reader of this DeclSeqNode (ModuleInterface.Mod, Poc.Mod's
          -dump-layout) untouched, since none of them care about

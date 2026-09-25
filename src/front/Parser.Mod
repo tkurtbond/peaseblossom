@@ -888,22 +888,55 @@ MODULE Parser;
                                         declarations, statements, endName, line, column)
   END ParseProcDecl;
 
+  (* One ProcedureDeclaration or ForwardDeclaration and its ";", appended
+     to head/tail; p.current is its PROCEDURE keyword. *)
+  PROCEDURE ParseProcedureInDeclSeq(VAR p: Parser; VAR head, tail: SyntaxTree.ProcDeclNode);
+    VAR
+      procNode: SyntaxTree.ProcDeclNode; line, column: INTEGER;
+      isForward, isExternal: BOOLEAN;
+      externalConvention, externalName: SyntaxTree.Ident;
+  BEGIN
+    line := p.current.line; column := p.current.column;
+    Advance(p);
+    isForward := FALSE; isExternal := FALSE;
+    externalConvention[0] := 0X; externalName[0] := 0X;
+    IF p.current.kind = Lexer.caret THEN
+      isForward := TRUE; Advance(p)
+    ELSIF p.current.kind = Lexer.leftBracket THEN
+      isExternal := TRUE;
+      ParseExternalAttribute(p, externalConvention, externalName)
+    END;
+    procNode := ParseProcDecl(p, isForward, isExternal, externalConvention, externalName,
+                               line, column);
+    ExpectToken(p, Lexer.semicolon, "expected ';'");
+    IF tail = NIL THEN head := procNode ELSE tail.next := procNode END;
+    tail := procNode
+  END ParseProcedureInDeclSeq;
+
   PROCEDURE ParseDeclSeq(VAR p: Parser): SyntaxTree.DeclSeqNode;
     VAR
       constHead, constTail, constNode: SyntaxTree.ConstDeclNode;
       typeHead, typeTail, typeNode: SyntaxTree.TypeDeclNode;
       varHead, varTail, varNode: SyntaxTree.VarDeclNode;
-      procHead, procTail, procNode: SyntaxTree.ProcDeclNode;
+      procHead, procTail: SyntaxTree.ProcDeclNode;
       line, column: INTEGER;
-      isForward, isExternal: BOOLEAN;
-      externalConvention, externalName: SyntaxTree.Ident;
   BEGIN
     line := p.current.line; column := p.current.column;
     constHead := NIL; constTail := NIL;
     typeHead := NIL; typeTail := NIL;
     varHead := NIL; varTail := NIL;
     procHead := NIL; procTail := NIL;
+    (* Oberon2.pdf 10 puts every CONST/TYPE/VAR section before the first
+       procedure; poc also lets them follow procedures (doc/language-
+       extensions.md, "Declarations after procedures"), which -strict
+       reports at the section's keyword *)
     LOOP
+      IF (procHead # NIL)
+          & ((p.current.kind = Lexer.constKeyword) OR (p.current.kind = Lexer.typeKeyword)
+             OR (p.current.kind = Lexer.varKeyword)) THEN
+        Diagnostics.NotInReport(p.current.line, p.current.column,
+          "a CONST, TYPE or VAR section after a procedure")
+      END;
       IF p.current.kind = Lexer.constKeyword THEN
         Advance(p);
         WHILE p.current.kind = Lexer.ident DO
@@ -928,26 +961,11 @@ MODULE Parser;
           IF varTail = NIL THEN varHead := varNode ELSE varTail.next := varNode END;
           varTail := varNode
         END
+      ELSIF p.current.kind = Lexer.procedureKeyword THEN
+        ParseProcedureInDeclSeq(p, procHead, procTail)
       ELSE
         EXIT
       END
-    END;
-    WHILE p.current.kind = Lexer.procedureKeyword DO
-      line := p.current.line; column := p.current.column;
-      Advance(p);
-      isForward := FALSE; isExternal := FALSE;
-      externalConvention[0] := 0X; externalName[0] := 0X;
-      IF p.current.kind = Lexer.caret THEN
-        isForward := TRUE; Advance(p)
-      ELSIF p.current.kind = Lexer.leftBracket THEN
-        isExternal := TRUE;
-        ParseExternalAttribute(p, externalConvention, externalName)
-      END;
-      procNode := ParseProcDecl(p, isForward, isExternal, externalConvention, externalName,
-                                 line, column);
-      ExpectToken(p, Lexer.semicolon, "expected ';'");
-      IF procTail = NIL THEN procHead := procNode ELSE procTail.next := procNode END;
-      procTail := procNode
     END;
     RETURN SemanticActions.NewDeclSeq(constHead, typeHead, varHead, procHead, line, column)
   END ParseDeclSeq;

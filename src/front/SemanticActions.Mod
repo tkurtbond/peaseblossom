@@ -127,6 +127,11 @@ MODULE SemanticActions;
        "not exported"), so a caller's own generic "undeclared identifier"
        does not pile a second, less precise error on the same position. *)
     lookupDiagnosed: BOOLEAN;
+    (* The TYPE declarations of the DeclSeq CheckDeclarations is checking
+       that follow its next procedure, not yet declared: a POINTER TO base
+       found among them gets a message saying why it cannot be used yet.
+       Saved/restored around each procedure, whose own DeclSeq sets it. *)
+    laterTypes: SyntaxTree.TypeDeclNode;
     (* PLAN.md Phase 9 step 6: set by every CheckDesignator call - TRUE
        when the designator is a VAR parameter (a type-bound procedure's VAR
        receiver included), possibly under type guards but with no
@@ -948,6 +953,14 @@ MODULE SemanticActions;
     END
   END ResolveNamedType;
 
+  PROCEDURE DeclaredLater(name: SyntaxTree.Ident): BOOLEAN;
+    VAR t: SyntaxTree.TypeDeclNode;
+  BEGIN
+    t := laterTypes;
+    WHILE (t # NIL) & (t.name.name # name) DO t := t.next END;
+    RETURN t # NIL
+  END DeclaredLater;
+
   PROCEDURE ResolveQualidentType(scope: SymbolTable.Scope;
                                  node: SyntaxTree.QualidentTypeNode;
                                  allowForward: BOOLEAN): Types.Type;
@@ -955,7 +968,13 @@ MODULE SemanticActions;
   BEGIN
     obj := FindQualified(scope, node.qualifier, node.name, node.line, node.column);
     IF obj = NIL THEN
-      IF ~lookupDiagnosed THEN Diagnostics.Error(node.line, node.column, "undeclared identifier") END;
+      IF lookupDiagnosed THEN (* already reported *)
+      ELSIF allowForward & (node.qualifier[0] = 0X) & DeclaredLater(node.name) THEN
+        Diagnostics.Error(node.line, node.column,
+          "a POINTER TO base type must be declared before the next procedure")
+      ELSE
+        Diagnostics.Error(node.line, node.column, "undeclared identifier")
+      END;
       RETURN Types.Undefined
     ELSIF obj.class # SymbolTable.typeClass THEN
       Diagnostics.Error(node.line, node.column, "not a type");
@@ -1164,11 +1183,11 @@ MODULE SemanticActions;
 
   (* Pre-declares every TYPE name in decls (a whole DeclSeq's typeDecls
      list, possibly assembled from several separate, interleaved TYPE
-     sections - Parser.Mod's ParseDeclSeq already accepts that, matching
-     voc's own DeclSeq extension), with obj.pendingTypeNode set but
+     sections - Parser.Mod's ParseDeclSeq accepts that, as Oberon2.pdf 10
+     and voc do), with obj.pendingTypeNode set but
      nothing resolved yet - so a POINTER's own inline base can find any
-     other name in the same DeclSeq regardless of its own textual
-     position (Oberon2.pdf §4 rule 3's one sanctioned forward-reference
+     other name in the same DeclSeq (up to its next procedure, below)
+     regardless of its own textual position (Oberon2.pdf §4 rule 3's one sanctioned forward-reference
      exception), before ResolveDeclSeq's own merged pass below resolves
      anything. Split out from the old ResolveTypeDecls (which combined
      this with its own "pass 2" loop) so ResolveDeclSeq can run this
@@ -1176,11 +1195,22 @@ MODULE SemanticActions;
      in true textual order - see ResolveDeclSeq's own comment below (and
      PLAN.md's "Declaration order" entry) for the voc evidence this is
      based on. *)
-  PROCEDURE PredeclareTypeNames(decls: SyntaxTree.TypeDeclNode; scope: SymbolTable.Scope);
+  PROCEDURE ^ EarlierPosition(aLine, aColumn, bLine, bColumn: INTEGER): BOOLEAN;
+  PROCEDURE ^ CheckLateName(scope: SymbolTable.Scope; name: SyntaxTree.IdentDefNode);
+
+  (* decls is advanced past the types it declares: those before
+     stopLine:stopColumn, the next procedure's position (MAX(INTEGER) for
+     none), so that with declarations after procedures (doc/language-
+     extensions.md, "Declarations after procedures") a POINTER TO base must
+     be declared before the next procedure. afterProcedure: a procedure
+     precedes these types in their block, so CheckLateName applies. *)
+  PROCEDURE PredeclareTypeNames(VAR decls: SyntaxTree.TypeDeclNode; scope: SymbolTable.Scope;
+                                stopLine, stopColumn: INTEGER; afterProcedure: BOOLEAN);
     VAR d: SyntaxTree.TypeDeclNode; obj: SymbolTable.Object;
   BEGIN
     d := decls;
-    WHILE d # NIL DO
+    WHILE (d # NIL) & EarlierPosition(d.line, d.column, stopLine, stopColumn) DO
+      IF afterProcedure THEN CheckLateName(scope, d.name) END;
       (* CheckExportMark deliberately NOT called here - it's a pure "-"
          export-mark validity check with no bearing on name resolution
          order at all, so running it during this up-front pre-declare
@@ -1197,7 +1227,8 @@ MODULE SemanticActions;
                                  d.name.line, d.name.column);
       obj.pendingTypeNode := d.type;
       d := d.next
-    END
+    END;
+    decls := d
   END PredeclareTypeNames;
 
   (* Resolves one TYPE declaration whose name PredeclareTypeNames already
@@ -1241,11 +1272,12 @@ MODULE SemanticActions;
     RETURN (aLine < bLine) OR ((aLine = bLine) & (aColumn < bColumn))
   END EarlierPosition;
 
-  (* Resolves an entire DeclSeq's CONST/TYPE/VAR declarations (PROCEDURE
-     decls are handled separately by ResolveProcDecls, unaffected - they
-     must textually follow every CONST/TYPE/VAR section regardless,
-     confirmed against real voc, which rejects a TYPE/VAR section
-     appearing after the first PROCEDURE). PLAN.md's "Open design
+  (* Resolves an entire DeclSeq's CONST/TYPE/VAR declarations, all of
+     them, and none of its procedures - what OpenProcedureBodyScope needs
+     to reopen an already-checked body. The checker itself uses
+     CheckDeclarations (below), which interleaves the procedures too
+     (poc lets data sections follow procedures, doc/language-extensions.md,
+     "Declarations after procedures"; voc and Oberon2.pdf do not). PLAN.md's "Open design
      questions" - "Declaration order": replaces what used to be three
      separate whole-section passes (every CONST, then every TYPE, then
      every VAR) with one merged pass in actual textual order, a three-way
@@ -1275,7 +1307,8 @@ MODULE SemanticActions;
       c: SyntaxTree.ConstDeclNode; t: SyntaxTree.TypeDeclNode; v: SyntaxTree.VarDeclNode;
       pickConst, pickType: BOOLEAN;
   BEGIN
-    PredeclareTypeNames(decls.typeDecls, scope);
+    t := decls.typeDecls;
+    PredeclareTypeNames(t, scope, MAX(INTEGER), MAX(INTEGER), FALSE);
     c := decls.constDecls; t := decls.typeDecls; v := decls.varDecls;
     WHILE (c # NIL) OR (t # NIL) OR (v # NIL) DO
       pickConst := (c # NIL) & ((t = NIL) OR EarlierPosition(c.line, c.column, t.line, t.column))
@@ -2847,9 +2880,9 @@ MODULE SemanticActions;
   (* ---- PLAN.md Phase 6: procedures, type-bound procedures, external
      declarations (Oberon2.pdf §10) ----
 
-     ResolveProcDecls walks a DeclSeq's procDecls list once, in textual
-     order - unlike TYPE's own PredeclareTypeNames-then-resolve forward
-     machinery (ResolveDeclSeq above), because Oberon-2 gives procedures
+     CheckDeclarations (below) walks a DeclSeq's procDecls list once, in
+     textual order - unlike TYPE's own PredeclareTypeNames-then-resolve
+     forward machinery (ResolveDeclSeq above), because Oberon-2 gives procedures
      an *explicit* forward-reference
      escape hatch already parsed since Phase 2 ("PROCEDURE^ ...;",
      ProcDeclNode.isForward): a procedure is visible from its declaration
@@ -2857,11 +2890,10 @@ MODULE SemanticActions;
      ForwardDecl introduced the name early - there is no implicit mutual-
      visibility requirement to engineer around the way TYPE has.
 
-     Forward-declared both here as ResolveProcDecls (below) and
-     mutually with CheckProcedureBody, since a nested procedure's own
-     body (§10: "procedure declarations may be nested") resolves its own
-     DeclSeq by calling ResolveProcDecls again. *)
-  PROCEDURE ^ ResolveProcDecls(decls: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope);
+     Forward-declared here, mutually with CheckProcedureBody, since a
+     nested procedure's own body (§10: "procedure declarations may be
+     nested") checks its own DeclSeq by calling CheckDeclarations again. *)
+  PROCEDURE ^ CheckDeclarations(decls: SyntaxTree.DeclSeqNode; scope: SymbolTable.Scope);
 
   (* §10.2's exactly-two-shapes rule: a receiver's second ident, looked
      up as an ordinary type name, must resolve to either a RecordType
@@ -2963,11 +2995,11 @@ MODULE SemanticActions;
      parameter's type from pt.params rather than re-resolving
      d.formals.sections a second time, so a local's bound type is
      identical (not just equal) to the very Types.Param CheckArguments
-     will later match call-site arguments against - then resolves d's
-     own local CONST/TYPE/VAR declarations (but not nested PROCEDUREs -
-     see CheckProcedureBody's own call site below for why that's kept
-     separate). Exported, not just an inline step of CheckProcedureBody,
-     so PLAN.md Phase 8 step 10's backend can reuse it verbatim:
+     will later match call-site arguments against. OpenProcedureBodyScope
+     (below) also resolves d's own local CONST/TYPE/VAR declarations (but
+     not nested PROCEDUREs - see CheckProcedureBody's own call site below
+     for why that's kept separate). It is exported, not just an inline step
+     of CheckProcedureBody, so PLAN.md Phase 8 step 10's backend can reuse it:
      LLVMCodeGenerator.Mod needs the *identical* params+locals scope
      CheckProcedureBody already built once during checking (same names,
      same resolved Types.Type for each local VAR's TypeNode) to resolve
@@ -2983,8 +3015,8 @@ MODULE SemanticActions;
      has already passed CheckModule with zero diagnostics, so re-running
      the exact same resolution against the exact same AST just rebuilds
      an equivalent (fresh Scope object) result, not new errors. *)
-  PROCEDURE OpenProcedureBodyScope*(d: SyntaxTree.ProcDeclNode; outer: SymbolTable.Scope;
-                                    receiverType: Types.Type; pt: Types.ProcedureType): SymbolTable.Scope;
+  PROCEDURE OpenParameterScope(d: SyntaxTree.ProcDeclNode; outer: SymbolTable.Scope;
+                               receiverType: Types.Type; pt: Types.ProcedureType): SymbolTable.Scope;
     VAR
       bodyScope: SymbolTable.Scope;
       section: SyntaxTree.FPSectionNode;
@@ -3019,6 +3051,22 @@ MODULE SemanticActions;
         section := section.next
       END
     END;
+    RETURN bodyScope
+  END OpenParameterScope;
+
+  (* d's body scope with its parameters and its CONST/TYPE/VAR declarations
+     resolved, but not its nested procedures - for the backend and
+     NestedProcedures, which reopen a body the checker has already accepted.
+     The checker itself opens OpenParameterScope and walks the declarations
+     in textual order with CheckDeclarations; resolving every data
+     declaration first, as this does, gives the same Objects because
+     CheckLateName keeps a declaration after a procedure from hiding
+     anything that procedure could see. *)
+  PROCEDURE OpenProcedureBodyScope*(d: SyntaxTree.ProcDeclNode; outer: SymbolTable.Scope;
+                                    receiverType: Types.Type; pt: Types.ProcedureType): SymbolTable.Scope;
+    VAR bodyScope: SymbolTable.Scope;
+  BEGIN
+    bodyScope := OpenParameterScope(d, outer, receiverType, pt);
     IF d.declarations # NIL THEN ResolveDeclSeq(d.declarations, bodyScope) END;
     RETURN bodyScope
   END OpenProcedureBodyScope;
@@ -3038,10 +3086,8 @@ MODULE SemanticActions;
                                receiverType: Types.Type; pt: Types.ProcedureType);
     VAR bodyScope: SymbolTable.Scope;
   BEGIN
-    bodyScope := OpenProcedureBodyScope(d, outer, receiverType, pt);
-    IF d.declarations # NIL THEN
-      ResolveProcDecls(d.declarations.procDecls, bodyScope)
-    END;
+    bodyScope := OpenParameterScope(d, outer, receiverType, pt);
+    IF d.declarations # NIL THEN CheckDeclarations(d.declarations, bodyScope) END;
     IF (pt.resultType # NIL) & (d.statements = NIL) THEN
       Diagnostics.Error(d.line, d.column, "function procedure must return a value")
     END;
@@ -3057,9 +3103,8 @@ MODULE SemanticActions;
      pending entry and check the body) with only the "where does the
      name live" step (SymbolTable.Insert vs. Types.AddMethod) actually
      differing. *)
-  PROCEDURE ResolveProcDecls(decls: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope);
+  PROCEDURE ResolveOneProcDecl(d: SyntaxTree.ProcDeclNode; scope: SymbolTable.Scope);
     VAR
-      d: SyntaxTree.ProcDeclNode;
       pt: Types.ProcedureType;
       receiverType: Types.Type;
       owner: Types.RecordType;
@@ -3067,69 +3112,139 @@ MODULE SemanticActions;
       method: Types.Method;
       exported, unused: BOOLEAN;
   BEGIN
-    d := decls;
-    WHILE d # NIL DO
-      IF d.isExternal THEN
-        ResolveExternalProcDecl(d, scope)
-      ELSE
-        exported := d.name.exportMark # SyntaxTree.exportNone;
-        CheckExportMark(d.name);
-        IF d.receiver # NIL THEN
-          owner := ResolveReceiver(scope, d.receiver, receiverType);
-          pt := ResolveFormalPars(scope, d.formals);
-          IF owner # NIL THEN
-            IF d.isForward THEN
-              unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
-              method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, TRUE,
-                                         d.receiver.typeName, d.line, d.column)
-            ELSE
-              (* owner's *own* list only: FindMethod's walk up the base
-                 chain would find an *imported* base's forward-declared
-                 (.sym-loaded, so permanently pending) procedure of the
-                 same name and wrongly treat this body as completing it -
-                 mutating the base's method instead of recording an
-                 override on owner. Latent until PLAN.md Phase 9 step 4a's
-                 fixtures first overrode an imported procedure. *)
-              method := Types.FindOwnMethod(owner, d.name.name);
-              IF (method # NIL) & method.pending THEN
-                IF ~Types.ProcedureTypesMatch(pt, method.procType) OR (method.receiverIsVar # d.receiver.isVar) THEN
-                  Diagnostics.Error(d.line, d.column,
-                    "procedure body's formal parameters must be identical to its forward declaration")
-                END;
-                method.pending := FALSE; method.procType := pt
-              ELSE
-                unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
-                method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, FALSE,
-                                           d.receiver.typeName, d.line, d.column)
-              END;
-              CheckProcedureBody(d, scope, receiverType, pt)
-            END
-          END
-        ELSE
-          pt := ResolveFormalPars(scope, d.formals);
+    IF d.isExternal THEN
+      ResolveExternalProcDecl(d, scope)
+    ELSE
+      exported := d.name.exportMark # SyntaxTree.exportNone;
+      CheckExportMark(d.name);
+      IF d.receiver # NIL THEN
+        owner := ResolveReceiver(scope, d.receiver, receiverType);
+        pt := ResolveFormalPars(scope, d.formals);
+        IF owner # NIL THEN
           IF d.isForward THEN
-            obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
-                                       d.line, d.column);
-            obj.isForwardProc := TRUE
+            unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
+            method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, TRUE,
+                                       d.receiver.typeName, d.line, d.column)
           ELSE
-            obj := SymbolTable.FindLocal(scope, d.name.name);
-            IF (obj # NIL) & (obj.class = SymbolTable.procClass) & obj.isForwardProc THEN
-              IF ~Types.ProcedureTypesMatch(pt, obj.type(Types.ProcedureType)) THEN
+            (* owner's *own* list only: FindMethod's walk up the base
+               chain would find an *imported* base's forward-declared
+               (.sym-loaded, so permanently pending) procedure of the
+               same name and wrongly treat this body as completing it -
+               mutating the base's method instead of recording an
+               override on owner. Latent until PLAN.md Phase 9 step 4a's
+               fixtures first overrode an imported procedure. *)
+            method := Types.FindOwnMethod(owner, d.name.name);
+            IF (method # NIL) & method.pending THEN
+              IF ~Types.ProcedureTypesMatch(pt, method.procType) OR (method.receiverIsVar # d.receiver.isVar) THEN
                 Diagnostics.Error(d.line, d.column,
                   "procedure body's formal parameters must be identical to its forward declaration")
               END;
-              obj.isForwardProc := FALSE; obj.type := pt
+              method.pending := FALSE; method.procType := pt
             ELSE
-              obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
-                                         d.line, d.column)
+              unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
+              method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, FALSE,
+                                         d.receiver.typeName, d.line, d.column)
             END;
-            CheckProcedureBody(d, scope, NIL, pt)
+            CheckProcedureBody(d, scope, receiverType, pt)
           END
         END
-      END;
-      d := d.next
+      ELSE
+        pt := ResolveFormalPars(scope, d.formals);
+        IF d.isForward THEN
+          obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
+                                     d.line, d.column);
+          obj.isForwardProc := TRUE
+        ELSE
+          obj := SymbolTable.FindLocal(scope, d.name.name);
+          IF (obj # NIL) & (obj.class = SymbolTable.procClass) & obj.isForwardProc THEN
+            IF ~Types.ProcedureTypesMatch(pt, obj.type(Types.ProcedureType)) THEN
+              Diagnostics.Error(d.line, d.column,
+                "procedure body's formal parameters must be identical to its forward declaration")
+            END;
+            obj.isForwardProc := FALSE; obj.type := pt
+          ELSE
+            obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
+                                       d.line, d.column)
+          END;
+          CheckProcedureBody(d, scope, NIL, pt)
+        END
+      END
     END
-  END ResolveProcDecls;
+  END ResolveOneProcDecl;
+
+  (* A CONST, TYPE or VAR declared after a procedure of its block may not
+     take a name visible there from an enclosing scope (a predeclared one
+     included). With it, a name declared late in a block cannot have been
+     used by an earlier procedure's body (CheckDeclarations checks each body
+     before anything declared after it exists, so such a use is undeclared,
+     as Oberon2.pdf's declare-before-use rule says), and the backend's
+     lookups, made in the finished scopes, find what the checker found. *)
+  PROCEDURE CheckLateName(scope: SymbolTable.Scope; name: SyntaxTree.IdentDefNode);
+  BEGIN
+    IF (scope.outer # NIL) & (SymbolTable.Find(scope.outer, name.name) # NIL) THEN
+      Diagnostics.Error(name.line, name.column,
+        "a declaration after a procedure cannot reuse a name visible from an enclosing scope")
+    END
+  END CheckLateName;
+
+  (* Checks a DeclSeq in textual order, procedures included - merging the
+     four lists by position, as ResolveDeclSeq does the three data ones - so
+     each procedure's body is checked before any declaration that follows it
+     exists. Each run of CONST/TYPE/VAR declarations between procedures
+     predeclares its own TYPE names first (PredeclareTypeNames). *)
+  PROCEDURE CheckDeclarations(decls: SyntaxTree.DeclSeqNode; scope: SymbolTable.Scope);
+    VAR
+      c: SyntaxTree.ConstDeclNode; t, typeRun: SyntaxTree.TypeDeclNode;
+      v: SyntaxTree.VarDeclNode; p: SyntaxTree.ProcDeclNode; names: SyntaxTree.IdentDefNode;
+      line, column, stopLine, stopColumn: INTEGER;
+      kind: CHAR; afterProcedure, runOpen: BOOLEAN; savedLaterTypes: SyntaxTree.TypeDeclNode;
+  BEGIN
+    savedLaterTypes := laterTypes;
+    c := decls.constDecls; t := decls.typeDecls; v := decls.varDecls; p := decls.procDecls;
+    typeRun := t; afterProcedure := FALSE; runOpen := FALSE;
+    laterTypes := typeRun; (* if a procedure comes first *)
+    WHILE (c # NIL) OR (t # NIL) OR (v # NIL) OR (p # NIL) DO
+      kind := 0X; line := MAX(INTEGER); column := MAX(INTEGER);
+      IF (c # NIL) & EarlierPosition(c.line, c.column, line, column) THEN
+        kind := "c"; line := c.line; column := c.column
+      END;
+      IF (t # NIL) & EarlierPosition(t.line, t.column, line, column) THEN
+        kind := "t"; line := t.line; column := t.column
+      END;
+      IF (v # NIL) & EarlierPosition(v.line, v.column, line, column) THEN
+        kind := "v"; line := v.line; column := v.column
+      END;
+      IF (p # NIL) & EarlierPosition(p.line, p.column, line, column) THEN kind := "p" END;
+      IF kind = "p" THEN
+        ResolveOneProcDecl(p, scope); p := p.next;
+        laterTypes := typeRun; (* the nested DeclSeqs changed it *)
+        afterProcedure := TRUE; runOpen := FALSE
+      ELSE
+        IF ~runOpen THEN
+          IF p # NIL THEN stopLine := p.line; stopColumn := p.column
+          ELSE stopLine := MAX(INTEGER); stopColumn := MAX(INTEGER)
+          END;
+          PredeclareTypeNames(typeRun, scope, stopLine, stopColumn, afterProcedure);
+          laterTypes := typeRun;
+          runOpen := TRUE
+        END;
+        IF kind = "c" THEN
+          IF afterProcedure THEN CheckLateName(scope, c.name) END;
+          ResolveOneConstDecl(c, scope); c := c.next
+        ELSIF kind = "t" THEN
+          ResolveOneTypeDecl(t, scope); t := t.next
+        ELSE
+          IF afterProcedure THEN
+            names := v.names;
+            WHILE names # NIL DO CheckLateName(scope, names); names := names.next END
+          END;
+          ResolveOneVarDecl(v, scope); v := v.next
+        END
+      END
+    END;
+    laterTypes := savedLaterTypes
+  END CheckDeclarations;
+
 
   (* The procedures declared directly inside pd's body (Oberon2.pdf 10:
      "procedure declarations may be nested"), entered into bodyScope - which
@@ -3344,10 +3459,7 @@ MODULE SemanticActions;
       ResolveImport(imp, module, scope, parseModule, resolving, cache);
       imp := imp.next
     END;
-    IF module.declarations # NIL THEN
-      ResolveDeclSeq(module.declarations, scope);
-      ResolveProcDecls(module.declarations.procDecls, scope)
-    END;
+    IF module.declarations # NIL THEN CheckDeclarations(module.declarations, scope) END;
     CheckStatementSeq(scope, module.statements, 0, NIL);
     COPY(savedModuleName, currentModuleName);
     RETURN scope

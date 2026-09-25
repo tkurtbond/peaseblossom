@@ -547,6 +547,44 @@ the same type as v".) What a program can observe:
   `semantic-reject-for-final-value`, whose three rejected lines are exactly
   the ones voc rejects.
 
+## Declarations after procedures (decided and implemented, Phase 11 A22, 2026-09-25)
+
+`Oberon2.pdf` §10 already lets `CONST`, `TYPE` and `VAR` sections repeat and
+come in any order (`DeclarationSequence = {CONST ... | TYPE ... | VAR ...}
+{ProcedureDeclaration ";" | ForwardDeclaration ";"}`), but only before the
+first procedure. poc also lets them follow procedures, at module level and
+inside a procedure, so constants, types and variables can be declared next
+to the procedures that use them. Active Oberon and Oberon+ allow the same;
+voc, Component Pascal and Oberon-07 do not. What a program can observe:
+
+- **Declare-before-use is unchanged.** A procedure's body sees only what is
+  declared above it, so a `VAR` declared after `P` is undeclared inside `P`
+  (poc checks each body before anything that follows it). The module body
+  sees everything. A procedure named later still needs `PROCEDURE ^`.
+- **A declaration after a procedure may not hide a name visible from an
+  enclosing scope**: "a declaration after a procedure cannot reuse a name
+  visible from an enclosing scope". Inside `Outer`, `VAR i` after a nested
+  procedure is an error when a global `i` exists, and so is a module-level
+  `VAR LEN` after a procedure. The report's scope rule would let the nested
+  procedure's `i` mean the global one and every later use in `Outer` mean
+  the local one; forbidding it means a name never changes meaning partway
+  through a block, and the backend, which looks names up in the finished
+  scopes, always finds what the checker found.
+- **A `POINTER TO` base must be declared before the next procedure**: "a
+  POINTER TO base type must be declared before the next procedure". Scope
+  rule 3's forward reference still works within one run of declarations.
+- **The interface is unaffected**: `-show-interface` and the `.sym` file
+  list a module's exports grouped as the report orders them, whatever the
+  source order, and an importer uses them as usual.
+- **`-strict`** reports each `CONST`, `TYPE` or `VAR` section that follows a
+  procedure of its block: "a CONST, TYPE or VAR section after a procedure is
+  not in the Oberon-2 report (-strict)". poc's own source does not use it
+  (voc, which builds Stage 0, rejects it).
+- Fixtures: `llvm-declarations-after-procedures` (both size models, with an
+  imported module whose exports follow a procedure),
+  `semantic-reject-declarations-after-procedures`,
+  `semantic-strict-declarations-after-procedures`.
+
 ## What traps, and what does not (Phase 11 C9)
 
 A list of what happens when a program does something the report leaves

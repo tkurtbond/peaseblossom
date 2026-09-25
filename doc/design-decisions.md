@@ -305,8 +305,11 @@ questions" - <name> means the entry of that name here.
   - voc accepts `CONST`/`TYPE`/`VAR` *sections* in any order, repeated and
     interleaved arbitrarily many times in a single `DeclSeq`
     (`CONST A; TYPE Rec; CONST B = A+1; TYPE Rec2; VAR ...` all compiles) -
-    a real extension beyond `Oberon2.pdf`'s grammar, which fixes one
-    optional section each, in `CONST`, `TYPE`, `VAR` order. `PROCEDURE`
+    which is `Oberon2.pdf`'s own grammar (§10, `DeclarationSequence =
+    {CONST ... | TYPE ... | VAR ...} {ProcedureDeclaration ...}`), not an
+    extension (corrected 2026-09-25: this entry used to call it one, taking
+    the grammar for Oberon-07's, which does fix one optional section each,
+    in `CONST`, `TYPE`, `VAR` order). `PROCEDURE`
     declarations, though, must still come after every `CONST`/`TYPE`/`VAR`
     section - voc rejects a `TYPE`/`VAR` section appearing after the first
     `PROCEDURE` (`err 41 END missing`), matching the grammar's own
@@ -353,6 +356,12 @@ questions" - <name> means the entry of that name here.
   merging rather than restructuring the AST into one polymorphic list).
   `SyntaxTree.Mod`, `ModuleInterface.Mod`, `Poc.Mod` (`-dump-layout`) are
   untouched - none of them cared about cross-kind order.
+
+  **Extended 2026-09-25 (Phase 11 A22, with the user):** sections may now
+  also follow procedures, poc's extension; declare-before-use is unchanged.
+  `SemanticActions.CheckDeclarations` merges the procedures into the same
+  textual-order walk. `doc/language-extensions.md`, "Declarations after
+  procedures", has what a program can observe.
 
   Two real correctness gaps surfaced while implementing this, both fixed
   alongside it, not deferred: the merge makes it newly possible for an

@@ -1,0 +1,10 @@
+-O2
+semantic OK, wrote llvm-declarations-after-procedures
+23
+2 20 3 2
+3 3 30
+-OC
+semantic OK, wrote llvm-declarations-after-procedures
+23
+2 20 3 2
+3 3 30

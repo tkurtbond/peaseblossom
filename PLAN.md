@@ -838,6 +838,16 @@ as it stands when the phase starts, and adds what it finds):
      multi-pass resolver for every declaration kind and the `PROCEDURE^`
      forward declaration already covers the case that matters. Reopen only
      for a concrete need.
+     **Decided 2026-09-25 (user): declare-before-use stays; `CONST`/`TYPE`/
+     `VAR` sections may also follow procedures** (as in Active Oberon and
+     Oberon+), so declarations can sit near the procedures that use them. An
+     extension, rejected by `-strict`; a late declaration may not hide a name
+     visible from an enclosing scope, and a `POINTER TO` base must be
+     declared before the next procedure. Done: `doc/language-extensions.md`,
+     "Declarations after procedures"; fixtures
+     `llvm-declarations-after-procedures`,
+     `semantic-reject-declarations-after-procedures`,
+     `semantic-strict-declarations-after-procedures`.
    - *`SYSTEM.PTR` and the `SYSTEM` leftovers* (inventory A10 and A11, given to
      this step 2026-09-20). (1) A `PTR` cannot be dereferenced, guarded,
      `IS`-tested or used as a `WITH` variable, where voc allows some; and a

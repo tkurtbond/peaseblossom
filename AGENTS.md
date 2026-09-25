@@ -293,6 +293,13 @@ must be assignment compatible with `v`, not merely comparable, so a wider or
 real bound is a compile-time error. `low` is evaluated before `high`, as the
 report says.
 
+### Declarations after procedures (decided and implemented, Phase 11 A22, 2026-09-25)
+
+`CONST`/`TYPE`/`VAR` sections may follow procedures, not only precede them.
+Declare-before-use is unchanged; a late declaration may not hide a name
+visible from an enclosing scope; a `POINTER TO` base must come before the
+next procedure. `-strict` rejects it.
+
 ### What traps, and what does not (Phase 11 C9)
 
 The tables of trap statuses 2-11, what ends a program silently, what nothing
