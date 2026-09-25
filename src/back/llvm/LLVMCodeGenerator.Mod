@@ -5203,7 +5203,9 @@ MODULE LLVMCodeGenerator;
      already guarantees the control variable is a plain, integer-typed
      module VAR (never CHAR - "must be an integer variable"), so the
      loop test's predicate is always the signed one, unlike CASE's own
-     (which must also cover CHAR). *)
+     (which must also cover CHAR). It also guarantees stop is assignment
+     compatible with the control variable, so ExtendTo only widens it, or
+     narrows a constant whose value fits. *)
   PROCEDURE GenerateForStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.ForStatementNode);
     VAR
       obj: SymbolTable.Object; startVal, stopVal, stopExt, vVal, incVal: Value;

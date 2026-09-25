@@ -2664,9 +2664,13 @@ MODULE SemanticActions;
     IF varType # Types.Undefined THEN
       CheckAssignmentCompatible(scope, varType, s.start, startType, s.line, s.column,
         "FOR initial value is not assignment compatible with the control variable");
-      IF (stopType # Types.Undefined) & ~Types.IsNumeric(stopType) THEN
-        Diagnostics.Error(s.line, s.column, "FOR final value must be numeric")
-      END
+      (* Stricter than Oberon2.pdf 9.8, which asks only that high be
+         comparable with v: as voc (OPP.Mod, err 113), high must be
+         assignment compatible with v, so a wider or REAL bound is an error
+         rather than a loop that cannot end (doc/language-extensions.md,
+         "FOR final value") *)
+      CheckAssignmentCompatible(scope, varType, s.stop, stopType, s.line, s.column,
+        "FOR final value is not assignment compatible with the control variable")
     END;
     IF s.step # NIL THEN
       stepVal := ConstantEvaluator.Evaluate(s.step, scope);

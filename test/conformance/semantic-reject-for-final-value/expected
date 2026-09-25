@@ -1,0 +1,4 @@
+for-final-value.mod:13:3: error: FOR final value is not assignment compatible with the control variable
+for-final-value.mod:14:3: error: FOR final value is not assignment compatible with the control variable
+for-final-value.mod:15:3: error: FOR final value is not assignment compatible with the control variable
+3 error(s)

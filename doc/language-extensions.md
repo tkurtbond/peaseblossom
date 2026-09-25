@@ -519,6 +519,34 @@ definitions). What a program can observe:
   covers the trap; `semantic-reject-array-assign` and
   `semantic-reject-open-array-assign` the errors.
 
+## FOR final value (decided and implemented, Phase 11 D10, 2026-09-25)
+
+A restriction, not an extension. `Oberon2.pdf` §9.8 defines
+`FOR v := low TO high BY step` as `v := low; temp := high` and a `WHILE` loop
+on `v <= temp` (or `>=`), and asks only that `high` be *expression compatible*
+("comparable") with `v`. So `high` may be of a wider type than `v`, even a real
+type. (The 1993 report and the OOP book's Appendix A say instead that "temp has
+the same type as v".) What a program can observe:
+
+- **`high` must be assignment compatible with `v`**, as `low` already is:
+  "FOR final value is not assignment compatible with the control variable".
+  This is voc's rule (`OPP.Mod`: a non-constant `high` is assigned to a hidden
+  variable of `v`'s type, a constant one must be an integer no wider than `v`;
+  err 113). With `i: SHORTINT` and `n: INTEGER`, `FOR i := 0 TO n`,
+  `FOR i := 0 TO 300` (under `-O2`) and `FOR k := 0 TO r` (`r: REAL`) are
+  errors.
+- **Why**: under the report's rule, a bound `v` cannot reach loops forever,
+  since `v` wraps on overflow ("Overflow, division and reals"). Before this,
+  poc accepted any numeric `high` and then converted it to `v`'s type, which
+  broke both ways: an `INTEGER` 300 was truncated to the `SHORTINT` 44 (45
+  iterations, the result of neither rule), and a `REAL` produced invalid IR,
+  which clang rejected.
+- The order of evaluation is the report's: `low` is stored into `v` before
+  `high` is evaluated, once. voc evaluates `high` first.
+- `-strict` does not affect this, since it only removes things. Checked by
+  `semantic-reject-for-final-value`, whose three rejected lines are exactly
+  the ones voc rejects.
+
 ## What traps, and what does not (Phase 11 C9)
 
 A list of what happens when a program does something the report leaves

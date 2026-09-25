@@ -286,6 +286,13 @@ longer than it, or from an open array, with the same element type. An open
 array is never an assignment target. An open source that is too long traps
 (exit 9).
 
+### FOR final value (decided and implemented, Phase 11 D10, 2026-09-25)
+
+Stricter than `Oberon2.pdf` §9.8, as voc: `high` in `FOR v := low TO high`
+must be assignment compatible with `v`, not merely comparable, so a wider or
+real bound is a compile-time error. `low` is evaluated before `high`, as the
+report says.
+
 ### What traps, and what does not (Phase 11 C9)
 
 The tables of trap statuses 2-11, what ends a program silently, what nothing

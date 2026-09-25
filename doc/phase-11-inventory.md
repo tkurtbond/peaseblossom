@@ -11,7 +11,7 @@ the plan already recommends, or what I would recommend; it is *not* decided
 until the user confirms it (the language-changing ones especially). `open` means
 the item needs investigation before a verdict. `phase 12` / `phase 14+` is out
 of Phase 11's scope by the plan's own non-goals. `decided (user, date)` is a
-verdict the user has given; only A13, A21 (done), C5 (done), C6, C7 and C9 (done) have one so far. The verdicts are
+verdict the user has given; only A13, A21 (done), C5 (done), C6, C7, C9 (done) and D10 (done) have one so far. The verdicts are
 written into `AGENTS.md`/`PLAN.md` by steps 2-9, with the evidence.
 
 "Step" is the Phase 11 step that owns the item. "Probed" means checked against
@@ -94,6 +94,7 @@ Not one of them has a home in Phase 11's steps.
 | D7 | A `PROCEDURE` whose call target is not a plain procedure (nested) silently dropped | Phase 10 step 8 note | - | **done** by B4; the real fix is A5 |
 | D8 | Not exportable: a computed real of extreme magnitude | = A2 | | see A2 |
 | D9 | The `-OC` `INT8`-with-literal gap, stated in `AGENTS.md`'s SYSTEM notes | = A7 | | done with A7 |
+| D10 | FOR's final value: `Oberon2.pdf` §9.8 (rewritten since 1993; found comparing the reports with the OOP book's Appendix A) asks only that `high` be comparable with `v`; poc accepted any numeric `high` and converted it to `v`'s type | 2026-09-25: `i: SHORTINT`, `FOR i := 0 TO n` with `n: INTEGER = 300` ran 45 times (300 truncated to 44); a `REAL` bound gave invalid IR (`trunc float`), a failed build; voc rejects both, err 113. Evaluation order was already the report's | **decided (user, 2026-09-25): tighten to voc's rule; done**: `high` must be assignment compatible with `v` (`CheckForStatement`); `semantic-reject-for-final-value` (the lines voc rejects); `doc/language-extensions.md`, "FOR final value" |
 
 ## E. Reconciliation notes for `000-todo.org` (edits made 2026-09-20)
 
