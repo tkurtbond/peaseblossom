@@ -175,6 +175,37 @@ MODULE Parser;
     RETURN head
   END ParseIdentList;
 
+  (* A formal parameter's names are plain identifiers (Oberon2.pdf 10.1:
+     FPSection = [VAR] ident {"," ident} ":" Type), not IdentDefs: an export
+     mark after one is reported and skipped, so the rest of the section still
+     parses. voc reads "x-" as a read-only VAR parameter (Oakwood 5.13, which
+     recommends against it); poc does not have them, see
+     doc/language-extensions.md, "Read-only parameters". *)
+  PROCEDURE ParseParamName(VAR p: Parser): SyntaxTree.IdentDefNode;
+    VAR name: SyntaxTree.Ident; line, column: INTEGER;
+  BEGIN
+    line := p.current.line; column := p.current.column;
+    ExpectIdent(p, name);
+    IF (p.current.kind = Lexer.times) OR (p.current.kind = Lexer.minus) THEN
+      Diagnostics.Error(p.current.line, p.current.column,
+        "a formal parameter cannot have an export mark");
+      Advance(p)
+    END;
+    RETURN SemanticActions.NewIdentDef(name, SyntaxTree.exportNone, line, column)
+  END ParseParamName;
+
+  PROCEDURE ParseParamNames(VAR p: Parser): SyntaxTree.IdentDefNode;
+    VAR head, tail, node: SyntaxTree.IdentDefNode;
+  BEGIN
+    head := ParseParamName(p); tail := head;
+    WHILE p.current.kind = Lexer.comma DO
+      Advance(p);
+      node := ParseParamName(p);
+      tail.next := node; tail := node
+    END;
+    RETURN head
+  END ParseParamNames;
+
   PROCEDURE ^ ParseExpr(VAR p: Parser): SyntaxTree.ExprNode;
   PROCEDURE ^ ParseType(VAR p: Parser): SyntaxTree.TypeNode;
   PROCEDURE ^ ParseStatementSeq(VAR p: Parser): SyntaxTree.StatementNode;
@@ -422,7 +453,7 @@ MODULE Parser;
     line := p.current.line; column := p.current.column;
     isVar := FALSE;
     IF p.current.kind = Lexer.varKeyword THEN isVar := TRUE; Advance(p) END;
-    names := ParseIdentList(p);
+    names := ParseParamNames(p);
     ExpectToken(p, Lexer.colon, "expected ':'");
     type := ParseType(p);
     RETURN SemanticActions.NewFPSection(isVar, names, type, line, column)

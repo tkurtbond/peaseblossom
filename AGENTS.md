@@ -103,16 +103,16 @@ terminology"), and it must also **type-check under `-O2`**: no literal or
 constant needs more than 32 bits (`poc -O2 -build src/driver/Poc.Mod`
 succeeds; `doc/project-history.md`, "poc's own source under `-O2`").
 
-**voc's extensions beyond the report** (`Features.md`). Assume none of them
+**voc's extensions beyond the report** (mostly in `Features.md`). Assume none of them
 for poc unless it adopted them:
 
 - `HUGEINT`, `SYSTEM.ADDRESS`, `SYSTEM.INT8/16/32/64`, `SYSTEM.SET32/64`:
   adopted, with poc's own rules (see "Language extensions beyond
   Oberon2.pdf" below).
-- Read-only **value** parameters marked `-` (Oakwood guideline 5.13): not in
-  either report, and not adopted. But poc's checker currently accepts
-  `PROCEDURE P(x-: INTEGER)` and then lets `x := 1` through (found
-  2026-09-25; `000-todo.org` has it).
+- Read-only parameters marked `-` (`PROCEDURE P(x-: T)`: passed by
+  reference, not assignable; Oakwood 5.13, which recommends against it; not
+  in `Features.md`, only in voc's `OPP.Mod`): not adopted, and a syntax
+  error in poc (see "Read-only parameters" below).
 - Pointers start NIL (`-p`, on by default), as `Oberon2.pdf` says too.
 - Run-time checks: `-a` (assert), `-t` (type guard) and `-x` (index) are on
   by default, `-r` (range) is off.
@@ -284,6 +284,11 @@ be called by name. `WITH` follows voc's rule for non-local pointers.
 procedure. An optional second string gives the linkage name, emitted
 verbatim and never mangled: `PROCEDURE ["C", "malloc"] AllocateBytes*(size:
 SYSTEM.ADDRESS): SYSTEM.ADDRESS;`. `"VMS"` is accepted but not yet lowered.
+
+### Read-only parameters (considered, not adopted)
+
+voc's `x-` formal parameter (by reference, read-only; Oakwood 5.13 recommends
+against it) is not in poc. A mark on a formal parameter is a syntax error.
 
 ## Project state
 

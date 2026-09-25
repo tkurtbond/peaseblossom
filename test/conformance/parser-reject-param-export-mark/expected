@@ -1,0 +1,4 @@
+param-mark.mod:2:23: error: a formal parameter cannot have an export mark
+param-mark.mod:5:26: error: a formal parameter cannot have an export mark
+param-mark.mod:5:43: error: a formal parameter cannot have an export mark
+3 error(s)

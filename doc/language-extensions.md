@@ -689,3 +689,37 @@ Peaseblossom's own.
   Phase 8/13 work; Phase 6 only records the linkage info
   (`SymbolTable.ObjectDesc.externalConvention`/`externalName`) for a
   later backend to consume.
+
+## Read-only parameters (considered, not adopted)
+
+voc has an extension neither report has: a formal parameter written `x-`
+(`PROCEDURE Print(text-: ARRAY OF CHAR)`) is passed **by reference, like a
+`VAR` parameter, and cannot be assigned to**. The aim is a `VAR` parameter's
+cost without the risk of the procedure changing the caller's variable.
+Probed against voc 2026-09-25 (its `OPP.Mod`, `FormalParameters`, makes `x-`
+a `VarPar` with visibility `readOnlyPar`; voc's `doc/` does not mention it):
+
+- `x := 1` in the body is err 76, "this variable (field) is read only".
+- The actual parameter must be a variable, as for `VAR`: `Print("abc")` and
+  `P(g + 1)` are err 122, "actual VAR-parameter is not a variable". So it is
+  no substitute for a value `ARRAY OF CHAR` parameter taking a string.
+- `VAR x-` is err 246, "read-only parameter '-' cannot be combined with VAR".
+- `x*` is a syntax error ("':' missing").
+
+It is the feature the Oakwood Guidelines (October 1995) describe in 5.13,
+"Read only VAR Parameters", **and recommend against**: "Discussions with ETH
+suggest this is really a compiler code optimisation issue and on this basis it
+is recommended that this extension is not implemented." So voc adopted it
+contrary to Oakwood's own recommendation. Component Pascal has the same idea
+as its `IN` parameter mode: a variable parameter, read-only inside the
+procedure, for array and record parameters only (Component Pascal report,
+10.1).
+
+**poc does not have it.** A mark on a formal parameter, `-` or `*`, is a
+syntax error, "a formal parameter cannot have an export mark", since
+`Oberon2.pdf`'s `FPSection` takes plain identifiers
+(`parser-reject-param-export-mark`). Until 2026-09-25 poc parsed the names as
+`IdentDef`s and dropped the mark, so `x-` compiled as an ordinary, assignable
+value parameter. Adopting voc's version later is a separate decision, recorded
+in `000-todo.org`: poc's own source would not use it, and `-strict` (Phase 11
+step 6) would have to reject it.
