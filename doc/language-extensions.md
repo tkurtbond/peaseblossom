@@ -339,7 +339,7 @@ like voc's), outermost dimension first:
   `MAX(LONGREAL)` is deliberately a little low, 1.79769296342094D308 (its
   own `OPM.Mod` says so); poc gives the true one. The `CONST` form folds
   to the same values (Phase 9 step 10; see "Constant expressions" below).
-- `ASSERT` remains undecided (`PLAN.md`'s open design question).
+- `ASSERT` is decided and implemented since 2026-09-25; see "ASSERT" below.
 
 ## Constant expressions (implemented, Phase 9 step 10)
 
@@ -539,6 +539,7 @@ exactly these. Each status is pinned by a fixture.
 | 7 | `NEW(p, n, ...)` or `SYSTEM.NEW(v, n)` with a length that is not positive, or a size that overflows the address space (`llvm-open-array-traps`, `llvm-system-new-trap`) | `Too many, or negative number of, elements in dynamic array` | `NEW`: Halt(-20), 236; `SYSTEM.NEW(v, 0)` is no trap |
 | 8 | `ENTIER` of a value that does not fit a `LONGINT`, an infinity or a NaN (`llvm-entier-trap`) | `ENTIER argument out of range for LONGINT` | none: wraps |
 | 9 | An open array assigned to a fixed array with fewer elements (`llvm-array-assign-trap`) | `open array assigned to an array too short for it` | Halt(-2), 254 |
+| 10 | A failed `ASSERT(x)` or `ASSERT(x, n)` (`llvm-assert`) | `assertion failed`, or `assertion failed (n)` | "Assertion failure." and " ASSERT code n."; exit `n`, 255 for none or 0 |
 
 **What ends the program without a message, or not at all.** Nothing says what
 happened; deliberate (C6) where noted.
@@ -550,7 +551,6 @@ happened; deliberate (C6) where noted.
 | `SYSTEM.GET`/`PUT`/`MOVE` at an address that is not mapped | `SIGSEGV`, status 139 | voc's handler turns it into "NIL access" (Halt(-10), 246). `llvm-no-trap-behavior` case 11 |
 | `HALT(n)` | exit status `n`, silent (C6) | `n` is a constant in **0..255**, anything else is a compile-time error (as voc's err 218): the status keeps only its low 8 bits on every host poc runs on (C `exit(30000)` is 48, `exit(256)` is 0 - success - and `exit(-1)` is 255, checked on Linux, OpenBSD, NetBSD and FreeBSD 2026-09-21), while Windows keeps 32 (a `DWORD`). The report leaves the meaning of `n` to the system. VMS is different again, see `000-todo.org`. voc prints "Terminated by Halt(n)". `llvm-predeclared-halt`, `llvm-no-trap-behavior` |
 | `NEW` the heap cannot satisfy | the pointer is NIL, no message; the next dereference is trap 4 | as in voc; a switch is A13. Which requests "cannot" be satisfied depends on the size model and the machine's limits: `NEW(p, MAX(LONGINT))` of 4-byte elements under `-OC` overflows the address space (trap 7), under `-O2` it asks for 8 GB, which was NIL under a 1.2 GB address-space limit |
-| `ASSERT` | not provided | the report has none (`PLAN.md`'s open design question); voc's halts |
 
 **What nothing stops.** The program goes on with a value; the second column is
 what that value is.
@@ -587,6 +587,32 @@ report a constant real `x / 0.0` in a statement only from the code generator
 (`poc -check` said "semantic OK", and `-build` printed the error yet still wrote
 an executable). A build that meets an error while generating code now writes
 neither the `.ll` nor an executable, whatever raised it.
+
+## ASSERT (decided and implemented, 2026-09-25)
+
+`doc/assert-survey.md` has the survey (the reports, voc, Ofront, OfrontPlus,
+BlackBox, A2, obc, oo2c, OBNC) and the decision. `Oberon2.pdf` has no `ASSERT`;
+every other dialect surveyed does. What a program can observe:
+
+- **`ASSERT(x)` and `ASSERT(x, n)`** are predeclared proper procedures: `x` a
+  BOOLEAN expression, `n` an integer constant in 0..255, as `HALT`'s argument
+  and as in voc (its errs 120, 69 and 218 have poc counterparts). A module may
+  declare its own `ASSERT`, which hides the predeclared one.
+- **A FALSE condition is a trap**: "assertion failed", or "assertion failed
+  (n)" when there is a code, and a newline on stderr, then exit status **10**,
+  the code or not (voc exits with `n`, or 255 when there is none or it is 0).
+  The condition is always evaluated, so its side effects happen; nothing turns
+  assertions off (voc's `-a` waits for Phase 12 step 1).
+- **A condition that is a constant FALSE is a compile-time error**, "ASSERT
+  condition is always FALSE", as voc's err 99 (Ofront and A2 agree; BlackBox,
+  obc and Oberon-07 compilers accept it as an unconditional trap, Oberon-07
+  having no `HALT`). So a constant condition is a static check:
+  `ASSERT(SIZE(T) = 8)` fails at compile time. Use `HALT` for code that must
+  not be reached.
+- There is no message-string form. `-strict` (Phase 11 step 6) must reject
+  `ASSERT`; poc's own source does not use it. Checked by `llvm-assert` (both
+  size models, the same assertion firing as in voc) and
+  `semantic-reject-assert` (the lines voc rejects).
 
 ## Nested procedures (implemented, Phase 11 step 8)
 

@@ -272,6 +272,14 @@ MODULE LLVMCodeGenerator;
     arrayAssignTrapGlobal = "@.trap.arrayassign";
     arrayAssignTrapMsg = "open array assigned to an array too short for it";
     arrayAssignTrapExitCode = 9;
+    (* 2026-09-25 (doc/assert-survey.md): a failed ASSERT(x) or ASSERT(x, n).
+       The message carries n when there is one ("assertion failed (42)"), each
+       code its own global (Codegen.assertCodes); the status is poc's own, as
+       for every trap - voc exits with n, which is 0 for ASSERT(x, 0). *)
+    assertTrapGlobal = "@.trap.assert";
+    assertTrapMsg = "assertion failed";
+    assertTrapExitCode = 10;
+    noAssertCode = 256; (* Codegen.assertCodes' index for ASSERT(x) *)
 
     (* the most open dimensions (ARRAY OF ARRAY OF ... T) one designator
        may carry lengths for - see DopeVector *)
@@ -544,6 +552,9 @@ MODULE LLVMCodeGenerator;
       (* Phase 9 step 7: the array-length trap, and the overflow-checking
          arithmetic intrinsics NEW's size computation calls *)
       needLengthTrap, needOverflowMath, needEntierTrap, needArrayAssignTrap: BOOLEAN;
+      (* which ASSERT failure messages the program uses: one per code 0..255,
+         and noAssertCode for ASSERT(x) *)
+      assertCodes: ARRAY noAssertCode + 1 OF BOOLEAN;
       narrowings: Narrowing;
       arrayDescs: ArrayDescEntry;
       lateRecords: TypeDescEntry;
@@ -4006,6 +4017,42 @@ MODULE LLVMCodeGenerator;
      message). @exit is already guaranteed declared by
      EmitRuntimeSupport (step 9, unconditional for every module), so
      this can call it directly. *)
+  (* The global and the text of the message a failed ASSERT with this code
+     (noAssertCode for none) writes. *)
+  PROCEDURE AssertTrapMessage(code: INTEGER; VAR global, msg: ARRAY OF CHAR);
+  BEGIN
+    COPY(assertTrapGlobal, global); COPY(assertTrapMsg, msg);
+    IF code # noAssertCode THEN
+      Strcat(global, "."); AppendLongInt(global, code);
+      Strcat(msg, " ("); AppendLongInt(msg, code); Strcat(msg, ")")
+    END
+  END AssertTrapMessage;
+
+  (* ASSERT(x) / ASSERT(x, n) (PredeclaredProcedures.CheckAssert): the
+     condition is evaluated, and when it is FALSE the program writes the
+     message and stops with assertTrapExitCode. Always generated - there is
+     no switch to leave it out (doc/assert-survey.md). *)
+  PROCEDURE GenerateAssert(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
+    VAR
+      cond: Value; v: Types.Value; code: INTEGER;
+      i1cond, okLabel, trapLabel: ValueText; global, msg: LongText;
+  BEGIN
+    result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
+    code := noAssertCode;
+    IF args.next # NIL THEN
+      v := ConstantEvaluator.Evaluate(args.next, cg.scope); code := SHORT(v.intVal)
+    END;
+    cg.assertCodes[code] := TRUE;
+    GenerateExpr(w, cg, args, cond);
+    EmitBinOp(w, cg, "icmp ne", "i8", cond.text, "0", i1cond);
+    NewLabel(cg, okLabel); NewLabel(cg, trapLabel);
+    EmitCondBr(w, i1cond, okLabel, trapLabel);
+    EmitLabel(w, cg, trapLabel);
+    AssertTrapMessage(code, global, msg);
+    EmitTrap(w, cg, global, msg, assertTrapExitCode);
+    EmitLabel(w, cg, okLabel)
+  END GenerateAssert;
+
   PROCEDURE GenerateHalt(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR v: Types.Value; codeText, deadLabel: ValueText;
   BEGIN
@@ -4654,6 +4701,7 @@ MODULE LLVMCodeGenerator;
     ELSIF name = "DEC" THEN GenerateIncDec(w, cg, args, "sub", result)
     ELSIF name = "COPY" THEN GenerateCopy(w, cg, args, result)
     ELSIF name = "HALT" THEN GenerateHalt(w, cg, args, result)
+    ELSIF name = "ASSERT" THEN GenerateAssert(w, cg, args, result)
     ELSIF name = "LONG" THEN GenerateLong(w, cg, args, result)
     ELSIF name = "SHORT" THEN GenerateShort(w, cg, args, result)
     ELSIF name = "ENTIER" THEN GenerateEntier(w, cg, args, result)
@@ -6304,8 +6352,13 @@ MODULE LLVMCodeGenerator;
      of GarbageCollectedHeap.Allocate when NEW is used in a program that
      does not itself contain that module, and the array descriptors. *)
   PROCEDURE EmitPointerSupport(VAR w: Files.Rider; VAR cg: Codegen);
-    VAR wordInt: ValueText; e: TypeDescEntry;
+    VAR wordInt: ValueText; e: TypeDescEntry; code: INTEGER; global, msg: LongText;
   BEGIN
+    FOR code := 0 TO noAssertCode DO
+      IF cg.assertCodes[code] THEN
+        AssertTrapMessage(code, global, msg); EmitTrapMessageGlobal(w, global, msg)
+      END
+    END;
     IF cg.needNilTrap THEN EmitTrapMessageGlobal(w, nilTrapGlobal, nilTrapMsg) END;
     IF cg.needGuardTrap THEN EmitTrapMessageGlobal(w, guardTrapGlobal, guardTrapMsg) END;
     IF cg.needWithTrap THEN EmitTrapMessageGlobal(w, withTrapGlobal, withTrapMsg) END;
@@ -6463,7 +6516,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w, body: Files.Rider);
     VAR
       cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments, realign: BOOLEAN;
-      wordInt: ValueText; r: Files.Rider; ch: CHAR;
+      wordInt: ValueText; r: Files.Rider; ch: CHAR; i: INTEGER;
   BEGIN
     withRootTables := HasModuleNamed(modules, "ModuleTable");
     withHeap := HasModuleNamed(modules, "GarbageCollectedHeap");
@@ -6479,6 +6532,7 @@ MODULE LLVMCodeGenerator;
     cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
     cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE; cg.needEntierTrap := FALSE;
     cg.needArrayAssignTrap := FALSE;
+    FOR i := 0 TO noAssertCode DO cg.assertCodes[i] := FALSE END;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
     cg.heapPresent := withHeap;
     WriteStr(w, 'target datalayout = "');

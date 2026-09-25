@@ -4,7 +4,8 @@ MODULE PredeclaredProcedures;
      Phase 6): 13 function procedures (ABS ASH CAP CHR ENTIER LEN LONG
      MAX MIN ODD ORD SHORT SIZE) and 7 proper procedures (COPY DEC EXCL
      HALT INC INCL NEW) - the exact set in Oberon2.pdf's own table, which
-     (unlike some other Oberon-2 dialects) has no ASSERT entry.
+     (unlike some other Oberon-2 dialects) has no ASSERT entry - plus
+     ASSERT itself, poc's extension since 2026-09-25 (CheckAssert).
 
      CheckCall* is called from SemanticActions.CheckDesignatorExpr/
      CheckCallStatement once they see SymbolTable.Find has resolved a
@@ -486,6 +487,41 @@ MODULE PredeclaredProcedures;
     END
   END CheckInclExcl;
 
+  (* ASSERT(x) and ASSERT(x, n) - not in Oberon2.pdf; poc's extension,
+     decided 2026-09-25 (doc/assert-survey.md; AGENTS.md, "ASSERT"). x is a
+     BOOLEAN expression and n an integer constant in 0..255, as in voc (errs
+     120, 69, 218), Component Pascal and oo2c. A condition that is a
+     constant FALSE is an error, as in voc (err 99) and A2: the compiler can
+     see the trap coming (C9), and it makes ASSERT(SIZE(T) = 8) a
+     compile-time check. HALT marks code that must not be reached. *)
+  PROCEDURE CheckAssert(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
+                        line, column: INTEGER; checkExpr: CheckExprProc);
+    VAR t: Types.Type; v: Types.Value; count: INTEGER;
+  BEGIN
+    count := ArgCount(args);
+    IF (count < 1) OR (count > 2) THEN
+      Diagnostics.Error(line, column, "ASSERT expects one or two arguments"); RETURN
+    END;
+    t := checkExpr(scope, Arg(args, 0));
+    IF t = Types.Undefined THEN (* already reported *)
+    ELSIF t # Types.Boolean THEN
+      Diagnostics.Error(line, column, "ASSERT requires a BOOLEAN condition")
+    ELSIF ConstantEvaluator.IsConstantExpr(Arg(args, 0), scope) THEN
+      v := ConstantEvaluator.Evaluate(Arg(args, 0), scope);
+      IF (v.kind = Types.boolValue) & ~v.boolVal THEN
+        Diagnostics.Error(line, column, "ASSERT condition is always FALSE")
+      END
+    END;
+    IF count = 2 THEN
+      v := ConstantEvaluator.Evaluate(Arg(args, 1), scope);
+      IF (v.type # Types.Undefined) & (v.kind # Types.intValue) THEN
+        Diagnostics.Error(line, column, "ASSERT requires an integer constant code")
+      ELSIF (v.type # Types.Undefined) & ((v.intVal < 0) OR (v.intVal > 255)) THEN
+        Diagnostics.Error(line, column, "ASSERT code must be in 0..255")
+      END
+    END
+  END CheckAssert;
+
   PROCEDURE CheckHalt(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
                       line, column: INTEGER);
     VAR v: Types.Value;
@@ -828,6 +864,10 @@ MODULE PredeclaredProcedures;
     ELSIF name = "HALT" THEN
       isProperProcedure := TRUE;
       CheckHalt(scope, args, line, column);
+      RETURN NIL
+    ELSIF name = "ASSERT" THEN
+      isProperProcedure := TRUE;
+      CheckAssert(scope, args, line, column, checkExpr);
       RETURN NIL
     ELSIF name = "NEW" THEN
       isProperProcedure := TRUE;

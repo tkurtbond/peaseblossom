@@ -1,0 +1,74 @@
+== -O2 case 0
+2
+7 6
+all passed
+after
+
+exit=0
+== -O2 case 1
+2
+before assertion failed
+
+exit=10
+== -O2 case 2
+2
+before assertion failed (42)
+
+exit=10
+== -O2 case 3
+2
+assertion failed (0)
+
+exit=10
+== -O2 case 4
+2
+assertion failed (20)
+
+exit=10
+== -O2 case 5
+2
+assertion failed (61)
+
+exit=10
+== -O2 case 6
+2
+assertion failed (255)
+
+exit=10
+== -OC case 0
+2
+7 6
+all passed
+after
+
+exit=0
+== -OC case 1
+2
+before assertion failed
+
+exit=10
+== -OC case 2
+2
+before assertion failed (42)
+
+exit=10
+== -OC case 3
+2
+assertion failed (0)
+
+exit=10
+== -OC case 4
+2
+assertion failed (20)
+
+exit=10
+== -OC case 5
+2
+assertion failed (61)
+
+exit=10
+== -OC case 6
+2
+assertion failed (255)
+
+exit=10

@@ -56,7 +56,8 @@ etc.).
 - `PredeclaredProcedures.Mod` (Phase 6): Oberon2.pdf §10.3's full
   predeclared-procedure vocabulary (13 function procedures, 7 proper
   procedures - confirmed against the report's own table, which has no
-  `ASSERT` entry). Cannot import SemanticActions.Mod (that would be
+  `ASSERT` entry), plus `ASSERT`, poc's extension since 2026-09-25
+  (`doc/assert-survey.md`). Cannot import SemanticActions.Mod (that would be
   circular - SemanticActions.Mod is the one dispatching in here), so
   `CheckCall*` takes `CheckExpr`/`CheckDesignator` as procedure-typed
   parameters instead, the standard way to break a mutual-dependency

@@ -721,6 +721,11 @@ as it stands when the phase starts, and adds what it finds):
      `PredeclaredProcedures.Mod`, the LLVM lowering, the `Usage` text and
      `AGENTS.md`'s "the report has no `ASSERT`" note all change; fixtures
      cross-check the two-argument form against voc.
+     **Done 2026-09-25** (user): as recommended, `doc/assert-survey.md` has
+     the survey and the decision - both forms, `n` a constant in 0..255, a
+     trap with status 10, a constant FALSE condition a compile-time error,
+     no switch, no message-string form; fixtures `llvm-assert`,
+     `semantic-reject-assert`.
    - *Open-array limits.* Decide whether more than 8 open dimensions is
      worth supporting (voc's own limit is the thing to look up) and
      whether skipping the copy of a value open-array parameter that the
@@ -1568,33 +1573,12 @@ over object files is the gate.
 
 ## Open design questions
 
-Still open:
-
-- **No `ASSERT`**: `Oberon2.pdf`'s §10.3 predeclared-procedure table has
-  no `ASSERT` entry (confirmed against the report; see
-  `PredeclaredProcedures.Mod`'s header comment), so poc doesn't have one
-  either. Every dialect surveyed beyond the strict report adds one, and
-  the dominant convention (Component Pascal, and Oberon+ copying it
-  verbatim) is a two-argument overload: `ASSERT(x)` and
-  `ASSERT(x, n: INTEGER)`, `x` a BOOLEAN condition and `n` an
-  implementation-defined exit/trap code — the report text explicitly
-  leaves `n`'s interpretation to the implementation. voc follows this
-  same two-arg form as a compiler-recognized special form gated behind
-  its `-a` flag (on by default): on failure it prints "Assertion
-  failure." (plus `n` if nonzero) and exits with `n` or 0. The one
-  outlier is Wirth's own final/"Oberon-07" report, which has only the
-  single-argument `ASSERT(b)` with no code parameter. Undecided whether
-  poc should add `ASSERT`; if it does, voc's `ASSERT(x)` /
-  `ASSERT(x, n: INTEGER)` two-arg form is the better precedent to match
-  (also consistent with `HALT`'s existing exit-code convention) —
-  possibly with an additional `ASSERT(x, msg: ARRAY OF CHAR)` overload
-  taking a message string directly, which no surveyed dialect offers but
-  would be more useful at a call site than an opaque integer code. Not
-  scheduled to any phase yet.
+None is open now (2026-09-25).
 
 Decided, with the full reasoning in `doc/design-decisions.md` under the
 same names:
 
+- No `ASSERT` (decided 2026-09-25: `doc/assert-survey.md`)
 - Open array dimension limit
 - External procedure declaration syntax
 - `-OC`-equivalent elementary-type-size model

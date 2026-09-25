@@ -294,6 +294,7 @@ BEGIN
   InsertPredeclaredProc("COPY"); InsertPredeclaredProc("DEC"); InsertPredeclaredProc("EXCL");
   InsertPredeclaredProc("HALT"); InsertPredeclaredProc("INC"); InsertPredeclaredProc("INCL");
   InsertPredeclaredProc("NEW");
+  InsertPredeclaredProc("ASSERT"); (* poc's extension, PredeclaredProcedures.CheckAssert *)
   SystemScope := OpenScope(NIL);
   InsertSystemType("ADDRESS", Types.Address);
   InsertSystemType("BYTE", Types.Byte);

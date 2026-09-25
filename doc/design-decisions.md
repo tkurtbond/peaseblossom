@@ -5,6 +5,33 @@ here unchanged on 2026-09-25. `PLAN.md` keeps the questions that are still
 open and lists these by name, so a reference to `PLAN.md`'s "Open design
 questions" - <name> means the entry of that name here.
 
+- **No `ASSERT`**: `Oberon2.pdf`'s §10.3 predeclared-procedure table has
+  no `ASSERT` entry (confirmed against the report; see
+  `PredeclaredProcedures.Mod`'s header comment), so poc doesn't have one
+  either. Every dialect surveyed beyond the strict report adds one, and
+  the dominant convention (Component Pascal, and Oberon+ copying it
+  verbatim) is a two-argument overload: `ASSERT(x)` and
+  `ASSERT(x, n: INTEGER)`, `x` a BOOLEAN condition and `n` an
+  implementation-defined exit/trap code — the report text explicitly
+  leaves `n`'s interpretation to the implementation. voc follows this
+  same two-arg form as a compiler-recognized special form gated behind
+  its `-a` flag (on by default): on failure it prints "Assertion
+  failure." (plus `n` if nonzero) and exits with `n` or 0. The one
+  outlier is Wirth's own final/"Oberon-07" report, which has only the
+  single-argument `ASSERT(b)` with no code parameter. Undecided whether
+  poc should add `ASSERT`; if it does, voc's `ASSERT(x)` /
+  `ASSERT(x, n: INTEGER)` two-arg form is the better precedent to match
+  (also consistent with `HALT`'s existing exit-code convention) —
+  possibly with an additional `ASSERT(x, msg: ARRAY OF CHAR)` overload
+  taking a message string directly, which no surveyed dialect offers but
+  would be more useful at a call site than an opaque integer code. Not
+  scheduled to any phase yet.
+  **Decided 2026-09-25** (user): poc has `ASSERT(x)` and `ASSERT(x, n)`;
+  `doc/assert-survey.md` has the survey (which also covers Ofront, OfrontPlus,
+  BlackBox, A2, obc, oo2c and OBNC) and the decision. One correction to the
+  text above, found probing it: voc exits with 255, not 0, when there is no
+  code or it is 0.
+
 - **Open array dimension limit**: decided 2026-09-20 (Phase 11) - an open
   array type may have at most **8 open dimensions** (`Types.maxOpenDimensions`),
   and the checker says so where the ninth is written (`ResolveArrayType`; one

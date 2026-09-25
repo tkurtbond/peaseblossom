@@ -269,8 +269,15 @@ array is never an assignment target. An open source that is too long traps
 
 ### What traps, and what does not (Phase 11 C9)
 
-The tables of trap statuses 2-9, what ends a program silently, what nothing
+The tables of trap statuses 2-10, what ends a program silently, what nothing
 stops, and what is a compile-time error.
+
+### ASSERT (decided and implemented, 2026-09-25)
+
+`ASSERT(x)` and `ASSERT(x, n)`, `n` an integer constant in 0..255, as in voc.
+A failure prints "assertion failed (n)" and exits 10. A constant FALSE
+condition is a compile-time error, so a constant one is a static check.
+Always on.
 
 ### Nested procedures (implemented, Phase 11 step 8)
 
