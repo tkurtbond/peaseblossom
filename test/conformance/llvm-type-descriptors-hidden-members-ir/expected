@@ -2,6 +2,11 @@
 target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"
 target triple = "i686-unknown-linux-gnu"
 
+%lib.Unrelated = type { i8 }
+%client.CircleDesc = type { %lib.ShapeDesc, i16, i16, ptr }
+%lib.ShapeDesc = type { i16, i32, ptr, %third.Stamp, ptr }
+%third.Stamp = type { i32, i8 }
+
 @third.Stamp.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
   [0 x ptr] [],
   i32 8,
@@ -13,7 +18,7 @@ target triple = "i686-unknown-linux-gnu"
 @third.Stamp.tag = alias ptr, getelementptr inbounds (i8, ptr @third.Stamp.tdesc, i32 0)
 
 @lib.keep = global ptr zeroinitializer
-@lib.ignore = global { i8 } zeroinitializer
+@lib.ignore = global %lib.Unrelated zeroinitializer
 @lib.Deep.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
   [0 x ptr] [],
   i32 4,
@@ -144,7 +149,7 @@ L3:
   call void @exit(i32 4)
   unreachable
 L4:
-  %t12 = getelementptr { { i16, i32, ptr, { i32, i8 }, ptr }, i16, i16, ptr }, ptr %t10, i32 0, i32 2
+  %t12 = getelementptr %client.CircleDesc, ptr %t10, i32 0, i32 2
   %t13 = sext i8 1 to i16
   store i16 %t13, ptr %t12
   ret void
@@ -194,6 +199,11 @@ clang accepted i686-unknown-linux-gnu
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+%lib.Unrelated = type { i8 }
+%client.CircleDesc = type { %lib.ShapeDesc, i16, i16, ptr }
+%lib.ShapeDesc = type { i16, i32, ptr, %third.Stamp, ptr }
+%third.Stamp = type { i32, i8 }
+
 @third.Stamp.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
   [0 x ptr] [],
   i64 8,
@@ -205,7 +215,7 @@ target triple = "x86_64-unknown-linux-gnu"
 @third.Stamp.tag = alias ptr, getelementptr inbounds (i8, ptr @third.Stamp.tdesc, i32 0)
 
 @lib.keep = global ptr zeroinitializer
-@lib.ignore = global { i8 } zeroinitializer
+@lib.ignore = global %lib.Unrelated zeroinitializer
 @lib.Deep.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
   [0 x ptr] [],
   i64 4,
@@ -336,7 +346,7 @@ L3:
   call void @exit(i32 4)
   unreachable
 L4:
-  %t12 = getelementptr { { i16, i32, ptr, { i32, i8 }, ptr }, i16, i16, ptr }, ptr %t10, i32 0, i32 2
+  %t12 = getelementptr %client.CircleDesc, ptr %t10, i32 0, i32 2
   %t13 = sext i8 1 to i16
   store i16 %t13, ptr %t12
   ret void

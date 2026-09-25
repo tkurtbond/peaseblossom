@@ -138,8 +138,8 @@ MODULE LLVMToolchainDriver;
   PROCEDURE EmitIR*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
                     triple, outputDir: ARRAY OF CHAR; VAR pathOut: ARRAY OF CHAR): BOOLEAN;
     VAR
-      name: ARRAY nameBufferLength OF CHAR;
-      f: Files.File; w: Files.Rider; ok: BOOLEAN;
+      name, bodyName: ARRAY nameBufferLength OF CHAR;
+      f, bodyFile: Files.File; w, body: Files.Rider; ok: BOOLEAN;
       savedDir, dir: ARRAY dirBufferLength OF CHAR;
       chdirResult, deleteResult: INTEGER;
       i, errorsBefore: INTEGER;
@@ -161,7 +161,18 @@ MODULE LLVMToolchainDriver;
     IF ok THEN
       f := Files.New(name);
       Files.Set(w, f, 0);
-      LLVMCodeGenerator.GenerateProgram(modules, triple, w);
+      (* where GenerateProgram puts the IR that follows the struct type
+         definitions, before copying it into f; registered under a name of
+         its own so that it can be removed (see below) *)
+      COPY(name, bodyName); i := 0;
+      WHILE bodyName[i] # 0X DO INC(i) END;
+      bodyName[i] := "."; bodyName[i + 1] := "b"; bodyName[i + 2] := "o"; bodyName[i + 3] := "d";
+      bodyName[i + 4] := "y"; bodyName[i + 5] := 0X;
+      bodyFile := Files.New(bodyName);
+      Files.Set(body, bodyFile, 0);
+      LLVMCodeGenerator.GenerateProgram(modules, triple, w, body);
+      Files.Register(bodyFile); Files.Close(bodyFile);
+      deleteResult := Platform.Unlink(bodyName);
       (* IR with a construct missing is worse than none, and so is a stale
          file from an earlier run beside it: it is written and deleted again,
          not just left unregistered (an unregistered Files.New file stays behind

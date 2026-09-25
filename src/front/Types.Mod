@@ -208,7 +208,13 @@ MODULE Types;
          than that module's own compilation built, so pointer identity
          cannot connect the two - but the (moduleName, name) pair, being
          derived from the declaring source text both times, can. *)
-      moduleName*, name*: SyntaxTree.Ident
+      moduleName*, name*: SyntaxTree.Ident;
+      (* A backend's own number for the record, 0 until the backend first
+         meets it; nothing in the front end reads it. The LLVM backend
+         numbers the named struct types it emits with it (LLVMTypes.
+         StructIndex), so a record keeps one LLVM type name for the whole
+         program even after its descriptor gives it a name (EnsureTypeTag). *)
+      backendIndex*: INTEGER
     END;
 
     Value* = POINTER TO ValueDesc;
@@ -335,7 +341,7 @@ MODULE Types;
     VAR t: RecordType;
   BEGIN
     NEW(t); t.baseType := baseType; t.fields := NIL; t.methods := NIL;
-    t.moduleName[0] := 0X; t.name[0] := 0X;
+    t.moduleName[0] := 0X; t.name[0] := 0X; t.backendIndex := 0;
     RETURN t
   END NewRecordType;
 

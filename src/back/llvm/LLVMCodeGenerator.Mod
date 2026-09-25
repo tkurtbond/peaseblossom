@@ -6424,10 +6424,46 @@ MODULE LLVMCodeGenerator;
     END
   END EmitCharacterHelpers;
 
-  PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w: Files.Rider);
+  (* One definition per named struct type (LLVMTypes, "Named struct types"):
+     "%<name> = type { <base>, <field>, ... }", written a field at a time.
+     Spelling a field can name a record not seen before, which is then
+     defined too; the loop runs until no new one appears. *)
+  PROCEDURE EmitStructTypes(VAR w: Files.Rider; VAR cg: Codegen);
+    VAR
+      index: INTEGER; rec: Types.RecordType; name: LLVMTypes.StructName;
+      f: Types.Field; fieldType: LongText; first: BOOLEAN;
+  BEGIN
+    index := 1;
+    WHILE index <= LLVMTypes.StructCount() DO
+      LLVMTypes.StructAt(index, rec, name);
+      WriteStr(w, "%"); WriteStr(w, name); WriteStr(w, " = type ");
+      first := TRUE;
+      IF rec.baseType # NIL THEN
+        LLVMTypes.TypeString(rec.baseType, cg.sizeModel, fieldType);
+        WriteStr(w, "{ "); WriteStr(w, fieldType); first := FALSE
+      END;
+      f := rec.fields;
+      WHILE f # NIL DO
+        IF first THEN WriteStr(w, "{ ") ELSE WriteStr(w, ", ") END;
+        LLVMTypes.TypeString(f.type, cg.sizeModel, fieldType);
+        WriteStr(w, fieldType); first := FALSE;
+        f := f.next
+      END;
+      IF first THEN WriteStr(w, "{}") ELSE WriteStr(w, " }") END;
+      WriteLn(w);
+      INC(index)
+    END
+  END EmitStructTypes;
+
+  (* The IR goes to w: the target lines, the struct type definitions, then
+     everything else. The definitions must precede their first use, and
+     which records are used is only known once everything else is
+     generated, so that is written to body first (a file of the caller's,
+     empty) and copied after the definitions. *)
+  PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w, body: Files.Rider);
     VAR
       cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments, realign: BOOLEAN;
-      wordInt: ValueText;
+      wordInt: ValueText; r: Files.Rider; ch: CHAR;
   BEGIN
     withRootTables := HasModuleNamed(modules, "ModuleTable");
     withHeap := HasModuleNamed(modules, "GarbageCollectedHeap");
@@ -6462,35 +6498,35 @@ MODULE LLVMCodeGenerator;
     m := modules;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope;
-      EmitGlobals(w, cg, m.module);
-      EmitExternalDeclares(w, cg, m.module);
-      EmitTypeDescriptors(w, cg, m.module);
-      IF withRootTables THEN EmitRootTable(w, cg, m.module) END;
+      EmitGlobals(body, cg, m.module);
+      EmitExternalDeclares(body, cg, m.module);
+      EmitTypeDescriptors(body, cg, m.module);
+      IF withRootTables THEN EmitRootTable(body, cg, m.module) END;
       m := m.next
     END;
-    EmitRuntimeSupport(w, cg);
+    EmitRuntimeSupport(body, cg);
     m := modules;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope;
-      CollectStringConstantsSeq(w, cg, m.module.statements);
+      CollectStringConstantsSeq(body, cg, m.module.statements);
       IF m.module.declarations # NIL THEN
         pd := m.module.declarations.procDecls;
         WHILE pd # NIL DO
-          IF HasBody(pd) THEN CollectProcedureStringConstants(w, cg, pd) END;
+          IF HasBody(pd) THEN CollectProcedureStringConstants(body, cg, pd) END;
           pd := pd.next
         END
       END;
       m := m.next
     END;
-    WriteLn(w);
+    WriteLn(body);
     m := modules;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope;
       IF m.module.declarations # NIL THEN
         pd := m.module.declarations.procDecls;
         WHILE pd # NIL DO
-          IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(w, cg, m.scope, pd)
-          ELSIF HasBody(pd) THEN GenerateMethodDecl(w, cg, m.scope, pd)
+          IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(body, cg, m.scope, pd)
+          ELSIF HasBody(pd) THEN GenerateMethodDecl(body, cg, m.scope, pd)
           END;
           pd := pd.next
         END
@@ -6500,13 +6536,13 @@ MODULE LLVMCodeGenerator;
     m := modules;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope;
-      WriteStr(w, "define void @"); WriteStr(w, m.module.name); WriteStr(w, "_init() {"); WriteLn(w);
-      EmitEntryLabel(w, cg);
-      IF withRootTables THEN EmitRootTableRegistration(w, cg, m.module) END;
-      GenerateStatementSeq(w, cg, m.module.statements);
-      WriteStr(w, "  ret void"); WriteLn(w);
-      WriteStr(w, "}"); WriteLn(w);
-      WriteLn(w);
+      WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init() {"); WriteLn(body);
+      EmitEntryLabel(body, cg);
+      IF withRootTables THEN EmitRootTableRegistration(body, cg, m.module) END;
+      GenerateStatementSeq(body, cg, m.module.statements);
+      WriteStr(body, "  ret void"); WriteLn(body);
+      WriteStr(body, "}"); WriteLn(body);
+      WriteLn(body);
       m := m.next
     END;
     (* A program that contains rtl/llvm/Modules.Mod gets the command line:
@@ -6514,60 +6550,65 @@ MODULE LLVMCodeGenerator;
        words, the way every ADDRESS travels - before any module body runs,
        since a body may read them. Any other program keeps the
        argument-less main. *)
-    IF withArguments THEN WriteStr(w, "define i32 @main(i32 %argc, ptr %argv)")
-    ELSE WriteStr(w, "define i32 @main()")
+    IF withArguments THEN WriteStr(body, "define i32 @main(i32 %argc, ptr %argv)")
+    ELSE WriteStr(body, "define i32 @main()")
     END;
     (* the process starts main with the stack 4 modulo 16, where a 16-byte
        aligned frame is assumed below it (LLVMTypes.NeedsStackRealignment) *)
-    IF realign THEN WriteStr(w, ' "stackrealign"') END;
-    WriteStr(w, " {"); WriteLn(w);
-    EmitEntryLabel(w, cg);
+    IF realign THEN WriteStr(body, ' "stackrealign"') END;
+    WriteStr(body, " {"); WriteLn(body);
+    EmitEntryLabel(body, cg);
     IF withArguments THEN
       WordIntType(wordInt);
       IF wordInt = "i32" THEN
-        WriteStr(w, "  %argcword = add i32 %argc, 0"); WriteLn(w)
+        WriteStr(body, "  %argcword = add i32 %argc, 0"); WriteLn(body)
       ELSE
-        WriteStr(w, "  %argcword = sext i32 %argc to "); WriteStr(w, wordInt); WriteLn(w)
+        WriteStr(body, "  %argcword = sext i32 %argc to "); WriteStr(body, wordInt); WriteLn(body)
       END;
-      WriteStr(w, "  %argvword = ptrtoint ptr %argv to "); WriteStr(w, wordInt); WriteLn(w);
-      WriteStr(w, "  call void @Modules.Init("); WriteStr(w, wordInt);
-      WriteStr(w, " %argcword, "); WriteStr(w, wordInt); WriteStr(w, " %argvword)"); WriteLn(w)
+      WriteStr(body, "  %argvword = ptrtoint ptr %argv to "); WriteStr(body, wordInt); WriteLn(body);
+      WriteStr(body, "  call void @Modules.Init("); WriteStr(body, wordInt);
+      WriteStr(body, " %argcword, "); WriteStr(body, wordInt); WriteStr(body, " %argvword)"); WriteLn(body)
     END;
     IF withHeap THEN
       (* the outermost frame anything can live in: the collector scans the
          stack from its own frame up to here *)
       WordIntType(wordInt);
-      WriteStr(w, "  %stackbase = call ptr @llvm.frameaddress.p0(i32 0)"); WriteLn(w);
-      WriteStr(w, "  %stackbaseint = ptrtoint ptr %stackbase to "); WriteStr(w, wordInt); WriteLn(w);
-      WriteStr(w, "  call void @GarbageCollectedHeap.SetStackBase("); WriteStr(w, wordInt);
-      WriteStr(w, " %stackbaseint)"); WriteLn(w)
+      WriteStr(body, "  %stackbase = call ptr @llvm.frameaddress.p0(i32 0)"); WriteLn(body);
+      WriteStr(body, "  %stackbaseint = ptrtoint ptr %stackbase to "); WriteStr(body, wordInt); WriteLn(body);
+      WriteStr(body, "  call void @GarbageCollectedHeap.SetStackBase("); WriteStr(body, wordInt);
+      WriteStr(body, " %stackbaseint)"); WriteLn(body)
     END;
     m := modules;
     WHILE m # NIL DO
-      WriteStr(w, "  call void @"); WriteStr(w, m.module.name); WriteStr(w, "_init()"); WriteLn(w);
+      WriteStr(body, "  call void @"); WriteStr(body, m.module.name); WriteStr(body, "_init()"); WriteLn(body);
       m := m.next
     END;
-    WriteStr(w, "  ret i32 0"); WriteLn(w);
-    WriteStr(w, "}"); WriteLn(w);
-    EmitCharacterHelpers(w, cg);
-    EmitPointerSupport(w, cg);
+    WriteStr(body, "  ret i32 0"); WriteLn(body);
+    WriteStr(body, "}"); WriteLn(body);
+    EmitCharacterHelpers(body, cg);
+    EmitPointerSupport(body, cg);
     IF withHeap THEN
-      WriteLn(w);
-      EmitLine(w, "declare ptr @llvm.frameaddress.p0(i32 immarg)")
+      WriteLn(body);
+      EmitLine(body, "declare ptr @llvm.frameaddress.p0(i32 immarg)")
     END;
     IF cg.needOverflowMath THEN
-      WriteLn(w);
-      EmitLine(w, "declare { i64, i1 } @llvm.umul.with.overflow.i64(i64, i64)");
-      EmitLine(w, "declare { i64, i1 } @llvm.uadd.with.overflow.i64(i64, i64)")
+      WriteLn(body);
+      EmitLine(body, "declare { i64, i1 } @llvm.umul.with.overflow.i64(i64, i64)");
+      EmitLine(body, "declare { i64, i1 } @llvm.uadd.with.overflow.i64(i64, i64)")
     END;
     IF cg.needMemmove THEN
-      WriteLn(w);
+      WriteLn(body);
       IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN
-        EmitLine(w, "declare void @llvm.memmove.p0.p0.i32(ptr, ptr, i32, i1)")
+        EmitLine(body, "declare void @llvm.memmove.p0.p0.i32(ptr, ptr, i32, i1)")
       ELSE
-        EmitLine(w, "declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)")
+        EmitLine(body, "declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)")
       END
-    END
+    END;
+    EmitStructTypes(w, cg);
+    IF LLVMTypes.StructCount() > 0 THEN WriteLn(w) END;
+    Files.Set(r, Files.Base(body), 0);
+    Files.Read(r, ch);
+    WHILE ~r.eof DO Files.Write(w, ch); Files.Read(r, ch) END
   END GenerateProgram;
 
 END LLVMCodeGenerator.

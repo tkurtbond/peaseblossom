@@ -2,8 +2,10 @@ semantic OK, wrote procsir.ll
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+%procsir.Point = type { i16, i16 }
+
 @procsir.total = global i16 zeroinitializer
-@procsir.p = global { i16, i16 } zeroinitializer
+@procsir.p = global %procsir.Point zeroinitializer
 @procsir.v = global [3 x i16] zeroinitializer
 @procsir.Point.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
   [0 x ptr] [],
@@ -90,13 +92,13 @@ entry:
   %t31 = call i16 @procsir.Fact(i16 %t30)
   %t32 = add i16 %t29, %t31
   store i16 %t32, ptr @procsir.total
-  %t33 = getelementptr { i16, i16 }, ptr @procsir.p, i32 0, i32 0
+  %t33 = getelementptr %procsir.Point, ptr @procsir.p, i32 0, i32 0
   %t34 = sext i8 1 to i16
   store i16 %t34, ptr %t33
-  %t35 = getelementptr { i16, i16 }, ptr @procsir.p, i32 0, i32 1
+  %t35 = getelementptr %procsir.Point, ptr @procsir.p, i32 0, i32 1
   %t36 = sext i8 2 to i16
   store i16 %t36, ptr %t35
-  %t37 = getelementptr { i16, i16 }, ptr @procsir.p, i32 0, i32 0
+  %t37 = getelementptr %procsir.Point, ptr @procsir.p, i32 0, i32 0
   %t38 = sext i8 1 to i16
   call void @procsir.Increment(ptr %t37, i16 %t38)
   %t39 = icmp sge i8 1, 0

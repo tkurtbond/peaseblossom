@@ -1,0 +1,5 @@
+record-array-result.mod:7:34: error: the result type of a procedure cannot be a record or an array
+record-array-result.mod:9:24: error: the result type of a procedure cannot be a record or an array
+record-array-result.mod:12:23: error: the result type of a procedure cannot be a record or an array
+record-array-result.mod:15:23: error: the result type of a procedure cannot be a record or an array
+4 error(s)

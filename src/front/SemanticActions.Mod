@@ -1067,7 +1067,14 @@ MODULE SemanticActions;
   BEGIN
     resultType := NIL;
     IF (formals # NIL) & (formals.returnType # NIL) THEN
-      resultType := ResolveQualidentType(scope, formals.returnType, FALSE)
+      resultType := ResolveQualidentType(scope, formals.returnType, FALSE);
+      (* Oberon2.pdf 10.1: "The result type of a function procedure can be
+         neither a record nor an array" (voc: err 54). Kept as the result
+         type, so the body is still checked against it. *)
+      IF (resultType # NIL) & ((resultType IS Types.RecordType) OR (resultType IS Types.ArrayType)) THEN
+        Diagnostics.Error(formals.returnType.line, formals.returnType.column,
+          "the result type of a procedure cannot be a record or an array")
+      END
     END;
     pt := Types.NewProcedureType(resultType);
     IF formals # NIL THEN

@@ -36,11 +36,11 @@ MODULE LLVMTypes;
      real, ABI-verified struct layout for a given target triple without
      needing to link or run anything) - not by this module.
 
-     Named/identified LLVM struct types (`%Foo = type { ... }`, needed
-     once RECORD types can be self-referential via POINTER, e.g. a linked
-     list) are Phase 9 work - an anonymous/literal struct type cannot
-     name itself, but Phase 8 has no POINTER types in scope to need that
-     for yet, so this limitation doesn't bite here.
+     Since Phase 11 (D4) a record is a named LLVM struct type instead
+     (`%Module.Type = type { ... }`, "Named struct types" below): the
+     literal spelling grew with every field and nested record and overran
+     any fixed buffer. TypeLiteral* keeps the literal form for
+     -dump-llvm-types.
 
      TypeString* does not vary by target word size, unlike
      MemoryLayout.Mod's own Size/Align/FieldOffset - none of Phase 8's
@@ -78,10 +78,27 @@ MODULE LLVMTypes;
        caught by the same index-range check, never silently), but this
        module intentionally builds a type's whole string as one piece
        rather than streaming it (TypeString*'s own header comment), so
-       *some* fixed ceiling is inherent to that design either way. *)
+       *some* fixed ceiling is inherent to that design either way.
+       Phase 11 (D4): a record of 160 INTEGERs was pathological enough;
+       records are named struct types now, so TypeString's text stays
+       short and only TypeLiteral (-dump-llvm-types) still meets this
+       ceiling. *)
     typeStringLength* = 799;
 
-  PROCEDURE ^ TypeString*(t: Types.Type; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
+  TYPE
+    (* the named struct types; see "Named struct types" below *)
+    StructName* = ARRAY 2 * 256 + 8 OF CHAR;
+    StructEntry = RECORD
+      rec: Types.RecordType;
+      name: StructName
+    END;
+    StructTable = POINTER TO ARRAY OF StructEntry;
+
+  VAR
+    structs: StructTable;
+    structCount: INTEGER;
+
+  PROCEDURE ^ Spell(t: Types.Type; sizeModel: INTEGER; named: BOOLEAN; VAR result: ARRAY OF CHAR);
 
   PROCEDURE Strcat(VAR s: ARRAY OF CHAR; suffix: ARRAY OF CHAR);
     VAR i, j: INTEGER;
@@ -164,11 +181,11 @@ MODULE LLVMTypes;
     END
   END BasicTypeString;
 
-  PROCEDURE ArrayTypeString(arr: Types.ArrayType; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
+  PROCEDURE ArrayTypeString(arr: Types.ArrayType; sizeModel: INTEGER; named: BOOLEAN; VAR result: ARRAY OF CHAR);
     VAR elem: ARRAY typeStringLength OF CHAR;
   BEGIN
     IF arr.isOpen THEN COPY("<unsupported>", result); RETURN END;
-    TypeString(arr.elementType, sizeModel, elem);
+    Spell(arr.elementType, sizeModel, named, elem);
     COPY("[", result);
     AppendLongInt(result, arr.length);
     Strcat(result, " x ");
@@ -193,14 +210,14 @@ MODULE LLVMTypes;
     first := TRUE;
     COPY("{ ", result);
     IF rec.baseType # NIL THEN
-      TypeString(rec.baseType, sizeModel, fieldStr);
+      Spell(rec.baseType, sizeModel, FALSE, fieldStr);
       Strcat(result, fieldStr);
       first := FALSE
     END;
     f := rec.fields;
     WHILE f # NIL DO
       IF ~first THEN Strcat(result, ", ") END;
-      TypeString(f.type, sizeModel, fieldStr);
+      Spell(f.type, sizeModel, FALSE, fieldStr);
       Strcat(result, fieldStr);
       first := FALSE;
       f := f.next
@@ -208,8 +225,64 @@ MODULE LLVMTypes;
     IF first THEN COPY("{}", result) ELSE Strcat(result, " }") END
   END RecordTypeString;
 
-  PROCEDURE TypeString*(t: Types.Type; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
-    VAR arr: Types.ArrayType; rec: Types.RecordType;
+  (* ---- Named struct types (Phase 11, D4) ----
+
+     In the IR every record is a named LLVM struct type, "%<Module>.<Type>"
+     for a module-level record and "%$rec<N>" for any other, defined once at
+     the top of the program (LLVMCodeGenerator.EmitStructTypes). Spelled
+     inline, as it used to be, a record's type text grows with every field
+     and every record nested in it, and a buffer of any fixed size is
+     overrun by a big enough one (a record of 160 INTEGERs halted poc); by
+     name, the text of any type is short, and only a definition lists the
+     fields, which is written straight to the file, a field at a time.
+
+     A record is given its number the first time it is spelled, in
+     Types.RecordTypeDesc.backendIndex, and keeps it: EnsureTypeTag names an
+     anonymous record for its descriptor later, and the type name must not
+     change after the first use. Two RecordType objects for one
+     module-level record (the module's own, and an importer's, read back
+     from its .sym) share one entry. Only one program is generated per
+     process, so the table is never reset. *)
+
+  PROCEDURE StructIndex(rec: Types.RecordType): INTEGER;
+    VAR name: StructName; i: INTEGER; larger: StructTable;
+  BEGIN
+    IF rec.backendIndex # 0 THEN RETURN rec.backendIndex END;
+    IF (rec.name[0] # 0X) & (rec.moduleName[0] # 0X) THEN
+      COPY(rec.moduleName, name); Strcat(name, "."); Strcat(name, rec.name);
+      i := 1;
+      WHILE (i <= structCount) & (structs[i].name # name) DO INC(i) END;
+      IF i <= structCount THEN rec.backendIndex := i; RETURN i END
+    ELSE
+      COPY("$rec", name); AppendLongInt(name, structCount + 1)
+    END;
+    IF structCount + 1 >= LEN(structs^) THEN
+      NEW(larger, 2 * LEN(structs^));
+      FOR i := 1 TO structCount DO larger[i] := structs[i] END;
+      structs := larger
+    END;
+    INC(structCount);
+    structs[structCount].rec := rec; COPY(name, structs[structCount].name);
+    rec.backendIndex := structCount;
+    RETURN structCount
+  END StructIndex;
+
+  (* How many named struct types have been spelled so far; it grows while
+     their definitions are written, as each spells its fields. *)
+  PROCEDURE StructCount*(): INTEGER;
+  BEGIN
+    RETURN structCount
+  END StructCount;
+
+  (* The index-th named struct type (1 <= index <= StructCount()): the
+     record it was first spelled for, and its name without the "%". *)
+  PROCEDURE StructAt*(index: INTEGER; VAR rec: Types.RecordType; VAR name: ARRAY OF CHAR);
+  BEGIN
+    rec := structs[index].rec; COPY(structs[index].name, name)
+  END StructAt;
+
+  PROCEDURE Spell(t: Types.Type; sizeModel: INTEGER; named: BOOLEAN; VAR result: ARRAY OF CHAR);
+    VAR arr: Types.ArrayType; rec: Types.RecordType; index: INTEGER;
   BEGIN
     IF t = NIL THEN COPY("<unsupported>", result); RETURN END;
     arr := NIL; rec := NIL;
@@ -221,10 +294,28 @@ MODULE LLVMTypes;
     | t: Types.ProcedureType DO COPY("ptr", result); RETURN
     ELSE COPY("<unsupported>", result); RETURN
     END;
-    IF arr # NIL THEN ArrayTypeString(arr, sizeModel, result)
+    IF arr # NIL THEN ArrayTypeString(arr, sizeModel, named, result)
+    ELSIF named THEN
+      index := StructIndex(rec);
+      COPY("%", result); Strcat(result, structs[index].name)
     ELSE RecordTypeString(rec, sizeModel, result)
     END
+  END Spell;
+
+  (* The LLVM type of a value of type t, as the IR names it: a record is
+     its named struct type (above). *)
+  PROCEDURE TypeString*(t: Types.Type; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
+  BEGIN
+    Spell(t, sizeModel, TRUE, result)
   END TypeString;
+
+  (* The same, with every record spelled out as a literal struct - what
+     -dump-llvm-types shows. Bounded by typeStringLength; only that debugging
+     aid uses it. *)
+  PROCEDURE TypeLiteral*(t: Types.Type; sizeModel: INTEGER; VAR result: ARRAY OF CHAR);
+  BEGIN
+    Spell(t, sizeModel, FALSE, result)
+  END TypeLiteral;
 
   (* ---- Run-time type descriptor layout (PLAN.md Phase 9 step 1) ----
 
@@ -446,4 +537,6 @@ MODULE LLVMTypes;
     RETURN found
   END NeedsStackRealignment;
 
+BEGIN
+  NEW(structs, 64); structCount := 0
 END LLVMTypes.

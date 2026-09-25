@@ -1,8 +1,8 @@
 == i686-unknown-linux-gnu
 @boundir.s = global ptr zeroinitializer
 @boundir.c = global ptr zeroinitializer
-@boundir.pt = global { i16 } zeroinitializer
-@boundir.p3 = global { { i16 }, i16 } zeroinitializer
+@boundir.pt = global %boundir.Point zeroinitializer
+@boundir.p3 = global %boundir.Point3 zeroinitializer
 @boundir.result = global i16 zeroinitializer
 @boundir.ShapeDesc.tdesc = constant { [1 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
   [1 x ptr] [ptr @boundir.ShapeDesc.Area],
@@ -54,7 +54,7 @@ LN:
   call void @exit(i32 4)
   unreachable
 LN:
-  %tN = getelementptr { i16 }, ptr %tN, i32 0, i32 0
+  %tN = getelementptr %boundir.ShapeDesc, ptr %tN, i32 0, i32 0
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
@@ -81,7 +81,7 @@ LN:
   call void @exit(i32 4)
   unreachable
 LN:
-  %tN = getelementptr { { i16 }, i16 }, ptr %tN, i32 0, i32 1
+  %tN = getelementptr %boundir.CircleDesc, ptr %tN, i32 0, i32 1
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   ret i16 %tN
@@ -90,7 +90,7 @@ LN:
 }
 define i16 @boundir.Point.Sum(ptr %p, ptr %p.tag) {
 entry:
-  %tN = getelementptr { i16 }, ptr %p, i32 0, i32 0
+  %tN = getelementptr %boundir.Point, ptr %p, i32 0, i32 0
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
@@ -99,7 +99,7 @@ LN:
 define i16 @boundir.Point3.Sum(ptr %p, ptr %p.tag) {
 entry:
   %tN = call i16 @boundir.Point.Sum(ptr %p, ptr %p.tag)
-  %tN = getelementptr { { i16 }, i16 }, ptr %p, i32 0, i32 1
+  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   ret i16 %tN
@@ -135,7 +135,7 @@ LN:
   call void @exit(i32 5)
   unreachable
 LN:
-  %tN = getelementptr { { i16 }, i16 }, ptr %p, i32 0, i32 1
+  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
   %tN = load i16, ptr %tN
   store i16 %tN, ptr %tN
   br label %LN
@@ -152,7 +152,7 @@ LN:
   br i1 %tN, label %LN, label %LN
 LN:
   %tN = load i16, ptr %tN
-  %tN = getelementptr { { i16 }, i16 }, ptr %p, i32 0, i32 1
+  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   store i16 %tN, ptr %tN
@@ -224,8 +224,8 @@ clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 @boundir.s = global ptr zeroinitializer
 @boundir.c = global ptr zeroinitializer
-@boundir.pt = global { i16 } zeroinitializer
-@boundir.p3 = global { { i16 }, i16 } zeroinitializer
+@boundir.pt = global %boundir.Point zeroinitializer
+@boundir.p3 = global %boundir.Point3 zeroinitializer
 @boundir.result = global i16 zeroinitializer
 @boundir.ShapeDesc.tdesc = constant { [1 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
   [1 x ptr] [ptr @boundir.ShapeDesc.Area],
@@ -277,7 +277,7 @@ LN:
   call void @exit(i32 4)
   unreachable
 LN:
-  %tN = getelementptr { i16 }, ptr %tN, i32 0, i32 0
+  %tN = getelementptr %boundir.ShapeDesc, ptr %tN, i32 0, i32 0
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
@@ -304,7 +304,7 @@ LN:
   call void @exit(i32 4)
   unreachable
 LN:
-  %tN = getelementptr { { i16 }, i16 }, ptr %tN, i32 0, i32 1
+  %tN = getelementptr %boundir.CircleDesc, ptr %tN, i32 0, i32 1
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   ret i16 %tN
@@ -313,7 +313,7 @@ LN:
 }
 define i16 @boundir.Point.Sum(ptr %p, ptr %p.tag) {
 entry:
-  %tN = getelementptr { i16 }, ptr %p, i32 0, i32 0
+  %tN = getelementptr %boundir.Point, ptr %p, i32 0, i32 0
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
@@ -322,7 +322,7 @@ LN:
 define i16 @boundir.Point3.Sum(ptr %p, ptr %p.tag) {
 entry:
   %tN = call i16 @boundir.Point.Sum(ptr %p, ptr %p.tag)
-  %tN = getelementptr { { i16 }, i16 }, ptr %p, i32 0, i32 1
+  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   ret i16 %tN
@@ -358,7 +358,7 @@ LN:
   call void @exit(i32 5)
   unreachable
 LN:
-  %tN = getelementptr { { i16 }, i16 }, ptr %p, i32 0, i32 1
+  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
   %tN = load i16, ptr %tN
   store i16 %tN, ptr %tN
   br label %LN
@@ -375,7 +375,7 @@ LN:
   br i1 %tN, label %LN, label %LN
 LN:
   %tN = load i16, ptr %tN
-  %tN = getelementptr { { i16 }, i16 }, ptr %p, i32 0, i32 1
+  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   store i16 %tN, ptr %tN

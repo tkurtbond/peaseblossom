@@ -2,7 +2,7 @@
 @procir.f = global ptr zeroinitializer
 @procir.ins = global ptr zeroinitializer
 @procir.act = global ptr zeroinitializer
-@procir.shape = global { i16 } zeroinitializer
+@procir.shape = global %procir.Shape zeroinitializer
 @procir.data = global [3 x i16] zeroinitializer
 @procir.n = global i16 zeroinitializer
 @procir.Shape.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
@@ -31,7 +31,7 @@ LN:
 }
 define i16 @procir.Inspect(ptr %s, ptr %s.tag, ptr %a, i32 %a.len0) {
 entry:
-  %tN = getelementptr { i16 }, ptr %s, i32 0, i32 0
+  %tN = getelementptr %procir.Shape, ptr %s, i32 0, i32 0
   %tN = load i16, ptr %tN
   %tN = trunc i32 %a.len0 to i16
   %tN = add i16 %tN, %tN
@@ -115,7 +115,7 @@ clang accepted i686-unknown-linux-gnu
 @procir.f = global ptr zeroinitializer
 @procir.ins = global ptr zeroinitializer
 @procir.act = global ptr zeroinitializer
-@procir.shape = global { i16 } zeroinitializer
+@procir.shape = global %procir.Shape zeroinitializer
 @procir.data = global [3 x i16] zeroinitializer
 @procir.n = global i16 zeroinitializer
 @procir.Shape.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
@@ -144,7 +144,7 @@ LN:
 }
 define i16 @procir.Inspect(ptr %s, ptr %s.tag, ptr %a, i64 %a.len0) {
 entry:
-  %tN = getelementptr { i16 }, ptr %s, i32 0, i32 0
+  %tN = getelementptr %procir.Shape, ptr %s, i32 0, i32 0
   %tN = load i16, ptr %tN
   %tN = trunc i64 %a.len0 to i32
   %tN = trunc i32 %tN to i16

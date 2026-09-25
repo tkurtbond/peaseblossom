@@ -2,8 +2,11 @@
 target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"
 target triple = "i686-unknown-linux-gnu"
 
+%typedesc.Ring = type { [3 x ptr], %typedesc.Inner, i8 }
+%typedesc.Inner = type { ptr, i16 }
+
 @typedesc.root = global ptr zeroinitializer
-@typedesc.ring = global { [3 x ptr], { ptr, i16 }, i8 } zeroinitializer
+@typedesc.ring = global %typedesc.Ring zeroinitializer
 @typedesc.Node.tdesc = constant { [2 x ptr], i32, i32, i32, [1 x ptr], [2 x i32] } {
   [2 x ptr] [ptr @typedesc.Node.Area, ptr @typedesc.Node.Draw],
   i32 12,
@@ -141,8 +144,11 @@ clang accepted i686-unknown-linux-gnu
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+%typedesc.Ring = type { [3 x ptr], %typedesc.Inner, i8 }
+%typedesc.Inner = type { ptr, i16 }
+
 @typedesc.root = global ptr zeroinitializer
-@typedesc.ring = global { [3 x ptr], { ptr, i16 }, i8 } zeroinitializer
+@typedesc.ring = global %typedesc.Ring zeroinitializer
 @typedesc.Node.tdesc = constant { [2 x ptr], i64, i64, i64, [1 x ptr], [2 x i64] } {
   [2 x ptr] [ptr @typedesc.Node.Area, ptr @typedesc.Node.Draw],
   i64 24,

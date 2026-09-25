@@ -2,6 +2,8 @@
 target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"
 target triple = "i686-unknown-linux-gnu"
 
+%system.Pair = type { i16, i16 }
+
 @system.addr = global i32 zeroinitializer
 @system.other = global i32 zeroinitializer
 @system.i = global i16 zeroinitializer
@@ -22,7 +24,7 @@ target triple = "i686-unknown-linux-gnu"
 @system.buf = global [16 x i8] zeroinitializer
 @system.ints = global [8 x i16] zeroinitializer
 @system.more = global [8 x i16] zeroinitializer
-@system.pair = global { i16, i16 } zeroinitializer
+@system.pair = global %system.Pair zeroinitializer
 declare void @write(i32, ptr, i64)
 @system.Pair.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
   [0 x ptr] [],
@@ -450,13 +452,13 @@ L56:
 L57:
   br label %L53
 L53:
-  %t186 = getelementptr { i16, i16 }, ptr @system.pair, i32 0, i32 0
+  %t186 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
   %t187 = sext i8 5 to i16
   store i16 %t187, ptr %t186
-  %t188 = getelementptr { i16, i16 }, ptr @system.pair, i32 0, i32 1
+  %t188 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
   %t189 = sext i8 6 to i16
   store i16 %t189, ptr %t188
-  %t190 = getelementptr { i16, i16 }, ptr @system.pair, i32 0, i32 1
+  %t190 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
   %t191 = ptrtoint ptr %t190 to i32
   %t192 = inttoptr i32 %t191 to ptr
   %t193 = load i16, ptr %t192, align 1
@@ -475,9 +477,9 @@ L59:
 L60:
   br label %L58
 L58:
-  %t201 = getelementptr { i16, i16 }, ptr @system.pair, i32 0, i32 1
+  %t201 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
   %t202 = ptrtoint ptr %t201 to i32
-  %t203 = getelementptr { i16, i16 }, ptr @system.pair, i32 0, i32 0
+  %t203 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
   %t204 = ptrtoint ptr %t203 to i32
   %t205 = sub i32 %t202, %t204
   %t206 = sext i16 2 to i32
@@ -1285,6 +1287,8 @@ clang accepted i686-unknown-linux-gnu
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+%system.Pair = type { i16, i16 }
+
 @system.addr = global i64 zeroinitializer
 @system.other = global i64 zeroinitializer
 @system.i = global i16 zeroinitializer
@@ -1305,7 +1309,7 @@ target triple = "x86_64-unknown-linux-gnu"
 @system.buf = global [16 x i8] zeroinitializer
 @system.ints = global [8 x i16] zeroinitializer
 @system.more = global [8 x i16] zeroinitializer
-@system.pair = global { i16, i16 } zeroinitializer
+@system.pair = global %system.Pair zeroinitializer
 declare void @write(i32, ptr, i64)
 @system.Pair.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
   [0 x ptr] [],
@@ -1733,13 +1737,13 @@ L56:
 L57:
   br label %L53
 L53:
-  %t186 = getelementptr { i16, i16 }, ptr @system.pair, i32 0, i32 0
+  %t186 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
   %t187 = sext i8 5 to i16
   store i16 %t187, ptr %t186
-  %t188 = getelementptr { i16, i16 }, ptr @system.pair, i32 0, i32 1
+  %t188 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
   %t189 = sext i8 6 to i16
   store i16 %t189, ptr %t188
-  %t190 = getelementptr { i16, i16 }, ptr @system.pair, i32 0, i32 1
+  %t190 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
   %t191 = ptrtoint ptr %t190 to i64
   %t192 = inttoptr i64 %t191 to ptr
   %t193 = load i16, ptr %t192, align 1
@@ -1758,9 +1762,9 @@ L59:
 L60:
   br label %L58
 L58:
-  %t201 = getelementptr { i16, i16 }, ptr @system.pair, i32 0, i32 1
+  %t201 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
   %t202 = ptrtoint ptr %t201 to i64
-  %t203 = getelementptr { i16, i16 }, ptr @system.pair, i32 0, i32 0
+  %t203 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
   %t204 = ptrtoint ptr %t203 to i64
   %t205 = sub i64 %t202, %t204
   %t206 = sext i16 2 to i64

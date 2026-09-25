@@ -2,13 +2,16 @@ semantic OK, wrote arrrec.ll
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+%arrrec.Point = type { i16, i16 }
+%arrrec.Line = type { %arrrec.Point, %arrrec.Point }
+
 @arrrec.v = global [3 x i16] zeroinitializer
 @arrrec.v2 = global [3 x i16] zeroinitializer
 @arrrec.g = global [2 x [3 x i16]] zeroinitializer
-@arrrec.p = global { i16, i16 } zeroinitializer
-@arrrec.p2 = global { i16, i16 } zeroinitializer
-@arrrec.ln = global { { i16, i16 }, { i16, i16 } } zeroinitializer
-@arrrec.pa = global [3 x { i16, i16 }] zeroinitializer
+@arrrec.p = global %arrrec.Point zeroinitializer
+@arrrec.p2 = global %arrrec.Point zeroinitializer
+@arrrec.ln = global %arrrec.Line zeroinitializer
+@arrrec.pa = global [3 x %arrrec.Point] zeroinitializer
 @arrrec.sum = global i16 zeroinitializer
 @arrrec.i = global i16 zeroinitializer
 @arrrec.j = global i16 zeroinitializer
@@ -231,56 +234,56 @@ L31:
   %t88 = load i16, ptr %t87
   %t89 = add i16 %t79, %t88
   store i16 %t89, ptr @arrrec.sum
-  %t90 = getelementptr { i16, i16 }, ptr @arrrec.p, i32 0, i32 0
+  %t90 = getelementptr %arrrec.Point, ptr @arrrec.p, i32 0, i32 0
   %t91 = sext i8 5 to i16
   store i16 %t91, ptr %t90
-  %t92 = getelementptr { i16, i16 }, ptr @arrrec.p, i32 0, i32 1
+  %t92 = getelementptr %arrrec.Point, ptr @arrrec.p, i32 0, i32 1
   %t93 = sext i8 7 to i16
   store i16 %t93, ptr %t92
-  %t94 = load { i16, i16 }, ptr @arrrec.p
-  store { i16, i16 } %t94, ptr @arrrec.p2
-  %t95 = getelementptr { i16, i16 }, ptr @arrrec.p2, i32 0, i32 0
+  %t94 = load %arrrec.Point, ptr @arrrec.p
+  store %arrrec.Point %t94, ptr @arrrec.p2
+  %t95 = getelementptr %arrrec.Point, ptr @arrrec.p2, i32 0, i32 0
   %t96 = sext i8 100 to i16
   store i16 %t96, ptr %t95
   %t97 = load i16, ptr @arrrec.sum
-  %t98 = getelementptr { i16, i16 }, ptr @arrrec.p, i32 0, i32 0
+  %t98 = getelementptr %arrrec.Point, ptr @arrrec.p, i32 0, i32 0
   %t99 = load i16, ptr %t98
   %t100 = add i16 %t97, %t99
-  %t101 = getelementptr { i16, i16 }, ptr @arrrec.p2, i32 0, i32 0
+  %t101 = getelementptr %arrrec.Point, ptr @arrrec.p2, i32 0, i32 0
   %t102 = load i16, ptr %t101
   %t103 = add i16 %t100, %t102
   store i16 %t103, ptr @arrrec.sum
-  %t104 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
-  %t105 = getelementptr { i16, i16 }, ptr %t104, i32 0, i32 0
+  %t104 = getelementptr %arrrec.Line, ptr @arrrec.ln, i32 0, i32 0
+  %t105 = getelementptr %arrrec.Point, ptr %t104, i32 0, i32 0
   %t106 = sext i8 1 to i16
   store i16 %t106, ptr %t105
-  %t107 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
-  %t108 = getelementptr { i16, i16 }, ptr %t107, i32 0, i32 1
+  %t107 = getelementptr %arrrec.Line, ptr @arrrec.ln, i32 0, i32 0
+  %t108 = getelementptr %arrrec.Point, ptr %t107, i32 0, i32 1
   %t109 = sext i8 2 to i16
   store i16 %t109, ptr %t108
-  %t110 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
-  %t111 = getelementptr { i16, i16 }, ptr %t110, i32 0, i32 0
+  %t110 = getelementptr %arrrec.Line, ptr @arrrec.ln, i32 0, i32 1
+  %t111 = getelementptr %arrrec.Point, ptr %t110, i32 0, i32 0
   %t112 = sext i8 3 to i16
   store i16 %t112, ptr %t111
-  %t113 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
-  %t114 = getelementptr { i16, i16 }, ptr %t113, i32 0, i32 1
+  %t113 = getelementptr %arrrec.Line, ptr @arrrec.ln, i32 0, i32 1
+  %t114 = getelementptr %arrrec.Point, ptr %t113, i32 0, i32 1
   %t115 = sext i8 4 to i16
   store i16 %t115, ptr %t114
   %t116 = load i16, ptr @arrrec.sum
-  %t117 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
-  %t118 = getelementptr { i16, i16 }, ptr %t117, i32 0, i32 0
+  %t117 = getelementptr %arrrec.Line, ptr @arrrec.ln, i32 0, i32 0
+  %t118 = getelementptr %arrrec.Point, ptr %t117, i32 0, i32 0
   %t119 = load i16, ptr %t118
   %t120 = add i16 %t116, %t119
-  %t121 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 0
-  %t122 = getelementptr { i16, i16 }, ptr %t121, i32 0, i32 1
+  %t121 = getelementptr %arrrec.Line, ptr @arrrec.ln, i32 0, i32 0
+  %t122 = getelementptr %arrrec.Point, ptr %t121, i32 0, i32 1
   %t123 = load i16, ptr %t122
   %t124 = add i16 %t120, %t123
-  %t125 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
-  %t126 = getelementptr { i16, i16 }, ptr %t125, i32 0, i32 0
+  %t125 = getelementptr %arrrec.Line, ptr @arrrec.ln, i32 0, i32 1
+  %t126 = getelementptr %arrrec.Point, ptr %t125, i32 0, i32 0
   %t127 = load i16, ptr %t126
   %t128 = add i16 %t124, %t127
-  %t129 = getelementptr { { i16, i16 }, { i16, i16 } }, ptr @arrrec.ln, i32 0, i32 1
-  %t130 = getelementptr { i16, i16 }, ptr %t129, i32 0, i32 1
+  %t129 = getelementptr %arrrec.Line, ptr @arrrec.ln, i32 0, i32 1
+  %t130 = getelementptr %arrrec.Point, ptr %t129, i32 0, i32 1
   %t131 = load i16, ptr %t130
   %t132 = add i16 %t128, %t131
   store i16 %t132, ptr @arrrec.sum
@@ -303,8 +306,8 @@ L37:
   call void @exit(i32 2)
   unreachable
 L36:
-  %t141 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i16 %t137
-  %t142 = getelementptr { i16, i16 }, ptr %t141, i32 0, i32 0
+  %t141 = getelementptr [3 x %arrrec.Point], ptr @arrrec.pa, i32 0, i16 %t137
+  %t142 = getelementptr %arrrec.Point, ptr %t141, i32 0, i32 0
   %t143 = load i16, ptr @arrrec.i
   store i16 %t143, ptr %t142
   %t144 = load i16, ptr @arrrec.i
@@ -317,8 +320,8 @@ L39:
   call void @exit(i32 2)
   unreachable
 L38:
-  %t148 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i16 %t144
-  %t149 = getelementptr { i16, i16 }, ptr %t148, i32 0, i32 1
+  %t148 = getelementptr [3 x %arrrec.Point], ptr @arrrec.pa, i32 0, i16 %t144
+  %t149 = getelementptr %arrrec.Point, ptr %t148, i32 0, i32 1
   %t150 = load i16, ptr @arrrec.i
   %t151 = sext i8 2 to i16
   %t152 = mul i16 %t150, %t151
@@ -338,8 +341,8 @@ L41:
   call void @exit(i32 2)
   unreachable
 L40:
-  %t159 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i8 2
-  %t160 = getelementptr { i16, i16 }, ptr %t159, i32 0, i32 0
+  %t159 = getelementptr [3 x %arrrec.Point], ptr @arrrec.pa, i32 0, i8 2
+  %t160 = getelementptr %arrrec.Point, ptr %t159, i32 0, i32 0
   %t161 = load i16, ptr %t160
   %t162 = add i16 %t155, %t161
   %t163 = icmp sge i8 2, 0
@@ -351,8 +354,8 @@ L43:
   call void @exit(i32 2)
   unreachable
 L42:
-  %t166 = getelementptr [3 x { i16, i16 }], ptr @arrrec.pa, i32 0, i8 2
-  %t167 = getelementptr { i16, i16 }, ptr %t166, i32 0, i32 1
+  %t166 = getelementptr [3 x %arrrec.Point], ptr @arrrec.pa, i32 0, i8 2
+  %t167 = getelementptr %arrrec.Point, ptr %t166, i32 0, i32 1
   %t168 = load i16, ptr %t167
   %t169 = add i16 %t162, %t168
   store i16 %t169, ptr @arrrec.sum

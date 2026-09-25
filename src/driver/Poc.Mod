@@ -722,9 +722,9 @@ MODULE Poc;
     VAR s: ARRAY 512 OF CHAR;
   BEGIN
     Out.String(name);
-    LLVMTypes.TypeString(t, MemoryLayout.sizeModelO2, s);
+    LLVMTypes.TypeLiteral(t, MemoryLayout.sizeModelO2, s);
     Out.String(": O2="); Out.String(s);
-    LLVMTypes.TypeString(t, MemoryLayout.sizeModelOC, s);
+    LLVMTypes.TypeLiteral(t, MemoryLayout.sizeModelOC, s);
     Out.String(" OC="); Out.String(s);
     Out.Ln
   END PrintLLVMTypeLine;
