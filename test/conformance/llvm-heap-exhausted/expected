@@ -1,0 +1,48 @@
+== -O2 (default) case 0
+1000 records, NEW gave NIL after more than 1000 records
+exit=0
+== -O2 (default) case 1
+open array NEW gave NIL
+exit=0
+== -O2 (default) case 2
+SYSTEM.NEW gave NIL
+exit=0
+== -O2 (default) case 3
+a small NEW works: 7
+exit=0
+== -O2 -trap-heap-exhausted case 0
+1000 records, heap exhausted: NEW cannot allocate the block
+exit=11
+== -O2 -trap-heap-exhausted case 1
+heap exhausted: NEW cannot allocate the block
+exit=11
+== -O2 -trap-heap-exhausted case 2
+heap exhausted: NEW cannot allocate the block
+exit=11
+== -O2 -trap-heap-exhausted case 3
+a small NEW works: 7
+exit=0
+== -OC (default) case 0
+1000 records, NEW gave NIL after more than 1000 records
+exit=0
+== -OC (default) case 1
+open array NEW gave NIL
+exit=0
+== -OC (default) case 2
+SYSTEM.NEW gave NIL
+exit=0
+== -OC (default) case 3
+a small NEW works: 7
+exit=0
+== -OC -trap-heap-exhausted case 0
+1000 records, heap exhausted: NEW cannot allocate the block
+exit=11
+== -OC -trap-heap-exhausted case 1
+heap exhausted: NEW cannot allocate the block
+exit=11
+== -OC -trap-heap-exhausted case 2
+heap exhausted: NEW cannot allocate the block
+exit=11
+== -OC -trap-heap-exhausted case 3
+a small NEW works: 7
+exit=0

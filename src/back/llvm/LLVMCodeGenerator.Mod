@@ -187,6 +187,12 @@ MODULE LLVMCodeGenerator;
        executable that quietly does less than its source says. Reset at the
        start of every GenerateProgram. *)
     unsupportedCount*: INTEGER;
+    (* poc -trap-heap-exhausted (Phase 11 A13, decided with the user
+       2026-09-25): a NEW or SYSTEM.NEW the heap cannot satisfy stops the
+       program (heapTrapMsg, status heapTrapExitCode) instead of leaving the
+       pointer NIL, as voc and poc do by default. Set before GenerateProgram;
+       FALSE leaves the IR as it was without the switch. *)
+    trapHeapExhausted*: BOOLEAN;
 
   CONST
     (* PLAN.md Phase 8 step 13: two, not one - confirmed against real
@@ -280,6 +286,12 @@ MODULE LLVMCodeGenerator;
     assertTrapMsg = "assertion failed";
     assertTrapExitCode = 10;
     noAssertCode = 256; (* Codegen.assertCodes' index for ASSERT(x) *)
+    (* see trapHeapExhausted: GarbageCollectedHeap.Allocate answered 0 - no
+       room even after a collection, or a single block larger than the heap
+       takes *)
+    heapTrapGlobal = "@.trap.heap";
+    heapTrapMsg = "heap exhausted: NEW cannot allocate the block";
+    heapTrapExitCode = 11;
 
     (* the most open dimensions (ARRAY OF ARRAY OF ... T) one designator
        may carry lengths for - see DopeVector *)
@@ -555,6 +567,7 @@ MODULE LLVMCodeGenerator;
       (* which ASSERT failure messages the program uses: one per code 0..255,
          and noAssertCode for ASSERT(x) *)
       assertCodes: ARRAY noAssertCode + 1 OF BOOLEAN;
+      needHeapTrap: BOOLEAN; (* some NEW checks its result: trapHeapExhausted *)
       narrowings: Narrowing;
       arrayDescs: ArrayDescEntry;
       lateRecords: TypeDescEntry;
@@ -4017,6 +4030,23 @@ MODULE LLVMCodeGenerator;
      message). @exit is already guaranteed declared by
      EmitRuntimeSupport (step 9, unconditional for every module), so
      this can call it directly. *)
+  (* After a call of GarbageCollectedHeap.Allocate whose result is
+     allocated: with -trap-heap-exhausted, stop the program when it is 0.
+     Without it, nothing - the 0 becomes a NIL pointer. *)
+  PROCEDURE EmitHeapCheck(VAR w: Files.Rider; VAR cg: Codegen; allocated, wordInt: ARRAY OF CHAR);
+    VAR failed, okLabel, trapLabel: ValueText;
+  BEGIN
+    IF trapHeapExhausted THEN
+      cg.needHeapTrap := TRUE;
+      EmitBinOp(w, cg, "icmp eq", wordInt, allocated, "0", failed);
+      NewLabel(cg, okLabel); NewLabel(cg, trapLabel);
+      EmitCondBr(w, failed, trapLabel, okLabel);
+      EmitLabel(w, cg, trapLabel);
+      EmitTrap(w, cg, heapTrapGlobal, heapTrapMsg, heapTrapExitCode);
+      EmitLabel(w, cg, okLabel)
+    END
+  END EmitHeapCheck;
+
   (* The global and the text of the message a failed ASSERT with this code
      (noAssertCode for none) writes. *)
   PROCEDURE AssertTrapMessage(code: INTEGER; VAR global, msg: ARRAY OF CHAR);
@@ -4443,6 +4473,7 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, "  "); WriteStr(w, allocated); WriteStr(w, " = call "); WriteStr(w, wordInt);
     WriteStr(w, " @GarbageCollectedHeap.Allocate("); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, size);
     WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, tagText); WriteStr(w, ")"); WriteLn(w);
+    EmitHeapCheck(w, cg, allocated, wordInt);
     EmitConvert(w, cg, "inttoptr", wordInt, allocated, "ptr", pointer);
     (* only a block that exists has a header to fill in *)
     EmitBinOp(w, cg, "icmp ne", wordInt, allocated, "0", nonNull);
@@ -4524,7 +4555,8 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, tagText); WriteStr(w, ")"); WriteLn(w);
     (* a heap that cannot satisfy the request answers 0, which becomes NIL:
        as in voc, NEW does not trap, the program finds a NIL pointer (or
-       the NIL check on its first use does) *)
+       the NIL check on its first use does) - unless -trap-heap-exhausted *)
+    EmitHeapCheck(w, cg, allocated, wordInt);
     EmitConvert(w, cg, "inttoptr", wordInt, allocated, "ptr", pointer);
     WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
   END GenerateNew;
@@ -4673,6 +4705,7 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, "  "); WriteStr(w, allocated); WriteStr(w, " = call "); WriteStr(w, wordInt);
     WriteStr(w, " @GarbageCollectedHeap.Allocate("); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, size);
     WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " 0)"); WriteLn(w);
+    EmitHeapCheck(w, cg, allocated, wordInt);
     EmitConvert(w, cg, "inttoptr", wordInt, allocated, "ptr", pointer);
     WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
   END GenerateSystemNew;
@@ -6365,6 +6398,7 @@ MODULE LLVMCodeGenerator;
     IF cg.needLengthTrap THEN EmitTrapMessageGlobal(w, lengthTrapGlobal, lengthTrapMsg) END;
     IF cg.needEntierTrap THEN EmitTrapMessageGlobal(w, entierTrapGlobal, entierTrapMsg) END;
     IF cg.needArrayAssignTrap THEN EmitTrapMessageGlobal(w, arrayAssignTrapGlobal, arrayAssignTrapMsg) END;
+    IF cg.needHeapTrap THEN EmitTrapMessageGlobal(w, heapTrapGlobal, heapTrapMsg) END;
     IF cg.usedAllocate & ~cg.heapPresent THEN
       WordIntType(wordInt);
       WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");
@@ -6531,7 +6565,7 @@ MODULE LLVMCodeGenerator;
     cg.currentBlock[0] := 0X;
     cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
     cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE; cg.needEntierTrap := FALSE;
-    cg.needArrayAssignTrap := FALSE;
+    cg.needArrayAssignTrap := FALSE; cg.needHeapTrap := FALSE;
     FOR i := 0 TO noAssertCode DO cg.assertCodes[i] := FALSE END;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
     cg.heapPresent := withHeap;

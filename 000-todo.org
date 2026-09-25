@@ -51,7 +51,8 @@ Phase 11 step 3 (2026-09-21): an integer constant next to an INT8 in + - * DIV M
 ** DONE CASE on an INT8 selector under -OC produced invalid IR, and a CASE label outside its selector type's range was accepted.
 Found 2026-09-21 by llvm-system-int8-constants: the label constants are at least two bytes under -OC and were sign-extended to a one-byte selector (clang: invalid cast opcode).  Labels are now checked against the selector type's range (voc's error 60, "wrong type of case label"; voc looks only at a range's low end, poc at both) and narrowed with trunc.  Under -O2 it also catches CASE s OF 200 for a one-byte SHORTINT, which failed the same way in clang.  Fixture semantic-case-label-range.
 ** TODO Should poc reject a constant NEW length of <= 0 at compile time.
-** TODO Add command line option to poc to have NEW on an exhaused heap trap.
+** DONE Add command line option to poc to have NEW on an exhaused heap trap.
+Done 2026-09-25 (user chose the proposed defaults): `poc -trap-heap-exhausted`, off by default; with it NEW, NEW(p, n, ...) and SYSTEM.NEW that the heap cannot satisfy stop the program with "heap exhausted: NEW cannot allocate the block", exit status 11 (LLVMCodeGenerator.EmitHeapCheck; fixture llvm-heap-exhausted).  Original text follows.
 Decided 2026-09-20: a compiler switch chooses between leaving the pointer NIL (today, and voc's behavior) and exiting with a failure status and a text message saying the heap is exhausted.  Still to settle: the switch's name, its default (NIL is the conservative one), the exit status and the wording.  (doc/phase-11-inventory.md A13.)
 ** TODO Can poc garbage collection do better than conservatively scanning the stack?
 ** TODO Add debugging support, so one can debug poc produced code in gdb or lldb.

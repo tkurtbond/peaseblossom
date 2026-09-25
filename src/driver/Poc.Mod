@@ -886,7 +886,10 @@ MODULE Poc;
     Out.String("       SIZE(T)/MAX(T)/MIN(T)"); Out.Ln;
     Out.String("       for that target's word size (default: no effect, no clang needed)"); Out.Ln;
     Out.String("       -o <exe> may precede -build, giving the executable's output path"); Out.Ln;
-    Out.String("       (required - -build has no default)"); Out.Ln
+    Out.String("       (required - -build has no default)"); Out.Ln;
+    Out.String("       -trap-heap-exhausted may precede -emit-llvm-ir or -build: a NEW"); Out.Ln;
+    Out.String("       the heap cannot satisfy stops the program (exit status 11)"); Out.Ln;
+    Out.String("       instead of leaving the pointer NIL"); Out.Ln
   END Usage;
 
   (* IMPORT search-path CLI surface (PLAN.md's "Open design questions" -
@@ -1003,6 +1006,10 @@ MODULE Poc;
           INC(i)
         ELSIF arg = "-OC" THEN
           ConstantEvaluator.SetSizeModel(MemoryLayout.sizeModelOC);
+          INC(i)
+        ELSIF arg = "-trap-heap-exhausted" THEN
+          (* Phase 11 A13: a NEW the heap cannot satisfy stops the program *)
+          LLVMCodeGenerator.trapHeapExhausted := TRUE;
           INC(i)
         (* PLAN.md Phase 8 step 2: -target/-o are flags, not commands,
            consumed by -emit-llvm-ir/-build the same way -output-dir is -

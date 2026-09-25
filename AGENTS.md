@@ -225,7 +225,8 @@ fits.
 ### Pointers, `NEW` and the runtime (implemented, Phase 9 step 5)
 
 Every dereference is checked for NIL (exit 4). A `NEW` that fails leaves the
-pointer NIL. `&` and `OR` short-circuit. `NEW` pulls in
+pointer NIL, unless poc is given `-trap-heap-exhausted`, which makes it trap
+(exit 11). `&` and `OR` short-circuit. `NEW` pulls in
 `GarbageCollectedHeap`/`ModuleTable` from the import path.
 
 ### Type-bound procedures and `VAR` record parameters (implemented, Phase 9 step 6)
@@ -269,7 +270,7 @@ array is never an assignment target. An open source that is too long traps
 
 ### What traps, and what does not (Phase 11 C9)
 
-The tables of trap statuses 2-10, what ends a program silently, what nothing
+The tables of trap statuses 2-11, what ends a program silently, what nothing
 stops, and what is a compile-time error.
 
 ### ASSERT (decided and implemented, 2026-09-25)

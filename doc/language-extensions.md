@@ -200,8 +200,13 @@ has the full account; all probed against real voc 2026-09-19):
   voc says "NIL access" (Halt(-10)); the report is silent on them, and
   poc matches voc's behavior. A failed guard exits 5 and a `WITH` with no
   matching branch and no `ELSE` exits 6. A `NEW` the heap cannot satisfy
-  is **not** a trap: the pointer is left NIL, as in voc, and the next
-  dereference traps. Only the *behavior* matches voc's; the exit statuses
+  is **not** a trap by default: the pointer is left NIL, as in voc, and the
+  next dereference traps. **`poc -trap-heap-exhausted`** (Phase 11 A13, user
+  2026-09-25) makes it one instead: `NEW`, `NEW(p, n, ...)` and `SYSTEM.NEW`
+  then stop the program with "heap exhausted: NEW cannot allocate the block",
+  exit status 11 - when there is no room even after a collection, or a single
+  block is larger than the heap takes (`llvm-heap-exhausted`). The switch is
+  off by default; without it the IR is unchanged. voc has no such switch. Only the *behavior* matches voc's; the exit statuses
   are poc's own numbering (voc's Halt codes come out as 246 for NIL, 251
   for a failed guard, 249 for `WITH`).
 - **`&` and `OR` always short-circuit** (Appendix A requires it; poc kept
@@ -540,6 +545,7 @@ exactly these. Each status is pinned by a fixture.
 | 8 | `ENTIER` of a value that does not fit a `LONGINT`, an infinity or a NaN (`llvm-entier-trap`) | `ENTIER argument out of range for LONGINT` | none: wraps |
 | 9 | An open array assigned to a fixed array with fewer elements (`llvm-array-assign-trap`) | `open array assigned to an array too short for it` | Halt(-2), 254 |
 | 10 | A failed `ASSERT(x)` or `ASSERT(x, n)` (`llvm-assert`) | `assertion failed`, or `assertion failed (n)` | "Assertion failure." and " ASSERT code n."; exit `n`, 255 for none or 0 |
+| 11 | With `-trap-heap-exhausted` only: `NEW`, `NEW(p, n, ...)` or `SYSTEM.NEW` the heap cannot satisfy (`llvm-heap-exhausted`) | `heap exhausted: NEW cannot allocate the block` | no switch: the pointer is NIL |
 
 **What ends the program without a message, or not at all.** Nothing says what
 happened; deliberate (C6) where noted.
@@ -550,7 +556,7 @@ happened; deliberate (C6) where noted.
 | Unbounded recursion; a frame or a value open-array parameter larger than the stack | `SIGSEGV`, status 139, no message | how much fits is the host's stack limit (`ulimit -s`: 8 MB on Linux, 4 MB on OpenBSD and NetBSD, 1 GB on the FreeBSD VM, where a 400 MB local and a 300 MB value parameter both succeeded); a value open-array parameter is copied into the callee's frame, so each level costs `LEN` bytes. voc: same. `llvm-no-trap-behavior` case 12 |
 | `SYSTEM.GET`/`PUT`/`MOVE` at an address that is not mapped | `SIGSEGV`, status 139 | voc's handler turns it into "NIL access" (Halt(-10), 246). `llvm-no-trap-behavior` case 11 |
 | `HALT(n)` | exit status `n`, silent (C6) | `n` is a constant in **0..255**, anything else is a compile-time error (as voc's err 218): the status keeps only its low 8 bits on every host poc runs on (C `exit(30000)` is 48, `exit(256)` is 0 - success - and `exit(-1)` is 255, checked on Linux, OpenBSD, NetBSD and FreeBSD 2026-09-21), while Windows keeps 32 (a `DWORD`). The report leaves the meaning of `n` to the system. VMS is different again, see `000-todo.org`. voc prints "Terminated by Halt(n)". `llvm-predeclared-halt`, `llvm-no-trap-behavior` |
-| `NEW` the heap cannot satisfy | the pointer is NIL, no message; the next dereference is trap 4 | as in voc; a switch is A13. Which requests "cannot" be satisfied depends on the size model and the machine's limits: `NEW(p, MAX(LONGINT))` of 4-byte elements under `-OC` overflows the address space (trap 7), under `-O2` it asks for 8 GB, which was NIL under a 1.2 GB address-space limit |
+| `NEW` the heap cannot satisfy | the pointer is NIL, no message; the next dereference is trap 4 | as in voc, and the default; `-trap-heap-exhausted` makes it trap 11 instead. Which requests "cannot" be satisfied depends on the size model and the machine's limits: `NEW(p, MAX(LONGINT))` of 4-byte elements under `-OC` overflows the address space (trap 7), under `-O2` it asks for 8 GB, which was NIL under a 1.2 GB address-space limit |
 
 **What nothing stops.** The program goes on with a value; the second column is
 what that value is.

@@ -709,6 +709,9 @@ as it stands when the phase starts, and adds what it finds):
      option table), or a run-time setting in `GarbageCollectedHeap`.
      Implement the one chosen; the trap gets its own exit status and text,
      documented next to the existing ones.
+     **Done 2026-09-25**: `-trap-heap-exhausted` (compile-time, off by
+     default), exit status 11, "heap exhausted: NEW cannot allocate the
+     block"; fixture `llvm-heap-exhausted`.
    - *`ASSERT`.* Resolve the open question with its own survey already in
      hand (every dialect adds one; the dominant form is `ASSERT(x)` and
      `ASSERT(x, n)`, `n` an implementation-defined code; voc gates it
