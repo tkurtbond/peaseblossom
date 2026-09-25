@@ -1,6 +1,6 @@
 # Peaseblossom - poc (Peaseblossom Oberon Compiler)
 
-This software is developed with the aid of LLM AI.
+This software is developed with the aid of AI.
 
 This is a project to develop an Oberon-2 compiler.
 
