@@ -1,0 +1,3 @@
+strict.mod:3:30: error: a record field initializer is not in the Oberon-2 report (-strict)
+strict.mod:4:46: error: a record field initializer is not in the Oberon-2 report (-strict)
+2 error(s)

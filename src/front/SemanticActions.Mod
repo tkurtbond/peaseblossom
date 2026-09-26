@@ -105,6 +105,16 @@ MODULE SemanticActions;
      without creating that cycle, so it supplies the actual adapter. *)
   TYPE ParseModuleProc* = PROCEDURE(buffer: Lexer.CharBuffer; length: LONGINT): SyntaxTree.ModuleNode;
 
+  (* Phase 11 D17: a record field whose initializer is still to be checked,
+     in the scope its record was declared in *)
+  TYPE
+    PendingField = POINTER TO PendingFieldDesc;
+    PendingFieldDesc = RECORD
+      field: Types.Field;
+      scope: SymbolTable.Scope;
+      next: PendingField
+    END;
+
   (* PLAN.md Phase 7: the one shared qualified-name lookup every
      qualifier-bearing site (ResolveQualidentType, CheckDesignator,
      LookupBareTypeName, CheckWithGuard's variable and type qualifiers)
@@ -132,6 +142,13 @@ MODULE SemanticActions;
        found among them gets a message saying why it cannot be used yet.
        Saved/restored around each procedure, whose own DeclSeq sets it. *)
     laterTypes: SyntaxTree.TypeDeclNode;
+    (* Phase 11 D17: the record fields with initializers that the
+       declarations CheckDeclarations is checking have declared, to be
+       checked once all of those declarations are (CheckFieldInitializers).
+       Saved/restored around each procedure's own DeclSeq; collectFields is
+       FALSE while OpenProcedureBodyScope reopens an already checked one. *)
+    pendingFields: PendingField;
+    collectFields: BOOLEAN;
     (* PLAN.md Phase 9 step 6: set by every CheckDesignator call - TRUE
        when the designator is a VAR parameter (a type-bound procedure's VAR
        receiver included), possibly under type guards but with no
@@ -386,6 +403,7 @@ MODULE SemanticActions;
     VAR f: SyntaxTree.FieldListNode;
   BEGIN
     NEW(f); f.names := names; f.type := type; f.next := NIL;
+    f.initializers := NIL; f.initializerLine := 0; f.initializerColumn := 0; f.copiesArray := FALSE;
     f.line := line; f.column := column;
     RETURN f
   END NewFieldList;
@@ -874,11 +892,16 @@ MODULE SemanticActions;
       fieldType: Types.Type;
       idents: SyntaxTree.IdentDefNode;
       addedField: Types.Field;
+      value: SyntaxTree.ExprNode;
+      pending: PendingField;
   BEGIN
+    rec.declScope := scope;
+    rec.needsInit := (rec.baseType # NIL) & (rec.baseType IS Types.RecordType)
+                     & rec.baseType(Types.RecordType).needsInit;
     fieldList := node.fields;
     WHILE fieldList # NIL DO
       fieldType := ResolveType(scope, fieldList.type, FALSE);
-      idents := fieldList.names;
+      idents := fieldList.names; value := fieldList.initializers;
       WHILE idents # NIL DO
         (* record fields legitimately allow the '-' read-only export mark
            (Appendix A/the Trees example's Node.name-) - unlike
@@ -888,6 +911,20 @@ MODULE SemanticActions;
                                       idents.exportMark # SyntaxTree.exportNone,
                                       idents.exportMark = SyntaxTree.exportReadOnly,
                                       idents.line, idents.column);
+        addedField.fieldList := fieldList;
+        IF fieldList.initializerLine # 0 THEN
+          (* Phase 11 D17: this field's own copy of the initializer; none
+             in a .sym file ("f: T := ..") *)
+          addedField.hasInitializer := TRUE; addedField.initializer := value;
+          IF value # NIL THEN
+            IF collectFields THEN
+              NEW(pending); pending.field := addedField; pending.scope := scope;
+              pending.next := pendingFields; pendingFields := pending
+            END;
+            value := value.next
+          END
+        END;
+        IF addedField.hasInitializer OR Types.NeedsInit(fieldType) THEN rec.needsInit := TRUE END;
         idents := idents.next
       END;
       fieldList := fieldList.next
@@ -907,7 +944,7 @@ MODULE SemanticActions;
     baseType := ResolveRecordBaseType(scope, node);
     rec := Types.NewRecordType(baseType);
     COPY(currentModuleName, rec.moduleName);
-    IF scope.outer = SymbolTable.Universe THEN NameRecordType(rec, obj.name) END;
+    IF scope.outer = SymbolTable.Universe THEN NameRecordType(rec, obj.name); COPY(obj.name, rec.initPath) END;
     obj.type := rec; obj.pendingTypeNode := NIL;
     PopulateRecordFields(rec, node, scope);
     RETURN rec
@@ -935,7 +972,7 @@ MODULE SemanticActions;
         anonBase := base(Types.RecordType);
         IF anonBase.name[0] = 0X THEN
           COPY(obj.name, baseName); AppendBaseSuffix(baseName);
-          NameRecordType(anonBase, baseName)
+          NameRecordType(anonBase, baseName); COPY(baseName, anonBase.initPath)
         END
       END;
       obj.resolving := FALSE;
@@ -1232,13 +1269,63 @@ MODULE SemanticActions;
      (ResolveOneConstDecl/ResolveOneTypeDecl/ResolveOneVarDecl), even
      though the real work is just the existing FindLocal + ResolveNamedType
      pair. *)
+  (* Phase 11 D17: gives every record of this module reached from the
+     module-level TYPE declaration named path through anonymous types -
+     the declared record itself, a pointer's base, an array's element, a
+     field's type - its Types.RecordTypeDesc.initPath: "T", "P.base",
+     "A.element", "T.f". A module that imports the type reads the same
+     declaration from the .sym file and so names the same records alike,
+     which lets it call their initialization procedures. A record with a
+     path already (a named one, reached from another declaration) ends the
+     walk, except the declared record itself; so does a path too long for
+     an identifier, which leaves what is below it unnamed (the backend
+     then cannot initialize such a record from another module). *)
+  PROCEDURE NameInitPaths(t: Types.Type; path: SyntaxTree.Ident);
+    VAR rec: Types.RecordType; f: Types.Field; inner: SyntaxTree.Ident;
+
+    (* inner := path "." suffix; FALSE if that does not fit *)
+    PROCEDURE Extend(suffix: ARRAY OF CHAR): BOOLEAN;
+      VAR i, k: INTEGER;
+    BEGIN
+      inner := path; i := 0;
+      WHILE inner[i] # 0X DO INC(i) END;
+      k := 0;
+      WHILE suffix[k] # 0X DO INC(k) END;
+      IF i + 1 + k >= LEN(inner) THEN RETURN FALSE END;
+      inner[i] := "."; INC(i); k := 0;
+      WHILE suffix[k] # 0X DO inner[i] := suffix[k]; INC(i); INC(k) END;
+      inner[i] := 0X;
+      RETURN TRUE
+    END Extend;
+
+  BEGIN
+    IF t = NIL THEN RETURN END;
+    IF t IS Types.RecordType THEN
+      rec := t(Types.RecordType);
+      IF rec.moduleName # currentModuleName THEN RETURN END;
+      IF rec.initPath[0] = 0X THEN rec.initPath := path END;
+      IF rec.initPath = path THEN
+        f := rec.fields;
+        WHILE f # NIL DO
+          IF Extend(f.name) THEN NameInitPaths(f.type, inner) END;
+          f := f.next
+        END
+      END
+    ELSIF t IS Types.ArrayType THEN
+      IF Extend("element") THEN NameInitPaths(t(Types.ArrayType).elementType, inner) END
+    ELSIF t IS Types.PointerType THEN
+      IF Extend("base") THEN NameInitPaths(t(Types.PointerType).base, inner) END
+    END
+  END NameInitPaths;
+
   PROCEDURE ResolveOneTypeDecl(d: SyntaxTree.TypeDeclNode; scope: SymbolTable.Scope);
     VAR obj: SymbolTable.Object; resolved: Types.Type;
   BEGIN
     CheckExportMark(d.name); (* deferred from PredeclareTypeNames - see its
                                  own comment on why *)
     obj := SymbolTable.FindLocal(scope, d.name.name);
-    resolved := ResolveNamedType(scope, obj)
+    resolved := ResolveNamedType(scope, obj);
+    IF scope.outer = SymbolTable.Universe THEN NameInitPaths(resolved, d.name.name) END
   END ResolveOneTypeDecl;
 
   (* Resolves one VAR declaration (one comma-separated name group sharing
@@ -3059,10 +3146,12 @@ MODULE SemanticActions;
      anything that procedure could see. *)
   PROCEDURE OpenProcedureBodyScope*(d: SyntaxTree.ProcDeclNode; outer: SymbolTable.Scope;
                                     receiverType: Types.Type; pt: Types.ProcedureType): SymbolTable.Scope;
-    VAR bodyScope: SymbolTable.Scope;
+    VAR bodyScope: SymbolTable.Scope; savedCollect: BOOLEAN;
   BEGIN
     bodyScope := OpenParameterScope(d, outer, receiverType, pt);
+    savedCollect := collectFields; collectFields := FALSE; (* checked already *)
     IF d.declarations # NIL THEN ResolveDeclSeq(d.declarations, bodyScope) END;
+    collectFields := savedCollect;
     RETURN bodyScope
   END OpenProcedureBodyScope;
 
@@ -3187,13 +3276,74 @@ MODULE SemanticActions;
      each procedure's body is checked before any declaration that follows it
      exists. Each run of CONST/TYPE/VAR declarations between procedures
      predeclares its own TYPE names first (PredeclareTypeNames). *)
+  (* message is "<name>" followed by rest *)
+  PROCEDURE ReportNamed(line, column: INTEGER; name: SyntaxTree.Ident; rest: ARRAY OF CHAR);
+    VAR message: ARRAY 400 OF CHAR; i, j: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE name[i] # 0X DO message[i] := name[i]; INC(i) END;
+    j := 0;
+    WHILE (rest[j] # 0X) & (i < LEN(message) - 1) DO message[i] := rest[j]; INC(i); INC(j) END;
+    message[i] := 0X;
+    Diagnostics.Error(line, column, message)
+  END ReportNamed;
+
+  (* Phase 11 D17: a record field's initializer, like an assignment to the
+     field. It runs whenever a record of its type is made, outside any
+     procedure, so it can use what was declared before its ":=" (in the
+     record's own scope) except a procedure's variables and procedures. *)
+  PROCEDURE CheckFieldInitializer(pending: PendingField);
+    VAR
+      field: Types.Field; list: SyntaxTree.FieldListNode; srcType: Types.Type;
+      later, local: SymbolTable.Object;
+  BEGIN
+    field := pending.field; list := field.fieldList;
+    SymbolTable.limitScope := pending.scope;
+    SymbolTable.limitLine := list.initializerLine; SymbolTable.limitColumn := list.initializerColumn;
+    SymbolTable.limitViolation := NIL;
+    SymbolTable.limitLocals := TRUE; SymbolTable.localViolation := NIL;
+    srcType := CheckExpr(pending.scope, field.initializer);
+    later := SymbolTable.limitViolation; local := SymbolTable.localViolation;
+    SymbolTable.limitScope := NIL; SymbolTable.limitViolation := NIL;
+    SymbolTable.limitLocals := FALSE; SymbolTable.localViolation := NIL;
+    IF later # NIL THEN
+      ReportNamed(field.initializer.line, field.initializer.column, later.name,
+        " is declared after this field; its initializer can use only what is declared before it")
+    END;
+    IF local # NIL THEN
+      ReportNamed(field.initializer.line, field.initializer.column, local.name,
+        " belongs to a procedure; a field initializer can use a procedure's constants and types, not its variables or procedures")
+    END;
+    IF (srcType # Types.Undefined) & ~Types.AssignmentCompatible(field.type, srcType)
+       & Types.ArrayAssignable(field.type, srcType) THEN
+      Diagnostics.NotInReport(list.initializerLine, list.initializerColumn,
+        "assigning an array of another type (voc's array rule)");
+      list.copiesArray := TRUE
+    ELSE
+      CheckAssignmentCompatible(pending.scope, field.type, field.initializer, srcType,
+        list.initializerLine, list.initializerColumn, "field initializer is not type-compatible")
+    END
+  END CheckFieldInitializer;
+
+  (* the pending fields, which are in reverse order, in declaration order *)
+  PROCEDURE CheckFieldInitializers(pending: PendingField);
+    VAR reversed, next: PendingField;
+  BEGIN
+    reversed := NIL;
+    WHILE pending # NIL DO next := pending.next; pending.next := reversed; reversed := pending; pending := next END;
+    WHILE reversed # NIL DO CheckFieldInitializer(reversed); reversed := reversed.next END
+  END CheckFieldInitializers;
+
   PROCEDURE CheckDeclarations(decls: SyntaxTree.DeclSeqNode; scope: SymbolTable.Scope);
     VAR
       c: SyntaxTree.ConstDeclNode; t, typeRun: SyntaxTree.TypeDeclNode;
       v: SyntaxTree.VarDeclNode; p: SyntaxTree.ProcDeclNode; names: SyntaxTree.IdentDefNode;
       line, column, stopLine, stopColumn: INTEGER;
-      kind: CHAR; afterProcedure, runOpen: BOOLEAN; savedLaterTypes: SyntaxTree.TypeDeclNode;
+      kind: CHAR; afterProcedure, runOpen, savedCollect: BOOLEAN; savedLaterTypes: SyntaxTree.TypeDeclNode;
+      savedPending: PendingField;
   BEGIN
+    savedPending := pendingFields; savedCollect := collectFields;
+    pendingFields := NIL; collectFields := TRUE;
     savedLaterTypes := laterTypes;
     c := decls.constDecls; t := decls.typeDecls; v := decls.varDecls; p := decls.procDecls;
     typeRun := t; afterProcedure := FALSE; runOpen := FALSE;
@@ -3211,6 +3361,8 @@ MODULE SemanticActions;
       END;
       IF (p # NIL) & EarlierPosition(p.line, p.column, line, column) THEN kind := "p" END;
       IF kind = "p" THEN
+        (* what the fields may use is declared by now *)
+        CheckFieldInitializers(pendingFields); pendingFields := NIL;
         ResolveOneProcDecl(p, scope); p := p.next;
         laterTypes := typeRun; (* the nested DeclSeqs changed it *)
         afterProcedure := TRUE; runOpen := FALSE
@@ -3237,6 +3389,8 @@ MODULE SemanticActions;
         END
       END
     END;
+    CheckFieldInitializers(pendingFields);
+    pendingFields := savedPending; collectFields := savedCollect;
     laterTypes := savedLaterTypes
   END CheckDeclarations;
 

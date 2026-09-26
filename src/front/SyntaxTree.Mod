@@ -183,6 +183,15 @@ MODULE SyntaxTree;
     FieldListNodeDesc* = RECORD (NodeDesc)
       names*: IdentDefNode; (* NIL for an empty field list *)
       type*: TypeNode;
+      (* Phase 11 D17: "f, g: T := e" - one copy of e for each name, in
+         order, linked by their next; NIL without an initializer, and for
+         the elided initializer of a .sym file ("f: T := ..", which says
+         only that there is one). initializerLine is the position of the
+         ":=", 0 without an initializer. *)
+      initializers*: ExprNode;
+      initializerLine*, initializerColumn*: INTEGER;
+      (* set by the checker, as AssignStatementNodeDesc.copiesArray *)
+      copiesArray*: BOOLEAN;
       next*: FieldListNode
     END;
 

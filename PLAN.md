@@ -1197,6 +1197,16 @@ convenient, but must not be a prerequisite of it.
 steps 2 and 5 are compile+link+run+diff fixtures; step 6 is the
 whole-matrix gate.
 
+**Deferred here from Phase 11 (2026-09-26): the lowest 32-bit x86 CPU.**
+poc passes clang no `-march`, so each OS's default CPU applies: pentium4
+for i686 Linux (which may use SSE2), i486 for NetBSD, i586 for OpenBSD,
+i686 for FreeBSD. poc must run on a Pentium II (i686, no SSE), so the
+question is whether to fix `-march=i686` for every 32-bit x86 triple:
+the same code on all four OSes and no SSE2 on Linux, at the cost of 486
+and Pentium machines. x87 reals stay either way. It needs 32-bit x86 test
+hosts first: a 32-bit NetBSD at least, and a 32-bit FreeBSD if FreeBSD
+still ships an i386 build (today only OpenBSD, cymoril, is 32-bit x86).
+
 ### Phase 13 — VAX/VMS MACRO-32 backend (scoped, deferred, non-executable)
 `VaxTypes.Mod`, `VaxCodeGenerator.Mod`, `VaxToolchainDriver.Mod` (stub
 only — no assemble/link/run, per the locked-in decision).
@@ -1621,12 +1631,10 @@ inventory):
    `CONST` declarations of structured type (and so structured constants in
    `.sym` files), open arrays and pointers inside a literal, positional or
    named fields, and what a record extension's literal holds.
-2. **Record-field initializers** (Phase 11 D17), if not settled in Phase 11:
-   defaults a record's fields take whenever one is created (A2 has them).
-3. **Slices of one-dimensional arrays** (`000-todo.org`).
-4. **voc's read-only parameters, `x-`** (`000-todo.org`; considered and not
+2. **Slices of one-dimensional arrays** (`000-todo.org`).
+3. **voc's read-only parameters, `x-`** (`000-todo.org`; considered and not
    adopted in Phase 11, `doc/language-extensions.md`).
-5. **The terminator-based `ARRAY OF CHAR` assignment rule** (`000-todo.org`;
+4. **The terminator-based `ARRAY OF CHAR` assignment rule** (`000-todo.org`;
    decided against in Phase 11 A21, to reconsider).
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has

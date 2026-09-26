@@ -1,0 +1,24 @@
+semantic OK, wrote llvm-field-initializers
+5 10 20 2.0E+00 hi 0
+10
+30 5 NIL
+5
+5 50 60
+5
+3 3 p abc 1 99
+3 3 p 2
+7 9
+1.5E+00
+77 Z 77 Z
+77 Z 77 Z
+6
+MODULE FieldLib;
+  IMPORT Out;
+  TYPE
+    Point* = RECORD x*: INTEGER := ..; y*: INTEGER := ..; tag: CHAR := .. END;
+    Named* = RECORD (Point) name*: ARRAY 8 OF CHAR := ..; serial*: INTEGER := .. END;
+    List* = POINTER TO RECORD value*: INTEGER := ..; inner*: RECORD z*: INTEGER := .. END END;
+    Many* = ARRAY 2 OF RECORD w*: REAL := .. END;
+  PROCEDURE^ Tag*(VAR p: Point): CHAR;
+  PROCEDURE^ Show*(VAR p: Point);
+END FieldLib.

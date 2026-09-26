@@ -526,6 +526,18 @@ MODULE LLVMCodeGenerator;
       next: TrapSite
     END;
 
+    (* Phase 11 D17: a record type whose initialization procedure
+       (InitSymbol) this program may define: wanted when it does, emitted
+       once it has. A record that is not wanted is here only so the walk
+       that finds the wanted ones (CollectInitRecords) visits it once. *)
+    InitRecordEntry = POINTER TO InitRecordEntryDesc;
+    InitRecordEntryDesc = RECORD
+      rec: Types.RecordType;
+      fileName: SourcePath;
+      wanted, emitted: BOOLEAN;
+      next: InitRecordEntry
+    END;
+
     (* Threaded explicitly through every codegen procedure below, VAR w:
        Files.Rider stays a separate parameter rather than a field of this
        record - Files.Rider is a plain RECORD whose mutable position
@@ -615,7 +627,11 @@ MODULE LLVMCodeGenerator;
       arrayDescs: ArrayDescEntry;
       lateRecords: TypeDescEntry;
       arrayDescCount, anonymousRecordCount: INTEGER;
-      heapPresent: BOOLEAN
+      heapPresent: BOOLEAN;
+      (* Phase 11 D17: the records whose initialization procedures to
+         define, and a counter for naming those of anonymous records *)
+      initRecords: InitRecordEntry;
+      anonymousInitCount: INTEGER
     END;
 
   (* Files.WriteString (confirmed against real voc, see
@@ -4580,6 +4596,99 @@ MODULE LLVMCodeGenerator;
      of it is computed in 64 bits with overflow checks, and on a 32-bit
      target must also fit a word. A heap that cannot supply the block is
      not a trap: the pointer becomes NIL, as for a record. *)
+  (* Phase 11 D17: rec's entry among the records whose initialization
+     procedures this program may define, made if it has none *)
+  PROCEDURE InitRecordEntryOf(VAR cg: Codegen; rec: Types.RecordType): InitRecordEntry;
+    VAR entry, tail: InitRecordEntry;
+  BEGIN
+    entry := cg.initRecords; tail := NIL;
+    WHILE (entry # NIL) & (entry.rec # rec) DO tail := entry; entry := entry.next END;
+    IF entry = NIL THEN
+      NEW(entry); entry.rec := rec; COPY(cg.currentFile, entry.fileName);
+      entry.wanted := FALSE; entry.emitted := FALSE; entry.next := NIL;
+      IF tail = NIL THEN cg.initRecords := entry ELSE tail.next := entry END
+    END;
+    RETURN entry
+  END InitRecordEntryOf;
+
+  (* Phase 11 D17: "@<Module>.<initPath>.$init", the procedure that
+     initializes a record of type rec (rec.needsInit) at the address it is
+     given - the fields with initializers, the records inside it, and first
+     its base type's. A record named by the front end (initPath) has its
+     procedure defined by the module that declared it, which may be another
+     one (CollectInitRecords); any other record is this module's own, and is
+     named here the first time it is needed, which also asks for its
+     procedure. *)
+  PROCEDURE InitSymbol(VAR cg: Codegen; rec: Types.RecordType; VAR text: ARRAY OF CHAR);
+    VAR entry: InitRecordEntry;
+  BEGIN
+    IF rec.moduleName[0] = 0X THEN COPY(cg.moduleName, rec.moduleName) END; (* see EnsureTypeTag *)
+    IF (rec.initPath[0] = 0X) & (rec.moduleName = cg.moduleName) THEN
+      INC(cg.anonymousInitCount);
+      COPY("$anon", rec.initPath); AppendLongInt(rec.initPath, cg.anonymousInitCount);
+      entry := InitRecordEntryOf(cg, rec); entry.wanted := TRUE
+    ELSIF rec.initPath[0] = 0X THEN
+      (* another module's record the front end could not name
+         (SemanticActions.NameInitPaths) *)
+      ReportUnsupported(cg, cg.currentLine, cg.currentColumn,
+        "a record of another module's whose field initializers cannot be reached from here")
+    END;
+    COPY("@", text); Strcat(text, rec.moduleName); Strcat(text, "."); Strcat(text, rec.initPath);
+    Strcat(text, ".$init")
+  END InitSymbol;
+
+  PROCEDURE ^ InitializeAt(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; type: Types.Type);
+
+  (* Phase 11 D17: initializes count (a word-sized value, at least 1)
+     consecutive elements of elemType starting at baseText, one after the
+     other *)
+  PROCEDURE EmitInitLoop(VAR w: Files.Rider; VAR cg: Codegen; baseText: ARRAY OF CHAR; elemType: Types.Type;
+                         count: ARRAY OF CHAR);
+    VAR
+      wordInt, before, headLabel, bodyLabel, latchLabel, doneLabel, index, next, more, element: ValueText;
+      llvmType: LongText;
+  BEGIN
+    WordIntType(wordInt);
+    COPY(cg.currentBlock, before);
+    NewLabel(cg, headLabel); NewLabel(cg, bodyLabel); NewLabel(cg, latchLabel); NewLabel(cg, doneLabel);
+    NewTemp(cg, index); NewTemp(cg, next);
+    EmitBr(w, headLabel);
+    EmitLabel(w, cg, headLabel);
+    WriteStr(w, "  "); WriteStr(w, index); WriteStr(w, " = phi "); WriteStr(w, wordInt);
+    WriteStr(w, " [ 0, %"); WriteStr(w, before); WriteStr(w, " ], [ "); WriteStr(w, next);
+    WriteStr(w, ", %"); WriteStr(w, latchLabel); WriteStr(w, " ]"); WriteLn(w);
+    EmitBinOp(w, cg, "icmp ult", wordInt, index, count, more);
+    EmitCondBr(w, more, bodyLabel, doneLabel);
+    EmitLabel(w, cg, bodyLabel);
+    LLVMTypes.TypeString(elemType, cg.sizeModel, llvmType);
+    EmitElementGEP(w, cg, llvmType, baseText, wordInt, index, element);
+    InitializeAt(w, cg, element, elemType);
+    EmitBr(w, latchLabel);
+    EmitLabel(w, cg, latchLabel);
+    WriteStr(w, "  "); WriteStr(w, next); WriteStr(w, " = add "); WriteStr(w, wordInt); WriteStr(w, " ");
+    WriteStr(w, index); WriteStr(w, ", 1"); WriteLn(w);
+    EmitBr(w, headLabel);
+    EmitLabel(w, cg, doneLabel)
+  END EmitInitLoop;
+
+  (* Phase 11 D17: initializes the variable of type type at addrText, which
+     is already zero, if Types.NeedsInit(type): a record through its
+     initialization procedure, a fixed array element by element. *)
+  PROCEDURE InitializeAt(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; type: Types.Type);
+    VAR symbol: LongText; arr: Types.ArrayType; count: ValueText;
+  BEGIN
+    IF ~Types.NeedsInit(type) THEN RETURN END;
+    IF type IS Types.RecordType THEN
+      InitSymbol(cg, type(Types.RecordType), symbol);
+      WriteStr(w, "  call void "); WriteStr(w, symbol); WriteStr(w, "(ptr "); WriteStr(w, addrText);
+      WriteStr(w, ")"); WriteLn(w)
+    ELSE
+      arr := type(Types.ArrayType);
+      count[0] := 0X; AppendLongInt(count, arr.length);
+      EmitInitLoop(w, cg, addrText, arr.elementType, count)
+    END
+  END InitializeAt;
+
   PROCEDURE GenerateNewOpenArray(VAR w: Files.Rider; VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode;
                                  lengths: SyntaxTree.ExprNode; arr: Types.ArrayType);
     VAR
@@ -4656,7 +4765,19 @@ MODULE LLVMCodeGenerator;
     END;
     EmitBr(w, doneLabel);
     EmitLabel(w, cg, doneLabel);
-    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
+    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+    IF Types.NeedsInit(arr) THEN
+      (* Phase 11 D17: every element, once the block is p's *)
+      NewLabel(cg, fillLabel); NewLabel(cg, doneLabel);
+      EmitCondBr(w, nonNull, fillLabel, doneLabel);
+      EmitLabel(w, cg, fillLabel);
+      offText[0] := 0X; AppendLongInt(offText, OpenDataOffset(arr, cg.sizeModel));
+      EmitByteGEP(w, cg, pointer, wordInt, offText, slot);
+      EmitResizeInt(w, cg, "i64", acc, wordInt, lenWord);
+      EmitInitLoop(w, cg, slot, OpenElementType(arr), lenWord);
+      EmitBr(w, doneLabel);
+      EmitLabel(w, cg, doneLabel)
+    END
   END GenerateNewOpenArray;
 
   (* NEW(p) for a pointer to a record or to a fixed array: the block comes
@@ -4668,7 +4789,7 @@ MODULE LLVMCodeGenerator;
     VAR
       de: SyntaxTree.DesignatorExprNode; t, base: Types.Type; ptr: Types.PointerType;
       rec: Types.RecordType; arr: Types.ArrayType; addrText, wordInt, sizeText, allocated,
-      pointer: ValueText; longTag, tagText: LongText; addrType: Types.Type;
+      pointer, nonNull, initLabel, doneLabel: ValueText; longTag, tagText: LongText; addrType: Types.Type;
   BEGIN
     result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
     IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
@@ -4722,7 +4843,18 @@ MODULE LLVMCodeGenerator;
        the NIL check on its first use does) - unless -trap-heap-exhausted *)
     EmitHeapCheck(w, cg, allocated, wordInt);
     EmitConvert(w, cg, "inttoptr", wordInt, allocated, "ptr", pointer);
-    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
+    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+    IF Types.NeedsInit(base) THEN
+      (* Phase 11 D17: the record's defaults, once the block is p's (and
+         only if there is one) *)
+      EmitBinOp(w, cg, "icmp ne", wordInt, allocated, "0", nonNull);
+      NewLabel(cg, initLabel); NewLabel(cg, doneLabel);
+      EmitCondBr(w, nonNull, initLabel, doneLabel);
+      EmitLabel(w, cg, initLabel);
+      InitializeAt(w, cg, pointer, base);
+      EmitBr(w, doneLabel);
+      EmitLabel(w, cg, doneLabel)
+    END
   END GenerateNew;
 
   (* v(T) as an expression: v itself, after checking its dynamic type;
@@ -5513,6 +5645,54 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateStatementSeq;
 
+  (* Phase 11 D17: the variables of declarations (in cg.scope, already
+     zero) whose type needs initializing (Types.NeedsInit) initialized, in
+     declaration order and each declaration's before its variables'
+     initializers (Phase 11 A23), which the parser put at the front of
+     statements - so a variable's initializer sees the records declared
+     before it initialized. Returns what of statements is left to
+     generate: all of it when no variable needs initializing, which
+     leaves the initializers to GenerateStatementSeq as before. *)
+  PROCEDURE GenerateDeclarationInits(VAR w: Files.Rider; VAR cg: Codegen; declarations: SyntaxTree.DeclSeqNode;
+                                     statements: SyntaxTree.StatementNode): SyntaxTree.StatementNode;
+    VAR
+      vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
+      s: SyntaxTree.StatementNode; addrText: ValueText; any: BOOLEAN;
+  BEGIN
+    IF declarations = NIL THEN RETURN statements END;
+    any := FALSE; vd := declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        IF (obj # NIL) & Types.NeedsInit(obj.type) THEN any := TRUE END;
+        nm := nm.next
+      END;
+      vd := vd.next
+    END;
+    IF ~any THEN RETURN statements END;
+    vd := declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        IF (obj # NIL) & Types.NeedsInit(obj.type) THEN
+          ResolveVarAddress(cg, obj, addrText);
+          InitializeAt(w, cg, addrText, obj.type)
+        END;
+        nm := nm.next
+      END;
+      s := vd.initializers; nm := vd.names;
+      WHILE (s # NIL) & (nm # NIL) DO GenerateStatement(w, cg, s); s := s.next; nm := nm.next END;
+      vd := vd.next
+    END;
+    s := statements;
+    WHILE (s # NIL) & (s IS SyntaxTree.AssignStatementNode) & (s(SyntaxTree.AssignStatementNode).initializerLine # 0) DO
+      s := s.next
+    END;
+    RETURN s
+  END GenerateDeclarationInits;
+
   PROCEDURE HasDeclaredExternal(VAR cg: Codegen; cName: ARRAY OF CHAR): BOOLEAN;
     VAR e: DeclaredExternal;
   BEGIN
@@ -6119,10 +6299,26 @@ MODULE LLVMCodeGenerator;
     END
   END CollectStringConstantsStmt;
 
+  (* The copies of one variable initializer (Phase 11 A23: "VAR a, b: T :=
+     e", one assignment per name, one after the other) have their literals
+     at the same positions, so they share the globals: only the first is
+     walked. *)
   PROCEDURE CollectStringConstantsSeq(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
+    VAR line, column: INTEGER; copy: BOOLEAN;
   BEGIN
+    line := 0; column := 0;
     WHILE s # NIL DO
-      CollectStringConstantsStmt(w, cg, s);
+      copy := FALSE;
+      IF s IS SyntaxTree.AssignStatementNode THEN
+        copy := (s(SyntaxTree.AssignStatementNode).initializerLine # 0)
+                & (s(SyntaxTree.AssignStatementNode).initializerLine = line)
+                & (s(SyntaxTree.AssignStatementNode).initializerColumn = column);
+        line := s(SyntaxTree.AssignStatementNode).initializerLine;
+        column := s(SyntaxTree.AssignStatementNode).initializerColumn
+      ELSE
+        line := 0; column := 0
+      END;
+      IF ~copy THEN CollectStringConstantsStmt(w, cg, s) END;
       s := s.next
     END
   END CollectStringConstantsSeq;
@@ -6415,7 +6611,7 @@ MODULE LLVMCodeGenerator;
     BindFormalParams(w, cg, bodyScope, pt, pd.line, pd.column);
     BindNeeds(cg, needs);
     BindLocalVars(w, cg, bodyScope, pd.declarations);
-    GenerateStatementSeq(w, cg, pd.statements);
+    GenerateStatementSeq(w, cg, GenerateDeclarationInits(w, cg, pd.declarations, pd.statements));
     IF pt.resultType = NIL THEN
       WriteStr(w, "  ret void"); WriteLn(w)
     ELSE
@@ -6719,9 +6915,148 @@ MODULE LLVMCodeGenerator;
      which records are used is only known once everything else is
      generated, so that is written to body first (a file of the caller's,
      empty) and copied after the definitions. *)
+  (* Phase 11 D17: the string literals of the record field initializers in
+     declarations, at any depth - one copy of each (they share the globals,
+     as CollectStringConstantsSeq's variable initializers do) *)
+  PROCEDURE ^ CollectTypeStrings(VAR w: Files.Rider; VAR cg: Codegen; t: SyntaxTree.TypeNode);
+
+  PROCEDURE CollectFormalsStrings(VAR w: Files.Rider; VAR cg: Codegen; formals: SyntaxTree.FormalParsNode);
+    VAR section: SyntaxTree.FPSectionNode;
+  BEGIN
+    IF formals = NIL THEN RETURN END;
+    section := formals.sections;
+    WHILE section # NIL DO CollectTypeStrings(w, cg, section.type); section := section.next END
+  END CollectFormalsStrings;
+
+  PROCEDURE CollectTypeStrings(VAR w: Files.Rider; VAR cg: Codegen; t: SyntaxTree.TypeNode);
+    VAR fields: SyntaxTree.FieldListNode;
+  BEGIN
+    IF t = NIL THEN RETURN END;
+    IF t IS SyntaxTree.RecordTypeNode THEN
+      fields := t(SyntaxTree.RecordTypeNode).fields;
+      WHILE fields # NIL DO
+        CollectStringConstants(w, cg, fields.initializers);
+        CollectTypeStrings(w, cg, fields.type);
+        fields := fields.next
+      END
+    ELSIF t IS SyntaxTree.ArrayTypeNode THEN
+      CollectTypeStrings(w, cg, t(SyntaxTree.ArrayTypeNode).elementType)
+    ELSIF t IS SyntaxTree.PointerTypeNode THEN
+      CollectTypeStrings(w, cg, t(SyntaxTree.PointerTypeNode).base)
+    ELSIF t IS SyntaxTree.ProcedureTypeNode THEN
+      CollectFormalsStrings(w, cg, t(SyntaxTree.ProcedureTypeNode).formals)
+    END
+  END CollectTypeStrings;
+
+  PROCEDURE CollectDeclarationStrings(VAR w: Files.Rider; VAR cg: Codegen; declarations: SyntaxTree.DeclSeqNode);
+    VAR td: SyntaxTree.TypeDeclNode; vd: SyntaxTree.VarDeclNode; pd: SyntaxTree.ProcDeclNode;
+  BEGIN
+    IF declarations = NIL THEN RETURN END;
+    td := declarations.typeDecls;
+    WHILE td # NIL DO CollectTypeStrings(w, cg, td.type); td := td.next END;
+    vd := declarations.varDecls;
+    WHILE vd # NIL DO CollectTypeStrings(w, cg, vd.type); vd := vd.next END;
+    pd := declarations.procDecls;
+    WHILE pd # NIL DO
+      IF ~pd.isForward THEN
+        CollectFormalsStrings(w, cg, pd.formals);
+        CollectDeclarationStrings(w, cg, pd.declarations)
+      END;
+      pd := pd.next
+    END
+  END CollectDeclarationStrings;
+
+  (* Phase 11 D17: every record reached from t whose initialization
+     procedure the module being generated defines for other modules too -
+     the records the front end named (Types.RecordTypeDesc.initPath) -
+     entered in cg.initRecords, wanted when they need initializing *)
+  PROCEDURE CollectInitRecords(VAR cg: Codegen; t: Types.Type);
+    VAR rec: Types.RecordType; entry: InitRecordEntry; f: Types.Field;
+  BEGIN
+    IF t = NIL THEN RETURN END;
+    IF t IS Types.RecordType THEN
+      rec := t(Types.RecordType);
+      IF (rec.moduleName # cg.moduleName) OR (rec.initPath[0] = 0X) THEN RETURN END;
+      entry := cg.initRecords;
+      WHILE (entry # NIL) & (entry.rec # rec) DO entry := entry.next END;
+      IF entry # NIL THEN RETURN END;
+      entry := InitRecordEntryOf(cg, rec); entry.wanted := rec.needsInit;
+      f := rec.fields;
+      WHILE f # NIL DO CollectInitRecords(cg, f.type); f := f.next END
+    ELSIF t IS Types.ArrayType THEN
+      CollectInitRecords(cg, t(Types.ArrayType).elementType)
+    ELSIF t IS Types.PointerType THEN
+      CollectInitRecords(cg, t(Types.PointerType).base)
+    END
+  END CollectInitRecords;
+
+  (* Phase 11 D17: "define void @<Module>.<initPath>.$init(ptr %self)" for
+     the record of wanted (a parameter named "entry" would clash with the
+     entry block's label, inventory D18): its base type's procedure first, then each field
+     of its own in order - a field with an initializer assigned its own
+     copy of it, as an assignment would, in the scope the record was
+     declared in (SemanticActions.CheckFieldInitializer allows only what can
+     be reached from there without a procedure's frame); a field whose type
+     needs initializing initialized (InitializeAt). *)
+  PROCEDURE EmitInitProcedure(VAR w: Files.Rider; VAR cg: Codegen; wanted: InitRecordEntry);
+    VAR
+      rec, base: Types.RecordType; f: Types.Field; symbol, baseSymbol: LongText;
+      addrText: ValueText; addrType: Types.Type;
+  BEGIN
+    rec := wanted.rec;
+    COPY(rec.moduleName, cg.moduleName); cg.scope := rec.declScope(SymbolTable.Scope);
+    COPY(wanted.fileName, cg.currentFile);
+    cg.locals := NIL; cg.nestedRoot := NIL; cg.currentProcResultType := NIL;
+    InitSymbol(cg, rec, symbol);
+    COPY(rec.moduleName, cg.currentProc); Strcat(cg.currentProc, "."); Strcat(cg.currentProc, rec.initPath);
+    WriteStr(w, "define void "); WriteStr(w, symbol); WriteStr(w, "(ptr %self) {"); WriteLn(w);
+    EmitEntryLabel(w, cg);
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) THEN
+      base := rec.baseType(Types.RecordType);
+      IF base.needsInit THEN
+        InitSymbol(cg, base, baseSymbol);
+        WriteStr(w, "  call void "); WriteStr(w, baseSymbol); WriteStr(w, "(ptr %self)"); WriteLn(w)
+      END
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      IF (f.initializer # NIL) OR Types.NeedsInit(f.type) THEN
+        COPY("%self", addrText); addrType := rec;
+        IF ~GenerateFieldAddress(w, cg, addrText, addrType, f.name) THEN
+          WriteStr(w, "  ; unsupported: a field this backend cannot address"); WriteLn(w)
+        ELSIF f.initializer # NIL THEN
+          cg.currentLine := f.initializer.line; cg.currentColumn := f.initializer.column;
+          cg.statementLine := f.initializer.line; cg.statementColumn := f.initializer.column;
+          AssignToAddress(w, cg, addrText, f.type, f.initializer, f.fieldList.copiesArray)
+        ELSE
+          InitializeAt(w, cg, addrText, f.type)
+        END
+      END;
+      f := f.next
+    END;
+    WriteStr(w, "  ret void"); WriteLn(w);
+    WriteStr(w, "}"); WriteLn(w); WriteLn(w);
+    cg.currentProc[0] := 0X
+  END EmitInitProcedure;
+
+  (* Phase 11 D17: every wanted initialization procedure not yet defined;
+     defining one can ask for more (InitSymbol) *)
+  PROCEDURE EmitInitProcedures(VAR w: Files.Rider; VAR cg: Codegen);
+    VAR entry: InitRecordEntry;
+  BEGIN
+    LOOP
+      entry := cg.initRecords;
+      WHILE (entry # NIL) & (~entry.wanted OR entry.emitted) DO entry := entry.next END;
+      IF entry = NIL THEN EXIT END;
+      entry.emitted := TRUE;
+      EmitInitProcedure(w, cg, entry)
+    END
+  END EmitInitProcedures;
+
   PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w, body: Files.Rider);
     VAR
       cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments, realign: BOOLEAN;
+      td: SyntaxTree.TypeDeclNode; typeObj: SymbolTable.Object;
       wordInt: ValueText; r: Files.Rider; ch: CHAR; i: INTEGER;
   BEGIN
     withRootTables := HasModuleNamed(modules, "ModuleTable");
@@ -6742,6 +7077,7 @@ MODULE LLVMCodeGenerator;
     cg.trapSites := NIL; cg.trapSitesTail := NIL; cg.trapSiteCount := 0;
     FOR i := 0 TO noAssertCode DO cg.assertCodes[i] := FALSE END;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
+    cg.initRecords := NIL; cg.anonymousInitCount := 0;
     cg.heapPresent := withHeap;
     WriteStr(w, 'target datalayout = "');
     IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN WriteStr(w, dataLayoutW32)
@@ -6771,6 +7107,7 @@ MODULE LLVMCodeGenerator;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
       CollectStringConstantsSeq(body, cg, m.module.statements);
+      CollectDeclarationStrings(body, cg, m.module.declarations);
       IF m.module.declarations # NIL THEN
         pd := m.module.declarations.procDecls;
         WHILE pd # NIL DO
@@ -6801,12 +7138,29 @@ MODULE LLVMCodeGenerator;
       WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init() {"); WriteLn(body);
       EmitEntryLabel(body, cg);
       IF withRootTables THEN EmitRootTableRegistration(body, cg, m.module) END;
-      GenerateStatementSeq(body, cg, m.module.statements);
+      GenerateStatementSeq(body, cg, GenerateDeclarationInits(body, cg, m.module.declarations, m.module.statements));
       WriteStr(body, "  ret void"); WriteLn(body);
       WriteStr(body, "}"); WriteLn(body);
       WriteLn(body);
       m := m.next
     END;
+    (* Phase 11 D17: the initialization procedures - of every record a
+       module's TYPE declarations name, which other modules may use, and of
+       the others the code above used *)
+    m := modules;
+    WHILE m # NIL DO
+      cg.moduleName := m.module.name; COPY(m.fileName, cg.currentFile);
+      IF m.module.declarations # NIL THEN
+        td := m.module.declarations.typeDecls;
+        WHILE td # NIL DO
+          typeObj := SymbolTable.FindLocal(m.scope, td.name.name);
+          IF typeObj # NIL THEN CollectInitRecords(cg, typeObj.type) END;
+          td := td.next
+        END
+      END;
+      m := m.next
+    END;
+    EmitInitProcedures(body, cg);
     (* A program that contains rtl/llvm/Modules.Mod gets the command line:
        main takes argc and argv, and hands both to Modules.Init - as
        words, the way every ADDRESS travels - before any module body runs,

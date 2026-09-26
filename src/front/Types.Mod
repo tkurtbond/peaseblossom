@@ -102,6 +102,12 @@ MODULE Types;
     Type* = POINTER TO TypeDesc;
     TypeDesc* = RECORD END;
 
+    (* The base of SymbolTable.ScopeDesc, so a record can name the scope
+       it was declared in (RecordTypeDesc.declScope) although this module
+       cannot import SymbolTable, which imports it. *)
+    ScopeHandle* = POINTER TO ScopeHandleDesc;
+    ScopeHandleDesc* = RECORD END;
+
     BasicType* = POINTER TO BasicTypeDesc;
     BasicTypeDesc* = RECORD (TypeDesc)
       rank*: INTEGER; (* notNumeric, or one of the ranks above *)
@@ -131,6 +137,13 @@ MODULE Types;
       name*: SyntaxTree.Ident;
       type*: Type;
       exported*, readOnly*: BOOLEAN;
+      (* Phase 11 D17: the field has an initializer ("f: T := e"), whose
+         copy of e for this field is initializer - NIL for one read from a
+         .sym file, which says only that there is one. fieldList is the
+         declaration it came from (NIL for a field made any other way). *)
+      hasInitializer*: BOOLEAN;
+      initializer*: SyntaxTree.ExprNode;
+      fieldList*: SyntaxTree.FieldListNode;
       next*: Field
     END;
 
@@ -206,7 +219,20 @@ MODULE Types;
          numbers the named struct types it emits with it (LLVMTypes.
          StructIndex), so a record keeps one LLVM type name for the whole
          program even after its descriptor gives it a name (EnsureTypeTag). *)
-      backendIndex*: INTEGER
+      backendIndex*: INTEGER;
+      (* Phase 11 D17: TRUE when a new record of this type has to be
+         initialized beyond zero - a field of its own has an initializer, or
+         its base type, or a field's type needs it (NeedsInit). declScope is
+         the scope it was declared in, where the initializers' names are
+         looked up. initPath names it for its initialization procedure: the
+         name of a module-level named record ("T", "P.base"), or the path
+         to an anonymous one inside a module-level TYPE declaration
+         ("T.f", "A.element", "T.p.base") - so a module that imports the
+         type, through a .sym file, derives the same name; empty for any
+         other record, which the backend names itself. *)
+      needsInit*: BOOLEAN;
+      initPath*: SyntaxTree.Ident;
+      declScope*: ScopeHandle
     END;
 
     Value* = POINTER TO ValueDesc;
@@ -339,8 +365,18 @@ MODULE Types;
   BEGIN
     NEW(t); t.baseType := baseType; t.fields := NIL; t.methods := NIL;
     t.moduleName[0] := 0X; t.name[0] := 0X; t.backendIndex := 0;
+    t.needsInit := FALSE; t.initPath[0] := 0X; t.declScope := NIL;
     RETURN t
   END NewRecordType;
+
+  (* Phase 11 D17: whether a new variable of type t has to be initialized
+     beyond zero - a record whose needsInit is set, or a fixed or open
+     array of such records, at any depth. *)
+  PROCEDURE NeedsInit*(t: Type): BOOLEAN;
+  BEGIN
+    WHILE (t # NIL) & (t IS ArrayType) DO t := t(ArrayType).elementType END;
+    RETURN (t # NIL) & (t IS RecordType) & t(RecordType).needsInit
+  END NeedsInit;
 
   (* Appends a field to rec's own field list, in declaration order (unlike
      SymbolTable's scopes, memory layout depends on this order, so this
@@ -360,6 +396,7 @@ MODULE Types;
     END;
     NEW(f); f.name := name; f.type := type; f.exported := exported;
     f.readOnly := readOnly; f.next := NIL;
+    f.hasInitializer := FALSE; f.initializer := NIL; f.fieldList := NIL;
     IF rec.fields = NIL THEN
       rec.fields := f
     ELSE

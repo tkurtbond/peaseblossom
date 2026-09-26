@@ -640,8 +640,7 @@ the survey; decided with the user 2026-09-26. The rules:
   declared before it" - also when it would hide an outer name the
   initializer meant.
 - An error in the expression is reported once for the whole list.
-- Variables only: not record fields (a separate item, Phase 11 D17) and not
-  parameters.
+- Variables only, not parameters; a record field's is the next section's.
 - `-strict` rejects it ("a variable initializer is not in the Oberon-2
   report"), and voc cannot compile it, so poc's own source does not use it.
 
@@ -650,8 +649,76 @@ expression again for each, so each has its own copy - and puts them at the
 front of the body (`Parser.ParseInitializers`, `WithInitializers`); the
 checker checks them with the declare-before-use limit
 (`SemanticActions.CheckInitializer`, `SymbolTable.limitScope`), and the
-backend sees ordinary assignments. Fixtures `llvm-var-initializers`,
-`semantic-reject-var-initializers`, `semantic-strict-var-initializers`.
+backend sees ordinary assignments; the copies share their string literals'
+globals (`CollectStringConstantsSeq` walks only the first). Fixtures
+`llvm-var-initializers`, `semantic-reject-var-initializers`,
+`semantic-strict-var-initializers`.
+
+## Record field initializers (decided and implemented, Phase 11 D17, 2026-09-26)
+
+A record's field list may end with an initializer, the default of its fields:
+
+```oberon
+TYPE
+  Point* = RECORD x*, y*: INTEGER := 1; tag: CHAR := "p" END;
+  Named* = RECORD (Point) name*: ARRAY 8 OF CHAR := "none"; serial*: INTEGER := Next() END;
+```
+
+`Oberon2.pdf` has `FieldList = [IdentList ":" Type]`; of the Oberons only Active
+Oberon has field initializers, constants only (`doc/initializers-and-literals-
+survey.md`). Decided with the user 2026-09-26: any expression, and an
+initialization procedure per record type. The rules:
+
+- **Every record of the type gets its fields' defaults when it is made**: a
+  variable, global or local, a `NEW` (a pointer to a record, or to a fixed or
+  open array of them - every element), and a record or array of records inside
+  one of those, at any depth. Not a record that is copied (assignment, a value
+  parameter), and not `SYSTEM.NEW`'s untyped block.
+- A default is **an assignment `field := e`** with every rule of one, made after
+  the record is zeroed: first the base type's defaults, then the record's own
+  fields in declaration order - each field with an initializer assigned it,
+  each field of a record type that has defaults initialized in turn. As for a
+  variable, **each field of the list gets its own evaluation** (`e, f: INTEGER
+  := Next()` calls `Next` twice), and the expression may be any, not only a
+  constant.
+- A variable's defaults come **in declaration order with the variable
+  initializers**: before its own initializer, after the variables declared
+  before it (so `VAR g: T; n: INTEGER := g.x` sees `g.x`'s default). `NEW(p)`
+  applies them once `p` holds the block, and not if the heap is exhausted.
+- **What the expression can use**: the names declared before its `:=` (declare-
+  before-use, as for a variable initializer: "`x` is declared after this field;
+  its initializer can use only what is declared before it"), except, for a
+  record declared in a procedure, that procedure's variables, parameters and
+  procedures - the defaults run outside any procedure's frame (a separate
+  procedure, below), and "`v` belongs to a procedure; a field initializer can
+  use a procedure's constants and types, not its variables or procedures". Its
+  constants and types, and everything at module level, are allowed.
+- **Across modules**: a module that imports the type gets its defaults too
+  (a variable of it, `NEW`, an extension of it), hidden fields included. The
+  `.sym` file says only that a field has one, as `f: T := ..`, which a module
+  cannot write itself ("expected an expression"); the values stay in the
+  declaring module's code.
+- `-strict` rejects it ("a record field initializer is not in the Oberon-2
+  report"), and voc cannot compile it.
+
+How: the parser gives each field of the list its own copy of the expression
+(`Parser.ParseFieldInitializers`; `.sym` files are parsed with
+`InitInterfaceParser`, which accepts `..`); the checker checks each copy as an
+assignment once the declarations before it are resolved
+(`SemanticActions.CheckFieldInitializer`, with `SymbolTable.limitScope` and
+`limitLocals`) and marks each record type that needs initializing
+(`Types.RecordTypeDesc.needsInit`, `Types.NeedsInit`). The backend defines one
+procedure per such record, `@<Module>.<path>.$init(ptr)` (`EmitInitProcedure`),
+and calls it where a record is made (`InitializeAt`, a loop for an array;
+`GenerateDeclarationInits` for variables, `GenerateNew`/`GenerateNewOpenArray`).
+`<path>` names the record the same way in every module that sees it: a
+module-level named record's name, `P.base` for a pointer's anonymous base, and
+`T.f`, `A.element` and so on down anonymous types from a module-level `TYPE`
+declaration (`SemanticActions.NameInitPaths`); any other record, which no other
+module can make, is named `$anonN` by the backend. A program with no field
+initializers gets exactly the code it did before. Fixtures
+`llvm-field-initializers`, `semantic-reject-field-initializers`,
+`semantic-strict-field-initializers`.
 
 ## What traps, and what does not (Phase 11 C9)
 

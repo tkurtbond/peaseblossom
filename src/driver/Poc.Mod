@@ -102,7 +102,7 @@ MODULE Poc;
   PROCEDURE ParseModuleAdapter(buffer: Lexer.CharBuffer; length: LONGINT): SyntaxTree.ModuleNode;
     VAR parser: Parser.Parser;
   BEGIN
-    Parser.InitParser(parser, buffer, length);
+    Parser.InitInterfaceParser(parser, buffer, length);
     RETURN Parser.ParseModule(parser)
   END ParseModuleAdapter;
 

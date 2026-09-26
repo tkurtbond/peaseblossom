@@ -71,9 +71,12 @@ MODULE Parser;
     Parser* = RECORD
       scanner: Lexer.Scanner;
       current: Lexer.Token;
-      aliases: Alias (* local names the current module's IMPORT list bound,
+      aliases: Alias; (* local names the current module's IMPORT list bound,
                          used to resolve the qualident/selector ambiguity
                          above; see simplification 1 *)
+      (* the text is a .sym file (InitInterfaceParser), where a record
+         field's initializer is written "f: T := .." (ParseFieldList) *)
+      interfaceText: BOOLEAN
     END;
 
   PROCEDURE Advance(VAR p: Parser);
@@ -450,11 +453,14 @@ MODULE Parser;
 
   (* ---- Types ---- *)
 
+  PROCEDURE ^ ParseFieldInitializers(VAR p: Parser; fields: SyntaxTree.FieldListNode);
+
   PROCEDURE ParseFieldList(VAR p: Parser): SyntaxTree.FieldListNode;
     VAR
       names: SyntaxTree.IdentDefNode;
       type: SyntaxTree.TypeNode;
       line, column: INTEGER;
+      fields: SyntaxTree.FieldListNode;
   BEGIN
     line := p.current.line; column := p.current.column;
     IF p.current.kind = Lexer.ident THEN
@@ -464,7 +470,9 @@ MODULE Parser;
     ELSE
       names := NIL; type := NIL
     END;
-    RETURN SemanticActions.NewFieldList(names, type, line, column)
+    fields := SemanticActions.NewFieldList(names, type, line, column);
+    IF (names # NIL) & (p.current.kind = Lexer.assign) THEN ParseFieldInitializers(p, fields) END;
+    RETURN fields
   END ParseFieldList;
 
   PROCEDURE ParseFPSection(VAR p: Parser): SyntaxTree.FPSectionNode;
@@ -848,6 +856,31 @@ MODULE Parser;
     END
   END ParseInitializers;
 
+  (* Phase 11 D17: ":= e" after a record field list's type, the default
+     of every field of the list. As for a variable (ParseInitializers), e is
+     parsed once for each name, so each field has its own copy, evaluated
+     for it alone. In a .sym file the initializer is "..", which says only
+     that there is one: its value stays in the module that declared it. *)
+  PROCEDURE ParseFieldInitializers(VAR p: Parser; fields: SyntaxTree.FieldListNode);
+    VAR
+      start: Parser; name: SyntaxTree.IdentDefNode; value, tail: SyntaxTree.ExprNode;
+      errorsBefore: INTEGER;
+  BEGIN
+    fields.initializerLine := p.current.line; fields.initializerColumn := p.current.column;
+    Advance(p);
+    IF p.interfaceText & (p.current.kind = Lexer.upTo) THEN Advance(p); RETURN END;
+    Diagnostics.NotInReport(fields.initializerLine, fields.initializerColumn, "a record field initializer");
+    start := p; errorsBefore := Diagnostics.errorCount;
+    tail := NIL; name := fields.names;
+    WHILE name # NIL DO
+      IF name # fields.names THEN p := start END;
+      value := ParseExpr(p);
+      IF tail = NIL THEN fields.initializers := value ELSE tail.next := value END;
+      tail := value;
+      IF Diagnostics.errorCount # errorsBefore THEN name := NIL ELSE name := name.next END
+    END
+  END ParseFieldInitializers;
+
   PROCEDURE ParseVarDecl(VAR p: Parser): SyntaxTree.VarDeclNode;
     VAR
       names: SyntaxTree.IdentDefNode; type: SyntaxTree.TypeNode; line, column: INTEGER;
@@ -1065,8 +1098,14 @@ MODULE Parser;
   BEGIN
     Lexer.InitScanner(p.scanner, text, length);
     Lexer.NextToken(p.scanner, p.current);
-    p.aliases := NIL
+    p.aliases := NIL; p.interfaceText := FALSE
   END InitParser;
+
+  (* InitParser for the text of a .sym file (ModuleInterface.Mod) *)
+  PROCEDURE InitInterfaceParser*(VAR p: Parser; text: Lexer.CharBuffer; length: LONGINT);
+  BEGIN
+    InitParser(p, text, length); p.interfaceText := TRUE
+  END InitInterfaceParser;
 
   PROCEDURE ParseModule*(VAR p: Parser): SyntaxTree.ModuleNode;
     VAR

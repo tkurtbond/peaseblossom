@@ -316,8 +316,16 @@ next procedure. `-strict` rejects it.
 
 `VAR a, b: T := e;` - an assignment of `e` to each variable, evaluated once
 per variable, before the body (locals on every entry), in declaration order.
-Any expression; it sees only names declared before its `:=`. Variables only,
-not record fields. `-strict` rejects it.
+Any expression; it sees only names declared before its `:=`. `-strict` rejects
+it.
+
+### Record field initializers (decided and implemented, Phase 11 D17, 2026-09-26)
+
+`RECORD x, y: INTEGER := e END` - the fields' defaults, assigned (each field
+its own evaluation of `e`) whenever a record of the type is made: a variable,
+`NEW`, a record inside one; not a copy. Base type's first. Any expression, but
+none of a procedure's variables or procedures. Works across modules (`.sym`
+writes `:= ..`). `-strict` rejects it.
 
 ### What traps, and what does not (Phase 11 C9)
 

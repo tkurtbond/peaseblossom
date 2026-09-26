@@ -102,7 +102,11 @@ not in the inventory yet.
   variable), before the body, in declaration order; only names declared
   before the `:=` are visible; variables only; `-strict` rejects it.
   `doc/language-extensions.md`, "Variable initializers".
-- **Record-field initializers**: a separate item, Phase 11 D17.
+- **Record-field initializers**: a separate item, Phase 11 D17, then decided
+  (user, 2026-09-26): any expression, not A2's constants; one
+  initialization procedure per record type, with the `.sym` file saying only
+  that a field has an initializer. Done: `doc/language-extensions.md`,
+  "Record field initializers".
 - **A24: moved to Phase 17**, a new phase for further extensions to
   Oberon-2 (`PLAN.md`).
 - **The related finding: done** as Phase 11 D16 - every local starts at zero.

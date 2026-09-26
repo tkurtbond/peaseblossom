@@ -121,7 +121,7 @@ MODULE SymbolTable;
       next*: Object
     END;
 
-    ScopeDesc* = RECORD
+    ScopeDesc* = RECORD (Types.ScopeHandleDesc)
       objects*: Object;
       outer*: Scope;
       (* NIL at module level (Universe's own value, propagated down by
@@ -165,6 +165,12 @@ MODULE SymbolTable;
     limitScope*: Scope;
     limitLine*, limitColumn*: INTEGER;
     limitViolation*: Object;
+    (* Phase 11 D17: while the checker checks a record field's initializer,
+       which runs outside any procedure, TRUE; Find then notes, in
+       localViolation, the first variable or procedure it finds that
+       belongs to a procedure (a scope whose enclosingProc is set). *)
+    limitLocals*: BOOLEAN;
+    localViolation*: Object;
 
   PROCEDURE OpenScope*(outer: Scope): Scope;
     VAR s: Scope;
@@ -200,6 +206,10 @@ MODULE SymbolTable;
       IF (o # NIL) & (s = limitScope) & (limitViolation = NIL)
          & ((o.declLine > limitLine) OR (o.declLine = limitLine) & (o.declColumn > limitColumn)) THEN
         limitViolation := o
+      END;
+      IF (o # NIL) & limitLocals & (localViolation = NIL) & (s.enclosingProc # NIL)
+         & ((o.class = varClass) OR (o.class = procClass)) THEN
+        localViolation := o
       END;
       s := s.outer
     END;
@@ -297,6 +307,7 @@ MODULE SymbolTable;
   END InsertSystemProc;
 
 BEGIN
+  limitScope := NIL; limitViolation := NIL; limitLocals := FALSE; localViolation := NIL;
   Universe := OpenScope(NIL);
   InsertPredeclared("BOOLEAN", Types.Boolean);
   InsertPredeclared("CHAR", Types.Char);

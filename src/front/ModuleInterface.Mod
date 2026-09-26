@@ -893,6 +893,10 @@ MODULE ModuleInterface;
             IF f.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END
           END;
           WriteStr(w, ": "); PrintTypeRef(w, scope, f.type);
+          (* Phase 11 D17: that the field has an initializer, not its
+             value, which only the declaring module's code uses
+             (Parser.ParseFieldInitializers reads it back) *)
+          IF f.hasInitializer & ~exportedView THEN WriteStr(w, " := ..") END;
           first := FALSE
         END;
         f := f.next

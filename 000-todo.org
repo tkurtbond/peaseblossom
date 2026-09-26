@@ -130,6 +130,8 @@ No: voc's SET is 32 bits under -O2 and -OC alike (OPM.Mod; doc/Features.md is wr
 SET is 32 bits under both models, SET32 is SET, SYSTEM.SET64 is a distinct 8-byte set, elements 0..63, a SET is included in it; fixtures semantic-set64, llvm-set64, llvm-set64-import.
 ** TODO Consider voc's read-only parameters, `PROCEDURE P(x-: T)`.
 From voc (OPP.Mod; not in its doc/): passed by reference like VAR, not assignable (err 76), the actual must be a variable (err 122, so not a string literal), `VAR x-` rejected (err 246).  The Oakwood Guidelines (1995) describe it in 5.13, "Read only VAR Parameters", and recommend it not be implemented ("really a compiler code optimisation issue").  Component Pascal's IN mode is the same idea, for arrays and records only.  poc rejects the mark today (2026-09-25).  If adopted: poc's own source would not use it, and -strict (Phase 11 step 6) must reject it.  doc/language-extensions.md, "Read-only parameters (considered, not adopted)".
+** TODO Decide the lowest 32-bit x86 CPU (-march=i686 for every 32-bit x86 triple?).
+Deferred to Phase 12 (PLAN.md, after its testing summary) on 2026-09-26: needs a 32-bit NetBSD test host, and a 32-bit FreeBSD one if FreeBSD still has an i386 build.
 ** TODO Look at all of voc's command line switches, and decide which ones poc should have.
 ** DONE Create an Err module, that is essentially equivalent to the Out module, but writes on stderr.
 Done 2026-09-25: rtl/llvm/Err.Mod has Out's whole interface (Open, Flush, Char, String, Int, Hex, Ln, Real, LongReal, Ten, IsConsole) and writes to descriptor 2, unbuffered.  Out and Err both write through the new internal FormattedOutput.Mod, which takes the descriptor.  Fixture llvm-err.  (doc/phase-11-inventory.md A26.)
@@ -149,8 +151,8 @@ Decided with the user 2026-09-25 and done: declare-before-use stays (no true for
 The section-order half is DONE (2026-09-17, voc-verified): CONST/TYPE/VAR sections may repeat and interleave, resolved in one textual-order pass; see the DONE entry "Resolve CONST/TYPE/VAR declarations as one linear pass" above.  What remains is true forward references and putting a PROCEDURE before a TYPE/VAR.  Proposed verdict: close at what voc does (voc rejects both; the PROCEDURE^ forward declaration already covers the case that matters); reopen only for a concrete need.  (doc/phase-11-inventory.md A22; PLAN.md Phase 11 step 6.)
 ** DONE Initializers for variable declarations consisting of := after the type, followed by an expression.
 Done 2026-09-26 (user's decision): VAR x, y: T := e, any expression, evaluated once for each variable before the body; only names declared before the := are visible; -strict rejects it.  Every local now also starts at zero (D16).  (doc/phase-11-inventory.md A23, D16; doc/language-extensions.md, "Variable initializers"; survey doc/initializers-and-literals-survey.md.)
-** TODO Initializers on record fields.
-Defaults a record's fields take whenever one is created, as Active Oberon has.  (doc/phase-11-inventory.md D17.)
+** DONE Initializers on record fields.
+Defaults a record's fields take whenever one is created, as Active Oberon has.  Done 2026-09-26: any expression, each field its own evaluation, applied to variables, NEW and records inside them; across modules through one initialization procedure per record type.  (doc/phase-11-inventory.md D17; doc/language-extensions.md, "Record field initializers".)
 ** TODO Oberon-2 has syntax for sets literals; it would be good have syntax for record and array literals, too.
 Moved to Phase 17 (PLAN.md, further extensions to Oberon-2) by the user 2026-09-26; survey in doc/initializers-and-literals-survey.md.  (doc/phase-11-inventory.md A24.)
 ** DONE Underscores and dollarsigns in names.  (Useful for VMS.)
