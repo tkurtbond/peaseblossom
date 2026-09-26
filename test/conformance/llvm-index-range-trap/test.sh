@@ -10,7 +10,7 @@
 # threaded program, so their combined byte order is exactly execution
 # order, not just "eventually consistent."
 exe=$(basename "$PWD")
-poc -o "$exe" -build idxtrap.mod >result
+poc -o "$exe" -build idxtrap.mod >result 2>&1
 "./$exe" >>result 2>&1
 printf '\nexit=%d\n' "$?" >>result
 . ../../testresult.sh

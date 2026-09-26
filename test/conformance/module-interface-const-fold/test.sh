@@ -8,7 +8,7 @@ mkdir -p round1 round2 oc1 oc2
   echo "-OC:"
   poc -OC -output-dir oc1 -emit-interface limits.mod
   cat oc1/limits.sym
-} >result
+} >result 2>&1
 # the interface, read back as source, reproduces itself exactly
 poc -output-dir round2 -emit-interface round1/limits.sym >/dev/null
 poc -OC -output-dir oc2 -emit-interface oc1/limits.sym >/dev/null

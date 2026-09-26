@@ -12,7 +12,7 @@ rm -f *.c *.h *.o *.sym modulestest
 # Modules and Console are rtl modules: poc finds them through the import path
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
-poc -o llvm-modules -build modulestest.mod >result
+poc -o llvm-modules -build modulestest.mod >result 2>&1
 ./llvm-modules alpha "two words" "" 42 -7 >poc-output
 cat poc-output >>result
 cmp -s poc-output voc-output || echo "poc and voc disagree on modulestest" >>result

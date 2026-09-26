@@ -6,7 +6,7 @@
 # llvm-index-range-trap/test.sh for the same reasoning applied to a
 # trap's own exit status instead of HALT's.
 exe=$(basename "$PWD")
-poc -o "$exe" -build predhalt.mod >result
+poc -o "$exe" -build predhalt.mod >result 2>&1
 "./$exe" >>result
 printf '\nexit=%d\n' "$?" >>result
 . ../../testresult.sh

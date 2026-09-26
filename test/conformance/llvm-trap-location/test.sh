@@ -9,7 +9,7 @@ exe=$(basename "$PWD")
 : >result
 for model in -O2 -OC
 do
-  poc $model -import-path lib -trap-location -trap-heap-exhausted -o "$exe" -build traplocation.mod \
+  poc $model -import-path lib -trap-location -trap-heap-exhausted -o "$exe" -build traplocation.mod 2>&1 \
     | grep -v '^semantic OK' >>result
   for case in 0 1 2 3 4 5 6 7 8 9 10
   do
@@ -18,7 +18,7 @@ do
     printf 'exit=%d\n' "$?" >>result
   done
 done
-poc -import-path lib -o "$exe" -build traplocation.mod | grep -v '^semantic OK' >>result
+poc -import-path lib -o "$exe" -build traplocation.mod 2>&1 | grep -v '^semantic OK' >>result
 printf '== without -trap-location, case 0\n' >>result
 "./$exe" 0 >>result 2>&1
 printf 'exit=%d\n' "$?" >>result

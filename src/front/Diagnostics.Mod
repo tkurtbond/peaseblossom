@@ -17,9 +17,13 @@ MODULE Diagnostics;
      CHAR locals are not "the same type" and so not `:=`-assignable),
      overwrite it for the nested call, then COPY it back - deliberately
      not a new Reset-like procedure, since a plain exported field already
-     supports exactly this save/restore shape with no new API surface. *)
+     supports exactly this save/restore shape with no new API surface.
 
-  IMPORT Out;
+     Errors go to standard error (Phase 11 D11), as gcc's and clang's do,
+     so that a command's own output on standard output (a dump, an
+     interface) stays apart from them. *)
+
+  IMPORT Err;
 
   CONST
     (* room for a path an import-path directory makes, not just a module's
@@ -41,9 +45,9 @@ MODULE Diagnostics;
 
   PROCEDURE Error*(line, column: INTEGER; message: ARRAY OF CHAR);
   BEGIN
-    Out.String(fileName); Out.Char(":");
-    Out.Int(line, 0); Out.Char(":"); Out.Int(column, 0);
-    Out.String(": error: "); Out.String(message); Out.Ln;
+    Err.String(fileName); Err.Char(":");
+    Err.Int(line, 0); Err.Char(":"); Err.Int(column, 0);
+    Err.String(": error: "); Err.String(message); Err.Ln;
     INC(errorCount)
   END Error;
 

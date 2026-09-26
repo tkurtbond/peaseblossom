@@ -4,6 +4,6 @@
 # found through -import-path with its directory, one in the current directory
 # as it is (it used to be the constructed Bad.mod in both cases).
 : >result
-poc -import-path lib -emit-llvm-ir topbad.mod >>result
-poc -emit-llvm-ir toplow.mod >>result
+poc -import-path lib -emit-llvm-ir topbad.mod >>result 2>&1
+poc -emit-llvm-ir toplow.mod >>result 2>&1
 . ../../testresult.sh

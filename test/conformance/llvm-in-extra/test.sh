@@ -2,6 +2,6 @@
 . ../../testenv.sh
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
-poc -o llvm-in-extra -build inextra.mod >result
+poc -o llvm-in-extra -build inextra.mod >result 2>&1
 ./llvm-in-extra <input.txt >>result
 . ../../testresult.sh

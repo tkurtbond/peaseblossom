@@ -11,7 +11,7 @@ for model in -O2 -OC
 do
   for switch in "" -trap-heap-exhausted
   do
-    poc $model $switch -o "$exe" -build heapexhausted.mod | grep -v '^semantic OK' >>result
+    poc $model $switch -o "$exe" -build heapexhausted.mod 2>&1 | grep -v '^semantic OK' >>result
     for case in 0 1 2 3
     do
       printf '== %s %s case %s\n' "$model" "${switch:-(default)}" "$case" >>result

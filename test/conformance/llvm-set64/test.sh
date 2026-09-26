@@ -5,9 +5,9 @@
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 exe=$(basename "$PWD")
-poc -o "$exe" -build set64.mod >result
+poc -o "$exe" -build set64.mod >result 2>&1
 "./$exe" >>result
-poc -OC -o "$exe" -build set64.mod >result.oc
+poc -OC -o "$exe" -build set64.mod >result.oc 2>&1
 "./$exe" >>result.oc
 cmp -s result result.oc || { echo "-OC output differs:" >>result; cat result.oc >>result; }
 rm -f result.oc

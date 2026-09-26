@@ -102,6 +102,11 @@ rtl/
     Modules.Mod              -- ArgCount/GetArg - voc-compatibility (Phase 10)
     Out.Mod, In.Mod          -- Oakwood basic modules, also a poc-own dependency (Phase 10)
     Strings.Mod, Math.Mod, MathL.Mod -- remaining Oakwood basic modules (Phase 10)
+    Err.Mod                  -- Out on standard error, not Oakwood (Phase 11 A26)
+    FormattedOutput.Mod      -- the formatting Out and Err share, by descriptor (Phase 11 A26)
+    FileDescriptorOutput.Mod -- write(2)/isatty under them, apart so voc compiles the rest (Phase 11 D11)
+  voc/
+    FileDescriptorOutput.Mod -- the same over voc's Platform, for Stage 0's Err (Phase 11 D11)
   vax/                        -- deferred stubs only until Phase 14 (minimal runtime), Phase 15 (libraries)
 test/
   conformance/<feature>/{*.mod, test.sh, expected}

@@ -9,7 +9,7 @@ exe=$(basename "$PWD")
 for model in -O2 -OC
 do
   printf '== %s\n' "$model" >>result
-  poc $model -o "$exe" -build largerecords.mod | grep -v '^semantic OK' >>result
+  poc $model -o "$exe" -build largerecords.mod 2>&1 | grep -v '^semantic OK' >>result
   "./$exe" >>result 2>&1
   printf 'exit=%d\n' "$?" >>result
 done

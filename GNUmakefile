@@ -17,6 +17,9 @@ BACK_LLVM_SRCS := $(wildcard src/back/llvm/*.Mod)
 BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod)
 DRIVER_SRCS := src/driver/Poc.Mod
 RTL_SRCS := $(wildcard rtl/llvm/*.Mod)
+# what Stage 0 builds with voc besides src/: Err and what it needs (Phase 11 D11)
+STAGE0_RTL_SRCS := rtl/voc/FileDescriptorOutput.Mod rtl/llvm/RealDigits.Mod \
+  rtl/llvm/FormattedOutput.Mod rtl/llvm/Err.Mod
 STAGE1_BIN := $(BUILD_DIR)/stage1/bin/poc
 SRCS := $(FRONT_SRCS) $(BACK_LLVM_SRCS) $(BACK_VAX_SRCS) $(DRIVER_SRCS)
 
@@ -46,7 +49,7 @@ MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
 build: $(BIN)
 
-$(BIN): $(SRCS)
+$(BIN): $(SRCS) $(STAGE0_RTL_SRCS)
 	tools/bootstrap/stage0
 
 all: build

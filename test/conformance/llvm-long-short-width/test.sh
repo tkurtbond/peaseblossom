@@ -8,7 +8,7 @@ exe=$(basename "$PWD")
 for model in -O2 -OC
 do
   echo "== $model" >>result
-  poc $model -o "$exe" -build longshort.mod >build.out
+  poc $model -o "$exe" -build longshort.mod >build.out 2>&1
   grep -v '^semantic OK' build.out >>result
   "./$exe" >>result
 done

@@ -5,7 +5,7 @@
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 exe=$(basename "$PWD")
-poc -o "$exe" -build newtrap.mod >result
+poc -o "$exe" -build newtrap.mod >result 2>&1
 "./$exe" >>result 2>&1
 printf '\nexit=%d\n' "$?" >>result
 . ../../testresult.sh

@@ -21,6 +21,13 @@ mkdir -p "$BUILD/bin" "$BUILD/obj"
 export PATH="$VOC_BIN_DIR:$PATH"
 
 cd "$BUILD/obj"
+# Err (Phase 11 D11), which Diagnostics and Poc write their errors through:
+# rtl/llvm's own source, over voc's version of the one module that calls the
+# operating system
+voc -OC -s "$ROOT/rtl/voc/FileDescriptorOutput.Mod"
+voc -OC -s "$ROOT/rtl/llvm/RealDigits.Mod"
+voc -OC -s "$ROOT/rtl/llvm/FormattedOutput.Mod"
+voc -OC -s "$ROOT/rtl/llvm/Err.Mod"
 voc -OC -s "$ROOT/src/front/Diagnostics.Mod"
 voc -OC -s "$ROOT/src/front/Lexer.Mod"
 voc -OC -s "$ROOT/src/front/SyntaxTree.Mod"

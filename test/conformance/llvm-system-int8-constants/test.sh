@@ -14,7 +14,7 @@ do
   voc $model int8const.mod -m >voc.out 2>&1 || { echo "voc $model failed" >>result; cat voc.out >>result; }
   ./int8const >voc-output
   rm -f *.c *.h *.o *.sym int8const voc.out
-  poc $model -o llvm-system-int8-constants -build int8const.mod >build.out
+  poc $model -o llvm-system-int8-constants -build int8const.mod >build.out 2>&1
   grep -v '^semantic OK' build.out >>result
   echo "== $model" >>result
   ./llvm-system-int8-constants >poc-output

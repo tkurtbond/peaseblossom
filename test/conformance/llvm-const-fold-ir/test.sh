@@ -8,5 +8,5 @@
   echo "-OC:"
   poc -OC -target x86_64-unknown-linux-gnu -emit-llvm-ir constir.mod
   cat constir.ll
-} >result
+} >result 2>&1
 . ../../testresult.sh

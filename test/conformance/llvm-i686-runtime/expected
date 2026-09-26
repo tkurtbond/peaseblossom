@@ -35,6 +35,7 @@ llvm-trees-strings: same
 llvm-procedure-values: same
 llvm-procedure-values-import: same
 llvm-ash-max-min: same
+llvm-hugeint-arithmetic: same
 llvm-const-fold: same
 llvm-const-fold-import: same
 llvm-console: same
@@ -45,6 +46,7 @@ llvm-files-extra: same
 llvm-modules: same
 llvm-out: same
 llvm-out-extra: same
+llvm-err: same
 llvm-in: same
 llvm-in-extra: same
 llvm-strings: same

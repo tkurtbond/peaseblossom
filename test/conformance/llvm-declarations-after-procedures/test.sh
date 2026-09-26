@@ -9,7 +9,7 @@ exe=$(basename "$PWD")
 for model in -O2 -OC
 do
   echo "$model" >>result
-  poc $model -o "$exe" -build client.mod >>result
+  poc $model -o "$exe" -build client.mod >>result 2>&1
   "./$exe" >>result
 done
 . ../../testresult.sh

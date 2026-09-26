@@ -10,5 +10,5 @@ for f in "$SRC"/front/Diagnostics.Mod "$SRC"/front/Lexer.Mod \
 do
   echo "$(basename "$f"):"
   poc -check-syntax "$f"
-done >result
+done >result 2>&1
 . ../../testresult.sh

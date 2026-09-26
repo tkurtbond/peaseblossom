@@ -1,0 +1,17 @@
+exit 0, stdout 1, stderr 0: poc -check ok.mod
+exit 0, stdout 1, stderr 0: poc -check-syntax ok.mod
+exit 0, stdout 7, stderr 0: poc -dump-tokens ok.mod
+exit 0, stdout 2, stderr 0: poc -show-interface ok.mod
+exit 0, stdout 1, stderr 0: poc -emit-llvm-ir ok.mod
+exit 1, stdout 0, stderr 2: poc -check typeerror.mod
+exit 1, stdout 0, stderr 2: poc -check-syntax syntaxerror.mod
+exit 1, stdout 11, stderr 2: poc -dump-tokens badtoken.mod
+exit 1, stdout 0, stderr 2: poc -emit-interface typeerror.mod
+exit 1, stdout 0, stderr 2: poc -emit-llvm-ir typeerror.mod
+exit 1, stdout 0, stderr 1: poc -check missing.mod
+exit 1, stdout 0, stderr 2: poc -o prog -build vms.mod
+exit 1, stdout 0, stderr 1: poc -build ok.mod
+exit 1, stdout 0, stderr 1: poc -output-dir no-such-directory -emit-interface ok.mod
+exit 1, stdout 0, stderr 34: poc -frobnicate ok.mod
+exit 1, stdout 0, stderr 34: poc 
+exit 0, stdout 1, stderr 0: poc -print-import-path

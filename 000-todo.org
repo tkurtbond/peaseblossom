@@ -9,7 +9,8 @@ Done 2026-09-25 (commit bd82ffd): the book's Appendix A lies between the 1993 re
 Done 2026-09-25: it already listed them all; it now says `make build`/`make all` are the default and that `clang` is needed.  (doc/phase-11-inventory.md C1.)
 ** DONE Pragmas so that Math.Mod and MathL.Mod can specify -lm.  Does voc have anything like that?
 Done as far as Phase 11 goes (2026-09-25 record; the change is Phase 10 step 6): the driver always passes -lm to clang (LLVMToolchainDriver), and -lm links nothing a program does not use.  A general pragma mechanism is Phase 12.  (doc/phase-11-inventory.md C2.)
-** TODO Implement HUGEINT arithmetic on 32 bits.
+** DONE Implement HUGEINT arithmetic on 32 bits.
+Done for the LLVM backend (2026-09-25): HUGEINT is i64 in the IR, which LLVM lowers to word pairs on a 32-bit target.  Fixture llvm-hugeint-arithmetic matches voc under -O2 and -OC, and runs as a 32-bit executable in llvm-i686-runtime.  (doc/phase-11-inventory.md C3.)
 ** TODO Implement HUGEINT arithmetic on VAX/VMS.  (Use LIB$ and OTS$ routines?)
 ** DONE check that everything that should raise underflow or overflow does.
 Decided with the user 2026-09-21, after the survey in doc/overflow-survey.md: nothing new is checked.  Integer + - * - ABS INC DEC wrap at the type's width (promised, and pinned by llvm-overflow-wrap against voc); reals are IEEE and silent; DIV/MOD by zero is SIGFPE (C6); SHORT/CHR/SET element range stay unchecked, an optional -r is Phase 12 step 1 triage.  Original text follows.
@@ -126,7 +127,8 @@ SET is 32 bits under both models, SET32 is SET, SYSTEM.SET64 is a distinct 8-byt
 ** TODO Consider voc's read-only parameters, `PROCEDURE P(x-: T)`.
 From voc (OPP.Mod; not in its doc/): passed by reference like VAR, not assignable (err 76), the actual must be a variable (err 122, so not a string literal), `VAR x-` rejected (err 246).  The Oakwood Guidelines (1995) describe it in 5.13, "Read only VAR Parameters", and recommend it not be implemented ("really a compiler code optimisation issue").  Component Pascal's IN mode is the same idea, for arrays and records only.  poc rejects the mark today (2026-09-25).  If adopted: poc's own source would not use it, and -strict (Phase 11 step 6) must reject it.  doc/language-extensions.md, "Read-only parameters (considered, not adopted)".
 ** TODO Look at all of voc's command line switches, and decide which ones poc should have.
-** TODO Create an Err module, that is essentially equivalent to the Out module, but writes on stderr.
+** DONE Create an Err module, that is essentially equivalent to the Out module, but writes on stderr.
+Done 2026-09-25: rtl/llvm/Err.Mod has Out's whole interface (Open, Flush, Char, String, Int, Hex, Ln, Real, LongReal, Ten, IsConsole) and writes to descriptor 2, unbuffered.  Out and Err both write through the new internal FormattedOutput.Mod, which takes the descriptor.  Fixture llvm-err.  (doc/phase-11-inventory.md A26.)
 ** TODO Consider supporting voc's eth, ooc, and ulm RTLs.
 ** DONE Consider relaxing assignment compatibility rule 6, and allowing assignment of one ARRAY OF CHAR to another.
 Decided and done 2026-09-21 (survey: doc/array-assignment-survey.md; AGENTS.md "Array assignment").  Rule 6 stays (no dialect relaxes it).  voc's array rule is adopted for every element type: a fixed array target takes a same-element-type fixed array no longer than it, or an open array (trap, exit 9, if longer), copied whole by size.  An open array is never a target (fixing a defect: d := s for two open arrays was accepted and then failed in the backend).

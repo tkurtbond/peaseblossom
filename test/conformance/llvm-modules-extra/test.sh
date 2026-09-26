@@ -2,7 +2,7 @@
 . ../../testenv.sh
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
-poc -o llvm-modules-extra -build modulesextra.mod >result
+poc -o llvm-modules-extra -build modulesextra.mod >result 2>&1
 zeros=$(printf '%03000d' 0)
 ./llvm-modules-extra "$zeros" b >>result
 . ../../testresult.sh

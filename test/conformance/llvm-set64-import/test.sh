@@ -11,7 +11,7 @@ exe=$(basename "$PWD")
 for model in -O2 -OC
 do
   echo "== $model" >>result
-  poc $model -o "$exe" -build setuse.mod | grep -v '^semantic OK' >>result
+  poc $model -o "$exe" -build setuse.mod 2>&1 | grep -v '^semantic OK' >>result
   "./$exe" >>result
 done
 . ../../testresult.sh

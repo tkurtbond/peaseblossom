@@ -6,7 +6,7 @@ export POC_IMPORT_PATH
 # llvm-predeclared-halt/test.sh). The fatal error names the file by its
 # absolute path, which differs from one machine to the next, so it is
 # shown as "<cwd>".
-poc -o llvm-files-fail -build filesfail.mod >result
+poc -o llvm-files-fail -build filesfail.mod >result 2>&1
 ./llvm-files-fail 2>&1 | sed "s|$PWD|<cwd>|" >>result
 printf 'exit=%d\n' "$(./llvm-files-fail >/dev/null 2>&1; echo $?)" >>result
 . ../../testresult.sh

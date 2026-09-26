@@ -4,7 +4,7 @@
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 exe=$(basename "$PWD")
-poc -o "$exe" -build digits.mod >build.out
+poc -o "$exe" -build digits.mod >build.out 2>&1
 grep -v '^semantic OK' build.out
 "./$exe" | sed 's/^ *//' >result
 rm -f build.out

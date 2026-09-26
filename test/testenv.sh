@@ -52,7 +52,7 @@ rm -f *.o *.c *.h *.ll *.s *.mar *.sym *.exe result "$(basename "$PWD")"
 # for Phase 8) don't each hand-roll the exact clang-backed CLI incantation.
 poc_build_run() {
   exe=$(basename "$PWD")
-  poc -o "$exe" -build "$1" >result
+  poc -o "$exe" -build "$1" >result 2>&1
   "./$exe" >>result
 }
 

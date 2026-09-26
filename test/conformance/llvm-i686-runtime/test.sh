@@ -83,6 +83,7 @@ check llvm-trees-strings treesclient.mod
 check llvm-procedure-values procvals.mod
 check llvm-procedure-values-import client.mod
 check llvm-ash-max-min ashmaxmin.mod
+check llvm-hugeint-arithmetic hugeint.mod
 check llvm-const-fold constfold.mod
 check llvm-const-fold-import client.mod
 check llvm-console consoletest.mod
@@ -93,6 +94,7 @@ check llvm-files-extra filesextra.mod
 check llvm-modules modulestest.mod alpha "two words" "" 42 -7
 check llvm-out outtest.mod
 check llvm-out-extra outextra.mod
+check llvm-err errtest.mod
 check llvm-in intest.mod
 check llvm-in-extra inextra.mod
 check llvm-strings stringstest.mod

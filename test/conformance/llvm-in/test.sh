@@ -12,7 +12,7 @@ rm -f *.c *.h *.o *.sym intest
 # In, Out and Console are rtl modules: poc finds them through the import path
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
-poc -o llvm-in -build intest.mod >result
+poc -o llvm-in -build intest.mod >result 2>&1
 ./llvm-in <input.txt >poc-output
 cat poc-output >>result
 cmp -s poc-output voc-output || echo "poc and voc disagree on intest" >>result
