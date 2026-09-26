@@ -1,5 +1,6 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
 * Things to be done while getting the compiler working
+** TODO Check that all errors exits use Platform.Exit instead of HALT(n).
 ** DONE Change mentions of Oberon2.pdf in the compiler messages to something like "the Oberon-2 report".
 Done 2026-09-25: the -strict error is now "<construct> is not in the Oberon-2 report (-strict)" (Diagnostics.NotInReport), and poc's usage text says "beyond the Oberon-2 report"; semantic-strict's expected output regenerated.  Source comments and the docs' headings still name Oberon2.pdf, for developers.
 ** DONE Check Oberon2.pdf against the version in "A. Oberon-2 Language Definition" on page 221 of "Object-Oriented Programming in Oberon-2, Second Edition".
@@ -11,6 +12,7 @@ Done 2026-09-25: it already listed them all; it now says `make build`/`make all`
 Done as far as Phase 11 goes (2026-09-25 record; the change is Phase 10 step 6): the driver always passes -lm to clang (LLVMToolchainDriver), and -lm links nothing a program does not use.  A general pragma mechanism is Phase 12.  (doc/phase-11-inventory.md C2.)
 ** DONE Implement HUGEINT arithmetic on 32 bits.
 Done for the LLVM backend (2026-09-25): HUGEINT is i64 in the IR, which LLVM lowers to word pairs on a 32-bit target.  Fixture llvm-hugeint-arithmetic matches voc under -O2 and -OC, and runs as a 32-bit executable in llvm-i686-runtime.  (doc/phase-11-inventory.md C3.)
+** TODO Implement HUGEINT arithmetic on 32 bit x86.
 ** TODO Implement HUGEINT arithmetic on VAX/VMS.  (Use LIB$ and OTS$ routines?)
 ** DONE check that everything that should raise underflow or overflow does.
 Decided with the user 2026-09-21, after the survey in doc/overflow-survey.md: nothing new is checked.  Integer + - * - ABS INC DEC wrap at the type's width (promised, and pinned by llvm-overflow-wrap against voc); reals are IEEE and silent; DIV/MOD by zero is SIGFPE (C6); SHORT/CHR/SET element range stay unchecked, an optional -r is Phase 12 step 1 triage.  Original text follows.
@@ -43,6 +45,10 @@ Fixed 2026-09-25: DiscoverModule and RegenerateInterfaces set Diagnostics.fileNa
 Found 2026-09-25 while doing C7 (`-trap-location`).  `poc -import-path lib -build Top.mod`, where Top imports Bad and Bad is `lib/Bad.Mod`, reports `Bad.mod:3:7: error: ...` - neither the directory nor the `.Mod` spelling is right, so an editor or a `file:line` jump cannot find it (every rtl/llvm module is a `.Mod` under an import-path directory).  The cause: Poc.Mod's DiscoverModule (and RegenerateInterfaces) set Diagnostics.fileName from ModuleInterface.ModFileName, which only builds `<Name>.mod`.  The real path is already known: ModuleInterface.sourcePath, recorded for -trap-location, is what ReadModuleSource opened.  Fix: use it for Diagnostics.fileName too; regenerate the goldens of the fixtures with an error in an imported module (the message's file name changes).
 ** TODO Work out what HALT(n)'s status means on VAX/VMS (Phase 13).
 A VMS exit status is a 32-bit condition value whose low three bits are a severity and whose low bit says success or failure (from memory, not yet checked in a 5.5-2 manual), so `HALT(n)` cannot simply be `exit(n)`: HALT(2) might look like a success, HALT(0) may not be one.  Read the VMS 5.5-2 documentation (system services $EXIT, the VAX C RTL's exit()) before the VMS backend defines a mapping; the LLVM backend's 0..255 rule stays.
+
+VAX/VMS condition codes (I think that's the proper terminology are much more extensive than Unix's exit() or Oberon's HALT.  It's also used to signalling conditions.  It has several parts: severity and success have also been mentioned, but it also includes facility and a subfield indicating which error code in that facility it is.  Analyze the documentation before building it.
+
+It may be that Platform.Exit may need VMS compability enhancements, or perhaps Platform needs a VMS specific exit. 
 ** DONE LONGINT was included in SYSTEM.ADDRESS by rank, but on a 32-bit target under -OC a LONGINT is 64 bits: a mixed ADDRESS/LONGINT operation was done at 32 bits and truncated (Files.Old's size <= MAX(LONGINT) compared against -1).
 Phase 11 step 2 (decided 2026-09-20, user): SYSTEM.ADDRESS is placed among the integers by the target's word width, as the SYSTEM.INTn are (Types.Order/SetAddressBytes); a LONGINT is assignable to an address only where it is no wider, else SYSTEM.VAL; seven rtl/llvm sites changed; fixtures semantic-address-width, llvm-address-width-ir.  Verified as a 32-bit -OC executable: on Linux i686 (2026-09-20) and on OpenBSD i386 (cymoril, 2026-09-21) - the poc built there by the voc-built one (Stage 1) rebuilds itself (Stage 2, identical), emits a Poc.ll byte-identical to the Linux cross-compile for i386-unknown-openbsd7.9, and passes all 237 fixtures.
 ** DONE LONG and SHORT of SYSTEM.INT8..INT64 and of HUGEINT.
