@@ -622,6 +622,13 @@ one to every trap in this table. Each status is pinned by a fixture.
 | 10 | A failed `ASSERT(x)` or `ASSERT(x, n)` (`llvm-assert`) | `assertion failed`, or `assertion failed (n)` | "Assertion failure." and " ASSERT code n."; exit `n`, 255 for none or 0 |
 | 11 | With `-trap-heap-exhausted` only: `NEW`, `NEW(p, n, ...)` or `SYSTEM.NEW` the heap cannot satisfy (`llvm-heap-exhausted`) | `heap exhausted: NEW cannot allocate the block` | no switch: the pointer is NIL |
 
+**The library's own failure.** `Files` stops the program with status 99 when
+it meets an error it cannot hand back to the caller - a file that cannot be
+created, a failed write or seek, a file name too long - after writing
+"`-- <what>: <file>`" on a line of its own to stderr (Phase 11 D12, 2026-09-25;
+until then to stdout, as voc's `Files` still does). `-trap-location` does not
+apply to it. `llvm-files-fail` pins the message, its stream and the status.
+
 **`-trap-location`** (Phase 11 C7, decided with the user 2026-09-25). With it,
 every trap message above starts with where the trap is and ends with the
 procedure it is in:

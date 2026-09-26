@@ -58,11 +58,22 @@ MODULE GarbageCollectedHeap;
      answers 0 only when the ceiling stops it. Nothing moves, nothing
      finalizes, and chunks are never given back.
 
-     LIMITS worth knowing. The collector assumes no chunk straddles the
-     boundary between the low and high halves of a 32-bit address space
-     (all address tests below are offsets from a chunk's start, so a
-     single chunk is otherwise safe), and one object may not exceed
-     maxObjectSize bytes. A pointer the compiler has shifted, masked or
+     FINDING A CHUNK. Every word the marker looks at - each conservative
+     stack word and each pointer a traced block holds - needs the chunk it
+     lies in (ChunkOf). The chunks are also kept in a table ordered by
+     address and binary-searched (Phase 11 A15, 2026-09-25): until then
+     ChunkOf walked the chunk list, and in the Stage 1 poc compiling
+     itself that walk was 87% of all the instructions it ran. Chunks never
+     move or overlap, and the table only grows, when a chunk is added.
+     The search orders addresses as unsigned numbers: SYSTEM.ADDRESS is
+     signed, so each address is first turned into a key by adding
+     MIN(SYSTEM.ADDRESS), which flips its top bit (the addition wraps) and
+     so maps unsigned order onto signed order. Ordered as signed numbers, a
+     chunk straddling the middle of a 32-bit address space - which OpenBSD
+     i386's calloc can hand out - would have its upper part missed, and the
+     objects there freed while still in use.
+
+     LIMITS worth knowing. One object may not exceed maxObjectSize bytes. A pointer the compiler has shifted, masked or
      split is invisible to a conservative scan; poc's own output never
      does that. *)
 
@@ -91,7 +102,15 @@ MODULE GarbageCollectedHeap;
 
   VAR
     word: SYSTEM.ADDRESS; (* SIZE(SYSTEM.ADDRESS), set by the module body *)
+    orderBias: SYSTEM.ADDRESS; (* MIN(SYSTEM.ADDRESS), set by the module body *)
     chunkHead, chunkTail: SYSTEM.ADDRESS;
+    (* every chunk's key (its address + orderBias), in ascending order: a
+       calloc'd array of chunkTableCount words with room for
+       chunkTableCapacity *)
+    chunkTable, chunkTableCount, chunkTableCapacity: SYSTEM.ADDRESS;
+    (* the keys of the lowest first block and of the highest block-area end
+       of all chunks (equal, an empty range, while there are none) *)
+    heapLowestKey, heapHighestKey: SYSTEM.ADDRESS;
     freeHead, freeTail: SYSTEM.ADDRESS;
     totalChunkBytes: SYSTEM.ADDRESS; (* what has been asked of calloc, for the ceiling *)
     blockAreaBytes: SYSTEM.ADDRESS; (* the sum of every chunk's block area *)
@@ -105,6 +124,7 @@ MODULE GarbageCollectedHeap;
     liveBytesAccumulator: SYSTEM.ADDRESS;
 
   PROCEDURE ["C", "calloc"] CAllocate(count, size: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+  PROCEDURE ["C", "free"] CFree(block: SYSTEM.ADDRESS);
   PROCEDURE ["C", "llvm.eh.unwind.init"] SpillRegisters;
 
   (* ---- word and byte access ---- *)
@@ -184,19 +204,61 @@ MODULE GarbageCollectedHeap;
 
   (* ---- chunks ---- *)
 
-  (* The chunk whose *used* block area holds address, or 0. *)
+  (* The chunk whose used block area (below its bump pointer) holds
+     address, or 0: the last chunk in chunkTable that starts at or below
+     address, by binary search over the keys (FINDING A CHUNK above), if
+     address is below its bump pointer. A
+     word outside every chunk's block area - most non-pointers are small
+     numbers - is turned away before the search, and the search reads the
+     table with SYSTEM.GET, since poc does not inline GetWord. The final
+     test is an offset from the chunk's first block, as before. *)
   PROCEDURE ChunkOf(address: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
-    VAR chunk, offset, first: SYSTEM.ADDRESS;
+    VAR key, low, high, middle, chunkKey, chunk, first, offset: SYSTEM.ADDRESS;
   BEGIN
-    chunk := chunkHead;
-    WHILE chunk # 0 DO
-      first := ChunkField(chunk, chunkFirstBlock);
-      offset := address - first;
-      IF (offset >= 0) & (offset < ChunkField(chunk, chunkBump) - first) THEN RETURN chunk END;
-      chunk := ChunkField(chunk, chunkNext)
+    key := address + orderBias;
+    IF (key < heapLowestKey) OR (key >= heapHighestKey) THEN RETURN 0 END;
+    low := 0; high := chunkTableCount; (* the answer's index is below high *)
+    WHILE high - low > 1 DO
+      middle := (low + high) DIV 2;
+      SYSTEM.GET(chunkTable + middle * word, chunkKey);
+      IF chunkKey <= key THEN low := middle ELSE high := middle END
     END;
+    SYSTEM.GET(chunkTable + low * word, chunkKey);
+    IF chunkKey > key THEN RETURN 0 END;
+    chunk := chunkKey - orderBias;
+    first := ChunkField(chunk, chunkFirstBlock);
+    offset := address - first;
+    IF (offset >= 0) & (offset < ChunkField(chunk, chunkBump) - first) THEN RETURN chunk END;
     RETURN 0
   END ChunkOf;
+
+  (* Enters chunk's key into chunkTable in order, growing the table
+     (doubled, copied, the old one freed) when it is full; FALSE if calloc
+     refuses. *)
+  PROCEDURE EnterChunk(chunk: SYSTEM.ADDRESS): BOOLEAN;
+    VAR bigger, capacity, index, k, key: SYSTEM.ADDRESS;
+  BEGIN
+    IF chunkTableCount = chunkTableCapacity THEN
+      capacity := 2 * chunkTableCapacity;
+      IF capacity < 64 THEN capacity := 64 END;
+      bigger := CAllocate(capacity, word);
+      IF bigger = 0 THEN RETURN FALSE END;
+      FOR k := 0 TO chunkTableCount - 1 DO
+        PutWord(bigger + k * word, GetWord(chunkTable + k * word))
+      END;
+      IF chunkTable # 0 THEN CFree(chunkTable) END;
+      chunkTable := bigger; chunkTableCapacity := capacity
+    END;
+    key := chunk + orderBias;
+    index := chunkTableCount;
+    WHILE (index > 0) & (GetWord(chunkTable + (index - 1) * word) > key) DO
+      PutWord(chunkTable + index * word, GetWord(chunkTable + (index - 1) * word));
+      DEC(index)
+    END;
+    PutWord(chunkTable + index * word, key);
+    INC(chunkTableCount);
+    RETURN TRUE
+  END EnterChunk;
 
   (* The start of the block of chunk that contains address, or 0 if
      address lies in the used area of no block (it cannot: every byte
@@ -229,6 +291,7 @@ MODULE GarbageCollectedHeap;
     raw := CAllocate(1, bytes + granule);
     IF raw = 0 THEN RETURN FALSE END;
     chunk := ((raw + granule - 1) DIV granule) * granule;
+    IF ~EnterChunk(chunk) THEN CFree(raw); RETURN FALSE END;
     granules := (bytes - chunkHeaderBytes - 2 * granule) DIV (granule + 1);
     mapBytes := ((granules + granule - 1) DIV granule) * granule;
     first := chunk + chunkHeaderBytes + mapBytes;
@@ -238,6 +301,12 @@ MODULE GarbageCollectedHeap;
     SetChunkField(chunk, chunkFirstBlock, first);
     SetChunkField(chunk, chunkBump, first);
     SetChunkField(chunk, chunkLimit, first + granules * granule);
+    IF (chunkTableCount = 1) OR (first + orderBias < heapLowestKey) THEN
+      heapLowestKey := first + orderBias
+    END;
+    IF (chunkTableCount = 1) OR (first + granules * granule + orderBias > heapHighestKey) THEN
+      heapHighestKey := first + granules * granule + orderBias
+    END;
     IF chunkTail = 0 THEN chunkHead := chunk ELSE SetChunkField(chunkTail, chunkNext, chunk) END;
     chunkTail := chunk;
     totalChunkBytes := totalChunkBytes + bytes;
@@ -603,6 +672,10 @@ MODULE GarbageCollectedHeap;
 
 BEGIN
   word := SIZE(SYSTEM.ADDRESS);
+  (* MIN(SYSTEM.ADDRESS), which the backend cannot lower yet: the top bit
+     alone, reached by doubling (the last doubling wraps) *)
+  orderBias := 1;
+  WHILE orderBias > 0 DO orderBias := orderBias * 2 END;
   heapLimit := defaultHeapLimit;
   chunkBytes := defaultChunkBytes;
   markStackCapacity := defaultMarkStackEntries

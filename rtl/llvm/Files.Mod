@@ -59,12 +59,13 @@ MODULE Files;
        (and ReadLine skips the rest of the line) where voc overruns it;
      - an error that cannot be reported to the caller - a file that cannot
        be created, a failed write - stops the program with a message and
-       Halt(99), as voc does; Delete and Rename report failure as -1
+       Halt(99), as voc does, but the message goes to standard error, where
+       voc's goes to standard output (Phase 11 D12); Delete and Rename report failure as -1
        rather than errno (see Platform.Mod);
      - the C `int` results below are declared LONGINT, right under the -O2
        size model only (see Platform.Mod). *)
 
-  IMPORT SYSTEM, Platform, Console;
+  IMPORT SYSTEM, Platform, FileDescriptorOutput;
 
   CONST
     nameLength = 256;
@@ -109,18 +110,36 @@ MODULE Files;
   (* Directory detection for Old (see IsDirectory's own comment). *)
   PROCEDURE ["C", "access"] Access(path: SYSTEM.ADDRESS; mode: SYSTEM.INT32): SYSTEM.INT32;
 
-  (* An error nothing above can be told about: says what and where, and
-     stops the program. *)
+  (* text on standard error, up to its 0X *)
+  PROCEDURE Say(text: ARRAY OF CHAR);
+    VAR length: LONGINT;
+  BEGIN
+    length := 0;
+    WHILE (length < LEN(text)) & (text[length] # 0X) DO INC(length) END;
+    FileDescriptorOutput.Write(FileDescriptorOutput.standardError, SYSTEM.ADR(text),
+                               SYSTEM.VAL(SYSTEM.ADDRESS, length))
+  END Say;
+
+  PROCEDURE SayLn;
+    VAR one: ARRAY 1 OF CHAR;
+  BEGIN
+    one[0] := 0AX;
+    FileDescriptorOutput.Write(FileDescriptorOutput.standardError, SYSTEM.ADR(one), 1)
+  END SayLn;
+
+  (* An error nothing above can be told about: says what and where, on
+     standard error (Phase 11 D12; voc's Files writes it to standard
+     output), and stops the program. *)
   PROCEDURE Fail(message: ARRAY OF CHAR; f: File);
   BEGIN
-    Console.Ln; Console.String("-- "); Console.String(message);
+    SayLn; Say("-- "); Say(message);
     IF f # NIL THEN
-      Console.String(": ");
-      IF f.registerName[0] # 0X THEN Console.String(f.registerName)
-      ELSE Console.String(f.workName)
+      Say(": ");
+      IF f.registerName[0] # 0X THEN Say(f.registerName)
+      ELSE Say(f.workName)
       END
     END;
-    Console.Ln;
+    SayLn;
     HALT(99)
   END Fail;
 
