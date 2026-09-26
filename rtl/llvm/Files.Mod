@@ -106,10 +106,8 @@ MODULE Files;
   PROCEDURE ["C", "ferror"] FError(stream: SYSTEM.ADDRESS): SYSTEM.INT32;
   PROCEDURE ["C", "ftell"] FTell(stream: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
   PROCEDURE ["C", "rename"] CRename(old, new: SYSTEM.ADDRESS): SYSTEM.INT32;
-  (* Directory detection for Old (see its own comment): opendir succeeds
-     only for a directory, on Linux and all three BSDs. *)
-  PROCEDURE ["C", "opendir"] OpenDirectory(path: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
-  PROCEDURE ["C", "closedir"] CloseDirectory(dir: SYSTEM.ADDRESS): SYSTEM.INT32;
+  (* Directory detection for Old (see IsDirectory's own comment). *)
+  PROCEDURE ["C", "access"] Access(path: SYSTEM.ADDRESS; mode: SYSTEM.INT32): SYSTEM.INT32;
 
   (* An error nothing above can be told about: says what and where, and
      stops the program. *)
@@ -254,17 +252,24 @@ MODULE Files;
      NetBSD's fread happily returns a byte read out of a directory stream
      (count=1, ferror=0) - an old BSD read(2)-on-a-directory allowance
      Linux and OpenBSD's libc no longer honor - so Readable alone cannot
-     tell a directory from an ordinary file there. opendir/closedir give a
-     platform-independent answer instead of relying on that fread quirk:
-     POSIX opendir succeeds only for a directory, confirmed the same way
-     on Linux, OpenBSD and NetBSD (not yet on FreeBSD - no host to check
-     against). *)
+     tell a directory from an ordinary file there. opendir/closedir gave a
+     platform-independent answer instead of relying on that fread quirk,
+     until 2026-09-25, when they were replaced by access: NetBSD versions opendir
+     (the real one is __opendir30, and the linker warns on every program
+     that names plain opendir), which a fixed external name cannot follow.
+     access(path + "/.", F_OK) succeeds only when path is a directory
+     (resolving "." under anything else fails with ENOTDIR), is not
+     versioned anywhere, and gave the same answers for a directory, a
+     file, a missing path and /dev/null on Linux, OpenBSD, NetBSD and
+     FreeBSD. *)
   PROCEDURE IsDirectory(VAR path: FileName): BOOLEAN;
-    VAR dir: SYSTEM.ADDRESS; ignored: LONGINT;
+    CONST existenceOnly = 0; (* F_OK, 0 on all four *)
+    VAR withDot: ARRAY nameLength + 3 OF CHAR; i: LONGINT; (* path, "/.", 0X *)
   BEGIN
-    dir := OpenDirectory(SYSTEM.ADR(path));
-    IF dir # 0 THEN ignored := CloseDirectory(dir) END;
-    RETURN dir # 0
+    i := 0;
+    WHILE (i < LEN(path)) & (path[i] # 0X) DO withDot[i] := path[i]; INC(i) END;
+    withDot[i] := "/"; withDot[i + 1] := "."; withDot[i + 2] := 0X;
+    RETURN Access(SYSTEM.ADR(withDot), existenceOnly) = 0
   END IsDirectory;
 
   (* The file called name, or NIL if there is none or it cannot be opened.
