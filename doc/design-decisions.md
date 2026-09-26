@@ -33,39 +33,34 @@ questions" - <name> means the entry of that name here.
   code or it is 0.
 
 - **Open array dimension limit**: decided 2026-09-20 (Phase 11) - an open
-  array type may have at most **8 open dimensions** (`Types.maxOpenDimensions`),
-  and the checker says so where the ninth is written (`ResolveArrayType`; one
-  error per type; fixture `semantic-reject-open-array-dimensions`). Fixed
-  dimensions are not limited (nine fixed ones build and run). Found while
-  writing the nested-procedure fixtures: a ninth open dimension on a parameter
-  crashed poc with a run-time index error, and on `NEW` was accepted and
-  silently did nothing. voc's own limit is 127 (`OPB.Mod`: "Hard limit of 127
-  dimensions"; 12 probed), so poc rejects programs voc accepts; that is
-  accepted. **Considered and left at 8: raising it to voc's 127.** What it
-  would take, should a program ever need it:
-  1. `LLVMCodeGenerator.DopeVector` embeds `ARRAY maxOpenDims OF ValueText`, and
-     a `ValueText` is 64 bytes: 512 bytes now, about 8 KB at 127, copied by value
-     in `LocalBinding` (one per parameter and local, scalars too), `DynamicType`,
-     and locals of `BindNeeds`, `BindFormalParams` and `NEW`, on every
-     designator resolution. The length vector would have to be allocated at its
-     exact size (one place shifts `dope.len` in place, so it would need a copy,
-     not sharing).
-  2. Text buffers, the larger risk: a call is built into a `LongText` (800
-     characters) and each hidden length is about 20 (`, i64 %t123`), so about 35
-     dimensions in one call, fewer with several open array parameters, would
-     overflow it. Not tested whether that truncates or traps. Either a bigger
-     buffer for argument lists or writing them straight to the file. (Related:
-     `doc/phase-11-inventory.md` D4, the 63-character `ValueText`.)
-  3. The `.len<d>` names of the hidden parameters are built in
-     `EmitProcSignature` with `CHR(ORD("0") + dim)`, wrong from dimension 10 on,
-     while `BindFormalParams`/`BindNeeds` use `AppendLongInt`; both sides would
-     need the number formatter.
-  4. The diagnostic text hardcodes "8" (build it from the constant), and a
-     fixture would generate 127- and 128-dimension sources with a shell loop and
-     run at both word sizes.
-  Cheaper middle: 16 or 32 needs only the constant, the message and item 3, and
-  stays under the buffer limit of item 2. The VAX backend may choose its own
-  number, which is why the constant lives in `Types.Mod`.
+  array type could have at most **8 open dimensions** (`Types.maxOpenDimensions`),
+  an error where the ninth was written (fixture
+  `semantic-reject-open-array-dimensions`), after a ninth open dimension on a
+  parameter was found to crash poc with a run-time index error and on `NEW`
+  to be accepted and do nothing. **Lifted 2026-09-25 (Phase 11 A17, the
+  user's decision): no limit.** The four obstacles this entry used to list
+  were dealt with as follows:
+  1. `LLVMCodeGenerator.DopeVector` embedded `ARRAY 8 OF ValueText` (512
+     bytes, in every `LocalBinding` and `DynamicType`); the lengths are now a
+     list of nodes, shared when a `DopeVector` is copied and never changed
+     once in one (dropping the outer length moves past the first node
+     instead of shifting in place).
+  2. A call's text was built in fixed buffers: one argument's lengths in a
+     `LongText` (800 characters, overflowing at about 40 dimensions - probed:
+     64 stopped poc with its own index trap in `Strcat`), the whole call in
+     an `ArgsText` (4096). They are a `GrowingText`
+     (`POINTER TO ARRAY OF CHAR`, doubled when full) now, which also lifts
+     the bound on a call with very many ordinary arguments.
+  3. `EmitProcSignature` named the hidden `.len<d>` parameters with
+     `CHR(ORD("0") + dim)`, wrong from dimension 10 on (`%a.len:`); it uses
+     `AppendLongInt` like the binding side.
+  4. The checker rule, its message and `Types.maxOpenDimensions` are gone.
+  voc's "Hard limit of 127 dimensions" (`OPB.Mod`) turned out to be only
+  `LEN(a, n)`'s largest `n`; its types have no limit. Fixture
+  `llvm-open-array-many-dimensions` (9, 20, 64, against voc under both
+  size models; 400 probed by hand). Found on the way: voc gives a nested
+  procedure garbage inner lengths for an enclosing multi-dimensional open
+  array (`doc/voc-bugs/README.md`).
 
 - **External procedure declaration syntax**: decided 2026-09-16, grammar/
   symbol-table side implemented in Phase 6 (2026-09-16) — a bracketed

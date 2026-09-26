@@ -742,6 +742,11 @@ as it stands when the phase starts, and adds what it finds):
      and speed matter, so it needs a use of the parameter analysis the
      compiler does not yet have - drop it unless a measurement says
      otherwise.
+     **Done 2026-09-25** (inventory A17): no limit - the backend's lengths
+     are a list and a call's argument text grows (voc has no limit on the
+     type either, only `LEN(a, n)`'s `n` <= 127) - and the copy elision is
+     dropped: all copying is 0.17% of poc compiling itself, the collector
+     91% (recorded on A15).
    - *`ENTIER` of a real beyond a `LONGINT`* (inventory A4, given to this step
      2026-09-20). Today poc gives garbage (`-2147483648`) and voc wraps
      (`-727379968` for 10^12 under `-O2`); the report defines `ENTIER` only for

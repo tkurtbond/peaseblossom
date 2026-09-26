@@ -64,3 +64,15 @@ during Stage 0/1/2 bootstrapping:
   fixed array is right, `RowSum(grid, 2)` inside a procedure is not. poc
   computes the stride (`test/conformance/llvm-open-array-params` check 8
   is the one check voc gets wrong).
+- **A nested procedure sees garbage for the inner lengths of an enclosing
+  procedure's multi-dimensional open array** (found 2026-09-25, Phase 11
+  A17): voc copies an enclosing procedure's parameters into a frame record
+  for its nested procedures, and for `x: ARRAY OF ARRAY OF INTEGER` writes
+  `_s.x__len = x__len; _s.x__len = x__len;` - the outer length twice, never
+  `x__len1` - so in the nested procedure `LEN(x, 1)` and every `x[i, j]`
+  use an uninitialized length. `RETURN x[0, 0] + LEN(x, 1)` from a nested
+  procedure gave -15331 (2 dimensions) and 4917 (3) where poc gives 7; one
+  dimension is right; with 9 it stopped with a NIL access. poc passes each
+  length as its own hidden parameter (`test/conformance/
+  llvm-open-array-many-dimensions`, whose "nested" lines are the only ones
+  not compared with voc).

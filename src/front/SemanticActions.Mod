@@ -1067,14 +1067,8 @@ MODULE SemanticActions;
   BEGIN
     elementType := ResolveType(scope, node.elementType, FALSE);
     IF node.lengths = NIL THEN
-      (* said once per type, at the innermost dimension that is one too
-         many (a node counts one more than what is inside it, so only one
-         has exactly the limit); the type is still built, so the rest of
-         the program is checked *)
-      IF Types.OpenDimensions(elementType) = Types.maxOpenDimensions THEN
-        Diagnostics.Error(node.line, node.column,
-                          "an open array type may have at most 8 open dimensions")
-      END;
+      (* any number of open dimensions (Phase 11 A17: at most 8 until
+         2026-09-25, when the LLVM backend's lengths became a list) *)
       RETURN Types.NewArrayType(elementType, 0, TRUE)
     ELSE
       RETURN ResolveArrayDims(node.lengths, elementType, scope)

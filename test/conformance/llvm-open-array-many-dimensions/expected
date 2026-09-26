@@ -1,0 +1,16 @@
+semantic OK, wrote llvm-open-array-many-dimensions
+lengths 2 1 1 1 1 1 1 1 3
+fixed corner 7
+after SetCorner 8
+copy changed to -1, original 8
+fixed row 11
+lengths 2 1 1 1 1 1 1 1 3
+heap corner 70
+after SetCorner 80
+heap row 83
+LEN(p^, 8) 3
+twenty 2 3 z
+twenty copy ?, original z
+sixty-four 2 3 w
+nested 11
+nested 83

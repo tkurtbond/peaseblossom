@@ -31,6 +31,7 @@ llvm-type-bound-multi-module: same
 llvm-trees-dispatch: same
 llvm-open-array-params: same
 llvm-open-array-new: same
+llvm-open-array-many-dimensions: same
 llvm-trees-strings: same
 llvm-procedure-values: same
 llvm-procedure-values-import: same

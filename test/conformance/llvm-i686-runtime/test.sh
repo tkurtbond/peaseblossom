@@ -79,6 +79,7 @@ check llvm-type-bound-multi-module client.mod
 check llvm-trees-dispatch trees.mod
 check llvm-open-array-params openparams.mod
 check llvm-open-array-new opennew.mod
+check llvm-open-array-many-dimensions manydims.mod
 check llvm-trees-strings treesclient.mod
 check llvm-procedure-values procvals.mod
 check llvm-procedure-values-import client.mod

@@ -299,14 +299,21 @@ like voc's), outermost dimension first:
 - **Collector**: the block is tagged with the array descriptor of the
   innermost element type, like a fixed array of pointers (see
   `llvm-open-array-new`, which fails without it).
-- **At most 8 open dimensions**: an open array type with more (`ARRAY OF
-  ... OF T`, nine `ARRAY OF`s) is a compile error where the type is written
-  (`Types.maxOpenDimensions`), for a parameter, a pointer base and a named type
-  alike; fixed dimensions are not limited. voc's own limit is 127 (its
-  `OPB.Mod`; 12 probed), so poc rejects some programs voc accepts. The length
-  vector the backend keeps holds eight (Phase 11).
-- Not done: the copy of a value parameter is never skipped even when the
-  procedure only reads it.
+- **Any number of open dimensions** (Phase 11 A17, 2026-09-25; at most 8
+  before, a compile error where the ninth was written): the backend keeps an
+  open array's lengths in a list (`LLVMCodeGenerator.DopeVector`), not a
+  fixed vector of eight, and builds a call's argument text in a buffer that
+  grows (`GrowingText`), not in 800 characters. 400 dimensions were
+  probed; `llvm-open-array-many-dimensions` runs 9, 20 and 64 against voc.
+  voc has no limit on the type either (`OPP.Mod` counts open dimensions
+  without a check); its 127 (`OPB.Mod`) is only the largest dimension
+  `LEN(a, n)` can name, where poc checks `n` against the type.
+- The copy of a value parameter is made even when the procedure only reads
+  it: `memmove` of the actual's whole length (a 4096-character buffer
+  passed for a short string copies 4096 bytes). Skipping it was considered
+  and dropped (Phase 11 A17): all copying together (`memmove`, `memcpy`)
+  was 0.17% of the instructions of poc compiling itself, which passes 212
+  value open-array parameters, against 91% in the collector (A15).
   (A procedure *type* with open-array parameters works: a call through a
   value passes the lengths like any other call - step 8.)
 
@@ -760,8 +767,7 @@ error (before that it dropped the calls silently). What a program can observe:
   looked for bare `:=` in nested procedures, missing a `VAR` argument (a
   memory-unsafe program was accepted) and accepting a mere read that voc
   rejects (`semantic-with-leaf-rule`).
-- **Limits**: an open array type with more than 8 open dimensions is an error
-  (the section above), as anywhere else; a procedure that uses very many
+- **Limits**: none on open dimensions (the section above); a procedure that uses very many
   enclosing variables has that many hidden parameters, which is legal and
   untested at scale. Nothing else is specific to nested procedures.
 - Checked (`llvm-nested-*`, `nested-analysis-*`) on Linux x86_64 under `-O2`

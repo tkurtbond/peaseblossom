@@ -209,6 +209,8 @@ source. Check here before puzzling over an error that looks bogus.
 - `CAP` of a character that is not a letter is masked (`CAP("7")` is 17X).
 - A row of a multi-dimensional open array passed on as an open array
   ignores the row stride.
+- A nested procedure gets garbage inner lengths for an enclosing
+  procedure's multi-dimensional open-array parameter.
 
 ## Language extensions beyond Oberon2.pdf
 
@@ -257,8 +259,8 @@ carries its actual argument's type tag as a hidden argument (except in
 
 An open array's lengths travel as a dope vector of word-sized integers. A
 value parameter is copied on entry. A pointer to an open array uses voc's
-block layout. A `NEW` length that is not positive traps (exit 7). At most 8
-open dimensions.
+block layout. A `NEW` length that is not positive traps (exit 7). Any number
+of open dimensions (at most 8 until 2026-09-25, Phase 11 A17).
 
 ### Procedure values, `ASH`, `MAX` and `MIN` (implemented, Phase 9 step 8)
 

@@ -30,6 +30,7 @@ test/conformance/llvm-predeclared-halt/llvm-predeclared-halt
 test/conformance/llvm-multi-module/llvm-multi-module
 test/conformance/llvm-declarations-after-procedures/llvm-declarations-after-procedures
 test/conformance/llvm-hugeint-arithmetic/llvm-hugeint-arithmetic
+test/conformance/llvm-open-array-many-dimensions/llvm-open-array-many-dimensions
 test/conformance/llvm-err/llvm-err
 test/conformance/llvm-const-decls/llvm-const-decls
 test/conformance/llvm-reals/llvm-reals
