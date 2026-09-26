@@ -147,8 +147,12 @@ Component Pascal (report 9.1 (3)) and Oberon+ (9.2 (4), (5)) copy a character ar
 ** DONE Consider allowing CONST/TYPE/VAR/PROCEDURE declarations to occur textually in any order.
 Decided with the user 2026-09-25 and done: declare-before-use stays (no true forward references); CONST/TYPE/VAR sections may now also follow procedures, so declarations can sit near the procedures that use them (as in Active Oberon and Oberon+).  A late declaration may not hide a name visible from an enclosing scope; a POINTER TO base must precede the next procedure; -strict rejects it.  doc/language-extensions.md, "Declarations after procedures"; doc/phase-11-inventory.md A22.  Original note follows.
 The section-order half is DONE (2026-09-17, voc-verified): CONST/TYPE/VAR sections may repeat and interleave, resolved in one textual-order pass; see the DONE entry "Resolve CONST/TYPE/VAR declarations as one linear pass" above.  What remains is true forward references and putting a PROCEDURE before a TYPE/VAR.  Proposed verdict: close at what voc does (voc rejects both; the PROCEDURE^ forward declaration already covers the case that matters); reopen only for a concrete need.  (doc/phase-11-inventory.md A22; PLAN.md Phase 11 step 6.)
-** TODO Initializers for variable declarations consisting of := after the type, followed by an expression.
+** DONE Initializers for variable declarations consisting of := after the type, followed by an expression.
+Done 2026-09-26 (user's decision): VAR x, y: T := e, any expression, evaluated once for each variable before the body; only names declared before the := are visible; -strict rejects it.  Every local now also starts at zero (D16).  (doc/phase-11-inventory.md A23, D16; doc/language-extensions.md, "Variable initializers"; survey doc/initializers-and-literals-survey.md.)
+** TODO Initializers on record fields.
+Defaults a record's fields take whenever one is created, as Active Oberon has.  (doc/phase-11-inventory.md D17.)
 ** TODO Oberon-2 has syntax for sets literals; it would be good have syntax for record and array literals, too.
+Moved to Phase 17 (PLAN.md, further extensions to Oberon-2) by the user 2026-09-26; survey in doc/initializers-and-literals-survey.md.  (doc/phase-11-inventory.md A24.)
 ** DONE Underscores and dollarsigns in names.  (Useful for VMS.)
 Decided 2026-09-26 (user): neither; VMS names go in an external procedure's linkage-name string.  The scanner gives one clear error.  (doc/phase-11-inventory.md A25; doc/language-extensions.md.)
 ** TODO Slices for one dimensional arrays.

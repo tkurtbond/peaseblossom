@@ -225,7 +225,12 @@ MODULE SyntaxTree;
       (* set by the checker (Phase 11, A21) when the array on the right is
          not of the target's own type but one Types.ArrayAssignable takes: the
          backend copies its bytes instead of loading and storing a value *)
-      copiesArray*: BOOLEAN
+      copiesArray*: BOOLEAN;
+      (* Phase 11 A23: non-zero for an assignment Parser.ParseVarDecl made
+         from a variable's initializer ("VAR x: T := e") and moved to the
+         front of its body - the position of its ":=", which the checker
+         uses to allow only names declared before it *)
+      initializerLine*, initializerColumn*: INTEGER
     END;
 
     CallStatementNodeDesc* = RECORD (StatementNodeDesc)
@@ -336,6 +341,10 @@ MODULE SyntaxTree;
     VarDeclNodeDesc* = RECORD (NodeDesc)
       names*: IdentDefNode;
       type*: TypeNode;
+      (* Phase 11 A23: "VAR x, y: T := e" - one assignment per name, each
+         with its own copy of e, in order; NIL without an initializer.
+         Parser.ParseDeclSeq's caller puts them at the front of the body. *)
+      initializers*: StatementNode;
       next*: VarDeclNode
     END;
 

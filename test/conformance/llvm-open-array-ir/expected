@@ -17,7 +17,9 @@
 define i32 @openir.Total(ptr %a, i32 %a.len0) {
 entry:
   %tN = alloca i16
+  store i16 zeroinitializer, ptr %tN
   %tN = alloca i16
+  store i16 zeroinitializer, ptr %tN
   %tN = sext i8 0 to i16
   store i16 %tN, ptr %tN
   %tN = sext i8 0 to i16
@@ -349,7 +351,9 @@ clang accepted i686-unknown-linux-gnu
 define i32 @openir.Total(ptr %a, i64 %a.len0) {
 entry:
   %tN = alloca i16
+  store i16 zeroinitializer, ptr %tN
   %tN = alloca i16
+  store i16 zeroinitializer, ptr %tN
   %tN = sext i8 0 to i16
   store i16 %tN, ptr %tN
   %tN = sext i8 0 to i16

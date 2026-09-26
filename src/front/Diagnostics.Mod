@@ -32,6 +32,12 @@ MODULE Diagnostics;
 
   VAR
     errorCount*: INTEGER;
+    (* the last error reported, so the same one is not reported twice in a
+       row: a variable initializer is checked once for each variable of its
+       list (Phase 11 A23), and its errors are the same each time *)
+    lastLine, lastColumn: INTEGER;
+    lastMessage: ARRAY 400 OF CHAR;
+    lastFileName: ARRAY fileNameLength + 1 OF CHAR;
     fileName*: ARRAY fileNameLength + 1 OF CHAR;
     (* poc -strict (Phase 11 B2, decided with the user 2026-09-25): TRUE
        while the module named on the command line is checked, so that
@@ -45,6 +51,11 @@ MODULE Diagnostics;
 
   PROCEDURE Error*(line, column: INTEGER; message: ARRAY OF CHAR);
   BEGIN
+    IF (line = lastLine) & (column = lastColumn) & (message = lastMessage) & (fileName = lastFileName) THEN
+      RETURN
+    END;
+    lastLine := line; lastColumn := column;
+    COPY(message, lastMessage); COPY(fileName, lastFileName);
     Err.String(fileName); Err.Char(":");
     Err.Int(line, 0); Err.Char(":"); Err.Int(column, 0);
     Err.String(": error: "); Err.String(message); Err.Ln;

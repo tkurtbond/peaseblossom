@@ -68,6 +68,7 @@ entry:
   %t9 = alloca i32
   store i32 %table, ptr %t9
   %t10 = alloca i32
+  store i32 zeroinitializer, ptr %t10
   %t11 = load i32, ptr %t9
   %t12 = inttoptr i32 %t11 to ptr
   %t13 = load volatile i32, ptr %t12, align 1
@@ -83,6 +84,7 @@ entry:
   %t15 = alloca i32
   store i32 %table, ptr %t15
   %t16 = alloca i32
+  store i32 zeroinitializer, ptr %t16
   %t17 = load i32, ptr %t15
   %t18 = sext i16 4 to i32
   %t19 = add i32 %t17, %t18
@@ -102,6 +104,7 @@ entry:
   %t24 = alloca i32
   store i32 %index, ptr %t24
   %t25 = alloca i32
+  store i32 zeroinitializer, ptr %t25
   %t26 = load i32, ptr %t23
   %t27 = load i32, ptr %t24
   %t28 = sext i8 2 to i32
@@ -222,6 +225,7 @@ entry:
   %t9 = alloca i64
   store i64 %table, ptr %t9
   %t10 = alloca i64
+  store i64 zeroinitializer, ptr %t10
   %t11 = load i64, ptr %t9
   %t12 = inttoptr i64 %t11 to ptr
   %t13 = load volatile i64, ptr %t12, align 1
@@ -237,6 +241,7 @@ entry:
   %t15 = alloca i64
   store i64 %table, ptr %t15
   %t16 = alloca i64
+  store i64 zeroinitializer, ptr %t16
   %t17 = load i64, ptr %t15
   %t18 = sext i16 8 to i64
   %t19 = add i64 %t17, %t18
@@ -256,6 +261,7 @@ entry:
   %t24 = alloca i64
   store i64 %index, ptr %t24
   %t25 = alloca i64
+  store i64 zeroinitializer, ptr %t25
   %t26 = load i64, ptr %t23
   %t27 = load i64, ptr %t24
   %t28 = sext i8 2 to i64

@@ -136,6 +136,7 @@ tools/
 | 14 | Running on VAX/VMS | `VaxToolchainDriver` (real), `rtl/vax` (minimal), VAX backend widened to what poc's own source needs | VAX (assembled, linked, run) | poc on VAX/VMS compiles itself |
 | 15 | Library/module support on VAX/VMS | VMS libraries (object, shareable), ported Oberon modules, native VMS libraries, AST support | VAX | poc on VAX/VMS |
 | 16 | Direct VAX/VMS object files | `VaxInstruction`/encoder, `VaxObjectWriter` (`.OBJ`), debug/traceback records | VAX (no assembler in the loop) | poc on VAX/VMS |
+| 17 | Further extensions to Oberon-2 | record and array literals, and whichever other extensions it adopts | both | poc (self-hosted) |
 
 ## Phase details
 
@@ -1599,6 +1600,38 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
 existing text path and against the assembler; steps 4 and 6 are
 `ANALYZE/OBJECT` comparisons plus link-and-run; step 7's fixed point
 over object files is the gate.
+
+### Phase 17 — Further extensions to Oberon-2
+
+**Goal**: settle the language extensions that are larger than Phase 11's -
+each a design of its own, through the front end, the `.sym` format and both
+backends - and implement the ones adopted. As in Phase 11, each starts with
+a survey of what other Oberons do (and Modula-2/-3 where they are the only
+precedent) and ends with the user's decision; "not adopted" is a legitimate
+result, recorded in `doc/language-extensions.md` like the others.
+
+**Candidates** (from `000-todo.org`'s Extensions list and Phase 11's
+inventory):
+
+1. **Record and array literals** (Phase 11 A24, moved here 2026-09-26).
+   `doc/initializers-and-literals-survey.md` has the survey: no Oberon has
+   record literals; A2's `[1, 2, 3]` builds its mathematical arrays only;
+   Oberon+ lists both as TODO; ISO Modula-2 and Modula-3 have typed value
+   constructors, `T{...}`. A typed form is the likely starting point. Open:
+   `CONST` declarations of structured type (and so structured constants in
+   `.sym` files), open arrays and pointers inside a literal, positional or
+   named fields, and what a record extension's literal holds.
+2. **Record-field initializers** (Phase 11 D17), if not settled in Phase 11:
+   defaults a record's fields take whenever one is created (A2 has them).
+3. **Slices of one-dimensional arrays** (`000-todo.org`).
+4. **voc's read-only parameters, `x-`** (`000-todo.org`; considered and not
+   adopted in Phase 11, `doc/language-extensions.md`).
+5. **The terminator-based `ARRAY OF CHAR` assignment rule** (`000-todo.org`;
+   decided against in Phase 11 A21, to reconsider).
+
+**Exit gate**: every candidate has a recorded decision; each adopted one has
+fixtures, is rejected by `-strict`, and passes `make check` on Linux and the
+three BSDs (and, once Phase 14 exists, on VAX/VMS).
 
 ## Open design questions
 

@@ -224,8 +224,12 @@ has the full account; all probed against real voc 2026-09-19):
   imported module (`POC_IMPORT_PATH=<repo>/rtl/llvm` or `-import-path`).
   There is no built-in default directory; a missing runtime is an error
   message naming the module.
-- Pointer variables start NIL, locals included (a local holding a pointer
-  is zeroed on entry). Heap blocks come back zero-filled.
+- Pointer variables start NIL, locals included. Since 2026-09-26 (Phase 11
+  D16) **every local starts at zero**, not only pointers and procedure
+  values: with clang `-O2` the default, a read of a never-assigned local
+  would be undefined behavior to LLVM. So all variables - globals, locals
+  and heap blocks - start zeroed (0, 0.0, FALSE, 0X, {}, NIL, and records
+  and arrays of those).
 - Procedure values are Phase 9 step 8's - see "Procedure values, `ASH`,
   `MAX` and `MIN`" below. (`NEW(p, n0, ...)` and pointers to open arrays
   are Phase 9 step 7's.)
@@ -604,6 +608,50 @@ voc, Component Pascal and Oberon-07 do not. What a program can observe:
   imported module whose exports follow a procedure),
   `semantic-reject-declarations-after-procedures`,
   `semantic-strict-declarations-after-procedures`.
+
+## Variable initializers (decided and implemented, Phase 11 A23, 2026-09-26)
+
+A variable declaration may end with an initializer:
+
+```oberon
+VAR
+  count: INTEGER := 0;
+  a, b, c: INTEGER := Next();
+  name: ARRAY 16 OF CHAR := "none";
+```
+
+`Oberon2.pdf` has `VariableDeclaration = IdentList ":" Type`; the form is
+Modula-3's, and among Oberons only Active Oberon has initializers (constants
+only, written after each name). `doc/initializers-and-literals-survey.md` has
+the survey; decided with the user 2026-09-26. The rules:
+
+- **Each variable of the list gets its own evaluation of the expression**, so
+  `a, b, c: INTEGER := Next()` calls `Next` three times, in the order of the
+  names.
+- The initializer is **an assignment `v := e`** with every rule of one
+  (assignment compatibility, strings into `ARRAY OF CHAR`, the array
+  assignment rule above), made **before the body**: a local's on every entry
+  to its procedure, a global's before the module body, all in declaration
+  order. Any expression is allowed, not only a constant.
+- **Declare-before-use holds**: the expression can use only names declared
+  before its `:=` (the variables of its own list included - they already
+  hold 0). A name of the same scope declared later is an error, "`x` is
+  declared after this variable; its initializer can use only what is
+  declared before it" - also when it would hide an outer name the
+  initializer meant.
+- An error in the expression is reported once for the whole list.
+- Variables only: not record fields (a separate item, Phase 11 D17) and not
+  parameters.
+- `-strict` rejects it ("a variable initializer is not in the Oberon-2
+  report"), and voc cannot compile it, so poc's own source does not use it.
+
+How: the parser makes one `AssignStatementNode` per name - parsing the
+expression again for each, so each has its own copy - and puts them at the
+front of the body (`Parser.ParseInitializers`, `WithInitializers`); the
+checker checks them with the declare-before-use limit
+(`SemanticActions.CheckInitializer`, `SymbolTable.limitScope`), and the
+backend sees ordinary assignments. Fixtures `llvm-var-initializers`,
+`semantic-reject-var-initializers`, `semantic-strict-var-initializers`.
 
 ## What traps, and what does not (Phase 11 C9)
 

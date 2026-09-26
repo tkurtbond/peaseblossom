@@ -31,6 +31,7 @@ entry:
   %tN = alloca ptr
   store ptr zeroinitializer, ptr %tN
   %tN = alloca i16
+  store i16 zeroinitializer, ptr %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
@@ -268,6 +269,7 @@ entry:
   %tN = alloca ptr
   store ptr zeroinitializer, ptr %tN
   %tN = alloca i16
+  store i16 zeroinitializer, ptr %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN

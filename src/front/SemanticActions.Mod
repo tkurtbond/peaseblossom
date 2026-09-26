@@ -439,6 +439,7 @@ MODULE SemanticActions;
   BEGIN
     NEW(s); s.target := target; s.value := value; s.copiesArray := FALSE; s.next := NIL;
     s.line := line; s.column := column;
+    s.initializerLine := 0; s.initializerColumn := 0;
     RETURN s
   END NewAssignStatement;
 
@@ -600,7 +601,7 @@ MODULE SemanticActions;
                         line, column: INTEGER): SyntaxTree.VarDeclNode;
     VAR d: SyntaxTree.VarDeclNode;
   BEGIN
-    NEW(d); d.names := names; d.type := type; d.next := NIL;
+    NEW(d); d.names := names; d.type := type; d.initializers := NIL; d.next := NIL;
     d.line := line; d.column := column;
     RETURN d
   END NewVarDecl;
@@ -3293,13 +3294,41 @@ MODULE SemanticActions;
     END
   END DeclareLocalProcedures;
 
+  (* A variable initializer (Phase 11 A23), which the parser made into an
+     assignment at the front of the body: checked as one, but seeing only
+     the names declared up to the variable's own declaration, as if it were
+     checked there (SymbolTable.limitScope). A name of this scope declared
+     later is an error - also when it hides an outer name the initializer
+     would otherwise mean, so the backend, which looks the names up again
+     at the body, finds the same objects. *)
+  PROCEDURE CheckInitializer(scope: SymbolTable.Scope; s: SyntaxTree.AssignStatementNode);
+    VAR message, rest: ARRAY 400 OF CHAR; violation: SymbolTable.Object; i, j: INTEGER;
+  BEGIN
+    rest := " is declared after this variable; its initializer can use only what is declared before it";
+    SymbolTable.limitScope := scope;
+    SymbolTable.limitLine := s.initializerLine; SymbolTable.limitColumn := s.initializerColumn;
+    SymbolTable.limitViolation := NIL;
+    CheckAssignStatement(scope, s);
+    violation := SymbolTable.limitViolation;
+    SymbolTable.limitScope := NIL; SymbolTable.limitViolation := NIL;
+    IF violation # NIL THEN
+      i := 0;
+      WHILE violation.name[i] # 0X DO message[i] := violation.name[i]; INC(i) END;
+      j := 0;
+      WHILE rest[j] # 0X DO message[i] := rest[j]; INC(i); INC(j) END;
+      message[i] := 0X;
+      Diagnostics.Error(s.value.line, s.value.column, message)
+    END
+  END CheckInitializer;
+
   (* Every branch below calls a distinctly-named procedure, never
      CheckStatement itself - see CheckExpr's identical rationale above. *)
   PROCEDURE CheckStatement(scope: SymbolTable.Scope; s: SyntaxTree.StatementNode;
                            loopDepth: INTEGER; procResultType: Types.Type);
   BEGIN
     WITH
-      s: SyntaxTree.AssignStatementNode DO CheckAssignStatement(scope, s)
+      s: SyntaxTree.AssignStatementNode DO
+        IF s.initializerLine # 0 THEN CheckInitializer(scope, s) ELSE CheckAssignStatement(scope, s) END
     | s: SyntaxTree.CallStatementNode DO CheckCallStatement(scope, s)
     | s: SyntaxTree.IfStatementNode DO CheckIfStatement(scope, s, loopDepth, procResultType)
     | s: SyntaxTree.CaseStatementNode DO CheckCaseStatement(scope, s, loopDepth, procResultType)

@@ -94,6 +94,7 @@ entry:
   %t2 = alloca i32
   store i32 %a, ptr %t2
   %t3 = alloca i16
+  store i16 zeroinitializer, ptr %t3
   %t4 = load i32, ptr %t2
   %t5 = inttoptr i32 %t4 to ptr
   %t6 = load volatile i16, ptr %t5, align 1
@@ -1379,6 +1380,7 @@ entry:
   %t2 = alloca i64
   store i64 %a, ptr %t2
   %t3 = alloca i16
+  store i16 zeroinitializer, ptr %t3
   %t4 = load i64, ptr %t2
   %t5 = inttoptr i64 %t4 to ptr
   %t6 = load volatile i16, ptr %t5, align 1

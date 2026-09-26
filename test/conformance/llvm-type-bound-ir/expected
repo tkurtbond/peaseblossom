@@ -109,6 +109,7 @@ LN:
 define i16 @boundir.Relay(ptr %p, ptr %p.tag) {
 entry:
   %tN = alloca i16
+  store i16 zeroinitializer, ptr %tN
   %tN = sext i8 0 to i16
   store i16 %tN, ptr %tN
   %tN = getelementptr i8, ptr %p.tag, i32 4
@@ -332,6 +333,7 @@ LN:
 define i16 @boundir.Relay(ptr %p, ptr %p.tag) {
 entry:
   %tN = alloca i16
+  store i16 zeroinitializer, ptr %tN
   %tN = sext i8 0 to i16
   store i16 %tN, ptr %tN
   %tN = getelementptr i8, ptr %p.tag, i32 8

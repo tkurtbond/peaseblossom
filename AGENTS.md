@@ -255,7 +255,8 @@ fits.
 Every dereference is checked for NIL (exit 4). A `NEW` that fails leaves the
 pointer NIL, unless poc is given `-trap-heap-exhausted`, which makes it trap
 (exit 11). `&` and `OR` short-circuit. `NEW` pulls in
-`GarbageCollectedHeap`/`ModuleTable` from the import path.
+`GarbageCollectedHeap`/`ModuleTable` from the import path. Every variable
+starts at zero, locals included (Phase 11 D16, 2026-09-26).
 
 ### Type-bound procedures and `VAR` record parameters (implemented, Phase 9 step 6)
 
@@ -310,6 +311,13 @@ report says.
 Declare-before-use is unchanged; a late declaration may not hide a name
 visible from an enclosing scope; a `POINTER TO` base must come before the
 next procedure. `-strict` rejects it.
+
+### Variable initializers (decided and implemented, Phase 11 A23, 2026-09-26)
+
+`VAR a, b: T := e;` - an assignment of `e` to each variable, evaluated once
+per variable, before the body (locals on every entry), in declaration order.
+Any expression; it sees only names declared before its `:=`. Variables only,
+not record fields. `-strict` rejects it.
 
 ### What traps, and what does not (Phase 11 C9)
 

@@ -815,15 +815,75 @@ MODULE Parser;
     RETURN SemanticActions.NewTypeDecl(name, type, line, column)
   END ParseTypeDecl;
 
+  (* Phase 11 A23, poc's extension (doc/language-extensions.md, "Variable
+     initializers"): "VAR x, y: T := e" gives each name the assignment
+     "name := e", evaluated once for each of them - so the expression is
+     parsed once per name, going back over its tokens each time, and every
+     assignment has its own copy (a function call in it is made once per
+     variable). If the first parse met an error the copies are not made, so
+     the error is reported once. *)
+  PROCEDURE ParseInitializers(VAR p: Parser; decl: SyntaxTree.VarDeclNode);
+    VAR
+      start: Parser; name: SyntaxTree.IdentDefNode; value: SyntaxTree.ExprNode;
+      assignment: SyntaxTree.AssignStatementNode; tail: SyntaxTree.StatementNode;
+      errorsBefore, line, column: INTEGER; empty: SyntaxTree.Ident;
+  BEGIN
+    line := p.current.line; column := p.current.column; (* the := *)
+    Diagnostics.NotInReport(line, column, "a variable initializer");
+    Advance(p);
+    start := p; errorsBefore := Diagnostics.errorCount;
+    empty[0] := 0X; tail := NIL; name := decl.names;
+    WHILE name # NIL DO
+      IF name # decl.names THEN p := start END;
+      value := ParseExpr(p);
+      (* at the value's position, so an error in it, the same for every
+         name of the list, is reported once (Diagnostics.Error) *)
+      assignment := SemanticActions.NewAssignStatement(
+        SemanticActions.NewDesignator(empty, name.name, name.line, name.column),
+        value, line, column);
+      assignment.initializerLine := line; assignment.initializerColumn := column;
+      IF tail = NIL THEN decl.initializers := assignment ELSE tail.next := assignment END;
+      tail := assignment;
+      IF Diagnostics.errorCount # errorsBefore THEN name := NIL ELSE name := name.next END
+    END
+  END ParseInitializers;
+
   PROCEDURE ParseVarDecl(VAR p: Parser): SyntaxTree.VarDeclNode;
-    VAR names: SyntaxTree.IdentDefNode; type: SyntaxTree.TypeNode; line, column: INTEGER;
+    VAR
+      names: SyntaxTree.IdentDefNode; type: SyntaxTree.TypeNode; line, column: INTEGER;
+      decl: SyntaxTree.VarDeclNode;
   BEGIN
     line := p.current.line; column := p.current.column;
     names := ParseIdentList(p);
     ExpectToken(p, Lexer.colon, "expected ':'");
     type := ParseType(p);
-    RETURN SemanticActions.NewVarDecl(names, type, line, column)
+    decl := SemanticActions.NewVarDecl(names, type, line, column);
+    IF p.current.kind = Lexer.assign THEN ParseInitializers(p, decl) END;
+    RETURN decl
   END ParseVarDecl;
+
+  (* statements with the initializers of declarations' variables in front,
+     in the order they were declared (Phase 11 A23) *)
+  PROCEDURE WithInitializers(declarations: SyntaxTree.DeclSeqNode;
+                             statements: SyntaxTree.StatementNode): SyntaxTree.StatementNode;
+    VAR decl: SyntaxTree.VarDeclNode; head, tail, s: SyntaxTree.StatementNode;
+  BEGIN
+    head := NIL; tail := NIL;
+    IF declarations # NIL THEN
+      decl := declarations.varDecls;
+      WHILE decl # NIL DO
+        s := decl.initializers;
+        WHILE s # NIL DO
+          IF tail = NIL THEN head := s ELSE tail.next := s END;
+          tail := s; s := s.next
+        END;
+        decl := decl.next
+      END
+    END;
+    IF tail = NIL THEN RETURN statements END;
+    tail.next := statements;
+    RETURN head
+  END WithInitializers;
 
   (* "[" string [ "," string ] "]" right after PROCEDURE - the already-
      decided external-procedure-declaration syntax (AGENTS.md, "External
@@ -877,6 +937,7 @@ MODULE Parser;
       IF p.current.kind = Lexer.beginKeyword THEN
         Advance(p); statements := ParseStatementSeq(p)
       END;
+      statements := WithInitializers(declarations, statements);
       ExpectToken(p, Lexer.endKeyword, "expected 'END'");
       ExpectIdent(p, endName);
       IF endName # name.name THEN
@@ -1026,6 +1087,7 @@ MODULE Parser;
     IF p.current.kind = Lexer.beginKeyword THEN
       Advance(p); statements := ParseStatementSeq(p)
     END;
+    statements := WithInitializers(declarations, statements);
     ExpectToken(p, Lexer.endKeyword, "expected 'END'");
     ExpectIdent(p, endName);
     ExpectToken(p, Lexer.period, "expected '.'");

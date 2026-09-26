@@ -1,0 +1,22 @@
+semantic OK, wrote llvm-var-initializers
+g1 7
+g2 7
+g3 7
+global
+a 10
+b 20
+c 30
+d 110
+r.x 0
+z 0
+abc
+inner k 220
+a 40
+b 50
+c 60
+d 240
+r.x 0
+z 0
+abc
+inner k 480
+calls 6

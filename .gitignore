@@ -19,6 +19,7 @@ test/conformance/**/*.mar
 test/conformance/**/result
 test/conformance/hello/hello
 test/conformance/llvm-build-run/llvm-build-run
+test/conformance/llvm-var-initializers/llvm-var-initializers
 test/conformance/poc-opt-level/poc-opt-level
 test/conformance/poc-opt-level/clang.log
 test/conformance/llvm-hello-world/llvm-hello-world

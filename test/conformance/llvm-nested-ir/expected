@@ -49,6 +49,7 @@ entry:
 define i16 @nestedir.Outer(ptr %r, ptr %r.tag, ptr %a, i32 %a.len0) {
 entry:
   %t13 = alloca i16
+  store i16 zeroinitializer, ptr %t13
   %t14 = sext i8 0 to i16
   store i16 %t14, ptr %t13
   %t15 = sext i8 1 to i16
@@ -122,6 +123,7 @@ entry:
 define i16 @nestedir.Outer(ptr %r, ptr %r.tag, ptr %a, i64 %a.len0) {
 entry:
   %t14 = alloca i16
+  store i16 zeroinitializer, ptr %t14
   %t15 = sext i8 0 to i16
   store i16 %t15, ptr %t14
   %t16 = sext i8 1 to i16

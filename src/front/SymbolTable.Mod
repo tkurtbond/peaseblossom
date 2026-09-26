@@ -156,6 +156,15 @@ MODULE SymbolTable;
        machine's registers and condition codes, are not here (PLAN.md
        Phase 10 step 7). *)
     SystemScope*: Scope;
+    (* Phase 11 A23: while the checker checks a variable initializer that
+       the parser moved into its body, the initializer may use only names
+       declared up to its own declaration (declare-before-use). Set by the
+       checker to the body's scope and that declaration's position; Find
+       then notes, in limitViolation, the first name it finds in limitScope
+       declared after it. limitScope is NIL otherwise. *)
+    limitScope*: Scope;
+    limitLine*, limitColumn*: INTEGER;
+    limitViolation*: Object;
 
   PROCEDURE OpenScope*(outer: Scope): Scope;
     VAR s: Scope;
@@ -188,6 +197,10 @@ MODULE SymbolTable;
     s := scope; o := NIL;
     WHILE (s # NIL) & (o = NIL) DO
       o := FindLocal(s, name);
+      IF (o # NIL) & (s = limitScope) & (limitViolation = NIL)
+         & ((o.declLine > limitLine) OR (o.declLine = limitLine) & (o.declColumn > limitColumn)) THEN
+        limitViolation := o
+      END;
       s := s.outer
     END;
     RETURN o

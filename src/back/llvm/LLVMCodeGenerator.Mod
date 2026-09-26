@@ -585,6 +585,7 @@ MODULE LLVMCodeGenerator;
       (* PLAN.md Phase 9 step 4: SYSTEM.MOVE lowers to the llvm.memmove
          intrinsic, declared once at the end of the program if used. *)
       needMemmove: BOOLEAN;
+      needMemset: BOOLEAN; (* BindLocalVars zeroed a record or array local *)
       pendingStrings: PendingString;
       (* PLAN.md Phase 9 step 5: the label of the basic block the writer
          is in (EmitLabel keeps it), for phi nodes; which lazily-emitted
@@ -6323,18 +6324,21 @@ MODULE LLVMCodeGenerator;
     END
   END BindReceiver;
 
-  (* One alloca per local VAR, left uninitialized (no "store" after it)
-     - real Oberon-2 gives a local variable no defined initial value,
-     unlike a module-level VAR (Oberon2.pdf's own zero-initialization is
-     a module-scope guarantee; EmitGlobals' own "zeroinitializer" is
-     specific to that, not extended here). Walks declarations.varDecls
-     the same way EmitGlobals walks module.declarations.varDecls, just
-     binding into cg.locals (an alloca'd address) instead of writing a
-     "@Module.name = global ..." line. *)
+  (* One alloca per local VAR, zeroed on entry - a record or an array with
+     llvm.memset, anything else with a store of zeroinitializer. The report
+     gives a local no initial value except a pointer's NIL (6.4), and until
+     2026-09-26 only pointers and procedure values were zeroed; but with
+     clang -O2 the default (Phase 11 D13) a read of a never-assigned local
+     is undefined behavior to LLVM, not just stack garbage, so every local
+     now starts as a global and a heap block do, at zero (Phase 11 D16).
+     The optimizer drops the stores a later assignment makes dead. Walks
+     declarations.varDecls the same way EmitGlobals walks
+     module.declarations.varDecls, just binding into cg.locals (an alloca'd
+     address) instead of writing a "@Module.name = global ..." line. *)
   PROCEDURE BindLocalVars(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
                           declarations: SyntaxTree.DeclSeqNode);
     VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
-        llvmType: LongText; addrText: ValueText;
+        llvmType: LongText; addrText, wordInt, sizeText: ValueText; size: LONGINT;
   BEGIN
     IF declarations = NIL THEN RETURN END;
     vd := declarations.varDecls;
@@ -6345,14 +6349,20 @@ MODULE LLVMCodeGenerator;
         LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
         NewTemp(cg, addrText);
         WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
-        IF (CountPointerSlots(obj.type) > 0) OR ContainsProcedureValue(obj.type) THEN
-          (* Oberon2.pdf 6.4: every pointer starts out NIL - a local one
-             too, which is what makes a dereference of a never-assigned
-             pointer a NIL trap rather than a wild access (and keeps
-             stack garbage out of the collector's conservative scan). A
-             procedure variable is treated the same, so that calling one
-             never assigned is that trap too (the report says nothing;
-             a local one is garbage in voc) *)
+        (* for a pointer this is Oberon2.pdf 6.4's NIL, which makes a
+           dereference of a never-assigned pointer a NIL trap rather than a
+           wild access and keeps stack garbage out of the collector's
+           conservative scan; a procedure variable never assigned is that
+           trap too *)
+        IF (obj.type IS Types.ArrayType) OR (obj.type IS Types.RecordType) THEN
+          cg.needMemset := TRUE;
+          WordIntType(wordInt);
+          WriteStr(w, "  call void @llvm.memset.p0."); WriteStr(w, wordInt); WriteStr(w, "(ptr ");
+          WriteStr(w, addrText); WriteStr(w, ", i8 0, "); WriteStr(w, wordInt); WriteStr(w, " ");
+          size := MemoryLayout.Size(obj.type, ConstantEvaluator.wordSize, cg.sizeModel);
+          sizeText[0] := 0X; AppendLongInt(sizeText, size);
+          WriteStr(w, sizeText); WriteStr(w, ", i1 false)"); WriteLn(w)
+        ELSE
           WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer, ptr ");
           WriteStr(w, addrText); WriteLn(w)
         END;
@@ -6723,7 +6733,7 @@ MODULE LLVMCodeGenerator;
     cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL; cg.nestedRoot := NIL;
     cg.declaredExternals := NIL; cg.tdescs := NIL;
     cg.needCharCompare := FALSE; cg.needCharCopy := FALSE; cg.pendingStrings := NIL;
-    cg.needMemmove := FALSE;
+    cg.needMemmove := FALSE; cg.needMemset := FALSE;
     cg.currentBlock[0] := 0X;
     cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
     cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE; cg.needEntierTrap := FALSE;
@@ -6854,6 +6864,14 @@ MODULE LLVMCodeGenerator;
         EmitLine(body, "declare void @llvm.memmove.p0.p0.i32(ptr, ptr, i32, i1)")
       ELSE
         EmitLine(body, "declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)")
+      END
+    END;
+    IF cg.needMemset THEN
+      WriteLn(body);
+      IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN
+        EmitLine(body, "declare void @llvm.memset.p0.i32(ptr, i8, i32, i1)")
+      ELSE
+        EmitLine(body, "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)")
       END
     END;
     EmitStructTypes(w, cg);

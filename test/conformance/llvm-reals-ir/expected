@@ -19,6 +19,7 @@ entry:
   %t3 = alloca i16
   store i16 %n, ptr %t3
   %t4 = alloca double
+  store double zeroinitializer, ptr %t4
   %t5 = load float, ptr %t1
   %t6 = load double, ptr %t2
   %t7 = fpext float %t5 to double
@@ -193,6 +194,7 @@ entry:
   %t3 = alloca i16
   store i16 %n, ptr %t3
   %t4 = alloca double
+  store double zeroinitializer, ptr %t4
   %t5 = load float, ptr %t1
   %t6 = load double, ptr %t2
   %t7 = fpext float %t5 to double
