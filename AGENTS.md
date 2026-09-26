@@ -185,6 +185,14 @@ shells out to these rather than linking against LLVM's own C++ API.
   `"stackrealign"` on `@main` (the one frame that starts misaligned); either
   alone still crashed `sin` on NetBSD. Linux and all 64-bit and ARM targets get
   neither, so their IR is unchanged (`llvm-stack-realign`).
+- **Optimization level** (Phase 11 D13, 2026-09-26): `poc -opt <level>`
+  makes `-build` pass clang `-O<level>`, one of `0`, `1`, `2`, `3`, `s`, `z`,
+  `g` (not `-O<level>` itself: poc's `-O2`/`-OC` are voc's size-model flags).
+  The default is `-O2`, but `-O0` for 32-bit x86, whose reals are x87
+  arithmetic (`doc/language-extensions.md`, "Overflow, division and reals";
+  poc must run on a Pentium II, so no SSE2). `SYSTEM.GET`/`PUT`/`MOVE` are
+  volatile, so an optimized build keeps them. `make check-opt2` builds
+  everything at `-O2`, Stage 1/2 included (in `build/opt2`).
 - `llc` is **not** part of the normal build path — reserved as an optional
   `-dump-asm`-style debug aid for reading generated assembly in golden-file
   tests. Usage: `llc <file>.ll -o <file>.s` (its default output filetype is
@@ -279,7 +287,8 @@ range traps (exit 8).
 
 Integer overflow wraps, and that is a promise. `DIV`/`MOD` floor. A zero
 divisor raises `SIGFPE` on x86, and on ARM gives a value with no fault. Real
-arithmetic is silent IEEE 754. `ENTIER` is the one deliberate trap.
+arithmetic is silent IEEE 754 (on 32-bit x86 only at `-opt 0`, its default:
+x87). `ENTIER` is the one deliberate trap.
 
 ### Array assignment (decided and implemented, Phase 11 A21)
 
@@ -341,6 +350,12 @@ related pointers and procedure values of one type.
 
 voc's `x-` formal parameter (by reference, read-only; Oakwood 5.13 recommends
 against it) is not in poc. A mark on a formal parameter is a syntax error.
+
+### Underscores and dollar signs in identifiers (considered, not adopted)
+
+Neither `_` nor `$` (Phase 11 A25, 2026-09-26), as in `Oberon2.pdf` and voc;
+a VMS name like `SYS$QIO` goes in an external procedure's linkage-name
+string. The scanner reports one clear error for each use of such a name.
 
 ## Project state
 

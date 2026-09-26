@@ -52,11 +52,20 @@ MODULE GarbageCollectedHeap;
      nothing - slow, but exact.
 
      THE POLICY. A collection runs when neither the free list nor a bump
-     pointer can supply a request; if that still leaves the request
-     unsatisfied, or leaves under a quarter of the heap free, the heap
-     grows by a chunk - up to a ceiling (SetHeapLimit) - and Allocate
-     answers 0 only when the ceiling stops it. Nothing moves, nothing
-     finalizes, and chunks are never given back.
+     pointer can supply a request. If it leaves less than half of the
+     block area free, the heap grows by one chunk big enough to make the
+     block area twice the live data (GrowAfterCollection); if the request
+     is still unsatisfied, by a chunk that holds it - either up to a
+     ceiling (SetHeapLimit), and Allocate answers 0 only when the ceiling
+     stops it. So the heap grows geometrically, and between two
+     collections the program allocates at least as much as survived the
+     first one: the tracing, which costs in proportion to the live data,
+     is paid for by that allocation. Until 2026-09-26 (Phase 11 D14) the
+     heap grew by one default chunk whenever a collection left under a
+     quarter free, so a program whose live data kept growing was traced
+     once for every 256 KB it grew - 172 full collections for the Stage 1
+     poc compiling itself, 69% of their time spent tracing. Nothing moves,
+     nothing finalizes, and chunks are never given back.
 
      FINDING A CHUNK. Every word the marker looks at - each conservative
      stack word and each pointer a traced block holds - needs the chunk it
@@ -580,25 +589,34 @@ MODULE GarbageCollectedHeap;
     collecting := FALSE
   END Collect;
 
+  (* After a collection: if less than half of the block area is free, one
+     more chunk, enough to make the block area twice the live data - or a
+     default chunk if the ceiling refuses that. Nothing if both are
+     refused: the collection may still have freed enough. *)
+  PROCEDURE GrowAfterCollection;
+    VAR target: SYSTEM.ADDRESS; grown: BOOLEAN;
+  BEGIN
+    IF blockAreaBytes - liveBytesAtLastCollection < blockAreaBytes DIV 2 THEN
+      target := 2 * liveBytesAtLastCollection - blockAreaBytes;
+      grown := AddChunk(target);
+      IF ~grown & (target > chunkBytes) THEN grown := AddChunk(0) END
+    END
+  END GrowAfterCollection;
+
   (* dataSize bytes of zeroed memory whose tag word (at the returned
      address - one word) is tag - 0, or the address of a type descriptor.
      0 if the request is out of range or the heap ceiling stops it. *)
   PROCEDURE Allocate*(dataSize, tag: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
-    VAR need, block, cursor, end: SYSTEM.ADDRESS; grown: BOOLEAN;
+    VAR need, block, cursor, end: SYSTEM.ADDRESS;
   BEGIN
     IF (dataSize < 0) OR (dataSize > maxObjectSize) THEN RETURN 0 END;
     need := BlockBytesFor(dataSize);
     block := TakeBlock(need);
     IF block = 0 THEN
       (* with no chunk at all there is nothing to collect *)
-      IF chunkHead # 0 THEN Collect END;
+      IF chunkHead # 0 THEN Collect; GrowAfterCollection END;
       block := TakeBlock(need);
-      IF block = 0 THEN
-        IF AddChunk(need) THEN block := TakeBlock(need) END
-      ELSIF blockAreaBytes - liveBytesAtLastCollection < blockAreaBytes DIV 4 THEN
-        (* the collection freed too little to be worth repeating soon *)
-        grown := AddChunk(need)
-      END
+      IF (block = 0) & AddChunk(need) THEN block := TakeBlock(need) END
     END;
     IF block = 0 THEN RETURN 0 END;
     PutWord(block, dataSize * sizeUnit + inUseFlag);

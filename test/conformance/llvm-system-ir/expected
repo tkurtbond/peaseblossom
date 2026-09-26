@@ -96,7 +96,7 @@ entry:
   %t3 = alloca i16
   %t4 = load i32, ptr %t2
   %t5 = inttoptr i32 %t4 to ptr
-  %t6 = load i16, ptr %t5, align 1
+  %t6 = load volatile i16, ptr %t5, align 1
   store i16 %t6, ptr %t3
   %t7 = load i16, ptr %t3
   %t8 = add i16 %t7, 1
@@ -104,7 +104,7 @@ entry:
   %t9 = load i32, ptr %t2
   %t10 = inttoptr i32 %t9 to ptr
   %t11 = load i16, ptr %t3
-  store i16 %t11, ptr %t10, align 1
+  store volatile i16 %t11, ptr %t10, align 1
   ret void
 }
 
@@ -115,7 +115,7 @@ entry:
   store i32 %t12, ptr @system.addr
   %t13 = load i32, ptr @system.addr
   %t14 = inttoptr i32 %t13 to ptr
-  %t15 = load i16, ptr %t14, align 1
+  %t15 = load volatile i16, ptr %t14, align 1
   store i16 %t15, ptr @system.j
   %t16 = load i16, ptr @system.j
   %t17 = icmp ne i16 %t16, 1234
@@ -135,7 +135,7 @@ L2:
   %t23 = load i32, ptr @system.addr
   %t24 = inttoptr i32 %t23 to ptr
   %t25 = load i16, ptr @system.k
-  store i16 %t25, ptr %t24, align 1
+  store volatile i16 %t25, ptr %t24, align 1
   %t26 = load i16, ptr @system.i
   %t27 = sext i8 99 to i16
   %t28 = icmp ne i16 %t26, %t27
@@ -213,7 +213,7 @@ L17:
   store i32 %t62, ptr @system.addr
   %t63 = load i32, ptr @system.addr
   %t64 = inttoptr i32 %t63 to ptr
-  %t65 = load i32, ptr %t64, align 1
+  %t65 = load volatile i32, ptr %t64, align 1
   store i32 %t65, ptr @system.m
   %t66 = load i32, ptr @system.m
   %t67 = icmp ne i32 %t66, 123456789
@@ -235,12 +235,12 @@ L20:
   store i64 %t73, ptr @system.h
   %t74 = ptrtoint ptr @system.h to i32
   %t75 = inttoptr i32 %t74 to ptr
-  %t76 = load i64, ptr %t75, align 1
+  %t76 = load volatile i64, ptr %t75, align 1
   store i64 %t76, ptr @system.h
   store i8 113, ptr @system.c
   %t77 = ptrtoint ptr @system.c to i32
   %t78 = inttoptr i32 %t77 to ptr
-  %t79 = load i8, ptr %t78, align 1
+  %t79 = load volatile i8, ptr %t78, align 1
   store i8 %t79, ptr @system.d
   %t80 = load i8, ptr @system.d
   %t81 = icmp ne i8 %t80, 113
@@ -258,12 +258,12 @@ L23:
   %t86 = ptrtoint ptr @system.d to i32
   %t87 = inttoptr i32 %t86 to ptr
   %t88 = load i8, ptr @system.c
-  store i8 %t88, ptr %t87, align 1
+  store volatile i8 %t88, ptr %t87, align 1
   %t89 = fptrunc double 2.5 to float
   store float %t89, ptr @system.r
   %t90 = ptrtoint ptr @system.r to i32
   %t91 = inttoptr i32 %t90 to ptr
-  %t92 = load float, ptr %t91, align 1
+  %t92 = load volatile float, ptr %t91, align 1
   store float %t92, ptr @system.r2
   %t93 = load float, ptr @system.r2
   %t94 = fptrunc double 2.5 to float
@@ -283,7 +283,7 @@ L26:
   store double 0.0e0, ptr @system.y
   %t100 = ptrtoint ptr @system.x to i32
   %t101 = inttoptr i32 %t100 to ptr
-  %t102 = load double, ptr %t101, align 1
+  %t102 = load volatile double, ptr %t101, align 1
   store double %t102, ptr @system.y
   %t103 = load double, ptr @system.y
   %t104 = fcmp une double %t103, 0.125e0
@@ -301,7 +301,7 @@ L29:
   store i32 546, ptr @system.s
   %t109 = ptrtoint ptr @system.s to i32
   %t110 = inttoptr i32 %t109 to ptr
-  %t111 = load i32, ptr %t110, align 1
+  %t111 = load volatile i32, ptr %t110, align 1
   store i32 %t111, ptr @system.t
   %t112 = load i32, ptr @system.t
   %t113 = icmp ne i32 %t112, 546
@@ -319,7 +319,7 @@ L32:
   store i8 1, ptr @system.flag
   %t118 = ptrtoint ptr @system.flag to i32
   %t119 = inttoptr i32 %t118 to ptr
-  store i8 0, ptr %t119, align 1
+  store volatile i8 0, ptr %t119, align 1
   %t120 = load i8, ptr @system.flag
   %t121 = icmp ne i8 %t120, 0
   br i1 %t121, label %L36, label %L37
@@ -384,7 +384,7 @@ L45:
   %t146 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 3
   %t147 = ptrtoint ptr %t146 to i32
   %t148 = inttoptr i32 %t147 to ptr
-  %t149 = load i16, ptr %t148, align 1
+  %t149 = load volatile i16, ptr %t148, align 1
   store i16 %t149, ptr @system.j
   %t150 = load i16, ptr @system.j
   %t151 = sext i8 30 to i16
@@ -404,7 +404,7 @@ L47:
   %t158 = sext i8 10 to i32
   %t159 = add i32 %t157, %t158
   %t160 = inttoptr i32 %t159 to ptr
-  %t161 = load i16, ptr %t160, align 1
+  %t161 = load volatile i16, ptr %t160, align 1
   store i16 %t161, ptr @system.j
   %t162 = load i16, ptr @system.j
   %t163 = sext i8 50 to i16
@@ -427,7 +427,7 @@ L50:
   %t172 = add i32 %t170, %t171
   %t173 = inttoptr i32 %t172 to ptr
   %t174 = load i16, ptr @system.k
-  store i16 %t174, ptr %t173, align 1
+  store volatile i16 %t174, ptr %t173, align 1
   %t175 = icmp sge i8 2, 0
   %t176 = icmp slt i8 2, 8
   %t177 = and i1 %t175, %t176
@@ -461,7 +461,7 @@ L53:
   %t190 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
   %t191 = ptrtoint ptr %t190 to i32
   %t192 = inttoptr i32 %t191 to ptr
-  %t193 = load i16, ptr %t192, align 1
+  %t193 = load volatile i16, ptr %t192, align 1
   store i16 %t193, ptr @system.j
   %t194 = load i16, ptr @system.j
   %t195 = sext i8 6 to i16
@@ -761,7 +761,7 @@ L107:
   %t348 = sext i8 16 to i32
   %t349 = icmp sgt i32 %t348, 0
   %t350 = select i1 %t349, i32 %t348, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t347, ptr %t341, i32 %t350, i1 false)
+  call void @llvm.memmove.p0.p0.i32(ptr %t347, ptr %t341, i32 %t350, i1 true)
   %t351 = sext i8 0 to i16
   store i16 %t351, ptr @system.k
   %t352 = sext i8 0 to i16
@@ -834,7 +834,7 @@ L119:
   %t385 = sext i8 12 to i32
   %t386 = icmp sgt i32 %t385, 0
   %t387 = select i1 %t386, i32 %t385, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t384, ptr %t378, i32 %t387, i1 false)
+  call void @llvm.memmove.p0.p0.i32(ptr %t384, ptr %t378, i32 %t387, i1 true)
   %t388 = icmp sge i8 0, 0
   %t389 = icmp slt i8 0, 8
   %t390 = and i1 %t388, %t389
@@ -966,7 +966,7 @@ L144:
   %t451 = sext i8 12 to i32
   %t452 = icmp sgt i32 %t451, 0
   %t453 = select i1 %t452, i32 %t451, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t450, ptr %t444, i32 %t453, i1 false)
+  call void @llvm.memmove.p0.p0.i32(ptr %t450, ptr %t444, i32 %t453, i1 true)
   %t454 = icmp sge i8 0, 0
   %t455 = icmp slt i8 0, 8
   %t456 = and i1 %t454, %t455
@@ -1078,7 +1078,7 @@ L165:
   %t507 = sext i8 0 to i32
   %t508 = icmp sgt i32 %t507, 0
   %t509 = select i1 %t508, i32 %t507, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t506, ptr %t500, i32 %t509, i1 false)
+  call void @llvm.memmove.p0.p0.i32(ptr %t506, ptr %t500, i32 %t509, i1 true)
   %t510 = icmp sge i8 0, 0
   %t511 = icmp slt i8 0, 8
   %t512 = and i1 %t510, %t511
@@ -1106,7 +1106,7 @@ L169:
   %t522 = sext i8 -5 to i32
   %t523 = icmp sgt i32 %t522, 0
   %t524 = select i1 %t523, i32 %t522, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t521, ptr %t515, i32 %t524, i1 false)
+  call void @llvm.memmove.p0.p0.i32(ptr %t521, ptr %t515, i32 %t524, i1 true)
   %t525 = icmp sge i8 0, 0
   %t526 = icmp slt i8 0, 8
   %t527 = and i1 %t525, %t526
@@ -1170,7 +1170,7 @@ L178:
   %t554 = sext i8 6 to i32
   %t555 = icmp sgt i32 %t554, 0
   %t556 = select i1 %t555, i32 %t554, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t553, ptr %t547, i32 %t556, i1 false)
+  call void @llvm.memmove.p0.p0.i32(ptr %t553, ptr %t547, i32 %t556, i1 true)
   %t557 = icmp sge i8 8, 0
   %t558 = icmp slt i8 8, 16
   %t559 = and i1 %t557, %t558
@@ -1381,7 +1381,7 @@ entry:
   %t3 = alloca i16
   %t4 = load i64, ptr %t2
   %t5 = inttoptr i64 %t4 to ptr
-  %t6 = load i16, ptr %t5, align 1
+  %t6 = load volatile i16, ptr %t5, align 1
   store i16 %t6, ptr %t3
   %t7 = load i16, ptr %t3
   %t8 = add i16 %t7, 1
@@ -1389,7 +1389,7 @@ entry:
   %t9 = load i64, ptr %t2
   %t10 = inttoptr i64 %t9 to ptr
   %t11 = load i16, ptr %t3
-  store i16 %t11, ptr %t10, align 1
+  store volatile i16 %t11, ptr %t10, align 1
   ret void
 }
 
@@ -1400,7 +1400,7 @@ entry:
   store i64 %t12, ptr @system.addr
   %t13 = load i64, ptr @system.addr
   %t14 = inttoptr i64 %t13 to ptr
-  %t15 = load i16, ptr %t14, align 1
+  %t15 = load volatile i16, ptr %t14, align 1
   store i16 %t15, ptr @system.j
   %t16 = load i16, ptr @system.j
   %t17 = icmp ne i16 %t16, 1234
@@ -1420,7 +1420,7 @@ L2:
   %t23 = load i64, ptr @system.addr
   %t24 = inttoptr i64 %t23 to ptr
   %t25 = load i16, ptr @system.k
-  store i16 %t25, ptr %t24, align 1
+  store volatile i16 %t25, ptr %t24, align 1
   %t26 = load i16, ptr @system.i
   %t27 = sext i8 99 to i16
   %t28 = icmp ne i16 %t26, %t27
@@ -1498,7 +1498,7 @@ L17:
   store i64 %t62, ptr @system.addr
   %t63 = load i64, ptr @system.addr
   %t64 = inttoptr i64 %t63 to ptr
-  %t65 = load i32, ptr %t64, align 1
+  %t65 = load volatile i32, ptr %t64, align 1
   store i32 %t65, ptr @system.m
   %t66 = load i32, ptr @system.m
   %t67 = icmp ne i32 %t66, 123456789
@@ -1520,12 +1520,12 @@ L20:
   store i64 %t73, ptr @system.h
   %t74 = ptrtoint ptr @system.h to i64
   %t75 = inttoptr i64 %t74 to ptr
-  %t76 = load i64, ptr %t75, align 1
+  %t76 = load volatile i64, ptr %t75, align 1
   store i64 %t76, ptr @system.h
   store i8 113, ptr @system.c
   %t77 = ptrtoint ptr @system.c to i64
   %t78 = inttoptr i64 %t77 to ptr
-  %t79 = load i8, ptr %t78, align 1
+  %t79 = load volatile i8, ptr %t78, align 1
   store i8 %t79, ptr @system.d
   %t80 = load i8, ptr @system.d
   %t81 = icmp ne i8 %t80, 113
@@ -1543,12 +1543,12 @@ L23:
   %t86 = ptrtoint ptr @system.d to i64
   %t87 = inttoptr i64 %t86 to ptr
   %t88 = load i8, ptr @system.c
-  store i8 %t88, ptr %t87, align 1
+  store volatile i8 %t88, ptr %t87, align 1
   %t89 = fptrunc double 2.5 to float
   store float %t89, ptr @system.r
   %t90 = ptrtoint ptr @system.r to i64
   %t91 = inttoptr i64 %t90 to ptr
-  %t92 = load float, ptr %t91, align 1
+  %t92 = load volatile float, ptr %t91, align 1
   store float %t92, ptr @system.r2
   %t93 = load float, ptr @system.r2
   %t94 = fptrunc double 2.5 to float
@@ -1568,7 +1568,7 @@ L26:
   store double 0.0e0, ptr @system.y
   %t100 = ptrtoint ptr @system.x to i64
   %t101 = inttoptr i64 %t100 to ptr
-  %t102 = load double, ptr %t101, align 1
+  %t102 = load volatile double, ptr %t101, align 1
   store double %t102, ptr @system.y
   %t103 = load double, ptr @system.y
   %t104 = fcmp une double %t103, 0.125e0
@@ -1586,7 +1586,7 @@ L29:
   store i32 546, ptr @system.s
   %t109 = ptrtoint ptr @system.s to i64
   %t110 = inttoptr i64 %t109 to ptr
-  %t111 = load i32, ptr %t110, align 1
+  %t111 = load volatile i32, ptr %t110, align 1
   store i32 %t111, ptr @system.t
   %t112 = load i32, ptr @system.t
   %t113 = icmp ne i32 %t112, 546
@@ -1604,7 +1604,7 @@ L32:
   store i8 1, ptr @system.flag
   %t118 = ptrtoint ptr @system.flag to i64
   %t119 = inttoptr i64 %t118 to ptr
-  store i8 0, ptr %t119, align 1
+  store volatile i8 0, ptr %t119, align 1
   %t120 = load i8, ptr @system.flag
   %t121 = icmp ne i8 %t120, 0
   br i1 %t121, label %L36, label %L37
@@ -1669,7 +1669,7 @@ L45:
   %t146 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 3
   %t147 = ptrtoint ptr %t146 to i64
   %t148 = inttoptr i64 %t147 to ptr
-  %t149 = load i16, ptr %t148, align 1
+  %t149 = load volatile i16, ptr %t148, align 1
   store i16 %t149, ptr @system.j
   %t150 = load i16, ptr @system.j
   %t151 = sext i8 30 to i16
@@ -1689,7 +1689,7 @@ L47:
   %t158 = sext i8 10 to i64
   %t159 = add i64 %t157, %t158
   %t160 = inttoptr i64 %t159 to ptr
-  %t161 = load i16, ptr %t160, align 1
+  %t161 = load volatile i16, ptr %t160, align 1
   store i16 %t161, ptr @system.j
   %t162 = load i16, ptr @system.j
   %t163 = sext i8 50 to i16
@@ -1712,7 +1712,7 @@ L50:
   %t172 = add i64 %t170, %t171
   %t173 = inttoptr i64 %t172 to ptr
   %t174 = load i16, ptr @system.k
-  store i16 %t174, ptr %t173, align 1
+  store volatile i16 %t174, ptr %t173, align 1
   %t175 = icmp sge i8 2, 0
   %t176 = icmp slt i8 2, 8
   %t177 = and i1 %t175, %t176
@@ -1746,7 +1746,7 @@ L53:
   %t190 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
   %t191 = ptrtoint ptr %t190 to i64
   %t192 = inttoptr i64 %t191 to ptr
-  %t193 = load i16, ptr %t192, align 1
+  %t193 = load volatile i16, ptr %t192, align 1
   store i16 %t193, ptr @system.j
   %t194 = load i16, ptr @system.j
   %t195 = sext i8 6 to i16
@@ -2044,7 +2044,7 @@ L107:
   %t346 = sext i8 16 to i64
   %t347 = icmp sgt i64 %t346, 0
   %t348 = select i1 %t347, i64 %t346, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t345, ptr %t339, i64 %t348, i1 false)
+  call void @llvm.memmove.p0.p0.i64(ptr %t345, ptr %t339, i64 %t348, i1 true)
   %t349 = sext i8 0 to i16
   store i16 %t349, ptr @system.k
   %t350 = sext i8 0 to i16
@@ -2117,7 +2117,7 @@ L119:
   %t383 = sext i8 12 to i64
   %t384 = icmp sgt i64 %t383, 0
   %t385 = select i1 %t384, i64 %t383, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t382, ptr %t376, i64 %t385, i1 false)
+  call void @llvm.memmove.p0.p0.i64(ptr %t382, ptr %t376, i64 %t385, i1 true)
   %t386 = icmp sge i8 0, 0
   %t387 = icmp slt i8 0, 8
   %t388 = and i1 %t386, %t387
@@ -2249,7 +2249,7 @@ L144:
   %t449 = sext i8 12 to i64
   %t450 = icmp sgt i64 %t449, 0
   %t451 = select i1 %t450, i64 %t449, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t448, ptr %t442, i64 %t451, i1 false)
+  call void @llvm.memmove.p0.p0.i64(ptr %t448, ptr %t442, i64 %t451, i1 true)
   %t452 = icmp sge i8 0, 0
   %t453 = icmp slt i8 0, 8
   %t454 = and i1 %t452, %t453
@@ -2361,7 +2361,7 @@ L165:
   %t505 = sext i8 0 to i64
   %t506 = icmp sgt i64 %t505, 0
   %t507 = select i1 %t506, i64 %t505, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t504, ptr %t498, i64 %t507, i1 false)
+  call void @llvm.memmove.p0.p0.i64(ptr %t504, ptr %t498, i64 %t507, i1 true)
   %t508 = icmp sge i8 0, 0
   %t509 = icmp slt i8 0, 8
   %t510 = and i1 %t508, %t509
@@ -2389,7 +2389,7 @@ L169:
   %t520 = sext i8 -5 to i64
   %t521 = icmp sgt i64 %t520, 0
   %t522 = select i1 %t521, i64 %t520, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t519, ptr %t513, i64 %t522, i1 false)
+  call void @llvm.memmove.p0.p0.i64(ptr %t519, ptr %t513, i64 %t522, i1 true)
   %t523 = icmp sge i8 0, 0
   %t524 = icmp slt i8 0, 8
   %t525 = and i1 %t523, %t524
@@ -2453,7 +2453,7 @@ L178:
   %t552 = sext i8 6 to i64
   %t553 = icmp sgt i64 %t552, 0
   %t554 = select i1 %t553, i64 %t552, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t551, ptr %t545, i64 %t554, i1 false)
+  call void @llvm.memmove.p0.p0.i64(ptr %t551, ptr %t545, i64 %t554, i1 true)
   %t555 = icmp sge i8 8, 0
   %t556 = icmp slt i8 8, 16
   %t557 = and i1 %t555, %t556

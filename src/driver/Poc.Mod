@@ -897,6 +897,8 @@ MODULE Poc;
     Err.String("       for that target's word size (default: no effect, no clang needed)"); Err.Ln;
     Err.String("       -o <exe> may precede -build, giving the executable's output path"); Err.Ln;
     Err.String("       (required - -build has no default)"); Err.Ln;
+    Err.String("       -opt <level> may precede -build: clang builds with -O<level>,"); Err.Ln;
+    Err.String("       <level> one of 0, 1, 2, 3, s, z, g (default 2; 0 for 32-bit x86)"); Err.Ln;
     Err.String("       -trap-heap-exhausted may precede -emit-llvm-ir or -build: a NEW"); Err.Ln;
     Err.String("       the heap cannot satisfy stops the program (exit status 11)"); Err.Ln;
     Err.String("       instead of leaving the pointer NIL"); Err.Ln;
@@ -1030,6 +1032,20 @@ MODULE Poc;
           (* Phase 11 C7: every trap message names its file, line, column and procedure *)
           LLVMCodeGenerator.trapLocation := TRUE;
           INC(i)
+        ELSIF arg = "-opt" THEN
+          (* Phase 11 D13: the optimization level -build passes clang *)
+          IF i + 1 < Modules.ArgCount THEN
+            Modules.GetArg(i + 1, param);
+            IF ~LLVMToolchainDriver.SetOptimizationLevel(param) THEN
+              failed := TRUE;
+              Err.String("poc: -opt takes 0, 1, 2, 3, s, z or g, not "); Err.String(param); Err.Ln;
+              done := TRUE
+            END;
+            INC(i, 2)
+          ELSE
+            failed := TRUE; Err.String("poc: -opt requires a level"); Err.Ln;
+            done := TRUE
+          END
         ELSIF arg = "-trap-heap-exhausted" THEN
           (* Phase 11 A13: a NEW the heap cannot satisfy stops the program *)
           LLVMCodeGenerator.trapHeapExhausted := TRUE;

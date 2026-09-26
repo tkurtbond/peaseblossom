@@ -45,7 +45,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: all build stage1 stage2 test-stage1 check check-strict test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: all build stage1 stage2 test-stage1 check check-strict check-opt2 test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN)
 
@@ -83,6 +83,38 @@ check:
 	$(MAKE) test-stage1 || status=1; \
 	$(MAKE) stage2 || status=1; \
 	$(MAKE) check-strict || status=1; \
+	exit $$status
+
+# Phase 11 D13: everything built with poc -opt 2 (clang -O2), including
+# 32-bit x86, whose default is -O0 (LLVMToolchainDriver.
+# DefaultOptimizationLevel) - the gate -O2 passed before it became the
+# default elsewhere. The suite with every fixture's build optimized (a poc
+# wrapper that adds -opt 2), then Stage 1 and Stage 2 built optimized in
+# build/opt2 and compared, then the suite under that Stage 1.
+# poc-exit-status, poc-output-streams and poc-opt-level test poc's command
+# line, which the wrapper changes, so they are left out. So are the fixtures
+# whose exact real results x87 arithmetic changes when optimized (the
+# reason for the -O0 default): llvm-out-extra and llvm-math-extra on a
+# 32-bit x86 host, and llvm-i686-runtime, which reruns them for 32-bit x86,
+# on a 32-bit x86 host or a BSD (Linux i686 has SSE2).
+OPT2_DIR := $(abspath $(BUILD_DIR)/opt2)
+OPT2_HOST_X87 := $(filter i386 i486 i586 i686,$(shell uname -m))
+OPT2_HOST_BSD := $(filter-out Linux,$(shell uname -s))
+OPT2_SKIP := poc-exit-status poc-output-streams poc-opt-level \
+  $(if $(OPT2_HOST_X87),llvm-out-extra llvm-math-extra) \
+  $(if $(OPT2_HOST_X87)$(OPT2_HOST_BSD),llvm-i686-runtime)
+OPT2_TESTS := $(filter-out $(OPT2_SKIP),$(ALL_TESTS))
+check-opt2: build
+	@rm -rf $(OPT2_DIR); mkdir -p $(OPT2_DIR)/wrap0 $(OPT2_DIR)/wrap1; \
+	printf '#!/bin/sh\nexec %s -opt 2 "$$@"\n' $(abspath $(BUILD_DIR)/bin/poc) > $(OPT2_DIR)/wrap0/poc; \
+	printf '#!/bin/sh\nexec %s -opt 2 "$$@"\n' $(OPT2_DIR)/stage1/bin/poc > $(OPT2_DIR)/wrap1/poc; \
+	chmod +x $(OPT2_DIR)/wrap0/poc $(OPT2_DIR)/wrap1/poc; \
+	status=0; \
+	POC_BIN_DIR=$(OPT2_DIR)/wrap0 test/run-tests.sh $(OPT2_TESTS) || status=1; \
+	BOOTSTRAP_BUILD_DIR=$(OPT2_DIR) BOOTSTRAP_OPT=2 STAGE0_POC=$(abspath $(BUILD_DIR)/bin/poc) \
+	  tools/bootstrap/stage1 || status=1; \
+	BOOTSTRAP_BUILD_DIR=$(OPT2_DIR) BOOTSTRAP_OPT=2 tools/bootstrap/stage2 || status=1; \
+	POC_BIN_DIR=$(OPT2_DIR)/wrap1 test/run-tests.sh $(OPT2_TESTS) || status=1; \
 	exit $$status
 
 # poc's own source stays inside Oberon2.pdf (PLAN.md, "Bootstrap

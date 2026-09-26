@@ -64,8 +64,11 @@ Found 2026-09-21 by llvm-system-int8-constants: the label constants are at least
 ** DONE Add command line option to poc to have NEW on an exhaused heap trap.
 Done 2026-09-25 (user chose the proposed defaults): `poc -trap-heap-exhausted`, off by default; with it NEW, NEW(p, n, ...) and SYSTEM.NEW that the heap cannot satisfy stop the program with "heap exhausted: NEW cannot allocate the block", exit status 11 (LLVMCodeGenerator.EmitHeapCheck; fixture llvm-heap-exhausted).  Original text follows.
 Decided 2026-09-20: a compiler switch chooses between leaving the pointer NIL (today, and voc's behavior) and exiting with a failure status and a text message saying the heap is exhausted.  Still to settle: the switch's name, its default (NIL is the conservative one), the exit status and the wording.  (doc/phase-11-inventory.md A13.)
-** TODO Can poc garbage collection do better than conservatively scanning the stack?
+** DONE Can poc garbage collection do better than conservatively scanning the stack?
 Measured 2026-09-25 (with A17): the collector is 91% of the instructions of the Stage 1 poc emitting its own IR, 87% in GarbageCollectedHeap.ChunkOf (finding the chunk of each word the marker examines).  That lookup, not the conservative scan as such, is the cost to attack first.  (doc/phase-11-inventory.md A15.)  Done 2026-09-25: a sorted chunk table, binary-searched after a whole-heap range test, takes that run from 10.9 s to 2.7 s; most of the rest is calls to one-line helpers at clang -O0 (the same IR at -O2: 1.0 s).
+Closed 2026-09-26 (user): keep the conservative scan.  Re-measured at -O2, it is 0.8% of collection time; the costs were collecting too often (fixed: the heap grows geometrically, D14; 1.0 s -> 0.49 s) and the first-fit free list (D15, open).  (doc/phase-11-inventory.md A15, D14, D15.)
+** TODO Free lists per size class in the collector
+GarbageCollectedHeap has one first-fit free list; after D14 an allocation still walks about 58 blocks of it (TakeFromFreeList).  (doc/phase-11-inventory.md D15.)
 ** TODO Add debugging support, so one can debug poc produced code in gdb or lldb.
 ** DONE Out.Real/Out.LongReal were voc's algorithm, not correctly rounded (the last digits outside about 10^-22..10^22, or the 17th of a LONGREAL, could be off).  Now correctly rounded from exact big-integer digits (rtl/llvm/RealDigits.Mod, the port of DecimalToDouble.Digits); fixture llvm-real-digits.  (doc/phase-11-inventory.md A3.)
 ** DONE ENTIER of a real beyond LONGINT gives garbage (poc -2147483648; voc wraps).  Decide: a HUGEINT result, or a trap.  (doc/phase-11-inventory.md A4.)
@@ -146,7 +149,8 @@ Decided with the user 2026-09-25 and done: declare-before-use stays (no true for
 The section-order half is DONE (2026-09-17, voc-verified): CONST/TYPE/VAR sections may repeat and interleave, resolved in one textual-order pass; see the DONE entry "Resolve CONST/TYPE/VAR declarations as one linear pass" above.  What remains is true forward references and putting a PROCEDURE before a TYPE/VAR.  Proposed verdict: close at what voc does (voc rejects both; the PROCEDURE^ forward declaration already covers the case that matters); reopen only for a concrete need.  (doc/phase-11-inventory.md A22; PLAN.md Phase 11 step 6.)
 ** TODO Initializers for variable declarations consisting of := after the type, followed by an expression.
 ** TODO Oberon-2 has syntax for sets literals; it would be good have syntax for record and array literals, too.
-** TODO Underscores and dollarsigns in names.  (Useful for VMS.)
+** DONE Underscores and dollarsigns in names.  (Useful for VMS.)
+Decided 2026-09-26 (user): neither; VMS names go in an external procedure's linkage-name string.  The scanner gives one clear error.  (doc/phase-11-inventory.md A25; doc/language-extensions.md.)
 ** TODO Slices for one dimensional arrays.
 * Ignore this
 Local Variables:

@@ -81,6 +81,10 @@ table). `GET`/`PUT` access memory with no alignment assumption;
 its minimal integer type's width (`PUT(a, 5)` writes a `SHORTINT`-sized
 value under `-O2`). `VAL(T, x)` between scalars of different widths
 sign-extends or truncates - the report leaves it undefined and voc warns.
+`GET`, `PUT` and `MOVE` are volatile accesses (Phase 11 D13, 2026-09-25): at
+any `-opt` level each happens once, where the program says, and one at an
+unmapped address - address 0 included, which LLVM would otherwise take as
+unreachable - still ends the program with `SIGSEGV`.
 
 Phase 10 step 7 added the rest (`PLAN.md` step 7 has the full account; probed
 against real voc 2026-09-20). What a program can observe:
@@ -461,6 +465,15 @@ and poc, both models):
   give an infinity, `0.0/0.0` a NaN, underflow a zero or a denormal, `SHORT`
   of a `LONGREAL` too large for a `REAL` an infinity; no trap. (The VAX backend
   cannot promise this - VAX floats have no infinity or NaN; Phase 13 decides.)
+  **On 32-bit x86, only at `-opt 0`** (its default there; Phase 11 D13,
+  2026-09-26): LLVM computes reals on the x87 there (clang's default CPU for
+  the i386 BSDs has no SSE2, and poc must run on a Pentium II), whose
+  registers hold 80 bits. At `-O0` every result is stored, and so rounded to
+  its type; an optimized build keeps intermediate results in the registers,
+  wider in precision and exponent, so a result can differ in its last bits and
+  an underflow or overflow can be missed (on OpenBSD i386 `1.0D40` printed a
+  different last digit and `MathL.exp(-800)` reported no underflow). Linux
+  i686, whose default CPU has SSE2, is not affected.
 - **`ENTIER` is the one exception, on purpose: a value that does not fit a
   `LONGINT` (or a NaN or infinity) traps** - "ENTIER argument out of range for
   LONGINT", exit status 8 (see "Constant expressions" above). It is not
@@ -919,3 +932,32 @@ syntax error, "a formal parameter cannot have an export mark", since
 value parameter. Adopting voc's version later is a separate decision, recorded
 in `000-todo.org`: poc's own source would not use it, and `-strict` would have
 to reject it.
+
+## Underscores and dollar signs in identifiers (considered, not adopted)
+
+`000-todo.org` asked for `_` and `$` in names, for VMS (`SYS$QIO`,
+`LIB$GET_VM`, `SS$_NORMAL`). `Oberon2.pdf` has `ident = letter {letter |
+digit}`. Surveyed 2026-09-26 in the scanners under
+`/usr/local/sw/src/lang/Oberon`:
+
+- **`_` accepted:** BlackBox/Component Pascal (`DevCPS`, anywhere, first
+  included, as its report says), Ofront+ (`OfrontOPS`, the same), Oberon+
+  (`ObLexer.cpp`, the same), A2's Fox (`FoxScanner`, after the first
+  character), oo2c (`OOC/Scanner.Mod`: an option, `enableIdentUnderscore`,
+  that its compiler always sets; not first), OBNC (`Oberon.l`: a single `_`
+  between letters or digits only).
+- **`_` rejected:** voc (`OPS.Mod`), the original Ofront, the ETH Oberon-2
+  compiler (`Oberon.OPS.Mod` in AOS), obc (`lexer.mll`).
+- **`$`:** in no dialect's identifiers; Component Pascal and Oberon+ use it
+  as an operator or to start a hex string.
+
+**poc accepts neither** (decided with the user 2026-09-26, Phase 11 A25).
+The VMS reason does not need them: a system service or RTL routine is an
+external procedure whose linkage-name string is emitted verbatim
+(`PROCEDURE ["VMS", "SYS$QIO"] QueueIO(...)`, "External procedures" above),
+and a constant such as `SS$_NORMAL` can be spelled `SSNormal`. Adopting `_`
+would have made programs voc cannot compile. The scanner takes a `_` or `$`
+into the name anyway and reports the first one, once for each use of the
+name: `"_" is not allowed in an identifier: the Oberon-2 report allows only
+letters and digits`, where until then it gave "invalid character" and a
+cascade (`lexer-reject-underscore-dollar`).
