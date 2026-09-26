@@ -28,9 +28,20 @@ MODULE GarbageCollectedHeap;
 
      A free block reuses its first two words for the header and a link to
      the next free block. The block area of a chunk is used from the
-     bottom (a *bump pointer* moves up as fresh blocks are cut) and swept
-     memory is threaded onto one address-ordered free list that is
-     searched first-fit before the bump pointers.
+     bottom (a *bump pointer* moves up as fresh blocks are cut), and swept
+     memory goes onto free lists, which are tried before the bump pointers.
+
+     FREE LISTS (Phase 11 D15, 2026-09-26). One list for each block size up to
+     smallBlockBytes (16, 32, .. 512 bytes: the size classes), every block
+     on it exactly that size, and one list of every bigger block. A request
+     takes the head of its own class's list; if that is empty, it splits
+     the first block of the next larger class that has one, or else the
+     first block of the big list that is large enough, and the rest of the
+     block goes onto the list of its own size. Until then all free memory
+     was on one address-ordered list searched first-fit, whose walk past
+     blocks too small for the request was 20-30% of the Stage 1 poc's time
+     compiling itself, and grew with any change in the mix of sizes it
+     allocated.
 
      TRACING. What a live object's outgoing pointers are comes from its
      tag: a descriptor's `size` (one element's bytes), `ptrCount` and
@@ -99,6 +110,10 @@ MODULE GarbageCollectedHeap;
     maxChunkBytes = 268435456; (* 2^28; keeps a whole free block's size * sizeUnit in range too *)
     defaultHeapLimit = 1073741824;
     defaultMarkStackEntries = 16384;
+    (* the biggest block with a size class of its own; classes are
+       1 .. smallClasses, a block's size DIV granule *)
+    smallBlockBytes = 512;
+    smallClasses = smallBlockBytes DIV granule;
     (* a chunk's own header, in words from the chunk's start *)
     chunkNext = 0; (* the next chunk, 0 for the last *)
     chunkTotalBytes = 1;
@@ -120,7 +135,10 @@ MODULE GarbageCollectedHeap;
     (* the keys of the lowest first block and of the highest block-area end
        of all chunks (equal, an empty range, while there are none) *)
     heapLowestKey, heapHighestKey: SYSTEM.ADDRESS;
-    freeHead, freeTail: SYSTEM.ADDRESS;
+    (* the free lists: freeLists[c] heads the list of blocks of c granules
+       (1 <= c <= smallClasses), bigFreeHead that of every bigger block *)
+    freeLists: ARRAY smallClasses + 1 OF SYSTEM.ADDRESS;
+    bigFreeHead: SYSTEM.ADDRESS;
     totalChunkBytes: SYSTEM.ADDRESS; (* what has been asked of calloc, for the ceiling *)
     blockAreaBytes: SYSTEM.ADDRESS; (* the sum of every chunk's block area *)
     heapLimit, chunkBytes: SYSTEM.ADDRESS;
@@ -325,32 +343,60 @@ MODULE GarbageCollectedHeap;
 
   (* ---- taking blocks ---- *)
 
-  (* A free block of at least need bytes, first fit, split when it is
-     bigger; its start bit stays set. 0 if none. *)
-  PROCEDURE TakeFromFreeList(need: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
-    VAR block, previous, bytes, following, remainder, chunk: SYSTEM.ADDRESS;
+  (* Puts the free block of bytes bytes at block (its start bit set) on the
+     list of its size. *)
+  PROCEDURE PushFree(block, bytes: SYSTEM.ADDRESS);
+    VAR class: SYSTEM.ADDRESS;
   BEGIN
-    previous := 0; block := freeHead;
+    PutWord(block, bytes * sizeUnit);
+    IF bytes <= smallBlockBytes THEN
+      class := bytes DIV granule;
+      PutWord(block + word, freeLists[class]); freeLists[class] := block
+    ELSE
+      PutWord(block + word, bigFreeHead); bigFreeHead := block
+    END
+  END PushFree;
+
+  (* block, a free block of bytes bytes just taken off its list, cut to
+     need bytes: the rest, if any, becomes a free block of its own. *)
+  PROCEDURE SplitOff(block, bytes, need: SYSTEM.ADDRESS);
+    VAR remainder: SYSTEM.ADDRESS;
+  BEGIN
+    IF bytes > need THEN
+      remainder := block + need;
+      SetStartBit(ChunkOf(remainder), remainder, TRUE);
+      PushFree(remainder, bytes - need)
+    END
+  END SplitOff;
+
+  (* A free block of need bytes (a multiple of granule), from the lists
+     (FREE LISTS above); its start bit stays set. 0 if none. *)
+  PROCEDURE TakeFromFreeList(need: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+    VAR block, previous, bytes, class: SYSTEM.ADDRESS;
+  BEGIN
+    IF need <= smallBlockBytes THEN
+      class := need DIV granule;
+      block := freeLists[class];
+      IF block # 0 THEN freeLists[class] := GetWord(block + word); RETURN block END;
+      REPEAT INC(class) UNTIL (class > smallClasses) OR (freeLists[class] # 0);
+      IF class <= smallClasses THEN
+        block := freeLists[class];
+        freeLists[class] := GetWord(block + word);
+        SplitOff(block, class * granule, need);
+        RETURN block
+      END
+    END;
+    previous := 0; block := bigFreeHead;
     WHILE block # 0 DO
       bytes := GetWord(block) DIV sizeUnit;
-      following := GetWord(block + word);
       IF bytes >= need THEN
-        IF bytes - need >= granule THEN
-          (* the tail of the block stays on the list in its place *)
-          remainder := block + need;
-          PutWord(remainder, (bytes - need) * sizeUnit);
-          PutWord(remainder + word, following);
-          chunk := ChunkOf(remainder);
-          SetStartBit(chunk, remainder, TRUE);
-          IF freeTail = block THEN freeTail := remainder END;
-          following := remainder
-        ELSIF freeTail = block THEN
-          freeTail := previous
+        IF previous = 0 THEN bigFreeHead := GetWord(block + word)
+        ELSE PutWord(previous + word, GetWord(block + word))
         END;
-        IF previous = 0 THEN freeHead := following ELSE PutWord(previous + word, following) END;
+        SplitOff(block, bytes, need);
         RETURN block
       END;
-      previous := block; block := following
+      previous := block; block := GetWord(block + word)
     END;
     RETURN 0
   END TakeFromFreeList;
@@ -512,10 +558,7 @@ MODULE GarbageCollectedHeap;
       SetStartBit(chunk, runStart, FALSE);
       SetChunkField(chunk, chunkBump, runStart)
     ELSE
-      PutWord(runStart, runBytes * sizeUnit);
-      PutWord(runStart + word, 0);
-      IF freeTail = 0 THEN freeHead := runStart ELSE PutWord(freeTail + word, runStart) END;
-      freeTail := runStart
+      PushFree(runStart, runBytes)
     END
   END EndRun;
 
@@ -548,9 +591,10 @@ MODULE GarbageCollectedHeap;
   END SweepChunk;
 
   PROCEDURE Sweep;
-    VAR chunk: SYSTEM.ADDRESS;
+    VAR chunk: SYSTEM.ADDRESS; class: INTEGER;
   BEGIN
-    freeHead := 0; freeTail := 0;
+    FOR class := 0 TO smallClasses DO freeLists[class] := 0 END;
+    bigFreeHead := 0;
     liveBytesAccumulator := 0;
     chunk := chunkHead;
     WHILE chunk # 0 DO
