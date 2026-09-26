@@ -149,7 +149,8 @@ Decided with the user 2026-09-25 and done: declare-before-use stays (no true for
 The section-order half is DONE (2026-09-17, voc-verified): CONST/TYPE/VAR sections may repeat and interleave, resolved in one textual-order pass; see the DONE entry "Resolve CONST/TYPE/VAR declarations as one linear pass" above.  What remains is true forward references and putting a PROCEDURE before a TYPE/VAR.  Proposed verdict: close at what voc does (voc rejects both; the PROCEDURE^ forward declaration already covers the case that matters); reopen only for a concrete need.  (doc/phase-11-inventory.md A22; PLAN.md Phase 11 step 6.)
 ** TODO Initializers for variable declarations consisting of := after the type, followed by an expression.
 ** TODO Oberon-2 has syntax for sets literals; it would be good have syntax for record and array literals, too.
-** TODO Underscores and dollarsigns in names.  (Useful for VMS.)
+** DONE Underscores and dollarsigns in names.  (Useful for VMS.)
+Decided 2026-09-26 (user): neither; VMS names go in an external procedure's linkage-name string.  The scanner gives one clear error.  (doc/phase-11-inventory.md A25; doc/language-extensions.md.)
 ** TODO Slices for one dimensional arrays.
 * Ignore this
 Local Variables:

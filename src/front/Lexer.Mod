@@ -174,12 +174,29 @@ MODULE Lexer;
     END
   END LookupKeyword;
 
-  PROCEDURE ScanIdentifier(VAR s: Scanner; VAR t: Token);
-    VAR len: INTEGER; ch: CHAR;
+  (* "_" and "$", which other dialects (and VMS names) put in identifiers,
+     and poc does not: the Oberon-2 report allows letters and digits only
+     (Phase 11 A25; a VMS name such as SYS$QIO is an external procedure's
+     linkage-name string). ScanIdentifier takes them into the name anyway
+     and reports the first one, so a name like a_b costs one error instead
+     of a cascade. *)
+  PROCEDURE IsForeignIdentifierChar(ch: CHAR): BOOLEAN;
   BEGIN
-    len := 0;
+    RETURN (ch = "_") OR (ch = "$")
+  END IsForeignIdentifierChar;
+
+  PROCEDURE ScanIdentifier(VAR s: Scanner; VAR t: Token);
+    VAR len: INTEGER; ch: CHAR; reported: BOOLEAN; message: ARRAY 96 OF CHAR;
+  BEGIN
+    len := 0; reported := FALSE;
     ch := CurrentChar(s);
-    WHILE IsLetter(ch) OR IsDigit(ch) DO
+    WHILE IsLetter(ch) OR IsDigit(ch) OR IsForeignIdentifierChar(ch) DO
+      IF IsForeignIdentifierChar(ch) & ~reported THEN
+        message := '" " is not allowed in an identifier: the Oberon-2 report allows only letters and digits';
+        message[1] := ch;
+        Diagnostics.Error(s.line, s.column, message);
+        reported := TRUE
+      END;
       IF len < maxLexemeLength THEN
         t.lexeme[len] := ch; INC(len)
       ELSIF len = maxLexemeLength THEN
@@ -352,7 +369,7 @@ MODULE Lexer;
     ch := CurrentChar(s);
     IF ch = 0X THEN
       t.kind := eof; t.lexeme[0] := 0X
-    ELSIF IsLetter(ch) THEN
+    ELSIF IsLetter(ch) OR IsForeignIdentifierChar(ch) THEN
       ScanIdentifier(s, t)
     ELSIF IsDigit(ch) THEN
       ScanNumber(s, t)

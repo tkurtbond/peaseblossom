@@ -932,3 +932,32 @@ syntax error, "a formal parameter cannot have an export mark", since
 value parameter. Adopting voc's version later is a separate decision, recorded
 in `000-todo.org`: poc's own source would not use it, and `-strict` would have
 to reject it.
+
+## Underscores and dollar signs in identifiers (considered, not adopted)
+
+`000-todo.org` asked for `_` and `$` in names, for VMS (`SYS$QIO`,
+`LIB$GET_VM`, `SS$_NORMAL`). `Oberon2.pdf` has `ident = letter {letter |
+digit}`. Surveyed 2026-09-26 in the scanners under
+`/usr/local/sw/src/lang/Oberon`:
+
+- **`_` accepted:** BlackBox/Component Pascal (`DevCPS`, anywhere, first
+  included, as its report says), Ofront+ (`OfrontOPS`, the same), Oberon+
+  (`ObLexer.cpp`, the same), A2's Fox (`FoxScanner`, after the first
+  character), oo2c (`OOC/Scanner.Mod`: an option, `enableIdentUnderscore`,
+  that its compiler always sets; not first), OBNC (`Oberon.l`: a single `_`
+  between letters or digits only).
+- **`_` rejected:** voc (`OPS.Mod`), the original Ofront, the ETH Oberon-2
+  compiler (`Oberon.OPS.Mod` in AOS), obc (`lexer.mll`).
+- **`$`:** in no dialect's identifiers; Component Pascal and Oberon+ use it
+  as an operator or to start a hex string.
+
+**poc accepts neither** (decided with the user 2026-09-26, Phase 11 A25).
+The VMS reason does not need them: a system service or RTL routine is an
+external procedure whose linkage-name string is emitted verbatim
+(`PROCEDURE ["VMS", "SYS$QIO"] QueueIO(...)`, "External procedures" above),
+and a constant such as `SS$_NORMAL` can be spelled `SSNormal`. Adopting `_`
+would have made programs voc cannot compile. The scanner takes a `_` or `$`
+into the name anyway and reports the first one, once for each use of the
+name: `"_" is not allowed in an identifier: the Oberon-2 report allows only
+letters and digits`, where until then it gave "invalid character" and a
+cascade (`lexer-reject-underscore-dollar`).

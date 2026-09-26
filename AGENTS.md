@@ -351,6 +351,12 @@ related pointers and procedure values of one type.
 voc's `x-` formal parameter (by reference, read-only; Oakwood 5.13 recommends
 against it) is not in poc. A mark on a formal parameter is a syntax error.
 
+### Underscores and dollar signs in identifiers (considered, not adopted)
+
+Neither `_` nor `$` (Phase 11 A25, 2026-09-26), as in `Oberon2.pdf` and voc;
+a VMS name like `SYS$QIO` goes in an external procedure's linkage-name
+string. The scanner reports one clear error for each use of such a name.
+
 ## Project state
 
 Phases 0-10 of `PLAN.md` are complete: poc compiles itself through the LLVM
