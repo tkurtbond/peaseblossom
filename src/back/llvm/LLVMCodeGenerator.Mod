@@ -4288,6 +4288,13 @@ MODULE LLVMCodeGenerator;
     Unsupported(w, cg, "SYSTEM.ADR of a designator this backend cannot address", Types.Address, result)
   END GenerateAdr;
 
+  (* SYSTEM.GET, PUT and MOVE touch memory as volatile (Phase 11 D13): the
+     optimizer may neither drop nor merge them. For LLVM a plain load or
+     store at address 0 is undefined behavior, so from clang -O1 up a
+     SYSTEM.GET(0, x) survived with some value instead of ending the
+     program with SIGSEGV as at -O0 (llvm-no-trap-behavior, case 11); and
+     SYSTEM is for memory the compiler does not know about. It cost the
+     Stage 1 poc nothing measurable at -O2. *)
   PROCEDURE GenerateGet(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
       de: SyntaxTree.DesignatorExprNode; ptrText, addrText, loaded: ValueText; addrType: Types.Type;
@@ -4304,7 +4311,7 @@ MODULE LLVMCodeGenerator;
     END;
     LLVMTypes.TypeString(addrType, cg.sizeModel, v.llvmType);
     NewTemp(cg, loaded);
-    WriteStr(w, "  "); WriteStr(w, loaded); WriteStr(w, " = load "); WriteStr(w, v.llvmType);
+    WriteStr(w, "  "); WriteStr(w, loaded); WriteStr(w, " = load volatile "); WriteStr(w, v.llvmType);
     WriteStr(w, ", ptr "); WriteStr(w, ptrText); WriteStr(w, ", align 1"); WriteLn(w);
     COPY(loaded, v.text); v.oberonType := addrType;
     StoreAtAddress(w, cg, addrText, addrType, v)
@@ -4320,7 +4327,7 @@ MODULE LLVMCodeGenerator;
     ELSE
       GenerateExpr(w, cg, args.next, x)
     END;
-    WriteStr(w, "  store "); WriteStr(w, x.llvmType); WriteStr(w, " "); WriteStr(w, x.text);
+    WriteStr(w, "  store volatile "); WriteStr(w, x.llvmType); WriteStr(w, " "); WriteStr(w, x.text);
     WriteStr(w, ", ptr "); WriteStr(w, ptrText); WriteStr(w, ", align 1"); WriteLn(w)
   END GeneratePut;
 
@@ -4514,7 +4521,7 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, "  call void @llvm.memmove.p0.p0.");
     WriteStr(w, wordType); WriteStr(w, "(ptr "); WriteStr(w, dstPtr); WriteStr(w, ", ptr ");
     WriteStr(w, srcPtr); WriteStr(w, ", "); WriteStr(w, wordType); WriteStr(w, " "); WriteStr(w, count);
-    WriteStr(w, ", i1 false)"); WriteLn(w)
+    WriteStr(w, ", i1 true)"); WriteLn(w) (* volatile, as GenerateGet says *)
   END GenerateMove;
 
   (* The tag operand NEW passes for an array - a fixed one, or (the

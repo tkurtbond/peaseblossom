@@ -8,16 +8,20 @@
 # emit is byte for byte the same: the whole-program Poc.ll, every .sym
 # file, and the executable itself (nothing in them carries a timestamp or
 # a path). Exits non-zero if any of it differs.
+#
+# make check-opt2 (Phase 11 D13) sets BOOTSTRAP_BUILD_DIR, to build in a
+# directory of its own instead of build, and BOOTSTRAP_OPT, a level for
+# poc's -opt, to build with clang optimizing.
 set -e
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-BUILD="$ROOT/build"
+BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}
 STAGE1_POC=${STAGE1_POC:-$BUILD/stage1/bin/poc}
 
 rm -rf "$BUILD/stage2"
 mkdir -p "$BUILD/stage2/obj" "$BUILD/stage2/bin"
 cd "$BUILD/stage2/obj"
-"$STAGE1_POC" -OC \
+"$STAGE1_POC" -OC ${BOOTSTRAP_OPT:+-opt "$BOOTSTRAP_OPT"} \
   -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
   -import-path "$ROOT/rtl/llvm" \
   -o "$BUILD/stage2/bin/poc" -build "$ROOT/src/driver/Poc.Mod"

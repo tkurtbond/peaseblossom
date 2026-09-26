@@ -20,7 +20,7 @@ MODULE LLVMToolchainDriver;
      LLVMCodeGenerator.Mod itself a pure tree-walker with no file-path/
      directory concerns of its own. *)
 
-  IMPORT Files, Platform, Diagnostics, LLVMCodeGenerator;
+  IMPORT Files, Platform, Diagnostics, LLVMTypes, LLVMCodeGenerator;
 
   CONST
     dirBufferLength = 1024;
@@ -31,6 +31,9 @@ MODULE LLVMToolchainDriver;
   VAR
     hostTripleCache: ARRAY tripleBufferLength OF CHAR;
     hostTripleCached: BOOLEAN;
+    (* what Build passes clang as -O<level>, set by SetOptimizationLevel;
+       empty means the target's default (DefaultOptimizationLevel) *)
+    optimizationLevel: ARRAY 2 OF CHAR;
 
   PROCEDURE JoinPath(dir, name: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
     VAR i, j: INTEGER;
@@ -192,14 +195,45 @@ MODULE LLVMToolchainDriver;
     RETURN ok
   END EmitIR;
 
+  (* Phase 11 D13: the level Build hands clang, as -O<level> - one of 0, 1,
+     2, 3, s, z and g, the levels clang documents (-O alone, -O4 and up,
+     and -Ofast, which breaks IEEE real arithmetic, are left out). FALSE,
+     changing nothing, for anything else. *)
+  PROCEDURE SetOptimizationLevel*(level: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    IF (level[0] = 0X) OR (level[1] # 0X) THEN RETURN FALSE END;
+    CASE level[0] OF
+    "0", "1", "2", "3", "s", "z", "g":
+      optimizationLevel[0] := level[0]; optimizationLevel[1] := 0X;
+      RETURN TRUE
+    ELSE
+      RETURN FALSE
+    END
+  END SetOptimizationLevel;
+
+  (* Phase 11 D13: the level Build uses when -opt gives none: 2, except 0 for
+     32-bit x86. There LLVM computes REAL and LONGREAL on the x87 (clang's
+     default CPU for the i386 BSDs has no SSE2, and poc must run on a
+     Pentium II), whose registers hold 80 bits: optimized code keeps
+     intermediate results in them, so its results can differ from those of
+     IEEE double and single arithmetic (a last digit of 1.0D40, an underflow
+     MathL no longer sees), while at -O0 every result is stored, and so
+     rounded, as the program's own types say. *)
+  PROCEDURE DefaultOptimizationLevel(triple: ARRAY OF CHAR; VAR level: ARRAY OF CHAR);
+  BEGIN
+    IF LLVMTypes.Is32BitX86(triple) THEN level[0] := "0" ELSE level[0] := "2" END;
+    level[1] := 0X
+  END DefaultOptimizationLevel;
+
   (* Full build: EmitIR* first, then a single-step `clang --target=<triple>
-     <ll> -o <exePath> -lm` (Platform.System) - see this module's own header comment
+     <ll> -o <exePath> -lm -O<level>` (Platform.System) - see this module's own header comment
      for why single-step, not a separate llc+link. *)
   PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
                    triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
     VAR
       llPath: ARRAY pathBufferLength OF CHAR;
       cmd: ARRAY 512 OF CHAR;
+      level: ARRAY 2 OF CHAR;
       status: INTEGER;
   BEGIN
     IF ~EmitIR(modules, topName, triple, outputDir, llPath) THEN RETURN FALSE END;
@@ -216,6 +250,9 @@ MODULE LLVMToolchainDriver;
     (* libm, for rtl/llvm's Math and MathL: on every supported system it is
        a library apart from libc, and -lm links nothing that is not used *)
     Strcat(cmd, " -lm");
+    IF optimizationLevel[0] = 0X THEN DefaultOptimizationLevel(triple, level) ELSE COPY(optimizationLevel, level) END;
+    Strcat(cmd, " -O");
+    Strcat(cmd, level);
     status := Platform.System(cmd);
     RETURN status = 0
   END Build;

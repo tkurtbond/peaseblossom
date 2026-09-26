@@ -497,6 +497,19 @@ MODULE LLVMTypes;
     RETURN prefix[k] = 0X
   END TripleComponentStartsWith;
 
+  (* TRUE for a 32-bit x86 triple (i386, i486, i586, i686 or x86). *)
+  PROCEDURE Is32BitX86*(triple: ARRAY OF CHAR): BOOLEAN;
+    VAR wordSize, i: INTEGER; arch: ARRAY 32 OF CHAR;
+  BEGIN
+    IF ~WordSizeForTriple(triple, wordSize) OR (wordSize # MemoryLayout.wordSize32) THEN
+      RETURN FALSE
+    END;
+    i := 0;
+    WHILE (triple[i] # 0X) & (triple[i] # "-") & (i < 31) DO arch[i] := triple[i]; INC(i) END;
+    arch[i] := 0X;
+    RETURN (arch = "i386") OR (arch = "i486") OR (arch = "i586") OR (arch = "i686") OR (arch = "x86")
+  END Is32BitX86;
+
   (* Whether the code for this target must realign the stack itself: a
      32-bit x86 target whose operating system is one of the BSDs. The i386
      System V ABI has a call keep the stack 16-byte aligned, and that is
@@ -513,17 +526,9 @@ MODULE LLVMTypes;
      misaligned from the start. Linux and every 64-bit target are left as
      they are. *)
   PROCEDURE NeedsStackRealignment*(triple: ARRAY OF CHAR): BOOLEAN;
-    VAR wordSize, i: INTEGER; arch: ARRAY 32 OF CHAR; found: BOOLEAN;
+    VAR i: INTEGER; found: BOOLEAN;
   BEGIN
-    IF ~WordSizeForTriple(triple, wordSize) OR (wordSize # MemoryLayout.wordSize32) THEN
-      RETURN FALSE
-    END;
-    i := 0;
-    WHILE (triple[i] # 0X) & (triple[i] # "-") & (i < 31) DO arch[i] := triple[i]; INC(i) END;
-    arch[i] := 0X;
-    IF ~((arch = "i386") OR (arch = "i486") OR (arch = "i586") OR (arch = "i686") OR (arch = "x86")) THEN
-      RETURN FALSE
-    END;
+    IF ~Is32BitX86(triple) THEN RETURN FALSE END;
     (* the operating system is the third component, or the second when the
        vendor is left out *)
     found := FALSE; i := 1;

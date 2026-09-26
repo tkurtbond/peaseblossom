@@ -1,0 +1,21 @@
+-opt (none):
+semantic OK, wrote poc-opt-level
+exit=0
+sum 5050
+clang got this host's default
+-opt 2:
+semantic OK, wrote poc-opt-level
+exit=0
+sum 5050
+clang got -O2
+-opt z:
+semantic OK, wrote poc-opt-level
+exit=0
+sum 5050
+clang got -Oz
+poc: -opt takes 0, 1, 2, 3, s, z or g, not 4
+exit=1
+poc: -opt takes 0, 1, 2, 3, s, z or g, not fast
+exit=1
+poc: -opt requires a level
+exit=1

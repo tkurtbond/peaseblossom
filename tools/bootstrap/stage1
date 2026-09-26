@@ -10,10 +10,14 @@
 # which stage2 compares against its own. The binary sits in bin/ so that
 # POC_BIN_DIR=build/stage1/bin runs the conformance suite under it
 # (make test-stage1).
+#
+# make check-opt2 (Phase 11 D13) sets BOOTSTRAP_BUILD_DIR, to build in a
+# directory of its own instead of build, and BOOTSTRAP_OPT, a level for
+# poc's -opt, to build with clang optimizing.
 set -e
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-BUILD="$ROOT/build"
+BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}
 STAGE0_POC=${STAGE0_POC:-$BUILD/bin/poc}
 
 # The Stage 0 poc is a voc program, linked against voc's shared runtime
@@ -28,7 +32,7 @@ export LD_LIBRARY_PATH
 rm -rf "$BUILD/stage1"
 mkdir -p "$BUILD/stage1/obj" "$BUILD/stage1/bin"
 cd "$BUILD/stage1/obj"
-"$STAGE0_POC" -OC \
+"$STAGE0_POC" -OC ${BOOTSTRAP_OPT:+-opt "$BOOTSTRAP_OPT"} \
   -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
   -import-path "$ROOT/rtl/llvm" \
   -o "$BUILD/stage1/bin/poc" -build "$ROOT/src/driver/Poc.Mod"

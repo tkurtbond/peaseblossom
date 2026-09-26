@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stands in for clang: notes the -O argument poc passes, then runs the real
+# clang, found on the PATH test.sh saved before putting this directory first.
+for arg in "$@"; do
+  case $arg in -O*) echo "clang got $arg" >> "$CLANG_LOG" ;; esac
+done
+PATH=$REAL_PATH exec clang "$@"
