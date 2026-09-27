@@ -1283,7 +1283,19 @@ convenient, but must not be a prerequisite of it.
    absolute run-time search path. The descriptor and initialization
    procedure of a record with no name are now `internal`. Fixture
    `llvm-libraries`;
-   **2d** `poc-rtl`, built by `make`, used by default when present; **2e**
+   **2d** `poc-rtl`, built by `make`, used by default when present;
+   *done 2026-09-27*: `make` builds `rtl/llvm` as the library `poc-rtl`
+   into `build/lib/poc/<host triple>/{O2,OC}` (and Stage 1's into
+   `build/stage1/lib/poc`, `check-opt2`'s into `build/opt2/lib/poc`), where
+   each poc's default library path finds it, so a program links
+   `libpoc-rtl.a` instead of compiling the runtime again. A library
+   module's `.sym` cannot say whether its bodies call `NEW`, so a program
+   with a module from a library gets the collector whenever a library on
+   the path has `GarbageCollectedHeap`. The bootstrap stages build with
+   `-clear-library-path` (poc from source, independent of any library;
+   the fixed point compares every module), and so do the fixtures that
+   show or relink the objects compiled from source (`llvm-module-keys`,
+   `poc-link-flags`); **2e**
    the fixtures this step's testing paragraph asks for, on Linux and the
    BSD hosts, at both word sizes.
 

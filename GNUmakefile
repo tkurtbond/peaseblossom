@@ -21,6 +21,17 @@ RTL_SRCS := $(wildcard rtl/llvm/*.Mod)
 STAGE0_RTL_SRCS := rtl/voc/FileDescriptorOutput.Mod rtl/llvm/RealDigits.Mod \
   rtl/llvm/FormattedOutput.Mod rtl/llvm/Err.Mod
 STAGE1_BIN := $(BUILD_DIR)/stage1/bin/poc
+# Phase 12 step 2d: rtl/llvm as the library poc-rtl, for this host's triple
+# and both size models, where each poc's default library path finds it
+# (<its bin>/../lib/poc): so a program links the runtime already compiled.
+HOST_TRIPLE := $(shell clang -dumpmachine)
+RTL_LIBRARIES = $(1)/lib/poc/$(HOST_TRIPLE)/O2/poc-rtl.library $(1)/lib/poc/$(HOST_TRIPLE)/OC/poc-rtl.library
+# The Stage 0 poc is a voc program, linked against voc's shared runtime,
+# which only Linux finds by itself (as in tools/bootstrap/stage1 and
+# test/testenv.sh): a command that runs it is prefixed with this.
+VOC_BIN_DIR ?= /usr/local/sw/versions/voc/git/bin
+VOC_LIB_DIR ?= $(VOC_BIN_DIR)/../lib
+STAGE0_ENV = LD_LIBRARY_PATH="$(VOC_LIB_DIR)$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}"
 SRCS := $(FRONT_SRCS) $(BACK_LLVM_SRCS) $(BACK_VAX_SRCS) $(DRIVER_SRCS)
 
 # Conformance fixtures grouped by which part of poc they exercise, mirroring
@@ -47,10 +58,19 @@ MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
 .PHONY: all build stage1 stage2 test-stage1 check check-strict check-opt2 test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
-build: $(BIN)
+build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
 $(BIN): $(SRCS) $(STAGE0_RTL_SRCS)
 	tools/bootstrap/stage0
+
+# poc-rtl for one size model (O2 or OC, the %), built by the poc of the
+# same tree; -clear-library-path, so that nothing is taken from the copy it
+# replaces
+$(BUILD_DIR)/lib/poc/$(HOST_TRIPLE)/%/poc-rtl.library: $(BIN) $(RTL_SRCS)
+	$(STAGE0_ENV) $(BIN) -$* -clear-library-path -output-dir $(BUILD_DIR)/lib/poc -library poc-rtl $(RTL_SRCS)
+
+$(BUILD_DIR)/stage1/lib/poc/$(HOST_TRIPLE)/%/poc-rtl.library: $(STAGE1_BIN) $(RTL_SRCS)
+	$(STAGE1_BIN) -$* -clear-library-path -output-dir $(BUILD_DIR)/stage1/lib/poc -library poc-rtl $(RTL_SRCS)
 
 all: build
 
@@ -71,7 +91,7 @@ stage2: $(STAGE1_BIN)
 # test/testenv.sh puts on PATH first; the tests cd, so it must be absolute).
 # `make test` stays Stage 0 only - the fast loop, and voc remains the
 # bootstrap root and the comparison oracle.
-test-stage1: $(STAGE1_BIN)
+test-stage1: $(STAGE1_BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)/stage1)
 	POC_BIN_DIR=$(abspath $(BUILD_DIR)/stage1/bin) test/run-tests.sh $(ALL_TESTS)
 
 # Both compilers and the fixed point: the suite under the voc-built poc, the
@@ -96,7 +116,9 @@ check:
 # whose exact real results x87 arithmetic changes when optimized (the
 # reason for the -O0 default): llvm-out-extra and llvm-math-extra on a
 # 32-bit x86 host, and llvm-i686-runtime, which reruns them for 32-bit x86,
-# on a 32-bit x86 host or a BSD (Linux i686 has SSE2).
+# on a 32-bit x86 host or a BSD (Linux i686 has SSE2). poc-rtl is built
+# optimized into build/opt2/lib/poc (Phase 12 step 2d), which the optimized
+# Stage 1 finds by default and the first suite through POC_LIBRARY_PATH.
 OPT2_DIR := $(abspath $(BUILD_DIR)/opt2)
 OPT2_HOST_X87 := $(filter i386 i486 i586 i686,$(shell uname -m))
 OPT2_HOST_BSD := $(filter-out Linux,$(shell uname -s))
@@ -110,7 +132,11 @@ check-opt2: build
 	printf '#!/bin/sh\nexec %s -opt 2 "$$@"\n' $(OPT2_DIR)/stage1/bin/poc > $(OPT2_DIR)/wrap1/poc; \
 	chmod +x $(OPT2_DIR)/wrap0/poc $(OPT2_DIR)/wrap1/poc; \
 	status=0; \
-	POC_BIN_DIR=$(OPT2_DIR)/wrap0 test/run-tests.sh $(OPT2_TESTS) || status=1; \
+	for model in O2 OC; do \
+	  $(STAGE0_ENV) $(OPT2_DIR)/wrap0/poc -$$model -clear-library-path -output-dir $(OPT2_DIR)/lib/poc \
+	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
+	done; \
+	POC_LIBRARY_PATH=$(OPT2_DIR)/lib/poc POC_BIN_DIR=$(OPT2_DIR)/wrap0 test/run-tests.sh $(OPT2_TESTS) || status=1; \
 	BOOTSTRAP_BUILD_DIR=$(OPT2_DIR) BOOTSTRAP_OPT=2 STAGE0_POC=$(abspath $(BUILD_DIR)/bin/poc) \
 	  tools/bootstrap/stage1 || status=1; \
 	BOOTSTRAP_BUILD_DIR=$(OPT2_DIR) BOOTSTRAP_OPT=2 tools/bootstrap/stage2 || status=1; \

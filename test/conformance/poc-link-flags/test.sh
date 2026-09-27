@@ -6,7 +6,8 @@
 # Without -link the build fails; with it the program runs. -static leaves the
 # executable without a program interpreter (readelf's INTERP), the default
 # build has one. -verbose prints the clang command, with the host's triple and
-# optimization level replaced: a clang -c for each module, then the link.
+# optimization level replaced: a clang -c for each module, then the link
+# (-clear-library-path: rtl/llvm compiled too, not taken from poc-rtl).
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 exe=$(basename "$PWD")
@@ -18,7 +19,7 @@ ranlib "lib dir/libpocfixture.a"
 echo "== without -link" >>result
 poc -o "$exe" -build linkflags.mod 2>&1 | grep '^poc:' >>result
 echo "== -link, -static and -verbose" >>result
-poc -verbose -static -link "-Llib dir" -link -lpocfixture -o "$exe" -build linkflags.mod 2>&1 \
+poc -clear-library-path -verbose -static -link "-Llib dir" -link -lpocfixture -o "$exe" -build linkflags.mod 2>&1 \
   | grep -v '^semantic OK' | sed -e 's/--target=[^ ]*/--target=<triple>/' -e 's/ -O[0-9sgz]/ -O<level>/' >>result
 "./$exe" >>result 2>&1
 printf 'exit=%d\n' "$?" >>result

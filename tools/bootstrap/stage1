@@ -32,7 +32,10 @@ export LD_LIBRARY_PATH
 rm -rf "$BUILD/stage1"
 mkdir -p "$BUILD/stage1/obj" "$BUILD/stage1/bin"
 cd "$BUILD/stage1/obj"
-"$STAGE0_POC" -OC ${BOOTSTRAP_OPT:+-opt "$BOOTSTRAP_OPT"} \
+# rtl/llvm from source, not a poc-rtl library (Phase 12 step 2d): the
+# stages must not depend on one, and the fixed point compares the output
+# for every module
+"$STAGE0_POC" -OC -clear-library-path ${BOOTSTRAP_OPT:+-opt "$BOOTSTRAP_OPT"} \
   -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
   -import-path "$ROOT/rtl/llvm" -import-path "$ROOT/src/driver" \
   -o "$BUILD/stage1/bin/poc" -build "$ROOT/src/driver/Poc.Mod"

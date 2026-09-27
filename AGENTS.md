@@ -203,7 +203,11 @@ shells out to these rather than linking against LLVM's own C++ API.
   module a library on the path has is taken from it, never from source;
   `-build` links the libraries' archives, `-shared-libraries` their shared
   libraries. poc refuses a module two libraries have and a library
-  compiled against another's old keys (`src/driver/Libraries.Mod`). A
+  compiled against another's old keys (`src/driver/Libraries.Mod`).
+  `make` builds `rtl/llvm` as the library `poc-rtl` into
+  `build/lib/poc/<host triple>/{O2,OC}` (step 2d), so a program links the
+  runtime already compiled; the bootstrap stages use `-clear-library-path`
+  and compile it from source. A
   `.ll` file emitted by `LLVMCodeGenerator.Mod` must set its own `target
   datalayout`/`target triple` explicitly (matching the values above for the
   host, or the `-target` flag's chosen triple) — omitting them makes clang

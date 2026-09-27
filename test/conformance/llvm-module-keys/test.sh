@@ -6,6 +6,8 @@
 # against libv1; lib is then recompiled alone and the old client.o linked
 # with it: a new body keeps lib's key and links; a new interface changes it,
 # and the link fails, naming the key the client needs.
+# -clear-library-path: every module, rtl/llvm's included, compiled from
+# source, so that the objects relinked below are all there are
 POC_IMPORT_PATH=$PWD/../../../rtl/llvm
 export POC_IMPORT_PATH
 exe=$(basename "$PWD")
@@ -15,7 +17,7 @@ cd work
 cp ../libv1.mod lib.mod
 : >../result
 echo "== client and lib v1" >>../result
-poc -o "$exe" -build client.mod >/dev/null 2>&1
+poc -clear-library-path -o "$exe" -build client.mod >/dev/null 2>&1
 "./$exe" >>../result
 grep -h -e '-key\.' client.ll lib.ll | sed -e 's/\.-key\.[0-9a-f]*/.-key.<hash>/g' >>../result
 lib1=$(sed -n 's/^@lib\.-key\.\([0-9a-f]*\) = constant.*/\1/p' lib.ll)
@@ -23,7 +25,7 @@ lib1=$(sed -n 's/^@lib\.-key\.\([0-9a-f]*\) = constant.*/\1/p' lib.ll)
 # only lib, so lib.ll has no main)
 relink() {
   cp "$1" lib.mod
-  poc -emit-llvm-ir libonly.mod >/dev/null
+  poc -clear-library-path -emit-llvm-ir libonly.mod >/dev/null
   clang -c lib.ll -o lib.o
   lib2=$(sed -n 's/^@lib\.-key\.\([0-9a-f]*\) = constant.*/\1/p' lib.ll)
   if [ "$lib1" = "$lib2" ]; then echo "lib's key: unchanged" >>../result
@@ -42,7 +44,7 @@ relink() {
     fi
   fi
 }
-poc -verbose -o "$exe" -build client.mod 2>&1 >/dev/null | tail -1 >link.cmd
+poc -clear-library-path -verbose -o "$exe" -build client.mod 2>&1 >/dev/null | tail -1 >link.cmd
 echo "== lib with a new body" >>../result
 relink ../libbody.mod
 echo "== lib with a new interface" >>../result

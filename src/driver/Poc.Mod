@@ -674,9 +674,22 @@ MODULE Poc;
   PROCEDURE AddRuntimeModules(outputDir: ARRAY OF CHAR; VAR modules: LLVMCodeGenerator.ModuleList;
                               VAR ok: BOOLEAN);
     VAR
-      table, heap, front, frontTail: LLVMCodeGenerator.ModuleList; visited: VisitedModule;
+      table, heap, front, frontTail, m: LLVMCodeGenerator.ModuleList; visited: VisitedModule;
+      fromLibrary: BOOLEAN;
   BEGIN
-    IF ~ok OR ~PredeclaredProcedures.NewWasCalled() THEN RETURN END;
+    IF ~ok THEN RETURN END;
+    (* a module from a library may call NEW too, and its .sym, which has no
+       bodies, cannot say (Phase 12 step 2d): with one in the program, the
+       runtime is added whenever a library has it *)
+    fromLibrary := FALSE; m := modules;
+    WHILE m # NIL DO
+      IF m.inLibrary THEN fromLibrary := TRUE END;
+      m := m.next
+    END;
+    IF ~PredeclaredProcedures.NewWasCalled()
+       & ~(fromLibrary & (Libraries.FindModule("GarbageCollectedHeap") # NIL)) THEN
+      RETURN
+    END;
     (* their .sym files, which the program's own imports did not ask for *)
     visited := NIL;
     RegenerateInterfaces("GarbageCollectedHeap", outputDir, visited, ok);
