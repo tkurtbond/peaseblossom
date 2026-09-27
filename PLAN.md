@@ -1440,7 +1440,10 @@ convenient, but must not be a prerequisite of it.
    beside the pair is never overwritten; `-library` given a `.sym`, `.o` or
    `.ll` takes the same one, copying the `.ll` into the library to compile
    to `<Module>.o` there. A `.ll` clang cannot compile gets a note that it
-   may be from another LLVM version. `make check-lto` (not part of `check`)
+   may be from another LLVM version. For 32-bit x86 NetBSD `-lto` is
+   dropped with a warning: GNU ld cannot link bitcode, and lld's i386
+   executables fail to run there even for plain C (probed on artos, NetBSD
+   11 amd64). `make check-lto` (not part of `check`)
    runs the suite with a wrapper that adds `-lto`, against a `poc-rtl`
    built with it, as `check-opt2` does. Fixture `llvm-lto`;
    **2h** the fixtures this step's testing paragraph asks for, on Linux and

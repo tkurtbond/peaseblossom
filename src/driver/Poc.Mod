@@ -452,6 +452,19 @@ MODULE Poc;
      (LLVMTypes.WordSizeForTriple* returns FALSE) is not an error here -
      word size just stays at whatever it already was (wordSize32 by
      default), the same fallback SIZE(T) already had before this existed. *)
+  (* -lto for a target whose linking of bitcode is known not to work is
+     dropped, with a warning: 32-bit x86 NetBSD, where GNU ld cannot link
+     bitcode and lld's executables do not run (probed on NetBSD 11 amd64,
+     2026-09-27) *)
+  PROCEDURE CheckLTOTarget(triple: ARRAY OF CHAR);
+  BEGIN
+    IF LLVMToolchainDriver.lto & LLVMTypes.IsNetBSD(triple) & LLVMTypes.Is32BitX86(triple) THEN
+      Err.String("poc: warning: -lto ignored for "); Err.String(triple);
+      Err.String(", which has no linker for LLVM bitcode"); Err.Ln;
+      LLVMToolchainDriver.lto := FALSE
+    END
+  END CheckLTOTarget;
+
   PROCEDURE SetWordSizeFromTriple(triple: ARRAY OF CHAR);
     VAR wordSize: INTEGER; recognized: BOOLEAN;
   BEGIN
@@ -1198,7 +1211,7 @@ MODULE Poc;
     ELSIF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
     ELSE
-      SetWordSizeFromTriple(triple);
+      SetWordSizeFromTriple(triple); CheckLTOTarget(triple);
       SetLibraryTarget(triple);
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
       IF ok & PrepareLibraries(modules, sharedLibraries) THEN
@@ -1300,7 +1313,7 @@ MODULE Poc;
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
       RETURN
     END;
-    SetWordSizeFromTriple(triple);
+    SetWordSizeFromTriple(triple); CheckLTOTarget(triple);
     SetLibraryTarget(triple);
     LLVMCodeGenerator.buildingLibrary := TRUE; (* no main *)
     ReadMembers(firstFile, FALSE, ok);
@@ -1360,7 +1373,7 @@ MODULE Poc;
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
       RETURN
     END;
-    SetWordSizeFromTriple(triple);
+    SetWordSizeFromTriple(triple); CheckLTOTarget(triple);
     Libraries.Exclude(name);
     SetLibraryTarget(triple);
     LLVMCodeGenerator.buildingLibrary := TRUE;

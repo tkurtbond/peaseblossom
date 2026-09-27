@@ -156,10 +156,11 @@ check-opt2: build
 # fixtures that test poc's command line or print clang's commands are left
 # out, and so are llvm-libraries (its manifests gain a line, lto) and
 # llvm-using-modules (its .sym/.o pairs are compiled to bitcode, which poc
-# refuses as a .o); llvm-lto tests -lto itself.
+# refuses as a .o), and llvm-debug-info (the link's optimization moves the
+# lines a backtrace shows); llvm-lto tests -lto itself.
 LTO_DIR := $(abspath $(BUILD_DIR)/lto)
 LTO_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-link-flags \
-  llvm-libraries llvm-using-modules
+  llvm-libraries llvm-using-modules llvm-debug-info
 LTO_TESTS := $(filter-out $(LTO_SKIP),$(ALL_TESTS))
 check-lto: build
 	@rm -rf $(LTO_DIR); mkdir -p $(LTO_DIR)/bin $(LTO_DIR)/wrap; \
