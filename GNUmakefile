@@ -158,10 +158,12 @@ check-opt2: build
 # llvm-using-modules (its .sym/.o pairs are compiled to bitcode, which poc
 # refuses as a .o), and llvm-debug-info (the link's optimization moves the
 # lines a backtrace shows), and llvm-libraries-i686 (on NetBSD its 32-bit
-# builds print -lto's warning); llvm-lto tests -lto itself.
+# builds print -lto's warning), and llvm-lto, which tests -lto itself
+# against builds without it.
 LTO_DIR := $(abspath $(BUILD_DIR)/lto)
 LTO_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-link-flags \
-  llvm-libraries llvm-using-modules llvm-debug-info llvm-libraries-i686
+  llvm-libraries llvm-using-modules llvm-debug-info llvm-libraries-i686 \
+  llvm-lto
 LTO_TESTS := $(filter-out $(LTO_SKIP),$(ALL_TESTS))
 check-lto: build
 	@rm -rf $(LTO_DIR); mkdir -p $(LTO_DIR)/bin $(LTO_DIR)/wrap; \

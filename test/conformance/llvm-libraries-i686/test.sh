@@ -3,8 +3,9 @@
 # Phase 12 step 2h: libraries at the other word size. llvm-libraries' shapes
 # (Lists, and Stacks, which imports it) built for 32-bit x86 (i686_triple),
 # on a poc-rtl built for it too, under -O2 and -OC: each library's files, a
-# program linked with them statically and with the shared libraries, both
-# 32-bit and printing what llvm-libraries' main prints. Then what fails with
+# program linked with them statically, 32-bit and printing what
+# llvm-libraries' main prints, and linked with the shared libraries, which
+# must print the same (only where i686_can_run_shared: not NetBSD amd64). Then what fails with
 # a message: shapes on the path without the poc-rtl it needs, and a Lists.sym
 # that does not match the shapes manifest (copied in from a Lists with one
 # more procedure). Skips itself, still passing, where 32-bit x86 programs
@@ -18,6 +19,11 @@ then
 fi
 unset POC_IMPORT_PATH POC_LIBRARY_PATH
 triple=$(i686_triple)
+shared=
+if i686_can_run_shared
+then shared=yes
+else echo "SKIPPED the shared libraries: no 32-bit shared C library here"
+fi
 mask() {
   sed -e "s|$triple|<i686>|g" -e 's/[0-9a-f]\{16\}/<key>/g' -e 's/\.so\.0\.0/.so/g'
 }
@@ -36,10 +42,17 @@ for model in O2 OC; do
     ../../llvm-libraries/src/Lists.Mod ../../llvm-libraries/src/Stacks.Mod 2>&1 | mask >>../result
   ls lib/$triple/$model | grep -e '^lib' -e '\.library$' | mask | LC_ALL=C sort >>../result
   poc -$model -library-path lib -o main$model -build ../../llvm-libraries/main.mod 2>&1 | mask >>../result
-  run main$model >>../result
-  poc -$model -library-path lib -shared-libraries -o mains$model -build ../../llvm-libraries/main.mod 2>&1 \
-    | mask >>../result
-  run mains$model >>../result
+  run main$model >main$model.out
+  cat main$model.out >>../result
+  # the shared libraries where a 32-bit program can use them; what it
+  # prints must be what the static one did, and only a difference is kept
+  if [ -n "$shared" ]
+  then
+    poc -$model -library-path lib -shared-libraries -o mains$model -build ../../llvm-libraries/main.mod \
+      >mains$model.build 2>&1 || mask <mains$model.build >>../result
+    run mains$model 2>&1 | sed "s/^mains$model/main$model/" >mains$model.out
+    cmp -s main$model.out mains$model.out || { echo "mains$model DIFFERS:"; cat mains$model.out; } >>../result
+  fi
 done
 echo "== shapes without the poc-rtl it needs" >>../result
 mkdir -p alone/$triple/O2 && cp lib/$triple/O2/Lists.* lib/$triple/O2/Stacks.* lib/$triple/O2/*shapes* alone/$triple/O2/

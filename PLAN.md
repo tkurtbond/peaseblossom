@@ -1452,7 +1452,11 @@ convenient, but must not be a prerequisite of it.
    `llvm-libraries`' two dependent modules into a library for 32-bit x86
    (`i686_triple`: i686 Linux on atla, `-m32` on the BSDs, the host's own
    on cymoril), on a `poc-rtl` built for it, under `-O2` and `-OC`, and
-   links and runs a program with it statically and dynamically; the
+   links and runs a program with it statically and dynamically (the
+   shared one only where a 32-bit program can use a shared library,
+   `i686_can_run_shared`: NetBSD amd64's 32-bit compatibility has static C
+   libraries only, so there it fails with "Exec format error" even for
+   plain C); the
    64-bit side is `llvm-libraries`, `llvm-using-modules` and `llvm-lto`.
    Its failures are messages: a library whose needed `poc-rtl` is not on
    the path (the notes say so), and a `.sym` that does not match its

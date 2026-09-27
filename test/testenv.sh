@@ -76,6 +76,23 @@ i686_can_run() {
   fi
 }
 
+# Whether a 32-bit x86 program linked with a shared library runs here too:
+# NetBSD amd64's 32-bit compatibility has only static C libraries (no
+# /usr/lib/i386/libc.so), so such a program fails with "Exec format error"
+# there (artos, 2026-09-27).
+i686_can_run_shared() {
+  i686_can_run || return 1
+  probe=$(mktemp -d) || return 1
+  printf 'int f(void){return 0;}\n' >"$probe/f.c"
+  printf 'int f(void); int main(void){return f();}\n' >"$probe/main.c"
+  if clang -m32 -fPIC -shared "$probe/f.c" -o "$probe/libf.so" >/dev/null 2>&1 &&
+     clang -m32 "$probe/main.c" -L"$probe" -lf -Wl,-rpath,"$probe" -o "$probe/main" >/dev/null 2>&1 &&
+     "$probe/main" >/dev/null 2>&1
+  then rm -rf "$probe"; return 0
+  else rm -rf "$probe"; return 1
+  fi
+}
+
 # The 32-bit x86 target triple to build i686_can_run's fixtures for: the one
 # this project has always used on Linux, and on any other system the triple
 # clang itself picks for -m32 - the host's own on a 32-bit machine (OpenBSD
