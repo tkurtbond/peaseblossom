@@ -31,8 +31,8 @@ EXPLANATIONS = {
     'ethBTrees': 'poc Files lacks ReadLInt', 'ethZlibReaders': 'poc Files lacks ReadBytes',
     'ethReals': 'poc Modules lacks Halt', 'crt': 'poc Platform lacks Delay',
     'ethZlibDeflate': 'LONG(CHAR) (voc; poc: use ORD)',
-    'ulmTypes': 'POINTER [1] TO (voc untraced pointer)',
-    'ulmSYSTEM': 'function with an empty body (voc accepts)'}
+    'ulmTypes': 'POINTER [1] TO (voc untraced pointer; poc: use SYSTEM.ADDRESS)',
+    'ulmSYSTEM': 'function with an empty body (voc accepts; the report does not)'}
 
 # What poc's rtl/llvm has of voc's runtime and v4 modules of the same name
 # (compared by hand, 2026-09-27); the rest, "no"

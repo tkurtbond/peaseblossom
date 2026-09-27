@@ -1504,8 +1504,9 @@ convenient, but must not be a prerequisite of it.
    the language points (2026-09-27): the §3 rule fixed both ways; text
    after `END M.` ignored; a 16-digit hexadecimal constant above
    `MAX(HUGEINT)` taken as a 64-bit pattern, as voc does, unless
-   `-strict`; `LONG` of a `CHAR` stays an error. `POINTER [1] TO` and a
-   function with an empty body are open. `tools/voc-inventory/
+   `-strict`; `LONG` of a `CHAR` stays an error; `POINTER [1] TO` is not
+   adopted (a port uses `SYSTEM.ADDRESS`); a function with an empty body
+   stays an error (a port removes `ulmSYSTEM`'s two). `tools/voc-inventory/
    inventory` regenerates the tables (to rerun when poc's runtime or
    front end changes what they say).
 

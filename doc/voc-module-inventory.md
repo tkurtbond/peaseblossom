@@ -123,13 +123,15 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
      imported; poc has no syntax for it (its untraced allocation is
      `SYSTEM.NEW`). `ulmTypes.UntracedAddress` is its only use in the
      library, and nothing uses that (`ulmSysTypes` only re-exports it);
-     `SYSTEM.ADDRESS` would serve. Open.
+     `SYSTEM.ADDRESS` would serve. **Not adopted**: a port declares it
+     `SYSTEM.ADDRESS`, which poc's collector does not trace either.
    - A function procedure with an empty body (`ulmSYSTEM.UNIXFORK`,
      `UNIXSIGNAL`, neither exported nor called): voc accepts it silently;
      poc makes it a compile-time error. `Oberon2.pdf` §10 says "The body
      of a function procedure must contain a return statement", as do the
      1993 report, the 1990 Oberon report, Component Pascal and Active
-     Oberon; Oberon-07 makes the `RETURN` part of the syntax. Open.
+     Oberon; Oberon-07 makes the `RETURN` part of the syntax. **Kept an
+     error**: a port removes the two procedures.
    - Found on the way and fixed (2026-09-27): poc trapped (a failed type
      guard in `Types.FindField`) on a field of a record whose base type
      came from a module that could not be imported; fixture
@@ -337,7 +339,7 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 | ulmReals | `library/ulm/ulmReals.Mod` | real number utilities | ulmIEEE ulmMC68881 ulmTypes | 313 | 3 | - | Ulm Oberon Library | O2 | no, through ulmTypes | no | LGPL 2+ (header) |
 | ulmRelatedEvents | `library/ulm/ulmRelatedEvents.Mod` | events related to objects | ulmDisciplines ulmEvents ulmForwarders ulmObjects ulmPriorities ulmResources SYSTEM | 429 | 11 | Platform, SYSTEM | Ulm Oberon Library | O2 | no, through ulmSYSTEM ulmTypes | no | LGPL 2+ (header) |
 | ulmResources | `library/ulm/ulmResources.Mod` | shared objects with cooperative termination | ulmDisciplines ulmEvents ulmObjects SYSTEM | 347 | 9 | Platform, SYSTEM | Ulm Oberon Library | O2 | no, through ulmSYSTEM ulmTypes | no | LGPL 2+ (header) |
-| ulmSYSTEM | `library/ulm/ulmSYSTEM.Mod` | Ulm's SYSTEM emulated over voc's Platform (UNIXCALL, TAS) | SYSTEM Platform ulmSys | 142 | 2 | Platform, SYSTEM | Ulm Oberon Library | O2 | no: function with an empty body (voc accepts) | no | none in file; Ulm library (LGPL 2+) adapted by voc |
+| ulmSYSTEM | `library/ulm/ulmSYSTEM.Mod` | Ulm's SYSTEM emulated over voc's Platform (UNIXCALL, TAS) | SYSTEM Platform ulmSys | 142 | 2 | Platform, SYSTEM | Ulm Oberon Library | O2 | no: function with an empty body (voc accepts; the report does not) | no | none in file; Ulm library (LGPL 2+) adapted by voc |
 | ulmScales | `library/ulm/ulmScales.Mod` | scales and measures (time, ...) | ulmDisciplines ulmEvents ulmObjects ulmOperations ulmPersistentObjects ulmRelatedEvents ulmServices SYSTEM ulmTypes | 446 | 27 | Platform, SYSTEM | Ulm Oberon Library | O2 | no, through ulmSYSTEM ulmTypes | no | LGPL 2+ (header) |
 | ulmServices | `library/ulm/ulmServices.Mod` | services: installing and calling operations on types | ulmDisciplines ulmObjects ulmTypes | 520 | 3 | - | Ulm Oberon Library | O2 | no, through ulmTypes | no | LGPL 2+ (header) |
 | ulmSets | `library/ulm/ulmSets.Mod` | large sets | ulmTypes | 209 | 1 | - | Ulm Oberon Library | O2 | no, through ulmTypes | no | LGPL 2+ (header) |
@@ -356,7 +358,7 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 | ulmTimeConditions | `library/ulm/ulmTimeConditions.Mod` | conditions that wait for a time | ulmClocks ulmConditions ulmDisciplines ulmEvents ulmOperations ulmPriorities ulmProcess ulmRelatedEvents ulmScales ulmTimers ulmTimes | 412 | 32 | Platform | Ulm Oberon Library | O2 | no, through ulmSYSTEM ulmTypes | no | LGPL 2+ (header) |
 | ulmTimers | `library/ulm/ulmTimers.Mod` | timers | ulmClocks ulmDisciplines ulmEvents ulmObjects ulmOperations ulmPriorities ulmSYSTEM ulmRelatedEvents ulmScales ulmTimes ulmTypes | 338 | 30 | Platform | Ulm Oberon Library | O2 | no, through ulmSYSTEM ulmTypes | no | LGPL 2+ (header) |
 | ulmTimes | `library/ulm/ulmTimes.Mod` | time measures (absolute and relative) | ulmNetIO ulmObjects ulmOperations ulmPersistentObjects ulmScales ulmServices ulmStreams ulmTypes | 401 | 28 | Platform | Ulm Oberon Library | O2 | no, through ulmSYSTEM ulmTypes | no | LGPL 2+ (header) |
-| ulmTypes | `library/ulm/ulmTypes.Mod` | compiler-dependent types (Int8..Int32, Real32, ...; written for m68k/sparc, adapted) | SYSTEM | 140 | 0 | SYSTEM | Ulm Oberon Library | O2 | no: POINTER [1] TO (voc untraced pointer) | no | LGPL 2+ (header) |
+| ulmTypes | `library/ulm/ulmTypes.Mod` | compiler-dependent types (Int8..Int32, Real32, ...; written for m68k/sparc, adapted) | SYSTEM | 140 | 0 | SYSTEM | Ulm Oberon Library | O2 | no: POINTER [1] TO (voc untraced pointer; poc: use SYSTEM.ADDRESS) | no | LGPL 2+ (header) |
 | ulmWrite | `library/ulm/ulmWrite.Mod` | simple output to streams | ulmASCII ulmPrint ulmStreamDisciplines ulmStreams SYSTEM ulmSYSTEM ulmTypes | 224 | 22 | Platform, SYSTEM | Ulm Oberon Library | O2 | no, through ulmSYSTEM ulmTypes | no | LGPL 2+ (header) |
 
 ### `library/misc` (5 files)
