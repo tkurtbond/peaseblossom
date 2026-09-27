@@ -1541,49 +1541,65 @@ convenient, but must not be a prerequisite of it.
 5. **Implementing the runtime modules.** Each is ordinary Oberon-2 in
    `rtl/llvm`, built into `poc-rtl`, with `["C"]` external procedures
    where voc's has inline C, and written for all four Unix-likes (the
-   standing rule for `rtl/llvm`). What each lacks, from the modules'
-   exports (2026-09-27; a name counts once, whatever its kind):
-   - **`Platform`** (5 of 46 procedures; the others are the base the
-     rest need, so it comes first): files by handle (`OldRO`, `OldRW`,
-     `New`, `Close`, `Read`, `ReadBuf`, `Write`, `Seek`, `Size`,
-     `Truncate`, `Sync`, `Rename`, `Identify`, `IdentifyByName`,
-     `SameFile`, `SameFileTime`, `SetMTime`, `SetFileMTime`,
-     `MTimeAsClock`, the error tests `Absent`, `Inaccessible`,
-     `TooManyFiles`, `NoSuchDirectory`, `DifferentFilesystems`,
-     `Interrupted`, `TimedOut`, `ConnectionFailed`, `Error`), time
-     (`Time`, `GetClock`, `GetTimeOfDay`, `Delay`), memory (`OSAllocate`,
-     `OSFree`), the signal handlers (`SetInterruptHandler`,
-     `SetQuitHandler`, `SetBadInstructionHandler`), `getEnv`,
-     `IsConsole`, `MaxNameLength`, `MaxPathLength`; and the types and
-     constants `FileHandle`, `FileIdentity`, `LittleEndian`, `NL`,
-     `SeekSet`/`SeekCur`/`SeekEnd`, `StdIn`/`StdOut`/`StdErr`.
-   - **`Files`** (15 of 37): the typed riders (`Read`/`Write` of `Bool`,
-     `Byte`, `Bytes`, `Int`, `LInt`, `Real`, `LReal`, `Set`, `Num`),
-     `GetDate`, `GetName`, `Purge`, `ChangeDirectory`, `SetSearchPath`,
-     `MaxNameLength`, `MaxPathLength`; and finalization of a dropped
-     `File`.
-   - **`Modules`** (4 of 9): `Halt`, `AssertFail`, `ThisMod`,
-     `ThisCommand`, `Free`, the module list and its types (`Module`,
-     `ModuleName`, `Cmd`, `Command`: voc's come from `Heap`, poc's are
-     its own), `res`/`resMsg`, `imported`/`importing`, `BinaryDir`.
-     `ThisMod`/`ThisCommand` need each module's name and commands
-     (exported parameterless procedures) registered at run time, which
-     is code generator work.
-   - **`In`**: `Name`.
-   - **`Reals`** (new; 10 procedures, the conversions `Texts` uses),
-     **`Texts`** (new; voc's file-based texts, readers, scanners and
-     writers, no display), **`Oberon`** (new; the stub system module:
-     `Log`, `Par`, `Time`, `GetClock`), **`VT100`** (new; terminal
-     control sequences).
-   - **Finalization** in `GarbageCollectedHeap`: registered objects are
-     weak references, not roots; one unreachable after marking is kept
-     for its finalizer, which runs after the collection. Open until then:
-     whether finalizers also run when the program ends (voc runs them
-     only from `Modules.Halt` and `AssertFail`) and when it traps.
+   standing rule for `rtl/llvm`). What each lacks is measured from the
+   modules' exports (2026-09-27; a name counts once, whatever its kind).
    Where poc cannot or will not match voc (a Linux-only call, a detail of
    voc's own layout), the difference is decided with the user and
-   written down. **Testing**: per module, compile+link+run+diff fixtures
-   compared with the same program under voc, as Phase 9's were.
+   written down. **Testing**: per substep, compile+link+run+diff fixtures
+   compared with the same program under voc, as Phase 9's were. The
+   substeps follow the modules' imports (voc's `Texts` imports `Files`,
+   `Modules` and `Reals`; `Oberon` imports `Texts` and `Modules`; `Reals`
+   needs `Platform.LittleEndian`), each its own commit:
+
+   - **5a. `Platform`** (5 of 46 procedures; the base the rest need):
+     files by handle (`OldRO`, `OldRW`, `New`, `Close`, `Read`,
+     `ReadBuf`, `Write`, `Seek`, `Size`, `Truncate`, `Sync`, `Rename`,
+     `Identify`, `IdentifyByName`, `SameFile`, `SameFileTime`,
+     `SetMTime`, `SetFileMTime`, `MTimeAsClock`, the error tests
+     `Absent`, `Inaccessible`, `TooManyFiles`, `NoSuchDirectory`,
+     `DifferentFilesystems`, `Interrupted`, `TimedOut`,
+     `ConnectionFailed`, `Error`), time (`Time`, `GetClock`,
+     `GetTimeOfDay`, `Delay`), memory (`OSAllocate`, `OSFree`), the
+     signal handlers (`SetInterruptHandler`, `SetQuitHandler`,
+     `SetBadInstructionHandler`), `getEnv`, `IsConsole`,
+     `MaxNameLength`, `MaxPathLength`; and the types and constants
+     `FileHandle`, `FileIdentity`, `LittleEndian`, `NL`,
+     `SeekSet`/`SeekCur`/`SeekEnd`, `StdIn`/`StdOut`/`StdErr`.
+   - **5b. `In.Name` and `VT100`** (new: terminal control sequences);
+     small, needing nothing else.
+   - **5c. Finalization** in `GarbageCollectedHeap`, from voc's `Heap`
+     (`RegisterFinalizer(obj, finalize)`): registered objects are weak
+     references, not roots; one unreachable after marking is kept for its
+     finalizer, which runs after the collection. Decided here: whether
+     finalizers also run when the program ends (voc runs them only from
+     `Modules.Halt` and `AssertFail`) and when it traps. A collector
+     change, so rackhir runs after it.
+   - **5d. `Files`** (15 of 37): the typed riders (`Read`/`Write` of
+     `Bool`, `Byte`, `Bytes`, `Int`, `LInt`, `Real`, `LReal`, `Set`,
+     `Num`), `GetDate`, `GetName`, `Purge`, `ChangeDirectory`,
+     `SetSearchPath`, `MaxNameLength`, `MaxPathLength`; and 5c's
+     finalization of a `File` dropped without `Close`, as voc's does.
+   - **5e. `Modules`** (4 of 9): `Halt`, `AssertFail`, `Free`,
+     `res`/`resMsg`, `imported`/`importing`, `BinaryDir`, and `ThisMod`/
+     `ThisCommand` in full, as voc (user, 2026-09-27): each module's
+     `_init` registers its name and its commands - exported procedures
+     with no parameters and no result, as voc's `OPC.RegCmds` picks them -
+     so a program finds a module of its own by name and calls a command
+     of it by name (`Texts.Load` recreates a text's elements this way;
+     a command dispatcher is the other use). poc's `Modules` declares its
+     own `Module`, `ModuleName`, `Cmd` and `Command` (voc's are `Heap`'s);
+     the registration extends the per-module table `ModuleTable` already
+     keeps for the collector. As in voc, a module is found only once its
+     `_init` has started, only modules linked into the program exist, and
+     `Free` unloads nothing. The cost, to note in the documentation: a
+     command is referenced from its module's table, so neither the
+     linker nor `-lto` drops an unused one. Code generator work, so
+     rackhir runs after it; split in two if the registration grows large.
+   - **5f. `Reals`** (new; 10 procedures, the conversions `Texts` uses).
+   - **5g. `Texts`** (new; voc's file-based texts, readers, scanners and
+     writers, no display: 38 procedures).
+   - **5h. `Oberon`** (new; the stub system module: `Log`, `Par`,
+     `Time`, `GetClock`).
 
 6. **Exit gate.** Every runtime module of step 5 builds into `poc-rtl`,
    static and shared, and passes its fixtures at both word sizes on
