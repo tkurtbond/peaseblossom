@@ -1,10 +1,10 @@
 == client and lib v1
 42 42
-@client.-key.<hash> = constant i8 0
-@Out.-key.<hash> = external global i8
-@lib.-key.<hash> = external global i8
-@client.-imports = internal constant [2 x ptr] [ptr @Out.-key.<hash>, ptr @lib.-key.<hash>]
-@lib.-key.<hash> = constant i8 0
+@client.-key.O2.<hash> = constant i8 0
+@Out.-key.O2.<hash> = external global i8
+@lib.-key.O2.<hash> = external global i8
+@client.-imports = internal constant [2 x ptr] [ptr @Out.-key.O2.<hash>, ptr @lib.-key.O2.<hash>]
+@lib.-key.O2.<hash> = constant i8 0
 == lib with a new body
 lib's key: unchanged
 link: ok

@@ -209,7 +209,7 @@ MODULE LLVMToolchainDriver;
     IF ok THEN
       m := modules;
       WHILE m # NIL DO
-        IF ~m.inLibrary THEN EmitModuleIR(modules, m, triple) END;
+        IF ~m.inLibrary & ~m.compiled THEN EmitModuleIR(modules, m, triple) END;
         m := m.next
       END;
       (* IR with a construct missing is worse than none, and so is a stale
@@ -223,7 +223,7 @@ MODULE LLVMToolchainDriver;
       IF (LLVMCodeGenerator.unsupportedCount > 0) OR (Diagnostics.errorCount > errorsBefore) THEN
         m := modules;
         WHILE m # NIL DO
-          IF ~m.inLibrary THEN
+          IF ~m.inLibrary & ~m.compiled THEN
             COPY(m.module.name, name); Strcat(name, ".ll");
             deleteResult := Platform.Unlink(name) (* not Files.Delete: voc's renames to a temp name *)
           END;
@@ -326,16 +326,17 @@ MODULE LLVMToolchainDriver;
   END RunCommand;
 
   (* clang -c on each module's .ll that is not from a library, to its .o;
-     position-independent code for a library (pic) *)
-  PROCEDURE CompileModules(modules: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR;
-                           pic: BOOLEAN): BOOLEAN;
+     position-independent code always (Phase 12 step 2f, decided with the
+     user 2026-09-27), so that any module's object - one given as a .sym
+     and .o too - can go into a shared library *)
+  PROCEDURE CompileModules(modules: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR): BOOLEAN;
     VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
   BEGIN
     ok := TRUE; m := modules;
     WHILE ok & (m # NIL) DO
-      IF ~m.inLibrary THEN
+      IF ~m.inLibrary & ~m.compiled THEN
         command := "clang -c"; AppendTargetOptions(command, triple);
-        IF pic THEN Strcat(command, " -fPIC") END;
+        Strcat(command, " -fPIC");
         ModuleFilePath(outputDir, m.module.name, ".ll", path); AppendPath(path);
         ModuleFilePath(outputDir, m.module.name, ".o", path);
         Strcat(command, " -o"); AppendPath(path);
@@ -346,13 +347,16 @@ MODULE LLVMToolchainDriver;
     RETURN ok
   END CompileModules;
 
-  (* appends the object of each module that is not from a library *)
+  (* appends the object of each module that is not from a library: the
+     one compiled, or the one given with its .sym *)
   PROCEDURE AppendObjects(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR);
     VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList;
   BEGIN
     m := modules;
     WHILE m # NIL DO
-      IF ~m.inLibrary THEN ModuleFilePath(outputDir, m.module.name, ".o", path); AppendPath(path) END;
+      IF m.compiled THEN AppendPath(m.objectPath)
+      ELSIF ~m.inLibrary THEN ModuleFilePath(outputDir, m.module.name, ".o", path); AppendPath(path)
+      END;
       m := m.next
     END
   END AppendObjects;
@@ -502,7 +506,7 @@ MODULE LLVMToolchainDriver;
     VAR path, file: ARRAY pathBufferLength OF CHAR; deleteResult: INTEGER;
   BEGIN
     IF ~EmitIR(modules, name, triple, dir, path) THEN RETURN FALSE END;
-    IF ~CompileModules(modules, triple, dir, TRUE) THEN RETURN FALSE END;
+    IF ~CompileModules(modules, triple, dir) THEN RETURN FALSE END;
     COPY(dir, path); Strcat(path, "/lib"); Strcat(path, name); Strcat(path, ".a");
     deleteResult := Platform.Unlink(path); (* ar adds to an archive that is there *)
     command := "ar rcs"; AppendPath(path);
@@ -519,6 +523,15 @@ MODULE LLVMToolchainDriver;
     RETURN RunCommand()
   END BuildLibrary;
 
+  (* Phase 12 step 2f, poc -compile: the IR and object of every module of
+     modules that is generated (the others are compiled already or in a
+     library), in outputDir, and nothing linked *)
+  PROCEDURE Compile*(modules: LLVMCodeGenerator.ModuleList; topName, triple, outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR path: ARRAY pathBufferLength OF CHAR;
+  BEGIN
+    RETURN EmitIR(modules, topName, triple, outputDir, path) & CompileModules(modules, triple, outputDir)
+  END Compile;
+
   (* Full build (Phase 12 step 2a): EmitIR, then `clang -c` compiles every
      module's .ll to its own object file beside it, and one more clang links
      the objects - the main module's last - with the libraries, the -link
@@ -528,7 +541,7 @@ MODULE LLVMToolchainDriver;
     VAR path, exeDir: ARRAY pathBufferLength OF CHAR; i, slash: INTEGER;
   BEGIN
     IF ~EmitIR(modules, topName, triple, outputDir, path) THEN RETURN FALSE END;
-    IF ~CompileModules(modules, triple, outputDir, FALSE) THEN RETURN FALSE END;
+    IF ~CompileModules(modules, triple, outputDir) THEN RETURN FALSE END;
     command := "clang"; AppendTargetOptions(command, triple);
     AppendObjects(modules, outputDir);
     Strcat(command, " -o"); AppendPath(exePath);

@@ -1,6 +1,7 @@
 == i686-unknown-linux-gnu
 @procir.-initialized = internal global i1 false
-@procir.-key.fe8d08aa45250c09 = constant i8 0
+@procir.-key.O2.fe8d08aa45250c09 = constant i8 0
+@procir.-target.i686-unknown-linux-gnu = constant i8 0
 @procir.f = global ptr zeroinitializer
 @procir.ins = global ptr zeroinitializer
 @procir.act = global ptr zeroinitializer
@@ -128,7 +129,8 @@ LN:
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 @procir.-initialized = internal global i1 false
-@procir.-key.fe8d08aa45250c09 = constant i8 0
+@procir.-key.O2.fe8d08aa45250c09 = constant i8 0
+@procir.-target.x86_64-unknown-linux-gnu = constant i8 0
 @procir.f = global ptr zeroinitializer
 @procir.ins = global ptr zeroinitializer
 @procir.act = global ptr zeroinitializer

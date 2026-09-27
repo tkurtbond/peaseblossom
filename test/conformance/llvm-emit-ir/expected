@@ -4,7 +4,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 
 @llvmStub.-initialized = internal global i1 false
-@llvmStub.-key.686efa9bb9ec192d = constant i8 0
+@llvmStub.-key.O2.686efa9bb9ec192d = constant i8 0
+@llvmStub.-target.x86_64-unknown-linux-gnu = constant i8 0
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"

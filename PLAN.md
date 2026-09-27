@@ -1358,7 +1358,46 @@ convenient, but must not be a prerequisite of it.
    (the Stage 0 poc copied to `build/opt2/stage0/bin`); 2d's optimized
    Stage 1 had found none, and compiled the runtime from source. Fixture
    `llvm-using-modules`;
-   **2f** the fixtures this step's testing paragraph asks for, on Linux and
+   **2f** compiled modules without source (decided with the user
+   2026-09-27, reversing 2e's "a library is the only compiled form": some
+   people do not want to share source). Both `-build` and `-library` take
+   a module given as its `.sym` and `.o`, found together on the import
+   path, when there is no source for it (source still wins, so a stale
+   `.sym` never outranks it). The object describes itself, read with `nm`
+   (on Linux and all three BSDs): its key symbol names the size model too,
+   `<Module>.-key.<O2|OC>.<hash>`, so an importer linked with an object of
+   the other model fails in the linker as a stale interface does, whoever
+   links it; a marker symbol, `<Module>.-target.<triple>`, defined and
+   never referred to, names the triple, which poc checks (the linker does
+   not tell x86_64 Linux from x86_64 FreeBSD); its undefined `-key.`
+   symbols are its imports and the keys it was compiled against; an
+   undefined `GarbageCollectedHeap` symbol says it uses the collector. poc
+   checks the pair: the `.o` must define the key of the `.sym`'s hash, for
+   this triple and model, and each import must be source, a pair or in a
+   library, with the key the `.o` names. A pair's `.o` goes on the link
+   line; `-library` takes pairs as members, the manifest's keys from the
+   `.sym` and `nm`, and no `source` line. Objects are compiled
+   position-independent (`-fPIC`) always, not only for a library, so a
+   `-build` object can go into a shared library. `poc -compile` makes a
+   module's `.sym` and `.o` without a program. Fixtures: a program and a
+   library built from pairs; the refusals (a `.o` that does not match its
+   `.sym`, another triple, another size model, an import with another
+   key). *Done 2026-09-27*: `LLVMCodeGenerator.KeySymbol` names the model,
+   `EmitModuleKeys` defines the target marker; `Libraries.ReadObject` runs
+   `nm -P`; `Poc.DiscoverCompiledModule` checks a pair and enters it as
+   `ModuleList.compiled`, declared and not generated, its `objectPath`
+   linked (and the collector added when its object calls it). The pass
+   that regenerates `.sym` files from source now also follows a `.sym`'s
+   imports, so an import of a pair still gets its `.sym` from its source.
+   `poc -compile <file>...` (voc's `-c`, added to 2f with the user the
+   same day) compiles the modules named to `.sym`, `.ll` and `.o`, with no
+   `main` and nothing linked (`Poc.CompileOnly`, `LLVMToolchainDriver.
+   Compile`); their imports are checked, not compiled, and a module named
+   is compiled even when a library on the path has it (poc -library's
+   files and -compile's are both `members`; only -library requires every
+   import to be one or in a library, `membersOnly`). Fixture
+   `llvm-using-modules` (sections 2 and 5);
+   **2g** the fixtures this step's testing paragraph asks for, on Linux and
    the BSD hosts, at both word sizes, and the rackhir run of step 2's
    commits.
 

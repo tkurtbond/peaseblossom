@@ -555,6 +555,11 @@ MODULE LLVMCodeGenerator;
          module and scope come from its .sym, and it is declared to the
          others (EmitImportDeclarations), not generated *)
       inLibrary*: BOOLEAN;
+      (* Phase 12 step 2f: a module given as its .sym and .o, objectPath:
+         declared like a library's, not generated, its object linked *)
+      compiled*: BOOLEAN;
+      objectPath*: SourcePath;
+      usesCollector*: BOOLEAN; (* its object calls GarbageCollectedHeap *)
       next*: ModuleList
     END;
 
@@ -8000,13 +8005,19 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, "  call void @"); WriteStr(w, name); WriteStr(w, "_init()"); WriteLn(w)
   END EmitInitCall;
 
-  (* "@<name>.-key.<key>", the symbol that carries a module's key
-     (ModuleInterface.KeyOf), when it has one *)
+  (* "@<name>.-key.<O2|OC>.<key>", the symbol that carries a module's key
+     (ModuleInterface.KeyOf), when it has one, and the size model it was
+     compiled for (Phase 12 step 2f): an object of the other model does not
+     define the symbol an importer refers to, so the linker refuses it *)
   PROCEDURE KeySymbol(name: ARRAY OF CHAR; VAR symbol: ARRAY OF CHAR): BOOLEAN;
     VAR key: ARRAY ModuleInterface.keyLength + 1 OF CHAR;
   BEGIN
     IF ~ModuleInterface.KeyOf(name, key) THEN RETURN FALSE END;
-    COPY("@", symbol); Strcat(symbol, name); Strcat(symbol, ".-key."); Strcat(symbol, key);
+    COPY("@", symbol); Strcat(symbol, name); Strcat(symbol, ".-key.");
+    IF ConstantEvaluator.sizeModel = MemoryLayout.sizeModelO2 THEN Strcat(symbol, "O2.")
+    ELSE Strcat(symbol, "OC.")
+    END;
+    Strcat(symbol, key);
     RETURN TRUE
   END KeySymbol;
 
@@ -8016,13 +8027,19 @@ MODULE LLVMCodeGenerator;
      "@<M>.-imports", which @llvm.used keeps even where nothing else uses
      it. An importer's object therefore links only with an object of the
      module whose interface it was compiled against: otherwise the linker
-     reports the key's symbol undefined. *)
-  PROCEDURE EmitModuleKeys(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
+     reports the key's symbol undefined. Phase 12 step 2f: every module also
+     defines "@<M>.-target.<triple>", referred to by nothing, so that its
+     object says which target it was compiled for (read with nm, as poc does
+     for a module given as its .sym and .o). *)
+  PROCEDURE EmitModuleKeys(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode;
+                           triple: ARRAY OF CHAR);
     VAR symbol: LongText; imports: ARRAY 16384 OF CHAR; import: SyntaxTree.ImportNode; count: INTEGER; text: ValueText;
   BEGIN
     IF KeySymbol(module.name, symbol) THEN
       WriteStr(w, symbol); WriteStr(w, " = constant i8 0"); WriteLn(w)
     END;
+    WriteStr(w, "@"); WriteStr(w, module.name); WriteStr(w, ".-target."); WriteStr(w, triple);
+    WriteStr(w, " = constant i8 0"); WriteLn(w);
     imports[0] := 0X; count := 0;
     import := module.imports;
     WHILE import # NIL DO
@@ -8139,7 +8156,7 @@ MODULE LLVMCodeGenerator;
     WriteLn(body);
     COPY("@", flag); Strcat(flag, m.module.name); Strcat(flag, ".-initialized");
     WriteStr(body, flag); WriteStr(body, " = internal global i1 false"); WriteLn(body);
-    EmitModuleKeys(body, cg, m.module);
+    EmitModuleKeys(body, cg, m.module, triple);
     EmitGlobals(body, cg, m.module);
     EmitExternalDeclares(body, cg, m.module);
     EmitTypeDescriptors(body, cg, m.module);

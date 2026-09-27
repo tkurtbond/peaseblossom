@@ -4,7 +4,8 @@ target triple = "i686-unknown-linux-gnu"
 
 
 @setsstrings.-initialized = internal global i1 false
-@setsstrings.-key.e21e1eb773548fbb = constant i8 0
+@setsstrings.-key.O2.e21e1eb773548fbb = constant i8 0
+@setsstrings.-target.i686-unknown-linux-gnu = constant i8 0
 @setsstrings.s = global i32 zeroinitializer
 @setsstrings.small = global i8 zeroinitializer
 @setsstrings.wide = global i64 zeroinitializer
@@ -193,7 +194,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 
 @setsstrings.-initialized = internal global i1 false
-@setsstrings.-key.e21e1eb773548fbb = constant i8 0
+@setsstrings.-key.O2.e21e1eb773548fbb = constant i8 0
+@setsstrings.-target.x86_64-unknown-linux-gnu = constant i8 0
 @setsstrings.s = global i32 zeroinitializer
 @setsstrings.small = global i8 zeroinitializer
 @setsstrings.wide = global i64 zeroinitializer

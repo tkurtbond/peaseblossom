@@ -5,7 +5,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 
 @constir.-initialized = internal global i1 false
-@constir.-key.ed608818c5843159 = constant i8 0
+@constir.-key.O2.ed608818c5843159 = constant i8 0
+@constir.-target.x86_64-unknown-linux-gnu = constant i8 0
 @constir.s = global i8 zeroinitializer
 @constir.i = global i16 zeroinitializer
 @constir.l = global i32 zeroinitializer
@@ -54,7 +55,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 
 @constir.-initialized = internal global i1 false
-@constir.-key.ed608818c5843159 = constant i8 0
+@constir.-key.OC.ed608818c5843159 = constant i8 0
+@constir.-target.x86_64-unknown-linux-gnu = constant i8 0
 @constir.s = global i16 zeroinitializer
 @constir.i = global i32 zeroinitializer
 @constir.l = global i64 zeroinitializer

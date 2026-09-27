@@ -1,6 +1,7 @@
 == i686-unknown-linux-gnu
 @openir.-initialized = internal global i1 false
-@openir.-key.edac851727b3c679 = constant i8 0
+@openir.-key.O2.edac851727b3c679 = constant i8 0
+@openir.-target.i686-unknown-linux-gnu = constant i8 0
 @openir.vector = global ptr zeroinitializer
 @openir.matrix = global ptr zeroinitializer
 @openir.nodes = global ptr zeroinitializer
@@ -351,7 +352,8 @@ LN:
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 @openir.-initialized = internal global i1 false
-@openir.-key.edac851727b3c679 = constant i8 0
+@openir.-key.O2.edac851727b3c679 = constant i8 0
+@openir.-target.x86_64-unknown-linux-gnu = constant i8 0
 @openir.vector = global ptr zeroinitializer
 @openir.matrix = global ptr zeroinitializer
 @openir.nodes = global ptr zeroinitializer

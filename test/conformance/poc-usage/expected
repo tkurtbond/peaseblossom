@@ -9,6 +9,7 @@ usage: poc -dump-tokens <file>
        poc -emit-llvm-ir <file>
        poc -o <exe> -build <file>
        poc -library <name> <file>...
+       poc -compile <file>...
        poc -install-library <name>
        poc [-import-path <dir> | -clear-import-path]... -print-import-path
        poc [-library-path <dir> | -clear-library-path]... -print-library-path
@@ -48,6 +49,9 @@ usage: poc -dump-tokens <file>
        repeatable, then POC_LIBRARY_PATH (colon-separated), then poc's
        ../lib/poc, are searched for libraries: a module one has is taken
        from it, not compiled; -clear-library-path leaves all of them out
+       -compile compiles the modules of the files named to .sym and .o, in
+       <output-dir>, and links nothing: given as a .sym and .o on the import
+       path, or to -library, a module needs no source
        -install-library copies the library <name> from the library path into
        <output-dir>/<triple>/<O2|OC>/, or without -output-dir poc's ../lib/poc
        -shared-libraries may precede -build: link the libraries dynamically

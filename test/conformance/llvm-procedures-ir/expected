@@ -6,7 +6,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 
 @procsir.-initialized = internal global i1 false
-@procsir.-key.908624c23d7a87a9 = constant i8 0
+@procsir.-key.O2.908624c23d7a87a9 = constant i8 0
+@procsir.-target.x86_64-unknown-linux-gnu = constant i8 0
 @procsir.total = global i16 zeroinitializer
 @procsir.p = global %procsir.Point zeroinitializer
 @procsir.v = global [3 x i16] zeroinitializer

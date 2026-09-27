@@ -15,9 +15,10 @@ declare void @ModuleTable.Register(i32)
 declare void @ModuleTable_init()
 
 @roots.-initialized = internal global i1 false
-@roots.-key.fe324182960d7a3f = constant i8 0
-@ModuleTable.-key.566673ee7d8cfcc5 = external global i8
-@roots.-imports = internal constant [1 x ptr] [ptr @ModuleTable.-key.566673ee7d8cfcc5]
+@roots.-key.O2.fe324182960d7a3f = constant i8 0
+@roots.-target.i686-unknown-linux-gnu = constant i8 0
+@ModuleTable.-key.O2.566673ee7d8cfcc5 = external global i8
+@roots.-imports = internal constant [1 x ptr] [ptr @ModuleTable.-key.O2.566673ee7d8cfcc5]
 @llvm.used = appending global [1 x ptr] [ptr @roots.-imports], section "llvm.metadata"
 @roots.single = global ptr zeroinitializer
 @roots.plain = global i16 zeroinitializer
@@ -97,9 +98,10 @@ declare void @ModuleTable.Register(i64)
 declare void @ModuleTable_init()
 
 @roots.-initialized = internal global i1 false
-@roots.-key.fe324182960d7a3f = constant i8 0
-@ModuleTable.-key.566673ee7d8cfcc5 = external global i8
-@roots.-imports = internal constant [1 x ptr] [ptr @ModuleTable.-key.566673ee7d8cfcc5]
+@roots.-key.O2.fe324182960d7a3f = constant i8 0
+@roots.-target.x86_64-unknown-linux-gnu = constant i8 0
+@ModuleTable.-key.O2.566673ee7d8cfcc5 = external global i8
+@roots.-imports = internal constant [1 x ptr] [ptr @ModuleTable.-key.O2.566673ee7d8cfcc5]
 @llvm.used = appending global [1 x ptr] [ptr @roots.-imports], section "llvm.metadata"
 @roots.single = global ptr zeroinitializer
 @roots.plain = global i16 zeroinitializer

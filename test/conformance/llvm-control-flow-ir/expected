@@ -4,7 +4,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 
 @ctrl.-initialized = internal global i1 false
-@ctrl.-key.b782cfda16aa2a71 = constant i8 0
+@ctrl.-key.O2.b782cfda16aa2a71 = constant i8 0
+@ctrl.-target.x86_64-unknown-linux-gnu = constant i8 0
 @ctrl.ifResult = global i16 zeroinitializer
 @ctrl.caseResult1 = global i16 zeroinitializer
 @ctrl.caseResult2 = global i16 zeroinitializer

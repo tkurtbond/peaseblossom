@@ -4,8 +4,8 @@
 #   1. its own modules and poc's runtime, linked from poc-rtl on poc's own
 #      library path (no flags);
 #   2. modules shared as source, through -import-path; not found without
-#      it (the notes say where poc looked), and refused as .sym and .o
-#      files alone (a compiled module comes only from a library);
+#      it (the notes say where poc looked); as .sym and .o files, compiled
+#      already (step 2f), but not as a .sym alone;
 #   3. the user's own library, linked statically and as a shared library;
 #      under -OC, which it was not built for (a note says what it was built
 #      for); with an edited copy of a module's source beside the program (a
@@ -14,6 +14,11 @@
 #      alib on the path (notes name what blib needs); with clib, which has
 #      Greet too, after alib (a warning: alib's hides it); alib rebuilt with
 #      a new interface (blib refused, to be rebuilt);
+#   5. modules compiled already, as .sym and .o (-compile, voc's -c): a
+#      program linked with them, a library made of them (-library takes a
+#      .sym or a .o for the pair) and a program linked with it; the
+#      refusals - -compile given a .sym, another size model, another target, a .sym
+#      the .o was not compiled from, an import whose interface has changed;
 #   and installing: alib and blib into one directory, again (replaced),
 #   from that directory itself and clib, which has Greet too (refused), a
 #   library that is not there; and a program linked with the installed
@@ -39,9 +44,13 @@ mkdir two && cp ../src/main.mod two/
 (cd two && poc -import-path ../one -o main -build main.mod 2>&1 | mask && ./main) >>../result
 echo "-- without -import-path" >>../result
 (cd two && rm -f *.sym *.ll *.o && poc -o main -build main.mod 2>&1 | mask) >>../result
-echo "-- only Greet.sym and Greet.o" >>../result
+echo "-- as Greet.sym and Greet.o, compiled already" >>../result
 mkdir compiled && cp one/Greet.sym one/Greet.o compiled/
-(cd two && rm -f *.sym *.ll *.o && poc -import-path ../compiled -o main -build main.mod 2>&1 | mask) >>../result
+(cd two && rm -f *.sym *.ll *.o && poc -import-path ../compiled -o main -build main.mod 2>&1 | mask \
+  && ./main) >>../result
+echo "-- Greet.sym alone" >>../result
+mkdir symonly && cp one/Greet.sym symonly/
+(cd two && rm -f *.sym *.ll *.o && poc -import-path ../symonly -o main -build main.mod 2>&1 | mask) >>../result
 echo "== 3. own library" >>../result
 mkdir three && cp ../src/Greet.Mod ../src/Twice.Mod three/
 (cd three && poc -output-dir lib -library mine Greet.Mod Twice.Mod 2>&1 | mask) >>../result
@@ -92,6 +101,35 @@ awk '/^  PROCEDURE Hi\*/ { print "  PROCEDURE Bye*;"; print "  END Bye;"; print 
   ../src/Greet.Mod >a/Greet.Mod
 (cd a && poc -output-dir ../liba -library alib Greet.Mod 2>&1 | mask) >>../result
 (cd four && poc -library-path ../liba -library-path ../libb -o app -build app.mod 2>&1 | mask) >>../result
+echo "== 5. modules compiled already" >>../result
+# Greet and Twice compiled to .sym and .o (-compile), their source then
+# removed: a program linked with them, a library of them, and a program
+# linked with that
+mkdir pairs && cp ../src/Greet.Mod ../src/Twice.Mod pairs/
+(cd pairs && poc -compile Greet.Mod Twice.Mod 2>&1 | mask && rm Greet.Mod Twice.Mod *.ll) >>../result
+ls pairs >>../result
+(cd app && rm -f Greet.Mod *.sym *.ll *.o && poc -import-path ../pairs -o app -build app.mod 2>&1 | mask \
+  && ./app) >>../result
+echo "-- a library of them" >>../result
+poc -output-dir pairlib -library fromobjects pairs/Greet.o pairs/Twice.sym 2>&1 | mask >>../result
+grep -v '^triple' pairlib/$triple/O2/fromobjects.library | mask >>../result
+(cd app && rm -f Greet.Mod *.sym *.ll *.o && poc -library-path ../pairlib -o app -build app.mod 2>&1 | mask \
+  && ./app) >>../result
+echo "-- -compile given a .sym" >>../result
+poc -compile pairs/Greet.sym 2>&1 | mask >>../result
+echo "-- under -OC" >>../result
+(cd app && poc -OC -import-path ../pairs -o app -build app.mod 2>&1 | mask) >>../result
+echo "-- for another target" >>../result
+(cd app && poc -clear-library-path -import-path ../../../../../rtl/llvm -import-path ../pairs \
+   -target sparc64-unknown-netbsd -o app -build app.mod 2>&1 | mask) >>../result
+echo "-- a .sym that is not the .o's" >>../result
+mkdir other && cp pairs/* other/ && sed 's/Hi\*(n: INTEGER)/Hi*(n: LONGINT)/' pairs/Greet.sym >other/Greet.sym
+(cd app && poc -import-path ../other -o app -build app.mod 2>&1 | mask) >>../result
+echo "-- Twice.o compiled against another Greet" >>../result
+mkdir newer && cp pairs/Twice.sym pairs/Twice.o newer/
+awk '/^  PROCEDURE Hi\*/ { print "  PROCEDURE Bye*;"; print "  END Bye;"; print "" } { print }' \
+  ../src/Greet.Mod >newer/Greet.Mod
+(cd app && poc -import-path ../newer -o app -build app.mod 2>&1 | mask) >>../result
 cd ..
 rm -rf work
 . ../../testresult.sh

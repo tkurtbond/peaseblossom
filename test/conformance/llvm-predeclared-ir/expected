@@ -4,7 +4,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 
 @predeclaredir.-initialized = internal global i1 false
-@predeclaredir.-key.454afecce87b21d9 = constant i8 0
+@predeclaredir.-key.O2.454afecce87b21d9 = constant i8 0
+@predeclaredir.-target.x86_64-unknown-linux-gnu = constant i8 0
 @predeclaredir.v = global [5 x i16] zeroinitializer
 @predeclaredir.m = global [3 x [4 x i16]] zeroinitializer
 @predeclaredir.s = global [10 x i8] zeroinitializer

@@ -74,6 +74,23 @@ MODULE Libraries;
       next*: Need
     END;
 
+    (* a key an object defines or refers to (Phase 12 step 2f) *)
+    ObjectKey* = POINTER TO ObjectKeyDesc;
+    ObjectKeyDesc* = RECORD
+      module*: Name;
+      model*: ARRAY 3 OF CHAR;
+      key*: Key;
+      next*: ObjectKey
+    END;
+
+    (* what a module's object says of itself (ReadObject) *)
+    ObjectInfo* = RECORD
+      defined*: ObjectKey; (* its own key *)
+      imports*: ObjectKey; (* the keys of its imports it was compiled against *)
+      targetModule*, target*: Name; (* from <Module>.-target.<triple> *)
+      usesCollector*: BOOLEAN (* it calls GarbageCollectedHeap *)
+    END;
+
     (* a module whose hidden copies WarnHidden has looked for *)
     Checked = POINTER TO CheckedDesc;
     CheckedDesc = RECORD
@@ -171,10 +188,22 @@ MODULE Libraries;
      directory), as a file cannot be opened to test that it is there: voc's
      Files.Old opens for writing first, which the running executable
      refuses. *)
+  (* /tmp/poc-<what>-<pid>, for a command's output *)
+  PROCEDURE ScratchFile(what: ARRAY OF CHAR; VAR scratch: ARRAY OF CHAR);
+    VAR number: ARRAY 12 OF CHAR; n, i: INTEGER;
+  BEGIN
+    n := Platform.PID; i := 0;
+    REPEAT number[i] := CHR(ORD("0") + n MOD 10); n := n DIV 10; INC(i) UNTIL n = 0;
+    COPY("/tmp/poc-", scratch); Append(scratch, what); Append(scratch, "-");
+    n := 0; WHILE scratch[n] # 0X DO INC(n) END;
+    WHILE i > 0 DO DEC(i); scratch[n] := number[i]; INC(n) END;
+    scratch[n] := 0X
+  END ScratchFile;
+
   PROCEDURE PocLibraryDir*(program: ARRAY OF CHAR; create: BOOLEAN; VAR result: ARRAY OF CHAR): BOOLEAN;
     VAR
       scratch: ARRAY 64 OF CHAR; command: ARRAY 2 * pathLength OF CHAR;
-      number: ARRAY 12 OF CHAR; n, i, status: INTEGER; f: Files.File; r: Files.Rider;
+      i, status: INTEGER; f: Files.File; r: Files.Rider;
   BEGIN
     result[0] := 0X;
     i := 0;
@@ -182,12 +211,7 @@ MODULE Libraries;
       IF program[i] = "'" THEN RETURN FALSE END; (* not worth quoting *)
       INC(i)
     END;
-    n := Platform.PID; i := 0;
-    REPEAT number[i] := CHR(ORD("0") + n MOD 10); n := n DIV 10; INC(i) UNTIL n = 0;
-    scratch := "/tmp/poc-library-path-";
-    n := 0; WHILE scratch[n] # 0X DO INC(n) END;
-    WHILE i > 0 DO DEC(i); scratch[n] := number[i]; INC(n) END;
-    scratch[n] := 0X;
+    ScratchFile("library-path", scratch);
     command := "p=$(command -v '"; Append(command, program);
     Append(command, "') && d=");
     Append(command, '"$(dirname "$p")/../lib/poc"');
@@ -516,6 +540,92 @@ MODULE Libraries;
     END;
     RETURN TRUE
   END WriteManifest;
+
+  (* ---- A module's object (Phase 12 step 2f) ----
+
+     A module compiled by poc says in its object's symbols what it is: it
+     defines <Module>.-key.<O2|OC>.<key> and <Module>.-target.<triple>, and
+     refers to <Import>.-key.<O2|OC>.<key> for each module it imports. Read
+     with nm -P ("name type ..." a line, on Linux and the three BSDs), for a
+     module given as its .sym and .o. *)
+
+  (* the module and the rest of a symbol "<module><marker><rest>" *)
+  PROCEDURE SplitSymbol(symbol, marker: ARRAY OF CHAR; VAR module, rest: ARRAY OF CHAR): BOOLEAN;
+    VAR i, j, k: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE symbol[i] # 0X DO
+      j := 0;
+      WHILE (marker[j] # 0X) & (symbol[i + j] = marker[j]) DO INC(j) END;
+      IF (marker[j] = 0X) & (i > 0) THEN
+        FOR k := 0 TO i - 1 DO module[k] := symbol[k] END;
+        module[i] := 0X;
+        k := 0;
+        WHILE symbol[i + j + k] # 0X DO rest[k] := symbol[i + j + k]; INC(k) END;
+        rest[k] := 0X;
+        RETURN TRUE
+      END;
+      INC(i)
+    END;
+    RETURN FALSE
+  END SplitSymbol;
+
+  PROCEDURE AddObjectKey(VAR list: ObjectKey; module, rest: ARRAY OF CHAR);
+    VAR k: ObjectKey; i, j: INTEGER;
+  BEGIN
+    NEW(k); COPY(module, k.module);
+    (* rest is "<O2|OC>.<key>" *)
+    k.model[0] := rest[0]; k.model[1] := rest[1]; k.model[2] := 0X;
+    i := 3; j := 0;
+    WHILE (rest[i] # 0X) & (j < keyLength) DO k.key[j] := rest[i]; INC(i); INC(j) END;
+    k.key[j] := 0X;
+    k.next := list; list := k
+  END AddObjectKey;
+
+  (* What the object at path says of itself, in info. FALSE, having said
+     why, when nm cannot read it. *)
+  PROCEDURE ReadObject*(path: ARRAY OF CHAR; VAR info: ObjectInfo): BOOLEAN;
+    VAR
+      scratch: ARRAY 64 OF CHAR; command: ARRAY 2 * pathLength OF CHAR; line: ARRAY lineLength OF CHAR;
+      w0, w1, w2, w3: Name; module, rest: Name; f: Files.File; r: Files.Rider; i, status: INTEGER;
+  BEGIN
+    info.defined := NIL; info.imports := NIL; info.targetModule[0] := 0X; info.target[0] := 0X;
+    info.usesCollector := FALSE;
+    i := 0;
+    WHILE path[i] # 0X DO
+      IF path[i] = "'" THEN Err.String("poc: cannot read "); Err.String(path); Err.Ln; RETURN FALSE END;
+      INC(i)
+    END;
+    ScratchFile("object", scratch);
+    command := "nm -P '"; Append(command, path); Append(command, "' >"); Append(command, scratch);
+    status := Platform.System(command);
+    f := Files.Old(scratch);
+    IF (status # 0) OR (f = NIL) THEN
+      IF f # NIL THEN Files.Close(f) END;
+      status := Platform.Unlink(scratch);
+      Err.String("poc: nm cannot read "); Err.String(path); Err.Ln;
+      RETURN FALSE
+    END;
+    Files.Set(r, f, 0);
+    REPEAT
+      Files.ReadLine(r, line);
+      SplitLine(line, w0, w1, w2, w3);
+      IF w1 = "U" THEN
+        IF SplitSymbol(w0, ".-key.", module, rest) THEN AddObjectKey(info.imports, module, rest)
+        ELSIF SplitSymbol(w0, ".", module, rest) & (module = "GarbageCollectedHeap") THEN
+          info.usesCollector := TRUE
+        END
+      ELSIF w1[0] # 0X THEN
+        IF SplitSymbol(w0, ".-key.", module, rest) THEN AddObjectKey(info.defined, module, rest)
+        ELSIF SplitSymbol(w0, ".-target.", module, rest) THEN
+          COPY(module, info.targetModule); COPY(rest, info.target)
+        END
+      END
+    UNTIL r.eof;
+    Files.Close(f);
+    status := Platform.Unlink(scratch);
+    RETURN TRUE
+  END ReadObject;
 
   (* ---- The libraries a program links ---- *)
 

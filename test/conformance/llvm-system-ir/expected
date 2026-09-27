@@ -6,7 +6,8 @@ target triple = "i686-unknown-linux-gnu"
 
 
 @system.-initialized = internal global i1 false
-@system.-key.eaab1b6afd4e1d98 = constant i8 0
+@system.-key.O2.eaab1b6afd4e1d98 = constant i8 0
+@system.-target.i686-unknown-linux-gnu = constant i8 0
 @system.addr = global i32 zeroinitializer
 @system.other = global i32 zeroinitializer
 @system.i = global i16 zeroinitializer
@@ -1304,7 +1305,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 
 @system.-initialized = internal global i1 false
-@system.-key.eaab1b6afd4e1d98 = constant i8 0
+@system.-key.O2.eaab1b6afd4e1d98 = constant i8 0
+@system.-target.x86_64-unknown-linux-gnu = constant i8 0
 @system.addr = global i64 zeroinitializer
 @system.other = global i64 zeroinitializer
 @system.i = global i16 zeroinitializer

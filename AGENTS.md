@@ -148,8 +148,7 @@ for poc unless it adopted them:
 2026-09-27; `doc/voc-options.md` has the table, option by option): `-r` is
 `poc -range-checks`, `-M` is `-static`, `-V` is `-verbose` (the clang command),
 and `-link <arg>` stands for voc's `LDFLAGS`/`LDLIBS`. `-S` and `-m` are
-`-emit-llvm-ir` and `-build`; `-c` gets no flag (step 2: `-library` will
-compile without linking). poc's checks
+`-emit-llvm-ir` and `-build`; `-c` is `-compile` (step 2f). poc's checks
 cannot be turned off (`-a`, `-t`, `-x`, `-p`); `-e`/`-s`/`-F`, `-f`, `-OV` and
 `-A..` do not apply.
 
@@ -206,8 +205,14 @@ shells out to these rather than linking against LLVM's own C++ API.
   compiled against another's old keys (`src/driver/Libraries.Mod`), warns
   when a library's module hides another library's or differs from source
   beside the program, and follows an import found nowhere with notes on
-  where it looked; a library is the only compiled form poc takes (step
-  2e). `poc -install-library <name>` copies a library into `-output-dir`
+  where it looked (step 2e). A module with no source can be given as its
+  `.sym` and `.o`, to `-build` (found on the import path) and to `-library`
+  (named by either file): poc checks the pair against the object's own
+  symbols, read with `nm -P`, where each module defines
+  `<M>.-key.<O2|OC>.<hash>` and `<M>.-target.<triple>` and refers to its
+  imports' keys (step 2f; every object is compiled `-fPIC`). `poc -compile
+  <file>...` (voc's `-c`) makes a module's `.sym` and `.o` without a
+  program. `poc -install-library <name>` copies a library into `-output-dir`
   or poc's own `../lib/poc`; a program's run-time search path has each
   shared library's directory relative to it (`$ORIGIN`) and absolute.
   `make` builds `rtl/llvm` as the library `poc-rtl` into
