@@ -14,7 +14,7 @@
 @openir.NodeDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @openir.NodeDesc.tdesc, i32 0)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
-define i32 @openir.Total(ptr %a, i32 %a.len0) {
+define i32 @openir.Total(ptr %p.a, i32 %p.a.len0) {
 entry:
   %tN = alloca i16
   store i16 zeroinitializer, ptr %tN
@@ -24,7 +24,7 @@ entry:
   store i16 %tN, ptr %tN
   %tN = sext i8 0 to i16
   store i16 %tN, ptr %tN
-  %tN = trunc i32 %a.len0 to i16
+  %tN = trunc i32 %p.a.len0 to i16
   %tN = sext i8 1 to i16
   %tN = sub i16 %tN, %tN
   br label %LN
@@ -36,14 +36,14 @@ LN:
   %tN = load i16, ptr %tN
   %tN = load i16, ptr %tN
   %tN = sext i16 %tN to i32
-  %tN = icmp ult i32 %tN, %a.len0
+  %tN = icmp ult i32 %tN, %p.a.len0
   br i1 %tN, label %LN, label %LN
 LN:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 LN:
-  %tN = getelementptr i16, ptr %a, i16 %tN
+  %tN = getelementptr i16, ptr %p.a, i16 %tN
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   store i16 %tN, ptr %tN
@@ -58,13 +58,13 @@ LN:
 LN:
   ret i32 0
 }
-define i16 @openir.Scratch(ptr %a, i32 %a.len0) {
+define i16 @openir.Scratch(ptr %p.a, i32 %p.a.len0) {
 entry:
-  %tN = mul i32 2, %a.len0
+  %tN = mul i32 2, %p.a.len0
   %tN = alloca i8, i32 %tN, align 8
-  call void @llvm.memmove.p0.p0.i32(ptr %tN, ptr %a, i32 %tN, i1 false)
+  call void @llvm.memmove.p0.p0.i32(ptr %tN, ptr %p.a, i32 %tN, i1 false)
   %tN = sext i8 0 to i32
-  %tN = icmp ult i32 %tN, %a.len0
+  %tN = icmp ult i32 %tN, %p.a.len0
   br i1 %tN, label %LN, label %LN
 LN:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
@@ -75,7 +75,7 @@ LN:
   %tN = sext i8 1 to i16
   store i16 %tN, ptr %tN
   %tN = sext i8 0 to i32
-  %tN = icmp ult i32 %tN, %a.len0
+  %tN = icmp ult i32 %tN, %p.a.len0
   br i1 %tN, label %LN, label %LN
 LN:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
@@ -88,28 +88,28 @@ LN:
 LN:
   ret i16 0
 }
-define i16 @openir.Cell(ptr %m, i32 %m.len0, i32 %m.len1, i16 %i, i16 %j) {
+define i16 @openir.Cell(ptr %p.m, i32 %p.m.len0, i32 %p.m.len1, i16 %p.i, i16 %p.j) {
 entry:
   %tN = alloca i16
-  store i16 %i, ptr %tN
+  store i16 %p.i, ptr %tN
   %tN = alloca i16
-  store i16 %j, ptr %tN
+  store i16 %p.j, ptr %tN
   %tN = load i16, ptr %tN
   %tN = sext i16 %tN to i32
-  %tN = icmp ult i32 %tN, %m.len0
+  %tN = icmp ult i32 %tN, %p.m.len0
   br i1 %tN, label %LN, label %LN
 LN:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 LN:
-  %tN = mul i32 2, %m.len1
+  %tN = mul i32 2, %p.m.len1
   %tN = sext i16 %tN to i32
   %tN = mul i32 %tN, %tN
-  %tN = getelementptr i8, ptr %m, i32 %tN
+  %tN = getelementptr i8, ptr %p.m, i32 %tN
   %tN = load i16, ptr %tN
   %tN = sext i16 %tN to i32
-  %tN = icmp ult i32 %tN, %m.len1
+  %tN = icmp ult i32 %tN, %p.m.len1
   br i1 %tN, label %LN, label %LN
 LN:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
@@ -122,9 +122,9 @@ LN:
 LN:
   ret i16 0
 }
-define i32 @openir.Pass(ptr %a, i32 %a.len0) {
+define i32 @openir.Pass(ptr %p.a, i32 %p.a.len0) {
 entry:
-  %tN = call i32 @openir.Total(ptr %a, i32 %a.len0)
+  %tN = call i32 @openir.Total(ptr %p.a, i32 %p.a.len0)
   ret i32 %tN
 LN:
   ret i32 0
@@ -348,7 +348,7 @@ clang accepted i686-unknown-linux-gnu
 @openir.NodeDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @openir.NodeDesc.tdesc, i32 0)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
-define i32 @openir.Total(ptr %a, i64 %a.len0) {
+define i32 @openir.Total(ptr %p.a, i64 %p.a.len0) {
 entry:
   %tN = alloca i16
   store i16 zeroinitializer, ptr %tN
@@ -358,7 +358,7 @@ entry:
   store i16 %tN, ptr %tN
   %tN = sext i8 0 to i16
   store i16 %tN, ptr %tN
-  %tN = trunc i64 %a.len0 to i32
+  %tN = trunc i64 %p.a.len0 to i32
   %tN = trunc i32 %tN to i16
   %tN = sext i8 1 to i16
   %tN = sub i16 %tN, %tN
@@ -371,14 +371,14 @@ LN:
   %tN = load i16, ptr %tN
   %tN = load i16, ptr %tN
   %tN = sext i16 %tN to i64
-  %tN = icmp ult i64 %tN, %a.len0
+  %tN = icmp ult i64 %tN, %p.a.len0
   br i1 %tN, label %LN, label %LN
 LN:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 LN:
-  %tN = getelementptr i16, ptr %a, i16 %tN
+  %tN = getelementptr i16, ptr %p.a, i16 %tN
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   store i16 %tN, ptr %tN
@@ -393,13 +393,13 @@ LN:
 LN:
   ret i32 0
 }
-define i16 @openir.Scratch(ptr %a, i64 %a.len0) {
+define i16 @openir.Scratch(ptr %p.a, i64 %p.a.len0) {
 entry:
-  %tN = mul i64 2, %a.len0
+  %tN = mul i64 2, %p.a.len0
   %tN = alloca i8, i64 %tN, align 8
-  call void @llvm.memmove.p0.p0.i64(ptr %tN, ptr %a, i64 %tN, i1 false)
+  call void @llvm.memmove.p0.p0.i64(ptr %tN, ptr %p.a, i64 %tN, i1 false)
   %tN = sext i8 0 to i64
-  %tN = icmp ult i64 %tN, %a.len0
+  %tN = icmp ult i64 %tN, %p.a.len0
   br i1 %tN, label %LN, label %LN
 LN:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
@@ -410,7 +410,7 @@ LN:
   %tN = sext i8 1 to i16
   store i16 %tN, ptr %tN
   %tN = sext i8 0 to i64
-  %tN = icmp ult i64 %tN, %a.len0
+  %tN = icmp ult i64 %tN, %p.a.len0
   br i1 %tN, label %LN, label %LN
 LN:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
@@ -423,28 +423,28 @@ LN:
 LN:
   ret i16 0
 }
-define i16 @openir.Cell(ptr %m, i64 %m.len0, i64 %m.len1, i16 %i, i16 %j) {
+define i16 @openir.Cell(ptr %p.m, i64 %p.m.len0, i64 %p.m.len1, i16 %p.i, i16 %p.j) {
 entry:
   %tN = alloca i16
-  store i16 %i, ptr %tN
+  store i16 %p.i, ptr %tN
   %tN = alloca i16
-  store i16 %j, ptr %tN
+  store i16 %p.j, ptr %tN
   %tN = load i16, ptr %tN
   %tN = sext i16 %tN to i64
-  %tN = icmp ult i64 %tN, %m.len0
+  %tN = icmp ult i64 %tN, %p.m.len0
   br i1 %tN, label %LN, label %LN
 LN:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 LN:
-  %tN = mul i64 2, %m.len1
+  %tN = mul i64 2, %p.m.len1
   %tN = sext i16 %tN to i64
   %tN = mul i64 %tN, %tN
-  %tN = getelementptr i8, ptr %m, i64 %tN
+  %tN = getelementptr i8, ptr %p.m, i64 %tN
   %tN = load i16, ptr %tN
   %tN = sext i16 %tN to i64
-  %tN = icmp ult i64 %tN, %m.len1
+  %tN = icmp ult i64 %tN, %p.m.len1
   br i1 %tN, label %LN, label %LN
 LN:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
@@ -457,9 +457,9 @@ LN:
 LN:
   ret i16 0
 }
-define i32 @openir.Pass(ptr %a, i64 %a.len0) {
+define i32 @openir.Pass(ptr %p.a, i64 %p.a.len0) {
 entry:
-  %tN = call i32 @openir.Total(ptr %a, i64 %a.len0)
+  %tN = call i32 @openir.Total(ptr %p.a, i64 %p.a.len0)
   ret i32 %tN
 LN:
   ret i32 0

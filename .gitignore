@@ -96,6 +96,7 @@ test/conformance/llvm-set64/llvm-set64
 test/conformance/llvm-set64-import/llvm-set64-import
 test/conformance/llvm-entier-trap/llvm-entier-trap
 test/conformance/llvm-overflow-wrap/llvm-overflow-wrap
+test/conformance/llvm-parameter-names/llvm-parameter-names
 test/conformance/llvm-array-assign/llvm-array-assign
 test/conformance/llvm-array-assign-trap/llvm-array-assign-trap
 test/conformance/llvm-no-trap-behavior/llvm-no-trap-behavior

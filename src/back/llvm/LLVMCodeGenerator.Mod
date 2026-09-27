@@ -1123,8 +1123,8 @@ MODULE LLVMCodeGenerator;
      Two places hold one:
 
        a formal parameter   the data pointer, then the lengths as hidden
-                            arguments right after it ("%a", "%a.len0",
-                            "%a.len1" - the way a VAR record parameter
+                            arguments right after it ("%p.a", "%p.a.len0",
+                            "%p.a.len1" - the way a VAR record parameter
                             carries its tag). A value parameter is copied
                             into the callee's own frame on entry, so the
                             caller's array is never touched through it.
@@ -3089,7 +3089,7 @@ MODULE LLVMCodeGenerator;
   (* PLAN.md Phase 9 step 6: a VAR parameter of record type is passed as
      the record's address *and* the address of its run-time type
      descriptor - a second, hidden argument right after it (named
-     "%<param>.tag" in the callee) - because the record the caller
+     "%p.<param>.tag" in the callee) - because the record the caller
      passed may be an extension of the parameter's declared type, and the
      callee needs the type it really is to dispatch a type-bound
      procedure on it or to test it. (voc does the same.) Applies to every
@@ -3120,6 +3120,18 @@ MODULE LLVMCodeGenerator;
   BEGIN
     COPY("%up.", text); AppendLongInt(text, k)
   END NeedParamName;
+
+  (* An ordinary parameter's (or a receiver's) value in the function:
+     "%p.<name>", its hidden tag "%p.<name>.tag" and lengths
+     "%p.<name>.len<d>". A function's parameters share one namespace with
+     its temporaries ("%t<n>") and its labels ("entry", "L<n>"), so the bare
+     name of a parameter called t1, entry or L2 would clash with one of them
+     (Phase 11 D18); no name the backend makes itself starts "p.", and no
+     Oberon identifier holds a dot. *)
+  PROCEDURE ParamName(name: ARRAY OF CHAR; VAR text: ARRAY OF CHAR);
+  BEGIN
+    COPY("%p.", text); Strcat(text, name)
+  END ParamName;
 
   PROCEDURE ParamLLVMType(VAR cg: Codegen; p: Types.Param; VAR llvmType: ARRAY OF CHAR);
   BEGIN
@@ -6359,14 +6371,14 @@ MODULE LLVMCodeGenerator;
     RETURN ~pd.isExternal & ~pd.isForward
   END HasBody;
 
-  (* "define <retType> <fnSymbol>(<formal LLVM types, named %<paramName>
+  (* "define <retType> <fnSymbol>(<formal LLVM types, named %p.<paramName>
      each>) {" plus the mandatory opening "entry:" label - mirrors
      EmitExternalDeclares' own signature-writing loop exactly (same
      ParamLLVMType-driven VAR/open-CHAR-array-as-"ptr" convention), just
      "define ... { entry:" instead of "declare ...;". *)
   PROCEDURE EmitProcSignature(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
                               receiver: SyntaxTree.ReceiverNode; needs: NestedProcedures.Need);
-    VAR retType, paramType: LongText; wordInt, hiddenName, dimText: ValueText; p: Types.Param; first: BOOLEAN;
+    VAR retType, paramType: LongText; wordInt, hiddenName, argName, dimText: ValueText; p: Types.Param; first: BOOLEAN;
         dim, k: INTEGER; need: NestedProcedures.Need;
   BEGIN
     WordIntType(wordInt);
@@ -6379,8 +6391,9 @@ MODULE LLVMCodeGenerator;
       (* the receiver is always the first parameter, a bare "ptr": the
          record's address for a VAR receiver (then followed by its hidden
          tag), the pointer for a pointer receiver *)
-      WriteStr(w, "ptr %"); WriteStr(w, receiver.name);
-      IF receiver.isVar THEN WriteStr(w, ", ptr %"); WriteStr(w, receiver.name); WriteStr(w, ".tag") END;
+      ParamName(receiver.name, argName);
+      WriteStr(w, "ptr "); WriteStr(w, argName);
+      IF receiver.isVar THEN WriteStr(w, ", ptr "); WriteStr(w, argName); WriteStr(w, ".tag") END;
       first := FALSE
     END;
     p := pt.params;
@@ -6388,10 +6401,11 @@ MODULE LLVMCodeGenerator;
       IF ~first THEN WriteStr(w, ", ") END;
       first := FALSE;
       ParamLLVMType(cg, p, paramType);
-      WriteStr(w, paramType); WriteStr(w, " %"); WriteStr(w, p.name);
-      IF NeedsHiddenTag(p) THEN WriteStr(w, ", ptr %"); WriteStr(w, p.name); WriteStr(w, ".tag") END;
+      ParamName(p.name, argName);
+      WriteStr(w, paramType); WriteStr(w, " "); WriteStr(w, argName);
+      IF NeedsHiddenTag(p) THEN WriteStr(w, ", ptr "); WriteStr(w, argName); WriteStr(w, ".tag") END;
       FOR dim := 0 TO OpenDimCount(p.type) - 1 DO
-        WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " %"); WriteStr(w, p.name);
+        WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, argName);
         WriteStr(w, ".len"); dimText[0] := 0X; AppendLongInt(dimText, dim); WriteStr(w, dimText)
       END;
       p := p.next
@@ -6459,7 +6473,7 @@ MODULE LLVMCodeGenerator;
     p := pt.params;
     WHILE p # NIL DO
       obj := SymbolTable.FindLocal(bodyScope, p.name);
-      COPY("%", argName); Strcat(argName, p.name);
+      ParamName(p.name, argName);
       IF IsOpenArrayType(p.type) THEN
         (* the hidden lengths follow the pointer (EmitProcSignature) *)
         SetParamDope(dope, argName, OpenDimCount(p.type));
@@ -6508,7 +6522,7 @@ MODULE LLVMCodeGenerator;
     VAR obj: SymbolTable.Object; argName, tagName, addrText: ValueText;
   BEGIN
     obj := SymbolTable.FindLocal(bodyScope, receiver.name);
-    COPY("%", argName); Strcat(argName, receiver.name);
+    ParamName(receiver.name, argName);
     IF receiver.isVar THEN
       COPY(argName, tagName); Strcat(tagName, ".tag");
       BindLocalWithTag(cg, obj, argName, tagName)
@@ -6991,8 +7005,7 @@ MODULE LLVMCodeGenerator;
   END CollectInitRecords;
 
   (* Phase 11 D17: "define void @<Module>.<initPath>.$init(ptr %self)" for
-     the record of wanted (a parameter named "entry" would clash with the
-     entry block's label, inventory D18): its base type's procedure first, then each field
+     the record of wanted: its base type's procedure first, then each field
      of its own in order - a field with an initializer assigned its own
      copy of it, as an assignment would, in the scope the record was
      declared in (SemanticActions.CheckFieldInitializer allows only what can

@@ -94,36 +94,36 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define void @lib.ShapeDesc.Draw(ptr %s) {
+define void @lib.ShapeDesc.Draw(ptr %p.s) {
 entry:
   %t1 = alloca ptr
-  store ptr %s, ptr %t1
+  store ptr %p.s, ptr %t1
   ret void
 }
 
-define void @lib.ShapeDesc.Audit(ptr %s) {
+define void @lib.ShapeDesc.Audit(ptr %p.s) {
 entry:
   %t2 = alloca ptr
-  store ptr %s, ptr %t2
+  store ptr %p.s, ptr %t2
   ret void
 }
 
-define i16 @lib.ShapeDesc.Area(ptr %s, i16 %scale) {
+define i16 @lib.ShapeDesc.Area(ptr %p.s, i16 %p.scale) {
 entry:
   %t3 = alloca ptr
-  store ptr %s, ptr %t3
+  store ptr %p.s, ptr %t3
   %t4 = alloca i16
-  store i16 %scale, ptr %t4
+  store i16 %p.scale, ptr %t4
   %t5 = load i16, ptr %t4
   ret i16 %t5
 L1:
   ret i16 0
 }
 
-define void @lib.PrivDesc.Reset(ptr %p) {
+define void @lib.PrivDesc.Reset(ptr %p.p) {
 entry:
   %t6 = alloca ptr
-  store ptr %p, ptr %t6
+  store ptr %p.p, ptr %t6
   ret void
 }
 
@@ -137,10 +137,10 @@ L2:
   ret ptr null
 }
 
-define void @client.CircleDesc.Draw(ptr %c) {
+define void @client.CircleDesc.Draw(ptr %p.c) {
 entry:
   %t9 = alloca ptr
-  store ptr %c, ptr %t9
+  store ptr %p.c, ptr %t9
   %t10 = load ptr, ptr %t9
   %t11 = icmp eq ptr %t10, null
   br i1 %t11, label %L3, label %L4
@@ -155,19 +155,19 @@ L4:
   ret void
 }
 
-define void @client.CircleDesc.Audit(ptr %c, i16 %x) {
+define void @client.CircleDesc.Audit(ptr %p.c, i16 %p.x) {
 entry:
   %t14 = alloca ptr
-  store ptr %c, ptr %t14
+  store ptr %p.c, ptr %t14
   %t15 = alloca i16
-  store i16 %x, ptr %t15
+  store i16 %p.x, ptr %t15
   ret void
 }
 
-define void @client.CircleDesc.Extra(ptr %c) {
+define void @client.CircleDesc.Extra(ptr %p.c) {
 entry:
   %t16 = alloca ptr
-  store ptr %c, ptr %t16
+  store ptr %p.c, ptr %t16
   ret void
 }
 
@@ -291,36 +291,36 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define void @lib.ShapeDesc.Draw(ptr %s) {
+define void @lib.ShapeDesc.Draw(ptr %p.s) {
 entry:
   %t1 = alloca ptr
-  store ptr %s, ptr %t1
+  store ptr %p.s, ptr %t1
   ret void
 }
 
-define void @lib.ShapeDesc.Audit(ptr %s) {
+define void @lib.ShapeDesc.Audit(ptr %p.s) {
 entry:
   %t2 = alloca ptr
-  store ptr %s, ptr %t2
+  store ptr %p.s, ptr %t2
   ret void
 }
 
-define i16 @lib.ShapeDesc.Area(ptr %s, i16 %scale) {
+define i16 @lib.ShapeDesc.Area(ptr %p.s, i16 %p.scale) {
 entry:
   %t3 = alloca ptr
-  store ptr %s, ptr %t3
+  store ptr %p.s, ptr %t3
   %t4 = alloca i16
-  store i16 %scale, ptr %t4
+  store i16 %p.scale, ptr %t4
   %t5 = load i16, ptr %t4
   ret i16 %t5
 L1:
   ret i16 0
 }
 
-define void @lib.PrivDesc.Reset(ptr %p) {
+define void @lib.PrivDesc.Reset(ptr %p.p) {
 entry:
   %t6 = alloca ptr
-  store ptr %p, ptr %t6
+  store ptr %p.p, ptr %t6
   ret void
 }
 
@@ -334,10 +334,10 @@ L2:
   ret ptr null
 }
 
-define void @client.CircleDesc.Draw(ptr %c) {
+define void @client.CircleDesc.Draw(ptr %p.c) {
 entry:
   %t9 = alloca ptr
-  store ptr %c, ptr %t9
+  store ptr %p.c, ptr %t9
   %t10 = load ptr, ptr %t9
   %t11 = icmp eq ptr %t10, null
   br i1 %t11, label %L3, label %L4
@@ -352,19 +352,19 @@ L4:
   ret void
 }
 
-define void @client.CircleDesc.Audit(ptr %c, i16 %x) {
+define void @client.CircleDesc.Audit(ptr %p.c, i16 %p.x) {
 entry:
   %t14 = alloca ptr
-  store ptr %c, ptr %t14
+  store ptr %p.c, ptr %t14
   %t15 = alloca i16
-  store i16 %x, ptr %t15
+  store i16 %p.x, ptr %t15
   ret void
 }
 
-define void @client.CircleDesc.Extra(ptr %c) {
+define void @client.CircleDesc.Extra(ptr %p.c) {
 entry:
   %t16 = alloca ptr
-  store ptr %c, ptr %t16
+  store ptr %p.c, ptr %t16
   ret void
 }
 

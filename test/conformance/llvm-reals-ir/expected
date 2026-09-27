@@ -10,14 +10,14 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define double @realsir.Forms(float %a, double %b, i16 %n) {
+define double @realsir.Forms(float %p.a, double %p.b, i16 %p.n) {
 entry:
   %t1 = alloca float
-  store float %a, ptr %t1
+  store float %p.a, ptr %t1
   %t2 = alloca double
-  store double %b, ptr %t2
+  store double %p.b, ptr %t2
   %t3 = alloca i16
-  store i16 %n, ptr %t3
+  store i16 %p.n, ptr %t3
   %t4 = alloca double
   store double zeroinitializer, ptr %t4
   %t5 = load float, ptr %t1
@@ -185,14 +185,14 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define double @realsir.Forms(float %a, double %b, i16 %n) {
+define double @realsir.Forms(float %p.a, double %p.b, i16 %p.n) {
 entry:
   %t1 = alloca float
-  store float %a, ptr %t1
+  store float %p.a, ptr %t1
   %t2 = alloca double
-  store double %b, ptr %t2
+  store double %p.b, ptr %t2
   %t3 = alloca i16
-  store i16 %n, ptr %t3
+  store i16 %p.n, ptr %t3
   %t4 = alloca double
   store double zeroinitializer, ptr %t4
   %t5 = load float, ptr %t1

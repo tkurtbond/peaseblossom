@@ -22,12 +22,12 @@
 @ptrir.WideDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @ptrir.WideDesc.tdesc, i32 0)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
-define i16 @ptrir.Fill(ptr %n, ptr %w) {
+define i16 @ptrir.Fill(ptr %p.n, ptr %p.w) {
 entry:
   %tN = alloca ptr
-  store ptr %n, ptr %tN
+  store ptr %p.n, ptr %tN
   %tN = alloca ptr
-  store ptr %w, ptr %tN
+  store ptr %p.w, ptr %tN
   %tN = alloca ptr
   store ptr zeroinitializer, ptr %tN
   %tN = alloca i16
@@ -260,12 +260,12 @@ clang accepted i686-unknown-linux-gnu
 @ptrir.WideDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @ptrir.WideDesc.tdesc, i32 0)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
-define i16 @ptrir.Fill(ptr %n, ptr %w) {
+define i16 @ptrir.Fill(ptr %p.n, ptr %p.w) {
 entry:
   %tN = alloca ptr
-  store ptr %n, ptr %tN
+  store ptr %p.n, ptr %tN
   %tN = alloca ptr
-  store ptr %w, ptr %tN
+  store ptr %p.w, ptr %tN
   %tN = alloca ptr
   store ptr zeroinitializer, ptr %tN
   %tN = alloca i16

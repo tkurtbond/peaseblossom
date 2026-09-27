@@ -42,10 +42,10 @@
 @boundir.Point3.tag = alias ptr, getelementptr inbounds (i8, ptr @boundir.Point3.tdesc, i32 4)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
-define i16 @boundir.ShapeDesc.Area(ptr %s) {
+define i16 @boundir.ShapeDesc.Area(ptr %p.s) {
 entry:
   %tN = alloca ptr
-  store ptr %s, ptr %tN
+  store ptr %p.s, ptr %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
@@ -60,10 +60,10 @@ LN:
 LN:
   ret i16 0
 }
-define i16 @boundir.CircleDesc.Area(ptr %s) {
+define i16 @boundir.CircleDesc.Area(ptr %p.s) {
 entry:
   %tN = alloca ptr
-  store ptr %s, ptr %tN
+  store ptr %p.s, ptr %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
@@ -88,46 +88,46 @@ LN:
 LN:
   ret i16 0
 }
-define i16 @boundir.Point.Sum(ptr %p, ptr %p.tag) {
+define i16 @boundir.Point.Sum(ptr %p.p, ptr %p.p.tag) {
 entry:
-  %tN = getelementptr %boundir.Point, ptr %p, i32 0, i32 0
+  %tN = getelementptr %boundir.Point, ptr %p.p, i32 0, i32 0
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
   ret i16 0
 }
-define i16 @boundir.Point3.Sum(ptr %p, ptr %p.tag) {
+define i16 @boundir.Point3.Sum(ptr %p.p, ptr %p.p.tag) {
 entry:
-  %tN = call i16 @boundir.Point.Sum(ptr %p, ptr %p.tag)
-  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
+  %tN = call i16 @boundir.Point.Sum(ptr %p.p, ptr %p.p.tag)
+  %tN = getelementptr %boundir.Point3, ptr %p.p, i32 0, i32 1
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
   ret i16 0
 }
-define i16 @boundir.Relay(ptr %p, ptr %p.tag) {
+define i16 @boundir.Relay(ptr %p.p, ptr %p.p.tag) {
 entry:
   %tN = alloca i16
   store i16 zeroinitializer, ptr %tN
   %tN = sext i8 0 to i16
   store i16 %tN, ptr %tN
-  %tN = getelementptr i8, ptr %p.tag, i32 4
+  %tN = getelementptr i8, ptr %p.p.tag, i32 4
   %tN = load i32, ptr %tN
   %tN = icmp sge i32 %tN, 1
   %tN = select i1 %tN, i32 16, i32 12
-  %tN = getelementptr i8, ptr %p.tag, i32 %tN
+  %tN = getelementptr i8, ptr %p.p.tag, i32 %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, @boundir.Point3.tag
   %tN = zext i1 %tN to i8
   %tN = icmp ne i8 %tN, 0
   br i1 %tN, label %LN, label %LN
 LN:
-  %tN = getelementptr i8, ptr %p.tag, i32 4
+  %tN = getelementptr i8, ptr %p.p.tag, i32 4
   %tN = load i32, ptr %tN
   %tN = icmp sge i32 %tN, 1
   %tN = select i1 %tN, i32 16, i32 12
-  %tN = getelementptr i8, ptr %p.tag, i32 %tN
+  %tN = getelementptr i8, ptr %p.p.tag, i32 %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, @boundir.Point3.tag
   br i1 %tN, label %LN, label %LN
@@ -136,24 +136,24 @@ LN:
   call void @exit(i32 5)
   unreachable
 LN:
-  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
+  %tN = getelementptr %boundir.Point3, ptr %p.p, i32 0, i32 1
   %tN = load i16, ptr %tN
   store i16 %tN, ptr %tN
   br label %LN
 LN:
   br label %LN
 LN:
-  %tN = getelementptr i8, ptr %p.tag, i32 4
+  %tN = getelementptr i8, ptr %p.p.tag, i32 4
   %tN = load i32, ptr %tN
   %tN = icmp sge i32 %tN, 1
   %tN = select i1 %tN, i32 16, i32 12
-  %tN = getelementptr i8, ptr %p.tag, i32 %tN
+  %tN = getelementptr i8, ptr %p.p.tag, i32 %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, @boundir.Point3.tag
   br i1 %tN, label %LN, label %LN
 LN:
   %tN = load i16, ptr %tN
-  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
+  %tN = getelementptr %boundir.Point3, ptr %p.p, i32 0, i32 1
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   store i16 %tN, ptr %tN
@@ -163,9 +163,9 @@ LN:
   call void @exit(i32 6)
   unreachable
 LN:
-  %tN = getelementptr i8, ptr %p.tag, i32 -4
+  %tN = getelementptr i8, ptr %p.p.tag, i32 -4
   %tN = load ptr, ptr %tN
-  %tN = call i16 %tN(ptr %p, ptr %p.tag)
+  %tN = call i16 %tN(ptr %p.p, ptr %p.p.tag)
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   ret i16 %tN
@@ -266,10 +266,10 @@ clang accepted i686-unknown-linux-gnu
 @boundir.Point3.tag = alias ptr, getelementptr inbounds (i8, ptr @boundir.Point3.tdesc, i32 8)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
-define i16 @boundir.ShapeDesc.Area(ptr %s) {
+define i16 @boundir.ShapeDesc.Area(ptr %p.s) {
 entry:
   %tN = alloca ptr
-  store ptr %s, ptr %tN
+  store ptr %p.s, ptr %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
@@ -284,10 +284,10 @@ LN:
 LN:
   ret i16 0
 }
-define i16 @boundir.CircleDesc.Area(ptr %s) {
+define i16 @boundir.CircleDesc.Area(ptr %p.s) {
 entry:
   %tN = alloca ptr
-  store ptr %s, ptr %tN
+  store ptr %p.s, ptr %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
@@ -312,46 +312,46 @@ LN:
 LN:
   ret i16 0
 }
-define i16 @boundir.Point.Sum(ptr %p, ptr %p.tag) {
+define i16 @boundir.Point.Sum(ptr %p.p, ptr %p.p.tag) {
 entry:
-  %tN = getelementptr %boundir.Point, ptr %p, i32 0, i32 0
+  %tN = getelementptr %boundir.Point, ptr %p.p, i32 0, i32 0
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
   ret i16 0
 }
-define i16 @boundir.Point3.Sum(ptr %p, ptr %p.tag) {
+define i16 @boundir.Point3.Sum(ptr %p.p, ptr %p.p.tag) {
 entry:
-  %tN = call i16 @boundir.Point.Sum(ptr %p, ptr %p.tag)
-  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
+  %tN = call i16 @boundir.Point.Sum(ptr %p.p, ptr %p.p.tag)
+  %tN = getelementptr %boundir.Point3, ptr %p.p, i32 0, i32 1
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
   ret i16 0
 }
-define i16 @boundir.Relay(ptr %p, ptr %p.tag) {
+define i16 @boundir.Relay(ptr %p.p, ptr %p.p.tag) {
 entry:
   %tN = alloca i16
   store i16 zeroinitializer, ptr %tN
   %tN = sext i8 0 to i16
   store i16 %tN, ptr %tN
-  %tN = getelementptr i8, ptr %p.tag, i32 8
+  %tN = getelementptr i8, ptr %p.p.tag, i32 8
   %tN = load i64, ptr %tN
   %tN = icmp sge i64 %tN, 1
   %tN = select i1 %tN, i32 32, i32 24
-  %tN = getelementptr i8, ptr %p.tag, i32 %tN
+  %tN = getelementptr i8, ptr %p.p.tag, i32 %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, @boundir.Point3.tag
   %tN = zext i1 %tN to i8
   %tN = icmp ne i8 %tN, 0
   br i1 %tN, label %LN, label %LN
 LN:
-  %tN = getelementptr i8, ptr %p.tag, i32 8
+  %tN = getelementptr i8, ptr %p.p.tag, i32 8
   %tN = load i64, ptr %tN
   %tN = icmp sge i64 %tN, 1
   %tN = select i1 %tN, i32 32, i32 24
-  %tN = getelementptr i8, ptr %p.tag, i32 %tN
+  %tN = getelementptr i8, ptr %p.p.tag, i32 %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, @boundir.Point3.tag
   br i1 %tN, label %LN, label %LN
@@ -360,24 +360,24 @@ LN:
   call void @exit(i32 5)
   unreachable
 LN:
-  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
+  %tN = getelementptr %boundir.Point3, ptr %p.p, i32 0, i32 1
   %tN = load i16, ptr %tN
   store i16 %tN, ptr %tN
   br label %LN
 LN:
   br label %LN
 LN:
-  %tN = getelementptr i8, ptr %p.tag, i32 8
+  %tN = getelementptr i8, ptr %p.p.tag, i32 8
   %tN = load i64, ptr %tN
   %tN = icmp sge i64 %tN, 1
   %tN = select i1 %tN, i32 32, i32 24
-  %tN = getelementptr i8, ptr %p.tag, i32 %tN
+  %tN = getelementptr i8, ptr %p.p.tag, i32 %tN
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, @boundir.Point3.tag
   br i1 %tN, label %LN, label %LN
 LN:
   %tN = load i16, ptr %tN
-  %tN = getelementptr %boundir.Point3, ptr %p, i32 0, i32 1
+  %tN = getelementptr %boundir.Point3, ptr %p.p, i32 0, i32 1
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   store i16 %tN, ptr %tN
@@ -387,9 +387,9 @@ LN:
   call void @exit(i32 6)
   unreachable
 LN:
-  %tN = getelementptr i8, ptr %p.tag, i32 -8
+  %tN = getelementptr i8, ptr %p.p.tag, i32 -8
   %tN = load ptr, ptr %tN
-  %tN = call i16 %tN(ptr %p, ptr %p.tag)
+  %tN = call i16 %tN(ptr %p.p, ptr %p.p.tag)
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   ret i16 %tN

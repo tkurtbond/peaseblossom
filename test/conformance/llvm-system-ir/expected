@@ -81,18 +81,18 @@ declare void @exit(i32)
 @.str.system.L130.C29 = private unnamed_addr constant [9 x i8] c"FAIL 34 \00"
 @.str.system.L131.C15 = private unnamed_addr constant [3 x i8] c"OK\00"
 
-define i32 @system.AddressOf(ptr %v) {
+define i32 @system.AddressOf(ptr %p.v) {
 entry:
-  %t1 = ptrtoint ptr %v to i32
+  %t1 = ptrtoint ptr %p.v to i32
   ret i32 %t1
 L1:
   ret i32 0
 }
 
-define void @system.Bump(i32 %a) {
+define void @system.Bump(i32 %p.a) {
 entry:
   %t2 = alloca i32
-  store i32 %a, ptr %t2
+  store i32 %p.a, ptr %t2
   %t3 = alloca i16
   store i16 zeroinitializer, ptr %t3
   %t4 = load i32, ptr %t2
@@ -1367,18 +1367,18 @@ declare void @exit(i32)
 @.str.system.L130.C29 = private unnamed_addr constant [9 x i8] c"FAIL 34 \00"
 @.str.system.L131.C15 = private unnamed_addr constant [3 x i8] c"OK\00"
 
-define i64 @system.AddressOf(ptr %v) {
+define i64 @system.AddressOf(ptr %p.v) {
 entry:
-  %t1 = ptrtoint ptr %v to i64
+  %t1 = ptrtoint ptr %p.v to i64
   ret i64 %t1
 L1:
   ret i64 0
 }
 
-define void @system.Bump(i64 %a) {
+define void @system.Bump(i64 %p.a) {
 entry:
   %t2 = alloca i64
-  store i64 %a, ptr %t2
+  store i64 %p.a, ptr %t2
   %t3 = alloca i16
   store i16 zeroinitializer, ptr %t3
   %t4 = load i64, ptr %t2
