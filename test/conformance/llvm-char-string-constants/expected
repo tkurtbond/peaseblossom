@@ -1,0 +1,17 @@
+semantic OK, wrote llvm-char-string-constants
+T T F T F T T 
+x x x x  120 120
+case s
+[A] 8
+[B] 8
+[] 8
+[] 8
+[A] 2
+[A] 2
+[B] 2
+[] 1
+[A] 8
+[B] 8
+T T F T T T T F T F 
+T F T 
+T T T 

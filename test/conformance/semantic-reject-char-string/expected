@@ -1,0 +1,12 @@
+charstring.mod:12:3: error: assignment is not type-compatible
+charstring.mod:13:5: error: argument is not array compatible with the open-array parameter
+charstring.mod:14:8: error: operands are not comparable
+charstring.mod:15:3: error: COPY's first argument must be a character array or string
+charstring.mod:16:8: error: operands are not comparable
+charstring.mod:17:8: error: operands are not comparable
+charstring.mod:18:3: error: assignment is not type-compatible
+charstring.mod:19:3: error: assignment is not type-compatible
+charstring.mod:20:5: error: a VAR parameter requires a variable argument
+charstring.mod:21:8: error: LONG requires a SHORTINT, INTEGER, REAL, HUGEINT, or fixed-width integer argument
+charstring.mod:22:8: error: integer literal too large for HUGEINT
+11 error(s)

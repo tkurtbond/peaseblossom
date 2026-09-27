@@ -183,16 +183,43 @@ MODULE ConstantEvaluator;
     END
   END ParseDecimalInteger;
 
-  PROCEDURE ParseHexInteger(lexeme: ARRAY OF CHAR; VAR value: LONGINT; VAR overflow: BOOLEAN);
-    VAR i, digit: INTEGER;
+  (* A hexadecimal numeral's value. As in voc (OPS.Number), one of exactly
+     16 significant digits, the first above 7 - above MAX(HUGEINT) - is
+     the 64-bit two's-complement pattern it spells, a negative value
+     (wraps): 0FFFFFFFFD76AA478H is -680876936. Starting from -1, every
+     step stays in range. More significant digits than 16 overflow. *)
+  PROCEDURE ParseHexDigits(lexeme: ARRAY OF CHAR; VAR value: LONGINT; VAR overflow, wraps: BOOLEAN);
+    CONST patternDigits = 16;
+    VAR first, i, count: INTEGER;
   BEGIN
-    value := 0; overflow := FALSE; i := 0;
-    WHILE (lexeme[i] # 0X) & (lexeme[i] # "H") DO
-      digit := HexDigitValue(lexeme[i]);
-      IF value > (maxHugeInt - digit) DIV 16 THEN overflow := TRUE END;
-      value := value * 16 + digit; INC(i)
+    first := 0;
+    WHILE lexeme[first] = "0" DO INC(first) END;
+    count := 0;
+    WHILE (lexeme[first + count] # 0X) & (lexeme[first + count] # "H") DO INC(count) END;
+    overflow := count > patternDigits;
+    wraps := (count = patternDigits) & (HexDigitValue(lexeme[first]) > 7);
+    IF wraps THEN value := -1 ELSE value := 0 END;
+    IF ~overflow THEN
+      FOR i := first TO first + count - 1 DO value := value * 16 + HexDigitValue(lexeme[i]) END
     END
+  END ParseHexDigits;
+
+  PROCEDURE ParseHexInteger(lexeme: ARRAY OF CHAR; VAR value: LONGINT; VAR overflow: BOOLEAN);
+    VAR wraps: BOOLEAN;
+  BEGIN
+    ParseHexDigits(lexeme, value, overflow, wraps)
   END ParseHexInteger;
+
+  (* expr is a hexadecimal numeral above MAX(HUGEINT) taken as a negative
+     64-bit pattern (ParseHexDigits): poc's extension, from voc, which
+     -strict reports (SemanticActions.CheckLiteralExpr). *)
+  PROCEDURE IsWrappedHexLiteral*(expr: SyntaxTree.LiteralExprNode): BOOLEAN;
+    VAR value: LONGINT; overflow, wraps: BOOLEAN;
+  BEGIN
+    IF (expr.literalKind # Lexer.integer) OR ~expr.isHex THEN RETURN FALSE END;
+    ParseHexDigits(expr.lexeme, value, overflow, wraps);
+    RETURN wraps
+  END IsWrappedHexLiteral;
 
   (* The narrowest of SHORTINT/INTEGER/LONGINT/HUGEINT whose range, under
      the current -O2/-OC model, holds value - negative values included
@@ -1079,10 +1106,31 @@ MODULE ConstantEvaluator;
     RETURN result
   END EvaluateSetOp;
 
+  (* A CHAR constant as the string of that one character (0X as the empty
+     string), for comparing it with a string: Oberon2.pdf §3, "a string of
+     length 1 can be used wherever a character constant is allowed and
+     vice versa". *)
+  PROCEDURE CharAsString(v: Types.Value): Types.Value;
+    VAR result: Types.Value;
+  BEGIN
+    NEW(result); result.type := Types.String; result.kind := Types.stringValue;
+    result.stringVal[0] := v.charVal; result.stringVal[1] := 0X;
+    RETURN result
+  END CharAsString;
+
+  (* A CHAR compared with a string compares as a string of one character *)
+  PROCEDURE MatchCharWithString(VAR l, r: Types.Value);
+  BEGIN
+    IF (l.type = Types.Char) & (r.type = Types.String) THEN l := CharAsString(l)
+    ELSIF (l.type = Types.String) & (r.type = Types.Char) THEN r := CharAsString(r)
+    END
+  END MatchCharWithString;
+
   PROCEDURE EvaluateEquality(op: INTEGER; l, r: Types.Value;
                              line, column: INTEGER): Types.Value;
     VAR result: Types.Value; eq: BOOLEAN;
   BEGIN
+    MatchCharWithString(l, r);
     IF Types.IsNumeric(l.type) & Types.IsNumeric(r.type) THEN
       (* two integers compare as integers: as LONGREALs, values beyond
          2^53 would compare equal to a neighbor *)
@@ -1110,6 +1158,7 @@ MODULE ConstantEvaluator;
                           line, column: INTEGER): Types.Value;
     VAR result: Types.Value; lt, le, gt, ge: BOOLEAN;
   BEGIN
+    MatchCharWithString(l, r);
     IF Types.IsNumeric(l.type) & Types.IsNumeric(r.type) THEN
       IF (l.kind = Types.intValue) & (r.kind = Types.intValue) THEN
         lt := l.intVal < r.intVal; le := l.intVal <= r.intVal;
@@ -1369,6 +1418,29 @@ MODULE ConstantEvaluator;
   BEGIN
     RETURN IsConstant(expr, scope)
   END IsConstantExpr;
+
+  (* Oberon2.pdf §3: "a string of length 1 can be used wherever a
+     character constant is allowed and vice versa". expr is a constant
+     string of one character - a literal, a named constant, qualified or
+     not - so it can stand for a CHAR. *)
+  PROCEDURE IsSingleCharString*(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): BOOLEAN;
+    VAR v: Types.Value;
+  BEGIN
+    IF (expr = NIL) OR ~IsConstant(expr, scope) THEN RETURN FALSE END;
+    v := EvaluateExpr(expr, scope);
+    RETURN (v.type # Types.Undefined) & (v.kind = Types.stringValue)
+           & (v.stringVal[0] # 0X) & (v.stringVal[1] = 0X)
+  END IsSingleCharString;
+
+  (* The other way: expr is a constant CHAR, so it can stand for a string
+     of that one character (of none if it is 0X). *)
+  PROCEDURE IsCharConstant*(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): BOOLEAN;
+    VAR v: Types.Value;
+  BEGIN
+    IF (expr = NIL) OR ~IsConstant(expr, scope) THEN RETURN FALSE END;
+    v := EvaluateExpr(expr, scope);
+    RETURN (v.type # Types.Undefined) & (v.kind = Types.charValue)
+  END IsCharConstant;
 
   (* The sole exported entry point; kept a thin wrapper around the
      forward-declared EvaluateExpr so that name, not this one, carries the

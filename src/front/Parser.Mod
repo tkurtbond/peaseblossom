@@ -1134,7 +1134,13 @@ MODULE Parser;
     statements := WithInitializers(declarations, statements);
     ExpectToken(p, Lexer.endKeyword, "expected 'END'");
     ExpectIdent(p, endName);
-    ExpectToken(p, Lexer.period, "expected '.'");
+    (* The module ends at its period, and nothing after it is read: an
+       Oberon system text keeps its fonts and other data there (s3's
+       ethUnicode.Mod), and Oberon compilers, voc among them, stop at
+       the period. *)
+    IF p.current.kind # Lexer.period THEN
+      Diagnostics.Error(p.current.line, p.current.column, "expected '.'")
+    END;
     IF endName # name THEN
       Diagnostics.Error(line, column, "module END identifier does not match its name")
     END;

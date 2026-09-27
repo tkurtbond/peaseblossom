@@ -1,0 +1,4 @@
+unresolved-base.mod:7:10: error: unknown imported module
+unresolved-base.mod:7:10: note: no NoSuchModule.sym in the current directory (the import path is empty)
+unresolved-base.mod:16:4: error: undeclared field or type-bound procedure
+2 error(s)

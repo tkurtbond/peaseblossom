@@ -981,7 +981,9 @@ Each use is an error, "<construct> is not in the Oberon-2 report (-strict)"
   goes past `LONGINT` - so it depends on the size model), and a set constant or
   constructor element above `MAX(SET)`;
 - `ORD` of a set;
-- comparing a `SYSTEM.PTR` with a pointer of another type.
+- comparing a `SYSTEM.PTR` with a pointer of another type;
+- a hexadecimal constant above `MAX(HUGEINT)`, taken as a 64-bit pattern
+  (since 2026-09-27, "Hexadecimal constants as 64-bit patterns" below).
 
 Not on the list, because they change what a legal program *does*, not which
 programs are legal: overflow wrapping, the `ENTIER` trap, `ADR`'s result being
@@ -1111,3 +1113,33 @@ contain a `-`, which no identifier can, so a user's name never matches one
 with the backend's first anonymous record). Modules may have such names too
 (`Ss$Def.mod`, `Ss$Def.sym`); on Unix a `$` in a file name needs quoting in
 the shell.
+
+## Hexadecimal constants as 64-bit patterns (decided and implemented, Phase 12 step 3, 2026-09-27)
+
+A hexadecimal constant of exactly 16 significant digits (leading zeros do
+not count), the first above 7, is above `MAX(HUGEINT)`. poc takes it as the
+64-bit two's-complement pattern it spells, a negative value, as voc does
+(`OPS.Number`): `0FFFFFFFFD76AA478H` is -680876936, `0FFFFFFFFFFFFFFFFH`
+is -1 and `8000000000000000H` is `MIN(HUGEINT)`. The value then takes the
+minimal type it fits, like any integer constant: -680876936 is a `LONGINT`
+under both size models, so `l + 0FFFFFFFFD76AA478H` stays `LONGINT`
+arithmetic. That is how s3's `ethMD5` writes its 32-bit constants. A
+constant of fewer digits keeps its value (`0FFFFFFFFH` is 4294967295),
+and one of more than 16 is an error, "integer literal too large for
+HUGEINT". A decimal constant above `MAX(HUGEINT)` is always an error.
+`-strict` rejects the pattern form: "a hexadecimal constant above
+MAX(HUGEINT), taken as a 64-bit pattern is not in the Oberon-2 report
+(-strict)". Found by the inventory of voc's modules
+(`doc/voc-module-inventory.md`); decided with the user. Fixtures
+`llvm-hex-pattern-literals` and `semantic-strict`.
+
+## Text after the module's end (decided and implemented, Phase 12 step 3, 2026-09-27)
+
+A module ends at the period after `END M`, and poc reads nothing after
+it. The report's syntax ends there and says nothing of what follows. A
+module kept as an Oberon system text carries its fonts and other data
+after the period (s3's `ethUnicode.Mod`), and Oberon compilers, voc
+among them, stop at the period. Until then poc lexed on and reported the
+first character it could not read. Not an extension, so `-strict` does
+not report it. Fixture `llvm-char-string-constants`.
+

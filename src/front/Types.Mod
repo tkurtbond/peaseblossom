@@ -415,6 +415,26 @@ MODULE Types;
      never the base chain, so this is genuinely new rather than a rename
      of something AddField already did. NIL if name is not a field of
      rec or any of its bases. *)
+  (* rec's base type, or NIL when it has none or it is not a record: a
+     base that did not resolve (a type of a module that could not be
+     imported) is Undefined, reported where it was named *)
+  PROCEDURE BaseRecord*(rec: RecordType): RecordType;
+  BEGIN
+    IF (rec.baseType # NIL) & (rec.baseType IS RecordType) THEN RETURN rec.baseType(RecordType) END;
+    RETURN NIL
+  END BaseRecord;
+
+  (* Whether a base of rec, or of one of its bases, did not resolve: a
+     field or type-bound procedure it lacks may be that base's *)
+  PROCEDURE HasUnresolvedBase*(rec: RecordType): BOOLEAN;
+  BEGIN
+    WHILE (rec # NIL) & (rec.baseType # NIL) DO
+      IF ~(rec.baseType IS RecordType) THEN RETURN TRUE END;
+      rec := rec.baseType(RecordType)
+    END;
+    RETURN FALSE
+  END HasUnresolvedBase;
+
   PROCEDURE FindField*(rec: RecordType; name: SyntaxTree.Ident): Field;
     VAR f: Field;
   BEGIN
@@ -422,8 +442,7 @@ MODULE Types;
     f := rec.fields;
     WHILE (f # NIL) & (f.name # name) DO f := f.next END;
     IF f # NIL THEN RETURN f
-    ELSIF rec.baseType # NIL THEN RETURN FindField(rec.baseType(RecordType), name)
-    ELSE RETURN NIL
+    ELSE RETURN FindField(BaseRecord(rec), name)
     END
   END FindField;
 
@@ -476,8 +495,7 @@ MODULE Types;
     m := rec.methods;
     WHILE (m # NIL) & (m.name # name) DO m := m.next END;
     IF m # NIL THEN RETURN m
-    ELSIF rec.baseType # NIL THEN RETURN FindMethod(rec.baseType(RecordType), name)
-    ELSE RETURN NIL
+    ELSE RETURN FindMethod(BaseRecord(rec), name)
     END
   END FindMethod;
 
@@ -515,7 +533,7 @@ MODULE Types;
     WHILE r # NIL DO
       m := FindOwnMethod(r, name);
       IF (m # NIL) & (m.exported OR (r.moduleName = fromModule)) THEN RETURN m END;
-      IF r.baseType = NIL THEN r := NIL ELSE r := r.baseType(RecordType) END
+      r := BaseRecord(r)
     END;
     RETURN NIL
   END FindOverridable;
@@ -531,7 +549,7 @@ MODULE Types;
       f := r.fields;
       WHILE (f # NIL) & (f # field) DO f := f.next END;
       IF f # NIL THEN RETURN r END;
-      IF r.baseType = NIL THEN r := NIL ELSE r := r.baseType(RecordType) END
+      r := BaseRecord(r)
     END;
     RETURN NIL
   END FieldOwner;
@@ -545,7 +563,7 @@ MODULE Types;
       m := r.methods;
       WHILE (m # NIL) & (m # method) DO m := m.next END;
       IF m # NIL THEN RETURN r END;
-      IF r.baseType = NIL THEN r := NIL ELSE r := r.baseType(RecordType) END
+      r := BaseRecord(r)
     END;
     RETURN NIL
   END MethodOwner;

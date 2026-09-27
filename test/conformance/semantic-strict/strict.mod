@@ -7,6 +7,7 @@ MODULE strict;
   CONST
     big = 10000000000;
     wide = {0, 40};
+    pattern = 0FFFFFFFFFFFFFFFFH;
   TYPE
     H = HUGEINT;
     A = SYSTEM.ADDRESS;
@@ -36,5 +37,6 @@ BEGIN
   b := any = p;
   h := 100000 * 100000;
   b := 3 IN {i, 40};
-  h := MAX(HUGEINT)
+  h := MAX(HUGEINT);
+  l := 0FFFFFFFFD76AA478H + l
 END strict.

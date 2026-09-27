@@ -1461,7 +1461,9 @@ convenient, but must not be a prerequisite of it.
    Its failures are messages: a library whose needed `poc-rtl` is not on
    the path (the notes say so), and a `.sym` that does not match its
    library's manifest. `llvm-lto` had no comparison with its golden
-   (`testresult.sh` missing), now fixed.
+   (`testresult.sh` missing), now fixed. rackhir (FreeBSD arm64) ran
+   `gmake check` on `6285c40`, which has every step 2 commit through 2g:
+   295/295 under Stage 0 and Stage 1, Stage 1 and Stage 2 identical.
 
 3. **A complete inventory of the libraries and modules voc supplies.**
    From the sources, not from memory: enumerate every module under the
@@ -1485,7 +1487,27 @@ convenient, but must not be a prerequisite of it.
    its licence, since poc cannot ship what it cannot legally ship. The
    result is a table kept as a file the plan names, not prose - the
    *complete* list the plan has been missing, with `ulm` and `v4`
-   (not yet looked at at all) filled in like the rest.
+   (not yet looked at at all) filled in like the rest. *Done
+   2026-09-27*: `doc/voc-module-inventory.md`, all 161 files, with for
+   each what voc builds (its `-OC` library is the runtime only), what
+   poc's front end makes of it today (`poc -emit-interface` in import
+   order against poc-rtl's interfaces: 23 accepted, 34 after the
+   language fixes below), and the findings
+   step 4 starts from. Most of the library stops on what poc's
+   `Platform`, `Files` and `Modules` lack; ten modules hold voc's inline
+   C; s3's zlib is Oberon, not C; and six language points came up, among
+   them a conformance bug (a one-character string constant compared
+   with a `CHAR`, and a character constant used as a string, `Oberon2.pdf`
+   §3). A trap in the checker on a record whose base came from a module
+   that could not be imported was fixed on the way
+   (`semantic-reject-unresolved-record-base`). The user's decisions on
+   the language points (2026-09-27): the §3 rule fixed both ways; text
+   after `END M.` ignored; a 16-digit hexadecimal constant above
+   `MAX(HUGEINT)` taken as a 64-bit pattern, as voc does, unless
+   `-strict`; `LONG` of a `CHAR` stays an error. `POINTER [1] TO` and a
+   function with an empty body are open. `tools/voc-inventory/
+   inventory` regenerates the tables (to rerun when poc's runtime or
+   front end changes what they say).
 
 4. **Deciding what poc supports.** Using step 3's table, sort every
    module into: already covered by Phase 10; wanted, with a priority;
@@ -1493,8 +1515,9 @@ convenient, but must not be a prerequisite of it.
    a program written against voc (the existing Oberon-2 corpus poc should
    be able to compile); whether it can be written portably to all four
    Unix-likes (no Linux-only syscalls, no library the BSDs lack); whether
-   it needs an external C library poc would then have to link
-   (zlib for `ethGZReaders`/`ethZip`, X11 for `oocX11`/`oocXYplane`); how
+   it needs an external C library poc would then have to link (X11 for
+   `oocX11`/`oocXYplane`; `ethGZReaders`/`ethZip` turned out to need none,
+   step 3); how
    much of the module is really the host Oberon *system* (`Oberon`, `Texts`
    rely on it) and so would need a substitute; and the cost. Record the
    decisions, and the ones deliberately left open, in `PLAN.md`'s open

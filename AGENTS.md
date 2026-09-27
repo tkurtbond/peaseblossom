@@ -490,6 +490,17 @@ Both, anywhere a letter may be, first included, for VMS names such as
 STARLET. `-strict` rejects them. The backend's own names contain `-` so they
 never match a user's.
 
+### Hexadecimal constants as 64-bit patterns (decided and implemented, Phase 12 step 3, 2026-09-27)
+
+As in voc: a hexadecimal constant of 16 significant digits, the first above
+7, is the negative 64-bit value it spells (`0FFFFFFFFD76AA478H` is
+-680876936, a `LONGINT`). More digits is an error. `-strict` rejects it.
+
+### Text after the module's end (decided and implemented, Phase 12 step 3, 2026-09-27)
+
+poc reads nothing after the period of `END M.`, as Oberon compilers do: an
+Oberon system text keeps its fonts there. Not an extension.
+
 ## Project state
 
 Phases 0-11 of `PLAN.md` are complete: poc compiles itself through the LLVM

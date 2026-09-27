@@ -720,10 +720,45 @@ MODULE SemanticActions;
      order) could never support regardless of source order - confirmed
      against real voc, which resolves CONST/TYPE/VAR in one linear
      textual-order pass, not three separate section-wide ones. *)
+  (* -strict: a hexadecimal constant above MAX(HUGEINT) taken as a 64-bit
+     pattern (ConstantEvaluator.IsWrappedHexLiteral) in a CONST's value,
+     which is folded, not checked by CheckLiteralExpr *)
+  PROCEDURE ReportWrappedHexLiterals(expr: SyntaxTree.ExprNode);
+    VAR
+      literal: SyntaxTree.LiteralExprNode; binary: SyntaxTree.BinaryExprNode;
+      element: SyntaxTree.SetElementNode; arg: SyntaxTree.ExprNode;
+  BEGIN
+    (* type tests, not WITH: voc miscompiles a call of the procedure
+       itself inside its own WITH (doc/voc-bugs/with-self-recursion) *)
+    IF expr = NIL THEN
+    ELSIF expr IS SyntaxTree.LiteralExprNode THEN
+      literal := expr(SyntaxTree.LiteralExprNode);
+      IF ConstantEvaluator.IsWrappedHexLiteral(literal) THEN
+        Diagnostics.NotInReport(literal.line, literal.column,
+          "a hexadecimal constant above MAX(HUGEINT), taken as a 64-bit pattern")
+      END
+    ELSIF expr IS SyntaxTree.UnaryExprNode THEN
+      ReportWrappedHexLiterals(expr(SyntaxTree.UnaryExprNode).operand)
+    ELSIF expr IS SyntaxTree.BinaryExprNode THEN
+      binary := expr(SyntaxTree.BinaryExprNode);
+      ReportWrappedHexLiterals(binary.left); ReportWrappedHexLiterals(binary.right)
+    ELSIF expr IS SyntaxTree.DesignatorExprNode THEN
+      arg := expr(SyntaxTree.DesignatorExprNode).args;
+      WHILE arg # NIL DO ReportWrappedHexLiterals(arg); arg := arg.next END
+    ELSIF expr IS SyntaxTree.SetExprNode THEN
+      element := expr(SyntaxTree.SetExprNode).elements;
+      WHILE element # NIL DO
+        ReportWrappedHexLiterals(element.low); ReportWrappedHexLiterals(element.high);
+        element := element.next
+      END
+    END
+  END ReportWrappedHexLiterals;
+
   PROCEDURE ResolveOneConstDecl(d: SyntaxTree.ConstDeclNode; scope: SymbolTable.Scope);
     VAR v: Types.Value; obj: SymbolTable.Object;
   BEGIN
     CheckExportMark(d.name);
+    ReportWrappedHexLiterals(d.value);
     v := ConstantEvaluator.Evaluate(d.value, scope);
     IF v.type = Types.HugeInt THEN
       Diagnostics.NotInReport(d.name.line, d.name.column, "an integer constant too large for LONGINT")
@@ -1716,7 +1751,11 @@ MODULE SemanticActions;
             ELSE
               method := Types.FindMethod(rec, sel.name);
               IF method = NIL THEN
-                Diagnostics.Error(sel.line, sel.column, "undeclared field or type-bound procedure");
+                (* one of rec's bases did not resolve, and was reported:
+                   the name may be that base's *)
+                IF ~Types.HasUnresolvedBase(rec) THEN
+                  Diagnostics.Error(sel.line, sel.column, "undeclared field or type-bound procedure")
+                END;
                 t := Types.Undefined
               ELSIF ~method.exported & ~IsLocalRecord(Types.MethodOwner(rec, method)) THEN
                 Diagnostics.Error(sel.line, sel.column, "type-bound procedure is not exported by its module");
@@ -1946,7 +1985,9 @@ MODULE SemanticActions;
                which this branch already is (VAR parameters take the
                other branch above). *)
             IF ~Types.ArrayCompatible(p.type, argType)
-                & ~((formalArr.elementType = Types.Char) & (argType = Types.String)) THEN
+                & ~((formalArr.elementType = Types.Char)
+                    & ((argType = Types.String)
+                       OR (argType = Types.Char) & ConstantEvaluator.IsCharConstant(a, scope))) THEN
               Diagnostics.Error(a.line, a.column,
                 "argument is not array compatible with the open-array parameter")
             END
@@ -2154,6 +2195,8 @@ MODULE SemanticActions;
       t := ConstantEvaluator.IntegerLiteralType(node, value);
       IF t = Types.HugeInt THEN
         Diagnostics.NotInReport(node.line, node.column, "an integer constant too large for LONGINT")
+      ELSE
+        ReportWrappedHexLiterals(node)
       END;
       RETURN t
     ELSIF node.literalKind = Lexer.real THEN
@@ -2180,31 +2223,6 @@ MODULE SemanticActions;
       RETURN arr.elementType = Types.Char
     END
   END IsCharArrayOrString;
-
-  (* Oberon2.pdf §3 vocabulary rule 4: "A string of length 1 can be used
-     wherever a character constant is allowed and vice versa" - a lexical
-     rule about the *token* itself (a quoted string spelled with exactly
-     one character), so this only recognizes literal syntax, not a
-     general String-typed expression or even a named CONST alias of one;
-     CheckAssignmentCompatible/CheckCaseLabelList below cover that wider,
-     value-dependent case separately since they already work from an
-     evaluated Types.Value rather than syntax. Found missing while
-     self-checking poc's own source (PLAN.md's Phase 7 milestone):
-     Diagnostics.Mod's Out.Char(":") and dozens of similar single-quoted-
-     character comparisons/CASE labels throughout Lexer.Mod all rely on
-     this exact rule, which poc had never implemented. *)
-  PROCEDURE IsSingleCharStringLiteral(node: SyntaxTree.ExprNode): BOOLEAN;
-    VAR result: BOOLEAN;
-  BEGIN
-    result := FALSE;
-    IF (node # NIL) & (node IS SyntaxTree.LiteralExprNode) THEN
-      WITH node: SyntaxTree.LiteralExprNode DO
-        result := (node.literalKind = Lexer.string) & (node.lexeme[0] # 0X)
-                   & (node.lexeme[1] = 0X)
-      END
-    END;
-    RETURN result
-  END IsSingleCharStringLiteral;
 
   PROCEDURE CheckUnaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.UnaryExprNode): Types.Type;
     VAR t: Types.Type;
@@ -2341,11 +2359,15 @@ MODULE SemanticActions;
     ELSIF (node.op = Lexer.equal) OR (node.op = Lexer.notEqual) THEN
       IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN result := Types.Boolean
       ELSIF (l = Types.Char) & (r = Types.Char) THEN result := Types.Boolean
-      ELSIF (l = Types.Char) & (r = Types.String) & IsSingleCharStringLiteral(node.right) THEN
+      ELSIF (l = Types.Char) & (r = Types.String) & ConstantEvaluator.IsSingleCharString(node.right, scope) THEN
         result := Types.Boolean
-      ELSIF (l = Types.String) & (r = Types.Char) & IsSingleCharStringLiteral(node.left) THEN
+      ELSIF (l = Types.String) & (r = Types.Char) & ConstantEvaluator.IsSingleCharString(node.left, scope) THEN
         result := Types.Boolean
       ELSIF IsCharArrayOrString(l) & IsCharArrayOrString(r) THEN result := Types.Boolean
+      ELSIF IsCharArrayOrString(l) & (r = Types.Char) & ConstantEvaluator.IsCharConstant(node.right, scope) THEN
+        result := Types.Boolean
+      ELSIF (l = Types.Char) & IsCharArrayOrString(r) & ConstantEvaluator.IsCharConstant(node.left, scope) THEN
+        result := Types.Boolean
       ELSIF (l = Types.Boolean) & (r = Types.Boolean) THEN result := Types.Boolean
       ELSIF Types.IsSet(l) & Types.IsSet(r) THEN result := Types.Boolean
       ELSIF ((l = Types.NilType) OR (l IS Types.PointerType))
@@ -2387,11 +2409,15 @@ MODULE SemanticActions;
         OR (node.op = Lexer.greater) OR (node.op = Lexer.greaterEqual) THEN
       IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN result := Types.Boolean
       ELSIF (l = Types.Char) & (r = Types.Char) THEN result := Types.Boolean
-      ELSIF (l = Types.Char) & (r = Types.String) & IsSingleCharStringLiteral(node.right) THEN
+      ELSIF (l = Types.Char) & (r = Types.String) & ConstantEvaluator.IsSingleCharString(node.right, scope) THEN
         result := Types.Boolean
-      ELSIF (l = Types.String) & (r = Types.Char) & IsSingleCharStringLiteral(node.left) THEN
+      ELSIF (l = Types.String) & (r = Types.Char) & ConstantEvaluator.IsSingleCharString(node.left, scope) THEN
         result := Types.Boolean
       ELSIF IsCharArrayOrString(l) & IsCharArrayOrString(r) THEN result := Types.Boolean
+      ELSIF IsCharArrayOrString(l) & (r = Types.Char) & ConstantEvaluator.IsCharConstant(node.right, scope) THEN
+        result := Types.Boolean
+      ELSIF (l = Types.Char) & IsCharArrayOrString(r) & ConstantEvaluator.IsCharConstant(node.left, scope) THEN
+        result := Types.Boolean
       ELSE
         Diagnostics.Error(node.line, node.column, "operands are not ordered");
         result := Types.Undefined
@@ -2516,11 +2542,11 @@ MODULE SemanticActions;
      is inherently value-dependent, so it is handled here as a special
      case, evaluating srcExpr via ConstantEvaluator.Evaluate only when
      srcType is Types.String. The §3 vocabulary rule ("a string of length
-     1 can be used wherever a character constant is allowed") is handled
-     the same value-dependent way when dstType is Types.Char - unlike
-     IsSingleCharStringLiteral's syntax-only check (CheckBinaryExpr),
-     this also accepts a named CONST alias of a length-1 string, since an
-     evaluated Types.Value is already on hand here regardless. *)
+     1 can be used wherever a character constant is allowed and vice
+     versa") is handled the same value-dependent way, both ways: a
+     constant string of one character assigned to a CHAR, a constant
+     CHAR to an ARRAY n OF CHAR (ConstantEvaluator.IsSingleCharString,
+     IsCharConstant). *)
   PROCEDURE CheckAssignmentCompatible(scope: SymbolTable.Scope; dstType: Types.Type;
                                       srcExpr: SyntaxTree.ExprNode; srcType: Types.Type;
                                       line, column: INTEGER; message: ARRAY OF CHAR);
@@ -2534,9 +2560,13 @@ MODULE SemanticActions;
         v := ConstantEvaluator.Evaluate(srcExpr, scope);
         ok := (v.type # Types.Undefined) & (StringLength(v.stringVal) < arr.length)
       END
+    ELSIF ~ok & (srcType = Types.Char) & (dstType # NIL) & (dstType IS Types.ArrayType)
+        & ConstantEvaluator.IsCharConstant(srcExpr, scope) THEN
+      (* and a CHAR constant as a string of one character (§3 again) *)
+      arr := dstType(Types.ArrayType);
+      ok := (arr.elementType = Types.Char) & ~arr.isOpen & (arr.length > 1)
     ELSIF ~ok & (srcType = Types.String) & (dstType = Types.Char) THEN
-      v := ConstantEvaluator.Evaluate(srcExpr, scope);
-      ok := (v.type # Types.Undefined) & (StringLength(v.stringVal) = 1)
+      ok := ConstantEvaluator.IsSingleCharString(srcExpr, scope)
     ELSIF ~ok & Types.IsInteger(dstType) & Types.IsInteger(srcType)
         & ConstantEvaluator.IsConstantExpr(srcExpr, scope) THEN
       (* an integer constant whose *value* fits a SYSTEM.INTn is assignable
@@ -2688,11 +2718,9 @@ MODULE SemanticActions;
         low := ORD(lowVal.charVal)
       ELSIF ok & charMode & (lowVal.kind = Types.stringValue) & (StringLength(lowVal.stringVal) = 1) THEN
         (* Oberon2.pdf §3 vocabulary rule 4: a length-1 string constant is
-           interchangeable with a character constant - see
-           IsSingleCharStringLiteral's own header comment. This path also
-           covers a named CONST alias of one, since lowVal is already a
-           fully evaluated Types.Value regardless of whether l.low was a
-           literal or a qualident. *)
+           interchangeable with a character constant
+           (ConstantEvaluator.IsSingleCharString). lowVal is evaluated,
+           so a named constant counts as a literal does. *)
         low := ORD(lowVal.stringVal[0])
       ELSIF ok & ~charMode & (lowVal.kind = Types.intValue) THEN
         low := lowVal.intVal

@@ -2773,13 +2773,20 @@ MODULE LLVMCodeGenerator;
   END DesignatorStaticType;
 
   (* Text known at compile time and usable as a string: a string literal,
-     or a bare reference to a named STRING CONST. *)
+     a bare reference to a named STRING CONST, or a CHAR constant as the
+     string of that one character (Oberon2.pdf §3, "and vice versa";
+     SemanticActions accepts one only where a string is wanted, and 0X
+     is the empty string). *)
   PROCEDURE StringSourceText(VAR cg: Codegen; e: SyntaxTree.ExprNode; VAR text: ARRAY OF CHAR): BOOLEAN;
     VAR lit: SyntaxTree.LiteralExprNode; de: SyntaxTree.DesignatorExprNode;
-        obj: SymbolTable.Object; homeModule: SyntaxTree.Ident;
+        obj: SymbolTable.Object; homeModule: SyntaxTree.Ident; v: Types.Value;
   BEGIN
     IF e = NIL THEN RETURN FALSE END;
-    IF e IS SyntaxTree.LiteralExprNode THEN
+    IF ConstantEvaluator.IsCharConstant(e, cg.scope) THEN
+      v := ConstantEvaluator.Evaluate(e, cg.scope);
+      text[0] := v.charVal; text[1] := 0X;
+      RETURN TRUE
+    ELSIF e IS SyntaxTree.LiteralExprNode THEN
       lit := e(SyntaxTree.LiteralExprNode);
       IF lit.literalKind # Lexer.string THEN RETURN FALSE END;
       COPY(lit.lexeme, text);
@@ -2822,6 +2829,18 @@ MODULE LLVMCodeGenerator;
     END;
     RETURN FALSE
   END IsCharSequenceExpr;
+
+  (* A comparison of character sequences: both operands are, or one is and
+     the other a CHAR constant, which then stands for a string. *)
+  PROCEDURE IsCharSequenceComparison(VAR cg: Codegen; left, right: SyntaxTree.ExprNode): BOOLEAN;
+    VAR leftIsSequence, rightIsSequence: BOOLEAN;
+  BEGIN
+    leftIsSequence := IsCharSequenceExpr(cg, left);
+    rightIsSequence := IsCharSequenceExpr(cg, right);
+    RETURN leftIsSequence & rightIsSequence
+           OR leftIsSequence & ConstantEvaluator.IsCharConstant(right, cg.scope)
+           OR rightIsSequence & ConstantEvaluator.IsCharConstant(left, cg.scope)
+  END IsCharSequenceComparison;
 
   PROCEDURE ^ GenerateCharCompare(VAR w: Files.Rider; VAR cg: Codegen; op: INTEGER;
                                   left, right: SyntaxTree.ExprNode; VAR result: Value);
@@ -3064,7 +3083,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     IF ((expr.op = Lexer.equal) OR (expr.op = Lexer.notEqual) OR (expr.op = Lexer.less)
         OR (expr.op = Lexer.lessEqual) OR (expr.op = Lexer.greater) OR (expr.op = Lexer.greaterEqual))
-       & IsCharSequenceExpr(cg, expr.left) & IsCharSequenceExpr(cg, expr.right) THEN
+       & IsCharSequenceComparison(cg, expr.left, expr.right) THEN
       GenerateCharCompare(w, cg, expr.op, expr.left, expr.right, result);
       RETURN
     END;
@@ -3489,7 +3508,7 @@ MODULE LLVMCodeGenerator;
         addrType: Types.Type; arr: Types.ArrayType; dyn: DynamicType;
   BEGIN
     lenText[0] := 0X;
-    IF e IS SyntaxTree.LiteralExprNode THEN
+    IF (e IS SyntaxTree.LiteralExprNode) & (e(SyntaxTree.LiteralExprNode).literalKind = Lexer.string) THEN
       lit := e(SyntaxTree.LiteralExprNode);
       StringConstName(cg, lit, addr);
       AppendLongInt(lenText, StrLen(lit.lexeme) + 1);
@@ -4621,8 +4640,9 @@ MODULE LLVMCodeGenerator;
      is always <= SET's, in both size models, so this is unconditional,
      no width comparison needed); x a single-char STRING literal
      (Oberon2.pdf §3's "a string of length 1 can be used wherever a
-     character constant is allowed" - PredeclaredProcedures.Mod's own
-     IsSingleCharStringLiteral) -> that one byte's own ORD value, a
+     character constant is allowed" - ConstantEvaluator.
+     IsSingleCharString; a named one comes through GenerateExpr as a
+     CHAR, EmitConstantValue) -> that one byte's own ORD value, a
      compile-time constant read directly off the AST rather than
      through GenerateExpr at all - a string literal is never a loadable
      "value" anywhere else in this backend (see GenerateOpenArrayArg's

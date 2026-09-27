@@ -344,26 +344,6 @@ MODULE PredeclaredProcedures;
     RETURN Types.Boolean
   END CheckOdd;
 
-  (* Oberon2.pdf §3 vocabulary rule 4 ("a string of length 1 can be used
-     wherever a character constant is allowed and vice versa") - the same
-     small, deliberate duplication of SemanticActions.IsSingleCharString
-     Literal this module's own header comment already precedents (this
-     module cannot import SemanticActions.Mod), needed so ORD(":") (a
-     real pattern in Lexer.Mod, found while running the Phase 7 self-
-     check milestone, PLAN.md) type-checks like ORD(3AX) does. *)
-  PROCEDURE IsSingleCharStringLiteral(node: SyntaxTree.ExprNode): BOOLEAN;
-    VAR result: BOOLEAN;
-  BEGIN
-    result := FALSE;
-    IF (node # NIL) & (node IS SyntaxTree.LiteralExprNode) THEN
-      WITH node: SyntaxTree.LiteralExprNode DO
-        result := (node.literalKind = Lexer.string) & (node.lexeme[0] # 0X)
-                   & (node.lexeme[1] = 0X)
-      END
-    END;
-    RETURN result
-  END IsSingleCharStringLiteral;
-
   PROCEDURE CheckOrd(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
                      line, column: INTEGER; checkExpr: CheckExprProc): Types.Type;
     VAR t: Types.Type;
@@ -374,7 +354,7 @@ MODULE PredeclaredProcedures;
     END;
     t := checkExpr(scope, args);
     IF (t # Types.Undefined) & (t # Types.Char) & ~Types.IsSet(t)
-        & ~((t = Types.String) & IsSingleCharStringLiteral(args)) THEN
+        & ~((t = Types.String) & ConstantEvaluator.IsSingleCharString(args, scope)) THEN
       Diagnostics.Error(line, column, "ORD requires a CHAR or SET argument");
       RETURN Types.Undefined
     END;
@@ -432,7 +412,8 @@ MODULE PredeclaredProcedures;
     END;
     xt := checkExpr(scope, Arg(args, 0));
     vt := ResolveVarArg(scope, checkDesignator, Arg(args, 1), readOnly, isVariable);
-    IF (xt # Types.Undefined) & ~IsCharArrayOrString(xt) THEN
+    IF (xt # Types.Undefined) & ~IsCharArrayOrString(xt)
+       & ~((xt = Types.Char) & ConstantEvaluator.IsCharConstant(Arg(args, 0), scope)) THEN
       Diagnostics.Error(line, column, "COPY's first argument must be a character array or string")
     END;
     IF vt = Types.Undefined THEN RETURN END;
@@ -711,7 +692,7 @@ MODULE PredeclaredProcedures;
       Diagnostics.Error(line, column, "SYSTEM.PUT's first argument must be an integer address")
     END;
     IF (xt # Types.Undefined) & ~IsScalar(xt) & (xt # Types.NilType)
-       & ~IsSingleCharStringLiteral(Arg(args, 1)) THEN
+       & ~ConstantEvaluator.IsSingleCharString(Arg(args, 1), scope) THEN
       Diagnostics.Error(line, column, "SYSTEM.PUT writes a basic, pointer or procedure value")
     END
   END CheckPut;
@@ -736,7 +717,7 @@ MODULE PredeclaredProcedures;
     xt := checkExpr(scope, Arg(args, 1));
     IF xt = Types.Undefined THEN RETURN Types.Undefined END;
     IF ~IsScalar(target) OR (~IsScalar(xt) & (xt # Types.NilType)
-                              & ~IsSingleCharStringLiteral(Arg(args, 1))) THEN
+                              & ~ConstantEvaluator.IsSingleCharString(Arg(args, 1), scope)) THEN
       Diagnostics.Error(line, column, "SYSTEM.VAL converts between basic, pointer and procedure values");
       RETURN Types.Undefined
     END;
