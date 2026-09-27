@@ -1,0 +1,160 @@
+== -O2 -range-checks case 0
+32767
+-32768
+127
+-128
+2147483647
+-2147483648
+0
+255
+127
+SHORT of a LONGREAL is not checked
+exit=0
+== -O2 -range-checks case 1
+SHORT argument out of range
+exit=14
+== -O2 -range-checks case 2
+SHORT argument out of range
+exit=14
+== -O2 -range-checks case 3
+SHORT argument out of range
+exit=14
+== -O2 -range-checks case 4
+SHORT argument out of range
+exit=14
+== -O2 -range-checks case 5
+SHORT argument out of range
+exit=14
+== -O2 -range-checks case 6
+CHR argument out of range
+exit=14
+== -O2 -range-checks case 7
+CHR argument out of range
+exit=14
+voc -r does not stop here (known: its CHR check compares signed)
+== -O2 -range-checks case 8
+CHR argument out of range
+exit=14
+voc -r does not stop here (known: its CHR check compares signed)
+== -O2 -range-checks case 9
+CHR argument out of range
+exit=14
+== -O2  case 0
+32767
+-32768
+127
+-128
+2147483647
+-2147483648
+0
+255
+127
+SHORT of a LONGREAL is not checked
+exit=0
+== -O2  case 1
+-32768
+exit=0
+== -O2  case 2
+32767
+exit=0
+== -O2  case 3
+-128
+exit=0
+== -O2  case 4
+127
+exit=0
+== -O2  case 5
+-2147483648
+exit=0
+== -O2  case 6
+0
+exit=0
+== -O2  case 7
+255
+exit=0
+== -O2  case 8
+255
+exit=0
+== -O2  case 9
+44
+exit=0
+== -OC -range-checks case 0
+2147483647
+-2147483648
+32767
+-32768
+2147483647
+-2147483648
+0
+255
+127
+SHORT of a LONGREAL is not checked
+exit=0
+== -OC -range-checks case 1
+SHORT argument out of range
+exit=14
+== -OC -range-checks case 2
+SHORT argument out of range
+exit=14
+== -OC -range-checks case 3
+SHORT argument out of range
+exit=14
+== -OC -range-checks case 4
+SHORT argument out of range
+exit=14
+== -OC -range-checks case 5
+SHORT argument out of range
+exit=14
+== -OC -range-checks case 6
+CHR argument out of range
+exit=14
+== -OC -range-checks case 7
+CHR argument out of range
+exit=14
+voc -r does not stop here (known: its CHR check compares signed)
+== -OC -range-checks case 8
+CHR argument out of range
+exit=14
+voc -r does not stop here (known: its CHR check compares signed)
+== -OC -range-checks case 9
+CHR argument out of range
+exit=14
+== -OC  case 0
+2147483647
+-2147483648
+32767
+-32768
+2147483647
+-2147483648
+0
+255
+127
+SHORT of a LONGREAL is not checked
+exit=0
+== -OC  case 1
+-2147483648
+exit=0
+== -OC  case 2
+2147483647
+exit=0
+== -OC  case 3
+-32768
+exit=0
+== -OC  case 4
+32767
+exit=0
+== -OC  case 5
+-2147483648
+exit=0
+== -OC  case 6
+0
+exit=0
+== -OC  case 7
+255
+exit=0
+== -OC  case 8
+255
+exit=0
+== -OC  case 9
+44
+exit=0

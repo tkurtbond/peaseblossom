@@ -56,7 +56,9 @@ LN:
   %tN = sext i16 %tN to i32
   ret i32 %tN
 LN:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @openir.Scratch(ptr %p.a, i32 %p.a.len0) {
 entry:
@@ -86,7 +88,9 @@ LN:
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @openir.Cell(ptr %p.m, i32 %p.m.len0, i32 %p.m.len1, i16 %p.i, i16 %p.j) {
 entry:
@@ -120,14 +124,18 @@ LN:
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i32 @openir.Pass(ptr %p.a, i32 %p.a.len0) {
 entry:
   %tN = call i32 @openir.Total(ptr %p.a, i32 %p.a.len0)
   ret i32 %tN
 LN:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @openir_init() {
 entry:
@@ -324,6 +332,7 @@ LN:
 }
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 @.trap.arraylength = private unnamed_addr constant [60 x i8] c"Too many, or negative number of, elements in dynamic array\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 @.arraydesc.1 = internal constant { i32, i32, i32, [1 x ptr], [1 x i32] } {
   i32 4,
   i32 0,
@@ -391,7 +400,9 @@ LN:
   %tN = sext i16 %tN to i32
   ret i32 %tN
 LN:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @openir.Scratch(ptr %p.a, i64 %p.a.len0) {
 entry:
@@ -421,7 +432,9 @@ LN:
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @openir.Cell(ptr %p.m, i64 %p.m.len0, i64 %p.m.len1, i16 %p.i, i16 %p.j) {
 entry:
@@ -455,14 +468,18 @@ LN:
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i32 @openir.Pass(ptr %p.a, i64 %p.a.len0) {
 entry:
   %tN = call i32 @openir.Total(ptr %p.a, i64 %p.a.len0)
   ret i32 %tN
 LN:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @openir_init() {
 entry:
@@ -647,6 +664,7 @@ LN:
 }
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 @.trap.arraylength = private unnamed_addr constant [60 x i8] c"Too many, or negative number of, elements in dynamic array\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 @.arraydesc.1 = internal constant { i64, i64, i64, [1 x ptr], [1 x i64] } {
   i64 8,
   i64 0,

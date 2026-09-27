@@ -77,6 +77,15 @@ LN:
   call void @exit(i32 4)
   unreachable
 LN:
+  %tN = getelementptr i8, ptr %tN, i32 -4
+  %tN = load ptr, ptr %tN
+  %tN = icmp eq ptr %tN, @ptrir.NodeDesc.tag
+  br i1 %tN, label %LN, label %LN
+LN:
+  call void @write(i32 2, ptr @.trap.recordassign, i64 73)
+  call void @exit(i32 13)
+  unreachable
+LN:
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
@@ -223,11 +232,15 @@ LN:
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 @.trap.typeguard = private unnamed_addr constant [19 x i8] c"type guard failed\0A\00"
 @.trap.nowith = private unnamed_addr constant [24 x i8] c"no matching WITH guard\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
+@.trap.recordassign = private unnamed_addr constant [74 x i8] c"record assigned to a variable whose dynamic type extends its static type\0A\00"
 @.arraydesc.1 = internal constant { i32, i32, i32, [1 x ptr], [1 x i32] } {
   i32 4,
   i32 0,
@@ -315,6 +328,15 @@ LN:
   call void @exit(i32 4)
   unreachable
 LN:
+  %tN = getelementptr i8, ptr %tN, i32 -8
+  %tN = load ptr, ptr %tN
+  %tN = icmp eq ptr %tN, @ptrir.NodeDesc.tag
+  br i1 %tN, label %LN, label %LN
+LN:
+  call void @write(i32 2, ptr @.trap.recordassign, i64 73)
+  call void @exit(i32 13)
+  unreachable
+LN:
   %tN = load ptr, ptr %tN
   %tN = icmp eq ptr %tN, null
   br i1 %tN, label %LN, label %LN
@@ -461,11 +483,15 @@ LN:
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 @.trap.typeguard = private unnamed_addr constant [19 x i8] c"type guard failed\0A\00"
 @.trap.nowith = private unnamed_addr constant [24 x i8] c"no matching WITH guard\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
+@.trap.recordassign = private unnamed_addr constant [74 x i8] c"record assigned to a variable whose dynamic type extends its static type\0A\00"
 @.arraydesc.1 = internal constant { i64, i64, i64, [1 x ptr], [1 x i64] } {
   i64 8,
   i64 0,

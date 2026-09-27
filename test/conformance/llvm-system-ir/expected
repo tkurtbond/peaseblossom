@@ -86,7 +86,9 @@ entry:
   %t1 = ptrtoint ptr %p.v to i32
   ret i32 %t1
 L1:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @system.Bump(i32 %p.a) {
@@ -1281,6 +1283,7 @@ entry:
   call void @system_init()
   ret i32 0
 }
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 
 declare void @llvm.memmove.p0.p0.i32(ptr, ptr, i32, i1)
 clang accepted i686-unknown-linux-gnu
@@ -1372,7 +1375,9 @@ entry:
   %t1 = ptrtoint ptr %p.v to i64
   ret i64 %t1
 L1:
-  ret i64 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @system.Bump(i64 %p.a) {
@@ -2565,6 +2570,7 @@ entry:
   call void @system_init()
   ret i32 0
 }
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 
 declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)
 clang accepted x86_64-unknown-linux-gnu

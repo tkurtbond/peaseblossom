@@ -367,6 +367,8 @@ MODULE SyntaxTree;
       declarations*: DeclSeqNode; (* NIL for a ForwardDecl or an external decl *)
       statements*: StatementNode; (* NIL for a ForwardDecl, an external decl, or an empty body *)
       endName*: Ident; (* empty for a ForwardDecl or an external decl *)
+      endLine*, endColumn*: INTEGER; (* its END keyword; 0 for a ForwardDecl or an external decl.
+                                       Where a function that reaches END traps (Phase 12 step 1) *)
       next*: ProcDeclNode
     END;
 

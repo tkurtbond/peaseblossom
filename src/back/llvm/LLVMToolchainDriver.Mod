@@ -20,13 +20,14 @@ MODULE LLVMToolchainDriver;
      LLVMCodeGenerator.Mod itself a pure tree-walker with no file-path/
      directory concerns of its own. *)
 
-  IMPORT Files, Platform, Diagnostics, LLVMTypes, LLVMCodeGenerator;
+  IMPORT Files, Platform, Err, Diagnostics, LLVMTypes, LLVMCodeGenerator;
 
   CONST
     dirBufferLength = 1024;
     nameBufferLength = 300; (* SyntaxTree.identLength (255) + ".ll" comfortably *)
     pathBufferLength* = dirBufferLength + nameBufferLength;
     tripleBufferLength* = 128;
+    linkArgumentsLength = 2048;
 
   VAR
     hostTripleCache: ARRAY tripleBufferLength OF CHAR;
@@ -34,6 +35,14 @@ MODULE LLVMToolchainDriver;
     (* what Build passes clang as -O<level>, set by SetOptimizationLevel;
        empty means the target's default (DefaultOptimizationLevel) *)
     optimizationLevel: ARRAY 2 OF CHAR;
+    (* Phase 12 step 1 (voc's -M, -V and LDFLAGS/LDLIBS; decided with the
+       user 2026-09-27): poc -static makes Build link a fully static
+       executable (clang -static), poc -verbose makes it print the clang
+       command on stderr before running it, and each poc -link <arg> adds
+       <arg> to that command (AddLinkArgument), after the program's .ll and
+       before -lm, so a library named there can itself use libm. *)
+    staticLink*, verbose*: BOOLEAN;
+    linkArguments: ARRAY linkArgumentsLength OF CHAR;
 
   PROCEDURE JoinPath(dir, name: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
     VAR i, j: INTEGER;
@@ -198,6 +207,29 @@ MODULE LLVMToolchainDriver;
     RETURN ok
   END EmitIR;
 
+  (* Adds arg to what Build passes clang, as one word however many spaces or
+     shell characters it holds: single-quoted, each ' in it written '\''.
+     FALSE, adding nothing, when the arguments given so far and arg would
+     not fit in linkArgumentsLength. *)
+  PROCEDURE AddLinkArgument*(arg: ARRAY OF CHAR): BOOLEAN;
+    VAR quoted: ARRAY linkArgumentsLength OF CHAR; i, j, used: INTEGER;
+  BEGIN
+    used := 0; WHILE linkArguments[used] # 0X DO INC(used) END;
+    quoted[0] := " "; quoted[1] := "'"; j := 2; i := 0;
+    WHILE (arg[i] # 0X) & (j < LEN(quoted) - 6) DO
+      IF arg[i] = "'" THEN
+        quoted[j] := "'"; quoted[j + 1] := 5CX; quoted[j + 2] := "'"; quoted[j + 3] := "'"; INC(j, 4)
+      ELSE
+        quoted[j] := arg[i]; INC(j)
+      END;
+      INC(i)
+    END;
+    IF (arg[i] # 0X) OR (used + j + 2 > LEN(linkArguments)) THEN RETURN FALSE END;
+    quoted[j] := "'"; quoted[j + 1] := 0X;
+    Strcat(linkArguments, quoted);
+    RETURN TRUE
+  END AddLinkArgument;
+
   (* Phase 11 D13: the level Build hands clang, as -O<level> - one of 0, 1,
      2, 3, s, z and g, the levels clang documents (-O alone, -O4 and up,
      and -Ofast, which breaks IEEE real arithmetic, are left out). FALSE,
@@ -235,7 +267,7 @@ MODULE LLVMToolchainDriver;
                    triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
     VAR
       llPath: ARRAY pathBufferLength OF CHAR;
-      cmd: ARRAY 512 OF CHAR;
+      cmd: ARRAY 2 * pathBufferLength + tripleBufferLength + linkArgumentsLength + 64 OF CHAR;
       level: ARRAY 2 OF CHAR;
       status: INTEGER;
   BEGIN
@@ -250,12 +282,15 @@ MODULE LLVMToolchainDriver;
     Strcat(cmd, llPath);
     Strcat(cmd, " -o ");
     Strcat(cmd, exePath);
+    Strcat(cmd, linkArguments);
     (* libm, for rtl/llvm's Math and MathL: on every supported system it is
        a library apart from libc, and -lm links nothing that is not used *)
     Strcat(cmd, " -lm");
     IF optimizationLevel[0] = 0X THEN DefaultOptimizationLevel(triple, level) ELSE COPY(optimizationLevel, level) END;
     Strcat(cmd, " -O");
     Strcat(cmd, level);
+    IF staticLink THEN Strcat(cmd, " -static") END;
+    IF verbose THEN Err.String(cmd); Err.Ln END;
     status := Platform.System(cmd);
     RETURN status = 0
   END Build;

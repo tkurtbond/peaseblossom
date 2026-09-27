@@ -1,0 +1,21 @@
+== case 0
+1 -1  7  4 15  2
+exit=0
+== case 1
+returntrap.mod:15:3: function procedure reached its END without RETURN (in returntrap.Sign)
+exit=12
+== case 2
+returntrap.mod:21:5: function procedure reached its END without RETURN (in returntrap.Outer.Inner)
+exit=12
+== case 3
+returntrap.mod:29:3: function procedure reached its END without RETURN (in returntrap.R.Get)
+exit=12
+== case 4
+returntrap.mod:34:3: function procedure reached its END without RETURN (in returntrap.Half)
+exit=12
+== case 5
+returntrap.mod:40:3: function procedure reached its END without RETURN (in returntrap.Make)
+exit=12
+== without -trap-location, case 1
+function procedure reached its END without RETURN
+exit=12

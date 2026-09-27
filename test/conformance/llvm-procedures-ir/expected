@@ -37,7 +37,9 @@ entry:
   %t7 = load i16, ptr %t3
   ret i16 %t7
 L1:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @procsir.Increment(ptr %p.x, i16 %p.by) {
@@ -77,7 +79,9 @@ L4:
 L6:
   br label %L2
 L2:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @procsir_init() {
@@ -134,3 +138,4 @@ entry:
   call void @procsir_init()
   ret i32 0
 }
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"

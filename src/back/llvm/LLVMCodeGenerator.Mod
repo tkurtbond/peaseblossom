@@ -199,6 +199,11 @@ MODULE LLVMCodeGenerator;
        (in List.Insert)". Each trap site gets a message of its own
        (EmitTrapAt); FALSE leaves the IR as it was without the switch. *)
     trapLocation*: BOOLEAN;
+    (* poc -range-checks (Phase 12 step 1, voc's -r, decided with the user
+       2026-09-27): SHORT of an integer and CHR trap (status 14) when the
+       value does not fit the result, instead of keeping its low bits.
+       FALSE leaves the IR as it was without the switch. *)
+    rangeChecks*: BOOLEAN;
 
   CONST
     (* PLAN.md Phase 8 step 13: two, not one - confirmed against real
@@ -298,6 +303,27 @@ MODULE LLVMCodeGenerator;
     heapTrapGlobal = "@.trap.heap";
     heapTrapMsg = "heap exhausted: NEW cannot allocate the block";
     heapTrapExitCode = 11;
+    (* Phase 12 step 1: a function procedure that reaches its END ("Function
+       procedures must be left via a return statement", Oberon2.pdf 10.1).
+       voc checks it always (Halt(-3)); poc too. *)
+    returnTrapGlobal = "@.trap.noreturn";
+    returnTrapMsg = "function procedure reached its END without RETURN";
+    returnTrapExitCode = 12;
+    (* Phase 12 step 1: v := e for records, where v is a VAR parameter or p^
+       whose dynamic type is an extension of its static type ("the dynamic
+       type of v must be the same as the static type of v", Oberon2.pdf 9.1).
+       voc checks it under -t (Halt(-6)); poc always, as its type guard. *)
+    recordAssignTrapGlobal = "@.trap.recordassign";
+    recordAssignTrapMsg = "record assigned to a variable whose dynamic type extends its static type";
+    recordAssignTrapExitCode = 13;
+    (* Phase 12 step 1, under -range-checks only (rangeChecks): SHORT(x) of
+       an integer x outside the result type, CHR(x) of x outside 0..255.
+       voc -r halts on both (Halt(-8), "Value out of range"). *)
+    shortRangeTrapGlobal = "@.trap.shortrange";
+    shortRangeTrapMsg = "SHORT argument out of range";
+    chrRangeTrapGlobal = "@.trap.chrrange";
+    chrRangeTrapMsg = "CHR argument out of range";
+    rangeTrapExitCode = 14;
 
     (* DynamicType.kind - see DynamicType. *)
     dynStatic = 0;
@@ -570,14 +596,8 @@ MODULE LLVMCodeGenerator;
       loopExitLabel: ValueText;
       (* PLAN.md Phase 8 step 10: NIL at module level (and reset to NIL
          between procedures) - GenerateReturnStatement consults this to
-         decide "ret void" vs. "ret <type> <value>", and to fall back to
-         a well-typed placeholder return when a function procedure's
-         body falls off the end without an explicit RETURN on every path
-         (SemanticActions.CheckProcedureBody's own "function procedure
-         must return a value" check is deliberately shallow - not full
-         reachability analysis, see its header comment - so this is a
-         real, if narrow, gap codegen must still emit *valid* IR for,
-         even though it can't happen in a well-formed program). *)
+         decide "ret void" vs. "ret <type> <value>" (a function
+         procedure that reaches its END traps instead: GenerateFunction). *)
       currentProcResultType: Types.Type;
       (* Phase 11 step 8 (doc/nested-procedures.md): the procedures declared
          inside the module-level or type-bound procedure being generated, and
@@ -609,7 +629,8 @@ MODULE LLVMCodeGenerator;
       needNilTrap, needGuardTrap, needWithTrap, usedAllocate: BOOLEAN;
       (* Phase 9 step 7: the array-length trap, and the overflow-checking
          arithmetic intrinsics NEW's size computation calls *)
-      needLengthTrap, needOverflowMath, needEntierTrap, needArrayAssignTrap: BOOLEAN;
+      needLengthTrap, needOverflowMath, needEntierTrap, needArrayAssignTrap, needReturnTrap,
+      needRecordAssignTrap, needShortRangeTrap, needChrRangeTrap: BOOLEAN;
       (* which ASSERT failure messages the program uses: one per code 0..255,
          and noAssertCode for ASSERT(x) *)
       assertCodes: ARRAY noAssertCode + 1 OF BOOLEAN;
@@ -4439,10 +4460,15 @@ MODULE LLVMCodeGenerator;
   (* SHORT(x): the next narrower type down - LONGINT to INTEGER, INTEGER
      to SHORTINT (trunc; an out-of-range x keeps its low bits, which
      Oberon2.pdf leaves undefined), LONGREAL to REAL (fptrunc, rounding
-     to nearest). *)
+     to nearest). Under -range-checks an integer x that does not fit traps
+     (status 14): the truncated value, sign-extended back, must be x. A
+     real is not checked, as in voc. *)
   PROCEDURE GenerateShort(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR v: Value; target: Types.Type; targetLLVMType: ValueText; opText: ARRAY 8 OF CHAR;
+    VAR
+      v: Value; target: Types.Type; targetLLVMType, back, fits, trapLabel, okLabel: ValueText;
+      opText: ARRAY 8 OF CHAR; line, column: INTEGER;
   BEGIN
+    line := cg.currentLine; column := cg.currentColumn; (* SHORT's own, not its argument's *)
     GenerateExpr(w, cg, args, v);
     IF Types.LongShortByWidth(v.oberonType) THEN target := Types.ShorterInteger(v.oberonType)
     ELSIF v.oberonType = Types.LongInt THEN target := Types.Integer
@@ -4455,7 +4481,17 @@ MODULE LLVMCodeGenerator;
     ELSE
       IF target = Types.Real THEN COPY("fptrunc", opText) ELSE COPY("trunc", opText) END;
       EmitConvert(w, cg, opText, v.llvmType, v.text, targetLLVMType, result.text);
-      COPY(targetLLVMType, result.llvmType)
+      COPY(targetLLVMType, result.llvmType);
+      IF rangeChecks & (target # Types.Real) THEN
+        cg.needShortRangeTrap := TRUE;
+        EmitConvert(w, cg, "sext", targetLLVMType, result.text, v.llvmType, back);
+        EmitBinOp(w, cg, "icmp eq", v.llvmType, back, v.text, fits);
+        NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+        EmitCondBr(w, fits, okLabel, trapLabel);
+        EmitLabel(w, cg, trapLabel);
+        EmitTrapAt(w, cg, shortRangeTrapGlobal, shortRangeTrapMsg, rangeTrapExitCode, line, column);
+        EmitLabel(w, cg, okLabel)
+      END
     END;
     result.oberonType := target
   END GenerateShort;
@@ -4522,11 +4558,26 @@ MODULE LLVMCodeGenerator;
   END GenerateOdd;
 
   (* CHR(x): the low 8 bits of x, as CHAR - always a truncate-or-no-op,
-     for the same width reason GenerateOdd's own header comment gives. *)
+     for the same width reason GenerateOdd's own header comment gives.
+     Under -range-checks an x outside 0..255 traps (status 14): an unsigned
+     compare with 256, which a negative x fails too, or, for a one-byte x,
+     a sign test. *)
   PROCEDURE GenerateChr(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR v: Value; charText: ValueText;
+    VAR v: Value; charText, fits, trapLabel, okLabel: ValueText; line, column: INTEGER;
   BEGIN
+    line := cg.currentLine; column := cg.currentColumn; (* CHR's own, not its argument's *)
     GenerateExpr(w, cg, args, v);
+    IF rangeChecks THEN
+      cg.needChrRangeTrap := TRUE;
+      IF v.llvmType = "i8" THEN EmitBinOp(w, cg, "icmp sge", v.llvmType, v.text, "0", fits)
+      ELSE EmitBinOp(w, cg, "icmp ult", v.llvmType, v.text, "256", fits)
+      END;
+      NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+      EmitCondBr(w, fits, okLabel, trapLabel);
+      EmitLabel(w, cg, trapLabel);
+      EmitTrapAt(w, cg, chrRangeTrapGlobal, chrRangeTrapMsg, rangeTrapExitCode, line, column);
+      EmitLabel(w, cg, okLabel)
+    END;
     IF v.llvmType = "i8" THEN COPY(v.text, charText)
     ELSE EmitConvert(w, cg, "trunc", v.llvmType, v.text, "i8", charText)
     END;
@@ -5724,11 +5775,38 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateExpr;
 
+  (* Before v := e for records (Phase 12 step 1): when v's dynamic type can
+     differ from its static type - v is a VAR record parameter (dyn is
+     dynParam) or reached through a pointer (dynBlock) - they must be the
+     same (Oberon2.pdf 9.1), else the program stops with status 13. A record
+     with no name of its own cannot be extended, so it is never checked. *)
+  PROCEDURE EmitRecordAssignmentGuard(VAR w: Files.Rider; VAR cg: Codegen; dyn: DynamicType; t: Types.Type);
+    VAR rec: Types.RecordType; tag, target, same, failLabel, okLabel: ValueText;
+  BEGIN
+    IF (t # NIL) & (t IS Types.RecordType) & (dyn.kind # dynStatic) THEN
+      rec := t(Types.RecordType);
+      IF (rec.name[0] # 0X) & (rec.name[0] # "-") & EnsureTypeTag(cg, rec) THEN
+        cg.needRecordAssignTrap := TRUE;
+        EmitDynamicTag(w, cg, dyn, rec, tag);
+        TagSymbol(rec, target);
+        EmitBinOp(w, cg, "icmp eq", "ptr", tag, target, same);
+        NewLabel(cg, failLabel); NewLabel(cg, okLabel);
+        EmitCondBr(w, same, okLabel, failLabel);
+        EmitLabel(w, cg, failLabel);
+        EmitStatementTrap(w, cg, recordAssignTrapGlobal, recordAssignTrapMsg, recordAssignTrapExitCode);
+        EmitLabel(w, cg, okLabel)
+      END
+    END
+  END EmitRecordAssignmentGuard;
+
   PROCEDURE GenerateAssignStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.AssignStatementNode);
-    VAR obj: SymbolTable.Object; addrText: ValueText; addrType: Types.Type; homeModule: SyntaxTree.Ident;
+    VAR
+      obj: SymbolTable.Object; addrText: ValueText; addrType: Types.Type; homeModule: SyntaxTree.Ident;
+      dyn: DynamicType; binding: LocalBinding;
   BEGIN
     IF s.target.selectors # NIL THEN
-      IF GenerateDesignatorAddress(w, cg, s.target, addrText, addrType) THEN
+      IF GenerateDesignatorAddressTo(w, cg, s.target, NIL, addrText, addrType, dyn) THEN
+        EmitRecordAssignmentGuard(w, cg, dyn, addrType);
         AssignToAddress(w, cg, addrText, addrType, s.value, s.copiesArray)
       ELSE
         WriteStr(w, "  ; unsupported: selector this backend cannot address"); WriteLn(w)
@@ -5741,11 +5819,18 @@ MODULE LLVMCodeGenerator;
       RETURN
     END;
     IF s.target.qualifier[0] = 0X THEN
-      ResolveVarAddress(cg, obj, addrText)
+      ResolveVarAddress(cg, obj, addrText);
+      binding := FindLocalBinding(cg, obj);
+      IF (binding # NIL) & (binding.tagText[0] # 0X) THEN (* a VAR record parameter *)
+        dyn.kind := dynParam; COPY(binding.tagText, dyn.text);
+        EmitRecordAssignmentGuard(w, cg, dyn, EffectiveVarType(cg, obj))
+      END
     ELSE
       QualifiedName(homeModule, obj.name, addrText)
     END;
-    AssignToAddress(w, cg, addrText, obj.type, s.value, s.copiesArray)
+    (* the static type an enclosing WITH gave it: before Phase 12 step 1 the
+       declared one, and a narrowed VAR record got only its base's fields *)
+    AssignToAddress(w, cg, addrText, EffectiveVarType(cg, obj), s.value, s.copiesArray)
   END GenerateAssignStatement;
 
   (* A function procedure called as a bare statement discards its result -
@@ -6092,24 +6177,16 @@ MODULE LLVMCodeGenerator;
      become live and get a real "ret <type> <value>" once step 10 gives
      it an actual function-procedure result to return. *)
   (* cg.currentProcResultType (NIL at module level, or inside a proper
-     procedure) decides "ret void" vs. "ret <type> <value>" - not
-     s.value's own NIL-ness alone: CheckReturnStatement (SemanticActions.
-     Mod) only diagnoses a value where none is allowed, never the
-     opposite (a bare RETURN inside a function procedure), so
-     "s.value = NIL yet cg.currentProcResultType # NIL" is real,
-     front-end-accepted Oberon-2 this codegen must still emit *valid* IR
-     for - routed to the same "ret <type> <zero>" placeholder a function
-     procedure falling off the end without any RETURN at all needs
-     (GenerateProcedureDecl's own trailing return), not treated as an
-     error here either. *)
+     procedure) decides "ret void" vs. "ret <type> <value>". A bare RETURN
+     in a function procedure is a front-end error since Phase 12 step 1
+     (CheckReturnStatement), so the s.value = NIL arm for one only keeps
+     the IR well-formed; no checked program reaches it. *)
   PROCEDURE GenerateReturnStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.ReturnStatementNode);
     VAR deadLabel: ValueText; retType: LongText; v, ev: Value;
   BEGIN
     IF cg.currentProcResultType = NIL THEN
       WriteStr(w, "  ret void"); WriteLn(w)
     ELSIF s.value = NIL THEN
-      WriteStr(w, "  ; RETURN with no value in a function procedure - undefined result (front end doesn't"); WriteLn(w);
-      WriteStr(w, "  ; reject this; see GenerateReturnStatement's own header comment)"); WriteLn(w);
       LLVMTypes.TypeString(cg.currentProcResultType, cg.sizeModel, retType);
       WriteStr(w, "  ret "); WriteStr(w, retType); WriteStr(w, " ");
       IF (cg.currentProcResultType = Types.Real) OR (cg.currentProcResultType = Types.LongReal) THEN
@@ -7217,18 +7294,17 @@ MODULE LLVMCodeGenerator;
      module's own "always leave an open block" invariant), whether or
      not the body's last statement was itself a RETURN, so appending one
      more terminator here is always well-formed - for a function
-     procedure, this is also the fallback for a body that falls off the
-     end without returning on every path (a real but narrow gap in
-     CheckProcedureBody's own shallow, non-flow-sensitive check - see
-     its header comment), using the same well-typed zero placeholder
-     GenerateReturnStatement's own "bare RETURN in a function procedure"
-     case does. cg.locals/cg.currentProcResultType/cg.scope are all
+     procedure it is a trap (status 12, at the END keyword): control that
+     gets there left the function without a RETURN, which Oberon2.pdf 10.1
+     forbids and CheckProcedureBody's shallow, non-flow-sensitive check
+     cannot rule out (Phase 12 step 1; until then a well-typed zero was
+     returned). cg.locals/cg.currentProcResultType/cg.scope are all
      reset back to their module-level values afterward, so the next
      procedure (or "_init", once every procedure is done) starts clean. *)
   PROCEDURE GenerateFunction(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
                              pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
                              needs: NestedProcedures.Need);
-    VAR savedScope: SymbolTable.Scope; retType: LongText; i: INTEGER;
+    VAR savedScope: SymbolTable.Scope; i: INTEGER;
   BEGIN
     i := 0; (* the symbol without its "@": "List.Insert", "List.Insert.Find" *)
     WHILE (fnSymbol[i + 1] # 0X) & (i < LEN(cg.currentProc) - 1) DO cg.currentProc[i] := fnSymbol[i + 1]; INC(i) END;
@@ -7251,14 +7327,10 @@ MODULE LLVMCodeGenerator;
     GenerateStatementSeq(w, cg, GenerateDeclarationInits(w, cg, pd.declarations, pd.statements));
     IF pt.resultType = NIL THEN
       WriteStr(w, "  ret void"); WriteLn(w)
-    ELSE
-      LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType);
-      WriteStr(w, "  ret "); WriteStr(w, retType); WriteStr(w, " ");
-      IF (pt.resultType = Types.Real) OR (pt.resultType = Types.LongReal) THEN WriteStr(w, "0.0")
-      ELSIF retType = "ptr" THEN WriteStr(w, "null")
-      ELSE WriteStr(w, "0")
-      END;
-      WriteLn(w)
+    ELSE (* control that reaches END: a trap (Phase 12 step 1) *)
+      IF debugInfo THEN debugLine := pd.endLine; debugColumn := pd.endColumn END;
+      cg.needReturnTrap := TRUE;
+      EmitTrapAt(w, cg, returnTrapGlobal, returnTrapMsg, returnTrapExitCode, pd.endLine, pd.endColumn)
     END;
     WriteStr(w, "}"); WriteLn(w); WriteLn(w);
     debugScope := -1;
@@ -7402,6 +7474,10 @@ MODULE LLVMCodeGenerator;
     IF cg.needLengthTrap THEN EmitTrapMessageGlobal(w, lengthTrapGlobal, lengthTrapMsg) END;
     IF cg.needEntierTrap THEN EmitTrapMessageGlobal(w, entierTrapGlobal, entierTrapMsg) END;
     IF cg.needArrayAssignTrap THEN EmitTrapMessageGlobal(w, arrayAssignTrapGlobal, arrayAssignTrapMsg) END;
+    IF cg.needReturnTrap THEN EmitTrapMessageGlobal(w, returnTrapGlobal, returnTrapMsg) END;
+    IF cg.needRecordAssignTrap THEN EmitTrapMessageGlobal(w, recordAssignTrapGlobal, recordAssignTrapMsg) END;
+    IF cg.needShortRangeTrap THEN EmitTrapMessageGlobal(w, shortRangeTrapGlobal, shortRangeTrapMsg) END;
+    IF cg.needChrRangeTrap THEN EmitTrapMessageGlobal(w, chrRangeTrapGlobal, chrRangeTrapMsg) END;
     IF cg.needHeapTrap THEN EmitTrapMessageGlobal(w, heapTrapGlobal, heapTrapMsg) END;
     site := cg.trapSites;
     WHILE site # NIL DO EmitTrapMessageGlobal(w, site.global, site.text); site := site.next END;
@@ -7709,7 +7785,8 @@ MODULE LLVMCodeGenerator;
     cg.currentBlock[0] := 0X;
     cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
     cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE; cg.needEntierTrap := FALSE;
-    cg.needArrayAssignTrap := FALSE; cg.needHeapTrap := FALSE;
+    cg.needArrayAssignTrap := FALSE; cg.needHeapTrap := FALSE; cg.needReturnTrap := FALSE;
+    cg.needRecordAssignTrap := FALSE; cg.needShortRangeTrap := FALSE; cg.needChrRangeTrap := FALSE;
     cg.currentFile[0] := 0X; cg.currentProc[0] := 0X; cg.statementLine := 0; cg.statementColumn := 0;
     cg.trapSites := NIL; cg.trapSitesTail := NIL; cg.trapSiteCount := 0;
     FOR i := 0 TO noAssertCode DO cg.assertCodes[i] := FALSE END;

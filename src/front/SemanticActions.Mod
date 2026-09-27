@@ -2830,6 +2830,10 @@ MODULE SemanticActions;
         CheckAssignmentCompatible(scope, procResultType, s.value, valueType, s.line, s.column,
           "RETURN value is not assignment compatible with the result type")
       END
+    ELSIF procResultType # NIL THEN
+      (* Oberon2.pdf 10.1: a function procedure is left by a return statement
+         "indicating the result value"; voc's err 124. Phase 12 step 1. *)
+      Diagnostics.Error(s.line, s.column, "RETURN in a function procedure needs a value")
     END
   END CheckReturnStatement;
 

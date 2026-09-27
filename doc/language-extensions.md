@@ -749,6 +749,9 @@ one to every trap in this table. Each status is pinned by a fixture.
 | 9 | An open array assigned to a fixed array with fewer elements (`llvm-array-assign-trap`) | `open array assigned to an array too short for it` | Halt(-2), 254 |
 | 10 | A failed `ASSERT(x)` or `ASSERT(x, n)` (`llvm-assert`) | `assertion failed`, or `assertion failed (n)` | "Assertion failure." and " ASSERT code n."; exit `n`, 255 for none or 0 |
 | 11 | With `-trap-heap-exhausted` only: `NEW`, `NEW(p, n, ...)` or `SYSTEM.NEW` the heap cannot satisfy (`llvm-heap-exhausted`) | `heap exhausted: NEW cannot allocate the block` | no switch: the pointer is NIL |
+| 12 | A function procedure that reaches its `END` (Oberon2.pdf 10.1); the location is the `END` (`llvm-return-trap`; Phase 12 step 1, until then a zero was returned) | `function procedure reached its END without RETURN` | Halt(-3), 253 |
+| 13 | `v := e` for records where `v`, a `VAR` parameter (a receiver too) or `p^`, has a dynamic type that extends its static type (Oberon2.pdf 9.1; `llvm-record-assign-trap`; Phase 12 step 1, until then the static type's fields were copied) | `record assigned to a variable whose dynamic type extends its static type` | Halt(-6), 250; not under `voc -t` |
+| 14 | With `-range-checks` only: `SHORT(x)` of an integer `x` outside the result type, `CHR(x)` of `x` outside 0..255 (`llvm-range-checks`; Phase 12 step 1) | `SHORT argument out of range`, `CHR argument out of range` | `voc -r`: Halt(-8), 248, except `CHR` of a negative value (voc's check compares signed); no switch: truncates |
 
 **The library's own failure.** `Files` stops the program with status 99 when
 it meets an error it cannot hand back to the caller - a file that cannot be
@@ -803,7 +806,7 @@ what that value is.
 | `x IN s` with `x` outside `0..MAX(SET)` | `FALSE` (`llvm-no-trap-behavior` case 7) |
 | `INCL`/`EXCL` with an element outside the set, `{n}` with a variable `n` >= 32 | undefined: the shift wraps at the machine's width (`INCL(s, 33)` set bit 1 on x86), unchecked; constant ones are compile-time errors |
 | Real overflow, underflow, `x/0.0`, `0.0/0.0` | infinity, 0, infinity, NaN, silently (C5); `llvm-no-trap-behavior` case 9 |
-| `SHORT` or `CHR` of a value that does not fit | truncates (`CHR(300)` is 44), as voc without `-r` |
+| `SHORT` or `CHR` of a value that does not fit | truncates (`CHR(300)` is 44), as voc without `-r`; **`poc -range-checks`** makes it trap 14 (Phase 12 step 1, `doc/voc-options.md`) |
 | `FOR v := a TO b` when `b` is `MAX` of `v`'s type | never ends: `v` wraps to `MIN` and the loop runs on, as the report's own expansion (`v <= b`) says once overflow is undefined; voc the same (`llvm-no-trap-behavior` case 8) |
 | `ASH(x, n)`, `LSH`, `ROT` with a count of the type's width or more | defined and not a trap: `ASH` gives 0 (the sign for a right shift), `LSH` 0, `ROT` counts modulo the width; voc's are C's undefined shifts (`ROT(1, 33)` is 0 there, 2 here) |
 | `MOVE(a, b, n)` with `n <= 0` | moves nothing (voc, probed with `n = -4`, copied) (`llvm-no-trap-behavior` case 6) |

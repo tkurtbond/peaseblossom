@@ -143,6 +143,14 @@ for poc unless it adopted them:
 - Run-time checks: `-a` (assert), `-t` (type guard) and `-x` (index) are on
   by default, `-r` (range) is off.
 
+**Which of voc's options poc has** (Phase 12 step 1, decided with the user
+2026-09-27; `doc/voc-options.md` has the table, option by option): `-r` is
+`poc -range-checks`, `-M` is `-static`, `-V` is `-verbose` (the clang command),
+and `-link <arg>` stands for voc's `LDFLAGS`/`LDLIBS`. `-S` and `-m` are
+`-emit-llvm-ir` and `-build`; `-c` waits for step 2's libraries. poc's checks
+cannot be turned off (`-a`, `-t`, `-x`, `-p`); `-e`/`-s`/`-F`, `-f`, `-OV` and
+`-A..` do not apply.
+
 ## VAX/VMS documentation: the target is VMS 5.5-2
 
 The VMS target is **VAX/VMS 5.5-2** (August 1992). Take facts about the
@@ -203,6 +211,12 @@ shells out to these rather than linking against LLVM's own C++ API.
   poc must run on a Pentium II, so no SSE2). `SYSTEM.GET`/`PUT`/`MOVE` are
   volatile, so an optimized build keeps them. `make check-opt2` builds
   everything at `-O2`, Stage 1/2 included (in `build/opt2`).
+- **Link options** (Phase 12 step 1, 2026-09-27): `poc -static` makes
+  `-build` pass clang `-static` (a fully static executable; on Linux it needs
+  `glibc-static`, on OpenBSD it is a static PIE); `poc -link <arg>`, repeatable,
+  passes `<arg>` to clang as one word, after the `.ll` and before `-lm`
+  (`-link -lz`, `-link -L<dir>`); `poc -verbose` prints the clang command on
+  stderr. Fixture `poc-link-flags`.
 - **Debug information** (Phase 11 A16, stage (a), 2026-09-26): `poc -g`
   emits DWARF metadata for gdb and lldb - the procedures' names
   (`List.Insert`, `List.Insert.Find` for a nested one,
@@ -380,10 +394,14 @@ writes `:= ..`). `-strict` rejects it.
 
 ### What traps, and what does not (Phase 11 C9)
 
-The tables of trap statuses 2-11, what ends a program silently, what nothing
+The tables of trap statuses 2-14, what ends a program silently, what nothing
 stops, and what is a compile-time error. `poc -trap-location` (C7) prefixes
 every trap message with `file:line:column:` and ends it with the procedure,
-"(in List.Insert)".
+"(in List.Insert)". Since Phase 12 step 1 (2026-09-27) a function that reaches
+its `END` traps (12), a record assigned to a `VAR` parameter or `p^` whose
+dynamic type extends its static type traps (13), both always, as the report
+requires; `-range-checks` makes `SHORT`/`CHR` of a value that does not fit
+trap (14). A bare `RETURN` in a function is a compile-time error.
 
 ### ASSERT (decided and implemented, 2026-09-25)
 

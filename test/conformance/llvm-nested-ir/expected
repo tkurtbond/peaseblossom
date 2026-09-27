@@ -57,7 +57,9 @@ entry:
   %t16 = load i16, ptr %t13
   ret i16 %t16
 L1:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @nestedir_init() {
@@ -70,6 +72,7 @@ entry:
   call void @nestedir_init()
   ret i32 0
 }
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
@@ -131,7 +134,9 @@ entry:
   %t17 = load i16, ptr %t14
   ret i16 %t17
 L1:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @nestedir_init() {
@@ -144,4 +149,5 @@ entry:
   call void @nestedir_init()
   ret i32 0
 }
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted x86_64-unknown-linux-gnu

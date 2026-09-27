@@ -27,7 +27,9 @@ entry:
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @procir.Inspect(ptr %p.s, ptr %p.s.tag, ptr %p.a, i32 %p.a.len0) {
 entry:
@@ -37,7 +39,9 @@ entry:
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @procir.Nothing() {
 entry:
@@ -66,7 +70,9 @@ LN:
   %tN = call i16 %tN(i16 %tN, i16 %tN)
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @procir_init() {
 entry:
@@ -110,6 +116,7 @@ LN:
   ret void
 }
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 @procir.f = global ptr zeroinitializer
@@ -140,7 +147,9 @@ entry:
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @procir.Inspect(ptr %p.s, ptr %p.s.tag, ptr %p.a, i64 %p.a.len0) {
 entry:
@@ -151,7 +160,9 @@ entry:
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @procir.Nothing() {
 entry:
@@ -180,7 +191,9 @@ LN:
   %tN = call i16 %tN(i16 %tN, i16 %tN)
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @procir_init() {
 entry:
@@ -224,4 +237,5 @@ LN:
   ret void
 }
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted x86_64-unknown-linux-gnu

@@ -58,7 +58,9 @@ LN:
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @boundir.CircleDesc.Area(ptr %p.s) {
 entry:
@@ -86,7 +88,9 @@ LN:
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @boundir.Point.Sum(ptr %p.p, ptr %p.p.tag) {
 entry:
@@ -94,7 +98,9 @@ entry:
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @boundir.Point3.Sum(ptr %p.p, ptr %p.p.tag) {
 entry:
@@ -104,7 +110,9 @@ entry:
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @boundir.Relay(ptr %p.p, ptr %p.p.tag) {
 entry:
@@ -170,7 +178,9 @@ LN:
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @boundir_init() {
 entry:
@@ -221,6 +231,7 @@ LN:
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 @.trap.typeguard = private unnamed_addr constant [19 x i8] c"type guard failed\0A\00"
 @.trap.nowith = private unnamed_addr constant [24 x i8] c"no matching WITH guard\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 @boundir.s = global ptr zeroinitializer
@@ -282,7 +293,9 @@ LN:
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @boundir.CircleDesc.Area(ptr %p.s) {
 entry:
@@ -310,7 +323,9 @@ LN:
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @boundir.Point.Sum(ptr %p.p, ptr %p.p.tag) {
 entry:
@@ -318,7 +333,9 @@ entry:
   %tN = load i16, ptr %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @boundir.Point3.Sum(ptr %p.p, ptr %p.p.tag) {
 entry:
@@ -328,7 +345,9 @@ entry:
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define i16 @boundir.Relay(ptr %p.p, ptr %p.p.tag) {
 entry:
@@ -394,7 +413,9 @@ LN:
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @boundir_init() {
 entry:
@@ -445,4 +466,5 @@ LN:
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 @.trap.typeguard = private unnamed_addr constant [19 x i8] c"type guard failed\0A\00"
 @.trap.nowith = private unnamed_addr constant [24 x i8] c"no matching WITH guard\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted x86_64-unknown-linux-gnu

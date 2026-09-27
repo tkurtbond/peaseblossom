@@ -906,6 +906,12 @@ MODULE Poc;
     Err.String("       starts with its file:line:column and names its procedure"); Err.Ln;
     Err.String("       -g may precede -emit-llvm-ir or -build: debug information for gdb"); Err.Ln;
     Err.String("       and lldb (source lines, procedures, variables); best with -opt 0 or -opt g"); Err.Ln;
+    Err.String("       -range-checks may precede -emit-llvm-ir or -build: SHORT of an integer"); Err.Ln;
+    Err.String("       and CHR stop the program (exit status 14) when the value does not fit"); Err.Ln;
+    Err.String("       -static may precede -build: link a fully static executable"); Err.Ln;
+    Err.String("       -link <arg> may precede -build, and be repeated: pass <arg> (-lz,"); Err.Ln;
+    Err.String("       -L<dir>, ...) to the link"); Err.Ln;
+    Err.String("       -verbose may precede -build: print the clang command it runs"); Err.Ln;
     Err.String("       -strict may precede any command above: the module named rejects"); Err.Ln;
     Err.String("       everything beyond the Oberon-2 report (its imports are not checked)"); Err.Ln
   END Usage;
@@ -1052,6 +1058,31 @@ MODULE Poc;
             failed := TRUE; Err.String("poc: -opt requires a level"); Err.Ln;
             done := TRUE
           END
+        ELSIF arg = "-range-checks" THEN
+          (* Phase 12 step 1: voc's -r *)
+          LLVMCodeGenerator.rangeChecks := TRUE;
+          INC(i)
+        ELSIF arg = "-static" THEN
+          (* Phase 12 step 1: voc's -M *)
+          LLVMToolchainDriver.staticLink := TRUE;
+          INC(i)
+        ELSIF arg = "-verbose" THEN
+          (* Phase 12 step 1: voc's -V, as far as it shows the C compiler's command *)
+          LLVMToolchainDriver.verbose := TRUE;
+          INC(i)
+        ELSIF arg = "-link" THEN
+          (* Phase 12 step 1: voc's LDFLAGS/LDLIBS *)
+          IF i + 1 < Modules.ArgCount THEN
+            Modules.GetArg(i + 1, param);
+            IF ~LLVMToolchainDriver.AddLinkArgument(param) THEN
+              failed := TRUE; Err.String("poc: too many -link arguments"); Err.Ln;
+              done := TRUE
+            END;
+            INC(i, 2)
+          ELSE
+            failed := TRUE; Err.String("poc: -link requires an argument"); Err.Ln;
+            done := TRUE
+          END
         ELSIF arg = "-trap-heap-exhausted" THEN
           (* Phase 11 A13: a NEW the heap cannot satisfy stops the program *)
           LLVMCodeGenerator.trapHeapExhausted := TRUE;
@@ -1085,7 +1116,10 @@ MODULE Poc;
           END;
           done := TRUE
         END
-      END
+      END;
+      (* flags and no command after them (Phase 12 step 1): say how to use
+         poc, not succeed having done nothing *)
+      IF ~done THEN Usage END
     END
   END Run;
 

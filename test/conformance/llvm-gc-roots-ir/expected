@@ -60,7 +60,9 @@ entry:
   %t8 = load i32, ptr @ModuleTable.head
   ret i32 %t8
 L1:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define i32 @ModuleTable.Next(i32 %p.table) {
@@ -76,7 +78,9 @@ entry:
   %t14 = load i32, ptr %t10
   ret i32 %t14
 L2:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define i32 @ModuleTable.SlotCount(i32 %p.table) {
@@ -94,7 +98,9 @@ entry:
   %t22 = load i32, ptr %t16
   ret i32 %t22
 L3:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define i32 @ModuleTable.Slot(i32 %p.table, i32 %p.index) {
@@ -118,7 +124,9 @@ entry:
   %t35 = load i32, ptr %t25
   ret i32 %t35
 L4:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define i32 @ModuleTable.TableCount() {
@@ -126,7 +134,9 @@ entry:
   %t36 = load i32, ptr @ModuleTable.registered
   ret i32 %t36
 L5:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @ModuleTable_init() {
@@ -148,6 +158,7 @@ entry:
   call void @roots_init()
   ret i32 0
 }
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted i686-unknown-linux-gnu
 define void @GarbageCollectedHeap.SetStackBase(i32 %p.base) {
   %stackbase = call ptr @llvm.frameaddress.p0(i32 0)
@@ -217,7 +228,9 @@ entry:
   %t8 = load i64, ptr @ModuleTable.head
   ret i64 %t8
 L1:
-  ret i64 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define i64 @ModuleTable.Next(i64 %p.table) {
@@ -233,7 +246,9 @@ entry:
   %t14 = load i64, ptr %t10
   ret i64 %t14
 L2:
-  ret i64 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define i64 @ModuleTable.SlotCount(i64 %p.table) {
@@ -251,7 +266,9 @@ entry:
   %t22 = load i64, ptr %t16
   ret i64 %t22
 L3:
-  ret i64 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define i64 @ModuleTable.Slot(i64 %p.table, i64 %p.index) {
@@ -275,7 +292,9 @@ entry:
   %t35 = load i64, ptr %t25
   ret i64 %t35
 L4:
-  ret i64 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define i32 @ModuleTable.TableCount() {
@@ -283,7 +302,9 @@ entry:
   %t36 = load i32, ptr @ModuleTable.registered
   ret i32 %t36
 L5:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @ModuleTable_init() {
@@ -305,6 +326,7 @@ entry:
   call void @roots_init()
   ret i32 0
 }
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted x86_64-unknown-linux-gnu
 define void @GarbageCollectedHeap.SetStackBase(i64 %p.base) {
   %stackbase = call ptr @llvm.frameaddress.p0(i32 0)

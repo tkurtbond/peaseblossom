@@ -1,0 +1,14 @@
+== without -link
+poc: build failed
+== -link, -static and -verbose
+clang --target=<triple> linkflags.ll -o poc-link-flags '-Llib dir' '-lpocfixture' -lm -O<level> -static
+21
+exit=0
+INTERP: 0
+== -link, dynamic
+21
+exit=0
+INTERP: 1
+== -link without an argument
+poc: -link requires an argument
+exit=1

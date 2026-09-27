@@ -1,0 +1,48 @@
+usage: poc -dump-tokens <file>
+       poc -check-syntax <file>
+       poc -check <file>
+       poc -dump-layout <file>
+       poc -dump-llvm-types <file>
+       poc -dump-nested <file>
+       poc -emit-interface <file>
+       poc -show-interface <file>
+       poc -emit-llvm-ir <file>
+       poc -o <exe> -build <file>
+       poc [-import-path <dir> | -clear-import-path]... -print-import-path
+       -import-path <dir> and -clear-import-path may also precede any
+       command above; POC_IMPORT_PATH seeds the list (colon-separated)
+       before any flags are applied
+       -output-dir <dir> may also precede -emit-interface or
+       -emit-llvm-ir, to write <ModuleName>.sym/.ll there instead of the
+       current directory
+       -O2 | -OC may also precede any command above, selecting the
+       elementary-type size model MAX(T)/MIN(T)/SIZE(T) and integer
+       literals fold against (default -O2); a later one wins
+       -target <triple> may precede -emit-llvm-ir or -build, selecting the
+       LLVM target triple (default: clang's own default for this host);
+       it may also precede -emit-interface or -show-interface, to fold
+       SIZE(T)/MAX(T)/MIN(T)
+       for that target's word size (default: no effect, no clang needed)
+       -o <exe> may precede -build, giving the executable's output path
+       (required - -build has no default)
+       -opt <level> may precede -build: clang builds with -O<level>,
+       <level> one of 0, 1, 2, 3, s, z, g (default 2; 0 for 32-bit x86)
+       -trap-heap-exhausted may precede -emit-llvm-ir or -build: a NEW
+       the heap cannot satisfy stops the program (exit status 11)
+       instead of leaving the pointer NIL
+       -trap-location may precede -emit-llvm-ir or -build: a trap's message
+       starts with its file:line:column and names its procedure
+       -g may precede -emit-llvm-ir or -build: debug information for gdb
+       and lldb (source lines, procedures, variables); best with -opt 0 or -opt g
+       -range-checks may precede -emit-llvm-ir or -build: SHORT of an integer
+       and CHR stop the program (exit status 14) when the value does not fit
+       -static may precede -build: link a fully static executable
+       -link <arg> may precede -build, and be repeated: pass <arg> (-lz,
+       -L<dir>, ...) to the link
+       -verbose may precede -build: print the clang command it runs
+       -strict may precede any command above: the module named rejects
+       everything beyond the Oberon-2 report (its imports are not checked)
+exit=1
+== flags and no command
+the same usage text
+exit=1

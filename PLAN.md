@@ -1123,6 +1123,23 @@ convenient, but must not be a prerequisite of it.
    and cross-checked against real voc where voc's behavior is
    observable. **Testing**: a golden `-help`/usage fixture, and a fixture
    per adopted flag that would otherwise be untested.
+   **Done (2026-09-27, decided with the user): `doc/voc-options.md`** has the
+   table, every option probed against voc. Adopted: `-r` as `-range-checks`
+   (`SHORT` of an integer and `CHR` that do not fit trap, status 14, off by
+   default), `-M` as `-static`, `-V` as `-verbose` (the clang command), and
+   voc's `LDFLAGS`/`LDLIBS` as a repeatable `-link <arg>`. No switch turns a
+   check off (`-a`, `-t`, `-x`, `-p`: A14 and D16 stand). `-S`/`-m` are
+   `-emit-llvm-ir`/`-build`; `-c` goes to step 2; `-e`/`-s`/`-F`, `-f`,
+   `-OV` and `-A..` do not apply. The triage found two checks the report
+   requires that voc makes and poc did not, now always on: a function that
+   reaches its `END` (status 12) and a record assigned to a `VAR` parameter
+   or `p^` whose dynamic type extends its static type (status 13); and, on the
+   way, a bare `RETURN` in a function (now a compile-time error), a record
+   assignment to a `WITH`-narrowed `VAR` parameter that copied only the base
+   record's fields (fixed), and flags with no command after them, which
+   exited 0 having done nothing (now the usage text, status 1). Fixtures
+   `llvm-range-checks`, `llvm-return-trap`, `llvm-record-assign-trap`,
+   `semantic-reject-bare-return`, `poc-link-flags`, `poc-usage`.
 
 2. **Building static and dynamic libraries with poc.** Decide how a
    program compiled by poc links against libraries poc itself built, and

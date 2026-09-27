@@ -954,8 +954,10 @@ MODULE Parser;
       declarations: SyntaxTree.DeclSeqNode;
       statements: SyntaxTree.StatementNode;
       endName: SyntaxTree.Ident;
+      endLine, endColumn: INTEGER;
+      node: SyntaxTree.ProcDeclNode;
   BEGIN
-    receiver := NIL;
+    receiver := NIL; endLine := 0; endColumn := 0;
     (* An external procedure is never type-bound (AGENTS.md); a receiver
        written on one is left to misparse its "(" as FormalPars rather
        than specially accommodated - see PLAN.md's own note on this. *)
@@ -971,15 +973,18 @@ MODULE Parser;
         Advance(p); statements := ParseStatementSeq(p)
       END;
       statements := WithInitializers(declarations, statements);
+      endLine := p.current.line; endColumn := p.current.column;
       ExpectToken(p, Lexer.endKeyword, "expected 'END'");
       ExpectIdent(p, endName);
       IF endName # name.name THEN
         Diagnostics.Error(line, column, "procedure END identifier does not match its name")
       END
     END;
-    RETURN SemanticActions.NewProcDecl(isForward, isExternal, externalConvention, externalName,
+    node := SemanticActions.NewProcDecl(isForward, isExternal, externalConvention, externalName,
                                         receiver, name, formals,
-                                        declarations, statements, endName, line, column)
+                                        declarations, statements, endName, line, column);
+    node.endLine := endLine; node.endColumn := endColumn;
+    RETURN node
   END ParseProcDecl;
 
   (* One ProcedureDeclaration or ForwardDeclaration and its ";", appended

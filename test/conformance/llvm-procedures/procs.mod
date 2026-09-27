@@ -41,12 +41,11 @@ MODULE procs;
   END Fact;
 
   (* A function procedure whose ELSE-less IF leaves a path with no
-     RETURN at all - real, front-end-accepted Oberon-2 (Semantic-
+     RETURN at all - front-end-accepted Oberon-2 (Semantic-
      Actions.CheckProcedureBody's own "function procedure must return
      a value" check is deliberately shallow, not full reachability
-     analysis). GenerateProcedureDecl's own trailing "ret <type> 0"
-     fallback is what keeps this well-defined (if not meaningful)
-     rather than miscompiled. *)
+     analysis). Called here only on the path that returns: reaching its
+     END stops the program since Phase 12 step 1 (llvm-return-trap). *)
   PROCEDURE MaybeReturn(n: INTEGER): INTEGER;
   BEGIN
     IF n > 0 THEN RETURN n * 2 END
@@ -56,7 +55,7 @@ BEGIN
   total := Add(3, 4);
   Increment(total, 10);
   total := total + Fact(5);
-  total := total + MaybeReturn(6) + MaybeReturn(-1);
+  total := total + MaybeReturn(6);
 
   p.x := 1; p.y := 2;
   Increment(p.x, 1);

@@ -121,3 +121,7 @@ test/conformance/llvm-large-records/llvm-large-records
 test/conformance/llvm-assert/llvm-assert
 test/conformance/llvm-heap-exhausted/llvm-heap-exhausted
 test/conformance/llvm-trap-location/llvm-trap-location
+test/conformance/llvm-range-checks/llvm-range-checks
+test/conformance/llvm-return-trap/llvm-return-trap
+test/conformance/llvm-record-assign-trap/llvm-record-assign-trap
+test/conformance/poc-link-flags/poc-link-flags
