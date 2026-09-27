@@ -675,7 +675,9 @@ MODULE LLVMCodeGenerator;
        DIBasicType or a pointer (id + 1) - lldb shows a basic type by its C
        name (short, long), but a typedef by its own (INTEGER, LONGINT). A
        record is a structure type, a fixed array an array type, a pointer
-       or a procedure type a pointer type. *)
+       or a procedure type a pointer type. A pointer to an open array points
+       to a structure (id + 1) that is the heap block (NEW): the lengths,
+       "len", then the elements, "data", whose counts are read from "len". *)
     DebugType = POINTER TO DebugTypeDesc;
     DebugTypeDesc = RECORD
       type: Types.Type;
@@ -689,7 +691,16 @@ MODULE LLVMCodeGenerator;
     DebugVariableDesc = RECORD
       name: SyntaxTree.Ident;
       id, arg, scope, fileId, line, typeId: INTEGER;
+      artificial: BOOLEAN; (* made by the compiler: an open array's length *)
       next: DebugVariable
+    END;
+
+    (* An open-array variable's type, an array type node (id) whose
+       lengths are the dims variables firstLength, firstLength + 1, ... *)
+    DebugOpenArray = POINTER TO DebugOpenArrayDesc;
+    DebugOpenArrayDesc = RECORD
+      id, elementId, firstLength, dims: INTEGER;
+      next: DebugOpenArray
     END;
 
   VAR
@@ -712,6 +723,7 @@ MODULE LLVMCodeGenerator;
     debugUnits, debugUnitsTail, debugUnit: DebugUnit; (* debugUnit: the module being generated *)
     debugTypes: DebugType;
     debugVariables: DebugVariable;
+    debugOpenArrays: DebugOpenArray;
     debugDeclared: BOOLEAN; (* some variable was declared: llvm.dbg.declare is used *)
     debugSizeModel: INTEGER; (* cg.sizeModel, for DebugTypeId *)
     debugScope: INTEGER; (* the current function's DISubprogram, or -1 *)
@@ -836,6 +848,10 @@ MODULE LLVMCodeGenerator;
 
   (* ---- Debug information (poc -g, Phase 11 A16) ---- *)
 
+  PROCEDURE ^ OpenDimCount(t: Types.Type): INTEGER;
+  PROCEDURE ^ OpenElementType(t: Types.Type): Types.Type;
+  PROCEDURE ^ OpenDataOffset(arr: Types.ArrayType; sizeModel: INTEGER): LONGINT;
+
   (* A metadata string: quoted, a quotation mark, a backslash and anything
      outside printable ASCII as \<hex><hex>, as LLVM's text format has it. *)
   PROCEDURE WriteMetadataString(VAR w: Files.Rider; text: ARRAY OF CHAR);
@@ -910,6 +926,13 @@ MODULE LLVMCodeGenerator;
     debugUnit := u
   END EnterDebugUnit;
 
+  PROCEDURE IsPointerToOpenArray(t: Types.Type): BOOLEAN;
+    VAR ptr: Types.PointerType;
+  BEGIN
+    IF (t # NIL) & (t IS Types.PointerType) THEN ptr := t(Types.PointerType); RETURN Types.IsOpenArray(ptr.base) END;
+    RETURN FALSE
+  END IsPointerToOpenArray;
+
   PROCEDURE IsDebugBasicType(t: Types.Type): BOOLEAN;
   BEGIN
     RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Byte) OR Types.IsInteger(t) OR (t = Types.Real)
@@ -951,10 +974,16 @@ MODULE LLVMCodeGenerator;
     END;
     (* entered before the types it is made of, which may lead back to it *)
     NEW(d); d.type := t; d.id := nextMetadata; d.next := debugTypes; debugTypes := d;
-    IF IsDebugBasicType(t) OR (t = Types.Ptr) THEN INC(nextMetadata, 2) ELSE INC(nextMetadata) END;
+    IF IsDebugBasicType(t) OR (t = Types.Ptr) OR IsPointerToOpenArray(t) THEN INC(nextMetadata, 2)
+    ELSE INC(nextMetadata)
+    END;
     IF (t IS Types.PointerType) & (t # Types.Ptr) THEN
       ptr := t(Types.PointerType);
-      IF ~Types.IsOpenArray(ptr.base) THEN elementId := DebugTypeId(ptr.base) END
+      IF Types.IsOpenArray(ptr.base) THEN
+        elementId := DebugTypeId(OpenElementType(ptr.base)); elementId := DebugTypeId(Types.Address)
+      ELSE
+        elementId := DebugTypeId(ptr.base)
+      END
     ELSIF t IS Types.RecordType THEN
       rec := t(Types.RecordType);
       WHILE rec # NIL DO
@@ -1006,6 +1035,33 @@ MODULE LLVMCodeGenerator;
     END
   END DebugRecordName;
 
+  (* The node id, a structure type for the heap block of the open array arr
+     (NEW): "len", its lengths, and at OpenDataOffset "data", its elements,
+     an array whose counts are DWARF expressions reading the lengths back
+     from the block, relative to where "data" is. *)
+  PROCEDURE WriteDebugOpenBlock(VAR w: Files.Rider; id: INTEGER; arr: Types.ArrayType);
+    VAR dims, d: INTEGER; wordBits, dataOffset: LONGINT;
+  BEGIN
+    dims := OpenDimCount(arr); wordBits := 8 * ConstantEvaluator.wordSize;
+    dataOffset := OpenDataOffset(arr, debugSizeModel);
+    (* its size is the lengths' part: lldb, which does not evaluate the
+       counts, needs one to find "data" *)
+    Files.Write(w, "!"); WriteNatural(w, id); WriteRaw(w, " = !DICompositeType(tag: DW_TAG_structure_type, size: ");
+    WriteNatural(w, 8 * dataOffset); WriteRaw(w, ", elements: !{");
+    WriteRaw(w, '!DIDerivedType(tag: DW_TAG_member, name: "len", baseType: !DICompositeType(tag: DW_TAG_array_type, baseType: !');
+    WriteNatural(w, DebugTypeId(Types.Address)); WriteRaw(w, ", size: "); WriteNatural(w, dims * wordBits);
+    WriteRaw(w, ", elements: !{!DISubrange(count: "); WriteNatural(w, dims); WriteRaw(w, ")}), size: ");
+    WriteNatural(w, dims * wordBits); WriteRaw(w, ", offset: 0), ");
+    WriteRaw(w, '!DIDerivedType(tag: DW_TAG_member, name: "data", baseType: !DICompositeType(tag: DW_TAG_array_type, baseType: !');
+    WriteNatural(w, DebugTypeId(OpenElementType(arr))); WriteRaw(w, ", elements: !{");
+    FOR d := 0 TO dims - 1 DO
+      IF d > 0 THEN WriteRaw(w, ", ") END;
+      WriteRaw(w, "!DISubrange(count: !DIExpression(DW_OP_push_object_address, DW_OP_constu, ");
+      WriteNatural(w, dataOffset - d * ConstantEvaluator.wordSize); WriteRaw(w, ", DW_OP_minus, DW_OP_deref))")
+    END;
+    WriteRaw(w, "}), offset: "); WriteNatural(w, 8 * dataOffset); WriteRaw(w, ")})"); Files.Write(w, 0AX)
+  END WriteDebugOpenBlock;
+
   (* The node of type d (see DebugType) *)
   PROCEDURE WriteDebugType(VAR w: Files.Rider; d: DebugType);
     VAR t: Types.Type; ptr: Types.PointerType; arr: Types.ArrayType; name: LongText; first: BOOLEAN;
@@ -1036,10 +1092,13 @@ MODULE LLVMCodeGenerator;
     ELSIF t IS Types.PointerType THEN
       ptr := t(Types.PointerType);
       WriteRaw(w, "!DIDerivedType(tag: DW_TAG_pointer_type, ");
-      IF Types.IsOpenArray(ptr.base) THEN WriteRaw(w, "baseType: null")
-      ELSE WriteRaw(w, "baseType: !"); WriteNatural(w, DebugTypeId(ptr.base))
-      END;
-      WriteRaw(w, ", size: "); WriteNatural(w, bits)
+      IF Types.IsOpenArray(ptr.base) THEN
+        WriteRaw(w, "baseType: !"); WriteNatural(w, d.id + 1); WriteRaw(w, ", size: "); WriteNatural(w, bits);
+        WriteRaw(w, ")"); Files.Write(w, 0AX);
+        WriteDebugOpenBlock(w, d.id + 1, ptr.base(Types.ArrayType))
+      ELSE
+        WriteRaw(w, "baseType: !"); WriteNatural(w, DebugTypeId(ptr.base)); WriteRaw(w, ", size: "); WriteNatural(w, bits)
+      END
     ELSIF t IS Types.ProcedureType THEN
       WriteRaw(w, "!DIDerivedType(tag: DW_TAG_pointer_type, baseType: !"); WriteNatural(w, debugSubroutineType);
       WriteRaw(w, ", size: "); WriteNatural(w, bits)
@@ -1056,7 +1115,7 @@ MODULE LLVMCodeGenerator;
       first := TRUE; WriteDebugMembers(w, t(Types.RecordType), first);
       WriteRaw(w, "}")
     END;
-    WriteRaw(w, ")"); Files.Write(w, 0AX)
+    IF ~IsPointerToOpenArray(t) THEN WriteRaw(w, ")"); Files.Write(w, 0AX) END
   END WriteDebugType;
 
   (* Under -g, " , !dbg !<n>" for the module variable obj, declared in the
@@ -1076,26 +1135,52 @@ MODULE LLVMCodeGenerator;
     END
   END WriteDebugGlobal;
 
+  (* A variable named name, declared at line and column, of the type
+     typeId, held at address: a DILocalVariable and a call of
+     llvm.dbg.declare. Its node is the next metadata number. When address is
+     an argument (indirect: a VAR parameter's, an enclosing variable's for a
+     nested procedure), it is stored in a slot "%-debug<node>" first and the
+     variable described through it: a debugger that is told the argument
+     itself follows the register it came in, which the code reuses. Written
+     past Put, so WriteLn adds no second position. *)
+  PROCEDURE DeclareDebugSlot(VAR w: Files.Rider; name: ARRAY OF CHAR; line, column: INTEGER;
+                             address: ARRAY OF CHAR; arg, typeId: INTEGER; artificial, indirect: BOOLEAN);
+    VAR v: DebugVariable; p: DebugProcedure; slot: ValueText;
+  BEGIN
+    p := debugProceduresTail; (* the function being generated *)
+    NEW(v); COPY(name, v.name); v.arg := arg; v.scope := debugScope; v.fileId := p.fileId;
+    v.line := line; v.typeId := typeId; v.artificial := artificial;
+    v.id := nextMetadata; INC(nextMetadata);
+    v.next := debugVariables; debugVariables := v;
+    debugDeclared := TRUE;
+    IF indirect THEN
+      slot := "%-debug"; AppendLongInt(slot, v.id);
+      WriteRaw(w, "  "); WriteRaw(w, slot); WriteRaw(w, " = alloca ptr"); Files.Write(w, 0AX);
+      WriteRaw(w, "  store ptr "); WriteRaw(w, address); WriteRaw(w, ", ptr "); WriteRaw(w, slot); Files.Write(w, 0AX)
+    ELSE
+      COPY(address, slot)
+    END;
+    WriteRaw(w, "  call void @llvm.dbg.declare(metadata ptr "); WriteRaw(w, slot);
+    WriteRaw(w, ", metadata !"); WriteNatural(w, v.id); WriteRaw(w, ", metadata !DIExpression(");
+    IF indirect THEN WriteRaw(w, "DW_OP_deref") END;
+    WriteRaw(w, ")), !dbg !DILocation(line: ");
+    WriteNatural(w, line); WriteRaw(w, ", column: "); WriteNatural(w, column);
+    WriteRaw(w, ", scope: !"); WriteNatural(w, debugScope); WriteRaw(w, ")");
+    Files.Write(w, 0AX)
+  END DeclareDebugSlot;
+
   (* Under -g, in a function with debug information: describes obj, a
      parameter (its position arg) or a local variable (arg 0) held at
-     address (for a VAR parameter, the variable's own), with a call of
-     llvm.dbg.declare - if its type is one DebugTypeId describes. Written past Put, so WriteLn adds no second position. *)
-  PROCEDURE DeclareDebugVariable(VAR w: Files.Rider; obj: SymbolTable.Object; address: ARRAY OF CHAR; arg: INTEGER);
-    VAR v: DebugVariable; typeId: INTEGER; p: DebugProcedure;
+     address (indirect: in an argument, see DeclareDebugSlot) - if its type
+     is one DebugTypeId describes. *)
+  PROCEDURE DeclareDebugVariable(VAR w: Files.Rider; obj: SymbolTable.Object; address: ARRAY OF CHAR; arg: INTEGER;
+                                 indirect: BOOLEAN);
+    VAR typeId: INTEGER;
   BEGIN
     IF debugInfo & (debugScope >= 0) & (obj # NIL) THEN
       typeId := DebugTypeId(obj.type);
       IF typeId >= 0 THEN
-        p := debugProceduresTail; (* the function being generated *)
-        NEW(v); COPY(obj.name, v.name); v.arg := arg; v.scope := debugScope; v.fileId := p.fileId;
-        v.line := obj.declLine; v.typeId := typeId; v.id := nextMetadata; INC(nextMetadata);
-        v.next := debugVariables; debugVariables := v;
-        debugDeclared := TRUE;
-        WriteRaw(w, "  call void @llvm.dbg.declare(metadata ptr "); WriteRaw(w, address);
-        WriteRaw(w, ", metadata !"); WriteNatural(w, v.id); WriteRaw(w, ", metadata !DIExpression()), !dbg !DILocation(line: ");
-        WriteNatural(w, obj.declLine); WriteRaw(w, ", column: "); WriteNatural(w, obj.declColumn);
-        WriteRaw(w, ", scope: !"); WriteNatural(w, debugScope); WriteRaw(w, ")");
-        Files.Write(w, 0AX)
+        DeclareDebugSlot(w, obj.name, obj.declLine, obj.declColumn, address, arg, typeId, FALSE, indirect)
       END
     END
   END DeclareDebugVariable;
@@ -1104,6 +1189,7 @@ MODULE LLVMCodeGenerator;
      nodes, after the code that made them. *)
   PROCEDURE EmitDebugMetadata(VAR w: Files.Rider);
     VAR f: DebugFile; p: DebugProcedure; t: DebugType; v: DebugVariable; u: DebugUnit; g: DebugGlobal;
+        a: DebugOpenArray; i: INTEGER;
   BEGIN
     Files.Write(w, 0AX);
     f := debugFiles;
@@ -1172,8 +1258,20 @@ MODULE LLVMCodeGenerator;
       IF v.arg > 0 THEN WriteRaw(w, ", arg: "); WriteNatural(w, v.arg) END;
       WriteRaw(w, ", scope: !"); WriteNatural(w, v.scope); WriteRaw(w, ", file: !"); WriteNatural(w, v.fileId);
       WriteRaw(w, ", line: "); WriteNatural(w, v.line); WriteRaw(w, ", type: !"); WriteNatural(w, v.typeId);
+      IF v.artificial THEN WriteRaw(w, ", flags: DIFlagArtificial") END;
       WriteRaw(w, ")"); Files.Write(w, 0AX);
       v := v.next
+    END;
+    a := debugOpenArrays;
+    WHILE a # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, a.id); WriteRaw(w, " = !DICompositeType(tag: DW_TAG_array_type, baseType: !");
+      WriteNatural(w, a.elementId); WriteRaw(w, ", elements: !{");
+      FOR i := 0 TO a.dims - 1 DO
+        IF i > 0 THEN WriteRaw(w, ", ") END;
+        WriteRaw(w, "!DISubrange(count: !"); WriteNatural(w, a.firstLength + i); WriteRaw(w, ")")
+      END;
+      WriteRaw(w, "})"); Files.Write(w, 0AX);
+      a := a.next
     END;
     IF debugDeclared THEN WriteRaw(w, "declare void @llvm.dbg.declare(metadata, metadata, metadata)"); Files.Write(w, 0AX) END
   END EmitDebugMetadata;
@@ -6901,19 +6999,60 @@ MODULE LLVMCodeGenerator;
      hidden parameters EmitProcSignature gave it, under the very Object the
      enclosing procedure's own binding uses, so every access to it in the body
      is the ordinary load or store through an address. *)
-  PROCEDURE BindNeeds(VAR cg: Codegen; needs: NestedProcedures.Need);
+  (* Under -g, in a function with debug information: describes obj, an
+     open-array parameter (its position arg) or an enclosing procedure's
+     one a nested procedure uses (arg 0), whose elements are at address and
+     whose lengths are the arguments lengthBase.len0, .len1, ... - each
+     length stored in a slot of its own and described as an artificial
+     variable "LEN(a)", "LEN(a, 1)", ..., which the array type's counts
+     refer to, as clang describes a C variable-length array. *)
+  PROCEDURE DeclareDebugOpenArray(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
+                                  address, lengthBase: ARRAY OF CHAR; arg: INTEGER; indirect: BOOLEAN);
+    VAR a: DebugOpenArray; elementId, lengthTypeId, d: INTEGER; wordInt, slot, length: ValueText;
+        name: LongText;
+  BEGIN
+    IF debugInfo & (debugScope >= 0) & (obj # NIL) THEN
+      elementId := DebugTypeId(OpenElementType(obj.type));
+      lengthTypeId := DebugTypeId(Types.Address);
+      IF elementId >= 0 THEN
+        NEW(a); a.id := nextMetadata; INC(nextMetadata); a.elementId := elementId; a.dims := OpenDimCount(obj.type);
+        a.firstLength := nextMetadata; a.next := debugOpenArrays; debugOpenArrays := a;
+        WordIntType(wordInt);
+        FOR d := 0 TO a.dims - 1 DO
+          NewTemp(cg, slot);
+          WriteStr(w, "  "); WriteStr(w, slot); WriteStr(w, " = alloca "); WriteStr(w, wordInt); WriteLn(w);
+          COPY(lengthBase, length); Strcat(length, ".len"); AppendLongInt(length, d);
+          WriteStr(w, "  store "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, length);
+          WriteStr(w, ", ptr "); WriteStr(w, slot); WriteLn(w);
+          name := "LEN("; Strcat(name, obj.name);
+          IF d > 0 THEN Strcat(name, ", "); AppendLongInt(name, d) END;
+          Strcat(name, ")");
+          (* the lengths' nodes are a.firstLength, a.firstLength + 1, ... *)
+          DeclareDebugSlot(w, name, obj.declLine, obj.declColumn, slot, 0, lengthTypeId, TRUE, FALSE)
+        END;
+        DeclareDebugSlot(w, obj.name, obj.declLine, obj.declColumn, address, arg, a.id, FALSE, indirect)
+      END
+    END
+  END DeclareDebugOpenArray;
+
+  PROCEDURE BindNeeds(VAR w: Files.Rider; VAR cg: Codegen; needs: NestedProcedures.Need);
     VAR need: NestedProcedures.Need; k: INTEGER; name, tagName: ValueText; dope: DopeVector;
   BEGIN
     need := needs; k := 0;
     WHILE need # NIL DO
       NeedParamName(k, name);
+      (* the enclosing procedure's variable, which name points to, is also
+         the nested one's for a debugger *)
       IF NeedHasTag(need.obj) THEN
+        DeclareDebugVariable(w, need.obj, name, 0, TRUE);
         COPY(name, tagName); Strcat(tagName, ".tag");
         BindLocalWithTag(cg, need.obj, name, tagName)
       ELSIF OpenDimCount(need.obj.type) > 0 THEN
+        DeclareDebugOpenArray(w, cg, need.obj, name, name, 0, TRUE);
         SetParamDope(dope, name, OpenDimCount(need.obj.type));
         BindLocalWithDope(cg, need.obj, name, dope)
       ELSE
+        DeclareDebugVariable(w, need.obj, name, 0, TRUE);
         BindLocal(cg, need.obj, name)
       END;
       need := need.next; INC(k)
@@ -6947,6 +7086,7 @@ MODULE LLVMCodeGenerator;
         (* the hidden lengths follow the pointer (EmitProcSignature) *)
         SetParamDope(dope, argName, OpenDimCount(p.type));
         IF p.isVar THEN
+          DeclareDebugOpenArray(w, cg, obj, argName, argName, position, TRUE);
           BindLocalWithDope(cg, obj, argName, dope)
         ELSE
           (* a value parameter is the callee's own copy: made here, in
@@ -6960,10 +7100,11 @@ MODULE LLVMCodeGenerator;
           WriteStr(w, "  call void @llvm.memmove.p0.p0."); WriteStr(w, wordInt); WriteStr(w, "(ptr ");
           WriteStr(w, copied); WriteStr(w, ", ptr "); WriteStr(w, argName); WriteStr(w, ", ");
           WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, bytes); WriteStr(w, ", i1 false)"); WriteLn(w);
+          DeclareDebugOpenArray(w, cg, obj, copied, argName, position, FALSE);
           BindLocalWithDope(cg, obj, copied, dope)
         END
       ELSIF p.isVar THEN
-        DeclareDebugVariable(w, obj, argName, position);
+        DeclareDebugVariable(w, obj, argName, position, TRUE);
         IF NeedsHiddenTag(p) THEN
           COPY(argName, tagName); Strcat(tagName, ".tag");
           BindLocalWithTag(cg, obj, argName, tagName)
@@ -6976,7 +7117,7 @@ MODULE LLVMCodeGenerator;
         WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
         WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " "); WriteStr(w, argName);
         WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
-        DeclareDebugVariable(w, obj, addrText, position);
+        DeclareDebugVariable(w, obj, addrText, position, FALSE);
         BindLocal(cg, obj, addrText)
       END;
       p := p.next; INC(position)
@@ -6995,14 +7136,14 @@ MODULE LLVMCodeGenerator;
     obj := SymbolTable.FindLocal(bodyScope, receiver.name);
     ParamName(receiver.name, argName);
     IF receiver.isVar THEN
-      DeclareDebugVariable(w, obj, argName, 1);
+      DeclareDebugVariable(w, obj, argName, 1, TRUE);
       COPY(argName, tagName); Strcat(tagName, ".tag");
       BindLocalWithTag(cg, obj, argName, tagName)
     ELSE
       NewTemp(cg, addrText);
       WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca ptr"); WriteLn(w);
       WriteStr(w, "  store ptr "); WriteStr(w, argName); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
-      DeclareDebugVariable(w, obj, addrText, 1);
+      DeclareDebugVariable(w, obj, addrText, 1, FALSE);
       BindLocal(cg, obj, addrText)
     END
   END BindReceiver;
@@ -7049,7 +7190,7 @@ MODULE LLVMCodeGenerator;
           WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer, ptr ");
           WriteStr(w, addrText); WriteLn(w)
         END;
-        DeclareDebugVariable(w, obj, addrText, 0);
+        DeclareDebugVariable(w, obj, addrText, 0, FALSE);
         BindLocal(cg, obj, addrText);
         nm := nm.next
       END;
@@ -7105,7 +7246,7 @@ MODULE LLVMCodeGenerator;
     ELSE
       BindFormalParams(w, cg, bodyScope, pt, 1)
     END;
-    BindNeeds(cg, needs);
+    BindNeeds(w, cg, needs);
     BindLocalVars(w, cg, bodyScope, pd.declarations);
     GenerateStatementSeq(w, cg, GenerateDeclarationInits(w, cg, pd.declarations, pd.statements));
     IF pt.resultType = NIL THEN
@@ -7587,7 +7728,7 @@ MODULE LLVMCodeGenerator;
     nextMetadata := 0; realignId := -1; debugVersionId := -1;
     debugFiles := NIL; debugProcedures := NIL; debugProceduresTail := NIL; debugScope := -1;
     debugUnits := NIL; debugUnitsTail := NIL; debugUnit := NIL;
-    debugTypes := NIL; debugVariables := NIL; debugDeclared := FALSE; debugSizeModel := cg.sizeModel;
+    debugTypes := NIL; debugVariables := NIL; debugOpenArrays := NIL; debugDeclared := FALSE; debugSizeModel := cg.sizeModel;
     lineHeadLength := 0;
     IF realign THEN realignId := nextMetadata; INC(nextMetadata) END;
     IF debugInfo THEN

@@ -3,7 +3,7 @@ MODULE DebugMain;
    checks the backtraces and variables. *)
 IMPORT Out, DebugLib;
 
-VAR total: INTEGER; kept: DebugLib.Named;
+VAR total: INTEGER; kept: DebugLib.Named; text: POINTER TO ARRAY OF CHAR;
 
 PROCEDURE Sum(n: INTEGER): INTEGER;
   VAR c: DebugLib.Counter; i: INTEGER;
@@ -20,5 +20,6 @@ END Sum;
 
 BEGIN
   total := Sum(3);
-  Out.Int(total, 0); Out.Ln
+  NEW(text, 6); DebugLib.Fill(text^, 3);
+  Out.Int(total, 0); Out.String(text^); Out.Ln
 END DebugMain.

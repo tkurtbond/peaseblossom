@@ -807,7 +807,11 @@ as it stands when the phase starts, and adds what it finds):
    `MemoryLayout`, which the VAX backend has too);
    (d) what the calling convention hides: a `VAR` record's type tag and an
    open array's lengths presented as one variable, not as extra
-   parameters. Decide how far to go from what the debuggers' DWARF
+   parameters. **done 2026-09-26** (open-array parameters with their
+   lengths as artificial `LEN(a)` variables, pointers to open arrays as
+   their heap block, a nested procedure's enclosing variables; a `VAR`
+   record shows its static type, the tag left out; lldb does not
+   evaluate the dynamic counts, see `AGENTS.md`, "Toolchain: LLVM"). Decide how far to go from what the debuggers' DWARF
    support can express, and record what is left out. The source
    positions and the type descriptions built here are also the inputs
    Phase 16 step 5 needs for the VAX debug and traceback records, so they

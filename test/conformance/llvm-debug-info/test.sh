@@ -2,7 +2,8 @@
 . ../../testenv.sh
 # Phase 11 A16: poc -g gives gdb and lldb the procedures' names, the
 # source lines, and the variables: parameters, locals and module variables,
-# of the basic types, records, arrays and pointers. The program is built at
+# of the basic types, records, arrays (open ones too) and pointers, and an
+# enclosing procedure's variable in a nested one. The program is built at
 # -opt 0 (as the docs advise for debugging), then stopped at a procedure of
 # an imported module (by name) and at lines of both modules; each
 # backtrace is reduced to "name file:line" per Oberon frame and each value
@@ -66,7 +67,8 @@ variables() {
 }
 
 # the values of the expressions $2... at a stop at $1, "expression = value"
-# (a CHAR array's trailing 0Xs, which gdb shows and lldb does not, left out)
+# (a CHAR array's trailing 0Xs, which gdb shows and lldb does not, left out,
+# and a CHAR as the character alone: gdb shows 98 'b', lldb 'b')
 values() {
   stop=$1; shift
   if [ $debugger = gdb ]
@@ -82,7 +84,7 @@ values() {
     for e in "$@"; do args="$args -o 'p $e'"; done
     eval "lldb -b -o \"b \$stop\" -o run $args \"./\$exe\"" 2>/dev/null |
       awk '/^\(lldb\) p / { e = substr($0, 10); getline; sub(/^\([^)]*\) (\$[0-9]+ = )?/, ""); print e " = " $0 }'
-  fi | sed 's/\(\\000\)\{1,\}"/"/; s/", .\\000. <repeats [0-9]* times>/"/'
+  fi | sed -e 's/\(\\000\)\{1,\}"/"/; s/", .\\000. <repeats [0-9]* times>/"/' -e "s/= [0-9]* \\('.*'\\)\$/= \\1/"
 }
 
 echo "stopped in DebugLib.Square:" >>result
@@ -95,4 +97,10 @@ echo "values at DebugLib.mod:28:" >>result
 values DebugLib.mod:28 'c->n' r.n r.name 'r.scores[1]' total >>result
 echo "values at debug.mod:18:" >>result
 values debug.mod:18 'c->n' kept.name 'kept.scores[1]' total >>result
+echo "values at debug.mod:12 (an enclosing procedure's variable):" >>result
+values debug.mod:12 'c->n' k >>result
+echo "values at DebugLib.mod:35 (an open array):" >>result
+values DebugLib.mod:35 s n >>result
+echo "values at debug.mod:24 (a pointer to an open array):" >>result
+values debug.mod:24 'text->len[0]' 'text->data[1]' >>result
 . ../../testresult.sh

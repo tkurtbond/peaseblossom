@@ -1,5 +1,5 @@
 semantic OK, wrote llvm-debug-info
-14
+14abc
 stopped in DebugLib.Square:
 DebugLib.Square DebugLib.mod:15
 DebugLib.CounterDesc.Add DebugLib.mod:22
@@ -26,3 +26,12 @@ c->n = 14
 kept.name = "sum"
 kept.scores[1] = 28
 total = 0
+values at debug.mod:12 (an enclosing procedure's variable):
+c->n = 0
+k = 1
+values at DebugLib.mod:35 (an open array):
+s = "abc"
+n = 3
+values at debug.mod:24 (a pointer to an open array):
+text->len[0] = 6
+text->data[1] = 'b'

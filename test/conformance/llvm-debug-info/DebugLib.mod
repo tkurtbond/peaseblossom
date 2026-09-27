@@ -28,4 +28,11 @@ BEGIN
   last := r
 END Keep;
 
+PROCEDURE Fill*(VAR s: ARRAY OF CHAR; n: INTEGER);
+  VAR i: INTEGER;
+BEGIN
+  FOR i := 0 TO n - 1 DO s[i] := CHR(ORD("a") + i) END;
+  s[n] := 0X
+END Fill;
+
 END DebugLib.

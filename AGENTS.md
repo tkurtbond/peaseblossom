@@ -225,14 +225,25 @@ shells out to these rather than linking against LLVM's own C++ API.
   `char`; a `SET` as its number. Stage (c), the same day: records (field
   by field, the base type's first, as a structure named `Module.T`, or
   `Module.P^` for the record a `P = POINTER TO RECORD ...` points to),
-  fixed arrays, pointers (to what they point to, so `p->next->x` works;
-  to an open array, untyped), procedure variables, `SYSTEM.PTR`, `VAR`
+  fixed arrays, pointers (to what they point to, so `p->next->x` works),
+  procedure variables, `SYSTEM.PTR`, `VAR`
   record parameters and receivers, and module variables. Each module is a
   compile unit of its own, so a name finds the current module's variable
   first. Fixture `llvm-debug-info` (gdb 7 or later - on OpenBSD the
   `gdb` package's `egdb`, as the base gdb 6.3 cannot read it - else lldb;
-  skipped with neither). Open arrays and the variables a nested procedure
-  reaches in an enclosing one are stage (d).
+  skipped with neither). Stage (d), the same day: an open-array
+  parameter is an array whose lengths are artificial variables `LEN(a)`,
+  `LEN(a, 1)`, ... (as clang describes a C variable-length array); a
+  pointer to an open array points to its heap block, `{len, data}`, with
+  `data`'s counts DWARF expressions that read `len`; a nested procedure
+  shows the enclosing procedure's variables it uses. A by-reference
+  argument is described through a stack slot (`DW_OP_deref`), since its
+  register is reused. gdb shows all of it; lldb 22 does not evaluate
+  those counts: element access (`p->data[2]`, `a[1]`) and the lengths are
+  right, but it prints a multi-dimensional open array, and a heap open
+  array as a whole, wrongly or empty - as it does C's multi-dimensional
+  variable-length arrays. A `VAR` record shows its static type; its
+  hidden type tag is not used.
 - `llc` is **not** part of the normal build path — reserved as an optional
   `-dump-asm`-style debug aid for reading generated assembly in golden-file
   tests. Usage: `llc <file>.ll -o <file>.s` (its default output filetype is
