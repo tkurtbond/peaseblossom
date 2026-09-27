@@ -222,10 +222,17 @@ shells out to these rather than linking against LLVM's own C++ API.
   DWARF base type under its Oberon name, so lldb shows `(INTEGER) n = 3`,
   not `(short)`. A one-byte integer (`SHORTINT`, `SYSTEM.INT8`) shows as
   a character too (`5 '\005'`), since C's only one-byte integer is
-  `char`; a `SET` as its number. Fixture `llvm-debug-info` (gdb 7 or
-  later, else lldb; skipped on OpenBSD, whose base gdb 6.3 cannot read
-  it). Records, arrays, pointers, module variables and hidden parameters
-  are stages (c)-(d).
+  `char`; a `SET` as its number. Stage (c), the same day: records (field
+  by field, the base type's first, as a structure named `Module.T`, or
+  `Module.P^` for the record a `P = POINTER TO RECORD ...` points to),
+  fixed arrays, pointers (to what they point to, so `p->next->x` works;
+  to an open array, untyped), procedure variables, `SYSTEM.PTR`, `VAR`
+  record parameters and receivers, and module variables. Each module is a
+  compile unit of its own, so a name finds the current module's variable
+  first. Fixture `llvm-debug-info` (gdb 7 or later - on OpenBSD the
+  `gdb` package's `egdb`, as the base gdb 6.3 cannot read it - else lldb;
+  skipped with neither). Open arrays and the variables a nested procedure
+  reaches in an enclosing one are stage (d).
 - `llc` is **not** part of the normal build path — reserved as an optional
   `-dump-asm`-style debug aid for reading generated assembly in golden-file
   tests. Usage: `llc <file>.ll -o <file>.s` (its default output filetype is

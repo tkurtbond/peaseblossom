@@ -800,7 +800,11 @@ as it stands when the phase starts, and adds what it finds):
    show values; **done 2026-09-26** (value and plain `VAR` parameters,
    locals; Oberon type names through typedefs; module variables not yet);
    (c) records, arrays, pointers, and type-bound procedures - a record
-   printed field by field, with Oberon type names;
+   printed field by field, with Oberon type names; **done 2026-09-26**
+   (fixed arrays, pointers - to an open array untyped - procedure
+   variables, `SYSTEM.PTR`, `VAR` record parameters and receivers, module
+   variables with a compile unit per module; described from `Types` and
+   `MemoryLayout`, which the VAX backend has too);
    (d) what the calling convention hides: a `VAR` record's type tag and an
    open array's lengths presented as one variable, not as extra
    parameters. Decide how far to go from what the debuggers' DWARF

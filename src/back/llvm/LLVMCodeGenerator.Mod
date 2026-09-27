@@ -647,14 +647,35 @@ MODULE LLVMCodeGenerator;
     DebugProcedure = POINTER TO DebugProcedureDesc;
     DebugProcedureDesc = RECORD
       name: LongText;
-      id, fileId, line: INTEGER;
+      id, fileId, line, unit: INTEGER;
       next: DebugProcedure
     END;
 
-    (* A basic Oberon type as DWARF has it: a DIBasicType node (id + 1) and
-       a typedef of it by the same name (id), which is what a variable
-       refers to - lldb shows a basic type by its C name (short, long),
-       but a typedef by its own (INTEGER, LONGINT) *)
+    (* A module variable, a DIGlobalVariableExpression node (id) and its
+       DIGlobalVariable (id + 1) *)
+    DebugGlobal = POINTER TO DebugGlobalDesc;
+    DebugGlobalDesc = RECORD
+      name: SyntaxTree.Ident;
+      id, line, typeId: INTEGER;
+      next: DebugGlobal
+    END;
+
+    (* A module, a DICompileUnit node of its own, so that a debugger looks
+       up a variable's name among the module's own variables first *)
+    DebugUnit = POINTER TO DebugUnitDesc;
+    DebugUnitDesc = RECORD
+      name: SyntaxTree.Ident;
+      id, fileId: INTEGER;
+      globals, globalsTail: DebugGlobal;
+      next: DebugUnit
+    END;
+
+    (* An Oberon type as DWARF has it (DebugTypeId), the node id. A basic
+       type or SYSTEM.PTR is a typedef by its Oberon name (id) of a
+       DIBasicType or a pointer (id + 1) - lldb shows a basic type by its C
+       name (short, long), but a typedef by its own (INTEGER, LONGINT). A
+       record is a structure type, a fixed array an array type, a pointer
+       or a procedure type a pointer type. *)
     DebugType = POINTER TO DebugTypeDesc;
     DebugTypeDesc = RECORD
       type: Types.Type;
@@ -673,9 +694,9 @@ MODULE LLVMCodeGenerator;
 
   VAR
     (* poc -g (Phase 11 A16): the IR carries DWARF debug information for gdb
-       and lldb - for now the line table and the procedures' names (a
-       breakpoint on List.Insert or list.mod:42, a backtrace with source
-       lines). Every function of an Oberon procedure or module body gets a
+       and lldb - the line table and the procedures' names (a breakpoint on
+       List.Insert or list.mod:42, a backtrace with source lines), and the
+       variables (DeclareDebugVariable, WriteDebugGlobal). Every function of an Oberon procedure or module body gets a
        DISubprogram, and every instruction in it the position of the
        statement it belongs to: WriteLn attaches it to each instruction
        line (one starting "  " and an instruction) while debugScope names
@@ -688,13 +709,14 @@ MODULE LLVMCodeGenerator;
     debugDirectory*: SourcePath;
     debugFiles: DebugFile;
     debugProcedures, debugProceduresTail: DebugProcedure;
+    debugUnits, debugUnitsTail, debugUnit: DebugUnit; (* debugUnit: the module being generated *)
     debugTypes: DebugType;
     debugVariables: DebugVariable;
     debugDeclared: BOOLEAN; (* some variable was declared: llvm.dbg.declare is used *)
     debugSizeModel: INTEGER; (* cg.sizeModel, for DebugTypeId *)
     debugScope: INTEGER; (* the current function's DISubprogram, or -1 *)
     debugLine, debugColumn: INTEGER; (* the statement being generated *)
-    debugCompileUnit, debugSubroutineType, nextMetadata: INTEGER;
+    debugSubroutineType, nextMetadata: INTEGER;
     (* the first lineHeadLength characters (at most 3) WriteStr has
        written of the current line *)
     lineHead: ARRAY 3 OF CHAR;
@@ -855,7 +877,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE BeginDebugFunction(name, file: ARRAY OF CHAR; line, column: INTEGER);
     VAR p: DebugProcedure;
   BEGIN
-    NEW(p); COPY(name, p.name); p.fileId := DebugFileId(file); p.line := line;
+    NEW(p); COPY(name, p.name); p.fileId := DebugFileId(file); p.line := line; p.unit := debugUnit.id;
     p.id := nextMetadata; INC(nextMetadata); p.next := NIL;
     IF debugProceduresTail = NIL THEN debugProcedures := p ELSE debugProceduresTail.next := p END;
     debugProceduresTail := p;
@@ -872,29 +894,192 @@ MODULE LLVMCodeGenerator;
     END
   END WriteDebugAttachment;
 
-  (* The DIBasicType node of t, made the first time it is asked for, or -1
-     for a type stage (a)-(b) of -g does not describe (a record, an array, a
-     pointer, a procedure type) - a variable of such a type is left out. *)
-  PROCEDURE DebugTypeId(t: Types.Type): INTEGER;
-    VAR d: DebugType;
+  (* Makes the module named name, whose source file is file, the one being
+     generated (debugUnit), with a compile unit made the first time. *)
+  PROCEDURE EnterDebugUnit(name, file: ARRAY OF CHAR);
+    VAR u: DebugUnit;
   BEGIN
-    IF ~((t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Byte) OR Types.IsInteger(t) OR (t = Types.Real)
-         OR (t = Types.LongReal) OR Types.IsSet(t)) THEN
+    u := debugUnits;
+    WHILE (u # NIL) & (u.name # name) DO u := u.next END;
+    IF u = NIL THEN
+      NEW(u); COPY(name, u.name); u.id := nextMetadata; INC(nextMetadata); u.fileId := DebugFileId(file);
+      u.globals := NIL; u.globalsTail := NIL; u.next := NIL;
+      IF debugUnitsTail = NIL THEN debugUnits := u ELSE debugUnitsTail.next := u END;
+      debugUnitsTail := u
+    END;
+    debugUnit := u
+  END EnterDebugUnit;
+
+  PROCEDURE IsDebugBasicType(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Byte) OR Types.IsInteger(t) OR (t = Types.Real)
+           OR (t = Types.LongReal) OR Types.IsSet(t)
+  END IsDebugBasicType;
+
+  (* a and b are one module-level named record, which a module that
+     imports it has as a type of its own, read from a .sym file *)
+  PROCEDURE SameNamedRecord(a, b: Types.Type): BOOLEAN;
+    VAR ra, rb: Types.RecordType;
+  BEGIN
+    IF (a IS Types.RecordType) & (b IS Types.RecordType) THEN
+      ra := a(Types.RecordType); rb := b(Types.RecordType);
+      RETURN (ra.name # "") & (ra.moduleName # "") & (ra.name = rb.name) & (ra.moduleName = rb.moduleName)
+    END;
+    RETURN FALSE
+  END SameNamedRecord;
+
+  (* The node of t, made the first time it is asked for, together with
+     those of the types it is made of, or -1 for a type -g does not
+     describe yet (an open array). A pointer to an open array is described
+     as an untyped pointer. *)
+  PROCEDURE DebugTypeId(t: Types.Type): INTEGER;
+    VAR d: DebugType; ptr: Types.PointerType; arr: Types.ArrayType; rec: Types.RecordType; f: Types.Field;
+        elementId: INTEGER;
+  BEGIN
+    IF t = NIL THEN RETURN -1 END;
+    d := debugTypes;
+    WHILE (d # NIL) & (d.type # t) & ~SameNamedRecord(d.type, t) DO d := d.next END;
+    IF d # NIL THEN RETURN d.id END;
+    IF t IS Types.ArrayType THEN
+      arr := t(Types.ArrayType);
+      IF arr.isOpen THEN RETURN -1 END;
+      elementId := DebugTypeId(arr.elementType);
+      IF elementId < 0 THEN RETURN -1 END
+    ELSIF ~(IsDebugBasicType(t) OR (t IS Types.PointerType) OR (t IS Types.RecordType)
+            OR (t IS Types.ProcedureType)) THEN
       RETURN -1
     END;
-    d := debugTypes;
-    WHILE (d # NIL) & (d.type # t) DO d := d.next END;
-    IF d = NIL THEN
-      NEW(d); d.type := t; d.id := nextMetadata; INC(nextMetadata, 2);
-      d.next := debugTypes; debugTypes := d
+    (* entered before the types it is made of, which may lead back to it *)
+    NEW(d); d.type := t; d.id := nextMetadata; d.next := debugTypes; debugTypes := d;
+    IF IsDebugBasicType(t) OR (t = Types.Ptr) THEN INC(nextMetadata, 2) ELSE INC(nextMetadata) END;
+    IF (t IS Types.PointerType) & (t # Types.Ptr) THEN
+      ptr := t(Types.PointerType);
+      IF ~Types.IsOpenArray(ptr.base) THEN elementId := DebugTypeId(ptr.base) END
+    ELSIF t IS Types.RecordType THEN
+      rec := t(Types.RecordType);
+      WHILE rec # NIL DO
+        f := rec.fields;
+        WHILE f # NIL DO elementId := DebugTypeId(f.type); f := f.next END;
+        IF rec.baseType # NIL THEN rec := rec.baseType(Types.RecordType) ELSE rec := NIL END
+      END
     END;
     RETURN d.id
   END DebugTypeId;
 
+  (* The members of rec's structure type, base type's first: ", !DIDerivedType(
+     tag: DW_TAG_member, ...)" each (the first without the comma). *)
+  PROCEDURE WriteDebugMembers(VAR w: Files.Rider; rec: Types.RecordType; VAR first: BOOLEAN);
+    VAR f: Types.Field; typeId: INTEGER;
+  BEGIN
+    IF rec.baseType # NIL THEN WriteDebugMembers(w, rec.baseType(Types.RecordType), first) END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      typeId := DebugTypeId(f.type);
+      IF typeId >= 0 THEN
+        IF ~first THEN WriteRaw(w, ", ") END;
+        first := FALSE;
+        WriteRaw(w, "!DIDerivedType(tag: DW_TAG_member, name: "); WriteMetadataString(w, f.name);
+        WriteRaw(w, ", baseType: !"); WriteNatural(w, typeId);
+        WriteRaw(w, ", size: "); WriteNatural(w, 8 * MemoryLayout.Size(f.type, ConstantEvaluator.wordSize, debugSizeModel));
+        WriteRaw(w, ", offset: ");
+        WriteNatural(w, 8 * MemoryLayout.FieldOffset(rec, f, ConstantEvaluator.wordSize, debugSizeModel));
+        WriteRaw(w, ")")
+      END;
+      f := f.next
+    END
+  END WriteDebugMembers;
+
+  (* The name of a record's structure type: "Module.T" for a module-level
+     named record, "Module.P^" for the anonymous one a module-level
+     "P = POINTER TO RECORD ... END" points to; empty for any other. *)
+  PROCEDURE DebugRecordName(rec: Types.RecordType; VAR name: ARRAY OF CHAR);
+    VAR n: INTEGER;
+  BEGIN
+    name[0] := 0X;
+    IF (rec.moduleName # "") & (rec.name # "") THEN
+      COPY(rec.moduleName, name); Strcat(name, "."); Strcat(name, rec.name);
+      n := 0; WHILE name[n] # 0X DO INC(n) END;
+      IF (n > 5) & (name[n - 5] = ".") & (name[n - 4] = "b") & (name[n - 3] = "a") & (name[n - 2] = "s")
+         & (name[n - 1] = "e") THEN
+        name[n - 5] := "^"; name[n - 4] := 0X
+      END
+    END
+  END DebugRecordName;
+
+  (* The node of type d (see DebugType) *)
+  PROCEDURE WriteDebugType(VAR w: Files.Rider; d: DebugType);
+    VAR t: Types.Type; ptr: Types.PointerType; arr: Types.ArrayType; name: LongText; first: BOOLEAN;
+        bits: LONGINT;
+  BEGIN
+    t := d.type;
+    bits := 8 * MemoryLayout.Size(t, ConstantEvaluator.wordSize, debugSizeModel);
+    Files.Write(w, "!"); WriteNatural(w, d.id); WriteRaw(w, " = ");
+    IF IsDebugBasicType(t) OR (t = Types.Ptr) THEN
+      Types.TypeName(t, name);
+      WriteRaw(w, "!DIDerivedType(tag: DW_TAG_typedef, name: ");
+      WriteMetadataString(w, name); WriteRaw(w, ", baseType: !"); WriteNatural(w, d.id + 1); WriteRaw(w, ")");
+      Files.Write(w, 0AX);
+      Files.Write(w, "!"); WriteNatural(w, d.id + 1); WriteRaw(w, " = ");
+      IF t = Types.Ptr THEN
+        WriteRaw(w, "!DIDerivedType(tag: DW_TAG_pointer_type, baseType: null, size: "); WriteNatural(w, bits)
+      ELSE
+        WriteRaw(w, "!DIBasicType(name: "); WriteMetadataString(w, name);
+        WriteRaw(w, ", size: "); WriteNatural(w, bits);
+        WriteRaw(w, ", encoding: ");
+        IF t = Types.Boolean THEN WriteRaw(w, "DW_ATE_boolean")
+        ELSIF (t = Types.Char) OR (t = Types.Byte) THEN WriteRaw(w, "DW_ATE_unsigned_char")
+        ELSIF (t = Types.Real) OR (t = Types.LongReal) THEN WriteRaw(w, "DW_ATE_float")
+        ELSIF Types.IsSet(t) THEN WriteRaw(w, "DW_ATE_unsigned")
+        ELSE WriteRaw(w, "DW_ATE_signed")
+        END
+      END
+    ELSIF t IS Types.PointerType THEN
+      ptr := t(Types.PointerType);
+      WriteRaw(w, "!DIDerivedType(tag: DW_TAG_pointer_type, ");
+      IF Types.IsOpenArray(ptr.base) THEN WriteRaw(w, "baseType: null")
+      ELSE WriteRaw(w, "baseType: !"); WriteNatural(w, DebugTypeId(ptr.base))
+      END;
+      WriteRaw(w, ", size: "); WriteNatural(w, bits)
+    ELSIF t IS Types.ProcedureType THEN
+      WriteRaw(w, "!DIDerivedType(tag: DW_TAG_pointer_type, baseType: !"); WriteNatural(w, debugSubroutineType);
+      WriteRaw(w, ", size: "); WriteNatural(w, bits)
+    ELSIF t IS Types.ArrayType THEN
+      arr := t(Types.ArrayType);
+      WriteRaw(w, "!DICompositeType(tag: DW_TAG_array_type, baseType: !"); WriteNatural(w, DebugTypeId(arr.elementType));
+      WriteRaw(w, ", size: "); WriteNatural(w, bits);
+      WriteRaw(w, ", elements: !{!DISubrange(count: "); WriteNatural(w, arr.length); WriteRaw(w, ")}")
+    ELSE
+      DebugRecordName(t(Types.RecordType), name);
+      WriteRaw(w, "!DICompositeType(tag: DW_TAG_structure_type, ");
+      IF name # "" THEN WriteRaw(w, "name: "); WriteMetadataString(w, name); WriteRaw(w, ", ") END;
+      WriteRaw(w, "size: "); WriteNatural(w, bits); WriteRaw(w, ", elements: !{");
+      first := TRUE; WriteDebugMembers(w, t(Types.RecordType), first);
+      WriteRaw(w, "}")
+    END;
+    WriteRaw(w, ")"); Files.Write(w, 0AX)
+  END WriteDebugType;
+
+  (* Under -g, " , !dbg !<n>" for the module variable obj, declared in the
+     module being generated, if DebugTypeId describes its type *)
+  PROCEDURE WriteDebugGlobal(VAR w: Files.Rider; obj: SymbolTable.Object);
+    VAR g: DebugGlobal; typeId: INTEGER;
+  BEGIN
+    IF debugInfo THEN
+      typeId := DebugTypeId(obj.type);
+      IF typeId >= 0 THEN
+        NEW(g); COPY(obj.name, g.name); g.line := obj.declLine; g.typeId := typeId;
+        g.id := nextMetadata; INC(nextMetadata, 2); g.next := NIL;
+        IF debugUnit.globalsTail = NIL THEN debugUnit.globals := g ELSE debugUnit.globalsTail.next := g END;
+        debugUnit.globalsTail := g;
+        WriteRaw(w, ", !dbg !"); WriteNatural(w, g.id)
+      END
+    END
+  END WriteDebugGlobal;
+
   (* Under -g, in a function with debug information: describes obj, a
      parameter (its position arg) or a local variable (arg 0) held at
-     address, with a call of llvm.dbg.declare - if its type is one DebugTypeId
-     describes. Written past Put, so WriteLn adds no second position. *)
+     address (for a VAR parameter, the variable's own), with a call of
+     llvm.dbg.declare - if its type is one DebugTypeId describes. Written past Put, so WriteLn adds no second position. *)
   PROCEDURE DeclareDebugVariable(VAR w: Files.Rider; obj: SymbolTable.Object; address: ARRAY OF CHAR; arg: INTEGER);
     VAR v: DebugVariable; typeId: INTEGER; p: DebugProcedure;
   BEGIN
@@ -915,10 +1100,10 @@ MODULE LLVMCodeGenerator;
     END
   END DeclareDebugVariable;
 
-  (* The DIFile, DISubprogram, DIBasicType and DILocalVariable nodes, after
-     the code that made them. *)
+  (* The DIFile, DISubprogram, type, compile unit, global and local variable
+     nodes, after the code that made them. *)
   PROCEDURE EmitDebugMetadata(VAR w: Files.Rider);
-    VAR f: DebugFile; p: DebugProcedure; t: DebugType; v: DebugVariable; name: LongText;
+    VAR f: DebugFile; p: DebugProcedure; t: DebugType; v: DebugVariable; u: DebugUnit; g: DebugGlobal;
   BEGIN
     Files.Write(w, 0AX);
     f := debugFiles;
@@ -935,27 +1120,51 @@ MODULE LLVMCodeGenerator;
       WriteRaw(w, ", file: !"); WriteNatural(w, p.fileId); WriteRaw(w, ", line: "); WriteNatural(w, p.line);
       WriteRaw(w, ", type: !"); WriteNatural(w, debugSubroutineType);
       WriteRaw(w, ", scopeLine: "); WriteNatural(w, p.line);
-      WriteRaw(w, ", spFlags: DISPFlagDefinition, unit: !"); WriteNatural(w, debugCompileUnit);
+      WriteRaw(w, ", spFlags: DISPFlagDefinition, unit: !"); WriteNatural(w, p.unit);
       WriteRaw(w, ")"); Files.Write(w, 0AX);
       p := p.next
     END;
     t := debugTypes;
-    WHILE t # NIL DO
-      Types.TypeName(t.type, name);
-      Files.Write(w, "!"); WriteNatural(w, t.id); WriteRaw(w, " = !DIDerivedType(tag: DW_TAG_typedef, name: ");
-      WriteMetadataString(w, name); WriteRaw(w, ", baseType: !"); WriteNatural(w, t.id + 1); WriteRaw(w, ")");
-      Files.Write(w, 0AX);
-      Files.Write(w, "!"); WriteNatural(w, t.id + 1); WriteRaw(w, " = !DIBasicType(name: "); WriteMetadataString(w, name);
-      WriteRaw(w, ", size: "); WriteNatural(w, 8 * MemoryLayout.Size(t.type, ConstantEvaluator.wordSize, debugSizeModel));
-      WriteRaw(w, ", encoding: ");
-      IF t.type = Types.Boolean THEN WriteRaw(w, "DW_ATE_boolean")
-      ELSIF (t.type = Types.Char) OR (t.type = Types.Byte) THEN WriteRaw(w, "DW_ATE_unsigned_char")
-      ELSIF (t.type = Types.Real) OR (t.type = Types.LongReal) THEN WriteRaw(w, "DW_ATE_float")
-      ELSIF Types.IsSet(t.type) THEN WriteRaw(w, "DW_ATE_unsigned")
-      ELSE WriteRaw(w, "DW_ATE_signed")
+    WHILE t # NIL DO WriteDebugType(w, t); t := t.next END;
+    (* each module a compile unit, with its variables; C is the language
+       claimed, as DWARF has no code for Oberon and both debuggers handle C
+       (gdb's Modula-2 support would suit better, but lldb has none) *)
+    WriteRaw(w, "!llvm.dbg.cu = !{");
+    u := debugUnits;
+    WHILE u # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, u.id);
+      IF u.next # NIL THEN WriteRaw(w, ", ") END;
+      u := u.next
+    END;
+    WriteRaw(w, "}"); Files.Write(w, 0AX);
+    u := debugUnits;
+    WHILE u # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, u.id); WriteRaw(w, " = distinct !DICompileUnit(language: DW_LANG_C99, file: !");
+      WriteNatural(w, u.fileId);
+      WriteRaw(w, ', producer: "poc", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug');
+      IF u.globals # NIL THEN
+        WriteRaw(w, ", globals: !{");
+        g := u.globals;
+        WHILE g # NIL DO
+          Files.Write(w, "!"); WriteNatural(w, g.id);
+          IF g.next # NIL THEN WriteRaw(w, ", ") END;
+          g := g.next
+        END;
+        WriteRaw(w, "}")
       END;
       WriteRaw(w, ")"); Files.Write(w, 0AX);
-      t := t.next
+      g := u.globals;
+      WHILE g # NIL DO
+        Files.Write(w, "!"); WriteNatural(w, g.id); WriteRaw(w, " = !DIGlobalVariableExpression(var: !");
+        WriteNatural(w, g.id + 1); WriteRaw(w, ", expr: !DIExpression())"); Files.Write(w, 0AX);
+        Files.Write(w, "!"); WriteNatural(w, g.id + 1); WriteRaw(w, " = distinct !DIGlobalVariable(name: ");
+        WriteMetadataString(w, g.name); WriteRaw(w, ", scope: !"); WriteNatural(w, u.id);
+        WriteRaw(w, ", file: !"); WriteNatural(w, u.fileId); WriteRaw(w, ", line: "); WriteNatural(w, g.line);
+        WriteRaw(w, ", type: !"); WriteNatural(w, g.typeId); WriteRaw(w, ", isLocal: true, isDefinition: true)");
+        Files.Write(w, 0AX);
+        g := g.next
+      END;
+      u := u.next
     END;
     v := debugVariables;
     WHILE v # NIL DO
@@ -5989,7 +6198,8 @@ MODULE LLVMCodeGenerator;
           obj := SymbolTable.FindLocal(cg.scope, nm.name);
           LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
           WriteStr(w, "@"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, nm.name);
-          WriteStr(w, " = global "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer"); WriteLn(w);
+          WriteStr(w, " = global "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer");
+          WriteDebugGlobal(w, obj); WriteLn(w);
           nm := nm.next
         END;
         vd := vd.next
@@ -6724,12 +6934,12 @@ MODULE LLVMCodeGenerator;
      that's what SymbolTable.Find(cg.scope, ...) will actually return
      while generating this procedure's body. *)
   PROCEDURE BindFormalParams(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType;
-                             line, column: INTEGER);
+                             firstPosition: INTEGER);
     VAR
       p: Types.Param; obj: SymbolTable.Object; llvmType: LongText; argName, tagName, addrText: ValueText;
       wordInt, bytes, copied: ValueText; dope: DopeVector; position: INTEGER;
   BEGIN
-    p := pt.params; position := 1;
+    p := pt.params; position := firstPosition;
     WHILE p # NIL DO
       obj := SymbolTable.FindLocal(bodyScope, p.name);
       ParamName(p.name, argName);
@@ -6753,11 +6963,11 @@ MODULE LLVMCodeGenerator;
           BindLocalWithDope(cg, obj, copied, dope)
         END
       ELSIF p.isVar THEN
+        DeclareDebugVariable(w, obj, argName, position);
         IF NeedsHiddenTag(p) THEN
           COPY(argName, tagName); Strcat(tagName, ".tag");
           BindLocalWithTag(cg, obj, argName, tagName)
         ELSE
-          DeclareDebugVariable(w, obj, argName, position);
           BindLocal(cg, obj, argName)
         END
       ELSE
@@ -6785,12 +6995,14 @@ MODULE LLVMCodeGenerator;
     obj := SymbolTable.FindLocal(bodyScope, receiver.name);
     ParamName(receiver.name, argName);
     IF receiver.isVar THEN
+      DeclareDebugVariable(w, obj, argName, 1);
       COPY(argName, tagName); Strcat(tagName, ".tag");
       BindLocalWithTag(cg, obj, argName, tagName)
     ELSE
       NewTemp(cg, addrText);
       WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca ptr"); WriteLn(w);
       WriteStr(w, "  store ptr "); WriteStr(w, argName); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+      DeclareDebugVariable(w, obj, addrText, 1);
       BindLocal(cg, obj, addrText)
     END
   END BindReceiver;
@@ -6887,8 +7099,12 @@ MODULE LLVMCodeGenerator;
     EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver, needs);
     savedScope := cg.scope;
     cg.scope := bodyScope; cg.locals := NIL; cg.currentProcResultType := pt.resultType;
-    IF pd.receiver # NIL THEN BindReceiver(w, cg, bodyScope, pd.receiver) END;
-    BindFormalParams(w, cg, bodyScope, pt, pd.line, pd.column);
+    IF pd.receiver # NIL THEN
+      BindReceiver(w, cg, bodyScope, pd.receiver);
+      BindFormalParams(w, cg, bodyScope, pt, 2)
+    ELSE
+      BindFormalParams(w, cg, bodyScope, pt, 1)
+    END;
     BindNeeds(cg, needs);
     BindLocalVars(w, cg, bodyScope, pd.declarations);
     GenerateStatementSeq(w, cg, GenerateDeclarationInits(w, cg, pd.declarations, pd.statements));
@@ -7370,12 +7586,13 @@ MODULE LLVMCodeGenerator;
        the debug information's own *)
     nextMetadata := 0; realignId := -1; debugVersionId := -1;
     debugFiles := NIL; debugProcedures := NIL; debugProceduresTail := NIL; debugScope := -1;
+    debugUnits := NIL; debugUnitsTail := NIL; debugUnit := NIL;
     debugTypes := NIL; debugVariables := NIL; debugDeclared := FALSE; debugSizeModel := cg.sizeModel;
     lineHeadLength := 0;
     IF realign THEN realignId := nextMetadata; INC(nextMetadata) END;
     IF debugInfo THEN
-      debugVersionId := nextMetadata; debugCompileUnit := nextMetadata + 1; debugSubroutineType := nextMetadata + 2;
-      INC(nextMetadata, 3)
+      debugVersionId := nextMetadata; debugSubroutineType := nextMetadata + 1;
+      INC(nextMetadata, 2)
     END;
     IF realign OR debugInfo THEN
       WriteStr(w, "!llvm.module.flags = !{");
@@ -7391,19 +7608,8 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, ' = !{i32 1, !"override-stack-alignment", i32 16}'); WriteLn(w)
     END;
     IF debugInfo THEN
-      (* the compile unit is the module named on the command line, the
-         last of the list; C is the language claimed, as DWARF has no code
-         for Oberon and both debuggers handle C (gdb's Modula-2 support
-         would suit better, but lldb has none) *)
-      m := modules;
-      WHILE m.next # NIL DO m := m.next END;
       symbol := "!"; AppendLongInt(symbol, debugVersionId); WriteStr(w, symbol);
       WriteStr(w, ' = !{i32 2, !"Debug Info Version", i32 3}'); WriteLn(w);
-      symbol := "!"; AppendLongInt(symbol, debugCompileUnit);
-      WriteStr(w, "!llvm.dbg.cu = !{"); WriteStr(w, symbol); WriteStr(w, "}"); WriteLn(w);
-      WriteStr(w, symbol); WriteStr(w, " = distinct !DICompileUnit(language: DW_LANG_C99, file: !");
-      symbol[0] := 0X; AppendLongInt(symbol, DebugFileId(m.fileName)); WriteStr(w, symbol);
-      WriteStr(w, ', producer: "poc", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug)'); WriteLn(w);
       symbol := "!"; AppendLongInt(symbol, debugSubroutineType); WriteStr(w, symbol);
       WriteStr(w, " = !DISubroutineType(types: !{})"); WriteLn(w)
     END;
@@ -7411,6 +7617,7 @@ MODULE LLVMCodeGenerator;
     m := modules;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
+      IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
       EmitGlobals(body, cg, m.module);
       EmitExternalDeclares(body, cg, m.module);
       EmitTypeDescriptors(body, cg, m.module);
@@ -7421,6 +7628,7 @@ MODULE LLVMCodeGenerator;
     m := modules;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
+      IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
       CollectStringConstantsSeq(body, cg, m.module.statements);
       CollectDeclarationStrings(body, cg, m.module.declarations);
       IF m.module.declarations # NIL THEN
@@ -7436,6 +7644,7 @@ MODULE LLVMCodeGenerator;
     m := modules;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
+      IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
       IF m.module.declarations # NIL THEN
         pd := m.module.declarations.procDecls;
         WHILE pd # NIL DO
@@ -7450,6 +7659,7 @@ MODULE LLVMCodeGenerator;
     m := modules;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
+      IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
       IF debugInfo THEN
         COPY(m.module.name, symbol); Strcat(symbol, "_init");
         BeginDebugFunction(symbol, cg.currentFile, m.module.line, m.module.column)

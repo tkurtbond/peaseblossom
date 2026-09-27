@@ -1,9 +1,9 @@
 MODULE DebugMain;
 (* Phase 11 A16: poc -g; test.sh sets breakpoints by name and by line and
-   checks the backtraces. *)
+   checks the backtraces and variables. *)
 IMPORT Out, DebugLib;
 
-VAR total: INTEGER;
+VAR total: INTEGER; kept: DebugLib.Named;
 
 PROCEDURE Sum(n: INTEGER): INTEGER;
   VAR c: DebugLib.Counter; i: INTEGER;
@@ -14,6 +14,7 @@ PROCEDURE Sum(n: INTEGER): INTEGER;
 BEGIN
   NEW(c); c.n := 0;
   FOR i := 1 TO n DO Step(i) END;
+  DebugLib.Keep(c, kept);
   RETURN c.n
 END Sum;
 

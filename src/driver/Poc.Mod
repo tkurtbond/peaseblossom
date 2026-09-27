@@ -905,7 +905,7 @@ MODULE Poc;
     Err.String("       -trap-location may precede -emit-llvm-ir or -build: a trap's message"); Err.Ln;
     Err.String("       starts with its file:line:column and names its procedure"); Err.Ln;
     Err.String("       -g may precede -emit-llvm-ir or -build: debug information for gdb"); Err.Ln;
-    Err.String("       and lldb (source lines and procedure names); best with -opt 0 or -opt g"); Err.Ln;
+    Err.String("       and lldb (source lines, procedures, variables); best with -opt 0 or -opt g"); Err.Ln;
     Err.String("       -strict may precede any command above: the module named rejects"); Err.Ln;
     Err.String("       everything beyond the Oberon-2 report (its imports are not checked)"); Err.Ln
   END Usage;

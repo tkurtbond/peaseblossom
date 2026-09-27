@@ -1,17 +1,28 @@
 semantic OK, wrote llvm-debug-info
 14
 stopped in DebugLib.Square:
-DebugLib.Square DebugLib.mod:12
-DebugLib.CounterDesc.Add DebugLib.mod:19
+DebugLib.Square DebugLib.mod:15
+DebugLib.CounterDesc.Add DebugLib.mod:22
 DebugMain.Sum.Step debug.mod:12
 DebugMain.Sum debug.mod:16
-DebugMain_init debug.mod:21
+DebugMain_init debug.mod:22
 stopped at debug.mod:12:
 DebugMain.Sum.Step debug.mod:12
 DebugMain.Sum debug.mod:16
-DebugMain_init debug.mod:21
-variables at DebugLib.mod:14:
+DebugMain_init debug.mod:22
+variables at DebugLib.mod:17:
 half = 0.5
 odd = true
 x = 1
 y = 1
+values at DebugLib.mod:28:
+c->n = 14
+r.n = 14
+r.name = "sum"
+r.scores[1] = 28
+total = 3
+values at debug.mod:18:
+c->n = 14
+kept.name = "sum"
+kept.scores[1] = 28
+total = 0
