@@ -174,27 +174,28 @@ MODULE Lexer;
     END
   END LookupKeyword;
 
-  (* "_" and "$", which other dialects (and VMS names) put in identifiers,
-     and poc does not: the Oberon-2 report allows letters and digits only
-     (Phase 11 A25; a VMS name such as SYS$QIO is an external procedure's
-     linkage-name string). ScanIdentifier takes them into the name anyway
-     and reports the first one, so a name like a_b costs one error instead
-     of a cascade. *)
-  PROCEDURE IsForeignIdentifierChar(ch: CHAR): BOOLEAN;
+  (* "_" and "$": identifier characters anywhere a letter may be, first
+     included - poc's extension for VMS, whose system names (SS$_NORMAL,
+     IO$_READVBLK, DSC$W_LENGTH) are values and field names in modules of
+     constants, not only procedures a linkage-name string can carry. VAX
+     MACRO and VAX C take both as letters too. The Oberon-2 report allows
+     letters and digits only, so under -strict the first one in a name is an
+     error (Phase 11 A25, reopened 2026-09-26). *)
+  PROCEDURE IsExtraIdentifierChar(ch: CHAR): BOOLEAN;
   BEGIN
     RETURN (ch = "_") OR (ch = "$")
-  END IsForeignIdentifierChar;
+  END IsExtraIdentifierChar;
 
   PROCEDURE ScanIdentifier(VAR s: Scanner; VAR t: Token);
-    VAR len: INTEGER; ch: CHAR; reported: BOOLEAN; message: ARRAY 96 OF CHAR;
+    VAR len: INTEGER; ch: CHAR; reported: BOOLEAN; what: ARRAY 32 OF CHAR;
   BEGIN
     len := 0; reported := FALSE;
     ch := CurrentChar(s);
-    WHILE IsLetter(ch) OR IsDigit(ch) OR IsForeignIdentifierChar(ch) DO
-      IF IsForeignIdentifierChar(ch) & ~reported THEN
-        message := '" " is not allowed in an identifier: the Oberon-2 report allows only letters and digits';
-        message[1] := ch;
-        Diagnostics.Error(s.line, s.column, message);
+    WHILE IsLetter(ch) OR IsDigit(ch) OR IsExtraIdentifierChar(ch) DO
+      IF IsExtraIdentifierChar(ch) & ~reported THEN
+        what := '" " in an identifier';
+        what[1] := ch;
+        Diagnostics.NotInReport(s.line, s.column, what);
         reported := TRUE
       END;
       IF len < maxLexemeLength THEN
@@ -369,7 +370,7 @@ MODULE Lexer;
     ch := CurrentChar(s);
     IF ch = 0X THEN
       t.kind := eof; t.lexeme[0] := 0X
-    ELSIF IsLetter(ch) OR IsForeignIdentifierChar(ch) THEN
+    ELSIF IsLetter(ch) OR IsExtraIdentifierChar(ch) THEN
       ScanIdentifier(s, t)
     ELSIF IsDigit(ch) THEN
       ScanNumber(s, t)

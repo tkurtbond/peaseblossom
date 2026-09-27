@@ -803,8 +803,9 @@ style exactly.
      `ModuleList`), `Allocate` is `declare`d instead.
    - *Records with no descriptor*: `EnsureTypeTag` gives a record written
      inline under a `POINTER TO`, or declared inside a procedure, the
-     unwritable name `$anon<n>` the first time `NEW`/`IS`/a guard/`WITH`
-     names it (its base record first), and `EmitPointerSupport` emits the
+     unwritable name `-anon<n>` (`$anon<n>` until Phase 11 A25) the first
+     time `NEW`/`IS`/a guard/`WITH` names it (its base record first), and
+     `EmitPointerSupport` emits the
      descriptor at the end of the program. Module-level records are as in
      step 1. Only a record of *another* module that is itself unnamed on
      this side (an inline record under an imported pointer) still cannot

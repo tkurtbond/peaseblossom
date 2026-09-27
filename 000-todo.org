@@ -162,7 +162,7 @@ Defaults a record's fields take whenever one is created, as Active Oberon has.  
 ** TODO Oberon-2 has syntax for sets literals; it would be good have syntax for record and array literals, too.
 Moved to Phase 17 (PLAN.md, further extensions to Oberon-2) by the user 2026-09-26; survey in doc/initializers-and-literals-survey.md.  (doc/phase-11-inventory.md A24.)
 ** DONE Underscores and dollarsigns in names.  (Useful for VMS.)
-Decided 2026-09-26 (user): neither; VMS names go in an external procedure's linkage-name string.  The scanner gives one clear error.  (doc/phase-11-inventory.md A25; doc/language-extensions.md.)
+Decided 2026-09-26 (user): both, anywhere a letter may be, first included; -strict rejects them.  A first verdict the same day took neither (a routine's VMS name goes in a linkage-name string), reversed because STARLET's values and fields (SS$_NORMAL, DSC$W_LENGTH) need their names in a module of constants.  (doc/phase-11-inventory.md A25; doc/language-extensions.md.)
 ** TODO Slices for one dimensional arrays.
 * Ignore this
 Local Variables:

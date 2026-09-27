@@ -1,8 +1,0 @@
-names.mod:6:6: error: "_" is not allowed in an identifier: the Oberon-2 report allows only letters and digits
-names.mod:6:13: error: "$" is not allowed in an identifier: the Oberon-2 report allows only letters and digits
-names.mod:6:19: error: "_" is not allowed in an identifier: the Oberon-2 report allows only letters and digits
-names.mod:6:37: error: "_" is not allowed in an identifier: the Oberon-2 report allows only letters and digits
-names.mod:9:4: error: "_" is not allowed in an identifier: the Oberon-2 report allows only letters and digits
-names.mod:9:20: error: "_" is not allowed in an identifier: the Oberon-2 report allows only letters and digits
-6 error(s)
-exit=1

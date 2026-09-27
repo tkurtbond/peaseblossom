@@ -148,7 +148,9 @@ under `VSI/` and the `HPE_*` files) are context for a concept at most.
 `~/Reference/Computer/OS/VMS/` holds what we have; a manual found later is
 saved there under its original file name. `vax-vms-manuals-to-get.md` lists
 which release each local file belongs to, what to fetch and why, and where
-(bitsavers); none of it has been downloaded yet.
+(bitsavers), and how to fetch it (a browser-like `User-Agent`); so far only
+the calling standard (`AA-LA66B`) and the Linker manual with the object
+language (`AA-LA62A`) are downloaded.
 
 ## Toolchain: LLVM (clang/llc)
 
@@ -367,11 +369,12 @@ related pointers and procedure values of one type.
 voc's `x-` formal parameter (by reference, read-only; Oakwood 5.13 recommends
 against it) is not in poc. A mark on a formal parameter is a syntax error.
 
-### Underscores and dollar signs in identifiers (considered, not adopted)
+### Underscores and dollar signs in identifiers (decided and implemented, Phase 11 A25, 2026-09-26)
 
-Neither `_` nor `$` (Phase 11 A25, 2026-09-26), as in `Oberon2.pdf` and voc;
-a VMS name like `SYS$QIO` goes in an external procedure's linkage-name
-string. The scanner reports one clear error for each use of such a name.
+Both, anywhere a letter may be, first included, for VMS names such as
+`SS$_NORMAL` and `DSC$W_LENGTH` in modules of constants generated from
+STARLET. `-strict` rejects them. The backend's own names contain `-` so they
+never match a user's.
 
 ## Project state
 

@@ -1639,7 +1639,7 @@ MODULE LLVMCodeGenerator;
      checker named it - Types.RecordTypeDesc.name; EmitTypeDescriptors
      emits it), and any other record of the module being compiled - one
      written inline under a POINTER TO, or declared inside a procedure -
-     is given the (unwritable) name "$anon<N>" now and its descriptor is
+     is given the (unwritable) name "-anon<N>" now and its descriptor is
      emitted at the end of the program (EmitPointerSupport), after its base
      record, if it has one, has been dealt with the same way. FALSE only
      for an unnamed record of some other module, which this module has no
@@ -1653,7 +1653,7 @@ MODULE LLVMCodeGenerator;
     IF (rec.baseType # NIL) & ~EnsureTypeTag(cg, rec.baseType(Types.RecordType)) THEN RETURN FALSE END;
     INC(cg.anonymousRecordCount);
     COPY(cg.moduleName, rec.moduleName);
-    COPY("$anon", rec.name); AppendLongInt(rec.name, cg.anonymousRecordCount);
+    COPY("-anon", rec.name); AppendLongInt(rec.name, cg.anonymousRecordCount);
     NEW(entry); entry.rec := rec; entry.next := NIL;
     IF cg.lateRecords = NIL THEN cg.lateRecords := entry
     ELSE
@@ -4623,7 +4623,7 @@ MODULE LLVMCodeGenerator;
     RETURN entry
   END InitRecordEntryOf;
 
-  (* Phase 11 D17: "@<Module>.<initPath>.$init", the procedure that
+  (* Phase 11 D17: "@<Module>.<initPath>.-init", the procedure that
      initializes a record of type rec (rec.needsInit) at the address it is
      given - the fields with initializers, the records inside it, and first
      its base type's. A record named by the front end (initPath) has its
@@ -4637,7 +4637,7 @@ MODULE LLVMCodeGenerator;
     IF rec.moduleName[0] = 0X THEN COPY(cg.moduleName, rec.moduleName) END; (* see EnsureTypeTag *)
     IF (rec.initPath[0] = 0X) & (rec.moduleName = cg.moduleName) THEN
       INC(cg.anonymousInitCount);
-      COPY("$anon", rec.initPath); AppendLongInt(rec.initPath, cg.anonymousInitCount);
+      COPY("-anon", rec.initPath); AppendLongInt(rec.initPath, cg.anonymousInitCount);
       entry := InitRecordEntryOf(cg, rec); entry.wanted := TRUE
     ELSIF rec.initPath[0] = 0X THEN
       (* another module's record the front end could not name
@@ -4646,7 +4646,7 @@ MODULE LLVMCodeGenerator;
         "a record of another module's whose field initializers cannot be reached from here")
     END;
     COPY("@", text); Strcat(text, rec.moduleName); Strcat(text, "."); Strcat(text, rec.initPath);
-    Strcat(text, ".$init")
+    Strcat(text, ".-init")
   END InitSymbol;
 
   PROCEDURE ^ InitializeAt(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; type: Types.Type);
@@ -5850,7 +5850,7 @@ MODULE LLVMCodeGenerator;
      module-level named POINTER TO. Any other record - one written inline
      under a POINTER TO, or declared inside a procedure - gets one only
      when NEW, IS, a guard or WITH names it (PLAN.md Phase 9 step 5:
-     EnsureTypeTag names it "$anon<N>" and EmitPointerSupport emits its
+     EnsureTypeTag names it "-anon<N>" and EmitPointerSupport emits its
      descriptor at the end of the program). ProcTab entries name the
      symbols of the type-bound procedures' bodies
      (@<Module>.<RecordName>.<ProcName>), which GenerateMethodDecl
@@ -7004,7 +7004,7 @@ MODULE LLVMCodeGenerator;
     END
   END CollectInitRecords;
 
-  (* Phase 11 D17: "define void @<Module>.<initPath>.$init(ptr %self)" for
+  (* Phase 11 D17: "define void @<Module>.<initPath>.-init(ptr %self)" for
      the record of wanted: its base type's procedure first, then each field
      of its own in order - a field with an initializer assigned its own
      copy of it, as an assignment would, in the scope the record was

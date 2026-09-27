@@ -963,7 +963,10 @@ as it stands when the phase starts, and adds what it finds):
      find the consequences in advance: the `.sym` writer, LLVM symbol
      names (LLVM's unquoted identifiers already allow `$` and `_`), the
      31-character mangling of Phase 13 and Phase 15's generated definition
-     modules from `STARLET.MLB`.
+     modules from `STARLET.MLB`. **Decided (user, 2026-09-26): both,
+     anywhere a letter may be, first included, since STARLET's values and
+     fields (`SS$_NORMAL`, `DSC$W_LENGTH`) are not procedures;
+     `-strict` rejects them** (`doc/language-extensions.md`).
 
 7. **An `Err` module.** `rtl/llvm/Err.Mod`, the counterpart of Phase 10's
    `Out`, writing to standard error: the same procedure set, the same
@@ -1443,7 +1446,13 @@ C++, and so on) unless step 4 chooses one deliberately.
    fields, item-list layouts - live in macro libraries (`STARLET.MLB`);
    decide whether a tool generates Oberon `CONST`/`RECORD` definition
    modules from them or they are written by hand, and how the generated
-   modules track the kit they came from. Implement it, and write the
+   modules track the kit they came from. STARLET's definitions are written
+   in SDL, which renders them for each language (the macros in
+   `STARLET.MLB`, VAX C's `ssdef.h` and the rest); the user maintains an
+   UNSDL utility on a VAX that extracts much of that information, a
+   likely starting point for the generator. The modules keep the system's
+   names, `_` and `$` included (Phase 11 A25); SDL's unions and bit fields,
+   which an Oberon record cannot express, need a convention of their own. Implement it, and write the
    interface modules step 4 chose, each with a fixture that calls the real
    service on the guest and checks a result.
 

@@ -708,14 +708,14 @@ assignment once the declarations before it are resolved
 (`SemanticActions.CheckFieldInitializer`, with `SymbolTable.limitScope` and
 `limitLocals`) and marks each record type that needs initializing
 (`Types.RecordTypeDesc.needsInit`, `Types.NeedsInit`). The backend defines one
-procedure per such record, `@<Module>.<path>.$init(ptr)` (`EmitInitProcedure`),
+procedure per such record, `@<Module>.<path>.-init(ptr)` (`EmitInitProcedure`),
 and calls it where a record is made (`InitializeAt`, a loop for an array;
 `GenerateDeclarationInits` for variables, `GenerateNew`/`GenerateNewOpenArray`).
 `<path>` names the record the same way in every module that sees it: a
 module-level named record's name, `P.base` for a pointer's anonymous base, and
 `T.f`, `A.element` and so on down anonymous types from a module-level `TYPE`
 declaration (`SemanticActions.NameInitPaths`); any other record, which no other
-module can make, is named `$anonN` by the backend. A program with no field
+module can make, is named `-anonN` by the backend. A program with no field
 initializers gets exactly the code it did before. Fixtures
 `llvm-field-initializers`, `semantic-reject-field-initializers`,
 `semantic-strict-field-initializers`.
@@ -1048,7 +1048,7 @@ value parameter. Adopting voc's version later is a separate decision, recorded
 in `000-todo.org`: poc's own source would not use it, and `-strict` would have
 to reject it.
 
-## Underscores and dollar signs in identifiers (considered, not adopted)
+## Underscores and dollar signs in identifiers (decided and implemented, Phase 11 A25, 2026-09-26)
 
 `000-todo.org` asked for `_` and `$` in names, for VMS (`SYS$QIO`,
 `LIB$GET_VM`, `SS$_NORMAL`). `Oberon2.pdf` has `ident = letter {letter |
@@ -1066,13 +1066,45 @@ digit}`. Surveyed 2026-09-26 in the scanners under
 - **`$`:** in no dialect's identifiers; Component Pascal and Oberon+ use it
   as an operator or to start a hex string.
 
-**poc accepts neither** (decided with the user 2026-09-26, Phase 11 A25).
-The VMS reason does not need them: a system service or RTL routine is an
-external procedure whose linkage-name string is emitted verbatim
-(`PROCEDURE ["VMS", "SYS$QIO"] QueueIO(...)`, "External procedures" above),
-and a constant such as `SS$_NORMAL` can be spelled `SSNormal`. Adopting `_`
-would have made programs voc cannot compile. The scanner takes a `_` or `$`
-into the name anyway and reports the first one, once for each use of the
-name: `"_" is not allowed in an identifier: the Oberon-2 report allows only
-letters and digits`, where until then it gave "invalid character" and a
-cascade (`lexer-reject-underscore-dollar`).
+**poc accepts both, anywhere a letter may be, first included** (decided
+with the user 2026-09-26, Phase 11 A25). `-strict` rejects them, once for
+each name that has one: `"$" in an identifier is not in the Oberon-2 report
+(-strict)`.
+
+A first decision the same day took neither, on the grounds that a VMS
+routine is an external procedure whose linkage-name string carries its real
+name (`PROCEDURE ["VMS", "SYS$QIO"] QueueIO(...)`, "External procedures"
+above). That holds for procedures only. Most of the system's names are
+values and field names - status codes (`SS$_NORMAL`), function codes
+(`IO$_READVBLK`), control-block and descriptor fields (`DSC$W_LENGTH`) -
+defined in STARLET, which is written in SDL. VMS gives each language its own
+rendering of those definitions (VAX C's `#include <ssdef.h>`), and for
+Oberon-2 that is a module of constants and types, whose names have to be
+the system's for its documentation to apply. So the decision was reopened
+and reversed.
+
+What VMS itself allows (the manuals of the 5.x releases): VAX MACRO takes
+letters, digits, `_`, `$` and `.` in a symbol, and forbids only a digit
+first (VAX MACRO and Instruction Set Reference Manual, VMS 5.0, 3.3.2); by
+DIGITAL's convention, `$` marks names DIGITAL defined. VAX C counts `_` and
+`$` as letters, first included, though it reserves a leading `_` for its own
+names (Guide to VAX C 3.0, 5.5). The VAX object language stores every
+name as a counted ASCII string of at most 31 characters and restricts the
+characters no further (VMS 5.0 Linker Utility Manual, chapter 7); the linker
+asks for quotation marks, in an options file, only around a name with
+characters other than letters, digits, `$` and `_` (the same manual, 5.2),
+and allows any printable character in a program section's name, though it
+discourages `$` there, as DIGITAL's (6.2.1.1). The VAX Procedure Calling and
+Condition Handling Standard (Introduction to VMS 5.4 System Routines,
+chapter 2) says nothing about the characters of a name; its own symbols
+(`DSC$K_DTYPE_T`) use both. So a name starting with `$` or `_` is valid
+everywhere down to the object file.
+
+Nothing in Oberon-2's syntax uses either character, so the grammar stays
+unambiguous. LLVM names allow both. The names poc's backend makes up for
+itself (anonymous records, record initialization procedures, struct types)
+contain a `-`, which no identifier can, so a user's name never matches one
+(`llvm-underscore-dollar` names a type `$anon1`, which until then collided
+with the backend's first anonymous record). Modules may have such names too
+(`Ss$Def.mod`, `Ss$Def.sym`); on Unix a `$` in a file name needs quoting in
+the shell.
