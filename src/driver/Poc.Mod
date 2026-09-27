@@ -91,8 +91,8 @@ MODULE Poc;
     LibraryMemberDesc = RECORD
       name: SyntaxTree.Ident;
       path: Libraries.Path; (* its source, or with compiled its .sym *)
-      compiled: BOOLEAN; (* given as its .sym and .o (Phase 12 step 2f) *)
-      objectPath: Libraries.Path;
+      compiled: BOOLEAN; (* given as its .sym and .o (Phase 12 step 2f) or .ll (2g) *)
+      objectPath, irPath: Libraries.Path; (* one of them, the other "" *)
       next: LibraryMember
     END;
 
@@ -421,9 +421,13 @@ MODULE Poc;
       m := m.next
     END;
     LLVMToolchainDriver.ClearLibraries;
+    LLVMToolchainDriver.ltoLink := FALSE;
     lib := Libraries.linkOrder;
     WHILE ok & (lib # NIL) DO
       LLVMToolchainDriver.AddLibrary(lib.name, lib.dir, shared);
+      (* an LTO library's archive is bitcode, which only -flto links (Phase
+         12 step 2g); its shared library is not *)
+      IF lib.lto & ~shared THEN LLVMToolchainDriver.ltoLink := TRUE END;
       lib := lib.linkNext
     END;
     IF ~ok THEN failed := TRUE END;
@@ -563,22 +567,41 @@ MODULE Poc;
   PROCEDURE ^ DiscoverModule(name: SyntaxTree.Ident;
                              VAR modules, tail: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
 
-  (* The object beside the interface symPath, <dir>/<Module>.o for
-     <dir>/<Module>.sym, in objectPath, when it is there *)
-  PROCEDURE CompiledObject(symPath: ARRAY OF CHAR; VAR objectPath: ARRAY OF CHAR): BOOLEAN;
-    VAR i: INTEGER; f: Files.File;
+  (* Whether path names a file *)
+  PROCEDURE FileExists(path: ARRAY OF CHAR): BOOLEAN;
+    VAR f: Files.File;
   BEGIN
-    COPY(symPath, objectPath);
-    i := 0; WHILE objectPath[i] # 0X DO INC(i) END;
-    IF (i < 4) OR (objectPath[i - 4] # ".") THEN RETURN FALSE END;
-    objectPath[i - 3] := "o"; objectPath[i - 2] := 0X;
-    f := Files.Old(objectPath);
+    f := Files.Old(path);
     IF f # NIL THEN Files.Close(f) END;
     RETURN f # NIL
-  END CompiledObject;
+  END FileExists;
 
-  (* For file <base>.sym or <base>.o, both names; FALSE for any other *)
-  PROCEDURE PairFiles(file: ARRAY OF CHAR; VAR symFile, objectFile: ARRAY OF CHAR): BOOLEAN;
+  (* What was compiled from the interface symPath, <dir>/<Module>.sym,
+     beside it: its object <Module>.o, in objectPath (Phase 12 step 2f), or
+     its IR <Module>.ll, in irPath (step 2g), the other "". The .ll when
+     there is one and -lto, no .o, or a .o that is bitcode (which nm cannot
+     read everywhere); else the .o. FALSE when there is neither. *)
+  PROCEDURE CompiledFiles(symPath: ARRAY OF CHAR; VAR objectPath, irPath: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER; hasObject: BOOLEAN;
+  BEGIN
+    objectPath[0] := 0X; irPath[0] := 0X;
+    i := 0; WHILE symPath[i] # 0X DO INC(i) END;
+    IF (i < 4) OR (symPath[i - 4] # ".") THEN RETURN FALSE END;
+    COPY(symPath, objectPath); objectPath[i - 3] := "o"; objectPath[i - 2] := 0X;
+    COPY(symPath, irPath); irPath[i - 3] := "l"; irPath[i - 2] := "l"; irPath[i - 1] := 0X;
+    hasObject := FileExists(objectPath);
+    IF FileExists(irPath)
+       & (LLVMToolchainDriver.lto OR ~hasObject OR Libraries.IsBitcode(objectPath)) THEN
+      objectPath[0] := 0X; RETURN TRUE
+    END;
+    irPath[0] := 0X;
+    IF ~hasObject THEN objectPath[0] := 0X END;
+    RETURN hasObject
+  END CompiledFiles;
+
+  (* For file <base>.sym, <base>.o or <base>.ll, <base>.sym; FALSE for any
+     other *)
+  PROCEDURE PairFiles(file: ARRAY OF CHAR; VAR symFile: ARRAY OF CHAR): BOOLEAN;
     VAR i: INTEGER; base: Libraries.Path;
   BEGIN
     i := 0; WHILE file[i] # 0X DO INC(i) END;
@@ -587,11 +610,12 @@ MODULE Poc;
       base[i - 4] := 0X
     ELSIF (i > 2) & (file[i - 2] = ".") & (file[i - 1] = "o") THEN
       base[i - 2] := 0X
+    ELSIF (i > 3) & (file[i - 3] = ".") & (file[i - 2] = "l") & (file[i - 1] = "l") THEN
+      base[i - 3] := 0X
     ELSE
       RETURN FALSE
     END;
     COPY(base, symFile); Strcat(symFile, ".sym");
-    COPY(base, objectFile); Strcat(objectFile, ".o");
     RETURN TRUE
   END PairFiles;
 
@@ -608,8 +632,10 @@ MODULE Poc;
      and its object linked. Checked first against what the object says of
      itself (Libraries.ReadObject): that it is name's, compiled from this
      .sym (its key), for this target and size model, and against the
-     interfaces of its imports this program has (their keys). *)
-  PROCEDURE DiscoverCompiledModule(name: SyntaxTree.Ident; symPath, objectPath: ARRAY OF CHAR;
+     interfaces of its imports this program has (their keys). Given as its
+     IR irPath instead (Phase 12 step 2g, objectPath ""), what the IR says
+     of itself (Libraries.ReadIR), and the IR compiled with the program. *)
+  PROCEDURE DiscoverCompiledModule(name: SyntaxTree.Ident; symPath, objectPath, irPath: ARRAY OF CHAR;
                                    VAR modules, tail: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
     VAR
       buffer: Lexer.CharBuffer; length: LONGINT; found: BOOLEAN;
@@ -617,13 +643,14 @@ MODULE Poc;
       entry: LLVMCodeGenerator.ModuleList; errorCountBefore: INTEGER;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       info: Libraries.ObjectInfo; own, used: Libraries.ObjectKey;
-      key: Libraries.Key; triple: Libraries.Name; model: ARRAY 3 OF CHAR;
+      key: Libraries.Key; triple: Libraries.Name; model: ARRAY 3 OF CHAR; file: Libraries.Path;
   BEGIN
     ModuleInterface.ReadSource(name, buffer, length, found);
     IF ~found THEN
       failed := TRUE; Err.String("poc: cannot read "); Err.String(symPath); Err.Ln;
       ok := FALSE; RETURN
     END;
+    IF irPath[0] # 0X THEN COPY(irPath, file) ELSE COPY(objectPath, file) END;
     COPY(Diagnostics.fileName, savedFileName); COPY(symPath, Diagnostics.fileName);
     errorCountBefore := Diagnostics.errorCount;
     module := ParseModuleAdapter(buffer, length);
@@ -636,16 +663,27 @@ MODULE Poc;
       Err.String(" error(s) in "); Err.String(symPath); Err.Ln;
       ok := FALSE; RETURN
     END;
-    IF ~Libraries.ReadObject(objectPath, info) THEN failed := TRUE; ok := FALSE; RETURN END;
+    IF irPath[0] # 0X THEN
+      IF ~Libraries.ReadIR(irPath, info) THEN failed := TRUE; ok := FALSE; RETURN END
+    ELSIF Libraries.IsBitcode(objectPath) THEN
+      failed := TRUE; ok := FALSE;
+      Err.String("poc: "); Err.String(objectPath); Err.String(" is LLVM bitcode (from -lto); give ");
+      Err.String(name); Err.String(".ll beside it instead"); Err.Ln;
+      RETURN
+    ELSIF ~Libraries.ReadObject(objectPath, info) THEN failed := TRUE; ok := FALSE; RETURN
+    END;
     Libraries.GetTarget(triple, model);
     IF ~ModuleInterface.KeyOf(name, key) THEN key[0] := 0X END;
     own := FindObjectKey(info.defined, name);
     IF (own = NIL) OR (info.targetModule # name) OR (info.target # triple) OR (own.model # model)
        OR (own.key # key) THEN
       failed := TRUE; ok := FALSE;
-      Err.String("poc: "); Err.String(objectPath);
+      Err.String("poc: "); Err.String(file);
       IF (own = NIL) OR (info.targetModule # name) THEN
-        Err.String(" is not an object poc compiled for module "); Err.String(name)
+        IF irPath[0] # 0X THEN Err.String(" is not IR poc wrote for module ")
+        ELSE Err.String(" is not an object poc compiled for module ")
+        END;
+        Err.String(name)
       ELSIF info.target # triple THEN
         Err.String(" was compiled for "); Err.String(info.target); Err.String(", not "); Err.String(triple)
       ELSIF own.model # model THEN
@@ -669,7 +707,7 @@ MODULE Poc;
     WHILE ok & (used # NIL) DO
       IF ~ModuleInterface.KeyOf(used.module, key) OR (key # used.key) OR (used.model # model) THEN
         failed := TRUE; ok := FALSE;
-        Err.String("poc: "); Err.String(objectPath); Err.String(" was compiled against ");
+        Err.String("poc: "); Err.String(file); Err.String(" was compiled against ");
         Err.String(used.module); Err.String(" "); Err.String(used.key);
         Err.String(", but this program's "); Err.String(used.module); Err.String(" has ");
         IF key[0] # 0X THEN Err.String(key) ELSE Err.String("none") END;
@@ -680,7 +718,8 @@ MODULE Poc;
     IF ok THEN
       NEW(entry); entry.module := module; entry.scope := scope; entry.next := NIL;
       COPY(symPath, entry.fileName); entry.inLibrary := FALSE;
-      entry.compiled := TRUE; COPY(objectPath, entry.objectPath); entry.usesCollector := info.usesCollector;
+      entry.compiled := irPath[0] = 0X; COPY(objectPath, entry.objectPath); COPY(irPath, entry.irPath);
+      entry.usesCollector := info.usesCollector;
       IF tail = NIL THEN modules := entry ELSE tail.next := entry END;
       tail := entry
     END
@@ -755,7 +794,7 @@ MODULE Poc;
       imp: SyntaxTree.ImportNode;
       m, entry: LLVMCodeGenerator.ModuleList;
       lib: Libraries.Library; member: LibraryMember;
-      symPath, objectPath: Libraries.Path;
+      symPath, objectPath, irPath: Libraries.Path;
   BEGIN
     IF ~ok THEN RETURN END;
     (* SYSTEM is a pseudo-module with no source (SymbolTable.SystemScope) *)
@@ -775,21 +814,23 @@ MODULE Poc;
       NotLibraryMember(name); ok := FALSE; RETURN
     END;
     IF (member # NIL) & member.compiled THEN
-      DiscoverCompiledModule(name, member.path, member.objectPath, modules, tail, ok); RETURN
+      DiscoverCompiledModule(name, member.path, member.objectPath, member.irPath, modules, tail, ok); RETURN
     END;
     ReadModuleText(name, buffer, length, found, sourcePath); (* before an import reads another *)
     IF ~found THEN
       (* the checker found its .sym, or it would have stopped there: with
-         <Module>.o beside it, a module compiled already (Phase 12 step 2f) *)
+         <Module>.o (Phase 12 step 2f) or <Module>.ll (2g) beside it, a
+         module compiled already *)
       ModuleInterface.ReadSource(name, buffer, length, found);
-      IF found & CompiledObject(ModuleInterface.interfacePath, objectPath) THEN
+      IF found & CompiledFiles(ModuleInterface.interfacePath, objectPath, irPath) THEN
         COPY(ModuleInterface.interfacePath, symPath);
-        DiscoverCompiledModule(name, symPath, objectPath, modules, tail, ok)
+        DiscoverCompiledModule(name, symPath, objectPath, irPath, modules, tail, ok)
       ELSE
         failed := TRUE; Err.String("poc: cannot find source for imported module "); Err.String(name);
         IF found THEN
           Err.String(", only its interface "); Err.String(ModuleInterface.interfacePath);
-          Err.String(", and no "); Err.String(name); Err.String(".o beside it")
+          Err.String(", and no "); Err.String(name); Err.String(".o or "); Err.String(name);
+          Err.String(".ll beside it")
         END;
         Err.Ln;
         ok := FALSE
@@ -956,7 +997,7 @@ MODULE Poc;
     fromLibrary := FALSE; usesCollector := FALSE; m := modules;
     WHILE m # NIL DO
       IF m.inLibrary THEN fromLibrary := TRUE END;
-      IF m.compiled & m.usesCollector THEN usesCollector := TRUE END;
+      IF (m.compiled OR (m.irPath[0] # 0X)) & m.usesCollector THEN usesCollector := TRUE END;
       m := m.next
     END;
     IF ~PredeclaredProcedures.NewWasCalled() & ~usesCollector
@@ -1128,7 +1169,7 @@ MODULE Poc;
           (* one .ll per module (Phase 12 step 2a), none for a library's *)
           m := modules;
           WHILE m # NIL DO
-            IF ~m.inLibrary & ~m.compiled THEN
+            IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
               LLVMToolchainDriver.ModuleFilePath(outputDir, m.module.name, ".ll", path);
               Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
             END;
@@ -1197,23 +1238,22 @@ MODULE Poc;
     VAR
       file: Libraries.Path; i: INTEGER; member, tail: LibraryMember;
       buffer: Lexer.CharBuffer; length: LONGINT; parser: Parser.Parser; module: SyntaxTree.ModuleNode;
-      owner: Libraries.Library; compiled: BOOLEAN; symFile, objectFile: Libraries.Path;
+      owner: Libraries.Library; compiled: BOOLEAN; symFile, objectFile, irFile: Libraries.Path;
   BEGIN
     ok := TRUE; members := NIL; tail := NIL; membersOnly := forLibrary;
     FOR i := firstFile TO Modules.ArgCount - 1 DO
-      Modules.GetArg(i, file);
-      (* a module compiled already, named by its .sym or its .o (Phase 12
-         step 2f): the pair *)
-      compiled := PairFiles(file, symFile, objectFile);
+      Modules.GetArg(i, file); objectFile[0] := 0X; irFile[0] := 0X;
+      (* a module compiled already, named by its .sym, its .o (Phase 12
+         step 2f) or its .ll (2g): the .sym and what is beside it *)
+      compiled := PairFiles(file, symFile);
       IF compiled THEN COPY(symFile, file) END;
       IF ~ok THEN
         (* already failed *)
       ELSIF compiled & ~forLibrary THEN
         failed := TRUE; Err.String("poc: "); Err.String(file); Err.String(" is compiled already"); Err.Ln;
         ok := FALSE
-      ELSIF compiled & ~CompiledObject(symFile, objectFile) THEN
-        failed := TRUE; Err.String("poc: no "); Err.String(objectFile); Err.String(" beside ");
-        Err.String(symFile); Err.Ln; ok := FALSE
+      ELSIF compiled & ~CompiledFiles(symFile, objectFile, irFile) THEN
+        failed := TRUE; Err.String("poc: no .o or .ll beside "); Err.String(symFile); Err.Ln; ok := FALSE
       ELSIF ~ReadSource(file, buffer, length) THEN
         failed := TRUE; Err.String("poc: cannot open "); Err.String(file); Err.Ln; ok := FALSE
       ELSE
@@ -1235,7 +1275,7 @@ MODULE Poc;
             ok := FALSE
           ELSE
             NEW(member); COPY(module.name, member.name); COPY(file, member.path); member.next := NIL;
-            member.compiled := compiled; COPY(objectFile, member.objectPath);
+            member.compiled := compiled; COPY(objectFile, member.objectPath); COPY(irFile, member.irPath);
             IF tail = NIL THEN members := member ELSE tail.next := member END;
             tail := member
           END
@@ -1278,7 +1318,7 @@ MODULE Poc;
     (* only the modules named are generated; the rest are declared *)
     m := modules;
     WHILE m # NIL DO
-      IF ~m.inLibrary & (FindMember(m.module.name) = NIL) THEN m.compiled := TRUE END;
+      IF ~m.inLibrary & (FindMember(m.module.name) = NIL) THEN m.compiled := TRUE; m.irPath[0] := 0X END;
       m := m.next
     END;
     IF ~LLVMToolchainDriver.Compile(modules, members.name, triple, outputDir) THEN
@@ -1330,15 +1370,21 @@ MODULE Poc;
     COPY("mkdir -p '", command); Strcat(command, dir); Strcat(command, "'");
     status := Platform.System(command);
     ModuleInterface.SetInterfaceDir(dir);
-    (* the .sym of each one compiled already, where the others' are written *)
+    (* the .sym of each one compiled already, where the others' are written,
+       and its .ll (Phase 12 step 2g), compiled there as theirs are *)
     member := members;
     WHILE ok & (member # NIL) DO
       IF member.compiled THEN
         COPY("cp", command);
-        IF ~AppendQuoted(command, member.path) OR ~AppendQuoted(command, dir)
-           OR (Platform.System(command) # 0) THEN
-          failed := TRUE; Err.String("poc: cannot copy "); Err.String(member.path); Err.String(" to ");
-          Err.String(dir); Err.Ln; ok := FALSE
+        IF ~AppendQuoted(command, member.path)
+           OR (member.irPath[0] # 0X) & ~AppendQuoted(command, member.irPath)
+           OR ~AppendQuoted(command, dir) OR (Platform.System(command) # 0) THEN
+          failed := TRUE; Err.String("poc: cannot copy "); Err.String(member.path);
+          IF member.irPath[0] # 0X THEN Err.String(" and "); Err.String(member.irPath) END;
+          Err.String(" to "); Err.String(dir); Err.Ln; ok := FALSE
+        ELSIF member.irPath[0] # 0X THEN
+          COPY(dir, member.irPath); Strcat(member.irPath, "/"); Strcat(member.irPath, member.name);
+          Strcat(member.irPath, ".ll")
         END
       END;
       member := member.next
@@ -1364,12 +1410,13 @@ MODULE Poc;
     END;
     (* the manifest: each module's key and the keys of its imports *)
     lib := Libraries.NewLibrary(name, dir);
+    lib.lto := LLVMToolchainDriver.lto;
     m := modules;
     WHILE m # NIL DO
       IF ~m.inLibrary THEN
         IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
         libMember := Libraries.AddMember(lib, m.module.name, key);
-        IF ~m.compiled & ModuleInterface.KeyOfFile(m.fileName, key) THEN COPY(key, libMember.source) END;
+        IF ~m.compiled & (m.irPath[0] = 0X) & ModuleInterface.KeyOfFile(m.fileName, key) THEN COPY(key, libMember.source) END;
         imp := m.module.imports;
         WHILE imp # NIL DO
           IF ModuleInterface.KeyOf(imp.moduleName, key) THEN Libraries.AddImport(libMember, imp.moduleName, key) END;
@@ -1733,6 +1780,9 @@ MODULE Poc;
     Err.String("       -range-checks may precede -emit-llvm-ir or -build: SHORT of an integer"); Err.Ln;
     Err.String("       and CHR stop the program (exit status 14) when the value does not fit"); Err.Ln;
     Err.String("       -static may precede -build: link a fully static executable"); Err.Ln;
+    Err.String("       -lto may precede -build, -library or -compile: compile to LLVM bitcode"); Err.Ln;
+    Err.String("       and optimize the whole program when it is linked; a .sym/.ll pair is"); Err.Ln;
+    Err.String("       taken before its .o"); Err.Ln;
     Err.String("       -link <arg> may precede -build, and be repeated: pass <arg> (-lz,"); Err.Ln;
     Err.String("       -L<dir>, ...) to the link"); Err.Ln;
     Err.String("       -verbose may precede -build or -library: print the commands it runs"); Err.Ln;
@@ -1741,9 +1791,9 @@ MODULE Poc;
     Err.String("       repeatable, then POC_LIBRARY_PATH (colon-separated), then poc's"); Err.Ln;
     Err.String("       ../lib/poc, are searched for libraries: a module one has is taken"); Err.Ln;
     Err.String("       from it, not compiled; -clear-library-path leaves all of them out"); Err.Ln;
-    Err.String("       -compile compiles the modules of the files named to .sym and .o, in"); Err.Ln;
-    Err.String("       <output-dir>, and links nothing: given as a .sym and .o on the import"); Err.Ln;
-    Err.String("       path, or to -library, a module needs no source"); Err.Ln;
+    Err.String("       -compile compiles the modules of the files named to .sym, .ll and .o,"); Err.Ln;
+    Err.String("       in <output-dir>, and links nothing: given as a .sym and .o or .ll on"); Err.Ln;
+    Err.String("       the import path, or to -library, a module needs no source"); Err.Ln;
     Err.String("       -install-library copies the library <name> from the library path into"); Err.Ln;
     Err.String("       <output-dir>/<triple>/<O2|OC>/, or without -output-dir poc's ../lib/poc"); Err.Ln;
     Err.String("       -shared-libraries may precede -build: link the libraries dynamically"); Err.Ln;
@@ -1944,6 +1994,10 @@ MODULE Poc;
         ELSIF arg = "-static" THEN
           (* Phase 12 step 1: voc's -M *)
           LLVMToolchainDriver.staticLink := TRUE;
+          INC(i)
+        ELSIF arg = "-lto" THEN
+          (* Phase 12 step 2g: whole-program optimization *)
+          LLVMToolchainDriver.lto := TRUE;
           INC(i)
         ELSIF arg = "-verbose" THEN
           (* Phase 12 step 1: voc's -V, as far as it shows the C compiler's command *)

@@ -56,7 +56,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: all build stage1 stage2 test-stage1 check check-strict check-opt2 test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: all build stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -148,6 +148,30 @@ check-opt2: build
 	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
 	done; \
 	POC_BIN_DIR=$(OPT2_DIR)/wrap1 test/run-tests.sh $(OPT2_TESTS) || status=1; \
+	exit $$status
+
+# Phase 12 step 2g: the suite with every fixture's build a whole-program
+# optimization (a poc wrapper that adds -lto), against poc-rtl built with
+# -lto in its own ../lib/poc, as check-opt2 does. Not part of check. The
+# fixtures that test poc's command line or print clang's commands are left
+# out, and so are llvm-libraries (its manifests gain a line, lto) and
+# llvm-using-modules (its .sym/.o pairs are compiled to bitcode, which poc
+# refuses as a .o); llvm-lto tests -lto itself.
+LTO_DIR := $(abspath $(BUILD_DIR)/lto)
+LTO_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-link-flags \
+  llvm-libraries llvm-using-modules
+LTO_TESTS := $(filter-out $(LTO_SKIP),$(ALL_TESTS))
+check-lto: build
+	@rm -rf $(LTO_DIR); mkdir -p $(LTO_DIR)/bin $(LTO_DIR)/wrap; \
+	cp $(BIN) $(LTO_DIR)/bin/poc; \
+	printf '#!/bin/sh\nexec %s -lto "$$@"\n' $(LTO_DIR)/bin/poc > $(LTO_DIR)/wrap/poc; \
+	chmod +x $(LTO_DIR)/wrap/poc; \
+	status=0; \
+	for model in O2 OC; do \
+	  $(STAGE0_ENV) $(LTO_DIR)/wrap/poc -$$model -clear-library-path -output-dir $(LTO_DIR)/lib/poc \
+	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
+	done; \
+	POC_BIN_DIR=$(LTO_DIR)/wrap test/run-tests.sh $(LTO_TESTS) || status=1; \
 	exit $$status
 
 # poc's own source stays inside Oberon2.pdf (PLAN.md, "Bootstrap

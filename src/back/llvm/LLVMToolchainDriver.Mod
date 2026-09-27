@@ -49,6 +49,11 @@ MODULE LLVMToolchainDriver;
        <arg> to that command (AddLinkArgument), after the program's objects and
        before -lm, so a library named there can itself use libm. *)
     staticLink*, verbose*: BOOLEAN;
+    (* Phase 12 step 2g: poc -lto compiles every module to LLVM bitcode, for
+       an optimization of the whole program when it is linked; ltoLink
+       links with -flto, which bitcode anywhere in the link needs - an LTO
+       library's archive without -lto too *)
+    lto*, ltoLink*: BOOLEAN;
     linkArguments: ARRAY linkArgumentsLength OF CHAR;
     (* Phase 12 step 2c: the libraries a program links, as clang arguments
        (AddLibrary), after its objects and before the -link arguments *)
@@ -209,7 +214,7 @@ MODULE LLVMToolchainDriver;
     IF ok THEN
       m := modules;
       WHILE m # NIL DO
-        IF ~m.inLibrary & ~m.compiled THEN EmitModuleIR(modules, m, triple) END;
+        IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN EmitModuleIR(modules, m, triple) END;
         m := m.next
       END;
       (* IR with a construct missing is worse than none, and so is a stale
@@ -223,7 +228,7 @@ MODULE LLVMToolchainDriver;
       IF (LLVMCodeGenerator.unsupportedCount > 0) OR (Diagnostics.errorCount > errorsBefore) THEN
         m := modules;
         WHILE m # NIL DO
-          IF ~m.inLibrary & ~m.compiled THEN
+          IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
             COPY(m.module.name, name); Strcat(name, ".ll");
             deleteResult := Platform.Unlink(name) (* not Files.Delete: voc's renames to a temp name *)
           END;
@@ -325,6 +330,19 @@ MODULE LLVMToolchainDriver;
     RETURN Platform.System(command) = 0
   END RunCommand;
 
+  (* The object poc compiles the module m to, in outputDir: <Module>.o, but
+     <Module>.ir.o for one given as its .sym and a .ll elsewhere (Phase 12
+     step 2g), so that a .o of the pair's own beside it is never
+     overwritten (a module's name has no ".", so no other module's object
+     is called that) *)
+  PROCEDURE ObjectFilePath(outputDir: ARRAY OF CHAR; m: LLVMCodeGenerator.ModuleList; VAR path: ARRAY OF CHAR);
+  BEGIN
+    ModuleFilePath(outputDir, m.module.name, ".ll", path);
+    IF (m.irPath[0] # 0X) & (m.irPath # path) THEN ModuleFilePath(outputDir, m.module.name, ".ir.o", path)
+    ELSE ModuleFilePath(outputDir, m.module.name, ".o", path)
+    END
+  END ObjectFilePath;
+
   (* clang -c on each module's .ll that is not from a library, to its .o;
      position-independent code always (Phase 12 step 2f, decided with the
      user 2026-09-27), so that any module's object - one given as a .sym
@@ -337,15 +355,34 @@ MODULE LLVMToolchainDriver;
       IF ~m.inLibrary & ~m.compiled THEN
         command := "clang -c"; AppendTargetOptions(command, triple);
         Strcat(command, " -fPIC");
-        ModuleFilePath(outputDir, m.module.name, ".ll", path); AppendPath(path);
-        ModuleFilePath(outputDir, m.module.name, ".o", path);
+        IF lto THEN Strcat(command, " -flto") END;
+        IF m.irPath[0] # 0X THEN AppendPath(m.irPath) (* a module given as its .sym and .ll *)
+        ELSE ModuleFilePath(outputDir, m.module.name, ".ll", path); AppendPath(path)
+        END;
+        ObjectFilePath(outputDir, m, path);
         Strcat(command, " -o"); AppendPath(path);
-        ok := RunCommand()
+        ok := RunCommand();
+        IF ~ok & (m.irPath[0] # 0X) THEN
+          (* IR from a newer LLVM than this clang's does not parse *)
+          Err.String("poc: clang cannot compile "); Err.String(m.irPath);
+          Err.String(" (written for another version of LLVM?); compile "); Err.String(m.module.name);
+          Err.String(" again"); Err.Ln
+        END
       END;
       m := m.next
     END;
     RETURN ok
   END CompileModules;
+
+  (* When the link has bitcode in it: -flto, and on NetBSD lld, as its GNU
+     ld cannot link bitcode (probed 2026-09-27) *)
+  PROCEDURE AppendLTOOptions(triple: ARRAY OF CHAR);
+  BEGIN
+    IF lto OR ltoLink THEN
+      Strcat(command, " -flto");
+      IF LLVMTypes.IsNetBSD(triple) THEN Strcat(command, " -fuse-ld=lld") END
+    END
+  END AppendLTOOptions;
 
   (* appends the object of each module that is not from a library: the
      one compiled, or the one given with its .sym *)
@@ -355,7 +392,7 @@ MODULE LLVMToolchainDriver;
     m := modules;
     WHILE m # NIL DO
       IF m.compiled THEN AppendPath(m.objectPath)
-      ELSIF ~m.inLibrary THEN ModuleFilePath(outputDir, m.module.name, ".o", path); AppendPath(path)
+      ELSIF ~m.inLibrary THEN ObjectFilePath(outputDir, m, path); AppendPath(path)
       END;
       m := m.next
     END
@@ -515,6 +552,7 @@ MODULE LLVMToolchainDriver;
     SharedLibraryName(name, triple, file);
     COPY(dir, path); Strcat(path, "/"); Strcat(path, file);
     command := "clang -shared"; AppendTargetOptions(command, triple);
+    AppendLTOOptions(triple);
     AppendObjects(modules, dir);
     Strcat(command, " -o"); AppendPath(path);
     Strcat(command, libraryArguments);
@@ -543,6 +581,7 @@ MODULE LLVMToolchainDriver;
     IF ~EmitIR(modules, topName, triple, outputDir, path) THEN RETURN FALSE END;
     IF ~CompileModules(modules, triple, outputDir) THEN RETURN FALSE END;
     command := "clang"; AppendTargetOptions(command, triple);
+    AppendLTOOptions(triple);
     AppendObjects(modules, outputDir);
     Strcat(command, " -o"); AppendPath(exePath);
     Strcat(command, libraryArguments);

@@ -560,6 +560,9 @@ MODULE LLVMCodeGenerator;
       compiled*: BOOLEAN;
       objectPath*: SourcePath;
       usesCollector*: BOOLEAN; (* its object calls GarbageCollectedHeap *)
+      (* Phase 12 step 2g: a module given as its .sym and .ll, irPath: not
+         generated, its IR compiled like a generated module's *)
+      irPath*: SourcePath;
       next*: ModuleList
     END;
 

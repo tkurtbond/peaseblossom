@@ -532,6 +532,11 @@ MODULE LLVMTypes;
     RETURN TripleComponentStartsWith(triple, 1, "openbsd") OR TripleComponentStartsWith(triple, 2, "openbsd")
   END IsOpenBSD;
 
+  PROCEDURE IsNetBSD*(triple: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN TripleComponentStartsWith(triple, 1, "netbsd") OR TripleComponentStartsWith(triple, 2, "netbsd")
+  END IsNetBSD;
+
   PROCEDURE NeedsStackRealignment*(triple: ARRAY OF CHAR): BOOLEAN;
     VAR i: INTEGER; found: BOOLEAN;
   BEGIN

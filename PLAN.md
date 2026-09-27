@@ -1424,7 +1424,25 @@ convenient, but must not be a prerequisite of it.
    from a `.sym`/`.ll` pair and with an LTO `poc-rtl`, with the same output
    as without; a cross-module call inlined (the optimized IR or the
    executable's symbols); a `.ll` for another target or size model
-   refused;
+   refused. *Done 2026-09-27*: `LLVMToolchainDriver.lto` adds `-flto` to
+   each `clang -c` and to the link (and `-fuse-ld=lld` on NetBSD,
+   `AppendLTOOptions`); `ltoLink` does the same for a link with an LTO
+   library's archive in it, since a link without `-flto` fails on bitcode
+   with GNU ld (atla, artos), so a library built with `-lto` (manifest line
+   `lto`, `Library.lto`) can be linked by a program built without it; its
+   shared library is ordinary code. What is beside a `.sym` with no source
+   (`Poc.CompiledFiles`): the `.ll` when there is one and `-lto`, no `.o`,
+   or a `.o` that is bitcode; else the `.o`. A bitcode `.o` alone is
+   refused (nm cannot read bitcode on OpenBSD or NetBSD): give its `.ll`.
+   `Libraries.ReadIR` reads the key, target and imports from the `.ll`
+   text; the module enters the program with `ModuleList.irPath` and is
+   compiled to `<Module>.ir.o` in the output directory, so that a `.o`
+   beside the pair is never overwritten; `-library` given a `.sym`, `.o` or
+   `.ll` takes the same one, copying the `.ll` into the library to compile
+   to `<Module>.o` there. A `.ll` clang cannot compile gets a note that it
+   may be from another LLVM version. `make check-lto` (not part of `check`)
+   runs the suite with a wrapper that adds `-lto`, against a `poc-rtl`
+   built with it, as `check-opt2` does. Fixture `llvm-lto`;
    **2h** the fixtures this step's testing paragraph asks for, on Linux and
    the BSD hosts, at both word sizes, and the rackhir run of step 2's
    commits.

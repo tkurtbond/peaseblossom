@@ -13,7 +13,7 @@ main.mod:2:10: note: no library for <triple> -O2 on the library path (<poc lib>)
 semantic OK, wrote main
 hi 1
 -- Greet.sym alone
-poc: cannot find source for imported module Greet, only its interface ../symonly/Greet.sym, and no Greet.o beside it
+poc: cannot find source for imported module Greet, only its interface ../symonly/Greet.sym, and no Greet.o or Greet.ll beside it
 == 3. own library
 semantic OK, wrote library mine in lib/<triple>/O2
 semantic OK, wrote app

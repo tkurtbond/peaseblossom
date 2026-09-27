@@ -12,6 +12,6 @@ exit 1, stdout 0, stderr 1: poc -check missing.mod
 exit 1, stdout 0, stderr 2: poc -o prog -build vms.mod
 exit 1, stdout 0, stderr 1: poc -build ok.mod
 exit 1, stdout 0, stderr 1: poc -output-dir no-such-directory -emit-interface ok.mod
-exit 1, stdout 0, stderr 59: poc -frobnicate ok.mod
-exit 1, stdout 0, stderr 59: poc 
+exit 1, stdout 0, stderr 62: poc -frobnicate ok.mod
+exit 1, stdout 0, stderr 62: poc 
 exit 0, stdout 1, stderr 0: poc -print-import-path

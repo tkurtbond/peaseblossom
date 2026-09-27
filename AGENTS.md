@@ -252,6 +252,16 @@ shells out to these rather than linking against LLVM's own C++ API.
   passes `<arg>` to clang as one word, after the objects and before `-lm`
   (`-link -lz`, `-link -L<dir>`); `poc -verbose` prints the clang command on
   stderr. Fixture `poc-link-flags`.
+- **Whole-program optimization** (Phase 12 step 2g, 2026-09-27): `poc
+  -lto` compiles each module to LLVM bitcode (`clang -c -flto`) and links
+  with `-flto` (on NetBSD also `-fuse-ld=lld`: its GNU ld cannot), so
+  LLVM inlines and removes code across modules. A module given as its
+  `.sym` and `.ll` takes part (its key, target and imports read from the
+  text, `Libraries.ReadIR`); a library built with `-lto` says `lto` in its
+  manifest and makes any link of its archive use `-flto`. A bitcode `.o`
+  beside a `.sym` is refused without its `.ll`: `nm` cannot read bitcode
+  on OpenBSD or NetBSD. `make check-lto` runs the suite with `-lto` (not
+  part of `make check`). Fixture `llvm-lto`.
 - **Debug information** (Phase 11 A16, stage (a), 2026-09-26): `poc -g`
   emits DWARF metadata for gdb and lldb - the procedures' names
   (`List.Insert`, `List.Insert.Find` for a nested one,

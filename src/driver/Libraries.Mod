@@ -11,6 +11,7 @@ MODULE Libraries;
        library <name>
        triple <triple>
        model <O2|OC>
+       lto                              (its objects are LLVM bitcode, for -flto)
        needs <library>                  (each library its modules import from)
        module <Module> <key>            (each module, with its key)
        import <Module> <Imported> <key> (each import, with the key compiled against)
@@ -106,6 +107,7 @@ MODULE Libraries;
       model*: ARRAY 3 OF CHAR;
       modules*: Member;
       needs*: Need;
+      lto*: BOOLEAN; (* its objects are LLVM bitcode (Phase 12 step 2g) *)
       used*: BOOLEAN; (* linked into the program being built *)
       next: Library; (* in loaded *)
       linkNext*: Library (* in linkOrder *)
@@ -362,7 +364,7 @@ MODULE Libraries;
   BEGIN
     NEW(lib); COPY(name, lib.name); COPY(dir, lib.dir);
     COPY(triple, lib.triple); COPY(model, lib.model);
-    lib.modules := NIL; lib.needs := NIL; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
+    lib.modules := NIL; lib.needs := NIL; lib.lto := FALSE; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
     RETURN lib
   END NewLibrary;
 
@@ -394,6 +396,7 @@ MODULE Libraries;
       ELSIF w0 = "triple" THEN COPY(w1, lib.triple)
       ELSIF w0 = "model" THEN COPY(w1, lib.model)
       ELSIF w0 = "needs" THEN AddNeed(lib, w1)
+      ELSIF w0 = "lto" THEN lib.lto := TRUE
       ELSIF w0 = "module" THEN m := AddMember(lib, w1, w2)
       ELSIF w0 = "import" THEN
         m := FindMember(lib, w1);
@@ -513,6 +516,7 @@ MODULE Libraries;
     WriteLine(w, "library", lib.name, "", "");
     WriteLine(w, "triple", lib.triple, "", "");
     WriteLine(w, "model", lib.model, "", "");
+    IF lib.lto THEN WriteLine(w, "lto", "", "", "") END;
     n := lib.needs;
     WHILE n # NIL DO WriteLine(w, "needs", n.name, "", ""); n := n.next END;
     m := lib.modules;
@@ -626,6 +630,95 @@ MODULE Libraries;
     status := Platform.Unlink(scratch);
     RETURN TRUE
   END ReadObject;
+
+  (* ---- A module's LLVM IR (Phase 12 step 2g) ----
+
+     The .ll poc writes for a module says the same as its object, in the
+     text: "@<Module>.-key.<O2|OC>.<key> = constant", "@<Module>.-target.
+     <triple> = constant", "@<Import>.-key.<O2|OC>.<key> = external global",
+     and a call of the collector names @GarbageCollectedHeap. on a line
+     that is not its declaration. Read as text, for a module given as its
+     .sym and .ll, since nm cannot read bitcode on OpenBSD or NetBSD. *)
+
+  (* the line at r, its first LEN(line) - 1 characters *)
+  PROCEDURE ReadTextLine(VAR r: Files.Rider; VAR line: ARRAY OF CHAR);
+    VAR i: INTEGER; ch: CHAR;
+  BEGIN
+    i := 0; Files.Read(r, ch);
+    WHILE ~r.eof & (ch # 0AX) DO
+      IF i < LEN(line) - 1 THEN line[i] := ch; INC(i) END;
+      Files.Read(r, ch)
+    END;
+    line[i] := 0X
+  END ReadTextLine;
+
+  (* whether s has pattern at position i *)
+  PROCEDURE HasAt(s: ARRAY OF CHAR; i: INTEGER; pattern: ARRAY OF CHAR): BOOLEAN;
+    VAR j: INTEGER;
+  BEGIN
+    j := 0;
+    WHILE (pattern[j] # 0X) & (s[i + j] = pattern[j]) DO INC(j) END;
+    RETURN pattern[j] = 0X
+  END HasAt;
+
+  (* whether s has pattern anywhere *)
+  PROCEDURE Contains(s, pattern: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE s[i] # 0X DO
+      IF HasAt(s, i, pattern) THEN RETURN TRUE END;
+      INC(i)
+    END;
+    RETURN FALSE
+  END Contains;
+
+  (* What the IR at path says of itself, in info, as ReadObject. FALSE,
+     having said why, when it cannot be read. *)
+  PROCEDURE ReadIR*(path: ARRAY OF CHAR; VAR info: ObjectInfo): BOOLEAN;
+    VAR
+      f: Files.File; r: Files.Rider; line: ARRAY lineLength OF CHAR; symbol, module, rest: Name;
+      i: INTEGER;
+  BEGIN
+    info.defined := NIL; info.imports := NIL; info.targetModule[0] := 0X; info.target[0] := 0X;
+    info.usesCollector := FALSE;
+    f := Files.Old(path);
+    IF f = NIL THEN Err.String("poc: cannot read "); Err.String(path); Err.Ln; RETURN FALSE END;
+    Files.Set(r, f, 0);
+    REPEAT
+      ReadTextLine(r, line);
+      IF line[0] = "@" THEN
+        i := 1;
+        WHILE (line[i] # 0X) & (line[i] # " ") & (i - 1 < LEN(symbol) - 1) DO symbol[i - 1] := line[i]; INC(i) END;
+        symbol[i - 1] := 0X;
+        IF HasAt(line, i, " = constant ") THEN
+          IF SplitSymbol(symbol, ".-key.", module, rest) THEN AddObjectKey(info.defined, module, rest)
+          ELSIF SplitSymbol(symbol, ".-target.", module, rest) THEN
+            COPY(module, info.targetModule); COPY(rest, info.target)
+          END
+        ELSIF HasAt(line, i, " = external global ") THEN
+          IF SplitSymbol(symbol, ".-key.", module, rest) THEN AddObjectKey(info.imports, module, rest) END
+        END
+      END;
+      IF ~HasAt(line, 0, "declare ") & Contains(line, "@GarbageCollectedHeap.") THEN
+        info.usesCollector := TRUE
+      END
+    UNTIL r.eof;
+    Files.Close(f);
+    RETURN TRUE
+  END ReadIR;
+
+  (* whether the file at path is LLVM bitcode: "BC" C0 DE *)
+  PROCEDURE IsBitcode*(path: ARRAY OF CHAR): BOOLEAN;
+    VAR f: Files.File; r: Files.Rider; b: ARRAY 4 OF CHAR; i: INTEGER;
+  BEGIN
+    f := Files.Old(path);
+    IF f = NIL THEN RETURN FALSE END;
+    Files.Set(r, f, 0);
+    FOR i := 0 TO 3 DO Files.Read(r, b[i]) END;
+    Files.Close(f);
+    RETURN ~r.eof & (b[0] = "B") & (b[1] = "C") & (b[2] = 0C0X) & (b[3] = 0DEX)
+  END IsBitcode;
 
   (* ---- The libraries a program links ---- *)
 
