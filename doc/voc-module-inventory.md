@@ -1,8 +1,10 @@
 # voc's modules: an inventory
 
 PLAN.md Phase 12 step 3 (2026-09-27): every module Vishap Oberon (voc)
-supplies, from its sources, for step 4 to decide which poc supports. It is
-a record of facts; the decisions are step 4's.
+supplies, from its sources, for deciding which poc supports. It is a
+record of facts. The decisions: Phase 12 step 4 makes poc compatible with
+voc's runtime modules (without `Heap`, but with its finalization); the
+modules under `src/library` wait for Phase 18.
 
 ## Sources and method
 
@@ -57,7 +59,7 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
 `TestClient`, `TestCoordinator`) is voc's test infrastructure;
 `autobuild` (Perl) and `make` are build scripts. None is a library.
 
-## Findings for step 4
+## Findings
 
 1. **Nearly everything reaches `Platform`.** 99 of the 142 library and
    runtime modules import voc's `Platform` directly or through their

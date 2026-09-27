@@ -131,12 +131,13 @@ tools/
 | 9 | LLVM full parity | Appendix D5 descriptors, REAL/SET codegen, GC, dispatch, open arrays | LLVM | voc |
 | 10 | Oakwood library + voc-compatibility + Appendix C | `rtl/llvm` (`Console`, `Platform`, `Files`, `Modules`, `Out`, `In`, `Strings`, `Math`, `MathL`), `SYSTEM` lowering | LLVM | voc → **Stage 1/2 bootstrap** |
 | 11 | Open design questions and TODO backlog | `ASSERT`, `-g` debug metadata, `Err`, chosen language extensions, constant-folding and `.sym` fixes | LLVM | poc (self-hosted) |
-| 12 | Library/module support beyond Phase 10 | voc-option triage, static/dynamic library building, voc module inventory and the chosen modules | LLVM | poc (self-hosted) |
+| 12 | Library/module support beyond Phase 10 | voc-option triage, static/dynamic library building, voc module inventory, voc's runtime modules and finalization | LLVM | poc (self-hosted) |
 | 13 | MACRO-32 | `VaxTypes`, `VaxCodeGenerator`, `VaxToolchainDriver` (stub) | VAX (scoped, unverified) | poc (self-hosted) |
 | 14 | Running on VAX/VMS | `VaxToolchainDriver` (real), `rtl/vax` (minimal), VAX backend widened to what poc's own source needs | VAX (assembled, linked, run) | poc on VAX/VMS compiles itself |
 | 15 | Library/module support on VAX/VMS | VMS libraries (object, shareable), ported Oberon modules, native VMS libraries, AST support | VAX | poc on VAX/VMS |
 | 16 | Direct VAX/VMS object files | `VaxInstruction`/encoder, `VaxObjectWriter` (`.OBJ`), debug/traceback records | VAX (no assembler in the loop) | poc on VAX/VMS |
 | 17 | Further extensions to Oberon-2 | record and array literals, and whichever other extensions it adopts | both | poc (self-hosted) |
+| 18 | voc's library modules | the chosen modules of voc's `src/library` | LLVM | poc (self-hosted) |
 
 ## Phase details
 
@@ -1493,7 +1494,7 @@ convenient, but must not be a prerequisite of it.
    poc's front end makes of it today (`poc -emit-interface` in import
    order against poc-rtl's interfaces: 23 accepted, 34 after the
    language fixes below), and the findings
-   step 4 starts from. Most of the library stops on what poc's
+   step 4 and Phase 18 start from. Most of the library stops on what poc's
    `Platform`, `Files` and `Modules` lack; ten modules hold voc's inline
    C; s3's zlib is Oberon, not C; and six language points came up, among
    them a conformance bug (a one-character string constant compared
@@ -1510,40 +1511,89 @@ convenient, but must not be a prerequisite of it.
    inventory` regenerates the tables (to rerun when poc's runtime or
    front end changes what they say).
 
-4. **Deciding what poc supports.** Using step 3's table, sort every
-   module into: already covered by Phase 10; wanted, with a priority;
-   deferred; or not wanted, with the reason. Criteria: how useful it is to
-   a program written against voc (the existing Oberon-2 corpus poc should
-   be able to compile); whether it can be written portably to all four
-   Unix-likes (no Linux-only syscalls, no library the BSDs lack); whether
-   it needs an external C library poc would then have to link (X11 for
-   `oocX11`/`oocXYplane`; `ethGZReaders`/`ethZip` turned out to need none,
-   step 3); how
-   much of the module is really the host Oberon *system* (`Oberon`, `Texts`
-   rely on it) and so would need a substitute; and the cost. Record the
-   decisions, and the ones deliberately left open, in `PLAN.md`'s open
-   design questions and `AGENTS.md`.
+4. **Deciding what poc supports.** *Decided with the user 2026-09-27*:
+   for now poc offers modules compatible with voc's **runtime** modules
+   (`src/runtime`), and everything under `src/library` (`v4`, `ooc`,
+   `ooc2`, `oocX11`, `s3`, `ulm`, `misc`, `pow`) moves to Phase 18, to be
+   considered after all the other phases, with step 3's inventory as its
+   starting point. Of the runtime:
+   - **`Heap` is not provided.** Nothing under `library/` imports it; only
+     voc's own `Files` and `Modules` do. Most of it is voc's code
+     generator's interface to its runtime (`REGMOD`, `REGTYP`, `REGCMD`,
+     `INCREF`, `NEWREC`, `NEWBLK`, `InitHeap`), which poc's code
+     generator has its own form of; `Lock`/`Unlock` serve voc's
+     signal-driven interrupts, `FileCount` is a counter nothing reads,
+     `FreeModule` unloads nothing, `TAS` is Ulm's non-atomic
+     test-and-set. Its collection and statistics are in
+     `GarbageCollectedHeap` already (`Collect`, `LiveBytes`,
+     `HeapBytes`, `SetChunkSize`); no thin `Heap` over them (user's
+     decision).
+   - **Finalization is taken from it**: poc's collector gets `Heap`'s
+     `RegisterFinalizer(obj, finalize)`, and poc's `Files` uses it as
+     voc's does, so a `File` dropped without `Close` is still closed
+     and its buffer written when it is collected.
+   - **Everything else in the runtime is made interface-compatible**
+     with voc's: `Files`, `In`, `Modules`, `Platform` (the Unix
+     variant), `Oberon`, `Reals`, `Texts` and `VT100`; `Out`, `Strings`,
+     `Math` and `MathL` already are. `Console` (voc's `library/v4`) and
+     `Err` stay as they are.
 
-5. **Implementing the modules chosen.** Write each as ordinary Oberon-2
-   compiled by poc, into step 2's library, in the order dependencies and
-   step 4's priorities give; the exact list is step 4's output, and this
-   step is updated with it rather than guessed at now. Platform-dependent
-   ones get an OS layer written with all four Unix-likes in mind (the
-   standing portability rule for `rtl/llvm`), not Linux-only libc
-   behavior. **Testing**: per module, compile+link+run+diff fixtures
-   cross-checked against the same module under real voc wherever both
-   exist, the way Phase 9's fixtures were; behavior that differs from voc
-   on purpose is documented where it differs.
+5. **Implementing the runtime modules.** Each is ordinary Oberon-2 in
+   `rtl/llvm`, built into `poc-rtl`, with `["C"]` external procedures
+   where voc's has inline C, and written for all four Unix-likes (the
+   standing rule for `rtl/llvm`). What each lacks, from the modules'
+   exports (2026-09-27; a name counts once, whatever its kind):
+   - **`Platform`** (5 of 46 procedures; the others are the base the
+     rest need, so it comes first): files by handle (`OldRO`, `OldRW`,
+     `New`, `Close`, `Read`, `ReadBuf`, `Write`, `Seek`, `Size`,
+     `Truncate`, `Sync`, `Rename`, `Identify`, `IdentifyByName`,
+     `SameFile`, `SameFileTime`, `SetMTime`, `SetFileMTime`,
+     `MTimeAsClock`, the error tests `Absent`, `Inaccessible`,
+     `TooManyFiles`, `NoSuchDirectory`, `DifferentFilesystems`,
+     `Interrupted`, `TimedOut`, `ConnectionFailed`, `Error`), time
+     (`Time`, `GetClock`, `GetTimeOfDay`, `Delay`), memory (`OSAllocate`,
+     `OSFree`), the signal handlers (`SetInterruptHandler`,
+     `SetQuitHandler`, `SetBadInstructionHandler`), `getEnv`,
+     `IsConsole`, `MaxNameLength`, `MaxPathLength`; and the types and
+     constants `FileHandle`, `FileIdentity`, `LittleEndian`, `NL`,
+     `SeekSet`/`SeekCur`/`SeekEnd`, `StdIn`/`StdOut`/`StdErr`.
+   - **`Files`** (15 of 37): the typed riders (`Read`/`Write` of `Bool`,
+     `Byte`, `Bytes`, `Int`, `LInt`, `Real`, `LReal`, `Set`, `Num`),
+     `GetDate`, `GetName`, `Purge`, `ChangeDirectory`, `SetSearchPath`,
+     `MaxNameLength`, `MaxPathLength`; and finalization of a dropped
+     `File`.
+   - **`Modules`** (4 of 9): `Halt`, `AssertFail`, `ThisMod`,
+     `ThisCommand`, `Free`, the module list and its types (`Module`,
+     `ModuleName`, `Cmd`, `Command`: voc's come from `Heap`, poc's are
+     its own), `res`/`resMsg`, `imported`/`importing`, `BinaryDir`.
+     `ThisMod`/`ThisCommand` need each module's name and commands
+     (exported parameterless procedures) registered at run time, which
+     is code generator work.
+   - **`In`**: `Name`.
+   - **`Reals`** (new; 10 procedures, the conversions `Texts` uses),
+     **`Texts`** (new; voc's file-based texts, readers, scanners and
+     writers, no display), **`Oberon`** (new; the stub system module:
+     `Log`, `Par`, `Time`, `GetClock`), **`VT100`** (new; terminal
+     control sequences).
+   - **Finalization** in `GarbageCollectedHeap`: registered objects are
+     weak references, not roots; one unreachable after marking is kept
+     for its finalizer, which runs after the collection. Open until then:
+     whether finalizers also run when the program ends (voc runs them
+     only from `Modules.Halt` and `AssertFail`) and when it traps.
+   Where poc cannot or will not match voc (a Linux-only call, a detail of
+   voc's own layout), the difference is decided with the user and
+   written down. **Testing**: per module, compile+link+run+diff fixtures
+   compared with the same program under voc, as Phase 9's were.
 
-6. **Exit gate.** Every module step 4 selected builds into both the
-   static and the dynamic library and passes its fixtures, at both word
-   sizes, on Linux and at least one BSD, with `make test` clean on every
-   combination - the same bar as Phase 9 step 9.
+6. **Exit gate.** Every runtime module of step 5 builds into `poc-rtl`,
+   static and shared, and passes its fixtures at both word sizes on
+   Linux and the three BSDs, with `make check` clean on each - the same
+   bar as Phase 9 step 9 - and on rackhir (arm64) at the close-out.
 
-**Testing summary**: steps 1-4 are decisions with written artifacts
-(tables and a design), verified against the primary sources they cite;
-steps 2 and 5 are compile+link+run+diff fixtures; step 6 is the
-whole-matrix gate.
+**Testing summary**: steps 1, 3 and 4 are decisions with written
+artifacts (tables and a design), verified against the primary sources
+they cite; steps 2 and 5 are compile+link+run+diff fixtures; step 6 is
+the whole-matrix gate.
 
 **Deferred here from Phase 11 (2026-09-26): the lowest 32-bit x86 CPU.**
 poc passes clang no `-march`, so each OS's default CPU applies: pentium4
@@ -1994,6 +2044,32 @@ inventory):
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the
 three BSDs (and, once Phase 14 exists, on VAX/VMS).
+
+### Phase 18 — voc's library modules
+
+**Goal**: decide which of the modules under voc's `src/library` poc
+offers, and build those. Moved here from Phase 12 step 4 (user,
+2026-09-27): Phase 12 makes poc compatible with voc's runtime modules
+only, and the libraries wait until everything else is done.
+
+**Starting point**: Phase 12 step 3's inventory,
+`doc/voc-module-inventory.md` (regenerated by `tools/voc-inventory/
+inventory`, since Phase 12's runtime work changes what poc accepts),
+with its findings: most of the library reaches voc's `Platform`; ten
+modules hold voc's inline C; s3's zlib is Oberon, not C; only `oocX11`
+needs an outside C library (Xlib); the families overlap heavily
+(strings, random numbers, real conversion, sets); several modules are
+written for one machine (`ulmMC68881`, `ulmSys`); the licences differ
+(LGPL for OOC and Ulm, the ETH Oberon licence for s3, whose text is
+still to be fetched, none for `powStrings` and `Listen`).
+
+**Steps**: sort every module into wanted (with a priority), deferred or
+not wanted, with the reason. Criteria: how useful it is to a program
+written against voc; whether it can be written for all four Unix-likes;
+whether it needs an outside C library; how much of it is the host
+Oberon *system*; its licence; and the cost. Then implement the wanted
+ones into a library of their own, with fixtures compared with voc, and
+the same exit gate as Phase 12 step 6.
 
 ## Open design questions
 
