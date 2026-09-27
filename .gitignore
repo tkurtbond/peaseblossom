@@ -128,3 +128,4 @@ test/conformance/llvm-record-assign-trap/llvm-record-assign-trap
 test/conformance/poc-link-flags/poc-link-flags
 test/conformance/llvm-using-modules/work/
 test/conformance/llvm-lto/work/
+test/conformance/llvm-libraries-i686/work/

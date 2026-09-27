@@ -1,0 +1,53 @@
+== -O2
+semantic OK, wrote library poc-rtl in lib/<i686>/O2
+semantic OK, wrote library shapes in lib/<i686>/O2
+libpoc-rtl.a
+libpoc-rtl.so
+libshapes.a
+libshapes.so
+poc-rtl.library
+shapes.library
+semantic OK, wrote mainO2
+mainO2: 32-bit
+Lists ready
+5 4 3 2 1 
+15 5
+7
+semantic OK, wrote mainsO2
+mainsO2: 32-bit
+Lists ready
+5 4 3 2 1 
+15 5
+7
+== -OC
+semantic OK, wrote library poc-rtl in lib/<i686>/OC
+semantic OK, wrote library shapes in lib/<i686>/OC
+libpoc-rtl.a
+libpoc-rtl.so
+libshapes.a
+libshapes.so
+poc-rtl.library
+shapes.library
+semantic OK, wrote mainOC
+mainOC: 32-bit
+Lists ready
+5 4 3 2 1 
+15 5
+7
+semantic OK, wrote mainsOC
+mainsOC: 32-bit
+Lists ready
+5 4 3 2 1 
+15 5
+7
+== shapes without the poc-rtl it needs
+../../llvm-libraries/main.mod:2:10: error: unknown imported module
+../../llvm-libraries/main.mod:2:10: note: no Out.Mod, Out.mod or Out.sym in the current directory (the import path is empty)
+../../llvm-libraries/main.mod:2:10: note: no library for <i686> -O2 on the library path (alone) has Out
+Lists.sym:2:10: error: unknown imported module
+Lists.sym:2:10: note: no Out.Mod, Out.mod or Out.sym in the current directory (the import path is empty)
+Lists.sym:2:10: note: no library for <i686> -O2 on the library path (alone) has Out
+Lists.sym:2:10: note: Lists is from library shapes (alone/<i686>/O2), which needs library poc-rtl, and the library path has no poc-rtl for <i686> -O2
+2 error(s)
+== a Lists.sym the manifest does not have
+poc: Lists.sym in lib/<i686>/O2 does not match library shapes's manifest; rebuild shapes

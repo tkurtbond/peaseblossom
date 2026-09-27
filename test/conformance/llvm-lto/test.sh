@@ -73,3 +73,6 @@ sed 's/^@Small\.-target\.[^ ]* /@Small.-target.vax-dec-vms /' ir/Small.ll >other
 mkdir broken && cp ir/Small.sym broken/
 { cat ir/Small.ll; echo "this is not LLVM IR"; } >broken/Small.ll
 (cd two && poc -import-path ../broken -lto -o main -build main.mod 2>&1 | grep '^poc:' | mask) >>../result
+cd ..
+rm -rf work
+. ../../testresult.sh

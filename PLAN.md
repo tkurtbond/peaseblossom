@@ -1448,7 +1448,16 @@ convenient, but must not be a prerequisite of it.
    built with it, as `check-opt2` does. Fixture `llvm-lto`;
    **2h** the fixtures this step's testing paragraph asks for, on Linux and
    the BSD hosts, at both word sizes, and the rackhir run of step 2's
-   commits.
+   commits. *Done 2026-09-27*: fixture `llvm-libraries-i686` builds
+   `llvm-libraries`' two dependent modules into a library for 32-bit x86
+   (`i686_triple`: i686 Linux on atla, `-m32` on the BSDs, the host's own
+   on cymoril), on a `poc-rtl` built for it, under `-O2` and `-OC`, and
+   links and runs a program with it statically and dynamically; the
+   64-bit side is `llvm-libraries`, `llvm-using-modules` and `llvm-lto`.
+   Its failures are messages: a library whose needed `poc-rtl` is not on
+   the path (the notes say so), and a `.sym` that does not match its
+   library's manifest. `llvm-lto` had no comparison with its golden
+   (`testresult.sh` missing), now fixed.
 
 3. **A complete inventory of the libraries and modules voc supplies.**
    From the sources, not from memory: enumerate every module under the
