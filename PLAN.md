@@ -797,7 +797,8 @@ as it stands when the phase starts, and adds what it finds):
    down for `-trap-location`; `-g` leaves the optimization level alone,
    user);
    (b) parameters and locals of the basic types, so `print`/`info locals`
-   show values;
+   show values; **done 2026-09-26** (value and plain `VAR` parameters,
+   locals; Oberon type names through typedefs; module variables not yet);
    (c) records, arrays, pointers, and type-bound procedures - a record
    printed field by field, with Oberon type names;
    (d) what the calling convention hides: a `VAR` record's type tag and an

@@ -651,6 +651,26 @@ MODULE LLVMCodeGenerator;
       next: DebugProcedure
     END;
 
+    (* A basic Oberon type as DWARF has it: a DIBasicType node (id + 1) and
+       a typedef of it by the same name (id), which is what a variable
+       refers to - lldb shows a basic type by its C name (short, long),
+       but a typedef by its own (INTEGER, LONGINT) *)
+    DebugType = POINTER TO DebugTypeDesc;
+    DebugTypeDesc = RECORD
+      type: Types.Type;
+      id: INTEGER;
+      next: DebugType
+    END;
+
+    (* A DILocalVariable node: a parameter (arg > 0, its position) or a
+       local variable of a function with debug information *)
+    DebugVariable = POINTER TO DebugVariableDesc;
+    DebugVariableDesc = RECORD
+      name: SyntaxTree.Ident;
+      id, arg, scope, fileId, line, typeId: INTEGER;
+      next: DebugVariable
+    END;
+
   VAR
     (* poc -g (Phase 11 A16): the IR carries DWARF debug information for gdb
        and lldb - for now the line table and the procedures' names (a
@@ -668,6 +688,10 @@ MODULE LLVMCodeGenerator;
     debugDirectory*: SourcePath;
     debugFiles: DebugFile;
     debugProcedures, debugProceduresTail: DebugProcedure;
+    debugTypes: DebugType;
+    debugVariables: DebugVariable;
+    debugDeclared: BOOLEAN; (* some variable was declared: llvm.dbg.declare is used *)
+    debugSizeModel: INTEGER; (* cg.sizeModel, for DebugTypeId *)
     debugScope: INTEGER; (* the current function's DISubprogram, or -1 *)
     debugLine, debugColumn: INTEGER; (* the statement being generated *)
     debugCompileUnit, debugSubroutineType, nextMetadata: INTEGER;
@@ -848,9 +872,53 @@ MODULE LLVMCodeGenerator;
     END
   END WriteDebugAttachment;
 
-  (* The DIFile and DISubprogram nodes, after the code that made them. *)
+  (* The DIBasicType node of t, made the first time it is asked for, or -1
+     for a type stage (a)-(b) of -g does not describe (a record, an array, a
+     pointer, a procedure type) - a variable of such a type is left out. *)
+  PROCEDURE DebugTypeId(t: Types.Type): INTEGER;
+    VAR d: DebugType;
+  BEGIN
+    IF ~((t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Byte) OR Types.IsInteger(t) OR (t = Types.Real)
+         OR (t = Types.LongReal) OR Types.IsSet(t)) THEN
+      RETURN -1
+    END;
+    d := debugTypes;
+    WHILE (d # NIL) & (d.type # t) DO d := d.next END;
+    IF d = NIL THEN
+      NEW(d); d.type := t; d.id := nextMetadata; INC(nextMetadata, 2);
+      d.next := debugTypes; debugTypes := d
+    END;
+    RETURN d.id
+  END DebugTypeId;
+
+  (* Under -g, in a function with debug information: describes obj, a
+     parameter (its position arg) or a local variable (arg 0) held at
+     address, with a call of llvm.dbg.declare - if its type is one DebugTypeId
+     describes. Written past Put, so WriteLn adds no second position. *)
+  PROCEDURE DeclareDebugVariable(VAR w: Files.Rider; obj: SymbolTable.Object; address: ARRAY OF CHAR; arg: INTEGER);
+    VAR v: DebugVariable; typeId: INTEGER; p: DebugProcedure;
+  BEGIN
+    IF debugInfo & (debugScope >= 0) & (obj # NIL) THEN
+      typeId := DebugTypeId(obj.type);
+      IF typeId >= 0 THEN
+        p := debugProceduresTail; (* the function being generated *)
+        NEW(v); COPY(obj.name, v.name); v.arg := arg; v.scope := debugScope; v.fileId := p.fileId;
+        v.line := obj.declLine; v.typeId := typeId; v.id := nextMetadata; INC(nextMetadata);
+        v.next := debugVariables; debugVariables := v;
+        debugDeclared := TRUE;
+        WriteRaw(w, "  call void @llvm.dbg.declare(metadata ptr "); WriteRaw(w, address);
+        WriteRaw(w, ", metadata !"); WriteNatural(w, v.id); WriteRaw(w, ", metadata !DIExpression()), !dbg !DILocation(line: ");
+        WriteNatural(w, obj.declLine); WriteRaw(w, ", column: "); WriteNatural(w, obj.declColumn);
+        WriteRaw(w, ", scope: !"); WriteNatural(w, debugScope); WriteRaw(w, ")");
+        Files.Write(w, 0AX)
+      END
+    END
+  END DeclareDebugVariable;
+
+  (* The DIFile, DISubprogram, DIBasicType and DILocalVariable nodes, after
+     the code that made them. *)
   PROCEDURE EmitDebugMetadata(VAR w: Files.Rider);
-    VAR f: DebugFile; p: DebugProcedure;
+    VAR f: DebugFile; p: DebugProcedure; t: DebugType; v: DebugVariable; name: LongText;
   BEGIN
     Files.Write(w, 0AX);
     f := debugFiles;
@@ -870,7 +938,35 @@ MODULE LLVMCodeGenerator;
       WriteRaw(w, ", spFlags: DISPFlagDefinition, unit: !"); WriteNatural(w, debugCompileUnit);
       WriteRaw(w, ")"); Files.Write(w, 0AX);
       p := p.next
-    END
+    END;
+    t := debugTypes;
+    WHILE t # NIL DO
+      Types.TypeName(t.type, name);
+      Files.Write(w, "!"); WriteNatural(w, t.id); WriteRaw(w, " = !DIDerivedType(tag: DW_TAG_typedef, name: ");
+      WriteMetadataString(w, name); WriteRaw(w, ", baseType: !"); WriteNatural(w, t.id + 1); WriteRaw(w, ")");
+      Files.Write(w, 0AX);
+      Files.Write(w, "!"); WriteNatural(w, t.id + 1); WriteRaw(w, " = !DIBasicType(name: "); WriteMetadataString(w, name);
+      WriteRaw(w, ", size: "); WriteNatural(w, 8 * MemoryLayout.Size(t.type, ConstantEvaluator.wordSize, debugSizeModel));
+      WriteRaw(w, ", encoding: ");
+      IF t.type = Types.Boolean THEN WriteRaw(w, "DW_ATE_boolean")
+      ELSIF (t.type = Types.Char) OR (t.type = Types.Byte) THEN WriteRaw(w, "DW_ATE_unsigned_char")
+      ELSIF (t.type = Types.Real) OR (t.type = Types.LongReal) THEN WriteRaw(w, "DW_ATE_float")
+      ELSIF Types.IsSet(t.type) THEN WriteRaw(w, "DW_ATE_unsigned")
+      ELSE WriteRaw(w, "DW_ATE_signed")
+      END;
+      WriteRaw(w, ")"); Files.Write(w, 0AX);
+      t := t.next
+    END;
+    v := debugVariables;
+    WHILE v # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, v.id); WriteRaw(w, " = !DILocalVariable(name: "); WriteMetadataString(w, v.name);
+      IF v.arg > 0 THEN WriteRaw(w, ", arg: "); WriteNatural(w, v.arg) END;
+      WriteRaw(w, ", scope: !"); WriteNatural(w, v.scope); WriteRaw(w, ", file: !"); WriteNatural(w, v.fileId);
+      WriteRaw(w, ", line: "); WriteNatural(w, v.line); WriteRaw(w, ", type: !"); WriteNatural(w, v.typeId);
+      WriteRaw(w, ")"); Files.Write(w, 0AX);
+      v := v.next
+    END;
+    IF debugDeclared THEN WriteRaw(w, "declare void @llvm.dbg.declare(metadata, metadata, metadata)"); Files.Write(w, 0AX) END
   END EmitDebugMetadata;
 
   (* GrowingText operations (see GrowingText). *)
@@ -6631,9 +6727,9 @@ MODULE LLVMCodeGenerator;
                              line, column: INTEGER);
     VAR
       p: Types.Param; obj: SymbolTable.Object; llvmType: LongText; argName, tagName, addrText: ValueText;
-      wordInt, bytes, copied: ValueText; dope: DopeVector;
+      wordInt, bytes, copied: ValueText; dope: DopeVector; position: INTEGER;
   BEGIN
-    p := pt.params;
+    p := pt.params; position := 1;
     WHILE p # NIL DO
       obj := SymbolTable.FindLocal(bodyScope, p.name);
       ParamName(p.name, argName);
@@ -6661,6 +6757,7 @@ MODULE LLVMCodeGenerator;
           COPY(argName, tagName); Strcat(tagName, ".tag");
           BindLocalWithTag(cg, obj, argName, tagName)
         ELSE
+          DeclareDebugVariable(w, obj, argName, position);
           BindLocal(cg, obj, argName)
         END
       ELSE
@@ -6669,9 +6766,10 @@ MODULE LLVMCodeGenerator;
         WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
         WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " "); WriteStr(w, argName);
         WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+        DeclareDebugVariable(w, obj, addrText, position);
         BindLocal(cg, obj, addrText)
       END;
-      p := p.next
+      p := p.next; INC(position)
     END
   END BindFormalParams;
 
@@ -6739,6 +6837,7 @@ MODULE LLVMCodeGenerator;
           WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer, ptr ");
           WriteStr(w, addrText); WriteLn(w)
         END;
+        DeclareDebugVariable(w, obj, addrText, 0);
         BindLocal(cg, obj, addrText);
         nm := nm.next
       END;
@@ -7271,6 +7370,7 @@ MODULE LLVMCodeGenerator;
        the debug information's own *)
     nextMetadata := 0; realignId := -1; debugVersionId := -1;
     debugFiles := NIL; debugProcedures := NIL; debugProceduresTail := NIL; debugScope := -1;
+    debugTypes := NIL; debugVariables := NIL; debugDeclared := FALSE; debugSizeModel := cg.sizeModel;
     lineHeadLength := 0;
     IF realign THEN realignId := nextMetadata; INC(nextMetadata) END;
     IF debugInfo THEN

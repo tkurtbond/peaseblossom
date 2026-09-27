@@ -1,7 +1,7 @@
 #!/bin/sh
 . ../../testenv.sh
-# Phase 11 A16: poc -g gives gdb and lldb the procedures' names and the
-# source lines. The program is built at -opt 0 (as the docs advise for
+# Phase 11 A16: poc -g gives gdb and lldb the procedures' names, the
+# source lines, and the parameters and local variables of the basic types. The program is built at -opt 0 (as the docs advise for
 # debugging), then stopped at a procedure of an imported module (by name)
 # and at a line of the main one, and each backtrace is reduced to "name
 # file:line" per Oberon frame, the same for either debugger: gdb 7 or later
@@ -39,12 +39,29 @@ frames() {
   else
     lldb -b -o "b $1" -o run -o bt "./$exe" 2>/dev/null |
       awk '/^\(lldb\) bt/ { f = 1; next } /`main( |$)/ { exit } f' |
-      sed -n 's/^ *\* *frame/frame/; s/^ *frame #[0-9]*: 0x[0-9a-f]* [^`]*`\([^ ]*\) at \([^:]*:[0-9]*\).*$/\1 \2/p'
+      sed -n 's/^ *\* *frame/frame/; s/^ *frame #[0-9]*: 0x[0-9a-f]* [^`]*`\([^ (]*\)\((.*)\)\{0,1\} at \([^:]*:[0-9]*\).*$/\1 \3/p'
   fi | sed 's|^\([^ ]*\) .*/\([^/]*\)$|\1 \2|'
+}
+
+# the parameters and local variables at a stop at $1, "name = value",
+# sorted (the debuggers list them in different orders; lldb also shows the
+# type, "(INTEGER) x = 3")
+variables() {
+  if [ $debugger = gdb ]
+  then
+    gdb -batch -nx -ex "break $1" -ex run -ex 'info args' -ex 'info locals' "./$exe" 2>/dev/null |
+      grep '^[A-Za-z_$][A-Za-z0-9_$]* = '
+  else
+    lldb -b -o "b $1" -o run -o 'frame variable' "./$exe" 2>/dev/null |
+      awk '/^\(lldb\) frame variable/ { f = 1; next } f' |
+      sed -n 's/^([^)]*) \([A-Za-z_$][A-Za-z0-9_$]* = .*\)$/\1/p'
+  fi | sort
 }
 
 echo "stopped in DebugLib.Square:" >>result
 frames DebugLib.Square >>result
 echo "stopped at debug.mod:12:" >>result
 frames debug.mod:12 >>result
+echo "variables at DebugLib.mod:14:" >>result
+variables DebugLib.mod:14 >>result
 . ../../testresult.sh

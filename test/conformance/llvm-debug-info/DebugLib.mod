@@ -7,9 +7,10 @@ TYPE
   CounterDesc* = RECORD n*: INTEGER END;
 
 PROCEDURE Square*(x: INTEGER): INTEGER;
-  VAR y: INTEGER;
+  VAR y: INTEGER; odd: BOOLEAN; half: REAL;
 BEGIN
   y := x * x;
+  odd := ODD(x); half := x / 2;
   RETURN y
 END Square;
 

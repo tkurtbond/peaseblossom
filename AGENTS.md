@@ -214,10 +214,18 @@ shells out to these rather than linking against LLVM's own C++ API.
   (gdb users can `set language modula-2`). Every instruction of a
   procedure or module body carries its statement's position, attached by
   `LLVMCodeGenerator.WriteLn`; a procedure's prologue carries none, so a
-  breakpoint stops at the first statement. Fixture `llvm-debug-info`
-  (gdb 7 or later, else lldb; skipped on OpenBSD, whose base gdb 6.3
-  cannot read it). Variables, types and hidden parameters are stages
-  (b)-(d).
+  breakpoint stops at the first statement. Stage (b), the same day:
+  parameters (value and plain `VAR`) and local variables of the basic
+  types, so `info args`, `info locals`, `print` and lldb's `frame
+  variable` show them (`LLVMCodeGenerator.DeclareDebugVariable`, a call of
+  `llvm.dbg.declare` on each one's slot). Each basic type is a typedef of a
+  DWARF base type under its Oberon name, so lldb shows `(INTEGER) n = 3`,
+  not `(short)`. A one-byte integer (`SHORTINT`, `SYSTEM.INT8`) shows as
+  a character too (`5 '\005'`), since C's only one-byte integer is
+  `char`; a `SET` as its number. Fixture `llvm-debug-info` (gdb 7 or
+  later, else lldb; skipped on OpenBSD, whose base gdb 6.3 cannot read
+  it). Records, arrays, pointers, module variables and hidden parameters
+  are stages (c)-(d).
 - `llc` is **not** part of the normal build path — reserved as an optional
   `-dump-asm`-style debug aid for reading generated assembly in golden-file
   tests. Usage: `llc <file>.ll -o <file>.s` (its default output filetype is
