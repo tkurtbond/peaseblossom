@@ -96,7 +96,15 @@ bootstraps poc.
 - **Both paths are the same on every development and test machine**: atla
   (Linux, the development host), the local VMs `cymoril` (OpenBSD i386),
   `artos` (NetBSD amd64) and `rackhir` (FreeBSD arm64), and the office
-  machines `erekose` (OpenBSD i386) and `terhali` (NetBSD amd64). Programs
+  machines `erekose` (OpenBSD i386) and `terhali` (NetBSD amd64). **Which
+  run when** (user, 2026-09-26): a change is checked (`make check`, and
+  `gmake check` on each VM) on atla, cymoril, artos and a FreeBSD amd64 VM
+  (to be set up; until then the first three) before it is committed.
+  rackhir is emulated arm64, so slow; it is the only non-x86 machine and
+  runs as a separate stream, on commits already pushed: after changes where
+  the architecture matters (code for calls, arithmetic and memory layout,
+  the runtime's C calls, the collector) and at each phase's close-out. What
+  it finds is fixed in a later commit. Programs
   voc builds link against `<voc>/lib/libvoc-O2.so` (or `-OC`), which only
   Linux finds unaided. A non-interactive `ssh host cmd` gets neither
   `LD_LIBRARY_PATH` nor voc on `PATH`, so `test/testenv.sh` sets both itself
