@@ -27,6 +27,12 @@ fi
 mask() {
   sed -e "s|$triple|<i686>|g" -e 's/[0-9a-f]\{16\}/<key>/g' -e 's/\.so\.0\.0/.so/g'
 }
+# the output of building a library, less the linker's warnings: on NetBSD
+# amd64 its shared library for 32-bit x86 takes the static libc.a's code,
+# and ld warns about the text relocations that makes
+library() {
+  grep -v '^[^ ]*ld: .*warning' | mask
+}
 poc() { command poc -clear-library-path -target $triple "$@"; }
 # whether the executable $1 is 32-bit, and what it prints
 run() {
@@ -37,9 +43,9 @@ rm -rf work && mkdir work && cd work
 : >../result
 for model in O2 OC; do
   echo "== -$model" >>../result
-  poc -$model -output-dir lib -library poc-rtl ../../../../rtl/llvm/*.Mod 2>&1 | mask >>../result
+  poc -$model -output-dir lib -library poc-rtl ../../../../rtl/llvm/*.Mod 2>&1 | library >>../result
   poc -$model -library-path lib -output-dir lib -library shapes \
-    ../../llvm-libraries/src/Lists.Mod ../../llvm-libraries/src/Stacks.Mod 2>&1 | mask >>../result
+    ../../llvm-libraries/src/Lists.Mod ../../llvm-libraries/src/Stacks.Mod 2>&1 | library >>../result
   ls lib/$triple/$model | grep -e '^lib' -e '\.library$' | mask | LC_ALL=C sort >>../result
   poc -$model -library-path lib -o main$model -build ../../llvm-libraries/main.mod 2>&1 | mask >>../result
   run main$model >main$model.out
