@@ -148,6 +148,9 @@ MODULE LLVMToolchainDriver;
       i, errorsBefore: INTEGER;
   BEGIN
     errorsBefore := Diagnostics.errorCount;
+    (* the directory the modules' file names are relative to, for -g;
+       before any Chdir into outputDir *)
+    COPY(Platform.CWD, LLVMCodeGenerator.debugDirectory);
     i := 0;
     WHILE topName[i] # 0X DO name[i] := topName[i]; INC(i) END;
     name[i] := "."; name[i + 1] := "l"; name[i + 2] := "l"; name[i + 3] := 0X;

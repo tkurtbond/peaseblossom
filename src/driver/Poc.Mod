@@ -904,6 +904,8 @@ MODULE Poc;
     Err.String("       instead of leaving the pointer NIL"); Err.Ln;
     Err.String("       -trap-location may precede -emit-llvm-ir or -build: a trap's message"); Err.Ln;
     Err.String("       starts with its file:line:column and names its procedure"); Err.Ln;
+    Err.String("       -g may precede -emit-llvm-ir or -build: debug information for gdb"); Err.Ln;
+    Err.String("       and lldb (source lines and procedure names); best with -opt 0 or -opt g"); Err.Ln;
     Err.String("       -strict may precede any command above: the module named rejects"); Err.Ln;
     Err.String("       everything beyond the Oberon-2 report (its imports are not checked)"); Err.Ln
   END Usage;
@@ -1031,6 +1033,10 @@ MODULE Poc;
         ELSIF arg = "-trap-location" THEN
           (* Phase 11 C7: every trap message names its file, line, column and procedure *)
           LLVMCodeGenerator.trapLocation := TRUE;
+          INC(i)
+        ELSIF arg = "-g" THEN
+          (* Phase 11 A16: debug information for gdb and lldb *)
+          LLVMCodeGenerator.debugInfo := TRUE;
           INC(i)
         ELSIF arg = "-opt" THEN
           (* Phase 11 D13: the optimization level -build passes clang *)

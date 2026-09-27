@@ -195,6 +195,21 @@ shells out to these rather than linking against LLVM's own C++ API.
   poc must run on a Pentium II, so no SSE2). `SYSTEM.GET`/`PUT`/`MOVE` are
   volatile, so an optimized build keeps them. `make check-opt2` builds
   everything at `-O2`, Stage 1/2 included (in `build/opt2`).
+- **Debug information** (Phase 11 A16, stage (a), 2026-09-26): `poc -g`
+  emits DWARF metadata for gdb and lldb - the procedures' names
+  (`List.Insert`, `List.Insert.Find` for a nested one,
+  `List.NodeDesc.Print` for a type-bound one, `List_init` for a module
+  body) and the source lines, so a breakpoint by name or `file:line` and a
+  backtrace work. It leaves the optimization level alone; debug at
+  `-opt 0` or `-opt g`. The language claimed is C (`DW_LANG_C99`): DWARF
+  has no code for Oberon, and lldb supports neither Modula-2 nor Pascal
+  (gdb users can `set language modula-2`). Every instruction of a
+  procedure or module body carries its statement's position, attached by
+  `LLVMCodeGenerator.WriteLn`; a procedure's prologue carries none, so a
+  breakpoint stops at the first statement. Fixture `llvm-debug-info`
+  (gdb 7 or later, else lldb; skipped on OpenBSD, whose base gdb 6.3
+  cannot read it). Variables, types and hidden parameters are stages
+  (b)-(d).
 - `llc` is **not** part of the normal build path — reserved as an optional
   `-dump-asm`-style debug aid for reading generated assembly in golden-file
   tests. Usage: `llc <file>.ll -o <file>.s` (its default output filetype is

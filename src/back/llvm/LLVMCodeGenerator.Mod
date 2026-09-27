@@ -634,6 +634,48 @@ MODULE LLVMCodeGenerator;
       anonymousInitCount: INTEGER
     END;
 
+    (* poc -g (Phase 11 A16): a source file of the program, a DIFile node *)
+    DebugFile = POINTER TO DebugFileDesc;
+    DebugFileDesc = RECORD
+      name: SourcePath;
+      id: INTEGER;
+      next: DebugFile
+    END;
+
+    (* A function with debug information, a DISubprogram node, written out
+       after the code (EmitDebugMetadata) *)
+    DebugProcedure = POINTER TO DebugProcedureDesc;
+    DebugProcedureDesc = RECORD
+      name: LongText;
+      id, fileId, line: INTEGER;
+      next: DebugProcedure
+    END;
+
+  VAR
+    (* poc -g (Phase 11 A16): the IR carries DWARF debug information for gdb
+       and lldb - for now the line table and the procedures' names (a
+       breakpoint on List.Insert or list.mod:42, a backtrace with source
+       lines). Every function of an Oberon procedure or module body gets a
+       DISubprogram, and every instruction in it the position of the
+       statement it belongs to: WriteLn attaches it to each instruction
+       line (one starting "  " and an instruction) while debugScope names
+       the function's subprogram. The runtime helpers written as fixed text,
+       main and the record initialization procedures get none. FALSE leaves
+       the IR as it was without the switch. *)
+    debugInfo*: BOOLEAN;
+    (* the working directory the source file names are relative to, set by
+       LLVMToolchainDriver before GenerateProgram *)
+    debugDirectory*: SourcePath;
+    debugFiles: DebugFile;
+    debugProcedures, debugProceduresTail: DebugProcedure;
+    debugScope: INTEGER; (* the current function's DISubprogram, or -1 *)
+    debugLine, debugColumn: INTEGER; (* the statement being generated *)
+    debugCompileUnit, debugSubroutineType, nextMetadata: INTEGER;
+    (* the first lineHeadLength characters (at most 3) WriteStr has
+       written of the current line *)
+    lineHead: ARRAY 3 OF CHAR;
+    lineHeadLength: INTEGER;
+
   (* Files.WriteString (confirmed against real voc, see
      ModuleInterface.Mod's own WriteStr comment) writes its argument's
      terminating 0X into the file too, not just the visible characters -
@@ -643,16 +685,51 @@ MODULE LLVMCodeGenerator;
      - a backend has no reason to depend on the module-interface reader/
      writer, and importing it just for this one helper would be a real,
      not just nominal, layering violation). *)
+  PROCEDURE Put(VAR w: Files.Rider; ch: CHAR);
+  BEGIN
+    Files.Write(w, ch);
+    IF lineHeadLength < LEN(lineHead) THEN lineHead[lineHeadLength] := ch; INC(lineHeadLength) END
+  END Put;
+
   PROCEDURE WriteStr(VAR w: Files.Rider; s: ARRAY OF CHAR);
     VAR i: INTEGER;
   BEGIN
     i := 0;
-    WHILE s[i] # 0X DO Files.Write(w, s[i]); INC(i) END
+    WHILE s[i] # 0X DO Put(w, s[i]); INC(i) END
   END WriteStr;
 
+  (* Text and the decimal digits of a non-negative n, written straight to
+     w, not through Put - for WriteLn, which cannot use AppendLongInt
+     (declared below it). *)
+  PROCEDURE WriteRaw(VAR w: Files.Rider; text: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE text[i] # 0X DO Files.Write(w, text[i]); INC(i) END
+  END WriteRaw;
+
+  PROCEDURE WriteNatural(VAR w: Files.Rider; n: LONGINT);
+  BEGIN
+    IF n >= 10 THEN WriteNatural(w, n DIV 10) END;
+    Files.Write(w, CHR(ORD("0") + n MOD 10))
+  END WriteNatural;
+
+  (* Under -g, an instruction line of a function with debug information
+     ends with the position of the statement it belongs to (debugInfo). No
+     instruction this module writes spans lines. A procedure's prologue
+     (debugLine 0: the parameters' and locals' slots) gets none, as clang
+     leaves it, so that a breakpoint on the procedure stops at its first
+     statement. *)
   PROCEDURE WriteLn(VAR w: Files.Rider);
   BEGIN
-    Files.Write(w, 0AX)
+    IF (debugScope >= 0) & (debugLine > 0) & (lineHeadLength = LEN(lineHead)) & (lineHead[0] = " ") & (lineHead[1] = " ")
+       & (lineHead[2] # " ") & (lineHead[2] # ";") THEN
+      WriteRaw(w, ", !dbg !DILocation(line: "); WriteNatural(w, debugLine);
+      WriteRaw(w, ", column: "); WriteNatural(w, debugColumn);
+      WriteRaw(w, ", scope: !"); WriteNatural(w, debugScope); WriteRaw(w, ")")
+    END;
+    Files.Write(w, 0AX);
+    lineHeadLength := 0
   END WriteLn;
 
   (* Mirrors LLVMTypes.Mod's own private AppendLongInt exactly, plus a
@@ -710,6 +787,91 @@ MODULE LLVMCodeGenerator;
     WHILE suffix[j] # 0X DO s[i] := suffix[j]; INC(i); INC(j) END;
     s[i] := 0X
   END Strcat;
+
+  (* ---- Debug information (poc -g, Phase 11 A16) ---- *)
+
+  (* A metadata string: quoted, a quotation mark, a backslash and anything
+     outside printable ASCII as \<hex><hex>, as LLVM's text format has it. *)
+  PROCEDURE WriteMetadataString(VAR w: Files.Rider; text: ARRAY OF CHAR);
+    VAR i, code: INTEGER; hexDigits: ARRAY 17 OF CHAR;
+  BEGIN
+    hexDigits := "0123456789ABCDEF";
+    Files.Write(w, 22X);
+    i := 0;
+    WHILE (i < LEN(text)) & (text[i] # 0X) DO
+      code := ORD(text[i]);
+      IF (code < 20H) OR (code > 7EH) OR (text[i] = 22X) OR (text[i] = 5CX) THEN
+        Files.Write(w, 5CX); Files.Write(w, hexDigits[code DIV 16]); Files.Write(w, hexDigits[code MOD 16])
+      ELSE
+        Files.Write(w, text[i])
+      END;
+      INC(i)
+    END;
+    Files.Write(w, 22X)
+  END WriteMetadataString;
+
+  (* The DIFile node of a source file, made the first time it is asked for. *)
+  PROCEDURE DebugFileId(name: ARRAY OF CHAR): INTEGER;
+    VAR f: DebugFile;
+  BEGIN
+    f := debugFiles;
+    WHILE (f # NIL) & (f.name # name) DO f := f.next END;
+    IF f = NIL THEN
+      NEW(f); COPY(name, f.name); f.id := nextMetadata; INC(nextMetadata);
+      f.next := debugFiles; debugFiles := f
+    END;
+    RETURN f.id
+  END DebugFileId;
+
+  (* Opens a function with debug information: its DISubprogram, named name
+     and declared at line of file, becomes debugScope, the scope of the
+     positions WriteLn attaches, starting with line itself (a module body's
+     prologue calls ModuleTable.Register, and LLVM wants every call to a
+     function with debug information to have a position). *)
+  PROCEDURE BeginDebugFunction(name, file: ARRAY OF CHAR; line, column: INTEGER);
+    VAR p: DebugProcedure;
+  BEGIN
+    NEW(p); COPY(name, p.name); p.fileId := DebugFileId(file); p.line := line;
+    p.id := nextMetadata; INC(nextMetadata); p.next := NIL;
+    IF debugProceduresTail = NIL THEN debugProcedures := p ELSE debugProceduresTail.next := p END;
+    debugProceduresTail := p;
+    debugScope := p.id; debugLine := line; debugColumn := column
+  END BeginDebugFunction;
+
+  (* " !dbg !<n>" in a function's define line, under -g *)
+  PROCEDURE WriteDebugAttachment(VAR w: Files.Rider);
+    VAR text: ARRAY 16 OF CHAR;
+  BEGIN
+    IF debugScope >= 0 THEN
+      text[0] := 0X; AppendLongInt(text, debugScope);
+      WriteStr(w, " !dbg !"); WriteStr(w, text)
+    END
+  END WriteDebugAttachment;
+
+  (* The DIFile and DISubprogram nodes, after the code that made them. *)
+  PROCEDURE EmitDebugMetadata(VAR w: Files.Rider);
+    VAR f: DebugFile; p: DebugProcedure;
+  BEGIN
+    Files.Write(w, 0AX);
+    f := debugFiles;
+    WHILE f # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, f.id); WriteRaw(w, " = !DIFile(filename: ");
+      WriteMetadataString(w, f.name); WriteRaw(w, ", directory: ");
+      WriteMetadataString(w, debugDirectory); WriteRaw(w, ")"); Files.Write(w, 0AX);
+      f := f.next
+    END;
+    p := debugProcedures;
+    WHILE p # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, p.id); WriteRaw(w, " = distinct !DISubprogram(name: ");
+      WriteMetadataString(w, p.name); WriteRaw(w, ", scope: !"); WriteNatural(w, p.fileId);
+      WriteRaw(w, ", file: !"); WriteNatural(w, p.fileId); WriteRaw(w, ", line: "); WriteNatural(w, p.line);
+      WriteRaw(w, ", type: !"); WriteNatural(w, debugSubroutineType);
+      WriteRaw(w, ", scopeLine: "); WriteNatural(w, p.line);
+      WriteRaw(w, ", spFlags: DISPFlagDefinition, unit: !"); WriteNatural(w, debugCompileUnit);
+      WriteRaw(w, ")"); Files.Write(w, 0AX);
+      p := p.next
+    END
+  END EmitDebugMetadata;
 
   (* GrowingText operations (see GrowingText). *)
   PROCEDURE ClearText(VAR t: GrowingText);
@@ -5633,6 +5795,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     cg.currentLine := s.line; cg.currentColumn := s.column;
     cg.statementLine := s.line; cg.statementColumn := s.column;
+    IF s.line > 0 THEN debugLine := s.line; debugColumn := s.column END;
     WITH
       s: SyntaxTree.AssignStatementNode DO GenerateAssignStatement(w, cg, s)
     | s: SyntaxTree.CallStatementNode DO GenerateCallStatement(w, cg, s)
@@ -6424,7 +6587,7 @@ MODULE LLVMCodeGenerator;
       END;
       need := need.next; INC(k)
     END;
-    WriteStr(w, ") {"); WriteLn(w);
+    WriteStr(w, ")"); WriteDebugAttachment(w); WriteStr(w, " {"); WriteLn(w);
     EmitEntryLabel(w, cg)
   END EmitProcSignature;
 
@@ -6618,6 +6781,10 @@ MODULE LLVMCodeGenerator;
     i := 0; (* the symbol without its "@": "List.Insert", "List.Insert.Find" *)
     WHILE (fnSymbol[i + 1] # 0X) & (i < LEN(cg.currentProc) - 1) DO cg.currentProc[i] := fnSymbol[i + 1]; INC(i) END;
     cg.currentProc[i] := 0X;
+    IF debugInfo THEN
+      BeginDebugFunction(cg.currentProc, cg.currentFile, pd.line, pd.column);
+      debugLine := 0 (* the prologue: see WriteLn *)
+    END;
     EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver, needs);
     savedScope := cg.scope;
     cg.scope := bodyScope; cg.locals := NIL; cg.currentProcResultType := pt.resultType;
@@ -6638,6 +6805,7 @@ MODULE LLVMCodeGenerator;
       WriteLn(w)
     END;
     WriteStr(w, "}"); WriteLn(w); WriteLn(w);
+    debugScope := -1;
     cg.scope := savedScope; cg.locals := NIL; cg.currentProcResultType := NIL;
     cg.currentProc[0] := 0X
   END GenerateFunction;
@@ -7070,7 +7238,7 @@ MODULE LLVMCodeGenerator;
     VAR
       cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments, realign: BOOLEAN;
       td: SyntaxTree.TypeDeclNode; typeObj: SymbolTable.Object;
-      wordInt: ValueText; r: Files.Rider; ch: CHAR; i: INTEGER;
+      wordInt, symbol: ValueText; r: Files.Rider; ch: CHAR; i, realignId, debugVersionId: INTEGER;
   BEGIN
     withRootTables := HasModuleNamed(modules, "ModuleTable");
     withHeap := HasModuleNamed(modules, "GarbageCollectedHeap");
@@ -7099,11 +7267,45 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, '"'); WriteLn(w);
     WriteStr(w, 'target triple = "'); WriteStr(w, triple); WriteStr(w, '"'); WriteLn(w);
     realign := LLVMTypes.NeedsStackRealignment(triple);
+    (* the metadata numbers: the stack alignment flag first, then under -g
+       the debug information's own *)
+    nextMetadata := 0; realignId := -1; debugVersionId := -1;
+    debugFiles := NIL; debugProcedures := NIL; debugProceduresTail := NIL; debugScope := -1;
+    lineHeadLength := 0;
+    IF realign THEN realignId := nextMetadata; INC(nextMetadata) END;
+    IF debugInfo THEN
+      debugVersionId := nextMetadata; debugCompileUnit := nextMetadata + 1; debugSubroutineType := nextMetadata + 2;
+      INC(nextMetadata, 3)
+    END;
+    IF realign OR debugInfo THEN
+      WriteStr(w, "!llvm.module.flags = !{");
+      IF realign THEN symbol := "!"; AppendLongInt(symbol, realignId); WriteStr(w, symbol) END;
+      IF realign & debugInfo THEN WriteStr(w, ", ") END;
+      IF debugInfo THEN symbol := "!"; AppendLongInt(symbol, debugVersionId); WriteStr(w, symbol) END;
+      WriteStr(w, "}"); WriteLn(w)
+    END;
     IF realign THEN
       (* see LLVMTypes.NeedsStackRealignment: LLVM assumes a 4-byte aligned
          stack at a call on this target, the C library needs 16 *)
-      WriteStr(w, "!llvm.module.flags = !{!0}"); WriteLn(w);
-      WriteStr(w, '!0 = !{i32 1, !"override-stack-alignment", i32 16}'); WriteLn(w)
+      symbol := "!"; AppendLongInt(symbol, realignId); WriteStr(w, symbol);
+      WriteStr(w, ' = !{i32 1, !"override-stack-alignment", i32 16}'); WriteLn(w)
+    END;
+    IF debugInfo THEN
+      (* the compile unit is the module named on the command line, the
+         last of the list; C is the language claimed, as DWARF has no code
+         for Oberon and both debuggers handle C (gdb's Modula-2 support
+         would suit better, but lldb has none) *)
+      m := modules;
+      WHILE m.next # NIL DO m := m.next END;
+      symbol := "!"; AppendLongInt(symbol, debugVersionId); WriteStr(w, symbol);
+      WriteStr(w, ' = !{i32 2, !"Debug Info Version", i32 3}'); WriteLn(w);
+      symbol := "!"; AppendLongInt(symbol, debugCompileUnit);
+      WriteStr(w, "!llvm.dbg.cu = !{"); WriteStr(w, symbol); WriteStr(w, "}"); WriteLn(w);
+      WriteStr(w, symbol); WriteStr(w, " = distinct !DICompileUnit(language: DW_LANG_C99, file: !");
+      symbol[0] := 0X; AppendLongInt(symbol, DebugFileId(m.fileName)); WriteStr(w, symbol);
+      WriteStr(w, ', producer: "poc", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug)'); WriteLn(w);
+      symbol := "!"; AppendLongInt(symbol, debugSubroutineType); WriteStr(w, symbol);
+      WriteStr(w, " = !DISubroutineType(types: !{})"); WriteLn(w)
     END;
     WriteLn(w);
     m := modules;
@@ -7148,12 +7350,18 @@ MODULE LLVMCodeGenerator;
     m := modules;
     WHILE m # NIL DO
       cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
-      WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init() {"); WriteLn(body);
+      IF debugInfo THEN
+        COPY(m.module.name, symbol); Strcat(symbol, "_init");
+        BeginDebugFunction(symbol, cg.currentFile, m.module.line, m.module.column)
+      END;
+      WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init()");
+      WriteDebugAttachment(body); WriteStr(body, " {"); WriteLn(body);
       EmitEntryLabel(body, cg);
       IF withRootTables THEN EmitRootTableRegistration(body, cg, m.module) END;
       GenerateStatementSeq(body, cg, GenerateDeclarationInits(body, cg, m.module.declarations, m.module.statements));
       WriteStr(body, "  ret void"); WriteLn(body);
       WriteStr(body, "}"); WriteLn(body);
+      debugScope := -1;
       WriteLn(body);
       m := m.next
     END;
@@ -7241,6 +7449,7 @@ MODULE LLVMCodeGenerator;
         EmitLine(body, "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)")
       END
     END;
+    IF debugInfo THEN EmitDebugMetadata(body) END;
     EmitStructTypes(w, cg);
     IF LLVMTypes.StructCount() > 0 THEN WriteLn(w) END;
     Files.Set(r, Files.Base(body), 0);

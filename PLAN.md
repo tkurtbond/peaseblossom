@@ -792,7 +792,10 @@ as it stands when the phase starts, and adds what it finds):
    (a) line tables and subprogram names - a breakpoint on
    `Module.Procedure` and a backtrace of Oberon frames with source lines,
    which needs every AST node's line and column carried down to the
-   instructions the generator emits;
+   instructions the generator emits; **done 2026-09-26** (`AGENTS.md`,
+   "Toolchain: LLVM"; statement positions, which were already carried
+   down for `-trap-location`; `-g` leaves the optimization level alone,
+   user);
    (b) parameters and locals of the basic types, so `print`/`info locals`
    show values;
    (c) records, arrays, pointers, and type-bound procedures - a record
