@@ -1257,7 +1257,15 @@ convenient, but must not be a prerequisite of it.
    initialization procedure keep their module-prefixed global names, since
    in one run another module may still name another's (2c changes that);
    fixture `llvm-module-init-order`;
-   **2b** module keys; **2c** `-library`, the manifest, the library path,
+   **2b** module keys; *done 2026-09-27*: `ModuleInterface.KeyOf` gives
+   the 64-bit FNV-1a hash of a module's `.sym` bytes (computed a byte at a
+   time, so poc needs no 64-bit integer for it), recorded whenever a run
+   writes or reads a `.sym`; whole-program commands now write the main
+   module's `.sym` too, so every module has one. Each module's `.ll`
+   defines `@<M>.-key.<hash>` and lists its imports' keys in
+   `@<M>.-imports`, kept by `@llvm.used`; fixture `llvm-module-keys`
+   (a new body relinks, a new interface fails in the linker naming the
+   key); **2c** `-library`, the manifest, the library path,
    static and dynamic linking, and the refusal of a second copy of a module;
    **2d** `poc-rtl`, built by `make`, used by default when present; **2e**
    the fixtures this step's testing paragraph asks for, on Linux and the

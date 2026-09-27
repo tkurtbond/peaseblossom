@@ -176,7 +176,7 @@ MODULE LLVMCodeGenerator;
      attempted here. *)
 
   IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions,
-         MemoryLayout, Diagnostics, NestedProcedures, SYSTEM;
+         MemoryLayout, Diagnostics, NestedProcedures, ModuleInterface, SYSTEM;
 
   VAR
     (* How many constructs GenerateProgram met that this backend cannot lower
@@ -7983,6 +7983,49 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, "  call void @"); WriteStr(w, name); WriteStr(w, "_init()"); WriteLn(w)
   END EmitInitCall;
 
+  (* "@<name>.-key.<key>", the symbol that carries a module's key
+     (ModuleInterface.KeyOf), when it has one *)
+  PROCEDURE KeySymbol(name: ARRAY OF CHAR; VAR symbol: ARRAY OF CHAR): BOOLEAN;
+    VAR key: ARRAY ModuleInterface.keyLength + 1 OF CHAR;
+  BEGIN
+    IF ~ModuleInterface.KeyOf(name, key) THEN RETURN FALSE END;
+    COPY("@", symbol); Strcat(symbol, name); Strcat(symbol, ".-key."); Strcat(symbol, key);
+    RETURN TRUE
+  END KeySymbol;
+
+  (* Phase 12 step 2b: module keys. A module whose .sym this run wrote or
+     read defines its key's symbol, and every module refers to the keys of
+     the modules it imports, the ones its code was compiled against, from
+     "@<M>.-imports", which @llvm.used keeps even where nothing else uses
+     it. An importer's object therefore links only with an object of the
+     module whose interface it was compiled against: otherwise the linker
+     reports the key's symbol undefined. *)
+  PROCEDURE EmitModuleKeys(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
+    VAR symbol: LongText; imports: ARRAY 16384 OF CHAR; import: SyntaxTree.ImportNode; count: INTEGER; text: ValueText;
+  BEGIN
+    IF KeySymbol(module.name, symbol) THEN
+      WriteStr(w, symbol); WriteStr(w, " = constant i8 0"); WriteLn(w)
+    END;
+    imports[0] := 0X; count := 0;
+    import := module.imports;
+    WHILE import # NIL DO
+      IF KeySymbol(import.moduleName, symbol) & ~HasDeclaredExternal(cg, symbol) THEN
+        EmitDataDeclaration(w, cg, symbol);
+        IF count > 0 THEN Strcat(imports, ", ") END;
+        Strcat(imports, "ptr "); Strcat(imports, symbol);
+        INC(count)
+      END;
+      import := import.next
+    END;
+    IF count > 0 THEN
+      text[0] := 0X; AppendLongInt(text, count);
+      WriteStr(w, "@"); WriteStr(w, module.name); WriteStr(w, ".-imports = internal constant [");
+      WriteStr(w, text); WriteStr(w, " x ptr] ["); WriteStr(w, imports); WriteStr(w, "]"); WriteLn(w);
+      WriteStr(w, "@llvm.used = appending global [1 x ptr] [ptr @"); WriteStr(w, module.name);
+      WriteStr(w, '.-imports], section "llvm.metadata"'); WriteLn(w)
+    END
+  END EmitModuleKeys;
+
   (* The IR of target, one module of program (dependency-ordered, the main
      module last), for a .ll of its own: its variables, type descriptors,
      procedures and "@<M>_init", with declarations of what it uses of the
@@ -8079,6 +8122,7 @@ MODULE LLVMCodeGenerator;
     WriteLn(body);
     COPY("@", flag); Strcat(flag, m.module.name); Strcat(flag, ".-initialized");
     WriteStr(body, flag); WriteStr(body, " = internal global i1 false"); WriteLn(body);
+    EmitModuleKeys(body, cg, m.module);
     EmitGlobals(body, cg, m.module);
     EmitExternalDeclares(body, cg, m.module);
     EmitTypeDescriptors(body, cg, m.module);

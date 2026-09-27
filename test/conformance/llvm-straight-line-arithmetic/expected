@@ -4,6 +4,7 @@ target triple = "x86_64-unknown-linux-gnu"
 
 
 @arith.-initialized = internal global i1 false
+@arith.-key.d46a802acd6953f1 = constant i8 0
 @arith.a = global i16 zeroinitializer
 @arith.b = global i16 zeroinitializer
 @arith.sum = global i16 zeroinitializer

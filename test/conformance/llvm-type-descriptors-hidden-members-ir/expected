@@ -5,6 +5,7 @@ target triple = "i686-unknown-linux-gnu"
 
 
 @third.-initialized = internal global i1 false
+@third.-key.2ee91d7abe38e91c = constant i8 0
 @third.Stamp.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
   [0 x ptr] [],
   i32 8,
@@ -42,6 +43,10 @@ target triple = "i686-unknown-linux-gnu"
 declare void @third_init()
 
 @lib.-initialized = internal global i1 false
+@lib.-key.0ece459a38e25d7f = constant i8 0
+@third.-key.2ee91d7abe38e91c = external global i8
+@lib.-imports = internal constant [1 x ptr] [ptr @third.-key.2ee91d7abe38e91c]
+@llvm.used = appending global [1 x ptr] [ptr @lib.-imports], section "llvm.metadata"
 @lib.keep = global ptr zeroinitializer
 @lib.ignore = global %lib.Unrelated zeroinitializer
 @lib.Deep.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
@@ -185,6 +190,10 @@ declare i16 @lib.ShapeDesc.Area(ptr, i16)
 declare void @lib_init()
 
 @client.-initialized = internal global i1 false
+@client.-key.86140523664ff24e = constant i8 0
+@lib.-key.0ece459a38e25d7f = external global i8
+@client.-imports = internal constant [1 x ptr] [ptr @lib.-key.0ece459a38e25d7f]
+@llvm.used = appending global [1 x ptr] [ptr @client.-imports], section "llvm.metadata"
 @client.CircleDesc.tdesc = constant { [5 x ptr], i32, i32, i32, [2 x ptr], [3 x i32] } {
   [5 x ptr] [ptr @client.CircleDesc.Extra, ptr @client.CircleDesc.Audit, ptr @lib.ShapeDesc.Area, ptr @lib.ShapeDesc.Audit, ptr @client.CircleDesc.Draw],
   i32 32,
@@ -270,6 +279,7 @@ target triple = "x86_64-unknown-linux-gnu"
 
 
 @third.-initialized = internal global i1 false
+@third.-key.2ee91d7abe38e91c = constant i8 0
 @third.Stamp.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
   [0 x ptr] [],
   i64 8,
@@ -307,6 +317,10 @@ target triple = "x86_64-unknown-linux-gnu"
 declare void @third_init()
 
 @lib.-initialized = internal global i1 false
+@lib.-key.0ece459a38e25d7f = constant i8 0
+@third.-key.2ee91d7abe38e91c = external global i8
+@lib.-imports = internal constant [1 x ptr] [ptr @third.-key.2ee91d7abe38e91c]
+@llvm.used = appending global [1 x ptr] [ptr @lib.-imports], section "llvm.metadata"
 @lib.keep = global ptr zeroinitializer
 @lib.ignore = global %lib.Unrelated zeroinitializer
 @lib.Deep.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
@@ -450,6 +464,10 @@ declare i16 @lib.ShapeDesc.Area(ptr, i16)
 declare void @lib_init()
 
 @client.-initialized = internal global i1 false
+@client.-key.86140523664ff24e = constant i8 0
+@lib.-key.0ece459a38e25d7f = external global i8
+@client.-imports = internal constant [1 x ptr] [ptr @lib.-key.0ece459a38e25d7f]
+@llvm.used = appending global [1 x ptr] [ptr @client.-imports], section "llvm.metadata"
 @client.CircleDesc.tdesc = constant { [5 x ptr], i64, i64, i64, [2 x ptr], [3 x i64] } {
   [5 x ptr] [ptr @client.CircleDesc.Extra, ptr @client.CircleDesc.Audit, ptr @lib.ShapeDesc.Area, ptr @lib.ShapeDesc.Audit, ptr @client.CircleDesc.Draw],
   i64 48,

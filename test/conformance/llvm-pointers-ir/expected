@@ -1,5 +1,6 @@
 == i686-unknown-linux-gnu
 @ptrir.-initialized = internal global i1 false
+@ptrir.-key.2d4b00be252aa5b7 = constant i8 0
 @ptrir.head = global ptr zeroinitializer
 @ptrir.table = global ptr zeroinitializer
 @ptrir.bytes = global ptr zeroinitializer
@@ -252,6 +253,7 @@ LN:
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 @ptrir.-initialized = internal global i1 false
+@ptrir.-key.2d4b00be252aa5b7 = constant i8 0
 @ptrir.head = global ptr zeroinitializer
 @ptrir.table = global ptr zeroinitializer
 @ptrir.bytes = global ptr zeroinitializer

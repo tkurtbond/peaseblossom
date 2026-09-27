@@ -1,5 +1,6 @@
 == i686-unknown-linux-gnu
 @boundir.-initialized = internal global i1 false
+@boundir.-key.02e620413e4a86e7 = constant i8 0
 @boundir.s = global ptr zeroinitializer
 @boundir.c = global ptr zeroinitializer
 @boundir.pt = global %boundir.Point zeroinitializer
@@ -242,6 +243,7 @@ LN:
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 @boundir.-initialized = internal global i1 false
+@boundir.-key.02e620413e4a86e7 = constant i8 0
 @boundir.s = global ptr zeroinitializer
 @boundir.c = global ptr zeroinitializer
 @boundir.pt = global %boundir.Point zeroinitializer

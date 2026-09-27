@@ -559,6 +559,7 @@ MODULE Poc;
       imp: SyntaxTree.ImportNode;
       visited: VisitedModule;
       regenerated: BOOLEAN;
+      path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
   BEGIN
     ok := FALSE;
     IF ~ReadSource(name, buffer, length) THEN
@@ -584,6 +585,10 @@ MODULE Poc;
         (* already reported by RegenerateInterfaces *)
       ELSIF Diagnostics.errorCount > 0 THEN
         Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln
+      ELSIF ~ModuleInterface.Write(module, scope, outputDir, path) THEN
+        (* the main module's .sym too, as every other module's: its key
+           (Phase 12 step 2b) is the hash of it *)
+        failed := TRUE; Err.String("poc: cannot write "); Err.String(path); Err.Ln
       ELSE
         BuildProgramModuleList(module, scope, outputDir, modules, ok)
       END

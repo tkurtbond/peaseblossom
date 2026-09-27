@@ -188,7 +188,10 @@ shells out to these rather than linking against LLVM's own C++ API.
   the objects with one more `clang`. Each module's `_init` runs its body
   once, after calling its imports' `_init` in IMPORT-list order (voc's
   order is alphabetical); `main`, in the main module's `.ll`, calls the
-  runtime's and then the main module's. A
+  runtime's and then the main module's. Each module's object defines
+  `<Module>.-key.<hash of its .sym>` and refers to its imports' keys, so an
+  importer links only with the interface it was compiled against (step 2b;
+  `-build` and `-emit-llvm-ir` write the main module's `.sym` too). A
   `.ll` file emitted by `LLVMCodeGenerator.Mod` must set its own `target
   datalayout`/`target triple` explicitly (matching the values above for the
   host, or the `-target` flag's chosen triple) — omitting them makes clang
