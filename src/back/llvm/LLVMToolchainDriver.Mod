@@ -29,6 +29,13 @@ MODULE LLVMToolchainDriver;
     tripleBufferLength* = 128;
     linkArgumentsLength = 2048;
 
+  TYPE
+    RunDirectory = POINTER TO RunDirectoryDesc;
+    RunDirectoryDesc = RECORD
+      dir: ARRAY pathBufferLength OF CHAR;
+      next: RunDirectory
+    END;
+
   VAR
     hostTripleCache: ARRAY tripleBufferLength OF CHAR;
     hostTripleCached: BOOLEAN;
@@ -45,7 +52,10 @@ MODULE LLVMToolchainDriver;
     linkArguments: ARRAY linkArgumentsLength OF CHAR;
     (* Phase 12 step 2c: the libraries a program links, as clang arguments
        (AddLibrary), after its objects and before the -link arguments *)
-    libraryArguments: ARRAY linkArgumentsLength OF CHAR;
+    libraryArguments: ARRAY 4 * linkArgumentsLength OF CHAR;
+    (* Phase 12 step 2e: the directories of the shared libraries AddLibrary
+       named, absolute, for the run-time search path (AppendRunPath) *)
+    runDirectories: RunDirectory;
     (* the clang command Build runs: the link names every module's object *)
     command: ARRAY 65536 OF CHAR;
 
@@ -315,10 +325,6 @@ MODULE LLVMToolchainDriver;
     RETURN Platform.System(command) = 0
   END RunCommand;
 
-  (* Full build (Phase 12 step 2a): EmitIR, then `clang -c` compiles every
-     module's .ll to its own object file beside it, and one more clang links
-     the objects - the main module's last - with the -link arguments, libm
-     and -static if asked. *)
   (* clang -c on each module's .ll that is not from a library, to its .o;
      position-independent code for a library (pic) *)
   PROCEDURE CompileModules(modules: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR;
@@ -360,22 +366,89 @@ MODULE LLVMToolchainDriver;
     IF LLVMTypes.IsOpenBSD(triple) THEN Strcat(file, ".0.0") END
   END SharedLibraryName;
 
+  (* path made absolute (from the current directory) and without "." or
+     ".." components, or empty ones: /a/b/../c/./d to /a/c/d. Taken as
+     written, symbolic links not followed. *)
+  PROCEDURE Normalize(path: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
+    VAR full: ARRAY pathBufferLength OF CHAR; i, j, start: INTEGER;
+  BEGIN
+    IF path[0] = "/" THEN COPY(path, full)
+    ELSE COPY(Platform.CWD, full); Strcat(full, "/"); Strcat(full, path)
+    END;
+    (* result holds the components kept, each after a "/" *)
+    j := 0; i := 0;
+    WHILE full[i] # 0X DO
+      WHILE full[i] = "/" DO INC(i) END;
+      start := i;
+      WHILE (full[i] # 0X) & (full[i] # "/") DO INC(i) END;
+      IF (i - start = 1) & (full[start] = ".") THEN
+        (* nothing *)
+      ELSIF (i - start = 2) & (full[start] = ".") & (full[start + 1] = ".") THEN
+        WHILE (j > 0) & (result[j - 1] # "/") DO DEC(j) END;
+        IF j > 0 THEN DEC(j) END
+      ELSIF i > start THEN
+        result[j] := "/"; INC(j);
+        WHILE start < i DO result[j] := full[start]; INC(j); INC(start) END
+      END
+    END;
+    IF j = 0 THEN result[0] := "/"; j := 1 END;
+    result[j] := 0X
+  END Normalize;
+
+  (* The path of the directory to relative to the directory from, both
+     normalized: "" when they are the same, else "../../x/y". FALSE when
+     they have no directory in common but the root, which a relative path
+     would only climb to. *)
+  PROCEDURE RelativePath(from, to: ARRAY OF CHAR; VAR rel: ARRAY OF CHAR): BOOLEAN;
+    VAR common, i: INTEGER; shared: BOOLEAN;
+  BEGIN
+    (* the longest common prefix that ends at a component boundary *)
+    common := 0; i := 0;
+    WHILE (from[i] # 0X) & (from[i] = to[i]) DO
+      INC(i);
+      IF ((from[i] = "/") OR (from[i] = 0X)) & ((to[i] = "/") OR (to[i] = 0X)) THEN common := i END
+    END;
+    rel[0] := 0X;
+    shared := common > 0;
+    (* one ".." for each component of from after the prefix *)
+    i := common;
+    WHILE from[i] # 0X DO
+      IF (from[i] = "/") & (from[i + 1] # 0X) THEN
+        IF rel[0] # 0X THEN Strcat(rel, "/") END;
+        Strcat(rel, "..")
+      END;
+      INC(i)
+    END;
+    (* then what to has after it *)
+    IF to[common] = "/" THEN INC(common) END;
+    IF to[common] # 0X THEN
+      IF rel[0] # 0X THEN Strcat(rel, "/") END;
+      i := 0;
+      WHILE rel[i] # 0X DO INC(i) END;
+      WHILE (to[common] # 0X) & (i < LEN(rel) - 1) DO rel[i] := to[common]; INC(i); INC(common) END;
+      rel[i] := 0X
+    END;
+    RETURN shared
+  END RelativePath;
+
   (* Phase 12 step 2c: a program links the library name, whose files are in
      dir: its archive by path, or with shared, its shared library by -L and
-     -l, and dir as the program's run-time search path. In the order the
-     libraries must be linked: each before those it needs. *)
+     -l, and dir in the program's run-time search path (AppendRunPath). In
+     the order the libraries must be linked: each before those it needs. *)
   PROCEDURE AddLibrary*(name, dir: ARRAY OF CHAR; shared: BOOLEAN);
-    VAR path, absolute: ARRAY pathBufferLength OF CHAR; quoted: ARRAY 2 * pathBufferLength OF CHAR; ok: BOOLEAN;
+    VAR path: ARRAY pathBufferLength OF CHAR; quoted: ARRAY 2 * pathBufferLength OF CHAR; ok: BOOLEAN;
+      entry, last: RunDirectory;
   BEGIN
     IF shared THEN
-      (* the run-time search path must not depend on the directory the
-         program is started in *)
-      IF dir[0] # "/" THEN COPY(Platform.CWD, absolute); Strcat(absolute, "/"); Strcat(absolute, dir)
-      ELSE COPY(dir, absolute)
-      END;
       COPY("-L", path); Strcat(path, dir); ok := QuoteWord(path, quoted); Strcat(libraryArguments, quoted);
       COPY("-l", path); Strcat(path, name); ok := QuoteWord(path, quoted); Strcat(libraryArguments, quoted);
-      COPY("-Wl,-rpath,", path); Strcat(path, absolute); ok := QuoteWord(path, quoted); Strcat(libraryArguments, quoted)
+      NEW(entry); Normalize(dir, entry.dir); entry.next := NIL;
+      IF runDirectories = NIL THEN runDirectories := entry
+      ELSE
+        last := runDirectories;
+        WHILE last.next # NIL DO last := last.next END;
+        last.next := entry
+      END
     ELSE
       COPY(dir, path); Strcat(path, "/lib"); Strcat(path, name); Strcat(path, ".a");
       ok := QuoteWord(path, quoted); Strcat(libraryArguments, quoted)
@@ -384,8 +457,42 @@ MODULE LLVMToolchainDriver;
 
   PROCEDURE ClearLibraries*;
   BEGIN
-    libraryArguments[0] := 0X
+    libraryArguments[0] := 0X; runDirectories := NIL
   END ClearLibraries;
+
+  (* Phase 12 step 2e: the run-time search path of an executable or shared
+     library written in the directory outputDir, for the shared libraries
+     AddLibrary named: first each one's directory relative to outputDir's,
+     through $ORIGIN (the directory the executable or library is loaded
+     from), so that moving them together keeps them together; then each
+     directory as it is, absolute, so that moving only the executable does
+     too. A shared library (forLibrary) also has $ORIGIN itself first: the
+     libraries it needs, installed beside it. -z origin marks the object as
+     using $ORIGIN, without which OpenBSD's ld.so does not expand it. *)
+  PROCEDURE AppendRunPath(outputDir: ARRAY OF CHAR; forLibrary: BOOLEAN);
+    VAR
+      from, rel: ARRAY pathBufferLength OF CHAR; path: ARRAY 2 * pathBufferLength OF CHAR;
+      quoted: ARRAY 4 * pathBufferLength OF CHAR; d: RunDirectory; ok: BOOLEAN;
+  BEGIN
+    IF runDirectories = NIL THEN RETURN END;
+    Normalize(outputDir, from);
+    Strcat(command, " -Wl,-z,origin");
+    IF forLibrary THEN Strcat(command, " '-Wl,-rpath,$ORIGIN'") END;
+    d := runDirectories;
+    WHILE d # NIL DO
+      IF RelativePath(from, d.dir, rel) & ((rel[0] # 0X) OR ~forLibrary) THEN
+        COPY("-Wl,-rpath,$ORIGIN", path);
+        IF rel[0] # 0X THEN Strcat(path, "/"); Strcat(path, rel) END;
+        ok := QuoteWord(path, quoted); Strcat(command, quoted)
+      END;
+      d := d.next
+    END;
+    d := runDirectories;
+    WHILE d # NIL DO
+      COPY("-Wl,-rpath,", path); Strcat(path, d.dir); ok := QuoteWord(path, quoted); Strcat(command, quoted);
+      d := d.next
+    END
+  END AppendRunPath;
 
   (* Phase 12 step 2c: the library name, in dir: every module of modules not
      from a library compiled to a position-independent object, archived in
@@ -407,13 +514,18 @@ MODULE LLVMToolchainDriver;
     AppendObjects(modules, dir);
     Strcat(command, " -o"); AppendPath(path);
     Strcat(command, libraryArguments);
+    AppendRunPath(dir, TRUE);
     Strcat(command, " -lm");
     RETURN RunCommand()
   END BuildLibrary;
 
+  (* Full build (Phase 12 step 2a): EmitIR, then `clang -c` compiles every
+     module's .ll to its own object file beside it, and one more clang links
+     the objects - the main module's last - with the libraries, the -link
+     arguments, libm and -static if asked. *)
   PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
                    triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
-    VAR path: ARRAY pathBufferLength OF CHAR;
+    VAR path, exeDir: ARRAY pathBufferLength OF CHAR; i, slash: INTEGER;
   BEGIN
     IF ~EmitIR(modules, topName, triple, outputDir, path) THEN RETURN FALSE END;
     IF ~CompileModules(modules, triple, outputDir, FALSE) THEN RETURN FALSE END;
@@ -421,6 +533,14 @@ MODULE LLVMToolchainDriver;
     AppendObjects(modules, outputDir);
     Strcat(command, " -o"); AppendPath(exePath);
     Strcat(command, libraryArguments);
+    (* the directory the executable is written in *)
+    slash := -1; i := 0;
+    WHILE exePath[i] # 0X DO IF exePath[i] = "/" THEN slash := i END; INC(i) END;
+    IF slash < 0 THEN exeDir := "."
+    ELSIF slash = 0 THEN exeDir := "/"
+    ELSE COPY(exePath, exeDir); exeDir[slash] := 0X
+    END;
+    AppendRunPath(exeDir, FALSE);
     Strcat(command, linkArguments);
     (* libm, for rtl/llvm's Math and MathL: on every supported system it is
        a library apart from libc, and -lm links nothing that is not used *)

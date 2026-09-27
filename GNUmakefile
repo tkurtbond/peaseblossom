@@ -116,9 +116,11 @@ check:
 # whose exact real results x87 arithmetic changes when optimized (the
 # reason for the -O0 default): llvm-out-extra and llvm-math-extra on a
 # 32-bit x86 host, and llvm-i686-runtime, which reruns them for 32-bit x86,
-# on a 32-bit x86 host or a BSD (Linux i686 has SSE2). poc-rtl is built
-# optimized into build/opt2/lib/poc (Phase 12 step 2d), which the optimized
-# Stage 1 finds by default and the first suite through POC_LIBRARY_PATH.
+# on a 32-bit x86 host or a BSD (Linux i686 has SSE2). Each suite's poc has
+# poc-rtl built optimized in its own ../lib/poc (Phase 12 steps 2d, 2e), as
+# make builds it for build/bin/poc: the Stage 0 poc is copied to
+# build/opt2/stage0/bin for that, so that its library path does not also
+# have build/lib/poc's.
 OPT2_DIR := $(abspath $(BUILD_DIR)/opt2)
 OPT2_HOST_X87 := $(filter i386 i486 i586 i686,$(shell uname -m))
 OPT2_HOST_BSD := $(filter-out Linux,$(shell uname -s))
@@ -127,19 +129,24 @@ OPT2_SKIP := poc-exit-status poc-output-streams poc-opt-level \
   $(if $(OPT2_HOST_X87)$(OPT2_HOST_BSD),llvm-i686-runtime)
 OPT2_TESTS := $(filter-out $(OPT2_SKIP),$(ALL_TESTS))
 check-opt2: build
-	@rm -rf $(OPT2_DIR); mkdir -p $(OPT2_DIR)/wrap0 $(OPT2_DIR)/wrap1; \
-	printf '#!/bin/sh\nexec %s -opt 2 "$$@"\n' $(abspath $(BUILD_DIR)/bin/poc) > $(OPT2_DIR)/wrap0/poc; \
+	@rm -rf $(OPT2_DIR); mkdir -p $(OPT2_DIR)/stage0/bin $(OPT2_DIR)/wrap0 $(OPT2_DIR)/wrap1; \
+	cp $(BIN) $(OPT2_DIR)/stage0/bin/poc; \
+	printf '#!/bin/sh\nexec %s -opt 2 "$$@"\n' $(OPT2_DIR)/stage0/bin/poc > $(OPT2_DIR)/wrap0/poc; \
 	printf '#!/bin/sh\nexec %s -opt 2 "$$@"\n' $(OPT2_DIR)/stage1/bin/poc > $(OPT2_DIR)/wrap1/poc; \
 	chmod +x $(OPT2_DIR)/wrap0/poc $(OPT2_DIR)/wrap1/poc; \
 	status=0; \
 	for model in O2 OC; do \
-	  $(STAGE0_ENV) $(OPT2_DIR)/wrap0/poc -$$model -clear-library-path -output-dir $(OPT2_DIR)/lib/poc \
+	  $(STAGE0_ENV) $(OPT2_DIR)/wrap0/poc -$$model -clear-library-path -output-dir $(OPT2_DIR)/stage0/lib/poc \
 	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
 	done; \
-	POC_LIBRARY_PATH=$(OPT2_DIR)/lib/poc POC_BIN_DIR=$(OPT2_DIR)/wrap0 test/run-tests.sh $(OPT2_TESTS) || status=1; \
+	POC_BIN_DIR=$(OPT2_DIR)/wrap0 test/run-tests.sh $(OPT2_TESTS) || status=1; \
 	BOOTSTRAP_BUILD_DIR=$(OPT2_DIR) BOOTSTRAP_OPT=2 STAGE0_POC=$(abspath $(BUILD_DIR)/bin/poc) \
 	  tools/bootstrap/stage1 || status=1; \
 	BOOTSTRAP_BUILD_DIR=$(OPT2_DIR) BOOTSTRAP_OPT=2 tools/bootstrap/stage2 || status=1; \
+	for model in O2 OC; do \
+	  $(OPT2_DIR)/wrap1/poc -$$model -clear-library-path -output-dir $(OPT2_DIR)/stage1/lib/poc \
+	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
+	done; \
 	POC_BIN_DIR=$(OPT2_DIR)/wrap1 test/run-tests.sh $(OPT2_TESTS) || status=1; \
 	exit $$status
 

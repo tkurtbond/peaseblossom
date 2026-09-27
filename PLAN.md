@@ -1335,7 +1335,29 @@ convenient, but must not be a prerequisite of it.
      module whose source and imports' keys are unchanged; every `-build`
      now compiles every module that is not in a library).
    Fixtures: each of the four ways, with the messages and warnings above
-   as golden output;
+   as golden output. *Done 2026-09-27*: an import found nowhere is followed
+   by notes (`Diagnostics.Note`, through the hook
+   `ModuleInterface.explainMissingModule`): the files looked for and
+   where, the library path for the triple and size model, a library that
+   has the module for the other size model, a library's need that is
+   missing; its uses are not each reported again. A `.sym` without source
+   names the file and points at `-library`. A manifest records each
+   module's source hash (`source <Module> <key>`), so source beside the
+   program is warned about only when it differs from the library's; a
+   library whose module an earlier one on the path has is warned about
+   (`Libraries.WarnHidden`). `poc -install-library <name>` (to
+   `-output-dir`, else poc's `../lib/poc`: `Libraries.PocLibraryDir`)
+   copies the manifest, archive, shared library, `.sym` and `.owner` files,
+   replacing an earlier copy and refusing a module another library there
+   has. The run-time search path is each library's directory relative to
+   the executable's or shared library's (`$ORIGIN/...`, when they share a
+   directory other than the root), then the absolute one; a shared library
+   also has `$ORIGIN`, and both are linked with `-z origin`, without which
+   OpenBSD's `ld.so` does not expand `$ORIGIN`. `check-opt2` gives each of
+   its two suites' poc `poc-rtl` in its own `../lib/poc`, as `make` does
+   (the Stage 0 poc copied to `build/opt2/stage0/bin`); 2d's optimized
+   Stage 1 had found none, and compiled the runtime from source. Fixture
+   `llvm-using-modules`;
    **2f** the fixtures this step's testing paragraph asks for, on Linux and
    the BSD hosts, at both word sizes, and the rackhir run of step 2's
    commits.

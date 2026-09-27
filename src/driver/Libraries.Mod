@@ -14,6 +14,7 @@ MODULE Libraries;
        needs <library>                  (each library its modules import from)
        module <Module> <key>            (each module, with its key)
        import <Module> <Imported> <key> (each import, with the key compiled against)
+       source <Module> <key>            (each module's source file, hashed as a key is)
 
      so poc can tell, before a link, whether a library was compiled against
      the interface of a module that another library now has. Beside it, for
@@ -23,7 +24,8 @@ MODULE Libraries;
 
      The library path is the list of base directories searched, in order:
      -library-path, POC_LIBRARY_PATH, then <poc's directory>/../lib/poc. The
-     first one whose tuple directory has <Module>.owner owns the module.
+     first one whose tuple directory has <Module>.owner owns the module; a
+     warning names any later one that has it too (Phase 12 step 2e).
 
      Nothing here knows about LLVM: the driver builds and links, this module
      finds, reads and writes manifests, and checks that the libraries a
@@ -61,6 +63,7 @@ MODULE Libraries;
     MemberDesc* = RECORD
       name*: Name;
       key*: Key;
+      source*: Key; (* of the file it was compiled from; "" when unknown *)
       imports*: ImportKey;
       next*: Member
     END;
@@ -69,6 +72,13 @@ MODULE Libraries;
     NeedDesc* = RECORD
       name*: Name;
       next*: Need
+    END;
+
+    (* a module whose hidden copies WarnHidden has looked for *)
+    Checked = POINTER TO CheckedDesc;
+    CheckedDesc = RECORD
+      name: Name;
+      next: Checked
     END;
 
     Library* = POINTER TO LibraryDesc;
@@ -90,6 +100,7 @@ MODULE Libraries;
     model: ARRAY 3 OF CHAR;
     excluded: Name; (* the library being built, never taken from the path *)
     loaded: Library;
+    checked: Checked;
     (* the used libraries, each before those it needs (ComputeLinkOrder) *)
     linkOrder*: Library;
     (* how many manifests could not be used (Load reported each) *)
@@ -153,20 +164,22 @@ MODULE Libraries;
     RETURN f # NIL
   END Exists;
 
-  (* The last entry of the path: <dir>/../lib/poc, dir the directory poc's
-     executable is in, when that directory exists. The shell finds it
+  (* <dir>/../lib/poc, dir the directory poc's executable is in, as an
+     absolute path, in result; with create, made first if it is not there.
+     FALSE when it is not there (or cannot be made). The shell finds it
      (command -v, through PATH when program, argument 0, names no
      directory), as a file cannot be opened to test that it is there: voc's
      Files.Old opens for writing first, which the running executable
      refuses. *)
-  PROCEDURE AddDefaultPathDir*(program: ARRAY OF CHAR);
+  PROCEDURE PocLibraryDir*(program: ARRAY OF CHAR; create: BOOLEAN; VAR result: ARRAY OF CHAR): BOOLEAN;
     VAR
-      scratch: ARRAY 64 OF CHAR; command: ARRAY 2 * pathLength OF CHAR; dir: Path;
+      scratch: ARRAY 64 OF CHAR; command: ARRAY 2 * pathLength OF CHAR;
       number: ARRAY 12 OF CHAR; n, i, status: INTEGER; f: Files.File; r: Files.Rider;
   BEGIN
+    result[0] := 0X;
     i := 0;
     WHILE program[i] # 0X DO
-      IF program[i] = "'" THEN RETURN END; (* not worth quoting *)
+      IF program[i] = "'" THEN RETURN FALSE END; (* not worth quoting *)
       INC(i)
     END;
     n := Platform.PID; i := 0;
@@ -176,16 +189,25 @@ MODULE Libraries;
     WHILE i > 0 DO DEC(i); scratch[n] := number[i]; INC(n) END;
     scratch[n] := 0X;
     command := "p=$(command -v '"; Append(command, program);
-    Append(command, "') && cd "); Append(command, '"$(dirname "$p")/../lib/poc"');
-    Append(command, " 2>/dev/null && pwd >");
+    Append(command, "') && d=");
+    Append(command, '"$(dirname "$p")/../lib/poc"');
+    IF create THEN Append(command, ' && mkdir -p "$d"') END;
+    Append(command, ' && cd "$d" 2>/dev/null && pwd >');
     Append(command, scratch);
     status := Platform.System(command);
     f := Files.Old(scratch);
     IF f # NIL THEN
-      Files.Set(r, f, 0); Files.ReadLine(r, dir); Files.Close(f);
-      AddPathDir(dir)
+      Files.Set(r, f, 0); Files.ReadLine(r, result); Files.Close(f)
     END;
-    status := Platform.Unlink(scratch)
+    status := Platform.Unlink(scratch);
+    RETURN result[0] # 0X
+  END PocLibraryDir;
+
+  (* The last entry of the path: PocLibraryDir, when it is there *)
+  PROCEDURE AddDefaultPathDir*(program: ARRAY OF CHAR);
+    VAR dir: Path;
+  BEGIN
+    IF PocLibraryDir(program, FALSE, dir) THEN AddPathDir(dir) END
   END AddDefaultPathDir;
 
   (* ---- Target ---- *)
@@ -203,6 +225,37 @@ MODULE Libraries;
     IF base[0] = 0X THEN COPY(".", dir) ELSE COPY(base, dir) END;
     Append(dir, "/"); Append(dir, triple); Append(dir, "/"); Append(dir, model)
   END TupleDirectory;
+
+  (* The owner of name in the tuple directory dir, from <Module>.owner *)
+  PROCEDURE ReadOwner(dir, name: ARRAY OF CHAR; VAR owner: ARRAY OF CHAR): BOOLEAN;
+    VAR path: Path; f: Files.File; r: Files.Rider;
+  BEGIN
+    JoinPath(dir, name, path); Append(path, ".owner");
+    f := Files.Old(path);
+    IF f # NIL THEN Files.Set(r, f, 0); Files.ReadLine(r, owner); Files.Close(f) END;
+    RETURN f # NIL
+  END ReadOwner;
+
+  PROCEDURE HasOwner*(dir, name: ARRAY OF CHAR; VAR owner: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN ReadOwner(dir, name, owner)
+  END HasOwner;
+
+  PROCEDURE GetTarget*(VAR targetTriple, sizeModel: ARRAY OF CHAR);
+  BEGIN
+    COPY(triple, targetTriple); COPY(model, sizeModel)
+  END GetTarget;
+
+  (* The library whose tuple directory for sizeModel under base,
+     <base>/<triple>/<sizeModel>, has the module name: its name in owner and
+     that directory in dir. FALSE when it has none. For saying where a
+     module the path does not give was found anyway. *)
+  PROCEDURE OwnerIn*(base, sizeModel, name: ARRAY OF CHAR; VAR owner, dir: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    IF base[0] = 0X THEN COPY(".", dir) ELSE COPY(base, dir) END;
+    Append(dir, "/"); Append(dir, triple); Append(dir, "/"); Append(dir, sizeModel);
+    RETURN ReadOwner(dir, name, owner)
+  END OwnerIn;
 
   PROCEDURE Exclude*(name: ARRAY OF CHAR);
   BEGIN
@@ -250,7 +303,7 @@ MODULE Libraries;
   PROCEDURE AddMember*(lib: Library; name, key: ARRAY OF CHAR): Member;
     VAR m, tail: Member;
   BEGIN
-    NEW(m); COPY(name, m.name); COPY(key, m.key); m.imports := NIL; m.next := NIL;
+    NEW(m); COPY(name, m.name); COPY(key, m.key); m.source[0] := 0X; m.imports := NIL; m.next := NIL;
     IF lib.modules = NIL THEN lib.modules := m
     ELSE
       tail := lib.modules;
@@ -322,6 +375,10 @@ MODULE Libraries;
         m := FindMember(lib, w1);
         ok := m # NIL;
         IF ok THEN AddImport(m, w2, w3) END
+      ELSIF w0 = "source" THEN
+        m := FindMember(lib, w1);
+        ok := m # NIL;
+        IF ok THEN COPY(w2, m.source) END
       ELSIF w0[0] # 0X THEN ok := FALSE
       END
     UNTIL r.eof OR ~ok;
@@ -341,19 +398,45 @@ MODULE Libraries;
     RETURN lib
   END Load;
 
+  (* A warning, once per module, for each library after e on the path that
+     has name too: the one found first, lib, hides it *)
+  PROCEDURE WarnHidden(name: ARRAY OF CHAR; lib: Library; e: PathEntry);
+    VAR dir: Path; owner: Name; c: Checked;
+  BEGIN
+    c := checked;
+    WHILE (c # NIL) & (c.name # name) DO c := c.next END;
+    IF c # NIL THEN RETURN END;
+    NEW(c); COPY(name, c.name); c.next := checked; checked := c;
+    WHILE e # NIL DO
+      TupleDirectory(e.dir, dir);
+      IF (dir # lib.dir) & ReadOwner(dir, name, owner) & (owner # excluded) THEN
+        Err.String("poc: warning: module "); Err.String(name); Err.String(" is taken from library ");
+        Err.String(lib.name); Err.String(" ("); Err.String(lib.dir); Err.String("), which hides library ");
+        Err.String(owner); Err.String("'s ("); Err.String(dir); Err.String(")"); Err.Ln
+      END;
+      e := e.next
+    END
+  END WarnHidden;
+
+  (* The library name whose manifest is in the directory dir, loaded; NIL,
+     having said why, when there is none or it is not for this target *)
+  PROCEDURE LoadFrom*(name, dir: ARRAY OF CHAR): Library;
+  BEGIN
+    RETURN Load(name, dir)
+  END LoadFrom;
+
   (* The library on the path that has the module name, loaded; NIL when
      none has it (or its manifest was wrong, which Load reported) *)
   PROCEDURE FindModule*(name: ARRAY OF CHAR): Library;
-    VAR e: PathEntry; dir, path: Path; f: Files.File; r: Files.Rider; owner: Name;
+    VAR e: PathEntry; dir: Path; owner: Name; lib: Library;
   BEGIN
     e := pathHead;
     WHILE e # NIL DO
       TupleDirectory(e.dir, dir);
-      JoinPath(dir, name, path); Append(path, ".owner");
-      f := Files.Old(path);
-      IF f # NIL THEN
-        Files.Set(r, f, 0); Files.ReadLine(r, owner); Files.Close(f);
-        IF owner # excluded THEN RETURN Load(owner, dir) END
+      IF ReadOwner(dir, name, owner) & (owner # excluded) THEN
+        lib := Load(owner, dir);
+        IF lib # NIL THEN WarnHidden(name, lib, e.next) END;
+        RETURN lib
       END;
       e := e.next
     END;
@@ -410,6 +493,11 @@ MODULE Libraries;
     WHILE n # NIL DO WriteLine(w, "needs", n.name, "", ""); n := n.next END;
     m := lib.modules;
     WHILE m # NIL DO WriteLine(w, "module", m.name, m.key, ""); m := m.next END;
+    m := lib.modules;
+    WHILE m # NIL DO
+      IF m.source[0] # 0X THEN WriteLine(w, "source", m.name, m.source, "") END;
+      m := m.next
+    END;
     m := lib.modules;
     WHILE m # NIL DO
       i := m.imports;
@@ -529,6 +617,6 @@ MODULE Libraries;
   END ComputeLinkOrder;
 
 BEGIN
-  pathHead := NIL; pathTail := NIL; loaded := NIL; linkOrder := NIL;
+  pathHead := NIL; pathTail := NIL; loaded := NIL; checked := NIL; linkOrder := NIL;
   triple[0] := 0X; model[0] := 0X; excluded[0] := 0X; errors := 0
 END Libraries.

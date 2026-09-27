@@ -203,7 +203,13 @@ shells out to these rather than linking against LLVM's own C++ API.
   module a library on the path has is taken from it, never from source;
   `-build` links the libraries' archives, `-shared-libraries` their shared
   libraries. poc refuses a module two libraries have and a library
-  compiled against another's old keys (`src/driver/Libraries.Mod`).
+  compiled against another's old keys (`src/driver/Libraries.Mod`), warns
+  when a library's module hides another library's or differs from source
+  beside the program, and follows an import found nowhere with notes on
+  where it looked; a library is the only compiled form poc takes (step
+  2e). `poc -install-library <name>` copies a library into `-output-dir`
+  or poc's own `../lib/poc`; a program's run-time search path has each
+  shared library's directory relative to it (`$ORIGIN`) and absolute.
   `make` builds `rtl/llvm` as the library `poc-rtl` into
   `build/lib/poc/<host triple>/{O2,OC}` (step 2d), so a program links the
   runtime already compiled; the bootstrap stages use `-clear-library-path`

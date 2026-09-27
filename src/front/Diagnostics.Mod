@@ -62,6 +62,16 @@ MODULE Diagnostics;
     INC(errorCount)
   END Error;
 
+  (* More about the error just reported, at line:column: "note:", as gcc and
+     clang have it; not counted as an error (Phase 12 step 2e: where an
+     import that was not found was looked for) *)
+  PROCEDURE Note*(line, column: INTEGER; message: ARRAY OF CHAR);
+  BEGIN
+    Err.String(fileName); Err.Char(":");
+    Err.Int(line, 0); Err.Char(":"); Err.Int(column, 0);
+    Err.String(": note: "); Err.String(message); Err.Ln
+  END Note;
+
   (* Under -strict: the construct at line:column, described by what (such
      as "HUGEINT" or "an external procedure"), is poc's extension, not
      Oberon2.pdf's; an error. Otherwise nothing. *)

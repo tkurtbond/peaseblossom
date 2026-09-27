@@ -9,6 +9,7 @@ usage: poc -dump-tokens <file>
        poc -emit-llvm-ir <file>
        poc -o <exe> -build <file>
        poc -library <name> <file>...
+       poc -install-library <name>
        poc [-import-path <dir> | -clear-import-path]... -print-import-path
        poc [-library-path <dir> | -clear-library-path]... -print-library-path
        -import-path <dir> and -clear-import-path may also precede any
@@ -47,6 +48,8 @@ usage: poc -dump-tokens <file>
        repeatable, then POC_LIBRARY_PATH (colon-separated), then poc's
        ../lib/poc, are searched for libraries: a module one has is taken
        from it, not compiled; -clear-library-path leaves all of them out
+       -install-library copies the library <name> from the library path into
+       <output-dir>/<triple>/<O2|OC>/, or without -output-dir poc's ../lib/poc
        -shared-libraries may precede -build: link the libraries dynamically
        -strict may precede any command above: the module named rejects
        everything beyond the Oberon-2 report (its imports are not checked)

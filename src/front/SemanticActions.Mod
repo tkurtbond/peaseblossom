@@ -137,6 +137,11 @@ MODULE SemanticActions;
        "not exported"), so a caller's own generic "undeclared identifier"
        does not pile a second, less precise error on the same position. *)
     lookupDiagnosed: BOOLEAN;
+    (* Phase 12 step 2e: the scope of an import that was not found. The
+       name is still declared, with this empty scope, so that its uses are
+       not each reported again ("not an imported module") after the error
+       on the import itself. *)
+    unresolvedModuleScope: SymbolTable.Scope;
     (* The TYPE declarations of the DeclSeq CheckDeclarations is checking
        that follow its next procedure, not yet declared: a POINTER TO base
        found among them gets a message saying why it cannot be used yet.
@@ -197,7 +202,11 @@ MODULE SemanticActions;
       RETURN obj
     END;
     modObj := SymbolTable.Find(scope, qualifier);
-    IF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN
+    IF (modObj # NIL) & (modObj.class = SymbolTable.moduleClass)
+       & (modObj.moduleScope = unresolvedModuleScope) THEN
+      lookupDiagnosed := TRUE; (* the import's error is enough *)
+      RETURN NIL
+    ELSIF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN
       Diagnostics.Error(line, column, "not an imported module");
       lookupDiagnosed := TRUE;
       RETURN NIL
@@ -3594,7 +3603,15 @@ MODULE SemanticActions;
       END;
       ModuleInterface.ReadSource(imp.moduleName, buffer, length, found);
       IF ~found THEN
-        Diagnostics.Error(imp.line, imp.column, "unknown imported module")
+        Diagnostics.Error(imp.line, imp.column, "unknown imported module");
+        IF ModuleInterface.explainMissingModule # NIL THEN
+          ModuleInterface.explainMissingModule(module.name, imp.moduleName, imp.line, imp.column)
+        END;
+        IF unresolvedModuleScope = NIL THEN unresolvedModuleScope := SymbolTable.OpenScope(NIL) END;
+        IF imp.alias[0] # 0X THEN bindName := imp.alias ELSE bindName := imp.moduleName END;
+        obj := SymbolTable.Insert(scope, bindName, SymbolTable.moduleClass, NIL, FALSE, FALSE,
+                                   imp.line, imp.column);
+        obj.moduleScope := unresolvedModuleScope; obj.realModuleName := imp.moduleName
       ELSE
         errorCountBefore := Diagnostics.errorCount;
         impModule := parseModule(buffer, length);

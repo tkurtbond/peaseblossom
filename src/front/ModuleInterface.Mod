@@ -176,6 +176,9 @@ MODULE ModuleInterface;
        name, when one on the library path has it (Poc.Mod supplies it: the
        library path is the driver's business) *)
     LibraryLookup* = PROCEDURE (name: ARRAY OF CHAR; VAR dir: ARRAY OF CHAR): BOOLEAN;
+    (* Phase 12 step 2e: says, as notes at line:column, where the module
+       name, imported by importer, was looked for *)
+    MissingModuleExplainer* = PROCEDURE (importer, name: ARRAY OF CHAR; line, column: INTEGER);
 
     SearchPathEntry* = POINTER TO SearchPathEntryDesc;
     SearchPathEntryDesc* = RECORD
@@ -216,6 +219,11 @@ MODULE ModuleInterface;
        from the library that has it before anywhere else: a library's
        module is used as the library has it, never regenerated *)
     libraryLookup*: LibraryLookup;
+    (* Phase 12 step 2e: when not NIL, called by the checker after an
+       import it found no .sym for *)
+    explainMissingModule*: MissingModuleExplainer;
+    (* the .sym file ReadSource* opened last *)
+    interfacePath*: ARRAY pathBufferLength OF CHAR;
     (* Phase 12 step 2b: the key of every module whose .sym this run has
        written or read, the latest first *)
     keys: ModuleKey;
@@ -338,12 +346,6 @@ MODULE ModuleInterface;
     RETURN f
   END OpenFound;
 
-  PROCEDURE Open(name: ARRAY OF CHAR): Files.File;
-    VAR path: ARRAY pathBufferLength OF CHAR;
-  BEGIN
-    RETURN OpenFound(name, path)
-  END Open;
-
   (* ---- Module keys (Phase 12 step 2b) ----
 
      A module's key is the 64-bit FNV-1a hash of its .sym file's bytes, as
@@ -410,6 +412,17 @@ MODULE ModuleInterface;
     entry.next := keys; keys := entry
   END RecordKey;
 
+  (* The same hash of the file at path, any file (Phase 12 step 2e: a
+     library records its modules' sources' so a different source can be
+     told from the one it was built from); FALSE when it cannot be opened *)
+  PROCEDURE KeyOfFile*(path: ARRAY OF CHAR; VAR key: ARRAY OF CHAR): BOOLEAN;
+    VAR f: Files.File;
+  BEGIN
+    f := Files.Old(path);
+    IF f # NIL THEN HashFile(f, key); Files.Close(f) END;
+    RETURN f # NIL
+  END KeyOfFile;
+
   (* The key of the module moduleName, from the .sym this run wrote or read
      for it last; FALSE when there was none (SYSTEM, or a module only
      compiled from source, as the program's main module is) *)
@@ -426,6 +439,11 @@ MODULE ModuleInterface;
   BEGIN
     COPY(dir, interfaceDir)
   END SetInterfaceDir;
+
+  PROCEDURE GetInterfaceDir*(VAR dir: ARRAY OF CHAR);
+  BEGIN
+    COPY(interfaceDir, dir)
+  END GetInterfaceDir;
 
   PROCEDURE ReadSource*(moduleName: SyntaxTree.Ident; VAR buffer: Lexer.CharBuffer;
                         VAR length: LONGINT; VAR found: BOOLEAN);
@@ -449,11 +467,11 @@ MODULE ModuleInterface;
       JoinPath(interfaceDir, name, path);
       f := Files.Old(path)
     END;
-    IF f = NIL THEN f := Open(name) END;
+    IF f = NIL THEN f := OpenFound(name, path) END;
     IF f = NIL THEN
       found := FALSE; length := 0
     ELSE
-      found := TRUE;
+      found := TRUE; COPY(path, interfacePath);
       RecordKey(moduleName, f);
       NEW(buffer, Files.Length(f) + 1);
       Files.Set(r, f, 0);

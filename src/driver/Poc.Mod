@@ -232,8 +232,6 @@ MODULE Poc;
     END
   END Check;
 
-  (* Explicit -target flag wins; otherwise LLVMToolchainDriver.HostTriple's
-     auto-detected default (PLAN.md Phase 8 step 2). *)
   (* ---- Libraries (Phase 12 step 2c) ---- *)
 
   PROCEDURE Strcat(VAR s: ARRAY OF CHAR; suffix: ARRAY OF CHAR);
@@ -314,6 +312,82 @@ MODULE Poc;
     END
   END PrintLibraryPath;
 
+  (* ModuleInterface.explainMissingModule (Phase 12 step 2e): notes on the
+     import of name by importer that found neither source nor .sym - where
+     they were looked for, a library that has name for the other size
+     model, and a library importer's library needs that is not on the
+     library path. The library path is only searched, and so only described,
+     by the commands that set its target. *)
+  PROCEDURE ExplainMissingModule(importer, name: ARRAY OF CHAR; line, column: INTEGER);
+    VAR
+      text: ARRAY 8192 OF CHAR; dir: ARRAY ModuleInterface.pathBufferLength OF CHAR;
+      triple, owner: Libraries.Name; libDir: Libraries.Path; model, otherModel: ARRAY 3 OF CHAR;
+      e: ModuleInterface.SearchPathEntry; l: Libraries.PathEntry;
+      lib: Libraries.Library; need: Libraries.Need;
+  BEGIN
+    (* the commands that search the library path, which is when the target
+       is set, compile imports from source; the others only read .sym files *)
+    Libraries.GetTarget(triple, model);
+    COPY("no ", text); Strcat(text, name);
+    IF triple[0] # 0X THEN
+      Strcat(text, ".Mod, "); Strcat(text, name); Strcat(text, ".mod or "); Strcat(text, name)
+    END;
+    Strcat(text, ".sym in the current directory");
+    ModuleInterface.GetInterfaceDir(dir);
+    IF (dir[0] # 0X) & (dir # ".") THEN Strcat(text, ", "); Strcat(text, dir) END;
+    e := ModuleInterface.FirstSearchPathEntry();
+    IF e = NIL THEN Strcat(text, " (the import path is empty)")
+    ELSE
+      Strcat(text, " or on the import path (");
+      WHILE e # NIL DO
+        Strcat(text, e.dir); e := e.next;
+        IF e # NIL THEN Strcat(text, ", ") END
+      END;
+      Strcat(text, ")")
+    END;
+    Diagnostics.Note(line, column, text);
+    IF triple[0] = 0X THEN RETURN END;
+    l := Libraries.FirstPathEntry();
+    IF l = NIL THEN
+      Diagnostics.Note(line, column, "the library path is empty")
+    ELSE
+      COPY("no library for ", text); Strcat(text, triple); Strcat(text, " -"); Strcat(text, model);
+      Strcat(text, " on the library path (");
+      WHILE l # NIL DO
+        Strcat(text, l.dir); l := l.next;
+        IF l # NIL THEN Strcat(text, ", ") END
+      END;
+      Strcat(text, ") has "); Strcat(text, name);
+      Diagnostics.Note(line, column, text);
+      IF model = "O2" THEN otherModel := "OC" ELSE otherModel := "O2" END;
+      l := Libraries.FirstPathEntry();
+      WHILE l # NIL DO
+        IF Libraries.OwnerIn(l.dir, otherModel, name, owner, libDir) THEN
+          COPY("library ", text); Strcat(text, owner); Strcat(text, " ("); Strcat(text, libDir);
+          Strcat(text, ") has "); Strcat(text, name); Strcat(text, ", but for -"); Strcat(text, otherModel);
+          Strcat(text, ", and this is -"); Strcat(text, model);
+          Diagnostics.Note(line, column, text)
+        END;
+        l := l.next
+      END
+    END;
+    lib := Libraries.FindModule(importer);
+    IF lib # NIL THEN
+      need := lib.needs;
+      WHILE need # NIL DO
+        IF Libraries.FindLibrary(need.name) = NIL THEN
+          COPY(importer, text); Strcat(text, " is from library "); Strcat(text, lib.name);
+          Strcat(text, " ("); Strcat(text, lib.dir); Strcat(text, "), which needs library ");
+          Strcat(text, need.name); Strcat(text, ", and the library path has no ");
+          Strcat(text, need.name); Strcat(text, " for "); Strcat(text, triple);
+          Strcat(text, " -"); Strcat(text, model);
+          Diagnostics.Note(line, column, text)
+        END;
+        need := need.next
+      END
+    END
+  END ExplainMissingModule;
+
   (* The libraries the program modules (from DiscoverModule) needs, checked
      (Libraries.ComputeLinkOrder), and each module the program takes from
      one checked against its library's manifest - the key of the .sym the
@@ -349,6 +423,8 @@ MODULE Poc;
     RETURN ok
   END PrepareLibraries;
 
+  (* Explicit -target flag wins; otherwise LLVMToolchainDriver.HostTriple's
+     auto-detected default (PLAN.md Phase 8 step 2). *)
   PROCEDURE ResolveTriple(explicitTriple: ARRAY OF CHAR; VAR triple: ARRAY OF CHAR): BOOLEAN;
   BEGIN
     IF explicitTriple[0] # 0X THEN
@@ -454,6 +530,29 @@ MODULE Poc;
     Err.Ln
   END NotLibraryMember;
 
+  (* Phase 12 step 2e: a warning when the module name, which the library
+     lib has, also has source in the current directory or on the import
+     path that is not the source lib was built from: that source is passed
+     over, which the user may not expect. The same source, as poc-rtl's
+     rtl/llvm is, says nothing. *)
+  PROCEDURE WarnIfSourceDiffers(name: SyntaxTree.Ident; lib: Libraries.Library);
+    VAR
+      buffer: Lexer.CharBuffer; length: LONGINT; found: BOOLEAN;
+      member: Libraries.Member; key: Libraries.Key;
+  BEGIN
+    ModuleInterface.ReadModuleSource(name, buffer, length, found);
+    IF ~found THEN RETURN END;
+    member := Libraries.FindMember(lib, name);
+    IF (member # NIL) & ModuleInterface.KeyOfFile(ModuleInterface.sourcePath, key)
+       & (key = member.source) THEN
+      RETURN
+    END;
+    Err.String("poc: warning: module "); Err.String(name); Err.String(" is taken from library ");
+    Err.String(lib.name); Err.String(" ("); Err.String(lib.dir); Err.String("), not compiled from ");
+    Err.String(ModuleInterface.sourcePath); Err.String(", which is not the source it was built from");
+    Err.Ln
+  END WarnIfSourceDiffers;
+
   PROCEDURE ^ DiscoverModule(name: SyntaxTree.Ident;
                              VAR modules, tail: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
 
@@ -534,13 +633,26 @@ MODULE Poc;
     WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
     IF m # NIL THEN RETURN END;
     lib := Libraries.FindModule(name);
-    IF lib # NIL THEN DiscoverLibraryModule(name, lib, modules, tail, ok); RETURN END;
+    IF lib # NIL THEN
+      WarnIfSourceDiffers(name, lib);
+      DiscoverLibraryModule(name, lib, modules, tail, ok);
+      RETURN
+    END;
     IF (members # NIL) & (FindMember(name) = NIL) THEN
       NotLibraryMember(name); ok := FALSE; RETURN
     END;
     ReadModuleText(name, buffer, length, found, sourcePath); (* before an import reads another *)
     IF ~found THEN
-      failed := TRUE; Err.String("poc: cannot find source for imported module "); Err.String(name); Err.Ln;
+      (* the checker found its .sym, or it would have stopped there: a
+         compiled module outside a library, which poc does not take
+         (Phase 12 step 2e) *)
+      failed := TRUE; Err.String("poc: cannot find source for imported module "); Err.String(name);
+      ModuleInterface.ReadSource(name, buffer, length, found);
+      IF found THEN
+        Err.String(", only its interface "); Err.String(ModuleInterface.interfacePath);
+        Err.String("; a compiled module is taken only from a library (poc -library)")
+      END;
+      Err.Ln;
       ok := FALSE; RETURN
     END;
     COPY(Diagnostics.fileName, savedFileName);
@@ -992,6 +1104,7 @@ MODULE Poc;
       IF ~m.inLibrary THEN
         IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
         libMember := Libraries.AddMember(lib, m.module.name, key);
+        IF ModuleInterface.KeyOfFile(m.fileName, key) THEN COPY(key, libMember.source) END;
         imp := m.module.imports;
         WHILE imp # NIL DO
           IF ModuleInterface.KeyOf(imp.moduleName, key) THEN Libraries.AddImport(libMember, imp.moduleName, key) END;
@@ -1209,6 +1322,120 @@ MODULE Poc;
     END
   END DumpNested;
 
+  (* Appends word to command, single-quoted for the shell after a space;
+     FALSE when it has a single quote itself *)
+  PROCEDURE AppendQuoted(VAR command: ARRAY OF CHAR; word: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE word[i] # 0X DO
+      IF word[i] = "'" THEN RETURN FALSE END;
+      INC(i)
+    END;
+    Strcat(command, " '"); Strcat(command, word); Strcat(command, "'");
+    RETURN TRUE
+  END AppendQuoted;
+
+  (* Phase 12 step 2e: poc -install-library name copies the library name,
+     from the library path, for the target and size model, into
+     <base>/<triple>/<O2|OC>/, base -output-dir or else poc's own
+     ../lib/poc, the last directory of every poc's library path: its
+     manifest, archive and shared library, and each module's .sym and
+     .owner file. A copy installed before is replaced, the files of modules
+     it no longer has removed. Refused when that directory already has one
+     of its modules from another library, or is where the library is. *)
+  PROCEDURE InstallLibrary(name, outputDir, explicitTriple: ARRAY OF CHAR);
+    VAR
+      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+      base, dir, file: Libraries.Path; program: Libraries.Path; owner: Libraries.Name;
+      command: ARRAY 16 * Libraries.pathLength OF CHAR; lib, old: Libraries.Library;
+      m: Libraries.Member; ok: BOOLEAN; status: INTEGER; f: Files.File; model: ARRAY 3 OF CHAR;
+  BEGIN
+    IF ~ResolveTriple(explicitTriple, triple) THEN
+      failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
+      RETURN
+    END;
+    SetLibraryTarget(triple);
+    lib := Libraries.FindLibrary(name);
+    IF lib = NIL THEN
+      Libraries.GetTarget(triple, model);
+      failed := TRUE; Err.String("poc: no library "); Err.String(name); Err.String(" for ");
+      Err.String(triple); Err.String(" -"); Err.String(model); Err.String(" on the library path"); Err.Ln;
+      RETURN
+    END;
+    IF outputDir[0] # 0X THEN COPY(outputDir, base)
+    ELSE
+      Modules.GetArg(0, program);
+      IF ~Libraries.PocLibraryDir(program, TRUE, base) THEN
+        failed := TRUE; Err.String("poc: cannot make poc's library directory"); Err.Ln;
+        RETURN
+      END
+    END;
+    Libraries.TupleDirectory(base, dir);
+    COPY("mkdir -p", command);
+    IF ~AppendQuoted(command, dir) OR ~AppendQuoted(command, lib.dir) THEN
+      failed := TRUE; Err.String("poc: a directory's name has a single quote"); Err.Ln; RETURN
+    END;
+    COPY("mkdir -p", command); ok := AppendQuoted(command, dir);
+    Strcat(command, ' && [ "$(cd'); ok := AppendQuoted(command, lib.dir);
+    Strcat(command, ' && pwd -P)" != "$(cd'); ok := AppendQuoted(command, dir);
+    Strcat(command, ' && pwd -P)" ]');
+    IF Platform.System(command) # 0 THEN
+      failed := TRUE; Err.String("poc: library "); Err.String(name); Err.String(" is in ");
+      Err.String(dir); Err.String(" already"); Err.Ln;
+      RETURN
+    END;
+    (* a module another library there has *)
+    m := lib.modules; ok := TRUE;
+    WHILE m # NIL DO
+      IF Libraries.HasOwner(dir, m.name, owner) & (owner # name) THEN
+        failed := TRUE; Err.String("poc: module "); Err.String(m.name); Err.String(" is in library ");
+        Err.String(owner); Err.String(" in "); Err.String(dir); Err.String(" already"); Err.Ln;
+        ok := FALSE
+      END;
+      m := m.next
+    END;
+    IF ~ok THEN RETURN END;
+    (* the files of a copy installed before *)
+    COPY(dir, file); Strcat(file, "/"); Strcat(file, name); Strcat(file, ".library");
+    f := Files.Old(file);
+    IF f # NIL THEN
+      Files.Close(f);
+      old := Libraries.LoadFrom(name, dir);
+      IF old # NIL THEN
+        COPY("cd", command); ok := AppendQuoted(command, dir); Strcat(command, " && rm -f");
+        m := old.modules;
+        WHILE m # NIL DO
+          COPY(m.name, file); Strcat(file, ".sym"); ok := AppendQuoted(command, file);
+          COPY(m.name, file); Strcat(file, ".owner"); ok := AppendQuoted(command, file);
+          m := m.next
+        END;
+        status := Platform.System(command)
+      END
+    END;
+    (* the files, copied *)
+    COPY("cd", command); ok := AppendQuoted(command, lib.dir); Strcat(command, " && cp");
+    COPY(name, file); Strcat(file, ".library"); ok := AppendQuoted(command, file);
+    COPY("lib", file); Strcat(file, name); Strcat(file, ".a"); ok := AppendQuoted(command, file);
+    LLVMToolchainDriver.SharedLibraryName(name, triple, file); ok := AppendQuoted(command, file);
+    m := lib.modules;
+    WHILE m # NIL DO
+      COPY(m.name, file); Strcat(file, ".sym"); ok := AppendQuoted(command, file);
+      COPY(m.name, file); Strcat(file, ".owner"); ok := AppendQuoted(command, file);
+      m := m.next
+    END;
+    (* after the cd, a relative dir is from the current directory *)
+    IF dir[0] = "/" THEN ok := AppendQuoted(command, dir)
+    ELSE COPY(Platform.CWD, file); Strcat(file, "/"); Strcat(file, dir); ok := AppendQuoted(command, file)
+    END;
+    IF Platform.System(command) # 0 THEN
+      failed := TRUE; Err.String("poc: installing library "); Err.String(name); Err.String(" in ");
+      Err.String(dir); Err.String(" failed"); Err.Ln;
+      RETURN
+    END;
+    Out.String("installed library "); Out.String(name); Out.String(" in "); Out.String(dir); Out.Ln
+  END InstallLibrary;
+
   PROCEDURE Usage;
   BEGIN
     failed := TRUE;
@@ -1223,6 +1450,7 @@ MODULE Poc;
     Err.String("       poc -emit-llvm-ir <file>"); Err.Ln;
     Err.String("       poc -o <exe> -build <file>"); Err.Ln;
     Err.String("       poc -library <name> <file>..."); Err.Ln;
+    Err.String("       poc -install-library <name>"); Err.Ln;
     Err.String("       poc [-import-path <dir> | -clear-import-path]... -print-import-path"); Err.Ln;
     Err.String("       poc [-library-path <dir> | -clear-library-path]... -print-library-path"); Err.Ln;
     Err.String("       -import-path <dir> and -clear-import-path may also precede any"); Err.Ln;
@@ -1261,6 +1489,8 @@ MODULE Poc;
     Err.String("       repeatable, then POC_LIBRARY_PATH (colon-separated), then poc's"); Err.Ln;
     Err.String("       ../lib/poc, are searched for libraries: a module one has is taken"); Err.Ln;
     Err.String("       from it, not compiled; -clear-library-path leaves all of them out"); Err.Ln;
+    Err.String("       -install-library copies the library <name> from the library path into"); Err.Ln;
+    Err.String("       <output-dir>/<triple>/<O2|OC>/, or without -output-dir poc's ../lib/poc"); Err.Ln;
     Err.String("       -shared-libraries may precede -build: link the libraries dynamically"); Err.Ln;
     Err.String("       -strict may precede any command above: the module named rejects"); Err.Ln;
     Err.String("       everything beyond the Oberon-2 report (its imports are not checked)"); Err.Ln
@@ -1331,6 +1561,7 @@ MODULE Poc;
   BEGIN
     InitImportPathFromEnvironment;
     ModuleInterface.libraryLookup := LibraryInterfaceDir;
+    ModuleInterface.explainMissingModule := ExplainMissingModule;
     IF Modules.ArgCount < 2 THEN
       Usage
     ELSE
@@ -1375,6 +1606,14 @@ MODULE Poc;
         ELSIF arg = "-shared-libraries" THEN
           sharedLibraries := TRUE;
           INC(i)
+        ELSIF arg = "-install-library" THEN
+          IF i + 1 < Modules.ArgCount THEN
+            Modules.GetArg(i + 1, param);
+            InstallLibrary(param, outputDir, targetTriple)
+          ELSE
+            failed := TRUE; Err.String("poc: -install-library requires a name"); Err.Ln
+          END;
+          done := TRUE
         ELSIF arg = "-library" THEN
           IF i + 2 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, param);

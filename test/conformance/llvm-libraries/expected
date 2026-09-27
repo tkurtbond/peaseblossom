@@ -7,6 +7,8 @@ model O2
 needs poc-rtl
 module Lists <key>
 module Stacks <key>
+source Lists <key>
+source Stacks <key>
 import Lists Out <key>
 import Stacks Lists <key>
 Lists.ll
@@ -40,6 +42,7 @@ poc: module Helper is imported but is neither one of the library's files nor in 
 == one module in two libraries
 semantic OK, wrote library dup in lib3/<triple>/O2
 exit=1
+poc: warning: module Lists is taken from library shapes (lib/<triple>/O2), which hides library dup's (lib3/<triple>/O2)
 poc: module Lists is in library dup (lib3/<triple>/O2) and in library shapes (lib/<triple>/O2); a program can link only one of them
 == shapes against an older Out
 semantic OK, wrote library poc-rtl in libstale/<triple>/O2
