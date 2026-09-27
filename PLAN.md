@@ -1295,9 +1295,50 @@ convenient, but must not be a prerequisite of it.
    `-clear-library-path` (poc from source, independent of any library;
    the fixed point compares every module), and so do the fixtures that
    show or relink the objects compiled from source (`llvm-module-keys`,
-   `poc-link-flags`); **2e**
-   the fixtures this step's testing paragraph asks for, on Linux and the
-   BSD hosts, at both word sizes.
+   `poc-link-flags`); **2e** using modules and libraries (added with the
+   user 2026-09-27, after trying four ways a program gets its modules with
+   the 2d poc): (1) the program's own modules and poc's runtime, which
+   works with no flags, the runtime linked from `poc-rtl`; (2) modules
+   someone else shared, which work as source through `-import-path`
+   (compiled with the program, their `.sym`/`.ll`/`.o` written beside it)
+   but not as `.sym` and `.o` files alone ("cannot find source"); (3) the
+   user's own library, which works (`-library`, then `-library-path`,
+   statically or with `-shared-libraries`); (4) several libraries from
+   others, which works too: a library's needs are linked after it, and a
+   library compiled against another's old key is refused with a message
+   that names both. What falls short, and this sub-step does:
+   - Diagnostics. A module found nowhere gives only "unknown imported
+     module", in the program or, for a library's missing need, in the
+     library's `.sym` (`Loud.sym:2:10`). The message is to say what was
+     searched - the import path and the library path, and the triple and
+     size model the library was looked for under, so a library built for
+     `-O2` only is recognized as such under `-OC` - and, for a library
+     whose needed library is not on the path, name both libraries.
+   - Shadowing. A library module is taken in preference to source of the
+     same name, and the first library on the path that has a module
+     shadows the others (a module in two libraries is refused only when
+     both are linked). Both are to be warned about, naming what was
+     passed over; the rules themselves stay.
+   - Compiled modules outside a library: decided, not supported. A library
+     is the only compiled form poc takes (one module is a library too), so
+     the key checks stay in one place; the "cannot find source" message is
+     to say so and point at `-library`.
+   - Installation: `poc -install-library` copies a library's files for one
+     triple and size model into `<prefix>/lib/poc/<triple>/<O2|OC>/`, by
+     default the `../lib/poc` an installed poc already searches, so every
+     build finds it with no flag; and a program linked with
+     `-shared-libraries` finds its shared libraries through a run-time
+     search path that survives moving the program and its libraries
+     together (`$ORIGIN`-relative, to be checked on each of the four
+     systems), not only the absolute directory it was built against.
+   - Deferred, not in this sub-step: incremental builds (skipping a
+     module whose source and imports' keys are unchanged; every `-build`
+     now compiles every module that is not in a library).
+   Fixtures: each of the four ways, with the messages and warnings above
+   as golden output;
+   **2f** the fixtures this step's testing paragraph asks for, on Linux and
+   the BSD hosts, at both word sizes, and the rackhir run of step 2's
+   commits.
 
 3. **A complete inventory of the libraries and modules voc supplies.**
    From the sources, not from memory: enumerate every module under the
