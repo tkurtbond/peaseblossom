@@ -3,6 +3,8 @@ semantic OK, wrote constir.ll
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+
+@constir.-initialized = internal global i1 false
 @constir.s = global i8 zeroinitializer
 @constir.i = global i16 zeroinitializer
 @constir.l = global i32 zeroinitializer
@@ -16,14 +18,20 @@ declare void @exit(i32)
 
 define void @constir_init() {
 entry:
+  %t1 = load i1, ptr @constir.-initialized
+  br i1 %t1, label %L1, label %L2
+L1:
+  ret void
+L2:
+  store i1 true, ptr @constir.-initialized
   store i16 220, ptr @constir.i
   store i8 -128, ptr @constir.s
   store i8 127, ptr @constir.s
   store i32 100001, ptr @constir.l
   store i64 10000000000, ptr @constir.h
-  %t1 = load i16, ptr @constir.i
-  %t2 = add i16 %t1, 20000
-  store i16 %t2, ptr @constir.i
+  %t2 = load i16, ptr @constir.i
+  %t3 = add i16 %t2, 20000
+  store i16 %t3, ptr @constir.i
   store i32 1048576, ptr @constir.l
   store i64 1099511627776, ptr @constir.h
   store float 0x47EFFFFFE0000000, ptr @constir.r
@@ -43,6 +51,8 @@ semantic OK, wrote constir.ll
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+
+@constir.-initialized = internal global i1 false
 @constir.s = global i16 zeroinitializer
 @constir.i = global i32 zeroinitializer
 @constir.l = global i64 zeroinitializer
@@ -56,17 +66,23 @@ declare void @exit(i32)
 
 define void @constir_init() {
 entry:
-  %t1 = sext i16 220 to i32
-  store i32 %t1, ptr @constir.i
+  %t1 = load i1, ptr @constir.-initialized
+  br i1 %t1, label %L1, label %L2
+L1:
+  ret void
+L2:
+  store i1 true, ptr @constir.-initialized
+  %t2 = sext i16 220 to i32
+  store i32 %t2, ptr @constir.i
   store i16 -128, ptr @constir.s
   store i16 127, ptr @constir.s
-  %t2 = sext i32 100001 to i64
-  store i64 %t2, ptr @constir.l
+  %t3 = sext i32 100001 to i64
+  store i64 %t3, ptr @constir.l
   store i64 10000000000, ptr @constir.h
-  %t3 = load i32, ptr @constir.i
-  %t4 = sext i16 20000 to i32
-  %t5 = add i32 %t3, %t4
-  store i32 %t5, ptr @constir.i
+  %t4 = load i32, ptr @constir.i
+  %t5 = sext i16 20000 to i32
+  %t6 = add i32 %t4, %t5
+  store i32 %t6, ptr @constir.i
   store i64 1048576, ptr @constir.l
   store i64 1099511627776, ptr @constir.h
   store float 0x47EFFFFFE0000000, ptr @constir.r

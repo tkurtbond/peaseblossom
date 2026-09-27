@@ -1,0 +1,5 @@
+semantic OK, wrote llvm-module-init-order
+base
+right 2
+left 3
+initorder 3

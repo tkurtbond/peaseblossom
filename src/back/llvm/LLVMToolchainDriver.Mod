@@ -39,10 +39,12 @@ MODULE LLVMToolchainDriver;
        user 2026-09-27): poc -static makes Build link a fully static
        executable (clang -static), poc -verbose makes it print the clang
        command on stderr before running it, and each poc -link <arg> adds
-       <arg> to that command (AddLinkArgument), after the program's .ll and
+       <arg> to that command (AddLinkArgument), after the program's objects and
        before -lm, so a library named there can itself use libm. *)
     staticLink*, verbose*: BOOLEAN;
     linkArguments: ARRAY linkArgumentsLength OF CHAR;
+    (* the clang command Build runs: the link names every module's object *)
+    command: ARRAY 65536 OF CHAR;
 
   PROCEDURE JoinPath(dir, name: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
     VAR i, j: INTEGER;
@@ -132,74 +134,83 @@ MODULE LLVMToolchainDriver;
     RETURN ok
   END HostTriple;
 
-  (* Writes LLVMCodeGenerator.GenerateProgram*'s output to <outputDir>/
-     <topName>.ll (cwd if outputDir is empty) - see this module's own
-     header comment for why this needs the same chdir dance
-     ModuleInterface.Write* already established. PLAN.md Phase 8 step 12:
-     takes the whole program's own dependency-ordered ModuleList (built
-     by Poc.Mod's own transitive-IMPORT discovery, this module never
-     doing that discovery itself - see this module's own header comment
-     on why file-path/directory concerns live here but front-end
-     concerns don't) instead of a single module/scope pair; topName
-     names the output file since GenerateProgram*'s own list no longer
-     carries one bare "the module" to derive it from - it's always the
-     list's own last entry (the real top, command-line-specified module,
-     see ModuleList's own header comment), but the caller already knows
-     that name directly, so it is passed rather than re-derived by
-     walking the list here. *)
+  (* <outputDir>/<moduleName><suffix>, or <moduleName><suffix> when outputDir
+     is empty: where EmitIR writes a module's IR (suffix ".ll") and Build its
+     object file (".o") *)
+  PROCEDURE ModuleFilePath*(outputDir, moduleName, suffix: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
+    VAR name: ARRAY nameBufferLength OF CHAR;
+  BEGIN
+    COPY(moduleName, name); Strcat(name, suffix);
+    IF outputDir[0] # 0X THEN JoinPath(outputDir, name, path) ELSE COPY(name, path) END
+  END ModuleFilePath;
+
+  (* Writes one module's IR, LLVMCodeGenerator.GenerateModule's, to
+     <moduleName>.ll in the current directory. The struct type definitions
+     come first, and only the end of generating tells which there are, so
+     the rest goes to <moduleName>.ll.body first and is copied after them. *)
+  PROCEDURE EmitModuleIR(modules, target: LLVMCodeGenerator.ModuleList; triple: ARRAY OF CHAR);
+    VAR
+      name, bodyName: ARRAY nameBufferLength OF CHAR;
+      f, bodyFile: Files.File; w, body: Files.Rider; deleteResult: INTEGER;
+  BEGIN
+    COPY(target.module.name, name); Strcat(name, ".ll");
+    COPY(name, bodyName); Strcat(bodyName, ".body");
+    f := Files.New(name);
+    Files.Set(w, f, 0);
+    bodyFile := Files.New(bodyName);
+    Files.Set(body, bodyFile, 0);
+    LLVMCodeGenerator.GenerateModule(modules, target, triple, w, body);
+    Files.Register(bodyFile); Files.Close(bodyFile);
+    deleteResult := Platform.Unlink(bodyName);
+    Files.Register(f); Files.Close(f)
+  END EmitModuleIR;
+
+  (* Writes the IR of every module of the program (Poc.Mod's dependency-
+     ordered ModuleList, the main module last) to <outputDir>/<module>.ll,
+     one file per module (Phase 12 step 2a), and sets pathOut to the main
+     module's. Files.New does not fail gracefully on a missing directory
+     (unlike Files.Old), hence the chdir into outputDir and back, as in
+     ModuleInterface.Write. *)
   PROCEDURE EmitIR*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
                     triple, outputDir: ARRAY OF CHAR; VAR pathOut: ARRAY OF CHAR): BOOLEAN;
     VAR
-      name, bodyName: ARRAY nameBufferLength OF CHAR;
-      f, bodyFile: Files.File; w, body: Files.Rider; ok: BOOLEAN;
+      name: ARRAY nameBufferLength OF CHAR;
+      m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
       savedDir, dir: ARRAY dirBufferLength OF CHAR;
       chdirResult, deleteResult: INTEGER;
-      i, errorsBefore: INTEGER;
+      errorsBefore: INTEGER;
   BEGIN
     errorsBefore := Diagnostics.errorCount;
+    LLVMCodeGenerator.unsupportedCount := 0;
     (* the directory the modules' file names are relative to, for -g;
        before any Chdir into outputDir *)
     COPY(Platform.CWD, LLVMCodeGenerator.debugDirectory);
-    i := 0;
-    WHILE topName[i] # 0X DO name[i] := topName[i]; INC(i) END;
-    name[i] := "."; name[i + 1] := "l"; name[i + 2] := "l"; name[i + 3] := 0X;
+    ModuleFilePath(outputDir, topName, ".ll", pathOut);
     ok := TRUE;
     IF outputDir[0] # 0X THEN
-      JoinPath(outputDir, name, pathOut);
       COPY(Platform.CWD, savedDir);
       COPY(outputDir, dir);
       chdirResult := Platform.Chdir(dir);
       ok := chdirResult = 0
-    ELSE
-      COPY(name, pathOut)
     END;
     IF ok THEN
-      f := Files.New(name);
-      Files.Set(w, f, 0);
-      (* where GenerateProgram puts the IR that follows the struct type
-         definitions, before copying it into f; registered under a name of
-         its own so that it can be removed (see below) *)
-      COPY(name, bodyName); i := 0;
-      WHILE bodyName[i] # 0X DO INC(i) END;
-      bodyName[i] := "."; bodyName[i + 1] := "b"; bodyName[i + 2] := "o"; bodyName[i + 3] := "d";
-      bodyName[i + 4] := "y"; bodyName[i + 5] := 0X;
-      bodyFile := Files.New(bodyName);
-      Files.Set(body, bodyFile, 0);
-      LLVMCodeGenerator.GenerateProgram(modules, triple, w, body);
-      Files.Register(bodyFile); Files.Close(bodyFile);
-      deleteResult := Platform.Unlink(bodyName);
+      m := modules;
+      WHILE m # NIL DO EmitModuleIR(modules, m, triple); m := m.next END;
       (* IR with a construct missing is worse than none, and so is a stale
-         file from an earlier run beside it: it is written and deleted again,
-         not just left unregistered (an unregistered Files.New file stays behind
-         as ".tmp.<n>.<pid>" in both runtimes), and the caller finds out
-         through LLVMCodeGenerator.unsupportedCount. The same goes for an
-         error reported while generating (Diagnostics.errorCount grew): the
-         constant folding the generator does can find what the checker did not,
-         and a program with an error in it must not get an object file or
-         an executable (Phase 11, C9). *)
-      Files.Register(f);
+         file from an earlier run beside it: every module's is written and
+         deleted again, and the caller finds out through LLVMCodeGenerator.
+         unsupportedCount. The same goes for an error reported while
+         generating (Diagnostics.errorCount grew): the constant folding the
+         generator does can find what the checker did not, and a program
+         with an error in it must not get an object file or an executable
+         (Phase 11, C9). *)
       IF (LLVMCodeGenerator.unsupportedCount > 0) OR (Diagnostics.errorCount > errorsBefore) THEN
-        deleteResult := Platform.Unlink(name); (* not Files.Delete: voc's renames to a temp name *)
+        m := modules;
+        WHILE m # NIL DO
+          COPY(m.module.name, name); Strcat(name, ".ll");
+          deleteResult := Platform.Unlink(name); (* not Files.Delete: voc's renames to a temp name *)
+          m := m.next
+        END;
         ok := FALSE
       END;
       IF outputDir[0] # 0X THEN chdirResult := Platform.Chdir(savedDir) END
@@ -211,10 +222,11 @@ MODULE LLVMToolchainDriver;
      shell characters it holds: single-quoted, each ' in it written '\''.
      FALSE, adding nothing, when the arguments given so far and arg would
      not fit in linkArgumentsLength. *)
-  PROCEDURE AddLinkArgument*(arg: ARRAY OF CHAR): BOOLEAN;
-    VAR quoted: ARRAY linkArgumentsLength OF CHAR; i, j, used: INTEGER;
+  (* " '<arg>'": arg as one word of a shell command, each ' in it written
+     '\''. FALSE when it does not fit in quoted. *)
+  PROCEDURE QuoteWord(arg: ARRAY OF CHAR; VAR quoted: ARRAY OF CHAR): BOOLEAN;
+    VAR i, j: INTEGER;
   BEGIN
-    used := 0; WHILE linkArguments[used] # 0X DO INC(used) END;
     quoted[0] := " "; quoted[1] := "'"; j := 2; i := 0;
     WHILE (arg[i] # 0X) & (j < LEN(quoted) - 6) DO
       IF arg[i] = "'" THEN
@@ -224,11 +236,27 @@ MODULE LLVMToolchainDriver;
       END;
       INC(i)
     END;
-    IF (arg[i] # 0X) OR (used + j + 2 > LEN(linkArguments)) THEN RETURN FALSE END;
     quoted[j] := "'"; quoted[j + 1] := 0X;
+    RETURN arg[i] = 0X
+  END QuoteWord;
+
+  PROCEDURE AddLinkArgument*(arg: ARRAY OF CHAR): BOOLEAN;
+    VAR quoted: ARRAY linkArgumentsLength OF CHAR; j, used: INTEGER;
+  BEGIN
+    used := 0; WHILE linkArguments[used] # 0X DO INC(used) END;
+    IF ~QuoteWord(arg, quoted) THEN RETURN FALSE END;
+    j := 0; WHILE quoted[j] # 0X DO INC(j) END;
+    IF used + j + 1 > LEN(linkArguments) THEN RETURN FALSE END;
     Strcat(linkArguments, quoted);
     RETURN TRUE
   END AddLinkArgument;
+
+  (* appends " '<path>'" to command (a module's file name can hold "$") *)
+  PROCEDURE AppendPath(path: ARRAY OF CHAR);
+    VAR quoted: ARRAY 2 * pathBufferLength OF CHAR; ok: BOOLEAN;
+  BEGIN
+    ok := QuoteWord(path, quoted); Strcat(command, quoted)
+  END AppendPath;
 
   (* Phase 11 D13: the level Build hands clang, as -O<level> - one of 0, 1,
      2, 3, s, z and g, the levels clang documents (-O alone, -O4 and up,
@@ -260,39 +288,59 @@ MODULE LLVMToolchainDriver;
     level[1] := 0X
   END DefaultOptimizationLevel;
 
-  (* Full build: EmitIR* first, then a single-step `clang --target=<triple>
-     <ll> -o <exePath> -lm -O<level>` (Platform.System) - see this module's own header comment
-     for why single-step, not a separate llc+link. *)
-  PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
-                   triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
-    VAR
-      llPath: ARRAY pathBufferLength OF CHAR;
-      cmd: ARRAY 2 * pathBufferLength + tripleBufferLength + linkArgumentsLength + 64 OF CHAR;
-      level: ARRAY 2 OF CHAR;
-      status: INTEGER;
+  (* Appends clang's options for the target and the optimization level *)
+  PROCEDURE AppendTargetOptions(VAR cmd: ARRAY OF CHAR; triple: ARRAY OF CHAR);
+    VAR level: ARRAY 2 OF CHAR;
   BEGIN
-    IF ~EmitIR(modules, topName, triple, outputDir, llPath) THEN RETURN FALSE END;
     (* --target matters for a cross build: the .ll file names its own
        triple, but clang only warns about that ("overriding the module
        target triple") and links for the host - a -target i686 build used
        to silently produce a 64-bit executable. *)
-    cmd := "clang --target=";
-    Strcat(cmd, triple);
-    Strcat(cmd, " ");
-    Strcat(cmd, llPath);
-    Strcat(cmd, " -o ");
-    Strcat(cmd, exePath);
-    Strcat(cmd, linkArguments);
+    Strcat(cmd, " --target="); Strcat(cmd, triple);
+    IF optimizationLevel[0] = 0X THEN DefaultOptimizationLevel(triple, level) ELSE COPY(optimizationLevel, level) END;
+    Strcat(cmd, " -O"); Strcat(cmd, level)
+  END AppendTargetOptions;
+
+  PROCEDURE RunCommand(): BOOLEAN;
+  BEGIN
+    IF verbose THEN Err.String(command); Err.Ln END;
+    RETURN Platform.System(command) = 0
+  END RunCommand;
+
+  (* Full build (Phase 12 step 2a): EmitIR, then `clang -c` compiles every
+     module's .ll to its own object file beside it, and one more clang links
+     the objects - the main module's last - with the -link arguments, libm
+     and -static if asked. *)
+  PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
+                   triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
+    VAR
+      path: ARRAY pathBufferLength OF CHAR;
+      m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
+  BEGIN
+    IF ~EmitIR(modules, topName, triple, outputDir, path) THEN RETURN FALSE END;
+    ok := TRUE; m := modules;
+    WHILE ok & (m # NIL) DO
+      command := "clang -c"; AppendTargetOptions(command, triple);
+      ModuleFilePath(outputDir, m.module.name, ".ll", path); AppendPath(path);
+      ModuleFilePath(outputDir, m.module.name, ".o", path);
+      Strcat(command, " -o"); AppendPath(path);
+      ok := RunCommand();
+      m := m.next
+    END;
+    IF ~ok THEN RETURN FALSE END;
+    command := "clang"; AppendTargetOptions(command, triple);
+    m := modules;
+    WHILE m # NIL DO
+      ModuleFilePath(outputDir, m.module.name, ".o", path); AppendPath(path);
+      m := m.next
+    END;
+    Strcat(command, " -o"); AppendPath(exePath);
+    Strcat(command, linkArguments);
     (* libm, for rtl/llvm's Math and MathL: on every supported system it is
        a library apart from libc, and -lm links nothing that is not used *)
-    Strcat(cmd, " -lm");
-    IF optimizationLevel[0] = 0X THEN DefaultOptimizationLevel(triple, level) ELSE COPY(optimizationLevel, level) END;
-    Strcat(cmd, " -O");
-    Strcat(cmd, level);
-    IF staticLink THEN Strcat(cmd, " -static") END;
-    IF verbose THEN Err.String(cmd); Err.Ln END;
-    status := Platform.System(cmd);
-    RETURN status = 0
+    Strcat(command, " -lm");
+    IF staticLink THEN Strcat(command, " -static") END;
+    RETURN RunCommand()
   END Build;
 
 END LLVMToolchainDriver.

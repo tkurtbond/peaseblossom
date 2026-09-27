@@ -1,4 +1,5 @@
 == i686-unknown-linux-gnu
+@procir.-initialized = internal global i1 false
 @procir.f = global ptr zeroinitializer
 @procir.ins = global ptr zeroinitializer
 @procir.act = global ptr zeroinitializer
@@ -76,6 +77,12 @@ LN:
 }
 define void @procir_init() {
 entry:
+  %tN = load i1, ptr @procir.-initialized
+  br i1 %tN, label %LN, label %LN
+LN:
+  ret void
+LN:
+  store i1 true, ptr @procir.-initialized
   store ptr @procir.Add, ptr @procir.f
   %tN = load ptr, ptr @procir.f
   %tN = icmp eq ptr %tN, null
@@ -119,6 +126,7 @@ LN:
 @.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
+@procir.-initialized = internal global i1 false
 @procir.f = global ptr zeroinitializer
 @procir.ins = global ptr zeroinitializer
 @procir.act = global ptr zeroinitializer
@@ -197,6 +205,12 @@ LN:
 }
 define void @procir_init() {
 entry:
+  %tN = load i1, ptr @procir.-initialized
+  br i1 %tN, label %LN, label %LN
+LN:
+  ret void
+LN:
+  store i1 true, ptr @procir.-initialized
   store ptr @procir.Add, ptr @procir.f
   %tN = load ptr, ptr @procir.f
   %tN = icmp eq ptr %tN, null

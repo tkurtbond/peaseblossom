@@ -1,7 +1,12 @@
 == without -link
 poc: build failed
 == -link, -static and -verbose
-clang --target=<triple> linkflags.ll -o poc-link-flags '-Llib dir' '-lpocfixture' -lm -O<level> -static
+clang -c --target=<triple> -O<level> 'FileDescriptorOutput.ll' -o 'FileDescriptorOutput.o'
+clang -c --target=<triple> -O<level> 'RealDigits.ll' -o 'RealDigits.o'
+clang -c --target=<triple> -O<level> 'FormattedOutput.ll' -o 'FormattedOutput.o'
+clang -c --target=<triple> -O<level> 'Out.ll' -o 'Out.o'
+clang -c --target=<triple> -O<level> 'linkflags.ll' -o 'linkflags.o'
+clang --target=<triple> -O<level> 'FileDescriptorOutput.o' 'RealDigits.o' 'FormattedOutput.o' 'Out.o' 'linkflags.o' -o 'poc-link-flags' '-Llib dir' '-lpocfixture' -lm -static
 21
 exit=0
 INTERP: 0

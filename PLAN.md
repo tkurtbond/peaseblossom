@@ -1179,6 +1179,90 @@ convenient, but must not be a prerequisite of it.
    negative cases - a `.sym` that does not match the library it names, a
    missing library - fail with a message and not a crash.
 
+   **Design (decided with the user 2026-09-27).** Four decisions, then
+   what follows from them.
+
+   - *Every module is compiled on its own* (as voc does), library or not:
+     one `.ll` and one object per module, which declares what it uses of
+     its imports. `-build` compiles each module of the program found as
+     source and links the objects; cross-module inlining is given up.
+   - *Initialization is voc's*: each module's `_init` has a flag of its
+     own, returns at once when it is set, and otherwise sets it, calls the
+     `_init` of each of its imports in declaration order, and runs the
+     module's body. `main` sets the stack base and calls the main module's
+     `_init` only, so a program needs no list of the modules a library
+     keeps to itself, and the order does not depend on the link.
+   - *A library is a named set of modules, and rtl/llvm is one*:
+     `poc -library <name> [-output-dir <dir>] <file>...` compiles the files
+     named (and nothing else: every import must be one of them or come from
+     a library already on the library path) and writes, into
+     `<dir>/<triple>/<O2|OC>/` (a library is specific to its target and size
+     model, and so are its `.sym` files, which carry folded constants: B1),
+     `lib<name>.a`, `lib<name>.so`, each module's `.sym` and a manifest,
+     `<name>.library` (its modules with their keys and imports, the
+     libraries it needs, the triple and size model). A module belongs to
+     exactly one library: poc refuses to build a module into a library when
+     one on the library path has it already, and to link two libraries that
+     both have it, so a process never holds two collectors. rtl/llvm is the
+     library `poc-rtl`, built by `make` for the host, both size models. A
+     program links its libraries statically; `-shared-libraries` links them
+     dynamically, with a run-time search path (`-rpath`) naming each one's
+     directory.
+   - *Module keys, checked twice*: each module's object defines the symbol
+     `<Module>.-key.<hash>`, the hash that of its `.sym` text, and every
+     importer's object references it, so a link against a module whose
+     interface changed after the importer was compiled fails in the linker
+     whoever runs it. poc also compares, before it links, the keys each
+     library's manifest records for its own imports with the keys of the
+     libraries it will link, and names the stale library in a message of
+     its own.
+
+   Following from those (poc's own choices, open to change):
+
+   - The library path is `-library-path <dir>` (repeatable, like
+     `-import-path`), seeded from `POC_LIBRARY_PATH` and, last, the `lib/poc`
+     directory beside the directory poc's executable is in. A module an
+     import names is taken from a library when a manifest on the path has
+     it, otherwise from source on the import path. When no `poc-rtl` exists
+     for the target and size model (a cross build, a fixture that sets no
+     library path), rtl/llvm is found as source like any module and
+     compiled into the program, as today.
+   - `-emit-llvm-ir <file>` writes the `.ll` of every module of the program
+     compiled from source (the one named has `main`), where `-build` would;
+     `-build` writes each module's `.ll` and object there too, so a build's
+     output directory fills with them as it fills with `.sym` files today.
+   - Objects for a library are position-independent, and the same objects
+     go into both the archive and the shared library. Symbols keep their
+     default visibility: an extension's method table can name an imported
+     record's hidden type-bound procedure, so nothing a module defines can
+     be assumed private to it. What a module makes for itself alone - an
+     anonymous record's type descriptor and initialization procedure,
+     strings, trap messages - is `internal`/`private`, so two objects never
+     both define it.
+   - voc's `-c` (compile, do not link) gets no flag of its own for now:
+     `-library` already compiles without linking a program, and
+     `-emit-llvm-ir` writes every module's `.ll`.
+
+   **Sub-steps**, each its own commit, each passing `make check`:
+   **2a** per-module code generation and voc's initialization (no libraries
+   yet: `-build` compiles the program's modules one by one and links them);
+   *done 2026-09-27*: `LLVMCodeGenerator.GenerateModule` writes one module's
+   IR, declaring everything each module of its import closure defines (and
+   the runtime modules' the generated code calls without an IMPORT; an
+   unused declaration costs nothing), and a guarded `_init` that calls its
+   imports' in IMPORT-list order (voc's is alphabetical, from its sorted
+   scope). `main` also calls `ModuleTable_init` and
+   `GarbageCollectedHeap_init` before the main module's, since no IMPORT
+   names them. Not yet `internal`: an anonymous record's descriptor and
+   initialization procedure keep their module-prefixed global names, since
+   in one run another module may still name another's (2c changes that);
+   fixture `llvm-module-init-order`;
+   **2b** module keys; **2c** `-library`, the manifest, the library path,
+   static and dynamic linking, and the refusal of a second copy of a module;
+   **2d** `poc-rtl`, built by `make`, used by default when present; **2e**
+   the fixtures this step's testing paragraph asks for, on Linux and the
+   BSD hosts, at both word sizes.
+
 3. **A complete inventory of the libraries and modules voc supplies.**
    From the sources, not from memory: enumerate every module under the
    voc clone's `src/runtime` (`SYSTEM`, `Heap`, `Files`, `In`, `Out`,

@@ -28,8 +28,8 @@ wins.
 | `-F` | Force a new symbol file (for a module named like an installed library module) | not applicable | As `-e`; poc always writes the `.sym` |
 | `-m` | This module is the main program; link dynamically | already covered | `poc -o <exe> -build <file>`: the file named is the main module, always |
 | `-M` | This module is the main program; link statically | **adopted as `-static`** | voc passes the C compiler `-static` (on every Unix but Darwin), so the whole executable is static, libc included. `poc -static` makes `-build` pass `clang -static`; checked on Linux (needs `glibc-static`), OpenBSD i386 (a static PIE, no program interpreter), NetBSD amd64 and FreeBSD arm64. Fixture `poc-link-flags` |
-| `-S` | Do not call the C compiler | already covered | `poc -emit-llvm-ir`: the whole program's IR in one `.ll`, no clang |
-| `-c` | Do not link | deferred to step 2 | voc compiles each module to its own object file. poc makes one `.ll` for the whole program, so an object file of its own belongs with step 2's libraries |
+| `-S` | Do not call the C compiler | already covered | `poc -emit-llvm-ir`: each module's IR in a `.ll` of its own (since Phase 12 step 2a; before, the whole program's in one), no clang |
+| `-c` | Do not link | no flag (step 2) | Since Phase 12 step 2a poc, like voc, compiles each module to its own object file. `PLAN.md` Phase 12 step 2's design gives `-c` no flag of its own: `-library` will compile without linking a program, and `-emit-llvm-ir` writes every module's `.ll` |
 | `-f` | No VT100 control characters in status output | not applicable | poc's output has no color or control characters |
 | `-V` | Verbose: the sizes of the size model, and the C compiler's commands | **adopted as `-verbose`** (the commands) | `-build` prints the clang command it runs, on stderr. The size model needs no line of its own: it is `-O2` or `-OC` on poc's own command line |
 | `-O2` | Size model: 8/16/32-bit `SHORTINT`/`INTEGER`/`LONGINT`, 32-bit `SET` (default) | already covered | poc's `-O2`, default |
@@ -41,7 +41,7 @@ voc also reads the environment: `OBERON` and `MODULES` (its symbol-file search
 path; poc's is `POC_IMPORT_PATH` and `-import-path`), and `CFLAGS`, `LDFLAGS`
 and `LDLIBS`, added to its C compiler's command. For the last two poc has
 **`-link <arg>`**, repeatable: each argument is passed to clang as one word
-(single-quoted), after the program's `.ll` and before `-lm`, so a program with
+(single-quoted), after the program's objects and before `-lm`, so a program with
 `["C"]` procedures can link a C library other than libc and libm (`-link -lz`,
 `-link -L<dir>`), which it could not before. Fixture `poc-link-flags` builds a
 static C library into a directory whose name has a space and links it both

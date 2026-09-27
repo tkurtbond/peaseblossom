@@ -6,7 +6,7 @@
 # Without -link the build fails; with it the program runs. -static leaves the
 # executable without a program interpreter (readelf's INTERP), the default
 # build has one. -verbose prints the clang command, with the host's triple and
-# optimization level replaced.
+# optimization level replaced: a clang -c for each module, then the link.
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 exe=$(basename "$PWD")

@@ -609,7 +609,7 @@ MODULE Poc;
 
   PROCEDURE EmitLLVMIR(name, outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
-      modules: LLVMCodeGenerator.ModuleList;
+      modules, m: LLVMCodeGenerator.ModuleList;
       ok: BOOLEAN;
       triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
       path: ARRAY LLVMToolchainDriver.pathBufferLength OF CHAR;
@@ -623,7 +623,13 @@ MODULE Poc;
       IF ok THEN
         ProgramTopName(modules, topName);
         IF LLVMToolchainDriver.EmitIR(modules, topName, triple, outputDir, path) THEN
-          Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
+          (* one .ll per module (Phase 12 step 2a) *)
+          m := modules;
+          WHILE m # NIL DO
+            LLVMToolchainDriver.ModuleFilePath(outputDir, m.module.name, ".ll", path);
+            Out.String("semantic OK, wrote "); Out.String(path); Out.Ln;
+            m := m.next
+          END
         ELSIF LLVMCodeGenerator.unsupportedCount > 0 THEN
           ReportUnsupportedConstructs
         ELSIF Diagnostics.errorCount > 0 THEN

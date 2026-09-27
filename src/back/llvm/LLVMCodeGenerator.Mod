@@ -465,6 +465,14 @@ MODULE LLVMCodeGenerator;
       next: DeclaredExternal
     END;
 
+    (* Phase 12 step 2a: a record whose symbols (tag, type-bound procedures,
+       initialization procedure) EmitImportDeclarations has declared *)
+    DeclaredRecord = POINTER TO DeclaredRecordDesc;
+    DeclaredRecordDesc = RECORD
+      rec: Types.RecordType;
+      next: DeclaredRecord
+    END;
+
     (* PLAN.md Phase 9 step 1: every module-level record type that gets a
        run-time type descriptor, in registration order - see
        CollectRecordTypes/EmitTypeDescriptors. A plain linked list,
@@ -541,6 +549,14 @@ MODULE LLVMCodeGenerator;
          under -trap-location *)
       fileName*: SourcePath;
       next*: ModuleList
+    END;
+
+    (* Phase 12 step 2a: a module of the program in the import closure of the
+       one being generated (EmitImportDeclarations) *)
+    ClosureModule = POINTER TO ClosureModuleDesc;
+    ClosureModuleDesc = RECORD
+      module: ModuleList;
+      next: ClosureModule
     END;
 
     (* A -trap-location message: one per trap site, emitted with the other
@@ -652,6 +668,7 @@ MODULE LLVMCodeGenerator;
       (* Phase 11 D17: the records whose initialization procedures to
          define, and a counter for naming those of anonymous records *)
       initRecords: InitRecordEntry;
+      declaredRecords: DeclaredRecord; (* Phase 12 step 2a *)
       anonymousInitCount: INTEGER
     END;
 
@@ -6393,9 +6410,34 @@ MODULE LLVMCodeGenerator;
      name must be silently skipped, not re-"declare"d (clang rejects two
      "declare"s of the same symbol outright - see DeclaredExternal's own
      header comment). *)
+  (* "declare" for obj, an external ["C"] procedure, unless its C symbol is
+     declared already - one of this module's own (EmitExternalDeclares) or,
+     since Phase 12 step 2a, of a module it imports (EmitImportDeclarations) *)
+  PROCEDURE EmitExternalDeclare(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object);
+    VAR pt: Types.ProcedureType; p: Types.Param; retType, paramType: LongText; first: BOOLEAN;
+  BEGIN
+    IF ~HasDeclaredExternal(cg, obj.externalName) THEN
+      pt := obj.type(Types.ProcedureType);
+      IF pt.resultType = NIL THEN COPY("void", retType)
+      ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
+      END;
+      WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " @"); WriteStr(w, obj.externalName);
+      WriteStr(w, "(");
+      p := pt.params; first := TRUE;
+      WHILE p # NIL DO
+        IF ~first THEN WriteStr(w, ", ") END;
+        first := FALSE;
+        ParamLLVMType(cg, p, paramType);
+        WriteStr(w, paramType);
+        p := p.next
+      END;
+      WriteStr(w, ")"); WriteLn(w);
+      MarkDeclaredExternal(cg, obj.externalName)
+    END
+  END EmitExternalDeclare;
+
   PROCEDURE EmitExternalDeclares(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
-    VAR pd: SyntaxTree.ProcDeclNode; obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param;
-        retType, paramType: LongText; first: BOOLEAN;
+    VAR pd: SyntaxTree.ProcDeclNode; obj: SymbolTable.Object;
   BEGIN
     IF module.declarations = NIL THEN RETURN END;
     pd := module.declarations.procDecls;
@@ -6408,23 +6450,8 @@ MODULE LLVMCodeGenerator;
              or, worse, one that exists and means something else *)
           ReportUnsupported(cg, pd.line, pd.column,
                             "an external procedure with the VMS calling convention")
-        ELSIF ~HasDeclaredExternal(cg, obj.externalName) THEN
-          pt := obj.type(Types.ProcedureType);
-          IF pt.resultType = NIL THEN COPY("void", retType)
-          ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
-          END;
-          WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " @"); WriteStr(w, obj.externalName);
-          WriteStr(w, "(");
-          p := pt.params; first := TRUE;
-          WHILE p # NIL DO
-            IF ~first THEN WriteStr(w, ", ") END;
-            first := FALSE;
-            ParamLLVMType(cg, p, paramType);
-            WriteStr(w, paramType);
-            p := p.next
-          END;
-          WriteStr(w, ")"); WriteLn(w);
-          MarkDeclaredExternal(cg, obj.externalName)
+        ELSE
+          EmitExternalDeclare(w, cg, obj)
         END
       END;
       pd := pd.next
@@ -7481,7 +7508,7 @@ MODULE LLVMCodeGenerator;
     IF cg.needHeapTrap THEN EmitTrapMessageGlobal(w, heapTrapGlobal, heapTrapMsg) END;
     site := cg.trapSites;
     WHILE site # NIL DO EmitTrapMessageGlobal(w, site.global, site.text); site := site.next END;
-    IF cg.usedAllocate & ~cg.heapPresent THEN
+    IF cg.usedAllocate & ~cg.heapPresent & ~HasDeclaredExternal(cg, "@GarbageCollectedHeap.Allocate") THEN
       WordIntType(wordInt);
       WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");
       WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ")"); WriteLn(w)
@@ -7766,16 +7793,218 @@ MODULE LLVMCodeGenerator;
     END
   END EmitInitProcedures;
 
-  PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w, body: Files.Rider);
+  (* ---- One module at a time (Phase 12 step 2a) ----
+
+     Each module of a program is generated into a .ll of its own, compiled
+     to an object of its own, and the objects are linked. What a module uses
+     of another - a procedure, a variable, a record's tag, type-bound
+     procedures and initialization procedure, a C function it declares - is
+     declared in its .ll: everything that every module in its import closure
+     defines, and the runtime modules the generated code calls without an
+     IMPORT (GarbageCollectedHeap, ModuleTable, Modules). A declaration
+     nothing uses costs nothing: LLVM drops it, and the object does not refer
+     to the symbol. The declarations come from each module's scope, not its
+     syntax tree, so a module known only from its .sym is declared alike. *)
+
+  PROCEDURE FindProgramModule(program: ModuleList; name: ARRAY OF CHAR): ModuleList;
+    VAR m: ModuleList;
+  BEGIN
+    m := program;
+    WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
+    RETURN m
+  END FindProgramModule;
+
+  (* "declare <result> <symbol>(<parameter types>)" for an Oberon procedure of
+     type pt that another module defines: the parameter types EmitProcSignature
+     gives its definition, a receiver's first (and its tag when receiverIsVar) *)
+  PROCEDURE EmitProcDeclaration(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType; symbol: ARRAY OF CHAR;
+                                hasReceiver, receiverIsVar: BOOLEAN);
+    VAR retType, paramType: LongText; wordInt: ValueText; p: Types.Param; first: BOOLEAN; dim: INTEGER;
+  BEGIN
+    IF HasDeclaredExternal(cg, symbol) THEN RETURN END;
+    MarkDeclaredExternal(cg, symbol);
+    WordIntType(wordInt);
+    IF pt.resultType = NIL THEN COPY("void", retType)
+    ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
+    END;
+    WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " "); WriteStr(w, symbol); WriteStr(w, "(");
+    first := TRUE;
+    IF hasReceiver THEN
+      WriteStr(w, "ptr");
+      IF receiverIsVar THEN WriteStr(w, ", ptr") END;
+      first := FALSE
+    END;
+    p := pt.params;
+    WHILE p # NIL DO
+      IF ~first THEN WriteStr(w, ", ") END;
+      first := FALSE;
+      ParamLLVMType(cg, p, paramType);
+      WriteStr(w, paramType);
+      IF NeedsHiddenTag(p) THEN WriteStr(w, ", ptr") END;
+      FOR dim := 0 TO OpenDimCount(p.type) - 1 DO WriteStr(w, ", "); WriteStr(w, wordInt) END;
+      p := p.next
+    END;
+    WriteStr(w, ")"); WriteLn(w)
+  END EmitProcDeclaration;
+
+  (* "<symbol> = external global i8": a variable or a record's tag another
+     module defines. The type is a placeholder: every use names the type it
+     loads, stores or computes an address with. *)
+  PROCEDURE EmitDataDeclaration(VAR w: Files.Rider; VAR cg: Codegen; symbol: ARRAY OF CHAR);
+  BEGIN
+    IF ~HasDeclaredExternal(cg, symbol) THEN
+      MarkDeclaredExternal(cg, symbol);
+      WriteStr(w, symbol); WriteStr(w, " = external global i8"); WriteLn(w)
+    END
+  END EmitDataDeclaration;
+
+  PROCEDURE ^ DeclareTypeSymbols(VAR w: Files.Rider; VAR cg: Codegen; t: Types.Type; home: ARRAY OF CHAR);
+
+  (* rec's symbols, when rec is a record of the module home: its tag and
+     type-bound procedures if it is named, its initialization procedure if
+     it has one, and those of the records its fields hold *)
+  PROCEDURE DeclareRecordSymbols(VAR w: Files.Rider; VAR cg: Codegen; rec: Types.RecordType; home: ARRAY OF CHAR);
+    VAR d: DeclaredRecord; m: Types.Method; f: Types.Field; symbol: LongText;
+  BEGIN
+    IF rec.moduleName # home THEN RETURN END; (* declared with its own module's *)
+    d := cg.declaredRecords;
+    WHILE (d # NIL) & (d.rec # rec) DO d := d.next END;
+    IF d # NIL THEN RETURN END;
+    NEW(d); d.rec := rec; d.next := cg.declaredRecords; cg.declaredRecords := d;
+    IF rec.name[0] # 0X THEN
+      TagSymbol(rec, symbol); EmitDataDeclaration(w, cg, symbol);
+      m := rec.methods;
+      WHILE m # NIL DO
+        MethodSymbol(rec, m.name, symbol);
+        EmitProcDeclaration(w, cg, m.procType, symbol, TRUE, m.receiverIsVar);
+        m := m.next
+      END
+    END;
+    IF rec.needsInit & (rec.initPath[0] # 0X) THEN
+      COPY("@", symbol); Strcat(symbol, rec.moduleName); Strcat(symbol, "."); Strcat(symbol, rec.initPath);
+      Strcat(symbol, ".-init");
+      IF ~HasDeclaredExternal(cg, symbol) THEN
+        MarkDeclaredExternal(cg, symbol);
+        WriteStr(w, "declare void "); WriteStr(w, symbol); WriteStr(w, "(ptr)"); WriteLn(w)
+      END
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO DeclareTypeSymbols(w, cg, f.type, home); f := f.next END
+  END DeclareRecordSymbols;
+
+  PROCEDURE DeclareTypeSymbols(VAR w: Files.Rider; VAR cg: Codegen; t: Types.Type; home: ARRAY OF CHAR);
+  BEGIN
+    IF t = NIL THEN RETURN END;
+    IF t IS Types.RecordType THEN DeclareRecordSymbols(w, cg, t(Types.RecordType), home)
+    ELSIF t IS Types.PointerType THEN DeclareTypeSymbols(w, cg, t(Types.PointerType).base, home)
+    ELSIF t IS Types.ArrayType THEN DeclareTypeSymbols(w, cg, t(Types.ArrayType).elementType, home)
+    END
+  END DeclareTypeSymbols;
+
+  (* everything module x defines that another module can use *)
+  PROCEDURE DeclareModuleSymbols(VAR w: Files.Rider; VAR cg: Codegen; x: ModuleList);
+    VAR obj: SymbolTable.Object; symbol: ValueText; pt: Types.ProcedureType; p: Types.Param;
+  BEGIN
+    obj := x.scope.objects;
+    WHILE obj # NIL DO
+      IF obj.class = SymbolTable.varClass THEN
+        QualifiedName(x.module.name, obj.name, symbol); EmitDataDeclaration(w, cg, symbol);
+        DeclareTypeSymbols(w, cg, obj.type, x.module.name)
+      ELSIF obj.class = SymbolTable.procClass THEN
+        pt := obj.type(Types.ProcedureType);
+        p := pt.params;
+        WHILE p # NIL DO DeclareTypeSymbols(w, cg, p.type, x.module.name); p := p.next END;
+        IF obj.externalConvention[0] = 0X THEN
+          QualifiedName(x.module.name, obj.name, symbol);
+          EmitProcDeclaration(w, cg, pt, symbol, FALSE, FALSE)
+        ELSIF obj.externalConvention # "VMS" THEN
+          EmitExternalDeclare(w, cg, obj)
+        END
+      ELSIF obj.class = SymbolTable.typeClass THEN
+        DeclareTypeSymbols(w, cg, obj.type, x.module.name)
+      END;
+      obj := obj.next
+    END
+  END DeclareModuleSymbols;
+
+  (* adds x and, through its scope's IMPORTs, every module of the program it
+     reaches to closure, each once *)
+  PROCEDURE CollectClosure(program, x: ModuleList; VAR closure: ClosureModule);
+    VAR c: ClosureModule; obj: SymbolTable.Object; y: ModuleList;
+  BEGIN
+    IF x = NIL THEN RETURN END;
+    c := closure;
+    WHILE (c # NIL) & (c.module # x) DO c := c.next END;
+    IF c # NIL THEN RETURN END;
+    NEW(c); c.module := x; c.next := closure; closure := c;
+    obj := x.scope.objects;
+    WHILE obj # NIL DO
+      IF obj.class = SymbolTable.moduleClass THEN
+        y := FindProgramModule(program, obj.realModuleName);
+        CollectClosure(program, y, closure)
+      END;
+      obj := obj.next
+    END
+  END CollectClosure;
+
+  (* The declarations target needs of the other modules of program: its
+     import closure's, and the runtime modules' the generated code calls *)
+  PROCEDURE EmitImportDeclarations(VAR w: Files.Rider; VAR cg: Codegen; program, target: ModuleList;
+                                   withRuntime: BOOLEAN);
+    VAR closure, c: ClosureModule;
+  BEGIN
+    closure := NIL;
+    CollectClosure(program, target, closure);
+    IF withRuntime THEN
+      CollectClosure(program, FindProgramModule(program, "ModuleTable"), closure);
+      CollectClosure(program, FindProgramModule(program, "GarbageCollectedHeap"), closure);
+      CollectClosure(program, FindProgramModule(program, "Modules"), closure)
+    END;
+    c := closure;
+    WHILE c # NIL DO
+      IF c.module # target THEN DeclareModuleSymbols(w, cg, c.module) END;
+      c := c.next
+    END
+  END EmitImportDeclarations;
+
+  (* "declare void @<name>_init()", once *)
+  PROCEDURE EmitInitDeclaration(VAR w: Files.Rider; VAR cg: Codegen; name: ARRAY OF CHAR);
+    VAR symbol: ValueText;
+  BEGIN
+    COPY("@", symbol); Strcat(symbol, name); Strcat(symbol, "_init");
+    IF ~HasDeclaredExternal(cg, symbol) THEN
+      MarkDeclaredExternal(cg, symbol);
+      WriteStr(w, "declare void "); WriteStr(w, symbol); WriteStr(w, "()"); WriteLn(w)
+    END
+  END EmitInitDeclaration;
+
+  PROCEDURE EmitInitCall(VAR w: Files.Rider; name: ARRAY OF CHAR);
+  BEGIN
+    WriteStr(w, "  call void @"); WriteStr(w, name); WriteStr(w, "_init()"); WriteLn(w)
+  END EmitInitCall;
+
+  (* The IR of target, one module of program (dependency-ordered, the main
+     module last), for a .ll of its own: its variables, type descriptors,
+     procedures and "@<M>_init", with declarations of what it uses of the
+     others (EmitImportDeclarations); in the main module also "main". Like
+     voc's (__DEFMOD, __MODULE_IMPORT), a module's _init runs its body only
+     the first time it is called, after calling its imports' _init - so
+     each body runs once, after those of the modules it imports, whichever
+     module calls first. main sets up the runtime (Modules.Init,
+     GarbageCollectedHeap.SetStackBase), calls the _init of the runtime
+     modules the generated code uses without an IMPORT (ModuleTable,
+     GarbageCollectedHeap), then the main module's. unsupportedCount is the
+     caller's to reset, once per program. *)
+  PROCEDURE GenerateModule*(program, target: ModuleList; triple: ARRAY OF CHAR; VAR w, body: Files.Rider);
     VAR
       cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments, realign: BOOLEAN;
-      td: SyntaxTree.TypeDeclNode; typeObj: SymbolTable.Object;
-      wordInt, symbol: ValueText; r: Files.Rider; ch: CHAR; i, realignId, debugVersionId: INTEGER;
+      isMain: BOOLEAN; td: SyntaxTree.TypeDeclNode; typeObj: SymbolTable.Object; import: SyntaxTree.ImportNode;
+      wordInt, symbol, flag, done, already, first: ValueText; r: Files.Rider; ch: CHAR; i, realignId, debugVersionId: INTEGER;
   BEGIN
-    withRootTables := HasModuleNamed(modules, "ModuleTable");
-    withHeap := HasModuleNamed(modules, "GarbageCollectedHeap");
-    withArguments := HasModuleNamed(modules, "Modules");
-    unsupportedCount := 0;
+    withRootTables := HasModuleNamed(program, "ModuleTable");
+    withHeap := HasModuleNamed(program, "GarbageCollectedHeap");
+    withArguments := HasModuleNamed(program, "Modules");
+    isMain := target.next = NIL;
     cg.currentLine := 0; cg.currentColumn := 0;
     cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
     cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL; cg.nestedRoot := NIL;
@@ -7791,8 +8020,8 @@ MODULE LLVMCodeGenerator;
     cg.trapSites := NIL; cg.trapSitesTail := NIL; cg.trapSiteCount := 0;
     FOR i := 0 TO noAssertCode DO cg.assertCodes[i] := FALSE END;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
-    cg.initRecords := NIL; cg.anonymousInitCount := 0;
-    cg.heapPresent := withHeap;
+    cg.initRecords := NIL; cg.anonymousInitCount := 0; cg.declaredRecords := NIL;
+    cg.heapPresent := target.module.name = "GarbageCollectedHeap";
     WriteStr(w, 'target datalayout = "');
     IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN WriteStr(w, dataLayoutW32)
     ELSE WriteStr(w, dataLayoutW64)
@@ -7832,127 +8061,130 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, " = !DISubroutineType(types: !{})"); WriteLn(w)
     END;
     WriteLn(w);
-    m := modules;
-    WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
-      IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
-      EmitGlobals(body, cg, m.module);
-      EmitExternalDeclares(body, cg, m.module);
-      EmitTypeDescriptors(body, cg, m.module);
-      IF withRootTables THEN EmitRootTable(body, cg, m.module) END;
-      m := m.next
+    m := target;
+    cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
+    IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
+    EmitImportDeclarations(body, cg, program, target, TRUE);
+    (* the _init procedures this module's calls: its imports', and in the
+       main module the runtime modules' *)
+    import := m.module.imports;
+    WHILE import # NIL DO
+      IF FindProgramModule(program, import.moduleName) # NIL THEN EmitInitDeclaration(body, cg, import.moduleName) END;
+      import := import.next
     END;
-    EmitRuntimeSupport(body, cg);
-    m := modules;
-    WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
-      IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
-      CollectStringConstantsSeq(body, cg, m.module.statements);
-      CollectDeclarationStrings(body, cg, m.module.declarations);
-      IF m.module.declarations # NIL THEN
-        pd := m.module.declarations.procDecls;
-        WHILE pd # NIL DO
-          IF HasBody(pd) THEN CollectProcedureStringConstants(body, cg, pd) END;
-          pd := pd.next
-        END
-      END;
-      m := m.next
+    IF isMain THEN
+      IF withRootTables THEN EmitInitDeclaration(body, cg, "ModuleTable") END;
+      IF withHeap THEN EmitInitDeclaration(body, cg, "GarbageCollectedHeap") END
     END;
     WriteLn(body);
-    m := modules;
-    WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
-      IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
-      IF m.module.declarations # NIL THEN
-        pd := m.module.declarations.procDecls;
-        WHILE pd # NIL DO
-          IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(body, cg, m.scope, pd)
-          ELSIF HasBody(pd) THEN GenerateMethodDecl(body, cg, m.scope, pd)
-          END;
-          pd := pd.next
-        END
-      END;
-      m := m.next
+    COPY("@", flag); Strcat(flag, m.module.name); Strcat(flag, ".-initialized");
+    WriteStr(body, flag); WriteStr(body, " = internal global i1 false"); WriteLn(body);
+    EmitGlobals(body, cg, m.module);
+    EmitExternalDeclares(body, cg, m.module);
+    EmitTypeDescriptors(body, cg, m.module);
+    IF withRootTables THEN EmitRootTable(body, cg, m.module) END;
+    EmitRuntimeSupport(body, cg);
+    CollectStringConstantsSeq(body, cg, m.module.statements);
+    CollectDeclarationStrings(body, cg, m.module.declarations);
+    IF m.module.declarations # NIL THEN
+      pd := m.module.declarations.procDecls;
+      WHILE pd # NIL DO
+        IF HasBody(pd) THEN CollectProcedureStringConstants(body, cg, pd) END;
+        pd := pd.next
+      END
     END;
-    m := modules;
-    WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
-      IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
-      IF debugInfo THEN
-        COPY(m.module.name, symbol); Strcat(symbol, "_init");
-        BeginDebugFunction(symbol, cg.currentFile, m.module.line, m.module.column)
-      END;
-      WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init()");
-      WriteDebugAttachment(body); WriteStr(body, " {"); WriteLn(body);
-      EmitEntryLabel(body, cg);
-      IF withRootTables THEN EmitRootTableRegistration(body, cg, m.module) END;
-      GenerateStatementSeq(body, cg, GenerateDeclarationInits(body, cg, m.module.declarations, m.module.statements));
-      WriteStr(body, "  ret void"); WriteLn(body);
-      WriteStr(body, "}"); WriteLn(body);
-      debugScope := -1;
-      WriteLn(body);
-      m := m.next
+    WriteLn(body);
+    IF m.module.declarations # NIL THEN
+      pd := m.module.declarations.procDecls;
+      WHILE pd # NIL DO
+        IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(body, cg, m.scope, pd)
+        ELSIF HasBody(pd) THEN GenerateMethodDecl(body, cg, m.scope, pd)
+        END;
+        pd := pd.next
+      END
     END;
-    (* Phase 11 D17: the initialization procedures - of every record a
+    IF debugInfo THEN
+      COPY(m.module.name, symbol); Strcat(symbol, "_init");
+      BeginDebugFunction(symbol, cg.currentFile, m.module.line, m.module.column)
+    END;
+    WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init()");
+    WriteDebugAttachment(body); WriteStr(body, " {"); WriteLn(body);
+    EmitEntryLabel(body, cg);
+    NewTemp(cg, done); NewLabel(cg, already); NewLabel(cg, first);
+    WriteStr(body, "  "); WriteStr(body, done); WriteStr(body, " = load i1, ptr "); WriteStr(body, flag); WriteLn(body);
+    EmitCondBr(body, done, already, first);
+    EmitLabel(body, cg, already);
+    WriteStr(body, "  ret void"); WriteLn(body);
+    EmitLabel(body, cg, first);
+    WriteStr(body, "  store i1 true, ptr "); WriteStr(body, flag); WriteLn(body);
+    (* in the order of the IMPORT list (voc's is alphabetical) *)
+    import := m.module.imports;
+    WHILE import # NIL DO
+      IF FindProgramModule(program, import.moduleName) # NIL THEN EmitInitCall(body, import.moduleName) END;
+      import := import.next
+    END;
+    IF withRootTables THEN EmitRootTableRegistration(body, cg, m.module) END;
+    GenerateStatementSeq(body, cg, GenerateDeclarationInits(body, cg, m.module.declarations, m.module.statements));
+    WriteStr(body, "  ret void"); WriteLn(body);
+    WriteStr(body, "}"); WriteLn(body);
+    debugScope := -1;
+    WriteLn(body);
+    (* Phase 11 D17: the initialization procedures - of every record the
        module's TYPE declarations name, which other modules may use, and of
        the others the code above used *)
-    m := modules;
-    WHILE m # NIL DO
-      cg.moduleName := m.module.name; COPY(m.fileName, cg.currentFile);
-      IF m.module.declarations # NIL THEN
-        td := m.module.declarations.typeDecls;
-        WHILE td # NIL DO
-          typeObj := SymbolTable.FindLocal(m.scope, td.name.name);
-          IF typeObj # NIL THEN CollectInitRecords(cg, typeObj.type) END;
-          td := td.next
-        END
-      END;
-      m := m.next
+    IF m.module.declarations # NIL THEN
+      td := m.module.declarations.typeDecls;
+      WHILE td # NIL DO
+        typeObj := SymbolTable.FindLocal(m.scope, td.name.name);
+        IF typeObj # NIL THEN CollectInitRecords(cg, typeObj.type) END;
+        td := td.next
+      END
     END;
     EmitInitProcedures(body, cg);
-    (* A program that contains rtl/llvm/Modules.Mod gets the command line:
-       main takes argc and argv, and hands both to Modules.Init - as
-       words, the way every ADDRESS travels - before any module body runs,
-       since a body may read them. Any other program keeps the
-       argument-less main. *)
-    IF withArguments THEN WriteStr(body, "define i32 @main(i32 %argc, ptr %argv)")
-    ELSE WriteStr(body, "define i32 @main()")
-    END;
-    (* the process starts main with the stack 4 modulo 16, where a 16-byte
-       aligned frame is assumed below it (LLVMTypes.NeedsStackRealignment) *)
-    IF realign THEN WriteStr(body, ' "stackrealign"') END;
-    WriteStr(body, " {"); WriteLn(body);
-    EmitEntryLabel(body, cg);
-    IF withArguments THEN
-      WordIntType(wordInt);
-      IF wordInt = "i32" THEN
-        WriteStr(body, "  %argcword = add i32 %argc, 0"); WriteLn(body)
-      ELSE
-        WriteStr(body, "  %argcword = sext i32 %argc to "); WriteStr(body, wordInt); WriteLn(body)
+    cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
+    IF isMain THEN
+      (* A program that contains rtl/llvm/Modules.Mod gets the command line:
+         main takes argc and argv, and hands both to Modules.Init - as
+         words, the way every ADDRESS travels - before any module body runs,
+         since a body may read them. Any other program keeps the
+         argument-less main. *)
+      IF withArguments THEN WriteStr(body, "define i32 @main(i32 %argc, ptr %argv)")
+      ELSE WriteStr(body, "define i32 @main()")
       END;
-      WriteStr(body, "  %argvword = ptrtoint ptr %argv to "); WriteStr(body, wordInt); WriteLn(body);
-      WriteStr(body, "  call void @Modules.Init("); WriteStr(body, wordInt);
-      WriteStr(body, " %argcword, "); WriteStr(body, wordInt); WriteStr(body, " %argvword)"); WriteLn(body)
+      (* the process starts main with the stack 4 modulo 16, where a 16-byte
+         aligned frame is assumed below it (LLVMTypes.NeedsStackRealignment) *)
+      IF realign THEN WriteStr(body, ' "stackrealign"') END;
+      WriteStr(body, " {"); WriteLn(body);
+      EmitEntryLabel(body, cg);
+      IF withArguments THEN
+        WordIntType(wordInt);
+        IF wordInt = "i32" THEN
+          WriteStr(body, "  %argcword = add i32 %argc, 0"); WriteLn(body)
+        ELSE
+          WriteStr(body, "  %argcword = sext i32 %argc to "); WriteStr(body, wordInt); WriteLn(body)
+        END;
+        WriteStr(body, "  %argvword = ptrtoint ptr %argv to "); WriteStr(body, wordInt); WriteLn(body);
+        WriteStr(body, "  call void @Modules.Init("); WriteStr(body, wordInt);
+        WriteStr(body, " %argcword, "); WriteStr(body, wordInt); WriteStr(body, " %argvword)"); WriteLn(body)
+      END;
+      IF withHeap THEN
+        (* the outermost frame anything can live in: the collector scans the
+           stack from its own frame up to here *)
+        WordIntType(wordInt);
+        WriteStr(body, "  %stackbase = call ptr @llvm.frameaddress.p0(i32 0)"); WriteLn(body);
+        WriteStr(body, "  %stackbaseint = ptrtoint ptr %stackbase to "); WriteStr(body, wordInt); WriteLn(body);
+        WriteStr(body, "  call void @GarbageCollectedHeap.SetStackBase("); WriteStr(body, wordInt);
+        WriteStr(body, " %stackbaseint)"); WriteLn(body)
+      END;
+      IF withRootTables THEN EmitInitCall(body, "ModuleTable") END;
+      IF withHeap THEN EmitInitCall(body, "GarbageCollectedHeap") END;
+      EmitInitCall(body, m.module.name);
+      WriteStr(body, "  ret i32 0"); WriteLn(body);
+      WriteStr(body, "}"); WriteLn(body)
     END;
-    IF withHeap THEN
-      (* the outermost frame anything can live in: the collector scans the
-         stack from its own frame up to here *)
-      WordIntType(wordInt);
-      WriteStr(body, "  %stackbase = call ptr @llvm.frameaddress.p0(i32 0)"); WriteLn(body);
-      WriteStr(body, "  %stackbaseint = ptrtoint ptr %stackbase to "); WriteStr(body, wordInt); WriteLn(body);
-      WriteStr(body, "  call void @GarbageCollectedHeap.SetStackBase("); WriteStr(body, wordInt);
-      WriteStr(body, " %stackbaseint)"); WriteLn(body)
-    END;
-    m := modules;
-    WHILE m # NIL DO
-      WriteStr(body, "  call void @"); WriteStr(body, m.module.name); WriteStr(body, "_init()"); WriteLn(body);
-      m := m.next
-    END;
-    WriteStr(body, "  ret i32 0"); WriteLn(body);
-    WriteStr(body, "}"); WriteLn(body);
     EmitCharacterHelpers(body, cg);
     EmitPointerSupport(body, cg);
-    IF withHeap THEN
+    IF isMain & withHeap THEN
       WriteLn(body);
       EmitLine(body, "declare ptr @llvm.frameaddress.p0(i32 immarg)")
     END;
@@ -7983,6 +8215,6 @@ MODULE LLVMCodeGenerator;
     Files.Set(r, Files.Base(body), 0);
     Files.Read(r, ch);
     WHILE ~r.eof DO Files.Write(w, ch); Files.Read(r, ch) END
-  END GenerateProgram;
+  END GenerateModule;
 
 END LLVMCodeGenerator.

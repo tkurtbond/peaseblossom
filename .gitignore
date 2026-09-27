@@ -32,6 +32,7 @@ test/conformance/llvm-procedures/llvm-procedures
 test/conformance/llvm-predeclared/llvm-predeclared
 test/conformance/llvm-predeclared-halt/llvm-predeclared-halt
 test/conformance/llvm-multi-module/llvm-multi-module
+test/conformance/llvm-module-init-order/llvm-module-init-order
 test/conformance/llvm-declarations-after-procedures/llvm-declarations-after-procedures
 test/conformance/llvm-hugeint-arithmetic/llvm-hugeint-arithmetic
 test/conformance/llvm-open-array-many-dimensions/llvm-open-array-many-dimensions

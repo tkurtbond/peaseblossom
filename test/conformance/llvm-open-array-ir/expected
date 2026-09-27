@@ -1,4 +1,5 @@
 == i686-unknown-linux-gnu
+@openir.-initialized = internal global i1 false
 @openir.vector = global ptr zeroinitializer
 @openir.matrix = global ptr zeroinitializer
 @openir.nodes = global ptr zeroinitializer
@@ -139,6 +140,12 @@ LN:
 }
 define void @openir_init() {
 entry:
+  %tN = load i1, ptr @openir.-initialized
+  br i1 %tN, label %LN, label %LN
+LN:
+  ret void
+LN:
+  store i1 true, ptr @openir.-initialized
   call void @ModuleTable.Register(i32 ptrtoint (ptr @.roots.openir to i32))
   %tN = sext i8 3 to i64
   %tN = icmp sle i64 %tN, 0
@@ -342,6 +349,7 @@ LN:
 }
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
+@openir.-initialized = internal global i1 false
 @openir.vector = global ptr zeroinitializer
 @openir.matrix = global ptr zeroinitializer
 @openir.nodes = global ptr zeroinitializer
@@ -483,6 +491,12 @@ LN:
 }
 define void @openir_init() {
 entry:
+  %tN = load i1, ptr @openir.-initialized
+  br i1 %tN, label %LN, label %LN
+LN:
+  ret void
+LN:
+  store i1 true, ptr @openir.-initialized
   call void @ModuleTable.Register(i64 ptrtoint (ptr @.roots.openir to i64))
   %tN = sext i8 3 to i64
   %tN = icmp sle i64 %tN, 0

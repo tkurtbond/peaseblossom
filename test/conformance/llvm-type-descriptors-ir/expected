@@ -5,6 +5,8 @@ target triple = "i686-unknown-linux-gnu"
 %typedesc.Ring = type { [3 x ptr], %typedesc.Inner, i8 }
 %typedesc.Inner = type { ptr, i16 }
 
+
+@typedesc.-initialized = internal global i1 false
 @typedesc.root = global ptr zeroinitializer
 @typedesc.ring = global %typedesc.Ring zeroinitializer
 @typedesc.Node.tdesc = constant { [2 x ptr], i32, i32, i32, [1 x ptr], [2 x i32] } {
@@ -135,6 +137,12 @@ L2:
 
 define void @typedesc_init() {
 entry:
+  %t12 = load i1, ptr @typedesc.-initialized
+  br i1 %t12, label %L3, label %L4
+L3:
+  ret void
+L4:
+  store i1 true, ptr @typedesc.-initialized
   ret void
 }
 
@@ -152,6 +160,8 @@ target triple = "x86_64-unknown-linux-gnu"
 %typedesc.Ring = type { [3 x ptr], %typedesc.Inner, i8 }
 %typedesc.Inner = type { ptr, i16 }
 
+
+@typedesc.-initialized = internal global i1 false
 @typedesc.root = global ptr zeroinitializer
 @typedesc.ring = global %typedesc.Ring zeroinitializer
 @typedesc.Node.tdesc = constant { [2 x ptr], i64, i64, i64, [1 x ptr], [2 x i64] } {
@@ -282,6 +292,12 @@ L2:
 
 define void @typedesc_init() {
 entry:
+  %t12 = load i1, ptr @typedesc.-initialized
+  br i1 %t12, label %L3, label %L4
+L3:
+  ret void
+L4:
+  store i1 true, ptr @typedesc.-initialized
   ret void
 }
 

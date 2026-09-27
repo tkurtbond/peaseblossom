@@ -147,7 +147,8 @@ for poc unless it adopted them:
 2026-09-27; `doc/voc-options.md` has the table, option by option): `-r` is
 `poc -range-checks`, `-M` is `-static`, `-V` is `-verbose` (the clang command),
 and `-link <arg>` stands for voc's `LDFLAGS`/`LDLIBS`. `-S` and `-m` are
-`-emit-llvm-ir` and `-build`; `-c` waits for step 2's libraries. poc's checks
+`-emit-llvm-ir` and `-build`; `-c` gets no flag (step 2: `-library` will
+compile without linking). poc's checks
 cannot be turned off (`-a`, `-t`, `-x`, `-p`); `-e`/`-s`/`-F`, `-f`, `-OV` and
 `-A..` do not apply.
 
@@ -180,10 +181,14 @@ shells out to these rather than linking against LLVM's own C++ API.
   triple: `x86_64-redhat-linux-gnu`; host default data layout:
   `e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128`
   (from `clang -S -emit-llvm` on an empty `int main(){return 0;}`).
-- **Build invocation, decided (`PLAN.md` Phase 8 step 1): single-step
-  `clang`.** `clang <file>.ll -o <exe>` accepts textual LLVM IR directly and
-  handles assembling+linking itself (confirmed with a hand-written
-  `write(2)`-based "hello world" `.ll`, compiled and run successfully). A
+- **Build invocation: one `.ll` and one object per module** (Phase 12 step
+  2a, 2026-09-27; until then a single `clang <program>.ll -o <exe>`, Phase 8
+  step 1). `-emit-llvm-ir` writes `<Module>.ll` for every module of the
+  program, `-build` also runs `clang -c` on each to `<Module>.o` and links
+  the objects with one more `clang`. Each module's `_init` runs its body
+  once, after calling its imports' `_init` in IMPORT-list order (voc's
+  order is alphabetical); `main`, in the main module's `.ll`, calls the
+  runtime's and then the main module's. A
   `.ll` file emitted by `LLVMCodeGenerator.Mod` must set its own `target
   datalayout`/`target triple` explicitly (matching the values above for the
   host, or the `-target` flag's chosen triple) — omitting them makes clang
@@ -214,7 +219,7 @@ shells out to these rather than linking against LLVM's own C++ API.
 - **Link options** (Phase 12 step 1, 2026-09-27): `poc -static` makes
   `-build` pass clang `-static` (a fully static executable; on Linux it needs
   `glibc-static`, on OpenBSD it is a static PIE); `poc -link <arg>`, repeatable,
-  passes `<arg>` to clang as one word, after the `.ll` and before `-lm`
+  passes `<arg>` to clang as one word, after the objects and before `-lm`
   (`-link -lz`, `-link -L<dir>`); `poc -verbose` prints the clang command on
   stderr. Fixture `poc-link-flags`.
 - **Debug information** (Phase 11 A16, stage (a), 2026-09-26): `poc -g`
