@@ -1397,7 +1397,35 @@ convenient, but must not be a prerequisite of it.
    files and -compile's are both `members`; only -library requires every
    import to be one or in a library, `membersOnly`). Fixture
    `llvm-using-modules` (sections 2 and 5);
-   **2g** the fixtures this step's testing paragraph asks for, on Linux and
+   **2g** whole-program optimization, `poc -lto` (decided with the user
+   2026-09-27). Opt-in, the default link unchanged: LTO links are slower,
+   and IR and bitcode are tied to the LLVM version that reads them, where
+   an object is not. With `-lto`, `-build` compiles each module's `.ll` to
+   LLVM bitcode (`clang -flto -c`) and links with `-flto`, so LLVM
+   optimizes the modules as one program: inlining across modules, removing
+   procedures nothing calls, folding across module boundaries. What takes
+   part: the program's own modules; a module given as its `.sym` and `.ll`,
+   a third kind of pair beside 2f's `.sym` and `.o`, its key, target and
+   imports read from the `.ll` text instead of with `nm` (and refused with
+   a clear message when this clang cannot read it); and libraries built
+   with `-lto` (`poc-rtl` too, when `make` is asked for it), whose archive
+   holds bitcode. A `.sym`/`.o` pair and a library of ordinary objects
+   still link, without optimization across their boundary. `-compile
+   -lto` writes a module's bitcode `.o`. Toolchain, probed 2026-09-27 with
+   a two-file `.ll` LTO build: the default linker works on atla (GNU ld
+   2.46 with LLVM's plugin; no `ld.lld`), cymoril (lld 19) and alerik (lld
+   19); on artos GNU ld 2.42 fails and pkgsrc's `ld.lld` works, so on
+   NetBSD poc passes `-fuse-ld=lld`; rackhir not yet probed. Little to gain
+   on 32-bit x86, whose default is `-O0` (x87 reals). The key and target
+   symbols are constants kept alive, so the checks of 2b and 2f still hold
+   under LTO. A `.ll` is readable IR, much easier to reverse than an
+   object: `.sym`/`.ll` is for optimization, not for sharing a module
+   without its source. Fixtures: a program built with `-lto` from source,
+   from a `.sym`/`.ll` pair and with an LTO `poc-rtl`, with the same output
+   as without; a cross-module call inlined (the optimized IR or the
+   executable's symbols); a `.ll` for another target or size model
+   refused;
+   **2h** the fixtures this step's testing paragraph asks for, on Linux and
    the BSD hosts, at both word sizes, and the rackhir run of step 2's
    commits.
 
