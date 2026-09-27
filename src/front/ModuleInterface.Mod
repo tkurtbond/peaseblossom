@@ -172,6 +172,11 @@ MODULE ModuleInterface;
       next: ModuleKey
     END;
 
+    (* Phase 12 step 2c: the directory of the library that has the module
+       name, when one on the library path has it (Poc.Mod supplies it: the
+       library path is the driver's business) *)
+    LibraryLookup* = PROCEDURE (name: ARRAY OF CHAR; VAR dir: ARRAY OF CHAR): BOOLEAN;
+
     SearchPathEntry* = POINTER TO SearchPathEntryDesc;
     SearchPathEntryDesc* = RECORD
       dir*: ARRAY searchPathDirLength OF CHAR;
@@ -207,6 +212,10 @@ MODULE ModuleInterface;
        original cwd-then-search-path behavior every other command and
        fixture relies on. *)
     interfaceDir: ARRAY searchPathDirLength OF CHAR;
+    (* Phase 12 step 2c: when not NIL, ReadSource* takes a module's .sym
+       from the library that has it before anywhere else: a library's
+       module is used as the library has it, never regenerated *)
+    libraryLookup*: LibraryLookup;
     (* Phase 12 step 2b: the key of every module whose .sym this run has
        written or read, the latest first *)
     keys: ModuleKey;
@@ -422,6 +431,7 @@ MODULE ModuleInterface;
                         VAR length: LONGINT; VAR found: BOOLEAN);
     VAR
       name: ARRAY nameBufferLength OF CHAR;
+      dir: ARRAY searchPathDirLength OF CHAR;
       path: ARRAY pathBufferLength OF CHAR;
       f: Files.File;
       r: Files.Rider;
@@ -431,7 +441,11 @@ MODULE ModuleInterface;
   BEGIN
     SymFileName(moduleName, name);
     f := NIL;
-    IF interfaceDir[0] # 0X THEN
+    IF (libraryLookup # NIL) & libraryLookup(moduleName, dir) THEN
+      JoinPath(dir, name, path);
+      f := Files.Old(path)
+    END;
+    IF (f = NIL) & (interfaceDir[0] # 0X) THEN
       JoinPath(interfaceDir, name, path);
       f := Files.Old(path)
     END;

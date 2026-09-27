@@ -34,6 +34,6 @@ mkdir -p "$BUILD/stage1/obj" "$BUILD/stage1/bin"
 cd "$BUILD/stage1/obj"
 "$STAGE0_POC" -OC ${BOOTSTRAP_OPT:+-opt "$BOOTSTRAP_OPT"} \
   -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
-  -import-path "$ROOT/rtl/llvm" \
+  -import-path "$ROOT/rtl/llvm" -import-path "$ROOT/src/driver" \
   -o "$BUILD/stage1/bin/poc" -build "$ROOT/src/driver/Poc.Mod"
 echo "Stage 1: built $BUILD/stage1/bin/poc"

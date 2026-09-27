@@ -204,6 +204,9 @@ MODULE LLVMCodeGenerator;
        value does not fit the result, instead of keeping its low bits.
        FALSE leaves the IR as it was without the switch. *)
     rangeChecks*: BOOLEAN;
+    (* poc -library (Phase 12 step 2c): TRUE while building a library, whose
+       modules have no main module and so no "main" *)
+    buildingLibrary*: BOOLEAN;
 
   CONST
     (* PLAN.md Phase 8 step 13: two, not one - confirmed against real
@@ -548,6 +551,10 @@ MODULE LLVMCodeGenerator;
       (* the module's source file, as poc opened it - named in trap messages
          under -trap-location *)
       fileName*: SourcePath;
+      (* Phase 12 step 2c: a module a library on the library path has:
+         module and scope come from its .sym, and it is declared to the
+         others (EmitImportDeclarations), not generated *)
+      inLibrary*: BOOLEAN;
       next*: ModuleList
     END;
 
@@ -6685,7 +6692,10 @@ MODULE LLVMCodeGenerator;
     COPY(base, tdesc); Strcat(tdesc, ".tdesc");
     TagSymbol(rec, tag);
     (* the struct type, spelled once and reused for the initializer *)
-    WriteStr(w, tdesc); WriteStr(w, " = constant { [");
+    (* a record with no name of its own ("-anon<N>", EnsureTypeTag) is this
+       module's alone: another names its own copy (Phase 12 step 2c) *)
+    WriteStr(w, tdesc);
+    IF rec.name[0] = "-" THEN WriteStr(w, " = internal constant { [") ELSE WriteStr(w, " = constant { [") END;
     text[0] := 0X; AppendLongInt(text, slotCount); WriteStr(w, text);
     WriteStr(w, " x ptr], "); WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt);
     WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ", [");
@@ -6710,7 +6720,11 @@ MODULE LLVMCodeGenerator;
     first := TRUE; EmitPointerOffsets(w, wordInt, "", rec, 0, first); WriteStr(w, "]"); WriteLn(w);
     WriteStr(w, "}"); WriteLn(w);
     (* the tag: the header's own address, slotCount words past the start *)
-    WriteStr(w, tag); WriteStr(w, " = alias ptr, getelementptr inbounds (i8, ptr "); WriteStr(w, tdesc);
+    WriteStr(w, tag);
+    IF rec.name[0] = "-" THEN WriteStr(w, " = internal alias ptr, getelementptr inbounds (i8, ptr ")
+    ELSE WriteStr(w, " = alias ptr, getelementptr inbounds (i8, ptr ")
+    END;
+    WriteStr(w, tdesc);
     WriteStr(w, ", i32 ");
     text[0] := 0X; AppendLongInt(text, slotCount * ConstantEvaluator.wordSize); WriteStr(w, text);
     WriteStr(w, ")"); WriteLn(w); WriteLn(w)
@@ -7749,7 +7763,10 @@ MODULE LLVMCodeGenerator;
     cg.locals := NIL; cg.nestedRoot := NIL; cg.currentProcResultType := NIL;
     InitSymbol(cg, rec, symbol);
     COPY(rec.moduleName, cg.currentProc); Strcat(cg.currentProc, "."); Strcat(cg.currentProc, rec.initPath);
-    WriteStr(w, "define void "); WriteStr(w, symbol); WriteStr(w, "(ptr %self) {"); WriteLn(w);
+    (* one for a record the front end could not name is this module's alone,
+       as its descriptor (EmitDescriptor) *)
+    IF rec.initPath[0] = "-" THEN WriteStr(w, "define internal void ") ELSE WriteStr(w, "define void ") END;
+    WriteStr(w, symbol); WriteStr(w, "(ptr %self) {"); WriteLn(w);
     EmitEntryLabel(w, cg);
     IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) THEN
       base := rec.baseType(Types.RecordType);
@@ -8047,7 +8064,7 @@ MODULE LLVMCodeGenerator;
     withRootTables := HasModuleNamed(program, "ModuleTable");
     withHeap := HasModuleNamed(program, "GarbageCollectedHeap");
     withArguments := HasModuleNamed(program, "Modules");
-    isMain := target.next = NIL;
+    isMain := (target.next = NIL) & ~buildingLibrary;
     cg.currentLine := 0; cg.currentColumn := 0;
     cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
     cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL; cg.nestedRoot := NIL;

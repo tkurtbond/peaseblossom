@@ -43,6 +43,9 @@ MODULE LLVMToolchainDriver;
        before -lm, so a library named there can itself use libm. *)
     staticLink*, verbose*: BOOLEAN;
     linkArguments: ARRAY linkArgumentsLength OF CHAR;
+    (* Phase 12 step 2c: the libraries a program links, as clang arguments
+       (AddLibrary), after its objects and before the -link arguments *)
+    libraryArguments: ARRAY linkArgumentsLength OF CHAR;
     (* the clang command Build runs: the link names every module's object *)
     command: ARRAY 65536 OF CHAR;
 
@@ -195,7 +198,10 @@ MODULE LLVMToolchainDriver;
     END;
     IF ok THEN
       m := modules;
-      WHILE m # NIL DO EmitModuleIR(modules, m, triple); m := m.next END;
+      WHILE m # NIL DO
+        IF ~m.inLibrary THEN EmitModuleIR(modules, m, triple) END;
+        m := m.next
+      END;
       (* IR with a construct missing is worse than none, and so is a stale
          file from an earlier run beside it: every module's is written and
          deleted again, and the caller finds out through LLVMCodeGenerator.
@@ -207,8 +213,10 @@ MODULE LLVMToolchainDriver;
       IF (LLVMCodeGenerator.unsupportedCount > 0) OR (Diagnostics.errorCount > errorsBefore) THEN
         m := modules;
         WHILE m # NIL DO
-          COPY(m.module.name, name); Strcat(name, ".ll");
-          deleteResult := Platform.Unlink(name); (* not Files.Delete: voc's renames to a temp name *)
+          IF ~m.inLibrary THEN
+            COPY(m.module.name, name); Strcat(name, ".ll");
+            deleteResult := Platform.Unlink(name) (* not Files.Delete: voc's renames to a temp name *)
+          END;
           m := m.next
         END;
         ok := FALSE
@@ -311,30 +319,108 @@ MODULE LLVMToolchainDriver;
      module's .ll to its own object file beside it, and one more clang links
      the objects - the main module's last - with the -link arguments, libm
      and -static if asked. *)
-  PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
-                   triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
-    VAR
-      path: ARRAY pathBufferLength OF CHAR;
-      m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
+  (* clang -c on each module's .ll that is not from a library, to its .o;
+     position-independent code for a library (pic) *)
+  PROCEDURE CompileModules(modules: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR;
+                           pic: BOOLEAN): BOOLEAN;
+    VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
   BEGIN
-    IF ~EmitIR(modules, topName, triple, outputDir, path) THEN RETURN FALSE END;
     ok := TRUE; m := modules;
     WHILE ok & (m # NIL) DO
-      command := "clang -c"; AppendTargetOptions(command, triple);
-      ModuleFilePath(outputDir, m.module.name, ".ll", path); AppendPath(path);
-      ModuleFilePath(outputDir, m.module.name, ".o", path);
-      Strcat(command, " -o"); AppendPath(path);
-      ok := RunCommand();
+      IF ~m.inLibrary THEN
+        command := "clang -c"; AppendTargetOptions(command, triple);
+        IF pic THEN Strcat(command, " -fPIC") END;
+        ModuleFilePath(outputDir, m.module.name, ".ll", path); AppendPath(path);
+        ModuleFilePath(outputDir, m.module.name, ".o", path);
+        Strcat(command, " -o"); AppendPath(path);
+        ok := RunCommand()
+      END;
       m := m.next
     END;
-    IF ~ok THEN RETURN FALSE END;
-    command := "clang"; AppendTargetOptions(command, triple);
+    RETURN ok
+  END CompileModules;
+
+  (* appends the object of each module that is not from a library *)
+  PROCEDURE AppendObjects(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR);
+    VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList;
+  BEGIN
     m := modules;
     WHILE m # NIL DO
-      ModuleFilePath(outputDir, m.module.name, ".o", path); AppendPath(path);
+      IF ~m.inLibrary THEN ModuleFilePath(outputDir, m.module.name, ".o", path); AppendPath(path) END;
       m := m.next
-    END;
+    END
+  END AppendObjects;
+
+  (* The file name of library name's shared library for triple:
+     lib<name>.so, but lib<name>.so.0.0 on OpenBSD, whose linker finds
+     -l<name> only as lib<name>.so.<major>.<minor> *)
+  PROCEDURE SharedLibraryName*(name, triple: ARRAY OF CHAR; VAR file: ARRAY OF CHAR);
+  BEGIN
+    COPY("lib", file); Strcat(file, name); Strcat(file, ".so");
+    IF LLVMTypes.IsOpenBSD(triple) THEN Strcat(file, ".0.0") END
+  END SharedLibraryName;
+
+  (* Phase 12 step 2c: a program links the library name, whose files are in
+     dir: its archive by path, or with shared, its shared library by -L and
+     -l, and dir as the program's run-time search path. In the order the
+     libraries must be linked: each before those it needs. *)
+  PROCEDURE AddLibrary*(name, dir: ARRAY OF CHAR; shared: BOOLEAN);
+    VAR path, absolute: ARRAY pathBufferLength OF CHAR; quoted: ARRAY 2 * pathBufferLength OF CHAR; ok: BOOLEAN;
+  BEGIN
+    IF shared THEN
+      (* the run-time search path must not depend on the directory the
+         program is started in *)
+      IF dir[0] # "/" THEN COPY(Platform.CWD, absolute); Strcat(absolute, "/"); Strcat(absolute, dir)
+      ELSE COPY(dir, absolute)
+      END;
+      COPY("-L", path); Strcat(path, dir); ok := QuoteWord(path, quoted); Strcat(libraryArguments, quoted);
+      COPY("-l", path); Strcat(path, name); ok := QuoteWord(path, quoted); Strcat(libraryArguments, quoted);
+      COPY("-Wl,-rpath,", path); Strcat(path, absolute); ok := QuoteWord(path, quoted); Strcat(libraryArguments, quoted)
+    ELSE
+      COPY(dir, path); Strcat(path, "/lib"); Strcat(path, name); Strcat(path, ".a");
+      ok := QuoteWord(path, quoted); Strcat(libraryArguments, quoted)
+    END
+  END AddLibrary;
+
+  PROCEDURE ClearLibraries*;
+  BEGIN
+    libraryArguments[0] := 0X
+  END ClearLibraries;
+
+  (* Phase 12 step 2c: the library name, in dir: every module of modules not
+     from a library compiled to a position-independent object, archived in
+     lib<name>.a and linked into its shared library (SharedLibraryName)
+     against the libraries AddLibrary named, as shared ones *)
+  PROCEDURE BuildLibrary*(modules: LLVMCodeGenerator.ModuleList; name, triple, dir: ARRAY OF CHAR): BOOLEAN;
+    VAR path, file: ARRAY pathBufferLength OF CHAR; deleteResult: INTEGER;
+  BEGIN
+    IF ~EmitIR(modules, name, triple, dir, path) THEN RETURN FALSE END;
+    IF ~CompileModules(modules, triple, dir, TRUE) THEN RETURN FALSE END;
+    COPY(dir, path); Strcat(path, "/lib"); Strcat(path, name); Strcat(path, ".a");
+    deleteResult := Platform.Unlink(path); (* ar adds to an archive that is there *)
+    command := "ar rcs"; AppendPath(path);
+    AppendObjects(modules, dir);
+    IF ~RunCommand() THEN RETURN FALSE END;
+    SharedLibraryName(name, triple, file);
+    COPY(dir, path); Strcat(path, "/"); Strcat(path, file);
+    command := "clang -shared"; AppendTargetOptions(command, triple);
+    AppendObjects(modules, dir);
+    Strcat(command, " -o"); AppendPath(path);
+    Strcat(command, libraryArguments);
+    Strcat(command, " -lm");
+    RETURN RunCommand()
+  END BuildLibrary;
+
+  PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
+                   triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
+    VAR path: ARRAY pathBufferLength OF CHAR;
+  BEGIN
+    IF ~EmitIR(modules, topName, triple, outputDir, path) THEN RETURN FALSE END;
+    IF ~CompileModules(modules, triple, outputDir, FALSE) THEN RETURN FALSE END;
+    command := "clang"; AppendTargetOptions(command, triple);
+    AppendObjects(modules, outputDir);
     Strcat(command, " -o"); AppendPath(exePath);
+    Strcat(command, libraryArguments);
     Strcat(command, linkArguments);
     (* libm, for rtl/llvm's Math and MathL: on every supported system it is
        a library apart from libc, and -lm links nothing that is not used *)

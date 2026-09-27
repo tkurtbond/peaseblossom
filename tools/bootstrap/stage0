@@ -44,6 +44,7 @@ voc -OC -s "$ROOT/src/front/Parser.Mod"
 voc -OC -s "$ROOT/src/back/llvm/LLVMTypes.Mod"
 voc -OC -s "$ROOT/src/back/llvm/LLVMCodeGenerator.Mod"
 voc -OC -s "$ROOT/src/back/llvm/LLVMToolchainDriver.Mod"
+voc -OC -s "$ROOT/src/driver/Libraries.Mod"
 voc -OC -m "$ROOT/src/driver/Poc.Mod"
 
 cp Poc "$BUILD/bin/poc"

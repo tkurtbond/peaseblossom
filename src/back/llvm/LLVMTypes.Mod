@@ -525,6 +525,13 @@ MODULE LLVMTypes;
      frame ("stackrealign"), which fixes the one frame that was
      misaligned from the start. Linux and every 64-bit target are left as
      they are. *)
+  (* Whether triple's operating system is OpenBSD (the third component, or
+     the second when the vendor is left out) *)
+  PROCEDURE IsOpenBSD*(triple: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN TripleComponentStartsWith(triple, 1, "openbsd") OR TripleComponentStartsWith(triple, 2, "openbsd")
+  END IsOpenBSD;
+
   PROCEDURE NeedsStackRealignment*(triple: ARRAY OF CHAR): BOOLEAN;
     VAR i: INTEGER; found: BOOLEAN;
   BEGIN

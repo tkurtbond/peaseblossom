@@ -95,11 +95,12 @@ bootstraps poc.
   based on Ofront (J. Templ), rebuilt 2026/09/18.
 - **Both paths are the same on every development and test machine**: atla
   (Linux, the development host), the local VMs `cymoril` (OpenBSD i386),
-  `artos` (NetBSD amd64) and `rackhir` (FreeBSD arm64), and the office
+  `artos` (NetBSD amd64), `alerik` (FreeBSD amd64) and `rackhir` (FreeBSD
+  arm64), and the office
   machines `erekose` (OpenBSD i386) and `terhali` (NetBSD amd64). **Which
   run when** (user, 2026-09-26): a change is checked (`make check`, and
-  `gmake check` on each VM) on atla, cymoril, artos and a FreeBSD amd64 VM
-  (to be set up; until then the first three) before it is committed.
+  `gmake check` on each VM) on atla, cymoril, artos and alerik (since
+  2026-09-27) before it is committed.
   rackhir is emulated arm64, so slow; it is the only non-x86 machine and
   runs as a separate stream, on commits already pushed: after changes where
   the architecture matters (code for calls, arithmetic and memory layout,
@@ -191,7 +192,18 @@ shells out to these rather than linking against LLVM's own C++ API.
   runtime's and then the main module's. Each module's object defines
   `<Module>.-key.<hash of its .sym>` and refers to its imports' keys, so an
   importer links only with the interface it was compiled against (step 2b;
-  `-build` and `-emit-llvm-ir` write the main module's `.sym` too). A
+  `-build` and `-emit-llvm-ir` write the main module's `.sym` too).
+  **Libraries** (step 2c): `poc -library <name> <file>...` builds the
+  modules of those files (their imports must be among them or in a library)
+  into `<output-dir>/<triple>/<O2|OC>/`: `.sym`/`.ll`/`.o` per module,
+  `lib<name>.a`, `lib<name>.so` (`.so.0.0` on OpenBSD), the manifest
+  `<name>.library` and `<Module>.owner` files. The library path is
+  `-library-path` (repeatable), then `POC_LIBRARY_PATH`, then
+  `<poc's dir>/../lib/poc`; `-clear-library-path` drops all three. A
+  module a library on the path has is taken from it, never from source;
+  `-build` links the libraries' archives, `-shared-libraries` their shared
+  libraries. poc refuses a module two libraries have and a library
+  compiled against another's old keys (`src/driver/Libraries.Mod`). A
   `.ll` file emitted by `LLVMCodeGenerator.Mod` must set its own `target
   datalayout`/`target triple` explicitly (matching the values above for the
   host, or the `-target` flag's chosen triple) — omitting them makes clang

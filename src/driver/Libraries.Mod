@@ -1,0 +1,534 @@
+MODULE Libraries;
+
+  (* Phase 12 step 2c: poc's libraries, as PLAN.md's step 2 design has them.
+
+     A library is a named set of modules, compiled for one target and size
+     model, in the directory <base>/<triple>/<O2|OC>/ (its tuple directory):
+     each module's .sym, .ll and .o, the archive lib<name>.a, the shared
+     library, and the manifest <name>.library. The manifest is text, one fact
+     a line, the words separated by one space:
+
+       library <name>
+       triple <triple>
+       model <O2|OC>
+       needs <library>                  (each library its modules import from)
+       module <Module> <key>            (each module, with its key)
+       import <Module> <Imported> <key> (each import, with the key compiled against)
+
+     so poc can tell, before a link, whether a library was compiled against
+     the interface of a module that another library now has. Beside it, for
+     each of its modules, <Module>.owner holds the library's name: that is
+     how a module an import names is found without listing a directory. A
+     module belongs to one library only.
+
+     The library path is the list of base directories searched, in order:
+     -library-path, POC_LIBRARY_PATH, then <poc's directory>/../lib/poc. The
+     first one whose tuple directory has <Module>.owner owns the module.
+
+     Nothing here knows about LLVM: the driver builds and links, this module
+     finds, reads and writes manifests, and checks that the libraries a
+     program would link agree with each other. *)
+
+  IMPORT Files, Platform, Err;
+
+  CONST
+    nameLength* = 256;
+    pathLength* = 1024;
+    keyLength* = 16;
+    lineLength = 2048;
+
+  TYPE
+    Name* = ARRAY nameLength OF CHAR;
+    Path* = ARRAY pathLength OF CHAR;
+    Key* = ARRAY keyLength + 1 OF CHAR;
+
+    PathEntry* = POINTER TO PathEntryDesc;
+    PathEntryDesc* = RECORD
+      dir*: Path;
+      next*: PathEntry
+    END;
+
+    (* one import of a module, with the key of the imported module's
+       interface it was compiled against *)
+    ImportKey* = POINTER TO ImportKeyDesc;
+    ImportKeyDesc* = RECORD
+      name*: Name;
+      key*: Key;
+      next*: ImportKey
+    END;
+
+    Member* = POINTER TO MemberDesc;
+    MemberDesc* = RECORD
+      name*: Name;
+      key*: Key;
+      imports*: ImportKey;
+      next*: Member
+    END;
+
+    Need* = POINTER TO NeedDesc;
+    NeedDesc* = RECORD
+      name*: Name;
+      next*: Need
+    END;
+
+    Library* = POINTER TO LibraryDesc;
+    LibraryDesc* = RECORD
+      name*: Name;
+      dir*: Path; (* its tuple directory *)
+      triple*: Name;
+      model*: ARRAY 3 OF CHAR;
+      modules*: Member;
+      needs*: Need;
+      used*: BOOLEAN; (* linked into the program being built *)
+      next: Library; (* in loaded *)
+      linkNext*: Library (* in linkOrder *)
+    END;
+
+  VAR
+    pathHead, pathTail: PathEntry;
+    triple: Name;
+    model: ARRAY 3 OF CHAR;
+    excluded: Name; (* the library being built, never taken from the path *)
+    loaded: Library;
+    (* the used libraries, each before those it needs (ComputeLinkOrder) *)
+    linkOrder*: Library;
+    (* how many manifests could not be used (Load reported each) *)
+    errors*: INTEGER;
+
+  PROCEDURE Append(VAR s: ARRAY OF CHAR; suffix: ARRAY OF CHAR);
+    VAR i, j: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE s[i] # 0X DO INC(i) END;
+    j := 0;
+    WHILE (suffix[j] # 0X) & (i < LEN(s) - 1) DO s[i] := suffix[j]; INC(i); INC(j) END;
+    s[i] := 0X
+  END Append;
+
+  PROCEDURE JoinPath(dir, name: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
+  BEGIN
+    COPY(dir, result); Append(result, "/"); Append(result, name)
+  END JoinPath;
+
+  (* ---- The library path ---- *)
+
+  PROCEDURE AddPathDir*(dir: ARRAY OF CHAR);
+    VAR e: PathEntry;
+  BEGIN
+    IF dir[0] = 0X THEN RETURN END;
+    NEW(e); COPY(dir, e.dir); e.next := NIL;
+    IF pathTail = NIL THEN pathHead := e ELSE pathTail.next := e END;
+    pathTail := e
+  END AddPathDir;
+
+  (* dirs separated by ":", as POC_LIBRARY_PATH has them *)
+  PROCEDURE AddPathList*(list: ARRAY OF CHAR);
+    VAR i, j: INTEGER; piece: Path;
+  BEGIN
+    i := 0;
+    WHILE list[i] # 0X DO
+      j := 0;
+      WHILE (list[i] # 0X) & (list[i] # ":") DO piece[j] := list[i]; INC(j); INC(i) END;
+      piece[j] := 0X;
+      AddPathDir(piece);
+      IF list[i] = ":" THEN INC(i) END
+    END
+  END AddPathList;
+
+  PROCEDURE ClearPath*;
+  BEGIN
+    pathHead := NIL; pathTail := NIL
+  END ClearPath;
+
+  PROCEDURE FirstPathEntry*(): PathEntry;
+  BEGIN
+    RETURN pathHead
+  END FirstPathEntry;
+
+  PROCEDURE Exists(path: ARRAY OF CHAR): BOOLEAN;
+    VAR f: Files.File;
+  BEGIN
+    f := Files.Old(path);
+    IF f # NIL THEN Files.Close(f) END;
+    RETURN f # NIL
+  END Exists;
+
+  (* The last entry of the path: <dir>/../lib/poc, dir the directory poc's
+     executable is in, when that directory exists. The shell finds it
+     (command -v, through PATH when program, argument 0, names no
+     directory), as a file cannot be opened to test that it is there: voc's
+     Files.Old opens for writing first, which the running executable
+     refuses. *)
+  PROCEDURE AddDefaultPathDir*(program: ARRAY OF CHAR);
+    VAR
+      scratch: ARRAY 64 OF CHAR; command: ARRAY 2 * pathLength OF CHAR; dir: Path;
+      number: ARRAY 12 OF CHAR; n, i, status: INTEGER; f: Files.File; r: Files.Rider;
+  BEGIN
+    i := 0;
+    WHILE program[i] # 0X DO
+      IF program[i] = "'" THEN RETURN END; (* not worth quoting *)
+      INC(i)
+    END;
+    n := Platform.PID; i := 0;
+    REPEAT number[i] := CHR(ORD("0") + n MOD 10); n := n DIV 10; INC(i) UNTIL n = 0;
+    scratch := "/tmp/poc-library-path-";
+    n := 0; WHILE scratch[n] # 0X DO INC(n) END;
+    WHILE i > 0 DO DEC(i); scratch[n] := number[i]; INC(n) END;
+    scratch[n] := 0X;
+    command := "p=$(command -v '"; Append(command, program);
+    Append(command, "') && cd "); Append(command, '"$(dirname "$p")/../lib/poc"');
+    Append(command, " 2>/dev/null && pwd >");
+    Append(command, scratch);
+    status := Platform.System(command);
+    f := Files.Old(scratch);
+    IF f # NIL THEN
+      Files.Set(r, f, 0); Files.ReadLine(r, dir); Files.Close(f);
+      AddPathDir(dir)
+    END;
+    status := Platform.Unlink(scratch)
+  END AddDefaultPathDir;
+
+  (* ---- Target ---- *)
+
+  (* the target and size model ("O2" or "OC") libraries are looked for and
+     built for *)
+  PROCEDURE SetTarget*(targetTriple, sizeModel: ARRAY OF CHAR);
+  BEGIN
+    COPY(targetTriple, triple); COPY(sizeModel, model)
+  END SetTarget;
+
+  (* base/<triple>/<model> *)
+  PROCEDURE TupleDirectory*(base: ARRAY OF CHAR; VAR dir: ARRAY OF CHAR);
+  BEGIN
+    IF base[0] = 0X THEN COPY(".", dir) ELSE COPY(base, dir) END;
+    Append(dir, "/"); Append(dir, triple); Append(dir, "/"); Append(dir, model)
+  END TupleDirectory;
+
+  PROCEDURE Exclude*(name: ARRAY OF CHAR);
+  BEGIN
+    COPY(name, excluded)
+  END Exclude;
+
+  (* ---- Reading manifests ---- *)
+
+  (* the first four words of line, "" for the ones missing *)
+  PROCEDURE SplitLine(line: ARRAY OF CHAR; VAR w0, w1, w2, w3: ARRAY OF CHAR);
+    VAR i, n, j: INTEGER; ch: CHAR;
+  BEGIN
+    w0[0] := 0X; w1[0] := 0X; w2[0] := 0X; w3[0] := 0X;
+    i := 0; n := 0;
+    WHILE (line[i] # 0X) & (n < 4) DO
+      WHILE line[i] = " " DO INC(i) END;
+      j := 0;
+      WHILE (line[i] # 0X) & (line[i] # " ") DO
+        ch := line[i];
+        CASE n OF
+        0: IF j < LEN(w0) - 1 THEN w0[j] := ch END
+        | 1: IF j < LEN(w1) - 1 THEN w1[j] := ch END
+        | 2: IF j < LEN(w2) - 1 THEN w2[j] := ch END
+        | 3: IF j < LEN(w3) - 1 THEN w3[j] := ch END
+        END;
+        INC(i); INC(j)
+      END;
+      IF j > 0 THEN
+        CASE n OF
+        0: w0[j] := 0X | 1: w1[j] := 0X | 2: w2[j] := 0X | 3: w3[j] := 0X
+        END;
+        INC(n)
+      END
+    END
+  END SplitLine;
+
+  PROCEDURE FindMember*(lib: Library; name: ARRAY OF CHAR): Member;
+    VAR m: Member;
+  BEGIN
+    m := lib.modules;
+    WHILE (m # NIL) & (m.name # name) DO m := m.next END;
+    RETURN m
+  END FindMember;
+
+  PROCEDURE AddMember*(lib: Library; name, key: ARRAY OF CHAR): Member;
+    VAR m, tail: Member;
+  BEGIN
+    NEW(m); COPY(name, m.name); COPY(key, m.key); m.imports := NIL; m.next := NIL;
+    IF lib.modules = NIL THEN lib.modules := m
+    ELSE
+      tail := lib.modules;
+      WHILE tail.next # NIL DO tail := tail.next END;
+      tail.next := m
+    END;
+    RETURN m
+  END AddMember;
+
+  PROCEDURE AddImport*(m: Member; name, key: ARRAY OF CHAR);
+    VAR i, tail: ImportKey;
+  BEGIN
+    NEW(i); COPY(name, i.name); COPY(key, i.key); i.next := NIL;
+    IF m.imports = NIL THEN m.imports := i
+    ELSE
+      tail := m.imports;
+      WHILE tail.next # NIL DO tail := tail.next END;
+      tail.next := i
+    END
+  END AddImport;
+
+  PROCEDURE AddNeed*(lib: Library; name: ARRAY OF CHAR);
+    VAR n: Need;
+  BEGIN
+    n := lib.needs;
+    WHILE (n # NIL) & (n.name # name) DO n := n.next END;
+    IF n = NIL THEN NEW(n); COPY(name, n.name); n.next := lib.needs; lib.needs := n END
+  END AddNeed;
+
+  PROCEDURE NewLibrary*(name, dir: ARRAY OF CHAR): Library;
+    VAR lib: Library;
+  BEGIN
+    NEW(lib); COPY(name, lib.name); COPY(dir, lib.dir);
+    COPY(triple, lib.triple); COPY(model, lib.model);
+    lib.modules := NIL; lib.needs := NIL; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
+    RETURN lib
+  END NewLibrary;
+
+  (* The library name whose manifest is in dir, read once. NIL, having said
+     why on Err, when the manifest cannot be read or is not for this target
+     and size model. *)
+  PROCEDURE Load(name, dir: ARRAY OF CHAR): Library;
+    VAR
+      lib: Library; path: Path; f: Files.File; r: Files.Rider; line: ARRAY lineLength OF CHAR;
+      w0, w1, w2, w3: Name; m: Member; ok: BOOLEAN;
+  BEGIN
+    lib := loaded;
+    WHILE (lib # NIL) & ((lib.name # name) OR (lib.dir # dir)) DO lib := lib.next END;
+    IF lib # NIL THEN RETURN lib END;
+    JoinPath(dir, name, path); Append(path, ".library");
+    f := Files.Old(path);
+    IF f = NIL THEN
+      Err.String("poc: cannot read the manifest "); Err.String(path); Err.Ln;
+      INC(errors);
+      RETURN NIL
+    END;
+    lib := NewLibrary(name, dir); lib.triple[0] := 0X; lib.model[0] := 0X;
+    ok := TRUE; m := NIL;
+    Files.Set(r, f, 0);
+    REPEAT
+      Files.ReadLine(r, line);
+      SplitLine(line, w0, w1, w2, w3);
+      IF w0 = "library" THEN ok := w1 = name
+      ELSIF w0 = "triple" THEN COPY(w1, lib.triple)
+      ELSIF w0 = "model" THEN COPY(w1, lib.model)
+      ELSIF w0 = "needs" THEN AddNeed(lib, w1)
+      ELSIF w0 = "module" THEN m := AddMember(lib, w1, w2)
+      ELSIF w0 = "import" THEN
+        m := FindMember(lib, w1);
+        ok := m # NIL;
+        IF ok THEN AddImport(m, w2, w3) END
+      ELSIF w0[0] # 0X THEN ok := FALSE
+      END
+    UNTIL r.eof OR ~ok;
+    Files.Close(f);
+    IF ~ok THEN
+      Err.String("poc: the manifest "); Err.String(path); Err.String(" is malformed"); Err.Ln;
+      INC(errors);
+      RETURN NIL
+    ELSIF (lib.triple # triple) OR (lib.model # model) THEN
+      Err.String("poc: the manifest "); Err.String(path); Err.String(" is for ");
+      Err.String(lib.triple); Err.String(" "); Err.String(lib.model); Err.String(", not ");
+      Err.String(triple); Err.String(" "); Err.String(model); Err.Ln;
+      INC(errors);
+      RETURN NIL
+    END;
+    lib.next := loaded; loaded := lib;
+    RETURN lib
+  END Load;
+
+  (* The library on the path that has the module name, loaded; NIL when
+     none has it (or its manifest was wrong, which Load reported) *)
+  PROCEDURE FindModule*(name: ARRAY OF CHAR): Library;
+    VAR e: PathEntry; dir, path: Path; f: Files.File; r: Files.Rider; owner: Name;
+  BEGIN
+    e := pathHead;
+    WHILE e # NIL DO
+      TupleDirectory(e.dir, dir);
+      JoinPath(dir, name, path); Append(path, ".owner");
+      f := Files.Old(path);
+      IF f # NIL THEN
+        Files.Set(r, f, 0); Files.ReadLine(r, owner); Files.Close(f);
+        IF owner # excluded THEN RETURN Load(owner, dir) END
+      END;
+      e := e.next
+    END;
+    RETURN NIL
+  END FindModule;
+
+  (* The library called name on the path, loaded; NIL when there is none *)
+  PROCEDURE FindLibrary*(name: ARRAY OF CHAR): Library;
+    VAR e: PathEntry; dir, path: Path;
+  BEGIN
+    IF name = excluded THEN RETURN NIL END;
+    e := pathHead;
+    WHILE e # NIL DO
+      TupleDirectory(e.dir, dir);
+      JoinPath(dir, name, path); Append(path, ".library");
+      IF Exists(path) THEN RETURN Load(name, dir) END;
+      e := e.next
+    END;
+    RETURN NIL
+  END FindLibrary;
+
+  (* ---- Writing a library's manifest ---- *)
+
+  PROCEDURE WriteString(VAR w: Files.Rider; s: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE s[i] # 0X DO Files.Write(w, s[i]); INC(i) END
+  END WriteString;
+
+  PROCEDURE WriteLine(VAR w: Files.Rider; a, b, c, d: ARRAY OF CHAR);
+  BEGIN
+    WriteString(w, a);
+    IF b[0] # 0X THEN Files.Write(w, " "); WriteString(w, b) END;
+    IF c[0] # 0X THEN Files.Write(w, " "); WriteString(w, c) END;
+    IF d[0] # 0X THEN Files.Write(w, " "); WriteString(w, d) END;
+    Files.Write(w, 0AX)
+  END WriteLine;
+
+  (* <lib.dir>/<lib.name>.library, and <lib.dir>/<Module>.owner for each of
+     its modules. FALSE, having said so on Err, when a file cannot be
+     written. *)
+  PROCEDURE WriteManifest*(lib: Library): BOOLEAN;
+    VAR path: Path; f: Files.File; w: Files.Rider; m: Member; i: ImportKey; n: Need;
+  BEGIN
+    JoinPath(lib.dir, lib.name, path); Append(path, ".library");
+    f := Files.New(path);
+    IF f = NIL THEN Err.String("poc: cannot write "); Err.String(path); Err.Ln; RETURN FALSE END;
+    Files.Set(w, f, 0);
+    WriteLine(w, "library", lib.name, "", "");
+    WriteLine(w, "triple", lib.triple, "", "");
+    WriteLine(w, "model", lib.model, "", "");
+    n := lib.needs;
+    WHILE n # NIL DO WriteLine(w, "needs", n.name, "", ""); n := n.next END;
+    m := lib.modules;
+    WHILE m # NIL DO WriteLine(w, "module", m.name, m.key, ""); m := m.next END;
+    m := lib.modules;
+    WHILE m # NIL DO
+      i := m.imports;
+      WHILE i # NIL DO WriteLine(w, "import", m.name, i.name, i.key); i := i.next END;
+      m := m.next
+    END;
+    Files.Register(f); Files.Close(f);
+    m := lib.modules;
+    WHILE m # NIL DO
+      JoinPath(lib.dir, m.name, path); Append(path, ".owner");
+      f := Files.New(path);
+      IF f = NIL THEN Err.String("poc: cannot write "); Err.String(path); Err.Ln; RETURN FALSE END;
+      Files.Set(w, f, 0); WriteLine(w, lib.name, "", "", "");
+      Files.Register(f); Files.Close(f);
+      m := m.next
+    END;
+    RETURN TRUE
+  END WriteManifest;
+
+  (* ---- The libraries a program links ---- *)
+
+  PROCEDURE Use*(lib: Library);
+  BEGIN
+    lib.used := TRUE
+  END Use;
+
+  PROCEDURE ^ Visit(lib: Library; VAR ok: BOOLEAN);
+
+  (* each library lib needs, used and visited *)
+  PROCEDURE VisitNeeds(lib: Library; VAR ok: BOOLEAN);
+    VAR n: Need; needed: Library;
+  BEGIN
+    n := lib.needs;
+    WHILE ok & (n # NIL) DO
+      needed := FindLibrary(n.name);
+      IF needed = NIL THEN
+        Err.String("poc: library "); Err.String(lib.name); Err.String(" needs library "); Err.String(n.name);
+        Err.String(", which is not on the library path"); Err.Ln;
+        ok := FALSE
+      ELSE
+        needed.used := TRUE; Visit(needed, ok)
+      END;
+      n := n.next
+    END
+  END VisitNeeds;
+
+  (* depth first; lib goes to the front of linkOrder after everything it
+     needs, so each library comes before those it needs *)
+  PROCEDURE Visit(lib: Library; VAR ok: BOOLEAN);
+    VAR l: Library;
+  BEGIN
+    l := linkOrder;
+    WHILE (l # NIL) & (l # lib) DO l := l.linkNext END;
+    IF l # NIL THEN RETURN END;
+    VisitNeeds(lib, ok);
+    lib.linkNext := linkOrder; linkOrder := lib
+  END Visit;
+
+  (* The libraries a program links: every one Use named and every one they
+     need, in linkOrder. Before that, what a link cannot be trusted with is
+     refused, on Err: a library that is not on the path; a module that two of
+     the libraries both have (a process must not hold two collectors); a
+     library compiled against an interface of a module that differs from the
+     one the library now providing it has (their keys). FALSE after any of
+     these. *)
+  PROCEDURE ComputeLinkOrder*(): BOOLEAN;
+    VAR lib, owner: Library; m, provided: Member; i: ImportKey; ok: BOOLEAN;
+  BEGIN
+    ok := TRUE; linkOrder := NIL;
+    lib := loaded;
+    WHILE ok & (lib # NIL) DO
+      IF lib.used THEN Visit(lib, ok) END;
+      lib := lib.next
+    END;
+    lib := linkOrder;
+    WHILE ok & (lib # NIL) DO
+      m := lib.modules;
+      WHILE ok & (m # NIL) DO
+        owner := FindModule(m.name);
+        IF owner # lib THEN
+          Err.String("poc: module "); Err.String(m.name); Err.String(" is in library "); Err.String(lib.name);
+          Err.String(" ("); Err.String(lib.dir); Err.String(")");
+          IF owner # NIL THEN
+            Err.String(" and in library "); Err.String(owner.name);
+            Err.String(" ("); Err.String(owner.dir); Err.String(")")
+          END;
+          Err.String("; a program can link only one of them"); Err.Ln;
+          ok := FALSE
+        END;
+        i := m.imports;
+        WHILE ok & (i # NIL) DO
+          owner := FindModule(i.name);
+          IF owner = NIL THEN
+            Err.String("poc: module "); Err.String(m.name); Err.String(" of library "); Err.String(lib.name);
+            Err.String(" imports "); Err.String(i.name); Err.String(", which no library on the library path has");
+            Err.Ln;
+            ok := FALSE
+          ELSE
+            provided := FindMember(owner, i.name);
+            IF (provided = NIL) OR (provided.key # i.key) THEN
+              Err.String("poc: library "); Err.String(lib.name); Err.String(" was compiled against ");
+              Err.String(i.name); Err.String(" "); Err.String(i.key); Err.String(", but library ");
+              Err.String(owner.name); Err.String(" ("); Err.String(owner.dir); Err.String(") has ");
+              Err.String(i.name); Err.String(" ");
+              IF provided # NIL THEN Err.String(provided.key) END;
+              Err.String("; rebuild "); Err.String(lib.name); Err.Ln;
+              ok := FALSE
+            END
+          END;
+          i := i.next
+        END;
+        m := m.next
+      END;
+      lib := lib.linkNext
+    END;
+    RETURN ok
+  END ComputeLinkOrder;
+
+BEGIN
+  pathHead := NIL; pathTail := NIL; loaded := NIL; linkOrder := NIL;
+  triple[0] := 0X; model[0] := 0X; excluded[0] := 0X; errors := 0
+END Libraries.

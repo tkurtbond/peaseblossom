@@ -66,7 +66,7 @@ MODULE Poc;
   IMPORT Modules, Files, Out, Err, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
          ConstantEvaluator, PredeclaredProcedures, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator,
-         DecimalToDouble, NestedProcedures;
+         DecimalToDouble, NestedProcedures, Libraries;
   (* DecimalToDouble is used only inside ConstantEvaluator's procedure
      bodies, and voc's symbol file records only the imports an exported
      declaration needs, so Stage 0's link line would otherwise miss it: this
@@ -75,6 +75,7 @@ MODULE Poc;
   CONST
     maxLineLength = 4096;
     importPathEnvVar = "POC_IMPORT_PATH";
+    libraryPathEnvVar = "POC_LIBRARY_PATH";
 
   VAR
     (* Whether anything went wrong that is not counted in Diagnostics.errorCount
@@ -83,6 +84,24 @@ MODULE Poc;
        what makes the process exit with status 1 (below, after Run). Until
        2026-09-20 poc always exited 0, so make and scripts could not tell. *)
     failed: BOOLEAN;
+
+  TYPE
+    (* Phase 12 step 2c: a module poc -library builds, from the file named *)
+    LibraryMember = POINTER TO LibraryMemberDesc;
+    LibraryMemberDesc = RECORD
+      name: SyntaxTree.Ident;
+      path: Libraries.Path;
+      next: LibraryMember
+    END;
+
+  VAR
+    (* Phase 12 step 2c: poc -library's modules; NIL for every other command *)
+    members: LibraryMember;
+    (* poc -shared-libraries: link the libraries dynamically *)
+    sharedLibraries: BOOLEAN;
+    (* -clear-library-path given: POC_LIBRARY_PATH and poc's own lib/poc are
+       left out of the library path too *)
+    libraryPathCleared: BOOLEAN;
 
   TYPE
     (* PLAN.md Phase 9 step 4a: the module names RegenerateInterfaces has
@@ -215,6 +234,121 @@ MODULE Poc;
 
   (* Explicit -target flag wins; otherwise LLVMToolchainDriver.HostTriple's
      auto-detected default (PLAN.md Phase 8 step 2). *)
+  (* ---- Libraries (Phase 12 step 2c) ---- *)
+
+  PROCEDURE Strcat(VAR s: ARRAY OF CHAR; suffix: ARRAY OF CHAR);
+    VAR i, j: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE s[i] # 0X DO INC(i) END;
+    j := 0;
+    WHILE (suffix[j] # 0X) & (i < LEN(s) - 1) DO s[i] := suffix[j]; INC(i); INC(j) END;
+    s[i] := 0X
+  END Strcat;
+
+  PROCEDURE FindMember(name: ARRAY OF CHAR): LibraryMember;
+    VAR m: LibraryMember;
+  BEGIN
+    m := members;
+    WHILE (m # NIL) & (m.name # name) DO m := m.next END;
+    RETURN m
+  END FindMember;
+
+  (* ModuleInterface.libraryLookup: a module's .sym comes from the library
+     that has it *)
+  PROCEDURE LibraryInterfaceDir(name: ARRAY OF CHAR; VAR dir: ARRAY OF CHAR): BOOLEAN;
+    VAR lib: Libraries.Library;
+  BEGIN
+    lib := Libraries.FindModule(name);
+    IF lib # NIL THEN COPY(lib.dir, dir) END;
+    RETURN lib # NIL
+  END LibraryInterfaceDir;
+
+  (* The source of the module name: the file poc -library was given for it,
+     else the one ModuleInterface finds on the import path; sourcePath is the
+     file opened *)
+  PROCEDURE ReadModuleText(name: SyntaxTree.Ident; VAR buffer: Lexer.CharBuffer; VAR length: LONGINT;
+                           VAR found: BOOLEAN; VAR sourcePath: ARRAY OF CHAR);
+    VAR member: LibraryMember;
+  BEGIN
+    member := FindMember(name);
+    IF member # NIL THEN
+      found := ReadSource(member.path, buffer, length);
+      COPY(member.path, sourcePath)
+    ELSE
+      ModuleInterface.ReadModuleSource(name, buffer, length, found);
+      COPY(ModuleInterface.sourcePath, sourcePath)
+    END
+  END ReadModuleText;
+
+  (* The library path's last two parts, after the -library-path flags, once *)
+  PROCEDURE FinishLibraryPath;
+    VAR value: ARRAY maxLineLength OF CHAR; program: Libraries.Path;
+  BEGIN
+    IF libraryPathCleared THEN RETURN END;
+    libraryPathCleared := TRUE;
+    Platform.GetEnv(libraryPathEnvVar, value);
+    IF value[0] # 0X THEN Libraries.AddPathList(value) END;
+    Modules.GetArg(0, program);
+    Libraries.AddDefaultPathDir(program)
+  END FinishLibraryPath;
+
+  (* libraries are looked for, and built, for triple and the size model *)
+  PROCEDURE SetLibraryTarget(triple: ARRAY OF CHAR);
+  BEGIN
+    FinishLibraryPath;
+    IF ConstantEvaluator.sizeModel = MemoryLayout.sizeModelO2 THEN Libraries.SetTarget(triple, "O2")
+    ELSE Libraries.SetTarget(triple, "OC")
+    END
+  END SetLibraryTarget;
+
+  PROCEDURE PrintLibraryPath;
+    VAR e: Libraries.PathEntry;
+  BEGIN
+    FinishLibraryPath;
+    e := Libraries.FirstPathEntry();
+    IF e = NIL THEN
+      Out.String("(library path is empty)"); Out.Ln
+    ELSE
+      WHILE e # NIL DO Out.String(e.dir); Out.Ln; e := e.next END
+    END
+  END PrintLibraryPath;
+
+  (* The libraries the program modules (from DiscoverModule) needs, checked
+     (Libraries.ComputeLinkOrder), and each module the program takes from
+     one checked against its library's manifest - the key of the .sym the
+     program was compiled against. Handed to LLVMToolchainDriver in link
+     order. FALSE, having said why, when they cannot be linked. *)
+  PROCEDURE PrepareLibraries(modules: LLVMCodeGenerator.ModuleList; shared: BOOLEAN): BOOLEAN;
+    VAR
+      m: LLVMCodeGenerator.ModuleList; lib: Libraries.Library; member: Libraries.Member;
+      key: Libraries.Key; ok: BOOLEAN;
+  BEGIN
+    ok := (Libraries.errors = 0) & Libraries.ComputeLinkOrder();
+    m := modules;
+    WHILE ok & (m # NIL) DO
+      IF m.inLibrary THEN
+        lib := Libraries.FindModule(m.module.name);
+        member := Libraries.FindMember(lib, m.module.name);
+        IF ~ModuleInterface.KeyOf(m.module.name, key) OR (member = NIL) OR (member.key # key) THEN
+          Err.String("poc: "); Err.String(m.module.name); Err.String(".sym in "); Err.String(lib.dir);
+          Err.String(" does not match library "); Err.String(lib.name); Err.String("'s manifest; rebuild ");
+          Err.String(lib.name); Err.Ln;
+          ok := FALSE
+        END
+      END;
+      m := m.next
+    END;
+    LLVMToolchainDriver.ClearLibraries;
+    lib := Libraries.linkOrder;
+    WHILE ok & (lib # NIL) DO
+      LLVMToolchainDriver.AddLibrary(lib.name, lib.dir, shared);
+      lib := lib.linkNext
+    END;
+    IF ~ok THEN failed := TRUE END;
+    RETURN ok
+  END PrepareLibraries;
+
   PROCEDURE ResolveTriple(explicitTriple: ARRAY OF CHAR; VAR triple: ARRAY OF CHAR): BOOLEAN;
   BEGIN
     IF explicitTriple[0] # 0X THEN
@@ -312,6 +446,71 @@ MODULE Poc;
      this walk still guards against re-compiling an already-compiled
      module (the diamond case above), just never needs a "currently
      being visited" guard on top of that. *)
+  PROCEDURE NotLibraryMember(name: ARRAY OF CHAR);
+  BEGIN
+    failed := TRUE;
+    Err.String("poc: module "); Err.String(name);
+    Err.String(" is imported but is neither one of the library's files nor in a library on the library path");
+    Err.Ln
+  END NotLibraryMember;
+
+  PROCEDURE ^ DiscoverModule(name: SyntaxTree.Ident;
+                             VAR modules, tail: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
+
+  (* Phase 12 step 2c: the module name, which the library lib has, entered
+     in modules as its .sym has it (ModuleInterface.ReadSource takes it from
+     the library, libraryLookup), after the modules it imports, which must
+     be in libraries too: it is declared to the modules generated, and
+     linked from lib *)
+  PROCEDURE DiscoverLibraryModule(name: SyntaxTree.Ident; lib: Libraries.Library;
+                                  VAR modules, tail: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
+    VAR
+      buffer: Lexer.CharBuffer; length: LONGINT; found: BOOLEAN;
+      module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode;
+      entry: LLVMCodeGenerator.ModuleList; errorCountBefore: INTEGER;
+      savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+      symPath: LLVMCodeGenerator.SourcePath;
+  BEGIN
+    ModuleInterface.ReadSource(name, buffer, length, found);
+    COPY(lib.dir, symPath); Strcat(symPath, "/"); Strcat(symPath, name); Strcat(symPath, ".sym");
+    IF ~found THEN
+      failed := TRUE; Err.String("poc: cannot read "); Err.String(symPath); Err.Ln;
+      ok := FALSE; RETURN
+    END;
+    COPY(Diagnostics.fileName, savedFileName); COPY(symPath, Diagnostics.fileName);
+    errorCountBefore := Diagnostics.errorCount;
+    module := ParseModuleAdapter(buffer, length);
+    IF Diagnostics.errorCount = errorCountBefore THEN
+      scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+    END;
+    COPY(savedFileName, Diagnostics.fileName);
+    IF Diagnostics.errorCount > errorCountBefore THEN
+      Err.Int(Diagnostics.errorCount - errorCountBefore, 0);
+      Err.String(" error(s) in "); Err.String(symPath); Err.Ln;
+      ok := FALSE; RETURN
+    END;
+    imp := module.imports;
+    WHILE (imp # NIL) & ok DO
+      IF (imp.moduleName # "SYSTEM") & (Libraries.FindModule(imp.moduleName) = NIL) THEN
+        failed := TRUE;
+        Err.String("poc: module "); Err.String(name); Err.String(" of library "); Err.String(lib.name);
+        Err.String(" imports "); Err.String(imp.moduleName);
+        Err.String(", which no library on the library path has"); Err.Ln;
+        ok := FALSE
+      ELSE
+        DiscoverModule(imp.moduleName, modules, tail, ok)
+      END;
+      imp := imp.next
+    END;
+    IF ok THEN
+      Libraries.Use(lib);
+      NEW(entry); entry.module := module; entry.scope := scope; entry.next := NIL;
+      COPY(symPath, entry.fileName); entry.inLibrary := TRUE;
+      IF tail = NIL THEN modules := entry ELSE tail.next := entry END;
+      tail := entry
+    END
+  END DiscoverLibraryModule;
+
   PROCEDURE DiscoverModule(name: SyntaxTree.Ident;
                            VAR modules, tail: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
     VAR
@@ -326,6 +525,7 @@ MODULE Poc;
       errorCountBefore: INTEGER; savedStrict: BOOLEAN;
       imp: SyntaxTree.ImportNode;
       m, entry: LLVMCodeGenerator.ModuleList;
+      lib: Libraries.Library;
   BEGIN
     IF ~ok THEN RETURN END;
     (* SYSTEM is a pseudo-module with no source (SymbolTable.SystemScope) *)
@@ -333,12 +533,16 @@ MODULE Poc;
     m := modules;
     WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
     IF m # NIL THEN RETURN END;
-    ModuleInterface.ReadModuleSource(name, buffer, length, found);
+    lib := Libraries.FindModule(name);
+    IF lib # NIL THEN DiscoverLibraryModule(name, lib, modules, tail, ok); RETURN END;
+    IF (members # NIL) & (FindMember(name) = NIL) THEN
+      NotLibraryMember(name); ok := FALSE; RETURN
+    END;
+    ReadModuleText(name, buffer, length, found, sourcePath); (* before an import reads another *)
     IF ~found THEN
       failed := TRUE; Err.String("poc: cannot find source for imported module "); Err.String(name); Err.Ln;
       ok := FALSE; RETURN
     END;
-    COPY(ModuleInterface.sourcePath, sourcePath); (* before an import reads another *)
     COPY(Diagnostics.fileName, savedFileName);
     (* the file ReadModuleSource opened, so that an error names it as it is:
        lib/Bad.Mod, not the Bad.mod ModFileName would make *)
@@ -362,7 +566,7 @@ MODULE Poc;
       END;
       IF ok THEN
         NEW(entry); entry.module := module; entry.scope := scope; entry.next := NIL;
-        COPY(sourcePath, entry.fileName);
+        COPY(sourcePath, entry.fileName); entry.inLibrary := FALSE;
         IF tail = NIL THEN modules := entry ELSE tail.next := entry END;
         tail := entry
       END
@@ -398,6 +602,7 @@ MODULE Poc;
       imp: SyntaxTree.ImportNode;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
+      sourcePath: LLVMCodeGenerator.SourcePath;
       errorCountBefore: INTEGER; savedStrict: BOOLEAN;
   BEGIN
     IF ~ok THEN RETURN END;
@@ -406,10 +611,15 @@ MODULE Poc;
     WHILE (v # NIL) & (v.name # name) DO v := v.next END;
     IF v # NIL THEN RETURN END;
     NEW(v); COPY(name, v.name); v.next := visited; visited := v;
-    ModuleInterface.ReadModuleSource(name, buffer, length, found);
+    (* a library's module is used as the library has it (Phase 12 step 2c) *)
+    IF Libraries.FindModule(name) # NIL THEN RETURN END;
+    IF (members # NIL) & (FindMember(name) = NIL) THEN
+      NotLibraryMember(name); ok := FALSE; RETURN
+    END;
+    ReadModuleText(name, buffer, length, found, sourcePath);
     IF ~found THEN RETURN END;
     COPY(Diagnostics.fileName, savedFileName);
-    COPY(ModuleInterface.sourcePath, Diagnostics.fileName); (* the file opened, as DiscoverModule *)
+    COPY(sourcePath, Diagnostics.fileName); (* the file opened, as DiscoverModule *)
     savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE; (* as DiscoverModule *)
     errorCountBefore := Diagnostics.errorCount;
     Parser.InitParser(parser, buffer, length);
@@ -517,7 +727,7 @@ MODULE Poc;
       imp := imp.next
     END;
     IF ok THEN
-      NEW(entry); entry.module := topModule; entry.scope := topScope; entry.next := NIL;
+      NEW(entry); entry.module := topModule; entry.scope := topScope; entry.next := NIL; entry.inLibrary := FALSE;
       COPY(Diagnostics.fileName, entry.fileName); (* the file named on the command line *)
       IF tail = NIL THEN modules := entry ELSE tail.next := entry END
     END;
@@ -624,15 +834,18 @@ MODULE Poc;
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
     ELSE
       SetWordSizeFromTriple(triple);
+      SetLibraryTarget(triple);
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
-      IF ok THEN
+      IF ok & PrepareLibraries(modules, sharedLibraries) THEN
         ProgramTopName(modules, topName);
         IF LLVMToolchainDriver.EmitIR(modules, topName, triple, outputDir, path) THEN
-          (* one .ll per module (Phase 12 step 2a) *)
+          (* one .ll per module (Phase 12 step 2a), none for a library's *)
           m := modules;
           WHILE m # NIL DO
-            LLVMToolchainDriver.ModuleFilePath(outputDir, m.module.name, ".ll", path);
-            Out.String("semantic OK, wrote "); Out.String(path); Out.Ln;
+            IF ~m.inLibrary THEN
+              LLVMToolchainDriver.ModuleFilePath(outputDir, m.module.name, ".ll", path);
+              Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
+            END;
             m := m.next
           END
         ELSIF LLVMCodeGenerator.unsupportedCount > 0 THEN
@@ -659,8 +872,9 @@ MODULE Poc;
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
     ELSE
       SetWordSizeFromTriple(triple);
+      SetLibraryTarget(triple);
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
-      IF ok THEN
+      IF ok & PrepareLibraries(modules, sharedLibraries) THEN
         ProgramTopName(modules, topName);
         IF LLVMToolchainDriver.Build(modules, topName, triple, outputDir, exePath) THEN
           Out.String("semantic OK, wrote "); Out.String(exePath); Out.Ln
@@ -674,6 +888,110 @@ MODULE Poc;
       END
     END
   END Build;
+
+  (* poc -library <name> <file>... (Phase 12 step 2c): the modules of the
+     files named, and nothing else - each import one of them or a module a
+     library on the library path has - compiled into the library name, in
+     <outputDir>/<triple>/<O2|OC>/ (Libraries.Mod): each module's .sym, .ll
+     and position-independent .o, lib<name>.a, the shared library, the
+     manifest and the modules' .owner files. A module another library on
+     the path has already is refused: a module belongs to one library (the
+     library name itself is not looked for, so that it can be rebuilt). *)
+  PROCEDURE BuildLibrary(name: ARRAY OF CHAR; firstFile: INTEGER; outputDir, explicitTriple: ARRAY OF CHAR);
+    VAR
+      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+      dir, file: Libraries.Path; command: ARRAY 2 * Libraries.pathLength OF CHAR;
+      i, status: INTEGER; member, tail: LibraryMember;
+      buffer: Lexer.CharBuffer; length: LONGINT; parser: Parser.Parser; module: SyntaxTree.ModuleNode;
+      owner, lib: Libraries.Library; libMember: Libraries.Member;
+      modules, modulesTail, m: LLVMCodeGenerator.ModuleList; visited: VisitedModule; ok: BOOLEAN;
+      imp: SyntaxTree.ImportNode; key: Libraries.Key;
+  BEGIN
+    IF ~ResolveTriple(explicitTriple, triple) THEN
+      failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
+      RETURN
+    END;
+    SetWordSizeFromTriple(triple);
+    Libraries.Exclude(name);
+    SetLibraryTarget(triple);
+    LLVMCodeGenerator.buildingLibrary := TRUE;
+    Libraries.TupleDirectory(outputDir, dir);
+    (* the modules, by the names their files declare *)
+    ok := TRUE; members := NIL; tail := NIL;
+    FOR i := firstFile TO Modules.ArgCount - 1 DO
+      Modules.GetArg(i, file);
+      IF ~ok THEN
+        (* already failed *)
+      ELSIF ~ReadSource(file, buffer, length) THEN
+        failed := TRUE; Err.String("poc: cannot open "); Err.String(file); Err.Ln; ok := FALSE
+      ELSE
+        Diagnostics.Reset(file);
+        Parser.InitParser(parser, buffer, length);
+        module := Parser.ParseModule(parser);
+        IF Diagnostics.errorCount > 0 THEN
+          Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln; ok := FALSE
+        ELSIF FindMember(module.name) # NIL THEN
+          failed := TRUE; Err.String("poc: two files declare module "); Err.String(module.name); Err.Ln;
+          ok := FALSE
+        ELSE
+          owner := Libraries.FindModule(module.name);
+          IF owner # NIL THEN
+            failed := TRUE;
+            Err.String("poc: module "); Err.String(module.name); Err.String(" is in library ");
+            Err.String(owner.name); Err.String(" ("); Err.String(owner.dir);
+            Err.String(") already; a module belongs to one library"); Err.Ln;
+            ok := FALSE
+          ELSE
+            NEW(member); COPY(module.name, member.name); COPY(file, member.path); member.next := NIL;
+            IF tail = NIL THEN members := member ELSE tail.next := member END;
+            tail := member
+          END
+        END
+      END
+    END;
+    IF ~ok THEN RETURN END;
+    COPY("mkdir -p '", command); Strcat(command, dir); Strcat(command, "'");
+    status := Platform.System(command);
+    ModuleInterface.SetInterfaceDir(dir);
+    (* their .sym files, then the modules themselves, as for a program *)
+    visited := NIL; member := members;
+    WHILE ok & (member # NIL) DO RegenerateInterfaces(member.name, dir, visited, ok); member := member.next END;
+    modules := NIL; modulesTail := NIL; member := members;
+    WHILE ok & (member # NIL) DO DiscoverModule(member.name, modules, modulesTail, ok); member := member.next END;
+    AddRuntimeModules(dir, modules, ok);
+    IF ~ok THEN
+      IF Diagnostics.errorCount > 0 THEN Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln END;
+      RETURN
+    END;
+    (* the libraries its modules use, as shared ones for its shared library *)
+    IF ~PrepareLibraries(modules, TRUE) THEN RETURN END;
+    IF ~LLVMToolchainDriver.BuildLibrary(modules, name, triple, dir) THEN
+      IF LLVMCodeGenerator.unsupportedCount > 0 THEN ReportUnsupportedConstructs
+      ELSIF Diagnostics.errorCount > 0 THEN ReportGenerationErrors
+      ELSE failed := TRUE; Err.String("poc: building library "); Err.String(name); Err.String(" failed"); Err.Ln
+      END;
+      RETURN
+    END;
+    (* the manifest: each module's key and the keys of its imports *)
+    lib := Libraries.NewLibrary(name, dir);
+    m := modules;
+    WHILE m # NIL DO
+      IF ~m.inLibrary THEN
+        IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
+        libMember := Libraries.AddMember(lib, m.module.name, key);
+        imp := m.module.imports;
+        WHILE imp # NIL DO
+          IF ModuleInterface.KeyOf(imp.moduleName, key) THEN Libraries.AddImport(libMember, imp.moduleName, key) END;
+          imp := imp.next
+        END
+      END;
+      m := m.next
+    END;
+    owner := Libraries.linkOrder;
+    WHILE owner # NIL DO Libraries.AddNeed(lib, owner.name); owner := owner.linkNext END;
+    IF ~Libraries.WriteManifest(lib) THEN failed := TRUE; RETURN END;
+    Out.String("semantic OK, wrote library "); Out.String(name); Out.String(" in "); Out.String(dir); Out.Ln
+  END BuildLibrary;
 
   PROCEDURE PrintLayoutLine(name: ARRAY OF CHAR; t: Types.Type);
   BEGIN
@@ -891,7 +1209,9 @@ MODULE Poc;
     Err.String("       poc -show-interface <file>"); Err.Ln;
     Err.String("       poc -emit-llvm-ir <file>"); Err.Ln;
     Err.String("       poc -o <exe> -build <file>"); Err.Ln;
+    Err.String("       poc -library <name> <file>..."); Err.Ln;
     Err.String("       poc [-import-path <dir> | -clear-import-path]... -print-import-path"); Err.Ln;
+    Err.String("       poc [-library-path <dir> | -clear-library-path]... -print-library-path"); Err.Ln;
     Err.String("       -import-path <dir> and -clear-import-path may also precede any"); Err.Ln;
     Err.String("       command above; POC_IMPORT_PATH seeds the list (colon-separated)"); Err.Ln;
     Err.String("       before any flags are applied"); Err.Ln;
@@ -922,7 +1242,13 @@ MODULE Poc;
     Err.String("       -static may precede -build: link a fully static executable"); Err.Ln;
     Err.String("       -link <arg> may precede -build, and be repeated: pass <arg> (-lz,"); Err.Ln;
     Err.String("       -L<dir>, ...) to the link"); Err.Ln;
-    Err.String("       -verbose may precede -build: print the clang command it runs"); Err.Ln;
+    Err.String("       -verbose may precede -build or -library: print the commands it runs"); Err.Ln;
+    Err.String("       -library builds the modules of the files named into the library"); Err.Ln;
+    Err.String("       <name>, in <output-dir>/<triple>/<O2|OC>/; -library-path <dir>,"); Err.Ln;
+    Err.String("       repeatable, then POC_LIBRARY_PATH (colon-separated), then poc's"); Err.Ln;
+    Err.String("       ../lib/poc, are searched for libraries: a module one has is taken"); Err.Ln;
+    Err.String("       from it, not compiled; -clear-library-path leaves all of them out"); Err.Ln;
+    Err.String("       -shared-libraries may precede -build: link the libraries dynamically"); Err.Ln;
     Err.String("       -strict may precede any command above: the module named rejects"); Err.Ln;
     Err.String("       everything beyond the Oberon-2 report (its imports are not checked)"); Err.Ln
   END Usage;
@@ -991,6 +1317,7 @@ MODULE Poc;
       done: BOOLEAN;
   BEGIN
     InitImportPathFromEnvironment;
+    ModuleInterface.libraryLookup := LibraryInterfaceDir;
     IF Modules.ArgCount < 2 THEN
       Usage
     ELSE
@@ -1016,6 +1343,33 @@ MODULE Poc;
         ELSIF arg = "-print-import-path" THEN
           PrintImportPath;
           INC(i); done := TRUE
+        (* Phase 12 step 2c: the library path, and linking libraries *)
+        ELSIF arg = "-library-path" THEN
+          IF i + 1 < Modules.ArgCount THEN
+            Modules.GetArg(i + 1, param);
+            Libraries.AddPathDir(param);
+            INC(i, 2)
+          ELSE
+            failed := TRUE; Err.String("poc: -library-path requires a directory"); Err.Ln;
+            done := TRUE
+          END
+        ELSIF arg = "-clear-library-path" THEN
+          Libraries.ClearPath; libraryPathCleared := TRUE;
+          INC(i)
+        ELSIF arg = "-print-library-path" THEN
+          PrintLibraryPath;
+          INC(i); done := TRUE
+        ELSIF arg = "-shared-libraries" THEN
+          sharedLibraries := TRUE;
+          INC(i)
+        ELSIF arg = "-library" THEN
+          IF i + 2 < Modules.ArgCount THEN
+            Modules.GetArg(i + 1, param);
+            BuildLibrary(param, i + 2, outputDir, targetTriple)
+          ELSE
+            failed := TRUE; Err.String("poc: -library requires a name and at least one file"); Err.Ln
+          END;
+          done := TRUE
         (* 000-todo.org's "output directory for build artifacts" item:
            -emit-interface's .sym file and -emit-llvm-ir's .ll file (PLAN.md
            Phase 8 step 2) both use this, overriding ModuleInterface.Write*/
@@ -1135,7 +1489,7 @@ MODULE Poc;
   END Run;
 
 BEGIN
-  failed := FALSE;
+  failed := FALSE; members := NIL; sharedLibraries := FALSE; libraryPathCleared := FALSE;
   Run;
   IF failed OR (Diagnostics.errorCount > 0) OR (LLVMCodeGenerator.unsupportedCount > 0) THEN
     Platform.Exit(1)

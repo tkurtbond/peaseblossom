@@ -15,7 +15,7 @@ CONFORMANCE_DIR := test/conformance
 FRONT_SRCS := $(wildcard src/front/*.Mod)
 BACK_LLVM_SRCS := $(wildcard src/back/llvm/*.Mod)
 BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod)
-DRIVER_SRCS := src/driver/Poc.Mod
+DRIVER_SRCS := src/driver/Libraries.Mod src/driver/Poc.Mod
 RTL_SRCS := $(wildcard rtl/llvm/*.Mod)
 # what Stage 0 builds with voc besides src/: Err and what it needs (Phase 11 D11)
 STAGE0_RTL_SRCS := rtl/voc/FileDescriptorOutput.Mod rtl/llvm/RealDigits.Mod \

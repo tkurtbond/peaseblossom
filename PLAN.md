@@ -1267,6 +1267,22 @@ convenient, but must not be a prerequisite of it.
    (a new body relinks, a new interface fails in the linker naming the
    key); **2c** `-library`, the manifest, the library path,
    static and dynamic linking, and the refusal of a second copy of a module;
+   *done 2026-09-27*: `src/driver/Libraries.Mod` (the library path, manifests,
+   `<Module>.owner` files naming a module's library - no directory listing
+   needed -, link order, and the refusals: a module two linked libraries
+   both have, a library compiled against a key another library no longer
+   has, a needed library missing); `poc -library`, `-library-path`,
+   `-clear-library-path` (which also leaves out `POC_LIBRARY_PATH` and
+   poc's own `../lib/poc`, found through the shell's `command -v`),
+   `-print-library-path`, `-shared-libraries`. A module a library has
+   enters the program from its `.sym` (`ModuleList.inLibrary`, declared
+   and not generated; `ModuleInterface.libraryLookup` makes the checker
+   read the library's `.sym`). Libraries' objects are `-fPIC`; the shared
+   library is `lib<name>.so` (`.so.0.0` on OpenBSD) and is linked against
+   the libraries it needs; `-shared-libraries` gives the program an
+   absolute run-time search path. The descriptor and initialization
+   procedure of a record with no name are now `internal`. Fixture
+   `llvm-libraries`;
    **2d** `poc-rtl`, built by `make`, used by default when present; **2e**
    the fixtures this step's testing paragraph asks for, on Linux and the
    BSD hosts, at both word sizes.
