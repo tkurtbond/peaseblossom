@@ -224,8 +224,12 @@ has the full account; all probed against real voc 2026-09-19):
   imported module (`POC_IMPORT_PATH=<repo>/rtl/llvm` or `-import-path`).
   There is no built-in default directory; a missing runtime is an error
   message naming the module.
-- Pointer variables start NIL, locals included (a local holding a pointer
-  is zeroed on entry). Heap blocks come back zero-filled.
+- Pointer variables start NIL, locals included. Since 2026-09-26 (Phase 11
+  D16) **every local starts at zero**, not only pointers and procedure
+  values: with clang `-O2` the default, a read of a never-assigned local
+  would be undefined behavior to LLVM. So all variables - globals, locals
+  and heap blocks - start zeroed (0, 0.0, FALSE, 0X, {}, NIL, and records
+  and arrays of those).
 - Procedure values are Phase 9 step 8's - see "Procedure values, `ASH`,
   `MAX` and `MIN`" below. (`NEW(p, n0, ...)` and pointers to open arrays
   are Phase 9 step 7's.)
@@ -605,6 +609,117 @@ voc, Component Pascal and Oberon-07 do not. What a program can observe:
   `semantic-reject-declarations-after-procedures`,
   `semantic-strict-declarations-after-procedures`.
 
+## Variable initializers (decided and implemented, Phase 11 A23, 2026-09-26)
+
+A variable declaration may end with an initializer:
+
+```oberon
+VAR
+  count: INTEGER := 0;
+  a, b, c: INTEGER := Next();
+  name: ARRAY 16 OF CHAR := "none";
+```
+
+`Oberon2.pdf` has `VariableDeclaration = IdentList ":" Type`; the form is
+Modula-3's, and among Oberons only Active Oberon has initializers (constants
+only, written after each name). `doc/initializers-and-literals-survey.md` has
+the survey; decided with the user 2026-09-26. The rules:
+
+- **Each variable of the list gets its own evaluation of the expression**, so
+  `a, b, c: INTEGER := Next()` calls `Next` three times, in the order of the
+  names.
+- The initializer is **an assignment `v := e`** with every rule of one
+  (assignment compatibility, strings into `ARRAY OF CHAR`, the array
+  assignment rule above), made **before the body**: a local's on every entry
+  to its procedure, a global's before the module body, all in declaration
+  order. Any expression is allowed, not only a constant.
+- **Declare-before-use holds**: the expression can use only names declared
+  before its `:=` (the variables of its own list included - they already
+  hold 0). A name of the same scope declared later is an error, "`x` is
+  declared after this variable; its initializer can use only what is
+  declared before it" - also when it would hide an outer name the
+  initializer meant.
+- An error in the expression is reported once for the whole list.
+- Variables only, not parameters; a record field's is the next section's.
+- `-strict` rejects it ("a variable initializer is not in the Oberon-2
+  report"), and voc cannot compile it, so poc's own source does not use it.
+
+How: the parser makes one `AssignStatementNode` per name - parsing the
+expression again for each, so each has its own copy - and puts them at the
+front of the body (`Parser.ParseInitializers`, `WithInitializers`); the
+checker checks them with the declare-before-use limit
+(`SemanticActions.CheckInitializer`, `SymbolTable.limitScope`), and the
+backend sees ordinary assignments; the copies share their string literals'
+globals (`CollectStringConstantsSeq` walks only the first). Fixtures
+`llvm-var-initializers`, `semantic-reject-var-initializers`,
+`semantic-strict-var-initializers`.
+
+## Record field initializers (decided and implemented, Phase 11 D17, 2026-09-26)
+
+A record's field list may end with an initializer, the default of its fields:
+
+```oberon
+TYPE
+  Point* = RECORD x*, y*: INTEGER := 1; tag: CHAR := "p" END;
+  Named* = RECORD (Point) name*: ARRAY 8 OF CHAR := "none"; serial*: INTEGER := Next() END;
+```
+
+`Oberon2.pdf` has `FieldList = [IdentList ":" Type]`; of the Oberons only Active
+Oberon has field initializers, constants only (`doc/initializers-and-literals-
+survey.md`). Decided with the user 2026-09-26: any expression, and an
+initialization procedure per record type. The rules:
+
+- **Every record of the type gets its fields' defaults when it is made**: a
+  variable, global or local, a `NEW` (a pointer to a record, or to a fixed or
+  open array of them - every element), and a record or array of records inside
+  one of those, at any depth. Not a record that is copied (assignment, a value
+  parameter), and not `SYSTEM.NEW`'s untyped block.
+- A default is **an assignment `field := e`** with every rule of one, made after
+  the record is zeroed: first the base type's defaults, then the record's own
+  fields in declaration order - each field with an initializer assigned it,
+  each field of a record type that has defaults initialized in turn. As for a
+  variable, **each field of the list gets its own evaluation** (`e, f: INTEGER
+  := Next()` calls `Next` twice), and the expression may be any, not only a
+  constant.
+- A variable's defaults come **in declaration order with the variable
+  initializers**: before its own initializer, after the variables declared
+  before it (so `VAR g: T; n: INTEGER := g.x` sees `g.x`'s default). `NEW(p)`
+  applies them once `p` holds the block, and not if the heap is exhausted.
+- **What the expression can use**: the names declared before its `:=` (declare-
+  before-use, as for a variable initializer: "`x` is declared after this field;
+  its initializer can use only what is declared before it"), except, for a
+  record declared in a procedure, that procedure's variables, parameters and
+  procedures - the defaults run outside any procedure's frame (a separate
+  procedure, below), and "`v` belongs to a procedure; a field initializer can
+  use a procedure's constants and types, not its variables or procedures". Its
+  constants and types, and everything at module level, are allowed.
+- **Across modules**: a module that imports the type gets its defaults too
+  (a variable of it, `NEW`, an extension of it), hidden fields included. The
+  `.sym` file says only that a field has one, as `f: T := ..`, which a module
+  cannot write itself ("expected an expression"); the values stay in the
+  declaring module's code.
+- `-strict` rejects it ("a record field initializer is not in the Oberon-2
+  report"), and voc cannot compile it.
+
+How: the parser gives each field of the list its own copy of the expression
+(`Parser.ParseFieldInitializers`; `.sym` files are parsed with
+`InitInterfaceParser`, which accepts `..`); the checker checks each copy as an
+assignment once the declarations before it are resolved
+(`SemanticActions.CheckFieldInitializer`, with `SymbolTable.limitScope` and
+`limitLocals`) and marks each record type that needs initializing
+(`Types.RecordTypeDesc.needsInit`, `Types.NeedsInit`). The backend defines one
+procedure per such record, `@<Module>.<path>.-init(ptr)` (`EmitInitProcedure`),
+and calls it where a record is made (`InitializeAt`, a loop for an array;
+`GenerateDeclarationInits` for variables, `GenerateNew`/`GenerateNewOpenArray`).
+`<path>` names the record the same way in every module that sees it: a
+module-level named record's name, `P.base` for a pointer's anonymous base, and
+`T.f`, `A.element` and so on down anonymous types from a module-level `TYPE`
+declaration (`SemanticActions.NameInitPaths`); any other record, which no other
+module can make, is named `-anonN` by the backend. A program with no field
+initializers gets exactly the code it did before. Fixtures
+`llvm-field-initializers`, `semantic-reject-field-initializers`,
+`semantic-strict-field-initializers`.
+
 ## What traps, and what does not (Phase 11 C9)
 
 A list of what happens when a program does something the report leaves
@@ -634,6 +749,9 @@ one to every trap in this table. Each status is pinned by a fixture.
 | 9 | An open array assigned to a fixed array with fewer elements (`llvm-array-assign-trap`) | `open array assigned to an array too short for it` | Halt(-2), 254 |
 | 10 | A failed `ASSERT(x)` or `ASSERT(x, n)` (`llvm-assert`) | `assertion failed`, or `assertion failed (n)` | "Assertion failure." and " ASSERT code n."; exit `n`, 255 for none or 0 |
 | 11 | With `-trap-heap-exhausted` only: `NEW`, `NEW(p, n, ...)` or `SYSTEM.NEW` the heap cannot satisfy (`llvm-heap-exhausted`) | `heap exhausted: NEW cannot allocate the block` | no switch: the pointer is NIL |
+| 12 | A function procedure that reaches its `END` (Oberon2.pdf 10.1); the location is the `END` (`llvm-return-trap`; Phase 12 step 1, until then a zero was returned) | `function procedure reached its END without RETURN` | Halt(-3), 253 |
+| 13 | `v := e` for records where `v`, a `VAR` parameter (a receiver too) or `p^`, has a dynamic type that extends its static type (Oberon2.pdf 9.1; `llvm-record-assign-trap`; Phase 12 step 1, until then the static type's fields were copied) | `record assigned to a variable whose dynamic type extends its static type` | Halt(-6), 250; not under `voc -t` |
+| 14 | With `-range-checks` only: `SHORT(x)` of an integer `x` outside the result type, `CHR(x)` of `x` outside 0..255 (`llvm-range-checks`; Phase 12 step 1) | `SHORT argument out of range`, `CHR argument out of range` | `voc -r`: Halt(-8), 248, except `CHR` of a negative value (voc's check compares signed); no switch: truncates |
 
 **The library's own failure.** `Files` stops the program with status 99 when
 it meets an error it cannot hand back to the caller - a file that cannot be
@@ -688,7 +806,7 @@ what that value is.
 | `x IN s` with `x` outside `0..MAX(SET)` | `FALSE` (`llvm-no-trap-behavior` case 7) |
 | `INCL`/`EXCL` with an element outside the set, `{n}` with a variable `n` >= 32 | undefined: the shift wraps at the machine's width (`INCL(s, 33)` set bit 1 on x86), unchecked; constant ones are compile-time errors |
 | Real overflow, underflow, `x/0.0`, `0.0/0.0` | infinity, 0, infinity, NaN, silently (C5); `llvm-no-trap-behavior` case 9 |
-| `SHORT` or `CHR` of a value that does not fit | truncates (`CHR(300)` is 44), as voc without `-r` |
+| `SHORT` or `CHR` of a value that does not fit | truncates (`CHR(300)` is 44), as voc without `-r`; **`poc -range-checks`** makes it trap 14 (Phase 12 step 1, `doc/voc-options.md`) |
 | `FOR v := a TO b` when `b` is `MAX` of `v`'s type | never ends: `v` wraps to `MIN` and the loop runs on, as the report's own expansion (`v <= b`) says once overflow is undefined; voc the same (`llvm-no-trap-behavior` case 8) |
 | `ASH(x, n)`, `LSH`, `ROT` with a count of the type's width or more | defined and not a trap: `ASH` gives 0 (the sign for a right shift), `LSH` 0, `ROT` counts modulo the width; voc's are C's undefined shifts (`ROT(1, 33)` is 0 there, 2 here) |
 | `MOVE(a, b, n)` with `n <= 0` | moves nothing (voc, probed with `n = -4`, copied) (`llvm-no-trap-behavior` case 6) |
@@ -933,7 +1051,7 @@ value parameter. Adopting voc's version later is a separate decision, recorded
 in `000-todo.org`: poc's own source would not use it, and `-strict` would have
 to reject it.
 
-## Underscores and dollar signs in identifiers (considered, not adopted)
+## Underscores and dollar signs in identifiers (decided and implemented, Phase 11 A25, 2026-09-26)
 
 `000-todo.org` asked for `_` and `$` in names, for VMS (`SYS$QIO`,
 `LIB$GET_VM`, `SS$_NORMAL`). `Oberon2.pdf` has `ident = letter {letter |
@@ -951,13 +1069,45 @@ digit}`. Surveyed 2026-09-26 in the scanners under
 - **`$`:** in no dialect's identifiers; Component Pascal and Oberon+ use it
   as an operator or to start a hex string.
 
-**poc accepts neither** (decided with the user 2026-09-26, Phase 11 A25).
-The VMS reason does not need them: a system service or RTL routine is an
-external procedure whose linkage-name string is emitted verbatim
-(`PROCEDURE ["VMS", "SYS$QIO"] QueueIO(...)`, "External procedures" above),
-and a constant such as `SS$_NORMAL` can be spelled `SSNormal`. Adopting `_`
-would have made programs voc cannot compile. The scanner takes a `_` or `$`
-into the name anyway and reports the first one, once for each use of the
-name: `"_" is not allowed in an identifier: the Oberon-2 report allows only
-letters and digits`, where until then it gave "invalid character" and a
-cascade (`lexer-reject-underscore-dollar`).
+**poc accepts both, anywhere a letter may be, first included** (decided
+with the user 2026-09-26, Phase 11 A25). `-strict` rejects them, once for
+each name that has one: `"$" in an identifier is not in the Oberon-2 report
+(-strict)`.
+
+A first decision the same day took neither, on the grounds that a VMS
+routine is an external procedure whose linkage-name string carries its real
+name (`PROCEDURE ["VMS", "SYS$QIO"] QueueIO(...)`, "External procedures"
+above). That holds for procedures only. Most of the system's names are
+values and field names - status codes (`SS$_NORMAL`), function codes
+(`IO$_READVBLK`), control-block and descriptor fields (`DSC$W_LENGTH`) -
+defined in STARLET, which is written in SDL. VMS gives each language its own
+rendering of those definitions (VAX C's `#include <ssdef.h>`), and for
+Oberon-2 that is a module of constants and types, whose names have to be
+the system's for its documentation to apply. So the decision was reopened
+and reversed.
+
+What VMS itself allows (the manuals of the 5.x releases): VAX MACRO takes
+letters, digits, `_`, `$` and `.` in a symbol, and forbids only a digit
+first (VAX MACRO and Instruction Set Reference Manual, VMS 5.0, 3.3.2); by
+DIGITAL's convention, `$` marks names DIGITAL defined. VAX C counts `_` and
+`$` as letters, first included, though it reserves a leading `_` for its own
+names (Guide to VAX C 3.0, 5.5). The VAX object language stores every
+name as a counted ASCII string of at most 31 characters and restricts the
+characters no further (VMS 5.0 Linker Utility Manual, chapter 7); the linker
+asks for quotation marks, in an options file, only around a name with
+characters other than letters, digits, `$` and `_` (the same manual, 5.2),
+and allows any printable character in a program section's name, though it
+discourages `$` there, as DIGITAL's (6.2.1.1). The VAX Procedure Calling and
+Condition Handling Standard (Introduction to VMS 5.4 System Routines,
+chapter 2) says nothing about the characters of a name; its own symbols
+(`DSC$K_DTYPE_T`) use both. So a name starting with `$` or `_` is valid
+everywhere down to the object file.
+
+Nothing in Oberon-2's syntax uses either character, so the grammar stays
+unambiguous. LLVM names allow both. The names poc's backend makes up for
+itself (anonymous records, record initialization procedures, struct types)
+contain a `-`, which no identifier can, so a user's name never matches one
+(`llvm-underscore-dollar` names a type `$anon1`, which until then collided
+with the backend's first anonymous record). Modules may have such names too
+(`Ss$Def.mod`, `Ss$Def.sym`); on Unix a `$` in a file name needs quoting in
+the shell.

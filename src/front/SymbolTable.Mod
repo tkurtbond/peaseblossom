@@ -121,7 +121,7 @@ MODULE SymbolTable;
       next*: Object
     END;
 
-    ScopeDesc* = RECORD
+    ScopeDesc* = RECORD (Types.ScopeHandleDesc)
       objects*: Object;
       outer*: Scope;
       (* NIL at module level (Universe's own value, propagated down by
@@ -156,6 +156,21 @@ MODULE SymbolTable;
        machine's registers and condition codes, are not here (PLAN.md
        Phase 10 step 7). *)
     SystemScope*: Scope;
+    (* Phase 11 A23: while the checker checks a variable initializer that
+       the parser moved into its body, the initializer may use only names
+       declared up to its own declaration (declare-before-use). Set by the
+       checker to the body's scope and that declaration's position; Find
+       then notes, in limitViolation, the first name it finds in limitScope
+       declared after it. limitScope is NIL otherwise. *)
+    limitScope*: Scope;
+    limitLine*, limitColumn*: INTEGER;
+    limitViolation*: Object;
+    (* Phase 11 D17: while the checker checks a record field's initializer,
+       which runs outside any procedure, TRUE; Find then notes, in
+       localViolation, the first variable or procedure it finds that
+       belongs to a procedure (a scope whose enclosingProc is set). *)
+    limitLocals*: BOOLEAN;
+    localViolation*: Object;
 
   PROCEDURE OpenScope*(outer: Scope): Scope;
     VAR s: Scope;
@@ -188,6 +203,14 @@ MODULE SymbolTable;
     s := scope; o := NIL;
     WHILE (s # NIL) & (o = NIL) DO
       o := FindLocal(s, name);
+      IF (o # NIL) & (s = limitScope) & (limitViolation = NIL)
+         & ((o.declLine > limitLine) OR (o.declLine = limitLine) & (o.declColumn > limitColumn)) THEN
+        limitViolation := o
+      END;
+      IF (o # NIL) & limitLocals & (localViolation = NIL) & (s.enclosingProc # NIL)
+         & ((o.class = varClass) OR (o.class = procClass)) THEN
+        localViolation := o
+      END;
       s := s.outer
     END;
     RETURN o
@@ -284,6 +307,7 @@ MODULE SymbolTable;
   END InsertSystemProc;
 
 BEGIN
+  limitScope := NIL; limitViolation := NIL; limitLocals := FALSE; localViolation := NIL;
   Universe := OpenScope(NIL);
   InsertPredeclared("BOOLEAN", Types.Boolean);
   InsertPredeclared("CHAR", Types.Char);

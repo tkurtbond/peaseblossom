@@ -1,2 +1,3 @@
 unknown-module.mod:5:10: error: unknown imported module
+unknown-module.mod:5:10: note: no NoSuchModule.sym in the current directory (the import path is empty)
 1 error(s)

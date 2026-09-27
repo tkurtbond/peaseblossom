@@ -1,12 +1,12 @@
 == i686-unknown-linux-gnu
+-- third.ll
 target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"
 target triple = "i686-unknown-linux-gnu"
 
-%lib.Unrelated = type { i8 }
-%client.CircleDesc = type { %lib.ShapeDesc, i16, i16, ptr }
-%lib.ShapeDesc = type { i16, i32, ptr, %third.Stamp, ptr }
-%third.Stamp = type { i32, i8 }
 
+@third.-initialized = internal global i1 false
+@third.-key.O2.2ee91d7abe38e91c = constant i8 0
+@third.-target.i686-unknown-linux-gnu = constant i8 0
 @third.Stamp.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
   [0 x ptr] [],
   i32 8,
@@ -17,6 +17,38 @@ target triple = "i686-unknown-linux-gnu"
 }
 @third.Stamp.tag = alias ptr, getelementptr inbounds (i8, ptr @third.Stamp.tdesc, i32 0)
 
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
+
+define void @third_init() {
+entry:
+  %t1 = load i1, ptr @third.-initialized
+  br i1 %t1, label %L1, label %L2
+L1:
+  ret void
+L2:
+  store i1 true, ptr @third.-initialized
+  ret void
+}
+
+clang accepted i686-unknown-linux-gnu
+-- lib.ll
+target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"
+target triple = "i686-unknown-linux-gnu"
+
+%lib.Unrelated = type { i8 }
+
+@third.Stamp.tag = external global i8
+declare void @third_init()
+
+@lib.-initialized = internal global i1 false
+@lib.-key.O2.0ece459a38e25d7f = constant i8 0
+@lib.-target.i686-unknown-linux-gnu = constant i8 0
+@third.-key.O2.2ee91d7abe38e91c = external global i8
+@lib.-imports = internal constant [1 x ptr] [ptr @third.-key.O2.2ee91d7abe38e91c]
+@llvm.used = appending global [1 x ptr] [ptr @lib.-imports], section "llvm.metadata"
 @lib.keep = global ptr zeroinitializer
 @lib.ignore = global %lib.Unrelated zeroinitializer
 @lib.Deep.tdesc = constant { [0 x ptr], i32, i32, i32, [1 x ptr], [0 x i32] } {
@@ -69,6 +101,102 @@ target triple = "i686-unknown-linux-gnu"
 }
 @lib.Base.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.Base.tdesc, i32 0)
 
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
+
+define void @lib.ShapeDesc.Draw(ptr %p.s) {
+entry:
+  %t1 = alloca ptr
+  store ptr %p.s, ptr %t1
+  ret void
+}
+
+define void @lib.ShapeDesc.Audit(ptr %p.s) {
+entry:
+  %t2 = alloca ptr
+  store ptr %p.s, ptr %t2
+  ret void
+}
+
+define i16 @lib.ShapeDesc.Area(ptr %p.s, i16 %p.scale) {
+entry:
+  %t3 = alloca ptr
+  store ptr %p.s, ptr %t3
+  %t4 = alloca i16
+  store i16 %p.scale, ptr %t4
+  %t5 = load i16, ptr %t4
+  ret i16 %t5
+L1:
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
+}
+
+define void @lib.PrivDesc.Reset(ptr %p.p) {
+entry:
+  %t6 = alloca ptr
+  store ptr %p.p, ptr %t6
+  ret void
+}
+
+define ptr @lib.Make() {
+entry:
+  %t7 = alloca ptr
+  store ptr zeroinitializer, ptr %t7
+  %t8 = load ptr, ptr %t7
+  ret ptr %t8
+L2:
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
+}
+
+define void @lib_init() {
+entry:
+  %t9 = load i1, ptr @lib.-initialized
+  br i1 %t9, label %L3, label %L4
+L3:
+  ret void
+L4:
+  store i1 true, ptr @lib.-initialized
+  call void @third_init()
+  ret void
+}
+
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
+clang accepted i686-unknown-linux-gnu
+-- client.ll
+target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"
+target triple = "i686-unknown-linux-gnu"
+
+%lib.Unrelated = type { i8 }
+%client.CircleDesc = type { %lib.ShapeDesc, i16, i16, ptr }
+%lib.ShapeDesc = type { i16, i32, ptr, %third.Stamp, ptr }
+%third.Stamp = type { i32, i8 }
+
+@third.Stamp.tag = external global i8
+declare ptr @lib.Make()
+@lib.ignore = external global i8
+@lib.Unrelated.tag = external global i8
+@lib.keep = external global i8
+@lib.PrivDesc.tag = external global i8
+declare void @lib.PrivDesc.Reset(ptr)
+@lib.Deep.tag = external global i8
+@lib.Base.tag = external global i8
+@lib.ShapeDesc.tag = external global i8
+declare void @lib.ShapeDesc.Draw(ptr)
+declare void @lib.ShapeDesc.Audit(ptr)
+declare i16 @lib.ShapeDesc.Area(ptr, i16)
+declare void @lib_init()
+
+@client.-initialized = internal global i1 false
+@client.-key.O2.86140523664ff24e = constant i8 0
+@client.-target.i686-unknown-linux-gnu = constant i8 0
+@lib.-key.O2.0ece459a38e25d7f = external global i8
+@client.-imports = internal constant [1 x ptr] [ptr @lib.-key.O2.0ece459a38e25d7f]
+@llvm.used = appending global [1 x ptr] [ptr @client.-imports], section "llvm.metadata"
 @client.CircleDesc.tdesc = constant { [5 x ptr], i32, i32, i32, [2 x ptr], [3 x i32] } {
   [5 x ptr] [ptr @client.CircleDesc.Extra, ptr @client.CircleDesc.Audit, ptr @lib.ShapeDesc.Area, ptr @lib.ShapeDesc.Audit, ptr @client.CircleDesc.Draw],
   i32 32,
@@ -94,116 +222,68 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define void @lib.ShapeDesc.Draw(ptr %s) {
+define void @client.CircleDesc.Draw(ptr %p.c) {
 entry:
   %t1 = alloca ptr
-  store ptr %s, ptr %t1
-  ret void
-}
-
-define void @lib.ShapeDesc.Audit(ptr %s) {
-entry:
-  %t2 = alloca ptr
-  store ptr %s, ptr %t2
-  ret void
-}
-
-define i16 @lib.ShapeDesc.Area(ptr %s, i16 %scale) {
-entry:
-  %t3 = alloca ptr
-  store ptr %s, ptr %t3
-  %t4 = alloca i16
-  store i16 %scale, ptr %t4
-  %t5 = load i16, ptr %t4
-  ret i16 %t5
+  store ptr %p.c, ptr %t1
+  %t2 = load ptr, ptr %t1
+  %t3 = icmp eq ptr %t2, null
+  br i1 %t3, label %L1, label %L2
 L1:
-  ret i16 0
-}
-
-define void @lib.PrivDesc.Reset(ptr %p) {
-entry:
-  %t6 = alloca ptr
-  store ptr %p, ptr %t6
-  ret void
-}
-
-define ptr @lib.Make() {
-entry:
-  %t7 = alloca ptr
-  store ptr zeroinitializer, ptr %t7
-  %t8 = load ptr, ptr %t7
-  ret ptr %t8
-L2:
-  ret ptr null
-}
-
-define void @client.CircleDesc.Draw(ptr %c) {
-entry:
-  %t9 = alloca ptr
-  store ptr %c, ptr %t9
-  %t10 = load ptr, ptr %t9
-  %t11 = icmp eq ptr %t10, null
-  br i1 %t11, label %L3, label %L4
-L3:
   call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
-L4:
-  %t12 = getelementptr %client.CircleDesc, ptr %t10, i32 0, i32 2
-  %t13 = sext i8 1 to i16
-  store i16 %t13, ptr %t12
+L2:
+  %t4 = getelementptr %client.CircleDesc, ptr %t2, i32 0, i32 2
+  %t5 = sext i8 1 to i16
+  store i16 %t5, ptr %t4
   ret void
 }
 
-define void @client.CircleDesc.Audit(ptr %c, i16 %x) {
+define void @client.CircleDesc.Audit(ptr %p.c, i16 %p.x) {
 entry:
-  %t14 = alloca ptr
-  store ptr %c, ptr %t14
-  %t15 = alloca i16
-  store i16 %x, ptr %t15
+  %t6 = alloca ptr
+  store ptr %p.c, ptr %t6
+  %t7 = alloca i16
+  store i16 %p.x, ptr %t7
   ret void
 }
 
-define void @client.CircleDesc.Extra(ptr %c) {
+define void @client.CircleDesc.Extra(ptr %p.c) {
 entry:
-  %t16 = alloca ptr
-  store ptr %c, ptr %t16
-  ret void
-}
-
-define void @third_init() {
-entry:
-  ret void
-}
-
-define void @lib_init() {
-entry:
+  %t8 = alloca ptr
+  store ptr %p.c, ptr %t8
   ret void
 }
 
 define void @client_init() {
 entry:
+  %t9 = load i1, ptr @client.-initialized
+  br i1 %t9, label %L3, label %L4
+L3:
+  ret void
+L4:
+  store i1 true, ptr @client.-initialized
+  call void @lib_init()
   ret void
 }
 
 define i32 @main() {
 entry:
-  call void @third_init()
-  call void @lib_init()
   call void @client_init()
   ret i32 0
 }
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
+-- third.ll
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
-%lib.Unrelated = type { i8 }
-%client.CircleDesc = type { %lib.ShapeDesc, i16, i16, ptr }
-%lib.ShapeDesc = type { i16, i32, ptr, %third.Stamp, ptr }
-%third.Stamp = type { i32, i8 }
 
+@third.-initialized = internal global i1 false
+@third.-key.O2.2ee91d7abe38e91c = constant i8 0
+@third.-target.x86_64-unknown-linux-gnu = constant i8 0
 @third.Stamp.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
   [0 x ptr] [],
   i64 8,
@@ -214,6 +294,38 @@ target triple = "x86_64-unknown-linux-gnu"
 }
 @third.Stamp.tag = alias ptr, getelementptr inbounds (i8, ptr @third.Stamp.tdesc, i32 0)
 
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
+
+define void @third_init() {
+entry:
+  %t1 = load i1, ptr @third.-initialized
+  br i1 %t1, label %L1, label %L2
+L1:
+  ret void
+L2:
+  store i1 true, ptr @third.-initialized
+  ret void
+}
+
+clang accepted x86_64-unknown-linux-gnu
+-- lib.ll
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+%lib.Unrelated = type { i8 }
+
+@third.Stamp.tag = external global i8
+declare void @third_init()
+
+@lib.-initialized = internal global i1 false
+@lib.-key.O2.0ece459a38e25d7f = constant i8 0
+@lib.-target.x86_64-unknown-linux-gnu = constant i8 0
+@third.-key.O2.2ee91d7abe38e91c = external global i8
+@lib.-imports = internal constant [1 x ptr] [ptr @third.-key.O2.2ee91d7abe38e91c]
+@llvm.used = appending global [1 x ptr] [ptr @lib.-imports], section "llvm.metadata"
 @lib.keep = global ptr zeroinitializer
 @lib.ignore = global %lib.Unrelated zeroinitializer
 @lib.Deep.tdesc = constant { [0 x ptr], i64, i64, i64, [1 x ptr], [0 x i64] } {
@@ -266,6 +378,102 @@ target triple = "x86_64-unknown-linux-gnu"
 }
 @lib.Base.tag = alias ptr, getelementptr inbounds (i8, ptr @lib.Base.tdesc, i32 0)
 
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
+
+define void @lib.ShapeDesc.Draw(ptr %p.s) {
+entry:
+  %t1 = alloca ptr
+  store ptr %p.s, ptr %t1
+  ret void
+}
+
+define void @lib.ShapeDesc.Audit(ptr %p.s) {
+entry:
+  %t2 = alloca ptr
+  store ptr %p.s, ptr %t2
+  ret void
+}
+
+define i16 @lib.ShapeDesc.Area(ptr %p.s, i16 %p.scale) {
+entry:
+  %t3 = alloca ptr
+  store ptr %p.s, ptr %t3
+  %t4 = alloca i16
+  store i16 %p.scale, ptr %t4
+  %t5 = load i16, ptr %t4
+  ret i16 %t5
+L1:
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
+}
+
+define void @lib.PrivDesc.Reset(ptr %p.p) {
+entry:
+  %t6 = alloca ptr
+  store ptr %p.p, ptr %t6
+  ret void
+}
+
+define ptr @lib.Make() {
+entry:
+  %t7 = alloca ptr
+  store ptr zeroinitializer, ptr %t7
+  %t8 = load ptr, ptr %t7
+  ret ptr %t8
+L2:
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
+}
+
+define void @lib_init() {
+entry:
+  %t9 = load i1, ptr @lib.-initialized
+  br i1 %t9, label %L3, label %L4
+L3:
+  ret void
+L4:
+  store i1 true, ptr @lib.-initialized
+  call void @third_init()
+  ret void
+}
+
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
+clang accepted x86_64-unknown-linux-gnu
+-- client.ll
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+%lib.Unrelated = type { i8 }
+%client.CircleDesc = type { %lib.ShapeDesc, i16, i16, ptr }
+%lib.ShapeDesc = type { i16, i32, ptr, %third.Stamp, ptr }
+%third.Stamp = type { i32, i8 }
+
+@third.Stamp.tag = external global i8
+declare ptr @lib.Make()
+@lib.ignore = external global i8
+@lib.Unrelated.tag = external global i8
+@lib.keep = external global i8
+@lib.PrivDesc.tag = external global i8
+declare void @lib.PrivDesc.Reset(ptr)
+@lib.Deep.tag = external global i8
+@lib.Base.tag = external global i8
+@lib.ShapeDesc.tag = external global i8
+declare void @lib.ShapeDesc.Draw(ptr)
+declare void @lib.ShapeDesc.Audit(ptr)
+declare i16 @lib.ShapeDesc.Area(ptr, i16)
+declare void @lib_init()
+
+@client.-initialized = internal global i1 false
+@client.-key.O2.86140523664ff24e = constant i8 0
+@client.-target.x86_64-unknown-linux-gnu = constant i8 0
+@lib.-key.O2.0ece459a38e25d7f = external global i8
+@client.-imports = internal constant [1 x ptr] [ptr @lib.-key.O2.0ece459a38e25d7f]
+@llvm.used = appending global [1 x ptr] [ptr @client.-imports], section "llvm.metadata"
 @client.CircleDesc.tdesc = constant { [5 x ptr], i64, i64, i64, [2 x ptr], [3 x i64] } {
   [5 x ptr] [ptr @client.CircleDesc.Extra, ptr @client.CircleDesc.Audit, ptr @lib.ShapeDesc.Area, ptr @lib.ShapeDesc.Audit, ptr @client.CircleDesc.Draw],
   i64 48,
@@ -291,102 +499,54 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define void @lib.ShapeDesc.Draw(ptr %s) {
+define void @client.CircleDesc.Draw(ptr %p.c) {
 entry:
   %t1 = alloca ptr
-  store ptr %s, ptr %t1
-  ret void
-}
-
-define void @lib.ShapeDesc.Audit(ptr %s) {
-entry:
-  %t2 = alloca ptr
-  store ptr %s, ptr %t2
-  ret void
-}
-
-define i16 @lib.ShapeDesc.Area(ptr %s, i16 %scale) {
-entry:
-  %t3 = alloca ptr
-  store ptr %s, ptr %t3
-  %t4 = alloca i16
-  store i16 %scale, ptr %t4
-  %t5 = load i16, ptr %t4
-  ret i16 %t5
+  store ptr %p.c, ptr %t1
+  %t2 = load ptr, ptr %t1
+  %t3 = icmp eq ptr %t2, null
+  br i1 %t3, label %L1, label %L2
 L1:
-  ret i16 0
-}
-
-define void @lib.PrivDesc.Reset(ptr %p) {
-entry:
-  %t6 = alloca ptr
-  store ptr %p, ptr %t6
-  ret void
-}
-
-define ptr @lib.Make() {
-entry:
-  %t7 = alloca ptr
-  store ptr zeroinitializer, ptr %t7
-  %t8 = load ptr, ptr %t7
-  ret ptr %t8
-L2:
-  ret ptr null
-}
-
-define void @client.CircleDesc.Draw(ptr %c) {
-entry:
-  %t9 = alloca ptr
-  store ptr %c, ptr %t9
-  %t10 = load ptr, ptr %t9
-  %t11 = icmp eq ptr %t10, null
-  br i1 %t11, label %L3, label %L4
-L3:
   call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
-L4:
-  %t12 = getelementptr %client.CircleDesc, ptr %t10, i32 0, i32 2
-  %t13 = sext i8 1 to i16
-  store i16 %t13, ptr %t12
+L2:
+  %t4 = getelementptr %client.CircleDesc, ptr %t2, i32 0, i32 2
+  %t5 = sext i8 1 to i16
+  store i16 %t5, ptr %t4
   ret void
 }
 
-define void @client.CircleDesc.Audit(ptr %c, i16 %x) {
+define void @client.CircleDesc.Audit(ptr %p.c, i16 %p.x) {
 entry:
-  %t14 = alloca ptr
-  store ptr %c, ptr %t14
-  %t15 = alloca i16
-  store i16 %x, ptr %t15
+  %t6 = alloca ptr
+  store ptr %p.c, ptr %t6
+  %t7 = alloca i16
+  store i16 %p.x, ptr %t7
   ret void
 }
 
-define void @client.CircleDesc.Extra(ptr %c) {
+define void @client.CircleDesc.Extra(ptr %p.c) {
 entry:
-  %t16 = alloca ptr
-  store ptr %c, ptr %t16
-  ret void
-}
-
-define void @third_init() {
-entry:
-  ret void
-}
-
-define void @lib_init() {
-entry:
+  %t8 = alloca ptr
+  store ptr %p.c, ptr %t8
   ret void
 }
 
 define void @client_init() {
 entry:
+  %t9 = load i1, ptr @client.-initialized
+  br i1 %t9, label %L3, label %L4
+L3:
+  ret void
+L4:
+  store i1 true, ptr @client.-initialized
+  call void @lib_init()
   ret void
 }
 
 define i32 @main() {
 entry:
-  call void @third_init()
-  call void @lib_init()
   call void @client_init()
   ret i32 0
 }

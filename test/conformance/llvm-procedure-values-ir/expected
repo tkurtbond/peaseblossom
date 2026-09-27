@@ -1,4 +1,7 @@
 == i686-unknown-linux-gnu
+@procir.-initialized = internal global i1 false
+@procir.-key.O2.fe8d08aa45250c09 = constant i8 0
+@procir.-target.i686-unknown-linux-gnu = constant i8 0
 @procir.f = global ptr zeroinitializer
 @procir.ins = global ptr zeroinitializer
 @procir.act = global ptr zeroinitializer
@@ -16,39 +19,43 @@
 @procir.Shape.tag = alias ptr, getelementptr inbounds (i8, ptr @procir.Shape.tdesc, i32 0)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
-define i16 @procir.Add(i16 %a, i16 %b) {
+define i16 @procir.Add(i16 %p.a, i16 %p.b) {
 entry:
   %tN = alloca i16
-  store i16 %a, ptr %tN
+  store i16 %p.a, ptr %tN
   %tN = alloca i16
-  store i16 %b, ptr %tN
+  store i16 %p.b, ptr %tN
   %tN = load i16, ptr %tN
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
-define i16 @procir.Inspect(ptr %s, ptr %s.tag, ptr %a, i32 %a.len0) {
+define i16 @procir.Inspect(ptr %p.s, ptr %p.s.tag, ptr %p.a, i32 %p.a.len0) {
 entry:
-  %tN = getelementptr %procir.Shape, ptr %s, i32 0, i32 0
+  %tN = getelementptr %procir.Shape, ptr %p.s, i32 0, i32 0
   %tN = load i16, ptr %tN
-  %tN = trunc i32 %a.len0 to i16
+  %tN = trunc i32 %p.a.len0 to i16
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @procir.Nothing() {
 entry:
   ret void
 }
-define i16 @procir.Apply(ptr %op, i16 %x) {
+define i16 @procir.Apply(ptr %p.op, i16 %p.x) {
 entry:
   %tN = alloca ptr
-  store ptr %op, ptr %tN
+  store ptr %p.op, ptr %tN
   %tN = alloca i16
-  store i16 %x, ptr %tN
+  store i16 %p.x, ptr %tN
   %tN = alloca ptr
   store ptr zeroinitializer, ptr %tN
   %tN = load ptr, ptr %tN
@@ -66,10 +73,18 @@ LN:
   %tN = call i16 %tN(i16 %tN, i16 %tN)
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @procir_init() {
 entry:
+  %tN = load i1, ptr @procir.-initialized
+  br i1 %tN, label %LN, label %LN
+LN:
+  ret void
+LN:
+  store i1 true, ptr @procir.-initialized
   store ptr @procir.Add, ptr @procir.f
   %tN = load ptr, ptr @procir.f
   %tN = icmp eq ptr %tN, null
@@ -110,8 +125,12 @@ LN:
   ret void
 }
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
+@procir.-initialized = internal global i1 false
+@procir.-key.O2.fe8d08aa45250c09 = constant i8 0
+@procir.-target.x86_64-unknown-linux-gnu = constant i8 0
 @procir.f = global ptr zeroinitializer
 @procir.ins = global ptr zeroinitializer
 @procir.act = global ptr zeroinitializer
@@ -129,40 +148,44 @@ clang accepted i686-unknown-linux-gnu
 @procir.Shape.tag = alias ptr, getelementptr inbounds (i8, ptr @procir.Shape.tdesc, i32 0)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
-define i16 @procir.Add(i16 %a, i16 %b) {
+define i16 @procir.Add(i16 %p.a, i16 %p.b) {
 entry:
   %tN = alloca i16
-  store i16 %a, ptr %tN
+  store i16 %p.a, ptr %tN
   %tN = alloca i16
-  store i16 %b, ptr %tN
+  store i16 %p.b, ptr %tN
   %tN = load i16, ptr %tN
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
-define i16 @procir.Inspect(ptr %s, ptr %s.tag, ptr %a, i64 %a.len0) {
+define i16 @procir.Inspect(ptr %p.s, ptr %p.s.tag, ptr %p.a, i64 %p.a.len0) {
 entry:
-  %tN = getelementptr %procir.Shape, ptr %s, i32 0, i32 0
+  %tN = getelementptr %procir.Shape, ptr %p.s, i32 0, i32 0
   %tN = load i16, ptr %tN
-  %tN = trunc i64 %a.len0 to i32
+  %tN = trunc i64 %p.a.len0 to i32
   %tN = trunc i32 %tN to i16
   %tN = add i16 %tN, %tN
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @procir.Nothing() {
 entry:
   ret void
 }
-define i16 @procir.Apply(ptr %op, i16 %x) {
+define i16 @procir.Apply(ptr %p.op, i16 %p.x) {
 entry:
   %tN = alloca ptr
-  store ptr %op, ptr %tN
+  store ptr %p.op, ptr %tN
   %tN = alloca i16
-  store i16 %x, ptr %tN
+  store i16 %p.x, ptr %tN
   %tN = alloca ptr
   store ptr zeroinitializer, ptr %tN
   %tN = load ptr, ptr %tN
@@ -180,10 +203,18 @@ LN:
   %tN = call i16 %tN(i16 %tN, i16 %tN)
   ret i16 %tN
 LN:
-  ret i16 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 define void @procir_init() {
 entry:
+  %tN = load i1, ptr @procir.-initialized
+  br i1 %tN, label %LN, label %LN
+LN:
+  ret void
+LN:
+  store i1 true, ptr @procir.-initialized
   store ptr @procir.Add, ptr @procir.f
   %tN = load ptr, ptr @procir.f
   %tN = icmp eq ptr %tN, null
@@ -224,4 +255,5 @@ LN:
   ret void
 }
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted x86_64-unknown-linux-gnu

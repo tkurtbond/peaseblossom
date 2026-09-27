@@ -4,11 +4,11 @@ entry:
   %argcword = sext i32 %argc to i64
   %argvword = ptrtoint ptr %argv to i64
   call void @Modules.Init(i64 %argcword, i64 %argvword)
-  call void @Modules_init()
+  call void @modulesmain_init()
 == i686-unknown-linux-gnu
 define i32 @main(i32 %argc, ptr %argv) {
 entry:
   %argcword = add i32 %argc, 0
   %argvword = ptrtoint ptr %argv to i32
   call void @Modules.Init(i32 %argcword, i32 %argvword)
-  call void @Modules_init()
+  call void @modulesmain_init()

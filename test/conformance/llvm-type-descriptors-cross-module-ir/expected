@@ -1,9 +1,11 @@
+== shapes.ll
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
-%client.CircleDesc = type { %shapes.ShapeDesc, i16, ptr }
-%shapes.ShapeDesc = type { i16, ptr }
 
+@shapes.-initialized = internal global i1 false
+@shapes.-key.O2.07d68facc13fd93f = constant i8 0
+@shapes.-target.x86_64-unknown-linux-gnu = constant i8 0
 @shapes.ShapeDesc.tdesc = constant { [1 x ptr], i64, i64, i64, [1 x ptr], [1 x i64] } {
   [1 x ptr] [ptr @shapes.ShapeDesc.Draw],
   i64 16,
@@ -14,6 +16,47 @@ target triple = "x86_64-unknown-linux-gnu"
 }
 @shapes.ShapeDesc.tag = alias ptr, getelementptr inbounds (i8, ptr @shapes.ShapeDesc.tdesc, i32 8)
 
+declare void @write(i32, ptr, i64)
+declare void @exit(i32)
+@.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
+@.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
+
+define void @shapes.ShapeDesc.Draw(ptr %p.s) {
+entry:
+  %t1 = alloca ptr
+  store ptr %p.s, ptr %t1
+  ret void
+}
+
+define void @shapes_init() {
+entry:
+  %t2 = load i1, ptr @shapes.-initialized
+  br i1 %t2, label %L1, label %L2
+L1:
+  ret void
+L2:
+  store i1 true, ptr @shapes.-initialized
+  ret void
+}
+
+clang accepted x86_64-unknown-linux-gnu
+== client.ll
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+%client.CircleDesc = type { %shapes.ShapeDesc, i16, ptr }
+%shapes.ShapeDesc = type { i16, ptr }
+
+@shapes.ShapeDesc.tag = external global i8
+declare void @shapes.ShapeDesc.Draw(ptr)
+declare void @shapes_init()
+
+@client.-initialized = internal global i1 false
+@client.-key.O2.cb95ed74fff44db3 = constant i8 0
+@client.-target.x86_64-unknown-linux-gnu = constant i8 0
+@shapes.-key.O2.07d68facc13fd93f = external global i8
+@client.-imports = internal constant [1 x ptr] [ptr @shapes.-key.O2.07d68facc13fd93f]
+@llvm.used = appending global [1 x ptr] [ptr @client.-imports], section "llvm.metadata"
 @client.CircleDesc.tdesc = constant { [2 x ptr], i64, i64, i64, [2 x ptr], [2 x i64] } {
   [2 x ptr] [ptr @client.CircleDesc.Area, ptr @shapes.ShapeDesc.Draw],
   i64 32,
@@ -29,47 +72,44 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define void @shapes.ShapeDesc.Draw(ptr %s) {
+define i16 @client.CircleDesc.Area(ptr %p.c) {
 entry:
   %t1 = alloca ptr
-  store ptr %s, ptr %t1
-  ret void
-}
-
-define i16 @client.CircleDesc.Area(ptr %c) {
-entry:
-  %t2 = alloca ptr
-  store ptr %c, ptr %t2
-  %t3 = load ptr, ptr %t2
-  %t4 = icmp eq ptr %t3, null
-  br i1 %t4, label %L1, label %L2
+  store ptr %p.c, ptr %t1
+  %t2 = load ptr, ptr %t1
+  %t3 = icmp eq ptr %t2, null
+  br i1 %t3, label %L1, label %L2
 L1:
   call void @write(i32 2, ptr @.trap.nilderef, i64 24)
   call void @exit(i32 4)
   unreachable
 L2:
-  %t5 = getelementptr %client.CircleDesc, ptr %t3, i32 0, i32 1
-  %t6 = load i16, ptr %t5
-  ret i16 %t6
+  %t4 = getelementptr %client.CircleDesc, ptr %t2, i32 0, i32 1
+  %t5 = load i16, ptr %t4
+  ret i16 %t5
 L3:
-  ret i16 0
-}
-
-define void @shapes_init() {
-entry:
-  ret void
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @client_init() {
 entry:
+  %t6 = load i1, ptr @client.-initialized
+  br i1 %t6, label %L4, label %L5
+L4:
+  ret void
+L5:
+  store i1 true, ptr @client.-initialized
+  call void @shapes_init()
   ret void
 }
 
 define i32 @main() {
 entry:
-  call void @shapes_init()
   call void @client_init()
   ret i32 0
 }
 @.trap.nilderef = private unnamed_addr constant [25 x i8] c"NIL pointer dereference\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted x86_64-unknown-linux-gnu

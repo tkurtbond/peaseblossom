@@ -15,12 +15,23 @@ CONFORMANCE_DIR := test/conformance
 FRONT_SRCS := $(wildcard src/front/*.Mod)
 BACK_LLVM_SRCS := $(wildcard src/back/llvm/*.Mod)
 BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod)
-DRIVER_SRCS := src/driver/Poc.Mod
+DRIVER_SRCS := src/driver/Libraries.Mod src/driver/Poc.Mod
 RTL_SRCS := $(wildcard rtl/llvm/*.Mod)
 # what Stage 0 builds with voc besides src/: Err and what it needs (Phase 11 D11)
 STAGE0_RTL_SRCS := rtl/voc/FileDescriptorOutput.Mod rtl/llvm/RealDigits.Mod \
   rtl/llvm/FormattedOutput.Mod rtl/llvm/Err.Mod
 STAGE1_BIN := $(BUILD_DIR)/stage1/bin/poc
+# Phase 12 step 2d: rtl/llvm as the library poc-rtl, for this host's triple
+# and both size models, where each poc's default library path finds it
+# (<its bin>/../lib/poc): so a program links the runtime already compiled.
+HOST_TRIPLE := $(shell clang -dumpmachine)
+RTL_LIBRARIES = $(1)/lib/poc/$(HOST_TRIPLE)/O2/poc-rtl.library $(1)/lib/poc/$(HOST_TRIPLE)/OC/poc-rtl.library
+# The Stage 0 poc is a voc program, linked against voc's shared runtime,
+# which only Linux finds by itself (as in tools/bootstrap/stage1 and
+# test/testenv.sh): a command that runs it is prefixed with this.
+VOC_BIN_DIR ?= /usr/local/sw/versions/voc/git/bin
+VOC_LIB_DIR ?= $(VOC_BIN_DIR)/../lib
+STAGE0_ENV = LD_LIBRARY_PATH="$(VOC_LIB_DIR)$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}"
 SRCS := $(FRONT_SRCS) $(BACK_LLVM_SRCS) $(BACK_VAX_SRCS) $(DRIVER_SRCS)
 
 # Conformance fixtures grouped by which part of poc they exercise, mirroring
@@ -45,12 +56,21 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: all build stage1 stage2 test-stage1 check check-strict check-opt2 test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: all build stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
-build: $(BIN)
+build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
 $(BIN): $(SRCS) $(STAGE0_RTL_SRCS)
 	tools/bootstrap/stage0
+
+# poc-rtl for one size model (O2 or OC, the %), built by the poc of the
+# same tree; -clear-library-path, so that nothing is taken from the copy it
+# replaces
+$(BUILD_DIR)/lib/poc/$(HOST_TRIPLE)/%/poc-rtl.library: $(BIN) $(RTL_SRCS)
+	$(STAGE0_ENV) $(BIN) -$* -clear-library-path -output-dir $(BUILD_DIR)/lib/poc -library poc-rtl $(RTL_SRCS)
+
+$(BUILD_DIR)/stage1/lib/poc/$(HOST_TRIPLE)/%/poc-rtl.library: $(STAGE1_BIN) $(RTL_SRCS)
+	$(STAGE1_BIN) -$* -clear-library-path -output-dir $(BUILD_DIR)/stage1/lib/poc -library poc-rtl $(RTL_SRCS)
 
 all: build
 
@@ -71,7 +91,7 @@ stage2: $(STAGE1_BIN)
 # test/testenv.sh puts on PATH first; the tests cd, so it must be absolute).
 # `make test` stays Stage 0 only - the fast loop, and voc remains the
 # bootstrap root and the comparison oracle.
-test-stage1: $(STAGE1_BIN)
+test-stage1: $(STAGE1_BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)/stage1)
 	POC_BIN_DIR=$(abspath $(BUILD_DIR)/stage1/bin) test/run-tests.sh $(ALL_TESTS)
 
 # Both compilers and the fixed point: the suite under the voc-built poc, the
@@ -96,7 +116,11 @@ check:
 # whose exact real results x87 arithmetic changes when optimized (the
 # reason for the -O0 default): llvm-out-extra and llvm-math-extra on a
 # 32-bit x86 host, and llvm-i686-runtime, which reruns them for 32-bit x86,
-# on a 32-bit x86 host or a BSD (Linux i686 has SSE2).
+# on a 32-bit x86 host or a BSD (Linux i686 has SSE2). Each suite's poc has
+# poc-rtl built optimized in its own ../lib/poc (Phase 12 steps 2d, 2e), as
+# make builds it for build/bin/poc: the Stage 0 poc is copied to
+# build/opt2/stage0/bin for that, so that its library path does not also
+# have build/lib/poc's.
 OPT2_DIR := $(abspath $(BUILD_DIR)/opt2)
 OPT2_HOST_X87 := $(filter i386 i486 i586 i686,$(shell uname -m))
 OPT2_HOST_BSD := $(filter-out Linux,$(shell uname -s))
@@ -105,16 +129,53 @@ OPT2_SKIP := poc-exit-status poc-output-streams poc-opt-level \
   $(if $(OPT2_HOST_X87)$(OPT2_HOST_BSD),llvm-i686-runtime)
 OPT2_TESTS := $(filter-out $(OPT2_SKIP),$(ALL_TESTS))
 check-opt2: build
-	@rm -rf $(OPT2_DIR); mkdir -p $(OPT2_DIR)/wrap0 $(OPT2_DIR)/wrap1; \
-	printf '#!/bin/sh\nexec %s -opt 2 "$$@"\n' $(abspath $(BUILD_DIR)/bin/poc) > $(OPT2_DIR)/wrap0/poc; \
+	@rm -rf $(OPT2_DIR); mkdir -p $(OPT2_DIR)/stage0/bin $(OPT2_DIR)/wrap0 $(OPT2_DIR)/wrap1; \
+	cp $(BIN) $(OPT2_DIR)/stage0/bin/poc; \
+	printf '#!/bin/sh\nexec %s -opt 2 "$$@"\n' $(OPT2_DIR)/stage0/bin/poc > $(OPT2_DIR)/wrap0/poc; \
 	printf '#!/bin/sh\nexec %s -opt 2 "$$@"\n' $(OPT2_DIR)/stage1/bin/poc > $(OPT2_DIR)/wrap1/poc; \
 	chmod +x $(OPT2_DIR)/wrap0/poc $(OPT2_DIR)/wrap1/poc; \
 	status=0; \
+	for model in O2 OC; do \
+	  $(STAGE0_ENV) $(OPT2_DIR)/wrap0/poc -$$model -clear-library-path -output-dir $(OPT2_DIR)/stage0/lib/poc \
+	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
+	done; \
 	POC_BIN_DIR=$(OPT2_DIR)/wrap0 test/run-tests.sh $(OPT2_TESTS) || status=1; \
 	BOOTSTRAP_BUILD_DIR=$(OPT2_DIR) BOOTSTRAP_OPT=2 STAGE0_POC=$(abspath $(BUILD_DIR)/bin/poc) \
 	  tools/bootstrap/stage1 || status=1; \
 	BOOTSTRAP_BUILD_DIR=$(OPT2_DIR) BOOTSTRAP_OPT=2 tools/bootstrap/stage2 || status=1; \
+	for model in O2 OC; do \
+	  $(OPT2_DIR)/wrap1/poc -$$model -clear-library-path -output-dir $(OPT2_DIR)/stage1/lib/poc \
+	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
+	done; \
 	POC_BIN_DIR=$(OPT2_DIR)/wrap1 test/run-tests.sh $(OPT2_TESTS) || status=1; \
+	exit $$status
+
+# Phase 12 step 2g: the suite with every fixture's build a whole-program
+# optimization (a poc wrapper that adds -lto), against poc-rtl built with
+# -lto in its own ../lib/poc, as check-opt2 does. Not part of check. The
+# fixtures that test poc's command line or print clang's commands are left
+# out, and so are llvm-libraries (its manifests gain a line, lto) and
+# llvm-using-modules (its .sym/.o pairs are compiled to bitcode, which poc
+# refuses as a .o), and llvm-debug-info (the link's optimization moves the
+# lines a backtrace shows), and llvm-libraries-i686 (on NetBSD its 32-bit
+# builds print -lto's warning), and llvm-lto, which tests -lto itself
+# against builds without it.
+LTO_DIR := $(abspath $(BUILD_DIR)/lto)
+LTO_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-link-flags \
+  llvm-libraries llvm-using-modules llvm-debug-info llvm-libraries-i686 \
+  llvm-lto
+LTO_TESTS := $(filter-out $(LTO_SKIP),$(ALL_TESTS))
+check-lto: build
+	@rm -rf $(LTO_DIR); mkdir -p $(LTO_DIR)/bin $(LTO_DIR)/wrap; \
+	cp $(BIN) $(LTO_DIR)/bin/poc; \
+	printf '#!/bin/sh\nexec %s -lto "$$@"\n' $(LTO_DIR)/bin/poc > $(LTO_DIR)/wrap/poc; \
+	chmod +x $(LTO_DIR)/wrap/poc; \
+	status=0; \
+	for model in O2 OC; do \
+	  $(STAGE0_ENV) $(LTO_DIR)/wrap/poc -$$model -clear-library-path -output-dir $(LTO_DIR)/lib/poc \
+	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
+	done; \
+	POC_BIN_DIR=$(LTO_DIR)/wrap test/run-tests.sh $(LTO_TESTS) || status=1; \
 	exit $$status
 
 # poc's own source stays inside Oberon2.pdf (PLAN.md, "Bootstrap

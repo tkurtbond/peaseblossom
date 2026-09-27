@@ -19,6 +19,8 @@ test/conformance/**/*.mar
 test/conformance/**/result
 test/conformance/hello/hello
 test/conformance/llvm-build-run/llvm-build-run
+test/conformance/llvm-field-initializers/llvm-field-initializers
+test/conformance/llvm-var-initializers/llvm-var-initializers
 test/conformance/poc-opt-level/poc-opt-level
 test/conformance/poc-opt-level/clang.log
 test/conformance/llvm-hello-world/llvm-hello-world
@@ -30,6 +32,7 @@ test/conformance/llvm-procedures/llvm-procedures
 test/conformance/llvm-predeclared/llvm-predeclared
 test/conformance/llvm-predeclared-halt/llvm-predeclared-halt
 test/conformance/llvm-multi-module/llvm-multi-module
+test/conformance/llvm-module-init-order/llvm-module-init-order
 test/conformance/llvm-declarations-after-procedures/llvm-declarations-after-procedures
 test/conformance/llvm-hugeint-arithmetic/llvm-hugeint-arithmetic
 test/conformance/llvm-open-array-many-dimensions/llvm-open-array-many-dimensions
@@ -94,6 +97,9 @@ test/conformance/llvm-set64/llvm-set64
 test/conformance/llvm-set64-import/llvm-set64-import
 test/conformance/llvm-entier-trap/llvm-entier-trap
 test/conformance/llvm-overflow-wrap/llvm-overflow-wrap
+test/conformance/llvm-parameter-names/llvm-parameter-names
+test/conformance/llvm-underscore-dollar/llvm-underscore-dollar
+test/conformance/llvm-debug-info/llvm-debug-info
 test/conformance/llvm-array-assign/llvm-array-assign
 test/conformance/llvm-array-assign-trap/llvm-array-assign-trap
 test/conformance/llvm-no-trap-behavior/llvm-no-trap-behavior
@@ -116,3 +122,10 @@ test/conformance/llvm-large-records/llvm-large-records
 test/conformance/llvm-assert/llvm-assert
 test/conformance/llvm-heap-exhausted/llvm-heap-exhausted
 test/conformance/llvm-trap-location/llvm-trap-location
+test/conformance/llvm-range-checks/llvm-range-checks
+test/conformance/llvm-return-trap/llvm-return-trap
+test/conformance/llvm-record-assign-trap/llvm-record-assign-trap
+test/conformance/poc-link-flags/poc-link-flags
+test/conformance/llvm-using-modules/work/
+test/conformance/llvm-lto/work/
+test/conformance/llvm-libraries-i686/work/

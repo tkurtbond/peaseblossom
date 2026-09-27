@@ -1,0 +1,19 @@
+== without -link
+poc: build failed
+== -link, -static and -verbose
+clang -c --target=<triple> -O<level> -fPIC 'FileDescriptorOutput.ll' -o 'FileDescriptorOutput.o'
+clang -c --target=<triple> -O<level> -fPIC 'RealDigits.ll' -o 'RealDigits.o'
+clang -c --target=<triple> -O<level> -fPIC 'FormattedOutput.ll' -o 'FormattedOutput.o'
+clang -c --target=<triple> -O<level> -fPIC 'Out.ll' -o 'Out.o'
+clang -c --target=<triple> -O<level> -fPIC 'linkflags.ll' -o 'linkflags.o'
+clang --target=<triple> -O<level> 'FileDescriptorOutput.o' 'RealDigits.o' 'FormattedOutput.o' 'Out.o' 'linkflags.o' -o 'poc-link-flags' '-Llib dir' '-lpocfixture' -lm -static
+21
+exit=0
+INTERP: 0
+== -link, dynamic
+21
+exit=0
+INTERP: 1
+== -link without an argument
+poc: -link requires an argument
+exit=1

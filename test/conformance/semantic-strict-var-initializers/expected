@@ -1,0 +1,3 @@
+strict.mod:3:18: error: a variable initializer is not in the Oberon-2 report (-strict)
+strict.mod:5:23: error: a variable initializer is not in the Oberon-2 report (-strict)
+2 error(s)

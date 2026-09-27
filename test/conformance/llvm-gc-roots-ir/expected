@@ -4,8 +4,22 @@ target triple = "i686-unknown-linux-gnu"
 
 %roots.Pair = type { i16, ptr, ptr }
 
-@ModuleTable.head = global i32 zeroinitializer
-@ModuleTable.registered = global i32 zeroinitializer
+declare i32 @ModuleTable.TableCount()
+declare i32 @ModuleTable.Slot(i32, i32)
+declare i32 @ModuleTable.SlotCount(i32)
+declare i32 @ModuleTable.Next(i32)
+declare i32 @ModuleTable.First()
+declare void @ModuleTable.Register(i32)
+@ModuleTable.registered = external global i8
+@ModuleTable.head = external global i8
+declare void @ModuleTable_init()
+
+@roots.-initialized = internal global i1 false
+@roots.-key.O2.fe324182960d7a3f = constant i8 0
+@roots.-target.i686-unknown-linux-gnu = constant i8 0
+@ModuleTable.-key.O2.566673ee7d8cfcc5 = external global i8
+@roots.-imports = internal constant [1 x ptr] [ptr @ModuleTable.-key.O2.566673ee7d8cfcc5]
+@llvm.used = appending global [1 x ptr] [ptr @roots.-imports], section "llvm.metadata"
 @roots.single = global ptr zeroinitializer
 @roots.plain = global i16 zeroinitializer
 @roots.several = global [2 x ptr] zeroinitializer
@@ -39,103 +53,18 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define void @ModuleTable.Register(i32 %table) {
-entry:
-  %t1 = alloca i32
-  store i32 %table, ptr %t1
-  %t2 = load i32, ptr %t1
-  %t3 = inttoptr i32 %t2 to ptr
-  %t4 = load i32, ptr @ModuleTable.head
-  store volatile i32 %t4, ptr %t3, align 1
-  %t5 = load i32, ptr %t1
-  store i32 %t5, ptr @ModuleTable.head
-  %t6 = load i32, ptr @ModuleTable.registered
-  %t7 = add i32 %t6, 1
-  store i32 %t7, ptr @ModuleTable.registered
-  ret void
-}
-
-define i32 @ModuleTable.First() {
-entry:
-  %t8 = load i32, ptr @ModuleTable.head
-  ret i32 %t8
-L1:
-  ret i32 0
-}
-
-define i32 @ModuleTable.Next(i32 %table) {
-entry:
-  %t9 = alloca i32
-  store i32 %table, ptr %t9
-  %t10 = alloca i32
-  %t11 = load i32, ptr %t9
-  %t12 = inttoptr i32 %t11 to ptr
-  %t13 = load volatile i32, ptr %t12, align 1
-  store i32 %t13, ptr %t10
-  %t14 = load i32, ptr %t10
-  ret i32 %t14
-L2:
-  ret i32 0
-}
-
-define i32 @ModuleTable.SlotCount(i32 %table) {
-entry:
-  %t15 = alloca i32
-  store i32 %table, ptr %t15
-  %t16 = alloca i32
-  %t17 = load i32, ptr %t15
-  %t18 = sext i16 4 to i32
-  %t19 = add i32 %t17, %t18
-  %t20 = inttoptr i32 %t19 to ptr
-  %t21 = load volatile i32, ptr %t20, align 1
-  store i32 %t21, ptr %t16
-  %t22 = load i32, ptr %t16
-  ret i32 %t22
-L3:
-  ret i32 0
-}
-
-define i32 @ModuleTable.Slot(i32 %table, i32 %index) {
-entry:
-  %t23 = alloca i32
-  store i32 %table, ptr %t23
-  %t24 = alloca i32
-  store i32 %index, ptr %t24
-  %t25 = alloca i32
-  %t26 = load i32, ptr %t23
-  %t27 = load i32, ptr %t24
-  %t28 = sext i8 2 to i32
-  %t29 = add i32 %t27, %t28
-  %t30 = sext i16 4 to i32
-  %t31 = mul i32 %t29, %t30
-  %t32 = add i32 %t26, %t31
-  %t33 = inttoptr i32 %t32 to ptr
-  %t34 = load volatile i32, ptr %t33, align 1
-  store i32 %t34, ptr %t25
-  %t35 = load i32, ptr %t25
-  ret i32 %t35
-L4:
-  ret i32 0
-}
-
-define i32 @ModuleTable.TableCount() {
-entry:
-  %t36 = load i32, ptr @ModuleTable.registered
-  ret i32 %t36
-L5:
-  ret i32 0
-}
-
-define void @ModuleTable_init() {
-entry:
-  ret void
-}
-
 define void @roots_init() {
 entry:
+  %t1 = load i1, ptr @roots.-initialized
+  br i1 %t1, label %L1, label %L2
+L1:
+  ret void
+L2:
+  store i1 true, ptr @roots.-initialized
+  call void @ModuleTable_init()
   call void @ModuleTable.Register(i32 ptrtoint (ptr @.roots.roots to i32))
-  %t37 = sext i8 1 to i16
-  store i16 %t37, ptr @roots.plain
+  %t2 = sext i8 1 to i16
+  store i16 %t2, ptr @roots.plain
   ret void
 }
 
@@ -146,7 +75,7 @@ entry:
   ret i32 0
 }
 clang accepted i686-unknown-linux-gnu
-define void @GarbageCollectedHeap.SetStackBase(i32 %base) {
+declare void @GarbageCollectedHeap.SetStackBase(i32)
   %stackbase = call ptr @llvm.frameaddress.p0(i32 0)
   %stackbaseint = ptrtoint ptr %stackbase to i32
   call void @GarbageCollectedHeap.SetStackBase(i32 %stackbaseint)
@@ -158,8 +87,22 @@ target triple = "x86_64-unknown-linux-gnu"
 
 %roots.Pair = type { i16, ptr, ptr }
 
-@ModuleTable.head = global i64 zeroinitializer
-@ModuleTable.registered = global i32 zeroinitializer
+declare i32 @ModuleTable.TableCount()
+declare i64 @ModuleTable.Slot(i64, i64)
+declare i64 @ModuleTable.SlotCount(i64)
+declare i64 @ModuleTable.Next(i64)
+declare i64 @ModuleTable.First()
+declare void @ModuleTable.Register(i64)
+@ModuleTable.registered = external global i8
+@ModuleTable.head = external global i8
+declare void @ModuleTable_init()
+
+@roots.-initialized = internal global i1 false
+@roots.-key.O2.fe324182960d7a3f = constant i8 0
+@roots.-target.x86_64-unknown-linux-gnu = constant i8 0
+@ModuleTable.-key.O2.566673ee7d8cfcc5 = external global i8
+@roots.-imports = internal constant [1 x ptr] [ptr @ModuleTable.-key.O2.566673ee7d8cfcc5]
+@llvm.used = appending global [1 x ptr] [ptr @roots.-imports], section "llvm.metadata"
 @roots.single = global ptr zeroinitializer
 @roots.plain = global i16 zeroinitializer
 @roots.several = global [2 x ptr] zeroinitializer
@@ -193,103 +136,18 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define void @ModuleTable.Register(i64 %table) {
-entry:
-  %t1 = alloca i64
-  store i64 %table, ptr %t1
-  %t2 = load i64, ptr %t1
-  %t3 = inttoptr i64 %t2 to ptr
-  %t4 = load i64, ptr @ModuleTable.head
-  store volatile i64 %t4, ptr %t3, align 1
-  %t5 = load i64, ptr %t1
-  store i64 %t5, ptr @ModuleTable.head
-  %t6 = load i32, ptr @ModuleTable.registered
-  %t7 = add i32 %t6, 1
-  store i32 %t7, ptr @ModuleTable.registered
-  ret void
-}
-
-define i64 @ModuleTable.First() {
-entry:
-  %t8 = load i64, ptr @ModuleTable.head
-  ret i64 %t8
-L1:
-  ret i64 0
-}
-
-define i64 @ModuleTable.Next(i64 %table) {
-entry:
-  %t9 = alloca i64
-  store i64 %table, ptr %t9
-  %t10 = alloca i64
-  %t11 = load i64, ptr %t9
-  %t12 = inttoptr i64 %t11 to ptr
-  %t13 = load volatile i64, ptr %t12, align 1
-  store i64 %t13, ptr %t10
-  %t14 = load i64, ptr %t10
-  ret i64 %t14
-L2:
-  ret i64 0
-}
-
-define i64 @ModuleTable.SlotCount(i64 %table) {
-entry:
-  %t15 = alloca i64
-  store i64 %table, ptr %t15
-  %t16 = alloca i64
-  %t17 = load i64, ptr %t15
-  %t18 = sext i16 8 to i64
-  %t19 = add i64 %t17, %t18
-  %t20 = inttoptr i64 %t19 to ptr
-  %t21 = load volatile i64, ptr %t20, align 1
-  store i64 %t21, ptr %t16
-  %t22 = load i64, ptr %t16
-  ret i64 %t22
-L3:
-  ret i64 0
-}
-
-define i64 @ModuleTable.Slot(i64 %table, i64 %index) {
-entry:
-  %t23 = alloca i64
-  store i64 %table, ptr %t23
-  %t24 = alloca i64
-  store i64 %index, ptr %t24
-  %t25 = alloca i64
-  %t26 = load i64, ptr %t23
-  %t27 = load i64, ptr %t24
-  %t28 = sext i8 2 to i64
-  %t29 = add i64 %t27, %t28
-  %t30 = sext i16 8 to i64
-  %t31 = mul i64 %t29, %t30
-  %t32 = add i64 %t26, %t31
-  %t33 = inttoptr i64 %t32 to ptr
-  %t34 = load volatile i64, ptr %t33, align 1
-  store i64 %t34, ptr %t25
-  %t35 = load i64, ptr %t25
-  ret i64 %t35
-L4:
-  ret i64 0
-}
-
-define i32 @ModuleTable.TableCount() {
-entry:
-  %t36 = load i32, ptr @ModuleTable.registered
-  ret i32 %t36
-L5:
-  ret i32 0
-}
-
-define void @ModuleTable_init() {
-entry:
-  ret void
-}
-
 define void @roots_init() {
 entry:
+  %t1 = load i1, ptr @roots.-initialized
+  br i1 %t1, label %L1, label %L2
+L1:
+  ret void
+L2:
+  store i1 true, ptr @roots.-initialized
+  call void @ModuleTable_init()
   call void @ModuleTable.Register(i64 ptrtoint (ptr @.roots.roots to i64))
-  %t37 = sext i8 1 to i16
-  store i16 %t37, ptr @roots.plain
+  %t2 = sext i8 1 to i16
+  store i16 %t2, ptr @roots.plain
   ret void
 }
 
@@ -300,7 +158,7 @@ entry:
   ret i32 0
 }
 clang accepted x86_64-unknown-linux-gnu
-define void @GarbageCollectedHeap.SetStackBase(i64 %base) {
+declare void @GarbageCollectedHeap.SetStackBase(i64)
   %stackbase = call ptr @llvm.frameaddress.p0(i32 0)
   %stackbaseint = ptrtoint ptr %stackbase to i64
   call void @GarbageCollectedHeap.SetStackBase(i64 %stackbaseint)

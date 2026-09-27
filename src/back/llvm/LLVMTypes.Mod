@@ -228,7 +228,7 @@ MODULE LLVMTypes;
   (* ---- Named struct types (Phase 11, D4) ----
 
      In the IR every record is a named LLVM struct type, "%<Module>.<Type>"
-     for a module-level record and "%$rec<N>" for any other, defined once at
+     for a module-level record and "%-rec<N>" for any other, defined once at
      the top of the program (LLVMCodeGenerator.EmitStructTypes). Spelled
      inline, as it used to be, a record's type text grows with every field
      and every record nested in it, and a buffer of any fixed size is
@@ -254,7 +254,7 @@ MODULE LLVMTypes;
       WHILE (i <= structCount) & (structs[i].name # name) DO INC(i) END;
       IF i <= structCount THEN rec.backendIndex := i; RETURN i END
     ELSE
-      COPY("$rec", name); AppendLongInt(name, structCount + 1)
+      COPY("-rec", name); AppendLongInt(name, structCount + 1)
     END;
     IF structCount + 1 >= LEN(structs^) THEN
       NEW(larger, 2 * LEN(structs^));
@@ -525,6 +525,18 @@ MODULE LLVMTypes;
      frame ("stackrealign"), which fixes the one frame that was
      misaligned from the start. Linux and every 64-bit target are left as
      they are. *)
+  (* Whether triple's operating system is OpenBSD (the third component, or
+     the second when the vendor is left out) *)
+  PROCEDURE IsOpenBSD*(triple: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN TripleComponentStartsWith(triple, 1, "openbsd") OR TripleComponentStartsWith(triple, 2, "openbsd")
+  END IsOpenBSD;
+
+  PROCEDURE IsNetBSD*(triple: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN TripleComponentStartsWith(triple, 1, "netbsd") OR TripleComponentStartsWith(triple, 2, "netbsd")
+  END IsNetBSD;
+
   PROCEDURE NeedsStackRealignment*(triple: ARRAY OF CHAR): BOOLEAN;
     VAR i: INTEGER; found: BOOLEAN;
   BEGIN

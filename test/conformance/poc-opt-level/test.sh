@@ -3,7 +3,8 @@
 # refuses a level clang does not document. bin/clang logs what it is given.
 # With no -opt the level is 2, but 0 on 32-bit x86 (x87 arithmetic,
 # LLVMToolchainDriver.DefaultOptimizationLevel): the host decides which, so
-# that line says whether it was the one expected here.
+# that line says whether it was the one expected here. clang runs once per
+# module and once to link, all at the same level, so each level is shown once.
 . ../../testenv.sh
 REAL_PATH=$PATH
 CLANG_LOG=$PWD/clang.log
@@ -21,13 +22,13 @@ for level in "" 2 z; do
       i386|i486|i586|i686) default=-O0 ;;
       *) default=-O2 ;;
     esac
-    if [ "$(cat clang.log)" = "clang got $default" ]; then
+    if [ "$(sort -u clang.log)" = "clang got $default" ]; then
       echo "clang got this host's default" >>result
     else
-      cat clang.log >>result
+      sort -u clang.log >>result
     fi
   else
-    cat clang.log >>result
+    sort -u clang.log >>result
   fi
   rm -f clang.log
 done

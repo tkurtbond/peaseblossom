@@ -176,7 +176,7 @@ MODULE LLVMCodeGenerator;
      attempted here. *)
 
   IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions,
-         MemoryLayout, Diagnostics, NestedProcedures, SYSTEM;
+         MemoryLayout, Diagnostics, NestedProcedures, ModuleInterface, SYSTEM;
 
   VAR
     (* How many constructs GenerateProgram met that this backend cannot lower
@@ -199,6 +199,14 @@ MODULE LLVMCodeGenerator;
        (in List.Insert)". Each trap site gets a message of its own
        (EmitTrapAt); FALSE leaves the IR as it was without the switch. *)
     trapLocation*: BOOLEAN;
+    (* poc -range-checks (Phase 12 step 1, voc's -r, decided with the user
+       2026-09-27): SHORT of an integer and CHR trap (status 14) when the
+       value does not fit the result, instead of keeping its low bits.
+       FALSE leaves the IR as it was without the switch. *)
+    rangeChecks*: BOOLEAN;
+    (* poc -library (Phase 12 step 2c): TRUE while building a library, whose
+       modules have no main module and so no "main" *)
+    buildingLibrary*: BOOLEAN;
 
   CONST
     (* PLAN.md Phase 8 step 13: two, not one - confirmed against real
@@ -298,6 +306,27 @@ MODULE LLVMCodeGenerator;
     heapTrapGlobal = "@.trap.heap";
     heapTrapMsg = "heap exhausted: NEW cannot allocate the block";
     heapTrapExitCode = 11;
+    (* Phase 12 step 1: a function procedure that reaches its END ("Function
+       procedures must be left via a return statement", Oberon2.pdf 10.1).
+       voc checks it always (Halt(-3)); poc too. *)
+    returnTrapGlobal = "@.trap.noreturn";
+    returnTrapMsg = "function procedure reached its END without RETURN";
+    returnTrapExitCode = 12;
+    (* Phase 12 step 1: v := e for records, where v is a VAR parameter or p^
+       whose dynamic type is an extension of its static type ("the dynamic
+       type of v must be the same as the static type of v", Oberon2.pdf 9.1).
+       voc checks it under -t (Halt(-6)); poc always, as its type guard. *)
+    recordAssignTrapGlobal = "@.trap.recordassign";
+    recordAssignTrapMsg = "record assigned to a variable whose dynamic type extends its static type";
+    recordAssignTrapExitCode = 13;
+    (* Phase 12 step 1, under -range-checks only (rangeChecks): SHORT(x) of
+       an integer x outside the result type, CHR(x) of x outside 0..255.
+       voc -r halts on both (Halt(-8), "Value out of range"). *)
+    shortRangeTrapGlobal = "@.trap.shortrange";
+    shortRangeTrapMsg = "SHORT argument out of range";
+    chrRangeTrapGlobal = "@.trap.chrrange";
+    chrRangeTrapMsg = "CHR argument out of range";
+    rangeTrapExitCode = 14;
 
     (* DynamicType.kind - see DynamicType. *)
     dynStatic = 0;
@@ -439,6 +468,14 @@ MODULE LLVMCodeGenerator;
       next: DeclaredExternal
     END;
 
+    (* Phase 12 step 2a: a record whose symbols (tag, type-bound procedures,
+       initialization procedure) EmitImportDeclarations has declared *)
+    DeclaredRecord = POINTER TO DeclaredRecordDesc;
+    DeclaredRecordDesc = RECORD
+      rec: Types.RecordType;
+      next: DeclaredRecord
+    END;
+
     (* PLAN.md Phase 9 step 1: every module-level record type that gets a
        run-time type descriptor, in registration order - see
        CollectRecordTypes/EmitTypeDescriptors. A plain linked list,
@@ -514,7 +551,27 @@ MODULE LLVMCodeGenerator;
       (* the module's source file, as poc opened it - named in trap messages
          under -trap-location *)
       fileName*: SourcePath;
+      (* Phase 12 step 2c: a module a library on the library path has:
+         module and scope come from its .sym, and it is declared to the
+         others (EmitImportDeclarations), not generated *)
+      inLibrary*: BOOLEAN;
+      (* Phase 12 step 2f: a module given as its .sym and .o, objectPath:
+         declared like a library's, not generated, its object linked *)
+      compiled*: BOOLEAN;
+      objectPath*: SourcePath;
+      usesCollector*: BOOLEAN; (* its object calls GarbageCollectedHeap *)
+      (* Phase 12 step 2g: a module given as its .sym and .ll, irPath: not
+         generated, its IR compiled like a generated module's *)
+      irPath*: SourcePath;
       next*: ModuleList
+    END;
+
+    (* Phase 12 step 2a: a module of the program in the import closure of the
+       one being generated (EmitImportDeclarations) *)
+    ClosureModule = POINTER TO ClosureModuleDesc;
+    ClosureModuleDesc = RECORD
+      module: ModuleList;
+      next: ClosureModule
     END;
 
     (* A -trap-location message: one per trap site, emitted with the other
@@ -524,6 +581,18 @@ MODULE LLVMCodeGenerator;
       global: ValueText;
       text: ARRAY 3 * 1024 OF CHAR;
       next: TrapSite
+    END;
+
+    (* Phase 11 D17: a record type whose initialization procedure
+       (InitSymbol) this program may define: wanted when it does, emitted
+       once it has. A record that is not wanted is here only so the walk
+       that finds the wanted ones (CollectInitRecords) visits it once. *)
+    InitRecordEntry = POINTER TO InitRecordEntryDesc;
+    InitRecordEntryDesc = RECORD
+      rec: Types.RecordType;
+      fileName: SourcePath;
+      wanted, emitted: BOOLEAN;
+      next: InitRecordEntry
     END;
 
     (* Threaded explicitly through every codegen procedure below, VAR w:
@@ -558,14 +627,8 @@ MODULE LLVMCodeGenerator;
       loopExitLabel: ValueText;
       (* PLAN.md Phase 8 step 10: NIL at module level (and reset to NIL
          between procedures) - GenerateReturnStatement consults this to
-         decide "ret void" vs. "ret <type> <value>", and to fall back to
-         a well-typed placeholder return when a function procedure's
-         body falls off the end without an explicit RETURN on every path
-         (SemanticActions.CheckProcedureBody's own "function procedure
-         must return a value" check is deliberately shallow - not full
-         reachability analysis, see its header comment - so this is a
-         real, if narrow, gap codegen must still emit *valid* IR for,
-         even though it can't happen in a well-formed program). *)
+         decide "ret void" vs. "ret <type> <value>" (a function
+         procedure that reaches its END traps instead: GenerateFunction). *)
       currentProcResultType: Types.Type;
       (* Phase 11 step 8 (doc/nested-procedures.md): the procedures declared
          inside the module-level or type-bound procedure being generated, and
@@ -585,6 +648,7 @@ MODULE LLVMCodeGenerator;
       (* PLAN.md Phase 9 step 4: SYSTEM.MOVE lowers to the llvm.memmove
          intrinsic, declared once at the end of the program if used. *)
       needMemmove: BOOLEAN;
+      needMemset: BOOLEAN; (* BindLocalVars zeroed a record or array local *)
       pendingStrings: PendingString;
       (* PLAN.md Phase 9 step 5: the label of the basic block the writer
          is in (EmitLabel keeps it), for phi nodes; which lazily-emitted
@@ -596,7 +660,8 @@ MODULE LLVMCodeGenerator;
       needNilTrap, needGuardTrap, needWithTrap, usedAllocate: BOOLEAN;
       (* Phase 9 step 7: the array-length trap, and the overflow-checking
          arithmetic intrinsics NEW's size computation calls *)
-      needLengthTrap, needOverflowMath, needEntierTrap, needArrayAssignTrap: BOOLEAN;
+      needLengthTrap, needOverflowMath, needEntierTrap, needArrayAssignTrap, needReturnTrap,
+      needRecordAssignTrap, needShortRangeTrap, needChrRangeTrap: BOOLEAN;
       (* which ASSERT failure messages the program uses: one per code 0..255,
          and noAssertCode for ASSERT(x) *)
       assertCodes: ARRAY noAssertCode + 1 OF BOOLEAN;
@@ -614,8 +679,113 @@ MODULE LLVMCodeGenerator;
       arrayDescs: ArrayDescEntry;
       lateRecords: TypeDescEntry;
       arrayDescCount, anonymousRecordCount: INTEGER;
-      heapPresent: BOOLEAN
+      heapPresent: BOOLEAN;
+      (* Phase 11 D17: the records whose initialization procedures to
+         define, and a counter for naming those of anonymous records *)
+      initRecords: InitRecordEntry;
+      declaredRecords: DeclaredRecord; (* Phase 12 step 2a *)
+      anonymousInitCount: INTEGER
     END;
+
+    (* poc -g (Phase 11 A16): a source file of the program, a DIFile node *)
+    DebugFile = POINTER TO DebugFileDesc;
+    DebugFileDesc = RECORD
+      name: SourcePath;
+      id: INTEGER;
+      next: DebugFile
+    END;
+
+    (* A function with debug information, a DISubprogram node, written out
+       after the code (EmitDebugMetadata) *)
+    DebugProcedure = POINTER TO DebugProcedureDesc;
+    DebugProcedureDesc = RECORD
+      name: LongText;
+      id, fileId, line, unit: INTEGER;
+      next: DebugProcedure
+    END;
+
+    (* A module variable, a DIGlobalVariableExpression node (id) and its
+       DIGlobalVariable (id + 1) *)
+    DebugGlobal = POINTER TO DebugGlobalDesc;
+    DebugGlobalDesc = RECORD
+      name: SyntaxTree.Ident;
+      id, line, typeId: INTEGER;
+      next: DebugGlobal
+    END;
+
+    (* A module, a DICompileUnit node of its own, so that a debugger looks
+       up a variable's name among the module's own variables first *)
+    DebugUnit = POINTER TO DebugUnitDesc;
+    DebugUnitDesc = RECORD
+      name: SyntaxTree.Ident;
+      id, fileId: INTEGER;
+      globals, globalsTail: DebugGlobal;
+      next: DebugUnit
+    END;
+
+    (* An Oberon type as DWARF has it (DebugTypeId), the node id. A basic
+       type or SYSTEM.PTR is a typedef by its Oberon name (id) of a
+       DIBasicType or a pointer (id + 1) - lldb shows a basic type by its C
+       name (short, long), but a typedef by its own (INTEGER, LONGINT). A
+       record is a structure type, a fixed array an array type, a pointer
+       or a procedure type a pointer type. A pointer to an open array points
+       to a structure (id + 1) that is the heap block (NEW): the lengths,
+       "len", then the elements, "data", whose counts are read from "len". *)
+    DebugType = POINTER TO DebugTypeDesc;
+    DebugTypeDesc = RECORD
+      type: Types.Type;
+      id: INTEGER;
+      next: DebugType
+    END;
+
+    (* A DILocalVariable node: a parameter (arg > 0, its position) or a
+       local variable of a function with debug information *)
+    DebugVariable = POINTER TO DebugVariableDesc;
+    DebugVariableDesc = RECORD
+      name: SyntaxTree.Ident;
+      id, arg, scope, fileId, line, typeId: INTEGER;
+      artificial: BOOLEAN; (* made by the compiler: an open array's length *)
+      next: DebugVariable
+    END;
+
+    (* An open-array variable's type, an array type node (id) whose
+       lengths are the dims variables firstLength, firstLength + 1, ... *)
+    DebugOpenArray = POINTER TO DebugOpenArrayDesc;
+    DebugOpenArrayDesc = RECORD
+      id, elementId, firstLength, dims: INTEGER;
+      next: DebugOpenArray
+    END;
+
+  VAR
+    (* poc -g (Phase 11 A16): the IR carries DWARF debug information for gdb
+       and lldb - the line table and the procedures' names (a breakpoint on
+       List.Insert or list.mod:42, a backtrace with source lines), and the
+       variables (DeclareDebugVariable, WriteDebugGlobal). Every function of an Oberon procedure or module body gets a
+       DISubprogram, and every instruction in it the position of the
+       statement it belongs to: WriteLn attaches it to each instruction
+       line (one starting "  " and an instruction) while debugScope names
+       the function's subprogram. The runtime helpers written as fixed text,
+       main and the record initialization procedures get none. FALSE leaves
+       the IR as it was without the switch. *)
+    debugInfo*: BOOLEAN;
+    (* the working directory the source file names are relative to, set by
+       LLVMToolchainDriver before GenerateProgram *)
+    debugDirectory*: SourcePath;
+    debugFiles: DebugFile;
+    debugProcedures, debugProceduresTail: DebugProcedure;
+    debugUnits, debugUnitsTail, debugUnit: DebugUnit; (* debugUnit: the module being generated *)
+    debugTypes: DebugType;
+    debugVariables: DebugVariable;
+    debugOpenArrays: DebugOpenArray;
+    debugDeclared: BOOLEAN; (* some variable was declared: llvm.dbg.declare is used *)
+    debugSizeModel: INTEGER; (* cg.sizeModel, for DebugTypeId *)
+    debugScope: INTEGER; (* the current function's DISubprogram, or -1 *)
+    debugLine, debugColumn: INTEGER; (* the statement being generated *)
+    debugSubroutineType, nextMetadata: INTEGER;
+    (* the first lineHeadLength characters (at most 3) WriteStr has
+       written of the current line *)
+    lineHead: ARRAY 3 OF CHAR;
+    lineHeadLength: INTEGER;
 
   (* Files.WriteString (confirmed against real voc, see
      ModuleInterface.Mod's own WriteStr comment) writes its argument's
@@ -626,16 +796,51 @@ MODULE LLVMCodeGenerator;
      - a backend has no reason to depend on the module-interface reader/
      writer, and importing it just for this one helper would be a real,
      not just nominal, layering violation). *)
+  PROCEDURE Put(VAR w: Files.Rider; ch: CHAR);
+  BEGIN
+    Files.Write(w, ch);
+    IF lineHeadLength < LEN(lineHead) THEN lineHead[lineHeadLength] := ch; INC(lineHeadLength) END
+  END Put;
+
   PROCEDURE WriteStr(VAR w: Files.Rider; s: ARRAY OF CHAR);
     VAR i: INTEGER;
   BEGIN
     i := 0;
-    WHILE s[i] # 0X DO Files.Write(w, s[i]); INC(i) END
+    WHILE s[i] # 0X DO Put(w, s[i]); INC(i) END
   END WriteStr;
 
+  (* Text and the decimal digits of a non-negative n, written straight to
+     w, not through Put - for WriteLn, which cannot use AppendLongInt
+     (declared below it). *)
+  PROCEDURE WriteRaw(VAR w: Files.Rider; text: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE text[i] # 0X DO Files.Write(w, text[i]); INC(i) END
+  END WriteRaw;
+
+  PROCEDURE WriteNatural(VAR w: Files.Rider; n: LONGINT);
+  BEGIN
+    IF n >= 10 THEN WriteNatural(w, n DIV 10) END;
+    Files.Write(w, CHR(ORD("0") + n MOD 10))
+  END WriteNatural;
+
+  (* Under -g, an instruction line of a function with debug information
+     ends with the position of the statement it belongs to (debugInfo). No
+     instruction this module writes spans lines. A procedure's prologue
+     (debugLine 0: the parameters' and locals' slots) gets none, as clang
+     leaves it, so that a breakpoint on the procedure stops at its first
+     statement. *)
   PROCEDURE WriteLn(VAR w: Files.Rider);
   BEGIN
-    Files.Write(w, 0AX)
+    IF (debugScope >= 0) & (debugLine > 0) & (lineHeadLength = LEN(lineHead)) & (lineHead[0] = " ") & (lineHead[1] = " ")
+       & (lineHead[2] # " ") & (lineHead[2] # ";") THEN
+      WriteRaw(w, ", !dbg !DILocation(line: "); WriteNatural(w, debugLine);
+      WriteRaw(w, ", column: "); WriteNatural(w, debugColumn);
+      WriteRaw(w, ", scope: !"); WriteNatural(w, debugScope); WriteRaw(w, ")")
+    END;
+    Files.Write(w, 0AX);
+    lineHeadLength := 0
   END WriteLn;
 
   (* Mirrors LLVMTypes.Mod's own private AppendLongInt exactly, plus a
@@ -693,6 +898,436 @@ MODULE LLVMCodeGenerator;
     WHILE suffix[j] # 0X DO s[i] := suffix[j]; INC(i); INC(j) END;
     s[i] := 0X
   END Strcat;
+
+  (* ---- Debug information (poc -g, Phase 11 A16) ---- *)
+
+  PROCEDURE ^ OpenDimCount(t: Types.Type): INTEGER;
+  PROCEDURE ^ OpenElementType(t: Types.Type): Types.Type;
+  PROCEDURE ^ OpenDataOffset(arr: Types.ArrayType; sizeModel: INTEGER): LONGINT;
+
+  (* A metadata string: quoted, a quotation mark, a backslash and anything
+     outside printable ASCII as \<hex><hex>, as LLVM's text format has it. *)
+  PROCEDURE WriteMetadataString(VAR w: Files.Rider; text: ARRAY OF CHAR);
+    VAR i, code: INTEGER; hexDigits: ARRAY 17 OF CHAR;
+  BEGIN
+    hexDigits := "0123456789ABCDEF";
+    Files.Write(w, 22X);
+    i := 0;
+    WHILE (i < LEN(text)) & (text[i] # 0X) DO
+      code := ORD(text[i]);
+      IF (code < 20H) OR (code > 7EH) OR (text[i] = 22X) OR (text[i] = 5CX) THEN
+        Files.Write(w, 5CX); Files.Write(w, hexDigits[code DIV 16]); Files.Write(w, hexDigits[code MOD 16])
+      ELSE
+        Files.Write(w, text[i])
+      END;
+      INC(i)
+    END;
+    Files.Write(w, 22X)
+  END WriteMetadataString;
+
+  (* The DIFile node of a source file, made the first time it is asked for. *)
+  PROCEDURE DebugFileId(name: ARRAY OF CHAR): INTEGER;
+    VAR f: DebugFile;
+  BEGIN
+    f := debugFiles;
+    WHILE (f # NIL) & (f.name # name) DO f := f.next END;
+    IF f = NIL THEN
+      NEW(f); COPY(name, f.name); f.id := nextMetadata; INC(nextMetadata);
+      f.next := debugFiles; debugFiles := f
+    END;
+    RETURN f.id
+  END DebugFileId;
+
+  (* Opens a function with debug information: its DISubprogram, named name
+     and declared at line of file, becomes debugScope, the scope of the
+     positions WriteLn attaches, starting with line itself (a module body's
+     prologue calls ModuleTable.Register, and LLVM wants every call to a
+     function with debug information to have a position). *)
+  PROCEDURE BeginDebugFunction(name, file: ARRAY OF CHAR; line, column: INTEGER);
+    VAR p: DebugProcedure;
+  BEGIN
+    NEW(p); COPY(name, p.name); p.fileId := DebugFileId(file); p.line := line; p.unit := debugUnit.id;
+    p.id := nextMetadata; INC(nextMetadata); p.next := NIL;
+    IF debugProceduresTail = NIL THEN debugProcedures := p ELSE debugProceduresTail.next := p END;
+    debugProceduresTail := p;
+    debugScope := p.id; debugLine := line; debugColumn := column
+  END BeginDebugFunction;
+
+  (* " !dbg !<n>" in a function's define line, under -g *)
+  PROCEDURE WriteDebugAttachment(VAR w: Files.Rider);
+    VAR text: ARRAY 16 OF CHAR;
+  BEGIN
+    IF debugScope >= 0 THEN
+      text[0] := 0X; AppendLongInt(text, debugScope);
+      WriteStr(w, " !dbg !"); WriteStr(w, text)
+    END
+  END WriteDebugAttachment;
+
+  (* Makes the module named name, whose source file is file, the one being
+     generated (debugUnit), with a compile unit made the first time. *)
+  PROCEDURE EnterDebugUnit(name, file: ARRAY OF CHAR);
+    VAR u: DebugUnit;
+  BEGIN
+    u := debugUnits;
+    WHILE (u # NIL) & (u.name # name) DO u := u.next END;
+    IF u = NIL THEN
+      NEW(u); COPY(name, u.name); u.id := nextMetadata; INC(nextMetadata); u.fileId := DebugFileId(file);
+      u.globals := NIL; u.globalsTail := NIL; u.next := NIL;
+      IF debugUnitsTail = NIL THEN debugUnits := u ELSE debugUnitsTail.next := u END;
+      debugUnitsTail := u
+    END;
+    debugUnit := u
+  END EnterDebugUnit;
+
+  PROCEDURE IsPointerToOpenArray(t: Types.Type): BOOLEAN;
+    VAR ptr: Types.PointerType;
+  BEGIN
+    IF (t # NIL) & (t IS Types.PointerType) THEN ptr := t(Types.PointerType); RETURN Types.IsOpenArray(ptr.base) END;
+    RETURN FALSE
+  END IsPointerToOpenArray;
+
+  PROCEDURE IsDebugBasicType(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Byte) OR Types.IsInteger(t) OR (t = Types.Real)
+           OR (t = Types.LongReal) OR Types.IsSet(t)
+  END IsDebugBasicType;
+
+  (* a and b are one module-level named record, which a module that
+     imports it has as a type of its own, read from a .sym file *)
+  PROCEDURE SameNamedRecord(a, b: Types.Type): BOOLEAN;
+    VAR ra, rb: Types.RecordType;
+  BEGIN
+    IF (a IS Types.RecordType) & (b IS Types.RecordType) THEN
+      ra := a(Types.RecordType); rb := b(Types.RecordType);
+      RETURN (ra.name # "") & (ra.moduleName # "") & (ra.name = rb.name) & (ra.moduleName = rb.moduleName)
+    END;
+    RETURN FALSE
+  END SameNamedRecord;
+
+  (* The node of t, made the first time it is asked for, together with
+     those of the types it is made of, or -1 for a type -g does not
+     describe yet (an open array). A pointer to an open array is described
+     as an untyped pointer. *)
+  PROCEDURE DebugTypeId(t: Types.Type): INTEGER;
+    VAR d: DebugType; ptr: Types.PointerType; arr: Types.ArrayType; rec: Types.RecordType; f: Types.Field;
+        elementId: INTEGER;
+  BEGIN
+    IF t = NIL THEN RETURN -1 END;
+    d := debugTypes;
+    WHILE (d # NIL) & (d.type # t) & ~SameNamedRecord(d.type, t) DO d := d.next END;
+    IF d # NIL THEN RETURN d.id END;
+    IF t IS Types.ArrayType THEN
+      arr := t(Types.ArrayType);
+      IF arr.isOpen THEN RETURN -1 END;
+      elementId := DebugTypeId(arr.elementType);
+      IF elementId < 0 THEN RETURN -1 END
+    ELSIF ~(IsDebugBasicType(t) OR (t IS Types.PointerType) OR (t IS Types.RecordType)
+            OR (t IS Types.ProcedureType)) THEN
+      RETURN -1
+    END;
+    (* entered before the types it is made of, which may lead back to it *)
+    NEW(d); d.type := t; d.id := nextMetadata; d.next := debugTypes; debugTypes := d;
+    IF IsDebugBasicType(t) OR (t = Types.Ptr) OR IsPointerToOpenArray(t) THEN INC(nextMetadata, 2)
+    ELSE INC(nextMetadata)
+    END;
+    IF (t IS Types.PointerType) & (t # Types.Ptr) THEN
+      ptr := t(Types.PointerType);
+      IF Types.IsOpenArray(ptr.base) THEN
+        elementId := DebugTypeId(OpenElementType(ptr.base)); elementId := DebugTypeId(Types.Address)
+      ELSE
+        elementId := DebugTypeId(ptr.base)
+      END
+    ELSIF t IS Types.RecordType THEN
+      rec := t(Types.RecordType);
+      WHILE rec # NIL DO
+        f := rec.fields;
+        WHILE f # NIL DO elementId := DebugTypeId(f.type); f := f.next END;
+        IF rec.baseType # NIL THEN rec := rec.baseType(Types.RecordType) ELSE rec := NIL END
+      END
+    END;
+    RETURN d.id
+  END DebugTypeId;
+
+  (* The members of rec's structure type, base type's first: ", !DIDerivedType(
+     tag: DW_TAG_member, ...)" each (the first without the comma). *)
+  PROCEDURE WriteDebugMembers(VAR w: Files.Rider; rec: Types.RecordType; VAR first: BOOLEAN);
+    VAR f: Types.Field; typeId: INTEGER;
+  BEGIN
+    IF rec.baseType # NIL THEN WriteDebugMembers(w, rec.baseType(Types.RecordType), first) END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      typeId := DebugTypeId(f.type);
+      IF typeId >= 0 THEN
+        IF ~first THEN WriteRaw(w, ", ") END;
+        first := FALSE;
+        WriteRaw(w, "!DIDerivedType(tag: DW_TAG_member, name: "); WriteMetadataString(w, f.name);
+        WriteRaw(w, ", baseType: !"); WriteNatural(w, typeId);
+        WriteRaw(w, ", size: "); WriteNatural(w, 8 * MemoryLayout.Size(f.type, ConstantEvaluator.wordSize, debugSizeModel));
+        WriteRaw(w, ", offset: ");
+        WriteNatural(w, 8 * MemoryLayout.FieldOffset(rec, f, ConstantEvaluator.wordSize, debugSizeModel));
+        WriteRaw(w, ")")
+      END;
+      f := f.next
+    END
+  END WriteDebugMembers;
+
+  (* The name of a record's structure type: "Module.T" for a module-level
+     named record, "Module.P^" for the anonymous one a module-level
+     "P = POINTER TO RECORD ... END" points to; empty for any other. *)
+  PROCEDURE DebugRecordName(rec: Types.RecordType; VAR name: ARRAY OF CHAR);
+    VAR n: INTEGER;
+  BEGIN
+    name[0] := 0X;
+    IF (rec.moduleName # "") & (rec.name # "") THEN
+      COPY(rec.moduleName, name); Strcat(name, "."); Strcat(name, rec.name);
+      n := 0; WHILE name[n] # 0X DO INC(n) END;
+      IF (n > 5) & (name[n - 5] = ".") & (name[n - 4] = "b") & (name[n - 3] = "a") & (name[n - 2] = "s")
+         & (name[n - 1] = "e") THEN
+        name[n - 5] := "^"; name[n - 4] := 0X
+      END
+    END
+  END DebugRecordName;
+
+  (* The node id, a structure type for the heap block of the open array arr
+     (NEW): "len", its lengths, and at OpenDataOffset "data", its elements,
+     an array whose counts are DWARF expressions reading the lengths back
+     from the block, relative to where "data" is. *)
+  PROCEDURE WriteDebugOpenBlock(VAR w: Files.Rider; id: INTEGER; arr: Types.ArrayType);
+    VAR dims, d: INTEGER; wordBits, dataOffset: LONGINT;
+  BEGIN
+    dims := OpenDimCount(arr); wordBits := 8 * ConstantEvaluator.wordSize;
+    dataOffset := OpenDataOffset(arr, debugSizeModel);
+    (* its size is the lengths' part: lldb, which does not evaluate the
+       counts, needs one to find "data" *)
+    Files.Write(w, "!"); WriteNatural(w, id); WriteRaw(w, " = !DICompositeType(tag: DW_TAG_structure_type, size: ");
+    WriteNatural(w, 8 * dataOffset); WriteRaw(w, ", elements: !{");
+    WriteRaw(w, '!DIDerivedType(tag: DW_TAG_member, name: "len", baseType: !DICompositeType(tag: DW_TAG_array_type, baseType: !');
+    WriteNatural(w, DebugTypeId(Types.Address)); WriteRaw(w, ", size: "); WriteNatural(w, dims * wordBits);
+    WriteRaw(w, ", elements: !{!DISubrange(count: "); WriteNatural(w, dims); WriteRaw(w, ")}), size: ");
+    WriteNatural(w, dims * wordBits); WriteRaw(w, ", offset: 0), ");
+    WriteRaw(w, '!DIDerivedType(tag: DW_TAG_member, name: "data", baseType: !DICompositeType(tag: DW_TAG_array_type, baseType: !');
+    WriteNatural(w, DebugTypeId(OpenElementType(arr))); WriteRaw(w, ", elements: !{");
+    FOR d := 0 TO dims - 1 DO
+      IF d > 0 THEN WriteRaw(w, ", ") END;
+      WriteRaw(w, "!DISubrange(count: !DIExpression(DW_OP_push_object_address, DW_OP_constu, ");
+      WriteNatural(w, dataOffset - d * ConstantEvaluator.wordSize); WriteRaw(w, ", DW_OP_minus, DW_OP_deref))")
+    END;
+    WriteRaw(w, "}), offset: "); WriteNatural(w, 8 * dataOffset); WriteRaw(w, ")})"); Files.Write(w, 0AX)
+  END WriteDebugOpenBlock;
+
+  (* The node of type d (see DebugType) *)
+  PROCEDURE WriteDebugType(VAR w: Files.Rider; d: DebugType);
+    VAR t: Types.Type; ptr: Types.PointerType; arr: Types.ArrayType; name: LongText; first: BOOLEAN;
+        bits: LONGINT;
+  BEGIN
+    t := d.type;
+    bits := 8 * MemoryLayout.Size(t, ConstantEvaluator.wordSize, debugSizeModel);
+    Files.Write(w, "!"); WriteNatural(w, d.id); WriteRaw(w, " = ");
+    IF IsDebugBasicType(t) OR (t = Types.Ptr) THEN
+      Types.TypeName(t, name);
+      WriteRaw(w, "!DIDerivedType(tag: DW_TAG_typedef, name: ");
+      WriteMetadataString(w, name); WriteRaw(w, ", baseType: !"); WriteNatural(w, d.id + 1); WriteRaw(w, ")");
+      Files.Write(w, 0AX);
+      Files.Write(w, "!"); WriteNatural(w, d.id + 1); WriteRaw(w, " = ");
+      IF t = Types.Ptr THEN
+        WriteRaw(w, "!DIDerivedType(tag: DW_TAG_pointer_type, baseType: null, size: "); WriteNatural(w, bits)
+      ELSE
+        WriteRaw(w, "!DIBasicType(name: "); WriteMetadataString(w, name);
+        WriteRaw(w, ", size: "); WriteNatural(w, bits);
+        WriteRaw(w, ", encoding: ");
+        IF t = Types.Boolean THEN WriteRaw(w, "DW_ATE_boolean")
+        ELSIF (t = Types.Char) OR (t = Types.Byte) THEN WriteRaw(w, "DW_ATE_unsigned_char")
+        ELSIF (t = Types.Real) OR (t = Types.LongReal) THEN WriteRaw(w, "DW_ATE_float")
+        ELSIF Types.IsSet(t) THEN WriteRaw(w, "DW_ATE_unsigned")
+        ELSE WriteRaw(w, "DW_ATE_signed")
+        END
+      END
+    ELSIF t IS Types.PointerType THEN
+      ptr := t(Types.PointerType);
+      WriteRaw(w, "!DIDerivedType(tag: DW_TAG_pointer_type, ");
+      IF Types.IsOpenArray(ptr.base) THEN
+        WriteRaw(w, "baseType: !"); WriteNatural(w, d.id + 1); WriteRaw(w, ", size: "); WriteNatural(w, bits);
+        WriteRaw(w, ")"); Files.Write(w, 0AX);
+        WriteDebugOpenBlock(w, d.id + 1, ptr.base(Types.ArrayType))
+      ELSE
+        WriteRaw(w, "baseType: !"); WriteNatural(w, DebugTypeId(ptr.base)); WriteRaw(w, ", size: "); WriteNatural(w, bits)
+      END
+    ELSIF t IS Types.ProcedureType THEN
+      WriteRaw(w, "!DIDerivedType(tag: DW_TAG_pointer_type, baseType: !"); WriteNatural(w, debugSubroutineType);
+      WriteRaw(w, ", size: "); WriteNatural(w, bits)
+    ELSIF t IS Types.ArrayType THEN
+      arr := t(Types.ArrayType);
+      WriteRaw(w, "!DICompositeType(tag: DW_TAG_array_type, baseType: !"); WriteNatural(w, DebugTypeId(arr.elementType));
+      WriteRaw(w, ", size: "); WriteNatural(w, bits);
+      WriteRaw(w, ", elements: !{!DISubrange(count: "); WriteNatural(w, arr.length); WriteRaw(w, ")}")
+    ELSE
+      DebugRecordName(t(Types.RecordType), name);
+      WriteRaw(w, "!DICompositeType(tag: DW_TAG_structure_type, ");
+      IF name # "" THEN WriteRaw(w, "name: "); WriteMetadataString(w, name); WriteRaw(w, ", ") END;
+      WriteRaw(w, "size: "); WriteNatural(w, bits); WriteRaw(w, ", elements: !{");
+      first := TRUE; WriteDebugMembers(w, t(Types.RecordType), first);
+      WriteRaw(w, "}")
+    END;
+    IF ~IsPointerToOpenArray(t) THEN WriteRaw(w, ")"); Files.Write(w, 0AX) END
+  END WriteDebugType;
+
+  (* Under -g, " , !dbg !<n>" for the module variable obj, declared in the
+     module being generated, if DebugTypeId describes its type *)
+  PROCEDURE WriteDebugGlobal(VAR w: Files.Rider; obj: SymbolTable.Object);
+    VAR g: DebugGlobal; typeId: INTEGER;
+  BEGIN
+    IF debugInfo THEN
+      typeId := DebugTypeId(obj.type);
+      IF typeId >= 0 THEN
+        NEW(g); COPY(obj.name, g.name); g.line := obj.declLine; g.typeId := typeId;
+        g.id := nextMetadata; INC(nextMetadata, 2); g.next := NIL;
+        IF debugUnit.globalsTail = NIL THEN debugUnit.globals := g ELSE debugUnit.globalsTail.next := g END;
+        debugUnit.globalsTail := g;
+        WriteRaw(w, ", !dbg !"); WriteNatural(w, g.id)
+      END
+    END
+  END WriteDebugGlobal;
+
+  (* A variable named name, declared at line and column, of the type
+     typeId, held at address: a DILocalVariable and a call of
+     llvm.dbg.declare. Its node is the next metadata number. When address is
+     an argument (indirect: a VAR parameter's, an enclosing variable's for a
+     nested procedure), it is stored in a slot "%-debug<node>" first and the
+     variable described through it: a debugger that is told the argument
+     itself follows the register it came in, which the code reuses. Written
+     past Put, so WriteLn adds no second position. *)
+  PROCEDURE DeclareDebugSlot(VAR w: Files.Rider; name: ARRAY OF CHAR; line, column: INTEGER;
+                             address: ARRAY OF CHAR; arg, typeId: INTEGER; artificial, indirect: BOOLEAN);
+    VAR v: DebugVariable; p: DebugProcedure; slot: ValueText;
+  BEGIN
+    p := debugProceduresTail; (* the function being generated *)
+    NEW(v); COPY(name, v.name); v.arg := arg; v.scope := debugScope; v.fileId := p.fileId;
+    v.line := line; v.typeId := typeId; v.artificial := artificial;
+    v.id := nextMetadata; INC(nextMetadata);
+    v.next := debugVariables; debugVariables := v;
+    debugDeclared := TRUE;
+    IF indirect THEN
+      slot := "%-debug"; AppendLongInt(slot, v.id);
+      WriteRaw(w, "  "); WriteRaw(w, slot); WriteRaw(w, " = alloca ptr"); Files.Write(w, 0AX);
+      WriteRaw(w, "  store ptr "); WriteRaw(w, address); WriteRaw(w, ", ptr "); WriteRaw(w, slot); Files.Write(w, 0AX)
+    ELSE
+      COPY(address, slot)
+    END;
+    WriteRaw(w, "  call void @llvm.dbg.declare(metadata ptr "); WriteRaw(w, slot);
+    WriteRaw(w, ", metadata !"); WriteNatural(w, v.id); WriteRaw(w, ", metadata !DIExpression(");
+    IF indirect THEN WriteRaw(w, "DW_OP_deref") END;
+    WriteRaw(w, ")), !dbg !DILocation(line: ");
+    WriteNatural(w, line); WriteRaw(w, ", column: "); WriteNatural(w, column);
+    WriteRaw(w, ", scope: !"); WriteNatural(w, debugScope); WriteRaw(w, ")");
+    Files.Write(w, 0AX)
+  END DeclareDebugSlot;
+
+  (* Under -g, in a function with debug information: describes obj, a
+     parameter (its position arg) or a local variable (arg 0) held at
+     address (indirect: in an argument, see DeclareDebugSlot) - if its type
+     is one DebugTypeId describes. *)
+  PROCEDURE DeclareDebugVariable(VAR w: Files.Rider; obj: SymbolTable.Object; address: ARRAY OF CHAR; arg: INTEGER;
+                                 indirect: BOOLEAN);
+    VAR typeId: INTEGER;
+  BEGIN
+    IF debugInfo & (debugScope >= 0) & (obj # NIL) THEN
+      typeId := DebugTypeId(obj.type);
+      IF typeId >= 0 THEN
+        DeclareDebugSlot(w, obj.name, obj.declLine, obj.declColumn, address, arg, typeId, FALSE, indirect)
+      END
+    END
+  END DeclareDebugVariable;
+
+  (* The DIFile, DISubprogram, type, compile unit, global and local variable
+     nodes, after the code that made them. *)
+  PROCEDURE EmitDebugMetadata(VAR w: Files.Rider);
+    VAR f: DebugFile; p: DebugProcedure; t: DebugType; v: DebugVariable; u: DebugUnit; g: DebugGlobal;
+        a: DebugOpenArray; i: INTEGER;
+  BEGIN
+    Files.Write(w, 0AX);
+    f := debugFiles;
+    WHILE f # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, f.id); WriteRaw(w, " = !DIFile(filename: ");
+      WriteMetadataString(w, f.name); WriteRaw(w, ", directory: ");
+      WriteMetadataString(w, debugDirectory); WriteRaw(w, ")"); Files.Write(w, 0AX);
+      f := f.next
+    END;
+    p := debugProcedures;
+    WHILE p # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, p.id); WriteRaw(w, " = distinct !DISubprogram(name: ");
+      WriteMetadataString(w, p.name); WriteRaw(w, ", scope: !"); WriteNatural(w, p.fileId);
+      WriteRaw(w, ", file: !"); WriteNatural(w, p.fileId); WriteRaw(w, ", line: "); WriteNatural(w, p.line);
+      WriteRaw(w, ", type: !"); WriteNatural(w, debugSubroutineType);
+      WriteRaw(w, ", scopeLine: "); WriteNatural(w, p.line);
+      WriteRaw(w, ", spFlags: DISPFlagDefinition, unit: !"); WriteNatural(w, p.unit);
+      WriteRaw(w, ")"); Files.Write(w, 0AX);
+      p := p.next
+    END;
+    t := debugTypes;
+    WHILE t # NIL DO WriteDebugType(w, t); t := t.next END;
+    (* each module a compile unit, with its variables; C is the language
+       claimed, as DWARF has no code for Oberon and both debuggers handle C
+       (gdb's Modula-2 support would suit better, but lldb has none) *)
+    WriteRaw(w, "!llvm.dbg.cu = !{");
+    u := debugUnits;
+    WHILE u # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, u.id);
+      IF u.next # NIL THEN WriteRaw(w, ", ") END;
+      u := u.next
+    END;
+    WriteRaw(w, "}"); Files.Write(w, 0AX);
+    u := debugUnits;
+    WHILE u # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, u.id); WriteRaw(w, " = distinct !DICompileUnit(language: DW_LANG_C99, file: !");
+      WriteNatural(w, u.fileId);
+      WriteRaw(w, ', producer: "poc", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug');
+      IF u.globals # NIL THEN
+        WriteRaw(w, ", globals: !{");
+        g := u.globals;
+        WHILE g # NIL DO
+          Files.Write(w, "!"); WriteNatural(w, g.id);
+          IF g.next # NIL THEN WriteRaw(w, ", ") END;
+          g := g.next
+        END;
+        WriteRaw(w, "}")
+      END;
+      WriteRaw(w, ")"); Files.Write(w, 0AX);
+      g := u.globals;
+      WHILE g # NIL DO
+        Files.Write(w, "!"); WriteNatural(w, g.id); WriteRaw(w, " = !DIGlobalVariableExpression(var: !");
+        WriteNatural(w, g.id + 1); WriteRaw(w, ", expr: !DIExpression())"); Files.Write(w, 0AX);
+        Files.Write(w, "!"); WriteNatural(w, g.id + 1); WriteRaw(w, " = distinct !DIGlobalVariable(name: ");
+        WriteMetadataString(w, g.name); WriteRaw(w, ", scope: !"); WriteNatural(w, u.id);
+        WriteRaw(w, ", file: !"); WriteNatural(w, u.fileId); WriteRaw(w, ", line: "); WriteNatural(w, g.line);
+        WriteRaw(w, ", type: !"); WriteNatural(w, g.typeId); WriteRaw(w, ", isLocal: true, isDefinition: true)");
+        Files.Write(w, 0AX);
+        g := g.next
+      END;
+      u := u.next
+    END;
+    v := debugVariables;
+    WHILE v # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, v.id); WriteRaw(w, " = !DILocalVariable(name: "); WriteMetadataString(w, v.name);
+      IF v.arg > 0 THEN WriteRaw(w, ", arg: "); WriteNatural(w, v.arg) END;
+      WriteRaw(w, ", scope: !"); WriteNatural(w, v.scope); WriteRaw(w, ", file: !"); WriteNatural(w, v.fileId);
+      WriteRaw(w, ", line: "); WriteNatural(w, v.line); WriteRaw(w, ", type: !"); WriteNatural(w, v.typeId);
+      IF v.artificial THEN WriteRaw(w, ", flags: DIFlagArtificial") END;
+      WriteRaw(w, ")"); Files.Write(w, 0AX);
+      v := v.next
+    END;
+    a := debugOpenArrays;
+    WHILE a # NIL DO
+      Files.Write(w, "!"); WriteNatural(w, a.id); WriteRaw(w, " = !DICompositeType(tag: DW_TAG_array_type, baseType: !");
+      WriteNatural(w, a.elementId); WriteRaw(w, ", elements: !{");
+      FOR i := 0 TO a.dims - 1 DO
+        IF i > 0 THEN WriteRaw(w, ", ") END;
+        WriteRaw(w, "!DISubrange(count: !"); WriteNatural(w, a.firstLength + i); WriteRaw(w, ")")
+      END;
+      WriteRaw(w, "})"); Files.Write(w, 0AX);
+      a := a.next
+    END;
+    IF debugDeclared THEN WriteRaw(w, "declare void @llvm.dbg.declare(metadata, metadata, metadata)"); Files.Write(w, 0AX) END
+  END EmitDebugMetadata;
 
   (* GrowingText operations (see GrowingText). *)
   PROCEDURE ClearText(VAR t: GrowingText);
@@ -1106,8 +1741,8 @@ MODULE LLVMCodeGenerator;
      Two places hold one:
 
        a formal parameter   the data pointer, then the lengths as hidden
-                            arguments right after it ("%a", "%a.len0",
-                            "%a.len1" - the way a VAR record parameter
+                            arguments right after it ("%p.a", "%p.a.len0",
+                            "%p.a.len1" - the way a VAR record parameter
                             carries its tag). A value parameter is copied
                             into the callee's own frame on entry, so the
                             caller's array is never touched through it.
@@ -1622,7 +2257,7 @@ MODULE LLVMCodeGenerator;
      checker named it - Types.RecordTypeDesc.name; EmitTypeDescriptors
      emits it), and any other record of the module being compiled - one
      written inline under a POINTER TO, or declared inside a procedure -
-     is given the (unwritable) name "$anon<N>" now and its descriptor is
+     is given the (unwritable) name "-anon<N>" now and its descriptor is
      emitted at the end of the program (EmitPointerSupport), after its base
      record, if it has one, has been dealt with the same way. FALSE only
      for an unnamed record of some other module, which this module has no
@@ -1636,7 +2271,7 @@ MODULE LLVMCodeGenerator;
     IF (rec.baseType # NIL) & ~EnsureTypeTag(cg, rec.baseType(Types.RecordType)) THEN RETURN FALSE END;
     INC(cg.anonymousRecordCount);
     COPY(cg.moduleName, rec.moduleName);
-    COPY("$anon", rec.name); AppendLongInt(rec.name, cg.anonymousRecordCount);
+    COPY("-anon", rec.name); AppendLongInt(rec.name, cg.anonymousRecordCount);
     NEW(entry); entry.rec := rec; entry.next := NIL;
     IF cg.lateRecords = NIL THEN cg.lateRecords := entry
     ELSE
@@ -3072,7 +3707,7 @@ MODULE LLVMCodeGenerator;
   (* PLAN.md Phase 9 step 6: a VAR parameter of record type is passed as
      the record's address *and* the address of its run-time type
      descriptor - a second, hidden argument right after it (named
-     "%<param>.tag" in the callee) - because the record the caller
+     "%p.<param>.tag" in the callee) - because the record the caller
      passed may be an extension of the parameter's declared type, and the
      callee needs the type it really is to dispatch a type-bound
      procedure on it or to test it. (voc does the same.) Applies to every
@@ -3103,6 +3738,18 @@ MODULE LLVMCodeGenerator;
   BEGIN
     COPY("%up.", text); AppendLongInt(text, k)
   END NeedParamName;
+
+  (* An ordinary parameter's (or a receiver's) value in the function:
+     "%p.<name>", its hidden tag "%p.<name>.tag" and lengths
+     "%p.<name>.len<d>". A function's parameters share one namespace with
+     its temporaries ("%t<n>") and its labels ("entry", "L<n>"), so the bare
+     name of a parameter called t1, entry or L2 would clash with one of them
+     (Phase 11 D18); no name the backend makes itself starts "p.", and no
+     Oberon identifier holds a dot. *)
+  PROCEDURE ParamName(name: ARRAY OF CHAR; VAR text: ARRAY OF CHAR);
+  BEGIN
+    COPY("%p.", text); Strcat(text, name)
+  END ParamName;
 
   PROCEDURE ParamLLVMType(VAR cg: Codegen; p: Types.Param; VAR llvmType: ARRAY OF CHAR);
   BEGIN
@@ -3845,10 +4492,15 @@ MODULE LLVMCodeGenerator;
   (* SHORT(x): the next narrower type down - LONGINT to INTEGER, INTEGER
      to SHORTINT (trunc; an out-of-range x keeps its low bits, which
      Oberon2.pdf leaves undefined), LONGREAL to REAL (fptrunc, rounding
-     to nearest). *)
+     to nearest). Under -range-checks an integer x that does not fit traps
+     (status 14): the truncated value, sign-extended back, must be x. A
+     real is not checked, as in voc. *)
   PROCEDURE GenerateShort(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR v: Value; target: Types.Type; targetLLVMType: ValueText; opText: ARRAY 8 OF CHAR;
+    VAR
+      v: Value; target: Types.Type; targetLLVMType, back, fits, trapLabel, okLabel: ValueText;
+      opText: ARRAY 8 OF CHAR; line, column: INTEGER;
   BEGIN
+    line := cg.currentLine; column := cg.currentColumn; (* SHORT's own, not its argument's *)
     GenerateExpr(w, cg, args, v);
     IF Types.LongShortByWidth(v.oberonType) THEN target := Types.ShorterInteger(v.oberonType)
     ELSIF v.oberonType = Types.LongInt THEN target := Types.Integer
@@ -3861,7 +4513,17 @@ MODULE LLVMCodeGenerator;
     ELSE
       IF target = Types.Real THEN COPY("fptrunc", opText) ELSE COPY("trunc", opText) END;
       EmitConvert(w, cg, opText, v.llvmType, v.text, targetLLVMType, result.text);
-      COPY(targetLLVMType, result.llvmType)
+      COPY(targetLLVMType, result.llvmType);
+      IF rangeChecks & (target # Types.Real) THEN
+        cg.needShortRangeTrap := TRUE;
+        EmitConvert(w, cg, "sext", targetLLVMType, result.text, v.llvmType, back);
+        EmitBinOp(w, cg, "icmp eq", v.llvmType, back, v.text, fits);
+        NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+        EmitCondBr(w, fits, okLabel, trapLabel);
+        EmitLabel(w, cg, trapLabel);
+        EmitTrapAt(w, cg, shortRangeTrapGlobal, shortRangeTrapMsg, rangeTrapExitCode, line, column);
+        EmitLabel(w, cg, okLabel)
+      END
     END;
     result.oberonType := target
   END GenerateShort;
@@ -3928,11 +4590,26 @@ MODULE LLVMCodeGenerator;
   END GenerateOdd;
 
   (* CHR(x): the low 8 bits of x, as CHAR - always a truncate-or-no-op,
-     for the same width reason GenerateOdd's own header comment gives. *)
+     for the same width reason GenerateOdd's own header comment gives.
+     Under -range-checks an x outside 0..255 traps (status 14): an unsigned
+     compare with 256, which a negative x fails too, or, for a one-byte x,
+     a sign test. *)
   PROCEDURE GenerateChr(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
-    VAR v: Value; charText: ValueText;
+    VAR v: Value; charText, fits, trapLabel, okLabel: ValueText; line, column: INTEGER;
   BEGIN
+    line := cg.currentLine; column := cg.currentColumn; (* CHR's own, not its argument's *)
     GenerateExpr(w, cg, args, v);
+    IF rangeChecks THEN
+      cg.needChrRangeTrap := TRUE;
+      IF v.llvmType = "i8" THEN EmitBinOp(w, cg, "icmp sge", v.llvmType, v.text, "0", fits)
+      ELSE EmitBinOp(w, cg, "icmp ult", v.llvmType, v.text, "256", fits)
+      END;
+      NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
+      EmitCondBr(w, fits, okLabel, trapLabel);
+      EmitLabel(w, cg, trapLabel);
+      EmitTrapAt(w, cg, chrRangeTrapGlobal, chrRangeTrapMsg, rangeTrapExitCode, line, column);
+      EmitLabel(w, cg, okLabel)
+    END;
     IF v.llvmType = "i8" THEN COPY(v.text, charText)
     ELSE EmitConvert(w, cg, "trunc", v.llvmType, v.text, "i8", charText)
     END;
@@ -4579,6 +5256,99 @@ MODULE LLVMCodeGenerator;
      of it is computed in 64 bits with overflow checks, and on a 32-bit
      target must also fit a word. A heap that cannot supply the block is
      not a trap: the pointer becomes NIL, as for a record. *)
+  (* Phase 11 D17: rec's entry among the records whose initialization
+     procedures this program may define, made if it has none *)
+  PROCEDURE InitRecordEntryOf(VAR cg: Codegen; rec: Types.RecordType): InitRecordEntry;
+    VAR entry, tail: InitRecordEntry;
+  BEGIN
+    entry := cg.initRecords; tail := NIL;
+    WHILE (entry # NIL) & (entry.rec # rec) DO tail := entry; entry := entry.next END;
+    IF entry = NIL THEN
+      NEW(entry); entry.rec := rec; COPY(cg.currentFile, entry.fileName);
+      entry.wanted := FALSE; entry.emitted := FALSE; entry.next := NIL;
+      IF tail = NIL THEN cg.initRecords := entry ELSE tail.next := entry END
+    END;
+    RETURN entry
+  END InitRecordEntryOf;
+
+  (* Phase 11 D17: "@<Module>.<initPath>.-init", the procedure that
+     initializes a record of type rec (rec.needsInit) at the address it is
+     given - the fields with initializers, the records inside it, and first
+     its base type's. A record named by the front end (initPath) has its
+     procedure defined by the module that declared it, which may be another
+     one (CollectInitRecords); any other record is this module's own, and is
+     named here the first time it is needed, which also asks for its
+     procedure. *)
+  PROCEDURE InitSymbol(VAR cg: Codegen; rec: Types.RecordType; VAR text: ARRAY OF CHAR);
+    VAR entry: InitRecordEntry;
+  BEGIN
+    IF rec.moduleName[0] = 0X THEN COPY(cg.moduleName, rec.moduleName) END; (* see EnsureTypeTag *)
+    IF (rec.initPath[0] = 0X) & (rec.moduleName = cg.moduleName) THEN
+      INC(cg.anonymousInitCount);
+      COPY("-anon", rec.initPath); AppendLongInt(rec.initPath, cg.anonymousInitCount);
+      entry := InitRecordEntryOf(cg, rec); entry.wanted := TRUE
+    ELSIF rec.initPath[0] = 0X THEN
+      (* another module's record the front end could not name
+         (SemanticActions.NameInitPaths) *)
+      ReportUnsupported(cg, cg.currentLine, cg.currentColumn,
+        "a record of another module's whose field initializers cannot be reached from here")
+    END;
+    COPY("@", text); Strcat(text, rec.moduleName); Strcat(text, "."); Strcat(text, rec.initPath);
+    Strcat(text, ".-init")
+  END InitSymbol;
+
+  PROCEDURE ^ InitializeAt(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; type: Types.Type);
+
+  (* Phase 11 D17: initializes count (a word-sized value, at least 1)
+     consecutive elements of elemType starting at baseText, one after the
+     other *)
+  PROCEDURE EmitInitLoop(VAR w: Files.Rider; VAR cg: Codegen; baseText: ARRAY OF CHAR; elemType: Types.Type;
+                         count: ARRAY OF CHAR);
+    VAR
+      wordInt, before, headLabel, bodyLabel, latchLabel, doneLabel, index, next, more, element: ValueText;
+      llvmType: LongText;
+  BEGIN
+    WordIntType(wordInt);
+    COPY(cg.currentBlock, before);
+    NewLabel(cg, headLabel); NewLabel(cg, bodyLabel); NewLabel(cg, latchLabel); NewLabel(cg, doneLabel);
+    NewTemp(cg, index); NewTemp(cg, next);
+    EmitBr(w, headLabel);
+    EmitLabel(w, cg, headLabel);
+    WriteStr(w, "  "); WriteStr(w, index); WriteStr(w, " = phi "); WriteStr(w, wordInt);
+    WriteStr(w, " [ 0, %"); WriteStr(w, before); WriteStr(w, " ], [ "); WriteStr(w, next);
+    WriteStr(w, ", %"); WriteStr(w, latchLabel); WriteStr(w, " ]"); WriteLn(w);
+    EmitBinOp(w, cg, "icmp ult", wordInt, index, count, more);
+    EmitCondBr(w, more, bodyLabel, doneLabel);
+    EmitLabel(w, cg, bodyLabel);
+    LLVMTypes.TypeString(elemType, cg.sizeModel, llvmType);
+    EmitElementGEP(w, cg, llvmType, baseText, wordInt, index, element);
+    InitializeAt(w, cg, element, elemType);
+    EmitBr(w, latchLabel);
+    EmitLabel(w, cg, latchLabel);
+    WriteStr(w, "  "); WriteStr(w, next); WriteStr(w, " = add "); WriteStr(w, wordInt); WriteStr(w, " ");
+    WriteStr(w, index); WriteStr(w, ", 1"); WriteLn(w);
+    EmitBr(w, headLabel);
+    EmitLabel(w, cg, doneLabel)
+  END EmitInitLoop;
+
+  (* Phase 11 D17: initializes the variable of type type at addrText, which
+     is already zero, if Types.NeedsInit(type): a record through its
+     initialization procedure, a fixed array element by element. *)
+  PROCEDURE InitializeAt(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; type: Types.Type);
+    VAR symbol: LongText; arr: Types.ArrayType; count: ValueText;
+  BEGIN
+    IF ~Types.NeedsInit(type) THEN RETURN END;
+    IF type IS Types.RecordType THEN
+      InitSymbol(cg, type(Types.RecordType), symbol);
+      WriteStr(w, "  call void "); WriteStr(w, symbol); WriteStr(w, "(ptr "); WriteStr(w, addrText);
+      WriteStr(w, ")"); WriteLn(w)
+    ELSE
+      arr := type(Types.ArrayType);
+      count[0] := 0X; AppendLongInt(count, arr.length);
+      EmitInitLoop(w, cg, addrText, arr.elementType, count)
+    END
+  END InitializeAt;
+
   PROCEDURE GenerateNewOpenArray(VAR w: Files.Rider; VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode;
                                  lengths: SyntaxTree.ExprNode; arr: Types.ArrayType);
     VAR
@@ -4655,7 +5425,19 @@ MODULE LLVMCodeGenerator;
     END;
     EmitBr(w, doneLabel);
     EmitLabel(w, cg, doneLabel);
-    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
+    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+    IF Types.NeedsInit(arr) THEN
+      (* Phase 11 D17: every element, once the block is p's *)
+      NewLabel(cg, fillLabel); NewLabel(cg, doneLabel);
+      EmitCondBr(w, nonNull, fillLabel, doneLabel);
+      EmitLabel(w, cg, fillLabel);
+      offText[0] := 0X; AppendLongInt(offText, OpenDataOffset(arr, cg.sizeModel));
+      EmitByteGEP(w, cg, pointer, wordInt, offText, slot);
+      EmitResizeInt(w, cg, "i64", acc, wordInt, lenWord);
+      EmitInitLoop(w, cg, slot, OpenElementType(arr), lenWord);
+      EmitBr(w, doneLabel);
+      EmitLabel(w, cg, doneLabel)
+    END
   END GenerateNewOpenArray;
 
   (* NEW(p) for a pointer to a record or to a fixed array: the block comes
@@ -4667,7 +5449,7 @@ MODULE LLVMCodeGenerator;
     VAR
       de: SyntaxTree.DesignatorExprNode; t, base: Types.Type; ptr: Types.PointerType;
       rec: Types.RecordType; arr: Types.ArrayType; addrText, wordInt, sizeText, allocated,
-      pointer: ValueText; longTag, tagText: LongText; addrType: Types.Type;
+      pointer, nonNull, initLabel, doneLabel: ValueText; longTag, tagText: LongText; addrType: Types.Type;
   BEGIN
     result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
     IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
@@ -4721,7 +5503,18 @@ MODULE LLVMCodeGenerator;
        the NIL check on its first use does) - unless -trap-heap-exhausted *)
     EmitHeapCheck(w, cg, allocated, wordInt);
     EmitConvert(w, cg, "inttoptr", wordInt, allocated, "ptr", pointer);
-    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w)
+    WriteStr(w, "  store ptr "); WriteStr(w, pointer); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+    IF Types.NeedsInit(base) THEN
+      (* Phase 11 D17: the record's defaults, once the block is p's (and
+         only if there is one) *)
+      EmitBinOp(w, cg, "icmp ne", wordInt, allocated, "0", nonNull);
+      NewLabel(cg, initLabel); NewLabel(cg, doneLabel);
+      EmitCondBr(w, nonNull, initLabel, doneLabel);
+      EmitLabel(w, cg, initLabel);
+      InitializeAt(w, cg, pointer, base);
+      EmitBr(w, doneLabel);
+      EmitLabel(w, cg, doneLabel)
+    END
   END GenerateNew;
 
   (* v(T) as an expression: v itself, after checking its dynamic type;
@@ -5014,11 +5807,38 @@ MODULE LLVMCodeGenerator;
     END
   END GenerateExpr;
 
+  (* Before v := e for records (Phase 12 step 1): when v's dynamic type can
+     differ from its static type - v is a VAR record parameter (dyn is
+     dynParam) or reached through a pointer (dynBlock) - they must be the
+     same (Oberon2.pdf 9.1), else the program stops with status 13. A record
+     with no name of its own cannot be extended, so it is never checked. *)
+  PROCEDURE EmitRecordAssignmentGuard(VAR w: Files.Rider; VAR cg: Codegen; dyn: DynamicType; t: Types.Type);
+    VAR rec: Types.RecordType; tag, target, same, failLabel, okLabel: ValueText;
+  BEGIN
+    IF (t # NIL) & (t IS Types.RecordType) & (dyn.kind # dynStatic) THEN
+      rec := t(Types.RecordType);
+      IF (rec.name[0] # 0X) & (rec.name[0] # "-") & EnsureTypeTag(cg, rec) THEN
+        cg.needRecordAssignTrap := TRUE;
+        EmitDynamicTag(w, cg, dyn, rec, tag);
+        TagSymbol(rec, target);
+        EmitBinOp(w, cg, "icmp eq", "ptr", tag, target, same);
+        NewLabel(cg, failLabel); NewLabel(cg, okLabel);
+        EmitCondBr(w, same, okLabel, failLabel);
+        EmitLabel(w, cg, failLabel);
+        EmitStatementTrap(w, cg, recordAssignTrapGlobal, recordAssignTrapMsg, recordAssignTrapExitCode);
+        EmitLabel(w, cg, okLabel)
+      END
+    END
+  END EmitRecordAssignmentGuard;
+
   PROCEDURE GenerateAssignStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.AssignStatementNode);
-    VAR obj: SymbolTable.Object; addrText: ValueText; addrType: Types.Type; homeModule: SyntaxTree.Ident;
+    VAR
+      obj: SymbolTable.Object; addrText: ValueText; addrType: Types.Type; homeModule: SyntaxTree.Ident;
+      dyn: DynamicType; binding: LocalBinding;
   BEGIN
     IF s.target.selectors # NIL THEN
-      IF GenerateDesignatorAddress(w, cg, s.target, addrText, addrType) THEN
+      IF GenerateDesignatorAddressTo(w, cg, s.target, NIL, addrText, addrType, dyn) THEN
+        EmitRecordAssignmentGuard(w, cg, dyn, addrType);
         AssignToAddress(w, cg, addrText, addrType, s.value, s.copiesArray)
       ELSE
         WriteStr(w, "  ; unsupported: selector this backend cannot address"); WriteLn(w)
@@ -5031,11 +5851,18 @@ MODULE LLVMCodeGenerator;
       RETURN
     END;
     IF s.target.qualifier[0] = 0X THEN
-      ResolveVarAddress(cg, obj, addrText)
+      ResolveVarAddress(cg, obj, addrText);
+      binding := FindLocalBinding(cg, obj);
+      IF (binding # NIL) & (binding.tagText[0] # 0X) THEN (* a VAR record parameter *)
+        dyn.kind := dynParam; COPY(binding.tagText, dyn.text);
+        EmitRecordAssignmentGuard(w, cg, dyn, EffectiveVarType(cg, obj))
+      END
     ELSE
       QualifiedName(homeModule, obj.name, addrText)
     END;
-    AssignToAddress(w, cg, addrText, obj.type, s.value, s.copiesArray)
+    (* the static type an enclosing WITH gave it: before Phase 12 step 1 the
+       declared one, and a narrowed VAR record got only its base's fields *)
+    AssignToAddress(w, cg, addrText, EffectiveVarType(cg, obj), s.value, s.copiesArray)
   END GenerateAssignStatement;
 
   (* A function procedure called as a bare statement discards its result -
@@ -5382,24 +6209,16 @@ MODULE LLVMCodeGenerator;
      become live and get a real "ret <type> <value>" once step 10 gives
      it an actual function-procedure result to return. *)
   (* cg.currentProcResultType (NIL at module level, or inside a proper
-     procedure) decides "ret void" vs. "ret <type> <value>" - not
-     s.value's own NIL-ness alone: CheckReturnStatement (SemanticActions.
-     Mod) only diagnoses a value where none is allowed, never the
-     opposite (a bare RETURN inside a function procedure), so
-     "s.value = NIL yet cg.currentProcResultType # NIL" is real,
-     front-end-accepted Oberon-2 this codegen must still emit *valid* IR
-     for - routed to the same "ret <type> <zero>" placeholder a function
-     procedure falling off the end without any RETURN at all needs
-     (GenerateProcedureDecl's own trailing return), not treated as an
-     error here either. *)
+     procedure) decides "ret void" vs. "ret <type> <value>". A bare RETURN
+     in a function procedure is a front-end error since Phase 12 step 1
+     (CheckReturnStatement), so the s.value = NIL arm for one only keeps
+     the IR well-formed; no checked program reaches it. *)
   PROCEDURE GenerateReturnStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.ReturnStatementNode);
     VAR deadLabel: ValueText; retType: LongText; v, ev: Value;
   BEGIN
     IF cg.currentProcResultType = NIL THEN
       WriteStr(w, "  ret void"); WriteLn(w)
     ELSIF s.value = NIL THEN
-      WriteStr(w, "  ; RETURN with no value in a function procedure - undefined result (front end doesn't"); WriteLn(w);
-      WriteStr(w, "  ; reject this; see GenerateReturnStatement's own header comment)"); WriteLn(w);
       LLVMTypes.TypeString(cg.currentProcResultType, cg.sizeModel, retType);
       WriteStr(w, "  ret "); WriteStr(w, retType); WriteStr(w, " ");
       IF (cg.currentProcResultType = Types.Real) OR (cg.currentProcResultType = Types.LongReal) THEN
@@ -5488,6 +6307,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     cg.currentLine := s.line; cg.currentColumn := s.column;
     cg.statementLine := s.line; cg.statementColumn := s.column;
+    IF s.line > 0 THEN debugLine := s.line; debugColumn := s.column END;
     WITH
       s: SyntaxTree.AssignStatementNode DO GenerateAssignStatement(w, cg, s)
     | s: SyntaxTree.CallStatementNode DO GenerateCallStatement(w, cg, s)
@@ -5511,6 +6331,54 @@ MODULE LLVMCodeGenerator;
       s := s.next
     END
   END GenerateStatementSeq;
+
+  (* Phase 11 D17: the variables of declarations (in cg.scope, already
+     zero) whose type needs initializing (Types.NeedsInit) initialized, in
+     declaration order and each declaration's before its variables'
+     initializers (Phase 11 A23), which the parser put at the front of
+     statements - so a variable's initializer sees the records declared
+     before it initialized. Returns what of statements is left to
+     generate: all of it when no variable needs initializing, which
+     leaves the initializers to GenerateStatementSeq as before. *)
+  PROCEDURE GenerateDeclarationInits(VAR w: Files.Rider; VAR cg: Codegen; declarations: SyntaxTree.DeclSeqNode;
+                                     statements: SyntaxTree.StatementNode): SyntaxTree.StatementNode;
+    VAR
+      vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
+      s: SyntaxTree.StatementNode; addrText: ValueText; any: BOOLEAN;
+  BEGIN
+    IF declarations = NIL THEN RETURN statements END;
+    any := FALSE; vd := declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        IF (obj # NIL) & Types.NeedsInit(obj.type) THEN any := TRUE END;
+        nm := nm.next
+      END;
+      vd := vd.next
+    END;
+    IF ~any THEN RETURN statements END;
+    vd := declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(cg.scope, nm.name);
+        IF (obj # NIL) & Types.NeedsInit(obj.type) THEN
+          ResolveVarAddress(cg, obj, addrText);
+          InitializeAt(w, cg, addrText, obj.type)
+        END;
+        nm := nm.next
+      END;
+      s := vd.initializers; nm := vd.names;
+      WHILE (s # NIL) & (nm # NIL) DO GenerateStatement(w, cg, s); s := s.next; nm := nm.next END;
+      vd := vd.next
+    END;
+    s := statements;
+    WHILE (s # NIL) & (s IS SyntaxTree.AssignStatementNode) & (s(SyntaxTree.AssignStatementNode).initializerLine # 0) DO
+      s := s.next
+    END;
+    RETURN s
+  END GenerateDeclarationInits;
 
   PROCEDURE HasDeclaredExternal(VAR cg: Codegen; cName: ARRAY OF CHAR): BOOLEAN;
     VAR e: DeclaredExternal;
@@ -5537,7 +6405,8 @@ MODULE LLVMCodeGenerator;
           obj := SymbolTable.FindLocal(cg.scope, nm.name);
           LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
           WriteStr(w, "@"); WriteStr(w, cg.moduleName); WriteStr(w, "."); WriteStr(w, nm.name);
-          WriteStr(w, " = global "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer"); WriteLn(w);
+          WriteStr(w, " = global "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer");
+          WriteDebugGlobal(w, obj); WriteLn(w);
           nm := nm.next
         END;
         vd := vd.next
@@ -5556,9 +6425,34 @@ MODULE LLVMCodeGenerator;
      name must be silently skipped, not re-"declare"d (clang rejects two
      "declare"s of the same symbol outright - see DeclaredExternal's own
      header comment). *)
+  (* "declare" for obj, an external ["C"] procedure, unless its C symbol is
+     declared already - one of this module's own (EmitExternalDeclares) or,
+     since Phase 12 step 2a, of a module it imports (EmitImportDeclarations) *)
+  PROCEDURE EmitExternalDeclare(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object);
+    VAR pt: Types.ProcedureType; p: Types.Param; retType, paramType: LongText; first: BOOLEAN;
+  BEGIN
+    IF ~HasDeclaredExternal(cg, obj.externalName) THEN
+      pt := obj.type(Types.ProcedureType);
+      IF pt.resultType = NIL THEN COPY("void", retType)
+      ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
+      END;
+      WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " @"); WriteStr(w, obj.externalName);
+      WriteStr(w, "(");
+      p := pt.params; first := TRUE;
+      WHILE p # NIL DO
+        IF ~first THEN WriteStr(w, ", ") END;
+        first := FALSE;
+        ParamLLVMType(cg, p, paramType);
+        WriteStr(w, paramType);
+        p := p.next
+      END;
+      WriteStr(w, ")"); WriteLn(w);
+      MarkDeclaredExternal(cg, obj.externalName)
+    END
+  END EmitExternalDeclare;
+
   PROCEDURE EmitExternalDeclares(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
-    VAR pd: SyntaxTree.ProcDeclNode; obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param;
-        retType, paramType: LongText; first: BOOLEAN;
+    VAR pd: SyntaxTree.ProcDeclNode; obj: SymbolTable.Object;
   BEGIN
     IF module.declarations = NIL THEN RETURN END;
     pd := module.declarations.procDecls;
@@ -5571,23 +6465,8 @@ MODULE LLVMCodeGenerator;
              or, worse, one that exists and means something else *)
           ReportUnsupported(cg, pd.line, pd.column,
                             "an external procedure with the VMS calling convention")
-        ELSIF ~HasDeclaredExternal(cg, obj.externalName) THEN
-          pt := obj.type(Types.ProcedureType);
-          IF pt.resultType = NIL THEN COPY("void", retType)
-          ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
-          END;
-          WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " @"); WriteStr(w, obj.externalName);
-          WriteStr(w, "(");
-          p := pt.params; first := TRUE;
-          WHILE p # NIL DO
-            IF ~first THEN WriteStr(w, ", ") END;
-            first := FALSE;
-            ParamLLVMType(cg, p, paramType);
-            WriteStr(w, paramType);
-            p := p.next
-          END;
-          WriteStr(w, ")"); WriteLn(w);
-          MarkDeclaredExternal(cg, obj.externalName)
+        ELSE
+          EmitExternalDeclare(w, cg, obj)
         END
       END;
       pd := pd.next
@@ -5657,7 +6536,7 @@ MODULE LLVMCodeGenerator;
      module-level named POINTER TO. Any other record - one written inline
      under a POINTER TO, or declared inside a procedure - gets one only
      when NEW, IS, a guard or WITH names it (PLAN.md Phase 9 step 5:
-     EnsureTypeTag names it "$anon<N>" and EmitPointerSupport emits its
+     EnsureTypeTag names it "-anon<N>" and EmitPointerSupport emits its
      descriptor at the end of the program). ProcTab entries name the
      symbols of the type-bound procedures' bodies
      (@<Module>.<RecordName>.<ProcName>), which GenerateMethodDecl
@@ -5821,7 +6700,10 @@ MODULE LLVMCodeGenerator;
     COPY(base, tdesc); Strcat(tdesc, ".tdesc");
     TagSymbol(rec, tag);
     (* the struct type, spelled once and reused for the initializer *)
-    WriteStr(w, tdesc); WriteStr(w, " = constant { [");
+    (* a record with no name of its own ("-anon<N>", EnsureTypeTag) is this
+       module's alone: another names its own copy (Phase 12 step 2c) *)
+    WriteStr(w, tdesc);
+    IF rec.name[0] = "-" THEN WriteStr(w, " = internal constant { [") ELSE WriteStr(w, " = constant { [") END;
     text[0] := 0X; AppendLongInt(text, slotCount); WriteStr(w, text);
     WriteStr(w, " x ptr], "); WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt);
     WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ", [");
@@ -5846,7 +6728,11 @@ MODULE LLVMCodeGenerator;
     first := TRUE; EmitPointerOffsets(w, wordInt, "", rec, 0, first); WriteStr(w, "]"); WriteLn(w);
     WriteStr(w, "}"); WriteLn(w);
     (* the tag: the header's own address, slotCount words past the start *)
-    WriteStr(w, tag); WriteStr(w, " = alias ptr, getelementptr inbounds (i8, ptr "); WriteStr(w, tdesc);
+    WriteStr(w, tag);
+    IF rec.name[0] = "-" THEN WriteStr(w, " = internal alias ptr, getelementptr inbounds (i8, ptr ")
+    ELSE WriteStr(w, " = alias ptr, getelementptr inbounds (i8, ptr ")
+    END;
+    WriteStr(w, tdesc);
     WriteStr(w, ", i32 ");
     text[0] := 0X; AppendLongInt(text, slotCount * ConstantEvaluator.wordSize); WriteStr(w, text);
     WriteStr(w, ")"); WriteLn(w); WriteLn(w)
@@ -6118,10 +7004,26 @@ MODULE LLVMCodeGenerator;
     END
   END CollectStringConstantsStmt;
 
+  (* The copies of one variable initializer (Phase 11 A23: "VAR a, b: T :=
+     e", one assignment per name, one after the other) have their literals
+     at the same positions, so they share the globals: only the first is
+     walked. *)
   PROCEDURE CollectStringConstantsSeq(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
+    VAR line, column: INTEGER; copy: BOOLEAN;
   BEGIN
+    line := 0; column := 0;
     WHILE s # NIL DO
-      CollectStringConstantsStmt(w, cg, s);
+      copy := FALSE;
+      IF s IS SyntaxTree.AssignStatementNode THEN
+        copy := (s(SyntaxTree.AssignStatementNode).initializerLine # 0)
+                & (s(SyntaxTree.AssignStatementNode).initializerLine = line)
+                & (s(SyntaxTree.AssignStatementNode).initializerColumn = column);
+        line := s(SyntaxTree.AssignStatementNode).initializerLine;
+        column := s(SyntaxTree.AssignStatementNode).initializerColumn
+      ELSE
+        line := 0; column := 0
+      END;
+      IF ~copy THEN CollectStringConstantsStmt(w, cg, s) END;
       s := s.next
     END
   END CollectStringConstantsSeq;
@@ -6162,14 +7064,14 @@ MODULE LLVMCodeGenerator;
     RETURN ~pd.isExternal & ~pd.isForward
   END HasBody;
 
-  (* "define <retType> <fnSymbol>(<formal LLVM types, named %<paramName>
+  (* "define <retType> <fnSymbol>(<formal LLVM types, named %p.<paramName>
      each>) {" plus the mandatory opening "entry:" label - mirrors
      EmitExternalDeclares' own signature-writing loop exactly (same
      ParamLLVMType-driven VAR/open-CHAR-array-as-"ptr" convention), just
      "define ... { entry:" instead of "declare ...;". *)
   PROCEDURE EmitProcSignature(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
                               receiver: SyntaxTree.ReceiverNode; needs: NestedProcedures.Need);
-    VAR retType, paramType: LongText; wordInt, hiddenName, dimText: ValueText; p: Types.Param; first: BOOLEAN;
+    VAR retType, paramType: LongText; wordInt, hiddenName, argName, dimText: ValueText; p: Types.Param; first: BOOLEAN;
         dim, k: INTEGER; need: NestedProcedures.Need;
   BEGIN
     WordIntType(wordInt);
@@ -6182,8 +7084,9 @@ MODULE LLVMCodeGenerator;
       (* the receiver is always the first parameter, a bare "ptr": the
          record's address for a VAR receiver (then followed by its hidden
          tag), the pointer for a pointer receiver *)
-      WriteStr(w, "ptr %"); WriteStr(w, receiver.name);
-      IF receiver.isVar THEN WriteStr(w, ", ptr %"); WriteStr(w, receiver.name); WriteStr(w, ".tag") END;
+      ParamName(receiver.name, argName);
+      WriteStr(w, "ptr "); WriteStr(w, argName);
+      IF receiver.isVar THEN WriteStr(w, ", ptr "); WriteStr(w, argName); WriteStr(w, ".tag") END;
       first := FALSE
     END;
     p := pt.params;
@@ -6191,10 +7094,11 @@ MODULE LLVMCodeGenerator;
       IF ~first THEN WriteStr(w, ", ") END;
       first := FALSE;
       ParamLLVMType(cg, p, paramType);
-      WriteStr(w, paramType); WriteStr(w, " %"); WriteStr(w, p.name);
-      IF NeedsHiddenTag(p) THEN WriteStr(w, ", ptr %"); WriteStr(w, p.name); WriteStr(w, ".tag") END;
+      ParamName(p.name, argName);
+      WriteStr(w, paramType); WriteStr(w, " "); WriteStr(w, argName);
+      IF NeedsHiddenTag(p) THEN WriteStr(w, ", ptr "); WriteStr(w, argName); WriteStr(w, ".tag") END;
       FOR dim := 0 TO OpenDimCount(p.type) - 1 DO
-        WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " %"); WriteStr(w, p.name);
+        WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, argName);
         WriteStr(w, ".len"); dimText[0] := 0X; AppendLongInt(dimText, dim); WriteStr(w, dimText)
       END;
       p := p.next
@@ -6213,7 +7117,7 @@ MODULE LLVMCodeGenerator;
       END;
       need := need.next; INC(k)
     END;
-    WriteStr(w, ") {"); WriteLn(w);
+    WriteStr(w, ")"); WriteDebugAttachment(w); WriteStr(w, " {"); WriteLn(w);
     EmitEntryLabel(w, cg)
   END EmitProcSignature;
 
@@ -6221,19 +7125,60 @@ MODULE LLVMCodeGenerator;
      hidden parameters EmitProcSignature gave it, under the very Object the
      enclosing procedure's own binding uses, so every access to it in the body
      is the ordinary load or store through an address. *)
-  PROCEDURE BindNeeds(VAR cg: Codegen; needs: NestedProcedures.Need);
+  (* Under -g, in a function with debug information: describes obj, an
+     open-array parameter (its position arg) or an enclosing procedure's
+     one a nested procedure uses (arg 0), whose elements are at address and
+     whose lengths are the arguments lengthBase.len0, .len1, ... - each
+     length stored in a slot of its own and described as an artificial
+     variable "LEN(a)", "LEN(a, 1)", ..., which the array type's counts
+     refer to, as clang describes a C variable-length array. *)
+  PROCEDURE DeclareDebugOpenArray(VAR w: Files.Rider; VAR cg: Codegen; obj: SymbolTable.Object;
+                                  address, lengthBase: ARRAY OF CHAR; arg: INTEGER; indirect: BOOLEAN);
+    VAR a: DebugOpenArray; elementId, lengthTypeId, d: INTEGER; wordInt, slot, length: ValueText;
+        name: LongText;
+  BEGIN
+    IF debugInfo & (debugScope >= 0) & (obj # NIL) THEN
+      elementId := DebugTypeId(OpenElementType(obj.type));
+      lengthTypeId := DebugTypeId(Types.Address);
+      IF elementId >= 0 THEN
+        NEW(a); a.id := nextMetadata; INC(nextMetadata); a.elementId := elementId; a.dims := OpenDimCount(obj.type);
+        a.firstLength := nextMetadata; a.next := debugOpenArrays; debugOpenArrays := a;
+        WordIntType(wordInt);
+        FOR d := 0 TO a.dims - 1 DO
+          NewTemp(cg, slot);
+          WriteStr(w, "  "); WriteStr(w, slot); WriteStr(w, " = alloca "); WriteStr(w, wordInt); WriteLn(w);
+          COPY(lengthBase, length); Strcat(length, ".len"); AppendLongInt(length, d);
+          WriteStr(w, "  store "); WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, length);
+          WriteStr(w, ", ptr "); WriteStr(w, slot); WriteLn(w);
+          name := "LEN("; Strcat(name, obj.name);
+          IF d > 0 THEN Strcat(name, ", "); AppendLongInt(name, d) END;
+          Strcat(name, ")");
+          (* the lengths' nodes are a.firstLength, a.firstLength + 1, ... *)
+          DeclareDebugSlot(w, name, obj.declLine, obj.declColumn, slot, 0, lengthTypeId, TRUE, FALSE)
+        END;
+        DeclareDebugSlot(w, obj.name, obj.declLine, obj.declColumn, address, arg, a.id, FALSE, indirect)
+      END
+    END
+  END DeclareDebugOpenArray;
+
+  PROCEDURE BindNeeds(VAR w: Files.Rider; VAR cg: Codegen; needs: NestedProcedures.Need);
     VAR need: NestedProcedures.Need; k: INTEGER; name, tagName: ValueText; dope: DopeVector;
   BEGIN
     need := needs; k := 0;
     WHILE need # NIL DO
       NeedParamName(k, name);
+      (* the enclosing procedure's variable, which name points to, is also
+         the nested one's for a debugger *)
       IF NeedHasTag(need.obj) THEN
+        DeclareDebugVariable(w, need.obj, name, 0, TRUE);
         COPY(name, tagName); Strcat(tagName, ".tag");
         BindLocalWithTag(cg, need.obj, name, tagName)
       ELSIF OpenDimCount(need.obj.type) > 0 THEN
+        DeclareDebugOpenArray(w, cg, need.obj, name, name, 0, TRUE);
         SetParamDope(dope, name, OpenDimCount(need.obj.type));
         BindLocalWithDope(cg, need.obj, name, dope)
       ELSE
+        DeclareDebugVariable(w, need.obj, name, 0, TRUE);
         BindLocal(cg, need.obj, name)
       END;
       need := need.next; INC(k)
@@ -6254,19 +7199,20 @@ MODULE LLVMCodeGenerator;
      that's what SymbolTable.Find(cg.scope, ...) will actually return
      while generating this procedure's body. *)
   PROCEDURE BindFormalParams(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType;
-                             line, column: INTEGER);
+                             firstPosition: INTEGER);
     VAR
       p: Types.Param; obj: SymbolTable.Object; llvmType: LongText; argName, tagName, addrText: ValueText;
-      wordInt, bytes, copied: ValueText; dope: DopeVector;
+      wordInt, bytes, copied: ValueText; dope: DopeVector; position: INTEGER;
   BEGIN
-    p := pt.params;
+    p := pt.params; position := firstPosition;
     WHILE p # NIL DO
       obj := SymbolTable.FindLocal(bodyScope, p.name);
-      COPY("%", argName); Strcat(argName, p.name);
+      ParamName(p.name, argName);
       IF IsOpenArrayType(p.type) THEN
         (* the hidden lengths follow the pointer (EmitProcSignature) *)
         SetParamDope(dope, argName, OpenDimCount(p.type));
         IF p.isVar THEN
+          DeclareDebugOpenArray(w, cg, obj, argName, argName, position, TRUE);
           BindLocalWithDope(cg, obj, argName, dope)
         ELSE
           (* a value parameter is the callee's own copy: made here, in
@@ -6280,9 +7226,11 @@ MODULE LLVMCodeGenerator;
           WriteStr(w, "  call void @llvm.memmove.p0.p0."); WriteStr(w, wordInt); WriteStr(w, "(ptr ");
           WriteStr(w, copied); WriteStr(w, ", ptr "); WriteStr(w, argName); WriteStr(w, ", ");
           WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, bytes); WriteStr(w, ", i1 false)"); WriteLn(w);
+          DeclareDebugOpenArray(w, cg, obj, copied, argName, position, FALSE);
           BindLocalWithDope(cg, obj, copied, dope)
         END
       ELSIF p.isVar THEN
+        DeclareDebugVariable(w, obj, argName, position, TRUE);
         IF NeedsHiddenTag(p) THEN
           COPY(argName, tagName); Strcat(tagName, ".tag");
           BindLocalWithTag(cg, obj, argName, tagName)
@@ -6295,9 +7243,10 @@ MODULE LLVMCodeGenerator;
         WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
         WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " "); WriteStr(w, argName);
         WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+        DeclareDebugVariable(w, obj, addrText, position, FALSE);
         BindLocal(cg, obj, addrText)
       END;
-      p := p.next
+      p := p.next; INC(position)
     END
   END BindFormalParams;
 
@@ -6311,30 +7260,35 @@ MODULE LLVMCodeGenerator;
     VAR obj: SymbolTable.Object; argName, tagName, addrText: ValueText;
   BEGIN
     obj := SymbolTable.FindLocal(bodyScope, receiver.name);
-    COPY("%", argName); Strcat(argName, receiver.name);
+    ParamName(receiver.name, argName);
     IF receiver.isVar THEN
+      DeclareDebugVariable(w, obj, argName, 1, TRUE);
       COPY(argName, tagName); Strcat(tagName, ".tag");
       BindLocalWithTag(cg, obj, argName, tagName)
     ELSE
       NewTemp(cg, addrText);
       WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca ptr"); WriteLn(w);
       WriteStr(w, "  store ptr "); WriteStr(w, argName); WriteStr(w, ", ptr "); WriteStr(w, addrText); WriteLn(w);
+      DeclareDebugVariable(w, obj, addrText, 1, FALSE);
       BindLocal(cg, obj, addrText)
     END
   END BindReceiver;
 
-  (* One alloca per local VAR, left uninitialized (no "store" after it)
-     - real Oberon-2 gives a local variable no defined initial value,
-     unlike a module-level VAR (Oberon2.pdf's own zero-initialization is
-     a module-scope guarantee; EmitGlobals' own "zeroinitializer" is
-     specific to that, not extended here). Walks declarations.varDecls
-     the same way EmitGlobals walks module.declarations.varDecls, just
-     binding into cg.locals (an alloca'd address) instead of writing a
-     "@Module.name = global ..." line. *)
+  (* One alloca per local VAR, zeroed on entry - a record or an array with
+     llvm.memset, anything else with a store of zeroinitializer. The report
+     gives a local no initial value except a pointer's NIL (6.4), and until
+     2026-09-26 only pointers and procedure values were zeroed; but with
+     clang -O2 the default (Phase 11 D13) a read of a never-assigned local
+     is undefined behavior to LLVM, not just stack garbage, so every local
+     now starts as a global and a heap block do, at zero (Phase 11 D16).
+     The optimizer drops the stores a later assignment makes dead. Walks
+     declarations.varDecls the same way EmitGlobals walks
+     module.declarations.varDecls, just binding into cg.locals (an alloca'd
+     address) instead of writing a "@Module.name = global ..." line. *)
   PROCEDURE BindLocalVars(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
                           declarations: SyntaxTree.DeclSeqNode);
     VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
-        llvmType: LongText; addrText: ValueText;
+        llvmType: LongText; addrText, wordInt, sizeText: ValueText; size: LONGINT;
   BEGIN
     IF declarations = NIL THEN RETURN END;
     vd := declarations.varDecls;
@@ -6345,17 +7299,24 @@ MODULE LLVMCodeGenerator;
         LLVMTypes.TypeString(obj.type, cg.sizeModel, llvmType);
         NewTemp(cg, addrText);
         WriteStr(w, "  "); WriteStr(w, addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
-        IF (CountPointerSlots(obj.type) > 0) OR ContainsProcedureValue(obj.type) THEN
-          (* Oberon2.pdf 6.4: every pointer starts out NIL - a local one
-             too, which is what makes a dereference of a never-assigned
-             pointer a NIL trap rather than a wild access (and keeps
-             stack garbage out of the collector's conservative scan). A
-             procedure variable is treated the same, so that calling one
-             never assigned is that trap too (the report says nothing;
-             a local one is garbage in voc) *)
+        (* for a pointer this is Oberon2.pdf 6.4's NIL, which makes a
+           dereference of a never-assigned pointer a NIL trap rather than a
+           wild access and keeps stack garbage out of the collector's
+           conservative scan; a procedure variable never assigned is that
+           trap too *)
+        IF (obj.type IS Types.ArrayType) OR (obj.type IS Types.RecordType) THEN
+          cg.needMemset := TRUE;
+          WordIntType(wordInt);
+          WriteStr(w, "  call void @llvm.memset.p0."); WriteStr(w, wordInt); WriteStr(w, "(ptr ");
+          WriteStr(w, addrText); WriteStr(w, ", i8 0, "); WriteStr(w, wordInt); WriteStr(w, " ");
+          size := MemoryLayout.Size(obj.type, ConstantEvaluator.wordSize, cg.sizeModel);
+          sizeText[0] := 0X; AppendLongInt(sizeText, size);
+          WriteStr(w, sizeText); WriteStr(w, ", i1 false)"); WriteLn(w)
+        ELSE
           WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer, ptr ");
           WriteStr(w, addrText); WriteLn(w)
         END;
+        DeclareDebugVariable(w, obj, addrText, 0, FALSE);
         BindLocal(cg, obj, addrText);
         nm := nm.next
       END;
@@ -6382,42 +7343,46 @@ MODULE LLVMCodeGenerator;
      module's own "always leave an open block" invariant), whether or
      not the body's last statement was itself a RETURN, so appending one
      more terminator here is always well-formed - for a function
-     procedure, this is also the fallback for a body that falls off the
-     end without returning on every path (a real but narrow gap in
-     CheckProcedureBody's own shallow, non-flow-sensitive check - see
-     its header comment), using the same well-typed zero placeholder
-     GenerateReturnStatement's own "bare RETURN in a function procedure"
-     case does. cg.locals/cg.currentProcResultType/cg.scope are all
+     procedure it is a trap (status 12, at the END keyword): control that
+     gets there left the function without a RETURN, which Oberon2.pdf 10.1
+     forbids and CheckProcedureBody's shallow, non-flow-sensitive check
+     cannot rule out (Phase 12 step 1; until then a well-typed zero was
+     returned). cg.locals/cg.currentProcResultType/cg.scope are all
      reset back to their module-level values afterward, so the next
      procedure (or "_init", once every procedure is done) starts clean. *)
   PROCEDURE GenerateFunction(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
                              pd: SyntaxTree.ProcDeclNode; pt: Types.ProcedureType; fnSymbol: ARRAY OF CHAR;
                              needs: NestedProcedures.Need);
-    VAR savedScope: SymbolTable.Scope; retType: LongText; i: INTEGER;
+    VAR savedScope: SymbolTable.Scope; i: INTEGER;
   BEGIN
     i := 0; (* the symbol without its "@": "List.Insert", "List.Insert.Find" *)
     WHILE (fnSymbol[i + 1] # 0X) & (i < LEN(cg.currentProc) - 1) DO cg.currentProc[i] := fnSymbol[i + 1]; INC(i) END;
     cg.currentProc[i] := 0X;
+    IF debugInfo THEN
+      BeginDebugFunction(cg.currentProc, cg.currentFile, pd.line, pd.column);
+      debugLine := 0 (* the prologue: see WriteLn *)
+    END;
     EmitProcSignature(w, cg, pt, fnSymbol, pd.receiver, needs);
     savedScope := cg.scope;
     cg.scope := bodyScope; cg.locals := NIL; cg.currentProcResultType := pt.resultType;
-    IF pd.receiver # NIL THEN BindReceiver(w, cg, bodyScope, pd.receiver) END;
-    BindFormalParams(w, cg, bodyScope, pt, pd.line, pd.column);
-    BindNeeds(cg, needs);
+    IF pd.receiver # NIL THEN
+      BindReceiver(w, cg, bodyScope, pd.receiver);
+      BindFormalParams(w, cg, bodyScope, pt, 2)
+    ELSE
+      BindFormalParams(w, cg, bodyScope, pt, 1)
+    END;
+    BindNeeds(w, cg, needs);
     BindLocalVars(w, cg, bodyScope, pd.declarations);
-    GenerateStatementSeq(w, cg, pd.statements);
+    GenerateStatementSeq(w, cg, GenerateDeclarationInits(w, cg, pd.declarations, pd.statements));
     IF pt.resultType = NIL THEN
       WriteStr(w, "  ret void"); WriteLn(w)
-    ELSE
-      LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType);
-      WriteStr(w, "  ret "); WriteStr(w, retType); WriteStr(w, " ");
-      IF (pt.resultType = Types.Real) OR (pt.resultType = Types.LongReal) THEN WriteStr(w, "0.0")
-      ELSIF retType = "ptr" THEN WriteStr(w, "null")
-      ELSE WriteStr(w, "0")
-      END;
-      WriteLn(w)
+    ELSE (* control that reaches END: a trap (Phase 12 step 1) *)
+      IF debugInfo THEN debugLine := pd.endLine; debugColumn := pd.endColumn END;
+      cg.needReturnTrap := TRUE;
+      EmitTrapAt(w, cg, returnTrapGlobal, returnTrapMsg, returnTrapExitCode, pd.endLine, pd.endColumn)
     END;
     WriteStr(w, "}"); WriteLn(w); WriteLn(w);
+    debugScope := -1;
     cg.scope := savedScope; cg.locals := NIL; cg.currentProcResultType := NIL;
     cg.currentProc[0] := 0X
   END GenerateFunction;
@@ -6558,10 +7523,14 @@ MODULE LLVMCodeGenerator;
     IF cg.needLengthTrap THEN EmitTrapMessageGlobal(w, lengthTrapGlobal, lengthTrapMsg) END;
     IF cg.needEntierTrap THEN EmitTrapMessageGlobal(w, entierTrapGlobal, entierTrapMsg) END;
     IF cg.needArrayAssignTrap THEN EmitTrapMessageGlobal(w, arrayAssignTrapGlobal, arrayAssignTrapMsg) END;
+    IF cg.needReturnTrap THEN EmitTrapMessageGlobal(w, returnTrapGlobal, returnTrapMsg) END;
+    IF cg.needRecordAssignTrap THEN EmitTrapMessageGlobal(w, recordAssignTrapGlobal, recordAssignTrapMsg) END;
+    IF cg.needShortRangeTrap THEN EmitTrapMessageGlobal(w, shortRangeTrapGlobal, shortRangeTrapMsg) END;
+    IF cg.needChrRangeTrap THEN EmitTrapMessageGlobal(w, chrRangeTrapGlobal, chrRangeTrapMsg) END;
     IF cg.needHeapTrap THEN EmitTrapMessageGlobal(w, heapTrapGlobal, heapTrapMsg) END;
     site := cg.trapSites;
     WHILE site # NIL DO EmitTrapMessageGlobal(w, site.global, site.text); site := site.next END;
-    IF cg.usedAllocate & ~cg.heapPresent THEN
+    IF cg.usedAllocate & ~cg.heapPresent & ~HasDeclaredExternal(cg, "@GarbageCollectedHeap.Allocate") THEN
       WordIntType(wordInt);
       WriteStr(w, "declare "); WriteStr(w, wordInt); WriteStr(w, " @GarbageCollectedHeap.Allocate(");
       WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ")"); WriteLn(w)
@@ -6709,30 +7678,430 @@ MODULE LLVMCodeGenerator;
      which records are used is only known once everything else is
      generated, so that is written to body first (a file of the caller's,
      empty) and copied after the definitions. *)
-  PROCEDURE GenerateProgram*(modules: ModuleList; triple: ARRAY OF CHAR; VAR w, body: Files.Rider);
+  (* Phase 11 D17: the string literals of the record field initializers in
+     declarations, at any depth - one copy of each (they share the globals,
+     as CollectStringConstantsSeq's variable initializers do) *)
+  PROCEDURE ^ CollectTypeStrings(VAR w: Files.Rider; VAR cg: Codegen; t: SyntaxTree.TypeNode);
+
+  PROCEDURE CollectFormalsStrings(VAR w: Files.Rider; VAR cg: Codegen; formals: SyntaxTree.FormalParsNode);
+    VAR section: SyntaxTree.FPSectionNode;
+  BEGIN
+    IF formals = NIL THEN RETURN END;
+    section := formals.sections;
+    WHILE section # NIL DO CollectTypeStrings(w, cg, section.type); section := section.next END
+  END CollectFormalsStrings;
+
+  PROCEDURE CollectTypeStrings(VAR w: Files.Rider; VAR cg: Codegen; t: SyntaxTree.TypeNode);
+    VAR fields: SyntaxTree.FieldListNode;
+  BEGIN
+    IF t = NIL THEN RETURN END;
+    IF t IS SyntaxTree.RecordTypeNode THEN
+      fields := t(SyntaxTree.RecordTypeNode).fields;
+      WHILE fields # NIL DO
+        CollectStringConstants(w, cg, fields.initializers);
+        CollectTypeStrings(w, cg, fields.type);
+        fields := fields.next
+      END
+    ELSIF t IS SyntaxTree.ArrayTypeNode THEN
+      CollectTypeStrings(w, cg, t(SyntaxTree.ArrayTypeNode).elementType)
+    ELSIF t IS SyntaxTree.PointerTypeNode THEN
+      CollectTypeStrings(w, cg, t(SyntaxTree.PointerTypeNode).base)
+    ELSIF t IS SyntaxTree.ProcedureTypeNode THEN
+      CollectFormalsStrings(w, cg, t(SyntaxTree.ProcedureTypeNode).formals)
+    END
+  END CollectTypeStrings;
+
+  PROCEDURE CollectDeclarationStrings(VAR w: Files.Rider; VAR cg: Codegen; declarations: SyntaxTree.DeclSeqNode);
+    VAR td: SyntaxTree.TypeDeclNode; vd: SyntaxTree.VarDeclNode; pd: SyntaxTree.ProcDeclNode;
+  BEGIN
+    IF declarations = NIL THEN RETURN END;
+    td := declarations.typeDecls;
+    WHILE td # NIL DO CollectTypeStrings(w, cg, td.type); td := td.next END;
+    vd := declarations.varDecls;
+    WHILE vd # NIL DO CollectTypeStrings(w, cg, vd.type); vd := vd.next END;
+    pd := declarations.procDecls;
+    WHILE pd # NIL DO
+      IF ~pd.isForward THEN
+        CollectFormalsStrings(w, cg, pd.formals);
+        CollectDeclarationStrings(w, cg, pd.declarations)
+      END;
+      pd := pd.next
+    END
+  END CollectDeclarationStrings;
+
+  (* Phase 11 D17: every record reached from t whose initialization
+     procedure the module being generated defines for other modules too -
+     the records the front end named (Types.RecordTypeDesc.initPath) -
+     entered in cg.initRecords, wanted when they need initializing *)
+  PROCEDURE CollectInitRecords(VAR cg: Codegen; t: Types.Type);
+    VAR rec: Types.RecordType; entry: InitRecordEntry; f: Types.Field;
+  BEGIN
+    IF t = NIL THEN RETURN END;
+    IF t IS Types.RecordType THEN
+      rec := t(Types.RecordType);
+      IF (rec.moduleName # cg.moduleName) OR (rec.initPath[0] = 0X) THEN RETURN END;
+      entry := cg.initRecords;
+      WHILE (entry # NIL) & (entry.rec # rec) DO entry := entry.next END;
+      IF entry # NIL THEN RETURN END;
+      entry := InitRecordEntryOf(cg, rec); entry.wanted := rec.needsInit;
+      f := rec.fields;
+      WHILE f # NIL DO CollectInitRecords(cg, f.type); f := f.next END
+    ELSIF t IS Types.ArrayType THEN
+      CollectInitRecords(cg, t(Types.ArrayType).elementType)
+    ELSIF t IS Types.PointerType THEN
+      CollectInitRecords(cg, t(Types.PointerType).base)
+    END
+  END CollectInitRecords;
+
+  (* Phase 11 D17: "define void @<Module>.<initPath>.-init(ptr %self)" for
+     the record of wanted: its base type's procedure first, then each field
+     of its own in order - a field with an initializer assigned its own
+     copy of it, as an assignment would, in the scope the record was
+     declared in (SemanticActions.CheckFieldInitializer allows only what can
+     be reached from there without a procedure's frame); a field whose type
+     needs initializing initialized (InitializeAt). *)
+  PROCEDURE EmitInitProcedure(VAR w: Files.Rider; VAR cg: Codegen; wanted: InitRecordEntry);
+    VAR
+      rec, base: Types.RecordType; f: Types.Field; symbol, baseSymbol: LongText;
+      addrText: ValueText; addrType: Types.Type;
+  BEGIN
+    rec := wanted.rec;
+    COPY(rec.moduleName, cg.moduleName); cg.scope := rec.declScope(SymbolTable.Scope);
+    COPY(wanted.fileName, cg.currentFile);
+    cg.locals := NIL; cg.nestedRoot := NIL; cg.currentProcResultType := NIL;
+    InitSymbol(cg, rec, symbol);
+    COPY(rec.moduleName, cg.currentProc); Strcat(cg.currentProc, "."); Strcat(cg.currentProc, rec.initPath);
+    (* one for a record the front end could not name is this module's alone,
+       as its descriptor (EmitDescriptor) *)
+    IF rec.initPath[0] = "-" THEN WriteStr(w, "define internal void ") ELSE WriteStr(w, "define void ") END;
+    WriteStr(w, symbol); WriteStr(w, "(ptr %self) {"); WriteLn(w);
+    EmitEntryLabel(w, cg);
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) THEN
+      base := rec.baseType(Types.RecordType);
+      IF base.needsInit THEN
+        InitSymbol(cg, base, baseSymbol);
+        WriteStr(w, "  call void "); WriteStr(w, baseSymbol); WriteStr(w, "(ptr %self)"); WriteLn(w)
+      END
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      IF (f.initializer # NIL) OR Types.NeedsInit(f.type) THEN
+        COPY("%self", addrText); addrType := rec;
+        IF ~GenerateFieldAddress(w, cg, addrText, addrType, f.name) THEN
+          WriteStr(w, "  ; unsupported: a field this backend cannot address"); WriteLn(w)
+        ELSIF f.initializer # NIL THEN
+          cg.currentLine := f.initializer.line; cg.currentColumn := f.initializer.column;
+          cg.statementLine := f.initializer.line; cg.statementColumn := f.initializer.column;
+          AssignToAddress(w, cg, addrText, f.type, f.initializer, f.fieldList.copiesArray)
+        ELSE
+          InitializeAt(w, cg, addrText, f.type)
+        END
+      END;
+      f := f.next
+    END;
+    WriteStr(w, "  ret void"); WriteLn(w);
+    WriteStr(w, "}"); WriteLn(w); WriteLn(w);
+    cg.currentProc[0] := 0X
+  END EmitInitProcedure;
+
+  (* Phase 11 D17: every wanted initialization procedure not yet defined;
+     defining one can ask for more (InitSymbol) *)
+  PROCEDURE EmitInitProcedures(VAR w: Files.Rider; VAR cg: Codegen);
+    VAR entry: InitRecordEntry;
+  BEGIN
+    LOOP
+      entry := cg.initRecords;
+      WHILE (entry # NIL) & (~entry.wanted OR entry.emitted) DO entry := entry.next END;
+      IF entry = NIL THEN EXIT END;
+      entry.emitted := TRUE;
+      EmitInitProcedure(w, cg, entry)
+    END
+  END EmitInitProcedures;
+
+  (* ---- One module at a time (Phase 12 step 2a) ----
+
+     Each module of a program is generated into a .ll of its own, compiled
+     to an object of its own, and the objects are linked. What a module uses
+     of another - a procedure, a variable, a record's tag, type-bound
+     procedures and initialization procedure, a C function it declares - is
+     declared in its .ll: everything that every module in its import closure
+     defines, and the runtime modules the generated code calls without an
+     IMPORT (GarbageCollectedHeap, ModuleTable, Modules). A declaration
+     nothing uses costs nothing: LLVM drops it, and the object does not refer
+     to the symbol. The declarations come from each module's scope, not its
+     syntax tree, so a module known only from its .sym is declared alike. *)
+
+  PROCEDURE FindProgramModule(program: ModuleList; name: ARRAY OF CHAR): ModuleList;
+    VAR m: ModuleList;
+  BEGIN
+    m := program;
+    WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
+    RETURN m
+  END FindProgramModule;
+
+  (* "declare <result> <symbol>(<parameter types>)" for an Oberon procedure of
+     type pt that another module defines: the parameter types EmitProcSignature
+     gives its definition, a receiver's first (and its tag when receiverIsVar) *)
+  PROCEDURE EmitProcDeclaration(VAR w: Files.Rider; VAR cg: Codegen; pt: Types.ProcedureType; symbol: ARRAY OF CHAR;
+                                hasReceiver, receiverIsVar: BOOLEAN);
+    VAR retType, paramType: LongText; wordInt: ValueText; p: Types.Param; first: BOOLEAN; dim: INTEGER;
+  BEGIN
+    IF HasDeclaredExternal(cg, symbol) THEN RETURN END;
+    MarkDeclaredExternal(cg, symbol);
+    WordIntType(wordInt);
+    IF pt.resultType = NIL THEN COPY("void", retType)
+    ELSE LLVMTypes.TypeString(pt.resultType, cg.sizeModel, retType)
+    END;
+    WriteStr(w, "declare "); WriteStr(w, retType); WriteStr(w, " "); WriteStr(w, symbol); WriteStr(w, "(");
+    first := TRUE;
+    IF hasReceiver THEN
+      WriteStr(w, "ptr");
+      IF receiverIsVar THEN WriteStr(w, ", ptr") END;
+      first := FALSE
+    END;
+    p := pt.params;
+    WHILE p # NIL DO
+      IF ~first THEN WriteStr(w, ", ") END;
+      first := FALSE;
+      ParamLLVMType(cg, p, paramType);
+      WriteStr(w, paramType);
+      IF NeedsHiddenTag(p) THEN WriteStr(w, ", ptr") END;
+      FOR dim := 0 TO OpenDimCount(p.type) - 1 DO WriteStr(w, ", "); WriteStr(w, wordInt) END;
+      p := p.next
+    END;
+    WriteStr(w, ")"); WriteLn(w)
+  END EmitProcDeclaration;
+
+  (* "<symbol> = external global i8": a variable or a record's tag another
+     module defines. The type is a placeholder: every use names the type it
+     loads, stores or computes an address with. *)
+  PROCEDURE EmitDataDeclaration(VAR w: Files.Rider; VAR cg: Codegen; symbol: ARRAY OF CHAR);
+  BEGIN
+    IF ~HasDeclaredExternal(cg, symbol) THEN
+      MarkDeclaredExternal(cg, symbol);
+      WriteStr(w, symbol); WriteStr(w, " = external global i8"); WriteLn(w)
+    END
+  END EmitDataDeclaration;
+
+  PROCEDURE ^ DeclareTypeSymbols(VAR w: Files.Rider; VAR cg: Codegen; t: Types.Type; home: ARRAY OF CHAR);
+
+  (* rec's symbols, when rec is a record of the module home: its tag and
+     type-bound procedures if it is named, its initialization procedure if
+     it has one, and those of the records its fields hold *)
+  PROCEDURE DeclareRecordSymbols(VAR w: Files.Rider; VAR cg: Codegen; rec: Types.RecordType; home: ARRAY OF CHAR);
+    VAR d: DeclaredRecord; m: Types.Method; f: Types.Field; symbol: LongText;
+  BEGIN
+    IF rec.moduleName # home THEN RETURN END; (* declared with its own module's *)
+    d := cg.declaredRecords;
+    WHILE (d # NIL) & (d.rec # rec) DO d := d.next END;
+    IF d # NIL THEN RETURN END;
+    NEW(d); d.rec := rec; d.next := cg.declaredRecords; cg.declaredRecords := d;
+    IF rec.name[0] # 0X THEN
+      TagSymbol(rec, symbol); EmitDataDeclaration(w, cg, symbol);
+      m := rec.methods;
+      WHILE m # NIL DO
+        MethodSymbol(rec, m.name, symbol);
+        EmitProcDeclaration(w, cg, m.procType, symbol, TRUE, m.receiverIsVar);
+        m := m.next
+      END
+    END;
+    IF rec.needsInit & (rec.initPath[0] # 0X) THEN
+      COPY("@", symbol); Strcat(symbol, rec.moduleName); Strcat(symbol, "."); Strcat(symbol, rec.initPath);
+      Strcat(symbol, ".-init");
+      IF ~HasDeclaredExternal(cg, symbol) THEN
+        MarkDeclaredExternal(cg, symbol);
+        WriteStr(w, "declare void "); WriteStr(w, symbol); WriteStr(w, "(ptr)"); WriteLn(w)
+      END
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO DeclareTypeSymbols(w, cg, f.type, home); f := f.next END
+  END DeclareRecordSymbols;
+
+  PROCEDURE DeclareTypeSymbols(VAR w: Files.Rider; VAR cg: Codegen; t: Types.Type; home: ARRAY OF CHAR);
+  BEGIN
+    IF t = NIL THEN RETURN END;
+    IF t IS Types.RecordType THEN DeclareRecordSymbols(w, cg, t(Types.RecordType), home)
+    ELSIF t IS Types.PointerType THEN DeclareTypeSymbols(w, cg, t(Types.PointerType).base, home)
+    ELSIF t IS Types.ArrayType THEN DeclareTypeSymbols(w, cg, t(Types.ArrayType).elementType, home)
+    END
+  END DeclareTypeSymbols;
+
+  (* everything module x defines that another module can use *)
+  PROCEDURE DeclareModuleSymbols(VAR w: Files.Rider; VAR cg: Codegen; x: ModuleList);
+    VAR obj: SymbolTable.Object; symbol: ValueText; pt: Types.ProcedureType; p: Types.Param;
+  BEGIN
+    obj := x.scope.objects;
+    WHILE obj # NIL DO
+      IF obj.class = SymbolTable.varClass THEN
+        QualifiedName(x.module.name, obj.name, symbol); EmitDataDeclaration(w, cg, symbol);
+        DeclareTypeSymbols(w, cg, obj.type, x.module.name)
+      ELSIF obj.class = SymbolTable.procClass THEN
+        pt := obj.type(Types.ProcedureType);
+        p := pt.params;
+        WHILE p # NIL DO DeclareTypeSymbols(w, cg, p.type, x.module.name); p := p.next END;
+        IF obj.externalConvention[0] = 0X THEN
+          QualifiedName(x.module.name, obj.name, symbol);
+          EmitProcDeclaration(w, cg, pt, symbol, FALSE, FALSE)
+        ELSIF obj.externalConvention # "VMS" THEN
+          EmitExternalDeclare(w, cg, obj)
+        END
+      ELSIF obj.class = SymbolTable.typeClass THEN
+        DeclareTypeSymbols(w, cg, obj.type, x.module.name)
+      END;
+      obj := obj.next
+    END
+  END DeclareModuleSymbols;
+
+  (* adds x and, through its scope's IMPORTs, every module of the program it
+     reaches to closure, each once *)
+  PROCEDURE CollectClosure(program, x: ModuleList; VAR closure: ClosureModule);
+    VAR c: ClosureModule; obj: SymbolTable.Object; y: ModuleList;
+  BEGIN
+    IF x = NIL THEN RETURN END;
+    c := closure;
+    WHILE (c # NIL) & (c.module # x) DO c := c.next END;
+    IF c # NIL THEN RETURN END;
+    NEW(c); c.module := x; c.next := closure; closure := c;
+    obj := x.scope.objects;
+    WHILE obj # NIL DO
+      IF obj.class = SymbolTable.moduleClass THEN
+        y := FindProgramModule(program, obj.realModuleName);
+        CollectClosure(program, y, closure)
+      END;
+      obj := obj.next
+    END
+  END CollectClosure;
+
+  (* The declarations target needs of the other modules of program: its
+     import closure's, and the runtime modules' the generated code calls *)
+  PROCEDURE EmitImportDeclarations(VAR w: Files.Rider; VAR cg: Codegen; program, target: ModuleList;
+                                   withRuntime: BOOLEAN);
+    VAR closure, c: ClosureModule;
+  BEGIN
+    closure := NIL;
+    CollectClosure(program, target, closure);
+    IF withRuntime THEN
+      CollectClosure(program, FindProgramModule(program, "ModuleTable"), closure);
+      CollectClosure(program, FindProgramModule(program, "GarbageCollectedHeap"), closure);
+      CollectClosure(program, FindProgramModule(program, "Modules"), closure)
+    END;
+    c := closure;
+    WHILE c # NIL DO
+      IF c.module # target THEN DeclareModuleSymbols(w, cg, c.module) END;
+      c := c.next
+    END
+  END EmitImportDeclarations;
+
+  (* "declare void @<name>_init()", once *)
+  PROCEDURE EmitInitDeclaration(VAR w: Files.Rider; VAR cg: Codegen; name: ARRAY OF CHAR);
+    VAR symbol: ValueText;
+  BEGIN
+    COPY("@", symbol); Strcat(symbol, name); Strcat(symbol, "_init");
+    IF ~HasDeclaredExternal(cg, symbol) THEN
+      MarkDeclaredExternal(cg, symbol);
+      WriteStr(w, "declare void "); WriteStr(w, symbol); WriteStr(w, "()"); WriteLn(w)
+    END
+  END EmitInitDeclaration;
+
+  PROCEDURE EmitInitCall(VAR w: Files.Rider; name: ARRAY OF CHAR);
+  BEGIN
+    WriteStr(w, "  call void @"); WriteStr(w, name); WriteStr(w, "_init()"); WriteLn(w)
+  END EmitInitCall;
+
+  (* "@<name>.-key.<O2|OC>.<key>", the symbol that carries a module's key
+     (ModuleInterface.KeyOf), when it has one, and the size model it was
+     compiled for (Phase 12 step 2f): an object of the other model does not
+     define the symbol an importer refers to, so the linker refuses it *)
+  PROCEDURE KeySymbol(name: ARRAY OF CHAR; VAR symbol: ARRAY OF CHAR): BOOLEAN;
+    VAR key: ARRAY ModuleInterface.keyLength + 1 OF CHAR;
+  BEGIN
+    IF ~ModuleInterface.KeyOf(name, key) THEN RETURN FALSE END;
+    COPY("@", symbol); Strcat(symbol, name); Strcat(symbol, ".-key.");
+    IF ConstantEvaluator.sizeModel = MemoryLayout.sizeModelO2 THEN Strcat(symbol, "O2.")
+    ELSE Strcat(symbol, "OC.")
+    END;
+    Strcat(symbol, key);
+    RETURN TRUE
+  END KeySymbol;
+
+  (* Phase 12 step 2b: module keys. A module whose .sym this run wrote or
+     read defines its key's symbol, and every module refers to the keys of
+     the modules it imports, the ones its code was compiled against, from
+     "@<M>.-imports", which @llvm.used keeps even where nothing else uses
+     it. An importer's object therefore links only with an object of the
+     module whose interface it was compiled against: otherwise the linker
+     reports the key's symbol undefined. Phase 12 step 2f: every module also
+     defines "@<M>.-target.<triple>", referred to by nothing, so that its
+     object says which target it was compiled for (read with nm, as poc does
+     for a module given as its .sym and .o). *)
+  PROCEDURE EmitModuleKeys(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode;
+                           triple: ARRAY OF CHAR);
+    VAR symbol: LongText; imports: ARRAY 16384 OF CHAR; import: SyntaxTree.ImportNode; count: INTEGER; text: ValueText;
+  BEGIN
+    IF KeySymbol(module.name, symbol) THEN
+      WriteStr(w, symbol); WriteStr(w, " = constant i8 0"); WriteLn(w)
+    END;
+    WriteStr(w, "@"); WriteStr(w, module.name); WriteStr(w, ".-target."); WriteStr(w, triple);
+    WriteStr(w, " = constant i8 0"); WriteLn(w);
+    imports[0] := 0X; count := 0;
+    import := module.imports;
+    WHILE import # NIL DO
+      IF KeySymbol(import.moduleName, symbol) & ~HasDeclaredExternal(cg, symbol) THEN
+        EmitDataDeclaration(w, cg, symbol);
+        IF count > 0 THEN Strcat(imports, ", ") END;
+        Strcat(imports, "ptr "); Strcat(imports, symbol);
+        INC(count)
+      END;
+      import := import.next
+    END;
+    IF count > 0 THEN
+      text[0] := 0X; AppendLongInt(text, count);
+      WriteStr(w, "@"); WriteStr(w, module.name); WriteStr(w, ".-imports = internal constant [");
+      WriteStr(w, text); WriteStr(w, " x ptr] ["); WriteStr(w, imports); WriteStr(w, "]"); WriteLn(w);
+      WriteStr(w, "@llvm.used = appending global [1 x ptr] [ptr @"); WriteStr(w, module.name);
+      WriteStr(w, '.-imports], section "llvm.metadata"'); WriteLn(w)
+    END
+  END EmitModuleKeys;
+
+  (* The IR of target, one module of program (dependency-ordered, the main
+     module last), for a .ll of its own: its variables, type descriptors,
+     procedures and "@<M>_init", with declarations of what it uses of the
+     others (EmitImportDeclarations); in the main module also "main". Like
+     voc's (__DEFMOD, __MODULE_IMPORT), a module's _init runs its body only
+     the first time it is called, after calling its imports' _init - so
+     each body runs once, after those of the modules it imports, whichever
+     module calls first. main sets up the runtime (Modules.Init,
+     GarbageCollectedHeap.SetStackBase), calls the _init of the runtime
+     modules the generated code uses without an IMPORT (ModuleTable,
+     GarbageCollectedHeap), then the main module's. unsupportedCount is the
+     caller's to reset, once per program. *)
+  PROCEDURE GenerateModule*(program, target: ModuleList; triple: ARRAY OF CHAR; VAR w, body: Files.Rider);
     VAR
       cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments, realign: BOOLEAN;
-      wordInt: ValueText; r: Files.Rider; ch: CHAR; i: INTEGER;
+      isMain: BOOLEAN; td: SyntaxTree.TypeDeclNode; typeObj: SymbolTable.Object; import: SyntaxTree.ImportNode;
+      wordInt, symbol, flag, done, already, first: ValueText; r: Files.Rider; ch: CHAR; i, realignId, debugVersionId: INTEGER;
   BEGIN
-    withRootTables := HasModuleNamed(modules, "ModuleTable");
-    withHeap := HasModuleNamed(modules, "GarbageCollectedHeap");
-    withArguments := HasModuleNamed(modules, "Modules");
-    unsupportedCount := 0;
+    withRootTables := HasModuleNamed(program, "ModuleTable");
+    withHeap := HasModuleNamed(program, "GarbageCollectedHeap");
+    withArguments := HasModuleNamed(program, "Modules");
+    isMain := (target.next = NIL) & ~buildingLibrary;
     cg.currentLine := 0; cg.currentColumn := 0;
     cg.nextTemp := 0; cg.nextLabel := 0; cg.sizeModel := ConstantEvaluator.sizeModel;
     cg.loopExitLabel[0] := 0X; cg.currentProcResultType := NIL; cg.locals := NIL; cg.nestedRoot := NIL;
     cg.declaredExternals := NIL; cg.tdescs := NIL;
     cg.needCharCompare := FALSE; cg.needCharCopy := FALSE; cg.pendingStrings := NIL;
-    cg.needMemmove := FALSE;
+    cg.needMemmove := FALSE; cg.needMemset := FALSE;
     cg.currentBlock[0] := 0X;
     cg.needNilTrap := FALSE; cg.needGuardTrap := FALSE; cg.needWithTrap := FALSE; cg.usedAllocate := FALSE;
     cg.needLengthTrap := FALSE; cg.needOverflowMath := FALSE; cg.needEntierTrap := FALSE;
-    cg.needArrayAssignTrap := FALSE; cg.needHeapTrap := FALSE;
+    cg.needArrayAssignTrap := FALSE; cg.needHeapTrap := FALSE; cg.needReturnTrap := FALSE;
+    cg.needRecordAssignTrap := FALSE; cg.needShortRangeTrap := FALSE; cg.needChrRangeTrap := FALSE;
     cg.currentFile[0] := 0X; cg.currentProc[0] := 0X; cg.statementLine := 0; cg.statementColumn := 0;
     cg.trapSites := NIL; cg.trapSitesTail := NIL; cg.trapSiteCount := 0;
     FOR i := 0 TO noAssertCode DO cg.assertCodes[i] := FALSE END;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
-    cg.heapPresent := withHeap;
+    cg.initRecords := NIL; cg.anonymousInitCount := 0; cg.declaredRecords := NIL;
+    cg.heapPresent := target.module.name = "GarbageCollectedHeap";
     WriteStr(w, 'target datalayout = "');
     IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN WriteStr(w, dataLayoutW32)
     ELSE WriteStr(w, dataLayoutW64)
@@ -6740,106 +8109,163 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, '"'); WriteLn(w);
     WriteStr(w, 'target triple = "'); WriteStr(w, triple); WriteStr(w, '"'); WriteLn(w);
     realign := LLVMTypes.NeedsStackRealignment(triple);
+    (* the metadata numbers: the stack alignment flag first, then under -g
+       the debug information's own *)
+    nextMetadata := 0; realignId := -1; debugVersionId := -1;
+    debugFiles := NIL; debugProcedures := NIL; debugProceduresTail := NIL; debugScope := -1;
+    debugUnits := NIL; debugUnitsTail := NIL; debugUnit := NIL;
+    debugTypes := NIL; debugVariables := NIL; debugOpenArrays := NIL; debugDeclared := FALSE; debugSizeModel := cg.sizeModel;
+    lineHeadLength := 0;
+    IF realign THEN realignId := nextMetadata; INC(nextMetadata) END;
+    IF debugInfo THEN
+      debugVersionId := nextMetadata; debugSubroutineType := nextMetadata + 1;
+      INC(nextMetadata, 2)
+    END;
+    IF realign OR debugInfo THEN
+      WriteStr(w, "!llvm.module.flags = !{");
+      IF realign THEN symbol := "!"; AppendLongInt(symbol, realignId); WriteStr(w, symbol) END;
+      IF realign & debugInfo THEN WriteStr(w, ", ") END;
+      IF debugInfo THEN symbol := "!"; AppendLongInt(symbol, debugVersionId); WriteStr(w, symbol) END;
+      WriteStr(w, "}"); WriteLn(w)
+    END;
     IF realign THEN
       (* see LLVMTypes.NeedsStackRealignment: LLVM assumes a 4-byte aligned
          stack at a call on this target, the C library needs 16 *)
-      WriteStr(w, "!llvm.module.flags = !{!0}"); WriteLn(w);
-      WriteStr(w, '!0 = !{i32 1, !"override-stack-alignment", i32 16}'); WriteLn(w)
+      symbol := "!"; AppendLongInt(symbol, realignId); WriteStr(w, symbol);
+      WriteStr(w, ' = !{i32 1, !"override-stack-alignment", i32 16}'); WriteLn(w)
+    END;
+    IF debugInfo THEN
+      symbol := "!"; AppendLongInt(symbol, debugVersionId); WriteStr(w, symbol);
+      WriteStr(w, ' = !{i32 2, !"Debug Info Version", i32 3}'); WriteLn(w);
+      symbol := "!"; AppendLongInt(symbol, debugSubroutineType); WriteStr(w, symbol);
+      WriteStr(w, " = !DISubroutineType(types: !{})"); WriteLn(w)
     END;
     WriteLn(w);
-    m := modules;
-    WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
-      EmitGlobals(body, cg, m.module);
-      EmitExternalDeclares(body, cg, m.module);
-      EmitTypeDescriptors(body, cg, m.module);
-      IF withRootTables THEN EmitRootTable(body, cg, m.module) END;
-      m := m.next
+    m := target;
+    cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
+    IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
+    EmitImportDeclarations(body, cg, program, target, TRUE);
+    (* the _init procedures this module's calls: its imports', and in the
+       main module the runtime modules' *)
+    import := m.module.imports;
+    WHILE import # NIL DO
+      IF FindProgramModule(program, import.moduleName) # NIL THEN EmitInitDeclaration(body, cg, import.moduleName) END;
+      import := import.next
     END;
-    EmitRuntimeSupport(body, cg);
-    m := modules;
-    WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
-      CollectStringConstantsSeq(body, cg, m.module.statements);
-      IF m.module.declarations # NIL THEN
-        pd := m.module.declarations.procDecls;
-        WHILE pd # NIL DO
-          IF HasBody(pd) THEN CollectProcedureStringConstants(body, cg, pd) END;
-          pd := pd.next
-        END
-      END;
-      m := m.next
+    IF isMain THEN
+      IF withRootTables THEN EmitInitDeclaration(body, cg, "ModuleTable") END;
+      IF withHeap THEN EmitInitDeclaration(body, cg, "GarbageCollectedHeap") END
     END;
     WriteLn(body);
-    m := modules;
-    WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
-      IF m.module.declarations # NIL THEN
-        pd := m.module.declarations.procDecls;
-        WHILE pd # NIL DO
-          IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(body, cg, m.scope, pd)
-          ELSIF HasBody(pd) THEN GenerateMethodDecl(body, cg, m.scope, pd)
-          END;
-          pd := pd.next
-        END
-      END;
-      m := m.next
+    COPY("@", flag); Strcat(flag, m.module.name); Strcat(flag, ".-initialized");
+    WriteStr(body, flag); WriteStr(body, " = internal global i1 false"); WriteLn(body);
+    EmitModuleKeys(body, cg, m.module, triple);
+    EmitGlobals(body, cg, m.module);
+    EmitExternalDeclares(body, cg, m.module);
+    EmitTypeDescriptors(body, cg, m.module);
+    IF withRootTables THEN EmitRootTable(body, cg, m.module) END;
+    EmitRuntimeSupport(body, cg);
+    CollectStringConstantsSeq(body, cg, m.module.statements);
+    CollectDeclarationStrings(body, cg, m.module.declarations);
+    IF m.module.declarations # NIL THEN
+      pd := m.module.declarations.procDecls;
+      WHILE pd # NIL DO
+        IF HasBody(pd) THEN CollectProcedureStringConstants(body, cg, pd) END;
+        pd := pd.next
+      END
     END;
-    m := modules;
-    WHILE m # NIL DO
-      cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
-      WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init() {"); WriteLn(body);
-      EmitEntryLabel(body, cg);
-      IF withRootTables THEN EmitRootTableRegistration(body, cg, m.module) END;
-      GenerateStatementSeq(body, cg, m.module.statements);
-      WriteStr(body, "  ret void"); WriteLn(body);
-      WriteStr(body, "}"); WriteLn(body);
-      WriteLn(body);
-      m := m.next
+    WriteLn(body);
+    IF m.module.declarations # NIL THEN
+      pd := m.module.declarations.procDecls;
+      WHILE pd # NIL DO
+        IF IsOrdinaryProcDecl(pd) THEN GenerateProcedureDecl(body, cg, m.scope, pd)
+        ELSIF HasBody(pd) THEN GenerateMethodDecl(body, cg, m.scope, pd)
+        END;
+        pd := pd.next
+      END
     END;
-    (* A program that contains rtl/llvm/Modules.Mod gets the command line:
-       main takes argc and argv, and hands both to Modules.Init - as
-       words, the way every ADDRESS travels - before any module body runs,
-       since a body may read them. Any other program keeps the
-       argument-less main. *)
-    IF withArguments THEN WriteStr(body, "define i32 @main(i32 %argc, ptr %argv)")
-    ELSE WriteStr(body, "define i32 @main()")
+    IF debugInfo THEN
+      COPY(m.module.name, symbol); Strcat(symbol, "_init");
+      BeginDebugFunction(symbol, cg.currentFile, m.module.line, m.module.column)
     END;
-    (* the process starts main with the stack 4 modulo 16, where a 16-byte
-       aligned frame is assumed below it (LLVMTypes.NeedsStackRealignment) *)
-    IF realign THEN WriteStr(body, ' "stackrealign"') END;
-    WriteStr(body, " {"); WriteLn(body);
+    WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init()");
+    WriteDebugAttachment(body); WriteStr(body, " {"); WriteLn(body);
     EmitEntryLabel(body, cg);
-    IF withArguments THEN
-      WordIntType(wordInt);
-      IF wordInt = "i32" THEN
-        WriteStr(body, "  %argcword = add i32 %argc, 0"); WriteLn(body)
-      ELSE
-        WriteStr(body, "  %argcword = sext i32 %argc to "); WriteStr(body, wordInt); WriteLn(body)
-      END;
-      WriteStr(body, "  %argvword = ptrtoint ptr %argv to "); WriteStr(body, wordInt); WriteLn(body);
-      WriteStr(body, "  call void @Modules.Init("); WriteStr(body, wordInt);
-      WriteStr(body, " %argcword, "); WriteStr(body, wordInt); WriteStr(body, " %argvword)"); WriteLn(body)
+    NewTemp(cg, done); NewLabel(cg, already); NewLabel(cg, first);
+    WriteStr(body, "  "); WriteStr(body, done); WriteStr(body, " = load i1, ptr "); WriteStr(body, flag); WriteLn(body);
+    EmitCondBr(body, done, already, first);
+    EmitLabel(body, cg, already);
+    WriteStr(body, "  ret void"); WriteLn(body);
+    EmitLabel(body, cg, first);
+    WriteStr(body, "  store i1 true, ptr "); WriteStr(body, flag); WriteLn(body);
+    (* in the order of the IMPORT list (voc's is alphabetical) *)
+    import := m.module.imports;
+    WHILE import # NIL DO
+      IF FindProgramModule(program, import.moduleName) # NIL THEN EmitInitCall(body, import.moduleName) END;
+      import := import.next
     END;
-    IF withHeap THEN
-      (* the outermost frame anything can live in: the collector scans the
-         stack from its own frame up to here *)
-      WordIntType(wordInt);
-      WriteStr(body, "  %stackbase = call ptr @llvm.frameaddress.p0(i32 0)"); WriteLn(body);
-      WriteStr(body, "  %stackbaseint = ptrtoint ptr %stackbase to "); WriteStr(body, wordInt); WriteLn(body);
-      WriteStr(body, "  call void @GarbageCollectedHeap.SetStackBase("); WriteStr(body, wordInt);
-      WriteStr(body, " %stackbaseint)"); WriteLn(body)
-    END;
-    m := modules;
-    WHILE m # NIL DO
-      WriteStr(body, "  call void @"); WriteStr(body, m.module.name); WriteStr(body, "_init()"); WriteLn(body);
-      m := m.next
-    END;
-    WriteStr(body, "  ret i32 0"); WriteLn(body);
+    IF withRootTables THEN EmitRootTableRegistration(body, cg, m.module) END;
+    GenerateStatementSeq(body, cg, GenerateDeclarationInits(body, cg, m.module.declarations, m.module.statements));
+    WriteStr(body, "  ret void"); WriteLn(body);
     WriteStr(body, "}"); WriteLn(body);
+    debugScope := -1;
+    WriteLn(body);
+    (* Phase 11 D17: the initialization procedures - of every record the
+       module's TYPE declarations name, which other modules may use, and of
+       the others the code above used *)
+    IF m.module.declarations # NIL THEN
+      td := m.module.declarations.typeDecls;
+      WHILE td # NIL DO
+        typeObj := SymbolTable.FindLocal(m.scope, td.name.name);
+        IF typeObj # NIL THEN CollectInitRecords(cg, typeObj.type) END;
+        td := td.next
+      END
+    END;
+    EmitInitProcedures(body, cg);
+    cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
+    IF isMain THEN
+      (* A program that contains rtl/llvm/Modules.Mod gets the command line:
+         main takes argc and argv, and hands both to Modules.Init - as
+         words, the way every ADDRESS travels - before any module body runs,
+         since a body may read them. Any other program keeps the
+         argument-less main. *)
+      IF withArguments THEN WriteStr(body, "define i32 @main(i32 %argc, ptr %argv)")
+      ELSE WriteStr(body, "define i32 @main()")
+      END;
+      (* the process starts main with the stack 4 modulo 16, where a 16-byte
+         aligned frame is assumed below it (LLVMTypes.NeedsStackRealignment) *)
+      IF realign THEN WriteStr(body, ' "stackrealign"') END;
+      WriteStr(body, " {"); WriteLn(body);
+      EmitEntryLabel(body, cg);
+      IF withArguments THEN
+        WordIntType(wordInt);
+        IF wordInt = "i32" THEN
+          WriteStr(body, "  %argcword = add i32 %argc, 0"); WriteLn(body)
+        ELSE
+          WriteStr(body, "  %argcword = sext i32 %argc to "); WriteStr(body, wordInt); WriteLn(body)
+        END;
+        WriteStr(body, "  %argvword = ptrtoint ptr %argv to "); WriteStr(body, wordInt); WriteLn(body);
+        WriteStr(body, "  call void @Modules.Init("); WriteStr(body, wordInt);
+        WriteStr(body, " %argcword, "); WriteStr(body, wordInt); WriteStr(body, " %argvword)"); WriteLn(body)
+      END;
+      IF withHeap THEN
+        (* the outermost frame anything can live in: the collector scans the
+           stack from its own frame up to here *)
+        WordIntType(wordInt);
+        WriteStr(body, "  %stackbase = call ptr @llvm.frameaddress.p0(i32 0)"); WriteLn(body);
+        WriteStr(body, "  %stackbaseint = ptrtoint ptr %stackbase to "); WriteStr(body, wordInt); WriteLn(body);
+        WriteStr(body, "  call void @GarbageCollectedHeap.SetStackBase("); WriteStr(body, wordInt);
+        WriteStr(body, " %stackbaseint)"); WriteLn(body)
+      END;
+      IF withRootTables THEN EmitInitCall(body, "ModuleTable") END;
+      IF withHeap THEN EmitInitCall(body, "GarbageCollectedHeap") END;
+      EmitInitCall(body, m.module.name);
+      WriteStr(body, "  ret i32 0"); WriteLn(body);
+      WriteStr(body, "}"); WriteLn(body)
+    END;
     EmitCharacterHelpers(body, cg);
     EmitPointerSupport(body, cg);
-    IF withHeap THEN
+    IF isMain & withHeap THEN
       WriteLn(body);
       EmitLine(body, "declare ptr @llvm.frameaddress.p0(i32 immarg)")
     END;
@@ -6856,11 +8282,20 @@ MODULE LLVMCodeGenerator;
         EmitLine(body, "declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)")
       END
     END;
+    IF cg.needMemset THEN
+      WriteLn(body);
+      IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN
+        EmitLine(body, "declare void @llvm.memset.p0.i32(ptr, i8, i32, i1)")
+      ELSE
+        EmitLine(body, "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)")
+      END
+    END;
+    IF debugInfo THEN EmitDebugMetadata(body) END;
     EmitStructTypes(w, cg);
     IF LLVMTypes.StructCount() > 0 THEN WriteLn(w) END;
     Files.Set(r, Files.Base(body), 0);
     Files.Read(r, ch);
     WHILE ~r.eof DO Files.Write(w, ch); Files.Read(r, ch) END
-  END GenerateProgram;
+  END GenerateModule;
 
 END LLVMCodeGenerator.

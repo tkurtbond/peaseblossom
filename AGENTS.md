@@ -95,8 +95,17 @@ bootstraps poc.
   based on Ofront (J. Templ), rebuilt 2026/09/18.
 - **Both paths are the same on every development and test machine**: atla
   (Linux, the development host), the local VMs `cymoril` (OpenBSD i386),
-  `artos` (NetBSD amd64) and `rackhir` (FreeBSD arm64), and the office
-  machines `erekose` (OpenBSD i386) and `terhali` (NetBSD amd64). Programs
+  `artos` (NetBSD amd64), `alerik` (FreeBSD amd64) and `rackhir` (FreeBSD
+  arm64), and the office
+  machines `erekose` (OpenBSD i386) and `terhali` (NetBSD amd64). **Which
+  run when** (user, 2026-09-26): a change is checked (`make check`, and
+  `gmake check` on each VM) on atla, cymoril, artos and alerik (since
+  2026-09-27) before it is committed.
+  rackhir is emulated arm64, so slow; it is the only non-x86 machine and
+  runs as a separate stream, on commits already pushed: after changes where
+  the architecture matters (code for calls, arithmetic and memory layout,
+  the runtime's C calls, the collector) and at each phase's close-out. What
+  it finds is fixed in a later commit. Programs
   voc builds link against `<voc>/lib/libvoc-O2.so` (or `-OC`), which only
   Linux finds unaided. A non-interactive `ssh host cmd` gets neither
   `LD_LIBRARY_PATH` nor voc on `PATH`, so `test/testenv.sh` sets both itself
@@ -135,6 +144,14 @@ for poc unless it adopted them:
 - Run-time checks: `-a` (assert), `-t` (type guard) and `-x` (index) are on
   by default, `-r` (range) is off.
 
+**Which of voc's options poc has** (Phase 12 step 1, decided with the user
+2026-09-27; `doc/voc-options.md` has the table, option by option): `-r` is
+`poc -range-checks`, `-M` is `-static`, `-V` is `-verbose` (the clang command),
+and `-link <arg>` stands for voc's `LDFLAGS`/`LDLIBS`. `-S` and `-m` are
+`-emit-llvm-ir` and `-build`; `-c` is `-compile` (step 2f). poc's checks
+cannot be turned off (`-a`, `-t`, `-x`, `-p`); `-e`/`-s`/`-F`, `-f`, `-OV` and
+`-A..` do not apply.
+
 ## VAX/VMS documentation: the target is VMS 5.5-2
 
 The VMS target is **VAX/VMS 5.5-2** (August 1992). Take facts about the
@@ -148,7 +165,9 @@ under `VSI/` and the `HPE_*` files) are context for a concept at most.
 `~/Reference/Computer/OS/VMS/` holds what we have; a manual found later is
 saved there under its original file name. `vax-vms-manuals-to-get.md` lists
 which release each local file belongs to, what to fetch and why, and where
-(bitsavers); none of it has been downloaded yet.
+(bitsavers), and how to fetch it (a browser-like `User-Agent`); so far only
+the calling standard (`AA-LA66B`) and the Linker manual with the object
+language (`AA-LA62A`) are downloaded.
 
 ## Toolchain: LLVM (clang/llc)
 
@@ -162,10 +181,44 @@ shells out to these rather than linking against LLVM's own C++ API.
   triple: `x86_64-redhat-linux-gnu`; host default data layout:
   `e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128`
   (from `clang -S -emit-llvm` on an empty `int main(){return 0;}`).
-- **Build invocation, decided (`PLAN.md` Phase 8 step 1): single-step
-  `clang`.** `clang <file>.ll -o <exe>` accepts textual LLVM IR directly and
-  handles assembling+linking itself (confirmed with a hand-written
-  `write(2)`-based "hello world" `.ll`, compiled and run successfully). A
+- **Build invocation: one `.ll` and one object per module** (Phase 12 step
+  2a, 2026-09-27; until then a single `clang <program>.ll -o <exe>`, Phase 8
+  step 1). `-emit-llvm-ir` writes `<Module>.ll` for every module of the
+  program, `-build` also runs `clang -c` on each to `<Module>.o` and links
+  the objects with one more `clang`. Each module's `_init` runs its body
+  once, after calling its imports' `_init` in IMPORT-list order (voc's
+  order is alphabetical); `main`, in the main module's `.ll`, calls the
+  runtime's and then the main module's. Each module's object defines
+  `<Module>.-key.<hash of its .sym>` and refers to its imports' keys, so an
+  importer links only with the interface it was compiled against (step 2b;
+  `-build` and `-emit-llvm-ir` write the main module's `.sym` too).
+  **Libraries** (step 2c): `poc -library <name> <file>...` builds the
+  modules of those files (their imports must be among them or in a library)
+  into `<output-dir>/<triple>/<O2|OC>/`: `.sym`/`.ll`/`.o` per module,
+  `lib<name>.a`, `lib<name>.so` (`.so.0.0` on OpenBSD), the manifest
+  `<name>.library` and `<Module>.owner` files. The library path is
+  `-library-path` (repeatable), then `POC_LIBRARY_PATH`, then
+  `<poc's dir>/../lib/poc`; `-clear-library-path` drops all three. A
+  module a library on the path has is taken from it, never from source;
+  `-build` links the libraries' archives, `-shared-libraries` their shared
+  libraries. poc refuses a module two libraries have and a library
+  compiled against another's old keys (`src/driver/Libraries.Mod`), warns
+  when a library's module hides another library's or differs from source
+  beside the program, and follows an import found nowhere with notes on
+  where it looked (step 2e). A module with no source can be given as its
+  `.sym` and `.o`, to `-build` (found on the import path) and to `-library`
+  (named by either file): poc checks the pair against the object's own
+  symbols, read with `nm -P`, where each module defines
+  `<M>.-key.<O2|OC>.<hash>` and `<M>.-target.<triple>` and refers to its
+  imports' keys (step 2f; every object is compiled `-fPIC`). `poc -compile
+  <file>...` (voc's `-c`) makes a module's `.sym` and `.o` without a
+  program. `poc -install-library <name>` copies a library into `-output-dir`
+  or poc's own `../lib/poc`; a program's run-time search path has each
+  shared library's directory relative to it (`$ORIGIN`) and absolute.
+  `make` builds `rtl/llvm` as the library `poc-rtl` into
+  `build/lib/poc/<host triple>/{O2,OC}` (step 2d), so a program links the
+  runtime already compiled; the bootstrap stages use `-clear-library-path`
+  and compile it from source. A
   `.ll` file emitted by `LLVMCodeGenerator.Mod` must set its own `target
   datalayout`/`target triple` explicitly (matching the values above for the
   host, or the `-target` flag's chosen triple) — omitting them makes clang
@@ -193,6 +246,65 @@ shells out to these rather than linking against LLVM's own C++ API.
   poc must run on a Pentium II, so no SSE2). `SYSTEM.GET`/`PUT`/`MOVE` are
   volatile, so an optimized build keeps them. `make check-opt2` builds
   everything at `-O2`, Stage 1/2 included (in `build/opt2`).
+- **Link options** (Phase 12 step 1, 2026-09-27): `poc -static` makes
+  `-build` pass clang `-static` (a fully static executable; on Linux it needs
+  `glibc-static`, on OpenBSD it is a static PIE); `poc -link <arg>`, repeatable,
+  passes `<arg>` to clang as one word, after the objects and before `-lm`
+  (`-link -lz`, `-link -L<dir>`); `poc -verbose` prints the clang command on
+  stderr. Fixture `poc-link-flags`.
+- **Whole-program optimization** (Phase 12 step 2g, 2026-09-27): `poc
+  -lto` compiles each module to LLVM bitcode (`clang -c -flto`) and links
+  with `-flto` (on NetBSD also `-fuse-ld=lld`: its GNU ld cannot), so
+  LLVM inlines and removes code across modules. A module given as its
+  `.sym` and `.ll` takes part (its key, target and imports read from the
+  text, `Libraries.ReadIR`); a library built with `-lto` says `lto` in its
+  manifest and makes any link of its archive use `-flto`. A bitcode `.o`
+  beside a `.sym` is refused without its `.ll`: `nm` cannot read bitcode
+  on OpenBSD or NetBSD. For 32-bit x86 NetBSD `-lto` is ignored with a
+  warning (neither GNU ld nor lld links bitcode into an executable that
+  runs there). `make check-lto` runs the suite with `-lto` (not
+  part of `make check`). Fixture `llvm-lto`.
+- **Debug information** (Phase 11 A16, stage (a), 2026-09-26): `poc -g`
+  emits DWARF metadata for gdb and lldb - the procedures' names
+  (`List.Insert`, `List.Insert.Find` for a nested one,
+  `List.NodeDesc.Print` for a type-bound one, `List_init` for a module
+  body) and the source lines, so a breakpoint by name or `file:line` and a
+  backtrace work. It leaves the optimization level alone; debug at
+  `-opt 0` or `-opt g`. The language claimed is C (`DW_LANG_C99`): DWARF
+  has no code for Oberon, and lldb supports neither Modula-2 nor Pascal
+  (gdb users can `set language modula-2`). Every instruction of a
+  procedure or module body carries its statement's position, attached by
+  `LLVMCodeGenerator.WriteLn`; a procedure's prologue carries none, so a
+  breakpoint stops at the first statement. Stage (b), the same day:
+  parameters (value and plain `VAR`) and local variables of the basic
+  types, so `info args`, `info locals`, `print` and lldb's `frame
+  variable` show them (`LLVMCodeGenerator.DeclareDebugVariable`, a call of
+  `llvm.dbg.declare` on each one's slot). Each basic type is a typedef of a
+  DWARF base type under its Oberon name, so lldb shows `(INTEGER) n = 3`,
+  not `(short)`. A one-byte integer (`SHORTINT`, `SYSTEM.INT8`) shows as
+  a character too (`5 '\005'`), since C's only one-byte integer is
+  `char`; a `SET` as its number. Stage (c), the same day: records (field
+  by field, the base type's first, as a structure named `Module.T`, or
+  `Module.P^` for the record a `P = POINTER TO RECORD ...` points to),
+  fixed arrays, pointers (to what they point to, so `p->next->x` works),
+  procedure variables, `SYSTEM.PTR`, `VAR`
+  record parameters and receivers, and module variables. Each module is a
+  compile unit of its own, so a name finds the current module's variable
+  first. Fixture `llvm-debug-info` (gdb 7 or later - on OpenBSD the
+  `gdb` package's `egdb`, as the base gdb 6.3 cannot read it - else lldb;
+  skipped with neither). Stage (d), the same day: an open-array
+  parameter is an array whose lengths are artificial variables `LEN(a)`,
+  `LEN(a, 1)`, ... (as clang describes a C variable-length array); a
+  pointer to an open array points to its heap block, `{len, data}`, with
+  `data`'s counts DWARF expressions that read `len`; a nested procedure
+  shows the enclosing procedure's variables it uses. A by-reference
+  argument is described through a stack slot (`DW_OP_deref`), since its
+  register is reused. gdb shows all of it; lldb 22 does not evaluate
+  those counts: element access (`p->data[2]`, `a[1]`) and the lengths are
+  right, but it prints a multi-dimensional open array, and a heap open
+  array as a whole, wrongly or empty - as it does C's multi-dimensional
+  variable-length arrays. A `VAR` record shows its static type; its
+  hidden type tag is not used.
 - `llc` is **not** part of the normal build path — reserved as an optional
   `-dump-asm`-style debug aid for reading generated assembly in golden-file
   tests. Usage: `llc <file>.ll -o <file>.s` (its default output filetype is
@@ -255,7 +367,8 @@ fits.
 Every dereference is checked for NIL (exit 4). A `NEW` that fails leaves the
 pointer NIL, unless poc is given `-trap-heap-exhausted`, which makes it trap
 (exit 11). `&` and `OR` short-circuit. `NEW` pulls in
-`GarbageCollectedHeap`/`ModuleTable` from the import path.
+`GarbageCollectedHeap`/`ModuleTable` from the import path. Every variable
+starts at zero, locals included (Phase 11 D16, 2026-09-26).
 
 ### Type-bound procedures and `VAR` record parameters (implemented, Phase 9 step 6)
 
@@ -311,12 +424,31 @@ Declare-before-use is unchanged; a late declaration may not hide a name
 visible from an enclosing scope; a `POINTER TO` base must come before the
 next procedure. `-strict` rejects it.
 
+### Variable initializers (decided and implemented, Phase 11 A23, 2026-09-26)
+
+`VAR a, b: T := e;` - an assignment of `e` to each variable, evaluated once
+per variable, before the body (locals on every entry), in declaration order.
+Any expression; it sees only names declared before its `:=`. `-strict` rejects
+it.
+
+### Record field initializers (decided and implemented, Phase 11 D17, 2026-09-26)
+
+`RECORD x, y: INTEGER := e END` - the fields' defaults, assigned (each field
+its own evaluation of `e`) whenever a record of the type is made: a variable,
+`NEW`, a record inside one; not a copy. Base type's first. Any expression, but
+none of a procedure's variables or procedures. Works across modules (`.sym`
+writes `:= ..`). `-strict` rejects it.
+
 ### What traps, and what does not (Phase 11 C9)
 
-The tables of trap statuses 2-11, what ends a program silently, what nothing
+The tables of trap statuses 2-14, what ends a program silently, what nothing
 stops, and what is a compile-time error. `poc -trap-location` (C7) prefixes
 every trap message with `file:line:column:` and ends it with the procedure,
-"(in List.Insert)".
+"(in List.Insert)". Since Phase 12 step 1 (2026-09-27) a function that reaches
+its `END` traps (12), a record assigned to a `VAR` parameter or `p^` whose
+dynamic type extends its static type traps (13), both always, as the report
+requires; `-range-checks` makes `SHORT`/`CHR` of a value that does not fit
+trap (14). A bare `RETURN` in a function is a compile-time error.
 
 ### ASSERT (decided and implemented, 2026-09-25)
 
@@ -351,18 +483,21 @@ related pointers and procedure values of one type.
 voc's `x-` formal parameter (by reference, read-only; Oakwood 5.13 recommends
 against it) is not in poc. A mark on a formal parameter is a syntax error.
 
-### Underscores and dollar signs in identifiers (considered, not adopted)
+### Underscores and dollar signs in identifiers (decided and implemented, Phase 11 A25, 2026-09-26)
 
-Neither `_` nor `$` (Phase 11 A25, 2026-09-26), as in `Oberon2.pdf` and voc;
-a VMS name like `SYS$QIO` goes in an external procedure's linkage-name
-string. The scanner reports one clear error for each use of such a name.
+Both, anywhere a letter may be, first included, for VMS names such as
+`SS$_NORMAL` and `DSC$W_LENGTH` in modules of constants generated from
+STARLET. `-strict` rejects them. The backend's own names contain `-` so they
+never match a user's.
 
 ## Project state
 
-Phases 0-10 of `PLAN.md` are complete: poc compiles itself through the LLVM
-backend (Stage 1 and Stage 2 reach a fixed point). Phase 11 (settling open design
-questions and the TODO backlog) is in progress: `doc/phase-11-inventory.md`
-lists every item and its verdict. `PLAN.md` has the roadmap and each phase's
+Phases 0-11 of `PLAN.md` are complete: poc compiles itself through the LLVM
+backend (Stage 1 and Stage 2 reach a fixed point), and Phase 11 (settling open
+design questions and the TODO backlog) closed on 2026-09-26:
+`doc/phase-11-inventory.md` lists every item and its verdict. Phase 12
+(library and module support: voc's options, libraries, voc's module
+inventory) is next. `PLAN.md` has the roadmap and each phase's
 design. `doc/project-history.md` has the account that used to be here,
 including what was found while building the front end and `.sym` files
 (Phases 0-7), the import search path, `-output-dir`, real `CONST` export and

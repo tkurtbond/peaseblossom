@@ -1,0 +1,3 @@
+/* Phase 12 step 1: a C library the fixture builds and links with poc -link.
+   Not named *.c: testenv.sh deletes those, as voc's intermediate files. */
+int poc_fixture_triple(int x) { return 3 * x; }

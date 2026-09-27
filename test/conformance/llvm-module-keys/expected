@@ -1,0 +1,15 @@
+== client and lib v1
+42 42
+@client.-key.O2.<hash> = constant i8 0
+@Out.-key.O2.<hash> = external global i8
+@lib.-key.O2.<hash> = external global i8
+@client.-imports = internal constant [2 x ptr] [ptr @Out.-key.O2.<hash>, ptr @lib.-key.O2.<hash>]
+@lib.-key.O2.<hash> = constant i8 0
+== lib with a new body
+lib's key: unchanged
+link: ok
+43 42
+== lib with a new interface
+lib's key: changed
+link: failed
+the linker names lib.-key.<the hash client.o was compiled against> undefined

@@ -1,0 +1,49 @@
+== 1. from source
+semantic OK, wrote plain
+sum 110
+list 55
+semantic OK, wrote lto
+same output
+Small.Twice in plain
+no Small.Twice in lto
+== 2. as .sym and .ll
+semantic OK, wrote Small.o
+2
+sum 110
+list 55
+-- without -lto
+semantic OK, wrote main
+sum 110
+list 55
+-- .sym, .o and .ll
+semantic OK, wrote Small.o
+1
+sum 110
+list 55
+2
+sum 110
+list 55
+-- a bitcode .o alone
+poc: ../bitcode/Small.o is LLVM bitcode (from -lto); give Small.ll beside it instead
+== 3. libraries
+semantic OK, wrote library small in lib/<triple>/O2
+lto
+1
+sum 110
+list 55
+semantic OK, wrote mains
+sum 110
+list 55
+-- poc-rtl built with -lto
+semantic OK, wrote library poc-rtl in rtl/<triple>/O2
+semantic OK, wrote main
+sum 110
+list 55
+semantic OK, wrote main
+sum 110
+list 55
+== 4. refused
+poc: ../oc/Small.ll was compiled for -OC, and this is -O2
+poc: ../other/Small.ll was compiled for vax-dec-vms, not <triple>
+poc: clang cannot compile ../broken/Small.ll (written for another version of LLVM?); compile Small again
+poc: build failed

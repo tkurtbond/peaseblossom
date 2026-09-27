@@ -21,7 +21,7 @@ if cmp -s lib.sym lib.sym.v1
 then echo "lib.sym: STALE (not regenerated)" >>../result
 else echo "lib.sym: regenerated from source" >>../result
 fi
-awk '/^@(lib\.ShapeDesc|client\.View)\.tdesc = /{ name=$1; getline; getline; sub(/,/, "", $2); print name, "size", $2 }' client.ll >sizes
+awk '/^@(lib\.ShapeDesc|client\.View)\.tdesc = /{ name=$1; getline; getline; sub(/,/, "", $2); print name, "size", $2 }' lib.ll client.ll >sizes
 cat sizes >>../result
 lib=$(grep '^@lib.ShapeDesc' sizes | cut -d' ' -f3)
 view=$(grep '^@client.View' sizes | cut -d' ' -f3)

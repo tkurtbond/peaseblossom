@@ -1,0 +1,15 @@
+semantic OK, wrote llvm-underscore-dollar
+15
+success test ok
+10 99 99
+42
+5 3 5
+MODULE Ss$Def;
+  CONST
+    SS$_NORMAL* = 1;
+    SS$_ACCVIO* = 12;
+    $first* = 14;
+  TYPE
+    DSC$DESCRIPTOR* = RECORD DSC$W_LENGTH*: INTEGER; DSC$B_DTYPE*: CHAR; DSC$B_CLASS*: CHAR; $init*: INTEGER := .. END;
+  PROCEDURE^ LIB$SUCCESS*(status: LONGINT): BOOLEAN;
+END Ss$Def.

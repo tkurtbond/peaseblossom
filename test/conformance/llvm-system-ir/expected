@@ -4,6 +4,10 @@ target triple = "i686-unknown-linux-gnu"
 
 %system.Pair = type { i16, i16 }
 
+
+@system.-initialized = internal global i1 false
+@system.-key.O2.eaab1b6afd4e1d98 = constant i8 0
+@system.-target.i686-unknown-linux-gnu = constant i8 0
 @system.addr = global i32 zeroinitializer
 @system.other = global i32 zeroinitializer
 @system.i = global i16 zeroinitializer
@@ -81,19 +85,22 @@ declare void @exit(i32)
 @.str.system.L130.C29 = private unnamed_addr constant [9 x i8] c"FAIL 34 \00"
 @.str.system.L131.C15 = private unnamed_addr constant [3 x i8] c"OK\00"
 
-define i32 @system.AddressOf(ptr %v) {
+define i32 @system.AddressOf(ptr %p.v) {
 entry:
-  %t1 = ptrtoint ptr %v to i32
+  %t1 = ptrtoint ptr %p.v to i32
   ret i32 %t1
 L1:
-  ret i32 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
-define void @system.Bump(i32 %a) {
+define void @system.Bump(i32 %p.a) {
 entry:
   %t2 = alloca i32
-  store i32 %a, ptr %t2
+  store i32 %p.a, ptr %t2
   %t3 = alloca i16
+  store i16 zeroinitializer, ptr %t3
   %t4 = load i32, ptr %t2
   %t5 = inttoptr i32 %t4 to ptr
   %t6 = load volatile i16, ptr %t5, align 1
@@ -110,1168 +117,1174 @@ entry:
 
 define void @system_init() {
 entry:
-  store i16 1234, ptr @system.i
-  %t12 = ptrtoint ptr @system.i to i32
-  store i32 %t12, ptr @system.addr
-  %t13 = load i32, ptr @system.addr
-  %t14 = inttoptr i32 %t13 to ptr
-  %t15 = load volatile i16, ptr %t14, align 1
-  store i16 %t15, ptr @system.j
-  %t16 = load i16, ptr @system.j
-  %t17 = icmp ne i16 %t16, 1234
-  %t18 = zext i1 %t17 to i8
-  %t19 = icmp ne i8 %t18, 0
-  br i1 %t19, label %L3, label %L4
-L3:
-  %t20 = sext i8 1 to i32
-  %t21 = sext i8 8 to i64
-  call void @write(i32 %t20, ptr @.str.system.L49.C32, i64 %t21)
-  br label %L2
-L4:
-  br label %L2
+  %t12 = load i1, ptr @system.-initialized
+  br i1 %t12, label %L2, label %L3
 L2:
-  %t22 = sext i8 99 to i16
-  store i16 %t22, ptr @system.k
-  %t23 = load i32, ptr @system.addr
-  %t24 = inttoptr i32 %t23 to ptr
-  %t25 = load i16, ptr @system.k
-  store volatile i16 %t25, ptr %t24, align 1
-  %t26 = load i16, ptr @system.i
-  %t27 = sext i8 99 to i16
-  %t28 = icmp ne i16 %t26, %t27
-  %t29 = zext i1 %t28 to i8
-  %t30 = icmp ne i8 %t29, 0
-  br i1 %t30, label %L6, label %L7
-L6:
-  %t31 = sext i8 1 to i32
-  %t32 = sext i8 8 to i64
-  call void @write(i32 %t31, ptr @.str.system.L52.C30, i64 %t32)
-  br label %L5
-L7:
-  br label %L5
+  ret void
+L3:
+  store i1 true, ptr @system.-initialized
+  store i16 1234, ptr @system.i
+  %t13 = ptrtoint ptr @system.i to i32
+  store i32 %t13, ptr @system.addr
+  %t14 = load i32, ptr @system.addr
+  %t15 = inttoptr i32 %t14 to ptr
+  %t16 = load volatile i16, ptr %t15, align 1
+  store i16 %t16, ptr @system.j
+  %t17 = load i16, ptr @system.j
+  %t18 = icmp ne i16 %t17, 1234
+  %t19 = zext i1 %t18 to i8
+  %t20 = icmp ne i8 %t19, 0
+  br i1 %t20, label %L5, label %L6
 L5:
-  %t33 = ptrtoint ptr @system.i to i32
-  %t34 = load i32, ptr @system.addr
-  %t35 = icmp ne i32 %t33, %t34
-  %t36 = zext i1 %t35 to i8
-  %t37 = icmp ne i8 %t36, 0
-  br i1 %t37, label %L9, label %L10
-L9:
-  %t38 = sext i8 1 to i32
-  %t39 = sext i8 8 to i64
-  call void @write(i32 %t38, ptr @.str.system.L53.C44, i64 %t39)
-  br label %L8
-L10:
-  br label %L8
+  %t21 = sext i8 1 to i32
+  %t22 = sext i8 8 to i64
+  call void @write(i32 %t21, ptr @.str.system.L49.C32, i64 %t22)
+  br label %L4
+L6:
+  br label %L4
+L4:
+  %t23 = sext i8 99 to i16
+  store i16 %t23, ptr @system.k
+  %t24 = load i32, ptr @system.addr
+  %t25 = inttoptr i32 %t24 to ptr
+  %t26 = load i16, ptr @system.k
+  store volatile i16 %t26, ptr %t25, align 1
+  %t27 = load i16, ptr @system.i
+  %t28 = sext i8 99 to i16
+  %t29 = icmp ne i16 %t27, %t28
+  %t30 = zext i1 %t29 to i8
+  %t31 = icmp ne i8 %t30, 0
+  br i1 %t31, label %L8, label %L9
 L8:
-  %t40 = ptrtoint ptr @system.i to i32
-  %t41 = ptrtoint ptr @system.j to i32
-  %t42 = icmp eq i32 %t40, %t41
-  %t43 = zext i1 %t42 to i8
-  %t44 = icmp ne i8 %t43, 0
-  br i1 %t44, label %L12, label %L13
-L12:
-  %t45 = sext i8 1 to i32
-  %t46 = sext i8 8 to i64
-  call void @write(i32 %t45, ptr @.str.system.L54.C53, i64 %t46)
-  br label %L11
-L13:
-  br label %L11
+  %t32 = sext i8 1 to i32
+  %t33 = sext i8 8 to i64
+  call void @write(i32 %t32, ptr @.str.system.L52.C30, i64 %t33)
+  br label %L7
+L9:
+  br label %L7
+L7:
+  %t34 = ptrtoint ptr @system.i to i32
+  %t35 = load i32, ptr @system.addr
+  %t36 = icmp ne i32 %t34, %t35
+  %t37 = zext i1 %t36 to i8
+  %t38 = icmp ne i8 %t37, 0
+  br i1 %t38, label %L11, label %L12
 L11:
-  %t47 = load i32, ptr @system.addr
-  call void @system.Bump(i32 %t47)
-  %t48 = load i16, ptr @system.i
-  %t49 = sext i8 100 to i16
-  %t50 = icmp ne i16 %t48, %t49
-  %t51 = zext i1 %t50 to i8
-  %t52 = icmp ne i8 %t51, 0
-  br i1 %t52, label %L15, label %L16
-L15:
-  %t53 = sext i8 1 to i32
-  %t54 = sext i8 8 to i64
-  call void @write(i32 %t53, ptr @.str.system.L56.C31, i64 %t54)
-  br label %L14
-L16:
-  br label %L14
+  %t39 = sext i8 1 to i32
+  %t40 = sext i8 8 to i64
+  call void @write(i32 %t39, ptr @.str.system.L53.C44, i64 %t40)
+  br label %L10
+L12:
+  br label %L10
+L10:
+  %t41 = ptrtoint ptr @system.i to i32
+  %t42 = ptrtoint ptr @system.j to i32
+  %t43 = icmp eq i32 %t41, %t42
+  %t44 = zext i1 %t43 to i8
+  %t45 = icmp ne i8 %t44, 0
+  br i1 %t45, label %L14, label %L15
 L14:
-  %t55 = call i32 @system.AddressOf(ptr @system.j)
-  %t56 = ptrtoint ptr @system.j to i32
-  %t57 = icmp ne i32 %t55, %t56
-  %t58 = zext i1 %t57 to i8
-  %t59 = icmp ne i8 %t58, 0
-  br i1 %t59, label %L18, label %L19
-L18:
-  %t60 = sext i8 1 to i32
-  %t61 = sext i8 8 to i64
-  call void @write(i32 %t60, ptr @.str.system.L57.C52, i64 %t61)
-  br label %L17
-L19:
-  br label %L17
+  %t46 = sext i8 1 to i32
+  %t47 = sext i8 8 to i64
+  call void @write(i32 %t46, ptr @.str.system.L54.C53, i64 %t47)
+  br label %L13
+L15:
+  br label %L13
+L13:
+  %t48 = load i32, ptr @system.addr
+  call void @system.Bump(i32 %t48)
+  %t49 = load i16, ptr @system.i
+  %t50 = sext i8 100 to i16
+  %t51 = icmp ne i16 %t49, %t50
+  %t52 = zext i1 %t51 to i8
+  %t53 = icmp ne i8 %t52, 0
+  br i1 %t53, label %L17, label %L18
 L17:
-  store i32 123456789, ptr @system.l
-  %t62 = ptrtoint ptr @system.l to i32
-  store i32 %t62, ptr @system.addr
-  %t63 = load i32, ptr @system.addr
-  %t64 = inttoptr i32 %t63 to ptr
-  %t65 = load volatile i32, ptr %t64, align 1
-  store i32 %t65, ptr @system.m
-  %t66 = load i32, ptr @system.m
-  %t67 = icmp ne i32 %t66, 123456789
-  %t68 = zext i1 %t67 to i8
-  %t69 = icmp ne i8 %t68, 0
-  br i1 %t69, label %L21, label %L22
-L21:
-  %t70 = sext i8 1 to i32
-  %t71 = sext i8 8 to i64
-  call void @write(i32 %t70, ptr @.str.system.L60.C37, i64 %t71)
-  br label %L20
-L22:
-  br label %L20
+  %t54 = sext i8 1 to i32
+  %t55 = sext i8 8 to i64
+  call void @write(i32 %t54, ptr @.str.system.L56.C31, i64 %t55)
+  br label %L16
+L18:
+  br label %L16
+L16:
+  %t56 = call i32 @system.AddressOf(ptr @system.j)
+  %t57 = ptrtoint ptr @system.j to i32
+  %t58 = icmp ne i32 %t56, %t57
+  %t59 = zext i1 %t58 to i8
+  %t60 = icmp ne i8 %t59, 0
+  br i1 %t60, label %L20, label %L21
 L20:
-  store i64 1234567890123, ptr @system.h
-  %t72 = ptrtoint ptr @system.h to i32
-  store i32 %t72, ptr @system.addr
-  %t73 = sext i8 0 to i64
-  store i64 %t73, ptr @system.h
-  %t74 = ptrtoint ptr @system.h to i32
-  %t75 = inttoptr i32 %t74 to ptr
-  %t76 = load volatile i64, ptr %t75, align 1
-  store i64 %t76, ptr @system.h
-  store i8 113, ptr @system.c
-  %t77 = ptrtoint ptr @system.c to i32
-  %t78 = inttoptr i32 %t77 to ptr
-  %t79 = load volatile i8, ptr %t78, align 1
-  store i8 %t79, ptr @system.d
-  %t80 = load i8, ptr @system.d
-  %t81 = icmp ne i8 %t80, 113
-  %t82 = zext i1 %t81 to i8
-  %t83 = icmp ne i8 %t82, 0
-  br i1 %t83, label %L24, label %L25
-L24:
-  %t84 = sext i8 1 to i32
-  %t85 = sext i8 8 to i64
-  call void @write(i32 %t84, ptr @.str.system.L64.C31, i64 %t85)
-  br label %L23
-L25:
-  br label %L23
+  %t61 = sext i8 1 to i32
+  %t62 = sext i8 8 to i64
+  call void @write(i32 %t61, ptr @.str.system.L57.C52, i64 %t62)
+  br label %L19
+L21:
+  br label %L19
+L19:
+  store i32 123456789, ptr @system.l
+  %t63 = ptrtoint ptr @system.l to i32
+  store i32 %t63, ptr @system.addr
+  %t64 = load i32, ptr @system.addr
+  %t65 = inttoptr i32 %t64 to ptr
+  %t66 = load volatile i32, ptr %t65, align 1
+  store i32 %t66, ptr @system.m
+  %t67 = load i32, ptr @system.m
+  %t68 = icmp ne i32 %t67, 123456789
+  %t69 = zext i1 %t68 to i8
+  %t70 = icmp ne i8 %t69, 0
+  br i1 %t70, label %L23, label %L24
 L23:
-  %t86 = ptrtoint ptr @system.d to i32
-  %t87 = inttoptr i32 %t86 to ptr
-  %t88 = load i8, ptr @system.c
-  store volatile i8 %t88, ptr %t87, align 1
-  %t89 = fptrunc double 2.5 to float
-  store float %t89, ptr @system.r
-  %t90 = ptrtoint ptr @system.r to i32
-  %t91 = inttoptr i32 %t90 to ptr
-  %t92 = load volatile float, ptr %t91, align 1
-  store float %t92, ptr @system.r2
-  %t93 = load float, ptr @system.r2
-  %t94 = fptrunc double 2.5 to float
-  %t95 = fcmp une float %t93, %t94
-  %t96 = zext i1 %t95 to i8
-  %t97 = icmp ne i8 %t96, 0
-  br i1 %t97, label %L27, label %L28
-L27:
-  %t98 = sext i8 1 to i32
-  %t99 = sext i8 8 to i64
-  call void @write(i32 %t98, ptr @.str.system.L67.C32, i64 %t99)
-  br label %L26
-L28:
-  br label %L26
+  %t71 = sext i8 1 to i32
+  %t72 = sext i8 8 to i64
+  call void @write(i32 %t71, ptr @.str.system.L60.C37, i64 %t72)
+  br label %L22
+L24:
+  br label %L22
+L22:
+  store i64 1234567890123, ptr @system.h
+  %t73 = ptrtoint ptr @system.h to i32
+  store i32 %t73, ptr @system.addr
+  %t74 = sext i8 0 to i64
+  store i64 %t74, ptr @system.h
+  %t75 = ptrtoint ptr @system.h to i32
+  %t76 = inttoptr i32 %t75 to ptr
+  %t77 = load volatile i64, ptr %t76, align 1
+  store i64 %t77, ptr @system.h
+  store i8 113, ptr @system.c
+  %t78 = ptrtoint ptr @system.c to i32
+  %t79 = inttoptr i32 %t78 to ptr
+  %t80 = load volatile i8, ptr %t79, align 1
+  store i8 %t80, ptr @system.d
+  %t81 = load i8, ptr @system.d
+  %t82 = icmp ne i8 %t81, 113
+  %t83 = zext i1 %t82 to i8
+  %t84 = icmp ne i8 %t83, 0
+  br i1 %t84, label %L26, label %L27
 L26:
+  %t85 = sext i8 1 to i32
+  %t86 = sext i8 8 to i64
+  call void @write(i32 %t85, ptr @.str.system.L64.C31, i64 %t86)
+  br label %L25
+L27:
+  br label %L25
+L25:
+  %t87 = ptrtoint ptr @system.d to i32
+  %t88 = inttoptr i32 %t87 to ptr
+  %t89 = load i8, ptr @system.c
+  store volatile i8 %t89, ptr %t88, align 1
+  %t90 = fptrunc double 2.5 to float
+  store float %t90, ptr @system.r
+  %t91 = ptrtoint ptr @system.r to i32
+  %t92 = inttoptr i32 %t91 to ptr
+  %t93 = load volatile float, ptr %t92, align 1
+  store float %t93, ptr @system.r2
+  %t94 = load float, ptr @system.r2
+  %t95 = fptrunc double 2.5 to float
+  %t96 = fcmp une float %t94, %t95
+  %t97 = zext i1 %t96 to i8
+  %t98 = icmp ne i8 %t97, 0
+  br i1 %t98, label %L29, label %L30
+L29:
+  %t99 = sext i8 1 to i32
+  %t100 = sext i8 8 to i64
+  call void @write(i32 %t99, ptr @.str.system.L67.C32, i64 %t100)
+  br label %L28
+L30:
+  br label %L28
+L28:
   store double 0.125e0, ptr @system.x
   store double 0.0e0, ptr @system.y
-  %t100 = ptrtoint ptr @system.x to i32
-  %t101 = inttoptr i32 %t100 to ptr
-  %t102 = load volatile double, ptr %t101, align 1
-  store double %t102, ptr @system.y
-  %t103 = load double, ptr @system.y
-  %t104 = fcmp une double %t103, 0.125e0
-  %t105 = zext i1 %t104 to i8
-  %t106 = icmp ne i8 %t105, 0
-  br i1 %t106, label %L30, label %L31
-L30:
-  %t107 = sext i8 1 to i32
-  %t108 = sext i8 8 to i64
-  call void @write(i32 %t107, ptr @.str.system.L69.C35, i64 %t108)
-  br label %L29
-L31:
-  br label %L29
-L29:
-  store i32 546, ptr @system.s
-  %t109 = ptrtoint ptr @system.s to i32
-  %t110 = inttoptr i32 %t109 to ptr
-  %t111 = load volatile i32, ptr %t110, align 1
-  store i32 %t111, ptr @system.t
-  %t112 = load i32, ptr @system.t
-  %t113 = icmp ne i32 %t112, 546
-  %t114 = zext i1 %t113 to i8
-  %t115 = icmp ne i8 %t114, 0
-  br i1 %t115, label %L33, label %L34
-L33:
-  %t116 = sext i8 1 to i32
-  %t117 = sext i8 8 to i64
-  call void @write(i32 %t116, ptr @.str.system.L71.C37, i64 %t117)
-  br label %L32
-L34:
-  br label %L32
+  %t101 = ptrtoint ptr @system.x to i32
+  %t102 = inttoptr i32 %t101 to ptr
+  %t103 = load volatile double, ptr %t102, align 1
+  store double %t103, ptr @system.y
+  %t104 = load double, ptr @system.y
+  %t105 = fcmp une double %t104, 0.125e0
+  %t106 = zext i1 %t105 to i8
+  %t107 = icmp ne i8 %t106, 0
+  br i1 %t107, label %L32, label %L33
 L32:
-  store i8 1, ptr @system.flag
-  %t118 = ptrtoint ptr @system.flag to i32
-  %t119 = inttoptr i32 %t118 to ptr
-  store volatile i8 0, ptr %t119, align 1
-  %t120 = load i8, ptr @system.flag
-  %t121 = icmp ne i8 %t120, 0
-  br i1 %t121, label %L36, label %L37
-L36:
-  %t122 = sext i8 1 to i32
-  %t123 = sext i8 8 to i64
-  call void @write(i32 %t122, ptr @.str.system.L73.C28, i64 %t123)
-  br label %L35
-L37:
-  br label %L35
+  %t108 = sext i8 1 to i32
+  %t109 = sext i8 8 to i64
+  call void @write(i32 %t108, ptr @.str.system.L69.C35, i64 %t109)
+  br label %L31
+L33:
+  br label %L31
+L31:
+  store i32 546, ptr @system.s
+  %t110 = ptrtoint ptr @system.s to i32
+  %t111 = inttoptr i32 %t110 to ptr
+  %t112 = load volatile i32, ptr %t111, align 1
+  store i32 %t112, ptr @system.t
+  %t113 = load i32, ptr @system.t
+  %t114 = icmp ne i32 %t113, 546
+  %t115 = zext i1 %t114 to i8
+  %t116 = icmp ne i8 %t115, 0
+  br i1 %t116, label %L35, label %L36
 L35:
-  %t124 = sext i8 0 to i16
-  store i16 %t124, ptr @system.i
-  %t125 = sext i8 7 to i16
-  br label %L38
+  %t117 = sext i8 1 to i32
+  %t118 = sext i8 8 to i64
+  call void @write(i32 %t117, ptr @.str.system.L71.C37, i64 %t118)
+  br label %L34
+L36:
+  br label %L34
+L34:
+  store i8 1, ptr @system.flag
+  %t119 = ptrtoint ptr @system.flag to i32
+  %t120 = inttoptr i32 %t119 to ptr
+  store volatile i8 0, ptr %t120, align 1
+  %t121 = load i8, ptr @system.flag
+  %t122 = icmp ne i8 %t121, 0
+  br i1 %t122, label %L38, label %L39
 L38:
-  %t126 = load i16, ptr @system.i
-  %t127 = icmp sle i16 %t126, %t125
-  br i1 %t127, label %L39, label %L40
+  %t123 = sext i8 1 to i32
+  %t124 = sext i8 8 to i64
+  call void @write(i32 %t123, ptr @.str.system.L73.C28, i64 %t124)
+  br label %L37
 L39:
-  %t128 = load i16, ptr @system.i
-  %t129 = icmp sge i16 %t128, 0
-  %t130 = icmp slt i16 %t128, 8
-  %t131 = and i1 %t129, %t130
-  br i1 %t131, label %L41, label %L42
-L42:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L41:
-  %t132 = getelementptr [8 x i16], ptr @system.ints, i32 0, i16 %t128
-  %t133 = load i16, ptr @system.i
-  %t134 = sext i8 10 to i16
-  %t135 = mul i16 %t133, %t134
-  store i16 %t135, ptr %t132
-  %t136 = load i16, ptr @system.i
-  %t137 = add i16 %t136, 1
-  store i16 %t137, ptr @system.i
-  br label %L38
+  br label %L37
+L37:
+  %t125 = sext i8 0 to i16
+  store i16 %t125, ptr @system.i
+  %t126 = sext i8 7 to i16
+  br label %L40
 L40:
-  %t138 = icmp sge i8 0, 0
-  %t139 = icmp slt i8 0, 8
-  %t140 = and i1 %t138, %t139
-  br i1 %t140, label %L43, label %L44
+  %t127 = load i16, ptr @system.i
+  %t128 = icmp sle i16 %t127, %t126
+  br i1 %t128, label %L41, label %L42
+L41:
+  %t129 = load i16, ptr @system.i
+  %t130 = icmp sge i16 %t129, 0
+  %t131 = icmp slt i16 %t129, 8
+  %t132 = and i1 %t130, %t131
+  br i1 %t132, label %L43, label %L44
 L44:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L43:
-  %t141 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t142 = ptrtoint ptr %t141 to i32
-  store i32 %t142, ptr @system.addr
-  %t143 = icmp sge i8 3, 0
-  %t144 = icmp slt i8 3, 8
-  %t145 = and i1 %t143, %t144
-  br i1 %t145, label %L45, label %L46
+  %t133 = getelementptr [8 x i16], ptr @system.ints, i32 0, i16 %t129
+  %t134 = load i16, ptr @system.i
+  %t135 = sext i8 10 to i16
+  %t136 = mul i16 %t134, %t135
+  store i16 %t136, ptr %t133
+  %t137 = load i16, ptr @system.i
+  %t138 = add i16 %t137, 1
+  store i16 %t138, ptr @system.i
+  br label %L40
+L42:
+  %t139 = icmp sge i8 0, 0
+  %t140 = icmp slt i8 0, 8
+  %t141 = and i1 %t139, %t140
+  br i1 %t141, label %L45, label %L46
 L46:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L45:
-  %t146 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 3
-  %t147 = ptrtoint ptr %t146 to i32
-  %t148 = inttoptr i32 %t147 to ptr
-  %t149 = load volatile i16, ptr %t148, align 1
-  store i16 %t149, ptr @system.j
-  %t150 = load i16, ptr @system.j
-  %t151 = sext i8 30 to i16
-  %t152 = icmp ne i16 %t150, %t151
-  %t153 = zext i1 %t152 to i8
-  %t154 = icmp ne i8 %t153, 0
-  br i1 %t154, label %L48, label %L49
+  %t142 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t143 = ptrtoint ptr %t142 to i32
+  store i32 %t143, ptr @system.addr
+  %t144 = icmp sge i8 3, 0
+  %t145 = icmp slt i8 3, 8
+  %t146 = and i1 %t144, %t145
+  br i1 %t146, label %L47, label %L48
 L48:
-  %t155 = sext i8 1 to i32
-  %t156 = sext i8 8 to i64
-  call void @write(i32 %t155, ptr @.str.system.L78.C30, i64 %t156)
-  br label %L47
-L49:
-  br label %L47
-L47:
-  %t157 = load i32, ptr @system.addr
-  %t158 = sext i8 10 to i32
-  %t159 = add i32 %t157, %t158
-  %t160 = inttoptr i32 %t159 to ptr
-  %t161 = load volatile i16, ptr %t160, align 1
-  store i16 %t161, ptr @system.j
-  %t162 = load i16, ptr @system.j
-  %t163 = sext i8 50 to i16
-  %t164 = icmp ne i16 %t162, %t163
-  %t165 = zext i1 %t164 to i8
-  %t166 = icmp ne i8 %t165, 0
-  br i1 %t166, label %L51, label %L52
-L51:
-  %t167 = sext i8 1 to i32
-  %t168 = sext i8 8 to i64
-  call void @write(i32 %t167, ptr @.str.system.L80.C30, i64 %t168)
-  br label %L50
-L52:
-  br label %L50
-L50:
-  %t169 = sext i8 77 to i16
-  store i16 %t169, ptr @system.k
-  %t170 = load i32, ptr @system.addr
-  %t171 = sext i8 4 to i32
-  %t172 = add i32 %t170, %t171
-  %t173 = inttoptr i32 %t172 to ptr
-  %t174 = load i16, ptr @system.k
-  store volatile i16 %t174, ptr %t173, align 1
-  %t175 = icmp sge i8 2, 0
-  %t176 = icmp slt i8 2, 8
-  %t177 = and i1 %t175, %t176
-  br i1 %t177, label %L54, label %L55
-L55:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
-L54:
-  %t178 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
-  %t179 = load i16, ptr %t178
-  %t180 = sext i8 77 to i16
-  %t181 = icmp ne i16 %t179, %t180
-  %t182 = zext i1 %t181 to i8
-  %t183 = icmp ne i8 %t182, 0
-  br i1 %t183, label %L56, label %L57
-L56:
-  %t184 = sext i8 1 to i32
-  %t185 = sext i8 8 to i64
-  call void @write(i32 %t184, ptr @.str.system.L83.C36, i64 %t185)
-  br label %L53
-L57:
-  br label %L53
+L47:
+  %t147 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 3
+  %t148 = ptrtoint ptr %t147 to i32
+  %t149 = inttoptr i32 %t148 to ptr
+  %t150 = load volatile i16, ptr %t149, align 1
+  store i16 %t150, ptr @system.j
+  %t151 = load i16, ptr @system.j
+  %t152 = sext i8 30 to i16
+  %t153 = icmp ne i16 %t151, %t152
+  %t154 = zext i1 %t153 to i8
+  %t155 = icmp ne i8 %t154, 0
+  br i1 %t155, label %L50, label %L51
+L50:
+  %t156 = sext i8 1 to i32
+  %t157 = sext i8 8 to i64
+  call void @write(i32 %t156, ptr @.str.system.L78.C30, i64 %t157)
+  br label %L49
+L51:
+  br label %L49
+L49:
+  %t158 = load i32, ptr @system.addr
+  %t159 = sext i8 10 to i32
+  %t160 = add i32 %t158, %t159
+  %t161 = inttoptr i32 %t160 to ptr
+  %t162 = load volatile i16, ptr %t161, align 1
+  store i16 %t162, ptr @system.j
+  %t163 = load i16, ptr @system.j
+  %t164 = sext i8 50 to i16
+  %t165 = icmp ne i16 %t163, %t164
+  %t166 = zext i1 %t165 to i8
+  %t167 = icmp ne i8 %t166, 0
+  br i1 %t167, label %L53, label %L54
 L53:
-  %t186 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
-  %t187 = sext i8 5 to i16
-  store i16 %t187, ptr %t186
-  %t188 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
-  %t189 = sext i8 6 to i16
-  store i16 %t189, ptr %t188
-  %t190 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
-  %t191 = ptrtoint ptr %t190 to i32
-  %t192 = inttoptr i32 %t191 to ptr
-  %t193 = load volatile i16, ptr %t192, align 1
-  store i16 %t193, ptr @system.j
-  %t194 = load i16, ptr @system.j
-  %t195 = sext i8 6 to i16
-  %t196 = icmp ne i16 %t194, %t195
-  %t197 = zext i1 %t196 to i8
-  %t198 = icmp ne i8 %t197, 0
-  br i1 %t198, label %L59, label %L60
-L59:
-  %t199 = sext i8 1 to i32
-  %t200 = sext i8 8 to i64
-  call void @write(i32 %t199, ptr @.str.system.L86.C29, i64 %t200)
-  br label %L58
-L60:
-  br label %L58
+  %t168 = sext i8 1 to i32
+  %t169 = sext i8 8 to i64
+  call void @write(i32 %t168, ptr @.str.system.L80.C30, i64 %t169)
+  br label %L52
+L54:
+  br label %L52
+L52:
+  %t170 = sext i8 77 to i16
+  store i16 %t170, ptr @system.k
+  %t171 = load i32, ptr @system.addr
+  %t172 = sext i8 4 to i32
+  %t173 = add i32 %t171, %t172
+  %t174 = inttoptr i32 %t173 to ptr
+  %t175 = load i16, ptr @system.k
+  store volatile i16 %t175, ptr %t174, align 1
+  %t176 = icmp sge i8 2, 0
+  %t177 = icmp slt i8 2, 8
+  %t178 = and i1 %t176, %t177
+  br i1 %t178, label %L56, label %L57
+L57:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L56:
+  %t179 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
+  %t180 = load i16, ptr %t179
+  %t181 = sext i8 77 to i16
+  %t182 = icmp ne i16 %t180, %t181
+  %t183 = zext i1 %t182 to i8
+  %t184 = icmp ne i8 %t183, 0
+  br i1 %t184, label %L58, label %L59
 L58:
-  %t201 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
-  %t202 = ptrtoint ptr %t201 to i32
-  %t203 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
-  %t204 = ptrtoint ptr %t203 to i32
-  %t205 = sub i32 %t202, %t204
-  %t206 = sext i16 2 to i32
-  %t207 = icmp ne i32 %t205, %t206
-  %t208 = zext i1 %t207 to i8
-  %t209 = icmp ne i8 %t208, 0
-  br i1 %t209, label %L62, label %L63
-L62:
-  %t210 = sext i8 1 to i32
-  %t211 = sext i8 8 to i64
-  call void @write(i32 %t210, ptr @.str.system.L87.C79, i64 %t211)
-  br label %L61
-L63:
-  br label %L61
+  %t185 = sext i8 1 to i32
+  %t186 = sext i8 8 to i64
+  call void @write(i32 %t185, ptr @.str.system.L83.C36, i64 %t186)
+  br label %L55
+L59:
+  br label %L55
+L55:
+  %t187 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
+  %t188 = sext i8 5 to i16
+  store i16 %t188, ptr %t187
+  %t189 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
+  %t190 = sext i8 6 to i16
+  store i16 %t190, ptr %t189
+  %t191 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
+  %t192 = ptrtoint ptr %t191 to i32
+  %t193 = inttoptr i32 %t192 to ptr
+  %t194 = load volatile i16, ptr %t193, align 1
+  store i16 %t194, ptr @system.j
+  %t195 = load i16, ptr @system.j
+  %t196 = sext i8 6 to i16
+  %t197 = icmp ne i16 %t195, %t196
+  %t198 = zext i1 %t197 to i8
+  %t199 = icmp ne i8 %t198, 0
+  br i1 %t199, label %L61, label %L62
 L61:
-  %t212 = sext i16 1000 to i32
-  store i32 %t212, ptr @system.addr
-  %t213 = load i32, ptr @system.addr
-  %t214 = sext i8 24 to i32
-  %t215 = add i32 %t213, %t214
-  store i32 %t215, ptr @system.other
-  %t216 = load i32, ptr @system.other
-  %t217 = load i32, ptr @system.addr
-  %t218 = sub i32 %t216, %t217
-  %t219 = sext i8 24 to i32
-  %t220 = icmp ne i32 %t218, %t219
-  %t221 = zext i1 %t220 to i8
-  %t222 = icmp ne i8 %t221, 0
-  br i1 %t222, label %L66, label %L65
+  %t200 = sext i8 1 to i32
+  %t201 = sext i8 8 to i64
+  call void @write(i32 %t200, ptr @.str.system.L86.C29, i64 %t201)
+  br label %L60
+L62:
+  br label %L60
+L60:
+  %t202 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
+  %t203 = ptrtoint ptr %t202 to i32
+  %t204 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
+  %t205 = ptrtoint ptr %t204 to i32
+  %t206 = sub i32 %t203, %t205
+  %t207 = sext i16 2 to i32
+  %t208 = icmp ne i32 %t206, %t207
+  %t209 = zext i1 %t208 to i8
+  %t210 = icmp ne i8 %t209, 0
+  br i1 %t210, label %L64, label %L65
+L64:
+  %t211 = sext i8 1 to i32
+  %t212 = sext i8 8 to i64
+  call void @write(i32 %t211, ptr @.str.system.L87.C79, i64 %t212)
+  br label %L63
 L65:
-  %t223 = load i32, ptr @system.addr
-  %t224 = load i32, ptr @system.other
-  %t225 = icmp slt i32 %t223, %t224
-  %t226 = zext i1 %t225 to i8
-  %t227 = xor i8 %t226, 1
-  br label %L66
-L66:
-  %t228 = phi i8 [ 1, %L61 ], [ %t227, %L65 ]
-  %t229 = icmp ne i8 %t228, 0
-  br i1 %t229, label %L68, label %L67
+  br label %L63
+L63:
+  %t213 = sext i16 1000 to i32
+  store i32 %t213, ptr @system.addr
+  %t214 = load i32, ptr @system.addr
+  %t215 = sext i8 24 to i32
+  %t216 = add i32 %t214, %t215
+  store i32 %t216, ptr @system.other
+  %t217 = load i32, ptr @system.other
+  %t218 = load i32, ptr @system.addr
+  %t219 = sub i32 %t217, %t218
+  %t220 = sext i8 24 to i32
+  %t221 = icmp ne i32 %t219, %t220
+  %t222 = zext i1 %t221 to i8
+  %t223 = icmp ne i8 %t222, 0
+  br i1 %t223, label %L68, label %L67
 L67:
-  %t230 = load i32, ptr @system.addr
-  %t231 = load i32, ptr @system.other
-  %t232 = icmp sgt i32 %t230, %t231
-  %t233 = zext i1 %t232 to i8
+  %t224 = load i32, ptr @system.addr
+  %t225 = load i32, ptr @system.other
+  %t226 = icmp slt i32 %t224, %t225
+  %t227 = zext i1 %t226 to i8
+  %t228 = xor i8 %t227, 1
   br label %L68
 L68:
-  %t234 = phi i8 [ 1, %L66 ], [ %t233, %L67 ]
-  %t235 = icmp ne i8 %t234, 0
-  br i1 %t235, label %L69, label %L70
+  %t229 = phi i8 [ 1, %L63 ], [ %t228, %L67 ]
+  %t230 = icmp ne i8 %t229, 0
+  br i1 %t230, label %L70, label %L69
 L69:
-  %t236 = sext i8 1 to i32
-  %t237 = sext i8 8 to i64
-  call void @write(i32 %t236, ptr @.str.system.L90.C80, i64 %t237)
-  br label %L64
+  %t231 = load i32, ptr @system.addr
+  %t232 = load i32, ptr @system.other
+  %t233 = icmp sgt i32 %t231, %t232
+  %t234 = zext i1 %t233 to i8
+  br label %L70
 L70:
-  br label %L64
-L64:
-  %t238 = sext i8 5 to i16
-  store i16 %t238, ptr @system.i
-  %t239 = load i32, ptr @system.addr
-  %t240 = load i16, ptr @system.i
-  %t241 = sext i16 %t240 to i32
-  %t242 = add i32 %t239, %t241
-  store i32 %t242, ptr @system.addr
-  %t243 = sext i8 3 to i32
-  store i32 %t243, ptr @system.l
-  %t244 = load i32, ptr @system.addr
-  %t245 = load i32, ptr @system.l
-  %t246 = add i32 %t244, %t245
-  store i32 %t246, ptr @system.addr
-  %t247 = load i32, ptr @system.addr
-  %t248 = sext i16 1008 to i32
-  %t249 = icmp ne i32 %t247, %t248
-  %t250 = zext i1 %t249 to i8
-  %t251 = icmp ne i8 %t250, 0
-  br i1 %t251, label %L72, label %L73
-L72:
-  %t252 = sext i8 1 to i32
-  %t253 = sext i8 8 to i64
-  call void @write(i32 %t252, ptr @.str.system.L92.C35, i64 %t253)
-  br label %L71
-L73:
-  br label %L71
+  %t235 = phi i8 [ 1, %L68 ], [ %t234, %L69 ]
+  %t236 = icmp ne i8 %t235, 0
+  br i1 %t236, label %L71, label %L72
 L71:
-  %t254 = load i32, ptr @system.addr
-  %t255 = sext i32 %t254 to i64
-  store i64 %t255, ptr @system.h
-  %t256 = load i64, ptr @system.h
-  %t257 = sext i16 1008 to i64
-  %t258 = icmp ne i64 %t256, %t257
-  %t259 = zext i1 %t258 to i8
-  %t260 = icmp ne i8 %t259, 0
-  br i1 %t260, label %L75, label %L76
-L75:
-  %t261 = sext i8 1 to i32
-  %t262 = sext i8 8 to i64
-  call void @write(i32 %t261, ptr @.str.system.L93.C43, i64 %t262)
-  br label %L74
-L76:
-  br label %L74
+  %t237 = sext i8 1 to i32
+  %t238 = sext i8 8 to i64
+  call void @write(i32 %t237, ptr @.str.system.L90.C80, i64 %t238)
+  br label %L66
+L72:
+  br label %L66
+L66:
+  %t239 = sext i8 5 to i16
+  store i16 %t239, ptr @system.i
+  %t240 = load i32, ptr @system.addr
+  %t241 = load i16, ptr @system.i
+  %t242 = sext i16 %t241 to i32
+  %t243 = add i32 %t240, %t242
+  store i32 %t243, ptr @system.addr
+  %t244 = sext i8 3 to i32
+  store i32 %t244, ptr @system.l
+  %t245 = load i32, ptr @system.addr
+  %t246 = load i32, ptr @system.l
+  %t247 = add i32 %t245, %t246
+  store i32 %t247, ptr @system.addr
+  %t248 = load i32, ptr @system.addr
+  %t249 = sext i16 1008 to i32
+  %t250 = icmp ne i32 %t248, %t249
+  %t251 = zext i1 %t250 to i8
+  %t252 = icmp ne i8 %t251, 0
+  br i1 %t252, label %L74, label %L75
 L74:
-  %t263 = icmp ne i16 4, 4
-  %t264 = zext i1 %t263 to i8
-  %t265 = icmp ne i8 %t264, 0
-  br i1 %t265, label %L78, label %L79
-L78:
-  %t266 = sext i8 1 to i32
-  %t267 = sext i8 8 to i64
-  call void @write(i32 %t266, ptr @.str.system.L94.C60, i64 %t267)
-  br label %L77
-L79:
-  br label %L77
+  %t253 = sext i8 1 to i32
+  %t254 = sext i8 8 to i64
+  call void @write(i32 %t253, ptr @.str.system.L92.C35, i64 %t254)
+  br label %L73
+L75:
+  br label %L73
+L73:
+  %t255 = load i32, ptr @system.addr
+  %t256 = sext i32 %t255 to i64
+  store i64 %t256, ptr @system.h
+  %t257 = load i64, ptr @system.h
+  %t258 = sext i16 1008 to i64
+  %t259 = icmp ne i64 %t257, %t258
+  %t260 = zext i1 %t259 to i8
+  %t261 = icmp ne i8 %t260, 0
+  br i1 %t261, label %L77, label %L78
 L77:
-  %t268 = sext i8 -2 to i32
-  store i32 %t268, ptr @system.l
-  %t269 = load i32, ptr @system.l
-  store i32 %t269, ptr @system.m
-  %t270 = load i32, ptr @system.m
-  %t271 = sext i8 -2 to i32
-  %t272 = icmp ne i32 %t270, %t271
-  %t273 = zext i1 %t272 to i8
-  %t274 = icmp ne i8 %t273, 0
-  br i1 %t274, label %L81, label %L82
-L81:
-  %t275 = sext i8 1 to i32
-  %t276 = sext i8 8 to i64
-  call void @write(i32 %t275, ptr @.str.system.L97.C30, i64 %t276)
-  br label %L80
-L82:
-  br label %L80
+  %t262 = sext i8 1 to i32
+  %t263 = sext i8 8 to i64
+  call void @write(i32 %t262, ptr @.str.system.L93.C43, i64 %t263)
+  br label %L76
+L78:
+  br label %L76
+L76:
+  %t264 = icmp ne i16 4, 4
+  %t265 = zext i1 %t264 to i8
+  %t266 = icmp ne i8 %t265, 0
+  br i1 %t266, label %L80, label %L81
 L80:
-  store i16 4660, ptr @system.i
-  %t277 = load i16, ptr @system.i
-  %t278 = icmp ne i16 %t277, 4660
-  %t279 = zext i1 %t278 to i8
-  %t280 = icmp ne i8 %t279, 0
-  br i1 %t280, label %L84, label %L85
-L84:
-  %t281 = sext i8 1 to i32
-  %t282 = sext i8 8 to i64
-  call void @write(i32 %t281, ptr @.str.system.L99.C32, i64 %t282)
-  br label %L83
-L85:
-  br label %L83
+  %t267 = sext i8 1 to i32
+  %t268 = sext i8 8 to i64
+  call void @write(i32 %t267, ptr @.str.system.L94.C60, i64 %t268)
+  br label %L79
+L81:
+  br label %L79
+L79:
+  %t269 = sext i8 -2 to i32
+  store i32 %t269, ptr @system.l
+  %t270 = load i32, ptr @system.l
+  store i32 %t270, ptr @system.m
+  %t271 = load i32, ptr @system.m
+  %t272 = sext i8 -2 to i32
+  %t273 = icmp ne i32 %t271, %t272
+  %t274 = zext i1 %t273 to i8
+  %t275 = icmp ne i8 %t274, 0
+  br i1 %t275, label %L83, label %L84
 L83:
-  %t283 = ptrtoint ptr @system.i to i32
-  store i32 %t283, ptr @system.addr
-  %t284 = load i32, ptr @system.addr
-  %t285 = sext i32 %t284 to i64
-  store i64 %t285, ptr @system.h
-  %t286 = load i64, ptr @system.h
-  %t287 = trunc i64 %t286 to i32
-  %t288 = load i32, ptr @system.addr
-  %t289 = icmp ne i32 %t287, %t288
-  %t290 = zext i1 %t289 to i8
-  %t291 = icmp ne i8 %t290, 0
-  br i1 %t291, label %L87, label %L88
-L87:
-  %t292 = sext i8 1 to i32
-  %t293 = sext i8 8 to i64
-  call void @write(i32 %t292, ptr @.str.system.L102.C60, i64 %t293)
-  br label %L86
-L88:
-  br label %L86
+  %t276 = sext i8 1 to i32
+  %t277 = sext i8 8 to i64
+  call void @write(i32 %t276, ptr @.str.system.L97.C30, i64 %t277)
+  br label %L82
+L84:
+  br label %L82
+L82:
+  store i16 4660, ptr @system.i
+  %t278 = load i16, ptr @system.i
+  %t279 = icmp ne i16 %t278, 4660
+  %t280 = zext i1 %t279 to i8
+  %t281 = icmp ne i8 %t280, 0
+  br i1 %t281, label %L86, label %L87
 L86:
-  %t294 = sext i8 5 to i32
-  store i32 %t294, ptr @system.s
-  %t295 = load i32, ptr @system.s
-  %t296 = icmp ne i32 %t295, 5
-  %t297 = zext i1 %t296 to i8
-  %t298 = icmp ne i8 %t297, 0
-  br i1 %t298, label %L90, label %L91
-L90:
-  %t299 = sext i8 1 to i32
-  %t300 = sext i8 8 to i64
-  call void @write(i32 %t299, ptr @.str.system.L104.C34, i64 %t300)
-  br label %L89
-L91:
-  br label %L89
+  %t282 = sext i8 1 to i32
+  %t283 = sext i8 8 to i64
+  call void @write(i32 %t282, ptr @.str.system.L99.C32, i64 %t283)
+  br label %L85
+L87:
+  br label %L85
+L85:
+  %t284 = ptrtoint ptr @system.i to i32
+  store i32 %t284, ptr @system.addr
+  %t285 = load i32, ptr @system.addr
+  %t286 = sext i32 %t285 to i64
+  store i64 %t286, ptr @system.h
+  %t287 = load i64, ptr @system.h
+  %t288 = trunc i64 %t287 to i32
+  %t289 = load i32, ptr @system.addr
+  %t290 = icmp ne i32 %t288, %t289
+  %t291 = zext i1 %t290 to i8
+  %t292 = icmp ne i8 %t291, 0
+  br i1 %t292, label %L89, label %L90
 L89:
-  %t301 = load i32, ptr @system.s
-  %t302 = trunc i32 %t301 to i16
-  store i16 %t302, ptr @system.i
-  %t303 = load i16, ptr @system.i
-  %t304 = sext i8 5 to i16
-  %t305 = icmp ne i16 %t303, %t304
-  %t306 = zext i1 %t305 to i8
-  %t307 = icmp ne i8 %t306, 0
-  br i1 %t307, label %L93, label %L94
-L93:
-  %t308 = sext i8 1 to i32
-  %t309 = sext i8 8 to i64
-  call void @write(i32 %t308, ptr @.str.system.L106.C29, i64 %t309)
-  br label %L92
-L94:
-  br label %L92
+  %t293 = sext i8 1 to i32
+  %t294 = sext i8 8 to i64
+  call void @write(i32 %t293, ptr @.str.system.L102.C60, i64 %t294)
+  br label %L88
+L90:
+  br label %L88
+L88:
+  %t295 = sext i8 5 to i32
+  store i32 %t295, ptr @system.s
+  %t296 = load i32, ptr @system.s
+  %t297 = icmp ne i32 %t296, 5
+  %t298 = zext i1 %t297 to i8
+  %t299 = icmp ne i8 %t298, 0
+  br i1 %t299, label %L92, label %L93
 L92:
-  store i8 65, ptr @system.c
-  %t310 = load i8, ptr @system.c
-  %t311 = icmp ne i8 %t310, 65
-  %t312 = zext i1 %t311 to i8
-  %t313 = icmp ne i8 %t312, 0
-  br i1 %t313, label %L96, label %L97
-L96:
-  %t314 = sext i8 1 to i32
-  %t315 = sext i8 8 to i64
-  call void @write(i32 %t314, ptr @.str.system.L108.C31, i64 %t315)
-  br label %L95
-L97:
-  br label %L95
+  %t300 = sext i8 1 to i32
+  %t301 = sext i8 8 to i64
+  call void @write(i32 %t300, ptr @.str.system.L104.C34, i64 %t301)
+  br label %L91
+L93:
+  br label %L91
+L91:
+  %t302 = load i32, ptr @system.s
+  %t303 = trunc i32 %t302 to i16
+  store i16 %t303, ptr @system.i
+  %t304 = load i16, ptr @system.i
+  %t305 = sext i8 5 to i16
+  %t306 = icmp ne i16 %t304, %t305
+  %t307 = zext i1 %t306 to i8
+  %t308 = icmp ne i8 %t307, 0
+  br i1 %t308, label %L95, label %L96
 L95:
-  %t316 = sext i8 0 to i16
-  store i16 %t316, ptr @system.i
-  %t317 = sext i8 7 to i16
-  br label %L98
+  %t309 = sext i8 1 to i32
+  %t310 = sext i8 8 to i64
+  call void @write(i32 %t309, ptr @.str.system.L106.C29, i64 %t310)
+  br label %L94
+L96:
+  br label %L94
+L94:
+  store i8 65, ptr @system.c
+  %t311 = load i8, ptr @system.c
+  %t312 = icmp ne i8 %t311, 65
+  %t313 = zext i1 %t312 to i8
+  %t314 = icmp ne i8 %t313, 0
+  br i1 %t314, label %L98, label %L99
 L98:
-  %t318 = load i16, ptr @system.i
-  %t319 = icmp sle i16 %t318, %t317
-  br i1 %t319, label %L99, label %L100
+  %t315 = sext i8 1 to i32
+  %t316 = sext i8 8 to i64
+  call void @write(i32 %t315, ptr @.str.system.L108.C31, i64 %t316)
+  br label %L97
 L99:
-  %t320 = load i16, ptr @system.i
-  %t321 = icmp sge i16 %t320, 0
-  %t322 = icmp slt i16 %t320, 8
-  %t323 = and i1 %t321, %t322
-  br i1 %t323, label %L101, label %L102
-L102:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
+  br label %L97
+L97:
+  %t317 = sext i8 0 to i16
+  store i16 %t317, ptr @system.i
+  %t318 = sext i8 7 to i16
+  br label %L100
+L100:
+  %t319 = load i16, ptr @system.i
+  %t320 = icmp sle i16 %t319, %t318
+  br i1 %t320, label %L101, label %L102
 L101:
-  %t324 = getelementptr [8 x i16], ptr @system.ints, i32 0, i16 %t320
-  %t325 = load i16, ptr @system.i
-  %t326 = sext i8 1 to i16
-  %t327 = add i16 %t325, %t326
-  store i16 %t327, ptr %t324
-  %t328 = load i16, ptr @system.i
-  %t329 = icmp sge i16 %t328, 0
-  %t330 = icmp slt i16 %t328, 8
-  %t331 = and i1 %t329, %t330
-  br i1 %t331, label %L103, label %L104
+  %t321 = load i16, ptr @system.i
+  %t322 = icmp sge i16 %t321, 0
+  %t323 = icmp slt i16 %t321, 8
+  %t324 = and i1 %t322, %t323
+  br i1 %t324, label %L103, label %L104
 L104:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L103:
-  %t332 = getelementptr [8 x i16], ptr @system.more, i32 0, i16 %t328
-  %t333 = sext i8 0 to i16
-  store i16 %t333, ptr %t332
-  %t334 = load i16, ptr @system.i
-  %t335 = add i16 %t334, 1
-  store i16 %t335, ptr @system.i
-  br label %L98
-L100:
-  %t336 = icmp sge i8 0, 0
-  %t337 = icmp slt i8 0, 8
-  %t338 = and i1 %t336, %t337
-  br i1 %t338, label %L105, label %L106
+  %t325 = getelementptr [8 x i16], ptr @system.ints, i32 0, i16 %t321
+  %t326 = load i16, ptr @system.i
+  %t327 = sext i8 1 to i16
+  %t328 = add i16 %t326, %t327
+  store i16 %t328, ptr %t325
+  %t329 = load i16, ptr @system.i
+  %t330 = icmp sge i16 %t329, 0
+  %t331 = icmp slt i16 %t329, 8
+  %t332 = and i1 %t330, %t331
+  br i1 %t332, label %L105, label %L106
 L106:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L105:
-  %t339 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t340 = ptrtoint ptr %t339 to i32
-  %t341 = inttoptr i32 %t340 to ptr
-  %t342 = icmp sge i8 0, 0
-  %t343 = icmp slt i8 0, 8
-  %t344 = and i1 %t342, %t343
-  br i1 %t344, label %L107, label %L108
+  %t333 = getelementptr [8 x i16], ptr @system.more, i32 0, i16 %t329
+  %t334 = sext i8 0 to i16
+  store i16 %t334, ptr %t333
+  %t335 = load i16, ptr @system.i
+  %t336 = add i16 %t335, 1
+  store i16 %t336, ptr @system.i
+  br label %L100
+L102:
+  %t337 = icmp sge i8 0, 0
+  %t338 = icmp slt i8 0, 8
+  %t339 = and i1 %t337, %t338
+  br i1 %t339, label %L107, label %L108
 L108:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L107:
-  %t345 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
-  %t346 = ptrtoint ptr %t345 to i32
-  %t347 = inttoptr i32 %t346 to ptr
-  %t348 = sext i8 16 to i32
-  %t349 = icmp sgt i32 %t348, 0
-  %t350 = select i1 %t349, i32 %t348, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t347, ptr %t341, i32 %t350, i1 true)
-  %t351 = sext i8 0 to i16
-  store i16 %t351, ptr @system.k
-  %t352 = sext i8 0 to i16
-  store i16 %t352, ptr @system.i
-  %t353 = sext i8 7 to i16
-  br label %L109
-L109:
-  %t354 = load i16, ptr @system.i
-  %t355 = icmp sle i16 %t354, %t353
-  br i1 %t355, label %L110, label %L111
+  %t340 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t341 = ptrtoint ptr %t340 to i32
+  %t342 = inttoptr i32 %t341 to ptr
+  %t343 = icmp sge i8 0, 0
+  %t344 = icmp slt i8 0, 8
+  %t345 = and i1 %t343, %t344
+  br i1 %t345, label %L109, label %L110
 L110:
-  %t356 = load i16, ptr @system.k
-  %t357 = load i16, ptr @system.i
-  %t358 = icmp sge i16 %t357, 0
-  %t359 = icmp slt i16 %t357, 8
-  %t360 = and i1 %t358, %t359
-  br i1 %t360, label %L112, label %L113
-L113:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
-L112:
-  %t361 = getelementptr [8 x i16], ptr @system.more, i32 0, i16 %t357
-  %t362 = load i16, ptr %t361
-  %t363 = add i16 %t356, %t362
-  store i16 %t363, ptr @system.k
-  %t364 = load i16, ptr @system.i
-  %t365 = add i16 %t364, 1
-  store i16 %t365, ptr @system.i
-  br label %L109
+L109:
+  %t346 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
+  %t347 = ptrtoint ptr %t346 to i32
+  %t348 = inttoptr i32 %t347 to ptr
+  %t349 = sext i8 16 to i32
+  %t350 = icmp sgt i32 %t349, 0
+  %t351 = select i1 %t350, i32 %t349, i32 0
+  call void @llvm.memmove.p0.p0.i32(ptr %t348, ptr %t342, i32 %t351, i1 true)
+  %t352 = sext i8 0 to i16
+  store i16 %t352, ptr @system.k
+  %t353 = sext i8 0 to i16
+  store i16 %t353, ptr @system.i
+  %t354 = sext i8 7 to i16
+  br label %L111
 L111:
-  %t366 = load i16, ptr @system.k
-  %t367 = sext i8 36 to i16
-  %t368 = icmp ne i16 %t366, %t367
-  %t369 = zext i1 %t368 to i8
-  %t370 = icmp ne i8 %t369, 0
-  br i1 %t370, label %L115, label %L116
+  %t355 = load i16, ptr @system.i
+  %t356 = icmp sle i16 %t355, %t354
+  br i1 %t356, label %L112, label %L113
+L112:
+  %t357 = load i16, ptr @system.k
+  %t358 = load i16, ptr @system.i
+  %t359 = icmp sge i16 %t358, 0
+  %t360 = icmp slt i16 %t358, 8
+  %t361 = and i1 %t359, %t360
+  br i1 %t361, label %L114, label %L115
 L115:
-  %t371 = sext i8 1 to i32
-  %t372 = sext i8 8 to i64
-  call void @write(i32 %t371, ptr @.str.system.L113.C30, i64 %t372)
-  br label %L114
-L116:
-  br label %L114
-L114:
-  %t373 = icmp sge i8 0, 0
-  %t374 = icmp slt i8 0, 8
-  %t375 = and i1 %t373, %t374
-  br i1 %t375, label %L117, label %L118
-L118:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
+L114:
+  %t362 = getelementptr [8 x i16], ptr @system.more, i32 0, i16 %t358
+  %t363 = load i16, ptr %t362
+  %t364 = add i16 %t357, %t363
+  store i16 %t364, ptr @system.k
+  %t365 = load i16, ptr @system.i
+  %t366 = add i16 %t365, 1
+  store i16 %t366, ptr @system.i
+  br label %L111
+L113:
+  %t367 = load i16, ptr @system.k
+  %t368 = sext i8 36 to i16
+  %t369 = icmp ne i16 %t367, %t368
+  %t370 = zext i1 %t369 to i8
+  %t371 = icmp ne i8 %t370, 0
+  br i1 %t371, label %L117, label %L118
 L117:
-  %t376 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t377 = ptrtoint ptr %t376 to i32
-  %t378 = inttoptr i32 %t377 to ptr
-  %t379 = icmp sge i8 2, 0
-  %t380 = icmp slt i8 2, 8
-  %t381 = and i1 %t379, %t380
-  br i1 %t381, label %L119, label %L120
+  %t372 = sext i8 1 to i32
+  %t373 = sext i8 8 to i64
+  call void @write(i32 %t372, ptr @.str.system.L113.C30, i64 %t373)
+  br label %L116
+L118:
+  br label %L116
+L116:
+  %t374 = icmp sge i8 0, 0
+  %t375 = icmp slt i8 0, 8
+  %t376 = and i1 %t374, %t375
+  br i1 %t376, label %L119, label %L120
 L120:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L119:
-  %t382 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
-  %t383 = ptrtoint ptr %t382 to i32
-  %t384 = inttoptr i32 %t383 to ptr
-  %t385 = sext i8 12 to i32
-  %t386 = icmp sgt i32 %t385, 0
-  %t387 = select i1 %t386, i32 %t385, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t384, ptr %t378, i32 %t387, i1 true)
-  %t388 = icmp sge i8 0, 0
-  %t389 = icmp slt i8 0, 8
-  %t390 = and i1 %t388, %t389
-  br i1 %t390, label %L122, label %L123
-L123:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
+  %t377 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t378 = ptrtoint ptr %t377 to i32
+  %t379 = inttoptr i32 %t378 to ptr
+  %t380 = icmp sge i8 2, 0
+  %t381 = icmp slt i8 2, 8
+  %t382 = and i1 %t380, %t381
+  br i1 %t382, label %L121, label %L122
 L122:
-  %t391 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t392 = load i16, ptr %t391
-  %t393 = sext i8 1 to i16
-  %t394 = icmp ne i16 %t392, %t393
-  %t395 = zext i1 %t394 to i8
-  %t396 = icmp ne i8 %t395, 0
-  br i1 %t396, label %L125, label %L124
-L124:
-  %t397 = icmp sge i8 1, 0
-  %t398 = icmp slt i8 1, 8
-  %t399 = and i1 %t397, %t398
-  br i1 %t399, label %L126, label %L127
-L127:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
-L126:
-  %t400 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 1
-  %t401 = load i16, ptr %t400
-  %t402 = sext i8 2 to i16
-  %t403 = icmp ne i16 %t401, %t402
-  %t404 = zext i1 %t403 to i8
-  br label %L125
-L125:
-  %t405 = phi i8 [ 1, %L122 ], [ %t404, %L126 ]
-  %t406 = icmp ne i8 %t405, 0
-  br i1 %t406, label %L129, label %L128
-L128:
-  %t407 = icmp sge i8 2, 0
-  %t408 = icmp slt i8 2, 8
-  %t409 = and i1 %t407, %t408
-  br i1 %t409, label %L130, label %L131
-L131:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L130:
-  %t410 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
-  %t411 = load i16, ptr %t410
-  %t412 = sext i8 1 to i16
-  %t413 = icmp ne i16 %t411, %t412
-  %t414 = zext i1 %t413 to i8
-  br label %L129
-L129:
-  %t415 = phi i8 [ 1, %L125 ], [ %t414, %L130 ]
-  %t416 = icmp ne i8 %t415, 0
-  br i1 %t416, label %L133, label %L132
-L132:
-  %t417 = icmp sge i8 3, 0
-  %t418 = icmp slt i8 3, 8
-  %t419 = and i1 %t417, %t418
-  br i1 %t419, label %L134, label %L135
-L135:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L134:
-  %t420 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 3
-  %t421 = load i16, ptr %t420
-  %t422 = sext i8 2 to i16
-  %t423 = icmp ne i16 %t421, %t422
-  %t424 = zext i1 %t423 to i8
-  br label %L133
-L133:
-  %t425 = phi i8 [ 1, %L129 ], [ %t424, %L134 ]
-  %t426 = icmp ne i8 %t425, 0
-  br i1 %t426, label %L137, label %L136
-L136:
-  %t427 = icmp sge i8 7, 0
-  %t428 = icmp slt i8 7, 8
-  %t429 = and i1 %t427, %t428
-  br i1 %t429, label %L138, label %L139
-L139:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L138:
-  %t430 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 7
-  %t431 = load i16, ptr %t430
-  %t432 = sext i8 6 to i16
-  %t433 = icmp ne i16 %t431, %t432
-  %t434 = zext i1 %t433 to i8
-  br label %L137
-L137:
-  %t435 = phi i8 [ 1, %L133 ], [ %t434, %L138 ]
-  %t436 = icmp ne i8 %t435, 0
-  br i1 %t436, label %L140, label %L141
-L140:
-  %t437 = sext i8 1 to i32
-  %t438 = sext i8 8 to i64
-  call void @write(i32 %t437, ptr @.str.system.L116.C105, i64 %t438)
-  br label %L121
-L141:
-  br label %L121
 L121:
-  %t439 = icmp sge i8 2, 0
-  %t440 = icmp slt i8 2, 8
-  %t441 = and i1 %t439, %t440
-  br i1 %t441, label %L142, label %L143
-L143:
+  %t383 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
+  %t384 = ptrtoint ptr %t383 to i32
+  %t385 = inttoptr i32 %t384 to ptr
+  %t386 = sext i8 12 to i32
+  %t387 = icmp sgt i32 %t386, 0
+  %t388 = select i1 %t387, i32 %t386, i32 0
+  call void @llvm.memmove.p0.p0.i32(ptr %t385, ptr %t379, i32 %t388, i1 true)
+  %t389 = icmp sge i8 0, 0
+  %t390 = icmp slt i8 0, 8
+  %t391 = and i1 %t389, %t390
+  br i1 %t391, label %L124, label %L125
+L125:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
+L124:
+  %t392 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t393 = load i16, ptr %t392
+  %t394 = sext i8 1 to i16
+  %t395 = icmp ne i16 %t393, %t394
+  %t396 = zext i1 %t395 to i8
+  %t397 = icmp ne i8 %t396, 0
+  br i1 %t397, label %L127, label %L126
+L126:
+  %t398 = icmp sge i8 1, 0
+  %t399 = icmp slt i8 1, 8
+  %t400 = and i1 %t398, %t399
+  br i1 %t400, label %L128, label %L129
+L129:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L128:
+  %t401 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 1
+  %t402 = load i16, ptr %t401
+  %t403 = sext i8 2 to i16
+  %t404 = icmp ne i16 %t402, %t403
+  %t405 = zext i1 %t404 to i8
+  br label %L127
+L127:
+  %t406 = phi i8 [ 1, %L124 ], [ %t405, %L128 ]
+  %t407 = icmp ne i8 %t406, 0
+  br i1 %t407, label %L131, label %L130
+L130:
+  %t408 = icmp sge i8 2, 0
+  %t409 = icmp slt i8 2, 8
+  %t410 = and i1 %t408, %t409
+  br i1 %t410, label %L132, label %L133
+L133:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L132:
+  %t411 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
+  %t412 = load i16, ptr %t411
+  %t413 = sext i8 1 to i16
+  %t414 = icmp ne i16 %t412, %t413
+  %t415 = zext i1 %t414 to i8
+  br label %L131
+L131:
+  %t416 = phi i8 [ 1, %L127 ], [ %t415, %L132 ]
+  %t417 = icmp ne i8 %t416, 0
+  br i1 %t417, label %L135, label %L134
+L134:
+  %t418 = icmp sge i8 3, 0
+  %t419 = icmp slt i8 3, 8
+  %t420 = and i1 %t418, %t419
+  br i1 %t420, label %L136, label %L137
+L137:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L136:
+  %t421 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 3
+  %t422 = load i16, ptr %t421
+  %t423 = sext i8 2 to i16
+  %t424 = icmp ne i16 %t422, %t423
+  %t425 = zext i1 %t424 to i8
+  br label %L135
+L135:
+  %t426 = phi i8 [ 1, %L131 ], [ %t425, %L136 ]
+  %t427 = icmp ne i8 %t426, 0
+  br i1 %t427, label %L139, label %L138
+L138:
+  %t428 = icmp sge i8 7, 0
+  %t429 = icmp slt i8 7, 8
+  %t430 = and i1 %t428, %t429
+  br i1 %t430, label %L140, label %L141
+L141:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L140:
+  %t431 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 7
+  %t432 = load i16, ptr %t431
+  %t433 = sext i8 6 to i16
+  %t434 = icmp ne i16 %t432, %t433
+  %t435 = zext i1 %t434 to i8
+  br label %L139
+L139:
+  %t436 = phi i8 [ 1, %L135 ], [ %t435, %L140 ]
+  %t437 = icmp ne i8 %t436, 0
+  br i1 %t437, label %L142, label %L143
 L142:
-  %t442 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
-  %t443 = ptrtoint ptr %t442 to i32
-  %t444 = inttoptr i32 %t443 to ptr
-  %t445 = icmp sge i8 0, 0
-  %t446 = icmp slt i8 0, 8
-  %t447 = and i1 %t445, %t446
-  br i1 %t447, label %L144, label %L145
+  %t438 = sext i8 1 to i32
+  %t439 = sext i8 8 to i64
+  call void @write(i32 %t438, ptr @.str.system.L116.C105, i64 %t439)
+  br label %L123
+L143:
+  br label %L123
+L123:
+  %t440 = icmp sge i8 2, 0
+  %t441 = icmp slt i8 2, 8
+  %t442 = and i1 %t440, %t441
+  br i1 %t442, label %L144, label %L145
 L145:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L144:
-  %t448 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t449 = ptrtoint ptr %t448 to i32
-  %t450 = inttoptr i32 %t449 to ptr
-  %t451 = sext i8 12 to i32
-  %t452 = icmp sgt i32 %t451, 0
-  %t453 = select i1 %t452, i32 %t451, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t450, ptr %t444, i32 %t453, i1 true)
-  %t454 = icmp sge i8 0, 0
-  %t455 = icmp slt i8 0, 8
-  %t456 = and i1 %t454, %t455
-  br i1 %t456, label %L147, label %L148
-L148:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
+  %t443 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
+  %t444 = ptrtoint ptr %t443 to i32
+  %t445 = inttoptr i32 %t444 to ptr
+  %t446 = icmp sge i8 0, 0
+  %t447 = icmp slt i8 0, 8
+  %t448 = and i1 %t446, %t447
+  br i1 %t448, label %L146, label %L147
 L147:
-  %t457 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t458 = load i16, ptr %t457
-  %t459 = sext i8 1 to i16
-  %t460 = icmp ne i16 %t458, %t459
-  %t461 = zext i1 %t460 to i8
-  %t462 = icmp ne i8 %t461, 0
-  br i1 %t462, label %L150, label %L149
-L149:
-  %t463 = icmp sge i8 1, 0
-  %t464 = icmp slt i8 1, 8
-  %t465 = and i1 %t463, %t464
-  br i1 %t465, label %L151, label %L152
-L152:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
-L151:
-  %t466 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 1
-  %t467 = load i16, ptr %t466
-  %t468 = sext i8 2 to i16
-  %t469 = icmp ne i16 %t467, %t468
-  %t470 = zext i1 %t469 to i8
-  br label %L150
-L150:
-  %t471 = phi i8 [ 1, %L147 ], [ %t470, %L151 ]
-  %t472 = icmp ne i8 %t471, 0
-  br i1 %t472, label %L154, label %L153
-L153:
-  %t473 = icmp sge i8 5, 0
-  %t474 = icmp slt i8 5, 8
-  %t475 = and i1 %t473, %t474
-  br i1 %t475, label %L155, label %L156
-L156:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L155:
-  %t476 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 5
-  %t477 = load i16, ptr %t476
-  %t478 = sext i8 6 to i16
-  %t479 = icmp ne i16 %t477, %t478
-  %t480 = zext i1 %t479 to i8
-  br label %L154
-L154:
-  %t481 = phi i8 [ 1, %L150 ], [ %t480, %L155 ]
-  %t482 = icmp ne i8 %t481, 0
-  br i1 %t482, label %L158, label %L157
-L157:
-  %t483 = icmp sge i8 7, 0
-  %t484 = icmp slt i8 7, 8
-  %t485 = and i1 %t483, %t484
-  br i1 %t485, label %L159, label %L160
-L160:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L159:
-  %t486 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 7
-  %t487 = load i16, ptr %t486
-  %t488 = sext i8 6 to i16
-  %t489 = icmp ne i16 %t487, %t488
-  %t490 = zext i1 %t489 to i8
-  br label %L158
-L158:
-  %t491 = phi i8 [ 1, %L154 ], [ %t490, %L159 ]
-  %t492 = icmp ne i8 %t491, 0
-  br i1 %t492, label %L161, label %L162
-L161:
-  %t493 = sext i8 1 to i32
-  %t494 = sext i8 8 to i64
-  call void @write(i32 %t493, ptr @.str.system.L118.C88, i64 %t494)
-  br label %L146
-L162:
-  br label %L146
 L146:
-  %t495 = icmp sge i8 0, 0
-  %t496 = icmp slt i8 0, 8
-  %t497 = and i1 %t495, %t496
-  br i1 %t497, label %L163, label %L164
-L164:
+  %t449 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t450 = ptrtoint ptr %t449 to i32
+  %t451 = inttoptr i32 %t450 to ptr
+  %t452 = sext i8 12 to i32
+  %t453 = icmp sgt i32 %t452, 0
+  %t454 = select i1 %t453, i32 %t452, i32 0
+  call void @llvm.memmove.p0.p0.i32(ptr %t451, ptr %t445, i32 %t454, i1 true)
+  %t455 = icmp sge i8 0, 0
+  %t456 = icmp slt i8 0, 8
+  %t457 = and i1 %t455, %t456
+  br i1 %t457, label %L149, label %L150
+L150:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
+L149:
+  %t458 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t459 = load i16, ptr %t458
+  %t460 = sext i8 1 to i16
+  %t461 = icmp ne i16 %t459, %t460
+  %t462 = zext i1 %t461 to i8
+  %t463 = icmp ne i8 %t462, 0
+  br i1 %t463, label %L152, label %L151
+L151:
+  %t464 = icmp sge i8 1, 0
+  %t465 = icmp slt i8 1, 8
+  %t466 = and i1 %t464, %t465
+  br i1 %t466, label %L153, label %L154
+L154:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L153:
+  %t467 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 1
+  %t468 = load i16, ptr %t467
+  %t469 = sext i8 2 to i16
+  %t470 = icmp ne i16 %t468, %t469
+  %t471 = zext i1 %t470 to i8
+  br label %L152
+L152:
+  %t472 = phi i8 [ 1, %L149 ], [ %t471, %L153 ]
+  %t473 = icmp ne i8 %t472, 0
+  br i1 %t473, label %L156, label %L155
+L155:
+  %t474 = icmp sge i8 5, 0
+  %t475 = icmp slt i8 5, 8
+  %t476 = and i1 %t474, %t475
+  br i1 %t476, label %L157, label %L158
+L158:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L157:
+  %t477 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 5
+  %t478 = load i16, ptr %t477
+  %t479 = sext i8 6 to i16
+  %t480 = icmp ne i16 %t478, %t479
+  %t481 = zext i1 %t480 to i8
+  br label %L156
+L156:
+  %t482 = phi i8 [ 1, %L152 ], [ %t481, %L157 ]
+  %t483 = icmp ne i8 %t482, 0
+  br i1 %t483, label %L160, label %L159
+L159:
+  %t484 = icmp sge i8 7, 0
+  %t485 = icmp slt i8 7, 8
+  %t486 = and i1 %t484, %t485
+  br i1 %t486, label %L161, label %L162
+L162:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L161:
+  %t487 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 7
+  %t488 = load i16, ptr %t487
+  %t489 = sext i8 6 to i16
+  %t490 = icmp ne i16 %t488, %t489
+  %t491 = zext i1 %t490 to i8
+  br label %L160
+L160:
+  %t492 = phi i8 [ 1, %L156 ], [ %t491, %L161 ]
+  %t493 = icmp ne i8 %t492, 0
+  br i1 %t493, label %L163, label %L164
 L163:
-  %t498 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t499 = ptrtoint ptr %t498 to i32
-  %t500 = inttoptr i32 %t499 to ptr
-  %t501 = icmp sge i8 0, 0
-  %t502 = icmp slt i8 0, 8
-  %t503 = and i1 %t501, %t502
-  br i1 %t503, label %L165, label %L166
+  %t494 = sext i8 1 to i32
+  %t495 = sext i8 8 to i64
+  call void @write(i32 %t494, ptr @.str.system.L118.C88, i64 %t495)
+  br label %L148
+L164:
+  br label %L148
+L148:
+  %t496 = icmp sge i8 0, 0
+  %t497 = icmp slt i8 0, 8
+  %t498 = and i1 %t496, %t497
+  br i1 %t498, label %L165, label %L166
 L166:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L165:
-  %t504 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
-  %t505 = ptrtoint ptr %t504 to i32
-  %t506 = inttoptr i32 %t505 to ptr
-  %t507 = sext i8 0 to i32
-  %t508 = icmp sgt i32 %t507, 0
-  %t509 = select i1 %t508, i32 %t507, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t506, ptr %t500, i32 %t509, i1 true)
-  %t510 = icmp sge i8 0, 0
-  %t511 = icmp slt i8 0, 8
-  %t512 = and i1 %t510, %t511
-  br i1 %t512, label %L167, label %L168
+  %t499 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t500 = ptrtoint ptr %t499 to i32
+  %t501 = inttoptr i32 %t500 to ptr
+  %t502 = icmp sge i8 0, 0
+  %t503 = icmp slt i8 0, 8
+  %t504 = and i1 %t502, %t503
+  br i1 %t504, label %L167, label %L168
 L168:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L167:
-  %t513 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t514 = ptrtoint ptr %t513 to i32
-  %t515 = inttoptr i32 %t514 to ptr
-  %t516 = icmp sge i8 0, 0
-  %t517 = icmp slt i8 0, 8
-  %t518 = and i1 %t516, %t517
-  br i1 %t518, label %L169, label %L170
+  %t505 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
+  %t506 = ptrtoint ptr %t505 to i32
+  %t507 = inttoptr i32 %t506 to ptr
+  %t508 = sext i8 0 to i32
+  %t509 = icmp sgt i32 %t508, 0
+  %t510 = select i1 %t509, i32 %t508, i32 0
+  call void @llvm.memmove.p0.p0.i32(ptr %t507, ptr %t501, i32 %t510, i1 true)
+  %t511 = icmp sge i8 0, 0
+  %t512 = icmp slt i8 0, 8
+  %t513 = and i1 %t511, %t512
+  br i1 %t513, label %L169, label %L170
 L170:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L169:
-  %t519 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
-  %t520 = ptrtoint ptr %t519 to i32
-  %t521 = inttoptr i32 %t520 to ptr
-  %t522 = sext i8 -5 to i32
-  %t523 = icmp sgt i32 %t522, 0
-  %t524 = select i1 %t523, i32 %t522, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t521, ptr %t515, i32 %t524, i1 true)
-  %t525 = icmp sge i8 0, 0
-  %t526 = icmp slt i8 0, 8
-  %t527 = and i1 %t525, %t526
-  br i1 %t527, label %L172, label %L173
-L173:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
+  %t514 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t515 = ptrtoint ptr %t514 to i32
+  %t516 = inttoptr i32 %t515 to ptr
+  %t517 = icmp sge i8 0, 0
+  %t518 = icmp slt i8 0, 8
+  %t519 = and i1 %t517, %t518
+  br i1 %t519, label %L171, label %L172
 L172:
-  %t528 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
-  %t529 = load i16, ptr %t528
-  %t530 = sext i8 1 to i16
-  %t531 = icmp ne i16 %t529, %t530
-  %t532 = zext i1 %t531 to i8
-  %t533 = icmp ne i8 %t532, 0
-  br i1 %t533, label %L174, label %L175
-L174:
-  %t534 = sext i8 1 to i32
-  %t535 = sext i8 8 to i64
-  call void @write(i32 %t534, ptr @.str.system.L121.C35, i64 %t535)
-  br label %L171
-L175:
-  br label %L171
-L171:
-  %t536 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 0
-  store i8 104, ptr %t536
-  %t537 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 1
-  store i8 101, ptr %t537
-  %t538 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 2
-  store i8 108, ptr %t538
-  %t539 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 3
-  store i8 108, ptr %t539
-  %t540 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 4
-  store i8 111, ptr %t540
-  %t541 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 5
-  store i8 0, ptr %t541
-  %t542 = icmp sge i8 0, 0
-  %t543 = icmp slt i8 0, 16
-  %t544 = and i1 %t542, %t543
-  br i1 %t544, label %L176, label %L177
-L177:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
+L171:
+  %t520 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
+  %t521 = ptrtoint ptr %t520 to i32
+  %t522 = inttoptr i32 %t521 to ptr
+  %t523 = sext i8 -5 to i32
+  %t524 = icmp sgt i32 %t523, 0
+  %t525 = select i1 %t524, i32 %t523, i32 0
+  call void @llvm.memmove.p0.p0.i32(ptr %t522, ptr %t516, i32 %t525, i1 true)
+  %t526 = icmp sge i8 0, 0
+  %t527 = icmp slt i8 0, 8
+  %t528 = and i1 %t526, %t527
+  br i1 %t528, label %L174, label %L175
+L175:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L174:
+  %t529 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
+  %t530 = load i16, ptr %t529
+  %t531 = sext i8 1 to i16
+  %t532 = icmp ne i16 %t530, %t531
+  %t533 = zext i1 %t532 to i8
+  %t534 = icmp ne i8 %t533, 0
+  br i1 %t534, label %L176, label %L177
 L176:
-  %t545 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 0
-  %t546 = ptrtoint ptr %t545 to i32
-  %t547 = inttoptr i32 %t546 to ptr
-  %t548 = icmp sge i8 8, 0
-  %t549 = icmp slt i8 8, 16
-  %t550 = and i1 %t548, %t549
-  br i1 %t550, label %L178, label %L179
+  %t535 = sext i8 1 to i32
+  %t536 = sext i8 8 to i64
+  call void @write(i32 %t535, ptr @.str.system.L121.C35, i64 %t536)
+  br label %L173
+L177:
+  br label %L173
+L173:
+  %t537 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 0
+  store i8 104, ptr %t537
+  %t538 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 1
+  store i8 101, ptr %t538
+  %t539 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 2
+  store i8 108, ptr %t539
+  %t540 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 3
+  store i8 108, ptr %t540
+  %t541 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 4
+  store i8 111, ptr %t541
+  %t542 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 5
+  store i8 0, ptr %t542
+  %t543 = icmp sge i8 0, 0
+  %t544 = icmp slt i8 0, 16
+  %t545 = and i1 %t543, %t544
+  br i1 %t545, label %L178, label %L179
 L179:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L178:
-  %t551 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 8
-  %t552 = ptrtoint ptr %t551 to i32
-  %t553 = inttoptr i32 %t552 to ptr
-  %t554 = sext i8 6 to i32
-  %t555 = icmp sgt i32 %t554, 0
-  %t556 = select i1 %t555, i32 %t554, i32 0
-  call void @llvm.memmove.p0.p0.i32(ptr %t553, ptr %t547, i32 %t556, i1 true)
-  %t557 = icmp sge i8 8, 0
-  %t558 = icmp slt i8 8, 16
-  %t559 = and i1 %t557, %t558
-  br i1 %t559, label %L181, label %L182
-L182:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
+  %t546 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 0
+  %t547 = ptrtoint ptr %t546 to i32
+  %t548 = inttoptr i32 %t547 to ptr
+  %t549 = icmp sge i8 8, 0
+  %t550 = icmp slt i8 8, 16
+  %t551 = and i1 %t549, %t550
+  br i1 %t551, label %L180, label %L181
 L181:
-  %t560 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 8
-  %t561 = load i8, ptr %t560
-  %t562 = icmp ne i8 %t561, 104
-  %t563 = zext i1 %t562 to i8
-  %t564 = icmp ne i8 %t563, 0
-  br i1 %t564, label %L184, label %L183
-L183:
-  %t565 = icmp sge i8 12, 0
-  %t566 = icmp slt i8 12, 16
-  %t567 = and i1 %t565, %t566
-  br i1 %t567, label %L185, label %L186
-L186:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
-L185:
-  %t568 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 12
-  %t569 = load i8, ptr %t568
-  %t570 = icmp ne i8 %t569, 111
-  %t571 = zext i1 %t570 to i8
-  br label %L184
-L184:
-  %t572 = phi i8 [ 1, %L181 ], [ %t571, %L185 ]
-  %t573 = icmp ne i8 %t572, 0
-  br i1 %t573, label %L188, label %L187
-L187:
-  %t574 = icmp sge i8 13, 0
-  %t575 = icmp slt i8 13, 16
-  %t576 = and i1 %t574, %t575
-  br i1 %t576, label %L189, label %L190
-L190:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L189:
-  %t577 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 13
-  %t578 = load i8, ptr %t577
-  %t579 = icmp ne i8 %t578, 0
-  %t580 = zext i1 %t579 to i8
-  br label %L188
-L188:
-  %t581 = phi i8 [ 1, %L184 ], [ %t580, %L189 ]
-  %t582 = icmp ne i8 %t581, 0
-  br i1 %t582, label %L191, label %L192
-L191:
-  %t583 = sext i8 1 to i32
-  %t584 = sext i8 8 to i64
-  call void @write(i32 %t583, ptr @.str.system.L125.C75, i64 %t584)
-  br label %L180
-L192:
-  br label %L180
 L180:
-  %t585 = sext i8 -2 to i16
-  store i16 %t585, ptr @system.i
-  %t586 = load i16, ptr @system.i
-  %t587 = sext i16 %t586 to i32
-  store i32 %t587, ptr @system.l
-  %t588 = load i32, ptr @system.l
-  %t589 = sext i8 -2 to i32
-  %t590 = icmp ne i32 %t588, %t589
-  %t591 = zext i1 %t590 to i8
-  %t592 = icmp ne i8 %t591, 0
-  br i1 %t592, label %L194, label %L195
-L194:
-  %t593 = sext i8 1 to i32
-  %t594 = sext i8 8 to i64
-  call void @write(i32 %t593, ptr @.str.system.L128.C30, i64 %t594)
-  br label %L193
-L195:
-  br label %L193
+  %t552 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 8
+  %t553 = ptrtoint ptr %t552 to i32
+  %t554 = inttoptr i32 %t553 to ptr
+  %t555 = sext i8 6 to i32
+  %t556 = icmp sgt i32 %t555, 0
+  %t557 = select i1 %t556, i32 %t555, i32 0
+  call void @llvm.memmove.p0.p0.i32(ptr %t554, ptr %t548, i32 %t557, i1 true)
+  %t558 = icmp sge i8 8, 0
+  %t559 = icmp slt i8 8, 16
+  %t560 = and i1 %t558, %t559
+  br i1 %t560, label %L183, label %L184
+L184:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L183:
+  %t561 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 8
+  %t562 = load i8, ptr %t561
+  %t563 = icmp ne i8 %t562, 104
+  %t564 = zext i1 %t563 to i8
+  %t565 = icmp ne i8 %t564, 0
+  br i1 %t565, label %L186, label %L185
+L185:
+  %t566 = icmp sge i8 12, 0
+  %t567 = icmp slt i8 12, 16
+  %t568 = and i1 %t566, %t567
+  br i1 %t568, label %L187, label %L188
+L188:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L187:
+  %t569 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 12
+  %t570 = load i8, ptr %t569
+  %t571 = icmp ne i8 %t570, 111
+  %t572 = zext i1 %t571 to i8
+  br label %L186
+L186:
+  %t573 = phi i8 [ 1, %L183 ], [ %t572, %L187 ]
+  %t574 = icmp ne i8 %t573, 0
+  br i1 %t574, label %L190, label %L189
+L189:
+  %t575 = icmp sge i8 13, 0
+  %t576 = icmp slt i8 13, 16
+  %t577 = and i1 %t575, %t576
+  br i1 %t577, label %L191, label %L192
+L192:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L191:
+  %t578 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 13
+  %t579 = load i8, ptr %t578
+  %t580 = icmp ne i8 %t579, 0
+  %t581 = zext i1 %t580 to i8
+  br label %L190
+L190:
+  %t582 = phi i8 [ 1, %L186 ], [ %t581, %L191 ]
+  %t583 = icmp ne i8 %t582, 0
+  br i1 %t583, label %L193, label %L194
 L193:
-  store i32 65543, ptr @system.l
-  %t595 = load i32, ptr @system.l
-  %t596 = trunc i32 %t595 to i16
-  store i16 %t596, ptr @system.i
-  %t597 = load i16, ptr @system.i
-  %t598 = sext i8 7 to i16
-  %t599 = icmp ne i16 %t597, %t598
-  %t600 = zext i1 %t599 to i8
-  %t601 = icmp ne i8 %t600, 0
-  br i1 %t601, label %L197, label %L198
-L197:
-  %t602 = sext i8 1 to i32
-  %t603 = sext i8 8 to i64
-  call void @write(i32 %t602, ptr @.str.system.L130.C29, i64 %t603)
-  br label %L196
-L198:
-  br label %L196
+  %t584 = sext i8 1 to i32
+  %t585 = sext i8 8 to i64
+  call void @write(i32 %t584, ptr @.str.system.L125.C75, i64 %t585)
+  br label %L182
+L194:
+  br label %L182
+L182:
+  %t586 = sext i8 -2 to i16
+  store i16 %t586, ptr @system.i
+  %t587 = load i16, ptr @system.i
+  %t588 = sext i16 %t587 to i32
+  store i32 %t588, ptr @system.l
+  %t589 = load i32, ptr @system.l
+  %t590 = sext i8 -2 to i32
+  %t591 = icmp ne i32 %t589, %t590
+  %t592 = zext i1 %t591 to i8
+  %t593 = icmp ne i8 %t592, 0
+  br i1 %t593, label %L196, label %L197
 L196:
-  %t604 = sext i8 1 to i32
-  %t605 = sext i8 2 to i64
-  call void @write(i32 %t604, ptr @.str.system.L131.C15, i64 %t605)
+  %t594 = sext i8 1 to i32
+  %t595 = sext i8 8 to i64
+  call void @write(i32 %t594, ptr @.str.system.L128.C30, i64 %t595)
+  br label %L195
+L197:
+  br label %L195
+L195:
+  store i32 65543, ptr @system.l
+  %t596 = load i32, ptr @system.l
+  %t597 = trunc i32 %t596 to i16
+  store i16 %t597, ptr @system.i
+  %t598 = load i16, ptr @system.i
+  %t599 = sext i8 7 to i16
+  %t600 = icmp ne i16 %t598, %t599
+  %t601 = zext i1 %t600 to i8
+  %t602 = icmp ne i8 %t601, 0
+  br i1 %t602, label %L199, label %L200
+L199:
+  %t603 = sext i8 1 to i32
+  %t604 = sext i8 8 to i64
+  call void @write(i32 %t603, ptr @.str.system.L130.C29, i64 %t604)
+  br label %L198
+L200:
+  br label %L198
+L198:
+  %t605 = sext i8 1 to i32
+  %t606 = sext i8 2 to i64
+  call void @write(i32 %t605, ptr @.str.system.L131.C15, i64 %t606)
   ret void
 }
 
@@ -1280,6 +1293,7 @@ entry:
   call void @system_init()
   ret i32 0
 }
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 
 declare void @llvm.memmove.p0.p0.i32(ptr, ptr, i32, i1)
 clang accepted i686-unknown-linux-gnu
@@ -1289,6 +1303,10 @@ target triple = "x86_64-unknown-linux-gnu"
 
 %system.Pair = type { i16, i16 }
 
+
+@system.-initialized = internal global i1 false
+@system.-key.O2.eaab1b6afd4e1d98 = constant i8 0
+@system.-target.x86_64-unknown-linux-gnu = constant i8 0
 @system.addr = global i64 zeroinitializer
 @system.other = global i64 zeroinitializer
 @system.i = global i16 zeroinitializer
@@ -1366,19 +1384,22 @@ declare void @exit(i32)
 @.str.system.L130.C29 = private unnamed_addr constant [9 x i8] c"FAIL 34 \00"
 @.str.system.L131.C15 = private unnamed_addr constant [3 x i8] c"OK\00"
 
-define i64 @system.AddressOf(ptr %v) {
+define i64 @system.AddressOf(ptr %p.v) {
 entry:
-  %t1 = ptrtoint ptr %v to i64
+  %t1 = ptrtoint ptr %p.v to i64
   ret i64 %t1
 L1:
-  ret i64 0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
-define void @system.Bump(i64 %a) {
+define void @system.Bump(i64 %p.a) {
 entry:
   %t2 = alloca i64
-  store i64 %a, ptr %t2
+  store i64 %p.a, ptr %t2
   %t3 = alloca i16
+  store i16 zeroinitializer, ptr %t3
   %t4 = load i64, ptr %t2
   %t5 = inttoptr i64 %t4 to ptr
   %t6 = load volatile i16, ptr %t5, align 1
@@ -1395,1166 +1416,1172 @@ entry:
 
 define void @system_init() {
 entry:
-  store i16 1234, ptr @system.i
-  %t12 = ptrtoint ptr @system.i to i64
-  store i64 %t12, ptr @system.addr
-  %t13 = load i64, ptr @system.addr
-  %t14 = inttoptr i64 %t13 to ptr
-  %t15 = load volatile i16, ptr %t14, align 1
-  store i16 %t15, ptr @system.j
-  %t16 = load i16, ptr @system.j
-  %t17 = icmp ne i16 %t16, 1234
-  %t18 = zext i1 %t17 to i8
-  %t19 = icmp ne i8 %t18, 0
-  br i1 %t19, label %L3, label %L4
-L3:
-  %t20 = sext i8 1 to i32
-  %t21 = sext i8 8 to i64
-  call void @write(i32 %t20, ptr @.str.system.L49.C32, i64 %t21)
-  br label %L2
-L4:
-  br label %L2
+  %t12 = load i1, ptr @system.-initialized
+  br i1 %t12, label %L2, label %L3
 L2:
-  %t22 = sext i8 99 to i16
-  store i16 %t22, ptr @system.k
-  %t23 = load i64, ptr @system.addr
-  %t24 = inttoptr i64 %t23 to ptr
-  %t25 = load i16, ptr @system.k
-  store volatile i16 %t25, ptr %t24, align 1
-  %t26 = load i16, ptr @system.i
-  %t27 = sext i8 99 to i16
-  %t28 = icmp ne i16 %t26, %t27
-  %t29 = zext i1 %t28 to i8
-  %t30 = icmp ne i8 %t29, 0
-  br i1 %t30, label %L6, label %L7
-L6:
-  %t31 = sext i8 1 to i32
-  %t32 = sext i8 8 to i64
-  call void @write(i32 %t31, ptr @.str.system.L52.C30, i64 %t32)
-  br label %L5
-L7:
-  br label %L5
+  ret void
+L3:
+  store i1 true, ptr @system.-initialized
+  store i16 1234, ptr @system.i
+  %t13 = ptrtoint ptr @system.i to i64
+  store i64 %t13, ptr @system.addr
+  %t14 = load i64, ptr @system.addr
+  %t15 = inttoptr i64 %t14 to ptr
+  %t16 = load volatile i16, ptr %t15, align 1
+  store i16 %t16, ptr @system.j
+  %t17 = load i16, ptr @system.j
+  %t18 = icmp ne i16 %t17, 1234
+  %t19 = zext i1 %t18 to i8
+  %t20 = icmp ne i8 %t19, 0
+  br i1 %t20, label %L5, label %L6
 L5:
-  %t33 = ptrtoint ptr @system.i to i64
-  %t34 = load i64, ptr @system.addr
-  %t35 = icmp ne i64 %t33, %t34
-  %t36 = zext i1 %t35 to i8
-  %t37 = icmp ne i8 %t36, 0
-  br i1 %t37, label %L9, label %L10
-L9:
-  %t38 = sext i8 1 to i32
-  %t39 = sext i8 8 to i64
-  call void @write(i32 %t38, ptr @.str.system.L53.C44, i64 %t39)
-  br label %L8
-L10:
-  br label %L8
+  %t21 = sext i8 1 to i32
+  %t22 = sext i8 8 to i64
+  call void @write(i32 %t21, ptr @.str.system.L49.C32, i64 %t22)
+  br label %L4
+L6:
+  br label %L4
+L4:
+  %t23 = sext i8 99 to i16
+  store i16 %t23, ptr @system.k
+  %t24 = load i64, ptr @system.addr
+  %t25 = inttoptr i64 %t24 to ptr
+  %t26 = load i16, ptr @system.k
+  store volatile i16 %t26, ptr %t25, align 1
+  %t27 = load i16, ptr @system.i
+  %t28 = sext i8 99 to i16
+  %t29 = icmp ne i16 %t27, %t28
+  %t30 = zext i1 %t29 to i8
+  %t31 = icmp ne i8 %t30, 0
+  br i1 %t31, label %L8, label %L9
 L8:
-  %t40 = ptrtoint ptr @system.i to i64
-  %t41 = ptrtoint ptr @system.j to i64
-  %t42 = icmp eq i64 %t40, %t41
-  %t43 = zext i1 %t42 to i8
-  %t44 = icmp ne i8 %t43, 0
-  br i1 %t44, label %L12, label %L13
-L12:
-  %t45 = sext i8 1 to i32
-  %t46 = sext i8 8 to i64
-  call void @write(i32 %t45, ptr @.str.system.L54.C53, i64 %t46)
-  br label %L11
-L13:
-  br label %L11
+  %t32 = sext i8 1 to i32
+  %t33 = sext i8 8 to i64
+  call void @write(i32 %t32, ptr @.str.system.L52.C30, i64 %t33)
+  br label %L7
+L9:
+  br label %L7
+L7:
+  %t34 = ptrtoint ptr @system.i to i64
+  %t35 = load i64, ptr @system.addr
+  %t36 = icmp ne i64 %t34, %t35
+  %t37 = zext i1 %t36 to i8
+  %t38 = icmp ne i8 %t37, 0
+  br i1 %t38, label %L11, label %L12
 L11:
-  %t47 = load i64, ptr @system.addr
-  call void @system.Bump(i64 %t47)
-  %t48 = load i16, ptr @system.i
-  %t49 = sext i8 100 to i16
-  %t50 = icmp ne i16 %t48, %t49
-  %t51 = zext i1 %t50 to i8
-  %t52 = icmp ne i8 %t51, 0
-  br i1 %t52, label %L15, label %L16
-L15:
-  %t53 = sext i8 1 to i32
-  %t54 = sext i8 8 to i64
-  call void @write(i32 %t53, ptr @.str.system.L56.C31, i64 %t54)
-  br label %L14
-L16:
-  br label %L14
+  %t39 = sext i8 1 to i32
+  %t40 = sext i8 8 to i64
+  call void @write(i32 %t39, ptr @.str.system.L53.C44, i64 %t40)
+  br label %L10
+L12:
+  br label %L10
+L10:
+  %t41 = ptrtoint ptr @system.i to i64
+  %t42 = ptrtoint ptr @system.j to i64
+  %t43 = icmp eq i64 %t41, %t42
+  %t44 = zext i1 %t43 to i8
+  %t45 = icmp ne i8 %t44, 0
+  br i1 %t45, label %L14, label %L15
 L14:
-  %t55 = call i64 @system.AddressOf(ptr @system.j)
-  %t56 = ptrtoint ptr @system.j to i64
-  %t57 = icmp ne i64 %t55, %t56
-  %t58 = zext i1 %t57 to i8
-  %t59 = icmp ne i8 %t58, 0
-  br i1 %t59, label %L18, label %L19
-L18:
-  %t60 = sext i8 1 to i32
-  %t61 = sext i8 8 to i64
-  call void @write(i32 %t60, ptr @.str.system.L57.C52, i64 %t61)
-  br label %L17
-L19:
-  br label %L17
+  %t46 = sext i8 1 to i32
+  %t47 = sext i8 8 to i64
+  call void @write(i32 %t46, ptr @.str.system.L54.C53, i64 %t47)
+  br label %L13
+L15:
+  br label %L13
+L13:
+  %t48 = load i64, ptr @system.addr
+  call void @system.Bump(i64 %t48)
+  %t49 = load i16, ptr @system.i
+  %t50 = sext i8 100 to i16
+  %t51 = icmp ne i16 %t49, %t50
+  %t52 = zext i1 %t51 to i8
+  %t53 = icmp ne i8 %t52, 0
+  br i1 %t53, label %L17, label %L18
 L17:
-  store i32 123456789, ptr @system.l
-  %t62 = ptrtoint ptr @system.l to i64
-  store i64 %t62, ptr @system.addr
-  %t63 = load i64, ptr @system.addr
-  %t64 = inttoptr i64 %t63 to ptr
-  %t65 = load volatile i32, ptr %t64, align 1
-  store i32 %t65, ptr @system.m
-  %t66 = load i32, ptr @system.m
-  %t67 = icmp ne i32 %t66, 123456789
-  %t68 = zext i1 %t67 to i8
-  %t69 = icmp ne i8 %t68, 0
-  br i1 %t69, label %L21, label %L22
-L21:
-  %t70 = sext i8 1 to i32
-  %t71 = sext i8 8 to i64
-  call void @write(i32 %t70, ptr @.str.system.L60.C37, i64 %t71)
-  br label %L20
-L22:
-  br label %L20
+  %t54 = sext i8 1 to i32
+  %t55 = sext i8 8 to i64
+  call void @write(i32 %t54, ptr @.str.system.L56.C31, i64 %t55)
+  br label %L16
+L18:
+  br label %L16
+L16:
+  %t56 = call i64 @system.AddressOf(ptr @system.j)
+  %t57 = ptrtoint ptr @system.j to i64
+  %t58 = icmp ne i64 %t56, %t57
+  %t59 = zext i1 %t58 to i8
+  %t60 = icmp ne i8 %t59, 0
+  br i1 %t60, label %L20, label %L21
 L20:
-  store i64 1234567890123, ptr @system.h
-  %t72 = ptrtoint ptr @system.h to i64
-  store i64 %t72, ptr @system.addr
-  %t73 = sext i8 0 to i64
-  store i64 %t73, ptr @system.h
-  %t74 = ptrtoint ptr @system.h to i64
-  %t75 = inttoptr i64 %t74 to ptr
-  %t76 = load volatile i64, ptr %t75, align 1
-  store i64 %t76, ptr @system.h
-  store i8 113, ptr @system.c
-  %t77 = ptrtoint ptr @system.c to i64
-  %t78 = inttoptr i64 %t77 to ptr
-  %t79 = load volatile i8, ptr %t78, align 1
-  store i8 %t79, ptr @system.d
-  %t80 = load i8, ptr @system.d
-  %t81 = icmp ne i8 %t80, 113
-  %t82 = zext i1 %t81 to i8
-  %t83 = icmp ne i8 %t82, 0
-  br i1 %t83, label %L24, label %L25
-L24:
-  %t84 = sext i8 1 to i32
-  %t85 = sext i8 8 to i64
-  call void @write(i32 %t84, ptr @.str.system.L64.C31, i64 %t85)
-  br label %L23
-L25:
-  br label %L23
+  %t61 = sext i8 1 to i32
+  %t62 = sext i8 8 to i64
+  call void @write(i32 %t61, ptr @.str.system.L57.C52, i64 %t62)
+  br label %L19
+L21:
+  br label %L19
+L19:
+  store i32 123456789, ptr @system.l
+  %t63 = ptrtoint ptr @system.l to i64
+  store i64 %t63, ptr @system.addr
+  %t64 = load i64, ptr @system.addr
+  %t65 = inttoptr i64 %t64 to ptr
+  %t66 = load volatile i32, ptr %t65, align 1
+  store i32 %t66, ptr @system.m
+  %t67 = load i32, ptr @system.m
+  %t68 = icmp ne i32 %t67, 123456789
+  %t69 = zext i1 %t68 to i8
+  %t70 = icmp ne i8 %t69, 0
+  br i1 %t70, label %L23, label %L24
 L23:
-  %t86 = ptrtoint ptr @system.d to i64
-  %t87 = inttoptr i64 %t86 to ptr
-  %t88 = load i8, ptr @system.c
-  store volatile i8 %t88, ptr %t87, align 1
-  %t89 = fptrunc double 2.5 to float
-  store float %t89, ptr @system.r
-  %t90 = ptrtoint ptr @system.r to i64
-  %t91 = inttoptr i64 %t90 to ptr
-  %t92 = load volatile float, ptr %t91, align 1
-  store float %t92, ptr @system.r2
-  %t93 = load float, ptr @system.r2
-  %t94 = fptrunc double 2.5 to float
-  %t95 = fcmp une float %t93, %t94
-  %t96 = zext i1 %t95 to i8
-  %t97 = icmp ne i8 %t96, 0
-  br i1 %t97, label %L27, label %L28
-L27:
-  %t98 = sext i8 1 to i32
-  %t99 = sext i8 8 to i64
-  call void @write(i32 %t98, ptr @.str.system.L67.C32, i64 %t99)
-  br label %L26
-L28:
-  br label %L26
+  %t71 = sext i8 1 to i32
+  %t72 = sext i8 8 to i64
+  call void @write(i32 %t71, ptr @.str.system.L60.C37, i64 %t72)
+  br label %L22
+L24:
+  br label %L22
+L22:
+  store i64 1234567890123, ptr @system.h
+  %t73 = ptrtoint ptr @system.h to i64
+  store i64 %t73, ptr @system.addr
+  %t74 = sext i8 0 to i64
+  store i64 %t74, ptr @system.h
+  %t75 = ptrtoint ptr @system.h to i64
+  %t76 = inttoptr i64 %t75 to ptr
+  %t77 = load volatile i64, ptr %t76, align 1
+  store i64 %t77, ptr @system.h
+  store i8 113, ptr @system.c
+  %t78 = ptrtoint ptr @system.c to i64
+  %t79 = inttoptr i64 %t78 to ptr
+  %t80 = load volatile i8, ptr %t79, align 1
+  store i8 %t80, ptr @system.d
+  %t81 = load i8, ptr @system.d
+  %t82 = icmp ne i8 %t81, 113
+  %t83 = zext i1 %t82 to i8
+  %t84 = icmp ne i8 %t83, 0
+  br i1 %t84, label %L26, label %L27
 L26:
+  %t85 = sext i8 1 to i32
+  %t86 = sext i8 8 to i64
+  call void @write(i32 %t85, ptr @.str.system.L64.C31, i64 %t86)
+  br label %L25
+L27:
+  br label %L25
+L25:
+  %t87 = ptrtoint ptr @system.d to i64
+  %t88 = inttoptr i64 %t87 to ptr
+  %t89 = load i8, ptr @system.c
+  store volatile i8 %t89, ptr %t88, align 1
+  %t90 = fptrunc double 2.5 to float
+  store float %t90, ptr @system.r
+  %t91 = ptrtoint ptr @system.r to i64
+  %t92 = inttoptr i64 %t91 to ptr
+  %t93 = load volatile float, ptr %t92, align 1
+  store float %t93, ptr @system.r2
+  %t94 = load float, ptr @system.r2
+  %t95 = fptrunc double 2.5 to float
+  %t96 = fcmp une float %t94, %t95
+  %t97 = zext i1 %t96 to i8
+  %t98 = icmp ne i8 %t97, 0
+  br i1 %t98, label %L29, label %L30
+L29:
+  %t99 = sext i8 1 to i32
+  %t100 = sext i8 8 to i64
+  call void @write(i32 %t99, ptr @.str.system.L67.C32, i64 %t100)
+  br label %L28
+L30:
+  br label %L28
+L28:
   store double 0.125e0, ptr @system.x
   store double 0.0e0, ptr @system.y
-  %t100 = ptrtoint ptr @system.x to i64
-  %t101 = inttoptr i64 %t100 to ptr
-  %t102 = load volatile double, ptr %t101, align 1
-  store double %t102, ptr @system.y
-  %t103 = load double, ptr @system.y
-  %t104 = fcmp une double %t103, 0.125e0
-  %t105 = zext i1 %t104 to i8
-  %t106 = icmp ne i8 %t105, 0
-  br i1 %t106, label %L30, label %L31
-L30:
-  %t107 = sext i8 1 to i32
-  %t108 = sext i8 8 to i64
-  call void @write(i32 %t107, ptr @.str.system.L69.C35, i64 %t108)
-  br label %L29
-L31:
-  br label %L29
-L29:
-  store i32 546, ptr @system.s
-  %t109 = ptrtoint ptr @system.s to i64
-  %t110 = inttoptr i64 %t109 to ptr
-  %t111 = load volatile i32, ptr %t110, align 1
-  store i32 %t111, ptr @system.t
-  %t112 = load i32, ptr @system.t
-  %t113 = icmp ne i32 %t112, 546
-  %t114 = zext i1 %t113 to i8
-  %t115 = icmp ne i8 %t114, 0
-  br i1 %t115, label %L33, label %L34
-L33:
-  %t116 = sext i8 1 to i32
-  %t117 = sext i8 8 to i64
-  call void @write(i32 %t116, ptr @.str.system.L71.C37, i64 %t117)
-  br label %L32
-L34:
-  br label %L32
+  %t101 = ptrtoint ptr @system.x to i64
+  %t102 = inttoptr i64 %t101 to ptr
+  %t103 = load volatile double, ptr %t102, align 1
+  store double %t103, ptr @system.y
+  %t104 = load double, ptr @system.y
+  %t105 = fcmp une double %t104, 0.125e0
+  %t106 = zext i1 %t105 to i8
+  %t107 = icmp ne i8 %t106, 0
+  br i1 %t107, label %L32, label %L33
 L32:
-  store i8 1, ptr @system.flag
-  %t118 = ptrtoint ptr @system.flag to i64
-  %t119 = inttoptr i64 %t118 to ptr
-  store volatile i8 0, ptr %t119, align 1
-  %t120 = load i8, ptr @system.flag
-  %t121 = icmp ne i8 %t120, 0
-  br i1 %t121, label %L36, label %L37
-L36:
-  %t122 = sext i8 1 to i32
-  %t123 = sext i8 8 to i64
-  call void @write(i32 %t122, ptr @.str.system.L73.C28, i64 %t123)
-  br label %L35
-L37:
-  br label %L35
+  %t108 = sext i8 1 to i32
+  %t109 = sext i8 8 to i64
+  call void @write(i32 %t108, ptr @.str.system.L69.C35, i64 %t109)
+  br label %L31
+L33:
+  br label %L31
+L31:
+  store i32 546, ptr @system.s
+  %t110 = ptrtoint ptr @system.s to i64
+  %t111 = inttoptr i64 %t110 to ptr
+  %t112 = load volatile i32, ptr %t111, align 1
+  store i32 %t112, ptr @system.t
+  %t113 = load i32, ptr @system.t
+  %t114 = icmp ne i32 %t113, 546
+  %t115 = zext i1 %t114 to i8
+  %t116 = icmp ne i8 %t115, 0
+  br i1 %t116, label %L35, label %L36
 L35:
-  %t124 = sext i8 0 to i16
-  store i16 %t124, ptr @system.i
-  %t125 = sext i8 7 to i16
-  br label %L38
+  %t117 = sext i8 1 to i32
+  %t118 = sext i8 8 to i64
+  call void @write(i32 %t117, ptr @.str.system.L71.C37, i64 %t118)
+  br label %L34
+L36:
+  br label %L34
+L34:
+  store i8 1, ptr @system.flag
+  %t119 = ptrtoint ptr @system.flag to i64
+  %t120 = inttoptr i64 %t119 to ptr
+  store volatile i8 0, ptr %t120, align 1
+  %t121 = load i8, ptr @system.flag
+  %t122 = icmp ne i8 %t121, 0
+  br i1 %t122, label %L38, label %L39
 L38:
-  %t126 = load i16, ptr @system.i
-  %t127 = icmp sle i16 %t126, %t125
-  br i1 %t127, label %L39, label %L40
+  %t123 = sext i8 1 to i32
+  %t124 = sext i8 8 to i64
+  call void @write(i32 %t123, ptr @.str.system.L73.C28, i64 %t124)
+  br label %L37
 L39:
-  %t128 = load i16, ptr @system.i
-  %t129 = icmp sge i16 %t128, 0
-  %t130 = icmp slt i16 %t128, 8
-  %t131 = and i1 %t129, %t130
-  br i1 %t131, label %L41, label %L42
-L42:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L41:
-  %t132 = getelementptr [8 x i16], ptr @system.ints, i32 0, i16 %t128
-  %t133 = load i16, ptr @system.i
-  %t134 = sext i8 10 to i16
-  %t135 = mul i16 %t133, %t134
-  store i16 %t135, ptr %t132
-  %t136 = load i16, ptr @system.i
-  %t137 = add i16 %t136, 1
-  store i16 %t137, ptr @system.i
-  br label %L38
+  br label %L37
+L37:
+  %t125 = sext i8 0 to i16
+  store i16 %t125, ptr @system.i
+  %t126 = sext i8 7 to i16
+  br label %L40
 L40:
-  %t138 = icmp sge i8 0, 0
-  %t139 = icmp slt i8 0, 8
-  %t140 = and i1 %t138, %t139
-  br i1 %t140, label %L43, label %L44
+  %t127 = load i16, ptr @system.i
+  %t128 = icmp sle i16 %t127, %t126
+  br i1 %t128, label %L41, label %L42
+L41:
+  %t129 = load i16, ptr @system.i
+  %t130 = icmp sge i16 %t129, 0
+  %t131 = icmp slt i16 %t129, 8
+  %t132 = and i1 %t130, %t131
+  br i1 %t132, label %L43, label %L44
 L44:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L43:
-  %t141 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t142 = ptrtoint ptr %t141 to i64
-  store i64 %t142, ptr @system.addr
-  %t143 = icmp sge i8 3, 0
-  %t144 = icmp slt i8 3, 8
-  %t145 = and i1 %t143, %t144
-  br i1 %t145, label %L45, label %L46
+  %t133 = getelementptr [8 x i16], ptr @system.ints, i32 0, i16 %t129
+  %t134 = load i16, ptr @system.i
+  %t135 = sext i8 10 to i16
+  %t136 = mul i16 %t134, %t135
+  store i16 %t136, ptr %t133
+  %t137 = load i16, ptr @system.i
+  %t138 = add i16 %t137, 1
+  store i16 %t138, ptr @system.i
+  br label %L40
+L42:
+  %t139 = icmp sge i8 0, 0
+  %t140 = icmp slt i8 0, 8
+  %t141 = and i1 %t139, %t140
+  br i1 %t141, label %L45, label %L46
 L46:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L45:
-  %t146 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 3
-  %t147 = ptrtoint ptr %t146 to i64
-  %t148 = inttoptr i64 %t147 to ptr
-  %t149 = load volatile i16, ptr %t148, align 1
-  store i16 %t149, ptr @system.j
-  %t150 = load i16, ptr @system.j
-  %t151 = sext i8 30 to i16
-  %t152 = icmp ne i16 %t150, %t151
-  %t153 = zext i1 %t152 to i8
-  %t154 = icmp ne i8 %t153, 0
-  br i1 %t154, label %L48, label %L49
+  %t142 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t143 = ptrtoint ptr %t142 to i64
+  store i64 %t143, ptr @system.addr
+  %t144 = icmp sge i8 3, 0
+  %t145 = icmp slt i8 3, 8
+  %t146 = and i1 %t144, %t145
+  br i1 %t146, label %L47, label %L48
 L48:
-  %t155 = sext i8 1 to i32
-  %t156 = sext i8 8 to i64
-  call void @write(i32 %t155, ptr @.str.system.L78.C30, i64 %t156)
-  br label %L47
-L49:
-  br label %L47
-L47:
-  %t157 = load i64, ptr @system.addr
-  %t158 = sext i8 10 to i64
-  %t159 = add i64 %t157, %t158
-  %t160 = inttoptr i64 %t159 to ptr
-  %t161 = load volatile i16, ptr %t160, align 1
-  store i16 %t161, ptr @system.j
-  %t162 = load i16, ptr @system.j
-  %t163 = sext i8 50 to i16
-  %t164 = icmp ne i16 %t162, %t163
-  %t165 = zext i1 %t164 to i8
-  %t166 = icmp ne i8 %t165, 0
-  br i1 %t166, label %L51, label %L52
-L51:
-  %t167 = sext i8 1 to i32
-  %t168 = sext i8 8 to i64
-  call void @write(i32 %t167, ptr @.str.system.L80.C30, i64 %t168)
-  br label %L50
-L52:
-  br label %L50
-L50:
-  %t169 = sext i8 77 to i16
-  store i16 %t169, ptr @system.k
-  %t170 = load i64, ptr @system.addr
-  %t171 = sext i8 4 to i64
-  %t172 = add i64 %t170, %t171
-  %t173 = inttoptr i64 %t172 to ptr
-  %t174 = load i16, ptr @system.k
-  store volatile i16 %t174, ptr %t173, align 1
-  %t175 = icmp sge i8 2, 0
-  %t176 = icmp slt i8 2, 8
-  %t177 = and i1 %t175, %t176
-  br i1 %t177, label %L54, label %L55
-L55:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
-L54:
-  %t178 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
-  %t179 = load i16, ptr %t178
-  %t180 = sext i8 77 to i16
-  %t181 = icmp ne i16 %t179, %t180
-  %t182 = zext i1 %t181 to i8
-  %t183 = icmp ne i8 %t182, 0
-  br i1 %t183, label %L56, label %L57
-L56:
-  %t184 = sext i8 1 to i32
-  %t185 = sext i8 8 to i64
-  call void @write(i32 %t184, ptr @.str.system.L83.C36, i64 %t185)
-  br label %L53
-L57:
-  br label %L53
+L47:
+  %t147 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 3
+  %t148 = ptrtoint ptr %t147 to i64
+  %t149 = inttoptr i64 %t148 to ptr
+  %t150 = load volatile i16, ptr %t149, align 1
+  store i16 %t150, ptr @system.j
+  %t151 = load i16, ptr @system.j
+  %t152 = sext i8 30 to i16
+  %t153 = icmp ne i16 %t151, %t152
+  %t154 = zext i1 %t153 to i8
+  %t155 = icmp ne i8 %t154, 0
+  br i1 %t155, label %L50, label %L51
+L50:
+  %t156 = sext i8 1 to i32
+  %t157 = sext i8 8 to i64
+  call void @write(i32 %t156, ptr @.str.system.L78.C30, i64 %t157)
+  br label %L49
+L51:
+  br label %L49
+L49:
+  %t158 = load i64, ptr @system.addr
+  %t159 = sext i8 10 to i64
+  %t160 = add i64 %t158, %t159
+  %t161 = inttoptr i64 %t160 to ptr
+  %t162 = load volatile i16, ptr %t161, align 1
+  store i16 %t162, ptr @system.j
+  %t163 = load i16, ptr @system.j
+  %t164 = sext i8 50 to i16
+  %t165 = icmp ne i16 %t163, %t164
+  %t166 = zext i1 %t165 to i8
+  %t167 = icmp ne i8 %t166, 0
+  br i1 %t167, label %L53, label %L54
 L53:
-  %t186 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
-  %t187 = sext i8 5 to i16
-  store i16 %t187, ptr %t186
-  %t188 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
-  %t189 = sext i8 6 to i16
-  store i16 %t189, ptr %t188
-  %t190 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
-  %t191 = ptrtoint ptr %t190 to i64
-  %t192 = inttoptr i64 %t191 to ptr
-  %t193 = load volatile i16, ptr %t192, align 1
-  store i16 %t193, ptr @system.j
-  %t194 = load i16, ptr @system.j
-  %t195 = sext i8 6 to i16
-  %t196 = icmp ne i16 %t194, %t195
-  %t197 = zext i1 %t196 to i8
-  %t198 = icmp ne i8 %t197, 0
-  br i1 %t198, label %L59, label %L60
-L59:
-  %t199 = sext i8 1 to i32
-  %t200 = sext i8 8 to i64
-  call void @write(i32 %t199, ptr @.str.system.L86.C29, i64 %t200)
-  br label %L58
-L60:
-  br label %L58
+  %t168 = sext i8 1 to i32
+  %t169 = sext i8 8 to i64
+  call void @write(i32 %t168, ptr @.str.system.L80.C30, i64 %t169)
+  br label %L52
+L54:
+  br label %L52
+L52:
+  %t170 = sext i8 77 to i16
+  store i16 %t170, ptr @system.k
+  %t171 = load i64, ptr @system.addr
+  %t172 = sext i8 4 to i64
+  %t173 = add i64 %t171, %t172
+  %t174 = inttoptr i64 %t173 to ptr
+  %t175 = load i16, ptr @system.k
+  store volatile i16 %t175, ptr %t174, align 1
+  %t176 = icmp sge i8 2, 0
+  %t177 = icmp slt i8 2, 8
+  %t178 = and i1 %t176, %t177
+  br i1 %t178, label %L56, label %L57
+L57:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L56:
+  %t179 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
+  %t180 = load i16, ptr %t179
+  %t181 = sext i8 77 to i16
+  %t182 = icmp ne i16 %t180, %t181
+  %t183 = zext i1 %t182 to i8
+  %t184 = icmp ne i8 %t183, 0
+  br i1 %t184, label %L58, label %L59
 L58:
-  %t201 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
-  %t202 = ptrtoint ptr %t201 to i64
-  %t203 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
-  %t204 = ptrtoint ptr %t203 to i64
-  %t205 = sub i64 %t202, %t204
-  %t206 = sext i16 2 to i64
-  %t207 = icmp ne i64 %t205, %t206
-  %t208 = zext i1 %t207 to i8
-  %t209 = icmp ne i8 %t208, 0
-  br i1 %t209, label %L62, label %L63
-L62:
-  %t210 = sext i8 1 to i32
-  %t211 = sext i8 8 to i64
-  call void @write(i32 %t210, ptr @.str.system.L87.C79, i64 %t211)
-  br label %L61
-L63:
-  br label %L61
+  %t185 = sext i8 1 to i32
+  %t186 = sext i8 8 to i64
+  call void @write(i32 %t185, ptr @.str.system.L83.C36, i64 %t186)
+  br label %L55
+L59:
+  br label %L55
+L55:
+  %t187 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
+  %t188 = sext i8 5 to i16
+  store i16 %t188, ptr %t187
+  %t189 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
+  %t190 = sext i8 6 to i16
+  store i16 %t190, ptr %t189
+  %t191 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
+  %t192 = ptrtoint ptr %t191 to i64
+  %t193 = inttoptr i64 %t192 to ptr
+  %t194 = load volatile i16, ptr %t193, align 1
+  store i16 %t194, ptr @system.j
+  %t195 = load i16, ptr @system.j
+  %t196 = sext i8 6 to i16
+  %t197 = icmp ne i16 %t195, %t196
+  %t198 = zext i1 %t197 to i8
+  %t199 = icmp ne i8 %t198, 0
+  br i1 %t199, label %L61, label %L62
 L61:
-  %t212 = sext i16 1000 to i64
-  store i64 %t212, ptr @system.addr
-  %t213 = load i64, ptr @system.addr
-  %t214 = sext i8 24 to i64
-  %t215 = add i64 %t213, %t214
-  store i64 %t215, ptr @system.other
-  %t216 = load i64, ptr @system.other
-  %t217 = load i64, ptr @system.addr
-  %t218 = sub i64 %t216, %t217
-  %t219 = sext i8 24 to i64
-  %t220 = icmp ne i64 %t218, %t219
-  %t221 = zext i1 %t220 to i8
-  %t222 = icmp ne i8 %t221, 0
-  br i1 %t222, label %L66, label %L65
+  %t200 = sext i8 1 to i32
+  %t201 = sext i8 8 to i64
+  call void @write(i32 %t200, ptr @.str.system.L86.C29, i64 %t201)
+  br label %L60
+L62:
+  br label %L60
+L60:
+  %t202 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 1
+  %t203 = ptrtoint ptr %t202 to i64
+  %t204 = getelementptr %system.Pair, ptr @system.pair, i32 0, i32 0
+  %t205 = ptrtoint ptr %t204 to i64
+  %t206 = sub i64 %t203, %t205
+  %t207 = sext i16 2 to i64
+  %t208 = icmp ne i64 %t206, %t207
+  %t209 = zext i1 %t208 to i8
+  %t210 = icmp ne i8 %t209, 0
+  br i1 %t210, label %L64, label %L65
+L64:
+  %t211 = sext i8 1 to i32
+  %t212 = sext i8 8 to i64
+  call void @write(i32 %t211, ptr @.str.system.L87.C79, i64 %t212)
+  br label %L63
 L65:
-  %t223 = load i64, ptr @system.addr
-  %t224 = load i64, ptr @system.other
-  %t225 = icmp slt i64 %t223, %t224
-  %t226 = zext i1 %t225 to i8
-  %t227 = xor i8 %t226, 1
-  br label %L66
-L66:
-  %t228 = phi i8 [ 1, %L61 ], [ %t227, %L65 ]
-  %t229 = icmp ne i8 %t228, 0
-  br i1 %t229, label %L68, label %L67
+  br label %L63
+L63:
+  %t213 = sext i16 1000 to i64
+  store i64 %t213, ptr @system.addr
+  %t214 = load i64, ptr @system.addr
+  %t215 = sext i8 24 to i64
+  %t216 = add i64 %t214, %t215
+  store i64 %t216, ptr @system.other
+  %t217 = load i64, ptr @system.other
+  %t218 = load i64, ptr @system.addr
+  %t219 = sub i64 %t217, %t218
+  %t220 = sext i8 24 to i64
+  %t221 = icmp ne i64 %t219, %t220
+  %t222 = zext i1 %t221 to i8
+  %t223 = icmp ne i8 %t222, 0
+  br i1 %t223, label %L68, label %L67
 L67:
-  %t230 = load i64, ptr @system.addr
-  %t231 = load i64, ptr @system.other
-  %t232 = icmp sgt i64 %t230, %t231
-  %t233 = zext i1 %t232 to i8
+  %t224 = load i64, ptr @system.addr
+  %t225 = load i64, ptr @system.other
+  %t226 = icmp slt i64 %t224, %t225
+  %t227 = zext i1 %t226 to i8
+  %t228 = xor i8 %t227, 1
   br label %L68
 L68:
-  %t234 = phi i8 [ 1, %L66 ], [ %t233, %L67 ]
-  %t235 = icmp ne i8 %t234, 0
-  br i1 %t235, label %L69, label %L70
+  %t229 = phi i8 [ 1, %L63 ], [ %t228, %L67 ]
+  %t230 = icmp ne i8 %t229, 0
+  br i1 %t230, label %L70, label %L69
 L69:
-  %t236 = sext i8 1 to i32
-  %t237 = sext i8 8 to i64
-  call void @write(i32 %t236, ptr @.str.system.L90.C80, i64 %t237)
-  br label %L64
+  %t231 = load i64, ptr @system.addr
+  %t232 = load i64, ptr @system.other
+  %t233 = icmp sgt i64 %t231, %t232
+  %t234 = zext i1 %t233 to i8
+  br label %L70
 L70:
-  br label %L64
-L64:
-  %t238 = sext i8 5 to i16
-  store i16 %t238, ptr @system.i
-  %t239 = load i64, ptr @system.addr
-  %t240 = load i16, ptr @system.i
-  %t241 = sext i16 %t240 to i64
-  %t242 = add i64 %t239, %t241
-  store i64 %t242, ptr @system.addr
-  %t243 = sext i8 3 to i32
-  store i32 %t243, ptr @system.l
-  %t244 = load i64, ptr @system.addr
-  %t245 = load i32, ptr @system.l
-  %t246 = sext i32 %t245 to i64
-  %t247 = add i64 %t244, %t246
-  store i64 %t247, ptr @system.addr
-  %t248 = load i64, ptr @system.addr
-  %t249 = sext i16 1008 to i64
-  %t250 = icmp ne i64 %t248, %t249
-  %t251 = zext i1 %t250 to i8
-  %t252 = icmp ne i8 %t251, 0
-  br i1 %t252, label %L72, label %L73
-L72:
-  %t253 = sext i8 1 to i32
-  %t254 = sext i8 8 to i64
-  call void @write(i32 %t253, ptr @.str.system.L92.C35, i64 %t254)
-  br label %L71
-L73:
-  br label %L71
+  %t235 = phi i8 [ 1, %L68 ], [ %t234, %L69 ]
+  %t236 = icmp ne i8 %t235, 0
+  br i1 %t236, label %L71, label %L72
 L71:
-  %t255 = load i64, ptr @system.addr
-  store i64 %t255, ptr @system.h
-  %t256 = load i64, ptr @system.h
-  %t257 = sext i16 1008 to i64
-  %t258 = icmp ne i64 %t256, %t257
-  %t259 = zext i1 %t258 to i8
-  %t260 = icmp ne i8 %t259, 0
-  br i1 %t260, label %L75, label %L76
-L75:
-  %t261 = sext i8 1 to i32
-  %t262 = sext i8 8 to i64
-  call void @write(i32 %t261, ptr @.str.system.L93.C43, i64 %t262)
-  br label %L74
-L76:
-  br label %L74
+  %t237 = sext i8 1 to i32
+  %t238 = sext i8 8 to i64
+  call void @write(i32 %t237, ptr @.str.system.L90.C80, i64 %t238)
+  br label %L66
+L72:
+  br label %L66
+L66:
+  %t239 = sext i8 5 to i16
+  store i16 %t239, ptr @system.i
+  %t240 = load i64, ptr @system.addr
+  %t241 = load i16, ptr @system.i
+  %t242 = sext i16 %t241 to i64
+  %t243 = add i64 %t240, %t242
+  store i64 %t243, ptr @system.addr
+  %t244 = sext i8 3 to i32
+  store i32 %t244, ptr @system.l
+  %t245 = load i64, ptr @system.addr
+  %t246 = load i32, ptr @system.l
+  %t247 = sext i32 %t246 to i64
+  %t248 = add i64 %t245, %t247
+  store i64 %t248, ptr @system.addr
+  %t249 = load i64, ptr @system.addr
+  %t250 = sext i16 1008 to i64
+  %t251 = icmp ne i64 %t249, %t250
+  %t252 = zext i1 %t251 to i8
+  %t253 = icmp ne i8 %t252, 0
+  br i1 %t253, label %L74, label %L75
 L74:
-  %t263 = icmp ne i16 8, 8
-  %t264 = zext i1 %t263 to i8
-  %t265 = icmp ne i8 %t264, 0
-  br i1 %t265, label %L78, label %L79
-L78:
-  %t266 = sext i8 1 to i32
-  %t267 = sext i8 8 to i64
-  call void @write(i32 %t266, ptr @.str.system.L94.C60, i64 %t267)
-  br label %L77
-L79:
-  br label %L77
+  %t254 = sext i8 1 to i32
+  %t255 = sext i8 8 to i64
+  call void @write(i32 %t254, ptr @.str.system.L92.C35, i64 %t255)
+  br label %L73
+L75:
+  br label %L73
+L73:
+  %t256 = load i64, ptr @system.addr
+  store i64 %t256, ptr @system.h
+  %t257 = load i64, ptr @system.h
+  %t258 = sext i16 1008 to i64
+  %t259 = icmp ne i64 %t257, %t258
+  %t260 = zext i1 %t259 to i8
+  %t261 = icmp ne i8 %t260, 0
+  br i1 %t261, label %L77, label %L78
 L77:
-  %t268 = sext i8 -2 to i32
-  store i32 %t268, ptr @system.l
-  %t269 = load i32, ptr @system.l
-  store i32 %t269, ptr @system.m
-  %t270 = load i32, ptr @system.m
-  %t271 = sext i8 -2 to i32
-  %t272 = icmp ne i32 %t270, %t271
-  %t273 = zext i1 %t272 to i8
-  %t274 = icmp ne i8 %t273, 0
-  br i1 %t274, label %L81, label %L82
-L81:
-  %t275 = sext i8 1 to i32
-  %t276 = sext i8 8 to i64
-  call void @write(i32 %t275, ptr @.str.system.L97.C30, i64 %t276)
-  br label %L80
-L82:
-  br label %L80
+  %t262 = sext i8 1 to i32
+  %t263 = sext i8 8 to i64
+  call void @write(i32 %t262, ptr @.str.system.L93.C43, i64 %t263)
+  br label %L76
+L78:
+  br label %L76
+L76:
+  %t264 = icmp ne i16 8, 8
+  %t265 = zext i1 %t264 to i8
+  %t266 = icmp ne i8 %t265, 0
+  br i1 %t266, label %L80, label %L81
 L80:
-  store i16 4660, ptr @system.i
-  %t277 = load i16, ptr @system.i
-  %t278 = icmp ne i16 %t277, 4660
-  %t279 = zext i1 %t278 to i8
-  %t280 = icmp ne i8 %t279, 0
-  br i1 %t280, label %L84, label %L85
-L84:
-  %t281 = sext i8 1 to i32
-  %t282 = sext i8 8 to i64
-  call void @write(i32 %t281, ptr @.str.system.L99.C32, i64 %t282)
-  br label %L83
-L85:
-  br label %L83
+  %t267 = sext i8 1 to i32
+  %t268 = sext i8 8 to i64
+  call void @write(i32 %t267, ptr @.str.system.L94.C60, i64 %t268)
+  br label %L79
+L81:
+  br label %L79
+L79:
+  %t269 = sext i8 -2 to i32
+  store i32 %t269, ptr @system.l
+  %t270 = load i32, ptr @system.l
+  store i32 %t270, ptr @system.m
+  %t271 = load i32, ptr @system.m
+  %t272 = sext i8 -2 to i32
+  %t273 = icmp ne i32 %t271, %t272
+  %t274 = zext i1 %t273 to i8
+  %t275 = icmp ne i8 %t274, 0
+  br i1 %t275, label %L83, label %L84
 L83:
-  %t283 = ptrtoint ptr @system.i to i64
-  store i64 %t283, ptr @system.addr
-  %t284 = load i64, ptr @system.addr
-  store i64 %t284, ptr @system.h
-  %t285 = load i64, ptr @system.h
-  %t286 = load i64, ptr @system.addr
-  %t287 = icmp ne i64 %t285, %t286
-  %t288 = zext i1 %t287 to i8
-  %t289 = icmp ne i8 %t288, 0
-  br i1 %t289, label %L87, label %L88
-L87:
-  %t290 = sext i8 1 to i32
-  %t291 = sext i8 8 to i64
-  call void @write(i32 %t290, ptr @.str.system.L102.C60, i64 %t291)
-  br label %L86
-L88:
-  br label %L86
+  %t276 = sext i8 1 to i32
+  %t277 = sext i8 8 to i64
+  call void @write(i32 %t276, ptr @.str.system.L97.C30, i64 %t277)
+  br label %L82
+L84:
+  br label %L82
+L82:
+  store i16 4660, ptr @system.i
+  %t278 = load i16, ptr @system.i
+  %t279 = icmp ne i16 %t278, 4660
+  %t280 = zext i1 %t279 to i8
+  %t281 = icmp ne i8 %t280, 0
+  br i1 %t281, label %L86, label %L87
 L86:
-  %t292 = sext i8 5 to i32
-  store i32 %t292, ptr @system.s
-  %t293 = load i32, ptr @system.s
-  %t294 = icmp ne i32 %t293, 5
-  %t295 = zext i1 %t294 to i8
-  %t296 = icmp ne i8 %t295, 0
-  br i1 %t296, label %L90, label %L91
-L90:
-  %t297 = sext i8 1 to i32
-  %t298 = sext i8 8 to i64
-  call void @write(i32 %t297, ptr @.str.system.L104.C34, i64 %t298)
-  br label %L89
-L91:
-  br label %L89
+  %t282 = sext i8 1 to i32
+  %t283 = sext i8 8 to i64
+  call void @write(i32 %t282, ptr @.str.system.L99.C32, i64 %t283)
+  br label %L85
+L87:
+  br label %L85
+L85:
+  %t284 = ptrtoint ptr @system.i to i64
+  store i64 %t284, ptr @system.addr
+  %t285 = load i64, ptr @system.addr
+  store i64 %t285, ptr @system.h
+  %t286 = load i64, ptr @system.h
+  %t287 = load i64, ptr @system.addr
+  %t288 = icmp ne i64 %t286, %t287
+  %t289 = zext i1 %t288 to i8
+  %t290 = icmp ne i8 %t289, 0
+  br i1 %t290, label %L89, label %L90
 L89:
-  %t299 = load i32, ptr @system.s
-  %t300 = trunc i32 %t299 to i16
-  store i16 %t300, ptr @system.i
-  %t301 = load i16, ptr @system.i
-  %t302 = sext i8 5 to i16
-  %t303 = icmp ne i16 %t301, %t302
-  %t304 = zext i1 %t303 to i8
-  %t305 = icmp ne i8 %t304, 0
-  br i1 %t305, label %L93, label %L94
-L93:
-  %t306 = sext i8 1 to i32
-  %t307 = sext i8 8 to i64
-  call void @write(i32 %t306, ptr @.str.system.L106.C29, i64 %t307)
-  br label %L92
-L94:
-  br label %L92
+  %t291 = sext i8 1 to i32
+  %t292 = sext i8 8 to i64
+  call void @write(i32 %t291, ptr @.str.system.L102.C60, i64 %t292)
+  br label %L88
+L90:
+  br label %L88
+L88:
+  %t293 = sext i8 5 to i32
+  store i32 %t293, ptr @system.s
+  %t294 = load i32, ptr @system.s
+  %t295 = icmp ne i32 %t294, 5
+  %t296 = zext i1 %t295 to i8
+  %t297 = icmp ne i8 %t296, 0
+  br i1 %t297, label %L92, label %L93
 L92:
-  store i8 65, ptr @system.c
-  %t308 = load i8, ptr @system.c
-  %t309 = icmp ne i8 %t308, 65
-  %t310 = zext i1 %t309 to i8
-  %t311 = icmp ne i8 %t310, 0
-  br i1 %t311, label %L96, label %L97
-L96:
-  %t312 = sext i8 1 to i32
-  %t313 = sext i8 8 to i64
-  call void @write(i32 %t312, ptr @.str.system.L108.C31, i64 %t313)
-  br label %L95
-L97:
-  br label %L95
+  %t298 = sext i8 1 to i32
+  %t299 = sext i8 8 to i64
+  call void @write(i32 %t298, ptr @.str.system.L104.C34, i64 %t299)
+  br label %L91
+L93:
+  br label %L91
+L91:
+  %t300 = load i32, ptr @system.s
+  %t301 = trunc i32 %t300 to i16
+  store i16 %t301, ptr @system.i
+  %t302 = load i16, ptr @system.i
+  %t303 = sext i8 5 to i16
+  %t304 = icmp ne i16 %t302, %t303
+  %t305 = zext i1 %t304 to i8
+  %t306 = icmp ne i8 %t305, 0
+  br i1 %t306, label %L95, label %L96
 L95:
-  %t314 = sext i8 0 to i16
-  store i16 %t314, ptr @system.i
-  %t315 = sext i8 7 to i16
-  br label %L98
+  %t307 = sext i8 1 to i32
+  %t308 = sext i8 8 to i64
+  call void @write(i32 %t307, ptr @.str.system.L106.C29, i64 %t308)
+  br label %L94
+L96:
+  br label %L94
+L94:
+  store i8 65, ptr @system.c
+  %t309 = load i8, ptr @system.c
+  %t310 = icmp ne i8 %t309, 65
+  %t311 = zext i1 %t310 to i8
+  %t312 = icmp ne i8 %t311, 0
+  br i1 %t312, label %L98, label %L99
 L98:
-  %t316 = load i16, ptr @system.i
-  %t317 = icmp sle i16 %t316, %t315
-  br i1 %t317, label %L99, label %L100
+  %t313 = sext i8 1 to i32
+  %t314 = sext i8 8 to i64
+  call void @write(i32 %t313, ptr @.str.system.L108.C31, i64 %t314)
+  br label %L97
 L99:
-  %t318 = load i16, ptr @system.i
-  %t319 = icmp sge i16 %t318, 0
-  %t320 = icmp slt i16 %t318, 8
-  %t321 = and i1 %t319, %t320
-  br i1 %t321, label %L101, label %L102
-L102:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
+  br label %L97
+L97:
+  %t315 = sext i8 0 to i16
+  store i16 %t315, ptr @system.i
+  %t316 = sext i8 7 to i16
+  br label %L100
+L100:
+  %t317 = load i16, ptr @system.i
+  %t318 = icmp sle i16 %t317, %t316
+  br i1 %t318, label %L101, label %L102
 L101:
-  %t322 = getelementptr [8 x i16], ptr @system.ints, i32 0, i16 %t318
-  %t323 = load i16, ptr @system.i
-  %t324 = sext i8 1 to i16
-  %t325 = add i16 %t323, %t324
-  store i16 %t325, ptr %t322
-  %t326 = load i16, ptr @system.i
-  %t327 = icmp sge i16 %t326, 0
-  %t328 = icmp slt i16 %t326, 8
-  %t329 = and i1 %t327, %t328
-  br i1 %t329, label %L103, label %L104
+  %t319 = load i16, ptr @system.i
+  %t320 = icmp sge i16 %t319, 0
+  %t321 = icmp slt i16 %t319, 8
+  %t322 = and i1 %t320, %t321
+  br i1 %t322, label %L103, label %L104
 L104:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L103:
-  %t330 = getelementptr [8 x i16], ptr @system.more, i32 0, i16 %t326
-  %t331 = sext i8 0 to i16
-  store i16 %t331, ptr %t330
-  %t332 = load i16, ptr @system.i
-  %t333 = add i16 %t332, 1
-  store i16 %t333, ptr @system.i
-  br label %L98
-L100:
-  %t334 = icmp sge i8 0, 0
-  %t335 = icmp slt i8 0, 8
-  %t336 = and i1 %t334, %t335
-  br i1 %t336, label %L105, label %L106
+  %t323 = getelementptr [8 x i16], ptr @system.ints, i32 0, i16 %t319
+  %t324 = load i16, ptr @system.i
+  %t325 = sext i8 1 to i16
+  %t326 = add i16 %t324, %t325
+  store i16 %t326, ptr %t323
+  %t327 = load i16, ptr @system.i
+  %t328 = icmp sge i16 %t327, 0
+  %t329 = icmp slt i16 %t327, 8
+  %t330 = and i1 %t328, %t329
+  br i1 %t330, label %L105, label %L106
 L106:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L105:
-  %t337 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t338 = ptrtoint ptr %t337 to i64
-  %t339 = inttoptr i64 %t338 to ptr
-  %t340 = icmp sge i8 0, 0
-  %t341 = icmp slt i8 0, 8
-  %t342 = and i1 %t340, %t341
-  br i1 %t342, label %L107, label %L108
+  %t331 = getelementptr [8 x i16], ptr @system.more, i32 0, i16 %t327
+  %t332 = sext i8 0 to i16
+  store i16 %t332, ptr %t331
+  %t333 = load i16, ptr @system.i
+  %t334 = add i16 %t333, 1
+  store i16 %t334, ptr @system.i
+  br label %L100
+L102:
+  %t335 = icmp sge i8 0, 0
+  %t336 = icmp slt i8 0, 8
+  %t337 = and i1 %t335, %t336
+  br i1 %t337, label %L107, label %L108
 L108:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L107:
-  %t343 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
-  %t344 = ptrtoint ptr %t343 to i64
-  %t345 = inttoptr i64 %t344 to ptr
-  %t346 = sext i8 16 to i64
-  %t347 = icmp sgt i64 %t346, 0
-  %t348 = select i1 %t347, i64 %t346, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t345, ptr %t339, i64 %t348, i1 true)
-  %t349 = sext i8 0 to i16
-  store i16 %t349, ptr @system.k
-  %t350 = sext i8 0 to i16
-  store i16 %t350, ptr @system.i
-  %t351 = sext i8 7 to i16
-  br label %L109
-L109:
-  %t352 = load i16, ptr @system.i
-  %t353 = icmp sle i16 %t352, %t351
-  br i1 %t353, label %L110, label %L111
+  %t338 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t339 = ptrtoint ptr %t338 to i64
+  %t340 = inttoptr i64 %t339 to ptr
+  %t341 = icmp sge i8 0, 0
+  %t342 = icmp slt i8 0, 8
+  %t343 = and i1 %t341, %t342
+  br i1 %t343, label %L109, label %L110
 L110:
-  %t354 = load i16, ptr @system.k
-  %t355 = load i16, ptr @system.i
-  %t356 = icmp sge i16 %t355, 0
-  %t357 = icmp slt i16 %t355, 8
-  %t358 = and i1 %t356, %t357
-  br i1 %t358, label %L112, label %L113
-L113:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
-L112:
-  %t359 = getelementptr [8 x i16], ptr @system.more, i32 0, i16 %t355
-  %t360 = load i16, ptr %t359
-  %t361 = add i16 %t354, %t360
-  store i16 %t361, ptr @system.k
-  %t362 = load i16, ptr @system.i
-  %t363 = add i16 %t362, 1
-  store i16 %t363, ptr @system.i
-  br label %L109
+L109:
+  %t344 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
+  %t345 = ptrtoint ptr %t344 to i64
+  %t346 = inttoptr i64 %t345 to ptr
+  %t347 = sext i8 16 to i64
+  %t348 = icmp sgt i64 %t347, 0
+  %t349 = select i1 %t348, i64 %t347, i64 0
+  call void @llvm.memmove.p0.p0.i64(ptr %t346, ptr %t340, i64 %t349, i1 true)
+  %t350 = sext i8 0 to i16
+  store i16 %t350, ptr @system.k
+  %t351 = sext i8 0 to i16
+  store i16 %t351, ptr @system.i
+  %t352 = sext i8 7 to i16
+  br label %L111
 L111:
-  %t364 = load i16, ptr @system.k
-  %t365 = sext i8 36 to i16
-  %t366 = icmp ne i16 %t364, %t365
-  %t367 = zext i1 %t366 to i8
-  %t368 = icmp ne i8 %t367, 0
-  br i1 %t368, label %L115, label %L116
+  %t353 = load i16, ptr @system.i
+  %t354 = icmp sle i16 %t353, %t352
+  br i1 %t354, label %L112, label %L113
+L112:
+  %t355 = load i16, ptr @system.k
+  %t356 = load i16, ptr @system.i
+  %t357 = icmp sge i16 %t356, 0
+  %t358 = icmp slt i16 %t356, 8
+  %t359 = and i1 %t357, %t358
+  br i1 %t359, label %L114, label %L115
 L115:
-  %t369 = sext i8 1 to i32
-  %t370 = sext i8 8 to i64
-  call void @write(i32 %t369, ptr @.str.system.L113.C30, i64 %t370)
-  br label %L114
-L116:
-  br label %L114
-L114:
-  %t371 = icmp sge i8 0, 0
-  %t372 = icmp slt i8 0, 8
-  %t373 = and i1 %t371, %t372
-  br i1 %t373, label %L117, label %L118
-L118:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
+L114:
+  %t360 = getelementptr [8 x i16], ptr @system.more, i32 0, i16 %t356
+  %t361 = load i16, ptr %t360
+  %t362 = add i16 %t355, %t361
+  store i16 %t362, ptr @system.k
+  %t363 = load i16, ptr @system.i
+  %t364 = add i16 %t363, 1
+  store i16 %t364, ptr @system.i
+  br label %L111
+L113:
+  %t365 = load i16, ptr @system.k
+  %t366 = sext i8 36 to i16
+  %t367 = icmp ne i16 %t365, %t366
+  %t368 = zext i1 %t367 to i8
+  %t369 = icmp ne i8 %t368, 0
+  br i1 %t369, label %L117, label %L118
 L117:
-  %t374 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t375 = ptrtoint ptr %t374 to i64
-  %t376 = inttoptr i64 %t375 to ptr
-  %t377 = icmp sge i8 2, 0
-  %t378 = icmp slt i8 2, 8
-  %t379 = and i1 %t377, %t378
-  br i1 %t379, label %L119, label %L120
+  %t370 = sext i8 1 to i32
+  %t371 = sext i8 8 to i64
+  call void @write(i32 %t370, ptr @.str.system.L113.C30, i64 %t371)
+  br label %L116
+L118:
+  br label %L116
+L116:
+  %t372 = icmp sge i8 0, 0
+  %t373 = icmp slt i8 0, 8
+  %t374 = and i1 %t372, %t373
+  br i1 %t374, label %L119, label %L120
 L120:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L119:
-  %t380 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
-  %t381 = ptrtoint ptr %t380 to i64
-  %t382 = inttoptr i64 %t381 to ptr
-  %t383 = sext i8 12 to i64
-  %t384 = icmp sgt i64 %t383, 0
-  %t385 = select i1 %t384, i64 %t383, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t382, ptr %t376, i64 %t385, i1 true)
-  %t386 = icmp sge i8 0, 0
-  %t387 = icmp slt i8 0, 8
-  %t388 = and i1 %t386, %t387
-  br i1 %t388, label %L122, label %L123
-L123:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
+  %t375 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t376 = ptrtoint ptr %t375 to i64
+  %t377 = inttoptr i64 %t376 to ptr
+  %t378 = icmp sge i8 2, 0
+  %t379 = icmp slt i8 2, 8
+  %t380 = and i1 %t378, %t379
+  br i1 %t380, label %L121, label %L122
 L122:
-  %t389 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t390 = load i16, ptr %t389
-  %t391 = sext i8 1 to i16
-  %t392 = icmp ne i16 %t390, %t391
-  %t393 = zext i1 %t392 to i8
-  %t394 = icmp ne i8 %t393, 0
-  br i1 %t394, label %L125, label %L124
-L124:
-  %t395 = icmp sge i8 1, 0
-  %t396 = icmp slt i8 1, 8
-  %t397 = and i1 %t395, %t396
-  br i1 %t397, label %L126, label %L127
-L127:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
-L126:
-  %t398 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 1
-  %t399 = load i16, ptr %t398
-  %t400 = sext i8 2 to i16
-  %t401 = icmp ne i16 %t399, %t400
-  %t402 = zext i1 %t401 to i8
-  br label %L125
-L125:
-  %t403 = phi i8 [ 1, %L122 ], [ %t402, %L126 ]
-  %t404 = icmp ne i8 %t403, 0
-  br i1 %t404, label %L129, label %L128
-L128:
-  %t405 = icmp sge i8 2, 0
-  %t406 = icmp slt i8 2, 8
-  %t407 = and i1 %t405, %t406
-  br i1 %t407, label %L130, label %L131
-L131:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L130:
-  %t408 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
-  %t409 = load i16, ptr %t408
-  %t410 = sext i8 1 to i16
-  %t411 = icmp ne i16 %t409, %t410
-  %t412 = zext i1 %t411 to i8
-  br label %L129
-L129:
-  %t413 = phi i8 [ 1, %L125 ], [ %t412, %L130 ]
-  %t414 = icmp ne i8 %t413, 0
-  br i1 %t414, label %L133, label %L132
-L132:
-  %t415 = icmp sge i8 3, 0
-  %t416 = icmp slt i8 3, 8
-  %t417 = and i1 %t415, %t416
-  br i1 %t417, label %L134, label %L135
-L135:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L134:
-  %t418 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 3
-  %t419 = load i16, ptr %t418
-  %t420 = sext i8 2 to i16
-  %t421 = icmp ne i16 %t419, %t420
-  %t422 = zext i1 %t421 to i8
-  br label %L133
-L133:
-  %t423 = phi i8 [ 1, %L129 ], [ %t422, %L134 ]
-  %t424 = icmp ne i8 %t423, 0
-  br i1 %t424, label %L137, label %L136
-L136:
-  %t425 = icmp sge i8 7, 0
-  %t426 = icmp slt i8 7, 8
-  %t427 = and i1 %t425, %t426
-  br i1 %t427, label %L138, label %L139
-L139:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L138:
-  %t428 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 7
-  %t429 = load i16, ptr %t428
-  %t430 = sext i8 6 to i16
-  %t431 = icmp ne i16 %t429, %t430
-  %t432 = zext i1 %t431 to i8
-  br label %L137
-L137:
-  %t433 = phi i8 [ 1, %L133 ], [ %t432, %L138 ]
-  %t434 = icmp ne i8 %t433, 0
-  br i1 %t434, label %L140, label %L141
-L140:
-  %t435 = sext i8 1 to i32
-  %t436 = sext i8 8 to i64
-  call void @write(i32 %t435, ptr @.str.system.L116.C105, i64 %t436)
-  br label %L121
-L141:
-  br label %L121
 L121:
-  %t437 = icmp sge i8 2, 0
-  %t438 = icmp slt i8 2, 8
-  %t439 = and i1 %t437, %t438
-  br i1 %t439, label %L142, label %L143
-L143:
+  %t381 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
+  %t382 = ptrtoint ptr %t381 to i64
+  %t383 = inttoptr i64 %t382 to ptr
+  %t384 = sext i8 12 to i64
+  %t385 = icmp sgt i64 %t384, 0
+  %t386 = select i1 %t385, i64 %t384, i64 0
+  call void @llvm.memmove.p0.p0.i64(ptr %t383, ptr %t377, i64 %t386, i1 true)
+  %t387 = icmp sge i8 0, 0
+  %t388 = icmp slt i8 0, 8
+  %t389 = and i1 %t387, %t388
+  br i1 %t389, label %L124, label %L125
+L125:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
+L124:
+  %t390 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t391 = load i16, ptr %t390
+  %t392 = sext i8 1 to i16
+  %t393 = icmp ne i16 %t391, %t392
+  %t394 = zext i1 %t393 to i8
+  %t395 = icmp ne i8 %t394, 0
+  br i1 %t395, label %L127, label %L126
+L126:
+  %t396 = icmp sge i8 1, 0
+  %t397 = icmp slt i8 1, 8
+  %t398 = and i1 %t396, %t397
+  br i1 %t398, label %L128, label %L129
+L129:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L128:
+  %t399 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 1
+  %t400 = load i16, ptr %t399
+  %t401 = sext i8 2 to i16
+  %t402 = icmp ne i16 %t400, %t401
+  %t403 = zext i1 %t402 to i8
+  br label %L127
+L127:
+  %t404 = phi i8 [ 1, %L124 ], [ %t403, %L128 ]
+  %t405 = icmp ne i8 %t404, 0
+  br i1 %t405, label %L131, label %L130
+L130:
+  %t406 = icmp sge i8 2, 0
+  %t407 = icmp slt i8 2, 8
+  %t408 = and i1 %t406, %t407
+  br i1 %t408, label %L132, label %L133
+L133:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L132:
+  %t409 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
+  %t410 = load i16, ptr %t409
+  %t411 = sext i8 1 to i16
+  %t412 = icmp ne i16 %t410, %t411
+  %t413 = zext i1 %t412 to i8
+  br label %L131
+L131:
+  %t414 = phi i8 [ 1, %L127 ], [ %t413, %L132 ]
+  %t415 = icmp ne i8 %t414, 0
+  br i1 %t415, label %L135, label %L134
+L134:
+  %t416 = icmp sge i8 3, 0
+  %t417 = icmp slt i8 3, 8
+  %t418 = and i1 %t416, %t417
+  br i1 %t418, label %L136, label %L137
+L137:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L136:
+  %t419 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 3
+  %t420 = load i16, ptr %t419
+  %t421 = sext i8 2 to i16
+  %t422 = icmp ne i16 %t420, %t421
+  %t423 = zext i1 %t422 to i8
+  br label %L135
+L135:
+  %t424 = phi i8 [ 1, %L131 ], [ %t423, %L136 ]
+  %t425 = icmp ne i8 %t424, 0
+  br i1 %t425, label %L139, label %L138
+L138:
+  %t426 = icmp sge i8 7, 0
+  %t427 = icmp slt i8 7, 8
+  %t428 = and i1 %t426, %t427
+  br i1 %t428, label %L140, label %L141
+L141:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L140:
+  %t429 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 7
+  %t430 = load i16, ptr %t429
+  %t431 = sext i8 6 to i16
+  %t432 = icmp ne i16 %t430, %t431
+  %t433 = zext i1 %t432 to i8
+  br label %L139
+L139:
+  %t434 = phi i8 [ 1, %L135 ], [ %t433, %L140 ]
+  %t435 = icmp ne i8 %t434, 0
+  br i1 %t435, label %L142, label %L143
 L142:
-  %t440 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
-  %t441 = ptrtoint ptr %t440 to i64
-  %t442 = inttoptr i64 %t441 to ptr
-  %t443 = icmp sge i8 0, 0
-  %t444 = icmp slt i8 0, 8
-  %t445 = and i1 %t443, %t444
-  br i1 %t445, label %L144, label %L145
+  %t436 = sext i8 1 to i32
+  %t437 = sext i8 8 to i64
+  call void @write(i32 %t436, ptr @.str.system.L116.C105, i64 %t437)
+  br label %L123
+L143:
+  br label %L123
+L123:
+  %t438 = icmp sge i8 2, 0
+  %t439 = icmp slt i8 2, 8
+  %t440 = and i1 %t438, %t439
+  br i1 %t440, label %L144, label %L145
 L145:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L144:
-  %t446 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t447 = ptrtoint ptr %t446 to i64
-  %t448 = inttoptr i64 %t447 to ptr
-  %t449 = sext i8 12 to i64
-  %t450 = icmp sgt i64 %t449, 0
-  %t451 = select i1 %t450, i64 %t449, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t448, ptr %t442, i64 %t451, i1 true)
-  %t452 = icmp sge i8 0, 0
-  %t453 = icmp slt i8 0, 8
-  %t454 = and i1 %t452, %t453
-  br i1 %t454, label %L147, label %L148
-L148:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
+  %t441 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 2
+  %t442 = ptrtoint ptr %t441 to i64
+  %t443 = inttoptr i64 %t442 to ptr
+  %t444 = icmp sge i8 0, 0
+  %t445 = icmp slt i8 0, 8
+  %t446 = and i1 %t444, %t445
+  br i1 %t446, label %L146, label %L147
 L147:
-  %t455 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t456 = load i16, ptr %t455
-  %t457 = sext i8 1 to i16
-  %t458 = icmp ne i16 %t456, %t457
-  %t459 = zext i1 %t458 to i8
-  %t460 = icmp ne i8 %t459, 0
-  br i1 %t460, label %L150, label %L149
-L149:
-  %t461 = icmp sge i8 1, 0
-  %t462 = icmp slt i8 1, 8
-  %t463 = and i1 %t461, %t462
-  br i1 %t463, label %L151, label %L152
-L152:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
-L151:
-  %t464 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 1
-  %t465 = load i16, ptr %t464
-  %t466 = sext i8 2 to i16
-  %t467 = icmp ne i16 %t465, %t466
-  %t468 = zext i1 %t467 to i8
-  br label %L150
-L150:
-  %t469 = phi i8 [ 1, %L147 ], [ %t468, %L151 ]
-  %t470 = icmp ne i8 %t469, 0
-  br i1 %t470, label %L154, label %L153
-L153:
-  %t471 = icmp sge i8 5, 0
-  %t472 = icmp slt i8 5, 8
-  %t473 = and i1 %t471, %t472
-  br i1 %t473, label %L155, label %L156
-L156:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L155:
-  %t474 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 5
-  %t475 = load i16, ptr %t474
-  %t476 = sext i8 6 to i16
-  %t477 = icmp ne i16 %t475, %t476
-  %t478 = zext i1 %t477 to i8
-  br label %L154
-L154:
-  %t479 = phi i8 [ 1, %L150 ], [ %t478, %L155 ]
-  %t480 = icmp ne i8 %t479, 0
-  br i1 %t480, label %L158, label %L157
-L157:
-  %t481 = icmp sge i8 7, 0
-  %t482 = icmp slt i8 7, 8
-  %t483 = and i1 %t481, %t482
-  br i1 %t483, label %L159, label %L160
-L160:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L159:
-  %t484 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 7
-  %t485 = load i16, ptr %t484
-  %t486 = sext i8 6 to i16
-  %t487 = icmp ne i16 %t485, %t486
-  %t488 = zext i1 %t487 to i8
-  br label %L158
-L158:
-  %t489 = phi i8 [ 1, %L154 ], [ %t488, %L159 ]
-  %t490 = icmp ne i8 %t489, 0
-  br i1 %t490, label %L161, label %L162
-L161:
-  %t491 = sext i8 1 to i32
-  %t492 = sext i8 8 to i64
-  call void @write(i32 %t491, ptr @.str.system.L118.C88, i64 %t492)
-  br label %L146
-L162:
-  br label %L146
 L146:
-  %t493 = icmp sge i8 0, 0
-  %t494 = icmp slt i8 0, 8
-  %t495 = and i1 %t493, %t494
-  br i1 %t495, label %L163, label %L164
-L164:
+  %t447 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t448 = ptrtoint ptr %t447 to i64
+  %t449 = inttoptr i64 %t448 to ptr
+  %t450 = sext i8 12 to i64
+  %t451 = icmp sgt i64 %t450, 0
+  %t452 = select i1 %t451, i64 %t450, i64 0
+  call void @llvm.memmove.p0.p0.i64(ptr %t449, ptr %t443, i64 %t452, i1 true)
+  %t453 = icmp sge i8 0, 0
+  %t454 = icmp slt i8 0, 8
+  %t455 = and i1 %t453, %t454
+  br i1 %t455, label %L149, label %L150
+L150:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
+L149:
+  %t456 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t457 = load i16, ptr %t456
+  %t458 = sext i8 1 to i16
+  %t459 = icmp ne i16 %t457, %t458
+  %t460 = zext i1 %t459 to i8
+  %t461 = icmp ne i8 %t460, 0
+  br i1 %t461, label %L152, label %L151
+L151:
+  %t462 = icmp sge i8 1, 0
+  %t463 = icmp slt i8 1, 8
+  %t464 = and i1 %t462, %t463
+  br i1 %t464, label %L153, label %L154
+L154:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L153:
+  %t465 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 1
+  %t466 = load i16, ptr %t465
+  %t467 = sext i8 2 to i16
+  %t468 = icmp ne i16 %t466, %t467
+  %t469 = zext i1 %t468 to i8
+  br label %L152
+L152:
+  %t470 = phi i8 [ 1, %L149 ], [ %t469, %L153 ]
+  %t471 = icmp ne i8 %t470, 0
+  br i1 %t471, label %L156, label %L155
+L155:
+  %t472 = icmp sge i8 5, 0
+  %t473 = icmp slt i8 5, 8
+  %t474 = and i1 %t472, %t473
+  br i1 %t474, label %L157, label %L158
+L158:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L157:
+  %t475 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 5
+  %t476 = load i16, ptr %t475
+  %t477 = sext i8 6 to i16
+  %t478 = icmp ne i16 %t476, %t477
+  %t479 = zext i1 %t478 to i8
+  br label %L156
+L156:
+  %t480 = phi i8 [ 1, %L152 ], [ %t479, %L157 ]
+  %t481 = icmp ne i8 %t480, 0
+  br i1 %t481, label %L160, label %L159
+L159:
+  %t482 = icmp sge i8 7, 0
+  %t483 = icmp slt i8 7, 8
+  %t484 = and i1 %t482, %t483
+  br i1 %t484, label %L161, label %L162
+L162:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L161:
+  %t485 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 7
+  %t486 = load i16, ptr %t485
+  %t487 = sext i8 6 to i16
+  %t488 = icmp ne i16 %t486, %t487
+  %t489 = zext i1 %t488 to i8
+  br label %L160
+L160:
+  %t490 = phi i8 [ 1, %L156 ], [ %t489, %L161 ]
+  %t491 = icmp ne i8 %t490, 0
+  br i1 %t491, label %L163, label %L164
 L163:
-  %t496 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t497 = ptrtoint ptr %t496 to i64
-  %t498 = inttoptr i64 %t497 to ptr
-  %t499 = icmp sge i8 0, 0
-  %t500 = icmp slt i8 0, 8
-  %t501 = and i1 %t499, %t500
-  br i1 %t501, label %L165, label %L166
+  %t492 = sext i8 1 to i32
+  %t493 = sext i8 8 to i64
+  call void @write(i32 %t492, ptr @.str.system.L118.C88, i64 %t493)
+  br label %L148
+L164:
+  br label %L148
+L148:
+  %t494 = icmp sge i8 0, 0
+  %t495 = icmp slt i8 0, 8
+  %t496 = and i1 %t494, %t495
+  br i1 %t496, label %L165, label %L166
 L166:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L165:
-  %t502 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
-  %t503 = ptrtoint ptr %t502 to i64
-  %t504 = inttoptr i64 %t503 to ptr
-  %t505 = sext i8 0 to i64
-  %t506 = icmp sgt i64 %t505, 0
-  %t507 = select i1 %t506, i64 %t505, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t504, ptr %t498, i64 %t507, i1 true)
-  %t508 = icmp sge i8 0, 0
-  %t509 = icmp slt i8 0, 8
-  %t510 = and i1 %t508, %t509
-  br i1 %t510, label %L167, label %L168
+  %t497 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t498 = ptrtoint ptr %t497 to i64
+  %t499 = inttoptr i64 %t498 to ptr
+  %t500 = icmp sge i8 0, 0
+  %t501 = icmp slt i8 0, 8
+  %t502 = and i1 %t500, %t501
+  br i1 %t502, label %L167, label %L168
 L168:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L167:
-  %t511 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
-  %t512 = ptrtoint ptr %t511 to i64
-  %t513 = inttoptr i64 %t512 to ptr
-  %t514 = icmp sge i8 0, 0
-  %t515 = icmp slt i8 0, 8
-  %t516 = and i1 %t514, %t515
-  br i1 %t516, label %L169, label %L170
+  %t503 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
+  %t504 = ptrtoint ptr %t503 to i64
+  %t505 = inttoptr i64 %t504 to ptr
+  %t506 = sext i8 0 to i64
+  %t507 = icmp sgt i64 %t506, 0
+  %t508 = select i1 %t507, i64 %t506, i64 0
+  call void @llvm.memmove.p0.p0.i64(ptr %t505, ptr %t499, i64 %t508, i1 true)
+  %t509 = icmp sge i8 0, 0
+  %t510 = icmp slt i8 0, 8
+  %t511 = and i1 %t509, %t510
+  br i1 %t511, label %L169, label %L170
 L170:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L169:
-  %t517 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
-  %t518 = ptrtoint ptr %t517 to i64
-  %t519 = inttoptr i64 %t518 to ptr
-  %t520 = sext i8 -5 to i64
-  %t521 = icmp sgt i64 %t520, 0
-  %t522 = select i1 %t521, i64 %t520, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t519, ptr %t513, i64 %t522, i1 true)
-  %t523 = icmp sge i8 0, 0
-  %t524 = icmp slt i8 0, 8
-  %t525 = and i1 %t523, %t524
-  br i1 %t525, label %L172, label %L173
-L173:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
+  %t512 = getelementptr [8 x i16], ptr @system.ints, i32 0, i8 0
+  %t513 = ptrtoint ptr %t512 to i64
+  %t514 = inttoptr i64 %t513 to ptr
+  %t515 = icmp sge i8 0, 0
+  %t516 = icmp slt i8 0, 8
+  %t517 = and i1 %t515, %t516
+  br i1 %t517, label %L171, label %L172
 L172:
-  %t526 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
-  %t527 = load i16, ptr %t526
-  %t528 = sext i8 1 to i16
-  %t529 = icmp ne i16 %t527, %t528
-  %t530 = zext i1 %t529 to i8
-  %t531 = icmp ne i8 %t530, 0
-  br i1 %t531, label %L174, label %L175
-L174:
-  %t532 = sext i8 1 to i32
-  %t533 = sext i8 8 to i64
-  call void @write(i32 %t532, ptr @.str.system.L121.C35, i64 %t533)
-  br label %L171
-L175:
-  br label %L171
-L171:
-  %t534 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 0
-  store i8 104, ptr %t534
-  %t535 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 1
-  store i8 101, ptr %t535
-  %t536 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 2
-  store i8 108, ptr %t536
-  %t537 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 3
-  store i8 108, ptr %t537
-  %t538 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 4
-  store i8 111, ptr %t538
-  %t539 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 5
-  store i8 0, ptr %t539
-  %t540 = icmp sge i8 0, 0
-  %t541 = icmp slt i8 0, 16
-  %t542 = and i1 %t540, %t541
-  br i1 %t542, label %L176, label %L177
-L177:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
+L171:
+  %t518 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
+  %t519 = ptrtoint ptr %t518 to i64
+  %t520 = inttoptr i64 %t519 to ptr
+  %t521 = sext i8 -5 to i64
+  %t522 = icmp sgt i64 %t521, 0
+  %t523 = select i1 %t522, i64 %t521, i64 0
+  call void @llvm.memmove.p0.p0.i64(ptr %t520, ptr %t514, i64 %t523, i1 true)
+  %t524 = icmp sge i8 0, 0
+  %t525 = icmp slt i8 0, 8
+  %t526 = and i1 %t524, %t525
+  br i1 %t526, label %L174, label %L175
+L175:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L174:
+  %t527 = getelementptr [8 x i16], ptr @system.more, i32 0, i8 0
+  %t528 = load i16, ptr %t527
+  %t529 = sext i8 1 to i16
+  %t530 = icmp ne i16 %t528, %t529
+  %t531 = zext i1 %t530 to i8
+  %t532 = icmp ne i8 %t531, 0
+  br i1 %t532, label %L176, label %L177
 L176:
-  %t543 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 0
-  %t544 = ptrtoint ptr %t543 to i64
-  %t545 = inttoptr i64 %t544 to ptr
-  %t546 = icmp sge i8 8, 0
-  %t547 = icmp slt i8 8, 16
-  %t548 = and i1 %t546, %t547
-  br i1 %t548, label %L178, label %L179
+  %t533 = sext i8 1 to i32
+  %t534 = sext i8 8 to i64
+  call void @write(i32 %t533, ptr @.str.system.L121.C35, i64 %t534)
+  br label %L173
+L177:
+  br label %L173
+L173:
+  %t535 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 0
+  store i8 104, ptr %t535
+  %t536 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 1
+  store i8 101, ptr %t536
+  %t537 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 2
+  store i8 108, ptr %t537
+  %t538 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 3
+  store i8 108, ptr %t538
+  %t539 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 4
+  store i8 111, ptr %t539
+  %t540 = getelementptr [16 x i8], ptr @system.buf, i32 0, i32 5
+  store i8 0, ptr %t540
+  %t541 = icmp sge i8 0, 0
+  %t542 = icmp slt i8 0, 16
+  %t543 = and i1 %t541, %t542
+  br i1 %t543, label %L178, label %L179
 L179:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
 L178:
-  %t549 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 8
-  %t550 = ptrtoint ptr %t549 to i64
-  %t551 = inttoptr i64 %t550 to ptr
-  %t552 = sext i8 6 to i64
-  %t553 = icmp sgt i64 %t552, 0
-  %t554 = select i1 %t553, i64 %t552, i64 0
-  call void @llvm.memmove.p0.p0.i64(ptr %t551, ptr %t545, i64 %t554, i1 true)
-  %t555 = icmp sge i8 8, 0
-  %t556 = icmp slt i8 8, 16
-  %t557 = and i1 %t555, %t556
-  br i1 %t557, label %L181, label %L182
-L182:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
+  %t544 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 0
+  %t545 = ptrtoint ptr %t544 to i64
+  %t546 = inttoptr i64 %t545 to ptr
+  %t547 = icmp sge i8 8, 0
+  %t548 = icmp slt i8 8, 16
+  %t549 = and i1 %t547, %t548
+  br i1 %t549, label %L180, label %L181
 L181:
-  %t558 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 8
-  %t559 = load i8, ptr %t558
-  %t560 = icmp ne i8 %t559, 104
-  %t561 = zext i1 %t560 to i8
-  %t562 = icmp ne i8 %t561, 0
-  br i1 %t562, label %L184, label %L183
-L183:
-  %t563 = icmp sge i8 12, 0
-  %t564 = icmp slt i8 12, 16
-  %t565 = and i1 %t563, %t564
-  br i1 %t565, label %L185, label %L186
-L186:
   call void @write(i32 2, ptr @.trap.indexrange, i64 19)
   call void @exit(i32 2)
   unreachable
-L185:
-  %t566 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 12
-  %t567 = load i8, ptr %t566
-  %t568 = icmp ne i8 %t567, 111
-  %t569 = zext i1 %t568 to i8
-  br label %L184
-L184:
-  %t570 = phi i8 [ 1, %L181 ], [ %t569, %L185 ]
-  %t571 = icmp ne i8 %t570, 0
-  br i1 %t571, label %L188, label %L187
-L187:
-  %t572 = icmp sge i8 13, 0
-  %t573 = icmp slt i8 13, 16
-  %t574 = and i1 %t572, %t573
-  br i1 %t574, label %L189, label %L190
-L190:
-  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
-  call void @exit(i32 2)
-  unreachable
-L189:
-  %t575 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 13
-  %t576 = load i8, ptr %t575
-  %t577 = icmp ne i8 %t576, 0
-  %t578 = zext i1 %t577 to i8
-  br label %L188
-L188:
-  %t579 = phi i8 [ 1, %L184 ], [ %t578, %L189 ]
-  %t580 = icmp ne i8 %t579, 0
-  br i1 %t580, label %L191, label %L192
-L191:
-  %t581 = sext i8 1 to i32
-  %t582 = sext i8 8 to i64
-  call void @write(i32 %t581, ptr @.str.system.L125.C75, i64 %t582)
-  br label %L180
-L192:
-  br label %L180
 L180:
-  %t583 = sext i8 -2 to i16
-  store i16 %t583, ptr @system.i
-  %t584 = load i16, ptr @system.i
-  %t585 = sext i16 %t584 to i32
-  store i32 %t585, ptr @system.l
-  %t586 = load i32, ptr @system.l
-  %t587 = sext i8 -2 to i32
-  %t588 = icmp ne i32 %t586, %t587
-  %t589 = zext i1 %t588 to i8
-  %t590 = icmp ne i8 %t589, 0
-  br i1 %t590, label %L194, label %L195
-L194:
-  %t591 = sext i8 1 to i32
-  %t592 = sext i8 8 to i64
-  call void @write(i32 %t591, ptr @.str.system.L128.C30, i64 %t592)
-  br label %L193
-L195:
-  br label %L193
+  %t550 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 8
+  %t551 = ptrtoint ptr %t550 to i64
+  %t552 = inttoptr i64 %t551 to ptr
+  %t553 = sext i8 6 to i64
+  %t554 = icmp sgt i64 %t553, 0
+  %t555 = select i1 %t554, i64 %t553, i64 0
+  call void @llvm.memmove.p0.p0.i64(ptr %t552, ptr %t546, i64 %t555, i1 true)
+  %t556 = icmp sge i8 8, 0
+  %t557 = icmp slt i8 8, 16
+  %t558 = and i1 %t556, %t557
+  br i1 %t558, label %L183, label %L184
+L184:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L183:
+  %t559 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 8
+  %t560 = load i8, ptr %t559
+  %t561 = icmp ne i8 %t560, 104
+  %t562 = zext i1 %t561 to i8
+  %t563 = icmp ne i8 %t562, 0
+  br i1 %t563, label %L186, label %L185
+L185:
+  %t564 = icmp sge i8 12, 0
+  %t565 = icmp slt i8 12, 16
+  %t566 = and i1 %t564, %t565
+  br i1 %t566, label %L187, label %L188
+L188:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L187:
+  %t567 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 12
+  %t568 = load i8, ptr %t567
+  %t569 = icmp ne i8 %t568, 111
+  %t570 = zext i1 %t569 to i8
+  br label %L186
+L186:
+  %t571 = phi i8 [ 1, %L183 ], [ %t570, %L187 ]
+  %t572 = icmp ne i8 %t571, 0
+  br i1 %t572, label %L190, label %L189
+L189:
+  %t573 = icmp sge i8 13, 0
+  %t574 = icmp slt i8 13, 16
+  %t575 = and i1 %t573, %t574
+  br i1 %t575, label %L191, label %L192
+L192:
+  call void @write(i32 2, ptr @.trap.indexrange, i64 19)
+  call void @exit(i32 2)
+  unreachable
+L191:
+  %t576 = getelementptr [16 x i8], ptr @system.buf, i32 0, i8 13
+  %t577 = load i8, ptr %t576
+  %t578 = icmp ne i8 %t577, 0
+  %t579 = zext i1 %t578 to i8
+  br label %L190
+L190:
+  %t580 = phi i8 [ 1, %L186 ], [ %t579, %L191 ]
+  %t581 = icmp ne i8 %t580, 0
+  br i1 %t581, label %L193, label %L194
 L193:
-  store i32 65543, ptr @system.l
-  %t593 = load i32, ptr @system.l
-  %t594 = trunc i32 %t593 to i16
-  store i16 %t594, ptr @system.i
-  %t595 = load i16, ptr @system.i
-  %t596 = sext i8 7 to i16
-  %t597 = icmp ne i16 %t595, %t596
-  %t598 = zext i1 %t597 to i8
-  %t599 = icmp ne i8 %t598, 0
-  br i1 %t599, label %L197, label %L198
-L197:
-  %t600 = sext i8 1 to i32
-  %t601 = sext i8 8 to i64
-  call void @write(i32 %t600, ptr @.str.system.L130.C29, i64 %t601)
-  br label %L196
-L198:
-  br label %L196
+  %t582 = sext i8 1 to i32
+  %t583 = sext i8 8 to i64
+  call void @write(i32 %t582, ptr @.str.system.L125.C75, i64 %t583)
+  br label %L182
+L194:
+  br label %L182
+L182:
+  %t584 = sext i8 -2 to i16
+  store i16 %t584, ptr @system.i
+  %t585 = load i16, ptr @system.i
+  %t586 = sext i16 %t585 to i32
+  store i32 %t586, ptr @system.l
+  %t587 = load i32, ptr @system.l
+  %t588 = sext i8 -2 to i32
+  %t589 = icmp ne i32 %t587, %t588
+  %t590 = zext i1 %t589 to i8
+  %t591 = icmp ne i8 %t590, 0
+  br i1 %t591, label %L196, label %L197
 L196:
-  %t602 = sext i8 1 to i32
-  %t603 = sext i8 2 to i64
-  call void @write(i32 %t602, ptr @.str.system.L131.C15, i64 %t603)
+  %t592 = sext i8 1 to i32
+  %t593 = sext i8 8 to i64
+  call void @write(i32 %t592, ptr @.str.system.L128.C30, i64 %t593)
+  br label %L195
+L197:
+  br label %L195
+L195:
+  store i32 65543, ptr @system.l
+  %t594 = load i32, ptr @system.l
+  %t595 = trunc i32 %t594 to i16
+  store i16 %t595, ptr @system.i
+  %t596 = load i16, ptr @system.i
+  %t597 = sext i8 7 to i16
+  %t598 = icmp ne i16 %t596, %t597
+  %t599 = zext i1 %t598 to i8
+  %t600 = icmp ne i8 %t599, 0
+  br i1 %t600, label %L199, label %L200
+L199:
+  %t601 = sext i8 1 to i32
+  %t602 = sext i8 8 to i64
+  call void @write(i32 %t601, ptr @.str.system.L130.C29, i64 %t602)
+  br label %L198
+L200:
+  br label %L198
+L198:
+  %t603 = sext i8 1 to i32
+  %t604 = sext i8 2 to i64
+  call void @write(i32 %t603, ptr @.str.system.L131.C15, i64 %t604)
   ret void
 }
 
@@ -2563,6 +2590,7 @@ entry:
   call void @system_init()
   ret i32 0
 }
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 
 declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)
 clang accepted x86_64-unknown-linux-gnu

@@ -2,6 +2,10 @@ semantic OK, wrote predeclaredir.ll
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+
+@predeclaredir.-initialized = internal global i1 false
+@predeclaredir.-key.O2.454afecce87b21d9 = constant i8 0
+@predeclaredir.-target.x86_64-unknown-linux-gnu = constant i8 0
 @predeclaredir.v = global [5 x i16] zeroinitializer
 @predeclaredir.m = global [3 x [4 x i16]] zeroinitializer
 @predeclaredir.s = global [10 x i8] zeroinitializer
@@ -24,42 +28,48 @@ declare void @exit(i32)
 
 define void @predeclaredir_init() {
 entry:
-  %t1 = sext i8 7 to i16
-  store i16 %t1, ptr @predeclaredir.absVal
-  %t2 = and i8 5, 1
-  store i8 %t2, ptr @predeclaredir.oddVal
+  %t1 = load i1, ptr @predeclaredir.-initialized
+  br i1 %t1, label %L1, label %L2
+L1:
+  ret void
+L2:
+  store i1 true, ptr @predeclaredir.-initialized
+  %t2 = sext i8 7 to i16
+  store i16 %t2, ptr @predeclaredir.absVal
+  %t3 = and i8 5, 1
+  store i8 %t3, ptr @predeclaredir.oddVal
   store i8 65, ptr @predeclaredir.chrVal
   store i16 90, ptr @predeclaredir.ordVal
   store i8 113, ptr @predeclaredir.lowerCh
-  %t3 = load i8, ptr @predeclaredir.lowerCh
-  %t4 = icmp sge i8 %t3, 97
-  %t5 = icmp sle i8 %t3, 122
-  %t6 = and i1 %t4, %t5
-  %t7 = sub i8 %t3, 32
-  %t8 = select i1 %t6, i8 %t7, i8 %t3
-  store i8 %t8, ptr @predeclaredir.capVal
+  %t4 = load i8, ptr @predeclaredir.lowerCh
+  %t5 = icmp sge i8 %t4, 97
+  %t6 = icmp sle i8 %t4, 122
+  %t7 = and i1 %t5, %t6
+  %t8 = sub i8 %t4, 32
+  %t9 = select i1 %t7, i8 %t8, i8 %t4
+  store i8 %t9, ptr @predeclaredir.capVal
   store i32 5, ptr @predeclaredir.lenVal
   store i32 3, ptr @predeclaredir.dim0
   store i32 4, ptr @predeclaredir.dim1
-  %t9 = sext i8 3 to i16
-  store i16 %t9, ptr @predeclaredir.i
-  %t10 = load i16, ptr @predeclaredir.i
-  %t11 = add i16 %t10, 1
-  store i16 %t11, ptr @predeclaredir.i
-  %t12 = load i16, ptr @predeclaredir.i
-  %t13 = sext i8 10 to i16
-  %t14 = add i16 %t12, %t13
-  store i16 %t14, ptr @predeclaredir.i
-  %t15 = load i16, ptr @predeclaredir.i
-  %t16 = sext i8 4 to i16
-  %t17 = sub i16 %t15, %t16
-  store i16 %t17, ptr @predeclaredir.i
-  %t18 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 0
-  store i8 104, ptr %t18
-  %t19 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 1
-  store i8 105, ptr %t19
-  %t20 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 2
-  store i8 0, ptr %t20
+  %t10 = sext i8 3 to i16
+  store i16 %t10, ptr @predeclaredir.i
+  %t11 = load i16, ptr @predeclaredir.i
+  %t12 = add i16 %t11, 1
+  store i16 %t12, ptr @predeclaredir.i
+  %t13 = load i16, ptr @predeclaredir.i
+  %t14 = sext i8 10 to i16
+  %t15 = add i16 %t13, %t14
+  store i16 %t15, ptr @predeclaredir.i
+  %t16 = load i16, ptr @predeclaredir.i
+  %t17 = sext i8 4 to i16
+  %t18 = sub i16 %t16, %t17
+  store i16 %t18, ptr @predeclaredir.i
+  %t19 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 0
+  store i8 104, ptr %t19
+  %t20 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 1
+  store i8 105, ptr %t20
+  %t21 = getelementptr [10 x i8], ptr @predeclaredir.s, i32 0, i32 2
+  store i8 0, ptr %t21
   ret void
 }
 

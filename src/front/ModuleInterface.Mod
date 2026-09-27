@@ -132,6 +132,7 @@ MODULE ModuleInterface;
     lineLength = 4096; (* mirrors Poc.Mod's own ReadSource *)
     searchPathDirLength = 1024;
     pathBufferLength* = searchPathDirLength + nameBufferLength;
+    keyLength* = 16; (* hexadecimal digits of a module key *)
     maxSignificantDigits = 19; (* IEEE double needs at most 17 to round-trip
       through a correctly-rounded parser, which ParseReal is; the extra two
       only bound the search should that ever be wrong, and the text is
@@ -162,6 +163,22 @@ MODULE ModuleInterface;
       rec: Types.RecordType;
       next: DoneRecord
     END;
+
+    (* Phase 12 step 2b: a module's key, the hash of its .sym text (KeyOf) *)
+    ModuleKey = POINTER TO ModuleKeyDesc;
+    ModuleKeyDesc = RECORD
+      name: SyntaxTree.Ident;
+      key: ARRAY keyLength + 1 OF CHAR;
+      next: ModuleKey
+    END;
+
+    (* Phase 12 step 2c: the directory of the library that has the module
+       name, when one on the library path has it (Poc.Mod supplies it: the
+       library path is the driver's business) *)
+    LibraryLookup* = PROCEDURE (name: ARRAY OF CHAR; VAR dir: ARRAY OF CHAR): BOOLEAN;
+    (* Phase 12 step 2e: says, as notes at line:column, where the module
+       name, imported by importer, was looked for *)
+    MissingModuleExplainer* = PROCEDURE (importer, name: ARRAY OF CHAR; line, column: INTEGER);
 
     SearchPathEntry* = POINTER TO SearchPathEntryDesc;
     SearchPathEntryDesc* = RECORD
@@ -198,6 +215,18 @@ MODULE ModuleInterface;
        original cwd-then-search-path behavior every other command and
        fixture relies on. *)
     interfaceDir: ARRAY searchPathDirLength OF CHAR;
+    (* Phase 12 step 2c: when not NIL, ReadSource* takes a module's .sym
+       from the library that has it before anywhere else: a library's
+       module is used as the library has it, never regenerated *)
+    libraryLookup*: LibraryLookup;
+    (* Phase 12 step 2e: when not NIL, called by the checker after an
+       import it found no .sym for *)
+    explainMissingModule*: MissingModuleExplainer;
+    (* the .sym file ReadSource* opened last *)
+    interfacePath*: ARRAY pathBufferLength OF CHAR;
+    (* Phase 12 step 2b: the key of every module whose .sym this run has
+       written or read, the latest first *)
+    keys: ModuleKey;
 
     (* PLAN.md Phase 9 step 4a - writer state, valid only during one Write*
        call (reset at its start). Write* runs the whole declaration-
@@ -317,21 +346,110 @@ MODULE ModuleInterface;
     RETURN f
   END OpenFound;
 
-  PROCEDURE Open(name: ARRAY OF CHAR): Files.File;
-    VAR path: ARRAY pathBufferLength OF CHAR;
+  (* ---- Module keys (Phase 12 step 2b) ----
+
+     A module's key is the 64-bit FNV-1a hash of its .sym file's bytes, as
+     16 lower-case hexadecimal digits. The .sym holds everything an
+     importer's code depends on - the exported declarations, the hidden
+     fields that fix a record's layout, folded constants, field
+     initializers - and nothing else (no time or path), so the key changes
+     exactly when an importer compiled against the old one must be
+     compiled again. The LLVM backend puts it in a symbol the module's
+     object defines and its importers' objects refer to, so linking an
+     importer with a module whose interface has changed since fails.
+     Computed a byte at a time, eight bytes standing for the 64-bit value,
+     so that no integer wider than 32 bits is needed. *)
+
+  PROCEDURE HexDigit(d: INTEGER): CHAR;
   BEGIN
-    RETURN OpenFound(name, path)
-  END Open;
+    IF d < 10 THEN RETURN CHR(ORD("0") + d) ELSE RETURN CHR(ORD("a") + d - 10) END
+  END HexDigit;
+
+  PROCEDURE HashFile(f: Files.File; VAR key: ARRAY OF CHAR);
+    CONST prime = 0B3H; (* the FNV prime 1099511628211 is 2^40 + 2^8 + 0B3H *)
+    VAR
+      hash, product: ARRAY 8 OF LONGINT; r: Files.Rider; ch: CHAR;
+      i, bit, value, a, b, x: INTEGER; carry: LONGINT;
+  BEGIN
+    (* the offset basis, 0CBF29CE484222325H, least significant byte first *)
+    hash[0] := 25H; hash[1] := 23H; hash[2] := 22H; hash[3] := 84H;
+    hash[4] := 0E4H; hash[5] := 9CH; hash[6] := 0F2H; hash[7] := 0CBH;
+    Files.Set(r, f, 0);
+    Files.Read(r, ch);
+    WHILE ~r.eof DO
+      (* hash := hash XOR byte, in the low byte *)
+      a := SHORT(hash[0]); b := ORD(ch); x := 0; value := 1;
+      FOR bit := 0 TO 7 DO
+        IF ODD(a) # ODD(b) THEN INC(x, value) END;
+        a := a DIV 2; b := b DIV 2; value := value * 2
+      END;
+      hash[0] := x;
+      (* hash := hash * prime MOD 2^64: times 0B3H, plus hash shifted left
+         by one byte and by five *)
+      FOR i := 0 TO 7 DO
+        product[i] := hash[i] * prime;
+        IF i >= 1 THEN INC(product[i], hash[i - 1]) END;
+        IF i >= 5 THEN INC(product[i], hash[i - 5]) END
+      END;
+      carry := 0;
+      FOR i := 0 TO 7 DO
+        INC(product[i], carry);
+        hash[i] := product[i] MOD 256; carry := product[i] DIV 256
+      END;
+      Files.Read(r, ch)
+    END;
+    FOR i := 0 TO 7 DO
+      value := SHORT(hash[7 - i]);
+      key[2 * i] := HexDigit(value DIV 16); key[2 * i + 1] := HexDigit(value MOD 16)
+    END;
+    key[keyLength] := 0X
+  END HashFile;
+
+  PROCEDURE RecordKey(moduleName: ARRAY OF CHAR; f: Files.File);
+    VAR entry: ModuleKey;
+  BEGIN
+    NEW(entry); COPY(moduleName, entry.name); HashFile(f, entry.key);
+    entry.next := keys; keys := entry
+  END RecordKey;
+
+  (* The same hash of the file at path, any file (Phase 12 step 2e: a
+     library records its modules' sources' so a different source can be
+     told from the one it was built from); FALSE when it cannot be opened *)
+  PROCEDURE KeyOfFile*(path: ARRAY OF CHAR; VAR key: ARRAY OF CHAR): BOOLEAN;
+    VAR f: Files.File;
+  BEGIN
+    f := Files.Old(path);
+    IF f # NIL THEN HashFile(f, key); Files.Close(f) END;
+    RETURN f # NIL
+  END KeyOfFile;
+
+  (* The key of the module moduleName, from the .sym this run wrote or read
+     for it last; FALSE when there was none (SYSTEM, or a module only
+     compiled from source, as the program's main module is) *)
+  PROCEDURE KeyOf*(moduleName: ARRAY OF CHAR; VAR key: ARRAY OF CHAR): BOOLEAN;
+    VAR entry: ModuleKey;
+  BEGIN
+    entry := keys;
+    WHILE (entry # NIL) & (entry.name # moduleName) DO entry := entry.next END;
+    IF entry # NIL THEN COPY(entry.key, key) END;
+    RETURN entry # NIL
+  END KeyOf;
 
   PROCEDURE SetInterfaceDir*(dir: ARRAY OF CHAR);
   BEGIN
     COPY(dir, interfaceDir)
   END SetInterfaceDir;
 
+  PROCEDURE GetInterfaceDir*(VAR dir: ARRAY OF CHAR);
+  BEGIN
+    COPY(interfaceDir, dir)
+  END GetInterfaceDir;
+
   PROCEDURE ReadSource*(moduleName: SyntaxTree.Ident; VAR buffer: Lexer.CharBuffer;
                         VAR length: LONGINT; VAR found: BOOLEAN);
     VAR
       name: ARRAY nameBufferLength OF CHAR;
+      dir: ARRAY searchPathDirLength OF CHAR;
       path: ARRAY pathBufferLength OF CHAR;
       f: Files.File;
       r: Files.Rider;
@@ -341,15 +459,20 @@ MODULE ModuleInterface;
   BEGIN
     SymFileName(moduleName, name);
     f := NIL;
-    IF interfaceDir[0] # 0X THEN
+    IF (libraryLookup # NIL) & libraryLookup(moduleName, dir) THEN
+      JoinPath(dir, name, path);
+      f := Files.Old(path)
+    END;
+    IF (f = NIL) & (interfaceDir[0] # 0X) THEN
       JoinPath(interfaceDir, name, path);
       f := Files.Old(path)
     END;
-    IF f = NIL THEN f := Open(name) END;
+    IF f = NIL THEN f := OpenFound(name, path) END;
     IF f = NIL THEN
       found := FALSE; length := 0
     ELSE
-      found := TRUE;
+      found := TRUE; COPY(path, interfacePath);
+      RecordKey(moduleName, f);
       NEW(buffer, Files.Length(f) + 1);
       Files.Set(r, f, 0);
       used := 0;
@@ -893,6 +1016,10 @@ MODULE ModuleInterface;
             IF f.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END
           END;
           WriteStr(w, ": "); PrintTypeRef(w, scope, f.type);
+          (* Phase 11 D17: that the field has an initializer, not its
+             value, which only the declaring module's code uses
+             (Parser.ParseFieldInitializers reads it back) *)
+          IF f.hasInitializer & ~exportedView THEN WriteStr(w, " := ..") END;
           first := FALSE
         END;
         f := f.next
@@ -1270,6 +1397,7 @@ MODULE ModuleInterface;
       PrintDeclarations(w, module, scope);
       WriteStr(w, "END "); WriteStr(w, module.name); WriteStr(w, "."); WriteLn(w);
       Files.Register(f);
+      RecordKey(module.name, f);
       IF outputDir[0] # 0X THEN chdirResult := Platform.Chdir(savedDir) END
     END;
     RETURN ok

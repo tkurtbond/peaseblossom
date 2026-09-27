@@ -9,7 +9,8 @@ releases are context only.
 
 Save what is fetched in `~/Reference/Computer/OS/VMS/`, keeping the original
 file name (it carries the DEC order number and the date). This document is
-the to-do list; **nothing on it has been downloaded yet.**
+the to-do list. Downloaded so far: `AA-LA66B` (the calling standard) and
+`AA-LA62A` (the Linker, with the object language), 2026-09-26.
 
 ## Status of the attempt
 
@@ -20,6 +21,16 @@ the to-do list; **nothing on it has been downloaded yet.**
   again, check whether the server wants a browser-like `User-Agent`, or use
   the Internet Archive copies (`archive.org` carries many of the same
   bitsavers files), or fetch by hand.
+- 2026-09-26: a browser-like `User-Agent` is enough:
+  `curl -f -A 'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101
+  Firefox/130.0' -o <file> https://www.bitsavers.org/pdf/dec/vax/vms/<release>/<file>`.
+  Fetched that way: `AA-LA66B-TE_Introduction_to_VMS_5.4_System_Routines_199006.pdf`
+  (chapter 2 is the VAX Procedure Calling and Condition Handling Standard)
+  and `AA-LA62A-TE_VMS_5.0_Linker_Utility_Manual_198804.pdf` (chapter 7 is
+  the VAX object language), with `pdftotext -layout` extracts beside them
+  (`*-layout.text`; the scans' OCR has character errors). The `5.1`-`5.3`
+  directories were checked for a newer Linker manual: they have none, nor
+  any calling-standard or object-language document.
 - The file names below were transcribed from the bitsavers directory
   listings (`.../vms/5.5/`, `.../vms/5.4/`, `.../vms/5.0/`); confirm each on
   download.
@@ -116,15 +127,19 @@ Not on the listings looked at so far, so the location is unknown:
 
 - The **VAX Procedure Calling and Condition Handling Standard** as its own
   document (it is described in the system-routines and architecture manuals,
-  but the standard itself is the authority for Phase 14 step 3b).
+  but the standard itself is the authority for Phase 14 step 3b). Chapter 2
+  of `AA-LA66B` (downloaded) describes it at length; a standalone copy is
+  not on bitsavers' `vax/vms` listings.
 - A **5.5-era Linker manual**, **LIB$ manual** and **RMS reference** - only
-  5.0 copies were listed. Check `5.1`-`5.3` and the Internet Archive.
+  5.0 copies were listed, and `5.1`-`5.3` have none (checked 2026-09-26
+  for the Linker). The Internet Archive is still to be checked.
 - The **VMS Programming Concepts** volumes (AST delivery in prose, the
   `$SETAST` rules) at a 5.x release - only the 2005 volume is held locally.
 - The **object language** reference for VMS 5.5-2 (record formats for the
-  module header, GSD, TIR, debug and traceback records, EOM) - probably an
-  appendix of the Linker manual or a separate reference, and the
-  `ANALYZE/OBJECT` description; needed by Phase 16 step 1 before anything is
+  module header, GSD, TIR, debug and traceback records, EOM): **found** as
+  chapter 7 of the 5.0 Linker manual (`AA-LA62A`, downloaded; no newer
+  Linker manual on bitsavers), to be checked against the 5.5 and 5.5-2
+  release notes. Still wanted: the `ANALYZE/OBJECT` description; needed by Phase 16 step 1 before anything is
   designed. Also the **VAX instruction encoding** tables (opcode and
   operand-specifier formats), which the architecture reference and the
   MACRO manual carry, for Phase 16 step 3.

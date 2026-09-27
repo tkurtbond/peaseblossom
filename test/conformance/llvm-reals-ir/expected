@@ -2,6 +2,10 @@
 target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128"
 target triple = "i686-unknown-linux-gnu"
 
+
+@realsir.-initialized = internal global i1 false
+@realsir.-key.O2.90a2da4192fc85d1 = constant i8 0
+@realsir.-target.i686-unknown-linux-gnu = constant i8 0
 @realsir.fx = global float zeroinitializer
 @realsir.dx = global double zeroinitializer
 @realsir.lx = global i32 zeroinitializer
@@ -10,15 +14,16 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define double @realsir.Forms(float %a, double %b, i16 %n) {
+define double @realsir.Forms(float %p.a, double %p.b, i16 %p.n) {
 entry:
   %t1 = alloca float
-  store float %a, ptr %t1
+  store float %p.a, ptr %t1
   %t2 = alloca double
-  store double %b, ptr %t2
+  store double %p.b, ptr %t2
   %t3 = alloca i16
-  store i16 %n, ptr %t3
+  store i16 %p.n, ptr %t3
   %t4 = alloca double
+  store double zeroinitializer, ptr %t4
   %t5 = load float, ptr %t1
   %t6 = load double, ptr %t2
   %t7 = fpext float %t5 to double
@@ -140,28 +145,36 @@ L15:
   %t82 = load double, ptr %t4
   ret double %t82
 L16:
-  ret double 0.0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @realsir_init() {
 entry:
-  %t83 = fptrunc double 0.1 to float
-  store float %t83, ptr @realsir.fx
+  %t83 = load i1, ptr @realsir.-initialized
+  br i1 %t83, label %L17, label %L18
+L17:
+  ret void
+L18:
+  store i1 true, ptr @realsir.-initialized
+  %t84 = fptrunc double 0.1 to float
+  store float %t84, ptr @realsir.fx
   store double 0.1e0, ptr @realsir.dx
   store double -1.5e-3, ptr @realsir.dx
-  %t84 = fptrunc double -0.0 to float
-  %t85 = fpext float %t84 to double
-  store double %t85, ptr @realsir.dx
+  %t85 = fptrunc double -0.0 to float
+  %t86 = fpext float %t85 to double
+  store double %t86, ptr @realsir.dx
   store double 0x3FD5555555555555, ptr @realsir.dx
   store double 0xBFD5555555555555, ptr @realsir.dx
   store float 0x3FD5555560000000, ptr @realsir.fx
   store double 0x0000000400000000, ptr @realsir.dx
   store double 0x7E70000000000000, ptr @realsir.dx
-  %t86 = load float, ptr @realsir.fx
-  %t87 = load double, ptr @realsir.dx
-  %t88 = sext i8 2 to i16
-  %t89 = call double @realsir.Forms(float %t86, double %t87, i16 %t88)
-  store double %t89, ptr @realsir.dx
+  %t87 = load float, ptr @realsir.fx
+  %t88 = load double, ptr @realsir.dx
+  %t89 = sext i8 2 to i16
+  %t90 = call double @realsir.Forms(float %t87, double %t88, i16 %t89)
+  store double %t90, ptr @realsir.dx
   ret void
 }
 
@@ -171,11 +184,16 @@ entry:
   ret i32 0
 }
 @.trap.entier = private unnamed_addr constant [42 x i8] c"ENTIER argument out of range for LONGINT\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted i686-unknown-linux-gnu
 == x86_64-unknown-linux-gnu
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+
+@realsir.-initialized = internal global i1 false
+@realsir.-key.O2.90a2da4192fc85d1 = constant i8 0
+@realsir.-target.x86_64-unknown-linux-gnu = constant i8 0
 @realsir.fx = global float zeroinitializer
 @realsir.dx = global double zeroinitializer
 @realsir.lx = global i32 zeroinitializer
@@ -184,15 +202,16 @@ declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
 @.trap.nocaselabel = private unnamed_addr constant [24 x i8] c"no matching CASE label\0A\00"
 
-define double @realsir.Forms(float %a, double %b, i16 %n) {
+define double @realsir.Forms(float %p.a, double %p.b, i16 %p.n) {
 entry:
   %t1 = alloca float
-  store float %a, ptr %t1
+  store float %p.a, ptr %t1
   %t2 = alloca double
-  store double %b, ptr %t2
+  store double %p.b, ptr %t2
   %t3 = alloca i16
-  store i16 %n, ptr %t3
+  store i16 %p.n, ptr %t3
   %t4 = alloca double
+  store double zeroinitializer, ptr %t4
   %t5 = load float, ptr %t1
   %t6 = load double, ptr %t2
   %t7 = fpext float %t5 to double
@@ -314,28 +333,36 @@ L15:
   %t82 = load double, ptr %t4
   ret double %t82
 L16:
-  ret double 0.0
+  call void @write(i32 2, ptr @.trap.noreturn, i64 50)
+  call void @exit(i32 12)
+  unreachable
 }
 
 define void @realsir_init() {
 entry:
-  %t83 = fptrunc double 0.1 to float
-  store float %t83, ptr @realsir.fx
+  %t83 = load i1, ptr @realsir.-initialized
+  br i1 %t83, label %L17, label %L18
+L17:
+  ret void
+L18:
+  store i1 true, ptr @realsir.-initialized
+  %t84 = fptrunc double 0.1 to float
+  store float %t84, ptr @realsir.fx
   store double 0.1e0, ptr @realsir.dx
   store double -1.5e-3, ptr @realsir.dx
-  %t84 = fptrunc double -0.0 to float
-  %t85 = fpext float %t84 to double
-  store double %t85, ptr @realsir.dx
+  %t85 = fptrunc double -0.0 to float
+  %t86 = fpext float %t85 to double
+  store double %t86, ptr @realsir.dx
   store double 0x3FD5555555555555, ptr @realsir.dx
   store double 0xBFD5555555555555, ptr @realsir.dx
   store float 0x3FD5555560000000, ptr @realsir.fx
   store double 0x0000000400000000, ptr @realsir.dx
   store double 0x7E70000000000000, ptr @realsir.dx
-  %t86 = load float, ptr @realsir.fx
-  %t87 = load double, ptr @realsir.dx
-  %t88 = sext i8 2 to i16
-  %t89 = call double @realsir.Forms(float %t86, double %t87, i16 %t88)
-  store double %t89, ptr @realsir.dx
+  %t87 = load float, ptr @realsir.fx
+  %t88 = load double, ptr @realsir.dx
+  %t89 = sext i8 2 to i16
+  %t90 = call double @realsir.Forms(float %t87, double %t88, i16 %t89)
+  store double %t90, ptr @realsir.dx
   ret void
 }
 
@@ -345,4 +372,5 @@ entry:
   ret i32 0
 }
 @.trap.entier = private unnamed_addr constant [42 x i8] c"ENTIER argument out of range for LONGINT\0A\00"
+@.trap.noreturn = private unnamed_addr constant [51 x i8] c"function procedure reached its END without RETURN\0A\00"
 clang accepted x86_64-unknown-linux-gnu

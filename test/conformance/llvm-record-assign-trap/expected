@@ -1,0 +1,21 @@
+== case 0
+1 2 2 0 6 3 5 7
+exit=0
+== case 1
+recordassign.mod:22:15: record assigned to a variable whose dynamic type extends its static type (in recordassign.Set)
+exit=13
+== case 2
+recordassign.mod:35:15: record assigned to a variable whose dynamic type extends its static type (in recordassign.R.Reset)
+exit=13
+== case 3
+recordassign.mod:42:17: record assigned to a variable whose dynamic type extends its static type (in recordassign.Outer.Inner)
+exit=13
+== case 4
+recordassign.mod:61:24: record assigned to a variable whose dynamic type extends its static type (in recordassign, module body)
+exit=13
+== case 5
+recordassign.mod:29:18: record assigned to a variable whose dynamic type extends its static type (in recordassign.SetS)
+exit=13
+== without -trap-location, case 1
+record assigned to a variable whose dynamic type extends its static type
+exit=13

@@ -136,6 +136,7 @@ tools/
 | 14 | Running on VAX/VMS | `VaxToolchainDriver` (real), `rtl/vax` (minimal), VAX backend widened to what poc's own source needs | VAX (assembled, linked, run) | poc on VAX/VMS compiles itself |
 | 15 | Library/module support on VAX/VMS | VMS libraries (object, shareable), ported Oberon modules, native VMS libraries, AST support | VAX | poc on VAX/VMS |
 | 16 | Direct VAX/VMS object files | `VaxInstruction`/encoder, `VaxObjectWriter` (`.OBJ`), debug/traceback records | VAX (no assembler in the loop) | poc on VAX/VMS |
+| 17 | Further extensions to Oberon-2 | record and array literals, and whichever other extensions it adopts | both | poc (self-hosted) |
 
 ## Phase details
 
@@ -791,14 +792,26 @@ as it stands when the phase starts, and adds what it finds):
    (a) line tables and subprogram names - a breakpoint on
    `Module.Procedure` and a backtrace of Oberon frames with source lines,
    which needs every AST node's line and column carried down to the
-   instructions the generator emits;
+   instructions the generator emits; **done 2026-09-26** (`AGENTS.md`,
+   "Toolchain: LLVM"; statement positions, which were already carried
+   down for `-trap-location`; `-g` leaves the optimization level alone,
+   user);
    (b) parameters and locals of the basic types, so `print`/`info locals`
-   show values;
+   show values; **done 2026-09-26** (value and plain `VAR` parameters,
+   locals; Oberon type names through typedefs; module variables not yet);
    (c) records, arrays, pointers, and type-bound procedures - a record
-   printed field by field, with Oberon type names;
+   printed field by field, with Oberon type names; **done 2026-09-26**
+   (fixed arrays, pointers - to an open array untyped - procedure
+   variables, `SYSTEM.PTR`, `VAR` record parameters and receivers, module
+   variables with a compile unit per module; described from `Types` and
+   `MemoryLayout`, which the VAX backend has too);
    (d) what the calling convention hides: a `VAR` record's type tag and an
    open array's lengths presented as one variable, not as extra
-   parameters. Decide how far to go from what the debuggers' DWARF
+   parameters. **done 2026-09-26** (open-array parameters with their
+   lengths as artificial `LEN(a)` variables, pointers to open arrays as
+   their heap block, a nested procedure's enclosing variables; a `VAR`
+   record shows its static type, the tag left out; lldb does not
+   evaluate the dynamic counts, see `AGENTS.md`, "Toolchain: LLVM"). Decide how far to go from what the debuggers' DWARF
    support can express, and record what is left out. The source
    positions and the type descriptions built here are also the inputs
    Phase 16 step 5 needs for the VAX debug and traceback records, so they
@@ -962,7 +975,10 @@ as it stands when the phase starts, and adds what it finds):
      find the consequences in advance: the `.sym` writer, LLVM symbol
      names (LLVM's unquoted identifiers already allow `$` and `_`), the
      31-character mangling of Phase 13 and Phase 15's generated definition
-     modules from `STARLET.MLB`.
+     modules from `STARLET.MLB`. **Decided (user, 2026-09-26): both,
+     anywhere a letter may be, first included, since STARLET's values and
+     fields (`SS$_NORMAL`, `DSC$W_LENGTH`) are not procedures;
+     `-strict` rejects them** (`doc/language-extensions.md`).
 
 7. **An `Err` module.** `rtl/llvm/Err.Mod`, the counterpart of Phase 10's
    `Out`, writing to standard error: the same procedure set, the same
@@ -1028,7 +1044,15 @@ as it stands when the phase starts, and adds what it finds):
    Stage 1/Stage 2 fixed point of Phase 10 re-run against the changed
    front end and back end and still exact; every table row above with a
    verdict; and no unlabeled "undecided" left anywhere in `PLAN.md`,
-   `AGENTS.md` or `000-todo.org`.
+   `AGENTS.md` or `000-todo.org`. **Done 2026-09-26; Phase 11 is closed.**
+   `000-todo.org`: every entry `DONE` with its account, or open and marked
+   for Phase 12, 13 or 17; every row of `doc/phase-11-inventory.md` has a
+   verdict. Gate, on `7831929` (A16 (d), the last code change): `make
+   check` (the suite under Stage 0 and Stage 1, the Stage 1/2 fixed point,
+   `check-strict`) on atla (Linux x86_64), cymoril (OpenBSD i386, so the
+   32-bit word size) and artos (NetBSD amd64), 284/284 each; `make
+   check-opt2` (everything at `-O2`) on the same three, fixed point
+   included.
 
 **Testing summary**: each decision comes with the voc probe that supports
 it, recorded where the decision is; each implemented item has a fixture
@@ -1099,6 +1123,23 @@ convenient, but must not be a prerequisite of it.
    and cross-checked against real voc where voc's behavior is
    observable. **Testing**: a golden `-help`/usage fixture, and a fixture
    per adopted flag that would otherwise be untested.
+   **Done (2026-09-27, decided with the user): `doc/voc-options.md`** has the
+   table, every option probed against voc. Adopted: `-r` as `-range-checks`
+   (`SHORT` of an integer and `CHR` that do not fit trap, status 14, off by
+   default), `-M` as `-static`, `-V` as `-verbose` (the clang command), and
+   voc's `LDFLAGS`/`LDLIBS` as a repeatable `-link <arg>`. No switch turns a
+   check off (`-a`, `-t`, `-x`, `-p`: A14 and D16 stand). `-S`/`-m` are
+   `-emit-llvm-ir`/`-build`; `-c` goes to step 2; `-e`/`-s`/`-F`, `-f`,
+   `-OV` and `-A..` do not apply. The triage found two checks the report
+   requires that voc makes and poc did not, now always on: a function that
+   reaches its `END` (status 12) and a record assigned to a `VAR` parameter
+   or `p^` whose dynamic type extends its static type (status 13); and, on the
+   way, a bare `RETURN` in a function (now a compile-time error), a record
+   assignment to a `WITH`-narrowed `VAR` parameter that copied only the base
+   record's fields (fixed), and flags with no command after them, which
+   exited 0 having done nothing (now the usage text, status 1). Fixtures
+   `llvm-range-checks`, `llvm-return-trap`, `llvm-record-assign-trap`,
+   `semantic-reject-bare-return`, `poc-link-flags`, `poc-usage`.
 
 2. **Building static and dynamic libraries with poc.** Decide how a
    program compiled by poc links against libraries poc itself built, and
@@ -1137,6 +1178,290 @@ convenient, but must not be a prerequisite of it.
    hosts (the same real-hardware access as Phase 9 step 9); and the
    negative cases - a `.sym` that does not match the library it names, a
    missing library - fail with a message and not a crash.
+
+   **Design (decided with the user 2026-09-27).** Four decisions, then
+   what follows from them.
+
+   - *Every module is compiled on its own* (as voc does), library or not:
+     one `.ll` and one object per module, which declares what it uses of
+     its imports. `-build` compiles each module of the program found as
+     source and links the objects; cross-module inlining is given up.
+   - *Initialization is voc's*: each module's `_init` has a flag of its
+     own, returns at once when it is set, and otherwise sets it, calls the
+     `_init` of each of its imports in declaration order, and runs the
+     module's body. `main` sets the stack base and calls the main module's
+     `_init` only, so a program needs no list of the modules a library
+     keeps to itself, and the order does not depend on the link.
+   - *A library is a named set of modules, and rtl/llvm is one*:
+     `poc -library <name> [-output-dir <dir>] <file>...` compiles the files
+     named (and nothing else: every import must be one of them or come from
+     a library already on the library path) and writes, into
+     `<dir>/<triple>/<O2|OC>/` (a library is specific to its target and size
+     model, and so are its `.sym` files, which carry folded constants: B1),
+     `lib<name>.a`, `lib<name>.so`, each module's `.sym` and a manifest,
+     `<name>.library` (its modules with their keys and imports, the
+     libraries it needs, the triple and size model). A module belongs to
+     exactly one library: poc refuses to build a module into a library when
+     one on the library path has it already, and to link two libraries that
+     both have it, so a process never holds two collectors. rtl/llvm is the
+     library `poc-rtl`, built by `make` for the host, both size models. A
+     program links its libraries statically; `-shared-libraries` links them
+     dynamically, with a run-time search path (`-rpath`) naming each one's
+     directory.
+   - *Module keys, checked twice*: each module's object defines the symbol
+     `<Module>.-key.<hash>`, the hash that of its `.sym` text, and every
+     importer's object references it, so a link against a module whose
+     interface changed after the importer was compiled fails in the linker
+     whoever runs it. poc also compares, before it links, the keys each
+     library's manifest records for its own imports with the keys of the
+     libraries it will link, and names the stale library in a message of
+     its own.
+
+   Following from those (poc's own choices, open to change):
+
+   - The library path is `-library-path <dir>` (repeatable, like
+     `-import-path`), seeded from `POC_LIBRARY_PATH` and, last, the `lib/poc`
+     directory beside the directory poc's executable is in. A module an
+     import names is taken from a library when a manifest on the path has
+     it, otherwise from source on the import path. When no `poc-rtl` exists
+     for the target and size model (a cross build, a fixture that sets no
+     library path), rtl/llvm is found as source like any module and
+     compiled into the program, as today.
+   - `-emit-llvm-ir <file>` writes the `.ll` of every module of the program
+     compiled from source (the one named has `main`), where `-build` would;
+     `-build` writes each module's `.ll` and object there too, so a build's
+     output directory fills with them as it fills with `.sym` files today.
+   - Objects for a library are position-independent, and the same objects
+     go into both the archive and the shared library. Symbols keep their
+     default visibility: an extension's method table can name an imported
+     record's hidden type-bound procedure, so nothing a module defines can
+     be assumed private to it. What a module makes for itself alone - an
+     anonymous record's type descriptor and initialization procedure,
+     strings, trap messages - is `internal`/`private`, so two objects never
+     both define it.
+   - voc's `-c` (compile, do not link) gets no flag of its own for now:
+     `-library` already compiles without linking a program, and
+     `-emit-llvm-ir` writes every module's `.ll`.
+
+   **Sub-steps**, each its own commit, each passing `make check`:
+   **2a** per-module code generation and voc's initialization (no libraries
+   yet: `-build` compiles the program's modules one by one and links them);
+   *done 2026-09-27*: `LLVMCodeGenerator.GenerateModule` writes one module's
+   IR, declaring everything each module of its import closure defines (and
+   the runtime modules' the generated code calls without an IMPORT; an
+   unused declaration costs nothing), and a guarded `_init` that calls its
+   imports' in IMPORT-list order (voc's is alphabetical, from its sorted
+   scope). `main` also calls `ModuleTable_init` and
+   `GarbageCollectedHeap_init` before the main module's, since no IMPORT
+   names them. Not yet `internal`: an anonymous record's descriptor and
+   initialization procedure keep their module-prefixed global names, since
+   in one run another module may still name another's (2c changes that);
+   fixture `llvm-module-init-order`;
+   **2b** module keys; *done 2026-09-27*: `ModuleInterface.KeyOf` gives
+   the 64-bit FNV-1a hash of a module's `.sym` bytes (computed a byte at a
+   time, so poc needs no 64-bit integer for it), recorded whenever a run
+   writes or reads a `.sym`; whole-program commands now write the main
+   module's `.sym` too, so every module has one. Each module's `.ll`
+   defines `@<M>.-key.<hash>` and lists its imports' keys in
+   `@<M>.-imports`, kept by `@llvm.used`; fixture `llvm-module-keys`
+   (a new body relinks, a new interface fails in the linker naming the
+   key); **2c** `-library`, the manifest, the library path,
+   static and dynamic linking, and the refusal of a second copy of a module;
+   *done 2026-09-27*: `src/driver/Libraries.Mod` (the library path, manifests,
+   `<Module>.owner` files naming a module's library - no directory listing
+   needed -, link order, and the refusals: a module two linked libraries
+   both have, a library compiled against a key another library no longer
+   has, a needed library missing); `poc -library`, `-library-path`,
+   `-clear-library-path` (which also leaves out `POC_LIBRARY_PATH` and
+   poc's own `../lib/poc`, found through the shell's `command -v`),
+   `-print-library-path`, `-shared-libraries`. A module a library has
+   enters the program from its `.sym` (`ModuleList.inLibrary`, declared
+   and not generated; `ModuleInterface.libraryLookup` makes the checker
+   read the library's `.sym`). Libraries' objects are `-fPIC`; the shared
+   library is `lib<name>.so` (`.so.0.0` on OpenBSD) and is linked against
+   the libraries it needs; `-shared-libraries` gives the program an
+   absolute run-time search path. The descriptor and initialization
+   procedure of a record with no name are now `internal`. Fixture
+   `llvm-libraries`;
+   **2d** `poc-rtl`, built by `make`, used by default when present;
+   *done 2026-09-27*: `make` builds `rtl/llvm` as the library `poc-rtl`
+   into `build/lib/poc/<host triple>/{O2,OC}` (and Stage 1's into
+   `build/stage1/lib/poc`, `check-opt2`'s into `build/opt2/lib/poc`), where
+   each poc's default library path finds it, so a program links
+   `libpoc-rtl.a` instead of compiling the runtime again. A library
+   module's `.sym` cannot say whether its bodies call `NEW`, so a program
+   with a module from a library gets the collector whenever a library on
+   the path has `GarbageCollectedHeap`. The bootstrap stages build with
+   `-clear-library-path` (poc from source, independent of any library;
+   the fixed point compares every module), and so do the fixtures that
+   show or relink the objects compiled from source (`llvm-module-keys`,
+   `poc-link-flags`); **2e** using modules and libraries (added with the
+   user 2026-09-27, after trying four ways a program gets its modules with
+   the 2d poc): (1) the program's own modules and poc's runtime, which
+   works with no flags, the runtime linked from `poc-rtl`; (2) modules
+   someone else shared, which work as source through `-import-path`
+   (compiled with the program, their `.sym`/`.ll`/`.o` written beside it)
+   but not as `.sym` and `.o` files alone ("cannot find source"); (3) the
+   user's own library, which works (`-library`, then `-library-path`,
+   statically or with `-shared-libraries`); (4) several libraries from
+   others, which works too: a library's needs are linked after it, and a
+   library compiled against another's old key is refused with a message
+   that names both. What falls short, and this sub-step does:
+   - Diagnostics. A module found nowhere gives only "unknown imported
+     module", in the program or, for a library's missing need, in the
+     library's `.sym` (`Loud.sym:2:10`). The message is to say what was
+     searched - the import path and the library path, and the triple and
+     size model the library was looked for under, so a library built for
+     `-O2` only is recognized as such under `-OC` - and, for a library
+     whose needed library is not on the path, name both libraries.
+   - Shadowing. A library module is taken in preference to source of the
+     same name, and the first library on the path that has a module
+     shadows the others (a module in two libraries is refused only when
+     both are linked). Both are to be warned about, naming what was
+     passed over; the rules themselves stay.
+   - Compiled modules outside a library: decided, not supported. A library
+     is the only compiled form poc takes (one module is a library too), so
+     the key checks stay in one place; the "cannot find source" message is
+     to say so and point at `-library`.
+   - Installation: `poc -install-library` copies a library's files for one
+     triple and size model into `<prefix>/lib/poc/<triple>/<O2|OC>/`, by
+     default the `../lib/poc` an installed poc already searches, so every
+     build finds it with no flag; and a program linked with
+     `-shared-libraries` finds its shared libraries through a run-time
+     search path that survives moving the program and its libraries
+     together (`$ORIGIN`-relative, to be checked on each of the four
+     systems), not only the absolute directory it was built against.
+   - Deferred, not in this sub-step: incremental builds (skipping a
+     module whose source and imports' keys are unchanged; every `-build`
+     now compiles every module that is not in a library).
+   Fixtures: each of the four ways, with the messages and warnings above
+   as golden output. *Done 2026-09-27*: an import found nowhere is followed
+   by notes (`Diagnostics.Note`, through the hook
+   `ModuleInterface.explainMissingModule`): the files looked for and
+   where, the library path for the triple and size model, a library that
+   has the module for the other size model, a library's need that is
+   missing; its uses are not each reported again. A `.sym` without source
+   names the file and points at `-library`. A manifest records each
+   module's source hash (`source <Module> <key>`), so source beside the
+   program is warned about only when it differs from the library's; a
+   library whose module an earlier one on the path has is warned about
+   (`Libraries.WarnHidden`). `poc -install-library <name>` (to
+   `-output-dir`, else poc's `../lib/poc`: `Libraries.PocLibraryDir`)
+   copies the manifest, archive, shared library, `.sym` and `.owner` files,
+   replacing an earlier copy and refusing a module another library there
+   has. The run-time search path is each library's directory relative to
+   the executable's or shared library's (`$ORIGIN/...`, when they share a
+   directory other than the root), then the absolute one; a shared library
+   also has `$ORIGIN`, and both are linked with `-z origin`, without which
+   OpenBSD's `ld.so` does not expand `$ORIGIN`. `check-opt2` gives each of
+   its two suites' poc `poc-rtl` in its own `../lib/poc`, as `make` does
+   (the Stage 0 poc copied to `build/opt2/stage0/bin`); 2d's optimized
+   Stage 1 had found none, and compiled the runtime from source. Fixture
+   `llvm-using-modules`;
+   **2f** compiled modules without source (decided with the user
+   2026-09-27, reversing 2e's "a library is the only compiled form": some
+   people do not want to share source). Both `-build` and `-library` take
+   a module given as its `.sym` and `.o`, found together on the import
+   path, when there is no source for it (source still wins, so a stale
+   `.sym` never outranks it). The object describes itself, read with `nm`
+   (on Linux and all three BSDs): its key symbol names the size model too,
+   `<Module>.-key.<O2|OC>.<hash>`, so an importer linked with an object of
+   the other model fails in the linker as a stale interface does, whoever
+   links it; a marker symbol, `<Module>.-target.<triple>`, defined and
+   never referred to, names the triple, which poc checks (the linker does
+   not tell x86_64 Linux from x86_64 FreeBSD); its undefined `-key.`
+   symbols are its imports and the keys it was compiled against; an
+   undefined `GarbageCollectedHeap` symbol says it uses the collector. poc
+   checks the pair: the `.o` must define the key of the `.sym`'s hash, for
+   this triple and model, and each import must be source, a pair or in a
+   library, with the key the `.o` names. A pair's `.o` goes on the link
+   line; `-library` takes pairs as members, the manifest's keys from the
+   `.sym` and `nm`, and no `source` line. Objects are compiled
+   position-independent (`-fPIC`) always, not only for a library, so a
+   `-build` object can go into a shared library. `poc -compile` makes a
+   module's `.sym` and `.o` without a program. Fixtures: a program and a
+   library built from pairs; the refusals (a `.o` that does not match its
+   `.sym`, another triple, another size model, an import with another
+   key). *Done 2026-09-27*: `LLVMCodeGenerator.KeySymbol` names the model,
+   `EmitModuleKeys` defines the target marker; `Libraries.ReadObject` runs
+   `nm -P`; `Poc.DiscoverCompiledModule` checks a pair and enters it as
+   `ModuleList.compiled`, declared and not generated, its `objectPath`
+   linked (and the collector added when its object calls it). The pass
+   that regenerates `.sym` files from source now also follows a `.sym`'s
+   imports, so an import of a pair still gets its `.sym` from its source.
+   `poc -compile <file>...` (voc's `-c`, added to 2f with the user the
+   same day) compiles the modules named to `.sym`, `.ll` and `.o`, with no
+   `main` and nothing linked (`Poc.CompileOnly`, `LLVMToolchainDriver.
+   Compile`); their imports are checked, not compiled, and a module named
+   is compiled even when a library on the path has it (poc -library's
+   files and -compile's are both `members`; only -library requires every
+   import to be one or in a library, `membersOnly`). Fixture
+   `llvm-using-modules` (sections 2 and 5);
+   **2g** whole-program optimization, `poc -lto` (decided with the user
+   2026-09-27). Opt-in, the default link unchanged: LTO links are slower,
+   and IR and bitcode are tied to the LLVM version that reads them, where
+   an object is not. With `-lto`, `-build` compiles each module's `.ll` to
+   LLVM bitcode (`clang -flto -c`) and links with `-flto`, so LLVM
+   optimizes the modules as one program: inlining across modules, removing
+   procedures nothing calls, folding across module boundaries. What takes
+   part: the program's own modules; a module given as its `.sym` and `.ll`,
+   a third kind of pair beside 2f's `.sym` and `.o`, its key, target and
+   imports read from the `.ll` text instead of with `nm` (and refused with
+   a clear message when this clang cannot read it); and libraries built
+   with `-lto` (`poc-rtl` too, when `make` is asked for it), whose archive
+   holds bitcode. A `.sym`/`.o` pair and a library of ordinary objects
+   still link, without optimization across their boundary. `-compile
+   -lto` writes a module's bitcode `.o`. Toolchain, probed 2026-09-27 with
+   a two-file `.ll` LTO build: the default linker works on atla (GNU ld
+   2.46 with LLVM's plugin; no `ld.lld`), cymoril (lld 19) and alerik (lld
+   19); on artos GNU ld 2.42 fails and pkgsrc's `ld.lld` works, so on
+   NetBSD poc passes `-fuse-ld=lld`; rackhir not yet probed. Little to gain
+   on 32-bit x86, whose default is `-O0` (x87 reals). The key and target
+   symbols are constants kept alive, so the checks of 2b and 2f still hold
+   under LTO. A `.ll` is readable IR, much easier to reverse than an
+   object: `.sym`/`.ll` is for optimization, not for sharing a module
+   without its source. Fixtures: a program built with `-lto` from source,
+   from a `.sym`/`.ll` pair and with an LTO `poc-rtl`, with the same output
+   as without; a cross-module call inlined (the optimized IR or the
+   executable's symbols); a `.ll` for another target or size model
+   refused. *Done 2026-09-27*: `LLVMToolchainDriver.lto` adds `-flto` to
+   each `clang -c` and to the link (and `-fuse-ld=lld` on NetBSD,
+   `AppendLTOOptions`); `ltoLink` does the same for a link with an LTO
+   library's archive in it, since a link without `-flto` fails on bitcode
+   with GNU ld (atla, artos), so a library built with `-lto` (manifest line
+   `lto`, `Library.lto`) can be linked by a program built without it; its
+   shared library is ordinary code. What is beside a `.sym` with no source
+   (`Poc.CompiledFiles`): the `.ll` when there is one and `-lto`, no `.o`,
+   or a `.o` that is bitcode; else the `.o`. A bitcode `.o` alone is
+   refused (nm cannot read bitcode on OpenBSD or NetBSD): give its `.ll`.
+   `Libraries.ReadIR` reads the key, target and imports from the `.ll`
+   text; the module enters the program with `ModuleList.irPath` and is
+   compiled to `<Module>.ir.o` in the output directory, so that a `.o`
+   beside the pair is never overwritten; `-library` given a `.sym`, `.o` or
+   `.ll` takes the same one, copying the `.ll` into the library to compile
+   to `<Module>.o` there. A `.ll` clang cannot compile gets a note that it
+   may be from another LLVM version. For 32-bit x86 NetBSD `-lto` is
+   dropped with a warning: GNU ld cannot link bitcode, and lld's i386
+   executables fail to run there even for plain C (probed on artos, NetBSD
+   11 amd64). `make check-lto` (not part of `check`)
+   runs the suite with a wrapper that adds `-lto`, against a `poc-rtl`
+   built with it, as `check-opt2` does. Fixture `llvm-lto`;
+   **2h** the fixtures this step's testing paragraph asks for, on Linux and
+   the BSD hosts, at both word sizes, and the rackhir run of step 2's
+   commits. *Done 2026-09-27*: fixture `llvm-libraries-i686` builds
+   `llvm-libraries`' two dependent modules into a library for 32-bit x86
+   (`i686_triple`: i686 Linux on atla, `-m32` on the BSDs, the host's own
+   on cymoril), on a `poc-rtl` built for it, under `-O2` and `-OC`, and
+   links and runs a program with it statically and dynamically (the
+   shared one only where a 32-bit program can use a shared library,
+   `i686_can_run_shared`: NetBSD amd64's 32-bit compatibility has static C
+   libraries only, so there it fails with "Exec format error" even for
+   plain C); the
+   64-bit side is `llvm-libraries`, `llvm-using-modules` and `llvm-lto`.
+   Its failures are messages: a library whose needed `poc-rtl` is not on
+   the path (the notes say so), and a `.sym` that does not match its
+   library's manifest. `llvm-lto` had no comparison with its golden
+   (`testresult.sh` missing), now fixed.
 
 3. **A complete inventory of the libraries and modules voc supplies.**
    From the sources, not from memory: enumerate every module under the
@@ -1195,6 +1520,16 @@ convenient, but must not be a prerequisite of it.
 (tables and a design), verified against the primary sources they cite;
 steps 2 and 5 are compile+link+run+diff fixtures; step 6 is the
 whole-matrix gate.
+
+**Deferred here from Phase 11 (2026-09-26): the lowest 32-bit x86 CPU.**
+poc passes clang no `-march`, so each OS's default CPU applies: pentium4
+for i686 Linux (which may use SSE2), i486 for NetBSD, i586 for OpenBSD,
+i686 for FreeBSD. poc must run on a Pentium II (i686, no SSE), so the
+question is whether to fix `-march=i686` for every 32-bit x86 triple:
+the same code on all four OSes and no SSE2 on Linux, at the cost of 486
+and Pentium machines. x87 reals stay either way. It needs 32-bit x86 test
+hosts first: a 32-bit NetBSD at least, and a 32-bit FreeBSD if FreeBSD
+still ships an i386 build (today only OpenBSD, cymoril, is 32-bit x86).
 
 ### Phase 13 — VAX/VMS MACRO-32 backend (scoped, deferred, non-executable)
 `VaxTypes.Mod`, `VaxCodeGenerator.Mod`, `VaxToolchainDriver.Mod` (stub
@@ -1432,7 +1767,13 @@ C++, and so on) unless step 4 chooses one deliberately.
    fields, item-list layouts - live in macro libraries (`STARLET.MLB`);
    decide whether a tool generates Oberon `CONST`/`RECORD` definition
    modules from them or they are written by hand, and how the generated
-   modules track the kit they came from. Implement it, and write the
+   modules track the kit they came from. STARLET's definitions are written
+   in SDL, which renders them for each language (the macros in
+   `STARLET.MLB`, VAX C's `ssdef.h` and the rest); the user maintains an
+   UNSDL utility on a VAX that extracts much of that information, a
+   likely starting point for the generator. The modules keep the system's
+   names, `_` and `$` included (Phase 11 A25); SDL's unions and bit fields,
+   which an Oberon record cannot express, need a convention of their own. Implement it, and write the
    interface modules step 4 chose, each with a fixture that calls the real
    service on the guest and checks a result.
 
@@ -1599,6 +1940,36 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
 existing text path and against the assembler; steps 4 and 6 are
 `ANALYZE/OBJECT` comparisons plus link-and-run; step 7's fixed point
 over object files is the gate.
+
+### Phase 17 — Further extensions to Oberon-2
+
+**Goal**: settle the language extensions that are larger than Phase 11's -
+each a design of its own, through the front end, the `.sym` format and both
+backends - and implement the ones adopted. As in Phase 11, each starts with
+a survey of what other Oberons do (and Modula-2/-3 where they are the only
+precedent) and ends with the user's decision; "not adopted" is a legitimate
+result, recorded in `doc/language-extensions.md` like the others.
+
+**Candidates** (from `000-todo.org`'s Extensions list and Phase 11's
+inventory):
+
+1. **Record and array literals** (Phase 11 A24, moved here 2026-09-26).
+   `doc/initializers-and-literals-survey.md` has the survey: no Oberon has
+   record literals; A2's `[1, 2, 3]` builds its mathematical arrays only;
+   Oberon+ lists both as TODO; ISO Modula-2 and Modula-3 have typed value
+   constructors, `T{...}`. A typed form is the likely starting point. Open:
+   `CONST` declarations of structured type (and so structured constants in
+   `.sym` files), open arrays and pointers inside a literal, positional or
+   named fields, and what a record extension's literal holds.
+2. **Slices of one-dimensional arrays** (`000-todo.org`).
+3. **voc's read-only parameters, `x-`** (`000-todo.org`; considered and not
+   adopted in Phase 11, `doc/language-extensions.md`).
+4. **The terminator-based `ARRAY OF CHAR` assignment rule** (`000-todo.org`;
+   decided against in Phase 11 A21, to reconsider).
+
+**Exit gate**: every candidate has a recorded decision; each adopted one has
+fixtures, is rejected by `-strict`, and passes `make check` on Linux and the
+three BSDs (and, once Phase 14 exists, on VAX/VMS).
 
 ## Open design questions
 

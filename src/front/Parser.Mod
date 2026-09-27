@@ -71,9 +71,12 @@ MODULE Parser;
     Parser* = RECORD
       scanner: Lexer.Scanner;
       current: Lexer.Token;
-      aliases: Alias (* local names the current module's IMPORT list bound,
+      aliases: Alias; (* local names the current module's IMPORT list bound,
                          used to resolve the qualident/selector ambiguity
                          above; see simplification 1 *)
+      (* the text is a .sym file (InitInterfaceParser), where a record
+         field's initializer is written "f: T := .." (ParseFieldList) *)
+      interfaceText: BOOLEAN
     END;
 
   PROCEDURE Advance(VAR p: Parser);
@@ -450,11 +453,14 @@ MODULE Parser;
 
   (* ---- Types ---- *)
 
+  PROCEDURE ^ ParseFieldInitializers(VAR p: Parser; fields: SyntaxTree.FieldListNode);
+
   PROCEDURE ParseFieldList(VAR p: Parser): SyntaxTree.FieldListNode;
     VAR
       names: SyntaxTree.IdentDefNode;
       type: SyntaxTree.TypeNode;
       line, column: INTEGER;
+      fields: SyntaxTree.FieldListNode;
   BEGIN
     line := p.current.line; column := p.current.column;
     IF p.current.kind = Lexer.ident THEN
@@ -464,7 +470,9 @@ MODULE Parser;
     ELSE
       names := NIL; type := NIL
     END;
-    RETURN SemanticActions.NewFieldList(names, type, line, column)
+    fields := SemanticActions.NewFieldList(names, type, line, column);
+    IF (names # NIL) & (p.current.kind = Lexer.assign) THEN ParseFieldInitializers(p, fields) END;
+    RETURN fields
   END ParseFieldList;
 
   PROCEDURE ParseFPSection(VAR p: Parser): SyntaxTree.FPSectionNode;
@@ -815,15 +823,100 @@ MODULE Parser;
     RETURN SemanticActions.NewTypeDecl(name, type, line, column)
   END ParseTypeDecl;
 
+  (* Phase 11 A23, poc's extension (doc/language-extensions.md, "Variable
+     initializers"): "VAR x, y: T := e" gives each name the assignment
+     "name := e", evaluated once for each of them - so the expression is
+     parsed once per name, going back over its tokens each time, and every
+     assignment has its own copy (a function call in it is made once per
+     variable). If the first parse met an error the copies are not made, so
+     the error is reported once. *)
+  PROCEDURE ParseInitializers(VAR p: Parser; decl: SyntaxTree.VarDeclNode);
+    VAR
+      start: Parser; name: SyntaxTree.IdentDefNode; value: SyntaxTree.ExprNode;
+      assignment: SyntaxTree.AssignStatementNode; tail: SyntaxTree.StatementNode;
+      errorsBefore, line, column: INTEGER; empty: SyntaxTree.Ident;
+  BEGIN
+    line := p.current.line; column := p.current.column; (* the := *)
+    Diagnostics.NotInReport(line, column, "a variable initializer");
+    Advance(p);
+    start := p; errorsBefore := Diagnostics.errorCount;
+    empty[0] := 0X; tail := NIL; name := decl.names;
+    WHILE name # NIL DO
+      IF name # decl.names THEN p := start END;
+      value := ParseExpr(p);
+      (* at the value's position, so an error in it, the same for every
+         name of the list, is reported once (Diagnostics.Error) *)
+      assignment := SemanticActions.NewAssignStatement(
+        SemanticActions.NewDesignator(empty, name.name, name.line, name.column),
+        value, line, column);
+      assignment.initializerLine := line; assignment.initializerColumn := column;
+      IF tail = NIL THEN decl.initializers := assignment ELSE tail.next := assignment END;
+      tail := assignment;
+      IF Diagnostics.errorCount # errorsBefore THEN name := NIL ELSE name := name.next END
+    END
+  END ParseInitializers;
+
+  (* Phase 11 D17: ":= e" after a record field list's type, the default
+     of every field of the list. As for a variable (ParseInitializers), e is
+     parsed once for each name, so each field has its own copy, evaluated
+     for it alone. In a .sym file the initializer is "..", which says only
+     that there is one: its value stays in the module that declared it. *)
+  PROCEDURE ParseFieldInitializers(VAR p: Parser; fields: SyntaxTree.FieldListNode);
+    VAR
+      start: Parser; name: SyntaxTree.IdentDefNode; value, tail: SyntaxTree.ExprNode;
+      errorsBefore: INTEGER;
+  BEGIN
+    fields.initializerLine := p.current.line; fields.initializerColumn := p.current.column;
+    Advance(p);
+    IF p.interfaceText & (p.current.kind = Lexer.upTo) THEN Advance(p); RETURN END;
+    Diagnostics.NotInReport(fields.initializerLine, fields.initializerColumn, "a record field initializer");
+    start := p; errorsBefore := Diagnostics.errorCount;
+    tail := NIL; name := fields.names;
+    WHILE name # NIL DO
+      IF name # fields.names THEN p := start END;
+      value := ParseExpr(p);
+      IF tail = NIL THEN fields.initializers := value ELSE tail.next := value END;
+      tail := value;
+      IF Diagnostics.errorCount # errorsBefore THEN name := NIL ELSE name := name.next END
+    END
+  END ParseFieldInitializers;
+
   PROCEDURE ParseVarDecl(VAR p: Parser): SyntaxTree.VarDeclNode;
-    VAR names: SyntaxTree.IdentDefNode; type: SyntaxTree.TypeNode; line, column: INTEGER;
+    VAR
+      names: SyntaxTree.IdentDefNode; type: SyntaxTree.TypeNode; line, column: INTEGER;
+      decl: SyntaxTree.VarDeclNode;
   BEGIN
     line := p.current.line; column := p.current.column;
     names := ParseIdentList(p);
     ExpectToken(p, Lexer.colon, "expected ':'");
     type := ParseType(p);
-    RETURN SemanticActions.NewVarDecl(names, type, line, column)
+    decl := SemanticActions.NewVarDecl(names, type, line, column);
+    IF p.current.kind = Lexer.assign THEN ParseInitializers(p, decl) END;
+    RETURN decl
   END ParseVarDecl;
+
+  (* statements with the initializers of declarations' variables in front,
+     in the order they were declared (Phase 11 A23) *)
+  PROCEDURE WithInitializers(declarations: SyntaxTree.DeclSeqNode;
+                             statements: SyntaxTree.StatementNode): SyntaxTree.StatementNode;
+    VAR decl: SyntaxTree.VarDeclNode; head, tail, s: SyntaxTree.StatementNode;
+  BEGIN
+    head := NIL; tail := NIL;
+    IF declarations # NIL THEN
+      decl := declarations.varDecls;
+      WHILE decl # NIL DO
+        s := decl.initializers;
+        WHILE s # NIL DO
+          IF tail = NIL THEN head := s ELSE tail.next := s END;
+          tail := s; s := s.next
+        END;
+        decl := decl.next
+      END
+    END;
+    IF tail = NIL THEN RETURN statements END;
+    tail.next := statements;
+    RETURN head
+  END WithInitializers;
 
   (* "[" string [ "," string ] "]" right after PROCEDURE - the already-
      decided external-procedure-declaration syntax (AGENTS.md, "External
@@ -861,8 +954,10 @@ MODULE Parser;
       declarations: SyntaxTree.DeclSeqNode;
       statements: SyntaxTree.StatementNode;
       endName: SyntaxTree.Ident;
+      endLine, endColumn: INTEGER;
+      node: SyntaxTree.ProcDeclNode;
   BEGIN
-    receiver := NIL;
+    receiver := NIL; endLine := 0; endColumn := 0;
     (* An external procedure is never type-bound (AGENTS.md); a receiver
        written on one is left to misparse its "(" as FormalPars rather
        than specially accommodated - see PLAN.md's own note on this. *)
@@ -877,15 +972,19 @@ MODULE Parser;
       IF p.current.kind = Lexer.beginKeyword THEN
         Advance(p); statements := ParseStatementSeq(p)
       END;
+      statements := WithInitializers(declarations, statements);
+      endLine := p.current.line; endColumn := p.current.column;
       ExpectToken(p, Lexer.endKeyword, "expected 'END'");
       ExpectIdent(p, endName);
       IF endName # name.name THEN
         Diagnostics.Error(line, column, "procedure END identifier does not match its name")
       END
     END;
-    RETURN SemanticActions.NewProcDecl(isForward, isExternal, externalConvention, externalName,
+    node := SemanticActions.NewProcDecl(isForward, isExternal, externalConvention, externalName,
                                         receiver, name, formals,
-                                        declarations, statements, endName, line, column)
+                                        declarations, statements, endName, line, column);
+    node.endLine := endLine; node.endColumn := endColumn;
+    RETURN node
   END ParseProcDecl;
 
   (* One ProcedureDeclaration or ForwardDeclaration and its ";", appended
@@ -1004,8 +1103,14 @@ MODULE Parser;
   BEGIN
     Lexer.InitScanner(p.scanner, text, length);
     Lexer.NextToken(p.scanner, p.current);
-    p.aliases := NIL
+    p.aliases := NIL; p.interfaceText := FALSE
   END InitParser;
+
+  (* InitParser for the text of a .sym file (ModuleInterface.Mod) *)
+  PROCEDURE InitInterfaceParser*(VAR p: Parser; text: Lexer.CharBuffer; length: LONGINT);
+  BEGIN
+    InitParser(p, text, length); p.interfaceText := TRUE
+  END InitInterfaceParser;
 
   PROCEDURE ParseModule*(VAR p: Parser): SyntaxTree.ModuleNode;
     VAR
@@ -1026,6 +1131,7 @@ MODULE Parser;
     IF p.current.kind = Lexer.beginKeyword THEN
       Advance(p); statements := ParseStatementSeq(p)
     END;
+    statements := WithInitializers(declarations, statements);
     ExpectToken(p, Lexer.endKeyword, "expected 'END'");
     ExpectIdent(p, endName);
     ExpectToken(p, Lexer.period, "expected '.'");

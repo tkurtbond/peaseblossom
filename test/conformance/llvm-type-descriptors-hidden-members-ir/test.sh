@@ -15,11 +15,15 @@
 for triple in i686-unknown-linux-gnu x86_64-unknown-linux-gnu; do
   echo "== $triple" >>result
   poc -target $triple -emit-llvm-ir client.mod >/dev/null
-  cat client.ll >>result
-  if clang -target $triple -c client.ll -o /dev/null 2>clang.err
-  then echo "clang accepted $triple" >>result
-  else echo "clang REJECTED $triple" >>result; cat clang.err >>result
-  fi
+  # one .ll per module (Phase 12 step 2a)
+  for m in third lib client; do
+    echo "-- $m.ll" >>result
+    cat $m.ll >>result
+    if clang -target $triple -c $m.ll -o /dev/null 2>clang.err
+    then echo "clang accepted $triple" >>result
+    else echo "clang REJECTED $triple" >>result; cat clang.err >>result
+    fi
+  done
   rm -f clang.err
 done
 . ../../testresult.sh

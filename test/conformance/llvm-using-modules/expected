@@ -1,0 +1,121 @@
+== 1. own modules and the runtime
+semantic OK, wrote main
+hi 1
+== 2. modules shared as source
+semantic OK, wrote main
+hi 1
+-- without -import-path
+main.mod:2:10: error: unknown imported module
+main.mod:2:10: note: no Greet.Mod, Greet.mod or Greet.sym in the current directory (the import path is empty)
+main.mod:2:10: note: no library for <triple> -O2 on the library path (<poc lib>) has Greet
+1 error(s)
+-- as Greet.sym and Greet.o, compiled already
+semantic OK, wrote main
+hi 1
+-- Greet.sym alone
+poc: cannot find source for imported module Greet, only its interface ../symonly/Greet.sym, and no Greet.o or Greet.ll beside it
+== 3. own library
+semantic OK, wrote library mine in lib/<triple>/O2
+semantic OK, wrote app
+hi 3
+hi 4
+-- shared
+semantic OK, wrote apps
+hi 3
+hi 4
+-- -OC
+app.mod:2:10: error: unknown imported module
+app.mod:2:10: note: no Twice.Mod, Twice.mod or Twice.sym in the current directory (the import path is empty)
+app.mod:2:10: note: no library for <triple> -OC on the library path (../three/lib, <poc lib>) has Twice
+app.mod:2:10: note: library mine (../three/lib/<triple>/O2) has Twice, but for -O2, and this is -OC
+1 error(s)
+-- an edited Greet.Mod beside the program
+poc: warning: module Greet is taken from library mine (../three/lib/<triple>/O2), not compiled from Greet.Mod, which is not the source it was built from
+semantic OK, wrote app
+hi 3
+hi 4
+== 4. libraries from others
+semantic OK, wrote library alib in ../liba/<triple>/O2
+semantic OK, wrote library blib in ../libb/<triple>/O2
+semantic OK, wrote library clib in ../libc/<triple>/O2
+needs poc-rtl
+needs alib
+semantic OK, wrote app
+hi 99
+hi 5
+-- without alib
+Loud.sym:2:10: error: unknown imported module
+Loud.sym:2:10: note: no Greet.Mod, Greet.mod or Greet.sym in the current directory (the import path is empty)
+Loud.sym:2:10: note: no library for <triple> -O2 on the library path (../libb, <poc lib>) has Greet
+Loud.sym:2:10: note: Loud is from library blib (../libb/<triple>/O2), which needs library alib, and the library path has no alib for <triple> -O2
+app.mod:2:16: error: unknown imported module
+app.mod:2:16: note: no Greet.Mod, Greet.mod or Greet.sym in the current directory (the import path is empty)
+app.mod:2:16: note: no library for <triple> -O2 on the library path (../libb, <poc lib>) has Greet
+2 error(s)
+-- clib after alib
+poc: warning: module Greet is taken from library alib (../liba/<triple>/O2), which hides library clib's (../libc/<triple>/O2)
+semantic OK, wrote app
+hi 99
+hi 5
+== installing
+installed library alib in inst/<triple>/O2
+installed library blib in inst/<triple>/O2
+Greet.owner
+Greet.sym
+Loud.owner
+Loud.sym
+alib.library
+blib.library
+libalib.a
+libalib.so
+libblib.a
+libblib.so
+-- again
+installed library alib in inst/<triple>/O2
+-- from where it is
+poc: library alib is in inst/<triple>/O2 already
+-- clib, which has Greet too
+poc: module Greet is in library alib in inst/<triple>/O2 already
+-- no such library
+poc: no library nosuch for <triple> -O2 on the library path
+-- a program, moved with the libraries
+semantic OK, wrote bin/app
+hi 99
+hi 5
+hi 99
+hi 5
+-- alib with a new interface
+semantic OK, wrote library alib in ../liba/<triple>/O2
+poc: library blib was compiled against Greet <key>, but library alib (../liba/<triple>/O2) has Greet <key>; rebuild blib
+== 5. modules compiled already
+semantic OK, wrote Greet.o
+semantic OK, wrote Twice.o
+Greet.o
+Greet.sym
+Twice.o
+Twice.sym
+semantic OK, wrote app
+hi 3
+hi 4
+-- a library of them
+semantic OK, wrote library fromobjects in pairlib/<triple>/O2
+library fromobjects
+model O2
+needs poc-rtl
+module Greet <key>
+module Twice <key>
+import Greet Out <key>
+import Twice Greet <key>
+semantic OK, wrote app
+hi 3
+hi 4
+-- -compile given a .sym
+poc: pairs/Greet.sym is compiled already
+-- under -OC
+poc: ../pairs/Twice.o was compiled for -O2, and this is -OC
+-- for another target
+poc: ../pairs/Twice.o was compiled for <triple>, not sparc64-unknown-netbsd
+-- a .sym that is not the .o's
+poc: ../other/Greet.o was not compiled from ../other/Greet.sym (its key is <key>, the .sym's <key>)
+-- Twice.o compiled against another Greet
+poc: ../newer/Twice.o was compiled against Greet <key>, but this program's Greet has <key>; Twice must be compiled again

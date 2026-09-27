@@ -2,6 +2,10 @@ semantic OK, wrote llvmStub.ll
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+
+@llvmStub.-initialized = internal global i1 false
+@llvmStub.-key.O2.686efa9bb9ec192d = constant i8 0
+@llvmStub.-target.x86_64-unknown-linux-gnu = constant i8 0
 declare void @write(i32, ptr, i64)
 declare void @exit(i32)
 @.trap.indexrange = private unnamed_addr constant [20 x i8] c"index out of range\0A\00"
@@ -9,6 +13,12 @@ declare void @exit(i32)
 
 define void @llvmStub_init() {
 entry:
+  %t1 = load i1, ptr @llvmStub.-initialized
+  br i1 %t1, label %L1, label %L2
+L1:
+  ret void
+L2:
+  store i1 true, ptr @llvmStub.-initialized
   ret void
 }
 
