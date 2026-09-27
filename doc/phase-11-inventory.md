@@ -14,6 +14,9 @@ of Phase 11's scope by the plan's own non-goals. `decided (user, date)` is a
 verdict the user has given; only A13, A15 (closed), A21 (done), A23 (done), A24 (moved to Phase 17), A25 (done), A17 (done), A22 (done), C5 (done), C6, C7, C9 (done), D10 (done), D11 (done), D12 (done), D13 (done), D14 (done), D15 (done), D16 (done), D17 (done) and D18 (done) have one so far. The verdicts are
 written into `AGENTS.md`/`PLAN.md` by steps 2-9, with the evidence.
 
+**Closed 2026-09-26** (Phase 11 step 9): every row has a verdict; what is
+left open is marked for Phase 12, 13 or 17.
+
 "Step" is the Phase 11 step that owns the item. "Probed" means checked against
 the built `poc` in this inventory pass (2026-09-20).
 

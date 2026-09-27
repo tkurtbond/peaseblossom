@@ -427,10 +427,12 @@ never match a user's.
 
 ## Project state
 
-Phases 0-10 of `PLAN.md` are complete: poc compiles itself through the LLVM
-backend (Stage 1 and Stage 2 reach a fixed point). Phase 11 (settling open design
-questions and the TODO backlog) is in progress: `doc/phase-11-inventory.md`
-lists every item and its verdict. `PLAN.md` has the roadmap and each phase's
+Phases 0-11 of `PLAN.md` are complete: poc compiles itself through the LLVM
+backend (Stage 1 and Stage 2 reach a fixed point), and Phase 11 (settling open
+design questions and the TODO backlog) closed on 2026-09-26:
+`doc/phase-11-inventory.md` lists every item and its verdict. Phase 12
+(library and module support: voc's options, libraries, voc's module
+inventory) is next. `PLAN.md` has the roadmap and each phase's
 design. `doc/project-history.md` has the account that used to be here,
 including what was found while building the front end and `.sym` files
 (Phases 0-7), the import search path, `-output-dir`, real `CONST` export and

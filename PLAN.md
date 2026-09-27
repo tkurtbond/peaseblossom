@@ -1044,7 +1044,15 @@ as it stands when the phase starts, and adds what it finds):
    Stage 1/Stage 2 fixed point of Phase 10 re-run against the changed
    front end and back end and still exact; every table row above with a
    verdict; and no unlabeled "undecided" left anywhere in `PLAN.md`,
-   `AGENTS.md` or `000-todo.org`.
+   `AGENTS.md` or `000-todo.org`. **Done 2026-09-26; Phase 11 is closed.**
+   `000-todo.org`: every entry `DONE` with its account, or open and marked
+   for Phase 12, 13 or 17; every row of `doc/phase-11-inventory.md` has a
+   verdict. Gate, on `7831929` (A16 (d), the last code change): `make
+   check` (the suite under Stage 0 and Stage 1, the Stage 1/2 fixed point,
+   `check-strict`) on atla (Linux x86_64), cymoril (OpenBSD i386, so the
+   32-bit word size) and artos (NetBSD amd64), 284/284 each; `make
+   check-opt2` (everything at `-O2`) on the same three, fixed point
+   included.
 
 **Testing summary**: each decision comes with the voc probe that supports
 it, recorded where the decision is; each implemented item has a fixture
