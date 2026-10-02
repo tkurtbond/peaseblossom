@@ -95,6 +95,7 @@ MODULE Types;
     (* Value*.kind *)
     intValue* = 0; realValue* = 1; boolValue* = 2; charValue* = 3;
     stringValue* = 4; setValue* = 5;
+    nilValue* = 6; (* CONST c = NIL (2026-10-02); its type is NilType *)
 
     stringValueLength* = 255; (* mirrors SyntaxTree.identLength *)
 

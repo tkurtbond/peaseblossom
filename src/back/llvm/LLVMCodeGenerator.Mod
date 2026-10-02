@@ -3183,6 +3183,8 @@ MODULE LLVMCodeGenerator;
       result.text[0] := 0X; SetToText(cv, result.oberonType = Types.Set64, result.text)
     ELSIF cv.kind = Types.realValue THEN
       RealConstant(w, cg, cv.realText, cv.realVal, type = Types.Real, result)
+    ELSIF cv.kind = Types.nilValue THEN
+      COPY("null", result.text); COPY("ptr", result.llvmType); result.oberonType := Types.NilType
     ELSIF (cv.stringVal[0] # 0X) & (cv.stringVal[1] = 0X) THEN
       (* A one-character named STRING CONST used as a character, as a
          literal of that length would be - see GenerateLiteral. *)
@@ -5809,7 +5811,8 @@ MODULE LLVMCodeGenerator;
         IF IsGuardExpr(cg, expr) THEN
           GenerateGuardExpr(w, cg, expr, result)
         ELSIF expr.hasParens THEN
-          IF ~(((expr.designator.name = "ASH") OR ConstantEvaluator.IsIntegerValueFunctionName(expr.designator.name))
+          IF ~(((expr.designator.name = "ASH") OR (expr.designator.name = "LEN")
+                OR ConstantEvaluator.IsIntegerValueFunctionName(expr.designator.name))
                & GenerateFoldedInteger(w, cg, expr, result)) THEN
             GenerateCall(w, cg, expr.designator, expr.args, result)
           END

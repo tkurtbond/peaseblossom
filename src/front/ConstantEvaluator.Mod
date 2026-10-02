@@ -823,11 +823,104 @@ MODULE ConstantEvaluator;
     END
   END EvaluateValueFunction;
 
-  PROCEDURE EvaluateDesignator(expr: SyntaxTree.DesignatorExprNode;
-                               scope: SymbolTable.Scope): Types.Value;
+  (* ---- LEN of an array dimension that is not open ----
+
+     Decided with the user 2026-10-02, as voc: LEN(v) and LEN(v, n) of a
+     dimension of fixed length are known from v's type alone - a
+     "predeclared function that can be evaluated at compile time"
+     (Oberon2.pdf 5) - so they are constants. Of LEN's own type, LONGINT
+     (10.3), not the minimal type of their value: SHORT(LEN(a)), the
+     common idiom for an INTEGER length, stays legal (SHORT of a SHORTINT
+     is not), and i * LEN(a) stays LONGINT arithmetic. An operation on it
+     is folded as any other, so LEN(a) - 1 is typed by its value, which
+     is what lets FOR i := 0 TO LEN(a) - 1 take an INTEGER i, as in voc
+     (voc's oocLRealConv; Phase 12 step 5b's inventory).
+     DesignatorType finds v's type without the checker, which imports this
+     module: the variable, then its selectors, silently; what it cannot
+     follow (a guard, a call, an error) makes LEN not a constant, and the
+     checker reports any error. *)
+  PROCEDURE DesignatorType(scope: SymbolTable.Scope; d: SyntaxTree.Designator): Types.Type;
+    VAR obj: SymbolTable.Object; t: Types.Type; sel: SyntaxTree.Selector; field: Types.Field;
+      idx: SyntaxTree.ExprNode;
+  BEGIN
+    obj := FindQualifiedConst(scope, d);
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN NIL END;
+    t := obj.type; sel := d.selectors;
+    WHILE (sel # NIL) & (t # NIL) DO
+      WITH
+        sel: SyntaxTree.FieldSelector DO
+          IF t IS Types.PointerType THEN t := t(Types.PointerType).base END;
+          IF (t # NIL) & (t IS Types.RecordType) THEN
+            field := Types.FindField(t(Types.RecordType), sel.name);
+            IF field = NIL THEN t := NIL ELSE t := field.type END
+          ELSE
+            t := NIL
+          END
+      | sel: SyntaxTree.IndexSelector DO
+          idx := sel.indices;
+          WHILE (idx # NIL) & (t # NIL) DO
+            IF t IS Types.PointerType THEN t := t(Types.PointerType).base END;
+            IF (t # NIL) & (t IS Types.ArrayType) THEN t := t(Types.ArrayType).elementType ELSE t := NIL END;
+            idx := idx.next
+          END
+      | sel: SyntaxTree.DereferenceSelector DO
+          IF t IS Types.PointerType THEN t := t(Types.PointerType).base ELSE t := NIL END
+      ELSE
+        t := NIL
+      END;
+      sel := sel.next
+    END;
+    RETURN t
+  END DesignatorType;
+
+  (* LEN's arguments args, when the dimension they ask for has a fixed
+     length: that length *)
+  PROCEDURE FixedLength(args: SyntaxTree.ExprNode; scope: SymbolTable.Scope; VAR length: LONGINT): BOOLEAN;
+    VAR t: Types.Type; dimension: LONGINT; v: Types.Value; de: SyntaxTree.DesignatorExprNode;
+  BEGIN
+    IF (args = NIL) OR ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
+    de := args(SyntaxTree.DesignatorExprNode);
+    IF de.hasParens THEN RETURN FALSE END;
+    t := DesignatorType(scope, de.designator);
+    dimension := 0;
+    IF args.next # NIL THEN
+      IF (args.next.next # NIL) OR ~IsConstant(args.next, scope) THEN RETURN FALSE END;
+      v := EvaluateExpr(args.next, scope);
+      IF (v.type = Types.Undefined) OR (v.kind # Types.intValue) OR (v.intVal < 0) THEN RETURN FALSE END;
+      dimension := v.intVal
+    END;
+    WHILE (dimension > 0) & (t # NIL) & (t IS Types.ArrayType) DO
+      t := t(Types.ArrayType).elementType; DEC(dimension)
+    END;
+    IF (dimension # 0) OR (t = NIL) OR ~(t IS Types.ArrayType) OR t(Types.ArrayType).isOpen THEN
+      RETURN FALSE
+    END;
+    length := t(Types.ArrayType).length;
+    RETURN TRUE
+  END FixedLength;
+
+  (* Whether the designator call expr is LEN, the predeclared one *)
+  PROCEDURE IsLenCall(expr: SyntaxTree.DesignatorExprNode; scope: SymbolTable.Scope): BOOLEAN;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator;
   BEGIN
     d := expr.designator;
+    IF (d.selectors # NIL) OR ~expr.hasParens OR (d.qualifier[0] # 0X) OR (d.name # "LEN") THEN
+      RETURN FALSE
+    END;
+    obj := SymbolTable.Find(scope, d.name);
+    RETURN (obj # NIL) & (obj.type = Types.PredeclaredProcedureType)
+  END IsLenCall;
+
+  PROCEDURE EvaluateDesignator(expr: SyntaxTree.DesignatorExprNode;
+                               scope: SymbolTable.Scope): Types.Value;
+    VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; length: LONGINT;
+  BEGIN
+    d := expr.designator;
+    IF IsLenCall(expr, scope) THEN
+      IF FixedLength(expr.args, scope, length) THEN RETURN TypedInteger(length, Types.LongInt) END;
+      Diagnostics.Error(expr.line, expr.column, "not a constant expression: LEN of an open array");
+      RETURN UndefinedValue()
+    END;
     IF (d.selectors = NIL) & expr.hasParens & (d.qualifier[0] = 0X) & (d.name = "ASH") THEN
       obj := SymbolTable.Find(scope, d.name);
       IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
@@ -1308,8 +1401,10 @@ MODULE ConstantEvaluator;
     | expr: SyntaxTree.BinaryExprNode DO v := EvaluateBinary(expr, scope)
     | expr: SyntaxTree.SetExprNode DO v := EvaluateSet(expr, scope)
     | expr: SyntaxTree.NilExprNode DO
-        Diagnostics.Error(expr.line, expr.column, "NIL is not a valid constant expression");
-        v := UndefinedValue()
+        (* NIL is among the report's factors as TRUE and FALSE are, and voc
+           accepts CONST done* = NIL (oocChannel; decided with the user
+           2026-10-02, Phase 12 step 5b's inventory) *)
+        NEW(v); v.kind := Types.nilValue; v.type := Types.NilType
     ELSE
       Diagnostics.Error(expr.line, expr.column, "not a constant expression");
       v := UndefinedValue()
@@ -1324,7 +1419,8 @@ MODULE ConstantEvaluator;
      deciding whether an ordinary expression - the right-hand side of an
      assignment, an argument - can be folded. This answers that question
      silently: TRUE exactly when every leaf is a literal, a named constant
-     (local, or qualified by an import), a MAX/MIN/SIZE of a type name, or
+     (local, or qualified by an import), a MAX/MIN/SIZE of a type name, a
+     LEN of a dimension of fixed length (FixedLength), or
      an ASH whose two arguments are themselves constant, or an ORD/ABS/CHR/
      CAP/ENTIER/LONG/SHORT/ODD (EvaluateValueFunction) of a constant. Nothing here
      checks that the operators fit the operands' types (SemanticActions
@@ -1354,7 +1450,7 @@ MODULE ConstantEvaluator;
 
   PROCEDURE IsConstantDesignator(expr: SyntaxTree.DesignatorExprNode;
                                  scope: SymbolTable.Scope): BOOLEAN;
-    VAR obj: SymbolTable.Object; d: SyntaxTree.Designator;
+    VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; length: LONGINT;
   BEGIN
     d := expr.designator;
     IF d.selectors # NIL THEN RETURN FALSE END;
@@ -1364,6 +1460,8 @@ MODULE ConstantEvaluator;
       IF (obj = NIL) OR (obj.type # Types.PredeclaredProcedureType) THEN RETURN FALSE END;
       IF (d.name = "MAX") OR (d.name = "MIN") OR (d.name = "SIZE") THEN
         RETURN (expr.args # NIL) & (expr.args.next = NIL) & (LookupBareTypeName(scope, expr.args) # NIL)
+      ELSIF d.name = "LEN" THEN
+        RETURN FixedLength(expr.args, scope, length)
       ELSIF d.name = "ASH" THEN
         RETURN (expr.args # NIL) & (expr.args.next # NIL) & (expr.args.next.next = NIL)
                & IsConstant(expr.args, scope) & IsConstant(expr.args.next, scope)

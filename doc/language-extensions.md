@@ -390,6 +390,27 @@ like voc's), outermost dimension first:
   stores 0 under `-O2`), poc types it HUGEINT, making that assignment a
   compile error - and, like voc, is not shrunk afterwards: `ASH(1, 3)` is a
   LONGINT.
+- **`LEN` of a dimension of fixed length is a constant** (decided with the
+  user 2026-10-02, as voc; found by voc's `oocLRealConv`): `LEN(a)` and
+  `LEN(a, n)` of an array that is not open there, through any selectors
+  (`LEN(r.f)`, `LEN(p^)`), are "predeclared functions that can be evaluated
+  at compile time" (Oberon2.pdf 5). Usable in a `CONST` declaration; `LEN`
+  of an open dimension there is "not a constant expression: LEN of an open
+  array". Unlike every other integer constant it keeps the type the report
+  gives `LEN`, `LONGINT`, not the minimal one: so `SHORT(LEN(a))`, the
+  common idiom, stays legal and `i * LEN(a)` stays `LONGINT` arithmetic.
+  An operation on it is folded as any other, so `LEN(a) - 1` has the
+  minimal type of its value, and `FOR i := 0 TO LEN(a) - 1` takes an
+  `INTEGER` `i`. Two differences from voc, whose `LEN` constant has the
+  minimal type: voc accepts `s := LEN(a)` for a narrower `s` whose range
+  the length fits, poc does not (as before); poc accepts `SHORT(LEN(a))`
+  whenever the value fits `SHORT`'s type, voc not when `LEN(a)` already
+  has that type (`SHORT(LEN(a))` of 170 elements under `-O2`: "number too
+  large"). Fixtures `llvm-voc-library-fixes`, `semantic-voc-library-fixes`.
+- **`NIL` is a constant** (2026-10-02, as voc; `oocChannel`'s `CONST done*
+  = NIL`): the report lists it among the factors with `TRUE` and `FALSE`.
+  A `NIL` constant is assignable to and comparable with any pointer or
+  procedure variable, as `NIL` is, and is written to a `.sym` file.
 - **`ORD`, `ABS`, `CHR`, `CAP`, `ENTIER`, `LONG`, `SHORT` and `ODD` of
   constants fold** (Phase 11 step 2, probed against voc under both models: the
   table is `test/conformance/semantic-const-value-functions`, which also lists

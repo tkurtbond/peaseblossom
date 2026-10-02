@@ -834,6 +834,8 @@ MODULE ModuleInterface;
       END
     ELSIF v.kind = Types.boolValue THEN
       IF v.boolVal THEN WriteStr(w, "TRUE") ELSE WriteStr(w, "FALSE") END
+    ELSIF v.kind = Types.nilValue THEN
+      WriteStr(w, "NIL")
     ELSIF v.kind = Types.charValue THEN
       FormatCharLiteral(v.charVal, buf); WriteStr(w, buf)
     ELSIF v.kind = Types.stringValue THEN

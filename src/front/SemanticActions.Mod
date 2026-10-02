@@ -1639,6 +1639,27 @@ MODULE SemanticActions;
     END
   END CheckGuard;
 
+  (* The parser reads "c.r" as the qualified name r of module c whenever c
+     names an import (Parser.ParseQualident), since it cannot see scopes.
+     But a declaration in a nested block hides the import there
+     (Oberon2.pdf 4: a scope "excludes the scopes of equally named objects
+     which are declared in nested blocks"), and then "c.r" is the field r
+     of that c: d becomes the designator c with the field selector .r
+     first. Found by voc's oocLComplexMath (a local variable c, the import
+     c := oocComplexMath; Phase 12 step 5b's inventory). *)
+  PROCEDURE UnqualifyHidden(scope: SymbolTable.Scope; d: SyntaxTree.Designator);
+    VAR obj: SymbolTable.Object; field: SyntaxTree.FieldSelector; length: INTEGER;
+  BEGIN
+    IF d.qualifier[0] = 0X THEN RETURN END;
+    obj := SymbolTable.Find(scope, d.qualifier);
+    IF (obj # NIL) & (obj.class # SymbolTable.moduleClass) THEN
+      length := 0; WHILE d.qualifier[length] # 0X DO INC(length) END;
+      field := NewFieldSelector(d.name, d.line, d.column + length + 1);
+      field.next := d.selectors; d.selectors := field;
+      d.name := d.qualifier; d.qualifier[0] := 0X
+    END
+  END UnqualifyHidden;
+
   (* Resolves d's qualident via FindQualified (PLAN.md Phase 7 - see that
      procedure's own header comment), then walks d.selectors, applying
      §8.1's auto-deref rule ("record and
@@ -1702,6 +1723,7 @@ MODULE SemanticActions;
        worse than this check's own prior, entirely unconditional
        behavior, and still correctly catches the direct
        "Module.exportedVar.field := ..." shape. *)
+    UnqualifyHidden(scope, d);
     crossedBoundary := d.qualifier[0] # 0X;
     obj := FindQualified(scope, d.qualifier, d.name, d.line, d.column);
     IF (obj # NIL) & (d.qualifier[0] = 0X) THEN NoteVariableUse(scope, d.name, obj) END;
@@ -1727,7 +1749,8 @@ MODULE SemanticActions;
         sel: SyntaxTree.FieldSelector DO
           methodOwner := NIL; viaVarParam := FALSE;
           IF (t # NIL) & (t IS Types.PointerType) THEN
-            ptr := t(Types.PointerType); t := ptr.base
+            ptr := t(Types.PointerType); t := ptr.base;
+            readOnly := FALSE (* p.f is p^.f: see the '^' case below *)
           END;
           IF (t = NIL) OR ~(t IS Types.RecordType) THEN
             Diagnostics.Error(sel.line, sel.column, "'.' requires a record or a pointer to a record");
@@ -1771,7 +1794,8 @@ MODULE SemanticActions;
           idx := sel.indices;
           WHILE (idx # NIL) & (t # Types.Undefined) DO
             IF (t # NIL) & (t IS Types.PointerType) THEN
-              ptr := t(Types.PointerType); t := ptr.base
+              ptr := t(Types.PointerType); t := ptr.base;
+              readOnly := FALSE (* p[e] is p^[e]: see the '^' case below *)
             END;
             IF (t = NIL) OR ~(t IS Types.ArrayType) THEN
               Diagnostics.Error(idx.line, idx.column, "'[' requires an array or a pointer to an array");
@@ -1817,7 +1841,12 @@ MODULE SemanticActions;
             Diagnostics.Error(sel.line, sel.column, "SYSTEM.PTR cannot be dereferenced");
             t := Types.Undefined
           ELSE
-            ptr := t(Types.PointerType); t := ptr.base
+            (* p^ is "the variable which is referenced by p" (Oberon2.pdf
+               8.1), another variable than p: writable even when p is
+               read-only, which only a[e] and r.f inherit. So a
+               read-only exported pointer field's array or record can be
+               changed, as in voc (MultiArrayRiders, Phase 12 step 5b). *)
+            ptr := t(Types.PointerType); t := ptr.base; readOnly := FALSE
           END
       | sel: SyntaxTree.GuardSelector DO
           (* Mid-chain "(" Qualident ")" - see Parser.Mod's own header
@@ -2032,6 +2061,7 @@ MODULE SemanticActions;
   PROCEDURE CheckProcedureValue(scope: SymbolTable.Scope; d: SyntaxTree.Designator; boundProc: BOOLEAN);
     VAR obj: SymbolTable.Object;
   BEGIN
+    UnqualifyHidden(scope, d);
     IF boundProc THEN
       Diagnostics.Error(d.line, d.column, "a type-bound procedure cannot be used as a procedure value")
     ELSIF d.selectors = NIL THEN
@@ -2054,6 +2084,7 @@ MODULE SemanticActions;
   BEGIN
     IF ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
     de := e(SyntaxTree.DesignatorExprNode);
+    UnqualifyHidden(scope, de.designator);
     IF de.hasParens OR (de.designator.selectors # NIL) THEN RETURN FALSE END;
     obj := FindQualified(scope, de.designator.qualifier, de.designator.name, de.line, de.column);
     RETURN (obj # NIL) & (obj.class = SymbolTable.procClass)
@@ -2136,8 +2167,11 @@ MODULE SemanticActions;
       IF isProperProcedure THEN
         Diagnostics.Error(node.line, node.column, "a proper procedure has no result value");
         RETURN Types.Undefined
-      ELSIF node.designator.name = "ASH" THEN
-        (* a constant ASH is typed by its value, as a constant + is *)
+      ELSIF (node.designator.name = "ASH") OR (node.designator.name = "LEN") THEN
+        (* a constant ASH is typed by its value, as a constant + is; LEN of a
+           dimension of fixed length, a constant since 2026-10-02
+           (ConstantEvaluator.FixedLength), keeps LONGINT, but is folded
+           here for what folding reports *)
         RETURN FoldConstantType(scope, node, resultType)
       ELSIF (resultType # Types.Undefined) & (node.designator.qualifier[0] = 0X)
             & ConstantEvaluator.IsValueFunctionName(node.designator.name)

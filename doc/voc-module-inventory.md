@@ -89,11 +89,13 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
    `Oberon` itself, `Sets` (v4), and `ethBase64`, `ethDates`, `ethSets`,
    `ethStrings` (s3). voc's `Texts` is a file-based text (no display),
    importing `Files`, `Modules` and `Reals`.
-5. **Accepted by poc today** (52 since step 5a gave poc the whole of
-   `Platform`, 2026-10-02; 34 before it, and 23 before the language fixes
-   of finding 6): `Reals`, `Args`, `oocAscii`, `oocC`, `oocCharClass`,
-   `oocComplexMath`, `oocConvTypes`, `oocFilenames`, `oocFilesHost`,
-   `oocIntConv`, `oocIntStr`, `oocJulianDay`, `oocLRealMath`,
+5. **Accepted by poc today** (56 since the four language fixes of
+   finding 6 that followed it; 52 once step 5a gave poc the whole of
+   `Platform`, 2026-10-02; 34 before that, and 23 before the first
+   language fixes of finding 6): `Reals`, `Args`, `oocAscii`, `oocC`,
+   `oocCharClass`, `oocComplexMath`, `oocConvTypes`, `oocFilenames`,
+   `oocFilesHost`, `oocIntConv`, `oocIntStr`, `oocJulianDay`,
+   `oocLComplexMath`, `oocLRealConv`, `oocLRealMath`, `oocLRealStr`,
    `oocLongInts`, `oocLowLReal`, `oocLowReal`, `oocMsg`, `oocOakMath`,
    `oocOakStrings`, `oocProgramArgsHost`, `oocRandomNumbers`,
    `oocRealConv`, `oocRealMath`, `oocRealStr`, `oocRts`, `oocStrings`,
@@ -102,9 +104,9 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
    `ooc2Strings`, `ethMD5`, `ethRandomNumbers`, `ethUnicode`, `ethZlib`,
    `ethZlibBuffers`, `ethZlibInflate`, `ulmASCII`, `ulmDisciplines`,
    `ulmIEEE`, `ulmObjects`, `ulmSys`, `Listen`, `MersenneTwister`,
-   `MultiArrays`, `crt`, `powStrings`. (`VT100` was one; poc has its own
-   since step 5b.) Accepted means it type-checks, not that it runs as
-   under voc.
+   `MultiArrayRiders`, `MultiArrays`, `crt`, `powStrings`. (`VT100` was
+   one; poc has its own since step 5b.) Accepted means it type-checks,
+   not that it runs as under voc.
 6. **Language points** (the first error of a module), with what the
    user decided (2026-09-27):
    - `Oberon2.pdf` §3, "A string of length 1 can be used wherever a
@@ -142,6 +144,25 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
      1993 report, the 1990 Oberon report, Component Pascal and Active
      Oberon; Oberon-07 makes the `RETURN` part of the syntax. **Kept an
      error**: a port removes the two procedures.
+   - Found once step 5a gave poc all of `Platform`, so that more modules
+     got further (2026-10-02, decided with the user), all four as voc and
+     `Oberon2.pdf` have them (fixtures `llvm-voc-library-fixes`,
+     `semantic-voc-library-fixes`):
+     - a local declaration hiding an import alias (`oocLComplexMath`: a
+       variable `c` and `IMPORT c := oocComplexMath`, then `c.r`): poc read
+       `c.r` as the module's `r` ("not an imported module"). **Fixed**: §4,
+       a scope "excludes the scopes of equally named objects which are
+       declared in nested blocks";
+     - writing through a read-only pointer field (`MultiArrayRiders`:
+       `s-: SIntPtr`, then `A.s[n] := x`): "assignment target is
+       read-only". **Fixed**: `p[e]` is `p^[e]`, and `p^` is "the variable
+       which is referenced by p" (§8.1), another variable than `p`;
+     - `LEN` of a fixed array as a constant (`oocLRealConv`: `FOR len := 0
+       TO LEN(int) - 1` with an `INTEGER` `len`). **Adopted**, typed
+       `LONGINT` (`doc/language-extensions.md`, "Constant expressions");
+     - `NIL` as a constant (`oocChannel`: `CONST done* = NIL`). **Adopted**.
+       `oocChannel` still stops at its empty abstract function bodies
+       (above).
    - Found on the way and fixed (2026-09-27): poc trapped (a failed type
      guard in `Types.FindField`) on a field of a record whose base type
      came from a module that could not be imported; fixture
@@ -233,7 +254,7 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 | oocC | `library/ooc/oocCILP32.Mod` | C data types for interfacing (ILP32/LP64/LLP64 variants; voc builds the host one) | SYSTEM | 68 | 0 | SYSTEM | OOC (oo2c 1.x) | O2 (as oocC, on ILP32/LLP64 hosts) | not checked | no | LGPL 2.1+ (header) |
 | oocC | `library/ooc/oocCLLP64.Mod` | C data types for interfacing (ILP32/LP64/LLP64 variants; voc builds the host one) | SYSTEM | 68 | 0 | SYSTEM | OOC (oo2c 1.x) | O2 (as oocC, on ILP32/LLP64 hosts) | not checked | no | LGPL 2.1+ (header) |
 | oocC | `library/ooc/oocCLP64.Mod` | C data types for interfacing (ILP32/LP64/LLP64 variants; voc builds the host one) | SYSTEM | 68 | 0 | SYSTEM | OOC (oo2c 1.x) | O2 (as oocC, on LP64 hosts) | accepted | no | LGPL 2.1+ (header) |
-| oocChannel | `library/ooc/oocChannel.Mod` | abstract channels, readers and writers (stream I/O framework) | SYSTEM oocStrings oocTime oocMsg | 611 | 10 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no: NIL is not a valid constant expression | no | LGPL 2.1+ (header) |
+| oocChannel | `library/ooc/oocChannel.Mod` | abstract channels, readers and writers (stream I/O framework) | SYSTEM oocStrings oocTime oocMsg | 611 | 10 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no: function procedure must return a value | no | LGPL 2.1+ (header) |
 | oocCharClass | `library/ooc/oocCharClass.Mod` | character classification | oocAscii | 95 | 1 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocComplexMath | `library/ooc/oocComplexMath.Mod` | COMPLEX mathematics (as records) | oocRealMath | 274 | 5 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocConvTypes | `library/ooc/oocConvTypes.Mod` | types shared by the string conversion modules | - | 33 | 0 | - | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
@@ -243,10 +264,10 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 | oocIntConv | `library/ooc/oocIntConv.Mod` | low-level integer/string conversion | oocCharClass oocStrings oocConvTypes | 241 | 4 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocIntStr | `library/ooc/oocIntStr.Mod` | integer/string conversion | oocConvTypes oocIntConv | 100 | 5 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocJulianDay | `library/ooc/oocJulianDay.Mod` | dates to and from modified Julian days | - | 132 | 0 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
-| oocLComplexMath | `library/ooc/oocLComplexMath.Mod` | LONGCOMPLEX mathematics | oocComplexMath oocLRealMath | 284 | 8 | Platform | OOC (oo2c 1.x) | O2 | no: not an imported module | no | LGPL 2.1+ (header) |
-| oocLRealConv | `library/ooc/oocLRealConv.Mod` | low-level LONGREAL/string conversion | oocCharClass oocLowLReal oocStrings oocConvTypes oocLongInts SYSTEM | 416 | 10 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no: FOR final value is not assignment compatible with the control variable | no | LGPL 2.1+ (header) |
+| oocLComplexMath | `library/ooc/oocLComplexMath.Mod` | LONGCOMPLEX mathematics | oocComplexMath oocLRealMath | 284 | 8 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
+| oocLRealConv | `library/ooc/oocLRealConv.Mod` | low-level LONGREAL/string conversion | oocCharClass oocLowLReal oocStrings oocConvTypes oocLongInts SYSTEM | 416 | 10 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocLRealMath | `library/ooc/oocLRealMath.Mod` | LONGREAL mathematics (ISO style) | oocLowLReal oocRealMath SYSTEM | 559 | 6 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
-| oocLRealStr | `library/ooc/oocLRealStr.Mod` | LONGREAL/string conversion | oocLowLReal oocConvTypes oocLRealConv oocStrings oocLongInts | 451 | 11 | Platform | OOC (oo2c 1.x) | O2 | no, through oocLRealConv | no | LGPL 2.1+ (header) |
+| oocLRealStr | `library/ooc/oocLRealStr.Mod` | LONGREAL/string conversion | oocLowLReal oocConvTypes oocLRealConv oocStrings oocLongInts | 451 | 11 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocLongInts | `library/ooc/oocLongInts.Mod` | simple extended-precision integers | - | 101 | 0 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocLowLReal | `library/ooc/oocLowLReal.Mod` | properties of LONGREAL (IEEE double): exponent, fraction, ulp | oocLowReal SYSTEM | 486 | 4 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocLowReal | `library/ooc/oocLowReal.Mod` | properties of REAL (IEEE single) | SYSTEM Console Reals | 374 | 3 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
@@ -263,7 +284,7 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 | oocStrings | `library/ooc/oocStrings.Mod` | string operations (ISO Modula-2 style) | - | 501 | 0 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocStrings2 | `library/ooc/oocStrings2.Mod` | more string operations (obsolete, per its header) | oocStrings | 100 | 1 | - | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
 | oocSysClock | `library/ooc/oocSysClock.Mod` | gettimeofday (private; "use Time.GetTime") | SYSTEM Platform | 15 | 1 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
-| oocTextRider | `library/ooc/oocTextRider.Mod` | text input/output of Oberon values over channels | oocAscii oocChannel oocCharClass oocStrings oocLRealStr oocRealStr oocIntStr oocLRealConv oocConvTypes oocMsg | 1620 | 22 | Platform | OOC (oo2c 1.x) | O2 | no, through oocChannel oocLRealConv | no | LGPL 2.1+ (header) |
+| oocTextRider | `library/ooc/oocTextRider.Mod` | text input/output of Oberon values over channels | oocAscii oocChannel oocCharClass oocStrings oocLRealStr oocRealStr oocIntStr oocLRealConv oocConvTypes oocMsg | 1620 | 22 | Platform | OOC (oo2c 1.x) | O2 | no, through oocChannel | no | LGPL 2.1+ (header) |
 | oocTime | `library/ooc/oocTime.Mod` | time and time intervals | oocSysClock | 205 | 2 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocwrapperlibc | `library/ooc/oocwrapperlibc.Mod` | libc wrappers: system, sprintf (inline C) | SYSTEM Platform | 23 | 1 | inline C (2), Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no: inline C | no | none in file; OOC library (LGPL) or voc wrapper |
 
@@ -377,7 +398,7 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Listen | `library/misc/Listen.Mod` | singly linked list of integers (teaching example) | - | 61 | 0 | - | various | O2 | accepted | no | none in file |
 | MersenneTwister | `library/misc/MersenneTwister.Mod` | Mersenne Twister random numbers | SYSTEM oocSysClock oocLRealMath | 243 | 8 | Platform, SYSTEM | various | O2 | accepted | no | none in file |
-| MultiArrayRiders | `library/misc/MultiArrayRiders.Mod` | riders over MultiArrays | MultiArrays Console Platform | 549 | 3 | Platform | various | O2 | no: assignment target is read-only | no | LGPL 2+ (header) |
+| MultiArrayRiders | `library/misc/MultiArrayRiders.Mod` | riders over MultiArrays | MultiArrays Console Platform | 549 | 3 | Platform | various | O2 | accepted | no | LGPL 2+ (header) |
 | MultiArrays | `library/misc/MultiArrays.Mod` | multidimensional numeric arrays of any rank | Console Platform | 747 | 2 | Platform | various | O2 | accepted | no | LGPL 2+ (header) |
 | crt | `library/misc/crt.Mod` | Turbo Pascal CRT-style terminal control over VT100 | VT100 Platform Out Strings | 173 | 6 | Platform | various | O2 | accepted | no | none in file |
 
