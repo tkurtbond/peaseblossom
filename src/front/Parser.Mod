@@ -40,9 +40,11 @@ MODULE Parser;
         grammar (Designator [ActualParameters]) guarantees ActualParameters
         can never be followed by another selector, so whenever "(" Qualident
         ")" is immediately followed by another selector token
-        ("." "[" "^" "("), it cannot be anything other than a guard -
+        ("." "[" "^" "("), it cannot be anything other than a guard;
+        nor when it is followed by ":=", since a call is not a variable
+        and only an assignment's target can stand there (v(S) := t) -
         TryParseGuardSelector below commits to a GuardSelector node in
-        exactly that situation (checkpointing the parser state and
+        exactly those situations (checkpointing the parser state and
         rolling back to try ActualParameters instead for every other
         shape: multiple/complex arguments, or a lone Qualident with
         nothing selector-shaped after it, which stays simplification 2's
@@ -233,9 +235,9 @@ MODULE Parser;
      commits (returns TRUE, with sel holding the new GuardSelector) when
      the parenthesized content is exactly a bare, possibly
      module-qualified identifier immediately followed by another
-     selector token - the one shape that can never be ActualParameters
-     instead. Every other shape rolls the parser all the way back to
-     before "(" (a plain record assignment, no pointers mutated in
+     selector token or by ":=" - the shapes that can never be
+     ActualParameters instead. Every other shape rolls the parser all the
+     way back to before "(" (a plain record assignment, no pointers mutated in
      between - see Parser's own field comments - so this is an exact,
      cheap restore) and returns FALSE, leaving the "(" for the caller's
      existing ActualParameters/terminal-guard handling. Mirrors
@@ -260,7 +262,8 @@ MODULE Parser;
     IF p.current.kind # Lexer.rightParen THEN p := saved; RETURN FALSE END;
     Advance(p); (* past ")" *)
     IF (p.current.kind # Lexer.period) & (p.current.kind # Lexer.leftBracket)
-        & (p.current.kind # Lexer.caret) & (p.current.kind # Lexer.leftParen) THEN
+        & (p.current.kind # Lexer.caret) & (p.current.kind # Lexer.leftParen)
+        & (p.current.kind # Lexer.assign) THEN
       p := saved; RETURN FALSE
     END;
     sel := SemanticActions.NewGuardSelector(qualifier, name, line, column);

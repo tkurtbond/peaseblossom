@@ -74,6 +74,7 @@ test/conformance/llvm-pointers-multi-module/llvm-pointers-multi-module
 test/conformance/llvm-pointer-shapes/llvm-pointer-shapes
 test/conformance/llvm-pointer-fields/llvm-pointer-fields
 test/conformance/llvm-type-guards/llvm-type-guards
+test/conformance/llvm-guard-assignment-target/llvm-guard-assignment-target
 test/conformance/llvm-type-bound/llvm-type-bound
 test/conformance/llvm-var-record-params/llvm-var-record-params
 test/conformance/llvm-type-bound-multi-module/llvm-type-bound-multi-module
