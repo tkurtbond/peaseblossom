@@ -911,6 +911,17 @@ MODULE ConstantEvaluator;
     RETURN (obj # NIL) & (obj.type = Types.PredeclaredProcedureType)
   END IsLenCall;
 
+  (* Whether expr is a constant LEN (FixedLength): typed LONGINT, but
+     assignable wherever its value fits, as a constant of minimal type is
+     (SemanticActions.CheckAssignmentCompatible; user, 2026-10-02) *)
+  PROCEDURE IsConstantLen*(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): BOOLEAN;
+    VAR length: LONGINT;
+  BEGIN
+    RETURN (expr # NIL) & (expr IS SyntaxTree.DesignatorExprNode)
+      & IsLenCall(expr(SyntaxTree.DesignatorExprNode), scope)
+      & FixedLength(expr(SyntaxTree.DesignatorExprNode).args, scope, length)
+  END IsConstantLen;
+
   PROCEDURE EvaluateDesignator(expr: SyntaxTree.DesignatorExprNode;
                                scope: SymbolTable.Scope): Types.Value;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; length: LONGINT;

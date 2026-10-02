@@ -2607,7 +2607,14 @@ MODULE SemanticActions;
          to it whatever its own (minimal) type: under -OC that is never
          narrower than SHORTINT's two bytes, which is not included in INT8 *)
       v := ConstantEvaluator.Evaluate(srcExpr, scope);
-      ok := (v.type # Types.Undefined) & (v.kind = Types.intValue) & Types.FixedIntFits(dstType, v.intVal)
+      ok := (v.type # Types.Undefined) & (v.kind = Types.intValue)
+        & (Types.FixedIntFits(dstType, v.intVal)
+           (* and a constant LEN, typed LONGINT though a constant (see
+              ConstantEvaluator.FixedLength), is assignable wherever its
+              value fits, as voc's is: s := LEN(a) for a SHORTINT s and
+              an array of 100 (user, 2026-10-02) *)
+           OR ConstantEvaluator.IsConstantLen(srcExpr, scope)
+              & Types.AssignmentCompatible(dstType, ConstantEvaluator.MinimalIntegerType(v.intVal)))
     END;
     IF ~ok THEN Diagnostics.Error(line, column, message) END
   END CheckAssignmentCompatible;

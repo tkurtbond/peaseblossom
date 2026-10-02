@@ -159,7 +159,8 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
        which is referenced by p" (§8.1), another variable than `p`;
      - `LEN` of a fixed array as a constant (`oocLRealConv`: `FOR len := 0
        TO LEN(int) - 1` with an `INTEGER` `len`). **Adopted**, typed
-       `LONGINT` (`doc/language-extensions.md`, "Constant expressions");
+       `LONGINT` but assignable wherever its value fits
+       (`doc/language-extensions.md`, "Constant expressions");
      - `NIL` as a constant (`oocChannel`: `CONST done* = NIL`). **Adopted**.
        `oocChannel` still stops at its empty abstract function bodies
        (above).

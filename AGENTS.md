@@ -262,7 +262,8 @@ A constant integer expression has the minimal type its value fits. Folding
 is done in 64 bits and is an error only past `HUGEINT`. `ORD`, `ABS`, `CHR`,
 `CAP`, `ENTIER`, `LONG`, `SHORT` and `ODD` fold. `ENTIER` out of `LONGINT`'s
 range traps (exit 8). `LEN` of a fixed-length dimension is a constant of type
-`LONGINT`, and `NIL` is a constant (2026-10-02, as voc).
+`LONGINT` but assignable wherever its value fits, and `NIL` is a constant
+(2026-10-02, as voc).
 
 ### Overflow, division and reals (decided, Phase 11 C5)
 

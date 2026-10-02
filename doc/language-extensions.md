@@ -401,9 +401,12 @@ like voc's), outermost dimension first:
   common idiom, stays legal and `i * LEN(a)` stays `LONGINT` arithmetic.
   An operation on it is folded as any other, so `LEN(a) - 1` has the
   minimal type of its value, and `FOR i := 0 TO LEN(a) - 1` takes an
-  `INTEGER` `i`. Two differences from voc, whose `LEN` constant has the
-  minimal type: voc accepts `s := LEN(a)` for a narrower `s` whose range
-  the length fits, poc does not (as before); poc accepts `SHORT(LEN(a))`
+  `INTEGER` `i`. And it is assignable wherever its value fits, as a
+  constant of the minimal type would be (the user, the same day, as voc):
+  `s := LEN(a)` for a `SHORTINT` `s` and 100 elements, and the same for a
+  value argument, a `RETURN`, a `FOR` bound and an initializer; 170
+  elements under `-O2` stay an error. One difference from voc, whose
+  `LEN` constant has the minimal type: poc accepts `SHORT(LEN(a))`
   whenever the value fits `SHORT`'s type, voc not when `LEN(a)` already
   has that type (`SHORT(LEN(a))` of 170 elements under `-O2`: "number too
   large"). Fixtures `llvm-voc-library-fixes`, `semantic-voc-library-fixes`.

@@ -1,8 +1,8 @@
 MODULE rejects;
   (* What stays an error after the 2026-10-02 fixes (llvm-voc-library-fixes
      has what they allow): a read-only field or variable itself, LEN of an
-     open array as a constant, a constant LEN of LONGINT type assigned to a
-     narrower variable, a module's own name before "." where nothing hides
+     open array as a constant, a constant LEN assigned to a variable its
+     value does not fit (170 and a SHORTINT under -O2), a module's own name before "." where nothing hides
      it, and NIL where a number is wanted. *)
   IMPORT Ro;
   CONST nothing = NIL;
