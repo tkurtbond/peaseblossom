@@ -878,10 +878,21 @@ convenient, but must not be a prerequisite of it.
    - **5c. Finalization** in `GarbageCollectedHeap`, from voc's `Heap`
      (`RegisterFinalizer(obj, finalize)`): registered objects are weak
      references, not roots; one unreachable after marking is kept for its
-     finalizer, which runs after the collection. Decided here: whether
-     finalizers also run when the program ends (voc runs them only from
-     `Modules.Halt` and `AssertFail`) and when it traps. A collector
-     change, so rackhir runs after it.
+     finalizer, which runs after the collection. A collector change, so
+     rackhir runs after it. **Done (2026-10-02).** Decided with the user:
+     when the program ends every object still registered is finalized,
+     newest first, reachable or not, whether it returns from its main
+     module's body or stops at `HALT`, `ASSERT`, a trap or
+     `Platform.Exit`: all of them end in C's `exit()`, so the first
+     registration hands the collector's `FinalizeAtExit` to `atexit` and
+     no trap site changes. voc runs them (`Heap.FINALL`) at the same
+     points but `Platform.Exit`, and before a trap's message (poc's come
+     after it); a signal (`SIGFPE`) runs none in either. The registered
+     objects are a calloc'd table nothing scans; after marking, those left
+     unmarked move to a pending table, whose objects are then marked as
+     roots, and each finalizer is called after the collection, taken off
+     the table first (`GarbageCollectedHeap`, "FINALIZATION"; also
+     `FinalizeAll`, voc's `FINALL`). Fixture `llvm-gc-finalize`.
    - **5d. `Files`** (15 of 37): the typed riders (`Read`/`Write` of
      `Bool`, `Byte`, `Bytes`, `Int`, `LInt`, `Real`, `LReal`, `Set`,
      `Num`), `GetDate`, `GetName`, `Purge`, `ChangeDirectory`,

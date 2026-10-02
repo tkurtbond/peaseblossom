@@ -1,0 +1,44 @@
+semantic OK, wrote llvm-gc-finalize
+dropped: at least 8
+kept: 0 5
+revived: 1 55 56
+revived again: 1 55 56
+chain: 77
+end of body
+at the end: 2
+at the end: 1
+summary: dropped 10 sum 55, kept 1, later 1, local 31, own 99
+== atend
+A
+B
+finalized 2
+finalized 1
+exit=0
+== halt
+A
+finalized 2
+finalized 1
+exit=3
+== assertfail
+A
+assertion failed (7)
+finalized 2
+finalized 1
+exit=10
+== indextrap
+A
+index out of range
+finalized 2
+finalized 1
+exit=2
+== niltrap
+A
+NIL pointer dereference
+finalized 2
+finalized 1
+exit=4
+== platformexit
+A
+finalized 2
+finalized 1
+exit=6

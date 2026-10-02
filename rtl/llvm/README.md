@@ -70,7 +70,10 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   `NEW` calls (Phase 9 step 5); `poc` adds both this and `ModuleTable` to
   any program that calls `NEW`, so a source module never imports them for
   that - it only needs this directory on the import path. The module's
-  own header comment has the layout and the policy.
+  own header comment has the layout and the policy. It also has voc's
+  finalization (`RegisterFinalizer`, `FinalizeAll`; Phase 12 step 5c):
+  after the collection that finds an object unreachable, and for every
+  object still registered when the program ends, traps included.
 
 Written in ordinary Oberon-2 over `SYSTEM.ADDRESS` (no pointer variables),
 except `Platform.c`, so poc compiles them itself; a program picks them up through the import

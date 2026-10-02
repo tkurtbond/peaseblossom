@@ -224,6 +224,19 @@ has the full account; all probed against real voc 2026-09-19):
   imported module (`POC_IMPORT_PATH=<repo>/rtl/llvm` or `-import-path`).
   There is no built-in default directory; a missing runtime is an error
   message naming the module.
+- **Finalization** (Phase 12 step 5c, 2026-10-02, from voc's `Heap`):
+  `GarbageCollectedHeap.RegisterFinalizer(obj, finalize)`, with `finalize`
+  a `PROCEDURE (obj: SYSTEM.PTR)`, has `finalize(obj)` called once, after
+  the collection that finds `obj` unreachable; what `obj` points to is
+  still there for it, and it may store `obj` somewhere reachable again.
+  When the program ends - returning from its main module's body, `HALT`,
+  `ASSERT`, any trap, `Platform.Exit` - every object still registered is
+  finalized, newest first, reachable or not (decided with the user),
+  through the C library's `atexit`; after a trap, its message comes
+  first. voc runs `Heap.FINALL` at the same points but `Platform.Exit`,
+  and before a trap's message. Killed by a signal (`SIGFPE`), a program
+  finalizes nothing, under either. `FinalizeAll` is voc's `FINALL`.
+  Fixture `llvm-gc-finalize`.
 - Pointer variables start NIL, locals included. Since 2026-09-26 (Phase 11
   D16) **every local starts at zero**, not only pointers and procedure
   values: with clang `-O2` the default, a read of a never-assigned local

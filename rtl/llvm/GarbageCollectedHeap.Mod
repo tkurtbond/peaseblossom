@@ -76,7 +76,7 @@ MODULE GarbageCollectedHeap;
      quarter free, so a program whose live data kept growing was traced
      once for every 256 KB it grew - 172 full collections for the Stage 1
      poc compiling itself, 69% of their time spent tracing. Nothing moves,
-     nothing finalizes, and chunks are never given back.
+     and chunks are never given back.
 
      FINDING A CHUNK. Every word the marker looks at - each conservative
      stack word and each pointer a traced block holds - needs the chunk it
@@ -92,6 +92,33 @@ MODULE GarbageCollectedHeap;
      chunk straddling the middle of a 32-bit address space - which OpenBSD
      i386's calloc can hand out - would have its upper part missed, and the
      objects there freed while still in use.
+
+     FINALIZATION (PLAN.md Phase 12 step 5c, from voc's Heap; decided with
+     the user 2026-10-02). RegisterFinalizer(obj, finalize) has finalize
+     called with obj once obj can no longer be reached, after the
+     collection that finds it so. The table of registered objects is
+     calloc'd memory, which nothing scans, so it does not keep them
+     alive. After marking, every registered object left unmarked moves to
+     the pending table, and then the pending objects are marked as roots
+     are, with everything they reach: their memory, and what a finalizer
+     may still read through them, survives the sweep. Each finalizer is
+     taken off the pending table before it is called, after the
+     collection has finished, so it may allocate, collect, register
+     again, or store obj where it is reachable again (it is not called a
+     second time). The objects found unreachable by one collection are
+     finalized newest registered first, as voc's are.
+
+     And when the program ends, by returning from its main module's
+     body, HALT, ASSERT, a trap or Platform.Exit, every object still
+     registered or pending is finalized, newest first, reachable or not:
+     the first registration hands FinalizeAtExit to the C library's
+     atexit, and every one of those ends with exit(). voc runs them at the
+     same points, except Platform.Exit, and before a trap's message
+     rather than after it. A program killed by a signal (SIGFPE, a
+     division by zero on x86; SIGSEGV) runs none. A finalizer that traps
+     while the program is ending calls exit() a second time, which C
+     leaves undefined; the C libraries of the four systems run the
+     remaining handlers.
 
      LIMITS worth knowing. One object may not exceed maxObjectSize bytes. A pointer the compiler has shifted, masked or
      split is invisible to a conservative scan; poc's own output never
@@ -149,10 +176,20 @@ MODULE GarbageCollectedHeap;
     collections: LONGINT;
     liveBytesAtLastCollection: SYSTEM.ADDRESS;
     liveBytesAccumulator: SYSTEM.ADDRESS;
+    (* FINALIZATION above: calloc'd tables of entries of two words each,
+       the object's address and its finalizer, in the order registered *)
+    registered, registeredCount, registeredCapacity: SYSTEM.ADDRESS;
+    pending, pendingCount, pendingCapacity: SYSTEM.ADDRESS;
+    exitHandlerSet: BOOLEAN;
+
+  TYPE
+    Finalizer* = PROCEDURE (obj: SYSTEM.PTR);
+    ExitHandler = PROCEDURE;
 
   PROCEDURE ["C", "calloc"] CAllocate(count, size: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
   PROCEDURE ["C", "free"] CFree(block: SYSTEM.ADDRESS);
   PROCEDURE ["C", "llvm.eh.unwind.init"] SpillRegisters;
+  PROCEDURE ["C", "atexit"] AtExit(handler: ExitHandler): SYSTEM.INT32;
 
   (* ---- word and byte access ---- *)
 
@@ -548,6 +585,96 @@ MODULE GarbageCollectedHeap;
     END
   END MarkFromStack;
 
+  (* Drains the mark stack, then, if it overflowed, re-traces until a pass
+     overflows nothing. *)
+  PROCEDURE FinishMarking;
+  BEGIN
+    DrainMarkStack;
+    WHILE markStackOverflowed DO
+      markStackOverflowed := FALSE;
+      RetraceMarkedBlocks
+    END
+  END FinishMarking;
+
+  (* ---- finalization ---- *)
+
+  (* Makes room in a table of two-word entries for one more, doubling it
+     (copied, the old one freed); FALSE if calloc refuses. *)
+  PROCEDURE RoomForEntry(VAR table, count, capacity: SYSTEM.ADDRESS): BOOLEAN;
+    VAR bigger, newCapacity, k: SYSTEM.ADDRESS;
+  BEGIN
+    IF count = capacity THEN
+      newCapacity := 2 * capacity;
+      IF newCapacity < 16 THEN newCapacity := 16 END;
+      bigger := CAllocate(newCapacity, 2 * word);
+      IF bigger = 0 THEN RETURN FALSE END;
+      FOR k := 0 TO 2 * count - 1 DO
+        PutWord(bigger + k * word, GetWord(table + k * word))
+      END;
+      IF table # 0 THEN CFree(table) END;
+      table := bigger; capacity := newCapacity
+    END;
+    RETURN TRUE
+  END RoomForEntry;
+
+  (* Marks each pending object from index first on, as a root. *)
+  PROCEDURE MarkPending(first: SYSTEM.ADDRESS);
+    VAR index: SYSTEM.ADDRESS;
+  BEGIN
+    index := first;
+    WHILE index < pendingCount DO
+      MarkCandidate(GetWord(pending + 2 * index * word));
+      INC(index)
+    END
+  END MarkPending;
+
+  (* After marking: every registered object left unmarked moves, in order,
+     to the pending table - or, if that cannot grow, stays registered for
+     a later collection - and is then marked with all it reaches, so the
+     sweep frees neither. *)
+  PROCEDURE FindUnreachable;
+    VAR index, kept, entry, object, firstNew: SYSTEM.ADDRESS;
+  BEGIN
+    firstNew := pendingCount;
+    index := 0; kept := 0;
+    WHILE index < registeredCount DO
+      entry := registered + 2 * index * word;
+      object := GetWord(entry);
+      IF ~IsMarked(GetWord(object - 2 * word))
+          & RoomForEntry(pending, pendingCount, pendingCapacity) THEN
+        PutWord(pending + 2 * pendingCount * word, object);
+        PutWord(pending + (2 * pendingCount + 1) * word, GetWord(entry + word));
+        INC(pendingCount)
+      ELSE
+        MarkCandidate(object);
+        PutWord(registered + 2 * kept * word, object);
+        PutWord(registered + (2 * kept + 1) * word, GetWord(entry + word));
+        INC(kept)
+      END;
+      INC(index)
+    END;
+    registeredCount := kept;
+    MarkPending(firstNew);
+    FinishMarking
+  END FindUnreachable;
+
+  (* Calls the finalizer of the last entry of a table, taken off it
+     first. *)
+  PROCEDURE FinalizeLast(table: SYSTEM.ADDRESS; VAR count: SYSTEM.ADDRESS);
+    VAR object: SYSTEM.ADDRESS; finalize: Finalizer;
+  BEGIN
+    DEC(count);
+    object := GetWord(table + 2 * count * word);
+    SYSTEM.GET(table + (2 * count + 1) * word, finalize);
+    finalize(SYSTEM.VAL(SYSTEM.PTR, object))
+  END FinalizeLast;
+
+  (* Runs the finalizers of the pending objects, newest first. *)
+  PROCEDURE RunPending;
+  BEGIN
+    WHILE pendingCount > 0 DO FinalizeLast(pending, pendingCount) END
+  END RunPending;
+
   (* ---- sweeping ---- *)
 
   PROCEDURE EndRun(chunk, runStart, runBytes: SYSTEM.ADDRESS; reachesBump: BOOLEAN);
@@ -620,17 +747,16 @@ MODULE GarbageCollectedHeap;
       markStackCount := 0;
       markStackOverflowed := FALSE;
       MarkFromModuleTables;
+      MarkPending(0);
       SpillRegisters;
       MarkFromStack;
-      DrainMarkStack;
-      WHILE markStackOverflowed DO
-        markStackOverflowed := FALSE;
-        RetraceMarkedBlocks
-      END;
+      FinishMarking;
+      IF registeredCount > 0 THEN FindUnreachable END;
       Sweep;
       INC(collections)
     END;
-    collecting := FALSE
+    collecting := FALSE;
+    RunPending
   END Collect;
 
   (* After a collection: if less than half of the block area is free, one
@@ -731,6 +857,51 @@ MODULE GarbageCollectedHeap;
     IF block = 0 THEN RETURN FALSE END;
     RETURN IsInUse(GetWord(block))
   END IsAllocated;
+
+  (* ---- finalization, the public interface ---- *)
+
+  (* Finalizes every object pending or still registered, newest first,
+     reachable or not, and those their finalizers register in turn: voc's
+     Heap.FINALL. *)
+  PROCEDURE FinalizeAll*;
+  BEGIN
+    WHILE (pendingCount > 0) OR (registeredCount > 0) DO
+      IF pendingCount > 0 THEN FinalizeLast(pending, pendingCount)
+      ELSE FinalizeLast(registered, registeredCount)
+      END
+    END
+  END FinalizeAll;
+
+  (* atexit's handler: FinalizeAll, with the stack scanned from here.
+     After main has returned its frame, where the scan stops, is gone and
+     this one is above it; after a trap the frames above this one never
+     run again. *)
+  PROCEDURE FinalizeAtExit;
+    VAR marker: SYSTEM.ADDRESS;
+  BEGIN
+    stackBase := SYSTEM.ADR(marker) + word;
+    FinalizeAll
+  END FinalizeAtExit;
+
+  (* Has finalize called with obj when obj can no longer be reached, or
+     when the program ends (FINALIZATION above). Nothing if obj is not an
+     object on this heap, finalize is NIL, or calloc refuses the table
+     room. *)
+  PROCEDURE RegisterFinalizer*(obj: SYSTEM.PTR; finalize: Finalizer);
+    VAR object: SYSTEM.ADDRESS; status: SYSTEM.INT32;
+  BEGIN
+    object := SYSTEM.VAL(SYSTEM.ADDRESS, obj);
+    IF (finalize # NIL) & IsAllocated(object)
+        & RoomForEntry(registered, registeredCount, registeredCapacity) THEN
+      PutWord(registered + 2 * registeredCount * word, object);
+      SYSTEM.PUT(registered + (2 * registeredCount + 1) * word, finalize);
+      INC(registeredCount);
+      IF ~exitHandlerSet THEN
+        exitHandlerSet := TRUE;
+        status := AtExit(FinalizeAtExit)
+      END
+    END
+  END RegisterFinalizer;
 
 BEGIN
   word := SIZE(SYSTEM.ADDRESS);

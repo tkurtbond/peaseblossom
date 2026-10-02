@@ -236,6 +236,10 @@ pointer NIL, unless poc is given `-trap-heap-exhausted`, which makes it trap
 (exit 11). `&` and `OR` short-circuit. `NEW` pulls in
 `GarbageCollectedHeap`/`ModuleTable` from the import path. Every variable
 starts at zero, locals included (Phase 11 D16, 2026-09-26).
+`GarbageCollectedHeap.RegisterFinalizer` (Phase 12 step 5c, voc's `Heap`'s):
+a finalizer runs after the collection that finds its object unreachable,
+and for every object still registered when the program ends, traps
+included (`atexit`).
 
 ### Type-bound procedures and `VAR` record parameters (implemented, Phase 9 step 6)
 
