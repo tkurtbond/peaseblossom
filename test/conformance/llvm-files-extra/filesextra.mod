@@ -3,9 +3,9 @@ MODULE filesextra;
      too long for their array are cut short, a New file is a temporary
      file until it is registered and is registered where it was meant to
      be even if the directory changed, Close gives back the descriptor, and
-     Delete and Rename fail with -1. The program makes its own scratch
-     directory, "work", and removes it at the end. Each check prints its
-     number and ok or FAIL. *)
+     Delete and Rename fail with the errno value. The program makes its own
+     scratch directory, "work", and removes it at the end. Each check prints
+     its number and ok or FAIL. *)
   IMPORT Files, Platform, Console;
   VAR
     f, g: Files.File;
@@ -143,11 +143,12 @@ BEGIN
   END;
   Check(16, ok);
 
-  (* 17-18: failure is -1 *)
+  (* 17-18: failure is errno's value, as voc's (since Phase 12 step 5a;
+     it was -1) *)
   Files.Delete("work/not-there", res);
-  Check(17, res = -1);
+  Check(17, Platform.Absent(res));
   Files.Rename("work/not-there", "work/other", res);
-  Check(18, res = -1);
+  Check(18, Platform.Absent(res));
 
   Check(19, Shell("rm -rf work"))
 END filesextra.

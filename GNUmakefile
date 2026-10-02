@@ -17,6 +17,8 @@ BACK_LLVM_SRCS := $(wildcard src/back/llvm/*.Mod)
 BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod)
 DRIVER_SRCS := src/driver/Libraries.Mod src/driver/Poc.Mod
 RTL_SRCS := $(wildcard rtl/llvm/*.Mod)
+# Phase 12 step 5a: the C part of an rtl module, compiled with it by poc
+RTL_C_SRCS := $(wildcard rtl/llvm/*.c)
 # what Stage 0 builds with voc besides src/: Err and what it needs (Phase 11 D11)
 STAGE0_RTL_SRCS := rtl/voc/FileDescriptorOutput.Mod rtl/llvm/RealDigits.Mod \
   rtl/llvm/FormattedOutput.Mod rtl/llvm/Err.Mod
@@ -66,10 +68,10 @@ $(BIN): $(SRCS) $(STAGE0_RTL_SRCS)
 # poc-rtl for one size model (O2 or OC, the %), built by the poc of the
 # same tree; -clear-library-path, so that nothing is taken from the copy it
 # replaces
-$(BUILD_DIR)/lib/poc/$(HOST_TRIPLE)/%/poc-rtl.library: $(BIN) $(RTL_SRCS)
+$(BUILD_DIR)/lib/poc/$(HOST_TRIPLE)/%/poc-rtl.library: $(BIN) $(RTL_SRCS) $(RTL_C_SRCS)
 	$(STAGE0_ENV) $(BIN) -$* -clear-library-path -output-dir $(BUILD_DIR)/lib/poc -library poc-rtl $(RTL_SRCS)
 
-$(BUILD_DIR)/stage1/lib/poc/$(HOST_TRIPLE)/%/poc-rtl.library: $(STAGE1_BIN) $(RTL_SRCS)
+$(BUILD_DIR)/stage1/lib/poc/$(HOST_TRIPLE)/%/poc-rtl.library: $(STAGE1_BIN) $(RTL_SRCS) $(RTL_C_SRCS)
 	$(STAGE1_BIN) -$* -clear-library-path -output-dir $(BUILD_DIR)/stage1/lib/poc -library poc-rtl $(RTL_SRCS)
 
 all: build
@@ -81,7 +83,7 @@ all: build
 # always reruns, being a comparison.
 stage1: $(STAGE1_BIN)
 
-$(STAGE1_BIN): $(BIN) $(SRCS) $(RTL_SRCS)
+$(STAGE1_BIN): $(BIN) $(SRCS) $(RTL_SRCS) $(RTL_C_SRCS)
 	tools/bootstrap/stage1
 
 stage2: $(STAGE1_BIN)

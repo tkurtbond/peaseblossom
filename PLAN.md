@@ -850,6 +850,20 @@ convenient, but must not be a prerequisite of it.
      `MaxNameLength`, `MaxPathLength`; and the types and constants
      `FileHandle`, `FileIdentity`, `LittleEndian`, `NL`,
      `SeekSet`/`SeekCur`/`SeekEnd`, `StdIn`/`StdOut`/`StdErr`.
+     **Done (2026-10-02).** Decided with the user: what differs between
+     the four systems (open's flags, errno and its values, `struct stat`,
+     the clock, signals, NetBSD's renamed functions) is in
+     `rtl/llvm/Platform.c`, and poc compiles a module's sibling `.c` with
+     it wherever it compiles the module (`doc/llvm-toolchain.md`, "A
+     module's part in C"; fixture `llvm-c-part`). An error code is now
+     errno's value, as voc's (it was -1; `Files.Delete`/`Rename` too).
+     Differences kept: `Write` writes everything and `Delay` sleeps the
+     whole time (voc's make one call each); `StdIn`/`StdOut`/`StdErr` are
+     exported with `*` where voc's have `-`: voc accepts the read-only mark
+     on any declaration but gives it a meaning only on variables and record
+     fields (`OPP.CheckMark`), so on a constant it is a plain export, and
+     poc keeps rejecting it there (decided with the user 2026-10-02). Fixture
+     `llvm-platform-files` (44 checks, against voc, both size models).
    - **5b. `In.Name` and `VT100`** (new: terminal control sequences);
      small, needing nothing else.
    - **5c. Finalization** in `GarbageCollectedHeap`, from voc's `Heap`

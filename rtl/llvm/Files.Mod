@@ -60,8 +60,7 @@ MODULE Files;
      - an error that cannot be reported to the caller - a file that cannot
        be created, a failed write - stops the program with a message and
        Halt(99), as voc does, but the message goes to standard error, where
-       voc's goes to standard output (Phase 11 D12); Delete and Rename report failure as -1
-       rather than errno (see Platform.Mod);
+       voc's goes to standard output (Phase 11 D12);
      - the C `int` results below are declared LONGINT, right under the -O2
        size model only (see Platform.Mod). *)
 
@@ -462,20 +461,18 @@ MODULE Files;
     x[i] := 0X
   END ReadLine;
 
-  (* Deletes the file called name; res is 0 if it did, else not 0. *)
+  (* Deletes the file called name; res is 0 if it did, else the error
+     code (Platform.ErrorCode). *)
   PROCEDURE Delete*(name: ARRAY OF CHAR; VAR res: INTEGER);
   BEGIN
     res := Platform.Unlink(name)
   END Delete;
 
   (* Renames the file old to new, replacing a file of that name; res is 0
-     if it did, else not 0. *)
+     if it did, else the error code (Platform.ErrorCode). *)
   PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
   BEGIN
-    res := -1;
-    IF (StringLength(old) < LEN(old)) & (StringLength(new) < LEN(new)) THEN
-      IF CRename(SYSTEM.ADR(old), SYSTEM.ADR(new)) = 0 THEN res := 0 END
-    END
+    res := Platform.Rename(old, new)
   END Rename;
 
 END Files.

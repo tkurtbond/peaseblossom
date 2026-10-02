@@ -13,11 +13,18 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   interface (`Flush`, `Char`, `String`, `Int`, `Ln`, `Bool`, `Hex`), unbuffered,
   over one `write(2)`. Imported like any module; needs only this directory
   on the import path.
-- `Platform.Mod` - the OS services poc's driver uses, with voc's `Platform`
-  signatures: `Chdir`/`CWD`, `GetEnv`, `PID`, `System`, `Unlink`. Each
-  is one libc call (`chdir`, `getcwd`, `getenv`, `getpid`, `system`,
-  `unlink`, the same on Linux and the three BSDs); an error is -1, not
-  voc's errno.
+- `Platform.Mod` - voc's `Platform` interface in full (Phase 12 step 5a):
+  files by handle, file identities and times, the error tests, the
+  clock, the environment, the working directory, signal handlers,
+  `OSAllocate`/`OSFree`, `System`, `Exit`. An error code is the errno
+  value, as in voc. What is the same on the four systems is called from
+  here; the rest is in `Platform.c`, below.
+- `Platform.c` - `Platform`'s part in C: open's flags, errno and its values,
+  `struct stat`, the clock and signals differ between Linux and the
+  BSDs (and NetBSD renames the functions), which only the system's own
+  headers know. poc compiles a module's sibling `.c` whenever it compiles
+  the module (`LLVMToolchainDriver.CompanionSource`), so it goes into
+  `poc-rtl` and into any program that builds `Platform` from source.
 - `Files.Mod` - Oberon files (`File`, `Rider`, `New`, `Old`, `Register`,
   `Close`, `Length`, `Set`, `Read`, `Write`, `ReadString`, `ReadLine`,
   `WriteString`, ...) over C stdio, which is what keeps it portable across
@@ -62,7 +69,7 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   own header comment has the layout and the policy.
 
 Written in ordinary Oberon-2 over `SYSTEM.ADDRESS` (no pointer variables),
-so poc compiles them itself; a program picks them up through the import
+except `Platform.c`, so poc compiles them itself; a program picks them up through the import
 path - the `llvm-gc-*` fixtures set `POC_IMPORT_PATH=../../../rtl/llvm`.
 Sources use the `.Mod` spelling; `ReadModuleSource` finds either.
 voc compiles four of these for Stage 0 (Phase 11 D11), so that the

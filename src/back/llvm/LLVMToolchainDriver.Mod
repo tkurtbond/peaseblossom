@@ -343,12 +343,72 @@ MODULE LLVMToolchainDriver;
     END
   END ObjectFilePath;
 
+  (* Whether the file name is there, and can be opened *)
+  PROCEDURE FileExists(name: ARRAY OF CHAR): BOOLEAN;
+    VAR f: Files.File;
+  BEGIN
+    f := Files.Old(name);
+    IF f = NIL THEN RETURN FALSE END;
+    Files.Close(f);
+    RETURN TRUE
+  END FileExists;
+
+  (* file with its extension (from the last "." of its last component)
+     replaced by suffix, in result; FALSE when it has none or the result
+     does not fit *)
+  PROCEDURE ReplaceExtension(file, suffix: ARRAY OF CHAR; VAR result: ARRAY OF CHAR): BOOLEAN;
+    VAR i, dot, length: INTEGER;
+  BEGIN
+    dot := -1; i := 0;
+    WHILE file[i] # 0X DO
+      IF file[i] = "." THEN dot := i ELSIF file[i] = "/" THEN dot := -1 END;
+      INC(i)
+    END;
+    length := 0; WHILE suffix[length] # 0X DO INC(length) END;
+    IF (dot < 0) OR (dot + length >= LEN(result)) THEN RETURN FALSE END;
+    i := 0; WHILE i < dot DO result[i] := file[i]; INC(i) END;
+    result[i] := 0X; Strcat(result, suffix);
+    RETURN TRUE
+  END ReplaceExtension;
+
+  (* Phase 12 step 5a (decided with the user 2026-10-02): part of a module
+     may be written in C, in <M>.c beside its source <M>.Mod - rtl/llvm's
+     Platform has what the four systems spell differently there. clang
+     compiles it for the target whenever poc compiles the module, to
+     <M>.c.o beside the module's own object (a module's name has no ".",
+     so no module's object is called that), and that object goes wherever
+     the module's goes: into the link, a library, or -compile's output.
+     path: the C source of m, compiled from its source here. *)
+  PROCEDURE CompanionSource(m: LLVMCodeGenerator.ModuleList; VAR path: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) & (m.fileName[0] # 0X)
+      & ReplaceExtension(m.fileName, ".c", path) & FileExists(path)
+  END CompanionSource;
+
+  (* path: the C part's object of m, a module not from a library: the one
+     CompileModules makes, or for a module given as its .sym and its .o or
+     .ll, the <M>.c.o beside that file if there is one (as -compile leaves
+     it) *)
+  PROCEDURE CompanionObject(outputDir: ARRAY OF CHAR; m: LLVMCodeGenerator.ModuleList; VAR path: ARRAY OF CHAR): BOOLEAN;
+    VAR source: ARRAY pathBufferLength OF CHAR;
+  BEGIN
+    IF CompanionSource(m, source) THEN
+      ModuleFilePath(outputDir, m.module.name, ".c.o", path); RETURN TRUE
+    ELSIF m.compiled THEN
+      RETURN ReplaceExtension(m.objectPath, ".c.o", path) & FileExists(path)
+    ELSIF m.irPath[0] # 0X THEN
+      RETURN ReplaceExtension(m.irPath, ".c.o", path) & FileExists(path)
+    END;
+    RETURN FALSE
+  END CompanionObject;
+
   (* clang -c on each module's .ll that is not from a library, to its .o;
      position-independent code always (Phase 12 step 2f, decided with the
      user 2026-09-27), so that any module's object - one given as a .sym
-     and .o too - can go into a shared library *)
+     and .o too - can go into a shared library; and its C part, if it has
+     one (CompanionSource) *)
   PROCEDURE CompileModules(modules: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR): BOOLEAN;
-    VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
+    VAR path, source: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
   BEGIN
     ok := TRUE; m := modules;
     WHILE ok & (m # NIL) DO
@@ -367,6 +427,15 @@ MODULE LLVMToolchainDriver;
           Err.String("poc: clang cannot compile "); Err.String(m.irPath);
           Err.String(" (written for another version of LLVM?); compile "); Err.String(m.module.name);
           Err.String(" again"); Err.Ln
+        END;
+        IF ok & CompanionSource(m, source) THEN
+          command := "clang -c"; AppendTargetOptions(command, triple);
+          Strcat(command, " -fPIC");
+          IF lto THEN Strcat(command, " -flto") END;
+          AppendPath(source);
+          ModuleFilePath(outputDir, m.module.name, ".c.o", path);
+          Strcat(command, " -o"); AppendPath(path);
+          ok := RunCommand()
         END
       END;
       m := m.next
@@ -385,7 +454,8 @@ MODULE LLVMToolchainDriver;
   END AppendLTOOptions;
 
   (* appends the object of each module that is not from a library: the
-     one compiled, or the one given with its .sym *)
+     one compiled, or the one given with its .sym; and its C part's
+     (CompanionObject) *)
   PROCEDURE AppendObjects(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR);
     VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList;
   BEGIN
@@ -394,6 +464,7 @@ MODULE LLVMToolchainDriver;
       IF m.compiled THEN AppendPath(m.objectPath)
       ELSIF ~m.inLibrary THEN ObjectFilePath(outputDir, m, path); AppendPath(path)
       END;
+      IF ~m.inLibrary & CompanionObject(outputDir, m, path) THEN AppendPath(path) END;
       m := m.next
     END
   END AppendObjects;

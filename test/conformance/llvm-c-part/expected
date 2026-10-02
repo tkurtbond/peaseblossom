@@ -1,0 +1,23 @@
+== from source
+semantic OK, wrote fromsource
+Twice.c.o
+Twice.ll
+Twice.o
+Twice.sym
+42
+== -compile, then the pair
+semantic OK, wrote Twice.o
+Twice.c.o
+Twice.ll
+Twice.o
+Twice.sym
+semantic OK, wrote frompair
+42
+== a library
+semantic OK, wrote library twice in lib/<triple>/O2
+Twice.c.o
+Twice.o
+semantic OK, wrote fromlibrary
+42
+semantic OK, wrote fromshared
+42

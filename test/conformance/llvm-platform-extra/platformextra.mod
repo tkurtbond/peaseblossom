@@ -1,8 +1,7 @@
 MODULE platformextra;
   (* PLAN.md Phase 10 step 2, the parts of Platform specific to poc: PID
      is the real process id (the shell's own idea of its parent's id,
-     reduced the way PID is when it does not fit an INTEGER), an error is
-     -1 rather than voc's errno, and a string with no terminating 0X is
+     reduced the way PID is when it does not fit an INTEGER), and a string with no terminating 0X is
      treated as naming nothing instead of being read past its end. Each
      check prints its number and ok or FAIL. *)
   IMPORT Platform, Console;
@@ -37,10 +36,11 @@ BEGIN
   Check(2, Platform.System(command) = 0);
   Check(3, Platform.CWD[0] = "/");
 
-  (* 4-5: an error is -1 *)
+  (* 4-5: an error is errno's value, as voc's (since Phase 12 step 5a;
+     it was -1) *)
   missing := "nope";
-  Check(4, Platform.Unlink(missing) = -1);
-  Check(5, Platform.Chdir(missing) = -1);
+  Check(4, Platform.Absent(Platform.Unlink(missing)));
+  Check(5, Platform.NoSuchDirectory(Platform.Chdir(missing)));
 
   (* 6-8: a string with no terminator is not read past its end: 4 letters
      in an array of 4, one that would name a real command *)
@@ -48,7 +48,7 @@ BEGIN
   Platform.GetEnv(exact, value);
   Check(6, value[0] = 0X);
   Check(7, Platform.System(exact) = -1);
-  Check(8, Platform.Unlink(exact) = -1);
+  Check(8, Platform.Absent(Platform.Unlink(exact)));
   (* 9: a value array with room for the terminator only *)
   Platform.GetEnv("HOME", single);
   Check(9, single[0] = 0X)

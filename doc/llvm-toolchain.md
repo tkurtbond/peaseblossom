@@ -70,6 +70,22 @@ shells out to these rather than linking against LLVM's own C++ API.
   `"stackrealign"` on `@main` (the one frame that starts misaligned); either
   alone still crashed `sin` on NetBSD. Linux and all 64-bit and ARM targets get
   neither, so their IR is unchanged (`llvm-stack-realign`).
+- **A module's part in C** (Phase 12 step 5a, decided with the user
+  2026-10-02): a C file beside a module's source with the same base name
+  (`rtl/llvm/Platform.c` beside `Platform.Mod`) is compiled by `clang -c`
+  for the target, `-fPIC` and the same `-O` level (and `-flto` under
+  `-lto`), whenever poc compiles the module from source, to `<Module>.c.o`
+  beside the module's object. That object goes wherever the module's
+  goes: into the link, into a library's archive and shared library, and
+  into `-compile`'s output; a module given as its `.sym` and `.o` (or
+  `.ll`) brings the `<Module>.c.o` beside that file, if there is one
+  (`LLVMToolchainDriver.CompanionSource`/`CompanionObject`). It is for what
+  an Oberon declaration cannot follow because poc does not know which of
+  the four systems it compiles for: flag and errno values, structure
+  layouts, NetBSD's renamed functions. Such a file's own names should
+  contain `-` (through `__asm__` labels, as `Platform.c`'s do:
+  `Platform.-open`), so that they never match a module's. Fixture
+  `llvm-c-part`.
 - **Optimization level** (Phase 11 D13, 2026-09-26): `poc -opt <level>`
   makes `-build` pass clang `-O<level>`, one of `0`, `1`, `2`, `3`, `s`, `z`,
   `g` (not `-O<level>` itself: poc's `-O2`/`-OC` are voc's size-model flags).

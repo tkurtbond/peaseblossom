@@ -164,6 +164,10 @@ C++ API. `doc/llvm-toolchain.md` has the full account of each point here.
 - **32-bit x86 BSDs** get the module flag `override-stack-alignment` = 16
   and `"stackrealign"` on `@main` (`LLVMTypes.NeedsStackRealignment`):
   their C libraries assume a 16-byte aligned stack, LLVM does not.
+- **A module's part in C** (Phase 12 step 5a): `<M>.c` beside `<M>.Mod` is
+  compiled with the module, to `<M>.c.o`, and goes wherever the module's
+  object goes. `rtl/llvm/Platform.c` is the one: what the four systems spell
+  differently, which only their headers know.
 - **Options**: `-opt <level>` (default 2, but 0 for 32-bit x86, whose reals
   are x87; not `-O<level>`, which is the size model), `-static`, `-link
   <arg>`, `-verbose`, `-lto` (ignored for 32-bit x86 NetBSD; `make
