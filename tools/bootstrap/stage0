@@ -18,6 +18,8 @@ BUILD="$ROOT/build"
 VOC_BIN_DIR=${VOC_BIN_DIR:-/usr/local/sw/versions/voc/git/bin}
 
 mkdir -p "$BUILD/bin" "$BUILD/obj"
+# BuildInfo.Mod, the commit `poc -version` names (Phase 13 step 1)
+"$ROOT/tools/build-info" "$BUILD/gen"
 export PATH="$VOC_BIN_DIR:$PATH"
 
 cd "$BUILD/obj"
@@ -44,6 +46,8 @@ voc -OC -s "$ROOT/src/front/Parser.Mod"
 voc -OC -s "$ROOT/src/back/llvm/LLVMTypes.Mod"
 voc -OC -s "$ROOT/src/back/llvm/LLVMCodeGenerator.Mod"
 voc -OC -s "$ROOT/src/back/llvm/LLVMToolchainDriver.Mod"
+voc -OC -s "$ROOT/src/driver/Version.Mod"
+voc -OC -s "$BUILD/gen/BuildInfo.Mod"
 voc -OC -s "$ROOT/src/driver/Libraries.Mod"
 voc -OC -m "$ROOT/src/driver/Poc.Mod"
 

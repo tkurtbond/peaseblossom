@@ -32,7 +32,8 @@ unset POC_IMPORT_PATH POC_LIBRARY_PATH
 triple=$(clang -dumpmachine)
 pocLib=$(poc -print-library-path | tail -n 1)
 mask() {
-  sed -e "s|$pocLib|<poc lib>|g" -e "s|$triple|<triple>|g" -e 's/[0-9a-f]\{16\}/<key>/g'
+  sed -e "s|$pocLib|<poc lib>|g" -e "s|$triple|<triple>|g" -e 's/[0-9a-f]\{16\}/<key>/g' \
+      -e 's/^poc [0-9][0-9.]*$/poc <version>/'
 }
 rm -rf work && mkdir work && cd work
 : >../result

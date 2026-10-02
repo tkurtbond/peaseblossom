@@ -100,6 +100,7 @@ hi 4
 -- a library of them
 semantic OK, wrote library fromobjects in pairlib/<triple>/O2
 library fromobjects
+poc <version>
 model O2
 needs poc-rtl
 module Greet <key>

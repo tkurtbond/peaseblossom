@@ -31,12 +31,14 @@ export LD_LIBRARY_PATH
 
 rm -rf "$BUILD/stage1"
 mkdir -p "$BUILD/stage1/obj" "$BUILD/stage1/bin"
+# BuildInfo.Mod, the commit `poc -version` names (Phase 13 step 1)
+"$ROOT/tools/build-info" "$BUILD/gen"
 cd "$BUILD/stage1/obj"
 # rtl/llvm from source, not a poc-rtl library (Phase 12 step 2d): the
 # stages must not depend on one, and the fixed point compares the output
 # for every module
 "$STAGE0_POC" -OC -clear-library-path ${BOOTSTRAP_OPT:+-opt "$BOOTSTRAP_OPT"} \
   -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
-  -import-path "$ROOT/rtl/llvm" -import-path "$ROOT/src/driver" \
+  -import-path "$ROOT/rtl/llvm" -import-path "$ROOT/src/driver" -import-path "$BUILD/gen" \
   -o "$BUILD/stage1/bin/poc" -build "$ROOT/src/driver/Poc.Mod"
 echo "Stage 1: built $BUILD/stage1/bin/poc"

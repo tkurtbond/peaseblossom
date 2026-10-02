@@ -1,0 +1,5 @@
+MODULE Tiny;
+  PROCEDURE Two*(): INTEGER;
+  BEGIN RETURN 2
+  END Two;
+END Tiny.

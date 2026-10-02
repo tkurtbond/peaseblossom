@@ -152,6 +152,25 @@ MODULE LLVMToolchainDriver;
     RETURN ok
   END HostTriple;
 
+  (* The first line of `clang --version`, for `poc -version` (Phase 13
+     step 1), read back from a scratch file as HostTriple's is. FALSE when
+     clang cannot be run or says nothing. *)
+  PROCEDURE ClangVersion*(VAR line: ARRAY OF CHAR): BOOLEAN;
+    VAR
+      path, cmd: ARRAY 128 OF CHAR;
+      status, unlinkResult: INTEGER;
+      ok: BOOLEAN;
+  BEGIN
+    path := "/tmp/poc-llvm-clang-version-";
+    AppendInt(path, Platform.PID);
+    cmd := "clang --version >";
+    Strcat(cmd, path); Strcat(cmd, " 2>/dev/null");
+    status := Platform.System(cmd);
+    ok := ReadFirstLine(path, line) & (status = 0) & (line[0] # 0X);
+    unlinkResult := Platform.Unlink(path);
+    RETURN ok
+  END ClangVersion;
+
   (* <outputDir>/<moduleName><suffix>, or <moduleName><suffix> when outputDir
      is empty: where EmitIR writes a module's IR (suffix ".ll") and Build its
      object file (".o") *)

@@ -1,0 +1,25 @@
+== -version
+exit=0
+line 1: poc <number> [(<commit>)]
+target <triple> (clang's default), size model -O2
+line 3: clang version ...
+== -OC -target i686-unknown-linux-gnu -version, line 2
+target i686-unknown-linux-gnu, size model -OC
+== -version with no clang on PATH
+target unknown (clang's default, and there is no clang), size model -O2
+clang: not found (poc runs clang from PATH)
+== a library records the version
+poc <number>
+built and ran: exit=0
+== another version's library
+poc: the library tiny in lib/<triple>/O2 was written by poc 0.0.0, not <number>: rebuild it
+main.mod:2:8: error: unknown imported module
+main.mod:2:8: note: no Tiny.Mod, Tiny.mod or Tiny.sym in the current directory (the import path is empty)
+main.mod:2:8: note: library tiny (lib/<triple>/O2) has Tiny, but poc cannot use it (see above)
+1 error(s)
+== a library from before versions
+poc: the library tiny in lib/<triple>/O2 was written by a poc that did not record its version, not <number>: rebuild it
+main.mod:2:8: error: unknown imported module
+main.mod:2:8: note: no Tiny.Mod, Tiny.mod or Tiny.sym in the current directory (the import path is empty)
+main.mod:2:8: note: library tiny (lib/<triple>/O2) has Tiny, but poc cannot use it (see above)
+1 error(s)

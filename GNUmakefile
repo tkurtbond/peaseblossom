@@ -15,7 +15,11 @@ CONFORMANCE_DIR := test/conformance
 FRONT_SRCS := $(wildcard src/front/*.Mod)
 BACK_LLVM_SRCS := $(wildcard src/back/llvm/*.Mod)
 BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod)
-DRIVER_SRCS := src/driver/Libraries.Mod src/driver/Poc.Mod
+DRIVER_SRCS := src/driver/Version.Mod src/driver/Libraries.Mod src/driver/Poc.Mod
+# Phase 13 step 1: the commit `poc -version` names, written by tools/build-info
+# on every make (it rewrites the file only when the commit or the tree's state
+# changed, so only then is poc rebuilt)
+BUILD_INFO := $(BUILD_DIR)/gen/BuildInfo.Mod
 RTL_SRCS := $(wildcard rtl/llvm/*.Mod)
 # Phase 12 step 5a: the C part of an rtl module, compiled with it by poc
 RTL_C_SRCS := $(wildcard rtl/llvm/*.c)
@@ -58,12 +62,15 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: all build stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
-$(BIN): $(SRCS) $(STAGE0_RTL_SRCS)
+$(BIN): $(SRCS) $(STAGE0_RTL_SRCS) $(BUILD_INFO)
 	tools/bootstrap/stage0
+
+$(BUILD_INFO): FORCE
+	tools/build-info $(BUILD_DIR)/gen
 
 # poc-rtl for one size model (O2 or OC, the %), built by the poc of the
 # same tree; -clear-library-path, so that nothing is taken from the copy it
@@ -83,7 +90,7 @@ all: build
 # always reruns, being a comparison.
 stage1: $(STAGE1_BIN)
 
-$(STAGE1_BIN): $(BIN) $(SRCS) $(RTL_SRCS) $(RTL_C_SRCS)
+$(STAGE1_BIN): $(BIN) $(SRCS) $(RTL_SRCS) $(RTL_C_SRCS) $(BUILD_INFO)
 	tools/bootstrap/stage1
 
 stage2: $(STAGE1_BIN)

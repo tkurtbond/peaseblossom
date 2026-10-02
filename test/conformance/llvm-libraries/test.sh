@@ -14,6 +14,7 @@ unset POC_IMPORT_PATH POC_LIBRARY_PATH
 triple=$(clang -dumpmachine)
 mask() {
   sed -e "s|$triple|<triple>|g" -e 's/[0-9a-f]\{16\}/<key>/g' -e 's/libpoc-rtl\.so\.0\.0/libpoc-rtl.so/' \
+      -e 's/^poc [0-9][0-9.]*$/poc <version>/' \
       -e 's/libshapes\.so\.0\.0/libshapes.so/'
 }
 poc() { command poc -clear-library-path "$@"; }

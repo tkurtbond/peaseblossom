@@ -1,0 +1,30 @@
+#!/bin/sh
+# Writes BuildInfo.Mod into the directory given (Phase 13 step 1): the git
+# commit poc is built from, with "-dirty" when tracked files differ from it,
+# or "" when the tree is not a git checkout (a release tarball, a copy made
+# with git archive). `poc -version` prints it after Version.number. The file
+# is rewritten only when its content changes, so a build is not redone for
+# nothing. Run with the directory as its one argument, from anywhere.
+set -e
+
+dir=$1
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+commit=
+if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  commit=$(git -C "$ROOT" rev-parse --short HEAD)
+  git -C "$ROOT" diff --quiet HEAD -- || commit="$commit-dirty"
+fi
+
+mkdir -p "$dir"
+tmp="$dir/BuildInfo.Mod.tmp.$$"
+cat >"$tmp" <<MOD
+MODULE BuildInfo;
+
+  (* Written by tools/build-info; do not edit. *)
+
+  CONST
+    commit* = "$commit";
+
+END BuildInfo.
+MOD
+if cmp -s "$tmp" "$dir/BuildInfo.Mod"; then rm -f "$tmp"; else mv "$tmp" "$dir/BuildInfo.Mod"; fi

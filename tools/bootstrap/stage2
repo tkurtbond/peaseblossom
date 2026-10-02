@@ -20,13 +20,15 @@ STAGE1_POC=${STAGE1_POC:-$BUILD/stage1/bin/poc}
 
 rm -rf "$BUILD/stage2"
 mkdir -p "$BUILD/stage2/obj" "$BUILD/stage2/bin"
+# BuildInfo.Mod, the commit `poc -version` names (Phase 13 step 1)
+"$ROOT/tools/build-info" "$BUILD/gen"
 cd "$BUILD/stage2/obj"
 # rtl/llvm from source, not a poc-rtl library (Phase 12 step 2d): the
 # stages must not depend on one, and the fixed point compares the output
 # for every module
 "$STAGE1_POC" -OC -clear-library-path ${BOOTSTRAP_OPT:+-opt "$BOOTSTRAP_OPT"} \
   -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
-  -import-path "$ROOT/rtl/llvm" -import-path "$ROOT/src/driver" \
+  -import-path "$ROOT/rtl/llvm" -import-path "$ROOT/src/driver" -import-path "$BUILD/gen" \
   -o "$BUILD/stage2/bin/poc" -build "$ROOT/src/driver/Poc.Mod"
 echo "Stage 2: built $BUILD/stage2/bin/poc"
 

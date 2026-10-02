@@ -33,8 +33,10 @@ shells out to these rather than linking against LLVM's own C++ API.
   `<poc's dir>/../lib/poc`; `-clear-library-path` drops all three. A
   module a library on the path has is taken from it, never from source;
   `-build` links the libraries' archives, `-shared-libraries` their shared
-  libraries. poc refuses a module two libraries have and a library
-  compiled against another's old keys (`src/driver/Libraries.Mod`), warns
+  libraries. poc refuses a module two libraries have, a library
+  compiled against another's old keys (`src/driver/Libraries.Mod`), and,
+  since Phase 13 step 1, a library whose manifest's `poc <version>` line
+  is missing or names another version than `Version.number`; it warns
   when a library's module hides another library's or differs from source
   beside the program, and follows an import found nowhere with notes on
   where it looked (step 2e). A module with no source can be given as its

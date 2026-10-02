@@ -160,7 +160,13 @@ C++ API. `doc/llvm-toolchain.md` has the full account of each point here.
   library has is never compiled from source. A module can be given
   without source as its `.sym` and `.o` (or `.ll`); `poc -compile` makes
   them. `make` builds `rtl/llvm` as the library `poc-rtl`; the bootstrap
-  stages compile it from source.
+  stages compile it from source. A manifest records the poc version that
+  wrote it, and a library from another version is refused ("rebuild it").
+- **Version** (Phase 13 step 1): `src/driver/Version.Mod` is the one place
+  the number is kept (0.x.y); `tools/build-info` writes `build/gen/
+  BuildInfo.Mod`, the commit (`-dirty` with changed tracked files, empty
+  without `.git`), on every `make` and in each bootstrap stage. `poc
+  -version` prints both, the target and size model, and clang's version.
 - **32-bit x86 BSDs** get the module flag `override-stack-alignment` = 16
   and `"stackrealign"` on `@main` (`LLVMTypes.NeedsStackRealignment`):
   their C libraries assume a 16-byte aligned stack, LLVM does not.

@@ -9,6 +9,7 @@ MODULE Libraries;
      a line, the words separated by one space:
 
        library <name>
+       poc <version>                    (the poc that wrote it, Version.number)
        triple <triple>
        model <O2|OC>
        lto                              (its objects are LLVM bitcode, for -flto)
@@ -18,7 +19,10 @@ MODULE Libraries;
        source <Module> <key>            (each module's source file, hashed as a key is)
 
      so poc can tell, before a link, whether a library was compiled against
-     the interface of a module that another library now has. Beside it, for
+     the interface of a module that another library now has. A library
+     another version of poc wrote, or one written before manifests recorded
+     the version, is refused (Phase 13 step 1): nothing promises that two
+     versions' objects link together. Beside it, for
      each of its modules, <Module>.owner holds the library's name: that is
      how a module an import names is found without listing a directory. A
      module belongs to one library only.
@@ -32,7 +36,7 @@ MODULE Libraries;
      finds, reads and writes manifests, and checks that the libraries a
      program would link agree with each other. *)
 
-  IMPORT Files, Platform, Err;
+  IMPORT Files, Platform, Err, Version;
 
   CONST
     nameLength* = 256;
@@ -105,10 +109,12 @@ MODULE Libraries;
       dir*: Path; (* its tuple directory *)
       triple*: Name;
       model*: ARRAY 3 OF CHAR;
+      pocVersion*: Name; (* the poc that wrote it; empty if its manifest does not say *)
       modules*: Member;
       needs*: Need;
       lto*: BOOLEAN; (* its objects are LLVM bitcode (Phase 12 step 2g) *)
       used*: BOOLEAN; (* linked into the program being built *)
+      refused: BOOLEAN; (* its manifest was wrong, said once (Load) *)
       next: Library; (* in loaded *)
       linkNext*: Library (* in linkOrder *)
     END;
@@ -369,8 +375,9 @@ MODULE Libraries;
   END NewLibrary;
 
   (* The library name whose manifest is in dir, read once. NIL, having said
-     why on Err, when the manifest cannot be read or is not for this target
-     and size model. *)
+     why on Err, when the manifest cannot be read, is not for this target
+     and size model, or was written by another version of poc; a manifest
+     refused is remembered, so it is said once. *)
   PROCEDURE Load(name, dir: ARRAY OF CHAR): Library;
     VAR
       lib: Library; path: Path; f: Files.File; r: Files.Rider; line: ARRAY lineLength OF CHAR;
@@ -378,7 +385,9 @@ MODULE Libraries;
   BEGIN
     lib := loaded;
     WHILE (lib # NIL) & ((lib.name # name) OR (lib.dir # dir)) DO lib := lib.next END;
-    IF lib # NIL THEN RETURN lib END;
+    IF lib # NIL THEN
+      IF lib.refused THEN RETURN NIL ELSE RETURN lib END
+    END;
     JoinPath(dir, name, path); Append(path, ".library");
     f := Files.Old(path);
     IF f = NIL THEN
@@ -386,13 +395,15 @@ MODULE Libraries;
       INC(errors);
       RETURN NIL
     END;
-    lib := NewLibrary(name, dir); lib.triple[0] := 0X; lib.model[0] := 0X;
+    lib := NewLibrary(name, dir); lib.triple[0] := 0X; lib.model[0] := 0X; lib.pocVersion[0] := 0X;
+    lib.refused := TRUE; lib.next := loaded; loaded := lib;
     ok := TRUE; m := NIL;
     Files.Set(r, f, 0);
     REPEAT
       Files.ReadLine(r, line);
       SplitLine(line, w0, w1, w2, w3);
       IF w0 = "library" THEN ok := w1 = name
+      ELSIF w0 = "poc" THEN COPY(w1, lib.pocVersion)
       ELSIF w0 = "triple" THEN COPY(w1, lib.triple)
       ELSIF w0 = "model" THEN COPY(w1, lib.model)
       ELSIF w0 = "needs" THEN AddNeed(lib, w1)
@@ -420,8 +431,16 @@ MODULE Libraries;
       Err.String(triple); Err.String(" "); Err.String(model); Err.Ln;
       INC(errors);
       RETURN NIL
+    ELSIF lib.pocVersion # Version.number THEN
+      Err.String("poc: the library "); Err.String(name); Err.String(" in "); Err.String(dir);
+      IF lib.pocVersion[0] = 0X THEN Err.String(" was written by a poc that did not record its version")
+      ELSE Err.String(" was written by poc "); Err.String(lib.pocVersion)
+      END;
+      Err.String(", not "); Err.String(Version.number); Err.String(": rebuild it"); Err.Ln;
+      INC(errors);
+      RETURN NIL
     END;
-    lib.next := loaded; loaded := lib;
+    lib.refused := FALSE;
     RETURN lib
   END Load;
 
@@ -514,6 +533,7 @@ MODULE Libraries;
     IF f = NIL THEN Err.String("poc: cannot write "); Err.String(path); Err.Ln; RETURN FALSE END;
     Files.Set(w, f, 0);
     WriteLine(w, "library", lib.name, "", "");
+    WriteLine(w, "poc", Version.number, "", "");
     WriteLine(w, "triple", lib.triple, "", "");
     WriteLine(w, "model", lib.model, "", "");
     IF lib.lto THEN WriteLine(w, "lto", "", "", "") END;

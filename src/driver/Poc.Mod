@@ -66,7 +66,7 @@ MODULE Poc;
   IMPORT Modules, Files, Out, Err, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
          ConstantEvaluator, PredeclaredProcedures, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator,
-         DecimalToDouble, NestedProcedures, Libraries;
+         DecimalToDouble, NestedProcedures, Libraries, Version, BuildInfo;
   (* DecimalToDouble is used only inside ConstantEvaluator's procedure
      bodies, and voc's symbol file records only the imports an exported
      declaration needs, so Stage 0's link line would otherwise miss it: this
@@ -319,6 +319,30 @@ MODULE Poc;
     END
   END PrintLibraryPath;
 
+  (* poc -version (Phase 13 step 1): the version, and the commit of a build
+     from a git checkout; the target and size model a command would use
+     here, after any -target, -O2 or -OC before it; and the clang poc runs *)
+  PROCEDURE PrintVersion(targetTriple: ARRAY OF CHAR);
+    VAR triple, line: ARRAY 256 OF CHAR; clang: BOOLEAN;
+  BEGIN
+    Out.String("poc "); Out.String(Version.number);
+    COPY(BuildInfo.commit, line);
+    IF line[0] # 0X THEN Out.String(" ("); Out.String(line); Out.String(")") END;
+    Out.Ln;
+    clang := LLVMToolchainDriver.ClangVersion(line);
+    Out.String("target ");
+    IF targetTriple[0] # 0X THEN Out.String(targetTriple)
+    ELSIF clang & LLVMToolchainDriver.HostTriple(triple) & (triple[0] # 0X) THEN
+      Out.String(triple); Out.String(" (clang's default)")
+    ELSE Out.String("unknown (clang's default, and there is no clang)")
+    END;
+    Out.String(", size model ");
+    IF ConstantEvaluator.sizeModel = MemoryLayout.sizeModelO2 THEN Out.String("-O2") ELSE Out.String("-OC") END;
+    Out.Ln;
+    IF clang THEN Out.String(line) ELSE Out.String("clang: not found (poc runs clang from PATH)") END;
+    Out.Ln
+  END PrintVersion;
+
   (* ModuleInterface.explainMissingModule (Phase 12 step 2e): notes on the
      import of name by importer that found neither source nor .sym - where
      they were looked for, a library that has name for the other size
@@ -354,6 +378,15 @@ MODULE Poc;
     END;
     Diagnostics.Note(line, column, text);
     IF triple[0] = 0X THEN RETURN END;
+    l := Libraries.FirstPathEntry();
+    WHILE (l # NIL) & ~Libraries.OwnerIn(l.dir, model, name, owner, libDir) DO l := l.next END;
+    IF l # NIL THEN
+      (* a library has it, but Load refused its manifest, and said why *)
+      COPY("library ", text); Strcat(text, owner); Strcat(text, " ("); Strcat(text, libDir);
+      Strcat(text, ") has "); Strcat(text, name); Strcat(text, ", but poc cannot use it (see above)");
+      Diagnostics.Note(line, column, text);
+      RETURN
+    END;
     l := Libraries.FirstPathEntry();
     IF l = NIL THEN
       Diagnostics.Note(line, column, "the library path is empty")
@@ -1765,6 +1798,7 @@ MODULE Poc;
     Err.String("       poc -install-library <name>"); Err.Ln;
     Err.String("       poc [-import-path <dir> | -clear-import-path]... -print-import-path"); Err.Ln;
     Err.String("       poc [-library-path <dir> | -clear-library-path]... -print-library-path"); Err.Ln;
+    Err.String("       poc [-target <triple>] [-O2 | -OC] -version"); Err.Ln;
     Err.String("       -import-path <dir> and -clear-import-path may also precede any"); Err.Ln;
     Err.String("       command above; POC_IMPORT_PATH seeds the list (colon-separated)"); Err.Ln;
     Err.String("       before any flags are applied"); Err.Ln;
@@ -1920,6 +1954,9 @@ MODULE Poc;
           INC(i)
         ELSIF arg = "-print-library-path" THEN
           PrintLibraryPath;
+          INC(i); done := TRUE
+        ELSIF arg = "-version" THEN
+          PrintVersion(targetTriple);
           INC(i); done := TRUE
         ELSIF arg = "-shared-libraries" THEN
           sharedLibraries := TRUE;

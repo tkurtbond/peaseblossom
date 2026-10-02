@@ -417,6 +417,27 @@ mismatch).
    whether a build from a git checkout adds the commit. Every `.sym`,
    library manifest and object could record the poc version that wrote it;
    decide whether a mismatch is refused, warned about or ignored.
+   **Done (2026-10-02).** Decided with the user: 0.x.y, starting at 0.1.0,
+   until a release meant for others; a build from a git checkout adds its
+   commit; only a library's manifest records the version, and a library
+   another version wrote is refused. `src/driver/Version.Mod` holds the
+   number. `tools/build-info` writes `build/gen/BuildInfo.Mod`, the commit
+   (`-dirty` when tracked files differ, empty with no `.git`), rewriting it
+   only when that changes; `make` runs it every time, so a new commit
+   rebuilds poc, and each bootstrap stage runs it too, so a stage still
+   works alone. `poc -version` (after any `-target`, `-O2`, `-OC`) prints
+   `poc 0.1.0 (<commit>)`, the target and size model, and the first line of
+   `clang --version` (or that there is none). The manifest's new line is
+   `poc <number>`: the number only, not the commit, since every commit
+   would otherwise make a developer's libraries unusable, and module keys
+   already refuse a changed interface. A library without the line, or
+   with another number, is refused with "rebuild it", once per library
+   (`Libraries.Load` now remembers a refused manifest, which was said once
+   per lookup before, for a wrong triple too), and the note on the import
+   it leaves missing points to that. `.sym` files and objects are
+   unchanged. Fixture `poc-version`; `poc-usage` has the new usage line,
+   and `llvm-libraries` and `llvm-using-modules` mask the manifest's
+   version.
 2. **What a user has to work with: a walk-through.** Before any code,
    use poc as a newcomer would, from the outside: a one-module program, a
    program of several modules in several directories, a library of the

@@ -2,6 +2,7 @@
 semantic OK, wrote library poc-rtl in lib/<triple>/O2
 semantic OK, wrote library shapes in lib/<triple>/O2
 library shapes
+poc <version>
 triple <triple>
 model O2
 needs poc-rtl

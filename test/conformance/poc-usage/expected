@@ -13,6 +13,7 @@ usage: poc -dump-tokens <file>
        poc -install-library <name>
        poc [-import-path <dir> | -clear-import-path]... -print-import-path
        poc [-library-path <dir> | -clear-library-path]... -print-library-path
+       poc [-target <triple>] [-O2 | -OC] -version
        -import-path <dir> and -clear-import-path may also precede any
        command above; POC_IMPORT_PATH seeds the list (colon-separated)
        before any flags are applied

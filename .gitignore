@@ -25,6 +25,7 @@ test/conformance/llvm-field-initializers/llvm-field-initializers
 test/conformance/llvm-var-initializers/llvm-var-initializers
 test/conformance/poc-opt-level/poc-opt-level
 test/conformance/poc-opt-level/clang.log
+test/conformance/poc-version/poc-version
 test/conformance/llvm-hello-world/llvm-hello-world
 test/conformance/llvm-control-flow/llvm-control-flow
 test/conformance/llvm-arrays-records/llvm-arrays-records
