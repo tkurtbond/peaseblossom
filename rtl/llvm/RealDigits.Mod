@@ -2,7 +2,8 @@ MODULE RealDigits;
 
   (* Phase 11 step 2 (inventory A3): the exact decimal digits of a LONGREAL,
      correctly rounded to any number of significant digits - what Out.Real
-     and Out.LongReal print from. Not part of the Oakwood library; an
+     and Out.LongReal print from - or to a decimal place (Fixed, what
+     Texts.WriteRealFix prints from). Not part of the Oakwood library; an
      internal module of the runtime, like GarbageCollectedHeap.
 
      v = m * 2^e exactly, m an integer below 2^53 and e >= -1074 (both read
@@ -93,16 +94,12 @@ MODULE RealDigits;
     RETURN remainder
   END DivSmall;
 
-  (* The digits of v > 0 (finite), rounded to precision significant digits
-     (nearest, ties to even), in digits[0 .. precision - 1] followed by 0X:
-     v is about d0.d1d2... * 10^exponent10. digits has room for precision + 1
-     characters. *)
-  PROCEDURE Digits*(v: LONGREAL; precision: INTEGER; VAR digits: ARRAY OF CHAR;
-                    VAR exponent10: INTEGER);
+  (* all[0 .. count-1] := the exact decimal digits of v > 0 (finite), most
+     significant first, no trailing zeros: v = 0.all * 10^(exponent10 + 1) *)
+  PROCEDURE ExactDigits(v: LONGREAL; VAR all: ARRAY OF CHAR; VAR count, exponent10: INTEGER);
     VAR
-      n: Big; bits, m, group: HUGEINT; biased, e, i, j, count, pointShift, d: INTEGER;
-      all: ARRAY 800 OF CHAR;
-      up, anyBelow: BOOLEAN; swap: CHAR;
+      n: Big; bits, m, group: HUGEINT; biased, e, i, j, pointShift: INTEGER;
+      swap: CHAR;
   BEGIN
     bits := SYSTEM.VAL(HUGEINT, v);
     biased := SYSTEM.VAL(INTEGER, (bits DIV mantissaTop) MOD 800H);
@@ -130,15 +127,28 @@ MODULE RealDigits;
     WHILE (count > 1) & (all[count - 1] = "0") DO DEC(count) END;
     i := 0; j := count - 1;
     WHILE i < j DO swap := all[i]; all[i] := all[j]; all[j] := swap; INC(i); DEC(j) END;
-    exponent10 := count - 1 + pointShift;
+    exponent10 := count - 1 + pointShift
+  END ExactDigits;
 
+  (* digits[0 .. precision-1] := all[0 .. count-1] rounded to precision >= 0
+     digits (nearest, ties to even), "0"s past count; precision 0 rounds
+     to 0 or to one unit in the place above the first digit, which then
+     becomes digits[0] = "1" (with exponent10 one higher, as when every
+     digit was 9). Whether that happened is the result. *)
+  PROCEDURE RoundDigits(VAR all: ARRAY OF CHAR; count, precision: INTEGER;
+                        VAR digits: ARRAY OF CHAR; VAR exponent10: INTEGER): BOOLEAN;
+    VAR i, d: INTEGER; up, anyBelow, previousOdd: BOOLEAN;
+  BEGIN
     up := FALSE;
     IF count > precision THEN
       d := ORD(all[precision]) - 48;
       anyBelow := FALSE; i := precision + 1;
       WHILE i < count DO IF all[i] # "0" THEN anyBelow := TRUE END; INC(i) END;
+      IF precision > 0 THEN previousOdd := ODD(ORD(all[precision - 1]) - 48)
+      ELSE previousOdd := FALSE
+      END;
       IF d > 5 THEN up := TRUE
-      ELSIF d = 5 THEN up := anyBelow OR ODD(ORD(all[precision - 1]) - 48)
+      ELSIF d = 5 THEN up := anyBelow OR previousOdd
       END
     END;
     i := 0;
@@ -146,16 +156,52 @@ MODULE RealDigits;
       IF i < count THEN digits[i] := all[i] ELSE digits[i] := "0" END;
       INC(i)
     END;
-    digits[precision] := 0X;
     IF up THEN
       i := precision - 1;
       WHILE (i >= 0) & (digits[i] = "9") DO digits[i] := "0"; DEC(i) END;
       IF i >= 0 THEN
         digits[i] := CHR(ORD(digits[i]) + 1)
-      ELSE (* every digit was 9: 10^precision *)
+      ELSE (* every digit was 9, or there were none: a power of 10 *)
         digits[0] := "1"; INC(exponent10)
       END
-    END
+    END;
+    RETURN up & (i < 0)
+  END RoundDigits;
+
+  (* The digits of v > 0 (finite), rounded to precision significant digits
+     (nearest, ties to even), in digits[0 .. precision - 1] followed by 0X:
+     v is about d0.d1d2... * 10^exponent10. digits has room for precision + 1
+     characters. *)
+  PROCEDURE Digits*(v: LONGREAL; precision: INTEGER; VAR digits: ARRAY OF CHAR;
+                    VAR exponent10: INTEGER);
+    VAR all: ARRAY 800 OF CHAR; count: INTEGER; carried: BOOLEAN;
+  BEGIN
+    ExactDigits(v, all, count, exponent10);
+    carried := RoundDigits(all, count, precision, digits, exponent10);
+    digits[precision] := 0X
   END Digits;
+
+  (* v > 0 (finite) rounded to a multiple of 10^-decimals (nearest, ties to
+     even), keeping at most maxSignificant significant digits (rounding
+     there instead, if that comes first): the result is d0.d1... *
+     10^exponent10, digits[0 .. count-1] (count <= maxSignificant; count = 0
+     when it rounds to 0). The digits of any place outside 0 .. count-1 are
+     0. digits has room for maxSignificant characters. *)
+  PROCEDURE Fixed*(v: LONGREAL; decimals, maxSignificant: INTEGER;
+                   VAR digits: ARRAY OF CHAR; VAR count, exponent10: INTEGER);
+    VAR all: ARRAY 800 OF CHAR; exactCount, precision: INTEGER;
+  BEGIN
+    ExactDigits(v, all, exactCount, exponent10);
+    precision := exponent10 + 1 + decimals;
+    IF precision > maxSignificant THEN precision := maxSignificant END;
+    IF precision < 0 THEN
+      count := 0
+    ELSIF RoundDigits(all, exactCount, precision, digits, exponent10) THEN
+      count := precision;
+      IF count = 0 THEN count := 1 END
+    ELSE
+      count := precision
+    END
+  END Fixed;
 
 END RealDigits.
