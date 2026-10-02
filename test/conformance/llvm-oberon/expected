@@ -1,0 +1,44 @@
+== oberon -O2
+par 30 0
+1 Name.sub
+312
+2 a string
+3-7
+1 /
+1 x
+to the log 42
+second line
+log 26
+inserted
+no selection
+-
+time ok
+clock ok
+== oberon -OC
+par 30 0
+1 Name.sub
+312
+2 a string
+3-7
+1 /
+1 x
+to the log 42
+second line
+log 26
+inserted
+no selection
+-
+time ok
+clock ok
+== beyond -O2
+par 301
+abc
+def
+log 4
+exit=0
+== beyond -OC
+par 301
+abc
+def
+log 4
+exit=0

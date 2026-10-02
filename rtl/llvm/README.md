@@ -53,6 +53,18 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   `ConvertL`, exact for any size; `ConvertH`, `ConvertHL`, the bytes in
   hexadecimal, least significant first as voc's). It takes a real's bits
   as an integer, so it does not depend on the byte order.
+- `Texts.Mod` - voc's `Texts` interface (Phase 12 step 5g), written for
+  poc: Oberon texts as pieces of files and elements, with readers,
+  scanners and writers and no display, kept in Oberon V4's file format.
+  An element is stored by its handler and loaded by calling the command
+  its module names (`Modules.ThisCommand`); one whose module is missing
+  is kept as an alien. Reals are written from `RealDigits` and scanned
+  with `strtof`/`strtod`, both correctly rounded. The module's header
+  lists where it differs from voc's.
+- `Oberon.Mod` - voc's `Oberon` interface (Phase 12 step 5h), written for
+  poc: the stub of the Oberon system's module, with no display. `Par.text`
+  holds the program's arguments, `Log` echoes what is inserted into it to
+  standard output through `Out`, and `GetClock`/`Time` are `Platform`'s.
 - `Out.Mod`, `In.Mod` - the Oakwood formatted output and input, with voc's
   interfaces. `Out` writes through `FormattedOutput` (unbuffered), and prints
   `REAL`/`LONGREAL` correctly rounded (`RealDigits.Mod`, big-integer

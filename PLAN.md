@@ -962,8 +962,32 @@ convenient, but must not be a prerequisite of it.
      voc, both size models, and what poc does alone).
    - **5g. `Texts`** (new; voc's file-based texts, readers, scanners and
      writers, no display: 38 procedures).
+     **Done (2026-10-02).** poc's own code with voc's 38 procedures: a
+     text is a ring of pieces of files and elements, in Oberon V4's file
+     format (and System 3 documents and plain files read); elements are
+     stored by their handlers and loaded through `Modules.ThisCommand`,
+     an unknown one kept as an alien. Differences kept, all where voc's
+     answer is wrong or stops the program (the module's header lists
+     them): real numbers written and scanned correctly rounded
+     (`RealDigits.Fixed` is new for `WriteRealFix`), a scanned number past
+     the range an infinity, a loaded text keeps its fonts, CR LF in a
+     plain file one line end when stored, a NIL font the default one,
+     an element whose handler does not copy it left out of a copy.
+     Fixture `llvm-texts` (against voc, `-O2` only: voc's `-OC`
+     `Files.ReadLInt` reads an element's negative length as a large
+     positive one, 5d, so its `Load` stops on any text with elements).
+     All six modules that import `Texts` or `Oberon` now pass `poc -check`.
    - **5h. `Oberon`** (new; the stub system module: `Log`, `Par`,
      `Time`, `GetClock`).
+     **Done (2026-10-02).** poc's own code with voc's interface (`Log`,
+     `Par`, `OptionChar`, `GetClock`, `Time`, `GetSelection`): `Par.text`
+     holds the program's arguments, each followed by a blank; `Log` echoes
+     to standard output what is inserted into it. Differences kept: an
+     argument is copied whole (voc's cuts it at 255 characters), and only
+     an insertion into `Log` is echoed (voc's also echoes after a deletion
+     or a change of looks, writing the text that then stands at those
+     positions). Fixture `llvm-oberon` (against voc, both size models, and
+     what poc does alone).
 
 6. **Exit gate.** Every runtime module of step 5 builds into `poc-rtl`,
    static and shared, and passes its fixtures at both word sizes on

@@ -142,3 +142,4 @@ test/conformance/llvm-files-riders/*.exe
 test/conformance/llvm-modules-commands/*.exe
 test/conformance/llvm-reals-module/*.exe
 test/conformance/llvm-texts/llvm-texts
+test/conformance/llvm-oberon/*.exe

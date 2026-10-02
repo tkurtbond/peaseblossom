@@ -33,7 +33,7 @@ EXPLANATIONS = {
     'ulmSYSTEM': 'function with an empty body (voc accepts; the report does not)'}
 
 # What poc's rtl/llvm has of voc's runtime and v4 modules of the same name
-# (compared by hand, 2026-09-27; Platform, VT100, Files, Modules and Reals 2026-10-02); the rest, "no"
+# (compared by hand, 2026-09-27; Platform, VT100, Files, Modules, Reals, Texts and Oberon 2026-10-02); the rest, "no"
 IN_POC = {'In': 'yes, whole interface', 'Out': 'yes, whole interface', 'Strings': 'yes, whole interface',
           'Math': 'yes, whole interface (own code over libm)', 'MathL': 'yes, whole interface (own code over libm)',
           'Files': 'yes, whole interface (own code over C stdio)',
@@ -41,6 +41,8 @@ IN_POC = {'In': 'yes, whole interface', 'Out': 'yes, whole interface', 'Strings'
           'Platform': 'yes, whole interface (its C part in Platform.c)', 'Console': 'yes (v4 interface)',
           'VT100': 'yes, whole interface (own code)',
           'Reals': 'yes, whole interface (own code; TenL correctly rounded)',
+          'Texts': 'yes, whole interface (own code; no display)',
+          'Oberon': 'yes, whole interface (own code; no display)',
           'Heap': 'no: poc has its own collector (GarbageCollectedHeap)'}
 
 
