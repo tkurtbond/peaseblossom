@@ -27,18 +27,16 @@ EXPLANATIONS = {
     'oocXYplane': 'inline C', 'ulmSysStat': 'inline C',
     'Args': 'poc Platform lacks getEnv', 'Reals': 'poc Platform lacks LittleEndian',
     'oocSysClock': 'poc Platform lacks GetTimeOfDay', 'oocFilesHost': 'poc Platform lacks FileHandle',
-    'MultiArrays': 'poc Platform lacks Time', 'Printer': 'poc Files lacks ReadInt',
-    'ethBTrees': 'poc Files lacks ReadLInt', 'ethZlibReaders': 'poc Files lacks ReadBytes',
-    'ethReals': 'poc Modules lacks Halt', 'crt': 'poc Platform lacks Delay',
+    'MultiArrays': 'poc Platform lacks Time', 'ethReals': 'poc Modules lacks Halt', 'crt': 'poc Platform lacks Delay',
     'ethZlibDeflate': 'LONG(CHAR) (voc; poc: use ORD)',
     'ulmTypes': 'POINTER [1] TO (voc untraced pointer; poc: use SYSTEM.ADDRESS)',
     'ulmSYSTEM': 'function with an empty body (voc accepts; the report does not)'}
 
 # What poc's rtl/llvm has of voc's runtime and v4 modules of the same name
-# (compared by hand, 2026-09-27; Platform and VT100 2026-10-02); the rest, "no"
+# (compared by hand, 2026-09-27; Platform, VT100 and Files 2026-10-02); the rest, "no"
 IN_POC = {'In': 'yes, whole interface', 'Out': 'yes, whole interface', 'Strings': 'yes, whole interface',
           'Math': 'yes, whole interface (own code over libm)', 'MathL': 'yes, whole interface (own code over libm)',
-          'Files': 'partly: 15 of 37 procedures (no typed Read/Write, GetDate, search path)',
+          'Files': 'yes, whole interface (own code over C stdio)',
           'Modules': 'partly: arguments only (no module list, commands, Halt)',
           'Platform': 'yes, whole interface (its C part in Platform.c)', 'Console': 'yes (v4 interface)',
           'VT100': 'yes, whole interface (own code)',

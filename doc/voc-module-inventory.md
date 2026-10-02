@@ -89,8 +89,9 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
    `Oberon` itself, `Sets` (v4), and `ethBase64`, `ethDates`, `ethSets`,
    `ethStrings` (s3). voc's `Texts` is a file-based text (no display),
    importing `Files`, `Modules` and `Reals`.
-5. **Accepted by poc today** (56 since the four language fixes of
-   finding 6 that followed it; 52 once step 5a gave poc the whole of
+5. **Accepted by poc today** (60 since step 5d gave poc the whole of
+   `Files`, 2026-10-02; 56 after the four language fixes of
+   finding 6 that followed 5a; 52 once step 5a gave poc the whole of
    `Platform`, 2026-10-02; 34 before that, and 23 before the first
    language fixes of finding 6): `Reals`, `Args`, `oocAscii`, `oocC`,
    `oocCharClass`, `oocComplexMath`, `oocConvTypes`, `oocFilenames`,
@@ -104,7 +105,8 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
    `ooc2Strings`, `ethMD5`, `ethRandomNumbers`, `ethUnicode`, `ethZlib`,
    `ethZlibBuffers`, `ethZlibInflate`, `ulmASCII`, `ulmDisciplines`,
    `ulmIEEE`, `ulmObjects`, `ulmSys`, `Listen`, `MersenneTwister`,
-   `MultiArrayRiders`, `MultiArrays`, `crt`, `powStrings`. (`VT100` was
+   `MultiArrayRiders`, `MultiArrays`, `crt`, `powStrings`, and since 5d
+   `Printer`, `ethBTrees`, `ethGZReaders`, `ethZlibReaders`. (`VT100` was
    one; poc has its own since step 5b.) Accepted means it type-checks,
    not that it runs as under voc.
 6. **Language points** (the first error of a module), with what the
@@ -222,7 +224,7 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 
 | Module | File | Purpose | Imports | Lines | Pulls in | Depends on | Family | voc builds | poc -check | In poc | Licence |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Files | `runtime/Files.Mod` | Oberon files and riders over Unix files (Oakwood Files plus voc extras: typed Read/Write, search path, GetDate) | SYSTEM Platform Heap Strings Out | 765 | 5 | inline C (1), Platform, SYSTEM | voc runtime, Oakwood | O2, OC | poc has its own | partly: 15 of 37 procedures (no typed Read/Write, GetDate, search path) | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
+| Files | `runtime/Files.Mod` | Oberon files and riders over Unix files (Oakwood Files plus voc extras: typed Read/Write, search path, GetDate) | SYSTEM Platform Heap Strings Out | 765 | 5 | inline C (1), Platform, SYSTEM | voc runtime, Oakwood | O2, OC | poc has its own | yes, whole interface (own code over C stdio) | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
 | Heap | `runtime/Heap.Mod` | voc's heap and garbage collector; module list; finalization | SYSTEM | 635 | 0 | inline C (9), SYSTEM | voc runtime | O2, OC | no: inline C | no: poc has its own collector (GarbageCollectedHeap) | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
 | In | `runtime/In.Mod` | Oakwood formatted input from standard input | Platform SYSTEM Strings Out | 173 | 5 | Platform, SYSTEM | voc runtime, Oakwood | O2, OC | poc has its own | yes, whole interface | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
 | Math | `runtime/Math.Mod` | Oakwood REAL mathematics (from OOC LowReal/RealMath) | SYSTEM Platform | 820 | 1 | Platform, SYSTEM | voc runtime, Oakwood | O2, OC | poc has its own | yes, whole interface (own code over libm) | LGPL 2.1+ (header) |
@@ -243,7 +245,7 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Args | `library/v4/Args.Mod` | command-line arguments and environment (Ofront/V4 style) | Platform Modules SYSTEM | 31 | 3 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | accepted | no | none in file; Ofront (FreeBSD, README) |
 | Console | `library/v4/Console.Mod` | unbuffered text output to standard output (Ofront style) | SYSTEM Platform | 88 | 1 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | poc has its own | yes (v4 interface) | none in file; Ofront (FreeBSD, README) |
-| Printer | `library/v4/Printer.Mod` | PostScript printer driver of Oberon V4 (Unix) | SYSTEM Files Platform | 655 | 6 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | no: poc Files lacks ReadInt | no | none in file; Ofront (FreeBSD, README) |
+| Printer | `library/v4/Printer.Mod` | PostScript printer driver of Oberon V4 (Unix) | SYSTEM Files Platform | 655 | 6 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | accepted | no | none in file; Ofront (FreeBSD, README) |
 | Sets | `library/v4/Sets.Mod` | SET operations and output to Texts (V4) | Texts | 137 | 8 | Platform, Texts | Ofront / Oberon V4 | O2 | no, through Heap Texts | no | none in file; Ofront (FreeBSD, README) |
 
 ### `library/ooc` (38 files)
@@ -315,10 +317,10 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 
 | Module | File | Purpose | Imports | Lines | Pulls in | Depends on | Family | voc builds | poc -check | In poc | Licence |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| ethBTrees | `library/s3/ethBTrees.Mod` | B-trees over Files (keys LONGINT or strings) | Files | 1135 | 6 | Platform | ETH Oberon System 3 | O2 | no: poc Files lacks ReadLInt | no | ETH Oberon licence (header) |
+| ethBTrees | `library/s3/ethBTrees.Mod` | B-trees over Files (keys LONGINT or strings) | Files | 1135 | 6 | Platform | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
 | ethBase64 | `library/s3/ethBase64.Mod` | Base64 encoding and decoding over Files/Texts | Files Texts Oberon Out | 233 | 9 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Texts | no | none in file |
 | ethDates | `library/s3/ethDates.Mod` | dates and times, conversion to text | Texts | 214 | 8 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Texts | no | ETH Oberon licence (header) |
-| ethGZReaders | `library/s3/ethGZReaders.Mod` | reading gzip files (pure Oberon zlib) | Files ethZlibReaders | 169 | 10 | Platform | ETH Oberon System 3 | O2 | no, through Heap ethZlibReaders | no | ETH Oberon licence (header) |
+| ethGZReaders | `library/s3/ethGZReaders.Mod` | reading gzip files (pure Oberon zlib) | Files ethZlibReaders | 169 | 10 | Platform | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
 | ethGZWriters | `library/s3/ethGZWriters.Mod` | writing gzip files (pure Oberon zlib) | Files ethZlibWriters | 113 | 10 | Platform | ETH Oberon System 3 | O2 | no, through Heap ethZlibDeflate | no | ETH Oberon licence (header) |
 | ethMD5 | `library/s3/ethMD5.Mod` | MD5 message digest | SYSTEM | 298 | 0 | SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
 | ethRandomNumbers | `library/s3/ethRandomNumbers.Mod` | random numbers (uniform, exponential, ...) | oocOakMath Platform SYSTEM | 40 | 6 | Platform, SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
@@ -326,12 +328,12 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 | ethSets | `library/s3/ethSets.Mod` | SET operations and output to Texts | Texts | 141 | 8 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Texts | no | ETH Oberon licence (header) |
 | ethStrings | `library/s3/ethStrings.Mod` | string operations and conversions (ETH) | Texts ethDates ethReals | 961 | 10 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Texts ethReals | no | ETH Oberon licence (header) |
 | ethUnicode | `library/s3/ethUnicode.Mod` | UCS/UTF-8 conversion | SYSTEM | 216 | 0 | SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
-| ethZip | `library/s3/ethZip.Mod` | zip archives (pure Oberon zlib) | Files ethZlib ethZlibReaders ethZlibWriters | 746 | 12 | Platform | ETH Oberon System 3 | O2 | no, through Heap ethZlibDeflate ethZlibReaders | no | ETH Oberon licence (header) |
+| ethZip | `library/s3/ethZip.Mod` | zip archives (pure Oberon zlib) | Files ethZlib ethZlibReaders ethZlibWriters | 746 | 12 | Platform | ETH Oberon System 3 | O2 | no, through Heap ethZlibDeflate | no | ETH Oberon licence (header) |
 | ethZlib | `library/s3/ethZlib.Mod` | zlib core: constants, streams, adler32/crc32 (pure Oberon) | SYSTEM | 160 | 0 | SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
 | ethZlibBuffers | `library/s3/ethZlibBuffers.Mod` | buffers for the zlib modules | SYSTEM | 116 | 0 | SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
 | ethZlibDeflate | `library/s3/ethZlibDeflate.Mod` | deflate compression (pure Oberon) | SYSTEM ethZlib ethZlibBuffers | 1493 | 2 | SYSTEM | ETH Oberon System 3 | O2 | no: LONG(CHAR) (voc; poc: use ORD) | no | ETH Oberon licence (header) |
 | ethZlibInflate | `library/s3/ethZlibInflate.Mod` | inflate decompression (pure Oberon) | SYSTEM ethZlib ethZlibBuffers | 1233 | 2 | SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
-| ethZlibReaders | `library/s3/ethZlibReaders.Mod` | readers that inflate | Files ethZlib ethZlibBuffers ethZlibInflate | 113 | 9 | Platform | ETH Oberon System 3 | O2 | no: poc Files lacks ReadBytes | no | ETH Oberon licence (header) |
+| ethZlibReaders | `library/s3/ethZlibReaders.Mod` | readers that inflate | Files ethZlib ethZlibBuffers ethZlibInflate | 113 | 9 | Platform | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
 | ethZlibWriters | `library/s3/ethZlibWriters.Mod` | writers that deflate | Files ethZlib ethZlibBuffers ethZlibDeflate | 161 | 9 | Platform | ETH Oberon System 3 | O2 | no, through Heap ethZlibDeflate | no | ETH Oberon licence (header) |
 
 ### `library/ulm` (54 files)

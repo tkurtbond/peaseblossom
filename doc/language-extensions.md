@@ -91,7 +91,16 @@ against real voc 2026-09-20). What a program can observe:
 
 - **`SYSTEM.BYTE`** is one byte; `CHAR` and `SHORTINT` are assignable to it,
   not back (use `VAL`). A `VAR x: ARRAY OF BYTE` parameter takes a variable of
-  any type, its hidden length the actual's size in bytes.
+  any type, its hidden length the actual's size in bytes. Since Phase 12
+  step 5d (decided with the user 2026-10-02, for voc's `Files.Read`): the
+  Oakwood Guidelines' rule (1.2.5), a parameter of type `BYTE` takes a
+  `CHAR`, a `SHORTINT` or a `BYTE`, so a `VAR x: BYTE` one takes such a
+  variable, and a `BOOLEAN` too, as voc's. A `SHORTINT` only where it is one
+  byte, as Oakwood's and the report's Ceres have it (and voc): under `-O2`,
+  not `-OC`, for assignment too; an integer constant only in -128..127
+  (under `-OC` a constant's minimal type is a two-byte `SHORTINT`). voc
+  also takes a `SYSTEM.INT8` variable for a `VAR BYTE`; poc does not.
+  Fixture `semantic-system-byte-params`.
 - **`SYSTEM.PTR`** is a pointer to an empty record: any pointer is assignable
   to it and a `VAR p: PTR` takes any pointer variable; it may be compared
   with any pointer or `NIL` (voc rejects that). **A `PTR` is opaque**: it

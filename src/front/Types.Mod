@@ -967,8 +967,11 @@ MODULE Types;
     IF SameType(dst, src) THEN RETURN ~IsOpenArray(dst) (* rule 1 (subsumes rule 7) *)
     ELSIF Includes(dst, src) THEN RETURN TRUE (* rule 2 *)
     ELSIF (dst = Set64) & (src = Set) THEN RETURN TRUE (* a SET is included in a SET64 *)
-    ELSIF (dst = Byte) & ((src = Char) OR (src = ShortInt)) THEN
-      RETURN TRUE (* Appendix C: SYSTEM.BYTE takes a CHAR or a SHORTINT *)
+    ELSIF (dst = Byte) & ((src = Char) OR (src = ShortInt) & (IntegerBytes(ShortInt) = 1)) THEN
+      (* Appendix C: SYSTEM.BYTE takes a CHAR or a SHORTINT - a one-byte
+         one, as on Ceres and in the Oakwood Guidelines (1.2.5): -O2, not
+         -OC, as voc (Phase 12 step 5d, 2026-10-02) *)
+      RETURN TRUE
     ELSIF (dst = Ptr) & (src # NIL) & (src IS PointerType) THEN
       RETURN TRUE (* Appendix C: SYSTEM.PTR takes any pointer *)
     ELSIF (dst # NIL) & (src # NIL) & (dst IS RecordType) & (src IS RecordType) THEN

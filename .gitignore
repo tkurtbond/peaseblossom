@@ -138,3 +138,4 @@ test/conformance/llvm-vt100/llvm-vt100
 test/conformance/llvm-voc-library-fixes/llvm-voc-library-fixes
 test/conformance/llvm-gc-finalize/llvm-gc-finalize
 test/conformance/llvm-gc-finalize/*.exe
+test/conformance/llvm-files-riders/*.exe

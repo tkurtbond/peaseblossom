@@ -29,12 +29,14 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   interface (Phase 12 step 5b), written for poc: cursor movement, erasing,
   scrolling, colours and attributes, written through `Out`. Unlike voc's,
   every number is written whole and `DSR` sends its argument.
-- `Files.Mod` - Oberon files (`File`, `Rider`, `New`, `Old`, `Register`,
-  `Close`, `Length`, `Set`, `Read`, `Write`, `ReadString`, `ReadLine`,
-  `WriteString`, ...) over C stdio, which is what keeps it portable across
-  Linux and the BSDs. A new file is a temporary one until `Register`.
-  Needs `NEW`, so the collector modules below are added to any program
-  that imports it.
+- `Files.Mod` - Oberon files with voc's whole interface (`File`, `Rider`,
+  `New`, `Old`, `Register`, `Read`/`Write` of a `SYSTEM.BYTE`, the typed
+  riders in Oakwood's external format, the search path, ...) over C stdio,
+  which is what keeps it portable across Linux and the BSDs. A new file is
+  a temporary one until `Register`; a `File` dropped unclosed is closed by
+  the collector's finalization, its temporary file deleted. Needs `NEW`,
+  so the collector modules below are added to any program that imports
+  it.
 - `Modules.Mod` - the command line: `ArgCount`, `GetArg`, `GetIntArg`,
   `ArgPos`. A program that contains this module gets a `main` taking argc
   and argv, which it passes to `Modules.Init` before any module body runs;

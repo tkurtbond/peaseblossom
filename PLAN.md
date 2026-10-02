@@ -893,11 +893,27 @@ convenient, but must not be a prerequisite of it.
      roots, and each finalizer is called after the collection, taken off
      the table first (`GarbageCollectedHeap`, "FINALIZATION"; also
      `FinalizeAll`, voc's `FINALL`). Fixture `llvm-gc-finalize`.
-   - **5d. `Files`** (15 of 37): the typed riders (`Read`/`Write` of
+   - **5d. `Files`** (15 of 37 until then): the typed riders (`Read`/`Write` of
      `Bool`, `Byte`, `Bytes`, `Int`, `LInt`, `Real`, `LReal`, `Set`,
      `Num`), `GetDate`, `GetName`, `Purge`, `ChangeDirectory`,
      `SetSearchPath`, `MaxNameLength`, `MaxPathLength`; and 5c's
      finalization of a `File` dropped without `Close`, as voc's does.
+     **Done (2026-10-02).** `Files` has voc's whole interface (37
+     procedures). Decided with the user, from the Oakwood Guidelines
+     (1.2.5): `Read`/`Write`/`ReadByte` take a `SYSTEM.BYTE`, and a `BYTE`
+     parameter takes a `CHAR`, a `SHORTINT` (where it is one byte, `-O2`)
+     or a `BYTE`, a `VAR` one a `BOOLEAN` too, as voc's (a checker change,
+     `doc/language-extensions.md`, "SYSTEM subset"; voc's `INT8` not
+     taken); the typed riders write Oakwood's external format under both
+     size models (an `INTEGER` 2 bytes, a `LONGINT` 4, little-endian) and
+     read it back sign-extended, where voc's `-OC` reads a negative number
+     as a large positive one. Every `File` is registered for
+     finalization: dropped or left at the end, its stream is closed and a
+     never-registered `New` file's temporary file deleted. `GetName` gives
+     the name as given, as voc's (a temporary file's is absolute). voc's
+     `Delete` of a file it has open answers 2 though it deleted it; poc's
+     0. Fixtures `llvm-files-riders` (against voc, both size models, the
+     bytes too, and what poc does alone), `semantic-system-byte-params`.
    - **5e. `Modules`** (4 of 9): `Halt`, `AssertFail`, `Free`,
      `res`/`resMsg`, `imported`/`importing`, `BinaryDir`, and `ThisMod`/
      `ThisCommand` in full, as voc (user, 2026-09-27): each module's

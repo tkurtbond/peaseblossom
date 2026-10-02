@@ -1,0 +1,16 @@
+== -O2
+byteparams.mod:16:5: error: argument type does not match the VAR parameter
+byteparams.mod:17:5: error: argument type does not match the VAR parameter
+byteparams.mod:18:5: error: argument is not assignment compatible with the parameter
+byteparams.mod:19:5: error: argument is not assignment compatible with the parameter
+byteparams.mod:20:5: error: argument is not assignment compatible with the parameter
+5 error(s)
+== -OC
+byteparams.mod:14:5: error: argument type does not match the VAR parameter
+byteparams.mod:15:11: error: argument is not assignment compatible with the parameter
+byteparams.mod:16:5: error: argument type does not match the VAR parameter
+byteparams.mod:17:5: error: argument type does not match the VAR parameter
+byteparams.mod:18:5: error: argument is not assignment compatible with the parameter
+byteparams.mod:19:5: error: argument is not assignment compatible with the parameter
+byteparams.mod:20:5: error: argument is not assignment compatible with the parameter
+7 error(s)

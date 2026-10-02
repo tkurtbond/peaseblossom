@@ -1,0 +1,70 @@
+== riders -O2
+max lengths positive: yes
+length 54
+01 00 D2 04 FF 7F 15 CD 5B 07 FF FF FF 7F 21 02
+00 80 00 00 C0 3F 00 00 00 00 00 00 02 C0 61 62
+63 00 00 3F C0 00 40 BF 7F AC 02 D4 7D 95 9A EF
+3A 78 79 7A 51 07 
+bool TRUE FALSE
+int 1234 32767
+lint 123456789 2147483647
+set  0  5  9 31
+reals 15 -225
+string abc
+nums    0   63   64  -64  -65  300 -300 123456789
+bytes xyz 0
+read into CHAR Q
+read into BOOLEAN TRUE
+read into BYTE 7
+short read res 3 eof TRUE
+name riders.bin
+date plausible yes
+purged length 0
+without the path NIL
+with the path found inner line inner.txt
+chdir 0 found 0
+deleted yes
+== riders -OC
+max lengths positive: yes
+length 54
+01 00 D2 04 FF 7F 15 CD 5B 07 FF FF FF 7F 21 02
+00 80 00 00 C0 3F 00 00 00 00 00 00 02 C0 61 62
+63 00 00 3F C0 00 40 BF 7F AC 02 D4 7D 95 9A EF
+3A 78 79 7A 51 07 
+bool TRUE FALSE
+int 1234 32767
+lint 123456789 2147483647
+set  0  5  9 31
+reals 15 -225
+string abc
+nums    0   63   64  -64  -65  300 -300 123456789
+bytes xyz 0
+read into CHAR Q
+read into BOOLEAN TRUE
+read into BYTE 7
+short read res 3 eof TRUE
+name riders.bin
+date plausible yes
+purged length 0
+without the path NIL
+with the path found inner line inner.txt
+chdir 0 found 0
+deleted yes
+== signed -O2
+-2 -32768 -5 -2147483648 32767
+-300   4464
+ReadBytes of 5 into 4:
+index out of range
+exit=2
+kept.txt: written at the end
+dropped.txt: 
+temporary files left: 0
+== signed -OC
+-2 -32768 -5 -2147483648    -1
+-300  70000
+ReadBytes of 5 into 4:
+index out of range
+exit=2
+kept.txt: written at the end
+dropped.txt: 
+temporary files left: 0

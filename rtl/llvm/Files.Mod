@@ -1,14 +1,26 @@
 MODULE Files;
 
-  (* PLAN.md Phase 10 step 3: Oberon files - the Oakwood Guidelines' Files
-     module as voc has it (src/runtime/Files.Mod), reduced to what poc's own
-     source calls plus a few of its neighbours: File and Rider, New, Old,
-     Register, Close, Length, Set, Pos, Base, Read, Write, ReadString,
-     ReadLine, WriteString, Delete and Rename. Not here: the typed
-     read/write procedures (ReadInt, WriteReal, ...), ReadBytes/WriteBytes
-     and Purge, GetDate, GetName and SetSearchPath. Read and Write take a
-     CHAR where voc's take SYSTEM.BYTE, which poc has had since Phase 10
-     step 7; changing them is a Phase 11 question (a BYTE is not a CHAR).
+  (* PLAN.md Phase 10 step 3 and Phase 12 step 5d: Oberon files - the
+     Oakwood Guidelines' Files module with voc's interface (src/runtime/
+     Files.Mod): File and Rider, New, Old, Register, Close, Purge, Length,
+     GetDate, GetName, Set, Pos, Base, Read, ReadByte, ReadBytes, Write,
+     WriteBytes, the typed riders (Read/Write Bool, Int, LInt, Set, Real,
+     LReal, String, Num, and ReadLine), Delete, Rename, ChangeDirectory,
+     SetSearchPath, MaxNameLength and MaxPathLength. Read, Write and
+     ReadByte take a SYSTEM.BYTE, so a CHAR, a BOOLEAN or a one-byte
+     SHORTINT variable can be read into (AGENTS.md, "SYSTEM subset").
+
+     THE EXTERNAL FORMAT of the typed riders is Oakwood's (1.2.5.4), under
+     both size models: little-endian, an INTEGER 2 bytes, a LONGINT 4, a
+     SET 4 (element 0 the least significant bit), a BOOLEAN 1 (0 or 1), a
+     REAL and a LONGREAL their IEEE 4 and 8 bytes, a string up to its 0X
+     and the 0X. So a file written under -O2 reads back under -OC and with
+     voc. Under -OC an INTEGER or a LONGINT wider than its format loses
+     its high bytes on the way out, as voc's does; a value read back is
+     sign-extended, where voc's -OC reads a negative one as a large
+     positive one (decided with the user 2026-10-02). WriteNum and
+     ReadNum are voc's variable-length numbers: seven bits a byte, the
+     last byte's top bit clear and its bit 6 the sign.
 
      THE MODEL. A File is a byte sequence with a length; a Rider is a
      position in one (r.position, set by Set) and the result of the last
@@ -38,19 +50,25 @@ MODULE Files;
      and a compiler that stops half way leaves the old file. Every name is
      made absolute when it is given (from Platform.CWD), so a program that
      changes directory between New and Register still registers where it
-     meant to. A New file never registered leaves its temporary file
-     behind, if anything was written to it (voc deletes it when the
-     garbage collector finalizes the File; this collector does not
-     finalize).
+     meant to.
 
-     OPEN STREAMS. Close writes everything out and closes the stream, but
-     the File stays usable: the next operation reopens it. That keeps a
-     program that opens many files from running out of descriptors even
-     though nothing here finalizes a File that is dropped without Close
-     (its stream stays open until the program ends, and unwritten data is
-     lost, as with voc's).
+     OPEN STREAMS AND FINALIZATION. Close writes everything out and closes
+     the stream, but the File stays usable: the next operation reopens it.
+     Every File is registered with the collector (GarbageCollectedHeap.
+     RegisterFinalizer, Phase 12 step 5c), as voc's are: when one is no
+     longer reachable, or the program ends, its stream is closed, its data
+     written, and the temporary file of a New file never registered is
+     deleted.
+
+     OLD AND THE SEARCH PATH. A name with a "/" in it is looked for where
+     it says. Any other is looked for in each directory of the search path
+     in turn, which is just the current directory until SetSearchPath
+     sets one: directories separated by ";", blanks around them ignored, a
+     leading "~" standing for $HOME, as voc's.
 
      Where this differs from voc's, besides the missing procedures:
+     - GetName gives the name as given to Old or New, or the temporary
+       file's, as voc's, but the temporary file's is an absolute path;
      - two Old calls for one file give two independent Files (voc shares
        one, so a write through one is at once visible through the other);
        after a Register over a file that another File has open, that File
@@ -64,7 +82,7 @@ MODULE Files;
      - the C `int` results below are declared LONGINT, right under the -O2
        size model only (see Platform.Mod). *)
 
-  IMPORT SYSTEM, Platform, FileDescriptorOutput;
+  IMPORT SYSTEM, Platform, FileDescriptorOutput, GarbageCollectedHeap;
 
   CONST
     nameLength = 256;
@@ -79,6 +97,7 @@ MODULE Files;
     FileName = ARRAY nameLength OF CHAR;
     File* = POINTER TO FileDesc;
     FileDesc = RECORD
+      name: FileName; (* as given to Old or New, for GetName *)
       workName: FileName; (* the OS file: a temporary one until Register *)
       registerName: FileName; (* the name to Register under, "" once done *)
       stream: SYSTEM.ADDRESS; (* the C FILE, 0 while closed *)
@@ -95,7 +114,10 @@ MODULE Files;
     END;
 
   VAR
+    MaxPathLength-, MaxNameLength-: INTEGER;
     temporaryCount: LONGINT;
+    searchPath: POINTER TO ARRAY OF CHAR; (* NIL: the current directory *)
+    home: FileName;
 
   PROCEDURE ["C", "fopen"] FOpen(path, mode: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
   PROCEDURE ["C", "fclose"] FClose(stream: SYSTEM.ADDRESS): SYSTEM.INT32;
@@ -106,6 +128,7 @@ MODULE Files;
   PROCEDURE ["C", "ferror"] FError(stream: SYSTEM.ADDRESS): SYSTEM.INT32;
   PROCEDURE ["C", "ftell"] FTell(stream: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
   PROCEDURE ["C", "rename"] CRename(old, new: SYSTEM.ADDRESS): SYSTEM.INT32;
+  PROCEDURE ["C", "fileno"] FileNumber(stream: SYSTEM.ADDRESS): SYSTEM.INT32;
   (* Directory detection for Old (see IsDirectory's own comment). *)
   PROCEDURE ["C", "access"] Access(path: SYSTEM.ADDRESS; mode: SYSTEM.INT32): SYSTEM.INT32;
 
@@ -242,10 +265,30 @@ MODULE Files;
     END
   END PositionStream;
 
-  PROCEDURE New*(name: ARRAY OF CHAR): File;
+  (* The collector's finalizer of a File (OPEN STREAMS AND FINALIZATION
+     above) *)
+  PROCEDURE Finalize(obj: SYSTEM.PTR);
+    VAR f: File; ignored: SYSTEM.INT32; res: INTEGER;
+  BEGIN
+    f := SYSTEM.VAL(File, obj);
+    IF f.stream # 0 THEN ignored := FClose(f.stream); f.stream := 0 END;
+    IF f.created & (f.registerName[0] # 0X) THEN res := Platform.Unlink(f.workName) END
+  END Finalize;
+
+  PROCEDURE NewFile(VAR name: ARRAY OF CHAR): File;
     VAR f: File;
   BEGIN
     NEW(f);
+    COPY(name, f.name);
+    GarbageCollectedHeap.RegisterFinalizer(f, Finalize);
+    RETURN f
+  END NewFile;
+
+  PROCEDURE New*(name: ARRAY OF CHAR): File;
+    VAR f: File;
+  BEGIN
+    IF StringLength(name) >= nameLength THEN Fail("file name too long", NIL) END;
+    f := NewFile(name);
     MakeAbsolute(name, f.registerName);
     f.workName[0] := 0X;
     RETURN f
@@ -290,30 +333,93 @@ MODULE Files;
     RETURN Access(SYSTEM.ADR(withDot), existenceOnly) = 0
   END IsDirectory;
 
-  (* The file called name, or NIL if there is none or it cannot be opened.
-     It is opened for reading and writing if the system allows, else for
-     reading only. *)
+  (* The file at path (absolute), opened, or NIL; name is the name it was
+     asked for by. *)
+  PROCEDURE OpenOld(VAR path: FileName; VAR name: ARRAY OF CHAR): File;
+    VAR f: File; stream, size: SYSTEM.ADDRESS; ignored: LONGINT;
+  BEGIN
+    f := NIL;
+    IF ~IsDirectory(path) THEN
+      stream := OpenStream(path, "r+b");
+      IF stream = 0 THEN stream := OpenStream(path, "rb") END;
+      IF stream # 0 THEN
+        size := -1;
+        IF Readable(stream) & (FSeek(stream, 0, seekEnd) = 0) THEN size := FTell(stream) END;
+        IF (size >= 0) & (size <= MAX(LONGINT)) THEN
+          f := NewFile(name);
+          COPY(path, f.workName);
+          f.stream := stream;
+          f.created := TRUE;
+          f.length := SYSTEM.VAL(LONGINT, size)
+        ELSE
+          ignored := FClose(stream)
+        END
+      END
+    END;
+    RETURN f
+  END OpenOld;
+
+  (* The next directory of the search path from position, in dir ("" when
+     there are no more), as voc's ScanPath *)
+  PROCEDURE NextDirectory(VAR position: LONGINT; VAR dir: FileName);
+    VAR i: LONGINT; ch: CHAR;
+  BEGIN
+    i := 0;
+    ch := searchPath[position];
+    WHILE (ch = " ") OR (ch = ";") DO INC(position); ch := searchPath[position] END;
+    IF ch = "~" THEN
+      INC(position); ch := searchPath[position];
+      WHILE (home[i] # 0X) & (i < nameLength - 1) DO dir[i] := home[i]; INC(i) END
+    END;
+    WHILE (ch # 0X) & (ch # ";") DO
+      IF i < nameLength - 1 THEN dir[i] := ch; INC(i) END;
+      INC(position); ch := searchPath[position]
+    END;
+    WHILE (i > 0) & (dir[i - 1] = " ") DO DEC(i) END;
+    dir[i] := 0X
+  END NextDirectory;
+
+  (* path := dir/name, made absolute; FALSE if it would not fit *)
+  PROCEDURE JoinPath(VAR dir: FileName; VAR name: ARRAY OF CHAR; VAR path: FileName): BOOLEAN;
+    VAR joined: ARRAY 2 * nameLength OF CHAR; i, k, n: LONGINT;
+  BEGIN
+    i := StringLength(dir);
+    WHILE (i > 0) & (dir[i - 1] = "/") DO DEC(i) END;
+    n := StringLength(name);
+    IF i + 1 + n + StringLength(Platform.CWD) + 1 >= nameLength THEN RETURN FALSE END;
+    FOR k := 0 TO i - 1 DO joined[k] := dir[k] END;
+    IF (i > 0) OR (dir[0] = "/") THEN joined[i] := "/"; INC(i) END;
+    FOR k := 0 TO n - 1 DO joined[i + k] := name[k] END;
+    joined[i + n] := 0X;
+    MakeAbsolute(joined, path);
+    RETURN TRUE
+  END JoinPath;
+
+  PROCEDURE HasDirectory(VAR name: ARRAY OF CHAR): BOOLEAN;
+    VAR i: LONGINT;
+  BEGIN
+    i := 0;
+    WHILE (i < LEN(name)) & (name[i] # 0X) & (name[i] # "/") DO INC(i) END;
+    RETURN (i < LEN(name)) & (name[i] = "/")
+  END HasDirectory;
+
+  (* The file called name, or NIL if there is none or it cannot be opened
+     (OLD AND THE SEARCH PATH above). It is opened for reading and writing
+     if the system allows, else for reading only. *)
   PROCEDURE Old*(name: ARRAY OF CHAR): File;
-    VAR f: File; path: FileName; stream, size: SYSTEM.ADDRESS; ignored: LONGINT;
+    VAR f: File; path, dir: FileName; position: LONGINT;
   BEGIN
     f := NIL;
     IF (StringLength(name) > 0) & (StringLength(name) < nameLength) THEN
-      MakeAbsolute(name, path);
-      IF ~IsDirectory(path) THEN
-        stream := OpenStream(path, "r+b");
-        IF stream = 0 THEN stream := OpenStream(path, "rb") END;
-        IF stream # 0 THEN
-          size := -1;
-          IF Readable(stream) & (FSeek(stream, 0, seekEnd) = 0) THEN size := FTell(stream) END;
-          IF (size >= 0) & (size <= MAX(LONGINT)) THEN
-            NEW(f);
-            COPY(path, f.workName);
-            f.stream := stream;
-            f.created := TRUE;
-            f.length := SYSTEM.VAL(LONGINT, size)
-          ELSE
-            ignored := FClose(stream)
-          END
+      IF HasDirectory(name) OR (searchPath = NIL) THEN
+        MakeAbsolute(name, path);
+        f := OpenOld(path, name)
+      ELSE
+        position := 0;
+        NextDirectory(position, dir);
+        WHILE (f = NIL) & (dir[0] # 0X) DO
+          IF JoinPath(dir, name, path) THEN f := OpenOld(path, name) END;
+          NextDirectory(position, dir)
         END
       END
     END;
@@ -351,6 +457,42 @@ MODULE Files;
     RETURN f.length
   END Length;
 
+  (* Empties f: its length is 0. *)
+  PROCEDURE Purge*(f: File);
+    VAR res: INTEGER;
+  BEGIN
+    IF f.created THEN
+      EnsureOpen(f);
+      IF FFlush(f.stream) # 0 THEN Fail("error writing file", f) END;
+      res := Platform.Truncate(FileNumber(f.stream), 0);
+      IF res # 0 THEN Fail("file not truncated", f) END;
+      f.mode := unused
+    END;
+    f.length := 0
+  END Purge;
+
+  (* The time and date f was last changed, in Oberon's clock format
+     (Platform.GetClock): t = hour * 4096 + minute * 64 + second, d =
+     year MOD 100 * 512 + month * 32 + day, month 1..12. A New file not yet written to
+     is created first, as voc's. *)
+  PROCEDURE GetDate*(f: File; VAR t, d: LONGINT);
+    VAR identity: Platform.FileIdentity; res: INTEGER;
+  BEGIN
+    EnsureOpen(f);
+    IF FFlush(f.stream) # 0 THEN Fail("error writing file", f) END;
+    res := Platform.Identify(FileNumber(f.stream), identity);
+    IF res # 0 THEN Fail("file not identified", f) END;
+    Platform.MTimeAsClock(identity, t, d)
+  END GetDate;
+
+  (* The name f was asked for by (Old) or registered under (New and
+     Register); a New file not registered yet: its temporary file, "" if
+     it has none yet. *)
+  PROCEDURE GetName*(f: File; VAR name: ARRAY OF CHAR);
+  BEGIN
+    IF f.registerName[0] # 0X THEN COPY(f.workName, name) ELSE COPY(f.name, name) END
+  END GetName;
+
   (* Points r at position pos of f (0 if it is negative, the end if it is
      past the end) and clears its eof and res. *)
   PROCEDURE Set*(VAR r: Rider; f: File; pos: LONGINT);
@@ -377,7 +519,7 @@ MODULE Files;
 
   (* The byte at r's position, and on to the next. At the end of the file x
      is 0X and r.eof is set. *)
-  PROCEDURE Read*(VAR r: Rider; VAR x: CHAR);
+  PROCEDURE Read*(VAR r: Rider; VAR x: SYSTEM.BYTE);
     VAR f: File; one: ARRAY 1 OF CHAR; got: BOOLEAN;
   BEGIN
     f := r.file;
@@ -412,12 +554,51 @@ MODULE Files;
     r.res := 0
   END WriteBlock;
 
-  PROCEDURE Write*(VAR r: Rider; x: CHAR);
-    VAR one: ARRAY 1 OF CHAR;
+  PROCEDURE Write*(VAR r: Rider; x: SYSTEM.BYTE);
   BEGIN
-    one[0] := x;
-    WriteBlock(r, SYSTEM.ADR(one), 1)
+    WriteBlock(r, SYSTEM.ADR(x), 1)
   END Write;
+
+  (* Read, by the name Project Oberon's Files has *)
+  PROCEDURE ReadByte*(VAR r: Rider; VAR x: SYSTEM.BYTE);
+  BEGIN
+    Read(r, x)
+  END ReadByte;
+
+  (* n bytes into x from its start; r.res is how many of them were not
+     there to read, and r.eof is set if any. n larger than x traps (index
+     out of range), as voc's does. *)
+  PROCEDURE ReadBytes*(VAR r: Rider; VAR x: ARRAY OF SYSTEM.BYTE; n: LONGINT);
+    VAR f: File; available, got: LONGINT; outside: SYSTEM.BYTE;
+  BEGIN
+    IF n > LEN(x) THEN outside := x[n - 1] END;
+    got := 0;
+    IF n > 0 THEN
+      f := r.file;
+      available := f.length - r.position;
+      IF available > n THEN available := n END;
+      IF available > 0 THEN
+        EnsureOpen(f);
+        PositionStream(f, r.position, reading);
+        got := SYSTEM.VAL(LONGINT, FRead(SYSTEM.ADR(x), 1, SYSTEM.VAL(SYSTEM.ADDRESS, available), f.stream));
+        INC(f.position, got); INC(r.position, got);
+        IF got < available THEN f.mode := unused END
+      END
+    ELSE
+      n := 0
+    END;
+    r.res := n - got;
+    r.eof := r.res > 0
+  END ReadBytes;
+
+  (* The first n bytes of x; n larger than x traps, as in ReadBytes. *)
+  PROCEDURE WriteBytes*(VAR r: Rider; VAR x: ARRAY OF SYSTEM.BYTE; n: LONGINT);
+    VAR outside: SYSTEM.BYTE;
+  BEGIN
+    IF n > LEN(x) THEN outside := x[n - 1] END;
+    IF n > 0 THEN WriteBlock(r, SYSTEM.ADR(x), SYSTEM.VAL(SYSTEM.ADDRESS, n)) END;
+    r.res := 0
+  END WriteBytes;
 
   (* The characters of x up to and including its 0X (all of x if it has
      none) - the terminator is written, as voc does, so that ReadString
@@ -475,4 +656,174 @@ MODULE Files;
     res := Platform.Rename(old, new)
   END Rename;
 
+  (* Makes path the current directory; res is 0 if it did, else the error
+     code. A relative name given to Old or New after it is taken from
+     there. *)
+  PROCEDURE ChangeDirectory*(path: ARRAY OF CHAR; VAR res: INTEGER);
+  BEGIN
+    res := Platform.Chdir(path)
+  END ChangeDirectory;
+
+  (* The directories Old looks in for a name without a "/" (OLD AND THE
+     SEARCH PATH above); "" for just the current directory again. *)
+  PROCEDURE SetSearchPath*(path: ARRAY OF CHAR);
+    VAR n: LONGINT;
+  BEGIN
+    n := StringLength(path);
+    IF n = 0 THEN searchPath := NIL
+    ELSE NEW(searchPath, n + 1); COPY(path, searchPath^)
+    END
+  END SetSearchPath;
+
+  (* ---- the typed riders (THE EXTERNAL FORMAT above) ---- *)
+
+  (* the bytes of x, as they are in memory, in little-endian order *)
+  PROCEDURE ToLittleEndian(VAR x: ARRAY OF SYSTEM.BYTE; VAR bytes: ARRAY OF CHAR);
+    VAR i, n: LONGINT;
+  BEGIN
+    n := LEN(x);
+    FOR i := 0 TO n - 1 DO
+      IF Platform.LittleEndian THEN SYSTEM.GET(SYSTEM.ADR(x) + i, bytes[i])
+      ELSE SYSTEM.GET(SYSTEM.ADR(x) + n - 1 - i, bytes[i])
+      END
+    END
+  END ToLittleEndian;
+
+  PROCEDURE FromLittleEndian(VAR bytes: ARRAY OF CHAR; VAR x: ARRAY OF SYSTEM.BYTE);
+    VAR i, n: LONGINT;
+  BEGIN
+    n := LEN(x);
+    FOR i := 0 TO n - 1 DO
+      IF Platform.LittleEndian THEN SYSTEM.PUT(SYSTEM.ADR(x) + i, bytes[i])
+      ELSE SYSTEM.PUT(SYSTEM.ADR(x) + n - 1 - i, bytes[i])
+      END
+    END
+  END FromLittleEndian;
+
+  (* A byte as a signed number, -128..127 *)
+  PROCEDURE Signed(ch: CHAR): INTEGER;
+  BEGIN
+    IF ORD(ch) >= 128 THEN RETURN ORD(ch) - 256 ELSE RETURN ORD(ch) END
+  END Signed;
+
+  PROCEDURE ReadBool*(VAR r: Rider; VAR x: BOOLEAN);
+    VAR ch: CHAR;
+  BEGIN
+    Read(r, ch); x := ch # 0X
+  END ReadBool;
+
+  PROCEDURE ReadInt*(VAR r: Rider; VAR x: INTEGER);
+    VAR b: ARRAY 2 OF CHAR;
+  BEGIN
+    ReadBytes(r, b, 2);
+    x := Signed(b[1]) * 256 + ORD(b[0])
+  END ReadInt;
+
+  PROCEDURE ReadLInt*(VAR r: Rider; VAR x: LONGINT);
+    VAR b: ARRAY 4 OF CHAR;
+  BEGIN
+    ReadBytes(r, b, 4);
+    x := ((LONG(Signed(b[3])) * 256 + ORD(b[2])) * 256 + ORD(b[1])) * 256 + ORD(b[0])
+  END ReadLInt;
+
+  PROCEDURE ReadSet*(VAR r: Rider; VAR x: SET);
+    VAR b: ARRAY 4 OF CHAR; i: INTEGER;
+  BEGIN
+    ReadBytes(r, b, 4);
+    x := {};
+    FOR i := 0 TO 31 DO
+      IF ODD(ASH(ORD(b[i DIV 8]), -(i MOD 8))) THEN INCL(x, i) END
+    END
+  END ReadSet;
+
+  PROCEDURE ReadReal*(VAR r: Rider; VAR x: REAL);
+    VAR b: ARRAY 4 OF CHAR;
+  BEGIN
+    ReadBytes(r, b, 4); FromLittleEndian(b, x)
+  END ReadReal;
+
+  PROCEDURE ReadLReal*(VAR r: Rider; VAR x: LONGREAL);
+    VAR b: ARRAY 8 OF CHAR;
+  BEGIN
+    ReadBytes(r, b, 8); FromLittleEndian(b, x)
+  END ReadLReal;
+
+  (* A number WriteNum wrote, into x, which may be any integer variable of
+     at most 8 bytes: its low bytes, as voc's. *)
+  PROCEDURE ReadNum*(VAR r: Rider; VAR x: ARRAY OF SYSTEM.BYTE);
+    VAR ch: CHAR; shift: INTEGER; q, part: SYSTEM.INT64; bytes: ARRAY 8 OF CHAR; i: LONGINT;
+  BEGIN
+    ASSERT(LEN(x) <= 8);
+    shift := 0; q := 0;
+    Read(r, ch);
+    WHILE ORD(ch) >= 128 DO
+      part := ORD(ch) - 128; q := q + ASH(part, shift);
+      INC(shift, 7);
+      Read(r, ch)
+    END;
+    part := ORD(ch) MOD 64 - ORD(ch) DIV 64 * 64; q := q + ASH(part, shift);
+    ToLittleEndian(q, bytes);
+    FOR i := 0 TO LEN(x) - 1 DO
+      IF Platform.LittleEndian THEN SYSTEM.PUT(SYSTEM.ADR(x) + i, bytes[i])
+      ELSE SYSTEM.PUT(SYSTEM.ADR(x) + LEN(x) - 1 - i, bytes[i])
+      END
+    END
+  END ReadNum;
+
+  PROCEDURE WriteBool*(VAR r: Rider; x: BOOLEAN);
+  BEGIN
+    IF x THEN Write(r, 1X) ELSE Write(r, 0X) END
+  END WriteBool;
+
+  PROCEDURE WriteInt*(VAR r: Rider; x: INTEGER);
+    VAR b: ARRAY 2 OF CHAR;
+  BEGIN
+    b[0] := CHR(x MOD 256); b[1] := CHR(x DIV 256 MOD 256);
+    WriteBytes(r, b, 2)
+  END WriteInt;
+
+  PROCEDURE WriteLInt*(VAR r: Rider; x: LONGINT);
+    VAR b: ARRAY 4 OF CHAR; i: INTEGER;
+  BEGIN
+    FOR i := 0 TO 3 DO b[i] := CHR(x MOD 256); x := x DIV 256 END;
+    WriteBytes(r, b, 4)
+  END WriteLInt;
+
+  PROCEDURE WriteSet*(VAR r: Rider; x: SET);
+    VAR b: ARRAY 4 OF CHAR; i, k: INTEGER;
+  BEGIN
+    FOR k := 0 TO 3 DO
+      b[k] := 0X;
+      FOR i := 7 TO 0 BY -1 DO
+        b[k] := CHR(ORD(b[k]) * 2);
+        IF k * 8 + i IN x THEN b[k] := CHR(ORD(b[k]) + 1) END
+      END
+    END;
+    WriteBytes(r, b, 4)
+  END WriteSet;
+
+  PROCEDURE WriteReal*(VAR r: Rider; x: REAL);
+    VAR b: ARRAY 4 OF CHAR;
+  BEGIN
+    ToLittleEndian(x, b); WriteBytes(r, b, 4)
+  END WriteReal;
+
+  PROCEDURE WriteLReal*(VAR r: Rider; x: LONGREAL);
+    VAR b: ARRAY 8 OF CHAR;
+  BEGIN
+    ToLittleEndian(x, b); WriteBytes(r, b, 8)
+  END WriteLReal;
+
+  PROCEDURE WriteNum*(VAR r: Rider; x: SYSTEM.INT64);
+  BEGIN
+    WHILE (x < -64) OR (x > 63) DO
+      Write(r, CHR(x MOD 128 + 128)); x := x DIV 128
+    END;
+    Write(r, CHR(x MOD 128))
+  END WriteNum;
+
+BEGIN
+  MaxPathLength := Platform.MaxPathLength();
+  MaxNameLength := Platform.MaxNameLength();
+  Platform.GetEnv("HOME", home)
 END Files.

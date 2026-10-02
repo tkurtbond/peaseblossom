@@ -1937,6 +1937,19 @@ MODULE SemanticActions;
     RETURN arr.isOpen & (arr.elementType = Types.Byte)
   END IsByteArrayFormal;
 
+  (* The Oakwood Guidelines (1.2.5, for Files.Read): a formal parameter of
+     type SYSTEM.BYTE takes an actual parameter of type CHAR, SHORTINT or
+     SYSTEM.BYTE - for a VAR parameter, a SHORTINT only where it is one
+     byte (-O2), as voc; and a BOOLEAN too, as voc (decided with the user
+     2026-10-02, Phase 12 step 5d). A value parameter takes them by
+     Types.AssignmentCompatible. *)
+  PROCEDURE IsByteVarFormal(formal, actual: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (formal = Types.Byte)
+      & ((actual = Types.Char) OR (actual = Types.Boolean)
+         OR (actual = Types.ShortInt) & (Types.IntegerBytes(Types.ShortInt) = 1))
+  END IsByteVarFormal;
+
   (* Appendix A "matching formal parameter lists" at last has a real call
      site (PLAN.md Phase 6) - params/args are walked together: a value
      parameter's argument is checked via CheckExpr and required
@@ -1994,6 +2007,7 @@ MODULE SemanticActions;
                     & (argType IS Types.RecordType) & Types.Extends(argType, p.type))
                 & ~IsOpenArrayFormal(p.type, argType)
                 & ~IsByteArrayFormal(p.type)
+                & ~IsByteVarFormal(p.type, argType)
                 & ~((p.type = Types.Ptr) & (argType # NIL) & (argType IS Types.PointerType)) THEN
               Diagnostics.Error(a.line, a.column, "argument type does not match the VAR parameter")
             END
@@ -2599,8 +2613,15 @@ MODULE SemanticActions;
       (* and a CHAR constant as a string of one character (§3 again) *)
       arr := dstType(Types.ArrayType);
       ok := (arr.elementType = Types.Char) & ~arr.isOpen & (arr.length > 1)
-    ELSIF ~ok & (srcType = Types.String) & (dstType = Types.Char) THEN
+    ELSIF ~ok & (srcType = Types.String) & ((dstType = Types.Char) OR (dstType = Types.Byte)) THEN
       ok := ConstantEvaluator.IsSingleCharString(srcExpr, scope)
+    ELSIF ~ok & (dstType = Types.Byte) & Types.IsInteger(srcType)
+        & ConstantEvaluator.IsConstantExpr(srcExpr, scope) THEN
+      (* an integer constant whose value fits one signed byte, as voc's:
+         under -OC its minimal type is a two-byte SHORTINT *)
+      v := ConstantEvaluator.Evaluate(srcExpr, scope);
+      ok := (v.type # Types.Undefined) & (v.kind = Types.intValue)
+        & (v.intVal >= -128) & (v.intVal <= 127)
     ELSIF ~ok & Types.IsInteger(dstType) & Types.IsInteger(srcType)
         & ConstantEvaluator.IsConstantExpr(srcExpr, scope) THEN
       (* an integer constant whose *value* fits a SYSTEM.INTn is assignable
