@@ -172,8 +172,13 @@ C++ API. `doc/llvm-toolchain.md` has the full account of each point here.
   their C libraries assume a 16-byte aligned stack, LLVM does not.
 - **A module's part in C** (Phase 12 step 5a): `<M>.c` beside `<M>.Mod` is
   compiled with the module, to `<M>.c.o`, and goes wherever the module's
-  object goes. `rtl/llvm/Platform.c` is the one: what the four systems spell
-  differently, which only their headers know.
+  object goes, with each `-c-flag <arg>` (Phase 13 step 2). `rtl/llvm/
+  Platform.c` is the one: what the four systems spell differently, which
+  only their headers know.
+- **Building a program** (Phase 13 step 2): `poc <file>` is `poc -build
+  <file>`, and without `-o` the executable is named after the module, in
+  the current directory. `-build`, `-library` and `-compile` say nothing
+  on success; `-help` is a short summary on standard output.
 - **Options**: `-opt <level>` (default 2, but 0 for 32-bit x86, whose reals
   are x87; not `-O<level>`, which is the size model), `-static`, `-link
   <arg>`, `-verbose`, `-lto` (ignored for 32-bit x86 NetBSD; `make

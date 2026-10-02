@@ -1,4 +1,3 @@
-semantic OK, wrote llvm-in-extra
 HugeInt 12345678901 done
 HugeInt -9223372036854775807 done
 HugeInt 549755813887 done

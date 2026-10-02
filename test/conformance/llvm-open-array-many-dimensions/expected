@@ -1,4 +1,3 @@
-semantic OK, wrote llvm-open-array-many-dimensions
 lengths 2 1 1 1 1 1 1 1 3
 fixed corner 7
 after SetCorner 8

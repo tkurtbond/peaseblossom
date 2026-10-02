@@ -15,7 +15,7 @@ rm -f *.c *.h *.o *.sym texts
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 poc_build_run texts.mod
-tail -n +2 result >poc-output
+cat result >poc-output
 cmp -s poc-output voc-output || echo "poc and voc disagree on texts" >>result
 for f in $written
 do cmp -s $f voc-files/$f || echo "poc and voc wrote different $f" >>result

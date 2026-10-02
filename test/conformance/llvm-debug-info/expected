@@ -1,4 +1,3 @@
-semantic OK, wrote llvm-debug-info
 14abc
 stopped in DebugLib.Square:
 DebugLib.Square DebugLib.mod:15

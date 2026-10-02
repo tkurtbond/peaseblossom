@@ -81,7 +81,9 @@ shells out to these rather than linking against LLVM's own C++ API.
   goes: into the link, into a library's archive and shared library, and
   into `-compile`'s output; a module given as its `.sym` and `.o` (or
   `.ll`) brings the `<Module>.c.o` beside that file, if there is one
-  (`LLVMToolchainDriver.CompanionSource`/`CompanionObject`). It is for what
+  (`LLVMToolchainDriver.CompanionSource`/`CompanionObject`). Each `poc
+  -c-flag <arg>` (Phase 13 step 2) adds `<arg>` to that clang command:
+  `-I<dir>` for a header elsewhere, `-D<name>`; fixture `poc-c-flag`. It is for what
   an Oberon declaration cannot follow because poc does not know which of
   the four systems it compiles for: flag and errno values, structure
   layouts, NetBSD's renamed functions. Such a file's own names should

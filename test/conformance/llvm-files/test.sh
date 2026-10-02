@@ -14,7 +14,7 @@ rm -f *.c *.h *.o *.sym filestest
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 poc_build_run filestest.mod
-tail -n +2 result >poc-output
+cat result >poc-output
 cmp -s poc-output voc-output || echo "poc and voc disagree on filestest" >>result
 rm -rf poc-output voc-output work
 . ../../testresult.sh

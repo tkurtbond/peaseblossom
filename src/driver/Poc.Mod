@@ -1239,9 +1239,7 @@ MODULE Poc;
       triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
       topName: SyntaxTree.Ident;
   BEGIN
-    IF exePath[0] = 0X THEN
-      failed := TRUE; Err.String("poc: -build requires -o <path>"); Err.Ln
-    ELSIF ~ResolveTriple(explicitTriple, triple) THEN
+    IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
     ELSE
       SetWordSizeFromTriple(triple); CheckLTOTarget(triple);
@@ -1249,8 +1247,11 @@ MODULE Poc;
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
       IF ok & PrepareLibraries(modules, sharedLibraries) THEN
         ProgramTopName(modules, topName);
+        (* Phase 13 step 2: without -o, the executable is named after the
+           program's module, in the current directory, as voc names it *)
+        IF exePath[0] = 0X THEN COPY(topName, exePath) END;
         IF LLVMToolchainDriver.Build(modules, topName, triple, outputDir, exePath) THEN
-          Out.String("semantic OK, wrote "); Out.String(exePath); Out.Ln
+          (* silent on success (Phase 13 step 2), as clang is *)
         ELSIF LLVMCodeGenerator.unsupportedCount > 0 THEN
           ReportUnsupportedConstructs
         ELSIF Diagnostics.errorCount > 0 THEN
@@ -1340,7 +1341,7 @@ MODULE Poc;
     VAR
       triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
       member: LibraryMember; modules, modulesTail, m: LLVMCodeGenerator.ModuleList;
-      visited: VisitedModule; ok: BOOLEAN; path: Libraries.Path;
+      visited: VisitedModule; ok: BOOLEAN;
   BEGIN
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
@@ -1374,12 +1375,7 @@ MODULE Poc;
       END;
       RETURN
     END;
-    member := members;
-    WHILE member # NIL DO
-      LLVMToolchainDriver.ModuleFilePath(outputDir, member.name, ".o", path);
-      Out.String("semantic OK, wrote "); Out.String(path); Out.Ln;
-      member := member.next
-    END
+    (* silent on success (Phase 13 step 2), as clang -c is *)
   END CompileOnly;
 
   (* poc -library <name> <file>... (Phase 12 step 2c): the modules of the
@@ -1473,8 +1469,9 @@ MODULE Poc;
     END;
     owner := Libraries.linkOrder;
     WHILE owner # NIL DO Libraries.AddNeed(lib, owner.name); owner := owner.linkNext END;
-    IF ~Libraries.WriteManifest(lib) THEN failed := TRUE; RETURN END;
-    Out.String("semantic OK, wrote library "); Out.String(name); Out.String(" in "); Out.String(dir); Out.Ln
+    IF ~Libraries.WriteManifest(lib) THEN failed := TRUE; RETURN END
+    (* silent on success (Phase 13 step 2); where the library went is
+       <output-dir>/<triple>/<O2|OC>, which -verbose's commands show *)
   END BuildLibrary;
 
   PROCEDURE PrintLayoutLine(name: ARRAY OF CHAR; t: Types.Type);
@@ -1780,6 +1777,37 @@ MODULE Poc;
     Out.String("installed library "); Out.String(name); Out.String(" in "); Out.String(dir); Out.Ln
   END InstallLibrary;
 
+  (* poc -help (Phase 13 step 2): what most people need, on standard
+     output; the whole list is the usage text, and poc(1) *)
+  PROCEDURE Help;
+  BEGIN
+    Out.String("usage: poc [options] <file>          build a program: <file>'s module and its imports"); Out.Ln;
+    Out.String("       poc -check <file>             check a module, writing nothing"); Out.Ln;
+    Out.String("       poc -compile <file>...        compile modules to .sym, .ll and .o"); Out.Ln;
+    Out.String("       poc -library <name> <file>... build a library of the modules"); Out.Ln;
+    Out.String("       poc -version                  the version, target and clang"); Out.Ln;
+    Out.Ln;
+    Out.String("options:"); Out.Ln;
+    Out.String("  -o <exe>              the executable (default: the module's name)"); Out.Ln;
+    Out.String("  -import-path <dir>    look for imported modules in <dir> too"); Out.Ln;
+    Out.String("  -library-path <dir>   look for libraries in <dir> too"); Out.Ln;
+    Out.String("  -output-dir <dir>     write .sym, .ll and .o files in <dir>"); Out.Ln;
+    Out.String("  -O2 | -OC             size model: INTEGER 16 or 32 bits, LONGINT 32 or 64"); Out.Ln;
+    Out.String("  -g                    debug information for gdb and lldb"); Out.Ln;
+    Out.String("  -opt <level>          clang's optimization level (default 2)"); Out.Ln;
+    Out.String("  -trap-location        a trap's message names its file, line and procedure"); Out.Ln;
+    Out.String("  -range-checks         SHORT and CHR of a value that does not fit trap"); Out.Ln;
+    Out.String("  -strict               only the Oberon-2 report: no extensions"); Out.Ln;
+    Out.String("  -static               link a fully static executable"); Out.Ln;
+    Out.String("  -shared-libraries     link libraries dynamically"); Out.Ln;
+    Out.String("  -link <arg>           pass <arg> to the link (-lz, -L<dir>)"); Out.Ln;
+    Out.String("  -c-flag <arg>         pass <arg> to clang for a module's C part"); Out.Ln;
+    Out.String("  -target <triple>      compile for another target"); Out.Ln;
+    Out.String("  -verbose              print the commands poc runs"); Out.Ln;
+    Out.Ln;
+    Out.String("poc with no arguments lists every command and option; poc(1) explains them."); Out.Ln
+  END Help;
+
   PROCEDURE Usage;
   BEGIN
     failed := TRUE;
@@ -1792,13 +1820,14 @@ MODULE Poc;
     Err.String("       poc -emit-interface <file>"); Err.Ln;
     Err.String("       poc -show-interface <file>"); Err.Ln;
     Err.String("       poc -emit-llvm-ir <file>"); Err.Ln;
-    Err.String("       poc -o <exe> -build <file>"); Err.Ln;
+    Err.String("       poc [-o <exe>] [-build] <file>"); Err.Ln;
     Err.String("       poc -library <name> <file>..."); Err.Ln;
     Err.String("       poc -compile <file>..."); Err.Ln;
     Err.String("       poc -install-library <name>"); Err.Ln;
     Err.String("       poc [-import-path <dir> | -clear-import-path]... -print-import-path"); Err.Ln;
     Err.String("       poc [-library-path <dir> | -clear-library-path]... -print-library-path"); Err.Ln;
     Err.String("       poc [-target <triple>] [-O2 | -OC] -version"); Err.Ln;
+    Err.String("       poc -help"); Err.Ln;
     Err.String("       -import-path <dir> and -clear-import-path may also precede any"); Err.Ln;
     Err.String("       command above; POC_IMPORT_PATH seeds the list (colon-separated)"); Err.Ln;
     Err.String("       before any flags are applied"); Err.Ln;
@@ -1814,7 +1843,7 @@ MODULE Poc;
     Err.String("       SIZE(T)/MAX(T)/MIN(T)"); Err.Ln;
     Err.String("       for that target's word size (default: no effect, no clang needed)"); Err.Ln;
     Err.String("       -o <exe> may precede -build, giving the executable's output path"); Err.Ln;
-    Err.String("       (required - -build has no default)"); Err.Ln;
+    Err.String("       (default: the program module's name, in the current directory)"); Err.Ln;
     Err.String("       -opt <level> may precede -build: clang builds with -O<level>,"); Err.Ln;
     Err.String("       <level> one of 0, 1, 2, 3, s, z, g (default 2; 0 for 32-bit x86)"); Err.Ln;
     Err.String("       -trap-heap-exhausted may precede -emit-llvm-ir or -build: a NEW"); Err.Ln;
@@ -1832,6 +1861,9 @@ MODULE Poc;
     Err.String("       taken before its .o"); Err.Ln;
     Err.String("       -link <arg> may precede -build, and be repeated: pass <arg> (-lz,"); Err.Ln;
     Err.String("       -L<dir>, ...) to the link"); Err.Ln;
+    Err.String("       -c-flag <arg> may precede -build, -library or -compile, and be"); Err.Ln;
+    Err.String("       repeated: pass <arg> (-I<dir>, -D<name>, ...) to clang when it"); Err.Ln;
+    Err.String("       compiles a module's C part, <Module>.c beside <Module>.Mod"); Err.Ln;
     Err.String("       -verbose may precede -build or -library: print the commands it runs"); Err.Ln;
     Err.String("       -library builds the modules of the files named into the library"); Err.Ln;
     Err.String("       <name>, in <output-dir>/<triple>/<O2|OC>/; -library-path <dir>,"); Err.Ln;
@@ -1958,6 +1990,9 @@ MODULE Poc;
         ELSIF arg = "-version" THEN
           PrintVersion(targetTriple);
           INC(i); done := TRUE
+        ELSIF (arg = "-help") OR (arg = "--help") OR (arg = "-h") THEN
+          Help;
+          INC(i); done := TRUE
         ELSIF arg = "-shared-libraries" THEN
           sharedLibraries := TRUE;
           INC(i)
@@ -2053,6 +2088,19 @@ MODULE Poc;
           (* Phase 12 step 1: voc's -V, as far as it shows the C compiler's command *)
           LLVMToolchainDriver.verbose := TRUE;
           INC(i)
+        ELSIF arg = "-c-flag" THEN
+          (* Phase 13 step 2: flags for clang when it compiles a module's C part *)
+          IF i + 1 < Modules.ArgCount THEN
+            Modules.GetArg(i + 1, param);
+            IF ~LLVMToolchainDriver.AddCFlag(param) THEN
+              failed := TRUE; Err.String("poc: too many -c-flag arguments"); Err.Ln;
+              done := TRUE
+            END;
+            INC(i, 2)
+          ELSE
+            failed := TRUE; Err.String("poc: -c-flag requires an argument"); Err.Ln;
+            done := TRUE
+          END
         ELSIF arg = "-link" THEN
           (* Phase 12 step 1: voc's LDFLAGS/LDLIBS *)
           IF i + 1 < Modules.ArgCount THEN
@@ -2090,6 +2138,11 @@ MODULE Poc;
             failed := TRUE; Err.String("poc: -o requires a path"); Err.Ln;
             done := TRUE
           END
+        ELSIF arg[0] # "-" THEN
+          (* Phase 13 step 2: a file and no command builds a program, as
+             -build does *)
+          Build(arg, outputDir, targetTriple, exePath);
+          done := TRUE
         ELSE
           IF i + 1 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, param);

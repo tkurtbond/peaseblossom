@@ -7,13 +7,14 @@ usage: poc -dump-tokens <file>
        poc -emit-interface <file>
        poc -show-interface <file>
        poc -emit-llvm-ir <file>
-       poc -o <exe> -build <file>
+       poc [-o <exe>] [-build] <file>
        poc -library <name> <file>...
        poc -compile <file>...
        poc -install-library <name>
        poc [-import-path <dir> | -clear-import-path]... -print-import-path
        poc [-library-path <dir> | -clear-library-path]... -print-library-path
        poc [-target <triple>] [-O2 | -OC] -version
+       poc -help
        -import-path <dir> and -clear-import-path may also precede any
        command above; POC_IMPORT_PATH seeds the list (colon-separated)
        before any flags are applied
@@ -29,7 +30,7 @@ usage: poc -dump-tokens <file>
        SIZE(T)/MAX(T)/MIN(T)
        for that target's word size (default: no effect, no clang needed)
        -o <exe> may precede -build, giving the executable's output path
-       (required - -build has no default)
+       (default: the program module's name, in the current directory)
        -opt <level> may precede -build: clang builds with -O<level>,
        <level> one of 0, 1, 2, 3, s, z, g (default 2; 0 for 32-bit x86)
        -trap-heap-exhausted may precede -emit-llvm-ir or -build: a NEW
@@ -47,6 +48,9 @@ usage: poc -dump-tokens <file>
        taken before its .o
        -link <arg> may precede -build, and be repeated: pass <arg> (-lz,
        -L<dir>, ...) to the link
+       -c-flag <arg> may precede -build, -library or -compile, and be
+       repeated: pass <arg> (-I<dir>, -D<name>, ...) to clang when it
+       compiles a module's C part, <Module>.c beside <Module>.Mod
        -verbose may precede -build or -library: print the commands it runs
        -library builds the modules of the files named into the library
        <name>, in <output-dir>/<triple>/<O2|OC>/; -library-path <dir>,

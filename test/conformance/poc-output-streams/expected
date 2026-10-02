@@ -10,9 +10,11 @@ exit 1, stdout 0, stderr 2: poc -emit-interface typeerror.mod
 exit 1, stdout 0, stderr 2: poc -emit-llvm-ir typeerror.mod
 exit 1, stdout 0, stderr 1: poc -check missing.mod
 exit 1, stdout 0, stderr 2: poc -o prog -build vms.mod
-exit 1, stdout 0, stderr 1: poc -build ok.mod
+exit 0, stdout 0, stderr 0: poc -build ok.mod
+exit 0, stdout 0, stderr 0: poc ok.mod
 exit 1, stdout 0, stderr 1: poc -output-dir no-such-directory -emit-interface ok.mod
-exit 1, stdout 0, stderr 63: poc -frobnicate ok.mod
-exit 1, stdout 0, stderr 63: poc 
+exit 1, stdout 0, stderr 67: poc -frobnicate ok.mod
+exit 1, stdout 0, stderr 67: poc 
 exit 0, stdout 3, stderr 0: poc -version
+exit 0, stdout 25, stderr 0: poc -help
 exit 0, stdout 1, stderr 0: poc -print-import-path

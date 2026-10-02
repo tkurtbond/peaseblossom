@@ -1,5 +1,4 @@
 == -O2
-semantic OK, wrote llvm-hex-pattern-literals
 -680876936
 -389564586
 -1
@@ -9,7 +8,6 @@ MIN(HUGEINT)
 255
 4294967295
 == -OC
-semantic OK, wrote llvm-hex-pattern-literals
 -680876936
 -389564586
 -1

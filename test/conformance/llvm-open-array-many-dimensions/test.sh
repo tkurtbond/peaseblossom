@@ -17,7 +17,7 @@ rm -f *.c *.h *.o *.sym manydims
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 poc_build_run manydims.mod
-tail -n +2 result | sed '/^nested/,$d' >poc-o2
+cat result | sed '/^nested/,$d' >poc-o2
 cmp -s poc-o2 voc-o2 || echo "poc and voc disagree under -O2" >>result
 poc -OC -o "$exe" -build manydims.mod >/dev/null 2>&1
 "./$exe" | sed '/^nested/,$d' >poc-oc

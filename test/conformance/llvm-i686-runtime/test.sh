@@ -35,7 +35,7 @@ check() {
     input=/dev/null
     [ -f "../$dir/input.txt" ] && input="../$dir/input.txt"
     ./program.i686 "$@" <"$input" >program.out 2>&1
-    tail -n +2 "../$dir/expected" >want.out
+    cp "../$dir/expected" want.out
     if diff -b want.out program.out >/dev/null
     then echo "$dir: same" >>result
     else echo "$dir: DIFFERENT" >>result; diff -b want.out program.out >>result

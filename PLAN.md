@@ -447,6 +447,50 @@ mismatch).
    `.sym`/`.ll`/`.o` files, what an error message assumes, what needs an
    environment variable, what only works from the source tree), and
    decide each with the user: fix in this phase, document, or leave.
+   **Done (2026-10-02).** Walked through with only an installed-like
+   prefix and the system on `PATH` (no voc, no source tree): one module;
+   modules in several directories; a library of one's own, static and
+   shared, used from another directory; `-g` with gdb; voc's own test
+   programs (`testFiles`, `argTexts`, `md5test`, Lola); a module with a C
+   part; a trap. Decided with the user:
+   - **Fix in this phase.** `poc <file>` means `-build`, and the
+     executable is named after the module unless `-o` says otherwise
+     (until now `poc Hello.Mod` printed the usage, and `-build` required
+     `-o`). `-build`, `-library` and `-compile` are silent on success
+     (`-check` keeps "semantic OK", its answer). `-help`/`--help`/`-h`
+     print a short summary on standard output and exit 0, pointing to
+     `poc(1)` (they printed the whole usage as an error); and compile
+     errors name what is wrong ("undeclared identifier" names it; a type
+     mismatch names the types where that is cheap), after an audit of
+     every message. `-c-flag <arg>`, repeatable like `-link`, passes
+     `<arg>` to clang for a module's `.c` part (`-I`, `-D`). A false "a
+     record may not directly contain itself", which stops voc's Lola test
+     (`LSB.Mod`; a record's extension reached through pointers while its
+     base is still being resolved), fixed first, in a commit of its own.
+     *Done (2026-10-02)*, but for the error-message audit: `poc
+     <file>`, the executable's default name, the silence (93 fixtures'
+     expected outputs lost the line, and 12 that dropped it with `tail -n
+     +2` before comparing with voc now take the whole output), `-help`
+     (`Poc.Help`), `-c-flag` (`LLVMToolchainDriver.AddCFlag`; fixture
+     `poc-c-flag`); the Lola fix is `3dc49ce`, with the rule of 6.3 that
+     an extension's fields differ from its bases', which poc had never
+     checked.
+   - **Step 3.** poc-rtl installed twice per size model: as now, and a
+     copy built with `-g` that `poc -g` links, so a debugger sees into the
+     runtime while ordinary programs stay small (measured: `-g` leaves the
+     code and its speed unchanged, but makes a statically linked program
+     about 4 times larger on disk, 31 KB to 125 KB). A shared executable's
+     run-time path names each library directory both relative to
+     `$ORIGIN` and absolutely; settle what an installed one should have.
+   - **Document** (the User's Guide): a build writes each module's
+     `.sym`, `.ll` and `.o` in the current directory, as voc does
+     (`-output-dir` moves them); the import path is not searched
+     recursively; every module is compiled again on each build; `poc
+     -library` without `-output-dir` writes `./<triple>/<O2|OC>/`, which
+     `-library-path .` finds; a trap names its location only with
+     `-trap-location`.
+   - **Leave**: voc's library modules (`md5test`'s `ethMD5`) wait for
+     Phase 19.
 3. **The installed layout and `make install`.** `make install` and `make
    uninstall` with `PREFIX` (default `/usr/local`), `DESTDIR`, and the
    usual `BINDIR`, `LIBDIR`, `MANDIR`, `DOCDIR`, on GNU make (`gmake` on

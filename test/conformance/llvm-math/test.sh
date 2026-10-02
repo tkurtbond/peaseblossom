@@ -13,7 +13,7 @@ rm -f *.c *.h *.o *.sym mathtest
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 poc_build_run mathtest.mod
-tail -n +2 result >poc-output
+cat result >poc-output
 cmp -s poc-output voc-output || echo "poc and voc disagree on mathtest" >>result
 rm -f poc-output voc-output
 . ../../testresult.sh

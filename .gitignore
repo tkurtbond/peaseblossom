@@ -10,7 +10,10 @@
 test/conformance/**/*.c
 # a fixture's own C source (Phase 12 step 5a: a module's part in C)
 !test/conformance/llvm-c-part/part/Twice.c
+!test/conformance/poc-c-flag/part/Hash.c
 test/conformance/**/*.h
+# a fixture's own C header (Phase 13 step 2: -c-flag)
+!test/conformance/poc-c-flag/include/fnv.h
 test/conformance/**/*.sym
 test/conformance/**/*.o
 test/conformance/**/*.ll

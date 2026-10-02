@@ -1,6 +1,4 @@
 == poc-rtl and shapes
-semantic OK, wrote library poc-rtl in lib/<triple>/O2
-semantic OK, wrote library shapes in lib/<triple>/O2
 library shapes
 poc <version>
 triple <triple>
@@ -21,13 +19,11 @@ libpoc-rtl.so
 libshapes.a
 libshapes.so
 == static
-semantic OK, wrote main
 Lists ready
 5 4 3 2 1 
 15 5
 7
 == shared
-semantic OK, wrote mains
 Lists ready
 5 4 3 2 1 
 15 5
@@ -41,10 +37,8 @@ poc: module Lists is in library shapes (lib/<triple>/O2) already; a module belon
 == an import from neither
 poc: module Helper is imported but is neither one of the library's files nor in a library on the library path
 == one module in two libraries
-semantic OK, wrote library dup in lib3/<triple>/O2
 exit=1
 poc: warning: module Lists is taken from library shapes (lib/<triple>/O2), which hides library dup's (lib3/<triple>/O2)
 poc: module Lists is in library dup (lib3/<triple>/O2) and in library shapes (lib/<triple>/O2); a program can link only one of them
 == shapes against an older Out
-semantic OK, wrote library poc-rtl in libstale/<triple>/O2
 poc: library shapes was compiled against Out <key>, but library poc-rtl (libstale/<triple>/O2) has Out <key>; rebuild shapes

@@ -1,28 +1,22 @@
 == -O2
-semantic OK, wrote library poc-rtl in lib/<i686>/O2
-semantic OK, wrote library shapes in lib/<i686>/O2
 libpoc-rtl.a
 libpoc-rtl.so
 libshapes.a
 libshapes.so
 poc-rtl.library
 shapes.library
-semantic OK, wrote mainO2
 mainO2: 32-bit
 Lists ready
 5 4 3 2 1 
 15 5
 7
 == -OC
-semantic OK, wrote library poc-rtl in lib/<i686>/OC
-semantic OK, wrote library shapes in lib/<i686>/OC
 libpoc-rtl.a
 libpoc-rtl.so
 libshapes.a
 libshapes.so
 poc-rtl.library
 shapes.library
-semantic OK, wrote mainOC
 mainOC: 32-bit
 Lists ready
 5 4 3 2 1 

@@ -20,7 +20,7 @@ rm -f *.c *.h *.o *.sym platformtest
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 poc_build_run platformtest.mod
-tail -n +2 result >poc-output
+cat result >poc-output
 cmp -s poc-output voc-output || echo "poc and voc disagree on platformtest" >>result
 rm -rf poc-output voc-output sub
 . ../../testresult.sh

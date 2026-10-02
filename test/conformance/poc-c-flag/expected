@@ -1,0 +1,8 @@
+== without -c-flag
+exit=1
+== -c-flag -I../include
+exit=0
+1335831723
+== -c-flag without an argument
+poc: -c-flag requires an argument
+exit=1

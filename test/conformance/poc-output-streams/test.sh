@@ -24,12 +24,17 @@ run -emit-interface typeerror.mod
 run -emit-llvm-ir typeerror.mod
 run -check missing.mod
 run -o prog -build vms.mod
+# Phase 13 step 2: silent on success, with or without -build; the
+# executable is named after the module
 run -build ok.mod
+run ok.mod
 run -output-dir no-such-directory -emit-interface ok.mod
 run -frobnicate ok.mod
 run
 # Phase 13 step 1: the version, the target and size model, and clang's version
 run -version
+# Phase 13 step 2: a short summary, on standard output
+run -help
 run -print-import-path
-rm -f stdout.txt stderr.txt prog ok.ll ok.sym
+rm -f stdout.txt stderr.txt prog ok ok.o ok.ll ok.sym
 . ../../testresult.sh

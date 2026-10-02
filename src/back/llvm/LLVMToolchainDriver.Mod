@@ -55,6 +55,9 @@ MODULE LLVMToolchainDriver;
        library's archive without -lto too *)
     lto*, ltoLink*: BOOLEAN;
     linkArguments: ARRAY linkArgumentsLength OF CHAR;
+    (* Phase 13 step 2 (decided with the user 2026-10-02): each poc -c-flag
+       <arg>, for clang when it compiles a module's C part (AddCFlag) *)
+    cFlags: ARRAY linkArgumentsLength OF CHAR;
     (* Phase 12 step 2c: the libraries a program links, as clang arguments
        (AddLibrary), after its objects and before the -link arguments *)
     libraryArguments: ARRAY 4 * linkArgumentsLength OF CHAR;
@@ -260,10 +263,6 @@ MODULE LLVMToolchainDriver;
     RETURN ok
   END EmitIR;
 
-  (* Adds arg to what Build passes clang, as one word however many spaces or
-     shell characters it holds: single-quoted, each ' in it written '\''.
-     FALSE, adding nothing, when the arguments given so far and arg would
-     not fit in linkArgumentsLength. *)
   (* " '<arg>'": arg as one word of a shell command, each ' in it written
      '\''. FALSE when it does not fit in quoted. *)
   PROCEDURE QuoteWord(arg: ARRAY OF CHAR; VAR quoted: ARRAY OF CHAR): BOOLEAN;
@@ -282,16 +281,32 @@ MODULE LLVMToolchainDriver;
     RETURN arg[i] = 0X
   END QuoteWord;
 
-  PROCEDURE AddLinkArgument*(arg: ARRAY OF CHAR): BOOLEAN;
+  (* Adds arg to list, as one word however many spaces or shell characters
+     it holds: single-quoted, each ' in it written '\''. FALSE, adding
+     nothing, when the arguments in list and arg would not fit in it. *)
+  PROCEDURE AppendArgument(VAR list: ARRAY OF CHAR; arg: ARRAY OF CHAR): BOOLEAN;
     VAR quoted: ARRAY linkArgumentsLength OF CHAR; j, used: INTEGER;
   BEGIN
-    used := 0; WHILE linkArguments[used] # 0X DO INC(used) END;
+    used := 0; WHILE list[used] # 0X DO INC(used) END;
     IF ~QuoteWord(arg, quoted) THEN RETURN FALSE END;
     j := 0; WHILE quoted[j] # 0X DO INC(j) END;
-    IF used + j + 1 > LEN(linkArguments) THEN RETURN FALSE END;
-    Strcat(linkArguments, quoted);
+    IF used + j + 1 > LEN(list) THEN RETURN FALSE END;
+    Strcat(list, quoted);
     RETURN TRUE
+  END AppendArgument;
+
+  (* poc -link <arg>: arg for the clang command Build links with *)
+  PROCEDURE AddLinkArgument*(arg: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN AppendArgument(linkArguments, arg)
   END AddLinkArgument;
+
+  (* poc -c-flag <arg>: arg for each clang command that compiles a module's
+     C part (CompileModules) *)
+  PROCEDURE AddCFlag*(arg: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN AppendArgument(cFlags, arg)
+  END AddCFlag;
 
   (* appends " '<path>'" to command (a module's file name can hold "$") *)
   PROCEDURE AppendPath(path: ARRAY OF CHAR);
@@ -449,7 +464,7 @@ MODULE LLVMToolchainDriver;
         END;
         IF ok & CompanionSource(m, source) THEN
           command := "clang -c"; AppendTargetOptions(command, triple);
-          Strcat(command, " -fPIC");
+          Strcat(command, " -fPIC"); Strcat(command, cFlags);
           IF lto THEN Strcat(command, " -flto") END;
           AppendPath(source);
           ModuleFilePath(outputDir, m.module.name, ".c.o", path);

@@ -18,7 +18,7 @@ rm -f *.c *.h *.o *.sym hugeint
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 poc_build_run hugeint.mod
-tail -n +2 result >poc-o2
+cat result >poc-o2
 cmp -s poc-o2 voc-o2 || echo "poc and voc disagree under -O2" >>result
 poc -OC -o "$exe" -build hugeint.mod >/dev/null
 "./$exe" >poc-oc
