@@ -145,6 +145,7 @@ MODULE Types;
       hasInitializer*: BOOLEAN;
       initializer*: SyntaxTree.ExprNode;
       fieldList*: SyntaxTree.FieldListNode;
+      line*, column*: INTEGER; (* where its name is declared; 0 from a .sym file *)
       next*: Field
     END;
 
@@ -384,8 +385,10 @@ MODULE Types;
      cannot reuse SymbolTable.Insert's prepend-at-head shape). Reports and
      still appends on a duplicate name within rec's own declared fields -
      mirrors SymbolTable.Insert's identical "still return something usable"
-     behavior. Does not check names inherited from a base type; that is
-     deferred (see this module's header comment). *)
+     behavior. Does not check names inherited from a base type: a base can
+     still be gaining fields when an extension of it is built (a chain of
+     pointers resolved early), so SemanticActions.CheckExtensions does that
+     once a declaration sequence is resolved (Oberon2.pdf 6.3). *)
   PROCEDURE AddField*(rec: RecordType; name: SyntaxTree.Ident; type: Type;
                       exported, readOnly: BOOLEAN; line, column: INTEGER): Field;
     VAR f, existing: Field;
@@ -398,6 +401,7 @@ MODULE Types;
     NEW(f); f.name := name; f.type := type; f.exported := exported;
     f.readOnly := readOnly; f.next := NIL;
     f.hasInitializer := FALSE; f.initializer := NIL; f.fieldList := NIL;
+    f.line := line; f.column := column;
     IF rec.fields = NIL THEN
       rec.fields := f
     ELSE

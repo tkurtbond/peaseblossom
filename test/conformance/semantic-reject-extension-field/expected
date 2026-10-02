@@ -1,0 +1,5 @@
+fields.mod:11:21: error: field x is already a field of the base type B
+fields.mod:13:18: error: field x is already a field of the base type B
+fields.mod:14:32: error: field x is already a field of the base type B
+fields.mod:20:31: error: field late is already a field of the base type ItemDesc
+4 error(s)

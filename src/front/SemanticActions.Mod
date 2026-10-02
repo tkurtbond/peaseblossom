@@ -115,6 +115,14 @@ MODULE SemanticActions;
       next: PendingField
     END;
 
+    (* A record type with a base, still to be checked against its bases
+       (CheckExtensions) *)
+    PendingExtension = POINTER TO PendingExtensionDesc;
+    PendingExtensionDesc = RECORD
+      rec: Types.RecordType;
+      next: PendingExtension
+    END;
+
   (* PLAN.md Phase 7: the one shared qualified-name lookup every
      qualifier-bearing site (ResolveQualidentType, CheckDesignator,
      LookupBareTypeName, CheckWithGuard's variable and type qualifiers)
@@ -154,6 +162,15 @@ MODULE SemanticActions;
        FALSE while OpenProcedureBodyScope reopens an already checked one. *)
     pendingFields: PendingField;
     collectFields: BOOLEAN;
+    (* The record types with a base that the same declarations have made,
+       to be checked once their bases are complete (CheckExtensions);
+       collected, saved and restored as pendingFields are. *)
+    pendingExtensions: PendingExtension;
+    (* Set by ResolveRecordBaseType for the one ResolveQualidentType call
+       that resolves a record's base type, which reads and clears it: a
+       base is not contained by its extension, so a record still being
+       resolved may be one (see ResolveQualidentType). *)
+    resolvingRecordBase: BOOLEAN;
     (* PLAN.md Phase 9 step 6: set by every CheckDesignator call - TRUE
        when the designator is a VAR parameter (a type-bound procedure's VAR
        receiver included), possibly under type guards but with no
@@ -874,6 +891,7 @@ MODULE SemanticActions;
   BEGIN
     baseType := NIL;
     IF node.baseType # NIL THEN
+      resolvingRecordBase := TRUE;
       baseType := ResolveQualidentType(scope, node.baseType, FALSE);
       IF (baseType # Types.Undefined) & ~(baseType IS Types.RecordType) THEN
         Diagnostics.Error(node.baseType.line, node.baseType.column,
@@ -975,6 +993,25 @@ MODULE SemanticActions;
     END
   END PopulateRecordFields;
 
+  (* suffix appended to s, cut to s's length *)
+  PROCEDURE AppendText(VAR s: ARRAY OF CHAR; suffix: ARRAY OF CHAR);
+    VAR i, j: LONGINT;
+  BEGIN
+    i := 0; WHILE s[i] # 0X DO INC(i) END;
+    j := 0;
+    WHILE (suffix[j] # 0X) & (i < LEN(s) - 1) DO s[i] := suffix[j]; INC(i); INC(j) END;
+    s[i] := 0X
+  END AppendText;
+
+  (* rec, when it has a base, for CheckExtensions *)
+  PROCEDURE NoteExtension(rec: Types.RecordType);
+    VAR e: PendingExtension;
+  BEGIN
+    IF collectFields & (Types.BaseRecord(rec) # NIL) THEN
+      NEW(e); e.rec := rec; e.next := pendingExtensions; pendingExtensions := e
+    END
+  END NoteExtension;
+
   (* The named (obj.pendingTypeNode) case: registers rec in obj.type
      before populating its fields, so a field anywhere in this record's
      own body - even one naming this very record, behind a POINTER TO -
@@ -991,6 +1028,7 @@ MODULE SemanticActions;
     IF scope.outer = SymbolTable.Universe THEN NameRecordType(rec, obj.name); COPY(obj.name, rec.initPath) END;
     obj.type := rec; obj.pendingTypeNode := NIL;
     PopulateRecordFields(rec, node, scope);
+    NoteExtension(rec);
     RETURN rec
   END ResolveNamedRecordType;
 
@@ -1046,8 +1084,9 @@ MODULE SemanticActions;
   PROCEDURE ResolveQualidentType(scope: SymbolTable.Scope;
                                  node: SyntaxTree.QualidentTypeNode;
                                  allowForward: BOOLEAN): Types.Type;
-    VAR obj: SymbolTable.Object;
+    VAR obj: SymbolTable.Object; asBase: BOOLEAN;
   BEGIN
+    asBase := resolvingRecordBase; resolvingRecordBase := FALSE;
     obj := FindQualified(scope, node.qualifier, node.name, node.line, node.column);
     IF obj = NIL THEN
       IF lookupDiagnosed THEN (* already reported *)
@@ -1061,7 +1100,16 @@ MODULE SemanticActions;
     ELSIF obj.class # SymbolTable.typeClass THEN
       Diagnostics.Error(node.line, node.column, "not a type");
       RETURN Types.Undefined
-    ELSIF (obj.type # NIL) & obj.resolving & (obj.type IS Types.RecordType) & ~allowForward THEN
+    ELSIF (obj.type # NIL) & obj.resolving & (obj.type IS Types.RecordType) & ~allowForward & ~asBase THEN
+      (* A record whose fields are still being resolved, named directly:
+         it would contain itself. Not as a record's base type: a record
+         being resolved already has its own base, so no cycle of
+         extensions can pass through it (one is "illegal cyclic type
+         declaration", met before obj.type is set), and its extension is
+         reached through pointers, as in voc's Lola LSB.Mod (ItemDesc's
+         field t: Type leads, through TypeDesc and Object, to ObjDesc =
+         RECORD (ItemDesc)). What the extension takes from its base is
+         settled by CheckExtensions once the base is complete. *)
       Diagnostics.Error(node.line, node.column,
         "a record may not directly contain itself; use POINTER TO instead");
       RETURN Types.Undefined
@@ -1169,6 +1217,7 @@ MODULE SemanticActions;
     rec := Types.NewRecordType(baseType);
     COPY(currentModuleName, rec.moduleName);
     PopulateRecordFields(rec, node, scope);
+    NoteExtension(rec);
     RETURN rec
   END ResolveRecordType;
 
@@ -3428,6 +3477,51 @@ MODULE SemanticActions;
     END
   END CheckFieldInitializer;
 
+  (* Each record type with a base that the declarations made, once its
+     bases are complete (before the next procedure, and at the end): a
+     field may not have the name of a field of a base (Oberon2.pdf 6.3,
+     "Identifiers declared in the extension must be different from the
+     identifiers declared in its base type(s)"; a base's field another
+     module does not export is not declared for this one, as voc has it),
+     and a record needs
+     initializing when a base does. Not checked as each extension is
+     built, because a base can still be gaining fields then (see
+     ResolveQualidentType). The pending records are in reverse order, the
+     errors in declaration order. *)
+  PROCEDURE CheckExtensions(pending: PendingExtension);
+    VAR
+      reversed, next: PendingExtension; rec, base: Types.RecordType; f, inherited: Types.Field;
+      text: ARRAY 512 OF CHAR;
+  BEGIN
+    reversed := NIL;
+    WHILE pending # NIL DO next := pending.next; pending.next := reversed; reversed := pending; pending := next END;
+    WHILE reversed # NIL DO
+      rec := reversed.rec;
+      base := Types.BaseRecord(rec);
+      WHILE base # NIL DO
+        IF base.needsInit THEN rec.needsInit := TRUE END;
+        f := rec.fields;
+        WHILE f # NIL DO
+          inherited := base.fields;
+          WHILE (inherited # NIL) & (inherited.name # f.name) DO inherited := inherited.next END;
+          (* a hidden field of another module's record is not declared as
+             far as this module is concerned (Types, "hidden members") *)
+          IF (inherited # NIL) & (inherited.exported OR (base.moduleName = currentModuleName)) THEN
+            COPY("field ", text); AppendText(text, f.name);
+            IF base.name[0] # 0X THEN
+              AppendText(text, " is already a field of the base type "); AppendText(text, base.name)
+            ELSE AppendText(text, " is already a field of a base type")
+            END;
+            Diagnostics.Error(f.line, f.column, text)
+          END;
+          f := f.next
+        END;
+        base := Types.BaseRecord(base)
+      END;
+      reversed := reversed.next
+    END
+  END CheckExtensions;
+
   (* the pending fields, which are in reverse order, in declaration order *)
   PROCEDURE CheckFieldInitializers(pending: PendingField);
     VAR reversed, next: PendingField;
@@ -3443,10 +3537,10 @@ MODULE SemanticActions;
       v: SyntaxTree.VarDeclNode; p: SyntaxTree.ProcDeclNode; names: SyntaxTree.IdentDefNode;
       line, column, stopLine, stopColumn: INTEGER;
       kind: CHAR; afterProcedure, runOpen, savedCollect: BOOLEAN; savedLaterTypes: SyntaxTree.TypeDeclNode;
-      savedPending: PendingField;
+      savedPending: PendingField; savedExtensions: PendingExtension;
   BEGIN
-    savedPending := pendingFields; savedCollect := collectFields;
-    pendingFields := NIL; collectFields := TRUE;
+    savedPending := pendingFields; savedCollect := collectFields; savedExtensions := pendingExtensions;
+    pendingFields := NIL; collectFields := TRUE; pendingExtensions := NIL;
     savedLaterTypes := laterTypes;
     c := decls.constDecls; t := decls.typeDecls; v := decls.varDecls; p := decls.procDecls;
     typeRun := t; afterProcedure := FALSE; runOpen := FALSE;
@@ -3464,7 +3558,9 @@ MODULE SemanticActions;
       END;
       IF (p # NIL) & EarlierPosition(p.line, p.column, line, column) THEN kind := "p" END;
       IF kind = "p" THEN
-        (* what the fields may use is declared by now *)
+        (* what the fields may use is declared by now, and every base is
+           complete (a POINTER TO base comes before the next procedure) *)
+        CheckExtensions(pendingExtensions); pendingExtensions := NIL;
         CheckFieldInitializers(pendingFields); pendingFields := NIL;
         ResolveOneProcDecl(p, scope); p := p.next;
         laterTypes := typeRun; (* the nested DeclSeqs changed it *)
@@ -3492,8 +3588,9 @@ MODULE SemanticActions;
         END
       END
     END;
+    CheckExtensions(pendingExtensions);
     CheckFieldInitializers(pendingFields);
-    pendingFields := savedPending; collectFields := savedCollect;
+    pendingFields := savedPending; collectFields := savedCollect; pendingExtensions := savedExtensions;
     laterTypes := savedLaterTypes
   END CheckDeclarations;
 
