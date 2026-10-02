@@ -63,15 +63,17 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
 
 1. **Nearly everything reaches `Platform`.** 99 of the 142 library and
    runtime modules import voc's `Platform` directly or through their
-   imports. voc's `Platform` has 46 procedures; poc's has 5 (`Chdir`,
-   `GetEnv`, `System`, `Exit`, `Unlink`). What poc's `Platform`, `Files`
-   and `Modules` lack is the first error of nine modules (`Args`,
+   imports. voc's `Platform` has 46 procedures; poc's had 5 (`Chdir`,
+   `GetEnv`, `System`, `Exit`, `Unlink`) until Phase 12 step 5a
+   (2026-10-02) gave it all of them. What poc's `Platform`, `Files`
+   and `Modules` lacked was the first error of nine modules (`Args`,
    `Reals`, `oocSysClock`, `oocFilesHost`, `MultiArrays`, `Printer`,
    `ethBTrees`, `ethZlibReaders`, `ethReals`), and through them most of
-   the rest. poc's `Files` has 15 of voc's 37 procedures (no typed
-   `ReadInt`/`WriteInt`..., `ReadBytes`, `GetDate`, search path);
-   `Modules` has the arguments but not the module list, commands or
-   `Halt`.
+   the rest; since 5a, only the last four, which need `Files`' typed
+   riders and `Modules.Halt` (5d, 5e). poc's `Files` has 15 of voc's 37
+   procedures (no typed `ReadInt`/`WriteInt`..., `ReadBytes`, `GetDate`,
+   search path); `Modules` has the arguments but not the module list,
+   commands or `Halt`.
 2. **Inline C.** Ten modules contain voc's `PROCEDURE -` procedures,
    C text pasted into the generated C, which poc cannot compile: `Heap`,
    `Modules`, `Out`, `Files`, `Platform` (all replaced by poc's own
@@ -87,16 +89,22 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
    `Oberon` itself, `Sets` (v4), and `ethBase64`, `ethDates`, `ethSets`,
    `ethStrings` (s3). voc's `Texts` is a file-based text (no display),
    importing `Files`, `Modules` and `Reals`.
-5. **Accepted by poc today** (34; 23 before the language fixes of
-   finding 6): `VT100`, `oocAscii`, `oocC`, `oocCharClass`,
-   `oocConvTypes`, `oocIntConv`, `oocIntStr`, `oocJulianDay`,
-   `oocLongInts`, `oocMsg`, `oocOakStrings`, `oocProgramArgsHost`,
-   `oocRandomNumbers`, `oocStrings`, `oocStrings2`, `ooc2Ascii`,
-   `ooc2CharClass`, `ooc2ConvTypes`, `ooc2IntConv`, `ooc2IntStr`,
-   `ooc2Real0`, `ooc2Strings`, `ethMD5`, `ethUnicode`, `ethZlib`,
+5. **Accepted by poc today** (52 since step 5a gave poc the whole of
+   `Platform`, 2026-10-02; 34 before it, and 23 before the language fixes
+   of finding 6): `Reals`, `Args`, `oocAscii`, `oocC`, `oocCharClass`,
+   `oocComplexMath`, `oocConvTypes`, `oocFilenames`, `oocFilesHost`,
+   `oocIntConv`, `oocIntStr`, `oocJulianDay`, `oocLRealMath`,
+   `oocLongInts`, `oocLowLReal`, `oocLowReal`, `oocMsg`, `oocOakMath`,
+   `oocOakStrings`, `oocProgramArgsHost`, `oocRandomNumbers`,
+   `oocRealConv`, `oocRealMath`, `oocRealStr`, `oocRts`, `oocStrings`,
+   `oocStrings2`, `oocSysClock`, `oocTime`, `ooc2Ascii`, `ooc2CharClass`,
+   `ooc2ConvTypes`, `ooc2IntConv`, `ooc2IntStr`, `ooc2Real0`,
+   `ooc2Strings`, `ethMD5`, `ethRandomNumbers`, `ethUnicode`, `ethZlib`,
    `ethZlibBuffers`, `ethZlibInflate`, `ulmASCII`, `ulmDisciplines`,
-   `ulmIEEE`, `ulmObjects`, `ulmSys`, `Listen`, `powStrings`. Accepted means it
-   type-checks, not that it runs as under voc.
+   `ulmIEEE`, `ulmObjects`, `ulmSys`, `Listen`, `MersenneTwister`,
+   `MultiArrays`, `crt`, `powStrings`. (`VT100` was one; poc has its own
+   since step 5b.) Accepted means it type-checks, not that it runs as
+   under voc.
 6. **Language points** (the first error of a module), with what the
    user decided (2026-09-27):
    - `Oberon2.pdf` §3, "A string of length 1 can be used wherever a
@@ -198,65 +206,65 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 | Math | `runtime/Math.Mod` | Oakwood REAL mathematics (from OOC LowReal/RealMath) | SYSTEM Platform | 820 | 1 | Platform, SYSTEM | voc runtime, Oakwood | O2, OC | poc has its own | yes, whole interface (own code over libm) | LGPL 2.1+ (header) |
 | MathL | `runtime/MathL.Mod` | Oakwood LONGREAL mathematics (from OOC LowLReal/LRealMath) | Math Platform SYSTEM | 753 | 2 | Platform, SYSTEM | voc runtime, Oakwood | O2, OC | poc has its own | yes, whole interface (own code over libm) | LGPL 2.1+ (header) |
 | Modules | `runtime/Modules.Mod` | module list, commands, argc/argv, HALT/ASSERT handling | SYSTEM Platform Heap | 331 | 2 | inline C (5), Platform, SYSTEM | voc runtime | O2, OC | poc has its own | partly: arguments only (no module list, commands, Halt) | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
-| Oberon | `runtime/Oberon.Mod` | stub of the Oberon system module: Log text, Par (command parameters) | Platform Modules Texts Out | 74 | 8 | Platform, Texts | voc runtime | O2, OC | no, through Heap Reals | no | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
+| Oberon | `runtime/Oberon.Mod` | stub of the Oberon system module: Log text, Par (command parameters) | Platform Modules Texts Out | 74 | 8 | Platform, Texts | voc runtime | O2, OC | no, through Heap Texts | no | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
 | Out | `runtime/Out.Mod` | Oakwood formatted output to standard output | SYSTEM Platform Heap | 247 | 2 | inline C (1), Platform, SYSTEM | voc runtime, Oakwood | O2, OC | poc has its own | yes, whole interface | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
-| Platform | `runtime/Platformunix.Mod` | the OS layer: files, time, environment, process, signals (Unix and Windows variants) | SYSTEM | 475 | 0 | inline C (76), Platform, SYSTEM | voc runtime | O2, OC (as Platform) | poc has its own | partly: 5 of 46 procedures | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
+| Platform | `runtime/Platformunix.Mod` | the OS layer: files, time, environment, process, signals (Unix and Windows variants) | SYSTEM | 475 | 0 | inline C (76), Platform, SYSTEM | voc runtime | O2, OC (as Platform) | poc has its own | yes, whole interface (its C part in Platform.c) | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
 | Platform | `runtime/Platformwindows.Mod` | the OS layer: files, time, environment, process, signals (Unix and Windows variants) | SYSTEM | 553 | 0 | inline C (86), Platform, SYSTEM | voc runtime | Windows only | not checked | no (Unix only) | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
-| Reals | `runtime/Reals.Mod` | REAL/LONGREAL to and from digits, exponent access (ETH style) | SYSTEM Platform | 169 | 1 | Platform, SYSTEM | voc runtime | O2, OC | no: poc Platform lacks LittleEndian | no | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
+| Reals | `runtime/Reals.Mod` | REAL/LONGREAL to and from digits, exponent access (ETH style) | SYSTEM Platform | 169 | 1 | Platform, SYSTEM | voc runtime | O2, OC | accepted | no | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
 | Strings | `runtime/Strings.Mod` | Oakwood string operations | Reals | 226 | 2 | Platform | voc runtime, Oakwood | O2, OC | poc has its own | yes, whole interface | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
-| Texts | `runtime/Texts.Mod` | Oberon texts, readers, scanners, writers over Files (Oberon system style, no display) | Files Modules Reals SYSTEM | 880 | 7 | Platform, SYSTEM | voc runtime | O2, OC | no, through Heap Reals | no | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
-| VT100 | `runtime/VT100.Mod` | ANSI/VT100 terminal escape sequences | Out Strings | 349 | 5 | Platform | voc runtime | O2, OC | accepted | no | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
+| Texts | `runtime/Texts.Mod` | Oberon texts, readers, scanners, writers over Files (Oberon system style, no display) | Files Modules Reals SYSTEM | 880 | 7 | Platform, SYSTEM | voc runtime | O2, OC | no: undeclared identifier | no | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
+| VT100 | `runtime/VT100.Mod` | ANSI/VT100 terminal escape sequences | Out Strings | 349 | 5 | Platform | voc runtime | O2, OC | poc has its own | yes, whole interface (own code) | none in file; README: runtime GPLv3 + runtime exception, Ofront parts FreeBSD |
 
 ### `library/v4` (4 files)
 
 | Module | File | Purpose | Imports | Lines | Pulls in | Depends on | Family | voc builds | poc -check | In poc | Licence |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Args | `library/v4/Args.Mod` | command-line arguments and environment (Ofront/V4 style) | Platform Modules SYSTEM | 31 | 3 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | no: poc Platform lacks getEnv | no | none in file; Ofront (FreeBSD, README) |
+| Args | `library/v4/Args.Mod` | command-line arguments and environment (Ofront/V4 style) | Platform Modules SYSTEM | 31 | 3 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | accepted | no | none in file; Ofront (FreeBSD, README) |
 | Console | `library/v4/Console.Mod` | unbuffered text output to standard output (Ofront style) | SYSTEM Platform | 88 | 1 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | poc has its own | yes (v4 interface) | none in file; Ofront (FreeBSD, README) |
 | Printer | `library/v4/Printer.Mod` | PostScript printer driver of Oberon V4 (Unix) | SYSTEM Files Platform | 655 | 6 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | no: poc Files lacks ReadInt | no | none in file; Ofront (FreeBSD, README) |
-| Sets | `library/v4/Sets.Mod` | SET operations and output to Texts (V4) | Texts | 137 | 8 | Platform, Texts | Ofront / Oberon V4 | O2 | no, through Heap Reals | no | none in file; Ofront (FreeBSD, README) |
+| Sets | `library/v4/Sets.Mod` | SET operations and output to Texts (V4) | Texts | 137 | 8 | Platform, Texts | Ofront / Oberon V4 | O2 | no, through Heap Texts | no | none in file; Ofront (FreeBSD, README) |
 
 ### `library/ooc` (38 files)
 
 | Module | File | Purpose | Imports | Lines | Pulls in | Depends on | Family | voc builds | poc -check | In poc | Licence |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | oocAscii | `library/ooc/oocAscii.Mod` | names of ASCII control characters | - | 20 | 0 | - | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
-| oocBinaryRider | `library/ooc/oocBinaryRider.Mod` | binary input/output of Oberon values over channels | oocStrings oocChannel SYSTEM oocMsg | 529 | 11 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no, through oocSysClock | no | LGPL 2.1+ (header) |
+| oocBinaryRider | `library/ooc/oocBinaryRider.Mod` | binary input/output of Oberon values over channels | oocStrings oocChannel SYSTEM oocMsg | 529 | 11 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no, through oocChannel | no | LGPL 2.1+ (header) |
 | oocC | `library/ooc/oocCILP32.Mod` | C data types for interfacing (ILP32/LP64/LLP64 variants; voc builds the host one) | SYSTEM | 68 | 0 | SYSTEM | OOC (oo2c 1.x) | O2 (as oocC, on ILP32/LLP64 hosts) | not checked | no | LGPL 2.1+ (header) |
 | oocC | `library/ooc/oocCLLP64.Mod` | C data types for interfacing (ILP32/LP64/LLP64 variants; voc builds the host one) | SYSTEM | 68 | 0 | SYSTEM | OOC (oo2c 1.x) | O2 (as oocC, on ILP32/LLP64 hosts) | not checked | no | LGPL 2.1+ (header) |
 | oocC | `library/ooc/oocCLP64.Mod` | C data types for interfacing (ILP32/LP64/LLP64 variants; voc builds the host one) | SYSTEM | 68 | 0 | SYSTEM | OOC (oo2c 1.x) | O2 (as oocC, on LP64 hosts) | accepted | no | LGPL 2.1+ (header) |
-| oocChannel | `library/ooc/oocChannel.Mod` | abstract channels, readers and writers (stream I/O framework) | SYSTEM oocStrings oocTime oocMsg | 611 | 10 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no, through oocSysClock | no | LGPL 2.1+ (header) |
+| oocChannel | `library/ooc/oocChannel.Mod` | abstract channels, readers and writers (stream I/O framework) | SYSTEM oocStrings oocTime oocMsg | 611 | 10 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no: NIL is not a valid constant expression | no | LGPL 2.1+ (header) |
 | oocCharClass | `library/ooc/oocCharClass.Mod` | character classification | oocAscii | 95 | 1 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
-| oocComplexMath | `library/ooc/oocComplexMath.Mod` | COMPLEX mathematics (as records) | oocRealMath | 274 | 5 | Platform | OOC (oo2c 1.x) | O2 | no, through Reals | no | LGPL 2.1+ (header) |
+| oocComplexMath | `library/ooc/oocComplexMath.Mod` | COMPLEX mathematics (as records) | oocRealMath | 274 | 5 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocConvTypes | `library/ooc/oocConvTypes.Mod` | types shared by the string conversion modules | - | 33 | 0 | - | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
-| oocFilenames | `library/ooc/oocFilenames.Mod` | file name manipulation (obsolete, per its header) | oocStrings oocStrings2 oocRts | 188 | 11 | Platform | OOC (oo2c 1.x) | O2 | no, through Args Heap Reals | no | none in file; OOC library (LGPL) or voc wrapper |
-| oocFiles | `library/ooc/oocFiles.Mod` | files as channels (voc's reimplementation of the oo2c 1.x interface) | oocFilesHost oocChannel oocTime oocJulianDay oocStrings oocIntStr oocMsg | 618 | 13 | Platform | OOC (oo2c 1.x) | O2 | no, through oocFilesHost oocSysClock | no | none in file; OOC library (LGPL) or voc wrapper |
-| oocFilesHost | `library/ooc/oocFilesHost.Mod` | host file system bindings for oocFiles (voc) | SYSTEM Platform | 128 | 1 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no: poc Platform lacks FileHandle | no | none in file; OOC library (LGPL) or voc wrapper |
+| oocFilenames | `library/ooc/oocFilenames.Mod` | file name manipulation (obsolete, per its header) | oocStrings oocStrings2 oocRts | 188 | 11 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
+| oocFiles | `library/ooc/oocFiles.Mod` | files as channels (voc's reimplementation of the oo2c 1.x interface) | oocFilesHost oocChannel oocTime oocJulianDay oocStrings oocIntStr oocMsg | 618 | 13 | Platform | OOC (oo2c 1.x) | O2 | no, through oocChannel | no | none in file; OOC library (LGPL) or voc wrapper |
+| oocFilesHost | `library/ooc/oocFilesHost.Mod` | host file system bindings for oocFiles (voc) | SYSTEM Platform | 128 | 1 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
 | oocIntConv | `library/ooc/oocIntConv.Mod` | low-level integer/string conversion | oocCharClass oocStrings oocConvTypes | 241 | 4 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocIntStr | `library/ooc/oocIntStr.Mod` | integer/string conversion | oocConvTypes oocIntConv | 100 | 5 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocJulianDay | `library/ooc/oocJulianDay.Mod` | dates to and from modified Julian days | - | 132 | 0 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
-| oocLComplexMath | `library/ooc/oocLComplexMath.Mod` | LONGCOMPLEX mathematics | oocComplexMath oocLRealMath | 284 | 8 | Platform | OOC (oo2c 1.x) | O2 | no, through Reals | no | LGPL 2.1+ (header) |
-| oocLRealConv | `library/ooc/oocLRealConv.Mod` | low-level LONGREAL/string conversion | oocCharClass oocLowLReal oocStrings oocConvTypes oocLongInts SYSTEM | 416 | 10 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no, through Reals | no | LGPL 2.1+ (header) |
-| oocLRealMath | `library/ooc/oocLRealMath.Mod` | LONGREAL mathematics (ISO style) | oocLowLReal oocRealMath SYSTEM | 559 | 6 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no, through Reals | no | LGPL 2.1+ (header) |
-| oocLRealStr | `library/ooc/oocLRealStr.Mod` | LONGREAL/string conversion | oocLowLReal oocConvTypes oocLRealConv oocStrings oocLongInts | 451 | 11 | Platform | OOC (oo2c 1.x) | O2 | no, through Reals | no | LGPL 2.1+ (header) |
+| oocLComplexMath | `library/ooc/oocLComplexMath.Mod` | LONGCOMPLEX mathematics | oocComplexMath oocLRealMath | 284 | 8 | Platform | OOC (oo2c 1.x) | O2 | no: not an imported module | no | LGPL 2.1+ (header) |
+| oocLRealConv | `library/ooc/oocLRealConv.Mod` | low-level LONGREAL/string conversion | oocCharClass oocLowLReal oocStrings oocConvTypes oocLongInts SYSTEM | 416 | 10 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no: FOR final value is not assignment compatible with the control variable | no | LGPL 2.1+ (header) |
+| oocLRealMath | `library/ooc/oocLRealMath.Mod` | LONGREAL mathematics (ISO style) | oocLowLReal oocRealMath SYSTEM | 559 | 6 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
+| oocLRealStr | `library/ooc/oocLRealStr.Mod` | LONGREAL/string conversion | oocLowLReal oocConvTypes oocLRealConv oocStrings oocLongInts | 451 | 11 | Platform | OOC (oo2c 1.x) | O2 | no, through oocLRealConv | no | LGPL 2.1+ (header) |
 | oocLongInts | `library/ooc/oocLongInts.Mod` | simple extended-precision integers | - | 101 | 0 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
-| oocLowLReal | `library/ooc/oocLowLReal.Mod` | properties of LONGREAL (IEEE double): exponent, fraction, ulp | oocLowReal SYSTEM | 486 | 4 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no, through Reals | no | LGPL 2.1+ (header) |
-| oocLowReal | `library/ooc/oocLowReal.Mod` | properties of REAL (IEEE single) | SYSTEM Console Reals | 374 | 3 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no, through Reals | no | LGPL 2.1+ (header) |
+| oocLowLReal | `library/ooc/oocLowLReal.Mod` | properties of LONGREAL (IEEE double): exponent, fraction, ulp | oocLowReal SYSTEM | 486 | 4 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
+| oocLowReal | `library/ooc/oocLowReal.Mod` | properties of REAL (IEEE single) | SYSTEM Console Reals | 374 | 3 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocMsg | `library/ooc/oocMsg.Mod` | message framework: creation, expansion, conversion to text | oocCharClass oocStrings oocIntStr | 552 | 6 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
-| oocOakMath | `library/ooc/oocOakMath.Mod` | Oakwood Math names over RealMath | oocRealMath | 137 | 5 | Platform | OOC (oo2c 1.x) | O2 | no, through Reals | no | none in file; OOC library (LGPL) or voc wrapper |
+| oocOakMath | `library/ooc/oocOakMath.Mod` | Oakwood Math names over RealMath | oocRealMath | 137 | 5 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
 | oocOakStrings | `library/ooc/oocOakStrings.Mod` | Oakwood-compliant strings (ooc's) | - | 181 | 0 | - | OOC (oo2c 1.x) | no | accepted | no | LGPL 2.1+ (header) |
-| oocProgramArgs | `library/ooc/oocProgramArgs.Mod` | command-line arguments as a read-only channel | oocProgramArgsHost oocChannel oocCharClass oocTime oocMsg | 182 | 14 | Platform | OOC (oo2c 1.x) | O2 | no, through Heap oocSysClock | no | none in file; OOC library (LGPL) or voc wrapper |
+| oocProgramArgs | `library/ooc/oocProgramArgs.Mod` | command-line arguments as a read-only channel | oocProgramArgsHost oocChannel oocCharClass oocTime oocMsg | 182 | 14 | Platform | OOC (oo2c 1.x) | O2 | no, through Heap oocChannel | no | none in file; OOC library (LGPL) or voc wrapper |
 | oocProgramArgsHost | `library/ooc/oocProgramArgsHost.Mod` | raw argc/argv access for oocProgramArgs (voc) | SYSTEM Modules | 45 | 3 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
 | oocRandomNumbers | `library/ooc/oocRandomNumbers.Mod` | Park-Miller random numbers | - | 75 | 0 | - | OOC (oo2c 1.x) | no | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
-| oocRealConv | `library/ooc/oocRealConv.Mod` | low-level REAL/string conversion | oocCharClass oocLowReal oocStrings oocConvTypes | 391 | 8 | Platform | OOC (oo2c 1.x) | O2 | no, through Reals | no | LGPL 2.1+ (header) |
-| oocRealMath | `library/ooc/oocRealMath.Mod` | REAL mathematics (ISO style) | oocLowReal SYSTEM | 609 | 4 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no, through Reals | no | LGPL 2.1+ (header) |
-| oocRealStr | `library/ooc/oocRealStr.Mod` | REAL/string conversion | oocLowReal oocConvTypes oocRealConv oocLRealMath oocStrings | 390 | 12 | Platform | OOC (oo2c 1.x) | O2 | no, through Reals | no | LGPL 2.1+ (header) |
-| oocRts | `library/ooc/oocRts.Mod` | run-time system access: shell command, program name (voc wrapper) | Args Platform Files oocStrings | 67 | 9 | Platform | OOC (oo2c 1.x) | O2 | no, through Args Heap Reals | no | none in file; OOC library (LGPL) or voc wrapper |
+| oocRealConv | `library/ooc/oocRealConv.Mod` | low-level REAL/string conversion | oocCharClass oocLowReal oocStrings oocConvTypes | 391 | 8 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
+| oocRealMath | `library/ooc/oocRealMath.Mod` | REAL mathematics (ISO style) | oocLowReal SYSTEM | 609 | 4 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
+| oocRealStr | `library/ooc/oocRealStr.Mod` | REAL/string conversion | oocLowReal oocConvTypes oocRealConv oocLRealMath oocStrings | 390 | 12 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
+| oocRts | `library/ooc/oocRts.Mod` | run-time system access: shell command, program name (voc wrapper) | Args Platform Files oocStrings | 67 | 9 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
 | oocStrings | `library/ooc/oocStrings.Mod` | string operations (ISO Modula-2 style) | - | 501 | 0 | - | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocStrings2 | `library/ooc/oocStrings2.Mod` | more string operations (obsolete, per its header) | oocStrings | 100 | 1 | - | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
-| oocSysClock | `library/ooc/oocSysClock.Mod` | gettimeofday (private; "use Time.GetTime") | SYSTEM Platform | 15 | 1 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no: poc Platform lacks GetTimeOfDay | no | none in file; OOC library (LGPL) or voc wrapper |
-| oocTextRider | `library/ooc/oocTextRider.Mod` | text input/output of Oberon values over channels | oocAscii oocChannel oocCharClass oocStrings oocLRealStr oocRealStr oocIntStr oocLRealConv oocConvTypes oocMsg | 1620 | 22 | Platform | OOC (oo2c 1.x) | O2 | no, through Reals oocSysClock | no | LGPL 2.1+ (header) |
-| oocTime | `library/ooc/oocTime.Mod` | time and time intervals | oocSysClock | 205 | 2 | Platform | OOC (oo2c 1.x) | O2 | no, through oocSysClock | no | LGPL 2.1+ (header) |
+| oocSysClock | `library/ooc/oocSysClock.Mod` | gettimeofday (private; "use Time.GetTime") | SYSTEM Platform | 15 | 1 | Platform, SYSTEM | OOC (oo2c 1.x) | O2 | accepted | no | none in file; OOC library (LGPL) or voc wrapper |
+| oocTextRider | `library/ooc/oocTextRider.Mod` | text input/output of Oberon values over channels | oocAscii oocChannel oocCharClass oocStrings oocLRealStr oocRealStr oocIntStr oocLRealConv oocConvTypes oocMsg | 1620 | 22 | Platform | OOC (oo2c 1.x) | O2 | no, through oocChannel oocLRealConv | no | LGPL 2.1+ (header) |
+| oocTime | `library/ooc/oocTime.Mod` | time and time intervals | oocSysClock | 205 | 2 | Platform | OOC (oo2c 1.x) | O2 | accepted | no | LGPL 2.1+ (header) |
 | oocwrapperlibc | `library/ooc/oocwrapperlibc.Mod` | libc wrappers: system, sprintf (inline C) | SYSTEM Platform | 23 | 1 | inline C (2), Platform, SYSTEM | OOC (oo2c 1.x) | O2 | no: inline C | no | none in file; OOC library (LGPL) or voc wrapper |
 
 ### `library/ooc2` (9 files)
@@ -286,23 +294,23 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 | Module | File | Purpose | Imports | Lines | Pulls in | Depends on | Family | voc builds | poc -check | In poc | Licence |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | ethBTrees | `library/s3/ethBTrees.Mod` | B-trees over Files (keys LONGINT or strings) | Files | 1135 | 6 | Platform | ETH Oberon System 3 | O2 | no: poc Files lacks ReadLInt | no | ETH Oberon licence (header) |
-| ethBase64 | `library/s3/ethBase64.Mod` | Base64 encoding and decoding over Files/Texts | Files Texts Oberon Out | 233 | 9 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Reals | no | none in file |
-| ethDates | `library/s3/ethDates.Mod` | dates and times, conversion to text | Texts | 214 | 8 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Reals | no | ETH Oberon licence (header) |
-| ethGZReaders | `library/s3/ethGZReaders.Mod` | reading gzip files (pure Oberon zlib) | Files ethZlibReaders | 169 | 10 | Platform | ETH Oberon System 3 | O2 | no, through Heap Reals ethZlibReaders | no | ETH Oberon licence (header) |
-| ethGZWriters | `library/s3/ethGZWriters.Mod` | writing gzip files (pure Oberon zlib) | Files ethZlibWriters | 113 | 10 | Platform | ETH Oberon System 3 | O2 | no, through Heap Reals ethZlibDeflate | no | ETH Oberon licence (header) |
+| ethBase64 | `library/s3/ethBase64.Mod` | Base64 encoding and decoding over Files/Texts | Files Texts Oberon Out | 233 | 9 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Texts | no | none in file |
+| ethDates | `library/s3/ethDates.Mod` | dates and times, conversion to text | Texts | 214 | 8 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Texts | no | ETH Oberon licence (header) |
+| ethGZReaders | `library/s3/ethGZReaders.Mod` | reading gzip files (pure Oberon zlib) | Files ethZlibReaders | 169 | 10 | Platform | ETH Oberon System 3 | O2 | no, through Heap ethZlibReaders | no | ETH Oberon licence (header) |
+| ethGZWriters | `library/s3/ethGZWriters.Mod` | writing gzip files (pure Oberon zlib) | Files ethZlibWriters | 113 | 10 | Platform | ETH Oberon System 3 | O2 | no, through Heap ethZlibDeflate | no | ETH Oberon licence (header) |
 | ethMD5 | `library/s3/ethMD5.Mod` | MD5 message digest | SYSTEM | 298 | 0 | SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
-| ethRandomNumbers | `library/s3/ethRandomNumbers.Mod` | random numbers (uniform, exponential, ...) | oocOakMath Platform SYSTEM | 40 | 6 | Platform, SYSTEM | ETH Oberon System 3 | O2 | no, through Reals | no | ETH Oberon licence (header) |
+| ethRandomNumbers | `library/s3/ethRandomNumbers.Mod` | random numbers (uniform, exponential, ...) | oocOakMath Platform SYSTEM | 40 | 6 | Platform, SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
 | ethReals | `library/s3/ethReals.Mod` | REAL/LONGREAL bit access and conversion (ETH Reals) | SYSTEM Modules | 320 | 3 | Platform, SYSTEM | ETH Oberon System 3 | O2 | no: poc Modules lacks Halt | no | ETH Oberon licence (header) |
-| ethSets | `library/s3/ethSets.Mod` | SET operations and output to Texts | Texts | 141 | 8 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Reals | no | ETH Oberon licence (header) |
-| ethStrings | `library/s3/ethStrings.Mod` | string operations and conversions (ETH) | Texts ethDates ethReals | 961 | 10 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Reals ethReals | no | ETH Oberon licence (header) |
+| ethSets | `library/s3/ethSets.Mod` | SET operations and output to Texts | Texts | 141 | 8 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Texts | no | ETH Oberon licence (header) |
+| ethStrings | `library/s3/ethStrings.Mod` | string operations and conversions (ETH) | Texts ethDates ethReals | 961 | 10 | Platform, Texts | ETH Oberon System 3 | O2 | no, through Heap Texts ethReals | no | ETH Oberon licence (header) |
 | ethUnicode | `library/s3/ethUnicode.Mod` | UCS/UTF-8 conversion | SYSTEM | 216 | 0 | SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
-| ethZip | `library/s3/ethZip.Mod` | zip archives (pure Oberon zlib) | Files ethZlib ethZlibReaders ethZlibWriters | 746 | 12 | Platform | ETH Oberon System 3 | O2 | no, through Heap Reals ethZlibDeflate ethZlibReaders | no | ETH Oberon licence (header) |
+| ethZip | `library/s3/ethZip.Mod` | zip archives (pure Oberon zlib) | Files ethZlib ethZlibReaders ethZlibWriters | 746 | 12 | Platform | ETH Oberon System 3 | O2 | no, through Heap ethZlibDeflate ethZlibReaders | no | ETH Oberon licence (header) |
 | ethZlib | `library/s3/ethZlib.Mod` | zlib core: constants, streams, adler32/crc32 (pure Oberon) | SYSTEM | 160 | 0 | SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
 | ethZlibBuffers | `library/s3/ethZlibBuffers.Mod` | buffers for the zlib modules | SYSTEM | 116 | 0 | SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
 | ethZlibDeflate | `library/s3/ethZlibDeflate.Mod` | deflate compression (pure Oberon) | SYSTEM ethZlib ethZlibBuffers | 1493 | 2 | SYSTEM | ETH Oberon System 3 | O2 | no: LONG(CHAR) (voc; poc: use ORD) | no | ETH Oberon licence (header) |
 | ethZlibInflate | `library/s3/ethZlibInflate.Mod` | inflate decompression (pure Oberon) | SYSTEM ethZlib ethZlibBuffers | 1233 | 2 | SYSTEM | ETH Oberon System 3 | O2 | accepted | no | ETH Oberon licence (header) |
 | ethZlibReaders | `library/s3/ethZlibReaders.Mod` | readers that inflate | Files ethZlib ethZlibBuffers ethZlibInflate | 113 | 9 | Platform | ETH Oberon System 3 | O2 | no: poc Files lacks ReadBytes | no | ETH Oberon licence (header) |
-| ethZlibWriters | `library/s3/ethZlibWriters.Mod` | writers that deflate | Files ethZlib ethZlibBuffers ethZlibDeflate | 161 | 9 | Platform | ETH Oberon System 3 | O2 | no, through Heap Reals ethZlibDeflate | no | ETH Oberon licence (header) |
+| ethZlibWriters | `library/s3/ethZlibWriters.Mod` | writers that deflate | Files ethZlib ethZlibBuffers ethZlibDeflate | 161 | 9 | Platform | ETH Oberon System 3 | O2 | no, through Heap ethZlibDeflate | no | ETH Oberon licence (header) |
 
 ### `library/ulm` (54 files)
 
@@ -368,10 +376,10 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 | Module | File | Purpose | Imports | Lines | Pulls in | Depends on | Family | voc builds | poc -check | In poc | Licence |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Listen | `library/misc/Listen.Mod` | singly linked list of integers (teaching example) | - | 61 | 0 | - | various | O2 | accepted | no | none in file |
-| MersenneTwister | `library/misc/MersenneTwister.Mod` | Mersenne Twister random numbers | SYSTEM oocSysClock oocLRealMath | 243 | 8 | Platform, SYSTEM | various | O2 | no, through Reals oocSysClock | no | none in file |
-| MultiArrayRiders | `library/misc/MultiArrayRiders.Mod` | riders over MultiArrays | MultiArrays Console Platform | 549 | 3 | Platform | various | O2 | no, through MultiArrays | no | LGPL 2+ (header) |
-| MultiArrays | `library/misc/MultiArrays.Mod` | multidimensional numeric arrays of any rank | Console Platform | 747 | 2 | Platform | various | O2 | no: poc Platform lacks Time | no | LGPL 2+ (header) |
-| crt | `library/misc/crt.Mod` | Turbo Pascal CRT-style terminal control over VT100 | VT100 Platform Out Strings | 173 | 6 | Platform | various | O2 | no: poc Platform lacks Delay | no | none in file |
+| MersenneTwister | `library/misc/MersenneTwister.Mod` | Mersenne Twister random numbers | SYSTEM oocSysClock oocLRealMath | 243 | 8 | Platform, SYSTEM | various | O2 | accepted | no | none in file |
+| MultiArrayRiders | `library/misc/MultiArrayRiders.Mod` | riders over MultiArrays | MultiArrays Console Platform | 549 | 3 | Platform | various | O2 | no: assignment target is read-only | no | LGPL 2+ (header) |
+| MultiArrays | `library/misc/MultiArrays.Mod` | multidimensional numeric arrays of any rank | Console Platform | 747 | 2 | Platform | various | O2 | accepted | no | LGPL 2+ (header) |
+| crt | `library/misc/crt.Mod` | Turbo Pascal CRT-style terminal control over VT100 | VT100 Platform Out Strings | 173 | 6 | Platform | various | O2 | accepted | no | none in file |
 
 ### `library/pow` (1 files)
 

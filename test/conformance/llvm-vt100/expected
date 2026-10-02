@@ -1,0 +1,86 @@
+== -O2 vt100same
+
+CSI ^[[
+Escape ^[
+SynchronousIdle ^V
+LeftCrotchet [
+CUU ^[[3A
+CUD ^[[4B
+CUF ^[[5C
+CUB ^[[6D
+CNL ^[[1E
+CPL ^[[2F
+CHA ^[[9G
+CUP ^[[12;345H
+ED ^[[2J
+EL ^[[0K
+SU ^[[7S
+SD ^[[8T
+HVP ^[[1;80f
+SGR ^[[1m
+SGR2 ^[[1;31m
+DSR ^[[6n
+SCP ^[[s
+RCP ^[[u
+DECTCEMl ^[[?25l
+DECTCEMh ^[[?25h
+attributes ^[[1m^[[2m^[[4m^[[5m^[[7m^[[8m
+resets ^[[0m^[[21m^[[22m^[[24m^[[25m^[[27m^[[28m
+colours ^[[30m^[[31m^[[32m^[[33m^[[34m^[[35m^[[36m^[[37m^[[39m^[[90m^[[91m^[[92m^[[93m^[[94m^[[95m^[[96m^[[97m
+backgrounds ^[[40m^[[41m^[[42m^[[43m^[[44m^[[45m^[[46m^[[47m^[[49m^[[100m^[[101m^[[102m^[[103m^[[104m^[[105m^[[106m^[[107m
+IntToStr 0 7 -42 2147483647 -2147483648 2147483647 -2147483648 123
+Reset ^[c
+end
+== -O2 vt100diff
+
+CUU 12 ^[[12A
+CHA 132 ^[[132G
+CUP 12345 30000 ^[[12345;30000H
+HVP -1 0 ^[[-1;0f
+SGR 107 ^[[107m
+DSR 5 ^[[5n
+SetAttr long ^[[1;4;38;5;208;48;5;17m
+CSI changed ^[?1A
+== -OC vt100same
+
+CSI ^[[
+Escape ^[
+SynchronousIdle ^V
+LeftCrotchet [
+CUU ^[[3A
+CUD ^[[4B
+CUF ^[[5C
+CUB ^[[6D
+CNL ^[[1E
+CPL ^[[2F
+CHA ^[[9G
+CUP ^[[12;345H
+ED ^[[2J
+EL ^[[0K
+SU ^[[7S
+SD ^[[8T
+HVP ^[[1;80f
+SGR ^[[1m
+SGR2 ^[[1;31m
+DSR ^[[6n
+SCP ^[[s
+RCP ^[[u
+DECTCEMl ^[[?25l
+DECTCEMh ^[[?25h
+attributes ^[[1m^[[2m^[[4m^[[5m^[[7m^[[8m
+resets ^[[0m^[[21m^[[22m^[[24m^[[25m^[[27m^[[28m
+colours ^[[30m^[[31m^[[32m^[[33m^[[34m^[[35m^[[36m^[[37m^[[39m^[[90m^[[91m^[[92m^[[93m^[[94m^[[95m^[[96m^[[97m
+backgrounds ^[[40m^[[41m^[[42m^[[43m^[[44m^[[45m^[[46m^[[47m^[[49m^[[100m^[[101m^[[102m^[[103m^[[104m^[[105m^[[106m^[[107m
+IntToStr 0 7 -42 2147483647 -2147483648 9223372036854775807 -9223372036854775808 123
+Reset ^[c
+end
+== -OC vt100diff
+
+CUU 12 ^[[12A
+CHA 132 ^[[132G
+CUP 12345 30000 ^[[12345;30000H
+HVP -1 0 ^[[-1;0f
+SGR 107 ^[[107m
+DSR 5 ^[[5n
+SetAttr long ^[[1;4;38;5;208;48;5;17m
+CSI changed ^[?1A

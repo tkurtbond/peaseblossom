@@ -134,3 +134,4 @@ test/conformance/llvm-using-modules/work/
 test/conformance/llvm-lto/work/
 test/conformance/llvm-libraries-i686/work/
 test/conformance/llvm-platform-files/llvm-platform-files
+test/conformance/llvm-vt100/llvm-vt100

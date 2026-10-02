@@ -25,6 +25,10 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   headers know. poc compiles a module's sibling `.c` whenever it compiles
   the module (`LLVMToolchainDriver.CompanionSource`), so it goes into
   `poc-rtl` and into any program that builds `Platform` from source.
+- `VT100.Mod` - terminal control with ANSI escape sequences, voc's `VT100`
+  interface (Phase 12 step 5b), written for poc: cursor movement, erasing,
+  scrolling, colours and attributes, written through `Out`. Unlike voc's,
+  every number is written whole and `DSR` sends its argument.
 - `Files.Mod` - Oberon files (`File`, `Rider`, `New`, `Old`, `Register`,
   `Close`, `Length`, `Set`, `Read`, `Write`, `ReadString`, `ReadLine`,
   `WriteString`, ...) over C stdio, which is what keeps it portable across

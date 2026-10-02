@@ -865,7 +865,16 @@ convenient, but must not be a prerequisite of it.
      poc keeps rejecting it there (decided with the user 2026-10-02). Fixture
      `llvm-platform-files` (44 checks, against voc, both size models).
    - **5b. `In.Name` and `VT100`** (new: terminal control sequences);
-     small, needing nothing else.
+     small, needing nothing else. **Done (2026-10-02).** `In.Name` needed
+     nothing: poc's has read a name (Oakwood: "according to the file name
+     format of the underlying operating system") since Phase 10, and
+     voc's only halts; the gap step 4 listed was a mistake. `VT100` is
+     written for poc (voc's is under voc's runtime licence), with voc's
+     interface; where voc's garbles a sequence - a count of 10 or more
+     cut to its first digit, `DSR` ignoring its argument - poc's writes
+     what the procedure describes (user's decision). Fixture `llvm-vt100`
+     (every call voc gets right, byte for byte against voc, both size
+     models; the differences on their own).
    - **5c. Finalization** in `GarbageCollectedHeap`, from voc's `Heap`
      (`RegisterFinalizer(obj, finalize)`): registered objects are weak
      references, not roots; one unreachable after marking is kept for its
