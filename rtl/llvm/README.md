@@ -46,6 +46,13 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   its `_init` (Phase 12 step 5e): a command, an exported procedure with no
   parameters and no result, is then kept by the linker whether called or
   not. Other programs keep an argument-less `main` and no descriptors.
+- `Reals.Mod` - voc's `Reals` interface (Phase 12 step 5f), written for
+  poc: powers of ten (`Ten`, `TenL`, correctly rounded through libc's
+  `strtof`/`strtod`), the exponent field (`Expo`, `SetExpo`, `ExpoL`,
+  `SetExpoL`), and the digits `Texts` writes a real from (`Convert`,
+  `ConvertL`, exact for any size; `ConvertH`, `ConvertHL`, the bytes in
+  hexadecimal, least significant first as voc's). It takes a real's bits
+  as an integer, so it does not depend on the byte order.
 - `Out.Mod`, `In.Mod` - the Oakwood formatted output and input, with voc's
   interfaces. `Out` writes through `FormattedOutput` (unbuffered), and prints
   `REAL`/`LONGREAL` correctly rounded (`RealDigits.Mod`, big-integer

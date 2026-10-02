@@ -949,6 +949,17 @@ convenient, but must not be a prerequisite of it.
      descriptor only if `Modules` was in the program it was compiled
      with; poc-rtl's modules all do. Fixture `llvm-modules-commands`.
    - **5f. `Reals`** (new; 10 procedures, the conversions `Texts` uses).
+     **Done (2026-10-02).** poc's own code with voc's interface: it reads
+     a real's bits as an integer, not bytes at `Platform.LittleEndian`'s
+     offsets, so it imports nothing but `SYSTEM`. Differences kept, all
+     where voc's answer is wrong or undefined: `Ten`/`TenL` are correctly
+     rounded (libc's `strtof`/`strtod` of "1E<e>"; voc's `TenL` squares
+     its way up and is off in the last bit for 252 of the exponents
+     0..308) and give 10^e for a negative `e`; `ConvertL` writes the
+     exact low digits of any number's integer part (voc's goes through a
+     `LONGINT`). `ConvertH`/`ConvertHL` write the bytes least significant
+     first, as voc's and Ofront's do. Fixture `llvm-reals-module` (against
+     voc, both size models, and what poc does alone).
    - **5g. `Texts`** (new; voc's file-based texts, readers, scanners and
      writers, no display: 38 procedures).
    - **5h. `Oberon`** (new; the stub system module: `Log`, `Par`,
