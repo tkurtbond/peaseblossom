@@ -384,8 +384,11 @@ design questions and the TODO backlog) closed on 2026-09-26:
 `doc/phase-11-inventory.md` lists every item and its verdict. Phase 12
 (library and module support: voc's options, libraries, voc's module
 inventory, then voc's runtime modules and finalization) is in progress;
-the modules under voc's `src/library` wait for Phase 18. `PLAN.md` has the roadmap and each phase's
-design. `doc/project-history.md` has the account that used to be here,
+the modules under voc's `src/library` wait for Phase 19. Phase 13 (added
+2026-10-02; the later phases renumbered, old 13-18 now 14-19) packages poc:
+`make install`, a bootstrap seed that needs no voc, a release tarball, OS
+packages, a User's Guide, a Reference Guide and `poc(1)`. `PLAN.md` has the
+roadmap and each phase's design. `doc/project-history.md` has the account that used to be here,
 including what was found while building the front end and `.sym` files
 (Phases 0-7), the import search path, `-output-dir`, real `CONST` export and
 hidden members in `.sym` files. `src/front/README.md` lists the front-end

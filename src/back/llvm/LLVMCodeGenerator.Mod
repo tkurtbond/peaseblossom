@@ -6483,7 +6483,7 @@ MODULE LLVMCodeGenerator;
       IF pd.isExternal THEN
         obj := SymbolTable.FindLocal(cg.scope, pd.name.name);
         IF obj.externalConvention = "VMS" THEN
-          (* the VMS Calling Standard is the VAX backend's (Phase 13); called as
+          (* the VMS Calling Standard is the VAX backend's (Phase 14); called as
              a C function here it would link against a symbol nothing defines
              or, worse, one that exists and means something else *)
           ReportUnsupported(cg, pd.line, pd.column,

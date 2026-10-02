@@ -4,7 +4,7 @@ PLAN.md Phase 12 step 3 (2026-09-27): every module Vishap Oberon (voc)
 supplies, from its sources, for deciding which poc supports. It is a
 record of facts. The decisions: Phase 12 step 4 makes poc compatible with
 voc's runtime modules (without `Heap`, but with its finalization); the
-modules under `src/library` wait for Phase 18.
+modules under `src/library` wait for Phase 19.
 
 ## Sources and method
 
