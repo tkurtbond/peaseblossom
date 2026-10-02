@@ -5,11 +5,14 @@ target triple = "i686-unknown-linux-gnu"
 %roots.Pair = type { i16, ptr, ptr }
 
 declare i32 @ModuleTable.TableCount()
+declare i32 @ModuleTable.FirstModule()
+declare void @ModuleTable.RegisterModule(i32)
 declare i32 @ModuleTable.Slot(i32, i32)
 declare i32 @ModuleTable.SlotCount(i32)
 declare i32 @ModuleTable.Next(i32)
 declare i32 @ModuleTable.First()
 declare void @ModuleTable.Register(i32)
+@ModuleTable.moduleHead = external global i8
 @ModuleTable.registered = external global i8
 @ModuleTable.head = external global i8
 declare void @ModuleTable_init()
@@ -17,8 +20,8 @@ declare void @ModuleTable_init()
 @roots.-initialized = internal global i1 false
 @roots.-key.O2.fe324182960d7a3f = constant i8 0
 @roots.-target.i686-unknown-linux-gnu = constant i8 0
-@ModuleTable.-key.O2.566673ee7d8cfcc5 = external global i8
-@roots.-imports = internal constant [1 x ptr] [ptr @ModuleTable.-key.O2.566673ee7d8cfcc5]
+@ModuleTable.-key.O2.2903ec223cceaff5 = external global i8
+@roots.-imports = internal constant [1 x ptr] [ptr @ModuleTable.-key.O2.2903ec223cceaff5]
 @llvm.used = appending global [1 x ptr] [ptr @roots.-imports], section "llvm.metadata"
 @roots.single = global ptr zeroinitializer
 @roots.plain = global i16 zeroinitializer
@@ -88,11 +91,14 @@ target triple = "x86_64-unknown-linux-gnu"
 %roots.Pair = type { i16, ptr, ptr }
 
 declare i32 @ModuleTable.TableCount()
+declare i64 @ModuleTable.FirstModule()
+declare void @ModuleTable.RegisterModule(i64)
 declare i64 @ModuleTable.Slot(i64, i64)
 declare i64 @ModuleTable.SlotCount(i64)
 declare i64 @ModuleTable.Next(i64)
 declare i64 @ModuleTable.First()
 declare void @ModuleTable.Register(i64)
+@ModuleTable.moduleHead = external global i8
 @ModuleTable.registered = external global i8
 @ModuleTable.head = external global i8
 declare void @ModuleTable_init()
@@ -100,8 +106,8 @@ declare void @ModuleTable_init()
 @roots.-initialized = internal global i1 false
 @roots.-key.O2.fe324182960d7a3f = constant i8 0
 @roots.-target.x86_64-unknown-linux-gnu = constant i8 0
-@ModuleTable.-key.O2.566673ee7d8cfcc5 = external global i8
-@roots.-imports = internal constant [1 x ptr] [ptr @ModuleTable.-key.O2.566673ee7d8cfcc5]
+@ModuleTable.-key.O2.2903ec223cceaff5 = external global i8
+@roots.-imports = internal constant [1 x ptr] [ptr @ModuleTable.-key.O2.2903ec223cceaff5]
 @llvm.used = appending global [1 x ptr] [ptr @roots.-imports], section "llvm.metadata"
 @roots.single = global ptr zeroinitializer
 @roots.plain = global i16 zeroinitializer

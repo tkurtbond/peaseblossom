@@ -930,6 +930,24 @@ convenient, but must not be a prerequisite of it.
      command is referenced from its module's table, so neither the
      linker nor `-lto` drops an unused one. Code generator work, so
      rackhir runs after it; split in two if the registration grows large.
+     **Done (2026-10-02)**, in one step. In a program that contains
+     `Modules`, each module's object has a descriptor - its name, the
+     names of the modules it imports, and its commands as names and
+     addresses - which its `_init` hands to `ModuleTable.RegisterModule`
+     right after its imports' `_init` (`LLVMCodeGenerator`, "module
+     descriptors"; `ModuleTable.Mod`, "MODULE DESCRIPTORS"). `Modules`
+     makes voc's `Module`/`Cmd` records from them when a program first
+     looks, so `refcnt` (the listed modules importing it) and `Free`
+     (off the list when nothing imports it) are voc's; `Modules` calls
+     `NEW`, so a program containing it gets the collector. Differences
+     kept: names of up to 255 characters (`ModNameLen` 256; voc's 20);
+     commands in declaration order (voc's reverse alphabetical); `Halt`
+     and `AssertFail` write to standard error, as poc's traps, with the
+     finalizers after; `MainStackFrame` is argv's address. `BinaryDir`
+     is voc's search (argument 0, else `$PATH`), `.` and empty parts
+     dropped. A module compiled on its own (`-compile`, a library) has a
+     descriptor only if `Modules` was in the program it was compiled
+     with; poc-rtl's modules all do. Fixture `llvm-modules-commands`.
    - **5f. `Reals`** (new; 10 procedures, the conversions `Texts` uses).
    - **5g. `Texts`** (new; voc's file-based texts, readers, scanners and
      writers, no display: 38 procedures).

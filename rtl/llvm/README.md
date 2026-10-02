@@ -37,10 +37,15 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   the collector's finalization, its temporary file deleted. Needs `NEW`,
   so the collector modules below are added to any program that imports
   it.
-- `Modules.Mod` - the command line: `ArgCount`, `GetArg`, `GetIntArg`,
-  `ArgPos`. A program that contains this module gets a `main` taking argc
-  and argv, which it passes to `Modules.Init` before any module body runs;
-  other programs keep an argument-less `main`.
+- `Modules.Mod` - voc's whole interface: the command line (`ArgCount`,
+  `GetArg`, `GetIntArg`, `ArgPos`), `BinaryDir`, the list of modules and
+  their commands (`ThisMod`, `ThisCommand`, `Free`) and voc's `Halt` and
+  `AssertFail`. A program that contains this module gets a `main` taking
+  argc and argv, which it passes to `Modules.Init` before any module body
+  runs, and every module of it lists a descriptor with `ModuleTable` from
+  its `_init` (Phase 12 step 5e): a command, an exported procedure with no
+  parameters and no result, is then kept by the linker whether called or
+  not. Other programs keep an argument-less `main` and no descriptors.
 - `Out.Mod`, `In.Mod` - the Oakwood formatted output and input, with voc's
   interfaces. `Out` writes through `FormattedOutput` (unbuffered), and prints
   `REAL`/`LONGREAL` correctly rounded (`RealDigits.Mod`, big-integer

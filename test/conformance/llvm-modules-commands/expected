@@ -1,0 +1,31 @@
+== commands
+Greeter: Greeter refcnt 1 commands Hello Bye
+commands: commands refcnt 0 commands
+Out: Out refcnt 2 commands Open Flush Ln
+Modules: Modules refcnt 1 commands
+ModuleTable: ModuleTable refcnt 2 commands
+Nowhere: NIL, res 1, module "Nowhere" not found
+ThisCommand Bye res 0
+Bye from Greeter
+Hello from Greeter
+calls 2
+Twice: NIL, res 2, command "Greeter.Twice" not found
+Free Greeter: res 1, clients of this module exist
+Free all: res 1, unloading "all" not yet supported
+Free commands: res 0
+commands: NIL, res 1, module "commands" not found
+BinaryDir is the current directory: yes
+exit=0
+== haltcode
+A
+Terminated by Halt(-2). Index out of range.
+exit=254
+== halt
+Terminated by Halt(3). 
+exit=3
+== assertcode
+Assertion failure. ASSERT code 7.
+exit=7
+== assertzero
+Assertion failure.
+exit=255

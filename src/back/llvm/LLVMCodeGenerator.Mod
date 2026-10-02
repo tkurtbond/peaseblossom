@@ -8086,6 +8086,118 @@ MODULE LLVMCodeGenerator;
     END
   END EmitModuleKeys;
 
+  (* ---- module descriptors (PLAN.md Phase 12 step 5e) ----
+
+     Only in a program that contains the module Modules: for every module,
+     @.module.<Module>, laid out as ModuleTable.Mod's MODULE DESCRIPTORS
+     documents - its name, the names of the modules of the program it
+     imports, and its commands, each a name and the procedure's address,
+     every field one target word - which its `_init` registers right after
+     its imports' `_init`. A command is what voc's OPC.RegCmds takes: an
+     exported procedure, not type-bound, with no parameters and no result.
+     Being referenced from here, a command is kept by the linker (and
+     -lto) whether a program calls it or not. *)
+
+  PROCEDURE IsCommand(pd: SyntaxTree.ProcDeclNode): BOOLEAN;
+  BEGIN
+    RETURN IsOrdinaryProcDecl(pd) & (pd.name.exportMark # SyntaxTree.exportNone)
+      & ((pd.formals = NIL) OR (pd.formals.sections = NIL) & (pd.formals.returnType = NIL))
+  END IsCommand;
+
+  PROCEDURE ModuleDescriptorName(module: SyntaxTree.ModuleNode; VAR text: ARRAY OF CHAR);
+  BEGIN
+    COPY("@.module.", text); Strcat(text, module.name)
+  END ModuleDescriptorName;
+
+  (* "<wordInt> ptrtoint (ptr <global> to <wordInt>)" *)
+  PROCEDURE WriteAddressWord(VAR w: Files.Rider; wordInt, global: ARRAY OF CHAR);
+  BEGIN
+    WriteStr(w, wordInt); WriteStr(w, " ptrtoint (ptr "); WriteStr(w, global);
+    WriteStr(w, " to "); WriteStr(w, wordInt); WriteStr(w, ")")
+  END WriteAddressWord;
+
+  PROCEDURE EmitModuleDescriptor(VAR w: Files.Rider; program: ModuleList; module: SyntaxTree.ModuleNode);
+    VAR
+      import: SyntaxTree.ImportNode; pd: SyntaxTree.ProcDeclNode; imports, commands: LONGINT;
+      wordInt, name, text, countText, symbol: ValueText; first: BOOLEAN;
+  BEGIN
+    WordIntType(wordInt);
+    ModuleDescriptorName(module, name);
+    COPY(name, text); Strcat(text, ".name"); EmitStringGlobalText(w, text, module.name, FALSE);
+    imports := 0; import := module.imports;
+    WHILE import # NIL DO
+      IF FindProgramModule(program, import.moduleName) # NIL THEN
+        COPY(name, text); Strcat(text, ".import."); Strcat(text, import.moduleName);
+        EmitStringGlobalText(w, text, import.moduleName, FALSE);
+        INC(imports)
+      END;
+      import := import.next
+    END;
+    commands := 0;
+    IF module.declarations # NIL THEN
+      pd := module.declarations.procDecls;
+      WHILE pd # NIL DO
+        IF IsCommand(pd) THEN
+          COPY(name, text); Strcat(text, ".command."); Strcat(text, pd.name.name);
+          EmitStringGlobalText(w, text, pd.name.name, FALSE);
+          INC(commands)
+        END;
+        pd := pd.next
+      END
+    END;
+    countText[0] := 0X; AppendLongInt(countText, imports + 2 * commands);
+    WriteStr(w, name); WriteStr(w, " = internal global { ");
+    WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ", ");
+    WriteStr(w, wordInt); WriteStr(w, ", "); WriteStr(w, wordInt); WriteStr(w, ", [");
+    WriteStr(w, countText); WriteStr(w, " x "); WriteStr(w, wordInt); WriteStr(w, "] } { ");
+    WriteStr(w, wordInt); WriteStr(w, " 0, ");
+    COPY(name, text); Strcat(text, ".name"); WriteAddressWord(w, wordInt, text); WriteStr(w, ", ");
+    text[0] := 0X; AppendLongInt(text, imports);
+    WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, text); WriteStr(w, ", ");
+    text[0] := 0X; AppendLongInt(text, commands);
+    WriteStr(w, wordInt); WriteStr(w, " "); WriteStr(w, text); WriteStr(w, ", [");
+    WriteStr(w, countText); WriteStr(w, " x "); WriteStr(w, wordInt); WriteStr(w, "] ");
+    IF imports + commands = 0 THEN
+      WriteStr(w, "zeroinitializer")
+    ELSE
+      WriteStr(w, "["); first := TRUE;
+      import := module.imports;
+      WHILE import # NIL DO
+        IF FindProgramModule(program, import.moduleName) # NIL THEN
+          IF ~first THEN WriteStr(w, ", ") END; first := FALSE;
+          COPY(name, text); Strcat(text, ".import."); Strcat(text, import.moduleName);
+          WriteAddressWord(w, wordInt, text)
+        END;
+        import := import.next
+      END;
+      IF module.declarations # NIL THEN
+        pd := module.declarations.procDecls;
+        WHILE pd # NIL DO
+          IF IsCommand(pd) THEN
+            IF ~first THEN WriteStr(w, ", ") END; first := FALSE;
+            COPY(name, text); Strcat(text, ".command."); Strcat(text, pd.name.name);
+            WriteAddressWord(w, wordInt, text); WriteStr(w, ", ");
+            QualifiedName(module.name, pd.name.name, symbol);
+            WriteAddressWord(w, wordInt, symbol)
+          END;
+          pd := pd.next
+        END
+      END;
+      WriteStr(w, "]")
+    END;
+    WriteStr(w, " }"); WriteLn(w); WriteLn(w)
+  END EmitModuleDescriptor;
+
+  (* The call in a module's `_init` that lists its descriptor. *)
+  PROCEDURE EmitModuleRegistration(VAR w: Files.Rider; module: SyntaxTree.ModuleNode);
+    VAR wordInt, name: ValueText;
+  BEGIN
+    WordIntType(wordInt);
+    ModuleDescriptorName(module, name);
+    WriteStr(w, "  call void @ModuleTable.RegisterModule("); WriteAddressWord(w, wordInt, name);
+    WriteStr(w, ")"); WriteLn(w)
+  END EmitModuleRegistration;
+
   (* The IR of target, one module of program (dependency-ordered, the main
      module last), for a .ll of its own: its variables, type descriptors,
      procedures and "@<M>_init", with declarations of what it uses of the
@@ -8187,6 +8299,7 @@ MODULE LLVMCodeGenerator;
     EmitExternalDeclares(body, cg, m.module);
     EmitTypeDescriptors(body, cg, m.module);
     IF withRootTables THEN EmitRootTable(body, cg, m.module) END;
+    IF withArguments THEN EmitModuleDescriptor(body, program, m.module) END;
     EmitRuntimeSupport(body, cg);
     CollectStringConstantsSeq(body, cg, m.module.statements);
     CollectDeclarationStrings(body, cg, m.module.declarations);
@@ -8228,6 +8341,7 @@ MODULE LLVMCodeGenerator;
       import := import.next
     END;
     IF withRootTables THEN EmitRootTableRegistration(body, cg, m.module) END;
+    IF withArguments THEN EmitModuleRegistration(body, m.module) END;
     GenerateStatementSeq(body, cg, GenerateDeclarationInits(body, cg, m.module.declarations, m.module.statements));
     WriteStr(body, "  ret void"); WriteLn(body);
     WriteStr(body, "}"); WriteLn(body);
