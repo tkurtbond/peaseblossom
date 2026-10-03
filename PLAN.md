@@ -133,7 +133,7 @@ tools/
 | 11 | Open design questions and TODO backlog | `ASSERT`, `-g` debug metadata, `Err`, chosen language extensions, constant-folding and `.sym` fixes | LLVM | poc (self-hosted) |
 | 12 | Library/module support beyond Phase 10 | voc-option triage, static/dynamic library building, voc module inventory, voc's runtime modules and finalization | LLVM | poc (self-hosted) |
 | 13 | Packaging and documentation | `make install`, the bootstrap seed, `make dist`, OS packages, the User's and Reference Guides, `poc(1)` | LLVM | poc, or the seed with clang alone |
-| 14 | Record and array literals | `T{...}` through `SyntaxTree`, `Parser`, `SemanticActions` and `LLVMCodeGenerator` | LLVM | poc (self-hosted) |
+| 14 | Record and array literals, structured constants | `T{...}` through `SyntaxTree`, `Parser`, `SemanticActions`, `ConstantEvaluator`, `ModuleInterface` and `LLVMCodeGenerator` | LLVM | poc (self-hosted) |
 | 15 | MACRO-32 | `VaxTypes`, `VaxCodeGenerator`, `VaxToolchainDriver` (stub) | VAX (scoped, unverified) | poc (self-hosted) |
 | 16 | Running on VAX/VMS | `VaxToolchainDriver` (real), `rtl/vax` (minimal), VAX backend widened to what poc's own source needs | VAX (assembled, linked, run) | poc on VAX/VMS compiles itself |
 | 17 | Library/module support on VAX/VMS | VMS libraries (object, shareable), ported Oberon modules, native VMS libraries, AST support | VAX | poc on VAX/VMS |
@@ -667,9 +667,12 @@ mismatch).
    manifests). And `poc(1)` (`doc/poc.1`, mdoc): the synopsis, every
    option, the environment, the files, the exit statuses, examples and
    pointers to the guides; `mandoc -T lint` clean, and checked to render
-   with `man` on each host. Where `doc/language-extensions.md` and the
-   Reference Guide would say the same thing, decide which one is the
-   source and have the other point to it.
+   with `man` on each host. Decided (user, 2026-10-02): where
+   `doc/language-extensions.md` and the Reference Guide cover the same
+   extension, `doc/language-extensions.md` is the design document (why,
+   what was considered, how it is built) and the Reference Guide documents
+   the extension as actually implemented (what a program can write and
+   what it gets); each points to the other.
 8. **OS packages.** A Fedora RPM spec (built with `rpmbuild` on atla), a
    FreeBSD port (on alerik, with `poudriere` or `make package`), an
    OpenBSD port (on cymoril), and a pkgsrc package (on artos), each built
@@ -691,7 +694,7 @@ mismatch).
 steps 3-5 and 8 are install-and-run checks on each host; steps 6 and 7 are
 checked by their runnable examples and the option cross-check of step 9.
 
-### Phase 14 — Record and array literals
+### Phase 14 — Record and array literals, and structured constants
 
 **Added 2026-10-02 (user)**, after Phase 13 and before the VAX/VMS work,
 taking record and array literals out of the further extensions (now
@@ -712,9 +715,10 @@ elements named only, `field := expression`; omitted elements take their
 defaults (a field its initializer or zero, an array's later elements the
 same, so an array of records gets its type's default records); no literal
 of a record type with a field hidden or read-only where the literal is
-written; no structured `CONST`s (an exported read-only variable
-initialized with a literal does that), so `Types.Value`, the constant
-folder and the `.sym` format are unchanged. `-strict` rejects a literal.
+written; and structured constants, `CONST origin* = Point{x := 0, y :=
+0};` (user, 2026-10-02, reversing the first decision against them), so
+`Types.Value`, the constant folder and the `.sym` format change too.
+`-strict` rejects a literal.
 
 **Steps**:
 
@@ -732,10 +736,20 @@ folder and the `.sym` format are unchanged. `-strict` rejects a literal.
    resolved; `SemanticActions` checks the type, each element's
    compatibility, repeated and unknown fields, the length, the visibility
    rule, resolves a bare `{...}` as a set or a literal by the expected type,
-   and rejects a literal where it may not stand (`CONST`, a `VAR`
-   parameter, `-strict`). **Testing**: `semantic-` fixtures accepting
-   literals and rejecting each error, with their messages.
-3. **LLVM backend**: a record literal is an LLVM constant aggregate when
+   and rejects a literal where it may not stand (a `VAR` parameter,
+   `-strict`). **Testing**: `semantic-` fixtures accepting literals and
+   rejecting each error, with their messages.
+3. **Structured constants**: a structured `Types.Value`, folded by
+   `ConstantEvaluator` from a constant literal and through selectors
+   (`origin.x`, `table[3]`); a `CONST` declared by a literal, used as a
+   read-only operand; an exported one written to the `.sym` file as its
+   literal, every element given, in a `CONST` section after `TYPE`, and
+   read back through the parser. The rules are the design note's
+   "Structured constants", settled in step 1. **Testing**: `semantic-`
+   and `module-` fixtures: folding, selection, rejection (a non-constant
+   element, a `VAR` parameter, assignment, a hidden type exported), and a
+   constant exported and imported.
+4. **LLVM backend**: a record literal is an LLVM constant aggregate when
    every element is constant, otherwise an `insertvalue` chain over the
    record's defaults; an array literal a private constant global when
    constant, otherwise a stack temporary filled by stores, copied the way
@@ -746,13 +760,16 @@ folder and the `.sym` format are unchanged. `-strict` rejects a literal.
    of records, literals as value and open-array parameters, in variable
    and field initializers, of an extension assigned to its base, with
    pointers inside (and a collection while one is live), under both size
-   models; voc cannot cross-check any of them.
-4. **Documentation**: the User's Guide (an example the suite runs) and
-   the Reference Guide (Phase 13 step 7) describe literals.
-5. **Exit gate**: `make check` on atla and the gating VMs; Stage 1 and
+   models; and structured constants, local and imported, passed and
+   indexed with a variable (each module's private copy); voc cannot
+   cross-check any of them.
+5. **Documentation**: the User's Guide (an example the suite runs) and
+   the Reference Guide (Phase 13 step 7) describe literals and structured
+   constants.
+6. **Exit gate**: `make check` on atla and the gating VMs; Stage 1 and
    Stage 2 still reach their fixed point; rackhir at the close-out.
 
-**Testing summary**: steps 2 and 3 add fixtures; step 5 is the usual gate.
+**Testing summary**: steps 2-4 add fixtures; step 6 is the usual gate.
 
 ### Phase 15 — VAX/VMS MACRO-32 backend (scoped, deferred, non-executable)
 `VaxTypes.Mod`, `VaxCodeGenerator.Mod`, `VaxToolchainDriver.Mod` (stub
@@ -1274,8 +1291,9 @@ same names:
 - **Phase 12**: the option triage, library design and module inventory
   written down and verified against voc's own sources; then the whole-
   matrix gate (both library kinds, both word sizes, Linux and a BSD).
-- **Phase 14**: `semantic-` and `llvm-` fixtures for literals, accepted
-  and rejected, and the usual gate with the Stage 1/2 fixed point.
+- **Phase 14**: `semantic-`, `module-` and `llvm-` fixtures for literals
+  and structured constants, accepted and rejected, and the usual gate
+  with the Stage 1/2 fixed point.
 - **Phase 15**: manual review only (no automated run), explicitly bounded
   in scope as described above.
 - **Phase 16**: fixtures run on a real or SIMH-hosted VAX/VMS 5.5-2

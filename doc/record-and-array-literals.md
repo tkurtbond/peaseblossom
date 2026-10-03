@@ -1,10 +1,11 @@
-# Record and array literals (proposed extension)
+# Record and array literals, and structured constants (proposed extension)
 
 A value of a record or fixed array type written in an expression:
 
     p := Point{x := 1, y := 2};
     v := Vector{1, 2, 3};
     Draw(Line{from := Point{x := 0, y := 0}, to := p});
+    CONST origin* = Point{x := 0, y := 0};
 
 Not yet implemented: `PLAN.md`'s Phase 14 (added 2026-10-02). Phase 11's
 item A24 first, then a candidate of the further extensions (now Phase 19)
@@ -36,11 +37,12 @@ open.
    the module that writes the literal (its base types' fields included)
    has no literal there. Inside the module that declares it, where every
    field is visible and writable, it has one.
-5. **No structured constants.** A literal is an expression, not a
-   constant: it may not appear in a `CONST` declaration, so `Types.Value`,
-   the constant folder and the `.sym` format are unchanged. A module that
-   wants a structured constant exports a read-only variable initialized
-   with a literal (`VAR origin-: Point := Point{x := 0, y := 0};`).
+5. **Structured constants, in this phase too** (user, 2026-10-02; at
+   first left out, an exported read-only variable doing the job): a
+   literal whose elements are all constant is a constant, and may declare
+   one, `CONST origin* = Point{x := 0, y := 0};`. As every Oberon constant,
+   it states no type of its own: the type is the literal's. The rules
+   proposed for it are under "Structured constants" below.
 
 Like every extension, `poc -strict` rejects a literal.
 
@@ -83,11 +85,10 @@ What the survey says about the decisions:
 - The rule for hidden and read-only fields is Micron's, and close to
   Ada's private types.
 - Of the languages surveyed, Active Oberon (constant arrays), Modula-3,
-  ISO Modula-2 and Micron allow a constructor in a constant; Oberon-2's
-  read-only export covers the need here. Should decision 5 be revisited,
-  `CONST origin = Point{x := 0, y := 0}` fits Oberon as it is: a constant
-  never states its type, which comes from its expression (`CONST s = {1,
-  2}` is a `SET`), and a literal names its type. (Modula-3's
+  ISO Modula-2 and Micron allow a constructor in a constant, as poc will
+  (decision 5). `CONST origin = Point{x := 0, y := 0}` fits Oberon as it
+  is: a constant never states its type, which comes from its expression
+  (`CONST s = {1, 2}` is a `SET`), and a literal names its type. (Modula-3's
   `ConstDecl = Id [":" Type] "=" ConstExpr` makes the type optional.)
 - Modula-3's types are equivalent by structure ("two types are the same if
   their definitions become the same when expanded"), so its constructor
@@ -122,10 +123,44 @@ What the survey says about the decisions:
   the source of an assignment (including `p^ :=` and a field), a value
   parameter (an open array parameter included, by the array's elements), a
   variable or field initializer. Not as a `VAR` parameter (it is not a
-  variable), not in a `CONST` (decision 5), and not as a function result,
+  variable), and not as a function result,
   which Oberon-2 does not allow for a structured type anyway.
 - **Type extension**: a literal of an extension assigned to a variable of
   its base type is projected, as any record assignment is.
+
+## Structured constants
+
+Proposed, to be settled in Phase 14 step 1:
+
+- **What is constant**: a literal is a constant expression when every
+  element written is one, and every omitted field's default is: a field
+  initializer (Phase 11 D17 allows any expression) that is not constant
+  makes a literal that leaves the field out non-constant, and so not
+  allowed in a `CONST`. A pointer or procedure element can only be NIL.
+- **Where one may stand**: wherever a read-only variable of its type may:
+  read, assigned from, passed as a value parameter or an open array
+  parameter. Not as a `VAR` parameter, nor to `SYSTEM.ADR`, and never
+  assigned to.
+- **Selecting from one**: `origin.x`, and `table[3]` with a constant
+  index, are constant expressions, folded like any other (so a table of
+  constants can give a `CASE` label or an array length). With an index
+  that is not constant, it is an ordinary read, of the constant's copy in
+  memory, index-checked as usual. `LEN` and `SIZE` of one are constants
+  already.
+- **No comparison**: `=` and `#` stay undefined on records and arrays, as
+  in the report.
+- **Exported**: the `.sym` file writes it as its literal,
+  `Origin* = Point{x := 0, y := 0};`, every element given (defaults
+  included), so the importer folds `M.Origin.x` without the exporter's
+  field initializers. The writer puts structured constants in a second
+  `CONST` section after `TYPE`, since a literal names a type and the
+  reader declares before use (`Oberon2.pdf`'s `DeclSeq` allows the
+  sections in any order). The type must be visible to the importer: an
+  exported constant of a type that is not exported is an error.
+- **In memory**: each module that uses one in a way that needs memory
+  (passing it, indexing it with a variable) has its own private constant
+  copy, made from the value, as a scalar constant is folded into each
+  module rather than linked from its exporter.
 
 ## What the implementation touches
 
@@ -133,11 +168,12 @@ What the survey says about the decisions:
 |---|---|
 | `SyntaxTree` | a literal node: the type's designator, and its elements, each an optional field name and an expression (a nested bare `{...}` kept as a list until its type is known) |
 | `Parser` | in `ParseFactor`, a designator followed by `{` is a literal; elements are `ident := expression`, `expression`, or a bare `{...}` |
-| `SemanticActions` | the type rules above; the visibility rule (decision 4); a nested bare `{...}` resolved as a set or a literal by the expected type; `-strict` |
+| `SemanticActions` | the type rules above; the visibility rule (decision 4); a nested bare `{...}` resolved as a set or a literal by the expected type; `-strict`; a structured constant: its declaration, its use as a read-only operand, selection from it |
+| `Types`, `ConstantEvaluator` | a structured `Value`: its type and its elements' values, every field or element filled in; constant folding of a literal and of a selector applied to a structured constant |
+| `ModuleInterface` | an exported structured constant written as a literal, in a `CONST` section after `TYPE`, and read back through the parser |
 | `LLVMCodeGenerator` | a record is already an LLVM value (`AssignToAddress` stores what `GenerateExpr` gives), so a record literal is an LLVM constant aggregate when every element is constant, otherwise an `insertvalue` chain over the defaults. An array literal goes the way string constants go (`copiesArray`, `CopyArrayBlock`): a private constant global when constant, otherwise a stack temporary filled by stores. A temporary holding pointers is on the stack the collector scans; a constant global can hold only NIL |
-| Not touched | `Types.Value`, `ConstantEvaluator`, `ModuleInterface` and the `.sym` format (decision 5) |
 | Documentation | a section in `doc/language-extensions.md` and its one-line summary in `AGENTS.md`; the User's and Reference Guides |
-| Fixtures | literals accepted and run (records, arrays, nested, omitted elements, defaults from field initializers, arrays of records, open array parameters, extension); literals rejected (unknown or repeated field, too many elements, incompatible element, hidden or read-only field, `CONST`, `VAR` parameter, `-strict`); voc cannot cross-check any of it |
+| Fixtures | literals accepted and run (records, arrays, nested, omitted elements, defaults from field initializers, arrays of records, open array parameters, extension); literals rejected (unknown or repeated field, too many elements, incompatible element, hidden or read-only field, a non-constant element in a `CONST`, a structured constant as a `VAR` parameter or assigned to, an exported constant of a hidden type, `-strict`); structured constants folded, selected from, passed, and exported and imported through `.sym`; voc cannot cross-check any of it |
 
 ## Open questions
 

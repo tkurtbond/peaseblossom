@@ -6,6 +6,11 @@ what a program compiled by poc can observe. Moved here from `AGENTS.md`
 heading; references elsewhere to `AGENTS.md`, "<section>" mean the section
 of the same name here.
 
+This is the design document for each extension: why it was adopted, what
+was considered, and how poc builds it. The Reference Guide
+(`doc/reference-guide.md`, Phase 13 step 7) documents each one as actually
+implemented, for a programmer (user, 2026-10-02).
+
 ## HUGEINT (implemented)
 
 An 8-byte signed integer, predeclared alongside `Oberon2.pdf`'s own basic
