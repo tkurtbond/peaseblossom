@@ -33,8 +33,9 @@ MODULE Platform;
      - Write writes everything, in as many write calls as it takes, and
        Delay sleeps the whole time even when a signal interrupts it; voc's
        make one call each, and lose the rest.
-     - getEnv copies at most what val holds (voc's copies up to 1024
-       characters whatever val's length).
+     - getEnv returns FALSE for a name with no 0X in it (below). Like
+       voc's, it copies at most what val holds (voc's COPY stops at val's
+       length; this said otherwise until 2026-10-02).
      - The C type `int` is written SYSTEM.INT32 in the external
        declarations here and in Console, Files, In, Out, Math and MathL:
        exactly four bytes under -O2 and -OC alike, as LONGINT (eight bytes

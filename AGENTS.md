@@ -228,6 +228,17 @@ source. Check here before puzzling over an error that looks bogus.
   ignores the row stride.
 - A nested procedure gets garbage inner lengths for an enclosing
   procedure's multi-dimensional open-array parameter.
+- A constant `ENTIER` out of `LONGINT`'s range under `-OC` stops voc with
+  `Halt(-8)`.
+- voc's collector misses a pointer held only in a callee-saved register
+  (`doc/voc-bugs/gc-callee-saved-registers/`). poc's own collector
+  spills the registers first; Stage 0 is linked with
+  `tools/bootstrap/voc-heap-gc-spill.c`, a `Heap_GC` that does the same
+  and then calls libvoc's.
+
+The README also lists the bugs met in voc's runtime and library modules
+(`Files`, `Strings`, `In`, `Out`, `Math`, `Texts`, `Reals`, `VT100`), each
+where poc's module does otherwise.
 
 ## Language extensions beyond Oberon2.pdf
 

@@ -68,7 +68,18 @@ voc -OC -s "$ROOT/src/back/llvm/LLVMToolchainDriver.Mod"
 voc -OC -s "$ROOT/src/driver/Version.Mod"
 voc -OC -s "$BUILD/gen/BuildInfo.Mod"
 voc -OC -s "$ROOT/src/driver/Libraries.Mod"
-voc -OC -m "$ROOT/src/driver/Poc.Mod"
+# voc's collector misses a pointer held only in a callee-saved register
+# (doc/voc-bugs/gc-callee-saved-registers): poc is linked with a Heap_GC
+# that stores them on the stack first, then calls libvoc's. voc adds
+# LDFLAGS to its link command, ahead of libvoc; dlsym is in libdl on Linux.
+${CC:-cc} -fPIC -c "$ROOT/tools/bootstrap/voc-heap-gc-spill.c" -o voc-heap-gc-spill.o
+case $(uname -s) in Linux) spill_libs=-ldl ;; *) spill_libs= ;; esac
+LDFLAGS="$BUILD/obj/voc-heap-gc-spill.o $spill_libs${LDFLAGS:+ $LDFLAGS}" \
+  voc -OC -m "$ROOT/src/driver/Poc.Mod"
+if ! nm Poc | grep -q ' T Heap_GC$'; then
+  echo "stage0: poc was linked without voc-heap-gc-spill.o's Heap_GC" >&2
+  exit 1
+fi
 
 cp Poc "$BUILD/bin/poc"
 echo "Stage 0: built $BUILD/bin/poc"

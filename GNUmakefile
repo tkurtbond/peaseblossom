@@ -66,7 +66,7 @@ MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
-$(BIN): $(SRCS) $(STAGE0_RTL_SRCS) $(BUILD_INFO)
+$(BIN): $(SRCS) $(STAGE0_RTL_SRCS) tools/bootstrap/voc-heap-gc-spill.c $(BUILD_INFO)
 	tools/bootstrap/stage0
 
 $(BUILD_INFO): FORCE

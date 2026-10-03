@@ -1,12 +1,18 @@
-# Known voc bugs affecting poc's own source
+# Known voc bugs
 
-Moved here from `AGENTS.md` (2026-09-25), which keeps a one-line list.
-`with-self-recursion/` has the full write-up and reproducers for the first one.
+Bugs (not deviations from the report) found in voc 2.1.0 while building
+poc with it and while cross-checking poc against it. Each entry says
+where poc meets it, or where poc does otherwise. Moved here from
+`AGENTS.md` (2026-09-25), which keeps a one-line list of the compiler's;
+extended on 2026-10-02 from the compiler bugs that affect poc's own
+source to every voc bug met so far. A directory beside this file has the
+full write-up and reproducers for one: `with-self-recursion/` and
+`gc-callee-saved-registers/`.
 
+## The compiler
 
-Bugs (not spec deviations) found in voc 2.1.0 while writing poc's own
-source, worth knowing before puzzling over a bogus-looking error again
-during Stage 0/1/2 bootstrapping:
+Worth knowing before puzzling over a bogus-looking error during Stage
+0/1/2 bootstrapping:
 
 - **Self-recursive call from inside a `WITH` branch, misdiagnosed as
   "incompatible assignment"**: if procedure `P` calls itself from inside
@@ -76,3 +82,82 @@ during Stage 0/1/2 bootstrapping:
   length as its own hidden parameter (`test/conformance/
   llvm-open-array-many-dimensions`, whose "nested" lines are the only ones
   not compared with voc).
+- **A constant `ENTIER` out of range kills the compiler**: under `-OC`,
+  folding `ENTIER(3000000000.5D0)` stops voc with `Halt(-8)`, and past
+  2^63 it says "number too large". poc makes an `ENTIER` that does not
+  fit the model's `LONGINT` a compile-time error (`ConstantEvaluator`;
+  `test/conformance/semantic-const-value-functions`; Phase 11).
+
+## The runtime
+
+- **The collector frees an object whose only reference is in a
+  callee-saved register** (found 2026-10-02 in another project,
+  `gc-callee-saved-registers/`): voc compiles its C without optimization,
+  so `Heap.GC`'s "register pressure" locals spill nothing, and a pointer
+  that gcc keeps in `rbx` or `r12`-`r15` while it evaluates a call whose
+  arguments allocate (`Check(Make("a"), Make("b"))`) is not a root. The
+  reproducer corrupts 752 of 1,000,000 calls under voc and none under
+  poc, whose `GarbageCollectedHeap.Collect` spills the registers first
+  (`llvm.eh.unwind.init`). Stage 0, poc as voc builds it, is linked with
+  `tools/bootstrap/voc-heap-gc-spill.c`, a `Heap_GC` that spills the
+  registers and then calls libvoc's.
+- **`Files.Register` over a file whose identity matches a `File` it no
+  longer has** (2026-10-02, once, on cymoril, OpenBSD i386): Stage 0
+  stopped in `test/conformance/llvm-libraries` with "Couldn't rename
+  previous version of file being registered:
+  lib/<triple>/O2/ModuleTable.sym, f.fd = 7, errcode = 2" and `Halt(99)`.
+  voc's `Deregister` finds the `File` to turn into a temporary one by
+  device and inode, and renames it by the name it had; here that name was
+  gone (ENOENT). Likely an inode reused for the new file while a stale
+  `File` still held the old one's identity, or the collector bug above
+  corrupting the list of files; not reproduced in five reruns, and not
+  seen with poc's own `Files` (Stage 1 passed the same fixture in the
+  same run).
+- **`Files.Rename` or `Files.Delete` of a file the program has open**:
+  voc renames it to a temporary name first, so `Delete` fails (errcode
+  2) and `Rename` halts with the same "Couldn't rename previous version"
+  message; `test/conformance/llvm-files` renames and deletes only files
+  it has not opened (Phase 10).
+
+## The library modules
+
+Recorded in full in each poc module's header, "Where this differs from
+voc's"; poc's module does what the description says. Each was checked
+against voc's source or by running it.
+
+- **`Strings`**: `Insert` at a position past the end calls `Append` with
+  its arguments the wrong way round, so nothing happens; `Replace`
+  deletes `pos + Length(src)` characters, not `Length(src)`; `Append`
+  and `Extract` can leave `dst` without its 0X, and `Extract` writes its
+  0X past the end of a short `dst` (`llvm-strings-extra`).
+- **`Files`**: `ReadString` and `ReadLine` do not stop at the end of the
+  array: a longer value is an index trap, or with voc's `-x` off, a
+  write past it.
+- **`In`**: `Name` stops the program ("Not implemented"); `HugeInt` reads
+  hexadecimal digits without an `H` as a garbage decimal number, and
+  takes a `SYSTEM.INT64` that a `HUGEINT` variable is not accepted for
+  (err 123); `Real`/`LongReal` cut the line to 15 characters and never
+  set `Done`.
+- **`Out`**: `Int` prints a fixed, wrong string for `MIN(HUGEINT)` (by
+  its source, not run); `Real`/`LongReal` are not correctly rounded.
+- **`Math`/`MathL`**: `sincos` gives the cosine as `sqrt(1 - sin^2)`,
+  never negative; `succ` of a negative number moves down; `pred(1)` is
+  not the true predecessor; `ulp(1)` is inexact; `MathL.power(0, 3)`
+  fails; `MathL.small` is 0 and `MathL.large` below `MAX(LONGREAL)`;
+  `sin`/`cos` give up beyond about 9099 in `Math`; a denormal's
+  `exponent` is -127 (`llvm-math-extra`; Phase 10).
+- **`Texts`**: a subnormal real is written as 0 and an infinity as
+  "NaN"; `WriteRealFix` drops decimals and goes wrong past 9 digits
+  before the point; `Scan` stops the program (`HALT(40)`) on a number
+  past the type's range.
+- **`Reals`**: `TenL` squares its way up and is off in the last bit for
+  252 of the exponents 0..308 (`llvm-reals-module`; Phase 12 step 5f).
+- **`VT100`**: a count of 10 or more is cut to its first digit
+  (`CUU(12)` moves up one line), `DSR(n)` sends 6 whatever `n` is, and
+  `SetAttr` cuts its argument at 13 characters (`llvm-vt100`).
+
+## The documentation
+
+- **`doc/Features.md` says `SET` is 64 bits under `-OC`**; `OPM.Mod`
+  makes it 4 bytes under both size models, and poc follows the source
+  (`AGENTS.md`, "Size models").
