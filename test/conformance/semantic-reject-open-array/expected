@@ -1,0 +1,9 @@
+openarrays.mod:4:44: error: a record field cannot be an open array
+openarrays.mod:4:62: error: a record field cannot be an open array
+openarrays.mod:5:20: error: an array of fixed length cannot have open array elements
+openarrays.mod:5:57: error: an array of fixed length cannot have open array elements
+openarrays.mod:8:10: error: a variable cannot be an open array
+openarrays.mod:8:32: error: a variable cannot be an open array
+openarrays.mod:8:48: error: a record field cannot be an open array
+openarrays.mod:9:51: error: a variable cannot be an open array
+8 error(s)

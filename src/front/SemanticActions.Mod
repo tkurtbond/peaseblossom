@@ -887,6 +887,17 @@ MODULE SemanticActions;
      still populated whenever obj.type = NIL) and only rejects when the
      target's declaration does not precede the reference - matching
      voc's real rule instead of poc's own incidental recursion order. *)
+  (* Oberon2.pdf 6.2: an open array is only a pointer's base, an open
+     array's element, or a formal parameter's type - never a variable's, a
+     field's, or a fixed-length array's element's (voc: err 88). t is the
+     type node's resolved type, so a named open array type counts too. *)
+  PROCEDURE RejectOpenArray(t: Types.Type; node: SyntaxTree.TypeNode; message: ARRAY OF CHAR);
+  BEGIN
+    IF (t # NIL) & (t IS Types.ArrayType) & t(Types.ArrayType).isOpen THEN
+      Diagnostics.Error(node.line, node.column, message)
+    END
+  END RejectOpenArray;
+
   PROCEDURE ^ ResolveType(scope: SymbolTable.Scope; node: SyntaxTree.TypeNode;
                           allowForward: BOOLEAN): Types.Type;
   PROCEDURE ^ ResolveQualidentType(scope: SymbolTable.Scope;
@@ -988,6 +999,7 @@ MODULE SemanticActions;
     fieldList := node.fields;
     WHILE fieldList # NIL DO
       fieldType := ResolveType(scope, fieldList.type, FALSE);
+      RejectOpenArray(fieldType, fieldList.type, "a record field cannot be an open array");
       idents := fieldList.names; value := fieldList.initializers;
       WHILE idents # NIL DO
         (* record fields legitimately allow the '-' read-only export mark
@@ -1226,6 +1238,7 @@ MODULE SemanticActions;
          2026-09-25, when the LLVM backend's lengths became a list) *)
       RETURN Types.NewArrayType(elementType, 0, TRUE)
     ELSE
+      RejectOpenArray(elementType, node.elementType, "an array of fixed length cannot have open array elements");
       RETURN ResolveArrayDims(node.lengths, elementType, scope)
     END
   END ResolveArrayType;
@@ -1457,6 +1470,7 @@ MODULE SemanticActions;
     VAR t: Types.Type; idents: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
   BEGIN
     t := ResolveType(scope, d.type, FALSE);
+    RejectOpenArray(t, d.type, "a variable cannot be an open array");
     idents := d.names;
     WHILE idents # NIL DO
       obj := SymbolTable.Insert(scope, idents.name, SymbolTable.varClass, t,
