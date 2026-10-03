@@ -241,22 +241,40 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
        make stage2               # the seed is written by a Stage 2 built from HEAD
        make dist                 # build/dist/peaseblossom-<version>.tar.gz and .sha256
        make distcheck            # builds it without voc and runs check-install
-       make dist-sign            # optional: .asc, with gpg's default key (GPG_KEY=...)
+       make dist-sign            # .asc, with gpg's default key (GPG_KEY=... for another)
 
    `make dist` refuses a tree that differs from HEAD, or a Stage 2 built
-   from another commit.
-5. **Tag** the commit, `v<version>` (the packages' download URLs use it):
+   from another commit. A release is signed: the tarball, the tag, the RPM
+   and the list of sums, each with the maintainer's key (each asks for its
+   passphrase).
+5. **Tag** the commit, signed, `v<version>` (the packages' download URLs
+   use it):
 
-       git tag -a v0.1.0 -m "Peaseblossom 0.1.0"
+       git tag -s v0.1.0 -m "Peaseblossom 0.1.0"
+       git tag -v v0.1.0
        git push origin v0.1.0
 
-6. **Publish** the tarball with its `.sha256` (and `.asc`):
+6. **Publish** the tarball with its `.sha256` and `.asc`:
 
-       gh release create v0.1.0 build/dist/peaseblossom-0.1.0.tar.gz{,.sha256} \
+       gh release create v0.1.0 build/dist/peaseblossom-0.1.0.tar.gz{,.sha256,.asc} \
          --title "Peaseblossom 0.1.0" --notes-file <notes>
 
    and on the project's own site.
 7. **The packages.** Each package's checksums (`distinfo`) are of the
-   release tarball, so they come after it: make them on each system (section
-   6), with the packing lists if what is installed changed, build, install,
-   check and remove each package, and commit them.
+   published tarball, so they come after it: make them on each system
+   (section 6), with the packing lists if what is installed changed;
+   build, install, check and remove each package, and commit them. Sign
+   the RPM (`rpmsign --addsign <rpm>`, from `rpm-sign`). Attach the
+   packages to the release, each named for the system it is for, with a
+   list of every file's SHA-256 sum, signed:
+
+       peaseblossom-<version>-1.fc44.x86_64.rpm, peaseblossom-<version>-1.fc44.src.rpm
+       peaseblossom-<version>-freebsd15.1-amd64.pkg
+       peaseblossom-<version>-openbsd7.9-i386.tgz
+       peaseblossom-<version>-netbsd11.0-amd64.tgz
+       SHA256SUMS, SHA256SUMS.asc   # sha256sum of every file; gpg --armor --detach-sign
+
+       gh release upload v<version> <files>
+
+   Each binary package is for that one system release and architecture;
+   on any other, poc is built from the tarball or from `packaging/`.
