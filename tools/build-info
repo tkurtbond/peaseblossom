@@ -1,8 +1,9 @@
 #!/bin/sh
 # Writes BuildInfo.Mod into the directory given (Phase 13 step 1): the git
 # commit poc is built from, with "-dirty" when tracked files differ from it,
-# or "" when the tree is not a git checkout (a release tarball, a copy made
-# with git archive). `poc -version` prints it after Version.number. The file
+# or, when the tree is not a git checkout, what the file COMMIT at its top
+# says (make dist writes it into a release tarball), or else "" (a copy
+# made with git archive). `poc -version` prints it after Version.number. The file
 # is rewritten only when its content changes, so a build is not redone for
 # nothing. Run with the directory as its one argument, from anywhere.
 set -e
@@ -10,9 +11,13 @@ set -e
 dir=$1
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 commit=
-if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+# the tree's own repository, not one it was unpacked inside
+if command -v git >/dev/null 2>&1 \
+   && [ "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)" = "$(cd "$ROOT" && pwd -P)" ]; then
   commit=$(git -C "$ROOT" rev-parse --short HEAD)
   git -C "$ROOT" diff --quiet HEAD -- || commit="$commit-dirty"
+elif [ -f "$ROOT/COMMIT" ]; then
+  commit=$(sed -n 1p "$ROOT/COMMIT")
 fi
 
 mkdir -p "$dir"

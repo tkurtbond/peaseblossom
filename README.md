@@ -43,6 +43,10 @@ make seed        # the bootstrap seed, poc's own IR (seed/), from which
                  # clang alone builds poc where there is no voc
 make check-seed  # poc built from the seed builds the same Stage 1 as
                  # poc built by voc
+make dist        # the release tarball, build/dist/peaseblossom-<version>
+                 # .tar.gz: HEAD's source and the seed
+make distcheck   # builds the tarball without voc and runs check-install
+make dist-sign   # a GPG signature of the tarball (.asc), when wanted
 make clean       # removes both poc's own build output and test artifacts
                  # (clean-build and clean-tests individually)
 ```

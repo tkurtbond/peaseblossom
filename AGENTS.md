@@ -97,8 +97,11 @@ succeeds; `doc/project-history.md`, "poc's own source under `-O2`").
 Without voc (Phase 13 step 4), `tools/bootstrap/stage0` builds Stage 0
 with `BOOTSTRAP_POC` (a poc already built), or from `seed/`, poc's own IR
 for 64-bit or 32-bit x86 BSD hosts, which `make seed` writes and only a
-release tarball carries (not git); `make check-seed` checks it gives the
-same Stage 1.
+release tarball carries (not git; `make seed` writes `build/seed`); a
+tarball builds from its seed even where voc is. `make check-seed` checks it
+gives the same Stage 1. `make dist` (Phase 13 step 5) writes the tarball
+from a clean HEAD, `make distcheck` builds it without voc and runs
+`check-install`.
 
 **voc's extensions beyond the report** (mostly in `Features.md`). Assume none of them
 for poc unless it adopted them:

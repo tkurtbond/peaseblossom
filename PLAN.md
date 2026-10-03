@@ -582,8 +582,10 @@ mismatch).
    a 32-bit x86 other than OpenBSD's and NetBSD's, is refused.
    `tools/bootstrap/stage0` now chooses: `BOOTSTRAP_POC`, a poc already
    built (an installed one), compiles poc (`stage0-poc`), which lets a
-   developer drop voc too; else voc; else the seed, if there is one; else
-   it says which three it lacks. `make check-seed` builds a Stage 0 from
+   developer drop voc too; else the seed, if there is one; else voc; else
+   it says which three it lacks. (Step 5 moved `make seed`'s output to
+   `build/seed`, so that a top-level `seed/` is only a tarball's, and put
+   the seed before voc, so a tarball always builds from its own.) `make check-seed` builds a Stage 0 from
    the seed and a Stage 1 with it in `build/seedcheck`, and compares that
    Stage 1's output with the voc-built Stage 1's: identical.
 5. **The release tarball.** `make dist` writes
@@ -595,6 +597,28 @@ mismatch).
    at the close-out). Decide with the user where releases are published
    (GitHub releases on the project's repository, presumably) and whether
    they are signed.
+   **Done (2026-10-02).** Decided with the user: a release is published
+   as a GitHub release of `github.com/tkurtbond/peaseblossom` and on the
+   user's own site too; it always has the tarball's SHA-256, and a GPG
+   signature when the person releasing chooses to make one (`make
+   dist-sign`, `gpg --armor --detach-sign` with the default key or
+   `GPG_KEY`, into `<tarball>.asc`). A release: commit, `make check` on
+   the gating hosts, `make stage2 distcheck` (which makes the tarball
+   from HEAD), optionally `make dist-sign`, tag `v<version>`, and attach
+   the tarball, `.sha256` (and `.asc`) to the GitHub release and the site.
+   `make dist`
+   writes `build/dist/peaseblossom-<version>.tar.gz` (3.1 MB) and its
+   `.sha256`: HEAD's tracked files by `git archive` (so no build products
+   or test outputs), the seed as `seed/`, and `COMMIT`, which
+   `tools/build-info` reads where there is no `.git` (and it now takes a
+   commit only from the tree's own repository, not one it was unpacked
+   inside), so a tarball's poc names its commit. It refuses unless the
+   tracked files are HEAD's and the Stage 2 poc that writes the seed names
+   HEAD's commit. There is no generated documentation yet (steps 6 and
+   7). `make distcheck` unpacks it in a `mktemp` directory and, with
+   `VOC_BIN_DIR` pointing nowhere, runs `make check-install` there: Stage
+   0 from the seed, Stages 1 and 2, poc-rtl, install and the install
+   checks.
 6. **The User's Guide** (`doc/users-guide.md`): installing (packages,
    tarball, from git); a first program; the command line, task by task
    (building a program, compiling separately, `-O2`/`-OC`, `-opt`, `-g`,

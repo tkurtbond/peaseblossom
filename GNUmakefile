@@ -62,7 +62,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build install uninstall check-install seed check-seed stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build install uninstall check-install seed check-seed dist dist-sign distcheck stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -294,8 +294,8 @@ check-install: $(STAGE2_BIN) $(INSTALL_RTL)
 
 # Phase 13 step 4: the bootstrap seed, poc's own IR for 64-bit and 32-bit
 # targets, from which clang alone builds a Stage 0 poc where there is no voc
-# (tools/bootstrap/make-seed and stage0-seed say how). Not kept in git: make
-# dist puts it in the release tarball. check-seed builds a Stage 0 from the
+# (tools/bootstrap/make-seed and stage0-seed say how), in build/seed. Not
+# kept in git: make dist puts it in the release tarball, as seed/. check-seed builds a Stage 0 from the
 # seed and a Stage 1 with that, in build/seedcheck, and compares that Stage
 # 1's output with the voc-built one's (the same fixed point).
 seed: $(STAGE2_BIN)
@@ -303,13 +303,66 @@ seed: $(STAGE2_BIN)
 
 check-seed: seed $(STAGE1_BIN)
 	@dir=$(abspath $(BUILD_DIR)/seedcheck); rm -rf $$dir; \
-	BOOTSTRAP_BUILD_DIR=$$dir tools/bootstrap/stage0-seed || exit 1; \
+	SEED_DIR=$(abspath $(BUILD_DIR)/seed) BOOTSTRAP_BUILD_DIR=$$dir tools/bootstrap/stage0-seed || exit 1; \
 	BOOTSTRAP_BUILD_DIR=$$dir tools/bootstrap/stage1 >/dev/null || exit 1; \
 	status=0; \
 	for f in $(BUILD_DIR)/stage1/obj/*; do \
 	  if ! cmp -s $$f $$dir/stage1/obj/$$(basename $$f); then echo "DIFFERS: $$(basename $$f)"; status=1; fi; \
 	done; \
 	if [ $$status = 0 ]; then echo "check-seed: Stage 1 built by the seed's poc is Stage 1 built by voc's"; fi; \
+	exit $$status
+
+# Phase 13 step 5: make dist writes build/dist/peaseblossom-<version>.tar.gz
+# and its SHA-256 sum: the tracked files of HEAD (git archive, so no build
+# products or test outputs), the bootstrap seed as seed/, and COMMIT, the
+# commit, which tools/build-info reads where there is no .git. Refused
+# unless the tracked files are HEAD's and the Stage 2 poc that writes the
+# seed was built from them (its -version names HEAD, not -dirty), so the
+# seed is the source's. make distcheck unpacks the tarball in a scratch
+# directory and, with voc out of reach, builds poc from its seed and runs
+# make check-install there.
+VERSION := $(shell sed -n 's/^ *number\* *= *"\(.*\)";.*/\1/p' src/driver/Version.Mod)
+DIST_NAME := peaseblossom-$(VERSION)
+DIST_DIR := $(BUILD_DIR)/dist
+DIST_TARBALL := $(DIST_DIR)/$(DIST_NAME).tar.gz
+
+dist: $(STAGE2_BIN)
+	@git diff --quiet HEAD -- || { echo "dist: the tracked files differ from HEAD; commit first"; exit 1; }
+	@head=$$(git rev-parse --short HEAD); \
+	built=$$($(STAGE2_BIN) -version | sed -n '1s/^poc [^ ]* (\(.*\))$$/\1/p'); \
+	if [ "$$built" != "$$head" ]; then \
+	  echo "dist: the Stage 2 poc was built from '$$built', not $$head; make stage2 first"; exit 1; \
+	fi
+	rm -rf $(DIST_DIR); mkdir -p $(DIST_DIR)
+	git archive --prefix=$(DIST_NAME)/ HEAD | tar -xf - -C $(DIST_DIR)
+	git rev-parse --short HEAD > $(DIST_DIR)/$(DIST_NAME)/COMMIT
+	SEED_DIR=$(abspath $(DIST_DIR)/$(DIST_NAME)/seed) tools/bootstrap/make-seed
+	cd $(DIST_DIR) && tar -cf - $(DIST_NAME) | gzip -9 > $(DIST_NAME).tar.gz
+	cd $(DIST_DIR) && if command -v sha256sum >/dev/null; then sha256sum $(DIST_NAME).tar.gz; \
+	  else sha256 -r $(DIST_NAME).tar.gz; fi > $(DIST_NAME).tar.gz.sha256
+	rm -rf $(DIST_DIR)/$(DIST_NAME)
+	@echo "dist: wrote $(DIST_TARBALL) ($$(wc -c < $(DIST_TARBALL)) bytes)"
+
+# a detached, ASCII-armored GPG signature of the tarball, <tarball>.asc,
+# with gpg's default key (GPG_KEY names another): optional, made when the
+# person releasing chooses to (decided with the user, Phase 13 step 5)
+dist-sign:
+	@test -f $(DIST_TARBALL) || { echo "dist-sign: no $(DIST_TARBALL); make dist first"; exit 1; }
+	gpg --armor --detach-sign $(if $(GPG_KEY),--local-user $(GPG_KEY)) --output $(DIST_TARBALL).asc $(DIST_TARBALL)
+
+distcheck: dist
+	@scratch=$$(mktemp -d "$${TMPDIR:-/tmp}/poc-distcheck.XXXXXX") || exit 1; \
+	status=0; \
+	gzip -dc $(DIST_TARBALL) | tar -xf - -C $$scratch || status=1; \
+	if [ $$status = 0 ]; then \
+	  (cd $$scratch/$(DIST_NAME) && unset POC_IMPORT_PATH POC_LIBRARY_PATH && \
+	   $(MAKE) --no-print-directory VOC_BIN_DIR=/nonexistent check-install) \
+	    || status=1; \
+	  ver=$$($$scratch/$(DIST_NAME)/build/bin/poc -version 2>/dev/null | sed -n 1p); \
+	  echo "distcheck: the tarball's poc says: $$ver"; \
+	fi; \
+	rm -rf $$scratch; \
+	if [ $$status = 0 ]; then echo "distcheck: $(DIST_NAME).tar.gz builds without voc and installs"; fi; \
 	exit $$status
 
 # Runs every fixture in one pass (not category-by-category as separate

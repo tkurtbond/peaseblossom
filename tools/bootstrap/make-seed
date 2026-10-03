@@ -5,18 +5,18 @@
 # 2026-10-02: every 64-bit target's, x86_64 and aarch64 alike, differs
 # only in the triple and its datalayout, and so does every 32-bit x86
 # BSD's), so there are
-# two: seed/64, for x86_64-unknown-linux-gnu, and seed/32, for
-# i386-unknown-openbsd, each with its triple in TRIPLE, which stage0-seed
-# replaces with the host's. Written by the Stage 2 poc (POC, default
-# build/stage2/bin/poc) under -OC, as poc's own build is. The seed is not
-# kept in git (decided with the user): make dist puts it in the release
-# tarball.
+# two: 64, for x86_64-unknown-linux-gnu, and 32, for i386-unknown-openbsd,
+# each with its triple in TRIPLE, which stage0-seed replaces with the
+# host's. Written by the Stage 2 poc (POC, default build/stage2/bin/poc)
+# under -OC, as poc's own build is, into SEED_DIR, default build/seed. The
+# seed is not kept in git (decided with the user): make dist puts it in the
+# release tarball as seed/, the only place a top-level seed/ is.
 set -e
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}
 POC=${POC:-$BUILD/stage2/bin/poc}
-SEED=${SEED_DIR:-$ROOT/seed}
+SEED=${SEED_DIR:-$BUILD/seed}
 
 "$ROOT/tools/build-info" "$BUILD/gen"
 rm -rf "$SEED"
