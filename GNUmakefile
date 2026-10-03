@@ -62,7 +62,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build install uninstall check-install seed check-seed dist dist-sign distcheck stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install seed check-seed dist dist-sign distcheck stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -240,6 +240,11 @@ $(STAGE2_LIB)/$(HOST_TRIPLE)/%-g/poc-rtl.library: $(STAGE2_BIN) $(RTL_SRCS) $(RT
 
 $(STAGE2_LIB)/$(HOST_TRIPLE)/%/poc-rtl.library: $(STAGE2_BIN) $(RTL_SRCS) $(RTL_C_SRCS)
 	$(STAGE2_BIN) -$* -clear-library-path -output-dir $(STAGE2_LIB) -library poc-rtl $(RTL_SRCS)
+
+# everything install copies, built, so that a package's build step can do
+# all the building and its install step only copies
+# (packaging/fedora/peaseblossom.spec)
+installable: $(STAGE2_BIN) $(INSTALL_RTL)
 
 install: $(STAGE2_BIN) $(INSTALL_RTL)
 	@if [ "$(abspath $(BINDIR)/../lib)" != "$(abspath $(LIBDIR))" ]; then \

@@ -703,14 +703,26 @@ mismatch).
    are clang (the version each OS ships) and nothing else at run time.
    Decide with the user whether any is to be submitted upstream (that is
    outside this repository's control and is not this phase's exit
-   condition).
+   condition). The packages live under `packaging/<system>/`; `make
+   installable` builds everything `make install` copies, for a package's
+   build step.
+   - **Fedora** (2026-10-03): `packaging/fedora/peaseblossom.spec`. poc-rtl
+     goes in `%{_prefix}/lib/poc` (where poc looks, beside its own
+     directory, as gcc's files are in `/usr/lib/gcc`), not `%{_libdir}`;
+     the `-g` copies keep their DWARF (no debuginfo split, no strip of
+     the archives); `libpoc-rtl.so` is not offered as a system Provides.
+     `x86_64` only until poc has run on aarch64 Linux. `%check` runs
+     `test/install/check.sh` on the build root, which now accepts
+     `poc.1.gz`. Built with rpmbuild and in mock (Fedora 44), installed,
+     checked against `/usr/bin/poc`, removed with nothing left.
 9. **Exit gate.** From the release tarball, on atla and each gating VM:
    poc builds without voc, `make check` passes with the seed-built poc,
    `make install` and `make check-install` pass, the OS package installs
    and passes; rackhir at the close-out. The User's Guide's examples all
-   run, `poc(1)` lints clean, and every option `poc` accepts appears in
-   both `poc(1)` and the Reference Guide (a fixture compares them with the
-   usage text).
+   run, `poc(1)` lints clean (fixture `doc-poc-man-page`, `mandoc -T
+   lint -W warning`, skipped without mandoc), and every option `poc`
+   accepts appears in both `poc(1)` and the Reference Guide (a fixture
+   compares them with the usage text).
 
 **Testing summary**: steps 1 and 2 end in decisions recorded here;
 steps 3-5 and 8 are install-and-run checks on each host; steps 6 and 7 are

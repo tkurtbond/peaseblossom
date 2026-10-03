@@ -168,3 +168,22 @@ shells out to these rather than linking against LLVM's own C++ API.
   tests. Usage: `llc <file>.ll -o <file>.s` (its default output filetype is
   already textual assembly; unlike `clang`, it has no `-S` flag — passing
   one is a hard CLI error, `Unknown command line argument '-S'`).
+- **Versions on the other hosts**: the BSD hosts' plain `clang` is 19
+  (OpenBSD, FreeBSD) or 21 (NetBSD); the User's Guide asks for 19 or later.
+- **Version and identity** (Phase 13 step 1): `src/driver/Version.Mod` is
+  the one place the number is kept (0.x.y); `tools/build-info` writes
+  `build/gen/BuildInfo.Mod`, the commit (`-dirty` with changed tracked
+  files, empty without `.git`, a tarball's `COMMIT` file otherwise), on
+  every `make` and in each bootstrap stage. `poc -version` prints both, the
+  target and size model, and clang's version.
+- **Installing** (Phase 13 step 3): `make install` (`PREFIX`, `DESTDIR`,
+  `BINDIR`, `LIBDIR` = `$(BINDIR)/../lib`, `MANDIR`, `DOCDIR`) installs
+  the Stage 2 poc, `poc(1)` and poc-rtl for the host triple, both size
+  models, each also built with `-g` in `<O2|OC>-g/`; `make uninstall`
+  removes them; `make check-install` (not part of `make check`) installs
+  into a scratch `DESTDIR` and runs `test/install/check.sh` with only that
+  poc and clang on `PATH`.
+- **Building a program** (Phase 13 step 2): `poc <file>` is `poc -build
+  <file>`, and without `-o` the executable is named after the module, in
+  the current directory. `-build`, `-library` and `-compile` say nothing
+  on success; `-help` is a short summary on standard output.

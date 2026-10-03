@@ -425,3 +425,9 @@ also said poc had no `-O2`/`-OC` flag of its own; one was added with
 `CONST` folding of `MAX`/`MIN`/`SIZE` (default `-O2`), and it now selects the
 size model `MemoryLayout.Mod` and the backend use for the programs poc
 compiles.
+
+**Phase numbering** (2026-10-02, moved from `AGENTS.md` 2026-10-03): Phase
+13 (packaging) was inserted before the VAX/VMS work, so the old Phases
+13-18 became 14-19; the same day record and array literals became Phase
+14, and those became 15-20. Records written before then keep their own
+numbers; `PLAN.md`'s Phase 13 says how to read them.
