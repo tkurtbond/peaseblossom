@@ -2,9 +2,10 @@
 
 What `poc`, the Peaseblossom Oberon-2 compiler, accepts and does, exactly.
 It is a companion to the language report, `Oberon2.pdf` (H. Mössenböck and
-N. Wirth, *The Programming Language Oberon-2*, the revision exported in 2007
-and modified in 2022), which it refers to by section and does not reproduce:
-where this guide says nothing, the report's rule holds as written.
+N. Wirth, *The Programming Language Oberon-2*, in its later revision, not
+the ETH technical report of October 1993), which it refers to by section
+and does not reproduce: where this guide says nothing, the report's rule
+holds as written.
 
 The User's Guide (`users-guide.md`) shows how to use poc; this guide is
 where to look up a rule. `doc/language-extensions.md` in poc's source is
