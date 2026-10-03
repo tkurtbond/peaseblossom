@@ -31,42 +31,24 @@ which fails when what the guide shows is not what poc does.
 
 ## 1. Installing
 
-poc needs `clang` on `PATH` when it builds a program: it writes LLVM IR, and
-clang compiles and links it. Any clang from 19 on does; on the BSDs it is
-the system's (OpenBSD and FreeBSD) or pkgsrc's (NetBSD). Building poc needs
-GNU make, which the BSDs call `gmake`.
+`INSTALL.md`, at the top of the source tree, says how to build and install
+poc: from a release tarball, which needs only clang and GNU make, from the
+git repository, and into `/usr/local` (the default) or anywhere else. In
+short:
 
-**From a release tarball.** A release, `peaseblossom-<version>.tar.gz`,
-carries poc's own LLVM IR, its *seed*, so clang alone can build it:
-
-    tar xzf peaseblossom-0.1.0.tar.gz
-    cd peaseblossom-0.1.0
-    make                       # gmake on the BSDs
+    make installable           # gmake on the BSDs
     make install               # as root, or with PREFIX=$HOME/local
-    make check-install         # optional: builds programs with what was installed
 
-`make install` takes `PREFIX` (default `/usr/local`) and `DESTDIR`, and the
-usual `BINDIR`, `LIBDIR`, `MANDIR` and `DOCDIR`. It installs:
+poc needs `clang` on `PATH` whenever it builds a program: it writes LLVM
+IR, and clang compiles and links it. Any clang from 19 on does; on the BSDs
+it is the system's (OpenBSD and FreeBSD) or pkgsrc's (NetBSD).
 
-| Where | What |
-|---|---|
-| `$(BINDIR)/poc` | the compiler |
-| `$(LIBDIR)/poc/<triple>/O2/`, `OC/` | the runtime, the library `poc-rtl`, for each size model (section 3) |
-| `$(LIBDIR)/poc/<triple>/O2-g/`, `OC-g/` | the same, built with debug information, which `poc -g` uses (section 8) |
-| `$(DOCDIR)` | `README.md`, `LICENSE` and this guide, `users-guide.md` |
-
-poc finds its runtime as `../lib/poc` from the directory it is in, following
-symbolic links, so `LIBDIR` must be `$(BINDIR)/../lib` (the default), and a
-link to poc from anywhere works. `make uninstall` removes what `make install`
-wrote, and leaves any other library installed beside the runtime.
-
-**From git.** A checkout has no seed. poc is built by voc (Vishap Oberon, the
-compiler poc was first written with), if `VOC_BIN_DIR` names its `bin`
-directory, or by a poc already installed:
-
-    make BOOTSTRAP_POC=/usr/local/bin/poc
-
-`make check` runs the test suite; it needs voc, which it compares poc with.
+An installed poc is `$(BINDIR)/poc`, with its runtime, the library
+`poc-rtl`, in `$(LIBDIR)/poc/<triple>/`: `O2/` and `OC/` for the two size
+models (section 3), and `O2-g/` and `OC-g/`, built with debug information,
+which `poc -g` uses (section 8). poc finds its runtime as `../lib/poc` from
+the directory it is in, following symbolic links, so a link to poc from
+anywhere works.
 
 ## 2. A first program
 
