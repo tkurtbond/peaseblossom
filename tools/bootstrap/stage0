@@ -11,11 +11,25 @@
 # it does not conflict with the strict-Oberon2.pdf-syntax constraint on
 # poc's bootstrap-era source (see "Constraint" under "Bootstrap
 # terminology" in PLAN.md).
+#
+# Phase 13 step 4: without voc there are two other ways, chosen here:
+# BOOTSTRAP_POC, a poc already built, compiles poc (tools/bootstrap/
+# stage0-poc); or, when voc is not there, clang builds poc from the
+# bootstrap seed, seed/, which a release tarball has (stage0-seed).
 set -e
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BUILD="$ROOT/build"
 VOC_BIN_DIR=${VOC_BIN_DIR:-/usr/local/sw/versions/voc/git/bin}
+
+if [ -n "$BOOTSTRAP_POC" ]; then
+  exec "$ROOT/tools/bootstrap/stage0-poc"
+elif [ ! -x "$VOC_BIN_DIR/voc" ]; then
+  if [ -d "$ROOT/seed" ]; then exec "$ROOT/tools/bootstrap/stage0-seed"; fi
+  echo "stage0: no voc in $VOC_BIN_DIR (VOC_BIN_DIR), no seed/ (a release tarball has one)," >&2
+  echo "and no BOOTSTRAP_POC (an installed poc): nothing to build poc with" >&2
+  exit 1
+fi
 
 mkdir -p "$BUILD/bin" "$BUILD/obj"
 # BuildInfo.Mod, the commit `poc -version` names (Phase 13 step 1)

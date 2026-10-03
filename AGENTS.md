@@ -94,6 +94,11 @@ terminology"), which `make check-strict` (part of `make check`) enforces with
 `poc -strict`, and it must also **type-check under `-O2`**: no literal or
 constant needs more than 32 bits (`poc -O2 -build src/driver/Poc.Mod`
 succeeds; `doc/project-history.md`, "poc's own source under `-O2`").
+Without voc (Phase 13 step 4), `tools/bootstrap/stage0` builds Stage 0
+with `BOOTSTRAP_POC` (a poc already built), or from `seed/`, poc's own IR
+for 64-bit or 32-bit x86 BSD hosts, which `make seed` writes and only a
+release tarball carries (not git); `make check-seed` checks it gives the
+same Stage 1.
 
 **voc's extensions beyond the report** (mostly in `Features.md`). Assume none of them
 for poc unless it adopted them:

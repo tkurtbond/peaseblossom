@@ -559,6 +559,30 @@ mismatch).
    fixture checks that a seed-built poc reaches the same fixed point as a
    voc-built one. `poc-rtl` is built by the seed-built poc, as by any
    other.
+   **Done (2026-10-02).** Checked first: poc's IR for itself depends only
+   on the word size. Every 64-bit target's (x86_64 Linux and the three
+   BSDs, aarch64 FreeBSD) differs from the others only in its `target
+   triple` lines and `<M>.-target.<triple>` symbols, and so does each
+   32-bit x86 BSD's; i686 Linux's also lacks the BSDs' stack realignment.
+   (On the way: aarch64 gets x86_64's `target datalayout`, poc having only
+   the two strings of `LLVMCodeGenerator`; clang uses the target's own,
+   and poc lays records out itself, so nothing shows it yet.) Decided
+   with the user: two seeds by word size, and the seed only in the release
+   tarball, never in git. `make seed` (`tools/bootstrap/make-seed`) has
+   the Stage 2 poc write `seed/64` (for `x86_64-unknown-linux-gnu`) and
+   `seed/32` (`i386-unknown-openbsd`) under `-OC`, 30 modules each, 6.7
+   MB (1.0 MB gzipped), with `TRIPLE` and `VERSION`, and checks that the
+   triple is in each module only twice. `tools/bootstrap/stage0-seed`
+   replaces it with `clang -dumpmachine`'s, compiles each module as poc
+   would (`-fPIC`, `-O2`, or `-O0` for 32-bit x86) with
+   `rtl/llvm/Platform.c`, and links `build/bin/poc`; another word size, or
+   a 32-bit x86 other than OpenBSD's and NetBSD's, is refused.
+   `tools/bootstrap/stage0` now chooses: `BOOTSTRAP_POC`, a poc already
+   built (an installed one), compiles poc (`stage0-poc`), which lets a
+   developer drop voc too; else voc; else the seed, if there is one; else
+   it says which three it lacks. `make check-seed` builds a Stage 0 from
+   the seed and a Stage 1 with it in `build/seedcheck`, and compares that
+   Stage 1's output with the voc-built Stage 1's: identical.
 5. **The release tarball.** `make dist` writes
    `peaseblossom-<version>.tar.gz`: the source, the seed, the generated
    documentation, `LICENSE` and the README, but no test outputs or build

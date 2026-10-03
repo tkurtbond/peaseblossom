@@ -11,7 +11,9 @@ The LLVM-based compiler should run on Linux as well as NetBSD, OpenBSD, and Free
 ## Building and testing
 
 Requires GNU Make and `voc` (Vishap Oberon, the bootstrap compiler - see
-`AGENTS.md`) on `PATH`, or `VOC_BIN_DIR` set to its `bin` directory. The
+`AGENTS.md`) on `PATH`, or `VOC_BIN_DIR` set to its `bin` directory. Without
+voc, `make BOOTSTRAP_POC=<a poc>` builds with a poc already installed, and a
+release tarball's `seed/` lets clang alone build it. The
 LLVM backend's fixtures, `make stage1` and `make stage2` also need `clang`
 on `PATH`: poc hands it the `.ll` it writes.
 
@@ -37,6 +39,10 @@ make install     # installs the Stage 2 poc and poc-rtl (PREFIX, default
                  # make uninstall removes them
 make check-install # installs into a scratch DESTDIR and builds and runs
                  # programs with only the installed poc and clang
+make seed        # the bootstrap seed, poc's own IR (seed/), from which
+                 # clang alone builds poc where there is no voc
+make check-seed  # poc built from the seed builds the same Stage 1 as
+                 # poc built by voc
 make clean       # removes both poc's own build output and test artifacts
                  # (clean-build and clean-tests individually)
 ```

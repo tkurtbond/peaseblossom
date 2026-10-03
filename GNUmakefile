@@ -62,7 +62,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build install uninstall check-install stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build install uninstall check-install seed check-seed stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -290,6 +290,26 @@ check-install: $(STAGE2_BIN) $(INSTALL_RTL)
 	  else echo "check-install: uninstall removed everything"; fi; \
 	fi; \
 	rm -rf $$scratch; \
+	exit $$status
+
+# Phase 13 step 4: the bootstrap seed, poc's own IR for 64-bit and 32-bit
+# targets, from which clang alone builds a Stage 0 poc where there is no voc
+# (tools/bootstrap/make-seed and stage0-seed say how). Not kept in git: make
+# dist puts it in the release tarball. check-seed builds a Stage 0 from the
+# seed and a Stage 1 with that, in build/seedcheck, and compares that Stage
+# 1's output with the voc-built one's (the same fixed point).
+seed: $(STAGE2_BIN)
+	tools/bootstrap/make-seed
+
+check-seed: seed $(STAGE1_BIN)
+	@dir=$(abspath $(BUILD_DIR)/seedcheck); rm -rf $$dir; \
+	BOOTSTRAP_BUILD_DIR=$$dir tools/bootstrap/stage0-seed || exit 1; \
+	BOOTSTRAP_BUILD_DIR=$$dir tools/bootstrap/stage1 >/dev/null || exit 1; \
+	status=0; \
+	for f in $(BUILD_DIR)/stage1/obj/*; do \
+	  if ! cmp -s $$f $$dir/stage1/obj/$$(basename $$f); then echo "DIFFERS: $$(basename $$f)"; status=1; fi; \
+	done; \
+	if [ $$status = 0 ]; then echo "check-seed: Stage 1 built by the seed's poc is Stage 1 built by voc's"; fi; \
 	exit $$status
 
 # Runs every fixture in one pass (not category-by-category as separate

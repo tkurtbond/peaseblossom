@@ -1,0 +1,18 @@
+#!/bin/sh
+# Stage 0 by a poc already built (Phase 13 step 4): BOOTSTRAP_POC, an
+# installed poc say, compiles poc's own source as Stage 1 does, giving
+# build/bin/poc without voc.
+set -e
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}
+
+"$ROOT/tools/build-info" "$BUILD/gen"
+obj="$BUILD/stage0/obj"
+rm -rf "$obj"; mkdir -p "$obj" "$BUILD/bin"
+cd "$obj"
+"$BOOTSTRAP_POC" -OC -clear-library-path \
+  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
+  -import-path "$ROOT/rtl/llvm" -import-path "$ROOT/src/driver" -import-path "$BUILD/gen" \
+  -o "$BUILD/bin/poc" -build "$ROOT/src/driver/Poc.Mod"
+echo "Stage 0: built $BUILD/bin/poc with $BOOTSTRAP_POC"

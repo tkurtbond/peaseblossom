@@ -1,0 +1,34 @@
+#!/bin/sh
+# Stage 0 from the bootstrap seed (Phase 13 step 4): clang alone compiles
+# the seed's IR for the host, seed/64 or seed/32 by the word size, with the
+# seed's triple replaced by the host's (tools/bootstrap/make-seed says why
+# that is enough), and links it with rtl/llvm/Platform.c, as poc links a
+# program: the result, build/bin/poc, is a poc that needs no voc. A host
+# whose IR would differ in more than the triple is refused: one with
+# another word size, or a 32-bit x86 other than OpenBSD's and NetBSD's
+# (theirs have the stack realignment of LLVMTypes.NeedsStackRealignment).
+set -e
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}
+SEED=${SEED_DIR:-$ROOT/seed}
+
+triple=$(clang -dumpmachine) || { echo "stage0-seed: no clang on PATH" >&2; exit 1; }
+case $triple in
+  x86_64-*|amd64-*|aarch64-*) bits=64; level=2 ;;
+  i[3456]86-*openbsd*|i[3456]86-*netbsd*) bits=32; level=0 ;;
+  *) echo "stage0-seed: no seed for $triple; build with voc (VOC_BIN_DIR) or another poc (BOOTSTRAP_POC)" >&2
+     exit 1 ;;
+esac
+from=$(cat "$SEED/$bits/TRIPLE")
+
+obj="$BUILD/stage0/obj"
+rm -rf "$obj"; mkdir -p "$obj" "$BUILD/bin"
+for f in "$SEED/$bits"/*.ll; do
+  name=$(basename "$f" .ll)
+  sed "s/$from/$triple/g" "$f" > "$obj/$name.ll"
+  clang -c --target="$triple" -O$level -fPIC "$obj/$name.ll" -o "$obj/$name.o"
+done
+clang -c --target="$triple" -O$level -fPIC "$ROOT/rtl/llvm/Platform.c" -o "$obj/Platform.c.o"
+clang --target="$triple" -O$level "$obj"/*.o -o "$BUILD/bin/poc" -lm
+echo "Stage 0: built $BUILD/bin/poc from the seed ($(cat "$SEED/VERSION"))"
