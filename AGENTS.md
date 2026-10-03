@@ -175,6 +175,15 @@ C++ API. `doc/llvm-toolchain.md` has the full account of each point here.
   object goes, with each `-c-flag <arg>` (Phase 13 step 2). `rtl/llvm/
   Platform.c` is the one: what the four systems spell differently, which
   only their headers know.
+- **Installing** (Phase 13 step 3): `make install` (`PREFIX`, `DESTDIR`,
+  `BINDIR`, `LIBDIR` = `$(BINDIR)/../lib`, `MANDIR`, `DOCDIR`) installs
+  the Stage 2 poc and poc-rtl for the host triple, both size models, each
+  also built with `-g` in `<O2|OC>-g/`, which `poc -g` looks in first;
+  `make uninstall` removes them; `make check-install` (not part of `make
+  check`) installs into a scratch `DESTDIR` and runs `test/install/
+  check.sh` with only that poc and clang on `PATH`. An installed
+  library's directory is in a program's run-time path only absolutely; a
+  symbolic link to poc finds its library.
 - **Building a program** (Phase 13 step 2): `poc <file>` is `poc -build
   <file>`, and without `-o` the executable is named after the module, in
   the current directory. `-build`, `-library` and `-compile` say nothing

@@ -457,7 +457,7 @@ MODULE Poc;
     LLVMToolchainDriver.ltoLink := FALSE;
     lib := Libraries.linkOrder;
     WHILE ok & (lib # NIL) DO
-      LLVMToolchainDriver.AddLibrary(lib.name, lib.dir, shared);
+      LLVMToolchainDriver.AddLibrary(lib.name, lib.dir, shared, Libraries.IsInstalled(lib.dir));
       (* an LTO library's archive is bitcode, which only -flto links (Phase
          12 step 2g); its shared library is not *)
       IF lib.lto & ~shared THEN LLVMToolchainDriver.ltoLink := TRUE END;
@@ -1851,8 +1851,9 @@ MODULE Poc;
     Err.String("       instead of leaving the pointer NIL"); Err.Ln;
     Err.String("       -trap-location may precede -emit-llvm-ir or -build: a trap's message"); Err.Ln;
     Err.String("       starts with its file:line:column and names its procedure"); Err.Ln;
-    Err.String("       -g may precede -emit-llvm-ir or -build: debug information for gdb"); Err.Ln;
-    Err.String("       and lldb (source lines, procedures, variables); best with -opt 0 or -opt g"); Err.Ln;
+    Err.String("       -g may precede -emit-llvm-ir, -build or -library: debug information for"); Err.Ln;
+    Err.String("       gdb and lldb (source lines, procedures, variables); best with -opt 0 or"); Err.Ln;
+    Err.String("       -opt g; libraries are built in, and looked for first in, <triple>/<O2|OC>-g"); Err.Ln;
     Err.String("       -range-checks may precede -emit-llvm-ir or -build: SHORT of an integer"); Err.Ln;
     Err.String("       and CHR stop the program (exit status 14) when the value does not fit"); Err.Ln;
     Err.String("       -static may precede -build: link a fully static executable"); Err.Ln;
@@ -2057,6 +2058,7 @@ MODULE Poc;
         ELSIF arg = "-g" THEN
           (* Phase 11 A16: debug information for gdb and lldb *)
           LLVMCodeGenerator.debugInfo := TRUE;
+          Libraries.SetDebug(TRUE);
           INC(i)
         ELSIF arg = "-opt" THEN
           (* Phase 11 D13: the optimization level -build passes clang *)

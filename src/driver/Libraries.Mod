@@ -32,6 +32,14 @@ MODULE Libraries;
      first one whose tuple directory has <Module>.owner owns the module; a
      warning names any later one that has it too (Phase 12 step 2e).
 
+     Under poc -g (Phase 13 step 3) a library is built in, and looked for
+     first in, <base>/<triple>/<O2|OC>-g/, its copy compiled with debug
+     information, so that a debugger sees into it; a base without that
+     directory is searched as usual. Both copies have the same interface,
+     and the same module keys, so either links with the other's
+     importers. poc's own lib/poc is "installed" (IsInstalled): a program
+     linking one of its shared libraries names it only absolutely.
+
      Nothing here knows about LLVM: the driver builds and links, this module
      finds, reads and writes manifests, and checks that the libraries a
      program would link agree with each other. *)
@@ -124,6 +132,8 @@ MODULE Libraries;
     triple: Name;
     model: ARRAY 3 OF CHAR;
     excluded: Name; (* the library being built, never taken from the path *)
+    debug: BOOLEAN; (* poc -g: <model>-g first (SetDebug) *)
+    defaultDir: Path; (* poc's own lib/poc, "" when it has none *)
     loaded: Library;
     checked: Checked;
     (* the used libraries, each before those it needs (ComputeLinkOrder) *)
@@ -220,8 +230,13 @@ MODULE Libraries;
       INC(i)
     END;
     ScratchFile("library-path", scratch);
+    (* through any symbolic links to poc, to the directory it is really in,
+       so that a link to it from elsewhere (~/bin/poc) finds its library;
+       readlink without -f, which each of the four systems has *)
     command := "p=$(command -v '"; Append(command, program);
-    Append(command, "') && d=");
+    Append(command, "') && while [ -h ");
+    Append(command, '"$p" ]; do l=$(readlink "$p"); ');
+    Append(command, 'case "$l" in /*) p=$l ;; *) p=$(dirname "$p")/$l ;; esac; done && d=');
     Append(command, '"$(dirname "$p")/../lib/poc"');
     IF create THEN Append(command, ' && mkdir -p "$d"') END;
     Append(command, ' && cd "$d" 2>/dev/null && pwd >');
@@ -237,10 +252,19 @@ MODULE Libraries;
 
   (* The last entry of the path: PocLibraryDir, when it is there *)
   PROCEDURE AddDefaultPathDir*(program: ARRAY OF CHAR);
-    VAR dir: Path;
   BEGIN
-    IF PocLibraryDir(program, FALSE, dir) THEN AddPathDir(dir) END
+    IF PocLibraryDir(program, FALSE, defaultDir) THEN AddPathDir(defaultDir) END
   END AddDefaultPathDir;
+
+  (* dir, a tuple directory, is in poc's own lib/poc *)
+  PROCEDURE IsInstalled*(dir: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    IF defaultDir[0] = 0X THEN RETURN FALSE END;
+    i := 0;
+    WHILE (defaultDir[i] # 0X) & (dir[i] = defaultDir[i]) DO INC(i) END;
+    RETURN (defaultDir[i] = 0X) & (dir[i] = "/")
+  END IsInstalled;
 
   (* ---- Target ---- *)
 
@@ -251,11 +275,24 @@ MODULE Libraries;
     COPY(targetTriple, triple); COPY(sizeModel, model)
   END SetTarget;
 
-  (* base/<triple>/<model> *)
-  PROCEDURE TupleDirectory*(base: ARRAY OF CHAR; VAR dir: ARRAY OF CHAR);
+  (* poc -g: libraries are built in, and looked for first in, <model>-g *)
+  PROCEDURE SetDebug*(on: BOOLEAN);
+  BEGIN
+    debug := on
+  END SetDebug;
+
+  (* base/<triple>/<model>, or <model>-g with withDebug *)
+  PROCEDURE ModelDirectory(base: ARRAY OF CHAR; withDebug: BOOLEAN; VAR dir: ARRAY OF CHAR);
   BEGIN
     IF base[0] = 0X THEN COPY(".", dir) ELSE COPY(base, dir) END;
-    Append(dir, "/"); Append(dir, triple); Append(dir, "/"); Append(dir, model)
+    Append(dir, "/"); Append(dir, triple); Append(dir, "/"); Append(dir, model);
+    IF withDebug THEN Append(dir, "-g") END
+  END ModelDirectory;
+
+  (* base/<triple>/<model>, where a library is built: <model>-g under -g *)
+  PROCEDURE TupleDirectory*(base: ARRAY OF CHAR; VAR dir: ARRAY OF CHAR);
+  BEGIN
+    ModelDirectory(base, debug, dir)
   END TupleDirectory;
 
   (* The owner of name in the tuple directory dir, from <Module>.owner *)
@@ -267,6 +304,19 @@ MODULE Libraries;
     IF f # NIL THEN Files.Set(r, f, 0); Files.ReadLine(r, owner); Files.Close(f) END;
     RETURN f # NIL
   END ReadOwner;
+
+  (* The tuple directory under base with the module name, in dir, and its
+     library in owner: under -g, <model>-g if it has the module, else
+     <model> *)
+  PROCEDURE FindOwner(base, name: ARRAY OF CHAR; VAR dir, owner: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    IF debug THEN
+      ModelDirectory(base, TRUE, dir);
+      IF ReadOwner(dir, name, owner) THEN RETURN TRUE END
+    END;
+    ModelDirectory(base, FALSE, dir);
+    RETURN ReadOwner(dir, name, owner)
+  END FindOwner;
 
   PROCEDURE HasOwner*(dir, name: ARRAY OF CHAR; VAR owner: ARRAY OF CHAR): BOOLEAN;
   BEGIN
@@ -454,8 +504,7 @@ MODULE Libraries;
     IF c # NIL THEN RETURN END;
     NEW(c); COPY(name, c.name); c.next := checked; checked := c;
     WHILE e # NIL DO
-      TupleDirectory(e.dir, dir);
-      IF (dir # lib.dir) & ReadOwner(dir, name, owner) & (owner # excluded) THEN
+      IF FindOwner(e.dir, name, dir, owner) & (dir # lib.dir) & (owner # excluded) THEN
         Err.String("poc: warning: module "); Err.String(name); Err.String(" is taken from library ");
         Err.String(lib.name); Err.String(" ("); Err.String(lib.dir); Err.String("), which hides library ");
         Err.String(owner); Err.String("'s ("); Err.String(dir); Err.String(")"); Err.Ln
@@ -478,8 +527,7 @@ MODULE Libraries;
   BEGIN
     e := pathHead;
     WHILE e # NIL DO
-      TupleDirectory(e.dir, dir);
-      IF ReadOwner(dir, name, owner) & (owner # excluded) THEN
+      IF FindOwner(e.dir, name, dir, owner) & (owner # excluded) THEN
         lib := Load(owner, dir);
         IF lib # NIL THEN WarnHidden(name, lib, e.next) END;
         RETURN lib
@@ -496,7 +544,12 @@ MODULE Libraries;
     IF name = excluded THEN RETURN NIL END;
     e := pathHead;
     WHILE e # NIL DO
-      TupleDirectory(e.dir, dir);
+      IF debug THEN
+        ModelDirectory(e.dir, TRUE, dir);
+        JoinPath(dir, name, path); Append(path, ".library");
+        IF Exists(path) THEN RETURN Load(name, dir) END
+      END;
+      ModelDirectory(e.dir, FALSE, dir);
       JoinPath(dir, name, path); Append(path, ".library");
       IF Exists(path) THEN RETURN Load(name, dir) END;
       e := e.next

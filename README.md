@@ -32,6 +32,11 @@ make check       # both compilers and the fixed point: make test,
                  # reporting every failure
 make check-strict # poc -strict on every module of src/: poc's own source
                  # uses only Oberon2.pdf
+make install     # installs the Stage 2 poc and poc-rtl (PREFIX, default
+                 # /usr/local; DESTDIR, BINDIR, LIBDIR, MANDIR, DOCDIR);
+                 # make uninstall removes them
+make check-install # installs into a scratch DESTDIR and builds and runs
+                 # programs with only the installed poc and clang
 make clean       # removes both poc's own build output and test artifacts
                  # (clean-build and clean-tests individually)
 ```

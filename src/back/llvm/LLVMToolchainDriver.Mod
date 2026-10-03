@@ -33,6 +33,7 @@ MODULE LLVMToolchainDriver;
     RunDirectory = POINTER TO RunDirectoryDesc;
     RunDirectoryDesc = RECORD
       dir: ARRAY pathBufferLength OF CHAR;
+      installed: BOOLEAN; (* named only absolutely (AddLibrary) *)
       next: RunDirectory
     END;
 
@@ -580,15 +581,19 @@ MODULE LLVMToolchainDriver;
   (* Phase 12 step 2c: a program links the library name, whose files are in
      dir: its archive by path, or with shared, its shared library by -L and
      -l, and dir in the program's run-time search path (AppendRunPath). In
-     the order the libraries must be linked: each before those it needs. *)
-  PROCEDURE AddLibrary*(name, dir: ARRAY OF CHAR; shared: BOOLEAN);
+     the order the libraries must be linked: each before those it needs.
+     An installed library (one in poc's own lib/poc, Phase 13 step 3) is in
+     the run-time search path only absolutely: it stays where it is, and a
+     path from where the program was built to it means nothing once the
+     program is elsewhere. *)
+  PROCEDURE AddLibrary*(name, dir: ARRAY OF CHAR; shared, installed: BOOLEAN);
     VAR path: ARRAY pathBufferLength OF CHAR; quoted: ARRAY 2 * pathBufferLength OF CHAR; ok: BOOLEAN;
       entry, last: RunDirectory;
   BEGIN
     IF shared THEN
       COPY("-L", path); Strcat(path, dir); ok := QuoteWord(path, quoted); Strcat(libraryArguments, quoted);
       COPY("-l", path); Strcat(path, name); ok := QuoteWord(path, quoted); Strcat(libraryArguments, quoted);
-      NEW(entry); Normalize(dir, entry.dir); entry.next := NIL;
+      NEW(entry); Normalize(dir, entry.dir); entry.installed := installed; entry.next := NIL;
       IF runDirectories = NIL THEN runDirectories := entry
       ELSE
         last := runDirectories;
@@ -612,7 +617,8 @@ MODULE LLVMToolchainDriver;
      through $ORIGIN (the directory the executable or library is loaded
      from), so that moving them together keeps them together; then each
      directory as it is, absolute, so that moving only the executable does
-     too. A shared library (forLibrary) also has $ORIGIN itself first: the
+     too (an installed library only absolutely: AddLibrary). A shared
+     library (forLibrary) also has $ORIGIN itself first: the
      libraries it needs, installed beside it. -z origin marks the object as
      using $ORIGIN, without which OpenBSD's ld.so does not expand it. *)
   PROCEDURE AppendRunPath(outputDir: ARRAY OF CHAR; forLibrary: BOOLEAN);
@@ -626,7 +632,7 @@ MODULE LLVMToolchainDriver;
     IF forLibrary THEN Strcat(command, " '-Wl,-rpath,$ORIGIN'") END;
     d := runDirectories;
     WHILE d # NIL DO
-      IF RelativePath(from, d.dir, rel) & ((rel[0] # 0X) OR ~forLibrary) THEN
+      IF ~d.installed & RelativePath(from, d.dir, rel) & ((rel[0] # 0X) OR ~forLibrary) THEN
         COPY("-Wl,-rpath,$ORIGIN", path);
         IF rel[0] # 0X THEN Strcat(path, "/"); Strcat(path, rel) END;
         ok := QuoteWord(path, quoted); Strcat(command, quoted)

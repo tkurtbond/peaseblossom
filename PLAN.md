@@ -518,6 +518,32 @@ mismatch).
    check-install` target installs into a scratch `DESTDIR` and runs a set
    of fixtures with only the installed poc: no voc on `PATH`, no source
    tree, no `POC_IMPORT_PATH`.
+   **Done (2026-10-02).** Decided with the user: the `-g` copy of a
+   library lives beside the plain one, in `<triple>/<O2|OC>-g/`; under
+   `poc -g` every base on the library path is searched there first, then
+   as usual, and `poc -g -library` (and `-install-library`) writes there,
+   so a user's own libraries can have a debug copy too
+   (`Libraries.SetDebug`; both copies have the same keys). A library in
+   poc's own `../lib/poc` is "installed", and a program linking its shared
+   library has it in its run-time path only absolutely
+   (`Libraries.IsInstalled`, `LLVMToolchainDriver.AddLibrary`); others keep
+   the `$ORIGIN`-relative entry first. Found on the way: a poc reached
+   through a symbolic link looked for `../lib/poc` beside the link;
+   `Libraries.PocLibraryDir` now follows links (with `readlink`, without
+   `-f`). `make install` installs `build/stage2/bin/poc` (a file target
+   now, made when missing or older than Stage 1), poc-rtl built by it in
+   `build/stage2/lib/poc` under `O2`, `OC`, `O2-g` and `OC-g`, copied by
+   `poc -install-library`, and `README.md` and `LICENSE` in `DOCDIR`
+   (`share/doc/peaseblossom`); `MANDIR` is `share/man`, or `man` on
+   OpenBSD and NetBSD, for `poc(1)` in step 7. An installed poc-rtl is
+   0.66 MB a size model, 1.4 MB its `-g` copy. `make uninstall` removes
+   poc-rtl's files by its manifests, so other installed libraries stay.
+   `make check-install` installs into a `mktemp` `DESTDIR`, runs
+   `test/install/check.sh` (a program under `-O2` and `-OC`, `-g` linking
+   `O2-g`, a shared link run after moving the executable, a library of
+   one's own used from another directory, static and shared, poc through a
+   symbolic link, a trap, `-help`) with `PATH` only poc's, clang's,
+   `/usr/bin` and `/bin`, then uninstalls and checks no file is left.
 4. **The bootstrap seed: building poc without voc.** voc ships generated
    C so that it can be built with a C compiler alone; poc can ship the
    `.ll` it generates for itself (Stage 2's output, under `-OC`, which

@@ -48,7 +48,13 @@ shells out to these rather than linking against LLVM's own C++ API.
   <file>...` (voc's `-c`) makes a module's `.sym` and `.o` without a
   program. `poc -install-library <name>` copies a library into `-output-dir`
   or poc's own `../lib/poc`; a program's run-time search path has each
-  shared library's directory relative to it (`$ORIGIN`) and absolute.
+  shared library's directory relative to it (`$ORIGIN`) and absolute,
+  except one in poc's own `../lib/poc`, an installed library, which has
+  only the absolute directory (Phase 13 step 3). Under `-g` a library is
+  built in, and looked for first in, `<triple>/<O2|OC>-g/` (a base
+  without it is searched as usual), so `poc -g` links poc-rtl's copy with
+  debug information and other programs the plain one. poc finds its own
+  `../lib/poc` through any symbolic links to it.
   `make` builds `rtl/llvm` as the library `poc-rtl` into
   `build/lib/poc/<host triple>/{O2,OC}` (step 2d), so a program links the
   runtime already compiled; the bootstrap stages use `-clear-library-path`

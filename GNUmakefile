@@ -62,7 +62,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build install uninstall check-install stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -202,6 +202,94 @@ check-strict: $(STAGE1_BIN)
 	  fi; \
 	done; \
 	if [ $$status = 0 ]; then echo "check-strict: poc's own source is strict Oberon2.pdf"; fi; \
+	exit $$status
+
+# Phase 13 step 3: make install and make uninstall, GNU make (gmake on the
+# BSDs), with PREFIX, DESTDIR and the usual directories. What is installed
+# is the Stage 2 poc (built by poc, so it needs no libvoc), and poc-rtl for
+# this host's triple, built by it, under both size models and each twice:
+# as usual, and with -g in <model>-g, which poc -g links first, so that a
+# debugger sees into the runtime while other programs stay small. Both go
+# where the installed poc's default library path looks, $(BINDIR)/../lib/
+# poc: LIBDIR must be $(BINDIR)/../lib (or a poc run elsewhere needs
+# POC_LIBRARY_PATH). poc-rtl is put there by poc -install-library itself,
+# which replaces an older copy and leaves any other library alone. MANDIR
+# follows each system's hier(7): share/man on Linux and FreeBSD, man on
+# OpenBSD and NetBSD (pkgsrc). poc(1) and the guides come with steps 6-7.
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+LIBDIR ?= $(PREFIX)/lib
+MANDIR ?= $(PREFIX)/$(if $(filter OpenBSD NetBSD,$(shell uname -s)),man,share/man)
+DOCDIR ?= $(PREFIX)/share/doc/peaseblossom
+STAGE2_BIN := $(BUILD_DIR)/stage2/bin/poc
+STAGE2_LIB := $(BUILD_DIR)/stage2/lib/poc
+INSTALL_MODELS := O2 OC O2-g OC-g
+INSTALL_RTL := $(foreach m,$(INSTALL_MODELS),$(STAGE2_LIB)/$(HOST_TRIPLE)/$(m)/poc-rtl.library)
+DOCS := README.md LICENSE
+
+# the Stage 2 poc, made (and compared with Stage 1) only when it is not there
+# or Stage 1 changed; `make stage2` always remakes it
+$(STAGE2_BIN): $(STAGE1_BIN)
+	tools/bootstrap/stage2
+
+# poc-rtl built by the Stage 2 poc, with -g for <model>-g (GNU make takes the
+# pattern with the shorter stem, so O2-g goes to the first rule)
+$(STAGE2_LIB)/$(HOST_TRIPLE)/%-g/poc-rtl.library: $(STAGE2_BIN) $(RTL_SRCS) $(RTL_C_SRCS)
+	$(STAGE2_BIN) -g -$* -clear-library-path -output-dir $(STAGE2_LIB) -library poc-rtl $(RTL_SRCS)
+
+$(STAGE2_LIB)/$(HOST_TRIPLE)/%/poc-rtl.library: $(STAGE2_BIN) $(RTL_SRCS) $(RTL_C_SRCS)
+	$(STAGE2_BIN) -$* -clear-library-path -output-dir $(STAGE2_LIB) -library poc-rtl $(RTL_SRCS)
+
+install: $(STAGE2_BIN) $(INSTALL_RTL)
+	@if [ "$(abspath $(BINDIR)/../lib)" != "$(abspath $(LIBDIR))" ]; then \
+	  echo "note: LIBDIR is not BINDIR/../lib: the installed poc needs POC_LIBRARY_PATH=$(LIBDIR)/poc"; \
+	fi
+	install -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(LIBDIR)/poc $(DESTDIR)$(DOCDIR)
+	install -m 755 $(STAGE2_BIN) $(DESTDIR)$(BINDIR)/poc
+	for model in O2 OC; do \
+	  $(STAGE2_BIN) -$$model -clear-library-path -library-path $(STAGE2_LIB) \
+	    -output-dir $(DESTDIR)$(LIBDIR)/poc -install-library poc-rtl >/dev/null || exit 1; \
+	  $(STAGE2_BIN) -$$model -g -clear-library-path -library-path $(STAGE2_LIB) \
+	    -output-dir $(DESTDIR)$(LIBDIR)/poc -install-library poc-rtl >/dev/null || exit 1; \
+	done
+	install -m 644 $(DOCS) $(DESTDIR)$(DOCDIR)
+
+# Removes what install wrote: poc, poc-rtl's files (those its manifests
+# name), the docs; then each directory left empty. Other libraries
+# installed beside poc-rtl stay.
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/poc
+	@for model in $(INSTALL_MODELS); do \
+	  dir=$(DESTDIR)$(LIBDIR)/poc/$(HOST_TRIPLE)/$$model; \
+	  if [ -f $$dir/poc-rtl.library ]; then \
+	    for m in $$(awk '$$1 == "module" { print $$2 }' $$dir/poc-rtl.library); do \
+	      rm -f $$dir/$$m.sym $$dir/$$m.owner; \
+	    done; \
+	    echo "rm -f $$dir/poc-rtl.library $$dir/libpoc-rtl.*"; \
+	    rm -f $$dir/poc-rtl.library $$dir/libpoc-rtl.a $$dir/libpoc-rtl.so*; \
+	  fi; \
+	  rmdir $$dir 2>/dev/null || true; \
+	done
+	-rmdir $(DESTDIR)$(LIBDIR)/poc/$(HOST_TRIPLE) $(DESTDIR)$(LIBDIR)/poc 2>/dev/null
+	cd $(DESTDIR)$(DOCDIR) 2>/dev/null && rm -f $(DOCS)
+	-rmdir $(DESTDIR)$(DOCDIR) 2>/dev/null
+
+# Installs into a scratch DESTDIR outside the source tree and runs
+# test/install/check.sh with only the installed poc: no voc on PATH, no
+# source tree, no POC_IMPORT_PATH or POC_LIBRARY_PATH. Then uninstalls, and
+# checks that nothing is left.
+check-install: $(STAGE2_BIN) $(INSTALL_RTL)
+	@scratch=$$(mktemp -d "$${TMPDIR:-/tmp}/poc-check-install.XXXXXX") || exit 1; \
+	status=0; \
+	$(MAKE) --no-print-directory install DESTDIR=$$scratch/root PREFIX=/usr/local >/dev/null || status=1; \
+	if [ $$status = 0 ]; then \
+	  test/install/check.sh $$scratch/root/usr/local/bin/poc $$scratch/work || status=1; \
+	  $(MAKE) --no-print-directory uninstall DESTDIR=$$scratch/root PREFIX=/usr/local >/dev/null || status=1; \
+	  left=$$(cd $$scratch/root && find . -type f); \
+	  if [ -n "$$left" ]; then echo "check-install: uninstall left $$left"; status=1; \
+	  else echo "check-install: uninstall removed everything"; fi; \
+	fi; \
+	rm -rf $$scratch; \
 	exit $$status
 
 # Runs every fixture in one pass (not category-by-category as separate

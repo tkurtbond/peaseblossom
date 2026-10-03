@@ -38,8 +38,9 @@ usage: poc -dump-tokens <file>
        instead of leaving the pointer NIL
        -trap-location may precede -emit-llvm-ir or -build: a trap's message
        starts with its file:line:column and names its procedure
-       -g may precede -emit-llvm-ir or -build: debug information for gdb
-       and lldb (source lines, procedures, variables); best with -opt 0 or -opt g
+       -g may precede -emit-llvm-ir, -build or -library: debug information for
+       gdb and lldb (source lines, procedures, variables); best with -opt 0 or
+       -opt g; libraries are built in, and looked for first in, <triple>/<O2|OC>-g
        -range-checks may precede -emit-llvm-ir or -build: SHORT of an integer
        and CHR stop the program (exit status 14) when the value does not fit
        -static may precede -build: link a fully static executable

@@ -1,0 +1,20 @@
+== -version
+poc <version>
+== a program, as -O2 and -OC
+hello
+hello
+== -g links poc-rtl's -g copy
+1
+hello
+== linked with the shared poc-rtl, run from elsewhere
+hello
+== a library of one's own, used from another directory
+hi, library
+hi, library
+== poc through a symbolic link
+hello
+== a trap
+NIL pointer dereference
+exit 4
+== -help
+exit 0
