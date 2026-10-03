@@ -9,11 +9,11 @@ MODULE LLVMToolchainDriver;
      tests), not part of this driver.
 
      Owns two responsibilities: writing LLVMCodeGenerator.Generate's
-     output to a real `<ModuleName>.ll` file (EmitIR*, the same
-     Platform.Chdir-then-Files.New-then-chdir-back dance
-     ModuleInterface.Write* already uses, and for the identical reason -
-     see that procedure's own header comment: Files.New does not fail
-     gracefully on a missing *directory*, unlike Files.Old), and then
+     output to a real `<ModuleName>.ll` file (EmitIR*, which checks the
+     output directory with Platform.Chdir and back first, as
+     ModuleInterface.Write* does and for the same reason - see that
+     procedure's header comment: voc's Files.New does not fail gracefully
+     on a missing *directory*, unlike Files.Old), and then
      optionally handing that file to clang to produce a native executable
      (Build, below). This mirrors PLAN.md's directory-layout comment for
      this module ("shells to llc/clang") while keeping
@@ -186,15 +186,16 @@ MODULE LLVMToolchainDriver;
   END ModuleFilePath;
 
   (* Writes one module's IR, LLVMCodeGenerator.GenerateModule's, to
-     <moduleName>.ll in the current directory. The struct type definitions
-     come first, and only the end of generating tells which there are, so
-     the rest goes to <moduleName>.ll.body first and is copied after them. *)
-  PROCEDURE EmitModuleIR(modules, target: LLVMCodeGenerator.ModuleList; triple: ARRAY OF CHAR);
+     <outputDir>/<moduleName>.ll (ModuleFilePath). The struct type
+     definitions come first, and only the end of generating tells which
+     there are, so the rest goes to <moduleName>.ll.body first and is
+     copied after them. *)
+  PROCEDURE EmitModuleIR(modules, target: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR);
     VAR
-      name, bodyName: ARRAY nameBufferLength OF CHAR;
+      name, bodyName: ARRAY pathBufferLength OF CHAR;
       f, bodyFile: Files.File; w, body: Files.Rider; deleteResult: INTEGER;
   BEGIN
-    COPY(target.module.name, name); Strcat(name, ".ll");
+    ModuleFilePath(outputDir, target.module.name, ".ll", name);
     COPY(name, bodyName); Strcat(bodyName, ".body");
     f := Files.New(name);
     Files.Set(w, f, 0);
@@ -209,13 +210,15 @@ MODULE LLVMToolchainDriver;
   (* Writes the IR of every module of the program (Poc.Mod's dependency-
      ordered ModuleList, the main module last) to <outputDir>/<module>.ll,
      one file per module (Phase 12 step 2a), and sets pathOut to the main
-     module's. Files.New does not fail gracefully on a missing directory
-     (unlike Files.Old), hence the chdir into outputDir and back, as in
-     ModuleInterface.Write. *)
+     module's. voc's Files.New does not fail gracefully on a missing
+     directory (unlike Files.Old), hence the Chdir into outputDir and at
+     once back, to check it, as in ModuleInterface.Write; the files are
+     made by their whole paths, never from inside outputDir (see
+     ModuleInterface.Write on what that cost). *)
   PROCEDURE EmitIR*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
                     triple, outputDir: ARRAY OF CHAR; VAR pathOut: ARRAY OF CHAR): BOOLEAN;
     VAR
-      name: ARRAY nameBufferLength OF CHAR;
+      name: ARRAY pathBufferLength OF CHAR;
       m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
       savedDir, dir: ARRAY dirBufferLength OF CHAR;
       chdirResult, deleteResult: INTEGER;
@@ -223,21 +226,20 @@ MODULE LLVMToolchainDriver;
   BEGIN
     errorsBefore := Diagnostics.errorCount;
     LLVMCodeGenerator.unsupportedCount := 0;
-    (* the directory the modules' file names are relative to, for -g;
-       before any Chdir into outputDir *)
+    (* the directory the modules' file names are relative to, for -g *)
     COPY(Platform.CWD, LLVMCodeGenerator.debugDirectory);
     ModuleFilePath(outputDir, topName, ".ll", pathOut);
     ok := TRUE;
     IF outputDir[0] # 0X THEN
       COPY(Platform.CWD, savedDir);
       COPY(outputDir, dir);
-      chdirResult := Platform.Chdir(dir);
-      ok := chdirResult = 0
+      ok := Platform.Chdir(dir) = 0;
+      IF ok THEN chdirResult := Platform.Chdir(savedDir) END
     END;
     IF ok THEN
       m := modules;
       WHILE m # NIL DO
-        IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN EmitModuleIR(modules, m, triple) END;
+        IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN EmitModuleIR(modules, m, triple, outputDir) END;
         m := m.next
       END;
       (* IR with a construct missing is worse than none, and so is a stale
@@ -252,14 +254,13 @@ MODULE LLVMToolchainDriver;
         m := modules;
         WHILE m # NIL DO
           IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
-            COPY(m.module.name, name); Strcat(name, ".ll");
+            ModuleFilePath(outputDir, m.module.name, ".ll", name);
             deleteResult := Platform.Unlink(name) (* not Files.Delete: voc's renames to a temp name *)
           END;
           m := m.next
         END;
         ok := FALSE
-      END;
-      IF outputDir[0] # 0X THEN chdirResult := Platform.Chdir(savedDir) END
+      END
     END;
     RETURN ok
   END EmitIR;

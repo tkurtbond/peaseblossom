@@ -1338,26 +1338,24 @@ MODULE ModuleInterface;
      success or not, for the caller to report either way.
 
      The directory itself must already exist: Files.New cannot create
-     one, and neither Files.Mod nor Platform.Mod (checked via showdef)
-     exposes a mkdir-equivalent. Unlike Files.Old (used throughout
-     ReadSource*/Open above, confirmed to return NIL cleanly on a missing
-     file or directory), Files.New does NOT fail gracefully on a missing
-     *directory* - confirmed against real voc that it instead runs the
-     runtime's own Halt(99), which cannot be caught from within poc's own
-     Oberon-2 source. So the directory is validated first via
-     Platform.Chdir - which does return a plain, non-crashing error code
-     (confirmed: res=2/ENOENT on a bad path) - before Files.New is ever
-     called: chdir into outputDir (saving the real cwd via Platform.CWD
-     first), call Files.New with the bare file name so it always writes
-     into whatever the current directory now is, then chdir back. A
-     Chdir failure means outputDir doesn't exist (or isn't a directory)
-     and is reported as an ordinary write failure (RETURN FALSE) without
-     ever reaching Files.New. This is the one place in this module that
-     needs Platform.Mod, not just Files.Mod - see Poc.Mod's own header
-     comment on why a Vishap library import like this is a documented,
-     narrow exception, not a violation of poc's own
-     strict-Oberon2.pdf-syntax bootstrap constraint (that constraint is
-     about syntax, not which library modules are used). *)
+     one, and neither Files.Mod nor Platform.Mod exposes a mkdir. voc's
+     Files.New does not fail gracefully on a missing *directory* (it runs
+     the runtime's own Halt(99), which poc cannot catch), so the directory
+     is checked first with Platform.Chdir, which returns a plain error code,
+     and at once Chdir back; a missing one is reported as an ordinary write
+     failure (RETURN FALSE). The file is then made by its whole path, from
+     the directory poc started in. Until 2026-10-03 the file was made by
+     its bare name while in outputDir: voc's Files remembers that name, and
+     when a later Register of the same file found a File that Files.Old had
+     opened by the whole path, voc renamed it by that path from inside
+     outputDir and halted (ENOENT; doc/voc-bugs/README.md, "Files.Register
+     over a file ..."), now and then, as the collector's timing decided.
+     This is the one place in this module that needs Platform.Mod, not
+     just Files.Mod - see Poc.Mod's own header comment on why a Vishap
+     library import like this is a documented, narrow exception, not a
+     violation of poc's own strict-Oberon2.pdf-syntax bootstrap
+     constraint (that constraint is about syntax, not which library
+     modules are used). *)
   PROCEDURE Write*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
                    outputDir: ARRAY OF CHAR; VAR pathOut: ARRAY OF CHAR): BOOLEAN;
     VAR
@@ -1372,13 +1370,13 @@ MODULE ModuleInterface;
       JoinPath(outputDir, name, pathOut);
       COPY(Platform.CWD, savedDir);
       COPY(outputDir, dir);
-      chdirResult := Platform.Chdir(dir);
-      ok := chdirResult = 0
+      ok := Platform.Chdir(dir) = 0;
+      IF ok THEN chdirResult := Platform.Chdir(savedDir) END
     ELSE
       COPY(name, pathOut)
     END;
     IF ok THEN
-      f := Files.New(name);
+      f := Files.New(pathOut);
       Files.Set(w, f, 0);
       (* Dry passes first (nothing is written), to a fixpoint: each one
          may find another unexported type some already-marked declaration
@@ -1399,8 +1397,7 @@ MODULE ModuleInterface;
       PrintDeclarations(w, module, scope);
       WriteStr(w, "END "); WriteStr(w, module.name); WriteStr(w, "."); WriteLn(w);
       Files.Register(f);
-      RecordKey(module.name, f);
-      IF outputDir[0] # 0X THEN chdirResult := Platform.Chdir(savedDir) END
+      RecordKey(module.name, f)
     END;
     RETURN ok
   END Write;

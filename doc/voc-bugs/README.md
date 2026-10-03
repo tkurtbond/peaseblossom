@@ -101,24 +101,30 @@ Worth knowing before puzzling over a bogus-looking error during Stage
   (`llvm.eh.unwind.init`). Stage 0, poc as voc builds it, is linked with
   `tools/bootstrap/voc-heap-gc-spill.c`, a `Heap_GC` that spills the
   registers and then calls libvoc's.
-- **`Files.Register` over a file whose identity matches a `File` it no
-  longer has** (2026-10-02, once, on cymoril, OpenBSD i386): Stage 0
-  stopped in `test/conformance/llvm-libraries` with "Couldn't rename
-  previous version of file being registered:
-  lib/<triple>/O2/ModuleTable.sym, f.fd = 7, errcode = 2" and `Halt(99)`.
-  voc's `Deregister` finds the `File` to turn into a temporary one by
-  device and inode, and renames it by the name it had; here that name was
-  gone (ENOENT). Likely an inode reused for the new file while a stale
-  `File` still held the old one's identity, or the collector bug above
-  corrupting the list of files; not reproduced in five reruns, and not
-  seen with poc's own `Files` (Stage 1 passed the same fixture in the
-  same run).
-  Seen again 2026-10-03, in one `gmake check` on two hosts under Stage 0:
-  `llvm-libraries` on alerik (FreeBSD amd64, ZFS; at
-  `GarbageCollectedHeap.sym`) and `llvm-libraries-i686` on cymoril. On
-  alerik it then failed one run in five of the fixture alone, and again on
-  the first of a loop: frequent there, so a Stage 0 failure of these two
-  fixtures is this bug until shown otherwise.
+- **`Files` keeps names relative to the directory that was current when a
+  file was opened, and uses them later from another one** (seen
+  2026-10-02 on cymoril, found 2026-10-03 on alerik, where it was frequent
+  enough to trace): Stage 0 stopped in `test/conformance/llvm-libraries`
+  (and `llvm-libraries-i686`) with "Couldn't rename previous version of
+  file being registered: lib/<triple>/O2/GarbageCollectedHeap.sym, ...
+  errcode = 2" and `Halt(99)`. A `File`'s name is stored as given; when a
+  later `Register` of the same file finds that `File` (by device and
+  inode, in `Deregister`), voc renames it by the stored name, resolved
+  against the directory current then (ENOENT). voc's own temporary names
+  are made absolute from `Platform.CWD`; the names given to `New` and
+  `Old` are not. poc set it off: `ModuleInterface.Write` and
+  `LLVMToolchainDriver.EmitIR` made each file by its bare name from inside
+  the output directory (checking that it exists, since voc's `Files.New`
+  halts on a missing one), while importers opened the same `.sym` by its
+  whole path from the starting directory; a library build writes
+  `GarbageCollectedHeap.sym` and `ModuleTable.sym` twice, and whether
+  the stale `File` was still in voc's list (not yet finalized) at the
+  second write was up to the collector, so it failed now and then (one
+  run in five on alerik). **Workaround** (2026-10-03): both check the
+  directory with `Platform.Chdir` and change straight back, then make
+  every file by its whole path, so every name voc keeps is relative to
+  the one directory; `llvm-libraries` then passed 20 runs of 20 on
+  alerik.
 - **`Files.Rename` or `Files.Delete` of a file the program has open**:
   voc renames it to a temporary name first, so `Delete` fails (errcode
   2) and `Rename` halts with the same "Couldn't rename previous version"

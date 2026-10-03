@@ -180,6 +180,10 @@ source. Check here before puzzling over an error that looks bogus.
   procedure's multi-dimensional open-array parameter.
 - A constant `ENTIER` out of `LONGINT`'s range under `-OC` stops voc with
   `Halt(-8)`.
+- voc's `Files` keeps a file's name relative to the directory current when
+  it was opened and renames it by that name later, from whatever directory
+  is current then: poc never changes directory around a file operation
+  (it makes every file by its whole path).
 - voc's collector misses a pointer held only in a callee-saved register
   (`doc/voc-bugs/gc-callee-saved-registers/`). poc's own collector
   spills the registers first; Stage 0 is linked with
