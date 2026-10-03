@@ -46,6 +46,10 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   its `_init` (Phase 12 step 5e): a command, an exported procedure with no
   parameters and no result, is then kept by the linker whether called or
   not. Other programs keep an argument-less `main` and no descriptors.
+- `Args.Mod` - voc's V4 `Args` interface (`argc`, `argv`, `Get`, `GetInt`,
+  `Pos`, `GetEnv`, `getEnv`), each over `Modules` or `Platform` as voc's
+  is; `getEnv` is `Platform`'s, which tells a variable set empty from one
+  not set.
 - `Reals.Mod` - voc's `Reals` interface (Phase 12 step 5f), written for
   poc: powers of ten (`Ten`, `TenL`, correctly rounded through libc's
   `strtof`/`strtod`), the exponent field (`Expo`, `SetExpo`, `ExpoL`,

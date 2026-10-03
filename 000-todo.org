@@ -1,14 +1,15 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
 * Things to be done while getting the compiler working
-** TODO Does poc need an Args.Mod, like the v4 Args.Mod from voc?
+** DONE Does poc need an Args.Mod, like the v4 Args.Mod from voc?
+Done 2026-10-02: yes; rtl/llvm/Args.Mod, below.
 ** DONE Check that all errors exits use Platform.Exit instead of HALT(n).
 Checked 2026-09-26 (Phase 11 close-out): poc's own error exits all go through Platform.Exit (Poc.Mod's one exit, status 1).  The only HALT left in src/ and rtl/llvm is Files.Fail's HALT(99), voc's behaviour, kept on purpose (doc/phase-11-inventory.md D12).
 ** DONE Change mentions of Oberon2.pdf in the compiler messages to something like "the Oberon-2 report".
 Done 2026-09-25: the -strict error is now "<construct> is not in the Oberon-2 report (-strict)" (Diagnostics.NotInReport), and poc's usage text says "beyond the Oberon-2 report"; semantic-strict's expected output regenerated.  Source comments and the docs' headings still name Oberon2.pdf, for developers.
 ** DONE Check Oberon2.pdf against the version in "A. Oberon-2 Language Definition" on page 221 of "Object-Oriented Programming in Oberon-2, Second Edition".
 Done 2026-09-25 (commit bd82ffd): the book's Appendix A lies between the 1993 report and Oberon2.pdf; AGENTS.md, "Language specification", has the details.  It also found that the 1993-vs-2022 notes were wrong about HALT/ASSERT and missed the FOR rewrite (corrected), and a FOR bug in poc (Phase 11 D10, fixed in a5071e2).
-** TODO Add an equivalent of voc's Args module to poc's RTL.
-Open, for Phase 19 (decided in Phase 12 step 4, 2026-09-27: everything under voc's src/library, Args included, waits for it; doc/voc-module-inventory.md has Args's row).  Was: open, for Phase 12 (steps 3-4, voc's module inventory): voc's Args is in its library/v4.  rtl/llvm's Modules already gives a program its arguments (GetArg, GetIntArg, ArgPos).
+** DONE Add an equivalent of voc's Args module to poc's RTL.
+Done 2026-10-02, ahead of Phase 19 at the user's request: rtl/llvm/Args.Mod, in poc-rtl, has voc's whole v4 interface (argc-, argv-, Get, GetInt, Pos, GetEnv, getEnv), each over Modules or Platform as voc's is; getEnv is Platform's (voc's Platformunix getEnv), which tells a variable set empty from one not set.  Fixture llvm-args compares it with voc's.  Was: open, for Phase 19 (decided in Phase 12 step 4, 2026-09-27: everything under voc's src/library, Args included, waits for it; doc/voc-module-inventory.md has Args's row).  Was: open, for Phase 12 (steps 3-4, voc's module inventory): voc's Args is in its library/v4.  rtl/llvm's Modules already gives a program its arguments (GetArg, GetIntArg, ArgPos).
 ** DONE Update the README.md with the current valid  list of make targets.
 Done 2026-09-25: it already listed them all; it now says `make build`/`make all` are the default and that `clang` is needed.  (doc/phase-11-inventory.md C1.)
 ** DONE Pragmas so that Math.Mod and MathL.Mod can specify -lm.  Does voc have anything like that?

@@ -591,6 +591,7 @@ from voc's, its source's first comment says how.
 | `Math`, `MathL` | `REAL` and `LONGREAL` functions: `sqrt`, `exp`, `ln`, `sin`, `arctan2`, `power`, `round` and the rest |
 | `Files` | files: `Old`, `New`, `Register`, `Close`, `Delete`, `Rename`, and riders to read and write bytes, numbers and strings |
 | `Modules` | the program's arguments (`ArgCount`, `GetArg`, `GetIntArg`), its modules, and `Halt` |
+| `Args` | voc's V4 `Args`: the arguments (`argc`, `Get`, `GetInt`, `Pos`) and the environment (`GetEnv`, and `getEnv`, which says whether a variable is set at all) |
 | `Platform` | the system underneath: the environment, the clock, `System`, file descriptors |
 | `Texts`, `Oberon` | voc's texts, and the stub of the Oberon system's module: `Oberon.Log` writes to standard output, `Oberon.Par` has the arguments |
 | `Reals` | converting reals to digits and back |

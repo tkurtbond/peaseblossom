@@ -25,7 +25,7 @@ OAKWOOD = {'In', 'Out', 'Files', 'Math', 'MathL', 'Strings', 'oocXYplane'}
 EXPLANATIONS = {
     'Heap': 'inline C', 'oocwrapperlibc': 'inline C', 'oocX11': 'inline C', 'oocXutil': 'inline C',
     'oocXYplane': 'inline C', 'ulmSysStat': 'inline C',
-    'Args': 'poc Platform lacks getEnv', 'Reals': 'poc Platform lacks LittleEndian',
+    'Reals': 'poc Platform lacks LittleEndian',
     'oocSysClock': 'poc Platform lacks GetTimeOfDay', 'oocFilesHost': 'poc Platform lacks FileHandle',
     'MultiArrays': 'poc Platform lacks Time', 'crt': 'poc Platform lacks Delay',
     'ethZlibDeflate': 'LONG(CHAR) (voc; poc: use ORD)',
@@ -33,7 +33,8 @@ EXPLANATIONS = {
     'ulmSYSTEM': 'function with an empty body (voc accepts; the report does not)'}
 
 # What poc's rtl/llvm has of voc's runtime and v4 modules of the same name
-# (compared by hand, 2026-09-27; Platform, VT100, Files, Modules, Reals, Texts and Oberon 2026-10-02); the rest, "no"
+# (compared by hand, 2026-09-27; Platform, VT100, Files, Modules, Reals, Texts and Oberon 2026-10-02; Args
+# 2026-10-02); the rest, "no"
 IN_POC = {'In': 'yes, whole interface', 'Out': 'yes, whole interface', 'Strings': 'yes, whole interface',
           'Math': 'yes, whole interface (own code over libm)', 'MathL': 'yes, whole interface (own code over libm)',
           'Files': 'yes, whole interface (own code over C stdio)',
@@ -43,6 +44,7 @@ IN_POC = {'In': 'yes, whole interface', 'Out': 'yes, whole interface', 'Strings'
           'Reals': 'yes, whole interface (own code; TenL correctly rounded)',
           'Texts': 'yes, whole interface (own code; no display)',
           'Oberon': 'yes, whole interface (own code; no display)',
+          'Args': 'yes, whole interface (over Modules and Platform)',
           'Heap': 'no: poc has its own collector (GarbageCollectedHeap)'}
 
 

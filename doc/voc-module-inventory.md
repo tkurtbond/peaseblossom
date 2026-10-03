@@ -250,7 +250,7 @@ whose errors stop it; *In poc*: what poc's `rtl/llvm` has of it.
 
 | Module | File | Purpose | Imports | Lines | Pulls in | Depends on | Family | voc builds | poc -check | In poc | Licence |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Args | `library/v4/Args.Mod` | command-line arguments and environment (Ofront/V4 style) | Platform Modules SYSTEM | 31 | 3 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | accepted | no | none in file; Ofront (FreeBSD, README) |
+| Args | `library/v4/Args.Mod` | command-line arguments and environment (Ofront/V4 style) | Platform Modules SYSTEM | 31 | 3 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | poc has its own | yes, whole interface (over Modules and Platform) | none in file; Ofront (FreeBSD, README) |
 | Console | `library/v4/Console.Mod` | unbuffered text output to standard output (Ofront style) | SYSTEM Platform | 88 | 1 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | poc has its own | yes (v4 interface) | none in file; Ofront (FreeBSD, README) |
 | Printer | `library/v4/Printer.Mod` | PostScript printer driver of Oberon V4 (Unix) | SYSTEM Files Platform | 655 | 6 | Platform, SYSTEM | Ofront / Oberon V4 | O2 | accepted | no | none in file; Ofront (FreeBSD, README) |
 | Sets | `library/v4/Sets.Mod` | SET operations and output to Texts (V4) | Texts | 137 | 8 | Platform, Texts | Ofront / Oberon V4 | O2 | accepted | no | none in file; Ofront (FreeBSD, README) |
