@@ -715,6 +715,15 @@ mismatch).
      `test/install/check.sh` on the build root, which now accepts
      `poc.1.gz`. Built with rpmbuild and in mock (Fedora 44), installed,
      checked against `/usr/bin/poc`, removed with nothing left.
+   - **FreeBSD** (2026-10-03): `packaging/freebsd/lang/peaseblossom`
+     (an overlay: `poudriere ports -m null -M <dir>/packaging/freebsd`,
+     `testport -O`). aarch64 and amd64; base clang, no other dependency;
+     a DOCS option. poc-rtl's files are listed from the stage directory
+     (their paths hold the host triple, and the modules change with the
+     version); poc is stripped, poc-rtl is not. `make test` runs
+     `check.sh` on the stage directory. portlint clean; `poudriere
+     testport` (15.1 jail) clean; installed on alerik, checked against
+     `/usr/local/bin/poc`, removed with nothing left.
 9. **Exit gate.** From the release tarball, on atla and each gating VM:
    poc builds without voc, `make check` passes with the seed-built poc,
    `make install` and `make check-install` pass, the OS package installs
