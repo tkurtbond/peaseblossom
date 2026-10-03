@@ -239,12 +239,15 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
 4. **The tarball**, from that commit, on atla:
 
        make stage2               # the seed is written by a Stage 2 built from HEAD
-       make dist                 # build/dist/peaseblossom-<version>.tar.gz and .sha256
-       make distcheck            # builds it without voc and runs check-install
+       make distcheck            # make dist (build/dist/peaseblossom-<version>.tar.gz
+                                 # and .sha256), then builds it without voc and
+                                 # runs check-install
        make dist-sign            # .asc, with gpg's default key (GPG_KEY=... for another)
 
    `make dist` refuses a tree that differs from HEAD, or a Stage 2 built
-   from another commit. A release is signed: the tarball, the tag, the RPM
+   from another commit. Each `make dist` writes a new tarball (tar and
+   gzip record times), so run it once, through `make distcheck`, and sign
+   and publish that one. A release is signed: the tarball, the tag, the RPM
    and the list of sums, each with the maintainer's key (each asks for its
    passphrase).
 5. **Tag** the commit, signed, `v<version>` (the packages' download URLs
