@@ -145,10 +145,14 @@ Guide (`doc/users-guide.md`, how to use poc), the Reference Guide
 
 Each package is built from a release tarball (`make dist`, section 7),
 named in it by version and fetched from the GitHub release; until there is
-one, copy the tarball to where the system looks for it, as below. Each is
-then built, installed, checked against the installed poc with
-`test/install/check.sh <installed poc> <scratch dir>`, and removed, and
-nothing may be left. Installing and removing need root; the rest does not.
+one, copy the tarball to where the system looks for it, as below. A
+tarball already there is used as it is, not fetched again: once the
+release is published, move any earlier one of the same name aside (`mv`
+it to `.prerelease`), so that `makesum` fetches the published one and
+records its sums. Each is then built, installed, checked against the
+installed poc with `test/install/check.sh <installed poc> <scratch dir>`,
+and removed, and nothing may be left. Installing and removing need root;
+the rest does not.
 
 ### Fedora (`packaging/fedora/peaseblossom.spec`)
 
@@ -197,6 +201,8 @@ and the tarball in `${PORTSDIR}/distfiles`:
     cd $PORTSDIR/mystuff/lang/peaseblossom
     make makesum                  # after a new tarball
     make fake && make update-plist  # after a change to what is installed
+    make clean=package            # after a new tarball: else the old
+                                  # package is kept as it is
     make package && make port-lib-depends-check && make test
 
 `portcheck` refuses a port under `mystuff/`; run it on a copy at
@@ -267,9 +273,13 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
    published tarball, so they come after it: make them on each system
    (section 6), with the packing lists if what is installed changed;
    build, install, check and remove each package, and commit them. Sign
-   the RPM (`rpmsign --addsign <rpm>`, from `rpm-sign`). Attach the
-   packages to the release, each named for the system it is for, with a
-   list of every file's SHA-256 sum, signed:
+   the RPMs, binary and source, with `rpm-sign` (`%_openpgp_sign_id` set
+   to the key's fingerprint in `~/.rpmmacros`, or given with `--define`):
+
+       rpmsign --define "_openpgp_sign_id <fingerprint>" --addsign <rpm>...
+
+   Attach the packages to the release, each named for the system it is
+   for, with a list of every file's SHA-256 sum, signed:
 
        peaseblossom-<version>-1.fc44.x86_64.rpm, peaseblossom-<version>-1.fc44.src.rpm
        peaseblossom-<version>-freebsd15.1-amd64.pkg
