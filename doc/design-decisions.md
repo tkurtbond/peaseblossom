@@ -60,7 +60,7 @@ questions" - <name> means the entry of that name here.
   `llvm-open-array-many-dimensions` (9, 20, 64, against voc under both
   size models; 400 probed by hand). Found on the way: voc gives a nested
   procedure garbage inner lengths for an enclosing multi-dimensional open
-  array (`doc/voc-bugs/README.md`).
+  array (vishap-bugs 12).
 
 - **External procedure declaration syntax**: decided 2026-09-16, grammar/
   symbol-table side implemented in Phase 6 (2026-09-16) — a bracketed

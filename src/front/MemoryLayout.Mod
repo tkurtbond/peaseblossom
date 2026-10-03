@@ -78,8 +78,8 @@ MODULE MemoryLayout;
      Size and NaturalAlign both dispatch on a type's concrete form via
      WITH. Where a branch would otherwise recurse into Size/NaturalAlign
      on a value obtained from inside that same WITH, the recursive call
-     is instead made just after the WITH ends (see AGENTS.md's
-     documented voc bug: a procedure calling itself from inside its own
+     is instead made just after the WITH ends (doc/bootstrapping-with-voc.md
+     has the voc bug: a procedure calling itself from inside its own
      WITH branch is misdiagnosed as a bad argument, even though the
      branch's variable and the call are both fine) - SemanticActions.
      ResolveType already uses this same workaround for its

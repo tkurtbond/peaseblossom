@@ -13,7 +13,7 @@ MODULE manydims;
      for an open array of two or more dimensions voc gives a nested
      procedure garbage inner lengths, and with nine it stops. (No row of an
      open-array *parameter* is passed on either: voc gets that wrong too.
-     doc/voc-bugs/README.md has both.) *)
+     vishap-bugs 12 and 11.) *)
   IMPORT Out;
 
   TYPE
@@ -128,7 +128,7 @@ BEGIN
   r[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2] := "w";
   SixtyFour(r^);
 
-  (* last, since voc stops here (doc/voc-bugs/README.md) *)
+  (* last, since voc stops here (vishap-bugs 12) *)
   Out.String("nested "); Out.Int(Nested(fixed), 0); Out.Ln;
   Out.String("nested "); Out.Int(Nested(p^), 0); Out.Ln
 END manydims.

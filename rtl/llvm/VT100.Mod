@@ -12,13 +12,11 @@ MODULE VT100;
      SetAttr(VT100.ResetAll) back to normal. The procedures with a count n
      (CUU, ED, SGR, ...) write CSI, n in decimal and their letter.
 
-     Where this differs from voc's (decided with the user 2026-10-02):
-     - a number is written whole. voc's makes room for one digit of n, so
-       a count of 10 or more is cut to its first digit (CUU(12) moves up
-       one line), and for four of each of CUP's and HVP's;
-     - DSR(n) sends n; voc's sends 6 whatever n is (6 asks for the cursor
-       position, which is what DSR is mostly used for);
-     - SetAttr writes all of attr; voc's cuts it at 13 characters. *)
+     Where this differs from voc's (decided with the user 2026-10-02; the
+     numbers are those of vishap-bugs, ~/Repos/Oberon/vishap-bugs):
+     - a number is written whole (33);
+     - DSR(n) sends n (34);
+     - SetAttr writes all of attr (35). *)
 
   IMPORT Out;
 

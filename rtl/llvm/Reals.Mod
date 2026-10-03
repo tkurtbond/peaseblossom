@@ -4,24 +4,20 @@ MODULE Reals;
      exponent of a REAL or LONGREAL, and the digits Texts writes a real
      number from - written for poc.
 
-     Where it differs from voc's:
+     Where it differs from voc's (the numbers are those of vishap-bugs,
+     ~/Repos/Oberon/vishap-bugs):
      - Ten and TenL are correctly rounded, the C library's strtof/strtod of
-       "1E<e>". voc's TenL multiplies powers of ten by repeated squaring
-       and is off in the last bit for 252 of the 309 exponents 0..308 (its
-       Ten, computed in LONGREAL, is exact). A negative e gives 10^e; voc's
-       Ten answers 1 and its TenL something that is not a power of ten.
+       "1E<e>" (36), and a negative e gives 10^e (D20).
      - Expo, SetExpo, ExpoL, SetExpoL and ConvertH/ConvertHL take the
        number's bits as an integer, so they do not depend on the byte
-       order, where voc's read bytes at offsets set from
-       Platform.LittleEndian; the answers are the same.
+       order; the answers are voc's.
      - ConvertL writes the low n digits of x's integer part exactly,
-       however large x is. voc's converts x to a LONGINT, whose range ends
-       near 9.2E18 under -OC and 2.1E18 (in two pieces) under -O2.
+       however large x is (D18).
 
      As voc's, ConvertH and ConvertHL write the bytes least significant
      first, each as two hexadecimal digits, the high one first: the order
-     of the bytes in memory on a little-endian machine (Ofront's, which
-     wrote them in memory order), which voc keeps on a big-endian one. *)
+     of the bytes in memory on a little-endian machine, on any machine
+     (D19). *)
 
   IMPORT SYSTEM;
 

@@ -158,41 +158,28 @@ on the BSDs their plain `clang` (19 on OpenBSD and FreeBSD, 21 on NetBSD).
   size models, not optimization levels.
 - `llc` is a debugging aid only (`llc <file>.ll -o <file>.s`).
 
-### Known voc bugs affecting poc's own source
+### voc bugs that affect building poc
 
-Bugs in voc 2.1.0 (not deviations from the spec) that affect poc's own
-source. Check here before puzzling over an error that looks bogus.
-`doc/voc-bugs/README.md` has each one in full, with its workaround:
+Bugs in voc 2.1.0 that reach poc's own source or Stage 0, each with the
+workaround poc uses, are in `doc/bootstrapping-with-voc.md`. Check there
+before puzzling over an error that looks bogus, and keep the workarounds:
 
 - A procedure calling itself from inside its own `WITH` branch gets a false
-  "incompatible assignment" error (`doc/voc-bugs/with-self-recursion/`).
+  "incompatible assignment" error.
 - An integral `LONGREAL` literal >= 2^31 (`1.0D10`) gets "Value out of range".
 - A `REAL` literal with exponent 38, or a `LONGREAL` one with 308, gets
   "number too large".
 - `LONG(SHORT(x))` is folded to `x`.
-- Real constants in the generated C lose digits (8 for `REAL`, 15 for
-  `LONGREAL`).
 - `DIV`/`MOD` go wrong near `MIN(LONGINT)` under `-OC`.
-- `CAP` of a character that is not a letter is masked (`CAP("7")` is 17X).
-- A row of a multi-dimensional open array passed on as an open array
-  ignores the row stride.
-- A nested procedure gets garbage inner lengths for an enclosing
-  procedure's multi-dimensional open-array parameter.
-- A constant `ENTIER` out of `LONGINT`'s range under `-OC` stops voc with
-  `Halt(-8)`.
-- voc's `Files` keeps a file's name relative to the directory current when
-  it was opened and renames it by that name later, from whatever directory
-  is current then: poc never changes directory around a file operation
-  (it makes every file by its whole path).
-- voc's collector misses a pointer held only in a callee-saved register
-  (`doc/voc-bugs/gc-callee-saved-registers/`). poc's own collector
-  spills the registers first; Stage 0 is linked with
-  `tools/bootstrap/voc-heap-gc-spill.c`, a `Heap_GC` that does the same
-  and then calls libvoc's.
+- `Files` renames a file by a name relative to the directory current when
+  it was opened, and `Files.Delete` fails on an open file.
+- The collector misses a pointer held only in a callee-saved register
+  (Stage 0 is linked with `tools/bootstrap/voc-heap-gc-spill.c`).
 
-The README also lists the bugs met in voc's runtime and library modules
-(`Files`, `Strings`, `In`, `Out`, `Math`, `Texts`, `Reals`, `VT100`), each
-where poc's module does otherwise.
+Every voc bug found so far, with reproducers and fixes, is in the separate
+vishap-bugs repository (`~/Repos/Oberon/vishap-bugs`); a note in poc's
+source or tests that voc does otherwise cites its issue number
+("vishap-bugs 18").
 
 ## Language extensions beyond Oberon2.pdf
 

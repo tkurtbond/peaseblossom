@@ -43,28 +43,24 @@ MODULE Math;
                                                 number below 1
        scale, succ, pred    Overflow            +-large
 
-     Where this differs from voc's:
+     Where this differs from voc's (the numbers are those of vishap-bugs,
+     ~/Repos/Oberon/vishap-bugs):
 
-     - `large` is MAX(REAL) and `small` the smallest normal REAL, 2^-126
-       (voc's `large` is the same; its `small` is the computed
-       approximation 1/8.50705917E37 of that number).
-     - sin, cos and tan give an answer for every argument; voc reports
-       LossOfAccuracy and returns 0 beyond about 9099 (and IllegalTrig for a
-       tan it takes for infinite). exp reports Underflow only when the result
-       is really 0, where voc does from about e^-88, well inside the
-       denormal range. sinh, cosh, arcsinh have no clipping error.
-     - sincos gives the true cosine, where voc's is the square root of one
-       minus the squared sine, never negative; succ and pred move up and
-       down, where voc's succ of a negative number moves down; sign(0) is 1,
-       as in voc. fraction/exponent/scale/ulp are right for denormals too:
-       the exponent of a denormal is below expoMin, since it is the exponent
-       the number would have with a longer exponent field.
+     - sin, cos and tan give an answer for every argument (48), and from
+       libm, so with no error from constants that lose digits (03).
+     - exp reports Underflow only when the result is really 0 (55); arcsinh
+       and arccosh have no clipping error (56).
+     - sincos gives the true cosine (38); succ and pred give the
+       neighbouring numbers (39); sign(0) is 1, as in voc.
+       fraction/exponent/scale/ulp are right for denormals too (42, 54):
+       the exponent of a denormal is below expoMin, since it is the
+       exponent the number would have with a longer exponent field.
      - Lengths and codes are INTEGER, and round is LONGINT - the Oakwood
        interface's own types, which follow the size model, so they are not
        SYSTEM.INT16/INT32 (fixed-width; used only for the C `int` of ldexp).
-       round rounds halves away
-       from zero and gives MAX(LONGINT)/MIN(LONGINT) for a number out of
-       range. *)
+       round rounds halves away from zero, as voc's (D10), and gives
+       MAX(LONGINT)/MIN(LONGINT) for a number out of range (voc's wraps:
+       D22). *)
 
   IMPORT SYSTEM;
 

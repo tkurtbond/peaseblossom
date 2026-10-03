@@ -29,29 +29,25 @@ MODULE Strings;
      too long for dst is cut short to fit (dst is never left unterminated,
      as voc's Append and Extract can leave it).
 
-     Where this differs from voc's:
+     Where this differs from voc's (the numbers are those of vishap-bugs,
+     ~/Repos/Oberon/vishap-bugs):
 
-     - voc's Insert with a position past the end of dst calls Append with
-       its two arguments the wrong way round, so the text of dst ends up in
-       src (a value parameter: nothing happens), and its Replace deletes
-       pos + Length(src) characters instead of Length(src). Here both do
-       what the description above says.
-     - Extract, Insert and Append never write beyond dst (voc's Extract
-       writes its 0X at the length of the source part, past the end of a
-       dst that was too small), and Cap and Pos never read beyond a string
-       that has no 0X.
-     - Pos with a negative pos starts at 0 (voc reads before the string).
-       An empty pattern is found at 0 whatever pos is, as in voc.
+     - Insert with a position past the end of dst appends (18), and Replace
+       deletes Length(src) characters (19).
+     - Extract, Insert and Append never write beyond dst (20, 21), and Cap
+       never reads beyond a string that has no 0X (57).
+     - Pos with a negative pos starts at 0 (22). An empty pattern is found
+       at 0 whatever pos is, as in voc.
      - StrToReal/StrToLongReal read blanks, an optional sign, digits, an
        optional fraction and an optional exponent (E or D, also in lower
-       case), and give the value libc's strtof/strtod does for it, correctly
-       rounded; voc adds up digit by digit, so its result can be an ulp off.
-       Anything after the numeral is ignored, and a string with no number at
-       the start gives 0, as in voc. A numeral of more than maxNumeral
-       characters leaves the result variable alone (voc converts any length).
+       case, its sign + or -), and give the value libc's strtof/strtod does
+       for it, correctly rounded (28, 29). Anything after the numeral is
+       ignored, and a string with no number at the start gives 0, as in
+       voc. A numeral of more than maxNumeral characters leaves the result
+       variable alone.
      - Lengths and positions are INTEGER, as in voc; under the -O2 size
-       model that is 16 bits, so Length stops counting at 32767. All the
-       work is done in LONGINT and never wraps. *)
+       model that is 16 bits, so Length stops counting at 32767 (D21). All
+       the work is done in LONGINT and never wraps. *)
 
   IMPORT SYSTEM;
 

@@ -14,19 +14,15 @@ MODULE Out;
      therefore do nothing. voc buffers 128 characters and flushes at each
      line end.
 
-     Where this differs from voc's:
-     - Int has no wrong answer for the smallest HUGEINT (voc's prints a
-       fixed, wrong string), and Hex needs no SYSTEM.LSH/ROT;
+     Where this differs from voc's (the numbers are those of vishap-bugs,
+     ~/Repos/Oberon/vishap-bugs):
      - Real and LongReal are correctly rounded (Phase 11 step 2, inventory
        A3): the digits are the exact decimal expansion of the number,
-       rounded to nearest, ties to even (RealDigits), where voc's code
-       estimates the decimal exponent as 77/256 of the binary one and scales
-       by a power of ten computed in floating point, exact only up to 10^22, so the
-       last digits of a number outside about 10^-22..10^22, or the last of
-       the 17 a LONGREAL can be asked for, may be off by a few units there.
-       The layout, the digit counts and the dropping of trailing zeros are
-       voc's; a denormal prints its digits (voc's prints zero). The reading
-       of text, In's, is the C library's, which is correct. *)
+       rounded to nearest, ties to even (RealDigits), and the exponent is
+       that of the rounded digits (30, 32). The layout, the digit counts
+       and the dropping of trailing zeros are voc's; a denormal prints its
+       digits (31). The reading of text, In's, is the C library's, which is
+       correct. *)
 
   IMPORT FileDescriptorOutput, FormattedOutput;
 

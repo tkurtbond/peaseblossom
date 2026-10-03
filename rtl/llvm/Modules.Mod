@@ -31,22 +31,20 @@ MODULE Modules;
      voc's, takes a module nothing imports off the list - so ThisMod no
      longer finds it - but unloads nothing.
 
-     Where this differs from voc's:
-     - ModNameLen is 256 (a name may have 255 characters), where voc's 20
-       cuts a long module name short, and a command's name has room for
-       255 too (voc: 23);
+     Where this differs from voc's (the numbers are those of vishap-bugs,
+     ~/Repos/Oberon/vishap-bugs):
+     - a module's or a command's name may have 255 characters (62);
      - Module and Cmd are poc's own records, with the fields of voc's a
        program can use (next, name, refcnt, cmds; next, name, cmd), all
        read-only;
      - Halt and AssertFail write their message to standard error, as
-       poc's traps do (voc's to standard output), and the program's
-       finalizers run after it (GarbageCollectedHeap, FINALIZATION; voc's
-       before);
-     - GetArg with n outside 0..ArgCount-1 sets val to "" where voc leaves
-       val as it was, so a caller that ignores ArgCount never sees the
-       previous argument again as this one;
+       poc's traps do, and the program's finalizers run after it
+       (GarbageCollectedHeap, FINALIZATION) (D12, D13);
+     - GetArg with n outside 0..ArgCount-1 sets val to "", so a caller that
+       ignores ArgCount never sees the previous argument again as this one
+       (D11);
      - MainStackFrame is argv's address, as poc's main has no variable
-       holding it (voc's is the address of that variable). *)
+       holding it (D17). *)
 
   IMPORT SYSTEM, Platform, ModuleTable, FileDescriptorOutput;
 

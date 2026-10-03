@@ -575,11 +575,10 @@ getEnv is voc's Platform.getEnv (src/runtime/Platformunix.Mod), which
 voc's Args passes on: it says whether the variable is there at all,
 so a program can tell an empty value from none; GetEnv cannot.
 
-Where this differs from voc's, it is where Modules and Platform do:
-- Get with n outside 0..argc-1 sets val to "" where voc leaves val as
-  it was;
-- getEnv cuts a value too long for val short where voc's COPY does
-  too, and also returns FALSE for a name with no 0X in it.
+Where this differs from voc's, it is where Modules and Platform do
+(the numbers are those of vishap-bugs, ~/Repos/Oberon/vishap-bugs):
+- Get with n outside 0..argc-1 sets val to "" (D11);
+- getEnv returns FALSE for a name with no 0X in it.
 ```
 
 ```oberon
@@ -827,21 +826,17 @@ in turn, which is just the current directory until SetSearchPath
 sets one: directories separated by ";", blanks around them ignored, a
 leading "~" standing for $HOME, as voc's.
 
-Where this differs from voc's, besides the missing procedures:
-- GetName gives the name as given to Old or New, or the temporary
-  file's, as voc's, but the temporary file's is an absolute path;
-- two Old calls for one file give two independent Files (voc shares
-  one, so a write through one is at once visible through the other);
-  after a Register over a file that another File has open, that File
-  keeps reading the old contents;
-- ReadString and ReadLine cut a value too long for the array short
-  (and ReadLine skips the rest of the line) where voc overruns it;
+Where this differs from voc's, besides the missing procedures (the
+numbers are those of vishap-bugs, ~/Repos/Oberon/vishap-bugs):
+- GetName of a new File is its temporary file's absolute path (D16);
+- two Old calls for one file give two independent Files (D14); after a
+  Register over a file that another File has open, that File keeps
+  reading the old contents;
+- ReadString and ReadLine cut a value too long for the array short,
+  and ReadLine skips the rest of the line (23);
 - an error that cannot be reported to the caller - a file that cannot
   be created, a failed write - stops the program with a message and
-  Halt(99), as voc does, but the message goes to standard error, where
-  voc's goes to standard output (Phase 11 D12);
-- the C `int` results below are declared LONGINT, right under the -O2
-  size model only (see Platform.Mod).
+  Halt(99), as voc does, but on standard error (D12; Phase 11 D12).
 ```
 
 ```oberon
@@ -1155,11 +1150,11 @@ registered or pending is finalized, newest first, reachable or not:
 the first registration hands FinalizeAtExit to the C library's
 atexit, and every one of those ends with exit(). voc runs them at the
 same points, except Platform.Exit, and before a trap's message
-rather than after it. A program killed by a signal (SIGFPE, a
-division by zero on x86; SIGSEGV) runs none. A finalizer that traps
-while the program is ending calls exit() a second time, which C
-leaves undefined; the C libraries of the four systems run the
-remaining handlers.
+rather than after it (vishap-bugs D13). A program killed by a
+signal (SIGFPE, a division by zero on x86; SIGSEGV) runs none. A
+finalizer that traps while the program is ending calls exit() a
+second time, which C leaves undefined; the C libraries of the four
+systems run the remaining handlers.
 
 LIMITS worth knowing. One object may not exceed maxObjectSize bytes. A pointer the compiler has shifted, masked or
 split is invisible to a conservative scan; poc's own output never
@@ -1239,24 +1234,20 @@ is read ahead of what a call has consumed - except at a line end, so
 that a program prompting for a line does not wait for the next one
 before it can use this one.
 
-Where this differs from voc's:
-- Open only starts over the reading state and Done. voc also seeks
-  standard input back to its start, which works for a file but does
-  nothing (and fails silently) for a pipe or a terminal; there is no
-  portable way to do that here.
+Where this differs from voc's (the numbers are those of vishap-bugs,
+~/Repos/Oberon/vishap-bugs):
+- Open only starts over the reading state and Done; it does not seek
+  standard input back to its start (D15).
 - Real and LongReal read a whole line, take anything of the form
   [+-] digits [. digits] [E|D [+-] digits] as a number, and give the
-  exact value the C library's strtof/strtod does (correctly rounded).
-  voc goes through Strings.StrToReal, and truncates the line to 15
-  characters; a line that is not of that form leaves the number alone
-  and Done FALSE. voc does not set Done here at all.
+  value the C library's strtof/strtod does (correctly rounded); a line
+  not of that form leaves the number alone and sets Done FALSE (26).
 - Name reads a word: what is left of the line after any blanks, up to
-  the next blank. voc's stops the program ("Not implemented").
-- HugeInt (and so Int and LongInt) accepts decimal digits, or hexadecimal
-  digits followed by H, either with a leading minus sign. voc takes
-  hexadecimal digits without the H too, and reads them as a garbage
-  decimal number; a run of digits with letters in it and no H is
-  Done = FALSE here, value 0.
+  the next blank (27).
+- HugeInt (and so Int and LongInt) accepts decimal digits, or
+  hexadecimal digits followed by H, either with a leading minus sign;
+  a run of digits with letters in it and no H is Done = FALSE, value 0
+  (25).
 - Int and LongInt narrow the number the way voc's do, to the low bits,
   not by trapping.
 ```
@@ -1342,28 +1333,24 @@ comes back:
                                            number below 1
   scale, succ, pred    Overflow            +-large
 
-Where this differs from voc's:
+Where this differs from voc's (the numbers are those of vishap-bugs,
+~/Repos/Oberon/vishap-bugs):
 
-- `large` is MAX(REAL) and `small` the smallest normal REAL, 2^-126
-  (voc's `large` is the same; its `small` is the computed
-  approximation 1/8.50705917E37 of that number).
-- sin, cos and tan give an answer for every argument; voc reports
-  LossOfAccuracy and returns 0 beyond about 9099 (and IllegalTrig for a
-  tan it takes for infinite). exp reports Underflow only when the result
-  is really 0, where voc does from about e^-88, well inside the
-  denormal range. sinh, cosh, arcsinh have no clipping error.
-- sincos gives the true cosine, where voc's is the square root of one
-  minus the squared sine, never negative; succ and pred move up and
-  down, where voc's succ of a negative number moves down; sign(0) is 1,
-  as in voc. fraction/exponent/scale/ulp are right for denormals too:
-  the exponent of a denormal is below expoMin, since it is the exponent
-  the number would have with a longer exponent field.
+- sin, cos and tan give an answer for every argument (48), and from
+  libm, so with no error from constants that lose digits (03).
+- exp reports Underflow only when the result is really 0 (55); arcsinh
+  and arccosh have no clipping error (56).
+- sincos gives the true cosine (38); succ and pred give the
+  neighbouring numbers (39); sign(0) is 1, as in voc.
+  fraction/exponent/scale/ulp are right for denormals too (42, 54):
+  the exponent of a denormal is below expoMin, since it is the
+  exponent the number would have with a longer exponent field.
 - Lengths and codes are INTEGER, and round is LONGINT - the Oakwood
   interface's own types, which follow the size model, so they are not
   SYSTEM.INT16/INT32 (fixed-width; used only for the C `int` of ldexp).
-  round rounds halves away
-  from zero and gives MAX(LONGINT)/MIN(LONGINT) for a number out of
-  range.
+  round rounds halves away from zero, as voc's (D10), and gives
+  MAX(LONGINT)/MIN(LONGINT) for a number out of range (voc's wraps:
+  D22).
 ```
 
 ```oberon
@@ -1494,11 +1481,12 @@ libm gives: to within an ulp or better, and correctly rounded for
 sqrt. Not derived from voc's MathL, which is the OOC library's
 polynomial approximations under the LGPL.
 
-Differences from Math beyond the width:
+Differences from Math beyond the width (the numbers are those of
+vishap-bugs, ~/Repos/Oberon/vishap-bugs):
 - `large` is MAX(LONGREAL) and `small` the smallest normal LONGREAL,
-  2^-1022 (voc's `small` is 0: its expression underflows).
-- voc's MathL raises no Underflow; here exp and power report it when
-  the result is 0, as Math does.
+  2^-1022 (41).
+- exp and power report Underflow when the result is 0, as Math does;
+  voc's MathL reports none (D23).
 ```
 
 ```oberon
@@ -1710,22 +1698,20 @@ m.refcnt is the number of listed modules that import m. Free, as
 voc's, takes a module nothing imports off the list - so ThisMod no
 longer finds it - but unloads nothing.
 
-Where this differs from voc's:
-- ModNameLen is 256 (a name may have 255 characters), where voc's 20
-  cuts a long module name short, and a command's name has room for
-  255 too (voc: 23);
+Where this differs from voc's (the numbers are those of vishap-bugs,
+~/Repos/Oberon/vishap-bugs):
+- a module's or a command's name may have 255 characters (62);
 - Module and Cmd are poc's own records, with the fields of voc's a
   program can use (next, name, refcnt, cmds; next, name, cmd), all
   read-only;
 - Halt and AssertFail write their message to standard error, as
-  poc's traps do (voc's to standard output), and the program's
-  finalizers run after it (GarbageCollectedHeap, FINALIZATION; voc's
-  before);
-- GetArg with n outside 0..ArgCount-1 sets val to "" where voc leaves
-  val as it was, so a caller that ignores ArgCount never sees the
-  previous argument again as this one;
+  poc's traps do, and the program's finalizers run after it
+  (GarbageCollectedHeap, FINALIZATION) (D12, D13);
+- GetArg with n outside 0..ArgCount-1 sets val to "", so a caller that
+  ignores ArgCount never sees the previous argument again as this one
+  (D11);
 - MainStackFrame is argv's address, as poc's main has no variable
-  holding it (voc's is the address of that variable).
+  holding it (D17).
 ```
 
 ```oberon
@@ -1816,11 +1802,10 @@ Out, whatever is inserted into it (0DX as a line end). Par.text holds
 the program's arguments, each followed by a blank, and Par.pos is 0,
 as for a command called with its parameters after it.
 
-Where it differs from voc's:
-- An argument is copied whole; voc's cuts each one at 255 characters.
-- Only an insertion into Log is echoed. voc's notifier also echoes
-  after a deletion or a change of looks, writing whatever text now
-  stands at the positions the operation names.
+Where it differs from voc's (the numbers are those of vishap-bugs,
+~/Repos/Oberon/vishap-bugs):
+- An argument is copied whole (63).
+- Only an insertion into Log is echoed (64).
 ```
 
 ```oberon
@@ -1868,19 +1853,15 @@ and nothing is lost when a program ends without a Ln. Flush and Open
 therefore do nothing. voc buffers 128 characters and flushes at each
 line end.
 
-Where this differs from voc's:
-- Int has no wrong answer for the smallest HUGEINT (voc's prints a
-  fixed, wrong string), and Hex needs no SYSTEM.LSH/ROT;
+Where this differs from voc's (the numbers are those of vishap-bugs,
+~/Repos/Oberon/vishap-bugs):
 - Real and LongReal are correctly rounded (Phase 11 step 2, inventory
   A3): the digits are the exact decimal expansion of the number,
-  rounded to nearest, ties to even (RealDigits), where voc's code
-  estimates the decimal exponent as 77/256 of the binary one and scales
-  by a power of ten computed in floating point, exact only up to 10^22, so the
-  last digits of a number outside about 10^-22..10^22, or the last of
-  the 17 a LONGREAL can be asked for, may be off by a few units there.
-  The layout, the digit counts and the dropping of trailing zeros are
-  voc's; a denormal prints its digits (voc's prints zero). The reading
-  of text, In's, is the C library's, which is correct.
+  rounded to nearest, ties to even (RealDigits), and the exponent is
+  that of the rounded digits (30, 32). The layout, the digit counts
+  and the dropping of trailing zeros are voc's; a denormal prints its
+  digits (31). The reading of text, In's, is the C library's, which is
+  correct.
 ```
 
 ```oberon
@@ -1952,24 +1933,24 @@ that failed, as voc's: so its numbers differ between the systems, and
 a program tests them with Absent, Inaccessible, TooManyFiles and the
 others rather than comparing them with numbers.
 
-Where this differs from voc's:
+Where this differs from voc's (the numbers are those of vishap-bugs,
+~/Repos/Oberon/vishap-bugs):
 
-- PID is never negative. voc keeps it in an INTEGER, which under its
-  default 16-bit size model wraps a pid above 32767, possibly to a
-  negative number; here the pid is reduced modulo 2^15 first when it
-  does not fit, so the temporary file names built from it stay
-  readable. (It stays whole under a size model with a 32-bit INTEGER.)
+- PID is never negative: a pid that does not fit an INTEGER (16 bits
+  under -O2) is reduced modulo 2^15, so the temporary file names built
+  from it stay readable (61).
 - Write writes everything, in as many write calls as it takes, and
-  Delay sleeps the whole time even when a signal interrupts it; voc's
-  make one call each, and lose the rest.
-- getEnv returns FALSE for a name with no 0X in it (below). Like
-  voc's, it copies at most what val holds (voc's COPY stops at val's
-  length; this said otherwise until 2026-10-02).
+  Delay sleeps the whole time even when a signal interrupts it (59,
+  60).
+- getEnv returns FALSE for a name with no 0X in it (below). It copies
+  at most what val holds, as voc's does (D6).
 - The C type `int` is written SYSTEM.INT32 in the external
   declarations here and in Console, Files, In, Out, Math and MathL:
   exactly four bytes under -O2 and -OC alike, as LONGINT (eight bytes
   under -OC) is not - which is wrong at once on a 32-bit target, whose
   calling convention puts every argument on the stack at its own width.
+  (voc's LONGINT there does no harm: its declarations are C macros,
+  D8.)
 
 A string handed to a C function must end in 0X within its array; one
 that does not is treated as naming nothing: the procedure fails with
@@ -2199,24 +2180,20 @@ Phase 12 step 5f: voc's Reals interface - powers of ten, the binary
 exponent of a REAL or LONGREAL, and the digits Texts writes a real
 number from - written for poc.
 
-Where it differs from voc's:
+Where it differs from voc's (the numbers are those of vishap-bugs,
+~/Repos/Oberon/vishap-bugs):
 - Ten and TenL are correctly rounded, the C library's strtof/strtod of
-  "1E<e>". voc's TenL multiplies powers of ten by repeated squaring
-  and is off in the last bit for 252 of the 309 exponents 0..308 (its
-  Ten, computed in LONGREAL, is exact). A negative e gives 10^e; voc's
-  Ten answers 1 and its TenL something that is not a power of ten.
+  "1E<e>" (36), and a negative e gives 10^e (D20).
 - Expo, SetExpo, ExpoL, SetExpoL and ConvertH/ConvertHL take the
   number's bits as an integer, so they do not depend on the byte
-  order, where voc's read bytes at offsets set from
-  Platform.LittleEndian; the answers are the same.
+  order; the answers are voc's.
 - ConvertL writes the low n digits of x's integer part exactly,
-  however large x is. voc's converts x to a LONGINT, whose range ends
-  near 9.2E18 under -OC and 2.1E18 (in two pieces) under -O2.
+  however large x is (D18).
 
 As voc's, ConvertH and ConvertHL write the bytes least significant
 first, each as two hexadecimal digits, the high one first: the order
-of the bytes in memory on a little-endian machine (Ofront's, which
-wrote them in memory order), which voc keeps on a big-endian one.
+of the bytes in memory on a little-endian machine, on any machine
+(D19).
 ```
 
 ```oberon
@@ -2292,29 +2269,25 @@ Every procedure that writes a string leaves it ended by a 0X: a result
 too long for dst is cut short to fit (dst is never left unterminated,
 as voc's Append and Extract can leave it).
 
-Where this differs from voc's:
+Where this differs from voc's (the numbers are those of vishap-bugs,
+~/Repos/Oberon/vishap-bugs):
 
-- voc's Insert with a position past the end of dst calls Append with
-  its two arguments the wrong way round, so the text of dst ends up in
-  src (a value parameter: nothing happens), and its Replace deletes
-  pos + Length(src) characters instead of Length(src). Here both do
-  what the description above says.
-- Extract, Insert and Append never write beyond dst (voc's Extract
-  writes its 0X at the length of the source part, past the end of a
-  dst that was too small), and Cap and Pos never read beyond a string
-  that has no 0X.
-- Pos with a negative pos starts at 0 (voc reads before the string).
-  An empty pattern is found at 0 whatever pos is, as in voc.
+- Insert with a position past the end of dst appends (18), and Replace
+  deletes Length(src) characters (19).
+- Extract, Insert and Append never write beyond dst (20, 21), and Cap
+  never reads beyond a string that has no 0X (57).
+- Pos with a negative pos starts at 0 (22). An empty pattern is found
+  at 0 whatever pos is, as in voc.
 - StrToReal/StrToLongReal read blanks, an optional sign, digits, an
   optional fraction and an optional exponent (E or D, also in lower
-  case), and give the value libc's strtof/strtod does for it, correctly
-  rounded; voc adds up digit by digit, so its result can be an ulp off.
-  Anything after the numeral is ignored, and a string with no number at
-  the start gives 0, as in voc. A numeral of more than maxNumeral
-  characters leaves the result variable alone (voc converts any length).
+  case, its sign + or -), and give the value libc's strtof/strtod does
+  for it, correctly rounded (28, 29). Anything after the numeral is
+  ignored, and a string with no number at the start gives 0, as in
+  voc. A numeral of more than maxNumeral characters leaves the result
+  variable alone.
 - Lengths and positions are INTEGER, as in voc; under the -O2 size
-  model that is 16 bits, so Length stops counting at 32767. All the
-  work is done in LONGINT and never wraps.
+  model that is 16 bits, so Length stops counting at 32767 (D21). All
+  the work is done in LONGINT and never wraps.
 ```
 
 ```oberon
@@ -2373,24 +2346,22 @@ CR for LF, and for CR LF one CR (its position counts both), and Store
 writes CR for each line end, so a text Close writes from it has the
 Oberon line ends.
 
-Where this differs from voc's:
+Where this differs from voc's (the numbers are those of vishap-bugs,
+~/Repos/Oberon/vishap-bugs):
 - Real numbers are written with correctly rounded digits (RealDigits),
-  a subnormal one with its digits (voc's writes 0), an infinity as
-  "Infinity" (voc's as "NaN"); WriteRealFix keeps the k decimals asked
-  for, to at most 9 significant digits, the rest "0"s (voc's drops
-  decimals, and goes wrong past 9 digits before the point).
-- Scan reads a real number correctly rounded (strtof/strtod); one past
-  REAL's or LONGREAL's range is an infinity, where voc's stops the
-  program (HALT(40)). A number of more than 255 characters is Inval.
+  a subnormal one with its digits (44), an infinity as "Infinity"
+  (43); WriteRealFix keeps the k decimals asked for, to at most 9
+  significant digits, the rest "0"s (45).
+- Scan reads a real number correctly rounded (strtof/strtod; 66); one
+  past REAL's or LONGREAL's range is an infinity (46). A number of more
+  than 255 characters is Inval (65).
 - CR LF in a plain text file is one line end when stored, as when
-  read: voc's Store writes two.
-- A text loaded from a file has its fonts (voc's leaves them NIL, and
-  then stops on the first Store or Merge that compares fonts).
-- An element whose handler does not copy it is left out of a copy;
-  voc's stops. Positions and lengths are clamped to the text.
-- WriteInt pads -9223372036854775808 like any other number, WriteDate
-  writes the year MOD 100, and file names may be as long as Files
-  allows (voc's Close takes 59 characters).
+  read (50).
+- A text loaded from a file has its fonts (49).
+- An element whose handler does not copy it is left out of a copy
+  (51). Positions and lengths are clamped to the text, as in voc (D7).
+- WriteInt pads -9223372036854775808 like any other number (53), and
+  file names may be as long as Files allows (52).
 ```
 
 ```oberon
@@ -2597,13 +2568,11 @@ for SetAttr: SetAttr(VT100.Red) turns the text red, and
 SetAttr(VT100.ResetAll) back to normal. The procedures with a count n
 (CUU, ED, SGR, ...) write CSI, n in decimal and their letter.
 
-Where this differs from voc's (decided with the user 2026-10-02):
-- a number is written whole. voc's makes room for one digit of n, so
-  a count of 10 or more is cut to its first digit (CUU(12) moves up
-  one line), and for four of each of CUP's and HVP's;
-- DSR(n) sends n; voc's sends 6 whatever n is (6 asks for the cursor
-  position, which is what DSR is mostly used for);
-- SetAttr writes all of attr; voc's cuts it at 13 characters.
+Where this differs from voc's (decided with the user 2026-10-02; the
+numbers are those of vishap-bugs, ~/Repos/Oberon/vishap-bugs):
+- a number is written whole (33);
+- DSR(n) sends n (34);
+- SetAttr writes all of attr (35).
 ```
 
 ```oberon

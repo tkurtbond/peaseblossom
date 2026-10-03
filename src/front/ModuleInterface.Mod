@@ -590,7 +590,8 @@ MODULE ModuleInterface;
      q + 1 for q = -(x + 1), which cannot overflow; the last digit and the
      rest of |x| come from q's, the 1 carried by hand - what LLVMCodeGenerator.
      AppendLongInt does for the same reason. It also never divides a value
-     near the minimum, where voc's 64-bit DIV and MOD are wrong (AGENTS.md). *)
+     near the minimum, where voc's 64-bit DIV and MOD are wrong
+     (doc/bootstrapping-with-voc.md). *)
   PROCEDURE FormatInt(x: LONGINT; VAR result: ARRAY OF CHAR);
     VAR digits: ARRAY 24 OF CHAR; i, j, d: INTEGER; neg: BOOLEAN; q: LONGINT;
   BEGIN
@@ -1348,8 +1349,8 @@ MODULE ModuleInterface;
      its bare name while in outputDir: voc's Files remembers that name, and
      when a later Register of the same file found a File that Files.Old had
      opened by the whole path, voc renamed it by that path from inside
-     outputDir and halted (ENOENT; doc/voc-bugs/README.md, "Files.Register
-     over a file ..."), now and then, as the collector's timing decided.
+     outputDir and halted (ENOENT; doc/bootstrapping-with-voc.md), now and
+     then, as the collector's timing decided.
      This is the one place in this module that needs Platform.Mod, not
      just Files.Mod - see Poc.Mod's own header comment on why a Vishap
      library import like this is a documented, narrow exception, not a

@@ -48,7 +48,7 @@ mask <out >>../result
 echo "== shapes against an older Out" >>../result
 # poc-rtl rebuilt, in a copy, from an Out with one more procedure
 cp -r lib libstale && mkdir rtl && cp ../../../../rtl/llvm/*.Mod ../../../../rtl/llvm/*.c rtl/
-awk 'NR == 104 { print "  PROCEDURE Extra*;"; print "  END Extra;"; print "" } { print }' ../../../../rtl/llvm/Out.Mod >rtl/Out.Mod
+awk '/^BEGIN$/ { print "  PROCEDURE Extra*;"; print "  END Extra;"; print "" } { print }' ../../../../rtl/llvm/Out.Mod >rtl/Out.Mod
 poc -library-path libstale -output-dir libstale -library poc-rtl rtl/*.Mod 2>&1 | mask >>../result
 poc -library-path libstale -o main -build ../main.mod 2>&1 | mask >>../result
 cd ..

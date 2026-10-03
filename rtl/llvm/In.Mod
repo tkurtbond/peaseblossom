@@ -13,24 +13,20 @@ MODULE In;
      that a program prompting for a line does not wait for the next one
      before it can use this one.
 
-     Where this differs from voc's:
-     - Open only starts over the reading state and Done. voc also seeks
-       standard input back to its start, which works for a file but does
-       nothing (and fails silently) for a pipe or a terminal; there is no
-       portable way to do that here.
+     Where this differs from voc's (the numbers are those of vishap-bugs,
+     ~/Repos/Oberon/vishap-bugs):
+     - Open only starts over the reading state and Done; it does not seek
+       standard input back to its start (D15).
      - Real and LongReal read a whole line, take anything of the form
        [+-] digits [. digits] [E|D [+-] digits] as a number, and give the
-       exact value the C library's strtof/strtod does (correctly rounded).
-       voc goes through Strings.StrToReal, and truncates the line to 15
-       characters; a line that is not of that form leaves the number alone
-       and Done FALSE. voc does not set Done here at all.
+       value the C library's strtof/strtod does (correctly rounded); a line
+       not of that form leaves the number alone and sets Done FALSE (26).
      - Name reads a word: what is left of the line after any blanks, up to
-       the next blank. voc's stops the program ("Not implemented").
-     - HugeInt (and so Int and LongInt) accepts decimal digits, or hexadecimal
-       digits followed by H, either with a leading minus sign. voc takes
-       hexadecimal digits without the H too, and reads them as a garbage
-       decimal number; a run of digits with letters in it and no H is
-       Done = FALSE here, value 0.
+       the next blank (27).
+     - HugeInt (and so Int and LongInt) accepts decimal digits, or
+       hexadecimal digits followed by H, either with a leading minus sign;
+       a run of digits with letters in it and no H is Done = FALSE, value 0
+       (25).
      - Int and LongInt narrow the number the way voc's do, to the low bits,
        not by trapping. *)
 

@@ -771,7 +771,7 @@ MODULE SemanticActions;
       element: SyntaxTree.SetElementNode; arg: SyntaxTree.ExprNode;
   BEGIN
     (* type tests, not WITH: voc miscompiles a call of the procedure
-       itself inside its own WITH (doc/voc-bugs/with-self-recursion) *)
+       itself inside its own WITH (doc/bootstrapping-with-voc.md) *)
     IF expr = NIL THEN
     ELSIF expr IS SyntaxTree.LiteralExprNode THEN
       literal := expr(SyntaxTree.LiteralExprNode);
@@ -1338,7 +1338,8 @@ MODULE SemanticActions;
        above deliberately: voc miscompiles a self-recursive call to the
        enclosing procedure made from inside one of its own WITH branches
        (reports a bogus "incompatible assignment" on the argument, even
-       though it type-checks fine everywhere else) - see AGENTS.md. *)
+       though it type-checks fine everywhere else) - see
+       doc/bootstrapping-with-voc.md. *)
     resolvedBase := ResolveType(scope, pointerBase, TRUE);
     resolvedBase := CheckPointerBase(resolvedBase, pointerBaseLine, pointerBaseColumn);
     RETURN Types.NewPointerType(resolvedBase)
@@ -2645,7 +2646,7 @@ MODULE SemanticActions;
      Each WITH branch below calls a distinctly-named procedure, never
      CheckExpr itself - the same safe shape ResolveType already
      established, since voc's documented self-recursion-in-WITH bug
-     (AGENTS.md) only fires when a procedure calls itself from inside its
+     (doc/bootstrapping-with-voc.md) only fires when a procedure calls itself from inside its
      own WITH branch. *)
   PROCEDURE CheckExpr(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
   BEGIN

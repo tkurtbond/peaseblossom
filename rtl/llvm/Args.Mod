@@ -15,11 +15,10 @@ MODULE Args;
      voc's Args passes on: it says whether the variable is there at all,
      so a program can tell an empty value from none; GetEnv cannot.
 
-     Where this differs from voc's, it is where Modules and Platform do:
-     - Get with n outside 0..argc-1 sets val to "" where voc leaves val as
-       it was;
-     - getEnv cuts a value too long for val short where voc's COPY does
-       too, and also returns FALSE for a name with no 0X in it. *)
+     Where this differs from voc's, it is where Modules and Platform do
+     (the numbers are those of vishap-bugs, ~/Repos/Oberon/vishap-bugs):
+     - Get with n outside 0..argc-1 sets val to "" (D11);
+     - getEnv returns FALSE for a name with no 0X in it. *)
 
   IMPORT SYSTEM, Platform, Modules;
 

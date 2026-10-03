@@ -13,11 +13,12 @@ MODULE MathL;
      sqrt. Not derived from voc's MathL, which is the OOC library's
      polynomial approximations under the LGPL.
 
-     Differences from Math beyond the width:
+     Differences from Math beyond the width (the numbers are those of
+     vishap-bugs, ~/Repos/Oberon/vishap-bugs):
      - `large` is MAX(LONGREAL) and `small` the smallest normal LONGREAL,
-       2^-1022 (voc's `small` is 0: its expression underflows).
-     - voc's MathL raises no Underflow; here exp and power report it when
-       the result is 0, as Math does. *)
+       2^-1022 (41).
+     - exp and power report Underflow when the result is 0, as Math does;
+       voc's MathL reports none (D23). *)
 
   IMPORT SYSTEM, Math;
 

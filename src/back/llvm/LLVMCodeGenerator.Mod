@@ -1410,7 +1410,7 @@ MODULE LLVMCodeGenerator;
        than written as a literal: voc 2.1.0 rejects a LONGREAL literal
        whose value is integral and at least 2^31 (2147483648.0D0, 1.0D10
        and 4.5D15 all fail with "Value out of range" - 2147483647.0D0 and
-       1.0D38 do not), see AGENTS.md's "Known voc bugs". *)
+       1.0D38 do not), see doc/bootstrapping-with-voc.md. *)
     twoTo52 := 1.0D0;
     FOR i := 1 TO 52 DO twoTo52 := twoTo52 * 2.0D0 END;
     negative := x < 0.0D0;
@@ -6580,8 +6580,8 @@ MODULE LLVMCodeGenerator;
   END CollectFromRecord;
 
   (* The WITH branches only pick out what to recurse on; the recursive
-     call itself happens after the WITH ends (AGENTS.md's documented voc
-     bug: a procedure calling itself from inside its own WITH branch is
+     call itself happens after the WITH ends (doc/bootstrapping-with-voc.md
+     has the voc bug: a procedure calling itself from inside its own WITH branch is
      misdiagnosed as a bad argument). *)
   PROCEDURE CollectRecordTypes(VAR cg: Codegen; t: Types.Type);
     VAR rec: Types.RecordType; next: Types.Type;
@@ -6919,7 +6919,7 @@ MODULE LLVMCodeGenerator;
   END CollectStringConstantsList;
 
   (* child1/child2 exist only to route the two recursive-descent cases
-     (Unary/Binary) around a real voc bug (AGENTS.md, "Known voc bugs"):
+     (Unary/Binary) around a real voc bug (doc/bootstrapping-with-voc.md):
      a procedure calling *itself* from inside one of its own WITH
      branches is misdiagnosed "incompatible assignment", even when the
      argument's type is fine - calling a *different* procedure from a

@@ -33,24 +33,22 @@ MODULE Texts;
      writes CR for each line end, so a text Close writes from it has the
      Oberon line ends.
 
-     Where this differs from voc's:
+     Where this differs from voc's (the numbers are those of vishap-bugs,
+     ~/Repos/Oberon/vishap-bugs):
      - Real numbers are written with correctly rounded digits (RealDigits),
-       a subnormal one with its digits (voc's writes 0), an infinity as
-       "Infinity" (voc's as "NaN"); WriteRealFix keeps the k decimals asked
-       for, to at most 9 significant digits, the rest "0"s (voc's drops
-       decimals, and goes wrong past 9 digits before the point).
-     - Scan reads a real number correctly rounded (strtof/strtod); one past
-       REAL's or LONGREAL's range is an infinity, where voc's stops the
-       program (HALT(40)). A number of more than 255 characters is Inval.
+       a subnormal one with its digits (44), an infinity as "Infinity"
+       (43); WriteRealFix keeps the k decimals asked for, to at most 9
+       significant digits, the rest "0"s (45).
+     - Scan reads a real number correctly rounded (strtof/strtod; 66); one
+       past REAL's or LONGREAL's range is an infinity (46). A number of more
+       than 255 characters is Inval (65).
      - CR LF in a plain text file is one line end when stored, as when
-       read: voc's Store writes two.
-     - A text loaded from a file has its fonts (voc's leaves them NIL, and
-       then stops on the first Store or Merge that compares fonts).
-     - An element whose handler does not copy it is left out of a copy;
-       voc's stops. Positions and lengths are clamped to the text.
-     - WriteInt pads -9223372036854775808 like any other number, WriteDate
-       writes the year MOD 100, and file names may be as long as Files
-       allows (voc's Close takes 59 characters). *)
+       read (50).
+     - A text loaded from a file has its fonts (49).
+     - An element whose handler does not copy it is left out of a copy
+       (51). Positions and lengths are clamped to the text, as in voc (D7).
+     - WriteInt pads -9223372036854775808 like any other number (53), and
+       file names may be as long as Files allows (52). *)
 
   IMPORT SYSTEM, Files, Modules, Reals, RealDigits;
 

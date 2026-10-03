@@ -69,7 +69,7 @@ voc -OC -s "$ROOT/src/driver/Version.Mod"
 voc -OC -s "$BUILD/gen/BuildInfo.Mod"
 voc -OC -s "$ROOT/src/driver/Libraries.Mod"
 # voc's collector misses a pointer held only in a callee-saved register
-# (doc/voc-bugs/gc-callee-saved-registers): poc is linked with a Heap_GC
+# (doc/bootstrapping-with-voc.md): poc is linked with a Heap_GC
 # that stores them on the stack first, then calls libvoc's. voc adds
 # LDFLAGS to its link command, ahead of libvoc; dlsym is in libdl on Linux.
 ${CC:-cc} -fPIC -c "$ROOT/tools/bootstrap/voc-heap-gc-spill.c" -o voc-heap-gc-spill.o

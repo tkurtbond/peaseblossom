@@ -5,7 +5,7 @@
 # poc's output is expected; voc's must match it under both size models up
 # to the "nested" lines at the end: voc gives a nested procedure garbage
 # inner lengths for an open array of two or more dimensions, and stops
-# with nine (doc/voc-bugs/README.md), before its buffered "nested " is out. voc runs first and its
+# with nine (vishap-bugs 12), before its buffered "nested " is out. voc runs first and its
 # files go before poc starts: poc leaves .sym files voc would reject.
 voc -m manydims.mod >/dev/null
 ./manydims 2>&1 | sed -e '/^nested/,$d' -e '/^Terminated by Halt/,$d' >voc-o2

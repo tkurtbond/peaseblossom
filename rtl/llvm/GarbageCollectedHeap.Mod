@@ -114,11 +114,11 @@ MODULE GarbageCollectedHeap;
      the first registration hands FinalizeAtExit to the C library's
      atexit, and every one of those ends with exit(). voc runs them at the
      same points, except Platform.Exit, and before a trap's message
-     rather than after it. A program killed by a signal (SIGFPE, a
-     division by zero on x86; SIGSEGV) runs none. A finalizer that traps
-     while the program is ending calls exit() a second time, which C
-     leaves undefined; the C libraries of the four systems run the
-     remaining handlers.
+     rather than after it (vishap-bugs D13). A program killed by a
+     signal (SIGFPE, a division by zero on x86; SIGSEGV) runs none. A
+     finalizer that traps while the program is ending calls exit() a
+     second time, which C leaves undefined; the C libraries of the four
+     systems run the remaining handlers.
 
      LIMITS worth knowing. One object may not exceed maxObjectSize bytes. A pointer the compiler has shifted, masked or
      split is invisible to a conservative scan; poc's own output never

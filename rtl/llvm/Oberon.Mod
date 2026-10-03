@@ -10,11 +10,10 @@ MODULE Oberon;
      the program's arguments, each followed by a blank, and Par.pos is 0,
      as for a command called with its parameters after it.
 
-     Where it differs from voc's:
-     - An argument is copied whole; voc's cuts each one at 255 characters.
-     - Only an insertion into Log is echoed. voc's notifier also echoes
-       after a deletion or a change of looks, writing whatever text now
-       stands at the positions the operation names. *)
+     Where it differs from voc's (the numbers are those of vishap-bugs,
+     ~/Repos/Oberon/vishap-bugs):
+     - An argument is copied whole (63).
+     - Only an insertion into Log is echoed (64). *)
 
   IMPORT SYSTEM, Platform, Modules, Texts, Out;
 

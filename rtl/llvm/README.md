@@ -28,7 +28,8 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
 - `VT100.Mod` - terminal control with ANSI escape sequences, voc's `VT100`
   interface (Phase 12 step 5b), written for poc: cursor movement, erasing,
   scrolling, colours and attributes, written through `Out`. Unlike voc's,
-  every number is written whole and `DSR` sends its argument.
+  every number is written whole and `DSR` sends its argument
+  (vishap-bugs 33, 34).
 - `Files.Mod` - Oberon files with voc's whole interface (`File`, `Rider`,
   `New`, `Old`, `Register`, `Read`/`Write` of a `SYSTEM.BYTE`, the typed
   riders in Oakwood's external format, the search path, ...) over C stdio,

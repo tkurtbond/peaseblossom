@@ -66,21 +66,17 @@ MODULE Files;
      sets one: directories separated by ";", blanks around them ignored, a
      leading "~" standing for $HOME, as voc's.
 
-     Where this differs from voc's, besides the missing procedures:
-     - GetName gives the name as given to Old or New, or the temporary
-       file's, as voc's, but the temporary file's is an absolute path;
-     - two Old calls for one file give two independent Files (voc shares
-       one, so a write through one is at once visible through the other);
-       after a Register over a file that another File has open, that File
-       keeps reading the old contents;
-     - ReadString and ReadLine cut a value too long for the array short
-       (and ReadLine skips the rest of the line) where voc overruns it;
+     Where this differs from voc's, besides the missing procedures (the
+     numbers are those of vishap-bugs, ~/Repos/Oberon/vishap-bugs):
+     - GetName of a new File is its temporary file's absolute path (D16);
+     - two Old calls for one file give two independent Files (D14); after a
+       Register over a file that another File has open, that File keeps
+       reading the old contents;
+     - ReadString and ReadLine cut a value too long for the array short,
+       and ReadLine skips the rest of the line (23);
      - an error that cannot be reported to the caller - a file that cannot
        be created, a failed write - stops the program with a message and
-       Halt(99), as voc does, but the message goes to standard error, where
-       voc's goes to standard output (Phase 11 D12);
-     - the C `int` results below are declared LONGINT, right under the -O2
-       size model only (see Platform.Mod). *)
+       Halt(99), as voc does, but on standard error (D12; Phase 11 D12). *)
 
   IMPORT SYSTEM, Platform, FileDescriptorOutput, GarbageCollectedHeap;
 
@@ -155,7 +151,7 @@ MODULE Files;
 
   (* An error nothing above can be told about: says what and where, on
      standard error (Phase 11 D12; voc's Files writes it to standard
-     output), and stops the program. *)
+     output, vishap-bugs D12), and stops the program. *)
   PROCEDURE Fail(message: ARRAY OF CHAR; f: File);
   BEGIN
     SayLn; Say("-- "); Say(message);

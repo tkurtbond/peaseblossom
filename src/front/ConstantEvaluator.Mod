@@ -415,7 +415,7 @@ MODULE ConstantEvaluator;
      holds. The two largest finite values below are built from powers of
      two rather than written as literals because voc rejects a REAL
      literal with decimal exponent 38 and a LONGREAL one with exponent 308
-     (AGENTS.md, "Known voc bugs"), the same reason
+     (doc/bootstrapping-with-voc.md), the same reason
      LLVMCodeGenerator.DoubleBitsText assembles its own constants. *)
   PROCEDURE PowerOfTwo(exponent: INTEGER): LONGREAL;
     VAR result: LONGREAL;
@@ -715,7 +715,7 @@ MODULE ConstantEvaluator;
 
   (* x rounded to the nearest single-precision value, held in a LONGREAL.
      Written through a REAL variable: voc folds LONG(SHORT(x)) to x
-     (AGENTS.md, "Known voc bugs"), and x must not survive unrounded. *)
+     (doc/bootstrapping-with-voc.md), and x must not survive unrounded. *)
   PROCEDURE RoundToSingle(x: LONGREAL): LONGREAL;
     VAR r: REAL;
   BEGIN
@@ -777,7 +777,7 @@ MODULE ConstantEvaluator;
       END;
       NEW(result); result.kind := Types.charValue; result.type := Types.Char;
       (* only a lower-case letter changes, as in the generated code; voc's
-         CAP masks with 0x5F, so CAP("7") is 17X there (AGENTS.md) *)
+         CAP masks with 0x5F, so CAP("7") is 17X there (vishap-bugs 09) *)
       IF (ch >= "a") & (ch <= "z") THEN result.charVal := CHR(ORD(ch) - 32)
       ELSE result.charVal := ch
       END;

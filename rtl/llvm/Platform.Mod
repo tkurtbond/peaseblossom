@@ -23,24 +23,24 @@ MODULE Platform;
      a program tests them with Absent, Inaccessible, TooManyFiles and the
      others rather than comparing them with numbers.
 
-     Where this differs from voc's:
+     Where this differs from voc's (the numbers are those of vishap-bugs,
+     ~/Repos/Oberon/vishap-bugs):
 
-     - PID is never negative. voc keeps it in an INTEGER, which under its
-       default 16-bit size model wraps a pid above 32767, possibly to a
-       negative number; here the pid is reduced modulo 2^15 first when it
-       does not fit, so the temporary file names built from it stay
-       readable. (It stays whole under a size model with a 32-bit INTEGER.)
+     - PID is never negative: a pid that does not fit an INTEGER (16 bits
+       under -O2) is reduced modulo 2^15, so the temporary file names built
+       from it stay readable (61).
      - Write writes everything, in as many write calls as it takes, and
-       Delay sleeps the whole time even when a signal interrupts it; voc's
-       make one call each, and lose the rest.
-     - getEnv returns FALSE for a name with no 0X in it (below). Like
-       voc's, it copies at most what val holds (voc's COPY stops at val's
-       length; this said otherwise until 2026-10-02).
+       Delay sleeps the whole time even when a signal interrupts it (59,
+       60).
+     - getEnv returns FALSE for a name with no 0X in it (below). It copies
+       at most what val holds, as voc's does (D6).
      - The C type `int` is written SYSTEM.INT32 in the external
        declarations here and in Console, Files, In, Out, Math and MathL:
        exactly four bytes under -O2 and -OC alike, as LONGINT (eight bytes
        under -OC) is not - which is wrong at once on a 32-bit target, whose
        calling convention puts every argument on the stack at its own width.
+       (voc's LONGINT there does no harm: its declarations are C macros,
+       D8.)
 
      A string handed to a C function must end in 0X within its array; one
      that does not is treated as naming nothing: the procedure fails with

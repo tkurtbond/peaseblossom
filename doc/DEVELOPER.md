@@ -49,9 +49,9 @@ Rules for poc's own source (`AGENTS.md` has the reasons):
 - It must also type-check under `-O2`: no literal or constant wider than
   32 bits.
 - Names are descriptive (`GarbageCollectedHeap`, not voc's terse style).
-- voc 2.1.0 has bugs that bite poc's source; `AGENTS.md`, "Known voc bugs",
-  lists them, with `doc/voc-bugs/` for the workarounds. Check there before
-  puzzling over an error that looks wrong.
+- voc 2.1.0 has bugs that bite poc's source; `doc/bootstrapping-with-voc.md`
+  lists them with their workarounds. Check there before puzzling over an
+  error that looks wrong.
 
 The version is in `src/driver/Version.Mod` and nowhere else (0.x.y: the
 minor number for features, the patch number for fixes). `tools/build-info`
