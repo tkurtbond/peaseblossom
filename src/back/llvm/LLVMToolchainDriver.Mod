@@ -488,6 +488,16 @@ MODULE LLVMToolchainDriver;
     END
   END AppendLTOOptions;
 
+  (* Phase 13 step 8: on NetBSD, RELRO (the dynamic linker makes the
+     relocated data read-only once it is done), which clang and gcc there
+     do not ask for themselves, while the system's own programs get it from
+     their build systems; on Linux and the other BSDs the linker gives it
+     unasked *)
+  PROCEDURE AppendHardeningOptions(triple: ARRAY OF CHAR);
+  BEGIN
+    IF LLVMTypes.IsNetBSD(triple) THEN Strcat(command, " -Wl,-z,relro") END
+  END AppendHardeningOptions;
+
   (* appends the object of each module that is not from a library: the
      one compiled, or the one given with its .sym; and its C part's
      (CompanionObject) *)
@@ -663,7 +673,7 @@ MODULE LLVMToolchainDriver;
     SharedLibraryName(name, triple, file);
     COPY(dir, path); Strcat(path, "/"); Strcat(path, file);
     command := "clang -shared"; AppendTargetOptions(command, triple);
-    AppendLTOOptions(triple);
+    AppendLTOOptions(triple); AppendHardeningOptions(triple);
     AppendObjects(modules, dir);
     Strcat(command, " -o"); AppendPath(path);
     Strcat(command, libraryArguments);
@@ -692,7 +702,7 @@ MODULE LLVMToolchainDriver;
     IF ~EmitIR(modules, topName, triple, outputDir, path) THEN RETURN FALSE END;
     IF ~CompileModules(modules, triple, outputDir) THEN RETURN FALSE END;
     command := "clang"; AppendTargetOptions(command, triple);
-    AppendLTOOptions(triple);
+    AppendLTOOptions(triple); AppendHardeningOptions(triple);
     AppendObjects(modules, outputDir);
     Strcat(command, " -o"); AppendPath(exePath);
     Strcat(command, libraryArguments);

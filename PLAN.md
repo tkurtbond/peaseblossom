@@ -735,6 +735,22 @@ mismatch).
      `port-lib-depends-check` clean; installed on cymoril
      (`pkg_add -D unsigned`), checked against `/usr/local/bin/poc`,
      removed with nothing left.
+   - **pkgsrc** (2026-10-03): `packaging/pkgsrc/lang/peaseblossom`,
+     against pkgsrc-2026Q3. `NetBSD-*-x86_64` only, where poc has run;
+     depends on `lang/clang` (NetBSD's base has none). pkgsrc's compiler
+     wrappers include a `clang` that runs gcc, so `pre-build` removes it
+     and poc finds the real one. The PLIST names the triple
+     `${POC_TRIPLE}`. pkglint clean; installed on artos, checked against
+     `/usr/pkg/bin/poc`, removed with nothing left. Found with it:
+     `check-install` let `DOCDIR`/`MANDIR` from a package's command line
+     reach its inner install (it now sets every directory itself); and,
+     with `PKG_DEVELOPER`, that poc's links on NetBSD had no RELRO
+     (plain `clang`/`gcc` there add none; the system's programs get it
+     from their build systems): poc now passes `-Wl,-z,relro` there, for
+     programs and shared libraries (decided with the user; fixture
+     `llvm-relro` checks both on every host).
+   - The ports' `distinfo` files are of a tarball made from `6cb5eba`;
+     each is made again from the release tarball when there is one.
 9. **Exit gate.** From the release tarball, on atla and each gating VM:
    poc builds without voc, `make check` passes with the seed-built poc,
    `make install` and `make check-install` pass, the OS package installs

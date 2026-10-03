@@ -187,3 +187,10 @@ shells out to these rather than linking against LLVM's own C++ API.
   <file>`, and without `-o` the executable is named after the module, in
   the current directory. `-build`, `-library` and `-compile` say nothing
   on success; `-help` is a short summary on standard output.
+- **RELRO on NetBSD** (Phase 13 step 8, 2026-10-03): poc passes
+  `-Wl,-z,relro` when it links a program or a shared library for NetBSD
+  (`LLVMToolchainDriver.AppendHardeningOptions`). Plain `clang` and `gcc`
+  there give no `GNU_RELRO` segment, though the system's programs and
+  pkgsrc's have one, from their build systems; Linux's, OpenBSD's and
+  FreeBSD's linkers give one unasked. Fixture `llvm-relro` checks a program
+  and a shared library on every host.

@@ -8,6 +8,8 @@
 # build has one. -verbose prints the clang command, with the host's triple and
 # optimization level replaced: a clang -c for each module, then the link
 # (-clear-library-path: rtl/llvm compiled too, not taken from poc-rtl).
+# NetBSD's -Wl,-z,relro (llvm-relro) is left out, so that every host gives
+# the same command.
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH
 exe=$(basename "$PWD")
@@ -20,7 +22,7 @@ echo "== without -link" >>result
 poc -o "$exe" -build linkflags.mod 2>&1 | grep '^poc:' >>result
 echo "== -link, -static and -verbose" >>result
 poc -clear-library-path -verbose -static -link "-Llib dir" -link -lpocfixture -o "$exe" -build linkflags.mod 2>&1 \
-  | grep -v '^semantic OK' | sed -e 's/--target=[^ ]*/--target=<triple>/' -e 's/ -O[0-9sgz]/ -O<level>/' >>result
+  | grep -v '^semantic OK' | sed -e 's/--target=[^ ]*/--target=<triple>/' -e 's/ -O[0-9sgz]/ -O<level>/' -e 's/ -Wl,-z,relro//' >>result
 "./$exe" >>result 2>&1
 printf 'exit=%d\n' "$?" >>result
 printf 'INTERP: %s\n' "$(readelf -l "$exe" | grep -c INTERP)" >>result

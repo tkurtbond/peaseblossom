@@ -220,7 +220,8 @@ check-strict: $(STAGE1_BIN)
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 LIBDIR ?= $(PREFIX)/lib
-MANDIR ?= $(PREFIX)/$(if $(filter OpenBSD NetBSD,$(shell uname -s)),man,share/man)
+MAN_SUBDIR := $(if $(filter OpenBSD NetBSD,$(shell uname -s)),man,share/man)
+MANDIR ?= $(PREFIX)/$(MAN_SUBDIR)
 DOCDIR ?= $(PREFIX)/share/doc/peaseblossom
 STAGE2_BIN := $(BUILD_DIR)/stage2/bin/poc
 STAGE2_LIB := $(BUILD_DIR)/stage2/lib/poc
@@ -284,14 +285,18 @@ uninstall:
 # Installs into a scratch DESTDIR outside the source tree and runs
 # test/install/check.sh with only the installed poc: no voc on PATH, no
 # source tree, no POC_IMPORT_PATH or POC_LIBRARY_PATH. Then uninstalls, and
-# checks that nothing is left.
+# checks that nothing is left. Every directory is given, so that none set on
+# the command line (as a package's build does) reaches the inner make.
+CHECK_INSTALL_DIRS := PREFIX=/usr/local BINDIR=/usr/local/bin LIBDIR=/usr/local/lib \
+  MANDIR=/usr/local/$(MAN_SUBDIR) DOCDIR=/usr/local/share/doc/peaseblossom
+
 check-install: $(STAGE2_BIN) $(INSTALL_RTL)
 	@scratch=$$(mktemp -d "$${TMPDIR:-/tmp}/poc-check-install.XXXXXX") || exit 1; \
 	status=0; \
-	$(MAKE) --no-print-directory install DESTDIR=$$scratch/root PREFIX=/usr/local >/dev/null || status=1; \
+	$(MAKE) --no-print-directory install DESTDIR=$$scratch/root $(CHECK_INSTALL_DIRS) >/dev/null || status=1; \
 	if [ $$status = 0 ]; then \
 	  test/install/check.sh $$scratch/root/usr/local/bin/poc $$scratch/work || status=1; \
-	  $(MAKE) --no-print-directory uninstall DESTDIR=$$scratch/root PREFIX=/usr/local >/dev/null || status=1; \
+	  $(MAKE) --no-print-directory uninstall DESTDIR=$$scratch/root $(CHECK_INSTALL_DIRS) >/dev/null || status=1; \
 	  left=$$(cd $$scratch/root && find . -type f); \
 	  if [ -n "$$left" ]; then echo "check-install: uninstall left $$left"; status=1; \
 	  else echo "check-install: uninstall removed everything"; fi; \
