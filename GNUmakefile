@@ -225,7 +225,7 @@ STAGE2_BIN := $(BUILD_DIR)/stage2/bin/poc
 STAGE2_LIB := $(BUILD_DIR)/stage2/lib/poc
 INSTALL_MODELS := O2 OC O2-g OC-g
 INSTALL_RTL := $(foreach m,$(INSTALL_MODELS),$(STAGE2_LIB)/$(HOST_TRIPLE)/$(m)/poc-rtl.library)
-DOCS := README.md LICENSE
+DOCS := README.md LICENSE doc/users-guide.md
 
 # the Stage 2 poc, made (and compared with Stage 1) only when it is not there
 # or Stage 1 changed; `make stage2` always remakes it
@@ -271,7 +271,7 @@ uninstall:
 	  rmdir $$dir 2>/dev/null || true; \
 	done
 	-rmdir $(DESTDIR)$(LIBDIR)/poc/$(HOST_TRIPLE) $(DESTDIR)$(LIBDIR)/poc 2>/dev/null
-	cd $(DESTDIR)$(DOCDIR) 2>/dev/null && rm -f $(DOCS)
+	cd $(DESTDIR)$(DOCDIR) 2>/dev/null && rm -f $(notdir $(DOCS))
 	-rmdir $(DESTDIR)$(DOCDIR) 2>/dev/null
 
 # Installs into a scratch DESTDIR outside the source tree and runs

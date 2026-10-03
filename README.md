@@ -8,6 +8,12 @@ There are two desired outcomes: a compiler with a LLVM based backend that can be
 
 The LLVM-based compiler should run on Linux as well as NetBSD, OpenBSD, and FreeBSD.
 
+## Using poc
+
+`doc/users-guide.md`, the User's Guide, is how to install poc, build
+programs and libraries, read a trap, debug, call C and use the runtime
+modules; every example in it is run by the test suite.
+
 ## Building and testing
 
 Requires GNU Make and `voc` (Vishap Oberon, the bootstrap compiler - see

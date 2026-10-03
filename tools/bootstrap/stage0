@@ -14,9 +14,12 @@
 #
 # Phase 13 steps 4-5: there are two other ways, chosen here first:
 # BOOTSTRAP_POC, a poc already built, compiles poc (tools/bootstrap/
-# stage0-poc); or clang builds poc from the bootstrap seed, seed/, which
-# only a release tarball has (stage0-seed), so that a tarball always builds
-# from its own seed, voc or not. Otherwise voc.
+# stage0-poc); or clang builds poc from the bootstrap seed, seed/, which a
+# release tarball has (stage0-seed): a tarball always builds from its own
+# seed, voc or not. In a git checkout the seed is used only without voc,
+# so that a seed/ left there (make seed writes build/seed, but an older one
+# wrote seed/) cannot build a Stage 0 older than the source unnoticed.
+# Otherwise voc.
 set -e
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -25,7 +28,7 @@ VOC_BIN_DIR=${VOC_BIN_DIR:-/usr/local/sw/versions/voc/git/bin}
 
 if [ -n "$BOOTSTRAP_POC" ]; then
   exec "$ROOT/tools/bootstrap/stage0-poc"
-elif [ -d "$ROOT/seed" ]; then
+elif [ -d "$ROOT/seed" ] && { [ ! -e "$ROOT/.git" ] || [ ! -x "$VOC_BIN_DIR/voc" ]; }; then
   exec "$ROOT/tools/bootstrap/stage0-seed"
 elif [ ! -x "$VOC_BIN_DIR/voc" ]; then
   echo "stage0: no voc in $VOC_BIN_DIR (VOC_BIN_DIR), no seed/ (a release tarball has one)," >&2

@@ -1,3 +1,4 @@
 client.mod:2:10: error: unknown imported module: greeter
 client.mod:2:10: note: no greeter.sym in the current directory (the import path is empty)
+client.mod:2:10: note: no library for <triple> -O2 on the library path (<poc's library>) has greeter
 1 error(s)

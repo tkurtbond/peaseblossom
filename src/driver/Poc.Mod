@@ -84,6 +84,8 @@ MODULE Poc;
        what makes the process exit with status 1 (below, after Run). Until
        2026-09-20 poc always exited 0, so make and scripts could not tell. *)
     failed: BOOLEAN;
+    (* -check: imports come only from .sym files, its own or a library's *)
+    checkingOnly: BOOLEAN;
 
   TYPE
     (* Phase 12 step 2c: a module poc -library builds, from the file named *)
@@ -212,6 +214,8 @@ MODULE Poc;
     END
   END CheckSyntax;
 
+  PROCEDURE ^ SetLibraryTarget(triple: ARRAY OF CHAR);
+
   PROCEDURE Check(name: ARRAY OF CHAR);
     VAR
       buffer: Lexer.CharBuffer;
@@ -219,7 +223,16 @@ MODULE Poc;
       parser: Parser.Parser;
       module: SyntaxTree.ModuleNode;
       scope: SymbolTable.Scope;
+      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR; clangLine: ARRAY 256 OF CHAR;
   BEGIN
+    (* the libraries on the library path, for the host (Phase 13 step 6: a
+       module importing Out could not be checked); without clang, which
+       names the host, none. Only the libraries: the word size SIZE folds
+       for stays as it was. *)
+    checkingOnly := TRUE;
+    IF LLVMToolchainDriver.ClangVersion(clangLine) & LLVMToolchainDriver.HostTriple(triple) THEN
+      SetLibraryTarget(triple)
+    END;
     IF ~ReadSource(name, buffer, length) THEN
       failed := TRUE; Err.String("poc: cannot open "); Err.String(name); Err.Ln
     ELSE
@@ -357,10 +370,11 @@ MODULE Poc;
       lib: Libraries.Library; need: Libraries.Need;
   BEGIN
     (* the commands that search the library path, which is when the target
-       is set, compile imports from source; the others only read .sym files *)
+       is set, compile imports from source, except -check; the others only
+       read .sym files *)
     Libraries.GetTarget(triple, model);
     COPY("no ", text); Strcat(text, name);
-    IF triple[0] # 0X THEN
+    IF (triple[0] # 0X) & ~checkingOnly THEN
       Strcat(text, ".Mod, "); Strcat(text, name); Strcat(text, ".mod or "); Strcat(text, name)
     END;
     Strcat(text, ".sym in the current directory");
@@ -1942,7 +1956,8 @@ MODULE Poc;
       i: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR;
       targetTriple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
       exePath: ARRAY 256 OF CHAR;
-      done: BOOLEAN;
+      command: ARRAY 1024 OF CHAR;
+      done, made: BOOLEAN;
   BEGIN
     InitImportPathFromEnvironment;
     ModuleInterface.libraryLookup := LibraryInterfaceDir;
@@ -2030,6 +2045,17 @@ MODULE Poc;
         ELSIF arg = "-output-dir" THEN
           IF i + 1 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, outputDir);
+            (* made if it is not there (Phase 13 step 6: only -library and
+               -install-library made it, and a build said "cannot write
+               <dir>/<M>.sym") *)
+            COPY("mkdir -p", command);
+            (* poc's own message, not mkdir's, which each system words its own way *)
+            made := AppendQuoted(command, outputDir);
+            IF made THEN Strcat(command, " 2>/dev/null"); made := Platform.System(command) = 0 END;
+            IF ~made THEN
+              failed := TRUE; Err.String("poc: cannot make the directory "); Err.String(outputDir); Err.Ln;
+              done := TRUE
+            END;
             INC(i, 2)
           ELSE
             failed := TRUE; Err.String("poc: -output-dir requires a directory"); Err.Ln;

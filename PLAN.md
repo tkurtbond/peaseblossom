@@ -614,8 +614,7 @@ mismatch).
    commit only from the tree's own repository, not one it was unpacked
    inside), so a tarball's poc names its commit. It refuses unless the
    tracked files are HEAD's and the Stage 2 poc that writes the seed names
-   HEAD's commit. There is no generated documentation yet (steps 6 and
-   7). `make distcheck` unpacks it in a `mktemp` directory and, with
+   HEAD's commit. `make distcheck` unpacks it in a `mktemp` directory and, with
    `VOC_BIN_DIR` pointing nowhere, runs `make check-install` there: Stage
    0 from the seed, Stages 1 and 2, poc-rtl, install and the install
    checks.
@@ -631,6 +630,23 @@ mismatch).
    module headers). Every example in it is a file the test suite builds
    and runs (a fixture that extracts them, or the examples kept as files
    the guide includes), so the guide cannot go stale silently.
+   **Done (2026-10-02).** `doc/users-guide.md`, eleven sections, the
+   programs as files under `doc/examples/` (one directory per session).
+   `tools/guide-examples check|update` reads two HTML-comment marks
+   before a fenced block: `example: <file>` (the block must be the file)
+   and `run: <dir>` (each `$ ` line runs, in one shell, in a fresh copy
+   of the directory, and the other lines must be what they print);
+   `update` writes the new output into the guide for its author to read.
+   The fixture `doc-users-guide` runs `check`. The gdb session is shown,
+   not run (no debugger on every host); the installing section's commands
+   are not run either. `make install` puts the guide in `DOCDIR`. Writing
+   the guide found and fixed: `-check` did not search libraries (so a
+   module importing `Out` failed; it now reads a library's `.sym` files,
+   though still no sources, and its "not found" notes name the library
+   path), `-output-dir` with a build did not
+   make the directory (now every command makes it, as `-library` did,
+   and only one that cannot be made is an error), and a module missing its `END` name got a second
+   error naming an empty one.
 7. **The Reference Guide** (`doc/reference-guide.md`): what poc accepts
    and does, exactly, as a companion to `Oberon2.pdf`, which it refers to
    and does not reproduce. The basic types'

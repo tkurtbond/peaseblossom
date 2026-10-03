@@ -1,0 +1,90 @@
+#!/bin/sh
+# The User's Guide's examples, checked (Phase 13 step 6): so that the guide
+# cannot go stale without the test suite saying so.
+#
+# Usage: guide-examples check|update <guide.md> <examples dir> <work dir>
+#
+# The guide marks two kinds of fenced block, by an HTML comment on the line
+# before the opening fence:
+#
+#   <!-- example: hello/Hello.Mod -->   the block is that file, under the
+#                                       examples directory, exactly
+#   <!-- run: hello -->                 the block is a shell session in a
+#                                       fresh copy of the example directory
+#                                       hello: each line "$ <command>" is
+#                                       run (with sh, in one shell, so a cd
+#                                       or a variable stays), and the
+#                                       other lines are what the commands
+#                                       write, standard error included
+#
+# check compares each block with the file, or with a new run of its
+# commands, and prints each difference; update rewrites the guide with each
+# session's new output instead (for the person writing it, who then reads
+# what changed). Exit status 0 when nothing differs (check) or the guide was
+# written (update).
+set -u
+# the same order and messages on every host (ls sorts by the locale)
+LC_ALL=C; export LC_ALL
+
+mode=$1; guide=$2; examples=$3; work=$4
+case $mode in check|update) ;; *) echo "guide-examples: check or update, not $mode" >&2; exit 2 ;; esac
+examples=$(cd "$examples" && pwd)
+rm -rf "$work"; mkdir -p "$work/blocks" || exit 2
+work=$(cd "$work" && pwd)
+
+# Split the guide: each marked block into blocks/<n>.kind (example or run),
+# blocks/<n>.arg (the file or directory) and blocks/<n>.text
+awk -v dir="$work/blocks" '
+  /^<!-- (example|run): [^ ]+ -->$/ { kind = $2; sub(/:$/, "", kind); arg = $3; pending = 1; next }
+  pending && /^```/ { n++; inblock = 1; pending = 0
+                      print kind > (dir "/" n ".kind"); print arg > (dir "/" n ".arg")
+                      printf "" > (dir "/" n ".text"); next }
+  inblock && /^```$/ { inblock = 0; close(dir "/" n ".text"); next }
+  inblock { print > (dir "/" n ".text") }
+  { pending = 0 }
+' "$guide"
+
+status=0
+for kindfile in "$work"/blocks/*.kind; do
+  [ -f "$kindfile" ] || break
+  n=$(basename "$kindfile" .kind)
+  kind=$(cat "$kindfile"); arg=$(cat "$work/blocks/$n.arg")
+  text="$work/blocks/$n.text"
+  if [ "$kind" = example ]; then
+    if ! cmp -s "$text" "$examples/$arg"; then
+      echo "guide-examples: the listing of $arg is not the file:"; diff "$examples/$arg" "$text"
+      status=1
+    fi
+  else
+    # a fresh copy of the example, and the session's commands run there
+    run="$work/run-$n"
+    if [ -d "$examples/$arg" ]; then cp -R "$examples/$arg" "$run"; else mkdir -p "$run"; fi
+    sed -n 's/^\$ //p' "$text" > "$work/blocks/$n.commands"
+    (cd "$run" && while IFS= read -r command; do
+       printf '$ %s\n' "$command"
+       eval "$command" 2>&1
+     done < "$work/blocks/$n.commands") > "$work/blocks/$n.new" 2>&1 < /dev/null
+    if [ "$mode" = check ] && ! cmp -s "$text" "$work/blocks/$n.new"; then
+      echo "guide-examples: the session in $arg differs:"; diff "$text" "$work/blocks/$n.new"
+      status=1
+    fi
+  fi
+done
+
+if [ "$mode" = update ]; then
+  # each session block replaced by its new run, in order
+  awk -v dir="$work/blocks" '
+    /^<!-- (example|run): [^ ]+ -->$/ { print; pending = 1; isrun = ($2 == "run:"); next }
+    pending && /^```/ { n++; print; pending = 0
+                        if (isrun) { f = dir "/" n ".new"
+                                     while ((getline line < f) > 0) print line
+                                     close(f); skipping = 1 }
+                        else inblock = 1
+                        next }
+    skipping && /^```$/ { skipping = 0; print; next }
+    skipping { next }
+    inblock && /^```$/ { inblock = 0 }
+    { pending = 0; print }
+  ' "$guide" > "$work/guide.md" && cp "$work/guide.md" "$guide"
+fi
+exit $status

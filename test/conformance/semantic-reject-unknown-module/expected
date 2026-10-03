@@ -1,3 +1,4 @@
 unknown-module.mod:5:10: error: unknown imported module: NoSuchModule
 unknown-module.mod:5:10: note: no NoSuchModule.sym in the current directory (the import path is empty)
+unknown-module.mod:5:10: note: no library for <triple> -O2 on the library path (<poc's library>) has NoSuchModule
 1 error(s)

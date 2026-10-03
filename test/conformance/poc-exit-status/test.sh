@@ -23,7 +23,7 @@ run -o prog -build ok.mod
 run -o prog -build typeerror.mod
 run -o prog -build vms.mod
 run -o prog -build missing.mod
-run -output-dir no-such-directory -emit-interface ok.mod
+run -output-dir ok.mod/no-such-directory -emit-interface ok.mod
 run -frobnicate ok.mod
 run
 run -print-import-path

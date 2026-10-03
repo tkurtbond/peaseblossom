@@ -1,1 +1,3 @@
-poc: cannot write nosuchdir/lib.sym
+semantic OK, wrote nosuchdir/sub/lib.sym
+lib.sym
+poc: cannot make the directory lib.mod/sub

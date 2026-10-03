@@ -28,7 +28,7 @@ run -o prog -build vms.mod
 # executable is named after the module
 run -build ok.mod
 run ok.mod
-run -output-dir no-such-directory -emit-interface ok.mod
+run -output-dir ok.mod/no-such-directory -emit-interface ok.mod
 run -frobnicate ok.mod
 run
 # Phase 13 step 1: the version, the target and size model, and clang's version

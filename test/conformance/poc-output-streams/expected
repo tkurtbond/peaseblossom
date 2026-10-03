@@ -12,7 +12,7 @@ exit 1, stdout 0, stderr 1: poc -check missing.mod
 exit 1, stdout 0, stderr 2: poc -o prog -build vms.mod
 exit 0, stdout 0, stderr 0: poc -build ok.mod
 exit 0, stdout 0, stderr 0: poc ok.mod
-exit 1, stdout 0, stderr 1: poc -output-dir no-such-directory -emit-interface ok.mod
+exit 1, stdout 0, stderr 1: poc -output-dir ok.mod/no-such-directory -emit-interface ok.mod
 exit 1, stdout 0, stderr 68: poc -frobnicate ok.mod
 exit 1, stdout 0, stderr 68: poc 
 exit 0, stdout 3, stderr 0: poc -version
