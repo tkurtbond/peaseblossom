@@ -27,7 +27,7 @@ The plan is grounded in:
 |---|---|
 | Implementation language for `poc` | **Oberon-2, self-hosted** — bootstrapped via `voc` until poc can compile itself |
 | LLVM integration | Emit textual LLVM IR (`.ll`), shell out to `llc`/`clang` — no LLVM API bindings |
-| VAX/VMS backend | Phase 14 emits MACRO-32 assembly text only (hand-reviewed, non-executable); assembling/linking/running under VMS 5.5-2 (SIMH or real hardware) was deferred at first and is now Phase 15, ending with poc bootstrapping itself on VAX/VMS; Phase 16 adds VMS library/module support, and Phase 17 has poc write `.OBJ` files itself instead of MACRO-32 text |
+| VAX/VMS backend | Phase 15 emits MACRO-32 assembly text only (hand-reviewed, non-executable); assembling/linking/running under VMS 5.5-2 (SIMH or real hardware) was deferred at first and is now Phase 16, ending with poc bootstrapping itself on VAX/VMS; Phase 17 adds VMS library/module support, and Phase 18 has poc write `.OBJ` files itself instead of MACRO-32 text |
 | Backend sequencing | Shared front end first → LLVM backend to full parity → VAX/VMS backend |
 | GC strategy | Bespoke mark-sweep collector (mirrors voc's approach; reuses the type descriptors already needed for `IS`/dispatch; no external C dependency) |
 | Minimal stdlib for first runnable milestone | A minimal `Console`-style print-a-string module first; fuller Oakwood-style `Out`/`In` added later as fixtures need formatted output |
@@ -89,7 +89,7 @@ src/
     vax/
       VaxTypes.Mod           -- VAX word-size/alignment/descriptor layout (hand-designed, no LLVM analogue)
       VaxCodeGenerator.Mod   -- textual MACRO-32 emission
-      VaxToolchainDriver.Mod -- stub only; no assemble/link/run (Phase 14)
+      VaxToolchainDriver.Mod -- stub only; no assemble/link/run (Phase 15)
   driver/
     Poc.Mod                -- main program; CLI parsing (`poc options {files {options}}`, voc-style)
 rtl/
@@ -107,7 +107,7 @@ rtl/
     FileDescriptorOutput.Mod -- write(2)/isatty under them, apart so voc compiles the rest (Phase 11 D11)
   voc/
     FileDescriptorOutput.Mod -- the same over voc's Platform, for Stage 0's Err (Phase 11 D11)
-  vax/                        -- deferred stubs only until Phase 15 (minimal runtime), Phase 16 (libraries)
+  vax/                        -- deferred stubs only until Phase 16 (minimal runtime), Phase 17 (libraries)
 test/
   conformance/<feature>/{*.mod, test.sh, expected}
   testenv.sh, testresult.sh  -- voc-inspired golden-file harness, generalized over backend
@@ -132,12 +132,14 @@ tools/
 | 10 | Oakwood library + voc-compatibility + Appendix C | `rtl/llvm` (`Console`, `Platform`, `Files`, `Modules`, `Out`, `In`, `Strings`, `Math`, `MathL`), `SYSTEM` lowering | LLVM | voc → **Stage 1/2 bootstrap** |
 | 11 | Open design questions and TODO backlog | `ASSERT`, `-g` debug metadata, `Err`, chosen language extensions, constant-folding and `.sym` fixes | LLVM | poc (self-hosted) |
 | 12 | Library/module support beyond Phase 10 | voc-option triage, static/dynamic library building, voc module inventory, voc's runtime modules and finalization | LLVM | poc (self-hosted) |
-| 13 | MACRO-32 | `VaxTypes`, `VaxCodeGenerator`, `VaxToolchainDriver` (stub) | VAX (scoped, unverified) | poc (self-hosted) |
-| 14 | Running on VAX/VMS | `VaxToolchainDriver` (real), `rtl/vax` (minimal), VAX backend widened to what poc's own source needs | VAX (assembled, linked, run) | poc on VAX/VMS compiles itself |
-| 15 | Library/module support on VAX/VMS | VMS libraries (object, shareable), ported Oberon modules, native VMS libraries, AST support | VAX | poc on VAX/VMS |
-| 16 | Direct VAX/VMS object files | `VaxInstruction`/encoder, `VaxObjectWriter` (`.OBJ`), debug/traceback records | VAX (no assembler in the loop) | poc on VAX/VMS |
-| 17 | Further extensions to Oberon-2 | record and array literals, and whichever other extensions it adopts | both | poc (self-hosted) |
-| 18 | voc's library modules | the chosen modules of voc's `src/library` | LLVM | poc (self-hosted) |
+| 13 | Packaging and documentation | `make install`, the bootstrap seed, `make dist`, OS packages, the User's and Reference Guides, `poc(1)` | LLVM | poc, or the seed with clang alone |
+| 14 | Record and array literals | `T{...}` through `SyntaxTree`, `Parser`, `SemanticActions` and `LLVMCodeGenerator` | LLVM | poc (self-hosted) |
+| 15 | MACRO-32 | `VaxTypes`, `VaxCodeGenerator`, `VaxToolchainDriver` (stub) | VAX (scoped, unverified) | poc (self-hosted) |
+| 16 | Running on VAX/VMS | `VaxToolchainDriver` (real), `rtl/vax` (minimal), VAX backend widened to what poc's own source needs | VAX (assembled, linked, run) | poc on VAX/VMS compiles itself |
+| 17 | Library/module support on VAX/VMS | VMS libraries (object, shareable), ported Oberon modules, native VMS libraries, AST support | VAX | poc on VAX/VMS |
+| 18 | Direct VAX/VMS object files | `VaxInstruction`/encoder, `VaxObjectWriter` (`.OBJ`), debug/traceback records | VAX (no assembler in the loop) | poc on VAX/VMS |
+| 19 | Further extensions to Oberon-2 | whichever other extensions it adopts | both | poc (self-hosted) |
+| 20 | voc's library modules | the chosen modules of voc's `src/library` | LLVM | poc (self-hosted) |
 
 ## Phase details
 
@@ -357,7 +359,7 @@ exactly what poc's own source needs plus the Oakwood basic modules and
 `SYSTEM`; this phase is everything else, and it starts as investigation:
 steps 1-3 produce written inventories and decisions (recorded here and in
 `AGENTS.md`), and only steps 4-6 write code. Placed before the VAX/VMS
-backend (Phase 14) because the library question is an LLVM/Unix one and
+backend (Phase 15) because the library question is an LLVM/Unix one and
 nothing in the VAX work depends on it.
 
 **Done** (closed 2026-10-02). The full account - design, every step, what
@@ -372,7 +374,7 @@ under the same step numbers:
 - **3.** A complete inventory of the libraries and modules voc supplies
   (`doc/voc-module-inventory.md`).
 - **4.** Deciding what poc supports: voc's runtime modules; its `src/library`
-  waits for Phase 19.
+  waits for Phase 20.
 - **5.** Implementing the runtime modules: 5a `Platform`, 5b `In.Name` and
   `VT100`, 5c finalization, 5d `Files`, 5e `Modules`, 5f `Reals`, 5g
   `Texts`, 5h `Oberon`.
@@ -385,7 +387,10 @@ were renumbered, so the old Phases 13-18 are now 14-19. Records of closed
 phases (`doc/phases/`, `doc/phase-11-inventory.md`, `doc/project-history.md`,
 `doc/initializers-and-literals-survey.md`) keep the numbers they were
 written with: there, "Phase 13" is today's Phase 14, and so on up to "Phase
-18", today's 19.
+18", today's 19. A second renumbering followed the same day, when record
+and array literals became Phase 14 (user, 2026-10-02): the Phases 14-19
+of that first renumbering are now 15-20, so a record written between the
+two (`doc/phases/phase-12.md`) means today's 15-20 by its 14-19.
 
 **Goal**: make poc something a person who did not build it can install
 and use, on Linux and the three BSDs. That means an installed poc that
@@ -503,7 +508,7 @@ mismatch).
      `-library-path .` finds; a trap names its location only with
      `-trap-location`.
    - **Leave**: voc's library modules (`md5test`'s `ethMD5`) wait for
-     Phase 19.
+     Phase 20.
 3. **The installed layout and `make install`.** `make install` and `make
    uninstall` with `PREFIX` (default `/usr/local`), `DESTDIR`, and the
    usual `BINDIR`, `LIBDIR`, `MANDIR`, `DOCDIR`, on GNU make (`gmake` on
@@ -686,7 +691,70 @@ mismatch).
 steps 3-5 and 8 are install-and-run checks on each host; steps 6 and 7 are
 checked by their runnable examples and the option cross-check of step 9.
 
-### Phase 14 — VAX/VMS MACRO-32 backend (scoped, deferred, non-executable)
+### Phase 14 — Record and array literals
+
+**Added 2026-10-02 (user)**, after Phase 13 and before the VAX/VMS work,
+taking record and array literals out of the further extensions (now
+Phase 19, where they were candidate 1, from Phase 11 A24). The later
+phases moved up by one.
+
+**Goal**: a value of a record or fixed array type written in an
+expression, `Point{x := 1, y := 2}` and `Vector{1, 2, 3}`, in the LLVM
+backend, with the front end's part shared by the VAX backend later.
+`doc/record-and-array-literals.md` has the design: the decisions taken
+with the user, the rules in detail, the survey of other dialects (Active
+Oberon, Oberon+, Micron, Modula-3, ISO Modula-2, Ada, and those with
+none; the first survey, 2026-09-26, is `doc/initializers-and-literals-
+survey.md`), and what the implementation touches.
+
+**Decided** (user, 2026-10-02): `T{...}`, the type always named; record
+elements named only, `field := expression`; omitted elements take their
+defaults (a field its initializer or zero, an array's later elements the
+same, so an array of records gets its type's default records); no literal
+of a record type with a field hidden or read-only where the literal is
+written; no structured `CONST`s (an exported read-only variable
+initialized with a literal does that), so `Types.Value`, the constant
+folder and the `.sym` format are unchanged. `-strict` rejects a literal.
+
+**Steps**:
+
+1. **The rules settled** in `doc/language-extensions.md` (a section
+   "Record and array literals", with its one-line summary in `AGENTS.md`),
+   from the design note: what a literal's type may be, the element rules,
+   nested literals and when a nested one may leave out its type name,
+   strings as elements, evaluation order, where a literal may stand, and
+   type extension. Decide the open questions the note lists (indexed or
+   repeated array elements, a literal of an open array type, inferring a
+   bare `{...}`'s type), each "not in this phase" unless the user says
+   otherwise.
+2. **Front end**: a literal node in `SyntaxTree`; `Parser` reads
+   `designator {` as a literal and a nested bare `{...}` as a list to be
+   resolved; `SemanticActions` checks the type, each element's
+   compatibility, repeated and unknown fields, the length, the visibility
+   rule, resolves a bare `{...}` as a set or a literal by the expected type,
+   and rejects a literal where it may not stand (`CONST`, a `VAR`
+   parameter, `-strict`). **Testing**: `semantic-` fixtures accepting
+   literals and rejecting each error, with their messages.
+3. **LLVM backend**: a record literal is an LLVM constant aggregate when
+   every element is constant, otherwise an `insertvalue` chain over the
+   record's defaults; an array literal a private constant global when
+   constant, otherwise a stack temporary filled by stores, copied the way
+   a string constant is. Omitted elements get the defaults `NEW` and
+   variables get (field initializers, Phase 11 D17). Debug information
+   needs nothing new. **Testing**: `llvm-` fixtures that build and run:
+   records, arrays, nested literals, omitted elements and defaults, arrays
+   of records, literals as value and open-array parameters, in variable
+   and field initializers, of an extension assigned to its base, with
+   pointers inside (and a collection while one is live), under both size
+   models; voc cannot cross-check any of them.
+4. **Documentation**: the User's Guide (an example the suite runs) and
+   the Reference Guide (Phase 13 step 7) describe literals.
+5. **Exit gate**: `make check` on atla and the gating VMs; Stage 1 and
+   Stage 2 still reach their fixed point; rackhir at the close-out.
+
+**Testing summary**: steps 2 and 3 add fixtures; step 5 is the usual gate.
+
+### Phase 15 — VAX/VMS MACRO-32 backend (scoped, deferred, non-executable)
 `VaxTypes.Mod`, `VaxCodeGenerator.Mod`, `VaxToolchainDriver.Mod` (stub
 only — no assemble/link/run, per the locked-in decision).
 **Explicit scope bound** (to prevent drift): targets exactly Phase 8's
@@ -696,7 +764,7 @@ hand-reviewed `.mar` output checked into
 `test/conformance/*/expected-vax.mar`-style fixtures with a reviewer
 rationale comment, not an automated pass/fail. Assembling, linking and
 running the output - under SIMH-hosted VMS 5.5-2, or real hardware - is
-Phase 15's, which also lifts the vertical-slice bound above.
+Phase 16's, which also lifts the vertical-slice bound above.
 
 **Symbol-name mangling is required, not optional**: VAX MACRO-32 symbols
 are limited to **31 characters**. This project's own naming convention
@@ -707,7 +775,7 @@ backend, which has no such restriction and can emit names close to
 verbatim. `VaxTypes.Mod`/`VaxCodeGenerator.Mod` must therefore implement a
 deterministic name-mangling scheme (e.g. truncate-plus-hash-suffix) for
 every emitted MACRO-32 symbol, and this scheme needs its own fixtures
-(long/colliding names deliberately included in the Phase 14 test set) to
+(long/colliding names deliberately included in the Phase 15 test set) to
 confirm two distinct Oberon-2 names never mangle to the same 31-character
 symbol.
 
@@ -718,22 +786,22 @@ convention for ordinary Oberon-2 procedures — this is separate work from,
 and in addition to, plain MACRO-32 codegen for pure-Oberon code, and its
 external-symbol names are subject to the same 31-character limit above.
 
-### Phase 15 — Running on VAX/VMS: assemble, link, run, and bootstrap poc there
+### Phase 16 — Running on VAX/VMS: assemble, link, run, and bootstrap poc there
 
-**Goal**: the MACRO-32 Phase 14 writes is assembled, linked and run on
+**Goal**: the MACRO-32 Phase 15 writes is assembled, linked and run on
 VAX/VMS 5.5-2 (a SIMH-hosted VAX, or real hardware), with just enough
 runtime to compile poc itself, and poc - built for VAX/VMS - then compiles
 its own source *on* VAX/VMS: the VMS counterpart of Phase 10's
 self-hosting. This lifts two limits of earlier phases, which no longer
 apply once it starts: the locked-in "assembling/linking/running is out of
-scope" (Phase 14 stays what it was - hand-reviewed and non-executable -
-and this phase is what runs it), and Phase 14's own scope bound to Phase
+scope" (Phase 15 stays what it was - hand-reviewed and non-executable -
+and this phase is what runs it), and Phase 15's own scope bound to Phase
 8's vertical slice, since poc's source uses far more than that.
 
 **Explicit non-goals**: libraries beyond what poc's own source needs
-(Phase 16); any VMS other than VAX 5.5-2 - no Alpha, Itanium, or later VAX
+(Phase 17); any VMS other than VAX 5.5-2 - no Alpha, Itanium, or later VAX
 release, though nothing should be gratuitously specific to the exact
-release; DECnet, DECwindows, layered products. Phase 16 owns shareable
+release; DECnet, DECwindows, layered products. Phase 17 owns shareable
 images and the native VMS libraries; this phase links objects and, at
 most, object libraries.
 
@@ -753,9 +821,9 @@ most, object libraries.
 2. **Assemble, link and run hand-written, then generated, code.** Before
    any generated code: a hand-written MACRO-32 "hello" through
    `MACRO`, `LINK` and `RUN`, proving the loop end to end. Then every
-   `expected-vax.mar` fixture Phase 14 checked in is assembled and run,
+   `expected-vax.mar` fixture Phase 15 checked in is assembled and run,
    turning "hand-reviewed" into automated pass/fail wherever the fixture
-   is runnable; whatever the assembler rejects is a Phase 14 bug and is
+   is runnable; whatever the assembler rejects is a Phase 15 bug and is
    fixed there. `VaxToolchainDriver.Mod` stops being a stub: it emits the
    `.mar`, drives `MACRO`/`LINK` (locally on the guest, or by the step 1
    command from the host).
@@ -777,10 +845,10 @@ most, object libraries.
    (D or G) from what VMS's own compilers and RTLs default to; (b)
    **calling convention** - internal Oberon procedures versus the VMS
    Calling Standard (`CALLS`/`CALLG`, argument lists, register save masks,
-   condition values); Phase 14 says external procedures use the standard
+   condition values); Phase 15 says external procedures use the standard
    and ordinary ones poc's own, and this step decides whether the
    hidden tag/length arguments and procedure values keep working that way
-   or whether one convention for everything is simpler (Phase 16's AST
+   or whether one convention for everything is simpler (Phase 17's AST
    support pulls toward the latter); (c) **traps** - index, NIL,
    type-guard and length failures become VMS conditions or a status exit,
    and what a poc program's exit status looks like to DCL.
@@ -833,7 +901,7 @@ most, object libraries.
 are compile+assemble+link+run+diff on the guest; step 6's fixed point is
 the phase's exit gate, the way Stage 1/Stage 2 was Phase 10's.
 
-### Phase 16 — Detailed library/module support for VAX/VMS
+### Phase 17 — Detailed library/module support for VAX/VMS
 
 **Goal**: for VAX/VMS, what Phase 12 did for the LLVM targets - libraries
 poc can build and programs can link against, a decision about which
@@ -862,12 +930,12 @@ C++, and so on) unless step 4 chooses one deliberately.
    position independent, so `VaxCodeGenerator.Mod` must emit PC-relative
    references and the right program-section attributes (`PIC`, `SHR`,
    `NOSHR`, `WRT`) for code, constants and per-process data - which may
-   change code Phase 15 already emits; how a shareable image exports
+   change code Phase 16 already emits; how a shareable image exports
    its entry points (transfer vectors, universal symbols, or the linker's
    symbol-vector option, whichever 5.5-2 has), and how a *version* is
    expressed (`GSMATCH` and major/minor identification) so that the layout
    guarantee `.sym` files give importers holds across a rebuild; the same
-   31-character symbol limit and Phase 14's mangling, which must now be
+   31-character symbol limit and Phase 15's mangling, which must now be
    stable across separately built libraries (a hash suffix must not depend
    on what else was in the compilation); where the collector and module
    registry live when there is more than one image, and what happens to
@@ -886,7 +954,7 @@ C++, and so on) unless step 4 chooses one deliberately.
    with the four Unix-likes in mind now need a fifth answer); depending on
    IEEE 754 (`Reals`, `MathL`, anything that takes a real apart into
    bits or assumes 64-bit doubles - VAX floating point is different, see
-   Phase 15 step 3); depending on the C library, zlib or X11, none of which
+   Phase 16 step 3); depending on the C library, zlib or X11, none of which
    VMS 5.5-2 has by default; or hostile to ODS-2 file names. The output is
    a table of module and verdict, kept as a file the plan names, and the
    decisions.
@@ -941,7 +1009,7 @@ C++, and so on) unless step 4 chooses one deliberately.
    worked out and not guessed: (a) an AST routine is an Oberon procedure
    called *by VMS*, with an argument the program chose, so a procedure
    value (Phase 9 step 8) must be callable under the VMS Calling Standard -
-   the strongest argument for one calling convention throughout (Phase 15
+   the strongest argument for one calling convention throughout (Phase 16
    step 3b), or else for a declared "AST routine" procedure kind with an
    adapter; (b) the **collector** may be interrupted by an AST that
    allocates or that touches the heap, and an AST frame sits on the stack
@@ -953,7 +1021,7 @@ C++, and so on) unless step 4 chooses one deliberately.
    AST safely - interlocked queue and bit-set instructions, event flags
    (`$SETEF`, `$WAITFR`, `$SYNCH`), and whether `SYSTEM` grows an
    AST-safe operation set; (e) condition handlers, exit handlers
-   (`$DCLEXH`) and the runtime's own traps (Phase 15 step 3c), which are
+   (`$DCLEXH`) and the runtime's own traps (Phase 16 step 3c), which are
    asynchronous in the same sense. The result is a design written into
    this plan, an Oberon-level `VMS` module (or modules) that exposes it
    ($QIO with a completion AST, timers, mailboxes, event flags, condition
@@ -965,30 +1033,30 @@ C++, and so on) unless step 4 chooses one deliberately.
 7. **Exit gate.** Every module and interface chosen builds into both
    library kinds and passes its fixtures on the guest, the AST fixtures
    pass repeatedly (asynchrony makes a single pass weak evidence), and the
-   whole VAX conformance suite from Phase 15 is still clean.
+   whole VAX conformance suite from Phase 16 is still clean.
 
 **Testing summary**: steps 1, 3, 5 and 6 are fixtures run on the guest;
 steps 2 and 4 are decisions with written artifacts, verified against the
 manuals they cite; step 7 is the gate.
 
-### Phase 17 — Direct VAX/VMS object files (no MACRO-32 in the loop)
+### Phase 18 — Direct VAX/VMS object files (no MACRO-32 in the loop)
 
 **Goal**: `poc` writes VAX/VMS object modules (`.OBJ`) itself, so a
 compile is Oberon source to object file and `LINK` is the only VMS tool
-left in the build - the assembler (`MACRO`) drops out. Phases 14-16 emit
+left in the build - the assembler (`MACRO`) drops out. Phases 15-17 emit
 MACRO-32 text and hand it to the assembler; that stays as `-emit-mar`, the
 human-readable form the earlier phases reviewed and a debugging aid (and
 the oracle this phase tests against), but it stops being the path a normal
 build takes. Reasons to do it, to be checked and not assumed: the
 assembler is one less tool that has to be present and fast on the guest
-(Phase 15 step 1 confirms from the 5.5-2 SPD what the base kit contains);
+(Phase 16 step 1 confirms from the 5.5-2 SPD what the base kit contains);
 a compile that produces its object directly does one pass over the code
 instead of two; and poc controls exactly what goes into the object, the
 debug and traceback information included.
 
 **Explicit non-goals**: writing executable *images* (`LINK` stays - it
 also builds shareable images, applies the option file, and is what
-Phase 16's libraries rely on); writing object *libraries* (`LIBRARY`
+Phase 17's libraries rely on); writing object *libraries* (`LIBRARY`
 stays); any object format other than VAX/VMS's (no ELF, no COFF), and any
 VMS release but 5.5-2; a MACRO-compatible assembler for hand-written
 MACRO-32 - only the subset poc itself emits has to be encoded.
@@ -1008,13 +1076,13 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    attributes it uses, how a global symbol and an entry point with its
    register-save mask are expressed, how relocation against another
    module's symbol or a program-section base is written, the limits (the
-   31-character symbol length again - Phase 14's mangling is unchanged),
+   31-character symbol length again - Phase 15's mangling is unchanged),
    and the on-disk form (an object file is a record-oriented RMS file, so a
    file merely copied from another system's byte stream is *not* an object
    the linker accepts until its record attributes are set; `FDL` and
-   `CONVERT` are the guest-side tools, and `Files` on VMS (Phase 15 step 4)
+   `CONVERT` are the guest-side tools, and `Files` on VMS (Phase 16 step 4)
    is what lets poc write records directly). Read real objects first: what
-   `MACRO` produces for each of the Phase 14 fixtures, dumped with
+   `MACRO` produces for each of the Phase 15 fixtures, dumped with
    `ANALYZE/OBJECT` and in hex, is the ground truth the specification is
    checked against.
 
@@ -1024,9 +1092,9 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    `VaxInstruction` representation (opcode, operand specifiers with
    addressing mode, register, displacement and symbol, labels, directives)
    built once, and two consumers of it - the existing text printer, which
-   must produce exactly the `.mar` the Phase 14 fixtures already hold, and
+   must produce exactly the `.mar` the Phase 15 fixtures already hold, and
    the new encoder. The refactor is done first and on its own, with the
-   `expected-vax.mar` fixtures (and the runnable Phase 15 ones) as the
+   `expected-vax.mar` fixtures (and the runnable Phase 16 ones) as the
    safety net: nothing about the emitted assembly may change. The subset of
    MACRO-32 poc's generator uses is written down here, since it is what
    the encoder must cover and not a line more.
@@ -1041,7 +1109,7 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    selection with relaxation to a fixpoint, PC-relative references,
    `.ENTRY` masks, and the data directives the generator emits (`.LONG`,
    `.WORD`, `.BYTE`, `.ASCIC`/`.ASCII`, `.BLKx`, `.ALIGN`, floating
-   constants in the format Phase 15 step 3 chose). **Testing**: byte-for-
+   constants in the format Phase 16 step 3 chose). **Testing**: byte-for-
    byte comparison of the encoded text of every fixture module against the
    text `MACRO` produces from the same `.mar` on the guest - not merely
    "the linked program runs", since a wrong encoding that happens to run is
@@ -1055,7 +1123,7 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    `TIR` with relocation for every symbolic reference the encoder could not
    resolve within the module (calls to other modules' procedures, the
    type-descriptor and string-constant symbols, external `["VMS"]`
-   routines), and the end record. Phase 16's requirements ride on it:
+   routines), and the end record. Phase 17's requirements ride on it:
    position-independent code and the program-section attributes a shareable
    image needs, universal (exported) symbols, and entry points a transfer
    vector can name. **Testing**: `ANALYZE/OBJECT` on poc's output and
@@ -1073,22 +1141,22 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    consume, and recorded, including what is left out.
 
 6. **Wiring it in.** A new mode (`-emit-obj`, and the default on VMS,
-   with `-emit-mar` keeping the Phase 14 behavior) writes `<module>.OBJ`;
+   with `-emit-mar` keeping the Phase 15 behavior) writes `<module>.OBJ`;
    `VaxToolchainDriver.Mod` stops invoking `MACRO`. Every earlier phase's
    VAX fixtures run in both modes - built through `.mar` and `MACRO`, and
-   built directly - and give the same output; Phase 16's object libraries
+   built directly - and give the same output; Phase 17's object libraries
    (`LIBRARY/CREATE` of poc's `.OBJ` files) and shareable images
    (`LINK/SHAREABLE`) work with the direct objects unchanged, and are tested
    that way.
 
 7. **Bootstrap again, and the exit gate.** Rebuild poc for VAX/VMS with
-   the direct writer, on the guest: the V1/V2/V3 fixed point of Phase 15
+   the direct writer, on the guest: the V1/V2/V3 fixed point of Phase 16
    step 6, now over `.OBJ` files - an object compiled by the poc built from
    the previous stage must be byte-identical to the one the stage before
    produced from the same source (modulo the module header's timestamp
    and the file's creation attributes, which the specification lists). The
    whole VAX conformance suite passes with objects written directly, and
-   the whole Phase 16 suite, ASTs included; the run that builds poc must
+   the whole Phase 17 suite, ASTs included; the run that builds poc must
    involve no `MACRO`.
 
 **Testing summary**: steps 2 and 3 are byte-level comparisons against the
@@ -1096,7 +1164,7 @@ existing text path and against the assembler; steps 4 and 6 are
 `ANALYZE/OBJECT` comparisons plus link-and-run; step 7's fixed point
 over object files is the gate.
 
-### Phase 18 — Further extensions to Oberon-2
+### Phase 19 — Further extensions to Oberon-2
 
 **Goal**: settle the language extensions that are larger than Phase 11's -
 each a design of its own, through the front end, the `.sym` format and both
@@ -1108,25 +1176,20 @@ result, recorded in `doc/language-extensions.md` like the others.
 **Candidates** (from `000-todo.org`'s Extensions list and Phase 11's
 inventory):
 
-1. **Record and array literals** (Phase 11 A24, moved here 2026-09-26).
-   `doc/initializers-and-literals-survey.md` has the survey: no Oberon has
-   record literals; A2's `[1, 2, 3]` builds its mathematical arrays only;
-   Oberon+ lists both as TODO; ISO Modula-2 and Modula-3 have typed value
-   constructors, `T{...}`. A typed form is the likely starting point. Open:
-   `CONST` declarations of structured type (and so structured constants in
-   `.sym` files), open arrays and pointers inside a literal, positional or
-   named fields, and what a record extension's literal holds.
-2. **Slices of one-dimensional arrays** (`000-todo.org`).
-3. **voc's read-only parameters, `x-`** (`000-todo.org`; considered and not
+Record and array literals, candidate 1 here until 2026-10-02 (Phase 11
+A24, moved here 2026-09-26), are Phase 14 now.
+
+1. **Slices of one-dimensional arrays** (`000-todo.org`).
+2. **voc's read-only parameters, `x-`** (`000-todo.org`; considered and not
    adopted in Phase 11, `doc/language-extensions.md`).
-4. **The terminator-based `ARRAY OF CHAR` assignment rule** (`000-todo.org`;
+3. **The terminator-based `ARRAY OF CHAR` assignment rule** (`000-todo.org`;
    decided against in Phase 11 A21, to reconsider).
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the
-three BSDs (and, once Phase 15 exists, on VAX/VMS).
+three BSDs (and, once Phase 16 exists, on VAX/VMS).
 
-### Phase 19 — voc's library modules
+### Phase 20 — voc's library modules
 
 **Goal**: decide which of the modules under voc's `src/library` poc
 offers, and build those. Moved here from Phase 12 step 4 (user,
@@ -1211,13 +1274,15 @@ same names:
 - **Phase 12**: the option triage, library design and module inventory
   written down and verified against voc's own sources; then the whole-
   matrix gate (both library kinds, both word sizes, Linux and a BSD).
-- **Phase 14**: manual review only (no automated run), explicitly bounded
+- **Phase 14**: `semantic-` and `llvm-` fixtures for literals, accepted
+  and rejected, and the usual gate with the Stage 1/2 fixed point.
+- **Phase 15**: manual review only (no automated run), explicitly bounded
   in scope as described above.
-- **Phase 15**: fixtures run on a real or SIMH-hosted VAX/VMS 5.5-2
+- **Phase 16**: fixtures run on a real or SIMH-hosted VAX/VMS 5.5-2
   guest; exit gate is the bootstrap fixed point there (V1's `.mar` for
   poc's own source identical to what poc itself produces on VMS).
-- **Phase 16**: fixtures on the guest, the AST fixtures repeated, and the
-  Phase 15 suite still clean.
-- **Phase 17**: the direct-object bootstrap fixed point on the guest, with
+- **Phase 17**: fixtures on the guest, the AST fixtures repeated, and the
+  Phase 16 suite still clean.
+- **Phase 18**: the direct-object bootstrap fixed point on the guest, with
   no `MACRO` in the build, and every earlier VAX fixture identical whether
   built through `.mar` or directly.

@@ -181,7 +181,7 @@ module-level procedure inward. For a nested procedure inside a type-bound one,
 `@Module.Type.Method.Inner` (`MethodSymbol` plus `.Inner`). Identifiers cannot
 contain a dot, so there is no collision with a module-level name. Two outer
 procedures may each have a nested `Helper`. The VAX backend's 31-character limit
-is Phase 14's problem, as for every other name.
+is Phase 15's problem, as for every other name.
 
 ### 3.5 Emission order
 
@@ -452,7 +452,7 @@ BSD hosts before step 6.
 - **Name-based free-variable analysis**, as the checker's old `WITH` pre-pass did:
   rejected in §3.1.
 
-## 9. The VAX/VMS backend (Phase 14)
+## 9. The VAX/VMS backend (Phase 15)
 
 The mechanism there is that backend's to choose, from the VMS 5.5-2 manuals
 (`AGENTS.md` names the release rule); nothing in this plan presumes one. What it

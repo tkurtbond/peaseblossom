@@ -87,7 +87,7 @@ integer overflow (its compiler source is not local; the report is silent).
 **ooc / oo2c (van Acken)**: not local (`voc`'s `src/library/ooc` is the
 library, not the compiler). Not surveyed.
 
-**The VAX** (`DEC_VAX_Architecture_Handbook.pdf`, 1986), relevant to Phase 14:
+**The VAX** (`DEC_VAX_Architecture_Handbook.pdf`, 1986), relevant to Phase 15:
 the PSW has an **integer overflow trap enable bit (IV, bit 5)**; a `CALLS`/
 `CALLG` entry mask sets it from bit 14, so a procedure can choose per
 procedure whether integer overflow traps. Division by zero and floating
@@ -157,7 +157,7 @@ step 1). Recorded in `AGENTS.md` ("Overflow, division and reals"), pinned by
    keep poc's).
 3. **Reals**: IEEE, silent - overflow gives infinity, invalid gives NaN,
    underflow gives 0 or a denormal, division by zero gives infinity. As voc.
-   (On the VAX backend this cannot hold; Phase 14 decides what a real
+   (On the VAX backend this cannot hold; Phase 15 decides what a real
    overflow does there.)
 4. **`SHORT`/`CHR` out of range and `SET` elements out of range**: leave as
    they are (unchecked); list an optional `-r` in the Phase 12 step 1 triage.

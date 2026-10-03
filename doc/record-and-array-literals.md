@@ -6,10 +6,13 @@ A value of a record or fixed array type written in an expression:
     v := Vector{1, 2, 3};
     Draw(Line{from := Point{x := 0, y := 0}, to := p});
 
-Not yet implemented, and not yet placed in `PLAN.md`'s phases. This note
-holds the decisions taken so far (with the user, 2026-10-02), the survey of
-other Oberon dialects they were checked against, what the implementation
-would touch, and the questions still open.
+Not yet implemented: `PLAN.md`'s Phase 14 (added 2026-10-02). Phase 11's
+item A24 first, then a candidate of the further extensions (now Phase 19)
+from 2026-09-26, whose survey, `doc/initializers-and-literals-survey.md`,
+also covers oo2c, obc and OBNC. This note holds the decisions taken with
+the user (2026-10-02), the survey of other dialects they were checked
+against, what the implementation would touch, and the questions still
+open.
 
 ## Decisions
 

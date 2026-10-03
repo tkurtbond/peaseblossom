@@ -426,11 +426,14 @@ design questions and the TODO backlog) closed on 2026-09-26:
 (library and module support: voc's options, libraries, voc's module
 inventory, then voc's runtime modules and finalization) closed on
 2026-10-02, `doc/phases/phase-12.md`; the modules under voc's `src/library`
-wait for Phase 19. Phase 13 (added 2026-10-02; the later phases renumbered,
-old 13-18 now 14-19), in progress, packages poc: `make install`, a bootstrap
+wait for Phase 20. Phase 13 (added 2026-10-02; the later phases renumbered,
+old 13-18 now 14-19, and again when Phase 14 was added, so now 15-20), in
+progress, packages poc: `make install`, a bootstrap
 seed that needs no voc, a release tarball and the User's Guide
 (`doc/users-guide.md`, steps 3-6) are done; the Reference Guide, `poc(1)` and
-OS packages are next. The guide's examples are files under `doc/examples/`,
+OS packages are next. Phase 14 (added 2026-10-02) is record and array
+literals, `T{...}`, designed in `doc/record-and-array-literals.md`; the
+VAX/VMS work is Phases 15-18. The guide's examples are files under `doc/examples/`,
 checked by `tools/guide-examples` (fixture `doc-users-guide`): change one
 with the guide, and run `tools/guide-examples update` after a change to
 what poc prints. `PLAN.md` has the

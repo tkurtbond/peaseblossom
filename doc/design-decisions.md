@@ -68,7 +68,7 @@ questions" - <name> means the entry of that name here.
   Name*(...): T;`, optionally `PROCEDURE ["C", "malloc"]
   AllocateBytes*(...): T;` to override the linkage name), per
   `AGENTS.md`'s "External procedures". Needed by Phase 6 for calling C
-  functions on Linux/the BSDs, and by Phase 14 for VAX/VMS Calling
+  functions on Linux/the BSDs, and by Phase 15 for VAX/VMS Calling
   Standard interop. Both backends' actual lowering is still Phase 8/14
   work - Phase 6 only parses the declaration and records its linkage
   info (`SymbolTable.ObjectDesc.externalConvention`/`externalName`).
