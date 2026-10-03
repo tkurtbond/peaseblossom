@@ -100,7 +100,8 @@ runtime is generated from `rtl/llvm` (fixture `doc-reference-guide`); after
 changing a runtime module's interface or comments, run `tools/rtl-reference
 update doc/reference-guide.md rtl/llvm <scratch dir>` with `build/bin` on
 `PATH`. `poc(1)` must lint clean with `mandoc -T lint -W warning` (fixture
-`doc-poc-man-page`).
+`doc-poc-man-page`), and every option poc accepts must be in the usage
+text, `poc(1)` and the Reference Guide (fixture `doc-poc-options`).
 
 ## 4. Before a commit: the hosts
 

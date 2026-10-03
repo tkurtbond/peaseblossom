@@ -113,6 +113,12 @@ Worth knowing before puzzling over a bogus-looking error during Stage
   corrupting the list of files; not reproduced in five reruns, and not
   seen with poc's own `Files` (Stage 1 passed the same fixture in the
   same run).
+  Seen again 2026-10-03, in one `gmake check` on two hosts under Stage 0:
+  `llvm-libraries` on alerik (FreeBSD amd64, ZFS; at
+  `GarbageCollectedHeap.sym`) and `llvm-libraries-i686` on cymoril. On
+  alerik it then failed one run in five of the fixture alone, and again on
+  the first of a loop: frequent there, so a Stage 0 failure of these two
+  fixtures is this bug until shown otherwise.
 - **`Files.Rename` or `Files.Delete` of a file the program has open**:
   voc renames it to a temporary name first, so `Delete` fails (errcode
   2) and `Rename` halts with the same "Couldn't rename previous version"

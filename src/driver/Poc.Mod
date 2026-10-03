@@ -1849,7 +1849,7 @@ MODULE Poc;
     Err.String("       poc [-import-path <dir> | -clear-import-path]... -print-import-path"); Err.Ln;
     Err.String("       poc [-library-path <dir> | -clear-library-path]... -print-library-path"); Err.Ln;
     Err.String("       poc [-target <triple>] [-O2 | -OC] -version"); Err.Ln;
-    Err.String("       poc -help"); Err.Ln;
+    Err.String("       poc -help (or -h, --help)"); Err.Ln;
     Err.String("       -import-path <dir> and -clear-import-path may also precede any"); Err.Ln;
     Err.String("       command above; POC_IMPORT_PATH seeds the list (colon-separated)"); Err.Ln;
     Err.String("       before any flags are applied"); Err.Ln;

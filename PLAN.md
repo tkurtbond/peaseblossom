@@ -758,7 +758,9 @@ mismatch).
    run, `poc(1)` lints clean (fixture `doc-poc-man-page`, `mandoc -T
    lint -W warning`, skipped without mandoc), and every option `poc`
    accepts appears in both `poc(1)` and the Reference Guide (a fixture
-   compares them with the usage text).
+   compares them with the usage text: `doc-poc-options`, which takes the
+   options from what `Poc.Mod` compares arguments with; it found
+   `-h`/`--help` undocumented, now in all three).
 
 **Testing summary**: steps 1 and 2 end in decisions recorded here;
 steps 3-5 and 8 are install-and-run checks on each host; steps 6 and 7 are

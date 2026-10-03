@@ -405,7 +405,7 @@ number, on the standard error stream.
 | `-show-interface <file>` | Prints the module's interface on the standard output. |
 | `-emit-llvm-ir <file>` | Writes the module's LLVM IR, `<Module>.ll`. |
 | `-version` | Prints poc's version and the commit it was built from, the target and size model, and clang's version. |
-| `-help` | A summary of the commands and options, on the standard output. |
+| `-help`, `-h`, `--help` | A summary of the commands and options, on the standard output. |
 | `-print-import-path`, `-print-library-path` | Prints the import path or the library path, as the options before it leave it, one directory a line. |
 
 `poc` with no arguments prints every command and option, the development
