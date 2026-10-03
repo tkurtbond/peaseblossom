@@ -510,6 +510,33 @@ MODULE LLVMTypes;
     RETURN (arch = "i386") OR (arch = "i486") OR (arch = "i586") OR (arch = "i686") OR (arch = "x86")
   END Is32BitX86;
 
+  (* The target datalayout of triple, as clang gives it, in layout; FALSE,
+     layout empty, for an architecture poc has not been run on, whose .ll
+     then has no datalayout line and takes clang's for the target. x86_64
+     and 32-bit x86 (all their systems give the same string), and aarch64
+     as FreeBSD's clang 19 gives it (rackhir); a newer clang's adds
+     address spaces, and clang takes its own over a module's anyway, so
+     the string is for what reads the .ll (llc, opt, a person), not for
+     the build. Until Phase 13 step 4's seed work found it, aarch64 got
+     x86_64's: the choice was by word size alone. *)
+  PROCEDURE DataLayout*(triple: ARRAY OF CHAR; VAR layout: ARRAY OF CHAR): BOOLEAN;
+    VAR arch: ARRAY 32 OF CHAR; i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (triple[i] # 0X) & (triple[i] # "-") & (i < 31) DO arch[i] := triple[i]; INC(i) END;
+    arch[i] := 0X;
+    IF (arch = "x86_64") OR (arch = "amd64") THEN
+      COPY("e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128", layout)
+    ELSIF Is32BitX86(triple) THEN
+      COPY("e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128", layout)
+    ELSIF arch = "aarch64" THEN
+      COPY("e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32", layout)
+    ELSE
+      layout[0] := 0X
+    END;
+    RETURN layout[0] # 0X
+  END DataLayout;
+
   (* Whether the code for this target must realign the stack itself: a
      32-bit x86 target whose operating system is one of the BSDs. The i386
      System V ABI has a call keep the stack 16-byte aligned, and that is

@@ -209,34 +209,9 @@ MODULE LLVMCodeGenerator;
     buildingLibrary*: BOOLEAN;
 
   CONST
-    (* PLAN.md Phase 8 step 13: two, not one - confirmed against real
-       `clang -S -emit-llvm` on an empty C program on three actual
-       machines (2026-09-18, portability-verification step, not just the
-       original 2026-09-18 Linux-only check AGENTS.md records): x86_64
-       Linux and x86_64 NetBSD emit the byte-identical string (dataLayo-
-       utW64 below covers both, and every other x86_64 target this
-       backend has ever generated for), but i386 OpenBSD emits a
-       genuinely different one (dataLayoutW32) - different pointer-size
-       spelling ("p:32:32" appears explicitly, absent from the 64-bit
-       string), different f64/f80 alignment, and no ":64" natural-width
-       suffix on "n8:16:32". Emitting the 64-bit string unconditionally
-       (this step's own predecessor, hostDataLayout, a known, explicitly
-       documented gap since step 2's own stub) would have been silently
-       wrong for any 32-bit target - not exercised until this step
-       actually ran a fixture on 32-bit OpenBSD hardware, matching this
-       step's own "verified by actually running there, not assumed"
-       mandate exactly. Selected in GenerateProgram* by
-       ConstantEvaluator.wordSize, already set correctly from the same
-       -target triple by Poc.Mod's own SetWordSizeFromTriple before
-       codegen ever starts - no separate word-size-from-triple parsing
-       needed here. A real per-architecture (ARM/RISC-V/etc.) datalayout
-       table remains out of scope - WordSizeForTriple* recognizes those
-       architectures' names for word-size purposes only, and nothing in
-       Phase 8 has ever built or verified codegen for one; this fix is
-       scoped to exactly the two triples this project can actually test
-       against real hardware. *)
-    dataLayoutW64 = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
-    dataLayoutW32 = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128";
+    (* The target datalayout each .ll states is LLVMTypes.DataLayout's, by
+       the target's architecture (Phase 8 step 13 had one string per word
+       size, which gave aarch64 x86_64's until Phase 13 step 4). *)
     textLength = 63;
 
     (* PLAN.md Phase 8 step 9's two runtime traps: fixed, backend-
@@ -8215,6 +8190,7 @@ MODULE LLVMCodeGenerator;
       cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments, realign: BOOLEAN;
       isMain: BOOLEAN; td: SyntaxTree.TypeDeclNode; typeObj: SymbolTable.Object; import: SyntaxTree.ImportNode;
       wordInt, symbol, flag, done, already, first: ValueText; r: Files.Rider; ch: CHAR; i, realignId, debugVersionId: INTEGER;
+      layout: ARRAY 128 OF CHAR;
   BEGIN
     withRootTables := HasModuleNamed(program, "ModuleTable");
     withHeap := HasModuleNamed(program, "GarbageCollectedHeap");
@@ -8237,11 +8213,9 @@ MODULE LLVMCodeGenerator;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
     cg.initRecords := NIL; cg.anonymousInitCount := 0; cg.declaredRecords := NIL;
     cg.heapPresent := target.module.name = "GarbageCollectedHeap";
-    WriteStr(w, 'target datalayout = "');
-    IF ConstantEvaluator.wordSize = MemoryLayout.wordSize32 THEN WriteStr(w, dataLayoutW32)
-    ELSE WriteStr(w, dataLayoutW64)
+    IF LLVMTypes.DataLayout(triple, layout) THEN
+      WriteStr(w, 'target datalayout = "'); WriteStr(w, layout); WriteStr(w, '"'); WriteLn(w)
     END;
-    WriteStr(w, '"'); WriteLn(w);
     WriteStr(w, 'target triple = "'); WriteStr(w, triple); WriteStr(w, '"'); WriteLn(w);
     realign := LLVMTypes.NeedsStackRealignment(triple);
     (* the metadata numbers: the stack alignment flag first, then under -g

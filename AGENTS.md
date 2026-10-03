@@ -155,8 +155,10 @@ C++ API. `doc/llvm-toolchain.md` has the full account of each point here.
   interface it was compiled against. Every object is `-fPIC`.
 - **Every emitted `.ll` sets its own `target datalayout` and `target
   triple`**: without them clang silently substitutes the host's, which
-  would hide a cross-compiling mismatch. The driver passes `-lm`
-  (`Math`/`MathL` call libm).
+  would hide a cross-compiling mismatch. The datalayout is the
+  architecture's (`LLVMTypes.DataLayout`: x86_64, 32-bit x86, aarch64);
+  for one poc has not been run on there is none, and clang uses its own.
+  The driver passes `-lm` (`Math`/`MathL` call libm).
 - **Libraries** (Phase 12 steps 2c-2f; `src/driver/Libraries.Mod`): `poc
   -library <name> <file>...` builds `lib<name>.a`/`.so`, a manifest and
   per-module `.sym`/`.ll`/`.o` into `<output-dir>/<triple>/<O2|OC>/`. The

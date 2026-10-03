@@ -3,7 +3,8 @@
 # which clang alone builds a Stage 0 poc (tools/bootstrap/stage0-seed) on a
 # host without voc. poc's IR depends only on the word size (checked
 # 2026-10-02: every 64-bit target's, x86_64 and aarch64 alike, differs
-# only in the triple, and so does every 32-bit x86 BSD's), so there are
+# only in the triple and its datalayout, and so does every 32-bit x86
+# BSD's), so there are
 # two: seed/64, for x86_64-unknown-linux-gnu, and seed/32, for
 # i386-unknown-openbsd, each with its triple in TRIPLE, which stage0-seed
 # replaces with the host's. Written by the Stage 2 poc (POC, default

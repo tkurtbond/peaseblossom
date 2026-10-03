@@ -564,9 +564,12 @@ mismatch).
    BSDs, aarch64 FreeBSD) differs from the others only in its `target
    triple` lines and `<M>.-target.<triple>` symbols, and so does each
    32-bit x86 BSD's; i686 Linux's also lacks the BSDs' stack realignment.
-   (On the way: aarch64 gets x86_64's `target datalayout`, poc having only
-   the two strings of `LLVMCodeGenerator`; clang uses the target's own,
-   and poc lays records out itself, so nothing shows it yet.) Decided
+   (On the way: aarch64 got x86_64's `target datalayout`, poc having had
+   one string per word size. clang takes the target's own over a module's,
+   so no build showed it; fixed after the step's commit:
+   `LLVMTypes.DataLayout` has x86_64's, 32-bit x86's and aarch64's (FreeBSD
+   clang 19's), and no line for an architecture poc has not been run on;
+   `stage0-seed` drops the seed's line; fixture `llvm-datalayout`.) Decided
    with the user: two seeds by word size, and the seed only in the release
    tarball, never in git. `make seed` (`tools/bootstrap/make-seed`) has
    the Stage 2 poc write `seed/64` (for `x86_64-unknown-linux-gnu`) and

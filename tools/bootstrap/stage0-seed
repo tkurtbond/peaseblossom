@@ -1,12 +1,13 @@
 #!/bin/sh
 # Stage 0 from the bootstrap seed (Phase 13 step 4): clang alone compiles
 # the seed's IR for the host, seed/64 or seed/32 by the word size, with the
-# seed's triple replaced by the host's (tools/bootstrap/make-seed says why
-# that is enough), and links it with rtl/llvm/Platform.c, as poc links a
-# program: the result, build/bin/poc, is a poc that needs no voc. A host
-# whose IR would differ in more than the triple is refused: one with
-# another word size, or a 32-bit x86 other than OpenBSD's and NetBSD's
-# (theirs have the stack realignment of LLVMTypes.NeedsStackRealignment).
+# seed's triple replaced by the host's and its datalayout left to clang
+# (tools/bootstrap/make-seed says why that is enough), and links it with
+# rtl/llvm/Platform.c, as poc links a program: the result, build/bin/poc, is
+# a poc that needs no voc. A host whose IR would differ in more is refused:
+# one with another word size, or a 32-bit x86 other than OpenBSD's and
+# NetBSD's (theirs have the stack realignment of LLVMTypes.
+# NeedsStackRealignment).
 set -e
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -26,7 +27,9 @@ obj="$BUILD/stage0/obj"
 rm -rf "$obj"; mkdir -p "$obj" "$BUILD/bin"
 for f in "$SEED/$bits"/*.ll; do
   name=$(basename "$f" .ll)
-  sed "s/$from/$triple/g" "$f" > "$obj/$name.ll"
+  # the seed's datalayout is its own triple's, x86_64's for seed/64: left
+  # out, so that clang takes the host's (aarch64's)
+  sed -e "s/$from/$triple/g" -e '/^target datalayout = /d' "$f" > "$obj/$name.ll"
   clang -c --target="$triple" -O$level -fPIC "$obj/$name.ll" -o "$obj/$name.o"
 done
 clang -c --target="$triple" -O$level -fPIC "$ROOT/rtl/llvm/Platform.c" -o "$obj/Platform.c.o"
