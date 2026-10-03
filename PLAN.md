@@ -724,6 +724,17 @@ mismatch).
      `check.sh` on the stage directory. portlint clean; `poudriere
      testport` (15.1 jail) clean; installed on alerik, checked against
      `/usr/local/bin/poc`, removed with nothing left.
+   - **OpenBSD** (2026-10-03): `packaging/openbsd/lang/peaseblossom`,
+     built from `${PORTSDIR}/mystuff/lang/peaseblossom` (the ports
+     framework needs the X sets installed, even for a port without X).
+     i386 only, where poc has run; base clang. The packing list names the
+     triple `${POC_TRIPLE}` (`x86_64` for amd64, `${OSREV}` for the
+     release); `SHARED_LIBS` declares poc-rtl 0.0, the name poc gives it,
+     and its `@lib` entries do not add poc-rtl's directories to
+     `ldconfig`'s. `make test` is `check-install`. portcheck and
+     `port-lib-depends-check` clean; installed on cymoril
+     (`pkg_add -D unsigned`), checked against `/usr/local/bin/poc`,
+     removed with nothing left.
 9. **Exit gate.** From the release tarball, on atla and each gating VM:
    poc builds without voc, `make check` passes with the seed-built poc,
    `make install` and `make check-install` pass, the OS package installs

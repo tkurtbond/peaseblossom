@@ -1,0 +1,5 @@
+poc, the Peaseblossom Oberon Compiler, compiles Oberon-2 (the report by
+H. Moessenboeck and N. Wirth) through LLVM: each module to LLVM IR, which
+clang compiles and links. It comes with its runtime library, poc-rtl
+(Oakwood's and Vishap Oberon's library modules), for both of its size
+models, -O2 and -OC, and with the User's Guide and Reference Guide.
