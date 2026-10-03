@@ -15,6 +15,7 @@ MODULE FileDescriptorOutput;
   IMPORT SYSTEM;
 
   CONST
+    (* the descriptors of standard output and standard error *)
     standardOutput* = 1;
     standardError* = 2;
 
@@ -27,6 +28,7 @@ MODULE FileDescriptorOutput;
     SysWrite(descriptor, buffer, count)
   END Write;
 
+  (* Whether descriptor is a terminal. *)
   PROCEDURE IsTerminal*(descriptor: SYSTEM.INT32): BOOLEAN;
   BEGIN
     RETURN CIsATerminal(descriptor) # 0

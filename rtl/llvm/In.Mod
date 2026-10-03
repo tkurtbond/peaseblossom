@@ -44,6 +44,7 @@ MODULE In;
     maxNumber = 64; (* the longest number Real and LongReal will read *)
 
   VAR
+    (* whether the last operation succeeded; Open sets it TRUE *)
     Done-: BOOLEAN;
     nextch: CHAR;
     readstate: INTEGER;

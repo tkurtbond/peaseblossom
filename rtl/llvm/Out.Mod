@@ -34,6 +34,7 @@ MODULE Out;
     standardOutput = FileDescriptorOutput.standardOutput;
 
   VAR
+    (* whether the stream is a terminal *)
     IsConsole-: BOOLEAN;
 
   (* Initializes the output stream; there is nothing to do. *)

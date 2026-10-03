@@ -183,6 +183,7 @@ MODULE GarbageCollectedHeap;
     exitHandlerSet: BOOLEAN;
 
   TYPE
+    (* called with an object the collector found unreachable (RegisterFinalizer) *)
     Finalizer* = PROCEDURE (obj: SYSTEM.PTR);
     ExitHandler = PROCEDURE;
 
@@ -829,6 +830,7 @@ MODULE GarbageCollectedHeap;
 
   (* ---- observation, for tests and tools ---- *)
 
+  (* The number of collections so far. *)
   PROCEDURE CollectionCount*(): LONGINT;
   BEGIN
     RETURN collections

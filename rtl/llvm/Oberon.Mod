@@ -19,6 +19,7 @@ MODULE Oberon;
   IMPORT SYSTEM, Platform, Modules, Texts, Out;
 
   TYPE
+    (* a command's parameters: the text they are in, from pos on *)
     ParList* = POINTER TO ParRec;
     ParRec* = RECORD
       text*: Texts.Text;
@@ -26,8 +27,10 @@ MODULE Oberon;
     END;
 
   VAR
+    (* the log: what is inserted is written to standard output *)
     Log*: Texts.Text;
     Par*: ParList; (* the parameters of the command running: the program's arguments *)
+    (* the character that starts an option, "-" *)
     OptionChar*: CHAR;
 
   (* The local time now: t = hour * 4096 + minute * 64 + second, d = (year

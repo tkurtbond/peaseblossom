@@ -327,8 +327,10 @@ a library with debug information beside the plain one, in
 
 ## 6. Checking a module without building it
 
-`poc -check <file>` checks a module and the modules it imports, and writes
-nothing: "semantic OK", or the errors.
+`poc -check <file>` checks a module against the interfaces of the modules
+it imports, and writes nothing: "semantic OK", or the errors. An import must
+be compiled already, in a library or as its `.sym` file (`poc -compile`
+writes one); `-check` compiles no source.
 
 poc accepts a few things the report does not: `HUGEINT`, variable and field
 initializers, `ASSERT`, underscores in names and others (the Reference Guide

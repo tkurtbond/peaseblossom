@@ -70,6 +70,14 @@ poc Trap.Mod && ./Trap; echo "exit $?"
 
 echo "== -help"
 poc -help >/dev/null; echo "exit $?"
+
+echo "== poc(1) and the guides"
+# MANDIR is share/man or man (OpenBSD, NetBSD); LC_ALL=C for plain hyphens
+prefix=$(dirname "$(dirname "$poc")")
+for mandir in "$prefix/share/man" "$prefix/man"; do
+  [ -f "$mandir/man1/poc.1" ] && LC_ALL=C man -M "$mandir" poc 2>&1 | col -b | grep -c 'Peaseblossom Oberon-2 compiler'
+done
+ls "$prefix/share/doc/peaseblossom" | grep -c 'guide\.md$'
 } > result 2>&1
 
 if cmp -s "$here/expected" result; then

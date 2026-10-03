@@ -84,8 +84,9 @@ MODULE Poc;
        what makes the process exit with status 1 (below, after Run). Until
        2026-09-20 poc always exited 0, so make and scripts could not tell. *)
     failed: BOOLEAN;
-    (* -check: imports come only from .sym files, its own or a library's *)
-    checkingOnly: BOOLEAN;
+    (* -check, -emit-interface and -show-interface: imports come only from
+       .sym files, a library's included, never compiled from source *)
+    importsFromSymOnly: BOOLEAN;
 
   TYPE
     (* Phase 12 step 2c: a module poc -library builds, from the file named *)
@@ -229,7 +230,7 @@ MODULE Poc;
        module importing Out could not be checked); without clang, which
        names the host, none. Only the libraries: the word size SIZE folds
        for stays as it was. *)
-    checkingOnly := TRUE;
+    importsFromSymOnly := TRUE;
     IF LLVMToolchainDriver.ClangVersion(clangLine) & LLVMToolchainDriver.HostTriple(triple) THEN
       SetLibraryTarget(triple)
     END;
@@ -370,11 +371,11 @@ MODULE Poc;
       lib: Libraries.Library; need: Libraries.Need;
   BEGIN
     (* the commands that search the library path, which is when the target
-       is set, compile imports from source, except -check; the others only
-       read .sym files *)
+       is set, compile imports from source, except those that read only
+       .sym files (importsFromSymOnly); the others only read .sym files *)
     Libraries.GetTarget(triple, model);
     COPY("no ", text); Strcat(text, name);
-    IF (triple[0] # 0X) & ~checkingOnly THEN
+    IF (triple[0] # 0X) & ~importsFromSymOnly THEN
       Strcat(text, ".Mod, "); Strcat(text, name); Strcat(text, ".mod or "); Strcat(text, name)
     END;
     Strcat(text, ".sym in the current directory");
@@ -533,10 +534,17 @@ MODULE Poc;
       module: SyntaxTree.ModuleNode;
       scope: SymbolTable.Scope;
       path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
-      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR; clangLine: ARRAY 256 OF CHAR;
   BEGIN
+    (* the libraries on the library path, as -check reads them (Phase 13
+       step 7: the interface of a module importing Files could not be shown
+       without an import path to poc-rtl's .sym files): for -target's
+       triple, else the host's, else, without clang, none *)
+    importsFromSymOnly := TRUE;
     IF explicitTriple[0] # 0X THEN
-      IF ResolveTriple(explicitTriple, triple) THEN SetWordSizeFromTriple(triple) END
+      IF ResolveTriple(explicitTriple, triple) THEN SetWordSizeFromTriple(triple); SetLibraryTarget(triple) END
+    ELSIF LLVMToolchainDriver.ClangVersion(clangLine) & LLVMToolchainDriver.HostTriple(triple) THEN
+      SetLibraryTarget(triple)
     END;
     IF ~ReadSource(name, buffer, length) THEN
       failed := TRUE; Err.String("poc: cannot open "); Err.String(name); Err.Ln

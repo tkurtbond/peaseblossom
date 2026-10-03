@@ -544,8 +544,8 @@ and poc, both models):
   tightening a silent value later could.
 - **`SHORT`, `CHR` and `SET` elements out of range are unchecked**: `SHORT`
   and `CHR` truncate (`CHR(300)` is `","`), `INCL(s, 40)` on a 32-bit `SET`
-  shifts past its width. voc's `-r` would halt on the first two; poc has no
-  such switch (Phase 12 step 1 may add one).
+  shifts past its width. voc's `-r` would halt on the first two; so does
+  `poc -range-checks` (Phase 12 step 1, trap 14).
 
 ## Array assignment (decided and implemented, Phase 11 A21)
 
@@ -863,7 +863,7 @@ what that value is.
 | `MOVE(a, b, n)` with `n <= 0` | moves nothing (voc, probed with `n = -4`, copied) (`llvm-no-trap-behavior` case 6) |
 | `COPY(x, v)` | copies up to the source's `0X`, at most `LEN(v) - 1` characters, and always terminates `v`; a source without a `0X` is read to its end (`llvm-no-trap-behavior` case 4) |
 | `=`, `<`, ... on character arrays with no `0X` | the array's end counts as a `0X`, so two equal unterminated arrays are equal; voc reads past the end. `LEN` is the declared length whatever the contents (`llvm-no-trap-behavior` case 5) |
-| A variable never assigned | module variables (all kinds) are zero; **pointers and procedure values are NIL, locals too** (the local ones are zeroed on entry); any other local - a number, `BOOLEAN`, `SET`, a record's or array's non-pointer part - holds whatever was in the frame (a probe read the 77s a previous call had left), as in voc (`llvm-no-trap-behavior` case 0) |
+| A variable never assigned | zero: 0, `FALSE`, `0X`, `{}`, `NIL`, for module variables, locals (zeroed on every entry, since Phase 11 D16, 2026-09-26) and heap blocks alike; until D16 a local that was not a pointer or procedure value held whatever was in the frame (a probe read the 77s a previous call had left), as in voc (`llvm-no-trap-behavior` case 0) |
 
 **Compile time: what is an error before the program runs.** Where the compiler
 can see a trap or an undefined result coming, it says so - as voc does, apart

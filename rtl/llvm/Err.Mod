@@ -19,6 +19,7 @@ MODULE Err;
     standardError = FileDescriptorOutput.standardError;
 
   VAR
+    (* whether the stream is a terminal *)
     IsConsole-: BOOLEAN;
 
   (* Initializes the error stream; there is nothing to do. *)

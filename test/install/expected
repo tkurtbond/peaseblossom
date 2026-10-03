@@ -18,3 +18,6 @@ NIL pointer dereference
 exit 4
 == -help
 exit 0
+== poc(1) and the guides
+1
+2

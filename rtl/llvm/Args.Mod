@@ -24,6 +24,7 @@ MODULE Args;
   IMPORT SYSTEM, Platform, Modules;
 
   VAR
+    (* the number of arguments, the program's name included, and C's argv *)
     argc-: INTEGER;
     argv-: SYSTEM.ADDRESS;
 

@@ -95,6 +95,7 @@ MODULE Files;
 
   TYPE
     FileName = ARRAY nameLength OF CHAR;
+    (* a file, open or registered under a name *)
     File* = POINTER TO FileDesc;
     FileDesc = RECORD
       name: FileName; (* as given to Old or New, for GetName *)
@@ -106,6 +107,8 @@ MODULE Files;
       position: LONGINT; (* where the stream is, unless mode = unused *)
       mode: INTEGER
     END;
+    (* a position in a file to read or write at, with the result of the last
+       operation *)
     Rider* = RECORD
       res*: LONGINT; (* 0 after a successful operation *)
       eof*: BOOLEAN; (* set when a read went past the end *)
@@ -114,6 +117,7 @@ MODULE Files;
     END;
 
   VAR
+    (* the longest path and file name the system takes (Platform's) *)
     MaxPathLength-, MaxNameLength-: INTEGER;
     temporaryCount: LONGINT;
     searchPath: POINTER TO ARRAY OF CHAR; (* NIL: the current directory *)
@@ -284,6 +288,9 @@ MODULE Files;
     RETURN f
   END NewFile;
 
+  (* A new, empty file, to be called name once registered (NEW AND
+     REGISTER above); nothing is made on disk until it is written to,
+     closed or registered. *)
   PROCEDURE New*(name: ARRAY OF CHAR): File;
     VAR f: File;
   BEGIN
@@ -452,6 +459,7 @@ MODULE Files;
     END
   END Register;
 
+  (* The number of bytes in f. *)
   PROCEDURE Length*(f: File): LONGINT;
   BEGIN
     RETURN f.length
@@ -507,11 +515,13 @@ MODULE Files;
     r.res := 0
   END Set;
 
+  (* r's position in its file. *)
   PROCEDURE Pos*(VAR r: Rider): LONGINT;
   BEGIN
     RETURN r.position
   END Pos;
 
+  (* The file r is on. *)
   PROCEDURE Base*(VAR r: Rider): File;
   BEGIN
     RETURN r.file
@@ -554,6 +564,8 @@ MODULE Files;
     r.res := 0
   END WriteBlock;
 
+  (* x at r's position, overwriting the byte there or, at the end,
+     extending the file, and on to the next. *)
   PROCEDURE Write*(VAR r: Rider; x: SYSTEM.BYTE);
   BEGIN
     WriteBlock(r, SYSTEM.ADR(x), 1)
@@ -706,6 +718,9 @@ MODULE Files;
     IF ORD(ch) >= 128 THEN RETURN ORD(ch) - 256 ELSE RETURN ORD(ch) END
   END Signed;
 
+  (* The typed riders: a value in the external format (THE EXTERNAL
+     FORMAT above) at r's position, and on past it; at the end of the file
+     r.eof is set, as by Read. *)
   PROCEDURE ReadBool*(VAR r: Rider; VAR x: BOOLEAN);
     VAR ch: CHAR;
   BEGIN
@@ -770,6 +785,8 @@ MODULE Files;
     END
   END ReadNum;
 
+  (* The typed riders: x in the external format (THE EXTERNAL FORMAT
+     above) at r's position, and on past it. *)
   PROCEDURE WriteBool*(VAR r: Rider; x: BOOLEAN);
   BEGIN
     IF x THEN Write(r, 1X) ELSE Write(r, 0X) END
@@ -814,6 +831,8 @@ MODULE Files;
     ToLittleEndian(x, b); WriteBytes(r, b, 8)
   END WriteLReal;
 
+  (* x as a variable-length number (THE EXTERNAL FORMAT above), which
+     ReadNum reads back. *)
   PROCEDURE WriteNum*(VAR r: Rider; x: SYSTEM.INT64);
   BEGIN
     WHILE (x < -64) OR (x > 63) DO

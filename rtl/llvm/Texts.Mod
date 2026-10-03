@@ -55,6 +55,7 @@ MODULE Texts;
   IMPORT SYSTEM, Files, Modules, Reals, RealDigits;
 
   CONST
+    (* the character an element reads as *)
     ElemChar* = 1CX;
     (* FileMsg.id *)
     load* = 0; store* = 1;
@@ -95,29 +96,35 @@ MODULE Texts;
       ascii: BOOLEAN (* read from a plain text file: line ends to CR *)
     END;
 
+    (* an element, a buffer of runs not yet in a text, a text *)
     Elem* = POINTER TO ElemDesc;
     Buffer* = POINTER TO BufDesc;
     Text* = POINTER TO TextDesc;
 
+    (* the base of the messages an element's handler is sent *)
     ElemMsg* = RECORD END;
     Handler* = PROCEDURE (e: Elem; VAR msg: ElemMsg);
 
+    (* W and H are the element's size, for a display (unused here) *)
     ElemDesc* = RECORD (RunDesc)
       W*, H*: LONGINT;
       handle*: Handler;
       base: Text (* the text it is in, NIL while in none *)
     END;
 
+    (* load or store (id) the element at text position pos, with r *)
     FileMsg* = RECORD (ElemMsg)
       id*: INTEGER;
       pos*: LONGINT;
       r*: Files.Rider
     END;
 
+    (* asks for a copy of the element, in e (NIL: none) *)
     CopyMsg* = RECORD (ElemMsg)
       e*: Elem
     END;
 
+    (* asks for the module and procedure (a command) that load the element *)
     IdentifyMsg* = RECORD (ElemMsg)
       mod*, proc*: ARRAY nameLength OF CHAR
     END;
@@ -127,6 +134,8 @@ MODULE Texts;
       head: Run (* the sentinel of its ring of runs *)
     END;
 
+    (* called after every change to a text that has one, with what changed
+       (replace, insert, delete) and the positions beg..end it covered *)
     Notifier* = PROCEDURE (T: Text; op: INTEGER; beg, end: LONGINT);
     TextDesc* = RECORD
       len*: LONGINT;
@@ -134,6 +143,8 @@ MODULE Texts;
       head: Run (* the sentinel of its ring of runs *)
     END;
 
+    (* reads a text from a position: eot at its end; each character's looks in
+       fnt, col and voff, and elem the element when the character is one *)
     Reader* = RECORD
       eot*: BOOLEAN;
       fnt*: Font;
@@ -144,6 +155,10 @@ MODULE Texts;
       org, off: LONGINT (* where run starts in the text, and how far in *)
     END;
 
+    (* reads a text by tokens (Scan): the token's class (Inval, Name, ...) and
+       its value in s and len (a name or string), i (Int), x (Real), y
+       (LongReal) or c (Char); nextCh the character after it; line the line
+       ends passed *)
     Scanner* = RECORD (Reader)
       nextCh*: CHAR;
       line*, class*: INTEGER;
@@ -155,6 +170,8 @@ MODULE Texts;
       s*: ARRAY 64 OF CHAR
     END;
 
+    (* writes into its buffer buf, with the looks fnt, col and voff, until the
+       buffer is inserted into a text *)
     Writer* = RECORD
       buf*: Buffer;
       fnt*: Font;
@@ -333,12 +350,15 @@ MODULE Texts;
 
   (* ELEMENTS *)
 
+  (* Copies the fields of SE that every element has into DE: for a handler
+     making a copy. *)
   PROCEDURE CopyElem*(SE, DE: Elem);
   BEGIN
     DE.len := SE.len; DE.fnt := SE.fnt; DE.col := SE.col; DE.voff := SE.voff;
     DE.W := SE.W; DE.H := SE.H; DE.handle := SE.handle
   END CopyElem;
 
+  (* The text E is in, NIL if none; ElemPos its position there. *)
   PROCEDURE ElemBase*(E: Elem): Text;
   BEGIN
     RETURN E.base
@@ -374,11 +394,13 @@ MODULE Texts;
 
   (* BUFFERS *)
 
+  (* Makes B an empty buffer. *)
   PROCEDURE OpenBuf*(B: Buffer);
   BEGIN
     B.head := NewSentinel(); B.len := 0
   END OpenBuf;
 
+  (* Appends a copy of what SB holds to DB. *)
   PROCEDURE Copy*(SB, DB: Buffer);
     VAR u: Run;
   BEGIN
@@ -386,6 +408,7 @@ MODULE Texts;
     WHILE u # SB.head DO INC(DB.len, CopyRun(u, 0, u.len, DB)); u := u.next END
   END Copy;
 
+  (* What the last Delete took out, NIL if it has been recalled. *)
   PROCEDURE Recall*(VAR B: Buffer);
   BEGIN
     B := deleted; deleted := NIL
@@ -393,6 +416,7 @@ MODULE Texts;
 
   (* TEXTS *)
 
+  (* Appends a copy of T's beg..end to B. *)
   PROCEDURE Save*(T: Text; beg, end: LONGINT; B: Buffer);
     VAR u: Run; org, off, count: LONGINT;
   BEGIN
@@ -405,6 +429,8 @@ MODULE Texts;
     END
   END Save;
 
+  (* Moves what B holds into T at pos, leaving B empty; Append inserts at
+     the end. *)
   PROCEDURE Insert*(T: Text; pos: LONGINT; B: Buffer);
     VAR after, before, first, last: Run; len: LONGINT;
   BEGIN
@@ -427,6 +453,7 @@ MODULE Texts;
     Insert(T, T.len, B)
   END Append;
 
+  (* Takes beg..end out of T (Recall gives it back). *)
   PROCEDURE Delete*(T: Text; beg, end: LONGINT);
     VAR first, stop, before: Run;
   BEGIN
@@ -444,6 +471,8 @@ MODULE Texts;
     IF T.notify # NIL THEN T.notify(T, delete, beg, end) END
   END Delete;
 
+  (* Sets the looks of T's beg..end that sel names: 0 the font (unless fnt
+     is NIL), 1 the colour, 2 the vertical offset. *)
   PROCEDURE ChangeLooks*(T: Text; beg, end: LONGINT; sel: SET; fnt: Font; col, voff: SYSTEM.INT8);
     VAR u, stop, before: Run;
   BEGIN
@@ -468,6 +497,7 @@ MODULE Texts;
     IF R.run IS Piece THEN Files.Set(R.rider, R.run(Piece).file, R.run(Piece).org + R.off) END
   END SetRider;
 
+  (* Sets R to read T from pos. *)
   PROCEDURE OpenReader*(VAR R: Reader; T: Text; pos: LONGINT);
   BEGIN
     Clamp(pos, T);
@@ -476,6 +506,7 @@ MODULE Texts;
     SetRider(R)
   END OpenReader;
 
+  (* The next character: ElemChar for an element, 0X with eot at the end. *)
   PROCEDURE Read*(VAR R: Reader; VAR ch: CHAR);
     VAR u: Run; p: Piece; next: CHAR; pos: LONGINT;
   BEGIN
@@ -501,6 +532,8 @@ MODULE Texts;
     END
   END Read;
 
+  (* Moves R on to just past the next element, in elem (NIL and eot if there
+     is none); ReadPrevElem moves back to the one before R. *)
   PROCEDURE ReadElem*(VAR R: Reader);
     VAR u: Run;
   BEGIN
@@ -527,6 +560,7 @@ MODULE Texts;
     END
   END ReadPrevElem;
 
+  (* The position R reads next. *)
   PROCEDURE Pos*(VAR R: Reader): LONGINT;
   BEGIN
     RETURN R.org + R.off
@@ -534,6 +568,7 @@ MODULE Texts;
 
   (* SCANNERS *)
 
+  (* Sets S to scan T from pos. *)
   PROCEDURE OpenScanner*(VAR S: Scanner; T: Text; pos: LONGINT);
   BEGIN
     OpenReader(S, T, pos); S.line := 0; S.nextCh := " "
@@ -659,6 +694,7 @@ MODULE Texts;
 
   (* WRITERS *)
 
+  (* Makes W a writer with an empty buffer and the default looks. *)
   PROCEDURE OpenWriter*(VAR W: Writer);
   BEGIN
     NEW(W.buf); OpenBuf(W.buf);
@@ -666,6 +702,7 @@ MODULE Texts;
     W.file := Files.New(""); Files.Set(W.rider, W.file, 0)
   END OpenWriter;
 
+  (* Sets the looks of what W writes next. *)
   PROCEDURE SetFont*(VAR W: Writer; fnt: Font);
   BEGIN
     W.fnt := fnt
@@ -681,6 +718,8 @@ MODULE Texts;
     W.voff := voff
   END SetOffset;
 
+  (* Appends ch to W's buffer, WriteElem e (an element in no text), WriteLn
+     a line end, CR. *)
   PROCEDURE Write*(VAR W: Writer; ch: CHAR);
     VAR last: Run; p: Piece; org: LONGINT;
   BEGIN
@@ -1001,6 +1040,8 @@ MODULE Texts;
     Files.Set(r, f, Files.Pos(msg.r) + storedLength)
   END LoadText;
 
+  (* Reads a text, its header and characters (after an optional V4 tag),
+     from r into T. *)
   PROCEDURE Load*(VAR r: Files.Rider; T: Text);
     VAR tag: INTEGER;
   BEGIN
@@ -1009,6 +1050,8 @@ MODULE Texts;
     LoadText(r, T)
   END Load;
 
+  (* T as the file name holds it (see THE FILE FORMAT above); empty if
+     there is no such file. *)
   PROCEDURE Open*(T: Text; name: ARRAY OF CHAR);
     VAR f: Files.File; r: Files.Rider; p: Piece; tag, version: CHAR; headerLength: LONGINT;
   BEGIN
@@ -1080,6 +1123,7 @@ MODULE Texts;
     END
   END StorePiece;
 
+  (* Writes T, header and characters, to r. *)
   PROCEDURE Store*(VAR r: Files.Rider; T: Text);
     VAR
       fix: Files.Rider; u, v: Run; org, pos, runLength: LONGINT;

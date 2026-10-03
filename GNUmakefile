@@ -215,7 +215,8 @@ check-strict: $(STAGE1_BIN)
 # POC_LIBRARY_PATH). poc-rtl is put there by poc -install-library itself,
 # which replaces an older copy and leaves any other library alone. MANDIR
 # follows each system's hier(7): share/man on Linux and FreeBSD, man on
-# OpenBSD and NetBSD (pkgsrc). poc(1) and the guides come with steps 6-7.
+# OpenBSD and NetBSD (pkgsrc). poc(1) goes in MANDIR/man1, the guides in
+# DOCDIR.
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 LIBDIR ?= $(PREFIX)/lib
@@ -225,7 +226,7 @@ STAGE2_BIN := $(BUILD_DIR)/stage2/bin/poc
 STAGE2_LIB := $(BUILD_DIR)/stage2/lib/poc
 INSTALL_MODELS := O2 OC O2-g OC-g
 INSTALL_RTL := $(foreach m,$(INSTALL_MODELS),$(STAGE2_LIB)/$(HOST_TRIPLE)/$(m)/poc-rtl.library)
-DOCS := README.md LICENSE doc/users-guide.md
+DOCS := README.md LICENSE doc/users-guide.md doc/reference-guide.md
 
 # the Stage 2 poc, made (and compared with Stage 1) only when it is not there
 # or Stage 1 changed; `make stage2` always remakes it
@@ -244,8 +245,9 @@ install: $(STAGE2_BIN) $(INSTALL_RTL)
 	@if [ "$(abspath $(BINDIR)/../lib)" != "$(abspath $(LIBDIR))" ]; then \
 	  echo "note: LIBDIR is not BINDIR/../lib: the installed poc needs POC_LIBRARY_PATH=$(LIBDIR)/poc"; \
 	fi
-	install -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(LIBDIR)/poc $(DESTDIR)$(DOCDIR)
+	install -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(LIBDIR)/poc $(DESTDIR)$(DOCDIR) $(DESTDIR)$(MANDIR)/man1
 	install -m 755 $(STAGE2_BIN) $(DESTDIR)$(BINDIR)/poc
+	install -m 644 doc/poc.1 $(DESTDIR)$(MANDIR)/man1/poc.1
 	for model in O2 OC; do \
 	  $(STAGE2_BIN) -$$model -clear-library-path -library-path $(STAGE2_LIB) \
 	    -output-dir $(DESTDIR)$(LIBDIR)/poc -install-library poc-rtl >/dev/null || exit 1; \
@@ -258,7 +260,7 @@ install: $(STAGE2_BIN) $(INSTALL_RTL)
 # name), the docs; then each directory left empty. Other libraries
 # installed beside poc-rtl stay.
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/poc
+	rm -f $(DESTDIR)$(BINDIR)/poc $(DESTDIR)$(MANDIR)/man1/poc.1
 	@for model in $(INSTALL_MODELS); do \
 	  dir=$(DESTDIR)$(LIBDIR)/poc/$(HOST_TRIPLE)/$$model; \
 	  if [ -f $$dir/poc-rtl.library ]; then \
@@ -272,7 +274,7 @@ uninstall:
 	done
 	-rmdir $(DESTDIR)$(LIBDIR)/poc/$(HOST_TRIPLE) $(DESTDIR)$(LIBDIR)/poc 2>/dev/null
 	cd $(DESTDIR)$(DOCDIR) 2>/dev/null && rm -f $(notdir $(DOCS))
-	-rmdir $(DESTDIR)$(DOCDIR) 2>/dev/null
+	-rmdir $(DESTDIR)$(DOCDIR) $(DESTDIR)$(MANDIR)/man1 $(DESTDIR)$(MANDIR) 2>/dev/null
 
 # Installs into a scratch DESTDIR outside the source tree and runs
 # test/install/check.sh with only the installed poc: no voc on PATH, no

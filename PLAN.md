@@ -673,6 +673,28 @@ mismatch).
    what was considered, how it is built) and the Reference Guide documents
    the extension as actually implemented (what a program can write and
    what it gets); each points to the other.
+   **Done (2026-10-03).** `doc/reference-guide.md`, nine sections: the
+   basic types, the implementation's choices, the extensions (each under
+   its `doc/language-extensions.md` heading), `SYSTEM`, the exact rules,
+   traps and exit statuses, the command line, files and formats (objects'
+   keys, `.sym`, a library's directory and manifest), and the runtime
+   modules. That last chapter is generated: `tools/rtl-reference
+   check|update` (sh and POSIX awk, for the BSD hosts, which have no
+   python3) writes, for each module of `rtl/llvm`, its header comment and
+   its `poc -show-interface`, each declaration under the comment that
+   precedes it in the source, between the guide's `<!-- rtl-reference
+   begin/end -->` lines; the fixture `doc-reference-guide` runs `check`.
+   Writing it completed the modules' comments (Files, Math, MathL, Texts,
+   Platform, GarbageCollectedHeap, Modules, Oberon, In, Out, Err, Args,
+   VT100 and the internal ones; a group of declarations shares one
+   comment) and found: `-emit-interface` and `-show-interface` did not
+   search libraries for imports either (as `-check` until step 6), so an
+   rtl module's interface could not be shown; `-check` needs its imports
+   compiled, which the User's Guide now says; and two rows of
+   `doc/language-extensions.md` that predated D16 (locals zeroed) and
+   `-range-checks`. `doc/poc.1` (mdoc) goes to `MANDIR/man1` and the
+   guide to `DOCDIR`; `make check-install` renders the installed page
+   with `man` and finds both guides.
 8. **OS packages.** A Fedora RPM spec (built with `rpmbuild` on atla), a
    FreeBSD port (on alerik, with `poudriere` or `make package`), an
    OpenBSD port (on cymoril), and a pkgsrc package (on artos), each built

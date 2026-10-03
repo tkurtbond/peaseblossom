@@ -69,6 +69,9 @@ MODULE Math;
   IMPORT SYSTEM;
 
   CONST
+    (* pi and e; the number of bits in the fraction (with its leading 1); the
+       largest number and the smallest normal one; the largest and smallest
+       exponent of a normal number *)
     pi* = 3.14159265358979323846;
     e* = 2.71828182845904523536;
     places* = 24;
@@ -92,6 +95,8 @@ MODULE Math;
     Underflow* = 11;
 
   VAR
+    (* Called with the error code of a function that cannot give a real
+       answer; at first a handler that stores the code in err. *)
     ErrorHandler*: PROCEDURE (errno: INTEGER);
     err-: INTEGER;
     TanhMax: REAL; (* what arctanh gives for a number at or beyond +-1 *)
@@ -123,11 +128,14 @@ MODULE Math;
     err := errno
   END DefaultErrorHandler;
 
+  (* err := NoError *)
   PROCEDURE ClearError*;
   BEGIN
     err := NoError
   END ClearError;
 
+  (* Always FALSE: an error goes to the error handler, never to an exception
+     (voc's interface keeps it from the ISO library). *)
   PROCEDURE IsRMathException*(): BOOLEAN;
   BEGIN
     RETURN FALSE
@@ -154,6 +162,8 @@ MODULE Math;
 
   (* ---- real number properties ---- *)
 
+  (* The exponent of x, the power of 2 with x = fraction(x) * 2^exponent(x):
+     0 for 0, expoMax + 1 for an infinity or a not-a-number. *)
   PROCEDURE exponent*(x: REAL): INTEGER;
   BEGIN
     IF x = 0 THEN RETURN 0 END;
@@ -161,23 +171,29 @@ MODULE Math;
     RETURN SHORT(ENTIER(CLogb(LONG(x))))
   END exponent;
 
+  (* x without its exponent, 1 <= |fraction(x)| < 2; 0, an infinity or a
+     not-a-number comes back as it is. *)
   PROCEDURE fraction*(x: REAL): REAL;
   BEGIN
     IF (x = 0) OR ~Finite(x) THEN RETURN x END;
     RETURN SHORT(CLdexp(LONG(x), -exponent(x)))
   END fraction;
 
+  (* -1 if x is negative, else 1 (0 included). *)
   PROCEDURE sign*(x: REAL): REAL;
   BEGIN
     IF x < 0 THEN RETURN -1 ELSE RETURN 1 END
   END sign;
 
+  (* x * 2^n, exactly where the result is representable. *)
   PROCEDURE scale*(x: REAL; n: INTEGER): REAL;
   BEGIN
     IF (x = 0) OR ~Finite(x) THEN RETURN x END;
     RETURN Narrow(CLdexp(LONG(x), n))
   END scale;
 
+  (* The distance from |x| to the next larger number of x's exponent: one
+     unit in the last place. *)
   PROCEDURE ulp*(x: REAL): REAL;
     VAR expo: INTEGER;
   BEGIN
@@ -187,6 +203,7 @@ MODULE Math;
     RETURN SHORT(CLdexp(1.0D0, expo - places + 1))
   END ulp;
 
+  (* The next number above x, pred the next below it. *)
   PROCEDURE succ*(x: REAL): REAL;
   BEGIN
     IF x >= large THEN
@@ -207,6 +224,9 @@ MODULE Math;
 
   (* ---- elementary functions ---- *)
 
+  (* The elementary functions, each with the error in the module's table: the
+     square root, e^x, the natural logarithm, the logarithm to the base, and
+     base^exp. *)
   PROCEDURE sqrt*(x: REAL): REAL;
   BEGIN
     IF x < 0 THEN
@@ -264,6 +284,7 @@ MODULE Math;
     RETURN result
   END power;
 
+  (* x to the whole power base (despite its name, voc's, base is the exponent). *)
   PROCEDURE ipower*(x: REAL; base: INTEGER): REAL;
     VAR d: LONGREAL;
   BEGIN
@@ -278,6 +299,7 @@ MODULE Math;
     RETURN SHORT(d)
   END ipower;
 
+  (* The trigonometric functions, in radians. *)
   PROCEDURE sin*(x: REAL): REAL;
   BEGIN
     RETURN SHORT(CSin(LONG(x)))
@@ -293,12 +315,15 @@ MODULE Math;
     RETURN Narrow(CTan(LONG(x)))
   END tan;
 
+  (* The sine and cosine of x at once. *)
   PROCEDURE sincos*(x: REAL; VAR Sin, Cos: REAL);
   BEGIN
     Sin := SHORT(CSin(LONG(x)));
     Cos := SHORT(CCos(LONG(x)))
   END sincos;
 
+  (* The inverse trigonometric functions, in radians: arcsin in -pi/2..pi/2,
+     arccos in 0..pi, arctan in -pi/2..pi/2. *)
   PROCEDURE arcsin*(x: REAL): REAL;
   BEGIN
     IF (x > 1) OR (x < -1) THEN
@@ -322,6 +347,8 @@ MODULE Math;
     RETURN SHORT(CAtan(LONG(x)))
   END arctan;
 
+  (* The angle of the point (xd, xn) from the positive x-axis, in -pi..pi: the
+     arctangent of xn / xd in the right quadrant. *)
   PROCEDURE arctan2*(xn, xd: REAL): REAL;
   BEGIN
     IF (xn = 0) & (xd = 0) THEN
@@ -331,6 +358,7 @@ MODULE Math;
     RETURN SHORT(CAtan2(LONG(xn), LONG(xd)))
   END arctan2;
 
+  (* The hyperbolic functions and their inverses. *)
   PROCEDURE sinh*(x: REAL): REAL;
   BEGIN
     RETURN Narrow(CSinh(LONG(x)))

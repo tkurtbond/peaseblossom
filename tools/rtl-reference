@@ -1,0 +1,166 @@
+#!/bin/sh
+# The Reference Guide's chapter on the runtime modules, generated from
+# their source (Phase 13 step 7), so that it cannot go stale without the
+# test suite saying so.
+#
+# Usage: rtl-reference check|update <reference.md> <rtl dir> <work dir>
+#
+# For each module of the rtl directory, in alphabetical order: its header
+# comment (the first comment after MODULE, which describes the module and
+# says where it differs from voc's), then its interface as poc
+# -show-interface prints it, each exported declaration preceded by the
+# comment that precedes it in the source. The chapter is what lies between
+# the lines "<!-- rtl-reference begin -->" and "<!-- rtl-reference end -->"
+# of the guide. check compares it with a new one and prints the
+# difference; update writes the new one into the guide. Exit status 0 when
+# nothing differs (check) or the guide was written (update). poc must be on
+# PATH, with poc-rtl on its library path.
+set -u
+LC_ALL=C; export LC_ALL
+
+mode=$1; guide=$2; rtl=$3; work=$4
+case $mode in check|update) ;; *) echo "rtl-reference: check or update, not $mode" >&2; exit 2 ;; esac
+rm -rf "$work"; mkdir -p "$work" || exit 2
+
+# The modules a program does not import itself: poc's own machinery
+internal=" FileDescriptorOutput FormattedOutput ModuleTable RealDigits "
+
+# The header comment of a module: the first comment after "MODULE M;",
+# without the "PLAN.md Phase ...: " a developer's note starts with
+header() {
+  awk '
+    !started && /^MODULE / { inmodule = 1; next }
+    inmodule && !started && /\(\*/ { started = 1; sub(/^[ \t]*\(\*[ \t]?/, "") }
+    started {
+      line = $0
+      done = sub(/[ \t]*\*\)[ \t]*$/, "", line)
+      sub(/^     /, "", line)
+      if (first == 0) { sub(/^PLAN\.md [^:]*: /, "", line); first = 1 }
+      print line
+      if (done) exit
+    }
+  ' "$1"
+}
+
+# name<TAB>comment for each exported declaration with a comment: the comment
+# that ends on the line just before it (a blank line in between breaks the
+# link), or else one at the end of its own line; the comment's lines joined
+# with a newline written as \n
+comments() {
+  awk '
+    function flush() { pending = ""; incomment = 0 }
+    {
+      line = $0
+      if (incomment) {
+        text = text "\n" line
+        if (line ~ /\*\)/) { incomment = 0; pending = text }
+        next
+      }
+      if (line ~ /^[ \t]*$/) { flush(); next }
+      if (line ~ /^[ \t]*\(\*/) {
+        text = line
+        if (line ~ /\*\)[ \t]*$/) pending = text; else incomment = 1
+        next
+      }
+      # a declaration: PROCEDURE [receiver] [flags] Name*, or Name* / Name- in
+      # a CONST, TYPE or VAR section
+      name = ""
+      if (match(line, /PROCEDURE[ \t]*(\([^)]*\)[ \t]*)?(\[[^]]*\][ \t]*)?[A-Za-z_][A-Za-z0-9_]*\*/)) {
+        decl = substr(line, RSTART, RLENGTH - 1)
+        sub(/.*[^A-Za-z0-9_]/, "", decl); name = decl
+      } else if (match(line, /^[ \t]*[A-Za-z_][A-Za-z0-9_]*[*-]/)) {
+        decl = substr(line, RSTART, RLENGTH - 1); sub(/^[ \t]*/, "", decl); name = decl
+      }
+      if (name != "" && !(name in seen)) {
+        c = pending
+        if (c == "" && match(line, /\(\*.*\*\)[ \t]*$/)) c = substr(line, RSTART, RLENGTH)
+        if (c != "") { gsub(/\n/, "\\n", c); printf "%s\t%s\n", name, c; seen[name] = 1 }
+      }
+      flush()
+    }
+  ' "$1"
+}
+
+# The interface, each declaration after its comment, re-indented to match
+interface() {
+  module=$1; file=$2
+  poc -show-interface "$file" > "$work/$module.interface" 2> "$work/$module.errors" || {
+    echo "rtl-reference: poc -show-interface $file failed:" >&2; cat "$work/$module.errors" >&2; exit 1; }
+  comments "$file" > "$work/$module.comments"
+  awk -v commentsfile="$work/$module.comments" '
+    BEGIN {
+      FS = "\t"
+      while ((getline entry < commentsfile) > 0) {
+        split(entry, part, "\t"); comment[part[1]] = part[2]
+      }
+      FS = " "
+    }
+    /^  IMPORT / { next }
+    {
+      name = ""
+      line = $0
+      if (match(line, /PROCEDURE[ \t]*(\([^)]*\)[ \t]*)?[A-Za-z_][A-Za-z0-9_]*\*/)) {
+        name = substr(line, RSTART, RLENGTH - 1); sub(/.*[^A-Za-z0-9_]/, "", name)
+      } else if (match(line, /^    [A-Za-z_][A-Za-z0-9_]*[*-]/)) {
+        name = substr(line, RSTART, RLENGTH - 1); sub(/^ */, "", name)
+      }
+      if (name != "" && (name in comment)) {
+        indent = line; sub(/[^ ].*/, "", indent)
+        if (previous !~ /^ *(CONST|TYPE|VAR)$/ && previous !~ /^MODULE /) print ""
+        n = split(comment[name], text, "\\\\n")
+        # the source indentation of the comment, taken off every line
+        lead = text[1]; sub(/[^ \t].*/, "", lead)
+        for (i = 1; i <= n; i++) {
+          t = text[i]
+          if (substr(t, 1, length(lead)) == lead) t = substr(t, length(lead) + 1)
+          print indent t
+        }
+      }
+      print; previous = line
+    }
+  ' "$work/$module.interface"
+}
+
+{
+  echo "<!-- rtl-reference begin -->"
+  echo "<!-- Generated by tools/rtl-reference from rtl/llvm; edit the modules, then run it with update. -->"
+  for file in "$rtl"/*.Mod; do
+    module=$(basename "$file" .Mod)
+    echo
+    case $internal in
+      *" $module "*) echo "### $module (poc's own)" ;;
+      *) echo "### $module" ;;
+    esac
+    echo
+    echo '```text'
+    header "$file"
+    echo '```'
+    echo
+    echo '```oberon'
+    interface "$module" "$file"
+    echo '```'
+  done
+  echo
+  echo "<!-- rtl-reference end -->"
+} > "$work/chapter.md"
+
+# the guide without the chapter, and the chapter now in it
+awk '/^<!-- rtl-reference begin -->$/ { skip = 1 } !skip { print } /^<!-- rtl-reference end -->$/ { skip = 0 }' \
+  "$guide" > "$work/rest.md"
+awk '/^<!-- rtl-reference begin -->$/ { keep = 1 } keep { print } /^<!-- rtl-reference end -->$/ { keep = 0 }' \
+  "$guide" > "$work/old.md"
+if ! grep -q '^<!-- rtl-reference begin -->$' "$guide"; then
+  echo "rtl-reference: $guide has no line <!-- rtl-reference begin -->" >&2; exit 2
+fi
+
+if [ "$mode" = check ]; then
+  if cmp -s "$work/old.md" "$work/chapter.md"; then exit 0; fi
+  echo "rtl-reference: the runtime modules' chapter is not what the modules say:"
+  diff "$work/old.md" "$work/chapter.md"
+  exit 1
+fi
+awk -v chapter="$work/chapter.md" '
+  /^<!-- rtl-reference begin -->$/ { while ((getline line < chapter) > 0) print line; skip = 1; next }
+  /^<!-- rtl-reference end -->$/ { skip = 0; next }
+  !skip { print }
+' "$guide" > "$work/guide.md" && cp "$work/guide.md" "$guide"

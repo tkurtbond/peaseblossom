@@ -1,0 +1,474 @@
+.Dd October 3, 2026
+.Dt POC 1
+.Os
+.Sh NAME
+.Nm poc
+.Nd the Peaseblossom Oberon-2 compiler
+.Sh SYNOPSIS
+.Nm
+.Op Ar option ...
+.Op Fl build
+.Ar file
+.Nm
+.Op Ar option ...
+.Fl check Ar file
+.Nm
+.Op Ar option ...
+.Fl compile Ar file ...
+.Nm
+.Op Ar option ...
+.Fl library Ar name Ar file ...
+.Nm
+.Op Ar option ...
+.Fl install-library Ar name
+.Nm
+.Op Ar option ...
+.Fl emit-interface | show-interface | emit-llvm-ir
+.Ar file
+.Nm
+.Op Ar option ...
+.Fl print-import-path | print-library-path
+.Nm
+.Op Fl target Ar triple
+.Op Fl O2 | OC
+.Fl version
+.Nm
+.Fl help
+.Sh DESCRIPTION
+.Nm
+compiles programs written in Oberon-2, as the report
+.Em The Programming Language Oberon-2
+by H. M\(:ossenb\(:ock and N. Wirth defines it, with a few extensions
+.Pq Fl strict No turns them off .
+It compiles through LLVM, running
+.Xr clang 1
+to compile and link, and its runtime library has the modules of the Vishap
+Oberon compiler
+.Pq voc
+with their interfaces.
+.Pp
+A
+.Ar file
+is a module's source.
+Its name need not match the module's; by custom it is
+.Pa Module.Mod .
+The modules it imports are found in libraries, then as sources or compiled
+modules on the import path
+.Pq see Sx MODULES AND LIBRARIES .
+.Pp
+Options come before the command; when an option is given twice, the later
+one wins.
+.Nm
+says nothing when it succeeds in building a program, a library or a
+compilation.
+It writes each error as
+.Ar file : Ns Ar line : Ns Ar column : No error : Ar what ,
+on the standard error, and then their number.
+.Ss Commands
+.Bl -tag -width Ds
+.It Ar file , Fl build Ar file
+Build a program:
+compile the module in
+.Ar file
+and each module it imports that no library has, each to
+.Pa Module.sym ,
+.Pa Module.ll
+and
+.Pa Module.o ,
+and link them with the libraries into an executable named after the
+module, in the current directory.
+.It Fl check Ar file
+Check the module against the interfaces of the modules it imports, and
+write nothing but
+.Dq semantic OK
+or the errors.
+Imports come only from libraries and
+.Pa .sym
+files, and are never compiled.
+.It Fl compile Ar file ...
+Compile each module to
+.Pa .sym ,
+.Pa .ll
+and
+.Pa .o ,
+and link nothing.
+A module's
+.Pa .sym
+and
+.Pa .o
+can then stand in for its source.
+.It Fl library Ar name Ar file ...
+Build the library
+.Ar name
+from the modules: in
+.Ar output-dir Ns Pa / Ns Ar triple Ns Pa / Ns Ar model Ns Pa / ,
+the archive
+.Pa lib Ns Ar name Ns Pa .a ,
+the shared library
+.Pa lib Ns Ar name Ns Pa .so ,
+each module's
+.Pa .sym ,
+.Pa .ll ,
+.Pa .o
+and
+.Pa .owner ,
+and the manifest
+.Ar name Ns Pa .library .
+.It Fl install-library Ar name
+Copy the library
+.Ar name
+from the library path into
+.Ar output-dir Ns Pa / Ns Ar triple Ns Pa / Ns Ar model Ns Pa / ,
+or without
+.Fl output-dir
+into
+.Nm Ns 's
+own library directory.
+.It Fl emit-interface Ar file
+Write the module's interface,
+.Pa Module.sym .
+.It Fl show-interface Ar file
+Print the module's interface on the standard output.
+.It Fl emit-llvm-ir Ar file
+Write the module's LLVM IR,
+.Pa Module.ll .
+.It Fl print-import-path , Fl print-library-path
+Print the import path or the library path as the options before it leave
+it.
+.It Fl version
+Print the version of
+.Nm
+and the commit it was built from, the target and size model, and the
+version of
+.Xr clang 1 .
+.It Fl help
+Print a summary of the commands and options on the standard output.
+.El
+.Pp
+.Nm
+with no arguments lists every command and option on the standard error,
+including commands for testing
+.Nm
+itself:
+.Fl dump-tokens ,
+.Fl check-syntax ,
+.Fl dump-layout ,
+.Fl dump-llvm-types
+and
+.Fl dump-nested .
+.Ss Options
+.Bl -tag -width Ds
+.It Fl o Ar exe
+Name the executable
+.Ar exe .
+.It Fl O2 , Fl OC
+The size model.
+Under
+.Fl O2 ,
+the default,
+.Vt SHORTINT ,
+.Vt INTEGER
+and
+.Vt LONGINT
+have 8, 16 and 32 bits; under
+.Fl OC ,
+16, 32 and 64.
+.Vt HUGEINT
+has 64 bits and
+.Vt SET
+32 under both.
+A program and the modules it imports share one model.
+.It Fl import-path Ar dir
+Add
+.Ar dir
+to the directories searched for modules.
+May be repeated.
+.It Fl clear-import-path
+Empty the import path, including the directories of
+.Ev POC_IMPORT_PATH .
+.It Fl library-path Ar dir
+Add
+.Ar dir
+to the directories searched for libraries.
+May be repeated.
+.It Fl clear-library-path
+Search no library directory: neither
+.Fl library-path Ns 's
+before it,
+.Ev POC_LIBRARY_PATH Ns 's ,
+nor
+.Nm Ns 's
+own.
+.It Fl output-dir Ar dir
+Write
+.Pa .sym ,
+.Pa .ll
+and
+.Pa .o
+files, and libraries, in
+.Ar dir ,
+making it if it is not there.
+.It Fl target Ar triple
+Compile for the LLVM target
+.Ar triple
+instead of the host, as far as
+.Xr clang 1
+can; linking needs the target's C library.
+.It Fl opt Ar level
+Have
+.Xr clang 1
+optimize at
+.Ar level :
+0, 1, 2, 3, s, z or g.
+The default is 2, and 0 on 32-bit x86, whose reals are the x87's.
+.It Fl g
+Generate debugging information for
+.Xr gdb 1
+and
+.Xr lldb 1 ,
+and look for each library's debugging copy first.
+Best with
+.Fl opt Cm 0
+or
+.Fl opt Cm g .
+.It Fl trap-location
+Begin each trap's message with the file, line and column of the trap, and
+end it with the procedure's name.
+.It Fl trap-heap-exhausted
+Make a
+.Fn NEW
+that the heap cannot satisfy a trap, exit status 11, instead of leaving the
+pointer NIL.
+.It Fl range-checks
+Make
+.Fn SHORT
+of an integer, and
+.Fn CHR ,
+of a value that does not fit a trap, exit status 14.
+.It Fl strict
+Accept in the module named only the language of the report: each of
+.Nm Ns 's
+extensions is an error there.
+The modules it imports are not checked.
+.It Fl static
+Link a fully static executable.
+.It Fl shared-libraries
+Link the libraries' shared objects instead of their archives.
+.It Fl link Ar arg
+Pass
+.Ar arg
+to the link, such as
+.Fl l Ns Ar lib
+or
+.Fl L Ns Ar dir .
+May be repeated.
+.It Fl c-flag Ar arg
+Pass
+.Ar arg
+to
+.Xr clang 1
+when it compiles a module's part in C,
+.Pa Module.c
+beside
+.Pa Module.Mod .
+May be repeated.
+.It Fl lto
+Compile to LLVM bitcode, and optimize the whole program when it is linked.
+.It Fl verbose
+Print each command
+.Nm
+runs.
+.El
+.Sh MODULES AND LIBRARIES
+A module named in an
+.Ic IMPORT
+is taken from the first of:
+.Bl -enum
+.It
+a library on the library path;
+.It
+.Pa Module.Mod
+or
+.Pa Module.mod
+in the current directory, then in each directory of the import path;
+.It
+.Pa Module.sym
+with
+.Pa Module.o
+or
+.Pa Module.ll ,
+searched for in the same way.
+.El
+.Pp
+The import path is the directories of
+.Ev POC_IMPORT_PATH ,
+then those of each
+.Fl import-path .
+The library path is the directories of each
+.Fl library-path ,
+then those of
+.Ev POC_LIBRARY_PATH ,
+then
+.Nm Ns 's
+own library directory,
+.Pa ../lib/poc
+from the directory of the
+.Nm
+executable.
+A library is in the subdirectory
+.Ar triple Ns Pa / Ns Ar model
+of one of them, where
+.Ar model
+is
+.Li O2
+or
+.Li OC ,
+with
+.Li -g
+appended for its debugging copy.
+.Pp
+Each module's object records the interfaces its imports had when it was
+compiled, so a program links only if all its modules agree.
+.Sh ENVIRONMENT
+.Bl -tag -width Ds
+.It Ev POC_IMPORT_PATH
+Directories, separated by colons, searched for modules before those of
+.Fl import-path .
+.It Ev POC_LIBRARY_PATH
+Directories, separated by colons, searched for libraries after those of
+.Fl library-path .
+.It Ev PATH
+Where
+.Nm
+finds
+.Xr clang 1 .
+.El
+.Sh FILES
+.Bl -tag -width Ds
+.It Pa Module.sym
+A module's interface, as Oberon text.
+.It Pa Module.ll
+A module's LLVM IR.
+.It Pa Module.o
+A module's object.
+.It Pa Module.c
+A module's part in C, compiled and linked with it.
+.It Pa ../lib/poc/ Ns Ar triple Ns Pa / Ns Ar model Ns Pa /
+The runtime library,
+.Li poc-rtl ,
+relative to the directory of the
+.Nm
+executable.
+.El
+.Sh EXIT STATUS
+.Nm
+exits 0 when it did what was asked, and 1 when it reported an error or its
+arguments were wrong.
+.Pp
+A program
+.Nm
+built exits 0 when its main module's body ends,
+.Ar n
+after
+.Fn HALT n ,
+and on a trap, after writing what happened on the standard error:
+.Pp
+.Bl -tag -width Ds -compact
+.It 2
+an index out of range
+.It 3
+no matching
+.Ic CASE
+label
+.It 4
+a NIL pointer dereference, or a call of a NIL procedure value
+.It 5
+a type guard that failed
+.It 6
+no matching
+.Ic WITH
+guard
+.It 7
+a length of a dynamic array that is not positive, or too large
+.It 8
+.Fn ENTIER
+of a value that does not fit a
+.Vt LONGINT
+.It 9
+an open array assigned to an array too short for it
+.It 10
+.Fn ASSERT
+failed
+.It 11
+heap exhausted
+.Pq with Fl trap-heap-exhausted
+.It 12
+a function procedure that reached its end without
+.Ic RETURN
+.It 13
+a record assigned to a variable whose dynamic type extends its static type
+.It 14
+.Fn SHORT
+or
+.Fn CHR
+out of range
+.Pq with Fl range-checks
+.It 99
+a file error the runtime module
+.Li Files
+cannot return
+.El
+.Sh EXAMPLES
+Build and run a program:
+.Bd -literal -offset indent
+$ poc Hello.Mod
+$ ./Hello
+.Ed
+.Pp
+Build a program from modules in
+.Pa ../lib ,
+under the larger size model, with debugging information:
+.Bd -literal -offset indent
+$ poc -OC -g -opt 0 -import-path ../lib -o main Main.Mod
+.Ed
+.Pp
+Check a module against the report alone:
+.Bd -literal -offset indent
+$ poc -strict -check Counter.Mod
+.Ed
+.Pp
+Build a library of two modules, and a program that uses it:
+.Bd -literal -offset indent
+$ poc -output-dir lib -library shapes Shapes.Mod Areas.Mod
+$ poc -library-path lib Main.Mod
+.Ed
+.Sh SEE ALSO
+.Xr clang 1 ,
+.Xr gdb 1 ,
+.Xr lldb 1
+.Pp
+.Em The Peaseblossom User's Guide
+.Pq Pa users-guide.md
+shows how to use
+.Nm ;
+.Em The Peaseblossom Reference Guide
+.Pq Pa reference-guide.md
+gives its exact rules, its extensions and the runtime modules'
+interfaces.
+Both are installed in the documentation directory.
+.Rs
+.%A H. M\(:ossenb\(:ock
+.%A N. Wirth
+.%T The Programming Language Oberon-2
+.%I ETH Z\(:urich
+.Re
+.Sh AUTHORS
+.An T. Kurt Bond
+.Sh BUGS
+An integer
+.Ic DIV
+or
+.Ic MOD
+by zero kills the program with
+.Dv SIGFPE
+on x86, and gives a value on aarch64; neither is checked.

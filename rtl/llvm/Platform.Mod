@@ -50,6 +50,7 @@ MODULE Platform;
   IMPORT SYSTEM;
 
   CONST
+    (* the handles of standard input, output and error *)
     StdIn* = 0;
     StdOut* = 1;
     StdErr* = 2;
@@ -79,9 +80,12 @@ MODULE Platform;
   TYPE
     SignalHandler = PROCEDURE (signal: SYSTEM.INT32);
 
+    (* 0, or the errno value of a call that failed; an open file's
+       descriptor *)
     ErrorCode* = INTEGER;
     FileHandle* = LONGINT;
 
+    (* which file a file is, and when it was last modified *)
     FileIdentity* = RECORD
       volume: LONGINT; (* the device *)
       index: LONGINT; (* the inode *)
@@ -89,6 +93,9 @@ MODULE Platform;
     END;
 
   VAR
+    (* whether the machine stores the least significant byte first; the
+       process id; the working directory, as at the start and after Chdir; the
+       whence values for Seek *)
     LittleEndian-: BOOLEAN;
     PID-: INTEGER;
     CWD-: ARRAY cwdLength OF CHAR;
@@ -161,8 +168,11 @@ MODULE Platform;
     RETURN Code(CErrno())
   END Error;
 
-  (* Error tests *)
-
+  (* Error tests: whether the error code e means too many open files, no
+     such directory, a rename across file systems, no permission, no such
+     file, a time-out, a refused or failed connection, or a call
+     interrupted by a signal. NoSuchDirectory and Absent test the same
+     codes. *)
   PROCEDURE TooManyFiles*(e: ErrorCode): BOOLEAN;
   BEGIN RETURN CIsError(tooManyFilesClass, e) # 0
   END TooManyFiles;
@@ -196,7 +206,6 @@ MODULE Platform;
   END Interrupted;
 
   (* File and path name length limits: NAME_MAX and PATH_MAX *)
-
   PROCEDURE MaxNameLength*(): INTEGER;
   BEGIN RETURN SYSTEM.VAL(INTEGER, CMaxNameLength())
   END MaxNameLength;
@@ -206,7 +215,6 @@ MODULE Platform;
   END MaxPathLength;
 
   (* Memory from the system, outside the collected heap: malloc and free *)
-
   PROCEDURE OSAllocate*(size: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
   BEGIN RETURN CMalloc(size)
   END OSAllocate;
@@ -248,8 +256,9 @@ MODULE Platform;
   END GetEnv;
 
   (* Signals: handler is called with the signal's number when the process
-     gets it. A handler stays in place until another replaces it. *)
-
+     gets it (SIGINT, SIGQUIT, SIGILL). A handler stays in place until
+     another replaces it. Its type, SignalHandler, is not exported (as in
+     voc): PROCEDURE (signal: SYSTEM.INT32). *)
   PROCEDURE SetInterruptHandler*(handler: SignalHandler);
   BEGIN CSetHandler(interruptSignal, SYSTEM.VAL(SYSTEM.ADDRESS, handler))
   END SetInterruptHandler;
@@ -283,7 +292,10 @@ MODULE Platform;
     ClockOf(year, month, day, hour, minute, second, t, d)
   END LocalClock;
 
-  (* The local time now, in ClockOf's format. *)
+  (* The local time now, in the Oberon system's format: d holds the year
+     modulo 100 (bits 9 and up), the month 1..12 (bits 5-8) and the day
+     (bits 0-4); t the hour (bits 12 and up), the minute (bits 6-11) and
+     the second (bits 0-5). *)
   PROCEDURE GetClock*(VAR t, d: LONGINT);
     VAR seconds, microseconds: SYSTEM.INT64;
   BEGIN
@@ -359,6 +371,7 @@ MODULE Platform;
   BEGIN RETURN Open(n, openNew, h)
   END New;
 
+  (* Closes h. *)
   PROCEDURE Close*(h: FileHandle): ErrorCode;
   BEGIN RETURN Code(CClose(SYSTEM.VAL(SYSTEM.INT32, h)))
   END Close;
@@ -423,6 +436,7 @@ MODULE Platform;
     identity.mtime := SYSTEM.VAL(LONGINT, mtime)
   END SetIdentity;
 
+  (* The identity of the open file h, or of the file named n *)
   PROCEDURE Identify*(h: FileHandle; VAR identity: FileIdentity): ErrorCode;
     VAR volume, index, mtime, size: SYSTEM.INT64; e: SYSTEM.INT32;
   BEGIN
@@ -442,6 +456,9 @@ MODULE Platform;
     RETURN Code(e)
   END IdentifyByName;
 
+  (* Whether i1 and i2 are the same file (device and inode); whether they
+     were last modified at the same time (in seconds); target's time made
+     source's (in the identity, not the file) *)
   PROCEDURE SameFile*(i1, i2: FileIdentity): BOOLEAN;
   BEGIN RETURN (i1.index = i2.index) & (i1.volume = i2.volume)
   END SameFile;

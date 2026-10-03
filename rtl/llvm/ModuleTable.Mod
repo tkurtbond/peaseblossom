@@ -57,6 +57,8 @@ MODULE ModuleTable;
     registered: LONGINT;
     moduleHead: SYSTEM.ADDRESS; (* the most recently registered descriptor, 0 if none *)
 
+  (* Lists a module's table of pointer locations, the collector's roots;
+     called by the generated code, not by a program. *)
   PROCEDURE Register*(table: SYSTEM.ADDRESS);
   BEGIN
     SYSTEM.PUT(table, head);
@@ -70,6 +72,7 @@ MODULE ModuleTable;
     RETURN head
   END First;
 
+  (* The table (or descriptor) listed after table, 0 after the last. *)
   PROCEDURE Next*(table: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
     VAR following: SYSTEM.ADDRESS;
   BEGIN
@@ -77,6 +80,7 @@ MODULE ModuleTable;
     RETURN following
   END Next;
 
+  (* The number of pointer locations in table. *)
   PROCEDURE SlotCount*(table: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
     VAR count: SYSTEM.ADDRESS;
   BEGIN
@@ -107,6 +111,7 @@ MODULE ModuleTable;
     RETURN moduleHead
   END FirstModule;
 
+  (* The number of tables registered. *)
   PROCEDURE TableCount*(): LONGINT;
   BEGIN
     RETURN registered

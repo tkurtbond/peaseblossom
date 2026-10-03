@@ -19,6 +19,7 @@ MODULE FormattedOutput;
     newline = 0AX;
     spaceChunk = 32; (* how many blanks Spaces writes at a time *)
 
+  (* ch *)
   PROCEDURE Char*(descriptor: SYSTEM.INT32; ch: CHAR);
     VAR one: ARRAY 1 OF CHAR;
   BEGIN

@@ -51,12 +51,16 @@ MODULE Modules;
   IMPORT SYSTEM, Platform, ModuleTable, FileDescriptorOutput;
 
   CONST
+    (* the size of a module name's array *)
     ModNameLen* = 256;
     cmdNameLength = 256;
     (* the words of a module descriptor (ModuleTable.Mod) *)
     nameWord = 1; importCountWord = 2; commandCountWord = 3; firstEntryWord = 4;
 
   TYPE
+    (* A module of the program, with its name, its number of importers
+       (refcnt) and its exported parameterless procedures (cmds), each a
+       command; both lists are read-only. *)
     ModuleName* = ARRAY ModNameLen OF CHAR;
     Module* = POINTER TO ModuleDesc;
     Cmd* = POINTER TO CmdDesc;
@@ -77,7 +81,10 @@ MODULE Modules;
   VAR
     res*: INTEGER; (* 0 after a ThisMod, ThisCommand or Free that did what it was asked *)
     resMsg*: ARRAY 256 OF CHAR; (* what went wrong, when res # 0 *)
+    (* importing: the name the last ThisMod did not find; imported stays empty
+       (voc's names a module whose import is missing, which cannot be here) *)
     imported*, importing*: ModuleName;
+    (* near the bottom of the main stack: argv's address (above) *)
     MainStackFrame-: SYSTEM.ADDRESS;
     ArgCount-: INTEGER;
     ArgVector-: SYSTEM.ADDRESS; (* argv: the address of an array of ArgCount strings' addresses *)

@@ -429,15 +429,19 @@ inventory, then voc's runtime modules and finalization) closed on
 wait for Phase 20. Phase 13 (added 2026-10-02; the later phases renumbered,
 old 13-18 now 14-19, and again when Phase 14 was added, so now 15-20), in
 progress, packages poc: `make install`, a bootstrap
-seed that needs no voc, a release tarball and the User's Guide
-(`doc/users-guide.md`, steps 3-6) are done; the Reference Guide, `poc(1)` and
-OS packages are next. Phase 14 (added 2026-10-02) is record and array
+seed that needs no voc, a release tarball, the User's Guide
+(`doc/users-guide.md`), the Reference Guide (`doc/reference-guide.md`) and
+`poc(1)` (`doc/poc.1`) (steps 3-7) are done; OS packages are next. Phase 14 (added 2026-10-02) is record and array
 literals, `T{...}`, and structured constants made with them, designed in
 `doc/record-and-array-literals.md`; the
 VAX/VMS work is Phases 15-18. The guide's examples are files under `doc/examples/`,
 checked by `tools/guide-examples` (fixture `doc-users-guide`): change one
 with the guide, and run `tools/guide-examples update` after a change to
-what poc prints. `PLAN.md` has the
+what poc prints. The Reference Guide's runtime chapter is generated from
+`rtl/llvm` by `tools/rtl-reference` (fixture `doc-reference-guide`): after
+changing a runtime module's interface or comments, run `tools/rtl-reference
+update doc/reference-guide.md rtl/llvm <scratch dir>` with `build/bin` on
+`PATH`. `PLAN.md` has the
 roadmap and each phase's design. `doc/project-history.md` has the account that used to be here,
 including what was found while building the front end and `.sym` files
 (Phases 0-7), the import search path, `-output-dir`, real `CONST` export and

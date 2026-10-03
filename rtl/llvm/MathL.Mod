@@ -22,6 +22,9 @@ MODULE MathL;
   IMPORT SYSTEM, Math;
 
   CONST
+    (* pi and e; the number of bits in the fraction (with its leading 1); the
+       largest number and the smallest normal one; the largest and smallest
+       exponent of a normal number *)
     pi* = 3.14159265358979323846D0;
     e* = 2.71828182845904523536D0;
     places* = 53;
@@ -54,6 +57,8 @@ MODULE MathL;
   PROCEDURE ["C", "logb"] CLogb(x: LONGREAL): LONGREAL;
   PROCEDURE ["C", "nextafter"] CNextAfter(x, toward: LONGREAL): LONGREAL;
 
+  (* Always FALSE: an error goes to the error handler, never to an exception
+     (voc's interface keeps it from the ISO library). *)
   PROCEDURE IsRMathException*(): BOOLEAN;
   BEGIN
     RETURN FALSE
@@ -79,6 +84,8 @@ MODULE MathL;
 
   (* ---- real number properties ---- *)
 
+  (* The exponent of x, the power of 2 with x = fraction(x) * 2^exponent(x):
+     0 for 0, expoMax + 1 for an infinity or a not-a-number. *)
   PROCEDURE exponent*(x: LONGREAL): INTEGER;
   BEGIN
     IF x = 0 THEN RETURN 0 END;
@@ -86,23 +93,29 @@ MODULE MathL;
     RETURN SHORT(ENTIER(CLogb(x)))
   END exponent;
 
+  (* x without its exponent, 1 <= |fraction(x)| < 2; 0, an infinity or a
+     not-a-number comes back as it is. *)
   PROCEDURE fraction*(x: LONGREAL): LONGREAL;
   BEGIN
     IF (x = 0) OR ~Finite(x) THEN RETURN x END;
     RETURN CLdexp(x, -exponent(x))
   END fraction;
 
+  (* -1 if x is negative, else 1 (0 included). *)
   PROCEDURE sign*(x: LONGREAL): LONGREAL;
   BEGIN
     IF x < 0 THEN RETURN -1 ELSE RETURN 1 END
   END sign;
 
+  (* x * 2^n, exactly where the result is representable. *)
   PROCEDURE scale*(x: LONGREAL; n: INTEGER): LONGREAL;
   BEGIN
     IF (x = 0) OR ~Finite(x) THEN RETURN x END;
     RETURN Limit(CLdexp(x, n))
   END scale;
 
+  (* The distance from |x| to the next larger number of x's exponent: one
+     unit in the last place. *)
   PROCEDURE ulp*(x: LONGREAL): LONGREAL;
     VAR expo: INTEGER;
   BEGIN
@@ -111,6 +124,7 @@ MODULE MathL;
     RETURN CLdexp(1.0D0, expo - places + 1)
   END ulp;
 
+  (* The next number above x, pred the next below it. *)
   PROCEDURE succ*(x: LONGREAL): LONGREAL;
   BEGIN
     IF x >= large THEN
@@ -131,6 +145,9 @@ MODULE MathL;
 
   (* ---- elementary functions ---- *)
 
+  (* The elementary functions, each with the error in the module's table: the
+     square root, e^x, the natural logarithm, the logarithm to the base, and
+     base^exp. *)
   PROCEDURE sqrt*(x: LONGREAL): LONGREAL;
   BEGIN
     IF x < 0 THEN
@@ -188,11 +205,13 @@ MODULE MathL;
     RETURN result
   END power;
 
+  (* x to the whole power base (despite its name, voc's, base is the exponent). *)
   PROCEDURE ipower*(x: LONGREAL; base: INTEGER): LONGREAL;
   BEGIN
     RETURN Limit(CPow(x, base))
   END ipower;
 
+  (* The trigonometric functions, in radians. *)
   PROCEDURE sin*(x: LONGREAL): LONGREAL;
   BEGIN
     RETURN CSin(x)
@@ -208,12 +227,15 @@ MODULE MathL;
     RETURN Limit(CTan(x))
   END tan;
 
+  (* The sine and cosine of x at once. *)
   PROCEDURE sincos*(x: LONGREAL; VAR Sin, Cos: LONGREAL);
   BEGIN
     Sin := CSin(x);
     Cos := CCos(x)
   END sincos;
 
+  (* The inverse trigonometric functions, in radians: arcsin in -pi/2..pi/2,
+     arccos in 0..pi, arctan in -pi/2..pi/2. *)
   PROCEDURE arcsin*(x: LONGREAL): LONGREAL;
   BEGIN
     IF (x > 1) OR (x < -1) THEN
@@ -237,6 +259,8 @@ MODULE MathL;
     RETURN CAtan(x)
   END arctan;
 
+  (* The angle of the point (xd, xn) from the positive x-axis, in -pi..pi: the
+     arctangent of xn / xd in the right quadrant. *)
   PROCEDURE arctan2*(xn, xd: LONGREAL): LONGREAL;
   BEGIN
     IF (xn = 0) & (xd = 0) THEN
@@ -246,6 +270,7 @@ MODULE MathL;
     RETURN CAtan2(xn, xd)
   END arctan2;
 
+  (* The hyperbolic functions and their inverses. *)
   PROCEDURE sinh*(x: LONGREAL): LONGREAL;
   BEGIN
     RETURN Limit(CSinh(x))
@@ -284,6 +309,8 @@ MODULE MathL;
     RETURN CAtanh(x)
   END arctanh;
 
+  (* x rounded to the nearest whole number, halves away from zero; a number
+     that rounds beyond LONGINT gives its largest or smallest value. *)
   PROCEDURE round*(x: LONGREAL): LONGINT;
     VAR n: LONGINT;
   BEGIN
@@ -300,6 +327,10 @@ MODULE MathL;
     END
   END round;
 
+  (* -1, 0 or 1 as x is less than, approximately equal to, or greater than
+     y, "approximately" meaning within epsilon times the larger power of 2
+     at or below the larger of |x| and |y| (the GNU Scientific Library's
+     gsl_fcmp, as voc's). *)
   PROCEDURE fcmp*(x, y, epsilon: LONGREAL): INTEGER;
     VAR larger, delta, difference: LONGREAL;
   BEGIN

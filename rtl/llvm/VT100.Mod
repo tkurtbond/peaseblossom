@@ -23,6 +23,7 @@ MODULE VT100;
   IMPORT Out;
 
   CONST
+    (* ESC, SYN and the "[" that follows ESC in a control sequence *)
     Escape* = 1BX;
     SynchronousIdle* = 16X;
     LeftCrotchet* = "[";
