@@ -2,10 +2,10 @@ assert-errors.mod:10:3: error: ASSERT condition is always FALSE
 assert-errors.mod:11:3: error: ASSERT condition is always FALSE
 assert-errors.mod:12:3: error: ASSERT condition is always FALSE
 assert-errors.mod:13:3: error: ASSERT code must be in 0..255
-assert-errors.mod:14:16: error: not a constant
+assert-errors.mod:14:16: error: not a constant: n
 assert-errors.mod:15:3: error: ASSERT code must be in 0..255
 assert-errors.mod:16:3: error: ASSERT requires an integer constant code
-assert-errors.mod:17:3: error: ASSERT requires a BOOLEAN condition
+assert-errors.mod:17:3: error: ASSERT requires a BOOLEAN condition: INTEGER
 assert-errors.mod:18:3: error: ASSERT expects one or two arguments
 assert-errors.mod:19:3: error: ASSERT expects one or two arguments
 10 error(s)

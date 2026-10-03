@@ -1,8 +1,8 @@
 procedure-value.mod:37:10: error: a procedure local to another procedure cannot be used as a procedure value
 procedure-value.mod:41:8: error: an external procedure cannot be used as a procedure value
 procedure-value.mod:42:8: error: a type-bound procedure cannot be used as a procedure value
-procedure-value.mod:43:3: error: assignment is not type-compatible
-procedure-value.mod:44:3: error: assignment is not type-compatible
+procedure-value.mod:43:3: error: assignment is not type-compatible: a predeclared procedure to PROCEDURE
+procedure-value.mod:44:3: error: assignment is not type-compatible: PROCEDURE to PROCEDURE
 procedure-value.mod:45:8: error: a procedure name cannot be compared - only a procedure-typed value or NIL
 procedure-value.mod:46:8: error: a procedure name cannot be compared - only a procedure-typed value or NIL
 7 error(s)

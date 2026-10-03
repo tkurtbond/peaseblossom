@@ -1,7 +1,7 @@
-bad.mod:19:5: error: assignment is not type-compatible
-bad.mod:23:3: error: assignment is not type-compatible
-bad.mod:24:3: error: assignment is not type-compatible
-bad.mod:25:3: error: assignment is not type-compatible
-bad.mod:26:3: error: assignment is not type-compatible
-bad.mod:27:14: error: argument is not assignment compatible with the parameter
+bad.mod:19:5: error: assignment is not type-compatible: ARRAY 3 OF INTEGER to ARRAY OF INTEGER
+bad.mod:23:3: error: assignment is not type-compatible: ARRAY 5 OF INTEGER to ARRAY 3 OF INTEGER
+bad.mod:24:3: error: assignment is not type-compatible: ARRAY 3 OF LONGINT to ARRAY 5 OF INTEGER
+bad.mod:25:3: error: assignment is not type-compatible: ARRAY 5 OF CHAR to ARRAY 5 OF INTEGER
+bad.mod:26:3: error: assignment is not type-compatible: ARRAY 2 OF ARRAY 3 OF INTEGER to ARRAY 2 OF ARRAY 3 OF INTEGER
+bad.mod:27:14: error: argument is not assignment compatible with the parameter: ARRAY 5 OF INTEGER to ARRAY 3 OF INTEGER
 6 error(s)

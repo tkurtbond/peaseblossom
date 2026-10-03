@@ -1,7 +1,7 @@
 fields.mod:3:30: error: later is declared after this field; its initializer can use only what is declared before it
-fields.mod:4:27: error: field initializer is not type-compatible
-fields.mod:4:51: error: field initializer is not type-compatible
-fields.mod:5:30: error: undeclared identifier
+fields.mod:4:27: error: field initializer is not type-compatible: a string constant to INTEGER
+fields.mod:4:51: error: field initializer is not type-compatible: SHORTINT to BOOLEAN
+fields.mod:5:30: error: undeclared identifier: Late
 fields.mod:12:52: error: v belongs to a procedure; a field initializer can use a procedure's constants and types, not its variables or procedures
 fields.mod:12:69: error: q belongs to a procedure; a field initializer can use a procedure's constants and types, not its variables or procedures
 fields.mod:12:86: error: Inner belongs to a procedure; a field initializer can use a procedure's constants and types, not its variables or procedures

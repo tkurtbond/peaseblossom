@@ -1,4 +1,4 @@
 bad-array-length.mod:6:21: error: array length must be a positive integer constant
 bad-array-length.mod:7:25: error: array length must be a positive integer constant
-bad-array-length.mod:8:25: error: undeclared identifier
+bad-array-length.mod:8:25: error: undeclared identifier: undeclaredName
 3 error(s)

@@ -1,3 +1,3 @@
 withqualifiedguard.mod:17:3: error: guarded pointer variable may be manipulated by non-local operations; use an auxiliary pointer variable
-withqualifiedguard.mod:18:15: error: undeclared field or type-bound procedure
+withqualifiedguard.mod:18:15: error: undeclared field or type-bound procedure: weight
 2 error(s)

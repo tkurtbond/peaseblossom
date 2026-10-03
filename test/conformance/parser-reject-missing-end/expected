@@ -1,5 +1,5 @@
 missing-end.mod:6:5: error: expected 'END'
 missing-end.mod:6:15: error: expected an identifier
 missing-end.mod:7:1: error: expected '.'
-missing-end.mod:1:1: error: module END identifier does not match its name
+missing-end.mod:1:1: error: module END identifier does not match its name: END , not END missingEnd
 4 error(s)

@@ -153,6 +153,27 @@ MODULE ConstantEvaluator;
     Types.SetAddressBytes(size)
   END SetWordSize;
 
+  (* message about the name qualifier.name, or name alone if there is no
+     qualifier: "undeclared identifier: M.x" *)
+  PROCEDURE ReportName(line, column: INTEGER; message: ARRAY OF CHAR;
+                       qualifier, name: ARRAY OF CHAR);
+    VAR what: ARRAY 520 OF CHAR; (* two identifiers and a period *)
+  BEGIN
+    what := "";
+    IF qualifier[0] # 0X THEN Diagnostics.AppendText(what, qualifier); Diagnostics.AppendText(what, ".") END;
+    Diagnostics.AppendText(what, name);
+    Diagnostics.ErrorAbout(line, column, message, what)
+  END ReportName;
+
+  (* message about the operands' types: "message: BOOLEAN and SET" *)
+  PROCEDURE ReportTypes(line, column: INTEGER; message: ARRAY OF CHAR; l, r: Types.Type);
+    VAR what: ARRAY 400 OF CHAR;
+  BEGIN
+    what := "";
+    Types.Describe(l, what); Diagnostics.AppendText(what, " and "); Types.Describe(r, what);
+    Diagnostics.ErrorAbout(line, column, message, what)
+  END ReportTypes;
+
   PROCEDURE UndefinedValue(): Types.Value;
     VAR v: Types.Value;
   BEGIN
@@ -957,10 +978,10 @@ MODULE ConstantEvaluator;
     END;
     obj := FindQualifiedConst(scope, d);
     IF obj = NIL THEN
-      Diagnostics.Error(expr.line, expr.column, "undeclared identifier");
+      ReportName(expr.line, expr.column, "undeclared identifier", d.qualifier, d.name);
       RETURN UndefinedValue()
     ELSIF obj.class # SymbolTable.constClass THEN
-      Diagnostics.Error(expr.line, expr.column, "not a constant");
+      ReportName(expr.line, expr.column, "not a constant", d.qualifier, d.name);
       RETURN UndefinedValue()
     ELSE
       RETURN obj.value
@@ -1250,7 +1271,7 @@ MODULE ConstantEvaluator;
     ELSIF (l.type = Types.String) & (r.type = Types.String) THEN
       eq := l.stringVal = r.stringVal
     ELSE
-      Diagnostics.Error(line, column, "operands are not comparable");
+      ReportTypes(line, column, "operands are not comparable", l.type, r.type);
       RETURN UndefinedValue()
     END;
     NEW(result); result.type := Types.Boolean; result.kind := Types.boolValue;
@@ -1278,7 +1299,7 @@ MODULE ConstantEvaluator;
       lt := l.stringVal < r.stringVal; le := l.stringVal <= r.stringVal;
       gt := l.stringVal > r.stringVal; ge := l.stringVal >= r.stringVal
     ELSE
-      Diagnostics.Error(line, column, "operands are not ordered");
+      ReportTypes(line, column, "operands are not ordered", l.type, r.type);
       RETURN UndefinedValue()
     END;
     NEW(result); result.type := Types.Boolean; result.kind := Types.boolValue;
@@ -1304,8 +1325,7 @@ MODULE ConstantEvaluator;
       ELSIF Types.IsSet(l.type) & Types.IsSet(r.type) THEN
         result := EvaluateSetOp(expr.op, l, r)
       ELSE
-        Diagnostics.Error(expr.line, expr.column,
-                           "operands must both be numeric or both SET");
+        ReportTypes(expr.line, expr.column, "operands must both be numeric or both SET", l.type, r.type);
         result := UndefinedValue()
       END
     ELSIF expr.op = Lexer.slash THEN
@@ -1314,8 +1334,7 @@ MODULE ConstantEvaluator;
       ELSIF Types.IsSet(l.type) & Types.IsSet(r.type) THEN
         result := EvaluateSetOp(expr.op, l, r)
       ELSE
-        Diagnostics.Error(expr.line, expr.column,
-                           "operands must both be numeric or both SET");
+        ReportTypes(expr.line, expr.column, "operands must both be numeric or both SET", l.type, r.type);
         result := UndefinedValue()
       END
     ELSIF (expr.op = Lexer.divKeyword) OR (expr.op = Lexer.modKeyword) THEN

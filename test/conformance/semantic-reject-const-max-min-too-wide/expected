@@ -1,2 +1,2 @@
-reject-const-max-min-too-wide.mod:20:3: error: assignment is not type-compatible
+reject-const-max-min-too-wide.mod:20:3: error: assignment is not type-compatible: INTEGER to SHORTINT
 1 error(s)

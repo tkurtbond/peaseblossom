@@ -108,6 +108,15 @@ MODULE PredeclaredProcedures;
     END
   END LookupBareTypeName;
 
+  (* message about an argument of type t: "ODD requires an integer
+     argument: REAL" (Phase 13 step 2) *)
+  PROCEDURE ReportType(line, column: INTEGER; message: ARRAY OF CHAR; t: Types.Type);
+    VAR what: ARRAY 400 OF CHAR;
+  BEGIN
+    what := ""; Types.Describe(t, what);
+    Diagnostics.ErrorAbout(line, column, message, what)
+  END ReportType;
+
   PROCEDURE ArgCount(args: SyntaxTree.ExprNode): INTEGER;
     VAR n: INTEGER; a: SyntaxTree.ExprNode;
   BEGIN
@@ -168,7 +177,7 @@ MODULE PredeclaredProcedures;
     END;
     t := checkExpr(scope, args);
     IF (t # Types.Undefined) & ~Types.IsNumeric(t) THEN
-      Diagnostics.Error(line, column, "ABS requires a numeric argument");
+      ReportType(line, column, "ABS requires a numeric argument", t);
       RETURN Types.Undefined
     END;
     RETURN t
@@ -206,7 +215,7 @@ MODULE PredeclaredProcedures;
     END;
     t := checkExpr(scope, args);
     IF (t # Types.Undefined) & (t # Types.Char) THEN
-      Diagnostics.Error(line, column, "CAP requires a CHAR argument");
+      ReportType(line, column, "CAP requires a CHAR argument", t);
       RETURN Types.Undefined
     END;
     RETURN Types.Char
@@ -222,7 +231,7 @@ MODULE PredeclaredProcedures;
     END;
     t := checkExpr(scope, args);
     IF (t # Types.Undefined) & ~Types.IsInteger(t) THEN
-      Diagnostics.Error(line, column, "CHR requires an integer argument");
+      ReportType(line, column, "CHR requires an integer argument", t);
       RETURN Types.Undefined
     END;
     RETURN Types.Char
@@ -238,7 +247,7 @@ MODULE PredeclaredProcedures;
     END;
     t := checkExpr(scope, args);
     IF (t # Types.Undefined) & (t # Types.Real) & (t # Types.LongReal) THEN
-      Diagnostics.Error(line, column, "ENTIER requires a real argument");
+      ReportType(line, column, "ENTIER requires a real argument", t);
       RETURN Types.Undefined
     END;
     RETURN Types.LongInt
@@ -261,7 +270,7 @@ MODULE PredeclaredProcedures;
     vt := checkExpr(scope, Arg(args, 0));
     IF vt = Types.Undefined THEN RETURN Types.Undefined END;
     IF ~(vt IS Types.ArrayType) THEN
-      Diagnostics.Error(line, column, "LEN requires an array argument");
+      ReportType(line, column, "LEN requires an array argument", vt);
       RETURN Types.Undefined
     END;
     IF ArgCount(args) = 2 THEN
@@ -300,7 +309,7 @@ MODULE PredeclaredProcedures;
     ELSIF t = Types.Real THEN RETURN Types.LongReal
     ELSIF t = Types.Undefined THEN RETURN Types.Undefined
     ELSE
-      Diagnostics.Error(line, column, "LONG requires a SHORTINT, INTEGER, REAL, HUGEINT, or fixed-width integer argument");
+      ReportType(line, column, "LONG requires a SHORTINT, INTEGER, REAL, HUGEINT, or fixed-width integer argument", t);
       RETURN Types.Undefined
     END
   END CheckLong;
@@ -323,7 +332,7 @@ MODULE PredeclaredProcedures;
         & (t # Types.NilType) & (t # Types.PredeclaredProcedureType) THEN
       RETURN t
     ELSE
-      Diagnostics.Error(line, column, "MAX/MIN requires a basic type or SET");
+      ReportType(line, column, "MAX/MIN requires a basic type or SET", t);
       RETURN Types.Undefined
     END
   END CheckMaxMin;
@@ -338,7 +347,7 @@ MODULE PredeclaredProcedures;
     END;
     t := checkExpr(scope, args);
     IF (t # Types.Undefined) & ~Types.IsInteger(t) THEN
-      Diagnostics.Error(line, column, "ODD requires an integer argument");
+      ReportType(line, column, "ODD requires an integer argument", t);
       RETURN Types.Undefined
     END;
     RETURN Types.Boolean
@@ -355,7 +364,7 @@ MODULE PredeclaredProcedures;
     t := checkExpr(scope, args);
     IF (t # Types.Undefined) & (t # Types.Char) & ~Types.IsSet(t)
         & ~((t = Types.String) & ConstantEvaluator.IsSingleCharString(args, scope)) THEN
-      Diagnostics.Error(line, column, "ORD requires a CHAR or SET argument");
+      ReportType(line, column, "ORD requires a CHAR or SET argument", t);
       RETURN Types.Undefined
     END;
     (* a SET64's 64 bits do not fit an INTEGER *)
@@ -379,7 +388,7 @@ MODULE PredeclaredProcedures;
     ELSIF t = Types.LongReal THEN RETURN Types.Real
     ELSIF t = Types.Undefined THEN RETURN Types.Undefined
     ELSE
-      Diagnostics.Error(line, column, "SHORT requires a LONGINT, INTEGER, LONGREAL, HUGEINT, or fixed-width integer argument");
+      ReportType(line, column, "SHORT requires a LONGINT, INTEGER, LONGREAL, HUGEINT, or fixed-width integer argument", t);
       RETURN Types.Undefined
     END
   END CheckShort;
@@ -414,13 +423,13 @@ MODULE PredeclaredProcedures;
     vt := ResolveVarArg(scope, checkDesignator, Arg(args, 1), readOnly, isVariable);
     IF (xt # Types.Undefined) & ~IsCharArrayOrString(xt)
        & ~((xt = Types.Char) & ConstantEvaluator.IsCharConstant(Arg(args, 0), scope)) THEN
-      Diagnostics.Error(line, column, "COPY's first argument must be a character array or string")
+      ReportType(line, column, "COPY's first argument must be a character array or string", xt)
     END;
     IF vt = Types.Undefined THEN RETURN END;
     IF ~isVariable OR readOnly THEN
       Diagnostics.Error(line, column, "COPY's second argument must be a writable variable")
     ELSIF ~IsCharArrayOrString(vt) THEN
-      Diagnostics.Error(line, column, "COPY's second argument must be a character array")
+      ReportType(line, column, "COPY's second argument must be a character array", vt)
     END
   END CheckCopy;
 
@@ -439,13 +448,13 @@ MODULE PredeclaredProcedures;
       Diagnostics.Error(line, column, "INC/DEC's argument must be a writable variable");
       RETURN
     ELSIF ~Types.IsInteger(vt) THEN
-      Diagnostics.Error(line, column, "INC/DEC requires an integer variable");
+      ReportType(line, column, "INC/DEC requires an integer variable", vt);
       RETURN
     END;
     IF ArgCount(args) = 2 THEN
       nt := checkExpr(scope, Arg(args, 1));
       IF (nt # Types.Undefined) & ~Types.IsInteger(nt) THEN
-        Diagnostics.Error(line, column, "INC/DEC's second argument must be an integer")
+        ReportType(line, column, "INC/DEC's second argument must be an integer", nt)
       END
     END
   END CheckIncDec;
@@ -464,10 +473,10 @@ MODULE PredeclaredProcedures;
     IF ~isVariable OR readOnly THEN
       Diagnostics.Error(line, column, "INCL/EXCL's first argument must be a writable variable")
     ELSIF ~Types.IsSet(vt) THEN
-      Diagnostics.Error(line, column, "INCL/EXCL requires a SET variable")
+      ReportType(line, column, "INCL/EXCL requires a SET variable", vt)
     END;
     IF (xt # Types.Undefined) & ~Types.IsInteger(xt) THEN
-      Diagnostics.Error(line, column, "INCL/EXCL's second argument must be an integer")
+      ReportType(line, column, "INCL/EXCL's second argument must be an integer", xt)
     ELSIF (xt # Types.Undefined) & Types.IsSet(vt)
         & ConstantEvaluator.IsConstantExpr(Arg(args, 1), scope) THEN
       (* a constant element the variable's set cannot hold: INCL(s, 40) for a
@@ -498,7 +507,7 @@ MODULE PredeclaredProcedures;
     t := checkExpr(scope, Arg(args, 0));
     IF t = Types.Undefined THEN (* already reported *)
     ELSIF t # Types.Boolean THEN
-      Diagnostics.Error(line, column, "ASSERT requires a BOOLEAN condition")
+      ReportType(line, column, "ASSERT requires a BOOLEAN condition", t)
     ELSIF ConstantEvaluator.IsConstantExpr(Arg(args, 0), scope) THEN
       v := ConstantEvaluator.Evaluate(Arg(args, 0), scope);
       IF (v.kind = Types.boolValue) & ~v.boolVal THEN
@@ -561,7 +570,7 @@ MODULE PredeclaredProcedures;
       Diagnostics.Error(line, column, "NEW's argument must be a writable variable");
       RETURN
     ELSIF ~(vt IS Types.PointerType) THEN
-      Diagnostics.Error(line, column, "NEW requires a pointer variable");
+      ReportType(line, column, "NEW requires a pointer variable", vt);
       RETURN
     ELSIF vt = Types.Ptr THEN
       Diagnostics.Error(line, column, "NEW cannot make a SYSTEM.PTR: it has no type to allocate; use SYSTEM.NEW");
@@ -596,7 +605,7 @@ MODULE PredeclaredProcedures;
       WHILE extra # NIL DO
         xt := checkExpr(scope, extra);
         IF (xt # Types.Undefined) & ~Types.IsInteger(xt) THEN
-          Diagnostics.Error(line, column, "NEW's length arguments must be integers")
+          ReportType(line, column, "NEW's length arguments must be integers", xt)
         ELSIF (xt # Types.Undefined) & ConstantEvaluator.IsConstantExpr(extra, scope) THEN
           (* Phase 11 (C9): a constant length that is not positive is a trap
              that cannot be avoided (exit 7); voc rejects it (err 63) *)
@@ -669,13 +678,13 @@ MODULE PredeclaredProcedures;
     at := checkExpr(scope, Arg(args, 0));
     vt := ResolveVarArg(scope, checkDesignator, Arg(args, 1), readOnly, isVariable);
     IF (at # Types.Undefined) & ~Types.IsInteger(at) THEN
-      Diagnostics.Error(line, column, "SYSTEM.GET's first argument must be an integer address")
+      ReportType(line, column, "SYSTEM.GET's first argument must be an integer address", at)
     END;
     IF vt = Types.Undefined THEN RETURN END;
     IF ~isVariable OR readOnly THEN
       Diagnostics.Error(line, column, "SYSTEM.GET's second argument must be a writable variable")
     ELSIF ~IsScalar(vt) THEN
-      Diagnostics.Error(line, column, "SYSTEM.GET reads a basic, pointer or procedure value")
+      ReportType(line, column, "SYSTEM.GET reads a basic, pointer or procedure value", vt)
     END
   END CheckGet;
 
@@ -689,11 +698,11 @@ MODULE PredeclaredProcedures;
     at := checkExpr(scope, Arg(args, 0));
     xt := checkExpr(scope, Arg(args, 1));
     IF (at # Types.Undefined) & ~Types.IsInteger(at) THEN
-      Diagnostics.Error(line, column, "SYSTEM.PUT's first argument must be an integer address")
+      ReportType(line, column, "SYSTEM.PUT's first argument must be an integer address", at)
     END;
     IF (xt # Types.Undefined) & ~IsScalar(xt) & (xt # Types.NilType)
        & ~ConstantEvaluator.IsSingleCharString(Arg(args, 1), scope) THEN
-      Diagnostics.Error(line, column, "SYSTEM.PUT writes a basic, pointer or procedure value")
+      ReportType(line, column, "SYSTEM.PUT writes a basic, pointer or procedure value", xt)
     END
   END CheckPut;
 
@@ -734,7 +743,7 @@ MODULE PredeclaredProcedures;
     FOR i := 0 TO 2 DO
       t := checkExpr(scope, Arg(args, i));
       IF (t # Types.Undefined) & ~Types.IsInteger(t) THEN
-        Diagnostics.Error(line, column, "SYSTEM.MOVE's arguments must be integers")
+        ReportType(line, column, "SYSTEM.MOVE's arguments must be integers", t)
       END
     END
   END CheckMove;
@@ -753,10 +762,10 @@ MODULE PredeclaredProcedures;
     at := checkExpr(scope, Arg(args, 0));
     nt := checkExpr(scope, Arg(args, 1));
     IF (at # Types.Undefined) & ~Types.IsInteger(at) THEN
-      Diagnostics.Error(line, column, "SYSTEM.BIT's first argument must be an integer address")
+      ReportType(line, column, "SYSTEM.BIT's first argument must be an integer address", at)
     END;
     IF (nt # Types.Undefined) & ~Types.IsInteger(nt) THEN
-      Diagnostics.Error(line, column, "SYSTEM.BIT's second argument must be an integer bit number")
+      ReportType(line, column, "SYSTEM.BIT's second argument must be an integer bit number", nt)
     END;
     RETURN Types.Boolean
   END CheckBit;
@@ -775,11 +784,11 @@ MODULE PredeclaredProcedures;
     xt := checkExpr(scope, Arg(args, 0));
     nt := checkExpr(scope, Arg(args, 1));
     IF (nt # Types.Undefined) & ~Types.IsInteger(nt) THEN
-      Diagnostics.Error(line, column, "the shift count must be an integer")
+      ReportType(line, column, "the shift count must be an integer", nt)
     END;
     IF xt = Types.Undefined THEN RETURN Types.Undefined END;
     IF ~Types.IsInteger(xt) & (xt # Types.Char) & (xt # Types.Byte) THEN
-      Diagnostics.Error(line, column, "SYSTEM.LSH and SYSTEM.ROT shift an integer, a CHAR or a BYTE");
+      ReportType(line, column, "SYSTEM.LSH and SYSTEM.ROT shift an integer, a CHAR or a BYTE", xt);
       RETURN Types.Undefined
     END;
     RETURN xt
@@ -800,7 +809,7 @@ MODULE PredeclaredProcedures;
     vt := ResolveVarArg(scope, checkDesignator, Arg(args, 0), readOnly, isVariable);
     nt := checkExpr(scope, Arg(args, 1));
     IF (nt # Types.Undefined) & ~Types.IsInteger(nt) THEN
-      Diagnostics.Error(line, column, "SYSTEM.NEW's size must be an integer")
+      ReportType(line, column, "SYSTEM.NEW's size must be an integer", nt)
     ELSIF (nt # Types.Undefined) & ConstantEvaluator.IsConstantExpr(Arg(args, 1), scope) THEN
       (* Phase 11 (C9): as for NEW, a constant size that is not positive is a
          trap that cannot be avoided (exit 7); voc lets SYSTEM.NEW(v, 0) by *)
@@ -813,7 +822,7 @@ MODULE PredeclaredProcedures;
     IF ~isVariable OR readOnly THEN
       Diagnostics.Error(line, column, "SYSTEM.NEW's first argument must be a writable variable")
     ELSIF ~(vt IS Types.PointerType) THEN
-      Diagnostics.Error(line, column, "SYSTEM.NEW requires a pointer variable")
+      ReportType(line, column, "SYSTEM.NEW requires a pointer variable", vt)
     END
   END CheckSystemNew;
 

@@ -1,5 +1,5 @@
 -O2:
-widen.mod:16:3: error: assignment is not type-compatible
+widen.mod:16:3: error: assignment is not type-compatible: INTEGER to SHORTINT
 1 error(s)
 -OC:
 semantic OK

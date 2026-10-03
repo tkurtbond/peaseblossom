@@ -1,4 +1,4 @@
-type-mismatch.mod:3:11: error: operands must both be numeric or both SET
+type-mismatch.mod:3:11: error: operands must both be numeric or both SET: SHORTINT and BOOLEAN
 type-mismatch.mod:4:9: error: operand of '~' must be BOOLEAN
 type-mismatch.mod:5:11: error: operands of DIV/MOD must be integer types
 3 error(s)

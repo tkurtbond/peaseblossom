@@ -3,7 +3,7 @@ hi 1
 == 2. modules shared as source
 hi 1
 -- without -import-path
-main.mod:2:10: error: unknown imported module
+main.mod:2:10: error: unknown imported module: Greet
 main.mod:2:10: note: no Greet.Mod, Greet.mod or Greet.sym in the current directory (the import path is empty)
 main.mod:2:10: note: no library for <triple> -O2 on the library path (<poc lib>) has Greet
 1 error(s)
@@ -18,7 +18,7 @@ hi 4
 hi 3
 hi 4
 -- -OC
-app.mod:2:10: error: unknown imported module
+app.mod:2:10: error: unknown imported module: Twice
 app.mod:2:10: note: no Twice.Mod, Twice.mod or Twice.sym in the current directory (the import path is empty)
 app.mod:2:10: note: no library for <triple> -OC on the library path (../three/lib, <poc lib>) has Twice
 app.mod:2:10: note: library mine (../three/lib/<triple>/O2) has Twice, but for -O2, and this is -OC
@@ -33,11 +33,11 @@ needs alib
 hi 99
 hi 5
 -- without alib
-Loud.sym:2:10: error: unknown imported module
+Loud.sym:2:10: error: unknown imported module: Greet
 Loud.sym:2:10: note: no Greet.Mod, Greet.mod or Greet.sym in the current directory (the import path is empty)
 Loud.sym:2:10: note: no library for <triple> -O2 on the library path (../libb, <poc lib>) has Greet
 Loud.sym:2:10: note: Loud is from library blib (../libb/<triple>/O2), which needs library alib, and the library path has no alib for <triple> -O2
-app.mod:2:16: error: unknown imported module
+app.mod:2:16: error: unknown imported module: Greet
 app.mod:2:16: note: no Greet.Mod, Greet.mod or Greet.sym in the current directory (the import path is empty)
 app.mod:2:16: note: no library for <triple> -O2 on the library path (../libb, <poc lib>) has Greet
 2 error(s)

@@ -228,7 +228,7 @@ MODULE SymbolTable;
     VAR o: Object;
   BEGIN
     IF FindLocal(scope, name) # NIL THEN
-      Diagnostics.Error(line, column, "identifier already declared in this scope")
+      Diagnostics.ErrorAbout(line, column, "identifier already declared in this scope", name)
     END;
     NEW(o);
     o.name := name; o.class := class; o.type := type;

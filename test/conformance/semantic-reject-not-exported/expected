@@ -1,2 +1,2 @@
-client.mod:3:13: error: undeclared identifier
+client.mod:3:13: error: undeclared identifier: lib.Hidden
 1 error(s)

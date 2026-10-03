@@ -1,2 +1,2 @@
-assign-type-mismatch.mod:7:3: error: assignment is not type-compatible
+assign-type-mismatch.mod:7:3: error: assignment is not type-compatible: INTEGER to BOOLEAN
 1 error(s)

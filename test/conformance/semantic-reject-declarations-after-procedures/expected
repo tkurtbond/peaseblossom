@@ -1,7 +1,7 @@
-late.mod:8:30: error: undeclared identifier
+late.mod:8:30: error: undeclared identifier: later
 late.mod:13:9: error: a declaration after a procedure cannot reuse a name visible from an enclosing scope
 late.mod:17:23: error: a POINTER TO base type must be declared before the next procedure
 late.mod:21:7: error: a declaration after a procedure cannot reuse a name visible from an enclosing scope
-late.mod:22:9: error: identifier already declared in this scope
-late.mod:23:25: error: undeclared identifier
+late.mod:22:9: error: identifier already declared in this scope: later
+late.mod:23:25: error: undeclared identifier: Base
 6 error(s)

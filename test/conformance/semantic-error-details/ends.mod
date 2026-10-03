@@ -1,0 +1,3 @@
+MODULE ends;
+  PROCEDURE Q; END R;
+END endz.

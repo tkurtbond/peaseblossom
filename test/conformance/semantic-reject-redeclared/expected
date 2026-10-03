@@ -1,2 +1,2 @@
-redeclared.mod:4:5: error: identifier already declared in this scope
+redeclared.mod:4:5: error: identifier already declared in this scope: x
 1 error(s)

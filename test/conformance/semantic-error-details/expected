@@ -1,0 +1,34 @@
+details.mod:10:43: error: assignment is not type-compatible: ARRAY OF INTEGER to INTEGER
+details.mod:12:3: error: undeclared identifier: Ot
+details.mod:12:19: error: undeclared identifier: lib.cont
+details.mod:12:34: error: undeclared identifier: lib.secret
+details.mod:12:52: error: field is not exported by its module: hidden
+details.mod:12:66: error: assignment is not type-compatible: CHAR to INTEGER
+details.mod:12:74: error: assignment is not type-compatible: POINTER TO RECORD to POINTER TO NodeDesc
+details.mod:12:82: error: assignment is not type-compatible: POINTER TO NodeDesc to POINTER TO RECORD
+details.mod:12:92: error: argument type does not match the VAR parameter: CHAR to INTEGER
+details.mod:12:96: error: assignment is not type-compatible: POINTER TO NodeDesc to ARRAY 4 OF CHAR
+details.mod:13:8: error: operands are not ordered: SET and INTEGER
+details.mod:13:22: error: operands must both be numeric or both SET: BOOLEAN and SET
+details.mod:13:27: error: statement designator does not denote a procedure: INTEGER
+details.mod:13:37: error: undeclared identifier: zz
+details.mod:13:42: error: undeclared field or type-bound procedure: foo
+details.mod:13:53: error: undeclared identifier: k
+details.mod:14:3: error: assignment is not type-compatible: lib.Rider to INTEGER
+details.mod:14:11: error: assignment is not type-compatible: SET to lib.Rider
+details.mod:14:19: error: assignment is not type-compatible: a string constant to INTEGER
+details.mod:14:37: error: operands are not comparable: INTEGER and CHAR
+details.mod:14:52: error: operands of DIV/MOD must be integer types: CHAR and SHORTINT
+details.mod:14:64: error: IN requires an integer and a SET: SET and BOOLEAN
+details.mod:15:8: error: not a value: lib
+details.mod:15:18: error: not a value: Node
+details.mod:15:29: error: undeclared identifier: details
+details.mod:16:8: error: ODD requires an integer argument: REAL
+details.mod:16:23: error: ORD requires a CHAR or SET argument: REAL
+details.mod:16:33: error: INC/DEC requires an integer variable: CHAR
+details.mod:16:41: error: NEW requires a pointer variable: INTEGER
+details.mod:16:54: error: LEN requires an array argument: POINTER TO NodeDesc
+30 error(s)
+ends.mod:2:3: error: procedure END identifier does not match its name: END R, not END Q
+ends.mod:1:1: error: module END identifier does not match its name: END endz, not END ends
+2 error(s)

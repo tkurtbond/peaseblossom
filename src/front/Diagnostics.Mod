@@ -36,7 +36,7 @@ MODULE Diagnostics;
        row: a variable initializer is checked once for each variable of its
        list (Phase 11 A23), and its errors are the same each time *)
     lastLine, lastColumn: INTEGER;
-    lastMessage: ARRAY 400 OF CHAR;
+    lastMessage: ARRAY 800 OF CHAR;
     lastFileName: ARRAY fileNameLength + 1 OF CHAR;
     fileName*: ARRAY fileNameLength + 1 OF CHAR;
     (* poc -strict (Phase 11 B2, decided with the user 2026-09-25): TRUE
@@ -48,6 +48,16 @@ MODULE Diagnostics;
        because PredeclaredProcedures, which SemanticActions calls, needs it
        too. *)
     strict*: BOOLEAN;
+
+  (* suffix appended to s, cut to s's length: for building a message *)
+  PROCEDURE AppendText*(VAR s: ARRAY OF CHAR; suffix: ARRAY OF CHAR);
+    VAR i, j: LONGINT;
+  BEGIN
+    i := 0; WHILE s[i] # 0X DO INC(i) END;
+    j := 0;
+    WHILE (suffix[j] # 0X) & (i < LEN(s) - 1) DO s[i] := suffix[j]; INC(i); INC(j) END;
+    s[i] := 0X
+  END AppendText;
 
   PROCEDURE Error*(line, column: INTEGER; message: ARRAY OF CHAR);
   BEGIN
@@ -61,6 +71,15 @@ MODULE Diagnostics;
     Err.String(": error: "); Err.String(message); Err.Ln;
     INC(errorCount)
   END Error;
+
+  (* An error that names what it is about (Phase 13 step 2): "message:
+     detail", as "undeclared identifier: Ot" *)
+  PROCEDURE ErrorAbout*(line, column: INTEGER; message, detail: ARRAY OF CHAR);
+    VAR text: ARRAY 800 OF CHAR;
+  BEGIN
+    COPY(message, text); AppendText(text, ": "); AppendText(text, detail);
+    Error(line, column, text)
+  END ErrorAbout;
 
   (* More about the error just reported, at line:column: "note:", as gcc and
      clang have it; not counted as an error (Phase 12 step 2e: where an

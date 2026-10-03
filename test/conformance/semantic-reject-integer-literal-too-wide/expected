@@ -1,2 +1,2 @@
-integer-literal-too-wide.mod:11:3: error: assignment is not type-compatible
+integer-literal-too-wide.mod:11:3: error: assignment is not type-compatible: LONGINT to INTEGER
 1 error(s)

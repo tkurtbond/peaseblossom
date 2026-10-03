@@ -1,4 +1,4 @@
-lib/Bad.Mod:5:3: error: assignment is not type-compatible
+lib/Bad.Mod:5:3: error: assignment is not type-compatible: BOOLEAN to INTEGER
 1 error(s) in imported module Bad
-low.mod:5:3: error: assignment is not type-compatible
+low.mod:5:3: error: assignment is not type-compatible: BOOLEAN to INTEGER
 1 error(s) in imported module low

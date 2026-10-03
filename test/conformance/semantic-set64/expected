@@ -1,29 +1,29 @@
 -O2  s := {2, 31}                           ok
 -OC  s := {2, 31}                           ok
--O2  s := {2, 32}                           assignment is not type-compatible
--OC  s := {2, 32}                           assignment is not type-compatible
+-O2  s := {2, 32}                           assignment is not type-compatible: SYSTEM.SET64 to SET
+-OC  s := {2, 32}                           assignment is not type-compatible: SYSTEM.SET64 to SET
 -O2  s := {}                                ok
 -OC  s := {}                                ok
 -O2  s := {40..30}                          ok
 -OC  s := {40..30}                          ok
 -O2  s := small                             ok
 -OC  s := small                             ok
--O2  s := big                               assignment is not type-compatible
--OC  s := big                               assignment is not type-compatible
+-O2  s := big                               assignment is not type-compatible: SYSTEM.SET64 to SET
+-OC  s := big                               assignment is not type-compatible: SYSTEM.SET64 to SET
 -O2  q := big                               ok
 -OC  q := big                               ok
 -O2  q := small                             ok
 -OC  q := small                             ok
 -O2  q := s                                 ok
 -OC  q := s                                 ok
--O2  s := q                                 assignment is not type-compatible
--OC  s := q                                 assignment is not type-compatible
+-O2  s := q                                 assignment is not type-compatible: SYSTEM.SET64 to SET
+-OC  s := q                                 assignment is not type-compatible: SYSTEM.SET64 to SET
 -O2  t := s                                 ok
 -OC  t := s                                 ok
 -O2  s := t                                 ok
 -OC  s := t                                 ok
--O2  t := q                                 assignment is not type-compatible
--OC  t := q                                 assignment is not type-compatible
+-O2  t := q                                 assignment is not type-compatible: SYSTEM.SET64 to SET
+-OC  t := q                                 assignment is not type-compatible: SYSTEM.SET64 to SET
 -O2  q := t                                 ok
 -OC  q := t                                 ok
 -O2  s := {n}                               ok
@@ -32,10 +32,10 @@
 -OC  q := {n}                               ok
 -O2  q := {n, 40}                           ok
 -OC  q := {n, 40}                           ok
--O2  s := {n, 40}                           assignment is not type-compatible
--OC  s := {n, 40}                           assignment is not type-compatible
--O2  s := {n..40}                           assignment is not type-compatible
--OC  s := {n..40}                           assignment is not type-compatible
+-O2  s := {n, 40}                           assignment is not type-compatible: SYSTEM.SET64 to SET
+-OC  s := {n, 40}                           assignment is not type-compatible: SYSTEM.SET64 to SET
+-O2  s := {n..40}                           assignment is not type-compatible: SYSTEM.SET64 to SET
+-OC  s := {n..40}                           assignment is not type-compatible: SYSTEM.SET64 to SET
 -O2  q := {0..63}                           ok
 -OC  q := {0..63}                           ok
 -O2  q := {64}                              set element out of range 0..63
@@ -48,10 +48,10 @@
 -OC  q := {n, 64}                           set element out of range 0..63
 -O2  q := big + s                           ok
 -OC  q := big + s                           ok
--O2  s := big + s                           assignment is not type-compatible
--OC  s := big + s                           assignment is not type-compatible
--O2  s := s + q                             assignment is not type-compatible
--OC  s := s + q                             assignment is not type-compatible
+-O2  s := big + s                           assignment is not type-compatible: SYSTEM.SET64 to SET
+-OC  s := big + s                           assignment is not type-compatible: SYSTEM.SET64 to SET
+-O2  s := s + q                             assignment is not type-compatible: SYSTEM.SET64 to SET
+-OC  s := s + q                             assignment is not type-compatible: SYSTEM.SET64 to SET
 -O2  q := s + q                             ok
 -OC  q := s + q                             ok
 -O2  q := q - {1}                           ok
@@ -60,8 +60,8 @@
 -OC  q := -q                                ok
 -O2  s := -s                                ok
 -OC  s := -s                                ok
--O2  s := -big                              assignment is not type-compatible
--OC  s := -big                              assignment is not type-compatible
+-O2  s := -big                              assignment is not type-compatible: SYSTEM.SET64 to SET
+-OC  s := -big                              assignment is not type-compatible: SYSTEM.SET64 to SET
 -O2  q := -small                            ok
 -OC  q := -small                            ok
 -O2  q := big * small                       ok
@@ -72,8 +72,8 @@
 -OC  h := ORD(q)                            ok
 -O2  n := ORD(s)                            ok
 -OC  n := ORD(s)                            ok
--O2  n := ORD(q)                            assignment is not type-compatible
--OC  n := ORD(q)                            assignment is not type-compatible
+-O2  n := ORD(q)                            assignment is not type-compatible: HUGEINT to INTEGER
+-OC  n := ORD(q)                            assignment is not type-compatible: HUGEINT to INTEGER
 -O2  INCL(q, 63)                            ok
 -OC  INCL(q, 63)                            ok
 -O2  INCL(s, 63)                            set element is outside the range of the variable's set type
@@ -98,14 +98,14 @@
 -OC  n := SIZE(SYSTEM.SET64)                ok
 -O2  IF (q = s) & (s = q) THEN END          ok
 -OC  IF (q = s) & (s = q) THEN END          ok
--O2  IF q < s THEN END                      operands are not ordered
--OC  IF q < s THEN END                      operands are not ordered
+-O2  IF q < s THEN END                      operands are not ordered: SYSTEM.SET64 and SET
+-OC  IF q < s THEN END                      operands are not ordered: SYSTEM.SET64 and SET
 -O2  IF 40 IN q THEN END                    ok
 -OC  IF 40 IN q THEN END                    ok
 -O2  IF 40 IN s THEN END                    ok
 -OC  IF 40 IN s THEN END                    ok
--O2  IF q IN s THEN END                     IN requires an integer and a SET
--OC  IF q IN s THEN END                     IN requires an integer and a SET
+-O2  IF q IN s THEN END                     IN requires an integer and a SET: SYSTEM.SET64 and SET
+-OC  IF q IN s THEN END                     IN requires an integer and a SET: SYSTEM.SET64 and SET
 -O2  IF s = big THEN END                    ok
 -OC  IF s = big THEN END                    ok
 -O2  IF q = big THEN END                    ok

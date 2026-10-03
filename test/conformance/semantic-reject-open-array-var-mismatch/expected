@@ -1,7 +1,7 @@
-openvarbad.mod:23:10: error: argument type does not match the VAR parameter
-openvarbad.mod:24:11: error: argument type does not match the VAR parameter
-openvarbad.mod:25:11: error: argument type does not match the VAR parameter
-openvarbad.mod:26:10: error: argument type does not match the VAR parameter
-openvarbad.mod:27:11: error: argument type does not match the VAR parameter
-openvarbad.mod:28:10: error: argument type does not match the VAR parameter
+openvarbad.mod:23:10: error: argument type does not match the VAR parameter: ARRAY 5 OF LONGINT to ARRAY OF INTEGER
+openvarbad.mod:24:11: error: argument type does not match the VAR parameter: ARRAY 5 OF INTEGER to ARRAY OF CHAR
+openvarbad.mod:25:11: error: argument type does not match the VAR parameter: ARRAY 5 OF INTEGER to ARRAY OF ARRAY OF INTEGER
+openvarbad.mod:26:10: error: argument type does not match the VAR parameter: ARRAY 3 OF ARRAY 4 OF INTEGER to ARRAY OF INTEGER
+openvarbad.mod:27:11: error: argument type does not match the VAR parameter: ARRAY 3 OF ARRAY 2 OF INTEGER to ARRAY OF ARRAY 2 OF INTEGER
+openvarbad.mod:28:10: error: argument type does not match the VAR parameter: INTEGER to ARRAY OF INTEGER
 6 error(s)

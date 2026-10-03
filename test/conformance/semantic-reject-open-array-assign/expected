@@ -1,5 +1,5 @@
-bad.mod:19:5: error: assignment is not type-compatible
-bad.mod:24:5: error: assignment is not type-compatible
-bad.mod:29:5: error: assignment is not type-compatible
-bad.mod:33:3: error: assignment is not type-compatible
+bad.mod:19:5: error: assignment is not type-compatible: ARRAY OF CHAR to ARRAY OF CHAR
+bad.mod:24:5: error: assignment is not type-compatible: ARRAY OF CHAR to ARRAY OF CHAR
+bad.mod:29:5: error: assignment is not type-compatible: ARRAY OF CHAR to ARRAY OF CHAR
+bad.mod:33:3: error: assignment is not type-compatible: ARRAY OF CHAR to ARRAY OF CHAR
 4 error(s)

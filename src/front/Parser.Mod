@@ -94,6 +94,16 @@ MODULE Parser;
     Advance(p)
   END ExpectToken;
 
+  (* a block whose END names another: "message: END Q, not END P" *)
+  PROCEDURE ReportEndName(line, column: INTEGER; message: ARRAY OF CHAR;
+                          endName, name: ARRAY OF CHAR);
+    VAR what: ARRAY 520 OF CHAR; (* two identifiers and the words *)
+  BEGIN
+    what := "END "; Diagnostics.AppendText(what, endName);
+    Diagnostics.AppendText(what, ", not END "); Diagnostics.AppendText(what, name);
+    Diagnostics.ErrorAbout(line, column, message, what)
+  END ReportEndName;
+
   PROCEDURE ExpectIdent(VAR p: Parser; VAR name: SyntaxTree.Ident);
   BEGIN
     IF p.current.kind = Lexer.ident THEN
@@ -980,7 +990,7 @@ MODULE Parser;
       ExpectToken(p, Lexer.endKeyword, "expected 'END'");
       ExpectIdent(p, endName);
       IF endName # name.name THEN
-        Diagnostics.Error(line, column, "procedure END identifier does not match its name")
+        ReportEndName(line, column, "procedure END identifier does not match its name", endName, name.name)
       END
     END;
     node := SemanticActions.NewProcDecl(isForward, isExternal, externalConvention, externalName,
@@ -1145,7 +1155,7 @@ MODULE Parser;
       Diagnostics.Error(p.current.line, p.current.column, "expected '.'")
     END;
     IF endName # name THEN
-      Diagnostics.Error(line, column, "module END identifier does not match its name")
+      ReportEndName(line, column, "module END identifier does not match its name", endName, name)
     END;
     RETURN SemanticActions.NewModule(name, imports, declarations, statements, endName, line, column)
   END ParseModule;

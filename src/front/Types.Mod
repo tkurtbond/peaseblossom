@@ -266,6 +266,10 @@ MODULE Types;
     END;
 
   VAR
+    (* the module being checked, whose own records Describe names without
+       their module; SemanticActions.CheckModuleBody keeps it (Phase 13
+       step 2) *)
+    messageModule*: SyntaxTree.Ident;
     Boolean*, Char*, ShortInt*, Integer*, LongInt*, Address*, HugeInt*, Real*, LongReal*,
       Set*, Set64*, String*, Undefined*, NilType*: Type;
     (* PLAN.md Phase 10 step 7: SYSTEM.BYTE, a one-byte value CHAR and
@@ -396,7 +400,7 @@ MODULE Types;
     existing := rec.fields;
     WHILE (existing # NIL) & (existing.name # name) DO existing := existing.next END;
     IF existing # NIL THEN
-      Diagnostics.Error(line, column, "field already declared in this record")
+      Diagnostics.ErrorAbout(line, column, "field already declared in this record", name)
     END;
     NEW(f); f.name := name; f.type := type; f.exported := exported;
     f.readOnly := readOnly; f.next := NIL;
@@ -474,7 +478,7 @@ MODULE Types;
     f := rec.fields;
     WHILE (f # NIL) & (f.name # name) DO f := f.next END;
     IF (existing # NIL) OR (f # NIL) THEN
-      Diagnostics.Error(line, column, "name already declared in this record")
+      Diagnostics.ErrorAbout(line, column, "name already declared in this record", name)
     END;
     NEW(m); m.name := name; m.procType := procType; m.receiverIsVar := receiverIsVar;
     m.exported := exported; m.pending := pending; m.receiverTypeName := receiverTypeName;
@@ -1039,6 +1043,50 @@ MODULE Types;
     ELSE COPY("an unknown type", name)
     END
   END TypeName;
+
+  PROCEDURE AppendInteger(VAR s: ARRAY OF CHAR; x: LONGINT);
+    VAR digits: ARRAY 24 OF CHAR; i, j: INTEGER;
+  BEGIN
+    IF x < 0 THEN Diagnostics.AppendText(s, "-"); x := -x END;
+    i := 0;
+    REPEAT digits[i] := CHR(ORD("0") + SHORT(x MOD 10)); x := x DIV 10; INC(i) UNTIL x = 0;
+    j := 0; WHILE s[j] # 0X DO INC(j) END;
+    WHILE (i > 0) & (j < LEN(s) - 1) DO DEC(i); s[j] := digits[i]; INC(j) END;
+    s[j] := 0X
+  END AppendInteger;
+
+  (* t as a compile-time error message names it (Phase 13 step 2), appended
+     to text: a basic type by its name (TypeName); a named record by its
+     name, qualified by its module unless that is messageModule; a pointer,
+     array or anonymous record by its structure, as Oberon writes it
+     ("POINTER TO Node", "ARRAY 4 OF CHAR", "ARRAY OF INTEGER", "RECORD");
+     a procedure type as "PROCEDURE". A named type that is not a record is
+     shown by its structure, the name being the object's, not the type's. *)
+  PROCEDURE Describe*(t: Type; VAR text: ARRAY OF CHAR);
+    VAR name: ARRAY 64 OF CHAR; rec: RecordType; arr: ArrayType; i: INTEGER; anonymous: BOOLEAN;
+  BEGIN
+    IF (t # NIL) & (t IS PointerType) & (t # Ptr) THEN
+      Diagnostics.AppendText(text, "POINTER TO "); Describe(t(PointerType).base, text)
+    ELSIF (t # NIL) & (t IS ArrayType) THEN
+      arr := t(ArrayType);
+      Diagnostics.AppendText(text, "ARRAY ");
+      IF ~arr.isOpen THEN AppendInteger(text, arr.length); Diagnostics.AppendText(text, " ") END;
+      Diagnostics.AppendText(text, "OF "); Describe(arr.elementType, text)
+    ELSIF (t # NIL) & (t IS RecordType) THEN
+      rec := t(RecordType);
+      i := 0; anonymous := rec.name[0] = 0X;
+      WHILE rec.name[i] # 0X DO IF rec.name[i] = "." THEN anonymous := TRUE END; INC(i) END;
+      IF anonymous THEN Diagnostics.AppendText(text, "RECORD")
+      ELSE
+        IF (rec.moduleName[0] # 0X) & (rec.moduleName # messageModule) THEN
+          Diagnostics.AppendText(text, rec.moduleName); Diagnostics.AppendText(text, ".")
+        END;
+        Diagnostics.AppendText(text, rec.name)
+      END
+    ELSIF (t # NIL) & (t IS ProcedureType) THEN Diagnostics.AppendText(text, "PROCEDURE")
+    ELSE TypeName(t, name); Diagnostics.AppendText(text, name)
+    END
+  END Describe;
 
 BEGIN
   Byte := NewBasicType(notNumeric);

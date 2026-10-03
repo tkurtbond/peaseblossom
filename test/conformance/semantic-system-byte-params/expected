@@ -1,16 +1,16 @@
 == -O2
-byteparams.mod:16:5: error: argument type does not match the VAR parameter
-byteparams.mod:17:5: error: argument type does not match the VAR parameter
-byteparams.mod:18:5: error: argument is not assignment compatible with the parameter
-byteparams.mod:19:5: error: argument is not assignment compatible with the parameter
-byteparams.mod:20:5: error: argument is not assignment compatible with the parameter
+byteparams.mod:16:5: error: argument type does not match the VAR parameter: INTEGER to SYSTEM.BYTE
+byteparams.mod:17:5: error: argument type does not match the VAR parameter: SYSTEM.INT8 to SYSTEM.BYTE
+byteparams.mod:18:5: error: argument is not assignment compatible with the parameter: BOOLEAN to SYSTEM.BYTE
+byteparams.mod:19:5: error: argument is not assignment compatible with the parameter: INTEGER to SYSTEM.BYTE
+byteparams.mod:20:5: error: argument is not assignment compatible with the parameter: INTEGER to SYSTEM.BYTE
 5 error(s)
 == -OC
-byteparams.mod:14:5: error: argument type does not match the VAR parameter
-byteparams.mod:15:11: error: argument is not assignment compatible with the parameter
-byteparams.mod:16:5: error: argument type does not match the VAR parameter
-byteparams.mod:17:5: error: argument type does not match the VAR parameter
-byteparams.mod:18:5: error: argument is not assignment compatible with the parameter
-byteparams.mod:19:5: error: argument is not assignment compatible with the parameter
-byteparams.mod:20:5: error: argument is not assignment compatible with the parameter
+byteparams.mod:14:5: error: argument type does not match the VAR parameter: SHORTINT to SYSTEM.BYTE
+byteparams.mod:15:11: error: argument is not assignment compatible with the parameter: SHORTINT to SYSTEM.BYTE
+byteparams.mod:16:5: error: argument type does not match the VAR parameter: INTEGER to SYSTEM.BYTE
+byteparams.mod:17:5: error: argument type does not match the VAR parameter: SYSTEM.INT8 to SYSTEM.BYTE
+byteparams.mod:18:5: error: argument is not assignment compatible with the parameter: BOOLEAN to SYSTEM.BYTE
+byteparams.mod:19:5: error: argument is not assignment compatible with the parameter: INTEGER to SYSTEM.BYTE
+byteparams.mod:20:5: error: argument is not assignment compatible with the parameter: SHORTINT to SYSTEM.BYTE
 7 error(s)

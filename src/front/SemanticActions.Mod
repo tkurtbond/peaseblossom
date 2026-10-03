@@ -208,6 +208,31 @@ MODULE SemanticActions;
     END
   END NoteExtensionName;
 
+  (* message about the name qualifier.name, or name alone if there is no
+     qualifier: "undeclared identifier: Out.Strng" *)
+  PROCEDURE ReportQualified(line, column: INTEGER; message: ARRAY OF CHAR;
+                            qualifier, name: ARRAY OF CHAR);
+    VAR what: ARRAY 520 OF CHAR; (* two identifiers and a period *)
+  BEGIN
+    what := "";
+    IF qualifier[0] # 0X THEN Diagnostics.AppendText(what, qualifier); Diagnostics.AppendText(what, ".") END;
+    Diagnostics.AppendText(what, name);
+    Diagnostics.ErrorAbout(line, column, message, what)
+  END ReportQualified;
+
+  (* message about types a and b: "message: CHAR to INTEGER" (joiner " to
+     "), "message: BOOLEAN and SET" (" and "), or about a alone when b is
+     NIL: "message: INTEGER" *)
+  PROCEDURE ReportTypes(line, column: INTEGER; message: ARRAY OF CHAR;
+                        a: Types.Type; joiner: ARRAY OF CHAR; b: Types.Type);
+    VAR what: ARRAY 400 OF CHAR;
+  BEGIN
+    what := "";
+    Types.Describe(a, what);
+    IF b # NIL THEN Diagnostics.AppendText(what, joiner); Types.Describe(b, what) END;
+    Diagnostics.ErrorAbout(line, column, message, what)
+  END ReportTypes;
+
   PROCEDURE FindQualified(scope: SymbolTable.Scope; qualifier, name: SyntaxTree.Ident;
                           line, column: INTEGER): SymbolTable.Object;
     VAR modObj, obj: SymbolTable.Object;
@@ -224,7 +249,7 @@ MODULE SemanticActions;
       lookupDiagnosed := TRUE; (* the import's error is enough *)
       RETURN NIL
     ELSIF (modObj = NIL) OR (modObj.class # SymbolTable.moduleClass) THEN
-      Diagnostics.Error(line, column, "not an imported module");
+      Diagnostics.ErrorAbout(line, column, "not an imported module", qualifier);
       lookupDiagnosed := TRUE;
       RETURN NIL
     END;
@@ -234,7 +259,7 @@ MODULE SemanticActions;
          unexported declarations an importer's layout depends on, so
          moduleScope no longer holds only exported members and this check
          is no longer implied by construction. *)
-      Diagnostics.Error(line, column, "identifier is not exported by its module");
+      ReportQualified(line, column, "identifier is not exported by its module", qualifier, name);
       lookupDiagnosed := TRUE;
       RETURN NIL
     END;
@@ -1094,11 +1119,11 @@ MODULE SemanticActions;
         Diagnostics.Error(node.line, node.column,
           "a POINTER TO base type must be declared before the next procedure")
       ELSE
-        Diagnostics.Error(node.line, node.column, "undeclared identifier")
+        ReportQualified(node.line, node.column, "undeclared identifier", node.qualifier, node.name)
       END;
       RETURN Types.Undefined
     ELSIF obj.class # SymbolTable.typeClass THEN
-      Diagnostics.Error(node.line, node.column, "not a type");
+      ReportQualified(node.line, node.column, "not a type", node.qualifier, node.name);
       RETURN Types.Undefined
     ELSIF (obj.type # NIL) & obj.resolving & (obj.type IS Types.RecordType) & ~allowForward & ~asBase THEN
       (* A record whose fields are still being resolved, named directly:
@@ -1777,7 +1802,7 @@ MODULE SemanticActions;
     obj := FindQualified(scope, d.qualifier, d.name, d.line, d.column);
     IF (obj # NIL) & (d.qualifier[0] = 0X) THEN NoteVariableUse(scope, d.name, obj) END;
     IF obj = NIL THEN
-      IF ~lookupDiagnosed THEN Diagnostics.Error(d.line, d.column, "undeclared identifier") END;
+      IF ~lookupDiagnosed THEN ReportQualified(d.line, d.column, "undeclared identifier", d.qualifier, d.name) END;
       RETURN Types.Undefined
     ELSIF (obj.class = SymbolTable.varClass) OR (obj.class = SymbolTable.constClass) THEN
       isVariable := obj.class = SymbolTable.varClass;
@@ -1787,7 +1812,7 @@ MODULE SemanticActions;
     ELSIF obj.class = SymbolTable.procClass THEN
       t := obj.type (* a real Types.ProcedureType, or Types.PredeclaredProcedureType *)
     ELSE
-      Diagnostics.Error(d.line, d.column, "not a value");
+      ReportQualified(d.line, d.column, "not a value", d.qualifier, d.name);
       RETURN Types.Undefined
     END;
     methodOwner := NIL;
@@ -1814,7 +1839,7 @@ MODULE SemanticActions;
                  make the base's own hidden or read-only fields local. *)
               fieldOwner := Types.FieldOwner(rec, field);
               IF ~field.exported & ~IsLocalRecord(fieldOwner) THEN
-                Diagnostics.Error(sel.line, sel.column, "field is not exported by its module");
+                Diagnostics.ErrorAbout(sel.line, sel.column, "field is not exported by its module", sel.name);
                 t := Types.Undefined
               ELSE
                 t := field.type;
@@ -1826,11 +1851,11 @@ MODULE SemanticActions;
                 (* one of rec's bases did not resolve, and was reported:
                    the name may be that base's *)
                 IF ~Types.HasUnresolvedBase(rec) THEN
-                  Diagnostics.Error(sel.line, sel.column, "undeclared field or type-bound procedure")
+                  Diagnostics.ErrorAbout(sel.line, sel.column, "undeclared field or type-bound procedure", sel.name)
                 END;
                 t := Types.Undefined
               ELSIF ~method.exported & ~IsLocalRecord(Types.MethodOwner(rec, method)) THEN
-                Diagnostics.Error(sel.line, sel.column, "type-bound procedure is not exported by its module");
+                Diagnostics.ErrorAbout(sel.line, sel.column, "type-bound procedure is not exported by its module", sel.name);
                 t := Types.Undefined
               ELSE
                 t := method.procType; readOnly := TRUE; boundProc := TRUE;
@@ -2058,7 +2083,7 @@ MODULE SemanticActions;
                 & ~IsByteArrayFormal(p.type)
                 & ~IsByteVarFormal(p.type, argType)
                 & ~((p.type = Types.Ptr) & (argType # NIL) & (argType IS Types.PointerType)) THEN
-              Diagnostics.Error(a.line, a.column, "argument type does not match the VAR parameter")
+              ReportTypes(a.line, a.column, "argument type does not match the VAR parameter", argType, " to ", p.type)
             END
           END
         END
@@ -2265,7 +2290,7 @@ MODULE SemanticActions;
       CheckExprList(scope, node.args);
       RETURN Types.Undefined
     ELSIF ~(baseType IS Types.ProcedureType) THEN
-      Diagnostics.Error(node.line, node.column, "call target is not a procedure");
+      ReportTypes(node.line, node.column, "call target is not a procedure", baseType, "", NIL);
       CheckExprList(scope, node.args);
       RETURN Types.Undefined
     ELSE
@@ -2425,7 +2450,7 @@ MODULE SemanticActions;
       ELSIF Types.IsSet(l) & Types.IsSet(r) THEN
         result := Types.WiderSet(l, r)
       ELSE
-        Diagnostics.Error(node.line, node.column, "operands must both be numeric or both SET");
+        ReportTypes(node.line, node.column, "operands must both be numeric or both SET", l, " and ", r);
         result := Types.Undefined
       END
     ELSIF node.op = Lexer.slash THEN
@@ -2436,14 +2461,14 @@ MODULE SemanticActions;
       ELSIF Types.IsSet(l) & Types.IsSet(r) THEN
         result := Types.WiderSet(l, r)
       ELSE
-        Diagnostics.Error(node.line, node.column, "operands must both be numeric or both SET");
+        ReportTypes(node.line, node.column, "operands must both be numeric or both SET", l, " and ", r);
         result := Types.Undefined
       END
     ELSIF (node.op = Lexer.divKeyword) OR (node.op = Lexer.modKeyword) THEN
       IF Types.IsInteger(l) & Types.IsInteger(r) THEN
         result := Types.WiderOf(l, r)
       ELSE
-        Diagnostics.Error(node.line, node.column, "operands of DIV/MOD must be integer types");
+        ReportTypes(node.line, node.column, "operands of DIV/MOD must be integer types", l, " and ", r);
         result := Types.Undefined
       END
     ELSIF (node.op = Lexer.ampersand) OR (node.op = Lexer.orKeyword) THEN
@@ -2499,7 +2524,7 @@ MODULE SemanticActions;
         END;
         result := Types.Boolean
       ELSE
-        Diagnostics.Error(node.line, node.column, "operands are not comparable");
+        ReportTypes(node.line, node.column, "operands are not comparable", l, " and ", r);
         result := Types.Undefined
       END
     ELSIF (node.op = Lexer.less) OR (node.op = Lexer.lessEqual)
@@ -2516,14 +2541,14 @@ MODULE SemanticActions;
       ELSIF (l = Types.Char) & IsCharArrayOrString(r) & ConstantEvaluator.IsCharConstant(node.left, scope) THEN
         result := Types.Boolean
       ELSE
-        Diagnostics.Error(node.line, node.column, "operands are not ordered");
+        ReportTypes(node.line, node.column, "operands are not ordered", l, " and ", r);
         result := Types.Undefined
       END
     ELSE (* Lexer.inKeyword *)
       IF Types.IsInteger(l) & Types.IsSet(r) THEN
         result := Types.Boolean
       ELSE
-        Diagnostics.Error(node.line, node.column, "IN requires an integer and a SET");
+        ReportTypes(node.line, node.column, "IN requires an integer and a SET", l, " and ", r);
         result := Types.Undefined
       END
     END;
@@ -2686,7 +2711,7 @@ MODULE SemanticActions;
            OR ConstantEvaluator.IsConstantLen(srcExpr, scope)
               & Types.AssignmentCompatible(dstType, ConstantEvaluator.MinimalIntegerType(v.intVal)))
     END;
-    IF ~ok THEN Diagnostics.Error(line, column, message) END
+    IF ~ok THEN ReportTypes(line, column, message, srcType, " to ", dstType) END
   END CheckAssignmentCompatible;
 
   PROCEDURE ^ CheckStatementSeq(scope: SymbolTable.Scope; stmt: SyntaxTree.StatementNode;
@@ -2740,7 +2765,7 @@ MODULE SemanticActions;
     ELSIF baseType = Types.Undefined THEN
       CheckExprList(scope, s.args)
     ELSIF ~(baseType IS Types.ProcedureType) THEN
-      Diagnostics.Error(s.line, s.column, "statement designator does not denote a procedure");
+      ReportTypes(s.line, s.column, "statement designator does not denote a procedure", baseType, "", NIL);
       CheckExprList(scope, s.args)
     ELSE
       pt := baseType(Types.ProcedureType);
@@ -2916,7 +2941,7 @@ MODULE SemanticActions;
     NoteVariableUse(scope, s.variable, obj);
     varType := Types.Undefined;
     IF obj = NIL THEN
-      Diagnostics.Error(s.line, s.column, "undeclared identifier")
+      Diagnostics.ErrorAbout(s.line, s.column, "undeclared identifier", s.variable)
     ELSIF (obj.class # SymbolTable.varClass) OR ~Types.IsInteger(obj.type) THEN
       Diagnostics.Error(s.line, s.column, "FOR control variable must be an integer variable")
     ELSE
@@ -3076,7 +3101,7 @@ MODULE SemanticActions;
   BEGIN
     obj := FindQualified(scope, g.variableQualifier, g.variableName, g.line, g.column);
     IF obj = NIL THEN
-      IF ~lookupDiagnosed THEN Diagnostics.Error(g.line, g.column, "undeclared identifier") END;
+      IF ~lookupDiagnosed THEN ReportQualified(g.line, g.column, "undeclared identifier", g.variableQualifier, g.variableName) END;
       RETURN
     END;
     IF g.variableQualifier[0] = 0X THEN NoteVariableUse(scope, g.variableName, obj) END;
@@ -3790,7 +3815,7 @@ MODULE SemanticActions;
       END;
       ModuleInterface.ReadSource(imp.moduleName, buffer, length, found);
       IF ~found THEN
-        Diagnostics.Error(imp.line, imp.column, "unknown imported module");
+        Diagnostics.ErrorAbout(imp.line, imp.column, "unknown imported module", imp.moduleName);
         IF ModuleInterface.explainMissingModule # NIL THEN
           ModuleInterface.explainMissingModule(module.name, imp.moduleName, imp.line, imp.column)
         END;
@@ -3838,6 +3863,7 @@ MODULE SemanticActions;
       scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode; savedModuleName: SyntaxTree.Ident;
   BEGIN
     COPY(currentModuleName, savedModuleName); COPY(module.name, currentModuleName);
+    COPY(currentModuleName, Types.messageModule);
     scope := SymbolTable.OpenScope(SymbolTable.Universe);
     imp := module.imports;
     WHILE imp # NIL DO
@@ -3846,7 +3872,7 @@ MODULE SemanticActions;
     END;
     IF module.declarations # NIL THEN CheckDeclarations(module.declarations, scope) END;
     CheckStatementSeq(scope, module.statements, 0, NIL);
-    COPY(savedModuleName, currentModuleName);
+    COPY(savedModuleName, currentModuleName); COPY(currentModuleName, Types.messageModule);
     RETURN scope
   END CheckModuleBody;
 

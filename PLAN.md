@@ -467,14 +467,27 @@ mismatch).
      record may not directly contain itself", which stops voc's Lola test
      (`LSB.Mod`; a record's extension reached through pointers while its
      base is still being resolved), fixed first, in a commit of its own.
-     *Done (2026-10-02)*, but for the error-message audit: `poc
-     <file>`, the executable's default name, the silence (93 fixtures'
-     expected outputs lost the line, and 12 that dropped it with `tail -n
-     +2` before comparing with voc now take the whole output), `-help`
-     (`Poc.Help`), `-c-flag` (`LLVMToolchainDriver.AddCFlag`; fixture
-     `poc-c-flag`); the Lola fix is `3dc49ce`, with the rule of 6.3 that
-     an extension's fields differ from its bases', which poc had never
-     checked.
+     *Done (2026-10-02).* `poc <file>`, the executable's default name,
+     the silence (93 fixtures' expected outputs lost the line, and 12 that
+     dropped it with `tail -n +2` before comparing with voc now take the
+     whole output), `-help` (`Poc.Help`), `-c-flag`
+     (`LLVMToolchainDriver.AddCFlag`; fixture `poc-c-flag`); the Lola fix
+     is `3dc49ce`, with the rule of 6.3 that an extension's fields differ
+     from its bases', which poc had never checked. The audit: an error
+     about a name now says it, "message: details" (`Diagnostics.
+     ErrorAbout`): an undeclared, unexported or redeclared identifier,
+     field or module, qualified as written (`undeclared identifier:
+     Out.Strng`); a mismatched `END` (`END R, not END Q`). One about types
+     names them (`Types.Describe`: a basic type by name, a record by its
+     name, `M.R` from another module, the rest by structure, `POINTER TO
+     Node`, `ARRAY 4 OF CHAR`): an assignment or `VAR` argument
+     (`assignment is not type-compatible: CHAR to INTEGER`), an operator's
+     operands (`BOOLEAN and SET`), a call of something not a procedure,
+     and a predeclared procedure's wrong argument (`ODD requires an
+     integer argument: REAL`). Messages that already say all there is
+     (`a VAR parameter requires a variable argument`) are unchanged.
+     Fixture `semantic-error-details`; 43 others' expected outputs gained
+     only the details.
    - **Step 3.** poc-rtl installed twice per size model: as now, and a
      copy built with `-g` that `poc -g` links, so a debugger sees into the
      runtime while ordinary programs stay small (measured: `-g` leaves the

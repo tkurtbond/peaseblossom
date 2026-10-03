@@ -1,2 +1,2 @@
-name-mismatch.mod:1:1: error: module END identifier does not match its name
+name-mismatch.mod:1:1: error: module END identifier does not match its name: END wrongName, not END nameMismatch
 1 error(s)

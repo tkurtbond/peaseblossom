@@ -1,4 +1,4 @@
 initializers.mod:8:21: error: later is declared after this variable; its initializer can use only what is declared before it
 initializers.mod:9:21: error: limit is declared after this variable; its initializer can use only what is declared before it
-initializers.mod:10:24: error: assignment is not type-compatible
+initializers.mod:10:24: error: assignment is not type-compatible: BOOLEAN to INTEGER
 3 error(s)

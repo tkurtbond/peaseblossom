@@ -1,7 +1,7 @@
 rejects.mod:11:15: error: not a constant expression: LEN of an open array
 rejects.mod:14:3: error: assignment target is read-only
 rejects.mod:15:3: error: assignment target is read-only
-rejects.mod:16:3: error: assignment is not type-compatible
-rejects.mod:17:3: error: undeclared identifier
-rejects.mod:18:16: error: operands must both be numeric or both SET
+rejects.mod:16:3: error: assignment is not type-compatible: LONGINT to SHORTINT
+rejects.mod:17:3: error: undeclared identifier: Ro.r
+rejects.mod:18:16: error: operands must both be numeric or both SET: NIL and SHORTINT
 6 error(s)
