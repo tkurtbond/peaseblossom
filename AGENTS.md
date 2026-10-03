@@ -88,7 +88,7 @@ programs it compiles (`-O2`/`-OC` flags, default `-O2`; `MemoryLayout.Mod`).
 source stays strict `Oberon2.pdf` (`make check-strict`, part of `make
 check`) and must also type-check under `-O2` (`doc/project-history.md`,
 "poc's own source under `-O2`"). Without voc, Stage 0 is built by
-`BOOTSTRAP_POC` or from a release tarball's `seed/` (`PLAN.md`, Phase 13
+`BOOTSTRAP_POC` or from a release tarball's `seed/` (`doc/phases/phase-13.md`,
 steps 4-5: `make seed`, `check-seed`, `dist`, `distcheck`).
 
 **voc's extensions beyond the report** (mostly in `Features.md`). Assume none of them
@@ -373,16 +373,18 @@ Oberon system text keeps its fonts there. Not an extension.
 
 ## Project state
 
-Phases 0-12 of `PLAN.md` are complete (records in `doc/phases/` and
+Phases 0-13 of `PLAN.md` are complete (records in `doc/phases/` and
 `doc/phase-11-inventory.md`): poc compiles itself through the LLVM backend
-(Stage 1 and Stage 2 reach a fixed point). Phase 13, packaging, is in
-progress: steps 1-7 are done (`make install`, the seed, the release
-tarball, `doc/users-guide.md`, `doc/reference-guide.md`, `doc/poc.1`); OS
-packages are next. Phase 14 is record and array literals and structured
-constants (`doc/record-and-array-literals.md`), 15-18 the VAX/VMS work, 19
-further extensions, 20 voc's library modules. The phases were renumbered
-twice on 2026-10-02, and older records keep the old numbers (`PLAN.md`,
-Phase 13). `doc/project-history.md` has the earlier account;
+(Stage 1 and Stage 2 reach a fixed point), and **Peaseblossom 0.1.0 was
+released on 2026-10-03** (tag `v0.1.0`, a GitHub release with the tarball
+and packages for Fedora, FreeBSD, OpenBSD and NetBSD; Phase 13: `make
+install`, the seed, `make dist`, `doc/users-guide.md`,
+`doc/reference-guide.md`, `doc/poc.1`, `packaging/`; `doc/DEVELOPER.md`
+says how a release is made). Phase 14, record and array literals and
+structured constants (`doc/record-and-array-literals.md`), is next; 15-18
+are the VAX/VMS work, 19 further extensions, 20 voc's library modules. The
+phases were renumbered twice on 2026-10-02, and older records keep the old
+numbers (`PLAN.md`, Phase 13). `doc/project-history.md` has the earlier account;
 `src/front/README.md` lists the front-end modules.
 
 The User's Guide's examples are files under `doc/examples/`, checked by
