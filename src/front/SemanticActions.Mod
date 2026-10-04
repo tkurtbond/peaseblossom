@@ -418,8 +418,8 @@ MODULE SemanticActions;
                                line, column: INTEGER): SyntaxTree.LiteralElementNode;
     VAR el: SyntaxTree.LiteralElementNode;
   BEGIN
-    NEW(el); el.field := field; el.value := value; el.high := high;
-    el.copiesArray := FALSE; el.next := NIL; el.line := line; el.column := column;
+    NEW(el); el.field := field; el.value := value; el.high := high; el.indexes := NIL;
+    el.copiesArray := FALSE; el.ranges := NIL; el.next := NIL; el.line := line; el.column := column;
     RETURN el
   END NewLiteralElement;
 
@@ -434,6 +434,8 @@ MODULE SemanticActions;
     WHILE el # NIL DO
       IF el.field[0] # 0X THEN
         Diagnostics.Error(el.line, el.column, "a set element has no name")
+      ELSIF el.indexes # NIL THEN
+        Diagnostics.Error(el.line, el.column, "a set element has no index")
       ELSIF el.value IS SyntaxTree.StructuredLiteralNode THEN
         Diagnostics.Error(el.value.line, el.value.column, "a set element is an integer, not a literal")
       ELSE
@@ -2812,13 +2814,75 @@ MODULE SemanticActions;
     END
   END CheckLiteralElement;
 
+  (* An index label of an array literal, e: a constant integer within the
+     array's bounds (value); FALSE, reported, otherwise *)
+  PROCEDURE LiteralIndex(scope: SymbolTable.Scope; e: SyntaxTree.ExprNode; arr: Types.ArrayType;
+                         VAR value: LONGINT): BOOLEAN;
+    VAR t: Types.Type; v: Types.Value;
+  BEGIN
+    t := CheckExpr(scope, e);
+    IF t = Types.Undefined THEN RETURN FALSE END;
+    IF ~Types.IsInteger(t) OR ~ConstantEvaluator.IsConstantExpr(e, scope) THEN
+      Diagnostics.Error(e.line, e.column, "an index in a literal must be a constant integer");
+      RETURN FALSE
+    END;
+    v := ConstantEvaluator.Evaluate(e, scope);
+    IF v.kind # Types.intValue THEN RETURN FALSE END;
+    IF (v.intVal < 0) OR (v.intVal >= arr.length) THEN
+      Diagnostics.Error(e.line, e.column, "the index is outside the array's bounds");
+      RETURN FALSE
+    END;
+    value := v.intVal;
+    RETURN TRUE
+  END LiteralIndex;
+
+  (* Whether an element of lit up to and including el already gives an index
+     in low..high *)
+  PROCEDURE IndexGiven(lit: SyntaxTree.StructuredLiteralNode; el: SyntaxTree.LiteralElementNode;
+                       low, high: LONGINT): BOOLEAN;
+    VAR earlier: SyntaxTree.LiteralElementNode; r: SyntaxTree.IndexRangeNode;
+  BEGIN
+    earlier := lit.elements;
+    LOOP
+      r := earlier.ranges;
+      WHILE r # NIL DO
+        IF (r.low <= high) & (low <= r.high) THEN RETURN TRUE END;
+        r := r.next
+      END;
+      IF earlier = el THEN EXIT END;
+      earlier := earlier.next
+    END;
+    RETURN FALSE
+  END IndexGiven;
+
+  (* low..high appended to el's indexes, unless an element gives one of them
+     already *)
+  PROCEDURE AddIndexRange(lit: SyntaxTree.StructuredLiteralNode; el: SyntaxTree.LiteralElementNode;
+                          low, high: LONGINT; line, column: INTEGER);
+    VAR range, last: SyntaxTree.IndexRangeNode;
+  BEGIN
+    IF IndexGiven(lit, el, low, high) THEN
+      Diagnostics.Error(line, column, "this index is given twice in the literal");
+      RETURN
+    END;
+    NEW(range); range.low := low; range.high := high; range.next := NIL;
+    IF el.ranges = NIL THEN
+      el.ranges := range
+    ELSE
+      last := el.ranges;
+      WHILE last.next # NIL DO last := last.next END;
+      last.next := range
+    END
+  END AddIndexRange;
+
   (* lit as a literal of t, a record type or an array type of fixed
      length: its elements, and the rules for each kind *)
   PROCEDURE CheckLiteralOfType(scope: SymbolTable.Scope; lit: SyntaxTree.StructuredLiteralNode;
                                t: Types.Type);
     VAR
       rec: Types.RecordType; arr: Types.ArrayType; field: Types.Field;
-      el, earlier: SyntaxTree.LiteralElementNode; count: LONGINT;
+      el, earlier: SyntaxTree.LiteralElementNode; next, low, high, highest: LONGINT;
+      label: SyntaxTree.CaseLabelNode; tooMany: BOOLEAN;
   BEGIN
     lit.type := t;
     el := lit.elements;
@@ -2826,7 +2890,10 @@ MODULE SemanticActions;
       rec := t(Types.RecordType);
       IF ~lit.fromInterface THEN CheckLiteralVisibility(rec, lit.line, lit.column) END;
       WHILE el # NIL DO
-        IF el.field[0] = 0X THEN
+        IF el.indexes # NIL THEN
+          Diagnostics.Error(el.line, el.column, "an index is allowed only in an array literal");
+          CheckLiteralElement(scope, el, Types.Undefined)
+        ELSIF el.field[0] = 0X THEN
           Diagnostics.Error(el.line, el.column, "a record literal names its fields: field := value");
           CheckLiteralElement(scope, el, Types.Undefined)
         ELSE
@@ -2848,14 +2915,38 @@ MODULE SemanticActions;
         el := el.next
       END
     ELSE
+      (* a positional element takes the index after the one before it,
+         after an indexed one the index after the highest it gives *)
       arr := t(Types.ArrayType);
-      count := 0;
+      next := 0; tooMany := FALSE;
       WHILE el # NIL DO
-        INC(count);
+        el.ranges := NIL;
         IF el.field[0] # 0X THEN
           Diagnostics.Error(el.line, el.column, "an array literal's elements have no names")
-        ELSIF count = arr.length + 1 THEN
-          ReportTypes(el.line, el.column, "too many elements for the array type", t, "", NIL)
+        ELSIF el.indexes # NIL THEN
+          label := el.indexes; highest := -1;
+          WHILE label # NIL DO
+            IF LiteralIndex(scope, label.low, arr, low)
+               & ((label.high = NIL) OR LiteralIndex(scope, label.high, arr, high)) THEN
+              IF label.high = NIL THEN high := low END;
+              IF low > high THEN
+                Diagnostics.Error(label.line, label.column, "this range of indexes is empty")
+              ELSE
+                AddIndexRange(lit, el, low, high, label.line, label.column);
+                IF high > highest THEN highest := high END
+              END
+            END;
+            label := label.next
+          END;
+          IF highest >= 0 THEN next := highest + 1 END
+        ELSIF next >= arr.length THEN
+          IF ~tooMany THEN
+            ReportTypes(el.line, el.column, "too many elements for the array type", t, "", NIL);
+            tooMany := TRUE
+          END
+        ELSE
+          AddIndexRange(lit, el, next, next, el.line, el.column);
+          INC(next)
         END;
         CheckLiteralElement(scope, el, arr.elementType);
         el := el.next

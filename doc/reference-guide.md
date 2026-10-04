@@ -175,7 +175,12 @@ CONST
 `T{...}` is a value of `T`, a named record type or array type of fixed
 length. A record's elements are named, `field := e`, each a field of the
 type or of a base type, at most once, in any order; an array's are
-positional from index 0, at most its length. Each element is assignment
+positional from index 0, at most its length, or indexed, `[labels]: e`,
+the labels constant integers and ranges written as a `CASE`'s. A
+positional element after an indexed one takes the index after the highest
+it gives, so `Vec{1, [5]: 50, 60}` sets 0, 5 and 6; no index may be given
+twice. An indexed element is evaluated once for each index it gives, in
+increasing order within a range. Each element is assignment
 compatible with its field or element, an array element may also be a
 shorter array ("Array assignment" below). Inside a literal, `{...}` is a
 literal of the element's type when that is a record or array type, and a

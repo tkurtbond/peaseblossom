@@ -497,10 +497,13 @@ MODULE Parser;
     RETURN left
   END ParseExpr;
 
+  PROCEDURE ^ ParseCaseLabel(VAR p: Parser): SyntaxTree.CaseLabelNode;
+
   (* Phase 14 (doc/language-extensions.md, "Record and array literals"):
      the elements of a literal, from its "{" to its "}". Each is "field :=
-     expression" or an expression, and in a nested "{...}" that may be a
-     set constructor, "expression .. expression". An element that begins
+     expression", "[labels]: expression" (the labels as a CASE's), or an
+     expression, and in a nested "{...}" that may be a set constructor,
+     "expression .. expression". An element that begins
      with "{" is a literal without its type's name when "," or "}" follows
      it, resolved by the checker from the element's type; when anything
      else follows ("{1} + s"), it can only be a set constructor, and the
@@ -511,6 +514,7 @@ MODULE Parser;
       field, empty: SyntaxTree.Ident;
       value, high: SyntaxTree.ExprNode;
       nested: SyntaxTree.StructuredLiteralNode;
+      indexes, lastIndex, label: SyntaxTree.CaseLabelNode;
       saved: Parser;
       line, column: INTEGER;
   BEGIN
@@ -519,8 +523,18 @@ MODULE Parser;
     IF p.current.kind # Lexer.rightBrace THEN
       LOOP
         line := p.current.line; column := p.current.column;
-        field[0] := 0X; high := NIL;
-        IF p.current.kind = Lexer.ident THEN
+        field[0] := 0X; high := NIL; indexes := NIL;
+        IF p.current.kind = Lexer.leftBracket THEN
+          Advance(p);
+          indexes := ParseCaseLabel(p); lastIndex := indexes;
+          WHILE p.current.kind = Lexer.comma DO
+            Advance(p);
+            label := ParseCaseLabel(p);
+            lastIndex.next := label; lastIndex := label
+          END;
+          ExpectToken(p, Lexer.rightBracket, "expected ']'");
+          ExpectToken(p, Lexer.colon, "expected ':'")
+        ELSIF p.current.kind = Lexer.ident THEN
           saved := p; COPY(p.current.lexeme, field); Advance(p);
           IF p.current.kind = Lexer.assign THEN Advance(p) ELSE p := saved; field[0] := 0X END
         END;
@@ -537,6 +551,7 @@ MODULE Parser;
         END;
         IF p.current.kind = Lexer.upTo THEN Advance(p); high := ParseExpr(p) END;
         el := SemanticActions.NewLiteralElement(field, value, high, line, column);
+        el.indexes := indexes;
         IF tail = NIL THEN head := el ELSE tail.next := el END;
         tail := el;
         IF p.current.kind = Lexer.comma THEN Advance(p) ELSE EXIT END

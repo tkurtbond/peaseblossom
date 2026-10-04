@@ -191,14 +191,16 @@ its value, and an exported constant's type may have hidden fields.
 
 ## Open questions
 
-Decided 2026-10-03: none of these is in Phase 14. Indexed elements with
-ranges (`[48..57]: 1`) are the one worth reconsidering once real tables
-show the need.
+Decided 2026-10-03: none of these is in Phase 14, except indexed
+elements, which the user added to it the same day (`doc/language-
+extensions.md`, "Record and array literals").
 
-- Indexed array elements (Micron's `[i]: e`), a repeat count (ISO
-  Modula-2's `e BY n`) or Modula-3's trailing `..`: not in the first
-  version; an array is filled from the start, and the rest takes its
-  default.
+- Indexed array elements (Micron's `[i]: e`): in Phase 14, with ranges
+  and label lists as a `CASE`'s (`[48..57, 95]: 1`), positional elements
+  continuing after the highest index, each index at most once, and a
+  range's element evaluated once per index.
+- A repeat count (ISO Modula-2's `e BY n`) or Modula-3's trailing `..`:
+  not in the first version; an indexed range does the same.
 - A literal of an open array type, its length the number of elements
   (Modula-3, Micron): not in the first version; a value parameter of an
   open array type already takes a literal of a named fixed array type.

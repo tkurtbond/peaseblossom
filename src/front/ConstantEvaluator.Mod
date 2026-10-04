@@ -1743,10 +1743,76 @@ MODULE ConstantEvaluator;
     RETURN TRUE
   END AppendFieldValues;
 
+  (* The number of elements an array literal's elements give, and the highest
+     index they give (-1 for none), from the indexes the checker worked out;
+     before it has, each element one more index *)
+  PROCEDURE LiteralExtent(lit: SyntaxTree.StructuredLiteralNode; VAR count, highest: LONGINT);
+    VAR el: SyntaxTree.LiteralElementNode; r: SyntaxTree.IndexRangeNode;
+  BEGIN
+    count := 0; highest := -1;
+    el := lit.elements;
+    WHILE el # NIL DO
+      IF el.ranges = NIL THEN
+        INC(count); INC(highest)
+      ELSE
+        r := el.ranges;
+        WHILE r # NIL DO
+          count := count + r.high - r.low + 1;
+          IF r.high > highest THEN highest := r.high END;
+          r := r.next
+        END
+      END;
+      el := el.next
+    END
+  END LiteralExtent;
+
+  (* An array literal's value: each element's value at the indexes it gives,
+     the element type's default at those no element gives *)
+  PROCEDURE EvaluateArrayLiteral(lit: SyntaxTree.StructuredLiteralNode; arr: Types.ArrayType;
+                                 scope: SymbolTable.Scope): Types.Value;
+    VAR
+      v, last, ev, default: Types.Value; el: SyntaxTree.LiteralElementNode; r: SyntaxTree.IndexRangeNode;
+      slots: POINTER TO ARRAY OF Types.Value; count, highest, i, position: LONGINT; missing: Types.Field;
+  BEGIN
+    v := StructuredValue(arr); last := NIL;
+    LiteralExtent(lit, count, highest);
+    IF highest >= arr.length THEN highest := arr.length - 1 END;
+    IF highest >= 0 THEN
+      NEW(slots, highest + 1);
+      FOR i := 0 TO highest DO slots[i] := NIL END;
+      el := lit.elements; position := 0;
+      WHILE el # NIL DO
+        ev := ElementValue(el, arr.elementType, scope);
+        IF ev.type = Types.Undefined THEN RETURN ev END;
+        IF el.ranges = NIL THEN
+          IF position <= highest THEN slots[position] := ev END;
+          INC(position)
+        ELSE
+          r := el.ranges;
+          WHILE r # NIL DO
+            FOR i := r.low TO r.high DO slots[i] := CopyValue(ev) END;
+            r := r.next
+          END
+        END;
+        el := el.next
+      END
+    END;
+    default := NIL;
+    IF count < arr.length THEN
+      missing := NIL; default := DefaultValue(arr.elementType, missing);
+      IF default = NIL THEN ReportMissingDefault(lit.line, lit.column, missing); RETURN UndefinedValue() END
+    END;
+    FOR i := 0 TO highest DO
+      IF slots[i] = NIL THEN slots[i] := CopyValue(default) END;
+      AppendValue(v, last, slots[i])
+    END;
+    IF highest + 1 < arr.length THEN v.fill := default END;
+    RETURN v
+  END EvaluateArrayLiteral;
+
   PROCEDURE EvaluateLiteralOfType(lit: SyntaxTree.StructuredLiteralNode; t: Types.Type;
                                   scope: SymbolTable.Scope): Types.Value;
-    VAR v, last, ev: Types.Value; el: SyntaxTree.LiteralElementNode; count: LONGINT;
-        arr: Types.ArrayType; missing: Types.Field;
+    VAR v, last: Types.Value;
   BEGIN
     IF t = NIL THEN
       Diagnostics.Error(lit.line, lit.column, "not a constant expression");
@@ -1756,18 +1822,7 @@ MODULE ConstantEvaluator;
     IF t IS Types.RecordType THEN
       IF ~AppendFieldValues(lit, t(Types.RecordType), v, last, scope) THEN RETURN UndefinedValue() END
     ELSIF IsFixedArray(t) THEN
-      arr := t(Types.ArrayType); count := 0;
-      el := lit.elements;
-      WHILE (el # NIL) & (count < arr.length) DO
-        ev := ElementValue(el, arr.elementType, scope);
-        IF ev.type = Types.Undefined THEN RETURN ev END;
-        AppendValue(v, last, ev); INC(count);
-        el := el.next
-      END;
-      IF count < arr.length THEN
-        missing := NIL; v.fill := DefaultValue(arr.elementType, missing);
-        IF v.fill = NIL THEN ReportMissingDefault(lit.line, lit.column, missing); RETURN UndefinedValue() END
-      END
+      v := EvaluateArrayLiteral(lit, t(Types.ArrayType), scope)
     ELSE
       Diagnostics.Error(lit.line, lit.column, "not a constant expression");
       RETURN UndefinedValue()
@@ -1830,7 +1885,7 @@ MODULE ConstantEvaluator;
 
   PROCEDURE IsConstantLiteralOfType(lit: SyntaxTree.StructuredLiteralNode; t: Types.Type;
                                     scope: SymbolTable.Scope): BOOLEAN;
-    VAR el: SyntaxTree.LiteralElementNode; count: LONGINT; arr: Types.ArrayType;
+    VAR el: SyntaxTree.LiteralElementNode; count, highest: LONGINT; arr: Types.ArrayType;
   BEGIN
     IF t = NIL THEN RETURN FALSE
     ELSIF t IS Types.RecordType THEN
@@ -1842,12 +1897,13 @@ MODULE ConstantEvaluator;
       END;
       RETURN FieldsConstant(lit, t(Types.RecordType), scope)
     ELSIF IsFixedArray(t) THEN
-      arr := t(Types.ArrayType); count := 0;
+      arr := t(Types.ArrayType);
       el := lit.elements;
       WHILE el # NIL DO
         IF ~IsConstantElement(el, arr.elementType, scope) THEN RETURN FALSE END;
-        INC(count); el := el.next
+        el := el.next
       END;
+      LiteralExtent(lit, count, highest);
       RETURN (count >= arr.length) OR HasConstantDefault(arr.elementType)
     ELSE
       RETURN FALSE

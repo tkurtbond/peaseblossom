@@ -449,8 +449,11 @@ written; and structured constants, `CONST origin* = Point{x := 0, y :=
 `-strict` rejects a literal. **Decided** (user, 2026-10-03, step 1): a
 literal is made as a variable is, every default first, then its elements
 in the order written; a constant field initializer goes into the `.sym`
-file as its value; indexed or repeated elements, open array literals and
-a bare `{...}` outside a literal are not in this phase.
+file as its value; repeated elements, open array literals and a bare
+`{...}` outside a literal are not in this phase. **Added** (user,
+2026-10-03, after step 6): indexed array elements, `[48..57]: 1`, labels
+as a `CASE`'s, positional elements continuing after the highest index,
+each index at most once, a range's element evaluated once per index.
 
 **Steps**:
 

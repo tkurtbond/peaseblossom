@@ -45,6 +45,7 @@ MODULE SyntaxTree;
     SetElementNode* = POINTER TO SetElementNodeDesc;
     StructuredLiteralNode* = POINTER TO StructuredLiteralNodeDesc;
     LiteralElementNode* = POINTER TO LiteralElementNodeDesc;
+    IndexRangeNode* = POINTER TO IndexRangeNodeDesc;
     TypeHandle* = POINTER TO TypeHandleDesc;
     TypeNode* = POINTER TO TypeNodeDesc;
     QualidentTypeNode* = POINTER TO QualidentTypeNodeDesc;
@@ -177,14 +178,25 @@ MODULE SyntaxTree;
       fromInterface*: BOOLEAN
     END;
     (* One element of a literal: "field := value" (field empty for a
-       positional element), and, in a nested "{...}" that turns out to be
-       a set constructor, "value .. high" (high NIL otherwise). copiesArray
-       as AssignStatementNodeDesc's, for the element's assignment. *)
+       positional element), "[labels]: value" in an array literal (indexes
+       its labels, NIL otherwise), and, in a nested "{...}" that turns out
+       to be a set constructor, "value .. high" (high NIL otherwise).
+       copiesArray as AssignStatementNodeDesc's, for the element's
+       assignment. ranges, in an array literal, the indexes the element
+       gives, which the checker works out: its labels' values, or the one
+       index a positional element takes. *)
     LiteralElementNodeDesc* = RECORD (NodeDesc)
       field*: Ident;
+      indexes*: CaseLabelNode;
       value*, high*: ExprNode;
       copiesArray*: BOOLEAN;
+      ranges*: IndexRangeNode;
       next*: LiteralElementNode
+    END;
+    (* Indexes low..high of an array literal, low <= high *)
+    IndexRangeNodeDesc* = RECORD
+      low*, high*: LONGINT;
+      next*: IndexRangeNode
     END;
 
     (* Types (Appendix B: Type, FieldList) *)

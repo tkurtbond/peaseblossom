@@ -1221,13 +1221,14 @@ VAR p: Point; l: Line; v: Vector;
 constructor. The design, the decisions taken with the user (2026-10-02)
 and the survey of other dialects (Modula-3, ISO Modula-2, Micron, Active
 Oberon, Oberon+, Ada) are in `doc/record-and-array-literals.md`. Settled
-here (2026-10-03), with the user's answers on defaults and on the `.sym`
-file, and with indexed or repeated array elements, open array literals
-and a bare `{...}` outside a literal left out (each could come later
-without changing what is written now). The rules:
+here (2026-10-03), with the user's answers on defaults, on the `.sym`
+file and on indexed array elements, and with repeated elements, open
+array literals and a bare `{...}` outside a literal left out (each could
+come later without changing what is written now). The rules:
 
 - **The syntax**: `Literal = Qualident "{" [Element {"," Element}] "}"`,
-  where `Element = ident ":=" Expression | Expression | "{" ... "}"`.
+  where `Element = [ident ":=" | "[" CaseLabelList "]" ":"] (Expression
+  | "{" ... "}")`.
   `Qualident` names a record type or an array type of fixed length:
   never a pointer type, an open array type or an anonymous type (there
   is none to name: types are equivalent by name). A designator is never
@@ -1237,8 +1238,16 @@ without changing what is written now). The rules:
   the type or of one of its base types, each at most once, in any
   order; never positional ("a record literal names its fields: field :=
   value"). **Array elements are positional**, from index 0, at most the
-  array's length. A multi-dimensional array is an array of arrays:
-  `Matrix{{1, 0}, {0, 1}}`.
+  array's length, **or indexed**, `[labels]: expression`, the labels
+  written as a `CASE`'s, constant integers and ranges within the array's
+  bounds: `Class{[ORD("0") .. ORD("9")]: digit, [ORD("_"), 0]: other}`
+  (user, 2026-10-03). The two mix: a positional element takes the index
+  after the one before it, after an indexed element the index after the
+  highest it gives (`Vec{1, 2, [5]: 50, 60}` sets 0, 1, 5 and 6). No
+  index may be given twice ("this index is given twice in the literal");
+  an index is not allowed in a record literal or a set. A
+  multi-dimensional array is an array of arrays: `Matrix{{1, 0}, {0,
+  1}}`.
 - **Each element is assignment compatible** with its field or element
   type, as `Oberon2.pdf` Appendix A defines it and poc extends it: a
   string for an `ARRAY n OF CHAR`, an extension's record (projected) for
@@ -1255,7 +1264,9 @@ without changing what is written now). The rules:
   initializer applied (Phase 11 D17: the base type's first, through the
   type's initialization procedure, in every record inside it and in
   every element of an array of records), and then the elements written
-  are evaluated and assigned in the order written, each once. So a field
+  are evaluated and assigned in the order written, each once - an
+  indexed element once for each index it gives, in increasing order
+  within a range, so `[0..9]: NewNode()` makes ten nodes. So a field
   that is written also has its default evaluated first, as for `VAR r:
   T; ... r.x := e` (user, 2026-10-03: an imported type's defaults exist
   only as its declaring module's procedure, which applies all of them),
@@ -1306,9 +1317,10 @@ as every Oberon constant states no type of its own. The rules:
   module that uses it rather than linked from its exporter.
 - **Exported**: the `.sym` file writes the constant as its literal,
   `origin* = Point{x := 0, y := 0};`, every field of a record given,
-  defaults and hidden fields included, and an array's elements as far as
-  its literal gives them (the rest are its element type's default, which
-  the reader computes the same way); in a `CONST` section after the `TYPE` section (a literal
+  defaults and hidden fields included, and an array's elements by
+  position as far as its literal gives them (indexed elements written
+  out, the gaps with their defaults; the rest are its element type's
+  default, which the reader computes the same way); in a `CONST` section after the `TYPE` section (a literal
   names its type, and the reader declares before use; `DeclSeq` allows
   the sections in any order). The importer folds `M.origin.x` from it and
   makes its own copy from it; it cannot select a hidden field, and the

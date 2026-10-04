@@ -5644,16 +5644,58 @@ MODULE LLVMCodeGenerator;
     END
   END StoreLiteralElement;
 
+  (* el's value assigned to each element low..high of the array of type arr
+     at addrText, evaluated once for each: one store for one index, a loop
+     for more *)
+  PROCEDURE StoreLiteralRange(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; arr: Types.ArrayType;
+                              el: SyntaxTree.LiteralElementNode; low, high: LONGINT);
+    VAR
+      arrayText, elementText: LongText; wordInt, indexText, elementAddr, before, headLabel, bodyLabel, latchLabel,
+      doneLabel, index, next, more, highText: ValueText;
+  BEGIN
+    LLVMTypes.TypeString(arr, cg.sizeModel, arrayText);
+    IF low = high THEN
+      indexText[0] := 0X; AppendLongInt(indexText, low);
+      EmitGEP(w, cg, arrayText, addrText, "i32", indexText, elementAddr);
+      StoreLiteralElement(w, cg, elementAddr, arr.elementType, el)
+    ELSE
+      WordIntType(wordInt);
+      LLVMTypes.TypeString(arr.elementType, cg.sizeModel, elementText);
+      COPY(cg.currentBlock, before);
+      NewLabel(cg, headLabel); NewLabel(cg, bodyLabel); NewLabel(cg, latchLabel); NewLabel(cg, doneLabel);
+      NewTemp(cg, index); NewTemp(cg, next);
+      EmitBr(w, headLabel);
+      EmitLabel(w, cg, headLabel);
+      indexText[0] := 0X; AppendLongInt(indexText, low);
+      WriteStr(w, "  "); WriteStr(w, index); WriteStr(w, " = phi "); WriteStr(w, wordInt);
+      WriteStr(w, " [ "); WriteStr(w, indexText); WriteStr(w, ", %"); WriteStr(w, before); WriteStr(w, " ], [ ");
+      WriteStr(w, next); WriteStr(w, ", %"); WriteStr(w, latchLabel); WriteStr(w, " ]"); WriteLn(w);
+      highText[0] := 0X; AppendLongInt(highText, high);
+      EmitBinOp(w, cg, "icmp sle", wordInt, index, highText, more);
+      EmitCondBr(w, more, bodyLabel, doneLabel);
+      EmitLabel(w, cg, bodyLabel);
+      EmitElementGEP(w, cg, elementText, addrText, wordInt, index, elementAddr);
+      StoreLiteralElement(w, cg, elementAddr, arr.elementType, el);
+      (* the element may have branched: the back edge leaves from a block
+         of its own *)
+      EmitBr(w, latchLabel);
+      EmitLabel(w, cg, latchLabel);
+      WriteStr(w, "  "); WriteStr(w, next); WriteStr(w, " = add "); WriteStr(w, wordInt); WriteStr(w, " ");
+      WriteStr(w, index); WriteStr(w, ", 1"); WriteLn(w);
+      EmitBr(w, headLabel);
+      EmitLabel(w, cg, doneLabel)
+    END
+  END StoreLiteralRange;
+
   (* lit, a literal of type t, made at addrText *)
   PROCEDURE BuildLiteralAt(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; t: Types.Type;
                            lit: SyntaxTree.StructuredLiteralNode);
     VAR
-      el: SyntaxTree.LiteralElementNode; elementAddr, indexText: ValueText; elementType: Types.Type;
-      arrayText: LongText; index: LONGINT;
+      el: SyntaxTree.LiteralElementNode; elementAddr: ValueText; elementType: Types.Type;
+      range: SyntaxTree.IndexRangeNode; index: LONGINT;
   BEGIN
     ZeroAt(w, cg, addrText, t);
     InitializeAt(w, cg, addrText, t);
-    LLVMTypes.TypeString(t, cg.sizeModel, arrayText);
     el := lit.elements; index := 0;
     WHILE el # NIL DO
       IF el.line > 0 THEN cg.currentLine := el.line; cg.currentColumn := el.column END;
@@ -5664,10 +5706,14 @@ MODULE LLVMCodeGenerator;
         ELSE
           WriteStr(w, "  ; unsupported: a field this backend cannot address"); WriteLn(w)
         END
+      ELSIF el.ranges = NIL THEN (* not worked out by the checker: by position *)
+        StoreLiteralRange(w, cg, addrText, t(Types.ArrayType), el, index, index)
       ELSE
-        indexText[0] := 0X; AppendLongInt(indexText, index);
-        EmitGEP(w, cg, arrayText, addrText, "i32", indexText, elementAddr);
-        StoreLiteralElement(w, cg, elementAddr, t(Types.ArrayType).elementType, el)
+        range := el.ranges;
+        WHILE range # NIL DO
+          StoreLiteralRange(w, cg, addrText, t(Types.ArrayType), el, range.low, range.high);
+          range := range.next
+        END
       END;
       INC(index); el := el.next
     END

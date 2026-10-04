@@ -1,0 +1,11 @@
+indexes.mod:6:24: error: this index is given twice in the literal
+indexes.mod:7:19: error: this index is given twice in the literal
+indexes.mod:8:13: error: the index is outside the array's bounds
+indexes.mod:9:13: error: the index is outside the array's bounds
+indexes.mod:10:13: error: an index in a literal must be a constant integer
+indexes.mod:11:13: error: this range of indexes is empty
+indexes.mod:12:13: error: an index in a literal must be a constant integer
+indexes.mod:13:23: error: too many elements for the array type: ARRAY 8 OF INTEGER
+indexes.mod:14:10: error: an index is allowed only in an array literal
+indexes.mod:15:16: error: a set element has no index
+10 error(s)

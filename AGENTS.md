@@ -361,7 +361,8 @@ Oberon system text keeps its fonts there. Not an extension.
 ### Record and array literals (decided and implemented, Phase 14, 2026-10-03)
 
 `Point{x := 1, y := 2}`, `Vector{1, 2, 3}`: a named record or fixed array
-type and its elements, record ones named, array ones positional; a nested
+type and its elements, record ones named, array ones positional or indexed
+(`[48..57]: 1`, labels as a `CASE`'s, each index once); a nested
 literal may leave out its type name. Made as a variable is (zeroed, every
 default), then the elements assigned in the order written. No literal of a
 type with a field hidden or read-only where it is written. `CONST origin* =
