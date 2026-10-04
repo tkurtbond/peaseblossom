@@ -339,6 +339,41 @@ Counter.Mod:4:22: error: a variable initializer is not in the Oberon-2 report (-
 1 error(s)
 ```
 
+The largest of the extensions is record and array literals: a value of a
+record type or a fixed array type, written in an expression after the
+type's name. A record's fields are named and an array's elements come in
+order; a literal inside another may leave out its type's name; and what a
+literal leaves out has its default, as in a new variable. A literal whose
+elements are all constant can declare a constant:
+
+<!-- example: literals/Shapes.Mod -->
+```
+MODULE Shapes;
+  (* Record and array literals, and a structured constant: poc's extensions *)
+  IMPORT Out;
+  TYPE
+    Point = RECORD x, y: INTEGER END;
+    Line = RECORD from, to: Point; width: INTEGER := 1 END;
+    Path = ARRAY 4 OF Point;
+  CONST
+    origin = Point{x := 0, y := 0};
+  VAR line: Line; path: Path; i: INTEGER;
+BEGIN
+  line := Line{from := origin, to := Point{x := 3, y := 4}};
+  Out.Int(line.to.x, 0); Out.Int(line.to.y, 2); Out.Int(line.width, 2); Out.Ln;
+  path := Path{{x := 1, y := 1}, {x := 2, y := 4}, {x := 3, y := 9}};
+  FOR i := 0 TO LEN(path) - 1 DO Out.Int(path[i].y, 2) END; Out.Ln
+END Shapes.
+```
+
+<!-- run: literals -->
+```
+$ poc Shapes.Mod
+$ ./Shapes
+3 4 1
+ 1 4 9 0
+```
+
 ## 7. When a program fails
 
 **Traps.** What the report calls an error at run time stops the program: it

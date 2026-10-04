@@ -43,6 +43,9 @@ MODULE SyntaxTree;
     NilExprNode* = POINTER TO NilExprNodeDesc;
     SetExprNode* = POINTER TO SetExprNodeDesc;
     SetElementNode* = POINTER TO SetElementNodeDesc;
+    StructuredLiteralNode* = POINTER TO StructuredLiteralNodeDesc;
+    LiteralElementNode* = POINTER TO LiteralElementNodeDesc;
+    TypeHandle* = POINTER TO TypeHandleDesc;
     TypeNode* = POINTER TO TypeNodeDesc;
     QualidentTypeNode* = POINTER TO QualidentTypeNodeDesc;
     ArrayTypeNode* = POINTER TO ArrayTypeNodeDesc;
@@ -151,6 +154,37 @@ MODULE SyntaxTree;
     SetElementNodeDesc* = RECORD (NodeDesc)
       low*, high*: ExprNode; (* high is NIL unless the element is a range *)
       next*: SetElementNode
+    END;
+    (* The base of Types.TypeDesc, so a node can hold the type the checker
+       resolved for it although this module cannot import Types, which
+       imports it (as Types.ScopeHandle is SymbolTable.ScopeDesc's) *)
+    TypeHandleDesc* = RECORD END;
+    (* Phase 14: a record or array literal, "T{...}"
+       (doc/language-extensions.md, "Record and array literals"). name is
+       empty for a nested literal that leaves out its type's name, "{...}"
+       as an element of another literal, which the checker resolves by the
+       element's type: a literal of a record or array type, or, for a set
+       type, a set constructor that replaces it (LiteralElementNodeDesc.
+       value). type is the literal's type, set by the checker (a
+       Types.Type). *)
+    StructuredLiteralNodeDesc* = RECORD (ExprNodeDesc)
+      qualifier*, name*: Ident;
+      elements*: LiteralElementNode;
+      type*: TypeHandle;
+      (* read from a .sym file, which writes a constant whole, its hidden
+         fields included: the rule that no literal names a field hidden
+         where it is written does not apply *)
+      fromInterface*: BOOLEAN
+    END;
+    (* One element of a literal: "field := value" (field empty for a
+       positional element), and, in a nested "{...}" that turns out to be
+       a set constructor, "value .. high" (high NIL otherwise). copiesArray
+       as AssignStatementNodeDesc's, for the element's assignment. *)
+    LiteralElementNodeDesc* = RECORD (NodeDesc)
+      field*: Ident;
+      value*, high*: ExprNode;
+      copiesArray*: BOOLEAN;
+      next*: LiteralElementNode
     END;
 
     (* Types (Appendix B: Type, FieldList) *)

@@ -15,6 +15,14 @@ the user (2026-10-02), the survey of other dialects they were checked
 against, what the implementation would touch, and the questions still
 open.
 
+The rules as settled in Phase 14 step 1 (2026-10-03) are in
+`doc/language-extensions.md`, "Record and array literals", which
+controls where this note differs: a literal is made as a variable is,
+every default applied before the elements are assigned; a constant field
+initializer is written to the `.sym` file as its value; an exported
+structured constant may have hidden fields; and the open questions below
+are left out of Phase 14.
+
 ## Decisions
 
 1. **Syntax: `T{ ... }`**, a named type followed by its elements in
@@ -118,7 +126,10 @@ What the survey says about the decisions:
 - **A string** is an element of an `ARRAY n OF CHAR` field or element, as
   in assignment.
 - **Evaluation**: the elements in the order written, each once; then the
-  defaults of the omitted ones, as `NEW` makes them.
+  defaults of the omitted ones, as `NEW` makes them. (Settled otherwise,
+  2026-10-03: the value is made as a variable is, every default first,
+  and then the elements are assigned in the order written; an imported
+  type's defaults exist only as one procedure that applies all of them.)
 - **Where a literal may stand**: wherever an expression of its type may:
   the source of an assignment (including `p^ :=` and a field), a value
   parameter (an open array parameter included, by the array's elements), a
@@ -130,7 +141,10 @@ What the survey says about the decisions:
 
 ## Structured constants
 
-Proposed, to be settled in Phase 14 step 1:
+Proposed here, and settled in Phase 14 step 1 (2026-10-03) as
+`doc/language-extensions.md` says, with two changes: an omitted field
+of an imported type has a constant default when the `.sym` file gives
+its value, and an exported constant's type may have hidden fields.
 
 - **What is constant**: a literal is a constant expression when every
   element written is one, and every omitted field's default is: a field
@@ -171,11 +185,15 @@ Proposed, to be settled in Phase 14 step 1:
 | `SemanticActions` | the type rules above; the visibility rule (decision 4); a nested bare `{...}` resolved as a set or a literal by the expected type; `-strict`; a structured constant: its declaration, its use as a read-only operand, selection from it |
 | `Types`, `ConstantEvaluator` | a structured `Value`: its type and its elements' values, every field or element filled in; constant folding of a literal and of a selector applied to a structured constant |
 | `ModuleInterface` | an exported structured constant written as a literal, in a `CONST` section after `TYPE`, and read back through the parser |
-| `LLVMCodeGenerator` | a record is already an LLVM value (`AssignToAddress` stores what `GenerateExpr` gives), so a record literal is an LLVM constant aggregate when every element is constant, otherwise an `insertvalue` chain over the defaults. An array literal goes the way string constants go (`copiesArray`, `CopyArrayBlock`): a private constant global when constant, otherwise a stack temporary filled by stores. A temporary holding pointers is on the stack the collector scans; a constant global can hold only NIL |
+| `LLVMCodeGenerator` | as built (step 4): every literal is made in a stack slot of its own, allocated in the function's entry block so that a loop does not grow the stack, zeroed and initialized as a variable is (`InitializeAt`), then its elements stored in order, a nested literal without its type name in its element's place; it is loaded from there as a value, or its address passed to an open array or copied from (`CopyArrayBlock`). A slot holding pointers is on the stack the collector scans. A structured constant is a private constant global of each module that uses it, addressed like a variable, so selecting from it with a variable index or passing it needs nothing more; it can hold only NIL pointers. (The first plan, an LLVM constant aggregate or an `insertvalue` chain for a record literal, was dropped: making a literal as a variable is is what memory and the initialization procedures already do.) |
 | Documentation | a section in `doc/language-extensions.md` and its one-line summary in `AGENTS.md`; the User's and Reference Guides |
 | Fixtures | literals accepted and run (records, arrays, nested, omitted elements, defaults from field initializers, arrays of records, open array parameters, extension); literals rejected (unknown or repeated field, too many elements, incompatible element, hidden or read-only field, a non-constant element in a `CONST`, a structured constant as a `VAR` parameter or assigned to, an exported constant of a hidden type, `-strict`); structured constants folded, selected from, passed, and exported and imported through `.sym`; voc cannot cross-check any of it |
 
 ## Open questions
+
+Decided 2026-10-03: none of these is in Phase 14. Indexed elements with
+ranges (`[48..57]: 1`) are the one worth reconsidering once real tables
+show the need.
 
 - Indexed array elements (Micron's `[i]: e`), a repeat count (ISO
   Modula-2's `e BY n`) or Modula-3's trailing `..`: not in the first

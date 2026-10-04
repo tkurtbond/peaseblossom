@@ -293,6 +293,17 @@ MODULE NestedProcedures;
     END
   END WalkSetExpr;
 
+  (* Phase 14: a record or array literal's elements *)
+  PROCEDURE WalkLiteral(np: NestedProc; e: SyntaxTree.StructuredLiteralNode);
+    VAR element: SyntaxTree.LiteralElementNode;
+  BEGIN
+    element := e.elements;
+    WHILE element # NIL DO
+      WalkExpr(np, element.value); WalkExpr(np, element.high);
+      element := element.next
+    END
+  END WalkLiteral;
+
   PROCEDURE WalkExpr(np: NestedProc; e: SyntaxTree.ExprNode);
   BEGIN
     IF e # NIL THEN
@@ -301,6 +312,7 @@ MODULE NestedProcedures;
       | e: SyntaxTree.UnaryExprNode DO WalkUnaryExpr(np, e)
       | e: SyntaxTree.DesignatorExprNode DO WalkDesignatorExpr(np, e)
       | e: SyntaxTree.SetExprNode DO WalkSetExpr(np, e)
+      | e: SyntaxTree.StructuredLiteralNode DO WalkLiteral(np, e)
       ELSE (* a literal or NIL names no variable *)
       END
     END

@@ -14,10 +14,10 @@
 MODULE FieldLib;
   IMPORT Out;
   TYPE
-    Point* = RECORD x*: INTEGER := ..; y*: INTEGER := ..; tag: CHAR := .. END;
-    Named* = RECORD (Point) name*: ARRAY 8 OF CHAR := ..; serial*: INTEGER := .. END;
-    List* = POINTER TO RECORD value*: INTEGER := ..; inner*: RECORD z*: INTEGER := .. END END;
-    Many* = ARRAY 2 OF RECORD w*: REAL := .. END;
+    Point* = RECORD x*: INTEGER := 3; y*: INTEGER := 3; tag: CHAR := 70X END;
+    Named* = RECORD (Point) name*: ARRAY 8 OF CHAR := "abc"; serial*: INTEGER := .. END;
+    List* = POINTER TO RECORD value*: INTEGER := 7; inner*: RECORD z*: INTEGER := 9 END END;
+    Many* = ARRAY 2 OF RECORD w*: REAL := 1.5E0 END;
   PROCEDURE^ Tag*(VAR p: Point): CHAR;
   PROCEDURE^ Show*(VAR p: Point);
 END FieldLib.

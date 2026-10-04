@@ -1,0 +1,26 @@
+== literals
+literals.mod:13:22: error: the record has no field of this name: z
+literals.mod:14:22: error: this field is given twice in the literal: x
+literals.mod:15:14: error: a record literal names its fields: field := value
+literals.mod:15:17: error: a record literal names its fields: field := value
+literals.mod:16:14: error: literal element is not type-compatible: BOOLEAN to INTEGER
+literals.mod:17:24: error: too many elements for the array type: ARRAY 3 OF REAL
+literals.mod:18:15: error: an array literal's elements have no names
+literals.mod:19:10: error: a literal's type must be a record type or an array type of fixed length: POINTER TO Point
+literals.mod:20:15: error: this element's type has no literal: REAL
+literals.mod:21:19: error: this element's type has no literal: INTEGER
+literals.mod:23:8: error: no literal of this type can be written here; this field is not exported by its module: secret
+literals.mod:24:8: error: no literal of this type can be written here; this field is read-only outside its module: b
+literals.mod:25:8: error: no literal of this type can be written here; this field is not exported by its module: secret
+literals.mod:27:22: error: no literal of this type can be written here; this field is not exported by its module: secret
+literals.mod:28:10: error: a VAR parameter requires a variable argument
+literals.mod:29:8: error: a literal begins with the name of a type: i
+literals.mod:30:14: error: a range is allowed only in a set
+literals.mod:31:18: error: a range is allowed only in a set
+18 error(s)
+== bare
+bare.mod:5:8: error: a literal begins with the name of its type, as T{...}
+1 error(s)
+== selector
+selector.mod:5:11: error: a literal begins with the name of its type, as T{...}
+1 error(s)

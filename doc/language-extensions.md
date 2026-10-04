@@ -1194,3 +1194,138 @@ among them, stop at the period. Until then poc lexed on and reported the
 first character it could not read. Not an extension, so `-strict` does
 not report it. Fixture `llvm-char-string-constants`.
 
+
+## Record and array literals (decided and implemented, Phase 14, 2026-10-03)
+
+A value of a named record or fixed array type, written in an expression,
+and a constant declared by one:
+
+```oberon
+TYPE
+  Point* = RECORD x*, y*: INTEGER END;
+  Line* = RECORD from*, to*: Point; width*: INTEGER := 1 END;
+  Vector* = ARRAY 3 OF REAL;
+  Matrix* = ARRAY 2, 2 OF REAL;
+CONST
+  origin* = Point{x := 0, y := 0};
+  identity* = Matrix{{1, 0}, {0, 1}};
+VAR p: Point; l: Line; v: Vector;
+...
+  p := Point{x := 3, y := 4};
+  l := Line{from := origin, to := p};     (* width gets its default, 1 *)
+  v := Vector{1.5, 2.5};                  (* v[2] is 0 *)
+  Draw(Line{from := p, to := Point{x := p.x, y := 0}})
+```
+
+`Oberon2.pdf` has no structured value: its `Factor` has only the set
+constructor. The design, the decisions taken with the user (2026-10-02)
+and the survey of other dialects (Modula-3, ISO Modula-2, Micron, Active
+Oberon, Oberon+, Ada) are in `doc/record-and-array-literals.md`. Settled
+here (2026-10-03), with the user's answers on defaults and on the `.sym`
+file, and with indexed or repeated array elements, open array literals
+and a bare `{...}` outside a literal left out (each could come later
+without changing what is written now). The rules:
+
+- **The syntax**: `Literal = Qualident "{" [Element {"," Element}] "}"`,
+  where `Element = ident ":=" Expression | Expression | "{" ... "}"`.
+  `Qualident` names a record type or an array type of fixed length:
+  never a pointer type, an open array type or an anonymous type (there
+  is none to name: types are equivalent by name). A designator is never
+  followed by `{` in Oberon-2, so the form is new and unambiguous. A
+  literal is a factor, not a designator: no selector follows it.
+- **Record elements are named**, `field := expression`, each a field of
+  the type or of one of its base types, each at most once, in any
+  order; never positional ("a record literal names its fields: field :=
+  value"). **Array elements are positional**, from index 0, at most the
+  array's length. A multi-dimensional array is an array of arrays:
+  `Matrix{{1, 0}, {0, 1}}`.
+- **Each element is assignment compatible** with its field or element
+  type, as `Oberon2.pdf` Appendix A defines it and poc extends it: a
+  string for an `ARRAY n OF CHAR`, an extension's record (projected) for
+  a record field, `NIL` for a pointer or procedure, an integer constant
+  that fits a smaller integer type.
+- **A nested literal may leave out its type's name**: where an element's
+  type is a record or array type, `{...}` is a literal of that type
+  (which is how a field or element of an anonymous type gets one at
+  all); where it is a set type, `{...}` is a set constructor, ranges
+  included; anywhere else it is an error. Outside a literal `{...}` is
+  always a set, as in the report.
+- **Omitted elements take their defaults.** A literal's value is made
+  exactly as a variable of its type is: zeroed, then every field
+  initializer applied (Phase 11 D17: the base type's first, through the
+  type's initialization procedure, in every record inside it and in
+  every element of an array of records), and then the elements written
+  are evaluated and assigned in the order written, each once. So a field
+  that is written also has its default evaluated first, as for `VAR r:
+  T; ... r.x := e` (user, 2026-10-03: an imported type's defaults exist
+  only as its declaring module's procedure, which applies all of them),
+  and a nested literal makes its own value the same way before it is
+  assigned to its element. The value is complete before it is used, so
+  `r := R{x := r.y, y := r.x}` swaps.
+- **No literal of a record type with a field hidden or read-only where
+  the literal is written**: a field not exported, or exported with `-`,
+  by another module (base types' fields included) means that module's
+  literals cannot name the type ("no literal of this type can be written
+  here; this field is not exported by its module: f", or "is read-only
+  outside its module"). The declaring module, which
+  sees every field, can. A record of such a type can still be an element
+  given by a variable, or an omitted one.
+- **Where a literal may stand**: wherever an expression of its type may
+  - the source of an assignment (to a variable, a field, an element,
+  `p^`), a value parameter, an open array value parameter (an array
+  literal), an element of another literal, a variable or field
+  initializer. Not where a variable is needed: a `VAR` parameter,
+  `SYSTEM.ADR`, a type guard, `IS`. `=` and `#` stay undefined on records
+  and arrays.
+- `-strict` rejects a literal ("a record or array literal is not in the
+  Oberon-2 report (-strict)"), and voc cannot compile one.
+
+**Structured constants.** A literal is a constant expression when every
+element written is a constant, structured constants included, and every
+omitted element's default is constant: zero, or a field initializer
+whose value is constant. A pointer or procedure element of one can only
+be `NIL`. Then `CONST c = T{...}` declares a constant of type `T`, which
+as every Oberon constant states no type of its own. The rules:
+
+- A field initializer that is not constant makes a constant literal give
+  that field ("the default of this field is not constant, so a constant
+  literal must give it: f"); a literal that is not in a `CONST` may leave it out.
+- **Read-only**: a structured constant is used as a read-only variable of
+  its type is: read, assigned from, passed as a value or open array value
+  parameter, an element of another literal. Never assigned to, passed as
+  a `VAR` parameter or to `SYSTEM.ADR`.
+- **Selecting from one**: `origin.x`, and `identity[1, 1]` with constant
+  indexes, are constant expressions, folded like any other, so a
+  constant table can give a `CASE` label or an array length. A constant
+  index out of range is a compile-time error. An index that is not
+  constant reads the constant's copy in memory, index-checked as usual.
+  `LEN` of one is a constant, as of any fixed array.
+- **In memory**: each module that needs one in memory (to pass it, to
+  assign it, to index it with a variable) has its own private, read-only
+  copy, made from the value, as a scalar constant is folded into each
+  module that uses it rather than linked from its exporter.
+- **Exported**: the `.sym` file writes the constant as its literal,
+  `origin* = Point{x := 0, y := 0};`, every field of a record given,
+  defaults and hidden fields included, and an array's elements as far as
+  its literal gives them (the rest are its element type's default, which
+  the reader computes the same way); in a `CONST` section after the `TYPE` section (a literal
+  names its type, and the reader declares before use; `DeclSeq` allows
+  the sections in any order). The importer folds `M.origin.x` from it and
+  makes its own copy from it; it cannot select a hidden field, and the
+  `.sym` reader is exempt from the visibility rule above. The constant's
+  type must have a name the `.sym` file can use: a `TYPE` of the module,
+  exported or not (an unexported one is declared in the `.sym` file, as
+  for a variable of that type), or an exported one of an import ("an
+  exported record or array constant's type must have a name"), so
+  `row* = m[1]` of an `ARRAY 2, 2` cannot be exported.
+- **Field initializers in the `.sym` file**: a field initializer whose
+  value is constant is written as that value, `f: INTEGER := 3`, hidden
+  fields' included, so an importer can fold a constant literal that
+  leaves the field out (user, 2026-10-03); one that is not constant is
+  written `:= ..`, as before (Phase 11 D17).
+
+Implemented in Phase 14 steps 2-4. The LLVM backend makes each literal in a
+stack slot of its own, allocated in the entry block of the function that
+evaluates it (so a literal in a loop does not grow the stack), and loads it
+from there or passes its address; a structured constant that is needed in
+memory is a private constant global of the module.

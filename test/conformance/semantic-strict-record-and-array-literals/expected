@@ -1,0 +1,4 @@
+strict.mod:6:8: error: a record or array literal is not in the Oberon-2 report (-strict)
+strict.mod:7:8: error: a record or array literal is not in the Oberon-2 report (-strict)
+2 error(s)
+semantic OK

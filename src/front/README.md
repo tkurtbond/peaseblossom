@@ -137,3 +137,16 @@ etc.).
   envisioned, since poc has no codegen yet to run one through; it prints
   all four word-size x size-model combinations unconditionally, since
   poc has no `-O2`/`-OC` CLI flag of its own yet.
+- Phase 14, record and array literals and structured constants
+  (`doc/language-extensions.md`, "Record and array literals"), touches
+  several of these: `SyntaxTree` has `StructuredLiteralNode` and
+  `LiteralElementNode`, and `TypeHandle`, the checked literal's type
+  (`Types.TypeDesc` extends it, since `SyntaxTree` imports nothing);
+  `Parser` reads `T{...}` and a nested bare `{...}`; `SemanticActions`
+  checks a literal and resolves a bare one as a literal or a set;
+  `Types.Value` has the kind `structuredValue` (`elements`, `fill`);
+  `ConstantEvaluator` folds a constant literal and a selector applied to a
+  structured constant; `ModuleInterface` writes structured constants and
+  constant field initializers to the `.sym` file; and
+  `DecimalToDouble.ParseSingle` rounds a numeral straight to single
+  precision, for a `REAL` in a constant.

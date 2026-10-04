@@ -358,6 +358,19 @@ As in voc: a hexadecimal constant of 16 significant digits, the first above
 poc reads nothing after the period of `END M.`, as Oberon compilers do: an
 Oberon system text keeps its fonts there. Not an extension.
 
+### Record and array literals (decided and implemented, Phase 14, 2026-10-03)
+
+`Point{x := 1, y := 2}`, `Vector{1, 2, 3}`: a named record or fixed array
+type and its elements, record ones named, array ones positional; a nested
+literal may leave out its type name. Made as a variable is (zeroed, every
+default), then the elements assigned in the order written. No literal of a
+type with a field hidden or read-only where it is written. `CONST origin* =
+Point{x := 0, y := 0}` when every element and omitted default is constant:
+read-only, folded through selectors, written whole to the `.sym` file, as
+are constant field initializers. `-strict` rejects it. The LLVM backend
+makes a literal in a stack slot of the function's entry block; a structured
+constant is a private constant global of each module that uses it.
+
 ## Project state
 
 Phases 0-13 of `PLAN.md` are complete (records in `doc/phases/` and
@@ -368,7 +381,8 @@ and packages for Fedora, FreeBSD, OpenBSD and NetBSD; Phase 13: `make
 install`, the seed, `make dist`, `doc/users-guide.md`,
 `doc/reference-guide.md`, `doc/poc.1`, `packaging/`; `doc/DEVELOPER.md`
 says how a release is made). Phase 14, record and array literals and
-structured constants (`doc/record-and-array-literals.md`), is next; 15-18
+structured constants (`doc/record-and-array-literals.md`), is in progress:
+steps 1-5 are done, its exit gate is next; 15-18
 are the VAX/VMS work, 19 further extensions, 20 voc's library modules. The
 phases were renumbered twice on 2026-10-02, and older records keep the old
 numbers (`PLAN.md`, Phase 13). `doc/project-history.md` has the earlier account;

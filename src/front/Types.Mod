@@ -96,12 +96,17 @@ MODULE Types;
     intValue* = 0; realValue* = 1; boolValue* = 2; charValue* = 3;
     stringValue* = 4; setValue* = 5;
     nilValue* = 6; (* CONST c = NIL (2026-10-02); its type is NilType *)
+    (* Phase 14: a record or array constant, CONST origin = Point{...}
+       (ValueDesc.elements) *)
+    structuredValue* = 7;
 
     stringValueLength* = 255; (* mirrors SyntaxTree.identLength *)
 
   TYPE
     Type* = POINTER TO TypeDesc;
-    TypeDesc* = RECORD END;
+    (* extends SyntaxTree's handle so a node can name its type
+       (SyntaxTree.StructuredLiteralNodeDesc.type) *)
+    TypeDesc* = RECORD (SyntaxTree.TypeHandleDesc) END;
 
     (* The base of SymbolTable.ScopeDesc, so a record can name the scope
        it was declared in (RecordTypeDesc.declScope) although this module
@@ -262,7 +267,15 @@ MODULE Types;
          32..63 (element e as e - 32). Two SETs, not a SYSTEM.SET64, so that
          poc's own source stays inside Oberon2.pdf (-strict; SET is 32 bits
          under both size models). SetValueHas, InclSetValue. *)
-      setLow*, setHigh*: SET
+      setLow*, setHigh*: SET;
+      (* Phase 14, a structuredValue of a record type: one value for every
+         field, in the order of the record's layout (its bases' fields
+         first, hidden ones included), linked by next. Of an array type: its
+         first elements, linked by next, and fill, the value of each element
+         after them (NIL when the list has them all), so that a long array
+         given few elements stays small. An ARRAY n OF CHAR may instead be
+         a stringValue. *)
+      elements*, fill*, next*: Value
     END;
 
   VAR

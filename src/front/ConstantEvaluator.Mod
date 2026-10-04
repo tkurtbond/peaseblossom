@@ -114,6 +114,8 @@ MODULE ConstantEvaluator;
 
   PROCEDURE ^ EvaluateExpr(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): Types.Value;
   PROCEDURE ^ IsConstant(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): BOOLEAN;
+  PROCEDURE ^ ConstantSelectors(sel: SyntaxTree.Selector; scope: SymbolTable.Scope): BOOLEAN;
+  PROCEDURE ^ SelectFromValue(v: Types.Value; sel: SyntaxTree.Selector; scope: SymbolTable.Scope): Types.Value;
 
   (* Recomputes every size-model-dependent bound above (VAR block just
      above) for the given MemoryLayout.sizeModelO2/OC model - the single
@@ -972,6 +974,14 @@ MODULE ConstantEvaluator;
         RETURN EvaluateTypeBoundCall(d.name, expr.args, scope, expr.line, expr.column)
       END
     END;
+    IF (d.selectors # NIL) & ~expr.hasParens THEN
+      (* Phase 14: origin.x, table[3] *)
+      obj := FindQualifiedConst(scope, d);
+      IF (obj # NIL) & (obj.class = SymbolTable.constClass) & (obj.value # NIL)
+         & (obj.value.kind = Types.structuredValue) & ConstantSelectors(d.selectors, scope) THEN
+        RETURN SelectFromValue(obj.value, d.selectors, scope)
+      END
+    END;
     IF (d.selectors # NIL) OR expr.hasParens THEN
       Diagnostics.Error(expr.line, expr.column, "not a constant expression");
       RETURN UndefinedValue()
@@ -1243,9 +1253,32 @@ MODULE ConstantEvaluator;
     RETURN result
   END CharAsString;
 
+  (* Phase 14: a constant ARRAY n OF CHAR - a record or array constant's
+     element, or a literal of the type - compares as the string it holds,
+     up to its first 0X *)
+  PROCEDURE CharArrayAsString(v: Types.Value): Types.Value;
+    VAR result, e: Types.Value; i: INTEGER;
+  BEGIN
+    IF (v.type = NIL) OR ~(v.type IS Types.ArrayType) OR (v.type(Types.ArrayType).elementType # Types.Char) THEN
+      RETURN v
+    END;
+    NEW(result); result.type := Types.String; result.kind := Types.stringValue;
+    IF v.kind = Types.stringValue THEN
+      result.stringVal := v.stringVal
+    ELSE (* a structuredValue of characters *)
+      i := 0; e := v.elements;
+      WHILE (e # NIL) & (e.kind = Types.charValue) & (e.charVal # 0X) & (i < LEN(result.stringVal) - 1) DO
+        result.stringVal[i] := e.charVal; INC(i); e := e.next
+      END;
+      result.stringVal[i] := 0X
+    END;
+    RETURN result
+  END CharArrayAsString;
+
   (* A CHAR compared with a string compares as a string of one character *)
   PROCEDURE MatchCharWithString(VAR l, r: Types.Value);
   BEGIN
+    l := CharArrayAsString(l); r := CharArrayAsString(r);
     IF (l.type = Types.Char) & (r.type = Types.String) THEN l := CharAsString(l)
     ELSIF (l.type = Types.String) & (r.type = Types.Char) THEN r := CharAsString(r)
     END
@@ -1420,6 +1453,515 @@ MODULE ConstantEvaluator;
     RETURN result
   END EvaluateSet;
 
+  (* ---- Phase 14: record and array constants ----
+
+     doc/language-extensions.md, "Record and array literals": a literal is
+     a constant when every element written is one and every element it
+     leaves out has a constant default, and its value is a
+     Types.structuredValue. Its type is the one the checker gave it
+     (SyntaxTree.StructuredLiteralNodeDesc.type) or, before the checker has
+     seen it, the one its name or the enclosing literal's element gives:
+     a CONST is evaluated as it is declared, perhaps before a field
+     initializer it uses has been checked. *)
+
+  PROCEDURE CopyValue(v: Types.Value): Types.Value;
+    VAR c: Types.Value;
+  BEGIN
+    NEW(c); c^ := v^; c.next := NIL;
+    RETURN c
+  END CopyValue;
+
+  PROCEDURE StructuredValue(t: Types.Type): Types.Value;
+    VAR v: Types.Value;
+  BEGIN
+    NEW(v); v.kind := Types.structuredValue; v.type := t;
+    v.elements := NIL; v.fill := NIL; v.next := NIL;
+    RETURN v
+  END StructuredValue;
+
+  PROCEDURE AppendValue(list: Types.Value; VAR last: Types.Value; v: Types.Value);
+  BEGIN
+    IF last = NIL THEN list.elements := v ELSE last.next := v END;
+    last := v
+  END AppendValue;
+
+  PROCEDURE LiteralType(lit: SyntaxTree.StructuredLiteralNode; scope: SymbolTable.Scope): Types.Type;
+    VAR d: SyntaxTree.Designator; obj: SymbolTable.Object;
+  BEGIN
+    IF lit.type # NIL THEN RETURN lit.type(Types.Type) END;
+    IF lit.name[0] = 0X THEN RETURN NIL END;
+    NEW(d); d.qualifier := lit.qualifier; d.name := lit.name; d.selectors := NIL;
+    obj := FindQualifiedConst(scope, d);
+    IF (obj # NIL) & (obj.class = SymbolTable.typeClass) THEN RETURN obj.type END;
+    RETURN NIL
+  END LiteralType;
+
+  PROCEDURE IsFixedArray(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (t # NIL) & (t IS Types.ArrayType) & ~t(Types.ArrayType).isOpen
+  END IsFixedArray;
+
+  (* the zero of a type that is not a record or an array *)
+  PROCEDURE ZeroValue(t: Types.Type): Types.Value;
+    VAR v: Types.Value;
+  BEGIN
+    NEW(v); v.type := t;
+    IF (t = Types.Real) OR (t = Types.LongReal) THEN
+      v.kind := Types.realValue; v.realVal := 0.0; v.realText := "0.0"
+    ELSIF t = Types.Boolean THEN
+      v.kind := Types.boolValue; v.boolVal := FALSE
+    ELSIF t = Types.Char THEN
+      v.kind := Types.charValue; v.charVal := 0X
+    ELSIF Types.IsSet(t) THEN
+      v.kind := Types.setValue; v.setLow := {}; v.setHigh := {}
+    ELSIF (t IS Types.PointerType) OR (t IS Types.ProcedureType) THEN
+      v.kind := Types.nilValue
+    ELSE (* an integer, SYSTEM.BYTE *)
+      v.kind := Types.intValue; v.intVal := 0
+    END;
+    RETURN v
+  END ZeroValue;
+
+  PROCEDURE ^ DefaultValue(t: Types.Type; VAR missing: Types.Field): Types.Value;
+  PROCEDURE ^ AssignedValue(v: Types.Value; t: Types.Type): Types.Value;
+
+  (* field's default, a field of rec: its initializer's value, or its
+     type's default; NIL, with missing the first field whose default is
+     not constant (a .sym file writes such an initializer "..") *)
+  PROCEDURE FieldDefault(f: Types.Field; rec: Types.RecordType; VAR missing: Types.Field): Types.Value;
+    VAR scope: SymbolTable.Scope; v: Types.Value;
+  BEGIN
+    IF ~f.hasInitializer THEN RETURN DefaultValue(f.type, missing) END;
+    IF (f.initializer # NIL) & (rec.declScope # NIL) THEN
+      scope := rec.declScope(SymbolTable.Scope);
+      IF IsConstant(f.initializer, scope) THEN
+        v := EvaluateExpr(f.initializer, scope);
+        IF v.type # Types.Undefined THEN RETURN AssignedValue(v, f.type) END
+      END
+    END;
+    IF missing = NIL THEN missing := f END;
+    RETURN NIL
+  END FieldDefault;
+
+  (* The value of field f's initializer, f a field of rec, when it has
+     one and it is constant; NIL otherwise. ModuleInterface writes it into
+     the .sym file, so an importer can fold a constant literal that leaves
+     f out. *)
+  PROCEDURE ConstantInitializer*(f: Types.Field; rec: Types.RecordType): Types.Value;
+    VAR missing: Types.Field;
+  BEGIN
+    IF ~f.hasInitializer THEN RETURN NIL END;
+    missing := NIL;
+    RETURN FieldDefault(f, rec, missing)
+  END ConstantInitializer;
+
+  (* rec's fields' defaults, its bases' first, appended to v *)
+  PROCEDURE AppendFieldDefaults(v: Types.Value; VAR last: Types.Value; rec: Types.RecordType;
+                                VAR missing: Types.Field): BOOLEAN;
+    VAR f: Types.Field; fv: Types.Value;
+  BEGIN
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType)
+       & ~AppendFieldDefaults(v, last, rec.baseType(Types.RecordType), missing) THEN
+      RETURN FALSE
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      fv := FieldDefault(f, rec, missing);
+      IF fv = NIL THEN RETURN FALSE END;
+      AppendValue(v, last, fv);
+      f := f.next
+    END;
+    RETURN TRUE
+  END AppendFieldDefaults;
+
+  (* the value a variable of type t starts with: zero, and every field
+     initializer; NIL when one is not constant (missing) *)
+  PROCEDURE DefaultValue(t: Types.Type; VAR missing: Types.Field): Types.Value;
+    VAR v, last: Types.Value;
+  BEGIN
+    IF t IS Types.RecordType THEN
+      v := StructuredValue(t); last := NIL;
+      IF ~AppendFieldDefaults(v, last, t(Types.RecordType), missing) THEN v := NIL END
+    ELSIF IsFixedArray(t) & (t(Types.ArrayType).elementType = Types.Char) THEN
+      NEW(v); v.kind := Types.stringValue; v.type := t; v.stringVal := ""
+    ELSIF IsFixedArray(t) THEN
+      v := StructuredValue(t);
+      v.fill := DefaultValue(t(Types.ArrayType).elementType, missing);
+      IF v.fill = NIL THEN v := NIL END
+    ELSE
+      v := ZeroValue(t)
+    END;
+    RETURN v
+  END DefaultValue;
+
+  (* the number of fields of rec, its bases' included *)
+  PROCEDURE FieldCount(rec: Types.RecordType): INTEGER;
+    VAR n: INTEGER; f: Types.Field;
+  BEGIN
+    n := 0;
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) THEN
+      n := FieldCount(rec.baseType(Types.RecordType))
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO INC(n); f := f.next END;
+    RETURN n
+  END FieldCount;
+
+  (* a constant v as assigned to a variable of type t, which the checker
+     has allowed: an integer as a real, a CHAR as a string and the other
+     way round, an extension's record projected to its base, a shorter
+     array (voc's array rule) filled with the defaults; otherwise v
+     retyped *)
+  PROCEDURE AssignedValue(v: Types.Value; t: Types.Type): Types.Value;
+    VAR c, from, last: Types.Value; n, i: INTEGER; missing: Types.Field; unsigned: ARRAY Types.stringValueLength + 1 OF CHAR;
+  BEGIN
+    IF (v.kind = Types.realValue) & (t = Types.Real) & (v.realText[0] # 0X) THEN
+      (* a numeral, rounded once, straight to a REAL: a backend writes the
+         value into a constant, where it cannot round the numeral itself *)
+      c := CopyValue(v);
+      IF v.realText[0] = "-" THEN
+        i := 0; REPEAT unsigned[i] := v.realText[i + 1]; INC(i) UNTIL unsigned[i - 1] = 0X;
+        c.realVal := -DecimalToDouble.ParseSingle(unsigned)
+      ELSE
+        c.realVal := DecimalToDouble.ParseSingle(v.realText)
+      END;
+      (* a zero keeps its numeral, and so its sign *)
+      IF c.realVal # 0.0D0 THEN c.realText := "" END
+    ELSIF (v.kind = Types.realValue) & (t = Types.Real) THEN
+      c := CopyValue(v); c.realVal := RoundToSingle(v.realVal)
+    ELSIF (v.kind = Types.intValue) & ((t = Types.Real) OR (t = Types.LongReal)) THEN
+      NEW(c); c.kind := Types.realValue; c.realVal := v.intVal; c.realText := "";
+      IF t = Types.Real THEN c.realVal := RoundToSingle(c.realVal) END
+    ELSIF (v.kind = Types.charValue) & IsFixedArray(t) THEN
+      NEW(c); c.kind := Types.stringValue; c.stringVal[0] := v.charVal; c.stringVal[1] := 0X
+    ELSIF (v.kind = Types.stringValue) & ((t = Types.Char) OR (t = Types.Byte)) THEN
+      NEW(c); c.kind := Types.charValue; c.charVal := v.stringVal[0]
+    ELSIF (v.kind = Types.structuredValue) & (t IS Types.RecordType) & (v.type # t) THEN
+      c := StructuredValue(t); last := NIL;
+      n := FieldCount(t(Types.RecordType)); i := 0; from := v.elements;
+      WHILE (i < n) & (from # NIL) DO AppendValue(c, last, CopyValue(from)); from := from.next; INC(i) END
+    ELSIF (v.kind = Types.structuredValue) & IsFixedArray(t) & (v.type # t) THEN
+      c := StructuredValue(t); last := NIL; from := v.elements;
+      WHILE from # NIL DO AppendValue(c, last, CopyValue(from)); from := from.next END;
+      i := 0; n := 0; from := v.elements;
+      WHILE from # NIL DO INC(i); from := from.next END;
+      IF v.fill # NIL THEN
+        (* the source's own elements after its list, up to its length *)
+        WHILE i < v.type(Types.ArrayType).length DO AppendValue(c, last, CopyValue(v.fill)); INC(i) END
+      END;
+      IF i < t(Types.ArrayType).length THEN
+        missing := NIL; c.fill := DefaultValue(t(Types.ArrayType).elementType, missing)
+      END
+    ELSE
+      c := CopyValue(v)
+    END;
+    c.type := t;
+    RETURN c
+  END AssignedValue;
+
+  PROCEDURE ^ EvaluateLiteralOfType(lit: SyntaxTree.StructuredLiteralNode; t: Types.Type;
+                                    scope: SymbolTable.Scope): Types.Value;
+
+  (* a nested "{...}" for a set type: its elements as a set constructor *)
+  PROCEDURE SetConstructor(lit: SyntaxTree.StructuredLiteralNode): SyntaxTree.SetExprNode;
+    VAR set: SyntaxTree.SetExprNode; el: SyntaxTree.LiteralElementNode;
+        se, last: SyntaxTree.SetElementNode;
+  BEGIN
+    NEW(set); set.line := lit.line; set.column := lit.column; set.elements := NIL; last := NIL;
+    el := lit.elements;
+    WHILE el # NIL DO
+      NEW(se); se.low := el.value; se.high := el.high; se.next := NIL;
+      se.line := el.line; se.column := el.column;
+      IF last = NIL THEN set.elements := se ELSE last.next := se END;
+      last := se;
+      el := el.next
+    END;
+    RETURN set
+  END SetConstructor;
+
+  PROCEDURE BareLiteral(e: SyntaxTree.ExprNode): SyntaxTree.StructuredLiteralNode;
+  BEGIN
+    IF (e # NIL) & (e IS SyntaxTree.StructuredLiteralNode) & (e(SyntaxTree.StructuredLiteralNode).name[0] = 0X) THEN
+      RETURN e(SyntaxTree.StructuredLiteralNode)
+    END;
+    RETURN NIL
+  END BareLiteral;
+
+  (* one element's value, for a field or element of type t *)
+  PROCEDURE ElementValue(el: SyntaxTree.LiteralElementNode; t: Types.Type;
+                         scope: SymbolTable.Scope): Types.Value;
+    VAR nested: SyntaxTree.StructuredLiteralNode; v: Types.Value;
+  BEGIN
+    nested := BareLiteral(el.value);
+    IF (nested # NIL) & Types.IsSet(t) THEN
+      v := EvaluateSet(SetConstructor(nested), scope)
+    ELSIF nested # NIL THEN
+      RETURN EvaluateLiteralOfType(nested, t, scope)
+    ELSE
+      v := EvaluateExpr(el.value, scope)
+    END;
+    IF v.type = Types.Undefined THEN RETURN v END;
+    RETURN AssignedValue(v, t)
+  END ElementValue;
+
+  PROCEDURE ReportMissingDefault(line, column: INTEGER; f: Types.Field);
+  BEGIN
+    Diagnostics.ErrorAbout(line, column,
+      "the default of this field is not constant, so a constant literal must give it", f.name)
+  END ReportMissingDefault;
+
+  (* the element of lit that names field, NIL if none does *)
+  PROCEDURE NamedElement(lit: SyntaxTree.StructuredLiteralNode; f: Types.Field): SyntaxTree.LiteralElementNode;
+    VAR el: SyntaxTree.LiteralElementNode;
+  BEGIN
+    el := lit.elements;
+    WHILE (el # NIL) & (el.field # f.name) DO el := el.next END;
+    RETURN el
+  END NamedElement;
+
+  PROCEDURE AppendFieldValues(lit: SyntaxTree.StructuredLiteralNode; rec: Types.RecordType;
+                              v: Types.Value; VAR last: Types.Value; scope: SymbolTable.Scope): BOOLEAN;
+    VAR f, missing: Types.Field; el: SyntaxTree.LiteralElementNode; fv: Types.Value;
+  BEGIN
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType)
+       & ~AppendFieldValues(lit, rec.baseType(Types.RecordType), v, last, scope) THEN
+      RETURN FALSE
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      el := NamedElement(lit, f);
+      IF el # NIL THEN
+        fv := ElementValue(el, f.type, scope);
+        IF fv.type = Types.Undefined THEN RETURN FALSE END
+      ELSE
+        missing := NIL; fv := FieldDefault(f, rec, missing);
+        IF fv = NIL THEN ReportMissingDefault(lit.line, lit.column, missing); RETURN FALSE END
+      END;
+      AppendValue(v, last, fv);
+      f := f.next
+    END;
+    RETURN TRUE
+  END AppendFieldValues;
+
+  PROCEDURE EvaluateLiteralOfType(lit: SyntaxTree.StructuredLiteralNode; t: Types.Type;
+                                  scope: SymbolTable.Scope): Types.Value;
+    VAR v, last, ev: Types.Value; el: SyntaxTree.LiteralElementNode; count: LONGINT;
+        arr: Types.ArrayType; missing: Types.Field;
+  BEGIN
+    IF t = NIL THEN
+      Diagnostics.Error(lit.line, lit.column, "not a constant expression");
+      RETURN UndefinedValue()
+    END;
+    v := StructuredValue(t); last := NIL;
+    IF t IS Types.RecordType THEN
+      IF ~AppendFieldValues(lit, t(Types.RecordType), v, last, scope) THEN RETURN UndefinedValue() END
+    ELSIF IsFixedArray(t) THEN
+      arr := t(Types.ArrayType); count := 0;
+      el := lit.elements;
+      WHILE (el # NIL) & (count < arr.length) DO
+        ev := ElementValue(el, arr.elementType, scope);
+        IF ev.type = Types.Undefined THEN RETURN ev END;
+        AppendValue(v, last, ev); INC(count);
+        el := el.next
+      END;
+      IF count < arr.length THEN
+        missing := NIL; v.fill := DefaultValue(arr.elementType, missing);
+        IF v.fill = NIL THEN ReportMissingDefault(lit.line, lit.column, missing); RETURN UndefinedValue() END
+      END
+    ELSE
+      Diagnostics.Error(lit.line, lit.column, "not a constant expression");
+      RETURN UndefinedValue()
+    END;
+    RETURN v
+  END EvaluateLiteralOfType;
+
+  PROCEDURE EvaluateStructuredLiteral(lit: SyntaxTree.StructuredLiteralNode;
+                                      scope: SymbolTable.Scope): Types.Value;
+  BEGIN
+    RETURN EvaluateLiteralOfType(lit, LiteralType(lit, scope), scope)
+  END EvaluateStructuredLiteral;
+
+  (* Whether a default of type t is constant, silently *)
+  PROCEDURE HasConstantDefault(t: Types.Type): BOOLEAN;
+    VAR missing: Types.Field;
+  BEGIN
+    missing := NIL;
+    RETURN DefaultValue(t, missing) # NIL
+  END HasConstantDefault;
+
+  PROCEDURE ^ IsConstantLiteralOfType(lit: SyntaxTree.StructuredLiteralNode; t: Types.Type;
+                                      scope: SymbolTable.Scope): BOOLEAN;
+
+  PROCEDURE IsConstantElement(el: SyntaxTree.LiteralElementNode; t: Types.Type;
+                              scope: SymbolTable.Scope): BOOLEAN;
+    VAR nested: SyntaxTree.StructuredLiteralNode;
+  BEGIN
+    nested := BareLiteral(el.value);
+    IF (nested # NIL) & Types.IsSet(t) THEN
+      RETURN IsConstant(SetConstructor(nested), scope)
+    ELSIF nested # NIL THEN
+      RETURN IsConstantLiteralOfType(nested, t, scope)
+    ELSE
+      RETURN IsConstant(el.value, scope) & ((el.high = NIL) OR IsConstant(el.high, scope))
+    END
+  END IsConstantElement;
+
+  PROCEDURE FieldsConstant(lit: SyntaxTree.StructuredLiteralNode; rec: Types.RecordType;
+                           scope: SymbolTable.Scope): BOOLEAN;
+    VAR f, missing: Types.Field; el: SyntaxTree.LiteralElementNode;
+  BEGIN
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType)
+       & ~FieldsConstant(lit, rec.baseType(Types.RecordType), scope) THEN
+      RETURN FALSE
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      el := NamedElement(lit, f);
+      IF el # NIL THEN
+        IF ~IsConstantElement(el, f.type, scope) THEN RETURN FALSE END
+      ELSE
+        missing := NIL;
+        IF FieldDefault(f, rec, missing) = NIL THEN RETURN FALSE END
+      END;
+      f := f.next
+    END;
+    RETURN TRUE
+  END FieldsConstant;
+
+  PROCEDURE IsConstantLiteralOfType(lit: SyntaxTree.StructuredLiteralNode; t: Types.Type;
+                                    scope: SymbolTable.Scope): BOOLEAN;
+    VAR el: SyntaxTree.LiteralElementNode; count: LONGINT; arr: Types.ArrayType;
+  BEGIN
+    IF t = NIL THEN RETURN FALSE
+    ELSIF t IS Types.RecordType THEN
+      el := lit.elements;
+      WHILE el # NIL DO
+        (* a name that is no field: the checker says so *)
+        IF Types.FindField(t(Types.RecordType), el.field) = NIL THEN RETURN FALSE END;
+        el := el.next
+      END;
+      RETURN FieldsConstant(lit, t(Types.RecordType), scope)
+    ELSIF IsFixedArray(t) THEN
+      arr := t(Types.ArrayType); count := 0;
+      el := lit.elements;
+      WHILE el # NIL DO
+        IF ~IsConstantElement(el, arr.elementType, scope) THEN RETURN FALSE END;
+        INC(count); el := el.next
+      END;
+      RETURN (count >= arr.length) OR HasConstantDefault(arr.elementType)
+    ELSE
+      RETURN FALSE
+    END
+  END IsConstantLiteralOfType;
+
+  PROCEDURE IsConstantLiteral(lit: SyntaxTree.StructuredLiteralNode; scope: SymbolTable.Scope): BOOLEAN;
+  BEGIN
+    RETURN IsConstantLiteralOfType(lit, LiteralType(lit, scope), scope)
+  END IsConstantLiteral;
+
+  (* ---- selecting from a record or array constant: origin.x, table[3] ---- *)
+
+  (* the field of a structured value v of record type rec named name *)
+  PROCEDURE FieldValue(v: Types.Value; rec: Types.RecordType; name: SyntaxTree.Ident): Types.Value;
+    VAR levels: ARRAY 64 OF Types.RecordType; n, i: INTEGER; r: Types.RecordType;
+        f: Types.Field; e: Types.Value;
+  BEGIN
+    n := 0; r := rec;
+    WHILE (r # NIL) & (n < LEN(levels)) DO
+      levels[n] := r; INC(n);
+      IF (r.baseType # NIL) & (r.baseType IS Types.RecordType) THEN r := r.baseType(Types.RecordType) ELSE r := NIL END
+    END;
+    e := v.elements; i := n - 1;
+    WHILE i >= 0 DO
+      f := levels[i].fields;
+      WHILE f # NIL DO
+        IF f.name = name THEN RETURN e END;
+        IF e # NIL THEN e := e.next END;
+        f := f.next
+      END;
+      DEC(i)
+    END;
+    RETURN NIL
+  END FieldValue;
+
+  (* element index of a structured value v of array type *)
+  PROCEDURE ElementOf(v: Types.Value; index: LONGINT): Types.Value;
+    VAR e: Types.Value;
+  BEGIN
+    e := v.elements;
+    WHILE (e # NIL) & (index > 0) DO e := e.next; DEC(index) END;
+    IF e # NIL THEN RETURN e ELSE RETURN v.fill END
+  END ElementOf;
+
+  (* whether every selector is a field, or an index that is constant: then
+     a designator of a record or array constant is a constant too *)
+  PROCEDURE ConstantSelectors(sel: SyntaxTree.Selector; scope: SymbolTable.Scope): BOOLEAN;
+    VAR index: SyntaxTree.ExprNode;
+  BEGIN
+    WHILE sel # NIL DO
+      IF sel IS SyntaxTree.IndexSelector THEN
+        index := sel(SyntaxTree.IndexSelector).indices;
+        WHILE index # NIL DO
+          IF ~IsConstant(index, scope) THEN RETURN FALSE END;
+          index := index.next
+        END
+      ELSIF ~(sel IS SyntaxTree.FieldSelector) THEN
+        RETURN FALSE
+      END;
+      sel := sel.next
+    END;
+    RETURN TRUE
+  END ConstantSelectors;
+
+  PROCEDURE SelectFromValue(v: Types.Value; sel: SyntaxTree.Selector; scope: SymbolTable.Scope): Types.Value;
+    VAR index: SyntaxTree.ExprNode; i: Types.Value; arr: Types.ArrayType; e: Types.Value; count: LONGINT;
+  BEGIN
+    WHILE sel # NIL DO
+      IF (v.kind = Types.stringValue) & (sel IS SyntaxTree.IndexSelector) THEN
+        (* an ARRAY n OF CHAR held as its string: a character of it, 0X
+           after its end *)
+        index := sel(SyntaxTree.IndexSelector).indices;
+        arr := v.type(Types.ArrayType);
+        i := EvaluateExpr(index, scope);
+        IF i.type = Types.Undefined THEN RETURN i END;
+        IF (index.next # NIL) OR (i.kind # Types.intValue) OR (i.intVal < 0) OR (i.intVal >= arr.length) THEN
+          Diagnostics.Error(index.line, index.column, "index out of range");
+          RETURN UndefinedValue()
+        END;
+        e := ZeroValue(Types.Char); count := 0;
+        WHILE (count < i.intVal) & (v.stringVal[count] # 0X) DO INC(count) END;
+        IF count = i.intVal THEN e.charVal := v.stringVal[count] END;
+        v := e
+      ELSIF v.kind # Types.structuredValue THEN
+        Diagnostics.Error(sel.line, sel.column, "not a constant expression");
+        RETURN UndefinedValue()
+      ELSIF sel IS SyntaxTree.FieldSelector THEN
+        e := FieldValue(v, v.type(Types.RecordType), sel(SyntaxTree.FieldSelector).name);
+        IF e = NIL THEN RETURN UndefinedValue() END;
+        v := e
+      ELSE
+        index := sel(SyntaxTree.IndexSelector).indices;
+        WHILE index # NIL DO
+          IF v.kind # Types.structuredValue THEN
+            Diagnostics.Error(index.line, index.column, "not a constant expression");
+            RETURN UndefinedValue()
+          END;
+          arr := v.type(Types.ArrayType);
+          i := EvaluateExpr(index, scope);
+          IF i.type = Types.Undefined THEN RETURN i END;
+          IF (i.kind # Types.intValue) OR (i.intVal < 0) OR (i.intVal >= arr.length) THEN
+            Diagnostics.Error(index.line, index.column, "index out of range");
+            RETURN UndefinedValue()
+          END;
+          v := ElementOf(v, i.intVal);
+          index := index.next
+        END
+      END;
+      sel := sel.next
+    END;
+    RETURN v
+  END SelectFromValue;
+
   PROCEDURE EvaluateExpr(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): Types.Value;
     VAR v: Types.Value;
   BEGIN
@@ -1435,6 +1977,7 @@ MODULE ConstantEvaluator;
            accepts CONST done* = NIL (oocChannel; decided with the user
            2026-10-02, Phase 12 step 5b's inventory) *)
         NEW(v); v.kind := Types.nilValue; v.type := Types.NilType
+    | expr: SyntaxTree.StructuredLiteralNode DO v := EvaluateStructuredLiteral(expr, scope)
     ELSE
       Diagnostics.Error(expr.line, expr.column, "not a constant expression");
       v := UndefinedValue()
@@ -1483,6 +2026,11 @@ MODULE ConstantEvaluator;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; length: LONGINT;
   BEGIN
     d := expr.designator;
+    IF (d.selectors # NIL) & ~expr.hasParens THEN
+      obj := FindQualifiedConst(scope, d);
+      RETURN (obj # NIL) & (obj.class = SymbolTable.constClass) & (obj.value # NIL)
+             & (obj.value.kind = Types.structuredValue) & ConstantSelectors(d.selectors, scope)
+    END;
     IF d.selectors # NIL THEN RETURN FALSE END;
     IF expr.hasParens THEN
       IF d.qualifier[0] # 0X THEN RETURN FALSE END;
@@ -1537,6 +2085,7 @@ MODULE ConstantEvaluator;
     | expr: SyntaxTree.UnaryExprNode DO RETURN IsConstantUnary(expr, scope)
     | expr: SyntaxTree.BinaryExprNode DO RETURN IsConstantBinary(expr, scope)
     | expr: SyntaxTree.SetExprNode DO RETURN IsConstantSet(expr, scope)
+    | expr: SyntaxTree.StructuredLiteralNode DO RETURN IsConstantLiteral(expr, scope)
     ELSE
       RETURN FALSE
     END

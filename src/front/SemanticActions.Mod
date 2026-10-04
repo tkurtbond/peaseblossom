@@ -404,6 +404,48 @@ MODULE SemanticActions;
 
   (* Types *)
 
+  PROCEDURE NewStructuredLiteral*(qualifier, name: SyntaxTree.Ident;
+                                  elements: SyntaxTree.LiteralElementNode;
+                                  line, column: INTEGER): SyntaxTree.StructuredLiteralNode;
+    VAR e: SyntaxTree.StructuredLiteralNode;
+  BEGIN
+    NEW(e); e.qualifier := qualifier; e.name := name; e.elements := elements;
+    e.type := NIL; e.fromInterface := FALSE; e.next := NIL; e.line := line; e.column := column;
+    RETURN e
+  END NewStructuredLiteral;
+
+  PROCEDURE NewLiteralElement*(field: SyntaxTree.Ident; value, high: SyntaxTree.ExprNode;
+                               line, column: INTEGER): SyntaxTree.LiteralElementNode;
+    VAR el: SyntaxTree.LiteralElementNode;
+  BEGIN
+    NEW(el); el.field := field; el.value := value; el.high := high;
+    el.copiesArray := FALSE; el.next := NIL; el.line := line; el.column := column;
+    RETURN el
+  END NewLiteralElement;
+
+  (* Phase 14: a literal without its type's name, "{...}", that stands
+     where only a set can: the set constructor of its elements. A named
+     element or a nested "{...}" is an error, and is left out. *)
+  PROCEDURE SetFromLiteral*(lit: SyntaxTree.StructuredLiteralNode): SyntaxTree.SetExprNode;
+    VAR el: SyntaxTree.LiteralElementNode; head, tail, se: SyntaxTree.SetElementNode;
+  BEGIN
+    head := NIL; tail := NIL;
+    el := lit.elements;
+    WHILE el # NIL DO
+      IF el.field[0] # 0X THEN
+        Diagnostics.Error(el.line, el.column, "a set element has no name")
+      ELSIF el.value IS SyntaxTree.StructuredLiteralNode THEN
+        Diagnostics.Error(el.value.line, el.value.column, "a set element is an integer, not a literal")
+      ELSE
+        se := NewSetElement(el.value, el.high, el.line, el.column);
+        IF tail = NIL THEN head := se ELSE tail.next := se END;
+        tail := se
+      END;
+      el := el.next
+    END;
+    RETURN NewSetExpr(head, lit.line, lit.column)
+  END SetFromLiteral;
+
   PROCEDURE NewQualidentType*(qualifier, name: SyntaxTree.Ident;
                               line, column: INTEGER): SyntaxTree.QualidentTypeNode;
     VAR t: SyntaxTree.QualidentTypeNode;
@@ -769,6 +811,7 @@ MODULE SemanticActions;
     VAR
       literal: SyntaxTree.LiteralExprNode; binary: SyntaxTree.BinaryExprNode;
       element: SyntaxTree.SetElementNode; arg: SyntaxTree.ExprNode;
+      literalElement: SyntaxTree.LiteralElementNode;
   BEGIN
     (* type tests, not WITH: voc miscompiles a call of the procedure
        itself inside its own WITH (doc/bootstrapping-with-voc.md) *)
@@ -793,15 +836,62 @@ MODULE SemanticActions;
         ReportWrappedHexLiterals(element.low); ReportWrappedHexLiterals(element.high);
         element := element.next
       END
+    ELSIF expr IS SyntaxTree.StructuredLiteralNode THEN
+      literalElement := expr(SyntaxTree.StructuredLiteralNode).elements;
+      WHILE literalElement # NIL DO
+        ReportWrappedHexLiterals(literalElement.value); ReportWrappedHexLiterals(literalElement.high);
+        literalElement := literalElement.next
+      END
     END
   END ReportWrappedHexLiterals;
 
+  PROCEDURE ^ CheckExpr(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
+
+  (* Phase 14: whether t has a name an importer can read it by: one of
+     this module's TYPE declarations, exported or not (the .sym file
+     declares an unexported one), or an exported one of an import *)
+  PROCEDURE HasTypeName(scope: SymbolTable.Scope; t: Types.Type): BOOLEAN;
+    VAR o, m: SymbolTable.Object;
+  BEGIN
+    o := scope.objects;
+    WHILE o # NIL DO
+      IF (o.class = SymbolTable.typeClass) & (o.type = t) THEN RETURN TRUE END;
+      IF o.class = SymbolTable.moduleClass THEN
+        m := o.moduleScope.objects;
+        WHILE m # NIL DO
+          IF (m.class = SymbolTable.typeClass) & (m.type = t) & m.exported THEN RETURN TRUE END;
+          m := m.next
+        END
+      END;
+      o := o.next
+    END;
+    RETURN FALSE
+  END HasTypeName;
+
   PROCEDURE ResolveOneConstDecl(d: SyntaxTree.ConstDeclNode; scope: SymbolTable.Scope);
-    VAR v: Types.Value; obj: SymbolTable.Object;
+    VAR v: Types.Value; obj: SymbolTable.Object; t: Types.Type; errorsBefore: INTEGER;
   BEGIN
     CheckExportMark(d.name);
     ReportWrappedHexLiterals(d.value);
-    v := ConstantEvaluator.Evaluate(d.value, scope);
+    IF d.value IS SyntaxTree.StructuredLiteralNode THEN
+      (* Phase 14: a record or array constant - checked as an expression
+         first, which gives the literal and its nested ones their types *)
+      errorsBefore := Diagnostics.errorCount;
+      t := CheckExpr(scope, d.value);
+      IF Diagnostics.errorCount > errorsBefore THEN
+        NEW(v); v.type := Types.Undefined
+      ELSE
+        v := ConstantEvaluator.Evaluate(d.value, scope)
+      END
+    ELSE
+      v := ConstantEvaluator.Evaluate(d.value, scope)
+    END;
+    IF (v.type # Types.Undefined) & (v.kind = Types.structuredValue)
+       & (d.name.exportMark # SyntaxTree.exportNone) & ~HasTypeName(scope, v.type) THEN
+      (* the .sym file writes it as a literal, which names its type *)
+      Diagnostics.ErrorAbout(d.name.line, d.name.column,
+        "an exported record or array constant's type must have a name", d.name.name)
+    END;
     IF v.type = Types.HugeInt THEN
       Diagnostics.NotInReport(d.name.line, d.name.column, "an integer constant too large for LONGINT")
     ELSIF v.type = Types.Set64 THEN
@@ -1592,8 +1682,6 @@ MODULE SemanticActions;
      6). Each argument expression is still checked via CheckExpr, for
      robustness and to exercise the procedure-typed-variable/field case
      end to end. *)
-
-  PROCEDURE ^ CheckExpr(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
 
   (* Forward-declared so CheckArguments (below) can share it for a value
      parameter's own assignment-compatibility check, rather than
@@ -2642,6 +2730,169 @@ MODULE SemanticActions;
     RETURN FoldConstantType(scope, node, CheckBinaryExpr(scope, node))
   END CheckFoldedBinaryExpr;
 
+  (* ---- Phase 14: record and array literals ----
+     (doc/language-extensions.md, "Record and array literals") *)
+
+  (* A record type whose fields are not all exported and writable to this
+     module, its bases' included, has no literal here; the module that
+     declares it sees every field. Reports the first such field. *)
+  PROCEDURE CheckLiteralVisibility(rec: Types.RecordType; line, column: INTEGER);
+    VAR r: Types.RecordType; f: Types.Field;
+  BEGIN
+    (* no module is being checked: a backend reopening a procedure's scope
+       (OpenProcedureBodyScope) of a module the checker has accepted *)
+    IF currentModuleName[0] = 0X THEN RETURN END;
+    r := rec;
+    WHILE r # NIL DO
+      IF ~IsLocalRecord(r) THEN
+        f := r.fields;
+        WHILE f # NIL DO
+          IF ~f.exported THEN
+            Diagnostics.ErrorAbout(line, column,
+              "no literal of this type can be written here; this field is not exported by its module", f.name);
+            RETURN
+          ELSIF f.readOnly THEN
+            Diagnostics.ErrorAbout(line, column,
+              "no literal of this type can be written here; this field is read-only outside its module", f.name);
+            RETURN
+          END;
+          f := f.next
+        END
+      END;
+      IF (r.baseType # NIL) & (r.baseType IS Types.RecordType) THEN
+        r := r.baseType(Types.RecordType)
+      ELSE
+        r := NIL
+      END
+    END
+  END CheckLiteralVisibility;
+
+  PROCEDURE HasLiteral(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (t # NIL) & ((t IS Types.RecordType)
+                        OR (t IS Types.ArrayType) & ~t(Types.ArrayType).isOpen)
+  END HasLiteral;
+
+  PROCEDURE ^ CheckLiteralOfType(scope: SymbolTable.Scope; lit: SyntaxTree.StructuredLiteralNode;
+                                 t: Types.Type);
+
+  (* One element, el.value, as the source of an assignment to a field or
+     element of type dstType. A nested literal without its type's name
+     takes dstType: a literal of it, or a set constructor for a set type. *)
+  PROCEDURE CheckLiteralElement(scope: SymbolTable.Scope; el: SyntaxTree.LiteralElementNode;
+                                dstType: Types.Type);
+    VAR srcType: Types.Type; nested: SyntaxTree.StructuredLiteralNode;
+  BEGIN
+    IF el.value IS SyntaxTree.StructuredLiteralNode THEN
+      nested := el.value(SyntaxTree.StructuredLiteralNode)
+    ELSE
+      nested := NIL
+    END;
+    IF (nested # NIL) & (nested.name[0] = 0X) & (dstType # Types.Undefined) & ~Types.IsSet(dstType) THEN
+      IF el.high # NIL THEN Diagnostics.Error(el.line, el.column, "a range is allowed only in a set") END;
+      IF HasLiteral(dstType) THEN
+        CheckLiteralOfType(scope, nested, dstType)
+      ELSE
+        ReportTypes(nested.line, nested.column, "this element's type has no literal", dstType, "", NIL)
+      END
+    ELSE
+      IF (nested # NIL) & (nested.name[0] = 0X) THEN
+        el.value := SetFromLiteral(nested)
+      END;
+      IF el.high # NIL THEN Diagnostics.Error(el.line, el.column, "a range is allowed only in a set") END;
+      srcType := CheckExpr(scope, el.value);
+      IF (srcType # Types.Undefined) & (dstType # Types.Undefined)
+         & ~Types.AssignmentCompatible(dstType, srcType) & Types.ArrayAssignable(dstType, srcType) THEN
+        Diagnostics.NotInReport(el.line, el.column, "assigning an array of another type (voc's array rule)");
+        el.copiesArray := TRUE
+      ELSE
+        CheckAssignmentCompatible(scope, dstType, el.value, srcType, el.line, el.column,
+                                  "literal element is not type-compatible")
+      END
+    END
+  END CheckLiteralElement;
+
+  (* lit as a literal of t, a record type or an array type of fixed
+     length: its elements, and the rules for each kind *)
+  PROCEDURE CheckLiteralOfType(scope: SymbolTable.Scope; lit: SyntaxTree.StructuredLiteralNode;
+                               t: Types.Type);
+    VAR
+      rec: Types.RecordType; arr: Types.ArrayType; field: Types.Field;
+      el, earlier: SyntaxTree.LiteralElementNode; count: LONGINT;
+  BEGIN
+    lit.type := t;
+    el := lit.elements;
+    IF t IS Types.RecordType THEN
+      rec := t(Types.RecordType);
+      IF ~lit.fromInterface THEN CheckLiteralVisibility(rec, lit.line, lit.column) END;
+      WHILE el # NIL DO
+        IF el.field[0] = 0X THEN
+          Diagnostics.Error(el.line, el.column, "a record literal names its fields: field := value");
+          CheckLiteralElement(scope, el, Types.Undefined)
+        ELSE
+          field := Types.FindField(rec, el.field);
+          earlier := lit.elements;
+          WHILE (earlier # el) & (earlier.field # el.field) DO earlier := earlier.next END;
+          IF field = NIL THEN
+            IF ~Types.HasUnresolvedBase(rec) THEN
+              Diagnostics.ErrorAbout(el.line, el.column, "the record has no field of this name", el.field)
+            END;
+            CheckLiteralElement(scope, el, Types.Undefined)
+          ELSIF earlier # el THEN
+            Diagnostics.ErrorAbout(el.line, el.column, "this field is given twice in the literal", el.field);
+            CheckLiteralElement(scope, el, field.type)
+          ELSE
+            CheckLiteralElement(scope, el, field.type)
+          END
+        END;
+        el := el.next
+      END
+    ELSE
+      arr := t(Types.ArrayType);
+      count := 0;
+      WHILE el # NIL DO
+        INC(count);
+        IF el.field[0] # 0X THEN
+          Diagnostics.Error(el.line, el.column, "an array literal's elements have no names")
+        ELSIF count = arr.length + 1 THEN
+          ReportTypes(el.line, el.column, "too many elements for the array type", t, "", NIL)
+        END;
+        CheckLiteralElement(scope, el, arr.elementType);
+        el := el.next
+      END
+    END
+  END CheckLiteralOfType;
+
+  (* A literal that names its type, "T{...}"; a nested one without the
+     name is checked by CheckLiteralElement, and one anywhere else cannot
+     be told from a set (Parser.ParseLiteralElements) *)
+  PROCEDURE CheckStructuredLiteral(scope: SymbolTable.Scope; node: SyntaxTree.StructuredLiteralNode): Types.Type;
+    VAR t: Types.Type; obj: SymbolTable.Object;
+  BEGIN
+    IF node.name[0] = 0X THEN
+      Diagnostics.Error(node.line, node.column,
+        "a literal without its type's name can only be an element of another literal");
+      RETURN Types.Undefined
+    END;
+    Diagnostics.NotInReport(node.line, node.column, "a record or array literal");
+    obj := FindQualified(scope, node.qualifier, node.name, node.line, node.column);
+    IF obj = NIL THEN
+      RETURN Types.Undefined
+    ELSIF (obj.class # SymbolTable.typeClass) OR (obj.type = NIL) THEN
+      Diagnostics.ErrorAbout(node.line, node.column, "a literal begins with the name of a type", node.name);
+      RETURN Types.Undefined
+    END;
+    t := obj.type;
+    IF t = Types.Undefined THEN RETURN t END;
+    IF ~HasLiteral(t) THEN
+      ReportTypes(node.line, node.column,
+        "a literal's type must be a record type or an array type of fixed length", t, "", NIL);
+      RETURN Types.Undefined
+    END;
+    CheckLiteralOfType(scope, node, t);
+    RETURN t
+  END CheckStructuredLiteral;
+
   (* The real body matching this section's own forward declaration above.
      Each WITH branch below calls a distinctly-named procedure, never
      CheckExpr itself - the same safe shape ResolveType already
@@ -2658,6 +2909,7 @@ MODULE SemanticActions;
     | expr: SyntaxTree.BinaryExprNode DO RETURN CheckFoldedBinaryExpr(scope, expr)
     | expr: SyntaxTree.SetExprNode DO RETURN CheckSetExpr(scope, expr)
     | expr: SyntaxTree.NilExprNode DO RETURN Types.NilType
+    | expr: SyntaxTree.StructuredLiteralNode DO RETURN CheckStructuredLiteral(scope, expr)
     ELSE
       Diagnostics.Error(expr.line, expr.column, "not a valid expression");
       RETURN Types.Undefined

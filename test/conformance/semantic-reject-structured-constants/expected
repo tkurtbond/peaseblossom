@@ -1,0 +1,15 @@
+== constants
+constants.mod:11:10: error: the default of this field is not constant, so a constant literal must give it: n
+constants.mod:13:22: error: not a constant: g
+constants.mod:15:13: error: index out of range
+constants.mod:20:3: error: assignment target is not a variable
+constants.mod:21:3: error: assignment target is not a variable
+constants.mod:22:10: error: a VAR parameter requires a variable argument
+constants.mod:23:10: error: constant array index is out of range
+7 error(s)
+== client
+client.mod:3:13: error: the default of this field is not constant, so a constant literal must give it: n
+client.mod:3:51: error: an exported record or array constant's type must have a name: row
+client.mod:6:13: error: field is not exported by its module: hidden
+client.mod:8:3: error: assignment target is not a variable
+4 error(s)

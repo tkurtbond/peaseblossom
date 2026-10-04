@@ -446,7 +446,11 @@ of a record type with a field hidden or read-only where the literal is
 written; and structured constants, `CONST origin* = Point{x := 0, y :=
 0};` (user, 2026-10-02, reversing the first decision against them), so
 `Types.Value`, the constant folder and the `.sym` format change too.
-`-strict` rejects a literal.
+`-strict` rejects a literal. **Decided** (user, 2026-10-03, step 1): a
+literal is made as a variable is, every default first, then its elements
+in the order written; a constant field initializer goes into the `.sym`
+file as its value; indexed or repeated elements, open array literals and
+a bare `{...}` outside a literal are not in this phase.
 
 **Steps**:
 
@@ -477,13 +481,14 @@ written; and structured constants, `CONST origin* = Point{x := 0, y :=
    and `module-` fixtures: folding, selection, rejection (a non-constant
    element, a `VAR` parameter, assignment, a hidden type exported), and a
    constant exported and imported.
-4. **LLVM backend**: a record literal is an LLVM constant aggregate when
-   every element is constant, otherwise an `insertvalue` chain over the
-   record's defaults; an array literal a private constant global when
-   constant, otherwise a stack temporary filled by stores, copied the way
-   a string constant is. Omitted elements get the defaults `NEW` and
-   variables get (field initializers, Phase 11 D17). Debug information
-   needs nothing new. **Testing**: `llvm-` fixtures that build and run:
+4. **LLVM backend**: a literal is made in a stack slot of its own, in
+   the function's entry block, zeroed and initialized as a variable is
+   (field initializers, Phase 11 D17), then its elements stored in order;
+   a structured constant is a private constant global of each module that
+   uses it, addressed like a variable (as built; the first plan, a
+   constant aggregate or an `insertvalue` chain, was dropped:
+   `doc/record-and-array-literals.md`). Debug information needs nothing
+   new. **Testing**: `llvm-` fixtures that build and run:
    records, arrays, nested literals, omitted elements and defaults, arrays
    of records, literals as value and open-array parameters, in variable
    and field initializers, of an extension assigned to its base, with

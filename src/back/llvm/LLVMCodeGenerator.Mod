@@ -570,6 +570,28 @@ MODULE LLVMCodeGenerator;
       next: InitRecordEntry
     END;
 
+    (* Phase 14: the stack slot a record or array literal is built in
+       (BuildLiteralAt), allocated in the entry block of the function that
+       evaluates it (CollectLiteralTemps), so that a literal inside a loop
+       does not grow the stack *)
+    LiteralTemp = POINTER TO LiteralTempDesc;
+    LiteralTempDesc = RECORD
+      literal: SyntaxTree.StructuredLiteralNode;
+      addrText: ValueText;
+      next: LiteralTemp
+    END;
+
+    (* Phase 14: a structured constant's value, a private constant global
+       of this module (StructuredConstGlobal), written out after the code
+       (EmitStructuredConstants) *)
+    StructuredConst = POINTER TO StructuredConstDesc;
+    StructuredConstDesc = RECORD
+      value: Types.Value;
+      type: Types.Type;
+      name: ValueText;
+      next: StructuredConst
+    END;
+
     (* Threaded explicitly through every codegen procedure below, VAR w:
        Files.Rider stays a separate parameter rather than a field of this
        record - Files.Rider is a plain RECORD whose mutable position
@@ -659,7 +681,14 @@ MODULE LLVMCodeGenerator;
          define, and a counter for naming those of anonymous records *)
       initRecords: InitRecordEntry;
       declaredRecords: DeclaredRecord; (* Phase 12 step 2a *)
-      anonymousInitCount: INTEGER
+      anonymousInitCount: INTEGER;
+      (* Phase 14: the literal temporaries of the function being generated,
+         and the structured constants the module uses; collectingTemps makes
+         the CollectStringConstants walk allocate the temporaries instead *)
+      literalTemps: LiteralTemp;
+      structuredConsts: StructuredConst;
+      structuredConstCount: INTEGER;
+      collectingTemps: BOOLEAN
     END;
 
     (* poc -g (Phase 11 A16): a source file of the program, a DIFile node *)
@@ -2145,6 +2174,25 @@ MODULE LLVMCodeGenerator;
     WriteLn(w)
   END StoreAtAddress;
 
+  (* Zeroes the variable of type type at addrText: memset for a record or
+     an array, a store of zero for anything else *)
+  PROCEDURE ZeroAt(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; type: Types.Type);
+    VAR llvmType: LongText; wordInt, sizeText: ValueText;
+  BEGIN
+    IF (type IS Types.ArrayType) OR (type IS Types.RecordType) THEN
+      cg.needMemset := TRUE;
+      WordIntType(wordInt);
+      WriteStr(w, "  call void @llvm.memset.p0."); WriteStr(w, wordInt); WriteStr(w, "(ptr ");
+      WriteStr(w, addrText); WriteStr(w, ", i8 0, "); WriteStr(w, wordInt); WriteStr(w, " ");
+      sizeText[0] := 0X; AppendLongInt(sizeText, MemoryLayout.Size(type, ConstantEvaluator.wordSize, cg.sizeModel));
+      WriteStr(w, sizeText); WriteStr(w, ", i1 false)"); WriteLn(w)
+    ELSE
+      LLVMTypes.TypeString(type, cg.sizeModel, llvmType);
+      WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer, ptr ");
+      WriteStr(w, addrText); WriteLn(w)
+    END
+  END ZeroAt;
+
   (* ---- Pointers (PLAN.md Phase 9 step 5) ----
 
      A POINTER value is an LLVM "ptr" to the first byte of the record or
@@ -2692,6 +2740,185 @@ MODULE LLVMCodeGenerator;
      implied dereference of "." and "[" on a pointer, an explicit "^", a
      type guard, and a WITH-narrowed variable - so a "yes" here is a claim
      about the type, not a promise the address can be computed. *)
+  (* ---- Structured constants (Phase 14) ----
+
+     A constant of a record or array type has storage after all: a private
+     constant global of the module that uses it, one per value
+     (StructuredConstGlobal), which a designator addresses like a variable -
+     so that m[i] with i a variable, or m passed to an open array, needs
+     nothing of its own. The global's initializer is the constant's value
+     (Types.ValueDesc.elements) written in the LLVM type's layout. *)
+
+  PROCEDURE IsStructuredConst(obj: SymbolTable.Object): BOOLEAN;
+  BEGIN
+    RETURN (obj # NIL) & (obj.class = SymbolTable.constClass) & (obj.value # NIL) & (obj.type # NIL)
+           & ((obj.type IS Types.RecordType) OR (obj.type IS Types.ArrayType))
+  END IsStructuredConst;
+
+  (* The global that holds v, a constant of type t: "@<Module>.-const.<n>" *)
+  PROCEDURE StructuredConstGlobal(VAR cg: Codegen; v: Types.Value; t: Types.Type; VAR name: ARRAY OF CHAR);
+    VAR entry, tail: StructuredConst;
+  BEGIN
+    entry := cg.structuredConsts; tail := NIL;
+    WHILE (entry # NIL) & (entry.value # v) DO tail := entry; entry := entry.next END;
+    IF entry = NIL THEN
+      NEW(entry); entry.value := v; entry.type := t; entry.next := NIL;
+      INC(cg.structuredConstCount);
+      COPY("@", entry.name); Strcat(entry.name, cg.moduleName); Strcat(entry.name, ".-const.");
+      AppendLongInt(entry.name, cg.structuredConstCount);
+      IF tail = NIL THEN cg.structuredConsts := entry ELSE tail.next := entry END
+    END;
+    COPY(entry.name, name)
+  END StructuredConstGlobal;
+
+  PROCEDURE IsZeroConstant(v: Types.Value): BOOLEAN;
+    VAR e: Types.Value;
+  BEGIN
+    IF v = NIL THEN RETURN TRUE END;
+    CASE v.kind OF
+      Types.intValue: RETURN v.intVal = 0
+    | Types.charValue: RETURN v.charVal = 0X
+    | Types.boolValue: RETURN ~v.boolVal
+    | Types.setValue: RETURN (v.setLow = {}) & (v.setHigh = {})
+    | Types.realValue: RETURN (v.realVal = 0.0D0) & (v.realText[0] # "-")
+    | Types.nilValue: RETURN TRUE
+    | Types.stringValue: RETURN v.stringVal[0] = 0X
+    | Types.structuredValue:
+        e := v.elements;
+        WHILE e # NIL DO
+          IF ~IsZeroConstant(e) THEN RETURN FALSE END;
+          e := e.next
+        END;
+        RETURN IsZeroConstant(v.fill)
+    ELSE
+      RETURN FALSE
+    END
+  END IsZeroConstant;
+
+  (* v, a constant of type t that is not a record or an array, as an LLVM
+     constant of t's type: AssignedValue (ConstantEvaluator) already made
+     it a value of t, but an integer or a character may still stand for a
+     real or a byte *)
+  PROCEDURE WriteScalarConstant(VAR w: Files.Rider; t: Types.Type; v: Types.Value);
+    VAR text: LongText; x: LONGREAL; rounded: REAL;
+  BEGIN
+    text[0] := 0X;
+    IF IsRealType(t) THEN
+      IF v.kind = Types.intValue THEN x := v.intVal ELSE x := v.realVal END;
+      IF t = Types.Real THEN
+        rounded := SHORT(x); x := rounded (* through a variable: see RealConstant *)
+      END;
+      IF (x = 0.0D0) & (v.kind = Types.realValue) & (v.realText[0] = "-") THEN
+        COPY("-0.0", text) (* DoubleBitsText cannot tell -0.0 from 0.0 *)
+      ELSE
+        DoubleBitsText(x, text)
+      END
+    ELSIF t = Types.Boolean THEN
+      IF v.boolVal THEN COPY("1", text) ELSE COPY("0", text) END
+    ELSIF Types.IsSet(t) THEN
+      SetToText(v, t = Types.Set64, text)
+    ELSIF (t IS Types.PointerType) OR (t IS Types.ProcedureType) OR (v.kind = Types.nilValue) THEN
+      COPY("null", text)
+    ELSIF v.kind = Types.charValue THEN
+      AppendLongInt(text, ORD(v.charVal))
+    ELSIF v.kind = Types.stringValue THEN
+      AppendLongInt(text, ORD(v.stringVal[0]))
+    ELSE
+      AppendLongInt(text, v.intVal)
+    END;
+    WriteStr(w, text)
+  END WriteScalarConstant;
+
+  PROCEDURE ^ WriteConstantData(VAR w: Files.Rider; VAR cg: Codegen; t: Types.Type; v: Types.Value);
+  PROCEDURE ^ EmitEscapedByte(VAR w: Files.Rider; ch: CHAR);
+
+  (* rec's part of a record constant whose field values, its bases' first,
+     start at fields: its base's struct first, as RecordTypeString lays it
+     out; fields is left after them *)
+  PROCEDURE WriteRecordConstant(VAR w: Files.Rider; VAR cg: Codegen; rec: Types.RecordType;
+                                VAR fields: Types.Value);
+    VAR f: Types.Field; v: Types.Value; baseText: LongText; first: BOOLEAN;
+  BEGIN
+    first := TRUE;
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) THEN
+      LLVMTypes.TypeString(rec.baseType, cg.sizeModel, baseText);
+      WriteStr(w, "{ "); WriteStr(w, baseText); WriteStr(w, " ");
+      WriteRecordConstant(w, cg, rec.baseType(Types.RecordType), fields);
+      first := FALSE
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      IF first THEN WriteStr(w, "{ ") ELSE WriteStr(w, ", ") END;
+      first := FALSE;
+      v := fields;
+      IF fields # NIL THEN fields := fields.next END;
+      WriteConstantData(w, cg, f.type, v);
+      f := f.next
+    END;
+    IF first THEN WriteStr(w, "{}") ELSE WriteStr(w, " }") END
+  END WriteRecordConstant;
+
+  (* an array constant: its listed elements, then its fill up to its
+     length; a string, for an array of characters, padded with 0X *)
+  PROCEDURE WriteArrayConstant(VAR w: Files.Rider; VAR cg: Codegen; arr: Types.ArrayType; v: Types.Value);
+    CONST quoteChar = 22X;
+    VAR i: LONGINT; e, element: Types.Value; elementText: LongText; ended: BOOLEAN;
+  BEGIN
+    IF v.kind = Types.stringValue THEN
+      WriteStr(w, "c"); Files.Write(w, quoteChar);
+      ended := FALSE;
+      FOR i := 0 TO arr.length - 1 DO
+        IF ~ended & (i < LEN(v.stringVal)) & (v.stringVal[i] # 0X) THEN
+          EmitEscapedByte(w, v.stringVal[i])
+        ELSE
+          ended := TRUE; EmitEscapedByte(w, 0X)
+        END
+      END;
+      Files.Write(w, quoteChar)
+    ELSE
+      LLVMTypes.TypeString(arr.elementType, cg.sizeModel, elementText);
+      WriteStr(w, "[");
+      e := v.elements;
+      FOR i := 0 TO arr.length - 1 DO
+        IF i > 0 THEN WriteStr(w, ", ") END;
+        IF e # NIL THEN element := e; e := e.next ELSE element := v.fill END;
+        WriteConstantData(w, cg, arr.elementType, element)
+      END;
+      WriteStr(w, "]")
+    END
+  END WriteArrayConstant;
+
+  (* "<type> <value>": v as a constant of type t, zeroinitializer for a
+     record or an array that is all zero (or a missing value) *)
+  PROCEDURE WriteConstantData(VAR w: Files.Rider; VAR cg: Codegen; t: Types.Type; v: Types.Value);
+    VAR typeText: LongText; fields: Types.Value;
+  BEGIN
+    LLVMTypes.TypeString(t, cg.sizeModel, typeText);
+    WriteStr(w, typeText); WriteStr(w, " ");
+    IF (v = NIL) OR IsZeroConstant(v) & ((t IS Types.RecordType) OR (t IS Types.ArrayType)) THEN
+      WriteStr(w, "zeroinitializer")
+    ELSIF t IS Types.RecordType THEN
+      fields := v.elements;
+      WriteRecordConstant(w, cg, t(Types.RecordType), fields)
+    ELSIF t IS Types.ArrayType THEN
+      WriteArrayConstant(w, cg, t(Types.ArrayType), v)
+    ELSE
+      WriteScalarConstant(w, t, v)
+    END
+  END WriteConstantData;
+
+  PROCEDURE EmitStructuredConstants(VAR w: Files.Rider; VAR cg: Codegen);
+    VAR entry: StructuredConst;
+  BEGIN
+    entry := cg.structuredConsts;
+    IF entry # NIL THEN WriteLn(w) END;
+    WHILE entry # NIL DO
+      WriteStr(w, entry.name); WriteStr(w, " = private unnamed_addr constant ");
+      WriteConstantData(w, cg, entry.type, entry.value); WriteLn(w);
+      entry := entry.next
+    END
+  END EmitStructuredConstants;
+
   PROCEDURE DesignatorStaticTypeTo(VAR cg: Codegen; d: SyntaxTree.Designator;
                                    stopAt: SyntaxTree.Selector): Types.Type;
     VAR obj: SymbolTable.Object; sel: SyntaxTree.Selector; t: Types.Type; homeModule: SyntaxTree.Ident;
@@ -2700,11 +2927,15 @@ MODULE LLVMCodeGenerator;
   BEGIN
     obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
     IF obj = NIL THEN RETURN NIL END;
-    IF obj.class = SymbolTable.constClass THEN
-      IF d.selectors = stopAt THEN RETURN obj.type ELSE RETURN NIL END
+    IF (obj.class = SymbolTable.constClass) & (d.selectors = stopAt) THEN RETURN obj.type END;
+    IF IsStructuredConst(obj) THEN
+      t := obj.type
+    ELSIF obj.class = SymbolTable.varClass THEN
+      t := EffectiveVarType(cg, obj)
+    ELSE
+      RETURN NIL
     END;
-    IF obj.class # SymbolTable.varClass THEN RETURN NIL END;
-    t := EffectiveVarType(cg, obj); sel := d.selectors;
+    sel := d.selectors;
     WHILE sel # stopAt DO
       WITH
         sel: SyntaxTree.FieldSelector DO
@@ -3316,8 +3547,11 @@ MODULE LLVMCodeGenerator;
   BEGIN
     dyn.kind := dynStatic; dyn.text[0] := 0X; ClearDope(dyn.dope);
     obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
-    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
-    IF d.qualifier[0] = 0X THEN
+    IF IsStructuredConst(obj) THEN
+      StructuredConstGlobal(cg, obj.value, obj.type, addrText)
+    ELSIF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
+      RETURN FALSE
+    ELSIF d.qualifier[0] = 0X THEN
       ResolveVarAddress(cg, obj, addrText);
       binding := FindLocalBinding(cg, obj);
       IF (binding # NIL) & (binding.tagText[0] # 0X) THEN
@@ -3331,7 +3565,7 @@ MODULE LLVMCodeGenerator;
          moduleScope. *)
       QualifiedName(homeModule, obj.name, addrText)
     END;
-    addrType := EffectiveVarType(cg, obj);
+    IF obj.class = SymbolTable.constClass THEN addrType := obj.type ELSE addrType := EffectiveVarType(cg, obj) END;
     sel := d.selectors;
     WHILE sel # stopAt DO
       WITH
@@ -3426,6 +3660,9 @@ MODULE LLVMCodeGenerator;
     IF obj = NIL THEN
       Unsupported(w, cg, "undeclared identifier (should be unreachable post-CheckModule)",
                   Types.Undefined, result)
+    ELSIF IsStructuredConst(obj) THEN
+      StructuredConstGlobal(cg, obj.value, obj.type, addrText);
+      LoadAtAddress(w, cg, addrText, obj.type, result)
     ELSIF obj.class = SymbolTable.constClass THEN
       GenerateConstValue(w, cg, obj, result)
     ELSIF obj.class = SymbolTable.varClass THEN
@@ -3630,6 +3867,9 @@ MODULE LLVMCodeGenerator;
      the element types are the same (Types.ArrayAssignable). An open source
      longer than the target stops the program (exit 9); a fixed one cannot be,
      the checker compared the lengths. *)
+  PROCEDURE ^ GenerateLiteralTemp(VAR w: Files.Rider; VAR cg: Codegen; lit: SyntaxTree.StructuredLiteralNode;
+                                  VAR addrText: ValueText; VAR t: Types.Type);
+
   PROCEDURE CopyArrayBlock(VAR w: Files.Rider; VAR cg: Codegen; dstAddr: ARRAY OF CHAR; dstType: Types.Type;
                            value: SyntaxTree.ExprNode);
     VAR
@@ -3641,6 +3881,9 @@ MODULE LLVMCodeGenerator;
       de := value(SyntaxTree.DesignatorExprNode);
       ok := GenerateDesignatorAddressTo(w, cg, de.designator, NIL, srcAddr, srcType, dyn)
             & (srcType # NIL) & (srcType IS Types.ArrayType)
+    ELSIF (value # NIL) & (value IS SyntaxTree.StructuredLiteralNode) THEN
+      GenerateLiteralTemp(w, cg, value(SyntaxTree.StructuredLiteralNode), srcAddr, srcType);
+      ok := (srcType # NIL) & (srcType IS Types.ArrayType) & ~IsOpenArrayType(srcType)
     END;
     IF ~ok THEN
       WriteStr(w, "  ; unsupported: array assignment from something that is not an array designator");
@@ -3863,7 +4106,7 @@ MODULE LLVMCodeGenerator;
                                  passLengths: BOOLEAN; VAR result: Value; VAR lengths: GrowingText);
     VAR
       addr, lenText, wordInt: ValueText; dyn: DynamicType; addrType, cur: Types.Type; arr: Types.ArrayType;
-      de: SyntaxTree.DesignatorExprNode; dims, level: INTEGER; text: LongText; ok: BOOLEAN;
+      de: SyntaxTree.DesignatorExprNode; dims, level: INTEGER; text: LongText; ok, found: BOOLEAN;
   BEGIN
     COPY("ptr", result.llvmType); result.oberonType := Types.Undefined; ClearText(lengths);
     WordIntType(wordInt);
@@ -3874,9 +4117,16 @@ MODULE LLVMCodeGenerator;
       IF ok THEN
         AppendText(lengths, ", "); AppendText(lengths, wordInt); AppendText(lengths, " "); AppendText(lengths, lenText)
       END
-    ELSIF (a # NIL) & (a IS SyntaxTree.DesignatorExprNode) THEN
-      de := a(SyntaxTree.DesignatorExprNode);
-      IF ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addr, addrType, dyn) THEN
+    ELSIF (a # NIL) & ((a IS SyntaxTree.DesignatorExprNode) OR (a IS SyntaxTree.StructuredLiteralNode)) THEN
+      IF a IS SyntaxTree.StructuredLiteralNode THEN
+        (* a literal is an array of fixed length, in its stack slot *)
+        GenerateLiteralTemp(w, cg, a(SyntaxTree.StructuredLiteralNode), addr, addrType);
+        ClearDope(dyn.dope); found := TRUE
+      ELSE
+        de := a(SyntaxTree.DesignatorExprNode);
+        found := ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addr, addrType, dyn)
+      END;
+      IF found THEN
         cur := addrType; ok := TRUE; level := 0;
         IF p.isVar & (dims = 1) & (OpenElementType(p.type) = Types.Byte) THEN
           (* VAR ARRAY OF SYSTEM.BYTE: the actual is any variable, seen as
@@ -5346,6 +5596,103 @@ MODULE LLVMCodeGenerator;
     END
   END InitializeAt;
 
+  (* ---- Record and array literals (Phase 14) ----
+
+     A literal is made as a variable is - zeroed, then every field
+     initializer - and then its elements are assigned in the order they are
+     written (doc/language-extensions.md, "Record and array literals"). It
+     is made in a stack slot of its own, allocated in the function's entry
+     block (CollectLiteralTemps), and used from there: loaded as a value, or
+     its address passed to an open array or copied from. A literal without
+     a type name, an element of another, is made in place in its element. *)
+
+  PROCEDURE FindLiteralTemp(VAR cg: Codegen; lit: SyntaxTree.StructuredLiteralNode): LiteralTemp;
+    VAR temp: LiteralTemp;
+  BEGIN
+    temp := cg.literalTemps;
+    WHILE (temp # NIL) & (temp.literal # lit) DO temp := temp.next END;
+    RETURN temp
+  END FindLiteralTemp;
+
+  PROCEDURE AllocateLiteralTemp(VAR w: Files.Rider; VAR cg: Codegen; lit: SyntaxTree.StructuredLiteralNode): LiteralTemp;
+    VAR temp: LiteralTemp; llvmType: LongText;
+  BEGIN
+    temp := FindLiteralTemp(cg, lit);
+    IF temp = NIL THEN
+      NEW(temp); temp.literal := lit; NewTemp(cg, temp.addrText);
+      LLVMTypes.TypeString(lit.type(Types.Type), cg.sizeModel, llvmType);
+      WriteStr(w, "  "); WriteStr(w, temp.addrText); WriteStr(w, " = alloca "); WriteStr(w, llvmType); WriteLn(w);
+      temp.next := cg.literalTemps; cg.literalTemps := temp
+    END;
+    RETURN temp
+  END AllocateLiteralTemp;
+
+  PROCEDURE ^ BuildLiteralAt(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; t: Types.Type;
+                             lit: SyntaxTree.StructuredLiteralNode);
+
+  (* el's value assigned to the element of type t at addrText *)
+  PROCEDURE StoreLiteralElement(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; t: Types.Type;
+                                el: SyntaxTree.LiteralElementNode);
+    VAR nested: SyntaxTree.StructuredLiteralNode;
+  BEGIN
+    nested := NIL;
+    IF el.value IS SyntaxTree.StructuredLiteralNode THEN nested := el.value(SyntaxTree.StructuredLiteralNode) END;
+    IF (nested # NIL) & (nested.name[0] = 0X) THEN
+      BuildLiteralAt(w, cg, addrText, t, nested)
+    ELSE
+      AssignToAddress(w, cg, addrText, t, el.value, el.copiesArray)
+    END
+  END StoreLiteralElement;
+
+  (* lit, a literal of type t, made at addrText *)
+  PROCEDURE BuildLiteralAt(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; t: Types.Type;
+                           lit: SyntaxTree.StructuredLiteralNode);
+    VAR
+      el: SyntaxTree.LiteralElementNode; elementAddr, indexText: ValueText; elementType: Types.Type;
+      arrayText: LongText; index: LONGINT;
+  BEGIN
+    ZeroAt(w, cg, addrText, t);
+    InitializeAt(w, cg, addrText, t);
+    LLVMTypes.TypeString(t, cg.sizeModel, arrayText);
+    el := lit.elements; index := 0;
+    WHILE el # NIL DO
+      IF el.line > 0 THEN cg.currentLine := el.line; cg.currentColumn := el.column END;
+      COPY(addrText, elementAddr); elementType := t;
+      IF t IS Types.RecordType THEN
+        IF GenerateFieldAddress(w, cg, elementAddr, elementType, el.field) THEN
+          StoreLiteralElement(w, cg, elementAddr, elementType, el)
+        ELSE
+          WriteStr(w, "  ; unsupported: a field this backend cannot address"); WriteLn(w)
+        END
+      ELSE
+        indexText[0] := 0X; AppendLongInt(indexText, index);
+        EmitGEP(w, cg, arrayText, addrText, "i32", indexText, elementAddr);
+        StoreLiteralElement(w, cg, elementAddr, t(Types.ArrayType).elementType, el)
+      END;
+      INC(index); el := el.next
+    END
+  END BuildLiteralAt;
+
+  (* lit made in its stack slot, addrText, of type t. A slot the walk
+     before the function did not find (CollectLiteralTemps) is allocated
+     here, where the literal is. *)
+  PROCEDURE GenerateLiteralTemp(VAR w: Files.Rider; VAR cg: Codegen; lit: SyntaxTree.StructuredLiteralNode;
+                                VAR addrText: ValueText; VAR t: Types.Type);
+    VAR temp: LiteralTemp;
+  BEGIN
+    temp := AllocateLiteralTemp(w, cg, lit);
+    t := lit.type(Types.Type); COPY(temp.addrText, addrText);
+    BuildLiteralAt(w, cg, addrText, t, lit)
+  END GenerateLiteralTemp;
+
+  PROCEDURE GenerateStructuredLiteral(VAR w: Files.Rider; VAR cg: Codegen; lit: SyntaxTree.StructuredLiteralNode;
+                                      VAR result: Value);
+    VAR addrText: ValueText; t: Types.Type;
+  BEGIN
+    GenerateLiteralTemp(w, cg, lit, addrText, t);
+    LoadAtAddress(w, cg, addrText, t, result)
+  END GenerateStructuredLiteral;
+
   PROCEDURE GenerateNewOpenArray(VAR w: Files.Rider; VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode;
                                  lengths: SyntaxTree.ExprNode; arr: Types.ArrayType);
     VAR
@@ -5800,6 +6147,7 @@ MODULE LLVMCodeGenerator;
         IF ~GenerateFoldedInteger(w, cg, expr, result) THEN GenerateBinaryExpr(w, cg, expr, result) END
     | expr: SyntaxTree.SetExprNode DO
         IF ~GenerateFoldedInteger(w, cg, expr, result) THEN GenerateSetExpr(w, cg, expr, result) END
+    | expr: SyntaxTree.StructuredLiteralNode DO GenerateStructuredLiteral(w, cg, expr, result)
     ELSE (* NilExprNode *)
       COPY("null", result.text); COPY("ptr", result.llvmType); result.oberonType := Types.NilType
     END
@@ -6918,6 +7266,17 @@ MODULE LLVMCodeGenerator;
     WHILE e # NIL DO CollectStringConstants(w, cg, e); e := e.next END
   END CollectStringConstantsList;
 
+  (* Phase 14: the same walk, with cg.collectingTemps, allocates the stack
+     slots of the literals instead (CollectLiteralTemps) *)
+  PROCEDURE CollectLiteralElements(VAR w: Files.Rider; VAR cg: Codegen; el: SyntaxTree.LiteralElementNode);
+  BEGIN
+    WHILE el # NIL DO
+      CollectStringConstants(w, cg, el.value);
+      CollectStringConstants(w, cg, el.high);
+      el := el.next
+    END
+  END CollectLiteralElements;
+
   (* child1/child2 exist only to route the two recursive-descent cases
      (Unary/Binary) around a real voc bug (doc/bootstrapping-with-voc.md):
      a procedure calling *itself* from inside one of its own WITH
@@ -6929,13 +7288,17 @@ MODULE LLVMCodeGenerator;
      call after the WITH ends - CollectStringConstants's own NIL guard at
      the top makes the unused branch's leftover NIL harmless. *)
   PROCEDURE CollectStringConstants(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.ExprNode);
-    VAR child1, child2: SyntaxTree.ExprNode;
+    VAR child1, child2: SyntaxTree.ExprNode; temp: LiteralTemp;
   BEGIN
     IF expr = NIL THEN RETURN END;
     child1 := NIL; child2 := NIL;
     WITH
       expr: SyntaxTree.LiteralExprNode DO
-        IF expr.literalKind = Lexer.string THEN EmitStringConstantGlobal(w, cg, expr) END
+        IF ~cg.collectingTemps & (expr.literalKind = Lexer.string) THEN EmitStringConstantGlobal(w, cg, expr) END
+    | expr: SyntaxTree.StructuredLiteralNode DO
+        (* one without a type name is made in its element (BuildLiteralAt) *)
+        IF cg.collectingTemps & (expr.name[0] # 0X) THEN temp := AllocateLiteralTemp(w, cg, expr) END;
+        CollectLiteralElements(w, cg, expr.elements)
     | expr: SyntaxTree.DesignatorExprNode DO CollectStringConstantsList(w, cg, expr.args)
     | expr: SyntaxTree.UnaryExprNode DO child1 := expr.operand
     | expr: SyntaxTree.BinaryExprNode DO child1 := expr.left; child2 := expr.right
@@ -7021,10 +7384,20 @@ MODULE LLVMCodeGenerator;
       ELSE
         line := 0; column := 0
       END;
-      IF ~copy THEN CollectStringConstantsStmt(w, cg, s) END;
+      IF ~copy OR cg.collectingTemps THEN CollectStringConstantsStmt(w, cg, s) END;
       s := s.next
     END
   END CollectStringConstantsSeq;
+
+  (* Phase 14: the stack slots of the literals of the statements s, in the
+     entry block of the function being started (a copy of a variable
+     initializer gets a slot of its own) *)
+  PROCEDURE CollectLiteralTemps(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.StatementNode);
+  BEGIN
+    cg.collectingTemps := TRUE;
+    CollectStringConstantsSeq(w, cg, s);
+    cg.collectingTemps := FALSE
+  END CollectLiteralTemps;
 
   (* The string literals of a procedure's own body, and of every procedure
      declared inside it, at any depth. *)
@@ -7286,7 +7659,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE BindLocalVars(VAR w: Files.Rider; VAR cg: Codegen; bodyScope: SymbolTable.Scope;
                           declarations: SyntaxTree.DeclSeqNode);
     VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
-        llvmType: LongText; addrText, wordInt, sizeText: ValueText; size: LONGINT;
+        llvmType: LongText; addrText: ValueText;
   BEGIN
     IF declarations = NIL THEN RETURN END;
     vd := declarations.varDecls;
@@ -7302,18 +7675,7 @@ MODULE LLVMCodeGenerator;
            wild access and keeps stack garbage out of the collector's
            conservative scan; a procedure variable never assigned is that
            trap too *)
-        IF (obj.type IS Types.ArrayType) OR (obj.type IS Types.RecordType) THEN
-          cg.needMemset := TRUE;
-          WordIntType(wordInt);
-          WriteStr(w, "  call void @llvm.memset.p0."); WriteStr(w, wordInt); WriteStr(w, "(ptr ");
-          WriteStr(w, addrText); WriteStr(w, ", i8 0, "); WriteStr(w, wordInt); WriteStr(w, " ");
-          size := MemoryLayout.Size(obj.type, ConstantEvaluator.wordSize, cg.sizeModel);
-          sizeText[0] := 0X; AppendLongInt(sizeText, size);
-          WriteStr(w, sizeText); WriteStr(w, ", i1 false)"); WriteLn(w)
-        ELSE
-          WriteStr(w, "  store "); WriteStr(w, llvmType); WriteStr(w, " zeroinitializer, ptr ");
-          WriteStr(w, addrText); WriteLn(w)
-        END;
+        ZeroAt(w, cg, addrText, obj.type);
         DeclareDebugVariable(w, obj, addrText, 0, FALSE);
         BindLocal(cg, obj, addrText);
         nm := nm.next
@@ -7371,6 +7733,7 @@ MODULE LLVMCodeGenerator;
     END;
     BindNeeds(w, cg, needs);
     BindLocalVars(w, cg, bodyScope, pd.declarations);
+    cg.literalTemps := NIL; CollectLiteralTemps(w, cg, pd.statements);
     GenerateStatementSeq(w, cg, GenerateDeclarationInits(w, cg, pd.declarations, pd.statements));
     IF pt.resultType = NIL THEN
       WriteStr(w, "  ret void"); WriteLn(w)
@@ -7381,7 +7744,7 @@ MODULE LLVMCodeGenerator;
     END;
     WriteStr(w, "}"); WriteLn(w); WriteLn(w);
     debugScope := -1;
-    cg.scope := savedScope; cg.locals := NIL; cg.currentProcResultType := NIL;
+    cg.scope := savedScope; cg.locals := NIL; cg.currentProcResultType := NIL; cg.literalTemps := NIL;
     cg.currentProc[0] := 0X
   END GenerateFunction;
 
@@ -7774,6 +8137,10 @@ MODULE LLVMCodeGenerator;
     IF rec.initPath[0] = "-" THEN WriteStr(w, "define internal void ") ELSE WriteStr(w, "define void ") END;
     WriteStr(w, symbol); WriteStr(w, "(ptr %self) {"); WriteLn(w);
     EmitEntryLabel(w, cg);
+    cg.literalTemps := NIL; cg.collectingTemps := TRUE;
+    f := rec.fields;
+    WHILE f # NIL DO CollectStringConstants(w, cg, f.initializer); f := f.next END;
+    cg.collectingTemps := FALSE;
     IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) THEN
       base := rec.baseType(Types.RecordType);
       IF base.needsInit THEN
@@ -7799,7 +8166,7 @@ MODULE LLVMCodeGenerator;
     END;
     WriteStr(w, "  ret void"); WriteLn(w);
     WriteStr(w, "}"); WriteLn(w); WriteLn(w);
-    cg.currentProc[0] := 0X
+    cg.currentProc[0] := 0X; cg.literalTemps := NIL
   END EmitInitProcedure;
 
   (* Phase 11 D17: every wanted initialization procedure not yet defined;
@@ -8212,6 +8579,7 @@ MODULE LLVMCodeGenerator;
     FOR i := 0 TO noAssertCode DO cg.assertCodes[i] := FALSE END;
     cg.narrowings := NIL; cg.lateRecords := NIL; cg.arrayDescs := NIL; cg.arrayDescCount := 0; cg.anonymousRecordCount := 0;
     cg.initRecords := NIL; cg.anonymousInitCount := 0; cg.declaredRecords := NIL;
+    cg.literalTemps := NIL; cg.structuredConsts := NIL; cg.structuredConstCount := 0; cg.collectingTemps := FALSE;
     cg.heapPresent := target.module.name = "GarbageCollectedHeap";
     IF LLVMTypes.DataLayout(triple, layout) THEN
       WriteStr(w, 'target datalayout = "'); WriteStr(w, layout); WriteStr(w, '"'); WriteLn(w)
@@ -8301,6 +8669,7 @@ MODULE LLVMCodeGenerator;
     WriteStr(body, "define void @"); WriteStr(body, m.module.name); WriteStr(body, "_init()");
     WriteDebugAttachment(body); WriteStr(body, " {"); WriteLn(body);
     EmitEntryLabel(body, cg);
+    cg.literalTemps := NIL; CollectLiteralTemps(body, cg, m.module.statements);
     NewTemp(cg, done); NewLabel(cg, already); NewLabel(cg, first);
     WriteStr(body, "  "); WriteStr(body, done); WriteStr(body, " = load i1, ptr "); WriteStr(body, flag); WriteLn(body);
     EmitCondBr(body, done, already, first);
@@ -8319,7 +8688,7 @@ MODULE LLVMCodeGenerator;
     GenerateStatementSeq(body, cg, GenerateDeclarationInits(body, cg, m.module.declarations, m.module.statements));
     WriteStr(body, "  ret void"); WriteLn(body);
     WriteStr(body, "}"); WriteLn(body);
-    debugScope := -1;
+    debugScope := -1; cg.literalTemps := NIL;
     WriteLn(body);
     (* Phase 11 D17: the initialization procedures - of every record the
        module's TYPE declarations name, which other modules may use, and of
@@ -8333,7 +8702,8 @@ MODULE LLVMCodeGenerator;
       END
     END;
     EmitInitProcedures(body, cg);
-    cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
+    cg.moduleName := m.module.name;
+    EmitStructuredConstants(body, cg); cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
     IF isMain THEN
       (* A program that contains rtl/llvm/Modules.Mod gets the command line:
          main takes argc and argv, and hands both to Modules.Init - as

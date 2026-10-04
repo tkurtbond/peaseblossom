@@ -158,6 +158,46 @@ except, for a record declared in a procedure, that procedure's variables,
 parameters and procedures. A module that imports the type gets its
 defaults, hidden fields' included.
 
+### Record and array literals
+
+```oberon
+TYPE
+  Point* = RECORD x*, y*: INTEGER END;
+  Line* = RECORD from*, to*: Point; width*: INTEGER := 1 END;
+  Matrix* = ARRAY 2, 2 OF REAL;
+CONST
+  origin* = Point{x := 0, y := 0};
+  identity* = Matrix{{1, 0}, {0, 1}};
+...
+  line := Line{from := origin, to := {x := 3, y := 4}};
+```
+
+`T{...}` is a value of `T`, a named record type or array type of fixed
+length. A record's elements are named, `field := e`, each a field of the
+type or of a base type, at most once, in any order; an array's are
+positional from index 0, at most its length. Each element is assignment
+compatible with its field or element, an array element may also be a
+shorter array ("Array assignment" below). Inside a literal, `{...}` is a
+literal of the element's type when that is a record or array type, and a
+set when it is a set type; elsewhere `{...}` is a set, as in the report. A
+literal is made as a variable of its type is - zeroed, then every field
+initializer - and then its elements are evaluated and assigned in the
+order written, so `p := Point{x := p.y, y := p.x}` swaps. A literal is a
+factor: no selector follows it, and it is not a variable (not a `VAR`
+parameter). A literal of another module's record type with a field hidden
+or read-only there cannot be written ("no literal of this type can be
+written here; this field is not exported by its module"). (`-strict`: "a
+record or array literal".)
+
+A literal is a constant expression when every element written is constant
+and every omitted field's default is constant, and then `CONST c = T{...}`
+declares a structured constant. It is used as a read-only variable is: never
+assigned to or passed as a `VAR` parameter. `origin.x` and `identity[1, 1]`
+are constants; an index that is not constant reads a copy of the constant in
+memory, checked as usual. A pointer or procedure element of one is `NIL`. An
+exported one's type must have a name the `.sym` file can use: a type of the
+module, or an exported one of an import.
+
 ### Declarations after procedures
 
 `CONST`, `TYPE` and `VAR` sections may follow procedures, in a module and in
@@ -485,10 +525,12 @@ compiled again.
 of the module, which `-show-interface` prints. It has the module's imports,
 then its exported constants, types and variables, and its exported
 procedures as forward declarations (`PROCEDURE^`). A constant appears with
-its value. A record type appears with all its fields, the hidden ones
-without an export mark, and so do the unexported types they need, since an
-importer must know the record's layout; a module cannot name them. A field
-with a default has `:= ..` after it (section 3). The text is poc's to
+its value, a record or array constant as its literal with every field
+given, in a second `CONST` section after the types. A record type appears
+with all its fields, the hidden ones without an export mark, and so do the
+unexported types they need, since an importer must know the record's layout;
+a module cannot name them. A field with a default has the default's value
+after it, `:= 1`, or `:= ..` when it is not a constant (section 3). The text is poc's to
 write, and a module cannot be written in it: it describes a compiled
 module, whose code is in the `.o`.
 

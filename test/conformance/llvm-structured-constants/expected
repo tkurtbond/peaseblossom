@@ -1,0 +1,34 @@
+== -O2
+0  5 anon  991.000000E-01
+first  99
+-1  50   0
+3675ok
+ 7 0 0 4 5
+16
+ 1 2 3 0 0
+1.000000E-01
+6  90
+-2
+== -OC
+0  5 anon  991.000000E-01
+first  99
+-1  50   0
+3675ok
+ 7 0 0 4 5
+16
+ 1 2 3 0 0
+1.000000E-01
+6  90
+-2
+MODULE Shapes;
+  TYPE
+    Point* = RECORD x*: INTEGER; y*: INTEGER END;
+    Named* = RECORD (Point) name*: ARRAY 12 OF CHAR := "anon"; weight*: REAL := 1.0000000149011612E-1; count*: INTEGER := 99 END;
+    Row* = ARRAY 3 OF LONGINT;
+    Grid* = ARRAY 2 OF Row;
+  CONST
+    origin* = Point{x := -1, y := -2};
+    grid* = Grid{{1, 2, 3}, {40, 50}};
+    named* = Named{x := 1, y := 0, name := "first", weight := 1.0000000149011612E-1, count := 99};
+    short* = Row{7};
+END Shapes.

@@ -78,7 +78,11 @@ MODULE Parser;
                          above; see simplification 1 *)
       (* the text is a .sym file (InitInterfaceParser), where a record
          field's initializer is written "f: T := .." (ParseFieldList) *)
-      interfaceText: BOOLEAN
+      interfaceText: BOOLEAN;
+      (* Phase 14: a set constructor ParseLiteralElement has already read,
+         "{1} + ...", which the next ParseFactor returns instead of reading
+         a factor (and before which ParseSimpleExpr reads no sign) *)
+      pendingFactor: SyntaxTree.ExprNode
     END;
 
   PROCEDURE Advance(VAR p: Parser);
@@ -323,7 +327,7 @@ MODULE Parser;
     VAR
       head, tail, el: SyntaxTree.SetElementNode;
       low, high: SyntaxTree.ExprNode;
-      line, column, elLine, elColumn: INTEGER;
+      line, column, elLine, elColumn, depth: INTEGER;
   BEGIN
     line := p.current.line; column := p.current.column;
     ExpectToken(p, Lexer.leftBrace, "expected '{'");
@@ -332,6 +336,19 @@ MODULE Parser;
       LOOP
         elLine := p.current.line; elColumn := p.current.column;
         low := ParseExpr(p);
+        IF p.current.kind = Lexer.assign THEN
+          (* "{x := 1}": a record literal without its type's name, which
+             only an element of another literal may leave out (Phase 14) *)
+          Diagnostics.Error(line, column, "a literal begins with the name of its type, as T{...}");
+          depth := 1;
+          REPEAT
+            IF p.current.kind = Lexer.leftBrace THEN INC(depth)
+            ELSIF p.current.kind = Lexer.rightBrace THEN DEC(depth)
+            END;
+            IF depth > 0 THEN Advance(p) END
+          UNTIL (depth = 0) OR (p.current.kind = Lexer.eof);
+          EXIT
+        END;
         IF p.current.kind = Lexer.upTo THEN
           Advance(p); high := ParseExpr(p)
         ELSE
@@ -370,6 +387,9 @@ MODULE Parser;
     END
   END SkipCallOfResult;
 
+  PROCEDURE ^ ParseLiteral(VAR p: Parser; qualifier, name: SyntaxTree.Ident;
+                           line, column: INTEGER): SyntaxTree.StructuredLiteralNode;
+
   PROCEDURE ParseFactor(VAR p: Parser): SyntaxTree.ExprNode;
     VAR
       designator: SyntaxTree.Designator;
@@ -381,8 +401,19 @@ MODULE Parser;
       isHex, isLongReal: BOOLEAN;
   BEGIN
     line := p.current.line; column := p.current.column;
-    IF p.current.kind = Lexer.ident THEN
+    IF p.pendingFactor # NIL THEN
+      inner := p.pendingFactor; p.pendingFactor := NIL;
+      RETURN inner
+    ELSIF p.current.kind = Lexer.ident THEN
       designator := ParseDesignator(p);
+      IF p.current.kind = Lexer.leftBrace THEN
+        (* Phase 14: "T{...}" *)
+        IF designator.selectors # NIL THEN
+          Diagnostics.Error(p.current.line, p.current.column,
+            "a literal begins with the name of its type, as T{...}")
+        END;
+        RETURN ParseLiteral(p, designator.qualifier, designator.name, line, column)
+      END;
       hasParens := FALSE; args := NIL;
       IF p.current.kind = Lexer.leftParen THEN
         hasParens := TRUE; Advance(p);
@@ -437,7 +468,7 @@ MODULE Parser;
   BEGIN
     line := p.current.line; column := p.current.column;
     sign := 0;
-    IF (p.current.kind = Lexer.plus) OR (p.current.kind = Lexer.minus) THEN
+    IF (p.pendingFactor = NIL) & ((p.current.kind = Lexer.plus) OR (p.current.kind = Lexer.minus)) THEN
       sign := p.current.kind; Advance(p)
     END;
     result := ParseTerm(p);
@@ -465,6 +496,64 @@ MODULE Parser;
     END;
     RETURN left
   END ParseExpr;
+
+  (* Phase 14 (doc/language-extensions.md, "Record and array literals"):
+     the elements of a literal, from its "{" to its "}". Each is "field :=
+     expression" or an expression, and in a nested "{...}" that may be a
+     set constructor, "expression .. expression". An element that begins
+     with "{" is a literal without its type's name when "," or "}" follows
+     it, resolved by the checker from the element's type; when anything
+     else follows ("{1} + s"), it can only be a set constructor, and the
+     expression goes on from it (pendingFactor). *)
+  PROCEDURE ParseLiteralElements(VAR p: Parser): SyntaxTree.LiteralElementNode;
+    VAR
+      head, tail, el: SyntaxTree.LiteralElementNode;
+      field, empty: SyntaxTree.Ident;
+      value, high: SyntaxTree.ExprNode;
+      nested: SyntaxTree.StructuredLiteralNode;
+      saved: Parser;
+      line, column: INTEGER;
+  BEGIN
+    ExpectToken(p, Lexer.leftBrace, "expected '{'");
+    head := NIL; tail := NIL; empty[0] := 0X;
+    IF p.current.kind # Lexer.rightBrace THEN
+      LOOP
+        line := p.current.line; column := p.current.column;
+        field[0] := 0X; high := NIL;
+        IF p.current.kind = Lexer.ident THEN
+          saved := p; COPY(p.current.lexeme, field); Advance(p);
+          IF p.current.kind = Lexer.assign THEN Advance(p) ELSE p := saved; field[0] := 0X END
+        END;
+        IF p.current.kind = Lexer.leftBrace THEN
+          nested := ParseLiteral(p, empty, empty, p.current.line, p.current.column);
+          IF (p.current.kind = Lexer.comma) OR (p.current.kind = Lexer.rightBrace) THEN
+            value := nested
+          ELSE
+            p.pendingFactor := SemanticActions.SetFromLiteral(nested);
+            value := ParseExpr(p)
+          END
+        ELSE
+          value := ParseExpr(p)
+        END;
+        IF p.current.kind = Lexer.upTo THEN Advance(p); high := ParseExpr(p) END;
+        el := SemanticActions.NewLiteralElement(field, value, high, line, column);
+        IF tail = NIL THEN head := el ELSE tail.next := el END;
+        tail := el;
+        IF p.current.kind = Lexer.comma THEN Advance(p) ELSE EXIT END
+      END
+    END;
+    ExpectToken(p, Lexer.rightBrace, "expected '}'");
+    RETURN head
+  END ParseLiteralElements;
+
+  PROCEDURE ParseLiteral(VAR p: Parser; qualifier, name: SyntaxTree.Ident;
+                         line, column: INTEGER): SyntaxTree.StructuredLiteralNode;
+    VAR lit: SyntaxTree.StructuredLiteralNode;
+  BEGIN
+    lit := SemanticActions.NewStructuredLiteral(qualifier, name, ParseLiteralElements(p), line, column);
+    lit.fromInterface := p.interfaceText;
+    RETURN lit
+  END ParseLiteral;
 
   (* ---- Types ---- *)
 
@@ -1118,7 +1207,7 @@ MODULE Parser;
   BEGIN
     Lexer.InitScanner(p.scanner, text, length);
     Lexer.NextToken(p.scanner, p.current);
-    p.aliases := NIL; p.interfaceText := FALSE
+    p.aliases := NIL; p.interfaceText := FALSE; p.pendingFactor := NIL
   END InitParser;
 
   (* InitParser for the text of a .sym file (ModuleInterface.Mod) *)

@@ -296,10 +296,14 @@ MODULE DecimalToDouble;
     END
   END Digits;
 
-  (* The LONGREAL nearest the non-negative numeral lexeme - digits, an
+  (* The number nearest the non-negative numeral lexeme - digits, an
      optional fraction, an optional "E" or "D" exponent with an optional
-     sign: what Lexer.Mod produces for a real numeral. *)
-  PROCEDURE Parse*(lexeme: ARRAY OF CHAR): LONGREAL;
+     sign: what Lexer.Mod produces for a real numeral - of precision bits,
+     whose smallest subnormal's last bit has binary exponent lowest and
+     whose largest finite value has a last bit of exponent highest: a
+     LONGREAL's (53, -1074, 971), or a REAL's (24, -149, 104), returned in
+     a LONGREAL, which holds it exactly. *)
+  PROCEDURE ParseRounded(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER): LONGREAL;
     VAR
       digits, left, factor, product, twice: Big;
       i, kept, exponent10, magnitude, estimate, e, bits: INTEGER;
@@ -352,39 +356,55 @@ MODULE DecimalToDouble;
       RETURN 0.0D0
     END;
 
-    (* a lower bound of the binary exponent e for which V / 2^e has 53
-       bits, and one bit to spare for the estimate's own error *)
+    (* a lower bound of the binary exponent e for which V / 2^e has
+       precision bits, and one bit to spare for the estimate's own error *)
     estimate := SHORT(ENTIER((magnitude - 1) * 3.321928094887362D0));
-    e := estimate - 53;
-    IF e < minExponent THEN e := minExponent END;
+    e := estimate - precision;
+    IF e < lowest THEN e := lowest END;
     LOOP
       Scale(digits, exponent10, e, left, factor);
       q := Quotient(left, factor, product);
       bits := BitLength(q);
-      IF bits > 53 THEN
-        e := e + (bits - 53)
-      ELSIF (bits < 53) & (e > minExponent) THEN
-        e := e - (53 - bits);
-        IF e < minExponent THEN e := minExponent END
+      IF bits > precision THEN
+        e := e + (bits - precision)
+      ELSIF (bits < precision) & (e > lowest) THEN
+        e := e - (precision - bits);
+        IF e < lowest THEN e := lowest END
       ELSE
         EXIT
       END
     END;
-    (* q * 2^e <= V < (q + 1) * 2^e, and q has 53 bits (or e is the
+    (* q * 2^e <= V < (q + 1) * 2^e, and q has precision bits (or e is the
        smallest): round to nearest, ties to even, by comparing 2 * left with
        (2q + 1) * factor *)
     Copy(left, twice); MulAdd(twice, 2, 0);
     MulLong(factor, 2 * q + 1, product);
     cmp := Compare(twice, product);
     IF (cmp > 0) OR ((cmp = 0) & ODD(q)) THEN m := q + 1 ELSE m := q END;
-    IF BitLength(m) > 53 THEN (* rounded up to 2^53: exactly 2^52 * 2^(e + 1) *)
+    IF BitLength(m) > precision THEN (* rounded up: exactly 2^(precision - 1) * 2^(e + 1) *)
       m := m DIV 2; INC(e)
     END;
-    IF e > 971 THEN
+    IF e > highest THEN
       huge := PowerOfTwo(1000);
       RETURN huge * huge
     END;
     RETURN ScaleByPowerOfTwo(m, e)
+  END ParseRounded;
+
+  (* The LONGREAL nearest the numeral lexeme (as ParseRounded) *)
+  PROCEDURE Parse*(lexeme: ARRAY OF CHAR): LONGREAL;
+  BEGIN
+    RETURN ParseRounded(lexeme, 53, minExponent, 971)
   END Parse;
+
+  (* The REAL nearest the numeral lexeme, held in a LONGREAL (Phase 14: an
+     element of a record or array constant, written into an LLVM constant,
+     which cannot round a decimal itself) - not the LONGREAL nearest it
+     rounded again, which can differ *)
+  PROCEDURE ParseSingle*(lexeme: ARRAY OF CHAR): LONGREAL;
+  BEGIN
+    RETURN ParseRounded(lexeme, 24, -149, 104)
+  END ParseSingle;
+
 
 END DecimalToDouble.

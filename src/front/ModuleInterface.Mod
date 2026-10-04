@@ -779,6 +779,7 @@ MODULE ModuleInterface;
         i, j: INTEGER;
   BEGIN
     negate := FALSE; found := FALSE;
+    IF expr = NIL THEN RETURN FALSE END; (* an element of a structured constant *)
     IF expr IS SyntaxTree.UnaryExprNode THEN
       u := expr(SyntaxTree.UnaryExprNode);
       IF (u.op = Lexer.minus) OR (u.op = Lexer.plus) THEN
@@ -844,8 +845,10 @@ MODULE ModuleInterface;
       IF ok THEN
         WriteStr(w, buf)
       ELSE
-        Diagnostics.Error(line, column,
-          "exported string constant containing both quote characters is not yet supported");
+        IF ~dryRun THEN
+          Diagnostics.Error(line, column,
+            "exported string constant containing both quote characters is not yet supported")
+        END;
         WriteStr(w, '""')
       END
     ELSIF v.kind = Types.setValue THEN
@@ -859,8 +862,10 @@ MODULE ModuleInterface;
       IF ok THEN
         WriteStr(w, buf)
       ELSE
-        Diagnostics.Error(line, column,
-          "failed to find a round-trip-safe text representation for this REAL/LONGREAL constant");
+        IF ~dryRun THEN
+          Diagnostics.Error(line, column,
+            "failed to find a round-trip-safe text representation for this REAL/LONGREAL constant")
+        END;
         WriteStr(w, "0.0E0")
       END
     END
@@ -979,6 +984,8 @@ MODULE ModuleInterface;
   END FindBoundName;
 
   PROCEDURE ^ PrintTypeRef(VAR w: Files.Rider; scope: SymbolTable.Scope; t: Types.Type);
+  PROCEDURE ^ PrintFieldInitializer(VAR w: Files.Rider; scope: SymbolTable.Scope; f: Types.Field;
+                                    rec: Types.RecordType);
 
   PROCEDURE PrintStructural(VAR w: Files.Rider; scope: SymbolTable.Scope; t: Types.Type);
     VAR
@@ -1019,10 +1026,11 @@ MODULE ModuleInterface;
             IF f.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END
           END;
           WriteStr(w, ": "); PrintTypeRef(w, scope, f.type);
-          (* Phase 11 D17: that the field has an initializer, not its
-             value, which only the declaring module's code uses
-             (Parser.ParseFieldInitializers reads it back) *)
-          IF f.hasInitializer & ~exportedView THEN WriteStr(w, " := ..") END;
+          (* Phase 11 D17: that the field has an initializer, and its
+             value when that is constant (Phase 14); only the declaring
+             module's code applies it (Parser.ParseFieldInitializers reads
+             it back) *)
+          IF f.hasInitializer & ~exportedView THEN PrintFieldInitializer(w, scope, f, rt) END;
           first := FALSE
         END;
         f := f.next
@@ -1069,6 +1077,85 @@ MODULE ModuleInterface;
     END
   END PrintTypeRef;
 
+  (* ---- Phase 14: record and array constants ----
+
+     A structured value as its literal, "T{...}" when named, with every
+     field of a record given, its bases' and hidden ones included, and an
+     array's elements as far as its value lists them: the rest are its
+     element type's default, which the reader computes as this module did
+     (a constant field initializer is written as its value). A nested
+     record or array is "{...}". *)
+
+  PROCEDURE ^ PrintStructuredValue(VAR w: Files.Rider; scope: SymbolTable.Scope; v: Types.Value;
+                                   named: BOOLEAN; line, column: INTEGER);
+
+  PROCEDURE PrintElementValue(VAR w: Files.Rider; scope: SymbolTable.Scope; v: Types.Value;
+                              line, column: INTEGER);
+  BEGIN
+    IF v.kind = Types.structuredValue THEN
+      PrintStructuredValue(w, scope, v, FALSE, line, column)
+    ELSE
+      PrintConstValue(w, v, NIL, line, column)
+    END
+  END PrintElementValue;
+
+  PROCEDURE PrintFieldValues(VAR w: Files.Rider; scope: SymbolTable.Scope; rec: Types.RecordType;
+                             VAR e: Types.Value; VAR first: BOOLEAN; line, column: INTEGER);
+    VAR f: Types.Field;
+  BEGIN
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) THEN
+      PrintFieldValues(w, scope, rec.baseType(Types.RecordType), e, first, line, column)
+    END;
+    f := rec.fields;
+    WHILE (f # NIL) & (e # NIL) DO
+      IF ~first THEN WriteStr(w, ", ") END;
+      WriteStr(w, f.name); WriteStr(w, " := ");
+      PrintElementValue(w, scope, e, line, column);
+      first := FALSE;
+      e := e.next; f := f.next
+    END
+  END PrintFieldValues;
+
+  PROCEDURE PrintStructuredValue(VAR w: Files.Rider; scope: SymbolTable.Scope; v: Types.Value;
+                                 named: BOOLEAN; line, column: INTEGER);
+    VAR e: Types.Value; first: BOOLEAN;
+  BEGIN
+    IF named THEN PrintTypeRef(w, scope, v.type) END;
+    WriteStr(w, "{");
+    first := TRUE; e := v.elements;
+    IF v.type IS Types.RecordType THEN
+      PrintFieldValues(w, scope, v.type(Types.RecordType), e, first, line, column)
+    ELSE
+      WHILE e # NIL DO
+        IF ~first THEN WriteStr(w, ", ") END;
+        PrintElementValue(w, scope, e, line, column);
+        first := FALSE; e := e.next
+      END
+    END;
+    WriteStr(w, "}")
+  END PrintStructuredValue;
+
+  (* Phase 11 D17 and Phase 14: a field initializer as the .sym writes
+     it, " := <value>" when its value is constant (a record or array one
+     only when its type has a name here), " := .." otherwise, which says
+     only that there is one *)
+  PROCEDURE PrintFieldInitializer(VAR w: Files.Rider; scope: SymbolTable.Scope; f: Types.Field;
+                                  rec: Types.RecordType);
+    VAR v: Types.Value; name: ARRAY 512 OF CHAR;
+  BEGIN
+    v := ConstantEvaluator.ConstantInitializer(f, rec);
+    IF (v # NIL) & ((v.kind # Types.structuredValue) OR FindBoundName(scope, v.type, NIL, name)) THEN
+      WriteStr(w, " := ");
+      IF v.kind = Types.structuredValue THEN
+        PrintStructuredValue(w, scope, v, TRUE, f.line, f.column)
+      ELSE
+        PrintConstValue(w, v, NIL, f.line, f.column)
+      END
+    ELSE
+      WriteStr(w, " := ..")
+    END
+  END PrintFieldInitializer;
+
   (* Only the outermost call of a TYPE declaration's own RHS must skip
      the identifier being declared - see header comment. An unexported
      declaration (one NeedType found reachable) carries no export mark.
@@ -1101,16 +1188,25 @@ MODULE ModuleInterface;
 
   (* ---- Top-level declaration sections ---- *)
 
-  PROCEDURE PrintConsts(VAR w: Files.Rider; scope: SymbolTable.Scope; decls: SyntaxTree.ConstDeclNode);
+  (* The exported constants, structured ones (Phase 14) or the others: a
+     record or array constant names its type, so it is written in a CONST
+     section of its own after the TYPE section *)
+  PROCEDURE PrintConsts(VAR w: Files.Rider; scope: SymbolTable.Scope; decls: SyntaxTree.ConstDeclNode;
+                        structured: BOOLEAN);
     VAR d: SyntaxTree.ConstDeclNode; obj: SymbolTable.Object; any: BOOLEAN;
   BEGIN
     any := FALSE; d := decls;
     WHILE d # NIL DO
       obj := SymbolTable.FindLocal(scope, d.name.name);
-      IF (obj # NIL) & obj.exported THEN
+      IF (obj # NIL) & obj.exported & (obj.value # NIL)
+         & ((obj.value.kind = Types.structuredValue) = structured) THEN
         IF ~any THEN WriteStr(w, "  CONST"); WriteLn(w) END;
         WriteStr(w, "    "); WriteStr(w, obj.name); WriteStr(w, "* = ");
-        PrintConstValue(w, obj.value, d.value, d.line, d.column);
+        IF structured THEN
+          PrintStructuredValue(w, scope, obj.value, TRUE, d.line, d.column)
+        ELSE
+          PrintConstValue(w, obj.value, d.value, d.line, d.column)
+        END;
         WriteStr(w, ";"); WriteLn(w);
         any := TRUE
       END;
@@ -1313,8 +1409,10 @@ MODULE ModuleInterface;
   PROCEDURE PrintDeclarations(VAR w: Files.Rider; module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope);
   BEGIN
     IF module.declarations # NIL THEN
-      IF ~dryRun THEN PrintConsts(w, scope, module.declarations.constDecls) END;
+      IF ~dryRun THEN PrintConsts(w, scope, module.declarations.constDecls, FALSE) END;
       PrintTypes(w, scope, module.declarations.typeDecls);
+      (* while dry too: a constant's type may be one to declare (NeedType) *)
+      PrintConsts(w, scope, module.declarations.constDecls, TRUE);
       PrintVars(w, scope, module.declarations.varDecls);
       PrintMethods(w, scope, module.declarations.typeDecls);
       PrintFreeProcs(w, scope, module.declarations.procDecls)
@@ -1381,10 +1479,10 @@ MODULE ModuleInterface;
       Files.Set(w, f, 0);
       (* Dry passes first (nothing is written), to a fixpoint: each one
          may find another unexported type some already-marked declaration
-         reaches - see the writer-state comment on neededHead. The
-         constants pass is skipped while dry (it can never mark a type,
-         and its real-number formatting can report diagnostics that must
-         not be reported once per pass). *)
+         reaches - see the writer-state comment on neededHead. The pass
+         of the other constants is skipped while dry (it can never mark a
+         type); a record or array constant's can (Phase 14), and
+         PrintConstValue reports nothing while dry. *)
       neededHead := NIL; printingDecl := NIL; forwardBaseOK := FALSE;
       dryRun := TRUE;
       REPEAT
