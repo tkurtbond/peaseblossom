@@ -178,4 +178,5 @@ portcheck and pkglint clean; packing lists unchanged), installed as
 root, checked with `check.sh` against the installed poc, and removed with
 nothing left (on atla the 0.2.0 RPM stays installed, replacing 0.1.0);
 the RPMs signed with `rpmsign` and attached with the other packages and
-a signed `SHA256SUMS`. `mock` was not run.
+a signed `SHA256SUMS`. `mock` was not run. rackhir passed `87bbcaa`
+(`gmake check`, 680, Stage 1 and Stage 2 identical).
