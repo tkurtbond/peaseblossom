@@ -215,25 +215,17 @@ MODULE Poc;
     END
   END CheckSyntax;
 
-  PROCEDURE ^ SetLibraryTarget(triple: ARRAY OF CHAR);
+  PROCEDURE ^ SetCheckTarget(explicitTriple: ARRAY OF CHAR);
 
-  PROCEDURE Check(name: ARRAY OF CHAR);
+  PROCEDURE Check(name, explicitTriple: ARRAY OF CHAR);
     VAR
       buffer: Lexer.CharBuffer;
       length: LONGINT;
       parser: Parser.Parser;
       module: SyntaxTree.ModuleNode;
       scope: SymbolTable.Scope;
-      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR; clangLine: ARRAY 256 OF CHAR;
   BEGIN
-    (* the libraries on the library path, for the host (Phase 13 step 6: a
-       module importing Out could not be checked); without clang, which
-       names the host, none. Only the libraries: the word size SIZE folds
-       for stays as it was. *)
-    importsFromSymOnly := TRUE;
-    IF LLVMToolchainDriver.ClangVersion(clangLine) & LLVMToolchainDriver.HostTriple(triple) THEN
-      SetLibraryTarget(triple)
-    END;
+    SetCheckTarget(explicitTriple);
     IF ~ReadSource(name, buffer, length) THEN
       failed := TRUE; Err.String("poc: cannot open "); Err.String(name); Err.Ln
     ELSE
@@ -520,6 +512,27 @@ MODULE Poc;
     IF recognized THEN ConstantEvaluator.SetWordSize(wordSize) END
   END SetWordSizeFromTriple;
 
+  (* For a command that checks a module without building it (-check,
+     -emit-interface, -show-interface): the libraries on the library path,
+     as a build reads them (Phase 13 steps 6 and 7: a module importing Out
+     could not be checked, nor the interface of one importing Files shown),
+     and the word size (where SYSTEM.ADDRESS sits among the integers, what
+     SIZE folds to), both for -target's triple, else the host's, as a build
+     would use; without clang, which names the host, no libraries and the
+     default word size. -check took the host's libraries but not its word
+     size until PLAN.md's "Ongoing bug fixing" 2, so it judged a 64-bit
+     host's module by 32-bit rules, and it ignored -target. *)
+  PROCEDURE SetCheckTarget(explicitTriple: ARRAY OF CHAR);
+    VAR triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR; clangLine: ARRAY 256 OF CHAR;
+  BEGIN
+    importsFromSymOnly := TRUE;
+    IF explicitTriple[0] # 0X THEN
+      IF ResolveTriple(explicitTriple, triple) THEN SetWordSizeFromTriple(triple); SetLibraryTarget(triple) END
+    ELSIF LLVMToolchainDriver.ClangVersion(clangLine) & LLVMToolchainDriver.HostTriple(triple) THEN
+      SetWordSizeFromTriple(triple); SetLibraryTarget(triple)
+    END
+  END SetCheckTarget;
+
   (* PLAN.md Phase 8 step 4: -target is optional here, unlike
      EmitLLVMIR/Build below - this command has no real dependency on clang
      at all, and must not start requiring it installed just to gain
@@ -534,18 +547,8 @@ MODULE Poc;
       module: SyntaxTree.ModuleNode;
       scope: SymbolTable.Scope;
       path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
-      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR; clangLine: ARRAY 256 OF CHAR;
   BEGIN
-    (* the libraries on the library path, as -check reads them (Phase 13
-       step 7: the interface of a module importing Files could not be shown
-       without an import path to poc-rtl's .sym files): for -target's
-       triple, else the host's, else, without clang, none *)
-    importsFromSymOnly := TRUE;
-    IF explicitTriple[0] # 0X THEN
-      IF ResolveTriple(explicitTriple, triple) THEN SetWordSizeFromTriple(triple); SetLibraryTarget(triple) END
-    ELSIF LLVMToolchainDriver.ClangVersion(clangLine) & LLVMToolchainDriver.HostTriple(triple) THEN
-      SetLibraryTarget(triple)
-    END;
+    SetCheckTarget(explicitTriple);
     IF ~ReadSource(name, buffer, length) THEN
       failed := TRUE; Err.String("poc: cannot open "); Err.String(name); Err.Ln
     ELSE
@@ -709,7 +712,7 @@ MODULE Poc;
       buffer: Lexer.CharBuffer; length: LONGINT; found: BOOLEAN;
       module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode;
       entry: LLVMCodeGenerator.ModuleList; errorCountBefore: INTEGER;
-      savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+      savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR; savedStrict: BOOLEAN;
       info: Libraries.ObjectInfo; own, used: Libraries.ObjectKey;
       key: Libraries.Key; triple: Libraries.Name; model: ARRAY 3 OF CHAR; file: Libraries.Path;
   BEGIN
@@ -720,12 +723,15 @@ MODULE Poc;
     END;
     IF irPath[0] # 0X THEN COPY(irPath, file) ELSE COPY(objectPath, file) END;
     COPY(Diagnostics.fileName, savedFileName); COPY(symPath, Diagnostics.fileName);
+    (* -strict is for the command line's module, as in DiscoverModule; a
+       .sym is not its text (PLAN.md, "Ongoing bug fixing" 4) *)
+    savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE;
     errorCountBefore := Diagnostics.errorCount;
     module := ParseModuleAdapter(buffer, length);
     IF Diagnostics.errorCount = errorCountBefore THEN
       scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
     END;
-    COPY(savedFileName, Diagnostics.fileName);
+    COPY(savedFileName, Diagnostics.fileName); Diagnostics.strict := savedStrict;
     IF Diagnostics.errorCount > errorCountBefore THEN
       Err.Int(Diagnostics.errorCount - errorCountBefore, 0);
       Err.String(" error(s) in "); Err.String(symPath); Err.Ln;
@@ -804,7 +810,7 @@ MODULE Poc;
       buffer: Lexer.CharBuffer; length: LONGINT; found: BOOLEAN;
       module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode;
       entry: LLVMCodeGenerator.ModuleList; errorCountBefore: INTEGER;
-      savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+      savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR; savedStrict: BOOLEAN;
       symPath: LLVMCodeGenerator.SourcePath;
   BEGIN
     ModuleInterface.ReadSource(name, buffer, length, found);
@@ -814,12 +820,15 @@ MODULE Poc;
       ok := FALSE; RETURN
     END;
     COPY(Diagnostics.fileName, savedFileName); COPY(symPath, Diagnostics.fileName);
+    (* -strict is for the command line's module, as in DiscoverModule; a
+       .sym is not its text (PLAN.md, "Ongoing bug fixing" 4) *)
+    savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE;
     errorCountBefore := Diagnostics.errorCount;
     module := ParseModuleAdapter(buffer, length);
     IF Diagnostics.errorCount = errorCountBefore THEN
       scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
     END;
-    COPY(savedFileName, Diagnostics.fileName);
+    COPY(savedFileName, Diagnostics.fileName); Diagnostics.strict := savedStrict;
     IF Diagnostics.errorCount > errorCountBefore THEN
       Err.Int(Diagnostics.errorCount - errorCountBefore, 0);
       Err.String(" error(s) in "); Err.String(symPath); Err.Ln;
@@ -1939,7 +1948,7 @@ MODULE Poc;
     ELSIF option = "-check-syntax" THEN
       CheckSyntax(fileName)
     ELSIF option = "-check" THEN
-      Check(fileName)
+      Check(fileName, targetTriple)
     ELSIF option = "-dump-layout" THEN
       DumpLayout(fileName)
     ELSIF option = "-dump-llvm-types" THEN

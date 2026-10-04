@@ -7,7 +7,14 @@ MODULE Lexer;
      Token.lexeme keeps the exact source text of the token (including
      any H/X suffix on numbers, but excluding the surrounding quotes on
      strings); numeric value computation is deferred to a later phase
-     (PLAN.md Phase 3, ConstantEvaluator.Mod). *)
+     (PLAN.md Phase 3, ConstantEvaluator.Mod).
+
+     A string's text has no length limit (PLAN.md, "Ongoing bug fixing" 3:
+     voc takes 1023 characters, and poc took 255): Token.text holds all of
+     it, without the quotes, in a Text sized to fit, and lexeme only its
+     first maxLexemeLength characters, for the places that want a short
+     name (an external procedure's calling convention and linkage name).
+     Every other token's lexeme is its whole text, and its text NIL. *)
 
   IMPORT Diagnostics;
 
@@ -43,11 +50,15 @@ MODULE Lexer;
 
   TYPE
     CharBuffer* = POINTER TO ARRAY OF CHAR;
+    (* a string's text, 0X-terminated, as long as it is: Token.text, and
+       SyntaxTree's and Types' strings *)
+    Text* = POINTER TO ARRAY OF CHAR;
 
     Token* = RECORD
       kind*: INTEGER;
       line*, column*: INTEGER;
       lexeme*: ARRAY maxLexemeLength + 1 OF CHAR;
+      text*: Text;           (* a string's whole text; NIL for any other token *)
       isHex*: BOOLEAN;       (* integer literal used the H suffix *)
       isLongReal*: BOOLEAN   (* real literal had a D scale factor *)
     END;
@@ -73,6 +84,17 @@ MODULE Lexer;
   BEGIN
     RETURN IsDigit(ch) OR ((ch >= "A") & (ch <= "F"))
   END IsHexDigit;
+
+  (* a Text holding s up to its first 0X (all of it if it has none) *)
+  PROCEDURE NewText*(s: ARRAY OF CHAR): Text;
+    VAR t: Text; n, i: LONGINT;
+  BEGIN
+    n := 0; WHILE (n < LEN(s)) & (s[n] # 0X) DO INC(n) END;
+    NEW(t, n + 1);
+    FOR i := 0 TO n - 1 DO t[i] := s[i] END;
+    t[n] := 0X;
+    RETURN t
+  END NewText;
 
   PROCEDURE CurrentChar(VAR s: Scanner): CHAR;
   BEGIN
@@ -271,31 +293,31 @@ MODULE Lexer;
     END
   END ScanNumber;
 
+  (* A string, which ends at its closing quote on the same line: its text
+     is s.text[start .. start + len - 1], copied whole into t.text and its
+     first maxLexemeLength characters into t.lexeme. *)
   PROCEDURE ScanString(VAR s: Scanner; VAR t: Token);
-    VAR quote, ch: CHAR; len: INTEGER; terminated: BOOLEAN;
+    VAR quote, ch: CHAR; start, len, i: LONGINT; terminated: BOOLEAN;
   BEGIN
     quote := CurrentChar(s); Advance(s);
-    len := 0; terminated := FALSE;
+    start := s.pos; terminated := FALSE;
     ch := CurrentChar(s);
     WHILE (~terminated) & (ch # 0X) & (ch # 0AX) DO
-      IF ch = quote THEN
-        terminated := TRUE
-      ELSE
-        IF len < maxLexemeLength THEN
-          t.lexeme[len] := ch; INC(len)
-        ELSIF len = maxLexemeLength THEN
-          Diagnostics.Error(t.line, t.column, "string too long, truncated");
-          INC(len)
-        END;
-        Advance(s); ch := CurrentChar(s)
+      IF ch = quote THEN terminated := TRUE
+      ELSE Advance(s); ch := CurrentChar(s)
       END
     END;
+    len := s.pos - start;
     IF terminated THEN
       Advance(s)
     ELSE
       Diagnostics.Error(t.line, t.column, "unterminated string")
     END;
+    NEW(t.text, len + 1);
+    FOR i := 0 TO len - 1 DO t.text[i] := s.text[start + i] END;
+    t.text[len] := 0X;
     IF len > maxLexemeLength THEN len := maxLexemeLength END;
+    FOR i := 0 TO len - 1 DO t.lexeme[i] := s.text[start + i] END;
     t.lexeme[len] := 0X;
     t.kind := string
   END ScanString;
@@ -366,7 +388,7 @@ MODULE Lexer;
   BEGIN
     SkipWhiteSpaceAndComments(s);
     t.line := s.line; t.column := s.column;
-    t.isHex := FALSE; t.isLongReal := FALSE;
+    t.isHex := FALSE; t.isLongReal := FALSE; t.text := NIL;
     ch := CurrentChar(s);
     IF ch = 0X THEN
       t.kind := eof; t.lexeme[0] := 0X

@@ -1,0 +1,11 @@
+== -O2
+5
+7
+== -OC
+5
+7
+MODULE CLib;
+  IMPORT SYSTEM;
+  PROCEDURE ["C", "strlen"] Length*(s: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+  PROCEDURE ["C", "abs"] abs*(x: SYSTEM.INT32): SYSTEM.INT32;
+END CLib.

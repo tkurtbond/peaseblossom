@@ -503,7 +503,7 @@ MODULE LLVMCodeGenerator;
        when it is discovered. *)
     PendingString = POINTER TO PendingStringDesc;
     PendingStringDesc = RECORD
-      text: LongText;
+      text: Lexer.Text;
       name: ValueText;
       next: PendingString
     END;
@@ -1621,10 +1621,10 @@ MODULE LLVMCodeGenerator;
   BEGIN
     p := cg.pendingStrings; last := NIL; count := 0;
     WHILE p # NIL DO
-      IF p.text = text THEN COPY(p.name, name); RETURN END;
+      IF p.text^ = text THEN COPY(p.name, name); RETURN END;
       last := p; p := p.next; INC(count)
     END;
-    NEW(p); COPY(text, p.text); p.next := NIL;
+    NEW(p); p.text := Lexer.NewText(text); p.next := NIL;
     COPY("@.strconst.", p.name); AppendLongInt(p.name, count);
     IF last = NIL THEN cg.pendingStrings := p ELSE last.next := p END;
     COPY(p.name, name)
@@ -2868,7 +2868,7 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, "c"); Files.Write(w, quoteChar);
       ended := FALSE;
       FOR i := 0 TO arr.length - 1 DO
-        IF ~ended & (i < LEN(v.stringVal)) & (v.stringVal[i] # 0X) THEN
+        IF ~ended & (i < LEN(v.stringVal^)) & (v.stringVal[i] # 0X) THEN
           EmitEscapedByte(w, v.stringVal[i])
         ELSE
           ended := TRUE; EmitEscapedByte(w, 0X)
@@ -2983,19 +2983,19 @@ MODULE LLVMCodeGenerator;
      string of that one character (Oberon2.pdf §3, "and vice versa";
      SemanticActions accepts one only where a string is wanted, and 0X
      is the empty string). *)
-  PROCEDURE StringSourceText(VAR cg: Codegen; e: SyntaxTree.ExprNode; VAR text: ARRAY OF CHAR): BOOLEAN;
+  PROCEDURE StringSourceText(VAR cg: Codegen; e: SyntaxTree.ExprNode; VAR text: Lexer.Text): BOOLEAN;
     VAR lit: SyntaxTree.LiteralExprNode; de: SyntaxTree.DesignatorExprNode;
         obj: SymbolTable.Object; homeModule: SyntaxTree.Ident; v: Types.Value;
   BEGIN
     IF e = NIL THEN RETURN FALSE END;
     IF ConstantEvaluator.IsCharConstant(e, cg.scope) THEN
       v := ConstantEvaluator.Evaluate(e, cg.scope);
-      text[0] := v.charVal; text[1] := 0X;
+      NEW(text, 2); text[0] := v.charVal; text[1] := 0X;
       RETURN TRUE
     ELSIF e IS SyntaxTree.LiteralExprNode THEN
       lit := e(SyntaxTree.LiteralExprNode);
       IF lit.literalKind # Lexer.string THEN RETURN FALSE END;
-      COPY(lit.lexeme, text);
+      text := lit.string;
       RETURN TRUE
     ELSIF e IS SyntaxTree.DesignatorExprNode THEN
       de := e(SyntaxTree.DesignatorExprNode);
@@ -3003,7 +3003,7 @@ MODULE LLVMCodeGenerator;
       obj := ResolveQualifiedObject(cg, de.designator.qualifier, de.designator.name, homeModule);
       IF (obj # NIL) & (obj.class = SymbolTable.constClass) & (obj.value # NIL)
           & (obj.value.kind = Types.stringValue) THEN
-        COPY(obj.value.stringVal, text);
+        text := obj.value.stringVal;
         RETURN TRUE
       END
     END;
@@ -3718,19 +3718,19 @@ MODULE LLVMCodeGenerator;
      pre-pass; a named constant's goes through StringConstGlobal. *)
   PROCEDURE GenerateCharSequence(VAR w: Files.Rider; VAR cg: Codegen; e: SyntaxTree.ExprNode;
                                  VAR addr: ValueText; VAR lenText: ValueText): BOOLEAN;
-    VAR text: LongText; lit: SyntaxTree.LiteralExprNode; de: SyntaxTree.DesignatorExprNode;
+    VAR text: Lexer.Text; lit: SyntaxTree.LiteralExprNode; de: SyntaxTree.DesignatorExprNode;
         addrType: Types.Type; arr: Types.ArrayType; dyn: DynamicType;
   BEGIN
     lenText[0] := 0X;
     IF (e IS SyntaxTree.LiteralExprNode) & (e(SyntaxTree.LiteralExprNode).literalKind = Lexer.string) THEN
       lit := e(SyntaxTree.LiteralExprNode);
       StringConstName(cg, lit, addr);
-      AppendLongInt(lenText, StrLen(lit.lexeme) + 1);
+      AppendLongInt(lenText, StrLen(lit.string^) + 1);
       RETURN TRUE
     END;
     IF StringSourceText(cg, e, text) THEN
-      StringConstGlobal(cg, text, addr);
-      AppendLongInt(lenText, StrLen(text) + 1);
+      StringConstGlobal(cg, text^, addr);
+      AppendLongInt(lenText, StrLen(text^) + 1);
       RETURN TRUE
     END;
     IF ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
@@ -3919,7 +3919,7 @@ MODULE LLVMCodeGenerator;
 
   PROCEDURE AssignToAddress(VAR w: Files.Rider; VAR cg: Codegen; addrText: ARRAY OF CHAR; addrType: Types.Type;
                             value: SyntaxTree.ExprNode; copiesArray: BOOLEAN);
-    VAR text: LongText; arr: Types.ArrayType; v: Value; isCharArray: BOOLEAN;
+    VAR text: Lexer.Text; arr: Types.ArrayType; v: Value; isCharArray: BOOLEAN;
   BEGIN
     IF copiesArray THEN CopyArrayBlock(w, cg, addrText, addrType, value); RETURN END;
     isCharArray := FALSE;
@@ -3928,7 +3928,7 @@ MODULE LLVMCodeGenerator;
       isCharArray := ~arr.isOpen & (arr.elementType = Types.Char)
     END;
     IF isCharArray & StringSourceText(cg, value, text) THEN
-      EmitStringStores(w, cg, addrText, arr, text)
+      EmitStringStores(w, cg, addrText, arr, text^)
     ELSE
       GenerateExpr(w, cg, value, v);
       IF (addrType # NIL) & (addrType IS Types.RecordType) THEN NarrowRecordValue(w, cg, addrType, v) END;
@@ -4021,7 +4021,7 @@ MODULE LLVMCodeGenerator;
     END
   END EmitEscapedByte;
 
-  (* lit.lexeme is already the raw, unescaped string content (Oberon-2
+  (* lit.string is already the raw, unescaped string content (Oberon-2
      string literals have no backslash-escape syntax at all - see
      ConstantEvaluator.EvaluateLiteral's own Lexer.string branch, which
      just COPYs it verbatim). Appends a trailing 0X, matching how every
@@ -4032,17 +4032,17 @@ MODULE LLVMCodeGenerator;
      terminator). *)
   PROCEDURE EmitStringConstantGlobal(VAR w: Files.Rider; VAR cg: Codegen; lit: SyntaxTree.LiteralExprNode);
     CONST backslash = 5CX; quoteChar = 22X;
-    VAR name, lenText: ValueText; len, i: INTEGER;
+    VAR name, lenText: ValueText; len, i: LONGINT;
   BEGIN
     StringConstName(cg, lit, name);
     len := 0;
-    WHILE lit.lexeme[len] # 0X DO INC(len) END;
+    WHILE lit.string[len] # 0X DO INC(len) END;
     lenText[0] := 0X; AppendLongInt(lenText, len + 1);
     WriteStr(w, name); WriteStr(w, " = private unnamed_addr constant [");
     WriteStr(w, lenText); WriteStr(w, " x i8] c");
     Files.Write(w, quoteChar);
     i := 0;
-    WHILE i < len DO EmitEscapedByte(w, lit.lexeme[i]); INC(i) END;
+    WHILE i < len DO EmitEscapedByte(w, lit.string[i]); INC(i) END;
     Files.Write(w, backslash); Files.Write(w, "0"); Files.Write(w, "0");
     Files.Write(w, quoteChar);
     WriteLn(w)
@@ -4106,7 +4106,7 @@ MODULE LLVMCodeGenerator;
                                  passLengths: BOOLEAN; VAR result: Value; VAR lengths: GrowingText);
     VAR
       addr, lenText, wordInt: ValueText; dyn: DynamicType; addrType, cur: Types.Type; arr: Types.ArrayType;
-      de: SyntaxTree.DesignatorExprNode; dims, level: INTEGER; text: LongText; ok, found: BOOLEAN;
+      de: SyntaxTree.DesignatorExprNode; dims, level: INTEGER; text: Lexer.Text; ok, found: BOOLEAN;
   BEGIN
     COPY("ptr", result.llvmType); result.oberonType := Types.Undefined; ClearText(lengths);
     WordIntType(wordInt);
@@ -4330,12 +4330,12 @@ MODULE LLVMCodeGenerator;
     used := StrLen(text);
     needed := StrLen(llvmType) + 3 + arr.length * 3 + 1;
     IF used + needed >= LEN(text) THEN RETURN FALSE END;
-    copyLen := StrLen(lit.lexeme);
+    copyLen := StrLen(lit.string^);
     IF copyLen > arr.length - 1 THEN copyLen := arr.length - 1 END;
     IF copyLen < 0 THEN copyLen := 0 END;
     Strcat(text, llvmType); Strcat(text, " c"); AppendChar(text, 22X);
     i := 0;
-    WHILE i < copyLen DO AppendEscapedByte(text, lit.lexeme[i]); INC(i) END;
+    WHILE i < copyLen DO AppendEscapedByte(text, lit.string[i]); INC(i) END;
     WHILE i < arr.length DO AppendEscapedByte(text, 0X); INC(i) END;
     AppendChar(text, 22X);
     RETURN TRUE
@@ -5053,7 +5053,7 @@ MODULE LLVMCodeGenerator;
      given both lengths. *)
   PROCEDURE GenerateCopy(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
-      xExpr, vExpr: SyntaxTree.ExprNode; text: LongText; knownText: BOOLEAN;
+      xExpr, vExpr: SyntaxTree.ExprNode; text: Lexer.Text; knownText: BOOLEAN;
       de: SyntaxTree.DesignatorExprNode; addrText, srcAddr, dstWord, srcWord, dstLenText, srcLenText: ValueText;
       addrType: Types.Type; arr: Types.ArrayType; ok: BOOLEAN; dyn: DynamicType;
   BEGIN
@@ -5077,7 +5077,7 @@ MODULE LLVMCodeGenerator;
     END;
     arr := addrType(Types.ArrayType);
     IF knownText & ~arr.isOpen THEN
-      EmitStringStores(w, cg, addrText, arr, text)
+      EmitStringStores(w, cg, addrText, arr, text^)
     ELSIF GenerateCharSequence(w, cg, xExpr, srcAddr, srcWord) THEN
       cg.needCharCopy := TRUE;
       dstWord[0] := 0X;
@@ -7968,7 +7968,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     p := cg.pendingStrings;
     WHILE p # NIL DO
-      EmitRuntimeStringGlobal(w, p.name, p.text);
+      EmitRuntimeStringGlobal(w, p.name, p.text^);
       p := p.next
     END;
     IF cg.needCharCompare THEN

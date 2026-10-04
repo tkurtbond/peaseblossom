@@ -365,13 +365,13 @@ MODULE SemanticActions;
     RETURN e
   END NewDesignatorExpr;
 
-  PROCEDURE NewLiteralExpr*(literalKind: INTEGER; lexeme: ARRAY OF CHAR;
+  PROCEDURE NewLiteralExpr*(literalKind: INTEGER; lexeme: ARRAY OF CHAR; string: Lexer.Text;
                             isHex, isLongReal: BOOLEAN;
                             line, column: INTEGER): SyntaxTree.LiteralExprNode;
     VAR e: SyntaxTree.LiteralExprNode;
   BEGIN
     NEW(e);
-    e.literalKind := literalKind; COPY(lexeme, e.lexeme);
+    e.literalKind := literalKind; COPY(lexeme, e.lexeme); e.string := string;
     e.isHex := isHex; e.isLongReal := isLongReal;
     e.next := NIL; e.line := line; e.column := column;
     RETURN e
@@ -3007,8 +3007,8 @@ MODULE SemanticActions;
     END
   END CheckExpr;
 
-  PROCEDURE StringLength(s: ARRAY OF CHAR): INTEGER;
-    VAR i: INTEGER;
+  PROCEDURE StringLength(s: ARRAY OF CHAR): LONGINT;
+    VAR i: LONGINT;
   BEGIN
     i := 0;
     WHILE s[i] # 0X DO INC(i) END;
@@ -3038,7 +3038,7 @@ MODULE SemanticActions;
       arr := dstType(Types.ArrayType);
       IF (arr.elementType = Types.Char) & ~arr.isOpen THEN
         v := ConstantEvaluator.Evaluate(srcExpr, scope);
-        ok := (v.type # Types.Undefined) & (StringLength(v.stringVal) < arr.length)
+        ok := (v.type # Types.Undefined) & (StringLength(v.stringVal^) < arr.length)
       END
     ELSIF ~ok & (srcType = Types.Char) & (dstType # NIL) & (dstType IS Types.ArrayType)
         & ConstantEvaluator.IsCharConstant(srcExpr, scope) THEN
@@ -3210,7 +3210,7 @@ MODULE SemanticActions;
       low := 0;
       IF ok & charMode & (lowVal.kind = Types.charValue) THEN
         low := ORD(lowVal.charVal)
-      ELSIF ok & charMode & (lowVal.kind = Types.stringValue) & (StringLength(lowVal.stringVal) = 1) THEN
+      ELSIF ok & charMode & (lowVal.kind = Types.stringValue) & (StringLength(lowVal.stringVal^) = 1) THEN
         (* Oberon2.pdf §3 vocabulary rule 4: a length-1 string constant is
            interchangeable with a character constant
            (ConstantEvaluator.IsSingleCharString). lowVal is evaluated,
@@ -3229,7 +3229,7 @@ MODULE SemanticActions;
           ok := FALSE
         ELSIF charMode & (highVal.kind = Types.charValue) THEN
           high := ORD(highVal.charVal)
-        ELSIF charMode & (highVal.kind = Types.stringValue) & (StringLength(highVal.stringVal) = 1) THEN
+        ELSIF charMode & (highVal.kind = Types.stringValue) & (StringLength(highVal.stringVal^) = 1) THEN
           high := ORD(highVal.stringVal[0])
         ELSIF ~charMode & (highVal.kind = Types.intValue) THEN
           high := highVal.intVal
@@ -4184,15 +4184,19 @@ MODULE SemanticActions;
         obj.moduleScope := unresolvedModuleScope; obj.realModuleName := imp.moduleName
       ELSE
         errorCountBefore := Diagnostics.errorCount;
+        (* a .sym is not the strict module's text: -strict is off for parsing
+           it as well as checking it, since the parser reports extensions
+           too (PLAN.md, "Ongoing bug fixing" 4) *)
+        savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE;
         impModule := parseModule(buffer, length);
         IF (impModule = NIL) OR (Diagnostics.errorCount > errorCountBefore) THEN
+          Diagnostics.strict := savedStrict;
           Diagnostics.Error(imp.line, imp.column, "malformed module interface file")
         ELSE
           COPY(Diagnostics.fileName, savedFileName);
           ModuleInterface.SymFileName(imp.moduleName, symName);
           COPY(symName, Diagnostics.fileName);
           NEW(chain); chain.name := imp.moduleName; chain.next := resolving;
-          savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE; (* a .sym is not the strict module's text *)
           impScope := CheckModuleBody(impModule, parseModule, chain, cache);
           Diagnostics.strict := savedStrict;
           COPY(savedFileName, Diagnostics.fileName);

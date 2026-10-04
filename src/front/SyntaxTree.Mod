@@ -17,8 +17,10 @@ MODULE SyntaxTree;
      Phase 3 onward. Fields typed INTEGER that record an operator or a
      literal's lexical class (BinaryExprNode.op, UnaryExprNode.op,
      LiteralExprNode.literalKind) hold one of Lexer.Mod's token-kind
-     constants; this module does not import Lexer itself since it only
-     stores those values, never interprets them. *)
+     constants, which this module only stores, never interprets; it
+     imports Lexer for Lexer.Text, a string literal's text. *)
+
+  IMPORT Lexer;
 
   CONST
     identLength = 255; (* mirrors Lexer.Mod's own (private) lexeme limit *)
@@ -141,7 +143,8 @@ MODULE SyntaxTree;
 
     LiteralExprNodeDesc* = RECORD (ExprNodeDesc)
       literalKind*: INTEGER; (* Lexer.integer, .real, .charConst, or .string *)
-      lexeme*: ARRAY identLength + 1 OF CHAR;
+      lexeme*: ARRAY identLength + 1 OF CHAR; (* a string's only up to this length *)
+      string*: Lexer.Text; (* a string's whole text (Lexer.Token.text); NIL for any other literal *)
       isHex*, isLongReal*: BOOLEAN
     END;
 

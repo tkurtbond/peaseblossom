@@ -78,7 +78,7 @@ MODULE Types;
      NEW, etc.), dispatched on by name in the new PredeclaredProcedures.Mod
      rather than by distinct Type values. *)
 
-  IMPORT SYSTEM, SyntaxTree, Diagnostics;
+  IMPORT SYSTEM, Lexer, SyntaxTree, Diagnostics;
 
   CONST
     (* BasicType*.rank; wider absorbs narrower per Appendix A *)
@@ -261,7 +261,10 @@ MODULE Types;
       realText*: ARRAY stringValueLength + 1 OF CHAR;
       boolVal*: BOOLEAN;
       charVal*: CHAR;
-      stringVal*: ARRAY stringValueLength + 1 OF CHAR;
+      (* a string constant's text, as long as it is (PLAN.md, "Ongoing bug
+         fixing" 3), never NIL in a stringValue; shared, never changed in
+         place, so a copy of a Value may keep the same text *)
+      stringVal*: Lexer.Text;
       (* a set constant's elements, 0..63 - enough for either set type,
          whatever the size model or the host: setLow holds 0..31 and setHigh
          32..63 (element e as e - 32). Two SETs, not a SYSTEM.SET64, so that

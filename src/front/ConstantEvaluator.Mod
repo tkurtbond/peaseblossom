@@ -346,7 +346,7 @@ MODULE ConstantEvaluator;
     ELSE (* Lexer.string; also covers a single-quoted single character -
             treating that as CHAR-compatible is deferred, see header *)
       v.kind := Types.stringValue; v.type := Types.String;
-      COPY(expr.lexeme, v.stringVal)
+      v.stringVal := expr.string
     END;
     RETURN v
   END EvaluateLiteral;
@@ -1249,7 +1249,7 @@ MODULE ConstantEvaluator;
     VAR result: Types.Value;
   BEGIN
     NEW(result); result.type := Types.String; result.kind := Types.stringValue;
-    result.stringVal[0] := v.charVal; result.stringVal[1] := 0X;
+    NEW(result.stringVal, 2); result.stringVal[0] := v.charVal; result.stringVal[1] := 0X;
     RETURN result
   END CharAsString;
 
@@ -1257,7 +1257,7 @@ MODULE ConstantEvaluator;
      element, or a literal of the type - compares as the string it holds,
      up to its first 0X *)
   PROCEDURE CharArrayAsString(v: Types.Value): Types.Value;
-    VAR result, e: Types.Value; i: INTEGER;
+    VAR result, e: Types.Value; i, n: LONGINT;
   BEGIN
     IF (v.type = NIL) OR ~(v.type IS Types.ArrayType) OR (v.type(Types.ArrayType).elementType # Types.Char) THEN
       RETURN v
@@ -1266,11 +1266,12 @@ MODULE ConstantEvaluator;
     IF v.kind = Types.stringValue THEN
       result.stringVal := v.stringVal
     ELSE (* a structuredValue of characters *)
-      i := 0; e := v.elements;
-      WHILE (e # NIL) & (e.kind = Types.charValue) & (e.charVal # 0X) & (i < LEN(result.stringVal) - 1) DO
-        result.stringVal[i] := e.charVal; INC(i); e := e.next
-      END;
-      result.stringVal[i] := 0X
+      n := 0; e := v.elements;
+      WHILE (e # NIL) & (e.kind = Types.charValue) & (e.charVal # 0X) DO INC(n); e := e.next END;
+      NEW(result.stringVal, n + 1);
+      e := v.elements;
+      FOR i := 0 TO n - 1 DO result.stringVal[i] := e.charVal; e := e.next END;
+      result.stringVal[n] := 0X
     END;
     RETURN result
   END CharArrayAsString;
@@ -1302,7 +1303,7 @@ MODULE ConstantEvaluator;
     ELSIF Types.IsSet(l.type) & Types.IsSet(r.type) THEN
       eq := (l.setLow = r.setLow) & (l.setHigh = r.setHigh)
     ELSIF (l.type = Types.String) & (r.type = Types.String) THEN
-      eq := l.stringVal = r.stringVal
+      eq := l.stringVal^ = r.stringVal^
     ELSE
       ReportTypes(line, column, "operands are not comparable", l.type, r.type);
       RETURN UndefinedValue()
@@ -1329,8 +1330,8 @@ MODULE ConstantEvaluator;
       lt := l.charVal < r.charVal; le := l.charVal <= r.charVal;
       gt := l.charVal > r.charVal; ge := l.charVal >= r.charVal
     ELSIF (l.type = Types.String) & (r.type = Types.String) THEN
-      lt := l.stringVal < r.stringVal; le := l.stringVal <= r.stringVal;
-      gt := l.stringVal > r.stringVal; ge := l.stringVal >= r.stringVal
+      lt := l.stringVal^ < r.stringVal^; le := l.stringVal^ <= r.stringVal^;
+      gt := l.stringVal^ > r.stringVal^; ge := l.stringVal^ >= r.stringVal^
     ELSE
       ReportTypes(line, column, "operands are not ordered", l.type, r.type);
       RETURN UndefinedValue()
@@ -1583,7 +1584,7 @@ MODULE ConstantEvaluator;
       v := StructuredValue(t); last := NIL;
       IF ~AppendFieldDefaults(v, last, t(Types.RecordType), missing) THEN v := NIL END
     ELSIF IsFixedArray(t) & (t(Types.ArrayType).elementType = Types.Char) THEN
-      NEW(v); v.kind := Types.stringValue; v.type := t; v.stringVal := ""
+      NEW(v); v.kind := Types.stringValue; v.type := t; v.stringVal := Lexer.NewText("")
     ELSIF IsFixedArray(t) THEN
       v := StructuredValue(t);
       v.fill := DefaultValue(t(Types.ArrayType).elementType, missing);
@@ -1633,7 +1634,7 @@ MODULE ConstantEvaluator;
       NEW(c); c.kind := Types.realValue; c.realVal := v.intVal; c.realText := "";
       IF t = Types.Real THEN c.realVal := RoundToSingle(c.realVal) END
     ELSIF (v.kind = Types.charValue) & IsFixedArray(t) THEN
-      NEW(c); c.kind := Types.stringValue; c.stringVal[0] := v.charVal; c.stringVal[1] := 0X
+      NEW(c); c.kind := Types.stringValue; NEW(c.stringVal, 2); c.stringVal[0] := v.charVal; c.stringVal[1] := 0X
     ELSIF (v.kind = Types.stringValue) & ((t = Types.Char) OR (t = Types.Byte)) THEN
       NEW(c); c.kind := Types.charValue; c.charVal := v.stringVal[0]
     ELSIF (v.kind = Types.structuredValue) & (t IS Types.RecordType) & (v.type # t) THEN

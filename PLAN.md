@@ -968,6 +968,52 @@ Oberon *system*; its licence; and the cost. Then implement the wanted
 ones into a library of their own, with fixtures compared with voc, and
 the same exit gate as Phase 12 step 6.
 
+## Ongoing bug fixing
+
+Bugs found outside a phase's own work - by using poc on other programs -
+fixed as they come, alongside whichever phase is current. Each item says
+where it was found, and is marked `[fixed]` once its fix, with a
+fixture, is committed (`git log -S` on the item finds the commit); a fixed
+item stays until the next phase's close-out, which moves it to that
+phase's record.
+
+Found porting olibfyaml (the libfyaml binding for voc) to poc as
+`~/Repos/Oberon/polibfyaml`, 2026-10-03, with 0.1.0 and HEAD 962c22a
+(polibfyaml's AGENTS.md, "poc 0.1.0 problems", has its workarounds):
+
+1. `[fixed]` **An exported external procedure can't be called from another
+   module.** `ModuleInterface.PrintFreeProcs` writes `PROCEDURE ["C",
+   "fy_document_destroy"] DocumentDestroy*(fyd: SYSTEM.ADDRESS);` into the
+   `.sym` as `PROCEDURE^ DocumentDestroy*(...)`, losing the calling
+   convention and linkage name, so the importer calls
+   `@FyThin.DocumentDestroy`, which nothing defines: "use of undefined
+   value". AGENTS.md's "External procedures" shows an exported one as the
+   example. Fix: write the external attribute, with its linkage name
+   always explicit, so the importer's checker resolves it as it would a
+   local external declaration; the backend already calls an imported
+   external by its linkage name (`DeclareModuleSymbols`).
+2. `[fixed]` **`poc -check` uses the wrong word size.** Under `-OC` on x86-64 it
+   rejects `a := l` (`a: SYSTEM.ADDRESS; l: LONGINT`), "assignment is not
+   type-compatible", which a build of the same module accepts
+   (`semantic-address-width` has the table): `-check` does not set the
+   target's word size before checking.
+3. `[fixed]` **A string literal holds at most 255 characters**
+   (`Lexer.maxLexemeLength`; voc's `OPS.MaxStrLen` is 1024), so
+   olibfyaml's `TestScalars`, a 700-character document, failed with
+   "string too long, truncated". Fix (decided with the user 2026-10-04):
+   no limit - a string literal's text (`Lexer.Token.text`,
+   `LiteralExprNode.string`) and a string constant's value
+   (`Types.Value.stringVal`) are `Lexer.Text`, a `POINTER TO ARRAY OF
+   CHAR` sized to fit; identifiers keep their 255.
+4. `[fixed]` **`-strict` held a library's interface to the report.** Found while
+   testing 1: `poc -strict` on a module importing `Out` reported
+   "HUGEINT is not in the Oberon-2 report" in poc-rtl's `Out.sym`, and so
+   for any module given as its `.sym` and `.o`: `DiscoverLibraryModule`
+   and `DiscoverCompiledModule` did not turn `-strict` off for the
+   interface, as `DiscoverModule` does for a module's source (in 0.1.0
+   too). Fix: they do, and `SemanticActions.ResolveImport` now turns it
+   off before parsing an imported `.sym`, not only before checking it.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on

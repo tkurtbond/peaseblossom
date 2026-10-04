@@ -1,0 +1,19 @@
+== -O2
+603
+603
+1500
+equal
+constant equal
+END
+xxxxxxxxx
+1500
+== -OC
+603
+603
+1500
+equal
+constant equal
+END
+xxxxxxxxx
+1500
+LongS.sym: text*, 603 characters

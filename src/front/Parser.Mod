@@ -396,7 +396,7 @@ MODULE Parser;
       hasParens: BOOLEAN;
       args, inner, operand: SyntaxTree.ExprNode;
       line, column: INTEGER;
-      lexeme: SyntaxTree.Ident;
+      lexeme: SyntaxTree.Ident; string: Lexer.Text;
       literalKind: INTEGER;
       isHex, isLongReal: BOOLEAN;
   BEGIN
@@ -425,10 +425,10 @@ MODULE Parser;
     ELSIF (p.current.kind = Lexer.integer) OR (p.current.kind = Lexer.real)
         OR (p.current.kind = Lexer.charConst) OR (p.current.kind = Lexer.string) THEN
       literalKind := p.current.kind;
-      COPY(p.current.lexeme, lexeme);
+      COPY(p.current.lexeme, lexeme); string := p.current.text;
       isHex := p.current.isHex; isLongReal := p.current.isLongReal;
       Advance(p);
-      RETURN SemanticActions.NewLiteralExpr(literalKind, lexeme, isHex, isLongReal, line, column)
+      RETURN SemanticActions.NewLiteralExpr(literalKind, lexeme, string, isHex, isLongReal, line, column)
     ELSIF p.current.kind = Lexer.nilKeyword THEN
       Advance(p);
       RETURN SemanticActions.NewNilExpr(line, column)
@@ -1043,10 +1043,22 @@ MODULE Parser;
      strips the surrounding quotes itself, so p.current.lexeme is already
      the bare convention/name text. *)
   PROCEDURE ParseExternalAttribute(VAR p: Parser; VAR convention, name: SyntaxTree.Ident);
+
+    (* the current string token, in an identifier's room: a longer string
+       has only its start in the lexeme (Lexer, header), so it is an error,
+       not a silently shorter name *)
+    PROCEDURE TakeName(VAR p: Parser; VAR result: SyntaxTree.Ident);
+    BEGIN
+      IF LEN(p.current.text^) > LEN(result) THEN
+        Diagnostics.Error(p.current.line, p.current.column, "name too long")
+      END;
+      COPY(p.current.lexeme, result); Advance(p)
+    END TakeName;
+
   BEGIN
     ExpectToken(p, Lexer.leftBracket, "expected '['");
     IF p.current.kind = Lexer.string THEN
-      COPY(p.current.lexeme, convention); Advance(p)
+      TakeName(p, convention)
     ELSE
       Diagnostics.Error(p.current.line, p.current.column, "expected a calling-convention string");
       convention[0] := 0X
@@ -1055,7 +1067,7 @@ MODULE Parser;
     IF p.current.kind = Lexer.comma THEN
       Advance(p);
       IF p.current.kind = Lexer.string THEN
-        COPY(p.current.lexeme, name); Advance(p)
+        TakeName(p, name)
       ELSE
         Diagnostics.Error(p.current.line, p.current.column, "expected an external-name string")
       END

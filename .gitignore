@@ -30,6 +30,9 @@ test/conformance/llvm-field-initializers/llvm-field-initializers
 test/conformance/llvm-record-and-array-literals/llvm-record-and-array-literals
 test/conformance/llvm-indexed-array-literals/llvm-indexed-array-literals
 test/conformance/llvm-structured-constants/llvm-structured-constants
+test/conformance/llvm-imported-external-procedures/llvm-imported-external-procedures
+test/conformance/semantic-strict-compiled-imports/semantic-strict-compiled-imports
+test/conformance/llvm-long-strings/llvm-long-strings
 test/conformance/llvm-var-initializers/llvm-var-initializers
 test/conformance/poc-opt-level/poc-opt-level
 test/conformance/poc-opt-level/clang.log

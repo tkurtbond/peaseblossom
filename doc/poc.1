@@ -85,6 +85,9 @@ or the errors.
 Imports come only from libraries and
 .Pa .sym
 files, and are never compiled.
+The module is checked for the target a build would use:
+.Fl target Ns 's,
+or else the host's.
 .It Fl compile Ar file ...
 Compile each module to
 .Pa .sym ,

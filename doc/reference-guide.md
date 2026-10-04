@@ -85,8 +85,9 @@ lengths, one word each, followed by the elements (voc's layout).
   pointers only.
 - **`&` and `OR`** evaluate their right operand only when it decides the
   result (Appendix A).
-- **Identifiers and strings** may be up to 255 characters long; a longer
-  one is an error. Case is significant, as in the report.
+- **Identifiers** may be up to 255 characters long; a longer one is an
+  error. Case is significant, as in the report. **Strings** have no length
+  limit.
 - **`HALT(n)`**: `n` must be a constant in 0..255 (a compile-time error
   otherwise); the program ends with exit status `n`, writing nothing.
 - **`CASE`**: a label must lie in the range of the selector's type (a
@@ -443,7 +444,7 @@ number, on the standard error stream.
 | Command | What it does |
 |---|---|
 | `<file>`, `-build <file>` | Builds a program: compiles `<file>`'s module and every module it imports that no library has, to `.sym`, `.ll` and `.o` files, and links them with the libraries into an executable named after the module, in the current directory (`-o` names another). |
-| `-check <file>` | Checks the module against its imports' interfaces, writing nothing: "semantic OK" or the errors. Imports come from libraries and `.sym` files only, never compiled from source. |
+| `-check <file>` | Checks the module against its imports' interfaces, writing nothing: "semantic OK" or the errors. Imports come from libraries and `.sym` files only, never compiled from source. The module is checked for the target a build would use: `-target`'s, else the host's. |
 | `-compile <file>...` | Compiles each module to `.sym`, `.ll` and `.o`, and links nothing. |
 | `-library <name> <file>...` | Builds the library `<name>` from the modules: section 8. |
 | `-install-library <name>` | Copies the library `<name>`, found on the library path, into `<output-dir>/<triple>/<O2\|OC>/`, or without `-output-dir` into poc's own library directory. |

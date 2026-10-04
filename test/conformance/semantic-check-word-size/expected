@@ -1,0 +1,10 @@
+== x86_64-unknown-linux-gnu
+semantic OK
+semantic OK, wrote address.sym
+== i686-unknown-linux-gnu
+address.mod:9:11: error: assignment is not type-compatible: LONGINT to SYSTEM.ADDRESS
+address.mod:9:21: error: argument is not assignment compatible with the parameter: LONGINT to SYSTEM.ADDRESS
+2 error(s)
+address.mod:9:11: error: assignment is not type-compatible: LONGINT to SYSTEM.ADDRESS
+address.mod:9:21: error: argument is not assignment compatible with the parameter: LONGINT to SYSTEM.ADDRESS
+2 error(s)

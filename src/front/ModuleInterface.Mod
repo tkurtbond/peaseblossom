@@ -570,7 +570,7 @@ MODULE ModuleInterface;
      exactly the characters up to (not including) the terminator, via
      Files.Write - confirmed accepting a bare CHAR value directly. *)
   PROCEDURE WriteStr(VAR w: Files.Rider; s: ARRAY OF CHAR);
-    VAR i: INTEGER;
+    VAR i: LONGINT;
   BEGIN
     IF dryRun THEN RETURN END;
     IF toConsole THEN Out.String(s); RETURN END;
@@ -641,8 +641,11 @@ MODULE ModuleInterface;
   (* FALSE in ok if s contains both quote characters (no way to delimit
      it with either quote alone) - PrintConstValue reports this as a
      diagnostic rather than emitting broken text. *)
-  PROCEDURE FormatStringLiteral(s: ARRAY OF CHAR; VAR result: ARRAY OF CHAR; VAR ok: BOOLEAN);
-    VAR i, j: INTEGER; hasDouble, hasSingle: BOOLEAN; quote: CHAR;
+  (* s as a string literal, in the quote it does not contain; ok is FALSE,
+     and nothing is written, if it contains both. Written straight to w, as
+     a string has no length limit (PLAN.md, "Ongoing bug fixing" 3). *)
+  PROCEDURE WriteStringLiteral(VAR w: Files.Rider; s: ARRAY OF CHAR; VAR ok: BOOLEAN);
+    VAR i: LONGINT; hasDouble, hasSingle: BOOLEAN; quote: ARRAY 2 OF CHAR;
   BEGIN
     hasDouble := FALSE; hasSingle := FALSE; i := 0;
     WHILE s[i] # 0X DO
@@ -652,13 +655,11 @@ MODULE ModuleInterface;
     END;
     ok := ~(hasDouble & hasSingle);
     IF ok THEN
-      IF hasDouble THEN quote := 27X ELSE quote := 22X END;
-      j := 0; result[j] := quote; INC(j);
-      i := 0;
-      WHILE s[i] # 0X DO result[j] := s[i]; INC(j); INC(i) END;
-      result[j] := quote; INC(j); result[j] := 0X
+      IF hasDouble THEN quote[0] := 27X ELSE quote[0] := 22X END;
+      quote[1] := 0X;
+      WriteStr(w, quote); WriteStr(w, s); WriteStr(w, quote)
     END
-  END FormatStringLiteral;
+  END WriteStringLiteral;
 
   PROCEDURE FormatSetLiteral(v: Types.Value; VAR result: ARRAY OF CHAR);
     VAR i, j, k: INTEGER; first: BOOLEAN; num: ARRAY 12 OF CHAR;
@@ -841,10 +842,8 @@ MODULE ModuleInterface;
     ELSIF v.kind = Types.charValue THEN
       FormatCharLiteral(v.charVal, buf); WriteStr(w, buf)
     ELSIF v.kind = Types.stringValue THEN
-      FormatStringLiteral(v.stringVal, buf, ok);
-      IF ok THEN
-        WriteStr(w, buf)
-      ELSE
+      WriteStringLiteral(w, v.stringVal^, ok);
+      IF ~ok THEN
         IF ~dryRun THEN
           Diagnostics.Error(line, column,
             "exported string constant containing both quote characters is not yet supported")
@@ -1365,7 +1364,16 @@ MODULE ModuleInterface;
         IF (obj # NIL) & obj.exported & (obj.class = SymbolTable.procClass)
            & (d.isForward = obj.isForwardProc) THEN
           pt := obj.type(Types.ProcedureType);
-          IF exportedView THEN WriteStr(w, "  PROCEDURE ") ELSE WriteStr(w, "  PROCEDURE^ ") END;
+          IF obj.externalConvention[0] # 0X THEN
+            (* an external procedure keeps its attribute, with the linkage
+               name always written, so the importer calls the C symbol and
+               not <M>.<name>, which nothing defines (PLAN.md, "Ongoing bug
+               fixing" 1); it is body-less already, so no "^" *)
+            WriteStr(w, '  PROCEDURE ["'); WriteStr(w, obj.externalConvention);
+            WriteStr(w, '", "'); WriteStr(w, obj.externalName); WriteStr(w, '"] ')
+          ELSIF exportedView THEN WriteStr(w, "  PROCEDURE ")
+          ELSE WriteStr(w, "  PROCEDURE^ ")
+          END;
           WriteStr(w, obj.name);
           WriteStr(w, "*(");
           first := TRUE; p := pt.params;
