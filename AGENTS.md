@@ -374,20 +374,22 @@ constant is a private constant global of each module that uses it.
 
 ## Project state
 
-Phases 0-13 of `PLAN.md` are complete (records in `doc/phases/` and
+Phases 0-14 of `PLAN.md` are complete (records in `doc/phases/` and
 `doc/phase-11-inventory.md`): poc compiles itself through the LLVM backend
 (Stage 1 and Stage 2 reach a fixed point), and **Peaseblossom 0.1.0 was
 released on 2026-10-03** (tag `v0.1.0`, a GitHub release with the tarball
 and packages for Fedora, FreeBSD, OpenBSD and NetBSD; Phase 13: `make
 install`, the seed, `make dist`, `doc/users-guide.md`,
 `doc/reference-guide.md`, `doc/poc.1`, `packaging/`; `doc/DEVELOPER.md`
-says how a release is made). Phase 14, record and array literals and
-structured constants (`doc/record-and-array-literals.md`), is in progress:
-steps 1-5 are done, its exit gate is next; 15-18
-are the VAX/VMS work, 19 further extensions, 20 voc's library modules. The
-phases were renumbered twice on 2026-10-02, and older records keep the old
-numbers (`PLAN.md`, Phase 13). `doc/project-history.md` has the earlier account;
-`src/front/README.md` lists the front-end modules.
+says how a release is made). Phase 14 added record and array literals
+and structured constants (closed 2026-10-04; `doc/phases/phase-14.md`).
+Phase 15, the VAX/VMS MACRO-32 backend, is next; 15-18 are the VAX/VMS
+work, 19 further extensions, 20 voc's library modules. Bugs found by using
+poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
+fixing"). The phases were renumbered twice on 2026-10-02, and older
+records keep the old numbers (`PLAN.md`, Phase 13).
+`doc/project-history.md` has the earlier account; `src/front/README.md`
+lists the front-end modules.
 
 The User's Guide's examples are files under `doc/examples/`, checked by
 `tools/guide-examples` (fixture `doc-users-guide`): change one with the

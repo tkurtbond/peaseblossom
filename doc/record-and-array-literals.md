@@ -1,4 +1,4 @@
-# Record and array literals, and structured constants (proposed extension)
+# Record and array literals, and structured constants
 
 A value of a record or fixed array type written in an expression:
 
@@ -7,13 +7,14 @@ A value of a record or fixed array type written in an expression:
     Draw(Line{from := Point{x := 0, y := 0}, to := p});
     CONST origin* = Point{x := 0, y := 0};
 
-Not yet implemented: `PLAN.md`'s Phase 14 (added 2026-10-02). Phase 11's
-item A24 first, then a candidate of the further extensions (now Phase 19)
-from 2026-09-26, whose survey, `doc/initializers-and-literals-survey.md`,
-also covers oo2c, obc and OBNC. This note holds the decisions taken with
-the user (2026-10-02), the survey of other dialects they were checked
-against, what the implementation would touch, and the questions still
-open.
+Implemented in Phase 14 (added 2026-10-02, closed 2026-10-04;
+`doc/phases/phase-14.md`). Phase 11's item A24 first, then a candidate of
+the further extensions (now Phase 19) from 2026-09-26, whose survey,
+`doc/initializers-and-literals-survey.md`, also covers oo2c, obc and
+OBNC. This note holds the decisions taken with the user (2026-10-02), the
+survey of other dialects they were checked against, what the
+implementation would touch (written before it; the record says what it
+did), and the questions left open.
 
 The rules as settled in Phase 14 step 1 (2026-10-03) are in
 `doc/language-extensions.md`, "Record and array literals", which
