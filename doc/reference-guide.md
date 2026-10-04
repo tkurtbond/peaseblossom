@@ -14,7 +14,7 @@ considered, and how poc builds it. This guide documents each one as it is
 implemented, what a program can write and what it gets. `poc(1)` is the
 manual page for the command line.
 
-This guide describes poc 0.1 with its LLVM backend, on Linux, NetBSD,
+This guide describes poc 0.2 with its LLVM backend, on Linux, NetBSD,
 OpenBSD and FreeBSD.
 
 ## Contents
