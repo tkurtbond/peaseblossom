@@ -382,7 +382,9 @@ and packages for Fedora, FreeBSD, OpenBSD and NetBSD; Phase 13: `make
 install`, the seed, `make dist`, `doc/users-guide.md`,
 `doc/reference-guide.md`, `doc/poc.1`, `packaging/`; `doc/DEVELOPER.md`
 says how a release is made). Phase 14 added record and array literals
-and structured constants (closed 2026-10-04; `doc/phases/phase-14.md`).
+and structured constants (closed 2026-10-04; `doc/phases/phase-14.md`),
+released with four fixes as **Peaseblossom 0.2.0 on 2026-10-04** (tag
+`v0.2.0`, made as `doc/DEVELOPER.md` section 7 says).
 Phase 15, the VAX/VMS MACRO-32 backend, is next; 15-18 are the VAX/VMS
 work, 19 further extensions, 20 voc's library modules. Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug

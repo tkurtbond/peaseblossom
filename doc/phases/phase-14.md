@@ -162,3 +162,20 @@ Found porting olibfyaml (the libfyaml binding for voc) to poc as
    interface, as `DiscoverModule` does for a module's source (in 0.1.0
    too). Fix: they do, and `SemanticActions.ResolveImport` now turns it
    off before parsing an imported `.sym`, not only before checking it.
+
+## Peaseblossom 0.2.0
+
+Phase 14 and these four fixes were released as **Peaseblossom 0.2.0** on
+2026-10-04 (decided with the user: a minor release from `main`, since it
+adds a feature), as `doc/DEVELOPER.md` section 7 says: the version in
+`87bbcaa`, after `make check` on atla, cymoril, artos and alerik (680
+each) with `check-opt2`, `check-install` and `check-seed` on atla; the
+tarball by `make distcheck` (SHA-256 `230f70ea...`, 3433514 bytes),
+signed, with the signed tag `v0.2.0`, published as a GitHub release.
+Each package was made from the published tarball (`makesum`), built and
+checked on its system (`check.sh` on the build root or stage; portlint,
+portcheck and pkglint clean; packing lists unchanged), installed as
+root, checked with `check.sh` against the installed poc, and removed with
+nothing left (on atla the 0.2.0 RPM stays installed, replacing 0.1.0);
+the RPMs signed with `rpmsign` and attached with the other packages and
+a signed `SHA256SUMS`. `mock` was not run.
