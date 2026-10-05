@@ -257,7 +257,7 @@ text — the first point `poc` produces an executable at all, on Linux and
 at least one BSD.
 
 **Done.** The full account - design, every step, what was found and
-decided along the way, testing - is in `doc/phases/phase-08.md`, under
+decided along the way, testing - is in `doc/history/phases/phase-08.md`, under
 the same step numbers:
 
 - **1.** Toolchain smoke test, no `poc` code involved.
@@ -285,7 +285,7 @@ compile itself — see Phase 10 below for why self-hosting is a separate,
 later gate.
 
 **Done.** The full account - design, every step, what was found and
-decided along the way, testing - is in `doc/phases/phase-09.md`, under
+decided along the way, testing - is in `doc/history/phases/phase-09.md`, under
 the same step numbers:
 
 - **1.** Runtime type descriptors (Appendix D5).
@@ -309,7 +309,7 @@ poc itself, covering (a) every voc module poc's own source imports (`Out`,
 of `SYSTEM` (Appendix C); then self-hosting, since poc's own source needs (a).
 
 **Done.** The full account - design, every step, what was found and
-decided along the way, testing - is in `doc/phases/phase-10.md`, under
+decided along the way, testing - is in `doc/history/phases/phase-10.md`, under
 the same step numbers:
 
 - **1.** `Console.Mod`.
@@ -336,9 +336,9 @@ end or the LLVM backend is now checked against a real bootstrap - and
 before the library work of Phase 12, whose option triage and module
 inventory would otherwise be built on unanswered questions.
 
-**Done** (closed 2026-09-26; `doc/phase-11-inventory.md` lists every item
+**Done** (closed 2026-09-26; `doc/history/phase-11-inventory.md` lists every item
 and its verdict). The full account - design, every step, what was found and
-decided along the way, testing - is in `doc/phases/phase-11.md`, under the
+decided along the way, testing - is in `doc/history/phases/phase-11.md`, under the
 same step numbers:
 
 - **1.** Inventory and reconciliation.
@@ -366,16 +366,16 @@ backend (Phase 15) because the library question is an LLVM/Unix one and
 nothing in the VAX work depends on it.
 
 **Done** (closed 2026-10-02). The full account - design, every step, what
-was found and decided along the way, testing - is in `doc/phases/phase-12.md`,
+was found and decided along the way, testing - is in `doc/history/phases/phase-12.md`,
 under the same step numbers:
 
-- **1.** Which of voc's command-line options poc needs (`doc/voc-options.md`).
+- **1.** Which of voc's command-line options poc needs (`doc/developer/voc-options.md`).
 - **2.** Building static and dynamic libraries with poc: 2a per-module code
   generation, 2b module keys, 2c `-library`, 2d `poc-rtl` built by `make`,
   2e using modules and libraries, 2f compiled modules without source
   (`-compile`), 2g `-lto`, 2h the fixtures.
 - **3.** A complete inventory of the libraries and modules voc supplies
-  (`doc/voc-module-inventory.md`).
+  (`doc/research/voc-module-inventory.md`).
 - **4.** Deciding what poc supports: voc's runtime modules; its `src/library`
   waits for Phase 20.
 - **5.** Implementing the runtime modules: 5a `Platform`, 5b `In.Name` and
@@ -387,13 +387,13 @@ under the same step numbers:
 
 **Inserted 2026-10-02 (user)**, before the VAX/VMS work: the phases after it
 were renumbered, so the old Phases 13-18 are now 14-19. Records of closed
-phases (`doc/phases/`, `doc/phase-11-inventory.md`, `doc/project-history.md`,
-`doc/initializers-and-literals-survey.md`) keep the numbers they were
+phases (`doc/history/phases/`, `doc/history/phase-11-inventory.md`, `doc/history/project-history.md`,
+`doc/research/initializers-and-literals-survey.md`) keep the numbers they were
 written with: there, "Phase 13" is today's Phase 14, and so on up to "Phase
 18", today's 19. A second renumbering followed the same day, when record
 and array literals became Phase 14 (user, 2026-10-02): the Phases 14-19
 of that first renumbering are now 15-20, so a record written between the
-two (`doc/phases/phase-12.md`) means today's 15-20 by its 14-19.
+two (`doc/history/phases/phase-12.md`) means today's 15-20 by its 14-19.
 
 **Goal**: make poc something a person who did not build it can install
 and use, on Linux and the three BSDs. That means an installed poc that
@@ -409,7 +409,7 @@ before a second backend adds to them.
 **Done** (closed 2026-10-03): **Peaseblossom 0.1.0 is released** (tag
 `v0.1.0`, a GitHub release with the tarball, its signature and the four
 systems' packages). The full account - design, every step, what was found
-and decided along the way, testing - is in `doc/phases/phase-13.md`, under
+and decided along the way, testing - is in `doc/history/phases/phase-13.md`, under
 the same step numbers:
 
 - **1.** Version and identity (`poc -version`, the library manifest's
@@ -439,12 +439,12 @@ backend, with the front end's part shared by the VAX backend later.
 **Done** (closed 2026-10-04): literals of named record and fixed array
 types (record elements named; array elements positional or indexed,
 `[48..57]: 1`), and structured constants, exported through the `.sym`
-file. The rules are in `doc/language-extensions.md`, "Record and array
-literals"; the design and survey in `doc/record-and-array-literals.md`;
+file. The rules are in `doc/developer/language-extensions.md`, "Record and array
+literals"; the design and survey in `doc/developer/record-and-array-literals.md`;
 the full account - decisions, every step, what was found, testing - in
-`doc/phases/phase-14.md`, under the same step numbers:
+`doc/history/phases/phase-14.md`, under the same step numbers:
 
-- **1.** The rules settled in `doc/language-extensions.md`.
+- **1.** The rules settled in `doc/developer/language-extensions.md`.
 - **2.** Front end: the literal node, parsing, checking.
 - **3.** Structured constants: folding, selection, the `.sym` file.
 - **4.** LLVM backend: entry-block stack slots, private constant globals.
@@ -868,7 +868,7 @@ each a design of its own, through the front end, the `.sym` format and both
 backends - and implement the ones adopted. As in Phase 11, each starts with
 a survey of what other Oberons do (and Modula-2/-3 where they are the only
 precedent) and ends with the user's decision; "not adopted" is a legitimate
-result, recorded in `doc/language-extensions.md` like the others.
+result, recorded in `doc/developer/language-extensions.md` like the others.
 
 **Candidates** (from `000-todo.org`'s Extensions list and Phase 11's
 inventory):
@@ -895,7 +895,7 @@ offers, and build those. Moved here from Phase 12 step 4 (user,
 only, and the libraries wait until everything else is done.
 
 **Starting point**: Phase 12 step 3's inventory,
-`doc/voc-module-inventory.md` (regenerated by `tools/voc-inventory/
+`doc/research/voc-module-inventory.md` (regenerated by `tools/voc-inventory/
 inventory`, since Phase 12's runtime work changes what poc accepts),
 with its findings: most of the library reaches voc's `Platform`; ten
 modules hold voc's inline C; s3's zlib is Oberon, not C; only `oocX11`
@@ -923,7 +923,7 @@ item stays until the next phase's close-out, which moves it to that
 phase's record.
 
 The four found porting olibfyaml to poc (`~/Repos/Oberon/polibfyaml`),
-fixed in 526d7ba, are in `doc/phases/phase-14.md`.
+fixed in 526d7ba, are in `doc/history/phases/phase-14.md`.
 
 1. **[fixed] An imported read-only variable was accepted as a `VAR`
    argument** (found 2026-10-05 implementing read-only parameters,
@@ -1050,7 +1050,7 @@ moves it to that phase's record.
 Language extensions that using poc on other programs shows are wanted,
 made as they come, alongside whichever phase is current, rather than
 waiting for Phase 19. Each is decided with the user and written up in
-`doc/language-extensions.md` first. An item is marked `[done]` once it is
+`doc/developer/language-extensions.md` first. An item is marked `[done]` once it is
 committed with its fixtures, `-strict` rejects it, `make check` passes on
 Linux and the three BSDs, and the User's and Reference Guides say what it
 is; a done item stays until the next phase's close-out, which moves it to
@@ -1059,7 +1059,7 @@ that phase's record.
 1. **[done] Read-only parameters, `PROCEDURE P(x-: T)`** (decided with the user
    2026-10-05, for `OutStr` and `InStr`, "Ongoing library enhancements";
    Phase 19's candidate 2 until then; `000-todo.org`).
-   `doc/language-extensions.md`, "Read-only parameters", has the rules:
+   `doc/developer/language-extensions.md`, "Read-only parameters", has the rules:
    - Inside `P`, assigning to `x` or any part of it, or passing it or any
      part of it as a `VAR` actual, is a compile-time error. `VAR x-` is an
      error, as in voc.
@@ -1080,7 +1080,7 @@ that phase's record.
      parameter lists must then match mark for mark); the `.sym` file;
      the LLVM backend (by value or by reference, the temporary); fixtures
      for each; the guides.
-   - **Built 2026-10-05**, as `doc/language-extensions.md`, "Read-only
+   - **Built 2026-10-05**, as `doc/developer/language-extensions.md`, "Read-only
      parameters", records ("Implemented"). Calling a type-bound procedure
      with a `VAR` receiver on it is an error too. A large one's actual
      that is no variable needs no temporary after all: only a string has
@@ -1104,10 +1104,10 @@ that phase's record.
   hosts first: a 32-bit NetBSD at least, and a 32-bit FreeBSD if FreeBSD
   still ships an i386 build (today only OpenBSD, cymoril, is 32-bit x86).
 
-Decided, with the full reasoning in `doc/design-decisions.md` under the
+Decided, with the full reasoning in `doc/developer/design-decisions.md` under the
 same names:
 
-- No `ASSERT` (decided 2026-09-25: `doc/assert-survey.md`)
+- No `ASSERT` (decided 2026-09-25: `doc/research/assert-survey.md`)
 - Open array dimension limit
 - External procedure declaration syntax
 - `-OC`-equivalent elementary-type-size model

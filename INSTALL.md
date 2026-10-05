@@ -5,7 +5,7 @@ This file says how: from a release tarball (section 2), from the git
 repository (section 3), and into a place other than `/usr/local` (section
 4). Section 5 is the operating systems' packages. The User's Guide
 (`doc/users-guide.md`) is how to use poc once it is installed;
-`doc/DEVELOPER.md` is how to work on it.
+`doc/developer/DEVELOPER.md` is how to work on it.
 
 ## 1. What you need
 
@@ -87,7 +87,7 @@ Then, as for a tarball:
     make install
 
 `make check`, the whole test suite, needs voc: it compares poc with it.
-`doc/DEVELOPER.md` says more.
+`doc/developer/DEVELOPER.md` says more.
 
 **Without installing.** `make` leaves a working poc in `build/bin/poc`,
 with its runtime in `build/lib/poc`, where it finds it: Stage 0, built by
@@ -172,4 +172,4 @@ dependency on Fedora and NetBSD.
 | NetBSD | `packaging/pkgsrc/lang/peaseblossom` | pkgsrc |
 
 None of them is in its system's own collection yet, so each is built
-locally; `doc/DEVELOPER.md`, "Building the packages", has the commands.
+locally; `doc/developer/DEVELOPER.md`, "Building the packages", has the commands.

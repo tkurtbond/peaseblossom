@@ -1,5 +1,5 @@
 MODULE nesteduplevel;
-  (* Phase 11 step 8, step 3 (doc/nested-procedures.md): a nested procedure
+  (* Phase 11 step 8, step 3 (doc/developer/nested-procedures.md): a nested procedure
      reads and writes the variables of the procedure that encloses it. Each
      check calls a nested procedure and then looks at the enclosing variable
      from the enclosing procedure (or the other way round), so a write that

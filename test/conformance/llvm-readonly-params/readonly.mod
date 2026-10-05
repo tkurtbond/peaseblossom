@@ -1,5 +1,5 @@
 MODULE readonly;
-  (* doc/language-extensions.md, "Read-only parameters": the same results
+  (* doc/developer/language-extensions.md, "Read-only parameters": the same results
      under -O2 and -OC. A type of at most 16 bytes is passed by value, a
      larger one by reference; the aliasing below shows which - what a
      program may not rely on, pinned here only to check the 16-byte rule *)

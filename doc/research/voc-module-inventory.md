@@ -134,7 +134,7 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
    - A hexadecimal literal above `MAX(HUGEINT)` (`0FFFFFFFFEFCDAB89H`,
      `ethMD5`): voc takes 16 hex digits as a 64-bit two's-complement
      pattern (that one is -271733879). **Adopted**, with voc's rule, as an
-     extension `-strict` rejects (`doc/language-extensions.md`,
+     extension `-strict` rejects (`doc/developer/language-extensions.md`,
      "Hexadecimal constants as 64-bit patterns"; fixture
      `llvm-hex-pattern-literals`).
    - `LONG(ch)` for a `CHAR` (`ethZlibDeflate`): voc gives its ordinal;
@@ -169,7 +169,7 @@ tree (it imports `CmdlnTexts` and `Sets0`, which are not in it);
      - `LEN` of a fixed array as a constant (`oocLRealConv`: `FOR len := 0
        TO LEN(int) - 1` with an `INTEGER` `len`). **Adopted**, typed
        `LONGINT` but assignable wherever its value fits
-       (`doc/language-extensions.md`, "Constant expressions");
+       (`doc/developer/language-extensions.md`, "Constant expressions");
      - `NIL` as a constant (`oocChannel`: `CONST done* = NIL`). **Adopted**.
        `oocChannel` still stops at its empty abstract function bodies
        (above).

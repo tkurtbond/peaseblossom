@@ -417,7 +417,7 @@ MODULE ConstantEvaluator;
      holds. The two largest finite values below are built from powers of
      two rather than written as literals because voc rejects a REAL
      literal with decimal exponent 38 and a LONGREAL one with exponent 308
-     (doc/bootstrapping-with-voc.md), the same reason
+     (doc/developer/bootstrapping-with-voc.md), the same reason
      LLVMCodeGenerator.DoubleBitsText assembles its own constants. *)
   PROCEDURE PowerOfTwo(exponent: INTEGER): LONGREAL;
     VAR result: LONGREAL;
@@ -640,7 +640,7 @@ MODULE ConstantEvaluator;
      Phase 11 step 2 (inventory A1): the rest of the predeclared functions
      that take a *value*, folded the way EvaluateAsh folds ASH. All probed
      against voc 2026-09-20 under -O2 and -OC (the matrix is in
-     doc/phase-11-inventory.md's A1 row); what a program can observe:
+     doc/history/phase-11-inventory.md's A1 row); what a program can observe:
      - ORD takes a CHAR constant or a one-character string (not a BOOLEAN or
        a SET, which voc rejects) and is an INTEGER, never re-typed smaller;
        CHR takes an integer in 0..255 ("constant CHR argument out of range"
@@ -717,7 +717,7 @@ MODULE ConstantEvaluator;
 
   (* x rounded to the nearest single-precision value, held in a LONGREAL.
      Written through a REAL variable: voc folds LONG(SHORT(x)) to x
-     (doc/bootstrapping-with-voc.md), and x must not survive unrounded. *)
+     (doc/developer/bootstrapping-with-voc.md), and x must not survive unrounded. *)
   PROCEDURE RoundToSingle(x: LONGREAL): LONGREAL;
     VAR r: REAL;
   BEGIN
@@ -1456,7 +1456,7 @@ MODULE ConstantEvaluator;
 
   (* ---- Phase 14: record and array constants ----
 
-     doc/language-extensions.md, "Record and array literals": a literal is
+     doc/developer/language-extensions.md, "Record and array literals": a literal is
      a constant when every element written is one and every element it
      leaves out has a constant default, and its value is a
      Types.structuredValue. Its type is the one the checker gave it

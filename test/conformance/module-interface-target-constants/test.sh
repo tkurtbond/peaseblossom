@@ -1,6 +1,6 @@
 #!/bin/sh
 . ../../testenv.sh
-# Phase 11 step 2 / doc/phase-11-inventory.md B1. Part 1: -emit-interface
+# Phase 11 step 2 / doc/history/phase-11-inventory.md B1. Part 1: -emit-interface
 # alone writes the folded values for the target and size model it was given,
 # so the constants differ between word sizes and between -O2 and -OC. Part 2:
 # a whole-program command must not trust a .sym left on disk by a run for a

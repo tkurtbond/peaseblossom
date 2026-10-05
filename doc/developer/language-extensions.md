@@ -458,7 +458,7 @@ like voc's), outermost dimension first:
   value beyond the model's `LONGINT` is an error too, and at run time a trap
   (next bullet).
 - **`ENTIER` of a value that does not fit a `LONGINT` is a trap** (Phase 11
-  step 3, `doc/phase-11-inventory.md` A4, decided with the user 2026-09-21):
+  step 3, `doc/history/phase-11-inventory.md` A4, decided with the user 2026-09-21):
   x >= 2^31 or < -2^31 under `-O2`, 2^63 under `-OC`, an infinity or a NaN
   stops the program with "ENTIER argument out of range for LONGINT" on stderr,
   exit status 8. The result stays a `LONGINT`, as in the report (which defines
@@ -491,7 +491,7 @@ like voc's), outermost dimension first:
 
 `Oberon2.pdf` says nothing about arithmetic that leaves a type's range, so
 this is poc's own promise, decided with the user 2026-09-21 after a survey of
-other Oberons (`doc/overflow-survey.md` has the sources and the probes; every
+other Oberons (`doc/research/overflow-survey.md` has the sources and the probes; every
 surveyed dialect that has a default leaves integer overflow unchecked, ETH's
 OP2 family defaulted its `V` pragma off, and no dialect traps underflow).
 What a program can observe, the same under `-O2` and `-OC` at each type's own
@@ -549,7 +549,7 @@ and poc, both models):
 
 ## Array assignment (decided and implemented, Phase 11 A21)
 
-`doc/array-assignment-survey.md` has the sources and the probes (voc, OfrontPlus,
+`doc/research/array-assignment-survey.md` has the sources and the probes (voc, OfrontPlus,
 A2, obc, and the Oberon-2, Oberon-07, Active Oberon, Component Pascal and Oberon+
 definitions). What a program can observe:
 
@@ -673,7 +673,7 @@ VAR
 
 `Oberon2.pdf` has `VariableDeclaration = IdentList ":" Type`; the form is
 Modula-3's, and among Oberons only Active Oberon has initializers (constants
-only, written after each name). `doc/initializers-and-literals-survey.md` has
+only, written after each name). `doc/research/initializers-and-literals-survey.md` has
 the survey; decided with the user 2026-09-26. The rules:
 
 - **Each variable of the list gets its own evaluation of the expression**, so
@@ -716,7 +716,7 @@ TYPE
 ```
 
 `Oberon2.pdf` has `FieldList = [IdentList ":" Type]`; of the Oberons only Active
-Oberon has field initializers, constants only (`doc/initializers-and-literals-
+Oberon has field initializers, constants only (`doc/research/initializers-and-literals-
 survey.md`). Decided with the user 2026-09-26: any expression, and an
 initialization procedure per record type. The rules:
 
@@ -857,7 +857,7 @@ what that value is.
 | `x IN s` with `x` outside `0..MAX(SET)` | `FALSE` (`llvm-no-trap-behavior` case 7) |
 | `INCL`/`EXCL` with an element outside the set, `{n}` with a variable `n` >= 32 | undefined: the shift wraps at the machine's width (`INCL(s, 33)` set bit 1 on x86), unchecked; constant ones are compile-time errors |
 | Real overflow, underflow, `x/0.0`, `0.0/0.0` | infinity, 0, infinity, NaN, silently (C5); `llvm-no-trap-behavior` case 9 |
-| `SHORT` or `CHR` of a value that does not fit | truncates (`CHR(300)` is 44), as voc without `-r`; **`poc -range-checks`** makes it trap 14 (Phase 12 step 1, `doc/voc-options.md`) |
+| `SHORT` or `CHR` of a value that does not fit | truncates (`CHR(300)` is 44), as voc without `-r`; **`poc -range-checks`** makes it trap 14 (Phase 12 step 1, `doc/developer/voc-options.md`) |
 | `FOR v := a TO b` when `b` is `MAX` of `v`'s type | never ends: `v` wraps to `MIN` and the loop runs on, as the report's own expansion (`v <= b`) says once overflow is undefined; voc the same (`llvm-no-trap-behavior` case 8) |
 | `ASH(x, n)`, `LSH`, `ROT` with a count of the type's width or more | defined and not a trap: `ASH` gives 0 (the sign for a right shift), `LSH` 0, `ROT` counts modulo the width; voc's are C's undefined shifts (`ROT(1, 33)` is 0 there, 2 here) |
 | `MOVE(a, b, n)` with `n <= 0` | moves nothing (voc, probed with `n = -4`, copied) (`llvm-no-trap-behavior` case 6) |
@@ -886,7 +886,7 @@ neither the `.ll` nor an executable, whatever raised it.
 
 ## ASSERT (decided and implemented, 2026-09-25)
 
-`doc/assert-survey.md` has the survey (the reports, voc, Ofront, OfrontPlus,
+`doc/research/assert-survey.md` has the survey (the reports, voc, Ofront, OfrontPlus,
 BlackBox, A2, obc, oo2c, OBNC) and the decision. `Oberon2.pdf` has no `ASSERT`;
 every other dialect surveyed does. What a program can observe:
 
@@ -912,7 +912,7 @@ every other dialect surveyed does. What a program can observe:
 
 ## Nested procedures (implemented, Phase 11 step 8)
 
-`PLAN.md` step 8 and `doc/nested-procedures.md` have the full account; the
+`PLAN.md` step 8 and `doc/developer/nested-procedures.md` have the full account; the
 front end always accepted them, the LLVM backend used to reject them with an
 error (before that it dropped the calls silently). What a program can observe:
 
@@ -1244,7 +1244,7 @@ HUGEINT". A decimal constant above `MAX(HUGEINT)` is always an error.
 `-strict` rejects the pattern form: "a hexadecimal constant above
 MAX(HUGEINT), taken as a 64-bit pattern is not in the Oberon-2 report
 (-strict)". Found by the inventory of voc's modules
-(`doc/voc-module-inventory.md`); decided with the user. Fixtures
+(`doc/research/voc-module-inventory.md`); decided with the user. Fixtures
 `llvm-hex-pattern-literals` and `semantic-strict`.
 
 ## Text after the module's end (decided and implemented, Phase 12 step 3, 2026-09-27)
@@ -1283,7 +1283,7 @@ VAR p: Point; l: Line; v: Vector;
 `Oberon2.pdf` has no structured value: its `Factor` has only the set
 constructor. The design, the decisions taken with the user (2026-10-02)
 and the survey of other dialects (Modula-3, ISO Modula-2, Micron, Active
-Oberon, Oberon+, Ada) are in `doc/record-and-array-literals.md`. Settled
+Oberon, Oberon+, Ada) are in `doc/developer/record-and-array-literals.md`. Settled
 here (2026-10-03), with the user's answers on defaults, on the `.sym`
 file and on indexed array elements, and with repeated elements, open
 array literals and a bare `{...}` outside a literal left out (each could

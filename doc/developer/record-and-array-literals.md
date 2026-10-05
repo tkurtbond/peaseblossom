@@ -8,16 +8,16 @@ A value of a record or fixed array type written in an expression:
     CONST origin* = Point{x := 0, y := 0};
 
 Implemented in Phase 14 (added 2026-10-02, closed 2026-10-04;
-`doc/phases/phase-14.md`). Phase 11's item A24 first, then a candidate of
+`doc/history/phases/phase-14.md`). Phase 11's item A24 first, then a candidate of
 the further extensions (now Phase 19) from 2026-09-26, whose survey,
-`doc/initializers-and-literals-survey.md`, also covers oo2c, obc and
+`doc/research/initializers-and-literals-survey.md`, also covers oo2c, obc and
 OBNC. This note holds the decisions taken with the user (2026-10-02), the
 survey of other dialects they were checked against, what the
 implementation would touch (written before it; the record says what it
 did), and the questions left open.
 
 The rules as settled in Phase 14 step 1 (2026-10-03) are in
-`doc/language-extensions.md`, "Record and array literals", which
+`doc/developer/language-extensions.md`, "Record and array literals", which
 controls where this note differs: a literal is made as a variable is,
 every default applied before the elements are assigned; a constant field
 initializer is written to the `.sym` file as its value; an exported
@@ -30,7 +30,7 @@ are left out of Phase 14.
    braces. The type is always written, so a literal never needs its type
    inferred from where it stands. A named record element is
    `field := expression`, as in poc's variable and field initializers
-   (`doc/language-extensions.md`, "Variable initializers", "Record field
+   (`doc/developer/language-extensions.md`, "Variable initializers", "Record field
    initializers").
 2. **Record elements are named, never positional.** Positional elements
    would silently change meaning when a field is added, reordered or moved
@@ -143,7 +143,7 @@ What the survey says about the decisions:
 ## Structured constants
 
 Proposed here, and settled in Phase 14 step 1 (2026-10-03) as
-`doc/language-extensions.md` says, with two changes: an omitted field
+`doc/developer/language-extensions.md` says, with two changes: an omitted field
 of an imported type has a constant default when the `.sym` file gives
 its value, and an exported constant's type may have hidden fields.
 
@@ -187,13 +187,13 @@ its value, and an exported constant's type may have hidden fields.
 | `Types`, `ConstantEvaluator` | a structured `Value`: its type and its elements' values, every field or element filled in; constant folding of a literal and of a selector applied to a structured constant |
 | `ModuleInterface` | an exported structured constant written as a literal, in a `CONST` section after `TYPE`, and read back through the parser |
 | `LLVMCodeGenerator` | as built (step 4): every literal is made in a stack slot of its own, allocated in the function's entry block so that a loop does not grow the stack, zeroed and initialized as a variable is (`InitializeAt`), then its elements stored in order, a nested literal without its type name in its element's place; it is loaded from there as a value, or its address passed to an open array or copied from (`CopyArrayBlock`). A slot holding pointers is on the stack the collector scans. A structured constant is a private constant global of each module that uses it, addressed like a variable, so selecting from it with a variable index or passing it needs nothing more; it can hold only NIL pointers. (The first plan, an LLVM constant aggregate or an `insertvalue` chain for a record literal, was dropped: making a literal as a variable is is what memory and the initialization procedures already do.) |
-| Documentation | a section in `doc/language-extensions.md` and its one-line summary in `AGENTS.md`; the User's and Reference Guides |
+| Documentation | a section in `doc/developer/language-extensions.md` and its one-line summary in `AGENTS.md`; the User's and Reference Guides |
 | Fixtures | literals accepted and run (records, arrays, nested, omitted elements, defaults from field initializers, arrays of records, open array parameters, extension); literals rejected (unknown or repeated field, too many elements, incompatible element, hidden or read-only field, a non-constant element in a `CONST`, a structured constant as a `VAR` parameter or assigned to, an exported constant of a hidden type, `-strict`); structured constants folded, selected from, passed, and exported and imported through `.sym`; voc cannot cross-check any of it |
 
 ## Open questions
 
 Decided 2026-10-03: none of these is in Phase 14, except indexed
-elements, which the user added to it the same day (`doc/language-
+elements, which the user added to it the same day (`doc/developer/language-
 extensions.md`, "Record and array literals").
 
 - Indexed array elements (Micron's `[i]: e`): in Phase 14, with ranges

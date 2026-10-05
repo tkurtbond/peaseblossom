@@ -1,6 +1,6 @@
 MODULE overflow;
   (* What poc promises where Oberon2.pdf defines nothing (Phase 11, C5;
-     doc/overflow-survey.md): integer + - * and unary -, ABS, INC and DEC that
+     doc/research/overflow-survey.md): integer + - * and unary -, ABS, INC and DEC that
      leave the type's range wrap around at the type's own width, DIV and MOD
      of a non-zero divisor floor, and real arithmetic is IEEE and silent -
      overflow is an infinity, 0.0/0.0 a NaN, underflow a zero, a division by

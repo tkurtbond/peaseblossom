@@ -1,6 +1,6 @@
 MODULE arrayassign;
   (* voc's array assignment, beyond Oberon2.pdf (Phase 11, A21;
-     doc/array-assignment-survey.md): v := e for a fixed array v and an array
+     doc/research/array-assignment-survey.md): v := e for a fixed array v and an array
      e of the same element type that is a fixed array no longer than v, or an
      open array no longer than v at run time.  All of e is copied, by size and
      whatever it holds; the rest of v is left as it was.  Both compilers

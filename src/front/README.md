@@ -57,7 +57,7 @@ etc.).
   predeclared-procedure vocabulary (13 function procedures, 7 proper
   procedures - confirmed against the report's own table, which has no
   `ASSERT` entry), plus `ASSERT`, poc's extension since 2026-09-25
-  (`doc/assert-survey.md`). Cannot import SemanticActions.Mod (that would be
+  (`doc/research/assert-survey.md`). Cannot import SemanticActions.Mod (that would be
   circular - SemanticActions.Mod is the one dispatching in here), so
   `CheckCall*` takes `CheckExpr`/`CheckDesignator` as procedure-typed
   parameters instead, the standard way to break a mutual-dependency
@@ -124,7 +124,7 @@ etc.).
   procedures enclosing it (a fixed point over containment and calls, names
   resolved exactly against the scope chain, lists in a fixed source order);
   backend-independent, printed by `poc -dump-nested`. No code generation
-  uses it yet. `doc/nested-procedures.md` has the plan.
+  uses it yet. `doc/developer/nested-procedures.md` has the plan.
 - `MemoryLayout.Mod` (Phase 4): size/alignment/field-offset computation
   for Types.Mod's representations, parameterized by an explicit target
   word size (4 or 8 bytes) and, since 2026-09-16, an elementary-type size
@@ -138,7 +138,7 @@ etc.).
   all four word-size x size-model combinations unconditionally, since
   poc has no `-O2`/`-OC` CLI flag of its own yet.
 - Phase 14, record and array literals and structured constants
-  (`doc/language-extensions.md`, "Record and array literals"), touches
+  (`doc/developer/language-extensions.md`, "Record and array literals"), touches
   several of these: `SyntaxTree` has `StructuredLiteralNode` and
   `LiteralElementNode`, and `TypeHandle`, the checked literal's type
   (`Types.TypeDesc` extends it, since `SyntaxTree` imports nothing);

@@ -25,7 +25,8 @@ Reference Guide, says exactly what poc accepts and does, and `poc(1)`
 
 ## Working on poc
 
-`doc/DEVELOPER.md` is how poc is built and tested while it is being worked
-on, how a change is checked before it is committed, how the packages are
-built and how a release is made. `PLAN.md` is the roadmap, and `AGENTS.md`
-the project's standing decisions.
+`doc/developer/DEVELOPER.md` is how poc is built and tested while it is
+being worked on, how a change is checked before it is committed, how the
+packages are built and how a release is made. `PLAN.md` is the roadmap, and
+`AGENTS.md` the project's standing decisions. `doc/README.md` lists every
+document, grouped by who it is for.

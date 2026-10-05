@@ -3,7 +3,7 @@
 How fast the LLVM backend's collector (`rtl/llvm/GarbageCollectedHeap.Mod`)
 is, what changed it, and how to measure it again. The design is in the
 module's header comment; each change below has its row in
-`doc/phase-11-inventory.md`.
+`doc/history/phase-11-inventory.md`.
 
 ## Measuring
 

@@ -15,7 +15,7 @@ worth restating precisely since they bound every design choice below:
 vectors, full `Out.Mod`/`In.Mod`. **Correction to `PLAN.md`'s earlier
 wording**: Appendix D5's tag/ProcTab/BaseTypes layout was previously
 listed under Phase 8's `LLVMTypes.Mod`; it has no reason to exist before
-dispatch does and is moved to Phase 9 (`doc/phases/phase-09.md`). In scope: fixed-size
+dispatch does and is moved to Phase 9 (`doc/history/phases/phase-09.md`). In scope: fixed-size
 arrays/records (as values, never behind a pointer), straight-line code,
 module-level and local `VAR`s, ordinary (non-type-bound) `PROCEDURE`s,
 IF/CASE/WHILE/REPEAT/FOR/LOOP+EXIT/RETURN, and the subset of §10.3

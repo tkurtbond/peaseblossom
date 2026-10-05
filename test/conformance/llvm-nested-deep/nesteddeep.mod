@@ -1,6 +1,6 @@
 MODULE nesteddeep;
   IMPORT SYSTEM; (* write's int and size_t are 4 bytes on a 32-bit target under -OC too *)
-  (* Phase 11 step 8, steps 3-5 (doc/nested-procedures.md): how nested
+  (* Phase 11 step 8, steps 3-5 (doc/developer/nested-procedures.md): how nested
      procedures reach each other's and their enclosing procedures' variables.
      Three and four levels; a variable reached through a level that never names
      it; siblings sharing one enclosing variable; mutual recursion through a

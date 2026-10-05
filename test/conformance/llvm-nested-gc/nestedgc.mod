@@ -1,6 +1,6 @@
 MODULE nestedgc;
   IMPORT SYSTEM; (* write's int and size_t are 4 bytes on a 32-bit target under -OC too *)
-  (* Phase 11 step 8, step 3 (doc/nested-procedures.md): the collector and a
+  (* Phase 11 step 8, step 3 (doc/developer/nested-procedures.md): the collector and a
      nested procedure's access to an enclosing variable. The pointers here live
      only in variables of an enclosing procedure (a local, a VAR parameter, a
      record field, an element of a local array) and are reached and changed by

@@ -19,7 +19,10 @@ language, voc, the hosts), and `PLAN.md` the roadmap.
 | `test/install/` | `check.sh`, what `make check-install` runs on an installed poc |
 | `tools/bootstrap/` | the stages: `stage0` (voc, `BOOTSTRAP_POC` or the seed), `stage1`, `stage2`, `make-seed` |
 | `tools/` | also `build-info`, `guide-examples`, `rtl-reference`, `voc-inventory`, `bench` |
-| `doc/` | the guides, `poc.1`, design records; `doc/phases/` the closed phases |
+| `doc/` | the user's documents: the guides, `poc.1`, `examples/`; `doc/README.md` lists everything |
+| `doc/developer/` | this file and the current design: the language extensions, the bootstrap, the toolchain |
+| `doc/research/` | the surveys and inventories behind decisions, and background notes |
+| `doc/history/` | the project's history, Phase 11's inventory, and `phases/`, the closed phases |
 | `packaging/` | the Fedora, FreeBSD, OpenBSD and pkgsrc packages (section 6) |
 | `build/` | everything made; `make clean` removes it |
 
@@ -49,7 +52,7 @@ Rules for poc's own source (`AGENTS.md` has the reasons):
 - It must also type-check under `-O2`: no literal or constant wider than
   32 bits.
 - Names are descriptive (`GarbageCollectedHeap`, not voc's terse style).
-- voc 2.1.0 has bugs that bite poc's source; `doc/bootstrapping-with-voc.md`
+- voc 2.1.0 has bugs that bite poc's source; `doc/developer/bootstrapping-with-voc.md`
   lists them with their workarounds. Check there before puzzling over an
   error that looks wrong.
 
@@ -138,8 +141,8 @@ A change a user can see is described where a user looks: the User's
 Guide (`doc/users-guide.md`, how to use poc), the Reference Guide
 (`doc/reference-guide.md`, exactly what poc accepts and does), `poc(1)`
 (`doc/poc.1`, every option), and for a language extension
-`doc/language-extensions.md` with its summary in `AGENTS.md`.
-`doc/llvm-toolchain.md` records how poc drives clang.
+`doc/developer/language-extensions.md` with its summary in `AGENTS.md`.
+`doc/developer/llvm-toolchain.md` records how poc drives clang.
 
 ## 6. Building the packages
 

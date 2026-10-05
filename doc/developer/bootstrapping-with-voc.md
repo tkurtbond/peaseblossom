@@ -12,7 +12,7 @@ holds every voc bug found while working on poc. "vishap-bugs 13" below
 means its issue 13, `issues/13-*.md`, whose fix is `patches/0013-*.patch`.
 Elsewhere in poc's source, tests and documentation, a note that voc does
 otherwise than poc cites the same numbers. The phase records in
-`doc/phases/` and `doc/phase-11-inventory.md` still point to
+`doc/history/phases/` and `doc/history/phase-11-inventory.md` still point to
 `doc/voc-bugs/`, which was here until 2026-10-03; its contents are now in
 vishap-bugs (the two long accounts in its `notes/`).
 

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Compare the collector (rtl/llvm/GarbageCollectedHeap.Mod) of two poc
-# checkouts: doc/collector-performance.md has what it measures and the
+# checkouts: doc/developer/collector-performance.md has what it measures and the
 # results so far.
 #
 # Usage: tools/bench/gc-compare.sh [-runs n] <old-tree> <new-tree>

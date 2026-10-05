@@ -1,4 +1,4 @@
-/* Stage 0's protection from voc's collector bug (doc/bootstrapping-
+/* Stage 0's protection from voc's collector bug (doc/developer/bootstrapping-
    with-voc.md): voc's Heap.GC finds roots by scanning the
    stack, and its way of getting the callee-saved registers onto the stack
    first does nothing in C compiled without optimization, so a pointer held

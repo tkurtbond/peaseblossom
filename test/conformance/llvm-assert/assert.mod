@@ -1,5 +1,5 @@
 MODULE assert;
-  (* ASSERT(x) and ASSERT(x, n), poc's extension (doc/assert-survey.md): a
+  (* ASSERT(x) and ASSERT(x, n), poc's extension (doc/research/assert-survey.md): a
      FALSE condition writes "assertion failed", with " (n)" for a code, and
      exits with status 10, the code or not; a TRUE one does nothing. The
      condition is evaluated whatever it is (its side effects happen), and

@@ -1,5 +1,5 @@
 MODULE lib;
-  (* Exports declared after a procedure (doc/language-extensions.md,
+  (* Exports declared after a procedure (doc/developer/language-extensions.md,
      "Declarations after procedures") reach an importer through the .sym
      file like any others. *)
   VAR calls*: INTEGER;

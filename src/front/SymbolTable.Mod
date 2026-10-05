@@ -111,7 +111,7 @@ MODULE SymbolTable;
         enclosing ProcDeclNode, which CheckWithGuard has no reach into
         from a plain SymbolTable.Object. *)
       isReadOnlyParam*: BOOLEAN; (* varClass only: TRUE for a read-only
-        formal parameter, "x-" (doc/language-extensions.md, "Read-only
+        formal parameter, "x-" (doc/developer/language-extensions.md, "Read-only
         parameters"), set as isVarParam is. SemanticActions.CheckDesignator
         makes it, and every part of it, read-only, as readOnly does an
         imported variable. *)

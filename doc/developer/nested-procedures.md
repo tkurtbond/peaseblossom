@@ -347,7 +347,7 @@ BSD hosts before step 6.
    `Types.maxOpenDimensions` (8) open dimensions is now an error where the checker
    resolves it (fixture `semantic-reject-open-array-dimensions`); fixed dimensions
    are not limited. (Lifted 2026-09-25, Phase 11 A17: the lengths are a list
-   now and there is no limit; `doc/design-decisions.md`, "Open array
+   now and there is no limit; `doc/developer/design-decisions.md`, "Open array
    dimension limit".) `llvm-reject-nested-procedure` became
    `llvm-reject-external-vms` (the same "nothing written" checks, with an external
    `["VMS"]` procedure, which the LLVM backend used to lower as a C call and now

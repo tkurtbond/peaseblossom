@@ -198,7 +198,7 @@ MODULE Parser;
 
   (* A formal parameter's names are plain identifiers (Oberon2.pdf 10.1:
      FPSection = [VAR] ident {"," ident} ":" Type), not IdentDefs, except
-     that poc, as voc, takes "x-" for a read-only parameter (doc/language-
+     that poc, as voc, takes "x-" for a read-only parameter (doc/developer/language-
      extensions.md, "Read-only parameters"), kept as the IdentDef's
      exportReadOnly mark, which -strict reports. "x*" is reported and
      skipped, so the rest of the section still parses. *)
@@ -504,7 +504,7 @@ MODULE Parser;
 
   PROCEDURE ^ ParseCaseLabel(VAR p: Parser): SyntaxTree.CaseLabelNode;
 
-  (* Phase 14 (doc/language-extensions.md, "Record and array literals"):
+  (* Phase 14 (doc/developer/language-extensions.md, "Record and array literals"):
      the elements of a literal, from its "{" to its "}". Each is "field :=
      expression", "[labels]: expression" (the labels as a CASE's), or an
      expression, and in a nested "{...}" that may be a set constructor,
@@ -956,7 +956,7 @@ MODULE Parser;
     RETURN SemanticActions.NewTypeDecl(name, type, line, column)
   END ParseTypeDecl;
 
-  (* Phase 11 A23, poc's extension (doc/language-extensions.md, "Variable
+  (* Phase 11 A23, poc's extension (doc/developer/language-extensions.md, "Variable
      initializers"): "VAR x, y: T := e" gives each name the assignment
      "name := e", evaluated once for each of them - so the expression is
      parsed once per name, going back over its tokens each time, and every
@@ -1171,7 +1171,7 @@ MODULE Parser;
     varHead := NIL; varTail := NIL;
     procHead := NIL; procTail := NIL;
     (* Oberon2.pdf 10 puts every CONST/TYPE/VAR section before the first
-       procedure; poc also lets them follow procedures (doc/language-
+       procedure; poc also lets them follow procedures (doc/developer/language-
        extensions.md, "Declarations after procedures"), which -strict
        reports at the section's keyword *)
     LOOP

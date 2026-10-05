@@ -1,7 +1,7 @@
 MODULE NestedProcedures;
 
   (* Which variables of the enclosing procedures a nested procedure reaches
-     (doc/nested-procedures.md, Phase 11 step 8). Oberon2.pdf 10: procedures
+     (doc/developer/nested-procedures.md, Phase 11 step 8). Oberon2.pdf 10: procedures
      may be declared inside procedures, and by the scope rules of 4 one sees
      the variables of everything that encloses it. A backend has to hand each
      such variable to the nested procedure somehow - LLVM lowering passes the

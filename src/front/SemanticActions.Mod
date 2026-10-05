@@ -816,7 +816,7 @@ MODULE SemanticActions;
       literalElement: SyntaxTree.LiteralElementNode;
   BEGIN
     (* type tests, not WITH: voc miscompiles a call of the procedure
-       itself inside its own WITH (doc/bootstrapping-with-voc.md) *)
+       itself inside its own WITH (doc/developer/bootstrapping-with-voc.md) *)
     IF expr = NIL THEN
     ELSIF expr IS SyntaxTree.LiteralExprNode THEN
       literal := expr(SyntaxTree.LiteralExprNode);
@@ -1432,7 +1432,7 @@ MODULE SemanticActions;
        enclosing procedure made from inside one of its own WITH branches
        (reports a bogus "incompatible assignment" on the argument, even
        though it type-checks fine everywhere else) - see
-       doc/bootstrapping-with-voc.md. *)
+       doc/developer/bootstrapping-with-voc.md. *)
     resolvedBase := ResolveType(scope, pointerBase, TRUE);
     resolvedBase := CheckPointerBase(resolvedBase, pointerBaseLine, pointerBaseColumn);
     RETURN Types.NewPointerType(resolvedBase)
@@ -1457,7 +1457,7 @@ MODULE SemanticActions;
 
   (* decls is advanced past the types it declares: those before
      stopLine:stopColumn, the next procedure's position (MAX(INTEGER) for
-     none), so that with declarations after procedures (doc/language-
+     none), so that with declarations after procedures (doc/developer/language-
      extensions.md, "Declarations after procedures") a POINTER TO base must
      be declared before the next procedure. afterProcedure: a procedure
      precedes these types in their block, so CheckLateName applies. *)
@@ -1584,7 +1584,7 @@ MODULE SemanticActions;
      them, and none of its procedures - what OpenProcedureBodyScope needs
      to reopen an already-checked body. The checker itself uses
      CheckDeclarations (below), which interleaves the procedures too
-     (poc lets data sections follow procedures, doc/language-extensions.md,
+     (poc lets data sections follow procedures, doc/developer/language-extensions.md,
      "Declarations after procedures"; voc and Oberon2.pdf do not). PLAN.md's "Open design
      questions" - "Declaration order": replaces what used to be three
      separate whole-section passes (every CONST, then every TYPE, then
@@ -2744,7 +2744,7 @@ MODULE SemanticActions;
   END CheckFoldedBinaryExpr;
 
   (* ---- Phase 14: record and array literals ----
-     (doc/language-extensions.md, "Record and array literals") *)
+     (doc/developer/language-extensions.md, "Record and array literals") *)
 
   (* A record type whose fields are not all exported and writable to this
      module, its bases' included, has no literal here; the module that
@@ -2999,7 +2999,7 @@ MODULE SemanticActions;
      Each WITH branch below calls a distinctly-named procedure, never
      CheckExpr itself - the same safe shape ResolveType already
      established, since voc's documented self-recursion-in-WITH bug
-     (doc/bootstrapping-with-voc.md) only fires when a procedure calls itself from inside its
+     (doc/developer/bootstrapping-with-voc.md) only fires when a procedure calls itself from inside its
      own WITH branch. *)
   PROCEDURE CheckExpr(scope: SymbolTable.Scope; expr: SyntaxTree.ExprNode): Types.Type;
   BEGIN
@@ -3324,7 +3324,7 @@ MODULE SemanticActions;
       (* Stricter than Oberon2.pdf 9.8, which asks only that high be
          comparable with v: as voc (OPP.Mod, err 113), high must be
          assignment compatible with v, so a wider or REAL bound is an error
-         rather than a loop that cannot end (doc/language-extensions.md,
+         rather than a loop that cannot end (doc/developer/language-extensions.md,
          "FOR final value") *)
       CheckAssignmentCompatible(scope, varType, s.stop, stopType, s.line, s.column,
         "FOR final value is not assignment compatible with the control variable")

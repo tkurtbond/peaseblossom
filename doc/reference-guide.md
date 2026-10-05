@@ -8,7 +8,7 @@ and does not reproduce: where this guide says nothing, the report's rule
 holds as written.
 
 The User's Guide (`users-guide.md`) shows how to use poc; this guide is
-where to look up a rule. `doc/language-extensions.md` in poc's source is
+where to look up a rule. `doc/developer/language-extensions.md` in poc's source is
 the design document for each extension below: why it was adopted, what was
 considered, and how poc builds it. This guide documents each one as it is
 implemented, what a program can write and what it gets. `poc(1)` is the
@@ -114,7 +114,7 @@ module named on the command line, with the message "*<construct>* is not in
 the Oberon-2 report (-strict)"; the modules it imports are not checked, so a
 strict module may import one that uses extensions. poc's own source is
 checked with `-strict`. The heading of each item is that of its section in
-`doc/language-extensions.md`.
+`doc/developer/language-extensions.md`.
 
 ### HUGEINT
 
@@ -503,7 +503,7 @@ ones too (`-dump-tokens`, `-check-syntax`, `-dump-layout`,
 | `-lto` | Compiles to LLVM bitcode and optimizes the whole program when it is linked. Ignored for 32-bit x86 NetBSD. |
 | `-verbose` | Prints each command poc runs (clang's). |
 
-`doc/voc-options.md` lists voc's options and what each is in poc.
+`doc/developer/voc-options.md` lists voc's options and what each is in poc.
 
 ### Where modules come from
 

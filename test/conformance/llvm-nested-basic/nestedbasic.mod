@@ -1,6 +1,6 @@
 MODULE nestedbasic;
   IMPORT SYSTEM; (* write's int and size_t are 4 bytes on a 32-bit target under -OC too *)
-  (* Phase 11 step 8, step 2 (doc/nested-procedures.md): procedures declared
+  (* Phase 11 step 8, step 2 (doc/developer/nested-procedures.md): procedures declared
      inside procedures that use nothing of the enclosing ones - only globals,
      their own parameters and locals, and other procedures. Each is lifted to
      an ordinary function named @nestedbasic.Outer.Inner. What is run: nested

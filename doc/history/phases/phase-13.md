@@ -8,13 +8,13 @@ elsewhere to "`PLAN.md` Phase 13 step N" means step N here.
 
 **Inserted 2026-10-02 (user)**, before the VAX/VMS work: the phases after it
 were renumbered, so the old Phases 13-18 are now 14-19. Records of closed
-phases (`doc/phases/`, `doc/phase-11-inventory.md`, `doc/project-history.md`,
-`doc/initializers-and-literals-survey.md`) keep the numbers they were
+phases (`doc/history/phases/`, `doc/history/phase-11-inventory.md`, `doc/history/project-history.md`,
+`doc/research/initializers-and-literals-survey.md`) keep the numbers they were
 written with: there, "Phase 13" is today's Phase 14, and so on up to "Phase
 18", today's 19. A second renumbering followed the same day, when record
 and array literals became Phase 14 (user, 2026-10-02): the Phases 14-19
 of that first renumbering are now 15-20, so a record written between the
-two (`doc/phases/phase-12.md`) means today's 15-20 by its 14-19.
+two (`doc/history/phases/phase-12.md`) means today's 15-20 by its 14-19.
 
 **Goal**: make poc something a person who did not build it can install
 and use, on Linux and the three BSDs. That means an installed poc that
@@ -281,7 +281,7 @@ mismatch).
    and does not reproduce. The basic types'
    sizes and ranges under each size model and target; every choice the
    report leaves to the implementation; every extension, from
-   `doc/language-extensions.md`, and what `-strict` rejects; `SYSTEM`; the
+   `doc/developer/language-extensions.md`, and what `-strict` rejects; `SYSTEM`; the
    predeclared procedures' exact rules where poc pins them down (constant
    expressions, overflow, `DIV`/`MOD`, `ENTIER`, array assignment, `FOR`);
    the trap statuses; each runtime module's interface, procedure by
@@ -292,14 +292,14 @@ mismatch).
    option, the environment, the files, the exit statuses, examples and
    pointers to the guides; `mandoc -T lint` clean, and checked to render
    with `man` on each host. Decided (user, 2026-10-02): where
-   `doc/language-extensions.md` and the Reference Guide cover the same
-   extension, `doc/language-extensions.md` is the design document (why,
+   `doc/developer/language-extensions.md` and the Reference Guide cover the same
+   extension, `doc/developer/language-extensions.md` is the design document (why,
    what was considered, how it is built) and the Reference Guide documents
    the extension as actually implemented (what a program can write and
    what it gets); each points to the other.
    **Done (2026-10-03).** `doc/reference-guide.md`, nine sections: the
    basic types, the implementation's choices, the extensions (each under
-   its `doc/language-extensions.md` heading), `SYSTEM`, the exact rules,
+   its `doc/developer/language-extensions.md` heading), `SYSTEM`, the exact rules,
    traps and exit statuses, the command line, files and formats (objects'
    keys, `.sym`, a library's directory and manifest), and the runtime
    modules. That last chapter is generated: `tools/rtl-reference
@@ -315,7 +315,7 @@ mismatch).
    search libraries for imports either (as `-check` until step 6), so an
    rtl module's interface could not be shown; `-check` needs its imports
    compiled, which the User's Guide now says; and two rows of
-   `doc/language-extensions.md` that predated D16 (locals zeroed) and
+   `doc/developer/language-extensions.md` that predated D16 (locals zeroed) and
    `-range-checks`. `doc/poc.1` (mdoc) goes to `MANDIR/man1` and the
    guide to `DOCDIR`; `make check-install` renders the installed page
    with `man` and finds both guides.
@@ -408,7 +408,7 @@ mismatch).
    way: `llvm-libraries` failed one run in five on alerik, from voc's
    `Files` keeping a name relative to the directory current when the file
    was opened (Stage 0 now makes every file by its whole path,
-   `f4da4e1`; `doc/voc-bugs/README.md`); and, for `doc/DEVELOPER.md`
+   `f4da4e1`; `doc/voc-bugs/README.md`); and, for `doc/developer/DEVELOPER.md`
    (`7a22273`, `17b2f9f`): `make distcheck` alone makes the tarball that
    is signed (each `make dist` writes a new one), a tarball already in a
    ports tree's distfiles is used rather than fetched, OpenBSD's `make

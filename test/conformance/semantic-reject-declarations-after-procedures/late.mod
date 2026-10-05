@@ -1,5 +1,5 @@
 MODULE Late;
-  (* Declarations after procedures (doc/language-extensions.md): what
+  (* Declarations after procedures (doc/developer/language-extensions.md): what
      stays an error. Line 8: a body uses a VAR declared after it. Lines 13
      and 21: a late declaration hides a name visible from an enclosing
      scope (the global i, the predeclared LEN). Line 17: a POINTER TO base

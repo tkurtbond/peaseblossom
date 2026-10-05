@@ -67,7 +67,7 @@ convenient, but must not be a prerequisite of it.
    and cross-checked against real voc where voc's behavior is
    observable. **Testing**: a golden `-help`/usage fixture, and a fixture
    per adopted flag that would otherwise be untested.
-   **Done (2026-09-27, decided with the user): `doc/voc-options.md`** has the
+   **Done (2026-09-27, decided with the user): `doc/developer/voc-options.md`** has the
    table, every option probed against voc. Adopted: `-r` as `-range-checks`
    (`SHORT` of an integer and `CHR` that do not fit trap, status 14, off by
    default), `-M` as `-static`, `-V` as `-verbose` (the clang command), and
@@ -432,7 +432,7 @@ convenient, but must not be a prerequisite of it.
    result is a table kept as a file the plan names, not prose - the
    *complete* list the plan has been missing, with `ulm` and `v4`
    (not yet looked at at all) filled in like the rest. *Done
-   2026-09-27*: `doc/voc-module-inventory.md`, all 161 files, with for
+   2026-09-27*: `doc/research/voc-module-inventory.md`, all 161 files, with for
    each what voc builds (its `-OC` library is the runtime only), what
    poc's front end makes of it today (`poc -emit-interface` in import
    order against poc-rtl's interfaces: 23 accepted, 34 after the
@@ -512,7 +512,7 @@ convenient, but must not be a prerequisite of it.
      the four systems (open's flags, errno and its values, `struct stat`,
      the clock, signals, NetBSD's renamed functions) is in
      `rtl/llvm/Platform.c`, and poc compiles a module's sibling `.c` with
-     it wherever it compiles the module (`doc/llvm-toolchain.md`, "A
+     it wherever it compiles the module (`doc/developer/llvm-toolchain.md`, "A
      module's part in C"; fixture `llvm-c-part`). An error code is now
      errno's value, as voc's (it was -1; `Files.Delete`/`Rename` too).
      Differences kept: `Write` writes everything and `Delay` sleeps the
@@ -561,7 +561,7 @@ convenient, but must not be a prerequisite of it.
      (1.2.5): `Read`/`Write`/`ReadByte` take a `SYSTEM.BYTE`, and a `BYTE`
      parameter takes a `CHAR`, a `SHORTINT` (where it is one byte, `-O2`)
      or a `BYTE`, a `VAR` one a `BOOLEAN` too, as voc's (a checker change,
-     `doc/language-extensions.md`, "SYSTEM subset"; voc's `INT8` not
+     `doc/developer/language-extensions.md`, "SYSTEM subset"; voc's `INT8` not
      taken); the typed riders write Oakwood's external format under both
      size models (an `INTEGER` 2 bytes, a `LONGINT` 4, little-endian) and
      read it back sign-extended, where voc's `-OC` reads a negative number

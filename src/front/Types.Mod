@@ -163,7 +163,7 @@ MODULE Types;
         placeholder *)
       type*: Type;
       isVar*: BOOLEAN;
-      isReadOnly*: BOOLEAN; (* a read-only parameter, "x-" (doc/language-
+      isReadOnly*: BOOLEAN; (* a read-only parameter, "x-" (doc/developer/language-
         extensions.md, "Read-only parameters"); never with isVar *)
       next*: Param
     END;

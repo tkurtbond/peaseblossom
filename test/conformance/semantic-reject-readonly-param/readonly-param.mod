@@ -1,5 +1,5 @@
 MODULE readonlyParam;
-  (* doc/language-extensions.md, "Read-only parameters": nothing may
+  (* doc/developer/language-extensions.md, "Read-only parameters": nothing may
      assign to x- or any part of it, or pass it or any part of it as a
      VAR argument or a VAR receiver *)
   IMPORT Shared;

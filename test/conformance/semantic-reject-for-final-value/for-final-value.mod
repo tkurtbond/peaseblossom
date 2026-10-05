@@ -1,7 +1,7 @@
 MODULE forFinalValue;
   (* The FOR final value must be assignment compatible with the control
      variable, as in voc (err 113) - stricter than Oberon2.pdf 9.8, which
-     asks only that it be comparable (doc/language-extensions.md, "FOR
+     asks only that it be comparable (doc/developer/language-extensions.md, "FOR
      final value"). Lines 13-15 are errors; 16-19 are not. *)
 
   VAR

@@ -9,11 +9,11 @@ running correctly through the LLVM backend, on both 32-bit and 64-bit
 targets, on Linux and at least one BSD — the point at which the *entire*
 conformance suite (not just a hand-picked subset, as Phase 8 step 13
 promoted) can compile+link+run+diff. Deliberately *not* the point poc can
-compile itself — see Phase 10 (`doc/phases/phase-10.md`) for why self-hosting is a separate,
+compile itself — see Phase 10 (`doc/history/phases/phase-10.md`) for why self-hosting is a separate,
 later gate.
 
 **Explicit non-goals**: `SYSTEM.*` (Appendix C — `ADR`/`VAL`/`BIT`/etc.,
-see Phase 10 (`doc/phases/phase-10.md`); a subset, `ADDRESS`/`ADR`/`GET`/`PUT`/`VAL`/`MOVE`, was
+see Phase 10 (`doc/history/phases/phase-10.md`); a subset, `ADDRESS`/`ADR`/`GET`/`PUT`/`VAL`/`MOVE`, was
 pulled forward into Phase 9 step 4) and everything MACRO-32/VAX (Phase 13) are out of
 scope per the phase-to-report map, not this phase's; `DISPOSE` isn't
 added because it doesn't exist in

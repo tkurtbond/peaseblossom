@@ -101,11 +101,11 @@ not in the inventory yet.
   for each variable** of the list (so a function call in it is made once per
   variable), before the body, in declaration order; only names declared
   before the `:=` are visible; variables only; `-strict` rejects it.
-  `doc/language-extensions.md`, "Variable initializers".
+  `doc/developer/language-extensions.md`, "Variable initializers".
 - **Record-field initializers**: a separate item, Phase 11 D17, then decided
   (user, 2026-09-26): any expression, not A2's constants; one
   initialization procedure per record type, with the `.sym` file saying only
-  that a field has an initializer. Done: `doc/language-extensions.md`,
+  that a field has an initializer. Done: `doc/developer/language-extensions.md`,
   "Record field initializers".
 - **A24: moved to Phase 17**, a new phase for further extensions to
   Oberon-2 (`PLAN.md`).

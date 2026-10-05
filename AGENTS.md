@@ -34,7 +34,7 @@ PDF in 2007, modified again in 2022), kept under
 Programming in Oberon-2* (`oop_in_oberon-2_book.pdf`, an intermediate
 state) are background only, for history or an explicit comparison. Where
 in doubt about a rule, `Oberon2.pdf`'s wording controls.
-`doc/oberon-2-reports.md` describes the three texts and lists where
+`doc/developer/oberon-2-reports.md` describes the three texts and lists where
 `Oberon2.pdf` differs from 1993, all in one direction: pointers start NIL
 (§6.4), forward declarations need "identical" parameter lists (§10),
 `Trees.Init` becomes `NewTree`, an `ARRAY OF CHAR` parameter matching a
@@ -86,9 +86,9 @@ programs it compiles (`-O2`/`-OC` flags, default `-O2`; `MemoryLayout.Mod`).
 `-OC`, and Stage 1/2 stay at `-OC`: poc needs an 8-byte `LONGINT`
 (`Types.Value.intVal`, the constant folder, `DecimalToDouble`). poc's own
 source stays strict `Oberon2.pdf` (`make check-strict`, part of `make
-check`) and must also type-check under `-O2` (`doc/project-history.md`,
+check`) and must also type-check under `-O2` (`doc/history/project-history.md`,
 "poc's own source under `-O2`"). Without voc, Stage 0 is built by
-`BOOTSTRAP_POC` or from a release tarball's `seed/` (`doc/phases/phase-13.md`,
+`BOOTSTRAP_POC` or from a release tarball's `seed/` (`doc/history/phases/phase-13.md`,
 steps 4-5: `make seed`, `check-seed`, `dist`, `distcheck`).
 
 **voc's extensions beyond the report** (mostly in `Features.md`). Assume none of them
@@ -106,7 +106,7 @@ for poc unless it adopted them:
   by default, `-r` (range) is off.
 
 **Which of voc's options poc has** (Phase 12 step 1, decided with the user
-2026-09-27; `doc/voc-options.md` has the table, option by option): `-r` is
+2026-09-27; `doc/developer/voc-options.md` has the table, option by option): `-r` is
 `poc -range-checks`, `-M` is `-static`, `-V` is `-verbose` (the clang command),
 and `-link <arg>` stands for voc's `LDFLAGS`/`LDLIBS`. `-S` and `-m` are
 `-emit-llvm-ir` and `-build`; `-c` is `-compile` (step 2f). poc's checks
@@ -135,7 +135,7 @@ language (`AA-LA62A`) are downloaded.
 `LLVMToolchainDriver.Mod` shells out to `clang` rather than linking LLVM's
 C++ API: on atla Fedora's 22.1.8 (host triple `x86_64-redhat-linux-gnu`),
 on the BSDs their plain `clang` (19 on OpenBSD and FreeBSD, 21 on NetBSD).
-`doc/llvm-toolchain.md` has the full account; what matters most:
+`doc/developer/llvm-toolchain.md` has the full account; what matters most:
 
 - One `.ll` and one `-fPIC` object per module. Each defines
   `<M>.-key.<O2|OC>.<hash of its .sym>` and `<M>.-target.<triple>` and
@@ -161,7 +161,7 @@ on the BSDs their plain `clang` (19 on OpenBSD and FreeBSD, 21 on NetBSD).
 ### voc bugs that affect building poc
 
 Bugs in voc 2.1.0 that reach poc's own source or Stage 0, each with the
-workaround poc uses, are in `doc/bootstrapping-with-voc.md`. Check there
+workaround poc uses, are in `doc/developer/bootstrapping-with-voc.md`. Check there
 before puzzling over an error that looks bogus, and keep the workarounds:
 
 - A procedure calling itself from inside its own `WITH` branch gets a false
@@ -183,7 +183,7 @@ source or tests that voc does otherwise cites its issue number
 
 ## Language extensions beyond Oberon2.pdf
 
-`doc/language-extensions.md` holds the full text of every section below:
+`doc/developer/language-extensions.md` holds the full text of every section below:
 what a program compiled by poc can observe where poc goes beyond
 `Oberon2.pdf`, or picks an answer where the report says nothing. Each
 section there has the same heading as here, so a reference elsewhere to
@@ -382,17 +382,17 @@ constant is a private constant global of each module that uses it.
 
 ## Project state
 
-Phases 0-14 of `PLAN.md` are complete (records in `doc/phases/` and
-`doc/phase-11-inventory.md`): poc compiles itself through the LLVM backend
+Phases 0-14 of `PLAN.md` are complete (records in `doc/history/phases/` and
+`doc/history/phase-11-inventory.md`): poc compiles itself through the LLVM backend
 (Stage 1 and Stage 2 reach a fixed point), and **Peaseblossom 0.1.0 was
 released on 2026-10-03** (tag `v0.1.0`, a GitHub release with the tarball
 and packages for Fedora, FreeBSD, OpenBSD and NetBSD; Phase 13: `make
 install`, the seed, `make dist`, `doc/users-guide.md`,
-`doc/reference-guide.md`, `doc/poc.1`, `packaging/`; `doc/DEVELOPER.md`
+`doc/reference-guide.md`, `doc/poc.1`, `packaging/`; `doc/developer/DEVELOPER.md`
 says how a release is made). Phase 14 added record and array literals
-and structured constants (closed 2026-10-04; `doc/phases/phase-14.md`),
+and structured constants (closed 2026-10-04; `doc/history/phases/phase-14.md`),
 released with four fixes as **Peaseblossom 0.2.0 on 2026-10-04** (tag
-`v0.2.0`, made as `doc/DEVELOPER.md` section 7 says).
+`v0.2.0`, made as `doc/developer/DEVELOPER.md` section 7 says).
 Phase 15, the VAX/VMS MACRO-32 backend, is next; 15-18 are the VAX/VMS
 work, 19 further extensions, 20 voc's library modules. Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
@@ -400,7 +400,7 @@ fixing"), and the runtime-library additions and language extensions it
 shows are wanted are made the same way (`PLAN.md`, "Ongoing library
 enhancements" and "Ongoing language enhancements"). The phases were renumbered twice on 2026-10-02, and older
 records keep the old numbers (`PLAN.md`, Phase 13).
-`doc/project-history.md` has the earlier account; `src/front/README.md`
+`doc/history/project-history.md` has the earlier account; `src/front/README.md`
 lists the front-end modules.
 
 The User's Guide's examples are files under `doc/examples/`, checked by

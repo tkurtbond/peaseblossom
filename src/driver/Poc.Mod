@@ -1669,7 +1669,7 @@ MODULE Poc;
     END
   END PrintNestedProcedures;
 
-  (* PLAN.md Phase 11 step 8 (doc/nested-procedures.md): the golden-file
+  (* PLAN.md Phase 11 step 8 (doc/developer/nested-procedures.md): the golden-file
      testing surface for NestedProcedures.Mod, which finds what each nested
      procedure needs of its enclosing ones before any backend uses it. Checks
      the module first; for every module-level or type-bound procedure that

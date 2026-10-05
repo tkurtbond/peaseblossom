@@ -1,5 +1,5 @@
 """write_tables.py VOC_SOURCE MODULES_JSON CHECK_DIR: the tables of
-doc/voc-module-inventory.md, one per source directory, in Markdown on standard
+doc/research/voc-module-inventory.md, one per source directory, in Markdown on standard
 output. CHECK_DIR holds the inventory script's poc checks (status.txt, a line
 "<module> <0|1|poc>" each, and <module>.out)."""
 

@@ -164,7 +164,7 @@ MODULE SyntaxTree;
        imports it (as Types.ScopeHandle is SymbolTable.ScopeDesc's) *)
     TypeHandleDesc* = RECORD END;
     (* Phase 14: a record or array literal, "T{...}"
-       (doc/language-extensions.md, "Record and array literals"). name is
+       (doc/developer/language-extensions.md, "Record and array literals"). name is
        empty for a nested literal that leaves out its type's name, "{...}"
        as an element of another literal, which the checker resolves by the
        element's type: a literal of a record or array type, or, for a set
@@ -426,7 +426,7 @@ MODULE SyntaxTree;
       (* Parser.ParseDeclSeq accepts CONST/TYPE/VAR keyword sections in
          any order, repeated/interleaved arbitrarily (as Oberon2.pdf 10's
          grammar allows), and, as poc's extension, after and between
-         procedures too (doc/language-extensions.md, "Declarations after
+         procedures too (doc/developer/language-extensions.md, "Declarations after
          procedures"), but still sorts every declaration into one of these
          four separately-typed lists by kind - each stays in its own
          textual order, but the *relative* order between, say, a CONST and

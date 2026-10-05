@@ -4,8 +4,8 @@ Moved here from `PLAN.md` on 2026-10-04, once the phase was done, with
 step 6's record written at the close-out. `PLAN.md` keeps the heading,
 the goal, and a list of the steps, so a reference elsewhere to "`PLAN.md`
 Phase 14 step N" means step N here. The rules are in
-`doc/language-extensions.md`, "Record and array literals", and the design
-and survey in `doc/record-and-array-literals.md`.
+`doc/developer/language-extensions.md`, "Record and array literals", and the design
+and survey in `doc/developer/record-and-array-literals.md`.
 
 
 **Added 2026-10-02 (user)**, after Phase 13 and before the VAX/VMS work,
@@ -16,10 +16,10 @@ phases moved up by one.
 **Goal**: a value of a record or fixed array type written in an
 expression, `Point{x := 1, y := 2}` and `Vector{1, 2, 3}`, in the LLVM
 backend, with the front end's part shared by the VAX backend later.
-`doc/record-and-array-literals.md` has the design: the decisions taken
+`doc/developer/record-and-array-literals.md` has the design: the decisions taken
 with the user, the rules in detail, the survey of other dialects (Active
 Oberon, Oberon+, Micron, Modula-3, ISO Modula-2, Ada, and those with
-none; the first survey, 2026-09-26, is `doc/initializers-and-literals-
+none; the first survey, 2026-09-26, is `doc/research/initializers-and-literals-
 survey.md`), and what the implementation touches.
 
 **Decided** (user, 2026-10-02): `T{...}`, the type always named; record
@@ -41,7 +41,7 @@ each index at most once, a range's element evaluated once per index.
 
 **Steps**:
 
-1. **The rules settled** in `doc/language-extensions.md` (a section
+1. **The rules settled** in `doc/developer/language-extensions.md` (a section
    "Record and array literals", with its one-line summary in `AGENTS.md`),
    from the design note: what a literal's type may be, the element rules,
    nested literals and when a nested one may leave out its type name,
@@ -74,7 +74,7 @@ each index at most once, a range's element evaluated once per index.
    a structured constant is a private constant global of each module that
    uses it, addressed like a variable (as built; the first plan, a
    constant aggregate or an `insertvalue` chain, was dropped:
-   `doc/record-and-array-literals.md`). Debug information needs nothing
+   `doc/developer/record-and-array-literals.md`). Debug information needs nothing
    new. **Testing**: `llvm-` fixtures that build and run:
    records, arrays, nested literals, omitted elements and defaults, arrays
    of records, literals as value and open-array parameters, in variable
@@ -167,7 +167,7 @@ Found porting olibfyaml (the libfyaml binding for voc) to poc as
 
 Phase 14 and these four fixes were released as **Peaseblossom 0.2.0** on
 2026-10-04 (decided with the user: a minor release from `main`, since it
-adds a feature), as `doc/DEVELOPER.md` section 7 says: the version in
+adds a feature), as `doc/developer/DEVELOPER.md` section 7 says: the version in
 `87bbcaa`, after `make check` on atla, cymoril, artos and alerik (680
 each) with `check-opt2`, `check-install` and `check-seed` on atla; the
 tarball by `make distcheck` (SHA-256 `230f70ea...`, 3433514 bytes),

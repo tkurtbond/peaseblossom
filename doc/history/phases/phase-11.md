@@ -37,7 +37,7 @@ as it stands when the phase starts, and adds what it finds):
 | A computed `REAL`/`LONGREAL` constant of extreme magnitude (`MAX(LONGREAL) / 2`, `1.0D300 * 1.5`) cannot be exported to a `.sym`: `ParseReal` is not correctly rounded, so no text verifies | Phase 9 step 10 | bug, found not fixed |
 | `Out.Real`/`Out.LongReal` are voc's algorithm, not correctly rounded (a decimal exponent estimated as 77/256 of the binary one, scaling by a floating-point power of ten exact only to 10^22): the last digits of a number outside about 10^-22..10^22, or the 17th of a LONGREAL, can be off. The same shortcoming as `ParseReal`'s; one correctly rounded converter each way would close both | Phase 10 step 5 | gap, found not fixed |
 | `ENTIER` of a real beyond a `LONGINT` gives garbage (poc: `-2147483648`; voc, which wraps: `-727379968` for 10^12 under `-O2`): the report defines `ENTIER` for values that fit, but a `HUGEINT`-valued one - or a trap - would be kinder | Phase 10 step 5 | **done 2026-09-21** (step 3: a trap, exit 8) |
-| Nested procedures (a procedure declared inside another) were not lowered by the LLVM backend: a declaration or a call was a compile error (2026-09-20; before that a comment in the IR and a program quietly missing the call). `Oberon2.pdf` §10: "procedure declarations may be nested". Done in Phase 11 step 8 (2026-09-20/21): lambda lifting by reference, `doc/nested-procedures.md`; what a program can observe is in `AGENTS.md` ("Nested procedures") | Phase 10 step 6; found 2026-09-20 | **done** |
+| Nested procedures (a procedure declared inside another) were not lowered by the LLVM backend: a declaration or a call was a compile error (2026-09-20; before that a comment in the IR and a program quietly missing the call). `Oberon2.pdf` §10: "procedure declarations may be nested". Done in Phase 11 step 8 (2026-09-20/21): lambda lifting by reference, `doc/developer/nested-procedures.md`; what a program can observe is in `AGENTS.md` ("Nested procedures") | Phase 10 step 6; found 2026-09-20 | **done** |
 | `LONG`/`SHORT` reject `SYSTEM.INT8..INT64` ("requires a SHORTINT, INTEGER, or REAL argument"); voc's go by size along the model's chain (`OPT.ShorterOrLongerType`) | Phase 10 step 8 (fixed-width `INTn`, 2026-09-20) | gap |
 | Under `-OC` an `INT8` met by an integer literal in an expression (`b + 1`) is a `SHORTINT` - the literal's own type is at least two bytes there - and cannot be assigned back to an `INT8` without `SYSTEM.VAL` | Phase 10 step 8 (fixed-width `INTn`) | done 2026-09-21 (step 3) |
 | `SYSTEM.SET32` is `SET` (the `-O2` width, 64 bits under `-OC`) and there is no `SET64`: the fixed-width sets `INT8..INT64` got | Phase 10 step 8 (fixed-width `INTn`); `000-todo.org` | **done 2026-09-21** (step 6, with `HUGESET`) |
@@ -73,7 +73,7 @@ as it stands when the phase starts, and adds what it finds):
    interleave; see "Declaration order" below). Ask the user about the
    items whose intent the file does not pin down (see step 6) before
    spending time on them.
-   - *Done (2026-09-20).* The inventory is `doc/phase-11-inventory.md`: the 27
+   - *Done (2026-09-20).* The inventory is `doc/history/phase-11-inventory.md`: the 27
      rows of the table above (A), five items only the step text names (B),
      thirteen `000-todo.org` entries the table lacks (C) and nine notes from
      Phases 8-10 in neither (D), each with source, owning step, kind and a
@@ -98,13 +98,13 @@ as it stands when the phase starts, and adds what it finds):
      all decided with the user and done: see `000-todo.org`); no change to the deliberately silent
      `SIGFPE`/`SIGSEGV`/`HALT(n)` endings (C6); and surveys of other Oberon
      and Oberon-2 compilers before deciding overflow/underflow behavior (C5,
-     **done 2026-09-21**: `doc/overflow-survey.md`; decided with the user: no new
+     **done 2026-09-21**: `doc/research/overflow-survey.md`; decided with the user: no new
      checks - integer overflow wraps and is documented as doing so, reals are
      IEEE and silent, `DIV`/`MOD` by zero stays `SIGFPE`, `SHORT`/`CHR`/`SET`
      element range stay unchecked, an optional `-r` left to Phase 12 step 1;
      `AGENTS.md` "Overflow, division and reals", fixture `llvm-overflow-wrap`) and
      rule 6 with `ARRAY OF CHAR` assignment (A21, **done 2026-09-21**:
-     `doc/array-assignment-survey.md`; rule 6 stays, voc's array rule is
+     `doc/research/array-assignment-survey.md`; rule 6 stays, voc's array rule is
      adopted for every element type, an open array is never assigned - which
      fixed a defect - and an open source too long for its target traps, exit
      9; `AGENTS.md` "Array assignment"). The remaining items keep
@@ -258,7 +258,7 @@ as it stands when the phase starts, and adds what it finds):
      the same shape (only `Files.Old` was found, by grepping `MAX(LONGINT)`;
      `Files.Mod` compares through `SYSTEM.VAL(HUGEINT, ...)` meanwhile).
    - *Done (2026-09-20): `LONG` and `SHORT` of `SYSTEM.INT8..INT64` and of
-     `HUGEINT`* (also the "`SHORT` rejects a `HUGEINT`" bug, `doc/phase-11-
+     `HUGEINT`* (also the "`SHORT` rejects a `HUGEINT`" bug, `doc/history/phase-11-
      inventory.md` D1). Probed against voc under both models with a matrix
      over every integer type; poc's result types are identical for the eight
      `SYSTEM.INTn`/`HUGEINT` operands (28 rows), and differ only where poc
@@ -287,7 +287,7 @@ as it stands when the phase starts, and adds what it finds):
      INTEGER; B = ARRAY 3 OF A;` on one line was rejected as a forward
      reference: `SemanticActions.ResolveQualidentType` and `ConstantEvaluator.
      LookupBareTypeName` compared only the declaration's line with the use's
-     (`doc/phase-11-inventory.md` D2, found in Phase 9 step 1). Both now call
+     (`doc/history/phase-11-inventory.md` D2, found in Phase 9 step 1). Both now call
      `SymbolTable.DeclaredAtOrAfter`, which compares the column too. voc
      accepts the backward use and rejects the forward one (`B = ARRAY 3 OF A;
      A = INTEGER;`); the self-referencing `S = ARRAY 3 OF S` was reported as
@@ -306,7 +306,7 @@ as it stands when the phase starts, and adds what it finds):
      fixture `llvm-reject-nested-procedure` (since renamed
      `llvm-reject-external-vms`, once nested procedures were lowered).
    - *Nested procedures.* The feature the change above makes visible: now
-     step 8 below, planned in `doc/nested-procedures.md`.
+     step 8 below, planned in `doc/developer/nested-procedures.md`.
    - *Done (2026-09-20): exit status.* `poc` returned 0 whatever happened, so
      `make` and scripts could not tell a failed build from a good one. A
      module-level `failed` in `Poc.Mod` is set at every place a failure is
@@ -418,7 +418,7 @@ as it stands when the phase starts, and adds what it finds):
      `PredeclaredProcedures.Mod`, the LLVM lowering, the `Usage` text and
      `AGENTS.md`'s "the report has no `ASSERT`" note all change; fixtures
      cross-check the two-argument form against voc.
-     **Done 2026-09-25** (user): as recommended, `doc/assert-survey.md` has
+     **Done 2026-09-25** (user): as recommended, `doc/research/assert-survey.md` has
      the survey and the decision - both forms, `n` a constant in 0..255, a
      trap with status 10, a constant FALSE condition a compile-time error,
      no switch, no message-string form; fixtures `llvm-assert`,
@@ -519,11 +519,11 @@ as it stands when the phase starts, and adds what it finds):
    strict instead of relying on convention.
    **`-strict` done 2026-09-25** (user, as recommended): the command-line
    module's own source, not its imports; `make check-strict` over `src/` in
-   `make check`; see `doc/language-extensions.md`, "-strict", for the list,
+   `make check`; see `doc/developer/language-extensions.md`, "-strict", for the list,
    the `SYSTEM.SET64` poc's own source used, and the two leniencies fixed for
    every mode.
    - *Assignment of one `ARRAY OF CHAR` to another, and rule 6.* **Done
-     2026-09-21 (inventory A21):** the survey is `doc/array-assignment-survey.md`;
+     2026-09-21 (inventory A21):** the survey is `doc/research/array-assignment-survey.md`;
      rule 6 stays as it is, voc's array rule is adopted for every element type
      (fixed array no longer than the target, or an open array; whole array
      copied by size; a longer open source is a trap, exit 9), an open array is
@@ -553,7 +553,7 @@ as it stands when the phase starts, and adds what it finds):
      Oberon+), so declarations can sit near the procedures that use them. An
      extension, rejected by `-strict`; a late declaration may not hide a name
      visible from an enclosing scope, and a `POINTER TO` base must be
-     declared before the next procedure. Done: `doc/language-extensions.md`,
+     declared before the next procedure. Done: `doc/developer/language-extensions.md`,
      "Declarations after procedures"; fixtures
      `llvm-declarations-after-procedures`,
      `semantic-reject-declarations-after-procedures`,
@@ -665,7 +665,7 @@ as it stands when the phase starts, and adds what it finds):
      modules from `STARLET.MLB`. **Decided (user, 2026-09-26): both,
      anywhere a letter may be, first included, since STARLET's values and
      fields (`SS$_NORMAL`, `DSC$W_LENGTH`) are not procedures;
-     `-strict` rejects them** (`doc/language-extensions.md`).
+     `-strict` rejects them** (`doc/developer/language-extensions.md`).
 
 7. **An `Err` module.** `rtl/llvm/Err.Mod`, the counterpart of Phase 10's
    `Out`, writing to standard error: the same procedure set, the same
@@ -676,7 +676,7 @@ as it stands when the phase starts, and adds what it finds):
    streams and checks each goes to its own file descriptor.
 
 8. **Nested procedures.** Lower them in the LLVM backend; the full plan, with
-   the design decisions and their reasons, is `doc/nested-procedures.md`. In
+   the design decisions and their reasons, is `doc/developer/nested-procedures.md`. In
    short: they are only ever called by name (`Oberon2.pdf` 6.5 forbids one as a
    procedure value, and the checker enforces it), so none outlives its enclosing
    activation, and **lambda lifting by reference** is enough - each nested
@@ -717,7 +717,7 @@ as it stands when the phase starts, and adds what it finds):
    (also built by `tools/bootstrap/stage0`), `poc -dump-nested`, and six
    `nested-analysis-*` fixtures; poc's own source, which has no nested
    procedure, gives an empty analysis for every file. Left: step 6, `AGENTS.md`
-   and the BSD hosts; see `doc/nested-procedures.md` section 5.
+   and the BSD hosts; see `doc/developer/nested-procedures.md` section 5.
 
 9. **Close-out.** `000-todo.org` is brought up to date entry by entry
    (each item `DONE` with a one-line account, or `DROPPED` with the reason;
@@ -733,7 +733,7 @@ as it stands when the phase starts, and adds what it finds):
    verdict; and no unlabeled "undecided" left anywhere in `PLAN.md`,
    `AGENTS.md` or `000-todo.org`. **Done 2026-09-26; Phase 11 is closed.**
    `000-todo.org`: every entry `DONE` with its account, or open and marked
-   for Phase 12, 13 or 17; every row of `doc/phase-11-inventory.md` has a
+   for Phase 12, 13 or 17; every row of `doc/history/phase-11-inventory.md` has a
    verdict. Gate, on `7831929` (A16 (d), the last code change): `make
    check` (the suite under Stage 0 and Stage 1, the Stage 1/2 fixed point,
    `check-strict`) on atla (Linux x86_64), cymoril (OpenBSD i386, so the

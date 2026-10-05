@@ -267,7 +267,7 @@ MODULE LLVMCodeGenerator;
     arrayAssignTrapGlobal = "@.trap.arrayassign";
     arrayAssignTrapMsg = "open array assigned to an array too short for it";
     arrayAssignTrapExitCode = 9;
-    (* 2026-09-25 (doc/assert-survey.md): a failed ASSERT(x) or ASSERT(x, n).
+    (* 2026-09-25 (doc/research/assert-survey.md): a failed ASSERT(x) or ASSERT(x, n).
        The message carries n when there is one ("assertion failed (42)"), each
        code its own global (Codegen.assertCodes); the status is poc's own, as
        for every trap - voc exits with n, which is 0 for ASSERT(x, 0). *)
@@ -627,7 +627,7 @@ MODULE LLVMCodeGenerator;
          decide "ret void" vs. "ret <type> <value>" (a function
          procedure that reaches its END traps instead: GenerateFunction). *)
       currentProcResultType: Types.Type;
-      (* Phase 11 step 8 (doc/nested-procedures.md): the procedures declared
+      (* Phase 11 step 8 (doc/developer/nested-procedures.md): the procedures declared
          inside the module-level or type-bound procedure being generated, and
          what each needs of its enclosing ones - NIL outside one. A call finds
          a nested procedure's entry here by its Object. *)
@@ -1439,7 +1439,7 @@ MODULE LLVMCodeGenerator;
        than written as a literal: voc 2.1.0 rejects a LONGREAL literal
        whose value is integral and at least 2^31 (2147483648.0D0, 1.0D10
        and 4.5D15 all fail with "Value out of range" - 2147483647.0D0 and
-       1.0D38 do not), see doc/bootstrapping-with-voc.md. *)
+       1.0D38 do not), see doc/developer/bootstrapping-with-voc.md. *)
     twoTo52 := 1.0D0;
     FOR i := 1 TO 52 DO twoTo52 := twoTo52 * 2.0D0 END;
     negative := x < 0.0D0;
@@ -3960,7 +3960,7 @@ MODULE LLVMCodeGenerator;
   END NeedsHiddenTag;
 
   (* The hidden parameters a nested procedure takes for a variable of an
-     enclosing procedure (doc/nested-procedures.md 3.2), one group per entry of
+     enclosing procedure (doc/developer/nested-procedures.md 3.2), one group per entry of
      its needs list, in order, after the ordinary parameters: the variable's
      address as "%up.<k>" for the k-th, then - exactly as an ordinary
      parameter of the same kind is passed - its hidden type tag "%up.<k>.tag"
@@ -3996,7 +3996,7 @@ MODULE LLVMCodeGenerator;
      procedure agree without seeing each other. A smaller one is passed by
      value, as a value parameter is, and an open array by reference, as
      every open array is, but never copied by the procedure (BindFormal-
-     Params). doc/language-extensions.md, "Read-only parameters". *)
+     Params). doc/developer/language-extensions.md, "Read-only parameters". *)
   PROCEDURE ReadOnlyByReference(VAR cg: Codegen; p: Types.Param): BOOLEAN;
     CONST byValueLimit = 16;
   BEGIN
@@ -4522,7 +4522,7 @@ MODULE LLVMCodeGenerator;
   END GenerateOrdinaryCall;
 
   (* "@Module.Outer.Inner": the function a nested procedure is lifted to
-     (doc/nested-procedures.md 3.4) - the module, then the chain of procedure
+     (doc/developer/nested-procedures.md 3.4) - the module, then the chain of procedure
      names from the module-level one inward (a type-bound one is Type.Method),
      which NestedProcedures records as pathName. Identifiers hold no dot, so
      no module-level name can collide with it. *)
@@ -5183,7 +5183,7 @@ MODULE LLVMCodeGenerator;
   (* ASSERT(x) / ASSERT(x, n) (PredeclaredProcedures.CheckAssert): the
      condition is evaluated, and when it is FALSE the program writes the
      message and stops with assertTrapExitCode. Always generated - there is
-     no switch to leave it out (doc/assert-survey.md). *)
+     no switch to leave it out (doc/research/assert-survey.md). *)
   PROCEDURE GenerateAssert(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
       cond: Value; v: Types.Value; code: INTEGER;
@@ -5640,7 +5640,7 @@ MODULE LLVMCodeGenerator;
 
      A literal is made as a variable is - zeroed, then every field
      initializer - and then its elements are assigned in the order they are
-     written (doc/language-extensions.md, "Record and array literals"). It
+     written (doc/developer/language-extensions.md, "Record and array literals"). It
      is made in a stack slot of its own, allocated in the function's entry
      block (CollectLiteralTemps), and used from there: loaded as a value, or
      its address passed to an open array or copied from. A literal without
@@ -7014,7 +7014,7 @@ MODULE LLVMCodeGenerator;
   END CollectFromRecord;
 
   (* The WITH branches only pick out what to recurse on; the recursive
-     call itself happens after the WITH ends (doc/bootstrapping-with-voc.md
+     call itself happens after the WITH ends (doc/developer/bootstrapping-with-voc.md
      has the voc bug: a procedure calling itself from inside its own WITH branch is
      misdiagnosed as a bad argument). *)
   PROCEDURE CollectRecordTypes(VAR cg: Codegen; t: Types.Type);
@@ -7364,7 +7364,7 @@ MODULE LLVMCodeGenerator;
   END CollectLiteralElements;
 
   (* child1/child2 exist only to route the two recursive-descent cases
-     (Unary/Binary) around a real voc bug (doc/bootstrapping-with-voc.md):
+     (Unary/Binary) around a real voc bug (doc/developer/bootstrapping-with-voc.md):
      a procedure calling *itself* from inside one of its own WITH
      branches is misdiagnosed "incompatible assignment", even when the
      argument's type is fine - calling a *different* procedure from a
@@ -7781,7 +7781,7 @@ MODULE LLVMCodeGenerator;
      here, because OpenProcedureBodyScope makes fresh Objects on every call
      and every backend binding is keyed by Object identity, so anything that
      looks at pd's variables before the body is generated (the nested-
-     procedure analysis, doc/nested-procedures.md) must share the one scope
+     procedure analysis, doc/developer/nested-procedures.md) must share the one scope
      with it. The trailing "ret" after GenerateState-
      mentSeq is unconditional, the same way Generate*'s own "_init" body
      already unconditionally appends "ret void" after its own
@@ -7837,7 +7837,7 @@ MODULE LLVMCodeGenerator;
 
   (* A module-level or type-bound procedure's functions: first one for every
      procedure declared inside it, at any depth, then its own (Oberon2.pdf 10:
-     "procedure declarations may be nested"; doc/nested-procedures.md 3.5).
+     "procedure declarations may be nested"; doc/developer/nested-procedures.md 3.5).
      The nested ones go first because the IR is written in one pass and a
      function cannot be started in the middle of another; LLVM does not care
      about the order of the functions of a module. A nested procedure that

@@ -16,7 +16,7 @@ complete: CONST and TYPE declarations are resolved against a real scope,
 with full constant folding over the basic types (§6.1) and the numeric
 inclusion hierarchy; VAR (§7) and PROCEDURE (§10) declarations are left
 for Phase 5/6 per `PLAN.md`'s phase-to-section map. `HUGEINT` (see
-`doc/language-extensions.md`) was added on top of this
+`doc/developer/language-extensions.md`) was added on top of this
 afterward, requiring `tools/bootstrap/stage0` to switch to voc's `-OC`
 build flag for adequate host-integer storage. Phase 4 (`Types.Mod`'s
 array/record/procedure forms, new `MemoryLayout.Mod`, `Poc.Mod`
@@ -86,7 +86,7 @@ parameter-list checking (§10, §10.1 - `Types.ArrayCompatible*`/
 §10.3 predeclared-procedure vocabulary (20 names, confirmed against the
 report's own table, which has no `ASSERT`), and the grammar/resolution
 side of the already-decided external-procedure-declaration syntax (see
-`doc/language-extensions.md`, "External procedures"). `poc -check` now type-checks almost any
+`doc/developer/language-extensions.md`, "External procedures"). `poc -check` now type-checks almost any
 single-module Oberon-2 program, `PLAN.md`'s own Phase 5 milestone
 finally reached in full. Implementing Appendix A's "matching formal
 parameter lists" surfaced a genuine, previously-undetected gap: the

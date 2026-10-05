@@ -27,7 +27,7 @@ questions" - <name> means the entry of that name here.
   would be more useful at a call site than an opaque integer code. Not
   scheduled to any phase yet.
   **Decided 2026-09-25** (user): poc has `ASSERT(x)` and `ASSERT(x, n)`;
-  `doc/assert-survey.md` has the survey (which also covers Ofront, OfrontPlus,
+  `doc/research/assert-survey.md` has the survey (which also covers Ofront, OfrontPlus,
   BlackBox, A2, obc, oo2c and OBNC) and the decision. One correction to the
   text above, found probing it: voc exits with 255, not 0, when there is no
   code or it is 0.
@@ -355,7 +355,7 @@ questions" - <name> means the entry of that name here.
   **Extended 2026-09-25 (Phase 11 A22, with the user):** sections may now
   also follow procedures, poc's extension; declare-before-use is unchanged.
   `SemanticActions.CheckDeclarations` merges the procedures into the same
-  textual-order walk. `doc/language-extensions.md`, "Declarations after
+  textual-order walk. `doc/developer/language-extensions.md`, "Declarations after
   procedures", has what a program can observe.
 
   Two real correctness gaps surfaced while implementing this, both fixed

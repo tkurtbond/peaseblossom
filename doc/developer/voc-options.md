@@ -19,7 +19,7 @@ wins.
 | Option | voc's meaning | poc | Why |
 |---|---|---|---|
 | `-p` | Local pointers start NIL (on by default) | not applicable | Every variable starts at zero in poc, locals included (Phase 11 D16), so pointers and procedure values always start NIL; no switch turns it off. `voc -p` (off) left a local pointer holding a previous call's garbage |
-| `-a` | Halt on a failed `ASSERT` (on by default) | not adopted | `ASSERT` is always on (Phase 11 A14, `doc/assert-survey.md`); decided again 2026-09-27: poc has no switch to turn a check off |
+| `-a` | Halt on a failed `ASSERT` (on by default) | not adopted | `ASSERT` is always on (Phase 11 A14, `doc/research/assert-survey.md`); decided again 2026-09-27: poc has no switch to turn a check off |
 | `-r` | Halt on a range failure (off by default): `SHORT` of an integer and `CHR` that do not fit, Halt(-8) "Value out of range" | **adopted as `-range-checks`** | Off by default, as in voc. Traps with status 14 (`SHORT argument out of range`, `CHR argument out of range`). `SHORT` of a `LONGREAL` is not checked, as in voc. voc's `-r` also covers `SHORT` of its larger set types, which poc's `SHORT` does not take. Fixture `llvm-range-checks`. Differs from voc on purpose: `CHR` of a negative value traps, where `voc -r` lets it through (its `__R` macro compares signed; only `__CHRF`, used for an argument with side effects, compares unsigned) |
 | `-t` | Halt on a failed type guard (on by default), and on the implicit guard of a record assignment (Halt(-6)) | not adopted | The type guard is always on in poc. The record-assignment check, which poc lacked, is now always on too (status 13, below) |
 | `-x` | Halt on an index out of range (on by default) | not adopted | Always on in poc (status 2) |

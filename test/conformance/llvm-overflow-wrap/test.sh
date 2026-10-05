@@ -1,6 +1,6 @@
 #!/bin/sh
 . ../../testenv.sh
-# Wraparound, floored DIV/MOD and silent IEEE reals (doc/overflow-survey.md):
+# Wraparound, floored DIV/MOD and silent IEEE reals (doc/research/overflow-survey.md):
 # voc does the same, so voc's output under each size model is the reference and
 # poc must print it too.  voc runs first and its files go before poc starts:
 # poc leaves .sym files in the working directory, which voc would find and

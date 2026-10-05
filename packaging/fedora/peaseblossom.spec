@@ -52,7 +52,7 @@ models, -O2 and -OC, and the User's Guide and Reference Guide.
 %autosetup
 
 %build
-# poc runs clang itself with its own options (doc/llvm-toolchain.md), so
+# poc runs clang itself with its own options (doc/developer/llvm-toolchain.md), so
 # the distribution's CFLAGS and LDFLAGS do not reach it
 make installable
 

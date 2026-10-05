@@ -1,6 +1,6 @@
 #!/bin/sh
 . ../../testenv.sh
-# voc's array assignment (doc/array-assignment-survey.md): voc does the same,
+# voc's array assignment (doc/research/array-assignment-survey.md): voc does the same,
 # so voc's output under each size model is the reference and poc must print it
 # too.  voc runs first and its files go before poc starts: poc leaves .sym
 # files in the working directory, which voc would find and reject as not its

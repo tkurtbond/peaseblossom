@@ -100,7 +100,7 @@ shells out to these rather than linking against LLVM's own C++ API.
   makes `-build` pass clang `-O<level>`, one of `0`, `1`, `2`, `3`, `s`, `z`,
   `g` (not `-O<level>` itself: poc's `-O2`/`-OC` are voc's size-model flags).
   The default is `-O2`, but `-O0` for 32-bit x86, whose reals are x87
-  arithmetic (`doc/language-extensions.md`, "Overflow, division and reals";
+  arithmetic (`doc/developer/language-extensions.md`, "Overflow, division and reals";
   poc must run on a Pentium II, so no SSE2). `SYSTEM.GET`/`PUT`/`MOVE` are
   volatile, so an optimized build keeps them. `make check-opt2` builds
   everything at `-O2`, Stage 1/2 included (in `build/opt2`).

@@ -1,6 +1,6 @@
 # voc-inventory
 
-Generates the tables of `doc/voc-module-inventory.md` (PLAN.md Phase 12
+Generates the tables of `doc/research/voc-module-inventory.md` (PLAN.md Phase 12
 step 3): one row for each of the 161 `.Mod` files of Vishap Oberon's
 runtime, libraries and tools.
 

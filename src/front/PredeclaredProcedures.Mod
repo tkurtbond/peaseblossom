@@ -490,7 +490,7 @@ MODULE PredeclaredProcedures;
   END CheckInclExcl;
 
   (* ASSERT(x) and ASSERT(x, n) - not in Oberon2.pdf; poc's extension,
-     decided 2026-09-25 (doc/assert-survey.md; AGENTS.md, "ASSERT"). x is a
+     decided 2026-09-25 (doc/research/assert-survey.md; AGENTS.md, "ASSERT"). x is a
      BOOLEAN expression and n an integer constant in 0..255, as in voc (errs
      120, 69, 218), Component Pascal and oo2c. A condition that is a
      constant FALSE is an error, as in voc (err 99) and A2: the compiler can

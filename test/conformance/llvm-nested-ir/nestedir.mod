@@ -1,5 +1,5 @@
 MODULE nestedir;
-  (* Golden IR of the nested-procedure lowering (doc/nested-procedures.md): the
+  (* Golden IR of the nested-procedure lowering (doc/developer/nested-procedures.md): the
      hidden trailing parameters, in the analysis's order - a plain variable's
      address, a VAR record's address and type tag, an open array's address and
      lengths - the symbol of a nested function, a call from the enclosing
