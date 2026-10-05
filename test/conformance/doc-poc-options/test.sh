@@ -1,7 +1,7 @@
 #!/bin/sh
 . ../../testenv.sh
 # Phase 13 step 9: every option poc accepts - each string Poc.Mod compares
-# an argument with - appears in the usage text (poc with no arguments),
+# an argument with - appears in the usage text (poc -help),
 # in poc(1) (doc/poc.1, as ".Fl <name>") and in the Reference Guide
 # (doc/reference-guide.md, in backquotes). Each one missing is a line of
 # result. -build and -o must be among those found, so that a change to how
@@ -10,7 +10,7 @@ root=../../..
 # grep -E: OpenBSD's grep has no \| in a basic expression
 options=$(grep -Eo '(option|arg) = "-+[A-Za-z][-A-Za-z0-9]*"' $root/src/driver/Poc.Mod |
   sed 's/.*"\(.*\)"/\1/' | sort -u)
-usage=$(poc 2>&1)
+usage=$(poc -help 2>&1)
 : >result
 for required in -build -o; do
   printf '%s\n' "$options" | grep -qx -- "$required" || echo "not found in Poc.Mod: $required" >>result

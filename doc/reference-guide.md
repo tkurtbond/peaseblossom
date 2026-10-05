@@ -471,12 +471,20 @@ number, on the standard error stream.
 | `-show-interface <file>` | Prints the module's interface on the standard output. |
 | `-emit-llvm-ir <file>` | Writes the module's LLVM IR, `<Module>.ll`. |
 | `-version` | Prints poc's version and the commit it was built from, the target and size model, and clang's version. |
-| `-help`, `-h`, `--help` | A summary of the commands and options, on the standard output. |
+| `-help`, `-h`, `--help` | Every command and option, on the standard output, with the commands for testing poc itself in a section of their own at the end. |
 | `-print-import-path`, `-print-library-path` | Prints the import path or the library path, as the options before it leave it, one directory a line. |
 
-`poc` with no arguments prints every command and option, the development
-ones too (`-dump-tokens`, `-check-syntax`, `-dump-layout`,
-`-dump-llvm-types`, `-dump-nested`), which are for testing poc itself.
+`poc` with no arguments prints the same list on the standard error, and
+fails. A command line poc cannot use - an unknown option, a command
+without its file, or options with no file or command after them - gets
+one line saying what is wrong, and a pointer to `-help`:
+
+    $ poc -x
+    poc: unknown option -x
+    run poc -help for the commands and options
+
+The commands for testing poc itself are `-dump-tokens`, `-check-syntax`,
+`-dump-layout`, `-dump-llvm-types` and `-dump-nested`.
 
 ### Options
 

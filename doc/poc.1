@@ -145,14 +145,23 @@ and the commit it was built from, the target and size model, and the
 version of
 .Xr clang 1 .
 .It Fl help , Fl h , Fl -help
-Print a summary of the commands and options on the standard output.
+List every command and option on the standard output, with those for
+testing
+.Nm
+itself in a section of their own at the end.
 .El
 .Pp
 .Nm
-with no arguments lists every command and option on the standard error,
-including commands for testing
+with no arguments prints the same list on the standard error, and fails.
+A command line
 .Nm
-itself:
+cannot use \(em an unknown option, a command without its file, or
+options with no file or command after them \(em gets one line saying what
+is wrong, and a pointer to
+.Fl help .
+The commands for testing
+.Nm
+itself are
 .Fl dump-tokens ,
 .Fl check-syntax ,
 .Fl dump-layout ,

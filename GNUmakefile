@@ -120,10 +120,10 @@ check:
 # default elsewhere. The suite with every fixture's build optimized (a poc
 # wrapper that adds -opt 2), then Stage 1 and Stage 2 built optimized in
 # build/opt2 and compared, then the suite under that Stage 1.
-# poc-exit-status, poc-output-streams and poc-opt-level test poc's command
-# line, which the wrapper changes, so they are left out. So are the fixtures
-# whose exact real results x87 arithmetic changes when optimized (the
-# reason for the -O0 default): llvm-out-extra and llvm-math-extra on a
+# poc-exit-status, poc-output-streams, poc-opt-level and poc-usage test
+# poc's command line, which the wrapper changes, so they are left out. So
+# are the fixtures whose exact real results x87 arithmetic changes when
+# optimized (the reason for the -O0 default): llvm-out-extra and llvm-math-extra on a
 # 32-bit x86 host, and llvm-i686-runtime, which reruns them for 32-bit x86,
 # on a 32-bit x86 host or a BSD (Linux i686 has SSE2). Each suite's poc has
 # poc-rtl built optimized in its own ../lib/poc (Phase 12 steps 2d, 2e), as
@@ -133,7 +133,7 @@ check:
 OPT2_DIR := $(abspath $(BUILD_DIR)/opt2)
 OPT2_HOST_X87 := $(filter i386 i486 i586 i686,$(shell uname -m))
 OPT2_HOST_BSD := $(filter-out Linux,$(shell uname -s))
-OPT2_SKIP := poc-exit-status poc-output-streams poc-opt-level \
+OPT2_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-usage \
   $(if $(OPT2_HOST_X87),llvm-out-extra llvm-math-extra) \
   $(if $(OPT2_HOST_X87)$(OPT2_HOST_BSD),llvm-i686-runtime)
 OPT2_TESTS := $(filter-out $(OPT2_SKIP),$(ALL_TESTS))
@@ -171,7 +171,7 @@ check-opt2: build
 # against builds without it.
 LTO_DIR := $(abspath $(BUILD_DIR)/lto)
 LTO_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-link-flags \
-  llvm-libraries llvm-using-modules llvm-debug-info llvm-libraries-i686 \
+  poc-usage llvm-libraries llvm-using-modules llvm-debug-info llvm-libraries-i686 \
   llvm-lto
 LTO_TESTS := $(filter-out $(LTO_SKIP),$(ALL_TESTS))
 check-lto: build

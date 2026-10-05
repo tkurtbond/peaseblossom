@@ -33,7 +33,7 @@ run -frobnicate ok.mod
 run
 # Phase 13 step 1: the version, the target and size model, and clang's version
 run -version
-# Phase 13 step 2: a short summary, on standard output
+# Phase 13 step 2, and 2026-10-05: every command and option, on standard output
 run -help
 run -print-import-path
 rm -f stdout.txt stderr.txt prog ok ok.o ok.ll ok.sym

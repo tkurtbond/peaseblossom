@@ -58,10 +58,11 @@ MODULE Poc;
      the checked module/scope entirely - see that module's own header
      comment.
 
-     Phase 11 D11: errors, error counts, failures and the usage text go to
-     standard error (Err), as gcc's and clang's do; standard output (Out)
-     carries only what a command was asked to produce - a dump, an
-     interface, the import path, and the "syntax OK"/"semantic OK" lines. *)
+     Phase 11 D11: errors, error counts, failures, the message about a bad
+     command line and the list poc with no arguments prints go to standard
+     error (Err), as gcc's and clang's do; standard output (Out) carries
+     only what a command was asked to produce - a dump, an interface, the
+     import path, the "syntax OK"/"semantic OK" lines, -help's list. *)
 
   IMPORT Modules, Files, Out, Err, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
@@ -84,6 +85,9 @@ MODULE Poc;
        what makes the process exit with status 1 (below, after Run). Until
        2026-09-20 poc always exited 0, so make and scripts could not tell. *)
     failed: BOOLEAN;
+    (* Help writes on the standard error, not the standard output (poc with
+       no arguments) *)
+    helpToErr: BOOLEAN;
     (* -check, -emit-interface and -show-interface: imports come only from
        .sym files, a library's included, never compiled from source *)
     importsFromSymOnly: BOOLEAN;
@@ -1808,109 +1812,78 @@ MODULE Poc;
     Out.String("installed library "); Out.String(name); Out.String(" in "); Out.String(dir); Out.Ln
   END InstallLibrary;
 
-  (* poc -help (Phase 13 step 2): what most people need, on standard
-     output; the whole list is the usage text, and poc(1) *)
+  (* a line of Help, on the stream helpToErr chooses *)
+  PROCEDURE HelpLine(line: ARRAY OF CHAR);
+  BEGIN
+    IF helpToErr THEN Err.String(line); Err.Ln ELSE Out.String(line); Out.Ln END
+  END HelpLine;
+
+  (* poc -help (Phase 13 step 2), and poc with no arguments: every command
+     and option, those for testing poc itself last. poc(1) and the
+     Reference Guide explain them. *)
   PROCEDURE Help;
   BEGIN
-    Out.String("usage: poc [options] <file>          build a program: <file>'s module and its imports"); Out.Ln;
-    Out.String("       poc -check <file>             check a module, writing nothing"); Out.Ln;
-    Out.String("       poc -compile <file>...        compile modules to .sym, .ll and .o"); Out.Ln;
-    Out.String("       poc -library <name> <file>... build a library of the modules"); Out.Ln;
-    Out.String("       poc -version                  the version, target and clang"); Out.Ln;
-    Out.Ln;
-    Out.String("options:"); Out.Ln;
-    Out.String("  -o <exe>              the executable (default: the module's name)"); Out.Ln;
-    Out.String("  -import-path <dir>    look for imported modules in <dir> too"); Out.Ln;
-    Out.String("  -library-path <dir>   look for libraries in <dir> too"); Out.Ln;
-    Out.String("  -output-dir <dir>     write .sym, .ll and .o files in <dir>"); Out.Ln;
-    Out.String("  -O2 | -OC             size model: INTEGER 16 or 32 bits, LONGINT 32 or 64"); Out.Ln;
-    Out.String("  -g                    debug information for gdb and lldb"); Out.Ln;
-    Out.String("  -opt <level>          clang's optimization level (default 2)"); Out.Ln;
-    Out.String("  -trap-location        a trap's message names its file, line and procedure"); Out.Ln;
-    Out.String("  -range-checks         SHORT and CHR of a value that does not fit trap"); Out.Ln;
-    Out.String("  -strict               only the Oberon-2 report: no extensions"); Out.Ln;
-    Out.String("  -static               link a fully static executable"); Out.Ln;
-    Out.String("  -shared-libraries     link libraries dynamically"); Out.Ln;
-    Out.String("  -link <arg>           pass <arg> to the link (-lz, -L<dir>)"); Out.Ln;
-    Out.String("  -c-flag <arg>         pass <arg> to clang for a module's C part"); Out.Ln;
-    Out.String("  -target <triple>      compile for another target"); Out.Ln;
-    Out.String("  -verbose              print the commands poc runs"); Out.Ln;
-    Out.Ln;
-    Out.String("poc with no arguments lists every command and option; poc(1) explains them."); Out.Ln
+    HelpLine("usage: poc [option]... <file>       build a program from <file>'s module");
+    HelpLine("       poc [option]... <command>");
+    HelpLine("");
+    HelpLine("commands:");
+    HelpLine("  -build <file>              build a program, as poc <file> does");
+    HelpLine("  -check <file>              check a module, writing nothing");
+    HelpLine("  -compile <file>...         compile modules to .sym, .ll and .o, not linked");
+    HelpLine("  -library <name> <file>...  build the library <name> of the modules");
+    HelpLine("  -install-library <name>    install the library <name> from the library path");
+    HelpLine("  -emit-interface <file>     write the module's interface, <Module>.sym");
+    HelpLine("  -show-interface <file>     print the module's interface");
+    HelpLine("  -emit-llvm-ir <file>       write the module's LLVM IR, <Module>.ll");
+    HelpLine("  -print-import-path         print the import path, a directory a line");
+    HelpLine("  -print-library-path        print the library path, a directory a line");
+    HelpLine("  -version                   print poc's version, the target and clang's");
+    HelpLine("  -help, -h, --help          print this");
+    HelpLine("");
+    HelpLine("options, before the command (the last one counts, except those that add):");
+    HelpLine("  -o <exe>                   the executable (default: the module's name)");
+    HelpLine("  -output-dir <dir>          write .sym, .ll, .o files and libraries in <dir>");
+    HelpLine("  -import-path <dir>         add <dir> to the import path");
+    HelpLine("  -clear-import-path         forget the import path so far");
+    HelpLine("  -library-path <dir>        add <dir> to the library path");
+    HelpLine("  -clear-library-path        forget the library path so far, poc's own too");
+    HelpLine("  -O2 | -OC                  size model: INTEGER 16/32 bits, LONGINT 32/64");
+    HelpLine("  -strict                    only the Oberon-2 report: no extensions");
+    HelpLine("  -g                         debug information for gdb and lldb");
+    HelpLine("  -opt <level>               clang's -O: 0-3 s z g (default 2, 0 on 32-bit x86)");
+    HelpLine("  -lto                       optimize the whole program when it is linked");
+    HelpLine("  -trap-location             a trap's message names its file, line, procedure");
+    HelpLine("  -trap-heap-exhausted       a NEW that finds no memory stops the program");
+    HelpLine("  -range-checks              SHORT and CHR of a value that does not fit trap");
+    HelpLine("  -static                    link a fully static executable");
+    HelpLine("  -shared-libraries          link libraries dynamically");
+    HelpLine("  -link <arg>                add <arg> to the link (-lz, -L<dir>)");
+    HelpLine("  -c-flag <arg>              add <arg> to clang's flags for a module's C part");
+    HelpLine("  -target <triple>           compile for another target");
+    HelpLine("  -verbose                   print the commands poc runs");
+    HelpLine("");
+    HelpLine("environment:");
+    HelpLine("  POC_IMPORT_PATH            the import path to start from (dir:dir:...)");
+    HelpLine("  POC_LIBRARY_PATH           library path after -library-path (dir:dir:...)");
+    HelpLine("");
+    HelpLine("for testing poc itself:");
+    HelpLine("  -dump-tokens <file>        print the module's tokens");
+    HelpLine("  -check-syntax <file>       parse the module only");
+    HelpLine("  -dump-layout <file>        print the memory layout of its records");
+    HelpLine("  -dump-llvm-types <file>    print the LLVM type of each of its types");
+    HelpLine("  -dump-nested <file>        print what its nested procedures need");
+    HelpLine("");
+    HelpLine("poc(1) explains each of them.")
   END Help;
 
-  PROCEDURE Usage;
+  (* What was wrong with the command line, in one line, and where to look:
+     not the whole of Help, in which the mistake would be lost *)
+  PROCEDURE BadUsage(what, arg: ARRAY OF CHAR);
   BEGIN
     failed := TRUE;
-    Err.String("usage: poc -dump-tokens <file>"); Err.Ln;
-    Err.String("       poc -check-syntax <file>"); Err.Ln;
-    Err.String("       poc -check <file>"); Err.Ln;
-    Err.String("       poc -dump-layout <file>"); Err.Ln;
-    Err.String("       poc -dump-llvm-types <file>"); Err.Ln;
-    Err.String("       poc -dump-nested <file>"); Err.Ln;
-    Err.String("       poc -emit-interface <file>"); Err.Ln;
-    Err.String("       poc -show-interface <file>"); Err.Ln;
-    Err.String("       poc -emit-llvm-ir <file>"); Err.Ln;
-    Err.String("       poc [-o <exe>] [-build] <file>"); Err.Ln;
-    Err.String("       poc -library <name> <file>..."); Err.Ln;
-    Err.String("       poc -compile <file>..."); Err.Ln;
-    Err.String("       poc -install-library <name>"); Err.Ln;
-    Err.String("       poc [-import-path <dir> | -clear-import-path]... -print-import-path"); Err.Ln;
-    Err.String("       poc [-library-path <dir> | -clear-library-path]... -print-library-path"); Err.Ln;
-    Err.String("       poc [-target <triple>] [-O2 | -OC] -version"); Err.Ln;
-    Err.String("       poc -help (or -h, --help)"); Err.Ln;
-    Err.String("       -import-path <dir> and -clear-import-path may also precede any"); Err.Ln;
-    Err.String("       command above; POC_IMPORT_PATH seeds the list (colon-separated)"); Err.Ln;
-    Err.String("       before any flags are applied"); Err.Ln;
-    Err.String("       -output-dir <dir> may also precede -emit-interface or"); Err.Ln;
-    Err.String("       -emit-llvm-ir, to write <ModuleName>.sym/.ll there instead of the"); Err.Ln;
-    Err.String("       current directory"); Err.Ln;
-    Err.String("       -O2 | -OC may also precede any command above, selecting the"); Err.Ln;
-    Err.String("       elementary-type size model MAX(T)/MIN(T)/SIZE(T) and integer"); Err.Ln;
-    Err.String("       literals fold against (default -O2); a later one wins"); Err.Ln;
-    Err.String("       -target <triple> may precede -emit-llvm-ir or -build, selecting the"); Err.Ln;
-    Err.String("       LLVM target triple (default: clang's own default for this host);"); Err.Ln;
-    Err.String("       it may also precede -emit-interface or -show-interface, to fold"); Err.Ln;
-    Err.String("       SIZE(T)/MAX(T)/MIN(T)"); Err.Ln;
-    Err.String("       for that target's word size (default: no effect, no clang needed)"); Err.Ln;
-    Err.String("       -o <exe> may precede -build, giving the executable's output path"); Err.Ln;
-    Err.String("       (default: the program module's name, in the current directory)"); Err.Ln;
-    Err.String("       -opt <level> may precede -build: clang builds with -O<level>,"); Err.Ln;
-    Err.String("       <level> one of 0, 1, 2, 3, s, z, g (default 2; 0 for 32-bit x86)"); Err.Ln;
-    Err.String("       -trap-heap-exhausted may precede -emit-llvm-ir or -build: a NEW"); Err.Ln;
-    Err.String("       the heap cannot satisfy stops the program (exit status 11)"); Err.Ln;
-    Err.String("       instead of leaving the pointer NIL"); Err.Ln;
-    Err.String("       -trap-location may precede -emit-llvm-ir or -build: a trap's message"); Err.Ln;
-    Err.String("       starts with its file:line:column and names its procedure"); Err.Ln;
-    Err.String("       -g may precede -emit-llvm-ir, -build or -library: debug information for"); Err.Ln;
-    Err.String("       gdb and lldb (source lines, procedures, variables); best with -opt 0 or"); Err.Ln;
-    Err.String("       -opt g; libraries are built in, and looked for first in, <triple>/<O2|OC>-g"); Err.Ln;
-    Err.String("       -range-checks may precede -emit-llvm-ir or -build: SHORT of an integer"); Err.Ln;
-    Err.String("       and CHR stop the program (exit status 14) when the value does not fit"); Err.Ln;
-    Err.String("       -static may precede -build: link a fully static executable"); Err.Ln;
-    Err.String("       -lto may precede -build, -library or -compile: compile to LLVM bitcode"); Err.Ln;
-    Err.String("       and optimize the whole program when it is linked; a .sym/.ll pair is"); Err.Ln;
-    Err.String("       taken before its .o"); Err.Ln;
-    Err.String("       -link <arg> may precede -build, and be repeated: pass <arg> (-lz,"); Err.Ln;
-    Err.String("       -L<dir>, ...) to the link"); Err.Ln;
-    Err.String("       -c-flag <arg> may precede -build, -library or -compile, and be"); Err.Ln;
-    Err.String("       repeated: pass <arg> (-I<dir>, -D<name>, ...) to clang when it"); Err.Ln;
-    Err.String("       compiles a module's C part, <Module>.c beside <Module>.Mod"); Err.Ln;
-    Err.String("       -verbose may precede -build or -library: print the commands it runs"); Err.Ln;
-    Err.String("       -library builds the modules of the files named into the library"); Err.Ln;
-    Err.String("       <name>, in <output-dir>/<triple>/<O2|OC>/; -library-path <dir>,"); Err.Ln;
-    Err.String("       repeatable, then POC_LIBRARY_PATH (colon-separated), then poc's"); Err.Ln;
-    Err.String("       ../lib/poc, are searched for libraries: a module one has is taken"); Err.Ln;
-    Err.String("       from it, not compiled; -clear-library-path leaves all of them out"); Err.Ln;
-    Err.String("       -compile compiles the modules of the files named to .sym, .ll and .o,"); Err.Ln;
-    Err.String("       in <output-dir>, and links nothing: given as a .sym and .o or .ll on"); Err.Ln;
-    Err.String("       the import path, or to -library, a module needs no source"); Err.Ln;
-    Err.String("       -install-library copies the library <name> from the library path into"); Err.Ln;
-    Err.String("       <output-dir>/<triple>/<O2|OC>/, or without -output-dir poc's ../lib/poc"); Err.Ln;
-    Err.String("       -shared-libraries may precede -build: link the libraries dynamically"); Err.Ln;
-    Err.String("       -strict may precede any command above: the module named rejects"); Err.Ln;
-    Err.String("       everything beyond the Oberon-2 report (its imports are not checked)"); Err.Ln
-  END Usage;
+    Err.String("poc: "); Err.String(what); Err.String(arg); Err.Ln;
+    Err.String("run poc -help for the commands and options"); Err.Ln
+  END BadUsage;
 
   (* IMPORT search-path CLI surface (PLAN.md's "Open design questions" -
      IMPORT search path): -import-path/-clear-import-path only affect
@@ -1941,6 +1914,15 @@ MODULE Poc;
     IF value[0] # 0X THEN ModuleInterface.AddSearchPathList(value) END
   END InitImportPathFromEnvironment;
 
+  (* whether option is a command RunCommand runs on a file *)
+  PROCEDURE IsFileCommand(option: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN (option = "-dump-tokens") OR (option = "-check-syntax") OR (option = "-check")
+      OR (option = "-dump-layout") OR (option = "-dump-llvm-types") OR (option = "-dump-nested")
+      OR (option = "-emit-interface") OR (option = "-show-interface") OR (option = "-emit-llvm-ir")
+      OR (option = "-build")
+  END IsFileCommand;
+
   PROCEDURE RunCommand(option, fileName, outputDir, targetTriple, exePath: ARRAY OF CHAR);
   BEGIN
     IF option = "-dump-tokens" THEN
@@ -1964,7 +1946,7 @@ MODULE Poc;
     ELSIF option = "-build" THEN
       Build(fileName, outputDir, targetTriple, exePath)
     ELSE
-      Usage
+      BadUsage("unknown option ", option)
     END
   END RunCommand;
 
@@ -1980,7 +1962,8 @@ MODULE Poc;
     ModuleInterface.libraryLookup := LibraryInterfaceDir;
     ModuleInterface.explainMissingModule := ExplainMissingModule;
     IF Modules.ArgCount < 2 THEN
-      Usage
+      (* every command and option, as an error *)
+      failed := TRUE; helpToErr := TRUE; Help
     ELSE
       i := 1;
       outputDir[0] := 0X;
@@ -2192,20 +2175,22 @@ MODULE Poc;
           IF i + 1 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, param);
             RunCommand(arg, param, outputDir, targetTriple, exePath)
+          ELSIF IsFileCommand(arg) THEN
+            BadUsage(arg, " requires a file")
           ELSE
-            Usage
+            BadUsage("unknown option ", arg)
           END;
           done := TRUE
         END
       END;
-      (* flags and no command after them (Phase 12 step 1): say how to use
-         poc, not succeed having done nothing *)
-      IF ~done THEN Usage END
+      (* flags and no command after them (Phase 12 step 1): say so, not
+         succeed having done nothing *)
+      IF ~done THEN BadUsage("no file or command after the options", "") END
     END
   END Run;
 
 BEGIN
-  failed := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; libraryPathCleared := FALSE;
+  failed := FALSE; helpToErr := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; libraryPathCleared := FALSE;
   Run;
   IF failed OR (Diagnostics.errorCount > 0) OR (LLVMCodeGenerator.unsupportedCount > 0) THEN
     Platform.Exit(1)

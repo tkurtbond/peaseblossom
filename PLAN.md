@@ -994,6 +994,22 @@ fixed in 526d7ba, are in `doc/history/phases/phase-14.md`.
    version, target and size-model checks (`Libraries.LoadInstalled`), and
    outside the libraries loaded for use. Fixture `llvm-using-modules`.
 
+3. **[fixed] A mistyped option was lost in 70 lines of usage text**
+   (found 2026-10-05 by the user with 0.3.1). `poc -x` printed the whole
+   old usage text - every command, in the "-x may precede -y" style the
+   phases had grown - without saying that `-x` was the trouble; and it was
+   nothing like `-help`'s short summary, which left out user options
+   (`-install-library`, `-lto`, `-trap-heap-exhausted`, the path
+   options). Now `-help` lists every command and option, in one table,
+   with POC_IMPORT_PATH and POC_LIBRARY_PATH and, in a section of their
+   own at the end, the commands for testing poc itself (decided with the
+   user); `poc` with no arguments prints the same on standard error and
+   fails; an unknown option, a command without its file and options with
+   no command after them each get one line saying what is wrong and
+   "run poc -help for the commands and options". `Poc.Usage` is gone
+   (`Help`, `BadUsage`). Fixtures `poc-usage` (rewritten),
+   `poc-output-streams`, `doc-poc-options` (now against `-help`'s list).
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other

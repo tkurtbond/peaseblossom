@@ -1,16 +1,22 @@
 #!/bin/sh
 . ../../testenv.sh
-# Phase 12 step 1: poc with no command prints its usage on stderr and exits
-# with status 1; the text lists every command and flag. Flags with no command
-# after them do the same (until Phase 12 step 1 poc exited with status 0,
-# having done nothing).
+# Phase 12 step 1, and 2026-10-05: poc with no arguments prints -help's
+# list of every command and option on stderr and exits with status 1; a
+# command line poc cannot use gets one line saying what is wrong, and a
+# pointer to -help, not the whole list in which the mistake would be lost:
+# an unknown option, before a file and alone; a command without its file;
+# and flags with no command after them (until Phase 12 step 1 poc exited
+# with status 0, having done nothing).
 poc >result 2>&1
 printf 'exit=%d\n' "$?" >>result
-echo "== flags and no command" >>result
-poc -O2 -static >flags-only 2>&1
-status=$?
+echo "== the same as -help" >>result
+poc -help >help 2>&1
 poc >no-args 2>&1
-if cmp -s flags-only no-args; then echo "the same usage text" >>result; else cat flags-only >>result; fi
-printf 'exit=%d\n' "$status" >>result
-rm -f flags-only no-args
+if cmp -s help no-args; then echo "the same text" >>result; else echo "not the same" >>result; fi
+rm -f help no-args
+for args in "-frobnicate ok.mod" "-frobnicate" "-check" "-O2 -static"; do
+  echo "== poc $args" >>result
+  poc $args >>result 2>&1
+  printf 'exit=%d\n' "$?" >>result
+done
 . ../../testresult.sh

@@ -1,72 +1,70 @@
-usage: poc -dump-tokens <file>
-       poc -check-syntax <file>
-       poc -check <file>
-       poc -dump-layout <file>
-       poc -dump-llvm-types <file>
-       poc -dump-nested <file>
-       poc -emit-interface <file>
-       poc -show-interface <file>
-       poc -emit-llvm-ir <file>
-       poc [-o <exe>] [-build] <file>
-       poc -library <name> <file>...
-       poc -compile <file>...
-       poc -install-library <name>
-       poc [-import-path <dir> | -clear-import-path]... -print-import-path
-       poc [-library-path <dir> | -clear-library-path]... -print-library-path
-       poc [-target <triple>] [-O2 | -OC] -version
-       poc -help (or -h, --help)
-       -import-path <dir> and -clear-import-path may also precede any
-       command above; POC_IMPORT_PATH seeds the list (colon-separated)
-       before any flags are applied
-       -output-dir <dir> may also precede -emit-interface or
-       -emit-llvm-ir, to write <ModuleName>.sym/.ll there instead of the
-       current directory
-       -O2 | -OC may also precede any command above, selecting the
-       elementary-type size model MAX(T)/MIN(T)/SIZE(T) and integer
-       literals fold against (default -O2); a later one wins
-       -target <triple> may precede -emit-llvm-ir or -build, selecting the
-       LLVM target triple (default: clang's own default for this host);
-       it may also precede -emit-interface or -show-interface, to fold
-       SIZE(T)/MAX(T)/MIN(T)
-       for that target's word size (default: no effect, no clang needed)
-       -o <exe> may precede -build, giving the executable's output path
-       (default: the program module's name, in the current directory)
-       -opt <level> may precede -build: clang builds with -O<level>,
-       <level> one of 0, 1, 2, 3, s, z, g (default 2; 0 for 32-bit x86)
-       -trap-heap-exhausted may precede -emit-llvm-ir or -build: a NEW
-       the heap cannot satisfy stops the program (exit status 11)
-       instead of leaving the pointer NIL
-       -trap-location may precede -emit-llvm-ir or -build: a trap's message
-       starts with its file:line:column and names its procedure
-       -g may precede -emit-llvm-ir, -build or -library: debug information for
-       gdb and lldb (source lines, procedures, variables); best with -opt 0 or
-       -opt g; libraries are built in, and looked for first in, <triple>/<O2|OC>-g
-       -range-checks may precede -emit-llvm-ir or -build: SHORT of an integer
-       and CHR stop the program (exit status 14) when the value does not fit
-       -static may precede -build: link a fully static executable
-       -lto may precede -build, -library or -compile: compile to LLVM bitcode
-       and optimize the whole program when it is linked; a .sym/.ll pair is
-       taken before its .o
-       -link <arg> may precede -build, and be repeated: pass <arg> (-lz,
-       -L<dir>, ...) to the link
-       -c-flag <arg> may precede -build, -library or -compile, and be
-       repeated: pass <arg> (-I<dir>, -D<name>, ...) to clang when it
-       compiles a module's C part, <Module>.c beside <Module>.Mod
-       -verbose may precede -build or -library: print the commands it runs
-       -library builds the modules of the files named into the library
-       <name>, in <output-dir>/<triple>/<O2|OC>/; -library-path <dir>,
-       repeatable, then POC_LIBRARY_PATH (colon-separated), then poc's
-       ../lib/poc, are searched for libraries: a module one has is taken
-       from it, not compiled; -clear-library-path leaves all of them out
-       -compile compiles the modules of the files named to .sym, .ll and .o,
-       in <output-dir>, and links nothing: given as a .sym and .o or .ll on
-       the import path, or to -library, a module needs no source
-       -install-library copies the library <name> from the library path into
-       <output-dir>/<triple>/<O2|OC>/, or without -output-dir poc's ../lib/poc
-       -shared-libraries may precede -build: link the libraries dynamically
-       -strict may precede any command above: the module named rejects
-       everything beyond the Oberon-2 report (its imports are not checked)
+usage: poc [option]... <file>       build a program from <file>'s module
+       poc [option]... <command>
+
+commands:
+  -build <file>              build a program, as poc <file> does
+  -check <file>              check a module, writing nothing
+  -compile <file>...         compile modules to .sym, .ll and .o, not linked
+  -library <name> <file>...  build the library <name> of the modules
+  -install-library <name>    install the library <name> from the library path
+  -emit-interface <file>     write the module's interface, <Module>.sym
+  -show-interface <file>     print the module's interface
+  -emit-llvm-ir <file>       write the module's LLVM IR, <Module>.ll
+  -print-import-path         print the import path, a directory a line
+  -print-library-path        print the library path, a directory a line
+  -version                   print poc's version, the target and clang's
+  -help, -h, --help          print this
+
+options, before the command (the last one counts, except those that add):
+  -o <exe>                   the executable (default: the module's name)
+  -output-dir <dir>          write .sym, .ll, .o files and libraries in <dir>
+  -import-path <dir>         add <dir> to the import path
+  -clear-import-path         forget the import path so far
+  -library-path <dir>        add <dir> to the library path
+  -clear-library-path        forget the library path so far, poc's own too
+  -O2 | -OC                  size model: INTEGER 16/32 bits, LONGINT 32/64
+  -strict                    only the Oberon-2 report: no extensions
+  -g                         debug information for gdb and lldb
+  -opt <level>               clang's -O: 0-3 s z g (default 2, 0 on 32-bit x86)
+  -lto                       optimize the whole program when it is linked
+  -trap-location             a trap's message names its file, line, procedure
+  -trap-heap-exhausted       a NEW that finds no memory stops the program
+  -range-checks              SHORT and CHR of a value that does not fit trap
+  -static                    link a fully static executable
+  -shared-libraries          link libraries dynamically
+  -link <arg>                add <arg> to the link (-lz, -L<dir>)
+  -c-flag <arg>              add <arg> to clang's flags for a module's C part
+  -target <triple>           compile for another target
+  -verbose                   print the commands poc runs
+
+environment:
+  POC_IMPORT_PATH            the import path to start from (dir:dir:...)
+  POC_LIBRARY_PATH           library path after -library-path (dir:dir:...)
+
+for testing poc itself:
+  -dump-tokens <file>        print the module's tokens
+  -check-syntax <file>       parse the module only
+  -dump-layout <file>        print the memory layout of its records
+  -dump-llvm-types <file>    print the LLVM type of each of its types
+  -dump-nested <file>        print what its nested procedures need
+
+poc(1) explains each of them.
 exit=1
-== flags and no command
-the same usage text
+== the same as -help
+the same text
+== poc -frobnicate ok.mod
+poc: unknown option -frobnicate
+run poc -help for the commands and options
+exit=1
+== poc -frobnicate
+poc: unknown option -frobnicate
+run poc -help for the commands and options
+exit=1
+== poc -check
+poc: -check requires a file
+run poc -help for the commands and options
+exit=1
+== poc -O2 -static
+poc: no file or command after the options
+run poc -help for the commands and options
 exit=1

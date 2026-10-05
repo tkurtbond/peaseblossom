@@ -186,7 +186,9 @@ shells out to these rather than linking against LLVM's own C++ API.
 - **Building a program** (Phase 13 step 2): `poc <file>` is `poc -build
   <file>`, and without `-o` the executable is named after the module, in
   the current directory. `-build`, `-library` and `-compile` say nothing
-  on success; `-help` is a short summary on standard output.
+  on success; `-help` lists every command and option on standard
+  output (since 2026-10-05; it was a short summary, and a bad command
+  line printed a different, longer list).
 - **RELRO on NetBSD** (Phase 13 step 8, 2026-10-03): poc passes
   `-Wl,-z,relro` when it links a program or a shared library for NetBSD
   (`LLVMToolchainDriver.AppendHardeningOptions`). Plain `clang` and `gcc`
