@@ -62,7 +62,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install seed check-seed dist dist-sign distcheck stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install seed check-seed dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -376,6 +376,23 @@ distcheck: dist
 	rm -rf $$scratch; \
 	if [ $$status = 0 ]; then echo "distcheck: $(DIST_NAME).tar.gz builds without voc and installs"; fi; \
 	exit $$status
+
+# The rest of a release (doc/developer/DEVELOPER.md, section 7):
+# set-version sets VERSION, given on the command line, in Version.Mod and
+# every package (tools/set-version); check-hosts checks the tree on every
+# host at once (tools/check-hosts: CHECK_HOSTS names other hosts,
+# CHECK_TARGETS adds targets to each run, CHECK_COMMIT checks a commit
+# instead of the tree); release-files gathers and signs the files a release
+# attaches in build/release/<version> (tools/release-files).
+set-version:
+	@test "$(origin VERSION)" = "command line" || { echo "set-version: give the version, make set-version VERSION=x.y.z"; exit 1; }
+	tools/set-version $(VERSION)
+
+check-hosts:
+	tools/check-hosts $(if $(CHECK_COMMIT),-c $(CHECK_COMMIT)) $(addprefix -t ,$(CHECK_TARGETS)) $(CHECK_HOSTS)
+
+release-files:
+	tools/release-files
 
 # Runs every fixture in one pass (not category-by-category as separate
 # make prerequisites) so one "make test" always reports the full picture,

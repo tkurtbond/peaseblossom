@@ -1,0 +1,97 @@
+#!/bin/sh
+# Checks the tree on the hosts of doc/developer/DEVELOPER.md, section 4, at
+# once, and prints one summary. This host (by `hostname -s`) runs make check
+# and make check-opt2 in the tree itself; every other one gets a fresh copy
+# in ~/poc-bsd, made by ssh, and runs gmake check there. The copy is of the
+# tracked and untracked, not ignored, files (an uncommitted change is
+# checked), or with -c of a commit (git archive), as rackhir checks commits
+# already pushed; -c cannot check this host. -t adds a target, such as
+# check-install or check-seed, to every host's run, and may be repeated.
+#
+#   tools/check-hosts [-c <commit>] [-t <target>]... [<host>...]
+#
+# The hosts are atla cymoril artos alerik, or CHECK_HOSTS (blank-
+# separated), or those named. Each host's output is in
+# build/check-hosts/<host>.log; the summary has its exit status, the counts
+# of the two runs of the fixtures, the fixed point and check-strict, and
+# any failure. The exit status is 0 only if every host passed. Do not
+# change the tree while this host's check runs (section 4).
+set -e
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+commit=
+targets=
+while getopts c:t: opt; do
+  case $opt in
+    c) commit=$OPTARG ;;
+    t) targets="$targets $OPTARG" ;;
+    *) echo "usage: tools/check-hosts [-c <commit>] [-t <target>]... [<host>...]" >&2; exit 1 ;;
+  esac
+done
+shift $((OPTIND - 1))
+hosts=${*:-${CHECK_HOSTS:-atla cymoril artos alerik}}
+here=$(hostname -s)
+
+if [ -n "$commit" ]; then
+  git -C "$ROOT" rev-parse --verify -q "$commit^{commit}" >/dev/null \
+    || { echo "check-hosts: no commit $commit" >&2; exit 1; }
+  for h in $hosts; do
+    [ "$h" != "$here" ] || { echo "check-hosts: -c checks other hosts, not $here" >&2; exit 1; }
+  done
+fi
+
+logs=$ROOT/build/check-hosts
+mkdir -p "$logs"
+
+# copy HOST: a fresh ~/poc-bsd on HOST, holding the tree or the commit
+copy() {
+  ssh "$1" 'rm -rf ~/poc-bsd && mkdir ~/poc-bsd' || return 1
+  if [ -n "$commit" ]; then
+    git -C "$ROOT" archive "$commit" | ssh "$1" 'tar -xf - -C ~/poc-bsd'
+  else
+    (cd "$ROOT" && git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf -) \
+      | ssh "$1" 'tar -xf - -C ~/poc-bsd'
+  fi
+}
+
+# Every copy is made before this host's check starts, so that the check's
+# rebuilding of the tree cannot be copied half done.
+for h in $hosts; do
+  [ "$h" = "$here" ] && continue
+  echo "check-hosts: copying to $h"
+  copy "$h" || { echo "check-hosts: could not copy the tree to $h" >&2; exit 1; }
+done
+
+# run HOST COMMAND...: COMMAND's output in HOST's log, its exit status in
+# HOST's .status (not under set -e, which would leave no status)
+run() {
+  h=$1; shift
+  set +e
+  "$@" >"$logs/$h.log" 2>&1
+  echo $? >"$logs/$h.status"
+}
+
+for h in $hosts; do
+  rm -f "$logs/$h.log" "$logs/$h.status"
+  if [ "$h" = "$here" ]; then
+    (cd "$ROOT" && run "$h" ${MAKE:-make} check check-opt2 $targets) &
+  else
+    run "$h" ssh "$h" "cd ~/poc-bsd && gmake check $targets" &
+  fi
+done
+echo "check-hosts: checking$( [ -n "$commit" ] && echo " $commit" ) on$(printf ' %s' $hosts); logs in $logs"
+wait
+
+failed=
+for h in $hosts; do
+  status=$(cat "$logs/$h.status" 2>/dev/null || echo "?")
+  echo "== $h: exit $status"
+  grep -E 'passed, [0-9]+ failed|^Fixed point|^check-strict:|^check-install:|^check-seed:|^FAILED|^DIFFERS' \
+    "$logs/$h.log" | sed 's/^/   /' || true
+  [ "$status" = 0 ] || failed="$failed $h"
+done
+if [ -n "$failed" ]; then
+  echo "check-hosts: failed on$failed"
+  exit 1
+fi
+echo "check-hosts: passed on every host"

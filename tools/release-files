@@ -1,0 +1,85 @@
+#!/bin/sh
+# Gathers the files a release attaches (doc/developer/DEVELOPER.md, section
+# 7, step 7) into build/release/<version>/: the tarball with its .sha256
+# and .asc, from build/dist (make distcheck and make dist-sign); the RPMs,
+# binary and source, from ~/rpmbuild (RPM_DIR); and each BSD package, by
+# scp from the host that built it (section 6), renamed for its system as
+# uname there says, e.g. peaseblossom-<version>-freebsd15.1-amd64.pkg. Then
+# it writes SHA256SUMS, the SHA-256 sum of every one of them, and signs
+# that with gpg's default key (GPG_KEY names another) as SHA256SUMS.asc.
+#
+# A file already in the directory is kept, not fetched again: the RPMs are
+# signed there (rpmsign --addsign build/release/<version>/*.rpm) and this
+# run again, and it stops until they are. It uploads nothing; it prints
+# the gh release upload command that would. Run as tools/release-files
+# from anywhere, or make release-files; the version is Version.number.
+#
+# FREEBSD_HOST, OPENBSD_HOST and NETBSD_HOST (alerik, cymoril and artos)
+# name the hosts.
+set -e
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+version=$(sed -n 's/^ *number\* *= *"\(.*\)";.*/\1/p' "$ROOT/src/driver/Version.Mod")
+name=peaseblossom-$version
+out=$ROOT/build/release/$version
+rpm_dir=${RPM_DIR:-$HOME/rpmbuild}
+mkdir -p "$out"
+
+die() { echo "release-files: $*" >&2; exit 1; }
+
+# take FILE: copies FILE into the directory, unless a file of its name is
+# there already
+take() {
+  [ -f "$1" ] || die "no $1"
+  [ -f "$out/$(basename "$1")" ] || cp "$1" "$out/"
+}
+
+for f in "$name.tar.gz" "$name.tar.gz.sha256" "$name.tar.gz.asc"; do
+  take "$ROOT/build/dist/$f"
+done
+
+# take_one PATTERN: takes the one file PATTERN matches, or refuses,
+# naming them all
+take_one() {
+  set -- $1
+  [ $# = 1 ] && [ -f "$1" ] || die "want one file, found: $*"
+  take "$1"
+}
+take_one "$rpm_dir/RPMS/*/$name-*.rpm"
+take_one "$rpm_dir/SRPMS/$name-*.src.rpm"
+
+# fetch HOST SYSTEM REMOTE-PATH EXTENSION: the package HOST built, as
+# <name>-<system><release>-<arch>.<extension>
+fetch() {
+  release=$(ssh "$1" 'uname -r' | sed 's/-.*//')
+  arch=$(ssh "$1" 'uname -m')
+  target=$out/$name-$2$release-$arch.$4
+  if [ ! -f "$target" ]; then
+    scp -q "$1:$3" "$target" || die "could not fetch $3 from $1"
+  fi
+}
+fetch "${FREEBSD_HOST:-alerik}" freebsd "ports-work/packages/All/$name.pkg" pkg
+fetch "${OPENBSD_HOST:-cymoril}" openbsd "ports-work/openbsd/ports/packages/*/all/$name.tgz" tgz
+fetch "${NETBSD_HOST:-artos}" netbsd "pkgsrc-work/pkgsrc/packages/All/$name.tgz" tgz
+
+unsigned=
+for f in "$out"/*.rpm; do
+  sig=$(rpm -qp --qf '%{RSAHEADER:pgpsig}' "$f" 2>/dev/null)
+  [ -n "$sig" ] && [ "$sig" != "(none)" ] || unsigned="$unsigned $f"
+done
+if [ -n "$unsigned" ]; then
+  echo "release-files: the RPMs are not signed; sign them and run this again:" >&2
+  echo "    rpmsign --define \"_openpgp_sign_id <fingerprint>\" --addsign$unsigned" >&2
+  exit 1
+fi
+
+cd "$out"
+rm -f SHA256SUMS SHA256SUMS.asc
+files=$(ls | grep -v '^SHA256SUMS')
+if command -v sha256sum >/dev/null; then sha256sum $files; else sha256 -r $files; fi >SHA256SUMS
+gpg --armor --detach-sign ${GPG_KEY:+--local-user "$GPG_KEY"} --output SHA256SUMS.asc SHA256SUMS
+
+echo "release-files: build/release/$version has:"
+ls | sed 's/^/    /'
+echo "to attach them to the release (--clobber: the tarball's are there already):"
+echo "    gh release upload v$version --clobber build/release/$version/*"

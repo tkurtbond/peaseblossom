@@ -1,0 +1,71 @@
+#!/bin/sh
+# Sets poc's version, the first step of a release (doc/developer/DEVELOPER.md,
+# section 7): Version.number in src/driver/Version.Mod, and the same version
+# in each package - Version in the Fedora spec, with Release back to 1 and a
+# %changelog entry for it, DISTVERSION in the FreeBSD port, V in the OpenBSD
+# port and DISTNAME in pkgsrc's - removing any PORTREVISION, REVISION or
+# PKGREVISION. The %changelog entry says only "Update to <version>.", for
+# the person releasing to fill in; one already there for the version is
+# kept. Each package's distinfo is of the published tarball, so it is made
+# later, on its system (section 6). Run as tools/set-version <x.y.z>, or
+# make set-version VERSION=<x.y.z>, from anywhere.
+set -e
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+version=$1
+if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  echo "usage: tools/set-version <major.minor.patch>" >&2
+  exit 1
+fi
+
+# edit FILE SED-SCRIPT: rewrites FILE through sed, checking that it changed
+# what it was meant to (sed -i differs between GNU and BSD sed)
+edit() {
+  file=$ROOT/$1
+  sed "$2" "$file" >"$file.tmp.$$"
+  if cmp -s "$file" "$file.tmp.$$"; then
+    rm -f "$file.tmp.$$"
+  else
+    cat "$file.tmp.$$" >"$file"; rm -f "$file.tmp.$$"
+    echo "set-version: $1"
+  fi
+}
+
+# must FILE PATTERN: FILE has a line matching PATTERN, or the edit above
+# would have done nothing unnoticed
+must() {
+  grep -Eq "$2" "$ROOT/$1" || { echo "set-version: $1 has no line matching $2" >&2; exit 1; }
+}
+
+must src/driver/Version.Mod '^ *number\* *= *"[^"]*";'
+must packaging/fedora/peaseblossom.spec '^Version: '
+must packaging/fedora/peaseblossom.spec '^Release: '
+must packaging/fedora/peaseblossom.spec '^%changelog$'
+must packaging/freebsd/lang/peaseblossom/Makefile '^DISTVERSION='
+must packaging/openbsd/lang/peaseblossom/Makefile '^V ='
+must packaging/pkgsrc/lang/peaseblossom/Makefile '^DISTNAME='
+
+edit src/driver/Version.Mod "s/^\( *number\* *= *\)\"[^\"]*\";/\1\"$version\";/"
+
+spec=packaging/fedora/peaseblossom.spec
+note=
+edit $spec "s/^\(Version: *\).*/\1$version/; s/^\(Release: *\)[0-9]*%/\11%/"
+if ! grep -q "^\* .* - $version-1\$" "$ROOT/$spec"; then
+  who="$(git -C "$ROOT" config user.name) <$(git -C "$ROOT" config user.email)>"
+  day=$(LC_ALL=C date '+%a %b %d %Y')
+  edit $spec "/^%changelog\$/a\\
+* $day $who - $version-1\\
+- Update to $version.\\
+
+"
+  note="; fill in the %changelog entry in $spec"
+fi
+
+edit packaging/freebsd/lang/peaseblossom/Makefile \
+  "s/^\(DISTVERSION=[[:space:]]*\).*/\1$version/; /^PORTREVISION=/d"
+edit packaging/openbsd/lang/peaseblossom/Makefile \
+  "s/^\(V =[[:space:]]*\).*/\1$version/; /^REVISION[[:space:]]*=/d"
+edit packaging/pkgsrc/lang/peaseblossom/Makefile \
+  "s/^\(DISTNAME=[[:space:]]*peaseblossom-\).*/\1$version/; /^PKGREVISION=/d"
+
+echo "set-version: $version$note"

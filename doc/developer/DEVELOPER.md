@@ -18,7 +18,7 @@ language, voc, the hosts), and `PLAN.md` the roadmap.
 | `test/conformance/` | the fixtures, one directory each |
 | `test/install/` | `check.sh`, what `make check-install` runs on an installed poc |
 | `tools/bootstrap/` | the stages: `stage0` (voc, `BOOTSTRAP_POC` or the seed), `stage1`, `stage2`, `make-seed` |
-| `tools/` | also `build-info`, `guide-examples`, `rtl-reference`, `voc-inventory`, `bench` |
+| `tools/` | also `build-info`, `guide-examples`, `rtl-reference`, `voc-inventory`, `bench`, and for a release `set-version`, `check-hosts`, `release-files` (section 7) |
 | `doc/` | the user's documents: the guides, `poc.1`, `examples/`; `doc/README.md` lists everything |
 | `doc/developer/` | this file and the current design: the language extensions, the bootstrap, the toolchain |
 | `doc/research/` | the surveys and inventories behind decisions, and background notes |
@@ -124,7 +124,21 @@ the architecture matters (calls, arithmetic, memory layout, the runtime's C
 calls, the collector) and at the end of each phase. What it finds is fixed
 in a later commit.
 
-To check an uncommitted tree on a host, copy it there and run the check:
+`tools/check-hosts` (`make check-hosts`) runs these checks on every host
+at once and prints one summary. This host runs `make check check-opt2`
+in the tree. Every other host gets a fresh copy of the tree in
+`~/poc-bsd`, uncommitted changes included, and runs `gmake check` there.
+Each host's output goes to `build/check-hosts/<host>.log`, and the exit
+status is 0 only if every host passed:
+
+    tools/check-hosts                          # atla, cymoril, artos, alerik
+    tools/check-hosts -t check-install -t check-seed   # also these, on each
+    tools/check-hosts -c HEAD rackhir          # a commit, on rackhir
+
+`-t` adds a target to every host's run. `-c` copies a commit (`git
+archive`) instead of the tree, as rackhir's check wants, and can't be used
+on this host. Through make, the same are `CHECK_TARGETS`, `CHECK_COMMIT`
+and `CHECK_HOSTS`. By hand, a host's check is:
 
     git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - \
       | ssh cymoril 'mkdir -p ~/poc-bsd && tar -xf - -C ~/poc-bsd'
@@ -236,15 +250,22 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
 
 ## 7. Making a release
 
-1. **The version.** Set `number` in `src/driver/Version.Mod`, and the
-   same version in each package: `Version` (and a `%changelog` entry) in
-   the spec, `DISTVERSION` in the FreeBSD port, `V` in the OpenBSD port,
-   `DISTNAME` in pkgsrc's; remove any `PORTREVISION`, `REVISION` or
-   `PKGREVISION`. A library records the version that built it, and poc
-   refuses one from another version, so libraries are rebuilt.
-2. **Check** on the four hosts (section 4), with `make check-opt2`,
-   `check-install` and `check-seed`; and rackhir, `gmake check`.
-3. **Commit and push.**
+1. **The version.** `make set-version VERSION=<x.y.z>` (`tools/set-version`)
+   sets `number` in `src/driver/Version.Mod`, and the same version in each
+   package: `Version` in the spec (with `Release` back to 1),
+   `DISTVERSION` in the FreeBSD port, `V` in the OpenBSD port and
+   `DISTNAME` in pkgsrc's. It removes any `PORTREVISION`, `REVISION` or
+   `PKGREVISION`, and adds a `%changelog` entry that says only "Update to
+   <x.y.z>.", for you to fill in. A library records the version that
+   built it, and poc refuses one from another version, so libraries are
+   rebuilt.
+2. **Check** on the four hosts (section 4), with `check-install` and
+   `check-seed` as well:
+
+       tools/check-hosts -t check-install -t check-seed
+
+3. **Commit and push**, then check that commit on rackhir:
+   `tools/check-hosts -c HEAD rackhir`.
 4. **The tarball**, from that commit, on atla:
 
        make stage2               # the seed is written by a Stage 2 built from HEAD
@@ -290,7 +311,21 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
        peaseblossom-<version>-netbsd11.0-amd64.tgz
        SHA256SUMS, SHA256SUMS.asc   # sha256sum of every file; gpg --armor --detach-sign
 
-       gh release upload v<version> <files>
+   `make release-files` (`tools/release-files`) gathers them in
+   `build/release/<version>/`:
+   - the tarball's three files from `build/dist`;
+   - the RPMs from `~/rpmbuild` (`RPM_DIR`);
+   - each BSD package by `scp` from the host that built it, named for that
+     host's `uname`. `FREEBSD_HOST`, `OPENBSD_HOST` and `NETBSD_HOST`
+     default to alerik, cymoril and artos.
+
+   It refuses to go on until the RPMs there are signed. Sign them in place
+   with the `rpmsign` command it prints, then run it again; a file already
+   in the directory is kept. It then writes `SHA256SUMS` and signs it
+   (`GPG_KEY` as for `dist-sign`). It uploads nothing, but prints the
+   command that does:
+
+       gh release upload v<version> --clobber build/release/<version>/*
 
    Each binary package is for that one system release and architecture;
    on any other, poc is built from the tarball or from `packaging/`.
