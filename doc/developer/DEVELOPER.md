@@ -177,7 +177,9 @@ the rest does not.
     mock -r fedora-44-x86_64 ~/rpmbuild/SRPMS/peaseblossom-<version>-1.fc44.src.rpm
 
 `%check` runs `check.sh` on the build root. `mock` (which needs the `mock`
-group) checks that the build dependencies are enough. Install with `dnf
+group) checks that the build dependencies are enough. Without the group it
+asks for root's password; after `usermod -aG mock`, `sg mock -c "mock ..."`
+has the group before you log in again. Install with `dnf
 install <rpm>`, check `/usr/bin/poc`, and `dnf remove peaseblossom`.
 
 ### FreeBSD (`packaging/freebsd/lang/peaseblossom`)
@@ -280,7 +282,11 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
    gzip record times), so run it once, through `make distcheck`, and sign
    and publish that one. A release is signed: the tarball, the tag, the RPM
    and the list of sums, each with the maintainer's key (each asks for its
-   passphrase).
+   passphrase). Working over ssh, gpg-agent's graphical pinentry appears
+   on the machine's own screen, not yours. Sign instead in a terminal
+   where `GPG_TTY=$(tty)`, through a `gpg` first on `PATH` that runs
+   `gpg --pinentry-mode loopback "$@"`, so gpg asks there itself. For
+   `rpmsign`, which runs `/usr/bin/gpg`, add `--define "__gpg <that gpg>"`.
 5. **Tag** the commit, signed, `v<version>` (the packages' download URLs
    use it):
 

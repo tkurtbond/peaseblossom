@@ -913,6 +913,37 @@ Oberon *system*; its licence; and the cost. Then implement the wanted
 ones into a library of their own, with fixtures compared with voc, and
 the same exit gate as Phase 12 step 6.
 
+## Peaseblossom 0.3.0
+
+The done items of the three "Ongoing" sections below - read-only
+parameters, `OutStr` and `InStr`, and the fix for an imported read-only
+variable passed as a `VAR` argument, all in `995e393` - were released
+as **Peaseblossom 0.3.0** on 2026-10-05 (decided with the user: a minor
+release, since they add features), as `doc/developer/DEVELOPER.md`
+section 7 says, and the first release made with `tools/set-version`,
+`tools/check-hosts` and `tools/release-files`:
+
+- **The version** was set in `6ebcc04` by `make set-version`, after
+  `tools/check-hosts -t check-install -t check-seed` passed on atla,
+  cymoril, artos and alerik (345 fixtures at each stage), with
+  `check-opt2` on atla. rackhir passed `995e393` and `f3e3b5f`.
+- **The tarball** came from `make distcheck` (SHA-256 `932309a9...`,
+  3474095 bytes). It is signed, with the signed tag `v0.3.0`, and
+  published as a GitHub release.
+- **Each package** was made from the published tarball (`makesum`), then
+  built and checked on its system: `check.sh` on the build root or
+  stage; portlint, portcheck and pkglint clean; packing lists unchanged.
+  It was then installed as root, checked with `check.sh` against the
+  installed poc, and removed with nothing left. On atla the 0.3.0 RPM
+  was installed again afterwards, replacing 0.2.0. `mock` built and
+  checked the RPM in a clean Fedora 44 chroot.
+- **The RPMs** were signed with `rpmsign`. `tools/release-files`
+  gathered them with the other packages and signed `SHA256SUMS`, and
+  they were attached to the release.
+- **Signing** was done in a terminal of its own, through a `gpg` wrapper
+  with `--pinentry-mode loopback`. gpg-agent's pinentry is graphical on
+  atla, and appears on atla's screen, not the remote user's.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
