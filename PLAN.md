@@ -921,6 +921,51 @@ phase's record.
 None open. The four found porting olibfyaml to poc (`~/Repos/Oberon/
 polibfyaml`), fixed in 526d7ba, are in `doc/phases/phase-14.md`.
 
+## Ongoing library enhancements
+
+Additions to the runtime library (`rtl/llvm`) that using poc on other
+programs shows are wanted, made as they come, alongside whichever phase
+is current. Each item says where the need was found, and is marked
+`[done]` once it is committed with its fixtures, its `rtl/llvm/README.md`
+entry and the Reference Guide regenerated (`tools/rtl-reference
+update`); a done item stays until the next phase's close-out, which
+moves it to that phase's record.
+
+1. **`OutStr`: `Out`'s output into a string** (user, 2026-10-05, asked
+   while working on `~/Repos/Oberon/Ropes`). No runtime module formats
+   a number into an `ARRAY OF CHAR` as `Out` writes it: `FormattedOutput`
+   only writes to a descriptor (and is internal), `Texts`' writers lay
+   numbers out differently and go through a temporary file, and
+   `RealDigits` gives only the digits.
+   - **Interface**: `Out`'s output procedures - `Char`, `String`, `Int`,
+     `Hex`, `Ln`, `Real`, `LongReal` - with `Out`'s parameters followed
+     by `VAR s: ARRAY OF CHAR`: `OutStr.Int(x, n, s)`. Not `Open`,
+     `Flush` or `IsConsole`, which are about the stream, and not `Ten`,
+     which makes a number, not text.
+   - **Appends**: each call adds its text at `s`'s first 0X (at the end
+     if it has none), so a run of calls builds a line as a run of `Out`
+     calls does; the caller starts with `s := ""`. `Ln` appends `0AX`,
+     as `Out.Ln` writes.
+   - **Overflow**: text that does not fit is cut short, silently, and `s`
+     always ends in 0X, as poc's `Strings` does. No call writes beyond
+     `s`.
+   - **The same text as `Out`**: field widths, `Hex`'s digit counts and
+     two's complement, correctly rounded reals (`RealDigits`), no plus
+     sign. To keep them from drifting apart, `FormattedOutput` should
+     format through `OutStr` (or a shared internal layer under both)
+     and only write the result, padding with runs of blanks so a wide
+     field needs no buffer of its width. voc compiles `FormattedOutput`
+     for Stage 0 (Phase 11 D11), so whatever it imports must stay within
+     what voc accepts.
+   - **Fixtures**: each procedure against `Out`'s output for the same
+     arguments (field widths below, at and above the text's length; the
+     extremes of `HUGEINT`; negative `Hex`; zero, subnormal, infinite and
+     NaN reals), appending to a non-empty `s`, and truncation at every
+     length of a short `s`.
+   - voc has no `OutStr`; a program using it is poc-only. OOC's `IntStr`
+     and `RealStr` (`oocIntStr`, `oocRealStr`) are voc's nearest, with
+     different interfaces, and are Phase 20's to decide.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on

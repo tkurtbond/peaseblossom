@@ -388,7 +388,8 @@ released with four fixes as **Peaseblossom 0.2.0 on 2026-10-04** (tag
 Phase 15, the VAX/VMS MACRO-32 backend, is next; 15-18 are the VAX/VMS
 work, 19 further extensions, 20 voc's library modules. Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
-fixing"). The phases were renumbered twice on 2026-10-02, and older
+fixing"), and runtime-library additions it shows are wanted are made the
+same way (`PLAN.md`, "Ongoing library enhancements"). The phases were renumbered twice on 2026-10-02, and older
 records keep the old numbers (`PLAN.md`, Phase 13).
 `doc/project-history.md` has the earlier account; `src/front/README.md`
 lists the front-end modules.
