@@ -4,7 +4,7 @@
 # Phase 13 step 8). Built from the release tarball, whose seed/ is poc's
 # own LLVM IR, so clang alone builds poc: voc is not needed.
 
-DISTNAME=	peaseblossom-0.2.0
+DISTNAME=	peaseblossom-0.3.0
 CATEGORIES=	lang
 MASTER_SITES=	${MASTER_SITE_GITHUB:=tkurtbond/}
 GITHUB_RELEASE=	v${PKGVERSION_NOREV}
