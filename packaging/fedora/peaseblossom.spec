@@ -19,7 +19,7 @@
 %global __provides_exclude_from ^%{_prefix}/lib/poc/.*$
 
 Name:           peaseblossom
-Version:        0.3.0
+Version:        0.3.1
 Release:        1%{?dist}
 Summary:        Oberon-2 compiler (poc) using LLVM
 
@@ -74,6 +74,10 @@ test/install/check.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install
 %{_pkgdocdir}/
 
 %changelog
+* Mon Oct 05 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.3.1-1
+- Update to 0.3.1: a fix (poc -install-library over a copy an older poc
+  wrote said "rebuild it", and could leave old modules' files behind).
+
 * Mon Oct 05 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.3.0-1
 - Update to 0.3.0: read-only parameters (x-), which take constants and
   any expression; the runtime modules OutStr and InStr, Out and In on
