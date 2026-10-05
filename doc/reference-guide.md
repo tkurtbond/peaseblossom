@@ -452,7 +452,9 @@ exit status 0.
     poc [option]... -version
     poc -help
 
-Options come before the command, and a later one of the same kind wins.
+Options come before the command. `-import-path`, `-library-path`, `-link`
+and `-c-flag` add to what came before; of any other option given twice, the
+later one wins.
 `<file>` is a module's source; its name need not match the module's. poc
 says nothing when a build, a library or a compilation succeeds, and writes
 its errors, each `<file>:<line>:<column>: error: <what>`, then their

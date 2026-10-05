@@ -56,8 +56,14 @@ The modules it imports are found in libraries, then as sources or compiled
 modules on the import path
 .Pq see Sx MODULES AND LIBRARIES .
 .Pp
-Options come before the command; when an option is given twice, the later
-one wins.
+Options come before the command.
+.Fl import-path ,
+.Fl library-path ,
+.Fl link
+and
+.Fl c-flag
+may be repeated, and each adds to what came before; of any other option
+given twice, the later one wins.
 .Nm
 says nothing when it succeeds in building a program, a library or a
 compilation.
