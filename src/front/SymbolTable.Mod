@@ -110,6 +110,11 @@ MODULE SymbolTable;
         it) recognize a VAR parameter without re-deriving it from the
         enclosing ProcDeclNode, which CheckWithGuard has no reach into
         from a plain SymbolTable.Object. *)
+      isReadOnlyParam*: BOOLEAN; (* varClass only: TRUE for a read-only
+        formal parameter, "x-" (doc/language-extensions.md, "Read-only
+        parameters"), set as isVarParam is. SemanticActions.CheckDesignator
+        makes it, and every part of it, read-only, as readOnly does an
+        imported variable. *)
       externalConvention*, externalName*: SyntaxTree.Ident; (* procClass only; see above *)
       moduleScope*: Scope; (* moduleClass only; see above *)
       realModuleName*: SyntaxTree.Ident; (* moduleClass only: the module's
@@ -235,7 +240,7 @@ MODULE SymbolTable;
     o.value := NIL; o.exported := exported; o.readOnly := readOnly;
     o.pendingTypeNode := NIL; o.resolving := FALSE;
     o.declLine := line; o.declColumn := column;
-    o.isForwardProc := FALSE; o.isVarParam := FALSE; o.usedAtOtherLevel := FALSE; o.isExtension := FALSE;
+    o.isForwardProc := FALSE; o.isVarParam := FALSE; o.isReadOnlyParam := FALSE; o.usedAtOtherLevel := FALSE; o.isExtension := FALSE;
     o.externalConvention[0] := 0X; o.externalName[0] := 0X;
     o.moduleScope := NIL; o.realModuleName[0] := 0X;
     o.next := scope.objects; scope.objects := o;

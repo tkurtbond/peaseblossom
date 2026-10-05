@@ -1070,7 +1070,7 @@ accident:
   procedure types, are an error. The rule is assignment's, either way round; a
   `SYSTEM.PTR` still compares with any pointer, which `-strict` rejects.
 
-## Read-only parameters (considered, not adopted)
+## Read-only parameters (decided and implemented, 2026-10-05)
 
 voc has an extension neither report has: a formal parameter written `x-`
 (`PROCEDURE Print(text-: ARRAY OF CHAR)`) is passed **by reference, like a
@@ -1095,14 +1095,77 @@ as its `IN` parameter mode: a variable parameter, read-only inside the
 procedure, for array and record parameters only (Component Pascal report,
 10.1).
 
-**poc does not have it.** A mark on a formal parameter, `-` or `*`, is a
-syntax error, "a formal parameter cannot have an export mark", since
+**Until 2026-10-05 poc did not have it.** A mark on a formal parameter, `-` or
+`*`, was a syntax error, "a formal parameter cannot have an export mark", since
 `Oberon2.pdf`'s `FPSection` takes plain identifiers
 (`parser-reject-param-export-mark`). Until 2026-09-25 poc parsed the names as
 `IdentDef`s and dropped the mark, so `x-` compiled as an ordinary, assignable
-value parameter. Adopting voc's version later is a separate decision, recorded
-in `000-todo.org`: poc's own source would not use it, and `-strict` would have
-to reject it.
+value parameter.
+
+**Decided 2026-10-05 (the user): poc adopts it, in a version that also
+takes a constant, as an ongoing language enhancement** (`PLAN.md`, "Ongoing
+language enhancements"; it was Phase 19's candidate 2 until that day). The need is the runtime's `OutStr`
+and `InStr` (`PLAN.md`, "Ongoing library enhancements"): `InStr` reads a
+string token by token, and a value `ARRAY OF CHAR` parameter is copied on
+every call, while a `VAR` one refuses a string constant. voc's `x-` refuses
+a constant as well (err 122 above), so poc's differs from voc's there. The
+rules (the user, 2026-10-05):
+
+- **Read-only inside the procedure, checked at compile time**: assigning
+  to `x` (or to any part of it) is an error, and so is passing it, or any
+  part of it, as the actual of a `VAR` parameter, or calling a type-bound
+  procedure with a `VAR` receiver on it (voc does not check the last).
+  Passing it on to another read-only or value parameter is allowed, and
+  so is writing through a pointer it holds. `VAR x-` is an error, as in
+  voc; `x*` is still a syntax error.
+- **It takes any expression**: a variable, by reference or by value as
+  below; a constant, a string included; or any other expression
+  (`P(g + 1)`), evaluated into a temporary that is then passed as a
+  variable would be. A program that passes anything but a variable to an
+  `x-` parameter compiles with poc but not with voc.
+- **How it is passed is the compiler's choice, made from its size**: a
+  small one (an integer, `SET`, `HUGEINT`, a real, a `CHAR`, a pointer, a
+  small record or array) is passed by value, as a value parameter is; a
+  large one by reference, a constant by reference to the constant's own
+  storage, so neither is copied. Only the read-only rule makes the choice
+  invisible, so it is a matter of cost, not of meaning.
+- **Small is at most 16 bytes** (the user, 2026-10-05): two words on a
+  64-bit machine, four on a 32-bit one (VAX included). The choice is made
+  from the formal parameter's type alone - its size under the size model
+  in force (`MemoryLayout`) - so the caller and the procedure agree,
+  across modules too, without either seeing the other's code. The `.sym`
+  format records the mark, not the choice. An open array is always passed by
+  reference.
+- **A program may not rely on which** (the user, 2026-10-05, after Ada's
+  rule for parameters whose passing mode the language leaves to the
+  compiler, RM 6.2): the choice shows only when the caller's variable
+  changes during the call, through a global or a `VAR` parameter that is
+  the same variable - passed by reference the procedure sees the change,
+  by value it does not. As Ada makes this a bounded error (RM 6.2(12)),
+  such a program reads either the old value or the new one, and which may
+  differ between machines, size models and poc versions; poc does not
+  detect it.
+
+- **`-strict` rejects the mark**, and needs nothing else: a module
+  without it cannot declare a read-only parameter, though it may call an
+  imported procedure that has one. poc's own source does not use it.
+
+**Implemented 2026-10-05.** `Parser.ParseParamName` keeps the mark as the
+name's `exportReadOnly`; `Types.Param.isReadOnly` and
+`SymbolTable.Object.isReadOnlyParam` carry it, `ParamListsMatch` compares it,
+and `CheckDesignator` makes such a parameter read-only as it does an imported
+read-only variable, so the assignment checks and the predeclared procedures'
+writable-variable checks apply unchanged. `CheckArguments` now refuses any
+read-only variable as a `VAR` argument - which also fixed poc accepting an
+imported read-only variable there (voc: err 76) - and a bound call refuses a
+read-only record as a `VAR` receiver. A `.sym` file writes `x-`. In the LLVM
+backend `ReadOnlyByReference` makes the choice; the procedure binds a
+by-reference one, and a read-only open array, to its incoming address without
+copying it; the caller passes a variable's or a structured constant's address,
+a literal's stack slot, or for a string a private constant global of the
+parameter's type. Fixtures: `parser-reject-param-export-mark`,
+`semantic-reject-readonly-param`, `semantic-strict-readonly-params`,
+`llvm-readonly-params` (the 16-byte boundary, under `-O2` and `-OC`).
 
 ## Underscores and dollar signs in identifiers (decided and implemented, Phase 11 A25, 2026-09-26)
 

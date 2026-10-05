@@ -197,22 +197,27 @@ MODULE Parser;
   END ParseIdentList;
 
   (* A formal parameter's names are plain identifiers (Oberon2.pdf 10.1:
-     FPSection = [VAR] ident {"," ident} ":" Type), not IdentDefs: an export
-     mark after one is reported and skipped, so the rest of the section still
-     parses. voc reads "x-" as a read-only VAR parameter (Oakwood 5.13, which
-     recommends against it); poc does not have them, see
-     doc/language-extensions.md, "Read-only parameters". *)
+     FPSection = [VAR] ident {"," ident} ":" Type), not IdentDefs, except
+     that poc, as voc, takes "x-" for a read-only parameter (doc/language-
+     extensions.md, "Read-only parameters"), kept as the IdentDef's
+     exportReadOnly mark, which -strict reports. "x*" is reported and
+     skipped, so the rest of the section still parses. *)
   PROCEDURE ParseParamName(VAR p: Parser): SyntaxTree.IdentDefNode;
-    VAR name: SyntaxTree.Ident; line, column: INTEGER;
+    VAR name: SyntaxTree.Ident; line, column, mark: INTEGER;
   BEGIN
     line := p.current.line; column := p.current.column;
     ExpectIdent(p, name);
-    IF (p.current.kind = Lexer.times) OR (p.current.kind = Lexer.minus) THEN
+    mark := SyntaxTree.exportNone;
+    IF p.current.kind = Lexer.minus THEN
+      Diagnostics.NotInReport(p.current.line, p.current.column, "a read-only parameter");
+      mark := SyntaxTree.exportReadOnly;
+      Advance(p)
+    ELSIF p.current.kind = Lexer.times THEN
       Diagnostics.Error(p.current.line, p.current.column,
         "a formal parameter cannot have an export mark");
       Advance(p)
     END;
-    RETURN SemanticActions.NewIdentDef(name, SyntaxTree.exportNone, line, column)
+    RETURN SemanticActions.NewIdentDef(name, mark, line, column)
   END ParseParamName;
 
   PROCEDURE ParseParamNames(VAR p: Parser): SyntaxTree.IdentDefNode;
@@ -597,7 +602,7 @@ MODULE Parser;
   PROCEDURE ParseFPSection(VAR p: Parser): SyntaxTree.FPSectionNode;
     VAR
       isVar: BOOLEAN;
-      names: SyntaxTree.IdentDefNode;
+      names, name: SyntaxTree.IdentDefNode;
       type: SyntaxTree.TypeNode;
       line, column: INTEGER;
   BEGIN
@@ -605,6 +610,15 @@ MODULE Parser;
     isVar := FALSE;
     IF p.current.kind = Lexer.varKeyword THEN isVar := TRUE; Advance(p) END;
     names := ParseParamNames(p);
+    IF isVar THEN
+      name := names;
+      WHILE name # NIL DO
+        IF name.exportMark = SyntaxTree.exportReadOnly THEN
+          Diagnostics.Error(name.line, name.column, "a VAR parameter cannot be read-only")
+        END;
+        name := name.next
+      END
+    END;
     ExpectToken(p, Lexer.colon, "expected ':'");
     type := ParseType(p);
     RETURN SemanticActions.NewFPSection(isVar, names, type, line, column)

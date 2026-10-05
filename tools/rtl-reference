@@ -23,7 +23,7 @@ case $mode in check|update) ;; *) echo "rtl-reference: check or update, not $mod
 rm -rf "$work"; mkdir -p "$work" || exit 2
 
 # The modules a program does not import itself: poc's own machinery
-internal=" FileDescriptorOutput FormattedOutput ModuleTable RealDigits "
+internal=" FileDescriptorOutput FormattedInput FormattedOutput FormattedText ModuleTable RealDigits "
 
 # The header comment of a module: the first comment after "MODULE M;",
 # without the "PLAN.md Phase ...: " a developer's note starts with

@@ -3990,9 +3990,24 @@ MODULE LLVMCodeGenerator;
     COPY("%p.", text); Strcat(text, name)
   END ParamName;
 
+  (* Whether a read-only parameter, "x-", is passed by reference: a record
+     or a fixed array of more than 16 bytes under the size model in force,
+     decided from the formal's type alone, so that the caller and the
+     procedure agree without seeing each other. A smaller one is passed by
+     value, as a value parameter is, and an open array by reference, as
+     every open array is, but never copied by the procedure (BindFormal-
+     Params). doc/language-extensions.md, "Read-only parameters". *)
+  PROCEDURE ReadOnlyByReference(VAR cg: Codegen; p: Types.Param): BOOLEAN;
+    CONST byValueLimit = 16;
+  BEGIN
+    RETURN p.isReadOnly & (p.type # NIL) & ~IsOpenArrayType(p.type)
+           & ((p.type IS Types.RecordType) OR (p.type IS Types.ArrayType))
+           & (MemoryLayout.Size(p.type, ConstantEvaluator.wordSize, cg.sizeModel) > byValueLimit)
+  END ReadOnlyByReference;
+
   PROCEDURE ParamLLVMType(VAR cg: Codegen; p: Types.Param; VAR llvmType: ARRAY OF CHAR);
   BEGIN
-    IF p.isVar OR IsOpenArrayType(p.type) THEN
+    IF p.isVar OR IsOpenArrayType(p.type) OR ReadOnlyByReference(cg, p) THEN
       COPY("ptr", llvmType)
     ELSE
       LLVMTypes.TypeString(p.type, cg.sizeModel, llvmType)
@@ -4225,6 +4240,29 @@ MODULE LLVMCodeGenerator;
     IF wantTag THEN COPY("null", tagText) END
   END GenerateVarArgValue;
 
+  (* The actual argument of a read-only parameter passed by reference
+     (ReadOnlyByReference): the address of a variable, or of a structured
+     constant's global, as a VAR argument's; a literal's stack slot; and
+     for a string (a fixed array of characters), a private constant global
+     of the parameter's type holding it, padded with 0X. Nothing else has
+     a record or an array type. *)
+  PROCEDURE GenerateReadOnlyRefArg(VAR w: Files.Rider; VAR cg: Codegen; p: Types.Param; a: SyntaxTree.ExprNode;
+                                   VAR result: Value);
+    VAR text: Lexer.Text; v: Types.Value; tagText, addrText: ValueText; addrType: Types.Type;
+  BEGIN
+    IF StringSourceText(cg, a, text) THEN
+      NEW(v); v.kind := Types.stringValue; v.stringVal := text;
+      COPY("ptr", result.llvmType); result.oberonType := Types.Undefined;
+      StructuredConstGlobal(cg, v, p.type, result.text)
+    ELSIF (a # NIL) & (a IS SyntaxTree.StructuredLiteralNode) THEN
+      GenerateLiteralTemp(w, cg, a(SyntaxTree.StructuredLiteralNode), addrText, addrType);
+      COPY("ptr", result.llvmType); result.oberonType := Types.Undefined;
+      COPY(addrText, result.text)
+    ELSE
+      GenerateVarArgValue(w, cg, a, FALSE, result, tagText)
+    END
+  END GenerateReadOnlyRefArg;
+
   (* One actual argument: its value (result) and the text of the hidden
      arguments that follow it (hidden), each written ", <type> <value>":
      a VAR record parameter's tag, an open array's lengths. Only an Oberon
@@ -4240,6 +4278,8 @@ MODULE LLVMCodeGenerator;
     ELSIF p.isVar THEN
       GenerateVarArgValue(w, cg, a, oberonCall & NeedsHiddenTag(p), result, tagText);
       IF tagText[0] # 0X THEN AppendText(hidden, ", ptr "); AppendText(hidden, tagText) END
+    ELSIF ReadOnlyByReference(cg, p) THEN
+      GenerateReadOnlyRefArg(w, cg, p, a, result)
     ELSE
       GenerateExpr(w, cg, a, v);
       IF Types.IsInteger(p.type) OR IsRealType(p.type) OR (p.type = Types.Byte) OR Types.IsSet(p.type) THEN
@@ -4368,7 +4408,7 @@ MODULE LLVMCodeGenerator;
       handled := FALSE;
       IF ~first THEN AppendText(text, ", ") END;
       first := FALSE;
-      IF ~p.isVar & (p.type # NIL) & (p.type IS Types.ArrayType) & ~IsOpenArrayType(p.type)
+      IF ~p.isVar & ~ReadOnlyByReference(cg, p) & (p.type # NIL) & (p.type IS Types.ArrayType) & ~IsOpenArrayType(p.type)
           & (a # NIL) & (a IS SyntaxTree.LiteralExprNode) THEN
         arr := p.type(Types.ArrayType);
         IF (arr.elementType = Types.Char) & (a(SyntaxTree.LiteralExprNode).literalKind = Lexer.string) THEN
@@ -7628,7 +7668,8 @@ MODULE LLVMCodeGenerator;
       IF IsOpenArrayType(p.type) THEN
         (* the hidden lengths follow the pointer (EmitProcSignature) *)
         SetParamDope(dope, argName, OpenDimCount(p.type));
-        IF p.isVar THEN
+        IF p.isVar OR p.isReadOnly THEN
+          (* a read-only one is never changed, so it is not copied *)
           DeclareDebugOpenArray(w, cg, obj, argName, argName, position, TRUE);
           BindLocalWithDope(cg, obj, argName, dope)
         ELSE
@@ -7646,7 +7687,7 @@ MODULE LLVMCodeGenerator;
           DeclareDebugOpenArray(w, cg, obj, copied, argName, position, FALSE);
           BindLocalWithDope(cg, obj, copied, dope)
         END
-      ELSIF p.isVar THEN
+      ELSIF p.isVar OR ReadOnlyByReference(cg, p) THEN
         DeclareDebugVariable(w, obj, argName, position, TRUE);
         IF NeedsHiddenTag(p) THEN
           COPY(argName, tagName); Strcat(tagName, ".tag");

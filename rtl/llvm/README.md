@@ -74,12 +74,24 @@ listed below. Must run on Linux, NetBSD, OpenBSD, and FreeBSD (see
   interfaces. `Out` writes through `FormattedOutput` (unbuffered), and prints
   `REAL`/`LONGREAL` correctly rounded (`RealDigits.Mod`, big-integer
   arithmetic, no floating point); `In` reads standard input with
-  `getchar` and real numbers with libc's `strtod`/`strtof`.
+  `getchar`, its tokens recognized by `FormattedInput`, and real numbers
+  with libc's `strtod`/`strtof`.
+- `OutStr.Mod`, `InStr.Mod` - `Out`'s output procedures appending to a
+  string, and `In`'s reading from a string at a position it moves on
+  (`PLAN.md`, "Ongoing library enhancements"). poc's own: voc has neither.
+  `OutStr` makes its text with `FormattedText`, as `Out` does; `InStr`
+  reads with `FormattedInput`, as `In` does, its string a read-only
+  parameter, never copied.
 - `Err.Mod` - `Out`'s interface (`Open`, `Flush`, `Char`, `String`,
   `Int`, `Hex`, `Ln`, `Real`, `LongReal`, `Ten`, `IsConsole`) writing to
   standard error, unbuffered (Phase 11 A26). voc has no such module.
 - `FormattedOutput.Mod` - the formatting `Out` and `Err` share, each
   procedure taking the descriptor to write to. Internal, like `RealDigits`.
+- `FormattedText.Mod` - the text of each number `Out` writes, without its
+  padding: what `FormattedOutput` writes and `OutStr` appends. Internal.
+- `FormattedInput.Mod` - the tokens `In` and `InStr` read, over an abstract
+  `Source` of characters (standard input for `In`, a `StringSource` for
+  `InStr`). Internal.
 - `FileDescriptorOutput.Mod` - the two OS calls under `FormattedOutput`,
   `Out` and `Err`: `Write` (`write(2)`) and `IsTerminal` (`isatty`). Phase
   11 D11 split them out so that voc compiles the rest (below).
@@ -110,8 +122,8 @@ Written in ordinary Oberon-2 over `SYSTEM.ADDRESS` (no pointer variables),
 except `Platform.c`, so poc compiles them itself; a program picks them up through the import
 path - the `llvm-gc-*` fixtures set `POC_IMPORT_PATH=../../../rtl/llvm`.
 Sources use the `.Mod` spelling; `ReadModuleSource` finds either.
-voc compiles four of these for Stage 0 (Phase 11 D11), so that the
+voc compiles five of these for Stage 0 (Phase 11 D11), so that the
 voc-built poc writes its errors to standard error through the same `Err`:
-`RealDigits`, `FormattedOutput` and `Err` from here, over
+`RealDigits`, `FormattedText`, `FormattedOutput` and `Err` from here, over
 `rtl/voc/FileDescriptorOutput.Mod`, voc's version of the one module that
 calls the operating system. They must stay within what voc accepts.

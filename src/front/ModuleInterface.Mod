@@ -1045,7 +1045,8 @@ MODULE ModuleInterface;
         WHILE p # NIL DO
           IF ~first THEN WriteStr(w, "; ") END;
           IF p.isVar THEN WriteStr(w, "VAR ") END;
-          WriteStr(w, p.name); WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
+          WriteStr(w, p.name); IF p.isReadOnly THEN WriteStr(w, "-") END;
+          WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
           first := FALSE;
           p := p.next
         END;
@@ -1273,7 +1274,8 @@ MODULE ModuleInterface;
     WHILE p # NIL DO
       IF ~first THEN WriteStr(w, "; ") END;
       IF p.isVar THEN WriteStr(w, "VAR ") END;
-      WriteStr(w, p.name); WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
+      WriteStr(w, p.name); IF p.isReadOnly THEN WriteStr(w, "-") END;
+      WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
       first := FALSE;
       p := p.next
     END;
@@ -1380,7 +1382,8 @@ MODULE ModuleInterface;
           WHILE p # NIL DO
             IF ~first THEN WriteStr(w, "; ") END;
             IF p.isVar THEN WriteStr(w, "VAR ") END;
-            WriteStr(w, p.name); WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
+            WriteStr(w, p.name); IF p.isReadOnly THEN WriteStr(w, "-") END;
+            WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
             first := FALSE;
             p := p.next
           END;

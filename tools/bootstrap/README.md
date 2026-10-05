@@ -4,7 +4,7 @@ Stage 0/1/2 build scripts (see `PLAN.md`, "Bootstrap terminology"):
 
 - **Stage 0**: `voc` compiles poc's own source into a working `poc`
   binary. Load-bearing until Stage 1 exists. It compiles `Err` (and
-  `FormattedOutput`, `RealDigits`) from `rtl/llvm` first, over
+  `FormattedOutput`, `FormattedText`, `RealDigits`) from `rtl/llvm` first, over
   `rtl/voc/FileDescriptorOutput.Mod`, since voc has no `Err` (Phase 11 D11).
 - **Stage 1** (`stage1`): the Stage-0-built `poc` compiles poc's own
   source again, giving `build/stage1/bin/poc`.

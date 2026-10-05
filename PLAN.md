@@ -104,6 +104,9 @@ rtl/
     Strings.Mod, Math.Mod, MathL.Mod -- remaining Oakwood basic modules (Phase 10)
     Err.Mod                  -- Out on standard error, not Oakwood (Phase 11 A26)
     FormattedOutput.Mod      -- the formatting Out and Err share, by descriptor (Phase 11 A26)
+    FormattedText.Mod        -- the text of Out's numbers, shared with OutStr ("Ongoing library enhancements")
+    OutStr.Mod, InStr.Mod    -- Out's output into a string, In's input from one ("Ongoing library enhancements")
+    FormattedInput.Mod       -- the tokens In and InStr read, over a Source ("Ongoing library enhancements")
     FileDescriptorOutput.Mod -- write(2)/isatty under them, apart so voc compiles the rest (Phase 11 D11)
   voc/
     FileDescriptorOutput.Mod -- the same over voc's Platform, for Stage 0's Err (Phase 11 D11)
@@ -874,8 +877,9 @@ Record and array literals, candidate 1 here until 2026-10-02 (Phase 11
 A24, moved here 2026-09-26), are Phase 14 now.
 
 1. **Slices of one-dimensional arrays** (`000-todo.org`).
-2. **voc's read-only parameters, `x-`** (`000-todo.org`; considered and not
-   adopted in Phase 11, `doc/language-extensions.md`).
+2. *voc's read-only parameters, `x-`*, were candidate 2 here until
+   2026-10-05, when they were adopted and moved to "Ongoing language
+   enhancements", to be done now.
 3. **The terminator-based `ARRAY OF CHAR` assignment rule** (`000-todo.org`;
    decided against in Phase 11 A21, to reconsider).
 
@@ -918,8 +922,20 @@ fixture, is committed (`git log -S` on the item finds the commit); a fixed
 item stays until the next phase's close-out, which moves it to that
 phase's record.
 
-None open. The four found porting olibfyaml to poc (`~/Repos/Oberon/
-polibfyaml`), fixed in 526d7ba, are in `doc/phases/phase-14.md`.
+The four found porting olibfyaml to poc (`~/Repos/Oberon/polibfyaml`),
+fixed in 526d7ba, are in `doc/phases/phase-14.md`.
+
+1. **[fixed] An imported read-only variable was accepted as a `VAR`
+   argument** (found 2026-10-05 implementing read-only parameters,
+   "Ongoing language enhancements" 1). `P(M.v)`, with `v-` exported by
+   `M` and `P` taking a `VAR` parameter, passed `poc -check`, so `P`
+   could change another module's read-only variable; voc says err 76,
+   "this variable (field) is read only". `CheckArguments` checked that a
+   `VAR` argument was a variable but not that it was writable. Now an
+   error, "a read-only variable cannot be a VAR argument", and likewise
+   a read-only record as the `VAR` receiver of a type-bound procedure
+   (`M.r.Bump`), which voc accepts. Fixture
+   `semantic-reject-readonly-param`.
 
 ## Ongoing library enhancements
 
@@ -931,7 +947,7 @@ entry and the Reference Guide regenerated (`tools/rtl-reference
 update`); a done item stays until the next phase's close-out, which
 moves it to that phase's record.
 
-1. **`OutStr`: `Out`'s output into a string** (user, 2026-10-05, asked
+1. **[done] `OutStr`: `Out`'s output into a string** (user, 2026-10-05, asked
    while working on `~/Repos/Oberon/Ropes`). No runtime module formats
    a number into an `ARRAY OF CHAR` as `Out` writes it: `FormattedOutput`
    only writes to a descriptor (and is internal), `Texts`' writers lay
@@ -942,8 +958,8 @@ moves it to that phase's record.
      by `VAR s: ARRAY OF CHAR`: `OutStr.Int(x, n, s)`. Not `Open`,
      `Flush` or `IsConsole`, which are about the stream, and not `Ten`,
      which makes a number, not text.
-   - **Appends**: each call adds its text at `s`'s first 0X (at the end
-     if it has none), so a run of calls builds a line as a run of `Out`
+   - **Appends**: each call adds its text at `s`'s first 0X (if it has
+     none, its last character is made one first), so a run of calls builds a line as a run of `Out`
      calls does; the caller starts with `s := ""`. `Ln` appends `0AX`,
      as `Out.Ln` writes.
    - **Overflow**: text that does not fit is cut short, silently, and `s`
@@ -951,9 +967,10 @@ moves it to that phase's record.
      `s`.
    - **The same text as `Out`**: field widths, `Hex`'s digit counts and
      two's complement, correctly rounded reals (`RealDigits`), no plus
-     sign. To keep them from drifting apart, `FormattedOutput` should
-     format through `OutStr` (or a shared internal layer under both)
-     and only write the result, padding with runs of blanks so a wide
+     sign. To keep them from drifting apart, both go through a shared
+     internal layer (decided 2026-10-05) that formats each value into an
+     `ARRAY OF CHAR`: `OutStr` appends what it makes, and
+     `FormattedOutput` writes it, padding with runs of blanks so a wide
      field needs no buffer of its width. voc compiles `FormattedOutput`
      for Stage 0 (Phase 11 D11), so whatever it imports must stay within
      what voc accepts.
@@ -965,8 +982,17 @@ moves it to that phase's record.
    - voc has no `OutStr`; a program using it is poc-only. OOC's `IntStr`
      and `RealStr` (`oocIntStr`, `oocRealStr`) are voc's nearest, with
      different interfaces, and are Phase 20's to decide.
+   - **Built 2026-10-05**: `rtl/llvm/OutStr.Mod`, over the new internal
+     `FormattedText.Mod` (the text of `Int`, `Hex`, `Real`, `LongReal`,
+     unpadded, and `Ten`), which `FormattedOutput` now pads and writes.
+     `FormattedText` is voc-compilable and in Stage 0's list
+     (`tools/bootstrap/stage0`, `STAGE0_RTL_SRCS`). `String` takes
+     `str-`, so a string is not copied, and may be `s` itself. Fixture
+     `llvm-outstr` (each case written by both, the pairs compared, under
+     `-O2` and `-OC`); `poc-link-flags` lists the new object; the
+     User's Guide's `Fields` example.
 
-2. **`InStr`: `In`'s input from a string** (user, 2026-10-05, the
+2. **[done] `InStr`: `In`'s input from a string** (user, 2026-10-05, the
    counterpart of `OutStr`). Nothing reads `In`'s tokens from an
    `ARRAY OF CHAR`: `In` reads only standard input, and `Texts`' scanner
    needs a `Text`.
@@ -993,11 +1019,16 @@ moves it to that phase's record.
      [. digits] [E|D [+-] digits]`), correctly rounded through
      `strtof`/`strtod`, and stop after it, so a string of several
      numbers can be read one after another.
-   - **To decide when it is built**: `s` as a value parameter takes a
-     string constant, but poc copies it on entry (`AGENTS.md`, "Open
-     arrays"), so reading a long string token by token costs its length
-     per call. A `VAR s` avoids the copy and refuses a constant; voc's
-     `x-`, which would do both, is not in poc (Phase 19 candidate 2).
+   - **`s` is a read-only parameter, `s-: ARRAY OF CHAR`** (decided
+     2026-10-05): a value parameter takes a string constant, but poc
+     copies it on entry (`AGENTS.md`, "Open arrays"), so reading a long
+     string token by token would cost its length per call; a `VAR s`
+     avoids the copy and refuses a constant. voc's `x-` refuses a
+     constant too (err 122), so poc adopts it in a version that takes
+     one.
+   - **Depends on "Ongoing language enhancements" item 1** (read-only
+     parameters): `InStr` is built after it, not before with a value
+     `s` (the user, 2026-10-05).
    - **Fixtures**: each procedure against `In` reading the same text from
      standard input (the same values and `Done`), `pos` after every kind
      of token and after a failure, a run of tokens read in turn, a
@@ -1005,6 +1036,59 @@ moves it to that phase's record.
    - voc has no `InStr`; a program using it is poc-only. OOC's `IntStr`
      and `RealStr` read numbers from strings, with other interfaces, and
      are Phase 20's to decide.
+   - **Built 2026-10-05**: `rtl/llvm/InStr.Mod`, over the new internal
+     `FormattedInput.Mod`, which recognizes every token over an abstract
+     `Source` (`Ready`, `Current`, `Advance`): `In` now reads through it
+     with a `Source` over standard input, and `InStr` with its
+     `StringSource`, which reads `s` in place through its address. On a
+     failure `InStr` puts `pos` back. Fixture `llvm-instr` (the same calls
+     on `input.txt` through `In` and `InStr`, compared, then `InStr`'s
+     positions, under `-O2` and `-OC`).
+
+## Ongoing language enhancements
+
+Language extensions that using poc on other programs shows are wanted,
+made as they come, alongside whichever phase is current, rather than
+waiting for Phase 19. Each is decided with the user and written up in
+`doc/language-extensions.md` first. An item is marked `[done]` once it is
+committed with its fixtures, `-strict` rejects it, `make check` passes on
+Linux and the three BSDs, and the User's and Reference Guides say what it
+is; a done item stays until the next phase's close-out, which moves it to
+that phase's record.
+
+1. **[done] Read-only parameters, `PROCEDURE P(x-: T)`** (decided with the user
+   2026-10-05, for `OutStr` and `InStr`, "Ongoing library enhancements";
+   Phase 19's candidate 2 until then; `000-todo.org`).
+   `doc/language-extensions.md`, "Read-only parameters", has the rules:
+   - Inside `P`, assigning to `x` or any part of it, or passing it or any
+     part of it as a `VAR` actual, is a compile-time error. `VAR x-` is an
+     error, as in voc.
+   - The actual may be any expression: a variable; a constant, a string
+     included; any other expression, evaluated into a temporary. voc's
+     takes only a variable (err 122).
+   - A type of at most 16 bytes, under the size model in force, is passed
+     by value, a larger one or an open array by reference, a constant by
+     reference to its own storage; the choice is made from the formal's
+     type alone, so caller and procedure agree across modules. As in Ada
+     (RM 6.2(12)), a program may not rely on which: a read through an
+     alias gets the old value or the new one.
+   - The `.sym` format records the mark. `-strict` rejects it and needs
+     nothing more; poc's own source does not use it.
+   - Steps: the parser (the mark, now a syntax error, and
+     `parser-reject-param-export-mark`); the checker (the read-only
+     rules, any actual, procedure types and type-bound procedures, whose
+     parameter lists must then match mark for mark); the `.sym` file;
+     the LLVM backend (by value or by reference, the temporary); fixtures
+     for each; the guides.
+   - **Built 2026-10-05**, as `doc/language-extensions.md`, "Read-only
+     parameters", records ("Implemented"). Calling a type-bound procedure
+     with a `VAR` receiver on it is an error too. A large one's actual
+     that is no variable needs no temporary after all: only a string has
+     a record or array type without one, and it is passed as a private
+     constant global of the parameter's type. Not compared with voc,
+     whose `x-` differs (by reference always, a variable only); the
+     fixtures check poc's rules. Found along the way: "Ongoing bug
+     fixing" 1.
 
 ## Open design questions
 

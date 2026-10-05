@@ -3,10 +3,11 @@ poc: build failed
 == -link, -static and -verbose
 clang -c --target=<triple> -O<level> -fPIC 'FileDescriptorOutput.ll' -o 'FileDescriptorOutput.o'
 clang -c --target=<triple> -O<level> -fPIC 'RealDigits.ll' -o 'RealDigits.o'
+clang -c --target=<triple> -O<level> -fPIC 'FormattedText.ll' -o 'FormattedText.o'
 clang -c --target=<triple> -O<level> -fPIC 'FormattedOutput.ll' -o 'FormattedOutput.o'
 clang -c --target=<triple> -O<level> -fPIC 'Out.ll' -o 'Out.o'
 clang -c --target=<triple> -O<level> -fPIC 'linkflags.ll' -o 'linkflags.o'
-clang --target=<triple> -O<level> 'FileDescriptorOutput.o' 'RealDigits.o' 'FormattedOutput.o' 'Out.o' 'linkflags.o' -o 'poc-link-flags' '-Llib dir' '-lpocfixture' -lm -static
+clang --target=<triple> -O<level> 'FileDescriptorOutput.o' 'RealDigits.o' 'FormattedText.o' 'FormattedOutput.o' 'Out.o' 'linkflags.o' -o 'poc-link-flags' '-Llib dir' '-lpocfixture' -lm -static
 21
 exit=0
 INTERP: 0

@@ -1,0 +1,13 @@
+readonly-param.mod:16:5: error: assignment target is read-only
+readonly-param.mod:16:15: error: assignment target is read-only
+readonly-param.mod:16:28: error: assignment target is read-only
+readonly-param.mod:16:36: error: assignment target is read-only
+readonly-param.mod:17:5: error: INC/DEC's argument must be a writable variable
+readonly-param.mod:17:13: error: COPY's second argument must be a writable variable
+readonly-param.mod:18:7: error: a read-only variable cannot be a VAR argument
+readonly-param.mod:18:13: error: a read-only variable cannot be a VAR argument
+readonly-param.mod:19:6: error: a read-only record cannot be the VAR receiver of a type-bound procedure: Set
+readonly-param.mod:20:5: error: assignment target is read-only
+readonly-param.mod:28:5: error: a read-only variable cannot be a VAR argument
+readonly-param.mod:28:24: error: a read-only record cannot be the VAR receiver of a type-bound procedure: Bump
+12 error(s)

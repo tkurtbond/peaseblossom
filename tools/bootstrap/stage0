@@ -37,6 +37,12 @@ elif [ ! -x "$VOC_BIN_DIR/voc" ]; then
 fi
 
 mkdir -p "$BUILD/bin" "$BUILD/obj"
+# Every module is compiled again below, so no symbol file is kept from the
+# last build: voc writes a module's .sym only when its interface changes,
+# but the .sym also lists the modules it imports, which voc links by - so
+# a new import (FormattedOutput's of FormattedText, 2026-10-05) behind an
+# unchanged interface left the module out of the link.
+rm -f "$BUILD/obj/"*.sym
 # BuildInfo.Mod, the commit `poc -version` names (Phase 13 step 1)
 "$ROOT/tools/build-info" "$BUILD/gen"
 export PATH="$VOC_BIN_DIR:$PATH"
@@ -47,6 +53,7 @@ cd "$BUILD/obj"
 # operating system
 voc -OC -s "$ROOT/rtl/voc/FileDescriptorOutput.Mod"
 voc -OC -s "$ROOT/rtl/llvm/RealDigits.Mod"
+voc -OC -s "$ROOT/rtl/llvm/FormattedText.Mod"
 voc -OC -s "$ROOT/rtl/llvm/FormattedOutput.Mod"
 voc -OC -s "$ROOT/rtl/llvm/Err.Mod"
 voc -OC -s "$ROOT/src/front/Diagnostics.Mod"

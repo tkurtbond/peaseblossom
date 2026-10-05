@@ -1385,7 +1385,8 @@ MODULE SemanticActions;
         paramType := ResolveType(scope, section.type, FALSE);
         idents := section.names;
         WHILE idents # NIL DO
-          Types.AddParam(pt, idents.name, paramType, section.isVar);
+          Types.AddParam(pt, idents.name, paramType, section.isVar,
+                         idents.exportMark = SyntaxTree.exportReadOnly);
           idents := idents.next
         END;
         section := section.next
@@ -1912,7 +1913,9 @@ MODULE SemanticActions;
     ELSIF (obj.class = SymbolTable.varClass) OR (obj.class = SymbolTable.constClass) THEN
       isVariable := obj.class = SymbolTable.varClass;
       viaVarParam := isVariable & obj.isVarParam;
-      readOnly := crossedBoundary & obj.readOnly;
+      (* a read-only parameter is read-only wherever it is seen, as an
+         imported read-only variable is outside its module *)
+      readOnly := (crossedBoundary & obj.readOnly) OR (isVariable & obj.isReadOnlyParam);
       t := obj.type
     ELSIF obj.class = SymbolTable.procClass THEN
       t := obj.type (* a real Types.ProcedureType, or Types.PredeclaredProcedureType *)
@@ -1963,6 +1966,12 @@ MODULE SemanticActions;
                 Diagnostics.ErrorAbout(sel.line, sel.column, "type-bound procedure is not exported by its module", sel.name);
                 t := Types.Undefined
               ELSE
+                IF readOnly & method.receiverIsVar THEN
+                  (* the call would pass a read-only record as the VAR
+                     receiver, which may change it *)
+                  Diagnostics.ErrorAbout(sel.line, sel.column,
+                    "a read-only record cannot be the VAR receiver of a type-bound procedure", sel.name)
+                END;
                 t := method.procType; readOnly := TRUE; boundProc := TRUE;
                 methodOwner := rec; methodName := sel.name
               END
@@ -2181,6 +2190,8 @@ MODULE SemanticActions;
           IF argType # Types.Undefined THEN
             IF ~isVariable THEN
               Diagnostics.Error(a.line, a.column, "a VAR parameter requires a variable argument")
+            ELSIF readOnly THEN
+              Diagnostics.Error(a.line, a.column, "a read-only variable cannot be a VAR argument")
             ELSIF ~Types.SameType(p.type, argType)
                 & ~((p.type # NIL) & (argType # NIL) & (p.type IS Types.RecordType)
                     & (argType IS Types.RecordType) & Types.Extends(argType, p.type))
@@ -3449,6 +3460,7 @@ MODULE SemanticActions;
     (* a narrowed VAR record parameter is still that parameter (a nested
        guard on it stays legal) *)
     unused.isVarParam := original.isVarParam;
+    unused.isReadOnlyParam := original.isReadOnlyParam;
     unused.usedAtOtherLevel := original.usedAtOtherLevel;
     CheckStatementSeq(narrowedScope, g.body, loopDepth, procResultType)
   END CheckWithGuardBody;
@@ -3662,6 +3674,7 @@ MODULE SemanticActions;
           paramObj := SymbolTable.Insert(bodyScope, idents.name, SymbolTable.varClass, p.type,
                                           FALSE, FALSE, idents.line, idents.column);
           paramObj.isVarParam := section.isVar;
+          paramObj.isReadOnlyParam := p.isReadOnly;
           p := p.next;
           idents := idents.next
         END;

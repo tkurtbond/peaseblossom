@@ -268,6 +268,25 @@ constructor with a variable element is a `SET`, or a `SET64` if it has a
 constant element above 31. (`-strict`: "a set constant with an element above
 MAX(SET)".)
 
+### Read-only parameters
+
+A formal parameter written `x-`, as in voc: `PROCEDURE Length(s-: ARRAY OF
+CHAR): INTEGER`. Inside the procedure, assigning to `x` or any part of it is
+an error, and so is passing it, or any part of it, as a `VAR` argument or as
+the `VAR` receiver of a type-bound procedure; it may be passed on as a value
+or read-only argument. `VAR x-` is an error. The argument may be any
+expression of a type a value parameter would take: a variable, a constant
+(a string included), or any other expression - where voc's takes only a
+variable. A record or fixed array of more than 16 bytes, under the size model
+in force, is passed by reference, and an open array by reference without
+being copied; a constant is passed as a reference to its own storage. Any
+other type is passed by value, as a value parameter is. A program may not
+rely on which: if the argument is a variable that the procedure changes by
+another name (a global, a `VAR` parameter), it may see the old value or the
+new one. Procedure types and redefined type-bound procedures must match mark
+for mark. A `.sym` file keeps the mark. (`-strict`: "a read-only
+parameter"; calling an imported procedure that has one is allowed.)
+
 ### Other extensions
 
 - **`ORD` of a set** is its bits as an integer: an `INTEGER` for a `SET`, a
@@ -286,8 +305,8 @@ MAX(SET)".)
 - **A guard, `IS` or `WITH` on a pointer names a pointer type**, never a
   record type; `=` and `#` compare pointers of related types only, and
   procedure values of one type only.
-- **Read-only parameters** (voc's `PROCEDURE P(x-: T)`) are not in poc: a
-  mark on a formal parameter is a syntax error.
+- **An export mark on a formal parameter**, `x*`, is a syntax error; `x-`
+  is a read-only parameter (section 3).
 
 ## 4. The module SYSTEM
 
@@ -591,10 +610,10 @@ library `poc-rtl` for the host in `$(LIBDIR)/poc/<triple>/{O2,OC,O2-g,OC-g}/`,
 ## 9. The runtime modules
 
 The library `poc-rtl` has the modules a program may import, with voc's
-interfaces so that a program written for voc compiles unchanged, and four
-that are poc's own machinery, which a program does not import itself:
-`FileDescriptorOutput`, `FormattedOutput`, `ModuleTable` and
-`RealDigits`. `SYSTEM` is built into the compiler (section 4).
+interfaces so that a program written for voc compiles unchanged, poc's own
+`Err`, `OutStr` and `InStr`, and six that are poc's own machinery, which a
+program does not import itself: `FileDescriptorOutput`, `FormattedInput`,
+`FormattedOutput`, `FormattedText`, `ModuleTable` and `RealDigits`. `SYSTEM` is built into the compiler (section 4).
 
 For each module: its description, including where it differs from voc's,
 then its interface as `poc -show-interface` prints it, each declaration
@@ -1027,6 +1046,104 @@ MODULE Files;
 END Files.
 ```
 
+### FormattedInput (poc's own)
+
+```text
+The tokens In reads from standard input and InStr from a string
+(PLAN.md, "Ongoing library enhancements" 2), recognized here once, over
+a Source of characters, so that the two cannot come to accept
+different text. Internal, like FormattedText: a program imports In or
+InStr. In.Mod describes each token and how it differs from voc's.
+
+Each procedure returns whether it found what it was asked for, and
+leaves its argument as In does when it did not. It reads only as far as
+it must: the character after a number or a word is looked at, not used
+up.
+
+A Source is the characters still to be read: Ready says whether there
+is one, Current which it is, and Advance moves past it. In's reads
+standard input (In.Mod); StringSource, below, reads a string in place.
+Neither In nor InStr is compiled by voc, so this module may use what
+poc alone has.
+```
+
+```oberon
+MODULE FormattedInput;
+  CONST
+    (* the longest number Real and LongReal will read *)
+    maxNumber* = 64;
+  TYPE
+    (* abstract: each method is an extension's *)
+    Source* = RECORD  END;
+
+    (* the characters of a string from a position on, read through its
+       address: a string ends at its first 0X or at its length *)
+    StringSource* = RECORD (Source) position*: LONGINT END;
+
+  (* whether there is a character to read *)
+  PROCEDURE (VAR self: Source) Ready*(): BOOLEAN;
+
+  (* the character to read; 0X if there is none *)
+  PROCEDURE (VAR self: Source) Current*(): CHAR;
+
+  (* moves past the character to read *)
+  PROCEDURE (VAR self: Source) Advance*();
+
+  (* whether there is a character to read *)
+  PROCEDURE (VAR self: StringSource) Ready*(): BOOLEAN;
+
+  (* the character to read; 0X if there is none *)
+  PROCEDURE (VAR self: StringSource) Current*(): CHAR;
+
+  (* moves past the character to read *)
+  PROCEDURE (VAR self: StringSource) Advance*();
+
+  (* Makes source read s, of length LEN(s), from position on: s ends at its
+     first 0X, or at LEN(s) if it has none. s is read where it is, so it
+     must stay in place, unchanged, while source is used. *)
+  PROCEDURE OpenString*(VAR source: StringSource; address: SYSTEM.ADDRESS; length: LONGINT; position: LONGINT);
+
+  (* whether position is within the string, its end included *)
+  PROCEDURE InString*(VAR source: StringSource): BOOLEAN;
+
+  (* past any blanks, tabs and line ends (any character up to " ") *)
+  PROCEDURE Skip*(VAR source: Source);
+
+  (* The next character, line end (0AX) included; ch is 0X if there is
+     none. *)
+  PROCEDURE Char*(VAR source: Source; VAR ch: CHAR): BOOLEAN;
+
+  (* An integer, after any blanks: an optional minus sign, then decimal
+     digits, or hexadecimal digits (0-9, A-F) and an H. h is left alone if
+     there is nothing to read, and is 0 if what there is is not a
+     number. *)
+  PROCEDURE HugeInt*(VAR source: Source; VAR h: HUGEINT): BOOLEAN;
+
+  (* The rest of the line - up to a line feed, and without the carriage
+     return before it - cut short if line cannot hold it all (the rest is
+     then left for the next read). FALSE if there is nothing to read. *)
+  PROCEDURE Line*(VAR source: Source; VAR line: ARRAY OF CHAR): BOOLEAN;
+
+  (* A string in double quotes, on one line, without the quotes, after any
+     blanks; str is "" if there is none. *)
+  PROCEDURE String*(VAR source: Source; VAR str: ARRAY OF CHAR): BOOLEAN;
+
+  (* A word: the characters up to the next blank, tab or line end, after
+     any of those. *)
+  PROCEDURE Name*(VAR source: Source; VAR name: ARRAY OF CHAR): BOOLEAN;
+
+  (* A real number (Numeral), correctly rounded by the C library's strtof;
+     x is left alone if it is not one. *)
+  PROCEDURE Real*(VAR source: Source; VAR x: REAL): BOOLEAN;
+
+  (* The same, by strtod *)
+  PROCEDURE LongReal*(VAR source: Source; VAR x: LONGREAL): BOOLEAN;
+
+  (* whether nothing but blanks and tabs is left to read *)
+  PROCEDURE OnlyBlanksLeft*(VAR source: Source): BOOLEAN;
+END FormattedInput.
+```
+
 ### FormattedOutput (poc's own)
 
 ```text
@@ -1034,7 +1151,10 @@ Phase 11 A26: the formatting behind Out (standard output) and Err
 (standard error), written once, with the descriptor to write to as
 every procedure's first parameter. Internal, like RealDigits: a program
 imports Out or Err. What each procedure prints, and how that differs
-from voc's Out, is described in Out.Mod; Int is Console.Int's.
+from voc's Out, is described in Out.Mod; Int is Console.Int's. The
+text of each number is FormattedText's, which OutStr appends to a
+string (PLAN.md, "Ongoing library enhancements" 1); this module pads
+it to its field and writes it.
 
 Nothing is buffered: every call has written its output when it returns,
 so Out, Err, Console and the trap messages come out in the order of the
@@ -1056,9 +1176,7 @@ MODULE FormattedOutput;
 
   (* x in decimal, right-aligned in a field n characters wide: padded with
      blanks on the left if it takes fewer, written whole if it takes more.
-     No plus sign. The smallest HUGEINT has no positive counterpart to print
-     digit by digit, so it is written out whole. A negative n is
-     taken as 0. *)
+     No plus sign. A negative n is taken as 0. *)
   PROCEDURE Int*(descriptor: SYSTEM.INT32; x: HUGEINT; n: HUGEINT);
 
   (* x as hexadecimal digits, upper case, at least n of them (n is taken to
@@ -1079,6 +1197,58 @@ MODULE FormattedOutput;
      17 digits. *)
   PROCEDURE LongReal*(descriptor: SYSTEM.INT32; x: LONGREAL; n: INTEGER);
 END FormattedOutput.
+```
+
+### FormattedText (poc's own)
+
+```text
+The text of each number Out writes, without the blanks that pad it to
+its field: what FormattedOutput writes (for Out and Err) and OutStr
+appends to a string (PLAN.md, "Ongoing library enhancements" 1), made
+here once so that the two cannot drift apart. Internal, like
+RealDigits: a program imports Out, Err or OutStr. What each procedure
+makes, and how that differs from voc's Out, is described in Out.Mod.
+
+Int, Real and LongReal are right-aligned in a field of n characters:
+the caller pads with n - Length(text) blanks, nothing if that is not
+positive. Hex has no field, only a digit count.
+
+voc compiles this module for Stage 0 (Phase 11 D11), as it does
+FormattedOutput, so it must stay within what voc accepts.
+```
+
+```oberon
+MODULE FormattedText;
+  CONST
+    (* the room every text below needs, its 0X included *)
+    maxText* = 32;
+
+  (* The characters of text before its first 0X (all of it if it has
+     none) *)
+  PROCEDURE Length*(VAR text: ARRAY OF CHAR): LONGINT;
+
+  (* x in decimal, with a minus sign if it is negative, and no plus sign.
+     The smallest HUGEINT has no positive counterpart to make digit by
+     digit, so it is written out whole. *)
+  PROCEDURE Int*(x: HUGEINT; VAR text: ARRAY OF CHAR);
+
+  (* x as hexadecimal digits, upper case, at least n of them (n is taken to
+     be within 1..16): as many as x needs if that is more - but a negative
+     x gets exactly n, the low ones of its two's complement, as in voc. *)
+  PROCEDURE Hex*(x: HUGEINT; n: HUGEINT; VAR text: ARRAY OF CHAR);
+
+  (* 10^e for e >= 0, by repeated squaring - exact up to 10^22 *)
+  PROCEDURE Ten*(e: INTEGER): LONGREAL;
+
+  (* x in exponential form (d.dddE+dd), with as many digits as fit a field
+     of n characters, from 2 to 9, at least 6 generated to drop trailing
+     zeros from. A plus sign of the mantissa is not written. *)
+  PROCEDURE Real*(x: REAL; n: INTEGER; VAR text: ARRAY OF CHAR);
+
+  (* The same for a LONGREAL, with D and a three-digit exponent, and up to
+     17 digits. *)
+  PROCEDURE LongReal*(x: LONGREAL; n: INTEGER; VAR text: ARRAY OF CHAR);
+END FormattedText.
 ```
 
 ### GarbageCollectedHeap
@@ -1280,7 +1450,8 @@ The stream is read a character at a time through C's getchar, which is
 the same on Linux and the BSDs and buffered by libc, and one character
 is read ahead of what a call has consumed - except at a line end, so
 that a program prompting for a line does not wait for the next one
-before it can use this one.
+before it can use this one. The tokens are recognized by
+FormattedInput, which InStr reads a string with too.
 
 Where this differs from voc's (the numbers are those of vishap-bugs,
 ~/Repos/Oberon/vishap-bugs):
@@ -1333,6 +1504,82 @@ MODULE In;
   PROCEDURE Real*(VAR x: REAL);
   PROCEDURE LongReal*(VAR x: LONGREAL);
 END In.
+```
+
+### InStr
+
+```text
+In's procedures, except Open, reading from a string instead of standard
+input (PLAN.md, "Ongoing library enhancements" 2). Each takes In's
+parameters followed by s and pos, starts reading at s[pos], and, when
+it succeeds, moves pos to just after what it used up: the blanks it
+skipped, then the number, word, quoted string (its closing quote
+included), character or line (its line end included). One that fails
+leaves pos alone, and its argument as In leaves its argument. Done, as
+In's, says whether the last call found what it was asked for, so a run
+of calls reads a string token by token as a run of In calls reads
+standard input:
+
+  pos := 0; InStr.Int(i, s, pos); InStr.Name(word, s, pos)
+
+s ends at its first 0X, or at LEN(s) if it has none. A pos below 0 or
+past that end reads nothing: Done is FALSE, and nothing traps.
+
+The tokens are In's, recognized by the same code (FormattedInput), with
+one difference: In.Real and In.LongReal read a whole line and take it
+as one number, where these read the number at pos - after any blanks,
+tabs and line ends, [+-] digits [. digits] [E|D [+-] digits] - and
+stop after it, so that a string of numbers can be read one by one.
+
+s is a read-only parameter, s-: it is not copied, so reading a long
+string token by token costs no more than reading it once, and a string
+constant may be passed. poc's own: voc has no InStr, nor read-only
+parameters that take a constant.
+```
+
+```oberon
+MODULE InStr;
+  VAR
+    (* whether the last operation succeeded *)
+    Done-: BOOLEAN;
+
+  (* The next character, line end (0AX) included; ch is 0X if there is
+     none. *)
+  PROCEDURE Char*(VAR ch: CHAR; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+
+  (* An integer: an optional minus sign, then decimal digits, or
+     hexadecimal digits (0-9, A-F) and an H. h is left alone if there is
+     nothing left to read, and is 0 if what there is is not a number. *)
+  PROCEDURE HugeInt*(VAR h: HUGEINT; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+
+  (* HugeInt, narrowed to the low bits of an INTEGER, as In.Int: 0 if there
+     is nothing left to read *)
+  PROCEDURE Int*(VAR i: INTEGER; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+
+  (* HugeInt, narrowed to the low bits of a LONGINT, as In.LongInt: 0 if
+     there is nothing left to read *)
+  PROCEDURE LongInt*(VAR i: LONGINT; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+
+  (* The rest of the line - up to a line feed, and without the carriage
+     return before it - cut short if line cannot hold it all (the rest is
+     then left for the next read). Done is FALSE at the end of s. *)
+  PROCEDURE Line*(VAR line: ARRAY OF CHAR; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+
+  (* A string in double quotes, on one line, without the quotes; str is ""
+     if there is none. *)
+  PROCEDURE String*(VAR str: ARRAY OF CHAR; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+
+  (* A word: the characters up to the next blank, tab or line end, after
+     any of those. *)
+  PROCEDURE Name*(VAR name: ARRAY OF CHAR; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+
+  (* A real number, correctly rounded (the C library's strtof); x is left
+     alone if there is none. *)
+  PROCEDURE Real*(VAR x: REAL; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+
+  (* The same for a LONGREAL (strtod) *)
+  PROCEDURE LongReal*(VAR x: LONGREAL; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+END InStr.
 ```
 
 ### Math
@@ -1953,6 +2200,61 @@ MODULE Out;
      17 digits. *)
   PROCEDURE LongReal*(x: LONGREAL; n: INTEGER);
 END Out.
+```
+
+### OutStr
+
+```text
+Out's output procedures - Char, String, Int, Hex, Ln, Real, LongReal -
+appending to a string instead of writing to standard output (PLAN.md,
+"Ongoing library enhancements" 1). Each takes Out's parameters followed
+by s, and adds its text at s's first 0X, so a run of calls builds a
+line as a run of Out calls writes one; start with s := "".
+
+The text is exactly Out's: FormattedText makes it for both, and the
+field widths are padded with blanks the same way. Ln appends 0AX, the
+line feed Out.Ln writes.
+
+Text that does not fit is cut short, silently, and s always ends in a
+0X: a call never writes beyond s. If s has no 0X, its last character
+is replaced by one before anything is appended.
+
+poc's own: voc has no OutStr, and String's read-only parameter, str-,
+takes a string constant, which voc's would not.
+```
+
+```oberon
+MODULE OutStr;
+  (* ch *)
+  PROCEDURE Char*(ch: CHAR; VAR s: ARRAY OF CHAR);
+
+  (* The characters of str up to its 0X (all of it if it has none), without
+     the 0X. str may be s itself: its length is taken first. *)
+  PROCEDURE String*(str-: ARRAY OF CHAR; VAR s: ARRAY OF CHAR);
+
+  (* A line feed, 0AX *)
+  PROCEDURE Ln*(VAR s: ARRAY OF CHAR);
+
+  (* x in decimal, right-aligned in a field n characters wide: padded with
+     blanks on the left if it takes fewer, whole if it takes more. No plus
+     sign. *)
+  PROCEDURE Int*(x: HUGEINT; n: HUGEINT; VAR s: ARRAY OF CHAR);
+
+  (* x as hexadecimal digits, upper case, at least n of them (n is taken to
+     be within 1..16): as many as x needs if that is more - but a negative
+     x gets exactly n, the low ones of its two's complement, as in voc. *)
+  PROCEDURE Hex*(x: HUGEINT; n: HUGEINT; VAR s: ARRAY OF CHAR);
+
+  (* x in exponential form (d.dddE+dd), right-aligned in a field of n
+     characters: as many digits as fit, from 2 to 9, at least 6 generated
+     to drop trailing zeros from. A plus sign of the mantissa is not
+     written. *)
+  PROCEDURE Real*(x: REAL; n: INTEGER; VAR s: ARRAY OF CHAR);
+
+  (* The same for a LONGREAL, with D and a three-digit exponent, and up to
+     17 digits. *)
+  PROCEDURE LongReal*(x: LONGREAL; n: INTEGER; VAR s: ARRAY OF CHAR);
+END OutStr.
 ```
 
 ### Platform

@@ -1,4 +1,3 @@
-param-mark.mod:2:23: error: a formal parameter cannot have an export mark
-param-mark.mod:5:26: error: a formal parameter cannot have an export mark
-param-mark.mod:5:43: error: a formal parameter cannot have an export mark
-3 error(s)
+param-mark.mod:7:26: error: a formal parameter cannot have an export mark
+param-mark.mod:7:42: error: a VAR parameter cannot be read-only
+2 error(s)

@@ -606,6 +606,8 @@ from voc's, its source's first comment says how.
 | `Err` | the same, to standard error |
 | `Console` | as `Out`, unbuffered |
 | `In` | reading standard input: `Int`, `LongInt`, `Real`, `Char`, `String`, `Name`, `Line`; `Done` says whether it worked |
+| `OutStr` | `Out`'s `String`, `Char`, `Int`, `Hex`, `Real`, `LongReal`, `Ln`, appending to a string (poc's own) |
+| `InStr` | `In`'s procedures reading a string from a position, which each moves on (poc's own) |
 | `Strings` | `Length`, `Append`, `Insert`, `Delete`, `Replace`, `Extract`, `Pos`, `Cap`, `Match` |
 | `Math`, `MathL` | `REAL` and `LONGREAL` functions: `sqrt`, `exp`, `ln`, `sin`, `arctan2`, `power`, `round` and the rest |
 | `Files` | files: `Old`, `New`, `Register`, `Close`, `Delete`, `Rename`, and riders to read and write bytes, numbers and strings |
@@ -708,6 +710,37 @@ $ ./Words
 Peaseblossom and Cobweb, 23 characters
 Cobweb is at 17
 PEASEBLOSSOM AND COBWEB
+```
+
+**Strings as input and output** (`InStr`, `OutStr`): each `InStr`
+procedure reads from its position and moves it past what it read; each
+`OutStr` procedure appends to its string what `Out` would write:
+
+<!-- example: runtime/Fields.Mod -->
+```
+MODULE Fields;
+  (* InStr reads a string as In reads standard input, moving pos on;
+     OutStr appends to a string what Out would write *)
+  IMPORT InStr, OutStr, Out;
+  VAR pos: LONGINT; name: ARRAY 32 OF CHAR; count: INTEGER; price: REAL;
+    line: ARRAY 80 OF CHAR;
+BEGIN
+  pos := 0;
+  InStr.Name(name, "pears 12 0.75", pos);
+  InStr.Int(count, "pears 12 0.75", pos);
+  InStr.Real(price, "pears 12 0.75", pos);
+  line := "";
+  OutStr.String(name, line); OutStr.Int(count, 4, line);
+  OutStr.Char(" ", line); OutStr.Real(count * price, 12, line);
+  Out.String(line); Out.Ln
+END Fields.
+```
+
+<!-- run: runtime -->
+```
+$ poc Fields.Mod
+$ ./Fields
+pears  12 9.000000E+00
 ```
 
 **Mathematics** (`Math`):
@@ -866,7 +899,9 @@ written for voc usually builds unchanged. What differs:
   (section 7), where voc prints "Terminated by Halt(n)". `HALT(n)` takes
   `n` from 0 to 255 and says nothing.
 - **`SET`** has 32 bits under `-OC` too; `SYSTEM.SET64` has 64.
-- **Read-only parameters** (`PROCEDURE P(x-: T)`) are not in poc.
+- **Read-only parameters** (`PROCEDURE P(x-: T)`) take any argument, a
+  constant or a string included, where voc's take only a variable, and a
+  small one is passed by value (Reference Guide, "Read-only parameters").
 - **voc's library modules** (those of its `src/library`: `ethMD5`, the ooc
   and Oakwood modules and the rest) are not in poc yet; the runtime modules
   of section 10 are.

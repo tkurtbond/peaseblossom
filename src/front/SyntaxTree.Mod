@@ -260,7 +260,8 @@ MODULE SyntaxTree;
 
     FPSectionNodeDesc* = RECORD (NodeDesc)
       isVar*: BOOLEAN;
-      names*: IdentDefNode; (* plain idents; exportMark is always exportNone *)
+      names*: IdentDefNode; (* plain idents; exportMark is exportNone, or
+        exportReadOnly for a read-only parameter, "x-" *)
       type*: TypeNode;
       next*: FPSectionNode
     END;

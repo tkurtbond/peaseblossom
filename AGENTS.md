@@ -99,8 +99,8 @@ for poc unless it adopted them:
   Oberon2.pdf" below).
 - Read-only parameters marked `-` (`PROCEDURE P(x-: T)`: passed by
   reference, not assignable; Oakwood 5.13, which recommends against it; not
-  in `Features.md`, only in voc's `OPP.Mod`): not adopted, and a syntax
-  error in poc (see "Read-only parameters" below).
+  in `Features.md`, only in voc's `OPP.Mod`): adopted, taking any
+  expression, as voc's does not (see "Read-only parameters" below).
 - Pointers start NIL (`-p`, on by default), as `Oberon2.pdf` says too.
 - Run-time checks: `-a` (assert), `-t` (type guard) and `-x` (index) are on
   by default, `-r` (range) is off.
@@ -335,10 +335,18 @@ applies it to all of `src/`. Found with it and fixed for everyone: a guard,
 `IS` or `WITH` on a pointer must name a pointer type, and `=`/`#` compare only
 related pointers and procedure values of one type.
 
-### Read-only parameters (considered, not adopted)
+### Read-only parameters (decided and implemented, 2026-10-05)
 
 voc's `x-` formal parameter (by reference, read-only; Oakwood 5.13 recommends
-against it) is not in poc. A mark on a formal parameter is a syntax error.
+against it), adopted with the user 2026-10-05 for `OutStr`/`InStr` (`PLAN.md`,
+"Ongoing library enhancements" and "Ongoing language enhancements"). poc's
+takes any actual - a variable, a constant (a string included), or another
+expression - where voc's takes only a variable (err 122). Assigning to it, or
+passing it as a `VAR` actual or a `VAR` receiver, is a compile-time error;
+`x*` and `VAR x-` are errors. One of at most 16 bytes is passed by value, a larger one
+or an open array by reference, decided from the formal's type alone; as in
+Ada, a program may not rely on which. `-strict` rejects the mark, and poc's
+own source does not use it.
 
 ### Underscores and dollar signs in identifiers (decided and implemented, Phase 11 A25, 2026-09-26)
 
@@ -388,8 +396,9 @@ released with four fixes as **Peaseblossom 0.2.0 on 2026-10-04** (tag
 Phase 15, the VAX/VMS MACRO-32 backend, is next; 15-18 are the VAX/VMS
 work, 19 further extensions, 20 voc's library modules. Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
-fixing"), and runtime-library additions it shows are wanted are made the
-same way (`PLAN.md`, "Ongoing library enhancements"). The phases were renumbered twice on 2026-10-02, and older
+fixing"), and the runtime-library additions and language extensions it
+shows are wanted are made the same way (`PLAN.md`, "Ongoing library
+enhancements" and "Ongoing language enhancements"). The phases were renumbered twice on 2026-10-02, and older
 records keep the old numbers (`PLAN.md`, Phase 13).
 `doc/project-history.md` has the earlier account; `src/front/README.md`
 lists the front-end modules.

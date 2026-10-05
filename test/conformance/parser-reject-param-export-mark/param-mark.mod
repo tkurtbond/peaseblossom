@@ -1,4 +1,6 @@
 MODULE paramMark;
+  (* x- is a read-only parameter (doc/language-extensions.md, "Read-only
+     parameters"): accepted by the parser; the assignment is the checker's *)
   PROCEDURE ReadOnly(x-: INTEGER);
   BEGIN x := 1
   END ReadOnly;

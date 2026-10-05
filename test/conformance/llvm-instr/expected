@@ -1,0 +1,44 @@
+Int 12 Done
+pos 2
+Int 255 Done
+pos 7
+LongInt -7 Done
+pos 10
+HugeInt 9223372036854775807 Done
+pos 30
+Name word Done
+pos 35
+String a quoted string Done
+pos 53
+Char 10 Done
+pos 54
+Real 3.25E+00 Done
+pos 58
+LongReal -1.5D-003 Done
+pos 68
+Name x Done
+pos 72
+Line  the rest of a line Done
+pos 92
+Int 0 not Done
+pos 92
+Name  not Done
+pos 92
+Char 0 not Done
+pos 92
+-- InStr only
+12ab: pos 0 not Done  0
+then Name: pos 6 Done 12ab
+then Int: pos 8 Done  7
+1.5e: pos 0 not Done
+unended string: pos 0 not Done
+5.0E-01-2.5E+013.0E+00 three reals: pos 12 Done
+no 0X: pos 5 Done 12345
+then Char: pos 5 not Done
+pos -1: pos -1 not Done
+pos 3, the end: pos 3 not Done
+Line at the end: pos 3 not Done
+pos 4, past the end: pos 4 not Done
+pos 2: pos 3 Done c
+Line in 4: pos 3 Done abc
+the rest: pos 6 Done def

@@ -7,5 +7,6 @@ place of an `rtl/llvm` one that voc cannot compile.
   interface (`Write`, `IsTerminal`, `standardOutput`, `standardError`) over
   voc's `Platform` module, where poc's declares `write(2)` and `isatty` as
   external procedures, which voc writes differently. Stage 0 compiles it,
-  then `rtl/llvm`'s `RealDigits`, `FormattedOutput` and `Err`, so the
+  then `rtl/llvm`'s `RealDigits`, `FormattedText`, `FormattedOutput` and
+  `Err`, so the
   voc-built poc writes its diagnostics to standard error (Phase 11 D11).

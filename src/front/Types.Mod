@@ -163,6 +163,8 @@ MODULE Types;
         placeholder *)
       type*: Type;
       isVar*: BOOLEAN;
+      isReadOnly*: BOOLEAN; (* a read-only parameter, "x-" (doc/language-
+        extensions.md, "Read-only parameters"); never with isVar *)
       next*: Param
     END;
 
@@ -605,10 +607,10 @@ MODULE Types;
 
   (* Appends a parameter to pt's own list, in declaration order (needed by
      ParamListsMatch/Appendix A's "matching formal parameter lists"). *)
-  PROCEDURE AddParam*(pt: ProcedureType; name: SyntaxTree.Ident; type: Type; isVar: BOOLEAN);
+  PROCEDURE AddParam*(pt: ProcedureType; name: SyntaxTree.Ident; type: Type; isVar, isReadOnly: BOOLEAN);
     VAR p, tail: Param;
   BEGIN
-    NEW(p); p.name := name; p.type := type; p.isVar := isVar; p.next := NIL;
+    NEW(p); p.name := name; p.type := type; p.isVar := isVar; p.isReadOnly := isReadOnly; p.next := NIL;
     IF pt.params = NIL THEN
       pt.params := p
     ELSE
@@ -702,14 +704,14 @@ MODULE Types;
   BEGIN
     IF (a = NIL) & (b = NIL) THEN RETURN TRUE
     ELSIF (a = NIL) OR (b = NIL) THEN RETURN FALSE
-    ELSIF a.isVar # b.isVar THEN RETURN FALSE
+    ELSIF (a.isVar # b.isVar) OR (a.isReadOnly # b.isReadOnly) THEN RETURN FALSE
     ELSIF ~EqualTypes(a.type, b.type) THEN RETURN FALSE
     ELSE RETURN ParamListsMatch(a.next, b.next)
     END
   END ParamListsMatch;
 
   (* Appendix A "matching formal parameter lists": same arity, each pair's
-     mode (VAR or not) identical and type equal (EqualTypes* above, not
+     mode (VAR, read-only or value) identical and type equal (EqualTypes* above, not
      merely SameType* ), and same result type or none (both proper
      procedures, or both matching functions). Oberon2.pdf's stricter
      "identical" wording for forward-declaration/redefinition parameter

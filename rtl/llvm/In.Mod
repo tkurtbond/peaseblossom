@@ -11,7 +11,8 @@ MODULE In;
      the same on Linux and the BSDs and buffered by libc, and one character
      is read ahead of what a call has consumed - except at a line end, so
      that a program prompting for a line does not wait for the next one
-     before it can use this one.
+     before it can use this one. The tokens are recognized by
+     FormattedInput, which InStr reads a string with too.
 
      Where this differs from voc's (the numbers are those of vishap-bugs,
      ~/Repos/Oberon/vishap-bugs):
@@ -30,24 +31,28 @@ MODULE In;
      - Int and LongInt narrow the number the way voc's do, to the low bits,
        not by trapping. *)
 
-  IMPORT SYSTEM;
+  IMPORT SYSTEM, FormattedInput;
 
   CONST
     (* what the reader knows about nextch *)
     pending = 0; (* at the start or a line end: nextch is not read yet *)
     ready = 1; (* nextch is the next character of the line *)
     eof = 2; (* there is no more *)
-    maxNumber = 64; (* the longest number Real and LongReal will read *)
+
+  TYPE
+    (* standard input as FormattedInput reads it, which recognizes the
+       tokens for In and InStr alike (PLAN.md, "Ongoing library
+       enhancements" 2) *)
+    StandardInput = RECORD (FormattedInput.Source) END;
 
   VAR
     (* whether the last operation succeeded; Open sets it TRUE *)
     Done-: BOOLEAN;
     nextch: CHAR;
     readstate: INTEGER;
+    input: StandardInput;
 
   PROCEDURE ["C", "getchar"] CGetChar(): SYSTEM.INT32;
-  PROCEDURE ["C", "strtod"] CStrToD(text, end: SYSTEM.ADDRESS): LONGREAL;
-  PROCEDURE ["C", "strtof"] CStrToF(text, end: SYSTEM.ADDRESS): REAL;
 
   (* Starts over: the next read begins wherever the stream is now. *)
   PROCEDURE Open*;
@@ -68,76 +73,41 @@ MODULE In;
     END
   END ReadChar;
 
-  (* Makes nextch valid, or notes the end of the input. *)
-  PROCEDURE StartRead;
+  (* Whether there is a next character: nextch, read now if it was not yet.
+     *)
+  PROCEDURE (VAR source: StandardInput) Ready*(): BOOLEAN;
   BEGIN
-    IF readstate = pending THEN ReadChar END
-  END StartRead;
+    IF readstate = pending THEN ReadChar END;
+    RETURN readstate = ready
+  END Ready;
 
-  (* The same, past any blanks, tabs and line ends. *)
-  PROCEDURE StartAndSkip;
+  PROCEDURE (VAR source: StandardInput) Current*(): CHAR;
   BEGIN
-    StartRead;
-    WHILE (readstate = ready) & (nextch <= " ") DO ReadChar END
-  END StartAndSkip;
+    IF source.Ready() THEN RETURN nextch ELSE RETURN 0X END
+  END Current;
+
+  (* Moves past nextch. Past a line end the next character is not read
+     until it is wanted, so that a program prompting for a line does not
+     wait for the next one before it can use this one. *)
+  PROCEDURE (VAR source: StandardInput) Advance*;
+  BEGIN
+    IF source.Ready() THEN
+      IF nextch = 0AX THEN readstate := pending ELSE ReadChar END
+    END
+  END Advance;
 
   (* The next character, line end (0AX) included. Done is FALSE, and ch 0X,
      at the end of the input. *)
   PROCEDURE Char*(VAR ch: CHAR);
   BEGIN
-    StartRead;
-    Done := readstate = ready;
-    IF Done THEN
-      ch := nextch;
-      IF ch = 0AX THEN readstate := pending ELSE ReadChar END
-    ELSE
-      ch := 0X
-    END
+    Done := FormattedInput.Char(input, ch)
   END Char;
 
   (* An integer: an optional minus sign, then decimal digits, or
      hexadecimal digits (0-9, A-F) and an H. *)
   PROCEDURE HugeInt*(VAR h: HUGEINT);
-    VAR
-      negative, hexSuffix, letters, endOfNumber: BOOLEAN;
-      decimal, hexadecimal, digit: HUGEINT;
-      count: INTEGER;
   BEGIN
-    StartAndSkip;
-    Done := FALSE;
-    IF readstate = ready THEN
-      negative := nextch = "-";
-      IF negative THEN ReadChar END;
-      hexSuffix := FALSE; letters := FALSE; endOfNumber := FALSE;
-      decimal := 0; hexadecimal := 0; count := 0;
-      WHILE (readstate = ready) & ~endOfNumber DO
-        digit := -1;
-        IF (nextch >= "0") & (nextch <= "9") THEN
-          digit := ORD(nextch) - ORD("0")
-        ELSIF (nextch >= "A") & (nextch <= "F") THEN
-          digit := ORD(nextch) - ORD("A") + 10; letters := TRUE
-        ELSIF (nextch >= "a") & (nextch <= "f") THEN
-          digit := ORD(nextch) - ORD("a") + 10; letters := TRUE
-        END;
-        IF digit >= 0 THEN
-          INC(count);
-          decimal := decimal * 10 + digit;
-          hexadecimal := hexadecimal * 16 + digit;
-          ReadChar
-        ELSIF nextch = "H" THEN
-          hexSuffix := TRUE; endOfNumber := TRUE; ReadChar
-        ELSE
-          endOfNumber := TRUE
-        END
-      END;
-      Done := (count > 0) & (hexSuffix OR ~letters);
-      IF Done THEN
-        IF hexSuffix THEN h := hexadecimal ELSE h := decimal END;
-        IF negative THEN h := -h END
-      ELSE
-        h := 0
-      END
-    END
+    Done := FormattedInput.HugeInt(input, h)
   END HugeInt;
 
   PROCEDURE Int*(VAR i: INTEGER);
@@ -158,107 +128,48 @@ MODULE In;
      return before it - cut short if line cannot hold it all (the rest is
      then left for the next read). Done is FALSE at the end of the input. *)
   PROCEDURE Line*(VAR line: ARRAY OF CHAR);
-    VAR i: LONGINT;
   BEGIN
-    StartRead;
-    i := 0;
-    Done := readstate = ready;
-    WHILE (readstate = ready) & (nextch # 0DX) & (nextch # 0AX) & (i < LEN(line) - 1) DO
-      line[i] := nextch;
-      INC(i);
-      ReadChar
-    END;
-    line[i] := 0X;
-    IF (readstate = ready) & (nextch = 0DX) THEN ReadChar END;
-    IF (readstate = ready) & (nextch = 0AX) THEN readstate := pending END
+    Done := FormattedInput.Line(input, line)
   END Line;
 
   (* A string in double quotes, on one line, without the quotes. *)
   PROCEDURE String*(VAR str: ARRAY OF CHAR);
-    VAR i: LONGINT;
   BEGIN
-    StartAndSkip;
-    i := 0;
-    IF (readstate = ready) & (nextch = '"') THEN
-      ReadChar;
-      WHILE (readstate = ready) & (i < LEN(str) - 1) & (nextch >= " ") & (nextch # '"') DO
-        str[i] := nextch;
-        ReadChar;
-        INC(i)
-      END
-    END;
-    Done := (readstate = ready) & (i < LEN(str) - 1) & (nextch = '"');
-    IF Done THEN
-      ReadChar;
-      str[i] := 0X
-    ELSE
-      str[0] := 0X
-    END
+    Done := FormattedInput.String(input, str)
   END String;
 
   (* A word: the characters up to the next blank, tab or line end, after
      any of those. *)
   PROCEDURE Name*(VAR name: ARRAY OF CHAR);
-    VAR i: LONGINT;
   BEGIN
-    StartAndSkip;
-    i := 0;
-    WHILE (readstate = ready) & (nextch > " ") & (i < LEN(name) - 1) DO
-      name[i] := nextch;
-      ReadChar;
-      INC(i)
-    END;
-    Done := i > 0;
-    name[i] := 0X
+    Done := FormattedInput.Name(input, name)
   END Name;
 
-  (* Whether text - at most maxNumber characters, blanks around it allowed -
-     is [+-] digits [. digits] [E|D [+-] digits], with a digit before or
-     after the point; number receives it with the D written as E (which is
-     what strtod reads). *)
-  PROCEDURE IsNumber(text: ARRAY OF CHAR; VAR number: ARRAY OF CHAR): BOOLEAN;
-    VAR i, k, digits: LONGINT; ok: BOOLEAN;
+  (* A whole line, as one real number with blanks around it allowed: line
+     is read from the line through a string source *)
+  PROCEDURE ReadLine(VAR line: ARRAY OF CHAR; VAR source: FormattedInput.StringSource);
   BEGIN
-    i := 0;
-    WHILE (text[i] = " ") OR (text[i] = 09X) DO INC(i) END;
-    k := 0;
-    IF (text[i] = "+") OR (text[i] = "-") THEN number[k] := text[i]; INC(k); INC(i) END;
-    digits := 0;
-    WHILE (text[i] >= "0") & (text[i] <= "9") DO number[k] := text[i]; INC(k); INC(i); INC(digits) END;
-    IF text[i] = "." THEN
-      number[k] := "."; INC(k); INC(i);
-      WHILE (text[i] >= "0") & (text[i] <= "9") DO number[k] := text[i]; INC(k); INC(i); INC(digits) END
-    END;
-    ok := digits > 0;
-    IF ok & ((text[i] = "E") OR (text[i] = "D") OR (text[i] = "e") OR (text[i] = "d")) THEN
-      number[k] := "E"; INC(k); INC(i);
-      IF (text[i] = "+") OR (text[i] = "-") THEN number[k] := text[i]; INC(k); INC(i) END;
-      digits := 0;
-      WHILE (text[i] >= "0") & (text[i] <= "9") DO number[k] := text[i]; INC(k); INC(i); INC(digits) END;
-      ok := digits > 0
-    END;
-    WHILE (text[i] = " ") OR (text[i] = 09X) DO INC(i) END;
-    number[k] := 0X;
-    RETURN ok & (text[i] = 0X)
-  END IsNumber;
+    Line(line);
+    FormattedInput.OpenString(source, SYSTEM.ADR(line), LEN(line), 0)
+  END ReadLine;
 
   PROCEDURE Real*(VAR x: REAL);
-    VAR text, number: ARRAY maxNumber + 1 OF CHAR;
+    VAR line: ARRAY FormattedInput.maxNumber + 1 OF CHAR; source: FormattedInput.StringSource; y: REAL;
   BEGIN
-    Line(text);
+    ReadLine(line, source);
     IF Done THEN
-      Done := IsNumber(text, number);
-      IF Done THEN x := CStrToF(SYSTEM.ADR(number), 0) END
+      Done := FormattedInput.Real(source, y) & FormattedInput.OnlyBlanksLeft(source);
+      IF Done THEN x := y END
     END
   END Real;
 
   PROCEDURE LongReal*(VAR x: LONGREAL);
-    VAR text, number: ARRAY maxNumber + 1 OF CHAR;
+    VAR line: ARRAY FormattedInput.maxNumber + 1 OF CHAR; source: FormattedInput.StringSource; y: LONGREAL;
   BEGIN
-    Line(text);
+    ReadLine(line, source);
     IF Done THEN
-      Done := IsNumber(text, number);
-      IF Done THEN x := CStrToD(SYSTEM.ADR(number), 0) END
+      Done := FormattedInput.LongReal(source, y) & FormattedInput.OnlyBlanksLeft(source);
+      IF Done THEN x := y END
     END
   END LongReal;
 

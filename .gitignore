@@ -160,3 +160,6 @@ test/conformance/llvm-modules-commands/*.exe
 test/conformance/llvm-reals-module/*.exe
 test/conformance/llvm-texts/llvm-texts
 test/conformance/llvm-oberon/*.exe
+test/conformance/llvm-readonly-params/llvm-readonly-params
+test/conformance/llvm-outstr/llvm-outstr
+test/conformance/llvm-instr/llvm-instr

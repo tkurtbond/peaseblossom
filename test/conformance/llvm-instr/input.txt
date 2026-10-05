@@ -1,0 +1,5 @@
+12 0FFH -7
+9223372036854775807 word "a quoted string"
+3.25
+  -1.5D-3  
+x the rest of a line
