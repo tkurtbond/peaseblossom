@@ -60,6 +60,10 @@ libblib.a
 libblib.so
 -- again
 installed library alib in inst/<triple>/O2
+-- over a copy another poc wrote, with a module it no longer has
+installed library alib in inst/<triple>/O2
+Gone's files removed
+poc <version>
 -- from where it is
 poc: library alib is in inst/<triple>/O2 already
 -- clib, which has Greet too

@@ -1714,7 +1714,7 @@ MODULE Poc;
      ../lib/poc, the last directory of every poc's library path: its
      manifest, archive and shared library, and each module's .sym and
      .owner file. A copy installed before is replaced, the files of modules
-     it no longer has removed. Refused when that directory already has one
+     it no longer has removed, whichever version of poc wrote it. Refused when that directory already has one
      of its modules from another library, or is where the library is. *)
   PROCEDURE InstallLibrary(name, outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
@@ -1773,7 +1773,7 @@ MODULE Poc;
     f := Files.Old(file);
     IF f # NIL THEN
       Files.Close(f);
-      old := Libraries.LoadFrom(name, dir);
+      old := Libraries.LoadInstalled(name, dir);
       IF old # NIL THEN
         COPY("cd", command); ok := AppendQuoted(command, dir); Strcat(command, " && rm -f");
         m := old.modules;

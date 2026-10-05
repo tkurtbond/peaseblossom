@@ -427,16 +427,21 @@ MODULE Libraries;
   (* The library name whose manifest is in dir, read once. NIL, having said
      why on Err, when the manifest cannot be read, is not for this target
      and size model, or was written by another version of poc; a manifest
-     refused is remembered, so it is said once. *)
-  PROCEDURE Load(name, dir: ARRAY OF CHAR): Library;
+     refused is remembered, so it is said once. Without check, only read:
+     whatever target, size model and version it is for, and neither looked
+     for among nor added to the libraries loaded - for what a copy about to
+     be replaced has (LoadInstalled). *)
+  PROCEDURE Load(name, dir: ARRAY OF CHAR; check: BOOLEAN): Library;
     VAR
       lib: Library; path: Path; f: Files.File; r: Files.Rider; line: ARRAY lineLength OF CHAR;
       w0, w1, w2, w3: Name; m: Member; ok: BOOLEAN;
   BEGIN
-    lib := loaded;
-    WHILE (lib # NIL) & ((lib.name # name) OR (lib.dir # dir)) DO lib := lib.next END;
-    IF lib # NIL THEN
-      IF lib.refused THEN RETURN NIL ELSE RETURN lib END
+    IF check THEN
+      lib := loaded;
+      WHILE (lib # NIL) & ((lib.name # name) OR (lib.dir # dir)) DO lib := lib.next END;
+      IF lib # NIL THEN
+        IF lib.refused THEN RETURN NIL ELSE RETURN lib END
+      END
     END;
     JoinPath(dir, name, path); Append(path, ".library");
     f := Files.Old(path);
@@ -446,7 +451,8 @@ MODULE Libraries;
       RETURN NIL
     END;
     lib := NewLibrary(name, dir); lib.triple[0] := 0X; lib.model[0] := 0X; lib.pocVersion[0] := 0X;
-    lib.refused := TRUE; lib.next := loaded; loaded := lib;
+    lib.refused := TRUE;
+    IF check THEN lib.next := loaded; loaded := lib END;
     ok := TRUE; m := NIL;
     Files.Set(r, f, 0);
     REPEAT
@@ -475,6 +481,8 @@ MODULE Libraries;
       Err.String("poc: the manifest "); Err.String(path); Err.String(" is malformed"); Err.Ln;
       INC(errors);
       RETURN NIL
+    ELSIF ~check THEN
+      (* only read *)
     ELSIF (lib.triple # triple) OR (lib.model # model) THEN
       Err.String("poc: the manifest "); Err.String(path); Err.String(" is for ");
       Err.String(lib.triple); Err.String(" "); Err.String(lib.model); Err.String(", not ");
@@ -513,12 +521,16 @@ MODULE Libraries;
     END
   END WarnHidden;
 
-  (* The library name whose manifest is in the directory dir, loaded; NIL,
-     having said why, when there is none or it is not for this target *)
-  PROCEDURE LoadFrom*(name, dir: ARRAY OF CHAR): Library;
+  (* The library name installed in the directory dir, as its manifest
+     says, for -install-library to remove the files of before it copies
+     another over it: read whatever target, size model or version of poc
+     it was written for (installing over a copy an older poc wrote is how
+     it is rebuilt), and not loaded for use. NIL, having said why, when the
+     manifest cannot be read or is malformed. *)
+  PROCEDURE LoadInstalled*(name, dir: ARRAY OF CHAR): Library;
   BEGIN
-    RETURN Load(name, dir)
-  END LoadFrom;
+    RETURN Load(name, dir, FALSE)
+  END LoadInstalled;
 
   (* The library on the path that has the module name, loaded; NIL when
      none has it (or its manifest was wrong, which Load reported) *)
@@ -528,7 +540,7 @@ MODULE Libraries;
     e := pathHead;
     WHILE e # NIL DO
       IF FindOwner(e.dir, name, dir, owner) & (owner # excluded) THEN
-        lib := Load(owner, dir);
+        lib := Load(owner, dir, TRUE);
         IF lib # NIL THEN WarnHidden(name, lib, e.next) END;
         RETURN lib
       END;
@@ -547,11 +559,11 @@ MODULE Libraries;
       IF debug THEN
         ModelDirectory(e.dir, TRUE, dir);
         JoinPath(dir, name, path); Append(path, ".library");
-        IF Exists(path) THEN RETURN Load(name, dir) END
+        IF Exists(path) THEN RETURN Load(name, dir, TRUE) END
       END;
       ModelDirectory(e.dir, FALSE, dir);
       JoinPath(dir, name, path); Append(path, ".library");
-      IF Exists(path) THEN RETURN Load(name, dir) END;
+      IF Exists(path) THEN RETURN Load(name, dir, TRUE) END;
       e := e.next
     END;
     RETURN NIL

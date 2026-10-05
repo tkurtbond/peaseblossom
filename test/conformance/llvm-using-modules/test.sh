@@ -20,6 +20,8 @@
 #      refusals - -compile given a .sym, another size model, another target, a .sym
 #      the .o was not compiled from, an import whose interface has changed;
 #   and installing: alib and blib into one directory, again (replaced),
+#   over a copy another version of poc wrote that has a module alib no
+#   longer has (replaced, that module's files removed),
 #   from that directory itself and clib, which has Greet too (refused), a
 #   library that is not there; and a program linked with the installed
 #   shared libraries still running after it and they are copied elsewhere
@@ -83,6 +85,14 @@ poc -library-path libb -library-path liba -output-dir inst -install-library blib
 ls inst/$triple/O2 | sed 's/\.so\.0\.0$/.so/' | LC_ALL=C sort >>../result
 echo "-- again" >>../result
 poc -library-path liba -output-dir inst -install-library alib 2>&1 | mask >>../result
+echo "-- over a copy another poc wrote, with a module it no longer has" >>../result
+sed 's/^poc .*/poc 0.0.1/' inst/$triple/O2/alib.library >inst/alib.old
+echo "module Gone 0000000000000000" >>inst/alib.old
+mv inst/alib.old inst/$triple/O2/alib.library
+echo alib >inst/$triple/O2/Gone.owner && : >inst/$triple/O2/Gone.sym
+poc -library-path liba -output-dir inst -install-library alib 2>&1 | mask >>../result
+ls inst/$triple/O2 | grep Gone >>../result || echo "Gone's files removed" >>../result
+grep '^poc ' inst/$triple/O2/alib.library | sed 's/[0-9][0-9.]*$/<version>/' >>../result
 echo "-- from where it is" >>../result
 poc -library-path inst -output-dir inst -install-library alib 2>&1 | mask >>../result
 echo "-- clib, which has Greet too" >>../result

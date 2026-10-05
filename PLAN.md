@@ -968,6 +968,17 @@ fixed in 526d7ba, are in `doc/history/phases/phase-14.md`.
    (`M.r.Bump`), which voc accepts. Fixture
    `semantic-reject-readonly-param`.
 
+2. **[fixed] `-install-library` over a copy an older poc wrote said
+   "rebuild it"** (found 2026-10-05 reinstalling polibfyaml with 0.3.0
+   over its 0.2.0 copy). To remove the old copy's files, `InstallLibrary`
+   read its manifest through `Libraries.Load`, which refuses one another
+   version of poc wrote: so it printed "was written by poc 0.2.0, not
+   0.3.0: rebuild it" about the very copy it was replacing, and, the
+   manifest refused, left the `.sym` and `.owner` files of any module the
+   new copy no longer has. Now it reads that manifest without the
+   version, target and size-model checks (`Libraries.LoadInstalled`), and
+   outside the libraries loaded for use. Fixture `llvm-using-modules`.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other
