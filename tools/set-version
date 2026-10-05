@@ -4,7 +4,9 @@
 # in each package - Version in the Fedora spec, with Release back to 1 and a
 # %changelog entry for it, DISTVERSION in the FreeBSD port, V in the OpenBSD
 # port and DISTNAME in pkgsrc's - removing any PORTREVISION, REVISION or
-# PKGREVISION. The %changelog entry says only "Update to <version>.", for
+# PKGREVISION; and where the documents name it, INSTALL.md's example of
+# unpacking the tarball and the Reference Guide's "describes poc
+# <major.minor>". The %changelog entry says only "Update to <version>.", for
 # the person releasing to fill in; one already there for the version is
 # kept. Each package's distinfo is of the published tarball, so it is made
 # later, on its system (section 6). Run as tools/set-version <x.y.z>, or
@@ -44,6 +46,8 @@ must packaging/fedora/peaseblossom.spec '^%changelog$'
 must packaging/freebsd/lang/peaseblossom/Makefile '^DISTVERSION='
 must packaging/openbsd/lang/peaseblossom/Makefile '^V ='
 must packaging/pkgsrc/lang/peaseblossom/Makefile '^DISTNAME='
+must INSTALL.md 'peaseblossom-[0-9]+\.[0-9]+\.[0-9]+'
+must doc/reference-guide.md 'describes poc [0-9]+\.[0-9]+ '
 
 edit src/driver/Version.Mod "s/^\( *number\* *= *\)\"[^\"]*\";/\1\"$version\";/"
 
@@ -67,5 +71,9 @@ edit packaging/openbsd/lang/peaseblossom/Makefile \
   "s/^\(V =[[:space:]]*\).*/\1$version/; /^REVISION[[:space:]]*=/d"
 edit packaging/pkgsrc/lang/peaseblossom/Makefile \
   "s/^\(DISTNAME=[[:space:]]*peaseblossom-\).*/\1$version/; /^PKGREVISION=/d"
+
+edit INSTALL.md "s/peaseblossom-[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/peaseblossom-$version/g"
+edit doc/reference-guide.md \
+  "s/describes poc [0-9][0-9]*\.[0-9][0-9]* /describes poc ${version%.*} /"
 
 echo "set-version: $version$note"

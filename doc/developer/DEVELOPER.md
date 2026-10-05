@@ -254,8 +254,9 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
    sets `number` in `src/driver/Version.Mod`, and the same version in each
    package: `Version` in the spec (with `Release` back to 1),
    `DISTVERSION` in the FreeBSD port, `V` in the OpenBSD port and
-   `DISTNAME` in pkgsrc's. It removes any `PORTREVISION`, `REVISION` or
-   `PKGREVISION`, and adds a `%changelog` entry that says only "Update to
+   `DISTNAME` in pkgsrc's, and in `INSTALL.md`'s example and the
+   Reference Guide's "describes poc <major.minor>". It removes any
+   `PORTREVISION`, `REVISION` or `PKGREVISION`, and adds a `%changelog` entry that says only "Update to
    <x.y.z>.", for you to fill in. A library records the version that
    built it, and poc refuses one from another version, so libraries are
    rebuilt.
