@@ -1,9 +1,10 @@
 # Installing Peaseblossom (poc)
 
 poc, the Peaseblossom Oberon Compiler, is built and installed with GNU make.
-This file says how: from a release tarball (section 2), from the git
-repository (section 3), and into a place other than `/usr/local` (section
-4). Section 5 is the operating systems' packages. The User's Guide
+This file says how: from a release tarball (section 2), which is also the
+way to install poc on any Linux distribution or BSD that has no package
+for it; from the git repository (section 3); and into a place other than
+`/usr/local` (section 4). Section 5 is the operating systems' packages. The User's Guide
 (`doc/users-guide.md`) is how to use poc once it is installed;
 `doc/developer/DEVELOPER.md` is how to work on it.
 
@@ -58,6 +59,35 @@ as root, so build as yourself beforehand. (A plain `make` builds only Stage
 The seed is for 64-bit hosts (x86_64, amd64, aarch64) and for 32-bit x86
 OpenBSD and NetBSD. On any other host the tarball cannot build poc by itself;
 build it from git (section 3) with an Oberon compiler.
+
+**On any Linux distribution, or any of the BSDs.** There is no binary
+tarball of poc, and none is needed: the release tarball is the same for
+every system, and building from it is the way to install poc anywhere
+without a package of its own. One tarball serves every system because
+everything built from it is built on the system it will run on:
+
+- **No dependence on the system's C library version.** poc and its
+  runtime are compiled against the C library that is there, so a newer
+  system's glibc version is not needed. By default the runtime is linked
+  into every program poc builds, so those programs need the same C
+  library and nothing else.
+- **No dependence on the vendor in clang's triple.** The runtime is filed
+  under the host's own target triple, whatever clang calls it
+  (`x86_64-redhat-linux-gnu` on Fedora, another name elsewhere). poc
+  refuses a runtime filed under another triple, so one built elsewhere
+  would not do.
+
+What the system needs is what section 1 lists: GNU make, and a clang
+from 19 on, as `clang` on `PATH`. A distribution that installs its clang
+only under a versioned name, such as `clang-19`, needs a link named
+`clang` to it, on `PATH` before any older clang. Then build and install
+as above, with `PREFIX` as section 4 says for where it goes: a home
+directory needs no root.
+
+The BSDs' packages (section 5) are built from this same tarball, so on
+FreeBSD, OpenBSD and NetBSD it is checked at every release. Among Linux
+distributions only Fedora is checked. The build is the same on any
+other, but nothing has tried one.
 
 ## 3. From the git repository
 
