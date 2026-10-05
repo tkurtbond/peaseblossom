@@ -966,6 +966,46 @@ moves it to that phase's record.
      and `RealStr` (`oocIntStr`, `oocRealStr`) are voc's nearest, with
      different interfaces, and are Phase 20's to decide.
 
+2. **`InStr`: `In`'s input from a string** (user, 2026-10-05, the
+   counterpart of `OutStr`). Nothing reads `In`'s tokens from an
+   `ARRAY OF CHAR`: `In` reads only standard input, and `Texts`' scanner
+   needs a `Text`.
+   - **Interface**: `In`'s procedures except `Open` - `Char`, `Int`,
+     `LongInt`, `HugeInt`, `Real`, `LongReal`, `Line`, `String`, `Name` -
+     with `In`'s parameters followed by `s: ARRAY OF CHAR; VAR pos:
+     LONGINT`: `InStr.Int(i, s, pos)`, as `OutStr` puts its string last.
+     `Done-`, as `In`'s, says whether the last call found what it was
+     asked for. No `Open`: the caller's `pos` is the whole reading state.
+   - **The position**: reading starts at `s[pos]`, and a call that
+     succeeds sets `pos` to just after the last character it used up
+     (the blanks it skipped, the number or word, a string's closing
+     quote, a line's 0AX). One that fails leaves `pos` and its argument
+     as `In` leaves its argument. The string ends at its first 0X, or at
+     `LEN(s)` if it has none; a `pos` below 0 or past that end reads
+     nothing (`Done` FALSE), and does not trap.
+   - **The same tokens as `In`**: each procedure accepts what `In`'s
+     does (decimal or `H` hexadecimal integers with a minus sign, `Int`
+     and `LongInt` narrowed to the low bits, a quoted string on one
+     line, a word up to the next blank), so the two should share one
+     scanner over a source of characters rather than be written twice.
+     Except: `In.Real` and `In.LongReal` read a whole line and take it
+     as one number; `InStr`'s read the numeral at `pos` (`[+-] digits
+     [. digits] [E|D [+-] digits]`), correctly rounded through
+     `strtof`/`strtod`, and stop after it, so a string of several
+     numbers can be read one after another.
+   - **To decide when it is built**: `s` as a value parameter takes a
+     string constant, but poc copies it on entry (`AGENTS.md`, "Open
+     arrays"), so reading a long string token by token costs its length
+     per call. A `VAR s` avoids the copy and refuses a constant; voc's
+     `x-`, which would do both, is not in poc (Phase 19 candidate 2).
+   - **Fixtures**: each procedure against `In` reading the same text from
+     standard input (the same values and `Done`), `pos` after every kind
+     of token and after a failure, a run of tokens read in turn, a
+     string with no 0X, and a `pos` at, before and past its end.
+   - voc has no `InStr`; a program using it is poc-only. OOC's `IntStr`
+     and `RealStr` read numbers from strings, with other interfaces, and
+     are Phase 20's to decide.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on
