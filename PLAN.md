@@ -944,6 +944,21 @@ section 7 says, and the first release made with `tools/set-version`,
   with `--pinentry-mode loopback`. gpg-agent's pinentry is graphical on
   atla, and appears on atla's screen, not the remote user's.
 
+**Peaseblossom 0.3.1** followed the same day, with the fix of
+`58e913d` ("Ongoing bug fixing" 2): reinstalling polibfyaml with 0.3.0
+showed that `-install-library` over a copy an older poc wrote said
+"rebuild it". It was made the same way:
+
+- **The version** was set in `d9f505e`, after the same four-host check
+  passed.
+- **The tarball** came from `make distcheck` (SHA-256 `b89c58d2...`,
+  3476336 bytes). It is signed, with the signed tag `v0.3.1`.
+- **Each package** was built, checked and linted on its system (packing
+  lists unchanged), installed as root, checked with `check.sh` against
+  the installed poc, and removed with nothing left. `mock` built and
+  checked the RPM, and on atla 0.3.1 replaces 0.3.0.
+- **The RPMs and `SHA256SUMS`** were signed and attached to the release.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -

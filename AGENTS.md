@@ -396,7 +396,8 @@ released with four fixes as **Peaseblossom 0.2.0 on 2026-10-04** (tag
 parameters, `OutStr` and `InStr`, and one fix, from `PLAN.md`'s
 "Ongoing" sections, were released as **Peaseblossom 0.3.0 on
 2026-10-05** (tag `v0.3.0`; the record is in `PLAN.md`, "Peaseblossom
-0.3.0").
+0.3.0"), and **0.3.1** followed the same day with one fix (`-install-library`
+over a copy an older poc wrote; tag `v0.3.1`).
 Phase 15, the VAX/VMS MACRO-32 backend, is next; 15-18 are the VAX/VMS
 work, 19 further extensions, 20 voc's library modules. Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
