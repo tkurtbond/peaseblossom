@@ -27,14 +27,14 @@ in common at the instruction-selection level.
 
 **`Oberon2.pdf` is the authoritative spec for Peaseblossom**: the later
 revision of the Oberon-2 report by H. Mössenböck and N. Wirth (exported to
-PDF in 2007, modified again in 2022), kept under
+PDF in 2007; a 2022 save changed no text), kept under
 `~/Reference/Computer/Languages/Oberon/` with `pdftotext` extracts
 `Oberon2-{layout,no-layout}.text`. The original ETH report of October 1993
 (`Oberon2-Report.pdf`) and Appendix A of Mössenböck's *Object-Oriented
 Programming in Oberon-2* (`oop_in_oberon-2_book.pdf`, an intermediate
 state) are background only, for history or an explicit comparison. Where
 in doubt about a rule, `Oberon2.pdf`'s wording controls.
-`doc/developer/oberon-2-reports.md` describes the three texts and lists where
+`doc/developer/oberon-2-reports.md` describes the four texts and lists where
 `Oberon2.pdf` differs from 1993, all in one direction: pointers start NIL
 (§6.4), forward declarations need "identical" parameter lists (§10),
 `Trees.Init` becomes `NewTree`, an `ARRAY OF CHAR` parameter matching a

@@ -22,7 +22,7 @@ build and install it.
 | `developer/DEVELOPER.md` | Working on poc: the layout, building, testing, the hosts a change is checked on, packages, releases. Start here. |
 | `developer/language-extensions.md` | Every extension and every choice poc makes where `Oberon2.pdf` is silent, with the survey and the decision behind each; `../AGENTS.md` summarizes each section. |
 | `developer/design-decisions.md` | Questions `../PLAN.md`'s "Open design questions" once held, and how each was decided. |
-| `developer/oberon-2-reports.md` | The three texts of the Oberon-2 report, how they differ, and why `Oberon2.pdf` is the one poc follows. |
+| `developer/oberon-2-reports.md` | The four texts of the Oberon-2 report, how they differ, and why `Oberon2.pdf` is the one poc follows. |
 | `developer/bootstrapping-with-voc.md` | The voc bugs that reach poc's own source or Stage 0, and how poc works around each. |
 | `developer/llvm-toolchain.md` | How poc drives clang, and what that requires of each host. |
 | `developer/nested-procedures.md` | How nested procedures are lowered (lambda lifting by reference). |

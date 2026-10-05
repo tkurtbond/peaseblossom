@@ -1,6 +1,6 @@
 # The Oberon-2 reports
 
-Moved here from `AGENTS.md` on 2026-09-27, which keeps a summary: the three
+Moved here from `AGENTS.md` on 2026-09-27, which keeps a summary: the four
 texts of the Oberon-2 report kept locally, how they differ, and why
 `Oberon2.pdf` is the one Peaseblossom follows.
 
@@ -14,8 +14,9 @@ plain reading order):
   the Oberon system itself; the PDF is a frozen 2015 Ghostscript conversion
   (creation date == mod date, never touched again).
 - `Oberon2.pdf` / `Oberon2-{layout,no-layout}.text` — a later revision.
-  Authored in WriteNow, first exported to PDF in 2007, **modified again in
-  2022**. Content-wise it refines the 1993 text in several places, all in
+  Authored in WriteNow, first exported to PDF in 2007, and saved again in
+  2022 without changing its text (see `Oberon2-norayr.pdf` below).
+  Content-wise it refines the 1993 text in several places, all in
   one direction (never reversed):
   - Pointers are stated to initialize to NIL by default (§6.4).
   - Forward declaration / redefinition parameter lists must be "identical",
@@ -48,6 +49,30 @@ via" and "for a fixed number of times"; it still has 1993's FOR
 equivalence, "match" for parameter lists, `Init`, and no NIL-initialization
 sentence; and it alone lists `ASSERT` among the predeclared identifiers.
 It is background only, like `Oberon2-Report.pdf`.
+
+A fourth copy, `Oberon2-norayr.pdf` / `Oberon2-norayr-{layout,no-layout}.text`,
+added on 2026-10-05, is the 2007 export of the same revision, before the
+2022 save:
+
+- **Its text is identical to `Oberon2.pdf`'s.** Both `pdftotext` extracts
+  match `Oberon2.pdf`'s byte for byte, so everything said above about
+  `Oberon2.pdf` against the 1993 report holds for it too.
+- **`Oberon2.pdf` is this file with an update appended.** Its first 88296
+  bytes, the whole of `Oberon2-norayr.pdf`, are identical. macOS 12.4's
+  Quartz PDFContext ("AppendMode 1.1") then added an incremental update on
+  2022-07-05. That update rewrites only the 26 page dictionaries, adding a
+  `CropBox` and `Rotate 0` to each, and the document information
+  dictionary, with the author's name re-encoded and a new producer and
+  modification date. It replaces no content stream, so no page's text or
+  drawing changed: it is what opening and saving the file in Preview
+  produces.
+- `pdfinfo` tells them apart: `Oberon2-norayr.pdf` has the producer
+  "Acrobat Distiller 8.1.0 (Windows)" and the modification date
+  2007-09-18, one minute after its creation date.
+
+It adds no rule and settles no question, so it needs no place of its own
+in Peaseblossom's decisions: it confirms that `Oberon2.pdf`'s text is the
+2007 revision as published, not something edited in 2022.
 
 **`Oberon2.pdf` is the authoritative spec for Peaseblossom.** Use
 `Oberon2-Report.pdf` only as historical background or when explicitly
