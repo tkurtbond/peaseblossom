@@ -109,11 +109,11 @@ lengths, one word each, followed by the elements (voc's layout).
 
 ## 3. Extensions
 
-Each extension below is an error under `poc -strict` in the source of the
-module named on the command line, with the message "*\<construct\>* is not in
-the Oberon-2 report (-strict)"; the modules it imports are not checked, so a
-strict module may import one that uses extensions. poc's own source is
-checked with `-strict`. The heading of each item is that of its section in
+Each extension below is an error under `poc -strict`, and each section ends
+with the error's message. Only the module named on the command line is
+checked; the modules it imports are not, so a strict module may import one
+that uses extensions. poc's own source is checked with `-strict`. The
+heading of each item is that of its section in
 `doc/developer/language-extensions.md`.
 
 ### HUGEINT
@@ -123,8 +123,12 @@ inclusion hierarchy of Appendix A it lies between `LONGINT` and `REAL`:
 `LONGREAL` ⊇ `REAL` ⊇ `HUGEINT` ⊇ `LONGINT` ⊇ `INTEGER` ⊇ `SHORTINT`, so
 every rule that goes by that order applies to it. Under `-OC`, `LONGINT`
 and `HUGEINT` have the same size and are still different types. An integer
-constant whose value needs more than `LONGINT` is a `HUGEINT` (`-strict`:
-"an integer constant too large for LONGINT").
+constant whose value needs more than `LONGINT` is a `HUGEINT`.
+
+Under `-strict`, naming `HUGEINT` is an error, `HUGEINT is not in the
+Oberon-2 report (-strict)`, and so is a constant too large for `LONGINT`:
+`an integer constant too large for LONGINT is not in the Oberon-2 report
+(-strict)`.
 
 ### Variable initializers
 
@@ -142,6 +146,9 @@ body runs, a procedure's on every entry to it before its body, all in
 declaration order. Any expression is allowed; it can use only the names
 declared before its `:=`. Parameters have none.
 
+Under `-strict` an initializer is an error: `a variable initializer is not
+in the Oberon-2 report (-strict)`.
+
 ### Record field initializers
 
 ```oberon
@@ -158,6 +165,9 @@ own evaluation. The expression can use the names declared before its `:=`,
 except, for a record declared in a procedure, that procedure's variables,
 parameters and procedures. A module that imports the type gets its
 defaults, hidden fields' included.
+
+Under `-strict` a field's initializer is an error: `a record field
+initializer is not in the Oberon-2 report (-strict)`.
 
 ### Record and array literals
 
@@ -192,8 +202,10 @@ order written, so `p := Point{x := p.y, y := p.x}` swaps. A literal is a
 factor: no selector follows it, and it is not a variable (not a `VAR`
 parameter). A literal of another module's record type with a field hidden
 or read-only there cannot be written ("no literal of this type can be
-written here; this field is not exported by its module"). (`-strict`: "a
-record or array literal".)
+written here; this field is not exported by its module").
+
+Under `-strict` a literal is an error: `a record or array literal is not in
+the Oberon-2 report (-strict)`.
 
 A literal is a constant expression when every element written is constant
 and every omitted field's default is constant, and then `CONST c = T{...}`
@@ -212,6 +224,9 @@ procedure's body sees only what is declared above it. A section after a
 procedure may not declare a name visible from an enclosing scope, and the
 base type of a `POINTER TO` must be declared before the next procedure.
 
+Under `-strict` such a section is an error: `a CONST, TYPE or VAR section
+after a procedure is not in the Oberon-2 report (-strict)`.
+
 ### ASSERT
 
 `ASSERT(x)` and `ASSERT(x, n)`: `x` a `BOOLEAN` expression, `n` an integer
@@ -220,6 +235,9 @@ failed" or "assertion failed (*n*)" and exit status 10. `x` is always
 evaluated; nothing turns assertions off. A condition that is a constant
 `FALSE` is a compile-time error, so `ASSERT(SIZE(T) = 8)` is checked by the
 compiler. A module may declare its own `ASSERT`.
+
+Under `-strict` calling the predeclared `ASSERT` is an error: `ASSERT is not
+in the Oberon-2 report (-strict)`.
 
 ### External procedures
 
@@ -237,11 +255,17 @@ and a `VAR` record without its type. An external procedure is not a
 procedure value. `"VMS"` is accepted and cannot yet be compiled. The User's
 Guide, "Calling C", shows the C types' equivalents.
 
+Under `-strict` the declaration is an error: `an external procedure is not
+in the Oberon-2 report (-strict)`.
+
 ### Underscores and dollar signs in identifiers
 
 `_` and `$` may appear in an identifier anywhere a letter may, first
-included: `SS$_NORMAL`, `DSC$W_LENGTH`. (`-strict`: `"$" in an
-identifier`.)
+included: `SS$_NORMAL`, `DSC$W_LENGTH`.
+
+Under `-strict` each is an error: `"_" in an identifier is not in the
+Oberon-2 report (-strict)`, and `"$" in an identifier is not in the Oberon-2
+report (-strict)`.
 
 ### Hexadecimal constants as 64-bit patterns
 
@@ -250,14 +274,20 @@ is the negative number its bits spell in 64-bit two's complement:
 `0FFFFFFFFFFFFFFFFH` is -1, `0FFFFFFFFD76AA478H` is -680876936 (a
 `LONGINT`). Fewer digits keep their value; more is an error.
 
+Under `-strict` such a constant is an error: `a hexadecimal constant above
+MAX(HUGEINT), taken as a 64-bit pattern is not in the Oberon-2 report
+(-strict)`.
+
 ### Array assignment
 
 `v := e`, where `v` is a fixed array and `e` an array with the same element
 type that is a fixed array no longer than `v` or an open array. All of `e`
 is copied, whatever it holds, and the rest of `v` is left as it was. An
 open `e` longer than `v` is a trap (status 9). An open array is never the
-target. (`-strict`: "assigning an array of another type (voc's array
-rule)".)
+target.
+
+Under `-strict` such an assignment is an error: `assigning an array of
+another type (voc's array rule) is not in the Oberon-2 report (-strict)`.
 
 ### SYSTEM.SET32 and SYSTEM.SET64
 
@@ -265,8 +295,14 @@ rule)".)
 is included in a `SET64`, not the reverse. A constant set has the narrowest
 set type its value fits: `{0, 31}` is a `SET`, `{0, 32}` a `SET64`. A
 constructor with a variable element is a `SET`, or a `SET64` if it has a
-constant element above 31. (`-strict`: "a set constant with an element above
-MAX(SET)".)
+constant element above 31.
+
+Under `-strict`, naming either type is an error, as `SYSTEM.SET32 is not in
+the Oberon-2 report (-strict)` and `SYSTEM.SET64 is not in the Oberon-2
+report (-strict)`; so is a set constant with an element above 31, `a set
+constant with an element above MAX(SET) is not in the Oberon-2 report
+(-strict)`, and a constructor's element above 31, `a set element above
+MAX(SET) is not in the Oberon-2 report (-strict)`.
 
 ### Read-only parameters
 
@@ -287,14 +323,21 @@ new one. Procedure types and redefined type-bound procedures must match mark
 for mark. A `.sym` file keeps the mark. (`-strict`: "a read-only
 parameter"; calling an imported procedure that has one is allowed.)
 
+Under `-strict` declaring one is an error, `a read-only parameter is not in
+the Oberon-2 report (-strict)`; calling an imported procedure that has one
+is allowed.
+
 ### Other extensions
 
 - **`ORD` of a set** is its bits as an integer: an `INTEGER` for a `SET`, a
-  `HUGEINT` for a `SET64`.
-- **`SYSTEM.PTR`** compares with a pointer of any type (`-strict`:
-  "comparing SYSTEM.PTR with another pointer type").
+  `HUGEINT` for a `SET64`. Under `-strict` it is an error: `ORD of a SET is
+  not in the Oberon-2 report (-strict)`.
+- **`SYSTEM.PTR`** compares with a pointer of any type. Under `-strict` it
+  is an error: `comparing SYSTEM.PTR with another pointer type is not in the
+  Oberon-2 report (-strict)`.
 - **`SYSTEM`'s names beyond Appendix C** (section 4): `ADDRESS`, `INT8`,
-  `INT16`, `INT32`, `INT64`, `SET32`, `SET64`.
+  `INT16`, `INT32`, `INT64`, `SET32`, `SET64`. Under `-strict` naming one is
+  an error, such as `SYSTEM.INT32 is not in the Oberon-2 report (-strict)`.
 
 ### Not extensions, though the report differs
 
