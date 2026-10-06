@@ -44,7 +44,7 @@ marked as from something else. Short names used here, all under
 | OCS 1994 | `AA-PV69B`, *OpenVMS Calling Standard* (March 1994, 6.1): later than 5.5-2, for explanation only |
 
 **The development system.** A SIMH `microvax3900` running VMS, with a user
-`POC` for this work (the user's tmux window 8, 2026-10-05). It reports
+`POC` for this work (2026-10-05). It reports
 `V5.5-2H4` on a "VAXserver 3900 Series" (`F$GETSYI("VERSION")`,
 `F$GETSYI("HW_NAME")`), and has `SYS$SYSTEM:MACRO32.EXE` (dated 17-OCT-1991),
 `LINK.EXE`, `SYS$LIBRARY:STARLET.MLB`, `STARLET.OLB` and `LIBRTL.EXE`: the
@@ -92,7 +92,30 @@ Facts:
 - **Branches**: a conditional branch and `BRB` have a byte displacement
   (-128 to +127), `BRW` a word (-32768 to +32767), measured from the next
   instruction (MACRO 5.4). Nothing in the manual says the assembler
-  lengthens a branch that does not fit.
+  lengthens a branch that does not fit, and it does not (§3.1).
+
+### 3.1 Checked on the development system
+
+Two probes were assembled with `MACRO/OBJECT/LIST` on the development
+system (VAX MACRO V5.4-3) on 2026-10-05:
+
+- **Case is folded**: labels `Foo:` and `FOO:` in one module are
+  `%MACRO-E-MULDEFLBL, Multiple definition of label`.
+- **A symbol over 31 characters is only a warning**,
+  `%MACRO-W-ILLSYMLEN, Symbol exceeds 31 characters`, and the assembly
+  goes on. So the assembler does not protect poc from a name that is too
+  long; poc checks every name itself (§5).
+- **No branch is lengthened**: a `BRW` and a `BEQL` 40,000 bytes from
+  their target are each `%MACRO-E-BRDESTRANG, Branch destination out of
+  range`.
+- **`JMP L^label`** to a label 40,000 bytes ahead assembles as `17 EF` and
+  a longword displacement, 6 bytes; a symbol of exactly 31 characters as an
+  `.ENTRY`, and the three program sections of §6 with exactly the
+  attributes written, are accepted.
+- **A source must be sent in ASCII mode.** Copied by FTP in binary mode, a
+  `.MAR` becomes a file of fixed-length 512-byte records; in ASCII mode
+  (curl's `--use-ascii`), variable-length records with carriage-return
+  carriage control, an ordinary VMS text file.
 
 Proposals:
 
@@ -362,7 +385,12 @@ its trap is a VMS condition (`SS$_SUBRNG`), not poc's message.
   `.ll`, and a `-target` value selects the backend: `-emit-macro32` and
   `-target vax-dec-vms` were proposed. DCL uppercases whatever on its
   command line is not quoted (the user, 2026-10-05), so poc on VMS sees
-  `-EMIT-MACRO32`; how poc's option names meet that is §11, question 7.
+  `-EMIT-MACRO32`. **Decided (2026-10-05): poc's options stay lowercase,
+  and poc on VMS matches every option without regard to case** - all of
+  them, `-build` and `-o` as much as the new ones. That is Phase 16's to
+  build, since poc first runs on VMS there (`PLAN.md` Phase 16 step 4);
+  option *values* that are names (modules, files) are not covered, and
+  stay that step's question.
 - Fixtures: `test/conformance/vax-*/` each with a `.mod`, its
   `expected-vax.mar` and, at the top of that file, a comment by the
   reviewer saying why the output is right. The harness diffs the output
@@ -381,27 +409,25 @@ its trap is a VMS condition (`SS$_SUBRNG`), not poc's message.
 
 Settled 2026-10-05: the development system (§2); assembling fixtures in
 Phase 15 (§10); one calling mechanism (§7); `-O2` only and
-`MemoryLayout`'s record layout (§4); the stem-and-hash names (§5).
+`MemoryLayout`'s record layout (§4); the stem-and-hash names (§5);
+options matched without regard to case on VMS (§10).
 
 1. **The destination machine's version** - the user is to check it.
-2. **Getting files to and from the guest**, for assembling fixtures:
-   a SIMH disk image, a tape image, a network copy, or typing through the
-   console. It must work unattended from a command on the host, since
-   the fixtures run from `make test`; on hosts without the guest those
-   checks are skipped, as `doc-poc-man-page` is without mandoc.
+2. **Running `MACRO` on the guest from the host**, for assembling
+   fixtures. Copying is settled (2026-10-05): FTP to `192.168.2.20` as
+   `poc`, active mode, the password in `~/.netrc`
+   (`doc/developer/DEVELOPER.md` section 4). Running the assembler and
+   bringing back its listing is not: telnet, with the password read from
+   `~/.netrc`, or something UCX itself offers. It must work unattended
+   from a command on the host, since the fixtures run from `make test`; on
+   hosts without the guest those checks are skipped, as `doc-poc-man-page`
+   is without mandoc.
 3. **The hash (§5)**: 40 bits of FNV-1a in base 32, or another.
 4. **Integer arithmetic on `SHORTINT` and `INTEGER` (§8)**: at the type's
    width, or in longwords and truncated.
 5. **Packed records** for VMS routines (§4) - Phase 17's, noted here.
 6. **`LONGREAL`'s default format (§4)**, D_floating as VAX C, or
    G_floating - Phase 16's, noted here so the option is designed in.
-7. **Option names and DCL's uppercasing (§10).** On Unix poc's options are
-   lowercase (`-build`, `-strict`). Either the new options are spelled in
-   uppercase everywhere, or they stay lowercase and poc on VMS matches
-   every option without regard to case - which DCL's uppercasing needs
-   for all of poc's options, not only these two. `PLAN.md` Phase 16 step 4
-   already lists the command line, and DCL's uppercasing of file and
-   module names, as a VMS problem to settle.
 
 ## 12. Proposed order of work
 

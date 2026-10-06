@@ -72,6 +72,19 @@ bootstraps poc.
   `LD_LIBRARY_PATH` except on Linux, and `ssh host cmd` gets neither that
   nor voc on `PATH`, so `test/testenv.sh` sets both (`VOC_BIN_DIR`,
   `VOC_LIB_DIR`).
+- **The VAX/VMS development system** (Phase 15 on; the user, 2026-10-05): a
+  SIMH `microvax3900` on atla running VMS 5.5-2H4 with UCX, at
+  `192.168.2.20` while SIMH runs. The unprivileged user `poc` (home
+  `DUA1:[USERS.POC]`) has telnet and FTP. **Its password is in the user's
+  `~/.netrc` (mode 600), never in the repo or a command line, and is never
+  to be printed**: `curl --netrc -P - ftp://192.168.2.20/` lists the home
+  directory. FTP works only in **active mode** (curl's `-P -`; in `ftp`,
+  turn passive off first), and text must go in **ASCII mode** (curl's
+  `--use-ascii`), or VMS stores it as fixed 512-byte records. In the user's tmux, window 7 is the console
+  for this work, a telnet session logged in as `POC`, and window 8 runs
+  SIMH itself, the VAX's operator console. DCL commands may be typed into
+  window 7 (`tmux send-keys`; the user, 2026-10-05), kept to `POC`'s own
+  directory; never type into window 8 unless the user asks.
 - CLI: `voc options {files {options}}`. Options before the first file apply
   to all files, options after a file apply only to that file, and repeating
   a flag toggles it.

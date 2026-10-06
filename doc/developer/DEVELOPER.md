@@ -171,6 +171,25 @@ voc and its libraries are at the same paths on every host;
 non-interactive `ssh` does not. Do not change the tree on atla while its
 `make check` runs: the check rebuilds and reads it as it goes.
 
+### The VAX/VMS development system
+
+From Phase 15, the original developer also has a VAX: SIMH's
+`microvax3900` on atla, running VMS 5.5-2H4 with UCX for TCP/IP, at
+`192.168.2.20` while SIMH runs, with an unprivileged user `poc` for this
+work (`doc/developer/vax-macro32-backend.md` §2). Phase 15 assembles its
+fixtures there. The password is kept out of the tree, in `~/.netrc` (mode
+600):
+
+    machine 192.168.2.20 login poc password ...
+
+which `ftp` and `curl` read themselves, so it never appears on a command
+line. The FTP server works only in active mode: `curl --netrc -P -
+ftp://192.168.2.20/` lists the home directory, and in `ftp`, turn passive
+mode off first. Send source files in ASCII mode (curl's `--use-ascii`, or
+`ascii` in `ftp`): in binary mode VMS stores them as fixed-length 512-byte
+records, not as text. Another developer uses their own VAX or SIMH, and names
+it the same way.
+
 ### With other machines
 
 None of this needs those particular machines. What matters is that a

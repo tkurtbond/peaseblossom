@@ -579,7 +579,10 @@ most, object libraries.
    natural replacement); and the command line, which DCL upcases and
    splits before a program sees it, against `poc -build -o x file.mod`
    (a foreign command with quoted arguments, or a CLD-defined verb -
-   decide, and say which).
+   decide, and say which) Decided (2026-10-05): poc on VMS matches its options
+   without regard to case, so `-BUILD` is `-build`; their names stay
+   lowercase (`doc/developer/vax-macro32-backend.md` §10). Module and file
+   names given as arguments are still this step's question.
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built
