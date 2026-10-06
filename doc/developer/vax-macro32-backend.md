@@ -224,11 +224,11 @@ up.**
   The stem is only for a human reading a map or a traceback.
 - **Collisions are checked, not just made unlikely.** Within a module, poc
   keeps the symbols it has written and stops with an error if two full
-  names give one symbol. Across modules, the same symbol defined twice is
-  the linker's "multiply defined" error, so a collision can never link
-  silently; a fixture set of long and colliding names (as `PLAN.md` asks)
-  shows the scheme in action. With 40 bits, a collision is not expected
-  in any real program.
+  names give one symbol. Across modules, see §5.1: the linker's "multiply
+  defined" alone is not enough once modules come from object libraries.
+  A fixture set of long and colliding names (as `PLAN.md` asks) shows the
+  scheme in action. With 40 bits, a collision is not expected by accident
+  in any real program, but one is easy to make on purpose (§5.1).
 - A name that is not exported and not otherwise needed outside its module
   (a private procedure, a local constant) is a *local* symbol, so its
   symbol only has to be unique in its module; it uses the same scheme
@@ -243,6 +243,83 @@ Rejected: a numbering scheme (`M17_P4`), which needs one registry of
 numbers across separately compiled modules; truncation without a hash,
 which collides on long names with a common start, as poc's own module
 names have (`LLVMCodeGenerator`, `LLVMToolchainDriver`).
+
+### 5.1 Collisions across a link
+
+Proposal (2026-10-05), not yet agreed.
+
+**A collision can be made on purpose.** A birthday search over 12-letter
+random suffixes found, after 664,867 names (seconds, well under 4 GB):
+
+```
+VaxNameClash.collisionPuRhnmwOfQAB  ->  VAXNAMECLASH_COLLISION_VA2IG0SM
+VaxNameClash.collisionTqMUQStWWdKp  ->  VAXNAMECLASH_COLLISION_VA2IG0SM
+```
+
+both checked against the §5 scheme. (A first search over *5-letter*
+suffixes found none and grew to 34 GB before the kernel's OOM killer
+stopped it: modulo 2^40 the FNV prime is `0x1B3`, so FNV-1a of a few
+bytes is nearly a weighted sum of them with weights below 2^40, and short
+letter suffixes almost never cancel. Long suffixes mix properly.) By
+accident a collision stays unlikely - about n^2/2^41 for n names sharing
+a 22-character stem - and a deliberate one is no threat: whoever writes
+the source already controls the program. So the aim is not a longer hash
+(every hash bit costs a stem character; 17+13 would give 65 bits and a
+less readable map, and still no guarantee) but that **every collision that
+matters fails the build, loudly**.
+
+**Where a collision can link silently.** poc modules on VMS will be
+distributed as source, as `.sym` and `.mar`, as `.sym` and `.obj`, or in
+libraries, which will be VMS object libraries (`.OLB`). Two modules
+defining the same symbol in one link is `%LINK-W-MULDEF` - a *warning*;
+the image is still written. Worse, the linker takes a module from a
+library only to resolve a symbol still undefined. If `A` defines `X`, and
+library module `B` defines `Y` with the same symbol, a reference to `B.Y`
+is resolved by `A`'s `X`, `B` is never loaded, and nothing is reported: a
+wrong program with no diagnostic.
+
+**The proposed fix, in three layers:**
+
+1. **The link itself is sound.** Every import forces its module to be
+   loaded: an importer calls each import's `_init` (§6), so if the `_init`
+   symbol is defined only by that module, the linker must take the module
+   from its library, all its global symbols enter the link, and a
+   collision becomes `MULDEF` instead of a silent binding. Every build
+   procedure poc writes or ships treats `MULDEF` as fatal (the `LINK`'s
+   `$STATUS` severity checked). This holds even for a `LINK` command
+   written by hand, as long as `MULDEF` is not ignored.
+2. **A readable error before the link.** Every distribution form includes
+   a `.sym`, or produces one, since importers need the interface, so the
+   import closure can always be computed from `.sym` files. The `.sym`
+   records, for each exported object and each compiler-made global
+   (`_init`, type descriptors, module keys), the symbol it was given, and
+   the version of the name scheme. At link time poc (or a separate check
+   for hand-built links) walks the main module's import closure and stops
+   if two different full names have one symbol: "`A.X` and `B.Y` both
+   give `..._VA2IG0SM`; rename one". A `.sym` from another scheme version
+   is an error at import, not a link failure later.
+3. **Within a module**, as §5 says: its own definitions and the imported
+   names it references, checked by poc at compile time, with source
+   positions.
+
+Details this depends on:
+
+- **Module-level symbols must never collide with each other.** If `A`'s
+  and `B`'s `_init` symbols collide, `B` is never loaded and layer 1 fails
+  silently. Module names are unique in a program anyway, so the `_init`
+  symbol should be short and unhashed where the name allows, and the
+  closure check treats a collision between module-level symbols as an
+  error in every case.
+- **Private objects are local symbols** (`label:`, not `label::`), so they
+  never enter a link; what can collide across modules is only exports and
+  compiler-made globals.
+- The Librarian probably reports a module whose global symbol is already
+  in the library (`LIBRARY/INSERT`, `DUPGLOBAL`) - **not yet checked** on
+  the development system. It sees only one library, so a collision
+  between two libraries, or a library and an `.obj`, still rests on
+  layers 1 and 2.
+- The LLVM targets do not shorten names, so nothing changes there but the
+  `.sym` field.
 
 ## 6. A module's layout
 
@@ -422,12 +499,18 @@ options matched without regard to case on VMS (§10).
    from a command on the host, since the fixtures run from `make test`; on
    hosts without the guest those checks are skipped, as `doc-poc-man-page`
    is without mandoc.
-3. **The hash (§5)**: 40 bits of FNV-1a in base 32, or another.
+3. **The hash (§5)**: 40 bits of FNV-1a in base 32, or another. A
+   deliberate collision costs under a million names (§5.1); the proposal
+   is to keep 40 bits and catch collisions, not to lengthen the hash.
 4. **Integer arithmetic on `SHORTINT` and `INTEGER` (§8)**: at the type's
    width, or in longwords and truncated.
 5. **Packed records** for VMS routines (§4) - Phase 17's, noted here.
 6. **`LONGREAL`'s default format (§4)**, D_floating as VAX C, or
    G_floating - Phase 16's, noted here so the option is designed in.
+7. **Collisions across a link (§5.1)**: the three layers, the `.sym`
+   field carrying each symbol and the scheme's version, and `MULDEF` as
+   fatal. Whether the Librarian reports `DUPGLOBAL` is to be checked on
+   the development system.
 
 ## 12. Proposed order of work
 
@@ -435,7 +518,8 @@ Each step lands with its fixtures before the next, as Phase 8 did:
 
 1. `VaxTypes.Mod`: sizes, offsets and the name scheme (§4, §5), with the
    name fixtures - long names, names differing only in case, module names
-   with a common start.
+   with a common start, and the colliding pair of §5.1, which poc must
+   reject within one module.
 2. The driver option and the stub `VaxToolchainDriver.Mod`; an empty
    module's `.mar` (§6). The host-side command that copies a `.mar` to the
    development system, runs `MACRO/OBJECT` and brings the result back
