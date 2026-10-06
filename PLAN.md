@@ -902,6 +902,23 @@ A24, moved here 2026-09-26), are Phase 14 now.
    by the user 2026-10-05, as `QUOT` and `REM`, the two together (`REM` is
    no use without `QUOT`), to be implemented at some point; not built
    yet.
+5. **Unsigned integer types** (the user, 2026-10-06, after the FLTK
+   binding declared C's unsigned types as the signed `SYSTEM.INT8` to
+   `SYSTEM.INT64` of the same width, which pass the bits but compare,
+   divide and widen as signed). Leaning, with the user: in SYSTEM, as
+   `SYSTEM.UINT8`, `UINT16`, `UINT32` and `UINT64`, beside the signed
+   fixed-width types already there for C, and outside the inclusion
+   chain `SHORTINT ⊆ INTEGER ⊆ LONGINT ⊆ HUGEINT`, which they do not fit
+   (`UINT32` is not within `INT32`, and no signed type holds `UINT64`).
+   To settle: which mixtures with signed types are allowed without a
+   conversion (only those that lose no value, such as `UINT8` to
+   `INTEGER`?) and which conversions are written how; arithmetic modulo
+   2^n, with unsigned comparison, `DIV` and `MOD` (LLVM's `udiv`,
+   `urem`, `icmp ult`; the VAX's unsigned branches); `UINT64`'s
+   constants above `MAX(HUGEINT)`, its `MAX` and `MIN`, and printing it
+   (`Out`, `OutStr`); and `-strict`. The survey: Active Oberon's
+   `UNSIGNED8` to `UNSIGNED64`, Modula-2's `CARDINAL`, Modula-3's `Word`,
+   and the Oberons without them (Oberon-07, Component Pascal).
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the
