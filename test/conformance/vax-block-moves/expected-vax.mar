@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - MOVC3 and MOVC5 take their length as a word (MACRO 9, MOVC: len.rw),
 ;;   so a move of more than 65535 bytes is in pieces. After MOVC3, R1 is
 ;;   the address after the source and R3 after the destination; after

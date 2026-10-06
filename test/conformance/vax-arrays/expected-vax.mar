@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - An array is its elements one after another, aligned as its element
 ;;   (MemoryLayout, section 4): a module variable is .BLKB of its size.
 ;;   ARRAY 3, 4 OF INTEGER is three rows of 8 bytes.

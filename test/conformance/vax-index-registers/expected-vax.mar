@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - a[i] := F(j): the target's index is in R0 when F is called, so it is
 ;;   moved up to R2, which F's mask saves, and the result stored to
 ;;   A[R2] (section 7, as for any value in R0 or R1).
