@@ -216,8 +216,8 @@ check-strict: $(STAGE1_BIN)
 # which replaces an older copy and leaves any other library alone. MANDIR
 # follows each system's hier(7): share/man on Linux and FreeBSD, man on
 # OpenBSD and NetBSD (pkgsrc). poc(1) goes in MANDIR/man1, the guides in
-# DOCDIR, and the HTML and PDF documents (make doc, below) in DOCDIR/html
-# and DOCDIR/pdf.
+# DOCDIR, and the HTML and PDF of the guides and poc(1) (make doc, below)
+# in DOCDIR/html and DOCDIR/pdf.
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 LIBDIR ?= $(PREFIX)/lib
@@ -267,8 +267,8 @@ install: $(STAGE2_BIN) $(INSTALL_RTL)
 	  elif [ -d doc/$$kind ]; then from=doc/$$kind; \
 	  else echo "note: no $$kind documents to install (make doc makes them)"; continue; fi; \
 	  echo "install the $$kind documents from $$from in $(DESTDIR)$(DOCDIR)/$$kind"; \
-	  install -d $(DESTDIR)$(DOCDIR)/$$kind/developer || exit 1; \
-	  for name in $(DOC_NAMES); do \
+	  install -d $(DESTDIR)$(DOCDIR)/$$kind || exit 1; \
+	  for name in $(DOC_INSTALL_NAMES); do \
 	    install -m 644 $$from/$$name.$$kind $(DESTDIR)$(DOCDIR)/$$kind/$$name.$$kind || exit 1; \
 	  done; \
 	done
@@ -292,8 +292,8 @@ uninstall:
 	-rmdir $(DESTDIR)$(LIBDIR)/poc/$(HOST_TRIPLE) $(DESTDIR)$(LIBDIR)/poc 2>/dev/null
 	cd $(DESTDIR)$(DOCDIR) 2>/dev/null && rm -f $(notdir $(DOCS))
 	-cd $(DESTDIR)$(DOCDIR) 2>/dev/null && for kind in html pdf; do \
-	  for name in $(DOC_NAMES); do rm -f $$kind/$$name.$$kind; done; \
-	  rmdir $$kind/developer $$kind 2>/dev/null; \
+	  for name in $(DOC_INSTALL_NAMES); do rm -f $$kind/$$name.$$kind; done; \
+	  rmdir $$kind 2>/dev/null; \
 	done
 	-rmdir $(DESTDIR)$(DOCDIR) $(DESTDIR)$(MANDIR)/man1 $(DESTDIR)$(MANDIR) 2>/dev/null
 
@@ -345,9 +345,11 @@ check-seed: seed $(STAGE1_BIN)
 # read as GitHub shows them; mandoc makes poc(1)'s HTML and groff its PDF.
 # Each PDF is US Letter with 1-inch margins; pandoc's go through xelatex
 # and tools/doc/pdf.lua, which keeps wide tables, long code lines and long
-# names within them. make dist puts the documents in the tarball, as doc/
-# html and doc/pdf, so that a package needs none of these tools; install
-# installs those from build/doc, else from doc/, else says there are none.
+# names within them. make dist puts them all in the tarball, as doc/html
+# and doc/pdf, so that a package needs none of these tools. install
+# installs only the user's ones, DOC_INSTALL_NAMES (the guides and poc(1);
+# the developer documents stay in the tarball, decided with the user
+# 2026-10-05), from build/doc, else from doc/, else says there are none.
 PANDOC ?= pandoc
 MANDOC ?= mandoc
 GROFF ?= groff
@@ -357,6 +359,7 @@ DOC_MONO_FONT ?= DejaVu Sans Mono
 DOC_DIR := $(BUILD_DIR)/doc
 DOC_MARKDOWN := doc/users-guide.md doc/reference-guide.md $(sort $(wildcard doc/developer/*.md))
 DOC_NAMES := $(patsubst doc/%.md,%,$(DOC_MARKDOWN)) poc.1
+DOC_INSTALL_NAMES := users-guide reference-guide poc.1
 DOC_HTML := $(DOC_NAMES:%=$(DOC_DIR)/html/%.html)
 DOC_PDF := $(DOC_NAMES:%=$(DOC_DIR)/pdf/%.pdf)
 # a table of contents, unless the document has its own (## Contents)

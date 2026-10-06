@@ -156,7 +156,8 @@ on the BSDs their plain `clang` (19 on OpenBSD and FreeBSD, 21 on NetBSD).
   and `check-lto` are not part of `make check`.
 - `make doc` writes the guides, poc(1) and `doc/developer/` as HTML and
   PDF in `build/doc` (pandoc from GFM, xelatex, `tools/doc/pdf.lua`;
-  mandoc and groff for poc(1)); `make dist` puts them in the tarball. A
+  mandoc and groff for poc(1)); `make dist` puts them in the tarball, and
+  `make install` installs only the guides' and poc(1)'s. A
   `<placeholder>` outside backquotes is lost as HTML, on GitHub too:
   write `\<placeholder\>`.
 - `-opt` defaults to 2, but 0 for 32-bit x86 (x87 reals); `-O2`/`-OC` are

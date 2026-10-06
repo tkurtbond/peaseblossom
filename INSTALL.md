@@ -134,7 +134,7 @@ with its runtime in `build/stage2/lib/poc`, the one that is installed.
 | `BINDIR` | `$(PREFIX)/bin` | `poc` |
 | `LIBDIR` | `$(PREFIX)/lib` | `poc/<triple>/{O2,OC,O2-g,OC-g}/`: the runtime, `poc-rtl`, for each size model, plain and with debugging information |
 | `MANDIR` | `$(PREFIX)/share/man`; `$(PREFIX)/man` on OpenBSD and NetBSD | `man1/poc.1` |
-| `DOCDIR` | `$(PREFIX)/share/doc/peaseblossom` | `README.md`, `LICENSE`, the User's Guide and the Reference Guide; in `html/` and `pdf/`, those guides, poc(1) and the developer documents (in `developer/`), from a release tarball or `make doc` |
+| `DOCDIR` | `$(PREFIX)/share/doc/peaseblossom` | `README.md`, `LICENSE`, the User's Guide and the Reference Guide; in `html/` and `pdf/`, those guides and poc(1), from a release tarball or `make doc` |
 | `DESTDIR` | empty | prefixed to every path above when the files are written, for staging |
 
 `<triple>` is clang's target triple for the host (`clang -dumpmachine`),

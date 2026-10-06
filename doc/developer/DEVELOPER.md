@@ -50,8 +50,9 @@ Markdown, so they read as GitHub shows them), xelatex with the DejaVu fonts
 (`DOC_MAIN_FONT`, `DOC_MONO_FONT`), mandoc for poc(1)'s HTML and groff for
 its PDF. The PDFs are US Letter with 1-inch margins; `tools/doc/pdf.lua`
 gives a wide table's columns widths, breaks code lines longer than a line
-(after a `↪`), and lets long names and paths in code break. `make install`
-installs these when they are there (section 7 puts them in the tarball).
+(after a `↪`), and lets long names and paths in code break. Section 7 puts
+them all in the tarball; `make install`, and so each package, installs only
+the guides' and poc(1)'s, when they are there.
 voc is
 found as `INSTALL.md` says (`VOC_BIN_DIR`). poc is built with voc's `-OC`
 and stays at `-OC` in every stage, because it needs an 8-byte `LONGINT`.
