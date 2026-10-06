@@ -1,0 +1,6 @@
+semantic OK, wrote IfLines.ll
+br i1 line: 1, column: 1
+br i1 line: 7, column: 11
+br i1 line: 9, column: 3
+br i1 line: 12, column: 5
+br i1 line: 12, column: 27
