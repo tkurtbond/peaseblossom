@@ -59,6 +59,8 @@ make installable
 %install
 make install DESTDIR=%{buildroot} PREFIX=%{_prefix} BINDIR=%{_bindir} \
   LIBDIR=%{_prefix}/lib MANDIR=%{_mandir} DOCDIR=%{_pkgdocdir}
+# LICENSE goes in %%{_licensedir} (%%license below), not with the docs too
+rm %{buildroot}%{_pkgdocdir}/LICENSE
 %{__strip} %{buildroot}%{_bindir}/poc
 
 %check
