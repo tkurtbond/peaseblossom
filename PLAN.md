@@ -902,6 +902,23 @@ A24, moved here 2026-09-26), are Phase 14 now.
    by the user 2026-10-05, as `QUOT` and `REM`, the two together (`REM` is
    no use without `QUOT`), to be implemented at some point; not built
    yet.
+5. **Unsigned integer types** (the user, 2026-10-06, after the FLTK
+   binding declared C's unsigned types as the signed `SYSTEM.INT8` to
+   `SYSTEM.INT64` of the same width, which pass the bits but compare,
+   divide and widen as signed). Leaning, with the user: in SYSTEM, as
+   `SYSTEM.UINT8`, `UINT16`, `UINT32` and `UINT64`, beside the signed
+   fixed-width types already there for C, and outside the inclusion
+   chain `SHORTINT ⊆ INTEGER ⊆ LONGINT ⊆ HUGEINT`, which they do not fit
+   (`UINT32` is not within `INT32`, and no signed type holds `UINT64`).
+   To settle: which mixtures with signed types are allowed without a
+   conversion (only those that lose no value, such as `UINT8` to
+   `INTEGER`?) and which conversions are written how; arithmetic modulo
+   2^n, with unsigned comparison, `DIV` and `MOD` (LLVM's `udiv`,
+   `urem`, `icmp ult`; the VAX's unsigned branches); `UINT64`'s
+   constants above `MAX(HUGEINT)`, its `MAX` and `MIN`, and printing it
+   (`Out`, `OutStr`); and `-strict`. The survey: Active Oberon's
+   `UNSIGNED8` to `UNSIGNED64`, Modula-2's `CARDINAL`, Modula-3's `Word`,
+   and the Oberons without them (Oberon-07, Component Pascal).
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the
@@ -978,6 +995,35 @@ showed that `-install-library` over a copy an older poc wrote said
   the installed poc, and removed with nothing left. `mock` built and
   checked the RPM, and on atla 0.3.1 replaces 0.3.0.
 - **The RPMs and `SHA256SUMS`** were signed and attached to the release.
+
+## Peaseblossom 0.4.0
+
+What `main` had gained since 0.3.1 was released as **Peaseblossom 0.4.0**
+on 2026-10-06 (decided with the user: a minor release, since it adds
+features): the done items of "Ongoing implementation enhancements" (a
+library's manifest records its `-link` arguments, and a module's part
+may be C++, `03eb4b6`), `-help` listing every command and option
+("Ongoing bug fixing" 3), `make doc`'s HTML and PDF documents, in the
+tarball and installed, and the fix of "Ongoing bug fixing" 4. It was
+made as `doc/developer/DEVELOPER.md` section 7 says:
+
+- **The version** was set in `0f9b196` by `make set-version`, after
+  `tools/check-hosts -t check-install -t check-seed` passed on atla,
+  cymoril, artos and alerik (347 fixtures at each stage), with
+  `check-opt2` on atla. rackhir passed `0f9b196`.
+- **The tarball** came from `make distcheck` (SHA-256 `2ba257e2...`,
+  4919979 bytes; larger than 0.3.1's for the HTML and PDF documents). It
+  is signed, with the signed tag `v0.4.0`, and published as a GitHub
+  release.
+- **Each package** was made from the published tarball (`makesum`), then
+  built and checked on its system: `check.sh` on the build root or
+  stage; check-plist, portlint, portcheck and pkglint clean; packing
+  lists unchanged. It was then installed as root, checked with
+  `check.sh` against the installed poc, and removed with nothing left.
+  `mock` built and checked the RPM, and on atla 0.4.0 replaces 0.3.1.
+- **The RPMs and `SHA256SUMS`** were signed (`rpmsign` given the key
+  with `--define`, as atla has no `~/.rpmmacros`), gathered by
+  `tools/release-files` and attached to the release.
 
 ## Ongoing bug fixing
 
@@ -1191,6 +1237,47 @@ that phase's record.
      whose `x-` differs (by reference always, a variable only); the
      fixtures check poc's rules. Found along the way: "Ongoing bug
      fixing" 1.
+
+## Ongoing implementation enhancements
+
+Changes to how poc builds, links and packages programs and libraries that
+using poc on other programs shows are wanted, made as they come,
+alongside whichever phase is current. Each item says where the need was
+found and what was decided with the user, and is marked `[done]` once it
+is committed with its fixtures, `make check` passes on Linux and the
+three BSDs, and the User's and Reference Guides and poc(1) say what it
+does; a done item stays until the next phase's close-out, which moves it
+to that phase's record. Made on `main`, and merged into the `vax` branch
+at a convenient point.
+
+1. **[done] A library's manifest records its link arguments** (found 2026-10-06
+   by the user writing an FLTK binding). A library wrapping a native one
+   needs native libraries on every link of a program that uses it, and
+   the manifest had no line for them, so every client repeated `-link
+   -lfltk -link -lstdc++`; without them the link failed on
+   `__gxx_personality_v0`. Decided with the user 2026-10-06: each
+   `-link <arg>` given to `poc -library` is now used to link the shared
+   library itself too (it was left out), and recorded in the manifest as
+   a line `link <arg>`, the rest of the line (so a `-link` argument may
+   not hold a line break). A program that links the library gets those arguments
+   after the libraries' own (for every library it links, through
+   `needs` too, each argument once), before its own `-link` arguments. No
+   new option.
+
+2. **[done] A module's foreign part may be C++, `<M>.cpp`** (found 2026-10-06
+   with item 1). Only `<M>.c` was compiled beside `<M>.Mod`, so a C++
+   part needed `-c-flag -xc++`. Decided with the user 2026-10-06: `<M>.cpp`
+   is compiled by `clang++` (with `-c-flag`'s arguments, as `<M>.c`'s);
+   a module with both is an error. A program or shared library with a
+   C++ part, its own or a library's - whose manifest then says `c++` - is
+   linked by `clang++`, which adds the system's C++ runtime (libstdc++ on
+   Linux, libc++ on the BSDs), so a client needs only the library's own
+   `link` lines.
+
+The third point found with them - a library is built twice, once for
+`-O2` and once for `-OC` - needs no change: declaring the C-facing
+parameters with `SYSTEM.INT32` and `SYSTEM.ADDRESS` keeps one source for
+both.
 
 ## Open design questions
 

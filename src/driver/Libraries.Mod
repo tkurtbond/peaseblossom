@@ -14,12 +14,16 @@ MODULE Libraries;
        model <O2|OC>
        lto                              (its objects are LLVM bitcode, for -flto)
        needs <library>                  (each library its modules import from)
+       c++                              (a module has a part in C++)
+       link <arg>                       (each -link <arg> it was built with)
        module <Module> <key>            (each module, with its key)
        import <Module> <Imported> <key> (each import, with the key compiled against)
        source <Module> <key>            (each module's source file, hashed as a key is)
 
      so poc can tell, before a link, whether a library was compiled against
-     the interface of a module that another library now has. A library
+     the interface of a module that another library now has; a link line's
+     argument is the rest of the line, spaces and all, for every link of
+     a program that uses the library. A library
      another version of poc wrote, or one written before manifests recorded
      the version, is refused (Phase 13 step 1): nothing promises that two
      versions' objects link together. Beside it, for
@@ -51,6 +55,7 @@ MODULE Libraries;
     pathLength* = 1024;
     keyLength* = 16;
     lineLength = 2048;
+    linkLength* = lineLength - 5; (* what follows "link " on its line *)
 
   TYPE
     Name* = ARRAY nameLength OF CHAR;
@@ -87,6 +92,14 @@ MODULE Libraries;
       next*: Need
     END;
 
+    (* an argument for the link of every program that links a library
+       (Ongoing implementation enhancements, item 1) *)
+    LinkArgument* = POINTER TO LinkArgumentDesc;
+    LinkArgumentDesc* = RECORD
+      arg*: ARRAY linkLength OF CHAR;
+      next*: LinkArgument
+    END;
+
     (* a key an object defines or refers to (Phase 12 step 2f) *)
     ObjectKey* = POINTER TO ObjectKeyDesc;
     ObjectKeyDesc* = RECORD
@@ -121,6 +134,8 @@ MODULE Libraries;
       modules*: Member;
       needs*: Need;
       lto*: BOOLEAN; (* its objects are LLVM bitcode (Phase 12 step 2g) *)
+      cxx*: BOOLEAN; (* a module of it has a part in C++, so clang++ links it *)
+      links*: LinkArgument; (* its -link arguments, in order *)
       used*: BOOLEAN; (* linked into the program being built *)
       refused: BOOLEAN; (* its manifest was wrong, said once (Load) *)
       next: Library; (* in loaded *)
@@ -415,12 +430,25 @@ MODULE Libraries;
     IF n = NIL THEN NEW(n); COPY(name, n.name); n.next := lib.needs; lib.needs := n END
   END AddNeed;
 
+  (* arg added at the end of list *)
+  PROCEDURE AddLinkArgument*(VAR list: LinkArgument; arg: ARRAY OF CHAR);
+    VAR a, tail: LinkArgument;
+  BEGIN
+    NEW(a); COPY(arg, a.arg); a.next := NIL;
+    IF list = NIL THEN list := a
+    ELSE
+      tail := list;
+      WHILE tail.next # NIL DO tail := tail.next END;
+      tail.next := a
+    END
+  END AddLinkArgument;
+
   PROCEDURE NewLibrary*(name, dir: ARRAY OF CHAR): Library;
     VAR lib: Library;
   BEGIN
     NEW(lib); COPY(name, lib.name); COPY(dir, lib.dir);
     COPY(triple, lib.triple); COPY(model, lib.model);
-    lib.modules := NIL; lib.needs := NIL; lib.lto := FALSE; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
+    lib.modules := NIL; lib.needs := NIL; lib.lto := FALSE; lib.cxx := FALSE; lib.links := NIL; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
     RETURN lib
   END NewLibrary;
 
@@ -434,7 +462,7 @@ MODULE Libraries;
   PROCEDURE Load(name, dir: ARRAY OF CHAR; check: BOOLEAN): Library;
     VAR
       lib: Library; path: Path; f: Files.File; r: Files.Rider; line: ARRAY lineLength OF CHAR;
-      w0, w1, w2, w3: Name; m: Member; ok: BOOLEAN;
+      w0, w1, w2, w3: Name; m: Member; ok: BOOLEAN; i: INTEGER;
   BEGIN
     IF check THEN
       lib := loaded;
@@ -464,6 +492,15 @@ MODULE Libraries;
       ELSIF w0 = "model" THEN COPY(w1, lib.model)
       ELSIF w0 = "needs" THEN AddNeed(lib, w1)
       ELSIF w0 = "lto" THEN lib.lto := TRUE
+      ELSIF w0 = "c++" THEN lib.cxx := TRUE
+      ELSIF w0 = "link" THEN
+        (* the rest of the line, after "link " *)
+        ok := (line[4] = " ") & (line[5] # 0X);
+        IF ok THEN
+          i := 5; WHILE line[i] # 0X DO line[i - 5] := line[i]; INC(i) END;
+          line[i - 5] := 0X;
+          AddLinkArgument(lib.links, line)
+        END
       ELSIF w0 = "module" THEN m := AddMember(lib, w1, w2)
       ELSIF w0 = "import" THEN
         m := FindMember(lib, w1);
@@ -591,7 +628,7 @@ MODULE Libraries;
      its modules. FALSE, having said so on Err, when a file cannot be
      written. *)
   PROCEDURE WriteManifest*(lib: Library): BOOLEAN;
-    VAR path: Path; f: Files.File; w: Files.Rider; m: Member; i: ImportKey; n: Need;
+    VAR path: Path; f: Files.File; w: Files.Rider; m: Member; i: ImportKey; n: Need; a: LinkArgument;
   BEGIN
     JoinPath(lib.dir, lib.name, path); Append(path, ".library");
     f := Files.New(path);
@@ -604,6 +641,9 @@ MODULE Libraries;
     IF lib.lto THEN WriteLine(w, "lto", "", "", "") END;
     n := lib.needs;
     WHILE n # NIL DO WriteLine(w, "needs", n.name, "", ""); n := n.next END;
+    IF lib.cxx THEN WriteLine(w, "c++", "", "", "") END;
+    a := lib.links;
+    WHILE a # NIL DO WriteLine(w, "link", a.arg, "", ""); a := a.next END;
     m := lib.modules;
     WHILE m # NIL DO WriteLine(w, "module", m.name, m.key, ""); m := m.next END;
     m := lib.modules;

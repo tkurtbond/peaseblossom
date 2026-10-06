@@ -316,6 +316,11 @@ to the link, such as
 or
 .Fl L Ns Ar dir .
 May be repeated.
+With
+.Fl library ,
+also recorded in the library's manifest, so that every program that
+links the library is linked with
+.Ar arg .
 .It Fl c-flag Ar arg
 Pass
 .Ar arg
@@ -324,7 +329,9 @@ to
 when it compiles a module's part in C,
 .Pa Module.c
 beside
-.Pa Module.Mod .
+.Pa Module.Mod ,
+or to clang++ when it compiles its part in C++,
+.Pa Module.cpp .
 May be repeated.
 .It Fl lto
 Compile to LLVM bitcode, and optimize the whole program when it is linked.
@@ -407,9 +414,13 @@ A module's LLVM IR.
 A module's object.
 .It Pa Module.c
 A module's part in C, beside its source, compiled and linked with it.
-.It Pa Module.c.o
-The object of a module's part in C, beside the module's own object; it
-goes wherever that object goes: into the program, a library, or what
+.It Pa Module.cpp
+A module's part in C++, instead, compiled by clang++; a program or shared
+library with a part in C++, its own or a library's, is linked by clang++.
+.It Pa Module.c.o , Pa Module.cpp.o
+The object of a module's part in C or C++, beside the module's own
+object; it goes wherever that object goes: into the program, a library,
+or what
 .Fl compile
 leaves.
 .It Pa ../lib/poc/ Ns Ar triple Ns Pa / Ns Ar model Ns Pa /

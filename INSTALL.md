@@ -36,12 +36,12 @@ A release is `peaseblossom-<version>.tar.gz`, from
 own LLVM IR, its *seed*, so clang alone builds poc from it: no other Oberon
 compiler is needed.
 
-    sha256sum -c peaseblossom-0.3.1.tar.gz.sha256   # Linux, FreeBSD
-    cksum -a sha256 peaseblossom-0.3.1.tar.gz       # OpenBSD, NetBSD: compare
+    sha256sum -c peaseblossom-0.4.0.tar.gz.sha256   # Linux, FreeBSD
+    cksum -a sha256 peaseblossom-0.4.0.tar.gz       # OpenBSD, NetBSD: compare
                                                     # with the .sha256 file
-    gpg --verify peaseblossom-0.3.1.tar.gz.asc      # if there is one
-    tar xzf peaseblossom-0.3.1.tar.gz
-    cd peaseblossom-0.3.1
+    gpg --verify peaseblossom-0.4.0.tar.gz.asc      # if there is one
+    tar xzf peaseblossom-0.4.0.tar.gz
+    cd peaseblossom-0.4.0
     make installable             # builds everything make install copies
     make check-install           # optional: installs a copy in a scratch
                                  # directory, builds and runs programs

@@ -115,6 +115,9 @@ MODULE Poc;
     (* -clear-library-path given: POC_LIBRARY_PATH and poc's own lib/poc are
        left out of the library path too *)
     libraryPathCleared: BOOLEAN;
+    (* each -link <arg>, which -library records in its manifest (Ongoing
+       implementation enhancements, item 1) *)
+    linkArguments: Libraries.LinkArgument;
 
   TYPE
     (* PLAN.md Phase 9 step 4a: the module names RegenerateInterfaces has
@@ -448,7 +451,7 @@ MODULE Poc;
   PROCEDURE PrepareLibraries(modules: LLVMCodeGenerator.ModuleList; shared: BOOLEAN): BOOLEAN;
     VAR
       m: LLVMCodeGenerator.ModuleList; lib: Libraries.Library; member: Libraries.Member;
-      key: Libraries.Key; ok: BOOLEAN;
+      key: Libraries.Key; seen, link, other: Libraries.LinkArgument; ok: BOOLEAN;
   BEGIN
     ok := (Libraries.errors = 0) & Libraries.ComputeLinkOrder();
     m := modules;
@@ -473,6 +476,25 @@ MODULE Poc;
       (* an LTO library's archive is bitcode, which only -flto links (Phase
          12 step 2g); its shared library is not *)
       IF lib.lto & ~shared THEN LLVMToolchainDriver.ltoLink := TRUE END;
+      IF lib.cxx THEN LLVMToolchainDriver.cxxLibrary := TRUE END;
+      lib := lib.linkNext
+    END;
+    (* after them all, the link arguments their manifests record, each once
+       (Ongoing implementation enhancements, item 1) *)
+    seen := NIL; lib := Libraries.linkOrder;
+    WHILE ok & (lib # NIL) DO
+      link := lib.links;
+      WHILE ok & (link # NIL) DO
+        other := seen;
+        WHILE (other # NIL) & (other.arg # link.arg) DO other := other.next END;
+        IF other = NIL THEN
+          Libraries.AddLinkArgument(seen, link.arg);
+          IF ~LLVMToolchainDriver.AddLibraryArgument(link.arg) THEN
+            Err.String("poc: too many libraries and link arguments to link"); Err.Ln; ok := FALSE
+          END
+        END;
+        link := link.next
+      END;
       lib := lib.linkNext
     END;
     IF ~ok THEN failed := TRUE END;
@@ -1384,6 +1406,14 @@ MODULE Poc;
     END
   END Build;
 
+  PROCEDURE HasLineBreak(s: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (s[i] # 0X) & (s[i] # 0AX) & (s[i] # 0DX) DO INC(i) END;
+    RETURN s[i] # 0X
+  END HasLineBreak;
+
   (* Appends word to command, single-quoted for the shell after a space;
      FALSE when it has a single quote itself *)
   PROCEDURE AppendQuoted(VAR command: ARRAY OF CHAR; word: ARRAY OF CHAR): BOOLEAN;
@@ -1576,6 +1606,8 @@ MODULE Poc;
     (* the manifest: each module's key and the keys of its imports *)
     lib := Libraries.NewLibrary(name, dir);
     lib.lto := LLVMToolchainDriver.lto;
+    lib.cxx := LLVMToolchainDriver.HasCxxPart(modules, dir);
+    lib.links := linkArguments;
     m := modules;
     WHILE m # NIL DO
       IF ~m.inLibrary THEN
@@ -2388,7 +2420,12 @@ MODULE Poc;
             IF ~LLVMToolchainDriver.AddLinkArgument(param) THEN
               failed := TRUE; Err.String("poc: too many -link arguments"); Err.Ln;
               done := TRUE
+            ELSIF HasLineBreak(param) THEN
+              (* a library's manifest records it on a line of its own *)
+              failed := TRUE; Err.String("poc: a -link argument cannot hold a line break"); Err.Ln;
+              done := TRUE
             END;
+            Libraries.AddLinkArgument(linkArguments, param);
             INC(i, 2)
           ELSE
             failed := TRUE; Err.String("poc: -link requires an argument"); Err.Ln;

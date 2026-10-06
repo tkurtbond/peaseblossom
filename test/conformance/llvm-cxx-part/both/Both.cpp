@@ -1,0 +1,1 @@
+int both_cpp;

@@ -163,7 +163,9 @@ LONGINT: 8 bytes, MAX 9223372036854775807
 - `-static`: a fully static executable (on Linux this needs the C library's
   static version, `glibc-static` on Fedora).
 - `-link <arg>`: passes `<arg>` to the link, for a C library a program calls
-  (section 9): `-link -lz`, `-link -L/opt/lib`. Repeatable.
+  (section 9): `-link -lz`, `-link -L/opt/lib`. Repeatable. A library built
+  with `-link` records the arguments, and every program that links the
+  library gets them.
 - `-verbose`: prints each command poc runs.
 - `-target <triple>`: builds for another target than the host's, as far as
   clang can (it needs that target's C library to link).
@@ -547,7 +549,15 @@ $ ./Absolute
 compiled with the module and linked wherever the module is, into a program
 or a library: the module's own C, which its `["C"]` procedures call.
 `-c-flag <arg>` passes `<arg>` to clang when it compiles it (`-c-flag
--I/opt/include`).
+-I/opt/include`). The part may be C++ instead, `<Module>.cpp`, compiled by
+clang++; a program or library with a C++ part is linked by clang++, which
+adds the C++ runtime. A module has one part, not both.
+
+A library wrapping a native one, say `fltk`, is built with the `-link`
+arguments that native library needs, `poc -link -lfltk -library fltk
+...`; its manifest records them, so a program that uses the library,
+directly or through another library, is linked with them without naming
+them, and with clang++ if the library has a C++ part.
 
 <!-- example: cpart/hash/Hash.Mod -->
 ```
