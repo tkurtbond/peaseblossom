@@ -12,7 +12,10 @@ file name (it carries the DEC order number and the date). This document is
 the to-do list. Downloaded: `AA-LA66B` (the calling standard) and
 `AA-LA62A` (the Linker, with the object language), 2026-09-26; **every
 file in Priorities 1-3 below**, the MMS guide `AA-P119E` and DEC STD 032,
-2026-10-05. What remains is under "Still to find".
+2026-10-05; the Digital Press *VAX Architecture Reference Manual*
+(`EY-3459E-DP`), *VAX/VMS Internals and Data Structures: Version 5.2*
+(`EY-C171E-DP`) and *VMS File System Internals* (`EY-F575E-DP`),
+2026-10-06. What remains is under "Still to find".
 
 ## Status of the attempt
 
@@ -48,6 +51,22 @@ file in Priorities 1-3 below**, the MMS guide `AA-P119E` and DEC STD 032,
   - `vms/SPD/` has only 5.1 SPDs; the 5.5 SPD is the one in `vms/5.5/`.
   - `vms/6.0/` has only installation manuals.
   - There is no standalone calling standard anywhere under `vax/vms`.
+- 2026-10-06: fetched the same way, each with a `-layout.text` extract
+  (all three have an OCR text layer, Acrobat's Paper Capture):
+  - `EY-3459E-DP_VAX_Architecture_Reference_Manual_1987.pdf` (Digital
+    Press, ed. Leonard, 433 pages; from
+    `https://www.bitsavers.org/pdf/dec/vax/archSpec/`; saved in
+    `~/Reference/Computer/Systems/VAX/`). The searchable architecture
+    reference: `EK-VAXAR-RM-003` (1985) and DEC STD 032 are scans
+    without text. The second edition (ed. Brunner, Digital Press, 1991)
+    is not on bitsavers; the user has a paper copy.
+  - `EY-C171E-DP_VMS_Internals_and_Data_Structures_5.2_1991.pdf`
+    (Goldenberg and Kenah, Digital Press, 1462 pages) and
+    `EY-F575E-DP_VMS_File_System_Internals_1990.pdf` (McCoy, Digital
+    Press, 478 pages), from `.../vms/training/`; saved in
+    `~/Reference/Computer/OS/VMS/`. The same directory has the 1984 and
+    4.4 (1988) editions of the first, and DEC's internals course
+    workbooks and listings.
 - The file names below were transcribed from the bitsavers directory
   listings (`.../vms/5.5/`, `.../vms/5.4/`, `.../vms/5.0/`); confirm each on
   download.
@@ -67,7 +86,8 @@ and whether they are safe for 5.5-2 facts:
 | VMS 5.2 (June 1989) | `AA-LA40B` Guide to VMS System Security | Yes |
 | VAX languages of the period | VAX C 3.0 guide (`AA-L370D`, Jan 1989), VAX C RTL (`AI-JP84A`, Mar 1987), VAX FORTRAN (`AA-D034E`/`AA-DO35E`, Jun 1988) | Probably - check the versions the 5.5-2 SPD lists |
 | DEC MMS | `AA-P119B` (2.0, 1984), `AA-P119D` (May 1989), `AA-P119E` (July 1990) | The last; check which MMS version was current for 5.5-2 |
-| VAX architecture | `EL-00032-00` DEC STD 032 (January 1990), `EK-VAXAR-RM-003` Architecture Reference Manual, `DEC_VAX_Architecture_Handbook`, `VAX_archHbkVol1_1977` | Architecture, not OS - fine, but the 1977 handbook predates the final architecture |
+| VAX architecture | `EY-3459E-DP` Architecture Reference Manual (Digital Press, 1987; searchable), `EL-00032-00` DEC STD 032 (January 1990), `EK-VAXAR-RM-003` Architecture Reference Manual (1985), `DEC_VAX_Architecture_Handbook`, `VAX_archHbkVol1_1977` | Architecture, not OS - fine, but the 1977 handbook predates the final architecture; the user has the 1991 second edition on paper |
+| VMS internals | `EY-C171E-DP` VAX/VMS Internals and Data Structures, Version 5.2 (1991); `EY-F575E-DP` VMS File System Internals (1990) | Yes for how 5.x works inside, with the 5.5 and 5.5-2 release notes checked; the documented interfaces (system services, RMS) still come from the manuals |
 | Handbooks | `VMS_Language_and_Tools_Handbook_1985`, `VMS_System_Software_Handbook_1985`, `VAX_Software_Handbook_1982` | Background only (VMS 4.x and earlier) |
 | **Later than 5.5-2** | `AA-PV5RA` OpenVMS VAX 6.0 security guide (1993); `OVMS_PROG_ENVIRON.PDF` (March 1994, OpenVMS AXP 1.5 / VAX 6.0); `OpenVMS_RMS_RTL_Library.pdf` (June 2002, 7.3); `HP OpenVMS Programming Concepts Volume II` (2005); `AA-PV69B` OpenVMS Calling Standard (March 1994, 6.1; see "The calling standard"); `guide-to-openvms-file-applications.pdf` and the `VSI/` and `HPE_*` files (2005-2019, Alpha/Itanium) | **No for facts** - may explain a concept (ASTs, in the 2005 volume) but every detail must be re-checked against a 5.5 manual |
 
