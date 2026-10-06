@@ -1,6 +1,6 @@
 #!/bin/sh
 . ../../testenv.sh
-# PLAN.md Phase 15 steps 2-5 (doc/developer/vax-macro32-backend.md, sections
+# PLAN.md Phase 15 steps 2-6 (doc/developer/vax-macro32-backend.md, sections
 # 5 and 10): what -emit-macro32 and -target vax-dec-vms refuse, each with
 # exit status 1 and nothing written
 run() {

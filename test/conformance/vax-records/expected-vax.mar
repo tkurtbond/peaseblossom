@@ -1,0 +1,294 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - MemoryLayout's layout (section 4): Point is x at 0, y at 2, 4 bytes,
+;;   aligned to a word. Shape is kind at 0, corner at 2, size at 8 (a
+;;   longword), tags at 12, big at 16: 24 bytes, aligned to a longword;
+;;   shapes[k] is 24k bytes on.
+;; - A field is a displacement: p.y is P+2, s.corner.y S+4. Through a VAR
+;;   parameter, @4(AP), the record's address is moved to a register first,
+;;   MOVL 4(AP), Rn, the field then 2(Rn) (Move, line 28), since @4(AP)
+;;   has no displacement; pt.x, at 0, is @4(AP) itself.
+;; - shapes[i] is checked, scaled by MULL2 #24 and made an address by
+;;   MOVAB SHAPES[R0], R0; its fields are displacements from R0, and
+;;   shapes[i].tags[n] is 12(R0)[R1].
+;; - A whole record is copied by MOVC3 of its size (r := p, s.corner :=
+;;   p, shapes[2] := s, and in Local).
+;; - A record value parameter is passed by its address (MOVAB S, or
+;;   MOVAB (R0) for an element) and copied to the callee's frame on entry,
+;;   after the locals are cleared: Area's MOVC3 #24, @4(AP), -24(FP), so
+;;   that sh.size := ... changes only the copy. Area's and Local's masks
+;;   save R2-R5 for MOVC3.
+;; - A read-only one (Peek's sh-) is not copied: its address is used, as
+;;   a VAR parameter's (section 7). First's VAR sh is its address, with no
+;;   type tag until Phase 16.
+;; - Local's frame: a at -4, b at -8, t, aligned to a longword, at -32,
+;;   c at -33, rounded to 36 bytes, cleared by CLRQ and CLRL.
+; VaxRecords, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXRECORDS
+	.IDENT	/2397bb2d32257825/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; p: VaxRecords.Point
+	.ALIGN	WORD
+VAXRECORDS_P_3V9CT72S:
+	.BLKB	4
+; r: VaxRecords.Point
+	.ALIGN	WORD
+VAXRECORDS_R_3V9CT7U2:
+	.BLKB	4
+; s: VaxRecords.Shape
+	.ALIGN	LONG
+VAXRECORDS_S_3V9CT8BL:
+	.BLKB	24
+; shapes: ARRAY 4 OF VaxRecords.Shape
+	.ALIGN	LONG
+VAXRECORDS_SHAPES_MTH30EDU:
+	.BLKB	96
+; i: INTEGER
+	.ALIGN	WORD
+VAXRECORDS_I_3V9CT43N:
+	.BLKW	1
+; n: LONGINT
+	.ALIGN	LONG
+VAXRECORDS_N_3V9CT2QU:
+	.BLKL	1
+; h: HUGEINT
+	.ALIGN	LONG
+VAXRECORDS_H_3V9CT3M4:
+	.BLKQ	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxRecords/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Move
+VAXRECORDS_MOVE_SGE4UQHH:
+	.WORD	^M<>
+; line 27
+	ADDW2	8(AP), @4(AP)
+; line 28
+	MOVL	4(AP), R0
+	MOVL	4(AP), R1
+	ADDW3	8(AP), 2(R1), 2(R0)
+	RET
+; PROCEDURE Area
+VAXRECORDS_AREA_O5A07AIL:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#24, SP
+	CLRQ	-24(FP)
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVC3	#24, @4(AP), -24(FP)
+; line 33
+	MULL2	#2, -16(FP)
+; line 34
+	CVTWL	-22(FP), R0
+	ADDL2	-16(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#35
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+; PROCEDURE Peek
+VAXRECORDS_PEEK_7QKAQSN3:
+	.WORD	^M<>
+; line 39
+	MOVL	4(AP), R0
+	CVTWL	8(AP), R1
+	CMPL	R1, #2
+	BLEQU	L_1
+	PUSHL	#20
+	PUSHL	#39
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_1:
+	MOVZBL	12(R0)[R1], R0
+	RET
+	PUSHL	#3
+	PUSHL	#40
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+; PROCEDURE First
+VAXRECORDS_FIRST_RU330GMQ:
+	.WORD	^M<>
+; line 44
+	MOVZBL	@4(AP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#45
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+; PROCEDURE Local
+VAXRECORDS_LOCAL_PPVNFC0F:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#36, SP
+	CLRQ	-36(FP)
+	CLRQ	-28(FP)
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+; line 50
+	MOVW	#1, -4(FP)
+; line 50
+	MOVC3	#4, -4(FP), -8(FP)
+; line 50
+	MOVC3	#4, -8(FP), -30(FP)
+; line 50
+	MOVB	-32(FP), -33(FP)
+; line 51
+	ADDL2	#^X00000001, -16(FP)
+	ADWC	#^X00000000, -12(FP)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXRECORDS_INIT, ^M<R2,R3,R4,R5>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#12, SP
+; line 55
+	MOVW	#3, VAXRECORDS_P_3V9CT72S
+; line 55
+	MOVW	VAXRECORDS_P_3V9CT72S, VAXRECORDS_P_3V9CT72S+2
+; line 56
+	MOVC3	#4, VAXRECORDS_P_3V9CT72S, VAXRECORDS_R_3V9CT7U2
+; line 57
+	MOVC3	#4, VAXRECORDS_P_3V9CT72S, VAXRECORDS_S_3V9CT8BL+2
+; line 58
+	MOVW	#4, VAXRECORDS_S_3V9CT8BL+4
+; line 59
+	CVTWL	VAXRECORDS_I_3V9CT43N, R0
+	CMPL	R0, #3
+	BLEQU	L_2
+	PUSHL	#10
+	PUSHL	#59
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_2:
+	MULL2	#24, R0
+	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
+	MOVW	#5, 2(R0)
+; line 60
+	MOVC3	#24, VAXRECORDS_S_3V9CT8BL, VAXRECORDS_SHAPES_MTH30EDU+48
+; line 61
+	CVTWL	VAXRECORDS_I_3V9CT43N, R0
+	CMPL	R0, #3
+	BLEQU	L_3
+	PUSHL	#10
+	PUSHL	#61
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_3:
+	MULL2	#24, R0
+	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
+	MOVL	VAXRECORDS_N_3V9CT2QU, R1
+	CMPL	R1, #2
+	BLEQU	L_4
+	PUSHL	#18
+	PUSHL	#61
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_4:
+	MOVB	#97, 12(R0)[R1]
+; line 62
+	CVTWL	VAXRECORDS_I_3V9CT43N, R0
+	CMPL	R0, #3
+	BLEQU	L_5
+	PUSHL	#15
+	PUSHL	#62
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_5:
+	MULL2	#24, R0
+	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
+	MOVQ	16(R0), VAXRECORDS_H_3V9CT3M4
+; line 63
+	MOVL	#2, -12(FP)
+	MOVAB	VAXRECORDS_P_3V9CT72S, -8(FP)
+	MOVL	#2, -4(FP)
+	CALLG	-12(FP), VAXRECORDS_MOVE_SGE4UQHH
+; line 64
+	MOVL	#2, -12(FP)
+	CVTWL	VAXRECORDS_I_3V9CT43N, R0
+	CMPL	R0, #3
+	BLEQU	L_6
+	PUSHL	#15
+	PUSHL	#64
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_6:
+	MULL2	#24, R0
+	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
+	MOVAB	2(R0), -8(FP)
+	CVTWL	VAXRECORDS_I_3V9CT43N, -4(FP)
+	CALLG	-12(FP), VAXRECORDS_MOVE_SGE4UQHH
+; line 65
+	MOVL	#1, -8(FP)
+	MOVAB	VAXRECORDS_S_3V9CT8BL, -4(FP)
+	CALLG	-8(FP), VAXRECORDS_AREA_O5A07AIL
+	MOVL	R0, VAXRECORDS_N_3V9CT2QU
+; line 66
+	MOVL	#1, -8(FP)
+	CVTWL	VAXRECORDS_I_3V9CT43N, R0
+	CMPL	R0, #3
+	BLEQU	L_7
+	PUSHL	#20
+	PUSHL	#66
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_7:
+	MULL2	#24, R0
+	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
+	MOVAB	(R0), -4(FP)
+	CALLG	-8(FP), VAXRECORDS_AREA_O5A07AIL
+	MOVL	R0, VAXRECORDS_N_3V9CT2QU
+; line 67
+	MOVL	#2, -12(FP)
+	MOVAB	VAXRECORDS_SHAPES_MTH30EDU+24, -8(FP)
+	CVTWL	VAXRECORDS_I_3V9CT43N, -4(FP)
+	CALLG	-12(FP), VAXRECORDS_PEEK_7QKAQSN3
+	MOVB	R0, VAXRECORDS_S_3V9CT8BL
+; line 68
+	MOVL	#1, -8(FP)
+	CVTWL	VAXRECORDS_I_3V9CT43N, R0
+	CMPL	R0, #3
+	BLEQU	L_8
+	PUSHL	#26
+	PUSHL	#68
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_8:
+	MULL2	#24, R0
+	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
+	MOVAB	(R0), -4(FP)
+	CALLG	-8(FP), VAXRECORDS_FIRST_RU330GMQ
+	MOVB	R0, VAXRECORDS_S_3V9CT8BL
+	RET
+
+	.END

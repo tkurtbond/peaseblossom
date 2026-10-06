@@ -19,7 +19,8 @@ heap (`ABS`, `ODD`, `CHR`, `ORD`, `CAP`, `LEN`, `INC`, `DEC`, `COPY`,
 program's entry (`doc/history/phases/phase-08.md`, "Explicit non-goals" and
 steps 5-12). Not `REAL`/`LONGREAL` (Phase 8 left them to Phase 9), pointers,
 `NEW`, the collector, type-bound procedures, open arrays or nested
-procedures: Phase 16 step 3 brings those.
+procedures: Phase 16 step 3 brings those, with record extension, record
+field initializers and record and array literals.
 
 "Done" is hand-reviewed `.mar` output checked in as
 `test/conformance/*/expected-vax.mar`-style fixtures, each with a reviewer's
@@ -184,6 +185,11 @@ Proposals:
   since `EMUL` is only 32 x 32 -> 64 bits and `EDIV` 64 / 32 -> 32, and
   `LIB$EMUL`/`LIB$EDIV` only wrap those instructions (LIB, `LIB$EMUL`,
   `LIB$EDIV`). Phase 15 writes the calls; Phase 16 writes the routines.
+- **Done (step 6): arrays and records** take `MemoryLayout`'s sizes,
+  offsets and alignment, as above. A module variable is `.BLKB <size>`
+  after the `.ALIGN` of its alignment, a local the same bytes of the
+  frame, aligned so. A record with a base type or a field initializer is
+  Phase 16's, as is an open array.
 - **Real types**, for Phase 16 (out of Phase 15's slice): `REAL` is
   F_floating; `LONGREAL` is D_floating or G_floating. VAX C chooses with a
   qualifier, `/G_FLOAT`, defaulting to D_floating (`/NOG_FLOAT`), and a
@@ -466,9 +472,13 @@ Proposals:
   `R2`-`R11` are alike, each one written costing a save and a restore
   per call), and
   the string instructions (`MOVC3`, `MOVC5`, `CMPC3`, `LOCC`) themselves
-  overwrite `R0`-`R5`. So when step 6 brings `MOVCx`, the temporaries
-  alive across one move up into `R6`-`R11` rather than spill, keeping the
-  lowest-first preference so a simple procedure's mask stays empty.
+  overwrite `R0`-`R5`. The proposal was that when step 6 brings `MOVCx`,
+  the temporaries alive across one move up into `R6`-`R11` rather than
+  spill. Done (step 6) otherwise: a move is a statement of its own - an
+  assignment, or the copy of a parameter on entry - so nothing but its
+  own operands' registers is in use across it, and anything that were
+  would be spilled; `R6`-`R11` stay unused. A body with a `MOVCx` saves
+  `R2`-`R5` in its mask.
 - **Overflow**: the `IV` bit stays clear, so integer arithmetic wraps, as
   poc promises (`language-extensions.md`, "Overflow, division and reals").
   An opt-in overflow check could later set it.
@@ -491,10 +501,23 @@ Proposals:
   is moved back where the path that skips the call left it. A value
   returned in `R0` is sign- or zero-extended to a longword, as
   arguments are. Not lowered yet: a procedure value or variable, a
-  nested or type-bound procedure, an open-array parameter (Phase 16),
-  array and record parameters (step 6), a `["C"]` external (VAX/VMS
-  takes `"VMS"`), and a `HUGEINT` value parameter of an external one
-  (Phase 17 chooses its mechanism).
+  nested or type-bound procedure, an open-array parameter (Phase 16), a
+  `["C"]` external (VAX/VMS takes `"VMS"`), and a `HUGEINT`, array or
+  record value parameter of an external one (Phase 17 chooses its
+  mechanism).
+- **Done (step 6): array and record parameters.** A value parameter is
+  passed by its address, the caller making no copy; the callee copies it
+  into its frame on entry by `MOVC3`, after the locals are cleared,
+  whether or not the body changes it, since otherwise a change to the
+  variable passed, through a `VAR` parameter or a module variable, would
+  show through it. A read-only one (`x-`) is not copied: its address is
+  used, as a `VAR` parameter's. A string constant passed for an array is
+  padded with zeros to the parameter's size, which is how much the callee
+  copies. **Decided (2026-10-06): a `VAR` record parameter is its
+  address only**, the slice having no extension; Phase 16 adds the type
+  tag as a second longword. A field reached through a parameter's
+  address, `@4n(AP)`, has the address moved to a register first, `0(Rn)`,
+  since `@4n(AP)` takes no displacement.
 - **Nested procedures** are outside Phase 15. When Phase 16 takes them,
   `R1` as the environment value is the standard's own mechanism for a
   static link (`nested-procedures.md` §9 leaves the choice to this
@@ -579,9 +602,45 @@ Proposals, by construct:
   arithmetic does.
 - **Arrays and records**: a field is its offset from the record's address;
   an index is checked (§9), then scaled, or used through index mode
-  (`base[Rx]`), which scales by the element size itself.
+  (`base[Rx]`), which scales by the element size itself. **Decided
+  (2026-10-06): index mode for an element of 1, 2 or 4 bytes, else its
+  address.** Done (step 6): a constant index is a displacement, checked
+  by the compiler. Any other is widened to a longword in a register of its
+  own and checked (§9); then an element of 1, 2 or 4 bytes is `base[Rx]`
+  (`MOVW L_A[R2], R0`), and any other - a record, an array or a `HUGEINT`,
+  whose second longword index mode cannot name - is scaled by `MULL2
+  #size, Rx` and made an address by `MOVAB base[Rx], Rx`, its fields then
+  `off(Rx)`. Index mode scales by the operand's size in the instruction,
+  so an indexed element used where that size is another - `ASHL`'s count
+  and `BBC`'s base are bytes, `BLBC`'s operand a longword - is moved to a
+  register first, and an element's address is `MOVAW`/`MOVAL` for a word
+  or a longword element. The registers of a location stay where they are
+  while the rest of the statement is evaluated: never spilled, since a
+  base or an index cannot be in the frame, but moved up from `R0` and
+  `R1` before a call. A `CASE` selector or a `FOR` limit that holds one
+  is copied to the frame. An assignment's target is located before its
+  value is evaluated, as on LLVM.
 - **`COPY`** and whole-array or whole-record assignment: `MOVC3`, whose
   length is a word (`MOVC3 len.rw, ...`, MACRO), so up to 65535 bytes; longer moves loop.
+  Done (step 6) for assignment: `MOVC3 #size, src, dst` of the value's
+  size (an array no longer than the target's, `language-extensions.md`,
+  "Array assignment"), a longer move in pieces of 65535, each next one
+  `MOVC3 #n, (R1), (R3)` from where the last left `R1` and `R3`; clearing
+  more than 65535 bytes of locals is pieces of `MOVC5` the same way.
+  `COPY` is step 7's.
+- **Strings.** **Decided (2026-10-06): a string constant assigned to an
+  array is `MOVC5`, its characters then zeros to the array's end**:
+  `MOVC5 #len, L_STR_n, #0, #size, a`. A string constant is in
+  `POC_CONST`, `L_STR_<n>:` and `.ASCII` between a delimiter it does not
+  hold (MACRO 6, `.ASCII`), a character that does not print `.BYTE`, then
+  its `0X` and any padding by `.BYTE 0[n]`; one for each text and size.
+  **Decided (2026-10-06): a comparison of strings is a call of the
+  runtime routine `POC_STRCMP(a, LEN(a), b, LEN(b))`**, by `CALLG`, the
+  addresses and the lengths (a string constant's counting its `0X`) by
+  value, its result in `R0` less than, equal to or greater than zero, as
+  `a` is less than, equal to or greater than `b`, then `TSTL R0` and the
+  relation's branch. Phase 16 writes the routine, which stops at `0X` or
+  a length; `CMPC3` alone would not stop at `0X`.
 
 ## 9. Traps
 
@@ -613,8 +672,11 @@ assignment 9, `ASSERT` 10, heap 11, `RETURN` 12, record assignment 13,
 range 14), and the module's name is a counted string, `L_MODULE_NAME:
 .ASCIC /<Module>/` in `POC_CONST`. A module that traps declares
 `.EXTERNAL POC_TRAP`; until Phase 16 provides the routine, its object
-assembles but does not link. Done (step 4) for `CASE`; the others come
-with their constructs.
+assembles but does not link. Done (step 4) for `CASE`; done (step 6)
+for an index, `CMPL Rx, #<length-1>` and `BLEQU` over the trap, unsigned
+so that a negative index fails too, at the index's line and column (a
+`HUGEINT` index also fails when its high longword is not zero); the
+others come with their constructs.
 
 ## 10. Output and fixtures
 
@@ -712,7 +774,7 @@ Each step lands with its fixtures before the next, as Phase 8 did:
    `BOOLEAN` and `SET` expressions. Done.
 4. Control flow (§3 branches, §8), with the trap call (§9). Done.
 5. Procedures and calls (§7), then external `["VMS"]` procedures. Done.
-6. Arrays and records, with the traps (§9).
+6. Arrays and records, with the traps (§9). Done.
 7. The predeclared procedures of the slice.
 8. Several modules and the program's start (§6).
 9. The phase record and the exit review.

@@ -1,0 +1,363 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - An array is its elements one after another, aligned as its element
+;;   (MemoryLayout, section 4): a module variable is .BLKB of its size.
+;;   ARRAY 3, 4 OF INTEGER is three rows of 8 bytes.
+;; - A constant index is a displacement: a[3] is A+6. The compiler has
+;;   checked it, so there is no check at run time.
+;; - Any other index is widened to a longword in a register of its own
+;;   (CVTWL, CVTBL; a LONGINT is moved), then checked: CMPL Rx, #LEN-1
+;;   and BLEQU over the trap, unsigned so a negative index fails too.
+;;   The trap is POC_TRAP with code 2 and the index's line and column, as
+;;   on LLVM (section 9). A HUGEINT index (a[q], line 40) also fails when
+;;   its high longword is not zero (TSTL, BNEQ to the trap).
+;; - An element of 1, 2 or 4 bytes is index mode, base[Rx], which scales
+;;   Rx by the instruction's operand size (MACRO 5.3.13): a[i] := a[j] + 1
+;;   is one ADDW3 of A[R1] into A[R0]. Index mode scales by the operand's
+;;   size in the instruction, so an element used where the size differs
+;;   is first moved to a register: f[i] for BLBS, whose operand is a
+;;   longword (line 37); s[j] for BBC, whose base is a byte (line 38);
+;;   a[i] as ASHL's count, a byte (line 39).
+;; - A HUGEINT or an array element is scaled by MULL2 and its address
+;;   made by MOVAB base[Rx], Rx, MOVAB's operand being a byte, so the
+;;   element is (Rx), its longwords (R0) and 4(R0) (lines 33-34). m[i, j]
+;;   is a row's address, then index mode in it, (R0)[R1]; m[1][j] is the
+;;   constant row's displacement with an index, M+8[R0].
+;; - The target's location is found before the value is evaluated, as on
+;;   LLVM, and its registers kept while it is.
+;; - c := a copies 20 bytes by MOVC3, which overwrites R0-R5, so the
+;;   initializer's mask saves R2-R5.
+;; - A VAR argument's address of an element is MOVAW, MOVA's operand being
+;;   a word, so that index mode scales by 2: MOVAW A[R0] and MOVAW
+;;   (R0)[R1].
+; VaxArrays, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXARRAYS
+	.IDENT	/5656a9157adcf92b/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; a: ARRAY 10 OF INTEGER
+	.ALIGN	WORD
+VAXARRAYS_A_D1U9BN0N:
+	.BLKB	20
+; b: ARRAY 4 OF CHAR
+VAXARRAYS_B_D1U9BNEA:
+	.BLKB	4
+; f: ARRAY 3 OF BOOLEAN
+VAXARRAYS_F_D1U9BLNU:
+	.BLKB	3
+; s: ARRAY 5 OF SET
+	.ALIGN	LONG
+VAXARRAYS_S_D1U9BULD:
+	.BLKB	20
+; h: ARRAY 3 OF HUGEINT
+	.ALIGN	LONG
+VAXARRAYS_H_D1U9BJ6C:
+	.BLKB	24
+; m: ARRAY 3 OF ARRAY 4 OF INTEGER
+	.ALIGN	WORD
+VAXARRAYS_M_D1U9BHTJ:
+	.BLKB	24
+; c: ARRAY 10 OF INTEGER
+	.ALIGN	WORD
+VAXARRAYS_C_D1U9BNRT:
+	.BLKB	20
+; i: INTEGER
+	.ALIGN	WORD
+VAXARRAYS_I_D1U9BJJV:
+	.BLKW	1
+; j: INTEGER
+	.ALIGN	WORD
+VAXARRAYS_J_D1U9BK1I:
+	.BLKW	1
+; k: SHORTINT
+VAXARRAYS_K_D1U9BKF5:
+	.BLKB	1
+; n: LONGINT
+	.ALIGN	LONG
+VAXARRAYS_N_D1U9BIB6:
+	.BLKL	1
+; q: HUGEINT
+	.ALIGN	LONG
+VAXARRAYS_Q_D1U9BTQ7:
+	.BLKQ	1
+; x: INTEGER
+	.ALIGN	WORD
+VAXARRAYS_X_D1U9BPVS:
+	.BLKW	1
+; ch: CHAR
+VAXARRAYS_CH_HEPAK45F:
+	.BLKB	1
+; t: SET
+	.ALIGN	LONG
+VAXARRAYS_T_D1U9BRM8:
+	.BLKL	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxArrays/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Inc
+VAXARRAYS_INC_C41P2TV0:
+	.WORD	^M<>
+; line 24
+	INCW	@4(AP)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXARRAYS_INIT, ^M<R2,R3,R4,R5>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#8, SP
+; line 28
+	MOVW	#7, VAXARRAYS_A_D1U9BN0N+6
+; line 29
+	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
+	CMPL	R0, #9
+	BLEQU	L_1
+	PUSHL	#5
+	PUSHL	#29
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_1:
+	CVTWL	VAXARRAYS_J_D1U9BK1I, R1
+	CMPL	R1, #9
+	BLEQU	L_2
+	PUSHL	#13
+	PUSHL	#29
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_2:
+	ADDW3	#1, VAXARRAYS_A_D1U9BN0N[R1], VAXARRAYS_A_D1U9BN0N[R0]
+; line 30
+	CVTBL	VAXARRAYS_K_D1U9BKF5, R0
+	CMPL	R0, #9
+	BLEQU	L_3
+	PUSHL	#10
+	PUSHL	#30
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_3:
+	MOVW	VAXARRAYS_A_D1U9BN0N[R0], VAXARRAYS_X_D1U9BPVS
+; line 31
+	MOVL	VAXARRAYS_N_D1U9BIB6, R0
+	CMPL	R0, #3
+	BLEQU	L_4
+	PUSHL	#5
+	PUSHL	#31
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_4:
+	MOVB	#120, VAXARRAYS_B_D1U9BNEA[R0]
+; line 32
+	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
+	CMPL	R0, #3
+	BLEQU	L_5
+	PUSHL	#11
+	PUSHL	#32
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_5:
+	MOVB	VAXARRAYS_B_D1U9BNEA[R0], VAXARRAYS_CH_HEPAK45F
+; line 33
+	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
+	CMPL	R0, #2
+	BLEQU	L_6
+	PUSHL	#5
+	PUSHL	#33
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_6:
+	MULL2	#8, R0
+	MOVAB	VAXARRAYS_H_D1U9BJ6C[R0], R0
+	MOVQ	VAXARRAYS_Q_D1U9BTQ7, (R0)
+; line 34
+	CVTWL	VAXARRAYS_J_D1U9BK1I, R0
+	CMPL	R0, #2
+	BLEQU	L_7
+	PUSHL	#17
+	PUSHL	#34
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_7:
+	MULL2	#8, R0
+	MOVAB	VAXARRAYS_H_D1U9BJ6C[R0], R0
+	MOVQ	VAXARRAYS_H_D1U9BJ6C+16, VAXARRAYS_Q_D1U9BTQ7
+	ADDL2	(R0), VAXARRAYS_Q_D1U9BTQ7
+	ADWC	4(R0), VAXARRAYS_Q_D1U9BTQ7+4
+; line 35
+	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
+	CMPL	R0, #2
+	BLEQU	L_8
+	PUSHL	#5
+	PUSHL	#35
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_8:
+	MULL2	#8, R0
+	MOVAB	VAXARRAYS_M_D1U9BHTJ[R0], R0
+	CVTWL	VAXARRAYS_J_D1U9BK1I, R1
+	CMPL	R1, #3
+	BLEQU	L_9
+	PUSHL	#8
+	PUSHL	#35
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_9:
+	MOVW	#5, (R0)[R1]
+; line 36
+	CVTWL	VAXARRAYS_J_D1U9BK1I, R0
+	CMPL	R0, #3
+	BLEQU	L_10
+	PUSHL	#8
+	PUSHL	#36
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_10:
+	CVTWL	VAXARRAYS_I_D1U9BJJV, R1
+	CMPL	R1, #2
+	BLEQU	L_11
+	PUSHL	#16
+	PUSHL	#36
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_11:
+	MULL2	#8, R1
+	MOVAB	VAXARRAYS_M_D1U9BHTJ[R1], R1
+	MOVW	4(R1), VAXARRAYS_M_D1U9BHTJ+8[R0]
+; line 37
+	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
+	CMPL	R0, #2
+	BLEQU	L_13
+	PUSHL	#8
+	PUSHL	#37
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_13:
+	MOVB	VAXARRAYS_F_D1U9BLNU[R0], R1
+	BLBS	R1, L_14
+	JMP	L^L_12
+L_14:
+; line 37
+	MOVW	#1, VAXARRAYS_X_D1U9BPVS
+L_12:
+; line 38
+	CVTWL	VAXARRAYS_J_D1U9BK1I, R0
+	CMPL	R0, #4
+	BLEQU	L_16
+	PUSHL	#13
+	PUSHL	#38
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_16:
+	MOVL	VAXARRAYS_S_D1U9BULD[R0], R1
+	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
+	CLRB	R2
+	CMPL	R0, #31
+	BGTRU	L_17
+	BBC	R0, R1, L_17
+	MOVB	#1, R2
+L_17:
+	BLBS	R2, L_18
+	JMP	L^L_15
+L_18:
+; line 38
+	MOVW	#2, VAXARRAYS_X_D1U9BPVS
+L_15:
+; line 39
+	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
+	CMPL	R0, #9
+	BLEQU	L_19
+	PUSHL	#11
+	PUSHL	#39
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_19:
+	MOVW	VAXARRAYS_A_D1U9BN0N[R0], R1
+	ASHL	R1, #1, R0
+	MOVL	R0, VAXARRAYS_T_D1U9BRM8
+; line 40
+	TSTL	VAXARRAYS_Q_D1U9BTQ7+4
+	BNEQ	L_21
+	MOVL	VAXARRAYS_Q_D1U9BTQ7, R0
+	CMPL	R0, #9
+	BLEQU	L_20
+L_21:
+	PUSHL	#5
+	PUSHL	#40
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_20:
+	CLRW	VAXARRAYS_A_D1U9BN0N[R0]
+; line 41
+	MOVC3	#20, VAXARRAYS_A_D1U9BN0N, VAXARRAYS_C_D1U9BNRT
+; line 42
+	MOVL	#1, -8(FP)
+	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
+	CMPL	R0, #9
+	BLEQU	L_22
+	PUSHL	#9
+	PUSHL	#42
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_22:
+	MOVAW	VAXARRAYS_A_D1U9BN0N[R0], -4(FP)
+	CALLG	-8(FP), VAXARRAYS_INC_C41P2TV0
+; line 43
+	MOVL	#1, -8(FP)
+	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
+	CMPL	R0, #2
+	BLEQU	L_23
+	PUSHL	#9
+	PUSHL	#43
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_23:
+	MULL2	#8, R0
+	MOVAB	VAXARRAYS_M_D1U9BHTJ[R0], R0
+	CVTWL	VAXARRAYS_J_D1U9BK1I, R1
+	CMPL	R1, #3
+	BLEQU	L_24
+	PUSHL	#12
+	PUSHL	#43
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_24:
+	MOVAW	(R0)[R1], -4(FP)
+	CALLG	-8(FP), VAXARRAYS_INC_C41P2TV0
+	RET
+
+	.END

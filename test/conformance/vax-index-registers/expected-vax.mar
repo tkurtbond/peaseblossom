@@ -1,0 +1,279 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - a[i] := F(j): the target's index is in R0 when F is called, so it is
+;;   moved up to R2, which F's mask saves, and the result stored to
+;;   A[R2] (section 7, as for any value in R0 or R1).
+;; - m[i, F(j)] := m[F(i), j]: the row's address moves from R0 to R2 for
+;;   the first call; the second index, F's result, is checked, then moves
+;;   from R0 to R3 for the second call, so the target is (R2)[R3] and the
+;;   value (R0)[R1]: four registers, none spilled, since a register that
+;;   is a base or an index cannot be in the frame. F's results are
+;;   widened in place (CVTWL R0, R0) before they are checked.
+;; - CASE a[i]: the selector is moved to a slot of the frame, -4(FP), and
+;;   compared there, so that no register stays in use across the arms.
+;; - FOR i := 0 TO a[j]: the limit is evaluated once, after i := 0, and
+;;   kept in the frame (Oberon2.pdf 9.8); a[i] := i in the body checks i
+;;   on every pass.
+;; - WHILE (a[i] < a[j]) & b[i]: a[i], the left operand, is evaluated
+;;   first (R1 then R0 would be the other order); b[i] is moved to a
+;;   register for BLBS, whose operand is a longword.
+;; - s[i] := s[j] + {i}: {i} is ASHL i, #1 (section 8), then one BISL3
+;;   of two indexed operands into a third.
+; VaxIndexRegisters, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXINDEXREGISTERS
+	.IDENT	/0fd42f6f819091af/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; a: ARRAY 10 OF INTEGER
+	.ALIGN	WORD
+VAXINDEXREGISTERS_A_3NLORSCF:
+	.BLKB	20
+; m: ARRAY 3 OF ARRAY 4 OF INTEGER
+	.ALIGN	WORD
+VAXINDEXREGISTERS_M_3NLORU2R:
+	.BLKB	24
+; i: INTEGER
+	.ALIGN	WORD
+VAXINDEXREGISTERS_I_3NLORVP7:
+	.BLKW	1
+; j: INTEGER
+	.ALIGN	WORD
+VAXINDEXREGISTERS_J_3NLOS06Q:
+	.BLKW	1
+; s: ARRAY 4 OF SET
+	.ALIGN	LONG
+VAXINDEXREGISTERS_S_3NLORME5:
+	.BLKB	16
+; b: ARRAY 4 OF BOOLEAN
+VAXINDEXREGISTERS_B_3NLORSQ2:
+	.BLKB	4
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxIndexRegisters/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE F
+VAXINDEXREGISTERS_F_3NLORDGM:
+	.WORD	^M<>
+; line 13
+	ADDW3	#1, 4(AP), R0
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#14
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXINDEXREGISTERS_INIT, ^M<R2,R3>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#8, SP
+; line 17
+	CVTWL	VAXINDEXREGISTERS_I_3NLORVP7, R0
+	CMPL	R0, #9
+	BLEQU	L_1
+	PUSHL	#5
+	PUSHL	#17
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_1:
+	MOVL	#1, -8(FP)
+	CVTWL	VAXINDEXREGISTERS_J_3NLOS06Q, -4(FP)
+	MOVL	R0, R2
+	CALLG	-8(FP), VAXINDEXREGISTERS_F_3NLORDGM
+	MOVW	R0, VAXINDEXREGISTERS_A_3NLORSCF[R2]
+; line 18
+	CVTWL	VAXINDEXREGISTERS_I_3NLORVP7, R0
+	CMPL	R0, #2
+	BLEQU	L_2
+	PUSHL	#5
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_2:
+	MULL2	#8, R0
+	MOVAB	VAXINDEXREGISTERS_M_3NLORU2R[R0], R0
+	MOVL	#1, -8(FP)
+	CVTWL	VAXINDEXREGISTERS_J_3NLOS06Q, -4(FP)
+	MOVL	R0, R2
+	CALLG	-8(FP), VAXINDEXREGISTERS_F_3NLORDGM
+	CVTWL	R0, R0
+	CMPL	R0, #3
+	BLEQU	L_3
+	PUSHL	#8
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_3:
+	MOVL	#1, -8(FP)
+	CVTWL	VAXINDEXREGISTERS_I_3NLORVP7, -4(FP)
+	MOVL	R0, R3
+	CALLG	-8(FP), VAXINDEXREGISTERS_F_3NLORDGM
+	CVTWL	R0, R0
+	CMPL	R0, #2
+	BLEQU	L_4
+	PUSHL	#19
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_4:
+	MULL2	#8, R0
+	MOVAB	VAXINDEXREGISTERS_M_3NLORU2R[R0], R0
+	CVTWL	VAXINDEXREGISTERS_J_3NLOS06Q, R1
+	CMPL	R1, #3
+	BLEQU	L_5
+	PUSHL	#25
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_5:
+	MOVW	(R0)[R1], (R2)[R3]
+; line 19
+	CVTWL	VAXINDEXREGISTERS_I_3NLORVP7, R0
+	CMPL	R0, #9
+	BLEQU	L_6
+	PUSHL	#10
+	PUSHL	#19
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_6:
+	MOVW	VAXINDEXREGISTERS_A_3NLORSCF[R0], -4(FP)
+	CMPW	-4(FP), #1
+	BNEQ	L_11
+	JMP	L^L_9
+L_11:
+	CMPW	-4(FP), #2
+	BNEQ	L_12
+	JMP	L^L_10
+L_12:
+	JMP	L^L_7
+L_9:
+; line 20
+	MOVW	#1, VAXINDEXREGISTERS_J_3NLOS06Q
+	JMP	L^L_8
+L_10:
+; line 21
+	MOVW	#2, VAXINDEXREGISTERS_J_3NLOS06Q
+	JMP	L^L_8
+L_7:
+L_8:
+; line 24
+	CLRW	VAXINDEXREGISTERS_I_3NLORVP7
+	CVTWL	VAXINDEXREGISTERS_J_3NLOS06Q, R0
+	CMPL	R0, #9
+	BLEQU	L_13
+	PUSHL	#19
+	PUSHL	#24
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_13:
+	MOVW	VAXINDEXREGISTERS_A_3NLORSCF[R0], -4(FP)
+L_14:
+	CMPW	VAXINDEXREGISTERS_I_3NLORVP7, -4(FP)
+	BLEQ	L_16
+	JMP	L^L_15
+L_16:
+; line 24
+	CVTWL	VAXINDEXREGISTERS_I_3NLORVP7, R0
+	CMPL	R0, #9
+	BLEQU	L_17
+	PUSHL	#27
+	PUSHL	#24
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_17:
+	MOVW	VAXINDEXREGISTERS_I_3NLORVP7, VAXINDEXREGISTERS_A_3NLORSCF[R0]
+	INCW	VAXINDEXREGISTERS_I_3NLORVP7
+	JMP	L^L_14
+L_15:
+; line 25
+L_18:
+	CVTWL	VAXINDEXREGISTERS_I_3NLORVP7, R0
+	CMPL	R0, #9
+	BLEQU	L_20
+	PUSHL	#12
+	PUSHL	#25
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_20:
+	CVTWL	VAXINDEXREGISTERS_J_3NLOS06Q, R1
+	CMPL	R1, #9
+	BLEQU	L_21
+	PUSHL	#19
+	PUSHL	#25
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_21:
+	CMPW	VAXINDEXREGISTERS_A_3NLORSCF[R0], VAXINDEXREGISTERS_A_3NLORSCF[R1]
+	BLSS	L_22
+	JMP	L^L_19
+L_22:
+	CVTWL	VAXINDEXREGISTERS_I_3NLORVP7, R0
+	CMPL	R0, #3
+	BLEQU	L_23
+	PUSHL	#27
+	PUSHL	#25
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_23:
+	MOVB	VAXINDEXREGISTERS_B_3NLORSQ2[R0], R1
+	BLBS	R1, L_24
+	JMP	L^L_19
+L_24:
+; line 25
+	INCW	VAXINDEXREGISTERS_I_3NLORVP7
+	JMP	L^L_18
+L_19:
+; line 26
+	CVTWL	VAXINDEXREGISTERS_I_3NLORVP7, R0
+	CMPL	R0, #3
+	BLEQU	L_25
+	PUSHL	#5
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_25:
+	CVTWL	VAXINDEXREGISTERS_J_3NLOS06Q, R1
+	CMPL	R1, #3
+	BLEQU	L_26
+	PUSHL	#13
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_26:
+	ASHL	VAXINDEXREGISTERS_I_3NLORVP7, #1, R2
+	BISL3	R2, VAXINDEXREGISTERS_S_3NLORME5[R1], VAXINDEXREGISTERS_S_3NLORME5[R0]
+	RET
+
+	.END

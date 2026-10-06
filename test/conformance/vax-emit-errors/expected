@@ -1,6 +1,6 @@
 == poc -emit-macro32 VaxTooMuch.mod
 VaxTooMuch.mod:9:10: error: module VaxTooMuch: the VAX backend cannot lower this yet: an IMPORT (step 8)
-VaxTooMuch.mod:11:7: error: module VaxTooMuch: the VAX backend cannot lower this yet: a variable of type ARRAY 2 OF INTEGER (step 6)
+VaxTooMuch.mod:11:7: error: module VaxTooMuch: the VAX backend cannot lower this yet: a variable of type ARRAY 2 OF REAL (Phase 16)
 VaxTooMuch.mod:12:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: an external ["C"] procedure (VAX/VMS takes "VMS")
 VaxTooMuch.mod:13:20: error: module VaxTooMuch: the VAX backend cannot lower this yet: a nested procedure (Phase 16)
 VaxTooMuch.mod:14:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: a type-bound procedure (Phase 16)

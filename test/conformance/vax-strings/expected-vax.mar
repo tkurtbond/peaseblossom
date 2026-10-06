@@ -1,0 +1,271 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - A string constant is in POC_CONST: .ASCII between a delimiter not in
+;;   it (MACRO 6, .ASCII: "it's /|" takes the double quote), a character
+;;   that does not print .BYTE (0AX is 10), then zeros by .BYTE 0[n]. It
+;;   is written once for each text and size, as L_STR_<n>.
+;; - a := "hello" is MOVC5 #5, L_STR_4, #0, #8, A: the five characters,
+;;   then zeros to the array's end (decided with the user 2026-10-06), so
+;;   0X ends it; names[i] := ... is the same to (R0), the element's
+;;   address. long := a copies the 8 bytes of a by MOVC3 and leaves the
+;;   rest of long as it was (language-extensions.md, "Array assignment").
+;; - A comparison of strings calls POC_STRCMP(a, LEN(a), b, LEN(b)) by
+;;   CALLG, each address and length in the argument list, and compares R0
+;;   with zero: a = b is TSTL R0, BNEQ over MOVB #1. A string constant's
+;;   length counts its 0X ("hello" is 6), so that the routine (Phase 16)
+;;   stops at 0X or the length; a one-character string compared with an
+;;   array ("x") is a string. POC_STRCMP is .EXTERNAL.
+;; - A string passed for Name, ARRAY 8 OF CHAR, is padded to 8 bytes
+;;   (L_STR_6, "bob", L_STR_7, "x"), since Greet copies 8 bytes from the
+;;   address it is given; the same one character "x" compared in Show is
+;;   L_STR_3, 2 bytes.
+;; - Show's n- is read-only, so not copied: its address is MOVL 4(AP).
+; VaxStrings, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXSTRINGS
+	.IDENT	/5bb2f549cfbaeafd/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; a: ARRAY 8 OF CHAR
+VAXSTRINGS_A_3DS52R9J:
+	.BLKB	8
+; b: ARRAY 8 OF CHAR
+VAXSTRINGS_B_3DS52RN6:
+	.BLKB	8
+; long: ARRAY 20 OF CHAR
+VAXSTRINGS_LONG_89UUQH7U:
+	.BLKB	20
+; names: ARRAY 3 OF ARRAY 8 OF CHAR
+VAXSTRINGS_NAMES_6MKR2M7G:
+	.BLKB	24
+; i: INTEGER
+	.ALIGN	WORD
+VAXSTRINGS_I_3DS52UMB:
+	.BLKW	1
+; ok: BOOLEAN
+VAXSTRINGS_OK_LLP88IN2:
+	.BLKB	1
+
+; the procedures it calls of other modules
+	.EXTERNAL	POC_STRCMP
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxStrings/
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.BYTE	0
+L_STR_2:
+	.ASCII	/nobody/
+	.BYTE	0
+L_STR_3:
+	.ASCII	/x/
+	.BYTE	0
+L_STR_4:
+	.ASCII	/hello/
+	.BYTE	0
+L_STR_5:
+	.ASCII	"it's /|"
+	.BYTE	0
+L_STR_6:
+	.ASCII	/bob/
+	.BYTE	0[5]
+L_STR_7:
+	.ASCII	/x/
+	.BYTE	0[7]
+L_STR_8:
+	.BYTE	10
+	.BYTE	0[7]
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Greet
+VAXSTRINGS_GREET_SMHPN5B1:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#28, SP
+	CLRQ	-8(FP)
+	MOVC3	#8, @4(AP), -8(FP)
+; line 18
+	MOVC3	#8, -8(FP), @8(AP)
+; line 19
+	MOVL	#4, -28(FP)
+	MOVAB	-8(FP), -24(FP)
+	MOVL	#8, -20(FP)
+	MOVAB	L_STR_1, -16(FP)
+	MOVL	#1, -12(FP)
+	CALLG	-28(FP), POC_STRCMP
+	TSTL	R0
+	BEQL	L_2
+	JMP	L^L_1
+L_2:
+; line 19
+	MOVC5	#6, L_STR_2, #0, #8, @8(AP)
+L_1:
+	RET
+; PROCEDURE Show
+VAXSTRINGS_SHOW_H74GB4LP:
+	.WORD	^M<>
+	SUBL2	#20, SP
+; line 24
+	MOVL	#4, -20(FP)
+	MOVL	4(AP), -16(FP)
+	MOVL	#8, -12(FP)
+	MOVAB	L_STR_3, -8(FP)
+	MOVL	#2, -4(FP)
+	CALLG	-20(FP), POC_STRCMP
+	CLRB	R1
+	TSTL	R0
+	BEQL	L_3
+	MOVB	#1, R1
+L_3:
+	MOVZBL	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#25
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXSTRINGS_INIT, ^M<R2,R3,R4,R5>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#20, SP
+; line 28
+	MOVC5	#5, L_STR_4, #0, #8, VAXSTRINGS_A_3DS52R9J
+; line 29
+	MOVC5	#1, L_STR_3, #0, #8, VAXSTRINGS_B_3DS52RN6
+; line 30
+	MOVC3	#8, VAXSTRINGS_A_3DS52R9J, VAXSTRINGS_LONG_89UUQH7U
+; line 31
+	CVTWL	VAXSTRINGS_I_3DS52UMB, R0
+	CMPL	R0, #2
+	BLEQU	L_4
+	PUSHL	#9
+	PUSHL	#31
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_4:
+	MULL2	#8, R0
+	MOVAB	VAXSTRINGS_NAMES_6MKR2M7G[R0], R0
+	MOVC5	#7, L_STR_5, #0, #8, (R0)
+; line 32
+	MOVL	#4, -20(FP)
+	MOVAB	VAXSTRINGS_A_3DS52R9J, -16(FP)
+	MOVL	#8, -12(FP)
+	MOVAB	VAXSTRINGS_B_3DS52RN6, -8(FP)
+	MOVL	#8, -4(FP)
+	CALLG	-20(FP), POC_STRCMP
+	CLRB	R1
+	TSTL	R0
+	BNEQ	L_5
+	MOVB	#1, R1
+L_5:
+	MOVB	R1, VAXSTRINGS_OK_LLP88IN2
+; line 33
+	MOVL	#4, -20(FP)
+	MOVAB	VAXSTRINGS_A_3DS52R9J, -16(FP)
+	MOVL	#8, -12(FP)
+	MOVAB	L_STR_4, -8(FP)
+	MOVL	#6, -4(FP)
+	CALLG	-20(FP), POC_STRCMP
+	CLRB	R1
+	TSTL	R0
+	BGEQ	L_6
+	MOVB	#1, R1
+L_6:
+	MOVB	R1, VAXSTRINGS_OK_LLP88IN2
+; line 34
+	MOVL	#4, -20(FP)
+	MOVAB	VAXSTRINGS_A_3DS52R9J, -16(FP)
+	MOVL	#8, -12(FP)
+	MOVAB	L_STR_3, -8(FP)
+	MOVL	#2, -4(FP)
+	CALLG	-20(FP), POC_STRCMP
+	TSTL	R0
+	BNEQ	L_8
+	JMP	L^L_7
+L_8:
+; line 34
+	MOVB	#1, VAXSTRINGS_OK_LLP88IN2
+L_7:
+; line 35
+	CVTWL	VAXSTRINGS_I_3DS52UMB, R0
+	CMPL	R0, #2
+	BLEQU	L_10
+	PUSHL	#12
+	PUSHL	#35
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_10:
+	MULL2	#8, R0
+	MOVAB	VAXSTRINGS_NAMES_6MKR2M7G[R0], R0
+	MOVL	#4, -20(FP)
+	MOVAB	(R0), -16(FP)
+	MOVL	#8, -12(FP)
+	MOVAB	VAXSTRINGS_A_3DS52R9J, -8(FP)
+	MOVL	#8, -4(FP)
+	CALLG	-20(FP), POC_STRCMP
+	TSTL	R0
+	BGEQ	L_11
+	JMP	L^L_9
+L_11:
+; line 35
+	CLRB	VAXSTRINGS_OK_LLP88IN2
+L_9:
+; line 36
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_6, -8(FP)
+	MOVAB	VAXSTRINGS_A_3DS52R9J, -4(FP)
+	CALLG	-12(FP), VAXSTRINGS_GREET_SMHPN5B1
+; line 37
+	MOVL	#2, -12(FP)
+	MOVAB	VAXSTRINGS_NAMES_6MKR2M7G+16, -8(FP)
+	CVTWL	VAXSTRINGS_I_3DS52UMB, R0
+	CMPL	R0, #2
+	BLEQU	L_12
+	PUSHL	#25
+	PUSHL	#37
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, POC_TRAP
+L_12:
+	MULL2	#8, R0
+	MOVAB	VAXSTRINGS_NAMES_6MKR2M7G[R0], R0
+	MOVAB	(R0), -4(FP)
+	CALLG	-12(FP), VAXSTRINGS_GREET_SMHPN5B1
+; line 38
+	MOVL	#1, -8(FP)
+	MOVAB	L_STR_7, -4(FP)
+	CALLG	-8(FP), VAXSTRINGS_SHOW_H74GB4LP
+	MOVB	R0, VAXSTRINGS_OK_LLP88IN2
+; line 39
+	MOVL	#1, -8(FP)
+	MOVAB	L_STR_8, -4(FP)
+	CALLG	-8(FP), VAXSTRINGS_SHOW_H74GB4LP
+	MOVB	R0, VAXSTRINGS_OK_LLP88IN2
+; line 40
+	MOVL	#1, -8(FP)
+	MOVAB	VAXSTRINGS_A_3DS52R9J, -4(FP)
+	CALLG	-8(FP), VAXSTRINGS_SHOW_H74GB4LP
+	MOVB	R0, VAXSTRINGS_OK_LLP88IN2
+	RET
+
+	.END

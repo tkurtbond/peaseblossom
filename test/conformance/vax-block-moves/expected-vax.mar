@@ -1,0 +1,90 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - MOVC3 and MOVC5 take their length as a word (MACRO 9, MOVC: len.rw),
+;;   so a move of more than 65535 bytes is in pieces. After MOVC3, R1 is
+;;   the address after the source and R3 after the destination; after
+;;   MOVC5, R3 after the destination (MACRO 9, MOVC, condition codes and
+;;   registers). So each next piece is MOVC3 #n, (R1), (R3), or MOVC5 #0,
+;;   (SP), #0, #n, (R3), which fills with zeros.
+;; - x := y, 70000 bytes, is 65535 then 4465.
+;; - Medium's 100 bytes of locals are more than CLRQ and CLRL clear (64),
+;;   so MOVC5 #0, (SP), #0, #100 clears them (section 7).
+;; - Huge's 140000 bytes - the copy of b, and l - are cleared in three
+;;   pieces; b is copied in two, l := b in two, and l := "abc" is MOVC5
+;;   #3, L_STR_1, #0, #65535 and the zeros of the rest.
+; VaxBlockMoves, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXBLOCKMOVES
+	.IDENT	/b5ebf521476b9da5/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; x: ARRAY 70000 OF CHAR
+VAXBLOCKMOVES_X_HTCVJJVN:
+	.BLKB	70000
+; y: ARRAY 70000 OF CHAR
+VAXBLOCKMOVES_Y_HTCVJJI4:
+	.BLKB	70000
+; r: RECORD
+	.ALIGN	WORD
+VAXBLOCKMOVES_R_HTCVJHE5:
+	.BLKB	200
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/abc/
+	.BYTE	0
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Medium
+VAXBLOCKMOVES_MEDIUM_TR8BQM56:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#100, SP
+	MOVC5	#0, (SP), #0, #100, -100(FP)
+; line 13
+	MOVB	#97, -100(FP)
+	RET
+; PROCEDURE Huge
+VAXBLOCKMOVES_HUGE_5EN8S4DI:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#140000, SP
+	MOVC5	#0, (SP), #0, #65535, -140000(FP)
+	MOVC5	#0, (SP), #0, #65535, (R3)
+	MOVC5	#0, (SP), #0, #8930, (R3)
+	MOVC3	#65535, @4(AP), -70000(FP)
+	MOVC3	#4465, (R1), (R3)
+; line 19
+	MOVC3	#65535, -70000(FP), -140000(FP)
+	MOVC3	#4465, (R1), (R3)
+; line 20
+	MOVC5	#3, L_STR_1, #0, #65535, -140000(FP)
+	MOVC5	#0, (SP), #0, #4465, (R3)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXBLOCKMOVES_INIT, ^M<R2,R3,R4,R5>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#8, SP
+; line 24
+	MOVC3	#65535, VAXBLOCKMOVES_Y_HTCVJJI4, VAXBLOCKMOVES_X_HTCVJJVN
+	MOVC3	#4465, (R1), (R3)
+; line 25
+	MOVL	#1, -8(FP)
+	MOVAB	VAXBLOCKMOVES_X_HTCVJJVN, -4(FP)
+	CALLG	-8(FP), VAXBLOCKMOVES_HUGE_5EN8S4DI
+	RET
+
+	.END
