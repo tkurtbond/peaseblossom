@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - FOR as Oberon2.pdf 9.8 says: the start assigned first (CLRW i for
 ;;   0), then the limit evaluated once, before the loop. A variable limit
 ;;   is copied to a slot of the frame, -4(FP), as the body may change it
