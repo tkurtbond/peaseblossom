@@ -1,24 +1,40 @@
 MODULE VaxCodeGenerator;
 
   (* Writes one module as VAX MACRO-32 source (PLAN.md Phase 15;
-     doc/developer/vax-macro32-backend.md, the design). Steps 2 and 3 of
+     doc/developer/vax-macro32-backend.md, the design). Steps 2 to 5 of
      the design's section 12: a module's layout (section 6) - the title,
      the module key, the three program sections, and the initializer
-     <MODULE>_INIT (section 5), which runs the body once, behind a flag -
-     and straight-line code: the module's variables, and assignments of
-     integer, CHAR, BOOLEAN and SET expressions (section 8).
+     <MODULE>_INIT (section 5), which runs the body once, behind a flag;
+     straight-line code: the module's variables, and assignments of
+     integer, CHAR, BOOLEAN and SET expressions (section 8); control flow
+     (step 4); and procedures, calls and external ["VMS"] procedures
+     (step 5, section 7).
 
-     A module needing more - an import (step 8), a procedure (step 5), a
-     statement other than an assignment (steps 4 and 5), a variable of a
-     type outside the slice, a selector (step 6), a call (steps 5 and 7) -
-     is reported as a construct the backend cannot lower yet, at its
-     position, and unsupportedCount counts them, as LLVMCodeGenerator's
-     does; VaxToolchainDriver then deletes what was written. Constants and
-     types need no code, so a module of only those is complete.
+     A module needing more - an import (step 8), a variable of a type
+     outside the slice or a selector (step 6), a predeclared procedure
+     (step 7), a nested or type-bound procedure, a procedure value or WITH
+     (Phase 16) - is reported as a construct the backend cannot lower yet,
+     at its position, and unsupportedCount counts them, as
+     LLVMCodeGenerator's does; VaxToolchainDriver then deletes what was
+     written. Constants and types need no code.
+
+     Procedures (section 7) use the calling standard's one mechanism. An
+     exported procedure is .ENTRY, a private one a local label and .WORD of
+     its mask. Its frame holds its locals below FP, cleared on entry, and
+     below them the slots for spilled registers and argument lists; the
+     n-th parameter is at 4n(AP), its value or, for a VAR or a HUGEINT
+     one, its address. A value parameter the body may change is copied to
+     the frame on entry, the argument list being read-only to the callee.
+     A call evaluates its arguments left to right into a list in the
+     frame, then CALLG (CALLS #0 without arguments); R0 and R1 are moved
+     up first, R2-R5 surviving it. A function's value comes back in R0 as
+     a longword, a HUGEINT in R0 and R1. HUGEINT *, DIV and MOD call poc's
+     runtime (POC_HMUL, POC_HDIV, POC_HMOD), and the traps POC_TRAP,
+     declared .EXTERNAL, as is every external procedure called.
 
      Every symbol is uppercase and checked against MACRO's 31 characters
      (section 3.1): the initializer's by VaxTypes.MakeInitSymbol, a
-     variable's by VaxTypes.Enter, which also refuses two names with one
+     variable's or a procedure's by VaxTypes.Enter, which also refuses two names with one
      symbol (section 5); poc's own labels are local symbols, L_<n> or
      L_<WORD>, never global. An exported variable is a global symbol
      ("::"), any other a local one.
@@ -42,7 +58,7 @@ MODULE VaxCodeGenerator;
      multiplying back. A HUGEINT adds and subtracts in longword pairs
      (ADDL2/ADWC, SUBL2/SBWC) and compares high longwords signed, then
      low ones unsigned (section 4); its *, DIV and MOD are calls to poc's
-     runtime, with procedures (step 5). The last operation of an
+     runtime. The last operation of an
      assignment's value writes the variable itself when its size is the
      variable's: x := y + z is one ADDW3.
 
@@ -54,14 +70,18 @@ MODULE VaxCodeGenerator;
      complement, / XOR; a constructor's variable element e is ASHL e, #1,
      a range lo..hi the bits ASHL lo, #-1 has and ASHL hi, #-2 has not. *)
 
-  IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, VaxTypes;
+  IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
+    VaxTypes;
 
   CONST
     tab = 9X;
     (* OperandDesc.kind *)
     immediate = 0; memory = 1; register = 2;
     firstScratch = 0; lastScratch = 5; (* R0-R5, the design's section 7 *)
-    maxSlots = 256; (* longwords of the frame for spilled registers *)
+    maxSlots = 256; (* longwords of the frame for spilled registers and argument lists *)
+    (* LocalDesc.where *)
+    inFrame = 0; byValue = 1; byReference = 2;
+    clearByCLR = 64; (* bytes of locals cleared by CLRQ and CLRL; more by MOVC5 *)
     two32 = 4294967296;
 
   TYPE
@@ -74,11 +94,33 @@ MODULE VaxCodeGenerator;
       value: LONGINT; (* immediate, not a SET *)
       bits: SET; (* immediate SET *)
       symbol: VaxTypes.Symbol; (* memory: a variable; empty for the frame *)
-      offset: LONGINT; (* memory: from symbol, or from FP *)
+      offset: LONGINT; (* memory: from symbol, or from FP, AP or baseOp's register *)
+      onAP: BOOLEAN; (* memory without a symbol: offset(AP), a parameter *)
+      deferred: BOOLEAN; (* memory on AP: @offset(AP), the operand's address there *)
+      baseOp: Operand; (* memory: offset(Rn), Rn this register, holding an address *)
+      ownsBase: BOOLEAN; (* releasing the operand releases baseOp *)
       slot, slots: INTEGER; (* memory: the frame's slots it holds, slot -1 if none *)
       reg: INTEGER; (* register: Rn, with Rn+1 for a quadword *)
       pinned: BOOLEAN; (* not to be spilled now *)
       nextLive: Operand
+    END;
+
+    (* Where a procedure's parameter or local variable is: in the frame at
+       offset from FP; its value at offset from AP; or its address there *)
+    Local = POINTER TO LocalDesc;
+    LocalDesc = RECORD
+      obj: SymbolTable.Object;
+      where: INTEGER;
+      offset: LONGINT;
+      copyFrom: LONGINT; (* a copied parameter's offset from AP, else 0 *)
+      next: Local
+    END;
+
+    (* An external symbol the module refers to, declared .EXTERNAL *)
+    External = POINTER TO ExternalDesc;
+    ExternalDesc = RECORD
+      name: VaxTypes.Symbol;
+      next: External
     END;
 
     (* One line of the body: a label, or an instruction or comment *)
@@ -95,7 +137,7 @@ MODULE VaxCodeGenerator;
 
     (* the module being generated *)
     module: SyntaxTree.ModuleNode;
-    scope: SymbolTable.Scope;
+    scope, moduleScope: SymbolTable.Scope; (* scope: the procedure's, or the module's *)
     names: VaxTypes.NameTable;
     first, last: Instruction;
     nextLabel: INTEGER;
@@ -105,6 +147,12 @@ MODULE VaxCodeGenerator;
     frameSlots: INTEGER; (* the most slots in use at once *)
     loopExit: ARRAY 16 OF CHAR; (* the innermost LOOP's end, for EXIT *)
     usesTrap: BOOLEAN; (* a trap calls POC_TRAP with the module's name *)
+    externals: External;
+    code, codeLast: Instruction; (* the procedures, written before the initializer *)
+    (* the procedure being generated *)
+    locals: Local;
+    localSize: LONGINT; (* bytes of locals below FP, a multiple of 4; the slots are below them *)
+    resultType: Types.Type; (* a function's, else NIL *)
 
   PROCEDURE WriteStr(VAR w: Files.Rider; s: ARRAY OF CHAR);
     VAR i: INTEGER;
@@ -196,6 +244,19 @@ MODULE VaxCodeGenerator;
     Append(s, "^X"); Append(s, digits)
   END AppendSetHex;
 
+  (* " (step 6)" or " (Phase 16)": when a type outside the slice comes,
+     for the message saying it cannot be lowered yet (section 1) *)
+  PROCEDURE AppendWhen(t: Types.Type; VAR text: ARRAY OF CHAR);
+  BEGIN
+    IF Types.IsOpenArray(t) OR (t IS Types.PointerType) OR (t IS Types.ProcedureType)
+       OR (t = Types.Real) OR (t = Types.LongReal)
+       OR (t IS Types.RecordType) & (t(Types.RecordType).baseType # NIL) THEN
+      Append(text, " (Phase 16)")
+    ELSIF (t IS Types.ArrayType) OR (t IS Types.RecordType) THEN
+      Append(text, " (step 6)")
+    END
+  END AppendWhen;
+
   PROCEDURE Unsupported(line, column: INTEGER; what: ARRAY OF CHAR);
     VAR message: ARRAY 512 OF CHAR;
   BEGIN
@@ -263,6 +324,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     NEW(x); x.kind := kind; x.type := t; x.value := 0; x.bits := {};
     x.symbol[0] := 0X; x.offset := 0; x.slot := -1; x.slots := 0; x.reg := -1;
+    x.onAP := FALSE; x.deferred := FALSE; x.baseOp := NIL; x.ownsBase := FALSE;
     x.pinned := FALSE; x.nextLive := NIL;
     RETURN x
   END NewOperand;
@@ -307,8 +369,13 @@ MODULE VaxCodeGenerator;
       IF x.symbol[0] # 0X THEN
         Append(text, x.symbol);
         IF x.offset + 4 * half # 0 THEN AppendChar(text, "+"); AppendInt(text, x.offset + 4 * half) END
+      ELSIF x.baseOp # NIL THEN
+        IF x.offset + 4 * half # 0 THEN AppendInt(text, x.offset + 4 * half) END;
+        Append(text, "(R"); AppendInt(text, x.baseOp.reg); AppendChar(text, ")")
       ELSE
-        AppendInt(text, x.offset + 4 * half); Append(text, "(FP)")
+        IF x.deferred THEN AppendChar(text, "@") END;
+        AppendInt(text, x.offset + 4 * half);
+        IF x.onAP THEN Append(text, "(AP)") ELSE Append(text, "(FP)") END
       END
     ELSE
       AppendChar(text, "R"); AppendInt(text, x.reg + half)
@@ -336,7 +403,8 @@ MODULE VaxCodeGenerator;
     IF (a = NIL) OR (b = NIL) THEN RETURN FALSE
     ELSIF a = b THEN RETURN TRUE
     ELSIF (a.kind = memory) & (b.kind = memory) THEN
-      RETURN (a.symbol = b.symbol) & (a.offset = b.offset)
+      RETURN (a.symbol = b.symbol) & (a.offset = b.offset) & (a.onAP = b.onAP) & (a.deferred = b.deferred)
+        & ((a.baseOp = NIL) & (b.baseOp = NIL) OR (a.baseOp # NIL) & (b.baseOp # NIL) & (a.baseOp.reg = b.baseOp.reg))
     ELSIF (a.kind = register) & (b.kind = register) THEN
       RETURN a.reg = b.reg
     ELSE
@@ -406,11 +474,27 @@ MODULE VaxCodeGenerator;
       INCL(free, x.reg);
       IF IsQuad(x) THEN INCL(free, x.reg + 1) END;
       Unlive(x); x.kind := immediate
-    ELSIF (x.kind = memory) & (x.slot >= 0) THEN
-      FOR i := x.slot TO x.slot + x.slots - 1 DO slotUsed[i] := FALSE END;
-      x.slot := -1
+    ELSIF x.kind = memory THEN
+      IF x.slot >= 0 THEN
+        FOR i := x.slot TO x.slot + x.slots - 1 DO slotUsed[i] := FALSE END;
+        x.slot := -1
+      END;
+      IF x.ownsBase THEN x.ownsBase := FALSE; x.baseOp.pinned := FALSE; Release(x.baseOp) END
     END
   END Release;
+
+  (* The offset from FP of n slots from slot s, below the locals *)
+  PROCEDURE SlotOffset(s, n: INTEGER): LONGINT;
+  BEGIN
+    RETURN -(localSize + 4 * (s + n))
+  END SlotOffset;
+
+  (* Gives back slots s to s + n - 1 *)
+  PROCEDURE ReleaseSlots(s, n: INTEGER);
+    VAR i: INTEGER;
+  BEGIN
+    FOR i := s TO s + n - 1 DO slotUsed[i] := FALSE END
+  END ReleaseSlots;
 
   (* n free longwords of the frame, the first of them *)
   PROCEDURE AllocateSlots(n: INTEGER): INTEGER;
@@ -429,14 +513,10 @@ MODULE VaxCodeGenerator;
     RETURN s
   END AllocateSlots;
 
-  (* Moves the oldest register in use that is not pinned to the frame;
-     FALSE if there is none *)
-  PROCEDURE SpillOne(): BOOLEAN;
-    VAR x: Operand; n, s: INTEGER; from: OperandText; op: ARRAY 8 OF CHAR;
+  (* Moves the register x to the frame; FALSE if the frame is full *)
+  PROCEDURE Spill(x: Operand): BOOLEAN;
+    VAR n, s: INTEGER; from: OperandText; op: ARRAY 8 OF CHAR;
   BEGIN
-    x := live;
-    WHILE (x # NIL) & x.pinned DO x := x.nextLive END;
-    IF x = NIL THEN RETURN FALSE END;
     IF IsQuad(x) THEN n := 2 ELSE n := 1 END;
     s := AllocateSlots(n);
     IF s < 0 THEN RETURN FALSE END;
@@ -445,23 +525,44 @@ MODULE VaxCodeGenerator;
     INCL(free, x.reg);
     IF n = 2 THEN INCL(free, x.reg + 1) END;
     Unlive(x);
-    x.kind := memory; x.symbol[0] := 0X; x.offset := -4 * (s + n); x.slot := s; x.slots := n; x.reg := -1;
+    x.kind := memory; x.symbol[0] := 0X; x.offset := SlotOffset(s, n); x.slot := s; x.slots := n; x.reg := -1;
     EmitTo(op, from, x);
     RETURN TRUE
+  END Spill;
+
+  (* Moves the oldest register in use that is not pinned to the frame;
+     FALSE if there is none *)
+  PROCEDURE SpillOne(): BOOLEAN;
+    VAR x: Operand;
+  BEGIN
+    x := live;
+    WHILE (x # NIL) & x.pinned DO x := x.nextLive END;
+    RETURN (x # NIL) & Spill(x)
   END SpillOne;
 
-  (* A register for a value of type t - a pair for a quadword - spilling
-     the oldest one in use when none is free *)
-  PROCEDURE NewRegister(t: Types.Type; line, column: INTEGER): Operand;
-    VAR x, p: Operand; r: INTEGER; quad, found: BOOLEAN;
+  (* The first register from Rfrom free for type t - a pair for a
+     quadword - or -1 *)
+  PROCEDURE FreeRegister(t: Types.Type; from: INTEGER): INTEGER;
+    VAR r: INTEGER; quad: BOOLEAN;
+  BEGIN
+    quad := Suffix(t) = "Q";
+    r := from;
+    WHILE r <= lastScratch DO
+      IF (r IN free) & (~quad OR (r < lastScratch) & (r + 1 IN free)) THEN RETURN r END;
+      INC(r)
+    END;
+    RETURN -1
+  END FreeRegister;
+
+  (* A register from Rfrom for a value of type t - a pair for a quadword -
+     spilling the oldest one in use when none is free *)
+  PROCEDURE NewRegisterFrom(t: Types.Type; from, line, column: INTEGER): Operand;
+    VAR x, p: Operand; r: INTEGER; quad: BOOLEAN;
   BEGIN
     quad := Suffix(t) = "Q";
     LOOP
-      r := firstScratch; found := FALSE;
-      WHILE ~found & (r <= lastScratch) DO
-        IF (r IN free) & (~quad OR (r < lastScratch) & (r + 1 IN free)) THEN found := TRUE ELSE INC(r) END
-      END;
-      IF found THEN EXIT END;
+      r := FreeRegister(t, from);
+      IF r >= 0 THEN EXIT END;
       IF ~SpillOne() THEN
         Unsupported(line, column, "an expression that needs more registers than R0-R5");
         RETURN Dummy()
@@ -477,7 +578,59 @@ MODULE VaxCodeGenerator;
       p.nextLive := x
     END;
     RETURN x
+  END NewRegisterFrom;
+
+  PROCEDURE NewRegister(t: Types.Type; line, column: INTEGER): Operand;
+  BEGIN
+    RETURN NewRegisterFrom(t, firstScratch, line, column)
   END NewRegister;
+
+  (* Before a call: the values in R0 and R1, which a procedure does not
+     keep (the design's section 7), moved up to R2-R5, which it does, or
+     to the frame *)
+  PROCEDURE FreeR0R1(line, column: INTEGER);
+    VAR x, next: Operand; r: INTEGER; from, to: OperandText; op: ARRAY 8 OF CHAR; operands: ARRAY 160 OF CHAR;
+  BEGIN
+    x := live;
+    WHILE x # NIL DO
+      next := x.nextLive;
+      IF x.reg <= 1 THEN
+        r := FreeRegister(x.type, 2);
+        IF r >= 0 THEN
+          Text(x, from);
+          INCL(free, x.reg); IF IsQuad(x) THEN INCL(free, x.reg + 1) END;
+          EXCL(free, r); INCL(used, r); IF IsQuad(x) THEN EXCL(free, r + 1); INCL(used, r + 1) END;
+          x.reg := r; Text(x, to);
+          Op("MOV", Suffix(x.type), "", op); Operands(from, to, "", operands); Emit(op, operands)
+        ELSIF ~Spill(x) THEN
+          Unsupported(line, column, "a call while every register and the frame are in use")
+        END
+      END;
+      x := next
+    END
+  END FreeR0R1;
+
+  (* Register r, free, for a value of type t *)
+  PROCEDURE Claim(t: Types.Type; r: INTEGER): Operand;
+    VAR x, p: Operand;
+  BEGIN
+    x := NewOperand(register, t); x.reg := r;
+    EXCL(free, r); IF IsQuad(x) THEN EXCL(free, r + 1) END;
+    IF r >= 2 THEN INCL(used, r); IF IsQuad(x) THEN INCL(used, r + 1) END END;
+    IF live = NIL THEN live := x
+    ELSE
+      p := live;
+      WHILE p.nextLive # NIL DO p := p.nextLive END;
+      p.nextLive := x
+    END;
+    RETURN x
+  END Claim;
+
+  (* The result of a call, in R0, or R0 and R1 for a quadword *)
+  PROCEDURE CallResult(t: Types.Type): Operand;
+  BEGIN
+    RETURN Claim(t, 0)
+  END CallResult;
 
   (* A register for type t while a and b (either may be NIL) stay where
      they are *)
@@ -587,13 +740,204 @@ MODULE VaxCodeGenerator;
     VaxTypes.MakeSymbol(full, symbol)
   END VariableSymbol;
 
-  PROCEDURE Variable(obj: SymbolTable.Object): Operand;
-    VAR x: Operand;
+  PROCEDURE FindLocal(obj: SymbolTable.Object): Local;
+    VAR l: Local;
+  BEGIN
+    l := locals;
+    WHILE (l # NIL) & (l.obj # obj) DO l := l.next END;
+    RETURN l
+  END FindLocal;
+
+  (* obj, a variable: a module variable by its symbol; a procedure's local
+     or copied parameter in the frame, -n(FP); any other parameter n(AP),
+     its value, or @n(AP), its address - for a quadword, the address
+     moved to a register, n(AP) and n+4(AP) being needed (section 7) *)
+  PROCEDURE Variable(obj: SymbolTable.Object; line, column: INTEGER): Operand;
+    VAR x, r: Operand; l: Local; from: ARRAY 24 OF CHAR;
   BEGIN
     x := NewOperand(memory, obj.type);
-    VariableSymbol(obj, x.symbol);
+    l := FindLocal(obj);
+    IF l = NIL THEN VariableSymbol(obj, x.symbol)
+    ELSE
+      x.offset := l.offset;
+      x.onAP := l.where # inFrame;
+      IF l.where = byReference THEN
+        x.deferred := TRUE;
+        IF IsQuad(x) THEN
+          r := NewRegisterFrom(Types.LongInt, 2, line, column);
+          from[0] := 0X; AppendInt(from, l.offset); Append(from, "(AP)");
+          EmitTo("MOVL", from, r);
+          r.pinned := TRUE;
+          x.onAP := FALSE; x.deferred := FALSE; x.offset := 0; x.baseOp := r; x.ownsBase := TRUE
+        END
+      END
+    END;
     RETURN x
   END Variable;
+
+  (* src's value as a longword into dst, as the calling standard passes
+     and returns one (section 7): an integer sign-extended, CHAR and
+     BOOLEAN zero-extended *)
+  PROCEDURE MoveLong(src, dst: Operand);
+    VAR op: ARRAY 8 OF CHAR;
+  BEGIN
+    dst.type := Types.LongInt;
+    IF (src.kind # immediate) & ((src.type = Types.Char) OR (src.type = Types.Boolean)) THEN
+      Emit2("MOVZBL", src, dst)
+    ELSIF src.type = Types.Set THEN
+      dst.type := Types.Set; MoveInto(src, dst)
+    ELSIF Same(src, dst) & (Suffix(src.type) # "L") THEN (* widened in place: CVTWL R0, R0 *)
+      COPY("CVT", op); AppendChar(op, Suffix(src.type)); AppendChar(op, "L");
+      Emit2(op, src, dst)
+    ELSE
+      MoveInto(src, dst)
+    END
+  END MoveLong;
+
+  (* The longword i (0 the count) of an argument list at slots s.. *)
+  PROCEDURE ListEntry(s, n, i: INTEGER): Operand;
+    VAR x: Operand;
+  BEGIN
+    x := NewOperand(memory, Types.LongInt);
+    x.offset := SlotOffset(s, n + 1) + 4 * i;
+    RETURN x
+  END ListEntry;
+
+  (* name, an external symbol, to be declared .EXTERNAL: in the order of
+     first use *)
+  PROCEDURE AddExternal(name: ARRAY OF CHAR);
+    VAR e, p: External;
+  BEGIN
+    p := NIL; e := externals;
+    WHILE (e # NIL) & (e.name # name) DO p := e; e := e.next END;
+    IF e = NIL THEN
+      NEW(e); COPY(name, e.name); e.next := NIL;
+      IF p = NIL THEN externals := e ELSE p.next := e END
+    END
+  END AddExternal;
+
+  (* The symbol a call of obj, a procedure, names: an external one's
+     linkage name, verbatim (section 5), else VaxTypes' of "Module.name" *)
+  PROCEDURE ProcedureSymbol(obj: SymbolTable.Object; VAR symbol: VaxTypes.Symbol);
+  BEGIN
+    IF obj.externalConvention # "" THEN
+      IF obj.externalName # "" THEN Uppercase(obj.externalName, symbol) ELSE Uppercase(obj.name, symbol) END
+    ELSE
+      VariableSymbol(obj, symbol)
+    END
+  END ProcedureSymbol;
+
+  (* The address of the variable e names into dst, for a VAR argument:
+     MOVAB for a variable, MOVL for a parameter passed by its address *)
+  PROCEDURE AddressInto(e: SyntaxTree.ExprNode; dst: Operand): BOOLEAN;
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; l: Local; x: Operand;
+        from: ARRAY 64 OF CHAR;
+  BEGIN
+    IF ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
+    de := e(SyntaxTree.DesignatorExprNode);
+    IF de.designator.qualifier[0] # 0X THEN
+      Unsupported(e.line, e.column, "a name from an imported module (step 8)"); RETURN TRUE
+    ELSIF de.designator.selectors # NIL THEN
+      Unsupported(e.line, e.column, "a selector (step 6)"); RETURN TRUE
+    END;
+    obj := SymbolTable.Find(scope, de.designator.name);
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
+    l := FindLocal(obj);
+    IF (l # NIL) & (l.where = byReference) THEN
+      from[0] := 0X; AppendInt(from, l.offset); Append(from, "(AP)");
+      EmitTo("MOVL", from, dst)
+    ELSE
+      x := Variable(obj, e.line, e.column);
+      Emit2("MOVAB", x, dst);
+      Release(x)
+    END;
+    RETURN TRUE
+  END AddressInto;
+
+  (* A call of obj, a procedure of this module or an external one: the
+     arguments evaluated left to right into an argument list in the frame,
+     then CALLG (decided 2026-10-06, section 7), or CALLS #0 without
+     arguments. A value parameter of a longword or less gets its value, a
+     VAR one its variable's address, a HUGEINT value parameter the address
+     of a copy. The result, a function's, in R0 (R0 and R1). *)
+  PROCEDURE Call(d: SyntaxTree.Designator; args: SyntaxTree.ExprNode; line, column: INTEGER): Operand;
+    CONST maxCopies = 16;
+    VAR obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param; a: SyntaxTree.ExprNode;
+        v, entry: Operand; copy: ARRAY maxCopies OF Operand; n, i, list, copies: INTEGER;
+        symbol: VaxTypes.Symbol; text: ARRAY 160 OF CHAR; target: ARRAY 64 OF CHAR; external: BOOLEAN;
+  BEGIN
+    IF d.qualifier[0] # 0X THEN
+      Unsupported(line, column, "a call of an imported procedure (step 8)"); RETURN NIL
+    END;
+    obj := SymbolTable.Find(scope, d.name);
+    IF obj = NIL THEN RETURN NIL END;
+    IF obj.type = Types.PredeclaredProcedureType THEN
+      Unsupported(line, column, "a predeclared procedure (step 7)"); RETURN NIL
+    ELSIF obj.class # SymbolTable.procClass THEN
+      Unsupported(line, column, "a call of a procedure variable (Phase 16)"); RETURN NIL
+    ELSIF d.selectors # NIL THEN
+      Unsupported(line, column, "a selector (step 6)"); RETURN NIL
+    END;
+    pt := obj.type(Types.ProcedureType);
+    external := obj.externalConvention # "";
+    IF (pt.resultType # NIL) & ~IsSliceScalar(pt.resultType) THEN
+      COPY("a call returning ", text); Types.Describe(pt.resultType, text); AppendWhen(pt.resultType, text);
+      Unsupported(line, column, text); RETURN NIL
+    END;
+    n := 0; copies := 0; p := pt.params;
+    WHILE p # NIL DO
+      IF ~IsSliceScalar(p.type) THEN
+        COPY("a parameter of type ", text); Types.Describe(p.type, text); AppendWhen(p.type, text);
+        Unsupported(line, column, text); RETURN NIL
+      ELSIF external & ~p.isVar & (Suffix(p.type) = "Q") THEN
+        Unsupported(line, column, "a HUGEINT value parameter of an external procedure (Phase 17 chooses its mechanism)");
+        RETURN NIL
+      END;
+      IF ~p.isVar & (Suffix(p.type) = "Q") THEN INC(copies) END;
+      INC(n); p := p.next
+    END;
+    IF copies > maxCopies THEN Unsupported(line, column, "a call with this many HUGEINT arguments"); RETURN NIL END;
+    ProcedureSymbol(obj, symbol);
+    IF external THEN AddExternal(symbol) END;
+    IF n = 0 THEN
+      FreeR0R1(line, column);
+      COPY("#0, ", target); Append(target, symbol); Emit("CALLS", target)
+    ELSE
+      list := AllocateSlots(n + 1);
+      IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN NIL END;
+      COPY("#", text); AppendInt(text, n); EmitTo("MOVL", text, ListEntry(list, n, 0));
+      p := pt.params; a := args; i := 1; copies := 0;
+      WHILE p # NIL DO
+        entry := ListEntry(list, n, i);
+        IF p.isVar THEN
+          IF ~AddressInto(a, entry) THEN Unsupported(a.line, a.column, "this VAR argument") END
+        ELSE
+          v := Expression(a, NIL);
+          IF Suffix(p.type) = "Q" THEN
+            (* the address of a copy in the frame, kept until the call
+               returns: the callee copies it again, or reads it if it is
+               read-only (section 7) *)
+            copy[copies] := NewOperand(memory, p.type);
+            copy[copies].slot := AllocateSlots(2); copy[copies].slots := 2;
+            copy[copies].offset := SlotOffset(copy[copies].slot, 2);
+            MoveInto(v, copy[copies]); Release(v);
+            Emit2("MOVAQ", copy[copies], entry);
+            INC(copies)
+          ELSE
+            MoveLong(v, entry); Release(v)
+          END
+        END;
+        p := p.next; a := a.next; INC(i)
+      END;
+      FreeR0R1(line, column);
+      Text(ListEntry(list, n, 0), target); Append(target, ", "); Append(target, symbol);
+      Emit("CALLG", target);
+      ReleaseSlots(list, n + 1);
+      FOR i := 0 TO copies - 1 DO Release(copy[i]) END
+    END;
+    IF pt.resultType = NIL THEN RETURN NIL END;
+    RETURN CallResult(pt.resultType)
+  END Call;
 
   (* A constant expression, folded: an immediate, or Dummy, reported, for
      a constant outside the slice *)
@@ -628,32 +972,33 @@ MODULE VaxCodeGenerator;
   END Constant;
 
   PROCEDURE Designator(e: SyntaxTree.DesignatorExprNode): Operand;
-    VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; text: ARRAY 160 OF CHAR;
+    VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; x: Operand; text: ARRAY 160 OF CHAR;
   BEGIN
     d := e.designator;
+    IF e.hasParens THEN
+      IF d.qualifier[0] = 0X THEN obj := SymbolTable.Find(scope, d.name) ELSE obj := NIL END;
+      IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
+        Unsupported(e.line, e.column, "a predeclared function (step 7)"); RETURN Dummy()
+      END;
+      x := Call(d, e.args, e.line, e.column);
+      IF x = NIL THEN RETURN Dummy() END;
+      RETURN x
+    END;
     IF d.qualifier[0] # 0X THEN
       Unsupported(e.line, e.column, "a name from an imported module (step 8)"); RETURN Dummy()
     END;
     obj := SymbolTable.Find(scope, d.name);
-    IF e.hasParens THEN
-      IF (obj # NIL) & (obj.type = Types.PredeclaredProcedureType) THEN
-        Unsupported(e.line, e.column, "a predeclared function (step 7)")
-      ELSE
-        Unsupported(e.line, e.column, "a function call (step 5)")
-      END;
-      RETURN Dummy()
-    END;
     IF d.selectors # NIL THEN
       Unsupported(e.line, e.column, "a selector (step 6)"); RETURN Dummy()
     END;
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
-      Unsupported(e.line, e.column, "a procedure as a value (step 5)"); RETURN Dummy()
+      Unsupported(e.line, e.column, "a procedure as a value (Phase 16)"); RETURN Dummy()
     END;
     IF ~IsSliceScalar(obj.type) THEN
-      COPY("a value of type ", text); Types.Describe(obj.type, text);
+      COPY("a value of type ", text); Types.Describe(obj.type, text); AppendWhen(obj.type, text);
       Unsupported(e.line, e.column, text); RETURN Dummy()
     END;
-    RETURN Variable(obj)
+    RETURN Variable(obj, e.line, e.column)
   END Designator;
 
   (* Where the result of an operation of type t on a and b goes: dest when
@@ -755,6 +1100,38 @@ MODULE VaxCodeGenerator;
     Release(a); Release(b);
     IF isDiv THEN Release(r); RETURN q ELSE Release(q); RETURN r END
   END DivMod;
+
+  (* A HUGEINT a * b, a DIV b or a MOD b: a call of poc's runtime (section
+     7), name(a, b), each by reference - a variable where it is, any other
+     value copied to the frame - its result in R0 and R1 *)
+  PROCEDURE QuadRuntime(name: ARRAY OF CHAR; t: Types.Type; a, b: Operand; line, column: INTEGER): Operand;
+    VAR list: INTEGER; x: Operand; target: ARRAY 64 OF CHAR;
+
+    PROCEDURE InMemory(VAR x: Operand);
+      VAR m: Operand;
+    BEGIN
+      IF x.kind # memory THEN
+        m := NewOperand(memory, t);
+        m.slot := AllocateSlots(2); m.slots := 2; m.offset := SlotOffset(m.slot, 2);
+        MoveInto(x, m); Release(x); x := m
+      END
+    END InMemory;
+
+  BEGIN
+    InMemory(a); InMemory(b);
+    list := AllocateSlots(3);
+    IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN Dummy() END;
+    EmitTo("MOVL", "#2", ListEntry(list, 2, 0));
+    Emit2("MOVAQ", a, ListEntry(list, 2, 1));
+    Emit2("MOVAQ", b, ListEntry(list, 2, 2));
+    FreeR0R1(line, column);
+    Text(ListEntry(list, 2, 0), target); Append(target, ", "); Append(target, name);
+    Emit("CALLG", target);
+    AddExternal(name);
+    ReleaseSlots(list, 3); Release(a); Release(b);
+    x := CallResult(t);
+    RETURN x
+  END QuadRuntime;
 
   (* The branch taken when a <op> b is false, a and b compared by CMP a, b:
      signed for integers, unsigned for CHAR *)
@@ -898,13 +1275,13 @@ MODULE VaxCodeGenerator;
 
   (* a & b, a OR b: b only when a does not decide *)
   PROCEDURE ShortCircuit(e: SyntaxTree.BinaryExprNode): Operand;
-    VAR a, b, d: Operand; skip, rhs: ARRAY 16 OF CHAR; jump: ARRAY 24 OF CHAR;
+    VAR a, b, d, back: Operand; reg: INTEGER; skip, rhs: ARRAY 16 OF CHAR; jump: ARRAY 24 OF CHAR;
   BEGIN
     SpillAll;
     a := Expression(e.left, NIL);
     IF a.type # Types.Boolean THEN RETURN Dummy() END;
     d := InRegister(a, e.line, e.column);
-    d.pinned := TRUE;
+    d.pinned := TRUE; reg := d.reg;
     IF IsLeaf(e.right) THEN
       NewLabel(skip);
       IF e.op = Lexer.ampersand THEN EmitBranch("BLBC", d, skip) ELSE EmitBranch("BLBS", d, skip) END
@@ -917,6 +1294,16 @@ MODULE VaxCodeGenerator;
     b := Expression(e.right, NIL);
     MoveInto(b, d);
     Release(b);
+    IF (d.kind # register) OR (d.reg # reg) THEN
+      (* a call in b moved d out of R0 or R1 (FreeR0R1): back to where it
+         is when b is skipped *)
+      d.pinned := FALSE;
+      IF reg IN free THEN
+        back := Claim(Types.Boolean, reg); MoveInto(d, back); Release(d); d := back; d.pinned := TRUE
+      ELSE
+        Unsupported(e.line, e.column, "this & or OR (no register to join its two paths)")
+      END
+    END;
     EmitLabel(skip);
     d.pinned := FALSE;
     RETURN d
@@ -957,9 +1344,9 @@ MODULE VaxCodeGenerator;
       IF Suffix(t) = "Q" THEN
         IF op = Lexer.plus THEN RETURN QuadAddSub(TRUE, t, a, b, dest, e.line, e.column)
         ELSIF op = Lexer.minus THEN RETURN QuadAddSub(FALSE, t, a, b, dest, e.line, e.column)
-        ELSE
-          Unsupported(e.line, e.column, "HUGEINT *, DIV and MOD (calls to poc's runtime, step 5)");
-          RETURN Dummy()
+        ELSIF op = Lexer.times THEN RETURN QuadRuntime("POC_HMUL", t, a, b, e.line, e.column)
+        ELSIF op = Lexer.divKeyword THEN RETURN QuadRuntime("POC_HDIV", t, a, b, e.line, e.column)
+        ELSE RETURN QuadRuntime("POC_HMOD", t, a, b, e.line, e.column)
         END
       ELSIF op = Lexer.plus THEN RETURN Arithmetic("ADD", TRUE, t, a, b, dest, e.line, e.column)
       ELSIF op = Lexer.minus THEN RETURN Arithmetic("SUB", FALSE, t, a, b, dest, e.line, e.column)
@@ -1091,13 +1478,13 @@ MODULE VaxCodeGenerator;
     obj := SymbolTable.Find(scope, s.target.name);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
     IF ~IsSliceScalar(obj.type) THEN
-      COPY("an assignment of type ", text); Types.Describe(obj.type, text);
+      COPY("an assignment of type ", text); Types.Describe(obj.type, text); AppendWhen(obj.type, text);
       Unsupported(s.line, s.column, text); RETURN
     END;
-    target := Variable(obj);
+    target := Variable(obj, s.target.line, s.target.column);
     v := Expression(s.value, target);
     IF Suffix(v.type) # 0X THEN MoveInto(v, target) END;
-    Release(v)
+    Release(v); Release(target)
   END Assignment;
 
   (* ---- Conditions and jumps ----
@@ -1226,7 +1613,7 @@ MODULE VaxCodeGenerator;
     IF IsQuad(x) THEN n := 2 ELSE n := 1 END;
     slot := AllocateSlots(n);
     held := NewOperand(memory, x.type);
-    held.offset := -4 * (slot + n); held.slot := slot; held.slots := n;
+    held.offset := SlotOffset(slot, n); held.slot := slot; held.slots := n;
     MoveInto(x, held); Release(x);
     RETURN held
   END Hold;
@@ -1235,7 +1622,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE Use(x: Operand): Operand;
     VAR u: Operand;
   BEGIN
-    NEW(u); u^ := x^; u.slot := -1; u.nextLive := NIL;
+    NEW(u); u^ := x^; u.slot := -1; u.ownsBase := FALSE; u.nextLive := NIL;
     RETURN u
   END Use;
 
@@ -1306,7 +1693,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     obj := SymbolTable.Find(scope, s.variable);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) OR ~Types.IsInteger(obj.type) THEN RETURN END;
-    v := Variable(obj);
+    v := Variable(obj, s.line, s.column);
     start := Expression(s.start, v);
     MoveInto(start, v); Release(start);
     limit := Expression(s.stop, NIL);
@@ -1327,7 +1714,7 @@ MODULE VaxCodeGenerator;
     END;
     Jump(head);
     EmitLabel(end);
-    Release(limit)
+    Release(limit); Release(v)
   END ForStatement;
 
   (* The integer value of a constant label *)
@@ -1464,6 +1851,27 @@ MODULE VaxCodeGenerator;
     EmitLabel(end)
   END CaseStatement;
 
+  (* RETURN: a function's value in R0 as a longword (R0 and R1 for a
+     HUGEINT), then RET *)
+  PROCEDURE ReturnStatement(s: SyntaxTree.ReturnStatementNode);
+    VAR v, r0: Operand;
+  BEGIN
+    IF (s.value # NIL) & (resultType # NIL) THEN
+      v := Expression(s.value, NIL);
+      r0 := NewOperand(register, resultType); r0.reg := 0;
+      IF Suffix(resultType) = "Q" THEN MoveInto(v, r0) ELSE MoveLong(v, r0) END;
+      Release(v)
+    END;
+    Emit("RET", "")
+  END ReturnStatement;
+
+  PROCEDURE CallStatement(s: SyntaxTree.CallStatementNode);
+    VAR x: Operand;
+  BEGIN
+    x := Call(s.designator, s.args, s.line, s.column);
+    IF x # NIL THEN Release(x) END
+  END CallStatement;
+
   PROCEDURE StatementSeq(s: SyntaxTree.StatementNode);
     VAR comment: ARRAY 32 OF CHAR;
   BEGIN
@@ -1479,8 +1887,8 @@ MODULE VaxCodeGenerator;
       | s: SyntaxTree.ForStatementNode DO ForStatement(s)
       | s: SyntaxTree.LoopStatementNode DO LoopStatement(s)
       | s: SyntaxTree.ExitStatementNode DO Jump(loopExit)
-      | s: SyntaxTree.CallStatementNode DO Unsupported(s.line, s.column, "a procedure call (steps 5 and 7)")
-      | s: SyntaxTree.ReturnStatementNode DO Unsupported(s.line, s.column, "RETURN (step 5)")
+      | s: SyntaxTree.CallStatementNode DO CallStatement(s)
+      | s: SyntaxTree.ReturnStatementNode DO ReturnStatement(s)
       ELSE Unsupported(s.line, s.column, "WITH (records and pointers, Phase 16)")
       END;
       s := s.next
@@ -1498,17 +1906,349 @@ MODULE VaxCodeGenerator;
     END
   END CheckImports;
 
-  PROCEDURE CheckProcedures;
-    VAR p: SyntaxTree.ProcDeclNode;
+  (* ---- Procedures ---- *)
+
+  (* Whether e is the bare name name *)
+  PROCEDURE IsName(e: SyntaxTree.ExprNode; name: SyntaxTree.Ident): BOOLEAN;
+    VAR d: SyntaxTree.Designator;
   BEGIN
-    IF module.declarations # NIL THEN
-      p := module.declarations.procDecls;
-      WHILE p # NIL DO
-        Unsupported(p.line, p.column, "a procedure (step 5)");
-        p := p.next
+    IF ~(e IS SyntaxTree.DesignatorExprNode) OR e(SyntaxTree.DesignatorExprNode).hasParens THEN RETURN FALSE END;
+    d := e(SyntaxTree.DesignatorExprNode).designator;
+    RETURN (d.qualifier[0] = 0X) & (d.name = name)
+  END IsName;
+
+  PROCEDURE ^ ExprChanges(e: SyntaxTree.ExprNode; name: SyntaxTree.Ident): BOOLEAN;
+
+  PROCEDURE ExprsChange(e: SyntaxTree.ExprNode; name: SyntaxTree.Ident): BOOLEAN;
+  BEGIN
+    WHILE e # NIL DO
+      IF ExprChanges(e, name) THEN RETURN TRUE END;
+      e := e.next
+    END;
+    RETURN FALSE
+  END ExprsChange;
+
+  PROCEDURE SelectorsChange(sel: SyntaxTree.Selector; name: SyntaxTree.Ident): BOOLEAN;
+  BEGIN
+    WHILE sel # NIL DO
+      IF (sel IS SyntaxTree.IndexSelector) & ExprsChange(sel(SyntaxTree.IndexSelector).indices, name) THEN
+        RETURN TRUE
+      END;
+      sel := sel.next
+    END;
+    RETURN FALSE
+  END SelectorsChange;
+
+  (* Whether a call of d with args may change name: name as the argument
+     of a VAR parameter, or of any predeclared procedure or one not of
+     this module, which may change it (INC(x), SYSTEM.ADR(x)) *)
+  PROCEDURE CallChanges(d: SyntaxTree.Designator; args: SyntaxTree.ExprNode; name: SyntaxTree.Ident): BOOLEAN;
+    VAR obj: SymbolTable.Object; p: Types.Param; a: SyntaxTree.ExprNode;
+  BEGIN
+    IF ExprsChange(args, name) OR SelectorsChange(d.selectors, name) THEN RETURN TRUE END;
+    obj := NIL;
+    IF d.qualifier[0] = 0X THEN obj := SymbolTable.Find(scope, d.name) END;
+    a := args;
+    IF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.type IS Types.ProcedureType) THEN
+      p := obj.type(Types.ProcedureType).params;
+      WHILE (p # NIL) & (a # NIL) DO
+        IF p.isVar & IsName(a, name) THEN RETURN TRUE END;
+        p := p.next; a := a.next
       END
-    END
-  END CheckProcedures;
+    ELSE
+      WHILE a # NIL DO
+        IF IsName(a, name) THEN RETURN TRUE END;
+        a := a.next
+      END
+    END;
+    RETURN FALSE
+  END CallChanges;
+
+  (* Type tests rather than WITH, which voc 2.1.0 gets wrong when a
+     procedure calls itself in one of its own branches (vishap-bugs 13,
+     doc/developer/bootstrapping-with-voc.md) *)
+  PROCEDURE ExprChanges(e: SyntaxTree.ExprNode; name: SyntaxTree.Ident): BOOLEAN;
+    VAR de: SyntaxTree.DesignatorExprNode; be: SyntaxTree.BinaryExprNode; el: SyntaxTree.SetElementNode;
+  BEGIN
+    IF e = NIL THEN RETURN FALSE
+    ELSIF e IS SyntaxTree.DesignatorExprNode THEN
+      de := e(SyntaxTree.DesignatorExprNode);
+      IF de.hasParens THEN RETURN CallChanges(de.designator, de.args, name) END;
+      RETURN SelectorsChange(de.designator.selectors, name)
+    ELSIF e IS SyntaxTree.BinaryExprNode THEN
+      be := e(SyntaxTree.BinaryExprNode);
+      RETURN ExprChanges(be.left, name) OR ExprChanges(be.right, name)
+    ELSIF e IS SyntaxTree.UnaryExprNode THEN
+      RETURN ExprChanges(e(SyntaxTree.UnaryExprNode).operand, name)
+    ELSIF e IS SyntaxTree.SetExprNode THEN
+      el := e(SyntaxTree.SetExprNode).elements;
+      WHILE el # NIL DO
+        IF ExprChanges(el.low, name) OR ExprChanges(el.high, name) THEN RETURN TRUE END;
+        el := el.next
+      END
+    END;
+    RETURN FALSE
+  END ExprChanges;
+
+  (* Whether the statements s may change the variable name, or take its
+     address: for a value parameter, which is then copied on entry
+     (decided 2026-10-06, section 7). Type tests, as ExprChanges. *)
+  PROCEDURE Changes(s: SyntaxTree.StatementNode; name: SyntaxTree.Ident): BOOLEAN;
+    VAR a: SyntaxTree.AssignStatementNode; call: SyntaxTree.CallStatementNode;
+        ifs: SyntaxTree.IfStatementNode; b: SyntaxTree.IfBranchNode;
+        cs: SyntaxTree.CaseStatementNode; c: SyntaxTree.CaseNode;
+        ws: SyntaxTree.WhileStatementNode; rs: SyntaxTree.RepeatStatementNode;
+        fs: SyntaxTree.ForStatementNode; with: SyntaxTree.WithStatementNode; g: SyntaxTree.WithGuardNode;
+        changes: BOOLEAN;
+  BEGIN
+    changes := FALSE;
+    WHILE ~changes & (s # NIL) DO
+      IF s IS SyntaxTree.AssignStatementNode THEN
+        a := s(SyntaxTree.AssignStatementNode);
+        changes := (a.target.qualifier[0] = 0X) & (a.target.name = name)
+          OR SelectorsChange(a.target.selectors, name) OR ExprChanges(a.value, name)
+      ELSIF s IS SyntaxTree.CallStatementNode THEN
+        call := s(SyntaxTree.CallStatementNode);
+        changes := CallChanges(call.designator, call.args, name)
+      ELSIF s IS SyntaxTree.IfStatementNode THEN
+        ifs := s(SyntaxTree.IfStatementNode); b := ifs.branches;
+        WHILE ~changes & (b # NIL) DO
+          changes := ExprChanges(b.condition, name) OR Changes(b.body, name); b := b.next
+        END;
+        changes := changes OR Changes(ifs.elseBody, name)
+      ELSIF s IS SyntaxTree.CaseStatementNode THEN
+        cs := s(SyntaxTree.CaseStatementNode);
+        changes := ExprChanges(cs.selector, name) OR Changes(cs.elseBody, name);
+        c := cs.cases;
+        WHILE ~changes & (c # NIL) DO changes := Changes(c.body, name); c := c.next END
+      ELSIF s IS SyntaxTree.WhileStatementNode THEN
+        ws := s(SyntaxTree.WhileStatementNode);
+        changes := ExprChanges(ws.condition, name) OR Changes(ws.body, name)
+      ELSIF s IS SyntaxTree.RepeatStatementNode THEN
+        rs := s(SyntaxTree.RepeatStatementNode);
+        changes := Changes(rs.body, name) OR ExprChanges(rs.condition, name)
+      ELSIF s IS SyntaxTree.ForStatementNode THEN
+        fs := s(SyntaxTree.ForStatementNode);
+        changes := (fs.variable = name) OR ExprChanges(fs.start, name) OR ExprChanges(fs.stop, name)
+          OR Changes(fs.body, name)
+      ELSIF s IS SyntaxTree.LoopStatementNode THEN
+        changes := Changes(s(SyntaxTree.LoopStatementNode).body, name)
+      ELSIF s IS SyntaxTree.ReturnStatementNode THEN
+        changes := ExprChanges(s(SyntaxTree.ReturnStatementNode).value, name)
+      ELSIF s IS SyntaxTree.WithStatementNode THEN
+        with := s(SyntaxTree.WithStatementNode); g := with.guards;
+        WHILE ~changes & (g # NIL) DO changes := Changes(g.body, name); g := g.next END;
+        changes := changes OR Changes(with.elseBody, name)
+      END;
+      s := s.next
+    END;
+    RETURN changes
+  END Changes;
+
+  (* size bytes of the frame for a local, aligned to its size, at most a
+     longword (section 4): its offset from FP *)
+  PROCEDURE NewLocal(obj: SymbolTable.Object; where: INTEGER; offset: LONGINT): Local;
+    VAR l: Local; size, align: LONGINT;
+  BEGIN
+    NEW(l); l.obj := obj; l.where := where; l.copyFrom := 0;
+    IF where = inFrame THEN
+      size := VaxTypes.Size(obj.type); align := size;
+      IF align > 4 THEN align := 4 END;
+      localSize := (localSize + size + align - 1) DIV align * align;
+      l.offset := -localSize
+    ELSE
+      l.offset := offset
+    END;
+    l.next := locals; locals := l;
+    RETURN l
+  END NewLocal;
+
+  (* A new body: no registers, slots or locals in use *)
+  PROCEDURE BeginBody;
+    VAR i: INTEGER;
+  BEGIN
+    first := NIL; last := NIL;
+    free := {firstScratch .. lastScratch}; used := {}; live := NIL;
+    FOR i := 0 TO maxSlots - 1 DO slotUsed[i] := FALSE END;
+    frameSlots := 0; loopExit[0] := 0X;
+    locals := NIL; localSize := 0; resultType := NIL
+  END BeginBody;
+
+  (* "^M<R2,R3>", the registers R2..R5 the body writes, which the calling
+     standard says a procedure saves (the design's section 7) *)
+  PROCEDURE EntryMask(VAR mask: ARRAY OF CHAR);
+    VAR r: INTEGER; first: BOOLEAN;
+  BEGIN
+    COPY("^M<", mask); first := TRUE;
+    FOR r := 2 TO lastScratch DO
+      IF r IN used THEN
+        IF ~first THEN AppendChar(mask, ",") END;
+        AppendChar(mask, "R"); AppendInt(mask, r); first := FALSE
+      END
+    END;
+    AppendChar(mask, ">")
+  END EntryMask;
+
+  (* "<n>(<base>)" *)
+  PROCEDURE Based(n: LONGINT; base: ARRAY OF CHAR; VAR text: ARRAY OF CHAR);
+  BEGIN
+    text[0] := 0X; AppendInt(text, n); AppendChar(text, "("); Append(text, base); AppendChar(text, ")")
+  END Based;
+
+  (* One procedure of the module, appended to code: its entry - .ENTRY
+     for an exported one, a local label and .WORD of the mask for a
+     private one (decided 2026-10-06, section 7) - the frame, its locals
+     cleared, the parameters it may change copied, then the body; RET at
+     the end, or, for a function, the "no RETURN" trap (code 12) *)
+  PROCEDURE ProcedureDecl(pd: SyntaxTree.ProcDeclNode);
+    VAR obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param; section: SyntaxTree.FPSectionNode;
+        id: SyntaxTree.IdentDefNode; vd: SyntaxTree.VarDeclNode; pobj: SymbolTable.Object; l: Local;
+        bodyFirst, bodyLast: Instruction; symbol: VaxTypes.Symbol; i: INTEGER; off: LONGINT;
+        text: ARRAY 160 OF CHAR; mask: ARRAY 40 OF CHAR; a, b: ARRAY 24 OF CHAR; op: ARRAY 8 OF CHAR;
+        before: INTEGER;
+  BEGIN
+    IF pd.isForward OR pd.isExternal THEN RETURN END;
+    IF pd.receiver # NIL THEN
+      Unsupported(pd.line, pd.column, "a type-bound procedure (Phase 16)"); RETURN
+    END;
+    IF (pd.declarations # NIL) & (pd.declarations.procDecls # NIL) THEN
+      Unsupported(pd.declarations.procDecls.line, pd.declarations.procDecls.column,
+        "a nested procedure (Phase 16)");
+      RETURN
+    END;
+    obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
+    IF (obj = NIL) OR ~(obj.type IS Types.ProcedureType) THEN RETURN END;
+    pt := obj.type(Types.ProcedureType);
+    before := unsupportedCount;
+    BeginBody;
+    scope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, NIL, pt);
+    resultType := pt.resultType;
+    IF (resultType # NIL) & ~IsSliceScalar(resultType) THEN
+      COPY("a function returning ", text); Types.Describe(resultType, text); AppendWhen(resultType, text);
+      Unsupported(pd.line, pd.column, text)
+    END;
+    (* the parameters: n(AP), the n-th longword of the argument list *)
+    p := pt.params; i := 1;
+    IF pd.formals # NIL THEN section := pd.formals.sections ELSE section := NIL END;
+    WHILE section # NIL DO
+      id := section.names;
+      WHILE id # NIL DO
+        pobj := SymbolTable.FindLocal(scope, id.name);
+        IF ~IsSliceScalar(p.type) THEN
+          COPY("a parameter of type ", text); Types.Describe(p.type, text); AppendWhen(p.type, text);
+          Unsupported(id.line, id.column, text)
+        ELSIF p.isVar OR p.isReadOnly & (Suffix(p.type) = "Q") THEN
+          l := NewLocal(pobj, byReference, 4 * i)
+        ELSIF (Suffix(p.type) = "Q") OR Changes(pd.statements, id.name) THEN
+          l := NewLocal(pobj, inFrame, 0); l.copyFrom := 4 * i
+        ELSE
+          l := NewLocal(pobj, byValue, 4 * i)
+        END;
+        p := p.next; INC(i); id := id.next
+      END;
+      section := section.next
+    END;
+    (* the local variables *)
+    IF pd.declarations # NIL THEN
+      vd := pd.declarations.varDecls;
+      WHILE vd # NIL DO
+        id := vd.names;
+        WHILE id # NIL DO
+          pobj := SymbolTable.FindLocal(scope, id.name);
+          IF (pobj = NIL) OR ~IsSliceScalar(pobj.type) THEN
+            COPY("a variable of type ", text);
+            IF pobj # NIL THEN Types.Describe(pobj.type, text); AppendWhen(pobj.type, text) END;
+            Unsupported(id.line, id.column, text)
+          ELSE
+            l := NewLocal(pobj, inFrame, 0)
+          END;
+          id := id.next
+        END;
+        vd := vd.next
+      END
+    END;
+    localSize := (localSize + 3) DIV 4 * 4;
+    StatementSeq(pd.statements);
+    IF resultType # NIL THEN Trap(12, pd.endLine, pd.endColumn) ELSE Emit("RET", "") END;
+    scope := moduleScope;
+    IF unsupportedCount > before THEN RETURN END;
+    (* the entry, before the body *)
+    bodyFirst := first; bodyLast := last; first := NIL; last := NIL;
+    COPY("; PROCEDURE ", text); Append(text, pd.name.name); EmitComment(text);
+    IF localSize > clearByCLR THEN used := used + {2 .. 5} END; (* MOVC5 *)
+    EntryMask(mask);
+    VariableSymbol(obj, symbol);
+    IF obj.exported THEN
+      COPY(symbol, text); Append(text, ", "); Append(text, mask); Emit(".ENTRY", text)
+    ELSE
+      EmitLabel(symbol); Emit(".WORD", mask)
+    END;
+    IF localSize + 4 * frameSlots > 0 THEN
+      COPY("#", text); AppendInt(text, localSize + 4 * frameSlots); Append(text, ", SP");
+      Emit("SUBL2", text)
+    END;
+    IF localSize > clearByCLR THEN
+      COPY("#0, (SP), #0, #", text); AppendInt(text, localSize); Append(text, ", ");
+      Based(-localSize, "FP", a); Append(text, a);
+      Emit("MOVC5", text)
+    ELSE
+      off := -localSize;
+      WHILE off <= -8 DO Based(off, "FP", a); Emit("CLRQ", a); off := off + 8 END;
+      IF off < 0 THEN Based(off, "FP", a); Emit("CLRL", a) END
+    END;
+    l := locals;
+    WHILE l # NIL DO
+      IF l.copyFrom # 0 THEN
+        Based(l.copyFrom, "AP", a); Based(l.offset, "FP", b);
+        IF Suffix(l.obj.type) = "Q" THEN COPY("MOVQ", op); text := "@"; Append(text, a)
+        ELSE Op("MOV", Suffix(l.obj.type), "", op); COPY(a, text)
+        END;
+        Append(text, ", "); Append(text, b);
+        Emit(op, text)
+      END;
+      l := l.next
+    END;
+    IF bodyFirst # NIL THEN last.next := bodyFirst; last := bodyLast END;
+    IF code = NIL THEN code := first ELSE codeLast.next := first END;
+    codeLast := last
+  END ProcedureDecl;
+
+  (* The module's procedures: their symbols entered, two names with one
+     symbol an error (section 5) - an external one's linkage name checked
+     instead - then each generated *)
+  PROCEDURE Procedures;
+    VAR p: SyntaxTree.ProcDeclNode; full, clash: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol;
+        text: ARRAY 600 OF CHAR;
+  BEGIN
+    IF module.declarations = NIL THEN RETURN END;
+    p := module.declarations.procDecls;
+    WHILE p # NIL DO
+      IF p.isExternal THEN
+        IF p.externalConvention # "VMS" THEN
+          COPY("an external [", text); AppendChar(text, 22X); Append(text, p.externalConvention);
+          AppendChar(text, 22X); Append(text, "] procedure (VAX/VMS takes ");
+          AppendChar(text, 22X); Append(text, "VMS"); AppendChar(text, 22X); Append(text, ")");
+          Unsupported(p.line, p.column, text)
+        ELSE
+          IF p.externalName # "" THEN COPY(p.externalName, full) ELSE COPY(p.name.name, full) END;
+          IF ~VaxTypes.IsValidExternalName(full) THEN
+            Append(full, " is not a MACRO-32 symbol (letters, digits, _, $ and ., at most 31, not a digit first)");
+            Diagnostics.Error(p.line, p.column, full); INC(unsupportedCount)
+          END
+        END
+      ELSIF ~p.isForward & (p.receiver = NIL) THEN
+        COPY(module.name, full); Append(full, "."); Append(full, p.name.name);
+        IF ~VaxTypes.Enter(names, full, symbol, clash) THEN
+          COPY(full, text); Append(text, " and "); Append(text, clash);
+          Append(text, " have the same VAX symbol, "); Append(text, symbol);
+          Diagnostics.Error(p.line, p.column, text); INC(unsupportedCount)
+        END
+      END;
+      p := p.next
+    END;
+    p := module.declarations.procDecls;
+    WHILE p # NIL DO ProcedureDecl(p); p := p.next END
+  END Procedures;
 
   (* The module's variables in POC_DATA, each aligned as MemoryLayout
      says, an exported one a global symbol: FALSE, reported, if one is
@@ -1528,7 +2268,7 @@ MODULE VaxCodeGenerator;
         COPY(module.name, full); Append(full, "."); Append(full, nm.name);
         IF (obj = NIL) OR ~IsSliceScalar(obj.type) THEN
           COPY("a variable of type ", text);
-          IF obj # NIL THEN Types.Describe(obj.type, text) END;
+          IF obj # NIL THEN Types.Describe(obj.type, text); AppendWhen(obj.type, text) END;
           Unsupported(nm.line, nm.column, text); ok := FALSE
         ELSIF ~VaxTypes.Enter(names, full, symbol, clash) THEN
           COPY(full, text); Append(text, " and "); Append(text, clash);
@@ -1561,25 +2301,8 @@ MODULE VaxCodeGenerator;
     RETURN ok
   END WriteVariables;
 
-  (* "^M<R2,R3>", the registers R2..R5 the body writes, which the calling
-     standard says a procedure saves (the design's section 7) *)
-  PROCEDURE EntryMask(VAR mask: ARRAY OF CHAR);
-    VAR r: INTEGER; first: BOOLEAN;
+  PROCEDURE WriteBody(VAR w: Files.Rider; i: Instruction);
   BEGIN
-    COPY("^M<", mask); first := TRUE;
-    FOR r := 2 TO lastScratch DO
-      IF r IN used THEN
-        IF ~first THEN AppendChar(mask, ",") END;
-        AppendChar(mask, "R"); AppendInt(mask, r); first := FALSE
-      END
-    END;
-    AppendChar(mask, ">")
-  END EntryMask;
-
-  PROCEDURE WriteBody(VAR w: Files.Rider);
-    VAR i: Instruction;
-  BEGIN
-    i := first;
     WHILE i # NIL DO
       IF i.isLabel THEN Label(w, i.op)
       ELSIF i.isComment THEN WriteStr(w, i.op); WriteLn(w)
@@ -1599,14 +2322,11 @@ MODULE VaxCodeGenerator;
                             VAR w: Files.Rider): BOOLEAN;
     VAR init: VaxTypes.Symbol; title: ARRAY VaxTypes.symbolLength + 1 OF CHAR; ident: ARRAY 40 OF CHAR;
         entry: ARRAY 64 OF CHAR; mask: ARRAY 40 OF CHAR; frame: ARRAY 24 OF CHAR;
-        before, i: INTEGER; ok: BOOLEAN;
+        before: INTEGER; ok: BOOLEAN; e: External;
   BEGIN
-    module := m; scope := s; before := unsupportedCount;
+    module := m; scope := s; moduleScope := s; before := unsupportedCount;
     names := VaxTypes.NewNameTable();
-    first := NIL; last := NIL; nextLabel := 0;
-    free := {firstScratch .. lastScratch}; used := {}; live := NIL;
-    FOR i := 0 TO maxSlots - 1 DO slotUsed[i] := FALSE END;
-    frameSlots := 0; loopExit[0] := 0X; usesTrap := FALSE;
+    nextLabel := 0; usesTrap := FALSE; externals := NIL; code := NIL; codeLast := NIL;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
       Diagnostics.Error(module.line, module.column,
         "a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol");
@@ -1628,9 +2348,16 @@ MODULE VaxCodeGenerator;
     Label(w, "L_INITIALISED");
     Line(w, ".BLKB", "1");
     ok := WriteVariables(w);
-    CheckProcedures;
+    Procedures;
+    BeginBody;
     StatementSeq(module.statements);
     IF ~ok OR (unsupportedCount > before) THEN RETURN FALSE END;
+    IF externals # NIL THEN
+      WriteLn(w);
+      WriteStr(w, "; the procedures it calls of other modules"); WriteLn(w);
+      e := externals;
+      WHILE e # NIL DO Line(w, ".EXTERNAL", e.name); e := e.next END
+    END;
     IF usesTrap THEN
       WriteLn(w);
       WriteStr(w, "; for traps: poc's runtime routine (Phase 16), and the module's name"); WriteLn(w);
@@ -1639,6 +2366,12 @@ MODULE VaxCodeGenerator;
       Label(w, "L_MODULE_NAME");
       COPY("/", ident); Append(ident, module.name); Append(ident, "/");
       Line(w, ".ASCIC", ident)
+    END;
+    IF code # NIL THEN
+      WriteLn(w);
+      WriteStr(w, "; the module's procedures"); WriteLn(w);
+      Line(w, ".PSECT", "POC_CODE");
+      WriteBody(w, code)
     END;
     WriteLn(w);
     WriteStr(w, "; the module's initializer: once only"); WriteLn(w);
@@ -1661,7 +2394,7 @@ MODULE VaxCodeGenerator;
         COPY("#", frame); AppendInt(frame, 4 * frameSlots); Append(frame, ", SP");
         Line(w, "SUBL2", frame)
       END;
-      WriteBody(w)
+      WriteBody(w, first)
     END;
     Line(w, "RET", "");
     WriteLn(w);

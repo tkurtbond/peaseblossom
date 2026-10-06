@@ -252,7 +252,9 @@ is one, is the name to link with, used as it is; without it, the
 procedure's own name. A `VAR` parameter is passed as the variable's
 address, an open array as its first element's address alone (no lengths),
 and a `VAR` record without its type. An external procedure is not a
-procedure value. `"VMS"` is accepted and cannot yet be compiled. The User's
+procedure value. `"VMS"` is the VMS calling standard, for the VAX/VMS
+target (`-emit-macro32`): a value parameter of a longword or less is
+passed by value, a `VAR` one by reference. The User's
 Guide, "Calling C", shows the C types' equivalents.
 
 Under `-strict` the declaration is an error: `an external procedure is not
@@ -517,7 +519,7 @@ number, on the standard error stream.
 | `-emit-interface <file>` | Writes the module's interface, `<Module>.sym`. |
 | `-show-interface <file>` | Prints the module's interface on the standard output. |
 | `-emit-llvm-ir <file>` | Writes the module's LLVM IR, `<Module>.ll`. |
-| `-emit-macro32 <file>` | Writes the module's VAX MACRO-32, `<Module>.mar`, for VAX/VMS; implies `-target vax-dec-vms` and takes only `-O2`. The VAX backend is being written: so far it writes a module's layout, its variables, and assignments of integer, `CHAR`, `BOOLEAN` and `SET` expressions, and the statements `IF`, `CASE`, `WHILE`, `REPEAT`, `FOR`, `LOOP` and `EXIT`, and reports anything more as a construct it cannot lower yet. |
+| `-emit-macro32 <file>` | Writes the module's VAX MACRO-32, `<Module>.mar`, for VAX/VMS; implies `-target vax-dec-vms` and takes only `-O2`. The VAX backend is being written: so far it writes a module's layout, its variables, assignments of integer, `CHAR`, `BOOLEAN` and `SET` expressions, the statements `IF`, `CASE`, `WHILE`, `REPEAT`, `FOR`, `LOOP`, `EXIT` and `RETURN`, procedures and calls of them, and external `"VMS"` procedures, and reports anything more as a construct it cannot lower yet. |
 | `-version` | Prints poc's version and the commit it was built from, the target and size model, and clang's version. |
 | `-help`, `-h`, `--help` | Every command and option, on the standard output, with the commands for testing poc itself in a section of their own at the end. |
 | `-print-import-path`, `-print-library-path` | Prints the import path or the library path, as the options before it leave it, one directory a line. |

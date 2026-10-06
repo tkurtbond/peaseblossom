@@ -160,10 +160,13 @@ expressions, and the statements
 .Ic WHILE ,
 .Ic REPEAT ,
 .Ic FOR ,
-.Ic LOOP
+.Ic LOOP ,
+.Ic EXIT
 and
-.Ic EXIT ,
-and reports anything more as a construct it cannot lower yet.
+.Ic RETURN ,
+procedures and calls of them, and external
+.Qq VMS
+procedures, and reports anything more as a construct it cannot lower yet.
 .It Fl print-import-path , Fl print-library-path
 Print the import path or the library path as the options before it leave
 it.

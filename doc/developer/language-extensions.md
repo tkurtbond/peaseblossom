@@ -992,10 +992,10 @@ Peaseblossom's own.
   `PROCEDURE` with no such attribute stays a syntax error, same as
   today). The first string names the calling convention (`"C"` for
   Phase 8's LLVM/C-interop case, `"VMS"` for Phase 15's VMS Calling
-  Standard case — both accepted now, even though nothing consumes
-  `"VMS"` until Phase 15; the LLVM backend reports an external `["VMS"]`
-  procedure as something it cannot lower rather than calling it as C, Phase
-  11). An optional second string overrides the
+  Standard case — both accepted now; the LLVM backend reports an external
+  `["VMS"]` procedure as something it cannot lower rather than calling it
+  as C, Phase 11, and the VAX backend lowers `"VMS"` and refuses `"C"`,
+  Phase 15 step 5). An optional second string overrides the
   external linkage name, since Peaseblossom's own naming convention (see
   `PLAN.md`'s "Naming convention" — descriptive, often-long identifiers) routinely
   won't match a terse external symbol like `malloc` or `printf`:

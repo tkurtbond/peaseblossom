@@ -1,11 +1,14 @@
 == poc -emit-macro32 VaxTooMuch.mod
-VaxTooMuch.mod:8:10: error: module VaxTooMuch: the VAX backend cannot lower this yet: an IMPORT (step 8)
-VaxTooMuch.mod:9:7: error: module VaxTooMuch: the VAX backend cannot lower this yet: a variable of type ARRAY 2 OF INTEGER
-VaxTooMuch.mod:10:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: a procedure (step 5)
-VaxTooMuch.mod:12:17: error: module VaxTooMuch: the VAX backend cannot lower this yet: a procedure call (steps 5 and 7)
-VaxTooMuch.mod:13:8: error: module VaxTooMuch: the VAX backend cannot lower this yet: a predeclared function (step 7)
-VaxTooMuch.mod:14:10: error: module VaxTooMuch: the VAX backend cannot lower this yet: HUGEINT *, DIV and MOD (calls to poc's runtime, step 5)
-6 construct(s) the VAX backend cannot lower yet; not written
+VaxTooMuch.mod:9:10: error: module VaxTooMuch: the VAX backend cannot lower this yet: an IMPORT (step 8)
+VaxTooMuch.mod:11:7: error: module VaxTooMuch: the VAX backend cannot lower this yet: a variable of type ARRAY 2 OF INTEGER (step 6)
+VaxTooMuch.mod:12:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: an external ["C"] procedure (VAX/VMS takes "VMS")
+VaxTooMuch.mod:13:20: error: module VaxTooMuch: the VAX backend cannot lower this yet: a nested procedure (Phase 16)
+VaxTooMuch.mod:14:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: a type-bound procedure (Phase 16)
+VaxTooMuch.mod:15:17: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type ARRAY OF INTEGER (Phase 16)
+VaxTooMuch.mod:17:15: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type PROCEDURE (Phase 16)
+VaxTooMuch.mod:20:8: error: module VaxTooMuch: the VAX backend cannot lower this yet: a predeclared function (step 7)
+VaxTooMuch.mod:21:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type PROCEDURE (Phase 16)
+9 construct(s) the VAX backend cannot lower yet; not written
 exit 1
 == poc -emit-macro32 VaxNameClash.mod
 VaxNameClash.mod:5:30: error: VaxNameClash.collisionTqMUQStWWdKp and VaxNameClash.collisionPuRhnmwOfQAB have the same VAX symbol, VAXNAMECLASH_COLLISION_VA2IG0SM

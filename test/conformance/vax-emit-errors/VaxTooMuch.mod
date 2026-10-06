@@ -1,15 +1,22 @@
 MODULE VaxTooMuch;
-  (* PLAN.md Phase 15 steps 2-4: what the VAX backend cannot lower yet,
+  (* PLAN.md Phase 15 steps 2-5: what the VAX backend cannot lower yet,
      each reported at its position - an import (step 8), an array
-     variable (step 6), a procedure and a call of it (step 5), a
-     predeclared function (step 7), HUGEINT multiplication (a call to the
-     runtime, step 5) - and no .mar is left, not even the imported
-     module's, which alone could be written *)
+     variable (step 6), a ["C"] external procedure (VAX/VMS takes "VMS"),
+     a nested procedure, a type-bound one and an open array parameter
+     (Phase 16), a predeclared function (step 7), a procedure as a value
+     (Phase 16) - and no .mar is left, not even the imported module's,
+     which alone could be written *)
   IMPORT VaxImported;
-  VAR a: ARRAY 2 OF INTEGER; i: INTEGER; c: CHAR; h: HUGEINT;
+  TYPE R = RECORD END;
+  VAR a: ARRAY 2 OF INTEGER; i: INTEGER; c: CHAR;
+  PROCEDURE ["C", "abs"] Abs(x: LONGINT): LONGINT;
+  PROCEDURE Outer; PROCEDURE Inner; END Inner; BEGIN Inner END Outer;
+  PROCEDURE (VAR r: R) Method; END Method;
+  PROCEDURE Sum(x: ARRAY OF INTEGER): INTEGER; BEGIN RETURN 0 END Sum;
   PROCEDURE P; END P;
+  PROCEDURE Q(p: PROCEDURE); END Q;
 BEGIN
   IF i = 0 THEN P END;
   i := ORD(c);
-  h := h * h
+  Q(P)
 END VaxTooMuch.

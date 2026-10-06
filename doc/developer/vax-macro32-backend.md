@@ -421,10 +421,38 @@ Proposals:
   parameter is passed by reference. The arguments are evaluated left to
   right (Oberon requires none, CallStd 2.3.2.1 permits any) and pushed in
   reverse, so `n(AP)` of parameter *i* is `4*i`.
+- **Decided (2026-10-06): left to right, as on LLVM**, so that a program
+  whose arguments have side effects (`P(Next(), Next())`) does the same
+  on both targets. Pushing as they are evaluated would be right to left,
+  so each argument is stored, as it is evaluated, in an argument list
+  built in the caller's frame (the count, then one longword per
+  argument), and the call is `CALLG list, proc`, which costs no more than
+  `CALLS`.
+- **Decided (2026-10-06): a value parameter the body assigns to, or
+  passes as a `VAR` argument or to `SYSTEM.ADR`, is copied to a local on
+  entry**; any other is used where it is, at `n(AP)`. The argument list
+  "must be treated as read-only data by the called procedure and can be
+  allocated in read-only memory at the option of the calling program"
+  (CallStd 2.3).
+- **Decided (2026-10-06): an exported procedure is `.ENTRY name, mask`;
+  a private one `name: .WORD mask`**, a local label and the mask as
+  `.ENTRY` would write it, which `CALLS` and `CALLG` take the same way.
+  `.ENTRY` always makes a global symbol (§3), and a private procedure's
+  symbol is local (§5), so it never enters a link (§5.1).
 - **Results**: up to 32 bits in `R0`, `HUGEINT` in `R0`/`R1` (low, high);
-  Oberon functions return no structured values.
+  Oberon functions return no structured values. A function that reaches
+  its `END` calls `POC_TRAP` with code 12 (§9). Agreed 2026-10-06, as
+  is: a value in `R0` or `R1` is spilled before a call, `R2`-`R5` being
+  kept by the callee's mask; `HUGEINT` `*`, `DIV` and `MOD` call runtime
+  routines, `.EXTERNAL`, provisionally `POC_HMUL`, `POC_HDIV` and
+  `POC_HMOD`, their operands by reference and their result in
+  `R0`/`R1`, the routines Phase 16's.
 - **Locals** live below `FP`, at negative offsets, allocated with one
-  `SUBL2 #size, SP` and cleared, as LLVM's are.
+  `SUBL2 #size, SP` and cleared, as LLVM's are. Agreed 2026-10-06: the
+  locals at fixed offsets next to `FP`, the spill slots below them, one
+  `SUBL2` for both; a few longwords cleared by `CLRL`/`CLRQ`, more by
+  `MOVC5 #0, ..., #0, size, -size(FP)` (which overwrites `R0`-`R5`,
+  harmless on entry).
 - **Registers**: the body uses `R0`-`R5` as scratch for expression
   evaluation; `R6`-`R11` are kept for later (register variables, or
   Phase 16's needs). The entry mask saves those of `R2`-`R11` the body
@@ -433,7 +461,14 @@ Proposals:
   spilled to a longword slot below `FP` (a pair to two) and used from
   there. The body is generated into a list before it is written, so the
   `.ENTRY` mask names exactly the registers written and one `SUBL2 #4n,
-  SP` makes room for the most slots in use at once.
+  SP` makes room for the most slots in use at once. Nothing in the
+  architecture limits the scratch registers to `R0`-`R5` (CallStd:
+  `R2`-`R11` are alike, each one written costing a save and a restore
+  per call), and
+  the string instructions (`MOVC3`, `MOVC5`, `CMPC3`, `LOCC`) themselves
+  overwrite `R0`-`R5`. So when step 6 brings `MOVCx`, the temporaries
+  alive across one move up into `R6`-`R11` rather than spill, keeping the
+  lowest-first preference so a simple procedure's mask stays empty.
 - **Overflow**: the `IV` bit stays clear, so integer arithmetic wraps, as
   poc promises (`language-extensions.md`, "Overflow, division and reals").
   An opt-in overflow check could later set it.
@@ -442,6 +477,24 @@ Proposals:
   by reference. Descriptors and an explicit choice of mechanism per
   parameter are Phase 17 step 5's (`PLAN.md`); a parameter needing one is
   an error until then.
+- **Done (step 5)**, as decided above, with these details. A value
+  parameter of a longword or less is read at its own width at `4n(AP)`;
+  one the body may change - assigns, uses as a `FOR` variable, or passes
+  as a `VAR` argument or to a predeclared procedure, which may change it
+  - is copied to the frame on entry. A `VAR` parameter is `@4n(AP)`; a
+  `HUGEINT` reached by address has its address moved to one of `R2`-`R5`
+  first, its longwords being `0(Rn)` and `4(Rn)`, which `@4n(AP)` cannot
+  name. The caller passes a `HUGEINT` value as the address of a copy in
+  its frame, kept until the call returns. A value in `R0` or `R1` is
+  moved up to a free one of `R2`-`R5` before a call, or else spilled;
+  after a call in the right operand of `&` or `OR`, the left one's value
+  is moved back where the path that skips the call left it. A value
+  returned in `R0` is sign- or zero-extended to a longword, as
+  arguments are. Not lowered yet: a procedure value or variable, a
+  nested or type-bound procedure, an open-array parameter (Phase 16),
+  array and record parameters (step 6), a `["C"]` external (VAX/VMS
+  takes `"VMS"`), and a `HUGEINT` value parameter of an external one
+  (Phase 17 chooses its mechanism).
 - **Nested procedures** are outside Phase 15. When Phase 16 takes them,
   `R1` as the environment value is the standard's own mechanism for a
   static link (`nested-procedures.md` §9 leaves the choice to this
@@ -649,16 +702,16 @@ Each step lands with its fixtures before the next, as Phase 8 did:
 1. `VaxTypes.Mod`: sizes, offsets and the name scheme (§4, §5), with the
    name fixtures - long names, names differing only in case, module names
    with a common start, and the colliding pair of §5.1, which poc must
-   reject within one module.
+   reject within one module. Done.
 2. The driver option and the stub `VaxToolchainDriver.Mod`; an empty
    module's `.mar` (§6). The host-side command that copies a `.mar` to the
    development system, runs `MACRO/OBJECT` and brings the result back
    (§11, question 2), with a hand-written `.mar` first, then the empty
-   module's.
+   module's. Done.
 3. Straight-line code: module variables, assignment, integer, `CHAR`,
-   `BOOLEAN` and `SET` expressions.
-4. Control flow (§3 branches, §8), with the trap call (§9).
-5. Procedures and calls (§7), then external `["VMS"]` procedures.
+   `BOOLEAN` and `SET` expressions. Done.
+4. Control flow (§3 branches, §8), with the trap call (§9). Done.
+5. Procedures and calls (§7), then external `["VMS"]` procedures. Done.
 6. Arrays and records, with the traps (§9).
 7. The predeclared procedures of the slice.
 8. Several modules and the program's start (§6).

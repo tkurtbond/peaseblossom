@@ -1,0 +1,182 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - Tick is exported, so .ENTRY, a global symbol (MACRO 6, .ENTRY); the
+;;   others are private: a local label (":") and .WORD of the mask, which
+;;   CALLS and CALLG take as .ENTRY's (section 7, decided 2026-10-06).
+;; - A function returns its value in R0 as a longword (CallStd 2.4):
+;;   Sign's -1, 1 and 0 by MOVL and CLRL; IsDigit's flag, made in R0,
+;;   zero-extended by MOVZBL R0, R0; Last's "x" as #120. Total's HUGEINT
+;;   is R0 and R1, MOVQ. Each RETURN is RET.
+;; - A function that reaches its END calls POC_TRAP with code 12, the
+;;   position of its END (Last: line 45, column 3), as on LLVM; after a
+;;   RETURN that ends every path the call is never reached.
+;; - Locals are below FP: Total's i at -2(FP), a word, sum at -12(FP),
+;;   a quadword aligned to a longword (section 4); the FOR limit's slot is
+;;   below them, -16(FP). SUBL2 makes the frame and RET frees it (CallStd
+;;   2.7). They start at zero, as LLVM's do: CLRQ and CLRL over the 12
+;;   bytes; Many's 68 bytes by MOVC5 #0, (SP), #0, #68, -68(FP), the fill
+;;   byte 0 (MACRO 9, MOVC5), which writes R0-R5, so its mask saves R2-R5.
+;; - sum := sum + i widens i to a quadword (CVTWL, ASHL #-31) and adds
+;;   with ADDL2/ADWC, as in step 3.
+; VaxProcedures, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXPROCEDURES
+	.IDENT	/246db045131802f6/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; count: INTEGER, exported
+	.ALIGN	WORD
+VAXPROCEDURES_COUNT_UOKFS6SR::
+	.BLKW	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxProcedures/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Tick
+	.ENTRY	VAXPROCEDURES_TICK_32SEMDNP, ^M<>
+; line 14
+	INCW	VAXPROCEDURES_COUNT_UOKFS6SR
+	RET
+; PROCEDURE Sign
+VAXPROCEDURES_SIGN_AH29HLU5:
+	.WORD	^M<>
+; line 19
+	TSTL	4(AP)
+	BLSS	L_3
+	JMP	L^L_2
+L_3:
+; line 19
+	MOVL	#-1, R0
+	RET
+	JMP	L^L_1
+L_2:
+; line 19
+	TSTL	4(AP)
+	BGTR	L_4
+	JMP	L^L_1
+L_4:
+; line 19
+	MOVL	#1, R0
+	RET
+L_1:
+; line 20
+	CLRL	R0
+	RET
+	PUSHL	#3
+	PUSHL	#21
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+; PROCEDURE IsDigit
+VAXPROCEDURES_ISDIGIT_1CUHOEMH:
+	.WORD	^M<>
+; line 25
+	CLRB	R0
+	CMPB	4(AP), #48
+	BLSSU	L_5
+	MOVB	#1, R0
+L_5:
+	BLBS	R0, L_6
+	JMP	L^L_7
+L_6:
+	CLRB	R1
+	CMPB	4(AP), #57
+	BGTRU	L_8
+	MOVB	#1, R1
+L_8:
+	MOVB	R1, R0
+L_7:
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+; PROCEDURE Total
+VAXPROCEDURES_TOTAL_6RTKNDB6:
+	.WORD	^M<>
+	SUBL2	#16, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+; line 31
+	MOVW	#1, -2(FP)
+	MOVW	4(AP), -16(FP)
+L_9:
+	CMPW	-2(FP), -16(FP)
+	BLEQ	L_11
+	JMP	L^L_10
+L_11:
+; line 31
+	CVTWL	-2(FP), R0
+	ASHL	#-31, R0, R1
+	ADDL2	R0, -12(FP)
+	ADWC	R1, -8(FP)
+	INCW	-2(FP)
+	JMP	L^L_9
+L_10:
+; line 32
+	MOVQ	-12(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#33
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+; PROCEDURE Many
+VAXPROCEDURES_MANY_S7E6PD9B:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#68, SP
+	MOVC5	#0, (SP), #0, #68, -68(FP)
+; line 38
+	MOVL	#1, -4(FP)
+; line 38
+	MOVL	-4(FP), -68(FP)
+; line 39
+	MOVL	-68(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#40
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+; PROCEDURE Last
+VAXPROCEDURES_LAST_QSD8E9N4:
+	.WORD	^M<>
+; line 44
+	TSTW	VAXPROCEDURES_COUNT_UOKFS6SR
+	BGTR	L_13
+	JMP	L^L_12
+L_13:
+; line 44
+	MOVL	#120, R0
+	RET
+L_12:
+	PUSHL	#3
+	PUSHL	#45
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXPROCEDURES_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+	.END

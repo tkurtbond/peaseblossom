@@ -344,7 +344,8 @@ be called by name. `WITH` follows voc's rule for non-local pointers.
 `PROCEDURE ["C"] Name*(...): T;` with no body declares an external
 procedure. An optional second string gives the linkage name, emitted
 verbatim and never mangled: `PROCEDURE ["C", "malloc"] AllocateBytes*(size:
-SYSTEM.ADDRESS): SYSTEM.ADDRESS;`. `"VMS"` is accepted but not yet lowered.
+SYSTEM.ADDRESS): SYSTEM.ADDRESS;`. `"VMS"` is lowered by the VAX backend only
+(Phase 15 step 5), which refuses `"C"`.
 
 ### `-strict` (decided and implemented, Phase 11 B2, 2026-09-25)
 

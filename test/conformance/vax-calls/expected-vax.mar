@@ -1,0 +1,271 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - A call's arguments are evaluated left to right, each stored in an
+;;   argument list in the frame - the count, then one longword each - and
+;;   CALLG list, proc calls it (decided 2026-10-06; MACRO 9, CALLG). The
+;;   list's slots are given back after the call, so line 43's outer list
+;;   is -12(FP), the inner Max's -24(FP), made after i is stored: Max(j,
+;;   3)'s result goes into the outer list's last longword, CVTWL R0,
+;;   -4(FP). Next() has no arguments: CALLS #0.
+;; - Arguments are longwords: an integer sign-extended (CVTWL), CHAR and
+;;   BOOLEAN zero-extended (MOVZBL), a constant by MOVL; a VAR argument is
+;;   its variable's address, MOVAB i. A HUGEINT is the address of a copy
+;;   in the frame (MOVQ h, -20(FP); MOVAQ), l widened into its copy
+;;   (MOVL, ASHL #-31), kept until the call returns.
+;; - R0 and R1 are not kept by the callee, R2-R5 are (its mask; section
+;;   7): the first Next()'s value is moved to R2 before the second call,
+;;   and SUBL3 R0, R2, l is first minus second. In line 48, h * k (R0 and
+;;   R1, from POC_HMUL) moves to R2 and R3 before POC_HDIV; the sum stays
+;;   there across POC_HMOD. So the init's mask saves R2 and R3.
+;; - Line 47: the & keeps its left value in R0; the call on its right
+;;   moves it to R2, so after the right value is stored there it is moved
+;;   back, MOVB R2, R0, where the path that skips the call (JMP L^L_10)
+;;   leaves it.
+;; - HUGEINT *, DIV and MOD call POC_HMUL, POC_HDIV and POC_HMOD, Phase
+;;   16's, with both operands by reference (a constant, 10, copied to the
+;;   frame first) and the result in R0 and R1; .EXTERNAL declares them.
+;; - Fact calls itself. Its argument list is not static but in its own
+;;   frame, -8(FP), made by its SUBL2 #8, SP on entry, so each activation
+;;   builds its own; the callee reads it through AP, and its own frame
+;;   starts below the caller's, so nothing an outer activation still
+;;   needs is overwritten (CallStd 2.7). n is read in place, 4(AP), after
+;;   the call (CVTWL 4(AP), R1), the list being read-only to the callee.
+; VaxCalls, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXCALLS
+	.IDENT	/9ce080321d81572d/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; i: INTEGER
+	.ALIGN	WORD
+VAXCALLS_I_2K064MH4:
+	.BLKW	1
+; j: INTEGER
+	.ALIGN	WORD
+VAXCALLS_J_2K064NPT:
+	.BLKW	1
+; l: LONGINT
+	.ALIGN	LONG
+VAXCALLS_L_2K064L8B:
+	.BLKL	1
+; h: HUGEINT
+	.ALIGN	LONG
+VAXCALLS_H_2K064MUN:
+	.BLKQ	1
+; k: HUGEINT
+	.ALIGN	LONG
+VAXCALLS_K_2K064NCA:
+	.BLKQ	1
+; c: CHAR
+VAXCALLS_C_2K064JVI:
+	.BLKB	1
+; ok: BOOLEAN
+VAXCALLS_OK_LUJHJ2VF:
+	.BLKB	1
+
+; the procedures it calls of other modules
+	.EXTERNAL	POC_HMUL
+	.EXTERNAL	POC_HDIV
+	.EXTERNAL	POC_HMOD
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxCalls/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Max
+VAXCALLS_MAX_F61RB32P:
+	.WORD	^M<>
+; line 16
+	CMPW	4(AP), 8(AP)
+	BGTR	L_2
+	JMP	L^L_1
+L_2:
+; line 16
+	CVTWL	4(AP), R0
+	RET
+L_1:
+; line 17
+	CVTWL	8(AP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+; PROCEDURE Next
+VAXCALLS_NEXT_IAFJD108:
+	.WORD	^M<>
+; line 22
+	INCL	VAXCALLS_L_2K064L8B
+; line 23
+	MOVL	VAXCALLS_L_2K064L8B, R0
+	RET
+	PUSHL	#3
+	PUSHL	#24
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+; PROCEDURE Put
+VAXCALLS_PUT_F71E4EIE:
+	.WORD	^M<>
+; line 28
+	BLBS	8(AP), L_4
+	JMP	L^L_3
+L_4:
+; line 28
+	INCW	@12(AP)
+L_3:
+	RET
+; PROCEDURE Add
+VAXCALLS_ADD_F5N9CADK:
+	.WORD	^M<>
+	SUBL2	#16, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVQ	@8(AP), -16(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 33
+	MOVQ	-8(FP), R0
+	ADDL2	-16(FP), R0
+	ADWC	-12(FP), R1
+	RET
+	PUSHL	#3
+	PUSHL	#34
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+; PROCEDURE Fact
+VAXCALLS_FACT_A4AQEGUV:
+	.WORD	^M<>
+	SUBL2	#8, SP
+; line 38
+	CMPW	4(AP), #1
+	BLEQ	L_6
+	JMP	L^L_5
+L_6:
+; line 38
+	MOVL	#1, R0
+	RET
+L_5:
+; line 39
+	MOVL	#1, -8(FP)
+	SUBW3	#1, 4(AP), R0
+	CVTWL	R0, -4(FP)
+	CALLG	-8(FP), VAXCALLS_FACT_A4AQEGUV
+	CVTWL	4(AP), R1
+	MULL2	R0, R1
+	MOVL	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#40
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXCALLS_INIT, ^M<R2,R3>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#28, SP
+; line 43
+	MOVL	#2, -12(FP)
+	CVTWL	VAXCALLS_I_2K064MH4, -8(FP)
+	MOVL	#2, -24(FP)
+	CVTWL	VAXCALLS_J_2K064NPT, -20(FP)
+	MOVL	#3, -16(FP)
+	CALLG	-24(FP), VAXCALLS_MAX_F61RB32P
+	CVTWL	R0, -4(FP)
+	CALLG	-12(FP), VAXCALLS_MAX_F61RB32P
+	MOVW	R0, VAXCALLS_I_2K064MH4
+; line 44
+	CALLS	#0, VAXCALLS_NEXT_IAFJD108
+	MOVL	R0, R2
+	CALLS	#0, VAXCALLS_NEXT_IAFJD108
+	SUBL3	R0, R2, VAXCALLS_L_2K064L8B
+; line 45
+	MOVL	#3, -16(FP)
+	MOVZBL	VAXCALLS_C_2K064JVI, -12(FP)
+	CLRB	R0
+	CMPW	VAXCALLS_I_2K064MH4, VAXCALLS_J_2K064NPT
+	BLEQ	L_7
+	MOVB	#1, R0
+L_7:
+	MOVZBL	R0, -8(FP)
+	MOVAB	VAXCALLS_I_2K064MH4, -4(FP)
+	CALLG	-16(FP), VAXCALLS_PUT_F71E4EIE
+; line 46
+	MOVL	#2, -12(FP)
+	MOVQ	VAXCALLS_H_2K064MUN, -20(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	VAXCALLS_L_2K064L8B, -28(FP)
+	ASHL	#-31, -28(FP), -24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), VAXCALLS_ADD_F5N9CADK
+	MOVQ	R0, VAXCALLS_H_2K064MUN
+; line 47
+	CLRB	R0
+	CMPW	VAXCALLS_I_2K064MH4, VAXCALLS_J_2K064NPT
+	BGEQ	L_8
+	MOVB	#1, R0
+L_8:
+	BLBS	R0, L_9
+	JMP	L^L_10
+L_9:
+	MOVL	#2, -12(FP)
+	CVTWL	VAXCALLS_I_2K064MH4, -8(FP)
+	CVTWL	VAXCALLS_J_2K064NPT, -4(FP)
+	MOVB	R0, R2
+	CALLG	-12(FP), VAXCALLS_MAX_F61RB32P
+	CLRB	R1
+	CMPW	R0, #3
+	BNEQ	L_11
+	MOVB	#1, R1
+L_11:
+	MOVB	R1, R2
+	MOVB	R2, R0
+L_10:
+	MOVB	R0, VAXCALLS_OK_LUJHJ2VF
+; line 48
+	MOVL	#2, -12(FP)
+	MOVAQ	VAXCALLS_H_2K064MUN, -8(FP)
+	MOVAQ	VAXCALLS_K_2K064NCA, -4(FP)
+	CALLG	-12(FP), POC_HMUL
+	MOVL	#2, -12(FP)
+	MOVAQ	VAXCALLS_H_2K064MUN, -8(FP)
+	MOVAQ	VAXCALLS_K_2K064NCA, -4(FP)
+	MOVQ	R0, R2
+	CALLG	-12(FP), POC_HDIV
+	ADDL2	R0, R2
+	ADWC	R1, R3
+	MOVL	#^X0000000A, -8(FP)
+	CLRL	-4(FP)
+	MOVL	#2, -20(FP)
+	MOVAQ	VAXCALLS_H_2K064MUN, -16(FP)
+	MOVAQ	-8(FP), -12(FP)
+	CALLG	-20(FP), POC_HMOD
+	MOVQ	R2, VAXCALLS_K_2K064NCA
+	SUBL2	R0, VAXCALLS_K_2K064NCA
+	SBWC	R1, VAXCALLS_K_2K064NCA+4
+; line 49
+	MOVL	#1, -8(FP)
+	CVTWL	VAXCALLS_J_2K064NPT, -4(FP)
+	CALLG	-8(FP), VAXCALLS_FACT_A4AQEGUV
+	MOVL	R0, VAXCALLS_L_2K064L8B
+	RET
+
+	.END

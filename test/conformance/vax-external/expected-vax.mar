@@ -1,0 +1,76 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - An external ["VMS"] procedure is called by its linkage name, as
+;;   written (section 5), and declared .EXTERNAL, in the order of first
+;;   call; SYS$EXIT, with no linkage name, by its own name.
+;; - The arguments are as the 5.5 manuals give each routine's: LIB$GET_EF
+;;   and LIB$FREE_EF take event-flag-number by reference (LIB$ manual), so
+;;   MOVAB flag; SYS$SETEF takes efn by value, and SYS$EXIT code by value
+;;   (System Services Reference Manual), so MOVL flag and CVTWL code, the
+;;   INTEGER widened to a longword.
+;; - Each list is built in the frame and called by CALLG, as for any
+;;   procedure; each returns its condition value in R0, a longword,
+;;   stored by MOVL R0, status (CallStd 2.4 and 2.5).
+; VaxExternal, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXEXTERNAL
+	.IDENT	/3ea65217a00d7991/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; flag: LONGINT
+	.ALIGN	LONG
+VAXEXTERNAL_FLAG_SNLLVM65:
+	.BLKL	1
+; status: LONGINT
+	.ALIGN	LONG
+VAXEXTERNAL_STATUS_10CVO86T:
+	.BLKL	1
+; code: INTEGER
+	.ALIGN	WORD
+VAXEXTERNAL_CODE_NGHGJDGI:
+	.BLKW	1
+
+; the procedures it calls of other modules
+	.EXTERNAL	LIB$GET_EF
+	.EXTERNAL	SYS$SETEF
+	.EXTERNAL	LIB$FREE_EF
+	.EXTERNAL	SYS$EXIT
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXEXTERNAL_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#8, SP
+; line 17
+	MOVL	#1, -8(FP)
+	MOVAB	VAXEXTERNAL_FLAG_SNLLVM65, -4(FP)
+	CALLG	-8(FP), LIB$GET_EF
+	MOVL	R0, VAXEXTERNAL_STATUS_10CVO86T
+; line 18
+	MOVL	#1, -8(FP)
+	MOVL	VAXEXTERNAL_FLAG_SNLLVM65, -4(FP)
+	CALLG	-8(FP), SYS$SETEF
+	MOVL	R0, VAXEXTERNAL_STATUS_10CVO86T
+; line 19
+	MOVL	#1, -8(FP)
+	MOVAB	VAXEXTERNAL_FLAG_SNLLVM65, -4(FP)
+	CALLG	-8(FP), LIB$FREE_EF
+	MOVL	R0, VAXEXTERNAL_STATUS_10CVO86T
+; line 20
+	MOVL	#1, -8(FP)
+	CVTWL	VAXEXTERNAL_CODE_NGHGJDGI, -4(FP)
+	CALLG	-8(FP), SYS$EXIT
+	RET
+
+	.END
