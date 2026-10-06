@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - Tick is exported, so .ENTRY, a global symbol (MACRO 6, .ENTRY); the
 ;;   others are private: a local label (":") and .WORD of the mask, which
 ;;   CALLS and CALLG take as .ENTRY's (section 7, decided 2026-10-06).

@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - The n-th parameter is the n-th longword of the argument list, 4n(AP)
 ;;   (CallStd 2.3). A value parameter of a longword or less is its value,
 ;;   read at its own width (the list holds it extended to a longword):

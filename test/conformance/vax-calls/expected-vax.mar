@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - A call's arguments are evaluated left to right, each stored in an
 ;;   argument list in the frame - the count, then one longword each - and
 ;;   CALLG list, proc calls it (decided 2026-10-06; MACRO 9, CALLG). The
