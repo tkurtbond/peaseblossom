@@ -1085,6 +1085,15 @@ fixed in 526d7ba, are in `doc/history/phases/phase-14.md`.
    `-g` and for a trap in the condition; it now sets the ELSIF's own.
    Fixture `llvm-if-lines`.
 
+5. **[fixed] `ORD` of a `SET` did not compile under `-OC`** (found
+   2026-10-06 by the user's FLTK binding, in 0.4.0 and before; the
+   binding used `SYSTEM.VAL(SYSTEM.INT32, s)` instead). `GenerateOrd`
+   truncated the set to INTEGER's width unconditionally, but under `-OC`
+   both are 32 bits, and clang refused the IR: "invalid cast opcode for
+   cast from 'i32' to 'i32'". The same for `SYSTEM.SET32`. It now
+   converts only when the widths differ. Fixture `llvm-ord-set`, under
+   both size models.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other

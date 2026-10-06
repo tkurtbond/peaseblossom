@@ -4905,9 +4905,10 @@ MODULE LLVMCodeGenerator;
   END GenerateChr;
 
   (* ORD(x): x CHAR -> zero-extend (a CHAR byte is an unsigned 0..255
-     code, never sign-extended); x SET -> truncate (INTEGER's own width
-     is always <= SET's, in both size models, so this is unconditional,
-     no width comparison needed); x a single-char STRING literal
+     code, never sign-extended); x SET -> truncate to INTEGER's width,
+     which is never more than SET's, or nothing when they are the same:
+     under -OC both are 32 bits, and LLVM refuses a trunc that does not
+     narrow (found 2026-10-06 by the FLTK binding); x a single-char STRING literal
      (Oberon2.pdf §3's "a string of length 1 can be used wherever a
      character constant is allowed" - ConstantEvaluator.
      IsSingleCharString; a named one comes through GenerateExpr as a
@@ -4939,6 +4940,7 @@ MODULE LLVMCodeGenerator;
       RETURN
     END;
     IF v.llvmType = "i8" THEN EmitConvert(w, cg, "zext", "i8", v.text, integerLLVMType, ordText)
+    ELSIF v.llvmType = integerLLVMType THEN ordText := v.text
     ELSE EmitConvert(w, cg, "trunc", v.llvmType, v.text, integerLLVMType, ordText)
     END;
     result.text := ordText; COPY(integerLLVMType, result.llvmType); result.oberonType := Types.Integer
