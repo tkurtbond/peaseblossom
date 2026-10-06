@@ -3991,9 +3991,11 @@ MODULE LLVMCodeGenerator;
   END ParamName;
 
   (* Whether a read-only parameter, "x-", is passed by reference: a record
-     or a fixed array of more than 16 bytes under the size model in force,
-     decided from the formal's type alone, so that the caller and the
-     procedure agree without seeing each other. A smaller one is passed by
+     or a fixed array of more than 16 bytes, its size for the target (word
+     size) and size model being compiled for - so the same type may be
+     passed by value under -O2 and by reference under -OC, or on a 32-bit
+     target and a 64-bit one - decided from the formal's type alone, so
+     that the caller and the procedure agree without seeing each other. A smaller one is passed by
      value, as a value parameter is, and an open array by reference, as
      every open array is, but never copied by the procedure (BindFormal-
      Params). doc/developer/language-extensions.md, "Read-only parameters". *)

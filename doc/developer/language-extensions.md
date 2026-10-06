@@ -1131,9 +1131,13 @@ rules (the user, 2026-10-05):
   invisible, so it is a matter of cost, not of meaning.
 - **Small is at most 16 bytes** (the user, 2026-10-05): two words on a
   64-bit machine, four on a 32-bit one (VAX included). The choice is made
-  from the formal parameter's type alone - its size under the size model
-  in force (`MemoryLayout`) - so the caller and the procedure agree,
-  across modules too, without either seeing the other's code. The `.sym`
+  from the formal parameter's type alone - its size (`MemoryLayout`) for
+  the size model and the target being compiled for - so the caller and the
+  procedure agree, across modules too, without either seeing the other's
+  code. The same type may therefore be passed by value under `-O2` and by
+  reference under `-OC` (`RECORD a, b, c, d, e: INTEGER END` is 10 bytes
+  and 20), or by value on a 32-bit target and by reference on a 64-bit one
+  (a record of three pointers is 12 bytes and 24). The `.sym`
   format records the mark, not the choice. An open array is always passed by
   reference.
 - **A program may not rely on which** (the user, 2026-10-05, after Ada's

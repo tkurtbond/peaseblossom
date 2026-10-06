@@ -311,17 +311,18 @@ CHAR): INTEGER`. Inside the procedure, assigning to `x` or any part of it is
 an error, and so is passing it, or any part of it, as a `VAR` argument or as
 the `VAR` receiver of a type-bound procedure; it may be passed on as a value
 or read-only argument. `VAR x-` is an error. The argument may be any
-expression of a type a value parameter would take: a variable, a constant
-(a string included), or any other expression - where voc's takes only a
-variable. A record or fixed array of more than 16 bytes, under the size model
-in force, is passed by reference, and an open array by reference without
-being copied; a constant is passed as a reference to its own storage. Any
-other type is passed by value, as a value parameter is. A program may not
-rely on which: if the argument is a variable that the procedure changes by
-another name (a global, a `VAR` parameter), it may see the old value or the
-new one. Procedure types and redefined type-bound procedures must match mark
-for mark. A `.sym` file keeps the mark. (`-strict`: "a read-only
-parameter"; calling an imported procedure that has one is allowed.)
+expression of a type a value parameter would take: a variable, a constant (a
+string included), or any other expression - where voc's takes only a
+variable. A record or fixed array of more than 16 bytes is passed by
+reference, and an open array by reference without being copied; a constant
+is passed as a reference to its own storage. Any other type is passed by
+value, as a value parameter is. The size is `SIZE`'s, which depends on the
+size model and the target, so the same type may be passed one way under
+`-O2` and the other under `-OC`, or on 32-bit x86 and on x86_64. A program
+may not rely on which: if the argument is a variable that the procedure
+changes by another name (a global, a `VAR` parameter), it may see the old
+value or the new one. Procedure types and redefined type-bound procedures
+must match mark for mark. A `.sym` file keeps the mark.
 
 Under `-strict` declaring one is an error, `a read-only parameter is not in
 the Oberon-2 report (-strict)`; calling an imported procedure that has one
