@@ -1192,6 +1192,47 @@ that phase's record.
      fixtures check poc's rules. Found along the way: "Ongoing bug
      fixing" 1.
 
+## Ongoing implementation enhancements
+
+Changes to how poc builds, links and packages programs and libraries that
+using poc on other programs shows are wanted, made as they come,
+alongside whichever phase is current. Each item says where the need was
+found and what was decided with the user, and is marked `[done]` once it
+is committed with its fixtures, `make check` passes on Linux and the
+three BSDs, and the User's and Reference Guides and poc(1) say what it
+does; a done item stays until the next phase's close-out, which moves it
+to that phase's record. Made on `main`, and merged into the `vax` branch
+at a convenient point.
+
+1. **[done] A library's manifest records its link arguments** (found 2026-10-06
+   by the user writing an FLTK binding). A library wrapping a native one
+   needs native libraries on every link of a program that uses it, and
+   the manifest had no line for them, so every client repeated `-link
+   -lfltk -link -lstdc++`; without them the link failed on
+   `__gxx_personality_v0`. Decided with the user 2026-10-06: each
+   `-link <arg>` given to `poc -library` is now used to link the shared
+   library itself too (it was left out), and recorded in the manifest as
+   a line `link <arg>`, the rest of the line (so a `-link` argument may
+   not hold a line break). A program that links the library gets those arguments
+   after the libraries' own (for every library it links, through
+   `needs` too, each argument once), before its own `-link` arguments. No
+   new option.
+
+2. **[done] A module's foreign part may be C++, `<M>.cpp`** (found 2026-10-06
+   with item 1). Only `<M>.c` was compiled beside `<M>.Mod`, so a C++
+   part needed `-c-flag -xc++`. Decided with the user 2026-10-06: `<M>.cpp`
+   is compiled by `clang++` (with `-c-flag`'s arguments, as `<M>.c`'s);
+   a module with both is an error. A program or shared library with a
+   C++ part, its own or a library's - whose manifest then says `c++` - is
+   linked by `clang++`, which adds the system's C++ runtime (libstdc++ on
+   Linux, libc++ on the BSDs), so a client needs only the library's own
+   `link` lines.
+
+The third point found with them - a library is built twice, once for
+`-O2` and once for `-OC` - needs no change: declaring the C-facing
+parameters with `SYSTEM.INT32` and `SYSTEM.ADDRESS` keeps one source for
+both.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on

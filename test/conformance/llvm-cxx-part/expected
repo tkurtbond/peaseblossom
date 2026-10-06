@@ -1,0 +1,32 @@
+== from source
+Greet.cpp.o
+Greet.ll
+Greet.o
+Greet.sym
+30
+-1
+== -compile, then the pair
+Greet.cpp.o
+Greet.ll
+Greet.o
+Greet.sym
+30
+-1
+== a library, and its manifest's c++ and link lines
+c++
+link -L<work>/native
+link -lnative
+Greet.cpp.o
+Greet.o
+30
+-1
+30
+-1
+== a library that needs it
+needs poc-rtl
+needs greet
+30
+30
+== a C part and a C++ part
+poc: Both has a part in both <both>/Both.c and <both>/Both.cpp
+poc: build failed

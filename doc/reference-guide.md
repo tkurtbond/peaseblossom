@@ -552,8 +552,8 @@ The commands for testing poc itself are `-dump-tokens`, `-check-syntax`,
 | `-strict` | The module named may use only `Oberon2.pdf`'s language (section 3). |
 | `-static` | Links a fully static executable. |
 | `-shared-libraries` | Links the libraries' shared objects, not their archives. |
-| `-link <arg>` | Passes `<arg>` to the link (`-lz`, `-L<dir>`); repeatable. |
-| `-c-flag <arg>` | Passes `<arg>` to clang when it compiles a module's C part, `<Module>.c` beside `<Module>.Mod` (`-I<dir>`, `-D<name>`); repeatable. |
+| `-link <arg>` | Passes `<arg>` to the link (`-lz`, `-L<dir>`); repeatable. With `-library`, also recorded in the manifest, for every program that links the library. |
+| `-c-flag <arg>` | Passes `<arg>` to clang when it compiles a module's C part, `<Module>.c` beside `<Module>.Mod`, or clang++ its C++ part, `<Module>.cpp` (`-I<dir>`, `-D<name>`); repeatable. |
 | `-lto` | Compiles to LLVM bitcode and optimizes the whole program when it is linked. Ignored for 32-bit x86 NetBSD. |
 | `-verbose` | Prints each command poc runs (clang's). |
 
@@ -590,7 +590,9 @@ reported an error, or its arguments were wrong.
 **What a build writes.** For each module it compiles, in the current
 directory or `-output-dir`: `<Module>.sym`, the interface; `<Module>.ll`,
 the LLVM IR; `<Module>.o`, the object; and `<Module>.c.o` for a module with
-a C part. With `-lto`, the `.o` holds LLVM bitcode.
+a C part, `<Module>.cpp.o` for one with a C++ part (a module may not have
+both). With `-lto`, the `.o` holds LLVM bitcode. A program or shared library
+with a C++ part, its own or a library's, is linked by clang++, not clang.
 
 **Objects and keys.** Each module's object defines a symbol
 `<Module>.-key.<O2|OC>.<key>`, where `<key>` is 16 hexadecimal digits, the
@@ -647,6 +649,8 @@ The manifest is text, one fact a line, words separated by a space:
 | `model <O2\|OC>` | the size model |
 | `lto` | its objects are LLVM bitcode |
 | `needs <library>` | a library its modules import from, one line each |
+| `c++` | a module of it has a C++ part, so clang++ links a program that uses it |
+| `link <arg>` | each `-link <arg>` it was built with, the rest of the line; a program that links it, directly or through `needs`, gets each one, once, after the libraries and before its own `-link` arguments |
 | `module <Module> <key>` | each module and its key |
 | `import <Module> <Imported> <key>` | each import of each module, with the key it was compiled against |
 | `source <Module> <key>` | the hash of each module's source file |

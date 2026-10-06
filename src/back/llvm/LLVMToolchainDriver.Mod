@@ -60,11 +60,16 @@ MODULE LLVMToolchainDriver;
        <arg>, for clang when it compiles a module's C part (AddCFlag) *)
     cFlags: ARRAY linkArgumentsLength OF CHAR;
     (* Phase 12 step 2c: the libraries a program links, as clang arguments
-       (AddLibrary), after its objects and before the -link arguments *)
+       (AddLibrary), then their manifests' link arguments
+       (AddLibraryArgument), after its objects and before the -link
+       arguments *)
     libraryArguments: ARRAY 4 * linkArgumentsLength OF CHAR;
     (* Phase 12 step 2e: the directories of the shared libraries AddLibrary
        named, absolute, for the run-time search path (AppendRunPath) *)
     runDirectories: RunDirectory;
+    (* a library linked has a part in C++ (its manifest's c++ line), so
+       clang++ links (Linker) *)
+    cxxLibrary*: BOOLEAN;
     (* the clang command Build runs: the link names every module's object *)
     command: ARRAY 65536 OF CHAR;
 
@@ -303,6 +308,14 @@ MODULE LLVMToolchainDriver;
     RETURN AppendArgument(linkArguments, arg)
   END AddLinkArgument;
 
+  (* a link argument a library's manifest records, for the program or
+     shared library that links it (Ongoing implementation enhancements,
+     item 1) *)
+  PROCEDURE AddLibraryArgument*(arg: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN AppendArgument(libraryArguments, arg)
+  END AddLibraryArgument;
+
   (* poc -c-flag <arg>: arg for each clang command that compiles a module's
      C part (CompileModules) *)
   PROCEDURE AddCFlag*(arg: ARRAY OF CHAR): BOOLEAN;
@@ -414,37 +427,76 @@ MODULE LLVMToolchainDriver;
      <M>.c.o beside the module's own object (a module's name has no ".",
      so no module's object is called that), and that object goes wherever
      the module's goes: into the link, a library, or -compile's output.
-     path: the C source of m, compiled from its source here. *)
-  PROCEDURE CompanionSource(m: LLVMCodeGenerator.ModuleList; VAR path: ARRAY OF CHAR): BOOLEAN;
+     The part may instead be in C++ (Ongoing implementation enhancements,
+     item 2): <M>.cpp, compiled by clang++ to <M>.cpp.o, and then clang++
+     links whatever that object goes into (Linker), for the C++ runtime.
+     path: the C or C++ source of m, compiled from its source here; cxx:
+     it is C++. *)
+  PROCEDURE CompanionSource(m: LLVMCodeGenerator.ModuleList; VAR path: ARRAY OF CHAR; VAR cxx: BOOLEAN): BOOLEAN;
   BEGIN
-    RETURN ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) & (m.fileName[0] # 0X)
-      & ReplaceExtension(m.fileName, ".c", path) & FileExists(path)
+    cxx := FALSE;
+    IF m.inLibrary OR m.compiled OR (m.irPath[0] # 0X) OR (m.fileName[0] = 0X) THEN RETURN FALSE
+    ELSIF ReplaceExtension(m.fileName, ".c", path) & FileExists(path) THEN RETURN TRUE
+    ELSE cxx := TRUE; RETURN ReplaceExtension(m.fileName, ".cpp", path) & FileExists(path)
+    END
   END CompanionSource;
 
-  (* path: the C part's object of m, a module not from a library: the one
-     CompileModules makes, or for a module given as its .sym and its .o or
-     .ll, the <M>.c.o beside that file if there is one (as -compile leaves
-     it) *)
-  PROCEDURE CompanionObject(outputDir: ARRAY OF CHAR; m: LLVMCodeGenerator.ModuleList; VAR path: ARRAY OF CHAR): BOOLEAN;
-    VAR source: ARRAY pathBufferLength OF CHAR;
+  (* the suffix of m's C or C++ part's object *)
+  PROCEDURE CompanionSuffix(cxx: BOOLEAN; VAR suffix: ARRAY OF CHAR);
   BEGIN
-    IF CompanionSource(m, source) THEN
-      ModuleFilePath(outputDir, m.module.name, ".c.o", path); RETURN TRUE
-    ELSIF m.compiled THEN
-      RETURN ReplaceExtension(m.objectPath, ".c.o", path) & FileExists(path)
-    ELSIF m.irPath[0] # 0X THEN
-      RETURN ReplaceExtension(m.irPath, ".c.o", path) & FileExists(path)
+    IF cxx THEN COPY(".cpp.o", suffix) ELSE COPY(".c.o", suffix) END
+  END CompanionSuffix;
+
+  (* path: the C or C++ part's object of m, a module not from a library:
+     the one CompileModules makes, or for a module given as its .sym and
+     its .o or .ll, the <M>.c.o or <M>.cpp.o beside that file if there is
+     one (as -compile leaves it); cxx: the part is C++ *)
+  PROCEDURE CompanionObject(outputDir: ARRAY OF CHAR; m: LLVMCodeGenerator.ModuleList;
+                            VAR path: ARRAY OF CHAR; VAR cxx: BOOLEAN): BOOLEAN;
+    VAR source, given: ARRAY pathBufferLength OF CHAR; suffix: ARRAY 8 OF CHAR;
+  BEGIN
+    IF CompanionSource(m, source, cxx) THEN
+      CompanionSuffix(cxx, suffix); ModuleFilePath(outputDir, m.module.name, suffix, path); RETURN TRUE
+    END;
+    IF m.compiled THEN COPY(m.objectPath, given)
+    ELSIF m.irPath[0] # 0X THEN COPY(m.irPath, given)
+    ELSE RETURN FALSE
+    END;
+    cxx := FALSE;
+    IF ReplaceExtension(given, ".c.o", path) & FileExists(path) THEN RETURN TRUE END;
+    cxx := TRUE;
+    RETURN ReplaceExtension(given, ".cpp.o", path) & FileExists(path)
+  END CompanionObject;
+
+  (* a module of modules not from a library has a part in C++, so a library
+     of them says c++ in its manifest *)
+  PROCEDURE HasCxxPart*(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList; cxx: BOOLEAN;
+  BEGIN
+    m := modules;
+    WHILE m # NIL DO
+      IF ~m.inLibrary & CompanionObject(outputDir, m, path, cxx) & cxx THEN RETURN TRUE END;
+      m := m.next
     END;
     RETURN FALSE
-  END CompanionObject;
+  END HasCxxPart;
+
+  (* clang, or clang++ when a module of modules not from a library, or a
+     library linked (cxxLibrary), has a part in C++ *)
+  PROCEDURE Linker(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR; VAR linker: ARRAY OF CHAR);
+  BEGIN
+    IF cxxLibrary OR HasCxxPart(modules, outputDir) THEN COPY("clang++", linker) ELSE COPY("clang", linker) END
+  END Linker;
 
   (* clang -c on each module's .ll that is not from a library, to its .o;
      position-independent code always (Phase 12 step 2f, decided with the
      user 2026-09-27), so that any module's object - one given as a .sym
-     and .o too - can go into a shared library; and its C part, if it has
-     one (CompanionSource) *)
+     and .o too - can go into a shared library; and its C or C++ part, if
+     it has one (CompanionSource) *)
   PROCEDURE CompileModules(modules: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR): BOOLEAN;
-    VAR path, source: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
+    VAR
+      path, source, other: ARRAY pathBufferLength OF CHAR; suffix: ARRAY 8 OF CHAR;
+      m: LLVMCodeGenerator.ModuleList; ok, cxx: BOOLEAN;
   BEGIN
     ok := TRUE; m := modules;
     WHILE ok & (m # NIL) DO
@@ -464,12 +516,18 @@ MODULE LLVMToolchainDriver;
           Err.String(" (written for another version of LLVM?); compile "); Err.String(m.module.name);
           Err.String(" again"); Err.Ln
         END;
-        IF ok & CompanionSource(m, source) THEN
-          command := "clang -c"; AppendTargetOptions(command, triple);
+        IF ok & CompanionSource(m, source, cxx) & ~cxx
+           & ReplaceExtension(m.fileName, ".cpp", other) & FileExists(other) THEN
+          Err.String("poc: "); Err.String(m.module.name); Err.String(" has a part in both ");
+          Err.String(source); Err.String(" and "); Err.String(other); Err.Ln;
+          ok := FALSE
+        ELSIF ok & CompanionSource(m, source, cxx) THEN
+          IF cxx THEN command := "clang++ -c" ELSE command := "clang -c" END;
+          AppendTargetOptions(command, triple);
           Strcat(command, " -fPIC"); Strcat(command, cFlags);
           IF lto THEN Strcat(command, " -flto") END;
           AppendPath(source);
-          ModuleFilePath(outputDir, m.module.name, ".c.o", path);
+          CompanionSuffix(cxx, suffix); ModuleFilePath(outputDir, m.module.name, suffix, path);
           Strcat(command, " -o"); AppendPath(path);
           ok := RunCommand()
         END
@@ -503,14 +561,14 @@ MODULE LLVMToolchainDriver;
      one compiled, or the one given with its .sym; and its C part's
      (CompanionObject) *)
   PROCEDURE AppendObjects(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR);
-    VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList;
+    VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList; cxx: BOOLEAN;
   BEGIN
     m := modules;
     WHILE m # NIL DO
       IF m.compiled THEN AppendPath(m.objectPath)
       ELSIF ~m.inLibrary THEN ObjectFilePath(outputDir, m, path); AppendPath(path)
       END;
-      IF ~m.inLibrary & CompanionObject(outputDir, m, path) THEN AppendPath(path) END;
+      IF ~m.inLibrary & CompanionObject(outputDir, m, path, cxx) THEN AppendPath(path) END;
       m := m.next
     END
   END AppendObjects;
@@ -619,7 +677,7 @@ MODULE LLVMToolchainDriver;
 
   PROCEDURE ClearLibraries*;
   BEGIN
-    libraryArguments[0] := 0X; runDirectories := NIL
+    libraryArguments[0] := 0X; runDirectories := NIL; cxxLibrary := FALSE
   END ClearLibraries;
 
   (* Phase 12 step 2e: the run-time search path of an executable or shared
@@ -660,9 +718,10 @@ MODULE LLVMToolchainDriver;
   (* Phase 12 step 2c: the library name, in dir: every module of modules not
      from a library compiled to a position-independent object, archived in
      lib<name>.a and linked into its shared library (SharedLibraryName)
-     against the libraries AddLibrary named, as shared ones *)
+     against the libraries AddLibrary named, as shared ones, and the -link
+     arguments *)
   PROCEDURE BuildLibrary*(modules: LLVMCodeGenerator.ModuleList; name, triple, dir: ARRAY OF CHAR): BOOLEAN;
-    VAR path, file: ARRAY pathBufferLength OF CHAR; deleteResult: INTEGER;
+    VAR path, file: ARRAY pathBufferLength OF CHAR; linker: ARRAY 8 OF CHAR; deleteResult: INTEGER;
   BEGIN
     IF ~EmitIR(modules, name, triple, dir, path) THEN RETURN FALSE END;
     IF ~CompileModules(modules, triple, dir) THEN RETURN FALSE END;
@@ -673,12 +732,14 @@ MODULE LLVMToolchainDriver;
     IF ~RunCommand() THEN RETURN FALSE END;
     SharedLibraryName(name, triple, file);
     COPY(dir, path); Strcat(path, "/"); Strcat(path, file);
-    command := "clang -shared"; AppendTargetOptions(command, triple);
+    Linker(modules, dir, linker);
+    COPY(linker, command); Strcat(command, " -shared"); AppendTargetOptions(command, triple);
     AppendLTOOptions(triple); AppendHardeningOptions(triple);
     AppendObjects(modules, dir);
     Strcat(command, " -o"); AppendPath(path);
     Strcat(command, libraryArguments);
     AppendRunPath(dir, TRUE);
+    Strcat(command, linkArguments);
     Strcat(command, " -lm");
     RETURN RunCommand()
   END BuildLibrary;
@@ -695,14 +756,16 @@ MODULE LLVMToolchainDriver;
   (* Full build (Phase 12 step 2a): EmitIR, then `clang -c` compiles every
      module's .ll to its own object file beside it, and one more clang links
      the objects - the main module's last - with the libraries, the -link
-     arguments, libm and -static if asked. *)
+     arguments, libm and -static if asked: clang++ instead when a C++ part
+     is linked (Linker). *)
   PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
                    triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
-    VAR path, exeDir: ARRAY pathBufferLength OF CHAR; i, slash: INTEGER;
+    VAR path, exeDir: ARRAY pathBufferLength OF CHAR; linker: ARRAY 8 OF CHAR; i, slash: INTEGER;
   BEGIN
     IF ~EmitIR(modules, topName, triple, outputDir, path) THEN RETURN FALSE END;
     IF ~CompileModules(modules, triple, outputDir) THEN RETURN FALSE END;
-    command := "clang"; AppendTargetOptions(command, triple);
+    Linker(modules, outputDir, linker);
+    COPY(linker, command); AppendTargetOptions(command, triple);
     AppendLTOOptions(triple); AppendHardeningOptions(triple);
     AppendObjects(modules, outputDir);
     Strcat(command, " -o"); AppendPath(exePath);
