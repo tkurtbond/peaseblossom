@@ -110,7 +110,7 @@ lengths, one word each, followed by the elements (voc's layout).
 ## 3. Extensions
 
 Each extension below is an error under `poc -strict` in the source of the
-module named on the command line, with the message "*<construct>* is not in
+module named on the command line, with the message "*\<construct\>* is not in
 the Oberon-2 report (-strict)"; the modules it imports are not checked, so a
 strict module may import one that uses extensions. poc's own source is
 checked with `-strict`. The heading of each item is that of its section in

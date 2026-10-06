@@ -3,7 +3,7 @@
 Questions `PLAN.md`'s "Open design questions" once held, now decided, moved
 here unchanged on 2026-09-25. `PLAN.md` keeps the questions that are still
 open and lists these by name, so a reference to `PLAN.md`'s "Open design
-questions" - <name> means the entry of that name here.
+questions" - \<name\> means the entry of that name here.
 
 - **No `ASSERT`**: `Oberon2.pdf`'s §10.3 predeclared-procedure table has
   no `ASSERT` entry (confirmed against the report; see

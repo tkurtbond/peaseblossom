@@ -3,7 +3,7 @@
 poc's own extensions and the choices it made where `Oberon2.pdf` is silent -
 what a program compiled by poc can observe. Moved here from `AGENTS.md`
 (2026-09-25), which keeps a one-line summary of each section under the same
-heading; references elsewhere to `AGENTS.md`, "<section>" mean the section
+heading; references elsewhere to `AGENTS.md`, "\<section\>" mean the section
 of the same name here.
 
 This is the design document for each extension: why it was adopted, what
@@ -1018,7 +1018,7 @@ module named on the command line, in any command (`-check`, `-emit-interface`,
 `-emit-llvm-ir`, `-build`). What that module imports is not checked - an
 import's source or `.sym` may use extensions, and a strict module may use what
 it exports - since the question is what the strict module's own text says.
-Each use is an error, "<construct> is not in the Oberon-2 report (-strict)"
+Each use is an error, "\<construct\> is not in the Oberon-2 report (-strict)"
 (the report meant is `Oberon2.pdf`):
 
 - the predeclared `HUGEINT` and `ASSERT` (a module's own declaration of either
