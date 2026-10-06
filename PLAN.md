@@ -979,6 +979,35 @@ showed that `-install-library` over a copy an older poc wrote said
   checked the RPM, and on atla 0.3.1 replaces 0.3.0.
 - **The RPMs and `SHA256SUMS`** were signed and attached to the release.
 
+## Peaseblossom 0.4.0
+
+What `main` had gained since 0.3.1 was released as **Peaseblossom 0.4.0**
+on 2026-10-06 (decided with the user: a minor release, since it adds
+features): the done items of "Ongoing implementation enhancements" (a
+library's manifest records its `-link` arguments, and a module's part
+may be C++, `03eb4b6`), `-help` listing every command and option
+("Ongoing bug fixing" 3), `make doc`'s HTML and PDF documents, in the
+tarball and installed, and the fix of "Ongoing bug fixing" 4. It was
+made as `doc/developer/DEVELOPER.md` section 7 says:
+
+- **The version** was set in `0f9b196` by `make set-version`, after
+  `tools/check-hosts -t check-install -t check-seed` passed on atla,
+  cymoril, artos and alerik (347 fixtures at each stage), with
+  `check-opt2` on atla. rackhir passed `0f9b196`.
+- **The tarball** came from `make distcheck` (SHA-256 `2ba257e2...`,
+  4919979 bytes; larger than 0.3.1's for the HTML and PDF documents). It
+  is signed, with the signed tag `v0.4.0`, and published as a GitHub
+  release.
+- **Each package** was made from the published tarball (`makesum`), then
+  built and checked on its system: `check.sh` on the build root or
+  stage; check-plist, portlint, portcheck and pkglint clean; packing
+  lists unchanged. It was then installed as root, checked with
+  `check.sh` against the installed poc, and removed with nothing left.
+  `mock` built and checked the RPM, and on atla 0.4.0 replaces 0.3.1.
+- **The RPMs and `SHA256SUMS`** were signed (`rpmsign` given the key
+  with `--define`, as atla has no `~/.rpmmacros`), gathered by
+  `tools/release-files` and attached to the release.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
