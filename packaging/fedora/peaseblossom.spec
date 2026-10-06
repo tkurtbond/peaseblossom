@@ -19,7 +19,7 @@
 %global __provides_exclude_from ^%{_prefix}/lib/poc/.*$
 
 Name:           peaseblossom
-Version:        0.4.0
+Version:        0.4.1
 Release:        1%{?dist}
 Summary:        Oberon-2 compiler (poc) using LLVM
 
@@ -76,6 +76,9 @@ test/install/check.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install
 %{_pkgdocdir}/
 
 %changelog
+* Tue Oct 06 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.4.1-1
+- Update to 0.4.1: a fix (ORD of a SET did not compile under -OC).
+
 * Tue Oct 06 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.4.0-1
 - Update to 0.4.0: a library records its -link arguments for the
   programs that link it; a module's part may be C++ (<Module>.cpp,
