@@ -14,8 +14,8 @@
 # the gh release upload command that would. Run as tools/release-files
 # from anywhere, or make release-files; the version is Version.number.
 #
-# FREEBSD_HOST, OPENBSD_HOST and NETBSD_HOST (alerik, cymoril and artos)
-# name the hosts.
+# FREEBSD_HOST, OPENBSD_HOST and NETBSD_HOST name the hosts; they default
+# to the original developer's, alerik, cymoril and artos.
 set -e
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)

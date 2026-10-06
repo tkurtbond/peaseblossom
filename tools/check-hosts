@@ -10,8 +10,9 @@
 #
 #   tools/check-hosts [-c <commit>] [-t <target>]... [<host>...]
 #
-# The hosts are atla cymoril artos alerik, or CHECK_HOSTS (blank-
-# separated), or those named. Each host's output is in
+# The hosts are those named, or CHECK_HOSTS (blank-separated), or else
+# the original developer's own: atla cymoril artos alerik (DEVELOPER.md,
+# section 4, "With other machines", is for everyone else's). Each host's output is in
 # build/check-hosts/<host>.log; the summary has its exit status, the counts
 # of the two runs of the fixtures, the fixed point and check-strict, and
 # any failure. The exit status is 0 only if every host passed. Do not

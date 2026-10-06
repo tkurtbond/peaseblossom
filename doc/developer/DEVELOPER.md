@@ -6,6 +6,14 @@ built, and how a release is made. `INSTALL.md` is building and installing
 for a user; `AGENTS.md` holds the project's standing decisions (the
 language, voc, the hosts), and `PLAN.md` the roadmap.
 
+**The machines named here are the original developer's.** atla is a
+Fedora x86_64 workstation, and cymoril, artos, alerik and rackhir are BSD
+virtual machines (section 4 lists them). Commands that name them are what
+the original developer runs; another developer will have other machines,
+other names, and probably other paths, and uses their own in their place.
+What the project needs of a setup is in section 4, "With other
+machines".
+
 ## 1. The tree
 
 | Directory | What |
@@ -120,7 +128,9 @@ text, `poc(1)` and the Reference Guide (fixture `doc-poc-options`).
 
 ## 4. Before a commit: the hosts
 
-A change is checked on four hosts before it is committed:
+The original developer checks each change on four hosts before it is
+committed (their own machines; "With other machines", below, is for
+everyone else):
 
 | Host | System | Runs |
 |---|---|---|
@@ -161,6 +171,33 @@ voc and its libraries are at the same paths on every host;
 non-interactive `ssh` does not. Do not change the tree on atla while its
 `make check` runs: the check rebuilds and reads it as it goes.
 
+### With other machines
+
+None of this needs those particular machines. What matters is that a
+change is checked, as far as you can, on each system and architecture poc
+supports before it is committed (Linux and the three BSDs; 64-bit and
+32-bit x86, and arm64), and that a release is checked on all of them. A
+host, real or virtual, needs:
+
+- clang 19 or later, GNU make (`gmake` on the BSDs), and voc, which
+  builds Stage 0 from a git checkout (section 2) and which the crosscheck
+  fixtures compare poc with (`INSTALL.md` says where voc is looked for,
+  and `VOC_BIN_DIR` names another place);
+- for `tools/check-hosts`, `ssh <host>` without a password from the
+  machine you work on, and a home directory in which it can make
+  `~/poc-bsd`;
+- optionally, mandoc, which lints poc(1) (`doc-poc-man-page`), and gdb or
+  lldb (`llvm-debug-info`): without them those fixtures skip, still
+  passing, so a host without them does not check what they check;
+- on the machine that makes the tarball, `make doc`'s tools (section 2):
+  pandoc, xelatex with the DejaVu fonts, mandoc and groff.
+
+Then name your hosts: `tools/check-hosts <host>...`, or `CHECK_HOSTS`. The
+host the command runs on (by `hostname -s`) runs `make check
+check-opt2` in the tree itself; every other one gets a copy. Without
+other machines, `make check` (and `make check-opt2`) on your own is the
+check, and says nothing about the other systems.
+
 ## 5. Making a change visible
 
 A change a user can see is described where a user looks: the User's
@@ -172,7 +209,11 @@ Guide (`doc/users-guide.md`, how to use poc), the Reference Guide
 
 ## 6. Building the packages
 
-Each package is built from a release tarball (`make dist`, section 7),
+Each package is built on a host running its system - the original
+developer's are section 4's: alerik, cymoril and artos for FreeBSD,
+OpenBSD and NetBSD, atla for Fedora. The paths below (`$HOME/ports-work`,
+`~/pkgsrc-work`) are theirs; any will do. Each package is built from a
+release tarball (`make dist`, section 7),
 named in it by version and fetched from the GitHub release; until there is
 one, copy the tarball to where the system looks for it, as below. A
 tarball already there is used as it is, not fetched again: once the
@@ -264,6 +305,11 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
 
 ## 7. Making a release
 
+The steps are those the original developer follows on their machines
+(section 4): atla for the tarball, the RPM and the signing, and the BSD
+hosts for their packages. With other machines, the steps are the same;
+the names, and the variables that give them to the tools, are yours.
+
 1. **The version.** `make set-version VERSION=<x.y.z>` (`tools/set-version`)
    sets `number` in `src/driver/Version.Mod`, and the same version in each
    package: `Version` in the spec (with `Release` back to 1),
@@ -281,7 +327,8 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
 
 3. **Commit and push**, then check that commit on rackhir:
    `tools/check-hosts -c HEAD rackhir`.
-4. **The tarball**, from that commit, on atla:
+4. **The tarball**, from that commit, on atla (any machine with
+   `make doc`'s tools, section 2):
 
        make stage2               # the seed is written by a Stage 2 built from HEAD
        make distcheck            # make dist (build/dist/peaseblossom-<version>.tar.gz
@@ -338,7 +385,8 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
    - the RPMs from `~/rpmbuild` (`RPM_DIR`);
    - each BSD package by `scp` from the host that built it, named for that
      host's `uname`. `FREEBSD_HOST`, `OPENBSD_HOST` and `NETBSD_HOST`
-     default to alerik, cymoril and artos.
+     name those hosts; they default to the original developer's, alerik,
+     cymoril and artos.
 
    It refuses to go on until the RPMs there are signed. Sign them in place
    with the `rpmsign` command it prints, then run it again; a file already
