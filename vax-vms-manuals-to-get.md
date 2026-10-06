@@ -69,7 +69,7 @@ and whether they are safe for 5.5-2 facts:
 | DEC MMS | `AA-P119B` (2.0, 1984), `AA-P119D` (May 1989), `AA-P119E` (July 1990) | The last; check which MMS version was current for 5.5-2 |
 | VAX architecture | `EL-00032-00` DEC STD 032 (January 1990), `EK-VAXAR-RM-003` Architecture Reference Manual, `DEC_VAX_Architecture_Handbook`, `VAX_archHbkVol1_1977` | Architecture, not OS - fine, but the 1977 handbook predates the final architecture |
 | Handbooks | `VMS_Language_and_Tools_Handbook_1985`, `VMS_System_Software_Handbook_1985`, `VAX_Software_Handbook_1982` | Background only (VMS 4.x and earlier) |
-| **Later than 5.5-2** | `AA-PV5RA` OpenVMS VAX 6.0 security guide (1993); `OVMS_PROG_ENVIRON.PDF` (March 1994, OpenVMS AXP 1.5 / VAX 6.0); `OpenVMS_RMS_RTL_Library.pdf` (June 2002, 7.3); `HP OpenVMS Programming Concepts Volume II` (2005); `guide-to-openvms-file-applications.pdf` and the `VSI/` and `HPE_*` files (2005-2019, Alpha/Itanium) | **No for facts** - may explain a concept (ASTs, in the 2005 volume) but every detail must be re-checked against a 5.5 manual |
+| **Later than 5.5-2** | `AA-PV5RA` OpenVMS VAX 6.0 security guide (1993); `OVMS_PROG_ENVIRON.PDF` (March 1994, OpenVMS AXP 1.5 / VAX 6.0); `OpenVMS_RMS_RTL_Library.pdf` (June 2002, 7.3); `HP OpenVMS Programming Concepts Volume II` (2005); `AA-PV69B` OpenVMS Calling Standard (March 1994, 6.1; see "The calling standard"); `guide-to-openvms-file-applications.pdf` and the `VSI/` and `HPE_*` files (2005-2019, Alpha/Itanium) | **No for facts** - may explain a concept (ASTs, in the 2005 volume) but every detail must be re-checked against a 5.5 manual |
 
 ## Priority 1 - defines the target (all downloaded)
 
@@ -136,17 +136,33 @@ for these; `5.1`-`5.3` have no newer copies (checked 2026-10-05):
 | `AA-LA63A-TE_VMS_5.0_Message_Utility_Manual_198804.pdf` | Message files and condition codes |
 | `AA-LA11A-TE_Guide_to_Using_VMS_5.0_Command_Procedures_198804.pdf` | DCL command procedures for the guest-side build (Phase 16 step 5) |
 
+## The calling standard
+
+The **VAX Procedure Calling and Condition Handling Standard** for VMS 5.x
+is chapter 2 of `AA-LA66B`, *Introduction to VMS System Routines* (5.4,
+June 1990; downloaded): the 5.x documentation set carries the standard
+there, not as a book of its own, so that chapter is the authority for
+Phase 16 step 3b, checked against the 5.5 and 5.5-2 release notes.
+`AA-LA70A` (Introduction to the RTL) and `AA-LA58A` (Modular Procedures)
+cover it from the caller's side.
+
+The earliest standalone edition found, the *OpenVMS Calling Standard*
+(`AA-PV69B-TK_OpenVMS_6.1_OpenVMS_Calling_Standard_Mar94.pdf`, OpenVMS AXP
+and VAX 6.1, March 1994; chapter 2 is "OpenVMS VAX Conventions"), was
+downloaded 2026-10-05 from the Internet Archive
+(`https://archive.org/details/stx_AA-PV69B-TK_OpenVMS_6.1_OpenVMS_Calling_Standard_Mar94`).
+It is later than 5.5-2, so it is a **secondary** source: it may explain a
+point `AA-LA66B` leaves unclear, but a fact taken from it must be found in
+`AA-LA66B` or a 5.5 manual too. The Internet Archive has no earlier
+standalone edition (searched 2026-10-05). Before VMS 5 the standard was
+already in the system-routines book: the 4.4 Run-Time Library reference
+manual (`AA-Z502C`, April 1986, on the Internet Archive) says it "is
+documented in Section 2.5 of the Introduction to System Routines".
+
 ## Still to find
 
 Not on the listings looked at so far, so the location is unknown:
 
-- The **VAX Procedure Calling and Condition Handling Standard** as its own
-  document (it is described in the system-routines and architecture manuals,
-  but the standard itself is the authority for Phase 16 step 3b). Chapter 2
-  of `AA-LA66B` (downloaded) describes it at length; a standalone copy is
-  not on bitsavers' `vax/vms` listings (all of them checked 2026-10-05).
-  `AA-LA70A` (Introduction to the RTL) and `AA-LA58A` (Modular Procedures)
-  also cover it from the caller's side.
 - A **5.5-era Linker manual**, **LIB$ manual** and **RMS reference** - only
   5.0 copies are on bitsavers; `5.1`-`5.3` have none (checked 2026-09-26
   for the Linker, 2026-10-05 for every programming manual). The Internet
