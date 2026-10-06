@@ -776,7 +776,7 @@ MODULE Parser;
 
   PROCEDURE ParseStatement(VAR p: Parser): SyntaxTree.StatementNode;
     VAR
-      line, column: INTEGER;
+      line, column, branchLine, branchColumn: INTEGER;
       designator: SyntaxTree.Designator;
       expr, value: SyntaxTree.ExprNode;
       hasParens: BOOLEAN;
@@ -815,12 +815,12 @@ MODULE Parser;
       branches := SemanticActions.NewIfBranch(expr, body, line, column);
       branchTail := branches;
       WHILE p.current.kind = Lexer.elsifKeyword DO
-        line := p.current.line; column := p.current.column;
+        branchLine := p.current.line; branchColumn := p.current.column;
         Advance(p);
         expr := ParseExpr(p);
         ExpectToken(p, Lexer.thenKeyword, "expected 'THEN'");
         body := ParseStatementSeq(p);
-        branch := SemanticActions.NewIfBranch(expr, body, line, column);
+        branch := SemanticActions.NewIfBranch(expr, body, branchLine, branchColumn);
         branchTail.next := branch; branchTail := branch
       END;
       elseBody := NIL;

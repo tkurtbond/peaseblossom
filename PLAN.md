@@ -1030,6 +1030,15 @@ fixed in 526d7ba, are in `doc/history/phases/phase-14.md`.
    (`Help`, `BadUsage`). Fixtures `poc-usage` (rewritten),
    `poc-output-streams`, `doc-poc-options` (now against `-help`'s list).
 
+4. **[fixed] An IF with an ELSIF had its last ELSIF's position** (found
+   2026-10-06 writing the VAX backend's control flow, Phase 15 step 4).
+   `ParseStatement` kept each ELSIF's line and column in the variables
+   holding the IF's, so `-g` put the IF's first condition on the last
+   ELSIF's line. The ELSIFs now have their own. The LLVM backend, too,
+   gave an ELSIF's condition the position of the body before it, for
+   `-g` and for a trap in the condition; it now sets the ELSIF's own.
+   Fixture `llvm-if-lines`.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other

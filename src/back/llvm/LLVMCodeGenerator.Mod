@@ -6346,6 +6346,10 @@ MODULE LLVMCodeGenerator;
     NewLabel(cg, endLabel);
     branch := s.branches;
     WHILE branch # NIL DO
+      IF (branch # s.branches) & (branch.line > 0) THEN (* an ELSIF *)
+        cg.currentLine := branch.line; cg.currentColumn := branch.column;
+        debugLine := branch.line; debugColumn := branch.column
+      END;
       GenerateExpr(w, cg, branch.condition, cond);
       EmitBinOp(w, cg, "icmp ne", "i8", cond.text, "0", i1cond);
       NewLabel(cg, thenLabel); NewLabel(cg, elseLabel);
