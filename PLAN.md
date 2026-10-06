@@ -882,6 +882,17 @@ A24, moved here 2026-09-26), are Phase 14 now.
    enhancements", to be done now.
 3. **The terminator-based `ARRAY OF CHAR` assignment rule** (`000-todo.org`;
    decided against in Phase 11 A21, to reconsider).
+4. **`QUOT(x, y)` and `REM(x, y)`**, truncated integer division and its
+   remainder (the user, 2026-10-05): Ada's `/` and `rem`, C's `/` and `%`,
+   beside the floor `DIV` and `MOD`, as predeclared function procedures
+   rather than operators, so that no program's own `REM` breaks.
+   `doc/developer/language-extensions.md`, "QUOT and REM", has the
+   extension; its survey (`doc/research/truncating-division-survey.md`,
+   done 2026-10-05) found no Oberon with it, ISO Modula-2's `/` and `REM`
+   the one precedent, and Modula-3 with only the floor pair. **Adopted**
+   by the user 2026-10-05, as `QUOT` and `REM`, the two together (`REM` is
+   no use without `QUOT`), to be implemented at some point; not built
+   yet.
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the

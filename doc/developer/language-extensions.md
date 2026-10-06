@@ -1408,3 +1408,69 @@ stack slot of its own, allocated in the entry block of the function that
 evaluates it (so a literal in a loop does not grow the stack), and loads it
 from there or passes its address; a structured constant that is needed in
 memory is a private constant global of the module.
+
+## QUOT and REM (decided 2026-10-05, not yet implemented; Phase 19, candidate 4)
+
+**Adopted by the user 2026-10-05, to be implemented later** (the decision is
+at the end of this section). `DIV` and `MOD` floor ("Overflow, division and
+reals" above): `-7 DIV 2` is -4 and `-7 MOD 2` is 1. Ada and C divide the
+other way: their integer `/` truncates toward zero, and the remainder that
+goes with it (Ada's `rem`, C's `%`) has the dividend's sign, so `-7 / 2` is
+-3 and `-7 rem 2` is -1. Ada's `mod` is Oberon's `MOD`, but Ada has no floor
+quotient and Oberon no truncated one. A program ported from Ada or C to poc
+(the user's Ropes came from Ada) has only expressions built from `DIV`,
+`MOD` and the operands' signs for the truncated pair, which are easy to get
+wrong.
+
+**The extension**: two predeclared function procedures.
+
+- `QUOT(x, y)`: the quotient of the integers `x` and `y`, truncated toward
+  zero - Ada's integer `/`, C's `/`, LLVM's `sdiv`.
+- `REM(x, y)`: the remainder that goes with it, with the dividend's sign
+  and an absolute value less than `y`'s, so that `x = QUOT(x, y) * y +
+  REM(x, y)` - Ada's `rem`, C's `%`, LLVM's `srem`.
+
+**Why a pair**: `REM` alone would leave a program writing its truncated
+quotient by hand, and the two are useful only together, as `DIV` and `MOD`
+are; Ada's identity `A = (A/B)*B + (A rem B)` needs both.
+
+**Why predeclared functions, not operators**: an operator needs a reserved
+word, and a new reserved word breaks every existing program that has a
+`REM` of its own. A predeclared name breaks none: a module may declare its
+own `REM`, as it may its own `ASSERT` ("ASSERT" above). ISO Modula-2 has
+the truncated pair as operators, but it was a new language; and its
+quotient is `/`, which Oberon keeps for reals - making `i / j` of two
+integers an integer would change the meaning of every such expression in
+an existing program.
+
+**The rest, as for `DIV` and `MOD`** (to be confirmed when it is built):
+
+- The operands are integers, of any integer type, and the result has the
+  type that includes both, as `DIV`'s does.
+- Constant operands fold to a constant.
+- A zero divisor, and `QUOT(MIN(T), -1)`, are not checked: `SIGFPE` on
+  x86, a value on aarch64, as for `DIV` ("What traps, and what does not").
+- `-strict` rejects both: "QUOT is not in the Oberon-2 report (-strict)".
+- The Reference Guide gets a section among the extensions, and the User's
+  Guide a line where it shows `DIV` and `MOD`.
+
+**The survey** (2026-10-05, `doc/research/truncating-division-survey.md`):
+
+- **No Oberon has it**, in the language or a standard library: not the
+  reports (Oberon, Oberon-2, Oberon-07, the revised Oberon-2, Component
+  Pascal, Active Oberon, Oberon+, the Oakwood Guidelines), nor voc, Ofront,
+  OfrontPlus, oo2c, obc, OBNC, A2, BlackBox, Linz Oberon V4 or Native
+  Oberon. Component Pascal and Modula-3 floor for either sign, as poc does.
+- **ISO Modula-2 is the one precedent**: `/` on integers truncates and
+  `REM` is its remainder, beside a floor `DIV` and `MOD` defined for a
+  positive divisor only. Wirth's PIM2 and PIM3 had the truncated pair
+  under the names `DIV` and `MOD`, and PIM4 changed `MOD` to be never
+  negative; Oberon kept the names with floor meanings.
+- **Modula-3** has only the floor pair; its `Word.Divide` and `Word.Mod`
+  are for unsigned words.
+
+**Decided with the user, 2026-10-05**: adopted, as `QUOT(x, y)` and
+`REM(x, y)`, predeclared function procedures, and the two together - `REM`
+is no use without `QUOT` (the user). Not built yet: Phase 19 does it, with
+fixtures for each sign of each operand, constants and variables, every
+integer type, and `-strict`.
