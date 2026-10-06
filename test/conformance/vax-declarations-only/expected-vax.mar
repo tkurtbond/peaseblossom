@@ -1,0 +1,29 @@
+;; Reviewed 2026-10-06 (written by Claude, for the user's review). Why this
+;; is right: constants and types need no code or data - a constant is
+;; folded where it is used, a type is only sizes and offsets - so the
+;; module is exactly vax-empty-module's layout under its own name:
+;; .TITLE VAXDECLARATIONSONLY (19 characters), .IDENT with the key of its
+;; own .sym, which differs from VaxEmpty's, and VAXDECLARATIONSONLY_INIT,
+;; 24 characters, within the 31 (section 5). See vax-empty-module's
+;; expected-vax.mar for the rest.
+; VaxDeclarationsOnly, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXDECLARATIONSONLY
+	.IDENT	/2cb9a82338548e80/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXDECLARATIONSONLY_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+	.END

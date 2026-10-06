@@ -1,0 +1,40 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design and the VAX's
+;; listing; for the user's review). Why this is right:
+;; - The layout is the design's section 6: .TITLE names the object module
+;;   (the Librarian's and the map's name, at most 31 characters: MACRO
+;;   5.4, .TITLE), uppercase as every symbol poc writes (section 3.1);
+;;   .IDENT carries the module key, the FNV-1a hash of VaxEmpty.sym (1 to
+;;   31 characters: MACRO 5.4, .IDENT); the three program sections have
+;;   exactly the attributes section 3.1 found the assembler takes.
+;; - The initializer is VAXEMPTY_INIT, unhashed (section 5): .ENTRY makes
+;;   it a global symbol (MACRO 5.4, .ENTRY, "defined as a global symbol";
+;;   the listing's symbol table shows it RG), with an empty register mask,
+;;   since it uses no register. L_INITIALISED and L_DONE are local.
+;; - It runs the body once only: BLBS tests the flag byte's bit 0 and
+;;   skips to RET when set; MOVB sets it first otherwise. The flag is a
+;;   byte of POC_DATA, which starts zeroed (.BLKB). BLBS's byte
+;;   displacement covers the fixed 7 bytes to L_DONE (section 3: byte
+;;   branches only over a fixed, short distance).
+;; - Nothing else: the module has no imports, variables, procedures or
+;;   statements.
+; VaxEmpty, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXEMPTY
+	.IDENT	/51674813eee7e6ad/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXEMPTY_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+	.END

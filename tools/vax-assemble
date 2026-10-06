@@ -1,0 +1,104 @@
+#!/bin/sh
+# Assembles MACRO-32 sources on the VAX/VMS development system
+# (doc/developer/DEVELOPER.md, section 4; doc/developer/vax-macro32-backend.md,
+# section 11 question 2, settled 2026-10-06 as scripted telnet). Each file is
+# copied to POC's home directory by FTP, in active and ASCII mode; MACRO/OBJECT/
+# LIST is run on it by telnet (tools/vax-assemble.exp); its listing comes back
+# beside it, as <name>.lis; and the copies on the guest are deleted. Prints
+# each file's assembler messages and a line "<file>: <hex $STATUS> <severity>".
+# Exits 0 only if every file assembled with a success or informational status;
+# a warning, such as %MACRO-W-ILLSYMLEN, is a failure.
+#
+#   tools/vax-assemble [-q] <file.mar>...
+#   tools/vax-assemble -available
+#
+# -q prints only the status lines. -available exits 0 if the guest can be
+# used - telnet's port answers and ~/.netrc has its machine - and 1 otherwise,
+# so a fixture can be skipped on a host without it. The login and password are
+# ~/.netrc's, read by curl and by the expect script themselves, never on a
+# command line or printed. VAX_HOST names the guest (default 192.168.2.20).
+# Runs are not to overlap: they share POC's home directory.
+set -e
+
+host=${VAX_HOST:-192.168.2.20}
+here=$(cd "$(dirname "$0")" && pwd)
+
+available() {
+  [ -r "$HOME/.netrc" ] && grep -q "machine[[:space:]][[:space:]]*$host\\([[:space:]]\\|\$\\)" "$HOME/.netrc" \
+    && command -v expect >/dev/null && command -v telnet >/dev/null && command -v curl >/dev/null \
+    && nc -z -w 5 "$host" 23 >/dev/null 2>&1
+}
+
+if [ "$1" = "-available" ]; then
+  available
+  exit
+fi
+
+quiet=
+if [ "$1" = "-q" ]; then quiet=1; shift; fi
+[ $# -gt 0 ] || { echo "usage: tools/vax-assemble [-q] <file.mar>... | -available" >&2; exit 2; }
+available || { echo "vax-assemble: the VAX guest $host is not available" >&2; exit 2; }
+
+ftp="ftp://$host/"
+names=
+# delete this run's files from POC's directory, every version of each,
+# whatever happened
+cleanup() {
+  rm -f "$out"
+  for name in $names; do
+    stem=${name%.MAR}
+    for ext in MAR OBJ LIS; do
+      curl -s --netrc -P - -Q "DELE $stem.$ext;*" "$ftp" -o /dev/null 2>/dev/null || true
+    done
+  done
+}
+out=$(mktemp "${TMPDIR:-/tmp}/vax-assemble.XXXXXX")
+trap cleanup EXIT
+
+for f in "$@"; do
+  case $f in
+    *.mar|*.MAR) ;;
+    *) echo "vax-assemble: $f is not a .mar file" >&2; exit 2 ;;
+  esac
+  [ -r "$f" ] || { echo "vax-assemble: cannot read $f" >&2; exit 2; }
+  base=$(basename "$f")
+  name=$(echo "${base%.*}" | tr a-z A-Z)
+  case $name in
+    *[!A-Z0-9_\$-]*|"") echo "vax-assemble: $base is not a VMS file name" >&2; exit 2 ;;
+  esac
+  names="$names $name.MAR" # before the copy, so a half-made one is deleted too
+  curl -s -S --netrc -P - --use-ascii -T "$f" "$ftp$name.MAR"
+done
+
+session=0
+# shellcheck disable=SC2086
+expect -f "$here/vax-assemble.exp" "$host" $names >"$out" || session=$?
+[ "$session" -eq 0 ] || exit 2
+
+status=0
+for f in "$@"; do
+  base=$(basename "$f")
+  name=$(echo "${base%.*}" | tr a-z A-Z)
+  dir=$(dirname "$f")
+  lis="$dir/${base%.*}.lis"
+  curl -s -S --netrc -P - --use-ascii -o "$lis" "$ftp$name.LIS" || status=1
+  # the assembler's messages for this file, then its status line
+  hex=$(sed -n "s/^VAXASM-STATUS $name\\.MAR \\([0-9A-F]*\\)\$/\\1/p" "$out")
+  if [ -z "$quiet" ]; then
+    awk -v n="$name.MAR" '
+      /^VAXASM-STATUS / { if ($2 == n) exit; buf = ""; next }
+      { buf = buf $0 "\n" }
+      END { printf "%s", buf }' "$out"
+  fi
+  if [ -z "$hex" ]; then
+    echo "$f: no status"; status=1; continue
+  fi
+  # the low three bits of a VMS status are its severity
+  case $(( 0x$hex & 7 )) in
+    0) sev=warning ;; 1) sev=success ;; 2) sev=error ;;
+    3) sev=informational ;; 4) sev=fatal ;; *) sev=unknown ;;
+  esac
+  echo "$f: %X$hex $sev"
+  case $sev in success|informational) ;; *) status=1 ;; esac
+done
+exit $status

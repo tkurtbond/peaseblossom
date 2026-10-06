@@ -484,9 +484,14 @@ its trap is a VMS condition (`SS$_SUBRNG`), not poc's message.
 
 ## 10. Output and fixtures
 
-- A new option writes `<Module>.mar` beside where `-emit-llvm-ir` writes
-  `.ll`, and a `-target` value selects the backend: `-emit-macro32` and
-  `-target vax-dec-vms` were proposed. DCL uppercases whatever on its
+- **Decided (2026-10-06): both `-emit-macro32` and `-target
+  vax-dec-vms`.** `-emit-macro32 <file>` writes `<Module>.mar` where
+  `-emit-llvm-ir` writes `.ll`, and implies the target; `-target
+  vax-dec-vms` names it, and with another command that needs assembling
+  or linking (`-build`, `-compile`, `-library`, `-install-library`) is an
+  error until Phase 16, as `-emit-llvm-ir` is always (LLVM has no VAX).
+  `-check`, `-emit-interface` and `-show-interface` take it, folding for
+  the VAX's 32-bit word; the VAX takes only `-O2` (§4). DCL uppercases whatever on its
   command line is not quoted (the user, 2026-10-05), so poc on VMS sees
   `-EMIT-MACRO32`. **Decided (2026-10-05): poc's options stay lowercase,
   and poc on VMS matches every option without regard to case** - all of
@@ -496,17 +501,24 @@ its trap is a VMS condition (`SS$_SUBRNG`), not poc's message.
   stay that step's question.
 - Fixtures: `test/conformance/vax-*/` each with a `.mod`, its
   `expected-vax.mar` and, at the top of that file, a comment by the
-  reviewer saying why the output is right. The harness diffs the output
-  against it.
+  reviewer saying why the output is right, in lines starting `;;`. The
+  harness diffs the output against it without those lines
+  (`test/vaxfixture.sh`, `vax_mar`). `test/testenv.sh` deletes a fixture's
+  `*.mar` before each run, except `expected-vax.mar`.
 - **Decided: every `expected-vax.mar` is also assembled**, with
   `MACRO/OBJECT` on the development system - no `LINK`, no `RUN` - so the
   assembler, not only a reviewer, checks the syntax, the symbols and every
   branch's reach. This changes `PLAN.md`'s locked-in "no assembling" for
-  Phase 15; linking and running stay Phase 16's. It needs a way to copy
-  `.mar` files to the guest and the listing back, which is the first part
-  of Phase 16 step 1 brought forward (§11, question 2).
+  Phase 15; linking and running stay Phase 16's. `tools/vax-assemble`
+  does it (§11, question 2: scripted telnet), and `vax_mar` runs it on
+  `expected-vax.mar` where `tools/vax-assemble -available` says the guest
+  can be used; elsewhere that part is skipped, so the fixture's result is
+  the same on every host. A file that does not assemble adds MACRO's
+  messages to the result, which then fails.
 - `VaxToolchainDriver.Mod` is a stub that writes the `.mar` and reports
-  that assembling is not available (`PLAN.md` Phase 15).
+  that assembling is not available (`PLAN.md` Phase 15). As for IR, the
+  `.mar` of every module compiled from source is written, or none, when
+  `VaxCodeGenerator` reports what it cannot lower yet.
 
 ## 11. Open questions
 
@@ -514,18 +526,25 @@ Settled 2026-10-05: the development system (§2); assembling fixtures in
 Phase 15 (§10); one calling mechanism (§7); `-O2` only and
 `MemoryLayout`'s record layout (§4); the stem-and-hash names (§5);
 options matched without regard to case on VMS (§10). Settled
-2026-10-06: collisions across a link (§5.1), and with it the hash (§5).
+2026-10-06: collisions across a link (§5.1), and with it the hash (§5);
+running `MACRO` on the guest, by scripted telnet (question 2).
 
 1. **The destination machine's version** - the user is to check it.
 2. **Running `MACRO` on the guest from the host**, for assembling
-   fixtures. Copying is settled (2026-10-05): FTP to `192.168.2.20` as
-   `poc`, active mode, the password in `~/.netrc`
-   (`doc/developer/DEVELOPER.md` section 4). Running the assembler and
-   bringing back its listing is not: telnet, with the password read from
-   `~/.netrc`, or something UCX itself offers. It must work unattended
-   from a command on the host, since the fixtures run from `make test`; on
-   hosts without the guest those checks are skipped, as `doc-poc-man-page`
-   is without mandoc.
+   fixtures: settled 2026-10-06, **scripted telnet**. Copying was settled
+   2026-10-05: FTP to `192.168.2.20` as `poc`, active mode, ASCII, the
+   password in `~/.netrc` (`doc/developer/DEVELOPER.md` section 4). A
+   host-side command logs in by telnet as `POC`, the password read from
+   `~/.netrc` and never echoed, logged or printed, runs
+   `MACRO/OBJECT/LIST` in `POC`'s own directory, reports the assembler's
+   `$STATUS`, and the `.LIS` comes back by FTP. It works unattended, since
+   the fixtures run from `make test`; on a host without the guest those
+   checks are skipped, as `doc-poc-man-page` is without mandoc. Checked
+   first: the guest runs DEC TCP/IP Services for OpenVMS VAX (UCX) 3.1,
+   whose `UCX SHOW SERVICE` lists only FTP and TELNET, so no `rexec` or
+   `rsh` (ports 512-514 closed); whether 3.1 has those servers at all,
+   not configured, was not checked. A batch job on the guest watching a
+   directory was the other choice, kept in reserve.
 3. **The hash (§5)**: settled 2026-10-06 with §5.1 - 40 bits of FNV-1a
    in base 32, kept; collisions are caught, not made rarer.
 4. **Integer arithmetic on `SHORTINT` and `INTEGER` (§8)**: at the type's

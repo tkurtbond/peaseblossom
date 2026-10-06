@@ -493,6 +493,7 @@ exit status 0.
     poc [option]... -emit-interface <file>
     poc [option]... -show-interface <file>
     poc [option]... -emit-llvm-ir <file>
+    poc [option]... -emit-macro32 <file>
     poc [option]... -version
     poc -help
 
@@ -516,6 +517,7 @@ number, on the standard error stream.
 | `-emit-interface <file>` | Writes the module's interface, `<Module>.sym`. |
 | `-show-interface <file>` | Prints the module's interface on the standard output. |
 | `-emit-llvm-ir <file>` | Writes the module's LLVM IR, `<Module>.ll`. |
+| `-emit-macro32 <file>` | Writes the module's VAX MACRO-32, `<Module>.mar`, for VAX/VMS; implies `-target vax-dec-vms` and takes only `-O2`. The VAX backend is being written: so far it writes a module's layout and initializer, and reports anything more as a construct it cannot lower yet. |
 | `-version` | Prints poc's version and the commit it was built from, the target and size model, and clang's version. |
 | `-help`, `-h`, `--help` | Every command and option, on the standard output, with the commands for testing poc itself in a section of their own at the end. |
 | `-print-import-path`, `-print-library-path` | Prints the import path or the library path, as the options before it leave it, one directory a line. |
@@ -544,7 +546,7 @@ The commands for testing poc itself are `-dump-tokens`, `-check-syntax`,
 | `-library-path <dir>` | Adds `<dir>` to the directories searched for libraries, before `POC_LIBRARY_PATH`'s; repeatable. |
 | `-clear-library-path` | Leaves out every library directory, `POC_LIBRARY_PATH`'s and poc's own included. |
 | `-output-dir <dir>` | Writes `.sym`, `.ll` and `.o` files, and libraries, in `<dir>`, which is made if it is not there. |
-| `-target <triple>` | Compiles for that LLVM target triple, as far as clang can (linking needs its C library). With `-emit-interface` or `-show-interface`, folds `SIZE`, `MAX` and `MIN` for its word size. |
+| `-target <triple>` | Compiles for that LLVM target triple, as far as clang can (linking needs its C library). With `-emit-interface` or `-show-interface`, folds `SIZE`, `MAX` and `MIN` for its word size. `vax-dec-vms` is the VAX/VMS target, which only `-emit-macro32`, `-check`, `-emit-interface` and `-show-interface` take so far. |
 | `-opt <level>` | clang's optimization level: `0`, `1`, `2`, `3`, `s`, `z` or `g`. The default is 2, and 0 for 32-bit x86. |
 | `-g` | Debug information for gdb and lldb: procedures, lines, parameters, variables, records, arrays, pointers. Libraries are looked for first in their `-g` copies (section 8). Best with `-opt 0` or `-opt g`. |
 | `-trap-location` | A trap's message names its file, line, column and procedure (section 6). |

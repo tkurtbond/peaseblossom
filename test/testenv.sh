@@ -39,7 +39,12 @@ export LD_LIBRARY_PATH
 # GNUmakefile's clean-tests target (which reuses this exact line via a
 # standalone `. testenv.sh`, not by duplicating it) surfaced real,
 # already-gitignored leftovers this never actually removed.
-rm -f *.o *.c *.h *.ll *.s *.mar *.sym *.exe result "$(basename "$PWD")"
+rm -f *.o *.c *.h *.ll *.s *.sym *.exe result "$(basename "$PWD")"
+# a fixture's MACRO-32 output, but never the reviewed expected-vax.mar a VAX
+# fixture compares it with (doc/developer/vax-macro32-backend.md, section 10)
+for vax_file in *.mar; do
+  [ "$vax_file" = expected-vax.mar ] || rm -f "$vax_file"
+done
 
 # PLAN.md Phase 8 step 3: compiles $1 (an Oberon-2 source file) via poc's
 # LLVM backend into an executable named after this fixture's own

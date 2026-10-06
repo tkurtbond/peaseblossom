@@ -67,7 +67,8 @@ MODULE Poc;
   IMPORT Modules, Files, Out, Err, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
          ConstantEvaluator, PredeclaredProcedures, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator,
-         DecimalToDouble, NestedProcedures, VaxTypes, Libraries, Version, BuildInfo;
+         DecimalToDouble, NestedProcedures, VaxTypes, VaxCodeGenerator, VaxToolchainDriver,
+         Libraries, Version, BuildInfo;
   (* DecimalToDouble is used only inside ConstantEvaluator's procedure
      bodies, and voc's symbol file records only the imports an exported
      declaration needs, so Stage 0's link line would otherwise miss it: this
@@ -512,9 +513,24 @@ MODULE Poc;
   PROCEDURE SetWordSizeFromTriple(triple: ARRAY OF CHAR);
     VAR wordSize: INTEGER; recognized: BOOLEAN;
   BEGIN
-    recognized := LLVMTypes.WordSizeForTriple(triple, wordSize);
-    IF recognized THEN ConstantEvaluator.SetWordSize(wordSize) END
+    IF VaxToolchainDriver.IsVaxTriple(triple) THEN
+      ConstantEvaluator.SetWordSize(MemoryLayout.wordSize32) (* the VAX's 32-bit word *)
+    ELSE
+      recognized := LLVMTypes.WordSizeForTriple(triple, wordSize);
+      IF recognized THEN ConstantEvaluator.SetWordSize(wordSize) END
+    END
   END SetWordSizeFromTriple;
+
+  (* For a command the VAX target does not have yet (PLAN.md Phase 15):
+     TRUE, reported, when explicitTriple is vax-dec-vms *)
+  PROCEDURE RejectVaxTarget(what: ARRAY OF CHAR; explicitTriple: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN
+      failed := TRUE; VaxToolchainDriver.ReportUnavailable(what);
+      RETURN TRUE
+    END;
+    RETURN FALSE
+  END RejectVaxTarget;
 
   (* For a command that checks a module without building it (-check,
      -emit-interface, -show-interface): the libraries on the library path,
@@ -1238,6 +1254,12 @@ MODULE Poc;
       path: ARRAY LLVMToolchainDriver.pathBufferLength OF CHAR;
       topName: SyntaxTree.Ident;
   BEGIN
+    IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN
+      failed := TRUE;
+      Err.String("poc: -emit-llvm-ir has no "); Err.String(VaxToolchainDriver.triple);
+      Err.String(" target, LLVM does not generate VAX code; -emit-macro32 writes the .mar"); Err.Ln;
+      RETURN
+    END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
     ELSE
@@ -1267,6 +1289,69 @@ MODULE Poc;
     END
   END EmitLLVMIR;
 
+  (* PLAN.md Phase 15 (doc/developer/vax-macro32-backend.md, sections 10
+     and 12): -emit-macro32 writes each module of the program compiled from
+     source as <Module>.mar, VaxToolchainDriver's, for the VAX target, which
+     it implies: -target, if given, must be vax-dec-vms, and the size model
+     -O2, the only one the VAX backend takes (section 4). The modules are
+     checked and their .sym files written as for any other target. *)
+  PROCEDURE EmitMacro32(name, outputDir, explicitTriple: ARRAY OF CHAR);
+    VAR
+      modules, m: LLVMCodeGenerator.ModuleList;
+      ok, written: BOOLEAN;
+      key: ARRAY 32 OF CHAR;
+      path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
+      errorsBefore, unlinkResult: INTEGER;
+  BEGIN
+    IF (explicitTriple[0] # 0X) & ~VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN
+      failed := TRUE;
+      Err.String("poc: -emit-macro32 is for -target "); Err.String(VaxToolchainDriver.triple);
+      Err.String(", not "); Err.String(explicitTriple); Err.Ln
+    ELSIF ConstantEvaluator.sizeModel # MemoryLayout.sizeModelO2 THEN
+      failed := TRUE;
+      Err.String("poc: the VAX backend takes only -O2"); Err.Ln
+    ELSE
+      SetWordSizeFromTriple(VaxToolchainDriver.triple);
+      SetLibraryTarget(VaxToolchainDriver.triple);
+      CheckAndDiscoverProgram(name, outputDir, modules, ok);
+      IF ok THEN
+        errorsBefore := Diagnostics.errorCount;
+        VaxCodeGenerator.unsupportedCount := 0;
+        m := modules; written := TRUE;
+        WHILE m # NIL DO
+          IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
+            IF ~ModuleInterface.KeyOf(m.module.name, key) THEN COPY("0000000000000000", key) END;
+            IF ~VaxToolchainDriver.EmitModule(m.module, key, outputDir, path) THEN written := FALSE END
+          END;
+          m := m.next
+        END;
+        (* as for IR: every module's .mar, or none, when one could not be
+           made, is left *)
+        m := modules;
+        WHILE m # NIL DO
+          IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
+            VaxToolchainDriver.ModuleFilePath(outputDir, m.module.name, path);
+            IF written & (Diagnostics.errorCount = errorsBefore) THEN
+              Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
+            ELSE
+              unlinkResult := Platform.Unlink(path)
+            END
+          END;
+          m := m.next
+        END;
+        IF VaxCodeGenerator.unsupportedCount > 0 THEN
+          failed := TRUE;
+          Err.Int(VaxCodeGenerator.unsupportedCount, 0);
+          Err.String(" construct(s) the VAX backend cannot lower yet; not written"); Err.Ln
+        ELSIF Diagnostics.errorCount > errorsBefore THEN
+          ReportGenerationErrors
+        ELSIF ~written THEN
+          failed := TRUE; Err.String("poc: cannot write the .mar files"); Err.Ln
+        END
+      END
+    END
+  END EmitMacro32;
+
   PROCEDURE Build(name, outputDir, explicitTriple, exePath: ARRAY OF CHAR);
     VAR
       modules: LLVMCodeGenerator.ModuleList;
@@ -1274,6 +1359,7 @@ MODULE Poc;
       triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
       topName: SyntaxTree.Ident;
   BEGIN
+    IF RejectVaxTarget("building a program", explicitTriple) THEN RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
     ELSE
@@ -1378,6 +1464,7 @@ MODULE Poc;
       member: LibraryMember; modules, modulesTail, m: LLVMCodeGenerator.ModuleList;
       visited: VisitedModule; ok: BOOLEAN;
   BEGIN
+    IF RejectVaxTarget("-compile", explicitTriple) THEN RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
       RETURN
@@ -1433,6 +1520,7 @@ MODULE Poc;
       modules, modulesTail, m: LLVMCodeGenerator.ModuleList; visited: VisitedModule; ok: BOOLEAN;
       imp: SyntaxTree.ImportNode; key: Libraries.Key;
   BEGIN
+    IF RejectVaxTarget("-library", explicitTriple) THEN RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
       RETURN
@@ -1879,6 +1967,7 @@ MODULE Poc;
       command: ARRAY 16 * Libraries.pathLength OF CHAR; lib, old: Libraries.Library;
       m: Libraries.Member; ok: BOOLEAN; status: INTEGER; f: Files.File; model: ARRAY 3 OF CHAR;
   BEGIN
+    IF RejectVaxTarget("-install-library", explicitTriple) THEN RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
       RETURN
@@ -1987,6 +2076,7 @@ MODULE Poc;
     HelpLine("  -emit-interface <file>     write the module's interface, <Module>.sym");
     HelpLine("  -show-interface <file>     print the module's interface");
     HelpLine("  -emit-llvm-ir <file>       write the module's LLVM IR, <Module>.ll");
+    HelpLine("  -emit-macro32 <file>       write the module's VAX MACRO-32, <Module>.mar");
     HelpLine("  -print-import-path         print the import path, a directory a line");
     HelpLine("  -print-library-path        print the library path, a directory a line");
     HelpLine("  -version                   print poc's version, the target and clang's");
@@ -2011,7 +2101,7 @@ MODULE Poc;
     HelpLine("  -shared-libraries          link libraries dynamically");
     HelpLine("  -link <arg>                add <arg> to the link (-lz, -L<dir>)");
     HelpLine("  -c-flag <arg>              add <arg> to clang's flags for a module's C part");
-    HelpLine("  -target <triple>           compile for another target");
+    HelpLine("  -target <triple>           compile for another target (vax-dec-vms: the VAX)");
     HelpLine("  -verbose                   print the commands poc runs");
     HelpLine("");
     HelpLine("environment:");
@@ -2075,6 +2165,7 @@ MODULE Poc;
       OR (option = "-dump-layout") OR (option = "-dump-llvm-types") OR (option = "-dump-nested")
       OR (option = "-dump-vax-types") OR (option = "-dump-vax-names")
       OR (option = "-emit-interface") OR (option = "-show-interface") OR (option = "-emit-llvm-ir")
+      OR (option = "-emit-macro32")
       OR (option = "-build")
   END IsFileCommand;
 
@@ -2102,6 +2193,8 @@ MODULE Poc;
       EmitInterface(fileName, outputDir, targetTriple, TRUE)
     ELSIF option = "-emit-llvm-ir" THEN
       EmitLLVMIR(fileName, outputDir, targetTriple)
+    ELSIF option = "-emit-macro32" THEN
+      EmitMacro32(fileName, outputDir, targetTriple)
     ELSIF option = "-build" THEN
       Build(fileName, outputDir, targetTriple, exePath)
     ELSE

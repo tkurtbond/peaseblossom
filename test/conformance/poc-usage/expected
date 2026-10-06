@@ -10,6 +10,7 @@ commands:
   -emit-interface <file>     write the module's interface, <Module>.sym
   -show-interface <file>     print the module's interface
   -emit-llvm-ir <file>       write the module's LLVM IR, <Module>.ll
+  -emit-macro32 <file>       write the module's VAX MACRO-32, <Module>.mar
   -print-import-path         print the import path, a directory a line
   -print-library-path        print the library path, a directory a line
   -version                   print poc's version, the target and clang's
@@ -34,7 +35,7 @@ options, before the command (the last one counts, except those that add):
   -shared-libraries          link libraries dynamically
   -link <arg>                add <arg> to the link (-lz, -L<dir>)
   -c-flag <arg>              add <arg> to clang's flags for a module's C part
-  -target <triple>           compile for another target
+  -target <triple>           compile for another target (vax-dec-vms: the VAX)
   -verbose                   print the commands poc runs
 
 environment:

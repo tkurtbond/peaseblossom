@@ -190,6 +190,16 @@ mode off first. Send source files in ASCII mode (curl's `--use-ascii`, or
 records, not as text. Another developer uses their own VAX or SIMH, and names
 it the same way.
 
+`tools/vax-assemble <file.mar>...` assembles MACRO-32 there: it copies
+each file by FTP, runs `MACRO/OBJECT/LIST` by telnet (expect, reading the
+password from `~/.netrc` itself), brings the `.LIS` back beside the
+source, deletes its files on the guest, and exits 0 only if every file
+assembled without a warning or an error. `VAX_HOST` names another guest.
+`tools/vax-assemble -available` says whether the guest can be used; the
+VAX fixtures assemble their `expected-vax.mar` only where it can, and skip
+that part elsewhere. Runs must not overlap, since they share `POC`'s home
+directory.
+
 ### With other machines
 
 None of this needs those particular machines. What matters is that a

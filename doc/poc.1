@@ -141,6 +141,16 @@ Print the module's interface on the standard output.
 .It Fl emit-llvm-ir Ar file
 Write the module's LLVM IR,
 .Pa Module.ll .
+.It Fl emit-macro32 Ar file
+Write the module's VAX MACRO-32,
+.Pa Module.mar ,
+for VAX/VMS; it implies
+.Fl target Cm vax-dec-vms
+and
+.Fl O2 .
+The VAX backend is being written: it writes a module's layout and
+initializer only, and reports anything more as a construct it cannot lower
+yet.
 .It Fl print-import-path , Fl print-library-path
 Print the import path or the library path as the options before it leave
 it.
@@ -234,6 +244,14 @@ Compile for the LLVM target
 instead of the host, as far as
 .Xr clang 1
 can; linking needs the target's C library.
+.Cm vax-dec-vms
+is the VAX/VMS target, which only
+.Fl emit-macro32 ,
+.Fl check ,
+.Fl emit-interface
+and
+.Fl show-interface
+take so far.
 .It Fl opt Ar level
 Have
 .Xr clang 1

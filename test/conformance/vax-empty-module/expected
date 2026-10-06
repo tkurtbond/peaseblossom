@@ -1,0 +1,3 @@
+semantic OK, wrote VaxEmpty.mar
+exit 0
+VaxEmpty.mar matches expected-vax.mar

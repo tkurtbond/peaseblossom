@@ -21,6 +21,8 @@ test/conformance/**/*.ll
 test/conformance/**/.tmp.*
 test/conformance/**/*.s
 test/conformance/**/*.mar
+# a VAX fixture's expected MACRO-32, reviewed (doc/developer/vax-macro32-backend.md, section 10)
+!test/conformance/**/expected-vax.mar
 test/conformance/**/result
 test/conformance/hello/hello
 test/conformance/llvm-build-run/llvm-build-run

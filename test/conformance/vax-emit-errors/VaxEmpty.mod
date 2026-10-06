@@ -1,0 +1,2 @@
+MODULE VaxEmpty;
+END VaxEmpty.
