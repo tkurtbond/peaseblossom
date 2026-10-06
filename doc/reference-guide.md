@@ -530,7 +530,8 @@ one line saying what is wrong, and a pointer to `-help`:
     run poc -help for the commands and options
 
 The commands for testing poc itself are `-dump-tokens`, `-check-syntax`,
-`-dump-layout`, `-dump-llvm-types` and `-dump-nested`.
+`-dump-layout`, `-dump-llvm-types`, `-dump-nested`, `-dump-vax-types` and
+`-dump-vax-names`.
 
 ### Options
 

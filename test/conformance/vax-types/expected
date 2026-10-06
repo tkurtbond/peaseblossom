@@ -1,0 +1,38 @@
+B: size=1 align=1 suffix=B
+C: size=1 align=1 suffix=B
+SI: size=1 align=1 suffix=B
+I: size=2 align=2 suffix=W
+LI: size=4 align=4 suffix=L
+HI: size=8 align=4 suffix=Q
+R: size=4 align=4 suffix=none
+LR: size=8 align=4 suffix=none
+S: size=4 align=4 suffix=L
+S64: size=8 align=4 suffix=Q
+Byte: size=1 align=1 suffix=B
+Addr: size=4 align=4 suffix=L
+I8: size=1 align=1 suffix=B
+I16: size=2 align=2 suffix=W
+I32: size=4 align=4 suffix=L
+I64: size=8 align=4 suffix=Q
+Node: size=4 align=4 suffix=L
+NodeDesc: size=8 align=4 suffix=none
+  .next: offset=0
+  .key: offset=4
+Proc: size=4 align=4 suffix=L
+Arr: size=20 align=2 suffix=none
+Padded: size=24 align=4 suffix=none
+  .flag: offset=0
+  .count: offset=4
+  .small: offset=8
+  .big: offset=12
+  .last: offset=20
+Outer: size=32 align=4 suffix=none
+  .tag: offset=0
+  .inner: offset=4
+  .list: offset=28
+Base: size=8 align=4 suffix=none
+  .a: offset=0
+  .b: offset=4
+Extended: size=12 align=4 suffix=none
+  .c: offset=8
+  .d: offset=10

@@ -1,0 +1,4 @@
+ABCDEFGHIJKLMNOPQRSTUVWXYZ init ABCDEFGHIJKLMNOPQRSTUVWXYZ_INIT
+exit 0
+poc: module name ABCDEFGHIJKLMNOPQRSTUVWXYZa is longer than 26 characters, the most a VAX module's <MODULE>_INIT symbol allows
+exit 1

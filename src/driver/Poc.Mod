@@ -67,7 +67,7 @@ MODULE Poc;
   IMPORT Modules, Files, Out, Err, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
          ConstantEvaluator, PredeclaredProcedures, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator,
-         DecimalToDouble, NestedProcedures, Libraries, Version, BuildInfo;
+         DecimalToDouble, NestedProcedures, VaxTypes, Libraries, Version, BuildInfo;
   (* DecimalToDouble is used only inside ConstantEvaluator's procedure
      bodies, and voc's symbol file records only the imports an exported
      declaration needs, so Stage 0's link line would otherwise miss it: this
@@ -1712,6 +1712,158 @@ MODULE Poc;
     END
   END DumpNested;
 
+  PROCEDURE PrintVaxTypeLine(name: ARRAY OF CHAR; t: Types.Type);
+    VAR suffix: CHAR; rec: Types.RecordType; f: Types.Field;
+  BEGIN
+    Out.String(name);
+    Out.String(": size="); Out.Int(VaxTypes.Size(t), 0);
+    Out.String(" align="); Out.Int(VaxTypes.Align(t), 0);
+    suffix := VaxTypes.OperandSuffix(t);
+    Out.String(" suffix=");
+    IF suffix = 0X THEN Out.String("none") ELSE Out.Char(suffix) END;
+    Out.Ln;
+    IF (t # NIL) & (t IS Types.RecordType) THEN
+      rec := t(Types.RecordType);
+      f := rec.fields;
+      WHILE f # NIL DO
+        Out.String("  ."); Out.String(f.name);
+        Out.String(": offset="); Out.Int(VaxTypes.FieldOffset(rec, f), 0);
+        Out.Ln;
+        f := f.next
+      END
+    END
+  END PrintVaxTypeLine;
+
+  (* PLAN.md Phase 15 step 1: the golden-file testing surface for
+     VaxTypes.Mod's sizes, offsets and instruction suffixes - for each TYPE
+     declaration, as DumpLLVMTypes is for LLVMTypes.Mod. *)
+  PROCEDURE DumpVaxTypes(name: ARRAY OF CHAR);
+    VAR
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      parser: Parser.Parser;
+      module: SyntaxTree.ModuleNode;
+      scope: SymbolTable.Scope;
+      d: SyntaxTree.TypeDeclNode;
+      obj: SymbolTable.Object;
+  BEGIN
+    IF ~ReadSource(name, buffer, length) THEN
+      failed := TRUE; Err.String("poc: cannot open "); Err.String(name); Err.Ln
+    ELSE
+      Diagnostics.Reset(name);
+      Parser.InitParser(parser, buffer, length);
+      module := Parser.ParseModule(parser);
+      IF Diagnostics.errorCount = 0 THEN
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+      END;
+      IF Diagnostics.errorCount > 0 THEN
+        Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln
+      ELSIF module.declarations # NIL THEN
+        d := module.declarations.typeDecls;
+        WHILE d # NIL DO
+          obj := SymbolTable.FindLocal(scope, d.name.name);
+          PrintVaxTypeLine(d.name.name, obj.type);
+          d := d.next
+        END
+      END
+    END
+  END DumpVaxTypes;
+
+  (* One line, the full name and its VAX symbol; or, when another full name
+     already has that symbol, an error. *)
+  PROCEDURE PrintVaxName(table: VaxTypes.NameTable; full: ARRAY OF CHAR);
+    VAR symbol: VaxTypes.Symbol; clash: ARRAY 800 OF CHAR;
+  BEGIN
+    IF VaxTypes.Enter(table, full, symbol, clash) THEN
+      Out.String(full); Out.String(" "); Out.String(symbol); Out.Ln
+    ELSE
+      failed := TRUE;
+      Err.String("poc: "); Err.String(full); Err.String(" and "); Err.String(clash);
+      Err.String(" have the same VAX symbol, "); Err.String(symbol); Err.Ln
+    END
+  END PrintVaxName;
+
+  (* PLAN.md Phase 15 step 1: the golden-file testing surface for
+     VaxTypes.Mod's names (doc/developer/vax-macro32-backend.md section 5).
+     Checks the module, then prints the symbol of each name the VAX backend
+     makes up for it, in one NameTable, so a collision is an error: the
+     module's initializer, <MODULE>_INIT, which is never hashed and so
+     needs no NameTable, then each module-level variable, then each
+     procedure and type-bound procedure. An external procedure is shown with its
+     linkage name, written verbatim, which is an error if MACRO-32 does not
+     take it. *)
+  PROCEDURE DumpVaxNames(name: ARRAY OF CHAR);
+    VAR
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      parser: Parser.Parser;
+      module: SyntaxTree.ModuleNode;
+      scope: SymbolTable.Scope;
+      table: VaxTypes.NameTable;
+      v: SyntaxTree.VarDeclNode;
+      id: SyntaxTree.IdentDefNode;
+      p: SyntaxTree.ProcDeclNode;
+      full: ARRAY 800 OF CHAR;
+      init: VaxTypes.Symbol;
+  BEGIN
+    IF ~ReadSource(name, buffer, length) THEN
+      failed := TRUE; Err.String("poc: cannot open "); Err.String(name); Err.Ln
+    ELSE
+      Diagnostics.Reset(name);
+      Parser.InitParser(parser, buffer, length);
+      module := Parser.ParseModule(parser);
+      IF Diagnostics.errorCount = 0 THEN
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+      END;
+      IF Diagnostics.errorCount > 0 THEN
+        Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln
+      ELSE
+        table := VaxTypes.NewNameTable();
+        IF VaxTypes.MakeInitSymbol(module.name, init) THEN
+          Out.String(module.name); Out.String(" init "); Out.String(init); Out.Ln
+        ELSE
+          failed := TRUE;
+          Err.String("poc: module name "); Err.String(module.name);
+          Err.String(" is longer than "); Err.Int(VaxTypes.moduleNameLength, 0);
+          Err.String(" characters, the most a VAX module's <MODULE>_INIT symbol allows"); Err.Ln
+        END;
+        IF module.declarations # NIL THEN
+          v := module.declarations.varDecls;
+          WHILE v # NIL DO
+            id := v.names;
+            WHILE id # NIL DO
+              COPY(module.name, full); Strcat(full, "."); Strcat(full, id.name);
+              PrintVaxName(table, full);
+              id := id.next
+            END;
+            v := v.next
+          END;
+          p := module.declarations.procDecls;
+          WHILE p # NIL DO
+            IF p.isExternal THEN
+              COPY(module.name, full); Strcat(full, "."); Strcat(full, p.name.name);
+              Out.String(full); Out.String(" external ");
+              IF p.externalName # "" THEN COPY(p.externalName, full) ELSE COPY(p.name.name, full) END;
+              Out.String(full); Out.Ln;
+              IF ~VaxTypes.IsValidExternalName(full) THEN
+                failed := TRUE;
+                Err.String("poc: "); Err.String(full);
+                Err.String(" is not a MACRO-32 symbol (letters, digits, _, $ and ., at most 31, not a digit first)");
+                Err.Ln
+              END
+            ELSIF ~p.isForward THEN
+              COPY(module.name, full); Strcat(full, ".");
+              IF p.receiver # NIL THEN Strcat(full, p.receiver.typeName); Strcat(full, ".") END;
+              Strcat(full, p.name.name);
+              PrintVaxName(table, full)
+            END;
+            p := p.next
+          END
+        END
+      END
+    END
+  END DumpVaxNames;
+
   (* Phase 12 step 2e: poc -install-library name copies the library name,
      from the library path, for the target and size model, into
      <base>/<triple>/<O2|OC>/, base -output-dir or else poc's own
@@ -1872,6 +2024,8 @@ MODULE Poc;
     HelpLine("  -dump-layout <file>        print the memory layout of its records");
     HelpLine("  -dump-llvm-types <file>    print the LLVM type of each of its types");
     HelpLine("  -dump-nested <file>        print what its nested procedures need");
+    HelpLine("  -dump-vax-types <file>     print the VAX size and suffix of each of its types");
+    HelpLine("  -dump-vax-names <file>     print the VAX symbol of each of its names");
     HelpLine("");
     HelpLine("poc(1) explains each of them.")
   END Help;
@@ -1919,6 +2073,7 @@ MODULE Poc;
   BEGIN
     RETURN (option = "-dump-tokens") OR (option = "-check-syntax") OR (option = "-check")
       OR (option = "-dump-layout") OR (option = "-dump-llvm-types") OR (option = "-dump-nested")
+      OR (option = "-dump-vax-types") OR (option = "-dump-vax-names")
       OR (option = "-emit-interface") OR (option = "-show-interface") OR (option = "-emit-llvm-ir")
       OR (option = "-build")
   END IsFileCommand;
@@ -1937,6 +2092,10 @@ MODULE Poc;
       DumpLLVMTypes(fileName)
     ELSIF option = "-dump-nested" THEN
       DumpNested(fileName)
+    ELSIF option = "-dump-vax-types" THEN
+      DumpVaxTypes(fileName)
+    ELSIF option = "-dump-vax-names" THEN
+      DumpVaxNames(fileName)
     ELSIF option = "-emit-interface" THEN
       EmitInterface(fileName, outputDir, targetTriple, FALSE)
     ELSIF option = "-show-interface" THEN

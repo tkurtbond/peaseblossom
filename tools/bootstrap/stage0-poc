@@ -12,7 +12,7 @@ obj="$BUILD/stage0/obj"
 rm -rf "$obj"; mkdir -p "$obj" "$BUILD/bin"
 cd "$obj"
 "$BOOTSTRAP_POC" -OC -clear-library-path \
-  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
+  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" -import-path "$ROOT/src/back/vax" \
   -import-path "$ROOT/rtl/llvm" -import-path "$ROOT/src/driver" -import-path "$BUILD/gen" \
   -o "$BUILD/bin/poc" -build "$ROOT/src/driver/Poc.Mod"
 echo "Stage 0: built $BUILD/bin/poc with $BOOTSTRAP_POC"

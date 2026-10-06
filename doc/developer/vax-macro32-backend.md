@@ -214,7 +214,7 @@ module keys.
 up.**
 
 - The *full name* is the LLVM backend's qualified name, case kept:
-  `Ropes.Length`, `Ropes_init`.
+  `Ropes.Length`, `Ropes.Tree.Length`.
 - The symbol is `<stem>_<hash>`. The hash is a fixed-width code of the full
   name, case included - for example 40 bits of FNV-1a written as 8
   characters `0`-`9`, `A`-`V` - so `Foo` and `foo` differ. The stem is the
@@ -222,6 +222,14 @@ up.**
   `$` turned into `_`, cut to the 22 characters that leave room for
   `_` and the hash. `Ropes.Length` might become `ROPES_LENGTH_0K7Q3M2A`.
   The stem is only for a human reading a map or a traceback.
+- **The exception: a module's initializer is `<MODULE>_INIT`**, unhashed
+  (decided 2026-10-06; why, §5.1): the module name uppercased, then
+  `_INIT`, so `Ropes`'s is `ROPES_INIT`. It can never equal a made-up
+  symbol, whose last nine characters are always `_` and eight base-32
+  digits, and `_INIT` is not. So a module name is at most 26 characters,
+  and a longer one is an error at compile time, never hashed. Two module
+  names that differ only in case give one symbol, which the closure check
+  of §5.1 reports.
 - **Collisions are checked, not just made unlikely.** Within a module, poc
   keeps the symbols it has written and stops with an error if two full
   names give one symbol. Across modules, see §5.1: the linker's "multiply
@@ -246,7 +254,8 @@ names have (`LLVMCodeGenerator`, `LLVMToolchainDriver`).
 
 ### 5.1 Collisions across a link
 
-Proposal (2026-10-05), not yet agreed.
+**Decided (2026-10-06)**: the user accepted this section as proposed
+(2026-10-05).
 
 **A collision can be made on purpose.** A birthday search over 12-letter
 random suffixes found, after 664,867 names (seconds, well under 4 GB):
@@ -290,14 +299,30 @@ wrong program with no diagnostic.
    written by hand, as long as `MULDEF` is not ignored.
 2. **A readable error before the link.** Every distribution form includes
    a `.sym`, or produces one, since importers need the interface, so the
-   import closure can always be computed from `.sym` files. The `.sym`
-   records, for each exported object and each compiler-made global
-   (`_init`, type descriptors, module keys), the symbol it was given, and
-   the version of the name scheme. At link time poc (or a separate check
-   for hand-built links) walks the main module's import closure and stops
-   if two different full names have one symbol: "`A.X` and `B.Y` both
-   give `..._VA2IG0SM`; rename one". A `.sym` from another scheme version
-   is an error at import, not a link failure later.
+   import closure can always be computed from `.sym` files. **The `.sym`
+   is not changed** (amended 2026-10-06): every full name the backend
+   hashes - the module's, each exported object's, and the type names
+   behind type-bound procedures and type descriptors, unexported types
+   an importer's layout needs included - is already in it, and
+   `MakeSymbol` is deterministic, so the check recomputes each symbol
+   from the `.sym` as it is. At link time poc (or a separate check for
+   hand-built links) walks the main module's import closure and stops if
+   two different full names have one symbol: "`A.X` and `B.Y` both give
+   `..._VA2IG0SM`; rename one".
+   **The name scheme's version belongs to the VAX target, not to the
+   interface.** A `.sym`'s text does not depend on the target (it is
+   stored per target and size model, `lib/poc/<triple>/<O2|OC>/`, but
+   reads the same everywhere), and a module's key is the hash of its
+   `.sym` bytes (`ModuleInterface.Mod`, "Module keys"), so a field in it
+   would change every module's key on every target, LLVM's included,
+   for no LLVM use. Instead the version is carried where the LLVM
+   backend keeps its per-target facts: in a symbol each VAX object
+   defines and its importers refer to, as `<M>.-target.<triple>` does on
+   LLVM, so objects made with different schemes fail to link, and in a
+   VAX library's manifest, so such a library is refused at import. The
+   spelling of that symbol, and of the module key's, is still to be
+   chosen (§11, question 8): like `<MODULE>_INIT`, both are module-level
+   and must be unhashed and unique.
 3. **Within a module**, as §5 says: its own definitions and the imported
    names it references, checked by poc at compile time, with source
    positions.
@@ -306,10 +331,11 @@ Details this depends on:
 
 - **Module-level symbols must never collide with each other.** If `A`'s
   and `B`'s `_init` symbols collide, `B` is never loaded and layer 1 fails
-  silently. Module names are unique in a program anyway, so the `_init`
-  symbol should be short and unhashed where the name allows, and the
-  closure check treats a collision between module-level symbols as an
-  error in every case.
+  silently. Module names are unique in a program anyway, so the
+  initializer's symbol is unhashed, `<MODULE>_INIT` (§5, decided
+  2026-10-06), and the closure check treats a collision between
+  module-level symbols - two module names differing only in case - as an
+  error.
 - **Private objects are local symbols** (`label:`, not `label::`), so they
   never enter a link; what can collide across modules is only exports and
   compiler-made globals.
@@ -318,8 +344,8 @@ Details this depends on:
   the development system. It sees only one library, so a collision
   between two libraries, or a library and an `.obj`, still rests on
   layers 1 and 2.
-- The LLVM targets do not shorten names, so nothing changes there but the
-  `.sym` field.
+- The LLVM targets do not shorten names, and the `.sym` is unchanged, so
+  nothing in §5.1 changes the LLVM backend.
 
 ## 6. A module's layout
 
@@ -339,7 +365,7 @@ Proposal, one `.mar` file per module:
   constants, `POC_DATA` the module's variables, zero-initialised (`.BLKB`)
   as on LLVM, and a flag "initialised".
 - Each procedure is an `.ENTRY` (§7). The module body is the procedure
-  `<Module>_init`, which returns at once if its flag is set, otherwise sets
+  `<MODULE>_INIT` (§5), which returns at once if its flag is set, otherwise sets
   it, calls its imports' `_init`s in import order and runs the body.
 - The **program's start** is one routine, written into the main module
   only, with `.END` naming it: it calls the main module's `_init` and
@@ -487,7 +513,8 @@ its trap is a VMS condition (`SS$_SUBRNG`), not poc's message.
 Settled 2026-10-05: the development system (§2); assembling fixtures in
 Phase 15 (§10); one calling mechanism (§7); `-O2` only and
 `MemoryLayout`'s record layout (§4); the stem-and-hash names (§5);
-options matched without regard to case on VMS (§10).
+options matched without regard to case on VMS (§10). Settled
+2026-10-06: collisions across a link (§5.1), and with it the hash (§5).
 
 1. **The destination machine's version** - the user is to check it.
 2. **Running `MACRO` on the guest from the host**, for assembling
@@ -499,18 +526,20 @@ options matched without regard to case on VMS (§10).
    from a command on the host, since the fixtures run from `make test`; on
    hosts without the guest those checks are skipped, as `doc-poc-man-page`
    is without mandoc.
-3. **The hash (§5)**: 40 bits of FNV-1a in base 32, or another. A
-   deliberate collision costs under a million names (§5.1); the proposal
-   is to keep 40 bits and catch collisions, not to lengthen the hash.
+3. **The hash (§5)**: settled 2026-10-06 with §5.1 - 40 bits of FNV-1a
+   in base 32, kept; collisions are caught, not made rarer.
 4. **Integer arithmetic on `SHORTINT` and `INTEGER` (§8)**: at the type's
    width, or in longwords and truncated.
 5. **Packed records** for VMS routines (§4) - Phase 17's, noted here.
 6. **`LONGREAL`'s default format (§4)**, D_floating as VAX C, or
    G_floating - Phase 16's, noted here so the option is designed in.
-7. **Collisions across a link (§5.1)**: the three layers, the `.sym`
-   field carrying each symbol and the scheme's version, and `MULDEF` as
-   fatal. Whether the Librarian reports `DUPGLOBAL` is to be checked on
-   the development system.
+7. **Collisions across a link (§5.1)**: settled 2026-10-06. Still to be
+   checked on the development system: whether the Librarian reports
+   `DUPGLOBAL`.
+8. **The module key's and the name scheme's symbols (§5.1)**: the VAX
+   spellings of LLVM's `<M>.-key.…` and `<M>.-target.…`, unhashed, at most
+   31 characters, and never equal to a hashed symbol or `<MODULE>_INIT`.
+   Needed by step 8 (several modules), not before.
 
 ## 12. Proposed order of work
 

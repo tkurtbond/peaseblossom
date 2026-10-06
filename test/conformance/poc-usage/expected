@@ -47,6 +47,8 @@ for testing poc itself:
   -dump-layout <file>        print the memory layout of its records
   -dump-llvm-types <file>    print the LLVM type of each of its types
   -dump-nested <file>        print what its nested procedures need
+  -dump-vax-types <file>     print the VAX size and suffix of each of its types
+  -dump-vax-names <file>     print the VAX symbol of each of its names
 
 poc(1) explains each of them.
 exit=1

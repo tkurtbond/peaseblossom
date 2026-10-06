@@ -27,7 +27,7 @@ cd "$BUILD/stage2/obj"
 # stages must not depend on one, and the fixed point compares the output
 # for every module
 "$STAGE1_POC" -OC -clear-library-path ${BOOTSTRAP_OPT:+-opt "$BOOTSTRAP_OPT"} \
-  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" \
+  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" -import-path "$ROOT/src/back/vax" \
   -import-path "$ROOT/rtl/llvm" -import-path "$ROOT/src/driver" -import-path "$BUILD/gen" \
   -o "$BUILD/stage2/bin/poc" -build "$ROOT/src/driver/Poc.Mod"
 echo "Stage 2: built $BUILD/stage2/bin/poc"
