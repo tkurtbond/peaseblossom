@@ -148,8 +148,13 @@ for VAX/VMS; it implies
 .Fl target Cm vax-dec-vms
 and
 .Fl O2 .
-The VAX backend is being written: it writes a module's layout and
-initializer only, and reports anything more as a construct it cannot lower
+The VAX backend is being written: so far it writes a module's layout,
+its variables, and assignments of integer,
+.Vt CHAR ,
+.Vt BOOLEAN
+and
+.Vt SET
+expressions, and reports anything more as a construct it cannot lower
 yet.
 .It Fl print-import-path , Fl print-library-path
 Print the import path or the library path as the options before it leave

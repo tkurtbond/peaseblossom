@@ -1,0 +1,96 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - Each variable is a .BLKx 1 of its type's size in POC_DATA, which
+;;   starts zeroed (section 6), after the flag: BOOLEAN, SHORTINT and CHAR
+;;   a byte, INTEGER a word, LONGINT and SET a longword, HUGEINT a quadword
+;;   (section 4's table). .ALIGN gives each MemoryLayout's alignment,
+;;   capped at the longword (section 4, decided), so HUGEINT is LONG.
+;; - Each symbol is VaxTypes.MakeSymbol of "VaxVariables.<name>": the stem
+;;   uppercased, "_" and eight base-32 digits (section 5), at most 31
+;;   characters (VAXVARIABLES_LETTER_C9HS1PFT is 28). The exported ones,
+;;   small, count and total (read-only export too), are global ("::",
+;;   MACRO 3.3.3); flag, big, letter and bits are local (":"), so they
+;;   never enter a link (section 5.1).
+;; - Each constant is an immediate of the variable's own size: MOVB #-1,
+;;   MOVW #1000 (the CONST limit, folded), CLRW and CLRQ for zero,
+;;   MIN(LONGINT) as #^X80000000. A HUGEINT constant is two longwords, low
+;;   first: -2 is ^XFFFFFFFE and ^XFFFFFFFF; 4000000000 is ^XEE6B2800 and
+;;   0 (CLRL). "A" is 65. {0, 3..5, 31} is bits 0, 3, 4, 5 and 31,
+;;   ^X80000039.
+;; - With a body the initializer cannot byte-branch over it, so BLBC
+;;   skips the RET instead (section 3); the flag is set before the body.
+;;   The mask is empty: only memory operands are used.
+; VaxVariables, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXVARIABLES
+	.IDENT	/1a74f459c1027e48/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; flag: BOOLEAN
+VAXVARIABLES_FLAG_NG38OQPN:
+	.BLKB	1
+; small: SHORTINT, exported
+VAXVARIABLES_SMALL_91S5GMHC::
+	.BLKB	1
+; count: INTEGER, exported
+	.ALIGN	WORD
+VAXVARIABLES_COUNT_N8ADI78K::
+	.BLKW	1
+; total: LONGINT, exported
+	.ALIGN	LONG
+VAXVARIABLES_TOTAL_ABNDTR4T::
+	.BLKL	1
+; big: HUGEINT
+	.ALIGN	LONG
+VAXVARIABLES_BIG_26A3187P:
+	.BLKQ	1
+; letter: CHAR
+VAXVARIABLES_LETTER_C9HS1PFT:
+	.BLKB	1
+; bits: SET
+	.ALIGN	LONG
+VAXVARIABLES_BITS_RR7CF79P:
+	.BLKL	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXVARIABLES_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 19
+	MOVB	#1, VAXVARIABLES_FLAG_NG38OQPN
+; line 20
+	MOVB	#-1, VAXVARIABLES_SMALL_91S5GMHC
+; line 21
+	CLRW	VAXVARIABLES_COUNT_N8ADI78K
+; line 22
+	MOVW	#1000, VAXVARIABLES_COUNT_N8ADI78K
+; line 23
+	MOVL	#100000, VAXVARIABLES_TOTAL_ABNDTR4T
+; line 24
+	MOVL	#^X80000000, VAXVARIABLES_TOTAL_ABNDTR4T
+; line 25
+	CLRQ	VAXVARIABLES_BIG_26A3187P
+; line 26
+	MOVL	#^XFFFFFFFE, VAXVARIABLES_BIG_26A3187P
+	MOVL	#^XFFFFFFFF, VAXVARIABLES_BIG_26A3187P+4
+; line 27
+	MOVL	#^XEE6B2800, VAXVARIABLES_BIG_26A3187P
+	CLRL	VAXVARIABLES_BIG_26A3187P+4
+; line 28
+	MOVB	#65, VAXVARIABLES_LETTER_C9HS1PFT
+; line 29
+	MOVL	#^X80000039, VAXVARIABLES_BITS_RR7CF79P
+	RET
+
+	.END

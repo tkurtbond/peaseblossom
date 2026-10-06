@@ -1,0 +1,3 @@
+semantic OK, wrote VaxIntegerArithmetic.mar
+exit 0
+VaxIntegerArithmetic.mar matches expected-vax.mar

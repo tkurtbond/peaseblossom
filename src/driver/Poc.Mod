@@ -1321,7 +1321,7 @@ MODULE Poc;
         WHILE m # NIL DO
           IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
             IF ~ModuleInterface.KeyOf(m.module.name, key) THEN COPY("0000000000000000", key) END;
-            IF ~VaxToolchainDriver.EmitModule(m.module, key, outputDir, path) THEN written := FALSE END
+            IF ~VaxToolchainDriver.EmitModule(m.module, m.scope, key, outputDir, path) THEN written := FALSE END
           END;
           m := m.next
         END;

@@ -363,10 +363,15 @@ Proposal, one `.mar` file per module:
 
 - `POC_CODE` holds the procedures, `POC_CONST` string and structured
   constants, `POC_DATA` the module's variables, zero-initialised (`.BLKB`)
-  as on LLVM, and a flag "initialised".
+  as on LLVM, and a flag "initialised". Done (step 3): each variable is a
+  `.BLKx 1` of its size after an `.ALIGN` of its alignment, labelled by
+  its §5 symbol, `::` (global) if it is exported and `:` (local)
+  otherwise.
 - Each procedure is an `.ENTRY` (§7). The module body is the procedure
   `<MODULE>_INIT` (§5), which returns at once if its flag is set, otherwise sets
-  it, calls its imports' `_init`s in import order and runs the body.
+  it, calls its imports' `_init`s in import order and runs the body. With
+  no body the test is `BLBS` over the fixed 7 bytes to `RET`; a body can
+  be any length, so then it is `BLBC` over a `RET` (§3; step 3).
 - The **program's start** is one routine, written into the main module
   only, with `.END` naming it: it calls the main module's `_init` and
   returns `SS$_NORMAL` (1) in `R0`. `HALT(n)` and a trap end the program by
@@ -421,7 +426,12 @@ Proposals:
 - **Registers**: the body uses `R0`-`R5` as scratch for expression
   evaluation; `R6`-`R11` are kept for later (register variables, or
   Phase 16's needs). The entry mask saves those of `R2`-`R11` the body
-  writes.
+  writes. Done (step 3): a `HUGEINT` takes a pair `Rn`, `Rn+1`, low
+  longword first; when no register is free the oldest one in use is
+  spilled to a longword slot below `FP` (a pair to two) and used from
+  there. The body is generated into a list before it is written, so the
+  `.ENTRY` mask names exactly the registers written and one `SUBL2 #4n,
+  SP` makes room for the most slots in use at once.
 - **Overflow**: the `IV` bit stays clear, so integer arithmetic wraps, as
   poc promises (`language-extensions.md`, "Overflow, division and reals").
   An opt-in overflow check could later set it.
@@ -439,10 +449,19 @@ Proposals:
 
 Proposals, by construct:
 
-- **Integer arithmetic** on `SHORTINT` and `INTEGER` at their own width
-  (`ADDB3`, `ADDW3`, ...), so wraparound happens at the type's width as
-  poc promises, or in longwords and truncated; to be settled with the
-  first fixtures. `LONGINT` uses the longword instructions; `HUGEINT` §4.
+- **Decided (2026-10-06): integer arithmetic at the operation's own
+  width** (`ADDB3`, `ADDW3`, `ADDL3`, ...), so wraparound happens at the
+  type's width as poc promises, with no truncation afterwards; the other
+  choice, longwords then truncated, cost a widening and a narrowing per
+  operation. A narrower operand is first sign-extended (`CVTBW`, `CVTBL`,
+  `CVTWL`), as Oberon types the operation (Appendix A). Done (step 3),
+  with: the last operation of an assignment's value writes the variable
+  itself when it is as wide (`x := y + z` is one `ADDW3`, `x := x + 1` an
+  `INCW`); a constant expression is one immediate, folded by
+  `ConstantEvaluator`. `HUGEINT` (§4): `+` and `-` are `ADDL2`/`ADWC` and
+  `SUBL2`/`SBWC`, `-x` is `MNEGL` of each longword then `SBWC #0` for the
+  borrow, and widening to it is `ASHL #-31` for the high longword; `*`,
+  `DIV` and `MOD` are calls to poc's runtime, which wait for step 5.
 - **`DIV` and `MOD`** floor: `DIVL3` truncates toward zero, then the same
   correction the LLVM backend makes (`LLVMCodeGenerator.GenerateDivMod`),
   the remainder by `EDIV` or by multiplying back. **A zero divisor traps
@@ -451,11 +470,25 @@ Proposals, by construct:
   8.4.1) - which matches poc's promise that `x DIV 0` ends the program.
 - **Comparisons and `BOOLEAN`**: `CMPx` then a conditional branch; a
   `BOOLEAN` value is a byte 0 or 1. `&` and `OR` short-circuit with
-  branches.
+  branches. Done (step 3), as a value: `CLRB` a register, `CMPx` (`TSTx`
+  against zero), the branch for "false" over `MOVB #1` - signed for
+  integers, unsigned for `CHAR`; a `HUGEINT` compares its high longwords
+  signed, then its low ones unsigned. `&`/`OR` test the left value with
+  `BLBC`/`BLBS`, a byte branch when the right operand is a variable or a
+  constant (a fixed few bytes to skip) and otherwise a branch over `JMP
+  L^` (§3). Every register in use is spilled first, so that no spill
+  happens on one path only. Conditions that branch without making a
+  value are step 4's.
 - **`SET`**: a longword; `+` `BISL3`, `*` `MCOML` then `BICL3`, `-`
   `BICL3`, `/` `XORL3`; `IN` `BBS`/`BBC` (or `ASHL` and `BITL`) after a
   range check; `INCL`/`EXCL` `BBSS`/`BBCC`; a constant `{...}` an
-  immediate.
+  immediate. Done (step 3): `IN` is `BBC` after `CMPL #31` and `BGTRU`
+  (unsigned, so a negative element is out too), no check for a constant
+  element; a constructor's variable element `e` is `ASHL e, #1`, a range
+  `lo..hi` the bits of `ASHL lo, #-1` cleared of those of `ASHL hi, #-2`
+  (`ASHL`'s count is a byte, the element's low one), and its constant
+  elements one `BISL2` of an immediate. `SYSTEM.SET64` is outside the
+  slice.
 - **`CASE`**: `CASEL`, the VAX's own table-driven case instruction, for a
   dense range of labels, and a chain of compares otherwise; a value with
   no label goes to the "no CASE label" trap (§9).
@@ -527,7 +560,8 @@ Phase 15 (§10); one calling mechanism (§7); `-O2` only and
 `MemoryLayout`'s record layout (§4); the stem-and-hash names (§5);
 options matched without regard to case on VMS (§10). Settled
 2026-10-06: collisions across a link (§5.1), and with it the hash (§5);
-running `MACRO` on the guest, by scripted telnet (question 2).
+running `MACRO` on the guest, by scripted telnet (question 2); integer
+arithmetic at the type's width (question 4).
 
 1. **The destination machine's version** - the user is to check it.
 2. **Running `MACRO` on the guest from the host**, for assembling
@@ -547,8 +581,8 @@ running `MACRO` on the guest, by scripted telnet (question 2).
    directory was the other choice, kept in reserve.
 3. **The hash (§5)**: settled 2026-10-06 with §5.1 - 40 bits of FNV-1a
    in base 32, kept; collisions are caught, not made rarer.
-4. **Integer arithmetic on `SHORTINT` and `INTEGER` (§8)**: at the type's
-   width, or in longwords and truncated.
+4. **Integer arithmetic on `SHORTINT` and `INTEGER` (§8)**: settled
+   2026-10-06, **at the type's width**.
 5. **Packed records** for VMS routines (§4) - Phase 17's, noted here.
 6. **`LONGREAL`'s default format (§4)**, D_floating as VAX C, or
    G_floating - Phase 16's, noted here so the option is designed in.

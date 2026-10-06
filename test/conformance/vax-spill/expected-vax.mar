@@ -1,0 +1,101 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - The product nests nine deep and each factor needs a register, but
+;;   only R0-R5 are for expressions (section 7). When none is free, the
+;;   oldest in use is moved below FP - (a+1) to -4(FP), (a+2) to -8(FP),
+;;   (a+3) to -12(FP) - and used from there: MULL2 -12(FP), R3, then
+;;   -8(FP), and MULL3 R3, -4(FP) writes a. Inner factors are multiplied
+;;   first, so the order is the source's.
+;; - The HUGEINT expression spills register pairs, two longwords each:
+;;   R0/R1 to -8(FP) and R2/R3 to -16(FP); ADWC -12(FP) is the high
+;;   longword of the second.
+;; - The frame: SUBL2 #16, SP after the flag, the most slots in use at
+;;   once; RET gives them back, restoring SP from FP (section 7).
+;; - The mask saves R2-R5, which the body writes and the calling standard
+;;   says a procedure preserves (CallStd 2.2-2.7, section 7).
+; VaxSpill, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXSPILL
+	.IDENT	/5cf6d6771e3bc121/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; a: LONGINT
+	.ALIGN	LONG
+VAXSPILL_A_MM20839R:
+	.BLKL	1
+; h: HUGEINT
+	.ALIGN	LONG
+VAXSPILL_H_MM207VFG:
+	.BLKQ	1
+; g: HUGEINT
+	.ALIGN	LONG
+VAXSPILL_G_MM2085RD:
+	.BLKQ	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXSPILL_INIT, ^M<R2,R3,R4,R5>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#16, SP
+; line 11
+	ADDL3	#1, VAXSPILL_A_MM20839R, R0
+	ADDL3	#2, VAXSPILL_A_MM20839R, R1
+	ADDL3	#3, VAXSPILL_A_MM20839R, R2
+	ADDL3	#4, VAXSPILL_A_MM20839R, R3
+	ADDL3	#5, VAXSPILL_A_MM20839R, R4
+	ADDL3	#6, VAXSPILL_A_MM20839R, R5
+	MOVL	R0, -4(FP)
+	ADDL3	#7, VAXSPILL_A_MM20839R, R0
+	MOVL	R1, -8(FP)
+	ADDL3	#8, VAXSPILL_A_MM20839R, R1
+	MOVL	R2, -12(FP)
+	ADDL3	#9, VAXSPILL_A_MM20839R, R2
+	MULL2	R2, R1
+	MULL2	R1, R0
+	MULL2	R0, R5
+	MULL2	R5, R4
+	MULL2	R4, R3
+	MULL2	-12(FP), R3
+	MULL2	-8(FP), R3
+	MULL3	R3, -4(FP), VAXSPILL_A_MM20839R
+; line 12
+	MOVQ	VAXSPILL_H_MM207VFG, R0
+	ADDL2	VAXSPILL_G_MM2085RD, R0
+	ADWC	VAXSPILL_G_MM2085RD+4, R1
+	MOVQ	VAXSPILL_H_MM207VFG, R2
+	SUBL2	VAXSPILL_G_MM2085RD, R2
+	SBWC	VAXSPILL_G_MM2085RD+4, R3
+	MOVQ	VAXSPILL_G_MM2085RD, R4
+	SUBL2	VAXSPILL_H_MM207VFG, R4
+	SBWC	VAXSPILL_H_MM207VFG+4, R5
+	MOVQ	R0, -8(FP)
+	MOVQ	VAXSPILL_H_MM207VFG, R0
+	ADDL2	VAXSPILL_G_MM2085RD, R0
+	ADWC	VAXSPILL_G_MM2085RD+4, R1
+	MOVQ	R2, -16(FP)
+	MOVQ	VAXSPILL_G_MM2085RD, R2
+	ADDL2	VAXSPILL_H_MM207VFG, R2
+	ADWC	VAXSPILL_H_MM207VFG+4, R3
+	SUBL2	R2, R0
+	SBWC	R3, R1
+	SUBL2	R0, R4
+	SBWC	R1, R5
+	ADDL2	-16(FP), R4
+	ADWC	-12(FP), R5
+	MOVQ	-8(FP), VAXSPILL_H_MM207VFG
+	SUBL2	R4, VAXSPILL_H_MM207VFG
+	SBWC	R5, VAXSPILL_H_MM207VFG+4
+	RET
+
+	.END

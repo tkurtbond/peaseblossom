@@ -1,0 +1,113 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - Arithmetic is at the operation's type's width (section 8, decided
+;;   2026-10-06): ADDW, SUBW, MULB, MULW, MULL. The entry mask's IV bit is
+;;   clear (^M<>), so overflow sets V and wraps at that width without a
+;;   trap (MACRO 3.6.2.2; section 7).
+;; - A narrower operand is sign-extended first: CVTWL for l := i, CVTBW
+;;   for i := s and for s in s + j. In l * m + i * 10, i * 10 is an
+;;   INTEGER product (MULW3), widened only for the LONGINT sum (CVTWL), as
+;;   Oberon types it.
+;; - The last operation writes the variable when it is as wide: i := i + j
+;;   is ADDW2 j, i; i := j - i is SUBW3 i, j, i (dif := min - sub, MACRO 9,
+;;   SUB); i + 1 and i - 1 are INCW and DECW; -l is MNEGL l, l.
+;; - DIV and MOD floor. DIVx3 divr, divd, quo truncates toward zero (MACRO
+;;   9, DIV, note 1); r := a - q * b is the truncated remainder. When r is
+;;   nonzero (BEQL) and its sign differs from b's (the XOR is negative,
+;;   BGEQ), DIV takes q - 1 and MOD r + b, as LLVMCodeGenerator's
+;;   GenerateDivMod does. For MOD the XOR goes to R0, q no longer being
+;;   needed. MIN DIV -1 overflows and leaves the dividend (DIV, notes 2
+;;   and 3), so it wraps; a zero divisor traps (section 8). The byte
+;;   branches cover fixed short code.
+; VaxIntegerArithmetic, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXINTEGERARITHMETIC
+	.IDENT	/d5b365c8e719dfed/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; s: SHORTINT
+VAXINTEGERARITHMETIC_S_KQ3NBGEH:
+	.BLKB	1
+; i: INTEGER
+	.ALIGN	WORD
+VAXINTEGERARITHMETIC_I_KQ3NBJ03:
+	.BLKW	1
+; j: INTEGER
+	.ALIGN	WORD
+VAXINTEGERARITHMETIC_J_KQ3NBJDM:
+	.BLKW	1
+; l: LONGINT
+	.ALIGN	LONG
+VAXINTEGERARITHMETIC_L_KQ3NBK8S:
+	.BLKL	1
+; m: LONGINT
+	.ALIGN	LONG
+VAXINTEGERARITHMETIC_M_KQ3NBKMF:
+	.BLKL	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXINTEGERARITHMETIC_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 10
+	MOVW	VAXINTEGERARITHMETIC_J_KQ3NBJDM, VAXINTEGERARITHMETIC_I_KQ3NBJ03
+; line 11
+	CVTWL	VAXINTEGERARITHMETIC_I_KQ3NBJ03, VAXINTEGERARITHMETIC_L_KQ3NBK8S
+; line 12
+	CVTBW	VAXINTEGERARITHMETIC_S_KQ3NBGEH, VAXINTEGERARITHMETIC_I_KQ3NBJ03
+; line 13
+	INCW	VAXINTEGERARITHMETIC_I_KQ3NBJ03
+; line 14
+	DECW	VAXINTEGERARITHMETIC_I_KQ3NBJ03
+; line 15
+	ADDW2	VAXINTEGERARITHMETIC_J_KQ3NBJDM, VAXINTEGERARITHMETIC_I_KQ3NBJ03
+; line 16
+	SUBW3	VAXINTEGERARITHMETIC_I_KQ3NBJ03, VAXINTEGERARITHMETIC_J_KQ3NBJDM, VAXINTEGERARITHMETIC_I_KQ3NBJ03
+; line 17
+	CVTBW	VAXINTEGERARITHMETIC_S_KQ3NBGEH, R0
+	ADDW3	VAXINTEGERARITHMETIC_J_KQ3NBJDM, R0, VAXINTEGERARITHMETIC_I_KQ3NBJ03
+; line 18
+	MULB2	VAXINTEGERARITHMETIC_S_KQ3NBGEH, VAXINTEGERARITHMETIC_S_KQ3NBGEH
+; line 19
+	MULL3	VAXINTEGERARITHMETIC_M_KQ3NBKMF, VAXINTEGERARITHMETIC_L_KQ3NBK8S, R0
+	MULW3	#10, VAXINTEGERARITHMETIC_I_KQ3NBJ03, R1
+	CVTWL	R1, R1
+	ADDL3	R1, R0, VAXINTEGERARITHMETIC_L_KQ3NBK8S
+; line 20
+	MNEGL	VAXINTEGERARITHMETIC_L_KQ3NBK8S, VAXINTEGERARITHMETIC_L_KQ3NBK8S
+; line 21
+	MNEGW	VAXINTEGERARITHMETIC_J_KQ3NBJDM, VAXINTEGERARITHMETIC_I_KQ3NBJ03
+; line 22
+	DIVW3	VAXINTEGERARITHMETIC_J_KQ3NBJDM, VAXINTEGERARITHMETIC_I_KQ3NBJ03, R0
+	MULW3	R0, VAXINTEGERARITHMETIC_J_KQ3NBJDM, R1
+	SUBW3	R1, VAXINTEGERARITHMETIC_I_KQ3NBJ03, R1
+	BEQL	L_1
+	XORW2	VAXINTEGERARITHMETIC_J_KQ3NBJDM, R1
+	BGEQ	L_1
+	DECW	R0
+L_1:
+	MOVW	R0, VAXINTEGERARITHMETIC_I_KQ3NBJ03
+; line 23
+	DIVL3	#8, VAXINTEGERARITHMETIC_L_KQ3NBK8S, R0
+	MULL3	R0, #8, R1
+	SUBL3	R1, VAXINTEGERARITHMETIC_L_KQ3NBK8S, R1
+	BEQL	L_2
+	XORL3	#8, R1, R0
+	BGEQ	L_2
+	ADDL2	#8, R1
+L_2:
+	MOVL	R1, VAXINTEGERARITHMETIC_L_KQ3NBK8S
+	RET
+
+	.END

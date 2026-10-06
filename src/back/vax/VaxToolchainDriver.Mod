@@ -10,7 +10,7 @@ MODULE VaxToolchainDriver;
      "vax-dec-vms" (decided with the user 2026-10-06): -target vax-dec-vms
      selects it, and -emit-macro32 implies it. *)
 
-  IMPORT Files, Platform, Err, SyntaxTree, VaxCodeGenerator;
+  IMPORT Files, Platform, Err, SyntaxTree, SymbolTable, VaxCodeGenerator;
 
   CONST
     triple* = "vax-dec-vms";
@@ -41,7 +41,7 @@ MODULE VaxToolchainDriver;
      could not be written, or if the generator reported an error or a
      construct it cannot lower yet (VaxCodeGenerator.unsupportedCount),
      when no file is left behind. *)
-  PROCEDURE EmitModule*(module: SyntaxTree.ModuleNode; key, outputDir: ARRAY OF CHAR;
+  PROCEDURE EmitModule*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; key, outputDir: ARRAY OF CHAR;
                         VAR path: ARRAY OF CHAR): BOOLEAN;
     VAR f: Files.File; w: Files.Rider; ok: BOOLEAN; deleteResult: INTEGER;
   BEGIN
@@ -49,7 +49,7 @@ MODULE VaxToolchainDriver;
     f := Files.New(path);
     IF f = NIL THEN RETURN FALSE END;
     Files.Set(w, f, 0);
-    ok := VaxCodeGenerator.GenerateModule(module, key, w);
+    ok := VaxCodeGenerator.GenerateModule(module, scope, key, w);
     Files.Register(f); Files.Close(f);
     IF ~ok THEN
       deleteResult := Platform.Unlink(path) (* not Files.Delete: voc's renames to a temp name *)

@@ -1,0 +1,134 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - A relation is CMPx then the branch for "false" over MOVB #1 into a
+;;   cleared byte, so the BOOLEAN is 0 or 1 (section 8); CLRB comes first
+;;   since it sets the condition codes too. Integers use the signed
+;;   branches (BGEQ, BGTR), CHAR the unsigned ones (BLSSU, BLEQU: CHAR is
+;;   0..255); = and # are BNEQ and BEQL. i # 0 is TSTW. "x" is 120.
+;; - ~q is XORB3 #1, written straight to p.
+;; - q & r: q in R0; BLBC skips r's MOVB, a fixed few bytes, so a byte
+;;   branch reaches (section 3). q OR (i <= j): the right operand is code
+;;   of any length, so BLBC branches over JMP L^L_8 to evaluate it, and
+;;   JMP L^ reaches anywhere (section 3.1). Nested, (c > d) & (q OR r)
+;;   keeps the left value in R0 while R1 holds the right.
+;; - Only R0 and R1 are used, so the mask is empty.
+; VaxBooleanChar, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXBOOLEANCHAR
+	.IDENT	/57fae61b6a80f951/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; i: INTEGER
+	.ALIGN	WORD
+VAXBOOLEANCHAR_I_SH069B9H:
+	.BLKW	1
+; j: INTEGER
+	.ALIGN	WORD
+VAXBOOLEANCHAR_J_SH069A0O:
+	.BLKW	1
+; c: CHAR
+VAXBOOLEANCHAR_C_SH06971J:
+	.BLKB	1
+; d: CHAR
+VAXBOOLEANCHAR_D_SH06995I:
+	.BLKB	1
+; p: BOOLEAN
+VAXBOOLEANCHAR_P_SH069E8M:
+	.BLKB	1
+; q: BOOLEAN
+VAXBOOLEANCHAR_Q_SH069EM9:
+	.BLKB	1
+; r: BOOLEAN
+VAXBOOLEANCHAR_R_SH069DDG:
+	.BLKB	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXBOOLEANCHAR_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 10
+	CLRB	R0
+	CMPW	VAXBOOLEANCHAR_I_SH069B9H, VAXBOOLEANCHAR_J_SH069A0O
+	BGEQ	L_1
+	MOVB	#1, R0
+L_1:
+	MOVB	R0, VAXBOOLEANCHAR_P_SH069E8M
+; line 11
+	CLRB	R0
+	TSTW	VAXBOOLEANCHAR_I_SH069B9H
+	BEQL	L_2
+	MOVB	#1, R0
+L_2:
+	MOVB	R0, VAXBOOLEANCHAR_P_SH069E8M
+; line 12
+	CLRB	R0
+	CMPB	VAXBOOLEANCHAR_C_SH06971J, VAXBOOLEANCHAR_D_SH06995I
+	BLSSU	L_3
+	MOVB	#1, R0
+L_3:
+	MOVB	R0, VAXBOOLEANCHAR_P_SH069E8M
+; line 13
+	CLRB	R0
+	CMPB	VAXBOOLEANCHAR_C_SH06971J, #120
+	BNEQ	L_4
+	MOVB	#1, R0
+L_4:
+	MOVB	R0, VAXBOOLEANCHAR_P_SH069E8M
+; line 14
+	CLRB	R0
+	CMPB	VAXBOOLEANCHAR_Q_SH069EM9, VAXBOOLEANCHAR_R_SH069DDG
+	BNEQ	L_5
+	MOVB	#1, R0
+L_5:
+	MOVB	R0, VAXBOOLEANCHAR_P_SH069E8M
+; line 15
+	XORB3	#1, VAXBOOLEANCHAR_Q_SH069EM9, VAXBOOLEANCHAR_P_SH069E8M
+; line 16
+	MOVB	VAXBOOLEANCHAR_Q_SH069EM9, R0
+	BLBC	R0, L_6
+	MOVB	VAXBOOLEANCHAR_R_SH069DDG, R0
+L_6:
+	MOVB	R0, VAXBOOLEANCHAR_P_SH069E8M
+; line 17
+	MOVB	VAXBOOLEANCHAR_Q_SH069EM9, R0
+	BLBC	R0, L_7
+	JMP	L^L_8
+L_7:
+	CLRB	R1
+	CMPW	VAXBOOLEANCHAR_I_SH069B9H, VAXBOOLEANCHAR_J_SH069A0O
+	BGTR	L_9
+	MOVB	#1, R1
+L_9:
+	MOVB	R1, R0
+L_8:
+	MOVB	R0, VAXBOOLEANCHAR_P_SH069E8M
+; line 18
+	CLRB	R0
+	CMPB	VAXBOOLEANCHAR_C_SH06971J, VAXBOOLEANCHAR_D_SH06995I
+	BLEQU	L_10
+	MOVB	#1, R0
+L_10:
+	BLBS	R0, L_11
+	JMP	L^L_12
+L_11:
+	MOVB	VAXBOOLEANCHAR_Q_SH069EM9, R1
+	BLBS	R1, L_13
+	MOVB	VAXBOOLEANCHAR_R_SH069DDG, R1
+L_13:
+	MOVB	R1, R0
+L_12:
+	MOVB	R0, VAXBOOLEANCHAR_P_SH069E8M
+	RET
+
+	.END

@@ -1,0 +1,116 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - A HUGEINT is a quadword, low longword first (section 4); its high
+;;   longword is <symbol>+4, or Rn+1 of a register pair.
+;; - A narrower integer is widened into the low longword (CVTWL, MOVL) and
+;;   the high one is its sign, ASHL #-31 (an arithmetic right shift, MACRO
+;;   9, ASH, note 3).
+;; - The VAX has no quadword add or subtract: ADDL2 then ADWC (and SUBL2
+;;   then SBWC) carry between the longwords. h := g - h cannot write h
+;;   first, so it is computed in R0/R1 and stored with MOVQ. h := h + l
+;;   widens l in R0/R1 and adds in place.
+;; - -h: MNEGL the high longword, MNEGL the low, then SBWC #0 takes the
+;;   borrow, which the low MNEGL sets when the low longword was nonzero.
+;; - A comparison: the high longwords signed (BLSS/BGTR decide, or BNEQ for
+;;   =), then the low longwords unsigned (BGEQU, BNEQ, BLSSU); TSTL against
+;;   zero. The result is a BOOLEAN byte, CLRB then MOVB #1 (section 8).
+;; - *, DIV and MOD of HUGEINT are calls to poc's runtime (section 4), not
+;;   lowered yet (vax-emit-errors).
+; VaxHugeint, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXHUGEINT
+	.IDENT	/cb7d021051492d15/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; i: INTEGER
+	.ALIGN	WORD
+VAXHUGEINT_I_D4DQPH4P:
+	.BLKW	1
+; l: LONGINT
+	.ALIGN	LONG
+VAXHUGEINT_L_D4DQPIDI:
+	.BLKL	1
+; h: HUGEINT
+	.ALIGN	LONG
+VAXHUGEINT_H_D4DQPGN6:
+	.BLKQ	1
+; g: HUGEINT
+	.ALIGN	LONG
+VAXHUGEINT_G_D4DQPLCN:
+	.BLKQ	1
+; b: BOOLEAN
+VAXHUGEINT_B_D4DQPJ8O:
+	.BLKB	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXHUGEINT_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 11
+	CVTWL	VAXHUGEINT_I_D4DQPH4P, VAXHUGEINT_H_D4DQPGN6
+	ASHL	#-31, VAXHUGEINT_H_D4DQPGN6, VAXHUGEINT_H_D4DQPGN6+4
+; line 12
+	MOVL	VAXHUGEINT_L_D4DQPIDI, VAXHUGEINT_H_D4DQPGN6
+	ASHL	#-31, VAXHUGEINT_H_D4DQPGN6, VAXHUGEINT_H_D4DQPGN6+4
+; line 13
+	ADDL2	VAXHUGEINT_G_D4DQPLCN, VAXHUGEINT_H_D4DQPGN6
+	ADWC	VAXHUGEINT_G_D4DQPLCN+4, VAXHUGEINT_H_D4DQPGN6+4
+; line 14
+	MOVQ	VAXHUGEINT_G_D4DQPLCN, R0
+	SUBL2	VAXHUGEINT_H_D4DQPGN6, R0
+	SBWC	VAXHUGEINT_H_D4DQPGN6+4, R1
+	MOVQ	R0, VAXHUGEINT_H_D4DQPGN6
+; line 15
+	MOVL	VAXHUGEINT_L_D4DQPIDI, R0
+	ASHL	#-31, R0, R1
+	ADDL2	R0, VAXHUGEINT_H_D4DQPGN6
+	ADWC	R1, VAXHUGEINT_H_D4DQPGN6+4
+; line 16
+	MNEGL	VAXHUGEINT_H_D4DQPGN6+4, VAXHUGEINT_H_D4DQPGN6+4
+	MNEGL	VAXHUGEINT_H_D4DQPGN6, VAXHUGEINT_H_D4DQPGN6
+	SBWC	#0, VAXHUGEINT_H_D4DQPGN6+4
+; line 17
+	CLRB	R0
+	CMPL	VAXHUGEINT_H_D4DQPGN6+4, VAXHUGEINT_G_D4DQPLCN+4
+	BLSS	L_1
+	BGTR	L_2
+	CMPL	VAXHUGEINT_H_D4DQPGN6, VAXHUGEINT_G_D4DQPLCN
+	BGEQU	L_2
+L_1:
+	MOVB	#1, R0
+L_2:
+	MOVB	R0, VAXHUGEINT_B_D4DQPJ8O
+; line 18
+	CLRB	R0
+	CMPL	VAXHUGEINT_H_D4DQPGN6+4, VAXHUGEINT_G_D4DQPLCN+4
+	BNEQ	L_3
+	CMPL	VAXHUGEINT_H_D4DQPGN6, VAXHUGEINT_G_D4DQPLCN
+	BNEQ	L_3
+	MOVB	#1, R0
+L_3:
+	MOVB	R0, VAXHUGEINT_B_D4DQPJ8O
+; line 19
+	CLRB	R0
+	TSTL	VAXHUGEINT_H_D4DQPGN6+4
+	BGTR	L_4
+	BLSS	L_5
+	TSTL	VAXHUGEINT_H_D4DQPGN6
+	BLSSU	L_5
+L_4:
+	MOVB	#1, R0
+L_5:
+	MOVB	R0, VAXHUGEINT_B_D4DQPJ8O
+	RET
+
+	.END

@@ -1,0 +1,97 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - A SET is a longword, element i bit i (section 4).
+;; - + is BIS, - is BIC (dst AND NOT mask, MACRO 9, BIC), / is XOR, each
+;;   written in place (BISL2 y, x). x * y is x AND NOT (NOT y): MCOML then
+;;   BICL2. With a constant, x * {1, 2} is one BICL2 of the complement,
+;;   ^XFFFFFFF9. -y is MCOML.
+;; - 3 IN x is BBC #3 on x's longword (MACRO 9, BB). i IN x first widens
+;;   i (CVTWL) and is FALSE for an element outside 0..31 (CMPL #31,
+;;   BGTRU, unsigned, so a negative one too), as on LLVM
+;;   (LLVMCodeGenerator.GenerateIn).
+;; - {i} is ASHL i, #1: the count is a byte operand (ASH cnt.rb), here
+;;   i's low byte. {i .. j, 7}: the bits from i up are ASHL i, #-1; those
+;;   above j are ASHL j, #-2, cleared by BICL2; the constant element 7 is
+;;   one BISL2 #^X00000080. An element outside 0..31 is undefined in the
+;;   report; ASHL makes 0 for a count over 32 (ASH, note 2).
+; VaxSet, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXSET
+	.IDENT	/34dd51e49a02380d/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; i: INTEGER
+	.ALIGN	WORD
+VAXSET_I_JCDAAS29:
+	.BLKW	1
+; j: INTEGER
+	.ALIGN	WORD
+VAXSET_J_JCDAAQPG:
+	.BLKW	1
+; x: SET
+	.ALIGN	LONG
+VAXSET_X_JCDAAKR6:
+	.BLKL	1
+; y: SET
+	.ALIGN	LONG
+VAXSET_Y_JCDAAL8P:
+	.BLKL	1
+; p: BOOLEAN
+VAXSET_P_JCDAAO7U:
+	.BLKB	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXSET_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 10
+	BISL2	VAXSET_Y_JCDAAL8P, VAXSET_X_JCDAAKR6
+; line 11
+	BICL2	VAXSET_Y_JCDAAL8P, VAXSET_X_JCDAAKR6
+; line 12
+	MCOML	VAXSET_Y_JCDAAL8P, R0
+	BICL2	R0, VAXSET_X_JCDAAKR6
+; line 13
+	XORL2	VAXSET_Y_JCDAAL8P, VAXSET_X_JCDAAKR6
+; line 14
+	BICL2	#^XFFFFFFF9, VAXSET_X_JCDAAKR6
+; line 15
+	MCOML	VAXSET_Y_JCDAAL8P, VAXSET_X_JCDAAKR6
+; line 16
+	CLRB	R0
+	BBC	#3, VAXSET_X_JCDAAKR6, L_1
+	MOVB	#1, R0
+L_1:
+	MOVB	R0, VAXSET_P_JCDAAO7U
+; line 17
+	CVTWL	VAXSET_I_JCDAAS29, R0
+	CLRB	R1
+	CMPL	R0, #31
+	BGTRU	L_2
+	BBC	R0, VAXSET_X_JCDAAKR6, L_2
+	MOVB	#1, R1
+L_2:
+	MOVB	R1, VAXSET_P_JCDAAO7U
+; line 18
+	ASHL	VAXSET_I_JCDAAS29, #1, R0
+	MOVL	R0, VAXSET_X_JCDAAKR6
+; line 19
+	ASHL	VAXSET_J_JCDAAQPG, #-2, R0
+	ASHL	VAXSET_I_JCDAAS29, #-1, R1
+	BICL2	R0, R1
+	BISL2	#^X00000080, R1
+	MOVL	R1, VAXSET_X_JCDAAKR6
+	RET
+
+	.END
