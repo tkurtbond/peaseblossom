@@ -1,6 +1,6 @@
 # src/back/vax
 
-Bespoke VAX/VMS 5.5-2 backend: emits MACRO-32 assembly text only.
-Assembling/linking/running is explicitly deferred (see `PLAN.md` Phase
-10). Nothing here yet, and won't be started until the LLVM backend
-(Phases 8-9) reaches full parity and self-hosting.
+The VAX/VMS 5.5-2 backend: MACRO-32 assembly text (`PLAN.md` Phase 15),
+then assembling, linking and running it on VMS (Phase 16). Nothing is here
+yet. The design, written before any code, is
+`doc/developer/vax-macro32-backend.md`.

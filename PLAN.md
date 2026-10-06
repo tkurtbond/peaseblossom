@@ -453,15 +453,19 @@ the full account - decisions, every step, what was found, testing - in
 
 ### Phase 15 — VAX/VMS MACRO-32 backend (scoped, deferred, non-executable)
 `VaxTypes.Mod`, `VaxCodeGenerator.Mod`, `VaxToolchainDriver.Mod` (stub
-only — no assemble/link/run, per the locked-in decision).
+only — no link/run, per the locked-in decision; assembling, alone, was
+allowed on 2026-10-05, below). The design, written before any code, is
+`doc/developer/vax-macro32-backend.md`.
 **Explicit scope bound** (to prevent drift): targets exactly Phase 8's
 narrow vertical-slice feature set (straight-line code, IF/WHILE/CASE,
 arrays/records) — *not* full GC/dispatch parity. "Done" means
 hand-reviewed `.mar` output checked into
 `test/conformance/*/expected-vax.mar`-style fixtures with a reviewer
-rationale comment, not an automated pass/fail. Assembling, linking and
-running the output - under SIMH-hosted VMS 5.5-2, or real hardware - is
-Phase 16's, which also lifts the vertical-slice bound above.
+rationale comment, **each also assembled with `MACRO/OBJECT`** on the
+development system, a SIMH VAX running VMS 5.5-2H4 (decided with the user
+2026-10-05; the design's §2 and §10) - no linking or running. Linking and
+running the output is Phase 16's, which also lifts the vertical-slice bound
+above.
 
 **Symbol-name mangling is required, not optional**: VAX MACRO-32 symbols
 are limited to **31 characters**. This project's own naming convention
@@ -490,7 +494,7 @@ VAX/VMS 5.5-2 (a SIMH-hosted VAX, or real hardware), with just enough
 runtime to compile poc itself, and poc - built for VAX/VMS - then compiles
 its own source *on* VAX/VMS: the VMS counterpart of Phase 10's
 self-hosting. This lifts two limits of earlier phases, which no longer
-apply once it starts: the locked-in "assembling/linking/running is out of
+apply once it starts: the locked-in "linking/running is out of
 scope" (Phase 15 stays what it was - hand-reviewed and non-executable -
 and this phase is what runs it), and Phase 15's own scope bound to Phase
 8's vertical slice, since poc's source uses far more than that.
@@ -502,8 +506,10 @@ release; DECnet, DECwindows, layered products. Phase 17 owns shareable
 images and the native VMS libraries; this phase links objects and, at
 most, object libraries.
 
-1. **A working VAX/VMS environment and a way to drive it.** Settle what
-   runs: which SIMH VAX model VMS 5.5-2 boots on, and where the installation
+1. **A working VAX/VMS environment and a way to drive it.** Partly
+   brought forward into Phase 15 (2026-10-05): the development system is a
+   SIMH `microvax3900` running VMS 5.5-2H4, and Phase 15 copies `.mar`
+   files to it to assemble them. Settle what runs: which SIMH VAX model VMS 5.5-2 boots on, and where the installation
    media and licences come from (a hobbyist licence - recorded, not assumed).
    Confirm on the guest what the base kit provides (`MACRO`, `LINK`,
    `LIBRARY`, `DCL`, the RTLs) and which layered tools poc must not depend

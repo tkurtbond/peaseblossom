@@ -30,6 +30,7 @@ build and install it.
 | `developer/llvm-toolchain.md` | How poc drives clang, and what that requires of each host. |
 | `developer/nested-procedures.md` | How nested procedures are lowered (lambda lifting by reference). |
 | `developer/record-and-array-literals.md` | The design of record and array literals and structured constants (Phase 14). |
+| `developer/vax-macro32-backend.md` | The design of the VAX/VMS MACRO-32 backend (Phase 15): a draft, written before any code. |
 | `developer/voc-options.md` | Each of voc's command-line options, and what poc does with it. |
 | `developer/collector-performance.md` | How fast the collector is, what changed it, and how to measure it again. |
 
