@@ -41,7 +41,18 @@ terminology"):
 installable` builds what `make install` copies (Stage 2 and poc-rtl's four
 copies), `make seed` the bootstrap seed (`build/seed`, section 7), and `make
 clean` removes `build/` and what the fixtures left (`clean-build`,
-`clean-tests`). voc is
+`clean-tests`).
+
+`make doc` (or `doc-html`, `doc-pdf`) makes the User's Guide, the Reference
+Guide, poc(1) and the documents in `doc/developer/` as HTML and PDF, in
+`build/doc/html` and `build/doc/pdf`. It needs pandoc (from GitHub's
+Markdown, so they read as GitHub shows them), xelatex with the DejaVu fonts
+(`DOC_MAIN_FONT`, `DOC_MONO_FONT`), mandoc for poc(1)'s HTML and groff for
+its PDF. The PDFs are US Letter with 1-inch margins; `tools/doc/pdf.lua`
+gives a wide table's columns widths, breaks code lines longer than a line
+(after a `↪`), and lets long names and paths in code break. `make install`
+installs these when they are there (section 7 puts them in the tarball).
+voc is
 found as `INSTALL.md` says (`VOC_BIN_DIR`). poc is built with voc's `-OC`
 and stays at `-OC` in every stage, because it needs an 8-byte `LONGINT`.
 
@@ -278,7 +289,9 @@ triple (`x86_64-unknown-netbsd11.0`) with `${POC_TRIPLE}`. Install with
        make dist-sign            # .asc, with gpg's default key (GPG_KEY=... for another)
 
    `make dist` refuses a tree that differs from HEAD, or a Stage 2 built
-   from another commit. Each `make dist` writes a new tarball (tar and
+   from another commit. It runs `make doc` (section 2), and puts the HTML
+   and PDF documents in the tarball, as `doc/html` and `doc/pdf`, so that
+   a package needs no document tools. Each `make dist` writes a new tarball (tar and
    gzip record times), so run it once, through `make distcheck`, and sign
    and publish that one. A release is signed: the tarball, the tag, the RPM
    and the list of sums, each with the maintainer's key (each asks for its

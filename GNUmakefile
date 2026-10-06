@@ -62,7 +62,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install seed check-seed dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -216,7 +216,8 @@ check-strict: $(STAGE1_BIN)
 # which replaces an older copy and leaves any other library alone. MANDIR
 # follows each system's hier(7): share/man on Linux and FreeBSD, man on
 # OpenBSD and NetBSD (pkgsrc). poc(1) goes in MANDIR/man1, the guides in
-# DOCDIR.
+# DOCDIR, and the HTML and PDF documents (make doc, below) in DOCDIR/html
+# and DOCDIR/pdf.
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 LIBDIR ?= $(PREFIX)/lib
@@ -261,6 +262,16 @@ install: $(STAGE2_BIN) $(INSTALL_RTL)
 	    -output-dir $(DESTDIR)$(LIBDIR)/poc -install-library poc-rtl >/dev/null || exit 1; \
 	done
 	install -m 644 $(DOCS) $(DESTDIR)$(DOCDIR)
+	@for kind in html pdf; do \
+	  if [ -d $(DOC_DIR)/$$kind ]; then from=$(DOC_DIR)/$$kind; \
+	  elif [ -d doc/$$kind ]; then from=doc/$$kind; \
+	  else echo "note: no $$kind documents to install (make doc makes them)"; continue; fi; \
+	  echo "install the $$kind documents from $$from in $(DESTDIR)$(DOCDIR)/$$kind"; \
+	  install -d $(DESTDIR)$(DOCDIR)/$$kind/developer || exit 1; \
+	  for name in $(DOC_NAMES); do \
+	    install -m 644 $$from/$$name.$$kind $(DESTDIR)$(DOCDIR)/$$kind/$$name.$$kind || exit 1; \
+	  done; \
+	done
 
 # Removes what install wrote: poc, poc-rtl's files (those its manifests
 # name), the docs; then each directory left empty. Other libraries
@@ -280,6 +291,10 @@ uninstall:
 	done
 	-rmdir $(DESTDIR)$(LIBDIR)/poc/$(HOST_TRIPLE) $(DESTDIR)$(LIBDIR)/poc 2>/dev/null
 	cd $(DESTDIR)$(DOCDIR) 2>/dev/null && rm -f $(notdir $(DOCS))
+	-cd $(DESTDIR)$(DOCDIR) 2>/dev/null && for kind in html pdf; do \
+	  for name in $(DOC_NAMES); do rm -f $$kind/$$name.$$kind; done; \
+	  rmdir $$kind/developer $$kind 2>/dev/null; \
+	done
 	-rmdir $(DESTDIR)$(DOCDIR) $(DESTDIR)$(MANDIR)/man1 $(DESTDIR)$(MANDIR) 2>/dev/null
 
 # Installs into a scratch DESTDIR outside the source tree and runs
@@ -324,9 +339,56 @@ check-seed: seed $(STAGE1_BIN)
 	if [ $$status = 0 ]; then echo "check-seed: Stage 1 built by the seed's poc is Stage 1 built by voc's"; fi; \
 	exit $$status
 
+# The documents as HTML and PDF, in build/doc/html and build/doc/pdf: the
+# User's Guide, the Reference Guide, poc(1), and doc/developer's in
+# developer/. pandoc makes the Markdown ones from GitHub's Markdown, so they
+# read as GitHub shows them; mandoc makes poc(1)'s HTML and groff its PDF.
+# Each PDF is US Letter with 1-inch margins; pandoc's go through xelatex
+# and tools/doc/pdf.lua, which keeps wide tables, long code lines and long
+# names within them. make dist puts the documents in the tarball, as doc/
+# html and doc/pdf, so that a package needs none of these tools; install
+# installs those from build/doc, else from doc/, else says there are none.
+PANDOC ?= pandoc
+MANDOC ?= mandoc
+GROFF ?= groff
+DOC_PDF_ENGINE ?= xelatex
+DOC_MAIN_FONT ?= DejaVu Serif
+DOC_MONO_FONT ?= DejaVu Sans Mono
+DOC_DIR := $(BUILD_DIR)/doc
+DOC_MARKDOWN := doc/users-guide.md doc/reference-guide.md $(sort $(wildcard doc/developer/*.md))
+DOC_NAMES := $(patsubst doc/%.md,%,$(DOC_MARKDOWN)) poc.1
+DOC_HTML := $(DOC_NAMES:%=$(DOC_DIR)/html/%.html)
+DOC_PDF := $(DOC_NAMES:%=$(DOC_DIR)/pdf/%.pdf)
+# a table of contents, unless the document has its own (## Contents)
+PANDOC_FLAGS = -f gfm --shift-heading-level-by=-1 -s $$(grep -q '^\#\# Contents' $< || echo --toc)
+
+doc: doc-html doc-pdf
+doc-html: $(DOC_HTML)
+doc-pdf: $(DOC_PDF)
+
+$(DOC_DIR)/html/poc.1.html: doc/poc.1
+	@mkdir -p $(@D)
+	$(MANDOC) -T html $< > $@.tmp && mv $@.tmp $@
+
+$(DOC_DIR)/pdf/poc.1.pdf: doc/poc.1
+	@mkdir -p $(@D)
+	$(GROFF) -mdoc -Tpdf -P-pletter $< > $@.tmp && mv $@.tmp $@
+
+$(DOC_DIR)/html/%.html: doc/%.md
+	@mkdir -p $(@D)
+	$(PANDOC) $(PANDOC_FLAGS) -t html5 $< -o $@
+
+$(DOC_DIR)/pdf/%.pdf: doc/%.md tools/doc/pdf.lua tools/doc/pdf-header.tex
+	@mkdir -p $(@D)
+	$(PANDOC) $(PANDOC_FLAGS) --pdf-engine=$(DOC_PDF_ENGINE) \
+	  -H tools/doc/pdf-header.tex --lua-filter=tools/doc/pdf.lua \
+	  -V papersize=letter -V geometry:margin=1in \
+	  -V mainfont="$(DOC_MAIN_FONT)" -V monofont="$(DOC_MONO_FONT)" $< -o $@
+
 # Phase 13 step 5: make dist writes build/dist/peaseblossom-<version>.tar.gz
 # and its SHA-256 sum: the tracked files of HEAD (git archive, so no build
-# products or test outputs), the bootstrap seed as seed/, and COMMIT, the
+# products or test outputs), the bootstrap seed as seed/, the documents as
+# HTML and PDF in doc/html and doc/pdf (make doc), and COMMIT, the
 # commit, which tools/build-info reads where there is no .git. Refused
 # unless the tracked files are HEAD's and the Stage 2 poc that writes the
 # seed was built from them (its -version names HEAD, not -dirty), so the
@@ -338,7 +400,7 @@ DIST_NAME := peaseblossom-$(VERSION)
 DIST_DIR := $(BUILD_DIR)/dist
 DIST_TARBALL := $(DIST_DIR)/$(DIST_NAME).tar.gz
 
-dist: $(STAGE2_BIN)
+dist: $(STAGE2_BIN) doc
 	@git diff --quiet HEAD -- || { echo "dist: the tracked files differ from HEAD; commit first"; exit 1; }
 	@head=$$(git rev-parse --short HEAD); \
 	built=$$($(STAGE2_BIN) -version | sed -n '1s/^poc [^ ]* (\(.*\))$$/\1/p'); \
@@ -348,6 +410,7 @@ dist: $(STAGE2_BIN)
 	rm -rf $(DIST_DIR); mkdir -p $(DIST_DIR)
 	git archive --prefix=$(DIST_NAME)/ HEAD | tar -xf - -C $(DIST_DIR)
 	git rev-parse --short HEAD > $(DIST_DIR)/$(DIST_NAME)/COMMIT
+	cp -R $(DOC_DIR)/html $(DOC_DIR)/pdf $(DIST_DIR)/$(DIST_NAME)/doc/
 	SEED_DIR=$(abspath $(DIST_DIR)/$(DIST_NAME)/seed) tools/bootstrap/make-seed
 	cd $(DIST_DIR) && tar -cf - $(DIST_NAME) | gzip -9 > $(DIST_NAME).tar.gz
 	cd $(DIST_DIR) && if command -v sha256sum >/dev/null; then sha256sum $(DIST_NAME).tar.gz; \

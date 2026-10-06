@@ -154,6 +154,11 @@ on the BSDs their plain `clang` (19 on OpenBSD and FreeBSD, 21 on NetBSD).
 - `src/driver/Version.Mod` holds the version, `tools/build-info` the
   commit. `make install`/`uninstall`; `make check-install`, `check-opt2`
   and `check-lto` are not part of `make check`.
+- `make doc` writes the guides, poc(1) and `doc/developer/` as HTML and
+  PDF in `build/doc` (pandoc from GFM, xelatex, `tools/doc/pdf.lua`;
+  mandoc and groff for poc(1)); `make dist` puts them in the tarball. A
+  `<placeholder>` outside backquotes is lost as HTML, on GitHub too:
+  write `\<placeholder\>`.
 - `-opt` defaults to 2, but 0 for 32-bit x86 (x87 reals); `-O2`/`-OC` are
   size models, not optimization levels.
 - `llc` is a debugging aid only (`llc <file>.ll -o <file>.s`).

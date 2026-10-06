@@ -1,7 +1,9 @@
 # Peaseblossom's documents
 
 What each document is for and who it is for. Using poc needs only the
-first group; the rest is for working on poc.
+first group; the rest is for working on poc. `make doc` makes the first
+two groups as HTML and PDF, in `build/doc`; a release tarball has them in
+`html/` and `pdf/` here, and `make install` installs them.
 
 ## For users: writing programs with poc
 
