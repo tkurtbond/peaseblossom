@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - The product nests nine deep and each factor needs a register, but
 ;;   only R0-R5 are for expressions (section 7). When none is free, the
 ;;   oldest in use is moved below FP - (a+1) to -4(FP), (a+2) to -8(FP),

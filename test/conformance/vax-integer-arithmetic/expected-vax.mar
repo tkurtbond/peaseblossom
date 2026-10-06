@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - Arithmetic is at the operation's type's width (section 8, decided
 ;;   2026-10-06): ADDW, SUBW, MULB, MULW, MULL. The entry mask's IV bit is
 ;;   clear (^M<>), so overflow sets V and wraps at that width without a

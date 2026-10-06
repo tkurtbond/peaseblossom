@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - A SET is a longword, element i bit i (section 4).
 ;; - + is BIS, - is BIC (dst AND NOT mask, MACRO 9, BIC), / is XOR, each
 ;;   written in place (BISL2 y, x). x * y is x AND NOT (NOT y): MCOML then
