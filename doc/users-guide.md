@@ -621,17 +621,17 @@ from voc's, its source's first comment says how.
 
 Each example below is in `doc/examples/runtime`.
 
-**The arguments** (`Modules`):
+**The arguments** (`Args`):
 
 <!-- example: runtime/Echo.Mod -->
 ```
 MODULE Echo;
-  (* The program's arguments, from Modules *)
-  IMPORT Modules, Out;
+  (* The program's arguments, from Args *)
+  IMPORT Args, Out;
   VAR i: INTEGER; arg: ARRAY 256 OF CHAR;
 BEGIN
-  FOR i := 1 TO Modules.ArgCount - 1 DO
-    Modules.GetArg(i, arg); Out.Int(i, 0); Out.String(": "); Out.String(arg); Out.Ln
+  FOR i := 1 TO Args.argc - 1 DO
+    Args.Get(i, arg); Out.Int(i, 0); Out.String(": "); Out.String(arg); Out.Ln
   END
 END Echo.
 ```
