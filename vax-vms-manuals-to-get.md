@@ -102,6 +102,19 @@ Directory: `https://www.bitsavers.org/pdf/dec/vax/vms/5.5/`
 
 ## Priority 3 - not in the 5.5 directory, so the newest release that has them (all downloaded)
 
+These are not stand-ins. Table 6 of the 5.5 *Overview of VMS
+Documentation* (`AA-LA95D`, "Order Numbers for Manuals in the Programming
+Subkit") and its tables for the other subkits give, for the 5.5 kit, the
+same order number and revision letter as every manual in this section,
+the 5.4 ones and the 5.0 ones: DEC shipped them unrevised with
+5.5 (the Linker is still `AA-LA62A`, LIB$ `AA-LA76A`, RMS `AA-LA83A`). So
+each is the 5.5 documentation set's own edition; check the 5.5 and 5.5-2
+release notes for what changed after it was printed. A search of the
+Internet Archive on 2026-10-05 also found no later revision (`AA-LA62B`,
+`AA-LA76B`, `AA-LA83B` and the like), and its undated "VMS Linker
+Utility Manual" and "VMS Record Management Services Reference Manual" are
+the same `AA-LA62A` and `AA-LA83A`.
+
 **5.4** (`https://www.bitsavers.org/pdf/dec/vax/vms/5.4/`):
 
 | File | Why |
@@ -163,10 +176,6 @@ documented in Section 2.5 of the Introduction to System Routines".
 
 Not on the listings looked at so far, so the location is unknown:
 
-- A **5.5-era Linker manual**, **LIB$ manual** and **RMS reference** - only
-  5.0 copies are on bitsavers; `5.1`-`5.3` have none (checked 2026-09-26
-  for the Linker, 2026-10-05 for every programming manual). The Internet
-  Archive is still to be checked.
 - The **VMS Programming Concepts** volumes (AST delivery in prose, the
   `$SETAST` rules) at a 5.x release - only the 2005 volume is held locally.
 - The **object language** reference for VMS 5.5-2 (record formats for the
