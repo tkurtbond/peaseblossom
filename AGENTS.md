@@ -420,7 +420,8 @@ over a copy an older poc wrote; tag `v0.3.1`). Libraries that record
 their link arguments, C++ parts, a complete `-help`, the documents as
 HTML and PDF, and a fix were released as **Peaseblossom 0.4.0 on
 2026-10-06** (tag `v0.4.0`; the record is in `PLAN.md`, "Peaseblossom
-0.4.0").
+0.4.0"), and **0.4.1** followed the same day with one fix (`ORD` of a
+`SET` under `-OC`; tag `v0.4.1`).
 Phase 15, the VAX/VMS MACRO-32 backend, is next; 15-18 are the VAX/VMS
 work, 19 further extensions, 20 voc's library modules. Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug

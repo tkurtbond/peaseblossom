@@ -1025,6 +1025,22 @@ made as `doc/developer/DEVELOPER.md` section 7 says:
   with `--define`, as atla has no `~/.rpmmacros`), gathered by
   `tools/release-files` and attached to the release.
 
+**Peaseblossom 0.4.1** followed the same day, with the fix of `3f5e0fa`
+("Ongoing bug fixing" 5): the user's FLTK binding found that `ORD` of a
+`SET` did not compile under `-OC`. It was made the same way:
+
+- **The version** was set in `bdfd3d2`, after the same four-host check
+  passed (348 fixtures at each stage). rackhir passed `bdfd3d2`.
+- **The tarball** came from `make distcheck` (SHA-256 `70f7377d...`,
+  4941268 bytes). It is signed, with the signed tag `v0.4.1`.
+- **Each package** was built, checked and linted on its system (packing
+  lists unchanged), installed as root, checked with `check.sh` against
+  the installed poc, and removed with nothing left. On the BSDs, Claude
+  did the install and removal in the user's root shells in tmux (windows
+  2-4), at the user's word, and ran `check.sh` as the user over ssh.
+  `mock` built and checked the RPM, and on atla 0.4.1 replaces 0.4.0.
+- **The RPMs and `SHA256SUMS`** were signed and attached to the release.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
