@@ -9,8 +9,10 @@ releases are context only.
 
 Save what is fetched in `~/Reference/Computer/OS/VMS/`, keeping the original
 file name (it carries the DEC order number and the date). This document is
-the to-do list. Downloaded so far: `AA-LA66B` (the calling standard) and
-`AA-LA62A` (the Linker, with the object language), 2026-09-26.
+the to-do list. Downloaded: `AA-LA66B` (the calling standard) and
+`AA-LA62A` (the Linker, with the object language), 2026-09-26; **every
+file in Priorities 1-3 below**, the MMS guide `AA-P119E` and DEC STD 032,
+2026-10-05. What remains is under "Still to find".
 
 ## Status of the attempt
 
@@ -31,14 +33,27 @@ the to-do list. Downloaded so far: `AA-LA66B` (the calling standard) and
   (`*-layout.text`; the scans' OCR has character errors). The `5.1`-`5.3`
   directories were checked for a newer Linker manual: they have none, nor
   any calling-standard or object-language document.
+- 2026-10-05: the other 31 files fetched the same way (the last 19 into a
+  staging directory first, then moved here with `mv -n`), and every one
+  checked with `file` and `pdfinfo` (all PDFs, page counts as expected).
+  Also fetched:
+  `AA-P119E-TE_Guide_to_VAX_DEC_Module_Management_System_199007.pdf` (from
+  `vms/layered_product/MMS/`; newer than `AA-P119D`) and
+  `EL-00032-00-decStd32_Jan90.pdf`, DEC STD 032, the VAX Architecture
+  Standard (from `https://www.bitsavers.org/pdf/dec/vax/archSpec/`; saved in
+  `~/Reference/Computer/Systems/VAX/`). Findings:
+  - The `5.1`, `5.2` and `5.3` directories have only release notes, new
+    features, installation and system-management manuals - no programming
+    manual - so the 5.0 copies in Priority 3 are the newest on bitsavers.
+  - `vms/SPD/` has only 5.1 SPDs; the 5.5 SPD is the one in `vms/5.5/`.
+  - `vms/6.0/` has only installation manuals.
+  - There is no standalone calling standard anywhere under `vax/vms`.
 - The file names below were transcribed from the bitsavers directory
   listings (`.../vms/5.5/`, `.../vms/5.4/`, `.../vms/5.0/`); confirm each on
   download.
-- Not yet looked at: the `5.1`, `5.2` and `5.3` directories (a newer copy of
-  a manual listed only under 5.0 may be there - the Linker, LIB$, STR$, SMG$
-  and RMS manuals in particular), and the layered-product directories
-  (`layered_product`, `gks`, etc.) for VAX MACRO, VAX C and VAX Pascal
-  documentation at the versions 5.5-2's SPD lists.
+- Not yet looked at: the layered-product directories (`layered_product`
+  other than `MMS`, `gks`, etc.) for VAX C and VAX Pascal documentation at
+  the versions 5.5-2's SPD lists.
 
 ## What we already have, by release
 
@@ -51,12 +66,12 @@ and whether they are safe for 5.5-2 facts:
 | VMS 5.0 (April 1988) | `AA-LA89A` VAX MACRO and Instruction Set, `AA-LA81A` FDL, `AA-LA65A` SUMSLP, `AA-LA15A` DSR | Yes, with the release notes checked; MACRO 5.4 (below) supersedes the first |
 | VMS 5.2 (June 1989) | `AA-LA40B` Guide to VMS System Security | Yes |
 | VAX languages of the period | VAX C 3.0 guide (`AA-L370D`, Jan 1989), VAX C RTL (`AI-JP84A`, Mar 1987), VAX FORTRAN (`AA-D034E`/`AA-DO35E`, Jun 1988) | Probably - check the versions the 5.5-2 SPD lists |
-| DEC MMS | `AA-P119B` (2.0, 1984), `AA-P119D` (May 1989) | The second; check which MMS version was current for 5.5-2 |
-| VAX architecture | `EK-VAXAR-RM-003` Architecture Reference Manual, `DEC_VAX_Architecture_Handbook`, `VAX_archHbkVol1_1977` | Architecture, not OS - fine, but the 1977 handbook predates the final architecture |
+| DEC MMS | `AA-P119B` (2.0, 1984), `AA-P119D` (May 1989), `AA-P119E` (July 1990) | The last; check which MMS version was current for 5.5-2 |
+| VAX architecture | `EL-00032-00` DEC STD 032 (January 1990), `EK-VAXAR-RM-003` Architecture Reference Manual, `DEC_VAX_Architecture_Handbook`, `VAX_archHbkVol1_1977` | Architecture, not OS - fine, but the 1977 handbook predates the final architecture |
 | Handbooks | `VMS_Language_and_Tools_Handbook_1985`, `VMS_System_Software_Handbook_1985`, `VAX_Software_Handbook_1982` | Background only (VMS 4.x and earlier) |
 | **Later than 5.5-2** | `AA-PV5RA` OpenVMS VAX 6.0 security guide (1993); `OVMS_PROG_ENVIRON.PDF` (March 1994, OpenVMS AXP 1.5 / VAX 6.0); `OpenVMS_RMS_RTL_Library.pdf` (June 2002, 7.3); `HP OpenVMS Programming Concepts Volume II` (2005); `guide-to-openvms-file-applications.pdf` and the `VSI/` and `HPE_*` files (2005-2019, Alpha/Itanium) | **No for facts** - may explain a concept (ASTs, in the 2005 volume) but every detail must be re-checked against a 5.5 manual |
 
-## Priority 1 - defines the target
+## Priority 1 - defines the target (all downloaded)
 
 Directory: `https://www.bitsavers.org/pdf/dec/vax/vms/5.5/`
 
@@ -76,7 +91,7 @@ Supplement, `AA-NG61D` Upgrade and Installation, `AA-NY74C` Upgrade
 supplement for VAXstation 3100/4000 and MicroVAX 3100, and the 5.5-2H4
 release notes and cover letter (a later hardware release - not 5.5-2 itself).
 
-## Priority 2 - the 5.5 system-services manuals (Phase 16 step 4; Phase 17 steps 4-6)
+## Priority 2 - the 5.5 system-services manuals (Phase 16 step 4; Phase 17 steps 4-6) (all downloaded)
 
 Directory: `https://www.bitsavers.org/pdf/dec/vax/vms/5.5/`
 
@@ -85,7 +100,7 @@ Directory: `https://www.bitsavers.org/pdf/dec/vax/vms/5.5/`
 | `AA-LA69B-TE_VMS_5.5_System_Services_Reference_Manual_199111.pdf` | `$QIO`, `$SETIMR`, `$DCLAST`, `$SETAST`, `$SETEF`, `$WAITFR`, `$DCLEXH`, `$CRMPSC` ...: the AST and asynchrony design (Phase 17 step 6) and the runtime's memory and I/O calls |
 | `AA-LA68B-TE_Introduction_to_VMS_5.5_System_Services_199111.pdf` | The concepts behind them: AST delivery rules, access modes, event flags |
 
-## Priority 3 - not in the 5.5 directory, so the newest release that has them
+## Priority 3 - not in the 5.5 directory, so the newest release that has them (all downloaded)
 
 **5.4** (`https://www.bitsavers.org/pdf/dec/vax/vms/5.4/`):
 
@@ -99,7 +114,7 @@ Directory: `https://www.bitsavers.org/pdf/dec/vax/vms/5.5/`
 | `AA-PBK5A-TE_VMS_5.4_DCL_Dictionary_Part_1_199006.pdf` and `AA-PBK6A-TE_VMS_5.4_DCL_Dictionary_Part_2_199006.pdf` | `MACRO`, `LINK`, `LIBRARY`, `INSTALL`, `RUN`, `DEFINE`, `SET` - every command the toolchain driver issues (Phase 16 step 2) |
 
 **5.0** (`https://www.bitsavers.org/pdf/dec/vax/vms/5.0/`) - the only release listed
-for these; check `5.1`-`5.3` for newer copies first:
+for these; `5.1`-`5.3` have no newer copies (checked 2026-10-05):
 
 | File | Why |
 |---|---|
@@ -129,10 +144,13 @@ Not on the listings looked at so far, so the location is unknown:
   document (it is described in the system-routines and architecture manuals,
   but the standard itself is the authority for Phase 16 step 3b). Chapter 2
   of `AA-LA66B` (downloaded) describes it at length; a standalone copy is
-  not on bitsavers' `vax/vms` listings.
+  not on bitsavers' `vax/vms` listings (all of them checked 2026-10-05).
+  `AA-LA70A` (Introduction to the RTL) and `AA-LA58A` (Modular Procedures)
+  also cover it from the caller's side.
 - A **5.5-era Linker manual**, **LIB$ manual** and **RMS reference** - only
-  5.0 copies were listed, and `5.1`-`5.3` have none (checked 2026-09-26
-  for the Linker). The Internet Archive is still to be checked.
+  5.0 copies are on bitsavers; `5.1`-`5.3` have none (checked 2026-09-26
+  for the Linker, 2026-10-05 for every programming manual). The Internet
+  Archive is still to be checked.
 - The **VMS Programming Concepts** volumes (AST delivery in prose, the
   `$SETAST` rules) at a 5.x release - only the 2005 volume is held locally.
 - The **object language** reference for VMS 5.5-2 (record formats for the
@@ -142,7 +160,8 @@ Not on the listings looked at so far, so the location is unknown:
   release notes. Still wanted: the `ANALYZE/OBJECT` description; needed by Phase 18 step 1 before anything is
   designed. Also the **VAX instruction encoding** tables (opcode and
   operand-specifier formats), which the architecture reference and the
-  MACRO manual carry, for Phase 18 step 3.
+  MACRO manual carry, for Phase 18 step 3: now held in DEC STD 032 and
+  the 5.4 MACRO manual (`AA-LA89B`).
 - **VAX MACRO** and **DEC MMS** release notes for the versions bundled or
   supported with 5.5-2 (the SPD will say which).
 - Anything the 5.5-2 SPD names as required for a self-hosted build that the
