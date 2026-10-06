@@ -370,7 +370,12 @@ A module's LLVM IR.
 .It Pa Module.o
 A module's object.
 .It Pa Module.c
-A module's part in C, compiled and linked with it.
+A module's part in C, beside its source, compiled and linked with it.
+.It Pa Module.c.o
+The object of a module's part in C, beside the module's own object; it
+goes wherever that object goes: into the program, a library, or what
+.Fl compile
+leaves.
 .It Pa ../lib/poc/ Ns Ar triple Ns Pa / Ns Ar model Ns Pa /
 The runtime library,
 .Li poc-rtl ,
