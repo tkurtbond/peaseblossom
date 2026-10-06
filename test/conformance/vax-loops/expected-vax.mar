@@ -1,0 +1,108 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - WHILE tests at the head (L_1), jumping out (L_2) when the condition
+;;   is FALSE, and its body ends in JMP L^ back; the & leaves when either
+;;   side is FALSE (section 8's conditions). i := i + 1 is INCW.
+;; - REPEAT's body comes first; UNTIL i <= 0 is TSTW (a compare with
+;;   zero) and BLEQ to stay out, else JMP L^ back to the head (L_5).
+;; - LOOP is a head label and JMP L^ back at its end; each EXIT is JMP L^
+;;   to the end of the innermost LOOP: the outer one's (L_8) from its IF,
+;;   the inner one's (L_12) from the IF inside the WHILE and after it.
+;;   The JMP L^L_11 after the inner EXIT is LOOP's own jump back, never
+;;   reached, as the source says.
+;; - Every jump to a statement's label is JMP L^ (section 3); only the
+;;   short branches over them are byte branches.
+; VaxLoops, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXLOOPS
+	.IDENT	/121c530e979510f9/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; i: INTEGER
+	.ALIGN	WORD
+VAXLOOPS_I_P63MJO6M:
+	.BLKW	1
+; n: INTEGER
+	.ALIGN	WORD
+VAXLOOPS_N_P63MJPFF:
+	.BLKW	1
+; done: BOOLEAN
+VAXLOOPS_DONE_E069NPR7:
+	.BLKB	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXLOOPS_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 9
+L_1:
+	CMPW	VAXLOOPS_I_P63MJO6M, VAXLOOPS_N_P63MJPFF
+	BLSS	L_3
+	JMP	L^L_2
+L_3:
+	BLBC	VAXLOOPS_DONE_E069NPR7, L_4
+	JMP	L^L_2
+L_4:
+; line 9
+	INCW	VAXLOOPS_I_P63MJO6M
+	JMP	L^L_1
+L_2:
+; line 10
+L_5:
+; line 10
+	DECW	VAXLOOPS_I_P63MJO6M
+	TSTW	VAXLOOPS_I_P63MJO6M
+	BLEQ	L_6
+	JMP	L^L_5
+L_6:
+; line 11
+L_7:
+; line 12
+	INCW	VAXLOOPS_I_P63MJO6M
+; line 13
+	CMPW	VAXLOOPS_I_P63MJO6M, #10
+	BEQL	L_10
+	JMP	L^L_9
+L_10:
+; line 13
+	JMP	L^L_8
+L_9:
+; line 14
+L_11:
+; line 15
+L_13:
+	TSTW	VAXLOOPS_N_P63MJPFF
+	BGTR	L_15
+	JMP	L^L_14
+L_15:
+; line 16
+	BLBS	VAXLOOPS_DONE_E069NPR7, L_17
+	JMP	L^L_16
+L_17:
+; line 16
+	JMP	L^L_12
+L_16:
+; line 17
+	DECW	VAXLOOPS_N_P63MJPFF
+	JMP	L^L_13
+L_14:
+; line 19
+	JMP	L^L_12
+	JMP	L^L_11
+L_12:
+	JMP	L^L_7
+L_8:
+	RET
+
+	.END

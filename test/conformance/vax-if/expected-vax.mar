@@ -1,0 +1,117 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - A condition jumps without making a BOOLEAN value (section 8): a
+;;   relation is CMPx and a byte branch for staying over JMP L^ to the
+;;   next branch (section 3), so no body is too long to jump over; i < j
+;;   is BLSS (signed), c >= "a" BGEQU (CHAR unsigned, as on LLVM).
+;; - A BOOLEAN variable is tested by its low bit: p is BLBS to stay in
+;;   the THEN branch, else the jump to ELSE.
+;; - (i = j) & p OR ~q: the OR leaves for its body as soon as one side is
+;;   TRUE (L_8); the & leaves for q's test when i # j (L_9) or p is
+;;   FALSE; ~q is q tested the other way, BLBC staying, so a TRUE q jumps
+;;   to the ELSIF (L_7). ~(p OR q) is p and q each jumping to the ELSE
+;;   when TRUE.
+;; - Each body ends in JMP L^ to the end (L_6) but the last, which falls
+;;   through; an IF without ELSE jumps to the end itself (L_1). The IF's
+;;   and each ELSIF's line is commented.
+; VaxIf, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXIF
+	.IDENT	/a2d381635babf069/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; i: INTEGER
+	.ALIGN	WORD
+VAXIF_I_7U1L18FM:
+	.BLKW	1
+; j: INTEGER
+	.ALIGN	WORD
+VAXIF_J_7U1L1823:
+	.BLKW	1
+; p: BOOLEAN
+VAXIF_P_7U1L15GH:
+	.BLKB	1
+; q: BOOLEAN
+VAXIF_Q_7U1L152U:
+	.BLKB	1
+; c: CHAR
+VAXIF_C_7U1L1B18:
+	.BLKB	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXIF_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 10
+	CMPW	VAXIF_I_7U1L18FM, VAXIF_J_7U1L1823
+	BLSS	L_2
+	JMP	L^L_1
+L_2:
+; line 10
+	MOVW	#1, VAXIF_I_7U1L18FM
+L_1:
+; line 11
+	BLBS	VAXIF_P_7U1L15GH, L_5
+	JMP	L^L_4
+L_5:
+; line 11
+	MOVW	#2, VAXIF_I_7U1L18FM
+	JMP	L^L_3
+L_4:
+; line 11
+	MOVW	#3, VAXIF_I_7U1L18FM
+L_3:
+; line 12
+	CMPW	VAXIF_I_7U1L18FM, VAXIF_J_7U1L1823
+	BEQL	L_10
+	JMP	L^L_9
+L_10:
+	BLBC	VAXIF_P_7U1L15GH, L_11
+	JMP	L^L_8
+L_11:
+L_9:
+	BLBC	VAXIF_Q_7U1L152U, L_12
+	JMP	L^L_7
+L_12:
+L_8:
+; line 13
+	MOVW	#4, VAXIF_I_7U1L18FM
+	JMP	L^L_6
+L_7:
+; line 14
+	CMPB	VAXIF_C_7U1L1B18, #97
+	BGEQU	L_14
+	JMP	L^L_13
+L_14:
+; line 15
+	MOVW	#5, VAXIF_I_7U1L18FM
+	JMP	L^L_6
+L_13:
+; line 16
+	BLBC	VAXIF_P_7U1L15GH, L_16
+	JMP	L^L_15
+L_16:
+	BLBC	VAXIF_Q_7U1L152U, L_17
+	JMP	L^L_15
+L_17:
+; line 17
+	MOVW	#6, VAXIF_I_7U1L18FM
+	JMP	L^L_6
+L_15:
+; line 19
+	MOVW	#7, VAXIF_I_7U1L18FM
+L_6:
+	RET
+
+	.END

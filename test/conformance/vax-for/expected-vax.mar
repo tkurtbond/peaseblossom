@@ -1,0 +1,111 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - FOR as Oberon2.pdf 9.8 says: the start assigned first (CLRW i for
+;;   0), then the limit evaluated once, before the loop. A variable limit
+;;   is copied to a slot of the frame, -4(FP), as the body may change it
+;;   (SUBL2 #4, SP makes the slot; the step-3 spill's frame, section 7);
+;;   a constant one stays an immediate (#1, #100000).
+;; - The test is at the head: CMPx v, limit and the byte branch for
+;;   staying, BLEQ for a positive step, BGEQ for a negative one (signed),
+;;   then JMP L^ out (section 3); the step is added at the foot, INCW for
+;;   1, ADDW2 #-2, ADDL2 #3, at the variable's own width, wrapping as all
+;;   integer arithmetic does (section 8). ACBx and AOBLEQ are not used,
+;;   their branch being a word or a byte (section 8).
+;; - The bounds take the variable's type: FOR l := n widens n (CVTWL);
+;;   FOR i := s TO s + 5 widens s (CVTBW) and computes s + 5 as a
+;;   SHORTINT (ADDB3), as Oberon types it, widening only its result. The
+;;   two loops reuse the one slot.
+;; - l := l + i widens i (CVTWL to R0) and adds in place (ADDL2); the
+;;   mask stays ^M<>, R0 needing no save (section 7).
+; VaxFor, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXFOR
+	.IDENT	/396883c14f3b3cd1/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; i: INTEGER
+	.ALIGN	WORD
+VAXFOR_I_PLT3H91E:
+	.BLKW	1
+; n: INTEGER
+	.ALIGN	WORD
+VAXFOR_N_PLT3HAA7:
+	.BLKW	1
+; s: SHORTINT
+VAXFOR_S_PLT3GU00:
+	.BLKB	1
+; l: LONGINT
+	.ALIGN	LONG
+VAXFOR_L_PLT3HB5D:
+	.BLKL	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXFOR_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#4, SP
+; line 11
+	CLRW	VAXFOR_I_PLT3H91E
+	MOVW	VAXFOR_N_PLT3HAA7, -4(FP)
+L_1:
+	CMPW	VAXFOR_I_PLT3H91E, -4(FP)
+	BLEQ	L_3
+	JMP	L^L_2
+L_3:
+; line 11
+	CVTWL	VAXFOR_I_PLT3H91E, R0
+	ADDL2	R0, VAXFOR_L_PLT3HB5D
+	INCW	VAXFOR_I_PLT3H91E
+	JMP	L^L_1
+L_2:
+; line 12
+	MOVW	#10, VAXFOR_I_PLT3H91E
+L_4:
+	CMPW	VAXFOR_I_PLT3H91E, #1
+	BGEQ	L_6
+	JMP	L^L_5
+L_6:
+; line 12
+	DECL	VAXFOR_L_PLT3HB5D
+	ADDW2	#-2, VAXFOR_I_PLT3H91E
+	JMP	L^L_4
+L_5:
+; line 13
+	CVTWL	VAXFOR_N_PLT3HAA7, VAXFOR_L_PLT3HB5D
+L_7:
+	CMPL	VAXFOR_L_PLT3HB5D, #100000
+	BLEQ	L_9
+	JMP	L^L_8
+L_9:
+	ADDL2	#3, VAXFOR_L_PLT3HB5D
+	JMP	L^L_7
+L_8:
+; line 14
+	CVTBW	VAXFOR_S_PLT3GU00, VAXFOR_I_PLT3H91E
+	ADDB3	#5, VAXFOR_S_PLT3GU00, R0
+	CVTBW	R0, R0
+	MOVW	R0, -4(FP)
+L_10:
+	CMPW	VAXFOR_I_PLT3H91E, -4(FP)
+	BLEQ	L_12
+	JMP	L^L_11
+L_12:
+; line 14
+	INCW	VAXFOR_N_PLT3HAA7
+	INCW	VAXFOR_I_PLT3H91E
+	JMP	L^L_10
+L_11:
+	RET
+
+	.END

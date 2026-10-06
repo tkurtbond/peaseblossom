@@ -1,0 +1,161 @@
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
+;; - CASE i: 1, 2, 3 and 4..6 are six values spanning six, so CASEW (i is
+;;   a word) with base #1 and limit #5: the table's entry i - 1 is used
+;;   when it is not above 5, unsigned, and otherwise CASEW goes past the
+;;   table (MACRO 9, CASE), here to JMP L^ to the trap (L_1). Each entry
+;;   is a .WORD displacement from the table's start, so it points at a
+;;   stub JMP L^ to its arm (L_3S..L_5S), a long arm being out of a
+;;   word's reach (section 3). 2 and 3 share L_4S, 4..6 L_5S.
+;; - No ELSE: a value with no label calls POC_TRAP (section 9, decided
+;;   2026-10-06): column 3 and line 11, the CASE's, pushed first, then the
+;;   address of the counted name (L_MODULE_NAME: .ASCIC /VaxCase/ in
+;;   POC_CONST), then code 3, as on LLVM; CALLS #4. POC_TRAP is declared
+;;   .EXTERNAL; Phase 16 provides it.
+;; - CASE c: 8 values spanning 24 are sparse, so each label is compared
+;;   in turn: "a".."e" by BGEQU/BGTRU (CHAR unsigned) around a jump to
+;;   the arm, single labels by BNEQ over one; no label goes to ELSE (L_7).
+;; - CASE l: a LONGINT, compared by CMPL, signed; an empty ELSE is a
+;;   label and nothing more, so it does not trap.
+;; - Each arm ends in JMP L^ to the end of its CASE.
+; VaxCase, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXCASE
+	.IDENT	/7208307ea3c7de87/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; i: INTEGER
+	.ALIGN	WORD
+VAXCASE_I_E5EFCJTT:
+	.BLKW	1
+; j: INTEGER
+	.ALIGN	WORD
+VAXCASE_J_E5EFCIL4:
+	.BLKW	1
+; c: CHAR
+VAXCASE_C_E5EFCFLV:
+	.BLKB	1
+; l: LONGINT
+	.ALIGN	LONG
+VAXCASE_L_E5EFCHPU:
+	.BLKL	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxCase/
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXCASE_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 11
+	CASEW	VAXCASE_I_E5EFCJTT, #1, #5
+L_6:
+	.WORD	L_3S-L_6
+	.WORD	L_4S-L_6
+	.WORD	L_4S-L_6
+	.WORD	L_5S-L_6
+	.WORD	L_5S-L_6
+	.WORD	L_5S-L_6
+	JMP	L^L_1
+L_3S:
+	JMP	L^L_3
+L_4S:
+	JMP	L^L_4
+L_5S:
+	JMP	L^L_5
+L_3:
+; line 12
+	MOVW	#1, VAXCASE_J_E5EFCIL4
+	JMP	L^L_2
+L_4:
+; line 13
+	MOVW	#2, VAXCASE_J_E5EFCIL4
+	JMP	L^L_2
+L_5:
+; line 14
+	MOVW	#3, VAXCASE_J_E5EFCIL4
+	JMP	L^L_2
+L_1:
+	PUSHL	#3
+	PUSHL	#11
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#3
+	CALLS	#4, POC_TRAP
+L_2:
+; line 16
+	CMPB	VAXCASE_C_E5EFCFLV, #97
+	BGEQU	L_12
+	JMP	L^L_11
+L_12:
+	CMPB	VAXCASE_C_E5EFCFLV, #101
+	BGTRU	L_13
+	JMP	L^L_9
+L_13:
+L_11:
+	CMPB	VAXCASE_C_E5EFCFLV, #120
+	BNEQ	L_14
+	JMP	L^L_9
+L_14:
+	CMPB	VAXCASE_C_E5EFCFLV, #102
+	BNEQ	L_15
+	JMP	L^L_10
+L_15:
+	CMPB	VAXCASE_C_E5EFCFLV, #103
+	BNEQ	L_16
+	JMP	L^L_10
+L_16:
+	JMP	L^L_7
+L_9:
+; line 17
+	MOVW	#1, VAXCASE_I_E5EFCJTT
+	JMP	L^L_8
+L_10:
+; line 18
+	MOVW	#2, VAXCASE_I_E5EFCJTT
+	JMP	L^L_8
+L_7:
+; line 19
+	CLRW	VAXCASE_I_E5EFCJTT
+L_8:
+; line 21
+	CMPL	VAXCASE_L_E5EFCHPU, #1000
+	BNEQ	L_21
+	JMP	L^L_19
+L_21:
+	CMPL	VAXCASE_L_E5EFCHPU, #2000
+	BGEQ	L_23
+	JMP	L^L_22
+L_23:
+	CMPL	VAXCASE_L_E5EFCHPU, #2005
+	BGTR	L_24
+	JMP	L^L_20
+L_24:
+L_22:
+	JMP	L^L_17
+L_19:
+; line 22
+	MOVW	#1, VAXCASE_I_E5EFCJTT
+	JMP	L^L_18
+L_20:
+; line 23
+	MOVW	#2, VAXCASE_I_E5EFCJTT
+	JMP	L^L_18
+L_17:
+L_18:
+	RET
+
+	.END

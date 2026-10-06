@@ -103,6 +103,8 @@ MODULE VaxCodeGenerator;
     live: Operand; (* registers in use, oldest first *)
     slotUsed: ARRAY maxSlots OF BOOLEAN;
     frameSlots: INTEGER; (* the most slots in use at once *)
+    loopExit: ARRAY 16 OF CHAR; (* the innermost LOOP's end, for EXIT *)
+    usesTrap: BOOLEAN; (* a trap calls POC_TRAP with the module's name *)
 
   PROCEDURE WriteStr(VAR w: Files.Rider; s: ARRAY OF CHAR);
     VAR i: INTEGER;
@@ -685,6 +687,8 @@ MODULE VaxCodeGenerator;
       IF IsImmediateValue(b, 1) & ((base = "ADD") OR (base = "SUB")) THEN
         IF base = "ADD" THEN Op("INC", s, "", op) ELSE Op("DEC", s, "", op) END;
         Emit1(op, result)
+      ELSIF IsImmediateValue(b, -1) & (base = "ADD") THEN
+        Op("DEC", s, "", op); Emit1(op, result)
       ELSE
         Op(base, s, "2", op); Emit2(op, b, result)
       END
@@ -815,23 +819,39 @@ MODULE VaxCodeGenerator;
     RETURN d
   END QuadRelation;
 
-  PROCEDURE Relation(op: INTEGER; a, b: Operand; line, column: INTEGER): Operand;
-    VAR d: Operand; t: Types.Type; cmp: ARRAY 8 OF CHAR; branch, isFalse: ARRAY 16 OF CHAR;
+  (* a and b, for a <op> b, widened to one integer type; FALSE, reported,
+     for operands that cannot be compared so *)
+  PROCEDURE PrepareRelation(op: INTEGER; VAR a, b: Operand; line, column: INTEGER): BOOLEAN;
+    VAR t: Types.Type;
   BEGIN
     IF Types.IsInteger(a.type) & Types.IsInteger(b.type) THEN
       t := Types.WiderOf(a.type, b.type);
       a := Widen(a, t, line, column); b := Widen(b, t, line, column)
     ELSIF ~((a.type = b.type) & IsSliceScalar(a.type)) THEN
-      Unsupported(line, column, "a comparison of these types"); RETURN Dummy()
+      Unsupported(line, column, "a comparison of these types"); RETURN FALSE
     ELSIF ~((a.type = Types.Char) OR (op = Lexer.equal) OR (op = Lexer.notEqual)) THEN
-      Unsupported(line, column, "an ordering of these types"); RETURN Dummy()
+      Unsupported(line, column, "an ordering of these types"); RETURN FALSE
     END;
+    RETURN TRUE
+  END PrepareRelation;
+
+  (* CMPx a, b, or TSTx a against zero, for operands not quadwords *)
+  PROCEDURE CompareOperands(a, b: Operand);
+    VAR cmp: ARRAY 8 OF CHAR;
+  BEGIN
+    IF IsZero(b) THEN Op("TST", Suffix(a.type), "", cmp); Emit1(cmp, a)
+    ELSE Op("CMP", Suffix(a.type), "", cmp); Emit2(cmp, a, b)
+    END
+  END CompareOperands;
+
+  PROCEDURE Relation(op: INTEGER; a, b: Operand; line, column: INTEGER): Operand;
+    VAR d: Operand; branch, isFalse: ARRAY 16 OF CHAR;
+  BEGIN
+    IF ~PrepareRelation(op, a, b, line, column) THEN RETURN Dummy() END;
     IF IsQuad(a) THEN RETURN QuadRelation(op, a, b, line, column) END;
     d := NewFlag(a, b, line, column);
     NewLabel(isFalse);
-    IF IsZero(b) THEN Op("TST", Suffix(a.type), "", cmp); Emit1(cmp, a)
-    ELSE Op("CMP", Suffix(a.type), "", cmp); Emit2(cmp, a, b)
-    END;
+    CompareOperands(a, b);
     FalseBranch(op, a.type = Types.Char, branch);
     Emit(branch, isFalse);
     SetFlag(d, isFalse);
@@ -1080,16 +1100,388 @@ MODULE VaxCodeGenerator;
     Release(v)
   END Assignment;
 
+  (* ---- Conditions and jumps ----
+
+     A jump to a statement's label is JMP L^<label>, which reaches
+     anywhere, so no statement is too long (the design's section 3); a
+     condition jumps by a byte branch over it: "Bxx L_n / JMP L^<label> /
+     L_n:", Bxx the branch for not jumping. *)
+
+  PROCEDURE Jump(label: ARRAY OF CHAR);
+    VAR target: ARRAY 24 OF CHAR;
+  BEGIN
+    COPY("L^", target); Append(target, label); Emit("JMP", target)
+  END Jump;
+
+  (* JMP L^label unless the branch stay is taken *)
+  PROCEDURE JumpUnless(stay, label: ARRAY OF CHAR);
+    VAR over: ARRAY 16 OF CHAR;
+  BEGIN
+    NewLabel(over); Emit(stay, over); Jump(label); EmitLabel(over)
+  END JumpUnless;
+
+  (* The relation that is true when a <op> b is false *)
+  PROCEDURE Negated(op: INTEGER): INTEGER;
+  BEGIN
+    IF op = Lexer.equal THEN RETURN Lexer.notEqual
+    ELSIF op = Lexer.notEqual THEN RETURN Lexer.equal
+    ELSIF op = Lexer.less THEN RETURN Lexer.greaterEqual
+    ELSIF op = Lexer.lessEqual THEN RETURN Lexer.greater
+    ELSIF op = Lexer.greater THEN RETURN Lexer.lessEqual
+    ELSE RETURN Lexer.less
+    END
+  END Negated;
+
+  (* To label when the BOOLEAN value v is sense, by its low bit *)
+  PROCEDURE JumpOnValue(v: Operand; label: ARRAY OF CHAR; sense: BOOLEAN);
+    VAR over: ARRAY 16 OF CHAR;
+  BEGIN
+    NewLabel(over);
+    IF sense THEN EmitBranch("BLBC", v, over) ELSE EmitBranch("BLBS", v, over) END;
+    Jump(label); EmitLabel(over);
+    Release(v)
+  END JumpOnValue;
+
+  (* To label when a <op> b is sense; a and b released *)
+  PROCEDURE JumpOnRelation(op: INTEGER; a, b: Operand; label: ARRAY OF CHAR; sense: BOOLEAN;
+                           line, column: INTEGER);
+    VAR stay: ARRAY 16 OF CHAR;
+  BEGIN
+    IF ~PrepareRelation(op, a, b, line, column) THEN RETURN END;
+    IF IsQuad(a) THEN
+      JumpOnValue(QuadRelation(op, a, b, line, column), label, sense)
+    ELSE
+      CompareOperands(a, b);
+      IF sense THEN FalseBranch(op, a.type = Types.Char, stay)
+      ELSE FalseBranch(Negated(op), a.type = Types.Char, stay)
+      END;
+      JumpUnless(stay, label);
+      Release(a); Release(b)
+    END
+  END JumpOnRelation;
+
+  PROCEDURE IsRelation(op: INTEGER): BOOLEAN;
+  BEGIN
+    RETURN (op = Lexer.equal) OR (op = Lexer.notEqual) OR (op = Lexer.less) OR (op = Lexer.lessEqual)
+      OR (op = Lexer.greater) OR (op = Lexer.greaterEqual)
+  END IsRelation;
+
+  (* To label when the condition e is sense, without making its value:
+     & and OR by jumps, ~ by the other sense *)
+  PROCEDURE JumpOn(e: SyntaxTree.ExprNode; label: ARRAY OF CHAR; sense: BOOLEAN);
+    VAR v: Types.Value; b: SyntaxTree.BinaryExprNode; skip: ARRAY 16 OF CHAR;
+  BEGIN
+    IF ConstantEvaluator.IsConstantExpr(e, scope) THEN
+      v := ConstantEvaluator.Evaluate(e, scope);
+      IF (v.kind = Types.boolValue) & (v.boolVal = sense) THEN Jump(label) END
+    ELSIF (e IS SyntaxTree.UnaryExprNode) & (e(SyntaxTree.UnaryExprNode).op = Lexer.tilde) THEN
+      JumpOn(e(SyntaxTree.UnaryExprNode).operand, label, ~sense)
+    ELSIF e IS SyntaxTree.BinaryExprNode THEN
+      b := e(SyntaxTree.BinaryExprNode);
+      IF (b.op = Lexer.ampersand) & ~sense OR (b.op = Lexer.orKeyword) & sense THEN
+        JumpOn(b.left, label, sense); JumpOn(b.right, label, sense)
+      ELSIF (b.op = Lexer.ampersand) OR (b.op = Lexer.orKeyword) THEN
+        NewLabel(skip);
+        JumpOn(b.left, skip, ~sense); JumpOn(b.right, label, sense);
+        EmitLabel(skip)
+      ELSIF IsRelation(b.op) THEN
+        JumpOnRelation(b.op, Expression(b.left, NIL), Expression(b.right, NIL), label, sense, b.line, b.column)
+      ELSE
+        JumpOnValue(Expression(e, NIL), label, sense)
+      END
+    ELSE
+      JumpOnValue(Expression(e, NIL), label, sense)
+    END
+  END JumpOn;
+
+  (* ---- Traps (the design's section 9) ---- *)
+
+  (* POC_TRAP(code, module, line, column): the trap's code (the LLVM
+     backend's exit status), the address of the module's name as a
+     counted string, and the source position (decided with the user
+     2026-10-06). The routine is Phase 16's. *)
+  PROCEDURE Trap(code, line, column: INTEGER);
+    VAR text: ARRAY 16 OF CHAR;
+  BEGIN
+    usesTrap := TRUE;
+    COPY("#", text); AppendInt(text, column); Emit("PUSHL", text);
+    COPY("#", text); AppendInt(text, line); Emit("PUSHL", text);
+    Emit("PUSHAB", "L_MODULE_NAME");
+    COPY("#", text); AppendInt(text, code); Emit("PUSHL", text);
+    Emit("CALLS", "#4, POC_TRAP")
+  END Trap;
+
+  (* ---- Statements ---- *)
+
+  PROCEDURE ^ StatementSeq(s: SyntaxTree.StatementNode);
+
+  (* x where it stays until it is released, so that it may be used again
+     and again: an immediate as it is, a register moved to a slot of the
+     frame, and a variable too when copy is set, its value to be kept
+     although the variable changes *)
+  PROCEDURE Hold(x: Operand; copy: BOOLEAN): Operand;
+    VAR n, slot: INTEGER; held: Operand;
+  BEGIN
+    IF (x.kind = immediate) OR (x.kind = memory) & ((x.slot >= 0) OR ~copy) THEN RETURN x END;
+    IF IsQuad(x) THEN n := 2 ELSE n := 1 END;
+    slot := AllocateSlots(n);
+    held := NewOperand(memory, x.type);
+    held.offset := -4 * (slot + n); held.slot := slot; held.slots := n;
+    MoveInto(x, held); Release(x);
+    RETURN held
+  END Hold;
+
+  (* A use of a held operand, which Release leaves held *)
+  PROCEDURE Use(x: Operand): Operand;
+    VAR u: Operand;
+  BEGIN
+    NEW(u); u^ := x^; u.slot := -1; u.nextLive := NIL;
+    RETURN u
+  END Use;
+
+  PROCEDURE IfStatement(s: SyntaxTree.IfStatementNode);
+    VAR b: SyntaxTree.IfBranchNode; next, end: ARRAY 16 OF CHAR; comment: ARRAY 32 OF CHAR; last: BOOLEAN;
+  BEGIN
+    NewLabel(end);
+    b := s.branches;
+    WHILE b # NIL DO
+      IF b # s.branches THEN (* an ELSIF *)
+        COPY("; line ", comment); AppendInt(comment, b.line); EmitComment(comment)
+      END;
+      last := (b.next = NIL) & (s.elseBody = NIL);
+      IF last THEN COPY(end, next) ELSE NewLabel(next) END;
+      JumpOn(b.condition, next, FALSE);
+      StatementSeq(b.body);
+      IF ~last THEN Jump(end); EmitLabel(next) END;
+      b := b.next
+    END;
+    StatementSeq(s.elseBody);
+    EmitLabel(end)
+  END IfStatement;
+
+  PROCEDURE WhileStatement(s: SyntaxTree.WhileStatementNode);
+    VAR head, end: ARRAY 16 OF CHAR;
+  BEGIN
+    NewLabel(head); NewLabel(end);
+    EmitLabel(head);
+    JumpOn(s.condition, end, FALSE);
+    StatementSeq(s.body);
+    Jump(head);
+    EmitLabel(end)
+  END WhileStatement;
+
+  PROCEDURE RepeatStatement(s: SyntaxTree.RepeatStatementNode);
+    VAR head: ARRAY 16 OF CHAR;
+  BEGIN
+    NewLabel(head);
+    EmitLabel(head);
+    StatementSeq(s.body);
+    JumpOn(s.condition, head, FALSE)
+  END RepeatStatement;
+
+  PROCEDURE LoopStatement(s: SyntaxTree.LoopStatementNode);
+    VAR head, end, saved: ARRAY 16 OF CHAR;
+  BEGIN
+    NewLabel(head); NewLabel(end);
+    COPY(loopExit, saved); COPY(end, loopExit);
+    EmitLabel(head);
+    StatementSeq(s.body);
+    Jump(head);
+    EmitLabel(end);
+    COPY(saved, loopExit)
+  END LoopStatement;
+
+  (* FOR v := low TO high BY step, as Oberon2.pdf 9.8 says: v := low, then
+     high evaluated once, before the loop - kept in a slot of the frame
+     unless it is a constant, since even a variable may change in the
+     body. The test is at the top, v > high (v < high for a negative step)
+     leaving the loop, and v := v + step at the bottom, wrapping as all
+     integer arithmetic does.
+     ACBx and AOBLEQ would do the step and the test in one instruction,
+     but their branch is a word or a byte, which a long body would not
+     reach (the design's section 3); Phase 18 can choose them. *)
+  PROCEDURE ForStatement(s: SyntaxTree.ForStatementNode);
+    VAR obj: SymbolTable.Object; v, start, limit, step: Operand; stepValue: Types.Value; amount: LONGINT;
+        head, end: ARRAY 16 OF CHAR; op: INTEGER;
+  BEGIN
+    obj := SymbolTable.Find(scope, s.variable);
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) OR ~Types.IsInteger(obj.type) THEN RETURN END;
+    v := Variable(obj);
+    start := Expression(s.start, v);
+    MoveInto(start, v); Release(start);
+    limit := Expression(s.stop, NIL);
+    IF limit.kind = immediate THEN limit.type := obj.type
+    ELSE
+      limit := Hold(Widen(limit, obj.type, s.line, s.column), TRUE)
+    END;
+    amount := 1;
+    IF s.step # NIL THEN stepValue := ConstantEvaluator.Evaluate(s.step, scope); amount := stepValue.intVal END;
+    IF amount > 0 THEN op := Lexer.greater ELSE op := Lexer.less END;
+    NewLabel(head); NewLabel(end);
+    EmitLabel(head);
+    JumpOnRelation(op, Use(v), Use(limit), end, TRUE, s.line, s.column);
+    StatementSeq(s.body);
+    step := Immediate(obj.type, amount);
+    IF IsQuad(v) THEN v := QuadAddSub(TRUE, obj.type, Use(v), step, v, s.line, s.column)
+    ELSE v := Arithmetic("ADD", TRUE, obj.type, Use(v), step, v, s.line, s.column)
+    END;
+    Jump(head);
+    EmitLabel(end);
+    Release(limit)
+  END ForStatement;
+
+  (* The integer value of a constant label *)
+  PROCEDURE LabelValue(e: SyntaxTree.ExprNode): LONGINT;
+    VAR v: Types.Value;
+  BEGIN
+    v := ConstantEvaluator.Evaluate(e, scope);
+    IF v.kind = Types.charValue THEN RETURN ORD(v.charVal)
+    ELSIF (v.kind = Types.stringValue) & (v.stringVal # NIL) THEN RETURN ORD(v.stringVal[0])
+    ELSE RETURN v.intVal
+    END
+  END LabelValue;
+
+  PROCEDURE LabelRange(l: SyntaxTree.CaseLabelNode; VAR low, high: LONGINT);
+  BEGIN
+    low := LabelValue(l.low);
+    IF l.high = NIL THEN high := low ELSE high := LabelValue(l.high) END
+  END LabelRange;
+
+  (* Whether CASEx's table suits the labels: at least four values, filling
+     at least half of the range they span, and not a quadword selector,
+     for which there is no CASEQ *)
+  PROCEDURE IsDense(s: SyntaxTree.CaseStatementNode; sel: Operand; VAR min, max: LONGINT): BOOLEAN;
+    VAR c: SyntaxTree.CaseNode; l: SyntaxTree.CaseLabelNode; low, high, count: LONGINT; first: BOOLEAN;
+  BEGIN
+    count := 0; first := TRUE; min := 0; max := 0;
+    c := s.cases;
+    WHILE c # NIL DO
+      l := c.labels;
+      WHILE l # NIL DO
+        LabelRange(l, low, high);
+        IF high >= low THEN
+          count := count + high - low + 1;
+          IF first OR (low < min) THEN min := low END;
+          IF first OR (high > max) THEN max := high END;
+          first := FALSE
+        END;
+        l := l.next
+      END;
+      c := c.next
+    END;
+    RETURN ~IsQuad(sel) & (count >= 4) & (max - min + 1 <= 2 * count) & (max - min < 4096)
+  END IsDense;
+
+  (* The arm whose labels hold value, or NIL *)
+  PROCEDURE ArmOf(s: SyntaxTree.CaseStatementNode; value: LONGINT; VAR index: INTEGER): SyntaxTree.CaseNode;
+    VAR c: SyntaxTree.CaseNode; l: SyntaxTree.CaseLabelNode; low, high: LONGINT;
+  BEGIN
+    c := s.cases; index := 0;
+    WHILE c # NIL DO
+      l := c.labels;
+      WHILE l # NIL DO
+        LabelRange(l, low, high);
+        IF (value >= low) & (value <= high) THEN RETURN c END;
+        l := l.next
+      END;
+      c := c.next; INC(index)
+    END;
+    RETURN NIL
+  END ArmOf;
+
+  PROCEDURE ArmLabel(base, index: INTEGER; VAR label: ARRAY OF CHAR);
+  BEGIN
+    COPY("L_", label); AppendInt(label, base + index)
+  END ArmLabel;
+
+  (* CASE: the selector is tested first, and every arm's body follows,
+     each ending in a jump to the end. Dense labels use CASEx, whose
+     table of word displacements points at a JMP L^ to each arm (or to
+     ELSE, for a value with no label), so that no body is out of its
+     reach; otherwise a compare for each label. A value with no label and
+     no ELSE traps (POC_TRAP, code 3, as on LLVM). *)
+  PROCEDURE CaseStatement(s: SyntaxTree.CaseStatementNode);
+    VAR sel: Operand; c: SyntaxTree.CaseNode; l: SyntaxTree.CaseLabelNode;
+        arms, i, index: INTEGER; low, high, min, max, value: LONGINT;
+        noLabel, end, table, stub: ARRAY 16 OF CHAR; text: ARRAY 64 OF CHAR; op: ARRAY 8 OF CHAR;
+  BEGIN
+    sel := Hold(Expression(s.selector, NIL), FALSE);
+    NewLabel(noLabel); NewLabel(end);
+    arms := 0; c := s.cases;
+    WHILE c # NIL DO INC(arms); c := c.next END;
+    (* the arms' labels L_<base>..L_<base + arms - 1> *)
+    i := nextLabel + 1; nextLabel := nextLabel + arms;
+    IF IsDense(s, sel, min, max) THEN
+      NewLabel(table);
+      Op("CASE", Suffix(sel.type), "", op);
+      Text(Use(sel), text); Append(text, ", #"); AppendInt(text, min);
+      Append(text, ", #"); AppendInt(text, max - min);
+      Emit(op, text);
+      EmitLabel(table);
+      FOR value := min TO max DO
+        IF ArmOf(s, value, index) = NIL THEN COPY(noLabel, stub)
+        ELSE ArmLabel(i, index, stub); Append(stub, "S")
+        END;
+        COPY(stub, text); Append(text, "-"); Append(text, table);
+        Emit(".WORD", text)
+      END;
+      Jump(noLabel);
+      FOR index := 0 TO arms - 1 DO
+        ArmLabel(i, index, stub); Append(stub, "S"); EmitLabel(stub);
+        ArmLabel(i, index, stub); Jump(stub)
+      END
+    ELSE
+      c := s.cases; index := 0;
+      WHILE c # NIL DO
+        ArmLabel(i, index, stub);
+        l := c.labels;
+        WHILE l # NIL DO
+          LabelRange(l, low, high);
+          IF low = high THEN
+            JumpOnRelation(Lexer.equal, Use(sel), Immediate(sel.type, low), stub, TRUE, l.line, l.column)
+          ELSE
+            NewLabel(text);
+            JumpOnRelation(Lexer.less, Use(sel), Immediate(sel.type, low), text, TRUE, l.line, l.column);
+            JumpOnRelation(Lexer.lessEqual, Use(sel), Immediate(sel.type, high), stub, TRUE, l.line, l.column);
+            EmitLabel(text)
+          END;
+          l := l.next
+        END;
+        c := c.next; INC(index)
+      END;
+      Jump(noLabel)
+    END;
+    Release(sel);
+    c := s.cases; index := 0;
+    WHILE c # NIL DO
+      ArmLabel(i, index, stub); EmitLabel(stub);
+      StatementSeq(c.body);
+      Jump(end);
+      c := c.next; INC(index)
+    END;
+    EmitLabel(noLabel);
+    IF s.hasElse THEN StatementSeq(s.elseBody) ELSE Trap(3, s.line, s.column) END;
+    EmitLabel(end)
+  END CaseStatement;
+
   PROCEDURE StatementSeq(s: SyntaxTree.StatementNode);
     VAR comment: ARRAY 32 OF CHAR;
   BEGIN
     WHILE s # NIL DO
       COPY("; line ", comment); AppendInt(comment, s.line);
       EmitComment(comment);
-      IF s IS SyntaxTree.AssignStatementNode THEN Assignment(s(SyntaxTree.AssignStatementNode))
-      ELSIF s IS SyntaxTree.CallStatementNode THEN Unsupported(s.line, s.column, "a procedure call (steps 5 and 7)")
-      ELSIF s IS SyntaxTree.ReturnStatementNode THEN Unsupported(s.line, s.column, "RETURN (step 5)")
-      ELSE Unsupported(s.line, s.column, "a structured statement (step 4)")
+      WITH
+        s: SyntaxTree.AssignStatementNode DO Assignment(s)
+      | s: SyntaxTree.IfStatementNode DO IfStatement(s)
+      | s: SyntaxTree.CaseStatementNode DO CaseStatement(s)
+      | s: SyntaxTree.WhileStatementNode DO WhileStatement(s)
+      | s: SyntaxTree.RepeatStatementNode DO RepeatStatement(s)
+      | s: SyntaxTree.ForStatementNode DO ForStatement(s)
+      | s: SyntaxTree.LoopStatementNode DO LoopStatement(s)
+      | s: SyntaxTree.ExitStatementNode DO Jump(loopExit)
+      | s: SyntaxTree.CallStatementNode DO Unsupported(s.line, s.column, "a procedure call (steps 5 and 7)")
+      | s: SyntaxTree.ReturnStatementNode DO Unsupported(s.line, s.column, "RETURN (step 5)")
+      ELSE Unsupported(s.line, s.column, "WITH (records and pointers, Phase 16)")
       END;
       s := s.next
     END
@@ -1214,7 +1606,7 @@ MODULE VaxCodeGenerator;
     first := NIL; last := NIL; nextLabel := 0;
     free := {firstScratch .. lastScratch}; used := {}; live := NIL;
     FOR i := 0 TO maxSlots - 1 DO slotUsed[i] := FALSE END;
-    frameSlots := 0;
+    frameSlots := 0; loopExit[0] := 0X; usesTrap := FALSE;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
       Diagnostics.Error(module.line, module.column,
         "a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol");
@@ -1239,6 +1631,15 @@ MODULE VaxCodeGenerator;
     CheckProcedures;
     StatementSeq(module.statements);
     IF ~ok OR (unsupportedCount > before) THEN RETURN FALSE END;
+    IF usesTrap THEN
+      WriteLn(w);
+      WriteStr(w, "; for traps: poc's runtime routine (Phase 16), and the module's name"); WriteLn(w);
+      Line(w, ".EXTERNAL", "POC_TRAP");
+      Line(w, ".PSECT", "POC_CONST");
+      Label(w, "L_MODULE_NAME");
+      COPY("/", ident); Append(ident, module.name); Append(ident, "/");
+      Line(w, ".ASCIC", ident)
+    END;
     WriteLn(w);
     WriteStr(w, "; the module's initializer: once only"); WriteLn(w);
     Line(w, ".PSECT", "POC_CODE");

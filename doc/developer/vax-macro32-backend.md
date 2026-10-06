@@ -135,7 +135,9 @@ Proposals:
   or a plain `JMP L^label`, which reaches anywhere, so no procedure is too
   long. `BRW` (word displacement) is shorter but needs the distance known;
   Phase 18, which writes its own instructions and knows every address,
-  chooses the shortest form.
+  chooses the shortest form. Done (step 4): a condition jumps by the
+  branch for staying, over the jump - `Bxx L_n`, `JMP L^label`, `L_n:` -
+  and `EXIT` is a plain `JMP L^` to its loop's end.
 - **Labels**: poc's own labels are generated, unique, local symbols
   (`L_<n>`), not `nn$` local labels, whose block ends at every user-defined
   label and would be hard to reason about across a long procedure.
@@ -477,8 +479,16 @@ Proposals, by construct:
   `BLBC`/`BLBS`, a byte branch when the right operand is a variable or a
   constant (a fixed few bytes to skip) and otherwise a branch over `JMP
   L^` (§3). Every register in use is spilled first, so that no spill
-  happens on one path only. Conditions that branch without making a
-  value are step 4's.
+  happens on one path only.
+- **Conditions** of `IF`, `WHILE` and `REPEAT` (done, step 4) branch
+  without making a value: a relation is `CMPx` and the branch for its
+  opposite over `JMP L^` (§3), `~` takes the other sense, `&` and `OR`
+  are jumps from each side (`a & b` false when `a` is), a constant
+  condition is a jump or nothing, and any other `BOOLEAN` is `BLBC` or
+  `BLBS`. `IF` tests each branch in turn, jumping to the next when it is
+  false, each body ending in a jump to the end; `WHILE` tests at the
+  head, `REPEAT` at the foot, `LOOP` jumps back, and `EXIT` to the end of
+  the innermost `LOOP`.
 - **`SET`**: a longword; `+` `BISL3`, `*` `MCOML` then `BICL3`, `-`
   `BICL3`, `/` `XORL3`; `IN` `BBS`/`BBC` (or `ASHL` and `BITL`) after a
   range check; `INCL`/`EXCL` `BBSS`/`BBCC`; a constant `{...}` an
@@ -491,9 +501,29 @@ Proposals, by construct:
   slice.
 - **`CASE`**: `CASEL`, the VAX's own table-driven case instruction, for a
   dense range of labels, and a chain of compares otherwise; a value with
-  no label goes to the "no CASE label" trap (§9).
+  no label goes to the "no CASE label" trap (§9). Done (step 4): the
+  selector is evaluated once, kept in a slot of the frame if it was in a
+  register. The labels are dense when there are at least four values,
+  they fill at least half of the range they span, the range is under
+  4096, and the selector is not a `HUGEINT` (there is no `CASEQ`): then
+  `CASEB`, `CASEW` or `CASEL` (the selector's width) with `#min` and
+  `#max-min`, and a table of `.WORD` displacements, one per value, to a
+  stub `JMP L^` of each arm, or of the no-label code, since a word cannot
+  reach a long arm; `CASEx` falls through past the table when the value
+  is out of range, to a jump to the no-label code. Otherwise each label
+  is compared in turn, a range `lo..hi` by two compares, and the end of
+  the chain jumps to the no-label code. That is `ELSE`'s body, or the
+  trap with code 3. Every arm's body ends in a jump to the end.
 - **`FOR`**: `AOBLEQ`/`ACBL` where the step and types fit, otherwise
-  compare and branch.
+  compare and branch. Done (step 4), compare and branch only: `ACBx` and
+  `AOBLEQ` branch by a word or a byte, which a long body would not reach
+  (§3), and Phase 18 can choose them. The start value is assigned, then
+  the limit evaluated once, as `Oberon2.pdf` §9.8 says, and kept in a slot
+  of the frame unless it is a constant (a variable too, which the body
+  may change). The test is at the head, `v > limit` (`v < limit` for a
+  negative step) leaving the loop; `v` is stepped at the foot by the
+  type's own `ADD` (`INC`/`DEC` for 1 and -1), wrapping as all integer
+  arithmetic does.
 - **Arrays and records**: a field is its offset from the record's address;
   an index is checked (§9), then scaled, or used through index mode
   (`base[Rx]`), which scales by the element size itself.
@@ -514,6 +544,24 @@ the trap's code and the source position, so the report is the same as on
 LLVM. Phase 15 writes the call; the routine, and what VMS sees (a signaled
 condition or an exit status), are Phase 16 step 3c's. `INDEX` is not used:
 its trap is a VMS condition (`SS$_SUBRNG`), not poc's message.
+
+**Decided (2026-10-06): the call is `POC_TRAP(code, module, line,
+column)`**, by `CALLS`, the arguments by value except the module's name:
+
+    PUSHL   #<column>
+    PUSHL   #<line>
+    PUSHAB  L_MODULE_NAME
+    PUSHL   #<code>
+    CALLS   #4, POC_TRAP
+
+The code is the LLVM backend's exit status for the trap (index 2,
+`CASE` 3, NIL 4, guard 5, `WITH` 6, length 7, `ENTIER` 8, array
+assignment 9, `ASSERT` 10, heap 11, `RETURN` 12, record assignment 13,
+range 14), and the module's name is a counted string, `L_MODULE_NAME:
+.ASCIC /<Module>/` in `POC_CONST`. A module that traps declares
+`.EXTERNAL POC_TRAP`; until Phase 16 provides the routine, its object
+assembles but does not link. Done (step 4) for `CASE`; the others come
+with their constructs.
 
 ## 10. Output and fixtures
 
@@ -561,7 +609,7 @@ Phase 15 (§10); one calling mechanism (§7); `-O2` only and
 options matched without regard to case on VMS (§10). Settled
 2026-10-06: collisions across a link (§5.1), and with it the hash (§5);
 running `MACRO` on the guest, by scripted telnet (question 2); integer
-arithmetic at the type's width (question 4).
+arithmetic at the type's width (question 4); the trap call (§9).
 
 1. **The destination machine's version** - the user is to check it.
 2. **Running `MACRO` on the guest from the host**, for assembling
@@ -609,7 +657,7 @@ Each step lands with its fixtures before the next, as Phase 8 did:
    module's.
 3. Straight-line code: module variables, assignment, integer, `CHAR`,
    `BOOLEAN` and `SET` expressions.
-4. Control flow (§3 branches, §8).
+4. Control flow (§3 branches, §8), with the trap call (§9).
 5. Procedures and calls (§7), then external `["VMS"]` procedures.
 6. Arrays and records, with the traps (§9).
 7. The predeclared procedures of the slice.

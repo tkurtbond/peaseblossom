@@ -154,8 +154,16 @@ its variables, and assignments of integer,
 .Vt BOOLEAN
 and
 .Vt SET
-expressions, and reports anything more as a construct it cannot lower
-yet.
+expressions, and the statements
+.Ic IF ,
+.Ic CASE ,
+.Ic WHILE ,
+.Ic REPEAT ,
+.Ic FOR ,
+.Ic LOOP
+and
+.Ic EXIT ,
+and reports anything more as a construct it cannot lower yet.
 .It Fl print-import-path , Fl print-library-path
 Print the import path or the library path as the options before it leave
 it.
