@@ -1025,6 +1025,22 @@ made as `doc/developer/DEVELOPER.md` section 7 says:
   with `--define`, as atla has no `~/.rpmmacros`), gathered by
   `tools/release-files` and attached to the release.
 
+**Peaseblossom 0.4.1** followed the same day, with the fix of `3f5e0fa`
+("Ongoing bug fixing" 5): the user's FLTK binding found that `ORD` of a
+`SET` did not compile under `-OC`. It was made the same way:
+
+- **The version** was set in `bdfd3d2`, after the same four-host check
+  passed (348 fixtures at each stage). rackhir passed `bdfd3d2`.
+- **The tarball** came from `make distcheck` (SHA-256 `70f7377d...`,
+  4941268 bytes). It is signed, with the signed tag `v0.4.1`.
+- **Each package** was built, checked and linted on its system (packing
+  lists unchanged), installed as root, checked with `check.sh` against
+  the installed poc, and removed with nothing left. On the BSDs, Claude
+  did the install and removal in the user's root shells in tmux (windows
+  2-4), at the user's word, and ran `check.sh` as the user over ssh.
+  `mock` built and checked the RPM, and on atla 0.4.1 replaces 0.4.0.
+- **The RPMs and `SHA256SUMS`** were signed and attached to the release.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
@@ -1084,6 +1100,15 @@ fixed in 526d7ba, are in `doc/history/phases/phase-14.md`.
    gave an ELSIF's condition the position of the body before it, for
    `-g` and for a trap in the condition; it now sets the ELSIF's own.
    Fixture `llvm-if-lines`.
+
+5. **[fixed] `ORD` of a `SET` did not compile under `-OC`** (found
+   2026-10-06 by the user's FLTK binding, in 0.4.0 and before; the
+   binding used `SYSTEM.VAL(SYSTEM.INT32, s)` instead). `GenerateOrd`
+   truncated the set to INTEGER's width unconditionally, but under `-OC`
+   both are 32 bits, and clang refused the IR: "invalid cast opcode for
+   cast from 'i32' to 'i32'". The same for `SYSTEM.SET32`. It now
+   converts only when the widths differ. Fixture `llvm-ord-set`, under
+   both size models.
 
 ## Ongoing library enhancements
 
@@ -1274,7 +1299,26 @@ at a convenient point.
    Linux, libc++ on the BSDs), so a client needs only the library's own
    `link` lines.
 
-The third point found with them - a library is built twice, once for
+3. **A makefile's up-to-date objects are compiled again** (found
+   2026-10-06 by the user, with the FLTK binding's makefile). A
+   makefile can compile each out-of-date module with `poc -compile`,
+   but building the program then compiles every module whose source poc
+   can see again: a module is taken from `<Module>.Mod` in the current
+   directory or on the import path before its `<Module>.sym` and `.o`
+   (Reference Guide, "Where modules come from"), and poc compares no
+   times. Checked 2026-10-06: with `A.Mod` beside a fresh `A.o`,
+   building `M` ran `clang -c` for both; without `A.Mod`, `A.o` was
+   linked as it was. Today a makefile works by keeping the sources out
+   of poc's sight when it builds - sources in `src/`, objects and the
+   build run in `build/` (`poc -compile ../src/A.Mod`, then `poc
+   ../src/Main.Mod`), whose imports then come from the `.sym` and `.o`
+   files. The change to decide with the user: an option, or the default,
+   under which poc takes a module's `.sym` and `.o` instead of its source
+   when they are newer than the source and match (its key, and the keys
+   of its imports, as poc already checks), so that only what changed is
+   compiled, as make would.
+
+A third point found with items 1 and 2 - a library is built twice, once for
 `-O2` and once for `-OC` - needs no change: declaring the C-facing
 parameters with `SYSTEM.INT32` and `SYSTEM.ADDRESS` keeps one source for
 both.
