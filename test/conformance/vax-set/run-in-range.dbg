@@ -1,5 +1,5 @@
 ! y = {0}, i = 32: x is FFFFFFFEH; 32 IN x is FALSE, though bit 32 from
-! x, y's bit 0, is set; i = -1 too
+! x, y's bit 0, is set
 DEPOSIT/LONG VAXSET\VAXSET_Y_JCDAAL8P = 1
 DEPOSIT/WORD VAXSET\VAXSET_I_JCDAAS29 = 32
 SET BREAK VAXSET\%LINE 78

@@ -721,9 +721,9 @@ others come with their constructs.
   the real ones will) and a driver that calls `<MODULE>_INIT`, and runs it
   once for each `run-<name>.dbg`, its output compared with `run-<name>.log`
   (`DEVELOPER.md`, section 4). This checks what the code does, which
-  assembling cannot; the step 6 fixtures were the first, then those for
-  integer arithmetic, `HUGEINT`, sets, `CASE` and calls. Linking and
-  running poc's own runtime and programs stay Phase 16's.
+  assembling cannot; the step 6 fixtures were the first, then those of
+  steps 3-5 with code to run. Linking and running poc's own runtime and
+  programs stay Phase 16's.
 - `VaxToolchainDriver.Mod` is a stub that writes the `.mar` and reports
   that assembling is not available (`PLAN.md` Phase 15). As for IR, the
   `.mar` of every module compiled from source is written, or none, when

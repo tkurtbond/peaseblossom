@@ -17,6 +17,11 @@ POC_TRAP_COLUMN::
 POC_TRAP_MODULE::
 	.BLKB	32
 
+; Room for the debugger's CALLs to pass by reference: a VAR parameter's
+; variable or a HUGEINT's copy
+POC_SCRATCH::
+	.BLKQ	8
+
 	.PSECT	POC_CODE
 ; POC_TRAP(code, module, line, column), module a counted string: kept in
 ; POC_TRAP_*, then the program ends with SS$_ABORT

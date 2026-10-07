@@ -215,9 +215,16 @@ values without addresses: `EXAMINE` of a variable, or `EVALUATE
 comment having none. A watch stops the program at each change, so the run
 needs a `GO` for each; `SET TYPE WORD` (or `BYTE`, `LONG`) before `SET
 WATCH` gives its size. `EXAMINE/QUADWORD` shows a `HUGEINT`, and
-`EXAMINE/HEXADECIMAL` a `SET`, but `DEPOSIT` takes only decimal. Line numbers
-in the debugger's output are those of `expected-vax.mar`, so a change to its
-reviewer's comment means making the log again. Neither tool's runs may
+`EXAMINE/HEXADECIMAL` a `SET`, but `DEPOSIT` takes only decimal, a byte as
+signed (`-56` for `200X`), and `-2147483648` only as `-2147483647-1`. A
+procedure is tested by `CALL <MODULE>\<label>(<arguments>)`: a constant
+goes by value, and a symbol by its address, so a `VAR` parameter's variable
+or a `HUGEINT` goes in the stub's `POC_SCRATCH` (`POC_SCRATCH+8` and so on).
+The debugger shows R0 as the value returned, so `DEPOSIT R0 = 0` before
+calling a proper procedure, whose R0 is otherwise left over. A `FOR` up to
+its variable's `MAX` never ends (`Oberon2.pdf` §9.8), nor does the run.
+Line numbers in the debugger's output are those of `expected-vax.mar`, so a
+change to its reviewer's comment means making the log again. Neither tool's runs may
 overlap another's, since they share `POC`'s home directory.
 
 ### With other machines
