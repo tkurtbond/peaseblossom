@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
+;; the MACRO manual and the VAX's listing). Why this is right:
 ;; - An external ["VMS"] procedure is called by its linkage name, as
 ;;   written (section 5), and declared .EXTERNAL, in the order of first
 ;;   call; SYS$EXIT, with no linkage name, by its own name.
