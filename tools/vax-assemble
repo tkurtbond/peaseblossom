@@ -48,7 +48,7 @@ cleanup() {
   for name in $names; do
     stem=${name%.MAR}
     for ext in MAR OBJ LIS; do
-      curl -s --netrc -P - -Q "DELE $stem.$ext;*" "$ftp" -o /dev/null 2>/dev/null || true
+      curl -s --netrc -P - --retry 3 --retry-delay 2 -Q "DELE $stem.$ext;*" "$ftp" -o /dev/null 2>/dev/null || true
     done
   done
 }
@@ -67,7 +67,7 @@ for f in "$@"; do
     *[!A-Z0-9_\$-]*|"") echo "vax-assemble: $base is not a VMS file name" >&2; exit 2 ;;
   esac
   names="$names $name.MAR" # before the copy, so a half-made one is deleted too
-  curl -s -S --netrc -P - --use-ascii -T "$f" "$ftp$name.MAR"
+  curl -s -S --netrc -P - --retry 3 --retry-delay 2 --use-ascii -T "$f" "$ftp$name.MAR"
 done
 
 session=0
@@ -81,7 +81,7 @@ for f in "$@"; do
   name=$(echo "${base%.*}" | tr a-z A-Z)
   dir=$(dirname "$f")
   lis="$dir/${base%.*}.lis"
-  curl -s -S --netrc -P - --use-ascii -o "$lis" "$ftp$name.LIS" || status=1
+  curl -s -S --netrc -P - --retry 3 --retry-delay 2 --use-ascii -o "$lis" "$ftp$name.LIS" || status=1
   # the assembler's messages for this file, then its status line
   hex=$(sed -n "s/^VAXASM-STATUS $name\\.MAR \\([0-9A-F]*\\)\$/\\1/p" "$out")
   if [ -z "$quiet" ]; then

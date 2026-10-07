@@ -1,0 +1,82 @@
+break at routine VAXRECORDS\VAXRECORDS_AREA_O5A07AIL
+    90:         SUBL2   #24, SP
+VAXRECORDS\VAXRECORDS_N_3V9CT2QU:       0
+break at routine VAXRECORDS\VAXRECORDS_AREA_O5A07AIL
+    90:         SUBL2   #24, SP
+VAXRECORDS\VAXRECORDS_N_3V9CT2QU:       23
+break at routine VAXRECORDS\VAXRECORDS_FIRST_RU330GMQ
+   131:         MOVZBL  @4(AP), R0
+VAXRECORDS\VAXRECORDS_S_3V9CT8BL
+    [0]:        81
+    [1]:        0
+    [2]:        3
+    [3]:        0
+    [4]:        4
+    [5]:        0
+    [6]:        0
+    [7]:        0
+    [8]:        10
+    [9]:        0
+    [10]:       0
+    [11]:       0
+    [12]:       0
+    [13]:       0
+    [14]:       0
+    [15]:       0
+    [16]:       0
+    [17]:       0
+    [18]:       0
+    [19]:       0
+    [20]:       0
+    [21]:       0
+    [22]:       0
+    [23]:       0
+%DEBUG-I-EXITSTATUS, is '%SYSTEM-S-NORMAL, normal successful completion'
+VAXRECORDS\VAXRECORDS_P_3V9CT72S[0]:    5
+VAXRECORDS\VAXRECORDS_P_3V9CT72S[2]:    5
+VAXRECORDS\VAXRECORDS_R_3V9CT7U2[0]:    3
+VAXRECORDS\VAXRECORDS_R_3V9CT7U2[2]:    3
+VAXRECORDS\VAXRECORDS_S_3V9CT8BL
+    [0]:        75
+    [1]:        0
+    [2]:        3
+    [3]:        0
+    [4]:        4
+    [5]:        0
+    [6]:        0
+    [7]:        0
+    [8]:        10
+    [9]:        0
+    [10]:       0
+    [11]:       0
+    [12]:       0
+    [13]:       0
+    [14]:       0
+    [15]:       0
+    [16]:       0
+    [17]:       0
+    [18]:       0
+    [19]:       0
+    [20]:       0
+    [21]:       0
+    [22]:       0
+    [23]:       0
+VAXRECORDS\VAXRECORDS_S_3V9CT8BL[2]:    3
+VAXRECORDS\VAXRECORDS_S_3V9CT8BL[4]:    4
+VAXRECORDS\VAXRECORDS_S_3V9CT8BL[8]:    10
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[24]:      75
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[26]:      6
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[28]:      1
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[32]:      0
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[36]:      97
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[37]:      81
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[38]:      0
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[40]:      77
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[44]:      0
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[48]:      0
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[50]:      3
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[52]:      4
+VAXRECORDS\VAXRECORDS_SHAPES_MTH30EDU[56]:      10
+VAXRECORDS\VAXRECORDS_H_3V9CT3M4:       77
+VAXRECORDS\VAXRECORDS_H_3V9CT3M4+4:     0
+VAXRECORDS\VAXRECORDS_N_3V9CT2QU:       6

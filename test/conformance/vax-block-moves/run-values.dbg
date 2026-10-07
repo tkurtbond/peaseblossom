@@ -1,0 +1,25 @@
+! y[0] = 1, y[65534] = 2, y[65535] = 3, y[69999] = 4, either side of the
+! 65535-byte pieces, so that x := y copies them all. At Huge's RET (line
+! 71 of expected-vax.mar) its copy of b, at -70000(FP), has them too, and
+! l, at -140000(FP), is "abc" and zeros to its end; x, whose address is
+! Huge's 4(AP), has them as y does. Each is shown as the
+! longword at an address, by EVALUATE, so that no address is shown: the
+! longword from y[0] is 1; from y[65534] 2 + 3 * 256 = 770; from y[69996]
+! 4 * 2^24 = 67108864; from l[0] "abc" and 0X, ^X00636261 = 6513249
+DEPOSIT/BYTE VAXBLOCKMOVES\VAXBLOCKMOVES_Y_HTCVJJI4 = 1
+DEPOSIT/BYTE VAXBLOCKMOVES\VAXBLOCKMOVES_Y_HTCVJJI4+65534 = 2
+DEPOSIT/BYTE VAXBLOCKMOVES\VAXBLOCKMOVES_Y_HTCVJJI4+65535 = 3
+DEPOSIT/BYTE VAXBLOCKMOVES\VAXBLOCKMOVES_Y_HTCVJJI4+69999 = 4
+SET BREAK VAXBLOCKMOVES\%LINE 71
+GO
+EVALUATE .(%FP-70000)
+EVALUATE .(%FP-70000+65534)
+EVALUATE .(%FP-70000+69996)
+EVALUATE .(%FP-140000)
+EVALUATE .(%FP-140000+65532)
+EVALUATE .(%FP-140000+69996)
+EVALUATE .(.(%AP+4))
+EVALUATE .(.(%AP+4)+65534)
+EVALUATE .(.(%AP+4)+69996)
+GO
+EXIT

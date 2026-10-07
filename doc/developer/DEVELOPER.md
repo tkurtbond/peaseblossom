@@ -197,8 +197,23 @@ source, deletes its files on the guest, and exits 0 only if every file
 assembled without a warning or an error. `VAX_HOST` names another guest.
 `tools/vax-assemble -available` says whether the guest can be used; the
 VAX fixtures assemble their `expected-vax.mar` only where it can, and skip
-that part elsewhere. Runs must not overlap, since they share `POC`'s home
-directory.
+that part elsewhere. Copies are retried, since the guest's FTP server now
+and then refuses one ("425").
+
+`tools/vax-run <file.mar> <run.dbg>...` runs a module there under the
+debugger: it assembles the module, `tools/vax-runtime-stub.mar` (stand-ins
+for poc's runtime routines, until Phase 16 writes them) and a driver that
+calls its `<MODULE>_INIT`, links them `/DEBUG`, and runs the image once for
+each `<run>.dbg`, debugger commands that typically `DEPOSIT` the inputs,
+`GO`, and `EXAMINE` what is left; the debugger's output comes back as
+`<run>.out`. A fixture's `run-<name>.dbg` is run so, its output compared
+with `run-<name>.log`, where the guest can be used (`test/vaxfixture.sh`).
+Write a run's inputs and what it expects in `!` comments at its top. Show
+values without addresses: `EXAMINE` of a variable, or `EVALUATE
+.(%FP-<n>)` for the frame, since a stack address can change. Line numbers
+in the debugger's output are those of `expected-vax.mar`, so a change to its
+reviewer's comment means making the log again. Neither tool's runs may
+overlap another's, since they share `POC`'s home directory.
 
 ### With other machines
 

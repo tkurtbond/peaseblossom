@@ -705,12 +705,24 @@ others come with their constructs.
   `MACRO/OBJECT` on the development system - no `LINK`, no `RUN` - so the
   assembler, not only a reviewer, checks the syntax, the symbols and every
   branch's reach. This changes `PLAN.md`'s locked-in "no assembling" for
-  Phase 15; linking and running stay Phase 16's. `tools/vax-assemble`
+  Phase 15; linking and running stay Phase 16's, except the debugger runs
+  below. `tools/vax-assemble`
   does it (§11, question 2: scripted telnet), and `vax_mar` runs it on
   `expected-vax.mar` where `tools/vax-assemble -available` says the guest
   can be used; elsewhere that part is skipped, so the fixture's result is
   the same on every host. A file that does not assemble adds MACRO's
   messages to the result, which then fails.
+- **Decided (2026-10-06): a fixture may also run its `expected-vax.mar`
+  under the VAX debugger**, where the guest can be used, as it is
+  assembled: `tools/vax-run` links it with stand-ins for poc's runtime
+  routines (`tools/vax-runtime-stub.mar`; `POC_TRAP` keeps what it was
+  given in `POC_TRAP_CODE`, `_LINE`, `_COLUMN` and `_MODULE` and ends the
+  program) and a driver that calls `<MODULE>_INIT`, and runs it once for
+  each `run-<name>.dbg`, its output compared with `run-<name>.log`
+  (`DEVELOPER.md`, section 4). This checks what the code does, which
+  assembling cannot; the step 6 fixtures were the first, and the earlier
+  ones are to follow. Linking and running poc's own runtime and programs
+  stay Phase 16's.
 - `VaxToolchainDriver.Mod` is a stub that writes the `.mar` and reports
   that assembling is not available (`PLAN.md` Phase 15). As for IR, the
   `.mar` of every module compiled from source is written, or none, when

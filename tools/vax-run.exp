@@ -1,0 +1,58 @@
+# Assembles, links and runs a module under the debugger on the VAX/VMS
+# development system, by telnet, its files already copied to POC's home
+# directory by tools/vax-run, which runs this: <MODULE>.MAR, POCSTUB.MAR and
+# POCDRIVER.MAR are assembled /DEBUG and linked /DEBUG as POCRUN.EXE, then run
+# once for each R<n>.DBG, the debugger reading its commands from it
+# (DBG$INPUT) and writing to R<n>.OUT (DBG$OUTPUT). Prints what MACRO and
+# LINK say and a line "VAXRUN-STATUS <step> <hex $STATUS>" after each step.
+#
+#   expect -f tools/vax-run.exp <host> <MODULE> <number of runs>
+
+set host [lindex $argv 0]
+set module [lindex $argv 1]
+set runs [lindex $argv 2]
+set timeout 120
+log_user 0
+
+source [file join [file dirname [info script]] vax-login.tcl]
+vax_login $host
+
+# command, then its output and "VAXRUN-STATUS <step> <$STATUS>"
+proc step {name command} {
+  global prompt expect_out
+  send "$command\r"
+  expect {
+    -re $prompt {}
+    timeout { fail "no prompt after $command" }
+  }
+  set out $expect_out(buffer)
+  regsub {^[^\n]*\n} $out "" out
+  regsub {\r?\n?VAXASM> $} $out "" out
+  regsub -all {\r} $out "" out
+  if {[string trim $out] ne ""} { puts [string trimright $out] }
+  send "WRITE SYS\$OUTPUT \"VAXRUN-STATUS \", \$STATUS\r"
+  expect {
+    -re {VAXRUN-STATUS %X([0-9A-F]{8})\r?\n} { puts "VAXRUN-STATUS $name $expect_out(1,string)" }
+    timeout { fail "no status after $command" }
+  }
+  expect {
+    -re $prompt {}
+    timeout { fail "no prompt after the status of $command" }
+  }
+}
+
+foreach name [list $module POCSTUB POCDRIVER] {
+  step $name "MACRO/DEBUG/OBJECT/NOLIST $name"
+}
+step LINK "LINK/DEBUG/NOMAP/EXECUTABLE=POCRUN POCDRIVER,$module,POCSTUB"
+for {set i 1} {$i <= $runs} {incr i} {
+  step D$i "DEFINE DBG\$INPUT R$i.DBG"
+  step O$i "DEFINE DBG\$OUTPUT R$i.OUT"
+  step R$i "RUN POCRUN"
+  step A$i "DEASSIGN DBG\$INPUT"
+  step B$i "DEASSIGN DBG\$OUTPUT"
+}
+
+send "LOGOUT\r"
+expect eof
+exit 0

@@ -10,7 +10,10 @@
 # expected-vax.mar", or the differences. Where the VAX development system can
 # be used (tools/vax-assemble -available), expected-vax.mar is also assembled
 # there with MACRO/OBJECT, and a failure, with MACRO's messages, is added to
-# result; elsewhere that part is skipped, saying so on the output but not in
+# result; and when the fixture has runs, run-<name>.dbg, each a run of
+# expected-vax.mar under the debugger (tools/vax-run), whose output is
+# compared with run-<name>.log, a failure or a difference is added to result
+# too. Elsewhere those parts are skipped, saying so on the output but not in
 # result, so that result is the same on every host when all is well.
 
 vax_mar() {
@@ -35,7 +38,32 @@ vax_mar() {
       cat vax-assemble/out >>result
     fi
     rm -rf vax-assemble
+    vax_runs
   else
     echo "SKIPPED: assembling expected-vax.mar (no VAX development system here)"
+    if ls run-*.dbg >/dev/null 2>&1; then
+      echo "SKIPPED: running expected-vax.mar (no VAX development system here)"
+    fi
   fi
+}
+
+# expected-vax.mar run under the debugger once for each run-<name>.dbg, its
+# output compared with run-<name>.log
+vax_runs() {
+  ls run-*.dbg >/dev/null 2>&1 || return 0
+  mkdir -p vax-run
+  cp expected-vax.mar run-*.dbg vax-run/
+  if ! (cd vax-run && "../$vax_tools/vax-run" expected-vax.mar run-*.dbg >out 2>&1); then
+    echo "expected-vax.mar does not run:" >>result
+    cat vax-run/out >>result
+  else
+    for dbg in run-*.dbg; do
+      log=${dbg%.dbg}.log
+      if ! diff "$log" "vax-run/${dbg%.dbg}.out" >vax-run/diff 2>&1; then
+        echo "$dbg differs from $log:" >>result
+        cat vax-run/diff >>result
+      fi
+    done
+  fi
+  rm -rf vax-run
 }
