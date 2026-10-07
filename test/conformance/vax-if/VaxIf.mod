@@ -13,7 +13,7 @@ BEGIN
     i := 4
   ELSIF c >= "a" THEN
     i := 5
-  ELSIF ~(p OR q) THEN
+  ELSIF ~(p OR (i > j)) THEN
     i := 6
   ELSE
     i := 7

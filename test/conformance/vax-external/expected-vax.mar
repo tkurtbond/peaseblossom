@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
 ;; - An external ["VMS"] procedure is called by its linkage name, as
 ;;   written (section 5), and declared .EXTERNAL, in the order of first
 ;;   call; SYS$EXIT, with no linkage name, by its own name.
@@ -11,6 +11,15 @@
 ;; - Each list is built in the frame and called by CALLG, as for any
 ;;   procedure; each returns its condition value in R0, a longword,
 ;;   stored by MOVL R0, status (CallStd 2.4 and 2.5).
+;; - LIB$GET_EF, SYS$SETEF, LIB$FREE_EF and SYS$EXIT, outside the module,
+;;   are named in general mode, G^ (section 7, decided with the user
+;;   2026-10-06), which the linker makes relative or absolute as each
+;;   symbol is relocatable or absolute (MACRO 5.2.5), so that a routine
+;;   in a shareable image is reached too ("always use general addressing
+;;   mode for any external reference", Linker 4.2). Without G^, LINK
+;;   warned "%LINK-W-SHRSYMREF, reference to symbol LIB$GET_EF is not
+;;   position independent", and so for LIB$FREE_EF, both in LIBRTL, a
+;;   shareable image; not for SYS$SETEF or SYS$EXIT.
 ; VaxExternal, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXEXTERNAL
 	.IDENT	/3ea65217a00d7991/
@@ -55,22 +64,22 @@ L_BODY:
 ; line 17
 	MOVL	#1, -8(FP)
 	MOVAB	VAXEXTERNAL_FLAG_SNLLVM65, -4(FP)
-	CALLG	-8(FP), LIB$GET_EF
+	CALLG	-8(FP), G^LIB$GET_EF
 	MOVL	R0, VAXEXTERNAL_STATUS_10CVO86T
 ; line 18
 	MOVL	#1, -8(FP)
 	MOVL	VAXEXTERNAL_FLAG_SNLLVM65, -4(FP)
-	CALLG	-8(FP), SYS$SETEF
+	CALLG	-8(FP), G^SYS$SETEF
 	MOVL	R0, VAXEXTERNAL_STATUS_10CVO86T
 ; line 19
 	MOVL	#1, -8(FP)
 	MOVAB	VAXEXTERNAL_FLAG_SNLLVM65, -4(FP)
-	CALLG	-8(FP), LIB$FREE_EF
+	CALLG	-8(FP), G^LIB$FREE_EF
 	MOVL	R0, VAXEXTERNAL_STATUS_10CVO86T
 ; line 20
 	MOVL	#1, -8(FP)
 	CVTWL	VAXEXTERNAL_CODE_NGHGJDGI, -4(FP)
-	CALLG	-8(FP), SYS$EXIT
+	CALLG	-8(FP), G^SYS$EXIT
 	RET
 
 	.END

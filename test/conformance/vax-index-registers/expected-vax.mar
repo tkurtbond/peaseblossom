@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
 ;; - a[i] := F(j): the target's index is in R0 when F is called, so it is
 ;;   moved up to R2, which F's mask saves, and the result stored to
 ;;   A[R2] (section 7, as for any value in R0 or R1).
@@ -19,6 +19,12 @@
 ;;   register for BLBS, whose operand is a longword.
 ;; - s[i] := s[j] + {i}: {i} is ASHL i, #1 (section 8), then one BISL3
 ;;   of two indexed operands into a third.
+;; - POC_TRAP, outside the module, is named in general mode, G^ (section
+;;   7, decided with the user 2026-10-06), which the linker makes
+;;   relative or absolute as the symbol is relocatable or absolute (MACRO
+;;   5.2.5), so that a routine in a shareable image is reached too
+;;   ("always use general addressing mode for any external reference",
+;;   Linker 4.2).
 ; VaxIndexRegisters, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXINDEXREGISTERS
 	.IDENT	/0fd42f6f819091af/
@@ -76,7 +82,7 @@ VAXINDEXREGISTERS_F_3NLORDGM:
 	PUSHL	#14
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 
 ; the module's initializer: once only
 	.PSECT	POC_CODE
@@ -94,7 +100,7 @@ L_BODY:
 	PUSHL	#17
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_1:
 	MOVL	#1, -8(FP)
 	CVTWL	VAXINDEXREGISTERS_J_3NLOS06Q, -4(FP)
@@ -109,7 +115,7 @@ L_1:
 	PUSHL	#18
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_2:
 	MULL2	#8, R0
 	MOVAB	VAXINDEXREGISTERS_M_3NLORU2R[R0], R0
@@ -124,7 +130,7 @@ L_2:
 	PUSHL	#18
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_3:
 	MOVL	#1, -8(FP)
 	CVTWL	VAXINDEXREGISTERS_I_3NLORVP7, -4(FP)
@@ -137,7 +143,7 @@ L_3:
 	PUSHL	#18
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_4:
 	MULL2	#8, R0
 	MOVAB	VAXINDEXREGISTERS_M_3NLORU2R[R0], R0
@@ -148,7 +154,7 @@ L_4:
 	PUSHL	#18
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_5:
 	MOVW	(R0)[R1], (R2)[R3]
 ; line 19
@@ -159,7 +165,7 @@ L_5:
 	PUSHL	#19
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_6:
 	MOVW	VAXINDEXREGISTERS_A_3NLORSCF[R0], -4(FP)
 	CMPW	-4(FP), #1
@@ -190,7 +196,7 @@ L_8:
 	PUSHL	#24
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_13:
 	MOVW	VAXINDEXREGISTERS_A_3NLORSCF[R0], -4(FP)
 L_14:
@@ -206,7 +212,7 @@ L_16:
 	PUSHL	#24
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_17:
 	MOVW	VAXINDEXREGISTERS_I_3NLORVP7, VAXINDEXREGISTERS_A_3NLORSCF[R0]
 	INCW	VAXINDEXREGISTERS_I_3NLORVP7
@@ -221,7 +227,7 @@ L_18:
 	PUSHL	#25
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_20:
 	CVTWL	VAXINDEXREGISTERS_J_3NLOS06Q, R1
 	CMPL	R1, #9
@@ -230,7 +236,7 @@ L_20:
 	PUSHL	#25
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_21:
 	CMPW	VAXINDEXREGISTERS_A_3NLORSCF[R0], VAXINDEXREGISTERS_A_3NLORSCF[R1]
 	BLSS	L_22
@@ -243,7 +249,7 @@ L_22:
 	PUSHL	#25
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_23:
 	MOVB	VAXINDEXREGISTERS_B_3NLORSQ2[R0], R1
 	BLBS	R1, L_24
@@ -261,7 +267,7 @@ L_19:
 	PUSHL	#26
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_25:
 	CVTWL	VAXINDEXREGISTERS_J_3NLOS06Q, R1
 	CMPL	R1, #3
@@ -270,7 +276,7 @@ L_25:
 	PUSHL	#26
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_26:
 	ASHL	VAXINDEXREGISTERS_I_3NLORVP7, #1, R2
 	BISL3	R2, VAXINDEXREGISTERS_S_3NLORME5[R1], VAXINDEXREGISTERS_S_3NLORME5[R0]

@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
 ;; - The n-th parameter is the n-th longword of the argument list, 4n(AP)
 ;;   (CallStd 2.3). A value parameter of a longword or less is its value,
 ;;   read at its own width (the list holds it extended to a longword):
@@ -21,6 +21,12 @@
 ;;   x-, so not copied: the same through R2. R2 is in both masks.
 ;; - High's x > 0 compares the high longword signed, then the low one
 ;;   unsigned, as in step 3; & is the step-3 short circuit.
+;; - POC_TRAP, outside the module, is named in general mode, G^ (section
+;;   7, decided with the user 2026-10-06), which the linker makes
+;;   relative or absolute as the symbol is relocatable or absolute (MACRO
+;;   5.2.5), so that a routine in a shareable image is reached too
+;;   ("always use general addressing mode for any external reference",
+;;   Linker 4.2).
 ; VaxParameters, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXPARAMETERS
 	.IDENT	/d38be97da73d4737/
@@ -82,7 +88,7 @@ L_2:
 	PUSHL	#23
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Upto
 VAXPARAMETERS_UPTO_GBN0F39E:
 	.WORD	^M<>
@@ -167,7 +173,7 @@ L_11:
 	PUSHL	#49
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 
 ; the module's initializer: once only
 	.PSECT	POC_CODE

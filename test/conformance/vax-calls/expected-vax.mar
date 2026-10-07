@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
 ;; - A call's arguments are evaluated left to right, each stored in an
 ;;   argument list in the frame - the count, then one longword each - and
 ;;   CALLG list, proc calls it (decided 2026-10-06; MACRO 9, CALLG). The
@@ -30,6 +30,12 @@
 ;;   starts below the caller's, so nothing an outer activation still
 ;;   needs is overwritten (CallStd 2.7). n is read in place, 4(AP), after
 ;;   the call (CVTWL 4(AP), R1), the list being read-only to the callee.
+;; - POC_TRAP, POC_HMUL, POC_HDIV and POC_HMOD, outside the module, are
+;;   named in general mode, G^ (section 7, decided with the user
+;;   2026-10-06), which the linker makes relative or absolute as each
+;;   symbol is relocatable or absolute (MACRO 5.2.5), so that a routine
+;;   in a shareable image is reached too ("always use general addressing
+;;   mode for any external reference", Linker 4.2).
 ; VaxCalls, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXCALLS
 	.IDENT	/9ce080321d81572d/
@@ -103,7 +109,7 @@ L_1:
 	PUSHL	#18
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Next
 VAXCALLS_NEXT_IAFJD108:
 	.WORD	^M<>
@@ -116,7 +122,7 @@ VAXCALLS_NEXT_IAFJD108:
 	PUSHL	#24
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Put
 VAXCALLS_PUT_F71E4EIE:
 	.WORD	^M<>
@@ -145,7 +151,7 @@ VAXCALLS_ADD_F5N9CADK:
 	PUSHL	#34
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Fact
 VAXCALLS_FACT_A4AQEGUV:
 	.WORD	^M<>
@@ -172,7 +178,7 @@ L_5:
 	PUSHL	#40
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 
 ; the module's initializer: once only
 	.PSECT	POC_CODE
@@ -244,12 +250,12 @@ L_10:
 	MOVL	#2, -12(FP)
 	MOVAQ	VAXCALLS_H_2K064MUN, -8(FP)
 	MOVAQ	VAXCALLS_K_2K064NCA, -4(FP)
-	CALLG	-12(FP), POC_HMUL
+	CALLG	-12(FP), G^POC_HMUL
 	MOVL	#2, -12(FP)
 	MOVAQ	VAXCALLS_H_2K064MUN, -8(FP)
 	MOVAQ	VAXCALLS_K_2K064NCA, -4(FP)
 	MOVQ	R0, R2
-	CALLG	-12(FP), POC_HDIV
+	CALLG	-12(FP), G^POC_HDIV
 	ADDL2	R0, R2
 	ADWC	R1, R3
 	MOVL	#^X0000000A, -8(FP)
@@ -257,7 +263,7 @@ L_10:
 	MOVL	#2, -20(FP)
 	MOVAQ	VAXCALLS_H_2K064MUN, -16(FP)
 	MOVAQ	-8(FP), -12(FP)
-	CALLG	-20(FP), POC_HMOD
+	CALLG	-20(FP), G^POC_HMOD
 	MOVQ	R2, VAXCALLS_K_2K064NCA
 	SUBL2	R0, VAXCALLS_K_2K064NCA
 	SBWC	R1, VAXCALLS_K_2K064NCA+4

@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
 ;; - MemoryLayout's layout (section 4): Point is x at 0, y at 2, 4 bytes,
 ;;   aligned to a word. Shape is kind at 0, corner at 2, size at 8 (a
 ;;   longword), tags at 12, big at 16: 24 bytes, aligned to a longword;
@@ -23,6 +23,12 @@
 ;;   type tag until Phase 16.
 ;; - Local's frame: a at -4, b at -8, t, aligned to a longword, at -32,
 ;;   c at -33, rounded to 36 bytes, cleared by CLRQ and CLRL.
+;; - POC_TRAP, outside the module, is named in general mode, G^ (section
+;;   7, decided with the user 2026-10-06), which the linker makes
+;;   relative or absolute as the symbol is relocatable or absolute (MACRO
+;;   5.2.5), so that a routine in a shareable image is reached too
+;;   ("always use general addressing mode for any external reference",
+;;   Linker 4.2).
 ; VaxRecords, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXRECORDS
 	.IDENT	/2397bb2d32257825/
@@ -102,7 +108,7 @@ VAXRECORDS_AREA_O5A07AIL:
 	PUSHL	#35
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Peek
 VAXRECORDS_PEEK_7QKAQSN3:
 	.WORD	^M<>
@@ -115,7 +121,7 @@ VAXRECORDS_PEEK_7QKAQSN3:
 	PUSHL	#39
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_1:
 	MOVZBL	12(R0)[R1], R0
 	RET
@@ -123,7 +129,7 @@ L_1:
 	PUSHL	#40
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE First
 VAXRECORDS_FIRST_RU330GMQ:
 	.WORD	^M<>
@@ -134,7 +140,7 @@ VAXRECORDS_FIRST_RU330GMQ:
 	PUSHL	#45
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Local
 VAXRECORDS_LOCAL_PPVNFC0F:
 	.WORD	^M<R2,R3,R4,R5>
@@ -183,7 +189,7 @@ L_BODY:
 	PUSHL	#59
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_2:
 	MULL2	#24, R0
 	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
@@ -198,7 +204,7 @@ L_2:
 	PUSHL	#61
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_3:
 	MULL2	#24, R0
 	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
@@ -209,7 +215,7 @@ L_3:
 	PUSHL	#61
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_4:
 	MOVB	#97, 12(R0)[R1]
 ; line 62
@@ -220,7 +226,7 @@ L_4:
 	PUSHL	#62
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_5:
 	MULL2	#24, R0
 	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
@@ -239,7 +245,7 @@ L_5:
 	PUSHL	#64
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_6:
 	MULL2	#24, R0
 	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
@@ -260,7 +266,7 @@ L_6:
 	PUSHL	#66
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_7:
 	MULL2	#24, R0
 	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
@@ -282,7 +288,7 @@ L_7:
 	PUSHL	#68
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_8:
 	MULL2	#24, R0
 	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0

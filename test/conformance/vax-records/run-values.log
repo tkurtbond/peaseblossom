@@ -1,11 +1,11 @@
 break at routine VAXRECORDS\VAXRECORDS_AREA_O5A07AIL
-    90:         SUBL2   #24, SP
+    96:         SUBL2   #24, SP
 VAXRECORDS\VAXRECORDS_N_3V9CT2QU:       0
 break at routine VAXRECORDS\VAXRECORDS_AREA_O5A07AIL
-    90:         SUBL2   #24, SP
+    96:         SUBL2   #24, SP
 VAXRECORDS\VAXRECORDS_N_3V9CT2QU:       23
 break at routine VAXRECORDS\VAXRECORDS_FIRST_RU330GMQ
-   131:         MOVZBL  @4(AP), R0
+   137:         MOVZBL  @4(AP), R0
 VAXRECORDS\VAXRECORDS_S_3V9CT8BL
     [0]:        81
     [1]:        0

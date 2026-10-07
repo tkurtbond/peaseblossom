@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
 ;; - An array is its elements one after another, aligned as its element
 ;;   (MemoryLayout, section 4): a module variable is .BLKB of its size.
 ;;   ARRAY 3, 4 OF INTEGER is three rows of 8 bytes.
@@ -30,6 +30,12 @@
 ;; - A VAR argument's address of an element is MOVAW, MOVA's operand being
 ;;   a word, so that index mode scales by 2: MOVAW A[R0] and MOVAW
 ;;   (R0)[R1].
+;; - POC_TRAP, outside the module, is named in general mode, G^ (section
+;;   7, decided with the user 2026-10-06), which the linker makes
+;;   relative or absolute as the symbol is relocatable or absolute (MACRO
+;;   5.2.5), so that a routine in a shareable image is reached too
+;;   ("always use general addressing mode for any external reference",
+;;   Linker 4.2).
 ; VaxArrays, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXARRAYS
 	.IDENT	/5656a9157adcf92b/
@@ -134,7 +140,7 @@ L_BODY:
 	PUSHL	#29
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_1:
 	CVTWL	VAXARRAYS_J_D1U9BK1I, R1
 	CMPL	R1, #9
@@ -143,7 +149,7 @@ L_1:
 	PUSHL	#29
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_2:
 	ADDW3	#1, VAXARRAYS_A_D1U9BN0N[R1], VAXARRAYS_A_D1U9BN0N[R0]
 ; line 30
@@ -154,7 +160,7 @@ L_2:
 	PUSHL	#30
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_3:
 	MOVW	VAXARRAYS_A_D1U9BN0N[R0], VAXARRAYS_X_D1U9BPVS
 ; line 31
@@ -165,7 +171,7 @@ L_3:
 	PUSHL	#31
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_4:
 	MOVB	#120, VAXARRAYS_B_D1U9BNEA[R0]
 ; line 32
@@ -176,7 +182,7 @@ L_4:
 	PUSHL	#32
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_5:
 	MOVB	VAXARRAYS_B_D1U9BNEA[R0], VAXARRAYS_CH_HEPAK45F
 ; line 33
@@ -187,7 +193,7 @@ L_5:
 	PUSHL	#33
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_6:
 	MULL2	#8, R0
 	MOVAB	VAXARRAYS_H_D1U9BJ6C[R0], R0
@@ -200,7 +206,7 @@ L_6:
 	PUSHL	#34
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_7:
 	MULL2	#8, R0
 	MOVAB	VAXARRAYS_H_D1U9BJ6C[R0], R0
@@ -215,7 +221,7 @@ L_7:
 	PUSHL	#35
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_8:
 	MULL2	#8, R0
 	MOVAB	VAXARRAYS_M_D1U9BHTJ[R0], R0
@@ -226,7 +232,7 @@ L_8:
 	PUSHL	#35
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_9:
 	MOVW	#5, (R0)[R1]
 ; line 36
@@ -237,7 +243,7 @@ L_9:
 	PUSHL	#36
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_10:
 	CVTWL	VAXARRAYS_I_D1U9BJJV, R1
 	CMPL	R1, #2
@@ -246,7 +252,7 @@ L_10:
 	PUSHL	#36
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_11:
 	MULL2	#8, R1
 	MOVAB	VAXARRAYS_M_D1U9BHTJ[R1], R1
@@ -259,7 +265,7 @@ L_11:
 	PUSHL	#37
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_13:
 	MOVB	VAXARRAYS_F_D1U9BLNU[R0], R1
 	BLBS	R1, L_14
@@ -276,7 +282,7 @@ L_12:
 	PUSHL	#38
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_16:
 	MOVL	VAXARRAYS_S_D1U9BULD[R0], R1
 	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
@@ -300,7 +306,7 @@ L_15:
 	PUSHL	#39
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_19:
 	MOVW	VAXARRAYS_A_D1U9BN0N[R0], R1
 	ASHL	R1, #1, R0
@@ -316,7 +322,7 @@ L_21:
 	PUSHL	#40
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_20:
 	CLRW	VAXARRAYS_A_D1U9BN0N[R0]
 ; line 41
@@ -330,7 +336,7 @@ L_20:
 	PUSHL	#42
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_22:
 	MOVAW	VAXARRAYS_A_D1U9BN0N[R0], -4(FP)
 	CALLG	-8(FP), VAXARRAYS_INC_C41P2TV0
@@ -343,7 +349,7 @@ L_22:
 	PUSHL	#43
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_23:
 	MULL2	#8, R0
 	MOVAB	VAXARRAYS_M_D1U9BHTJ[R0], R0
@@ -354,7 +360,7 @@ L_23:
 	PUSHL	#43
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_24:
 	MOVAW	(R0)[R1], -4(FP)
 	CALLG	-8(FP), VAXARRAYS_INC_C41P2TV0

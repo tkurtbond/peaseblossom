@@ -482,6 +482,19 @@ Proposals:
 - **Overflow**: the `IV` bit stays clear, so integer arithmetic wraps, as
   poc promises (`language-extensions.md`, "Overflow, division and reals").
   An opt-in overflow check could later set it.
+- **Decided (2026-10-06): a symbol outside the module is named in
+  general mode, `G^`**: an external `["VMS"]` procedure (`CALLG list,
+  G^LIB$GET_EF`), poc's runtime routines (`G^POC_TRAP`, `G^POC_STRCMP`,
+  `G^POC_HMUL`, ...), and, from step 8, an imported module's procedures
+  and variables. The linker makes a general mode operand relative when
+  its symbol is relocatable and absolute when it is absolute (MACRO
+  5.2.5), and the Linker manual says "to be safe, always use general
+  addressing mode for any external reference" (Linker 4.2). Without it,
+  a call of a routine in a shareable image is not position independent:
+  `tools/vax-run` linking `vax-external` got `%LINK-W-SHRSYMREF,
+  reference to symbol LIB$GET_EF is not position independent` (LIBRTL
+  is a shareable image) and an image based at a fixed address. A symbol
+  of the module itself keeps relative mode, the assembler's default.
 - **External `["VMS"]` procedures**: the linkage name verbatim (§5); a
   value parameter of 4 bytes or less by immediate value, a `VAR` parameter
   by reference. Descriptors and an explicit choice of mechanism per
@@ -664,7 +677,7 @@ column)`**, by `CALLS`, the arguments by value except the module's name:
     PUSHL   #<line>
     PUSHAB  L_MODULE_NAME
     PUSHL   #<code>
-    CALLS   #4, POC_TRAP
+    CALLS   #4, G^POC_TRAP
 
 The code is the LLVM backend's exit status for the trap (index 2,
 `CASE` 3, NIL 4, guard 5, `WITH` 6, length 7, `ENTIER` 8, array

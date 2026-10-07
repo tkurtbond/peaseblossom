@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
 ;; - A string constant is in POC_CONST: .ASCII between a delimiter not in
 ;;   it (MACRO 6, .ASCII: "it's /|" takes the double quote), a character
 ;;   that does not print .BYTE (0AX is 10), then zeros by .BYTE 0[n]. It
@@ -20,6 +20,12 @@
 ;;   address it is given; the same one character "x" compared in Show is
 ;;   L_STR_3, 2 bytes.
 ;; - Show's n- is read-only, so not copied: its address is MOVL 4(AP).
+;; - POC_STRCMP and POC_TRAP, outside the module, are named in general
+;;   mode, G^ (section 7, decided with the user 2026-10-06), which the
+;;   linker makes relative or absolute as each symbol is relocatable or
+;;   absolute (MACRO 5.2.5), so that a routine in a shareable image is
+;;   reached too ("always use general addressing mode for any external
+;;   reference", Linker 4.2).
 ; VaxStrings, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXSTRINGS
 	.IDENT	/5bb2f549cfbaeafd/
@@ -105,7 +111,7 @@ VAXSTRINGS_GREET_SMHPN5B1:
 	MOVL	#8, -20(FP)
 	MOVAB	L_STR_1, -16(FP)
 	MOVL	#1, -12(FP)
-	CALLG	-28(FP), POC_STRCMP
+	CALLG	-28(FP), G^POC_STRCMP
 	TSTL	R0
 	BEQL	L_2
 	JMP	L^L_1
@@ -124,7 +130,7 @@ VAXSTRINGS_SHOW_H74GB4LP:
 	MOVL	#8, -12(FP)
 	MOVAB	L_STR_3, -8(FP)
 	MOVL	#2, -4(FP)
-	CALLG	-20(FP), POC_STRCMP
+	CALLG	-20(FP), G^POC_STRCMP
 	CLRB	R1
 	TSTL	R0
 	BEQL	L_3
@@ -136,7 +142,7 @@ L_3:
 	PUSHL	#25
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 
 ; the module's initializer: once only
 	.PSECT	POC_CODE
@@ -160,7 +166,7 @@ L_BODY:
 	PUSHL	#31
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_4:
 	MULL2	#8, R0
 	MOVAB	VAXSTRINGS_NAMES_6MKR2M7G[R0], R0
@@ -171,7 +177,7 @@ L_4:
 	MOVL	#8, -12(FP)
 	MOVAB	VAXSTRINGS_B_3DS52RN6, -8(FP)
 	MOVL	#8, -4(FP)
-	CALLG	-20(FP), POC_STRCMP
+	CALLG	-20(FP), G^POC_STRCMP
 	CLRB	R1
 	TSTL	R0
 	BNEQ	L_5
@@ -184,7 +190,7 @@ L_5:
 	MOVL	#8, -12(FP)
 	MOVAB	L_STR_4, -8(FP)
 	MOVL	#6, -4(FP)
-	CALLG	-20(FP), POC_STRCMP
+	CALLG	-20(FP), G^POC_STRCMP
 	CLRB	R1
 	TSTL	R0
 	BGEQ	L_6
@@ -197,7 +203,7 @@ L_6:
 	MOVL	#8, -12(FP)
 	MOVAB	L_STR_3, -8(FP)
 	MOVL	#2, -4(FP)
-	CALLG	-20(FP), POC_STRCMP
+	CALLG	-20(FP), G^POC_STRCMP
 	TSTL	R0
 	BNEQ	L_8
 	JMP	L^L_7
@@ -213,7 +219,7 @@ L_7:
 	PUSHL	#35
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_10:
 	MULL2	#8, R0
 	MOVAB	VAXSTRINGS_NAMES_6MKR2M7G[R0], R0
@@ -222,7 +228,7 @@ L_10:
 	MOVL	#8, -12(FP)
 	MOVAB	VAXSTRINGS_A_3DS52R9J, -8(FP)
 	MOVL	#8, -4(FP)
-	CALLG	-20(FP), POC_STRCMP
+	CALLG	-20(FP), G^POC_STRCMP
 	TSTL	R0
 	BGEQ	L_11
 	JMP	L^L_9
@@ -245,7 +251,7 @@ L_9:
 	PUSHL	#37
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_12:
 	MULL2	#8, R0
 	MOVAB	VAXSTRINGS_NAMES_6MKR2M7G[R0], R0

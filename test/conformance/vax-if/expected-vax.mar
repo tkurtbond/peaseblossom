@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
 ;; - A condition jumps without making a BOOLEAN value (section 8): a
 ;;   relation is CMPx and a byte branch for staying over JMP L^ to the
 ;;   next branch (section 3), so no body is too long to jump over; i < j
@@ -9,8 +9,10 @@
 ;; - (i = j) & p OR ~q: the OR leaves for its body as soon as one side is
 ;;   TRUE (L_8); the & leaves for q's test when i # j (L_9) or p is
 ;;   FALSE; ~q is q tested the other way, BLBC staying, so a TRUE q jumps
-;;   to the ELSIF (L_7). ~(p OR q) is p and q each jumping to the ELSE
-;;   when TRUE.
+;;   to the ELSIF (L_7). ~(p OR (i > j)) is p jumping to the ELSE when
+;;   TRUE, then i > j tested the other way, BLEQ staying (L_17), so the
+;;   arm is reached when p is FALSE and i <= j (line 16 was ~(p OR q),
+;;   which line 12's ~q made unreachable; changed 2026-10-06).
 ;; - Each body ends in JMP L^ to the end (L_6) but the last, which falls
 ;;   through; an IF without ELSE jumps to the end itself (L_1). The IF's
 ;;   and each ELSIF's line is commented.
@@ -102,7 +104,8 @@ L_13:
 	BLBC	VAXIF_P_7U1L15GH, L_16
 	JMP	L^L_15
 L_16:
-	BLBC	VAXIF_Q_7U1L152U, L_17
+	CMPW	VAXIF_I_7U1L18FM, VAXIF_J_7U1L1823
+	BLEQ	L_17
 	JMP	L^L_15
 L_17:
 ; line 17

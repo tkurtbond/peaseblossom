@@ -31,7 +31,10 @@ MODULE VaxCodeGenerator;
      up first, R2-R5 surviving it. A function's value comes back in R0 as
      a longword, a HUGEINT in R0 and R1. HUGEINT *, DIV and MOD call poc's
      runtime (POC_HMUL, POC_HDIV, POC_HMOD), and the traps POC_TRAP,
-     declared .EXTERNAL, as is every external procedure called.
+     declared .EXTERNAL, as is every external procedure called. A symbol
+     outside the module is named in general mode, G^, which the linker
+     makes relative or absolute (decided with the user 2026-10-06, section
+     7), so that a routine in a shareable image such as LIBRTL is reached.
 
      Every symbol is uppercase and checked against MACRO's 31 characters
      (section 3.1): the initializer's by VaxTypes.MakeInitSymbol, a
@@ -1013,6 +1016,13 @@ MODULE VaxCodeGenerator;
     END
   END AddExternal;
 
+  (* Append to target name, a symbol outside the module, in general mode:
+     G^name (section 7) *)
+  PROCEDURE AppendExternal(VAR target: ARRAY OF CHAR; name: ARRAY OF CHAR);
+  BEGIN
+    Append(target, "G^"); Append(target, name)
+  END AppendExternal;
+
   (* The symbol a call of obj, a procedure, names: an external one's
      linkage name, verbatim (section 5), else VaxTypes' of "Module.name" *)
   PROCEDURE ProcedureSymbol(obj: SymbolTable.Object; VAR symbol: VaxTypes.Symbol);
@@ -1163,7 +1173,9 @@ MODULE VaxCodeGenerator;
     IF external THEN AddExternal(symbol) END;
     IF n = 0 THEN
       FreeR0R1(line, column);
-      COPY("#0, ", target); Append(target, symbol); Emit("CALLS", target)
+      COPY("#0, ", target);
+      IF external THEN AppendExternal(target, symbol) ELSE Append(target, symbol) END;
+      Emit("CALLS", target)
     ELSE
       list := AllocateSlots(n + 1);
       IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN NIL END;
@@ -1197,7 +1209,8 @@ MODULE VaxCodeGenerator;
         p := p.next; a := a.next; INC(i)
       END;
       FreeR0R1(line, column);
-      Text(ListEntry(list, n, 0), target); Append(target, ", "); Append(target, symbol);
+      Text(ListEntry(list, n, 0), target); Append(target, ", ");
+      IF external THEN AppendExternal(target, symbol) ELSE Append(target, symbol) END;
       Emit("CALLG", target);
       ReleaseSlots(list, n + 1);
       FOR i := 0 TO copies - 1 DO Release(copy[i]) END
@@ -1228,7 +1241,7 @@ MODULE VaxCodeGenerator;
     COPY("#", text); AppendInt(text, b.type(Types.ArrayType).length); EmitTo("MOVL", text, ListEntry(list, 4, 4));
     Release(a); Release(b);
     FreeR0R1(line, column);
-    Text(ListEntry(list, 4, 0), target); Append(target, ", POC_STRCMP");
+    Text(ListEntry(list, 4, 0), target); Append(target, ", "); AppendExternal(target, "POC_STRCMP");
     Emit("CALLG", target);
     AddExternal("POC_STRCMP");
     ReleaseSlots(list, 5);
@@ -1418,7 +1431,7 @@ MODULE VaxCodeGenerator;
     Emit2("MOVAQ", a, ListEntry(list, 2, 1));
     Emit2("MOVAQ", b, ListEntry(list, 2, 2));
     FreeR0R1(line, column);
-    Text(ListEntry(list, 2, 0), target); Append(target, ", "); Append(target, name);
+    Text(ListEntry(list, 2, 0), target); Append(target, ", "); AppendExternal(target, name);
     Emit("CALLG", target);
     AddExternal(name);
     ReleaseSlots(list, 3); Release(a); Release(b);
@@ -1964,7 +1977,7 @@ MODULE VaxCodeGenerator;
     COPY("#", text); AppendInt(text, line); Emit("PUSHL", text);
     Emit("PUSHAB", "L_MODULE_NAME");
     COPY("#", text); AppendInt(text, code); Emit("PUSHL", text);
-    Emit("CALLS", "#4, POC_TRAP")
+    Emit("CALLS", "#4, G^POC_TRAP")
   END Trap;
 
   (* ---- Statements ---- *)

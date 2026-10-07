@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
 ;; - CASE i: 1, 2, 3 and 4..6 are six values spanning six, so CASEW (i is
 ;;   a word) with base #1 and limit #5: the table's entry i - 1 is used
 ;;   when it is not above 5, unsigned, and otherwise CASEW goes past the
@@ -18,6 +18,12 @@
 ;; - CASE l: a LONGINT, compared by CMPL, signed; an empty ELSE is a
 ;;   label and nothing more, so it does not trap.
 ;; - Each arm ends in JMP L^ to the end of its CASE.
+;; - POC_TRAP, outside the module, is named in general mode, G^ (section
+;;   7, decided with the user 2026-10-06), which the linker makes
+;;   relative or absolute as the symbol is relocatable or absolute (MACRO
+;;   5.2.5), so that a routine in a shareable image is reached too
+;;   ("always use general addressing mode for any external reference",
+;;   Linker 4.2).
 ; VaxCase, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXCASE
 	.IDENT	/7208307ea3c7de87/
@@ -94,7 +100,7 @@ L_1:
 	PUSHL	#11
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#3
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 L_2:
 ; line 16
 	CMPB	VAXCASE_C_E5EFCFLV, #97

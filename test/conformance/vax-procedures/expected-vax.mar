@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-06 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is right:
 ;; - Tick is exported, so .ENTRY, a global symbol (MACRO 6, .ENTRY); the
 ;;   others are private: a local label (":") and .WORD of the mask, which
 ;;   CALLS and CALLG take as .ENTRY's (section 7, decided 2026-10-06).
@@ -18,6 +18,12 @@
 ;;   byte 0 (MACRO 9, MOVC5), which writes R0-R5, so its mask saves R2-R5.
 ;; - sum := sum + i widens i to a quadword (CVTWL, ASHL #-31) and adds
 ;;   with ADDL2/ADWC, as in step 3.
+;; - POC_TRAP, outside the module, is named in general mode, G^ (section
+;;   7, decided with the user 2026-10-06), which the linker makes
+;;   relative or absolute as the symbol is relocatable or absolute (MACRO
+;;   5.2.5), so that a routine in a shareable image is reached too
+;;   ("always use general addressing mode for any external reference",
+;;   Linker 4.2).
 ; VaxProcedures, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXPROCEDURES
 	.IDENT	/246db045131802f6/
@@ -79,7 +85,7 @@ L_1:
 	PUSHL	#21
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE IsDigit
 VAXPROCEDURES_ISDIGIT_1CUHOEMH:
 	.WORD	^M<>
@@ -105,7 +111,7 @@ L_7:
 	PUSHL	#26
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Total
 VAXPROCEDURES_TOTAL_6RTKNDB6:
 	.WORD	^M<>
@@ -135,7 +141,7 @@ L_10:
 	PUSHL	#33
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Many
 VAXPROCEDURES_MANY_S7E6PD9B:
 	.WORD	^M<R2,R3,R4,R5>
@@ -152,7 +158,7 @@ VAXPROCEDURES_MANY_S7E6PD9B:
 	PUSHL	#40
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Last
 VAXPROCEDURES_LAST_QSD8E9N4:
 	.WORD	^M<>
@@ -169,7 +175,7 @@ L_12:
 	PUSHL	#45
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
-	CALLS	#4, POC_TRAP
+	CALLS	#4, G^POC_TRAP
 
 ; the module's initializer: once only
 	.PSECT	POC_CODE
