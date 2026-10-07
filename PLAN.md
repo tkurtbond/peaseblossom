@@ -1217,6 +1217,15 @@ moves it to that phase's record.
      failure `InStr` puts `pos` back. Fixture `llvm-instr` (the same calls
      on `input.txt` through `In` and `InStr`, compared, then `InStr`'s
      positions, under `-O2` and `-OC`).
+     
+3.  OutStr should have versions of the appropriate procedures that
+    take a parameter `VAR pos: LONGINT` so the routines don't have to
+    keep iterating over the earlier elements of the strings.  Those
+    procedures would first check that `pos` points to the null
+    character that ends the string. If it does, it inserts there.  If
+    it doesn't, it moves forward to where that string ends and then
+    inserts.  When the procedures return, `pos` points to the position
+    of the new end-of-string null character.
 
 ## Ongoing language enhancements
 
