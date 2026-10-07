@@ -717,12 +717,13 @@ others come with their constructs.
   assembled: `tools/vax-run` links it with stand-ins for poc's runtime
   routines (`tools/vax-runtime-stub.mar`; `POC_TRAP` keeps what it was
   given in `POC_TRAP_CODE`, `_LINE`, `_COLUMN` and `_MODULE` and ends the
-  program) and a driver that calls `<MODULE>_INIT`, and runs it once for
-  each `run-<name>.dbg`, its output compared with `run-<name>.log`
+  program; `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and `POC_HMOD` compute what
+  the real ones will) and a driver that calls `<MODULE>_INIT`, and runs it
+  once for each `run-<name>.dbg`, its output compared with `run-<name>.log`
   (`DEVELOPER.md`, section 4). This checks what the code does, which
-  assembling cannot; the step 6 fixtures were the first, and the earlier
-  ones are to follow. Linking and running poc's own runtime and programs
-  stay Phase 16's.
+  assembling cannot; the step 6 fixtures were the first, then those for
+  integer arithmetic, `HUGEINT`, sets, `CASE` and calls. Linking and
+  running poc's own runtime and programs stay Phase 16's.
 - `VaxToolchainDriver.Mod` is a stub that writes the `.mar` and reports
   that assembling is not available (`PLAN.md` Phase 15). As for IR, the
   `.mar` of every module compiled from source is written, or none, when

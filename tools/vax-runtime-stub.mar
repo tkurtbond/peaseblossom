@@ -56,4 +56,98 @@ POC_TRAP_MODULE::
 	BNEQ	10$
 40$:	RET
 
+; POC_HMUL(a, b), a and b the addresses of HUGEINTs: R0 and R1 the
+; product's low 64 bits. EMUL multiplies the low longwords as signed; a
+; negative one's other operand, added to the high longword, makes that
+; unsigned; the cross products go into the high longword too
+	.ENTRY	POC_HMUL, ^M<R2,R3,R4>
+	MOVL	4(AP), R3
+	MOVL	8(AP), R4
+	EMUL	(R3), (R4), #0, R0
+	TSTL	(R3)
+	BGEQ	10$
+	ADDL2	(R4), R1
+10$:	TSTL	(R4)
+	BGEQ	20$
+	ADDL2	(R3), R1
+20$:	MULL3	(R3), 4(R4), R2
+	ADDL2	R2, R1
+	MULL3	4(R3), (R4), R2
+	ADDL2	R2, R1
+	RET
+
+; POC_HDIV(a, b) and POC_HMOD(a, b), a and b the addresses of HUGEINTs:
+; R0 and R1 the floored quotient or the remainder (with b's sign); a zero
+; b gets the VAX's integer divide-by-zero trap
+	.ENTRY	POC_HDIV, ^M<R2,R3,R4,R5,R6,R7,R8,R9,R10,R11>
+	JSB	HDIVMOD
+	RET
+
+	.ENTRY	POC_HMOD, ^M<R2,R3,R4,R5,R6,R7,R8,R9,R10,R11>
+	JSB	HDIVMOD
+	MOVQ	R2, R0
+	RET
+
+; a, b as above: R0 and R1 the quotient, R2 and R3 the remainder. The
+; magnitudes are divided bit by bit, the quotient's bits shifted in where
+; the dividend's leave (R2 and R3), the remainder in R8 and R9; then the
+; signs (R10: 1 a negative, 2 b negative) and the floor
+HDIVMOD:
+	MOVL	4(AP), R0
+	MOVQ	(R0), R2
+	MOVL	8(AP), R0
+	MOVQ	(R0), R4
+	BISL3	R4, R5, R0
+	BNEQ	5$
+	DIVL2	R0, R1
+5$:	CLRL	R10
+	MOVQ	R4, R6
+	TSTL	R3
+	BGEQ	10$
+	MNEGL	R3, R3
+	MNEGL	R2, R2
+	SBWC	#0, R3
+	BISL2	#1, R10
+10$:	TSTL	R7
+	BGEQ	20$
+	MNEGL	R7, R7
+	MNEGL	R6, R6
+	SBWC	#0, R7
+	BISL2	#2, R10
+20$:	CLRQ	R8
+	MOVL	#64, R11
+30$:	ADDL2	R2, R2
+	ADWC	R3, R3
+	ADWC	R8, R8
+	ADWC	R9, R9
+	CMPL	R9, R7
+	BGTRU	40$
+	BLSSU	50$
+	CMPL	R8, R6
+	BLSSU	50$
+40$:	SUBL2	R6, R8
+	SBWC	R7, R9
+	BISL2	#1, R2
+50$:	SOBGTR	R11, 30$
+	BLBC	R10, 60$
+	MNEGL	R9, R9
+	MNEGL	R8, R8
+	SBWC	#0, R9
+60$:	CMPL	R10, #1
+	BEQL	70$
+	CMPL	R10, #2
+	BNEQ	90$
+70$:	MNEGL	R3, R3
+	MNEGL	R2, R2
+	SBWC	#0, R3
+	BISL3	R8, R9, R0
+	BEQL	90$
+	SUBL2	#1, R2
+	SBWC	#0, R3
+	ADDL2	R4, R8
+	ADWC	R5, R9
+90$:	MOVQ	R2, R0
+	MOVQ	R8, R2
+	RSB
+
 	.END

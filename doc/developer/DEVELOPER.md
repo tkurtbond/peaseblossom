@@ -210,7 +210,12 @@ each `<run>.dbg`, debugger commands that typically `DEPOSIT` the inputs,
 with `run-<name>.log`, where the guest can be used (`test/vaxfixture.sh`).
 Write a run's inputs and what it expects in `!` comments at its top. Show
 values without addresses: `EXAMINE` of a variable, or `EVALUATE
-.(%FP-<n>)` for the frame, since a stack address can change. Line numbers
+.(%FP-<n>)` for the frame, since a stack address can change. A breakpoint
+(`SET BREAK <MODULE>\%LINE <n>`) goes on an instruction, a `; line`
+comment having none. A watch stops the program at each change, so the run
+needs a `GO` for each; `SET TYPE WORD` (or `BYTE`, `LONG`) before `SET
+WATCH` gives its size. `EXAMINE/QUADWORD` shows a `HUGEINT`, and
+`EXAMINE/HEXADECIMAL` a `SET`, but `DEPOSIT` takes only decimal. Line numbers
 in the debugger's output are those of `expected-vax.mar`, so a change to its
 reviewer's comment means making the log again. Neither tool's runs may
 overlap another's, since they share `POC`'s home directory.
