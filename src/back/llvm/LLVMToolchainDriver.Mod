@@ -20,7 +20,7 @@ MODULE LLVMToolchainDriver;
      LLVMCodeGenerator.Mod itself a pure tree-walker with no file-path/
      directory concerns of its own. *)
 
-  IMPORT Files, Platform, Err, Diagnostics, LLVMTypes, LLVMCodeGenerator;
+  IMPORT Files, Platform, Err, Diagnostics, LLVMTypes, LLVMCodeGenerator, ModuleInterface;
 
   CONST
     dirBufferLength = 1024;
@@ -55,6 +55,9 @@ MODULE LLVMToolchainDriver;
        links with -flto, which bitcode anywhere in the link needs - an LTO
        library's archive without -lto too *)
     lto*, ltoLink*: BOOLEAN;
+    (* poc -rebuild (Ongoing implementation enhancements, item 3): every
+       module compiled, no object reused (CompileModules) *)
+    rebuild*: BOOLEAN;
     linkArguments: ARRAY linkArgumentsLength OF CHAR;
     (* Phase 13 step 2 (decided with the user 2026-10-02): each poc -c-flag
        <arg>, for clang when it compiles a module's C part (AddCFlag) *)
@@ -488,15 +491,157 @@ MODULE LLVMToolchainDriver;
     IF cxxLibrary OR HasCxxPart(modules, outputDir) THEN COPY("clang++", linker) ELSE COPY("clang", linker) END
   END Linker;
 
+  (* ---- Reusing objects (Ongoing implementation enhancements, item 3,
+     decided with the user 2026-10-08) ----
+
+     A build compiles each module's .ll, and its C or C++ part, again only
+     when the object there was not made from the same input with the same
+     command. poc's own work on a module (parsing, checking, writing its
+     IR) is a few percent of a build; clang -c is the rest. The input is
+     known by its content, not by file times: a module's object defines
+     "@<M>.-build.<stamp>", the stamp the hash (ModuleInterface's FNV-1a)
+     of the clang -c command and the .ll, which says everything the
+     object depends on - -g, -range-checks and the traps change the IR, the
+     -opt level and target the command, a changed interface of an import
+     the key the IR refers to. A C or C++ part is compiled with -MD, and
+     its .d file, listing every file the compile read, ends with
+     "# poc-build <stamp>", the hash of the command and those files. Not
+     under -lto (nm cannot read bitcode on OpenBSD or NetBSD), nor for a
+     module given as its .sym and .ll, nor for -library, whose directory is
+     installed; -rebuild compiles everything. *)
+
+  (* hash's text, the 16 hexadecimal digits *)
+  PROCEDURE StampOf(VAR hash: ModuleInterface.Hash; VAR stamp: ARRAY OF CHAR);
+  BEGIN
+    ModuleInterface.HashKey(hash, stamp)
+  END StampOf;
+
+  (* adds the file at path to hash; FALSE when it cannot be opened *)
+  PROCEDURE HashPath(VAR hash: ModuleInterface.Hash; path: ARRAY OF CHAR): BOOLEAN;
+    VAR f: Files.File;
+  BEGIN
+    f := Files.Old(path);
+    IF f = NIL THEN RETURN FALSE END;
+    ModuleInterface.HashFileBytes(hash, f); Files.Close(f);
+    RETURN TRUE
+  END HashPath;
+
+  (* appends the line text to the file at path; FALSE when it cannot be
+     opened *)
+  PROCEDURE AppendLine(path, text: ARRAY OF CHAR): BOOLEAN;
+    VAR f: Files.File; r: Files.Rider; i: INTEGER;
+  BEGIN
+    f := Files.Old(path);
+    IF f = NIL THEN RETURN FALSE END;
+    Files.Set(r, f, Files.Length(f));
+    i := 0;
+    WHILE text[i] # 0X DO Files.Write(r, text[i]); INC(i) END;
+    Files.Write(r, 0AX);
+    Files.Close(f);
+    RETURN TRUE
+  END AppendLine;
+
+  (* Whether the object at path defines symbol (nm -P), read back from a
+     scratch file as HostTriple's is *)
+  PROCEDURE ObjectDefines(path, symbol: ARRAY OF CHAR): BOOLEAN;
+    VAR
+      scratch: ARRAY 128 OF CHAR; cmd: ARRAY 3 * pathBufferLength OF CHAR;
+      quoted: ARRAY 2 * pathBufferLength OF CHAR; line: ARRAY 1024 OF CHAR;
+      f: Files.File; r: Files.Rider; i, status: INTEGER; found: BOOLEAN;
+  BEGIN
+    IF ~QuoteWord(path, quoted) THEN RETURN FALSE END;
+    scratch := "/tmp/poc-llvm-object-"; AppendInt(scratch, Platform.PID);
+    cmd := "nm -P"; Strcat(cmd, quoted); Strcat(cmd, " >"); Strcat(cmd, scratch); Strcat(cmd, " 2>/dev/null");
+    status := Platform.System(cmd);
+    found := FALSE;
+    f := Files.Old(scratch);
+    IF f # NIL THEN
+      Files.Set(r, f, 0);
+      REPEAT
+        Files.ReadLine(r, line);
+        i := 0;
+        WHILE (symbol[i] # 0X) & (line[i] = symbol[i]) DO INC(i) END;
+        (* the symbol, then a space and its type, defined: not U *)
+        IF (symbol[i] = 0X) & (line[i] = " ") & (line[i + 1] # "U") THEN found := TRUE END
+      UNTIL found OR r.eof;
+      Files.Close(f)
+    END;
+    status := Platform.Unlink(scratch);
+    RETURN found
+  END ObjectDefines;
+
+  (* The stamp of a C or C++ part from its .d file at depPath, which clang
+     -MD wrote: the hash of cmd and of every file the .d names, in stamp,
+     and the stamp the .d records (a line "# poc-build <stamp>", "" when
+     none), in recorded. FALSE when the .d or a file it names cannot be
+     read. A name ends at a blank or line end; "\ " is a blank in a name,
+     a backslash ending a line continues it, and a word ending in ":" is
+     the object's, not a file it read. *)
+  PROCEDURE DepsStamp(cmd, depPath: ARRAY OF CHAR; VAR stamp, recorded: ARRAY OF CHAR): BOOLEAN;
+    VAR
+      prefix: ARRAY 16 OF CHAR; f: Files.File; r: Files.Rider; hash: ModuleInterface.Hash;
+      word: ARRAY pathBufferLength OF CHAR; line: ARRAY 2 * pathBufferLength OF CHAR;
+      ch: CHAR; i, n: INTEGER; ok, endWord: BOOLEAN;
+  BEGIN
+    stamp[0] := 0X; recorded[0] := 0X; prefix := "# poc-build ";
+    f := Files.Old(depPath);
+    IF f = NIL THEN RETURN FALSE END;
+    ModuleInterface.HashStart(hash); ModuleInterface.HashText(hash, cmd);
+    ok := TRUE; n := 0;
+    Files.Set(r, f, 0);
+    WHILE ok & ~r.eof DO
+      Files.ReadLine(r, line);
+      IF line[0] = "#" THEN
+        i := 0; WHILE (prefix[i] # 0X) & (line[i] = prefix[i]) DO INC(i) END;
+        IF prefix[i] = 0X THEN COPY(line, word); i := 0;
+          WHILE word[12 + i] # 0X DO recorded[i] := word[12 + i]; INC(i) END;
+          recorded[i] := 0X
+        END
+      ELSE
+        i := 0;
+        LOOP
+          ch := line[i]; endWord := FALSE;
+          IF ch = 0X THEN endWord := TRUE
+          ELSIF (ch = " ") OR (ch = 09X) OR (ch = 0DX) THEN endWord := TRUE
+          ELSIF ch = "\" THEN
+            IF line[i + 1] = " " THEN
+              IF n < LEN(word) - 1 THEN word[n] := " "; INC(n) END;
+              INC(i)
+            ELSIF line[i + 1] = 0X THEN endWord := TRUE (* the line goes on *)
+            ELSIF n < LEN(word) - 1 THEN word[n] := ch; INC(n)
+            END
+          ELSIF n < LEN(word) - 1 THEN word[n] := ch; INC(n)
+          END;
+          IF endWord & (n > 0) THEN
+            word[n] := 0X;
+            IF word[n - 1] # ":" THEN ok := ok & HashPath(hash, word) END;
+            n := 0
+          END;
+          IF line[i] = 0X THEN EXIT END;
+          INC(i)
+        END
+      END
+    END;
+    Files.Close(f);
+    IF ok THEN StampOf(hash, stamp) END;
+    RETURN ok
+  END DepsStamp;
+
   (* clang -c on each module's .ll that is not from a library, to its .o;
      position-independent code always (Phase 12 step 2f, decided with the
      user 2026-09-27), so that any module's object - one given as a .sym
      and .o too - can go into a shared library; and its C or C++ part, if
-     it has one (CompanionSource) *)
-  PROCEDURE CompileModules(modules: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR): BOOLEAN;
+     it has one (CompanionSource). Each is compiled only when its object
+     is not stamped with what it would be compiled from now (Reusing
+     objects, above), unless reuse is FALSE (a library's modules: its
+     directory is installed, and a .d names the build's files). *)
+  PROCEDURE CompileModules(modules: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR;
+                           reuse: BOOLEAN): BOOLEAN;
     VAR
-      path, source, other: ARRAY pathBufferLength OF CHAR; suffix: ARRAY 8 OF CHAR;
-      m: LLVMCodeGenerator.ModuleList; ok, cxx: BOOLEAN;
+      path, source, other, ir, deps: ARRAY pathBufferLength OF CHAR; suffix: ARRAY 8 OF CHAR;
+      m: LLVMCodeGenerator.ModuleList; ok, cxx, stamped: BOOLEAN; hash: ModuleInterface.Hash;
+      stamp, recorded: ARRAY ModuleInterface.keyLength + 1 OF CHAR;
+      symbol: ARRAY nameBufferLength + 40 OF CHAR; line: ARRAY nameBufferLength + 80 OF CHAR;
   BEGIN
     ok := TRUE; m := modules;
     WHILE ok & (m # NIL) DO
@@ -505,11 +650,22 @@ MODULE LLVMToolchainDriver;
         Strcat(command, " -fPIC");
         IF lto THEN Strcat(command, " -flto") END;
         IF m.irPath[0] # 0X THEN AppendPath(m.irPath) (* a module given as its .sym and .ll *)
-        ELSE ModuleFilePath(outputDir, m.module.name, ".ll", path); AppendPath(path)
+        ELSE ModuleFilePath(outputDir, m.module.name, ".ll", ir); AppendPath(ir)
         END;
         ObjectFilePath(outputDir, m, path);
         Strcat(command, " -o"); AppendPath(path);
-        ok := RunCommand();
+        (* the stamp, in the IR before clang reads it *)
+        stamped := FALSE;
+        IF reuse & ~lto & (m.irPath[0] = 0X) THEN
+          ModuleInterface.HashStart(hash); ModuleInterface.HashText(hash, command);
+          IF HashPath(hash, ir) THEN
+            StampOf(hash, stamp);
+            COPY(m.module.name, symbol); Strcat(symbol, ".-build."); Strcat(symbol, stamp);
+            line := "@"; Strcat(line, symbol); Strcat(line, " = constant i8 0");
+            stamped := AppendLine(ir, line)
+          END
+        END;
+        IF ~(stamped & ~rebuild & ObjectDefines(path, symbol)) THEN ok := RunCommand() END;
         IF ~ok & (m.irPath[0] # 0X) THEN
           (* IR from a newer LLVM than this clang's does not parse *)
           Err.String("poc: clang cannot compile "); Err.String(m.irPath);
@@ -528,8 +684,19 @@ MODULE LLVMToolchainDriver;
           IF lto THEN Strcat(command, " -flto") END;
           AppendPath(source);
           CompanionSuffix(cxx, suffix); ModuleFilePath(outputDir, m.module.name, suffix, path);
-          Strcat(command, " -o"); AppendPath(path);
-          ok := RunCommand()
+          IF ~reuse OR lto THEN Strcat(command, " -o"); AppendPath(path); ok := RunCommand()
+          ELSE
+            COPY(path, deps); Strcat(deps, ".d");
+            Strcat(command, " -MD -MF"); AppendPath(deps);
+            Strcat(command, " -o"); AppendPath(path);
+            IF rebuild OR ~FileExists(path) OR ~DepsStamp(command, deps, stamp, recorded) OR (stamp # recorded) THEN
+              ok := RunCommand();
+              IF ok & DepsStamp(command, deps, stamp, recorded) THEN
+                line := "# poc-build "; Strcat(line, stamp);
+                ok := AppendLine(deps, line)
+              END
+            END
+          END
         END
       END;
       m := m.next
@@ -724,7 +891,7 @@ MODULE LLVMToolchainDriver;
     VAR path, file: ARRAY pathBufferLength OF CHAR; linker: ARRAY 8 OF CHAR; deleteResult: INTEGER;
   BEGIN
     IF ~EmitIR(modules, name, triple, dir, path) THEN RETURN FALSE END;
-    IF ~CompileModules(modules, triple, dir) THEN RETURN FALSE END;
+    IF ~CompileModules(modules, triple, dir, FALSE) THEN RETURN FALSE END;
     COPY(dir, path); Strcat(path, "/lib"); Strcat(path, name); Strcat(path, ".a");
     deleteResult := Platform.Unlink(path); (* ar adds to an archive that is there *)
     command := "ar rcs"; AppendPath(path);
@@ -750,7 +917,7 @@ MODULE LLVMToolchainDriver;
   PROCEDURE Compile*(modules: LLVMCodeGenerator.ModuleList; topName, triple, outputDir: ARRAY OF CHAR): BOOLEAN;
     VAR path: ARRAY pathBufferLength OF CHAR;
   BEGIN
-    RETURN EmitIR(modules, topName, triple, outputDir, path) & CompileModules(modules, triple, outputDir)
+    RETURN EmitIR(modules, topName, triple, outputDir, path) & CompileModules(modules, triple, outputDir, TRUE)
   END Compile;
 
   (* Full build (Phase 12 step 2a): EmitIR, then `clang -c` compiles every
@@ -763,7 +930,7 @@ MODULE LLVMToolchainDriver;
     VAR path, exeDir: ARRAY pathBufferLength OF CHAR; linker: ARRAY 8 OF CHAR; i, slash: INTEGER;
   BEGIN
     IF ~EmitIR(modules, topName, triple, outputDir, path) THEN RETURN FALSE END;
-    IF ~CompileModules(modules, triple, outputDir) THEN RETURN FALSE END;
+    IF ~CompileModules(modules, triple, outputDir, TRUE) THEN RETURN FALSE END;
     Linker(modules, outputDir, linker);
     COPY(linker, command); AppendTargetOptions(command, triple);
     AppendLTOOptions(triple); AppendHardeningOptions(triple);

@@ -1,0 +1,3 @@
+MODULE B; IMPORT A;
+  PROCEDURE Six*(): INTEGER; BEGIN RETURN A.Twice(A.Three()) END Six;
+END B.

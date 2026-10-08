@@ -1,0 +1,8 @@
+== 1.
+ModuleTable.Register weak
+== 2.
+collected
+42
+== 3.
+ran
+ModuleTable.Register weak

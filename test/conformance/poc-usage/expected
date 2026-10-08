@@ -27,6 +27,7 @@ options, before the command (the last one counts, except those that add):
   -g                         debug information for gdb and lldb
   -opt <level>               clang's -O: 0-3 s z g (default 2, 0 on 32-bit x86)
   -lto                       optimize the whole program when it is linked
+  -rebuild                   compile every module, reusing no object
   -trap-location             a trap's message names its file, line, procedure
   -trap-heap-exhausted       a NEW that finds no memory stops the program
   -range-checks              SHORT and CHR of a value that does not fit trap

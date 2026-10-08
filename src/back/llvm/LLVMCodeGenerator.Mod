@@ -7210,13 +7210,20 @@ MODULE LLVMCodeGenerator;
 
   (* ---- GC root tables (PLAN.md Phase 9 step 4) ----
 
-     Only in a program that contains the module ModuleTable: for every
-     module with pointer-typed module-level VARs, one global
+     For every module with pointer-typed module-level VARs, one global
      @.roots.<Module> laid out as ModuleTable.Mod documents ({ next,
      count, slots }, every field one target word), each slot the address
      of one pointer location of one such VAR, flattened through records
      and fixed arrays like a type descriptor's offset table. The module's
-     `_init` registers the table before running the module body. *)
+     `_init` registers the table before running the module body, through
+     a weak reference to ModuleTable.Register, called only when it is
+     not null: a program without the collector (no NEW, so nothing for
+     its pointers to point into) links no ModuleTable for it. Until
+     2026-10-08 the table was emitted only in a program that contained
+     ModuleTable, so a module compiled by -compile alone, whose own
+     imports brought no runtime, had none, and linked as its .sym and .o
+     into a program that has the collector, its pointers were not roots:
+     what only they reached was freed. *)
 
   (* How many pointer locations the module's own VARs hold in all. *)
   PROCEDURE CountRootSlots(VAR cg: Codegen; module: SyntaxTree.ModuleNode): LONGINT;
@@ -7275,16 +7282,22 @@ MODULE LLVMCodeGenerator;
   END EmitRootTable;
 
   (* The call at the top of a module's `_init` that hands its root table
-     to ModuleTable. *)
+     to ModuleTable, when the program has it (a weak reference). *)
   PROCEDURE EmitRootTableRegistration(VAR w: Files.Rider; VAR cg: Codegen; module: SyntaxTree.ModuleNode);
-    VAR wordInt, name: ValueText;
+    VAR wordInt, name, present, register, registered: ValueText;
   BEGIN
     IF CountRootSlots(cg, module) = 0 THEN RETURN END;
     WordIntType(wordInt);
     RootTableName(module, name);
+    NewTemp(cg, present); NewLabel(cg, register); NewLabel(cg, registered);
+    WriteStr(w, "  "); WriteStr(w, present); WriteStr(w, " = icmp ne ptr @ModuleTable.Register, null"); WriteLn(w);
+    EmitCondBr(w, present, register, registered);
+    EmitLabel(w, cg, register);
     WriteStr(w, "  call void @ModuleTable.Register("); WriteStr(w, wordInt);
     WriteStr(w, " ptrtoint (ptr "); WriteStr(w, name); WriteStr(w, " to "); WriteStr(w, wordInt);
-    WriteStr(w, "))"); WriteLn(w)
+    WriteStr(w, "))"); WriteLn(w);
+    EmitBr(w, registered);
+    EmitLabel(w, cg, registered)
   END EmitRootTableRegistration;
 
   PROCEDURE HasModuleNamed(modules: ModuleList; name: ARRAY OF CHAR): BOOLEAN;
@@ -8432,24 +8445,53 @@ MODULE LLVMCodeGenerator;
     END
   END CollectClosure;
 
+  (* "declare void <symbol>(<word>)", once: a runtime procedure the
+     generated code calls, whose parameters are SYSTEM.ADDRESS; with weak,
+     "declare extern_weak", which a program without it links as null *)
+  PROCEDURE EmitRuntimeDeclaration(VAR w: Files.Rider; VAR cg: Codegen; symbol: ARRAY OF CHAR; params: INTEGER;
+                                   weak: BOOLEAN);
+    VAR wordInt: ValueText; i: INTEGER;
+  BEGIN
+    IF HasDeclaredExternal(cg, symbol) THEN RETURN END;
+    MarkDeclaredExternal(cg, symbol);
+    WordIntType(wordInt);
+    WriteStr(w, "declare ");
+    IF weak THEN WriteStr(w, "extern_weak ") END;
+    WriteStr(w, "void "); WriteStr(w, symbol); WriteStr(w, "(");
+    FOR i := 1 TO params DO
+      IF i > 1 THEN WriteStr(w, ", ") END;
+      WriteStr(w, wordInt)
+    END;
+    WriteStr(w, ")"); WriteLn(w)
+  END EmitRuntimeDeclaration;
+
   (* The declarations target needs of the other modules of program: its
-     import closure's, and the runtime modules' the generated code calls *)
+     import closure's, and those of the runtime procedures the generated
+     code calls without an IMPORT - only those, so that a module's IR does
+     not depend on which runtime modules the rest of the program brings
+     (Ongoing implementation enhancements, item 3: an object -compile made
+     is reused by -build). GarbageCollectedHeap.Allocate is declared when
+     NEW used it (EmitPointerSupport). *)
   PROCEDURE EmitImportDeclarations(VAR w: Files.Rider; VAR cg: Codegen; program, target: ModuleList;
-                                   withRuntime: BOOLEAN);
+                                   withHeap, withArguments, isMain: BOOLEAN);
     VAR closure, c: ClosureModule;
   BEGIN
     closure := NIL;
     CollectClosure(program, target, closure);
-    IF withRuntime THEN
-      CollectClosure(program, FindProgramModule(program, "ModuleTable"), closure);
-      CollectClosure(program, FindProgramModule(program, "GarbageCollectedHeap"), closure);
-      CollectClosure(program, FindProgramModule(program, "Modules"), closure)
-    END;
     c := closure;
     WHILE c # NIL DO
       IF c.module # target THEN DeclareModuleSymbols(w, cg, c.module) END;
       c := c.next
-    END
+    END;
+    (* none in the module that defines it *)
+    IF (target.module.name # "ModuleTable") & (CountRootSlots(cg, target.module) > 0) THEN
+      EmitRuntimeDeclaration(w, cg, "@ModuleTable.Register", 1, TRUE)
+    END;
+    IF withArguments & (target.module.name # "ModuleTable") THEN
+      EmitRuntimeDeclaration(w, cg, "@ModuleTable.RegisterModule", 1, FALSE)
+    END;
+    IF isMain & withArguments THEN EmitRuntimeDeclaration(w, cg, "@Modules.Init", 2, FALSE) END;
+    IF isMain & withHeap THEN EmitRuntimeDeclaration(w, cg, "@GarbageCollectedHeap.SetStackBase", 1, FALSE) END
   END EmitImportDeclarations;
 
   (* "declare void @<name>_init()", once *)
@@ -8716,7 +8758,7 @@ MODULE LLVMCodeGenerator;
     m := target;
     cg.moduleName := m.module.name; cg.scope := m.scope; COPY(m.fileName, cg.currentFile);
     IF debugInfo THEN EnterDebugUnit(m.module.name, m.fileName) END;
-    EmitImportDeclarations(body, cg, program, target, TRUE);
+    EmitImportDeclarations(body, cg, program, target, withHeap, withArguments, isMain);
     (* the _init procedures this module's calls: its imports', and in the
        main module the runtime modules' *)
     import := m.module.imports;
@@ -8735,7 +8777,7 @@ MODULE LLVMCodeGenerator;
     EmitGlobals(body, cg, m.module);
     EmitExternalDeclares(body, cg, m.module);
     EmitTypeDescriptors(body, cg, m.module);
-    IF withRootTables THEN EmitRootTable(body, cg, m.module) END;
+    EmitRootTable(body, cg, m.module);
     IF withArguments THEN EmitModuleDescriptor(body, program, m.module) END;
     EmitRuntimeSupport(body, cg);
     CollectStringConstantsSeq(body, cg, m.module.statements);
@@ -8778,7 +8820,7 @@ MODULE LLVMCodeGenerator;
       IF FindProgramModule(program, import.moduleName) # NIL THEN EmitInitCall(body, import.moduleName) END;
       import := import.next
     END;
-    IF withRootTables THEN EmitRootTableRegistration(body, cg, m.module) END;
+    EmitRootTableRegistration(body, cg, m.module);
     IF withArguments THEN EmitModuleRegistration(body, m.module) END;
     GenerateStatementSeq(body, cg, GenerateDeclarationInits(body, cg, m.module.declarations, m.module.statements));
     WriteStr(body, "  ret void"); WriteLn(body);

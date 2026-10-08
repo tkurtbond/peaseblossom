@@ -1909,6 +1909,7 @@ MODULE Poc;
     HelpLine("  -g                         debug information for gdb and lldb");
     HelpLine("  -opt <level>               clang's -O: 0-3 s z g (default 2, 0 on 32-bit x86)");
     HelpLine("  -lto                       optimize the whole program when it is linked");
+    HelpLine("  -rebuild                   compile every module, reusing no object");
     HelpLine("  -trap-location             a trap's message names its file, line, procedure");
     HelpLine("  -trap-heap-exhausted       a NEW that finds no memory stops the program");
     HelpLine("  -range-checks              SHORT and CHR of a value that does not fit trap");
@@ -2168,6 +2169,10 @@ MODULE Poc;
         ELSIF arg = "-lto" THEN
           (* Phase 12 step 2g: whole-program optimization *)
           LLVMToolchainDriver.lto := TRUE;
+          INC(i)
+        ELSIF arg = "-rebuild" THEN
+          (* Ongoing implementation enhancements, item 3: no object reused *)
+          LLVMToolchainDriver.rebuild := TRUE;
           INC(i)
         ELSIF arg = "-verbose" THEN
           (* Phase 12 step 1: voc's -V, as far as it shows the C compiler's command *)

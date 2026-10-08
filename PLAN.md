@@ -1110,6 +1110,26 @@ fixed in 526d7ba, are in `doc/history/phases/phase-14.md`.
    converts only when the widths differ. Fixture `llvm-ord-set`, under
    both size models.
 
+6. **[fixed] A module compiled alone lost its pointer variables to the
+   collector** (found 2026-10-08 with "Ongoing implementation
+   enhancements" 3; fix decided with the user the same day). A module's
+   root table - the addresses of the pointers among its module-level
+   variables, registered with `ModuleTable` so the collector scans them -
+   was emitted only in a program that had `ModuleTable`, which a program
+   got only when some module called `NEW` or came from a library. So
+   `poc -compile G.Mod`, for a `G` with `VAR p*: POINTER TO R` and no
+   runtime among its imports, made a `G.o` with no root table, and a
+   program given that `.sym` and `.o` that did use the collector freed
+   what only `G.p` reached: `G.p.x`, set to 42, printed 1000 after a
+   collection. Now every module with such a variable has its root table,
+   registered through a weak reference (`declare extern_weak`) to
+   `ModuleTable.Register`, called only when it is not null. A program
+   that has the collector registers it as before; one without (no `NEW`,
+   no library module, so nothing for the pointers to point into) links no
+   `ModuleTable` for it (decided with the user: no runtime for a pointer
+   variable alone). Fixture `llvm-gc-compiled-roots`; `llvm-gc-roots-ir`
+   and the type-descriptor IR fixtures show the tables and the check.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other
@@ -1320,24 +1340,30 @@ at a convenient point.
    Linux, libc++ on the BSDs), so a client needs only the library's own
    `link` lines.
 
-3. **A makefile's up-to-date objects are compiled again** (found
+3. **[done] A makefile's up-to-date objects are compiled again** (found
    2026-10-06 by the user, with the FLTK binding's makefile). A
    makefile can compile each out-of-date module with `poc -compile`,
-   but building the program then compiles every module whose source poc
-   can see again: a module is taken from `<Module>.Mod` in the current
-   directory or on the import path before its `<Module>.sym` and `.o`
-   (Reference Guide, "Where modules come from"), and poc compares no
-   times. Checked 2026-10-06: with `A.Mod` beside a fresh `A.o`,
-   building `M` ran `clang -c` for both; without `A.Mod`, `A.o` was
-   linked as it was. Today a makefile works by keeping the sources out
-   of poc's sight when it builds - sources in `src/`, objects and the
-   build run in `build/` (`poc -compile ../src/A.Mod`, then `poc
-   ../src/Main.Mod`), whose imports then come from the `.sym` and `.o`
-   files. The change to decide with the user: an option, or the default,
-   under which poc takes a module's `.sym` and `.o` instead of its source
-   when they are newer than the source and match (its key, and the keys
-   of its imports, as poc already checks), so that only what changed is
-   compiled, as make would.
+   but building the program then compiled every module whose source poc
+   could see again: a module is taken from `<Module>.Mod` before its
+   `.sym` and `.o` (Reference Guide, "Where modules come from"), and poc
+   compared nothing. Decided with the user 2026-10-08: by default, for
+   every module compiled from source (imports, the main module and
+   `-compile`), poc still checks it and writes its IR - 0.7 s of poc's
+   own 29 s build; `clang -c` is the rest - but runs `clang -c` only when
+   the object would differ, judged by content, not file times. The `.ll`
+   ends with `@<M>.-build.<stamp>`, the FNV-1a hash of the `clang -c`
+   command and the IR, and an object that defines it (`nm -P`) is reused;
+   a C or C++ part is compiled with `-MD`, and its `.d` records `#
+   poc-build <stamp>`, the hash of the command and every file it read.
+   Options are in the stamp through the command and the IR. Not under
+   `-lto` (no `nm` of bitcode on the BSDs), for a module given as its
+   `.sym` and `.ll`, or in `-library` (its directory is installed, and a
+   `.d` would name the build's files); the new option `-rebuild` reuses nothing. poc's own
+   build, done again, went from 29.7 s to 1.4 s. A module now declares
+   only the runtime procedures its code calls, not all of `ModuleTable`'s,
+   `GarbageCollectedHeap`'s and `Modules`' whenever the program has them,
+   so that `-compile` alone and `-build` write the same IR. Fixture
+   `llvm-object-reuse`.
 
 4. **[done] A module a library has for another target is named** (found
    2026-10-08 by the user, installing the NetBSD package on terhali, whose

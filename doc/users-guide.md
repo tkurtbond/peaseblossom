@@ -102,9 +102,14 @@ $ ./greeting
 Hello, world
 ```
 
-Every build compiles every module of the program from its source again: poc
-keeps no record of what changed. A module that should not be compiled again
-belongs in a library (section 5).
+Every build reads every module of the program from its source again, but
+compiles a module's object only when it would differ from the one there:
+the `.ll` and the `.o` record a stamp, a hash of the IR and the clang
+command, and an unchanged module's object is linked as it is. A module
+with a C part also leaves `<Module>.c.o.d`, the files its C was compiled
+from, with its stamp. A change to a module's body compiles that module
+again; a change to its interface also compiles the modules that import it.
+`-rebuild` compiles every object again (Reference Guide, section 8).
 
 **Errors.** An error names the file, the line and the column, says what is
 wrong and names what it is about. poc reports every error it finds, then

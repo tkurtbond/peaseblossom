@@ -1,0 +1,63 @@
+== 1.
+-- first build
+compiled 'A.ll'
+compiled 'A.c'
+compiled 'B.ll'
+compiled 'M.ll'
+6
+-- again
+6
+== 2.
+-- touched
+6
+-- a comment in A
+6
+== 3.
+-- A's body
+compiled 'A.ll'
+8
+-- A's interface
+compiled 'A.ll'
+compiled 'B.ll'
+compiled 'M.ll'
+8
+== 4.
+-- a.h
+compiled 'A.c'
+12
+== 5.
+-- -opt 1
+compiled 'A.ll'
+compiled 'A.c'
+compiled 'B.ll'
+compiled 'M.ll'
+12
+-- -opt 1 again
+12
+-- -rebuild
+compiled 'A.ll'
+compiled 'A.c'
+compiled 'B.ll'
+compiled 'M.ll'
+12
+== 6.
+-- -compile
+0
+-- -compile again
+0
+-- A.o without the stamp
+compiled 'A.ll'
+12
+== 7.
+-- -lto
+compiled 'A.ll'
+compiled 'A.c'
+compiled 'B.ll'
+compiled 'M.ll'
+12
+-- -lto again
+compiled 'A.ll'
+compiled 'A.c'
+compiled 'B.ll'
+compiled 'M.ll'
+12

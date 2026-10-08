@@ -1,0 +1,4 @@
+MODULE A;
+  PROCEDURE ["C", "a_twice"] Twice*(x: INTEGER): INTEGER;
+  PROCEDURE Three*(): INTEGER; BEGIN RETURN 3 END Three;
+END A.
