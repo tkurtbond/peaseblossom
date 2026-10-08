@@ -424,4 +424,6 @@ questions" - \<name\> means the entry of that name here.
     signed order is unsigned order (`GarbageCollectedHeap`, the comment
     on the search). Should more code need unsigned address comparisons,
     an unsigned type of address width or a predeclared comparison can say
-    so explicitly, without changing `ADDRESS`.
+    so explicitly, without changing `ADDRESS`. The type was adopted the
+    same day as `SYSTEM.CARD` (`language-extensions.md`, "Unsigned
+    integer types"), with no signed alias of `ADDRESS` beside it.

@@ -937,7 +937,18 @@ A24, moved here 2026-09-26), are Phase 14 now.
    a step that would pass its final value (`language-extensions.md`,
    "FOR final value"), so that a CARD counted down to 0, or any loop up
    to `MAX(T)`, ends. `SYSTEM.ADDRESS` stays signed (decided the same
-   day; "Open design questions", below). Not built yet.
+   day; "Open design questions", below). With it, **`SYSTEM.CARD`**
+   (decided with the user the same day): an unsigned type as wide as
+   `ADDRESS` (the machine word, on every target poc has), for C's
+   `size_t` and `uintptr_t`, unsigned address comparisons (the
+   collector's `MIN(SYSTEM.ADDRESS)` bias) and VAX system-space
+   addresses, which start at 80000000H. A type of its own, as `ADDRESS`
+   is, not an alias of `CARD32` or `CARD64`, so that a program passing it
+   as a `VAR` parameter does not compile on one width and fail on the
+   other; it and the `CARDn` of its width include each other, and it is
+   otherwise a member of the CARD family (`SYSTEM.VAL` to and from
+   `ADDRESS`). No signed counterpart: `ADDRESS` is the signed word-sized
+   type, under that name only (the user). Not built yet.
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the

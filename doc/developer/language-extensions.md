@@ -1506,6 +1506,15 @@ whose red is 128 or more is a negative `INTEGER` under `-OC`.
 both size models (XDS's names, `SYSTEM.CARD8` to `CARD32`, with a 64-bit
 one added).
 
+- **`SYSTEM.CARD`** (decided with the user, 2026-10-08): unsigned and as
+  wide as `SYSTEM.ADDRESS`, 32 or 64 bits by the target, for C's `size_t`
+  and `uintptr_t` and for comparing addresses unsigned (on the VAX, system
+  space starts at 80000000H). Like `ADDRESS`, a type of its own rather than
+  an alias of `CARD32` or `CARD64`, so that code passing it as a `VAR`
+  parameter compiles at either width; it and the `CARDn` of its width
+  include each other, and in every other way it is a CARD type
+  (`SYSTEM.VAL(SYSTEM.CARD, a)` of an `ADDRESS` is its bits). There is no
+  signed counterpart: `ADDRESS` is the signed word-sized type.
 - **A family of their own**: `CARD8 ⊆ CARD16 ⊆ CARD32 ⊆ CARD64`, apart from
   the signed integers, as the Oakwood Guidelines recommend and XDS does.
   No CARD type is included in a signed one, nor a signed one in a CARD
@@ -1589,7 +1598,8 @@ mixed with the signed types in an expression. Modula-3, and Oberon System
 
 **Decided with the user, 2026-10-08**: option 2 of the survey, a separate
 family, with a 64-bit type; named `SYSTEM.CARD8`, `CARD16`, `CARD32` and
-`CARD64`; `SYSTEM.VAL` the only conversion between the families; `SHORT`
+`CARD64`, and `SYSTEM.CARD` of address width with no signed counterpart;
+`SYSTEM.VAL` the only conversion between the families; `SHORT`
 and `LONG` within it; included in `REAL` and `LONGREAL`; unary minus
 allowed; wrapping on overflow and underflow; no decimal literals above
 `MAX(HUGEINT)`, hexadecimal patterns instead; `FOR` counting down by
