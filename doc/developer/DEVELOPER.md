@@ -379,7 +379,13 @@ the names, and the variables that give them to the tools, are yours.
        gh release create v0.1.0 build/dist/peaseblossom-0.1.0.tar.gz{,.sha256,.asc} \
          --title "Peaseblossom 0.1.0" --notes-file <notes>
 
-   and on the project's own site.
+   and on the project's own site. Besides what changed, the notes say how
+   to install each package (`INSTALL.md`, section 5, "Installing a
+   release's package"), with this release's file names: as root,
+   `dnf install ./<rpm>`, `pkg add ./<pkg>` or `pkg_add ./<tgz>`; and for
+   OpenBSD, whose `pkg_add` takes a package only under its own name,
+   `peaseblossom-<version>.tgz`, the download under that name with
+   `ftp -o` and `pkg_add -D unsigned`.
 7. **The packages.** Each package's checksums (`distinfo`) are of the
    published tarball, so they come after it: make them on each system
    (section 6), with the packing lists if what is installed changed;
