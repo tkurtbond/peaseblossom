@@ -199,6 +199,8 @@ Open, for Phase 14 (PLAN.md), a phase of its own since 2026-10-02 (user); before
 Decided 2026-09-26 (user): both, anywhere a letter may be, first included; -strict rejects them.  A first verdict the same day took neither (a routine's VMS name goes in a linkage-name string), reversed because STARLET's values and fields (SS$_NORMAL, DSC$W_LENGTH) need their names in a module of constants.  (doc/history/phase-11-inventory.md A25; doc/developer/language-extensions.md.)
 ** TODO Slices for one dimensional arrays.
 Open, for Phase 19 (candidate 1, PLAN.md).
+** TODO Unsigned types.
+SYSTEM.UINT8, UINT16, UINT32, UINT64.  These silently wrap going both directions.
 * Ignore this
 Local Variables:
 eval: (visual-line-mode 1)
