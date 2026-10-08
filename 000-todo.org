@@ -1,7 +1,4 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
-* General Improvements
-** TODO Better CSS for HTML output.
-The default pandoc CSS makes the text wdith too narrow.
 * Things to be done while getting the compiler working
 ** DONE Does poc need an Args.Mod, like the v4 Args.Mod from voc?
 Done 2026-10-02: yes; rtl/llvm/Args.Mod, below.
