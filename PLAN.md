@@ -916,9 +916,27 @@ A24, moved here 2026-09-26), are Phase 14 now.
    2^n, with unsigned comparison, `DIV` and `MOD` (LLVM's `udiv`,
    `urem`, `icmp ult`; the VAX's unsigned branches); `UINT64`'s
    constants above `MAX(HUGEINT)`, its `MAX` and `MIN`, and printing it
-   (`Out`, `OutStr`); and `-strict`. The survey: Active Oberon's
-   `UNSIGNED8` to `UNSIGNED64`, Modula-2's `CARDINAL`, Modula-3's `Word`,
-   and the Oberons without them (Oberon-07, Component Pascal).
+   (`Out`, `OutStr`); and `-strict`. Wrapping means on overflow and
+   underflow both (the user, 2026-10-08). The survey,
+   `doc/research/unsigned-survey.md` (done 2026-10-08), found two
+   placements with precedent: a family of their own, apart from the
+   signed types (the Oakwood Guidelines' recommendation, XDS's
+   `SYSTEM.CARD8` to `CARD32`, GNU Modula-2's expression rule), and
+   Active Oberon's single chain, in which a signed value goes into an
+   unsigned type of its size without a conversion. Oberon-07 and Oberon+
+   have only an unsigned `BYTE`, Component Pascal none, and Modula-3 and
+   Oberon System 3's `BIT` give unsigned operations on signed types as
+   procedures. **Adopted** by the user 2026-10-08:
+   `doc/developer/language-extensions.md`, "Unsigned integer types", has
+   the extension - `SYSTEM.CARD8`, `CARD16`, `CARD32` and `CARD64`, a
+   family apart from the signed integers and included in the reals;
+   `SYSTEM.VAL` the only conversion between the families, `SHORT` and
+   `LONG` within it; unary minus allowed; values above `MAX(HUGEINT)`
+   as hexadecimal patterns, not decimal literals; `FOR` counting down by
+   subtraction. With it, every `FOR`, signed ones included, ends before
+   a step that would pass its final value (`language-extensions.md`,
+   "FOR final value"), so that a CARD counted down to 0, or any loop up
+   to `MAX(T)`, ends. Not built yet.
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the

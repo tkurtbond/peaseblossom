@@ -625,6 +625,20 @@ the same type as v".) What a program can observe:
 - `-strict` does not affect this, since it only removes things. Checked by
   `semantic-reject-for-final-value`, whose three rejected lines are exactly
   the ones voc rejects.
+- **A loop ends before a step that would pass `temp`** (decided with the
+  user 2026-10-08, with the unsigned types, "Unsigned integer types"
+  below; not yet implemented). After the body, the loop exits when the
+  distance left, `temp - v` counting up or `v - temp` counting down, is
+  less than the step's size, and only otherwise adds the step. The
+  distance is computed modulo 2^n at `v`'s width and compared unsigned,
+  which is exact, since `v` has not passed `temp`. Wherever the report's
+  loop ends, this one runs the same iterations and leaves `v` the same,
+  except that `v` is not stepped past `temp` after the last one. Where the
+  report's loop would wrap and never end - `FOR i := 0 TO MAX(INTEGER)`,
+  or a `SYSTEM.CARDn` counted down to 0 - it ends after `temp`'s
+  iteration. A program that reads `v` after the loop sees the last value
+  it had in the body, not one step beyond; the report leaves `v`'s value
+  after the loop undefined only implicitly, and voc steps past `temp`.
 
 ## Declarations after procedures (decided and implemented, Phase 11 A22, 2026-09-25)
 
@@ -1478,3 +1492,108 @@ an existing program.
 is no use without `QUOT` (the user). Not built yet: Phase 19 does it, with
 fixtures for each sign of each operand, constants and variables, every
 integer type, and `-strict`.
+
+## Unsigned integer types (decided 2026-10-08, not yet implemented; Phase 19, candidate 5)
+
+**Adopted by the user 2026-10-08, to be implemented later.** The FLTK binding (`~/Repos/Oberon/pofltk`)
+declares C's unsigned types as the signed `SYSTEM.INTn` of the same width,
+which pass the bits but compare, divide and widen as signed: `Fl.RGB`
+builds an `Fl_Color`, a C `unsigned int`, with `SYSTEM.VAL`, and a color
+whose red is 128 or more is a negative `INTEGER` under `-OC`.
+
+**The extension**: four types in SYSTEM, `SYSTEM.CARD8`, `CARD16`,
+`CARD32` and `CARD64`, the integers 0 to 2^n - 1 in exactly n bits under
+both size models (XDS's names, `SYSTEM.CARD8` to `CARD32`, with a 64-bit
+one added).
+
+- **A family of their own**: `CARD8 ⊆ CARD16 ⊆ CARD32 ⊆ CARD64`, apart from
+  the signed integers, as the Oakwood Guidelines recommend and XDS does.
+  No CARD type is included in a signed one, nor a signed one in a CARD
+  type, so an expression, comparison or assignment that mixes the families
+  is an error. Both families are included in `REAL ⊆ LONGREAL` (decided
+  with the user), so `c * 1.5` is a real expression, as in XDS.
+- **Constants**: a non-negative integer constant whose value fits is
+  usable with a CARD type, as with `SYSTEM.INTn` (`c + 1`, `c := 255`,
+  `IF c = 0`). A negative constant is an error. `MIN(SYSTEM.CARDn)` is 0
+  and `MAX(SYSTEM.CARDn)` is 2^n - 1.
+- **`CARD64` values above `MAX(HUGEINT)`** are written as hexadecimal
+  patterns ("Hexadecimal constants as 64-bit patterns"): with a `CARD64`,
+  `0FFFFFFFFFFFFFFFFH` is 2^64 - 1 (as a signed integer it stays -1), and
+  `08000000000000000H` is 2^63; or as `MAX(SYSTEM.CARD64)`. A decimal
+  literal above `MAX(HUGEINT)` is still an error (decided with the user).
+- **`FOR` with a CARD control variable** may count down: a negative `BY`
+  steps by subtraction, `v := v - |inc|`, modulo 2^n (decided with the
+  user). Under the report's rule, `WHILE v >= temp DO S; v := v + step
+  END`, `FOR c := 10 TO 0 BY -1` would wrap `c` from 0 to `MAX`, still
+  `>= 0`, and never end. Every `FOR` therefore ends before a step that
+  would pass `temp` (decided with the user; "FOR final value" above), so
+  it runs for 10 down to 0 and stops, and so does a loop up to
+  `MAX(SYSTEM.CARDn)`.
+- **Between the families, `SYSTEM.VAL` only** (decided with the user): no
+  checked conversion and no new procedure, so every crossing is marked as
+  a reinterpretation. `SYSTEM.VAL(SYSTEM.CARD32, -1)` is
+  `MAX(SYSTEM.CARD32)`. Between sizes, poc's `SYSTEM.VAL` extends or
+  truncates, and the extension follows the source's family: a CARD is
+  zero-extended, a signed value sign-extended. So `SYSTEM.VAL(LONGINT, c)`
+  of a `CARD16` is its value, and `SYSTEM.VAL(SYSTEM.CARD32, i)` of a
+  negative `INTEGER` under `-O2` is its sign-extended bits.
+  `SYSTEM.VAL` also converts between a CARD and `SET` or `SYSTEM.SET64` of
+  its width.
+- **Within the family, `SHORT` and `LONG`** (decided with the user): `LONG`
+  zero-extends to the next CARD size, `SHORT` keeps the low bits of the
+  next smaller one and, with `-range-checks`, traps on a value that does
+  not fit (status 14), as it does for signed integers.
+- **Arithmetic wraps on overflow and underflow** (the user): `+`, `-`,
+  `*`, `INC` and `DEC` are modulo 2^n, so `MAX + 1` is 0 and `0 - 1` is
+  `MAX`. **Unary minus is allowed** (decided with the user) and is `0 - x`,
+  modulo 2^n. `ABS` is the identity.
+- **Comparison, `DIV` and `MOD` are unsigned** (LLVM's `icmp ult`, `udiv`,
+  `urem`). Floor and truncation agree for these values. A zero divisor is
+  not checked, as for the signed types ("What traps, and what does not").
+- **Shifts**: `ASH` and `SYSTEM.LSH` of a CARD shift right with zeros.
+  `SYSTEM.ROT` rotates within its width.
+- **Other predeclared procedures**: `ODD` as for any integer; `CHR` of a
+  CARD as of any integer. `ORD`, `LEN` and `SIZE` keep their signed result
+  types, so `c < LEN(a)` of an open array needs `SYSTEM.VAL`.
+- **`SYSTEM.BYTE`** takes a `CARD8`, as it takes a `CHAR` or a one-byte
+  `SHORTINT`.
+- **`-strict`** rejects them: "SYSTEM.CARD32 is not in the Oberon-2 report
+  (-strict)". voc has no such types, so a program that uses them builds
+  with poc only, and poc's own source cannot use them.
+
+**What it touches**: Appendix A's type predicates; the constant evaluator,
+which must fold up to 2^64 - 1, unsigned (with `HUGEINT` patterns, since
+poc's source is strict Oberon-2), and the `.sym` format, which must write a
+`CARD64` constant above `MAX(HUGEINT)`; the LLVM backend's operators
+(`udiv`, `urem`, `icmp ult`, `zext`, `lshr`, `uitofp`, `fptoui`, unsigned
+index checks) and debug information (`DW_ATE_unsigned`); the VAX backend
+(its unsigned branches, `MOVZ`, and runtime routines for `DIV` and `MOD`,
+since `EDIV` is signed); and the runtime's text modules, since `Out.Int`
+takes a `HUGEINT` and no CARD converts to one implicitly: `Out`, `Err`,
+`OutStr` and `FormattedText` need procedures that write a CARD in decimal
+and hexadecimal, and `In` and `InStr` ones that read one ("Ongoing library
+enhancements").
+
+**The survey** (2026-10-08, `doc/research/unsigned-survey.md`): the
+Oberon-2, Oberon and Component Pascal reports have no unsigned types;
+Oberon-07 and Oberon+ only an unsigned `BYTE`. The Oakwood Guidelines
+(1995) record ETH's rejection of unsigned types and recommend, for any
+added family, a separate inclusion hierarchy, explicit conversion between
+hierarchies, and `LONG` and `SHORT` within each. XDS has
+`SYSTEM.CARD8` to `CARD32` that way, for interfaces to foreign libraries.
+Active Oberon has `UNSIGNED8` to `UNSIGNED64` in one chain with the signed
+types, a signed value going into an unsigned type of its size without a
+conversion. GNU Modula-2 has `SYSTEM.CARDINAL8` to `CARDINAL64`, never
+mixed with the signed types in an expression. Modula-3, and Oberon System
+3's `BIT` module, give unsigned operations on signed types as procedures.
+
+**Decided with the user, 2026-10-08**: option 2 of the survey, a separate
+family, with a 64-bit type; named `SYSTEM.CARD8`, `CARD16`, `CARD32` and
+`CARD64`; `SYSTEM.VAL` the only conversion between the families; `SHORT`
+and `LONG` within it; included in `REAL` and `LONGREAL`; unary minus
+allowed; wrapping on overflow and underflow; no decimal literals above
+`MAX(HUGEINT)`, hexadecimal patterns instead; `FOR` counting down by
+subtraction, and every `FOR` ending before a step past its final value. Not built yet: Phase 19 does
+it, with fixtures for each operation at each width, constants, `SHORT`
+and `LONG`, `SYSTEM.VAL` both ways, mixing errors, `-strict`, and the
+text modules.
