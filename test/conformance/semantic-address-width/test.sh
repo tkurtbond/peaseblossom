@@ -7,9 +7,9 @@
 # ("from"), and the type of a mixed sum "a + x" (its narrowest assignable
 # type among ADDRESS/HUGEINT, ADDRESS first). A LONGINT is wider than a
 # 32-bit ADDRESS only under -OC, and then is not assignable to it; a 64-bit
-# ADDRESS is as wide as HUGEINT and includes each other with it, and (under
-# -OC, where LONGINT is 8 bytes too) includes LONGINT, which still ranks below
-# HUGEINT, without being included by it.
+# ADDRESS is as wide as HUGEINT and includes each other with it, and under
+# -OC, where LONGINT is 8 bytes too, with LONGINT as well: an ADDRESS and an
+# integer type of the same width include each other (2026-10-08).
 : >result
 for target in i686-unknown-linux-gnu x86_64-unknown-linux-gnu
 do

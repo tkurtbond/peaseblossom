@@ -360,7 +360,7 @@ report's sense: nothing checks what they do.
 
 | Name | What it is |
 |---|---|
-| `ADDRESS` | An integer type as wide as a pointer. Among the integers by size: as wide as `LONGINT` or narrower, it and the `INTn` of its width include each other; a wider one includes a narrower and not the reverse. |
+| `ADDRESS` | An integer type as wide as a pointer. Among the integers by size: it and every integer type of its width include each other; a wider one includes a narrower and not the reverse. So under `-OC` an `ADDRESS` is assignable to a `LONGINT` on every target, and a `LONGINT` to an `ADDRESS` only on a 64-bit one. |
 | `ADR(v)` | The address of the variable `v`: an `ADDRESS`. |
 | `BIT(a, n)` | Bit `n MOD 8` of the byte at `a + n DIV 8` (floored), bit 0 the lowest: a bit string starting at `a`, for any `n`. One byte is read. |
 | `GET(a, v)`, `PUT(a, x)` | Read `v`, or write `x`, at address `a`, at the type of `v` or `x` (a bare numeral at its minimal type), with no alignment assumed. |

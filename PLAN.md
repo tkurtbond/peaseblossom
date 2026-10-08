@@ -1263,6 +1263,27 @@ that phase's record.
      fixtures check poc's rules. Found along the way: "Ongoing bug
      fixing" 1.
 
+2. **[done] `SYSTEM.ADDRESS` and an integer type of the same width include each
+   other** (found 2026-10-08 by the user porting polibfyaml to OpenBSD
+   i386; decided with the user the same day). `Types.Order` gives
+   `ADDRESS` the place of the widest integer type of its width, so under
+   `-OC` on a 64-bit target, where `LONGINT` and `HUGEINT` are both 8
+   bytes, it ranked with `HUGEINT`: a `LONGINT` was assignable to an
+   `ADDRESS` but not the reverse, while on a 32-bit target, where the
+   `LONGINT` is wider, only the reverse held. So no declaration let
+   code mixing the two compile without `SYSTEM.VAL` on both. Now
+   `Types.Includes` also holds for `ADDRESS` and any integer type of its
+   width (`AddressOfSameWidth`): under `-OC` an `ADDRESS` is assignable
+   to a `LONGINT` on every target. The one cell of
+   `semantic-address-width`'s table that changes is x86_64 `-OC`
+   `LONGINT` "from ADDRESS"; `llvm-address-to-longint` runs it.
+   Narrowing stays an error (a `LONGINT` to a 32-bit `ADDRESS` under
+   `-OC`, an `ADDRESS` to a 4-byte `LONGINT` under `-O2` on a 64-bit
+   target). `-strict` already rejects `SYSTEM`. Mixed arithmetic is
+   unchanged: `WiderOf` still gives `ADDRESS` (its `Order` is the
+   higher). Built 2026-10-08; `make check` passed on atla, cymoril, artos
+   and alerik.
+
 ## Ongoing implementation enhancements
 
 Changes to how poc builds, links and packages programs and libraries that

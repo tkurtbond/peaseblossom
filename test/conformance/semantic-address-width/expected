@@ -16,5 +16,5 @@
 ### x86_64-unknown-linux-gnu -OC
   SHORTINT  to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
   INTEGER   to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
-  LONGINT   to ADDRESS: yes  from ADDRESS: no   a + x: ADDRESS
+  LONGINT   to ADDRESS: yes  from ADDRESS: yes  a + x: ADDRESS
   HUGEINT   to ADDRESS: yes  from ADDRESS: yes  a + x: ADDRESS

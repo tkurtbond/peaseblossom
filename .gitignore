@@ -118,6 +118,7 @@ test/conformance/llvm-set64-import/llvm-set64-import
 test/conformance/llvm-entier-trap/llvm-entier-trap
 test/conformance/llvm-overflow-wrap/llvm-overflow-wrap
 test/conformance/llvm-parameter-names/llvm-parameter-names
+test/conformance/llvm-address-to-longint/llvm-address-to-longint
 test/conformance/llvm-ord-set/llvm-ord-set
 test/conformance/llvm-underscore-dollar/llvm-underscore-dollar
 test/conformance/llvm-debug-info/llvm-debug-info
