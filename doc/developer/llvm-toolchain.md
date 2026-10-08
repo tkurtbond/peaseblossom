@@ -119,8 +119,10 @@ shells out to these rather than linking against LLVM's own C++ API.
   manifest and makes any link of its archive use `-flto`. A bitcode `.o`
   beside a `.sym` is refused without its `.ll`: `nm` cannot read bitcode
   on OpenBSD or NetBSD. For 32-bit x86 NetBSD `-lto` is ignored with a
-  warning (neither GNU ld nor lld links bitcode into an executable that
-  runs there). `make check-lto` runs the suite with `-lto` (not
+  warning unless poc runs on 32-bit x86 NetBSD itself (its clang's own
+  target): GNU ld cannot link bitcode, and on NetBSD amd64 lld's
+  dynamically linked i386 executables fail with "Exec format error"
+  (artos), while on i386 NetBSD they run (yishana, 2026-10-08). `make check-lto` runs the suite with `-lto` (not
   part of `make check`). Fixture `llvm-lto`.
 - **Debug information** (Phase 11 A16, stage (a), 2026-09-26): `poc -g`
   emits DWARF metadata for gdb and lldb - the procedures' names

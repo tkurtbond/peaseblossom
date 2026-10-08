@@ -12,7 +12,9 @@
 #      -lto (the link has -flto all the same) and as a shared library;
 #      poc-rtl built with -lto and used in place of poc's;
 #   4. refused: a .ll compiled for -OC used under -O2, one whose target is
-#      another, and one this clang cannot compile.
+#      another, and one this clang cannot compile;
+#   5. for 32-bit x86 NetBSD, -lto dropped with a warning, except on a host
+#      whose clang targets 32-bit x86 NetBSD itself (yishana).
 # The triple, keys and poc's library directory are masked.
 unset POC_IMPORT_PATH POC_LIBRARY_PATH
 triple=$(clang -dumpmachine)
@@ -73,6 +75,16 @@ sed 's/^@Small\.-target\.[^ ]* /@Small.-target.vax-dec-vms /' ir/Small.ll >other
 mkdir broken && cp ir/Small.sym broken/
 { cat ir/Small.ll; echo "this is not LLVM IR"; } >broken/Small.ll
 (cd two && poc -import-path ../broken -lto -o main -build main.mod 2>&1 | grep '^poc:' | mask) >>../result
+echo "== 5. for 32-bit x86 NetBSD" >>../result
+# dropped with a warning unless this host's clang targets 32-bit x86
+# NetBSD itself, where lld's executables run
+mkdir five && printf 'MODULE Tiny;\n  PROCEDURE Two*(): INTEGER;\n  BEGIN RETURN 2\n  END Two;\nEND Tiny.\n' >five/Tiny.Mod
+out=$(cd five && poc -lto -target i386-unknown-netbsd11.0 -compile Tiny.Mod 2>&1)
+case $triple in
+  i[3-6]86-*netbsd*) want= ;;
+  *) want="poc: warning: -lto ignored for i386-unknown-netbsd11.0, which has no linker for LLVM bitcode" ;;
+esac
+if [ "$out" = "$want" ]; then echo "as this host should" >>../result; else echo "$out" >>../result; fi
 cd ..
 rm -rf work
 . ../../testresult.sh

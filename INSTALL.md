@@ -37,7 +37,8 @@ GNU make is `make` on Linux and `gmake` on the BSDs; the commands below say
 but nothing has checked it.
 
 Optional: `glibc-static` on Linux, for `poc -static`; gdb 7 or later, or
-lldb, for `poc -g` (on OpenBSD the `gdb` package's `egdb`).
+lldb, for `poc -g` (on OpenBSD the `gdb` package's `egdb`); on NetBSD,
+lld, for `poc -lto` (`pkgin install lld`).
 
 ## 2. From a release tarball
 

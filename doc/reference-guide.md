@@ -554,7 +554,7 @@ The commands for testing poc itself are `-dump-tokens`, `-check-syntax`,
 | `-shared-libraries` | Links the libraries' shared objects, not their archives. |
 | `-link <arg>` | Passes `<arg>` to the link (`-lz`, `-L<dir>`); repeatable. With `-library`, also recorded in the manifest, for every program that links the library. |
 | `-c-flag <arg>` | Passes `<arg>` to clang when it compiles a module's C part, `<Module>.c` beside `<Module>.Mod`, or clang++ its C++ part, `<Module>.cpp` (`-I<dir>`, `-D<name>`); repeatable. |
-| `-lto` | Compiles to LLVM bitcode and optimizes the whole program when it is linked. Ignored for 32-bit x86 NetBSD. |
+| `-lto` | Compiles to LLVM bitcode and optimizes the whole program when it is linked. On NetBSD it needs lld (pkgsrc's `lld`). Ignored for 32-bit x86 NetBSD unless poc runs on 32-bit x86 NetBSD. |
 | `-verbose` | Prints each command poc runs (clang's). |
 
 `doc/developer/voc-options.md` lists voc's options and what each is in poc.

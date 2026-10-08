@@ -538,12 +538,18 @@ MODULE Poc;
      word size just stays at whatever it already was (wordSize32 by
      default), the same fallback SIZE(T) already had before this existed. *)
   (* -lto for a target whose linking of bitcode is known not to work is
-     dropped, with a warning: 32-bit x86 NetBSD, where GNU ld cannot link
-     bitcode and lld's executables do not run (probed on NetBSD 11 amd64,
-     2026-09-27) *)
+     dropped, with a warning: 32-bit x86 NetBSD built for on another
+     host. GNU ld cannot link bitcode, so NetBSD's -lto links with lld,
+     and on NetBSD 11 amd64 lld's dynamically linked i386 executables fail
+     with "Exec format error" (artos, 2026-09-27, again 2026-10-08). On
+     i386 NetBSD itself, whose clang's own target is 32-bit x86 NetBSD,
+     they run, with -lto or without (yishana, NetBSD 11.0 i386,
+     2026-10-08). *)
   PROCEDURE CheckLTOTarget(triple: ARRAY OF CHAR);
+    VAR host: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
   BEGIN
-    IF LLVMToolchainDriver.lto & LLVMTypes.IsNetBSD(triple) & LLVMTypes.Is32BitX86(triple) THEN
+    IF LLVMToolchainDriver.lto & LLVMTypes.IsNetBSD(triple) & LLVMTypes.Is32BitX86(triple)
+       & ~(LLVMToolchainDriver.HostTriple(host) & LLVMTypes.IsNetBSD(host) & LLVMTypes.Is32BitX86(host)) THEN
       Err.String("poc: warning: -lto ignored for "); Err.String(triple);
       Err.String(", which has no linker for LLVM bitcode"); Err.Ln;
       LLVMToolchainDriver.lto := FALSE
