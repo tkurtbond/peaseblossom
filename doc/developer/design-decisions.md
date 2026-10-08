@@ -397,3 +397,31 @@ questions" - \<name\> means the entry of that name here.
   order-const-forward-type` (the still-illegal genuine forward case). All
   94 conformance tests pass; the Phase 7 self-check sweep (`000-todo.org`)
   still self-checks the same 8 modules clean as before, unaffected.
+- **`SYSTEM.ADDRESS` stays signed**: decided with the user 2026-10-08,
+  when the unsigned `SYSTEM.CARDn` types were adopted
+  (`language-extensions.md`, "Unsigned integer types"). Addresses are
+  unsigned numbers, and on a 32-bit target user space passes 2^31
+  (OpenBSD i386's `calloc` can hand out a chunk that straddles it), so a
+  signed `ADDRESS` compares addresses on either side wrongly and widens a
+  high one to a negative `HUGEINT`. Active Oberon makes its `ADDRESS`
+  unsigned for that reason. poc keeps it signed:
+  - `ADDRESS` is also poc's signed word-sized integer, C's `long`,
+    `ssize_t` and `ftell` result as well as `size_t` and pointers, and
+    voc's is signed too (`SYSTEM.h`: `#define ADDRESS INT64` or
+    `INT32`). Making it unsigned would change the meaning of existing code
+    without a compile error: `Files.OpenOld`'s `size := -1` and its test
+    `size >= 0` after `ftell`, the collector's `WHILE end - block > 0`,
+    any `x < 0`, and every binding (polibfyaml uses it 90 times).
+  - Making it a CARD of the target's width would also stop it mixing with
+    the signed integers, undoing "Ongoing language enhancements" 2
+    (`ADDRESS` and an integer type of its width include each other) and
+    requiring `SYSTEM.VAL` in most address arithmetic. Making only its
+    operations unsigned, keeping its place among the integers, as Active
+    Oberon does, would leave poc no signed word-sized type (Active Oberon
+    adds `SIZE` for that) and need the `CARD64` constant work first.
+  - The one place the sign matters today is handled: the collector's
+    chunk table adds `MIN(SYSTEM.ADDRESS)` to each address so that
+    signed order is unsigned order (`GarbageCollectedHeap`, the comment
+    on the search). Should more code need unsigned address comparisons,
+    an unsigned type of address width or a predeclared comparison can say
+    so explicitly, without changing `ADDRESS`.

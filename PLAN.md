@@ -936,7 +936,8 @@ A24, moved here 2026-09-26), are Phase 14 now.
    subtraction. With it, every `FOR`, signed ones included, ends before
    a step that would pass its final value (`language-extensions.md`,
    "FOR final value"), so that a CARD counted down to 0, or any loop up
-   to `MAX(T)`, ends. Not built yet.
+   to `MAX(T)`, ends. `SYSTEM.ADDRESS` stays signed (decided the same
+   day; "Open design questions", below). Not built yet.
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the
@@ -1429,6 +1430,8 @@ same names:
 - Predeclared "functions" in constant expressions — really two separate gaps, not one
 - Constant arithmetic doesn't re-derive its result's minimal type from the computed value
 - Declaration order: voc relaxes CONST/TYPE/VAR *section* order, never reference order
+- `SYSTEM.ADDRESS` stays signed (decided 2026-10-08, with the unsigned
+  types of Phase 19 candidate 5)
 
 ## Critical files
 
