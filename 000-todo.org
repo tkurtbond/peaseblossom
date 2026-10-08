@@ -1,4 +1,8 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
+* General Improvements
+** DONE Better CSS for HTML output.
+The default pandoc CSS makes the text wdith too narrow.
+Done 2026-10-08: tools/doc/html-header.html, included by make doc in each page pandoc writes: a 60em text column instead of pandoc's 36em, code blocks that scroll rather than wrap, shaded table headers, blue links.
 * Things to be done while getting the compiler working
 ** DONE Does poc need an Args.Mod, like the v4 Args.Mod from voc?
 Done 2026-10-02: yes; rtl/llvm/Args.Mod, below.

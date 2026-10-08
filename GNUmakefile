@@ -343,6 +343,7 @@ check-seed: seed $(STAGE1_BIN)
 # User's Guide, the Reference Guide, poc(1), and doc/developer's in
 # developer/. pandoc makes the Markdown ones from GitHub's Markdown, so they
 # read as GitHub shows them; mandoc makes poc(1)'s HTML and groff its PDF.
+# pandoc's HTML takes tools/doc/html-header.html's styles over its own.
 # Each PDF is US Letter with 1-inch margins; pandoc's go through xelatex
 # and tools/doc/pdf.lua, which keeps wide tables, long code lines and long
 # names within them. make dist puts them all in the tarball, as doc/html
@@ -377,9 +378,9 @@ $(DOC_DIR)/pdf/poc.1.pdf: doc/poc.1
 	@mkdir -p $(@D)
 	$(GROFF) -mdoc -Tpdf -P-pletter $< > $@.tmp && mv $@.tmp $@
 
-$(DOC_DIR)/html/%.html: doc/%.md
+$(DOC_DIR)/html/%.html: doc/%.md tools/doc/html-header.html
 	@mkdir -p $(@D)
-	$(PANDOC) $(PANDOC_FLAGS) -t html5 $< -o $@
+	$(PANDOC) $(PANDOC_FLAGS) -H tools/doc/html-header.html -t html5 $< -o $@
 
 $(DOC_DIR)/pdf/%.pdf: doc/%.md tools/doc/pdf.lua tools/doc/pdf-header.tex
 	@mkdir -p $(@D)
