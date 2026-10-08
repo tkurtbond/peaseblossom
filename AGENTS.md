@@ -219,7 +219,7 @@ no other change.
 ### SYSTEM subset (implemented)
 
 `ADDRESS` is its own integer type, as wide as a pointer, not an alias of
-`LONGINT`. Also: `ADR`, `GET`, `PUT`, `VAL`, `MOVE`, `BYTE` (a parameter
+`LONGINT`; it and any integer type of its width include each other. Also: `ADR`, `GET`, `PUT`, `VAL`, `MOVE`, `BYTE` (a parameter
 takes a `CHAR`, a one-byte `SHORTINT`, a `BYTE`, a `VAR` one a `BOOLEAN`
 too: Oakwood's rule and voc's, 2026-10-02), `PTR` (opaque:
 no guard, `IS` or `WITH`), `LSH`/`ROT`, `BIT` (a bit string starting at `a`),

@@ -4,8 +4,9 @@
 # in each package - Version in the Fedora spec, with Release back to 1 and a
 # %changelog entry for it, DISTVERSION in the FreeBSD port, V in the OpenBSD
 # port and DISTNAME in pkgsrc's - removing any PORTREVISION, REVISION or
-# PKGREVISION; and where the documents name it, INSTALL.md's example of
-# unpacking the tarball and the Reference Guide's "describes poc
+# PKGREVISION; and where the documents name it, INSTALL.md's examples of
+# unpacking the tarball and installing a release's packages (their file
+# names and download URLs) and the Reference Guide's "describes poc
 # <major.minor>". The %changelog entry says only "Update to <version>.", for
 # the person releasing to fill in; one already there for the version is
 # kept. Each package's distinfo is of the published tarball, so it is made
@@ -72,7 +73,7 @@ edit packaging/openbsd/lang/peaseblossom/Makefile \
 edit packaging/pkgsrc/lang/peaseblossom/Makefile \
   "s/^\(DISTNAME=[[:space:]]*peaseblossom-\).*/\1$version/; /^PKGREVISION=/d"
 
-edit INSTALL.md "s/peaseblossom-[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/peaseblossom-$version/g"
+edit INSTALL.md "s/peaseblossom-[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/peaseblossom-$version/g; s|/download/v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/|/download/v$version/|g"
 edit doc/reference-guide.md \
   "s/describes poc [0-9][0-9]*\.[0-9][0-9]* /describes poc ${version%.*} /"
 

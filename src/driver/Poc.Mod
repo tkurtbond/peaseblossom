@@ -360,13 +360,14 @@ MODULE Poc;
   (* ModuleInterface.explainMissingModule (Phase 12 step 2e): notes on the
      import of name by importer that found neither source nor .sym - where
      they were looked for, a library that has name for the other size
-     model, and a library importer's library needs that is not on the
+     model or for another target, and a library importer's library needs that is not on the
      library path. The library path is only searched, and so only described,
      by the commands that set its target. *)
   PROCEDURE ExplainMissingModule(importer, name: ARRAY OF CHAR; line, column: INTEGER);
     VAR
       text: ARRAY 8192 OF CHAR; dir: ARRAY ModuleInterface.pathBufferLength OF CHAR;
-      triple, owner: Libraries.Name; libDir: Libraries.Path; model, otherModel: ARRAY 3 OF CHAR;
+      triple, owner, other: Libraries.Name; libDir, targets: Libraries.Path;
+      model, otherModel: ARRAY 3 OF CHAR; i, j: INTEGER;
       e: ModuleInterface.SearchPathEntry; l: Libraries.PathEntry;
       lib: Libraries.Library; need: Libraries.Need;
   BEGIN
@@ -422,6 +423,24 @@ MODULE Poc;
           Strcat(text, ") has "); Strcat(text, name); Strcat(text, ", but for -"); Strcat(text, otherModel);
           Strcat(text, ", and this is -"); Strcat(text, model);
           Diagnostics.Note(line, column, text)
+        END;
+        l := l.next
+      END;
+      l := Libraries.FirstPathEntry();
+      WHILE l # NIL DO
+        Libraries.OtherTargets(l.dir, model, name, targets);
+        i := 0;
+        WHILE targets[i] # 0X DO
+          j := 0;
+          WHILE (targets[i] # 0X) & (targets[i] # " ") DO other[j] := targets[i]; INC(i); INC(j) END;
+          other[j] := 0X;
+          IF targets[i] = " " THEN INC(i) END;
+          IF Libraries.OwnerFor(l.dir, other, model, name, owner, libDir) THEN
+            COPY("library ", text); Strcat(text, owner); Strcat(text, " ("); Strcat(text, libDir);
+            Strcat(text, ") has "); Strcat(text, name); Strcat(text, ", but for "); Strcat(text, other);
+            Strcat(text, ", and this is "); Strcat(text, triple);
+            Diagnostics.Note(line, column, text)
+          END
         END;
         l := l.next
       END

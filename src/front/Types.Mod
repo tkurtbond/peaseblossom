@@ -914,12 +914,31 @@ MODULE Types;
        & (Order(otherType) < Order(constType)) & FixedIntFits(otherType, value)
   END ConstantAdoptsType;
 
+  (* Whether one of a and b is SYSTEM.ADDRESS and the other an integer type
+     of the same width. Order cannot say it alone: it gives ADDRESS the place
+     of the widest type of its width, so under -OC on a 64-bit target, where
+     LONGINT and HUGEINT are both 8 bytes, an ADDRESS ranks with HUGEINT,
+     above LONGINT. *)
+  PROCEDURE AddressOfSameWidth(a, b: Type): BOOLEAN;
+  BEGIN
+    IF Rank(a) = addressRank THEN
+      RETURN IntegerBytes(b) = addressBytes
+    ELSIF Rank(b) = addressRank THEN
+      RETURN IntegerBytes(a) = addressBytes
+    ELSE
+      RETURN FALSE
+    END
+  END AddressOfSameWidth;
+
   (* TRUE if "wider" is numeric and includes "narrower" in the Appendix A
      hierarchy (LONGREAL >= REAL >= LONGINT >= INTEGER >= SHORTINT); a
-     type always includes itself. *)
+     type always includes itself. SYSTEM.ADDRESS and an integer type of the
+     same width include each other (AddressOfSameWidth), so a 64-bit ADDRESS
+     is assignable to a LONGINT under -OC as well as the reverse. *)
   PROCEDURE Includes*(wider, narrower: Type): BOOLEAN;
   BEGIN
-    RETURN IsNumeric(wider) & IsNumeric(narrower) & (Order(wider) >= Order(narrower))
+    RETURN IsNumeric(wider) & IsNumeric(narrower)
+       & ((Order(wider) >= Order(narrower)) OR AddressOfSameWidth(wider, narrower))
   END Includes;
 
   (* The type Appendix A assigns to a binary arithmetic operation on two
