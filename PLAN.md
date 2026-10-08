@@ -1339,6 +1339,22 @@ at a convenient point.
    of its imports, as poc already checks), so that only what changed is
    compiled, as make would.
 
+4. **[done] A module a library has for another target is named** (found
+   2026-10-08 by the user, installing the NetBSD package on terhali, whose
+   pkgsrc clang came from the NetBSD 10.0 packages; decided with the user
+   the same day). poc builds for clang's default target, there
+   `x86_64-unknown-netbsd10.0`, while the package's `poc-rtl` is for
+   `x86_64-unknown-netbsd11.0`, so every runtime import failed with notes
+   that said only that no library for 10.0 had it. The notes on a missing
+   import now also name each library on the library path that has the
+   module for another target, as they did for the other size model:
+   `Libraries.OtherTargets` lists the triple directories with the shell,
+   since `Files` cannot read a directory. `llvm-using-modules` checks
+   it with a library copied under `sparc64-unknown-netbsd`. INSTALL.md
+   section 1 says NetBSD needs pkgsrc's clang for the system's own
+   release, and the User's Guide (section 1) and the Reference Guide
+   ("Where modules come from") say what the notes show.
+
 A third point found with items 1 and 2 - a library is built twice, once for
 `-O2` and once for `-OC` - needs no change: declaring the C-facing
 parameters with `SYSTEM.INT32` and `SYSTEM.ADDRESS` keeps one source for

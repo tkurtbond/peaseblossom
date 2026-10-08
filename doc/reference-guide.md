@@ -567,7 +567,10 @@ directory, then in each directory of the import path; from `<Module>.sym`
 with `<Module>.o` (or `<Module>.ll`), searched the same way. `SYSTEM` is
 built in. A program in which any module uses `NEW`, or that has a module
 from a library, also gets the collector, `GarbageCollectedHeap` and
-`ModuleTable`, from `poc-rtl`.
+`ModuleTable`, from `poc-rtl`. When an import is found in none of these,
+the error's notes say where poc looked, and name each library on the
+library path that has the module for the other size model or for another
+target.
 
 ### Environment
 

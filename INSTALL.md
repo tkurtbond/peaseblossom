@@ -21,6 +21,17 @@ be on `PATH`, at run time too. Any clang from 19 on does.
 | OpenBSD | 7.9, i386 | `gmake` (clang is in the base system) |
 | NetBSD | 11.0, amd64 | `clang` and `gmake` from pkgsrc (`pkgin install clang gmake`) |
 
+On NetBSD, clang must come from pkgsrc's packages for the system's own
+release: pkgin's repository (`/usr/pkg/etc/pkgin/repositories.conf`) should
+end in `11.0/All` on NetBSD 11.0. A clang from the 10.0 packages compiles
+for `x86_64-unknown-netbsd10.0` unless told otherwise (`clang
+-print-target-triple` shows it), and poc, built or installed for 11.0, then
+finds none of its runtime: every program fails with "unknown imported
+module", and a note that `poc-rtl` has the module for
+`x86_64-unknown-netbsd11.0`. Point the repository at `11.0/All` and run
+`pkgin update && pkgin full-upgrade`; until then, `poc -target
+x86_64-unknown-netbsd11.0` works.
+
 GNU make is `make` on Linux and `gmake` on the BSDs; the commands below say
 `make`. poc has been run only on the systems above; elsewhere it may work,
 but nothing has checked it.
@@ -217,7 +228,7 @@ tarball (section 2), then install it as root:
 | Fedora 44, x86_64 | `dnf install ./peaseblossom-0.4.1-1.fc44.x86_64.rpm` |
 | FreeBSD 15.1, amd64 | `pkg add ./peaseblossom-0.4.1-freebsd15.1-amd64.pkg` |
 | OpenBSD 7.9, i386 | `pkg_add -D unsigned ./peaseblossom-0.4.1.tgz`, under that name (below) |
-| NetBSD 11.0, amd64 | `pkg_add ./peaseblossom-0.4.1-netbsd11.0-amd64.tgz`, with pkgsrc's clang installed first (`pkgin install clang`) |
+| NetBSD 11.0, amd64 | `pkg_add ./peaseblossom-0.4.1-netbsd11.0-amd64.tgz`, with pkgsrc's clang for 11.0 installed first (`pkgin install clang`; section 1) |
 
 OpenBSD's `pkg_add` refuses a package file not named for the package
 itself, `peaseblossom-<version>.tgz` ("Package name is not consistent"),

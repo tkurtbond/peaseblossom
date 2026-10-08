@@ -7,8 +7,8 @@
 #      it (the notes say where poc looked); as .sym and .o files, compiled
 #      already (step 2f), but not as a .sym alone;
 #   3. the user's own library, linked statically and as a shared library;
-#      under -OC, which it was not built for (a note says what it was built
-#      for); with an edited copy of a module's source beside the program (a
+#      under -OC, or for a target, which it was not built for (a note says
+#      what it was built for); with an edited copy of a module's source beside the program (a
 #      warning: the library's is used);
 #   4. libraries from others: blib needs alib (linked after it); without
 #      alib on the path (notes name what blib needs); with clib, which has
@@ -63,6 +63,9 @@ echo "-- shared" >>../result
 (cd app && poc -library-path ../three/lib -shared-libraries -o apps -build app.mod 2>&1 | mask && ./apps) >>../result
 echo "-- -OC" >>../result
 (cd app && poc -OC -library-path ../three/lib -o app -build app.mod 2>&1 | mask) >>../result
+echo "-- built for another target only" >>../result
+mkdir -p elsewhere/sparc64-unknown-netbsd && cp -r three/lib/$triple/O2 elsewhere/sparc64-unknown-netbsd/
+(cd app && poc -library-path ../elsewhere -o app -build app.mod 2>&1 | mask) >>../result
 echo "-- an edited Greet.Mod beside the program" >>../result
 sed 's/"hi "/"hello "/' ../src/Greet.Mod >app/Greet.Mod
 (cd app && poc -library-path ../three/lib -o app -build app.mod 2>&1 | mask && ./app) >>../result

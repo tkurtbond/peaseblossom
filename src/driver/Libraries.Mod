@@ -343,16 +343,60 @@ MODULE Libraries;
     COPY(triple, targetTriple); COPY(model, sizeModel)
   END GetTarget;
 
-  (* The library whose tuple directory for sizeModel under base,
-     <base>/<triple>/<sizeModel>, has the module name: its name in owner and
-     that directory in dir. FALSE when it has none. For saying where a
-     module the path does not give was found anyway. *)
-  PROCEDURE OwnerIn*(base, sizeModel, name: ARRAY OF CHAR; VAR owner, dir: ARRAY OF CHAR): BOOLEAN;
+  (* The library whose tuple directory for target and sizeModel under
+     base, <base>/<target>/<sizeModel>, has the module name: its name in
+     owner and that directory in dir. FALSE when it has none. For saying
+     where a module the path does not give was found anyway. *)
+  PROCEDURE OwnerFor*(base, target, sizeModel, name: ARRAY OF CHAR; VAR owner, dir: ARRAY OF CHAR): BOOLEAN;
   BEGIN
     IF base[0] = 0X THEN COPY(".", dir) ELSE COPY(base, dir) END;
-    Append(dir, "/"); Append(dir, triple); Append(dir, "/"); Append(dir, sizeModel);
+    Append(dir, "/"); Append(dir, target); Append(dir, "/"); Append(dir, sizeModel);
     RETURN ReadOwner(dir, name, owner)
+  END OwnerFor;
+
+  (* OwnerFor this target *)
+  PROCEDURE OwnerIn*(base, sizeModel, name: ARRAY OF CHAR; VAR owner, dir: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN OwnerFor(base, triple, sizeModel, name, owner, dir)
   END OwnerIn;
+
+  (* The targets other than this one whose tuple directory for sizeModel
+     under base, <base>/<target>/<sizeModel>, has the module name, separated
+     by spaces, in targets: "" when there are none, or base has a quote in
+     it. The shell lists them, since Files cannot read a directory. For
+     saying a module is there for another target: clang's default target
+     is not the one poc was built for (NetBSD 11.0 with pkgsrc's clang for
+     10.0, 2026-10-08). *)
+  PROCEDURE OtherTargets*(base, sizeModel, name: ARRAY OF CHAR; VAR targets: ARRAY OF CHAR);
+    VAR
+      scratch: ARRAY 64 OF CHAR; command: ARRAY 2 * pathLength OF CHAR; line: Name;
+      i, status: INTEGER; f: Files.File; r: Files.Rider;
+  BEGIN
+    targets[0] := 0X;
+    i := 0;
+    WHILE base[i] # 0X DO
+      IF base[i] = "'" THEN RETURN END; (* not worth quoting *)
+      INC(i)
+    END;
+    ScratchFile("targets", scratch);
+    command := "cd '"; Append(command, base); Append(command, "' 2>/dev/null && for f in */");
+    Append(command, sizeModel); Append(command, "/"); Append(command, name);
+    Append(command, '.owner; do [ -f "$f" ] && echo "${f%%/*}"; done >'); Append(command, scratch);
+    status := Platform.System(command);
+    f := Files.Old(scratch);
+    IF f # NIL THEN
+      Files.Set(r, f, 0);
+      REPEAT
+        Files.ReadLine(r, line);
+        IF (line[0] # 0X) & (line # triple) THEN
+          IF targets[0] # 0X THEN Append(targets, " ") END;
+          Append(targets, line)
+        END
+      UNTIL r.eof;
+      Files.Close(f)
+    END;
+    status := Platform.Unlink(scratch)
+  END OtherTargets;
 
   PROCEDURE Exclude*(name: ARRAY OF CHAR);
   BEGIN

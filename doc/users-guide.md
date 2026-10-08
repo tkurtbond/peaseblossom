@@ -50,6 +50,13 @@ which `poc -g` uses (section 8). poc finds its runtime as `../lib/poc` from
 the directory it is in, following symbolic links, so a link to poc from
 anywhere works.
 
+`<triple>` is clang's default target when poc was built, and poc builds for
+clang's default target now (`poc -version` prints both). If they differ,
+poc finds none of its runtime: every import of `Out` or another runtime
+module is an error, with a note that `poc-rtl` has the module, but for the
+other target. On NetBSD this happens when pkgsrc's clang comes from another
+NetBSD release's packages than the system's (INSTALL.md, section 1).
+
 ## 2. A first program
 
 <!-- example: hello/Hello.Mod -->

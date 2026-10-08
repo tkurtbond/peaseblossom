@@ -23,6 +23,12 @@ app.mod:2:10: note: no Twice.Mod, Twice.mod or Twice.sym in the current director
 app.mod:2:10: note: no library for <triple> -OC on the library path (../three/lib, <poc lib>) has Twice
 app.mod:2:10: note: library mine (../three/lib/<triple>/O2) has Twice, but for -O2, and this is -OC
 1 error(s)
+-- built for another target only
+app.mod:2:10: error: unknown imported module: Twice
+app.mod:2:10: note: no Twice.Mod, Twice.mod or Twice.sym in the current directory (the import path is empty)
+app.mod:2:10: note: no library for <triple> -O2 on the library path (../elsewhere, <poc lib>) has Twice
+app.mod:2:10: note: library mine (../elsewhere/sparc64-unknown-netbsd/O2) has Twice, but for sparc64-unknown-netbsd, and this is <triple>
+1 error(s)
 -- an edited Greet.Mod beside the program
 poc: warning: module Greet is taken from library mine (../three/lib/<triple>/O2), not compiled from Greet.Mod, which is not the source it was built from
 hi 3
