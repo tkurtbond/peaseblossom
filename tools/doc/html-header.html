@@ -1,0 +1,56 @@
+<!-- Included by make doc in each HTML page pandoc writes, after pandoc's
+     own styles, which it overrides: a text column about as wide as
+     GitHub's (pandoc's 36em is too narrow for the tables and code), and
+     code blocks that scroll rather than wrap. -->
+<style>
+  body {
+    max-width: 60em;
+    padding: 2em 3em;
+  }
+  pre {
+    background-color: #f4f4f4;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 0.75em 1em;
+    overflow-x: auto;
+  }
+  pre code {
+    white-space: pre;
+  }
+  :not(pre) > code {
+    background-color: #f0f0f0;
+    border-radius: 3px;
+    padding: 0.1em 0.3em;
+  }
+  th {
+    text-align: left;
+    background-color: #f4f4f4;
+  }
+  td, th {
+    vertical-align: top;
+    border-bottom: 1px solid #e6e6e6;
+  }
+  a {
+    color: #0b57a4;
+  }
+  a:visited {
+    color: #5a3d99;
+  }
+  @media (max-width: 600px) {
+    body {
+      padding: 12px;
+    }
+  }
+  @media print {
+    body {
+      max-width: none;
+      padding: 0;
+    }
+    pre {
+      white-space: pre-wrap;
+    }
+    pre code {
+      white-space: pre-wrap;
+    }
+  }
+</style>
