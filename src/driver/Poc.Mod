@@ -1338,9 +1338,9 @@ MODULE Poc;
 
   (* The VAX target for a command that writes MACRO-32 (PLAN.md Phases 15
      and 16; doc/developer/vax-macro32-backend.md, sections 4 and 10):
-     -target, if given, must be vax-dec-vms, which -emit-macro32 implies,
-     and the size model -O2, the only one the VAX backend takes. FALSE,
-     reported, if not. *)
+     -target, if given, must be vax-dec-vms, which -emit-macro32 implies.
+     The size model is -O2's or -OC's, as for any target (-OC since Phase
+     16 step 3, for poc's own source). FALSE, reported, if not. *)
   PROCEDURE SetVaxTarget(command, explicitTriple: ARRAY OF CHAR): BOOLEAN;
   BEGIN
     IF (explicitTriple[0] # 0X) & ~VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN
@@ -1348,11 +1348,8 @@ MODULE Poc;
       Err.String("poc: "); Err.String(command); Err.String(" is for -target "); Err.String(VaxToolchainDriver.triple);
       Err.String(", not "); Err.String(explicitTriple); Err.Ln;
       RETURN FALSE
-    ELSIF ConstantEvaluator.sizeModel # MemoryLayout.sizeModelO2 THEN
-      failed := TRUE;
-      Err.String("poc: the VAX backend takes only -O2"); Err.Ln;
-      RETURN FALSE
     END;
+    VaxTypes.sizeModel := ConstantEvaluator.sizeModel;
     SetWordSizeFromTriple(VaxToolchainDriver.triple);
     SetLibraryTarget(VaxToolchainDriver.triple);
     RETURN TRUE
@@ -2068,6 +2065,7 @@ MODULE Poc;
       d: SyntaxTree.TypeDeclNode;
       obj: SymbolTable.Object;
   BEGIN
+    VaxTypes.sizeModel := ConstantEvaluator.sizeModel; (* -O2's or -OC's sizes *)
     IF ~ReadSource(name, buffer, length) THEN
       failed := TRUE; Err.String("poc: cannot open "); Err.String(name); Err.Ln
     ELSE

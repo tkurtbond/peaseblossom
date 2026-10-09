@@ -16,7 +16,8 @@ exit 1
 poc: a234567890123456789012345678901234567890 does not name a VMS image (1 to 39 letters, digits, _, $ and -, then .exe or nothing)
 exit 1
 == poc -OC -target vax-dec-vms -build VaxBuild.mod
-poc: the VAX backend takes only -O2
+VaxBuild.mod:19:3: error: module VaxBuild: the VAX backend cannot lower this yet: a quadword value parameter, of type LONGINT, of an external procedure (Phase 17 chooses its mechanism)
+1 construct(s) the VAX backend cannot lower yet; not written
 exit 1
 == poc -target vax-dec-vms -build VaxBuildClash.mod
 VaxClashBetweenModulesB.mod:3:7: error: module VaxClashBetweenModulesB: VaxClashBetweenModulesB.clashfHvJRlcQIjum and VaxClashBetweenModulesA.clashcQfgBVxgojQf have the same VAX symbol, VAXCLASHBETWEENMODULES_TV649M8G, in one program

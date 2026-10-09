@@ -180,6 +180,8 @@ Proposals:
 - **Decided. Only `-O2` for the VAX at first.** Under `-OC` `LONGINT` is a quadword,
   which the VAX has few instructions for (below), and `INTEGER` the
   longword. `-OC` is accepted later if wanted (§11, question 4).
+  **Changed (the user, 2026-10-09): `-OC` too**, since poc's own source
+  needs it (§14).
 - **`HUGEINT`** is a quadword, low longword first. The VAX has `MOVQ`,
   `CLRQ` and `ASHQ` but no quadword add, subtract, compare or multiply
   (none in MACRO's instruction set): `+` and `-` are `ADDL2`/`ADWC` and
@@ -884,6 +886,7 @@ and the program's start (§6).
 5. **Packed records** for VMS routines (§4) - Phase 17's, noted here.
 6. **`LONGREAL`'s default format (§4)**, D_floating as VAX C, or
    G_floating - Phase 16's, noted here so the option is designed in.
+   §14 proposes G_floating (2026-10-09), for the user's review.
 7. **Collisions across a link (§5.1)**: settled 2026-10-06. Still to be
    checked on the development system: whether the Librarian reports
    `DUPGLOBAL`.
@@ -960,3 +963,129 @@ VMS libraries are Phase 17's.
   runtime has `Out`, the program shows what it computed in its exit
   status, which DCL's `$STATUS` shows. The `.mar` files poc writes there
   are not compared: the run checks them.
+
+## 14. Widening the backend to poc's own source (Phase 16 step 3)
+
+**Decided (the user, 2026-10-09): the VAX takes `-OC` as well as
+`-O2`.** poc's own source is compiled under `-OC`, because
+`Types.Value.intVal` and other values need a 64-bit `LONGINT`
+(`tools/bootstrap/stage1`). It can't use `HUGEINT` instead, since
+`check-strict` keeps it to Oberon2.pdf. Under `-OC` a `LONGINT` is a
+quadword, lowered as a `HUGEINT` already is (§4). `INTEGER` is a longword
+and `SHORTINT` a word. `-O2` stays the default. `VaxTypes.sizeModel` is
+the driver's choice, and `VaxTypes.Longword` names the 4-byte integer
+type that registers, indexes and the halves of a quadword use. The 32
+reviewed `expected-vax.mar` files are unchanged by it.
+
+**The survey.** Given to `-OC -emit-macro32`, poc's own source (`src/`,
+without `rtl/llvm`, which step 4 replaces) has 22,504 constructs the
+backend refuses:
+
+| Area | Refusals |
+|---|---|
+| pointers, `NIL`, `NEW`, `IS`, type guards, `WITH` | 13,606 |
+| records holding pointers, and `VAR` record parameters (`Files.Rider`, `Parser.Parser`, `LLVMCodeGenerator.Codegen`, ...) | 4,506 |
+| open arrays: parameters, `LEN`, `COPY` to and from them | 4,340 |
+| `REAL` and `LONGREAL` | 139 |
+| procedure values and calls of procedure variables | 55 |
+| nested procedures | 5 |
+| `ASSERT`, `SYSTEM.SET64` | 2 |
+
+The `["C"]` externals and `SYSTEM`'s `ADR`, `VAL`, `GET` and `PUT` are
+only in `rtl/llvm`, so they are step 4's, in the VAX runtime.
+
+**Proposals**, each following the LLVM backend's representation wherever
+the VAX allows it, so that the front end's information serves both:
+
+1. **Open arrays first.** They are needed before a shared fixture can
+   print anything, since `Out.String` takes an `ARRAY OF CHAR`. An
+   open-array parameter is its address followed by one hidden longword per
+   open dimension, its length, as on LLVM: parameter *i*'s address at
+   `4n(AP)`, its lengths in the next longwords. `LEN` reads them, and an
+   index is checked against them (trap 2). `COPY` to or from one is a
+   `MOVC3`/`MOVC5` of the shorter length, as step 7 does for fixed arrays.
+   A value open-array parameter is copied to the stack on entry, by
+   subtracting its size from `SP` at run time, as LLVM's `alloca` of a
+   dynamic size does.
+2. **Then a minimal `Out`, pulled forward from step 4**, so that step 3's
+   fixtures can be what `PLAN.md` asks: the same `.mod` and the same
+   `expected` output on both backends. `rtl/vax/Out.Mod` in Oberon-2 over
+   one MACRO-32 routine in `PocRtl.mar` that writes a line with
+   `LIB$PUT_OUTPUT`. `Out` buffers until `Ln`, since `LIB$PUT_OUTPUT`
+   writes whole records. Until then, step 3's first fixtures show their
+   results in the exit status or under the debugger, as Phase 15's did.
+3. **Pointers and the heap.** A pointer is a longword address of the
+   block's data, `NIL` 0, and the block's tag longword is at `-4` (a
+   record's type descriptor; an open array's block holds its lengths
+   there, as on LLVM). Each dereference is checked for `NIL` (trap 4) by
+   `TSTL`/`BNEQ`. VMS leaves page 0 unmapped, so an unchecked one would
+   fault `ACCVIO`, but the trap must be poc's, with its message. `NEW`
+   calls a runtime routine, `POC_NEW(size, tag)`. **Until step 4 ports
+   the collector**, it takes memory from `LIB$GET_VM` and never frees
+   any, so programs that allocate a lot will run out. That is enough for
+   step 3's fixtures, not for poc itself (step 6).
+4. **Type descriptors: LLVM's layout**, as one block per record type in
+   `POC_CONST`, every field a longword: `ProcTab` below the tag, growing
+   down; then `size`, `extLevel`, `ptrCount`, `BaseTypes[extLevel+1]` and
+   `ptrOffsets[ptrCount]`. `IS` and a type guard are `extLevel >= T.level
+   & BaseTypes[T.level] = T's tag`. The collector (step 4) reads
+   `ptrOffsets`. Each descriptor's symbol is made from `<Module>.<Type>`
+   by §5's scheme, and an exported type's is global, so importers can
+   test against it.
+5. **`VAR` record parameters** take the actual's tag as a second
+   longword, as decided in §7. A record value parameter needs no tag.
+6. **Type-bound procedures** are ordinary procedures, the receiver
+   first. A call is direct when the receiver's type is known exactly,
+   otherwise `CALLG list, @-4*(i+1)(Rtag)`, through the descriptor's
+   `ProcTab`.
+7. **Procedure values** are the longword address of the procedure's
+   entry mask, which `CALLS` and `CALLG` take. Oberon-2 allows only
+   global procedures as values, so no bound procedure values, and no
+   environment, are needed.
+8. **Nested procedures: lambda lifting by reference, as on LLVM**
+   (`nested-procedures.md` §3). Each enclosing variable a nested
+   procedure uses is passed as a hidden address argument after its own,
+   using `NestedProcedures.Mod`'s analysis unchanged. A static link in
+   `R1` (§7's earlier suggestion) would need a second mechanism, and poc
+   has only 5 nested procedures.
+9. **Reals (3a): `REAL` is F_floating; `LONGREAL` is G_floating by
+   default**, not D_floating as VAX C's default is. poc itself needs G:
+   `ConstantEvaluator.MaxLongReal` computes 2^1024 - 2^971 as a
+   `LONGREAL`, and D_floating's largest value is about 1.7 * 10^38, so
+   poc built with D would overflow folding `MAX(LONGREAL)`. G_floating has
+   IEEE double's 53-bit precision and nearly its range (about 0.56 *
+   10^-308 to 0.9 * 10^308), so poc's own folding gives the same values
+   as on the hosts, except at the extremes. The KA655's CVAX does F, D
+   and G in hardware. A `-vax-d-float` option can come later (§4 wanted
+   the choice designed in). The VAX formats have no infinities, NaNs or
+   denormals: a real overflow or division by zero is a hardware
+   condition (`SS$_FLTOVF_F`, `SS$_FLTDIV_F`), as integer division by
+   zero already is. This is a target difference, recorded where the x86
+   and ARM one is (`AGENTS.md`, "What traps, and what does not"). Folded
+   constants are written as `.F_FLOATING` and `.G_FLOATING` from exact
+   arithmetic, never by converting IEEE bits. The VAX rounds a
+   halfway case away from zero, I believe, not to even as IEEE does
+   (to be confirmed in a 5.5-2-era manual before it is relied on). If
+   so, a folded value and a computed one can differ in the last bit.
+   Fixtures avoid such cases or have a VAX `expected` (step 5).
+10. **Traps and exit status (3c).** `POC_TRAP` writes the same message
+    the LLVM runtime does, with `-trap-location`'s position when that was
+    given, to `SYS$ERROR`, then exits. A VMS exit status is a condition
+    value, which DCL reports unless bit 28 (`STS$M_INHIB_MSG`) is set. So
+    a trap with code *c* exits with `%X10000000 + 8*c + 2`: severity
+    error, message number *c*, and DCL's own message suppressed, since
+    poc's says what happened. `HALT(0)` exits with `SS$_NORMAL` (1), and
+    `HALT(n)`, *n* 1 to 255, with `%X10000000 + 8*n + 2`, so a trap with
+    code *c* ends as `HALT(c)` does, with its message. That matches the
+    LLVM targets, where a trap's exit status is its code. A procedure
+    recovers *n* as `($STATUS .AND. %XFFF8) / 8`. This settles
+    `000-todo.org`'s "what HALT(n)'s status means on VAX/VMS".
+11. **Order of work**: open arrays (1); `Out` (2); pointers, `NEW` and
+    descriptors without extension (3, 4); records holding pointers, and
+    `VAR` record parameters (5); extension, `IS`, guards and `WITH` (4);
+    type-bound procedures (6); procedure values (7); nested procedures
+    (8); reals (9); the traps (10) as each construct brings one, and the
+    real `POC_TRAP` and `POC_HALT` as soon as `Out` exists; then
+    `ASSERT` and `SYSTEM.SET64`. Each sub-step gets fixtures shared with
+    the LLVM suite once `Out` exists. The survey is re-run after each,
+    and the step ends when poc's own source is written with no refusal.

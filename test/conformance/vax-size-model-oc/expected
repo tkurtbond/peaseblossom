@@ -1,0 +1,4 @@
+semantic OK, wrote VaxSizeModel.mar
+exit 0
+VaxSizeModel.mar matches expected-vax.mar
+build exit 0

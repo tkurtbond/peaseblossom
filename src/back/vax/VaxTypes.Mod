@@ -4,10 +4,12 @@ MODULE VaxTypes;
      Phase 15 step 1; doc/developer/vax-macro32-backend.md, the design,
      sections 4 and 5).
 
-     Sizes, alignments and field offsets are MemoryLayout.Mod's, under the
-     one target shape the VAX has: a 32-bit word, and the -O2 size model,
-     the only one the backend takes at first (the design's section 4,
-     decided 2026-10-05). OperandSuffix gives the letter a VAX instruction
+     Sizes, alignments and field offsets are MemoryLayout.Mod's, for the
+     VAX's 32-bit word and the size model sizeModel names: -O2, the
+     default, or -OC, which the backend took first only -O2 of (the
+     design's section 4, decided 2026-10-05) and takes since PLAN.md Phase
+     16 step 3, because poc's own source is compiled under it (decided
+     with the user 2026-10-09). OperandSuffix gives the letter a VAX instruction
      takes for a value of the type (MOVB, MOVW, MOVL, MOVQ).
 
      Names: MACRO-32 folds lowercase to uppercase in a symbol and takes at
@@ -65,20 +67,31 @@ MODULE VaxTypes;
 
     Bytes = ARRAY 8 OF LONGINT; (* a 64-bit value, least significant byte first *)
 
+  VAR
+    (* MemoryLayout.sizeModelO2 or sizeModelOC, the driver's choice *)
+    sizeModel*: INTEGER;
+
   PROCEDURE Size*(t: Types.Type): LONGINT;
   BEGIN
-    RETURN MemoryLayout.Size(t, MemoryLayout.wordSize32, MemoryLayout.sizeModelO2)
+    RETURN MemoryLayout.Size(t, MemoryLayout.wordSize32, sizeModel)
   END Size;
 
   PROCEDURE Align*(t: Types.Type): LONGINT;
   BEGIN
-    RETURN MemoryLayout.Align(t, MemoryLayout.wordSize32, MemoryLayout.sizeModelO2)
+    RETURN MemoryLayout.Align(t, MemoryLayout.wordSize32, sizeModel)
   END Align;
 
   PROCEDURE FieldOffset*(rec: Types.RecordType; field: Types.Field): LONGINT;
   BEGIN
-    RETURN MemoryLayout.FieldOffset(rec, field, MemoryLayout.wordSize32, MemoryLayout.sizeModelO2)
+    RETURN MemoryLayout.FieldOffset(rec, field, MemoryLayout.wordSize32, sizeModel)
   END FieldOffset;
+
+  (* The integer type of 4 bytes, a longword: LONGINT under -O2, INTEGER
+     under -OC *)
+  PROCEDURE Longword*(): Types.Type;
+  BEGIN
+    IF Size(Types.LongInt) = 4 THEN RETURN Types.LongInt ELSE RETURN Types.Integer END
+  END Longword;
 
   (* The data-type letter of a VAX instruction for a value of type t: "B",
      "W", "L" or "Q" for an integer, CHAR, BOOLEAN, SET, address, pointer
@@ -310,4 +323,6 @@ MODULE VaxTypes;
     RETURN i <= symbolLength
   END IsValidExternalName;
 
+BEGIN
+  sizeModel := MemoryLayout.sizeModelO2
 END VaxTypes.

@@ -113,7 +113,6 @@ MODULE VaxCodeGenerator;
     inFrame = 0; byValue = 1; byReference = 2;
     clearByCLR = 64; (* bytes of locals cleared by CLRQ and CLRL; more by MOVC5 *)
     maxMove = 65535; (* bytes one MOVC3 or MOVC5 moves, its length a word *)
-    two32 = 4294967296;
 
   TYPE
     OperandText = ARRAY 48 OF CHAR;
@@ -194,11 +193,20 @@ MODULE VaxCodeGenerator;
        from source together): two exports of different modules with one
        symbol are an error at the second, not a silent binding at link *)
     programNames*: VaxTypes.NameTable;
+    (* 2^31 and 2^32, computed at the start, not constants: under -O2 a
+       constant past MAX(LONGINT) is a HUGEINT, and poc's own source must
+       type-check under -O2 (AGENTS.md, "How poc itself is built"); poc runs
+       built under -OC, where they are exact *)
+    two31, two32: LONGINT;
 
     (* the module being generated *)
     module: SyntaxTree.ModuleNode;
     scope, moduleScope: SymbolTable.Scope; (* scope: the procedure's, or the module's *)
     names: VaxTypes.NameTable;
+    (* the 4-byte integer type, for a register or a slot of a longword
+       (an index, an address, half a quadword): LONGINT under -O2, INTEGER
+       under -OC (VaxTypes.Longword) *)
+    longword: Types.Type;
     first, last: Instruction;
     nextLabel: INTEGER;
     free, used: SET; (* registers free now; registers written *)
@@ -447,7 +455,7 @@ MODULE VaxCodeGenerator;
         END;
         AppendHex(text, v)
       ELSIF x.value = -2147483647 - 1 THEN
-        AppendHex(text, 2147483647 + 1)
+        AppendHex(text, two31)
       ELSE
         AppendInt(text, x.value)
       END
@@ -932,7 +940,7 @@ MODULE VaxCodeGenerator;
       IF l.where = byReference THEN
         x.deferred := TRUE;
         IF IsQuad(x) THEN
-          r := NewRegisterFrom(Types.LongInt, 2, line, column);
+          r := NewRegisterFrom(longword, 2, line, column);
           from[0] := 0X; AppendInt(from, l.offset); Append(from, "(AP)");
           EmitTo("MOVL", from, r);
           r.pinned := TRUE;
@@ -951,7 +959,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE Rebase(x: Operand; line, column: INTEGER);
     VAR r: Operand; from: ARRAY 24 OF CHAR;
   BEGIN
-    r := NewRegister(Types.LongInt, line, column);
+    r := NewRegister(longword, line, column);
     from[0] := 0X; AppendInt(from, x.offset); Append(from, "(AP)");
     EmitTo("MOVL", from, r);
     r.pinned := TRUE;
@@ -979,16 +987,16 @@ MODULE VaxCodeGenerator;
     NewLabel(ok); bad[0] := 0X;
     IF IsQuad(i) THEN
       q := i; q.pinned := TRUE;
-      i := NewRegister(Types.LongInt, e.line, e.column);
+      i := NewRegister(longword, e.line, e.column);
       q.pinned := FALSE;
       NewLabel(bad);
       HalfText(q, 1, hi); Emit("TSTL", hi); Emit("BNEQ", bad);
       HalfText(q, 0, hi); EmitTo("MOVL", hi, i);
       Release(q)
     ELSE
-      i := InRegister(Widen(i, Types.LongInt, e.line, e.column), e.line, e.column)
+      i := InRegister(Widen(i, longword, e.line, e.column), e.line, e.column)
     END;
-    i.type := Types.LongInt;
+    i.type := longword;
     Text(i, hi); Operands(hi, "", "", operands); Append(operands, ", #"); AppendInt(operands, length - 1);
     Emit("CMPL", operands);
     Emit("BLEQU", ok);
@@ -1083,7 +1091,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE MoveLong(src, dst: Operand);
     VAR op: ARRAY 8 OF CHAR;
   BEGIN
-    dst.type := Types.LongInt;
+    dst.type := longword;
     IF (src.kind # immediate) & ((src.type = Types.Char) OR (src.type = Types.Boolean)) THEN
       Emit2("MOVZBL", src, dst)
     ELSIF src.type = Types.Set THEN
@@ -1100,7 +1108,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE ListEntry(s, n, i: INTEGER): Operand;
     VAR x: Operand;
   BEGIN
-    x := NewOperand(memory, Types.LongInt);
+    x := NewOperand(memory, longword);
     x.offset := SlotOffset(s, n + 1) + 4 * i;
     RETURN x
   END ListEntry;
@@ -1248,7 +1256,10 @@ MODULE VaxCodeGenerator;
         Unsupported(line, column, "an array or record value parameter of an external procedure (Phase 17 chooses its mechanism)");
         RETURN NIL
       ELSIF external & ~p.isVar & (Suffix(p.type) = "Q") THEN
-        Unsupported(line, column, "a HUGEINT value parameter of an external procedure (Phase 17 chooses its mechanism)");
+        (* a HUGEINT, or under -OC a LONGINT *)
+        COPY("a quadword value parameter, of type ", text); Types.Describe(p.type, text);
+        Append(text, ", of an external procedure (Phase 17 chooses its mechanism)");
+        Unsupported(line, column, text);
         RETURN NIL
       END;
       IF ~p.isVar & (Suffix(p.type) = "Q") THEN INC(copies) END;
@@ -1332,7 +1343,7 @@ MODULE VaxCodeGenerator;
     Emit("CALLG", target);
     AddExternal("POC_STRCMP");
     ReleaseSlots(list, 5);
-    RETURN CallResult(Types.LongInt)
+    RETURN CallResult(longword)
   END StringCompare;
 
   (* A constant expression, folded: an immediate, a string constant, or
@@ -1616,7 +1627,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE Relation(op: INTEGER; a, b: Operand; line, column: INTEGER): Operand;
     VAR d: Operand; branch, isFalse: ARRAY 16 OF CHAR;
   BEGIN
-    IF IsStringRelation(a, b) THEN a := StringCompare(a, b, line, column); b := Immediate(Types.LongInt, 0) END;
+    IF IsStringRelation(a, b) THEN a := StringCompare(a, b, line, column); b := Immediate(longword, 0) END;
     IF ~PrepareRelation(op, a, b, line, column) THEN RETURN Dummy() END;
     IF IsQuad(a) THEN RETURN QuadRelation(op, a, b, line, column) END;
     d := NewFlag(a, b, line, column);
@@ -1636,7 +1647,7 @@ MODULE VaxCodeGenerator;
     IF s.kind = immediate THEN s := InRegister(s, line, column) END;
     s := Fit(s, 1, line, column); (* BBC's base, a byte *)
     IF x.kind # immediate THEN
-      IF ~IsQuad(x) THEN x := Widen(x, Types.LongInt, line, column) END
+      IF ~IsQuad(x) THEN x := Widen(x, longword, line, column) END
     END;
     d := NewFlag(x, s, line, column);
     NewLabel(isFalse);
@@ -1792,15 +1803,15 @@ MODULE VaxCodeGenerator;
     lo := Fit(Expression(el.low, NIL), 1, el.line, el.column);
     IF el.high = NIL THEN
       mask := NewRegisterBeside(Types.Set, lo, NIL, el.line, el.column);
-      Emit3("ASHL", lo, Immediate(Types.LongInt, 1), mask);
+      Emit3("ASHL", lo, Immediate(longword, 1), mask);
       Release(lo)
     ELSE
       hi := Fit(Expression(el.high, NIL), 1, el.line, el.column);
       above := NewRegisterBeside(Types.Set, lo, hi, el.line, el.column);
-      Emit3("ASHL", hi, Immediate(Types.LongInt, -2), above);
+      Emit3("ASHL", hi, Immediate(longword, -2), above);
       Release(hi);
       mask := NewRegisterBeside(Types.Set, lo, above, el.line, el.column);
-      Emit3("ASHL", lo, Immediate(Types.LongInt, -1), mask);
+      Emit3("ASHL", lo, Immediate(longword, -1), mask);
       Release(lo);
       Emit2("BICL2", above, mask);
       Release(above)
@@ -1853,7 +1864,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE LowHalf(x: Operand): Operand;
     VAR h: Operand;
   BEGIN
-    NEW(h); h^ := x^; h.type := Types.LongInt; h.slot := -1; h.ownsBase := FALSE; h.ownsIndex := FALSE;
+    NEW(h); h^ := x^; h.type := longword; h.slot := -1; h.ownsBase := FALSE; h.ownsIndex := FALSE;
     h.nextLive := NIL;
     RETURN h
   END LowHalf;
@@ -1929,7 +1940,7 @@ MODULE VaxCodeGenerator;
       ELSIF s = "Q" THEN
         NewLabel(trap);
         HalfText(v, 1, hi); Emit("TSTL", hi); Emit("BNEQ", trap);
-        Emit2("CMPL", LowHalf(v), Immediate(Types.LongInt, 255)); Emit("BLEQU", ok);
+        Emit2("CMPL", LowHalf(v), Immediate(longword, 255)); Emit("BLEQU", ok);
         EmitLabel(trap)
       ELSE
         Op("CMP", s, "", op); Emit2(op, v, Immediate(v.type, 255)); Emit("BLEQU", ok)
@@ -1953,8 +1964,11 @@ MODULE VaxCodeGenerator;
     VAR result: Operand;
   BEGIN
     result := Target(Types.Integer, v, NIL, dest, line, column);
-    IF v.type = Types.Char THEN Emit2("MOVZBW", v, result)
-    ELSIF v.type = Types.Set THEN Emit2("CVTLW", v, result)
+    (* INTEGER is a word under -O2, a longword under -OC *)
+    IF v.type = Types.Char THEN
+      IF Suffix(Types.Integer) = "W" THEN Emit2("MOVZBW", v, result) ELSE Emit2("MOVZBL", v, result) END
+    ELSIF v.type = Types.Set THEN
+      IF Suffix(Types.Integer) = "W" THEN Emit2("CVTLW", v, result) ELSE Emit2("MOVL", v, result) END
     ELSE Unsupported(line, column, "ORD of this type"); RETURN Dummy()
     END;
     result.type := Types.Integer;
@@ -2201,7 +2215,7 @@ MODULE VaxCodeGenerator;
     ELSE
       x := Fit(Expression(args.next, NIL), 1, line, column);
       mask := NewRegisterBeside(Types.Set, x, target, line, column);
-      Emit3("ASHL", x, Immediate(Types.LongInt, 1), mask);
+      Emit3("ASHL", x, Immediate(longword, 1), mask);
       Release(x)
     END;
     IF include THEN Emit2("BISL2", mask, target) ELSE Emit2("BICL2", mask, target) END;
@@ -2303,7 +2317,7 @@ MODULE VaxCodeGenerator;
     ELSIF Suffix(n.type) = "B" THEN
       count := n
     ELSE
-      count := NewRegisterBeside(Types.LongInt, n, x, line, column);
+      count := NewRegisterBeside(longword, n, x, line, column);
       Text(count, cnt);
       NewLabel(big); NewLabel(small); NewLabel(done);
       IF IsQuad(n) THEN
@@ -2538,7 +2552,7 @@ MODULE VaxCodeGenerator;
                            line, column: INTEGER);
     VAR stay: ARRAY 16 OF CHAR;
   BEGIN
-    IF IsStringRelation(a, b) THEN a := StringCompare(a, b, line, column); b := Immediate(Types.LongInt, 0) END;
+    IF IsStringRelation(a, b) THEN a := StringCompare(a, b, line, column); b := Immediate(longword, 0) END;
     IF ~PrepareRelation(op, a, b, line, column) THEN RETURN END;
     IF IsQuad(a) THEN
       JumpOnValue(QuadRelation(op, a, b, line, column), label, sense)
@@ -3470,7 +3484,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     module := m; scope := s; moduleScope := s; before := unsupportedCount;
     errorsBefore := Diagnostics.errorCount;
-    names := VaxTypes.NewNameTable();
+    names := VaxTypes.NewNameTable(); longword := VaxTypes.Longword();
     nextLabel := 0; usesTrap := FALSE; externals := NIL; homes := NIL; strings := NIL; code := NIL; codeLast := NIL;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
       Diagnostics.Error(module.line, module.column,
@@ -3581,5 +3595,6 @@ MODULE VaxCodeGenerator;
   END GenerateModule;
 
 BEGIN
-  unsupportedCount := 0; programNames := NIL
+  unsupportedCount := 0; programNames := NIL;
+  two31 := 2147483647; INC(two31); two32 := two31 * 2
 END VaxCodeGenerator.

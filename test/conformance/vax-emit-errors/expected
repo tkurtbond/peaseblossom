@@ -31,9 +31,6 @@ exit 1
 == poc -target x86_64-unknown-linux-gnu -emit-macro32 VaxEmpty.mod
 poc: -emit-macro32 is for -target vax-dec-vms, not x86_64-unknown-linux-gnu
 exit 1
-== poc -OC -emit-macro32 VaxEmpty.mod
-poc: the VAX backend takes only -O2
-exit 1
 == poc -target vax-dec-vms -emit-llvm-ir VaxEmpty.mod
 poc: -emit-llvm-ir has no vax-dec-vms target, LLVM does not generate VAX code; -emit-macro32 writes the .mar
 exit 1

@@ -149,8 +149,13 @@ for VAX/VMS; the module named is the program's main module, whose
 .Pa .mar
 has the program's start; it implies
 .Fl target Cm vax-dec-vms
-and
-.Fl O2 .
+and takes
+.Fl O2 ,
+the default, or
+.Fl OC ,
+under which
+.Vt LONGINT
+is a quadword.
 The VAX backend is being written: so far it writes a module's layout,
 its variables, assignments of integer,
 .Vt CHAR ,

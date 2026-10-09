@@ -656,6 +656,28 @@ most, object libraries.
    length failures become VMS conditions or a status exit, and what a poc
    program's exit status looks like to DCL.
 
+   **Record** (in progress, 2026-10-09):
+   - **Decided (the user, 2026-10-09): the VAX takes `-OC` as well as
+     `-O2`.** poc's own source needs `-OC` (a 64-bit `LONGINT`) and must
+     stay strict, so it can't use `HUGEINT`. Under `-OC` a `LONGINT` is a
+     quadword, lowered as a `HUGEINT` is; `-O2` stays the default
+     (`VaxTypes.sizeModel`, `VaxTypes.Longword`). The 32 reviewed `.mar`
+     files are unchanged. Fixture `vax-size-model-oc` (its
+     `expected-vax.mar` for the user's review) runs on the guest with
+     every check holding.
+   - *The survey*: under `-OC`, poc's own source has 22,504 constructs
+     the backend refuses, most of them pointers (13,606), records holding
+     pointers or passed as `VAR` (4,506) and open arrays (4,340). The
+     proposals for each area, for reals (3a), the calling convention (3b)
+     and traps (3c), and the order of work are in
+     `doc/developer/vax-macro32-backend.md` section 14, **for the user's
+     review**.
+   - Found on the way: Phase 15 had broken the rule that poc's own source
+     type-checks under `-O2` (`AGENTS.md`), with five constants past
+     `MAX(LONGINT)` in `VaxCodeGenerator`; fixed, and `poc -O2
+     -emit-llvm-ir src/driver/Poc.Mod` is clean again. Nothing checks the
+     rule automatically.
+
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:
    program start and command-line access; memory from the system

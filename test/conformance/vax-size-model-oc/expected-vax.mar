@@ -1,0 +1,276 @@
+;; Reviewed 2026-10-09 (written by Claude, from the design's sections 4,
+;; 7 and 14 and a run on the VAX; for the user's review). Why this is
+;; right:
+;; - Under -OC (section 14, decided 2026-10-09) SHORTINT is a word
+;;   (.BLKW, MOVW), INTEGER a longword (.BLKL, MOVL) and LONGINT a
+;;   quadword (.BLKQ), aligned at most to a longword (section 4).
+;; - A LONGINT is lowered as a HUGEINT is under -O2: a constant as two
+;;   MOVLs, low longword first; + as ADDL2 and ADWC after the INTEGER is
+;;   widened (ASHL #-31 for its high longword); a comparison high
+;;   longwords first, signed, then low ones unsigned; DIV a call of
+;;   POC_HDIV with both operands by address, the quotient in R0/R1.
+;; - Twice's LONGINT value parameter comes by address and is copied to
+;;   the frame on entry (MOVQ @4(AP)); its result is R0/R1. The caller
+;;   passes a copy in its frame (MOVAQ -16(FP)).
+;; - A LONGINT index is checked on both halves (TSTL of the high, then
+;;   CMPL/BLEQU of the low against 3) before the element's 8 bytes are
+;;   scaled by MULL2.
+;; - ORD of a CHAR is MOVZBL and ORD of a SET a MOVL, INTEGER being a
+;;   longword; LONG of a SHORTINT is CVTWL; SHORT of a LONGINT keeps the
+;;   low longword; ASH of a LONGINT is ASHQ.
+;; - SYS$EXIT's INTEGER parameter, a longword, goes by value.
+;; - Run on the VAX (guest-run.com): every check holds, exit status
+;;   %X00000FF1.
+; VaxSizeModel, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXSIZEMODEL
+	.IDENT	/6db1e9484993a885/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; s: SHORTINT
+	.ALIGN	WORD
+VAXSIZEMODEL_S_VNTIQK9H:
+	.BLKW	1
+; i: INTEGER
+	.ALIGN	LONG
+VAXSIZEMODEL_I_VNTIQMR3:
+	.BLKL	1
+; bits: INTEGER
+	.ALIGN	LONG
+VAXSIZEMODEL_BITS_GH6LG73G:
+	.BLKL	1
+; l: LONGINT
+	.ALIGN	LONG
+VAXSIZEMODEL_L_VNTIQO3S:
+	.BLKQ	1
+; k: LONGINT
+	.ALIGN	LONG
+VAXSIZEMODEL_K_VNTIQNM9:
+	.BLKQ	1
+; c: CHAR
+VAXSIZEMODEL_C_VNTIQR31:
+	.BLKB	1
+; set: SET
+	.ALIGN	LONG
+VAXSIZEMODEL_SET_O460F5MO:
+	.BLKL	1
+; a: ARRAY 4 OF LONGINT
+	.ALIGN	LONG
+VAXSIZEMODEL_A_VNTIQQ7R:
+	.BLKB	32
+
+; the symbols it uses of other modules
+	.EXTERNAL	POC_HDIV
+	.EXTERNAL	SYS$EXIT
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxSizeModel/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Twice
+VAXSIZEMODEL_TWICE_DMNPTCCK:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 15
+	MOVQ	-8(FP), R0
+	ADDL2	-8(FP), R0
+	ADWC	-4(FP), R1
+	RET
+	PUSHL	#3
+	PUSHL	#16
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXSIZEMODEL_INIT, ^M<R2,R3>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#20, SP
+; line 19
+	CLRL	VAXSIZEMODEL_BITS_GH6LG73G
+; line 20
+	MOVW	#1000, VAXSIZEMODEL_S_VNTIQK9H
+; line 20
+	MOVL	#100000, VAXSIZEMODEL_I_VNTIQMR3
+; line 20
+	MOVL	#^X2A05F200, VAXSIZEMODEL_L_VNTIQO3S
+	MOVL	#^X00000001, VAXSIZEMODEL_L_VNTIQO3S+4
+; line 21
+	MOVL	VAXSIZEMODEL_I_VNTIQMR3, R0
+	ASHL	#-31, R0, R1
+	ADDL2	R0, VAXSIZEMODEL_L_VNTIQO3S
+	ADWC	R1, VAXSIZEMODEL_L_VNTIQO3S+4
+; line 22
+	CLRB	R0
+	CMPL	VAXSIZEMODEL_L_VNTIQO3S+4, #^X00000001
+	BGTR	L_2
+	BLSS	L_3
+	CMPL	VAXSIZEMODEL_L_VNTIQO3S, #^X00000000
+	BLEQU	L_3
+L_2:
+	MOVB	#1, R0
+L_3:
+	BLBS	R0, L_4
+	JMP	L^L_1
+L_4:
+; line 22
+	INCL	VAXSIZEMODEL_BITS_GH6LG73G
+L_1:
+; line 23
+	MOVL	#^X00000002, VAXSIZEMODEL_K_VNTIQNM9
+	CLRL	VAXSIZEMODEL_K_VNTIQNM9+4
+; line 23
+	TSTL	VAXSIZEMODEL_K_VNTIQNM9+4
+	BNEQ	L_6
+	MOVL	VAXSIZEMODEL_K_VNTIQNM9, R0
+	CMPL	R0, #3
+	BLEQU	L_5
+L_6:
+	PUSHL	#13
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_5:
+	MULL2	#8, R0
+	MOVAB	VAXSIZEMODEL_A_VNTIQQ7R[R0], R0
+	MOVQ	VAXSIZEMODEL_L_VNTIQO3S, (R0)
+; line 24
+	MOVL	VAXSIZEMODEL_I_VNTIQMR3, R0
+	ASHL	#-31, R0, R1
+	MOVQ	VAXSIZEMODEL_A_VNTIQQ7R+16, R2
+	SUBL2	R0, R2
+	SBWC	R1, R3
+	CLRB	R0
+	CMPL	R3, #^X00000001
+	BNEQ	L_8
+	CMPL	R2, #^X2A05F200
+	BNEQ	L_8
+	MOVB	#1, R0
+L_8:
+	BLBS	R0, L_9
+	JMP	L^L_7
+L_9:
+; line 24
+	ADDL2	#2, VAXSIZEMODEL_BITS_GH6LG73G
+L_7:
+; line 25
+	MOVB	#65, VAXSIZEMODEL_C_VNTIQR31
+; line 25
+	MOVZBL	VAXSIZEMODEL_C_VNTIQR31, VAXSIZEMODEL_I_VNTIQMR3
+; line 26
+	CMPL	VAXSIZEMODEL_I_VNTIQMR3, #65
+	BEQL	L_11
+	JMP	L^L_10
+L_11:
+; line 26
+	ADDL2	#4, VAXSIZEMODEL_BITS_GH6LG73G
+L_10:
+; line 27
+	MOVL	#^X00000021, VAXSIZEMODEL_SET_O460F5MO
+; line 27
+	MOVL	VAXSIZEMODEL_SET_O460F5MO, VAXSIZEMODEL_I_VNTIQMR3
+; line 28
+	CMPL	VAXSIZEMODEL_I_VNTIQMR3, #33
+	BEQL	L_13
+	JMP	L^L_12
+L_13:
+; line 28
+	ADDL2	#8, VAXSIZEMODEL_BITS_GH6LG73G
+L_12:
+; line 29
+	MOVL	#1, -8(FP)
+	MOVL	#^XB2D05E00, -16(FP)
+	CLRL	-12(FP)
+	MOVAQ	-16(FP), -4(FP)
+	CALLG	-8(FP), VAXSIZEMODEL_TWICE_DMNPTCCK
+	MOVQ	R0, VAXSIZEMODEL_L_VNTIQO3S
+; line 30
+	CLRB	R0
+	CMPL	VAXSIZEMODEL_L_VNTIQO3S+4, #^X00000001
+	BNEQ	L_15
+	CMPL	VAXSIZEMODEL_L_VNTIQO3S, #^X65A0BC00
+	BNEQ	L_15
+	MOVB	#1, R0
+L_15:
+	BLBS	R0, L_16
+	JMP	L^L_14
+L_16:
+; line 30
+	ADDL2	#16, VAXSIZEMODEL_BITS_GH6LG73G
+L_14:
+; line 31
+	MOVL	#^X000003E8, -8(FP)
+	CLRL	-4(FP)
+	MOVL	#2, -20(FP)
+	MOVAQ	VAXSIZEMODEL_L_VNTIQO3S, -16(FP)
+	MOVAQ	-8(FP), -12(FP)
+	CALLG	-20(FP), G^POC_HDIV
+	MOVL	R0, R2
+	CMPL	R2, #6000000
+	BEQL	L_18
+	JMP	L^L_17
+L_18:
+; line 31
+	ADDL2	#32, VAXSIZEMODEL_BITS_GH6LG73G
+L_17:
+; line 32
+	CVTWL	VAXSIZEMODEL_S_VNTIQK9H, R0
+	CMPL	R0, #1000
+	BEQL	L_20
+	JMP	L^L_19
+L_20:
+; line 32
+	ADDL2	#64, VAXSIZEMODEL_BITS_GH6LG73G
+L_19:
+; line 33
+	ASHQ	#-1, VAXSIZEMODEL_L_VNTIQO3S, R0
+	CLRB	R2
+	CMPL	R1, #^X00000000
+	BNEQ	L_22
+	CMPL	R0, #^XB2D05E00
+	BNEQ	L_22
+	MOVB	#1, R2
+L_22:
+	BLBS	R2, L_23
+	JMP	L^L_21
+L_23:
+; line 33
+	ADDL2	#128, VAXSIZEMODEL_BITS_GH6LG73G
+L_21:
+; line 34
+	MOVL	#1, -8(FP)
+	MULL3	#16, VAXSIZEMODEL_BITS_GH6LG73G, R0
+	INCL	R0
+	MOVL	R0, -4(FP)
+	CALLG	-8(FP), G^SYS$EXIT
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_6DB1E9484993A885 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXSIZEMODEL_MAIN, ^M<>
+	CALLS	#0, VAXSIZEMODEL_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXSIZEMODEL_MAIN
