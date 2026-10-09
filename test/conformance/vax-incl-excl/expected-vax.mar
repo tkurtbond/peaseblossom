@@ -1,0 +1,125 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - INCL(v, x) and EXCL(v, x) are BISL2 and BICL2 of x's mask on v where
+;;   it is: @4(AP) for a VAR parameter, the variable itself, an element in
+;;   index mode (sets[k], k checked first), a local in the frame.
+;; - A constant x's mask is an immediate, #^X00000001 for 0, #^X80000000
+;;   for 31. Any other x's is ASHL x, #1, R0, the count a byte, x's low
+;;   one, as a set constructor's element is made: a count of 32 or more
+;;   shifts the 1 out and a negative one right, so the mask is 0 and an x
+;;   outside 0..31, which Oberon2.pdf leaves undefined, changes nothing
+;;   (the runs: 32, -1, 40, and -1 as a HUGEINT).
+;; - IncludeHuge's x, a HUGEINT value parameter, is copied on entry as
+;;   every one is (step 6), and its low longword's low byte is the count.
+; VaxInclExcl, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXINCLEXCL
+	.IDENT	/373499acb0799757/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; s: SET
+	.ALIGN	LONG
+VAXINCLEXCL_S_1VJO9DUL:
+	.BLKL	1
+; sets: ARRAY 3 OF SET
+	.ALIGN	LONG
+VAXINCLEXCL_SETS_UNAAIM9D:
+	.BLKB	12
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxInclExcl/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Include
+VAXINCLEXCL_INCLUDE_PAL9TQEO:
+	.WORD	^M<>
+; line 10
+	ASHL	8(AP), #1, R0
+	BISL2	R0, @4(AP)
+	RET
+; PROCEDURE Exclude
+VAXINCLEXCL_EXCLUDE_1HT27P1E:
+	.WORD	^M<>
+; line 14
+	ASHL	8(AP), #1, R0
+	BICL2	R0, @4(AP)
+	RET
+; PROCEDURE IncludeHuge
+VAXINCLEXCL_INCLUDEHUG_UHSQHI9N:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@8(AP), -8(FP)
+; line 18
+	ASHL	-8(FP), #1, R0
+	BISL2	R0, @4(AP)
+	RET
+; PROCEDURE Constants
+VAXINCLEXCL_CONSTANTS_FP6K5AJP:
+	.WORD	^M<>
+; line 22
+	BISL2	#^X00000001, VAXINCLEXCL_S_1VJO9DUL
+; line 22
+	BISL2	#^X80000000, VAXINCLEXCL_S_1VJO9DUL
+; line 22
+	BICL2	#^X00000001, VAXINCLEXCL_S_1VJO9DUL
+	RET
+; PROCEDURE Element
+VAXINCLEXCL_ELEMENT_PLMIV9OC:
+	.WORD	^M<>
+; line 26
+	CVTWL	4(AP), R0
+	CMPL	R0, #2
+	BLEQU	L_1
+	PUSHL	#19
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_1:
+	ASHL	8(AP), #1, R1
+	BISL2	R1, VAXINCLEXCL_SETS_UNAAIM9D[R0]
+	RET
+; PROCEDURE Local
+VAXINCLEXCL_LOCAL_NTG9MRPF:
+	.WORD	^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+; line 31
+	MOVL	#^X00000002, -4(FP)
+; line 31
+	ASHL	4(AP), #1, R0
+	BISL2	R0, -4(FP)
+; line 31
+	BICL2	#^X00000002, -4(FP)
+; line 31
+	MOVL	-4(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#32
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXINCLEXCL_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+	.END

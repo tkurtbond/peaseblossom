@@ -1,0 +1,222 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - SHORT is CVTLW or CVTWB (MACRO 9-16), the low word or byte, 70000
+;;   giving 4464 and 200 -56; of a HUGEINT, MOVL of its low longword, 3 for
+;;   4294967299. LONG is CVTBW or CVTWL, sign-extending; LONG of a HUGEINT
+;;   is the value itself, MOVQ. The CVTWL or CVTBL after SHORT widens the
+;;   result to a longword, as the calling standard returns one.
+;; - ASH(x, n) is ASHL n, x, r in LONGINT, an INTEGER x first widened by
+;;   CVTWL, or ASHQ for a HUGEINT x, so the result is in the wider of
+;;   LONGINT and x's type. ASHL and ASHQ give 0 for a left shift of the
+;;   width or more and the sign for such a right one, the rule poc
+;;   promises (language-extensions.md), for any count of -128..127; but
+;;   the count is a byte, so a SHORTINT n is used as it is and any wider
+;;   one first limited to -64..64 in a register: CMPL with #64 and #-64 for
+;;   a LONGINT, and for a HUGEINT n its high longword first (0, positive,
+;;   -1 or other). ASH(3, 256) is 0, not 3, which 256's low byte would give.
+;; - A constant n is limited when compiling: ASH(x, -100) is ASHL #-64.
+;; - The runs cover each type, the widths 31, 32, 63 and 64, and HUGEINT
+;;   counts beyond a longword both ways.
+; VaxShortLongAsh, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXSHORTLONGASH
+	.IDENT	/54d6c889b620feeb/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxShortLongAsh/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE ShortL
+VAXSHORTLONGASH_SHORTL_PNMIDQ34:
+	.WORD	^M<>
+; line 11
+	CVTLW	4(AP), R0
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#12
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ShortI
+VAXSHORTLONGASH_SHORTI_PNMIDOQB:
+	.WORD	^M<>
+; line 15
+	CVTWB	4(AP), R0
+	CVTBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#16
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ShortH
+VAXSHORTLONGASH_SHORTH_PNMIDOCO:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 19
+	MOVL	-8(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#20
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE LongB
+VAXSHORTLONGASH_LONGB_BK9EVV46:
+	.WORD	^M<>
+; line 23
+	CVTBW	4(AP), R0
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#24
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE LongI
+VAXSHORTLONGASH_LONGI_BK9F023B:
+	.WORD	^M<>
+; line 27
+	CVTWL	4(AP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#28
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE LongH
+VAXSHORTLONGASH_LONGH_BK9F01LO:
+	.WORD	^M<R2>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 31
+	MOVL	8(AP), R2
+	MOVQ	-8(FP), (R2)
+	RET
+; PROCEDURE Ash
+VAXSHORTLONGASH_ASH_4IU771IE:
+	.WORD	^M<>
+; line 35
+	CVTWL	8(AP), R0
+	CMPL	R0, #64
+	BGTR	L_1
+	CMPL	R0, #-64
+	BGEQ	L_3
+L_2:
+	MOVL	#-64, R0
+	BRB	L_3
+L_1:
+	MOVL	#64, R0
+L_3:
+	ASHL	R0, 4(AP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#36
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE AshB
+VAXSHORTLONGASH_ASHB_DGS4PHJ4:
+	.WORD	^M<>
+; line 39
+	CVTWL	4(AP), R0
+	ASHL	8(AP), R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#40
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE AshConstant
+VAXSHORTLONGASH_ASHCON_K9FHDLFM:
+	.WORD	^M<>
+; line 43
+	ASHL	#3, 4(AP), R0
+	ASHL	#-64, 4(AP), R1
+	ADDL2	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#44
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE AshH
+VAXSHORTLONGASH_ASHH_DGS4PF1I:
+	.WORD	^M<R2>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@8(AP), -8(FP)
+; line 47
+	MOVL	4(AP), R2
+	MOVL	12(AP), R0
+	CMPL	R0, #64
+	BGTR	L_4
+	CMPL	R0, #-64
+	BGEQ	L_6
+L_5:
+	MOVL	#-64, R0
+	BRB	L_6
+L_4:
+	MOVL	#64, R0
+L_6:
+	ASHQ	R0, -8(FP), (R2)
+	RET
+; PROCEDURE AshHN
+VAXSHORTLONGASH_ASHHN_SEL68HLK:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@8(AP), -8(FP)
+; line 51
+	MOVL	-8(FP), R0
+	TSTL	-4(FP)
+	BEQL	L_10
+	BGTR	L_7
+	CMPL	-4(FP), #-1
+	BNEQ	L_8
+	CMPL	R0, #-64
+	BGEQU	L_9
+	BRB	L_8
+L_10:
+	CMPL	R0, #64
+	BLEQU	L_9
+	BRB	L_7
+L_8:
+	MOVL	#-64, R0
+	BRB	L_9
+L_7:
+	MOVL	#64, R0
+L_9:
+	ASHL	R0, 4(AP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#52
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXSHORTLONGASH_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+	.END

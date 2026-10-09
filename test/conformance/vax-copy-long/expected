@@ -1,0 +1,3 @@
+semantic OK, wrote VaxCopyLong.mar
+exit 0
+VaxCopyLong.mar matches expected-vax.mar

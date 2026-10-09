@@ -1,0 +1,320 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - COPY(x, v) with x or v longer than 65535 characters, LOCC's and
+;;   MOVC5's most, is done in pieces (decided with the user 2026-10-08):
+;;   m, the most characters it may copy, is LEN(v) - 1, or LEN(x) if
+;;   less. LOCC #0 searches at most 65535 bytes at a time from R1, R2 the
+;;   bytes left; it leaves R1 at the 0X when it finds one (Z clear) or past
+;;   the piece (MACRO 9-130), so R1 less x's address is n, the characters
+;;   to copy, pushed on the stack. MOVC3 then moves at most 65535 of them
+;;   at a time, from where the last left R1 and R3 (MACRO 9-132), the count
+;;   left on the stack as MOVC3 overwrites R0-R5; CLRB (R3) puts the 0X
+;;   after the last, and the rest of v is left as it was.
+;; - The runs find the 0X in the second piece (69000), the first (10) and
+;;   not at all (70000, all of x), and copy into mid, which takes 65999,
+;;   and small, 9, and through CopyTo's VAR parameter, @4(AP). EXAMINE
+;;   shows an offset above 65535 as an address, not a symbol.
+;; - A string constant still takes one MOVC5, as in vax-copy.
+; VaxCopyLong, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXCOPYLONG
+	.IDENT	/65e054de0ccc5401/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; big: ARRAY 70000 OF CHAR
+VAXCOPYLONG_BIG_5LGVARR7:
+	.BLKB	70000
+; bigger: ARRAY 70010 OF CHAR
+VAXCOPYLONG_BIGGER_MKEJEI5N:
+	.BLKB	70010
+; mid: ARRAY 66000 OF CHAR
+VAXCOPYLONG_MID_5KKTF4RR:
+	.BLKB	66000
+; small: ARRAY 10 OF CHAR
+VAXCOPYLONG_SMALL_F3403EEU:
+	.BLKB	10
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxCopyLong/
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/hello/
+	.BYTE	0
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Fill
+VAXCOPYLONG_FILL_0LCBF4AM:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRL	-4(FP)
+; line 15
+	CLRL	-4(FP)
+	SUBL3	#1, 4(AP), R0
+	MOVL	R0, -8(FP)
+L_1:
+	CMPL	-4(FP), -8(FP)
+	BLEQ	L_3
+	JMP	L^L_2
+L_3:
+; line 15
+	MOVL	-4(FP), R0
+	CMPL	R0, #69999
+	BLEQU	L_4
+	PUSHL	#32
+	PUSHL	#15
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_4:
+	MOVB	#65, VAXCOPYLONG_BIG_5LGVARR7[R0]
+	INCL	-4(FP)
+	JMP	L^L_1
+L_2:
+; line 16
+	CMPL	4(AP), #70000
+	BLSS	L_6
+	JMP	L^L_5
+L_6:
+; line 16
+	MOVL	4(AP), R0
+	CMPL	R0, #69999
+	BLEQU	L_7
+	PUSHL	#30
+	PUSHL	#16
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_7:
+	CLRB	VAXCOPYLONG_BIG_5LGVARR7[R0]
+L_5:
+; line 17
+	CLRL	-4(FP)
+L_8:
+	CMPL	-4(FP), #70009
+	BLEQ	L_10
+	JMP	L^L_9
+L_10:
+; line 17
+	MOVL	-4(FP), R0
+	CMPL	R0, #70009
+	BLEQU	L_11
+	PUSHL	#45
+	PUSHL	#17
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_11:
+	MOVB	#90, VAXCOPYLONG_BIGGER_MKEJEI5N[R0]
+	INCL	-4(FP)
+	JMP	L^L_8
+L_9:
+; line 18
+	CLRL	-4(FP)
+L_12:
+	CMPL	-4(FP), #65999
+	BLEQ	L_14
+	JMP	L^L_13
+L_14:
+; line 18
+	MOVL	-4(FP), R0
+	CMPL	R0, #65999
+	BLEQU	L_15
+	PUSHL	#39
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_15:
+	MOVB	#90, VAXCOPYLONG_MID_5KKTF4RR[R0]
+	INCL	-4(FP)
+	JMP	L^L_12
+L_13:
+; line 19
+	CLRL	-4(FP)
+L_16:
+	CMPL	-4(FP), #9
+	BLEQ	L_18
+	JMP	L^L_17
+L_18:
+; line 19
+	MOVL	-4(FP), R0
+	CMPL	R0, #9
+	BLEQU	L_19
+	PUSHL	#43
+	PUSHL	#19
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_19:
+	MOVB	#90, VAXCOPYLONG_SMALL_F3403EEU[R0]
+	INCL	-4(FP)
+	JMP	L^L_16
+L_17:
+	RET
+; PROCEDURE CopyBigger
+VAXCOPYLONG_COPYBIGGER_068S9LUM:
+	.WORD	^M<R2,R3,R4,R5>
+; line 23
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
+	MOVL	#70000, R2
+L_20:
+	MOVL	R2, R3
+	CMPL	R3, #65535
+	BLEQU	L_21
+	MOVL	#65535, R3
+L_21:
+	LOCC	#0, R3, (R1)
+	BNEQ	L_22
+	SUBL2	R3, R2
+	BNEQ	L_20
+L_22:
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R0
+	SUBL3	R0, R1, -(SP)
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
+	MOVAB	VAXCOPYLONG_BIGGER_MKEJEI5N, R3
+L_23:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_24
+	MOVL	#65535, R0
+L_24:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_23
+	ADDL2	#4, SP
+	CLRB	(R3)
+	RET
+; PROCEDURE CopyMid
+VAXCOPYLONG_COPYMID_SF3VMTMC:
+	.WORD	^M<R2,R3,R4,R5>
+; line 27
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
+	MOVL	#65999, R2
+L_25:
+	MOVL	R2, R3
+	CMPL	R3, #65535
+	BLEQU	L_26
+	MOVL	#65535, R3
+L_26:
+	LOCC	#0, R3, (R1)
+	BNEQ	L_27
+	SUBL2	R3, R2
+	BNEQ	L_25
+L_27:
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R0
+	SUBL3	R0, R1, -(SP)
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
+	MOVAB	VAXCOPYLONG_MID_5KKTF4RR, R3
+L_28:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_29
+	MOVL	#65535, R0
+L_29:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_28
+	ADDL2	#4, SP
+	CLRB	(R3)
+	RET
+; PROCEDURE CopySmall
+VAXCOPYLONG_COPYSMALL_AT7O83AT:
+	.WORD	^M<R2,R3,R4,R5>
+; line 31
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
+	MOVL	#9, R2
+L_30:
+	MOVL	R2, R3
+	CMPL	R3, #65535
+	BLEQU	L_31
+	MOVL	#65535, R3
+L_31:
+	LOCC	#0, R3, (R1)
+	BNEQ	L_32
+	SUBL2	R3, R2
+	BNEQ	L_30
+L_32:
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R0
+	SUBL3	R0, R1, -(SP)
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
+	MOVAB	VAXCOPYLONG_SMALL_F3403EEU, R3
+L_33:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_34
+	MOVL	#65535, R0
+L_34:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_33
+	ADDL2	#4, SP
+	CLRB	(R3)
+	RET
+; PROCEDURE CopyTo
+VAXCOPYLONG_COPYTO_0G6U8O33:
+	.WORD	^M<R2,R3,R4,R5>
+; line 35
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
+	MOVL	#70000, R2
+L_35:
+	MOVL	R2, R3
+	CMPL	R3, #65535
+	BLEQU	L_36
+	MOVL	#65535, R3
+L_36:
+	LOCC	#0, R3, (R1)
+	BNEQ	L_37
+	SUBL2	R3, R2
+	BNEQ	L_35
+L_37:
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R0
+	SUBL3	R0, R1, -(SP)
+	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
+	MOVAB	@4(AP), R3
+L_38:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_39
+	MOVL	#65535, R0
+L_39:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_38
+	ADDL2	#4, SP
+	CLRB	(R3)
+	RET
+; PROCEDURE CopyConstant
+VAXCOPYLONG_COPYCONSTA_JPDL69L6:
+	.WORD	^M<R2,R3,R4,R5>
+; line 39
+	MOVC5	#5, L_STR_1, #0, #6, VAXCOPYLONG_BIGGER_MKEJEI5N
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXCOPYLONG_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+	.END

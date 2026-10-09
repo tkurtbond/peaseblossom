@@ -465,7 +465,9 @@ rationale comment, **each also assembled with `MACRO/OBJECT`** on the
 development system, a SIMH VAX running VMS 5.5-2H4 (decided with the user
 2026-10-05; the design's §2 and §10) - no linking or running. Linking and
 running the output is Phase 16's, which also lifts the vertical-slice bound
-above.
+above. The bound was widened once, with the user 2026-10-08: the
+predeclared procedures `INCL`, `EXCL`, `SHORT`, `LONG` and `ASH`, which
+need no heap, are lowered too (the design's step 7b).
 
 **Symbol-name mangling is required, not optional**: VAX MACRO-32 symbols
 are limited to **31 characters**. This project's own naming convention

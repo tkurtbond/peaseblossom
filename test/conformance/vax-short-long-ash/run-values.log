@@ -1,0 +1,87 @@
+value returned is 4464
+value returned is -5
+value returned is -56
+value returned is -3
+value returned is 3
+value returned is -2
+value returned is -5
+value returned is 127
+value returned is -32768
+value returned is 0
+POCSTUB\POC_SCRATCH[1]: -7
+value returned is -2147483648
+value returned is 0
+value returned is -2
+value returned is -1
+value returned is 20
+value returned is 0
+value returned is -1
+value returned is -48
+value returned is -9
+value returned is 40
+value returned is 40
+POCSTUB\POC_SCRATCH
+    [0]:        1099511627776
+    [1]:        1
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is 63
+POCSTUB\POC_SCRATCH
+    [0]:        -9223372036854775808
+    [1]:        -1
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is 64
+POCSTUB\POC_SCRATCH
+    [0]:        0
+    [1]:        1
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is 64
+POCSTUB\POC_SCRATCH
+    [0]:        0
+    [1]:        1
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is -3
+POCSTUB\POC_SCRATCH
+    [0]:        -128
+    [1]:        -1024
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is -64
+POCSTUB\POC_SCRATCH
+    [0]:        -1
+    [1]:        -1
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is 0
+value returned is -1
+value returned is 56
+value returned is 1
+value returned is 0
+value returned is -1

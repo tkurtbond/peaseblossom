@@ -15,7 +15,8 @@ and `SET`; module-level and local `VAR`s; fixed arrays and base-less records
 as values; ordinary (not type-bound, not nested) procedures; IF, CASE, WHILE,
 REPEAT, FOR, LOOP/EXIT and RETURN; the predeclared procedures that need no
 heap (`ABS`, `ODD`, `CHR`, `ORD`, `CAP`, `LEN`, `INC`, `DEC`, `COPY`,
-`HALT`); runtime traps; external procedures; several modules and the
+`HALT`, and, added with the user 2026-10-08, `INCL`, `EXCL`, `SHORT`,
+`LONG` and `ASH`); runtime traps; external procedures; several modules and the
 program's entry (`doc/history/phases/phase-08.md`, "Explicit non-goals" and
 steps 5-12). Not `REAL`/`LONGREAL` (Phase 8 left them to Phase 9), pointers,
 `NEW`, the collector, type-bound procedures, open arrays or nested
@@ -581,7 +582,8 @@ Proposals, by construct:
 - **`SET`**: a longword; `+` `BISL3`, `*` `MCOML` then `BICL3`, `-`
   `BICL3`, `/` `XORL3`; `IN` `BBS`/`BBC` (or `ASHL` and `BITL`) after a
   range check; `INCL`/`EXCL` `BBSS`/`BBCC`; a constant `{...}` an
-  immediate. Done (step 3): `IN` is `BBC` after `CMPL #31` and `BGTRU`
+  immediate. Done (step 3; `INCL` and `EXCL`, step 7b, are `BISL2` and
+  `BICL2` of the element's mask, below): `IN` is `BBC` after `CMPL #31` and `BGTRU`
   (unsigned, so a negative element is out too), no check for a constant
   element; a constructor's variable element `e` is `ASHL e, #1`, a range
   `lo..hi` the bits of `ASHL lo, #-1` cleared of those of `ASHL hi, #-2`
@@ -648,11 +650,19 @@ Proposals, by construct:
   on, or 0 (MACRO 9-130), so `SUBL3 R0, #LEN(x), R0`, then limited to
   `LEN(v) - 1`, `R1` one more. `LOCC` and `MOVC5` overwrite `R0`-`R5`,
   so an address held in a register is moved to the frame first and used
-  as `@n(FP)`; their lengths are words, so `x` and `v` are at most 65535
-  characters (a longer one is reported).
-- **The predeclared procedures of the slice (§1), done (step 7).** A call
-  whose value is constant is folded (`LEN` of a fixed array among them);
-  the others:
+  as `@n(FP)`. **Decided (2026-10-08): a longer `x` or `v` is done in
+  pieces**, the lengths being words (step 7b): `m`, the most characters
+  to copy, is `LEN(v) - 1` or `LEN(x)` if less; `LOCC #0` searches at most
+  65535 bytes at a time from `R1`, `R2` the bytes left, until it finds the
+  `0X` or `m` bytes are searched, and `R1` less `x`'s address is `n`,
+  pushed on the stack; `MOVC3` moves at most 65535 at a time, each from
+  where the last left `R1` and `R3`, the count left on the stack, as
+  `MOVC3` overwrites `R0`-`R5`; then `CLRB (R3)`. A string constant of
+  65535 characters or more is `CopyBytes`' pieces and `CLRB (R3)`.
+- **The predeclared procedures of the slice (§1), done (step 7), and
+  `INCL`, `EXCL`, `SHORT`, `LONG` and `ASH`, added to the slice with the
+  user 2026-10-08 (step 7b), as they need no heap.** A call whose value is
+  constant is folded (`LEN` of a fixed array among them); the others:
   - `ABS(x)`: `MOVx x, r` (which sets N), `BGEQ` over `MNEGx r, r`; `MNEG`
     of the most negative value is that value (MACRO 9-23), as wrapping
     arithmetic promises. A `HUGEINT` tests its high longword and is
@@ -669,10 +679,26 @@ Proposals, by construct:
     sign-extended, a wider one's low bytes (`CVTxy`), a constant wrapped.
   - `HALT(n)`: `PUSHL #n` and `CALLS #1, G^POC_HALT`, poc's runtime
     routine, which ends the program with `n` as its status; it and what
-    VMS sees are Phase 16's, as for `POC_TRAP` (§9).
+    VMS sees are Phase 16's, as for `POC_TRAP` (§9). **Decided with the
+    user (2026-10-08): a routine, not `$EXIT_S` in line, so that Phase 16
+    can run the modules' cleanup there first.**
+  - `INCL(v, x)` and `EXCL(v, x)`: `BISL2` and `BICL2` of `x`'s mask on
+    `v` in place, a constant's an immediate, any other's `ASHL x, #1`, as
+    a constructor's element (`ASHL`'s count `x`'s low byte), so that an
+    `x` outside 0..31 changes nothing.
+  - `SHORT(x)`: `CVTLW` or `CVTWB`, or `MOVL` of a `HUGEINT`'s low
+    longword; with `-range-checks` a value that does not fit traps first
+    (§9). `LONG(x)`: `CVTBW` or `CVTWL`; of a `HUGEINT`, itself.
+  - `ASH(x, n)`: `ASHL n, x, r`, or `ASHQ` for a `HUGEINT` `x`, in the
+    wider of `LONGINT` and `x`'s type, which give 0, or the sign for a
+    right shift, for a count of the width or more, as poc promises
+    (`language-extensions.md`, "Procedure values, `ASH`, `MAX` and
+    `MIN`"), for any count of -128..127. The count is a byte, so a
+    `SHORTINT` `n` is used as it is and a wider one first limited to
+    -64..64 (a constant when compiling).
   - `LEN` of an open array, and the predeclared procedures outside the
-    slice (`ASSERT`, `SHORT`, `LONG`, `ASH`, `INCL`, `EXCL`, ...), are
-    reported. A predeclared procedure is taken to change only the
+    slice (`ASSERT`, until its trap is settled, `NEW`, `SIZE` of a
+    variable size, `ENTIER`, the `SYSTEM` ones, ...), are reported. A predeclared procedure is taken to change only the
     variable it changes (the first argument of `NEW`, `INC`, `DEC`, `INCL`
     and `EXCL`, `COPY`'s second), so `ABS(x)` does not make a value
     parameter `x` be copied on entry.
@@ -726,8 +752,11 @@ so that a negative index fails too, at the index's line and column (a
 `HUGEINT` index also fails when its high longword is not zero); done
 (step 7) for `CHR` under `-range-checks`, code 14 at `CHR`'s position:
 `TSTB` for a `SHORTINT`, an unsigned compare with 255 for a wider integer,
-and for a `HUGEINT` its high longword not zero too; the others come with
-their constructs.
+and for a `HUGEINT` its high longword not zero too; done (step 7b) for
+`SHORT` under `-range-checks`, code 14 at `SHORT`'s position: `BVC` over
+the trap after `CVTLW` or `CVTWB`, which set V when the value does not fit
+(MACRO 9-16), and for a `HUGEINT` its high longword not its low one's
+sign; the others come with their constructs.
 
 ## 10. Output and fixtures
 
@@ -842,5 +871,7 @@ Each step lands with its fixtures before the next, as Phase 8 did:
 5. Procedures and calls (§7), then external `["VMS"]` procedures. Done.
 6. Arrays and records, with the traps (§9). Done.
 7. The predeclared procedures of the slice. Done.
+   7b. `INCL`, `EXCL`, `SHORT`, `LONG` and `ASH`, and `COPY` of more than
+   65535 characters (decided with the user 2026-10-08). Done.
 8. Several modules and the program's start (§6).
 9. The phase record and the exit review.

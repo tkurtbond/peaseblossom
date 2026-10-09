@@ -16,7 +16,8 @@
 ;; - LOCC and MOVC5 overwrite R0-R5, so an address held in a register,
 ;;   that of names[k], is moved to the frame first and named @-4(FP); a
 ;;   body that uses them saves R2-R5 (section 7). Their lengths are words,
-;;   so an array of more than 65535 characters is reported, not lowered.
+;;   so an array of more than 65535 characters is done in pieces, as
+;;   vax-copy-long shows.
 ;; - Set's from, an array value parameter, is copied on entry, as in step
 ;;   6; to, a VAR parameter, is @4(AP).
 ; VaxCopy, written by poc (doc/developer/vax-macro32-backend.md)

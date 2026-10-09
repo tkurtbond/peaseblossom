@@ -1,0 +1,108 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - With poc -range-checks, SHORT of a value that does not fit traps with
+;;   code 14 at SHORT's own line and column, as on LLVM (section 9): CVTLW
+;;   and CVTWB set V when the value does not fit (MACRO 9-16), so BVC over
+;;   the trap; a HUGEINT fits a LONGINT when its high longword is its low
+;;   one's sign, so TSTL of the low longword, then the high one 0 for a
+;;   non-negative one or -1 (CMPL #-1) for a negative one.
+;; - The runs keep 32767, -32768, 127, -128, 2147483647 and -2147483648,
+;;   and trap for 32768, -129, 2147483648 and -2147483649.
+; VaxShortChecks, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXSHORTCHECKS
+	.IDENT	/b56c8066b8947239/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxShortChecks/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE ShortL
+VAXSHORTCHECKS_SHORTL_M9HJ03SP:
+	.WORD	^M<>
+; line 9
+	CVTLW	4(AP), R0
+	BVC	L_1
+	PUSHL	#16
+	PUSHL	#9
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#14
+	CALLS	#4, G^POC_TRAP
+L_1:
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#10
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ShortI
+VAXSHORTCHECKS_SHORTI_M9HJ055I:
+	.WORD	^M<>
+; line 13
+	CVTWB	4(AP), R0
+	BVC	L_2
+	PUSHL	#16
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#14
+	CALLS	#4, G^POC_TRAP
+L_2:
+	CVTBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#14
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ShortH
+VAXSHORTCHECKS_SHORTH_M9HJ05J5:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 17
+	TSTL	-8(FP)
+	BLSS	L_4
+	TSTL	-4(FP)
+	BEQL	L_3
+	BRB	L_5
+L_4:
+	CMPL	-4(FP), #-1
+	BEQL	L_3
+L_5:
+	PUSHL	#16
+	PUSHL	#17
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#14
+	CALLS	#4, G^POC_TRAP
+L_3:
+	MOVL	-8(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXSHORTCHECKS_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+	.END

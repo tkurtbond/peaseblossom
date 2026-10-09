@@ -3,7 +3,7 @@ MODULE VaxTooMuch;
      each reported at its position - an import (step 8), an array of REAL
      (Phase 16), a ["C"] external procedure (VAX/VMS takes "VMS"),
      a nested procedure, a type-bound one and an open array parameter
-     (Phase 16), SHORT (outside the slice), a procedure as a value
+     (Phase 16), ASSERT (outside the slice), a procedure as a value
      (Phase 16) - and no .mar is left, not even the imported module's,
      which alone could be written *)
   IMPORT VaxImported;
@@ -17,6 +17,6 @@ MODULE VaxTooMuch;
   PROCEDURE Q(p: PROCEDURE); END Q;
 BEGIN
   IF i = 0 THEN P END;
-  i := SHORT(l);
+  ASSERT(l > 0);
   Q(P)
 END VaxTooMuch.

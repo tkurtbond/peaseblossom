@@ -9,7 +9,7 @@ MODULE VaxCodeGenerator;
      integer, CHAR, BOOLEAN and SET expressions (section 8); control flow
      (step 4); procedures, calls and external ["VMS"] procedures (step 5,
      section 7); fixed arrays, records without a base type, and strings
-     (step 6); and the slice's predeclared procedures (step 7).
+     (step 6); and the slice's predeclared procedures (steps 7 and 7b).
 
      A module needing more - an import (step 8), a predeclared procedure
      outside the slice, a type outside the slice, a pointer, a nested or
@@ -89,12 +89,15 @@ MODULE VaxCodeGenerator;
      constants are in POC_CONST, and two strings are compared by a call
      of POC_STRCMP, the routine Phase 16's.
 
-     Predeclared procedures (step 7, section 8): ABS, ODD, CHR, ORD and CAP
-     in a few instructions each; INC and DEC as an assignment's last
-     operation, in place, at the variable's width; COPY by one MOVC5 of the
-     characters before x's 0X (counted by LOCC), at most LEN(v) - 1, then
-     0X; HALT by a call of POC_HALT, the routine Phase 16's. With
-     -range-checks (rangeChecks) CHR of a value outside 0..255 traps. *)
+     Predeclared procedures (steps 7 and 7b, section 8): ABS, ODD, CHR, ORD,
+     CAP, SHORT and LONG in a few instructions each; INC and DEC as an
+     assignment's last operation, in place, at the variable's width; INCL
+     and EXCL by BISL2 and BICL2 of the element's mask; ASH by ASHL or
+     ASHQ, a wide count first limited; COPY by one MOVC5 of the characters
+     before x's 0X (counted by LOCC), at most LEN(v) - 1, then 0X, or in
+     pieces past 65535; HALT by a call of POC_HALT, the routine Phase
+     16's. With -range-checks (rangeChecks) CHR of a value outside 0..255,
+     and SHORT of one that does not fit, trap. *)
 
   IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
     VaxTypes;
@@ -1770,7 +1773,8 @@ MODULE VaxCodeGenerator;
   (* ---- Predeclared procedures (step 7) ----
 
      The slice's (section 1): ABS, ODD, CHR, ORD, CAP, LEN, INC, DEC, COPY
-     and HALT. A call whose value is constant has been folded by
+     and HALT (step 7), and INCL, EXCL, SHORT, LONG and ASH (step 7b,
+     added with the user 2026-10-08). A call whose value is constant has been folded by
      ConstantEvaluator (Expression), LEN of a fixed array among them, so
      what comes here has a variable argument. *)
 
@@ -1960,17 +1964,62 @@ MODULE VaxCodeGenerator;
     Release(target)
   END IncDec;
 
+  PROCEDURE ^ CopyBytes(size: LONGINT; src, dst: ARRAY OF CHAR);
+
+  (* COPY from the array at from into the one at to, either longer than
+     maxMove, m the most characters it may copy, LEN(v) - 1 or LEN(x) if
+     less: the 0X found by LOCC in pieces, R2 the bytes left to search, R1
+     where the next piece starts; then its n characters moved by MOVC3 in
+     pieces, the bytes left to move on the stack, as MOVC3 overwrites
+     R0-R5; then 0X where the last piece left R3 *)
+  PROCEDURE CopyLong(from, to: ARRAY OF CHAR; m: LONGINT);
+    VAR text: ARRAY 160 OF CHAR; search, piece, found, move, part: ARRAY 16 OF CHAR;
+  BEGIN
+    NewLabel(search); NewLabel(piece); NewLabel(found); NewLabel(move); NewLabel(part);
+    COPY(from, text); Append(text, ", R1"); Emit("MOVAB", text);
+    COPY("#", text); AppendInt(text, m); Append(text, ", R2"); Emit("MOVL", text);
+    EmitLabel(search);
+    Emit("MOVL", "R2, R3");
+    COPY("R3, #", text); AppendInt(text, maxMove); Emit("CMPL", text);
+    Emit("BLEQU", piece);
+    COPY("#", text); AppendInt(text, maxMove); Append(text, ", R3"); Emit("MOVL", text);
+    EmitLabel(piece);
+    Emit("LOCC", "#0, R3, (R1)");
+    Emit("BNEQ", found);
+    Emit("SUBL2", "R3, R2");
+    Emit("BNEQ", search);
+    EmitLabel(found);
+    COPY(from, text); Append(text, ", R0"); Emit("MOVAB", text);
+    Emit("SUBL3", "R0, R1, -(SP)");
+    COPY(from, text); Append(text, ", R1"); Emit("MOVAB", text);
+    COPY(to, text); Append(text, ", R3"); Emit("MOVAB", text);
+    EmitLabel(move);
+    Emit("MOVL", "(SP), R0");
+    COPY("R0, #", text); AppendInt(text, maxMove); Emit("CMPL", text);
+    Emit("BLEQU", part);
+    COPY("#", text); AppendInt(text, maxMove); Append(text, ", R0"); Emit("MOVL", text);
+    EmitLabel(part);
+    Emit("SUBL2", "R0, (SP)");
+    Emit("MOVC3", "R0, (R1), (R3)");
+    Emit("TSTL", "(SP)");
+    Emit("BNEQ", move);
+    Emit("ADDL2", "#4, SP");
+    Emit("CLRB", "(R3)");
+    used := used + {2 .. 5}
+  END CopyLong;
+
   (* COPY(x, v), v a fixed CHAR array: x's characters up to its first 0X,
      at most LEN(v) - 1 of them, then 0X (Oberon2.pdf 10.3); the bytes of v
      after it are left as they were. Its n characters are one MOVC5 #n, x,
      #0, #n+1, v: the n bytes, then one zero. For a string constant n is
      known; for an array it is counted first, by LOCC #0, which leaves in R0
      the bytes from the 0X on (0 if there is none), then limited to
-     LEN(v) - 1. LOCC and MOVC5 take word lengths and overwrite R0-R5
-     (MACRO), so x and v are at most 65535 bytes, the registers in use are
-     spilled first, and an address held in a register (an element, or a
-     field through a parameter) is moved to the frame and used from there,
-     @n(FP). *)
+     LEN(v) - 1. LOCC and MOVC5 overwrite R0-R5 (MACRO), so the registers
+     in use are spilled first, and an address held in a register (an
+     element, or a field through a parameter) is moved to the frame and
+     used from there, @n(FP). Their lengths are words, so a longer x or v
+     is done in pieces of at most 65535 bytes (CopyLong; decided with the
+     user 2026-10-08). *)
   PROCEDURE Copy(args: SyntaxTree.ExprNode; line, column: INTEGER);
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; x, v: Operand; lenX, lenV, n: LONGINT;
         text: ARRAY 160 OF CHAR; from, to: OperandText; limit: ARRAY 16 OF CHAR;
@@ -2012,20 +2061,27 @@ MODULE VaxCodeGenerator;
       IF n > lenV - 1 THEN n := lenV - 1 END;
       SpillAll;
       Text(x, from); Text(v, to);
-      COPY("#", text); AppendInt(text, n); Append(text, ", "); Append(text, from);
-      Append(text, ", #0, #"); AppendInt(text, n + 1); Append(text, ", "); Append(text, to);
-      Emit("MOVC5", text)
+      IF n + 1 > maxMove THEN (* the n characters in pieces, then 0X where the last left R3 *)
+        CopyBytes(n, from, to); Emit("CLRB", "(R3)")
+      ELSE
+        COPY("#", text); AppendInt(text, n); Append(text, ", "); Append(text, from);
+        Append(text, ", #0, #"); AppendInt(text, n + 1); Append(text, ", "); Append(text, to);
+        Emit("MOVC5", text)
+      END
     ELSE
       x := Expression(args, NIL);
       IF ~(x.type IS Types.ArrayType) OR x.type(Types.ArrayType).isOpen THEN
         Unsupported(args.line, args.column, "COPY from an open array (Phase 16)"); Release(x); Release(v); RETURN
       END;
       lenX := x.type(Types.ArrayType).length;
-      IF (lenX > maxMove) OR (lenV > maxMove) THEN
-        Unsupported(line, column, "COPY of an array longer than 65535 characters"); Release(x); Release(v); RETURN
-      END;
       x := Settled(x); v := Settled(v);
       SpillAll;
+      IF (lenX > maxMove) OR (lenV > maxMove) THEN
+        Text(x, from); Text(v, to);
+        IF lenX < lenV - 1 THEN CopyLong(from, to, lenX) ELSE CopyLong(from, to, lenV - 1) END;
+        Release(x); Release(v);
+        RETURN
+      END;
       NewLabel(limit);
       Text(x, from);
       COPY("#0, #", text); AppendInt(text, lenX); Append(text, ", "); Append(text, from); Emit("LOCC", text);
@@ -2056,6 +2112,175 @@ MODULE VaxCodeGenerator;
     AddExternal("POC_HALT")
   END Halt;
 
+  (* INCL(v, x) and EXCL(v, x), v a SET: v := v + {x}, v - {x}, in place,
+     BISL2 or BICL2 of x's mask: a constant's, or ASHL x, #1's, as a set
+     constructor's element (ElementMask), so that an x outside 0..31, which
+     Oberon2.pdf leaves undefined, leaves v as it was *)
+  PROCEDURE InclExcl(include: BOOLEAN; args: SyntaxTree.ExprNode; line, column: INTEGER);
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; target, x, mask: Operand;
+        v: Types.Value;
+  BEGIN
+    IF ~(args IS SyntaxTree.DesignatorExprNode) OR (args.next = NIL) THEN RETURN END;
+    de := args(SyntaxTree.DesignatorExprNode);
+    IF de.designator.qualifier[0] # 0X THEN
+      Unsupported(args.line, args.column, "a name from an imported module (step 8)"); RETURN
+    END;
+    obj := SymbolTable.Find(scope, de.designator.name);
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
+    target := Locate(de.designator, obj, args.line, args.column);
+    IF target.type # Types.Set THEN
+      Unsupported(args.line, args.column, "a SYSTEM.SET64 value"); Release(target); RETURN
+    END;
+    IF ConstantEvaluator.IsConstantExpr(args.next, scope) THEN
+      v := ConstantEvaluator.Evaluate(args.next, scope);
+      IF (v.intVal < 0) OR (v.intVal > 31) THEN
+        Unsupported(args.next.line, args.next.column, "a SYSTEM.SET64 value"); Release(target); RETURN
+      END;
+      mask := Immediate(Types.Set, 0); mask.bits := {SHORT(v.intVal)}
+    ELSE
+      x := Fit(Expression(args.next, NIL), 1, line, column);
+      mask := NewRegisterBeside(Types.Set, x, target, line, column);
+      Emit3("ASHL", x, Immediate(Types.LongInt, 1), mask);
+      Release(x)
+    END;
+    IF include THEN Emit2("BISL2", mask, target) ELSE Emit2("BICL2", mask, target) END;
+    Release(mask); Release(target)
+  END InclExcl;
+
+  (* LONG(x), x an integer: x sign-extended to the next wider type, as
+     PredeclaredProcedures.CheckLong types it (a HUGEINT stays one) *)
+  PROCEDURE Long(v, dest: Operand; line, column: INTEGER): Operand;
+    VAR t: Types.Type; result: Operand;
+  BEGIN
+    IF ~Types.IsInteger(v.type) THEN
+      Unsupported(line, column, "LONG of a REAL value (Phase 16)"); RETURN Dummy()
+    END;
+    IF Types.LongShortByWidth(v.type) THEN t := Types.LongerInteger(v.type)
+    ELSIF v.type = Types.ShortInt THEN t := Types.Integer
+    ELSE t := Types.LongInt
+    END;
+    result := Target(t, v, NIL, dest, line, column);
+    result.type := t;
+    MoveInto(v, result);
+    Done(v, result);
+    RETURN result
+  END Long;
+
+  (* SHORT(x), x an integer: its low bytes as the next narrower type, as
+     PredeclaredProcedures.CheckShort types it: CVTLW or CVTWB, or a
+     HUGEINT's low longword. With -range-checks an x that does not fit
+     traps first (code 14, at SHORT's own position, as on LLVM): CVT sets
+     V when the value does not fit (MACRO 9-16); a HUGEINT fits when its
+     high longword is its low one's sign, 0 or -1 *)
+  PROCEDURE Short(v, dest: Operand; line, column: INTEGER): Operand;
+    VAR t: Types.Type; result: Operand; d: CHAR; op: ARRAY 8 OF CHAR; ok, negative, bad: ARRAY 16 OF CHAR;
+        hi: OperandText; operands: ARRAY 160 OF CHAR;
+  BEGIN
+    IF ~Types.IsInteger(v.type) THEN
+      Unsupported(line, column, "SHORT of a LONGREAL value (Phase 16)"); RETURN Dummy()
+    END;
+    IF Types.LongShortByWidth(v.type) THEN t := Types.ShorterInteger(v.type)
+    ELSIF v.type = Types.LongInt THEN t := Types.Integer
+    ELSE t := Types.ShortInt
+    END;
+    d := Suffix(t);
+    IF IsQuad(v) THEN
+      IF rangeChecks THEN
+        NewLabel(ok); NewLabel(negative); NewLabel(bad);
+        HalfText(v, 1, hi);
+        Emit1("TSTL", LowHalf(v)); Emit("BLSS", negative);
+        Emit("TSTL", hi); Emit("BEQL", ok); Emit("BRB", bad);
+        EmitLabel(negative);
+        Operands(hi, "#-1", "", operands); Emit("CMPL", operands); Emit("BEQL", ok);
+        EmitLabel(bad);
+        Trap(14, line, column);
+        EmitLabel(ok)
+      END;
+      (* a new register, not v's low one, which Release would free with
+         v's pair *)
+      IF (dest # NIL) & (Suffix(dest.type) = d) THEN result := dest
+      ELSE result := NewRegisterBeside(t, v, NIL, line, column)
+      END;
+      Emit2("MOVL", LowHalf(v), result);
+      Release(v)
+    ELSE
+      result := Target(t, v, NIL, dest, line, column);
+      COPY("CVT", op); AppendChar(op, Suffix(v.type)); AppendChar(op, d);
+      Emit2(op, v, result);
+      IF rangeChecks THEN
+        NewLabel(ok);
+        Emit("BVC", ok);
+        Trap(14, line, column);
+        EmitLabel(ok)
+      END;
+      Done(v, result)
+    END;
+    result.type := t;
+    RETURN result
+  END Short;
+
+  (* ASH(x, n): x shifted left n bits, or right (sign-filling) for a
+     negative n, in the wider of LONGINT and x's type (ASHL, or ASHQ for a
+     HUGEINT), as PredeclaredProcedures.CheckAsh types it. A shift of the
+     type's width or more leaves 0, or the sign for a right one
+     (language-extensions.md, "Procedure values, ASH, MAX and MIN"), as ASHL
+     and ASHQ do for any count of -128..127; but their count is a byte, so
+     an n wider than a SHORTINT is first limited to -64..64 *)
+  PROCEDURE Ash(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
+    VAR t: Types.Type; x, n, count, result: Operand; c: LONGINT; op: ARRAY 8 OF CHAR;
+        big, small, positive, done: ARRAY 16 OF CHAR; hi, cnt: OperandText; operands: ARRAY 160 OF CHAR;
+  BEGIN
+    x := Expression(args, NIL);
+    n := Expression(args.next, NIL);
+    IF ~Types.IsInteger(x.type) OR ~Types.IsInteger(n.type) THEN RETURN Dummy() END;
+    t := Types.WiderOf(Types.LongInt, x.type);
+    x := Widen(x, t, line, column);
+    IF n.kind = immediate THEN
+      c := n.value;
+      IF c > 64 THEN c := 64 ELSIF c < -64 THEN c := -64 END;
+      count := Immediate(Types.ShortInt, c)
+    ELSIF Suffix(n.type) = "B" THEN
+      count := n
+    ELSE
+      count := NewRegisterBeside(Types.LongInt, n, x, line, column);
+      Text(count, cnt);
+      NewLabel(big); NewLabel(small); NewLabel(done);
+      IF IsQuad(n) THEN
+        NewLabel(positive);
+        HalfText(n, 1, hi);
+        Emit2("MOVL", LowHalf(n), count);
+        Emit("TSTL", hi); Emit("BEQL", positive); Emit("BGTR", big);
+        Operands(hi, "#-1", "", operands); Emit("CMPL", operands); Emit("BNEQ", small);
+        Operands(cnt, "#-64", "", operands); Emit("CMPL", operands); Emit("BGEQU", done);
+        Emit("BRB", small);
+        EmitLabel(positive);
+        Operands(cnt, "#64", "", operands); Emit("CMPL", operands); Emit("BLEQU", done);
+        Emit("BRB", big)
+      ELSE
+        MoveInto(n, count);
+        Operands(cnt, "#64", "", operands); Emit("CMPL", operands); Emit("BGTR", big);
+        Operands(cnt, "#-64", "", operands); Emit("CMPL", operands); Emit("BGEQ", done)
+      END;
+      EmitLabel(small);
+      Operands("#-64", cnt, "", operands); Emit("MOVL", operands); Emit("BRB", done);
+      EmitLabel(big);
+      Operands("#64", cnt, "", operands); Emit("MOVL", operands);
+      EmitLabel(done);
+      Release(n); n := NIL
+    END;
+    IF (dest # NIL) & (Suffix(dest.type) = Suffix(t)) THEN result := dest
+    ELSIF x.kind = register THEN result := x
+    ELSIF (count.kind = register) & (count # n) & ~IsQuad(x) THEN result := count (* read before written *)
+    ELSE result := NewRegisterBeside(t, x, count, line, column)
+    END;
+    IF IsQuad(x) THEN COPY("ASHQ", op) ELSE COPY("ASHL", op) END;
+    Emit3(op, count, x, result);
+    IF (count # n) & (count # result) THEN Release(count) END;
+    Done(n, result); Done(x, result);
+    result.type := t;
+    RETURN result
+  END Ash;
+
   (* A call of the predeclared procedure name; a function's value, or NIL *)
   PROCEDURE Predeclared(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode; dest: Operand;
                         line, column: INTEGER): Operand;
@@ -2063,13 +2288,19 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF name = "INC" THEN IncDec(TRUE, args, line, column); RETURN NIL
     ELSIF name = "DEC" THEN IncDec(FALSE, args, line, column); RETURN NIL
+    ELSIF name = "INCL" THEN InclExcl(TRUE, args, line, column); RETURN NIL
+    ELSIF name = "EXCL" THEN InclExcl(FALSE, args, line, column); RETURN NIL
+    ELSIF name = "ASH" THEN RETURN Ash(args, dest, line, column)
     ELSIF name = "COPY" THEN Copy(args, line, column); RETURN NIL
     ELSIF name = "HALT" THEN Halt(args); RETURN NIL
     ELSIF name = "LEN" THEN
       Unsupported(line, column, "LEN of an open array (Phase 16)"); RETURN Dummy()
-    ELSIF (name = "ABS") OR (name = "ODD") OR (name = "CHR") OR (name = "ORD") OR (name = "CAP") THEN
+    ELSIF (name = "ABS") OR (name = "ODD") OR (name = "CHR") OR (name = "ORD") OR (name = "CAP")
+          OR (name = "LONG") OR (name = "SHORT") THEN
       v := Expression(args, NIL);
       IF name = "ABS" THEN RETURN Abs(v, dest, line, column)
+      ELSIF name = "LONG" THEN RETURN Long(v, dest, line, column)
+      ELSIF name = "SHORT" THEN RETURN Short(v, dest, line, column)
       ELSIF name = "ODD" THEN RETURN Odd(v, dest, line, column)
       ELSIF name = "CHR" THEN RETURN Chr(v, dest, line, column)
       ELSIF name = "ORD" THEN RETURN Ord(v, dest, line, column)
