@@ -43,6 +43,9 @@ exit=4
 == -O2 case 14
 traplocation.mod:66:14: NIL pointer dereference (in traplocation, module body)
 exit=4
+== -O2 case 15
+traplocation.mod:67:31: NIL pointer dereference (in traplocation, module body)
+exit=4
 == -OC case 0
 lib/traplib.mod:23:17: index out of range (in traplib.Get)
 exit=2
@@ -87,6 +90,9 @@ traplocation.mod:64:14: NIL pointer dereference (in traplocation, module body)
 exit=4
 == -OC case 14
 traplocation.mod:66:14: NIL pointer dereference (in traplocation, module body)
+exit=4
+== -OC case 15
+traplocation.mod:67:31: NIL pointer dereference (in traplocation, module body)
 exit=4
 == without -trap-location, case 0
 index out of range

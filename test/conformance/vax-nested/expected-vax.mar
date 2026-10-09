@@ -28,9 +28,8 @@
 ;;   own frame, whose here its own Visit reaches.
 ;; - The debugger runs examine what each check computes, which NestedOut,
 ;;   built by both backends, also prints. Then trap 4 at line 107, column
-;;   11, c in INC(c.n, k); LLVM's -trap-location gives column 7, the INC,
-;;   as it does for any NIL check in a predeclared procedure's VAR
-;;   argument. And trap 2 at line 87, column 51, the index, as on LLVM.
+;;   11, c in INC(c.n, k), and trap 2 at line 87, column 51, the index,
+;;   both where LLVM's -trap-location gives them.
 ; VaxNested, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXNESTED
 	.IDENT	/6a7b710f77b7fe19/

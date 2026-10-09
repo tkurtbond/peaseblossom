@@ -1427,19 +1427,18 @@ rather than taken for a module variable.
 
 Fixture `vax-nested` has `VaxNested`, reviewed: a local read and
 written, three levels where the middle one never names what the inner
-one reads, siblings in mutual recursion through a forward declaration, a
-cousin called, value and `VAR` parameters, a `VAR` record parameter with
-`IS` and a guard, value and `VAR` open arrays, `HUGEINT`s, a type-bound
-procedure's receiver, the enclosing procedure's own recursion, a list
-built by a nested procedure, and two nested procedures of one name. Its
-debugger runs examine what it computes and take trap 4 from a receiver a
-nested procedure set to `NIL`, and trap 2 from an enclosing procedure's
-open array. A second program, `NestedOut`, prints with `Out`, and
-is built by both backends under `-O2` and `-OC` and must print the
-same. The trap 4 is reported at `c` in `INC(c.n, k)`, where LLVM's
-`-trap-location` gives the `INC`, as it does for any `NIL` check in
-a predeclared procedure's `VAR` argument; trap 2 is where LLVM gives
-it. `vax-emit-errors`' `VaxTooMuch` no longer has a nested procedure.
+one reads, siblings in mutual recursion through a forward declaration,
+a cousin called, value and `VAR` parameters, a `VAR` record parameter
+with `IS` and a guard, value and `VAR` open arrays, `HUGEINT`s,
+a type-bound procedure's receiver, the enclosing procedure's own
+recursion, a list built by a nested procedure, and two nested procedures
+of one name. Its debugger runs examine what it computes and take trap
+4 from a receiver a nested procedure set to `NIL`, and trap 2 from
+an enclosing procedure's open array. A second program, `NestedOut`,
+prints with `Out`, and is built by both backends under `-O2` and `-OC`
+and must print the same. The trap 4 is reported at `c` in `INC(c.n, k)`,
+and trap 2 at the index, both where LLVM's `-trap-location` gives them.
+`vax-emit-errors`' `VaxTooMuch` no longer has a nested procedure.
 
 The survey counts 263 refusals, down from 270, none of them nested
 procedures: reals (165), `SYSTEM.BYTE` parameters (78), calls and
