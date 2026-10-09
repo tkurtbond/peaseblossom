@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design's sections 4,
-;; 7 and 14 and a run on the VAX; for the user's review). Why this is
+;; Reviewed 2026-10-09 by the user (written by Claude, from the
+;; design's sections 4, 7 and 14 and a run on the VAX). Why this is
 ;; right:
 ;; - Under -OC (section 14, decided 2026-10-09) SHORTINT is a word
 ;;   (.BLKW, MOVW), INTEGER a longword (.BLKL, MOVL) and LONGINT a

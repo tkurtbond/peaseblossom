@@ -886,7 +886,7 @@ and the program's start (§6).
 5. **Packed records** for VMS routines (§4) - Phase 17's, noted here.
 6. **`LONGREAL`'s default format (§4)**, D_floating as VAX C, or
    G_floating - Phase 16's, noted here so the option is designed in.
-   §14 proposes G_floating (2026-10-09), for the user's review.
+   Settled 2026-10-09: G_floating (§14, item 9).
 7. **Collisions across a link (§5.1)**: settled 2026-10-06. Still to be
    checked on the development system: whether the Librarian reports
    `DUPGLOBAL`.
@@ -994,8 +994,9 @@ backend refuses:
 The `["C"]` externals and `SYSTEM`'s `ADR`, `VAL`, `GET` and `PUT` are
 only in `rtl/llvm`, so they are step 4's, in the VAX runtime.
 
-**Proposals**, each following the LLVM backend's representation wherever
-the VAX allows it, so that the front end's information serves both:
+**Decided (the user, 2026-10-09), as proposed**, each following the LLVM
+backend's representation wherever the VAX allows it, so that the front
+end's information serves both:
 
 1. **Open arrays first.** They are needed before a shared fixture can
    print anything, since `Out.String` takes an `ARRAY OF CHAR`. An

@@ -663,15 +663,15 @@ most, object libraries.
      quadword, lowered as a `HUGEINT` is; `-O2` stays the default
      (`VaxTypes.sizeModel`, `VaxTypes.Longword`). The 32 reviewed `.mar`
      files are unchanged. Fixture `vax-size-model-oc` (its
-     `expected-vax.mar` for the user's review) runs on the guest with
+     `expected-vax.mar` reviewed by the user) runs on the guest with
      every check holding.
    - *The survey*: under `-OC`, poc's own source has 22,504 constructs
      the backend refuses, most of them pointers (13,606), records holding
      pointers or passed as `VAR` (4,506) and open arrays (4,340). The
      proposals for each area, for reals (3a), the calling convention (3b)
      and traps (3c), and the order of work are in
-     `doc/developer/vax-macro32-backend.md` section 14, **for the user's
-     review**.
+     `doc/developer/vax-macro32-backend.md` section 14. **Approved by the
+     user, 2026-10-09**, as is `vax-size-model-oc`'s `expected-vax.mar`.
    - Found on the way: Phase 15 had broken the rule that poc's own source
      type-checks under `-O2` (`AGENTS.md`), with five constants past
      `MAX(LONGINT)` in `VaxCodeGenerator`; fixed, and `poc -O2
