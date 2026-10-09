@@ -13,11 +13,15 @@ test/conformance/**/*.c
 !test/conformance/poc-c-flag/part/Hash.c
 !test/conformance/llvm-cxx-part/native/native.c
 !test/conformance/llvm-cxx-part/both/Both.c
+!test/conformance/llvm-object-reuse/src/A.c
 test/conformance/**/*.h
 # a fixture's own C header (Phase 13 step 2: -c-flag)
 !test/conformance/poc-c-flag/include/fnv.h
+!test/conformance/llvm-object-reuse/src/a.h
 test/conformance/**/*.sym
 test/conformance/**/*.o
+# a C or C++ part's dependencies and stamp (poc's clang -MD)
+test/conformance/**/*.o.d
 test/conformance/**/*.ll
 # a Files.New file that was never registered (poc's or voc's runtime)
 test/conformance/**/.tmp.*

@@ -37,3 +37,5 @@ poc: ../oc/Small.ll was compiled for -OC, and this is -O2
 poc: ../other/Small.ll was compiled for vax-dec-vms, not <triple>
 poc: clang cannot compile ../broken/Small.ll (written for another version of LLVM?); compile Small again
 poc: build failed
+== 5. for 32-bit x86 NetBSD
+as this host should

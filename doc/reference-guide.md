@@ -559,7 +559,8 @@ The commands for testing poc itself are `-dump-tokens`, `-check-syntax`,
 | `-shared-libraries` | Links the libraries' shared objects, not their archives. |
 | `-link <arg>` | Passes `<arg>` to the link (`-lz`, `-L<dir>`); repeatable. With `-library`, also recorded in the manifest, for every program that links the library. |
 | `-c-flag <arg>` | Passes `<arg>` to clang when it compiles a module's C part, `<Module>.c` beside `<Module>.Mod`, or clang++ its C++ part, `<Module>.cpp` (`-I<dir>`, `-D<name>`); repeatable. |
-| `-lto` | Compiles to LLVM bitcode and optimizes the whole program when it is linked. Ignored for 32-bit x86 NetBSD. |
+| `-lto` | Compiles to LLVM bitcode and optimizes the whole program when it is linked. On NetBSD it needs lld (pkgsrc's `lld`). Ignored for 32-bit x86 NetBSD unless poc runs on 32-bit x86 NetBSD. |
+| `-rebuild` | Compiles every module's object again, reusing none (section 8). |
 | `-verbose` | Prints each command poc runs (clang's). |
 
 `doc/developer/voc-options.md` lists voc's options and what each is in poc.
@@ -601,6 +602,21 @@ the LLVM IR; `<Module>.o`, the object; and `<Module>.c.o` for a module with
 a C part, `<Module>.cpp.o` for one with a C++ part (a module may not have
 both). With `-lto`, the `.o` holds LLVM bitcode. A program or shared library
 with a C++ part, its own or a library's, is linked by clang++, not clang.
+
+**Objects reused.** Each module from source is checked and turned into IR
+on every build, but its object is compiled only when it would differ from
+the one there. `<Module>.ll` ends with a symbol `@<Module>.-build.<stamp>`,
+where `<stamp>` is the 64-bit FNV-1a hash of the `clang -c` command and the
+IR; when `<Module>.o` already defines it, it is linked as it is. A C or C++
+part is compiled with `-MD`, which writes `<Module>.c.o.d` (or
+`<Module>.cpp.o.d`), the files it read; poc adds a line `# poc-build
+<stamp>`, the hash of the command and of every one of those files, and
+reuses the object while they hash the same. So an object is compiled again
+when its source, a header, an imported interface, or an option that
+changes its IR or command (`-opt`, `-g`, `-O2`/`-OC`, `-target`, `-c-flag`)
+changes, and not because a file's time did. Under `-lto`, for a module
+given as its `.sym` and `.ll`, and in `-library`, which leaves no stamps,
+nothing is reused; `-rebuild` reuses nothing.
 
 **Objects and keys.** Each module's object defines a symbol
 `<Module>.-key.<O2|OC>.<key>`, where `<key>` is 16 hexadecimal digits, the

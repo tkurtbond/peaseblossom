@@ -1,5 +1,6 @@
 == from source
 Greet.cpp.o
+Greet.cpp.o.d
 Greet.ll
 Greet.o
 Greet.sym
@@ -7,6 +8,7 @@ Greet.sym
 -1
 == -compile, then the pair
 Greet.cpp.o
+Greet.cpp.o.d
 Greet.ll
 Greet.o
 Greet.sym

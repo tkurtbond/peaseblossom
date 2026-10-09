@@ -139,6 +139,10 @@ MODULE ModuleInterface;
       verified either way. *)
 
   TYPE
+    (* a 64-bit FNV-1a hash being computed (HashStart), a byte to an
+       element, least significant first (Module keys, below) *)
+    Hash* = ARRAY 8 OF LONGINT;
+
     (* One IMPORT search-path directory. Declared "T = POINTER TO T1" per
        Oberon2.pdf §4 rule 3's exact sanctioned self-reference shape -
        confirmed necessary the same way SymbolTable.Mod's Scope/ScopeDesc
@@ -365,44 +369,72 @@ MODULE ModuleInterface;
     IF d < 10 THEN RETURN CHR(ORD("0") + d) ELSE RETURN CHR(ORD("a") + d - 10) END
   END HexDigit;
 
-  PROCEDURE HashFile(f: Files.File; VAR key: ARRAY OF CHAR);
-    CONST prime = 0B3H; (* the FNV prime 1099511628211 is 2^40 + 2^8 + 0B3H *)
-    VAR
-      hash, product: ARRAY 8 OF LONGINT; r: Files.Rider; ch: CHAR;
-      i, bit, value, a, b, x: INTEGER; carry: LONGINT;
+  (* The hash so far, least significant byte first; HashStart, then
+     HashChar, HashText or HashFileBytes for each byte, then HashKey *)
+  PROCEDURE HashStart*(VAR hash: Hash);
   BEGIN
-    (* the offset basis, 0CBF29CE484222325H, least significant byte first *)
+    (* the offset basis, 0CBF29CE484222325H *)
     hash[0] := 25H; hash[1] := 23H; hash[2] := 22H; hash[3] := 84H;
-    hash[4] := 0E4H; hash[5] := 9CH; hash[6] := 0F2H; hash[7] := 0CBH;
+    hash[4] := 0E4H; hash[5] := 9CH; hash[6] := 0F2H; hash[7] := 0CBH
+  END HashStart;
+
+  PROCEDURE HashChar*(VAR hash: Hash; ch: CHAR);
+    CONST prime = 0B3H; (* the FNV prime 1099511628211 is 2^40 + 2^8 + 0B3H *)
+    VAR product: Hash; i, bit, value, a, b, x: INTEGER; carry: LONGINT;
+  BEGIN
+    (* hash := hash XOR byte, in the low byte *)
+    a := SHORT(hash[0]); b := ORD(ch); x := 0; value := 1;
+    FOR bit := 0 TO 7 DO
+      IF ODD(a) # ODD(b) THEN INC(x, value) END;
+      a := a DIV 2; b := b DIV 2; value := value * 2
+    END;
+    hash[0] := x;
+    (* hash := hash * prime MOD 2^64: times 0B3H, plus hash shifted left
+       by one byte and by five *)
+    FOR i := 0 TO 7 DO
+      product[i] := hash[i] * prime;
+      IF i >= 1 THEN INC(product[i], hash[i - 1]) END;
+      IF i >= 5 THEN INC(product[i], hash[i - 5]) END
+    END;
+    carry := 0;
+    FOR i := 0 TO 7 DO
+      INC(product[i], carry);
+      hash[i] := product[i] MOD 256; carry := product[i] DIV 256
+    END
+  END HashChar;
+
+  (* the characters of s up to its 0X *)
+  PROCEDURE HashText*(VAR hash: Hash; s: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (i < LEN(s)) & (s[i] # 0X) DO HashChar(hash, s[i]); INC(i) END
+  END HashText;
+
+  (* every byte of f *)
+  PROCEDURE HashFileBytes*(VAR hash: Hash; f: Files.File);
+    VAR r: Files.Rider; ch: CHAR;
+  BEGIN
     Files.Set(r, f, 0);
     Files.Read(r, ch);
-    WHILE ~r.eof DO
-      (* hash := hash XOR byte, in the low byte *)
-      a := SHORT(hash[0]); b := ORD(ch); x := 0; value := 1;
-      FOR bit := 0 TO 7 DO
-        IF ODD(a) # ODD(b) THEN INC(x, value) END;
-        a := a DIV 2; b := b DIV 2; value := value * 2
-      END;
-      hash[0] := x;
-      (* hash := hash * prime MOD 2^64: times 0B3H, plus hash shifted left
-         by one byte and by five *)
-      FOR i := 0 TO 7 DO
-        product[i] := hash[i] * prime;
-        IF i >= 1 THEN INC(product[i], hash[i - 1]) END;
-        IF i >= 5 THEN INC(product[i], hash[i - 5]) END
-      END;
-      carry := 0;
-      FOR i := 0 TO 7 DO
-        INC(product[i], carry);
-        hash[i] := product[i] MOD 256; carry := product[i] DIV 256
-      END;
-      Files.Read(r, ch)
-    END;
+    WHILE ~r.eof DO HashChar(hash, ch); Files.Read(r, ch) END
+  END HashFileBytes;
+
+  (* the hash as 16 lower-case hexadecimal digits, most significant first *)
+  PROCEDURE HashKey*(VAR hash: Hash; VAR key: ARRAY OF CHAR);
+    VAR i, value: INTEGER;
+  BEGIN
     FOR i := 0 TO 7 DO
       value := SHORT(hash[7 - i]);
       key[2 * i] := HexDigit(value DIV 16); key[2 * i + 1] := HexDigit(value MOD 16)
     END;
     key[keyLength] := 0X
+  END HashKey;
+
+  PROCEDURE HashFile(f: Files.File; VAR key: ARRAY OF CHAR);
+    VAR hash: Hash;
+  BEGIN
+    HashStart(hash); HashFileBytes(hash, f); HashKey(hash, key)
   END HashFile;
 
   PROCEDURE RecordKey(moduleName: ARRAY OF CHAR; f: Files.File);

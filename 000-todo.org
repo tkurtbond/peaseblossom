@@ -193,12 +193,15 @@ The section-order half is DONE (2026-09-17, voc-verified): CONST/TYPE/VAR sectio
 Done 2026-09-26 (user's decision): VAR x, y: T := e, any expression, evaluated once for each variable before the body; only names declared before the := are visible; -strict rejects it.  Every local now also starts at zero (D16).  (doc/history/phase-11-inventory.md A23, D16; doc/developer/language-extensions.md, "Variable initializers"; survey doc/research/initializers-and-literals-survey.md.)
 ** DONE Initializers on record fields.
 Defaults a record's fields take whenever one is created, as Active Oberon has.  Done 2026-09-26: any expression, each field its own evaluation, applied to variables, NEW and records inside them; across modules through one initialization procedure per record type.  (doc/history/phase-11-inventory.md D17; doc/developer/language-extensions.md, "Record field initializers".)
-** TODO Oberon-2 has syntax for sets literals; it would be good have syntax for record and array literals, too.
+** DONE Oberon-2 has syntax for sets literals; it would be good have syntax for record and array literals, too.
+Done 2026-10-03 in Phase 14 (closed 2026-10-04, released in Peaseblossom 0.2.0; 623ad98, 962c22a): Point{x := 1, y := 2}, Vector{1, 2, 3}, indexed array elements ([48..57]: 1), a nested literal's type name optional, and structured CONSTs folded and written whole to the .sym file; -strict rejects them.  (doc/developer/language-extensions.md, "Record and array literals"; doc/history/phases/phase-14.md.)  Fixtures llvm-record-and-array-literals, llvm-indexed-array-literals, llvm-structured-constants, module-structured-constants, semantic-record-and-array-literals, semantic-reject-record-and-array-literals, semantic-reject-indexed-array-literals, semantic-structured-constants, semantic-reject-structured-constants, semantic-strict-record-and-array-literals.  Original note follows.
 Open, for Phase 14 (PLAN.md), a phase of its own since 2026-10-02 (user); before that a candidate of the further extensions (then Phase 18, now 19), where the user moved it 2026-09-26.  doc/developer/record-and-array-literals.md has the design decided with the user 2026-10-02 (T{...} syntax, named record elements only, omitted elements take their defaults, none for a record type with hidden or read-only fields, and structured CONSTs too, added to the phase by the user the same day), the survey of other dialects (Active Oberon, Oberon+, Micron, Modula-3, ISO Modula-2, ...) and what the implementation touches; the first survey is doc/research/initializers-and-literals-survey.md.  (doc/history/phase-11-inventory.md A24.)
 ** DONE Underscores and dollarsigns in names.  (Useful for VMS.)
 Decided 2026-09-26 (user): both, anywhere a letter may be, first included; -strict rejects them.  A first verdict the same day took neither (a routine's VMS name goes in a linkage-name string), reversed because STARLET's values and fields (SS$_NORMAL, DSC$W_LENGTH) need their names in a module of constants.  (doc/history/phase-11-inventory.md A25; doc/developer/language-extensions.md.)
 ** TODO Slices for one dimensional arrays.
 Open, for Phase 19 (candidate 1, PLAN.md).
+** TODO Unsigned types.
+SYSTEM.UINT8, UINT16, UINT32, UINT64.  These silently wrap going both directions.
 * Ignore this
 Local Variables:
 eval: (visual-line-mode 1)

@@ -119,9 +119,34 @@ shells out to these rather than linking against LLVM's own C++ API.
   manifest and makes any link of its archive use `-flto`. A bitcode `.o`
   beside a `.sym` is refused without its `.ll`: `nm` cannot read bitcode
   on OpenBSD or NetBSD. For 32-bit x86 NetBSD `-lto` is ignored with a
-  warning (neither GNU ld nor lld links bitcode into an executable that
-  runs there). `make check-lto` runs the suite with `-lto` (not
+  warning unless poc runs on 32-bit x86 NetBSD itself (its clang's own
+  target): GNU ld cannot link bitcode, and on NetBSD amd64 lld's
+  dynamically linked i386 executables fail with "Exec format error"
+  (artos), while on i386 NetBSD they run (yishana, 2026-10-08). `make check-lto` runs the suite with `-lto` (not
   part of `make check`). Fixture `llvm-lto`.
+- **Objects reused** (Ongoing implementation enhancements, item 3, decided
+  with the user 2026-10-08): building poc took 29 s, 28 of them `clang -c`,
+  so poc still reads, checks and writes the IR of every module from source
+  but skips `clang -c` when the object would be the same. The stamp is the
+  FNV-1a hash (`ModuleInterface.HashStart`/`HashText`/`HashFileBytes`) of
+  the `clang -c` command and the `.ll`; the `.ll` gets
+  `@<M>.-build.<stamp> = constant i8 0`, and the object is reused when
+  `nm -P` shows it defines that symbol (`LLVMToolchainDriver.
+  ObjectDefines`). A C or C++ part is compiled with `-MD -MF <obj>.d`; its
+  stamp hashes the command and every file the `.d` names, and is appended
+  to the `.d` as `# poc-build <stamp>` (`DepsStamp`). Content, not file
+  times, decides, so a makefile's `poc -compile` and a later `-build` agree,
+  and `touch` changes nothing. Not under `-lto` (`nm` cannot read bitcode
+  on the BSDs), nor for a module given as its `.sym` and `.ll`, nor in
+  `-library` (`CompileModules`' `reuse`: a library's directory is
+  installed, and a `.d` names the build's files); `poc -rebuild` turns it
+  off. So that a module's IR does not depend on the rest of the program, a
+  module declares only the runtime procedures its code calls
+  (`LLVMCodeGenerator.EmitImportDeclarations`), no longer every procedure
+  of `ModuleTable`, `GarbageCollectedHeap` and `Modules` whenever the
+  program has them: otherwise `poc -compile A.Mod`, with no runtime, and a
+  `-build` whose program has it wrote different `A.ll`s. Fixture
+  `llvm-object-reuse`.
 - **Debug information** (Phase 11 A16, stage (a), 2026-09-26): `poc -g`
   emits DWARF metadata for gdb and lldb - the procedures' names
   (`List.Insert`, `List.Insert.Find` for a nested one,

@@ -1,11 +1,13 @@
 == from source
 Twice.c.o
+Twice.c.o.d
 Twice.ll
 Twice.o
 Twice.sym
 42
 == -compile, then the pair
 Twice.c.o
+Twice.c.o.d
 Twice.ll
 Twice.o
 Twice.sym

@@ -63,8 +63,8 @@ bootstraps poc.
   `artos` (NetBSD amd64), `alerik` (FreeBSD amd64) and `rackhir` (FreeBSD
   arm64), and the office machines `erekose` (OpenBSD i386) and `terhali`
   (NetBSD amd64). **Which run when** (user, 2026-09-26): a change is
-  checked (`make check`, `gmake check` on the VMs) on atla, cymoril, artos
-  and alerik before it is committed. rackhir (emulated, slow, the only
+  checked (`make check` on atla, `gmake check-stage1` on the VMs) on atla,
+  cymoril, artos and alerik before it is committed. rackhir (emulated, slow, the only
   non-x86) runs separately on pushed commits, after changes where the
   architecture matters (calls, arithmetic, memory layout, the runtime's C
   calls, the collector) and at each phase's close-out; what it finds is

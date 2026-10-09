@@ -336,6 +336,11 @@ or to clang++ when it compiles its part in C++,
 May be repeated.
 .It Fl lto
 Compile to LLVM bitcode, and optimize the whole program when it is linked.
+.It Fl rebuild
+Compile every module's object again.
+Without it, an object whose recorded stamp, a hash of its
+.Xr clang 1
+command and of what it was compiled from, matches is linked as it is.
 .It Fl verbose
 Print each command
 .Nm

@@ -148,7 +148,12 @@ LN:
   ret void
 LN:
   store i1 true, ptr @openir.-initialized
+  %tN = icmp ne ptr @ModuleTable.Register, null
+  br i1 %tN, label %LN, label %LN
+LN:
   call void @ModuleTable.Register(i32 ptrtoint (ptr @.roots.openir to i32))
+  br label %LN
+LN:
   %tN = sext i8 3 to i64
   %tN = icmp sle i64 %tN, 0
   %tN = or i1 false, %tN
@@ -501,7 +506,12 @@ LN:
   ret void
 LN:
   store i1 true, ptr @openir.-initialized
+  %tN = icmp ne ptr @ModuleTable.Register, null
+  br i1 %tN, label %LN, label %LN
+LN:
   call void @ModuleTable.Register(i64 ptrtoint (ptr @.roots.openir to i64))
+  br label %LN
+LN:
   %tN = sext i8 3 to i64
   %tN = icmp sle i64 %tN, 0
   %tN = or i1 false, %tN

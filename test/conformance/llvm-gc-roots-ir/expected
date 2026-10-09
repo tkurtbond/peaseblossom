@@ -65,9 +65,14 @@ L1:
 L2:
   store i1 true, ptr @roots.-initialized
   call void @ModuleTable_init()
+  %t2 = icmp ne ptr @ModuleTable.Register, null
+  br i1 %t2, label %L3, label %L4
+L3:
   call void @ModuleTable.Register(i32 ptrtoint (ptr @.roots.roots to i32))
-  %t2 = sext i8 1 to i16
-  store i16 %t2, ptr @roots.plain
+  br label %L4
+L4:
+  %t3 = sext i8 1 to i16
+  store i16 %t3, ptr @roots.plain
   ret void
 }
 
@@ -151,9 +156,14 @@ L1:
 L2:
   store i1 true, ptr @roots.-initialized
   call void @ModuleTable_init()
+  %t2 = icmp ne ptr @ModuleTable.Register, null
+  br i1 %t2, label %L3, label %L4
+L3:
   call void @ModuleTable.Register(i64 ptrtoint (ptr @.roots.roots to i64))
-  %t2 = sext i8 1 to i16
-  store i16 %t2, ptr @roots.plain
+  br label %L4
+L4:
+  %t3 = sext i8 1 to i16
+  store i16 %t3, ptr @roots.plain
   ret void
 }
 
