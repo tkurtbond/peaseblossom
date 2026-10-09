@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude, from design section 14, the
-;; LLVM backend's Out and FormattedText, the guest runs and the debugger
-;; run; for the user's review). Why this is right:
+;; Reviewed 2026-10-09 by the user (written by Claude, from design
+;; section 14, the LLVM backend's Out and FormattedText, the guest runs
+;; and the debugger run). Why this is right:
 ;; - Out keeps its line in OUT_LINE, 1024 bytes, and its length, a LONGINT,
 ;;   in OUT_LENGTH. Char writes the line first when it is full, then stores
 ;;   the character, its index checked (trap 2), and counts it.

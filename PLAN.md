@@ -689,7 +689,7 @@ most, object libraries.
      `Hex`) over `POC_PUT_LINE` (`LIB$PUT_OUTPUT`), with an exit handler
      for a line left without `Ln`. Fixture `vax-out` runs one source on
      both backends, under `-O2` and `-OC`, against one expected output per
-     model. Its `.mar` files await the user's review. This found the
+     model. Its `.mar` files were reviewed by the user (2026-10-09). This found the
      voc-built poc's wrong high longword for `MIN(HUGEINT)` (vishap-bugs
      07), now fixed.
 
