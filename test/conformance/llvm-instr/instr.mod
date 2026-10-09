@@ -1,5 +1,5 @@
 MODULE instr;
-  (* InStr (PLAN.md, "Ongoing library enhancements" 2). With the argument
+  (* InStr (Phase 15's "Ongoing library enhancements" 2). With the argument
      "in", reads standard input with In; with "instr", reads all of it into
      a string with In.Char, then the same tokens from the string with
      InStr, also writing pos after each ("pos" lines). test.sh checks that

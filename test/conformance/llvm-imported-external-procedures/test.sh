@@ -1,7 +1,7 @@
 #!/bin/sh
 . ../../testenv.sh
 # Exported external procedures called from another module, under both size
-# models, then the interface CLib.sym gives (PLAN.md, "Ongoing bug fixing"
+# models, then the interface CLib.sym gives (Phase 14's "Ongoing bug fixing"
 # 1: the .sym lost the linkage name, and the link failed).
 exe=$(basename "$PWD")
 : >result

@@ -9,7 +9,7 @@ MODULE Lexer;
      strings); numeric value computation is deferred to a later phase
      (PLAN.md Phase 3, ConstantEvaluator.Mod).
 
-     A string's text has no length limit (PLAN.md, "Ongoing bug fixing" 3:
+     A string's text has no length limit (Phase 14's "Ongoing bug fixing" 3:
      voc takes 1023 characters, and poc took 255): Token.text holds all of
      it, without the quotes, in a Text sized to fit, and lexeme only its
      first maxLexemeLength characters, for the places that want a short

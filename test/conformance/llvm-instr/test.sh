@@ -1,6 +1,6 @@
 #!/bin/sh
 . ../../testenv.sh
-# InStr (PLAN.md, "Ongoing library enhancements" 2): the same tokens as In,
+# InStr (Phase 15's "Ongoing library enhancements" 2): the same tokens as In,
 # reading input.txt from standard input and from a string; then InStr's own
 # positions. Both size models give the same output.
 POC_IMPORT_PATH=../../../rtl/llvm

@@ -403,7 +403,7 @@ constant is a private constant global of each module that uses it.
 
 ## Project state
 
-Phases 0-14 of `PLAN.md` are complete (records in `doc/history/phases/` and
+Phases 0-15 of `PLAN.md` are complete (records in `doc/history/phases/` and
 `doc/history/phase-11-inventory.md`): poc compiles itself through the LLVM backend
 (Stage 1 and Stage 2 reach a fixed point), and **Peaseblossom 0.1.0 was
 released on 2026-10-03** (tag `v0.1.0`, a GitHub release with the tarball
@@ -424,8 +424,11 @@ HTML and PDF, and a fix were released as **Peaseblossom 0.4.0 on
 2026-10-06** (tag `v0.4.0`; the record is in `PLAN.md`, "Peaseblossom
 0.4.0"), and **0.4.1** followed the same day with one fix (`ORD` of a
 `SET` under `-OC`; tag `v0.4.1`).
-Phase 15, the VAX/VMS MACRO-32 backend, is next; 15-18 are the VAX/VMS
-work, 19 further extensions, 20 voc's library modules. Bugs found by using
+Phase 15, the VAX/VMS MACRO-32 backend, writes MACRO-32 for Phase 8's
+slice, each fixture reviewed by the user, assembled and mostly run on the
+SIMH VAX (closed 2026-10-08, on the `vax` branch;
+`doc/history/phases/phase-15.md`). Phase 16, running on VAX/VMS, is
+next; 15-18 are the VAX/VMS work, 19 further extensions, 20 voc's library modules. Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
 fixing"), and the runtime-library additions and language extensions it
 shows are wanted are made the same way (`PLAN.md`, "Ongoing library

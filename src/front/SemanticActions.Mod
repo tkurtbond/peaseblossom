@@ -4199,7 +4199,7 @@ MODULE SemanticActions;
         errorCountBefore := Diagnostics.errorCount;
         (* a .sym is not the strict module's text: -strict is off for parsing
            it as well as checking it, since the parser reports extensions
-           too (PLAN.md, "Ongoing bug fixing" 4) *)
+           too (Phase 14's "Ongoing bug fixing" 4) *)
         savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE;
         impModule := parseModule(buffer, length);
         IF (impModule = NIL) OR (Diagnostics.errorCount > errorCountBefore) THEN

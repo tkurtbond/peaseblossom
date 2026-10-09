@@ -1,6 +1,6 @@
 #!/bin/sh
 . ../../testenv.sh
-# OutStr (PLAN.md, "Ongoing library enhancements" 1) under both size models:
+# OutStr (Phase 15's "Ongoing library enhancements" 1) under both size models:
 # the same output, and in the first part each line Out wrote the same as the
 # OutStr string after it (pairs of lines ending "|").
 POC_IMPORT_PATH=../../../rtl/llvm

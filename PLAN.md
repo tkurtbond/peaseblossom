@@ -452,42 +452,35 @@ the full account - decisions, every step, what was found, testing - in
 - **6.** Exit gate (623ad98, 962c22a; rackhir passed both).
 
 ### Phase 15 — VAX/VMS MACRO-32 backend (scoped, deferred, non-executable)
-`VaxTypes.Mod`, `VaxCodeGenerator.Mod`, `VaxToolchainDriver.Mod` (stub
-only — no link/run, per the locked-in decision; assembling, alone, was
-allowed on 2026-10-05, below). The design, written before any code, is
-`doc/developer/vax-macro32-backend.md`.
-**Explicit scope bound** (to prevent drift): targets exactly Phase 8's
-narrow vertical-slice feature set (straight-line code, IF/WHILE/CASE,
-arrays/records) — *not* full GC/dispatch parity. "Done" means
-hand-reviewed `.mar` output checked into
-`test/conformance/*/expected-vax.mar`-style fixtures with a reviewer
-rationale comment, **each also assembled with `MACRO/OBJECT`** on the
-development system, a SIMH VAX running VMS 5.5-2H4 (decided with the user
-2026-10-05; the design's §2 and §10) - no linking or running. Linking and
-running the output is Phase 16's, which also lifts the vertical-slice bound
-above. The bound was widened once, with the user 2026-10-08: the
-predeclared procedures `INCL`, `EXCL`, `SHORT`, `LONG` and `ASH`, which
-need no heap, are lowered too (the design's step 7b).
 
-**Symbol-name mangling is required, not optional**: VAX MACRO-32 symbols
-are limited to **31 characters**. This project's own naming convention
-favors longer, descriptive Oberon-2 identifiers (module names, exported
-procedure names, qualified `Module.Procedure` forms, type-bound-procedure
-dispatch names), which will routinely exceed that limit — unlike the LLVM
-backend, which has no such restriction and can emit names close to
-verbatim. `VaxTypes.Mod`/`VaxCodeGenerator.Mod` must therefore implement a
-deterministic name-mangling scheme (e.g. truncate-plus-hash-suffix) for
-every emitted MACRO-32 symbol, and this scheme needs its own fixtures
-(long/colliding names deliberately included in the Phase 15 test set) to
-confirm two distinct Oberon-2 names never mangle to the same 31-character
-symbol.
+**Goal**: `VaxTypes.Mod`, `VaxCodeGenerator.Mod` and a stub
+`VaxToolchainDriver.Mod` emitting MACRO-32 for Phase 8's vertical slice,
+each fixture's output reviewed by the user and assembled on the VAX/VMS
+development system; linking and running are Phase 16's.
 
-**External procedures under the VMS Calling Standard**: any procedure
-declared external (Phase 6's FFI extension) must be lowered according to
-VMS's own well-defined Calling Standard, not poc's internal calling
-convention for ordinary Oberon-2 procedures — this is separate work from,
-and in addition to, plain MACRO-32 codegen for pure-Oberon code, and its
-external-symbol names are subject to the same 31-character limit above.
+**Done** (closed 2026-10-08): `poc -emit-macro32` writes MACRO-32 for
+the slice - integer, `CHAR`, `BOOLEAN` and `SET` values, fixed arrays
+and base-less records, strings, the statements, ordinary procedures and
+external `"VMS"` ones, the predeclared procedures that need no heap
+(`INCL`, `EXCL`, `SHORT`, `LONG` and `ASH` added with the user
+2026-10-08), traps, and programs of several modules with their start.
+Each of the 35 `vax-` fixtures' `expected-vax.mar` was reviewed by the
+user and is assembled on the development system, and 28 also link and
+run under the VMS debugger (a widening of "done" decided with the
+user). The design and every decision are in
+`doc/developer/vax-macro32-backend.md`; the full account - every step,
+what was found, the exit review, testing - is in
+`doc/history/phases/phase-15.md`, under the design's step numbers:
+
+- **1.** `VaxTypes.Mod`: sizes, offsets and the name scheme.
+- **2.** `-emit-macro32`, a module's layout, `tools/vax-assemble`.
+- **3.** Straight-line code.
+- **4.** Control flow.
+- **5.** Procedures and calls; external `"VMS"` procedures.
+- **6.** Arrays, records and strings; debugger runs (`tools/vax-run`).
+- **7.** The predeclared procedures; 7b, the slice widened.
+- **8.** Several modules and the program's start.
+- **9.** The phase record and the exit review.
 
 ### Phase 16 — Running on VAX/VMS: assemble, link, run, and bootstrap poc there
 
@@ -533,30 +526,32 @@ most, object libraries.
    `.mar`, drives `MACRO`/`LINK` (locally on the guest, or by the step 1
    command from the host).
 
-3. **Widening the backend to what poc's own source uses.** Survey poc's
-   own source (`src/`) for every construct it needs - pointers and `NEW`,
-   records and extension, type-bound procedures, `WITH`/`IS`, open
-   arrays, sets, `REAL`/`LONGREAL`, procedure values and procedure-typed
+3. **Widening the backend to what poc's own source uses.** Survey poc's own
+   source (`src/`) for every construct it needs - pointers and `NEW`,
+   records and extension, type-bound procedures, `WITH`/`IS`, open arrays,
+   sets, `REAL`/`LONGREAL`, procedure values and procedure-typed
    parameters, strings and `CHAR` arrays, `CASE`, external procedures - and
-   bring `VaxCodeGenerator.Mod` to parity with the LLVM backend for
-   those, in dependency order, each with a run-and-diff fixture that is
-   also a Phase 9 fixture (the same `.mod`, same expected output, on both
+   bring `VaxCodeGenerator.Mod` to parity with the LLVM backend for those,
+   in dependency order, and `SYSTEM.SET64` whether poc's source uses it or
+   not (the user, 2026-10-08; only the runtime's `Texts` does, and Phase 15
+   left it out of the slice), each with a run-and-diff fixture that is also
+   a Phase 9 fixture (the same `.mod`, same expected output, on both
    backends; a fixture that only one passes is a bug). Three things need
    real design, not just porting: (a) **floating point** - VAX
    `REAL`/`LONGREAL` are F_floating and D_floating (or G), not IEEE 754, so
    constant emission, `ConstantEvaluator`'s folding, `MAX`/`MIN` of the
    real types, `ParseReal`/`FormatReal` and the `.sym` round trip, and the
-   hardware conversions all change; decide the `LONGREAL` format
-   (D or G) from what VMS's own compilers and RTLs default to; (b)
-   **calling convention** - internal Oberon procedures versus the VMS
-   Calling Standard (`CALLS`/`CALLG`, argument lists, register save masks,
+   hardware conversions all change; decide the `LONGREAL` format (D or G)
+   from what VMS's own compilers and RTLs default to; (b) **calling
+   convention** - internal Oberon procedures versus the VMS Calling
+   Standard (`CALLS`/`CALLG`, argument lists, register save masks,
    condition values); Phase 15 says external procedures use the standard
-   and ordinary ones poc's own, and this step decides whether the
-   hidden tag/length arguments and procedure values keep working that way
-   or whether one convention for everything is simpler (Phase 17's AST
-   support pulls toward the latter); (c) **traps** - index, NIL,
-   type-guard and length failures become VMS conditions or a status exit,
-   and what a poc program's exit status looks like to DCL.
+   and ordinary ones poc's own, and this step decides whether the hidden
+   tag/length arguments and procedure values keep working that way or
+   whether one convention for everything is simpler (Phase 17's AST support
+   pulls toward the latter); (c) **traps** - index, NIL, type-guard and
+   length failures become VMS conditions or a status exit, and what a poc
+   program's exit status looks like to DCL.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:
@@ -982,97 +977,6 @@ Oberon *system*; its licence; and the cost. Then implement the wanted
 ones into a library of their own, with fixtures compared with voc, and
 the same exit gate as Phase 12 step 6.
 
-## Peaseblossom 0.3.0
-
-The done items of the three "Ongoing" sections below - read-only
-parameters, `OutStr` and `InStr`, and the fix for an imported read-only
-variable passed as a `VAR` argument, all in `995e393` - were released
-as **Peaseblossom 0.3.0** on 2026-10-05 (decided with the user: a minor
-release, since they add features), as `doc/developer/DEVELOPER.md`
-section 7 says, and the first release made with `tools/set-version`,
-`tools/check-hosts` and `tools/release-files`:
-
-- **The version** was set in `6ebcc04` by `make set-version`, after
-  `tools/check-hosts -t check-install -t check-seed` passed on atla,
-  cymoril, artos and alerik (345 fixtures at each stage), with
-  `check-opt2` on atla. rackhir passed `995e393` and `f3e3b5f`.
-- **The tarball** came from `make distcheck` (SHA-256 `932309a9...`,
-  3474095 bytes). It is signed, with the signed tag `v0.3.0`, and
-  published as a GitHub release.
-- **Each package** was made from the published tarball (`makesum`), then
-  built and checked on its system: `check.sh` on the build root or
-  stage; portlint, portcheck and pkglint clean; packing lists unchanged.
-  It was then installed as root, checked with `check.sh` against the
-  installed poc, and removed with nothing left. On atla the 0.3.0 RPM
-  was installed again afterwards, replacing 0.2.0. `mock` built and
-  checked the RPM in a clean Fedora 44 chroot.
-- **The RPMs** were signed with `rpmsign`. `tools/release-files`
-  gathered them with the other packages and signed `SHA256SUMS`, and
-  they were attached to the release.
-- **Signing** was done in a terminal of its own, through a `gpg` wrapper
-  with `--pinentry-mode loopback`. gpg-agent's pinentry is graphical on
-  atla, and appears on atla's screen, not the remote user's.
-
-**Peaseblossom 0.3.1** followed the same day, with the fix of
-`58e913d` ("Ongoing bug fixing" 2): reinstalling polibfyaml with 0.3.0
-showed that `-install-library` over a copy an older poc wrote said
-"rebuild it". It was made the same way:
-
-- **The version** was set in `d9f505e`, after the same four-host check
-  passed.
-- **The tarball** came from `make distcheck` (SHA-256 `b89c58d2...`,
-  3476336 bytes). It is signed, with the signed tag `v0.3.1`.
-- **Each package** was built, checked and linted on its system (packing
-  lists unchanged), installed as root, checked with `check.sh` against
-  the installed poc, and removed with nothing left. `mock` built and
-  checked the RPM, and on atla 0.3.1 replaces 0.3.0.
-- **The RPMs and `SHA256SUMS`** were signed and attached to the release.
-
-## Peaseblossom 0.4.0
-
-What `main` had gained since 0.3.1 was released as **Peaseblossom 0.4.0**
-on 2026-10-06 (decided with the user: a minor release, since it adds
-features): the done items of "Ongoing implementation enhancements" (a
-library's manifest records its `-link` arguments, and a module's part
-may be C++, `03eb4b6`), `-help` listing every command and option
-("Ongoing bug fixing" 3), `make doc`'s HTML and PDF documents, in the
-tarball and installed, and the fix of "Ongoing bug fixing" 4. It was
-made as `doc/developer/DEVELOPER.md` section 7 says:
-
-- **The version** was set in `0f9b196` by `make set-version`, after
-  `tools/check-hosts -t check-install -t check-seed` passed on atla,
-  cymoril, artos and alerik (347 fixtures at each stage), with
-  `check-opt2` on atla. rackhir passed `0f9b196`.
-- **The tarball** came from `make distcheck` (SHA-256 `2ba257e2...`,
-  4919979 bytes; larger than 0.3.1's for the HTML and PDF documents). It
-  is signed, with the signed tag `v0.4.0`, and published as a GitHub
-  release.
-- **Each package** was made from the published tarball (`makesum`), then
-  built and checked on its system: `check.sh` on the build root or
-  stage; check-plist, portlint, portcheck and pkglint clean; packing
-  lists unchanged. It was then installed as root, checked with
-  `check.sh` against the installed poc, and removed with nothing left.
-  `mock` built and checked the RPM, and on atla 0.4.0 replaces 0.3.1.
-- **The RPMs and `SHA256SUMS`** were signed (`rpmsign` given the key
-  with `--define`, as atla has no `~/.rpmmacros`), gathered by
-  `tools/release-files` and attached to the release.
-
-**Peaseblossom 0.4.1** followed the same day, with the fix of `3f5e0fa`
-("Ongoing bug fixing" 5): the user's FLTK binding found that `ORD` of a
-`SET` did not compile under `-OC`. It was made the same way:
-
-- **The version** was set in `bdfd3d2`, after the same four-host check
-  passed (348 fixtures at each stage). rackhir passed `bdfd3d2`.
-- **The tarball** came from `make distcheck` (SHA-256 `70f7377d...`,
-  4941268 bytes). It is signed, with the signed tag `v0.4.1`.
-- **Each package** was built, checked and linted on its system (packing
-  lists unchanged), installed as root, checked with `check.sh` against
-  the installed poc, and removed with nothing left. On the BSDs, Claude
-  did the install and removal in the user's root shells in tmux (windows
-  2-4), at the user's word, and ran `check.sh` as the user over ssh.
-  `mock` built and checked the RPM, and on atla 0.4.1 replaces 0.4.0.
-- **The RPMs and `SHA256SUMS`** were signed and attached to the release.
-
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
@@ -1085,82 +989,8 @@ phase's record.
 The four found porting olibfyaml to poc (`~/Repos/Oberon/polibfyaml`),
 fixed in 526d7ba, are in `doc/history/phases/phase-14.md`.
 
-1. **[fixed] An imported read-only variable was accepted as a `VAR`
-   argument** (found 2026-10-05 implementing read-only parameters,
-   "Ongoing language enhancements" 1). `P(M.v)`, with `v-` exported by
-   `M` and `P` taking a `VAR` parameter, passed `poc -check`, so `P`
-   could change another module's read-only variable; voc says err 76,
-   "this variable (field) is read only". `CheckArguments` checked that a
-   `VAR` argument was a variable but not that it was writable. Now an
-   error, "a read-only variable cannot be a VAR argument", and likewise
-   a read-only record as the `VAR` receiver of a type-bound procedure
-   (`M.r.Bump`), which voc accepts. Fixture
-   `semantic-reject-readonly-param`.
-
-2. **[fixed] `-install-library` over a copy an older poc wrote said
-   "rebuild it"** (found 2026-10-05 reinstalling polibfyaml with 0.3.0
-   over its 0.2.0 copy). To remove the old copy's files, `InstallLibrary`
-   read its manifest through `Libraries.Load`, which refuses one another
-   version of poc wrote: so it printed "was written by poc 0.2.0, not
-   0.3.0: rebuild it" about the very copy it was replacing, and, the
-   manifest refused, left the `.sym` and `.owner` files of any module the
-   new copy no longer has. Now it reads that manifest without the
-   version, target and size-model checks (`Libraries.LoadInstalled`), and
-   outside the libraries loaded for use. Fixture `llvm-using-modules`.
-
-3. **[fixed] A mistyped option was lost in 70 lines of usage text**
-   (found 2026-10-05 by the user with 0.3.1). `poc -x` printed the whole
-   old usage text - every command, in the "-x may precede -y" style the
-   phases had grown - without saying that `-x` was the trouble; and it was
-   nothing like `-help`'s short summary, which left out user options
-   (`-install-library`, `-lto`, `-trap-heap-exhausted`, the path
-   options). Now `-help` lists every command and option, in one table,
-   with POC_IMPORT_PATH and POC_LIBRARY_PATH and, in a section of their
-   own at the end, the commands for testing poc itself (decided with the
-   user); `poc` with no arguments prints the same on standard error and
-   fails; an unknown option, a command without its file and options with
-   no command after them each get one line saying what is wrong and
-   "run poc -help for the commands and options". `Poc.Usage` is gone
-   (`Help`, `BadUsage`). Fixtures `poc-usage` (rewritten),
-   `poc-output-streams`, `doc-poc-options` (now against `-help`'s list).
-
-4. **[fixed] An IF with an ELSIF had its last ELSIF's position** (found
-   2026-10-06 writing the VAX backend's control flow, Phase 15 step 4).
-   `ParseStatement` kept each ELSIF's line and column in the variables
-   holding the IF's, so `-g` put the IF's first condition on the last
-   ELSIF's line. The ELSIFs now have their own. The LLVM backend, too,
-   gave an ELSIF's condition the position of the body before it, for
-   `-g` and for a trap in the condition; it now sets the ELSIF's own.
-   Fixture `llvm-if-lines`.
-
-5. **[fixed] `ORD` of a `SET` did not compile under `-OC`** (found
-   2026-10-06 by the user's FLTK binding, in 0.4.0 and before; the
-   binding used `SYSTEM.VAL(SYSTEM.INT32, s)` instead). `GenerateOrd`
-   truncated the set to INTEGER's width unconditionally, but under `-OC`
-   both are 32 bits, and clang refused the IR: "invalid cast opcode for
-   cast from 'i32' to 'i32'". The same for `SYSTEM.SET32`. It now
-   converts only when the widths differ. Fixture `llvm-ord-set`, under
-   both size models.
-
-6. **[fixed] A module compiled alone lost its pointer variables to the
-   collector** (found 2026-10-08 with "Ongoing implementation
-   enhancements" 3; fix decided with the user the same day). A module's
-   root table - the addresses of the pointers among its module-level
-   variables, registered with `ModuleTable` so the collector scans them -
-   was emitted only in a program that had `ModuleTable`, which a program
-   got only when some module called `NEW` or came from a library. So
-   `poc -compile G.Mod`, for a `G` with `VAR p*: POINTER TO R` and no
-   runtime among its imports, made a `G.o` with no root table, and a
-   program given that `.sym` and `.o` that did use the collector freed
-   what only `G.p` reached: `G.p.x`, set to 42, printed 1000 after a
-   collection. Now every module with such a variable has its root table,
-   registered through a weak reference (`declare extern_weak`) to
-   `ModuleTable.Register`, called only when it is not null. A program
-   that has the collector registers it as before; one without (no `NEW`,
-   no library module, so nothing for the pointers to point into) links no
-   `ModuleTable` for it (decided with the user: no runtime for a pointer
-   variable alone). Fixture `llvm-gc-compiled-roots`; `llvm-gc-roots-ir`
-   and the type-descriptor IR fixtures show the tables and the check.
+Those fixed while Phase 15 was current, 1-6, are in
+`doc/history/phases/phase-15.md`.
 
 ## Ongoing library enhancements
 
@@ -1172,104 +1002,9 @@ entry and the Reference Guide regenerated (`tools/rtl-reference
 update`); a done item stays until the next phase's close-out, which
 moves it to that phase's record.
 
-1. **[done] `OutStr`: `Out`'s output into a string** (user, 2026-10-05, asked
-   while working on `~/Repos/Oberon/Ropes`). No runtime module formats
-   a number into an `ARRAY OF CHAR` as `Out` writes it: `FormattedOutput`
-   only writes to a descriptor (and is internal), `Texts`' writers lay
-   numbers out differently and go through a temporary file, and
-   `RealDigits` gives only the digits.
-   - **Interface**: `Out`'s output procedures - `Char`, `String`, `Int`,
-     `Hex`, `Ln`, `Real`, `LongReal` - with `Out`'s parameters followed
-     by `VAR s: ARRAY OF CHAR`: `OutStr.Int(x, n, s)`. Not `Open`,
-     `Flush` or `IsConsole`, which are about the stream, and not `Ten`,
-     which makes a number, not text.
-   - **Appends**: each call adds its text at `s`'s first 0X (if it has
-     none, its last character is made one first), so a run of calls builds a line as a run of `Out`
-     calls does; the caller starts with `s := ""`. `Ln` appends `0AX`,
-     as `Out.Ln` writes.
-   - **Overflow**: text that does not fit is cut short, silently, and `s`
-     always ends in 0X, as poc's `Strings` does. No call writes beyond
-     `s`.
-   - **The same text as `Out`**: field widths, `Hex`'s digit counts and
-     two's complement, correctly rounded reals (`RealDigits`), no plus
-     sign. To keep them from drifting apart, both go through a shared
-     internal layer (decided 2026-10-05) that formats each value into an
-     `ARRAY OF CHAR`: `OutStr` appends what it makes, and
-     `FormattedOutput` writes it, padding with runs of blanks so a wide
-     field needs no buffer of its width. voc compiles `FormattedOutput`
-     for Stage 0 (Phase 11 D11), so whatever it imports must stay within
-     what voc accepts.
-   - **Fixtures**: each procedure against `Out`'s output for the same
-     arguments (field widths below, at and above the text's length; the
-     extremes of `HUGEINT`; negative `Hex`; zero, subnormal, infinite and
-     NaN reals), appending to a non-empty `s`, and truncation at every
-     length of a short `s`.
-   - voc has no `OutStr`; a program using it is poc-only. OOC's `IntStr`
-     and `RealStr` (`oocIntStr`, `oocRealStr`) are voc's nearest, with
-     different interfaces, and are Phase 20's to decide.
-   - **Built 2026-10-05**: `rtl/llvm/OutStr.Mod`, over the new internal
-     `FormattedText.Mod` (the text of `Int`, `Hex`, `Real`, `LongReal`,
-     unpadded, and `Ten`), which `FormattedOutput` now pads and writes.
-     `FormattedText` is voc-compilable and in Stage 0's list
-     (`tools/bootstrap/stage0`, `STAGE0_RTL_SRCS`). `String` takes
-     `str-`, so a string is not copied, and may be `s` itself. Fixture
-     `llvm-outstr` (each case written by both, the pairs compared, under
-     `-O2` and `-OC`); `poc-link-flags` lists the new object; the
-     User's Guide's `Fields` example.
+Those done while Phase 15 was current, 1 and 2, are in
+`doc/history/phases/phase-15.md`.
 
-2. **[done] `InStr`: `In`'s input from a string** (user, 2026-10-05, the
-   counterpart of `OutStr`). Nothing reads `In`'s tokens from an
-   `ARRAY OF CHAR`: `In` reads only standard input, and `Texts`' scanner
-   needs a `Text`.
-   - **Interface**: `In`'s procedures except `Open` - `Char`, `Int`,
-     `LongInt`, `HugeInt`, `Real`, `LongReal`, `Line`, `String`, `Name` -
-     with `In`'s parameters followed by `s: ARRAY OF CHAR; VAR pos:
-     LONGINT`: `InStr.Int(i, s, pos)`, as `OutStr` puts its string last.
-     `Done-`, as `In`'s, says whether the last call found what it was
-     asked for. No `Open`: the caller's `pos` is the whole reading state.
-   - **The position**: reading starts at `s[pos]`, and a call that
-     succeeds sets `pos` to just after the last character it used up
-     (the blanks it skipped, the number or word, a string's closing
-     quote, a line's 0AX). One that fails leaves `pos` and its argument
-     as `In` leaves its argument. The string ends at its first 0X, or at
-     `LEN(s)` if it has none; a `pos` below 0 or past that end reads
-     nothing (`Done` FALSE), and does not trap.
-   - **The same tokens as `In`**: each procedure accepts what `In`'s
-     does (decimal or `H` hexadecimal integers with a minus sign, `Int`
-     and `LongInt` narrowed to the low bits, a quoted string on one
-     line, a word up to the next blank), so the two should share one
-     scanner over a source of characters rather than be written twice.
-     Except: `In.Real` and `In.LongReal` read a whole line and take it
-     as one number; `InStr`'s read the numeral at `pos` (`[+-] digits
-     [. digits] [E|D [+-] digits]`), correctly rounded through
-     `strtof`/`strtod`, and stop after it, so a string of several
-     numbers can be read one after another.
-   - **`s` is a read-only parameter, `s-: ARRAY OF CHAR`** (decided
-     2026-10-05): a value parameter takes a string constant, but poc
-     copies it on entry (`AGENTS.md`, "Open arrays"), so reading a long
-     string token by token would cost its length per call; a `VAR s`
-     avoids the copy and refuses a constant. voc's `x-` refuses a
-     constant too (err 122), so poc adopts it in a version that takes
-     one.
-   - **Depends on "Ongoing language enhancements" item 1** (read-only
-     parameters): `InStr` is built after it, not before with a value
-     `s` (the user, 2026-10-05).
-   - **Fixtures**: each procedure against `In` reading the same text from
-     standard input (the same values and `Done`), `pos` after every kind
-     of token and after a failure, a run of tokens read in turn, a
-     string with no 0X, and a `pos` at, before and past its end.
-   - voc has no `InStr`; a program using it is poc-only. OOC's `IntStr`
-     and `RealStr` read numbers from strings, with other interfaces, and
-     are Phase 20's to decide.
-   - **Built 2026-10-05**: `rtl/llvm/InStr.Mod`, over the new internal
-     `FormattedInput.Mod`, which recognizes every token over an abstract
-     `Source` (`Ready`, `Current`, `Advance`): `In` now reads through it
-     with a `Source` over standard input, and `InStr` with its
-     `StringSource`, which reads `s` in place through its address. On a
-     failure `InStr` puts `pos` back. Fixture `llvm-instr` (the same calls
-     on `input.txt` through `In` and `InStr`, compared, then `InStr`'s
-     positions, under `-O2` and `-OC`).
-     
 3.  OutStr should have versions of the appropriate procedures that
     take a parameter `VAR pos: LONGINT` so the routines don't have to
     keep iterating over the earlier elements of the strings.  Those
@@ -1290,60 +1025,8 @@ Linux and the three BSDs, and the User's and Reference Guides say what it
 is; a done item stays until the next phase's close-out, which moves it to
 that phase's record.
 
-1. **[done] Read-only parameters, `PROCEDURE P(x-: T)`** (decided with the user
-   2026-10-05, for `OutStr` and `InStr`, "Ongoing library enhancements";
-   Phase 19's candidate 2 until then; `000-todo.org`).
-   `doc/developer/language-extensions.md`, "Read-only parameters", has the rules:
-   - Inside `P`, assigning to `x` or any part of it, or passing it or any
-     part of it as a `VAR` actual, is a compile-time error. `VAR x-` is an
-     error, as in voc.
-   - The actual may be any expression: a variable; a constant, a string
-     included; any other expression, evaluated into a temporary. voc's
-     takes only a variable (err 122).
-   - A type of at most 16 bytes, under the size model in force, is passed
-     by value, a larger one or an open array by reference, a constant by
-     reference to its own storage; the choice is made from the formal's
-     type alone, so caller and procedure agree across modules. As in Ada
-     (RM 6.2(12)), a program may not rely on which: a read through an
-     alias gets the old value or the new one.
-   - The `.sym` format records the mark. `-strict` rejects it and needs
-     nothing more; poc's own source does not use it.
-   - Steps: the parser (the mark, now a syntax error, and
-     `parser-reject-param-export-mark`); the checker (the read-only
-     rules, any actual, procedure types and type-bound procedures, whose
-     parameter lists must then match mark for mark); the `.sym` file;
-     the LLVM backend (by value or by reference, the temporary); fixtures
-     for each; the guides.
-   - **Built 2026-10-05**, as `doc/developer/language-extensions.md`, "Read-only
-     parameters", records ("Implemented"). Calling a type-bound procedure
-     with a `VAR` receiver on it is an error too. A large one's actual
-     that is no variable needs no temporary after all: only a string has
-     a record or array type without one, and it is passed as a private
-     constant global of the parameter's type. Not compared with voc,
-     whose `x-` differs (by reference always, a variable only); the
-     fixtures check poc's rules. Found along the way: "Ongoing bug
-     fixing" 1.
-
-2. **[done] `SYSTEM.ADDRESS` and an integer type of the same width include each
-   other** (found 2026-10-08 by the user porting polibfyaml to OpenBSD
-   i386; decided with the user the same day). `Types.Order` gives
-   `ADDRESS` the place of the widest integer type of its width, so under
-   `-OC` on a 64-bit target, where `LONGINT` and `HUGEINT` are both 8
-   bytes, it ranked with `HUGEINT`: a `LONGINT` was assignable to an
-   `ADDRESS` but not the reverse, while on a 32-bit target, where the
-   `LONGINT` is wider, only the reverse held. So no declaration let
-   code mixing the two compile without `SYSTEM.VAL` on both. Now
-   `Types.Includes` also holds for `ADDRESS` and any integer type of its
-   width (`AddressOfSameWidth`): under `-OC` an `ADDRESS` is assignable
-   to a `LONGINT` on every target. The one cell of
-   `semantic-address-width`'s table that changes is x86_64 `-OC`
-   `LONGINT` "from ADDRESS"; `llvm-address-to-longint` runs it.
-   Narrowing stays an error (a `LONGINT` to a 32-bit `ADDRESS` under
-   `-OC`, an `ADDRESS` to a 4-byte `LONGINT` under `-O2` on a 64-bit
-   target). `-strict` already rejects `SYSTEM`. Mixed arithmetic is
-   unchanged: `WiderOf` still gives `ADDRESS` (its `Order` is the
-   higher). Built 2026-10-08; `make check` passed on atla, cymoril, artos
-   and alerik.
+Those done while Phase 15 was current, 1 and 2, are in
+`doc/history/phases/phase-15.md`.
 
 ## Ongoing implementation enhancements
 
@@ -1357,75 +1040,8 @@ does; a done item stays until the next phase's close-out, which moves it
 to that phase's record. Made on `main`, and merged into the `vax` branch
 at a convenient point.
 
-1. **[done] A library's manifest records its link arguments** (found 2026-10-06
-   by the user writing an FLTK binding). A library wrapping a native one
-   needs native libraries on every link of a program that uses it, and
-   the manifest had no line for them, so every client repeated `-link
-   -lfltk -link -lstdc++`; without them the link failed on
-   `__gxx_personality_v0`. Decided with the user 2026-10-06: each
-   `-link <arg>` given to `poc -library` is now used to link the shared
-   library itself too (it was left out), and recorded in the manifest as
-   a line `link <arg>`, the rest of the line (so a `-link` argument may
-   not hold a line break). A program that links the library gets those arguments
-   after the libraries' own (for every library it links, through
-   `needs` too, each argument once), before its own `-link` arguments. No
-   new option.
-
-2. **[done] A module's foreign part may be C++, `<M>.cpp`** (found 2026-10-06
-   with item 1). Only `<M>.c` was compiled beside `<M>.Mod`, so a C++
-   part needed `-c-flag -xc++`. Decided with the user 2026-10-06: `<M>.cpp`
-   is compiled by `clang++` (with `-c-flag`'s arguments, as `<M>.c`'s);
-   a module with both is an error. A program or shared library with a
-   C++ part, its own or a library's - whose manifest then says `c++` - is
-   linked by `clang++`, which adds the system's C++ runtime (libstdc++ on
-   Linux, libc++ on the BSDs), so a client needs only the library's own
-   `link` lines.
-
-3. **[done] A makefile's up-to-date objects are compiled again** (found
-   2026-10-06 by the user, with the FLTK binding's makefile). A
-   makefile can compile each out-of-date module with `poc -compile`,
-   but building the program then compiled every module whose source poc
-   could see again: a module is taken from `<Module>.Mod` before its
-   `.sym` and `.o` (Reference Guide, "Where modules come from"), and poc
-   compared nothing. Decided with the user 2026-10-08: by default, for
-   every module compiled from source (imports, the main module and
-   `-compile`), poc still checks it and writes its IR - 0.7 s of poc's
-   own 29 s build; `clang -c` is the rest - but runs `clang -c` only when
-   the object would differ, judged by content, not file times. The `.ll`
-   ends with `@<M>.-build.<stamp>`, the FNV-1a hash of the `clang -c`
-   command and the IR, and an object that defines it (`nm -P`) is reused;
-   a C or C++ part is compiled with `-MD`, and its `.d` records `#
-   poc-build <stamp>`, the hash of the command and every file it read.
-   Options are in the stamp through the command and the IR. Not under
-   `-lto` (no `nm` of bitcode on the BSDs), for a module given as its
-   `.sym` and `.ll`, or in `-library` (its directory is installed, and a
-   `.d` would name the build's files); the new option `-rebuild` reuses nothing. poc's own
-   build, done again, went from 29.7 s to 1.4 s. A module now declares
-   only the runtime procedures its code calls, not all of `ModuleTable`'s,
-   `GarbageCollectedHeap`'s and `Modules`' whenever the program has them,
-   so that `-compile` alone and `-build` write the same IR. Fixture
-   `llvm-object-reuse`.
-
-4. **[done] A module a library has for another target is named** (found
-   2026-10-08 by the user, installing the NetBSD package on terhali, whose
-   pkgsrc clang came from the NetBSD 10.0 packages; decided with the user
-   the same day). poc builds for clang's default target, there
-   `x86_64-unknown-netbsd10.0`, while the package's `poc-rtl` is for
-   `x86_64-unknown-netbsd11.0`, so every runtime import failed with notes
-   that said only that no library for 10.0 had it. The notes on a missing
-   import now also name each library on the library path that has the
-   module for another target, as they did for the other size model:
-   `Libraries.OtherTargets` lists the triple directories with the shell,
-   since `Files` cannot read a directory. `llvm-using-modules` checks
-   it with a library copied under `sparc64-unknown-netbsd`. INSTALL.md
-   section 1 says NetBSD needs pkgsrc's clang for the system's own
-   release, and the User's Guide (section 1) and the Reference Guide
-   ("Where modules come from") say what the notes show.
-
-A third point found with items 1 and 2 - a library is built twice, once for
-`-O2` and once for `-OC` - needs no change: declaring the C-facing
-parameters with `SYSTEM.INT32` and `SYSTEM.ADDRESS` keeps one source for
-both.
+Those done while Phase 15 was current, 1-4, are in
+`doc/history/phases/phase-15.md`.
 
 ## Open design questions
 

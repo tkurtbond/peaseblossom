@@ -1132,7 +1132,7 @@ END Files.
 
 ```text
 The tokens In reads from standard input and InStr from a string
-(PLAN.md, "Ongoing library enhancements" 2), recognized here once, over
+(Phase 15's "Ongoing library enhancements" 2), recognized here once, over
 a Source of characters, so that the two cannot come to accept
 different text. Internal, like FormattedText: a program imports In or
 InStr. In.Mod describes each token and how it differs from voc's.
@@ -1235,7 +1235,7 @@ every procedure's first parameter. Internal, like RealDigits: a program
 imports Out or Err. What each procedure prints, and how that differs
 from voc's Out, is described in Out.Mod; Int is Console.Int's. The
 text of each number is FormattedText's, which OutStr appends to a
-string (PLAN.md, "Ongoing library enhancements" 1); this module pads
+string (Phase 15's "Ongoing library enhancements" 1); this module pads
 it to its field and writes it.
 
 Nothing is buffered: every call has written its output when it returns,
@@ -1286,7 +1286,7 @@ END FormattedOutput.
 ```text
 The text of each number Out writes, without the blanks that pad it to
 its field: what FormattedOutput writes (for Out and Err) and OutStr
-appends to a string (PLAN.md, "Ongoing library enhancements" 1), made
+appends to a string (Phase 15's "Ongoing library enhancements" 1), made
 here once so that the two cannot drift apart. Internal, like
 RealDigits: a program imports Out, Err or OutStr. What each procedure
 makes, and how that differs from voc's Out, is described in Out.Mod.
@@ -1592,7 +1592,7 @@ END In.
 
 ```text
 In's procedures, except Open, reading from a string instead of standard
-input (PLAN.md, "Ongoing library enhancements" 2). Each takes In's
+input (Phase 15's "Ongoing library enhancements" 2). Each takes In's
 parameters followed by s and pos, starts reading at s[pos], and, when
 it succeeds, moves pos to just after what it used up: the blanks it
 skipped, then the number, word, quoted string (its closing quote
@@ -2288,7 +2288,7 @@ END Out.
 
 ```text
 Out's output procedures - Char, String, Int, Hex, Ln, Real, LongReal -
-appending to a string instead of writing to standard output (PLAN.md,
+appending to a string instead of writing to standard output (Phase 15's
 "Ongoing library enhancements" 1). Each takes Out's parameters followed
 by s, and adds its text at s's first 0X, so a run of calls builds a
 line as a run of Out calls writes one; start with s := "".

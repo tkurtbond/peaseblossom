@@ -1,10 +1,11 @@
 # The VAX/VMS MACRO-32 backend (Phase 15) — design
 
-Status (2026-10-05): **a draft, written before any code**, for `PLAN.md`
-Phase 15. Each section says what the manuals fix (a fact, with its source)
-and what poc chooses: **Decided** where the user has agreed (2026-10-05),
-otherwise a proposal. The questions still open are in §11, and the proposed
-order of work in §12.
+Status: written before any code (2026-10-05) for `PLAN.md` Phase 15, and
+kept as the record of its decisions; the phase was done on 2026-10-08
+(`doc/history/phases/phase-15.md`). Each section says what the manuals
+fix (a fact, with its source) and what poc chooses: **Decided** where
+the user has agreed (2026-10-05), otherwise a proposal. The questions
+still open are in §11, and the proposed order of work in §12.
 
 ## 1. What Phase 15 is
 
@@ -21,7 +22,8 @@ program's entry (`doc/history/phases/phase-08.md`, "Explicit non-goals" and
 steps 5-12). Not `REAL`/`LONGREAL` (Phase 8 left them to Phase 9), pointers,
 `NEW`, the collector, type-bound procedures, open arrays or nested
 procedures: Phase 16 step 3 brings those, with record extension, record
-field initializers and record and array literals.
+field initializers, record and array literals, and `SYSTEM.SET64` (added
+with the user 2026-10-08).
 
 "Done" is hand-reviewed `.mar` output checked in as
 `test/conformance/*/expected-vax.mar`-style fixtures, each with a reviewer's

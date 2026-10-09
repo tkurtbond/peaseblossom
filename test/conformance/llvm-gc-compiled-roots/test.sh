@@ -8,7 +8,7 @@
 #   2. given as its .sym and .o to a program that has the collector, what
 #      G.p reaches survives a collection - until 2026-10-08 G had no root
 #      table there, and G.p's record was freed and its memory used again
-#      (Ongoing bug fixing 6);
+#      (Phase 15's "Ongoing bug fixing" 6);
 #   3. a program without NEW, or a library module (which brings the
 #      collector), links none of ModuleTable, and runs.
 unset POC_IMPORT_PATH POC_LIBRARY_PATH

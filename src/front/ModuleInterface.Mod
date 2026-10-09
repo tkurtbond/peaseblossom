@@ -675,7 +675,7 @@ MODULE ModuleInterface;
      diagnostic rather than emitting broken text. *)
   (* s as a string literal, in the quote it does not contain; ok is FALSE,
      and nothing is written, if it contains both. Written straight to w, as
-     a string has no length limit (PLAN.md, "Ongoing bug fixing" 3). *)
+     a string has no length limit (Phase 14's "Ongoing bug fixing" 3). *)
   PROCEDURE WriteStringLiteral(VAR w: Files.Rider; s: ARRAY OF CHAR; VAR ok: BOOLEAN);
     VAR i: LONGINT; hasDouble, hasSingle: BOOLEAN; quote: ARRAY 2 OF CHAR;
   BEGIN
@@ -1401,7 +1401,7 @@ MODULE ModuleInterface;
           IF obj.externalConvention[0] # 0X THEN
             (* an external procedure keeps its attribute, with the linkage
                name always written, so the importer calls the C symbol and
-               not <M>.<name>, which nothing defines (PLAN.md, "Ongoing bug
+               not <M>.<name>, which nothing defines (Phase 14's "Ongoing bug
                fixing" 1); it is body-less already, so no "^" *)
             WriteStr(w, '  PROCEDURE ["'); WriteStr(w, obj.externalConvention);
             WriteStr(w, '", "'); WriteStr(w, obj.externalName); WriteStr(w, '"] ')

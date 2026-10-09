@@ -17,6 +17,17 @@ exit 1
 VaxClashBetweenModulesA.mod:11:24: error: VaxClashBetweenModulesB.clashfHvJRlcQIjum and VaxClashBetweenModulesA.clashcQfgBVxgojQf have the same VAX symbol, VAXCLASHBETWEENMODULES_TV649M8G
 1 error(s); nothing written
 exit 1
+== poc -emit-macro32 VaxReportedOnce.mod
+VaxReportedOnce.mod:8:7: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a variable of type SYSTEM.SET64 (Phase 16)
+VaxReportedOnce.mod:8:44: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a variable of type REAL (Phase 16)
+VaxReportedOnce.mod:8:53: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a variable of type POINTER TO RECORD (Phase 16)
+VaxReportedOnce.mod:10:12: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type SYSTEM.SET64 (Phase 16)
+VaxReportedOnce.mod:11:9: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type REAL (Phase 16)
+VaxReportedOnce.mod:11:13: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type REAL (Phase 16)
+VaxReportedOnce.mod:12:8: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type POINTER TO RECORD (Phase 16)
+VaxReportedOnce.mod:12:12: error: module VaxReportedOnce: the VAX backend cannot lower this yet: NIL (pointers and procedure values, Phase 16)
+8 construct(s) the VAX backend cannot lower yet; not written
+exit 1
 == poc -target x86_64-unknown-linux-gnu -emit-macro32 VaxEmpty.mod
 poc: -emit-macro32 is for -target vax-dec-vms, not x86_64-unknown-linux-gnu
 exit 1

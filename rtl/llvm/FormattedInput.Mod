@@ -1,7 +1,7 @@
 MODULE FormattedInput;
 
   (* The tokens In reads from standard input and InStr from a string
-     (PLAN.md, "Ongoing library enhancements" 2), recognized here once, over
+     (Phase 15's "Ongoing library enhancements" 2), recognized here once, over
      a Source of characters, so that the two cannot come to accept
      different text. Internal, like FormattedText: a program imports In or
      InStr. In.Mod describes each token and how it differs from voc's.

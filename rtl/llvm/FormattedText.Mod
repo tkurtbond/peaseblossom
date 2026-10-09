@@ -2,7 +2,7 @@ MODULE FormattedText;
 
   (* The text of each number Out writes, without the blanks that pad it to
      its field: what FormattedOutput writes (for Out and Err) and OutStr
-     appends to a string (PLAN.md, "Ongoing library enhancements" 1), made
+     appends to a string (Phase 15's "Ongoing library enhancements" 1), made
      here once so that the two cannot drift apart. Internal, like
      RealDigits: a program imports Out, Err or OutStr. What each procedure
      makes, and how that differs from voc's Out, is described in Out.Mod.

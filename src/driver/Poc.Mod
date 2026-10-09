@@ -587,7 +587,7 @@ MODULE Poc;
      SIZE folds to), both for -target's triple, else the host's, as a build
      would use; without clang, which names the host, no libraries and the
      default word size. -check took the host's libraries but not its word
-     size until PLAN.md's "Ongoing bug fixing" 2, so it judged a 64-bit
+     size until Phase 14's "Ongoing bug fixing" 2, so it judged a 64-bit
      host's module by 32-bit rules, and it ignored -target. *)
   PROCEDURE SetCheckTarget(explicitTriple: ARRAY OF CHAR);
     VAR triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR; clangLine: ARRAY 256 OF CHAR;
@@ -791,7 +791,7 @@ MODULE Poc;
     IF irPath[0] # 0X THEN COPY(irPath, file) ELSE COPY(objectPath, file) END;
     COPY(Diagnostics.fileName, savedFileName); COPY(symPath, Diagnostics.fileName);
     (* -strict is for the command line's module, as in DiscoverModule; a
-       .sym is not its text (PLAN.md, "Ongoing bug fixing" 4) *)
+       .sym is not its text (Phase 14's "Ongoing bug fixing" 4) *)
     savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE;
     errorCountBefore := Diagnostics.errorCount;
     module := ParseModuleAdapter(buffer, length);
@@ -888,7 +888,7 @@ MODULE Poc;
     END;
     COPY(Diagnostics.fileName, savedFileName); COPY(symPath, Diagnostics.fileName);
     (* -strict is for the command line's module, as in DiscoverModule; a
-       .sym is not its text (PLAN.md, "Ongoing bug fixing" 4) *)
+       .sym is not its text (Phase 14's "Ongoing bug fixing" 4) *)
     savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE;
     errorCountBefore := Diagnostics.errorCount;
     module := ParseModuleAdapter(buffer, length);

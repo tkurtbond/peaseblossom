@@ -263,7 +263,7 @@ MODULE Types;
       realText*: ARRAY stringValueLength + 1 OF CHAR;
       boolVal*: BOOLEAN;
       charVal*: CHAR;
-      (* a string constant's text, as long as it is (PLAN.md, "Ongoing bug
+      (* a string constant's text, as long as it is (Phase 14's "Ongoing bug
          fixing" 3), never NIL in a stringValue; shared, never changed in
          place, so a copy of a Value may keep the same text *)
       stringVal*: Lexer.Text;

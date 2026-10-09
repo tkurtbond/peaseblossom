@@ -1,7 +1,7 @@
 MODULE ordset;
   (* ORD of a SET is an INTEGER: truncated to INTEGER's width under -O2
      (16 bits, from SET's 32), and the same 32 bits under -OC, where a
-     trunc that did not narrow made invalid IR (PLAN.md, "Ongoing bug
+     trunc that did not narrow made invalid IR (Phase 15's "Ongoing bug
      fixing" 5). The bits used here fit in 15, so both models agree. *)
   IMPORT SYSTEM, Out;
   CONST c = {1, 2};

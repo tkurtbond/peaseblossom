@@ -6,7 +6,7 @@ MODULE FormattedOutput;
      imports Out or Err. What each procedure prints, and how that differs
      from voc's Out, is described in Out.Mod; Int is Console.Int's. The
      text of each number is FormattedText's, which OutStr appends to a
-     string (PLAN.md, "Ongoing library enhancements" 1); this module pads
+     string (Phase 15's "Ongoing library enhancements" 1); this module pads
      it to its field and writes it.
 
      Nothing is buffered: every call has written its output when it returns,

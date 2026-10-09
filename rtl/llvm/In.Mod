@@ -41,7 +41,7 @@ MODULE In;
 
   TYPE
     (* standard input as FormattedInput reads it, which recognizes the
-       tokens for In and InStr alike (PLAN.md, "Ongoing library
+       tokens for In and InStr alike (Phase 15's "Ongoing library
        enhancements" 2) *)
     StandardInput = RECORD (FormattedInput.Source) END;
 

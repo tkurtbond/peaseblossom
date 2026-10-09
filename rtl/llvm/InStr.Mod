@@ -1,7 +1,7 @@
 MODULE InStr;
 
   (* In's procedures, except Open, reading from a string instead of standard
-     input (PLAN.md, "Ongoing library enhancements" 2). Each takes In's
+     input (Phase 15's "Ongoing library enhancements" 2). Each takes In's
      parameters followed by s and pos, starts reading at s[pos], and, when
      it succeeds, moves pos to just after what it used up: the blanks it
      skipped, then the number, word, quoted string (its closing quote

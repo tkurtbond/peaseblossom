@@ -1,5 +1,5 @@
 MODULE outstr;
-  (* OutStr (PLAN.md, "Ongoing library enhancements" 1): each case is
+  (* OutStr (Phase 15's "Ongoing library enhancements" 1): each case is
      written by Out, then by OutStr into a string that Out writes; the two
      lines must be the same (test.sh checks). Then appending to a string
      that holds text, and truncation at every length of a short one. *)

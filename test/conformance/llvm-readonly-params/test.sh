@@ -1,6 +1,6 @@
 #!/bin/sh
 . ../../testenv.sh
-# Read-only parameters (PLAN.md, "Ongoing language enhancements" 1), under
+# Read-only parameters (Phase 15's "Ongoing language enhancements" 1), under
 # both size models: the same output.
 POC_IMPORT_PATH=../../../rtl/llvm
 export POC_IMPORT_PATH

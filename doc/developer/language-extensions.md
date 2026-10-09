@@ -82,7 +82,7 @@ except under `-OC` on a 32-bit target, where it is 8 bytes to the address's
 operation is done at the wider width, and on a 64-bit target `ADDRESS` and
 `HUGEINT` include each other (`semantic-address-width` has the whole
 table). An `ADDRESS` and any integer type of its width include each other
-(2026-10-08, `PLAN.md`, "Ongoing language enhancements" 2): before, under
+(2026-10-08, Phase 15's "Ongoing language enhancements" 2): before, under
 `-OC` on a 64-bit target, an `ADDRESS` ranked with `HUGEINT` and was not
 assignable to the 8-byte `LONGINT`, so under `-OC` an `ADDRESS` is now
 assignable to a `LONGINT` on every target. `GET`/`PUT` access memory with no alignment assumption;

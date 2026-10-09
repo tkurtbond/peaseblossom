@@ -136,6 +136,7 @@ MODULE VaxCodeGenerator;
       slot, slots: INTEGER; (* memory: the frame's slots it holds, slot -1 if none *)
       reg: INTEGER; (* register: Rn, with Rn+1 for a quadword *)
       pinned: BOOLEAN; (* not to be spilled now *)
+      standIn: BOOLEAN; (* Dummy's, for what was reported *)
       nextLive: Operand
     END;
 
@@ -307,7 +308,7 @@ MODULE VaxCodeGenerator;
     VAR f: Types.Field; n: INTEGER;
   BEGIN
     IF Types.IsOpenArray(t) OR (t IS Types.PointerType) OR (t IS Types.ProcedureType)
-       OR (t = Types.Real) OR (t = Types.LongReal)
+       OR (t = Types.Real) OR (t = Types.LongReal) OR (t = Types.Set64)
        OR (t IS Types.RecordType) & ((t(Types.RecordType).baseType # NIL) OR t(Types.RecordType).needsInit) THEN
       Append(text, " (Phase 16)")
     ELSIF t IS Types.ArrayType THEN
@@ -402,9 +403,26 @@ MODULE VaxCodeGenerator;
   (* What an expression the backend cannot lower gives, so that generating
      goes on to report what else it cannot: nothing is written *)
   PROCEDURE Dummy(): Operand;
+    VAR x: Operand;
   BEGIN
-    RETURN Immediate(Types.Integer, 0)
+    x := Immediate(Types.Integer, 0); x.standIn := TRUE;
+    RETURN x
   END Dummy;
+
+  (* That what, an operation or a comparison, on a and b (b NIL for one
+     operand) cannot be lowered yet, naming their types; nothing when one
+     is Dummy's, already reported, whose type would mislead *)
+  PROCEDURE CannotLower(what: ARRAY OF CHAR; a, b: Operand; line, column: INTEGER);
+    VAR text: ARRAY 400 OF CHAR; n: INTEGER;
+  BEGIN
+    IF a.standIn OR (b # NIL) & b.standIn THEN RETURN END;
+    COPY(what, text); Types.Describe(a.type, text);
+    IF b # NIL THEN Append(text, " and "); Types.Describe(b.type, text) END;
+    n := 0; WHILE text[n] # 0X DO INC(n) END;
+    AppendWhen(a.type, text);
+    IF (b # NIL) & (text[n] = 0X) THEN AppendWhen(b.type, text) END;
+    Unsupported(line, column, text)
+  END CannotLower;
 
   (* The operand's text, or, for a quadword, its low (half 0) or high
      (half 1) longword's *)
@@ -1294,7 +1312,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     a := AsString(a); b := AsString(b);
     IF ~(a.type IS Types.ArrayType) OR ~(b.type IS Types.ArrayType) THEN
-      Unsupported(line, column, "a comparison of these types"); RETURN Dummy()
+      CannotLower("a comparison of ", a, b, line, column); RETURN Dummy()
     END;
     list := AllocateSlots(5);
     IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN Dummy() END;
@@ -1335,7 +1353,7 @@ MODULE VaxCodeGenerator;
     ELSIF v.kind = Types.realValue THEN
       Unsupported(e.line, e.column, "a REAL or LONGREAL value (Phase 16)")
     ELSIF v.kind = Types.setValue THEN
-      Unsupported(e.line, e.column, "a SYSTEM.SET64 value")
+      Unsupported(e.line, e.column, "a SYSTEM.SET64 value (Phase 16)")
     ELSIF v.kind = Types.nilValue THEN
       Unsupported(e.line, e.column, "NIL (pointers are Phase 16's)")
     ELSE
@@ -1568,7 +1586,7 @@ MODULE VaxCodeGenerator;
       t := Types.WiderOf(a.type, b.type);
       a := Widen(a, t, line, column); b := Widen(b, t, line, column)
     ELSIF ~((a.type = b.type) & IsSliceScalar(a.type)) THEN
-      Unsupported(line, column, "a comparison of these types"); RETURN FALSE
+      CannotLower("a comparison of ", a, b, line, column); RETURN FALSE
     ELSIF ~((a.type = Types.Char) OR (op = Lexer.equal) OR (op = Lexer.notEqual)) THEN
       Unsupported(line, column, "an ordering of these types"); RETURN FALSE
     END;
@@ -1726,7 +1744,7 @@ MODULE VaxCodeGenerator;
       ELSIF op = Lexer.modKeyword THEN RETURN DivMod(FALSE, t, a, b, e.line, e.column)
       END
     END;
-    Unsupported(e.line, e.column, "this operation (REAL and LONGREAL are Phase 16's)");
+    CannotLower("an operation on ", a, b, e.line, e.column);
     RETURN Dummy()
   END Binary;
 
@@ -1754,7 +1772,7 @@ MODULE VaxCodeGenerator;
       END;
       Done(v, result); RETURN result
     END;
-    Unsupported(e.line, e.column, "this operation (REAL and LONGREAL are Phase 16's)");
+    CannotLower("an operation on ", v, NIL, e.line, e.column);
     RETURN Dummy()
   END Unary;
 
@@ -1797,7 +1815,7 @@ MODULE VaxCodeGenerator;
         v := ConstantEvaluator.Evaluate(el.low, scope); lo := v.intVal; hi := lo;
         IF el.high # NIL THEN v := ConstantEvaluator.Evaluate(el.high, scope); hi := v.intVal END;
         IF (lo < 0) OR (hi > 31) THEN
-          Unsupported(el.line, el.column, "a SYSTEM.SET64 value"); RETURN Dummy()
+          Unsupported(el.line, el.column, "a SYSTEM.SET64 value (Phase 16)"); RETURN Dummy()
         END;
         FOR i := lo TO hi DO INCL(bits, SHORT(i)) END
       ELSE
@@ -2167,12 +2185,12 @@ MODULE VaxCodeGenerator;
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
     target := Locate(de.designator, obj, args.line, args.column);
     IF target.type # Types.Set THEN
-      Unsupported(args.line, args.column, "a SYSTEM.SET64 value"); Release(target); RETURN
+      Unsupported(args.line, args.column, "a SYSTEM.SET64 value (Phase 16)"); Release(target); RETURN
     END;
     IF ConstantEvaluator.IsConstantExpr(args.next, scope) THEN
       v := ConstantEvaluator.Evaluate(args.next, scope);
       IF (v.intVal < 0) OR (v.intVal > 31) THEN
-        Unsupported(args.next.line, args.next.column, "a SYSTEM.SET64 value"); Release(target); RETURN
+        Unsupported(args.next.line, args.next.column, "a SYSTEM.SET64 value (Phase 16)"); Release(target); RETURN
       END;
       mask := Immediate(Types.Set, 0); mask.bits := {SHORT(v.intVal)}
     ELSE
@@ -2377,6 +2395,8 @@ MODULE VaxCodeGenerator;
     | e: SyntaxTree.SetExprNode DO RETURN SetConstructor(e, dest)
     | e: SyntaxTree.StructuredLiteralNode DO
         Unsupported(e.line, e.column, "a record or array literal (Phase 16)"); RETURN Dummy()
+    | e: SyntaxTree.NilExprNode DO
+        Unsupported(e.line, e.column, "NIL (pointers and procedure values, Phase 16)"); RETURN Dummy()
     ELSE
       Unsupported(e.line, e.column, "this expression"); RETURN Dummy()
     END

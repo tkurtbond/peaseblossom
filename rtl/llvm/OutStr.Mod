@@ -1,7 +1,7 @@
 MODULE OutStr;
 
   (* Out's output procedures - Char, String, Int, Hex, Ln, Real, LongReal -
-     appending to a string instead of writing to standard output (PLAN.md,
+     appending to a string instead of writing to standard output (Phase 15's
      "Ongoing library enhancements" 1). Each takes Out's parameters followed
      by s, and adds its text at s's first 0X, so a run of calls builds a
      line as a run of Out calls writes one; start with s := "".

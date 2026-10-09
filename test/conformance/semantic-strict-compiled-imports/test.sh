@@ -2,7 +2,7 @@
 . ../../testenv.sh
 # -strict is for the command line's module only, also when an import comes
 # as a .sym: from a library (Out, poc-rtl's) or as a compiled module's .sym
-# and .o (PLAN.md, "Ongoing bug fixing" 4: both were held to -strict); the
+# and .o (Phase 14's "Ongoing bug fixing" 4: both were held to -strict); the
 # module's own extensions are still reported.
 exe=$(basename "$PWD")
 rm -rf built
