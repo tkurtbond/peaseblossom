@@ -283,13 +283,30 @@ instead of the host, as far as
 .Xr clang 1
 can; linking needs the target's C library.
 .Cm vax-dec-vms
-is the VAX/VMS target, which only
+is the VAX/VMS target, which takes
 .Fl emit-macro32 ,
 .Fl check ,
-.Fl emit-interface
+.Fl emit-interface ,
+.Fl show-interface ,
+.Fl build
 and
-.Fl show-interface
-take so far.
+.Fl compile
+so far.
+For it,
+.Fl build
+writes every module's
+.Pa .mar
+and a DCL procedure,
+.Pa name.com ,
+that assembles them on VMS and links them with poc's runtime,
+.Pa POCRTL.OBJ ,
+into
+.Pa NAME.EXE ;
+.Fl compile
+writes the named modules'
+.Pa .mar
+and a procedure that assembles them.
+poc runs nothing on VMS itself.
 .It Fl opt Ar level
 Have
 .Xr clang 1

@@ -31,6 +31,13 @@ test/conformance/**/*.mar
 # and its imports'
 !test/conformance/**/expected-vax.mar
 !test/conformance/**/expected-vax-*.mar
+# a hand-written MACRO-32 source (PLAN.md Phase 16 step 2)
+!test/conformance/**/hand-*.mar
+# a build procedure poc writes for the VAX, but not the expected ones or a
+# fixture's own procedures for the guest (Phase 16 step 2)
+test/conformance/**/*.com
+!test/conformance/**/expected-*.com
+!test/conformance/**/guest-*.com
 test/conformance/**/result
 test/conformance/hello/hello
 test/conformance/llvm-build-run/llvm-build-run

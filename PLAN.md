@@ -505,7 +505,7 @@ most, object libraries.
    brought forward into Phase 15 (2026-10-05): the development system is a
    SIMH `microvax3900` running VMS 5.5-2H4, and Phase 15 copies `.mar`
    files to it to assemble them. Settle what runs: which SIMH VAX model VMS 5.5-2 boots on, and where the installation
-   media and licences come from (a hobbyist licence - recorded, not assumed).
+   media and licences come from.
    Confirm on the guest what the base kit provides (`MACRO`, `LINK`,
    `LIBRARY`, `DCL`, the RTLs) and which layered tools poc must not depend
    on. Decide how files cross between the Linux/BSD host and the guest -
@@ -516,15 +516,15 @@ most, object libraries.
    every later step's fixtures depend on it. Recorded in the plan, with
    the choices that were rejected.
 
-   **Record** (2026-10-09; the question marked is the user's):
+   **Record** (2026-10-09):
    - *The system.* SIMH's `microvax3900` (`VAXserver 3900 Series`, a
-     KA655 with 64 MB, its most) runs VMS `V5.5-2H4`, the later hardware
-     release of 5.5-2, on `DUA0:` (system) and `DUA1:` (users, `POC`'s
+     KA655) runs VMS `V5.5-2H4`, the later hardware release of 5.5-2,
+     on `DUA0:` (system) and `DUA1:` (users, `POC`'s
      `DUA1:[USERS.POC]`), at `192.168.2.20` while SIMH runs on atla.
-     **For the user**: where the installation media and the licences
-     came from. The PAKs loaded include `OPENVMS-HOBBYIST` and `VAX-VMS`
-     (hobbyist licences, as `SHOW LICENSE` lists them), so the record
-     should name the programme and their termination date.
+     It had 64 MB, the KA655's most; the user gave SIMH 256 MB
+     (2026-10-09), which VMS uses (`SHOW MEMORY/PHYSICAL`: 524288
+     pages). The licences are hobbyist PAKs (`OPENVMS-HOBBYIST`,
+     `VAX-VMS`); the user decided they need no further record.
    - *The base kit*, confirmed with `tools/vax-do` (below): `MACRO32`,
      `LINK`, `LIBRARIAN`, `DCL`, the debugger (`DEBUG.EXE`,
      `DEBUGSHR.EXE`), `DIFF`, `SEARCH`, `SORTMERGE`, `BACKUP`, `CONVERT`,
@@ -557,14 +557,16 @@ most, object libraries.
      92 MB on x86-64 and 105 MB on 32-bit OpenBSD
      (75 MB of it data), and `POC` may have 10240 pages of paging file
      (5 MB), a working set of 1024 to 2048 pages (0.5 to 1 MB), and a
-     process at most `VIRTUALPAGECNT` 139072 pages (68 MB) on a 64 MB
-     machine. Step 6 cannot run under these. Choices: raise `POC`'s
+     process at most `VIRTUALPAGECNT` 139072 pages (68 MB), on what was
+     a 64 MB machine. Step 6 cannot run under these. Choices: raise `POC`'s
      `PGFLQUOTA`, `WSQUOTA` and `WSEXTENT` (`AUTHORIZE`) and the system's
      `VIRTUALPAGECNT` (`SYSGEN`) and page file, all privileged changes to
      the guest; give SIMH more memory (SIMH documents an extended
      KA655X with up to 512 MB; whether VMS 5.5-2 uses it is to be
      checked); and make poc need less. **Decided (the user,
-     2026-10-09): poc needs less**; the guest is not changed. One module
+     2026-10-09): poc needs less**; the guest is not changed. The user
+     then gave SIMH 256 MB (above) and kept the decision: `POC`'s quotas
+     and `VIRTUALPAGECNT` stay as they are. One module
      at a time is not enough by itself: compiled alone with `-compile`
      (its imports' `.sym` files made, clang replaced by a stand-in so
      only poc is measured), on 32-bit OpenBSD, `LLVMCodeGenerator` peaks
@@ -587,6 +589,45 @@ most, object libraries.
    fixed there. `VaxToolchainDriver.Mod` stops being a stub: it emits the
    `.mar`, drives `MACRO`/`LINK` (locally on the guest, or by the step 1
    command from the host).
+
+   **Record** (2026-10-09):
+   - *The hand-written program*, `test/conformance/vax-hello/
+     hand-hello.mar`, calls `LIB$PUT_OUTPUT` and is assembled, linked and
+     run on the guest by the fixture's `guest-hello.com`, through
+     `tools/vax-do`. Its line and `$STATUS` are compared
+     (`test/vaxfixture.sh`, `vax_do`).
+   - *The Phase 15 fixtures* were already assembled and run before this
+     step: all 32 `expected-vax.mar` assemble clean, and the 28 fixtures
+     with code to run do so under the debugger, their logs compared
+     (`tools/vax-run`). The assembler rejected nothing, so step 2 found no
+     Phase 15 bug to fix. A plain `RUN` of each would show only an exit
+     status until the runtime has `Out`, so none was added.
+   - *The driver*. **Decided (the user, 2026-10-09): on the host, poc
+     writes the `.mar` files and a DCL build procedure and runs nothing on
+     VMS.** `-target vax-dec-vms -build` writes `<name>.com`, which
+     assembles the modules and links `<NAME>.EXE` through an options file
+     with poc's runtime, `POCRTL.OBJ` (`rtl/vax/PocRtl.mar`; from
+     `POC$RTL:` when that is defined). `-compile` writes `<First>.com`,
+     which only assembles. A warning, such as `%LINK-W-MULDEF`, stops
+     either. `-library` and `-install-library` stay refused (Phase 17).
+     The same procedure serves poc on VMS later (step 6).
+     `doc/developer/vax-macro32-backend.md` section 13.
+   - *The runtime's first cut*: `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and
+     `POC_HMOD` as the debugger stub has them. `POC_TRAP` and `POC_HALT`
+     are provisional (they exit with `SS$_ABORT` and `SS$_NORMAL`) until
+     step 3c.
+   - *Section 5.1's layer 2*, for the modules poc writes in one run: their
+     exported symbols share one table, so a collision between two modules
+     is an error at the second declaration, in its own file. So are two
+     modules whose names differ only in case. Errors found while a module
+     is written now name that module's file, not the main module's.
+   - *Fixture* `vax-build`: a two-module program built with `-build` and
+     `-compile`, its procedures compared with `expected-<name>.com`, then
+     run on the guest. Its exit status, `%X00003735`, encodes what it
+     computed (a loop, a `HUGEINT` product and quotient, a string
+     comparison, an imported variable). Also `-o`, and the refusals: a
+     name that is not a VMS image name, `-OC`, the clash, and the case
+     collision.
 
 3. **Widening the backend to what poc's own source uses.** Survey poc's own
    source (`src/`) for every construct it needs - pointers and `NEW`,

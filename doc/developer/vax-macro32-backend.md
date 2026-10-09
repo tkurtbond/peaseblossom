@@ -319,7 +319,14 @@ wrong program with no diagnostic.
    from the `.sym` as it is. At link time poc (or a separate check for
    hand-built links) walks the main module's import closure and stops if
    two different full names have one symbol: "`A.X` and `B.Y` both give
-   `..._VA2IG0SM`; rename one".
+   `..._VA2IG0SM`; rename one". Done (Phase 16 step 2) for the modules
+   poc writes in one run, a program's (`-build`, `-emit-macro32`) or
+   `-compile`'s: each module's exported variables and procedures enter one
+   table as they are written, and a second full name with a symbol
+   already there is an error at its declaration, in its own file
+   (`vax-build`, `VaxBuildClash`); so are two modules whose names differ
+   only in case. The check from `.sym` files, for modules compiled
+   separately or in libraries, comes with them (Phase 17).
    **The name scheme's version belongs to the VAX target, not to the
    interface.** A `.sym`'s text does not depend on the target (it is
    stored per target and size model, `lib/poc/<triple>/<O2|OC>/`, but
@@ -836,10 +843,11 @@ sign; the others come with their constructs.
   assembling cannot; the step 6 fixtures were the first, then those of
   steps 3-5 with code to run, then step 7's. Linking and running poc's own runtime and
   programs stay Phase 16's.
-- `VaxToolchainDriver.Mod` is a stub that writes the `.mar` and reports
-  that assembling is not available (`PLAN.md` Phase 15). As for IR, the
-  `.mar` of every module compiled from source is written, or none, when
-  `VaxCodeGenerator` reports what it cannot lower yet.
+- `VaxToolchainDriver.Mod` was a stub that wrote the `.mar` and reported
+  that assembling was not available (`PLAN.md` Phase 15); Phase 16 step 2
+  gave it `-build` and `-compile` (§13). As for IR, the `.mar` of every
+  module compiled from source is written, or none, when `VaxCodeGenerator`
+  reports what it cannot lower yet.
 
 ## 11. Open questions
 
@@ -908,3 +916,47 @@ Each step lands with its fixtures before the next, as Phase 8 did:
    65535 characters (decided with the user 2026-10-08). Done.
 8. Several modules and the program's start (§6). Done.
 9. The phase record and the exit review.
+
+## 13. Building a program (Phase 16 step 2)
+
+**Decided (the user, 2026-10-09)**: on the Linux or BSD host, poc writes
+what VMS needs and runs nothing there. `poc -target vax-dec-vms -build
+<file>` (or `-target vax-dec-vms <file>`) writes every module's `.mar`
+in the output directory and a DCL procedure at `-o`'s path with `.com`
+for its `.exe`, by default `<Main>.com` in the current directory, as
+the executable is named for LLVM. The procedure assembles each module
+(`MACRO/OBJECT`, the imports first), writes a linker options file
+`<IMAGE>.OPT` listing the objects, the main module's first, and links
+`<IMAGE>.EXE` from it and poc's runtime. `-o`'s last component, without
+`.exe` in any case, must be an ODS-2 name: 1 to 39 letters, digits,
+`_`, `$` and `-`. `poc -target vax-dec-vms -compile <file>...` writes the
+named modules' `.mar`, with no program's start, and
+`<outputDir>/<First>.com`, which only assembles them. Both are silent on
+success. Every module of a `-build` must be compiled from source, since
+VMS libraries are Phase 17's.
+
+- **The options file** keeps the `LINK` command short. DCL limits a
+  command's length, and poc's own program has over forty modules. The
+  procedure writes it with `CREATE`, from the lines that follow, so the
+  procedure stays one file.
+- **A warning stops the build.** `ON WARNING THEN EXIT $STATUS` comes
+  first, so a `MACRO` warning, or `%LINK-W-MULDEF` (§5.1, layer 1), ends
+  the procedure with that step's status. Otherwise it exits with the
+  `LINK`'s.
+- **poc's runtime** is one object, `POCRTL.OBJ`, assembled from
+  `rtl/vax/PocRtl.mar`. The procedure takes it from `POC$RTL:` when that
+  logical name is defined, otherwise from the current directory. It is
+  linked as an object, not taken from a library, so it is always in the
+  image. At step 2 it has `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and
+  `POC_HMOD`, the same code as `tools/vax-runtime-stub.mar`'s, which
+  stays as it is for the debugger runs. `POC_TRAP` and `POC_HALT` are
+  provisional: they end the program with `SS$_ABORT` and `SS$_NORMAL`
+  until step 3c decides what a trap reports and what DCL sees of
+  `HALT(n)`.
+- **What is checked.** `test/conformance/vax-hello` assembles, links and
+  runs a hand-written program, `hand-hello.mar`. `vax-build` compares the
+  procedures with `expected-<name>.com`, then runs them on the guest
+  (`test/vaxfixture.sh`, `vax_do`) and runs the program. Until the
+  runtime has `Out`, the program shows what it computed in its exit
+  status, which DCL's `$STATUS` shows. The `.mar` files poc writes there
+  are not compared: the run checks them.

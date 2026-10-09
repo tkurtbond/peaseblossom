@@ -1336,71 +1336,211 @@ MODULE Poc;
     END
   END EmitLLVMIR;
 
-  (* PLAN.md Phase 15 (doc/developer/vax-macro32-backend.md, sections 10
-     and 12): -emit-macro32 writes each module of the program compiled from
-     source as <Module>.mar, VaxToolchainDriver's, for the VAX target, which
-     it implies: -target, if given, must be vax-dec-vms, and the size model
-     -O2, the only one the VAX backend takes (section 4). The modules are
-     checked and their .sym files written as for any other target. *)
-  PROCEDURE EmitMacro32(name, outputDir, explicitTriple: ARRAY OF CHAR);
-    VAR
-      modules, m: LLVMCodeGenerator.ModuleList;
-      ok, written: BOOLEAN;
-      key: ARRAY 32 OF CHAR;
-      path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
-      errorsBefore, unlinkResult: INTEGER;
+  (* The VAX target for a command that writes MACRO-32 (PLAN.md Phases 15
+     and 16; doc/developer/vax-macro32-backend.md, sections 4 and 10):
+     -target, if given, must be vax-dec-vms, which -emit-macro32 implies,
+     and the size model -O2, the only one the VAX backend takes. FALSE,
+     reported, if not. *)
+  PROCEDURE SetVaxTarget(command, explicitTriple: ARRAY OF CHAR): BOOLEAN;
   BEGIN
     IF (explicitTriple[0] # 0X) & ~VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN
       failed := TRUE;
-      Err.String("poc: -emit-macro32 is for -target "); Err.String(VaxToolchainDriver.triple);
-      Err.String(", not "); Err.String(explicitTriple); Err.Ln
+      Err.String("poc: "); Err.String(command); Err.String(" is for -target "); Err.String(VaxToolchainDriver.triple);
+      Err.String(", not "); Err.String(explicitTriple); Err.Ln;
+      RETURN FALSE
     ELSIF ConstantEvaluator.sizeModel # MemoryLayout.sizeModelO2 THEN
       failed := TRUE;
-      Err.String("poc: the VAX backend takes only -O2"); Err.Ln
-    ELSE
-      SetWordSizeFromTriple(VaxToolchainDriver.triple);
-      SetLibraryTarget(VaxToolchainDriver.triple);
-      CheckAndDiscoverProgram(name, outputDir, modules, ok);
-      IF ok THEN
-        errorsBefore := Diagnostics.errorCount;
-        VaxCodeGenerator.unsupportedCount := 0;
-        m := modules; written := TRUE;
-        WHILE m # NIL DO
-          IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
-            IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
-            (* the program's main module is the last, as on LLVM *)
-            IF ~VaxToolchainDriver.EmitModule(m.module, m.scope, key, outputDir, m.next = NIL, path) THEN
-              written := FALSE
-            END
-          END;
-          m := m.next
-        END;
-        (* as for IR: every module's .mar, or none, when one could not be
-           made, is left *)
-        m := modules;
-        WHILE m # NIL DO
-          IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
-            VaxToolchainDriver.ModuleFilePath(outputDir, m.module.name, path);
-            IF written & (Diagnostics.errorCount = errorsBefore) THEN
-              Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
-            ELSE
-              unlinkResult := Platform.Unlink(path)
-            END
-          END;
-          m := m.next
-        END;
-        IF VaxCodeGenerator.unsupportedCount > 0 THEN
+      Err.String("poc: the VAX backend takes only -O2"); Err.Ln;
+      RETURN FALSE
+    END;
+    SetWordSizeFromTriple(VaxToolchainDriver.triple);
+    SetLibraryTarget(VaxToolchainDriver.triple);
+    RETURN TRUE
+  END SetVaxTarget;
+
+  (* Whether m is a module poc writes the .mar of: one compiled from
+     source, and for -compile (onlyMembers) one of the files named *)
+  PROCEDURE IsVaxUnit(m: LLVMCodeGenerator.ModuleList; onlyMembers: BOOLEAN): BOOLEAN;
+  BEGIN
+    RETURN ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) & (~onlyMembers OR (FindMember(m.module.name) # NIL))
+  END IsVaxUnit;
+
+  (* Each unit of modules written as <Module>.mar, VaxToolchainDriver's, in
+     outputDir, the program's start in the main module, the last, unless
+     onlyMembers (-compile, which has no main); with announce, "semantic
+     OK, wrote" for each. Their exported symbols go in one table, so that
+     two modules with one symbol are an error (section 5.1, layer 2), and
+     two whose names differ only in case, whose files and initializers
+     would be one on VMS, are refused. As for IR: every module's .mar, or
+     none, when one could not be made, is left. FALSE, reported, if not
+     written. *)
+  PROCEDURE WriteMacro32(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR;
+                         onlyMembers, announce: BOOLEAN): BOOLEAN;
+    VAR
+      m, n: LLVMCodeGenerator.ModuleList;
+      written: BOOLEAN;
+      key: ARRAY 32 OF CHAR;
+      path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
+      a, b: VaxTypes.Symbol;
+      errorsBefore, unlinkResult: INTEGER;
+      savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+  BEGIN
+    m := modules;
+    WHILE m # NIL DO
+      n := m.next;
+      WHILE n # NIL DO
+        IF IsVaxUnit(m, onlyMembers) & IsVaxUnit(n, onlyMembers)
+           & VaxTypes.MakeInitSymbol(m.module.name, a) & VaxTypes.MakeInitSymbol(n.module.name, b) & (a = b) THEN
           failed := TRUE;
-          Err.Int(VaxCodeGenerator.unsupportedCount, 0);
-          Err.String(" construct(s) the VAX backend cannot lower yet; not written"); Err.Ln
-        ELSIF Diagnostics.errorCount > errorsBefore THEN
-          ReportGenerationErrors
-        ELSIF ~written THEN
-          failed := TRUE; Err.String("poc: cannot write the .mar files"); Err.Ln
+          Err.String("poc: modules "); Err.String(m.module.name); Err.String(" and "); Err.String(n.module.name);
+          Err.String(" differ only in case, and VMS does not tell their files or symbols apart"); Err.Ln;
+          RETURN FALSE
+        END;
+        n := n.next
+      END;
+      m := m.next
+    END;
+    errorsBefore := Diagnostics.errorCount;
+    VaxCodeGenerator.unsupportedCount := 0;
+    VaxCodeGenerator.programNames := VaxTypes.NewNameTable();
+    m := modules; written := TRUE;
+    COPY(Diagnostics.fileName, savedFileName);
+    WHILE m # NIL DO
+      IF IsVaxUnit(m, onlyMembers) THEN
+        IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
+        (* what the generator reports is in the module's own file *)
+        COPY(m.fileName, Diagnostics.fileName);
+        (* the program's main module is the last, as on LLVM *)
+        IF ~VaxToolchainDriver.EmitModule(m.module, m.scope, key, outputDir, ~onlyMembers & (m.next = NIL), path) THEN
+          written := FALSE
         END
-      END
+      END;
+      m := m.next
+    END;
+    COPY(savedFileName, Diagnostics.fileName);
+    VaxCodeGenerator.programNames := NIL;
+    m := modules;
+    WHILE m # NIL DO
+      IF IsVaxUnit(m, onlyMembers) THEN
+        VaxToolchainDriver.ModuleFilePath(outputDir, m.module.name, path);
+        IF written & (Diagnostics.errorCount = errorsBefore) THEN
+          IF announce THEN Out.String("semantic OK, wrote "); Out.String(path); Out.Ln END
+        ELSE
+          unlinkResult := Platform.Unlink(path)
+        END
+      END;
+      m := m.next
+    END;
+    IF VaxCodeGenerator.unsupportedCount > 0 THEN
+      failed := TRUE;
+      Err.Int(VaxCodeGenerator.unsupportedCount, 0);
+      Err.String(" construct(s) the VAX backend cannot lower yet; not written"); Err.Ln;
+      RETURN FALSE
+    ELSIF Diagnostics.errorCount > errorsBefore THEN
+      ReportGenerationErrors; RETURN FALSE
+    ELSIF ~written THEN
+      failed := TRUE; Err.String("poc: cannot write the .mar files"); Err.Ln;
+      RETURN FALSE
+    END;
+    RETURN TRUE
+  END WriteMacro32;
+
+  (* PLAN.md Phase 15 (doc/developer/vax-macro32-backend.md, sections 10
+     and 12): -emit-macro32 writes each module of the program compiled from
+     source as <Module>.mar, for the VAX target, which it implies. The
+     modules are checked and their .sym files written as for any other
+     target. *)
+  PROCEDURE EmitMacro32(name, outputDir, explicitTriple: ARRAY OF CHAR);
+    VAR modules: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
+  BEGIN
+    IF SetVaxTarget("-emit-macro32", explicitTriple) THEN
+      CheckAndDiscoverProgram(name, outputDir, modules, ok);
+      IF ok & WriteMacro32(modules, outputDir, FALSE, TRUE) THEN END
     END
   END EmitMacro32;
+
+  (* Where -build's procedure goes for -o's exePath, and the image's name:
+     exePath with ".com" for a last ".exe" (in any case), or added; its
+     last component, without ".exe", must be a VMS file name. FALSE,
+     reported, if not. *)
+  PROCEDURE VaxImagePaths(exePath: ARRAY OF CHAR; VAR comPath, image: ARRAY OF CHAR): BOOLEAN;
+    VAR i, j, slash: INTEGER; ext: ARRAY 5 OF CHAR;
+  BEGIN
+    COPY(exePath, comPath);
+    i := 0; slash := -1;
+    WHILE comPath[i] # 0X DO IF comPath[i] = "/" THEN slash := i END; INC(i) END;
+    IF i - slash > 4 THEN
+      FOR j := 0 TO 3 DO
+        ext[j] := comPath[i - 4 + j];
+        IF (ext[j] >= "a") & (ext[j] <= "z") THEN ext[j] := CHR(ORD(ext[j]) - ORD("a") + ORD("A")) END
+      END;
+      ext[4] := 0X;
+      IF ext = ".EXE" THEN DEC(i, 4); comPath[i] := 0X END
+    END;
+    j := 0;
+    WHILE (slash + 1 + j < i) & (j < LEN(image) - 1) DO image[j] := comPath[slash + 1 + j]; INC(j) END;
+    image[j] := 0X;
+    IF (slash + 1 + j < i) OR ~VaxToolchainDriver.IsVmsFileName(image) THEN
+      failed := TRUE;
+      Err.String("poc: "); Err.String(exePath);
+      Err.String(" does not name a VMS image (1 to 39 letters, digits, _, $ and -, then .exe or nothing)"); Err.Ln;
+      RETURN FALSE
+    END;
+    Strcat(comPath, ".com");
+    RETURN TRUE
+  END VaxImagePaths;
+
+  (* The units of modules, in their order, for a build procedure *)
+  PROCEDURE VaxUnits(modules: LLVMCodeGenerator.ModuleList; onlyMembers: BOOLEAN): VaxToolchainDriver.Unit;
+    VAR m: LLVMCodeGenerator.ModuleList; first, last, u: VaxToolchainDriver.Unit;
+  BEGIN
+    first := NIL; last := NIL; m := modules;
+    WHILE m # NIL DO
+      IF IsVaxUnit(m, onlyMembers) THEN
+        NEW(u); COPY(m.module.name, u.name); u.next := NIL;
+        IF last = NIL THEN first := u ELSE last.next := u END;
+        last := u
+      END;
+      m := m.next
+    END;
+    RETURN first
+  END VaxUnits;
+
+  (* poc -target vax-dec-vms -build (PLAN.md Phase 16 step 2; doc/developer/
+     vax-macro32-backend.md, section 13): every module of the program, each
+     compiled from source, written as <Module>.mar in outputDir, and the
+     DCL procedure that assembles them and links the image, at exePath
+     with ".com" (by default the main module's name, in the current
+     directory, as for LLVM); poc runs nothing on VMS. Silent on
+     success, as a build is. *)
+  PROCEDURE BuildVax(name, outputDir, exePath: ARRAY OF CHAR);
+    VAR
+      modules, m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
+      topName: SyntaxTree.Ident;
+      comPath: ARRAY 300 OF CHAR; image: ARRAY 64 OF CHAR;
+  BEGIN
+    IF ~SetVaxTarget("-build", VaxToolchainDriver.triple) THEN RETURN END;
+    IF (exePath[0] # 0X) & ~VaxImagePaths(exePath, comPath, image) THEN RETURN END;
+    CheckAndDiscoverProgram(name, outputDir, modules, ok);
+    IF ~ok THEN RETURN END;
+    m := modules;
+    WHILE m # NIL DO
+      IF ~IsVaxUnit(m, FALSE) THEN
+        failed := TRUE;
+        Err.String("poc: module "); Err.String(m.module.name);
+        Err.String(" is not compiled from source; a program for "); Err.String(VaxToolchainDriver.triple);
+        Err.String(" is built from source only (VMS libraries are Phase 17's)"); Err.Ln;
+        RETURN
+      END;
+      m := m.next
+    END;
+    ProgramTopName(modules, topName);
+    IF (exePath[0] = 0X) & ~VaxImagePaths(topName, comPath, image) THEN RETURN END;
+    IF WriteMacro32(modules, outputDir, FALSE, FALSE)
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, name, image, VaxUnits(modules, FALSE)) THEN
+      failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
+    END
+  END BuildVax;
 
   PROCEDURE Build(name, outputDir, explicitTriple, exePath: ARRAY OF CHAR);
     VAR
@@ -1409,7 +1549,7 @@ MODULE Poc;
       triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
       topName: SyntaxTree.Ident;
   BEGIN
-    IF RejectVaxTarget("building a program", explicitTriple) THEN RETURN END;
+    IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN BuildVax(name, outputDir, exePath); RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
     ELSE
@@ -1510,6 +1650,39 @@ MODULE Poc;
     END;
   END ReadMembers;
 
+  (* poc -target vax-dec-vms -compile <file>... (PLAN.md Phase 16 step 2;
+     doc/developer/vax-macro32-backend.md, section 13): the modules of the
+     files named written as <Module>.mar and their .sym, in outputDir, with
+     no program's start, and the DCL procedure that assembles them,
+     <outputDir>/<First>.com, the first file's module; their imports are
+     checked, not written. Silent on success. *)
+  PROCEDURE CompileVax(firstFile: INTEGER; outputDir: ARRAY OF CHAR);
+    VAR
+      member: LibraryMember; modules, modulesTail: LLVMCodeGenerator.ModuleList;
+      visited: VisitedModule; ok: BOOLEAN; i: INTEGER;
+      comPath: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
+  BEGIN
+    IF ~SetVaxTarget("-compile", VaxToolchainDriver.triple) THEN RETURN END;
+    ReadMembers(firstFile, FALSE, ok);
+    IF ~ok THEN RETURN END;
+    ModuleInterface.SetInterfaceDir(outputDir);
+    visited := NIL; member := members;
+    WHILE ok & (member # NIL) DO RegenerateInterfaces(member.name, outputDir, visited, ok); member := member.next END;
+    modules := NIL; modulesTail := NIL; member := members;
+    WHILE ok & (member # NIL) DO DiscoverModule(member.name, modules, modulesTail, ok); member := member.next END;
+    IF ~ok THEN
+      IF Diagnostics.errorCount > 0 THEN Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln END;
+      RETURN
+    END;
+    VaxToolchainDriver.ModuleFilePath(outputDir, members.name, comPath);
+    i := 0; WHILE comPath[i] # 0X DO INC(i) END;
+    comPath[i - 4] := 0X; Strcat(comPath, ".com"); (* <First>.mar's .com *)
+    IF WriteMacro32(modules, outputDir, TRUE, FALSE)
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE)) THEN
+      failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
+    END
+  END CompileVax;
+
   (* poc -compile <file>... (Phase 12 step 2f, voc's -c): the modules of
      the files named compiled, each to its .sym, .ll and .o in outputDir,
      with no main and nothing linked: a module compiled already, to be
@@ -1522,7 +1695,7 @@ MODULE Poc;
       member: LibraryMember; modules, modulesTail, m: LLVMCodeGenerator.ModuleList;
       visited: VisitedModule; ok: BOOLEAN;
   BEGIN
-    IF RejectVaxTarget("-compile", explicitTriple) THEN RETURN END;
+    IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN CompileVax(firstFile, outputDir); RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
       RETURN

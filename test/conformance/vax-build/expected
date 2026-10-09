@@ -1,0 +1,30 @@
+== poc -target vax-dec-vms -build VaxBuild.mod
+exit 0
+VaxBuild.com matches expected-VaxBuild.com
+written: VaxBuild.mar
+written: VaxBuildSums.mar
+== poc -target vax-dec-vms -compile VaxBuildSums.mod
+exit 0
+VaxBuildSums.com matches expected-VaxBuildSums.com
+== poc -target vax-dec-vms -o vaxprog.EXE VaxBuild.mod
+exit 0
+vaxprog.com matches expected-vaxprog.com
+== poc -target vax-dec-vms -o bad.name.exe -build VaxBuild.mod
+poc: bad.name.exe does not name a VMS image (1 to 39 letters, digits, _, $ and -, then .exe or nothing)
+exit 1
+== poc -target vax-dec-vms -o a234567890123456789012345678901234567890 -build VaxBuild.mod
+poc: a234567890123456789012345678901234567890 does not name a VMS image (1 to 39 letters, digits, _, $ and -, then .exe or nothing)
+exit 1
+== poc -OC -target vax-dec-vms -build VaxBuild.mod
+poc: the VAX backend takes only -O2
+exit 1
+== poc -target vax-dec-vms -build VaxBuildClash.mod
+VaxClashBetweenModulesB.mod:3:7: error: module VaxClashBetweenModulesB: VaxClashBetweenModulesB.clashfHvJRlcQIjum and VaxClashBetweenModulesA.clashcQfgBVxgojQf have the same VAX symbol, VAXCLASHBETWEENMODULES_TV649M8G, in one program
+1 error(s); nothing written
+exit 1
+== poc -target vax-dec-vms -build VaxBuildCase.mod
+poc: modules VaxCase and VAXCASE differ only in case, and VMS does not tell their files or symbols apart
+exit 1
+procedure: VaxBuild.com
+procedure: VaxBuildSums.com
+procedure: vaxprog.com

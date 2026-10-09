@@ -37,15 +37,6 @@ exit 1
 == poc -target vax-dec-vms -emit-llvm-ir VaxEmpty.mod
 poc: -emit-llvm-ir has no vax-dec-vms target, LLVM does not generate VAX code; -emit-macro32 writes the .mar
 exit 1
-== poc -target vax-dec-vms -build VaxEmpty.mod
-poc: building a program is not available for vax-dec-vms yet (assembling and linking on VMS are Phase 16's); -emit-macro32 writes the .mar
-exit 1
-== poc -target vax-dec-vms VaxEmpty.mod
-poc: building a program is not available for vax-dec-vms yet (assembling and linking on VMS are Phase 16's); -emit-macro32 writes the .mar
-exit 1
-== poc -target vax-dec-vms -compile VaxEmpty.mod
-poc: -compile is not available for vax-dec-vms yet (assembling and linking on VMS are Phase 16's); -emit-macro32 writes the .mar
-exit 1
 == poc -target vax-dec-vms -library vaxlib VaxEmpty.mod
-poc: -library is not available for vax-dec-vms yet (assembling and linking on VMS are Phase 16's); -emit-macro32 writes the .mar
+poc: -library is not available for vax-dec-vms yet (VMS libraries are Phase 17's)
 exit 1

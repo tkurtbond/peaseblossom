@@ -1,5 +1,5 @@
 # '.' this file from a VAX fixture's test.sh, after ../../testenv.sh
-# (doc/developer/vax-macro32-backend.md, section 10). Defines
+# (doc/developer/vax-macro32-backend.md, sections 10 and 13). Defines
 #
 #   vax_mar <Module> [<poc option>...]
 #
@@ -98,4 +98,34 @@ vax_runs() {
     done
   fi
   rm -rf vax-run
+}
+
+# vax_do <proc.com> <expected> [<file>...]: where the VAX development
+# system can be used, runs the DCL procedure there with the files
+# (tools/vax-do; PLAN.md Phase 16 step 2) and compares what it printed,
+# without vax-do's own last line, with <expected>: a failure or a
+# difference is added to result. Skipped elsewhere, and when VAX_GUEST is
+# "skip", saying so on the output but not in result, as vax_mar's guest
+# parts are.
+vax_do() {
+  vax_tools=../../../tools
+  vax_proc=$1; vax_expected=$2; shift 2
+  if [ "${VAX_GUEST:-}" = skip ]; then
+    echo "SKIPPED: running $vax_proc on the VAX (VAX_GUEST=skip)"
+  elif "$vax_tools/vax-assemble" -available; then
+    mkdir -p vax-do
+    if ! "$vax_tools/vax-do" -o vax-do "$vax_proc" "$@" >vax-do/out 2>&1; then
+      echo "$vax_proc failed on the VAX:" >>result
+      cat vax-do/out >>result
+    else
+      sed '$d' vax-do/out >vax-do/printed
+      if ! diff "$vax_expected" vax-do/printed >vax-do/diff 2>&1; then
+        echo "$vax_proc's output on the VAX differs from $vax_expected:" >>result
+        cat vax-do/diff >>result
+      fi
+    fi
+    rm -rf vax-do
+  else
+    echo "SKIPPED: running $vax_proc on the VAX (no VAX development system here)"
+  fi
 }

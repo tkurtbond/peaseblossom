@@ -222,6 +222,15 @@ guest. A procedure writes what it has to say to files or to its output,
 never to a terminal for the tool to read; it exits with the status
 `vax-do` reports. Text only, in ASCII mode.
 
+A fixture runs a DCL procedure of its own on the guest with `vax_do
+<proc.com> <expected> [<file>...]` (`test/vaxfixture.sh`). It runs the
+procedure with `tools/vax-do` and compares what it printed with
+`<expected>`. Where the guest can't be used, or under `VAX_GUEST=skip`,
+it says it skipped, as the other guest parts do. Such procedures are named
+`guest-<name>.com`, and a hand-written MACRO-32 source in a fixture is
+named `hand-<name>.mar`, which `test/testenv.sh` keeps (`vax-hello`,
+`vax-build`; Phase 16 step 2).
+
 `tools/vax-run <main.mar> [<import.mar>...] <run.dbg>...` runs a program
 there under the debugger: it assembles its modules, each named on the
 guest by its `.TITLE`, and `tools/vax-runtime-stub.mar` (stand-ins for

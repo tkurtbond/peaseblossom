@@ -1,0 +1,13 @@
+; A hand-written program (PLAN.md Phase 16 step 2): before any code poc
+; writes, MACRO, LINK and RUN on VMS end to end. LIB$PUT_OUTPUT, in the
+; base kit's LIBRTL, writes the string its descriptor gives to SYS$OUTPUT;
+; its status, in R0, is the image's.
+	.TITLE	HELLO
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+MSG:	.ASCID	/Hello from MACRO-32/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.ENTRY	HELLO_MAIN, ^M<>
+	PUSHAQ	MSG
+	CALLS	#1, G^LIB$PUT_OUTPUT
+	RET
+	.END	HELLO_MAIN

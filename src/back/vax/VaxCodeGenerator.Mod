@@ -189,6 +189,11 @@ MODULE VaxCodeGenerator;
   VAR
     unsupportedCount*: INTEGER;
     rangeChecks*: BOOLEAN; (* -range-checks: CHR or SHORT of a value that does not fit traps (code 14) *)
+    (* the global symbols of every module written in one run, a program's
+       or -compile's, or NIL (section 5.1, layer 2, for modules compiled
+       from source together): two exports of different modules with one
+       symbol are an error at the second, not a silent binding at link *)
+    programNames*: VaxTypes.NameTable;
 
     (* the module being generated *)
     module: SyntaxTree.ModuleNode;
@@ -3229,6 +3234,20 @@ MODULE VaxCodeGenerator;
     codeLast := last
   END ProcedureDecl;
 
+  (* full, a global symbol module defines, entered in programNames: an
+     error, at line and column, if another module's export has its symbol *)
+  PROCEDURE EnterGlobal(full: ARRAY OF CHAR; line, column: INTEGER);
+    VAR symbol: VaxTypes.Symbol; clash: ARRAY 2 * 256 + 2 OF CHAR; text: ARRAY 700 OF CHAR;
+  BEGIN
+    IF (programNames # NIL) & ~VaxTypes.Enter(programNames, full, symbol, clash) THEN
+      COPY("module ", text); Append(text, module.name); Append(text, ": ");
+      Append(text, full); Append(text, " and "); Append(text, clash);
+      Append(text, " have the same VAX symbol, "); Append(text, symbol);
+      Append(text, ", in one program");
+      Diagnostics.Error(line, column, text)
+    END
+  END EnterGlobal;
+
   (* The module's procedures: their symbols entered, two names with one
      symbol an error (section 5) - an external one's linkage name checked
      instead - then each generated *)
@@ -3258,6 +3277,8 @@ MODULE VaxCodeGenerator;
           COPY(full, text); Append(text, " and "); Append(text, clash);
           Append(text, " have the same VAX symbol, "); Append(text, symbol);
           Diagnostics.Error(p.line, p.column, text)
+        ELSIF p.name.exportMark # SyntaxTree.exportNone THEN
+          EnterGlobal(full, p.line, p.column)
         END
       END;
       p := p.next
@@ -3291,6 +3312,7 @@ MODULE VaxCodeGenerator;
           Append(text, " have the same VAX symbol, "); Append(text, symbol);
           Diagnostics.Error(nm.line, nm.column, text); ok := FALSE
         ELSIF ok THEN
+          IF obj.exported THEN EnterGlobal(full, nm.line, nm.column) END;
           IF ~header THEN
             WriteLn(w); WriteStr(w, "; the module's variables"); WriteLn(w);
             Line(w, ".PSECT", "POC_DATA"); header := TRUE
@@ -3559,5 +3581,5 @@ MODULE VaxCodeGenerator;
   END GenerateModule;
 
 BEGIN
-  unsupportedCount := 0
+  unsupportedCount := 0; programNames := NIL
 END VaxCodeGenerator.

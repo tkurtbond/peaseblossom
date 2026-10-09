@@ -42,9 +42,10 @@ export LD_LIBRARY_PATH
 rm -f *.o *.c *.h *.ll *.s *.sym *.exe result "$(basename "$PWD")"
 # a fixture's MACRO-32 output, but never the reviewed expected-vax.mar, or
 # an import's expected-vax-<Import>.mar, a VAX fixture compares it with
-# (doc/developer/vax-macro32-backend.md, section 10)
+# (doc/developer/vax-macro32-backend.md, section 10), or a hand-written
+# source, hand-<name>.mar (PLAN.md Phase 16 step 2)
 for vax_file in *.mar; do
-  case $vax_file in expected-vax.mar|expected-vax-*.mar) ;; *) rm -f "$vax_file" ;; esac
+  case $vax_file in expected-vax.mar|expected-vax-*.mar|hand-*.mar) ;; *) rm -f "$vax_file" ;; esac
 done
 
 # PLAN.md Phase 8 step 3: compiles $1 (an Oberon-2 source file) via poc's
