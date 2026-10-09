@@ -640,7 +640,42 @@ Proposals, by construct:
   "Array assignment"), a longer move in pieces of 65535, each next one
   `MOVC3 #n, (R1), (R3)` from where the last left `R1` and `R3`; clearing
   more than 65535 bytes of locals is pieces of `MOVC5` the same way.
-  `COPY` is step 7's.
+  **`COPY(x, v)`, done (step 7)**: `x`'s characters up to its first `0X`,
+  at most `LEN(v) - 1` of them, then `0X` (`Oberon2.pdf` 10.3), the rest
+  of `v` left as it was: one `MOVC5 #n, x, #0, #n+1, v`, the `n` bytes then
+  one fill byte. A string constant's `n` is known; an array's is counted
+  by `LOCC #0, #LEN(x), x`, which leaves in `R0` the bytes from the `0X`
+  on, or 0 (MACRO 9-130), so `SUBL3 R0, #LEN(x), R0`, then limited to
+  `LEN(v) - 1`, `R1` one more. `LOCC` and `MOVC5` overwrite `R0`-`R5`,
+  so an address held in a register is moved to the frame first and used
+  as `@n(FP)`; their lengths are words, so `x` and `v` are at most 65535
+  characters (a longer one is reported).
+- **The predeclared procedures of the slice (§1), done (step 7).** A call
+  whose value is constant is folded (`LEN` of a fixed array among them);
+  the others:
+  - `ABS(x)`: `MOVx x, r` (which sets N), `BGEQ` over `MNEGx r, r`; `MNEG`
+    of the most negative value is that value (MACRO 9-23), as wrapping
+    arithmetic promises. A `HUGEINT` tests its high longword and is
+    negated as `-x` is.
+  - `ODD(x)`: `BICB3 #254, x, r`, the low bit of the low byte, read where
+    it is (little-endian), an element in index mode first moved to a
+    register.
+  - `CHR(x)`: `CVTWB` or `CVTLB` (of a `HUGEINT`'s low longword), the low
+    byte; with `-range-checks` a value outside 0..255 traps first (§9).
+  - `ORD`: `MOVZBW` of a `CHAR`; `CVTLW`, the low word, of a `SET`.
+  - `CAP(x)`: `SUBB2 #32` when `x` is 97 to 122, by unsigned compares.
+  - `INC(v, n)` and `DEC(v, n)`: `v`'s own `INC`/`DEC`/`ADD2`/`SUB2` in
+    place (`ADDL2`/`ADWC` for a `HUGEINT`), at `v`'s width: a narrower `n`
+    sign-extended, a wider one's low bytes (`CVTxy`), a constant wrapped.
+  - `HALT(n)`: `PUSHL #n` and `CALLS #1, G^POC_HALT`, poc's runtime
+    routine, which ends the program with `n` as its status; it and what
+    VMS sees are Phase 16's, as for `POC_TRAP` (§9).
+  - `LEN` of an open array, and the predeclared procedures outside the
+    slice (`ASSERT`, `SHORT`, `LONG`, `ASH`, `INCL`, `EXCL`, ...), are
+    reported. A predeclared procedure is taken to change only the
+    variable it changes (the first argument of `NEW`, `INC`, `DEC`, `INCL`
+    and `EXCL`, `COPY`'s second), so `ABS(x)` does not make a value
+    parameter `x` be copied on entry.
 - **Strings.** **Decided (2026-10-06): a string constant assigned to an
   array is `MOVC5`, its characters then zeros to the array's end**:
   `MOVC5 #len, L_STR_n, #0, #size, a`. A string constant is in
@@ -688,8 +723,11 @@ range 14), and the module's name is a counted string, `L_MODULE_NAME:
 assembles but does not link. Done (step 4) for `CASE`; done (step 6)
 for an index, `CMPL Rx, #<length-1>` and `BLEQU` over the trap, unsigned
 so that a negative index fails too, at the index's line and column (a
-`HUGEINT` index also fails when its high longword is not zero); the
-others come with their constructs.
+`HUGEINT` index also fails when its high longword is not zero); done
+(step 7) for `CHR` under `-range-checks`, code 14 at `CHR`'s position:
+`TSTB` for a `SHORTINT`, an unsigned compare with 255 for a wider integer,
+and for a `HUGEINT` its high longword not zero too; the others come with
+their constructs.
 
 ## 10. Output and fixtures
 
@@ -730,12 +768,12 @@ others come with their constructs.
   assembled: `tools/vax-run` links it with stand-ins for poc's runtime
   routines (`tools/vax-runtime-stub.mar`; `POC_TRAP` keeps what it was
   given in `POC_TRAP_CODE`, `_LINE`, `_COLUMN` and `_MODULE` and ends the
-  program; `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and `POC_HMOD` compute what
+  program, `POC_HALT` its code in `POC_HALT_CODE`; `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and `POC_HMOD` compute what
   the real ones will) and a driver that calls `<MODULE>_INIT`, and runs it
   once for each `run-<name>.dbg`, its output compared with `run-<name>.log`
   (`DEVELOPER.md`, section 4). This checks what the code does, which
   assembling cannot; the step 6 fixtures were the first, then those of
-  steps 3-5 with code to run. Linking and running poc's own runtime and
+  steps 3-5 with code to run, then step 7's. Linking and running poc's own runtime and
   programs stay Phase 16's.
 - `VaxToolchainDriver.Mod` is a stub that writes the `.mar` and reports
   that assembling is not available (`PLAN.md` Phase 15). As for IR, the
@@ -801,6 +839,6 @@ Each step lands with its fixtures before the next, as Phase 8 did:
 4. Control flow (§3 branches, §8), with the trap call (§9). Done.
 5. Procedures and calls (§7), then external `["VMS"]` procedures. Done.
 6. Arrays and records, with the traps (§9). Done.
-7. The predeclared procedures of the slice.
+7. The predeclared procedures of the slice. Done.
 8. Several modules and the program's start (§6).
 9. The phase record and the exit review.

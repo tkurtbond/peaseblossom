@@ -1,0 +1,82 @@
+value returned is 0
+POCSTUB\POC_SCRATCH
+    [0]:        -128
+    [1]:        0
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+POCSTUB\POC_SCRATCH[0]+2:       -32768
+POCSTUB\POC_SCRATCH[0]+4:       -2147483648
+POCSTUB\POC_SCRATCH[1]: 4294967296
+value returned is 0
+POCSTUB\POC_SCRATCH
+    [0]:        127
+    [1]:        -1
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+POCSTUB\POC_SCRATCH[0]+2:       32767
+POCSTUB\POC_SCRATCH[0]+4:       2147483647
+POCSTUB\POC_SCRATCH[1]: 4294967295
+value returned is 127
+POCSTUB\POC_SCRATCH
+    [0]:        -128
+    [1]:        -1
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is 0
+POCSTUB\POC_SCRATCH
+    [0]:        44
+    [1]:        -1
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is -1
+POCSTUB\POC_SCRATCH
+    [0]:        -1
+    [1]:        4294967295
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is 1
+POCSTUB\POC_SCRATCH
+    [0]:        0
+    [1]:        4294967295
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is 3
+POCSTUB\POC_SCRATCH
+    [0]:        7
+    [1]:        3
+    [2]:        0
+    [3]:        0
+    [4]:        0
+    [5]:        0
+    [6]:        0
+    [7]:        0
+value returned is 2
+VAXINCDEC\VAXINCDEC_WORDS_AOOQQ24B[4]:  -5
+value returned is 2
+VAXINCDEC\VAXINCDEC_WORDS_AOOQQ24B[4]:  32762
+value returned is 15
+value returned is -32759

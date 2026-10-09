@@ -17,6 +17,10 @@ POC_TRAP_COLUMN::
 POC_TRAP_MODULE::
 	.BLKB	32
 
+; What HALT was given, for the debugger to examine after the program ends
+POC_HALT_CODE::
+	.BLKL	1
+
 ; Room for the debugger's CALLs to pass by reference: a VAR parameter's
 ; variable or a HUGEINT's copy
 POC_SCRATCH::
@@ -33,6 +37,13 @@ POC_SCRATCH::
 	MOVZBL	(R1)+, R0
 	MOVC5	R0, (R1), #0, #32, POC_TRAP_MODULE
 	$EXIT_S	#44
+	RET
+
+; POC_HALT(code): kept in POC_HALT_CODE, then the program ends with
+; SS$_NORMAL (what VMS is to see of the code is Phase 16's)
+	.ENTRY	POC_HALT, ^M<>
+	MOVL	4(AP), POC_HALT_CODE
+	$EXIT_S	#1
 	RET
 
 ; POC_STRCMP(a, alen, b, blen): the strings at a and b, alen and blen

@@ -2412,7 +2412,7 @@ MODULE Poc;
           END
         ELSIF arg = "-range-checks" THEN
           (* Phase 12 step 1: voc's -r *)
-          LLVMCodeGenerator.rangeChecks := TRUE;
+          LLVMCodeGenerator.rangeChecks := TRUE; VaxCodeGenerator.rangeChecks := TRUE;
           INC(i)
         ELSIF arg = "-static" THEN
           (* Phase 12 step 1: voc's -M *)

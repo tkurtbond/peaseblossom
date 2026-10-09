@@ -1,0 +1,308 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - ABS(x) moves x to the result, then BGEQ over MNEGx: MOVx sets N when
+;;   x is negative (MACRO 9-24), so only a negative x is negated; where x
+;;   is the result already, TSTx sets N instead. MNEG of the most negative
+;;   value is that value with V set (9-23), the trap being off (section
+;;   7), so ABS(-128) as a SHORTINT is -128, as poc's wrapping arithmetic
+;;   promises (run-values). A HUGEINT tests its high longword and is
+;;   negated as -x is: MNEGL of each longword, then SBWC #0 for the borrow.
+;; - ODD(x) is BICB3 #254, x, result: the low bit of x's low byte, a
+;;   BOOLEAN 0 or 1. A word, longword or HUGEINT location is read as a byte
+;;   where it is, the VAX being little-endian; an element in index mode,
+;;   words[k], is moved to a register first, since index mode scales by
+;;   the instruction's operand size (section 8).
+;; - CHR(x) is CVTWB, or CVTLB of a HUGEINT's low longword: the low byte, a
+;;   longer integer converted to a shorter one being truncated, with V set
+;;   on overflow (9-16), which traps only with IV set. Without
+;;   -range-checks nothing is checked, as on LLVM.
+;; - ORD of a CHAR is MOVZBW, zero-extended to an INTEGER (16 bits under
+;;   -O2, the VAX target's model): ORD(200X) is 200. ORD of a SET is
+;;   CVTLW, its low word, as LLVM truncates it.
+;; - CAP(x) subtracts 32 when x is 97 to 122, "a" to "z", by unsigned
+;;   compares, as for every CHAR; other characters are left, as on LLVM.
+;; - HALT(7) is PUSHL #7 and CALLS #1, G^POC_HALT, poc's runtime routine,
+;;   declared .EXTERNAL: it ends the program, n being its status; Phase 16
+;;   writes it and decides what VMS sees, as for POC_TRAP (section 9). The
+;;   debugger runs link a stand-in that keeps the code (run-halt).
+;; - LEN(words) is the constant 4, MOVW #4, since LEN of a fixed array is
+;;   folded. In the body ABS and CAP write the variable itself, as an
+;;   assignment's last operation does when as wide: c := CAP(c) changes c
+;;   in place.
+;; - A function's value is returned in R0 as a longword (CVTBL, CVTWL,
+;;   MOVZBL), and a HUGEINT value parameter is copied on entry, both as in
+;;   step 5.
+; VaxPredeclared, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXPREDECLARED
+	.IDENT	/897311a6a8516e41/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; words: ARRAY 4 OF INTEGER
+	.ALIGN	WORD
+VAXPREDECLARED_WORDS_9OVSHVF4:
+	.BLKB	8
+; i: INTEGER
+	.ALIGN	WORD
+VAXPREDECLARED_I_57LAKHGU:
+	.BLKW	1
+; c: CHAR
+VAXPREDECLARED_C_57LAKD90:
+	.BLKB	1
+; b: BOOLEAN
+VAXPREDECLARED_B_57LAKDMJ:
+	.BLKB	1
+
+; the procedures it calls of other modules
+	.EXTERNAL	POC_HALT
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxPredeclared/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE AbsB
+VAXPREDECLARED_ABSB_8M57D7BT:
+	.WORD	^M<>
+; line 13
+	MOVB	4(AP), R0
+	BGEQ	L_1
+	MNEGB	R0, R0
+L_1:
+	CVTBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#14
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE AbsW
+VAXPREDECLARED_ABSW_8M57DC1E:
+	.WORD	^M<>
+; line 17
+	MOVW	4(AP), R0
+	BGEQ	L_2
+	MNEGW	R0, R0
+L_2:
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE AbsL
+VAXPREDECLARED_ABSL_8M57D1DJ:
+	.WORD	^M<>
+; line 21
+	MOVL	4(AP), R0
+	BGEQ	L_3
+	MNEGL	R0, R0
+L_3:
+	RET
+	PUSHL	#3
+	PUSHL	#22
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE AbsQ
+VAXPREDECLARED_ABSQ_8M57DCSK:
+	.WORD	^M<R2>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 25
+	MOVL	8(AP), R2
+	MOVQ	-8(FP), (R2)
+	TSTL	4(R2)
+	BGEQ	L_4
+	MNEGL	4(R2), 4(R2)
+	MNEGL	(R2), (R2)
+	SBWC	#0, 4(R2)
+L_4:
+	RET
+; PROCEDURE OddW
+VAXPREDECLARED_ODDW_J3EI82C1:
+	.WORD	^M<>
+; line 29
+	BICB3	#254, 4(AP), R0
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#30
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE OddQ
+VAXPREDECLARED_ODDQ_J3EI8377:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 33
+	BICB3	#254, -8(FP), R0
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#34
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE OddElement
+VAXPREDECLARED_ODDELEM_568IH22K:
+	.WORD	^M<>
+; line 37
+	CVTWL	4(AP), R0
+	CMPL	R0, #3
+	BLEQU	L_5
+	PUSHL	#26
+	PUSHL	#37
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_5:
+	MOVW	VAXPREDECLARED_WORDS_9OVSHVF4[R0], R1
+	BICB3	#254, R1, R0
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#38
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ChrW
+VAXPREDECLARED_CHRW_6F9937HB:
+	.WORD	^M<>
+; line 41
+	CVTWB	4(AP), R0
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#42
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ChrQ
+VAXPREDECLARED_CHRQ_6F993A2T:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 45
+	CVTLB	-8(FP), R0
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#46
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE OrdC
+VAXPREDECLARED_ORDC_J54SNGE3:
+	.WORD	^M<>
+; line 49
+	MOVZBW	4(AP), R0
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#50
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE OrdS
+VAXPREDECLARED_ORDS_J54SN9KJ:
+	.WORD	^M<>
+; line 53
+	CVTLW	4(AP), R0
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#54
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Cap
+VAXPREDECLARED_CAP_3T7KA4LP:
+	.WORD	^M<>
+; line 57
+	MOVB	4(AP), R0
+	CMPB	R0, #97
+	BLSSU	L_6
+	CMPB	R0, #122
+	BGTRU	L_6
+	SUBB2	#32, R0
+L_6:
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#58
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Stop
+VAXPREDECLARED_STOP_MUD99OQB:
+	.WORD	^M<>
+; line 61
+	PUSHL	#7
+	CALLS	#1, G^POC_HALT
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXPREDECLARED_INIT, ^M<R2>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 65
+	CVTWL	VAXPREDECLARED_I_57LAKHGU, R0
+	CMPL	R0, #3
+	BLEQU	L_7
+	PUSHL	#18
+	PUSHL	#65
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_7:
+	MOVW	VAXPREDECLARED_WORDS_9OVSHVF4[R0], VAXPREDECLARED_I_57LAKHGU
+	BGEQ	L_8
+	MNEGW	VAXPREDECLARED_I_57LAKHGU, VAXPREDECLARED_I_57LAKHGU
+L_8:
+; line 66
+	CMPB	VAXPREDECLARED_C_57LAKD90, #97
+	BLSSU	L_9
+	CMPB	VAXPREDECLARED_C_57LAKD90, #122
+	BGTRU	L_9
+	SUBB2	#32, VAXPREDECLARED_C_57LAKD90
+L_9:
+; line 67
+	BICB3	#254, VAXPREDECLARED_I_57LAKHGU, R0
+	BLBS	R0, L_10
+	JMP	L^L_11
+L_10:
+	MOVZBW	VAXPREDECLARED_C_57LAKD90, R1
+	CLRB	R2
+	CMPW	R1, #64
+	BLEQ	L_12
+	MOVB	#1, R2
+L_12:
+	MOVB	R2, R0
+L_11:
+	MOVB	R0, VAXPREDECLARED_B_57LAKDMJ
+; line 68
+	MOVW	#4, VAXPREDECLARED_I_57LAKHGU
+	RET
+
+	.END

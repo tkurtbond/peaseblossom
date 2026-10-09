@@ -1,0 +1,107 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - With poc -range-checks, CHR of a value outside 0..255 traps with code
+;;   14 at CHR's own line and column, as on LLVM (section 9): TSTB and BGEQ
+;;   over the trap for a SHORTINT; CMPW with #255 and BLEQU, unsigned, so
+;;   that a negative INTEGER fails too; for a HUGEINT, TSTL of the high
+;;   longword and BNEQ to the trap, then the low longword's unsigned
+;;   compare. The runs trap for -1 as a SHORTINT and an INTEGER and for
+;;   4294967296, whose low longword is 0, and not for 127 or 255.
+;; - Then CHR is as without the option: a SHORTINT's byte as it is,
+;;   returned by MOVZBL; CVTWB; CVTLB of the low longword.
+; VaxRangeChecks, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXRANGECHECKS
+	.IDENT	/37e9a8c9cad0f251/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxRangeChecks/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE ChrB
+VAXRANGECHECKS_CHRB_GIC6D955:
+	.WORD	^M<>
+; line 9
+	TSTB	4(AP)
+	BGEQ	L_1
+	PUSHL	#16
+	PUSHL	#9
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#14
+	CALLS	#4, G^POC_TRAP
+L_1:
+	MOVZBL	4(AP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#10
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ChrW
+VAXRANGECHECKS_CHRW_GIC6DDQM:
+	.WORD	^M<>
+; line 13
+	CMPW	4(AP), #255
+	BLEQU	L_2
+	PUSHL	#16
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#14
+	CALLS	#4, G^POC_TRAP
+L_2:
+	CVTWB	4(AP), R0
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#14
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ChrQ
+VAXRANGECHECKS_CHRQ_GIC6DELS:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 17
+	TSTL	-4(FP)
+	BNEQ	L_4
+	CMPL	-8(FP), #255
+	BLEQU	L_3
+L_4:
+	PUSHL	#16
+	PUSHL	#17
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#14
+	CALLS	#4, G^POC_TRAP
+L_3:
+	CVTLB	-8(FP), R0
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXRANGECHECKS_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+	.END

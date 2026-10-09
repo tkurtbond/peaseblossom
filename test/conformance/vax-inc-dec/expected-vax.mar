@@ -1,0 +1,149 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - INC(v) and DEC(v) are INCx and DECx of v where it is, @n(AP) for a
+;;   VAR parameter; a HUGEINT adds or subtracts 1 by ADDL2/ADWC or
+;;   SUBL2/SBWC on its two longwords, through a register holding its
+;;   address, as any HUGEINT reached by address is (section 4). Each wraps
+;;   at v's width, 127 + 1 being -128, and a HUGEINT carries into its high
+;;   longword (run-values).
+;; - INC(v, n) is ADDx2 n, v at v's width, so that v + n wraps there as all
+;;   integer arithmetic does (section 8): a narrower n is sign-extended
+;;   (CVTWL, then ASHL #-31 for a HUGEINT's high longword); a wider one
+;;   gives its low bytes, CVTLB, or a HUGEINT's low longword, MOVL; and a
+;;   constant is wrapped to v's width, 300 being 44 for a SHORTINT.
+;; - INC(words[k], n) is ADDW2 in index mode, after the index check (code 2).
+;; - Next's n, a value parameter INC changes, is copied to the frame on
+;;   entry, as one assigned to is (section 7). A predeclared procedure is
+;;   now taken to change only the variable it does change - the first
+;;   argument of NEW, INC, DEC, INCL and EXCL, the second of COPY - so that
+;;   ABS(x) or ODD(x) does not copy x.
+; VaxIncDec, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXINCDEC
+	.IDENT	/911b5649e2aa3aab/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; words: ARRAY 4 OF INTEGER
+	.ALIGN	WORD
+VAXINCDEC_WORDS_AOOQQ24B:
+	.BLKB	8
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxIncDec/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Up
+VAXINCDEC_UP_1G162PAJ:
+	.WORD	^M<R2>
+; line 13
+	INCB	@4(AP)
+; line 13
+	INCW	@8(AP)
+; line 13
+	INCL	@12(AP)
+; line 13
+	MOVL	16(AP), R2
+	ADDL2	#^X00000001, (R2)
+	ADWC	#^X00000000, 4(R2)
+	RET
+; PROCEDURE Down
+VAXINCDEC_DOWN_92I6SJ56:
+	.WORD	^M<R2>
+; line 17
+	DECB	@4(AP)
+; line 17
+	DECW	@8(AP)
+; line 17
+	DECL	@12(AP)
+; line 17
+	MOVL	16(AP), R2
+	SUBL2	#^X00000001, (R2)
+	SBWC	#^X00000000, 4(R2)
+	RET
+; PROCEDURE AddWide
+VAXINCDEC_ADDWIDE_VRDARJ1I:
+	.WORD	^M<>
+; line 21
+	CVTLB	8(AP), R0
+	ADDB2	R0, @4(AP)
+	RET
+; PROCEDURE AddConstant
+VAXINCDEC_ADDCONSTANT_I5EQ2RJD:
+	.WORD	^M<>
+; line 25
+	ADDB2	#44, @4(AP)
+	RET
+; PROCEDURE AddNarrow
+VAXINCDEC_ADDNARROW_81EOE1UI:
+	.WORD	^M<R2>
+; line 29
+	MOVL	4(AP), R2
+	CVTWL	8(AP), R0
+	ASHL	#-31, R0, R1
+	ADDL2	R0, (R2)
+	ADWC	R1, 4(R2)
+	RET
+; PROCEDURE SubHuge
+VAXINCDEC_SUBHUGE_1NVBVLB3:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@8(AP), -8(FP)
+; line 33
+	MOVL	-8(FP), R0
+	SUBL2	R0, @4(AP)
+	RET
+; PROCEDURE Element
+VAXINCDEC_ELEMENT_1UMML5OM:
+	.WORD	^M<>
+; line 37
+	CVTWL	4(AP), R0
+	CMPL	R0, #3
+	BLEQU	L_1
+	PUSHL	#19
+	PUSHL	#37
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_1:
+	ADDW2	8(AP), VAXINCDEC_WORDS_AOOQQ24B[R0]
+	RET
+; PROCEDURE Next
+VAXINCDEC_NEXT_UMFECL9J:
+	.WORD	^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVW	4(AP), -2(FP)
+; line 41
+	ADDW2	#10, -2(FP)
+; line 41
+	CVTWL	-2(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#42
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXINCDEC_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+	.END

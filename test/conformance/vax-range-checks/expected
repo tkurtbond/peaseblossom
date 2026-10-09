@@ -1,0 +1,3 @@
+semantic OK, wrote VaxRangeChecks.mar
+exit 0
+VaxRangeChecks.mar matches expected-vax.mar

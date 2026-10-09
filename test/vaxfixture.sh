@@ -1,9 +1,9 @@
 # '.' this file from a VAX fixture's test.sh, after ../../testenv.sh
 # (doc/developer/vax-macro32-backend.md, section 10). Defines
 #
-#   vax_mar <Module>
+#   vax_mar <Module> [<poc option>...]
 #
-# which runs poc -emit-macro32 <Module>.mod, appends what poc prints and its
+# which runs poc <poc option>... -emit-macro32 <Module>.mod, appends what poc prints and its
 # exit status to result, then compares the <Module>.mar written with
 # expected-vax.mar, leaving out the reviewer's comment at its top (the lines
 # starting ";;", which say why the output is right): "<Module>.mar matches
@@ -17,8 +17,10 @@
 # result, so that result is the same on every host when all is well.
 
 vax_mar() {
-  poc -emit-macro32 "$1.mod" >>result 2>&1
+  vax_module=$1; shift
+  poc "$@" -emit-macro32 "$vax_module.mod" >>result 2>&1
   echo "exit $?" >>result
+  set -- "$vax_module"
   grep -v '^;;' expected-vax.mar >expected-vax.stripped
   if [ ! -f "$1.mar" ]; then
     echo "$1.mar was not written" >>result

@@ -1,0 +1,165 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - COPY(x, v) copies x's characters up to its first 0X, at most LEN(v) - 1
+;;   of them, then 0X (Oberon2.pdf 10.3), and leaves the rest of v as it
+;;   was: one MOVC5 #n, x, #0, #n+1, v, the n bytes and then one fill byte,
+;;   0 (MACRO 9-132). The runs fill v first, so that what is left shows.
+;; - For a string constant n is known: "hello" into name, 8 bytes, is
+;;   MOVC5 #5, ..., #6; into short, 4 bytes, MOVC5 #3, ..., #4, "hel"; ""
+;;   is MOVC5 #0, ..., #1, the 0X alone.
+;; - For an array n is counted: LOCC #0, #LEN(x), x leaves in R0 the bytes
+;;   from the first 0X on, or 0 when there is none (MACRO 9-130), so
+;;   SUBL3 R0, #LEN(x), R0 is the characters before it, all of x when it
+;;   has no 0X; then at most LEN(v) - 1 (CMPL, BLEQU, MOVL), and R1 one
+;;   more, MOVC5's two lengths. Shorten copies "ABC" from a long with no 0X.
+;; - LOCC and MOVC5 overwrite R0-R5, so an address held in a register,
+;;   that of names[k], is moved to the frame first and named @-4(FP); a
+;;   body that uses them saves R2-R5 (section 7). Their lengths are words,
+;;   so an array of more than 65535 characters is reported, not lowered.
+;; - Set's from, an array value parameter, is copied on entry, as in step
+;;   6; to, a VAR parameter, is @4(AP).
+; VaxCopy, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXCOPY
+	.IDENT	/a40de5a8a541f739/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; short: ARRAY 4 OF CHAR
+VAXCOPY_SHORT_32DJ71K1:
+	.BLKB	4
+; long: ARRAY 16 OF CHAR
+VAXCOPY_LONG_O9BBN247:
+	.BLKB	16
+; name: ARRAY 8 OF CHAR
+VAXCOPY_NAME_QD3DCOK2:
+	.BLKB	8
+; names: ARRAY 3 OF ARRAY 8 OF CHAR
+VAXCOPY_NAMES_05F4K7S3:
+	.BLKB	24
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxCopy/
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/hello/
+	.BYTE	0
+L_STR_2:
+	.BYTE	0
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Constants
+VAXCOPY_CONSTANTS_P5NG5NQ6:
+	.WORD	^M<R2,R3,R4,R5>
+; line 14
+	MOVC5	#5, L_STR_1, #0, #6, VAXCOPY_NAME_QD3DCOK2
+; line 14
+	MOVC5	#3, L_STR_1, #0, #4, VAXCOPY_SHORT_32DJ71K1
+; line 14
+	MOVC5	#0, L_STR_2, #0, #1, VAXCOPY_LONG_O9BBN247
+	RET
+; PROCEDURE Shorten
+VAXCOPY_SHORTEN_LM0R1HM6:
+	.WORD	^M<R2,R3,R4,R5>
+; line 18
+	LOCC	#0, #16, VAXCOPY_LONG_O9BBN247
+	SUBL3	R0, #16, R0
+	CMPL	R0, #3
+	BLEQU	L_1
+	MOVL	#3, R0
+L_1:
+	ADDL3	#1, R0, R1
+	MOVC5	R0, VAXCOPY_LONG_O9BBN247, #0, R1, VAXCOPY_SHORT_32DJ71K1
+	RET
+; PROCEDURE Into
+VAXCOPY_INTO_KFU0CKSF:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#4, SP
+; line 22
+	CVTWL	4(AP), R0
+	CMPL	R0, #2
+	BLEQU	L_2
+	PUSHL	#26
+	PUSHL	#22
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_2:
+	MULL2	#8, R0
+	MOVAB	VAXCOPY_NAMES_05F4K7S3[R0], R0
+	MOVL	R0, -4(FP)
+	LOCC	#0, #8, VAXCOPY_NAME_QD3DCOK2
+	SUBL3	R0, #8, R0
+	CMPL	R0, #7
+	BLEQU	L_3
+	MOVL	#7, R0
+L_3:
+	ADDL3	#1, R0, R1
+	MOVC5	R0, VAXCOPY_NAME_QD3DCOK2, #0, R1, @-4(FP)
+	RET
+; PROCEDURE OutOf
+VAXCOPY_OUTOF_2QSQFAT6:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#4, SP
+; line 26
+	CVTWL	4(AP), R0
+	CMPL	R0, #2
+	BLEQU	L_4
+	PUSHL	#20
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_4:
+	MULL2	#8, R0
+	MOVAB	VAXCOPY_NAMES_05F4K7S3[R0], R0
+	MOVL	R0, -4(FP)
+	LOCC	#0, #8, @-4(FP)
+	SUBL3	R0, #8, R0
+	CMPL	R0, #15
+	BLEQU	L_5
+	MOVL	#15, R0
+L_5:
+	ADDL3	#1, R0, R1
+	MOVC5	R0, @-4(FP), #0, R1, VAXCOPY_LONG_O9BBN247
+	RET
+; PROCEDURE Set
+VAXCOPY_SET_8P9PUK6V:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVC3	#8, @8(AP), -8(FP)
+; line 30
+	LOCC	#0, #8, -8(FP)
+	SUBL3	R0, #8, R0
+	CMPL	R0, #7
+	BLEQU	L_6
+	MOVL	#7, R0
+L_6:
+	ADDL3	#1, R0, R1
+	MOVC5	R0, -8(FP), #0, R1, @4(AP)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXCOPY_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+	.END

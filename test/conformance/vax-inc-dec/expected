@@ -1,0 +1,3 @@
+semantic OK, wrote VaxIncDec.mar
+exit 0
+VaxIncDec.mar matches expected-vax.mar

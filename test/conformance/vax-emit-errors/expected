@@ -6,7 +6,7 @@ VaxTooMuch.mod:13:20: error: module VaxTooMuch: the VAX backend cannot lower thi
 VaxTooMuch.mod:14:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: a type-bound procedure (Phase 16)
 VaxTooMuch.mod:15:17: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type ARRAY OF INTEGER (Phase 16)
 VaxTooMuch.mod:17:15: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type PROCEDURE (Phase 16)
-VaxTooMuch.mod:20:8: error: module VaxTooMuch: the VAX backend cannot lower this yet: a predeclared function (step 7)
+VaxTooMuch.mod:20:8: error: module VaxTooMuch: the VAX backend cannot lower this yet: the predeclared procedure SHORT (outside Phase 15's slice, section 1)
 VaxTooMuch.mod:21:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type PROCEDURE (Phase 16)
 9 construct(s) the VAX backend cannot lower yet; not written
 exit 1

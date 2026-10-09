@@ -165,9 +165,21 @@ and the statements
 .Ic EXIT
 and
 .Ic RETURN ,
-procedures and calls of them, and external
+procedures and calls of them, external
 .Qq VMS
-procedures, and reports anything more as a construct it cannot lower yet.
+procedures, and the predeclared procedures
+.Fn ABS ,
+.Fn ODD ,
+.Fn CHR ,
+.Fn ORD ,
+.Fn CAP ,
+.Fn LEN ,
+.Fn INC ,
+.Fn DEC ,
+.Fn COPY
+and
+.Fn HALT ,
+and reports anything more as a construct it cannot lower yet.
 .It Fl print-import-path , Fl print-library-path
 Print the import path or the library path as the options before it leave
 it.
