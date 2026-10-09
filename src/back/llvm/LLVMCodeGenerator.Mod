@@ -3649,6 +3649,29 @@ MODULE LLVMCodeGenerator;
     RETURN GenerateDesignatorAddressTo(w, cg, d, NIL, addrText, addrType, dyn)
   END GenerateDesignatorAddress;
 
+  (* The address of an argument that is a designator (a VAR or open-array
+     parameter's, or a predeclared procedure's), with its NIL and index
+     traps at the designator, as GenerateExpr places a value's, rather than
+     at the call; the call's own position is restored after. *)
+  PROCEDURE ArgumentAddressTo(VAR w: Files.Rider; VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode;
+                              VAR addrText: ValueText; VAR addrType: Types.Type;
+                              VAR dyn: DynamicType): BOOLEAN;
+    VAR line, column: INTEGER; ok: BOOLEAN;
+  BEGIN
+    line := cg.currentLine; column := cg.currentColumn;
+    IF de.line > 0 THEN cg.currentLine := de.line; cg.currentColumn := de.column END;
+    ok := GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addrText, addrType, dyn);
+    cg.currentLine := line; cg.currentColumn := column;
+    RETURN ok
+  END ArgumentAddressTo;
+
+  PROCEDURE ArgumentAddress(VAR w: Files.Rider; VAR cg: Codegen; de: SyntaxTree.DesignatorExprNode;
+                            VAR addrText: ValueText; VAR addrType: Types.Type): BOOLEAN;
+    VAR dyn: DynamicType;
+  BEGIN
+    RETURN ArgumentAddressTo(w, cg, de, addrText, addrType, dyn)
+  END ArgumentAddress;
+
   PROCEDURE GenerateDesignatorValue(VAR w: Files.Rider; VAR cg: Codegen; d: SyntaxTree.Designator;
                                     VAR result: Value);
     VAR obj: SymbolTable.Object; addrText: ValueText; addrType: Types.Type; homeModule: SyntaxTree.Ident;
@@ -3740,7 +3763,7 @@ MODULE LLVMCodeGenerator;
     END;
     IF ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
     de := e(SyntaxTree.DesignatorExprNode);
-    IF ~GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addr, addrType, dyn) THEN RETURN FALSE END;
+    IF ~ArgumentAddressTo(w, cg, de, addr, addrType, dyn) THEN RETURN FALSE END;
     IF (addrType = NIL) OR ~(addrType IS Types.ArrayType) THEN RETURN FALSE END;
     arr := addrType(Types.ArrayType);
     IF arr.isOpen THEN
@@ -3884,7 +3907,7 @@ MODULE LLVMCodeGenerator;
     ok := FALSE;
     IF (value # NIL) & (value IS SyntaxTree.DesignatorExprNode) THEN
       de := value(SyntaxTree.DesignatorExprNode);
-      ok := GenerateDesignatorAddressTo(w, cg, de.designator, NIL, srcAddr, srcType, dyn)
+      ok := ArgumentAddressTo(w, cg, de, srcAddr, srcType, dyn)
             & (srcType # NIL) & (srcType IS Types.ArrayType)
     ELSIF (value # NIL) & (value IS SyntaxTree.StructuredLiteralNode) THEN
       GenerateLiteralTemp(w, cg, value(SyntaxTree.StructuredLiteralNode), srcAddr, srcType);
@@ -4146,7 +4169,7 @@ MODULE LLVMCodeGenerator;
         ClearDope(dyn.dope); found := TRUE
       ELSE
         de := a(SyntaxTree.DesignatorExprNode);
-        found := ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addr, addrType, dyn)
+        found := ~de.hasParens & ArgumentAddressTo(w, cg, de, addr, addrType, dyn)
       END;
       IF found THEN
         cur := addrType; ok := TRUE; level := 0;
@@ -4225,14 +4248,14 @@ MODULE LLVMCodeGenerator;
            tag has passed the guard *)
         rec := TargetRecord(NamedType(cg, de.args));
         IF EnsureTypeTag(cg, rec)
-           & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addrText, addrType, dyn)
+           & ArgumentAddressTo(w, cg, de, addrText, addrType, dyn)
            & (dyn.kind = dynParam) & (addrType # NIL) & (addrType IS Types.RecordType) THEN
           EmitTypeGuardOnTag(w, cg, dyn.text, rec);
           COPY(addrText, result.text);
           IF wantTag THEN COPY(dyn.text, tagText) END;
           RETURN
         END
-      ELSIF ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addrText, addrType, dyn) THEN
+      ELSIF ~de.hasParens & ArgumentAddressTo(w, cg, de, addrText, addrType, dyn) THEN
         COPY(addrText, result.text);
         IF wantTag THEN
           rec := NIL;
@@ -4989,7 +5012,7 @@ MODULE LLVMCodeGenerator;
     ok := (args IS SyntaxTree.DesignatorExprNode);
     IF ok THEN
       de := args(SyntaxTree.DesignatorExprNode);
-      ok := ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addrText, addrType, dyn)
+      ok := ~de.hasParens & ArgumentAddressTo(w, cg, de, addrText, addrType, dyn)
             & (addrType # NIL) & (addrType IS Types.ArrayType)
     END;
     IF ~ok THEN
@@ -5047,7 +5070,7 @@ MODULE LLVMCodeGenerator;
     result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
     IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
     de := args(SyntaxTree.DesignatorExprNode);
-    IF de.hasParens OR ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN RETURN END;
+    IF de.hasParens OR ~ArgumentAddress(w, cg, de, addrText, addrType) THEN RETURN END;
     LoadAtAddress(w, cg, addrText, addrType, old);
     nExpr := args.next;
     IF nExpr = NIL THEN
@@ -5075,7 +5098,7 @@ MODULE LLVMCodeGenerator;
     result.oberonType := Types.Undefined; COPY("void", result.llvmType); result.text[0] := 0X;
     IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
     de := args(SyntaxTree.DesignatorExprNode);
-    IF de.hasParens OR ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN RETURN END;
+    IF de.hasParens OR ~ArgumentAddress(w, cg, de, addrText, addrType) THEN RETURN END;
     LoadAtAddress(w, cg, addrText, addrType, old);
     GenerateExpr(w, cg, args.next, element);
     ToSetWidth(w, cg, element, old.oberonType, elementExt);
@@ -5117,7 +5140,7 @@ MODULE LLVMCodeGenerator;
     ok := (vExpr # NIL) & (vExpr IS SyntaxTree.DesignatorExprNode);
     IF ok THEN
       de := vExpr(SyntaxTree.DesignatorExprNode);
-      ok := ~de.hasParens & GenerateDesignatorAddressTo(w, cg, de.designator, NIL, addrText, addrType, dyn)
+      ok := ~de.hasParens & ArgumentAddressTo(w, cg, de, addrText, addrType, dyn)
             & (addrType # NIL) & (addrType IS Types.ArrayType)
     END;
     IF ~ok THEN
@@ -5251,7 +5274,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     IF (args IS SyntaxTree.DesignatorExprNode) THEN
       de := args(SyntaxTree.DesignatorExprNode);
-      IF ~de.hasParens & GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
+      IF ~de.hasParens & ArgumentAddress(w, cg, de, addrText, addrType) THEN
         LLVMTypes.TypeString(Types.Address, cg.sizeModel, wordType);
         EmitConvert(w, cg, "ptrtoint", "ptr", addrText, wordType, result.text);
         COPY(wordType, result.llvmType); result.oberonType := Types.Address;
@@ -5278,7 +5301,7 @@ MODULE LLVMCodeGenerator;
     de := args.next(SyntaxTree.DesignatorExprNode);
     IF de.hasParens THEN RETURN END;
     AddressToPointer(w, cg, args, ptrText);
-    IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
+    IF ~ArgumentAddress(w, cg, de, addrText, addrType) THEN
       WriteStr(w, "  ; unsupported: SYSTEM.GET into a designator this backend cannot address"); WriteLn(w);
       RETURN
     END;
@@ -5834,7 +5857,7 @@ MODULE LLVMCodeGenerator;
     EmitStatementTrap(w, cg, lengthTrapGlobal, lengthTrapMsg, lengthTrapExitCode);
     EmitLabel(w, cg, okLabel);
     EmitResizeInt(w, cg, "i64", total, wordInt, size);
-    IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
+    IF ~ArgumentAddress(w, cg, de, addrText, addrType) THEN
       WriteStr(w, "  ; unsupported: NEW on a designator this backend cannot address"); WriteLn(w);
       RETURN
     END;
@@ -5919,7 +5942,7 @@ MODULE LLVMCodeGenerator;
       WriteStr(w, "  ; unsupported: NEW of a pointer to this type"); WriteLn(w);
       RETURN
     END;
-    IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
+    IF ~ArgumentAddress(w, cg, de, addrText, addrType) THEN
       WriteStr(w, "  ; unsupported: NEW on a designator this backend cannot address"); WriteLn(w);
       RETURN
     END;
@@ -6092,7 +6115,7 @@ MODULE LLVMCodeGenerator;
     EmitStatementTrap(w, cg, lengthTrapGlobal, lengthTrapMsg, lengthTrapExitCode);
     EmitLabel(w, cg, okLabel);
     EmitResizeInt(w, cg, "i64", n64, wordInt, size);
-    IF ~GenerateDesignatorAddress(w, cg, de.designator, addrText, addrType) THEN
+    IF ~ArgumentAddress(w, cg, de, addrText, addrType) THEN
       WriteStr(w, "  ; unsupported: SYSTEM.NEW on a designator this backend cannot address"); WriteLn(w);
       RETURN
     END;

@@ -7,9 +7,9 @@ MODULE traplocation;
      an index on a continuation line, a CASE whose branches hold statements.
      Cases 11 and 12 are a WITH of two guards, the second on its own line:
      no guard holds (status 6), and the second guard's variable is NIL
-     (status 4); both trap at the WITH. Cases 13 and 14 dereference and call
-     a NIL element (status 4), at the designator, not at its index. test.sh
-     runs each case under both size models, and one case without the switch. *)
+     (status 4); both trap at the WITH. Cases 13 to 15 dereference, call and
+     INC a NIL element or field (status 4), at the designator, not its index
+     or the INC. test.sh runs each under both size models, and one bare. *)
   IMPORT SYSTEM, Modules, Out, GarbageCollectedHeap, traplib;
   TYPE
     Vector = POINTER TO ARRAY OF INTEGER;
@@ -64,6 +64,7 @@ BEGIN
         x := ps[k]^.k
   | 14: k := 2;
         x := fs[k](1)
+  | 15: e := NIL; x := 1; INC(e.k, x)
   END;
   Out.Int(x, 0); Out.Ln
 END traplocation.
