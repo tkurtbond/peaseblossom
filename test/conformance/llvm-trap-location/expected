@@ -8,29 +8,35 @@ exit=10
 lib/traplib.mod:13:22: NIL pointer dereference (in traplib.NodeDesc.Sum)
 exit=4
 == -O2 case 3
-traplocation.mod:34:15: index out of range (in traplocation, module body)
+traplocation.mod:39:15: index out of range (in traplocation, module body)
 exit=2
 == -O2 case 4
-traplocation.mod:36:8: no matching CASE label (in traplocation, module body)
+traplocation.mod:41:8: no matching CASE label (in traplocation, module body)
 exit=3
 == -O2 case 5
 lib/traplib.mod:28:12: type guard failed (in traplib.Extra)
 exit=5
 == -O2 case 6
-traplocation.mod:43:8: no matching WITH guard (in traplocation, module body)
+traplocation.mod:48:8: no matching WITH guard (in traplocation, module body)
 exit=6
 == -O2 case 7
-traplocation.mod:45:16: Too many, or negative number of, elements in dynamic array (in traplocation, module body)
+traplocation.mod:50:16: Too many, or negative number of, elements in dynamic array (in traplocation, module body)
 exit=7
 == -O2 case 8
-traplocation.mod:46:32: ENTIER argument out of range for LONGINT (in traplocation, module body)
+traplocation.mod:51:32: ENTIER argument out of range for LONGINT (in traplocation, module body)
 exit=8
 == -O2 case 9
-traplocation.mod:23:5: open array assigned to an array too short for it (in traplocation.Assign)
+traplocation.mod:28:5: open array assigned to an array too short for it (in traplocation.Assign)
 exit=9
 == -O2 case 10
-traplocation.mod:49:9: heap exhausted: NEW cannot allocate the block (in traplocation, module body)
+traplocation.mod:54:9: heap exhausted: NEW cannot allocate the block (in traplocation, module body)
 exit=11
+== -O2 case 11
+traplocation.mod:56:9: no matching WITH guard (in traplocation, module body)
+exit=6
+== -O2 case 12
+traplocation.mod:60:9: NIL pointer dereference (in traplocation, module body)
+exit=4
 == -OC case 0
 lib/traplib.mod:23:17: index out of range (in traplib.Get)
 exit=2
@@ -41,29 +47,35 @@ exit=10
 lib/traplib.mod:13:22: NIL pointer dereference (in traplib.NodeDesc.Sum)
 exit=4
 == -OC case 3
-traplocation.mod:34:15: index out of range (in traplocation, module body)
+traplocation.mod:39:15: index out of range (in traplocation, module body)
 exit=2
 == -OC case 4
-traplocation.mod:36:8: no matching CASE label (in traplocation, module body)
+traplocation.mod:41:8: no matching CASE label (in traplocation, module body)
 exit=3
 == -OC case 5
 lib/traplib.mod:28:12: type guard failed (in traplib.Extra)
 exit=5
 == -OC case 6
-traplocation.mod:43:8: no matching WITH guard (in traplocation, module body)
+traplocation.mod:48:8: no matching WITH guard (in traplocation, module body)
 exit=6
 == -OC case 7
-traplocation.mod:45:16: Too many, or negative number of, elements in dynamic array (in traplocation, module body)
+traplocation.mod:50:16: Too many, or negative number of, elements in dynamic array (in traplocation, module body)
 exit=7
 == -OC case 8
-traplocation.mod:46:32: ENTIER argument out of range for LONGINT (in traplocation, module body)
+traplocation.mod:51:32: ENTIER argument out of range for LONGINT (in traplocation, module body)
 exit=8
 == -OC case 9
-traplocation.mod:23:5: open array assigned to an array too short for it (in traplocation.Assign)
+traplocation.mod:28:5: open array assigned to an array too short for it (in traplocation.Assign)
 exit=9
 == -OC case 10
-traplocation.mod:49:9: heap exhausted: NEW cannot allocate the block (in traplocation, module body)
+traplocation.mod:54:9: heap exhausted: NEW cannot allocate the block (in traplocation, module body)
 exit=11
+== -OC case 11
+traplocation.mod:56:9: no matching WITH guard (in traplocation, module body)
+exit=6
+== -OC case 12
+traplocation.mod:60:9: NIL pointer dereference (in traplocation, module body)
+exit=4
 == without -trap-location, case 0
 index out of range
 exit=2

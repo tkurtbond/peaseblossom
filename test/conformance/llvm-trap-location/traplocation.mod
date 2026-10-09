@@ -5,7 +5,10 @@ MODULE traplocation;
      (2..11; 11 with -trap-heap-exhausted too), in the imported module (a
      procedure, a nested one, a type-bound one) and in this module's body -
      an index on a continuation line, a CASE whose branches hold statements.
-     test.sh runs each case under both size models; llvm-trap-location's
+     Cases 11 and 12 are a WITH of two guards, the second on its own line:
+     no guard holds (status 6), and the second guard's variable is NIL
+     (status 4); both trap at the WITH, not at the "|" or in the first
+     branch's statements. test.sh runs each case under both size models; llvm-trap-location's
      expected also shows one case built without the switch. *)
   IMPORT SYSTEM, Modules, Out, GarbageCollectedHeap, traplib;
   TYPE
@@ -14,9 +17,11 @@ MODULE traplocation;
     Ext = RECORD (Base) e: INTEGER END;
     BaseP = POINTER TO Base;
     ExtP = POINTER TO Ext;
+    Other = RECORD (Base) o: INTEGER END;
+    OtherP = POINTER TO Other;
   VAR
     which: LONGINT; n: traplib.Node; k, x: INTEGER; a: ARRAY 3 OF INTEGER;
-    r: LONGREAL; v: Vector; b: BaseP; big: ARRAY 8 OF CHAR; small: ARRAY 4 OF CHAR;
+    r: LONGREAL; v: Vector; b, e: BaseP; big: ARRAY 8 OF CHAR; small: ARRAY 4 OF CHAR;
 
   PROCEDURE Assign(s: ARRAY OF CHAR);
   BEGIN
@@ -47,6 +52,14 @@ BEGIN
   | 9: big := "abcdefg"; Assign(big)
   | 10: GarbageCollectedHeap.SetChunkSize(8192); GarbageCollectedHeap.SetHeapLimit(65536);
         NEW(v, 100000)
+  | 11: NEW(b);
+        WITH b: ExtP DO x := 1
+        | b: OtherP DO x := 2
+        END
+  | 12: NEW(b); e := NIL;
+        WITH b: ExtP DO x := 1
+        | e: ExtP DO x := 2
+        END
   END;
   Out.Int(x, 0); Out.Ln
 END traplocation.
