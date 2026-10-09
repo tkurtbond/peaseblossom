@@ -739,8 +739,8 @@ most, object libraries.
      variables it needs (`NestedProcedures.Analyze`) after its own
      parameters. Fixture `vax-nested` takes traps 4 and 2 in nested
      procedures under the debugger and runs one source on both backends.
-     Its `.mar` file awaits the user's review. Survey: 263, none of them
-     nested procedures.
+     Its `.mar` file was reviewed by the user (2026-10-09). Survey: 263,
+     none of them nested procedures.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

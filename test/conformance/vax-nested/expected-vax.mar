@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual, LLVM's code generator and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
+;; the MACRO manual, LLVM's code generator and the debugger runs). Why
+;; this is right:
 ;; - Phase 16 step 3 (section 14, item 8): a nested procedure is lifted
 ;;   to a procedure of its own, a local label and .WORD of its mask, never
 ;;   .ENTRY, since only its enclosing procedures call it. Its symbol is
