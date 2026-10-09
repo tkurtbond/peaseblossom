@@ -3,10 +3,8 @@ VaxTooMuch.mod:9:7: error: module VaxTooMuch: the VAX backend cannot lower this 
 VaxTooMuch.mod:10:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: an external ["C"] procedure (VAX/VMS takes "VMS")
 VaxTooMuch.mod:11:20: error: module VaxTooMuch: the VAX backend cannot lower this yet: a nested procedure (Phase 16)
 VaxTooMuch.mod:13:49: error: module VaxTooMuch: the VAX backend cannot lower this yet: an open-array parameter of an external procedure (Phase 17 chooses its mechanism)
-VaxTooMuch.mod:14:15: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type PROCEDURE (Phase 16)
-VaxTooMuch.mod:17:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: the predeclared procedure ASSERT (outside Phase 15's slice, section 1)
-VaxTooMuch.mod:18:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type PROCEDURE (Phase 16)
-7 construct(s) the VAX backend cannot lower yet; not written
+VaxTooMuch.mod:16:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: the predeclared procedure ASSERT (outside Phase 15's slice, section 1)
+5 construct(s) the VAX backend cannot lower yet; not written
 exit 1
 == poc -emit-macro32 VaxNameClash.mod
 VaxNameClash.mod:5:30: error: VaxNameClash.collisionTqMUQStWWdKp and VaxNameClash.collisionPuRhnmwOfQAB have the same VAX symbol, VAXNAMECLASH_COLLISION_VA2IG0SM
@@ -17,13 +15,13 @@ VaxClashBetweenModulesA.mod:11:24: error: VaxClashBetweenModulesB.clashfHvJRlcQI
 1 error(s); nothing written
 exit 1
 == poc -emit-macro32 VaxReportedOnce.mod
-VaxReportedOnce.mod:9:7: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a variable of type SYSTEM.SET64 (Phase 16)
-VaxReportedOnce.mod:9:44: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a variable of type REAL (Phase 16)
-VaxReportedOnce.mod:9:53: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a variable of type PROCEDURE (Phase 16)
-VaxReportedOnce.mod:11:12: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type SYSTEM.SET64 (Phase 16)
-VaxReportedOnce.mod:12:9: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type REAL (Phase 16)
-VaxReportedOnce.mod:12:13: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type REAL (Phase 16)
-VaxReportedOnce.mod:13:8: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type PROCEDURE (Phase 16)
+VaxReportedOnce.mod:10:7: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a variable of type SYSTEM.SET64 (Phase 16)
+VaxReportedOnce.mod:10:44: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a variable of type REAL (Phase 16)
+VaxReportedOnce.mod:10:53: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a variable of type POINTER TO RECORD (Phase 16)
+VaxReportedOnce.mod:12:12: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type SYSTEM.SET64 (Phase 16)
+VaxReportedOnce.mod:13:9: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type REAL (Phase 16)
+VaxReportedOnce.mod:13:13: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type REAL (Phase 16)
+VaxReportedOnce.mod:14:8: error: module VaxReportedOnce: the VAX backend cannot lower this yet: a value of type POINTER TO RECORD (Phase 16)
 7 construct(s) the VAX backend cannot lower yet; not written
 exit 1
 == poc -target x86_64-unknown-linux-gnu -emit-macro32 VaxEmpty.mod

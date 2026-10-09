@@ -1,0 +1,130 @@
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual, LLVM's code generator and the debugger runs; for the user's
+;; review). Why this is right:
+;; - The module VaxProcVals imports (expected-vax.mar): a variable of
+;;   procedure type, op, an exported longword (.BLKL) that VaxProcVals
+;;   calls through and assigns, set to Max by the module's body with one
+;;   MOVAB.
+;; - Hidden returns Twice, which is private, as a value: MOVAB of its
+;;   local label, at its .WORD mask, into R0. VaxProcVals calls it through
+;;   that value, and the debugger names it.
+;; - Apply checks f for NIL, trap 4 at line 26, column 28, the
+;;   designator, then builds the list and calls CALLG -12(FP), (R2). Its
+;;   a and b are not copied to the frame, since the call through f, whose
+;;   type has no VAR parameters, cannot change them.
+; VaxProcLib, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXPROCLIB
+	.IDENT	/188c5bedc19f8462/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; op: PROCEDURE, exported
+	.ALIGN	LONG
+VAXPROCLIB_OP_68BGDI84::
+	.BLKL	1
+; calls: INTEGER, exported
+	.ALIGN	WORD
+VAXPROCLIB_CALLS_GVIIF908::
+	.BLKW	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxProcLib/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Max
+	.ENTRY	VAXPROCLIB_MAX_3I6CV9GJ, ^M<>
+; line 14
+	CMPW	4(AP), 8(AP)
+	BGTR	L_3
+	JMP	L^L_2
+L_3:
+; line 14
+	CVTWL	4(AP), R0
+	RET
+	JMP	L^L_1
+L_2:
+; line 14
+	CVTWL	8(AP), R0
+	RET
+L_1:
+	PUSHL	#3
+	PUSHL	#15
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Twice
+VAXPROCLIB_TWICE_7TELJCI5:
+	.WORD	^M<>
+; line 18
+	ADDW3	8(AP), 4(AP), R0
+	MULW2	#2, R0
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#19
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Hidden
+	.ENTRY	VAXPROCLIB_HIDDEN_3MGABAVB, ^M<>
+; line 22
+	MOVAB	VAXPROCLIB_TWICE_7TELJCI5, R0
+	RET
+	PUSHL	#3
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Apply
+	.ENTRY	VAXPROCLIB_APPLY_136JHR0T, ^M<R2>
+	SUBL2	#12, SP
+; line 26
+	INCW	VAXPROCLIB_CALLS_GVIIF908
+; line 26
+	MOVL	4(AP), R2
+	BNEQ	L_4
+	PUSHL	#28
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_4:
+	MOVL	#2, -12(FP)
+	CVTWL	8(AP), -8(FP)
+	CVTWL	12(AP), -4(FP)
+	CALLG	-12(FP), (R2)
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#27
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXPROCLIB_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 30
+	MOVAB	VAXPROCLIB_MAX_3I6CV9GJ, VAXPROCLIB_OP_68BGDI84
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_188C5BEDC19F8462 == 0
+
+	.END

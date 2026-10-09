@@ -1,0 +1,9 @@
+semantic OK, wrote VaxProcLib.mar
+semantic OK, wrote VaxProcVals.mar
+exit 0
+VaxProcVals.mar matches expected-vax.mar
+VaxProcLib.mar matches expected-vax-VaxProcLib.mar
+LLVM build -O2 exit 0
+VAX build -O2 exit 0
+LLVM build -OC exit 0
+VAX build -OC exit 0

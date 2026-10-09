@@ -725,6 +725,14 @@ most, object libraries.
      under the debugger and runs one source on both backends. Its `.mar`
      files were reviewed by the user (2026-10-09). Survey: 388, unchanged,
      poc's source having no type-bound procedures.
+   - *Procedure values* (section 14 item 7), done 2026-10-09: a procedure
+     value is the longword address of a procedure's entry mask, NIL 0,
+     compared as a longword, and a call through one checks it for NIL
+     (trap 4) before its arguments, then `CALLG list, (Rn)`. Fixture
+     `vax-procedure-values` takes trap 4 from a variable and an element
+     under the debugger and runs one source on both backends. Its `.mar`
+     files await the user's review. Survey: 270, none of them procedure
+     values.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

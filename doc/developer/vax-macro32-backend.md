@@ -1353,3 +1353,44 @@ block and trap 5 from a guarded receiver, at the positions the LLVM backend's `-
 `-O2` and `-OC` and must print the same. `vax-emit-errors` no longer
 expects a type-bound procedure to be refused. The survey still counts
 388 refusals, since poc's source has no type-bound procedures.
+
+**Done: procedure values (item 7), 2026-10-09.** A procedure type is a
+longword, the address of a procedure's entry mask, and `NIL` is 0. A
+procedure taken as a value is `MOVAB` of its symbol: a private one's
+local label, at its `.WORD` mask, an exported one's `.ENTRY`, and
+another module's in general mode, `G^`. `MOVAB` writes straight into the
+variable assigned, or into the argument list's entry for a procedure
+passed as an argument. `=` and `#` compare two procedure values, or one
+and `NIL`, as longwords. The front end allows only global Oberon
+procedures as values, so no external procedure, and no environment, is
+ever one (item 7).
+
+A call through a value, a variable, parameter, field or element of
+procedure type, evaluates the value first, as LLVM does, into a register
+from `R2` up, which the call does not have to move, and checks it for
+`NIL`: trap 4 at the designator's line and column. The LLVM backend
+reports an element's at its index, as for a pointer (item 3). Then the
+argument list is built from the procedure type's parameters, as for a
+direct call, so a `VAR` record parameter's tag, an open array's lengths
+and a quadword's copy are passed as the procedure expects, and the call
+is `CALLG list, (Rn)`, or `CALLS #0, (Rn)` with no arguments. A value
+spilled to the frame while the arguments are evaluated would be called as
+`@n(FP)`. The analysis of which value parameters a procedure changes now
+reads a call through a value's parameter list from its type, so passing
+a parameter by value through one does not copy it to the frame.
+
+Fixture `vax-procedure-values` has `VaxProcVals` and `VaxProcLib`, written
+for the user's review. Its debugger runs examine what the program computes
+and what four variables hold, which the debugger names by their
+procedures, one of them a procedure `VaxProcLib` does not export, and take
+trap 4 from a `NIL` variable and a `NIL` element of a pointer's array. A
+second program, `ProcValsOut`, prints with `Out`, calling `Out.String` and
+`Out.Ln` through values too, and is built by both backends under `-O2` and
+`-OC` and must print the same. `vax-emit-errors`' `VaxTooMuch` no longer
+passes a procedure as a value, and `VaxReportedOnce` takes a pointer to a
+record with a field initializer for its unlowerable operand.
+
+The survey counts 270 refusals, down from 388, none of them procedure
+values: reals (165), `SYSTEM.BYTE` parameters (78), calls and
+expressions that need more registers than are left (19), nested
+procedures (7) and a structured constant (1).

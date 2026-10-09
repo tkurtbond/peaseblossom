@@ -1,0 +1,9 @@
+! mode = 2: machine.table[2](1, 2), an element of a pointer's array that
+! is NIL, in line 234: code 4 at column 25, the designator
+DEPOSIT/WORD VAXPROCVALS\VAXPROCVALS_MODE_HR8M6RKT = 2
+GO
+EXAMINE/LONG POC_TRAP_CODE
+EXAMINE/LONG POC_TRAP_LINE
+EXAMINE/LONG POC_TRAP_COLUMN
+EXAMINE/ASCII:11 POC_TRAP_MODULE
+EXIT

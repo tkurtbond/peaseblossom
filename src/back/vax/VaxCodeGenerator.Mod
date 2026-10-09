@@ -11,16 +11,14 @@ MODULE VaxCodeGenerator;
      section 7); fixed arrays, records without a base type, and strings
      (step 6); the slice's predeclared procedures (steps 7 and 7b); and
      several modules and the program's start (step 8, section 6). Then
-     Phase 16 step 3's (section 14): open arrays (item 1), and pointers to
-     arrays and to records without a base type, NIL, NEW and the type
-     descriptors (items 3 and 4), and a VAR record parameter's type tag
-     (item 5).
+     Phase 16 step 3's (section 14): open arrays (item 1); pointers, NIL,
+     NEW and the type descriptors (items 3 and 4); a VAR record
+     parameter's type tag (item 5); extension, IS, type guards and WITH;
+     type-bound procedures (item 6); and procedure values (item 7).
 
-     A module needing more - a predeclared procedure
-     outside the slice, a type outside the slice, a pointer to an
-     extension, a nested or type-bound procedure, a procedure value or
-     WITH (Phase 16) - is
-     reported as a construct the backend cannot lower yet,
+     A module needing more - a predeclared procedure outside the slice, a
+     type outside the slice, such as a real, or a nested procedure (Phase
+     16) - is reported as a construct the backend cannot lower yet,
      at its position, and unsupportedCount counts them, as
      LLVMCodeGenerator's does; VaxToolchainDriver then deletes what was
      written. Constants need no code, and types only their descriptors.
@@ -34,7 +32,9 @@ MODULE VaxCodeGenerator;
      the frame on entry, the argument list being read-only to the callee.
      A call evaluates its arguments left to right into a list in the
      frame, then CALLG (CALLS #0 without arguments); R0 and R1 are moved
-     up first, R2-R5 surviving it. A function's value comes back in R0 as
+     up first, R2-R5 surviving it. A procedure value is the address of a
+     procedure's entry mask; a call through one loads it into R2-R5 and
+     checks it for NIL before the arguments, then CALLG list, (Rn). A function's value comes back in R0 as
      a longword, a HUGEINT in R0 and R1. HUGEINT *, DIV and MOD call poc's
      runtime (POC_HMUL, POC_HDIV, POC_HMOD), and the traps POC_TRAP,
      declared .EXTERNAL, as is every external procedure called. A symbol
@@ -899,10 +899,17 @@ MODULE VaxCodeGenerator;
          OR (base IS Types.RecordType) & ~base(Types.RecordType).needsInit)
   END IsSlicePointer;
 
+  (* Whether t is a procedure type (section 14, item 7): its values are
+     the longword address of a procedure's entry mask, NIL 0 *)
+  PROCEDURE IsProcedureType(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (t # NIL) & (t IS Types.ProcedureType) & (t # Types.PredeclaredProcedureType)
+  END IsProcedureType;
+
   PROCEDURE IsSliceScalar(t: Types.Type): BOOLEAN;
   BEGIN
     RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Set)
-      OR Types.IsInteger(t) & (Suffix(t) # 0X) OR IsSlicePointer(t)
+      OR Types.IsInteger(t) & (Suffix(t) # 0X) OR IsSlicePointer(t) OR IsProcedureType(t)
   END IsSliceScalar;
 
   (* Whether t is in the slice (section 1): a scalar above, a fixed array
@@ -1924,16 +1931,27 @@ MODULE VaxCodeGenerator;
     END
   END ReceiverInto;
 
+  (* The procedure a call through a value calls, appended to target:
+     (Rn) when callee is in a register, @n(FP) when it was spilled *)
+  PROCEDURE CalleeText(callee: Operand; VAR target: ARRAY OF CHAR);
+    VAR text: OperandText;
+  BEGIN
+    Text(callee, text);
+    IF callee.kind = register THEN AppendChar(target, "("); Append(target, text); AppendChar(target, ")")
+    ELSE AppendChar(target, "@"); Append(target, text)
+    END
+  END CalleeText;
+
   PROCEDURE Call(d: SyntaxTree.Designator; args: SyntaxTree.ExprNode; line, column: INTEGER): Operand;
     CONST maxCopies = 16;
     VAR obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param; a: SyntaxTree.ExprNode;
-        v, entry: Operand; copy: ARRAY maxCopies OF Operand; n, i, list, copies, first: INTEGER;
+        v, entry, callee: Operand; copy: ARRAY maxCopies OF Operand; n, i, list, copies, first: INTEGER;
         symbol: VaxTypes.Symbol; text: ARRAY 160 OF CHAR; target: ARRAY 200 OF CHAR; external, outside: BOOLEAN;
-        m: MethodTarget; a1: ARRAY 24 OF CHAR;
+        m: MethodTarget; a1, ok: ARRAY 24 OF CHAR; t: Types.Type;
   BEGIN
     obj := Resolve(d.qualifier, d.name, line, column);
     IF obj = NIL THEN RETURN NIL END;
-    m := NIL;
+    m := NIL; callee := NIL; t := NIL;
     IF (obj.class = SymbolTable.varClass) & (d.selectors # NIL) THEN
       m := MethodCallTarget(d, obj, line, column);
       IF (m # NIL) & (m.called = NIL) THEN RETURN NIL END
@@ -1942,8 +1960,14 @@ MODULE VaxCodeGenerator;
       pt := m.called.procType
     ELSIF obj.type = Types.PredeclaredProcedureType THEN
       RETURN Predeclared(d.name, args, NIL, line, column)
+    ELSIF obj.class = SymbolTable.varClass THEN
+      (* through a procedure value: a variable, a parameter, a field or an
+         element of procedure type *)
+      t := StaticType(d, obj);
+      IF ~IsProcedureType(t) THEN Unsupported(line, column, "a call of this designator"); RETURN NIL END;
+      pt := t(Types.ProcedureType)
     ELSIF obj.class # SymbolTable.procClass THEN
-      Unsupported(line, column, "a call of a procedure variable (Phase 16)"); RETURN NIL
+      Unsupported(line, column, "a call of this designator"); RETURN NIL
     ELSIF d.selectors # NIL THEN
       Unsupported(line, column, "a call through a selector (Phase 16)"); RETURN NIL
     ELSE
@@ -1981,7 +2005,16 @@ MODULE VaxCodeGenerator;
       p := p.next
     END;
     IF copies > maxCopies THEN Unsupported(line, column, "a call with this many HUGEINT arguments"); RETURN NIL END;
-    IF m # NIL THEN
+    IF t # NIL THEN
+      (* the procedure value first, as on LLVM, checked for NIL (trap 4
+         at the designator); in R2-R5, which the call does not need to
+         move, or the frame if it is spilled *)
+      outside := FALSE;
+      v := Locate(d, obj, line, column);
+      callee := NewRegisterFrom(t, 2, line, column);
+      MoveInto(v, callee); Release(v);
+      NewLabel(ok); Emit("BNEQ", ok); Trap(4, line, column); EmitLabel(ok)
+    ELSIF m # NIL THEN
       outside := ~m.indirect & MethodSymbol(m.owner, m.called.name, symbol)
     ELSE
       ProcedureSymbol(obj, symbol);
@@ -1991,7 +2024,10 @@ MODULE VaxCodeGenerator;
     IF n = 0 THEN
       FreeR0R1(line, column);
       COPY("#0, ", target);
-      IF outside THEN AppendExternal(target, symbol) ELSE Append(target, symbol) END;
+      IF callee # NIL THEN CalleeText(callee, target)
+      ELSIF outside THEN AppendExternal(target, symbol)
+      ELSE Append(target, symbol)
+      END;
       Emit("CALLS", target)
     ELSE
       list := AllocateSlots(n + 1);
@@ -2019,7 +2055,9 @@ MODULE VaxCodeGenerator;
           END;
           AddressOf(v, entry); Release(v)
         ELSE
-          v := Expression(a, NIL);
+          IF IsProcedureType(p.type) THEN v := Expression(a, entry) (* a procedure, MOVAB to the list *)
+          ELSE v := Expression(a, NIL)
+          END;
           IF Suffix(p.type) = "Q" THEN
             (* the address of a copy in the frame, kept until the call
                returns: the callee copies it again, or reads it if it is
@@ -2048,6 +2086,7 @@ MODULE VaxCodeGenerator;
           Emit("MOVL", "-4(R1), R1")
         END;
         AppendChar(target, "@"); AppendInt(target, -4 * (m.slot + 1)); Append(target, "(R1)")
+      ELSIF callee # NIL THEN CalleeText(callee, target)
       ELSIF outside THEN AppendExternal(target, symbol)
       ELSE Append(target, symbol)
       END;
@@ -2055,6 +2094,7 @@ MODULE VaxCodeGenerator;
       ReleaseSlots(list, n + 1);
       FOR i := 0 TO copies - 1 DO Release(copy[i]) END
     END;
+    IF callee # NIL THEN Release(callee) END;
     IF pt.resultType = NIL THEN RETURN NIL END;
     RETURN CallResult(pt.resultType)
   END Call;
@@ -2130,7 +2170,20 @@ MODULE VaxCodeGenerator;
     RETURN Dummy()
   END Constant;
 
-  PROCEDURE Designator(e: SyntaxTree.DesignatorExprNode): Operand;
+  (* A procedure as a value (section 14, item 7): the address of its entry
+     mask, MOVAB, into dest when that is a longword, else a register *)
+  PROCEDURE ProcedureValue(obj: SymbolTable.Object; dest: Operand; line, column: INTEGER): Operand;
+    VAR x, r: Operand;
+  BEGIN
+    x := NewOperand(memory, obj.type);
+    ProcedureSymbol(obj, x.symbol);
+    IF HomeOf(obj) # NIL THEN x.outside := TRUE; AddExternal(x.symbol) END;
+    IF (dest # NIL) & (Suffix(dest.type) = "L") THEN r := dest ELSE r := NewRegister(obj.type, line, column) END;
+    Emit2("MOVAB", x, r);
+    RETURN r
+  END ProcedureValue;
+
+  PROCEDURE Designator(e: SyntaxTree.DesignatorExprNode; dest: Operand): Operand;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; x: Operand; text: ARRAY 160 OF CHAR;
   BEGIN
     d := e.designator;
@@ -2153,8 +2206,11 @@ MODULE VaxCodeGenerator;
       RETURN x
     END;
     obj := Resolve(d.qualifier, d.name, e.line, e.column);
-    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
-      Unsupported(e.line, e.column, "a procedure as a value (Phase 16)"); RETURN Dummy()
+    IF (obj # NIL) & (obj.class = SymbolTable.procClass) & IsProcedureType(obj.type)
+       & (obj.externalConvention = "") & (d.selectors = NIL) THEN
+      RETURN ProcedureValue(obj, dest, e.line, e.column)
+    ELSIF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
+      Unsupported(e.line, e.column, "this designator as a value"); RETURN Dummy()
     END;
     IF ~IsParamType(TypeOf(obj)) THEN
       COPY("a value of type ", text); Types.Describe(TypeOf(obj), text); AppendWhen(TypeOf(obj), text);
@@ -2370,6 +2426,9 @@ MODULE VaxCodeGenerator;
           & ((op = Lexer.equal) OR (op = Lexer.notEqual)) THEN
       (* two pointers, or one and NIL, which the checker has found related:
          their addresses compared as longwords *)
+    ELSIF (IsProcedureType(a.type) OR (a.type = Types.NilType)) & (IsProcedureType(b.type) OR (b.type = Types.NilType))
+          & ((op = Lexer.equal) OR (op = Lexer.notEqual)) THEN
+      (* two procedure values, or one and NIL, as longwords *)
     ELSIF ~((a.type = b.type) & IsSliceScalar(a.type)) THEN
       CannotLower("a comparison of ", a, b, line, column); RETURN FALSE
     ELSIF ~((a.type = Types.Char) OR (op = Lexer.equal) OR (op = Lexer.notEqual)) THEN
@@ -3407,7 +3466,7 @@ MODULE VaxCodeGenerator;
         IF IsPredeclaredCall(e) THEN
           RETURN Predeclared(e.designator.name, e.args, dest, e.line, e.column)
         END;
-        RETURN Designator(e)
+        RETURN Designator(e, dest)
     | e: SyntaxTree.BinaryExprNode DO RETURN Binary(e, dest)
     | e: SyntaxTree.UnaryExprNode DO RETURN Unary(e, dest)
     | e: SyntaxTree.SetExprNode DO RETURN SetConstructor(e, dest)
@@ -4074,14 +4133,17 @@ MODULE VaxCodeGenerator;
      (INC(x)), or any argument of a procedure not of this module, which
      may change it (SYSTEM.ADR(x)) *)
   PROCEDURE CallChanges(d: SyntaxTree.Designator; args: SyntaxTree.ExprNode; name: SyntaxTree.Ident): BOOLEAN;
-    VAR obj: SymbolTable.Object; p: Types.Param; a: SyntaxTree.ExprNode;
+    VAR obj: SymbolTable.Object; p: Types.Param; a: SyntaxTree.ExprNode; t: Types.Type;
   BEGIN
     IF ExprsChange(args, name) OR SelectorsChange(d.selectors, name) THEN RETURN TRUE END;
-    obj := NIL;
+    obj := NIL; t := NIL;
     IF d.qualifier[0] = 0X THEN obj := SymbolTable.Find(scope, d.name) END;
+    IF (obj # NIL) & (obj.class = SymbolTable.procClass) & (d.selectors = NIL) THEN t := obj.type
+    ELSIF (obj # NIL) & (obj.class = SymbolTable.varClass) THEN t := StaticType(d, obj) (* a procedure value's *)
+    END;
     a := args;
-    IF (obj # NIL) & (obj.class = SymbolTable.procClass) & (obj.type IS Types.ProcedureType) THEN
-      p := obj.type(Types.ProcedureType).params;
+    IF IsProcedureType(t) THEN
+      p := t(Types.ProcedureType).params;
       WHILE (p # NIL) & (a # NIL) DO
         IF p.isVar & IsName(a, name) THEN RETURN TRUE END;
         p := p.next; a := a.next
