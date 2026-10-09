@@ -166,6 +166,37 @@ HDIVMOD:
 	MOVQ	R8, R2
 	RSB
 
+; POC_NEW(size, tag), for NEW (design section 14, item 3): a block of a
+; tag longword and size bytes from LIB$GET_VM, tag stored and the bytes
+; cleared, since LIB$GET_VM does not clear them and every variable starts
+; at zero (MOVC5 in pieces of at most 65535); R0 the address past the
+; tag, or 0, NIL, when there is no memory. Nothing is freed until the
+; collector is ported (step 4).
+	.ENTRY	POC_NEW, ^M<R2,R3,R4,R5,R6,R7>
+	SUBL2	#8, SP
+	ADDL3	#4, 4(AP), -8(FP)
+	PUSHAL	-4(FP)
+	PUSHAL	-8(FP)
+	CALLS	#2, G^LIB$GET_VM
+	BLBS	R0, 10$
+	CLRL	R0
+	RET
+10$:	MOVL	-4(FP), R1
+	MOVL	8(AP), (R1)
+	MOVL	4(AP), R6
+	ADDL3	#4, R1, R3
+20$:	TSTL	R6
+	BEQL	30$
+	MOVL	R6, R7
+	CMPL	R7, #65535
+	BLEQU	25$
+	MOVL	#65535, R7
+25$:	SUBL2	R7, R6
+	MOVC5	#0, (R3), #0, R7, (R3)
+	BRB	20$
+30$:	ADDL3	#4, -4(FP), R0
+	RET
+
 ; Out's output (rtl/vax/Out.Mod; design section 14, item 2). Out keeps a
 ; line until Ln, since LIB$PUT_OUTPUT writes whole records.
 	$DSCDEF

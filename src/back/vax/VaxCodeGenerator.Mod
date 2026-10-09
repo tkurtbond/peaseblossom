@@ -10,15 +10,19 @@ MODULE VaxCodeGenerator;
      (step 4); procedures, calls and external ["VMS"] procedures (step 5,
      section 7); fixed arrays, records without a base type, and strings
      (step 6); the slice's predeclared procedures (steps 7 and 7b); and
-     several modules and the program's start (step 8, section 6).
+     several modules and the program's start (step 8, section 6). Then
+     Phase 16 step 3's (section 14): open arrays (item 1), and pointers to
+     arrays and to records without a base type, NIL, NEW and the type
+     descriptors (items 3 and 4).
 
      A module needing more - a predeclared procedure
-     outside the slice, a type outside the slice, a pointer, a nested or
-     type-bound procedure, a procedure value or WITH (Phase 16) - is
+     outside the slice, a type outside the slice, a pointer to an
+     extension, a nested or type-bound procedure, a procedure value or
+     WITH (Phase 16) - is
      reported as a construct the backend cannot lower yet,
      at its position, and unsupportedCount counts them, as
      LLVMCodeGenerator's does; VaxToolchainDriver then deletes what was
-     written. Constants and types need no code.
+     written. Constants need no code, and types only their descriptors.
 
      Procedures (section 7) use the calling standard's one mechanism. An
      exported procedure is .ENTRY, a private one a local label and .WORD of
@@ -182,6 +186,18 @@ MODULE VaxCodeGenerator;
       next: StringConstant
     END;
 
+    (* A type descriptor the module writes in POC_CONST (section 14, item
+       4): a record's, or, for the arrays NEW allocates whose elements hold
+       pointers, their element type's (rec NIL) *)
+    TypeDescriptor = POINTER TO TypeDescriptorDesc;
+    TypeDescriptorDesc = RECORD
+      rec: Types.RecordType;
+      elem: Types.Type;
+      label: VaxTypes.Symbol;
+      global: BOOLEAN; (* a record named at the module's level: label::, for its importers *)
+      next: TypeDescriptor
+    END;
+
     (* One line of the body: a label, or an instruction or comment *)
     Instruction = POINTER TO InstructionDesc;
     InstructionDesc = RECORD
@@ -224,6 +240,8 @@ MODULE VaxCodeGenerator;
     externals: External;
     homes: Home; (* the imported variables and procedures it uses *)
     strings: StringConstant; (* in the order of first use *)
+    descriptors: TypeDescriptor; (* in the order they were needed *)
+    descriptorCount: INTEGER; (* the labels L_TD_<n> and L_AD_<n> made *)
     code, codeLast: Instruction; (* the procedures, written before the initializer *)
     (* the procedure being generated *)
     locals: Local;
@@ -586,7 +604,10 @@ MODULE VaxCodeGenerator;
         x.slot := -1
       END;
       IF x.ownsBase THEN x.ownsBase := FALSE; x.baseOp.pinned := FALSE; Release(x.baseOp) END;
-      IF x.ownsIndex THEN x.ownsIndex := FALSE; x.index.pinned := FALSE; Release(x.index) END
+      IF x.ownsIndex THEN x.ownsIndex := FALSE; x.index.pinned := FALSE; Release(x.index) END;
+      (* an open array's lengths, which own the block's register once its
+         elements are reached through another (IndexOpen) *)
+      IF x.lens # NIL THEN Release(x.lens) END
     END
   END Release;
 
@@ -834,10 +855,25 @@ MODULE VaxCodeGenerator;
 
   PROCEDURE ^ Expression(e: SyntaxTree.ExprNode; dest: Operand): Operand;
 
+  (* Whether t is a pointer the backend lowers (section 14, items 3 and
+     4): to a record with no base type and no field initializers, or to an
+     array, fixed or open. Only the base's kind is looked at, not its
+     contents, which are checked where they are used, so that a record
+     reaching itself through its pointers needs no guard. *)
+  PROCEDURE IsSlicePointer(t: Types.Type): BOOLEAN;
+    VAR base: Types.Type;
+  BEGIN
+    IF (t = NIL) OR ~(t IS Types.PointerType) THEN RETURN FALSE END;
+    base := t(Types.PointerType).base;
+    RETURN (base # NIL)
+      & ((base IS Types.ArrayType)
+         OR (base IS Types.RecordType) & (base(Types.RecordType).baseType = NIL) & ~base(Types.RecordType).needsInit)
+  END IsSlicePointer;
+
   PROCEDURE IsSliceScalar(t: Types.Type): BOOLEAN;
   BEGIN
     RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Set)
-      OR Types.IsInteger(t) & (Suffix(t) # 0X)
+      OR Types.IsInteger(t) & (Suffix(t) # 0X) OR IsSlicePointer(t)
   END IsSliceScalar;
 
   (* Whether t is in the slice (section 1): a scalar above, a fixed array
@@ -897,6 +933,59 @@ MODULE VaxCodeGenerator;
     n.baseOp := x.lens.baseOp; n.offset := x.lens.offset + 4 * dim;
     RETURN n
   END LengthOf;
+
+  (* ---- Pointers and type descriptors (section 14, items 3 and 4) ---- *)
+
+  (* How many pointers a value of type t holds: one for a pointer, summed
+     through a record's fields and multiplied through a fixed array's
+     length, as on LLVM (CountPointerSlots); a procedure value is not
+     one *)
+  PROCEDURE PointerCount(t: Types.Type): LONGINT;
+    VAR count: LONGINT; f: Types.Field; rec: Types.RecordType; arr: Types.ArrayType;
+  BEGIN
+    IF t = NIL THEN RETURN 0
+    ELSIF t IS Types.PointerType THEN RETURN 1
+    ELSIF t IS Types.ArrayType THEN
+      arr := t(Types.ArrayType);
+      IF arr.isOpen THEN RETURN 0 END;
+      RETURN arr.length * PointerCount(arr.elementType)
+    ELSIF t IS Types.RecordType THEN
+      rec := t(Types.RecordType); count := 0;
+      IF rec.baseType # NIL THEN count := PointerCount(rec.baseType) END;
+      f := rec.fields;
+      WHILE f # NIL DO count := count + PointerCount(f.type); f := f.next END;
+      RETURN count
+    END;
+    RETURN 0
+  END PointerCount;
+
+  (* Where the elements of a block NEW allocated for arr, an open array,
+     start: after its lengths, a longword for each open dimension, rounded
+     up to the element's size when it holds pointers, else to its
+     alignment, as on LLVM (OpenDataOffset) *)
+  PROCEDURE DataOffset(arr: Types.Type): LONGINT;
+    VAR elem: Types.Type; header, unit: LONGINT;
+  BEGIN
+    elem := OpenBase(arr);
+    header := 4 * OpenDims(arr);
+    IF PointerCount(elem) > 0 THEN unit := VaxTypes.Size(elem) ELSE unit := VaxTypes.Align(elem) END;
+    IF unit < 1 THEN unit := 1 END;
+    RETURN (header + unit - 1) DIV unit * unit
+  END DataOffset;
+
+  (* A descriptor added to the module's list, at its end *)
+  PROCEDURE NewDescriptor(rec: Types.RecordType; elem: Types.Type): TypeDescriptor;
+    VAR d, p: TypeDescriptor;
+  BEGIN
+    NEW(d); d.rec := rec; d.elem := elem; d.label[0] := 0X; d.global := FALSE; d.next := NIL;
+    IF descriptors = NIL THEN descriptors := d
+    ELSE
+      p := descriptors;
+      WHILE p.next # NIL DO p := p.next END;
+      p.next := d
+    END;
+    RETURN d
+  END NewDescriptor;
 
   (* name, an external symbol, to be declared .EXTERNAL: in the order of
      first use *)
@@ -1110,8 +1199,9 @@ MODULE VaxCodeGenerator;
      the next dimension's length first. *)
   PROCEDURE IndexOpen(x: Operand; e: SyntaxTree.ExprNode);
     VAR arr: Types.ArrayType; i, old, lens: Operand; s: CHAR; size: LONGINT; d, dims: INTEGER;
-        text: ARRAY 24 OF CHAR;
+        text: ARRAY 24 OF CHAR; keep: BOOLEAN;
   BEGIN
+    keep := FALSE;
     arr := x.type(Types.ArrayType);
     lens := x.lens;
     i := CheckedIndex(e, 0, LengthOf(x, 0));
@@ -1126,31 +1216,110 @@ MODULE VaxCodeGenerator;
       x.index := i;
       Emit2("MOVAB", x, i);
       x.index := NIL;
-      IF x.ownsBase THEN old := x.baseOp; old.pinned := FALSE; Release(old) END;
+      IF x.ownsBase THEN
+        old := x.baseOp;
+        (* a block NEW allocated has its lengths where x pointed: the
+           register stays, for the next dimensions' lengths *)
+        IF (dims > 0) & (lens.baseOp = old) THEN keep := TRUE
+        ELSE old.pinned := FALSE; Release(old)
+        END
+      END;
       x.symbol[0] := 0X; x.outside := FALSE; x.offset := 0; x.onAP := FALSE; x.deferred := FALSE;
       x.baseOp := i; x.ownsBase := TRUE
     END;
     IF dims > 0 THEN
       x.lens := NewOperand(memory, longword);
       x.lens.symbol := lens.symbol; x.lens.outside := lens.outside; x.lens.onAP := lens.onAP;
-      x.lens.baseOp := lens.baseOp; x.lens.offset := lens.offset + 4
+      x.lens.baseOp := lens.baseOp; x.lens.offset := lens.offset + 4;
+      x.lens.ownsBase := lens.ownsBase OR keep; lens.ownsBase := FALSE
     ELSE
-      x.lens := NIL
+      x.lens := NIL;
+      IF lens.ownsBase THEN Release(lens) END
     END;
     x.type := arr.elementType
   END IndexOpen;
 
+  (* p^, x being the pointer p (section 14, item 3): p's value in a
+     register - the one x is based on when it owns it, so that p.next.next
+     is MOVL 4(Rn), Rn - checked for NIL (BNEQ over the trap, code 4, at
+     the designator's position), then 0(Rn), of p's base type. A pointer
+     to an open array points at its lengths, a longword for each open
+     dimension, and its elements are DataOffset bytes on. *)
+  PROCEDURE Dereference(x: Operand; line, column: INTEGER): Operand;
+    VAR r, y: Operand; base: Types.Type; ok: ARRAY 16 OF CHAR;
+  BEGIN
+    base := x.type(Types.PointerType).base;
+    IF x.kind = register THEN
+      r := x; Emit1("TSTL", r)
+    ELSIF (x.kind = memory) & x.ownsBase & ~x.ownsIndex & (x.index = NIL) THEN
+      r := x.baseOp; x.ownsBase := FALSE;
+      Emit2("MOVL", x, r)
+    ELSE
+      r := NewRegisterBeside(longword, x, NIL, line, column);
+      Emit2("MOVL", x, r);
+      Release(x)
+    END;
+    r.type := longword; r.pinned := TRUE;
+    NewLabel(ok); Emit("BNEQ", ok); Trap(4, line, column); EmitLabel(ok);
+    y := NewOperand(memory, base); y.baseOp := r; y.ownsBase := TRUE;
+    IF Types.IsOpenArray(base) THEN
+      y.lens := NewOperand(memory, longword); y.lens.baseOp := r;
+      y.offset := DataOffset(base)
+    END;
+    RETURN y
+  END Dereference;
+
+  (* The type of what d designates, obj with d's selectors applied, without
+     generating anything; NIL for a type guard *)
+  PROCEDURE StaticType(d: SyntaxTree.Designator; obj: SymbolTable.Object): Types.Type;
+    VAR t: Types.Type; sel: SyntaxTree.Selector; e: SyntaxTree.ExprNode; f: Types.Field;
+  BEGIN
+    t := obj.type; sel := d.selectors;
+    WHILE (sel # NIL) & (t # NIL) DO
+      IF (t IS Types.PointerType) & ~(sel IS SyntaxTree.GuardSelector) THEN t := t(Types.PointerType).base END;
+      IF sel IS SyntaxTree.FieldSelector THEN
+        IF t IS Types.RecordType THEN
+          f := Types.FindField(t(Types.RecordType), sel(SyntaxTree.FieldSelector).name);
+          IF f = NIL THEN t := NIL ELSE t := f.type END
+        ELSE t := NIL
+        END
+      ELSIF sel IS SyntaxTree.IndexSelector THEN
+        e := sel(SyntaxTree.IndexSelector).indices;
+        WHILE (e # NIL) & (t # NIL) DO
+          IF t IS Types.PointerType THEN t := t(Types.PointerType).base END; (* a[i, j], a[i] a pointer *)
+          IF t IS Types.ArrayType THEN t := t(Types.ArrayType).elementType ELSE t := NIL END;
+          e := e.next
+        END
+      ELSIF sel IS SyntaxTree.GuardSelector THEN
+        t := NIL
+      END;
+      sel := sel.next
+    END;
+    RETURN t
+  END StaticType;
+
   (* The variable d designates, obj, with its selectors applied: a field is
      its offset from the record (Displace), an element Index's, or
-     IndexOpen's for an open array. A pointer or a type guard is Phase
+     IndexOpen's for an open array; a pointer is dereferenced, by ^ or
+     before a field or an element (Dereference). A type guard is Phase
      16's. *)
   PROCEDURE Locate(d: SyntaxTree.Designator; obj: SymbolTable.Object; line, column: INTEGER): Operand;
     VAR x: Operand; sel: SyntaxTree.Selector; e: SyntaxTree.ExprNode; rec: Types.RecordType; f: Types.Field;
+        text: ARRAY 160 OF CHAR;
   BEGIN
     x := Variable(obj, line, column);
     sel := d.selectors;
     WHILE sel # NIL DO
-      IF (sel IS SyntaxTree.FieldSelector) & (x.type IS Types.RecordType) THEN
+      IF (x.type IS Types.PointerType) & ~(sel IS SyntaxTree.GuardSelector) THEN
+        IF ~IsSlicePointer(x.type) THEN
+          COPY("a dereference of a pointer of type ", text); Types.Describe(x.type, text); Append(text, " (Phase 16)");
+          Unsupported(sel.line, sel.column, text); RETURN x
+        END;
+        x := Dereference(x, line, column)
+      END;
+      IF sel IS SyntaxTree.DereferenceSelector THEN
+        (* done above *)
+      ELSIF (sel IS SyntaxTree.FieldSelector) & (x.type IS Types.RecordType) THEN
         rec := x.type(Types.RecordType);
         f := Types.FindField(rec, sel(SyntaxTree.FieldSelector).name);
         IF f = NIL THEN RETURN x END;
@@ -1159,6 +1328,7 @@ MODULE VaxCodeGenerator;
       ELSIF sel IS SyntaxTree.IndexSelector THEN
         e := sel(SyntaxTree.IndexSelector).indices;
         WHILE e # NIL DO
+          IF IsSlicePointer(x.type) THEN x := Dereference(x, line, column) END; (* a[i, j], a[i] a pointer *)
           IF ~(x.type IS Types.ArrayType) THEN RETURN x
           ELSIF x.type(Types.ArrayType).isOpen THEN IndexOpen(x, e)
           ELSE Index(x, e)
@@ -1166,7 +1336,7 @@ MODULE VaxCodeGenerator;
           e := e.next
         END
       ELSE
-        Unsupported(sel.line, sel.column, "a pointer or a type guard (Phase 16)"); RETURN x
+        Unsupported(sel.line, sel.column, "a type guard (Phase 16)"); RETURN x
       END;
       sel := sel.next
     END;
@@ -1219,6 +1389,51 @@ MODULE VaxCodeGenerator;
   BEGIN
     Append(target, "G^"); Append(target, name)
   END AppendExternal;
+
+  (* The operand text of rec's type descriptor: a record named at a
+     module's level by the symbol of <Module>.<Type> (section 5), its own
+     module's written by CollectDescriptors, another module's in general
+     mode, G^; any other record - declared in a procedure, or written
+     inline - by a label of this module, L_TD_<n>, its descriptor written
+     because it is needed, as on LLVM *)
+  PROCEDURE RecordTag(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
+    VAR full: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol; d: TypeDescriptor;
+  BEGIN
+    IF rec.name[0] # 0X THEN
+      COPY(rec.moduleName, full); Append(full, "."); Append(full, rec.name);
+      VaxTypes.MakeSymbol(full, symbol);
+      IF rec.moduleName = module.name THEN COPY(symbol, text)
+      ELSE AddExternal(symbol); text[0] := 0X; AppendExternal(text, symbol)
+      END
+    ELSE
+      d := descriptors;
+      WHILE (d # NIL) & (d.rec # rec) DO d := d.next END;
+      IF d = NIL THEN
+        d := NewDescriptor(rec, NIL);
+        INC(descriptorCount); COPY("L_TD_", d.label); AppendInt(d.label, descriptorCount)
+      END;
+      COPY(d.label, text)
+    END
+  END RecordTag;
+
+  (* The operand text of the tag NEW gives an array of elem: empty, for 0,
+     when elem holds no pointers; else the label of a descriptor of elem,
+     L_AD_<n>, whose size is one element's and whose offsets are of the
+     pointers in one, so that the collector (step 4) traces an array of any
+     length, as on LLVM (ArrayTagOperand) *)
+  PROCEDURE ArrayTag(elem: Types.Type; VAR text: ARRAY OF CHAR);
+    VAR d: TypeDescriptor;
+  BEGIN
+    text[0] := 0X;
+    IF PointerCount(elem) = 0 THEN RETURN END;
+    d := descriptors;
+    WHILE (d # NIL) & ~((d.rec = NIL) & (d.elem = elem)) DO d := d.next END;
+    IF d = NIL THEN
+      d := NewDescriptor(NIL, elem);
+      INC(descriptorCount); COPY("L_AD_", d.label); AppendInt(d.label, descriptorCount)
+    END;
+    COPY(d.label, text)
+  END ArrayTag;
 
   (* The symbol a call of obj, a procedure, names: an external one's
      linkage name, verbatim (section 5), else VaxTypes' of "Module.name" *)
@@ -1514,7 +1729,7 @@ MODULE VaxCodeGenerator;
     ELSIF v.kind = Types.setValue THEN
       Unsupported(e.line, e.column, "a SYSTEM.SET64 value (Phase 16)")
     ELSIF v.kind = Types.nilValue THEN
-      Unsupported(e.line, e.column, "NIL (pointers are Phase 16's)")
+      RETURN Immediate(Types.NilType, 0)
     ELSE
       Unsupported(e.line, e.column, "a structured constant (Phase 16)")
     END;
@@ -1744,6 +1959,10 @@ MODULE VaxCodeGenerator;
     IF Types.IsInteger(a.type) & Types.IsInteger(b.type) THEN
       t := Types.WiderOf(a.type, b.type);
       a := Widen(a, t, line, column); b := Widen(b, t, line, column)
+    ELSIF (IsSlicePointer(a.type) OR (a.type = Types.NilType)) & (IsSlicePointer(b.type) OR (b.type = Types.NilType))
+          & ((op = Lexer.equal) OR (op = Lexer.notEqual)) THEN
+      (* two pointers, or one and NIL, which the checker has found related:
+         their addresses compared as longwords *)
     ELSIF ~((a.type = b.type) & IsSliceScalar(a.type)) THEN
       CannotLower("a comparison of ", a, b, line, column); RETURN FALSE
     ELSIF ~((a.type = Types.Char) OR (op = Lexer.equal) OR (op = Lexer.notEqual)) THEN
@@ -2582,6 +2801,131 @@ MODULE VaxCodeGenerator;
     RETURN r
   END Len;
 
+  (* An inline check that fails with code: branch, the branch for its
+     holding, over the trap *)
+  PROCEDURE TrapUnless(branch: ARRAY OF CHAR; code, line, column: INTEGER);
+    VAR ok: ARRAY 16 OF CHAR;
+  BEGIN
+    NewLabel(ok); Emit(branch, ok); Trap(code, line, column); EmitLabel(ok)
+  END TrapUnless;
+
+  (* NEW(p), and NEW(p, n0, ..., nk-1) for a pointer to an open array
+     (section 14, item 3): POC_NEW(size, tag) by CALLG, whose result in R0,
+     the block's address past its tag, or 0 when there is no memory, which
+     leaves p NIL, as on LLVM (without -trap-heap-exhausted), is stored in
+     p. tag is the record's type descriptor (RecordTag), or for an array
+     its element type's when that holds pointers, else 0 (ArrayTag). An
+     open array's lengths come first, as on LLVM, each kept in the frame
+     and checked to be positive, then the block's size from them, the
+     product times the element's size plus DataOffset, checked to be less
+     than 2^31 (code 7 for either, at NEW's position; VMS's P0 region is a
+     gigabyte); the lengths are stored in the block's first longwords
+     before p is. *)
+  PROCEDURE New(args: SyntaxTree.ExprNode; line, column: INTEGER);
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; t, base, elem: Types.Type;
+        target, v, q, total: Operand; e: SyntaxTree.ExprNode; dims, j, s, list: INTEGER;
+        size, offset: LONGINT; tag: ARRAY 64 OF CHAR; text: ARRAY 160 OF CHAR; hi, lo, at: OperandText;
+        skip: ARRAY 16 OF CHAR;
+
+    (* the lengths' slot j *)
+    PROCEDURE Length(j: INTEGER): Operand;
+      VAR x: Operand;
+    BEGIN
+      x := NewOperand(memory, longword); x.offset := SlotOffset(s, dims + 1) + 4 * j;
+      RETURN x
+    END Length;
+
+    (* total := total * factor, a longword operand's text, checked *)
+    PROCEDURE Multiply(factor: ARRAY OF CHAR);
+    BEGIN
+      q := NewRegister(Types.HugeInt, line, column);
+      Text(total, at); Text(q, lo);
+      COPY(factor, text); Append(text, ", "); Append(text, at); Append(text, ", #0, "); Append(text, lo);
+      Emit("EMUL", text);
+      HalfText(q, 1, hi); Emit("TSTL", hi); TrapUnless("BEQL", 7, line, column);
+      HalfText(q, 0, lo); Emit("TSTL", lo); TrapUnless("BGEQ", 7, line, column);
+      EmitTo("MOVL", lo, total);
+      Release(q)
+    END Multiply;
+
+  BEGIN
+    IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
+    de := args(SyntaxTree.DesignatorExprNode);
+    obj := Resolve(de.designator.qualifier, de.designator.name, de.line, de.column);
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
+    t := StaticType(de.designator, obj);
+    IF ~IsSlicePointer(t) THEN
+      COPY("NEW of a pointer of type ", text);
+      IF t # NIL THEN Types.Describe(t, text) ELSE Append(text, "this") END;
+      Append(text, " (Phase 16)");
+      Unsupported(line, column, text); RETURN
+    END;
+    base := t(Types.PointerType).base;
+    dims := OpenDims(base); s := -1; total := NIL;
+    IF dims > 0 THEN
+      SpillAll;
+      s := AllocateSlots(dims + 1);
+      IF s < 0 THEN Unsupported(line, column, "NEW when the frame is full"); RETURN END;
+      total := Length(dims);
+      e := args.next;
+      FOR j := 0 TO dims - 1 DO
+        v := Expression(e, NIL);
+        IF IsQuad(v) THEN
+          HalfText(v, 1, hi); Emit("TSTL", hi); TrapUnless("BEQL", 7, line, column);
+          HalfText(v, 0, lo); EmitTo("MOVL", lo, Length(j))
+        ELSE
+          MoveInto(v, Length(j))
+        END;
+        Release(v);
+        Emit1("TSTL", Length(j)); TrapUnless("BGTR", 7, line, column);
+        e := e.next
+      END;
+      Emit2("MOVL", Length(0), total);
+      FOR j := 1 TO dims - 1 DO Text(Length(j), at); Multiply(at) END;
+      elem := OpenBase(base);
+      size := VaxTypes.Size(elem);
+      IF size # 1 THEN COPY("#", at); AppendInt(at, size); Multiply(at) END;
+      offset := DataOffset(base);
+      IF offset # 0 THEN
+        COPY("#", text); AppendInt(text, offset); EmitTo("ADDL2", text, total);
+        TrapUnless("BVC", 7, line, column)
+      END;
+      ArrayTag(elem, tag)
+    ELSIF base IS Types.RecordType THEN
+      RecordTag(base(Types.RecordType), tag)
+    ELSE
+      ArrayTag(base(Types.ArrayType).elementType, tag)
+    END;
+    target := Locate(de.designator, obj, de.line, de.column);
+    list := AllocateSlots(3);
+    IF list < 0 THEN Unsupported(line, column, "NEW when the frame is full"); RETURN END;
+    EmitTo("MOVL", "#2", ListEntry(list, 2, 0));
+    IF total # NIL THEN Emit2("MOVL", total, ListEntry(list, 2, 1))
+    ELSE COPY("#", text); AppendInt(text, VaxTypes.Size(base)); EmitTo("MOVL", text, ListEntry(list, 2, 1))
+    END;
+    IF tag[0] = 0X THEN Emit1("CLRL", ListEntry(list, 2, 2)) ELSE EmitTo("MOVAB", tag, ListEntry(list, 2, 2)) END;
+    FreeR0R1(line, column);
+    AddExternal("POC_NEW");
+    Text(ListEntry(list, 2, 0), text); Append(text, ", "); AppendExternal(text, "POC_NEW");
+    Emit("CALLG", text);
+    ReleaseSlots(list, 3);
+    IF dims > 0 THEN
+      (* the lengths, in a block there is *)
+      NewLabel(skip);
+      Emit("TSTL", "R0"); Emit("BEQL", skip);
+      FOR j := 0 TO dims - 1 DO
+        Text(Length(j), at); COPY(at, text); Append(text, ", ");
+        IF j > 0 THEN AppendInt(text, 4 * j) END;
+        Append(text, "(R0)");
+        Emit("MOVL", text)
+      END;
+      EmitLabel(skip);
+      ReleaseSlots(s, dims + 1)
+    END;
+    EmitTo("MOVL", "R0", target);
+    Release(target)
+  END New;
+
   PROCEDURE Predeclared(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode; dest: Operand;
                         line, column: INTEGER): Operand;
     VAR v: Operand; text: ARRAY 96 OF CHAR;
@@ -2593,6 +2937,7 @@ MODULE VaxCodeGenerator;
     ELSIF name = "ASH" THEN RETURN Ash(args, dest, line, column)
     ELSIF name = "COPY" THEN Copy(args, line, column); RETURN NIL
     ELSIF name = "HALT" THEN Halt(args); RETURN NIL
+    ELSIF name = "NEW" THEN New(args, line, column); RETURN NIL
     ELSIF name = "LEN" THEN RETURN Len(args, line, column)
     ELSIF (name = "ABS") OR (name = "ODD") OR (name = "CHR") OR (name = "ORD") OR (name = "CAP")
           OR (name = "LONG") OR (name = "SHORT") THEN
@@ -2638,8 +2983,7 @@ MODULE VaxCodeGenerator;
     | e: SyntaxTree.SetExprNode DO RETURN SetConstructor(e, dest)
     | e: SyntaxTree.StructuredLiteralNode DO
         Unsupported(e.line, e.column, "a record or array literal (Phase 16)"); RETURN Dummy()
-    | e: SyntaxTree.NilExprNode DO
-        Unsupported(e.line, e.column, "NIL (pointers and procedure values, Phase 16)"); RETURN Dummy()
+    | e: SyntaxTree.NilExprNode DO RETURN Immediate(Types.NilType, 0)
     ELSE
       Unsupported(e.line, e.column, "this expression"); RETURN Dummy()
     END
@@ -3558,6 +3902,44 @@ MODULE VaxCodeGenerator;
     END
   END EnterGlobal;
 
+  (* The descriptors of the record types the module names at its level
+     (section 14, item 4), each in the list under the symbol of
+     <Module>.<Type> - an anonymous record under a named pointer type is
+     <Type>.base, as on LLVM - entered as a variable's is and global, since
+     an importer may allocate one through any pointer type it can name,
+     even one to a record it cannot (TYPE P* = POINTER TO R). A record with
+     a base type or field initializers waits (section 14, items 4 and 5). *)
+  PROCEDURE CollectDescriptors;
+    VAR td: SyntaxTree.TypeDeclNode; obj: SymbolTable.Object; rec: Types.RecordType; base: Types.Type;
+        name: ARRAY 256 OF CHAR; full, clash: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol;
+        text: ARRAY 600 OF CHAR; d: TypeDescriptor;
+  BEGIN
+    IF module.declarations = NIL THEN RETURN END;
+    td := module.declarations.typeDecls;
+    WHILE td # NIL DO
+      obj := SymbolTable.FindLocal(moduleScope, td.name.name);
+      rec := NIL; COPY(td.name.name, name);
+      IF (obj # NIL) & (obj.type # NIL) & (obj.type IS Types.RecordType) THEN
+        rec := obj.type(Types.RecordType)
+      ELSIF (obj # NIL) & (obj.type # NIL) & (obj.type IS Types.PointerType) THEN
+        base := obj.type(Types.PointerType).base;
+        IF (base # NIL) & (base IS Types.RecordType) THEN rec := base(Types.RecordType); Append(name, ".base") END
+      END;
+      IF (rec # NIL) & (rec.name = name) & (rec.moduleName = module.name) & (rec.baseType = NIL) & ~rec.needsInit THEN
+        COPY(module.name, full); Append(full, "."); Append(full, name);
+        IF ~VaxTypes.Enter(names, full, symbol, clash) THEN
+          COPY(full, text); Append(text, " and "); Append(text, clash);
+          Append(text, " have the same VAX symbol, "); Append(text, symbol);
+          Diagnostics.Error(td.name.line, td.name.column, text)
+        ELSE
+          EnterGlobal(full, td.name.line, td.name.column);
+          d := NewDescriptor(rec, NIL); COPY(symbol, d.label); d.global := TRUE
+        END
+      END;
+      td := td.next
+    END
+  END CollectDescriptors;
+
   (* The module's procedures: their symbols entered, two names with one
      symbol an error (section 5) - an external one's linkage name checked
      instead - then each generated *)
@@ -3703,6 +4085,74 @@ MODULE VaxCodeGenerator;
     Line(w, ".BYTE", text)
   END WriteString;
 
+  (* The type descriptors in POC_CONST, in LLVM's layout with every field a
+     longword (section 14, item 4): the tag, the label, at size; then the
+     extension level, 0 until extension is lowered; the pointer count; the
+     base types, the record's own tag alone; the pointers' offsets, from
+     the start of the record or of one element, flattened through records
+     and fixed arrays. No type-bound procedures yet, so no ProcTab below
+     the tag. *)
+  PROCEDURE WriteDescriptors(VAR w: Files.Rider);
+    VAR d: TypeDescriptor; t: Types.Type; text: ARRAY 160 OF CHAR; count: INTEGER;
+
+    (* offset, a pointer's, to the .LONG line being made, eight to a line *)
+    PROCEDURE Put(offset: LONGINT);
+    BEGIN
+      IF count = 8 THEN Line(w, ".LONG", text); count := 0 END;
+      IF count = 0 THEN text[0] := 0X ELSE Append(text, ", ") END;
+      AppendInt(text, offset); INC(count)
+    END Put;
+
+    PROCEDURE Offsets(t: Types.Type; at: LONGINT);
+      VAR rec: Types.RecordType; f: Types.Field; arr: Types.ArrayType; i, size: LONGINT;
+    BEGIN
+      IF (t = NIL) OR (PointerCount(t) = 0) THEN RETURN
+      ELSIF t IS Types.PointerType THEN Put(at)
+      ELSIF t IS Types.ArrayType THEN
+        arr := t(Types.ArrayType); size := VaxTypes.Size(arr.elementType);
+        FOR i := 0 TO arr.length - 1 DO Offsets(arr.elementType, at + i * size) END
+      ELSIF t IS Types.RecordType THEN
+        rec := t(Types.RecordType);
+        Offsets(rec.baseType, at);
+        f := rec.fields;
+        WHILE f # NIL DO Offsets(f.type, at + VaxTypes.FieldOffset(rec, f)); f := f.next END
+      END
+    END Offsets;
+
+  BEGIN
+    IF descriptors = NIL THEN RETURN END;
+    WriteLn(w);
+    WriteStr(w, "; its type descriptors (section 14, item 4): size, extension level,"); WriteLn(w);
+    WriteStr(w, "; pointer count, base types, pointer offsets"); WriteLn(w);
+    Line(w, ".PSECT", "POC_CONST");
+    d := descriptors;
+    WHILE d # NIL DO
+      IF d.rec # NIL THEN
+        t := d.rec;
+        IF d.rec.name[0] # 0X THEN
+          COPY("; ", text); Append(text, d.rec.moduleName); Append(text, "."); Append(text, d.rec.name)
+        ELSE
+          COPY("; ", text); Types.Describe(t, text); Append(text, ", declared in a procedure or inline")
+        END
+      ELSE
+        t := d.elem;
+        COPY("; an array's elements, ", text); Types.Describe(t, text)
+      END;
+      WriteStr(w, text); WriteLn(w);
+      Line(w, ".ALIGN", "LONG");
+      WriteStr(w, d.label);
+      IF d.global THEN WriteStr(w, "::") ELSE WriteStr(w, ":") END;
+      WriteLn(w);
+      text[0] := 0X; AppendInt(text, VaxTypes.Size(t)); Line(w, ".LONG", text);
+      Line(w, ".LONG", "0");
+      text[0] := 0X; AppendInt(text, PointerCount(t)); Line(w, ".LONG", text);
+      Line(w, ".ADDRESS", d.label);
+      count := 0; Offsets(t, 0);
+      IF count > 0 THEN Line(w, ".LONG", text) END;
+      d := d.next
+    END
+  END WriteDescriptors;
+
   PROCEDURE WriteBody(VAR w: Files.Rider; i: Instruction);
   BEGIN
     WHILE i # NIL DO
@@ -3782,6 +4232,7 @@ MODULE VaxCodeGenerator;
     errorsBefore := Diagnostics.errorCount;
     names := VaxTypes.NewNameTable(); longword := VaxTypes.Longword();
     nextLabel := 0; usesTrap := FALSE; externals := NIL; homes := NIL; strings := NIL; code := NIL; codeLast := NIL;
+    descriptors := NIL; descriptorCount := 0;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
       Diagnostics.Error(module.line, module.column,
         "a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol");
@@ -3805,6 +4256,7 @@ MODULE VaxCodeGenerator;
     Label(w, "L_INITIALISED");
     Line(w, ".BLKB", "1");
     ok := WriteVariables(w);
+    CollectDescriptors;
     Procedures;
     BeginBody;
     StatementSeq(module.statements);
@@ -3832,6 +4284,7 @@ MODULE VaxCodeGenerator;
       sc := strings;
       WHILE sc # NIL DO WriteString(w, sc); sc := sc.next END
     END;
+    WriteDescriptors(w);
     IF code # NIL THEN
       WriteLn(w);
       WriteStr(w, "; the module's procedures"); WriteLn(w);

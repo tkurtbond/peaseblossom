@@ -92,6 +92,9 @@ MODULE Poc;
     (* -check, -emit-interface and -show-interface: imports come only from
        .sym files, a library's included, never compiled from source *)
     importsFromSymOnly: BOOLEAN;
+    (* The program is for vax-dec-vms (SetVaxTarget): NEW calls the VAX
+       runtime's POC_NEW, so LLVM's collector modules are not added *)
+    forVax: BOOLEAN;
 
   TYPE
     (* Phase 12 step 2c: a module poc -library builds, from the file named *)
@@ -1127,14 +1130,16 @@ MODULE Poc;
      may already allocate. A copy the program imported itself is moved to
      the front rather than duplicated. They are found on the import path
      like any other module (POC_IMPORT_PATH / -import-path), so a program
-     using NEW needs the runtime directory on it. *)
+     using NEW needs the runtime directory on it. Not for the VAX, whose NEW
+     calls POC_NEW in rtl/vax/PocRtl.mar (Phase 16, doc/developer/
+     vax-macro32-backend.md, section 14, item 3). *)
   PROCEDURE AddRuntimeModules(outputDir: ARRAY OF CHAR; VAR modules: LLVMCodeGenerator.ModuleList;
                               VAR ok: BOOLEAN);
     VAR
       table, heap, front, frontTail, m: LLVMCodeGenerator.ModuleList; visited: VisitedModule;
       fromLibrary, usesCollector: BOOLEAN;
   BEGIN
-    IF ~ok THEN RETURN END;
+    IF ~ok OR forVax THEN RETURN END;
     (* a module from a library may call NEW too, and its .sym, which has no
        bodies, cannot say (Phase 12 step 2d): with one in the program, the
        runtime is added whenever a library has it *)
@@ -1349,7 +1354,7 @@ MODULE Poc;
       Err.String(", not "); Err.String(explicitTriple); Err.Ln;
       RETURN FALSE
     END;
-    VaxTypes.sizeModel := ConstantEvaluator.sizeModel;
+    VaxTypes.sizeModel := ConstantEvaluator.sizeModel; forVax := TRUE;
     SetWordSizeFromTriple(VaxToolchainDriver.triple);
     SetLibraryTarget(VaxToolchainDriver.triple);
     RETURN TRUE
@@ -2683,7 +2688,7 @@ MODULE Poc;
   END Run;
 
 BEGIN
-  failed := FALSE; helpToErr := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; libraryPathCleared := FALSE;
+  failed := FALSE; forVax := FALSE; helpToErr := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; libraryPathCleared := FALSE;
   Run;
   IF failed OR (Diagnostics.errorCount > 0) OR (LLVMCodeGenerator.unsupportedCount > 0) THEN
     Platform.Exit(1)

@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
-;; the MACRO manual, the VAX's listing and the debugger runs). Why this
-;; is right:
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - VaxModLib, imported by VaxModules (expected-vax.mar). Its exported
 ;;   variables are global, label::, and its exported procedures' .ENTRY
 ;;   makes them global too (MACRO 6.5, .ENTRY), so the importer's
@@ -11,6 +11,12 @@
 ;; - Its initializer calls VaxModBase's before its body, so trace is 12
 ;;   after it. It defines its key, POC_K1_2681F94A100BD980 == 0, and ends
 ;;   with a bare .END: it is not the main module.
+;; - Phase 16 step 3 (section 14, item 4) adds Point's type descriptor,
+;;   as every record type declared at the module's level gets, in
+;;   POC_CONST: its size, 4, extension level 0, no pointers, and its own
+;;   address as its base type at level 0. VAXMODLIB_POINT_QKP03HTV is
+;;   global, label::, so that an importer's NEW of a POINTER TO Point
+;;   names it, G^ and .EXTERNAL, as it does an exported variable.
 ; VaxModLib, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXMODLIB
 	.IDENT	/2681f94a100bd980/
@@ -48,6 +54,17 @@ VAXMODLIB_ORIGIN_745HVN3P::
 	.PSECT	POC_CONST
 L_MODULE_NAME:
 	.ASCIC	/VaxModLib/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxModLib.Point
+	.ALIGN	LONG
+VAXMODLIB_POINT_QKP03HTV::
+	.LONG	4
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXMODLIB_POINT_QKP03HTV
 
 ; the module's procedures
 	.PSECT	POC_CODE

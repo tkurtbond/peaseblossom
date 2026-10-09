@@ -162,7 +162,9 @@ its variables, assignments of integer,
 .Vt BOOLEAN
 and
 .Vt SET
-expressions, fixed arrays and records without a base type, strings,
+expressions, fixed arrays and records without a base type,
+open-array parameters, pointers to arrays and to such records and NIL,
+strings,
 and the statements
 .Ic IF ,
 .Ic CASE ,
@@ -189,7 +191,8 @@ procedures, and the predeclared procedures
 .Fn SHORT ,
 .Fn LONG ,
 .Fn ASH ,
-.Fn COPY
+.Fn COPY ,
+.Fn NEW
 and
 .Fn HALT ,
 and imported variables and procedures,

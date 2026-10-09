@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the
-;; design, the MACRO manual and the VAX's listing). Why this is
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
 ;; right:
 ;; - MemoryLayout's layout (section 4): Point is x at 0, y at 2, 4 bytes,
 ;;   aligned to a word. Shape is kind at 0, corner at 2, size at 8 (a
@@ -35,6 +35,13 @@
 ;;   it is the program's main module, the program's start,
 ;;   VAXRECORDS_MAIN, which calls the initializer, returns SS$_NORMAL and
 ;;   is named by .END.
+;; - Phase 16 step 3 (section 14, item 4) adds Point's and Shape's type
+;;   descriptors, as every record type declared at the module's level
+;;   gets, in POC_CONST: the size (4 and 24, as above), extension level
+;;   0, no pointers, and the descriptor's own address as its base type at
+;;   level 0. They are global, label::, though neither type is exported:
+;;   a pointer type that is exported may be bound to a record type that
+;;   is not, and its importers' NEW names the record's descriptor.
 ; VaxRecords, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXRECORDS
 	.IDENT	/2397bb2d32257825/
@@ -83,6 +90,24 @@ VAXRECORDS_H_3V9CT3M4:
 	.PSECT	POC_CONST
 L_MODULE_NAME:
 	.ASCIC	/VaxRecords/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxRecords.Point
+	.ALIGN	LONG
+VAXRECORDS_POINT_8UCDJMQQ::
+	.LONG	4
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXRECORDS_POINT_8UCDJMQQ
+; VaxRecords.Shape
+	.ALIGN	LONG
+VAXRECORDS_SHAPE_IHGG54MP::
+	.LONG	24
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXRECORDS_SHAPE_IHGG54MP
 
 ; the module's procedures
 	.PSECT	POC_CODE

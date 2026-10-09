@@ -1,0 +1,105 @@
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual and the debugger runs; for the user's review). Why this is
+;; right:
+;; - ItemDesc's descriptor (section 14, item 4), in POC_CONST, longwords:
+;;   its size, 8 (key at 0, link at 4), extension level 0, one pointer,
+;;   its own address as its base type at level 0, and that pointer's
+;;   offset, 4. ItemDesc is not exported, but its descriptor is global,
+;;   label::, since VaxPointers allocates an Item, the exported pointer
+;;   type bound to it (run-values finds it as the tag of that block).
+;; - Make's NEW(p) calls POC_NEW with an argument list built in the
+;;   frame, CALLG: the count, 2, the size, 8, and the descriptor's
+;;   address, MOVAB. The block's address, or 0 when there is no memory
+;;   left, comes back in R0, and is p.
+;; - p.key and p.link are each a dereference: p is moved to R0, which
+;;   sets the condition codes, and BNEQ skips the trap, code 4 at the
+;;   designator's line and column (13:13 and 13:25), so a NIL p is never
+;;   read through; the field is then a displacement from R0.
+;; - The initializer has nothing to run: no imports and no body. The
+;;   module ends with a bare .END: it is not the main module.
+; VaxPtrLib, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXPTRLIB
+	.IDENT	/eb42d96bf32c1fc0/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	POC_NEW
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxPtrLib/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxPtrLib.ItemDesc
+	.ALIGN	LONG
+VAXPTRLIB_ITEMDESC_86IN7EB7::
+	.LONG	8
+	.LONG	0
+	.LONG	1
+	.ADDRESS	VAXPTRLIB_ITEMDESC_86IN7EB7
+	.LONG	4
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Make
+	.ENTRY	VAXPTRLIB_MAKE_C6GM8TNF, ^M<>
+	SUBL2	#16, SP
+	CLRL	-4(FP)
+; line 13
+	MOVL	#2, -16(FP)
+	MOVL	#8, -12(FP)
+	MOVAB	VAXPTRLIB_ITEMDESC_86IN7EB7, -8(FP)
+	CALLG	-16(FP), G^POC_NEW
+	MOVL	R0, -4(FP)
+; line 13
+	MOVL	-4(FP), R0
+	BNEQ	L_1
+	PUSHL	#13
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_1:
+	MOVL	4(AP), (R0)
+; line 13
+	MOVL	-4(FP), R0
+	BNEQ	L_2
+	PUSHL	#25
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_2:
+	CLRL	4(R0)
+; line 14
+	MOVL	-4(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#15
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXPTRLIB_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_EB42D96BF32C1FC0 == 0
+
+	.END

@@ -104,6 +104,8 @@ MODULE VaxTypes;
     IF (t = NIL) OR (t IS Types.RecordType) OR (t IS Types.ArrayType)
        OR (t = Types.Real) OR (t = Types.LongReal) THEN
       RETURN 0X
+    ELSIF t = Types.NilType THEN (* NIL, a pointer's 0 *)
+      RETURN "L"
     END;
     size := Size(t);
     IF size = 1 THEN RETURN "B"

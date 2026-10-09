@@ -88,6 +88,7 @@ test/conformance/llvm-modules-extra/llvm-modules-extra
 test/conformance/llvm-out/llvm-out
 test/conformance/llvm-out-extra/llvm-out-extra
 test/conformance/vax-out/vax-out
+test/conformance/vax-pointers/vax-pointers
 test/conformance/llvm-in/llvm-in
 test/conformance/llvm-in-extra/llvm-in-extra
 test/conformance/llvm-strings/llvm-strings

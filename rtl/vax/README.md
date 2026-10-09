@@ -5,8 +5,10 @@ poc's runtime for the VAX/VMS target (`PLAN.md` Phase 16).
 - `PocRtl.mar`, MACRO-32, which a program poc builds for `vax-dec-vms`
   links as `POCRTL.OBJ`. Its `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and
   `POC_HMOD` are the final routines, and so are `POC_PUT_LINE` and
-  `POC_OUT_REGISTER`, which `Out` writes through. `POC_TRAP` and
-  `POC_HALT` are provisional until step 3c.
+  `POC_OUT_REGISTER`, which `Out` writes through. `POC_NEW` allocates
+  from `LIB$GET_VM` and never frees, until step 4 ports the collector
+  (`doc/developer/vax-macro32-backend.md`, section 14, item 3).
+  `POC_TRAP` and `POC_HALT` are provisional until step 3c.
 - `Out.Mod`, a minimal `Out` (`Open`, `Flush`, `Char`, `String`, `Ln`,
   `Int`, `Hex`), pulled forward from step 4 so that step 3's fixtures can
   print (`doc/developer/vax-macro32-backend.md`, section 14, item 2). There

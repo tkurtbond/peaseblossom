@@ -1155,3 +1155,65 @@ is wrong for a dividend near `MIN(LONGINT)` (vishap-bugs 07). `HalfText`
 now uses `ASH`. The Stage 1 poc was always right. No earlier fixture used
 the constant, so the two compilers' suites never disagreed. The survey is
 unchanged at 19,443 refusals.
+
+**Done: pointers, `NEW` and descriptors without extension (items 3 and
+4), 2026-10-09.** A pointer is a longword, the address of the block's
+data, and `NIL` is 0. A pointer to a record without a base type, or to
+any array, is lowered. A pointer to an extension waits for extension
+(item 11's next steps). Each dereference, written or implied by a field
+or an index, moves the pointer to a register, which sets the condition
+codes, then `BNEQ` over a call of `POC_TRAP` with code 4 at the
+designator's line and column. The LLVM backend reports `a[i]^`'s at the
+index expression instead; the VAX keeps the designator's. `NEW(p)` builds
+an argument list in the frame and calls `POC_NEW(size, tag)` in
+`PocRtl.mar`, which takes the size and a tag longword from `LIB$GET_VM`,
+stores the tag, zeroes the data in pieces of 65,535 bytes and returns the
+data's address, or 0 when `LIB$GET_VM` fails, which leaves `p` `NIL`, as
+on LLVM without `-trap-heap-exhausted`. Nothing is freed until step 4
+ports the collector. `NEW(p, n0, ...)` of an open array checks each
+length to be positive and the size (the lengths times the element's size,
+by `EMUL`, plus a longword per dimension, rounded up as the element needs)
+to be below 2^31, else trap 7, since P0 space is 1 GB. The LLVM targets
+of 32 bits trap only from 4 GB. When `POC_NEW` returns a block, the
+lengths are stored in its header, and `LEN(p^)` and the index checks read
+them there. The driver no longer adds LLVM's `GarbageCollectedHeap` and
+`ModuleTable` to a program for the VAX that calls `NEW`.
+
+A type descriptor is written in `POC_CONST` as LLVM lays it out, every
+field a longword: the size, the extension level (0 so far), the pointer
+count, the base types (only the descriptor's own address, at level 0) and
+the pointers' offsets. There is no `ProcTab` until type-bound procedures
+(item 6). Every record type declared at a module's level has one, and so
+does a pointer's record base declared in the pointer type, named
+`<Module>.<Type>.base` (§5's scheme). They are all global, not only the
+exported ones as item 4 said: an exported pointer type may be bound to a
+record type that is not exported, and its importers' `NEW` names the
+record's descriptor, `G^` and `.EXTERNAL`. A record type declared in a
+procedure gets a local `L_TD_n` when `NEW` needs one, and an array, fixed
+or open, whose elements hold pointers an `L_AD_n`, whose size is one
+element's. `NEW`
+of anything else passes the tag 0, as the collector will have nothing to
+trace in it. MACRO and LINK take `.ADDRESS` in `POC_CONST`, though it is
+`PIC`, without a message.
+
+Fixture `vax-pointers` has two modules reviewed: `VaxPointers` and
+`VaxPtrLib`, which exports a pointer bound to a record it does not
+export. Its debugger runs examine what the program computes through
+pointers, read three tags, which the debugger names by their descriptors,
+and take both traps, 4 and 7. A second program, `PointersOut`, prints
+with `Out` and is built by both backends under `-O2` and `-OC`, run on
+the host and on the guest, and must print the same output.
+`vax-declarations-only`, `vax-records` and `vax-modules`' `VaxModLib` now
+have descriptors, so their `expected-vax.mar` were reviewed again.
+`vax-emit-errors`' `VaxReportedOnce` takes a procedure variable for its
+unlowerable operand where it had a pointer.
+
+Re-running the survey leaves 10,859 refusals in poc's own source, down
+from 19,443. Most are pointers to extensions (7,630 refusals of a value,
+variable, parameter or assignment of such a type), `IS` (309), `WITH`
+(25) and type guards (7), and the records holding such pointers,
+`LLVMCodeGenerator.Codegen` (1,738) and `Parser.Parser` (495), which are
+items 5 and 11's next steps. Reals account for 156, procedure variables
+for 55, nested procedures for 7. Code that was refused whole is now
+examined, so 51 refusals for lack of registers show up (the largest
+expressions and calls), and 20 `SYSTEM.BYTE` parameters.

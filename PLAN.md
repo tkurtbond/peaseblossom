@@ -692,6 +692,16 @@ most, object libraries.
      model. Its `.mar` files were reviewed by the user (2026-10-09). This found the
      voc-built poc's wrong high longword for `MIN(HUGEINT)` (vishap-bugs
      07), now fixed.
+   - *Pointers, `NEW` and type descriptors without extension* (section 14
+     items 3 and 4), done 2026-10-09: NIL-checked dereference (trap 4),
+     `NEW` through `POC_NEW` over `LIB$GET_VM` (an open array's lengths
+     checked, trap 7), and LLVM's descriptor layout, every module-level
+     record's descriptor global. Fixture `vax-pointers` runs on the
+     debugger and, printing with `Out`, on both backends under `-O2` and
+     `-OC`. Its `.mar` files, and the three earlier ones that gained
+     descriptors (`vax-declarations-only`, `vax-records`, `vax-modules`'
+     `VaxModLib`), await the user's review. Survey: 10,859 refusals left,
+     most of them extension and the records holding its pointers.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

@@ -1,0 +1,9 @@
+semantic OK, wrote VaxPtrLib.mar
+semantic OK, wrote VaxPointers.mar
+exit 0
+VaxPointers.mar matches expected-vax.mar
+VaxPtrLib.mar matches expected-vax-VaxPtrLib.mar
+LLVM build -O2 exit 0
+VAX build -O2 exit 0
+LLVM build -OC exit 0
+VAX build -OC exit 0
