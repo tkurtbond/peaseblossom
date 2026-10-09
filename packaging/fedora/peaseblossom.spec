@@ -81,9 +81,11 @@ test/install/check.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install
   are assignable to each other; a build reuses an object that is up to
   date, judged by content; -lto on 32-bit x86 NetBSD when poc runs
   there; a missing import's notes name a library that has the module
-  for another target; wider HTML documents; and a fix (-trap-location
-  put a failed WITH of several guards at its last guard). Packages for
-  OpenBSD amd64, NetBSD i386 and FreeBSD arm64 as well.
+  for another target; wider HTML documents; and two fixes (a module
+  compiled alone had no root table for the collector, and
+  -trap-location put a failed WITH of several guards at its last
+  guard). Packages for OpenBSD amd64, NetBSD i386 and FreeBSD arm64 as
+  well.
 
 * Tue Oct 06 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.4.1-1
 - Update to 0.4.1: a fix (ORD of a SET did not compile under -OC).
