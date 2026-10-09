@@ -1,0 +1,13 @@
+tests 1 0 1 1 0 0
+area 75 0 147
+kinds 2 3 4 1
+circle 5 round
+square 4
+big 7 round
+shape
+r 6
+side 9 3
+sd 1 2
+t 1 2
+set 8 0 9
+local 32

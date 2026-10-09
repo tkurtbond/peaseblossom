@@ -162,8 +162,10 @@ its variables, assignments of integer,
 .Vt BOOLEAN
 and
 .Vt SET
-expressions, fixed arrays and records without a base type,
-open-array parameters, pointers to arrays and to such records and NIL,
+expressions, fixed arrays, records and their extensions,
+open-array parameters, pointers to arrays and to records and NIL,
+.Ic IS ,
+type guards,
 strings,
 and the statements
 .Ic IF ,
@@ -172,9 +174,10 @@ and the statements
 .Ic REPEAT ,
 .Ic FOR ,
 .Ic LOOP ,
-.Ic EXIT
+.Ic EXIT ,
+.Ic RETURN
 and
-.Ic RETURN ,
+.Ic WITH ,
 procedures and calls of them, external
 .Qq VMS
 procedures, and the predeclared procedures

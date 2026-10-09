@@ -152,6 +152,15 @@ MODULE VaxCodeGenerator;
     (* Where a procedure's parameter or local variable is: in the frame at
        offset from FP; its value at offset from AP; or its address there *)
     Local = POINTER TO LocalDesc;
+    (* Inside WITH v: T DO, v's static type is T (T's record for a VAR
+       record parameter) *)
+    Narrowing = POINTER TO NarrowingDesc;
+    NarrowingDesc = RECORD
+      obj: SymbolTable.Object;
+      type: Types.Type;
+      next: Narrowing
+    END;
+
     LocalDesc = RECORD
       obj: SymbolTable.Object;
       where: INTEGER;
@@ -231,6 +240,9 @@ MODULE VaxCodeGenerator;
        (an index, an address, half a quadword): LONGINT under -O2, INTEGER
        under -OC (VaxTypes.Longword) *)
     longword: Types.Type;
+    (* the variables a WITH arm narrows, innermost first (section 14,
+       item 11's extension step), as LLVM's Codegen.narrowings *)
+    narrowings: Narrowing;
     first, last: Instruction;
     nextLabel: INTEGER;
     free, used: SET; (* registers free now; registers written *)
@@ -348,7 +360,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF Types.IsOpenArray(t) OR (t IS Types.PointerType) OR (t IS Types.ProcedureType)
        OR (t = Types.Real) OR (t = Types.LongReal) OR (t = Types.Set64)
-       OR (t IS Types.RecordType) & ((t(Types.RecordType).baseType # NIL) OR t(Types.RecordType).needsInit) THEN
+       OR (t IS Types.RecordType) & t(Types.RecordType).needsInit THEN
       Append(text, " (Phase 16)")
     ELSIF t IS Types.ArrayType THEN
       AppendWhen(t(Types.ArrayType).elementType, text)
@@ -869,7 +881,7 @@ MODULE VaxCodeGenerator;
     base := t(Types.PointerType).base;
     RETURN (base # NIL)
       & ((base IS Types.ArrayType)
-         OR (base IS Types.RecordType) & (base(Types.RecordType).baseType = NIL) & ~base(Types.RecordType).needsInit)
+         OR (base IS Types.RecordType) & ~base(Types.RecordType).needsInit)
   END IsSlicePointer;
 
   PROCEDURE IsSliceScalar(t: Types.Type): BOOLEAN;
@@ -888,7 +900,7 @@ MODULE VaxCodeGenerator;
     ELSIF IsSliceScalar(t) THEN RETURN TRUE
     ELSIF t IS Types.ArrayType THEN
       RETURN ~t(Types.ArrayType).isOpen & IsSliceType(t(Types.ArrayType).elementType)
-    ELSIF (t IS Types.RecordType) & (t(Types.RecordType).baseType = NIL) & ~t(Types.RecordType).needsInit THEN
+    ELSIF (t IS Types.RecordType) & ~t(Types.RecordType).needsInit THEN
       f := t(Types.RecordType).fields;
       WHILE f # NIL DO
         IF ~IsSliceType(f.type) THEN RETURN FALSE END;
@@ -1063,10 +1075,19 @@ MODULE VaxCodeGenerator;
      or copied parameter in the frame, -n(FP); any other parameter n(AP),
      its value, or @n(AP), its address - for a quadword, the address
      moved to a register, n(AP) and n+4(AP) being needed (section 7) *)
+  (* obj's static type here: a WITH arm's, when one narrows it *)
+  PROCEDURE TypeOf(obj: SymbolTable.Object): Types.Type;
+    VAR n: Narrowing;
+  BEGIN
+    n := narrowings;
+    WHILE (n # NIL) & (n.obj # obj) DO n := n.next END;
+    IF n # NIL THEN RETURN n.type ELSE RETURN obj.type END
+  END TypeOf;
+
   PROCEDURE Variable(obj: SymbolTable.Object; line, column: INTEGER): Operand;
     VAR x, r: Operand; l: Local; from: ARRAY 24 OF CHAR;
   BEGIN
-    x := NewOperand(memory, obj.type);
+    x := NewOperand(memory, TypeOf(obj));
     l := FindLocal(obj);
     IF l = NIL THEN
       VariableSymbol(obj, x.symbol);
@@ -1271,12 +1292,147 @@ MODULE VaxCodeGenerator;
     RETURN y
   END Dereference;
 
+  (* t's record: t itself, or a pointer's base; else NIL *)
+  PROCEDURE TargetRecord(t: Types.Type): Types.RecordType;
+  BEGIN
+    IF (t # NIL) & (t IS Types.PointerType) THEN t := t(Types.PointerType).base END;
+    IF (t # NIL) & (t IS Types.RecordType) THEN RETURN t(Types.RecordType) END;
+    RETURN NIL
+  END TargetRecord;
+
+  (* The type qualifier.name names, or NIL *)
+  PROCEDURE NamedType(qualifier, name: SyntaxTree.Ident): Types.Type;
+    VAR obj: SymbolTable.Object;
+  BEGIN
+    obj := Resolve(qualifier, name, 0, 0);
+    IF (obj # NIL) & (obj.class = SymbolTable.typeClass) THEN RETURN obj.type END;
+    RETURN NIL
+  END NamedType;
+
+  (* The static type of v(T), v of type t: T for a pointer, T's record for
+     a VAR record parameter, as on LLVM *)
+  PROCEDURE GuardType(qualifier, name: SyntaxTree.Ident; t: Types.Type): Types.Type;
+    VAR g: Types.Type;
+  BEGIN
+    g := NamedType(qualifier, name);
+    IF (t # NIL) & (t IS Types.RecordType) THEN RETURN TargetRecord(g) END;
+    RETURN g
+  END GuardType;
+
+  (* How many base types rec has: its level among the BaseTypes of its
+     descriptor (section 14, item 4) *)
+  PROCEDURE ExtensionLevel(rec: Types.RecordType): INTEGER;
+    VAR level: INTEGER; r: Types.Type;
+  BEGIN
+    level := 0; r := rec.baseType;
+    WHILE r # NIL DO INC(level); r := r(Types.RecordType).baseType END;
+    RETURN level
+  END ExtensionLevel;
+
+  (* The hidden tag of obj, a VAR record parameter, n(AP), or NIL *)
+  PROCEDURE ParamTag(obj: SymbolTable.Object): Operand;
+    VAR l: Local; x: Operand;
+  BEGIN
+    l := FindLocal(obj);
+    IF (l = NIL) OR (l.tagOffset = 0) THEN RETURN NIL END;
+    x := NewOperand(memory, longword); x.onAP := TRUE; x.offset := l.tagOffset;
+    RETURN x
+  END ParamTag;
+
+  (* The tag of the block x points to, the longword before its data: x in
+     a register, checked for NIL (trap 4 at line and column, as for a
+     dereference: a type test or guard reads the dynamic type, as on LLVM
+     and in voc), then -4 from it; x released unless keep, for a guard,
+     which leaves x designating the variable *)
+  PROCEDURE PointerTag(x: Operand; keep: BOOLEAN; line, column: INTEGER): Operand;
+    VAR r, tag: Operand; ok: ARRAY 16 OF CHAR;
+  BEGIN
+    IF (x.kind = register) & ~keep THEN r := x; Emit1("TSTL", r)
+    ELSE
+      r := NewRegisterBeside(longword, x, NIL, line, column); Emit2("MOVL", x, r);
+      IF ~keep THEN Release(x) END
+    END;
+    r.type := longword; r.pinned := TRUE;
+    NewLabel(ok); Emit("BNEQ", ok); Trap(4, line, column); EmitLabel(ok);
+    tag := NewOperand(memory, longword); tag.baseOp := r; tag.ownsBase := TRUE; tag.offset := -4;
+    RETURN tag
+  END PointerTag;
+
+  PROCEDURE ^ RecordTag(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
+
+  (* Whether the record whose tag is tag is rec or an extension of it, as
+     a BOOLEAN in a register: its descriptor's extension level at least
+     rec's, L, and its BaseTypes[L] rec's descriptor, as on LLVM
+     (EmitTagTestOnTag); L = 0 needs no level test. tag released *)
+  PROCEDURE TagTest(tag: Operand; rec: Types.RecordType; line, column: INTEGER): Operand;
+    VAR r, f, a, m: Operand; level: INTEGER; done: ARRAY 16 OF CHAR; text: ARRAY 160 OF CHAR;
+  BEGIN
+    IF (tag.kind = memory) & tag.ownsBase & ~tag.ownsIndex & (tag.index = NIL) THEN
+      r := tag.baseOp; tag.ownsBase := FALSE; Emit2("MOVL", tag, r)
+    ELSE
+      r := NewRegisterBeside(longword, tag, NIL, line, column); Emit2("MOVL", tag, r); Release(tag)
+    END;
+    r.type := longword; r.pinned := TRUE;
+    f := NewRegisterBeside(Types.Boolean, r, NIL, line, column); Emit1("CLRB", f);
+    level := ExtensionLevel(rec); NewLabel(done);
+    m := NewOperand(memory, longword); m.baseOp := r;
+    IF level > 0 THEN
+      m.offset := 4; Emit2("CMPL", m, Immediate(longword, level)); Emit("BLSS", done)
+    END;
+    a := NewRegisterBeside(longword, r, f, line, column);
+    RecordTag(rec, text); EmitTo("MOVAB", text, a);
+    m.offset := 12 + 4 * level; Emit2("CMPL", m, a); Emit("BNEQ", done);
+    EmitTo("MOVB", "#1", f);
+    EmitLabel(done);
+    Release(a); r.pinned := FALSE; Release(r);
+    RETURN f
+  END TagTest;
+
+  (* The guard v(T) on x, v's operand: a pointer's block, or a VAR record
+     parameter's hidden tag, tag (NIL for anything else, which the checker
+     does not let through), must be a T or an extension of one, else trap
+     5 at line and column, as on LLVM; x is left designating v, now of T's
+     static type (GuardType) *)
+  PROCEDURE Guard(x: Operand; qualifier, name: SyntaxTree.Ident; tag: Operand; line, column: INTEGER);
+    VAR t: Types.Type; rec: Types.RecordType; f: Operand; ok: ARRAY 16 OF CHAR;
+  BEGIN
+    t := GuardType(qualifier, name, x.type); rec := TargetRecord(t);
+    IF rec = NIL THEN Unsupported(line, column, "a type guard to this type"); RETURN END;
+    IF x.type IS Types.PointerType THEN
+      IF tag # NIL THEN Release(tag) END;
+      tag := PointerTag(x, TRUE, line, column)
+    ELSIF tag = NIL THEN
+      Unsupported(line, column, "a type guard on a record that is not a VAR parameter"); RETURN
+    END;
+    x.pinned := TRUE;
+    f := TagTest(tag, rec, line, column);
+    x.pinned := FALSE;
+    NewLabel(ok); EmitBranch("BLBS", f, ok); Trap(5, line, column); EmitLabel(ok);
+    Release(f);
+    x.type := t
+  END Guard;
+
+  (* Whether e, written v(T), is a type guard rather than a call: v a
+     variable, T one type name (LLVM's IsGuardExpr) *)
+  PROCEDURE IsGuardCall(e: SyntaxTree.DesignatorExprNode): BOOLEAN;
+    VAR obj: SymbolTable.Object; a: SyntaxTree.DesignatorExprNode;
+  BEGIN
+    IF ~e.hasParens OR (e.args = NIL) OR (e.args.next # NIL) OR ~(e.args IS SyntaxTree.DesignatorExprNode) THEN
+      RETURN FALSE
+    END;
+    a := e.args(SyntaxTree.DesignatorExprNode);
+    IF a.hasParens OR (a.designator.selectors # NIL) THEN RETURN FALSE END;
+    IF NamedType(a.designator.qualifier, a.designator.name) = NIL THEN RETURN FALSE END;
+    obj := Resolve(e.designator.qualifier, e.designator.name, e.line, e.column);
+    RETURN (obj # NIL) & (obj.class = SymbolTable.varClass)
+  END IsGuardCall;
+
   (* The type of what d designates, obj with d's selectors applied, without
-     generating anything; NIL for a type guard *)
+     generating anything *)
   PROCEDURE StaticType(d: SyntaxTree.Designator; obj: SymbolTable.Object): Types.Type;
     VAR t: Types.Type; sel: SyntaxTree.Selector; e: SyntaxTree.ExprNode; f: Types.Field;
   BEGIN
-    t := obj.type; sel := d.selectors;
+    t := TypeOf(obj); sel := d.selectors;
     WHILE (sel # NIL) & (t # NIL) DO
       IF (t IS Types.PointerType) & ~(sel IS SyntaxTree.GuardSelector) THEN t := t(Types.PointerType).base END;
       IF sel IS SyntaxTree.FieldSelector THEN
@@ -1293,7 +1449,7 @@ MODULE VaxCodeGenerator;
           e := e.next
         END
       ELSIF sel IS SyntaxTree.GuardSelector THEN
-        t := NIL
+        t := GuardType(sel(SyntaxTree.GuardSelector).qualifier, sel(SyntaxTree.GuardSelector).name, t)
       END;
       sel := sel.next
     END;
@@ -1303,14 +1459,14 @@ MODULE VaxCodeGenerator;
   (* The variable d designates, obj, with its selectors applied: a field is
      its offset from the record (Displace), an element Index's, or
      IndexOpen's for an open array; a pointer is dereferenced, by ^ or
-     before a field or an element (Dereference). A type guard is Phase
-     16's. *)
+     before a field or an element (Dereference); a type guard checks the
+     dynamic type and narrows the static one (Guard). *)
   PROCEDURE Locate(d: SyntaxTree.Designator; obj: SymbolTable.Object; line, column: INTEGER): Operand;
     VAR x: Operand; sel: SyntaxTree.Selector; e: SyntaxTree.ExprNode; rec: Types.RecordType; f: Types.Field;
-        text: ARRAY 160 OF CHAR;
+        text: ARRAY 160 OF CHAR; whole: BOOLEAN;
   BEGIN
     x := Variable(obj, line, column);
-    sel := d.selectors;
+    sel := d.selectors; whole := TRUE; (* still obj itself, but for guards *)
     WHILE sel # NIL DO
       IF (x.type IS Types.PointerType) & ~(sel IS SyntaxTree.GuardSelector) THEN
         IF ~IsSlicePointer(x.type) THEN
@@ -1338,8 +1494,11 @@ MODULE VaxCodeGenerator;
           e := e.next
         END
       ELSE
-        Unsupported(sel.line, sel.column, "a type guard (Phase 16)"); RETURN x
+        IF whole THEN Guard(x, sel(SyntaxTree.GuardSelector).qualifier, sel(SyntaxTree.GuardSelector).name, ParamTag(obj), line, column)
+        ELSE Guard(x, sel(SyntaxTree.GuardSelector).qualifier, sel(SyntaxTree.GuardSelector).name, NIL, line, column)
+        END
       END;
+      IF ~(sel IS SyntaxTree.GuardSelector) THEN whole := FALSE END;
       sel := sel.next
     END;
     RETURN x
@@ -1475,7 +1634,13 @@ MODULE VaxCodeGenerator;
     obj := Resolve(de.designator.qualifier, de.designator.name, e.line, e.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
     l := FindLocal(obj);
-    IF (l # NIL) & (l.where = byReference) & (de.designator.selectors = NIL) THEN
+    IF IsGuardCall(de) THEN
+      x := Locate(de.designator, obj, e.line, e.column);
+      Guard(x, de.args(SyntaxTree.DesignatorExprNode).designator.qualifier,
+        de.args(SyntaxTree.DesignatorExprNode).designator.name, ParamTag(obj), e.line, e.column);
+      AddressOf(x, dst);
+      Release(x)
+    ELSIF (l # NIL) & (l.where = byReference) & (de.designator.selectors = NIL) THEN
       from[0] := 0X; AppendInt(from, l.offset); Append(from, "(AP)");
       EmitTo("MOVL", from, dst)
     ELSE
@@ -1792,7 +1957,20 @@ MODULE VaxCodeGenerator;
     VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; x: Operand; text: ARRAY 160 OF CHAR;
   BEGIN
     d := e.designator;
-    IF e.hasParens THEN
+    IF IsGuardCall(e) THEN
+      obj := Resolve(d.qualifier, d.name, e.line, e.column);
+      IF ~IsParamType(TypeOf(obj)) THEN
+        COPY("a value of type ", text); Types.Describe(TypeOf(obj), text); AppendWhen(TypeOf(obj), text);
+        Unsupported(e.line, e.column, text); RETURN Dummy()
+      END;
+      x := Locate(d, obj, e.line, e.column);
+      IF ~(x.type IS Types.PointerType) THEN
+        Unsupported(e.line, e.column, "a guarded VAR record parameter as a value"); RETURN x
+      END;
+      Guard(x, e.args(SyntaxTree.DesignatorExprNode).designator.qualifier,
+        e.args(SyntaxTree.DesignatorExprNode).designator.name, NIL, e.line, e.column);
+      RETURN x
+    ELSIF e.hasParens THEN
       x := Call(d, e.args, e.line, e.column);
       IF x = NIL THEN RETURN Dummy() END;
       RETURN x
@@ -1801,8 +1979,8 @@ MODULE VaxCodeGenerator;
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
       Unsupported(e.line, e.column, "a procedure as a value (Phase 16)"); RETURN Dummy()
     END;
-    IF ~IsParamType(obj.type) THEN
-      COPY("a value of type ", text); Types.Describe(obj.type, text); AppendWhen(obj.type, text);
+    IF ~IsParamType(TypeOf(obj)) THEN
+      COPY("a value of type ", text); Types.Describe(TypeOf(obj), text); AppendWhen(TypeOf(obj), text);
       Unsupported(e.line, e.column, text); RETURN Dummy()
     END;
     RETURN Locate(d, obj, e.line, e.column)
@@ -2128,14 +2306,37 @@ MODULE VaxCodeGenerator;
     RETURN d
   END ShortCircuit;
 
+  (* v IS T: a VAR record parameter's hidden tag, or the tag of the block
+     v points to, checked for NIL at v's position (TagTest) *)
+  PROCEDURE TypeTest(e: SyntaxTree.BinaryExprNode): Operand;
+    VAR rec: Types.RecordType; de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; tag, v: Operand;
+  BEGIN
+    rec := NIL; tag := NIL;
+    IF e.right IS SyntaxTree.DesignatorExprNode THEN
+      de := e.right(SyntaxTree.DesignatorExprNode);
+      rec := TargetRecord(NamedType(de.designator.qualifier, de.designator.name))
+    END;
+    IF rec = NIL THEN Unsupported(e.line, e.column, "IS against this type"); RETURN Dummy() END;
+    IF (e.left IS SyntaxTree.DesignatorExprNode) & ~e.left(SyntaxTree.DesignatorExprNode).hasParens
+       & (e.left(SyntaxTree.DesignatorExprNode).designator.selectors = NIL) THEN
+      de := e.left(SyntaxTree.DesignatorExprNode);
+      obj := Resolve(de.designator.qualifier, de.designator.name, de.line, de.column);
+      IF obj # NIL THEN tag := ParamTag(obj) END
+    END;
+    IF tag = NIL THEN
+      v := Expression(e.left, NIL);
+      IF v.standIn THEN RETURN v END;
+      tag := PointerTag(v, FALSE, e.left.line, e.left.column)
+    END;
+    RETURN TagTest(tag, rec, e.line, e.column)
+  END TypeTest;
+
   PROCEDURE Binary(e: SyntaxTree.BinaryExprNode; dest: Operand): Operand;
     VAR a, b, x: Operand; t: Types.Type; op: INTEGER;
   BEGIN
     op := e.op;
     IF (op = Lexer.ampersand) OR (op = Lexer.orKeyword) THEN RETURN ShortCircuit(e) END;
-    IF op = Lexer.isKeyword THEN
-      Unsupported(e.line, e.column, "IS (records and pointers, step 6 and Phase 16)"); RETURN Dummy()
-    END;
+    IF op = Lexer.isKeyword THEN RETURN TypeTest(e) END;
     a := Expression(e.left, NIL);
     b := Expression(e.right, NIL);
     IF (op = Lexer.equal) OR (op = Lexer.notEqual) OR (op = Lexer.less) OR (op = Lexer.lessEqual)
@@ -3129,16 +3330,52 @@ MODULE VaxCodeGenerator;
      user 2026-10-06, section 8). The target's location is found first, as
      on LLVM; a register in use besides the two operands is spilled first,
      MOVCx overwriting R0-R5. *)
+  (* Before r := x for a record r whose dynamic type may differ from its
+     static type - a VAR record parameter, or p^ - that they are the same,
+     its tag (ParamTag, or the longword before p^; a guard after either
+     leaves it so) its static type's
+     descriptor, else trap 13 at the statement (Oberon2.pdf 9.1), as on
+     LLVM (EmitRecordAssignmentGuard); a record of no name of its own
+     cannot be extended, so it is not checked *)
+  PROCEDURE RecordAssignmentCheck(s: SyntaxTree.AssignStatementNode; obj: SymbolTable.Object; target: Operand);
+    VAR sel, last: SyntaxTree.Selector; tag, a: Operand; rec: Types.RecordType; text: ARRAY 160 OF CHAR;
+        ok: ARRAY 16 OF CHAR;
+  BEGIN
+    IF ~(target.type IS Types.RecordType) THEN RETURN END;
+    rec := target.type(Types.RecordType);
+    IF rec.name[0] = 0X THEN RETURN END;
+    (* the last selector but a guard, which keeps the dynamic type's
+       source: d(T) := x is checked as d := x is *)
+    sel := NIL; last := s.target.selectors;
+    WHILE last # NIL DO
+      IF ~(last IS SyntaxTree.GuardSelector) THEN sel := last END;
+      last := last.next
+    END;
+    tag := NIL;
+    IF sel = NIL THEN tag := ParamTag(obj)
+    ELSIF (sel IS SyntaxTree.DereferenceSelector) & (target.kind = memory) & (target.baseOp # NIL) & (target.index = NIL) THEN
+      tag := NewOperand(memory, longword); tag.baseOp := target.baseOp; tag.offset := target.offset - 4
+    END;
+    IF tag = NIL THEN RETURN END;
+    target.pinned := TRUE;
+    a := NewRegisterBeside(longword, target, NIL, s.line, s.column);
+    target.pinned := FALSE;
+    RecordTag(rec, text); EmitTo("MOVAB", text, a);
+    Emit2("CMPL", tag, a); Release(a);
+    NewLabel(ok); Emit("BEQL", ok); Trap(13, s.line, s.column); EmitLabel(ok)
+  END RecordAssignmentCheck;
+
   PROCEDURE Assignment(s: SyntaxTree.AssignStatementNode);
     VAR obj: SymbolTable.Object; target, v: Operand; text: ARRAY 160 OF CHAR; from, to: OperandText;
   BEGIN
     obj := Resolve(s.target.qualifier, s.target.name, s.target.line, s.target.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
-    IF ~IsParamType(obj.type) THEN
-      COPY("an assignment of type ", text); Types.Describe(obj.type, text); AppendWhen(obj.type, text);
+    IF ~IsParamType(TypeOf(obj)) THEN
+      COPY("an assignment of type ", text); Types.Describe(TypeOf(obj), text); AppendWhen(TypeOf(obj), text);
       Unsupported(s.line, s.column, text); RETURN
     END;
     target := Locate(s.target, obj, s.target.line, s.target.column);
+    IF ~target.standIn THEN RecordAssignmentCheck(s, obj, target) END;
     IF target.standIn OR (target.lens # NIL) THEN (* reported, or an open array, which the checker refuses *)
       Release(target); RETURN
     ELSIF IsSliceScalar(target.type) THEN
@@ -3155,8 +3392,14 @@ MODULE VaxCodeGenerator;
       IF v.lens # NIL THEN
         AssignOpen(v, target, s.value.line, s.value.column)
       ELSE
+        (* a record, the target's size: one of an extension assigned to
+           one of its base type gives only the base's fields; an array,
+           the source's, which may be shorter (language-extensions.md,
+           "Array assignment") *)
         SpillAll; Text(v, from); Text(target, to);
-        CopyBytes(VaxTypes.Size(v.type), from, to)
+        IF target.type IS Types.RecordType THEN CopyBytes(VaxTypes.Size(target.type), from, to)
+        ELSE CopyBytes(VaxTypes.Size(v.type), from, to)
+        END
       END
     END;
     Release(v); Release(target)
@@ -3555,6 +3798,39 @@ MODULE VaxCodeGenerator;
     IF x # NIL THEN Release(x) END
   END CallStatement;
 
+  (* WITH v: T1 DO S1 | ... ELSE S END, as on LLVM: each arm's test in
+     turn (TagTest, on a VAR record parameter's hidden tag or the tag of
+     the block v points to, NIL trapping 4), the first that holds runs
+     its statements with v narrowed to its T, then to the end; with none,
+     the ELSE part, or without one trap 6 at the WITH. *)
+  PROCEDURE WithStatement(s: SyntaxTree.WithStatementNode);
+    VAR g: SyntaxTree.WithGuardNode; obj: SymbolTable.Object; t: Types.Type; rec: Types.RecordType;
+        tag, f: Operand; n: Narrowing; endLabel, next: ARRAY 16 OF CHAR;
+  BEGIN
+    NewLabel(endLabel);
+    g := s.guards;
+    WHILE g # NIL DO
+      obj := Resolve(g.variableQualifier, g.variableName, s.line, s.column);
+      t := NamedType(g.typeQualifier, g.typeName); rec := TargetRecord(t);
+      IF (obj = NIL) OR (obj.class # SymbolTable.varClass) OR (rec = NIL) THEN
+        Unsupported(s.line, s.column, "WITH on this variable or type"); RETURN
+      END;
+      tag := ParamTag(obj);
+      IF tag # NIL THEN t := rec
+      ELSE tag := PointerTag(Variable(obj, s.line, s.column), FALSE, s.line, s.column)
+      END;
+      f := TagTest(tag, rec, s.line, s.column);
+      NewLabel(next); JumpOnValue(f, next, FALSE);
+      NEW(n); n.obj := obj; n.type := t; n.next := narrowings; narrowings := n;
+      StatementSeq(g.body);
+      narrowings := n.next;
+      Jump(endLabel); EmitLabel(next);
+      g := g.next
+    END;
+    IF s.hasElse THEN StatementSeq(s.elseBody) ELSE Trap(6, s.line, s.column) END;
+    EmitLabel(endLabel)
+  END WithStatement;
+
   PROCEDURE StatementSeq(s: SyntaxTree.StatementNode);
     VAR comment: ARRAY 32 OF CHAR;
   BEGIN
@@ -3572,7 +3848,8 @@ MODULE VaxCodeGenerator;
       | s: SyntaxTree.ExitStatementNode DO Jump(loopExit)
       | s: SyntaxTree.CallStatementNode DO CallStatement(s)
       | s: SyntaxTree.ReturnStatementNode DO ReturnStatement(s)
-      ELSE Unsupported(s.line, s.column, "WITH (records and pointers, Phase 16)")
+      | s: SyntaxTree.WithStatementNode DO WithStatement(s)
+      ELSE Unsupported(s.line, s.column, "this statement")
       END;
       s := s.next
     END
@@ -3961,7 +4238,7 @@ MODULE VaxCodeGenerator;
      <Type>.base, as on LLVM - entered as a variable's is and global, since
      an importer may allocate one through any pointer type it can name,
      even one to a record it cannot (TYPE P* = POINTER TO R). A record with
-     a base type or field initializers waits (section 14, items 4 and 5). *)
+     field initializers waits. *)
   PROCEDURE CollectDescriptors;
     VAR td: SyntaxTree.TypeDeclNode; obj: SymbolTable.Object; rec: Types.RecordType; base: Types.Type;
         name: ARRAY 256 OF CHAR; full, clash: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol;
@@ -3978,7 +4255,7 @@ MODULE VaxCodeGenerator;
         base := obj.type(Types.PointerType).base;
         IF (base # NIL) & (base IS Types.RecordType) THEN rec := base(Types.RecordType); Append(name, ".base") END
       END;
-      IF (rec # NIL) & (rec.name = name) & (rec.moduleName = module.name) & (rec.baseType = NIL) & ~rec.needsInit THEN
+      IF (rec # NIL) & (rec.name = name) & (rec.moduleName = module.name) & ~rec.needsInit THEN
         COPY(module.name, full); Append(full, "."); Append(full, name);
         IF ~VaxTypes.Enter(names, full, symbol, clash) THEN
           COPY(full, text); Append(text, " and "); Append(text, clash);
@@ -4145,6 +4422,22 @@ MODULE VaxCodeGenerator;
      the start of the record or of one element, flattened through records
      and fixed arrays. No type-bound procedures yet, so no ProcTab below
      the tag. *)
+  (* Before anything is written: the descriptors of every descriptor's base
+     types made (RecordTag), so that a local one is listed and another
+     module's symbol is declared .EXTERNAL *)
+  PROCEDURE ResolveAncestors;
+    VAR d: TypeDescriptor; r: Types.Type; text: ARRAY 160 OF CHAR;
+  BEGIN
+    d := descriptors;
+    WHILE d # NIL DO
+      IF d.rec # NIL THEN
+        r := d.rec.baseType;
+        WHILE r # NIL DO RecordTag(r(Types.RecordType), text); r := r(Types.RecordType).baseType END
+      END;
+      d := d.next
+    END
+  END ResolveAncestors;
+
   PROCEDURE WriteDescriptors(VAR w: Files.Rider);
     VAR d: TypeDescriptor; t: Types.Type; text: ARRAY 160 OF CHAR; count: INTEGER;
 
@@ -4155,6 +4448,20 @@ MODULE VaxCodeGenerator;
       IF count = 0 THEN text[0] := 0X ELSE Append(text, ", ") END;
       AppendInt(text, offset); INC(count)
     END Put;
+
+    (* BaseTypes: the descriptors of rec's base types, the root first, then
+       its own (section 14, item 4); another module's by its symbol, which
+       ResolveAncestors declared .EXTERNAL *)
+    PROCEDURE BaseTypes(rec: Types.RecordType);
+      VAR label: ARRAY 160 OF CHAR; i: INTEGER;
+    BEGIN
+      IF rec.baseType # NIL THEN BaseTypes(rec.baseType(Types.RecordType)) END;
+      RecordTag(rec, label);
+      IF (label[0] = "G") & (label[1] = "^") THEN
+        i := 2; WHILE label[i - 1] # 0X DO label[i - 2] := label[i]; INC(i) END
+      END;
+      Line(w, ".ADDRESS", label)
+    END BaseTypes;
 
     PROCEDURE Offsets(t: Types.Type; at: LONGINT);
       VAR rec: Types.RecordType; f: Types.Field; arr: Types.ArrayType; i, size: LONGINT;
@@ -4197,9 +4504,13 @@ MODULE VaxCodeGenerator;
       IF d.global THEN WriteStr(w, "::") ELSE WriteStr(w, ":") END;
       WriteLn(w);
       text[0] := 0X; AppendInt(text, VaxTypes.Size(t)); Line(w, ".LONG", text);
-      Line(w, ".LONG", "0");
+      IF d.rec # NIL THEN
+        text[0] := 0X; AppendInt(text, ExtensionLevel(d.rec)); Line(w, ".LONG", text)
+      ELSE
+        Line(w, ".LONG", "0")
+      END;
       text[0] := 0X; AppendInt(text, PointerCount(t)); Line(w, ".LONG", text);
-      Line(w, ".ADDRESS", d.label);
+      IF d.rec # NIL THEN BaseTypes(d.rec) ELSE Line(w, ".ADDRESS", d.label) END;
       count := 0; Offsets(t, 0);
       IF count > 0 THEN Line(w, ".LONG", text) END;
       d := d.next
@@ -4283,7 +4594,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     module := m; scope := s; moduleScope := s; before := unsupportedCount;
     errorsBefore := Diagnostics.errorCount;
-    names := VaxTypes.NewNameTable(); longword := VaxTypes.Longword();
+    names := VaxTypes.NewNameTable(); longword := VaxTypes.Longword(); narrowings := NIL;
     nextLabel := 0; usesTrap := FALSE; externals := NIL; homes := NIL; strings := NIL; code := NIL; codeLast := NIL;
     descriptors := NIL; descriptorCount := 0;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
@@ -4313,6 +4624,7 @@ MODULE VaxCodeGenerator;
     Procedures;
     BeginBody;
     StatementSeq(module.statements);
+    ResolveAncestors;
     IF ~DeclareImports() THEN ok := FALSE END;
     IF ~ok OR (unsupportedCount > before) OR (Diagnostics.errorCount > errorsBefore) THEN RETURN FALSE END;
     IF externals # NIL THEN

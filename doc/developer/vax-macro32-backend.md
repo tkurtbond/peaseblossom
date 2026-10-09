@@ -194,7 +194,8 @@ Proposals:
   offsets and alignment, as above. A module variable is `.BLKB <size>`
   after the `.ALIGN` of its alignment, a local the same bytes of the
   frame, aligned so. A record with a base type or a field initializer is
-  Phase 16's, as is an open array.
+  Phase 16's, as is an open array. (Phase 16 step 3 lowers extension,
+  §14.)
 - **Real types**, for Phase 16 (out of Phase 15's slice): `REAL` is
   F_floating; `LONGREAL` is D_floating or G_floating. VAX C chooses with a
   qualifier, `/G_FLOAT`, defaulting to D_floating (`/NOG_FLOAT`), and a
@@ -1250,3 +1251,65 @@ The survey counts 10,889 refusals. Outside `VaxCodeGenerator.Mod` it is
 unchanged at 9,703: no `VAR` record parameter was refused before, as it
 passed its address, and the 30 more are in the code added for the tags,
 which uses pointers to extensions.
+
+**Done: extension, `IS`, type guards and `WITH` (item 11's next step),
+2026-10-09.** A record with a base type is lowered, with pointers to it.
+Its fields follow its base type's, and an inherited field is at its
+offset in the record that declares it: `VaxTypes.FieldOffset` finds that
+record first, since `MemoryLayout.FieldOffset` counts only the fields of
+the record it is given. A descriptor now has its extension level, how
+many base types the record has, and after the pointer count its base
+types' descriptors, the root first and its own last, `BaseTypes[L]` at
+`12 + 4L` (item 4). Another module's is its symbol, `.EXTERNAL`, and a
+record declared in a procedure gets an `L_TD_n` whenever a descriptor
+lists it.
+
+`IS` and a guard on a pointer check it for `NIL` (trap 4 at the
+designator), load the block's tag, the longword before its data, and
+test it as on LLVM: the descriptor's level at least the type's, `L`, and
+its `BaseTypes[L]` the type's descriptor. The level test is left out
+when `L` is 0. The result is a byte register, 1 when both hold. On a
+`VAR` record parameter the tag is its hidden one (item 5), and a guard
+of a record is allowed nowhere else, as in the front end. A guard that
+fails traps with code 5 at the guarded designator. The variable is then
+used with the guard's type, dereferenced again for a field, so its `NIL`
+check is repeated. The call form, `v(T)` as a value or as a `VAR`
+argument, is a guard too, as on LLVM (`IsGuardExpr`), and a guarded
+`VAR` record parameter passed on keeps its own tag.
+
+`WITH` tests its guards in turn. The first that holds runs its
+statements with the variable of the guard's type, the record type for a
+`VAR` record parameter, the pointer type for a pointer, then jumps to the
+end. With none, the `ELSE` part runs, or without one trap 6 is raised.
+Its `NIL` checks and trap 6 are at the `WITH`. The parser gave the
+`WITH` the position of its last `|`, so the LLVM backend's
+`-trap-location` reported trap 6 there after a `WITH` of more than one
+guard (`llvm-trap-location`'s `WITH` has one); it now keeps the
+`WITH`'s, and each guard its own, as `IF` does.
+
+An assignment to a record whose dynamic type may differ from its static
+type, a `VAR` record parameter, guarded or not, or `p^`, first compares
+the tag with the static type's descriptor, and traps with code 13 at the
+statement when they differ (Oberon2.pdf 9.1), as on LLVM. A record with
+no name of its own cannot be extended, so it is not checked. A record
+assignment copies the target's size, so assigning an extension to its
+base type copies only the base's fields. An array still copies the
+source's, which may be shorter.
+
+Fixture `vax-extension` has `VaxExtension` and `VaxExtLib` reviewed.
+Its debugger runs examine what the program computes, the tags of two
+blocks and one descriptor's level and base types, and take each trap:
+5, 6, 13 three ways, and 4 from `IS`. A second program, `ExtensionOut`,
+prints with `Out`, and is built by both backends under `-O2` and `-OC`
+and must print the same. No earlier fixture changes.
+
+The survey counts 388 refusals, down from 10,889, none of them about
+extension: procedure values and calls of procedure variables (118),
+reals (165), `SYSTEM.BYTE` parameters (78), calls and expressions that
+need more registers than are left (19), nested procedures (7) and a
+structured constant (1). poc's source has no type-bound procedures.
+Writing it showed that voc takes an `ARRAY OF CHAR` for a value
+parameter of type `ARRAY 256 OF CHAR`, which Oberon-2 and poc reject,
+and copies the formal's 256 bytes from it (vishap-bugs 68), so the
+survey is also a check that the backend's own source is poc's
+Oberon-2.

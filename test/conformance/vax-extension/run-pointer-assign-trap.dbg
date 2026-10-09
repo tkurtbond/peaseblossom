@@ -1,0 +1,9 @@
+! mode = 3: s := c, then s^ := sd in line 82, a ShapeDesc assigned to a
+! CircleDesc's block, traps: code 13 at column 31, the statement's
+DEPOSIT/WORD VAXEXTENSION\VAXEXTENSION_MODE_6LC8EEVM = 3
+GO
+EXAMINE/LONG POC_TRAP_CODE
+EXAMINE/LONG POC_TRAP_LINE
+EXAMINE/LONG POC_TRAP_COLUMN
+EXAMINE/ASCII:12 POC_TRAP_MODULE
+EXIT

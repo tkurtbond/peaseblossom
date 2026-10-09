@@ -1,0 +1,169 @@
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual, LLVM's code generator and the debugger runs; for the user's
+;; review). Why this is right:
+;; - The module VaxExtension imports (expected-vax.mar): the base types it
+;;   extends, and IS and guards on them.
+;; - ShapeDesc's descriptor is level 0, its BaseTypes only itself;
+;;   CircleDesc's, size 6, is level 1, ShapeDesc's then its own. Both
+;;   are global (::), as every module-level record's is, for
+;;   VaxExtension's descriptors and tests.
+;; - Area: s IS Circle checks s for NIL (trap 4 at line 13, column 8),
+;;   then its block's descriptor's level, CMPL 4(R0), #1, and
+;;   BaseTypes[1], 16(R0), against CircleDesc's; s(Circle).r, twice,
+;;   guards the same way (trap 5 at s) before each dereference. The
+;;   run's area, 75, is 3 * 5 * 5.
+; VaxExtLib, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXEXTLIB
+	.IDENT	/0b50879169455655/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxExtLib/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxExtLib.ShapeDesc
+	.ALIGN	LONG
+VAXEXTLIB_SHAPEDESC_TFD1FV9S::
+	.LONG	4
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXEXTLIB_SHAPEDESC_TFD1FV9S
+; VaxExtLib.CircleDesc
+	.ALIGN	LONG
+VAXEXTLIB_CIRCLEDESC_IHO43NK1::
+	.LONG	6
+	.LONG	1
+	.LONG	0
+	.ADDRESS	VAXEXTLIB_SHAPEDESC_TFD1FV9S
+	.ADDRESS	VAXEXTLIB_CIRCLEDESC_IHO43NK1
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Area
+	.ENTRY	VAXEXTLIB_AREA_P5JRK91D, ^M<R2,R3>
+; line 13
+	MOVL	4(AP), R0
+	BNEQ	L_3
+	PUSHL	#8
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_3:
+	MOVL	-4(R0), R0
+	CLRB	R1
+	CMPL	4(R0), #1
+	BLSS	L_4
+	MOVAB	VAXEXTLIB_CIRCLEDESC_IHO43NK1, R2
+	CMPL	16(R0), R2
+	BNEQ	L_4
+	MOVB	#1, R1
+L_4:
+	BLBS	R1, L_5
+	JMP	L^L_2
+L_5:
+; line 13
+	MOVL	4(AP), R0
+	BNEQ	L_6
+	PUSHL	#36
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_6:
+	MOVL	-4(R0), R0
+	CLRB	R1
+	CMPL	4(R0), #1
+	BLSS	L_7
+	MOVAB	VAXEXTLIB_CIRCLEDESC_IHO43NK1, R2
+	CMPL	16(R0), R2
+	BNEQ	L_7
+	MOVB	#1, R1
+L_7:
+	BLBS	R1, L_8
+	PUSHL	#36
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#5
+	CALLS	#4, G^POC_TRAP
+L_8:
+	MOVL	4(AP), R0
+	BNEQ	L_9
+	PUSHL	#36
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_9:
+	MULW3	4(R0), #3, R1
+	MOVL	4(AP), R0
+	BNEQ	L_10
+	PUSHL	#50
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_10:
+	MOVL	-4(R0), R0
+	CLRB	R2
+	CMPL	4(R0), #1
+	BLSS	L_11
+	MOVAB	VAXEXTLIB_CIRCLEDESC_IHO43NK1, R3
+	CMPL	16(R0), R3
+	BNEQ	L_11
+	MOVB	#1, R2
+L_11:
+	BLBS	R2, L_12
+	PUSHL	#50
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#5
+	CALLS	#4, G^POC_TRAP
+L_12:
+	MOVL	4(AP), R0
+	BNEQ	L_13
+	PUSHL	#50
+	PUSHL	#13
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_13:
+	MULW2	4(R0), R1
+	CVTWL	R1, R0
+	RET
+	JMP	L^L_1
+L_2:
+; line 13
+	CLRL	R0
+	RET
+L_1:
+	PUSHL	#3
+	PUSHL	#14
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXEXTLIB_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_0B50879169455655 == 0
+
+	.END

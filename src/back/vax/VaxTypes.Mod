@@ -81,8 +81,18 @@ MODULE VaxTypes;
     RETURN MemoryLayout.Align(t, MemoryLayout.wordSize32, sizeModel)
   END Align;
 
+  (* field's offset in rec, which declares it or extends a record that
+     does: MemoryLayout's is of a field of the record given, so that one
+     inherited is found in its base types first *)
   PROCEDURE FieldOffset*(rec: Types.RecordType; field: Types.Field): LONGINT;
+    VAR f: Types.Field;
   BEGIN
+    LOOP
+      f := rec.fields;
+      WHILE (f # NIL) & (f # field) DO f := f.next END;
+      IF (f # NIL) OR (rec.baseType = NIL) THEN EXIT END;
+      rec := rec.baseType(Types.RecordType)
+    END;
     RETURN MemoryLayout.FieldOffset(rec, field, MemoryLayout.wordSize32, sizeModel)
   END FieldOffset;
 

@@ -711,6 +711,13 @@ most, object libraries.
      `vax-records`' and `vax-modules`' two, which pass the tag now, were
      reviewed by the user (2026-10-09). Survey: 10,889, unchanged outside
      `VaxCodeGenerator.Mod`, whose new code adds 30.
+   - *Extension, `IS`, type guards and `WITH`* (section 14 item 11's next
+     step), done 2026-10-09: descriptors with their extension level and
+     base types, LLVM's type test, guards (trap 5), `WITH` (trap 6) and
+     the record-assignment check (trap 13). Fixture `vax-extension` takes
+     each trap under the debugger and runs one source on both backends.
+     Its `.mar` files await the user's review. Survey: 388, none of them
+     extension.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

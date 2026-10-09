@@ -1,0 +1,9 @@
+! mode = 4: Copy(c^, sd), whose d := e in line 47 assigns a ShapeDesc to
+! d, a CircleDesc, traps: code 13 at column 5, the statement's
+DEPOSIT/WORD VAXEXTENSION\VAXEXTENSION_MODE_6LC8EEVM = 4
+GO
+EXAMINE/LONG POC_TRAP_CODE
+EXAMINE/LONG POC_TRAP_LINE
+EXAMINE/LONG POC_TRAP_COLUMN
+EXAMINE/ASCII:12 POC_TRAP_MODULE
+EXIT
