@@ -10,7 +10,8 @@
 # given). The debugger's output comes back as <run>.out beside it, from its
 # first line after "%DEBUG-I-INITIAL". Copying is by FTP (active, ASCII),
 # the session by telnet (tools/vax-run.exp), as tools/vax-assemble does; the
-# copies on the guest are deleted. Exits 0 if everything assembled, linked
+# copies on the guest are deleted. The copies there, the copies back and the
+# deletions are one FTP session each, a login on the guest. Exits 0 if everything assembled, linked
 # and ran, 1 if a step failed (its messages are printed), 2 if the guest
 # could not be used.
 #
@@ -34,7 +35,6 @@ export VAX_NETRC
 . "$here/vax-lock.sh"
 
 [ $# -ge 2 ] || { echo "usage: tools/vax-run <file.mar> <run.dbg>..." >&2; exit 2; }
-"$here/vax-assemble" -available || { echo "vax-run: the VAX guest $host is not available" >&2; exit 2; }
 
 mar=$1; shift
 [ -r "$mar" ] || { echo "vax-run: cannot read $mar" >&2; exit 2; }
@@ -49,22 +49,27 @@ init=$(sed -n 's/^	\.ENTRY	\([A-Z0-9_$]*_INIT\),.*/\1/p' "$mar")
 ftp="ftp://$host/"
 curl_ftp() { curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@"; }
 work=$(mktemp -d "${TMPDIR:-/tmp}/vax-run.XXXXXX")
+# every version of each of this run's files deleted, in one session ("*": a
+# file that is not there is no failure)
 cleanup() {
   rm -rf "$work"
+  set --
   for f in "$module.MAR" "$module.OBJ" POCSTUB.MAR POCSTUB.OBJ POCDRIVER.MAR POCDRIVER.OBJ POCRUN.EXE; do
-    curl -s --netrc-file "$VAX_NETRC" -P - -Q "DELE $f;*" "$ftp" -o /dev/null 2>/dev/null || true
+    set -- "$@" -Q "*DELE $f;*"
   done
   i=1
   while [ $i -le "$runs" ]; do
-    for ext in DBG OUT; do
-      curl -s --netrc-file "$VAX_NETRC" -P - -Q "DELE R$i.$ext;*" "$ftp" -o /dev/null 2>/dev/null || true
-    done
+    set -- "$@" -Q "*DELE R$i.DBG;*" -Q "*DELE R$i.OUT;*"
     i=$((i + 1))
   done
+  curl -s --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@" "$ftp" -o /dev/null 2>/dev/null || true
 }
 runs=$#
-# only once this run has the lock may its cleanup touch the guest
+# only once this run has the lock may it, or its cleanup, touch the guest
+# (a guest busy with another run can be slow to answer)
 vax_lock
+trap 'rm -rf "$work"; vax_unlock' EXIT
+"$here/vax-assemble" -available || { echo "vax-run: the VAX guest $host is not available" >&2; exit 2; }
 trap 'cleanup; vax_unlock' EXIT
 
 cat >"$work/POCDRIVER.MAR" <<EOF
@@ -78,16 +83,24 @@ cat >"$work/POCDRIVER.MAR" <<EOF
 	RET
 	.END	POC_DRIVER
 EOF
-curl_ftp --use-ascii -T "$mar" "$ftp$module.MAR"
-curl_ftp --use-ascii -T "$here/vax-runtime-stub.mar" "${ftp}POCSTUB.MAR"
-curl_ftp --use-ascii -T "$work/POCDRIVER.MAR" "${ftp}POCDRIVER.MAR"
 i=1
 for dbg in "$@"; do
   [ -r "$dbg" ] || { echo "vax-run: cannot read $dbg" >&2; exit 2; }
   { echo "SET RADIX DECIMAL"; echo "SET MODULE/ALL"; cat "$dbg"; } >"$work/R$i.DBG"
-  curl_ftp --use-ascii -T "$work/R$i.DBG" "${ftp}R$i.DBG"
   i=$((i + 1))
 done
+# everything copied to the guest in one session
+upload() {
+  set -- -T "$mar" "$ftp$module.MAR" -T "$here/vax-runtime-stub.mar" "${ftp}POCSTUB.MAR" \
+    -T "$work/POCDRIVER.MAR" "${ftp}POCDRIVER.MAR"
+  i=1
+  while [ $i -le "$runs" ]; do
+    set -- "$@" -T "$work/R$i.DBG" "${ftp}R$i.DBG"
+    i=$((i + 1))
+  done
+  curl_ftp --use-ascii "$@"
+}
+upload
 
 session=0
 expect -f "$here/vax-run.exp" "$host" "$module" "$runs" >"$work/session" || session=$?
@@ -102,11 +115,20 @@ else
   exit 1
 fi
 
+# every run's debugger output brought back in one session
+download() {
+  set --
+  i=1
+  while [ $i -le "$runs" ]; do
+    set -- "$@" -o "$work/R$i.OUT" "${ftp}R$i.OUT"
+    i=$((i + 1))
+  done
+  curl_ftp --use-ascii "$@"
+}
+download
 i=1
 for dbg in "$@"; do
-  out="${dbg%.dbg}.out"
-  curl_ftp --use-ascii -o "$work/R$i.OUT" "${ftp}R$i.OUT"
-  sed '1,/^%DEBUG-I-INITIAL/d' "$work/R$i.OUT" >"$out"
+  sed '1,/^%DEBUG-I-INITIAL/d' "$work/R$i.OUT" >"${dbg%.dbg}.out"
   i=$((i + 1))
 done
 exit 0

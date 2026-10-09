@@ -99,9 +99,11 @@ stage2: $(STAGE1_BIN)
 # The whole suite under the poc that poc built (POC_BIN_DIR is what
 # test/testenv.sh puts on PATH first; the tests cd, so it must be absolute).
 # `make test` stays Stage 0 only - the fast loop, and voc remains the
-# bootstrap root and the comparison oracle.
+# bootstrap root and the comparison oracle. This suite, check-opt2's and
+# check-lto's leave the VAX guest alone (VAX_GUEST=skip, test/vaxfixture.sh):
+# it sees only each fixture's expected-vax.mar, which make test's run checks.
 test-stage1: $(STAGE1_BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)/stage1)
-	POC_BIN_DIR=$(abspath $(BUILD_DIR)/stage1/bin) test/run-tests.sh $(ALL_TESTS)
+	POC_BIN_DIR=$(abspath $(BUILD_DIR)/stage1/bin) VAX_GUEST=skip test/run-tests.sh $(ALL_TESTS)
 
 # Both compilers and the fixed point: the suite under the voc-built poc, the
 # suite under the poc-built one, then the Stage 1/Stage 2 comparison. Each
@@ -158,7 +160,7 @@ check-opt2: build
 	  $(STAGE0_ENV) $(OPT2_DIR)/wrap0/poc -$$model -clear-library-path -output-dir $(OPT2_DIR)/stage0/lib/poc \
 	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
 	done; \
-	POC_BIN_DIR=$(OPT2_DIR)/wrap0 test/run-tests.sh $(OPT2_TESTS) || status=1; \
+	POC_BIN_DIR=$(OPT2_DIR)/wrap0 VAX_GUEST=skip test/run-tests.sh $(OPT2_TESTS) || status=1; \
 	BOOTSTRAP_BUILD_DIR=$(OPT2_DIR) BOOTSTRAP_OPT=2 STAGE0_POC=$(abspath $(BUILD_DIR)/bin/poc) \
 	  tools/bootstrap/stage1 || status=1; \
 	BOOTSTRAP_BUILD_DIR=$(OPT2_DIR) BOOTSTRAP_OPT=2 tools/bootstrap/stage2 || status=1; \
@@ -166,7 +168,7 @@ check-opt2: build
 	  $(OPT2_DIR)/wrap1/poc -$$model -clear-library-path -output-dir $(OPT2_DIR)/stage1/lib/poc \
 	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
 	done; \
-	POC_BIN_DIR=$(OPT2_DIR)/wrap1 test/run-tests.sh $(OPT2_TESTS) || status=1; \
+	POC_BIN_DIR=$(OPT2_DIR)/wrap1 VAX_GUEST=skip test/run-tests.sh $(OPT2_TESTS) || status=1; \
 	exit $$status
 
 # Phase 12 step 2g: the suite with every fixture's build a whole-program
@@ -195,7 +197,7 @@ check-lto: build
 	  $(STAGE0_ENV) $(LTO_DIR)/wrap/poc -$$model -clear-library-path -output-dir $(LTO_DIR)/lib/poc \
 	    -library poc-rtl $(RTL_SRCS) >/dev/null || status=1; \
 	done; \
-	POC_BIN_DIR=$(LTO_DIR)/wrap test/run-tests.sh $(LTO_TESTS) || status=1; \
+	POC_BIN_DIR=$(LTO_DIR)/wrap VAX_GUEST=skip test/run-tests.sh $(LTO_TESTS) || status=1; \
 	exit $$status
 
 # poc's own source stays inside Oberon2.pdf (PLAN.md, "Bootstrap

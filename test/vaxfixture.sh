@@ -14,7 +14,10 @@
 # expected-vax.mar under the debugger (tools/vax-run), whose output is
 # compared with run-<name>.log, a failure or a difference is added to result
 # too. Elsewhere those parts are skipped, saying so on the output but not in
-# result, so that result is the same on every host when all is well.
+# result, so that result is the same on every host when all is well. They
+# are skipped too when VAX_GUEST is "skip", as it is in the suite runs after
+# make test's (GNUmakefile): the guest sees only expected-vax.mar, the same
+# whichever poc runs the suite, so one run's check is enough.
 
 vax_mar() {
   vax_module=$1; shift
@@ -32,7 +35,9 @@ vax_mar() {
   fi
   rm -f expected-vax.stripped vax-diff
   vax_tools=../../../tools
-  if "$vax_tools/vax-assemble" -available; then
+  if [ "${VAX_GUEST:-}" = skip ]; then
+    echo "SKIPPED: assembling and running expected-vax.mar (VAX_GUEST=skip)"
+  elif "$vax_tools/vax-assemble" -available; then
     mkdir -p vax-assemble
     cp expected-vax.mar "vax-assemble/$1.mar"
     if ! "$vax_tools/vax-assemble" "vax-assemble/$1.mar" >vax-assemble/out 2>&1; then

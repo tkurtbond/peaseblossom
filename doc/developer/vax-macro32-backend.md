@@ -761,7 +761,9 @@ their constructs.
   does it (§11, question 2: scripted telnet), and `vax_mar` runs it on
   `expected-vax.mar` where `tools/vax-assemble -available` says the guest
   can be used; elsewhere that part is skipped, so the fixture's result is
-  the same on every host. A file that does not assemble adds MACRO's
+  the same on every host. It is skipped too in the suite runs after
+  `make test`'s (`VAX_GUEST=skip`; `DEVELOPER.md`, section 4), since the
+  guest sees the same file in each. A file that does not assemble adds MACRO's
   messages to the result, which then fails.
 - **Decided (2026-10-06): a fixture may also run its `expected-vax.mar`
   under the VAX debugger**, where the guest can be used, as it is

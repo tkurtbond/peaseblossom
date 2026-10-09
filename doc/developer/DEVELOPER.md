@@ -203,7 +203,15 @@ assembled without a warning or an error. `VAX_HOST` names another guest.
 `tools/vax-assemble -available` says whether the guest can be used; the
 VAX fixtures assemble their `expected-vax.mar` only where it can, and skip
 that part elsewhere. Copies are retried, since the guest's FTP server now
-and then refuses one ("425").
+and then refuses one ("425"), and so is that check, since a guest busy with
+another run can be slow to answer it. Each FTP step (the copies there, the
+copies back, the deletions) is one session, a login on the guest: most of
+a run's time on the guest is these logins, not `MACRO`.
+
+The guest sees only `expected-vax.mar`, the same whichever poc runs the
+suite, so only `make test`'s run uses it: `test-stage1`, `check-opt2` and
+`check-lto` set `VAX_GUEST=skip`, which skips that part of every VAX
+fixture, as on a host without the guest.
 
 `tools/vax-run <file.mar> <run.dbg>...` runs a module there under the
 debugger: it assembles the module, `tools/vax-runtime-stub.mar` (stand-ins

@@ -1,10 +1,11 @@
 #!/bin/sh
 # Assembles MACRO-32 sources on the VAX/VMS development system
 # (doc/developer/DEVELOPER.md, section 4; doc/developer/vax-macro32-backend.md,
-# section 11 question 2, settled 2026-10-06 as scripted telnet). Each file is
+# section 11 question 2, settled 2026-10-06 as scripted telnet). The files are
 # copied to POC's home directory by FTP, in active and ASCII mode; MACRO/OBJECT/
-# LIST is run on it by telnet (tools/vax-assemble.exp); its listing comes back
-# beside it, as <name>.lis; and the copies on the guest are deleted. Prints
+# LIST is run on each by telnet (tools/vax-assemble.exp); each listing comes
+# back beside its file, as <name>.lis; and the copies on the guest are deleted.
+# Each of those FTP steps is one session, a login on the guest. Prints
 # each file's assembler messages and a line "<file>: <hex $STATUS> <severity>".
 # Exits 0 only if every file assembled with a success or informational status;
 # a warning, such as %MACRO-W-ILLSYMLEN, is a failure.
@@ -14,7 +15,9 @@
 #
 # -q prints only the status lines. -available exits 0 if the guest can be
 # used - telnet's port answers and $VAX_NETRC has its machine - and 1 otherwise,
-# so a fixture can be skipped on a host without it. The login and password are
+# so a fixture can be skipped on a host without it. A guest busy with another
+# run can be slow to answer, so the port is tried a few times, and a run tries
+# it only once it holds the lock. The login and password are
 # $VAX_NETRC's, read by curl and by the expect script themselves, never on a
 # command line or printed. VAX_HOST names the guest (default 192.168.2.20).
 # Runs share POC's home directory, so each holds this host's lock while it
@@ -29,11 +32,23 @@ VAX_NETRC=${VAX_NETRC:-$HOME/.netrc-poc-vax}
 export VAX_NETRC
 . "$here/vax-lock.sh"
 
-available() {
+# this host has the tools and the guest's password
+usable() {
   [ -r "$VAX_NETRC" ] && grep -q "machine[[:space:]][[:space:]]*$host\\([[:space:]]\\|\$\\)" "$VAX_NETRC" \
     && command -v expect >/dev/null && command -v telnet >/dev/null && command -v curl >/dev/null \
-    && nc -z -w 5 "$host" 23 >/dev/null 2>&1
+    && command -v nc >/dev/null
 }
+
+# the guest's telnet port answers, within three tries
+answers() {
+  for try in 1 2 3; do
+    nc -z -w 5 "$host" 23 >/dev/null 2>&1 && return 0
+    [ $try -eq 3 ] || sleep 2
+  done
+  return 1
+}
+
+available() { usable && answers; }
 
 if [ "$1" = "-available" ]; then
   available
@@ -43,25 +58,55 @@ fi
 quiet=
 if [ "$1" = "-q" ]; then quiet=1; shift; fi
 [ $# -gt 0 ] || { echo "usage: tools/vax-assemble [-q] <file.mar>... | -available" >&2; exit 2; }
-available || { echo "vax-assemble: the VAX guest $host is not available" >&2; exit 2; }
+usable || { echo "vax-assemble: the VAX guest $host is not available" >&2; exit 2; }
 
 ftp="ftp://$host/"
 names=
 # delete this run's files from POC's directory, every version of each,
-# whatever happened
+# whatever happened, in one session ("*": a file that is not there is no
+# failure)
 cleanup() {
   rm -f "$out"
+  set --
   for name in $names; do
     stem=${name%.MAR}
     for ext in MAR OBJ LIS; do
-      curl -s --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 -Q "DELE $stem.$ext;*" "$ftp" -o /dev/null 2>/dev/null || true
+      set -- "$@" -Q "*DELE $stem.$ext;*"
     done
   done
+  [ $# -eq 0 ] || curl -s --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@" "$ftp" -o /dev/null 2>/dev/null || true
 }
 out=$(mktemp "${TMPDIR:-/tmp}/vax-assemble.XXXXXX")
-# only once this run has the lock may its cleanup touch the guest
+# only once this run has the lock may it, or its cleanup, touch the guest
 vax_lock
+trap 'rm -f "$out"; vax_unlock' EXIT
+answers || { echo "vax-assemble: the VAX guest $host is not available" >&2; exit 2; }
 trap 'cleanup; vax_unlock' EXIT
+
+# a file's name on the guest, without its type: NAME for dir/name.mar
+guest_name() {
+  b=$(basename "$1")
+  echo "${b%.*}" | tr a-z A-Z
+}
+
+# every file copied to the guest, as NAME.MAR, in one session
+upload() {
+  for f; do
+    set -- "$@" -T "$f" "$ftp$(guest_name "$f").MAR"
+    shift
+  done
+  curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 --use-ascii "$@"
+}
+
+# every file's listing brought back beside it, as name.lis, in one session
+download() {
+  for f; do
+    b=$(basename "$f")
+    set -- "$@" -o "$(dirname "$f")/${b%.*}.lis" "$ftp$(guest_name "$f").LIS"
+    shift
+  done
+  curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 --use-ascii "$@"
+}
 
 for f in "$@"; do
   case $f in
@@ -69,14 +114,13 @@ for f in "$@"; do
     *) echo "vax-assemble: $f is not a .mar file" >&2; exit 2 ;;
   esac
   [ -r "$f" ] || { echo "vax-assemble: cannot read $f" >&2; exit 2; }
-  base=$(basename "$f")
-  name=$(echo "${base%.*}" | tr a-z A-Z)
+  name=$(guest_name "$f")
   case $name in
-    *[!A-Z0-9_\$-]*|"") echo "vax-assemble: $base is not a VMS file name" >&2; exit 2 ;;
+    *[!A-Z0-9_\$-]*|"") echo "vax-assemble: $(basename "$f") is not a VMS file name" >&2; exit 2 ;;
   esac
   names="$names $name.MAR" # before the copy, so a half-made one is deleted too
-  curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 --use-ascii -T "$f" "$ftp$name.MAR"
 done
+upload "$@"
 
 session=0
 # shellcheck disable=SC2086
@@ -84,12 +128,9 @@ expect -f "$here/vax-assemble.exp" "$host" $names >"$out" || session=$?
 [ "$session" -eq 0 ] || exit 2
 
 status=0
+download "$@" || status=1
 for f in "$@"; do
-  base=$(basename "$f")
-  name=$(echo "${base%.*}" | tr a-z A-Z)
-  dir=$(dirname "$f")
-  lis="$dir/${base%.*}.lis"
-  curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 --use-ascii -o "$lis" "$ftp$name.LIS" || status=1
+  name=$(guest_name "$f")
   # the assembler's messages for this file, then its status line
   hex=$(sed -n "s/^VAXASM-STATUS $name\\.MAR \\([0-9A-F]*\\)\$/\\1/p" "$out")
   if [ -z "$quiet" ]; then
