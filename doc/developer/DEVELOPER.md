@@ -301,9 +301,10 @@ Guide (`doc/users-guide.md`, how to use poc), the Reference Guide
 
 ## 6. Building the packages
 
-Each package is built on a host running its system - the original
-developer's are section 4's: alerik, cymoril and artos for FreeBSD,
-OpenBSD and NetBSD, atla for Fedora. The paths below (`$HOME/ports-work`,
+Each package is built on a host running its system and architecture -
+the original developer's are section 4's: alerik and rackhir for FreeBSD
+amd64 and arm64, cymoril and jherek for OpenBSD i386 and amd64, artos and
+yishana for NetBSD amd64 and i386, atla for Fedora. The paths below (`$HOME/ports-work`,
 `~/pkgsrc-work`) are theirs; any will do. Each package is built from a
 release tarball (`make dist`, section 7),
 named in it by version and fetched from the GitHub release; until there is
@@ -472,9 +473,9 @@ the names, and the variables that give them to the tools, are yours.
    for, with a list of every file's SHA-256 sum, signed:
 
        peaseblossom-<version>-1.fc44.x86_64.rpm, peaseblossom-<version>-1.fc44.src.rpm
-       peaseblossom-<version>-freebsd15.1-amd64.pkg
-       peaseblossom-<version>-openbsd7.9-i386.tgz
-       peaseblossom-<version>-netbsd11.0-amd64.tgz
+       peaseblossom-<version>-freebsd15.1-amd64.pkg, peaseblossom-<version>-freebsd15.1-arm64.pkg
+       peaseblossom-<version>-openbsd7.9-i386.tgz, peaseblossom-<version>-openbsd7.9-amd64.tgz
+       peaseblossom-<version>-netbsd11.0-amd64.tgz, peaseblossom-<version>-netbsd11.0-i386.tgz
        SHA256SUMS, SHA256SUMS.asc   # sha256sum of every file; gpg --armor --detach-sign
 
    `make release-files` (`tools/release-files`) gathers them in
@@ -482,9 +483,10 @@ the names, and the variables that give them to the tools, are yours.
    - the tarball's three files from `build/dist`;
    - the RPMs from `~/rpmbuild` (`RPM_DIR`);
    - each BSD package by `scp` from the host that built it, named for that
-     host's `uname`. `FREEBSD_HOST`, `OPENBSD_HOST` and `NETBSD_HOST`
-     name those hosts; they default to the original developer's, alerik,
-     cymoril and artos.
+     host's `uname`. `FREEBSD_HOSTS`, `OPENBSD_HOSTS` and `NETBSD_HOSTS`
+     name those hosts, one for each architecture; they default to the
+     original developer's, `"alerik rackhir"`, `"cymoril jherek"` and
+     `"artos yishana"`.
 
    It refuses to go on until the RPMs there are signed. Sign them in place
    with the `rpmsign` command it prints, then run it again; a file already
