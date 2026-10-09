@@ -1,0 +1,22 @@
+! the tags received, each examined where it points, which the debugger
+! names: Twice(p)'s, Point's descriptor; Grow(2, b, p)'s, Box's then
+! Point's; Grow(5, boxes[i], boxes[0].hi)'s, the same; Twice(pp^)'s, the
+! block's tag, Point's descriptor again; VaxRecLib.Count(pair)'s,
+! VaxRecLib's Pair's
+SET BREAK VAXVARRECORDS\VAXVARRECORDS_TWICE_E6PLGCL3
+SET BREAK VAXVARRECORDS\VAXVARRECORDS_GROW_ALSI8D7A
+SET BREAK VAXRECLIB\VAXRECLIB_COUNT_44VCVTIG
+GO
+EXAMINE/LONG .(.%AP+8)
+GO
+EXAMINE/LONG .(.%AP+12)
+EXAMINE/LONG .(.%AP+20)
+GO
+EXAMINE/LONG .(.%AP+12)
+EXAMINE/LONG .(.%AP+20)
+GO
+EXAMINE/LONG .(.%AP+8)
+GO
+EXAMINE/LONG .(.%AP+8)
+GO
+EXIT

@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the
-;; design, the MACRO manual and the VAX's listing). Why this is
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
 ;; right:
 ;; - MemoryLayout's layout (section 4): Point is x at 0, y at 2, 4 bytes,
 ;;   aligned to a word. Shape is kind at 0, corner at 2, size at 8 (a
@@ -20,8 +20,8 @@
 ;;   that sh.size := ... changes only the copy. Area's and Local's masks
 ;;   save R2-R5 for MOVC3.
 ;; - A read-only one (Peek's sh-) is not copied: its address is used, as
-;;   a VAR parameter's (section 7). First's VAR sh is its address, with no
-;;   type tag until Phase 16.
+;;   a VAR parameter's (section 7). First's VAR sh is its address and
+;;   its type tag (below).
 ;; - Local's frame: a at -4, b at -8, t, aligned to a longword, at -32,
 ;;   c at -33, rounded to 36 bytes, cleared by CLRQ and CLRL.
 ;; - POC_TRAP, outside the module, is named in general mode, G^ (section
@@ -42,6 +42,12 @@
 ;;   level 0. They are global, label::, though neither type is exported:
 ;;   a pointer type that is exported may be bound to a record type that
 ;;   is not, and its importers' NEW names the record's descriptor.
+;; - Phase 16 step 3 (section 14, item 5): a VAR record parameter takes
+;;   its actual's type tag as a hidden longword after the address, as on
+;;   LLVM, so Move's dx is at 12(AP). The calls pass Point's descriptor
+;;   for p and shapes[i].corner, and Shape's for shapes[i], by MOVAB, in a
+;;   list one longword longer. Nothing reads a tag yet: it is for IS,
+;;   type guards, WITH and type-bound procedures.
 ; VaxRecords, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXRECORDS
 	.IDENT	/2397bb2d32257825/
@@ -115,11 +121,11 @@ VAXRECORDS_SHAPE_IHGG54MP::
 VAXRECORDS_MOVE_SGE4UQHH:
 	.WORD	^M<>
 ; line 27
-	ADDW2	8(AP), @4(AP)
+	ADDW2	12(AP), @4(AP)
 ; line 28
 	MOVL	4(AP), R0
 	MOVL	4(AP), R1
-	ADDW3	8(AP), 2(R1), 2(R0)
+	ADDW3	12(AP), 2(R1), 2(R0)
 	RET
 ; PROCEDURE Area
 VAXRECORDS_AREA_O5A07AIL:
@@ -201,7 +207,7 @@ VAXRECORDS_LOCAL_PPVNFC0F:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
-	SUBL2	#12, SP
+	SUBL2	#16, SP
 ; line 55
 	MOVW	#3, VAXRECORDS_P_3V9CT72S
 ; line 55
@@ -263,12 +269,13 @@ L_5:
 	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
 	MOVQ	16(R0), VAXRECORDS_H_3V9CT3M4
 ; line 63
-	MOVL	#2, -12(FP)
-	MOVAB	VAXRECORDS_P_3V9CT72S, -8(FP)
+	MOVL	#3, -16(FP)
+	MOVAB	VAXRECORDS_P_3V9CT72S, -12(FP)
+	MOVAB	VAXRECORDS_POINT_8UCDJMQQ, -8(FP)
 	MOVL	#2, -4(FP)
-	CALLG	-12(FP), VAXRECORDS_MOVE_SGE4UQHH
+	CALLG	-16(FP), VAXRECORDS_MOVE_SGE4UQHH
 ; line 64
-	MOVL	#2, -12(FP)
+	MOVL	#3, -16(FP)
 	CVTWL	VAXRECORDS_I_3V9CT43N, R0
 	CMPL	R0, #3
 	BLEQU	L_6
@@ -280,9 +287,10 @@ L_5:
 L_6:
 	MULL2	#24, R0
 	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
-	MOVAB	2(R0), -8(FP)
+	MOVAB	2(R0), -12(FP)
+	MOVAB	VAXRECORDS_POINT_8UCDJMQQ, -8(FP)
 	CVTWL	VAXRECORDS_I_3V9CT43N, -4(FP)
-	CALLG	-12(FP), VAXRECORDS_MOVE_SGE4UQHH
+	CALLG	-16(FP), VAXRECORDS_MOVE_SGE4UQHH
 ; line 65
 	MOVL	#1, -8(FP)
 	MOVAB	VAXRECORDS_S_3V9CT8BL, -4(FP)
@@ -311,7 +319,7 @@ L_7:
 	CALLG	-12(FP), VAXRECORDS_PEEK_7QKAQSN3
 	MOVB	R0, VAXRECORDS_S_3V9CT8BL
 ; line 68
-	MOVL	#1, -8(FP)
+	MOVL	#2, -12(FP)
 	CVTWL	VAXRECORDS_I_3V9CT43N, R0
 	CMPL	R0, #3
 	BLEQU	L_8
@@ -323,8 +331,9 @@ L_7:
 L_8:
 	MULL2	#24, R0
 	MOVAB	VAXRECORDS_SHAPES_MTH30EDU[R0], R0
-	MOVAB	(R0), -4(FP)
-	CALLG	-8(FP), VAXRECORDS_FIRST_RU330GMQ
+	MOVAB	(R0), -8(FP)
+	MOVAB	VAXRECORDS_SHAPE_IHGG54MP, -4(FP)
+	CALLG	-12(FP), VAXRECORDS_FIRST_RU330GMQ
 	MOVB	R0, VAXRECORDS_S_3V9CT8BL
 	RET
 

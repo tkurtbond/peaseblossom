@@ -1,0 +1,124 @@
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual and the debugger runs; for the user's review). Why this is
+;; right:
+;; - Count's VAR p, a record, has its tag at 8(AP), after its address,
+;;   which Count does not read. The fields are reached through the
+;;   address: p.n is MOVL 4(AP), R0 then 8(R0); p.a, at 0, is @4(AP).
+;; - Pair holds two pointers, a at 0 and b at 4: its descriptor, global
+;;   for VaxVarRecords' tag, has size 12, count 2 and offsets 0 and 4;
+;;   NodeDesc's has its next at 4.
+;; - Each q.next is a dereference, checked for NIL (trap 4); the loops
+;;   stop at NIL before one could trap.
+; VaxRecLib, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXRECLIB
+	.IDENT	/e6c7c3444e50227b/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxRecLib/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxRecLib.NodeDesc
+	.ALIGN	LONG
+VAXRECLIB_NODEDESC_BIFELNCS::
+	.LONG	8
+	.LONG	0
+	.LONG	1
+	.ADDRESS	VAXRECLIB_NODEDESC_BIFELNCS
+	.LONG	4
+; VaxRecLib.Pair
+	.ALIGN	LONG
+VAXRECLIB_PAIR_DJFN0SFL::
+	.LONG	12
+	.LONG	0
+	.LONG	2
+	.ADDRESS	VAXRECLIB_PAIR_DJFN0SFL
+	.LONG	0, 4
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Count
+	.ENTRY	VAXRECLIB_COUNT_44VCVTIG, ^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+; line 14
+	MOVL	4(AP), R0
+	MOVW	8(R0), -2(FP)
+; line 15
+	MOVL	@4(AP), -8(FP)
+; line 15
+L_1:
+	TSTL	-8(FP)
+	BNEQ	L_3
+	JMP	L^L_2
+L_3:
+; line 15
+	INCW	-2(FP)
+; line 15
+	MOVL	-8(FP), R0
+	BNEQ	L_4
+	PUSHL	#45
+	PUSHL	#15
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_4:
+	MOVL	4(R0), -8(FP)
+	JMP	L^L_1
+L_2:
+; line 16
+	MOVL	4(AP), R0
+	MOVL	4(R0), -8(FP)
+; line 16
+L_5:
+	TSTL	-8(FP)
+	BNEQ	L_7
+	JMP	L^L_6
+L_7:
+; line 16
+	INCW	-2(FP)
+; line 16
+	MOVL	-8(FP), R0
+	BNEQ	L_8
+	PUSHL	#45
+	PUSHL	#16
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_8:
+	MOVL	4(R0), -8(FP)
+	JMP	L^L_5
+L_6:
+; line 17
+	CVTWL	-2(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXRECLIB_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_E6C7C3444E50227B == 0
+
+	.END

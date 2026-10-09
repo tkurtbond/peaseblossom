@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
-;; the MACRO manual, the VAX's listing and the debugger runs). Why this
-;; is right:
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - The main module of a program of three (the design's section 6):
 ;;   poc -emit-macro32 VaxModules.mod writes it and its imports'
 ;;   VaxModLib.mar and VaxModBase.mar (expected-vax-VaxModLib.mar,
@@ -29,6 +29,10 @@
 ;; - The run: trace 123, count 110 (100 + Limit), twice 49 (2 * 21 +
 ;;   table[2], 7), total 7, y -1, p.x 5 and p.y -1 (origin, moved by 5),
 ;;   s "hello"; VaxModLib's count 110 and VaxModBase's trace 123 too.
+;; - Phase 16 step 3 (section 14, item 5): VaxModLib.Move's VAR p takes
+;;   its actual's type tag after the address. p, a VaxModLib.Point,
+;;   passes VaxModLib's descriptor, G^VAXMODLIB_POINT_QKP03HTV, declared
+;;   .EXTERNAL, in a list of 3 longwords.
 ; VaxModules, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXMODULES
 	.IDENT	/4ae35d5f263b3d41/
@@ -85,6 +89,7 @@ VAXMODULES_S_IU8304KA:
 	.EXTERNAL	VAXMODLIB_TOTAL_NV5Q0VIV
 	.EXTERNAL	VAXMODLIB_ORIGIN_745HVN3P
 	.EXTERNAL	VAXMODLIB_MOVE_94B0UEMU
+	.EXTERNAL	VAXMODLIB_POINT_QKP03HTV
 	.EXTERNAL	VAXMODLIB_INIT
 	.EXTERNAL	POC_K1_2681F94A100BD980
 	.EXTERNAL	VAXMODBASE_INIT
@@ -111,7 +116,7 @@ L_BODY:
 	MOVB	#1, L_INITIALISED
 	CALLS	#0, G^VAXMODLIB_INIT
 	CALLS	#0, G^VAXMODBASE_INIT
-	SUBL2	#12, SP
+	SUBL2	#16, SP
 ; line 17
 	MOVL	#1, -8(FP)
 	MOVL	#3, -4(FP)
@@ -150,10 +155,11 @@ L_1:
 ; line 25
 	MOVC3	#4, G^VAXMODLIB_ORIGIN_745HVN3P, VAXMODULES_P_IU83046N
 ; line 26
-	MOVL	#2, -12(FP)
-	MOVAB	VAXMODULES_P_IU83046N, -8(FP)
+	MOVL	#3, -16(FP)
+	MOVAB	VAXMODULES_P_IU83046N, -12(FP)
+	MOVAB	G^VAXMODLIB_POINT_QKP03HTV, -8(FP)
 	MOVL	#5, -4(FP)
-	CALLG	-12(FP), G^VAXMODLIB_MOVE_94B0UEMU
+	CALLG	-16(FP), G^VAXMODLIB_MOVE_94B0UEMU
 ; line 27
 	MOVC5	#5, L_STR_1, #0, #6, VAXMODULES_S_IU8304KA
 	RET

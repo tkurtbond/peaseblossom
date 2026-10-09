@@ -1,7 +1,7 @@
 ! the program's start runs the initializers: trace is 123 (VaxModBase's,
 ! VaxModLib's, then VaxModules' body, each once); count 110; twice 49;
 ! total 7; y -1; p.x 5, p.y -1; s "hello"; VaxModLib's count 110
-SET BREAK VAXMODULES\%LINE 159
+SET BREAK VAXMODULES\%LINE 165
 GO
 EXAMINE/LONG VAXMODULES\VAXMODULES_COUNT_O5RJFDQS:VAXMODULES\VAXMODULES_TOTAL_98AH4S15
 EXAMINE/WORD VAXMODULES\VAXMODULES_TWICE_2I8CH9QB:VAXMODULES\VAXMODULES_K_IU830812

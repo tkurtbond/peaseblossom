@@ -703,6 +703,14 @@ most, object libraries.
      `VaxModLib`), were reviewed by the user (2026-10-09). Survey: 10,859
      refusals left, most of them extension and the records holding its
      pointers.
+   - *Records holding pointers and `VAR` record parameters* (section 14
+     item 5), done 2026-10-09: a `VAR` record parameter of an Oberon
+     procedure takes its actual's type tag after its address, as on
+     LLVM. Fixture `vax-var-records` examines the tags received under the
+     debugger and runs one source on both backends. Its `.mar` files, and
+     `vax-records`' and `vax-modules`' two, which pass the tag now, await
+     the user's review. Survey: 10,889, unchanged outside
+     `VaxCodeGenerator.Mod`, whose new code adds 30.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

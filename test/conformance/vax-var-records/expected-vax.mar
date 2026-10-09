@@ -1,0 +1,300 @@
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual and the debugger runs; for the user's review). Why this is
+;; right:
+;; - A VAR record parameter takes its actual's type tag as a hidden
+;;   longword right after the address (section 14, item 5), as on LLVM;
+;;   the parameters after it move up a longword: Move's dx is at 12(AP),
+;;   Grow's bx at 8 and its tag at 12, again at 16 and its tag at 20.
+;; - The tag passed: a variable's, a field's or an element's is its
+;;   static type's descriptor, by MOVAB (p, b, bx.lo and bx.hi, boxes[i],
+;;   boxes[0].hi); Twice passes on its own, 8(AP), as LLVM passes a VAR
+;;   record parameter's; pp^'s is its block's, the longword before the
+;;   record: its address minus 4, then the longword there, SUBL3 and MOVL
+;;   @-8(FP), into the list's own entry; pair, a VaxRecLib.Pair, passes
+;;   VaxRecLib's descriptor, G^VAXRECLIB_PAIR_DJFN0SFL, .EXTERNAL.
+;; - Box holds a pointer, owner, at 8: its descriptor's count is 1 and its
+;;   offset 8. Grow's NEW(bx.owner) names VaxRecLib's NodeDesc
+;;   descriptor; bx.owner's address is kept in R2, which Grow's mask
+;;   saves, across the call. boxes[i] := b copies the pointer with the
+;;   rest, MOVC3 #12.
+;; - Nothing reads a tag yet: it is for IS, type guards, WITH and
+;;   type-bound procedures. run-tags examines each one received.
+; VaxVarRecords, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXVARRECORDS
+	.IDENT	/d9797d37dc8fe6c6/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; p: VaxVarRecords.Point
+	.ALIGN	WORD
+VAXVARRECORDS_P_RV1HO86V:
+	.BLKB	4
+; q: VaxVarRecords.Point
+	.ALIGN	WORD
+VAXVARRECORDS_Q_RV1HO7PC:
+	.BLKB	4
+; b: VaxVarRecords.Box
+	.ALIGN	LONG
+VAXVARRECORDS_B_RV1HOFRL:
+	.BLKB	12
+; boxes: ARRAY 2 OF VaxVarRecords.Box
+	.ALIGN	LONG
+VAXVARRECORDS_BOXES_SB967I52:
+	.BLKB	24
+; pp: POINTER TO VaxVarRecords.Point
+	.ALIGN	LONG
+VAXVARRECORDS_PP_724CN2AT:
+	.BLKL	1
+; pair: VaxRecLib.Pair
+	.ALIGN	LONG
+VAXVARRECORDS_PAIR_U6VKG751:
+	.BLKB	12
+; i: INTEGER
+	.ALIGN	WORD
+VAXVARRECORDS_I_RV1HOHVK:
+	.BLKW	1
+; count: INTEGER
+	.ALIGN	WORD
+VAXVARRECORDS_COUNT_VJI09F44:
+	.BLKW	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	VAXRECLIB_NODEDESC_BIFELNCS
+	.EXTERNAL	POC_NEW
+	.EXTERNAL	VAXRECLIB_COUNT_44VCVTIG
+	.EXTERNAL	VAXRECLIB_PAIR_DJFN0SFL
+	.EXTERNAL	VAXRECLIB_INIT
+	.EXTERNAL	POC_K1_E6C7C3444E50227B
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxVarRecords/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxVarRecords.Point
+	.ALIGN	LONG
+VAXVARRECORDS_POINT_TUGNB7V1::
+	.LONG	4
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXVARRECORDS_POINT_TUGNB7V1
+; VaxVarRecords.Box
+	.ALIGN	LONG
+VAXVARRECORDS_BOX_20NDH2E2::
+	.LONG	12
+	.LONG	0
+	.LONG	1
+	.ADDRESS	VAXVARRECORDS_BOX_20NDH2E2
+	.LONG	8
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Move
+VAXVARRECORDS_MOVE_GLFCK4H4:
+	.WORD	^M<>
+; line 19
+	ADDW2	12(AP), @4(AP)
+; line 19
+	MOVL	4(AP), R0
+	MOVL	4(AP), R1
+	SUBW3	12(AP), 2(R1), 2(R0)
+	RET
+; PROCEDURE Twice
+VAXVARRECORDS_TWICE_E6PLGCL3:
+	.WORD	^M<>
+	SUBL2	#16, SP
+; line 25
+	MOVL	#3, -16(FP)
+	MOVL	4(AP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	CVTWL	@4(AP), -4(FP)
+	CALLG	-16(FP), VAXVARRECORDS_MOVE_GLFCK4H4
+	RET
+; PROCEDURE Grow
+VAXVARRECORDS_GROW_ALSI8D7A:
+	.WORD	^M<R2>
+	SUBL2	#16, SP
+; line 30
+	MOVL	#3, -16(FP)
+	MOVL	8(AP), -12(FP)
+	MOVAB	VAXVARRECORDS_POINT_TUGNB7V1, -8(FP)
+	MNEGW	4(AP), R0
+	CVTWL	R0, -4(FP)
+	CALLG	-16(FP), VAXVARRECORDS_MOVE_GLFCK4H4
+; line 30
+	MOVL	#3, -16(FP)
+	MOVL	8(AP), R0
+	MOVAB	4(R0), -12(FP)
+	MOVAB	VAXVARRECORDS_POINT_TUGNB7V1, -8(FP)
+	CVTWL	4(AP), -4(FP)
+	CALLG	-16(FP), VAXVARRECORDS_MOVE_GLFCK4H4
+; line 31
+	MOVL	8(AP), R0
+	MOVL	#2, -12(FP)
+	MOVL	#8, -8(FP)
+	MOVAB	G^VAXRECLIB_NODEDESC_BIFELNCS, -4(FP)
+	MOVL	R0, R2
+	CALLG	-12(FP), G^POC_NEW
+	MOVL	R0, 8(R2)
+; line 31
+	MOVL	8(AP), R0
+	MOVL	8(R0), R0
+	BNEQ	L_1
+	PUSHL	#20
+	PUSHL	#31
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_1:
+	MOVW	4(AP), (R0)
+; line 32
+	MOVL	#3, -16(FP)
+	MOVL	16(AP), -12(FP)
+	MOVL	20(AP), -8(FP)
+	MOVL	#1, -4(FP)
+	CALLG	-16(FP), VAXVARRECORDS_MOVE_GLFCK4H4
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXVARRECORDS_INIT, ^M<R2,R3,R4,R5>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^VAXRECLIB_INIT
+	SUBL2	#24, SP
+; line 36
+	MOVL	#3, -16(FP)
+	MOVAB	VAXVARRECORDS_P_RV1HO86V, -12(FP)
+	MOVAB	VAXVARRECORDS_POINT_TUGNB7V1, -8(FP)
+	MOVL	#3, -4(FP)
+	CALLG	-16(FP), VAXVARRECORDS_MOVE_GLFCK4H4
+; line 36
+	MOVL	#2, -12(FP)
+	MOVAB	VAXVARRECORDS_P_RV1HO86V, -8(FP)
+	MOVAB	VAXVARRECORDS_POINT_TUGNB7V1, -4(FP)
+	CALLG	-12(FP), VAXVARRECORDS_TWICE_E6PLGCL3
+; line 37
+	MOVL	#5, -24(FP)
+	MOVL	#2, -20(FP)
+	MOVAB	VAXVARRECORDS_B_RV1HOFRL, -16(FP)
+	MOVAB	VAXVARRECORDS_BOX_20NDH2E2, -12(FP)
+	MOVAB	VAXVARRECORDS_P_RV1HO86V, -8(FP)
+	MOVAB	VAXVARRECORDS_POINT_TUGNB7V1, -4(FP)
+	CALLG	-24(FP), VAXVARRECORDS_GROW_ALSI8D7A
+; line 38
+	MOVW	#1, VAXVARRECORDS_I_RV1HOHVK
+; line 38
+	CVTWL	VAXVARRECORDS_I_RV1HOHVK, R0
+	CMPL	R0, #1
+	BLEQU	L_2
+	PUSHL	#17
+	PUSHL	#38
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_2:
+	MULL2	#12, R0
+	MOVAB	VAXVARRECORDS_BOXES_SB967I52[R0], R0
+	MOVC3	#12, VAXVARRECORDS_B_RV1HOFRL, (R0)
+; line 38
+	MOVL	#5, -24(FP)
+	MOVL	#5, -20(FP)
+	CVTWL	VAXVARRECORDS_I_RV1HOHVK, R0
+	CMPL	R0, #1
+	BLEQU	L_3
+	PUSHL	#40
+	PUSHL	#38
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_3:
+	MULL2	#12, R0
+	MOVAB	VAXVARRECORDS_BOXES_SB967I52[R0], R0
+	MOVAB	(R0), -16(FP)
+	MOVAB	VAXVARRECORDS_BOX_20NDH2E2, -12(FP)
+	MOVAB	VAXVARRECORDS_BOXES_SB967I52+4, -8(FP)
+	MOVAB	VAXVARRECORDS_POINT_TUGNB7V1, -4(FP)
+	CALLG	-24(FP), VAXVARRECORDS_GROW_ALSI8D7A
+; line 39
+	MOVL	#2, -12(FP)
+	MOVL	#4, -8(FP)
+	MOVAB	VAXVARRECORDS_POINT_TUGNB7V1, -4(FP)
+	CALLG	-12(FP), G^POC_NEW
+	MOVL	R0, VAXVARRECORDS_PP_724CN2AT
+; line 39
+	MOVL	#3, -16(FP)
+	MOVL	VAXVARRECORDS_PP_724CN2AT, R0
+	BNEQ	L_4
+	PUSHL	#17
+	PUSHL	#39
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_4:
+	MOVAB	(R0), -12(FP)
+	SUBL3	#4, -12(FP), -8(FP)
+	MOVL	@-8(FP), -8(FP)
+	MOVL	#4, -4(FP)
+	CALLG	-16(FP), VAXVARRECORDS_MOVE_GLFCK4H4
+; line 39
+	MOVL	#2, -12(FP)
+	MOVL	VAXVARRECORDS_PP_724CN2AT, R0
+	BNEQ	L_5
+	PUSHL	#32
+	PUSHL	#39
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_5:
+	MOVAB	(R0), -8(FP)
+	SUBL3	#4, -8(FP), -4(FP)
+	MOVL	@-4(FP), -4(FP)
+	CALLG	-12(FP), VAXVARRECORDS_TWICE_E6PLGCL3
+; line 39
+	MOVL	VAXVARRECORDS_PP_724CN2AT, R0
+	BNEQ	L_6
+	PUSHL	#43
+	PUSHL	#39
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_6:
+	MOVC3	#4, (R0), VAXVARRECORDS_Q_RV1HO7PC
+; line 40
+	MOVL	VAXVARRECORDS_B_RV1HOFRL+8, VAXVARRECORDS_PAIR_U6VKG751
+; line 40
+	MOVL	VAXVARRECORDS_BOXES_SB967I52+20, VAXVARRECORDS_PAIR_U6VKG751+4
+; line 40
+	MOVW	#10, VAXVARRECORDS_PAIR_U6VKG751+8
+; line 41
+	MOVL	#2, -12(FP)
+	MOVAB	VAXVARRECORDS_PAIR_U6VKG751, -8(FP)
+	MOVAB	G^VAXRECLIB_PAIR_DJFN0SFL, -4(FP)
+	CALLG	-12(FP), G^VAXRECLIB_COUNT_44VCVTIG
+	MOVW	R0, VAXVARRECORDS_COUNT_VJI09F44
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_D9797D37DC8FE6C6 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXVARRECORDS_MAIN, ^M<>
+	CALLS	#0, VAXVARRECORDS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXVARRECORDS_MAIN

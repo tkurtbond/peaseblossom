@@ -13,7 +13,8 @@ MODULE VaxCodeGenerator;
      several modules and the program's start (step 8, section 6). Then
      Phase 16 step 3's (section 14): open arrays (item 1), and pointers to
      arrays and to records without a base type, NIL, NEW and the type
-     descriptors (items 3 and 4).
+     descriptors (items 3 and 4), and a VAR record parameter's type tag
+     (item 5).
 
      A module needing more - a predeclared procedure
      outside the slice, a type outside the slice, a pointer to an
@@ -157,6 +158,7 @@ MODULE VaxCodeGenerator;
       offset: LONGINT;
       copyFrom: LONGINT; (* a copied parameter's offset from AP, else 0 *)
       lenOffset: LONGINT; (* an open-array parameter: its first length's offset from AP, else 0 *)
+      tagOffset: LONGINT; (* a VAR record parameter: its tag's offset from AP, else 0 *)
       next: Local
     END;
 
@@ -1568,6 +1570,51 @@ MODULE VaxCodeGenerator;
     Release(v)
   END OpenArgument;
 
+  (* Whether p, a parameter of a procedure, takes its actual's type tag as
+     a hidden longword after the address: a VAR record parameter of an
+     Oberon procedure (section 14, item 5), as on LLVM (NeedsHiddenTag),
+     but not of an external one, which takes the address alone *)
+  PROCEDURE HasTag(p: Types.Param; external: BOOLEAN): BOOLEAN;
+  BEGIN
+    RETURN ~external & p.isVar & (p.type # NIL) & (p.type IS Types.RecordType)
+  END HasTag;
+
+  (* The tag of a, a VAR record argument whose address is already in addr,
+     into dst: the hidden one of a VAR record parameter passed on as it
+     is; a heap block's, the longword before the record, when a ends in
+     ^; else the descriptor of a's static type, or 0 for an unnamed record
+     of another module, which has none this module can name (LLVM's
+     EmitDynamicTag) *)
+  PROCEDURE ArgumentTag(a: SyntaxTree.ExprNode; addr, dst: Operand);
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; l: Local; sel: SyntaxTree.Selector;
+        t: Types.Type; rec: Types.RecordType; from: ARRAY 64 OF CHAR; text: ARRAY 160 OF CHAR;
+  BEGIN
+    de := a(SyntaxTree.DesignatorExprNode);
+    obj := Resolve(de.designator.qualifier, de.designator.name, a.line, a.column);
+    IF obj = NIL THEN RETURN END;
+    l := FindLocal(obj);
+    sel := de.designator.selectors;
+    WHILE (sel # NIL) & (sel.next # NIL) DO sel := sel.next END;
+    IF (sel = NIL) & (l # NIL) & (l.tagOffset # 0) THEN
+      from[0] := 0X; AppendInt(from, l.tagOffset); Append(from, "(AP)");
+      EmitTo("MOVL", from, dst)
+    ELSIF (sel # NIL) & (sel IS SyntaxTree.DereferenceSelector) THEN
+      Emit3("SUBL3", Immediate(Types.LongInt, 4), addr, dst);
+      Text(dst, from); text := "@"; Append(text, from); Append(text, ", "); Append(text, from);
+      Emit("MOVL", text)
+    ELSE
+      t := StaticType(de.designator, obj);
+      IF (t # NIL) & (t IS Types.RecordType) THEN
+        rec := t(Types.RecordType);
+        IF (rec.name[0] = 0X) & (rec.moduleName[0] # 0X) & (rec.moduleName # module.name) THEN
+          Emit1("CLRL", dst)
+        ELSE
+          RecordTag(rec, text); EmitTo("MOVAB", text, dst)
+        END
+      END
+    END
+  END ArgumentTag;
+
   PROCEDURE Call(d: SyntaxTree.Designator; args: SyntaxTree.ExprNode; line, column: INTEGER): Operand;
     CONST maxCopies = 16;
     VAR obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param; a: SyntaxTree.ExprNode;
@@ -1608,7 +1655,9 @@ MODULE VaxCodeGenerator;
         RETURN NIL
       END;
       IF ~p.isVar & (Suffix(p.type) = "Q") THEN INC(copies) END;
-      INC(n, 1 + OpenDims(p.type)); p := p.next
+      INC(n, 1 + OpenDims(p.type));
+      IF HasTag(p, external) THEN INC(n) END;
+      p := p.next
     END;
     IF copies > maxCopies THEN Unsupported(line, column, "a call with this many HUGEINT arguments"); RETURN NIL END;
     ProcedureSymbol(obj, symbol);
@@ -1630,7 +1679,10 @@ MODULE VaxCodeGenerator;
           OpenArgument(a, p.type, list, n, i);
           INC(i, OpenDims(p.type))
         ELSIF p.isVar THEN
-          IF ~AddressInto(a, entry) THEN Unsupported(a.line, a.column, "this VAR argument") END
+          IF ~AddressInto(a, entry) THEN Unsupported(a.line, a.column, "this VAR argument")
+          ELSIF HasTag(p, external) THEN
+            ArgumentTag(a, entry, ListEntry(list, n, i + 1)); INC(i)
+          END
         ELSIF ~IsSliceScalar(p.type) THEN
           IF ConstantEvaluator.IsConstantExpr(a, scope) THEN v := StringArgument(a, VaxTypes.Size(p.type))
           ELSE v := Expression(a, NIL)
@@ -3683,7 +3735,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE NewLocal(obj: SymbolTable.Object; where: INTEGER; offset: LONGINT): Local;
     VAR l: Local; size, align: LONGINT;
   BEGIN
-    NEW(l); l.obj := obj; l.where := where; l.copyFrom := 0; l.lenOffset := 0;
+    NEW(l); l.obj := obj; l.where := where; l.copyFrom := 0; l.lenOffset := 0; l.tagOffset := 0;
     IF where = inFrameAddress THEN
       localSize := (localSize + 4 + 3) DIV 4 * 4;
       l.offset := -localSize
@@ -3787,7 +3839,7 @@ MODULE VaxCodeGenerator;
     END;
     (* the parameters: n(AP), the n-th longword of the argument list; an
        open array's address, then a longword for each open dimension's
-       length (section 14) *)
+       length, and a VAR record's address, then its tag (section 14) *)
     p := pt.params; i := 1;
     IF pd.formals # NIL THEN section := pd.formals.sections ELSE section := NIL END;
     WHILE section # NIL DO
@@ -3804,7 +3856,8 @@ MODULE VaxCodeGenerator;
           l.lenOffset := 4 * (i + 1);
           INC(i, OpenDims(p.type))
         ELSIF p.isVar OR p.isReadOnly & ((Suffix(p.type) = "Q") OR ~IsSliceScalar(p.type)) THEN
-          l := NewLocal(pobj, byReference, 4 * i)
+          l := NewLocal(pobj, byReference, 4 * i);
+          IF HasTag(p, FALSE) THEN l.tagOffset := 4 * (i + 1); INC(i) END
         ELSIF (Suffix(p.type) = "Q") OR ~IsSliceScalar(p.type) OR Changes(pd.statements, id.name) THEN
           l := NewLocal(pobj, inFrame, 0); l.copyFrom := 4 * i
         ELSE

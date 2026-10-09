@@ -564,7 +564,7 @@ Proposals:
   padded with zeros to the parameter's size, which is how much the callee
   copies. **Decided (2026-10-06): a `VAR` record parameter is its
   address only**, the slice having no extension; Phase 16 adds the type
-  tag as a second longword. A field reached through a parameter's
+  tag as a second longword (done: §14, item 5). A field reached through a parameter's
   address, `@4n(AP)`, has the address moved to a register first, `0(Rn)`,
   since `@4n(AP)` takes no displacement.
 - **Nested procedures** are outside Phase 15. When Phase 16 takes them,
@@ -1217,3 +1217,36 @@ items 5 and 11's next steps. Reals account for 156, procedure variables
 for 55, nested procedures for 7. Code that was refused whole is now
 examined, so 51 refusals for lack of registers show up (the largest
 expressions and calls), and 20 `SYSTEM.BYTE` parameters.
+
+**Done: records holding pointers and `VAR` record parameters (item 5),
+2026-10-09.** A record holding pointers to records without a base type,
+or to arrays, was already lowered with the pointers: its descriptor
+lists the pointers' offsets, those of nested records and fixed arrays
+included, and a local one starts NIL, the frame being cleared on entry.
+A `VAR` record parameter of an Oberon procedure now takes its actual's
+type tag as a hidden longword right after the address, as on LLVM
+(`NeedsHiddenTag`), and the parameters after it move up a longword. An
+external `"VMS"` procedure's takes the address alone. The tag is the
+parameter's own when a `VAR` record parameter is passed on as it is; the
+block's, the longword before the record, when the actual ends in `^`;
+otherwise the descriptor of the actual's static type, `G^` and
+`.EXTERNAL` for an imported one, and 0 for an unnamed record type of
+another module, which this module cannot name (LLVM passes `null`).
+Nothing reads a tag yet. Assigning a record to a `VAR` parameter or to
+`p^` will compare the tag with the static type's descriptor (trap 13)
+when extension makes them differ, as on LLVM, and `IS`, guards, `WITH`
+and type-bound procedures will read it.
+
+Fixture `vax-var-records` has `VaxVarRecords` and `VaxRecLib` reviewed.
+Its debugger runs examine what the program computes and, breaking in
+`Twice`, `Grow` and `VaxRecLib.Count`, the tags each one receives, which
+the debugger names by their descriptors. A second program, `VarRecOut`,
+prints with `Out`, and is built by both backends under `-O2` and `-OC`
+and must print the same. `vax-records` and `vax-modules` pass the tag
+now, so their `expected-vax.mar` and `VaxModLib`'s were reviewed again,
+and the runs' listing line numbers moved.
+
+The survey counts 10,889 refusals. Outside `VaxCodeGenerator.Mod` it is
+unchanged at 9,703: no `VAR` record parameter was refused before, as it
+passed its address, and the 30 more are in the code added for the tags,
+which uses pointers to extensions.
