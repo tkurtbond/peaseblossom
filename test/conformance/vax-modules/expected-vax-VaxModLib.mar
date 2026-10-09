@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual, the VAX's listing and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
+;; the MACRO manual, the VAX's listing and the debugger runs). Why this
+;; is right:
 ;; - VaxModLib, imported by VaxModules (expected-vax.mar). Its exported
 ;;   variables are global, label::, and its exported procedures' .ENTRY
 ;;   makes them global too (MACRO 6.5, .ENTRY), so the importer's

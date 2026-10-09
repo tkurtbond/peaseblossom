@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude; for the user's review). Why
-;; this is right: constants need no code or data - a constant is folded
-;; where it is used - and a type only its descriptor, below, so the
+;; Reviewed 2026-10-09 by the user (written by Claude). Why this is
+;; right: constants need no code or data - a constant is folded where
+;; it is used - and a type only its descriptor, below, so the
 ;; module is otherwise exactly vax-empty-module's layout under its own
 ;; name: .TITLE VAXDECLARATIONSONLY (19 characters), .IDENT with the key
 ;; of its own .sym, which differs from VaxEmpty's, and

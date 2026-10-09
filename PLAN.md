@@ -700,8 +700,9 @@ most, object libraries.
      debugger and, printing with `Out`, on both backends under `-O2` and
      `-OC`. Its `.mar` files, and the three earlier ones that gained
      descriptors (`vax-declarations-only`, `vax-records`, `vax-modules`'
-     `VaxModLib`), await the user's review. Survey: 10,859 refusals left,
-     most of them extension and the records holding its pointers.
+     `VaxModLib`), were reviewed by the user (2026-10-09). Survey: 10,859
+     refusals left, most of them extension and the records holding its
+     pointers.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

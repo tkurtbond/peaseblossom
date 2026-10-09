@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual and the debugger runs; for the user's review). Why this is
+;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
+;; the MACRO manual and the debugger runs). Why this is
 ;; right:
 ;; - A pointer is a longword (section 14, item 3), .BLKL, and NIL is 0:
 ;;   list := NIL is CLRL, n # NIL is TSTL. It is the address of the

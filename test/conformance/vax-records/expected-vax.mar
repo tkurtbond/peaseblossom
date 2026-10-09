@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is
+;; Reviewed 2026-10-09 by the user (written by Claude, from the
+;; design, the MACRO manual and the VAX's listing). Why this is
 ;; right:
 ;; - MemoryLayout's layout (section 4): Point is x at 0, y at 2, 4 bytes,
 ;;   aligned to a word. Shape is kind at 0, corner at 2, size at 8 (a

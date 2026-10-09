@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual and the debugger runs; for the user's review). Why this is
+;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
+;; the MACRO manual and the debugger runs). Why this is
 ;; right:
 ;; - ItemDesc's descriptor (section 14, item 4), in POC_CONST, longwords:
 ;;   its size, 8 (key at 0, link at 4), extension level 0, one pointer,
