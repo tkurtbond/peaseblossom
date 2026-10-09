@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - MOVC3 and MOVC5 take their length as a word (MACRO 9, MOVC: len.rw),
 ;;   so a move of more than 65535 bytes is in pieces. After MOVC3, R1 is
 ;;   the address after the source and R3 after the destination; after
@@ -12,6 +13,11 @@
 ;; - Huge's 140000 bytes - the copy of b, and l - are cleared in three
 ;;   pieces; b is copied in two, l := b in two, and l := "abc" is MOVC5
 ;;   #3, L_STR_1, #0, #65535 and the zeros of the rest.
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXBLOCKMOVES_MAIN, which calls the initializer, returns SS$_NORMAL
+;;   and is named by .END.
 ; VaxBlockMoves, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXBLOCKMOVES
 	.IDENT	/b5ebf521476b9da5/
@@ -87,4 +93,13 @@ L_BODY:
 	CALLG	-8(FP), VAXBLOCKMOVES_HUGE_5EN8S4DI
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_B5EBF521476B9DA5 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXBLOCKMOVES_MAIN, ^M<>
+	CALLS	#0, VAXBLOCKMOVES_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXBLOCKMOVES_MAIN

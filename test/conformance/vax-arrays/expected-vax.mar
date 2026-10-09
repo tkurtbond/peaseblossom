@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - An array is its elements one after another, aligned as its element
 ;;   (MemoryLayout, section 4): a module variable is .BLKB of its size.
 ;;   ARRAY 3, 4 OF INTEGER is three rows of 8 bytes.
@@ -36,6 +37,11 @@
 ;;   5.2.5), so that a routine in a shareable image is reached too
 ;;   ("always use general addressing mode for any external reference",
 ;;   Linker 4.2).
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXARRAYS_MAIN, which calls the initializer, returns SS$_NORMAL and
+;;   is named by .END.
 ; VaxArrays, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXARRAYS
 	.IDENT	/5656a9157adcf92b/
@@ -366,4 +372,13 @@ L_24:
 	CALLG	-8(FP), VAXARRAYS_INC_C41P2TV0
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_5656A9157ADCF92B == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXARRAYS_MAIN, ^M<>
+	CALLS	#0, VAXARRAYS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXARRAYS_MAIN

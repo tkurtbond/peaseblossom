@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
-;; the MACRO manual, the VAX's listing and the debugger runs). Why this is
-;; right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - With poc -range-checks, CHR of a value outside 0..255 traps with code
 ;;   14 at CHR's own line and column, as on LLVM (section 9): TSTB and BGEQ
 ;;   over the trap for a SHORTINT; CMPW with #255 and BLEQU, unsigned, so
@@ -10,6 +10,11 @@
 ;;   4294967296, whose low longword is 0, and not for 127 or 255.
 ;; - Then CHR is as without the option: a SHORTINT's byte as it is,
 ;;   returned by MOVZBL; CVTWB; CVTLB of the low longword.
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXRANGECHECKS_MAIN, which calls the initializer, returns SS$_NORMAL
+;;   and is named by .END.
 ; VaxRangeChecks, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXRANGECHECKS
 	.IDENT	/37e9a8c9cad0f251/
@@ -104,4 +109,13 @@ L_3:
 L_DONE:
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_37E9A8C9CAD0F251 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXRANGECHECKS_MAIN, ^M<>
+	CALLS	#0, VAXRANGECHECKS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXRANGECHECKS_MAIN

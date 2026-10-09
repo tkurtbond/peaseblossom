@@ -40,10 +40,11 @@ export LD_LIBRARY_PATH
 # standalone `. testenv.sh`, not by duplicating it) surfaced real,
 # already-gitignored leftovers this never actually removed.
 rm -f *.o *.c *.h *.ll *.s *.sym *.exe result "$(basename "$PWD")"
-# a fixture's MACRO-32 output, but never the reviewed expected-vax.mar a VAX
-# fixture compares it with (doc/developer/vax-macro32-backend.md, section 10)
+# a fixture's MACRO-32 output, but never the reviewed expected-vax.mar, or
+# an import's expected-vax-<Import>.mar, a VAX fixture compares it with
+# (doc/developer/vax-macro32-backend.md, section 10)
 for vax_file in *.mar; do
-  [ "$vax_file" = expected-vax.mar ] || rm -f "$vax_file"
+  case $vax_file in expected-vax.mar|expected-vax-*.mar) ;; *) rm -f "$vax_file" ;; esac
 done
 
 # PLAN.md Phase 8 step 3: compiles $1 (an Oberon-2 source file) via poc's

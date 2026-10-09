@@ -1,16 +1,17 @@
-# Assembles, links and runs a module under the debugger on the VAX/VMS
+# Assembles, links and runs a program under the debugger on the VAX/VMS
 # development system, by telnet, its files already copied to POC's home
-# directory by tools/vax-run, which runs this: <MODULE>.MAR, POCSTUB.MAR and
-# POCDRIVER.MAR are assembled /DEBUG and linked /DEBUG as POCRUN.EXE, then run
-# once for each R<n>.DBG, the debugger reading its commands from it
-# (DBG$INPUT) and writing to R<n>.OUT (DBG$OUTPUT). Prints what MACRO and
-# LINK say and a line "VAXRUN-STATUS <step> <hex $STATUS>" after each step.
+# directory by tools/vax-run, which runs this: each <MODULE>.MAR and
+# POCSTUB.MAR are assembled /DEBUG and linked /DEBUG as POCRUN.EXE, the main
+# module, the first, first, so that its start is the image's, then run once
+# for each R<n>.DBG, the debugger reading its commands from it (DBG$INPUT)
+# and writing to R<n>.OUT (DBG$OUTPUT). Prints what MACRO and LINK say and a
+# line "VAXRUN-STATUS <step> <hex $STATUS>" after each step.
 #
-#   expect -f tools/vax-run.exp <host> <MODULE> <number of runs>
+#   expect -f tools/vax-run.exp <host> <number of runs> <MODULE>...
 
 set host [lindex $argv 0]
-set module [lindex $argv 1]
-set runs [lindex $argv 2]
+set runs [lindex $argv 1]
+set modules [lrange $argv 2 end]
 set timeout 120
 log_user 0
 
@@ -41,10 +42,10 @@ proc step {name command} {
   }
 }
 
-foreach name [list $module POCSTUB POCDRIVER] {
+foreach name [concat $modules POCSTUB] {
   step $name "MACRO/DEBUG/OBJECT/NOLIST $name"
 }
-step LINK "LINK/DEBUG/NOMAP/EXECUTABLE=POCRUN POCDRIVER,$module,POCSTUB"
+step LINK "LINK/DEBUG/NOMAP/EXECUTABLE=POCRUN [join [concat $modules POCSTUB] ,]"
 for {set i 1} {$i <= $runs} {incr i} {
   step D$i "DEFINE DBG\$INPUT R$i.DBG"
   step O$i "DEFINE DBG\$OUTPUT R$i.OUT"

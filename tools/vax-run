@@ -1,23 +1,25 @@
 #!/bin/sh
-# Runs a module's MACRO-32 on the VAX/VMS development system under the
+# Runs a program's MACRO-32 on the VAX/VMS development system under the
 # debugger, to check what it does, not only that it assembles (the design,
-# doc/developer/vax-macro32-backend.md, section 10). The module is linked
-# with tools/vax-runtime-stub.mar, stand-ins for poc's runtime routines,
-# and a driver, written here, that calls its <MODULE>_INIT and returns
-# SS$_NORMAL. Each <run>.dbg is one run: debugger commands, after SET RADIX
-# DECIMAL and SET MODULE/ALL, which typically DEPOSIT the inputs, GO, and
-# EXAMINE what the module left (the stub's POC_TRAP_* say what a trap was
-# given). The debugger's output comes back as <run>.out beside it, from its
-# first line after "%DEBUG-I-INITIAL". Copying is by FTP (active, ASCII),
-# the session by telnet (tools/vax-run.exp), as tools/vax-assemble does; the
-# copies on the guest are deleted. The copies there, the copies back and the
-# deletions are one FTP session each, a login on the guest. Exits 0 if everything assembled, linked
-# and ran, 1 if a step failed (its messages are printed), 2 if the guest
-# could not be used.
+# doc/developer/vax-macro32-backend.md, section 10). The main module, the
+# first .mar, and its imports, any others, are linked with
+# tools/vax-runtime-stub.mar, stand-ins for poc's runtime routines, the
+# main module first, so that the image starts at its <MODULE>_MAIN, the
+# program's start (section 6). Each <run>.dbg is one run: debugger
+# commands, after SET RADIX DECIMAL and SET MODULE/ALL, which typically
+# DEPOSIT the inputs, GO, and EXAMINE what the program left (the stub's
+# POC_TRAP_* say what a trap was given). The debugger's output comes back
+# as <run>.out beside it, from its first line after "%DEBUG-I-INITIAL".
+# Copying is by FTP (active, ASCII), the session by telnet
+# (tools/vax-run.exp), as tools/vax-assemble does; the copies on the guest
+# are deleted. The copies there, the copies back and the deletions are
+# one FTP session each, a login on the guest. Exits 0 if everything
+# assembled, linked and ran, 1 if a step failed (its messages are
+# printed), 2 if the guest could not be used.
 #
-#   tools/vax-run <file.mar> <run.dbg>...
+#   tools/vax-run <main.mar> [<import.mar>...] <run.dbg>...
 #
-# The module's .TITLE names its file on the guest, so <file.mar> may be a
+# Each module's .TITLE names its file on the guest, so a .mar may be a
 # fixture's expected-vax.mar.
 #
 # Runs share POC's home directory with each other and with
@@ -34,17 +36,24 @@ VAX_NETRC=${VAX_NETRC:-$HOME/.netrc-poc-vax}
 export VAX_NETRC
 . "$here/vax-lock.sh"
 
-[ $# -ge 2 ] || { echo "usage: tools/vax-run <file.mar> <run.dbg>..." >&2; exit 2; }
+usage() { echo "usage: tools/vax-run <main.mar> [<import.mar>...] <run.dbg>..." >&2; exit 2; }
 
-mar=$1; shift
-[ -r "$mar" ] || { echo "vax-run: cannot read $mar" >&2; exit 2; }
-# the module's name, its .TITLE, is its file's name on the guest
-module=$(sed -n 's/^	\.TITLE	\([A-Z0-9_$]*\)$/\1/p' "$mar")
-case $module in
-  *[!A-Z0-9_\$]*|""|POCSTUB|POCDRIVER) echo "vax-run: no .TITLE it can use in $mar" >&2; exit 2 ;;
-esac
-init=$(sed -n 's/^	\.ENTRY	\([A-Z0-9_$]*_INIT\),.*/\1/p' "$mar")
-[ -n "$init" ] || { echo "vax-run: no <MODULE>_INIT in $mar" >&2; exit 2; }
+# the modules, each as "<file> <MODULE>", the main one first; then the runs
+mars=; modules=
+while [ $# -gt 0 ]; do
+  case $1 in *.mar|*.MAR) ;; *) break ;; esac
+  [ -r "$1" ] || { echo "vax-run: cannot read $1" >&2; exit 2; }
+  # a module's name, its .TITLE, is its file's name on the guest
+  module=$(sed -n 's/^	\.TITLE	\([A-Z0-9_$]*\)$/\1/p' "$1")
+  case $module in
+    *[!A-Z0-9_\$]*|""|POCSTUB) echo "vax-run: no .TITLE it can use in $1" >&2; exit 2 ;;
+  esac
+  mars="$mars $1"; modules="$modules $module"
+  shift
+done
+[ -n "$modules" ] && [ $# -gt 0 ] || usage
+main=${mars# }; main=${main%% *}
+grep -q '^	\.END	[A-Z0-9_$]*_MAIN$' "$main" || { echo "vax-run: no program's start (.END <MODULE>_MAIN) in $main" >&2; exit 2; }
 
 ftp="ftp://$host/"
 curl_ftp() { curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@"; }
@@ -54,9 +63,10 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/vax-run.XXXXXX")
 cleanup() {
   rm -rf "$work"
   set --
-  for f in "$module.MAR" "$module.OBJ" POCSTUB.MAR POCSTUB.OBJ POCDRIVER.MAR POCDRIVER.OBJ POCRUN.EXE; do
-    set -- "$@" -Q "*DELE $f;*"
+  for m in $modules POCSTUB; do
+    set -- "$@" -Q "*DELE $m.MAR;*" -Q "*DELE $m.OBJ;*"
   done
+  set -- "$@" -Q "*DELE POCRUN.EXE;*"
   i=1
   while [ $i -le "$runs" ]; do
     set -- "$@" -Q "*DELE R$i.DBG;*" -Q "*DELE R$i.OUT;*"
@@ -72,17 +82,6 @@ trap 'rm -rf "$work"; vax_unlock' EXIT
 "$here/vax-assemble" -available || { echo "vax-run: the VAX guest $host is not available" >&2; exit 2; }
 trap 'cleanup; vax_unlock' EXIT
 
-cat >"$work/POCDRIVER.MAR" <<EOF
-; Runs one module's initializer, for tools/vax-run
-	.TITLE	POCDRIVER
-	.EXTERNAL	$init
-	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
-	.ENTRY	POC_DRIVER, ^M<>
-	CALLS	#0, $init
-	MOVL	#1, R0
-	RET
-	.END	POC_DRIVER
-EOF
 i=1
 for dbg in "$@"; do
   [ -r "$dbg" ] || { echo "vax-run: cannot read $dbg" >&2; exit 2; }
@@ -91,8 +90,12 @@ for dbg in "$@"; do
 done
 # everything copied to the guest in one session
 upload() {
-  set -- -T "$mar" "$ftp$module.MAR" -T "$here/vax-runtime-stub.mar" "${ftp}POCSTUB.MAR" \
-    -T "$work/POCDRIVER.MAR" "${ftp}POCDRIVER.MAR"
+  set -- -T "$here/vax-runtime-stub.mar" "${ftp}POCSTUB.MAR"
+  ms=$modules
+  for f in $mars; do
+    m=${ms# }; m=${m%% *}; ms=${ms# }; ms=${ms#"$m"}
+    set -- "$@" -T "$f" "$ftp$m.MAR"
+  done
   i=1
   while [ $i -le "$runs" ]; do
     set -- "$@" -T "$work/R$i.DBG" "${ftp}R$i.DBG"
@@ -103,7 +106,8 @@ upload() {
 upload
 
 session=0
-expect -f "$here/vax-run.exp" "$host" "$module" "$runs" >"$work/session" || session=$?
+# shellcheck disable=SC2086
+expect -f "$here/vax-run.exp" "$host" "$runs" $modules >"$work/session" || session=$?
 [ "$session" -eq 0 ] || exit 2
 
 # every step's $STATUS a success, or what the steps said; not a run's,

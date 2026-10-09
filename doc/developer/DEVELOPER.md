@@ -208,16 +208,17 @@ another run can be slow to answer it. Each FTP step (the copies there, the
 copies back, the deletions) is one session, a login on the guest: most of
 a run's time on the guest is these logins, not `MACRO`.
 
-The guest sees only `expected-vax.mar`, the same whichever poc runs the
+The guest sees only the expected `.mar` files, the same whichever poc runs the
 suite, so only `make test`'s run uses it: `test-stage1`, `check-opt2` and
 `check-lto` set `VAX_GUEST=skip`, which skips that part of every VAX
 fixture, as on a host without the guest.
 
-`tools/vax-run <file.mar> <run.dbg>...` runs a module there under the
-debugger: it assembles the module, `tools/vax-runtime-stub.mar` (stand-ins
-for poc's runtime routines, until Phase 16 writes them) and a driver that
-calls its `<MODULE>_INIT`, links them `/DEBUG`, and runs the image once for
-each `<run>.dbg`, debugger commands that typically `DEPOSIT` the inputs,
+`tools/vax-run <main.mar> [<import.mar>...] <run.dbg>...` runs a program
+there under the debugger: it assembles its modules, each named on the
+guest by its `.TITLE`, and `tools/vax-runtime-stub.mar` (stand-ins for
+poc's runtime routines, until Phase 16 writes them), links them `/DEBUG`,
+the main module first, so the image starts at the program's start, its
+`<MODULE>_MAIN`, and runs the image once for each `<run>.dbg`, debugger commands that typically `DEPOSIT` the inputs,
 `GO`, and `EXAMINE` what is left; the debugger's output comes back as
 `<run>.out`. A fixture's `run-<name>.dbg` is run so, its output compared
 with `run-<name>.log`, where the guest can be used (`test/vaxfixture.sh`).
@@ -237,7 +238,8 @@ The debugger shows R0 as the value returned, so `DEPOSIT R0 = 0` before
 calling a proper procedure, whose R0 is otherwise left over. A `FOR` up to
 its variable's `MAX` never ends (`Oberon2.pdf` §9.8), nor does the run.
 Line numbers in the debugger's output are those of `expected-vax.mar`, so a
-change to its reviewer's comment means making the log again. The two
+change to its reviewer's comment means moving the run's breakpoints and
+making the log again. The two
 tools' runs share `POC`'s home directory, so each waits for and holds a
 lock on this host while it uses the guest (`tools/vax-lock.sh`, a
 directory in `/tmp`): the VAX fixtures, run in parallel with the rest,

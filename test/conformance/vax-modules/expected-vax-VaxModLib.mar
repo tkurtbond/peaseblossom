@@ -1,0 +1,138 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - VaxModLib, imported by VaxModules (expected-vax.mar). Its exported
+;;   variables are global, label::, and its exported procedures' .ENTRY
+;;   makes them global too (MACRO 6.5, .ENTRY), so the importer's
+;;   .EXTERNAL references are resolved by LINK.
+;; - It imports VaxModBase under another name, B; the symbols are its
+;;   home module's, VAXMODBASE_NOTE_9BE70CS5, in general mode, and
+;;   .EXTERNAL, with VaxModBase's initializer and key.
+;; - Its initializer calls VaxModBase's before its body, so trace is 12
+;;   after it. It defines its key, POC_K1_2681F94A100BD980 == 0, and ends
+;;   with a bare .END: it is not the main module.
+; VaxModLib, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXMODLIB
+	.IDENT	/2681f94a100bd980/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; count: LONGINT, exported
+	.ALIGN	LONG
+VAXMODLIB_COUNT_05KQUJLU::
+	.BLKL	1
+; table: ARRAY 4 OF INTEGER, exported
+	.ALIGN	WORD
+VAXMODLIB_TABLE_O6TFC48P::
+	.BLKB	8
+; origin: VaxModLib.Point, exported
+	.ALIGN	WORD
+VAXMODLIB_ORIGIN_745HVN3P::
+	.BLKB	4
+
+; the symbols it uses of other modules
+	.EXTERNAL	VAXMODBASE_NOTE_9BE70CS5
+	.EXTERNAL	VAXMODBASE_INIT
+	.EXTERNAL	POC_K1_A1AD926DE080D12B
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxModLib/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Add
+	.ENTRY	VAXMODLIB_ADD_8QQGE50I, ^M<>
+; line 16
+	ADDL2	4(AP), VAXMODLIB_COUNT_05KQUJLU
+	RET
+; PROCEDURE Twice
+	.ENTRY	VAXMODLIB_TWICE_GM2UN6U1, ^M<>
+; line 20
+	MULW3	4(AP), #2, R0
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#21
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Total
+	.ENTRY	VAXMODLIB_TOTAL_NV5Q0VIV, ^M<R2,R3,R4,R5>
+	SUBL2	#16, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVC3	#8, @4(AP), -8(FP)
+; line 26
+	CLRL	-16(FP)
+; line 27
+	CLRW	-10(FP)
+L_1:
+	CMPW	-10(FP), #3
+	BLEQ	L_3
+	JMP	L^L_2
+L_3:
+; line 27
+	CVTWL	-10(FP), R0
+	CMPL	R0, #3
+	BLEQU	L_4
+	PUSHL	#48
+	PUSHL	#27
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_4:
+	CVTWL	-8(FP)[R0], R1
+	ADDL2	R1, -16(FP)
+	INCW	-10(FP)
+	JMP	L^L_1
+L_2:
+; line 28
+	MOVL	-16(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#29
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Move
+	.ENTRY	VAXMODLIB_MOVE_94B0UEMU, ^M<>
+; line 32
+	ADDW2	8(AP), @4(AP)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXMODLIB_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^VAXMODBASE_INIT
+	SUBL2	#8, SP
+; line 36
+	MOVL	#1, -8(FP)
+	MOVL	#2, -4(FP)
+	CALLG	-8(FP), G^VAXMODBASE_NOTE_9BE70CS5
+; line 36
+	MOVL	#100, VAXMODLIB_COUNT_05KQUJLU
+; line 36
+	MOVW	#7, VAXMODLIB_TABLE_O6TFC48P+4
+; line 36
+	MOVW	#-1, VAXMODLIB_ORIGIN_745HVN3P+2
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_2681F94A100BD980 == 0
+
+	.END

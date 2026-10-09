@@ -37,19 +37,20 @@ MODULE VaxToolchainDriver;
     path[i] := 0X
   END ModuleFilePath;
 
-  (* module's MACRO-32 to <outputDir>/<Module>.mar (path): FALSE if it
-     could not be written, or if the generator reported an error or a
-     construct it cannot lower yet (VaxCodeGenerator.unsupportedCount),
-     when no file is left behind. *)
+  (* module's MACRO-32 to <outputDir>/<Module>.mar (path), with the
+     program's start when it is the main module, isMain: FALSE if it could
+     not be written, or if the generator reported an error or a construct
+     it cannot lower yet (VaxCodeGenerator.unsupportedCount), when no file
+     is left behind. *)
   PROCEDURE EmitModule*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; key, outputDir: ARRAY OF CHAR;
-                        VAR path: ARRAY OF CHAR): BOOLEAN;
+                        isMain: BOOLEAN; VAR path: ARRAY OF CHAR): BOOLEAN;
     VAR f: Files.File; w: Files.Rider; ok: BOOLEAN; deleteResult: INTEGER;
   BEGIN
     ModuleFilePath(outputDir, module.name, path);
     f := Files.New(path);
     IF f = NIL THEN RETURN FALSE END;
     Files.Set(w, f, 0);
-    ok := VaxCodeGenerator.GenerateModule(module, scope, key, w);
+    ok := VaxCodeGenerator.GenerateModule(module, scope, key, isMain, w);
     Files.Register(f); Files.Close(f);
     IF ~ok THEN
       deleteResult := Platform.Unlink(path) (* not Files.Delete: voc's renames to a temp name *)

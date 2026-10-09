@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
-;; the MACRO manual, the VAX's listing and the debugger runs). Why this is
-;; right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - INC(v) and DEC(v) are INCx and DECx of v where it is, @n(AP) for a
 ;;   VAR parameter; a HUGEINT adds or subtracts 1 by ADDL2/ADWC or
 ;;   SUBL2/SBWC on its two longwords, through a register holding its
@@ -18,6 +18,11 @@
 ;;   now taken to change only the variable it does change - the first
 ;;   argument of NEW, INC, DEC, INCL and EXCL, the second of COPY - so that
 ;;   ABS(x) or ODD(x) does not copy x.
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXINCDEC_MAIN, which calls the initializer, returns SS$_NORMAL and
+;;   is named by .END.
 ; VaxIncDec, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXINCDEC
 	.IDENT	/911b5649e2aa3aab/
@@ -146,4 +151,13 @@ VAXINCDEC_NEXT_UMFECL9J:
 L_DONE:
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_911B5649E2AA3AAB == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXINCDEC_MAIN, ^M<>
+	CALLS	#0, VAXINCDEC_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXINCDEC_MAIN

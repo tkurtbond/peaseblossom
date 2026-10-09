@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - A SET is a longword, element i bit i (section 4).
 ;; - + is BIS, - is BIC (dst AND NOT mask, MACRO 9, BIC), / is XOR, each
 ;;   written in place (BISL2 y, x). x * y is x AND NOT (NOT y): MCOML then
@@ -14,6 +15,11 @@
 ;;   above j are ASHL j, #-2, cleared by BICL2; the constant element 7 is
 ;;   one BISL2 #^X00000080. An element outside 0..31 is undefined in the
 ;;   report; ASHL makes 0 for a count over 32 (ASH, note 2).
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start, VAXSET_MAIN,
+;;   which calls the initializer, returns SS$_NORMAL and is named by
+;;   .END.
 ; VaxSet, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXSET
 	.IDENT	/34dd51e49a02380d/
@@ -94,4 +100,13 @@ L_2:
 	MOVL	R1, VAXSET_X_JCDAAKR6
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_34DD51E49A02380D == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXSET_MAIN, ^M<>
+	CALLS	#0, VAXSET_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXSET_MAIN

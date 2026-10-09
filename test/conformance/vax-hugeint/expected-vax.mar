@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - A HUGEINT is a quadword, low longword first (section 4); its high
 ;;   longword is <symbol>+4, or Rn+1 of a register pair.
 ;; - A narrower integer is widened into the low longword (CVTWL, MOVL) and
@@ -16,6 +17,11 @@
 ;;   zero. The result is a BOOLEAN byte, CLRB then MOVB #1 (section 8).
 ;; - *, DIV and MOD of HUGEINT are calls to poc's runtime (section 4), not
 ;;   lowered yet (vax-emit-errors).
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXHUGEINT_MAIN, which calls the initializer, returns SS$_NORMAL and
+;;   is named by .END.
 ; VaxHugeint, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXHUGEINT
 	.IDENT	/cb7d021051492d15/
@@ -113,4 +119,13 @@ L_5:
 	MOVB	R0, VAXHUGEINT_B_D4DQPJ8O
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_CB7D021051492D15 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXHUGEINT_MAIN, ^M<>
+	CALLS	#0, VAXHUGEINT_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXHUGEINT_MAIN

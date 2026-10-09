@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - Arithmetic is at the operation's type's width (section 8, decided
 ;;   2026-10-06): ADDW, SUBW, MULB, MULW, MULL. The entry mask's IV bit is
 ;;   clear (^M<>), so overflow sets V and wraps at that width without a
@@ -19,6 +20,11 @@
 ;;   needed. MIN DIV -1 overflows and leaves the dividend (DIV, notes 2
 ;;   and 3), so it wraps; a zero divisor traps (section 8). The byte
 ;;   branches cover fixed short code.
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXINTEGERARITHMETIC_MAIN, which calls the initializer, returns
+;;   SS$_NORMAL and is named by .END.
 ; VaxIntegerArithmetic, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXINTEGERARITHMETIC
 	.IDENT	/d5b365c8e719dfed/
@@ -110,4 +116,13 @@ L_2:
 	MOVL	R1, VAXINTEGERARITHMETIC_L_KQ3NBK8S
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_D5B365C8E719DFED == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXINTEGERARITHMETIC_MAIN, ^M<>
+	CALLS	#0, VAXINTEGERARITHMETIC_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXINTEGERARITHMETIC_MAIN

@@ -328,13 +328,24 @@ wrong program with no diagnostic.
    backend keeps its per-target facts: in a symbol each VAX object
    defines and its importers refer to, as `<M>.-target.<triple>` does on
    LLVM, so objects made with different schemes fail to link, and in a
-   VAX library's manifest, so such a library is refused at import. The
-   spelling of that symbol, and of the module key's, is still to be
-   chosen (§11, question 8): like `<MODULE>_INIT`, both are module-level
-   and must be unhashed and unique.
+   VAX library's manifest, so such a library is refused at import.
+   **Decided (2026-10-08, §11 question 8): one symbol carries both**,
+   `POC_K1_` and the module's key, its 16 hex digits uppercased, as
+   `.IDENT` shows them (23 characters): the `1` is the name scheme's
+   version. The module defines it, `POC_K1_<KEY> == 0`, a global absolute
+   symbol; each importer declares it `.EXTERNAL`, though nothing refers
+   to it, which is enough for `LINK` to report it undefined
+   (`%LINK-W-NUDFSYMS`, checked on the development system) when the
+   module linked is not the one the importer was compiled against, or
+   was made with another scheme. It never equals a hashed symbol (no `_`
+   nine characters from its end) or a `<MODULE>_INIT` or `_MAIN`; a map
+   shows the key, not the module's name, and `.IDENT` ties the two.
 3. **Within a module**, as §5 says: its own definitions and the imported
    names it references, checked by poc at compile time, with source
-   positions.
+   positions. Done (step 8): an imported variable or procedure enters
+   the module's table of names under its home module's full name when
+   first used, so `A.X` and an imported `B.Y` with one symbol are an
+   error at the use (`vax-emit-errors`, `VaxClashBetweenModulesA`).
 
 Details this depends on:
 
@@ -380,12 +391,24 @@ Proposal, one `.mar` file per module:
   `<MODULE>_INIT` (§5), which returns at once if its flag is set, otherwise sets
   it, calls its imports' `_init`s in import order and runs the body. With
   no body the test is `BLBS` over the fixed 7 bytes to `RET`; a body can
-  be any length, so then it is `BLBC` over a `RET` (§3; step 3).
+  be any length, so then it is `BLBC` over a `RET` (§3; step 3). Done
+  (step 8): each import's `_init` is `CALLS #0, G^<IMPORT>_INIT`, in the
+  order of the `IMPORT` list, `SYSTEM` and a module of only constants and
+  types left out, and with imports the test is always the `BLBC` form.
+  The module also defines its key's symbol, `POC_K1_<KEY> == 0` (§5.1),
+  and declares `.EXTERNAL` each import's `_init` and key, and every
+  imported variable and procedure it uses.
 - The **program's start** is one routine, written into the main module
   only, with `.END` naming it: it calls the main module's `_init` and
   returns `SS$_NORMAL` (1) in `R0`. `HALT(n)` and a trap end the program by
   a runtime routine (§9). How an exit status reaches DCL is Phase 16 step
-  3c's to settle.
+  3c's to settle. **Decided (2026-10-08)**: it is `<MODULE>_MAIN`, an
+  `.ENTRY` with an empty mask after the key, `CALLS #0, <MODULE>_INIT`,
+  `MOVL #1, R0`, `RET`, then `.END <MODULE>_MAIN`; another module ends
+  with a bare `.END`. The main module is the program's last (the one
+  named on poc's command line). It is a routine, not a jump into
+  `_INIT`, so that Phase 16 can run the modules' cleanup there first.
+  Done (step 8).
 - `.IDENT` carries the module key, so a map or `ANALYZE/OBJECT` shows which
   `.sym` the object was built from.
 
@@ -487,7 +510,8 @@ Proposals:
   general mode, `G^`**: an external `["VMS"]` procedure (`CALLG list,
   G^LIB$GET_EF`), poc's runtime routines (`G^POC_TRAP`, `G^POC_STRCMP`,
   `G^POC_HMUL`, ...), and, from step 8, an imported module's procedures
-  and variables. The linker makes a general mode operand relative when
+  and variables (done: `MOVL G^VAXMODBASE_TRACE_G4RP55C6, ...`, an
+  element `G^...[R1]`, a field `G^...+2`). The linker makes a general mode operand relative when
   its symbol is relocatable and absolute when it is absolute (MACRO
   5.2.5), and the Linker manual says "to be safe, always use general
   addressing mode for any external reference" (Linker 4.2). Without it,
@@ -800,9 +824,13 @@ sign; the others come with their constructs.
   routines (`tools/vax-runtime-stub.mar`; `POC_TRAP` keeps what it was
   given in `POC_TRAP_CODE`, `_LINE`, `_COLUMN` and `_MODULE` and ends the
   program, `POC_HALT` its code in `POC_HALT_CODE`; `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and `POC_HMOD` compute what
-  the real ones will) and a driver that calls `<MODULE>_INIT`, and runs it
-  once for each `run-<name>.dbg`, its output compared with `run-<name>.log`
-  (`DEVELOPER.md`, section 4). This checks what the code does, which
+  the real ones will), the main module first, so the image starts at its
+  `<MODULE>_MAIN` (§6; until step 8 a driver called `<MODULE>_INIT`), and
+  runs it once for each `run-<name>.dbg`, its output compared with
+  `run-<name>.log` (`DEVELOPER.md`, section 4). A fixture of several
+  modules (step 8, `vax-modules`) has an `expected-vax-<Import>.mar` for
+  each import, compared with what poc writes for it and assembled and
+  linked with `expected-vax.mar`. This checks what the code does, which
   assembling cannot; the step 6 fixtures were the first, then those of
   steps 3-5 with code to run, then step 7's. Linking and running poc's own runtime and
   programs stay Phase 16's.
@@ -819,7 +847,9 @@ Phase 15 (§10); one calling mechanism (§7); `-O2` only and
 options matched without regard to case on VMS (§10). Settled
 2026-10-06: collisions across a link (§5.1), and with it the hash (§5);
 running `MACRO` on the guest, by scripted telnet (question 2); integer
-arithmetic at the type's width (question 4); the trap call (§9).
+arithmetic at the type's width (question 4); the trap call (§9). Settled
+2026-10-08: the module key's and the name scheme's symbol (question 8)
+and the program's start (§6).
 
 1. **The destination machine's version** - the user is to check it.
 2. **Running `MACRO` on the guest from the host**, for assembling
@@ -850,7 +880,8 @@ arithmetic at the type's width (question 4); the trap call (§9).
 8. **The module key's and the name scheme's symbols (§5.1)**: the VAX
    spellings of LLVM's `<M>.-key.…` and `<M>.-target.…`, unhashed, at most
    31 characters, and never equal to a hashed symbol or `<MODULE>_INIT`.
-   Needed by step 8 (several modules), not before.
+   Settled 2026-10-08: **one symbol, `POC_K1_<KEY>`**, the scheme's
+   version in its name (§5.1).
 
 ## 12. Proposed order of work
 
@@ -873,5 +904,5 @@ Each step lands with its fixtures before the next, as Phase 8 did:
 7. The predeclared procedures of the slice. Done.
    7b. `INCL`, `EXCL`, `SHORT`, `LONG` and `ASH`, and `COPY` of more than
    65535 characters (decided with the user 2026-10-08). Done.
-8. Several modules and the program's start (§6).
+8. Several modules and the program's start (§6). Done.
 9. The phase record and the exit review.

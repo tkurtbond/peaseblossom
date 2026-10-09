@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - The n-th parameter is the n-th longword of the argument list, 4n(AP)
 ;;   (CallStd 2.3). A value parameter of a longword or less is its value,
 ;;   read at its own width (the list holds it extended to a longword):
@@ -27,6 +28,11 @@
 ;;   5.2.5), so that a routine in a shareable image is reached too
 ;;   ("always use general addressing mode for any external reference",
 ;;   Linker 4.2).
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXPARAMETERS_MAIN, which calls the initializer, returns SS$_NORMAL
+;;   and is named by .END.
 ; VaxParameters, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXPARAMETERS
 	.IDENT	/d38be97da73d4737/
@@ -183,4 +189,13 @@ L_11:
 L_DONE:
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_D38BE97DA73D4737 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXPARAMETERS_MAIN, ^M<>
+	CALLS	#0, VAXPARAMETERS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXPARAMETERS_MAIN

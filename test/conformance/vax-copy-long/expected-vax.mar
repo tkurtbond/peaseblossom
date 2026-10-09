@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
-;; the MACRO manual, the VAX's listing and the debugger runs). Why this is
-;; right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - COPY(x, v) with x or v longer than 65535 characters, LOCC's and
 ;;   MOVC5's most, is done in pieces (decided with the user 2026-10-08):
 ;;   m, the most characters it may copy, is LEN(v) - 1, or LEN(x) if
@@ -16,6 +16,11 @@
 ;;   and small, 9, and through CopyTo's VAR parameter, @4(AP). EXAMINE
 ;;   shows an offset above 65535 as an address, not a symbol.
 ;; - A string constant still takes one MOVC5, as in vax-copy.
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXCOPYLONG_MAIN, which calls the initializer, returns SS$_NORMAL
+;;   and is named by .END.
 ; VaxCopyLong, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXCOPYLONG
 	.IDENT	/65e054de0ccc5401/
@@ -317,4 +322,13 @@ VAXCOPYLONG_COPYCONSTA_JPDL69L6:
 L_DONE:
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_65E054DE0CCC5401 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXCOPYLONG_MAIN, ^M<>
+	CALLS	#0, VAXCOPYLONG_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXCOPYLONG_MAIN

@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - MemoryLayout's layout (section 4): Point is x at 0, y at 2, 4 bytes,
 ;;   aligned to a word. Shape is kind at 0, corner at 2, size at 8 (a
 ;;   longword), tags at 12, big at 16: 24 bytes, aligned to a longword;
@@ -29,6 +30,11 @@
 ;;   5.2.5), so that a routine in a shareable image is reached too
 ;;   ("always use general addressing mode for any external reference",
 ;;   Linker 4.2).
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXRECORDS_MAIN, which calls the initializer, returns SS$_NORMAL and
+;;   is named by .END.
 ; VaxRecords, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXRECORDS
 	.IDENT	/2397bb2d32257825/
@@ -297,4 +303,13 @@ L_8:
 	MOVB	R0, VAXRECORDS_S_3V9CT8BL
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_2397BB2D32257825 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXRECORDS_MAIN, ^M<>
+	CALLS	#0, VAXRECORDS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXRECORDS_MAIN

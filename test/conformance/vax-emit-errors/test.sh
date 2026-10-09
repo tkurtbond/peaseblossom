@@ -1,6 +1,6 @@
 #!/bin/sh
 . ../../testenv.sh
-# PLAN.md Phase 15 steps 2-6 (doc/developer/vax-macro32-backend.md, sections
+# PLAN.md Phase 15 steps 2-8 (doc/developer/vax-macro32-backend.md, sections
 # 5 and 10): what -emit-macro32 and -target vax-dec-vms refuse, each with
 # exit status 1 and nothing written
 run() {
@@ -12,6 +12,7 @@ run() {
 : >result
 run -emit-macro32 VaxTooMuch.mod
 run -emit-macro32 VaxNameClash.mod
+run -emit-macro32 VaxClashBetweenModulesA.mod
 run -target x86_64-unknown-linux-gnu -emit-macro32 VaxEmpty.mod
 run -OC -emit-macro32 VaxEmpty.mod
 run -target vax-dec-vms -emit-llvm-ir VaxEmpty.mod

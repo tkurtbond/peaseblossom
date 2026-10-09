@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
-;; the MACRO manual, the VAX's listing and the debugger runs). Why this is
-;; right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - SHORT is CVTLW or CVTWB (MACRO 9-16), the low word or byte, 70000
 ;;   giving 4464 and 200 -56; of a HUGEINT, MOVL of its low longword, 3 for
 ;;   4294967299. LONG is CVTBW or CVTWL, sign-extending; LONG of a HUGEINT
@@ -18,6 +18,11 @@
 ;; - A constant n is limited when compiling: ASH(x, -100) is ASHL #-64.
 ;; - The runs cover each type, the widths 31, 32, 63 and 64, and HUGEINT
 ;;   counts beyond a longword both ways.
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXSHORTLONGASH_MAIN, which calls the initializer, returns
+;;   SS$_NORMAL and is named by .END.
 ; VaxShortLongAsh, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXSHORTLONGASH
 	.IDENT	/54d6c889b620feeb/
@@ -219,4 +224,13 @@ L_9:
 L_DONE:
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_54D6C889B620FEEB == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXSHORTLONGASH_MAIN, ^M<>
+	CALLS	#0, VAXSHORTLONGASH_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXSHORTLONGASH_MAIN

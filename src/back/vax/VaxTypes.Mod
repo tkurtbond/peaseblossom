@@ -31,7 +31,8 @@ MODULE VaxTypes;
      a check of the import closure (the design's section 5.1). A module's
      initializer is not hashed: MakeInitSymbol's <MODULE>_INIT can never
      equal one of MakeSymbol's, which always end in "_" and hashDigits
-     digits. An external procedure's linkage name is written verbatim,
+     digits; nor can the program's start, MakeMainSymbol's <MODULE>_MAIN,
+     or the module key's, MakeKeySymbol's POC_K1_<key>. An external procedure's linkage name is written verbatim,
      never made up (doc/developer/language-extensions.md, "External
      procedures"): IsValidExternalName says whether MACRO takes it. *)
 
@@ -41,8 +42,9 @@ MODULE VaxTypes;
     symbolLength* = 31; (* MACRO-32's limit (VAX MACRO 5.4, 3.3.2) *)
     hashDigits = 8; (* 40 bits, 5 to a digit *)
     stemLength = symbolLength - 1 - hashDigits;
-    initSuffix = "_INIT";
+    initSuffix = "_INIT"; mainSuffix = "_MAIN";
     moduleNameLength* = symbolLength - 5; (* room for initSuffix *)
+    keyPrefix = "POC_K1_"; (* 1, the name scheme's version (MakeKeySymbol) *)
     digitChars = "0123456789ABCDEFGHIJKLMNOPQRSTUV";
 
   TYPE
@@ -182,12 +184,12 @@ MODULE VaxTypes;
     AppendHash(full, symbol, i + 1)
   END MakeSymbol;
 
-  (* The symbol of module's initializer, <MODULE>_INIT: FALSE, with symbol
-     empty, if module is longer than moduleNameLength. A module name is an
+  (* <MODULE> and suffix, five characters: FALSE, with symbol empty, if
+     module is longer than moduleNameLength. A module name is an
      identifier, so it needs no character changed (the design's section
      5). *)
-  PROCEDURE MakeInitSymbol*(module: ARRAY OF CHAR; VAR symbol: Symbol): BOOLEAN;
-    VAR i, j: INTEGER; ch: CHAR; suffix: ARRAY 6 OF CHAR;
+  PROCEDURE ModuleSymbol(module, suffix: ARRAY OF CHAR; VAR symbol: Symbol): BOOLEAN;
+    VAR i, j: INTEGER; ch: CHAR;
   BEGIN
     i := 0;
     WHILE (i < LEN(module)) & (module[i] # 0X) DO INC(i) END;
@@ -199,11 +201,47 @@ MODULE VaxTypes;
       symbol[i] := ch;
       INC(i)
     END;
-    suffix := initSuffix;
     FOR j := 0 TO 4 DO symbol[i + j] := suffix[j] END;
     symbol[i + 5] := 0X;
     RETURN TRUE
+  END ModuleSymbol;
+
+  (* The symbol of module's initializer, <MODULE>_INIT, or FALSE
+     (ModuleSymbol) *)
+  PROCEDURE MakeInitSymbol*(module: ARRAY OF CHAR; VAR symbol: Symbol): BOOLEAN;
+  BEGIN
+    RETURN ModuleSymbol(module, initSuffix, symbol)
   END MakeInitSymbol;
+
+  (* The symbol of the program's start, written into its main module,
+     <MODULE>_MAIN (the design's section 6), or FALSE (ModuleSymbol). Like
+     <MODULE>_INIT it never equals one of MakeSymbol's. *)
+  PROCEDURE MakeMainSymbol*(module: ARRAY OF CHAR; VAR symbol: Symbol): BOOLEAN;
+  BEGIN
+    RETURN ModuleSymbol(module, mainSuffix, symbol)
+  END MakeMainSymbol;
+
+  (* The symbol that carries a module's key, key its 16 hexadecimal digits
+     (ModuleInterface.KeyOf), and the name scheme's version:
+     POC_K<version>_<KEY> (decided with the user 2026-10-08, the design's
+     section 5.1). The module defines it and its importers refer to it, so
+     an object built against another interface, or with another scheme,
+     leaves it undefined at the link. It never equals one of MakeSymbol's,
+     its ninth character from the end being a digit of the key, nor a
+     <MODULE>_INIT or <MODULE>_MAIN. *)
+  PROCEDURE MakeKeySymbol*(key: ARRAY OF CHAR; VAR symbol: Symbol);
+    VAR i, j: INTEGER; ch: CHAR;
+  BEGIN
+    COPY(keyPrefix, symbol);
+    i := 0; WHILE symbol[i] # 0X DO INC(i) END;
+    j := 0;
+    WHILE (j < LEN(key)) & (key[j] # 0X) & (i < symbolLength) DO
+      ch := key[j];
+      IF (ch >= "a") & (ch <= "z") THEN ch := CHR(ORD(ch) - ORD("a") + ORD("A")) END;
+      symbol[i] := ch; INC(i); INC(j)
+    END;
+    symbol[i] := 0X
+  END MakeKeySymbol;
 
   PROCEDURE NewNameTable*(): NameTable;
     VAR table: NameTable;

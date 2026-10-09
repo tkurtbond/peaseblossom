@@ -1,0 +1,170 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - The main module of a program of three (the design's section 6):
+;;   poc -emit-macro32 VaxModules.mod writes it and its imports'
+;;   VaxModLib.mar and VaxModBase.mar (expected-vax-VaxModLib.mar,
+;;   expected-vax-VaxModBase.mar); they are assembled and linked
+;;   together, this one first.
+;; - An imported variable or procedure is named by its home module's
+;;   symbol, in general mode, G^, so the linker fixes its address,
+;;   wherever it is, and declared .EXTERNAL (MACRO 5.5, 6.2): MOVL
+;;   G^VAXMODBASE_TRACE_G4RP55C6; CALLG -8(FP), G^VAXMODLIB_ADD_8QQGE50I;
+;;   an element is G^ with an index, ADDW3 G^VAXMODLIB_TABLE_O6TFC48P[R1]
+;;   (MACRO 5.9); a field adds its offset, G^VAXMODLIB_ORIGIN_745HVN3P+2.
+;;   A constant, Limit and Greeting, is its value, as for the module's
+;;   own.
+;; - The initializer sets its flag, then calls its imports' initializers
+;;   in the order of the IMPORT list, VaxModLib's, then VaxModBase's
+;;   (already run by VaxModLib's, so it returns at once), before its
+;;   body: trace is 123, Note(1), (2), (3) in that order. With imports it
+;;   always uses the BLBC form.
+;; - Each import's key, POC_K1_ and its 16 hex digits, is declared
+;;   .EXTERNAL, though nothing uses it: LINK reports it undefined
+;;   (%LINK-W-NUDFSYMS) when the import linked is not the one compiled
+;;   against (decided 2026-10-08). The module defines its own,
+;;   POC_K1_4AE35D5F263B3D41 == 0, a global absolute symbol.
+;; - The program's start, VAXMODULES_MAIN, named by .END, calls the
+;;   initializer and returns SS$_NORMAL, 1 (decided 2026-10-08).
+;; - The run: trace 123, count 110 (100 + Limit), twice 49 (2 * 21 +
+;;   table[2], 7), total 7, y -1, p.x 5 and p.y -1 (origin, moved by 5),
+;;   s "hello"; VaxModLib's count 110 and VaxModBase's trace 123 too.
+; VaxModules, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXMODULES
+	.IDENT	/4ae35d5f263b3d41/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; count: LONGINT
+	.ALIGN	LONG
+VAXMODULES_COUNT_O5RJFDQS:
+	.BLKL	1
+; trace: LONGINT
+	.ALIGN	LONG
+VAXMODULES_TRACE_VIAQMM0M:
+	.BLKL	1
+; total: LONGINT
+	.ALIGN	LONG
+VAXMODULES_TOTAL_98AH4S15:
+	.BLKL	1
+; twice: INTEGER
+	.ALIGN	WORD
+VAXMODULES_TWICE_2I8CH9QB:
+	.BLKW	1
+; y: INTEGER
+	.ALIGN	WORD
+VAXMODULES_Y_IU8300CC:
+	.BLKW	1
+; k: INTEGER
+	.ALIGN	WORD
+VAXMODULES_K_IU830812:
+	.BLKW	1
+; p: VaxModLib.Point
+	.ALIGN	WORD
+VAXMODULES_P_IU83046N:
+	.BLKB	4
+; s: ARRAY 8 OF CHAR
+VAXMODULES_S_IU8304KA:
+	.BLKB	8
+
+; the symbols it uses of other modules
+	.EXTERNAL	VAXMODBASE_NOTE_9BE70CS5
+	.EXTERNAL	VAXMODBASE_TRACE_G4RP55C6
+	.EXTERNAL	VAXMODLIB_ADD_8QQGE50I
+	.EXTERNAL	VAXMODLIB_COUNT_05KQUJLU
+	.EXTERNAL	VAXMODLIB_TWICE_GM2UN6U1
+	.EXTERNAL	VAXMODLIB_TABLE_O6TFC48P
+	.EXTERNAL	VAXMODLIB_TOTAL_NV5Q0VIV
+	.EXTERNAL	VAXMODLIB_ORIGIN_745HVN3P
+	.EXTERNAL	VAXMODLIB_MOVE_94B0UEMU
+	.EXTERNAL	VAXMODLIB_INIT
+	.EXTERNAL	POC_K1_2681F94A100BD980
+	.EXTERNAL	VAXMODBASE_INIT
+	.EXTERNAL	POC_K1_A1AD926DE080D12B
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxModules/
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/hello/
+	.BYTE	0
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXMODULES_INIT, ^M<R2,R3,R4,R5>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^VAXMODLIB_INIT
+	CALLS	#0, G^VAXMODBASE_INIT
+	SUBL2	#12, SP
+; line 17
+	MOVL	#1, -8(FP)
+	MOVL	#3, -4(FP)
+	CALLG	-8(FP), G^VAXMODBASE_NOTE_9BE70CS5
+; line 18
+	MOVL	G^VAXMODBASE_TRACE_G4RP55C6, VAXMODULES_TRACE_VIAQMM0M
+; line 19
+	MOVL	#1, -8(FP)
+	MOVL	#10, -4(FP)
+	CALLG	-8(FP), G^VAXMODLIB_ADD_8QQGE50I
+; line 20
+	MOVL	G^VAXMODLIB_COUNT_05KQUJLU, VAXMODULES_COUNT_O5RJFDQS
+; line 21
+	MOVW	#2, VAXMODULES_K_IU830812
+; line 22
+	MOVL	#1, -8(FP)
+	MOVL	#21, -4(FP)
+	CALLG	-8(FP), G^VAXMODLIB_TWICE_GM2UN6U1
+	CVTWL	VAXMODULES_K_IU830812, R1
+	CMPL	R1, #3
+	BLEQU	L_1
+	PUSHL	#50
+	PUSHL	#22
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_1:
+	ADDW3	G^VAXMODLIB_TABLE_O6TFC48P[R1], R0, VAXMODULES_TWICE_2I8CH9QB
+; line 23
+	MOVL	#1, -8(FP)
+	MOVAB	G^VAXMODLIB_TABLE_O6TFC48P, -4(FP)
+	CALLG	-8(FP), G^VAXMODLIB_TOTAL_NV5Q0VIV
+	MOVL	R0, VAXMODULES_TOTAL_98AH4S15
+; line 24
+	MOVW	G^VAXMODLIB_ORIGIN_745HVN3P+2, VAXMODULES_Y_IU8300CC
+; line 25
+	MOVC3	#4, G^VAXMODLIB_ORIGIN_745HVN3P, VAXMODULES_P_IU83046N
+; line 26
+	MOVL	#2, -12(FP)
+	MOVAB	VAXMODULES_P_IU83046N, -8(FP)
+	MOVL	#5, -4(FP)
+	CALLG	-12(FP), G^VAXMODLIB_MOVE_94B0UEMU
+; line 27
+	MOVC5	#5, L_STR_1, #0, #6, VAXMODULES_S_IU8304KA
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_4AE35D5F263B3D41 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXMODULES_MAIN, ^M<>
+	CALLS	#0, VAXMODULES_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXMODULES_MAIN

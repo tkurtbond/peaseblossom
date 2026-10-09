@@ -1,0 +1,58 @@
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
+;; - VaxModBase, imported by both VaxModLib and VaxModules. It imports
+;;   nothing, so it has no externals section and its initializer is the
+;;   BLBC form only because it has a body. Its first caller,
+;;   VaxModLib's initializer, runs it; the second call returns at once,
+;;   so trace is 1, then 12, then 123, not 1123.
+;; - trace is global, trace::, and Note's .ENTRY makes it global; within
+;;   the module Note is called by its own symbol, without G^.
+;; - It defines its key, POC_K1_A1AD926DE080D12B == 0, and ends with a
+;;   bare .END.
+; VaxModBase, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXMODBASE
+	.IDENT	/a1ad926de080d12b/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; trace: LONGINT, exported
+	.ALIGN	LONG
+VAXMODBASE_TRACE_G4RP55C6::
+	.BLKL	1
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Note
+	.ENTRY	VAXMODBASE_NOTE_9BE70CS5, ^M<>
+; line 9
+	MULL3	#10, VAXMODBASE_TRACE_G4RP55C6, R0
+	ADDL3	4(AP), R0, VAXMODBASE_TRACE_G4RP55C6
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXMODBASE_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#8, SP
+; line 12
+	MOVL	#1, -8(FP)
+	MOVL	#1, -4(FP)
+	CALLG	-8(FP), VAXMODBASE_NOTE_9BE70CS5
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_A1AD926DE080D12B == 0
+
+	.END

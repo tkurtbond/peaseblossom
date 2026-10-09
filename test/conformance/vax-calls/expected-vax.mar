@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - A call's arguments are evaluated left to right, each stored in an
 ;;   argument list in the frame - the count, then one longword each - and
 ;;   CALLG list, proc calls it (decided 2026-10-06; MACRO 9, CALLG). The
@@ -36,6 +37,11 @@
 ;;   symbol is relocatable or absolute (MACRO 5.2.5), so that a routine
 ;;   in a shareable image is reached too ("always use general addressing
 ;;   mode for any external reference", Linker 4.2).
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start, VAXCALLS_MAIN,
+;;   which calls the initializer, returns SS$_NORMAL and is named by
+;;   .END. Its externals are "the symbols it uses of other modules".
 ; VaxCalls, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXCALLS
 	.IDENT	/9ce080321d81572d/
@@ -77,7 +83,7 @@ VAXCALLS_C_2K064JVI:
 VAXCALLS_OK_LUJHJ2VF:
 	.BLKB	1
 
-; the procedures it calls of other modules
+; the symbols it uses of other modules
 	.EXTERNAL	POC_HMUL
 	.EXTERNAL	POC_HDIV
 	.EXTERNAL	POC_HMOD
@@ -274,4 +280,13 @@ L_10:
 	MOVL	R0, VAXCALLS_L_2K064L8B
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_9CE080321D81572D == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXCALLS_MAIN, ^M<>
+	CALLS	#0, VAXCALLS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXCALLS_MAIN

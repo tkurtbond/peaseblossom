@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - A condition jumps without making a BOOLEAN value (section 8): a
 ;;   relation is CMPx and a byte branch for staying over JMP L^ to the
 ;;   next branch (section 3), so no body is too long to jump over; i < j
@@ -16,6 +17,11 @@
 ;; - Each body ends in JMP L^ to the end (L_6) but the last, which falls
 ;;   through; an IF without ELSE jumps to the end itself (L_1). The IF's
 ;;   and each ELSIF's line is commented.
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start, VAXIF_MAIN,
+;;   which calls the initializer, returns SS$_NORMAL and is named by
+;;   .END.
 ; VaxIf, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXIF
 	.IDENT	/a2d381635babf069/
@@ -117,4 +123,13 @@ L_15:
 L_6:
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_A2D381635BABF069 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXIF_MAIN, ^M<>
+	CALLS	#0, VAXIF_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXIF_MAIN

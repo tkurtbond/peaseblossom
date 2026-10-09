@@ -9,9 +9,10 @@ MODULE VaxCodeGenerator;
      integer, CHAR, BOOLEAN and SET expressions (section 8); control flow
      (step 4); procedures, calls and external ["VMS"] procedures (step 5,
      section 7); fixed arrays, records without a base type, and strings
-     (step 6); and the slice's predeclared procedures (steps 7 and 7b).
+     (step 6); the slice's predeclared procedures (steps 7 and 7b); and
+     several modules and the program's start (step 8, section 6).
 
-     A module needing more - an import (step 8), a predeclared procedure
+     A module needing more - a predeclared procedure
      outside the slice, a type outside the slice, a pointer, a nested or
      type-bound procedure, a procedure value or WITH (Phase 16) - is
      reported as a construct the backend cannot lower yet,
@@ -100,7 +101,7 @@ MODULE VaxCodeGenerator;
      and SHORT of one that does not fit, trap. *)
 
   IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
-    VaxTypes;
+    ModuleInterface, VaxTypes;
 
   CONST
     tab = 9X;
@@ -124,6 +125,7 @@ MODULE VaxCodeGenerator;
       value: LONGINT; (* immediate, not a SET *)
       bits: SET; (* immediate SET *)
       symbol: VaxTypes.Symbol; (* memory: a variable; empty for the frame *)
+      outside: BOOLEAN; (* memory: symbol is another module's, G^symbol (section 7) *)
       offset: LONGINT; (* memory: from symbol, or from FP, AP or baseOp's register *)
       onAP: BOOLEAN; (* memory without a symbol: offset(AP), a parameter *)
       deferred: BOOLEAN; (* memory on AP: @offset(AP), the operand's address there *)
@@ -146,6 +148,15 @@ MODULE VaxCodeGenerator;
       offset: LONGINT;
       copyFrom: LONGINT; (* a copied parameter's offset from AP, else 0 *)
       next: Local
+    END;
+
+    (* An object of an imported module the module refers to, and that
+       module's name: whose "Module.name" its symbol is made from *)
+    Home = POINTER TO HomeDesc;
+    HomeDesc = RECORD
+      obj: SymbolTable.Object;
+      module: SyntaxTree.Ident;
+      next: Home
     END;
 
     (* An external symbol the module refers to, declared .EXTERNAL *)
@@ -176,7 +187,7 @@ MODULE VaxCodeGenerator;
 
   VAR
     unsupportedCount*: INTEGER;
-    rangeChecks*: BOOLEAN; (* -range-checks: CHR of a value outside 0..255 traps (code 14) *)
+    rangeChecks*: BOOLEAN; (* -range-checks: CHR or SHORT of a value that does not fit traps (code 14) *)
 
     (* the module being generated *)
     module: SyntaxTree.ModuleNode;
@@ -191,6 +202,7 @@ MODULE VaxCodeGenerator;
     loopExit: ARRAY 16 OF CHAR; (* the innermost LOOP's end, for EXIT *)
     usesTrap: BOOLEAN; (* a trap calls POC_TRAP with the module's name *)
     externals: External;
+    homes: Home; (* the imported variables and procedures it uses *)
     strings: StringConstant; (* in the order of first use *)
     code, codeLast: Instruction; (* the procedures, written before the initializer *)
     (* the procedure being generated *)
@@ -373,7 +385,7 @@ MODULE VaxCodeGenerator;
     VAR x: Operand;
   BEGIN
     NEW(x); x.kind := kind; x.type := t; x.value := 0; x.bits := {};
-    x.symbol[0] := 0X; x.offset := 0; x.slot := -1; x.slots := 0; x.reg := -1;
+    x.symbol[0] := 0X; x.outside := FALSE; x.offset := 0; x.slot := -1; x.slots := 0; x.reg := -1;
     x.onAP := FALSE; x.deferred := FALSE; x.baseOp := NIL; x.ownsBase := FALSE;
     x.index := NIL; x.ownsIndex := FALSE;
     x.pinned := FALSE; x.nextLive := NIL;
@@ -418,6 +430,7 @@ MODULE VaxCodeGenerator;
       END
     ELSIF x.kind = memory THEN
       IF x.symbol[0] # 0X THEN
+        IF x.outside THEN Append(text, "G^") END;
         Append(text, x.symbol);
         IF x.offset + 4 * half # 0 THEN AppendChar(text, "+"); AppendInt(text, x.offset + 4 * half) END
       ELSIF x.baseOp # NIL THEN
@@ -808,12 +821,65 @@ MODULE VaxCodeGenerator;
     RETURN FALSE
   END IsSliceType;
 
-  (* The symbol of obj, a variable of this module, as VaxTypes makes it
-     from "Module.name" *)
-  PROCEDURE VariableSymbol(obj: SymbolTable.Object; VAR symbol: VaxTypes.Symbol);
-    VAR full: ARRAY 2 * 256 + 2 OF CHAR;
+  (* name, an external symbol, to be declared .EXTERNAL: in the order of
+     first use *)
+  PROCEDURE AddExternal(name: ARRAY OF CHAR);
+    VAR e, p: External;
   BEGIN
-    COPY(module.name, full); Append(full, "."); Append(full, obj.name);
+    p := NIL; e := externals;
+    WHILE (e # NIL) & (e.name # name) DO p := e; e := e.next END;
+    IF e = NIL THEN
+      NEW(e); COPY(name, e.name); e.next := NIL;
+      IF p = NIL THEN externals := e ELSE p.next := e END
+    END
+  END AddExternal;
+
+  (* The home of obj, a variable or procedure of an imported module, or NIL
+     for one of this module's *)
+  PROCEDURE HomeOf(obj: SymbolTable.Object): Home;
+    VAR h: Home;
+  BEGIN
+    h := homes;
+    WHILE (h # NIL) & (h.obj # obj) DO h := h.next END;
+    RETURN h
+  END HomeOf;
+
+  (* The object qualifier.name names: name as seen from scope, or, with a
+     qualifier, the object of that imported module (step 8). An imported
+     variable or procedure poc names by a made-up symbol has its home
+     noted, and the first time its full name is entered among the
+     module's, so that a symbol it shares with one of this module's is
+     reported here (section 5.1, layer 3) *)
+  PROCEDURE Resolve(qualifier, name: SyntaxTree.Ident; line, column: INTEGER): SymbolTable.Object;
+    VAR m, obj: SymbolTable.Object; h: Home; full, clash: ARRAY 2 * 256 + 2 OF CHAR;
+        symbol: VaxTypes.Symbol; text: ARRAY 600 OF CHAR;
+  BEGIN
+    IF qualifier[0] = 0X THEN RETURN SymbolTable.Find(scope, name) END;
+    m := SymbolTable.Find(scope, qualifier);
+    IF (m = NIL) OR (m.class # SymbolTable.moduleClass) THEN RETURN NIL END;
+    obj := SymbolTable.FindLocal(m.moduleScope, name);
+    IF (obj # NIL) & ((obj.class = SymbolTable.varClass)
+                      OR (obj.class = SymbolTable.procClass) & (obj.externalConvention = ""))
+       & (HomeOf(obj) = NIL) THEN
+      NEW(h); h.obj := obj; COPY(m.realModuleName, h.module); h.next := homes; homes := h;
+      COPY(h.module, full); Append(full, "."); Append(full, name);
+      IF ~VaxTypes.Enter(names, full, symbol, clash) THEN
+        COPY(full, text); Append(text, " and "); Append(text, clash);
+        Append(text, " have the same VAX symbol, "); Append(text, symbol);
+        Diagnostics.Error(line, column, text)
+      END
+    END;
+    RETURN obj
+  END Resolve;
+
+  (* The symbol of obj, a variable or procedure, as VaxTypes makes it from
+     "Module.name", Module its home *)
+  PROCEDURE VariableSymbol(obj: SymbolTable.Object; VAR symbol: VaxTypes.Symbol);
+    VAR full: ARRAY 2 * 256 + 2 OF CHAR; h: Home;
+  BEGIN
+    h := HomeOf(obj);
+    IF h = NIL THEN COPY(module.name, full) ELSE COPY(h.module, full) END;
+    Append(full, "."); Append(full, obj.name);
     VaxTypes.MakeSymbol(full, symbol)
   END VariableSymbol;
 
@@ -834,7 +900,9 @@ MODULE VaxCodeGenerator;
   BEGIN
     x := NewOperand(memory, obj.type);
     l := FindLocal(obj);
-    IF l = NIL THEN VariableSymbol(obj, x.symbol)
+    IF l = NIL THEN
+      VariableSymbol(obj, x.symbol);
+      IF HomeOf(obj) # NIL THEN x.outside := TRUE; AddExternal(x.symbol) END
     ELSE
       x.offset := l.offset;
       x.onAP := l.where # inFrame;
@@ -1014,19 +1082,6 @@ MODULE VaxCodeGenerator;
     RETURN x
   END ListEntry;
 
-  (* name, an external symbol, to be declared .EXTERNAL: in the order of
-     first use *)
-  PROCEDURE AddExternal(name: ARRAY OF CHAR);
-    VAR e, p: External;
-  BEGIN
-    p := NIL; e := externals;
-    WHILE (e # NIL) & (e.name # name) DO p := e; e := e.next END;
-    IF e = NIL THEN
-      NEW(e); COPY(name, e.name); e.next := NIL;
-      IF p = NIL THEN externals := e ELSE p.next := e END
-    END
-  END AddExternal;
-
   (* Append to target name, a symbol outside the module, in general mode:
      G^name (section 7) *)
   PROCEDURE AppendExternal(VAR target: ARRAY OF CHAR; name: ARRAY OF CHAR);
@@ -1068,10 +1123,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
     de := e(SyntaxTree.DesignatorExprNode);
-    IF de.designator.qualifier[0] # 0X THEN
-      Unsupported(e.line, e.column, "a name from an imported module (step 8)"); RETURN TRUE
-    END;
-    obj := SymbolTable.Find(scope, de.designator.name);
+    obj := Resolve(de.designator.qualifier, de.designator.name, e.line, e.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN FALSE END;
     l := FindLocal(obj);
     IF (l # NIL) & (l.where = byReference) & (de.designator.selectors = NIL) THEN
@@ -1132,10 +1184,10 @@ MODULE VaxCodeGenerator;
     RETURN Dummy()
   END StringArgument;
 
-  (* A call of obj, a procedure of this module or an external one: the
-     arguments evaluated left to right into an argument list in the frame,
-     then CALLG (decided 2026-10-06, section 7), or CALLS #0 without
-     arguments. A value parameter of a longword or less gets its value, a
+  (* A call of obj, a procedure of this module, an imported one or an
+     external one, the last two in general mode, G^: the arguments
+     evaluated left to right into an argument list in the frame, then
+     CALLG (decided 2026-10-06, section 7), or CALLS #0 without arguments. A value parameter of a longword or less gets its value, a
      VAR one its variable's address, a HUGEINT value parameter the address
      of a copy, an array or record one its address, which the callee copies
      from (section 7) - a string's padded to the formal's size, that being
@@ -1147,12 +1199,9 @@ MODULE VaxCodeGenerator;
     CONST maxCopies = 16;
     VAR obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param; a: SyntaxTree.ExprNode;
         v, entry: Operand; copy: ARRAY maxCopies OF Operand; n, i, list, copies: INTEGER;
-        symbol: VaxTypes.Symbol; text: ARRAY 160 OF CHAR; target: ARRAY 64 OF CHAR; external: BOOLEAN;
+        symbol: VaxTypes.Symbol; text: ARRAY 160 OF CHAR; target: ARRAY 64 OF CHAR; external, outside: BOOLEAN;
   BEGIN
-    IF d.qualifier[0] # 0X THEN
-      Unsupported(line, column, "a call of an imported procedure (step 8)"); RETURN NIL
-    END;
-    obj := SymbolTable.Find(scope, d.name);
+    obj := Resolve(d.qualifier, d.name, line, column);
     IF obj = NIL THEN RETURN NIL END;
     IF obj.type = Types.PredeclaredProcedureType THEN
       RETURN Predeclared(d.name, args, NIL, line, column)
@@ -1184,11 +1233,12 @@ MODULE VaxCodeGenerator;
     END;
     IF copies > maxCopies THEN Unsupported(line, column, "a call with this many HUGEINT arguments"); RETURN NIL END;
     ProcedureSymbol(obj, symbol);
-    IF external THEN AddExternal(symbol) END;
+    outside := external OR (HomeOf(obj) # NIL); (* an imported procedure's is another module's too *)
+    IF outside THEN AddExternal(symbol) END;
     IF n = 0 THEN
       FreeR0R1(line, column);
       COPY("#0, ", target);
-      IF external THEN AppendExternal(target, symbol) ELSE Append(target, symbol) END;
+      IF outside THEN AppendExternal(target, symbol) ELSE Append(target, symbol) END;
       Emit("CALLS", target)
     ELSE
       list := AllocateSlots(n + 1);
@@ -1224,7 +1274,7 @@ MODULE VaxCodeGenerator;
       END;
       FreeR0R1(line, column);
       Text(ListEntry(list, n, 0), target); Append(target, ", ");
-      IF external THEN AppendExternal(target, symbol) ELSE Append(target, symbol) END;
+      IF outside THEN AppendExternal(target, symbol) ELSE Append(target, symbol) END;
       Emit("CALLG", target);
       ReleaseSlots(list, n + 1);
       FOR i := 0 TO copies - 1 DO Release(copy[i]) END
@@ -1303,10 +1353,7 @@ MODULE VaxCodeGenerator;
       IF x = NIL THEN RETURN Dummy() END;
       RETURN x
     END;
-    IF d.qualifier[0] # 0X THEN
-      Unsupported(e.line, e.column, "a name from an imported module (step 8)"); RETURN Dummy()
-    END;
-    obj := SymbolTable.Find(scope, d.name);
+    obj := Resolve(d.qualifier, d.name, e.line, e.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
       Unsupported(e.line, e.column, "a procedure as a value (Phase 16)"); RETURN Dummy()
     END;
@@ -1946,10 +1993,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF ~(args IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
     de := args(SyntaxTree.DesignatorExprNode);
-    IF de.designator.qualifier[0] # 0X THEN
-      Unsupported(args.line, args.column, "a name from an imported module (step 8)"); RETURN
-    END;
-    obj := SymbolTable.Find(scope, de.designator.name);
+    obj := Resolve(de.designator.qualifier, de.designator.name, args.line, args.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
     target := Locate(de.designator, obj, args.line, args.column);
     IF args.next = NIL THEN amount := Immediate(target.type, 1)
@@ -2044,10 +2088,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF (args.next = NIL) OR ~(args.next IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
     de := args.next(SyntaxTree.DesignatorExprNode);
-    IF de.designator.qualifier[0] # 0X THEN
-      Unsupported(de.line, de.column, "a name from an imported module (step 8)"); RETURN
-    END;
-    obj := SymbolTable.Find(scope, de.designator.name);
+    obj := Resolve(de.designator.qualifier, de.designator.name, de.line, de.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
     v := Locate(de.designator, obj, de.line, de.column);
     IF ~(v.type IS Types.ArrayType) OR v.type(Types.ArrayType).isOpen THEN
@@ -2122,10 +2163,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF ~(args IS SyntaxTree.DesignatorExprNode) OR (args.next = NIL) THEN RETURN END;
     de := args(SyntaxTree.DesignatorExprNode);
-    IF de.designator.qualifier[0] # 0X THEN
-      Unsupported(args.line, args.column, "a name from an imported module (step 8)"); RETURN
-    END;
-    obj := SymbolTable.Find(scope, de.designator.name);
+    obj := Resolve(de.designator.qualifier, de.designator.name, args.line, args.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
     target := Locate(de.designator, obj, args.line, args.column);
     IF target.type # Types.Set THEN
@@ -2404,10 +2442,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE Assignment(s: SyntaxTree.AssignStatementNode);
     VAR obj: SymbolTable.Object; target, v: Operand; text: ARRAY 160 OF CHAR; from, to: OperandText;
   BEGIN
-    IF s.target.qualifier[0] # 0X THEN
-      Unsupported(s.target.line, s.target.column, "a name from an imported module (step 8)"); RETURN
-    END;
-    obj := SymbolTable.Find(scope, s.target.name);
+    obj := Resolve(s.target.qualifier, s.target.name, s.target.line, s.target.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
     IF ~IsSliceType(obj.type) THEN
       COPY("an assignment of type ", text); Types.Describe(obj.type, text); AppendWhen(obj.type, text);
@@ -2851,13 +2886,6 @@ MODULE VaxCodeGenerator;
 
   (* Imports and procedures, which this step cannot lower, each reported
      at its position *)
-  PROCEDURE CheckImports;
-  BEGIN
-    IF module.imports # NIL THEN
-      Unsupported(module.imports.line, module.imports.column, "an IMPORT (step 8)")
-    END
-  END CheckImports;
-
   (* ---- Procedures ---- *)
 
   (* Whether e is the bare name name *)
@@ -3201,7 +3229,7 @@ MODULE VaxCodeGenerator;
           IF p.externalName # "" THEN COPY(p.externalName, full) ELSE COPY(p.name.name, full) END;
           IF ~VaxTypes.IsValidExternalName(full) THEN
             Append(full, " is not a MACRO-32 symbol (letters, digits, _, $ and ., at most 31, not a digit first)");
-            Diagnostics.Error(p.line, p.column, full); INC(unsupportedCount)
+            Diagnostics.Error(p.line, p.column, full)
           END
         END
       ELSIF ~p.isForward & (p.receiver = NIL) THEN
@@ -3209,7 +3237,7 @@ MODULE VaxCodeGenerator;
         IF ~VaxTypes.Enter(names, full, symbol, clash) THEN
           COPY(full, text); Append(text, " and "); Append(text, clash);
           Append(text, " have the same VAX symbol, "); Append(text, symbol);
-          Diagnostics.Error(p.line, p.column, text); INC(unsupportedCount)
+          Diagnostics.Error(p.line, p.column, text)
         END
       END;
       p := p.next
@@ -3334,29 +3362,84 @@ MODULE VaxCodeGenerator;
     END
   END WriteBody;
 
+  (* Whether import names a module with code, an initializer to call:
+     every one but SYSTEM *)
+  PROCEDURE HasCode(import: SyntaxTree.ImportNode): BOOLEAN;
+  BEGIN
+    RETURN import.moduleName # "SYSTEM"
+  END HasCode;
+
+  (* The symbols of the module's imports declared .EXTERNAL: each one's
+     initializer, which the module's calls, and its key's, which the
+     module refers to so that it links only with the object of the
+     interface it was compiled against (section 5.1). FALSE, reported, for
+     an import whose name is too long for <MODULE>_INIT. *)
+  PROCEDURE DeclareImports(): BOOLEAN;
+    VAR import: SyntaxTree.ImportNode; symbol: VaxTypes.Symbol; key: ARRAY 32 OF CHAR; ok: BOOLEAN;
+  BEGIN
+    ok := TRUE;
+    import := module.imports;
+    WHILE import # NIL DO
+      IF HasCode(import) THEN
+        IF VaxTypes.MakeInitSymbol(import.moduleName, symbol) THEN AddExternal(symbol)
+        ELSE
+          Diagnostics.Error(import.line, import.column,
+            "a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol");
+          ok := FALSE
+        END;
+        IF ModuleInterface.KeyOf(import.moduleName, key) THEN
+          VaxTypes.MakeKeySymbol(key, symbol); AddExternal(symbol)
+        END
+      END;
+      import := import.next
+    END;
+    RETURN ok
+  END DeclareImports;
+
+  (* CALLS #0 of each import's initializer, in the order of the IMPORT list,
+     as on LLVM *)
+  PROCEDURE CallImports(VAR w: Files.Rider);
+    VAR import: SyntaxTree.ImportNode; symbol: VaxTypes.Symbol; target: ARRAY 48 OF CHAR;
+  BEGIN
+    import := module.imports;
+    WHILE import # NIL DO
+      IF HasCode(import) & VaxTypes.MakeInitSymbol(import.moduleName, symbol) THEN
+        COPY("#0, ", target); AppendExternal(target, symbol);
+        Line(w, "CALLS", target)
+      END;
+      import := import.next
+    END
+  END CallImports;
+
   (* module as MACRO-32 to w; scope is its scope after checking, key its
-     .sym's (ModuleInterface.KeyOf), carried in .IDENT so that a map or
-     ANALYZE/OBJECT shows which .sym the object was built from. FALSE,
-     with nothing to rely on in w, if the module needs what the backend
-     cannot lower yet or its name is too long for <MODULE>_INIT (both
-     reported). *)
-  PROCEDURE GenerateModule*(m: SyntaxTree.ModuleNode; s: SymbolTable.Scope; key: ARRAY OF CHAR;
+     .sym's (ModuleInterface.KeyOf), or empty, carried in .IDENT so that a
+     map or ANALYZE/OBJECT shows which .sym the object was built from, and
+     in the symbol its importers refer to (section 5.1). The main module,
+     isMain, also has the program's start, <MODULE>_MAIN, which .END
+     names (section 6). FALSE, with nothing to rely on in w, if the module
+     needs what the backend cannot lower yet or its name, or an import's,
+     is too long for <MODULE>_INIT, or two of its names, or one of its
+     and one it uses of an import, have one symbol (all reported). *)
+  PROCEDURE GenerateModule*(m: SyntaxTree.ModuleNode; s: SymbolTable.Scope; key: ARRAY OF CHAR; isMain: BOOLEAN;
                             VAR w: Files.Rider): BOOLEAN;
-    VAR init: VaxTypes.Symbol; title: ARRAY VaxTypes.symbolLength + 1 OF CHAR; ident: ARRAY 40 OF CHAR;
-        entry: ARRAY 64 OF CHAR; mask: ARRAY 40 OF CHAR; frame: ARRAY 24 OF CHAR;
-        before: INTEGER; ok: BOOLEAN; e: External; sc: StringConstant;
+    VAR init, main, symbol: VaxTypes.Symbol; title: ARRAY VaxTypes.symbolLength + 1 OF CHAR;
+        ident: ARRAY 40 OF CHAR; entry: ARRAY 64 OF CHAR; mask: ARRAY 40 OF CHAR; frame: ARRAY 24 OF CHAR;
+        before, errorsBefore: INTEGER; ok: BOOLEAN; e: External; sc: StringConstant;
   BEGIN
     module := m; scope := s; moduleScope := s; before := unsupportedCount;
+    errorsBefore := Diagnostics.errorCount;
     names := VaxTypes.NewNameTable();
-    nextLabel := 0; usesTrap := FALSE; externals := NIL; strings := NIL; code := NIL; codeLast := NIL;
+    nextLabel := 0; usesTrap := FALSE; externals := NIL; homes := NIL; strings := NIL; code := NIL; codeLast := NIL;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
       Diagnostics.Error(module.line, module.column,
         "a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol");
       RETURN FALSE
     END;
-    CheckImports;
+    ok := VaxTypes.MakeMainSymbol(module.name, main);
     Uppercase(module.name, title);
-    COPY("/", ident); Append(ident, key); Append(ident, "/");
+    COPY("/", ident);
+    IF key[0] = 0X THEN Append(ident, "0000000000000000") ELSE Append(ident, key) END;
+    Append(ident, "/");
     WriteStr(w, "; "); WriteStr(w, module.name);
     WriteStr(w, ", written by poc (doc/developer/vax-macro32-backend.md)"); WriteLn(w);
     Line(w, ".TITLE", title);
@@ -3373,10 +3456,11 @@ MODULE VaxCodeGenerator;
     Procedures;
     BeginBody;
     StatementSeq(module.statements);
-    IF ~ok OR (unsupportedCount > before) THEN RETURN FALSE END;
+    IF ~DeclareImports() THEN ok := FALSE END;
+    IF ~ok OR (unsupportedCount > before) OR (Diagnostics.errorCount > errorsBefore) THEN RETURN FALSE END;
     IF externals # NIL THEN
       WriteLn(w);
-      WriteStr(w, "; the procedures it calls of other modules"); WriteLn(w);
+      WriteStr(w, "; the symbols it uses of other modules"); WriteLn(w);
       e := externals;
       WHILE e # NIL DO Line(w, ".EXTERNAL", e.name); e := e.next END
     END;
@@ -3408,26 +3492,49 @@ MODULE VaxCodeGenerator;
     EntryMask(mask);
     COPY(init, entry); Append(entry, ", "); Append(entry, mask);
     Line(w, ".ENTRY", entry);
-    IF first = NIL THEN
+    IF (first = NIL) & (module.imports = NIL) THEN
       (* no body: a byte branch over the fixed 7 bytes to RET *)
       Line(w, "BLBS", "L_INITIALISED, L_DONE");
       Line(w, "MOVB", "#1, L_INITIALISED");
       Label(w, "L_DONE")
     ELSE
-      (* the body is any length, so the branch is over RET instead *)
+      (* the imports' initializers and the body are any length, so the
+         branch is over RET instead *)
       Line(w, "BLBC", "L_INITIALISED, L_BODY");
       Line(w, "RET", "");
       Label(w, "L_BODY");
       Line(w, "MOVB", "#1, L_INITIALISED");
-      IF frameSlots > 0 THEN
-        COPY("#", frame); AppendInt(frame, 4 * frameSlots); Append(frame, ", SP");
-        Line(w, "SUBL2", frame)
-      END;
-      WriteBody(w, first)
+      CallImports(w);
+      IF first # NIL THEN
+        IF frameSlots > 0 THEN
+          COPY("#", frame); AppendInt(frame, 4 * frameSlots); Append(frame, ", SP");
+          Line(w, "SUBL2", frame)
+        END;
+        WriteBody(w, first)
+      END
     END;
     Line(w, "RET", "");
-    WriteLn(w);
-    Line(w, ".END", "");
+    IF key[0] # 0X THEN
+      WriteLn(w);
+      WriteStr(w, "; the module's key, which its importers refer to"); WriteLn(w);
+      VaxTypes.MakeKeySymbol(key, symbol);
+      WriteStr(w, symbol); WriteStr(w, " == 0"); WriteLn(w)
+    END;
+    IF isMain THEN
+      WriteLn(w);
+      WriteStr(w, "; the program's start: the module's initializer, then SS$_NORMAL"); WriteLn(w);
+      COPY(main, entry); Append(entry, ", ^M<>");
+      Line(w, ".ENTRY", entry);
+      COPY("#0, ", entry); Append(entry, init);
+      Line(w, "CALLS", entry);
+      Line(w, "MOVL", "#1, R0");
+      Line(w, "RET", "");
+      WriteLn(w);
+      Line(w, ".END", main)
+    ELSE
+      WriteLn(w);
+      Line(w, ".END", "")
+    END;
     RETURN TRUE
   END GenerateModule;
 

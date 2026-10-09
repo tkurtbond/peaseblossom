@@ -144,7 +144,10 @@ Write the module's LLVM IR,
 .It Fl emit-macro32 Ar file
 Write the module's VAX MACRO-32,
 .Pa Module.mar ,
-for VAX/VMS; it implies
+and that of each module it imports compiled from source,
+for VAX/VMS; the module named is the program's main module, whose
+.Pa .mar
+has the program's start; it implies
 .Fl target Cm vax-dec-vms
 and
 .Fl O2 .
@@ -184,6 +187,7 @@ procedures, and the predeclared procedures
 .Fn COPY
 and
 .Fn HALT ,
+and imported variables and procedures,
 and reports anything more as a construct it cannot lower yet.
 .It Fl print-import-path , Fl print-library-path
 Print the import path or the library path as the options before it leave

@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
-;; the MACRO manual, the VAX's listing and the debugger runs). Why this is
-;; right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual, the VAX's listing and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - ABS(x) moves x to the result, then BGEQ over MNEGx: MOVx sets N when
 ;;   x is negative (MACRO 9-24), so only a negative x is negated; where x
 ;;   is the result already, TSTx sets N instead. MNEG of the most negative
@@ -33,6 +33,12 @@
 ;; - A function's value is returned in R0 as a longword (CVTBL, CVTWL,
 ;;   MOVZBL), and a HUGEINT value parameter is copied on entry, both as in
 ;;   step 5.
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXPREDECLARED_MAIN, which calls the initializer, returns SS$_NORMAL
+;;   and is named by .END. Its externals are "the symbols it uses of
+;;   other modules".
 ; VaxPredeclared, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXPREDECLARED
 	.IDENT	/897311a6a8516e41/
@@ -62,7 +68,7 @@ VAXPREDECLARED_C_57LAKD90:
 VAXPREDECLARED_B_57LAKDMJ:
 	.BLKB	1
 
-; the procedures it calls of other modules
+; the symbols it uses of other modules
 	.EXTERNAL	POC_HALT
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
@@ -305,4 +311,13 @@ L_11:
 	MOVW	#4, VAXPREDECLARED_I_57LAKHGU
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_897311A6A8516E41 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXPREDECLARED_MAIN, ^M<>
+	CALLS	#0, VAXPREDECLARED_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXPREDECLARED_MAIN

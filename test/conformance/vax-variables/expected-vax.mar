@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - Each variable is a .BLKx 1 of its type's size in POC_DATA, which
 ;;   starts zeroed (section 6), after the flag: BOOLEAN, SHORTINT and CHAR
 ;;   a byte, INTEGER a word, LONGINT and SET a longword, HUGEINT a quadword
@@ -20,6 +21,11 @@
 ;; - With a body the initializer cannot byte-branch over it, so BLBC
 ;;   skips the RET instead (section 3); the flag is set before the body.
 ;;   The mask is empty: only memory operands are used.
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXVARIABLES_MAIN, which calls the initializer, returns SS$_NORMAL
+;;   and is named by .END.
 ; VaxVariables, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXVARIABLES
 	.IDENT	/1a74f459c1027e48/
@@ -93,4 +99,13 @@ L_BODY:
 	MOVL	#^X80000039, VAXVARIABLES_BITS_RR7CF79P
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_1A74F459C1027E48 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXVARIABLES_MAIN, ^M<>
+	CALLS	#0, VAXVARIABLES_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXVARIABLES_MAIN

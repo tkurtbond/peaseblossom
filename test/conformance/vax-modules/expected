@@ -1,0 +1,7 @@
+semantic OK, wrote VaxModBase.mar
+semantic OK, wrote VaxModLib.mar
+semantic OK, wrote VaxModules.mar
+exit 0
+VaxModules.mar matches expected-vax.mar
+VaxModBase.mar matches expected-vax-VaxModBase.mar
+VaxModLib.mar matches expected-vax-VaxModLib.mar

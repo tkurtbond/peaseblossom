@@ -1367,8 +1367,11 @@ MODULE Poc;
         m := modules; written := TRUE;
         WHILE m # NIL DO
           IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
-            IF ~ModuleInterface.KeyOf(m.module.name, key) THEN COPY("0000000000000000", key) END;
-            IF ~VaxToolchainDriver.EmitModule(m.module, m.scope, key, outputDir, path) THEN written := FALSE END
+            IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
+            (* the program's main module is the last, as on LLVM *)
+            IF ~VaxToolchainDriver.EmitModule(m.module, m.scope, key, outputDir, m.next = NIL, path) THEN
+              written := FALSE
+            END
           END;
           m := m.next
         END;

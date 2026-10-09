@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - FOR as Oberon2.pdf 9.8 says: the start assigned first (CLRW i for
 ;;   0), then the limit evaluated once, before the loop. A variable limit
 ;;   is copied to a slot of the frame, -4(FP), as the body may change it
@@ -17,6 +18,11 @@
 ;;   two loops reuse the one slot.
 ;; - l := l + i widens i (CVTWL to R0) and adds in place (ADDL2); the
 ;;   mask stays ^M<>, R0 needing no save (section 7).
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start, VAXFOR_MAIN,
+;;   which calls the initializer, returns SS$_NORMAL and is named by
+;;   .END.
 ; VaxFor, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXFOR
 	.IDENT	/396883c14f3b3cd1/
@@ -108,4 +114,13 @@ L_12:
 L_11:
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_396883C14F3B3CD1 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXFOR_MAIN, ^M<>
+	CALLS	#0, VAXFOR_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXFOR_MAIN

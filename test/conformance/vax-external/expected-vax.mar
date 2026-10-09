@@ -1,5 +1,6 @@
-;; Reviewed 2026-10-06 by the user (written by Claude, from the design,
-;; the MACRO manual and the VAX's listing). Why this is right:
+;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
+;; manual and the VAX's listing; for the user's review). Why this is
+;; right:
 ;; - An external ["VMS"] procedure is called by its linkage name, as
 ;;   written (section 5), and declared .EXTERNAL, in the order of first
 ;;   call; SYS$EXIT, with no linkage name, by its own name.
@@ -20,6 +21,12 @@
 ;;   warned "%LINK-W-SHRSYMREF, reference to symbol LIB$GET_EF is not
 ;;   position independent", and so for LIB$FREE_EF, both in LIBRTL, a
 ;;   shareable image; not for SYS$SETEF or SYS$EXIT.
+;; - Step 8 (decided 2026-10-08) adds the module's key, POC_K1_ and its
+;;   .sym's key, a global symbol its importers declare .EXTERNAL, and, as
+;;   it is the program's main module, the program's start,
+;;   VAXEXTERNAL_MAIN, which calls the initializer, returns SS$_NORMAL
+;;   and is named by .END. Its externals are "the symbols it uses of
+;;   other modules".
 ; VaxExternal, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXEXTERNAL
 	.IDENT	/3ea65217a00d7991/
@@ -47,7 +54,7 @@ VAXEXTERNAL_STATUS_10CVO86T:
 VAXEXTERNAL_CODE_NGHGJDGI:
 	.BLKW	1
 
-; the procedures it calls of other modules
+; the symbols it uses of other modules
 	.EXTERNAL	LIB$GET_EF
 	.EXTERNAL	SYS$SETEF
 	.EXTERNAL	LIB$FREE_EF
@@ -82,4 +89,13 @@ L_BODY:
 	CALLG	-8(FP), G^SYS$EXIT
 	RET
 
-	.END
+; the module's key, which its importers refer to
+POC_K1_3EA65217A00D7991 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXEXTERNAL_MAIN, ^M<>
+	CALLS	#0, VAXEXTERNAL_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXEXTERNAL_MAIN
