@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is
+;; Reviewed 2026-10-08 by the user (written by Claude, from the
+;; design, the MACRO manual and the VAX's listing). Why this is
 ;; right:
 ;; - Each variable is a .BLKx 1 of its type's size in POC_DATA, which
 ;;   starts zeroed (section 6), after the flag: BOOLEAN, SHORTINT and CHAR

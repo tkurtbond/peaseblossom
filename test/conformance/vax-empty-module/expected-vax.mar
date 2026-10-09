@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design and the VAX's
-;; listing; for the user's review). Why this is right:
+;; Reviewed 2026-10-08 by the user (written by Claude, from the design
+;; and the VAX's listing). Why this is right:
 ;; - The layout is the design's section 6: .TITLE names the object module
 ;;   (the Librarian's and the map's name, at most 31 characters: MACRO
 ;;   5.4, .TITLE), uppercase as every symbol poc writes (section 3.1);

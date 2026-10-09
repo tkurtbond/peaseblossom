@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is
+;; Reviewed 2026-10-08 by the user (written by Claude, from the
+;; design, the MACRO manual and the VAX's listing). Why this is
 ;; right:
 ;; - CASE i: 1, 2, 3 and 4..6 are six values spanning six, so CASEW (i is
 ;;   a word) with base #1 and limit #5: the table's entry i - 1 is used

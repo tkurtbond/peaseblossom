@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is
+;; Reviewed 2026-10-08 by the user (written by Claude, from the
+;; design, the MACRO manual and the VAX's listing). Why this is
 ;; right:
 ;; - A SET is a longword, element i bit i (section 4).
 ;; - + is BIS, - is BIC (dst AND NOT mask, MACRO 9, BIC), / is XOR, each

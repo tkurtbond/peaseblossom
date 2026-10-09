@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual, the VAX's listing and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
+;; the MACRO manual, the VAX's listing and the debugger runs). Why this
+;; is right:
 ;; - VaxModBase, imported by both VaxModLib and VaxModules. It imports
 ;;   nothing, so it has no externals section and its initializer is the
 ;;   BLBC form only because it has a body. Its first caller,

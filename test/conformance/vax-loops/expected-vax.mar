@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is
+;; Reviewed 2026-10-08 by the user (written by Claude, from the
+;; design, the MACRO manual and the VAX's listing). Why this is
 ;; right:
 ;; - WHILE tests at the head (L_1), jumping out (L_2) when the condition
 ;;   is FALSE, and its body ends in JMP L^ back; the & leaves when either

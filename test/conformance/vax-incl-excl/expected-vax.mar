@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual, the VAX's listing and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
+;; the MACRO manual, the VAX's listing and the debugger runs). Why this
+;; is right:
 ;; - INCL(v, x) and EXCL(v, x) are BISL2 and BICL2 of x's mask on v where
 ;;   it is: @4(AP) for a VAR parameter, the variable itself, an element in
 ;;   index mode (sets[k], k checked first), a local in the frame.

@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual and the VAX's listing; for the user's review). Why this is
+;; Reviewed 2026-10-08 by the user (written by Claude, from the
+;; design, the MACRO manual and the VAX's listing). Why this is
 ;; right:
 ;; - A HUGEINT is a quadword, low longword first (section 4); its high
 ;;   longword is <symbol>+4, or Rn+1 of a register pair.

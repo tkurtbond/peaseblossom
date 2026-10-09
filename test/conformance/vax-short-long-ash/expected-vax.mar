@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual, the VAX's listing and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
+;; the MACRO manual, the VAX's listing and the debugger runs). Why this
+;; is right:
 ;; - SHORT is CVTLW or CVTWB (MACRO 9-16), the low word or byte, 70000
 ;;   giving 4464 and 200 -56; of a HUGEINT, MOVL of its low longword, 3 for
 ;;   4294967299. LONG is CVTBW or CVTWL, sign-extending; LONG of a HUGEINT

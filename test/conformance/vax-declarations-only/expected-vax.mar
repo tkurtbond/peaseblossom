@@ -1,7 +1,7 @@
-;; Reviewed 2026-10-08 (written by Claude; for the user's review). Why
-;; this is right: constants and types need no code or data - a constant
-;; is folded where it is used, a type is only sizes and offsets - so the
-;; module is exactly vax-empty-module's layout under its own name: .TITLE
+;; Reviewed 2026-10-08 by the user (written by Claude). Why this is
+;; right: constants and types need no code or data - a constant is folded
+;; where it is used, a type is only sizes and offsets - so the module is
+;; exactly vax-empty-module's layout under its own name: .TITLE
 ;; VAXDECLARATIONSONLY (19 characters), .IDENT with the key of its own
 ;; .sym, which differs from VaxEmpty's, and VAXDECLARATIONSONLY_INIT, 24
 ;; characters, within the 31 (section 5). See vax-empty-module's

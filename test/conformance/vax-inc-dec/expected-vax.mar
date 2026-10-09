@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual, the VAX's listing and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
+;; the MACRO manual, the VAX's listing and the debugger runs). Why this
+;; is right:
 ;; - INC(v) and DEC(v) are INCx and DECx of v where it is, @n(AP) for a
 ;;   VAR parameter; a HUGEINT adds or subtracts 1 by ADDL2/ADWC or
 ;;   SUBL2/SBWC on its two longwords, through a register holding its
