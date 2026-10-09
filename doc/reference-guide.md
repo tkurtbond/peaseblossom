@@ -449,6 +449,9 @@ procedure it is in:
 
     list.mod:42:15: index out of range (in List.Insert)
 
+In a designator such as `a[i]^.f` or `t[i](x)`, an index out of range is
+reported at the index, and a NIL pointer or procedure at the designator.
+
 | Status | What | Message |
 |---|---|---|
 | 2 | An index out of range: a fixed array, an open array, a pointer to an open array | `index out of range` |

@@ -7,9 +7,9 @@ MODULE traplocation;
      an index on a continuation line, a CASE whose branches hold statements.
      Cases 11 and 12 are a WITH of two guards, the second on its own line:
      no guard holds (status 6), and the second guard's variable is NIL
-     (status 4); both trap at the WITH, not at the "|" or in the first
-     branch's statements. test.sh runs each case under both size models; llvm-trap-location's
-     expected also shows one case built without the switch. *)
+     (status 4); both trap at the WITH. Cases 13 and 14 dereference and call
+     a NIL element (status 4), at the designator, not at its index. test.sh
+     runs each case under both size models, and one case without the switch. *)
   IMPORT SYSTEM, Modules, Out, GarbageCollectedHeap, traplib;
   TYPE
     Vector = POINTER TO ARRAY OF INTEGER;
@@ -22,7 +22,7 @@ MODULE traplocation;
   VAR
     which: LONGINT; n: traplib.Node; k, x: INTEGER; a: ARRAY 3 OF INTEGER;
     r: LONGREAL; v: Vector; b, e: BaseP; big: ARRAY 8 OF CHAR; small: ARRAY 4 OF CHAR;
-
+    ps: ARRAY 3 OF BaseP; fs: ARRAY 3 OF PROCEDURE (i: INTEGER): INTEGER;
   PROCEDURE Assign(s: ARRAY OF CHAR);
   BEGIN
     small := s
@@ -60,6 +60,10 @@ BEGIN
         WITH b: ExtP DO x := 1
         | e: ExtP DO x := 2
         END
+  | 13: k := 1; NEW(ps[0]);
+        x := ps[k]^.k
+  | 14: k := 2;
+        x := fs[k](1)
   END;
   Out.Int(x, 0); Out.Ln
 END traplocation.

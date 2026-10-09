@@ -30,9 +30,9 @@
 ;; - The debugger runs examine what it computes, which ProcValsOut, built
 ;;   by both backends, also prints, and what four variables hold, which
 ;;   the debugger names by their procedures. Then trap 4 from a NIL
-;;   variable at column 35, as on LLVM, and from a NIL element of a
-;;   pointer's array at column 25, the designator, where LLVM's
-;;   -trap-location gives the index's, 39, as for any element (item 3).
+;;   variable at column 35, and from a NIL element of a pointer's array
+;;   at column 25, the designator, as LLVM's -trap-location gives them
+;;   (since 63f53c1 it no longer gives an element's index, 39).
 ; VaxProcVals, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXPROCVALS
 	.IDENT	/e332d43c5cc08e2c/

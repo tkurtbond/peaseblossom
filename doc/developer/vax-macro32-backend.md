@@ -1157,28 +1157,28 @@ now uses `ASH`. The Stage 1 poc was always right. No earlier fixture used
 the constant, so the two compilers' suites never disagreed. The survey is
 unchanged at 19,443 refusals.
 
-**Done: pointers, `NEW` and descriptors without extension (items 3 and
-4), 2026-10-09.** A pointer is a longword, the address of the block's
-data, and `NIL` is 0. A pointer to a record without a base type, or to
-any array, is lowered. A pointer to an extension waits for extension
-(item 11's next steps). Each dereference, written or implied by a field
-or an index, moves the pointer to a register, which sets the condition
-codes, then `BNEQ` over a call of `POC_TRAP` with code 4 at the
-designator's line and column. The LLVM backend reports `a[i]^`'s at the
-index expression instead; the VAX keeps the designator's. `NEW(p)` builds
-an argument list in the frame and calls `POC_NEW(size, tag)` in
-`PocRtl.mar`, which takes the size and a tag longword from `LIB$GET_VM`,
-stores the tag, zeroes the data in pieces of 65,535 bytes and returns the
-data's address, or 0 when `LIB$GET_VM` fails, which leaves `p` `NIL`, as
-on LLVM without `-trap-heap-exhausted`. Nothing is freed until step 4
-ports the collector. `NEW(p, n0, ...)` of an open array checks each
-length to be positive and the size (the lengths times the element's size,
-by `EMUL`, plus a longword per dimension, rounded up as the element needs)
-to be below 2^31, else trap 7, since P0 space is 1 GB. The LLVM targets
-of 32 bits trap only from 4 GB. When `POC_NEW` returns a block, the
-lengths are stored in its header, and `LEN(p^)` and the index checks read
-them there. The driver no longer adds LLVM's `GarbageCollectedHeap` and
-`ModuleTable` to a program for the VAX that calls `NEW`.
+**Done: pointers, `NEW` and descriptors without extension (items 3 and 4),
+2026-10-09.** A pointer is a longword, the address of the block's data,
+and `NIL` is 0. A pointer to a record without a base type, or to any
+array, is lowered. A pointer to an extension waits for extension (item
+11's next steps). Each dereference, written or implied by a field or an
+index, moves the pointer to a register, which sets the condition codes,
+then `BNEQ` over a call of `POC_TRAP` with code 4 at the designator's line
+and column. The LLVM backend reported `a[i]^`'s at the index expression
+until 63f53c1; both now give the designator's. `NEW(p)` builds an argument
+list in the frame and calls `POC_NEW(size, tag)` in `PocRtl.mar`, which
+takes the size and a tag longword from `LIB$GET_VM`, stores the tag,
+zeroes the data in pieces of 65,535 bytes and returns the data's address,
+or 0 when `LIB$GET_VM` fails, which leaves `p` `NIL`, as on LLVM without
+`-trap-heap-exhausted`. Nothing is freed until step 4 ports the collector.
+`NEW(p, n0, ...)` of an open array checks each length to be positive and
+the size (the lengths times the element's size, by `EMUL`, plus a longword
+per dimension, rounded up as the element needs) to be below 2^31, else
+trap 7, since P0 space is 1 GB. The LLVM targets of 32 bits trap only from
+4 GB. When `POC_NEW` returns a block, the lengths are stored in its
+header, and `LEN(p^)` and the index checks read them there. The driver no
+longer adds LLVM's `GarbageCollectedHeap` and `ModuleTable` to a program
+for the VAX that calls `NEW`.
 
 A type descriptor is written in `POC_CONST` as LLVM lays it out, every
 field a longword: the size, the extension level (0 so far), the pointer
@@ -1368,16 +1368,16 @@ ever one (item 7).
 A call through a value, a variable, parameter, field or element of
 procedure type, evaluates the value first, as LLVM does, into a register
 from `R2` up, which the call does not have to move, and checks it for
-`NIL`: trap 4 at the designator's line and column. The LLVM backend
-reports an element's at its index, as for a pointer (item 3). Then the
-argument list is built from the procedure type's parameters, as for a
-direct call, so a `VAR` record parameter's tag, an open array's lengths
-and a quadword's copy are passed as the procedure expects, and the call
-is `CALLG list, (Rn)`, or `CALLS #0, (Rn)` with no arguments. A value
-spilled to the frame while the arguments are evaluated would be called as
-`@n(FP)`. The analysis of which value parameters a procedure changes now
-reads a call through a value's parameter list from its type, so passing
-a parameter by value through one does not copy it to the frame.
+`NIL`: trap 4 at the designator's line and column, an element's too, as on
+LLVM since 63f53c1 (item 3). Then the argument list is built from the
+procedure type's parameters, as for a direct call, so a `VAR` record
+parameter's tag, an open array's lengths and a quadword's copy are passed
+as the procedure expects, and the call is `CALLG list, (Rn)`, or `CALLS
+#0, (Rn)` with no arguments. A value spilled to the frame while the
+arguments are evaluated would be called as `@n(FP)`. The analysis of which
+value parameters a procedure changes now reads a call through a value's
+parameter list from its type, so passing a parameter by value through one
+does not copy it to the frame.
 
 Fixture `vax-procedure-values` has `VaxProcVals` and `VaxProcLib`
 reviewed. Its debugger runs examine what the program computes and what
