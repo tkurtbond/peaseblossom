@@ -733,6 +733,14 @@ most, object libraries.
      under the debugger and runs one source on both backends. Its `.mar`
      files were reviewed by the user (2026-10-09). Survey: 270, none of
      them procedure values.
+   - *Nested procedures* (section 14 item 8), done 2026-10-09: lambda
+     lifting by reference, as on LLVM - each nested procedure a procedure
+     of its own, taking the addresses of the enclosing procedures'
+     variables it needs (`NestedProcedures.Analyze`) after its own
+     parameters. Fixture `vax-nested` takes traps 4 and 2 in nested
+     procedures under the debugger and runs one source on both backends.
+     Its `.mar` file awaits the user's review. Survey: 263, none of them
+     nested procedures.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

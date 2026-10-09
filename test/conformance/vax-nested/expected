@@ -1,0 +1,7 @@
+semantic OK, wrote VaxNested.mar
+exit 0
+VaxNested.mar matches expected-vax.mar
+LLVM build -O2 exit 0
+VAX build -O2 exit 0
+LLVM build -OC exit 0
+VAX build -OC exit 0

@@ -14,11 +14,12 @@ MODULE VaxCodeGenerator;
      Phase 16 step 3's (section 14): open arrays (item 1); pointers, NIL,
      NEW and the type descriptors (items 3 and 4); a VAR record
      parameter's type tag (item 5); extension, IS, type guards and WITH;
-     type-bound procedures (item 6); and procedure values (item 7).
+     type-bound procedures (item 6); procedure values (item 7); and nested
+     procedures (item 8).
 
-     A module needing more - a predeclared procedure outside the slice, a
-     type outside the slice, such as a real, or a nested procedure (Phase
-     16) - is reported as a construct the backend cannot lower yet,
+     A module needing more - a predeclared procedure outside the slice, or
+     a type outside the slice, such as a real (Phase 16) - is reported as
+     a construct the backend cannot lower yet,
      at its position, and unsupportedCount counts them, as
      LLVMCodeGenerator's does; VaxToolchainDriver then deletes what was
      written. Constants need no code, and types only their descriptors.
@@ -34,7 +35,11 @@ MODULE VaxCodeGenerator;
      frame, then CALLG (CALLS #0 without arguments); R0 and R1 are moved
      up first, R2-R5 surviving it. A procedure value is the address of a
      procedure's entry mask; a call through one loads it into R2-R5 and
-     checks it for NIL before the arguments, then CALLG list, (Rn). A function's value comes back in R0 as
+     checks it for NIL before the arguments, then CALLG list, (Rn). A
+     nested procedure is lifted to a procedure of its own that takes, after
+     its parameters, the address of each variable of the enclosing
+     procedures it needs, with a tag or lengths as a parameter of its kind
+     has them (NestedProcedures.Analyze, as on LLVM). A function's value comes back in R0 as
      a longword, a HUGEINT in R0 and R1. HUGEINT *, DIV and MOD call poc's
      runtime (POC_HMUL, POC_HDIV, POC_HMOD), and the traps POC_TRAP,
      declared .EXTERNAL, as is every external procedure called. A symbol
@@ -106,7 +111,7 @@ MODULE VaxCodeGenerator;
      and SHORT of one that does not fit, trap. *)
 
   IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
-    ModuleInterface, LLVMTypes, VaxTypes;
+    ModuleInterface, LLVMTypes, VaxTypes, NestedProcedures;
 
   CONST
     tab = 9X;
@@ -169,6 +174,15 @@ MODULE VaxCodeGenerator;
 
     (* Inside WITH v: T DO, v's static type is T (T's record for a VAR
        record parameter) *)
+    (* A procedure nested in the one being generated, and its symbol
+       (section 14, item 8) *)
+    NestedSym = POINTER TO NestedSymDesc;
+    NestedSymDesc = RECORD
+      np: NestedProcedures.NestedProc;
+      symbol: VaxTypes.Symbol;
+      next: NestedSym
+    END;
+
     Narrowing = POINTER TO NarrowingDesc;
     NarrowingDesc = RECORD
       obj: SymbolTable.Object;
@@ -272,6 +286,11 @@ MODULE VaxCodeGenerator;
     descriptors: TypeDescriptor; (* in the order they were needed *)
     descriptorCount: INTEGER; (* the labels L_TD_<n> and L_AD_<n> made *)
     code, codeLast: Instruction; (* the procedures, written before the initializer *)
+    (* the module-level or type-bound procedure being generated, as the
+       root of the tree of those nested in it, and their symbols; NIL
+       outside one (section 14, item 8) *)
+    nestedRoot: NestedProcedures.NestedProc;
+    nestedSyms: NestedSym;
     (* the procedure being generated *)
     locals: Local;
     localSize: LONGINT; (* bytes of locals below FP, a multiple of 4; the slots are below them *)
@@ -1111,7 +1130,12 @@ MODULE VaxCodeGenerator;
   BEGIN
     x := NewOperand(memory, TypeOf(obj));
     l := FindLocal(obj);
-    IF l = NIL THEN
+    IF (l = NIL) & (HomeOf(obj) = NIL) & (SymbolTable.FindLocal(moduleScope, obj.name) # obj) THEN
+      (* a procedure's variable this one has no binding for, which the
+         nested procedures' analysis should have made a hidden parameter *)
+      Unsupported(line, column, "a variable of an enclosing procedure that is not passed here");
+      RETURN x
+    ELSIF l = NIL THEN
       VariableSymbol(obj, x.symbol);
       IF HomeOf(obj) # NIL THEN x.outside := TRUE; AddExternal(x.symbol) END
     ELSIF l.where = inFrameAddress THEN
@@ -1931,6 +1955,23 @@ MODULE VaxCodeGenerator;
     END
   END ReceiverInto;
 
+  (* Whether a nested procedure's hidden arguments for obj, a variable it
+     needs, include its type tag: a VAR record parameter's, a VAR receiver's
+     too, as on LLVM (NeedHasTag) *)
+  PROCEDURE NeedHasTag(obj: SymbolTable.Object): BOOLEAN;
+  BEGIN
+    RETURN obj.isVarParam & (obj.type # NIL) & (obj.type IS Types.RecordType)
+  END NeedHasTag;
+
+  (* The symbol of np, a nested procedure, entered when its root was *)
+  PROCEDURE NestedSymbol(np: NestedProcedures.NestedProc; VAR symbol: VaxTypes.Symbol);
+    VAR s: NestedSym;
+  BEGIN
+    s := nestedSyms;
+    WHILE (s # NIL) & (s.np # np) DO s := s.next END;
+    IF s # NIL THEN symbol := s.symbol ELSE symbol[0] := 0X END
+  END NestedSymbol;
+
   (* The procedure a call through a value calls, appended to target:
      (Rn) when callee is in a register, @n(FP) when it was spilled *)
   PROCEDURE CalleeText(callee: Operand; VAR target: ARRAY OF CHAR);
@@ -1948,6 +1989,7 @@ MODULE VaxCodeGenerator;
         v, entry, callee: Operand; copy: ARRAY maxCopies OF Operand; n, i, list, copies, first: INTEGER;
         symbol: VaxTypes.Symbol; text: ARRAY 160 OF CHAR; target: ARRAY 200 OF CHAR; external, outside: BOOLEAN;
         m: MethodTarget; a1, ok: ARRAY 24 OF CHAR; t: Types.Type;
+        nested: NestedProcedures.NestedProc; need: NestedProcedures.Need; dim: INTEGER;
   BEGIN
     obj := Resolve(d.qualifier, d.name, line, column);
     IF obj = NIL THEN RETURN NIL END;
@@ -1972,6 +2014,12 @@ MODULE VaxCodeGenerator;
       Unsupported(line, column, "a call through a selector (Phase 16)"); RETURN NIL
     ELSE
       pt := obj.type(Types.ProcedureType)
+    END;
+    (* a procedure nested in the one being generated, which takes hidden
+       arguments after its own (section 14, item 8) *)
+    nested := NIL;
+    IF (m = NIL) & (obj.class = SymbolTable.procClass) & (nestedRoot # NIL) THEN
+      nested := NestedProcedures.Find(nestedRoot, obj)
     END;
     external := (m = NIL) & (obj.externalConvention # "");
     IF (pt.resultType # NIL) & ~IsSliceScalar(pt.resultType) THEN
@@ -2004,6 +2052,14 @@ MODULE VaxCodeGenerator;
       IF HasTag(p, external) THEN INC(n) END;
       p := p.next
     END;
+    IF nested # NIL THEN
+      need := nested.needs;
+      WHILE need # NIL DO
+        INC(n, 1 + OpenDims(need.obj.type));
+        IF NeedHasTag(need.obj) THEN INC(n) END;
+        need := need.next
+      END
+    END;
     IF copies > maxCopies THEN Unsupported(line, column, "a call with this many HUGEINT arguments"); RETURN NIL END;
     IF t # NIL THEN
       (* the procedure value first, as on LLVM, checked for NIL (trap 4
@@ -2016,6 +2072,8 @@ MODULE VaxCodeGenerator;
       NewLabel(ok); Emit("BNEQ", ok); Trap(4, line, column); EmitLabel(ok)
     ELSIF m # NIL THEN
       outside := ~m.indirect & MethodSymbol(m.owner, m.called.name, symbol)
+    ELSIF nested # NIL THEN
+      NestedSymbol(nested, symbol); outside := FALSE
     ELSE
       ProcedureSymbol(obj, symbol);
       outside := external OR (HomeOf(obj) # NIL); (* an imported procedure's is another module's too *)
@@ -2073,6 +2131,29 @@ MODULE VaxCodeGenerator;
           END
         END;
         p := p.next; a := a.next; INC(i)
+      END;
+      (* a nested procedure's hidden arguments: for each variable it needs,
+         what this procedure has for it, its own or the one it was given -
+         the address, then the tag or the lengths *)
+      IF nested # NIL THEN
+        need := nested.needs;
+        WHILE need # NIL DO
+          IF FindLocal(need.obj) = NIL THEN
+            Unsupported(line, column, "a variable a nested procedure needs, which this procedure does not have")
+          ELSE
+            v := Variable(need.obj, line, column);
+            AddressOf(v, ListEntry(list, n, i)); INC(i);
+            IF OpenDims(need.obj.type) > 0 THEN
+              FOR dim := 0 TO OpenDims(need.obj.type) - 1 DO
+                MoveLong(LengthOf(v, dim), ListEntry(list, n, i)); INC(i)
+              END
+            ELSIF NeedHasTag(need.obj) THEN
+              MoveLong(ParamTag(need.obj), ListEntry(list, n, i)); INC(i)
+            END;
+            Release(v)
+          END;
+          need := need.next
+        END
       END;
       FreeR0R1(line, column);
       Text(ListEntry(list, n, 0), target); Append(target, ", ");
@@ -4321,47 +4402,49 @@ MODULE VaxCodeGenerator;
     MoveCounted("R0", a, b)
   END CopyOpenParameter;
 
-  (* One procedure of the module, appended to code: its entry - .ENTRY
-     for an exported one, a local label and .WORD of the mask for a
-     private one (decided 2026-10-06, section 7) and always .ENTRY for a
-     type-bound one, which an importer's ProcTab may name - the frame, its
-     locals cleared, the parameters it may change copied, then the body;
-     RET at the end, or, for a function, the "no RETURN" trap (code 12).
-     A type-bound procedure's receiver is its first argument: a pointer,
-     or a VAR record's address and then its tag (section 14, item 6). *)
-  PROCEDURE ProcedureDecl(pd: SyntaxTree.ProcDeclNode);
-    VAR obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param; section: SyntaxTree.FPSectionNode;
-        id: SyntaxTree.IdentDefNode; vd: SyntaxTree.VarDeclNode; pobj: SymbolTable.Object; l: Local;
-        bodyFirst, bodyLast: Instruction; symbol: VaxTypes.Symbol; i: INTEGER; off: LONGINT;
-        text: ARRAY 160 OF CHAR; mask: ARRAY 40 OF CHAR; a, b: ARRAY 24 OF CHAR; op: ARRAY 8 OF CHAR;
-        before: INTEGER; typeObj: SymbolTable.Object; owner: Types.RecordType; method: Types.Method;
-        global: BOOLEAN;
+  (* Whether a procedure nested in the one being generated needs obj, a
+     variable of an enclosing procedure (section 14, item 8) *)
+  PROCEDURE Needed(obj: SymbolTable.Object): BOOLEAN;
+    VAR np: NestedProcedures.NestedProc; n: NestedProcedures.Need;
   BEGIN
-    IF pd.isForward OR pd.isExternal THEN RETURN END;
-    IF (pd.declarations # NIL) & (pd.declarations.procDecls # NIL) THEN
-      Unsupported(pd.declarations.procDecls.line, pd.declarations.procDecls.column,
-        "a nested procedure (Phase 16)");
-      RETURN
+    IF nestedRoot = NIL THEN RETURN FALSE END;
+    np := nestedRoot.following;
+    WHILE np # NIL DO
+      n := np.needs;
+      WHILE n # NIL DO
+        IF n.obj = obj THEN RETURN TRUE END;
+        n := n.next
+      END;
+      np := np.following
     END;
-    IF pd.receiver # NIL THEN
-      typeObj := SymbolTable.FindLocal(moduleScope, pd.receiver.typeName);
-      IF typeObj = NIL THEN RETURN END;
-      owner := TargetRecord(typeObj.type);
-      IF owner = NIL THEN RETURN END;
-      method := Types.FindOwnMethod(owner, pd.name.name);
-      IF method = NIL THEN RETURN END;
-      pt := method.procType; IF MethodSymbol(owner, method.name, symbol) THEN END; global := TRUE
-    ELSE
-      obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
-      IF (obj = NIL) OR ~(obj.type IS Types.ProcedureType) THEN RETURN END;
-      pt := obj.type(Types.ProcedureType);
-      VariableSymbol(obj, symbol); global := obj.exported; typeObj := NIL
-    END;
+    RETURN FALSE
+  END Needed;
+
+  (* One procedure, appended to code: its entry - .ENTRY for an exported
+     one, a local label and .WORD of the mask for a private or nested one
+     (decided 2026-10-06, section 7) and always .ENTRY for a type-bound
+     one, which an importer's ProcTab may name - the frame, its locals
+     cleared, the parameters it may change copied, then the body; RET at
+     the end, or, for a function, the "no RETURN" trap (code 12). A
+     type-bound procedure's receiver is its first argument: a pointer, or
+     a VAR record's address and then its tag (section 14, item 6). A
+     nested procedure's hidden parameters follow its own, one group per
+     variable of the enclosing procedures it needs, in its needs order:
+     the variable's address, then its tag or its open dimensions' lengths
+     as a parameter of its kind has them (item 8). bodyScope is the scope
+     to generate the body in, title what its comment calls it. *)
+  PROCEDURE Body(pd: SyntaxTree.ProcDeclNode; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType;
+                 needs: NestedProcedures.Need; symbol: VaxTypes.Symbol; global: BOOLEAN;
+                 title: ARRAY OF CHAR);
+    VAR p: Types.Param; section: SyntaxTree.FPSectionNode;
+        id: SyntaxTree.IdentDefNode; vd: SyntaxTree.VarDeclNode; pobj: SymbolTable.Object; l: Local;
+        bodyFirst, bodyLast: Instruction; i: INTEGER; off: LONGINT;
+        text: ARRAY 600 OF CHAR; mask: ARRAY 40 OF CHAR; a, b: ARRAY 24 OF CHAR; op: ARRAY 8 OF CHAR;
+        before: INTEGER;
+  BEGIN
     before := unsupportedCount;
     BeginBody;
-    IF typeObj # NIL THEN scope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, typeObj.type, pt)
-    ELSE scope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, NIL, pt)
-    END;
+    scope := bodyScope;
     resultType := pt.resultType;
     IF (resultType # NIL) & ~IsSliceScalar(resultType) THEN
       COPY("a function returning ", text); Types.Describe(resultType, text); AppendWhen(resultType, text);
@@ -4374,7 +4457,8 @@ MODULE VaxCodeGenerator;
     IF pd.receiver # NIL THEN
       pobj := SymbolTable.FindLocal(scope, pd.receiver.name);
       IF pd.receiver.isVar THEN l := NewLocal(pobj, byReference, 4); l.tagOffset := 8; i := 3
-      ELSIF Changes(pd.statements, pd.receiver.name) THEN l := NewLocal(pobj, inFrame, 0); l.copyFrom := 4; i := 2
+      ELSIF Changes(pd.statements, pd.receiver.name) OR Needed(pobj) THEN
+        l := NewLocal(pobj, inFrame, 0); l.copyFrom := 4; i := 2
       ELSE l := NewLocal(pobj, byValue, 4); i := 2
       END
     END;
@@ -4395,7 +4479,10 @@ MODULE VaxCodeGenerator;
         ELSIF p.isVar OR p.isReadOnly & ((Suffix(p.type) = "Q") OR ~IsSliceScalar(p.type)) THEN
           l := NewLocal(pobj, byReference, 4 * i);
           IF HasTag(p, FALSE) THEN l.tagOffset := 4 * (i + 1); INC(i) END
-        ELSIF (Suffix(p.type) = "Q") OR ~IsSliceScalar(p.type) OR Changes(pd.statements, id.name) THEN
+        ELSIF (Suffix(p.type) = "Q") OR ~IsSliceScalar(p.type) OR Changes(pd.statements, id.name)
+              OR Needed(pobj) THEN
+          (* changed here, or perhaps by a nested procedure, whose hidden
+             argument is its address: the argument list is read-only *)
           l := NewLocal(pobj, inFrame, 0); l.copyFrom := 4 * i
         ELSE
           l := NewLocal(pobj, byValue, 4 * i)
@@ -4403,6 +4490,19 @@ MODULE VaxCodeGenerator;
         p := p.next; INC(i); id := id.next
       END;
       section := section.next
+    END;
+    (* a nested procedure's hidden parameters (section 14, item 8) *)
+    WHILE needs # NIL DO
+      IF ~IsParamType(needs.obj.type) THEN
+        COPY("a variable of an enclosing procedure of type ", text); Types.Describe(needs.obj.type, text);
+        AppendWhen(needs.obj.type, text);
+        Unsupported(pd.line, pd.column, text)
+      END;
+      l := NewLocal(needs.obj, byReference, 4 * i); INC(i);
+      IF OpenDims(needs.obj.type) > 0 THEN l.lenOffset := 4 * i; INC(i, OpenDims(needs.obj.type))
+      ELSIF NeedHasTag(needs.obj) THEN l.tagOffset := 4 * i; INC(i)
+      END;
+      needs := needs.next
     END;
     (* the local variables *)
     IF pd.declarations # NIL THEN
@@ -4432,7 +4532,7 @@ MODULE VaxCodeGenerator;
     bodyFirst := first; bodyLast := last; first := NIL; last := NIL;
     COPY("; PROCEDURE ", text);
     IF pd.receiver # NIL THEN Append(text, "("); Append(text, pd.receiver.typeName); Append(text, ") ") END;
-    Append(text, pd.name.name); EmitComment(text);
+    Append(text, title); EmitComment(text);
     IF localSize > clearByCLR THEN used := used + {2 .. 5} END; (* MOVC5 *)
     l := locals;
     WHILE l # NIL DO
@@ -4477,6 +4577,70 @@ MODULE VaxCodeGenerator;
     IF bodyFirst # NIL THEN last.next := bodyFirst; last := bodyLast END;
     IF code = NIL THEN code := first ELSE codeLast.next := first END;
     codeLast := last
+  END Body;
+
+  (* A procedure of the module, and the procedures nested in it (section
+     14, item 8): NestedProcedures.Analyze's tree of them, what each needs
+     of the procedures enclosing it, each one's symbol, the root's full
+     name and its path below the root, entered in the module's names, then
+     each generated before the root, parents before their children *)
+  PROCEDURE ProcedureDecl(pd: SyntaxTree.ProcDeclNode);
+    VAR obj: SymbolTable.Object; pt: Types.ProcedureType; symbol: VaxTypes.Symbol;
+        typeObj: SymbolTable.Object; owner: Types.RecordType; method: Types.Method; global: BOOLEAN;
+        rootScope: SymbolTable.Scope; np: NestedProcedures.NestedProc; ns: NestedSym;
+        full, clash: ARRAY 3 * 256 + 3 OF CHAR; rootFull: ARRAY 3 * 256 + 3 OF CHAR;
+        text: ARRAY 1200 OF CHAR; k, j: INTEGER;
+  BEGIN
+    IF pd.isForward OR pd.isExternal THEN RETURN END;
+    IF pd.receiver # NIL THEN
+      typeObj := SymbolTable.FindLocal(moduleScope, pd.receiver.typeName);
+      IF typeObj = NIL THEN RETURN END;
+      owner := TargetRecord(typeObj.type);
+      IF owner = NIL THEN RETURN END;
+      method := Types.FindOwnMethod(owner, pd.name.name);
+      IF method = NIL THEN RETURN END;
+      pt := method.procType; IF MethodSymbol(owner, method.name, symbol) THEN END; global := TRUE;
+      COPY(module.name, rootFull); Append(rootFull, "."); Append(rootFull, owner.name); Append(rootFull, ".");
+      Append(rootFull, pd.name.name);
+      rootScope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, typeObj.type, pt)
+    ELSE
+      obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
+      IF (obj = NIL) OR ~(obj.type IS Types.ProcedureType) THEN RETURN END;
+      pt := obj.type(Types.ProcedureType);
+      VariableSymbol(obj, symbol); global := obj.exported;
+      COPY(module.name, rootFull); Append(rootFull, "."); Append(rootFull, pd.name.name);
+      rootScope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, NIL, pt)
+    END;
+    nestedRoot := NestedProcedures.Analyze(pd, rootScope);
+    nestedSyms := NIL;
+    (* <root's full name>.<Inner>...: np's path less the root's *)
+    np := nestedRoot.following;
+    WHILE np # NIL DO
+      COPY(rootFull, full);
+      j := 0; WHILE full[j] # 0X DO INC(j) END;
+      k := 0; WHILE nestedRoot.pathName[k] # 0X DO INC(k) END;
+      WHILE (np.pathName[k] # 0X) & (j < LEN(full) - 1) DO full[j] := np.pathName[k]; INC(j); INC(k) END;
+      full[j] := 0X;
+      NEW(ns); ns.np := np; ns.next := nestedSyms; nestedSyms := ns;
+      IF ~VaxTypes.Enter(names, full, ns.symbol, clash) THEN
+        COPY(full, text); Append(text, " and "); Append(text, clash);
+        Append(text, " have the same VAX symbol, "); Append(text, ns.symbol);
+        Diagnostics.Error(np.decl.line, np.decl.column, text)
+      END;
+      np := np.following
+    END;
+    np := nestedRoot.following;
+    WHILE np # NIL DO
+      NestedSymbol(np, symbol);
+      Body(np.decl, np.scope, np.procType, np.needs, symbol, FALSE, np.pathName);
+      np := np.following
+    END;
+    IF pd.receiver # NIL THEN IF MethodSymbol(owner, method.name, symbol) THEN END
+    ELSE VariableSymbol(obj, symbol)
+    END;
+    Body(pd, rootScope, pt, NIL, symbol, global, pd.name.name);
+    nestedRoot := NIL; nestedSyms := NIL;
+    scope := moduleScope
   END ProcedureDecl;
 
   (* full, a global symbol module defines, entered in programNames: an
@@ -4888,6 +5052,7 @@ MODULE VaxCodeGenerator;
     errorsBefore := Diagnostics.errorCount;
     names := VaxTypes.NewNameTable(); longword := VaxTypes.Longword(); narrowings := NIL;
     nextLabel := 0; usesTrap := FALSE; externals := NIL; homes := NIL; strings := NIL; code := NIL; codeLast := NIL;
+    nestedRoot := NIL; nestedSyms := NIL;
     descriptors := NIL; descriptorCount := 0;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
       Diagnostics.Error(module.line, module.column,

@@ -2107,6 +2107,24 @@ MODULE Poc;
     END
   END PrintVaxName;
 
+  (* The procedures nested in pd, whose full name is outer, and those nested
+     in them, parents first, each named <outer>.<its name>, as
+     VaxCodeGenerator names them (Phase 16 step 3, section 14, item 8) *)
+  PROCEDURE PrintNestedVaxNames(table: VaxTypes.NameTable; pd: SyntaxTree.ProcDeclNode; outer: ARRAY OF CHAR);
+    VAR d: SyntaxTree.ProcDeclNode; full: ARRAY 800 OF CHAR;
+  BEGIN
+    IF pd.declarations = NIL THEN RETURN END;
+    d := pd.declarations.procDecls;
+    WHILE d # NIL DO
+      IF ~d.isForward & ~d.isExternal THEN
+        COPY(outer, full); Strcat(full, "."); Strcat(full, d.name.name);
+        PrintVaxName(table, full);
+        PrintNestedVaxNames(table, d, full)
+      END;
+      d := d.next
+    END
+  END PrintNestedVaxNames;
+
   (* PLAN.md Phase 15 step 1: the golden-file testing surface for
      VaxTypes.Mod's names (doc/developer/vax-macro32-backend.md section 5).
      Checks the module, then prints the symbol of each name the VAX backend
@@ -2114,7 +2132,8 @@ MODULE Poc;
      module's initializer, <MODULE>_INIT, which is never hashed and so
      needs no NameTable, then each module-level variable, then each
      procedure and type-bound procedure, the latter by the record it is
-     bound to, a pointer receiver's too, as the backends name it. An
+     bound to, a pointer receiver's too, as the backends name it, each
+     followed by the procedures nested in it (PrintNestedVaxNames). An
      external procedure is shown with its linkage name, written verbatim,
      which is an error if MACRO-32 does not take it. *)
   PROCEDURE DumpVaxNames(name: ARRAY OF CHAR);
@@ -2187,7 +2206,8 @@ MODULE Poc;
                 Strcat(full, ".")
               END;
               Strcat(full, p.name.name);
-              PrintVaxName(table, full)
+              PrintVaxName(table, full);
+              PrintNestedVaxNames(table, p, full)
             END;
             p := p.next
           END

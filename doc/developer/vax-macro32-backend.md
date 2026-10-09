@@ -1394,3 +1394,55 @@ The survey counts 270 refusals, down from 388, none of them procedure
 values: reals (165), `SYSTEM.BYTE` parameters (78), calls and
 expressions that need more registers than are left (19), nested
 procedures (7) and a structured constant (1).
+
+**Done: nested procedures (item 8), 2026-10-09.** A procedure with
+procedures nested in it is the root of `NestedProcedures.Analyze`'s tree,
+as on LLVM, which gives each nested procedure, in source order, the
+variables of the enclosing procedures it needs: those it names, those a
+procedure nested in it needs, and those a nested procedure it calls needs,
+less what it declares itself. Each nested procedure is lifted to a
+procedure of its own, written before its root, parents first, as a local
+label and `.WORD` of its mask, since only its enclosing procedures can
+call it and it is never a procedure value. Its symbol is made from its
+root's full name and its path below it, `VaxNested.Deep.Middle.Inner`, or
+`VaxNested.CounterDesc.Bump.Once` in a type-bound procedure, so two
+procedures may each have a nested one of the same name.
+`-dump-vax-names` now lists them (`vax-names`).
+
+After its own parameters, a nested procedure takes one group of hidden
+longwords per variable it needs, in its needs order: the variable's
+address, then, as a parameter of its kind has them, a `VAR` record
+parameter's tag (a `VAR` receiver's too) or an open array's lengths. It
+binds each as a `VAR` parameter, so every access, `IS`, guard, `LEN` and
+index check works through `@n(AP)` as it does for one. A call passes, for
+each variable the callee needs, what the caller has for it: the address
+of its own local, the address it was itself given, or an open-array
+value parameter's copy, with the tag or lengths beside it. The caller
+always has one, since what a procedure needs includes what the nested
+procedures it calls need. A value parameter or receiver that a nested
+procedure needs is copied to the frame on entry, since the nested one may
+assign it and the argument list is the caller's. A variable of a
+procedure that the one being generated has no binding for is reported
+rather than taken for a module variable.
+
+Fixture `vax-nested` has `VaxNested`, written for the user's review: a
+local read and written, three levels where the middle one never names
+what the inner one reads, siblings in mutual recursion through a forward
+declaration, a cousin called, value and `VAR` parameters, a `VAR` record
+parameter with `IS` and a guard, value and `VAR` open arrays, `HUGEINT`s,
+a type-bound procedure's receiver, the enclosing procedure's own
+recursion, a list built by a nested procedure, and two nested procedures
+of one name. Its debugger runs examine what it computes and take trap 4
+from a receiver a nested procedure set to `NIL`, and trap 2 from an
+enclosing procedure's open array. A second program, `NestedOut`, prints
+with `Out`, and is built by both backends under `-O2` and `-OC` and must
+print the same. The trap 4 is reported at `c` in `INC(c.n, k)`, where
+LLVM's `-trap-location` gives the `INC`, as it does for any `NIL` check
+in a predeclared procedure's `VAR` argument; trap 2 is where LLVM gives
+it. `vax-emit-errors`' `VaxTooMuch` no longer has a nested procedure.
+
+The survey counts 263 refusals, down from 270, none of them nested
+procedures: reals (165), `SYSTEM.BYTE` parameters (78), calls and
+expressions that need more registers than are left (19) and a structured
+constant (1). The nested procedures' bodies, examined for the first time,
+add none.

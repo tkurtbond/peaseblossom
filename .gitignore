@@ -92,6 +92,7 @@ test/conformance/vax-out/vax-out
 test/conformance/vax-pointers/vax-pointers
 test/conformance/vax-type-bound/vax-type-bound
 test/conformance/vax-procedure-values/vax-procedure-values
+test/conformance/vax-nested/vax-nested
 test/conformance/vax-var-records/vax-var-records
 test/conformance/llvm-in/llvm-in
 test/conformance/llvm-in-extra/llvm-in-extra

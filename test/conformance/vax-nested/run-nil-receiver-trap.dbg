@@ -1,0 +1,9 @@
+! mode = 1: Bump's nested Once sets the receiver, Bump's copy, to NIL,
+! then INC(c.n, k), in line 107: code 4 at column 11, c
+DEPOSIT/WORD VAXNESTED\VAXNESTED_MODE_9GNDIATO = 1
+GO
+EXAMINE/LONG POC_TRAP_CODE
+EXAMINE/LONG POC_TRAP_LINE
+EXAMINE/LONG POC_TRAP_COLUMN
+EXAMINE/ASCII:9 POC_TRAP_MODULE
+EXIT
