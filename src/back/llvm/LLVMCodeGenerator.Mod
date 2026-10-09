@@ -3543,7 +3543,7 @@ MODULE LLVMCodeGenerator;
       pointeeType: LongText; homeModule: SyntaxTree.Ident;
       guardObj: SymbolTable.Object; guardHome: SyntaxTree.Ident; guardRec: Types.RecordType;
       binding: LocalBinding; wasPointer: BOOLEAN;
-      wordInt, strideText, idxWord, offsetText: ValueText; level: INTEGER;
+      wordInt, strideText, idxWord, offsetText: ValueText; level, line, column: INTEGER;
   BEGIN
     dyn.kind := dynStatic; dyn.text[0] := 0X; ClearDope(dyn.dope);
     obj := ResolveQualifiedObject(cg, d.qualifier, d.name, homeModule);
@@ -3581,6 +3581,10 @@ MODULE LLVMCodeGenerator;
             IF ~AutoDereference(w, cg, addrText, addrType, dyn.dope) THEN RETURN FALSE END;
             IF (addrType = NIL) OR ~(addrType IS Types.ArrayType) THEN RETURN FALSE END;
             arr := addrType(Types.ArrayType);
+            (* the index's own position, for its range check, then the
+               designator's again, so that a later NIL check is reported
+               there and not at the index *)
+            line := cg.currentLine; column := cg.currentColumn;
             IF arr.isOpen THEN
               IF dyn.dope.count < 1 THEN RETURN FALSE END;
               GenerateExpr(w, cg, idx, idxVal);
@@ -3605,6 +3609,7 @@ MODULE LLVMCodeGenerator;
               LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
               EmitGEP(w, cg, pointeeType, addrText, idxVal.llvmType, idxVal.text, addrText)
             END;
+            cg.currentLine := line; cg.currentColumn := column;
             addrType := arr.elementType;
             dyn.kind := dynStatic;
             idx := idx.next
