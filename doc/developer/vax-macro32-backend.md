@@ -1090,3 +1090,37 @@ end's information serves both:
     `ASSERT` and `SYSTEM.SET64`. Each sub-step gets fixtures shared with
     the LLVM suite once `Out` exists. The survey is re-run after each,
     and the step ends when poc's own source is written with no refusal.
+
+**Done: open arrays (item 1), 2026-10-09.** `VaxCodeGenerator` lowers
+open-array parameters of any number of open dimensions, by value or
+`VAR`. The caller passes the address, then one longword per open
+dimension's length: a literal's length counts its 0X, and an open array
+passes on its own lengths. A value parameter is copied at entry. Its
+size (the lengths times the element size, rounded up to a longword) is
+subtracted from `SP`, the copy's address is kept in the frame, and
+`MOVC3` moves the bytes in pieces of at most 65,535. Only the operations on
+characters know about 0X: a literal's length counts it, `COPY` stops at
+it, and `=` compares strings. Everything else works from the lengths
+times the element size, whatever the element type. Elements are reached
+through that address (`@off(FP)[Rx]`) or through the parameter's
+(`@off(AP)[Rx]`). Each index is checked unsigned against its length
+(trap 2). `LEN` reads the length longword, giving a `LONGINT` (a quadword
+under `-OC`). `COPY` to or from an open array takes the smaller of
+`LEN(dst) - 1` and the source's length, finds 0X with `LOCC`, moves that
+many bytes and ends with 0X, as step 7 does for fixed arrays. `=` and
+the other comparisons pass both lengths to `POC_STRCMP`. Assigning an
+open array to a fixed one traps with code 9 when it is too long, before
+anything moves. An external procedure's open-array parameter is still
+refused, since Phase 17 chooses its mechanism. Fixture `vax-open-arrays`
+tests all of this. Its debugger runs cover both traps, and the program is
+built and run on the guest under `-O2` and `-OC`, with all 11 checks
+holding. Two of the checks use `ARRAY OF INTEGER`, for the copy at entry
+and for assignment.
+
+Re-running the survey leaves 19,443 refusals in poc's own source and none
+of them is an open array. The 182 that mention `ARRAY OF` are pointers
+to arrays. The total fell by less than the 4,340 open-array refusals,
+because procedures that used to be refused whole are now examined, which
+shows more pointer refusals: 14,659 in all now. A few refusals follow on
+from a pointer refused earlier in the same expression: 12 of `ORD` and
+one register-pressure refusal in `VaxTypes.SameName`.

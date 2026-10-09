@@ -677,6 +677,13 @@ most, object libraries.
      `MAX(LONGINT)` in `VaxCodeGenerator`; fixed, and `poc -O2
      -emit-llvm-ir src/driver/Poc.Mod` is clean again. Nothing checks the
      rule automatically.
+   - *Open arrays* (section 14 item 1), done 2026-10-09: parameters by
+     value and `VAR` with any number of open dimensions, `LEN`, indexing
+     with trap 2, `COPY`, comparisons, and assignment to a fixed array
+     with trap 9. Fixture `vax-open-arrays` has debugger runs of both traps
+     and guest runs under `-O2` and `-OC`; its `expected-vax.mar` awaits
+     the user's review. Every reviewed `.mar` file is unchanged.
+     Survey: 19,443 refusals left, none of them an open array.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

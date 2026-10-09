@@ -111,6 +111,7 @@ MODULE VaxCodeGenerator;
     maxSlots = 256; (* longwords of the frame for spilled registers and argument lists *)
     (* LocalDesc.where *)
     inFrame = 0; byValue = 1; byReference = 2;
+    inFrameAddress = 3; (* an open-array value parameter copied to the stack: its address at offset(FP) *)
     clearByCLR = 64; (* bytes of locals cleared by CLRQ and CLRL; more by MOVC5 *)
     maxMove = 65535; (* bytes one MOVC3 or MOVC5 moves, its length a word *)
 
@@ -136,6 +137,10 @@ MODULE VaxCodeGenerator;
       reg: INTEGER; (* register: Rn, with Rn+1 for a quadword *)
       pinned: BOOLEAN; (* not to be spilled now *)
       standIn: BOOLEAN; (* Dummy's, for what was reported *)
+      (* an open array (section 14): the length of its first open
+         dimension, a longword in memory, the next dimensions' in the
+         longwords after it; NIL for any other operand *)
+      lens: Operand;
       nextLive: Operand
     END;
 
@@ -147,6 +152,7 @@ MODULE VaxCodeGenerator;
       where: INTEGER;
       offset: LONGINT;
       copyFrom: LONGINT; (* a copied parameter's offset from AP, else 0 *)
+      lenOffset: LONGINT; (* an open-array parameter: its first length's offset from AP, else 0 *)
       next: Local
     END;
 
@@ -402,7 +408,7 @@ MODULE VaxCodeGenerator;
     x.symbol[0] := 0X; x.outside := FALSE; x.offset := 0; x.slot := -1; x.slots := 0; x.reg := -1;
     x.onAP := FALSE; x.deferred := FALSE; x.baseOp := NIL; x.ownsBase := FALSE;
     x.index := NIL; x.ownsIndex := FALSE;
-    x.pinned := FALSE; x.nextLive := NIL;
+    x.pinned := FALSE; x.lens := NIL; x.nextLive := NIL;
     RETURN x
   END NewOperand;
 
@@ -852,6 +858,43 @@ MODULE VaxCodeGenerator;
     RETURN FALSE
   END IsSliceType;
 
+  (* How many open dimensions t starts with: ARRAY OF ARRAY OF T two,
+     ARRAY OF ARRAY 4 OF T one, anything else none *)
+  PROCEDURE OpenDims(t: Types.Type): INTEGER;
+    VAR n: INTEGER;
+  BEGIN
+    n := 0;
+    WHILE (t # NIL) & (t IS Types.ArrayType) & t(Types.ArrayType).isOpen DO
+      INC(n); t := t(Types.ArrayType).elementType
+    END;
+    RETURN n
+  END OpenDims;
+
+  (* t without its open dimensions *)
+  PROCEDURE OpenBase(t: Types.Type): Types.Type;
+  BEGIN
+    WHILE (t # NIL) & (t IS Types.ArrayType) & t(Types.ArrayType).isOpen DO t := t(Types.ArrayType).elementType END;
+    RETURN t
+  END OpenBase;
+
+  (* Whether a parameter may have type t: one of the slice's, or an open
+     array of one (section 14) *)
+  PROCEDURE IsParamType(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN IsSliceType(t) OR (OpenDims(t) > 0) & IsSliceType(OpenBase(t))
+  END IsParamType;
+
+  (* The length of open dimension dim of x, an open array: a longword in
+     memory, dim longwords after x.lens *)
+  PROCEDURE LengthOf(x: Operand; dim: INTEGER): Operand;
+    VAR n: Operand;
+  BEGIN
+    n := NewOperand(memory, longword);
+    n.symbol := x.lens.symbol; n.outside := x.lens.outside; n.onAP := x.lens.onAP;
+    n.baseOp := x.lens.baseOp; n.offset := x.lens.offset + 4 * dim;
+    RETURN n
+  END LengthOf;
+
   (* name, an external symbol, to be declared .EXTERNAL: in the order of
      first use *)
   PROCEDURE AddExternal(name: ARRAY OF CHAR);
@@ -934,6 +977,10 @@ MODULE VaxCodeGenerator;
     IF l = NIL THEN
       VariableSymbol(obj, x.symbol);
       IF HomeOf(obj) # NIL THEN x.outside := TRUE; AddExternal(x.symbol) END
+    ELSIF l.where = inFrameAddress THEN
+      (* a copied open-array value parameter: its copy's address in the
+         frame, its lengths in the argument list *)
+      x.offset := l.offset; x.deferred := TRUE
     ELSE
       x.offset := l.offset;
       x.onAP := l.where # inFrame;
@@ -948,6 +995,9 @@ MODULE VaxCodeGenerator;
         END
       END
     END;
+    IF (l # NIL) & (l.lenOffset # 0) THEN
+      x.lens := NewOperand(memory, longword); x.lens.onAP := TRUE; x.lens.offset := l.lenOffset
+    END;
     RETURN x
   END Variable;
 
@@ -960,7 +1010,8 @@ MODULE VaxCodeGenerator;
     VAR r: Operand; from: ARRAY 24 OF CHAR;
   BEGIN
     r := NewRegister(longword, line, column);
-    from[0] := 0X; AppendInt(from, x.offset); Append(from, "(AP)");
+    from[0] := 0X; AppendInt(from, x.offset);
+    IF x.onAP THEN Append(from, "(AP)") ELSE Append(from, "(FP)") END;
     EmitTo("MOVL", from, r);
     r.pinned := TRUE;
     x.onAP := FALSE; x.deferred := FALSE; x.offset := 0; x.baseOp := r; x.ownsBase := TRUE
@@ -978,9 +1029,10 @@ MODULE VaxCodeGenerator;
   (* The index e of an array of length elements, as a longword in a
      register of its own, pinned, checked first: CMPL Rx, #length-1 and an
      unsigned BLEQU, so that a negative index fails too, over the trap
-     (code 2, at e's position). A HUGEINT index fails unless its high
-     longword is zero. *)
-  PROCEDURE CheckedIndex(e: SyntaxTree.ExprNode; length: LONGINT): Operand;
+     (code 2, at e's position); for an open array, whose length lenOp is a
+     longword in memory, CMPL Rx, lenOp and BLSSU. A HUGEINT index fails
+     unless its high longword is zero. *)
+  PROCEDURE CheckedIndex(e: SyntaxTree.ExprNode; length: LONGINT; lenOp: Operand): Operand;
     VAR i, q: Operand; ok, bad: ARRAY 16 OF CHAR; hi: OperandText; operands: ARRAY 160 OF CHAR;
   BEGIN
     i := Expression(e, NIL);
@@ -997,9 +1049,14 @@ MODULE VaxCodeGenerator;
       i := InRegister(Widen(i, longword, e.line, e.column), e.line, e.column)
     END;
     i.type := longword;
-    Text(i, hi); Operands(hi, "", "", operands); Append(operands, ", #"); AppendInt(operands, length - 1);
-    Emit("CMPL", operands);
-    Emit("BLEQU", ok);
+    IF lenOp # NIL THEN
+      Emit2("CMPL", i, lenOp);
+      Emit("BLSSU", ok)
+    ELSE
+      Text(i, hi); Operands(hi, "", "", operands); Append(operands, ", #"); AppendInt(operands, length - 1);
+      Emit("CMPL", operands);
+      Emit("BLEQU", ok)
+    END;
     IF bad[0] # 0X THEN EmitLabel(bad) END;
     Trap(2, e.line, e.column);
     EmitLabel(ok);
@@ -1024,7 +1081,7 @@ MODULE VaxCodeGenerator;
       v := ConstantEvaluator.Evaluate(e, scope);
       Displace(x, v.intVal * size, e.line, e.column)
     ELSE
-      i := CheckedIndex(e, arr.length);
+      i := CheckedIndex(e, arr.length, NIL);
       s := Suffix(arr.elementType);
       IF (s = "B") OR (s = "W") OR (s = "L") THEN
         x.index := i; x.ownsIndex := TRUE
@@ -1041,9 +1098,49 @@ MODULE VaxCodeGenerator;
     x.type := arr.elementType
   END Index;
 
+  (* x, an open array, as its element e (section 14): e checked against
+     the dimension's length (CheckedIndex), then for an element of 1, 2 or
+     4 bytes the index register of index mode, as Index does; for any
+     other it is scaled - by the further open dimensions' lengths, at run
+     time, and their base's size - and the element's address made by
+     MOVAB, x becoming 0(Rx). An element that is an open array itself has
+     the next dimension's length first. *)
+  PROCEDURE IndexOpen(x: Operand; e: SyntaxTree.ExprNode);
+    VAR arr: Types.ArrayType; i, old, lens: Operand; s: CHAR; size: LONGINT; d, dims: INTEGER;
+        text: ARRAY 24 OF CHAR;
+  BEGIN
+    arr := x.type(Types.ArrayType);
+    lens := x.lens;
+    i := CheckedIndex(e, 0, LengthOf(x, 0));
+    dims := OpenDims(arr.elementType);
+    size := VaxTypes.Size(OpenBase(arr.elementType));
+    s := Suffix(arr.elementType);
+    IF (dims = 0) & ((s = "B") OR (s = "W") OR (s = "L")) THEN
+      x.index := i; x.ownsIndex := TRUE
+    ELSE
+      FOR d := 1 TO dims DO Emit2("MULL2", LengthOf(x, d), i) END;
+      IF size # 1 THEN COPY("#", text); AppendInt(text, size); EmitTo("MULL2", text, i) END;
+      x.index := i;
+      Emit2("MOVAB", x, i);
+      x.index := NIL;
+      IF x.ownsBase THEN old := x.baseOp; old.pinned := FALSE; Release(old) END;
+      x.symbol[0] := 0X; x.outside := FALSE; x.offset := 0; x.onAP := FALSE; x.deferred := FALSE;
+      x.baseOp := i; x.ownsBase := TRUE
+    END;
+    IF dims > 0 THEN
+      x.lens := NewOperand(memory, longword);
+      x.lens.symbol := lens.symbol; x.lens.outside := lens.outside; x.lens.onAP := lens.onAP;
+      x.lens.baseOp := lens.baseOp; x.lens.offset := lens.offset + 4
+    ELSE
+      x.lens := NIL
+    END;
+    x.type := arr.elementType
+  END IndexOpen;
+
   (* The variable d designates, obj, with its selectors applied: a field is
-     its offset from the record (Displace), an element Index's. A pointer,
-     a type guard or an open array is Phase 16's. *)
+     its offset from the record (Displace), an element Index's, or
+     IndexOpen's for an open array. A pointer or a type guard is Phase
+     16's. *)
   PROCEDURE Locate(d: SyntaxTree.Designator; obj: SymbolTable.Object; line, column: INTEGER): Operand;
     VAR x: Operand; sel: SyntaxTree.Selector; e: SyntaxTree.ExprNode; rec: Types.RecordType; f: Types.Field;
   BEGIN
@@ -1059,10 +1156,10 @@ MODULE VaxCodeGenerator;
       ELSIF sel IS SyntaxTree.IndexSelector THEN
         e := sel(SyntaxTree.IndexSelector).indices;
         WHILE e # NIL DO
-          IF ~(x.type IS Types.ArrayType) OR x.type(Types.ArrayType).isOpen THEN
-            Unsupported(e.line, e.column, "an element of an open array (Phase 16)"); RETURN x
+          IF ~(x.type IS Types.ArrayType) THEN RETURN x
+          ELSIF x.type(Types.ArrayType).isOpen THEN IndexOpen(x, e)
+          ELSE Index(x, e)
           END;
-          Index(x, e);
           e := e.next
         END
       ELSE
@@ -1136,8 +1233,9 @@ MODULE VaxCodeGenerator;
   PROCEDURE AddressOf(x, dst: Operand);
     VAR from: ARRAY 64 OF CHAR; op: ARRAY 8 OF CHAR;
   BEGIN
-    IF x.deferred THEN
-      from[0] := 0X; AppendInt(from, x.offset); Append(from, "(AP)");
+    IF x.deferred & (x.index = NIL) THEN
+      from[0] := 0X; AppendInt(from, x.offset);
+      IF x.onAP THEN Append(from, "(AP)") ELSE Append(from, "(FP)") END;
       EmitTo("MOVL", from, dst)
     ELSE
       IF (x.index # NIL) & (Suffix(x.type) # 0X) THEN Op("MOVA", Suffix(x.type), "", op) ELSE COPY("MOVAB", op) END;
@@ -1226,6 +1324,32 @@ MODULE VaxCodeGenerator;
   PROCEDURE ^ Predeclared(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode; dest: Operand;
                           line, column: INTEGER): Operand;
 
+  (* a, the argument of an open-array parameter of type t, into the
+     argument list at slots list.., n longwords, from its i-th: its
+     address, then the length of each of t's open dimensions - a fixed
+     array's or a string constant's own, an open array's from where it has
+     them (section 14) *)
+  PROCEDURE OpenArgument(a: SyntaxTree.ExprNode; t: Types.Type; list, n, i: INTEGER);
+    VAR v: Operand; at: Types.Type; d, dims: INTEGER; text: ARRAY 24 OF CHAR;
+  BEGIN
+    IF ConstantEvaluator.IsConstantExpr(a, scope) THEN v := StringArgument(a, 0)
+    ELSE v := Expression(a, NIL)
+    END;
+    IF v.standIn THEN RETURN END;
+    AddressOf(v, ListEntry(list, n, i));
+    dims := OpenDims(t); at := v.type;
+    FOR d := 0 TO dims - 1 DO
+      IF (at IS Types.ArrayType) & at(Types.ArrayType).isOpen THEN
+        Emit2("MOVL", LengthOf(v, d), ListEntry(list, n, i + 1 + d))
+      ELSIF at IS Types.ArrayType THEN
+        COPY("#", text); AppendInt(text, at(Types.ArrayType).length);
+        EmitTo("MOVL", text, ListEntry(list, n, i + 1 + d))
+      END;
+      IF at IS Types.ArrayType THEN at := at(Types.ArrayType).elementType END
+    END;
+    Release(v)
+  END OpenArgument;
+
   PROCEDURE Call(d: SyntaxTree.Designator; args: SyntaxTree.ExprNode; line, column: INTEGER): Operand;
     CONST maxCopies = 16;
     VAR obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param; a: SyntaxTree.ExprNode;
@@ -1249,7 +1373,7 @@ MODULE VaxCodeGenerator;
     END;
     n := 0; copies := 0; p := pt.params;
     WHILE p # NIL DO
-      IF ~IsSliceType(p.type) THEN
+      IF ~IsParamType(p.type) THEN
         COPY("a parameter of type ", text); Types.Describe(p.type, text); AppendWhen(p.type, text);
         Unsupported(line, column, text); RETURN NIL
       ELSIF external & ~p.isVar & ~IsSliceScalar(p.type) THEN
@@ -1261,9 +1385,12 @@ MODULE VaxCodeGenerator;
         Append(text, ", of an external procedure (Phase 17 chooses its mechanism)");
         Unsupported(line, column, text);
         RETURN NIL
+      ELSIF external & (OpenDims(p.type) > 0) THEN
+        Unsupported(line, column, "an open-array parameter of an external procedure (Phase 17 chooses its mechanism)");
+        RETURN NIL
       END;
       IF ~p.isVar & (Suffix(p.type) = "Q") THEN INC(copies) END;
-      INC(n); p := p.next
+      INC(n, 1 + OpenDims(p.type)); p := p.next
     END;
     IF copies > maxCopies THEN Unsupported(line, column, "a call with this many HUGEINT arguments"); RETURN NIL END;
     ProcedureSymbol(obj, symbol);
@@ -1281,7 +1408,10 @@ MODULE VaxCodeGenerator;
       p := pt.params; a := args; i := 1; copies := 0;
       WHILE p # NIL DO
         entry := ListEntry(list, n, i);
-        IF p.isVar THEN
+        IF OpenDims(p.type) > 0 THEN
+          OpenArgument(a, p.type, list, n, i);
+          INC(i, OpenDims(p.type))
+        ELSIF p.isVar THEN
           IF ~AddressInto(a, entry) THEN Unsupported(a.line, a.column, "this VAR argument") END
         ELSIF ~IsSliceScalar(p.type) THEN
           IF ConstantEvaluator.IsConstantExpr(a, scope) THEN v := StringArgument(a, VaxTypes.Size(p.type))
@@ -1323,6 +1453,16 @@ MODULE VaxCodeGenerator;
      greater than zero as a is less than, equal to or greater than b
      (decided with the user 2026-10-06, section 8; the routine is Phase
      16's) *)
+  (* The length of x, an array, its first dimension's, into dst: a fixed
+     array's as an immediate, an open array's from where it has it *)
+  PROCEDURE ArrayLength(x, dst: Operand);
+    VAR text: ARRAY 24 OF CHAR;
+  BEGIN
+    IF x.lens # NIL THEN Emit2("MOVL", LengthOf(x, 0), dst)
+    ELSE COPY("#", text); AppendInt(text, x.type(Types.ArrayType).length); EmitTo("MOVL", text, dst)
+    END
+  END ArrayLength;
+
   PROCEDURE StringCompare(a, b: Operand; line, column: INTEGER): Operand;
     VAR list: INTEGER; text: ARRAY 24 OF CHAR; target: ARRAY 64 OF CHAR;
   BEGIN
@@ -1334,9 +1474,9 @@ MODULE VaxCodeGenerator;
     IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN Dummy() END;
     EmitTo("MOVL", "#4", ListEntry(list, 4, 0));
     AddressOf(a, ListEntry(list, 4, 1));
-    COPY("#", text); AppendInt(text, a.type(Types.ArrayType).length); EmitTo("MOVL", text, ListEntry(list, 4, 2));
+    ArrayLength(a, ListEntry(list, 4, 2));
     AddressOf(b, ListEntry(list, 4, 3));
-    COPY("#", text); AppendInt(text, b.type(Types.ArrayType).length); EmitTo("MOVL", text, ListEntry(list, 4, 4));
+    ArrayLength(b, ListEntry(list, 4, 4));
     Release(a); Release(b);
     FreeR0R1(line, column);
     Text(ListEntry(list, 4, 0), target); Append(target, ", "); AppendExternal(target, "POC_STRCMP");
@@ -1391,7 +1531,7 @@ MODULE VaxCodeGenerator;
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
       Unsupported(e.line, e.column, "a procedure as a value (Phase 16)"); RETURN Dummy()
     END;
-    IF ~IsSliceType(obj.type) THEN
+    IF ~IsParamType(obj.type) THEN
       COPY("a value of type ", text); Types.Describe(obj.type, text); AppendWhen(obj.type, text);
       Unsupported(e.line, e.column, text); RETURN Dummy()
     END;
@@ -2049,16 +2189,16 @@ MODULE VaxCodeGenerator;
 
   (* COPY from the array at from into the one at to, either longer than
      maxMove, m the most characters it may copy, LEN(v) - 1 or LEN(x) if
-     less: the 0X found by LOCC in pieces, R2 the bytes left to search, R1
+     less, an operand's text (#n, or a slot of the frame): the 0X found by LOCC in pieces, R2 the bytes left to search, R1
      where the next piece starts; then its n characters moved by MOVC3 in
      pieces, the bytes left to move on the stack, as MOVC3 overwrites
      R0-R5; then 0X where the last piece left R3 *)
-  PROCEDURE CopyLong(from, to: ARRAY OF CHAR; m: LONGINT);
+  PROCEDURE CopyLong(from, to, m: ARRAY OF CHAR);
     VAR text: ARRAY 160 OF CHAR; search, piece, found, move, part: ARRAY 16 OF CHAR;
   BEGIN
     NewLabel(search); NewLabel(piece); NewLabel(found); NewLabel(move); NewLabel(part);
     COPY(from, text); Append(text, ", R1"); Emit("MOVAB", text);
-    COPY("#", text); AppendInt(text, m); Append(text, ", R2"); Emit("MOVL", text);
+    COPY(m, text); Append(text, ", R2"); Emit("MOVL", text);
     EmitLabel(search);
     Emit("MOVL", "R2, R3");
     COPY("R3, #", text); AppendInt(text, maxMove); Emit("CMPL", text);
@@ -2089,6 +2229,31 @@ MODULE VaxCodeGenerator;
     used := used + {2 .. 5}
   END CopyLong;
 
+  (* The bytes counted at count (an operand's text, a longword) moved from
+     the address at src to the one at dst (operands' texts holding the
+     addresses), by MOVC3 in pieces of at most maxMove bytes, the bytes
+     left on the stack, since MOVC3 overwrites R0-R5 (section 14) *)
+  PROCEDURE MoveCounted(count, src, dst: ARRAY OF CHAR);
+    VAR text: ARRAY 160 OF CHAR; move, part: ARRAY 16 OF CHAR;
+  BEGIN
+    NewLabel(move); NewLabel(part);
+    Emit("PUSHL", count);
+    COPY(src, text); Append(text, ", R1"); Emit("MOVL", text);
+    COPY(dst, text); Append(text, ", R3"); Emit("MOVL", text);
+    EmitLabel(move);
+    Emit("MOVL", "(SP), R0");
+    COPY("R0, #", text); AppendInt(text, maxMove); Emit("CMPL", text);
+    Emit("BLEQU", part);
+    COPY("#", text); AppendInt(text, maxMove); Append(text, ", R0"); Emit("MOVL", text);
+    EmitLabel(part);
+    Emit("SUBL2", "R0, (SP)");
+    Emit("MOVC3", "R0, (R1), (R3)");
+    Emit("TSTL", "(SP)");
+    Emit("BNEQ", move);
+    Emit("ADDL2", "#4, SP");
+    used := used + {2 .. 5}
+  END MoveCounted;
+
   (* COPY(x, v), v a fixed CHAR array: x's characters up to its first 0X,
      at most LEN(v) - 1 of them, then 0X (Oberon2.pdf 10.3); the bytes of v
      after it are left as they were. Its n characters are one MOVC5 #n, x,
@@ -2117,10 +2282,39 @@ MODULE VaxCodeGenerator;
       IF (x.baseOp # NIL) & (x.offset = 0) & (x.index = NIL) THEN Emit2("MOVL", x.baseOp, held) (* the address itself *)
       ELSE AddressOf(x, held)
       END;
+      held.lens := x.lens;
       Release(x);
       held.deferred := TRUE; held.onAP := FALSE;
       RETURN held
     END Settled;
+
+    (* COPY(x, v), x or v an open array (section 14): the most characters
+       it may copy, the smaller of LEN(x) and LEN(v) - 1, found at run time
+       into a slot of the frame, then CopyLong, whatever the lengths *)
+    PROCEDURE CopyOpen(x, v: Operand);
+      VAR m: Operand; s: INTEGER; mt: OperandText; lenText: OperandText; text: ARRAY 160 OF CHAR;
+    BEGIN
+      x := Settled(x); v := Settled(v);
+      SpillAll;
+      s := AllocateSlots(1);
+      m := NewOperand(memory, longword); m.offset := SlotOffset(s, 1); m.slot := s; m.slots := 1;
+      ArrayLength(x, m);
+      IF v.lens # NIL THEN
+        Text(LengthOf(v, 0), lenText);
+        COPY("#1, ", text); Append(text, lenText); Append(text, ", R1"); Emit("SUBL3", text)
+      ELSE
+        COPY("#", text); AppendInt(text, v.type(Types.ArrayType).length - 1); Append(text, ", R1");
+        Emit("MOVL", text)
+      END;
+      NewLabel(limit);
+      Text(m, mt); COPY(mt, text); Append(text, ", R1"); Emit("CMPL", text);
+      Emit("BLEQU", limit);
+      COPY("R1, ", text); Append(text, mt); Emit("MOVL", text);
+      EmitLabel(limit);
+      Text(x, from); Text(v, to);
+      CopyLong(from, to, mt);
+      Release(m); Release(x); Release(v)
+    END CopyOpen;
 
   BEGIN
     IF (args.next = NIL) OR ~(args.next IS SyntaxTree.DesignatorExprNode) THEN RETURN END;
@@ -2128,8 +2322,11 @@ MODULE VaxCodeGenerator;
     obj := Resolve(de.designator.qualifier, de.designator.name, de.line, de.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
     v := Locate(de.designator, obj, de.line, de.column);
-    IF ~(v.type IS Types.ArrayType) OR v.type(Types.ArrayType).isOpen THEN
-      Unsupported(de.line, de.column, "COPY into an open array (Phase 16)"); Release(v); RETURN
+    IF ~(v.type IS Types.ArrayType) THEN Release(v); RETURN END;
+    IF v.lens # NIL THEN
+      IF ConstantEvaluator.IsConstantExpr(args, scope) THEN x := StringArgument(args, 0) ELSE x := Expression(args, NIL) END;
+      IF x.type IS Types.ArrayType THEN CopyOpen(x, v) ELSE Release(x); Release(v) END;
+      RETURN
     END;
     lenV := v.type(Types.ArrayType).length;
     IF ConstantEvaluator.IsConstantExpr(args, scope) THEN
@@ -2148,15 +2345,16 @@ MODULE VaxCodeGenerator;
       END
     ELSE
       x := Expression(args, NIL);
-      IF ~(x.type IS Types.ArrayType) OR x.type(Types.ArrayType).isOpen THEN
-        Unsupported(args.line, args.column, "COPY from an open array (Phase 16)"); Release(x); Release(v); RETURN
-      END;
+      IF ~(x.type IS Types.ArrayType) THEN Release(x); Release(v); RETURN END;
+      IF x.lens # NIL THEN CopyOpen(x, v); RETURN END;
       lenX := x.type(Types.ArrayType).length;
       x := Settled(x); v := Settled(v);
       SpillAll;
       IF (lenX > maxMove) OR (lenV > maxMove) THEN
         Text(x, from); Text(v, to);
-        IF lenX < lenV - 1 THEN CopyLong(from, to, lenX) ELSE CopyLong(from, to, lenV - 1) END;
+        COPY("#", limit);
+        IF lenX < lenV - 1 THEN AppendInt(limit, lenX) ELSE AppendInt(limit, lenV - 1) END;
+        CopyLong(from, to, limit);
         Release(x); Release(v);
         RETURN
       END;
@@ -2357,6 +2555,30 @@ MODULE VaxCodeGenerator;
   END Ash;
 
   (* A call of the predeclared procedure name; a function's value, or NIL *)
+  (* LEN(a) or LEN(a, n), not constant, so of an open dimension of a, an
+     open array (a fixed one's is folded): its length, a LONGINT - under
+     -OC a quadword, its high longword zero (section 14) *)
+  PROCEDURE Len(args: SyntaxTree.ExprNode; line, column: INTEGER): Operand;
+    VAR x, r: Operand; v: Types.Value; dim: INTEGER; hi: OperandText;
+  BEGIN
+    x := Expression(args, NIL);
+    IF x.standIn THEN RETURN x END;
+    dim := 0;
+    IF args.next # NIL THEN v := ConstantEvaluator.Evaluate(args.next, scope); dim := SHORT(v.intVal) END;
+    IF (x.lens = NIL) OR (dim >= OpenDims(x.type)) THEN
+      Unsupported(line, column, "LEN of this array"); Release(x); RETURN Dummy()
+    END;
+    r := NewRegister(Types.LongInt, line, column);
+    IF IsQuad(r) THEN
+      Emit2("MOVL", LengthOf(x, dim), LowHalf(r));
+      HalfText(r, 1, hi); Emit("CLRL", hi)
+    ELSE
+      Emit2("MOVL", LengthOf(x, dim), r)
+    END;
+    Release(x);
+    RETURN r
+  END Len;
+
   PROCEDURE Predeclared(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode; dest: Operand;
                         line, column: INTEGER): Operand;
     VAR v: Operand; text: ARRAY 96 OF CHAR;
@@ -2368,8 +2590,7 @@ MODULE VaxCodeGenerator;
     ELSIF name = "ASH" THEN RETURN Ash(args, dest, line, column)
     ELSIF name = "COPY" THEN Copy(args, line, column); RETURN NIL
     ELSIF name = "HALT" THEN Halt(args); RETURN NIL
-    ELSIF name = "LEN" THEN
-      Unsupported(line, column, "LEN of an open array (Phase 16)"); RETURN Dummy()
+    ELSIF name = "LEN" THEN RETURN Len(args, line, column)
     ELSIF (name = "ABS") OR (name = "ODD") OR (name = "CHR") OR (name = "ORD") OR (name = "CAP")
           OR (name = "LONG") OR (name = "SHORT") THEN
       v := Expression(args, NIL);
@@ -2470,6 +2691,37 @@ MODULE VaxCodeGenerator;
     used := used + {2 .. 5}
   END FillBytes;
 
+  (* target := v, v an open array, target a fixed array of the same
+     element type (voc's rule, language-extensions.md, "Array assignment";
+     section 14): LEN(v) elements copied, or the trap (code 9, at v's
+     position) when that is more than target's length. The bytes to move
+     and both addresses are kept in slots of the frame, since MoveCounted
+     overwrites R0-R5. *)
+  PROCEDURE AssignOpen(v, target: Operand; line, column: INTEGER);
+    VAR d: INTEGER; size: LONGINT; ok: ARRAY 16 OF CHAR; text: ARRAY 160 OF CHAR;
+        len, src, dst, n: OperandText; s: INTEGER; count, srcAt, dstAt: Operand;
+  BEGIN
+    SpillAll;
+    s := AllocateSlots(3);
+    count := NewOperand(memory, longword); count.offset := SlotOffset(s, 1);
+    srcAt := NewOperand(memory, longword); srcAt.offset := SlotOffset(s, 2);
+    dstAt := NewOperand(memory, longword); dstAt.offset := SlotOffset(s, 3);
+    AddressOf(v, srcAt); AddressOf(target, dstAt);
+    Text(LengthOf(v, 0), len);
+    NewLabel(ok);
+    COPY(len, text); Append(text, ", #"); AppendInt(text, target.type(Types.ArrayType).length); Emit("CMPL", text);
+    Emit("BLEQU", ok);
+    Trap(9, line, column);
+    EmitLabel(ok);
+    Emit2("MOVL", LengthOf(v, 0), count);
+    FOR d := 1 TO OpenDims(v.type) - 1 DO Emit2("MULL2", LengthOf(v, d), count) END;
+    size := VaxTypes.Size(OpenBase(v.type));
+    IF size # 1 THEN COPY("#", text); AppendInt(text, size); EmitTo("MULL2", text, count) END;
+    Text(count, n); Text(srcAt, src); Text(dstAt, dst);
+    MoveCounted(n, src, dst);
+    ReleaseSlots(s, 3)
+  END AssignOpen;
+
   (* target := value. A scalar's value is computed into the variable where
      it can be (Arithmetic's dest). An array or a record is copied by
      MOVC3, the value's size of it (voc's rule for a shorter array,
@@ -2483,12 +2735,14 @@ MODULE VaxCodeGenerator;
   BEGIN
     obj := Resolve(s.target.qualifier, s.target.name, s.target.line, s.target.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
-    IF ~IsSliceType(obj.type) THEN
+    IF ~IsParamType(obj.type) THEN
       COPY("an assignment of type ", text); Types.Describe(obj.type, text); AppendWhen(obj.type, text);
       Unsupported(s.line, s.column, text); RETURN
     END;
     target := Locate(s.target, obj, s.target.line, s.target.column);
-    IF IsSliceScalar(target.type) THEN
+    IF target.standIn OR (target.lens # NIL) THEN (* reported, or an open array, which the checker refuses *)
+      Release(target); RETURN
+    ELSIF IsSliceScalar(target.type) THEN
       v := Expression(s.value, target);
       IF Suffix(v.type) # 0X THEN MoveInto(v, target) END
     ELSIF ConstantEvaluator.IsConstantExpr(s.value, scope) THEN
@@ -2499,8 +2753,12 @@ MODULE VaxCodeGenerator;
       END
     ELSE
       v := Expression(s.value, NIL);
-      SpillAll; Text(v, from); Text(target, to);
-      CopyBytes(VaxTypes.Size(v.type), from, to)
+      IF v.lens # NIL THEN
+        AssignOpen(v, target, s.value.line, s.value.column)
+      ELSE
+        SpillAll; Text(v, from); Text(target, to);
+        CopyBytes(VaxTypes.Size(v.type), from, to)
+      END
     END;
     Release(v); Release(target)
   END Assignment;
@@ -3078,8 +3336,11 @@ MODULE VaxCodeGenerator;
   PROCEDURE NewLocal(obj: SymbolTable.Object; where: INTEGER; offset: LONGINT): Local;
     VAR l: Local; size, align: LONGINT;
   BEGIN
-    NEW(l); l.obj := obj; l.where := where; l.copyFrom := 0;
-    IF where = inFrame THEN
+    NEW(l); l.obj := obj; l.where := where; l.copyFrom := 0; l.lenOffset := 0;
+    IF where = inFrameAddress THEN
+      localSize := (localSize + 4 + 3) DIV 4 * 4;
+      l.offset := -localSize
+    ELSIF where = inFrame THEN
       size := VaxTypes.Size(obj.type); align := VaxTypes.Align(obj.type);
       IF align < 1 THEN align := 1 END;
       localSize := (localSize + size + align - 1) DIV align * align;
@@ -3123,6 +3384,28 @@ MODULE VaxCodeGenerator;
     text[0] := 0X; AppendInt(text, n); AppendChar(text, "("); Append(text, base); AppendChar(text, ")")
   END Based;
 
+  (* The entry's copy of l, an open-array value parameter (section 14):
+     its size, the product of its lengths and its base's size, in R0; that
+     rounded up to longwords taken from SP, the copy's address kept in the
+     frame at l's offset, and the bytes moved there (MoveCounted). A
+     parameter's copy lasts until RET, which gives SP back. *)
+  PROCEDURE CopyOpenParameter(l: Local);
+    VAR d: INTEGER; size: LONGINT; text: ARRAY 64 OF CHAR; a, b: ARRAY 24 OF CHAR;
+  BEGIN
+    Based(l.lenOffset, "AP", a); COPY(a, text); Append(text, ", R0"); Emit("MOVL", text);
+    FOR d := 1 TO OpenDims(l.obj.type) - 1 DO
+      Based(l.lenOffset + 4 * d, "AP", a); COPY(a, text); Append(text, ", R0"); Emit("MULL2", text)
+    END;
+    size := VaxTypes.Size(OpenBase(l.obj.type));
+    IF size # 1 THEN COPY("#", text); AppendInt(text, size); Append(text, ", R0"); Emit("MULL2", text) END;
+    Emit("ADDL3", "#3, R0, R1");
+    Emit("BICL2", "#3, R1");
+    Emit("SUBL2", "R1, SP");
+    Based(l.offset, "FP", b); COPY("SP, ", text); Append(text, b); Emit("MOVL", text);
+    Based(l.copyFrom, "AP", a);
+    MoveCounted("R0", a, b)
+  END CopyOpenParameter;
+
   (* One procedure of the module, appended to code: its entry - .ENTRY
      for an exported one, a local label and .WORD of the mask for a
      private one (decided 2026-10-06, section 7) - the frame, its locals
@@ -3155,16 +3438,24 @@ MODULE VaxCodeGenerator;
       COPY("a function returning ", text); Types.Describe(resultType, text); AppendWhen(resultType, text);
       Unsupported(pd.line, pd.column, text)
     END;
-    (* the parameters: n(AP), the n-th longword of the argument list *)
+    (* the parameters: n(AP), the n-th longword of the argument list; an
+       open array's address, then a longword for each open dimension's
+       length (section 14) *)
     p := pt.params; i := 1;
     IF pd.formals # NIL THEN section := pd.formals.sections ELSE section := NIL END;
     WHILE section # NIL DO
       id := section.names;
       WHILE id # NIL DO
         pobj := SymbolTable.FindLocal(scope, id.name);
-        IF ~IsSliceType(p.type) THEN
+        IF ~IsParamType(p.type) THEN
           COPY("a parameter of type ", text); Types.Describe(p.type, text); AppendWhen(p.type, text);
           Unsupported(id.line, id.column, text)
+        ELSIF OpenDims(p.type) > 0 THEN
+          IF p.isVar OR p.isReadOnly THEN l := NewLocal(pobj, byReference, 4 * i)
+          ELSE l := NewLocal(pobj, inFrameAddress, 0); l.copyFrom := 4 * i
+          END;
+          l.lenOffset := 4 * (i + 1);
+          INC(i, OpenDims(p.type))
         ELSIF p.isVar OR p.isReadOnly & ((Suffix(p.type) = "Q") OR ~IsSliceScalar(p.type)) THEN
           l := NewLocal(pobj, byReference, 4 * i)
         ELSIF (Suffix(p.type) = "Q") OR ~IsSliceScalar(p.type) OR Changes(pd.statements, id.name) THEN
@@ -3230,7 +3521,9 @@ MODULE VaxCodeGenerator;
     END;
     l := locals;
     WHILE l # NIL DO
-      IF (l.copyFrom # 0) & ~IsSliceScalar(l.obj.type) THEN
+      IF l.where = inFrameAddress THEN
+        CopyOpenParameter(l)
+      ELSIF (l.copyFrom # 0) & ~IsSliceScalar(l.obj.type) THEN
         text := "@"; Based(l.copyFrom, "AP", a); Append(text, a); Based(l.offset, "FP", b);
         CopyBytes(VaxTypes.Size(l.obj.type), text, b)
       ELSIF l.copyFrom # 0 THEN

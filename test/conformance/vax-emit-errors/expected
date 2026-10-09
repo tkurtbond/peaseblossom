@@ -3,7 +3,7 @@ VaxTooMuch.mod:11:7: error: module VaxTooMuch: the VAX backend cannot lower this
 VaxTooMuch.mod:12:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: an external ["C"] procedure (VAX/VMS takes "VMS")
 VaxTooMuch.mod:13:20: error: module VaxTooMuch: the VAX backend cannot lower this yet: a nested procedure (Phase 16)
 VaxTooMuch.mod:14:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: a type-bound procedure (Phase 16)
-VaxTooMuch.mod:15:17: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type ARRAY OF INTEGER (Phase 16)
+VaxTooMuch.mod:16:49: error: module VaxTooMuch: the VAX backend cannot lower this yet: an open-array parameter of an external procedure (Phase 17 chooses its mechanism)
 VaxTooMuch.mod:17:15: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type PROCEDURE (Phase 16)
 VaxTooMuch.mod:20:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: the predeclared procedure ASSERT (outside Phase 15's slice, section 1)
 VaxTooMuch.mod:21:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: a parameter of type PROCEDURE (Phase 16)

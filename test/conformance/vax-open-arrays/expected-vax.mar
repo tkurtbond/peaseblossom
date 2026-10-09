@@ -1,0 +1,1018 @@
+;; Reviewed 2026-10-09 (written by Claude, from design section 14, the
+;; MACRO manual, the guest runs and the debugger runs; for the user's
+;; review). Why this is right:
+;; - An open array parameter is its address, then a longword for each open
+;;   dimension's length, so that Length's s is 4(AP) and its length 8(AP),
+;;   Sum's x 4(AP) with lengths 8(AP) and 12(AP). A caller passes a fixed
+;;   array's length as an immediate, and an open array's own (PassOn
+;;   passes the copy's address, -4(FP), and 8(AP)).
+;; - Only the operations on characters know 0X: a string literal's length
+;;   counts it ("hello", 6), COPY stops at it, and = compares as strings.
+;;   Everything else goes by the lengths times the element size, whatever
+;;   the element type: LEN, indexing, the copy at entry and assignment.
+;; - A value open array is copied at entry: its lengths times its element
+;;   size (MULL2 #2 for Total's INTEGERs), rounded up to a longword, are
+;;   taken from SP at run time, the copy's address kept in the frame, and
+;;   the bytes moved by MOVC3 in pieces of at most 65535; since MOVC3
+;;   changes R0-R5, the mask saves R2-R5. RET gives the space back.
+;;   Change's a[0] := "Z" and Total's a[3] := 0 change the copies, not s
+;;   or n (bits 64 and 512; Total sums all four of n's elements).
+;; - An element is checked against its length, unsigned (CMPL, BLSSU), so
+;;   that a negative index fails too (At's CVTWL sign-extends it), then
+;;   addressed through the copy's address or the parameter's,
+;;   @-4(FP)[R0] or @4(AP)[R0], which index mode scales by the element's
+;;   size; a two-dimensional one's first index is scaled by the second
+;;   length and the element size. The index-trap run traps with code 2 at
+;;   line 72, column 14.
+;; - COPY into or out of an open array takes the most of LEN(dst) - 1 and
+;;   the source's length (folded to #7 for t), looks for 0X with LOCC
+;;   within it, moves that many and ends with 0X; = calls POC_STRCMP with
+;;   both lengths.
+;; - Assigning an open array to a fixed one traps with code 9 at line 67,
+;;   column 10, before anything is moved, when LEN(a) > 8 (the assign-trap
+;;   run, t still empty); else it moves LEN(a) times the element size
+;;   bytes, so that AssignInts moves all 8 bytes of n into u (bit 1024).
+;; - The values run exits with bits = 2047, %X00007FF1: all 11 checks
+;;   hold, as they do in the -O2 and -OC builds run on the VAX.
+; VaxOpenArrays, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXOPENARRAYS
+	.IDENT	/7e95d3d1df8db31f/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; s: ARRAY 16 OF CHAR
+VAXOPENARRAYS_S_OOKJRF1L:
+	.BLKB	16
+; t: ARRAY 8 OF CHAR
+VAXOPENARRAYS_T_OOKJRC2G:
+	.BLKB	8
+; m: ARRAY 3 OF ARRAY 4 OF INTEGER
+	.ALIGN	WORD
+VAXOPENARRAYS_M_OOKJR93B:
+	.BLKB	24
+; bits: LONGINT
+	.ALIGN	LONG
+VAXOPENARRAYS_BITS_C1541UDK:
+	.BLKL	1
+; mode: INTEGER
+	.ALIGN	WORD
+VAXOPENARRAYS_MODE_EV21NUI7:
+	.BLKW	1
+; c: CHAR
+VAXOPENARRAYS_C_OOKJR885:
+	.BLKB	1
+; n: ARRAY 4 OF INTEGER
+	.ALIGN	WORD
+VAXOPENARRAYS_N_OOKJR9GU:
+	.BLKB	8
+; u: ARRAY 4 OF INTEGER
+	.ALIGN	WORD
+VAXOPENARRAYS_U_OOKJRCG3:
+	.BLKB	8
+
+; the symbols it uses of other modules
+	.EXTERNAL	POC_STRCMP
+	.EXTERNAL	SYS$EXIT
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxOpenArrays/
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/abc/
+	.BYTE	0
+L_STR_2:
+	.ASCII	/123456789/
+	.BYTE	0
+L_STR_3:
+	.ASCII	/hello/
+	.BYTE	0
+L_STR_4:
+	.ASCII	/abd/
+	.BYTE	0
+L_STR_5:
+	.ASCII	/longer than eight/
+	.BYTE	0
+L_STR_6:
+	.ASCII	/longer /
+	.BYTE	0
+L_STR_7:
+	.ASCII	/12345/
+	.BYTE	0
+L_STR_8:
+	.ASCII	/abcdefghij/
+	.BYTE	0
+L_STR_9:
+	.ASCII	/abcdefg/
+	.BYTE	0
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Length
+VAXOPENARRAYS_LENGTH_KBGQEL18:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_6:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_7
+	MOVL	#65535, R0
+L_7:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_6
+	ADDL2	#4, SP
+; line 17
+	CLRL	-8(FP)
+; line 18
+L_1:
+	MOVL	8(AP), R0
+	CMPL	-8(FP), R0
+	BLSS	L_3
+	JMP	L^L_2
+L_3:
+	MOVL	-8(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_4
+	PUSHL	#29
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_4:
+	TSTB	@-4(FP)[R0]
+	BNEQ	L_5
+	JMP	L^L_2
+L_5:
+; line 18
+	INCL	-8(FP)
+	JMP	L^L_1
+L_2:
+; line 19
+	MOVL	-8(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#20
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Fill
+VAXOPENARRAYS_FILL_6LIGS5LT:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRL	-4(FP)
+; line 25
+	CLRL	-4(FP)
+	MOVL	8(AP), R0
+	SUBL2	#2, R0
+	MOVL	R0, -8(FP)
+L_8:
+	CMPL	-4(FP), -8(FP)
+	BLEQ	L_10
+	JMP	L^L_9
+L_10:
+; line 25
+	MOVL	-4(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_11
+	PUSHL	#35
+	PUSHL	#25
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_11:
+	MOVB	12(AP), @4(AP)[R0]
+	INCL	-4(FP)
+	JMP	L^L_8
+L_9:
+; line 26
+	MOVL	8(AP), R0
+	DECL	R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_12
+	PUSHL	#14
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_12:
+	CLRB	@4(AP)[R0]
+	RET
+; PROCEDURE Same
+VAXOPENARRAYS_SAME_SC5R13GI:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#28, SP
+	CLRQ	-8(FP)
+	MOVL	16(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -8(FP)
+	PUSHL	R0
+	MOVL	12(AP), R1
+	MOVL	-8(FP), R3
+L_14:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_15
+	MOVL	#65535, R0
+L_15:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_14
+	ADDL2	#4, SP
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_16:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_17
+	MOVL	#65535, R0
+L_17:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_16
+	ADDL2	#4, SP
+; line 31
+	MOVL	#4, -28(FP)
+	MOVL	-4(FP), -24(FP)
+	MOVL	8(AP), -20(FP)
+	MOVL	-8(FP), -16(FP)
+	MOVL	16(AP), -12(FP)
+	CALLG	-28(FP), G^POC_STRCMP
+	CLRB	R1
+	TSTL	R0
+	BNEQ	L_13
+	MOVB	#1, R1
+L_13:
+	MOVZBL	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#32
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Sum
+VAXOPENARRAYS_SUM_P4PPDECN:
+	.WORD	^M<R2>
+	SUBL2	#20, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+; line 37
+	CLRL	-12(FP)
+; line 38
+	CLRL	-4(FP)
+	MOVL	8(AP), R0
+	DECL	R0
+	MOVL	R0, -16(FP)
+L_18:
+	CMPL	-4(FP), -16(FP)
+	BLEQ	L_20
+	JMP	L^L_19
+L_20:
+; line 39
+	CLRL	-8(FP)
+	MOVL	12(AP), R0
+	DECL	R0
+	MOVL	R0, -20(FP)
+L_21:
+	CMPL	-8(FP), -20(FP)
+	BLEQ	L_23
+	JMP	L^L_22
+L_23:
+; line 39
+	MOVL	-4(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_24
+	PUSHL	#53
+	PUSHL	#39
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_24:
+	MULL2	12(AP), R0
+	MULL2	#2, R0
+	MOVAB	@4(AP)[R0], R0
+	MOVL	-8(FP), R1
+	CMPL	R1, 12(AP)
+	BLSSU	L_25
+	PUSHL	#56
+	PUSHL	#39
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_25:
+	CVTWL	(R0)[R1], R2
+	ADDL2	R2, -12(FP)
+	INCL	-8(FP)
+	JMP	L^L_21
+L_22:
+	INCL	-4(FP)
+	JMP	L^L_18
+L_19:
+; line 41
+	MOVL	-12(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#42
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE PassOn
+VAXOPENARRAYS_PASSON_DHI0I1P8:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#16, SP
+	CLRL	-4(FP)
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_26:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_27
+	MOVL	#65535, R0
+L_27:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_26
+	ADDL2	#4, SP
+; line 46
+	MOVL	#2, -16(FP)
+	MOVL	-4(FP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	CALLG	-16(FP), VAXOPENARRAYS_LENGTH_KBGQEL18
+	RET
+	PUSHL	#3
+	PUSHL	#47
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE CopyInto
+VAXOPENARRAYS_COPYINTO_S2Q8NM0F:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#8, SP
+	CLRL	-4(FP)
+	MOVL	16(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	12(AP), R1
+	MOVL	-4(FP), R3
+L_34:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_35
+	MOVL	#65535, R0
+L_35:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_34
+	ADDL2	#4, SP
+; line 51
+	MOVL	16(AP), -8(FP)
+	SUBL3	#1, 8(AP), R1
+	CMPL	-8(FP), R1
+	BLEQU	L_28
+	MOVL	R1, -8(FP)
+L_28:
+	MOVAB	@-4(FP), R1
+	MOVL	-8(FP), R2
+L_29:
+	MOVL	R2, R3
+	CMPL	R3, #65535
+	BLEQU	L_30
+	MOVL	#65535, R3
+L_30:
+	LOCC	#0, R3, (R1)
+	BNEQ	L_31
+	SUBL2	R3, R2
+	BNEQ	L_29
+L_31:
+	MOVAB	@-4(FP), R0
+	SUBL3	R0, R1, -(SP)
+	MOVAB	@-4(FP), R1
+	MOVAB	@4(AP), R3
+L_32:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_33
+	MOVL	#65535, R0
+L_33:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_32
+	ADDL2	#4, SP
+	CLRB	(R3)
+	RET
+; PROCEDURE CopyOut
+VAXOPENARRAYS_COPYOUT_74HASVG3:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#8, SP
+	CLRL	-4(FP)
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_42:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_43
+	MOVL	#65535, R0
+L_43:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_42
+	ADDL2	#4, SP
+; line 56
+	MOVL	8(AP), -8(FP)
+	MOVL	#7, R1
+	CMPL	-8(FP), R1
+	BLEQU	L_36
+	MOVL	R1, -8(FP)
+L_36:
+	MOVAB	@-4(FP), R1
+	MOVL	-8(FP), R2
+L_37:
+	MOVL	R2, R3
+	CMPL	R3, #65535
+	BLEQU	L_38
+	MOVL	#65535, R3
+L_38:
+	LOCC	#0, R3, (R1)
+	BNEQ	L_39
+	SUBL2	R3, R2
+	BNEQ	L_37
+L_39:
+	MOVAB	@-4(FP), R0
+	SUBL3	R0, R1, -(SP)
+	MOVAB	@-4(FP), R1
+	MOVAB	VAXOPENARRAYS_T_OOKJRC2G, R3
+L_40:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_41
+	MOVL	#65535, R0
+L_41:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_40
+	ADDL2	#4, SP
+	CLRB	(R3)
+	RET
+; PROCEDURE Change
+VAXOPENARRAYS_CHANGE_BNIVU5SK:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_46:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_47
+	MOVL	#65535, R0
+L_47:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_46
+	ADDL2	#4, SP
+; line 61
+	CLRL	R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_44
+	PUSHL	#7
+	PUSHL	#61
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_44:
+	MOVB	#90, @-4(FP)[R0]
+; line 62
+	CLRL	R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_45
+	PUSHL	#14
+	PUSHL	#62
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_45:
+	MOVZBL	@-4(FP)[R0], R0
+	RET
+	PUSHL	#3
+	PUSHL	#63
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Assign
+VAXOPENARRAYS_ASSIGN_746EPK25:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#16, SP
+	CLRL	-4(FP)
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_51:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_52
+	MOVL	#65535, R0
+L_52:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_51
+	ADDL2	#4, SP
+; line 67
+	MOVL	-4(FP), -12(FP)
+	MOVAB	VAXOPENARRAYS_T_OOKJRC2G, -16(FP)
+	CMPL	8(AP), #8
+	BLEQU	L_48
+	PUSHL	#10
+	PUSHL	#67
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#9
+	CALLS	#4, G^POC_TRAP
+L_48:
+	MOVL	8(AP), -8(FP)
+	PUSHL	-8(FP)
+	MOVL	-12(FP), R1
+	MOVL	-16(FP), R3
+L_49:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_50
+	MOVL	#65535, R0
+L_50:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_49
+	ADDL2	#4, SP
+	RET
+; PROCEDURE At
+VAXOPENARRAYS_AT_N09LD13H:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_54:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_55
+	MOVL	#65535, R0
+L_55:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_54
+	ADDL2	#4, SP
+; line 72
+	CVTWL	12(AP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_53
+	PUSHL	#14
+	PUSHL	#72
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_53:
+	MOVZBL	@-4(FP)[R0], R0
+	RET
+	PUSHL	#3
+	PUSHL	#73
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Total
+VAXOPENARRAYS_TOTAL_2JOKCDN6:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#16, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVL	8(AP), R0
+	MULL2	#2, R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_61:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_62
+	MOVL	#65535, R0
+L_62:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_61
+	ADDL2	#4, SP
+; line 78
+	CLRL	-12(FP)
+; line 79
+	CLRL	-8(FP)
+	MOVL	8(AP), R0
+	DECL	R0
+	MOVL	R0, -16(FP)
+L_56:
+	CMPL	-8(FP), -16(FP)
+	BLEQ	L_58
+	JMP	L^L_57
+L_58:
+; line 79
+	MOVL	-8(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_59
+	PUSHL	#48
+	PUSHL	#79
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_59:
+	CVTWL	@-4(FP)[R0], R1
+	ADDL2	R1, -12(FP)
+	INCL	-8(FP)
+	JMP	L^L_56
+L_57:
+; line 80
+	MOVL	8(AP), R0
+	DECL	R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_60
+	PUSHL	#14
+	PUSHL	#80
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_60:
+	CLRW	@-4(FP)[R0]
+; line 81
+	MOVL	-12(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#82
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE AssignInts
+VAXOPENARRAYS_ASSIGNIN_2UD8ES0N:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#12, SP
+; line 86
+	MOVL	4(AP), -8(FP)
+	MOVAB	VAXOPENARRAYS_U_OOKJRCG3, -12(FP)
+	CMPL	8(AP), #4
+	BLEQU	L_63
+	PUSHL	#10
+	PUSHL	#86
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#9
+	CALLS	#4, G^POC_TRAP
+L_63:
+	MOVL	8(AP), -4(FP)
+	MULL2	#2, -4(FP)
+	PUSHL	-4(FP)
+	MOVL	-8(FP), R1
+	MOVL	-12(FP), R3
+L_64:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_65
+	MOVL	#65535, R0
+L_65:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_64
+	ADDL2	#4, SP
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXOPENARRAYS_INIT, ^M<R2,R3,R4,R5>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#20, SP
+; line 90
+	CMPW	VAXOPENARRAYS_MODE_EV21NUI7, #1
+	BEQL	L_68
+	JMP	L^L_67
+L_68:
+; line 90
+	MOVL	#3, -16(FP)
+	MOVAB	L_STR_1, -12(FP)
+	MOVL	#4, -8(FP)
+	MOVL	#5, -4(FP)
+	CALLG	-16(FP), VAXOPENARRAYS_AT_N09LD13H
+	MOVB	R0, VAXOPENARRAYS_C_OOKJR885
+	JMP	L^L_66
+L_67:
+; line 91
+	CMPW	VAXOPENARRAYS_MODE_EV21NUI7, #2
+	BEQL	L_69
+	JMP	L^L_66
+L_69:
+; line 91
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_2, -8(FP)
+	MOVL	#10, -4(FP)
+	CALLG	-12(FP), VAXOPENARRAYS_ASSIGN_746EPK25
+L_66:
+; line 93
+	CLRL	VAXOPENARRAYS_BITS_C1541UDK
+; line 94
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_3, -8(FP)
+	MOVL	#6, -4(FP)
+	CALLG	-12(FP), VAXOPENARRAYS_LENGTH_KBGQEL18
+	CMPL	R0, #5
+	BEQL	L_71
+	JMP	L^L_70
+L_71:
+; line 94
+	INCL	VAXOPENARRAYS_BITS_C1541UDK
+L_70:
+; line 95
+	MOVL	#3, -16(FP)
+	MOVAB	VAXOPENARRAYS_T_OOKJRC2G, -12(FP)
+	MOVL	#8, -8(FP)
+	MOVL	#120, -4(FP)
+	CALLG	-16(FP), VAXOPENARRAYS_FILL_6LIGS5LT
+; line 96
+	MOVL	#2, -12(FP)
+	MOVAB	VAXOPENARRAYS_T_OOKJRC2G, -8(FP)
+	MOVL	#8, -4(FP)
+	CALLG	-12(FP), VAXOPENARRAYS_LENGTH_KBGQEL18
+	CMPL	R0, #7
+	BEQL	L_73
+	JMP	L^L_72
+L_73:
+; line 96
+	ADDL2	#2, VAXOPENARRAYS_BITS_C1541UDK
+L_72:
+; line 97
+	MOVC5	#3, L_STR_1, #0, #16, VAXOPENARRAYS_S_OOKJRF1L
+; line 98
+	MOVL	#4, -20(FP)
+	MOVAB	VAXOPENARRAYS_S_OOKJRF1L, -16(FP)
+	MOVL	#16, -12(FP)
+	MOVAB	L_STR_1, -8(FP)
+	MOVL	#4, -4(FP)
+	CALLG	-20(FP), VAXOPENARRAYS_SAME_SC5R13GI
+	BLBS	R0, L_75
+	JMP	L^L_74
+L_75:
+	MOVL	#4, -20(FP)
+	MOVAB	VAXOPENARRAYS_S_OOKJRF1L, -16(FP)
+	MOVL	#16, -12(FP)
+	MOVAB	L_STR_4, -8(FP)
+	MOVL	#4, -4(FP)
+	CALLG	-20(FP), VAXOPENARRAYS_SAME_SC5R13GI
+	BLBC	R0, L_76
+	JMP	L^L_74
+L_76:
+; line 98
+	ADDL2	#4, VAXOPENARRAYS_BITS_C1541UDK
+L_74:
+; line 99
+	MOVW	#5, VAXOPENARRAYS_M_OOKJR93B+12
+; line 99
+	MOVW	#7, VAXOPENARRAYS_M_OOKJR93B+22
+; line 100
+	MOVL	#3, -16(FP)
+	MOVAB	VAXOPENARRAYS_M_OOKJR93B, -12(FP)
+	MOVL	#3, -8(FP)
+	MOVL	#4, -4(FP)
+	CALLG	-16(FP), VAXOPENARRAYS_SUM_P4PPDECN
+	CMPL	R0, #12
+	BEQL	L_78
+	JMP	L^L_77
+L_78:
+; line 100
+	ADDL2	#8, VAXOPENARRAYS_BITS_C1541UDK
+L_77:
+; line 101
+	MOVL	#2, -12(FP)
+	MOVAB	VAXOPENARRAYS_S_OOKJRF1L, -8(FP)
+	MOVL	#16, -4(FP)
+	CALLG	-12(FP), VAXOPENARRAYS_PASSON_DHI0I1P8
+	CMPL	R0, #3
+	BEQL	L_80
+	JMP	L^L_79
+L_80:
+; line 101
+	ADDL2	#16, VAXOPENARRAYS_BITS_C1541UDK
+L_79:
+; line 102
+	MOVL	#4, -20(FP)
+	MOVAB	VAXOPENARRAYS_T_OOKJRC2G, -16(FP)
+	MOVL	#8, -12(FP)
+	MOVAB	L_STR_5, -8(FP)
+	MOVL	#18, -4(FP)
+	CALLG	-20(FP), VAXOPENARRAYS_COPYINTO_S2Q8NM0F
+; line 103
+	MOVL	#2, -12(FP)
+	MOVAB	VAXOPENARRAYS_T_OOKJRC2G, -8(FP)
+	MOVL	#8, -4(FP)
+	CALLG	-12(FP), VAXOPENARRAYS_LENGTH_KBGQEL18
+	CMPL	R0, #7
+	BEQL	L_82
+	JMP	L^L_81
+L_82:
+	MOVL	#4, -20(FP)
+	MOVAB	VAXOPENARRAYS_T_OOKJRC2G, -16(FP)
+	MOVL	#8, -12(FP)
+	MOVAB	L_STR_6, -8(FP)
+	MOVL	#8, -4(FP)
+	CALLG	-20(FP), G^POC_STRCMP
+	TSTL	R0
+	BEQL	L_83
+	JMP	L^L_81
+L_83:
+; line 103
+	ADDL2	#32, VAXOPENARRAYS_BITS_C1541UDK
+L_81:
+; line 104
+	MOVL	#2, -12(FP)
+	MOVAB	VAXOPENARRAYS_S_OOKJRF1L, -8(FP)
+	MOVL	#16, -4(FP)
+	CALLG	-12(FP), VAXOPENARRAYS_CHANGE_BNIVU5SK
+	CMPB	R0, #90
+	BEQL	L_85
+	JMP	L^L_84
+L_85:
+	CMPB	VAXOPENARRAYS_S_OOKJRF1L, #97
+	BEQL	L_86
+	JMP	L^L_84
+L_86:
+; line 104
+	ADDL2	#64, VAXOPENARRAYS_BITS_C1541UDK
+L_84:
+; line 105
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_7, -8(FP)
+	MOVL	#6, -4(FP)
+	CALLG	-12(FP), VAXOPENARRAYS_ASSIGN_746EPK25
+; line 106
+	MOVL	#4, -20(FP)
+	MOVAB	VAXOPENARRAYS_T_OOKJRC2G, -16(FP)
+	MOVL	#8, -12(FP)
+	MOVAB	L_STR_7, -8(FP)
+	MOVL	#6, -4(FP)
+	CALLG	-20(FP), G^POC_STRCMP
+	TSTL	R0
+	BEQL	L_88
+	JMP	L^L_87
+L_88:
+; line 106
+	ADDL2	#128, VAXOPENARRAYS_BITS_C1541UDK
+L_87:
+; line 107
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_8, -8(FP)
+	MOVL	#11, -4(FP)
+	CALLG	-12(FP), VAXOPENARRAYS_COPYOUT_74HASVG3
+; line 108
+	MOVL	#4, -20(FP)
+	MOVAB	VAXOPENARRAYS_T_OOKJRC2G, -16(FP)
+	MOVL	#8, -12(FP)
+	MOVAB	L_STR_9, -8(FP)
+	MOVL	#8, -4(FP)
+	CALLG	-20(FP), G^POC_STRCMP
+	TSTL	R0
+	BEQL	L_90
+	JMP	L^L_89
+L_90:
+; line 108
+	ADDL2	#256, VAXOPENARRAYS_BITS_C1541UDK
+L_89:
+; line 109
+	MOVW	#1, VAXOPENARRAYS_N_OOKJR9GU
+; line 109
+	MOVW	#2, VAXOPENARRAYS_N_OOKJR9GU+2
+; line 109
+	MOVW	#3, VAXOPENARRAYS_N_OOKJR9GU+4
+; line 109
+	MOVW	#4, VAXOPENARRAYS_N_OOKJR9GU+6
+; line 110
+	MOVL	#2, -12(FP)
+	MOVAB	VAXOPENARRAYS_N_OOKJR9GU, -8(FP)
+	MOVL	#4, -4(FP)
+	CALLG	-12(FP), VAXOPENARRAYS_TOTAL_2JOKCDN6
+	CMPL	R0, #10
+	BEQL	L_92
+	JMP	L^L_91
+L_92:
+	CMPW	VAXOPENARRAYS_N_OOKJR9GU+6, #4
+	BEQL	L_93
+	JMP	L^L_91
+L_93:
+; line 110
+	ADDL2	#512, VAXOPENARRAYS_BITS_C1541UDK
+L_91:
+; line 111
+	MOVL	#2, -12(FP)
+	MOVAB	VAXOPENARRAYS_N_OOKJR9GU, -8(FP)
+	MOVL	#4, -4(FP)
+	CALLG	-12(FP), VAXOPENARRAYS_ASSIGNIN_2UD8ES0N
+; line 112
+	CMPW	VAXOPENARRAYS_U_OOKJRCG3+4, #3
+	BEQL	L_95
+	JMP	L^L_94
+L_95:
+	CMPW	VAXOPENARRAYS_U_OOKJRCG3+6, #4
+	BEQL	L_96
+	JMP	L^L_94
+L_96:
+; line 112
+	ADDL2	#1024, VAXOPENARRAYS_BITS_C1541UDK
+L_94:
+; line 113
+	MOVL	#1, -8(FP)
+	MULL3	#16, VAXOPENARRAYS_BITS_C1541UDK, R0
+	INCL	R0
+	CVTLW	R0, R1
+	CVTWL	R1, -4(FP)
+	CALLG	-8(FP), G^SYS$EXIT
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_7E95D3D1DF8DB31F == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXOPENARRAYS_MAIN, ^M<>
+	CALLS	#0, VAXOPENARRAYS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXOPENARRAYS_MAIN
