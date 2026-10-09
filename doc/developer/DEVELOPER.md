@@ -86,9 +86,10 @@ writes `build/gen/BuildInfo.Mod` with the commit on every build, so `poc
 | Command | What |
 |---|---|
 | `make test` | every fixture, under Stage 0: the quick loop |
-| `test/run-tests.sh <name>...` | the fixtures named |
+| `test/run-tests.sh [-j <n>] <name>...` | the fixtures named, as many at once as the host has processors (or `-j`, or `TEST_JOBS`) |
 | `make test-llvm` (and `-lexer`, `-parser`, `-semantic`, `-modules`, `-layout`, `-misc`) | one group |
 | `make check` | `make test`, every fixture under Stage 1, `make stage2` (the fixed point) and `make check-strict`; reports every failure |
+| `make check-stage1` | `make check` without `make test`: what the hosts other than atla run |
 | `make check-opt2` | everything built at `-opt 2` |
 | `make check-lto` | the fixtures with `-lto` (not a gate) |
 | `make check-install` | installs into a scratch directory and runs `test/install/check.sh` with only that poc and clang |
@@ -135,9 +136,9 @@ everyone else):
 | Host | System | Runs |
 |---|---|---|
 | atla | Fedora, x86_64 | `make check`, and `make check-opt2` |
-| cymoril | OpenBSD 7.9, i386 | `gmake check` |
-| artos | NetBSD 11.0, amd64 | `gmake check` |
-| alerik | FreeBSD 15.1, amd64 | `gmake check` |
+| cymoril | OpenBSD 7.9, i386 | `gmake check-stage1` |
+| artos | NetBSD 11.0, amd64 | `gmake check-stage1` |
+| alerik | FreeBSD 15.1, amd64 | `gmake check-stage1` |
 
 Add `check-install` when a change touches installing, and `check-seed` when
 it touches the bootstrap. A fifth host, rackhir (FreeBSD 15.1 arm64,
@@ -149,7 +150,10 @@ in a later commit.
 `tools/check-hosts` (`make check-hosts`) runs these checks on every host
 at once and prints one summary. This host runs `make check check-opt2`
 in the tree. Every other host gets a fresh copy of the tree in
-`~/poc-bsd`, uncommitted changes included, and runs `gmake check` there.
+`~/poc-bsd`, uncommitted changes included, and runs `gmake check-stage1`
+there: the suite under the voc-built poc tests voc's build of poc, which
+atla's `make check` covers, and the suite under Stage 1 tests the same
+source.
 Each host's output goes to `build/check-hosts/<host>.log`, and the exit
 status is 0 only if every host passed:
 
@@ -164,7 +168,7 @@ and `CHECK_HOSTS`. By hand, a host's check is:
 
     git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - \
       | ssh cymoril 'mkdir -p ~/poc-bsd && tar -xf - -C ~/poc-bsd'
-    ssh cymoril 'cd ~/poc-bsd && gmake check'
+    ssh cymoril 'cd ~/poc-bsd && gmake check-stage1'
 
 voc and its libraries are at the same paths on every host;
 `test/testenv.sh` puts them on `PATH` and `LD_LIBRARY_PATH` itself, as a

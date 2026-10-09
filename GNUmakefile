@@ -62,7 +62,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -109,6 +109,16 @@ test-stage1: $(STAGE1_BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)/stage1)
 check:
 	@status=0; \
 	$(MAKE) test || status=1; \
+	$(MAKE) test-stage1 || status=1; \
+	$(MAKE) stage2 || status=1; \
+	$(MAKE) check-strict || status=1; \
+	exit $$status
+
+# check without the suite under the voc-built poc: what tools/check-hosts
+# runs on every host but this one, since that suite tests voc's build of
+# poc, which atla's make check covers, and Stage 1's tests the same source.
+check-stage1:
+	@status=0; \
 	$(MAKE) test-stage1 || status=1; \
 	$(MAKE) stage2 || status=1; \
 	$(MAKE) check-strict || status=1; \
