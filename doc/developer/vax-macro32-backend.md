@@ -1379,16 +1379,16 @@ spilled to the frame while the arguments are evaluated would be called as
 reads a call through a value's parameter list from its type, so passing
 a parameter by value through one does not copy it to the frame.
 
-Fixture `vax-procedure-values` has `VaxProcVals` and `VaxProcLib`, written
-for the user's review. Its debugger runs examine what the program computes
-and what four variables hold, which the debugger names by their
-procedures, one of them a procedure `VaxProcLib` does not export, and take
-trap 4 from a `NIL` variable and a `NIL` element of a pointer's array. A
-second program, `ProcValsOut`, prints with `Out`, calling `Out.String` and
-`Out.Ln` through values too, and is built by both backends under `-O2` and
-`-OC` and must print the same. `vax-emit-errors`' `VaxTooMuch` no longer
-passes a procedure as a value, and `VaxReportedOnce` takes a pointer to a
-record with a field initializer for its unlowerable operand.
+Fixture `vax-procedure-values` has `VaxProcVals` and `VaxProcLib`
+reviewed. Its debugger runs examine what the program computes and what
+four variables hold, which the debugger names by their procedures, one of
+them a procedure `VaxProcLib` does not export, and take trap 4 from a
+`NIL` variable and a `NIL` element of a pointer's array. A second program,
+`ProcValsOut`, prints with `Out`, calling `Out.String` and `Out.Ln`
+through values too, and is built by both backends under `-O2` and `-OC`
+and must print the same. `vax-emit-errors`' `VaxTooMuch` no longer passes
+a procedure as a value, and `VaxReportedOnce` takes a pointer to a record
+with a field initializer for its unlowerable operand.
 
 The survey counts 270 refusals, down from 388, none of them procedure
 values: reals (165), `SYSTEM.BYTE` parameters (78), calls and

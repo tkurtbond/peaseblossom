@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual, LLVM's code generator and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
+;; the MACRO manual, LLVM's code generator and the debugger runs). Why
+;; this is right:
 ;; - The module VaxProcVals imports (expected-vax.mar): a variable of
 ;;   procedure type, op, an exported longword (.BLKL) that VaxProcVals
 ;;   calls through and assigns, set to Max by the module's body with one
