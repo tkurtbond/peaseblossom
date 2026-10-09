@@ -756,9 +756,9 @@ arithmetic at the type's width (question 4); the trap call (§9).
 2. **Running `MACRO` on the guest from the host**, for assembling
    fixtures: settled 2026-10-06, **scripted telnet**. Copying was settled
    2026-10-05: FTP to `192.168.2.20` as `poc`, active mode, ASCII, the
-   password in `~/.netrc` (`doc/developer/DEVELOPER.md` section 4). A
-   host-side command logs in by telnet as `POC`, the password read from
-   `~/.netrc` and never echoed, logged or printed, runs
+   password in `~/.netrc-poc-vax` (`~/.netrc` until 2026-10-08;
+   `doc/developer/DEVELOPER.md` section 4). A host-side command logs in by
+   telnet as `POC`, the password read from that file and never echoed, logged or printed, runs
    `MACRO/OBJECT/LIST` in `POC`'s own directory, reports the assembler's
    `$STATUS`, and the `.LIS` comes back by FTP. It works unattended, since
    the fixtures run from `make test`; on a host without the guest those

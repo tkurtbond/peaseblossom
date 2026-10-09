@@ -1,13 +1,20 @@
 # The VAX/VMS development system's login, by telnet, for tools/vax-assemble.exp
 # and tools/vax-run.exp: "source" it, then "vax_login $host", which leaves the
 # session at the prompt "VAXASM> " ($prompt, a regular expression), or exits 2
-# with a message. The password is read from ~/.netrc here, never on a command
+# with a message. The password is read here from $VAX_NETRC (by default
+# ~/.netrc-poc-vax, as tools/vax-assemble sets it), never on a command
 # line, and nothing is shown while it is sent (log_user 0).
 # doc/developer/DEVELOPER.md, section 4.
 
-# login and password of "machine $host" in ~/.netrc
+# the netrc file: $VAX_NETRC, or ~/.netrc-poc-vax
+proc netrc_file {} {
+  if {[info exists ::env(VAX_NETRC)] && $::env(VAX_NETRC) ne ""} { return $::env(VAX_NETRC) }
+  return [file join $::env(HOME) .netrc-poc-vax]
+}
+
+# login and password of "machine $host" in the netrc file
 proc netrc {host} {
-  set f [open [file join $::env(HOME) .netrc] r]
+  if {[catch {open [netrc_file] r} f]} { fail "cannot read [netrc_file]" }
   set tokens [regexp -all -inline {\S+} [read $f]]
   close $f
   set login ""; set password ""; set here 0
@@ -35,7 +42,7 @@ proc fail {message} {
 proc vax_login {host} {
   global spawn_id expect_out prompt
   lassign [netrc $host] login password
-  if {$login eq "" || $password eq ""} { fail "no login and password for $host in ~/.netrc" }
+  if {$login eq "" || $password eq ""} { fail "no login and password for $host in [netrc_file]" }
 
   spawn -noecho telnet $host
   expect {

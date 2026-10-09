@@ -13,18 +13,24 @@
 #   tools/vax-assemble -available
 #
 # -q prints only the status lines. -available exits 0 if the guest can be
-# used - telnet's port answers and ~/.netrc has its machine - and 1 otherwise,
+# used - telnet's port answers and $VAX_NETRC has its machine - and 1 otherwise,
 # so a fixture can be skipped on a host without it. The login and password are
-# ~/.netrc's, read by curl and by the expect script themselves, never on a
+# $VAX_NETRC's, read by curl and by the expect script themselves, never on a
 # command line or printed. VAX_HOST names the guest (default 192.168.2.20).
-# Runs are not to overlap: they share POC's home directory.
+# Runs share POC's home directory, so each holds this host's lock while it
+# uses the guest (tools/vax-lock.sh).
 set -e
 
 host=${VAX_HOST:-192.168.2.20}
 here=$(cd "$(dirname "$0")" && pwd)
+# the guest's login and password, in netrc form: VAX_NETRC, or else
+# ~/.netrc-poc-vax, kept apart from ~/.netrc, which other machines use
+VAX_NETRC=${VAX_NETRC:-$HOME/.netrc-poc-vax}
+export VAX_NETRC
+. "$here/vax-lock.sh"
 
 available() {
-  [ -r "$HOME/.netrc" ] && grep -q "machine[[:space:]][[:space:]]*$host\\([[:space:]]\\|\$\\)" "$HOME/.netrc" \
+  [ -r "$VAX_NETRC" ] && grep -q "machine[[:space:]][[:space:]]*$host\\([[:space:]]\\|\$\\)" "$VAX_NETRC" \
     && command -v expect >/dev/null && command -v telnet >/dev/null && command -v curl >/dev/null \
     && nc -z -w 5 "$host" 23 >/dev/null 2>&1
 }
@@ -48,12 +54,14 @@ cleanup() {
   for name in $names; do
     stem=${name%.MAR}
     for ext in MAR OBJ LIS; do
-      curl -s --netrc -P - --retry 3 --retry-delay 2 -Q "DELE $stem.$ext;*" "$ftp" -o /dev/null 2>/dev/null || true
+      curl -s --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 -Q "DELE $stem.$ext;*" "$ftp" -o /dev/null 2>/dev/null || true
     done
   done
 }
 out=$(mktemp "${TMPDIR:-/tmp}/vax-assemble.XXXXXX")
-trap cleanup EXIT
+# only once this run has the lock may its cleanup touch the guest
+vax_lock
+trap 'cleanup; vax_unlock' EXIT
 
 for f in "$@"; do
   case $f in
@@ -67,7 +75,7 @@ for f in "$@"; do
     *[!A-Z0-9_\$-]*|"") echo "vax-assemble: $base is not a VMS file name" >&2; exit 2 ;;
   esac
   names="$names $name.MAR" # before the copy, so a half-made one is deleted too
-  curl -s -S --netrc -P - --retry 3 --retry-delay 2 --use-ascii -T "$f" "$ftp$name.MAR"
+  curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 --use-ascii -T "$f" "$ftp$name.MAR"
 done
 
 session=0
@@ -81,7 +89,7 @@ for f in "$@"; do
   name=$(echo "${base%.*}" | tr a-z A-Z)
   dir=$(dirname "$f")
   lis="$dir/${base%.*}.lis"
-  curl -s -S --netrc -P - --retry 3 --retry-delay 2 --use-ascii -o "$lis" "$ftp$name.LIS" || status=1
+  curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 --use-ascii -o "$lis" "$ftp$name.LIS" || status=1
   # the assembler's messages for this file, then its status line
   hex=$(sed -n "s/^VAXASM-STATUS $name\\.MAR \\([0-9A-F]*\\)\$/\\1/p" "$out")
   if [ -z "$quiet" ]; then

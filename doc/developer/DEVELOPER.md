@@ -181,14 +181,15 @@ From Phase 15, the original developer also has a VAX: SIMH's
 `microvax3900` on atla, running VMS 5.5-2H4 with UCX for TCP/IP, at
 `192.168.2.20` while SIMH runs, with an unprivileged user `poc` for this
 work (`doc/developer/vax-macro32-backend.md` §2). Phase 15 assembles its
-fixtures there. The password is kept out of the tree, in `~/.netrc` (mode
-600):
+fixtures there. The password is kept out of the tree, in
+`~/.netrc-poc-vax` (mode 600), or the file `VAX_NETRC` names, apart from
+`~/.netrc`, so that a `~/.netrc` other machines need can stay as it is:
 
     machine 192.168.2.20 login poc password ...
 
-which `ftp` and `curl` read themselves, so it never appears on a command
-line. The FTP server works only in active mode: `curl --netrc -P -
-ftp://192.168.2.20/` lists the home directory, and in `ftp`, turn passive
+which curl reads itself (`--netrc-file`), so it never appears on a
+command line. The FTP server works only in active mode: `curl --netrc-file
+~/.netrc-poc-vax -P - ftp://192.168.2.20/` lists the home directory, and in `ftp`, turn passive
 mode off first. Send source files in ASCII mode (curl's `--use-ascii`, or
 `ascii` in `ftp`): in binary mode VMS stores them as fixed-length 512-byte
 records, not as text. Another developer uses their own VAX or SIMH, and names
@@ -196,7 +197,7 @@ it the same way.
 
 `tools/vax-assemble <file.mar>...` assembles MACRO-32 there: it copies
 each file by FTP, runs `MACRO/OBJECT/LIST` by telnet (expect, reading the
-password from `~/.netrc` itself), brings the `.LIS` back beside the
+password from that file itself), brings the `.LIS` back beside the
 source, deletes its files on the guest, and exits 0 only if every file
 assembled without a warning or an error. `VAX_HOST` names another guest.
 `tools/vax-assemble -available` says whether the guest can be used; the
@@ -228,8 +229,11 @@ The debugger shows R0 as the value returned, so `DEPOSIT R0 = 0` before
 calling a proper procedure, whose R0 is otherwise left over. A `FOR` up to
 its variable's `MAX` never ends (`Oberon2.pdf` §9.8), nor does the run.
 Line numbers in the debugger's output are those of `expected-vax.mar`, so a
-change to its reviewer's comment means making the log again. Neither tool's runs may
-overlap another's, since they share `POC`'s home directory.
+change to its reviewer's comment means making the log again. The two
+tools' runs share `POC`'s home directory, so each waits for and holds a
+lock on this host while it uses the guest (`tools/vax-lock.sh`, a
+directory in `/tmp`): the VAX fixtures, run in parallel with the rest,
+take the guest one at a time.
 
 ### With other machines
 

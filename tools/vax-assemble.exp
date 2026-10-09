@@ -5,9 +5,9 @@
 #
 #   expect -f tools/vax-assemble.exp <host> <NAME.MAR>...
 #
-# The password is read from ~/.netrc here, so it is never on a command line,
-# and nothing is shown while it is sent (log_user 0 throughout; only the
-# assembler's own output is printed). doc/developer/vax-macro32-backend.md,
+# The password is read from $VAX_NETRC here (tools/vax-login.tcl), so it is
+# never on a command line, and nothing is shown while it is sent (log_user 0
+# throughout; only the assembler's own output is printed). doc/developer/vax-macro32-backend.md,
 # section 11 question 2; doc/developer/DEVELOPER.md, section 4.
 
 set host [lindex $argv 0]

@@ -19,13 +19,19 @@
 # The module's .TITLE names its file on the guest, so <file.mar> may be a
 # fixture's expected-vax.mar.
 #
-# Runs are not to overlap with each other or with tools/vax-assemble: they
-# share POC's home directory. VAX_HOST names the guest (default
+# Runs share POC's home directory with each other and with
+# tools/vax-assemble, so each holds this host's lock while it uses the
+# guest (tools/vax-lock.sh). VAX_HOST names the guest (default
 # 192.168.2.20).
 set -e
 
 host=${VAX_HOST:-192.168.2.20}
 here=$(cd "$(dirname "$0")" && pwd)
+# the guest's login and password, in netrc form: VAX_NETRC, or else
+# ~/.netrc-poc-vax, kept apart from ~/.netrc, which other machines use
+VAX_NETRC=${VAX_NETRC:-$HOME/.netrc-poc-vax}
+export VAX_NETRC
+. "$here/vax-lock.sh"
 
 [ $# -ge 2 ] || { echo "usage: tools/vax-run <file.mar> <run.dbg>..." >&2; exit 2; }
 "$here/vax-assemble" -available || { echo "vax-run: the VAX guest $host is not available" >&2; exit 2; }
@@ -41,23 +47,25 @@ init=$(sed -n 's/^	\.ENTRY	\([A-Z0-9_$]*_INIT\),.*/\1/p' "$mar")
 [ -n "$init" ] || { echo "vax-run: no <MODULE>_INIT in $mar" >&2; exit 2; }
 
 ftp="ftp://$host/"
-curl_ftp() { curl -s -S --netrc -P - --retry 3 --retry-delay 2 "$@"; }
+curl_ftp() { curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@"; }
 work=$(mktemp -d "${TMPDIR:-/tmp}/vax-run.XXXXXX")
 cleanup() {
   rm -rf "$work"
   for f in "$module.MAR" "$module.OBJ" POCSTUB.MAR POCSTUB.OBJ POCDRIVER.MAR POCDRIVER.OBJ POCRUN.EXE; do
-    curl -s --netrc -P - -Q "DELE $f;*" "$ftp" -o /dev/null 2>/dev/null || true
+    curl -s --netrc-file "$VAX_NETRC" -P - -Q "DELE $f;*" "$ftp" -o /dev/null 2>/dev/null || true
   done
   i=1
   while [ $i -le "$runs" ]; do
     for ext in DBG OUT; do
-      curl -s --netrc -P - -Q "DELE R$i.$ext;*" "$ftp" -o /dev/null 2>/dev/null || true
+      curl -s --netrc-file "$VAX_NETRC" -P - -Q "DELE R$i.$ext;*" "$ftp" -o /dev/null 2>/dev/null || true
     done
     i=$((i + 1))
   done
 }
 runs=$#
-trap cleanup EXIT
+# only once this run has the lock may its cleanup touch the guest
+vax_lock
+trap 'cleanup; vax_unlock' EXIT
 
 cat >"$work/POCDRIVER.MAR" <<EOF
 ; Runs one module's initializer, for tools/vax-run
