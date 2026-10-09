@@ -723,8 +723,8 @@ most, object libraries.
      or, when the receiver's type is known exactly or for `v.P^`,
      directly. Fixture `vax-type-bound` takes traps 4 and 5 from receivers
      under the debugger and runs one source on both backends. Its `.mar`
-     files await the user's review. Survey: 388, unchanged, poc's source
-     having no type-bound procedures.
+     files were reviewed by the user (2026-10-09). Survey: 388, unchanged,
+     poc's source having no type-bound procedures.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

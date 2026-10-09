@@ -1345,11 +1345,10 @@ block's `-4(Rn)` or the parameter's own, then `CALLG list,
 the receiver). A procedure with a pointer receiver called on a record
 that is not a heap block is refused, as on LLVM.
 
-Fixture `vax-type-bound` has `VaxMethods` and `VaxMethLib`, written for
-the user's review. Its debugger runs examine what the program computes
-and `SquareDesc`'s `ProcTab`, and take trap 4 from a pointer and from a
-`VAR` receiver's block and trap 5 from a guarded receiver, at the
-positions the LLVM backend's `-trap-location` gives. A second program,
+Fixture `vax-type-bound` has `VaxMethods` and `VaxMethLib` reviewed.
+Its debugger runs examine what the program computes and `SquareDesc`'s
+`ProcTab`, and take trap 4 from a pointer and from a `VAR` receiver's
+block and trap 5 from a guarded receiver, at the positions the LLVM backend's `-trap-location` gives. A second program,
 `MethodsOut`, prints with `Out`, and is built by both backends under
 `-O2` and `-OC` and must print the same. `vax-emit-errors` no longer
 expects a type-bound procedure to be refused. The survey still counts
