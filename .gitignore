@@ -90,6 +90,7 @@ test/conformance/llvm-out-extra/llvm-out-extra
 test/conformance/vax-extension/vax-extension
 test/conformance/vax-out/vax-out
 test/conformance/vax-pointers/vax-pointers
+test/conformance/vax-type-bound/vax-type-bound
 test/conformance/vax-var-records/vax-var-records
 test/conformance/llvm-in/llvm-in
 test/conformance/llvm-in-extra/llvm-in-extra

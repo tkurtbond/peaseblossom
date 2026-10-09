@@ -1,0 +1,9 @@
+! mode = 2: Guarded(k), k a Counter, not a Twice: c(Twice).Add(100) in
+! line 51 fails its guard, code 5 at column 9, the guarded designator
+DEPOSIT/WORD VAXMETHODS\VAXMETHODS_MODE_EMSR99TR = 2
+GO
+EXAMINE/LONG POC_TRAP_CODE
+EXAMINE/LONG POC_TRAP_LINE
+EXAMINE/LONG POC_TRAP_COLUMN
+EXAMINE/ASCII:10 POC_TRAP_MODULE
+EXIT

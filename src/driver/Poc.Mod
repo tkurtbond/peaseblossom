@@ -2113,9 +2113,10 @@ MODULE Poc;
      makes up for it, in one NameTable, so a collision is an error: the
      module's initializer, <MODULE>_INIT, which is never hashed and so
      needs no NameTable, then each module-level variable, then each
-     procedure and type-bound procedure. An external procedure is shown with its
-     linkage name, written verbatim, which is an error if MACRO-32 does not
-     take it. *)
+     procedure and type-bound procedure, the latter by the record it is
+     bound to, a pointer receiver's too, as the backends name it. An
+     external procedure is shown with its linkage name, written verbatim,
+     which is an error if MACRO-32 does not take it. *)
   PROCEDURE DumpVaxNames(name: ARRAY OF CHAR);
     VAR
       buffer: Lexer.CharBuffer;
@@ -2129,6 +2130,8 @@ MODULE Poc;
       p: SyntaxTree.ProcDeclNode;
       full: ARRAY 800 OF CHAR;
       init: VaxTypes.Symbol;
+      typeObj: SymbolTable.Object;
+      rec: Types.RecordType;
   BEGIN
     IF ~ReadSource(name, buffer, length) THEN
       failed := TRUE; Err.String("poc: cannot open "); Err.String(name); Err.Ln
@@ -2177,7 +2180,12 @@ MODULE Poc;
               END
             ELSIF ~p.isForward THEN
               COPY(module.name, full); Strcat(full, ".");
-              IF p.receiver # NIL THEN Strcat(full, p.receiver.typeName); Strcat(full, ".") END;
+              IF p.receiver # NIL THEN
+                typeObj := SymbolTable.FindLocal(scope, p.receiver.typeName); rec := NIL;
+                IF typeObj # NIL THEN rec := ReceiverRecord(typeObj.type) END;
+                IF rec # NIL THEN Strcat(full, rec.name) ELSE Strcat(full, p.receiver.typeName) END;
+                Strcat(full, ".")
+              END;
               Strcat(full, p.name.name);
               PrintVaxName(table, full)
             END;

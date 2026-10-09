@@ -1313,3 +1313,44 @@ parameter of type `ARRAY 256 OF CHAR`, which Oberon-2 and poc reject,
 and copies the formal's 256 bytes from it (vishap-bugs 68), so the
 survey is also a check that the backend's own source is poc's
 Oberon-2.
+
+**Done: type-bound procedures (item 6), 2026-10-09.** A type-bound
+procedure is an ordinary procedure named by the symbol of
+`<Module>.<Type>.<P>`, `<Type>` being the record it is bound to, a
+pointer receiver's too, as on LLVM (§5). It is always `.ENTRY`, global,
+since an importer's descriptor may name it even when it is not exported.
+Its receiver is its first argument: a pointer, or for a `VAR` receiver
+the record's address and then its tag, as for any `VAR` record parameter
+(item 5). A receiver the procedure changes is copied to the frame, as a
+value parameter is. `-dump-vax-names` named a pointer receiver's
+procedure after the pointer type; it now names it after the record, as
+the code does (`vax-names`).
+
+A record's descriptor now has its `ProcTab` below the tag, slot *i* at
+`-4(i+1)`, so the last slot is written first, each slot the symbol of
+the procedure the record has there, its own or inherited
+(`LLVMTypes.MethodSlotCount` and `SlotMethod`, which the VAX backend
+imports). A procedure of another module is its symbol, `.EXTERNAL`. A
+record with no type-bound procedures has no `ProcTab`, so no reviewed
+`.mar` file changes.
+
+A call `v.P(...)` follows LLVM's choice (`FindMethodTarget`). A record
+variable, field or element has its static type, so its procedure is
+called directly, with that type's descriptor as the tag. So is `v.P^`,
+the base type's procedure. Any other receiver, a pointer, `p^`, or a
+`VAR` record parameter, guarded or not, may have another dynamic type,
+so the call goes through the `ProcTab` of its tag: the tag into `R1`, the
+block's `-4(Rn)` or the parameter's own, then `CALLG list,
+@-4(i+1)(R1)`. A pointer receiver is checked for `NIL` first (trap 4 at
+the receiver). A procedure with a pointer receiver called on a record
+that is not a heap block is refused, as on LLVM.
+
+Fixture `vax-type-bound` has `VaxMethods` and `VaxMethLib`, written for
+the user's review. Its debugger runs examine what the program computes
+and `SquareDesc`'s `ProcTab`, and take trap 4 from a pointer and from a
+`VAR` receiver's block and trap 5 from a guarded receiver, at the
+positions the LLVM backend's `-trap-location` gives. A second program,
+`MethodsOut`, prints with `Out`, and is built by both backends under
+`-O2` and `-OC` and must print the same. `vax-emit-errors` no longer
+expects a type-bound procedure to be refused. The survey still counts
+388 refusals, since poc's source has no type-bound procedures.

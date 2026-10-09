@@ -106,7 +106,7 @@ MODULE VaxCodeGenerator;
      and SHORT of one that does not fit, trap. *)
 
   IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
-    ModuleInterface, VaxTypes;
+    ModuleInterface, LLVMTypes, VaxTypes;
 
   CONST
     tab = 9X;
@@ -152,6 +152,21 @@ MODULE VaxCodeGenerator;
     (* Where a procedure's parameter or local variable is: in the frame at
        offset from FP; its value at offset from AP; or its address there *)
     Local = POINTER TO LocalDesc;
+    (* A call of a type-bound procedure, v.P(...) or v.P^(...) (section 14,
+       item 6): d with its selectors up to stop, P's name, the receiver,
+       whose static type is a pointer (pointer) or a record; rec the
+       record P is looked up on; called the procedure whose signature the
+       call takes, owner the record declaring it, called directly unless
+       indirect, through slot of the ProcTab of the receiver's tag; the tag
+       is a VAR record parameter's own (fromParam), the block's (fromBlock),
+       or rec's descriptor *)
+    MethodTarget = POINTER TO MethodTargetDesc;
+    MethodTargetDesc = RECORD
+      d: SyntaxTree.Designator; obj: SymbolTable.Object; stop: SyntaxTree.Selector;
+      rec, owner: Types.RecordType; called: Types.Method;
+      pointer, fromParam, fromBlock, indirect: BOOLEAN; slot: INTEGER
+    END;
+
     (* Inside WITH v: T DO, v's static type is T (T's record for a VAR
        record parameter) *)
     Narrowing = POINTER TO NarrowingDesc;
@@ -1577,6 +1592,21 @@ MODULE VaxCodeGenerator;
     END
   END RecordTag;
 
+  (* The symbol of the procedure P bound to owner, a module-level record:
+     that of <Module>.<Type>.<P> (section 5), as on LLVM; TRUE, and the
+     symbol declared .EXTERNAL, if it is another module's. Every one is
+     global, since an importer's descriptors may name it, a hidden one
+     included (section 14, item 6). *)
+  PROCEDURE MethodSymbol(owner: Types.RecordType; name: ARRAY OF CHAR; VAR symbol: VaxTypes.Symbol): BOOLEAN;
+    VAR full: ARRAY 3 * 256 + 3 OF CHAR;
+  BEGIN
+    COPY(owner.moduleName, full); Append(full, "."); Append(full, owner.name); Append(full, ".");
+    Append(full, name);
+    VaxTypes.MakeSymbol(full, symbol);
+    IF owner.moduleName = module.name THEN RETURN FALSE END;
+    AddExternal(symbol); RETURN TRUE
+  END MethodSymbol;
+
   (* The operand text of the tag NEW gives an array of elem: empty, for 0,
      when elem holds no pointers; else the label of a descriptor of elem,
      L_AD_<n>, whose size is one element's and whose offsets are of the
@@ -1780,28 +1810,154 @@ MODULE VaxCodeGenerator;
     END
   END ArgumentTag;
 
+  (* d's selectors cut before stop, and put back: prev is the one before
+     stop, NIL when stop is the first *)
+  PROCEDURE CutSelectors(d: SyntaxTree.Designator; stop: SyntaxTree.Selector; VAR prev: SyntaxTree.Selector);
+  BEGIN
+    IF d.selectors = stop THEN prev := NIL; d.selectors := NIL
+    ELSE
+      prev := d.selectors;
+      WHILE prev.next # stop DO prev := prev.next END;
+      prev.next := NIL
+    END
+  END CutSelectors;
+
+  PROCEDURE RestoreSelectors(d: SyntaxTree.Designator; stop, prev: SyntaxTree.Selector);
+  BEGIN
+    IF prev = NIL THEN d.selectors := stop ELSE prev.next := stop END
+  END RestoreSelectors;
+
+  (* Whether d, obj and its selectors, called, is a type-bound procedure,
+     v.P or v.P^, rather than a procedure-typed field; if so, what to call
+     and how, as on LLVM (FindMethodTarget, GenerateMethodCall): a
+     receiver whose dynamic type is known exactly, a record variable, field
+     or element, calls the procedure its static type's ProcTab holds
+     directly, as does v.P^, the base type's; any other goes through the
+     ProcTab of its tag. A procedure with a pointer receiver needs a block
+     behind the receiver; anything else is refused, as on LLVM. *)
+  PROCEDURE MethodCallTarget(d: SyntaxTree.Designator; obj: SymbolTable.Object; line, column: INTEGER): MethodTarget;
+    VAR sel, last, beforeLast, prev, real: SyntaxTree.Selector; t: Types.Type; rec, base: Types.RecordType;
+        m: MethodTarget; name: SyntaxTree.Ident; method: Types.Method; baseCall: BOOLEAN;
+  BEGIN
+    sel := d.selectors; last := NIL; beforeLast := NIL;
+    WHILE sel # NIL DO beforeLast := last; last := sel; sel := sel.next END;
+    IF last = NIL THEN RETURN NIL END;
+    NEW(m); m.d := d; m.obj := obj; baseCall := FALSE;
+    IF last IS SyntaxTree.FieldSelector THEN m.stop := last
+    ELSIF (last IS SyntaxTree.DereferenceSelector) & (beforeLast # NIL) & (beforeLast IS SyntaxTree.FieldSelector) THEN
+      m.stop := beforeLast; baseCall := TRUE
+    ELSE RETURN NIL
+    END;
+    COPY(m.stop(SyntaxTree.FieldSelector).name, name);
+    CutSelectors(d, m.stop, prev);
+    t := StaticType(d, obj);
+    (* the last selector of the receiver but a guard, which keeps where the
+       dynamic type comes from *)
+    real := NIL; sel := d.selectors;
+    WHILE sel # NIL DO
+      IF ~(sel IS SyntaxTree.GuardSelector) THEN real := sel END;
+      sel := sel.next
+    END;
+    RestoreSelectors(d, m.stop, prev);
+    m.pointer := (t # NIL) & (t IS Types.PointerType);
+    rec := TargetRecord(t);
+    IF (rec = NIL) OR (Types.FindField(rec, name) # NIL) THEN RETURN NIL END;
+    method := Types.FindMethod(rec, name);
+    IF method = NIL THEN RETURN NIL END;
+    m.rec := rec;
+    m.fromBlock := m.pointer OR (real # NIL) & (real IS SyntaxTree.DereferenceSelector);
+    m.fromParam := ~m.fromBlock & (real = NIL) & (ParamTag(obj) # NIL);
+    IF baseCall THEN
+      m.called := NIL;
+      IF rec.baseType # NIL THEN
+        base := rec.baseType(Types.RecordType);
+        m.called := Types.FindMethod(base, name);
+        IF m.called # NIL THEN m.owner := Types.MethodOwner(base, m.called) END
+      END;
+      IF m.called = NIL THEN Unsupported(line, column, "a base-type call with no base procedure"); RETURN m END
+    ELSE
+      m.slot := LLVMTypes.SlotOfMethod(rec, method);
+      IF m.slot < 0 THEN Unsupported(line, column, "a type-bound procedure with no ProcTab slot"); RETURN m END;
+      IF m.fromBlock OR m.fromParam THEN m.indirect := TRUE; m.called := method
+      ELSE m.called := LLVMTypes.SlotMethod(rec, m.slot, m.owner)
+      END
+    END;
+    IF ~m.called.receiverIsVar & ~m.fromBlock THEN
+      Unsupported(line, column, "a pointer receiver given a record that is not a heap block")
+    END;
+    RETURN m
+  END MethodCallTarget;
+
+  (* The receiver of m into entry, its first argument: a pointer, checked
+     for NIL (trap 4 at line and column), or a record's address; then,
+     for a VAR receiver, its tag into tagEntry: a VAR record parameter's
+     own, the block's, the longword before it, or the static type's
+     descriptor *)
+  PROCEDURE ReceiverInto(m: MethodTarget; entry, tagEntry: Operand; line, column: INTEGER);
+    VAR prev: SyntaxTree.Selector; x, r: Operand; ok: ARRAY 16 OF CHAR; text: ARRAY 160 OF CHAR;
+  BEGIN
+    CutSelectors(m.d, m.stop, prev);
+    x := Locate(m.d, m.obj, line, column);
+    RestoreSelectors(m.d, m.stop, prev);
+    IF x.standIn THEN RETURN END;
+    IF m.pointer THEN
+      r := NewRegisterBeside(longword, x, NIL, line, column); Emit2("MOVL", x, r); Release(x);
+      NewLabel(ok); Emit("BNEQ", ok); Trap(4, line, column); EmitLabel(ok);
+      Emit2("MOVL", r, entry);
+      IF m.called.receiverIsVar THEN
+        x := NewOperand(memory, longword); x.baseOp := r; x.ownsBase := TRUE; x.offset := -4;
+        Emit2("MOVL", x, tagEntry); Release(x)
+      ELSE Release(r)
+      END
+    ELSE
+      AddressOf(x, entry); Release(x);
+      IF m.called.receiverIsVar THEN
+        IF m.fromParam THEN Emit2("MOVL", ParamTag(m.obj), tagEntry)
+        ELSIF m.fromBlock THEN
+          Emit3("SUBL3", Immediate(Types.LongInt, 4), entry, tagEntry);
+          Text(tagEntry, text); COPY(text, ok);
+          text := "@"; Append(text, ok); Append(text, ", "); Append(text, ok);
+          Emit("MOVL", text)
+        ELSE RecordTag(m.rec, text); EmitTo("MOVAB", text, tagEntry)
+        END
+      END
+    END
+  END ReceiverInto;
+
   PROCEDURE Call(d: SyntaxTree.Designator; args: SyntaxTree.ExprNode; line, column: INTEGER): Operand;
     CONST maxCopies = 16;
     VAR obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param; a: SyntaxTree.ExprNode;
-        v, entry: Operand; copy: ARRAY maxCopies OF Operand; n, i, list, copies: INTEGER;
-        symbol: VaxTypes.Symbol; text: ARRAY 160 OF CHAR; target: ARRAY 64 OF CHAR; external, outside: BOOLEAN;
+        v, entry: Operand; copy: ARRAY maxCopies OF Operand; n, i, list, copies, first: INTEGER;
+        symbol: VaxTypes.Symbol; text: ARRAY 160 OF CHAR; target: ARRAY 200 OF CHAR; external, outside: BOOLEAN;
+        m: MethodTarget; a1: ARRAY 24 OF CHAR;
   BEGIN
     obj := Resolve(d.qualifier, d.name, line, column);
     IF obj = NIL THEN RETURN NIL END;
-    IF obj.type = Types.PredeclaredProcedureType THEN
+    m := NIL;
+    IF (obj.class = SymbolTable.varClass) & (d.selectors # NIL) THEN
+      m := MethodCallTarget(d, obj, line, column);
+      IF (m # NIL) & (m.called = NIL) THEN RETURN NIL END
+    END;
+    IF m # NIL THEN
+      pt := m.called.procType
+    ELSIF obj.type = Types.PredeclaredProcedureType THEN
       RETURN Predeclared(d.name, args, NIL, line, column)
     ELSIF obj.class # SymbolTable.procClass THEN
       Unsupported(line, column, "a call of a procedure variable (Phase 16)"); RETURN NIL
     ELSIF d.selectors # NIL THEN
       Unsupported(line, column, "a call through a selector (Phase 16)"); RETURN NIL
+    ELSE
+      pt := obj.type(Types.ProcedureType)
     END;
-    pt := obj.type(Types.ProcedureType);
-    external := obj.externalConvention # "";
+    external := (m = NIL) & (obj.externalConvention # "");
     IF (pt.resultType # NIL) & ~IsSliceScalar(pt.resultType) THEN
       COPY("a call returning ", text); Types.Describe(pt.resultType, text); AppendWhen(pt.resultType, text);
       Unsupported(line, column, text); RETURN NIL
     END;
-    n := 0; copies := 0; p := pt.params;
+    (* the receiver first: a pointer or an address, and a VAR receiver's tag *)
+    first := 0;
+    IF m # NIL THEN first := 1; IF m.called.receiverIsVar THEN first := 2 END END;
+    n := first; copies := 0; p := pt.params;
     WHILE p # NIL DO
       IF ~IsParamType(p.type) THEN
         COPY("a parameter of type ", text); Types.Describe(p.type, text); AppendWhen(p.type, text);
@@ -1825,9 +1981,13 @@ MODULE VaxCodeGenerator;
       p := p.next
     END;
     IF copies > maxCopies THEN Unsupported(line, column, "a call with this many HUGEINT arguments"); RETURN NIL END;
-    ProcedureSymbol(obj, symbol);
-    outside := external OR (HomeOf(obj) # NIL); (* an imported procedure's is another module's too *)
-    IF outside THEN AddExternal(symbol) END;
+    IF m # NIL THEN
+      outside := ~m.indirect & MethodSymbol(m.owner, m.called.name, symbol)
+    ELSE
+      ProcedureSymbol(obj, symbol);
+      outside := external OR (HomeOf(obj) # NIL); (* an imported procedure's is another module's too *)
+      IF outside THEN AddExternal(symbol) END
+    END;
     IF n = 0 THEN
       FreeR0R1(line, column);
       COPY("#0, ", target);
@@ -1837,7 +1997,12 @@ MODULE VaxCodeGenerator;
       list := AllocateSlots(n + 1);
       IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN NIL END;
       COPY("#", text); AppendInt(text, n); EmitTo("MOVL", text, ListEntry(list, n, 0));
-      p := pt.params; a := args; i := 1; copies := 0;
+      IF m # NIL THEN
+        IF first = 2 THEN ReceiverInto(m, ListEntry(list, n, 1), ListEntry(list, n, 2), line, column)
+        ELSE ReceiverInto(m, ListEntry(list, n, 1), NIL, line, column)
+        END
+      END;
+      p := pt.params; a := args; i := 1 + first; copies := 0;
       WHILE p # NIL DO
         entry := ListEntry(list, n, i);
         IF OpenDims(p.type) > 0 THEN
@@ -1873,7 +2038,19 @@ MODULE VaxCodeGenerator;
       END;
       FreeR0R1(line, column);
       Text(ListEntry(list, n, 0), target); Append(target, ", ");
-      IF outside THEN AppendExternal(target, symbol) ELSE Append(target, symbol) END;
+      IF (m # NIL) & m.indirect THEN
+        (* through the ProcTab, slot i at -4(i+1) from the tag: a VAR
+           receiver's tag is its second argument, a pointer's the longword
+           before the block *)
+        IF first = 2 THEN Text(ListEntry(list, n, 2), a1); COPY(a1, text); Append(text, ", R1"); Emit("MOVL", text)
+        ELSE
+          Text(ListEntry(list, n, 1), a1); COPY(a1, text); Append(text, ", R1"); Emit("MOVL", text);
+          Emit("MOVL", "-4(R1), R1")
+        END;
+        AppendChar(target, "@"); AppendInt(target, -4 * (m.slot + 1)); Append(target, "(R1)")
+      ELSIF outside THEN AppendExternal(target, symbol)
+      ELSE Append(target, symbol)
+      END;
       Emit("CALLG", target);
       ReleaseSlots(list, n + 1);
       FOR i := 0 TO copies - 1 DO Release(copy[i]) END
@@ -4084,31 +4261,45 @@ MODULE VaxCodeGenerator;
 
   (* One procedure of the module, appended to code: its entry - .ENTRY
      for an exported one, a local label and .WORD of the mask for a
-     private one (decided 2026-10-06, section 7) - the frame, its locals
-     cleared, the parameters it may change copied, then the body; RET at
-     the end, or, for a function, the "no RETURN" trap (code 12) *)
+     private one (decided 2026-10-06, section 7) and always .ENTRY for a
+     type-bound one, which an importer's ProcTab may name - the frame, its
+     locals cleared, the parameters it may change copied, then the body;
+     RET at the end, or, for a function, the "no RETURN" trap (code 12).
+     A type-bound procedure's receiver is its first argument: a pointer,
+     or a VAR record's address and then its tag (section 14, item 6). *)
   PROCEDURE ProcedureDecl(pd: SyntaxTree.ProcDeclNode);
     VAR obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param; section: SyntaxTree.FPSectionNode;
         id: SyntaxTree.IdentDefNode; vd: SyntaxTree.VarDeclNode; pobj: SymbolTable.Object; l: Local;
         bodyFirst, bodyLast: Instruction; symbol: VaxTypes.Symbol; i: INTEGER; off: LONGINT;
         text: ARRAY 160 OF CHAR; mask: ARRAY 40 OF CHAR; a, b: ARRAY 24 OF CHAR; op: ARRAY 8 OF CHAR;
-        before: INTEGER;
+        before: INTEGER; typeObj: SymbolTable.Object; owner: Types.RecordType; method: Types.Method;
+        global: BOOLEAN;
   BEGIN
     IF pd.isForward OR pd.isExternal THEN RETURN END;
-    IF pd.receiver # NIL THEN
-      Unsupported(pd.line, pd.column, "a type-bound procedure (Phase 16)"); RETURN
-    END;
     IF (pd.declarations # NIL) & (pd.declarations.procDecls # NIL) THEN
       Unsupported(pd.declarations.procDecls.line, pd.declarations.procDecls.column,
         "a nested procedure (Phase 16)");
       RETURN
     END;
-    obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
-    IF (obj = NIL) OR ~(obj.type IS Types.ProcedureType) THEN RETURN END;
-    pt := obj.type(Types.ProcedureType);
+    IF pd.receiver # NIL THEN
+      typeObj := SymbolTable.FindLocal(moduleScope, pd.receiver.typeName);
+      IF typeObj = NIL THEN RETURN END;
+      owner := TargetRecord(typeObj.type);
+      IF owner = NIL THEN RETURN END;
+      method := Types.FindOwnMethod(owner, pd.name.name);
+      IF method = NIL THEN RETURN END;
+      pt := method.procType; IF MethodSymbol(owner, method.name, symbol) THEN END; global := TRUE
+    ELSE
+      obj := SymbolTable.FindLocal(moduleScope, pd.name.name);
+      IF (obj = NIL) OR ~(obj.type IS Types.ProcedureType) THEN RETURN END;
+      pt := obj.type(Types.ProcedureType);
+      VariableSymbol(obj, symbol); global := obj.exported; typeObj := NIL
+    END;
     before := unsupportedCount;
     BeginBody;
-    scope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, NIL, pt);
+    IF typeObj # NIL THEN scope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, typeObj.type, pt)
+    ELSE scope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, NIL, pt)
+    END;
     resultType := pt.resultType;
     IF (resultType # NIL) & ~IsSliceScalar(resultType) THEN
       COPY("a function returning ", text); Types.Describe(resultType, text); AppendWhen(resultType, text);
@@ -4118,6 +4309,13 @@ MODULE VaxCodeGenerator;
        open array's address, then a longword for each open dimension's
        length, and a VAR record's address, then its tag (section 14) *)
     p := pt.params; i := 1;
+    IF pd.receiver # NIL THEN
+      pobj := SymbolTable.FindLocal(scope, pd.receiver.name);
+      IF pd.receiver.isVar THEN l := NewLocal(pobj, byReference, 4); l.tagOffset := 8; i := 3
+      ELSIF Changes(pd.statements, pd.receiver.name) THEN l := NewLocal(pobj, inFrame, 0); l.copyFrom := 4; i := 2
+      ELSE l := NewLocal(pobj, byValue, 4); i := 2
+      END
+    END;
     IF pd.formals # NIL THEN section := pd.formals.sections ELSE section := NIL END;
     WHILE section # NIL DO
       id := section.names;
@@ -4170,7 +4368,9 @@ MODULE VaxCodeGenerator;
     IF unsupportedCount > before THEN RETURN END;
     (* the entry, before the body *)
     bodyFirst := first; bodyLast := last; first := NIL; last := NIL;
-    COPY("; PROCEDURE ", text); Append(text, pd.name.name); EmitComment(text);
+    COPY("; PROCEDURE ", text);
+    IF pd.receiver # NIL THEN Append(text, "("); Append(text, pd.receiver.typeName); Append(text, ") ") END;
+    Append(text, pd.name.name); EmitComment(text);
     IF localSize > clearByCLR THEN used := used + {2 .. 5} END; (* MOVC5 *)
     l := locals;
     WHILE l # NIL DO
@@ -4178,8 +4378,7 @@ MODULE VaxCodeGenerator;
       l := l.next
     END;
     EntryMask(mask);
-    VariableSymbol(obj, symbol);
-    IF obj.exported THEN
+    IF global THEN
       COPY(symbol, text); Append(text, ", "); Append(text, mask); Emit(".ENTRY", text)
     ELSE
       EmitLabel(symbol); Emit(".WORD", mask)
@@ -4274,7 +4473,8 @@ MODULE VaxCodeGenerator;
      symbol an error (section 5) - an external one's linkage name checked
      instead - then each generated *)
   PROCEDURE Procedures;
-    VAR p: SyntaxTree.ProcDeclNode; full, clash: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol;
+    VAR p: SyntaxTree.ProcDeclNode; full, clash: ARRAY 3 * 256 + 3 OF CHAR; symbol: VaxTypes.Symbol;
+        typeObj: SymbolTable.Object; owner: Types.RecordType;
         text: ARRAY 600 OF CHAR;
   BEGIN
     IF module.declarations = NIL THEN RETURN END;
@@ -4293,13 +4493,21 @@ MODULE VaxCodeGenerator;
             Diagnostics.Error(p.line, p.column, full)
           END
         END
-      ELSIF ~p.isForward & (p.receiver = NIL) THEN
-        COPY(module.name, full); Append(full, "."); Append(full, p.name.name);
+      ELSIF ~p.isForward THEN
+        COPY(module.name, full); Append(full, ".");
+        IF p.receiver # NIL THEN
+          (* the record's name, as MethodSymbol, a pointer receiver's too *)
+          typeObj := SymbolTable.FindLocal(moduleScope, p.receiver.typeName); owner := NIL;
+          IF typeObj # NIL THEN owner := TargetRecord(typeObj.type) END;
+          IF owner # NIL THEN Append(full, owner.name) ELSE Append(full, p.receiver.typeName) END;
+          Append(full, ".")
+        END;
+        Append(full, p.name.name);
         IF ~VaxTypes.Enter(names, full, symbol, clash) THEN
           COPY(full, text); Append(text, " and "); Append(text, clash);
           Append(text, " have the same VAX symbol, "); Append(text, symbol);
           Diagnostics.Error(p.line, p.column, text)
-        ELSIF p.name.exportMark # SyntaxTree.exportNone THEN
+        ELSIF (p.name.exportMark # SyntaxTree.exportNone) OR (p.receiver # NIL) THEN
           EnterGlobal(full, p.line, p.column)
         END
       END;
@@ -4416,23 +4624,29 @@ MODULE VaxCodeGenerator;
   END WriteString;
 
   (* The type descriptors in POC_CONST, in LLVM's layout with every field a
-     longword (section 14, item 4): the tag, the label, at size; then the
-     extension level, 0 until extension is lowered; the pointer count; the
-     base types, the record's own tag alone; the pointers' offsets, from
-     the start of the record or of one element, flattened through records
-     and fixed arrays. No type-bound procedures yet, so no ProcTab below
-     the tag. *)
+     longword (sections 14, items 4 and 6): a record's ProcTab, its type-
+     bound procedures, slot i at -4(i+1) from the tag, the last slot first;
+     the tag, the label, at size; then the extension level; the pointer
+     count; the base types, the root first and the record's own last; the
+     pointers' offsets, from the start of the record or of one element,
+     flattened through records and fixed arrays. *)
   (* Before anything is written: the descriptors of every descriptor's base
-     types made (RecordTag), so that a local one is listed and another
-     module's symbol is declared .EXTERNAL *)
+     types made (RecordTag), so that a local one is listed, and the symbols
+     of its ProcTab's procedures (MethodSymbol), so that another module's
+     symbol is declared .EXTERNAL *)
   PROCEDURE ResolveAncestors;
-    VAR d: TypeDescriptor; r: Types.Type; text: ARRAY 160 OF CHAR;
+    VAR d: TypeDescriptor; r: Types.Type; owner: Types.RecordType; m: Types.Method; i: INTEGER;
+        text: ARRAY 160 OF CHAR; symbol: VaxTypes.Symbol;
   BEGIN
     d := descriptors;
     WHILE d # NIL DO
       IF d.rec # NIL THEN
         r := d.rec.baseType;
-        WHILE r # NIL DO RecordTag(r(Types.RecordType), text); r := r(Types.RecordType).baseType END
+        WHILE r # NIL DO RecordTag(r(Types.RecordType), text); r := r(Types.RecordType).baseType END;
+        FOR i := 0 TO LLVMTypes.MethodSlotCount(d.rec) - 1 DO
+          m := LLVMTypes.SlotMethod(d.rec, i, owner);
+          IF MethodSymbol(owner, m.name, symbol) THEN END
+        END
       END;
       d := d.next
     END
@@ -4462,6 +4676,21 @@ MODULE VaxCodeGenerator;
       END;
       Line(w, ".ADDRESS", label)
     END BaseTypes;
+
+    (* rec's ProcTab, the last slot first, each procedure by its symbol,
+       which ResolveAncestors declared .EXTERNAL if another module's *)
+    PROCEDURE ProcTab(rec: Types.RecordType);
+      VAR symbol: VaxTypes.Symbol; i: INTEGER; owner: Types.RecordType; m: Types.Method;
+    BEGIN
+      IF LLVMTypes.MethodSlotCount(rec) > 0 THEN
+        WriteStr(w, "; its ProcTab, the last slot first (section 14, item 6)"); WriteLn(w)
+      END;
+      FOR i := LLVMTypes.MethodSlotCount(rec) - 1 TO 0 BY -1 DO
+        m := LLVMTypes.SlotMethod(rec, i, owner);
+        IF MethodSymbol(owner, m.name, symbol) THEN END;
+        Line(w, ".ADDRESS", symbol)
+      END
+    END ProcTab;
 
     PROCEDURE Offsets(t: Types.Type; at: LONGINT);
       VAR rec: Types.RecordType; f: Types.Field; arr: Types.ArrayType; i, size: LONGINT;
@@ -4500,6 +4729,7 @@ MODULE VaxCodeGenerator;
       END;
       WriteStr(w, text); WriteLn(w);
       Line(w, ".ALIGN", "LONG");
+      IF d.rec # NIL THEN ProcTab(d.rec) END;
       WriteStr(w, d.label);
       IF d.global THEN WriteStr(w, "::") ELSE WriteStr(w, ":") END;
       WriteLn(w);
