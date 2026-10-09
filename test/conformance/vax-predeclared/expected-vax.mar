@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual, the VAX's listing and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
+;; the MACRO manual, the VAX's listing and the debugger runs). Why this is
+;; right:
 ;; - ABS(x) moves x to the result, then BGEQ over MNEGx: MOVx sets N when
 ;;   x is negative (MACRO 9-24), so only a negative x is negated; where x
 ;;   is the result already, TSTx sets N instead. MNEG of the most negative

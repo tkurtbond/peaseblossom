@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual, the VAX's listing and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
+;; the MACRO manual, the VAX's listing and the debugger runs). Why this is
+;; right:
 ;; - COPY(x, v) copies x's characters up to its first 0X, at most LEN(v) - 1
 ;;   of them, then 0X (Oberon2.pdf 10.3), and leaves the rest of v as it
 ;;   was: one MOVC5 #n, x, #0, #n+1, v, the n bytes and then one fill byte,

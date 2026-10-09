@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-08 (written by Claude, from the design, the MACRO
-;; manual, the VAX's listing and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
+;; the MACRO manual, the VAX's listing and the debugger runs). Why this is
+;; right:
 ;; - With poc -range-checks, SHORT of a value that does not fit traps with
 ;;   code 14 at SHORT's own line and column, as on LLVM (section 9): CVTLW
 ;;   and CVTWB set V when the value does not fit (MACRO 9-16), so BVC over
