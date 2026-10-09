@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual and the debugger runs; for the user's review). Why this is
+;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
+;; the MACRO manual and the debugger runs). Why this is
 ;; right:
 ;; - Count's VAR p, a record, has its tag at 8(AP), after its address,
 ;;   which Count does not read. The fields are reached through the

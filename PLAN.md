@@ -708,8 +708,8 @@ most, object libraries.
      procedure takes its actual's type tag after its address, as on
      LLVM. Fixture `vax-var-records` examines the tags received under the
      debugger and runs one source on both backends. Its `.mar` files, and
-     `vax-records`' and `vax-modules`' two, which pass the tag now, await
-     the user's review. Survey: 10,889, unchanged outside
+     `vax-records`' and `vax-modules`' two, which pass the tag now, were
+     reviewed by the user (2026-10-09). Survey: 10,889, unchanged outside
      `VaxCodeGenerator.Mod`, whose new code adds 30.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as

@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual, the VAX's listing and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
+;; the MACRO manual, the VAX's listing and the debugger runs). Why this
+;; is right:
 ;; - The main module of a program of three (the design's section 6):
 ;;   poc -emit-macro32 VaxModules.mod writes it and its imports'
 ;;   VaxModLib.mar and VaxModBase.mar (expected-vax-VaxModLib.mar,
