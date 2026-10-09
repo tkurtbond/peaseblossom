@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual, LLVM's code generator and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
+;; the MACRO manual, LLVM's code generator and the debugger runs). Why
+;; this is right:
 ;; - The module VaxExtension imports (expected-vax.mar): the base types it
 ;;   extends, and IS and guards on them.
 ;; - ShapeDesc's descriptor is level 0, its BaseTypes only itself;
