@@ -14,7 +14,7 @@ considered, and how poc builds it. This guide documents each one as it is
 implemented, what a program can write and what it gets. `poc(1)` is the
 manual page for the command line.
 
-This guide describes poc 0.4 with its LLVM backend, on Linux, NetBSD,
+This guide describes poc 0.5 with its LLVM backend, on Linux, NetBSD,
 OpenBSD and FreeBSD.
 
 ## Contents
@@ -33,9 +33,9 @@ OpenBSD and FreeBSD.
 
 A target is an LLVM target triple: by default clang's own for the host,
 otherwise the one `-target` names. poc has been run on x86_64 Linux,
-NetBSD and FreeBSD, i386 OpenBSD, and aarch64 FreeBSD. The target fixes
-the *word size*, 4 or 8 bytes: the size of a pointer, a procedure value and
-`SYSTEM.ADDRESS`.
+NetBSD, FreeBSD and OpenBSD, i386 OpenBSD and NetBSD, and aarch64
+FreeBSD. The target fixes the *word size*, 4 or 8 bytes: the size of a
+pointer, a procedure value and `SYSTEM.ADDRESS`.
 
 The *size model* fixes the integer types' sizes, as voc's do: `-O2`, the
 default, has the classic Oberon-2 sizes; `-OC` has Component Pascal's. A

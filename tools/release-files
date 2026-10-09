@@ -14,8 +14,10 @@
 # the gh release upload command that would. Run as tools/release-files
 # from anywhere, or make release-files; the version is Version.number.
 #
-# FREEBSD_HOST, OPENBSD_HOST and NETBSD_HOST name the hosts; they default
-# to the original developer's, alerik, cymoril and artos.
+# FREEBSD_HOSTS, OPENBSD_HOSTS and NETBSD_HOSTS name the hosts, one for
+# each architecture a package is made for; they default to the original
+# developer's, alerik and rackhir, cymoril and jherek, and artos and
+# yishana.
 set -e
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -58,9 +60,15 @@ fetch() {
     scp -q "$1:$3" "$target" || die "could not fetch $3 from $1"
   fi
 }
-fetch "${FREEBSD_HOST:-alerik}" freebsd "ports-work/packages/All/$name.pkg" pkg
-fetch "${OPENBSD_HOST:-cymoril}" openbsd "ports-work/openbsd/ports/packages/*/all/$name.tgz" tgz
-fetch "${NETBSD_HOST:-artos}" netbsd "pkgsrc-work/pkgsrc/packages/All/$name.tgz" tgz
+for host in ${FREEBSD_HOSTS:-alerik rackhir}; do
+  fetch "$host" freebsd "ports-work/packages/All/$name.pkg" pkg
+done
+for host in ${OPENBSD_HOSTS:-cymoril jherek}; do
+  fetch "$host" openbsd "ports-work/openbsd/ports/packages/*/all/$name.tgz" tgz
+done
+for host in ${NETBSD_HOSTS:-artos yishana}; do
+  fetch "$host" netbsd "pkgsrc-work/pkgsrc/packages/All/$name.tgz" tgz
+done
 
 unsigned=
 for f in "$out"/*.rpm; do
