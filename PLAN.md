@@ -681,8 +681,8 @@ most, object libraries.
      value and `VAR` with any number of open dimensions, `LEN`, indexing
      with trap 2, `COPY`, comparisons, and assignment to a fixed array
      with trap 9. Fixture `vax-open-arrays` has debugger runs of both traps
-     and guest runs under `-O2` and `-OC`; its `expected-vax.mar` awaits
-     the user's review. Every reviewed `.mar` file is unchanged.
+     and guest runs under `-O2` and `-OC`; its `expected-vax.mar` was
+     reviewed by the user (2026-10-09). Every reviewed `.mar` file is unchanged.
      Survey: 19,443 refusals left, none of them an open array.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as

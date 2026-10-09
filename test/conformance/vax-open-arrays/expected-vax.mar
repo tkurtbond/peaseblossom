@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude, from design section 14, the
-;; MACRO manual, the guest runs and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-09 by the user (written by Claude, from design
+;; section 14, the MACRO manual, the guest runs and the debugger runs).
+;; Why this is right:
 ;; - An open array parameter is its address, then a longword for each open
 ;;   dimension's length, so that Length's s is 4(AP) and its length 8(AP),
 ;;   Sum's x 4(AP) with lengths 8(AP) and 12(AP). A caller passes a fixed
