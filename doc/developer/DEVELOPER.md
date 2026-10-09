@@ -213,6 +213,15 @@ suite, so only `make test`'s run uses it: `test-stage1`, `check-opt2` and
 `check-lto` set `VAX_GUEST=skip`, which skips that part of every VAX
 fixture, as on a host without the guest.
 
+`tools/vax-do [-o <dir>] [-get <NAME.EXT>]... <proc.com> [<file>...]`
+runs a DCL command procedure there (PLAN.md Phase 16 step 1): it copies
+the procedure and the files in, as their names uppercased, runs
+`@<PROC>/OUTPUT=VAXDO.LOG`, prints the log, copies it and each `-get` file
+back into `-o`'s directory (default `.`), and deletes its copies on the
+guest. A procedure writes what it has to say to files or to its output,
+never to a terminal for the tool to read; it exits with the status
+`vax-do` reports. Text only, in ASCII mode.
+
 `tools/vax-run <main.mar> [<import.mar>...] <run.dbg>...` runs a program
 there under the debugger: it assembles its modules, each named on the
 guest by its `.TITLE`, and `tools/vax-runtime-stub.mar` (stand-ins for

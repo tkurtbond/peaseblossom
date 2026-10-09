@@ -516,6 +516,68 @@ most, object libraries.
    every later step's fixtures depend on it. Recorded in the plan, with
    the choices that were rejected.
 
+   **Record** (2026-10-09; the question marked is the user's):
+   - *The system.* SIMH's `microvax3900` (`VAXserver 3900 Series`, a
+     KA655 with 64 MB, its most) runs VMS `V5.5-2H4`, the later hardware
+     release of 5.5-2, on `DUA0:` (system) and `DUA1:` (users, `POC`'s
+     `DUA1:[USERS.POC]`), at `192.168.2.20` while SIMH runs on atla.
+     **For the user**: where the installation media and the licences
+     came from. The PAKs loaded include `OPENVMS-HOBBYIST` and `VAX-VMS`
+     (hobbyist licences, as `SHOW LICENSE` lists them), so the record
+     should name the programme and their termination date.
+   - *The base kit*, confirmed with `tools/vax-do` (below): `MACRO32`,
+     `LINK`, `LIBRARIAN`, `DCL`, the debugger (`DEBUG.EXE`,
+     `DEBUGSHR.EXE`), `DIFF`, `SEARCH`, `SORTMERGE`, `BACKUP`, `CONVERT`,
+     `ANALYZE/OBJECT` and `/RMS`; in `SYS$LIBRARY` `LIBRTL`, `LIBRTL2`,
+     `MTHRTL`, `STARLET.OLB`, `.MLB` and `STARLETSD.TLB`, `LIB.MLB`,
+     `IMAGELIB.OLB`. Layered products installed: VAX C 3.2
+     (`VAXCRTL`), FORTRAN 5.6, BASIC 3.4, Ada 3.0, MMS 2.6 and UCX 3.1;
+     MMK's release notes are there but no `MMK.EXE` in `SYS$SYSTEM`.
+     **Decided (the user, 2026-10-09): poc depends on none of the
+     layered products** - the guest-side build driver is a `.COM`
+     procedure, not MMS (step 5), and the runtime uses only `LIBRTL`,
+     `MTHRTL` and system services, not `VAXCRTL` - so that poc runs on a
+     VAX with the base kit alone.
+   - *Files cross by FTP* (UCX 3.1; active mode, ASCII for text), *and a
+     command runs by telnet*, as Phase 15 settled (`doc/developer/
+     vax-macro32-backend.md` §11, question 2). Rejected: a virtual disk
+     or tape image (SIMH must stop to change it), Kermit (none on the
+     guest), a shared mount (NFS needs UCX's server set up, a change to
+     the system), `rsh` (`UCX$RSH.EXE` is there, but UCX lists only FTP
+     and TELNET as services and ports 512-514 are closed), and a batch
+     job watching a directory (kept in reserve).
+   - *The host-side command*: `tools/vax-do [-o <dir>] [-get
+     <NAME.EXT>]... <proc.com> [<file>...]` copies the procedure and its
+     files in, runs `@<PROC>/OUTPUT=VAXDO.LOG`, and copies the log and
+     the files named back, deleting its copies on the guest; it holds the
+     guest's lock, as `tools/vax-assemble` and `tools/vax-run` do (2-3 s
+     a run, most of it FTP and telnet logins). Its output comes back as
+     files, never read from a terminal, which a long listing overflows.
+   - *Memory*: poc compiling its own source in one process peaks at
+     92 MB on x86-64 and 105 MB on 32-bit OpenBSD
+     (75 MB of it data), and `POC` may have 10240 pages of paging file
+     (5 MB), a working set of 1024 to 2048 pages (0.5 to 1 MB), and a
+     process at most `VIRTUALPAGECNT` 139072 pages (68 MB) on a 64 MB
+     machine. Step 6 cannot run under these. Choices: raise `POC`'s
+     `PGFLQUOTA`, `WSQUOTA` and `WSEXTENT` (`AUTHORIZE`) and the system's
+     `VIRTUALPAGECNT` (`SYSGEN`) and page file, all privileged changes to
+     the guest; give SIMH more memory (SIMH documents an extended
+     KA655X with up to 512 MB; whether VMS 5.5-2 uses it is to be
+     checked); and make poc need less. **Decided (the user,
+     2026-10-09): poc needs less**; the guest is not changed. One module
+     at a time is not enough by itself: compiled alone with `-compile`
+     (its imports' `.sym` files made, clang replaced by a stand-in so
+     only poc is measured), on 32-bit OpenBSD, `LLVMCodeGenerator` peaks
+     at 82 MB, `VaxCodeGenerator` at 59 MB, `SemanticActions` at 45 MB,
+     `Lexer` at 13 MB. The collector grows the heap to twice the live
+     data after a collection (`GarbageCollectedHeap`, "Heap shape"), so
+     the live data is about half of that: what holds it - the syntax
+     trees, the symbol tables, the code being written - and how much a
+     module's compilation can drop is step 4's and step 6's to find.
+     `POC`'s 5 MB of page file is an order of magnitude below the
+     largest module's 40 MB or so of live data, so this decision is to
+     be revisited if that cannot be closed.
+
 2. **Assemble, link and run hand-written, then generated, code.** Before
    any generated code: a hand-written MACRO-32 "hello" through
    `MACRO`, `LINK` and `RUN`, proving the loop end to end. Then every

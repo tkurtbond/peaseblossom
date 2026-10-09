@@ -1,0 +1,38 @@
+# Runs a command procedure on the VAX/VMS development system, by telnet, as
+# @<NAME>/OUTPUT=VAXDO.LOG, the procedure already copied to POC's home
+# directory by tools/vax-do, which runs this and brings the log back by FTP.
+# Prints one line "VAXDO-STATUS <hex $STATUS>".
+#
+#   expect -f tools/vax-do.exp <host> <NAME>
+#
+# The password is read from $VAX_NETRC here (tools/vax-login.tcl), never on
+# a command line, and nothing is shown while it is sent (log_user 0).
+
+set host [lindex $argv 0]
+set name [lindex $argv 1]
+set timeout 600
+if {[info exists ::env(VAX_DO_TIMEOUT)] && $::env(VAX_DO_TIMEOUT) ne ""} { set timeout $::env(VAX_DO_TIMEOUT) }
+log_user 0
+
+source [file join [file dirname [info script]] vax-login.tcl]
+vax_login $host
+
+send "@$name/OUTPUT=VAXDO.LOG\r"
+expect {
+  -re $prompt {}
+  timeout { fail "$name did not finish within $timeout seconds" }
+}
+# $STATUS is a string, "%X10000001"
+send "WRITE SYS\$OUTPUT \"VAXDO-STATUS \", \$STATUS\r"
+expect {
+  -re {VAXDO-STATUS %X([0-9A-F]{8})\r?\n} { puts "VAXDO-STATUS $expect_out(1,string)" }
+  timeout { fail "no status after $name" }
+}
+expect {
+  -re $prompt {}
+  timeout { fail "no prompt after the status of $name" }
+}
+
+send "LOGOUT\r"
+expect eof
+exit 0

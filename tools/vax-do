@@ -1,0 +1,116 @@
+#!/bin/sh
+# Runs a DCL command procedure on the VAX/VMS development system, with the
+# files it needs, and brings back the files it makes (PLAN.md Phase 16 step
+# 1: the one host-side command every later step's fixtures depend on;
+# doc/developer/DEVELOPER.md, section 4). The procedure and the input files
+# are copied to POC's home directory by FTP, in active and ASCII mode, each
+# as its file name uppercased; the procedure is run by telnet
+# (tools/vax-do.exp) as @NAME/OUTPUT=VAXDO.LOG, so that what it writes comes
+# back by FTP whole, not read from a terminal; then VAXDO.LOG and each
+# -get file are copied back into the output directory, as named, and every
+# copy on the guest is deleted. Each of those FTP steps is one session.
+# Prints the procedure's output and a last line "<proc>: <hex $STATUS>
+# <severity>".
+#
+#   tools/vax-do [-o <dir>] [-get <NAME.EXT>]... <proc.com> [<file>...]
+#
+# -o is the directory the files come back to (default .); -get names a file
+# the procedure leaves in POC's directory, repeated for each. Text only:
+# files cross in ASCII mode, as RMS variable-length records on the guest.
+# VAX_DO_TIMEOUT is how long the procedure may run, in seconds (default
+# 600). Exits 0 if the procedure's $STATUS is a success or informational
+# one and every file came back, 1 if not, 2 if the guest could not be used.
+#
+# The login and password are $VAX_NETRC's (default ~/.netrc-poc-vax), read by
+# curl and by the expect script themselves, never on a command line or
+# printed. VAX_HOST names the guest (default 192.168.2.20). Runs share POC's
+# home directory, so each holds this host's lock while it uses the guest
+# (tools/vax-lock.sh).
+set -e
+
+host=${VAX_HOST:-192.168.2.20}
+here=$(cd "$(dirname "$0")" && pwd)
+VAX_NETRC=${VAX_NETRC:-$HOME/.netrc-poc-vax}
+export VAX_NETRC
+. "$here/vax-lock.sh"
+
+usage() { echo "usage: tools/vax-do [-o <dir>] [-get <NAME.EXT>]... <proc.com> [<file>...]" >&2; exit 2; }
+
+# a file's name on the guest: its own, uppercased, which must be a plain VMS
+# name and type
+guest_name() {
+  n=$(basename "$1" | tr a-z A-Z)
+  case $n in
+    *[!A-Z0-9_\$.-]*|*.*.*|.*|"") echo "vax-do: $(basename "$1") is not a VMS file name" >&2; exit 2 ;;
+  esac
+  echo "$n"
+}
+
+outdir=.
+gets=
+while [ $# -gt 0 ]; do
+  case $1 in
+    -o) [ $# -ge 2 ] || usage; outdir=$2; shift 2 ;;
+    -get) [ $# -ge 2 ] || usage; g=$(guest_name "$2"); gets="$gets $g"; shift 2 ;;
+    -*) usage ;;
+    *) break ;;
+  esac
+done
+[ $# -gt 0 ] || usage
+case $1 in *.com|*.COM) ;; *) echo "vax-do: $1 is not a .com file" >&2; exit 2 ;; esac
+for f; do [ -r "$f" ] || { echo "vax-do: cannot read $f" >&2; exit 2; }; done
+[ -d "$outdir" ] || { echo "vax-do: $outdir is not a directory" >&2; exit 2; }
+procfile=$1
+proc=$(guest_name "$1")
+names=
+for f; do names="$names $(guest_name "$f")"; done
+
+ftp="ftp://$host/"
+curl_ftp() { curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@"; }
+out=$(mktemp "${TMPDIR:-/tmp}/vax-do.XXXXXX")
+# every version of each of this run's files deleted, in one session ("*": a
+# file that is not there is no failure)
+cleanup() {
+  rm -f "$out"
+  set --
+  for n in $names $gets VAXDO.LOG; do set -- "$@" -Q "*DELE $n;*"; done
+  curl -s --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@" "$ftp" -o /dev/null 2>/dev/null || true
+}
+# only once this run has the lock may it, or its cleanup, touch the guest
+vax_lock
+trap 'rm -f "$out"; vax_unlock' EXIT
+"$here/vax-assemble" -available || { echo "vax-do: the VAX guest $host is not available" >&2; exit 2; }
+trap 'cleanup; vax_unlock' EXIT
+
+# the procedure and the files copied there in one session
+upload() {
+  for f; do
+    set -- "$@" -T "$f" "$ftp$(guest_name "$f")"
+    shift
+  done
+  curl_ftp --use-ascii "$@"
+}
+upload "$@"
+
+session=0
+expect -f "$here/vax-do.exp" "$host" "${proc%.COM}" >"$out" || session=$?
+[ "$session" -eq 0 ] || { cat "$out" >&2; exit 2; }
+
+# the log and the files asked for brought back in one session
+status=0
+set --
+for n in VAXDO.LOG $gets; do set -- "$@" -o "$outdir/$n" "$ftp$n"; done
+curl_ftp --use-ascii "$@" || status=1
+[ -f "$outdir/VAXDO.LOG" ] && cat "$outdir/VAXDO.LOG"
+hex=$(sed -n 's/^VAXDO-STATUS \([0-9A-F]*\)$/\1/p' "$out")
+if [ -z "$hex" ]; then
+  echo "$procfile: no status"; exit 1
+fi
+# the low three bits of a VMS status are its severity
+case $(( 0x$hex & 7 )) in
+  0) sev=warning ;; 1) sev=success ;; 2) sev=error ;;
+  3) sev=informational ;; 4) sev=fatal ;; *) sev=unknown ;;
+esac
+echo "$procfile: %X$hex $sev"
+case $sev in success|informational) ;; *) status=1 ;; esac
+exit $status
