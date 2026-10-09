@@ -1124,3 +1124,34 @@ because procedures that used to be refused whole are now examined, which
 shows more pointer refusals: 14,659 in all now. A few refusals follow on
 from a pointer refused earlier in the same expression: 12 of `ORD` and
 one register-pressure refusal in `VaxTypes.SameName`.
+
+**Done: a minimal `Out` (item 2), 2026-10-09.** `rtl/vax/Out.Mod` has
+`Open`, `Flush`, `Char`, `String`, `Ln`, `Int` and `Hex`, with the LLVM
+`Out`'s interface and output (`FormattedText`'s `Int` and `Hex`). It
+keeps a line of up to 1,024 characters until `Ln`. Then
+`POC_PUT_LINE(text, length)` in `PocRtl.mar` writes the line as one record
+with `LIB$PUT_OUTPUT`, through a string descriptor made on the stack. A
+longer line is written in records of 1,024 characters. `Flush` does
+nothing, as on LLVM, since writing part of a line would end the record
+there. `Out`'s body passes the addresses of its line and length to
+`POC_OUT_REGISTER`, which declares an exit handler (`$DCLEXH`). The
+handler writes a line the program left without `Ln`, as a record of its
+own. The length is a `LONGINT`, and the runtime reads its low longword,
+so `Out` compiles under `-O2` and `-OC` alike. `Real`, `LongReal` and
+`Ten` wait for the reals (item 9), and `IsConsole` for step 4. There are
+no VMS libraries yet (Phase 17), so a program finds `Out` as source with
+`-import-path rtl/vax`, and `-build` writes `Out.mar` with the program's
+modules.
+
+Fixture `vax-out` builds one program with the LLVM backend and runs it
+on the host, then builds it for the VAX and runs it on the guest, under
+`-O2` and `-OC`. For each model, both runs must print the same expected
+output. The fixture also has `Out.mar` reviewed (`expected-vax-Out.mar`),
+and a program whose last line is written by the exit handler.
+
+Comparing the two backends' output found a bug: the voc-built poc wrote
+the high longword of `MIN(HUGEINT)` as `^X7FFFFFFF`, because voc's `DIV`
+is wrong for a dividend near `MIN(LONGINT)` (vishap-bugs 07). `HalfText`
+now uses `ASH`. The Stage 1 poc was always right. No earlier fixture used
+the constant, so the two compilers' suites never disagreed. The survey is
+unchanged at 19,443 refusals.

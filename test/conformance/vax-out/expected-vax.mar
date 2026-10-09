@@ -1,0 +1,413 @@
+;; Reviewed 2026-10-09 (written by Claude, from design section 14, the
+;; LLVM backend's output, the guest runs and the debugger run; for the
+;; user's review). Why this is right:
+;; - OutBasics imports Out, rtl/vax/Out.Mod compiled with it (its .mar is
+;;   expected-vax-Out.mar): its initializer calls OUT_INIT first, and its
+;;   calls of Out's procedures are to their global symbols, with G^.
+;; - Out.Int and Out.Hex take HUGEINTs, so each argument is widened to a
+;;   quadword in the frame and passed by its address, as any HUGEINT value
+;;   parameter is: -7 as ^XFFFFFFF9 and ^XFFFFFFFF, an INTEGER by CVTWL
+;;   and ASHL #-31 for its high longword, a LONGINT likewise.
+;; - MIN(HUGEINT) is ^X00000000 and ^X80000000, low longword first. Until
+;;   2026-10-09 the voc-built poc wrote ^X7FFFFFFF for its high longword
+;;   (voc's DIV is wrong for a dividend near MIN, vishap-bugs 07; HalfText
+;;   now uses ASH), and its Hex printed 7FFFFFFF00000000.
+;; - Out.String gets a literal's address and its length with the 0X, as
+;;   any open array.
+;; - Built with -build under -O2 and -OC and run on the VAX, it prints
+;;   output-O2.expected and output-OC.expected, the LLVM backend's output.
+; OutBasics, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	OUTBASICS
+	.IDENT	/fe1e9b3ecd5d7cbb/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; s: ARRAY 8 OF CHAR
+OUTBASICS_S_6NSKHB4F:
+	.BLKB	8
+; i: INTEGER
+	.ALIGN	WORD
+OUTBASICS_I_6NSKH8IT:
+	.BLKW	1
+; l: LONGINT
+	.ALIGN	LONG
+OUTBASICS_L_6NSKH6EU:
+	.BLKL	1
+; h: HUGEINT
+	.ALIGN	LONG
+OUTBASICS_H_6NSKH85A:
+	.BLKQ	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	OUT_OPEN_R8H7QTNF
+	.EXTERNAL	OUT_STRING_VTB3DE16
+	.EXTERNAL	OUT_LN_1M29JSO9
+	.EXTERNAL	OUT_CHAR_EIQL42IB
+	.EXTERNAL	OUT_INT_V0SG7EMC
+	.EXTERNAL	OUT_HEX_V0UAM9IC
+	.EXTERNAL	OUT_FLUSH_ITJ00AMN
+	.EXTERNAL	OUT_INIT
+	.EXTERNAL	POC_K1_2E074F2A93375C1D
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/hello, world/
+	.BYTE	0
+L_STR_2:
+	.ASCII	/abc/
+	.BYTE	0
+L_STR_3:
+	.ASCII	/|/
+	.BYTE	0
+L_STR_4:
+	.ASCII	/[/
+	.BYTE	0
+L_STR_5:
+	.ASCII	/][/
+	.BYTE	0
+L_STR_6:
+	.ASCII	/]/
+	.BYTE	0
+L_STR_7:
+	.ASCII	/the end/
+	.BYTE	0
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	OUTBASICS_INIT, ^M<R2,R3,R4,R5>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^OUT_INIT
+	SUBL2	#28, SP
+; line 12
+	CALLS	#0, G^OUT_OPEN_R8H7QTNF
+; line 13
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_1, -8(FP)
+	MOVL	#13, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+; line 13
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 14
+	MOVL	#1, -8(FP)
+	MOVL	#65, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 14
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 14
+	MOVL	#1, -8(FP)
+	MOVL	#122, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 14
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 15
+	MOVC5	#3, L_STR_2, #0, #8, OUTBASICS_S_6NSKHB4F
+; line 15
+	MOVL	#2, -12(FP)
+	MOVAB	OUTBASICS_S_6NSKHB4F, -8(FP)
+	MOVL	#8, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+; line 15
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_3, -8(FP)
+	MOVL	#2, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+; line 15
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 16
+	MOVL	#2, -12(FP)
+	CLRQ	-20(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 16
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 16
+	MOVL	#2, -12(FP)
+	MOVL	#^X0000002A, -20(FP)
+	CLRL	-16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 16
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 16
+	MOVL	#2, -12(FP)
+	MOVL	#^XFFFFFFF9, -20(FP)
+	MOVL	#^XFFFFFFFF, -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 16
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 17
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_4, -8(FP)
+	MOVL	#2, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+; line 17
+	MOVL	#2, -12(FP)
+	MOVL	#^X0000007B, -20(FP)
+	CLRL	-16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000006, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 17
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_5, -8(FP)
+	MOVL	#3, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+; line 17
+	MOVL	#2, -12(FP)
+	MOVL	#^XFFFFFFD3, -20(FP)
+	MOVL	#^XFFFFFFFF, -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000006, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 18
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_5, -8(FP)
+	MOVL	#3, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+; line 18
+	MOVL	#2, -12(FP)
+	MOVL	#^X00003039, -20(FP)
+	CLRL	-16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000002, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 18
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_6, -8(FP)
+	MOVL	#2, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+; line 18
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 19
+	MOVW	#32767, OUTBASICS_I_6NSKH8IT
+; line 19
+	MOVL	#2, -12(FP)
+	CVTWL	OUTBASICS_I_6NSKH8IT, -20(FP)
+	ASHL	#-31, -20(FP), -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 19
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 19
+	MOVW	#-32768, OUTBASICS_I_6NSKH8IT
+; line 19
+	MOVL	#2, -12(FP)
+	CVTWL	OUTBASICS_I_6NSKH8IT, -20(FP)
+	ASHL	#-31, -20(FP), -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 19
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 20
+	MOVL	#2147483647, OUTBASICS_L_6NSKH6EU
+; line 20
+	MOVL	#2, -12(FP)
+	MOVL	OUTBASICS_L_6NSKH6EU, -20(FP)
+	ASHL	#-31, -20(FP), -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 20
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 20
+	MOVL	#^X80000000, OUTBASICS_L_6NSKH6EU
+; line 20
+	MOVL	#2, -12(FP)
+	MOVL	OUTBASICS_L_6NSKH6EU, -20(FP)
+	ASHL	#-31, -20(FP), -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 20
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 21
+	MOVL	#^XFFFFFFFF, OUTBASICS_H_6NSKH85A
+	MOVL	#^X7FFFFFFF, OUTBASICS_H_6NSKH85A+4
+; line 21
+	MOVL	#2, -12(FP)
+	MOVQ	OUTBASICS_H_6NSKH85A, -20(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 21
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 22
+	CLRL	OUTBASICS_H_6NSKH85A
+	MOVL	#^X80000000, OUTBASICS_H_6NSKH85A+4
+; line 22
+	MOVL	#2, -12(FP)
+	MOVQ	OUTBASICS_H_6NSKH85A, -20(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000016, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_INT_V0SG7EMC
+; line 22
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 23
+	MOVL	#2, -12(FP)
+	CLRQ	-20(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000001, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_HEX_V0UAM9IC
+; line 23
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 23
+	MOVL	#2, -12(FP)
+	MOVL	#^X000000FF, -20(FP)
+	CLRL	-16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000001, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_HEX_V0UAM9IC
+; line 23
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 23
+	MOVL	#2, -12(FP)
+	MOVL	#^X000000FF, -20(FP)
+	CLRL	-16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000004, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_HEX_V0UAM9IC
+; line 23
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 24
+	MOVL	#2, -12(FP)
+	MOVL	#^XFFFFFFFF, -20(FP)
+	MOVL	#^XFFFFFFFF, -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000004, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_HEX_V0UAM9IC
+; line 24
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 24
+	MOVL	#2, -12(FP)
+	MOVL	#^XFFFFFFFF, -20(FP)
+	MOVL	#^XFFFFFFFF, -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000014, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_HEX_V0UAM9IC
+; line 24
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 24
+	MOVL	#2, -12(FP)
+	MOVL	#^X0000BEEF, -20(FP)
+	CLRL	-16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_HEX_V0UAM9IC
+; line 24
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 25
+	CLRL	OUTBASICS_H_6NSKH85A
+	MOVL	#^X80000000, OUTBASICS_H_6NSKH85A+4
+; line 25
+	MOVL	#2, -12(FP)
+	MOVQ	OUTBASICS_H_6NSKH85A, -20(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000010, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_HEX_V0UAM9IC
+; line 25
+	MOVL	#1, -8(FP)
+	MOVL	#32, -4(FP)
+	CALLG	-8(FP), G^OUT_CHAR_EIQL42IB
+; line 25
+	MOVL	#^XFFFFFFFF, OUTBASICS_H_6NSKH85A
+	MOVL	#^X7FFFFFFF, OUTBASICS_H_6NSKH85A+4
+; line 25
+	MOVL	#2, -12(FP)
+	MOVQ	OUTBASICS_H_6NSKH85A, -20(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000001, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^OUT_HEX_V0UAM9IC
+; line 25
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 26
+	CALLS	#0, G^OUT_LN_1M29JSO9
+; line 27
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_7, -8(FP)
+	MOVL	#8, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+; line 27
+	CALLS	#0, G^OUT_FLUSH_ITJ00AMN
+; line 27
+	CALLS	#0, G^OUT_LN_1M29JSO9
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_FE1E9B3ECD5D7CBB == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	OUTBASICS_MAIN, ^M<>
+	CALLS	#0, OUTBASICS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	OUTBASICS_MAIN

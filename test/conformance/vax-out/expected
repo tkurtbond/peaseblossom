@@ -1,0 +1,10 @@
+semantic OK, wrote Out.mar
+semantic OK, wrote OutBasics.mar
+exit 0
+OutBasics.mar matches expected-vax.mar
+Out.mar matches expected-vax-Out.mar
+LLVM build -O2 exit 0
+VAX build -O2 exit 0
+LLVM build -OC exit 0
+VAX build -OC exit 0
+VAX build OutUnfinished exit 0

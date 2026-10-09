@@ -684,6 +684,14 @@ most, object libraries.
      and guest runs under `-O2` and `-OC`; its `expected-vax.mar` was
      reviewed by the user (2026-10-09). Every reviewed `.mar` file is unchanged.
      Survey: 19,443 refusals left, none of them an open array.
+   - *A minimal `Out`* (section 14 item 2), done 2026-10-09:
+     `rtl/vax/Out.Mod` (`Open`, `Flush`, `Char`, `String`, `Ln`, `Int`,
+     `Hex`) over `POC_PUT_LINE` (`LIB$PUT_OUTPUT`), with an exit handler
+     for a line left without `Ln`. Fixture `vax-out` runs one source on
+     both backends, under `-O2` and `-OC`, against one expected output per
+     model. Its `.mar` files await the user's review. This found the
+     voc-built poc's wrong high longword for `MIN(HUGEINT)` (vishap-bugs
+     07), now fixed.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

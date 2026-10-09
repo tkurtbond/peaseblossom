@@ -454,7 +454,10 @@ MODULE VaxCodeGenerator;
       IF Types.IsSet(x.type) THEN
         AppendSetHex(text, x.bits)
       ELSIF IsQuad(x) THEN
-        hi := x.value DIV two32;
+        (* ASH, not DIV two32: voc's DIV is wrong for a dividend near
+           MIN(LONGINT) (vishap-bugs 07), so that the voc-built poc wrote
+           ^X7FFFFFFF as the high longword of MIN(HUGEINT) *)
+        hi := ASH(x.value, -32);
         IF half = 0 THEN v := x.value - hi * two32
         ELSIF hi < 0 THEN v := hi + two32
         ELSE v := hi

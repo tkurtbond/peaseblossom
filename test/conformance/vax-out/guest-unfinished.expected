@@ -1,0 +1,3 @@
+build status: %X10000001
+ended by the exit handler
+run status: %X00000001
