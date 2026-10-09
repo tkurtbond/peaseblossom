@@ -6686,8 +6686,11 @@ MODULE LLVMCodeGenerator;
   (* WITH v1: T1 DO S1 | v2: T2 DO S2 ... ELSE S END - the first branch
      whose variable's dynamic type is its T (or an extension of it) runs,
      with the variable statically narrowed to T inside (cg.narrowings); a
-     NIL variable matches no branch; with no branch taken the ELSE part
-     runs, or, if there is none, the program is aborted. Each branch is a
+     NIL variable is a NIL-access trap (EmitTypeTest); with no branch
+     taken the ELSE part runs, or, if there is none, the program is
+     aborted. Both traps are at the WITH, the NIL one of each branch's
+     test too, after the previous branch's statements moved
+     cg.currentLine on. Each branch is a
      test-and-branch exactly like an IF/ELSIF chain. A branch whose type
      has no descriptor to test against (see HasTypeTag) is skipped with a
      comment rather than mis-generated. *)
@@ -6700,6 +6703,8 @@ MODULE LLVMCodeGenerator;
     NewLabel(cg, endLabel);
     guard := s.guards;
     WHILE guard # NIL DO
+      cg.currentLine := s.line; cg.currentColumn := s.column;
+      cg.statementLine := s.line; cg.statementColumn := s.column;
       obj := ResolveQualifiedObject(cg, guard.variableQualifier, guard.variableName, homeModule);
       typeObj := ResolveQualifiedObject(cg, guard.typeQualifier, guard.typeName, typeHome);
       rec := NIL;

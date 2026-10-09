@@ -886,13 +886,14 @@ MODULE Parser;
                                               typeQualifier, typeName, body, line, column);
       guardTail := guards;
       WHILE p.current.kind = Lexer.verticalBar DO
-        line := p.current.line; column := p.current.column;
+        (* the guard's own position; the WITH keeps the WITH's *)
+        branchLine := p.current.line; branchColumn := p.current.column;
         Advance(p);
         ParseGuard(p, variableQualifier, variableName, typeQualifier, typeName);
         ExpectToken(p, Lexer.doKeyword, "expected 'DO'");
         body := ParseStatementSeq(p);
         guard := SemanticActions.NewWithGuard(variableQualifier, variableName,
-                                               typeQualifier, typeName, body, line, column);
+                                               typeQualifier, typeName, body, branchLine, branchColumn);
         guardTail.next := guard; guardTail := guard
       END;
       elseBody := NIL; hasElse := FALSE;
