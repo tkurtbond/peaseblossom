@@ -763,6 +763,11 @@ most, object libraries.
      the code's high word for "assertion failed (n)". Fixture `vax-assert`
      runs one program on both backends for each case. Its `.mar` file
      was reviewed by the user (2026-10-09). Survey: 78, unchanged.
+   - *`SYSTEM.SET64`* (section 14 item 11), done 2026-10-09: a quadword
+     lowered as a `HUGEINT`, each operation on both longwords; `IN` of a
+     register pair by `ASHQ` and `BLBC`, `BBC` taking only bits 0..31 of
+     a register. Fixture `vax-set64` runs one program on both backends.
+     Its `.mar` file awaits the user's review. Survey: 78, unchanged.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

@@ -1,0 +1,194 @@
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual, LLVM's code generator and the guest runs; for the user's
+;; review). Why this is right:
+;; - Phase 16 step 3 (section 14, item 11): a SYSTEM.SET64 is a quadword
+;;   (.BLKQ), element n bit n MOD 32 of longword n DIV 32, as a HUGEINT's;
+;;   a constant is a MOVL of each longword, {0, 31, 32, 63} ^X80000001
+;;   twice.
+;; - A constructor with a variable element is a SET64 only when a constant
+;;   element is above 31 (SemanticActions.CheckConstantSetElement, as on
+;;   LLVM): {i} is ASHQ i, #1; i .. j is -1 shifted i places (MNEGL #1 on
+;;   both longwords, ASHQ) less -2 shifted j places (MNEGL #2, #1), by
+;;   BICL2 of each longword, as LLVM's "-1 shl lo" and "-1 lshr (63-hi)";
+;;   the constant elements, here 33, BISL2 of the longword holding them.
+;;   ASHQ's count is a byte, the low one of i (MACRO 9-10: a positive count
+;;   shifts left, one above 64 gives zero).
+;; - +, -, * and / are BISL2, BICL2, BICL2 of MCOML and XORL2 on each
+;;   longword, in place when the result is the left operand; -a is MCOML
+;;   of each; a SET with a SET64 is zero-extended (MOVL, CLRL).
+;; - x IN s is FALSE for x outside 0..63, by an unsigned CMPL with 63. BBC
+;;   takes any bit of memory, but of a register only 0..31, a larger
+;;   position being a reserved operand (MACRO 9.2.3); so for s in a
+;;   register pair a constant x tests bit x MOD 32 of register x DIV 32
+;;   (40: #8 of R1), and a variable one shifts the pair right x places
+;;   (ASHQ of -x) and tests its low bit, BLBC.
+;; - INCL and EXCL with a constant are BISL2 or BICL2 of the bit in its
+;;   longword (45: ^X00002000 of a+4); with a variable, of ASHQ i, #1 on
+;;   both longwords, an i outside 0..63 leaving the set as it was.
+;; - = compares the high longwords, then the low; ORD(a) is the HUGEINT of
+;;   its bits, a MOVQ (PredeclaredProcedures.CheckOrd).
+;; - Set64Out, built by both backends under -O2 and -OC, prints the same
+;;   (output.expected) here and on the guest.
+; VaxSet64, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXSET64
+	.IDENT	/1f0c9db43aceefac/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; a: SYSTEM.SET64
+	.ALIGN	LONG
+VAXSET64_A_VFHT1MEF:
+	.BLKQ	1
+; b: SYSTEM.SET64
+	.ALIGN	LONG
+VAXSET64_B_VFHT1MS2:
+	.BLKQ	1
+; s: SET
+	.ALIGN	LONG
+VAXSET64_S_VFHT1GG5:
+	.BLKL	1
+; i: INTEGER
+	.ALIGN	WORD
+VAXSET64_I_VFHT1PR7:
+	.BLKW	1
+; j: INTEGER
+	.ALIGN	WORD
+VAXSET64_J_VFHT1Q8Q:
+	.BLKW	1
+; f: BOOLEAN
+VAXSET64_F_VFHT1L5M:
+	.BLKB	1
+; h: HUGEINT
+	.ALIGN	LONG
+VAXSET64_H_VFHT1PDK:
+	.BLKQ	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXSET64_INIT, ^M<R2,R3,R4,R5>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+; line 11
+	MOVL	#^X80000001, VAXSET64_A_VFHT1MEF
+	MOVL	#^X80000001, VAXSET64_A_VFHT1MEF+4
+; line 12
+	ASHQ	VAXSET64_I_VFHT1PR7, #1, R0
+	MNEGL	#2, R2
+	MNEGL	#1, R3
+	ASHQ	VAXSET64_J_VFHT1Q8Q, R2, R2
+	MNEGL	#1, R4
+	MNEGL	#1, R5
+	ASHQ	VAXSET64_I_VFHT1PR7, R4, R4
+	BICL2	R2, R4
+	BICL2	R3, R5
+	BISL2	R4, R0
+	BISL2	R5, R1
+	BISL2	#^X00000002, R1
+	MOVQ	R0, VAXSET64_B_VFHT1MS2
+; line 13
+	BISL2	VAXSET64_B_VFHT1MS2, VAXSET64_A_VFHT1MEF
+	BISL2	VAXSET64_B_VFHT1MS2+4, VAXSET64_A_VFHT1MEF+4
+; line 13
+	BICL2	VAXSET64_B_VFHT1MS2, VAXSET64_A_VFHT1MEF
+	BICL2	VAXSET64_B_VFHT1MS2+4, VAXSET64_A_VFHT1MEF+4
+; line 13
+	MCOML	VAXSET64_B_VFHT1MS2, R0
+	MCOML	VAXSET64_B_VFHT1MS2+4, R1
+	BICL2	R0, VAXSET64_A_VFHT1MEF
+	BICL2	R1, VAXSET64_A_VFHT1MEF+4
+; line 13
+	XORL2	VAXSET64_B_VFHT1MS2, VAXSET64_A_VFHT1MEF
+	XORL2	VAXSET64_B_VFHT1MS2+4, VAXSET64_A_VFHT1MEF+4
+; line 13
+	MCOML	VAXSET64_A_VFHT1MEF, R0
+	MCOML	VAXSET64_A_VFHT1MEF+4, R1
+	MOVQ	R0, VAXSET64_A_VFHT1MEF
+; line 14
+	MOVL	VAXSET64_S_VFHT1GG5, R0
+	CLRL	R1
+	MOVQ	R0, VAXSET64_A_VFHT1MEF
+	BISL2	VAXSET64_B_VFHT1MS2, VAXSET64_A_VFHT1MEF
+	BISL2	VAXSET64_B_VFHT1MS2+4, VAXSET64_A_VFHT1MEF+4
+; line 15
+	CLRB	R0
+	BBC	#40, VAXSET64_A_VFHT1MEF, L_1
+	MOVB	#1, R0
+L_1:
+	MOVB	R0, VAXSET64_F_VFHT1L5M
+; line 16
+	CVTWL	VAXSET64_I_VFHT1PR7, R0
+	CLRB	R1
+	CMPL	R0, #63
+	BGTRU	L_2
+	BBC	R0, VAXSET64_A_VFHT1MEF, L_2
+	MOVB	#1, R1
+L_2:
+	MOVB	R1, VAXSET64_F_VFHT1L5M
+; line 17
+	MOVQ	VAXSET64_A_VFHT1MEF, R0
+	BISL2	VAXSET64_B_VFHT1MS2, R0
+	BISL2	VAXSET64_B_VFHT1MS2+4, R1
+	CLRB	R2
+	BBC	#8, R1, L_3
+	MOVB	#1, R2
+L_3:
+	MOVB	R2, VAXSET64_F_VFHT1L5M
+; line 18
+	MOVQ	VAXSET64_A_VFHT1MEF, R0
+	BISL2	VAXSET64_B_VFHT1MS2, R0
+	BISL2	VAXSET64_B_VFHT1MS2+4, R1
+	CVTWL	VAXSET64_I_VFHT1PR7, R2
+	MNEGL	R2, R3
+	ASHQ	R3, R0, R0
+	CLRB	R3
+	CMPL	R2, #63
+	BGTRU	L_4
+	BLBC	R0, L_4
+	MOVB	#1, R3
+L_4:
+	MOVB	R3, VAXSET64_F_VFHT1L5M
+; line 19
+	BISL2	#^X00002000, VAXSET64_A_VFHT1MEF+4
+; line 19
+	BICL2	#^X00000008, VAXSET64_A_VFHT1MEF
+; line 19
+	ASHQ	VAXSET64_I_VFHT1PR7, #1, R0
+	BISL2	R0, VAXSET64_A_VFHT1MEF
+	BISL2	R1, VAXSET64_A_VFHT1MEF+4
+; line 19
+	ASHQ	VAXSET64_I_VFHT1PR7, #1, R0
+	BICL2	R0, VAXSET64_A_VFHT1MEF
+	BICL2	R1, VAXSET64_A_VFHT1MEF+4
+; line 20
+	CLRB	R0
+	CMPL	VAXSET64_A_VFHT1MEF+4, VAXSET64_B_VFHT1MS2+4
+	BNEQ	L_5
+	CMPL	VAXSET64_A_VFHT1MEF, VAXSET64_B_VFHT1MS2
+	BNEQ	L_5
+	MOVB	#1, R0
+L_5:
+	MOVB	R0, VAXSET64_F_VFHT1L5M
+; line 21
+	MOVQ	VAXSET64_A_VFHT1MEF, VAXSET64_H_VFHT1PDK
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_1F0C9DB43ACEEFAC == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXSET64_MAIN, ^M<>
+	CALLS	#0, VAXSET64_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXSET64_MAIN

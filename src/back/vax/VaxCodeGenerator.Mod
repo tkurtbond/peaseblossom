@@ -15,11 +15,12 @@ MODULE VaxCodeGenerator;
      NEW and the type descriptors (items 3 and 4); a VAR record
      parameter's type tag (item 5); extension, IS, type guards and WITH;
      type-bound procedures (item 6); procedure values (item 7); nested
-     procedures (item 8); and reals (item 9).
+     procedures (item 8); reals (item 9); the real POC_TRAP and POC_HALT
+     (item 10); and ASSERT and SYSTEM.SET64 (item 11).
 
      A module needing more - a predeclared procedure outside the slice, or
-     a type outside the slice, such as SYSTEM.SET64 (Phase 16) - is reported as
-     a construct the backend cannot lower yet,
+     a type outside the slice, such as a record with field initializers
+     (Phase 16) - is reported as a construct the backend cannot lower yet,
      at its position, and unsupportedCount counts them, as
      LLVMCodeGenerator's does; VaxToolchainDriver then deletes what was
      written. Constants need no code, and types only their descriptors.
@@ -150,7 +151,7 @@ MODULE VaxCodeGenerator;
       kind: INTEGER;
       type: Types.Type;
       value: LONGINT; (* immediate, not a SET *)
-      bits: SET; (* immediate SET *)
+      bits, bitsHigh: SET; (* immediate SET, or SYSTEM.SET64's low and high longwords *)
       realText: ARRAY realTextLength OF CHAR; (* immediate REAL or LONGREAL: its MACRO-32 text (RealConstant) *)
       symbol: VaxTypes.Symbol; (* memory: a variable; empty for the frame *)
       outside: BOOLEAN; (* memory: symbol is another module's, G^symbol (section 7) *)
@@ -431,7 +432,6 @@ MODULE VaxCodeGenerator;
     VAR f: Types.Field; n: INTEGER;
   BEGIN
     IF Types.IsOpenArray(t) OR (t IS Types.PointerType) OR (t IS Types.ProcedureType)
-       OR (t = Types.Set64)
        OR (t IS Types.RecordType) & t(Types.RecordType).needsInit THEN
       Append(text, " (Phase 16)")
     ELSIF t IS Types.ArrayType THEN
@@ -520,7 +520,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE NewOperand(kind: INTEGER; t: Types.Type): Operand;
     VAR x: Operand;
   BEGIN
-    NEW(x); x.kind := kind; x.type := t; x.value := 0; x.bits := {}; x.realText[0] := 0X;
+    NEW(x); x.kind := kind; x.type := t; x.value := 0; x.bits := {}; x.bitsHigh := {}; x.realText[0] := 0X;
     x.symbol[0] := 0X; x.outside := FALSE; x.offset := 0; x.slot := -1; x.slots := 0; x.reg := -1;
     x.onAP := FALSE; x.deferred := FALSE; x.baseOp := NIL; x.ownsBase := FALSE;
     x.index := NIL; x.ownsIndex := FALSE;
@@ -577,7 +577,7 @@ MODULE VaxCodeGenerator;
     IF x.kind = immediate THEN
       AppendChar(text, "#");
       IF Types.IsSet(x.type) THEN
-        AppendSetHex(text, x.bits)
+        IF half = 0 THEN AppendSetHex(text, x.bits) ELSE AppendSetHex(text, x.bitsHigh) END
       ELSIF IsReal(x.type) THEN
         Append(text, x.realText)
       ELSIF IsQuad(x) THEN
@@ -627,7 +627,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE IsZero(x: Operand): BOOLEAN;
   BEGIN
     IF x.kind # immediate THEN RETURN FALSE
-    ELSIF Types.IsSet(x.type) THEN RETURN x.bits = {}
+    ELSIF Types.IsSet(x.type) THEN RETURN (x.bits = {}) & (x.bitsHigh = {})
     ELSIF IsReal(x.type) THEN RETURN x.realText = "0.0"
     ELSE RETURN x.value = 0
     END
@@ -929,7 +929,7 @@ MODULE VaxCodeGenerator;
       ELSIF IsReal(dst.type) THEN
         imm := RealImmediate(dst.type, ""); AppendInt(imm.realText, src.value);
         IF src.value = 0 THEN imm.realText := "0.0" END
-      ELSE imm := Immediate(dst.type, src.value); imm.bits := src.bits
+      ELSE imm := Immediate(dst.type, src.value); imm.bits := src.bits; imm.bitsHigh := src.bitsHigh
       END;
       IF IsZero(imm) THEN Op("CLR", d, "", op); Emit1(op, dst)
       ELSIF d = "Q" THEN
@@ -939,6 +939,9 @@ MODULE VaxCodeGenerator;
       END
     ELSIF s = d THEN
       Op("MOV", d, "", op); Emit2(op, src, dst)
+    ELSIF (d = "Q") & (src.type = Types.Set) THEN (* a SET into a SYSTEM.SET64: zero-extended *)
+      Text(src, from); HalfText(dst, 0, lo); HalfText(dst, 1, hi);
+      Operands(from, lo, "", operands); Emit("MOVL", operands); Emit("CLRL", hi)
     ELSIF d = "Q" THEN
       Text(src, from); HalfText(dst, 0, lo); HalfText(dst, 1, hi);
       IF s = "L" THEN COPY("MOVL", op) ELSE Op("CVT", s, "L", op) END;
@@ -1006,7 +1009,7 @@ MODULE VaxCodeGenerator;
 
   PROCEDURE IsSliceScalar(t: Types.Type): BOOLEAN;
   BEGIN
-    RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Set)
+    RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Set) OR (t = Types.Set64)
       OR Types.IsInteger(t) & (Suffix(t) # 0X) OR IsReal(t) OR IsSlicePointer(t) OR IsProcedureType(t)
   END IsSliceScalar;
 
@@ -2367,8 +2370,9 @@ MODULE VaxCodeGenerator;
       RETURN StringOperand(v.stringVal, 0)
     ELSIF v.kind = Types.realValue THEN
       RETURN RealConstant(v, e.line, e.column)
-    ELSIF v.kind = Types.setValue THEN
-      Unsupported(e.line, e.column, "a SYSTEM.SET64 value (Phase 16)")
+    ELSIF v.kind = Types.setValue THEN (* a SYSTEM.SET64: its low and high longwords *)
+      x := Immediate(Types.Set64, 0); x.bits := v.setLow; x.bitsHigh := v.setHigh;
+      RETURN x
     ELSIF v.kind = Types.nilValue THEN
       RETURN Immediate(Types.NilType, 0)
     ELSE
@@ -2495,6 +2499,58 @@ MODULE VaxCodeGenerator;
     Done(a, result); Done(b, result);
     RETURN result
   END QuadAddSub;
+
+  (* x, a SET or a SYSTEM.SET64, as a SYSTEM.SET64 (section 14, item 11):
+     a SET zero-extended, its high longword clear *)
+  PROCEDURE ToSet64(x: Operand; line, column: INTEGER): Operand;
+    VAR r: Operand;
+  BEGIN
+    IF x.type = Types.Set64 THEN RETURN x
+    ELSIF x.kind = immediate THEN x.type := Types.Set64; x.bitsHigh := {}; RETURN x
+    END;
+    r := NewRegisterBeside(Types.Set64, x, NIL, line, column);
+    MoveInto(x, r);
+    Release(x);
+    RETURN r
+  END ToSet64;
+
+  (* a <op> b on two SYSTEM.SET64s, base BIS, BIC or XOR on each of the
+     result's longwords, as QuadAddSub *)
+  PROCEDURE QuadSet(base: ARRAY OF CHAR; commutes: BOOLEAN; a, b, dest: Operand; line, column: INTEGER): Operand;
+    VAR result, swap: Operand; op: ARRAY 8 OF CHAR; from, to: OperandText; operands: ARRAY 160 OF CHAR;
+        half: INTEGER;
+  BEGIN
+    IF commutes & ~Same(a, dest) & (Same(b, dest) OR (b.kind = register) & (a.kind # register)) THEN
+      swap := a; a := b; b := swap
+    END;
+    IF (dest # NIL) & (Suffix(dest.type) = "Q") & ~(Same(b, dest) & ~Same(a, dest)) THEN result := dest
+    ELSIF a.kind = register THEN result := a
+    ELSE result := NewRegisterBeside(Types.Set64, a, b, line, column)
+    END;
+    result.type := Types.Set64;
+    MoveInto(a, result);
+    COPY(base, op); Append(op, "L2");
+    FOR half := 0 TO 1 DO
+      HalfText(b, half, from); HalfText(result, half, to);
+      IF from # "#^X00000000" THEN Operands(from, to, "", operands); Emit(op, operands) END
+    END;
+    Done(a, result); Done(b, result);
+    RETURN result
+  END QuadSet;
+
+  (* NOT x, x a SYSTEM.SET64: a constant's bits, or MCOML of each longword
+     into a register pair *)
+  PROCEDURE Complement64(x: Operand; line, column: INTEGER): Operand;
+    VAR r: Operand; from, to: OperandText; operands: ARRAY 160 OF CHAR; half: INTEGER;
+  BEGIN
+    IF x.kind = immediate THEN x.bits := -x.bits; x.bitsHigh := -x.bitsHigh; RETURN x END;
+    IF x.kind = register THEN r := x ELSE r := NewRegisterBeside(Types.Set64, x, NIL, line, column) END;
+    FOR half := 0 TO 1 DO
+      HalfText(x, half, from); HalfText(r, half, to); Operands(from, to, "", operands); Emit("MCOML", operands)
+    END;
+    Done(x, r); r.type := Types.Set64;
+    RETURN r
+  END Complement64;
 
   (* a DIV b or a MOD b, floored (LLVMCodeGenerator.GenerateDivMod): q and
      r truncated by DIVx3 and multiplying back, then, when r # 0 and its
@@ -2677,6 +2733,9 @@ MODULE VaxCodeGenerator;
     ELSIF Types.IsInteger(a.type) & Types.IsInteger(b.type) THEN
       t := Types.WiderOf(a.type, b.type);
       a := Widen(a, t, line, column); b := Widen(b, t, line, column)
+    ELSIF Types.IsSet(a.type) & Types.IsSet(b.type) & (a.type # b.type) THEN
+      (* a SET and a SYSTEM.SET64: the SET zero-extended *)
+      a := ToSet64(a, line, column); b := ToSet64(b, line, column)
     ELSIF (IsSlicePointer(a.type) OR (a.type = Types.NilType)) & (IsSlicePointer(b.type) OR (b.type = Types.NilType))
           & ((op = Lexer.equal) OR (op = Lexer.notEqual)) THEN
       (* two pointers, or one and NIL, which the checker has found related:
@@ -2724,10 +2783,58 @@ MODULE VaxCodeGenerator;
     RETURN d
   END Relation;
 
+  (* x IN s, s a SYSTEM.SET64: bit x of s, FALSE when x is not 0..63. BBC
+     takes a bit of memory at any position, but of a register only 0..31
+     (MACRO 9.2.3, BBC: a larger one is a reserved operand); so s in a
+     register pair is shifted right x places by ASHQ, then its low bit
+     tested, or, for a constant x, the bit is taken from the register
+     holding it *)
+  PROCEDURE In64(x, s: Operand; line, column: INTEGER): Operand;
+    VAR d, r: Operand; isFalse: ARRAY 16 OF CHAR; operands: ARRAY 160 OF CHAR; pos, base: OperandText;
+  BEGIN
+    IF s.kind = immediate THEN s := InRegister(s, line, column) END;
+    IF x.kind = immediate THEN
+      d := NewFlag(x, s, line, column);
+      IF (x.value >= 0) & (x.value <= 63) THEN
+        NewLabel(isFalse);
+        COPY("#", pos);
+        IF s.kind = register THEN
+          AppendInt(pos, x.value MOD 32); HalfText(s, SHORT(x.value DIV 32), base)
+        ELSE
+          AppendInt(pos, x.value); Text(s, base)
+        END;
+        Operands(pos, base, isFalse, operands); Emit("BBC", operands);
+        SetFlag(d, isFalse)
+      END;
+      Release(x); Release(s);
+      RETURN d
+    END;
+    IF ~IsQuad(x) THEN x := Widen(x, longword, line, column) END;
+    IF s.kind = register THEN
+      r := NewRegisterBeside(longword, x, s, line, column);
+      HalfText(x, 0, pos); Text(r, base); Operands(pos, base, "", operands); Emit("MNEGL", operands);
+      Emit3("ASHQ", r, s, s);
+      Release(r)
+    END;
+    d := NewFlag(x, s, line, column);
+    NewLabel(isFalse);
+    IF IsQuad(x) THEN HalfText(x, 1, pos); Emit("TSTL", pos); Emit("BNEQ", isFalse) END;
+    HalfText(x, 0, pos); Operands(pos, "#63", "", operands); Emit("CMPL", operands);
+    Emit("BGTRU", isFalse);
+    Text(s, base);
+    IF s.kind = register THEN Operands(base, isFalse, "", operands); Emit("BLBC", operands)
+    ELSE Operands(pos, base, isFalse, operands); Emit("BBC", operands)
+    END;
+    SetFlag(d, isFalse);
+    Release(x); Release(s);
+    RETURN d
+  END In64;
+
   (* x IN s: bit x of s, FALSE when x is not 0..31 *)
   PROCEDURE In(x, s: Operand; line, column: INTEGER): Operand;
     VAR d: Operand; isFalse: ARRAY 16 OF CHAR; operands: ARRAY 160 OF CHAR; pos, base: OperandText;
   BEGIN
+    IF s.type = Types.Set64 THEN RETURN In64(x, s, line, column) END;
     IF s.kind = immediate THEN s := InRegister(s, line, column) END;
     s := Fit(s, 1, line, column); (* BBC's base, a byte *)
     IF x.kind # immediate THEN
@@ -2835,8 +2942,16 @@ MODULE VaxCodeGenerator;
        OR (op = Lexer.greater) OR (op = Lexer.greaterEqual) THEN
       RETURN Relation(op, a, b, e.line, e.column)
     ELSIF op = Lexer.inKeyword THEN
-      IF ~Types.IsInteger(a.type) OR (b.type # Types.Set) THEN RETURN Dummy() END;
+      IF ~Types.IsInteger(a.type) OR ~Types.IsSet(b.type) THEN RETURN Dummy() END;
       RETURN In(a, b, e.line, e.column)
+    ELSIF Types.IsSet(a.type) & Types.IsSet(b.type) & ((a.type = Types.Set64) OR (b.type = Types.Set64)) THEN
+      (* SYSTEM.SET64 (section 14, item 11): each longword as a SET's *)
+      a := ToSet64(a, e.line, e.column); b := ToSet64(b, e.line, e.column);
+      IF op = Lexer.plus THEN RETURN QuadSet("BIS", TRUE, a, b, dest, e.line, e.column)
+      ELSIF op = Lexer.minus THEN RETURN QuadSet("BIC", FALSE, a, b, dest, e.line, e.column)
+      ELSIF op = Lexer.slash THEN RETURN QuadSet("XOR", TRUE, a, b, dest, e.line, e.column)
+      ELSE RETURN QuadSet("BIC", FALSE, a, Complement64(b, e.line, e.column), dest, e.line, e.column)
+      END
     ELSIF (a.type = Types.Set) & (b.type = Types.Set) THEN
       IF op = Lexer.plus THEN RETURN Arithmetic("BIS", TRUE, Types.Set, a, b, dest, e.line, e.column)
       ELSIF op = Lexer.minus THEN RETURN Arithmetic("BIC", FALSE, Types.Set, a, b, dest, e.line, e.column)
@@ -2895,6 +3010,8 @@ MODULE VaxCodeGenerator;
       ELSE Emit3("XORB3", Immediate(Types.Boolean, 1), v, result)
       END;
       Done(v, result); RETURN result
+    ELSIF (e.op = Lexer.minus) & (v.type = Types.Set64) THEN
+      RETURN Complement64(v, e.line, e.column)
     ELSIF (e.op = Lexer.minus) & ((v.type = Types.Set) OR Types.IsInteger(v.type) OR IsReal(v.type)) THEN
       result := Target(v.type, v, NIL, dest, e.line, e.column);
       result.type := v.type;
@@ -2939,21 +3056,103 @@ MODULE VaxCodeGenerator;
     RETURN mask
   END ElementMask;
 
-  PROCEDURE SetConstructor(e: SyntaxTree.SetExprNode; dest: Operand): Operand;
-    VAR el: SyntaxTree.SetElementNode; acc, mask, constant: Operand; bits: SET; lo, hi, i: LONGINT;
-        v: Types.Value;
+  (* ElementMask for a SYSTEM.SET64 constructor, in a register pair: ASHQ
+     e, #1 for e, and for lo..hi the bits of -1 shifted lo places not in -2
+     shifted hi places, each built by MNEGL on both longwords, a quadword
+     constant other than a short literal (0..63) being avoided *)
+  PROCEDURE ElementMask64(el: SyntaxTree.SetElementNode): Operand;
+    VAR lo, hi, above, mask: Operand; count, to: OperandText; operands: ARRAY 160 OF CHAR;
+      half: INTEGER;
+
+    PROCEDURE MinusOnes(pair: Operand; low: ARRAY OF CHAR);
+    BEGIN
+      HalfText(pair, 0, to); Operands(low, to, "", operands); Emit("MNEGL", operands);
+      HalfText(pair, 1, to); Operands("#1", to, "", operands); Emit("MNEGL", operands)
+    END MinusOnes;
+
   BEGIN
-    bits := {}; acc := NIL;
+    lo := Fit(Expression(el.low, NIL), 1, el.line, el.column);
+    IF el.high = NIL THEN
+      mask := NewRegisterBeside(Types.Set64, lo, NIL, el.line, el.column);
+      Text(lo, count); Text(mask, to); Operands(count, "#1", to, operands); Emit("ASHQ", operands);
+      Release(lo)
+    ELSE
+      hi := Fit(Expression(el.high, NIL), 1, el.line, el.column);
+      above := NewRegisterBeside(Types.Set64, lo, hi, el.line, el.column);
+      MinusOnes(above, "#2");
+      Text(hi, count); Text(above, to); Operands(count, to, to, operands); Emit("ASHQ", operands);
+      Release(hi);
+      mask := NewRegisterBeside(Types.Set64, lo, above, el.line, el.column);
+      MinusOnes(mask, "#1");
+      Text(lo, count); Text(mask, to); Operands(count, to, to, operands); Emit("ASHQ", operands);
+      Release(lo);
+      FOR half := 0 TO 1 DO
+        HalfText(above, half, count); HalfText(mask, half, to); Operands(count, to, "", operands);
+        Emit("BICL2", operands)
+      END;
+      Release(above)
+    END;
+    mask.type := Types.Set64;
+    RETURN mask
+  END ElementMask64;
+
+  (* A SYSTEM.SET64 when a constant element is above 31, as
+     SemanticActions.CheckConstantSetElement types it (and
+     LLVMCodeGenerator.ConstructorSetType): the constant elements' bits in
+     the two longwords of a constant, the others' masks (ElementMask64)
+     added by BISL2 on each longword *)
+  PROCEDURE IsWideConstructor(e: SyntaxTree.SetExprNode): BOOLEAN;
+    VAR el: SyntaxTree.SetElementNode;
+
+    PROCEDURE Above(x: SyntaxTree.ExprNode): BOOLEAN;
+      VAR v: Types.Value;
+    BEGIN
+      IF (x # NIL) & ConstantEvaluator.IsConstantExpr(x, scope) THEN
+        v := ConstantEvaluator.Evaluate(x, scope);
+        RETURN (v.kind = Types.intValue) & (v.intVal > 31)
+      END;
+      RETURN FALSE
+    END Above;
+
+  BEGIN
+    el := e.elements;
+    WHILE el # NIL DO
+      IF Above(el.low) OR Above(el.high) THEN RETURN TRUE END;
+      el := el.next
+    END;
+    RETURN FALSE
+  END IsWideConstructor;
+
+  PROCEDURE SetConstructor(e: SyntaxTree.SetExprNode; dest: Operand): Operand;
+    VAR el: SyntaxTree.SetElementNode; acc, mask, constant: Operand; bits, bitsHigh: SET; lo, hi, i: LONGINT;
+        v: Types.Value; wide: BOOLEAN; t: Types.Type; from, to: OperandText; operands: ARRAY 160 OF CHAR;
+        half: INTEGER;
+  BEGIN
+    bits := {}; bitsHigh := {}; acc := NIL;
+    wide := IsWideConstructor(e);
+    IF wide THEN t := Types.Set64 ELSE t := Types.Set END;
     el := e.elements;
     WHILE el # NIL DO
       IF ConstantEvaluator.IsConstantExpr(el.low, scope)
          & ((el.high = NIL) OR ConstantEvaluator.IsConstantExpr(el.high, scope)) THEN
         v := ConstantEvaluator.Evaluate(el.low, scope); lo := v.intVal; hi := lo;
         IF el.high # NIL THEN v := ConstantEvaluator.Evaluate(el.high, scope); hi := v.intVal END;
-        IF (lo < 0) OR (hi > 31) THEN
-          Unsupported(el.line, el.column, "a SYSTEM.SET64 value (Phase 16)"); RETURN Dummy()
-        END;
-        FOR i := lo TO hi DO INCL(bits, SHORT(i)) END
+        (* 0..63, or SemanticActions has said so *)
+        IF lo < 0 THEN lo := 0 END;
+        IF hi > 63 THEN hi := 63 END;
+        FOR i := lo TO hi DO
+          IF i < 32 THEN INCL(bits, SHORT(i)) ELSE INCL(bitsHigh, SHORT(i - 32)) END
+        END
+      ELSIF wide THEN
+        mask := ElementMask64(el);
+        IF acc = NIL THEN acc := mask
+        ELSE
+          FOR half := 0 TO 1 DO
+            HalfText(mask, half, from); HalfText(acc, half, to); Operands(from, to, "", operands);
+            Emit("BISL2", operands)
+          END;
+          Release(mask)
+        END
       ELSE
         mask := ElementMask(el);
         IF acc = NIL THEN acc := mask
@@ -2962,12 +3161,17 @@ MODULE VaxCodeGenerator;
       END;
       el := el.next
     END;
-    IF acc = NIL THEN acc := Immediate(Types.Set, 0); acc.bits := bits; RETURN acc END;
-    IF bits # {} THEN
-      constant := Immediate(Types.Set, 0); constant.bits := bits;
+    constant := Immediate(t, 0); constant.bits := bits; constant.bitsHigh := bitsHigh;
+    IF acc = NIL THEN RETURN constant END;
+    acc.type := t;
+    IF wide THEN
+      FOR half := 0 TO 1 DO
+        HalfText(constant, half, from); HalfText(acc, half, to);
+        IF from # "#^X00000000" THEN Operands(from, to, "", operands); Emit("BISL2", operands) END
+      END
+    ELSIF bits # {} THEN
       Emit2("BISL2", constant, acc)
     END;
-    acc.type := Types.Set;
     RETURN acc
   END SetConstructor;
 
@@ -3077,10 +3281,18 @@ MODULE VaxCodeGenerator;
 
   (* ORD(x): a CHAR zero-extended to an INTEGER, MOVZBW; a SET's low word,
      CVTLW, as LLVM truncates it (INTEGER being 16 bits under -O2, the VAX
-     target's model) *)
+     target's model); a SYSTEM.SET64's 64 bits as a HUGEINT
+     (PredeclaredProcedures.CheckOrd) *)
   PROCEDURE Ord(v, dest: Operand; line, column: INTEGER): Operand;
     VAR result: Operand;
   BEGIN
+    IF v.type = Types.Set64 THEN
+      result := Target(Types.Set64, v, NIL, dest, line, column);
+      result.type := Types.Set64; MoveInto(v, result);
+      result.type := Types.HugeInt;
+      Done(v, result);
+      RETURN result
+    END;
     result := Target(Types.Integer, v, NIL, dest, line, column);
     (* INTEGER is a word under -O2, a longword under -OC *)
     IF v.type = Types.Char THEN
@@ -3385,7 +3597,34 @@ MODULE VaxCodeGenerator;
   (* INCL(v, x) and EXCL(v, x), v a SET: v := v + {x}, v - {x}, in place,
      BISL2 or BICL2 of x's mask: a constant's, or ASHL x, #1's, as a set
      constructor's element (ElementMask), so that an x outside 0..31, which
-     Oberon2.pdf leaves undefined, leaves v as it was *)
+     Oberon2.pdf leaves undefined, leaves v as it was. A SYSTEM.SET64 v
+     (InclExcl64) takes BISL2 or BICL2 of a constant's bit on the longword
+     holding it, or of ASHQ x, #1 on each longword *)
+  PROCEDURE InclExcl64(include: BOOLEAN; target: Operand; e: SyntaxTree.ExprNode; line, column: INTEGER);
+    VAR x, mask: Operand; v: Types.Value; op: ARRAY 8 OF CHAR; from, to: OperandText;
+        operands: ARRAY 160 OF CHAR; half: INTEGER;
+  BEGIN
+    IF include THEN COPY("BISL2", op) ELSE COPY("BICL2", op) END;
+    IF ConstantEvaluator.IsConstantExpr(e, scope) THEN
+      v := ConstantEvaluator.Evaluate(e, scope);
+      IF (v.intVal >= 0) & (v.intVal <= 63) THEN
+        mask := Immediate(Types.Set, 0); mask.bits := {SHORT(v.intVal MOD 32)};
+        Text(mask, from); HalfText(target, SHORT(v.intVal DIV 32), to);
+        Operands(from, to, "", operands); Emit(op, operands)
+      END
+    ELSE
+      x := Fit(Expression(e, NIL), 1, line, column);
+      mask := NewRegisterBeside(Types.Set64, x, target, line, column);
+      Text(x, from); Text(mask, to); Operands(from, "#1", to, operands); Emit("ASHQ", operands);
+      Release(x);
+      FOR half := 0 TO 1 DO
+        HalfText(mask, half, from); HalfText(target, half, to); Operands(from, to, "", operands); Emit(op, operands)
+      END;
+      Release(mask)
+    END;
+    Release(target)
+  END InclExcl64;
+
   PROCEDURE InclExcl(include: BOOLEAN; args: SyntaxTree.ExprNode; line, column: INTEGER);
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; target, x, mask: Operand;
         v: Types.Value;
@@ -3395,14 +3634,10 @@ MODULE VaxCodeGenerator;
     obj := Resolve(de.designator.qualifier, de.designator.name, args.line, args.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
     target := Locate(de.designator, obj, args.line, args.column);
-    IF target.type # Types.Set THEN
-      Unsupported(args.line, args.column, "a SYSTEM.SET64 value (Phase 16)"); Release(target); RETURN
-    END;
+    IF target.type = Types.Set64 THEN InclExcl64(include, target, args.next, line, column); RETURN END;
     IF ConstantEvaluator.IsConstantExpr(args.next, scope) THEN
+      (* 0..31, or PredeclaredProcedures has said so *)
       v := ConstantEvaluator.Evaluate(args.next, scope);
-      IF (v.intVal < 0) OR (v.intVal > 31) THEN
-        Unsupported(args.next.line, args.next.column, "a SYSTEM.SET64 value (Phase 16)"); Release(target); RETURN
-      END;
       mask := Immediate(Types.Set, 0); mask.bits := {SHORT(v.intVal)}
     ELSE
       x := Fit(Expression(args.next, NIL), 1, line, column);

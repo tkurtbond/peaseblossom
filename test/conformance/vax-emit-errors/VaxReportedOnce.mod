@@ -4,12 +4,13 @@ MODULE VaxReportedOnce;
      comparison it is in. P was a pointer until pointers came (Phase 16
      step 3), and NIL was reported too, then a procedure type; it is a
      pointer to a record with a field initializer now, and NIL is not. x
-     was a REAL until reals came; -w = w is SYSTEM.SET64's comparison. *)
+     was a REAL until reals came; w was a SYSTEM.SET64 until SET64 came,
+     and is p's field now: -p.w = p.w reports each operand once. *)
   IMPORT SYSTEM;
-  TYPE P = POINTER TO RECORD n: INTEGER := 1 END;
-  VAR w: SYSTEM.SET64; s: SET; b: BOOLEAN; x: REAL; p: P;
+  TYPE P = POINTER TO RECORD n: INTEGER := 1; w: SET END;
+  VAR s: SET; b: BOOLEAN; x: REAL; p: P;
 BEGIN
-  b := s + w = {};
-  b := -w = w;
+  b := s + p.w = {};
+  b := -p.w = p.w;
   b := p = NIL
 END VaxReportedOnce.

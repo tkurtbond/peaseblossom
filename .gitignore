@@ -94,6 +94,7 @@ test/conformance/vax-type-bound/vax-type-bound
 test/conformance/vax-procedure-values/vax-procedure-values
 test/conformance/vax-nested/vax-nested
 test/conformance/vax-reals/vax-reals
+test/conformance/vax-set64/vax-set64
 test/conformance/vax-assert/vax-assert
 test/conformance/vax-traps/vax-traps
 test/conformance/vax-var-records/vax-var-records

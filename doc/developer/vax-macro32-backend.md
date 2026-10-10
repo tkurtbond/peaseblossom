@@ -626,7 +626,7 @@ Proposals, by construct:
   `lo..hi` the bits of `ASHL lo, #-1` cleared of those of `ASHL hi, #-2`
   (`ASHL`'s count is a byte, the element's low one), and its constant
   elements one `BISL2` of an immediate. `SYSTEM.SET64` is outside the
-  slice.
+  slice (done, §14 item 11).
 - **`CASE`**: `CASEL`, the VAX's own table-driven case instruction, for a
   dense range of labels, and a chain of compares otherwise; a value with
   no label goes to the "no CASE label" trap (§9). Done (step 4): the
@@ -1567,4 +1567,36 @@ assertion holds. Each case's output, status and message must be the
 same. `vax-emit-errors`' `VaxTooMuch` now has `SYSTEM.GET` where it had
 `ASSERT`, as a predeclared procedure still refused. poc's own source has
 no `ASSERT`, so the survey is unchanged: 78, all `SYSTEM.BYTE`
+parameters.
+
+**Done: `SYSTEM.SET64` (item 11), 2026-10-09.** A `SET64` is a quadword,
+element *n* bit *n* `MOD` 32 of longword *n* `DIV` 32, lowered as a
+`HUGEINT` is: in a register pair or two longwords of memory, a constant
+two `MOVL`s. `+`, `-`, `*` and `/` are `BISL2`, `BICL2`, `BICL2` of
+`MCOML` and `XORL2` on each longword, unary `-` `MCOML` of each; `=` and
+`#` compare the two longwords. A `SET` with a `SET64` is zero-extended
+(`MOVL`, `CLRL`), as a `SET` is included in a `SET64`. A constructor is a
+`SET64` only when a constant element is above 31, as
+`SemanticActions.CheckConstantSetElement` types it and LLVM generates
+it: a variable element `e` is `ASHQ e, #1`, a range `lo..hi` -1 shifted
+`lo` places less -2 shifted `hi` places, both built by `MNEGL` on each
+longword so that no quadword immediate but a short literal is needed;
+the constant elements are `BISL2` of the longword holding them. `IN` is
+`FALSE` outside 0..63 (`CMPL #63`, `BGTRU`). `BBC` takes any bit of
+memory but only bits 0..31 of a register, a larger position being a
+reserved operand (MACRO 9.2.3), so for a set in a register pair a
+constant element tests its bit in the register holding it, and a
+variable one shifts the pair right (`ASHQ` of the negated element) and
+tests the low bit (`BLBC`). `INCL` and `EXCL` are `BISL2` or `BICL2` of
+a constant's bit in its longword, or of `ASHQ x, #1` on both. `ORD` of a
+`SET64` is its `HUGEINT`, a `MOVQ` (`PredeclaredProcedures.CheckOrd`).
+
+Fixture `vax-set64` has `VaxSet64`, written for the user's review, with
+each lowering once, and `Set64Out`, built by both backends under `-O2`
+and `-OC` and run, whose output must be the same: constructors, the
+operators, `IN` with elements in and out of 0..63, `INCL` and `EXCL`,
+comparisons, and `SET64` parameters, results, record fields and array
+elements. `vax-emit-errors`' `VaxTooMuch` and `VaxReportedOnce` now use a
+record with a field initializer where they had a `SET64`. poc's own
+source has no `SET64`, so the survey is unchanged: 78, all `SYSTEM.BYTE`
 parameters.
