@@ -896,8 +896,9 @@ most, object libraries.
      in place, `-trap-heap-exhausted`), `rtl/vax`'s `Files` reports a
      file it cannot create at the first `Write`, and the floating faults
      of `llvm-entier-trap` and `llvm-range-checks` and `llvm-files-fail`'s
-     file name are `expected-vax-*` files (drafts, for the user's
-     review).
+     file name are `expected-vax-*` files. Those files and the
+     `expected-vax*.mar` files of `vax-command-line` and `vax-files`
+     that change were reviewed by the user (2026-10-10).
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled

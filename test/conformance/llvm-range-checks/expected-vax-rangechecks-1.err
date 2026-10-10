@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 16 and
-;; the guest runs; for the user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 16 and the guest runs). Why this is right:
 ;; - VMS's own message for the fault, SS$_FLTOVF_F, at SHORT(1.0D300),
 ;;   then its traceback: the module's initializer, called from the
 ;;   program's start. tools/vax-suite masks the code addresses, which

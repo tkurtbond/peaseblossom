@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 16,
-;; rtl/vax/Files.Mod and the guest run; for the user's review). Why this
-;; is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 16, rtl/vax/Files.Mod and the guest run). Why this is
+;; right:
 ;; - The same message as LLVM's, after an empty record as LLVM's starts
 ;;   with a line end, but naming the file as the program gave it:
 ;;   rtl/vax's Files gives a name to RMS as it is (its header), where

@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 16, the
-;; VAX architecture's floating point and the guest runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 16, the VAX architecture's floating point and the guest
+;; runs). Why this is right:
 ;; - The VAX has no infinity and no NaN: case 7, x := zero / zero: a
 ;;   division by 0.0 is a floating divide by zero fault on the VAX,
 ;;   whatever is divided, before ENTIER is reached. LLVM's is a NaN,

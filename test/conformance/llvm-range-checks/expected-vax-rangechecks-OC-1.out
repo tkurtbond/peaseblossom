@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-10 (written by Claude, from design sections 14 and
-;; 16 and the guest runs; for the user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; sections 14 and 16 and the guest runs). Why this is right:
 ;; - The lines before the last are the host's under -OC: SHORT and CHR
 ;;   of values that fit are the same on the VAX.
 ;; - The last statement, SHORT(1.0D300), cannot be done on the VAX:

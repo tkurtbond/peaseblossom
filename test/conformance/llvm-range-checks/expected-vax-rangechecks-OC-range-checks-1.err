@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 16 and
-;; the guest runs; for the user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 16 and the guest runs). Why this is right:
 ;; - As expected-vax-rangechecks-1.err, but the traceback names the
 ;;   program section, POC_CODE, not RANGECHECKS_INIT: under -OC with
 ;;   -range-checks the fault is past about a kilobyte into the

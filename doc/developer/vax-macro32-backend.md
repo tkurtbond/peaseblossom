@@ -2086,15 +2086,18 @@ takes poc options after the size model and the runs' arguments after
   converted (now `CVTFG` in place); and `-trap-heap-exhausted` was
   ignored (now `NEW` and `SYSTEM.NEW` test R0 after `Allocate`, trap
   11, as on LLVM). `vax-command-line`'s two `expected-vax` files change
-  for `GetIntArg`.
+  for `GetIntArg`, reviewed by the user (2026-10-10).
 - *`rtl/vax`'s `Files`* made a `New` file on disk only when its block
   was written out, so a file that could not be created was not reported
   at the first `Write`, as `rtl/llvm`'s is; it now is.
+  `vax-files`' `expected-vax-Files.mar` changes for it, reviewed by the
+  user (2026-10-10).
 - *Differences with a reason*, `expected-vax-*` files, as
   `llvm-overflow-wrap`'s: `ENTIER` of an infinity or a NaN
   (`llvm-entier-trap` cases 5 to 7) and `SHORT(1.0D300)`
   (`llvm-range-checks` case 0) are floating faults on the VAX; and
-  `llvm-files-fail` names its file as given, not made absolute. An
+  `llvm-files-fail` names its file as given, not made absolute; they
+  were reviewed by the user (2026-10-10). An
   `expected-vax-<module>[-<run>]` file without the build now serves
   every build that has none of its own.
 - *Two things VMS does*, seen on the guest (2026-10-10): its message

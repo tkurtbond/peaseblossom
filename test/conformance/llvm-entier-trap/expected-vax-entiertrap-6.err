@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 16, the
-;; VAX architecture's floating point and the guest runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 16, the VAX architecture's floating point and the guest
+;; runs). Why this is right:
 ;; - The VAX has no infinity and no NaN: case 5, x := big * big, 2^1000
 ;;   squared: past the largest G_floating number (about 2^1023), so the
 ;;   multiplication is a floating overflow fault, before ENTIER is
