@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual, LLVM's code generator and the guest runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from the design,
+;; the MACRO manual, LLVM's code generator and the guest runs). Why this
+;; is right:
 ;; - Phase 16 step 3 (section 14, item 11): a SYSTEM.SET64 is a quadword
 ;;   (.BLKQ), element n bit n MOD 32 of longword n DIV 32, as a HUGEINT's;
 ;;   a constant is a MOVL of each longword, {0, 31, 32, 63} ^X80000001

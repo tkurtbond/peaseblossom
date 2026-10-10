@@ -1591,12 +1591,11 @@ tests the low bit (`BLBC`). `INCL` and `EXCL` are `BISL2` or `BICL2` of
 a constant's bit in its longword, or of `ASHQ x, #1` on both. `ORD` of a
 `SET64` is its `HUGEINT`, a `MOVQ` (`PredeclaredProcedures.CheckOrd`).
 
-Fixture `vax-set64` has `VaxSet64`, written for the user's review, with
-each lowering once, and `Set64Out`, built by both backends under `-O2`
-and `-OC` and run, whose output must be the same: constructors, the
-operators, `IN` with elements in and out of 0..63, `INCL` and `EXCL`,
-comparisons, and `SET64` parameters, results, record fields and array
-elements. `vax-emit-errors`' `VaxTooMuch` and `VaxReportedOnce` now use a
+Fixture `vax-set64` has `VaxSet64`, reviewed, with each lowering once,
+and `Set64Out`, built by both backends under `-O2` and `-OC` and run,
+whose output must be the same: constructors, the operators, `IN` with
+elements in and out of 0..63, `INCL` and `EXCL`, comparisons, and
+`SET64` parameters, results, record fields and array elements. `vax-emit-errors`' `VaxTooMuch` and `VaxReportedOnce` now use a
 record with a field initializer where they had a `SET64`. poc's own
 source has no `SET64`, so the survey is unchanged: 78, all `SYSTEM.BYTE`
 parameters.
