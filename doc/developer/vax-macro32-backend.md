@@ -1536,16 +1536,15 @@ Services, `$FAO`). Without the switch the call is as before, so no
 earlier fixture's `.mar` changed, except `vax-range-checks`', for
 `CHR`'s code.
 
-Fixture `vax-traps` has `VaxTraps`, written for the user's review,
-under `-trap-location` and `-range-checks`: the strings and the six
-arguments for a type-bound procedure, a nested one, its parent and the
-module body, and `CHR`'s code beside `SHORT`'s. A second program,
-`Traps`, is built by both backends and run once for each case, chosen by
-a module `TrapMode` that `test.sh` writes: `CASE`, NIL, a guard in a
-nested procedure, an index in an imported module, `ENTIER`, `CHR`,
-`SHORT`, `HALT(0)` and `HALT(7)`. Each case's output, status and message
-must be the same, the VAX's status converted from LLVM's exit status by
-item 10's rule. The cases run with and without `-trap-location`, the VAX
-ones with `SYS$ERROR` defined as a file so that the message is printed
-after the output. `vax-range-checks`' `.mar` returns to the user's
-review for `CHR`'s code.
+Fixture `vax-traps` has `VaxTraps`, reviewed, under `-trap-location` and
+`-range-checks`: the strings and the six arguments for a type-bound
+procedure, a nested one, its parent and the module body, and `CHR`'s
+code beside `SHORT`'s. A second program, `Traps`, is built by both
+backends and run once for each case, chosen by a module `TrapMode` that
+`test.sh` writes: `CASE`, NIL, a guard in a nested procedure, an index
+in an imported module, `ENTIER`, `CHR`, `SHORT`, `HALT(0)` and
+`HALT(7)`. Each case's output, status and message must be the same, the
+VAX's status converted from LLVM's exit status by item 10's rule. The
+cases run with and without `-trap-location`, the VAX ones with
+`SYS$ERROR` defined as a file so that the message is printed after the
+output. `vax-range-checks`' `.mar` was reviewed again for `CHR`'s code.

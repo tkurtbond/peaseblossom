@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual, the VAX's listing and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
+;; the MACRO manual, the VAX's listing and the debugger runs). Why this
+;; is right:
 ;; - With poc -range-checks, CHR of a value outside 0..255 traps with code
 ;;   14 (^X0001000E, the high word 1 for CHR's message: section 14, item
 ;;   10) at CHR's position, as on LLVM (section 9): TSTB and BGEQ for a
