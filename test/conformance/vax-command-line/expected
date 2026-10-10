@@ -1,0 +1,9 @@
+semantic OK, wrote Modules.mar
+semantic OK, wrote CommandLine.mar
+exit 0
+CommandLine.mar matches expected-vax.mar
+Modules.mar matches expected-vax-Modules.mar
+LLVM build -O2 exit 0
+VAX build -O2 exit 0
+LLVM build -OC exit 0
+VAX build -OC exit 0

@@ -1,0 +1,10 @@
+== ErrBasics, build status: %X10000001
+status: %X00000001
+Err writes to the error stream
+[   -42|7|00FF|FF]
+-9223372036854775808
+not ended by Ln
+== ErrTrap, build status: %X10000001
+status: %X10000022
+before the trap
+NIL pointer dereference

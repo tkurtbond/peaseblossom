@@ -1,0 +1,21 @@
+build status: %X10000001
+count 9
+0 ARGSOUT.EXE;1
+1 [-O]
+2 [Hello]
+3 [MIXEDCASE]
+4 [AbC]
+5 [x"y]
+6 []
+7 [two  spaces]
+8 [TAB]
+past the end []
+before the start []
+cut short [Hel]
+run status: %X00000001
+count 1
+0 ARGSOUT.EXE;1
+past the end []
+before the start []
+cut short []
+run status: %X00000001

@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from design
-;; section 14, the LLVM backend's output, the guest runs and the debugger
-;; run). Why this is right:
+;; Reviewed 2026-10-10 (written by Claude, from design sections 14 and
+;; 15, the LLVM backend's output, the guest runs and the debugger run; for
+;; the user's review). Why this is right:
 ;; - OutBasics imports Out, rtl/vax/Out.Mod compiled with it (its .mar is
 ;;   expected-vax-Out.mar): its initializer calls OUT_INIT first, and its
 ;;   calls of Out's procedures are to their global symbols, with G^.
@@ -16,6 +16,9 @@
 ;;   any open array.
 ;; - Built with -build under -O2 and -OC and run on the VAX, it prints
 ;;   output-O2.expected and output-OC.expected, the LLVM backend's output.
+;; - 2026-10-10 (step 4): Out now writes through LineOutput, which it
+;;   shares with Err, so Out's key, the .EXTERNAL POC_K1_..., is new; that
+;;   is the one line that changed since the user's review of 2026-10-09.
 ; OutBasics, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	OUTBASICS
 	.IDENT	/fe1e9b3ecd5d7cbb/
@@ -55,7 +58,7 @@ OUTBASICS_H_6NSKH85A:
 	.EXTERNAL	OUT_HEX_V0UAM9IC
 	.EXTERNAL	OUT_FLUSH_ITJ00AMN
 	.EXTERNAL	OUT_INIT
-	.EXTERNAL	POC_K1_2E074F2A93375C1D
+	.EXTERNAL	POC_K1_721056B4BE8FF51C
 
 ; its string constants
 	.PSECT	POC_CONST

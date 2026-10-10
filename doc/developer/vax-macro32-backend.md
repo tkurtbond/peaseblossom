@@ -1698,9 +1698,9 @@ Proposals:
    longer than 39 characters, which the VAX target makes an error. Two
    modules whose names differ only in case are already one
    (section 5.1). `Platform.Unlink` and `Files.Delete` delete the
-   highest version only, as `$ERASE` does when no version is given (to be
-   confirmed on the guest), so an older build is left in place, as VMS
-   leaves it. Old versions pile up until the user purges them.
+   highest version only, as `$ERASE` does when no version is given
+   (confirmed on the guest, below), so an older build is left in place,
+   as VMS leaves it. Old versions pile up until the user purges them.
 
 4. **Directories.** A new `Platform.MakePath(dir, name, VAR path)`
    replaces the 58 joins with `/`. On Unix it puts `/` between them,
@@ -1778,3 +1778,40 @@ Proposals:
     beside them, checked on the four hosts. The step ends when poc's
     own source, with `rtl/vax`, builds into `POC.EXE` with `-build`, and
     that image starts and prints `-help` on the guest.
+
+**Done: `Modules`, `Platform` and `Err` (proposal 10's first part),
+2026-10-10.** Each is in `rtl/vax`, with a fixture: `vax-command-line`,
+`vax-platform` and `vax-err`.
+
+- *`Err` and `Out`* share `LineOutput`, which keeps a line for each
+  stream until `Ln`. One exit handler writes a line left without `Ln`:
+  `Out`'s first, then `Err`'s. `POC_PUT_ERROR_LINE` writes `Err`'s
+  records to `SYS$ERROR` through RMS. `POC_TRAP` uses the same stream,
+  so a trap's message follows `Err`'s lines. RMS's image rundown closes
+  it (`$RMSRUNDWN`, System Services SYS-639).
+- *`Err` is buffered here.* On LLVM it is not, so a line a program
+  leaves unended comes after a trap's message on VMS.
+- *`vax-out` changes.* Its `expected-vax-Out.mar` is now `Out`'s
+  wrappers, and `expected-vax-LineOutput.mar` has the code that was
+  `Out`'s. Every fixture that ships `Out.mar` to the guest now ships
+  `LineOutput.mar` too.
+- *`Modules`* splits `LIB$GET_FOREIGN`'s line as proposal 6 says. On
+  the guest, `"two  spaces"` keeps both spaces, a tab separates
+  arguments as a space does, and `""` is an empty argument. It has no
+  `Init`, since the line comes from VMS, not from `main`.
+- *`Platform`'s `ErrorCode`* is a VMS status: the whole longword under
+  `-OC`, its low word under `-O2`. Never 0 for an RMS status.
+  `PocRtl.mar`'s routines return longwords. `Platform` declares them
+  `INTEGER`, since `SYSTEM.VAL` is not lowered yet.
+- *`IsDirectory` and `MakeDirectory`* take a name that does not end in
+  `:`, `]` or `>` as a logical name, and add the `:`, as `MakePath`
+  does.
+- *`$ERASE` checked.* `Unlink` of a file with two versions left
+  `;1`, as proposal 3 expected.
+- *`rtl/llvm`'s `Platform`* gained `MakePath`, `IsDirectory`,
+  `MakeDirectory` and `pathSeparator`. `IsDirectory` and each
+  `mkdir` are in `Platform.c`, as `S_ISDIR` is a macro and `mode_t`
+  is 16 bits on FreeBSD. `MakeDirectory` makes each missing level, as
+  `mkdir -p` does.
+- *`tools/vax-runtime-stub.mar`* has the same routines, so that the
+  debugger runs link.

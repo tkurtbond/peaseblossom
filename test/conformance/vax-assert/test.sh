@@ -14,7 +14,7 @@ rtl=../../../rtl/vax
 rm -f Asserts.com AssertMode*.mod AssertMode*.mar
 : >result
 vax_mar VaxAssert
-rm -f *.sym Asserts.mar Out.mar
+rm -f *.sym Asserts.mar Out.mar LineOutput.mar
 # status N: the status VMS has where LLVM exits with N (section 14, item 10)
 status() {
   if [ "$1" = 0 ]; then echo "status: %X00000001"
@@ -44,8 +44,8 @@ run() {
     mv AssertMode.mar "AssertMode$n.mar"
   done
   cmp -s output "$expected" || { echo "the LLVM backend's output,$options:" >>result; diff "$expected" output >>result; }
-  vax_do guest-run.com "$expected" Asserts.com Asserts.mar Out.mar $rtl/PocRtl.mar AssertMode*.mar
-  rm -f AssertMode*.mar AssertMode.mod Asserts.com Asserts.mar Out.mar *.sym run.out run.err output
+  vax_do guest-run.com "$expected" Asserts.com Asserts.mar Out.mar LineOutput.mar $rtl/PocRtl.mar AssertMode*.mar
+  rm -f AssertMode*.mar AssertMode.mod Asserts.com Asserts.mar Out.mar LineOutput.mar *.sym run.out run.err output
 }
 run output.expected -trap-location -- 1 2 3 4
 run plain.expected -- 3

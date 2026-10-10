@@ -1,0 +1,153 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
+;; LLVM backend's output, the guest runs and the debugger run; for the
+;; user's review). Why this is right:
+;; - ErrBasics imports Err, rtl/vax/Err.Mod compiled with it
+;;   (expected-vax-Err.mar, and LineOutput's, expected-vax-
+;;   LineOutput.mar): its initializer calls ERR_INIT first, and its calls
+;;   of Err's procedures are to their global symbols, with G^.
+;; - A CHAR argument is a longword (#91 is "["); Int's and Hex's are
+;;   HUGEINTs, each a quadword in the frame passed by its address: -42 as
+;;   ^XFFFFFFD6 and ^XFFFFFFFF, MIN(HUGEINT) as 0 and ^X80000000. A string
+;;   is its address and its length with the 0X.
+;; - Built with -build under -O2 and -OC and run on the VAX with
+;;   SYS$ERROR a file, it writes what the LLVM backend's writes to the
+;;   standard error (errors.expected), its last line, without Ln, by the
+;;   exit handler.
+;; - The debugger run ends with Err's line, LineOutput's second, holding
+;;   that last one, and its length 0, the exit handler having written it.
+; ErrBasics, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	ERRBASICS
+	.IDENT	/46384e707b463900/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	ERR_OPEN_CK0NDH86
+	.EXTERNAL	ERR_STRING_9Q7N6HKN
+	.EXTERNAL	ERR_LN_C7A9PFSG
+	.EXTERNAL	ERR_CHAR_87RM3MEA
+	.EXTERNAL	ERR_INT_7HFEQO07
+	.EXTERNAL	ERR_HEX_7HDEIC1V
+	.EXTERNAL	ERR_FLUSH_QHE7JF08
+	.EXTERNAL	ERR_INIT
+	.EXTERNAL	POC_K1_A9EED434BB07F592
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/Err writes to the error stream/
+	.BYTE	0
+L_STR_2:
+	.ASCII	/not ended by Ln/
+	.BYTE	0
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	ERRBASICS_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^ERR_INIT
+	SUBL2	#28, SP
+; line 8
+	CALLS	#0, G^ERR_OPEN_CK0NDH86
+; line 9
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_1, -8(FP)
+	MOVL	#31, -4(FP)
+	CALLG	-12(FP), G^ERR_STRING_9Q7N6HKN
+; line 9
+	CALLS	#0, G^ERR_LN_C7A9PFSG
+; line 10
+	MOVL	#1, -8(FP)
+	MOVL	#91, -4(FP)
+	CALLG	-8(FP), G^ERR_CHAR_87RM3MEA
+; line 10
+	MOVL	#2, -12(FP)
+	MOVL	#^XFFFFFFD6, -20(FP)
+	MOVL	#^XFFFFFFFF, -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000006, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^ERR_INT_7HFEQO07
+; line 10
+	MOVL	#1, -8(FP)
+	MOVL	#124, -4(FP)
+	CALLG	-8(FP), G^ERR_CHAR_87RM3MEA
+; line 10
+	MOVL	#2, -12(FP)
+	MOVL	#^X00000007, -20(FP)
+	CLRL	-16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^ERR_INT_7HFEQO07
+; line 10
+	MOVL	#1, -8(FP)
+	MOVL	#124, -4(FP)
+	CALLG	-8(FP), G^ERR_CHAR_87RM3MEA
+; line 11
+	MOVL	#2, -12(FP)
+	MOVL	#^X000000FF, -20(FP)
+	CLRL	-16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000004, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^ERR_HEX_7HDEIC1V
+; line 11
+	MOVL	#1, -8(FP)
+	MOVL	#124, -4(FP)
+	CALLG	-8(FP), G^ERR_CHAR_87RM3MEA
+; line 11
+	MOVL	#2, -12(FP)
+	MOVL	#^XFFFFFFFF, -20(FP)
+	MOVL	#^XFFFFFFFF, -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	MOVL	#^X00000002, -28(FP)
+	CLRL	-24(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^ERR_HEX_7HDEIC1V
+; line 11
+	MOVL	#1, -8(FP)
+	MOVL	#93, -4(FP)
+	CALLG	-8(FP), G^ERR_CHAR_87RM3MEA
+; line 11
+	CALLS	#0, G^ERR_LN_C7A9PFSG
+; line 12
+	MOVL	#2, -12(FP)
+	CLRL	-20(FP)
+	MOVL	#^X80000000, -16(FP)
+	MOVAQ	-20(FP), -8(FP)
+	CLRQ	-28(FP)
+	MOVAQ	-28(FP), -4(FP)
+	CALLG	-12(FP), G^ERR_INT_7HFEQO07
+; line 12
+	CALLS	#0, G^ERR_LN_C7A9PFSG
+; line 13
+	CALLS	#0, G^ERR_FLUSH_QHE7JF08
+; line 14
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_2, -8(FP)
+	MOVL	#16, -4(FP)
+	CALLG	-12(FP), G^ERR_STRING_9Q7N6HKN
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_46384E707B463900 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	ERRBASICS_MAIN, ^M<>
+	CALLS	#0, ERRBASICS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	ERRBASICS_MAIN

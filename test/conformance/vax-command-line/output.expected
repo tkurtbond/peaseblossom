@@ -1,0 +1,13 @@
+count 9
+0 vax-command-line
+1 [-o]
+2 [Hello]
+3 [mixedCase]
+4 [a"b"c]
+5 [x"y]
+6 []
+7 [two  spaces]
+8 [tab]
+past the end []
+before the start []
+cut short [Hel]

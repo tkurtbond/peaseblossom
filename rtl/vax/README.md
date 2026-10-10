@@ -1,22 +1,31 @@
 # rtl/vax
 
-poc's runtime for the VAX/VMS target (`PLAN.md` Phase 16).
+poc's runtime for the VAX/VMS target (`PLAN.md` Phase 16), in Oberon-2
+over a thin MACRO-32 layer (`doc/developer/vax-macro32-backend.md`,
+section 15). There are no VMS libraries yet (Phase 17), so a program
+finds these modules as source: `poc -target vax-dec-vms -import-path
+<this directory> -build ...` compiles the ones it imports with it and
+writes their `.mar` files.
 
 - `PocRtl.mar`, MACRO-32, which a program poc builds for `vax-dec-vms`
   links as `POCRTL.OBJ`. Its `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and
-  `POC_HMOD` are the final routines, and so are `POC_PUT_LINE` and
-  `POC_OUT_REGISTER`, which `Out` writes through. `POC_NEW` allocates
-  from `LIB$GET_VM` and never frees, until step 4 ports the collector
-  (`doc/developer/vax-macro32-backend.md`, section 14, item 3).
-  `POC_TRAP` writes the trap's message to `SYS$ERROR` and exits with the
-  trap's status, and `POC_HALT` exits with `HALT`'s (section 14, item
-  10).
-- `Out.Mod`, a minimal `Out` (`Open`, `Flush`, `Char`, `String`, `Ln`,
-  `Int`, `Hex`), pulled forward from step 4 so that step 3's fixtures can
-  print (`doc/developer/vax-macro32-backend.md`, section 14, item 2). There
-  are no VMS libraries yet (Phase 17), so a program finds it as source:
-  `poc -target vax-dec-vms -import-path <this directory> -build ...`
-  compiles it with the program and writes `Out.mar`.
+  `POC_HMOD` are the final routines. `POC_TRAP` writes the trap's
+  message to `SYS$ERROR` and exits with the trap's status, and
+  `POC_HALT` exits with `HALT`'s (section 14, item 10). `POC_NEW`
+  allocates from `LIB$GET_VM` and never frees, until step 4 ports the
+  collector (section 15, proposal 9). The rest are what the modules
+  below call: writing records to `SYS$OUTPUT` and `SYS$ERROR`, logical
+  names, `$ERASE`, `$PARSE`, `LIB$CREATE_DIR`, `$SETDDIR`, `$GETJPI`
+  and `LIB$GET_FOREIGN`.
+- `Out.Mod` and `Err.Mod` (`Open`, `Flush`, `Char`, `String`, `Ln`,
+  `Int`, `Hex`) write to `SYS$OUTPUT` and `SYS$ERROR` through
+  `LineOutput.Mod`, a record for each `Ln` (section 14, item 2, and
+  section 15, proposal 8).
+- `Modules.Mod` (`ArgCount`, `GetArg`): the command line of a foreign
+  command, split as DCL quotes it (section 15, proposal 6).
+- `Platform.Mod` (`GetEnv`, `Unlink`, `System`, `Exit`, `PID`, `CWD`,
+  `NL`, `MakePath`, `IsDirectory`, `MakeDirectory`, `pathSeparator`):
+  logical names, files and directories by name, and ending the process
+  (section 15, proposals 3 to 8).
 
-The rest of the runtime, in Oberon-2 over a thin MACRO-32 layer, is step
-4's (section 15).
+`Files` and the collector are still to come (section 15, proposal 10).

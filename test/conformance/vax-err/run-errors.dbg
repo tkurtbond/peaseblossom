@@ -1,0 +1,8 @@
+! the program run: what it writes goes to SYS$ERROR, not here (the guest
+! runs compare it); after it, Err's line, LineOutput's second, still holds
+! the last one, "not ended by Ln", and its length is 0, the exit handler
+! having written it
+GO
+EXAMINE/ASCII:15 LINEOUTPUT\LINEOUTPUT_LINES_52FJJTP7+1024
+EXAMINE/LONG LINEOUTPUT\LINEOUTPUT_LENGTHS_GMT90G79+4
+EXIT

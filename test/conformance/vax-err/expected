@@ -1,0 +1,7 @@
+semantic OK, wrote LineOutput.mar
+semantic OK, wrote Err.mar
+semantic OK, wrote ErrBasics.mar
+exit 0
+ErrBasics.mar matches expected-vax.mar
+Err.mar matches expected-vax-Err.mar
+LineOutput.mar matches expected-vax-LineOutput.mar

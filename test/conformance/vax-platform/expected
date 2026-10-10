@@ -1,0 +1,9 @@
+semantic OK, wrote Platform.mar
+semantic OK, wrote PlatformUse.mar
+exit 0
+PlatformUse.mar matches expected-vax.mar
+Platform.mar matches expected-vax-Platform.mar
+LLVM build -O2 exit 0
+VAX build -O2 exit 0
+LLVM build -OC exit 0
+VAX build -OC exit 0

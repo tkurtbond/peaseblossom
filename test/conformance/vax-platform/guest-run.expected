@@ -1,0 +1,24 @@
+build status: %X10000001
+separator ,
+path [SYS$LOGIN:x.mod]
+path [x.mod]
+path [lib:x.mod]
+path [lib/:x.mod]
+path [DISK:x.mod]
+path [[LIB]x.mod]
+cut short [dir:x.m]
+is a directory: TRUE
+missing is a directory: FALSE
+made is a directory: FALSE
+made: TRUE
+made is a directory: TRUE
+made again: TRUE
+value [[A],[B]]
+no value []
+deleted: TRUE
+deleted a missing file: FALSE
+PID positive: TRUE
+CWD known: TRUE
+System -1
+run status: %X1000001A
+left: DOOMED.TMP;1

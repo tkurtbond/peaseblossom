@@ -7,7 +7,11 @@ MODULE Platform;
      directory, signal handlers, memory from the system, running a shell
      command and ending the process. PLAN.md Phase 10 step 2 brought what
      poc's own driver needs (Chdir, CWD, GetEnv, PID, System, Unlink, Exit);
-     Phase 12 step 5a the rest.
+     Phase 12 step 5a the rest. Phase 16 step 4 added what voc's has not:
+     MakePath, IsDirectory, MakeDirectory and pathSeparator, through which
+     poc's own source names files and directories the same way for Unix
+     and for VAX/VMS, whose rtl/vax/Platform.Mod has them too
+     (doc/developer/vax-macro32-backend.md, section 15).
 
      Two parts. What is the same on Linux, NetBSD, OpenBSD and FreeBSD -
      the C names chdir, exit, free, getcwd, getenv, getpid, isatty, malloc,
@@ -54,6 +58,10 @@ MODULE Platform;
     StdIn* = 0;
     StdOut* = 1;
     StdErr* = 2;
+
+    (* what separates the directories of a list of them, such as
+       POC_IMPORT_PATH's *)
+    pathSeparator* = ":";
 
     cwdLength = 256;
 
@@ -131,6 +139,8 @@ MODULE Platform;
   PROCEDURE ["C", "Platform.-truncate"] CTruncate(fd: SYSTEM.INT32; length: SYSTEM.INT64): SYSTEM.INT32;
   PROCEDURE ["C", "Platform.-file-status"] CFileStatus(fd: SYSTEM.INT32; volume, index, mtime, size: SYSTEM.ADDRESS): SYSTEM.INT32;
   PROCEDURE ["C", "Platform.-name-status"] CNameStatus(name, volume, index, mtime, size: SYSTEM.ADDRESS): SYSTEM.INT32;
+  PROCEDURE ["C", "Platform.-is-directory"] CIsDirectory(name: SYSTEM.ADDRESS): SYSTEM.INT32;
+  PROCEDURE ["C", "Platform.-make-directory"] CMakeDirectory(name: SYSTEM.ADDRESS): SYSTEM.INT32;
   PROCEDURE ["C", "Platform.-set-file-time"] CSetFileTime(name: SYSTEM.ADDRESS;
                                                            year, month, day, hour, minute, second: SYSTEM.INT64): SYSTEM.INT32;
   PROCEDURE ["C", "Platform.-time-of-day"] CTimeOfDay(seconds, microseconds: SYSTEM.ADDRESS);
@@ -522,6 +532,47 @@ MODULE Platform;
     IF (CChdir(SYSTEM.ADR(n)) < 0) OR ~RefreshCWD() THEN RETURN Error() END;
     RETURN 0
   END Chdir;
+
+  (* Directories *)
+
+  (* The file name in the directory dir in path, cut short if path is too
+     small: dir and name with "/" between them, unless dir is "" or
+     already ends in "/". *)
+  PROCEDURE MakePath*(dir, name: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
+    VAR i, j: LONGINT;
+  BEGIN
+    i := 0;
+    WHILE (i < LEN(dir)) & (dir[i] # 0X) & (i < LEN(path) - 1) DO path[i] := dir[i]; INC(i) END;
+    IF (i > 0) & (path[i - 1] # "/") & (i < LEN(path) - 1) THEN path[i] := "/"; INC(i) END;
+    j := 0;
+    WHILE (j < LEN(name)) & (name[j] # 0X) & (i < LEN(path) - 1) DO path[i] := name[j]; INC(i); INC(j) END;
+    IF LEN(path) > 0 THEN path[i] := 0X END
+  END MakePath;
+
+  (* Whether dir names a directory that exists. *)
+  PROCEDURE IsDirectory*(dir: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN Terminated(dir) & (CIsDirectory(SYSTEM.ADR(dir)) # 0)
+  END IsDirectory;
+
+  (* Makes the directory dir and those it is in that are missing, as mkdir
+     -p does; whether dir is a directory afterwards. *)
+  PROCEDURE MakeDirectory*(dir: ARRAY OF CHAR): BOOLEAN;
+    VAR k: LONGINT; e: SYSTEM.INT32;
+  BEGIN
+    IF ~Terminated(dir) THEN RETURN FALSE END;
+    (* each directory on the way, ended where its "/" is; one that is
+       there already fails, which does not matter *)
+    k := 1;
+    WHILE dir[k - 1] # 0X DO
+      IF dir[k] = "/" THEN
+        dir[k] := 0X; e := CMakeDirectory(SYSTEM.ADR(dir)); dir[k] := "/"
+      END;
+      INC(k)
+    END;
+    e := CMakeDirectory(SYSTEM.ADR(dir));
+    RETURN CIsDirectory(SYSTEM.ADR(dir)) # 0
+  END MakeDirectory;
 
   (* Ending the process *)
 

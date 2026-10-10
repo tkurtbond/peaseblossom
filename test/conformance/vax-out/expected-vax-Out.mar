@@ -1,34 +1,19 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from design
-;; section 14, the LLVM backend's Out and FormattedText, the guest runs
-;; and the debugger run). Why this is right:
-;; - Out keeps its line in OUT_LINE, 1024 bytes, and its length, a LONGINT,
-;;   in OUT_LENGTH. Char writes the line first when it is full, then stores
-;;   the character, its index checked (trap 2), and counts it.
-;; - Ln (WriteLine) calls POC_PUT_LINE with the line's address and its
-;;   length, SHORT'ed to an INTEGER (CVTLW) and passed as a longword
-;;   (CVTWL), then clears the length; POC_PUT_LINE writes the bytes as
-;;   one record with LIB$PUT_OUTPUT. Open and Flush do nothing.
-;; - The initializer clears the length and passes the addresses of the
-;;   line and the length to POC_OUT_REGISTER, which declares the exit
-;;   handler that writes a line left without Ln (OutUnfinished's run on
-;;   the VAX).
-;; - String copies its argument at entry, as any value open array, and
-;;   calls Char for each character before the first 0X or the end.
-;; - Int writes MIN(HUGEINT) as a string (its magnitude does not fit);
-;;   else it takes the magnitude (MNEGL, MNEGL, SBWC), its digits by
-;;   POC_HMOD and POC_HDIV by 10 into the end of digits, the index kept in
-;;   R2 across the calls (saved by both masks), a "-" before them for a
-;;   negative x, then the blanks that fill the field (Spaces, n less the
-;;   digits' count widened to a quadword) and the digits.
-;; - Hex takes n into 1..16, then all 16 digits of x's two's complement by
-;;   POC_HMOD and POC_HDIV by 16 (floored, so they shift right with the
-;;   sign); a non-negative x gets as many as it needs if more than n,
-;;   a negative one exactly n, as FormattedText.Hex does.
-;; - The debugger run ends with OUT_LINE holding the last line, "the end",
-;;   and OUT_LENGTH 0, Ln having written it.
+;; Reviewed 2026-10-10 (written by Claude, from design sections 14 and
+;; 15, rtl/vax/Out.Mod, the guest runs and the debugger run; for the
+;; user's review). Why this is right:
+;; - Out keeps nothing of its own now: each procedure calls LineOutput's,
+;;   G^ and .EXTERNAL, with stream 0, LineOutput.output, as its first
+;;   argument (CLRL), so its output is what it was (expected-vax-
+;;   LineOutput.mar has the code that was Out's). The initializer calls
+;;   LINEOUTPUT_INIT.
+;; - Char's ch is copied to the frame on entry and passed as a longword
+;;   (MOVZBL); String copies its argument, as any value open array, and
+;;   passes the copy's address and length; Int and Hex pass the addresses
+;;   of copies of their HUGEINTs, as any HUGEINT value parameter.
+;; - Open and Flush do nothing, as before.
 ; Out, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	OUT
-	.IDENT	/2e074f2a93375c1d/
+	.IDENT	/721056b4be8ff51c/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
@@ -38,49 +23,17 @@
 L_INITIALISED:
 	.BLKB	1
 
-; the module's variables
-	.PSECT	POC_DATA
-; line: ARRAY 1024 OF CHAR
-OUT_LINE_VQLT5909:
-	.BLKB	1024
-; length: LONGINT
-	.ALIGN	LONG
-OUT_LENGTH_EQNLQEMB:
-	.BLKL	1
-
 ; the symbols it uses of other modules
-	.EXTERNAL	POC_PUT_LINE
-	.EXTERNAL	POC_HMOD
-	.EXTERNAL	POC_HDIV
-	.EXTERNAL	POC_OUT_REGISTER
-
-; for traps: poc's runtime routine (Phase 16), and the module's name
-	.EXTERNAL	POC_TRAP
-	.PSECT	POC_CONST
-L_MODULE_NAME:
-	.ASCIC	/Out/
-
-; its string constants
-	.PSECT	POC_CONST
-L_STR_1:
-	.ASCII	/-9223372036854775808/
-	.BYTE	0
+	.EXTERNAL	LINEOUTPUT_CHAR_HDBHEMT8
+	.EXTERNAL	LINEOUTPUT_STRING_DKRIT2LD
+	.EXTERNAL	LINEOUTPUT_LN_RROULHTA
+	.EXTERNAL	LINEOUTPUT_INT_QKLE32AL
+	.EXTERNAL	LINEOUTPUT_HEX_QKJD2AE9
+	.EXTERNAL	LINEOUTPUT_INIT
+	.EXTERNAL	POC_K1_325CA5CA1A3D6BD4
 
 ; the module's procedures
 	.PSECT	POC_CODE
-; PROCEDURE WriteLine
-OUT_WRITELINE_KG60G0QS:
-	.WORD	^M<>
-	SUBL2	#12, SP
-; line 39
-	MOVL	#2, -12(FP)
-	MOVAB	OUT_LINE_VQLT5909, -8(FP)
-	CVTLW	OUT_LENGTH_EQNLQEMB, R0
-	CVTWL	R0, -4(FP)
-	CALLG	-12(FP), G^POC_PUT_LINE
-; line 40
-	CLRL	OUT_LENGTH_EQNLQEMB
-	RET
 ; PROCEDURE Open
 	.ENTRY	OUT_OPEN_R8H7QTNF, ^M<>
 	RET
@@ -89,32 +42,19 @@ OUT_WRITELINE_KG60G0QS:
 	RET
 ; PROCEDURE Char
 	.ENTRY	OUT_CHAR_EIQL42IB, ^M<>
-; line 55
-	CMPL	OUT_LENGTH_EQNLQEMB, #1024
-	BEQL	L_2
-	JMP	L^L_1
-L_2:
-; line 55
-	CALLS	#0, OUT_WRITELINE_KG60G0QS
-L_1:
-; line 56
-	MOVL	OUT_LENGTH_EQNLQEMB, R0
-	CMPL	R0, #1023
-	BLEQU	L_3
-	PUSHL	#10
-	PUSHL	#56
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_3:
-	MOVB	4(AP), OUT_LINE_VQLT5909[R0]
-; line 57
-	INCL	OUT_LENGTH_EQNLQEMB
+	SUBL2	#16, SP
+	CLRL	-4(FP)
+	MOVB	4(AP), -1(FP)
+; line 33
+	MOVL	#2, -16(FP)
+	CLRL	-12(FP)
+	MOVZBL	-1(FP), -8(FP)
+	CALLG	-16(FP), G^LINEOUTPUT_CHAR_HDBHEMT8
 	RET
 ; PROCEDURE String
 	.ENTRY	OUT_STRING_VTB3DE16, ^M<R2,R3,R4,R5>
-	SUBL2	#16, SP
-	CLRQ	-8(FP)
+	SUBL2	#20, SP
+	CLRL	-4(FP)
 	MOVL	8(AP), R0
 	ADDL3	#3, R0, R1
 	BICL2	#3, R1
@@ -123,527 +63,63 @@ L_3:
 	PUSHL	R0
 	MOVL	4(AP), R1
 	MOVL	-4(FP), R3
-L_10:
+L_1:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_11
+	BLEQU	L_2
 	MOVL	#65535, R0
-L_11:
+L_2:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_10
+	BNEQ	L_1
 	ADDL2	#4, SP
-; line 65
-	CLRL	-8(FP)
-; line 66
-L_4:
-	MOVL	8(AP), R0
-	CMPL	-8(FP), R0
-	BLSS	L_6
-	JMP	L^L_5
-L_6:
-	MOVL	-8(FP), R0
-	CMPL	R0, 8(AP)
-	BLSSU	L_7
-	PUSHL	#33
-	PUSHL	#66
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_7:
-	TSTB	@-4(FP)[R0]
-	BNEQ	L_8
-	JMP	L^L_5
-L_8:
-; line 66
-	MOVL	#1, -16(FP)
-	MOVL	-8(FP), R0
-	CMPL	R0, 8(AP)
-	BLSSU	L_9
-	PUSHL	#54
-	PUSHL	#66
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_9:
-	MOVZBL	@-4(FP)[R0], -12(FP)
-	CALLG	-16(FP), OUT_CHAR_EIQL42IB
-; line 66
-	INCL	-8(FP)
-	JMP	L^L_4
-L_5:
+; line 40
+	MOVL	#3, -20(FP)
+	CLRL	-16(FP)
+	MOVL	-4(FP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	CALLG	-20(FP), G^LINEOUTPUT_STRING_DKRIT2LD
 	RET
 ; PROCEDURE Ln
 	.ENTRY	OUT_LN_1M29JSO9, ^M<>
-; line 71
-	CALLS	#0, OUT_WRITELINE_KG60G0QS
-	RET
-; PROCEDURE Spaces
-OUT_SPACES_UBBB4UNK:
-	.WORD	^M<>
-	SUBL2	#16, SP
-	CLRQ	-8(FP)
-	MOVQ	@4(AP), -8(FP)
-; line 76
-L_12:
-	CLRB	R0
-	TSTL	-4(FP)
-	BGTR	L_14
-	BLSS	L_15
-	TSTL	-8(FP)
-	BLEQU	L_15
-L_14:
-	MOVB	#1, R0
-L_15:
-	BLBS	R0, L_16
-	JMP	L^L_13
-L_16:
-; line 76
-	MOVL	#1, -16(FP)
-	MOVL	#32, -12(FP)
-	CALLG	-16(FP), OUT_CHAR_EIQL42IB
-; line 76
-	SUBL2	#^X00000001, -8(FP)
-	SBWC	#^X00000000, -4(FP)
-	JMP	L^L_12
-L_13:
+	SUBL2	#8, SP
+; line 45
+	MOVL	#1, -8(FP)
+	CLRL	-4(FP)
+	CALLG	-8(FP), G^LINEOUTPUT_LN_RROULHTA
 	RET
 ; PROCEDURE Int
-	.ENTRY	OUT_INT_V0SG7EMC, ^M<R2,R3,R4>
-	SUBL2	#72, SP
-	CLRQ	-52(FP)
-	CLRQ	-44(FP)
-	CLRQ	-36(FP)
-	CLRQ	-28(FP)
-	CLRQ	-20(FP)
-	CLRQ	-12(FP)
-	CLRL	-4(FP)
-	MOVQ	@8(AP), -16(FP)
-	MOVQ	@4(AP), -8(FP)
-; line 85
-	CLRB	R0
-	CMPL	-4(FP), #^X80000000
-	BNEQ	L_19
-	CMPL	-8(FP), #^X00000000
-	BNEQ	L_19
-	MOVB	#1, R0
-L_19:
-	BLBS	R0, L_20
-	JMP	L^L_18
-L_20:
-; line 86
-	MOVL	#1, -60(FP)
-	MOVQ	-16(FP), R0
-	SUBL2	#^X00000014, R0
-	SBWC	#^X00000000, R1
-	MOVQ	R0, -68(FP)
-	MOVAQ	-68(FP), -56(FP)
-	CALLG	-60(FP), OUT_SPACES_UBBB4UNK
-; line 86
-	MOVL	#2, -64(FP)
-	MOVAB	L_STR_1, -60(FP)
-	MOVL	#21, -56(FP)
-	CALLG	-64(FP), OUT_STRING_VTB3DE16
-	JMP	L^L_17
-L_18:
-; line 88
-	CLRB	R0
-	TSTL	-4(FP)
-	BLSS	L_23
-	BGTR	L_24
-	TSTL	-8(FP)
-	BGEQU	L_24
-L_23:
-	MOVB	#1, R0
-L_24:
-	BLBS	R0, L_25
-	JMP	L^L_22
-L_25:
-; line 88
-	MNEGL	-4(FP), -48(FP)
-	MNEGL	-8(FP), -52(FP)
-	SBWC	#0, -48(FP)
-	JMP	L^L_21
-L_22:
-; line 88
-	MOVQ	-8(FP), -52(FP)
-L_21:
-; line 90
-	MOVL	#23, -44(FP)
-; line 90
-	MOVL	-44(FP), R0
-	CMPL	R0, #23
-	BLEQU	L_26
-	PUSHL	#40
-	PUSHL	#90
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_26:
-	CLRB	-40(FP)[R0]
-; line 91
-L_27:
-; line 92
-	DECL	-44(FP)
-; line 93
-	MOVL	-44(FP), R0
-	CMPL	R0, #23
-	BLEQU	L_28
-	PUSHL	#16
-	PUSHL	#93
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_28:
-	MOVL	#^X0000000A, -60(FP)
-	CLRL	-56(FP)
-	MOVL	#2, -72(FP)
-	MOVAQ	-52(FP), -68(FP)
-	MOVAQ	-60(FP), -64(FP)
-	MOVL	R0, R2
-	CALLG	-72(FP), G^POC_HMOD
-	ADDL2	#^X00000030, R0
-	ADWC	#^X00000000, R1
-	CVTLB	R0, -40(FP)[R2]
-; line 94
-	MOVL	#^X0000000A, -60(FP)
-	CLRL	-56(FP)
-	MOVL	#2, -72(FP)
-	MOVAQ	-52(FP), -68(FP)
-	MOVAQ	-60(FP), -64(FP)
-	CALLG	-72(FP), G^POC_HDIV
-	MOVQ	R0, -52(FP)
-	CLRB	R0
-	TSTL	-48(FP)
-	BNEQ	L_29
-	TSTL	-52(FP)
-	BNEQ	L_29
-	MOVB	#1, R0
-L_29:
-	BLBS	R0, L_30
-	JMP	L^L_27
-L_30:
-; line 96
-	CLRB	R0
-	TSTL	-4(FP)
-	BLSS	L_32
-	BGTR	L_33
-	TSTL	-8(FP)
-	BGEQU	L_33
-L_32:
-	MOVB	#1, R0
-L_33:
-	BLBS	R0, L_34
-	JMP	L^L_31
-L_34:
-; line 96
-	DECL	-44(FP)
-; line 96
-	MOVL	-44(FP), R0
-	CMPL	R0, #23
-	BLEQU	L_35
-	PUSHL	#40
-	PUSHL	#96
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_35:
-	MOVB	#45, -40(FP)[R0]
-L_31:
-; line 97
-	MOVL	#1, -60(FP)
-	SUBL3	-44(FP), #23, R0
-	MOVL	R0, R1
-	ASHL	#-31, R1, R2
-	MOVQ	-16(FP), R3
-	SUBL2	R1, R3
-	SBWC	R2, R4
-	MOVQ	R3, -68(FP)
-	MOVAQ	-68(FP), -56(FP)
-	CALLG	-60(FP), OUT_SPACES_UBBB4UNK
-; line 98
-L_36:
-	MOVL	-44(FP), R0
-	CMPL	R0, #23
-	BLEQU	L_38
-	PUSHL	#20
-	PUSHL	#98
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_38:
-	TSTB	-40(FP)[R0]
-	BNEQ	L_39
-	JMP	L^L_37
-L_39:
-; line 98
-	MOVL	#1, -60(FP)
-	MOVL	-44(FP), R0
-	CMPL	R0, #23
-	BLEQU	L_40
-	PUSHL	#47
-	PUSHL	#98
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_40:
-	MOVZBL	-40(FP)[R0], -56(FP)
-	CALLG	-60(FP), OUT_CHAR_EIQL42IB
-; line 98
-	INCL	-44(FP)
-	JMP	L^L_36
-L_37:
-L_17:
-	RET
-; PROCEDURE Hex
-	.ENTRY	OUT_HEX_V0UAM9IC, ^M<R2>
-	SUBL2	#84, SP
-	CLRQ	-64(FP)
-	CLRQ	-56(FP)
-	CLRQ	-48(FP)
-	CLRQ	-40(FP)
-	CLRQ	-32(FP)
-	CLRQ	-24(FP)
+	.ENTRY	OUT_INT_V0SG7EMC, ^M<>
+	SUBL2	#48, SP
 	CLRQ	-16(FP)
 	CLRQ	-8(FP)
 	MOVQ	@8(AP), -16(FP)
 	MOVQ	@4(AP), -8(FP)
-; line 108
-	CLRB	R0
-	CMPL	-12(FP), #^X00000000
-	BLSS	L_43
-	BGTR	L_44
-	CMPL	-16(FP), #^X00000001
-	BGEQU	L_44
-L_43:
-	MOVB	#1, R0
-L_44:
-	BLBS	R0, L_45
-	JMP	L^L_42
-L_45:
-; line 108
-	MOVL	#^X00000001, -16(FP)
-	CLRL	-12(FP)
-	JMP	L^L_41
-L_42:
-; line 108
-	CLRB	R0
-	CMPL	-12(FP), #^X00000000
-	BGTR	L_46
-	BLSS	L_47
-	CMPL	-16(FP), #^X00000010
-	BLEQU	L_47
-L_46:
-	MOVB	#1, R0
-L_47:
-	BLBS	R0, L_48
-	JMP	L^L_41
-L_48:
-; line 108
-	MOVL	#^X00000010, -16(FP)
-	CLRL	-12(FP)
-L_41:
-; line 111
-	MOVQ	-8(FP), -64(FP)
-; line 111
-	MOVL	#^X00000010, -40(FP)
-	CLRL	-36(FP)
-; line 112
-L_49:
-; line 113
-	SUBL2	#^X00000001, -40(FP)
-	SBWC	#^X00000000, -36(FP)
-; line 114
-	MOVL	#^X00000010, -72(FP)
-	CLRL	-68(FP)
-	MOVL	#2, -84(FP)
-	MOVAQ	-64(FP), -80(FP)
-	MOVAQ	-72(FP), -76(FP)
-	CALLG	-84(FP), G^POC_HMOD
-	MOVQ	R0, -56(FP)
-; line 115
-	CLRB	R0
-	CMPL	-52(FP), #^X00000000
-	BLSS	L_52
-	BGTR	L_53
-	CMPL	-56(FP), #^X00000009
-	BGTRU	L_53
-L_52:
-	MOVB	#1, R0
-L_53:
-	BLBS	R0, L_54
-	JMP	L^L_51
-L_54:
-; line 115
-	TSTL	-36(FP)
-	BNEQ	L_56
-	MOVL	-40(FP), R0
-	CMPL	R0, #15
-	BLEQU	L_55
-L_56:
-	PUSHL	#33
-	PUSHL	#115
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_55:
-	MOVL	#^X00000030, R1
-	CLRL	R2
-	ADDL2	-56(FP), R1
-	ADWC	-52(FP), R2
-	CVTLB	R1, -32(FP)[R0]
-	JMP	L^L_50
-L_51:
-; line 116
-	TSTL	-36(FP)
-	BNEQ	L_58
-	MOVL	-40(FP), R0
-	CMPL	R0, #15
-	BLEQU	L_57
-L_58:
-	PUSHL	#19
-	PUSHL	#116
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_57:
-	MOVL	#^X00000037, R1
-	CLRL	R2
-	ADDL2	-56(FP), R1
-	ADWC	-52(FP), R2
-	CVTLB	R1, -32(FP)[R0]
-L_50:
-; line 118
-	MOVL	#^X00000010, -72(FP)
-	CLRL	-68(FP)
-	MOVL	#2, -84(FP)
-	MOVAQ	-64(FP), -80(FP)
-	MOVAQ	-72(FP), -76(FP)
-	CALLG	-84(FP), G^POC_HDIV
-	MOVQ	R0, -64(FP)
-	CLRB	R0
-	TSTL	-36(FP)
-	BNEQ	L_59
-	TSTL	-40(FP)
-	BNEQ	L_59
-	MOVB	#1, R0
-L_59:
-	BLBS	R0, L_60
-	JMP	L^L_49
-L_60:
-; line 120
-	CLRB	R0
-	TSTL	-4(FP)
-	BGTR	L_62
-	BLSS	L_63
-	TSTL	-8(FP)
-	BLSSU	L_63
-L_62:
-	MOVB	#1, R0
-L_63:
-	BLBS	R0, L_64
-	JMP	L^L_61
-L_64:
-; line 121
-	MOVL	#^X00000010, -48(FP)
-	CLRL	-44(FP)
-; line 122
-L_65:
-	CLRB	R0
-	CMPL	-44(FP), #^X00000000
-	BGTR	L_67
-	BLSS	L_68
-	CMPL	-48(FP), #^X00000001
-	BLEQU	L_68
-L_67:
-	MOVB	#1, R0
-L_68:
-	BLBS	R0, L_69
-	JMP	L^L_66
-L_69:
-	MOVL	#^X00000010, R0
-	CLRL	R1
-	SUBL2	-48(FP), R0
-	SBWC	-44(FP), R1
-	TSTL	R1
-	BNEQ	L_71
-	MOVL	R0, R2
-	CMPL	R2, #15
-	BLEQU	L_70
-L_71:
-	PUSHL	#39
-	PUSHL	#122
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_70:
-	CMPB	-32(FP)[R2], #48
-	BEQL	L_72
-	JMP	L^L_66
-L_72:
-; line 122
-	SUBL2	#^X00000001, -48(FP)
-	SBWC	#^X00000000, -44(FP)
-	JMP	L^L_65
-L_66:
-; line 123
-	CLRB	R0
-	CMPL	-44(FP), -12(FP)
-	BGTR	L_74
-	BLSS	L_75
-	CMPL	-48(FP), -16(FP)
-	BLEQU	L_75
-L_74:
-	MOVB	#1, R0
-L_75:
-	BLBS	R0, L_76
-	JMP	L^L_73
-L_76:
-; line 123
-	MOVQ	-48(FP), -16(FP)
-L_73:
-L_61:
-; line 125
-	MOVL	#^X00000010, -40(FP)
-	CLRL	-36(FP)
-	SUBL2	-16(FP), -40(FP)
-	SBWC	-12(FP), -36(FP)
-; line 126
-L_77:
-	CLRB	R0
-	CMPL	-36(FP), #^X00000000
-	BLSS	L_79
-	BGTR	L_80
-	CMPL	-40(FP), #^X00000010
-	BGEQU	L_80
-L_79:
-	MOVB	#1, R0
-L_80:
-	BLBS	R0, L_81
-	JMP	L^L_78
-L_81:
-; line 126
-	MOVL	#1, -72(FP)
-	TSTL	-36(FP)
-	BNEQ	L_83
-	MOVL	-40(FP), R0
-	CMPL	R0, #15
-	BLEQU	L_82
-L_83:
-	PUSHL	#33
-	PUSHL	#126
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_82:
-	MOVZBL	-32(FP)[R0], -68(FP)
-	CALLG	-72(FP), OUT_CHAR_EIQL42IB
-; line 126
-	ADDL2	#^X00000001, -40(FP)
-	ADWC	#^X00000000, -36(FP)
-	JMP	L^L_77
-L_78:
+; line 53
+	MOVL	#3, -32(FP)
+	CLRL	-28(FP)
+	MOVQ	-8(FP), -40(FP)
+	MOVAQ	-40(FP), -24(FP)
+	MOVQ	-16(FP), -48(FP)
+	MOVAQ	-48(FP), -20(FP)
+	CALLG	-32(FP), G^LINEOUTPUT_INT_QKLE32AL
+	RET
+; PROCEDURE Hex
+	.ENTRY	OUT_HEX_V0UAM9IC, ^M<>
+	SUBL2	#48, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVQ	@8(AP), -16(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 61
+	MOVL	#3, -32(FP)
+	CLRL	-28(FP)
+	MOVQ	-8(FP), -40(FP)
+	MOVAQ	-40(FP), -24(FP)
+	MOVQ	-16(FP), -48(FP)
+	MOVAQ	-48(FP), -20(FP)
+	CALLG	-32(FP), G^LINEOUTPUT_HEX_QKJD2AE9
 	RET
 
 ; the module's initializer: once only
@@ -653,17 +129,10 @@ L_78:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
-	SUBL2	#12, SP
-; line 130
-	CLRL	OUT_LENGTH_EQNLQEMB
-; line 131
-	MOVL	#2, -12(FP)
-	MOVAB	OUT_LINE_VQLT5909, -8(FP)
-	MOVAB	OUT_LENGTH_EQNLQEMB, -4(FP)
-	CALLG	-12(FP), G^POC_OUT_REGISTER
+	CALLS	#0, G^LINEOUTPUT_INIT
 	RET
 
 ; the module's key, which its importers refer to
-POC_K1_2E074F2A93375C1D == 0
+POC_K1_721056B4BE8FF51C == 0
 
 	.END

@@ -1,0 +1,8 @@
+! the program run under the debugger, not as a foreign command: Modules
+! finds argument 0 alone, the image's file specification, and argument 1
+! is "", its first byte 0X
+GO
+EXAMINE/WORD COMMANDLINE\COMMANDLINE_COUNT_DHQAJEV1
+EXAMINE/ASCIZ COMMANDLINE\COMMANDLINE_FIRST_BHIG1UQG
+EXAMINE/BYTE COMMANDLINE\COMMANDLINE_SECOND_S1GT2N1M:COMMANDLINE\COMMANDLINE_SECOND_S1GT2N1M
+EXIT

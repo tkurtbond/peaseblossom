@@ -1,7 +1,7 @@
 ! the program run: what it prints goes to SYS$OUTPUT, not here (the guest
-! runs compare it); after it, Out's line still holds the last one, "the
-! end", and its length is 0, Ln having written it
+! runs compare it); after it, Out's line, LineOutput's first, still holds
+! the last one, "the end", and its length is 0, Ln having written it
 GO
-EXAMINE/ASCII:7 OUT\OUT_LINE_VQLT5909
-EXAMINE/LONG OUT\OUT_LENGTH_EQNLQEMB
+EXAMINE/ASCII:7 LINEOUTPUT\LINEOUTPUT_LINES_52FJJTP7
+EXAMINE/LONG LINEOUTPUT\LINEOUTPUT_LENGTHS_GMT90G79
 EXIT

@@ -817,6 +817,14 @@ most, object libraries.
      `Err` and `Modules`. Checked on the guest: what a foreign command's
      line looks like (`LIB$GET_FOREIGN`), and that `MACRO` and `LINK`
      read Stream_LF files.
+   - *`Modules`, `Platform` and `Err`* (2026-10-10) are in `rtl/vax`,
+     with the fixtures `vax-command-line`, `vax-platform` and `vax-err`.
+     Their `expected-vax.mar` files await the user's review, and so do
+     `vax-out`'s, since `Out` now writes through `LineOutput`, which it
+     shares with `Err`. `rtl/llvm`'s `Platform` gained `MakePath`,
+     `IsDirectory`, `MakeDirectory` and `pathSeparator`; `src/` does not
+     use them yet. Checked on the guest: `Unlink` deletes only the
+     highest version.
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built

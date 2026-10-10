@@ -1,0 +1,140 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
+;; guest runs and the debugger run; for the user's review). Why this is
+;; right:
+;; - PlatformUse imports Platform, rtl/vax/Platform.Mod compiled with it
+;;   (expected-vax-Platform.mar): its initializer calls PLATFORM_INIT
+;;   first, and it calls Platform's procedures by their global symbols,
+;;   with G^.
+;; - separator := Platform.pathSeparator is the constant "," (#44), with
+;;   no reference to Platform; pid := Platform.PID reads the exported word
+;;   through G^.
+;; - MakePath, IsDirectory, GetEnv and Unlink get each string as its
+;;   address and its length with the 0X, and a VAR array's length (64);
+;;   a BOOLEAN result is stored from R0's low byte.
+;; - The debugger run ends with separator ",", path SYS$LOGIN:X.MOD, disk
+;;   DUA1:, home 1 (SYS$LOGIN: is a directory), missing 0 ([.NO-SUCH-
+;;   DIRECTORY] is not), and gone 8292, the low word of RMS$_FNF
+;;   (%X00018292): the file to delete is not there.
+; PlatformUse, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	PLATFORMUSE
+	.IDENT	/cd06a746ee85663e/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; separator: CHAR
+PLATFORMUSE_SEPARATOR_30HBLOVO:
+	.BLKB	1
+; path: ARRAY 64 OF CHAR
+PLATFORMUSE_PATH_KK8CA3UA:
+	.BLKB	64
+; disk: ARRAY 64 OF CHAR
+PLATFORMUSE_DISK_9EJUMHD8:
+	.BLKB	64
+; home: BOOLEAN
+PLATFORMUSE_HOME_DTVA7CUI:
+	.BLKB	1
+; missing: BOOLEAN
+PLATFORMUSE_MISSING_63N4S093:
+	.BLKB	1
+; pid: INTEGER
+	.ALIGN	WORD
+PLATFORMUSE_PID_S01H78OU:
+	.BLKW	1
+; gone: INTEGER
+	.ALIGN	WORD
+PLATFORMUSE_GONE_AR9RTE1Q:
+	.BLKW	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	PLATFORM_MAKEPATH_SLB3UHI5
+	.EXTERNAL	PLATFORM_ISDIRECTORY_F1QRO1H7
+	.EXTERNAL	PLATFORM_GETENV_ATVM4QJV
+	.EXTERNAL	PLATFORM_PID_LCCSKLS1
+	.EXTERNAL	PLATFORM_UNLINK_KE1F78LR
+	.EXTERNAL	PLATFORM_INIT
+	.EXTERNAL	POC_K1_B6AE0C09CBAC81B7
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/SYS$LOGIN/
+	.BYTE	0
+L_STR_2:
+	.ASCII	/X.MOD/
+	.BYTE	0
+L_STR_3:
+	.ASCII	/[.NO-SUCH-DIRECTORY]/
+	.BYTE	0
+L_STR_4:
+	.ASCII	/SYS$DISK/
+	.BYTE	0
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	PLATFORMUSE_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^PLATFORM_INIT
+	SUBL2	#28, SP
+; line 10
+	MOVB	#44, PLATFORMUSE_SEPARATOR_30HBLOVO
+; line 11
+	MOVL	#6, -28(FP)
+	MOVAB	L_STR_1, -24(FP)
+	MOVL	#10, -20(FP)
+	MOVAB	L_STR_2, -16(FP)
+	MOVL	#6, -12(FP)
+	MOVAB	PLATFORMUSE_PATH_KK8CA3UA, -8(FP)
+	MOVL	#64, -4(FP)
+	CALLG	-28(FP), G^PLATFORM_MAKEPATH_SLB3UHI5
+; line 12
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_1, -8(FP)
+	MOVL	#10, -4(FP)
+	CALLG	-12(FP), G^PLATFORM_ISDIRECTORY_F1QRO1H7
+	MOVB	R0, PLATFORMUSE_HOME_DTVA7CUI
+; line 13
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_3, -8(FP)
+	MOVL	#21, -4(FP)
+	CALLG	-12(FP), G^PLATFORM_ISDIRECTORY_F1QRO1H7
+	MOVB	R0, PLATFORMUSE_MISSING_63N4S093
+; line 14
+	MOVL	#4, -20(FP)
+	MOVAB	L_STR_4, -16(FP)
+	MOVL	#9, -12(FP)
+	MOVAB	PLATFORMUSE_DISK_9EJUMHD8, -8(FP)
+	MOVL	#64, -4(FP)
+	CALLG	-20(FP), G^PLATFORM_GETENV_ATVM4QJV
+; line 15
+	MOVW	G^PLATFORM_PID_LCCSKLS1, PLATFORMUSE_PID_S01H78OU
+; line 16
+	CLRB	PLATFORMUSE_PATH_KK8CA3UA+63
+; line 17
+	MOVL	#2, -12(FP)
+	MOVAB	PLATFORMUSE_PATH_KK8CA3UA, -8(FP)
+	MOVL	#64, -4(FP)
+	CALLG	-12(FP), G^PLATFORM_UNLINK_KE1F78LR
+	MOVW	R0, PLATFORMUSE_GONE_AR9RTE1Q
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_CD06A746EE85663E == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	PLATFORMUSE_MAIN, ^M<>
+	CALLS	#0, PLATFORMUSE_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	PLATFORMUSE_MAIN

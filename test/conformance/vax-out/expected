@@ -1,7 +1,9 @@
+semantic OK, wrote LineOutput.mar
 semantic OK, wrote Out.mar
 semantic OK, wrote OutBasics.mar
 exit 0
 OutBasics.mar matches expected-vax.mar
+LineOutput.mar matches expected-vax-LineOutput.mar
 Out.mar matches expected-vax-Out.mar
 LLVM build -O2 exit 0
 VAX build -O2 exit 0

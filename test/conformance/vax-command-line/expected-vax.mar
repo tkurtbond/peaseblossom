@@ -1,0 +1,78 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
+;; guest runs and the debugger run; for the user's review). Why this is
+;; right:
+;; - CommandLine imports Modules, rtl/vax/Modules.Mod compiled with it
+;;   (expected-vax-Modules.mar): its initializer calls MODULES_INIT first,
+;;   which splits the command line before CommandLine's body runs.
+;; - count := Modules.ArgCount reads Modules' exported variable through
+;;   G^, a word under -O2; each GetArg passes n as a longword (#0, #1), the
+;;   array's address and its length, 64, as any open-array argument.
+;; - The debugger run, not a foreign command, ends with count 1, argument
+;;   0 the image's file specification, DUA1:[USERS.POC]POCRUN.EXE;1, and
+;;   argument 1 "".
+; CommandLine, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	COMMANDLINE
+	.IDENT	/9ff0fd7d4cf6d7f8/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; count: INTEGER
+	.ALIGN	WORD
+COMMANDLINE_COUNT_DHQAJEV1:
+	.BLKW	1
+; first: ARRAY 64 OF CHAR
+COMMANDLINE_FIRST_BHIG1UQG:
+	.BLKB	64
+; second: ARRAY 64 OF CHAR
+COMMANDLINE_SECOND_S1GT2N1M:
+	.BLKB	64
+
+; the symbols it uses of other modules
+	.EXTERNAL	MODULES_ARGCOUNT_DUBF7AL7
+	.EXTERNAL	MODULES_GETARG_PTGRJR14
+	.EXTERNAL	MODULES_INIT
+	.EXTERNAL	POC_K1_048B5A2AD8A1D0E5
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	COMMANDLINE_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^MODULES_INIT
+	SUBL2	#16, SP
+; line 9
+	MOVW	G^MODULES_ARGCOUNT_DUBF7AL7, COMMANDLINE_COUNT_DHQAJEV1
+; line 10
+	MOVL	#3, -16(FP)
+	CLRL	-12(FP)
+	MOVAB	COMMANDLINE_FIRST_BHIG1UQG, -8(FP)
+	MOVL	#64, -4(FP)
+	CALLG	-16(FP), G^MODULES_GETARG_PTGRJR14
+; line 11
+	MOVL	#3, -16(FP)
+	MOVL	#1, -12(FP)
+	MOVAB	COMMANDLINE_SECOND_S1GT2N1M, -8(FP)
+	MOVL	#64, -4(FP)
+	CALLG	-16(FP), G^MODULES_GETARG_PTGRJR14
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_9FF0FD7D4CF6D7F8 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	COMMANDLINE_MAIN, ^M<>
+	CALLS	#0, COMMANDLINE_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	COMMANDLINE_MAIN

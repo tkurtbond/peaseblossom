@@ -3,6 +3,7 @@
 ; debugger. doc/developer/vax-macro32-backend.md, sections 7, 8 and 9.
 	.TITLE	POCSTUB
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
 
 ; What the last trap was given, for the debugger to examine after the
@@ -252,24 +253,68 @@ HDIVMOD:
 30$:	ADDL3	#4, -4(FP), R0
 	RET
 
-; Out's output (rtl/vax/Out.Mod; design section 14, item 2). Out keeps a
-; line until Ln, since LIB$PUT_OUTPUT writes whole records.
+; Out's and Err's lines, and Platform's and Modules' services, as
+; rtl/vax/PocRtl.mar has them (design section 15), so that a program
+; using rtl/vax runs under the debugger as it does without it
 	$DSCDEF
+	$JPIDEF
+	$LNMDEF
+
+; a fixed-length string descriptor of the length bytes at text, made on
+; the stack, its address in R1
+	.MACRO	POC_DESCRIBE	TEXT, LENGTH
+	SUBL2	#8, SP
+	MOVW	LENGTH, DSC$W_LENGTH(SP)
+	MOVB	#DSC$K_DTYPE_T, DSC$B_DTYPE(SP)
+	MOVB	#DSC$K_CLASS_S, DSC$B_CLASS(SP)
+	MOVL	TEXT, DSC$A_POINTER(SP)
+	MOVL	SP, R1
+	.ENDM	POC_DESCRIBE
 
 	.PSECT	POC_DATA
-; where Out keeps its line and its length, for the exit handler
-POC_OUT_TEXT:
+; SYS$ERROR, written one record at a time; POC_ERR_IS_OPEN is 1 once
+; POC_ERR_OPEN has opened it
+POC_ERR_IS_OPEN:
 	.BLKL	1
-POC_OUT_LENGTH:
-	.BLKL	1
+POC_ERR_FAB:
+	$FAB	FNM=<SYS$ERROR>, FAC=<PUT>, RFM=VAR, RAT=<CR>
+POC_ERR_RAB:
+	$RAB	FAB=POC_ERR_FAB
+
+	.PSECT	POC_CODE
+; POC_ERR_OPEN: SYS$ERROR opened, the first time; R0 the status. It
+; stays open, and RMS closes it when the image exits
+	.ENTRY	POC_ERR_OPEN, ^M<>
+	MOVL	#1, R0
+	TSTL	POC_ERR_IS_OPEN
+	BNEQ	10$
+	$CREATE	FAB=POC_ERR_FAB
+	BLBC	R0, 10$
+	$CONNECT	RAB=POC_ERR_RAB
+	BLBS	R0, 5$
+	PUSHL	R0
+	$CLOSE	FAB=POC_ERR_FAB
+	POPL	R0
+	RET
+5$:	MOVL	#1, POC_ERR_IS_OPEN
+10$:	RET
+
+; Out's and Err's lines (rtl/vax/LineOutput.Mod; design section 14, item
+; 2, and section 15, proposal 8). Each is kept until Ln, since a record
+; is written whole.
+
+	.PSECT	POC_DATA
+; the two lines and their lengths, Out's then Err's, for the exit handler
+POC_LINES:
+	.BLKL	4
 ; the exit handler's control block: forward link, handler, one argument,
 ; the address of the exit status
-POC_OUT_EXIT_BLOCK:
+POC_LINES_EXIT_BLOCK:
 	.LONG	0
-	.ADDRESS	POC_OUT_EXIT
+	.ADDRESS	POC_LINES_EXIT
 	.LONG	1
-	.ADDRESS	POC_OUT_EXIT_STATUS
-POC_OUT_EXIT_STATUS:
+	.ADDRESS	POC_LINES_EXIT_STATUS
+POC_LINES_EXIT_STATUS:
 	.BLKL	1
 
 	.PSECT	POC_CODE
@@ -287,24 +332,202 @@ POC_OUT_EXIT_STATUS:
 	CALLS	#1, G^LIB$PUT_OUTPUT
 	RET
 
-; POC_OUT_REGISTER(text, length): Out's line and its length, a LONGINT
-; whose low longword is the count, under -O2 or -OC; kept for POC_OUT_EXIT,
-; which is declared an exit handler, so that a line the program has not
-; ended with Ln when it ends is written still, as a record of its own
-	.ENTRY	POC_OUT_REGISTER, ^M<>
-	MOVL	4(AP), POC_OUT_TEXT
-	MOVL	8(AP), POC_OUT_LENGTH
-	$DCLEXH_S	DESBLK=POC_OUT_EXIT_BLOCK
+; POC_PUT_ERROR_LINE(text, length): the same written to SYS$ERROR, by
+; RMS as POC_TRAP writes; R0 the status
+	.ENTRY	POC_PUT_ERROR_LINE, ^M<>
+	CALLS	#0, POC_ERR_OPEN
+	BLBC	R0, 10$
+	MOVW	8(AP), POC_ERR_RAB+RAB$W_RSZ
+	MOVL	4(AP), POC_ERR_RAB+RAB$L_RBF
+	$PUT	RAB=POC_ERR_RAB
+10$:	RET
+
+; POC_LINES_REGISTER(outText, outLength, errText, errLength): Out's and
+; Err's lines and their lengths, LONGINTs whose low longwords are the
+; counts, under -O2 or -OC; kept for POC_LINES_EXIT, which is declared an
+; exit handler, so that a line the program has not ended with Ln when it
+; ends is written still, as a record of its own: Out's, then Err's
+	.ENTRY	POC_LINES_REGISTER, ^M<>
+	MOVQ	4(AP), POC_LINES
+	MOVQ	12(AP), POC_LINES+8
+	$DCLEXH_S	DESBLK=POC_LINES_EXIT_BLOCK
 	RET
 
-	.ENTRY	POC_OUT_EXIT, ^M<>
-	MOVL	POC_OUT_LENGTH, R0
-	TSTL	(R0)
+	.ENTRY	POC_LINES_EXIT, ^M<R2>
+	MOVL	POC_LINES+4, R2
+	TSTL	(R2)
 	BEQL	10$
-	PUSHL	(R0)
-	PUSHL	POC_OUT_TEXT
+	PUSHL	(R2)
+	PUSHL	POC_LINES
 	CALLS	#2, POC_PUT_LINE
-	CLRL	@POC_OUT_LENGTH
-10$:	RET
+	CLRL	(R2)
+10$:	MOVL	POC_LINES+12, R2
+	TSTL	(R2)
+	BEQL	20$
+	PUSHL	(R2)
+	PUSHL	POC_LINES+8
+	CALLS	#2, POC_PUT_ERROR_LINE
+	CLRL	(R2)
+20$:	RET
+
+; Platform's and Modules' services (rtl/vax/Platform.Mod and Modules.Mod;
+; design section 15, proposals 3 to 8). A name is passed as its address
+; and its length, a buffer to fill as its address and its size; a routine
+; that fills one returns the length it wrote in R0.
+
+	.PSECT	POC_CONST
+; the tables a file name's logical names are looked up in: the process's,
+; the job's, the group's and the system's
+POC_FILE_DEV:
+	.ASCID	/LNM$FILE_DEV/
+POC_CASE_BLIND:
+	.LONG	LNM$M_CASE_BLIND
+
+	.PSECT	POC_DATA
+; $TRNLNM's item list: the index of the equivalence string wanted, the
+; string and its length, and the largest index there is
+POC_LNM_INDEX:
+	.BLKL	1
+POC_LNM_LENGTH:
+	.BLKW	1
+POC_LNM_MAX:
+	.BLKL	1
+POC_LNM_ITEMS:
+	.WORD	4, LNM$_INDEX
+	.ADDRESS	POC_LNM_INDEX
+	.LONG	0
+POC_LNM_STRING:
+	.WORD	0, LNM$_STRING
+	.LONG	0
+	.ADDRESS	POC_LNM_LENGTH
+	.WORD	4, LNM$_MAX_INDEX
+	.ADDRESS	POC_LNM_MAX
+	.LONG	0
+	.LONG	0
+; $GETJPI's item lists: the process's identification, and the image's
+; file specification and its length
+POC_JPI_PID:
+	.BLKL	1
+POC_JPI_PID_ITEMS:
+	.WORD	4, JPI$_PID
+	.ADDRESS	POC_JPI_PID
+	.LONG	0
+	.LONG	0
+POC_JPI_LENGTH:
+	.BLKW	1
+POC_JPI_IMAGE_ITEMS:
+	.WORD	0, JPI$_IMAGNAME
+	.LONG	0
+	.ADDRESS	POC_JPI_LENGTH
+	.LONG	0
+; the file a name is erased, or parsed, as: one FAB and NAM serve every
+; $PARSE, so that each releases what the last one kept (RMS, $PARSE)
+POC_NAME_FAB:
+	$FAB	NAM=POC_NAME_NAM
+POC_NAME_NAM:
+	$NAM	ESA=POC_NAME_EXPANDED, ESS=NAM$C_MAXRSS
+POC_NAME_EXPANDED:
+	.BLKB	NAM$C_MAXRSS
+
+	.PSECT	POC_CODE
+; POC_TRNLNM(name, length, index, value, size): the equivalence string
+; at index of the logical name in LNM$FILE_DEV, ignoring case, in value;
+; R0 its length, or -1 when there is no such name or no string at index
+	.ENTRY	POC_TRNLNM, ^M<>
+	MOVL	12(AP), POC_LNM_INDEX
+	MOVW	20(AP), POC_LNM_STRING
+	MOVL	16(AP), POC_LNM_STRING+4
+	CLRW	POC_LNM_LENGTH
+	MNEGL	#1, POC_LNM_MAX
+	POC_DESCRIBE	4(AP), 8(AP)
+	PUSHAL	POC_LNM_ITEMS
+	CLRL	-(SP)
+	PUSHL	R1
+	PUSHAQ	POC_FILE_DEV
+	PUSHAL	POC_CASE_BLIND
+	CALLS	#5, G^SYS$TRNLNM
+	BLBC	R0, 10$
+	CMPL	12(AP), POC_LNM_MAX
+	BGTR	10$
+	MOVZWL	POC_LNM_LENGTH, R0
+	RET
+10$:	MNEGL	#1, R0
+	RET
+
+; POC_ERASE(name, length): the file deleted, the highest version when
+; the name gives none; R0 RMS's status
+	.ENTRY	POC_ERASE, ^M<>
+	MOVL	4(AP), POC_NAME_FAB+FAB$L_FNA
+	MOVB	8(AP), POC_NAME_FAB+FAB$B_FNS
+	$ERASE	FAB=POC_NAME_FAB
+	RET
+
+; POC_PARSE(name, length): the name parsed, which looks its directory up;
+; R0 RMS's status, RMS$_DNF if there is no such directory
+	.ENTRY	POC_PARSE, ^M<>
+	MOVL	4(AP), POC_NAME_FAB+FAB$L_FNA
+	MOVB	8(AP), POC_NAME_FAB+FAB$B_FNS
+	$PARSE	FAB=POC_NAME_FAB
+	RET
+
+; POC_CREATE_DIRECTORY(name, length): the directory made, and those it is
+; in that are missing, by LIB$CREATE_DIR; R0 its status, SS$_CREATED or
+; SS$_NORMAL (all of them there already) when it succeeds
+	.ENTRY	POC_CREATE_DIRECTORY, ^M<>
+	POC_DESCRIBE	4(AP), 8(AP)
+	PUSHL	R1
+	CALLS	#1, G^LIB$CREATE_DIR
+	RET
+
+; POC_DEFAULT_DIRECTORY(value, size): the process's default directory, as
+; $SETDDIR reads it, in value; R0 its length, 0 if it cannot be read
+	.ENTRY	POC_DEFAULT_DIRECTORY, ^M<>
+	CLRL	-(SP)
+	POC_DESCRIBE	4(AP), 8(AP)
+	PUSHL	R1
+	PUSHAW	-4(FP)
+	CLRL	-(SP)
+	CALLS	#3, G^SYS$SETDDIR
+	BLBC	R0, 10$
+	MOVZWL	-4(FP), R0
+	RET
+10$:	CLRL	R0
+	RET
+
+; POC_PROCESS_ID(): R0 the process's identification, 0 if $GETJPI fails
+	.ENTRY	POC_PROCESS_ID, ^M<>
+	CLRL	POC_JPI_PID
+	$GETJPIW_S	ITMLST=POC_JPI_PID_ITEMS
+	MOVL	POC_JPI_PID, R0
+	RET
+
+; POC_IMAGE_NAME(value, size): the file specification of the image
+; running in value; R0 its length, 0 if $GETJPI fails
+	.ENTRY	POC_IMAGE_NAME, ^M<>
+	MOVW	8(AP), POC_JPI_IMAGE_ITEMS
+	MOVL	4(AP), POC_JPI_IMAGE_ITEMS+4
+	CLRW	POC_JPI_LENGTH
+	$GETJPIW_S	ITMLST=POC_JPI_IMAGE_ITEMS
+	BLBC	R0, 10$
+	MOVZWL	POC_JPI_LENGTH, R0
+	RET
+10$:	CLRL	R0
+	RET
+
+; POC_FOREIGN(value, size): the command line after a foreign command, as
+; LIB$GET_FOREIGN gives it, without prompting, in value; R0 its length,
+; 0 when there is none
+	.ENTRY	POC_FOREIGN, ^M<>
+	CLRL	-(SP)
+	POC_DESCRIBE	4(AP), 8(AP)
+	PUSHAW	-4(FP)
+	CLRL	-(SP)
+	PUSHL	R1
+	CALLS	#3, G^LIB$GET_FOREIGN
+	BLBC	R0, 10$
+	MOVZWL	-4(FP), R0
+	RET
+10$:	CLRL	R0
+	RET
 
 	.END
