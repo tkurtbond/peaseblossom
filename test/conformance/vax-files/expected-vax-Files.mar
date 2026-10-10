@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
-;; RMS Reference ($READ, $WRITE, $RENAME, the XABFHC) and the guest
-;; runs; for the user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 15, the RMS Reference ($READ, $WRITE, $RENAME, the XABFHC)
+;; and the guest runs). Why this is right:
 ;; - FileDesc is 1568 bytes under -O2: the control (768) at 0, the block
 ;;   (512) at 768, the name (256) at 1280, isNew, created, open, closed,
 ;;   dirty and byRecord at 1536 to 1541, then length, onDisk and

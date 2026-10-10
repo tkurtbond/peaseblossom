@@ -839,7 +839,7 @@ most, object libraries.
      by block I/O, other record formats a record at a time, `Register`
      by `$RENAME` as a new version. The fixture `vax-files` prints the
      same on Linux and on the guest; its `expected-vax.mar` and
-     `expected-vax-Files.mar` are drafts, for the user's review.
+     `expected-vax-Files.mar` were reviewed by the user (2026-10-10).
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built
