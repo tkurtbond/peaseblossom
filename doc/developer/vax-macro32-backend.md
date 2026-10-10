@@ -166,6 +166,8 @@ by all other VAX languages"; `#pragma member_alignment` changes it (VAX C
 | `HUGEINT` | 8 | 8 | quadword |
 | `SET` | 4 | 4 | longword, element *i* is bit *i* |
 | `SYSTEM.ADDRESS` | 4 | 4 | longword (the VAX's 32-bit address) |
+| `REAL` | 4 | 4 | F_floating longword |
+| `LONGREAL` | 8 | 8 | G_floating quadword |
 
 Sizes are `MemoryLayout.BasicSize`'s, word size 4.
 
@@ -196,16 +198,15 @@ Proposals:
   frame, aligned so. A record with a base type or a field initializer is
   Phase 16's, as is an open array. (Phase 16 step 3 lowers extension,
   §14.)
-- **Real types**, for Phase 16 (out of Phase 15's slice): `REAL` is
-  F_floating; `LONGREAL` is D_floating or G_floating. VAX C chooses with a
+- **Done (step 3): real types.** `REAL` is F_floating and `LONGREAL`
+  G_floating (§14, item 9). VAX C chooses the `LONGREAL` format with a
   qualifier, `/G_FLOAT`, defaulting to D_floating (`/NOG_FLOAT`), and a
   program compiled with `/G_FLOAT` links against a different run-time
-  library (VAX C, the `CC` command's `/G_FLOAT` qualifier). FORTRAN and
-VAX's other compilers may have the same choice; not checked. So poc should offer the same choice as an
-  option rather than fix one format; the default is Phase 16's to settle
-  (`PLAN.md` Phase 16 step 3a), along with what replaces IEEE 754's
-  infinities and NaNs, which VAX formats lack
-  (`language-extensions.md`, "Overflow, division and reals").
+  library (VAX C, the `CC` command's `/G_FLOAT` qualifier). poc needs G
+  for its own folding (§14, item 9); a D option can come later. The VAX
+  formats have no infinities or NaNs, so a real overflow or division by
+  zero is the hardware's fault (`language-extensions.md`, "Overflow,
+  division and reals").
 
 ## 5. Names
 
@@ -1063,13 +1064,14 @@ end's information serves both:
    denormals: a real overflow or division by zero is a hardware
    condition (`SS$_FLTOVF_F`, `SS$_FLTDIV_F`), as integer division by
    zero already is. This is a target difference, recorded where the x86
-   and ARM one is (`AGENTS.md`, "What traps, and what does not"). Folded
-   constants are written as `.F_FLOATING` and `.G_FLOATING` from exact
-   arithmetic, never by converting IEEE bits. The VAX rounds a
-   halfway case away from zero, I believe, not to even as IEEE does
-   (to be confirmed in a 5.5-2-era manual before it is relied on). If
-   so, a folded value and a computed one can differ in the last bit.
-   Fixtures avoid such cases or have a VAX `expected` (step 5).
+   and ARM one is (`AGENTS.md`, "What traps, and what does not"). A
+   constant is written as decimal text that MACRO converts, never by
+   converting IEEE bits (below, "Done: reals"). The VAX rounds a halfway
+   case away from zero, not to even as IEEE does: it rounds by adding 1
+   to the bit below the last one kept (MACRO 9.2.8.3), and MACRO V5.4-3
+   on the guest converts a decimal literal the same way. So a folded
+   value and a computed one can differ in the last bit. Fixtures avoid
+   such cases or print them only on the VAX (`vax-reals`).
 10. **Traps and exit status (3c).** `POC_TRAP` writes the same message
     the LLVM runtime does, with `-trap-location`'s position when that was
     given, to `SYS$ERROR`, then exits. A VMS exit status is a condition
@@ -1139,10 +1141,10 @@ there. `Out`'s body passes the addresses of its line and length to
 handler writes a line the program left without `Ln`, as a record of its
 own. The length is a `LONGINT`, and the runtime reads its low longword,
 so `Out` compiles under `-O2` and `-OC` alike. `Real`, `LongReal` and
-`Ten` wait for the reals (item 9), and `IsConsole` for step 4. There are
-no VMS libraries yet (Phase 17), so a program finds `Out` as source with
-`-import-path rtl/vax`, and `-build` writes `Out.mar` with the program's
-modules.
+`Ten` are still to come, now that reals are lowered (item 9), and
+`IsConsole` for step 4. There are no VMS libraries yet (Phase 17), so a
+program finds `Out` as source with `-import-path rtl/vax`, and `-build`
+writes `Out.mar` with the program's modules.
 
 Fixture `vax-out` builds one program with the LLVM backend and runs it
 on the host, then builds it for the VAX and runs it on the guest, under
@@ -1445,3 +1447,62 @@ procedures: reals (165), `SYSTEM.BYTE` parameters (78), calls and
 expressions that need more registers than are left (19) and a structured
 constant (1). The nested procedures' bodies, examined for the first time,
 add none.
+
+**Done: reals (item 9), 2026-10-09.** A `REAL` is an F_floating
+longword (`.BLKF`) and a `LONGREAL` a G_floating quadword (`.BLKG`), held
+in a register pair as a quadword is, passed by the address of a copy as a
+`HUGEINT` is, and returned in R0 and R1; a `REAL` is passed and returned
+as a longword. Arithmetic is `ADDx`, `SUBx`, `MULx` and `DIVx` at the
+wider of the two types, an integer converted by `CVT`, a quadword by the
+runtime's `POC_QTOG`; `/` of two integers is a `REAL`. A relation is
+`CMPF` or `CMPG` with the signed branches, which are right since `CMP`
+sets N and Z as for signed integers and clears V and C (MACRO 9.2.8.4).
+`ABS` is `MNEGx` after a test, `LONG` is `CVTFG` and `SHORT` `CVTGF`,
+neither checked. `ENTIER` checks its argument against -2^31 and 2^31
+under `-O2`, or -2^63 and 2^63 under `-OC`, with trap 8 as on LLVM, then
+floors: `CVTxL`, converted back, and `DECL` when that is more than the
+argument; under `-OC` the runtime's `POC_ENTIERQ` gives the quadword.
+
+A constant is an immediate whose decimal text MACRO converts, so it is
+rounded once, as the VAX rounds: the numeral as written, its `D` made
+`E`, when it is shorter than 32 characters, otherwise `FormatReal`'s
+shortest text of its value (now exported by `ModuleInterface`), and zero
+as `0.0`, since MACRO assembles `#-0.0` with the sign bit set, a reserved
+operand. MACRO V5.4-3 on the guest rounds a halfway literal away from
+zero, makes an underflowing one 0 without a message, and rejects one
+past the format's range with `%MACRO-E-FLTPNTSYNX`. So `MAX` and `MIN`
+of a type, IEEE 754's bound, are written as the VAX format's largest
+value, half of it, and any other constant past that is an error, "a
+LONGREAL constant too large for the VAX, whose largest LONGREAL is
+8.988465674311579E307" (`vax-emit-errors`' `VaxRealRange`). A `REAL`
+constant in a `LONGREAL` operation is widened by `CVTFG` at run time,
+as LLVM's `fpext` widens it, so it keeps a `REAL`'s precision. A real
+overflow or division by zero is the hardware's fault (`SS$_FLTDIV_F`),
+not a trap of poc's.
+
+For step 6: `ConstantEvaluator.MaxLongReal` computes (2^1023 - 2^970) *
+2, IEEE 754's largest double, which is about twice G_floating's largest
+value, so poc running on the VAX will overflow there and must compute
+the VAX bound instead. `Out`'s `Real`, `LongReal` and `Ten` are still to
+come.
+
+Fixture `vax-reals` has `VaxReals`, written for the user's review:
+constants as written and as computed, arithmetic with integers and a
+`HUGEINT` converted, every relation, `ABS`, `LONG`, `SHORT` and `ENTIER`
+of positive and negative values, value and `VAR` parameters, results, a
+call while a `LONGREAL` waits in a register pair, a procedure variable,
+record fields, an open array, and an expression that spills a pair. Its
+debugger runs examine what it computes, and that 2^53 + 1, a `HUGEINT`
+converted and a sum, is 2^53 + 2, a halfway case rounded away from zero
+(MACRO 9.2.8.3), where IEEE 754 rounds to even, 2^53. Then they take
+trap 8 from `ENTIER` of 3.0D9, at the column LLVM's `-trap-location`
+gives, and the floating divide-by-zero fault. A second program,
+`RealsOut`, prints the same checks but the rounding one with `Out`, and
+adds `ENTIER` of values past 2^31; it is built by both backends under
+`-O2` and `-OC`, and must print the same.
+
+The survey counts 78 refusals, down from 263, all of them `SYSTEM.BYTE`
+parameters. The 19 calls and expressions that needed more registers than
+were left went with the reals: they followed refused `LONGREAL` calls in
+one procedure of `ConstantEvaluator`, whose registers stayed held. The
+structured constant went too: it was `ZeroValue`'s `0.0`.

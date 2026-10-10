@@ -10,7 +10,7 @@ MODULE VaxTypes;
      design's section 4, decided 2026-10-05) and takes since PLAN.md Phase
      16 step 3, because poc's own source is compiled under it (decided
      with the user 2026-10-09). OperandSuffix gives the letter a VAX instruction
-     takes for a value of the type (MOVB, MOVW, MOVL, MOVQ).
+     takes for a value of the type (MOVB, MOVW, MOVL, MOVQ, MOVF, MOVG).
 
      Names: MACRO-32 folds lowercase to uppercase in a symbol and takes at
      most 31 characters - a longer one is only a warning, so the assembler
@@ -105,15 +105,18 @@ MODULE VaxTypes;
 
   (* The data-type letter of a VAX instruction for a value of type t: "B",
      "W", "L" or "Q" for an integer, CHAR, BOOLEAN, SET, address, pointer
-     or procedure value of 1, 2, 4 or 8 bytes; 0X for a record or an array,
-     which no single instruction moves, and for REAL and LONGREAL, whose
-     formats (F_floating, and D_ or G_floating) are Phase 16's. *)
+     or procedure value of 1, 2, 4 or 8 bytes; "F" for REAL, F_floating,
+     and "G" for LONGREAL, G_floating (the design's section 14, item 9);
+     0X for a record or an array, which no single instruction moves. *)
   PROCEDURE OperandSuffix*(t: Types.Type): CHAR;
     VAR size: LONGINT;
   BEGIN
-    IF (t = NIL) OR (t IS Types.RecordType) OR (t IS Types.ArrayType)
-       OR (t = Types.Real) OR (t = Types.LongReal) THEN
+    IF (t = NIL) OR (t IS Types.RecordType) OR (t IS Types.ArrayType) THEN
       RETURN 0X
+    ELSIF t = Types.Real THEN
+      RETURN "F"
+    ELSIF t = Types.LongReal THEN
+      RETURN "G"
     ELSIF t = Types.NilType THEN (* NIL, a pointer's 0 *)
       RETURN "L"
     END;

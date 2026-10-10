@@ -6,7 +6,8 @@
 ; and POC_HALT are provisional, ending the program with SS$_ABORT and
 ; SS$_NORMAL, until step 3c settles what a trap reports and what DCL sees
 ; of HALT(n). Step 3's: POC_NEW, NEW's, from LIB$GET_VM until the collector
-; is ported; POC_PUT_LINE and POC_OUT_REGISTER, Out's output.
+; is ported; POC_PUT_LINE and POC_OUT_REGISTER, Out's output; POC_QTOG and
+; POC_ENTIERQ, the conversions between a quadword and a G_floating.
 ; The rest of the runtime is step 4's.
 	.TITLE	POCRTL
 	.IDENT	/PHASE16-3/
@@ -144,6 +145,61 @@ HDIVMOD:
 90$:	MOVQ	R2, R0
 	MOVQ	R8, R2
 	RSB
+
+; POC_QTOG(q), q the address of a quadword: R0 and R1 its value as a
+; G_floating (design section 14, item 9), which no VAX instruction
+; converts a quadword to. The high longword, signed, times 2^32, and the
+; low one, unsigned, are each exact; their sum is rounded once, as the
+; VAX rounds
+	.ENTRY	POC_QTOG, ^M<R2,R3,R4>
+	MOVL	4(AP), R4
+	CVTLG	4(R4), R0
+	MULG2	#4294967296.0, R0
+	CVTLG	(R4), R2
+	BGEQ	10$
+	ADDG2	#4294967296.0, R2
+10$:	ADDG2	R2, R0
+	RET
+
+; POC_ENTIERQ(x), x the address of a G_floating in [-2^63, 2^63), which
+; the caller has checked: R0 and R1 ENTIER(x), the largest quadword not
+; greater than x (design section 14, item 9). An x within a longword's
+; range is floored by CVTGL, which truncates, then 1 less when converting
+; that back gives more than x, then sign-extended. A larger x has no bit
+; below 2^-21, so that hi = floor(x / 2^32), floored as above, and
+; f = x - hi * 2^32, in [0, 2^32), are exact; the low longword is f's
+; floor, its truncation: CVTGL of f - 2^31 (exact, f being at least
+; 2^31) with bit 31 set, or of f
+	.ENTRY	POC_ENTIERQ, ^M<R2,R3,R4,R5>
+	MOVG	@4(AP), R2
+	CMPG	R2, #-2147483648.0
+	BLSS	20$
+	CMPG	R2, #2147483648.0
+	BGEQ	20$
+	CVTGL	R2, R0
+	CVTLG	R0, R4
+	CMPG	R4, R2
+	BLEQ	10$
+	DECL	R0
+10$:	ASHL	#-31, R0, R1
+	RET
+20$:	DIVG2	#4294967296.0, R2
+	CVTGL	R2, R1
+	CVTLG	R1, R4
+	CMPG	R4, R2
+	BLEQ	30$
+	DECL	R1
+30$:	CVTLG	R1, R2
+	MULG2	#4294967296.0, R2
+	SUBG3	R2, @4(AP), R2
+	CMPG	R2, #2147483648.0
+	BLSS	40$
+	SUBG2	#2147483648.0, R2
+	CVTGL	R2, R0
+	BISL2	#^X80000000, R0
+	RET
+40$:	CVTGL	R2, R0
+	RET
 
 ; POC_NEW(size, tag), for NEW (design section 14, item 3): a block of a
 ; tag longword and size bytes from LIB$GET_VM, tag stored and the bytes

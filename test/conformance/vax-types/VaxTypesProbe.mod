@@ -4,8 +4,8 @@ MODULE VaxTypesProbe;
      suffixes (doc/developer/vax-macro32-backend.md section 4): every
      basic type under -O2, the only size model the VAX backend takes,
      SYSTEM's fixed-width and address types, a pointer and a procedure
-     type (a longword, "L"), REAL and LONGREAL (no suffix: their formats
-     are Phase 16's), a fixed array, a record whose fields need padding,
+     type (a longword, "L"), REAL and LONGREAL (F_ and G_floating, "F"
+     and "G"), a fixed array, a record whose fields need padding,
      a record nested in one, and an extension, whose base's fields come
      first. *)
 

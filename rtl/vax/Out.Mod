@@ -5,7 +5,7 @@ MODULE Out;
      that step 3's fixtures can print what they do on LLVM. Open, Flush,
      Char, String, Ln, Int and Hex, with the interface and the output of
      rtl/llvm/Out.Mod (FormattedText's Int and Hex); Real, LongReal and Ten
-     wait for the reals (item 9), and IsConsole for step 4's runtime.
+     are still to come, after the reals (item 9), and IsConsole for step 4.
 
      LIB$PUT_OUTPUT writes whole records, so Out keeps a line until Ln and
      writes it as one record to SYS$OUTPUT (POC_PUT_LINE, rtl/vax/

@@ -14,11 +14,11 @@ MODULE VaxCodeGenerator;
      Phase 16 step 3's (section 14): open arrays (item 1); pointers, NIL,
      NEW and the type descriptors (items 3 and 4); a VAR record
      parameter's type tag (item 5); extension, IS, type guards and WITH;
-     type-bound procedures (item 6); procedure values (item 7); and nested
-     procedures (item 8).
+     type-bound procedures (item 6); procedure values (item 7); nested
+     procedures (item 8); and reals (item 9).
 
      A module needing more - a predeclared procedure outside the slice, or
-     a type outside the slice, such as a real (Phase 16) - is reported as
+     a type outside the slice, such as SYSTEM.SET64 (Phase 16) - is reported as
      a construct the backend cannot lower yet,
      at its position, and unsupportedCount counts them, as
      LLVMCodeGenerator's does; VaxToolchainDriver then deletes what was
@@ -77,6 +77,17 @@ MODULE VaxCodeGenerator;
      assignment's value writes the variable itself when its size is the
      variable's: x := y + z is one ADDW3.
 
+     Reals (section 14, item 9): a REAL is an F_floating longword, a
+     LONGREAL a G_floating quadword, in a register pair as a quadword is,
+     passed by the address of a copy as a HUGEINT is, and returned in R0
+     and R1. Arithmetic is ADDF3, MULG2 and the like, at the wider type of
+     the two, an integer converted by CVT, or a quadword by POC_QTOG; a
+     relation is CMPF or CMPG, with the signed branches. A constant is
+     an immediate MACRO converts, written as the numeral was (RealConstant).
+     ENTIER is CVTxL, floored, or POC_ENTIERQ for a quadword LONGINT. A
+     real overflow or division by zero is the hardware's floating fault,
+     not a trap of poc's.
+
      A relation, IN or "~" gives a BOOLEAN byte, 0 or 1, by a byte
      branch over a fixed few bytes; "&" and OR short-circuit, the right
      operand skipped by an inverted branch over JMP L^<label> unless it is
@@ -124,6 +135,7 @@ MODULE VaxCodeGenerator;
     inFrameAddress = 3; (* an open-array value parameter copied to the stack: its address at offset(FP) *)
     clearByCLR = 64; (* bytes of locals cleared by CLRQ and CLRL; more by MOVC5 *)
     maxMove = 65535; (* bytes one MOVC3 or MOVC5 moves, its length a word *)
+    realTextLength = 32; (* an immediate real's text: a longer numeral is written by its value *)
 
   TYPE
     OperandText = ARRAY 48 OF CHAR;
@@ -134,6 +146,7 @@ MODULE VaxCodeGenerator;
       type: Types.Type;
       value: LONGINT; (* immediate, not a SET *)
       bits: SET; (* immediate SET *)
+      realText: ARRAY realTextLength OF CHAR; (* immediate REAL or LONGREAL: its MACRO-32 text (RealConstant) *)
       symbol: VaxTypes.Symbol; (* memory: a variable; empty for the frame *)
       outside: BOOLEAN; (* memory: symbol is another module's, G^symbol (section 7) *)
       offset: LONGINT; (* memory: from symbol, or from FP, AP or baseOp's register *)
@@ -393,7 +406,7 @@ MODULE VaxCodeGenerator;
     VAR f: Types.Field; n: INTEGER;
   BEGIN
     IF Types.IsOpenArray(t) OR (t IS Types.PointerType) OR (t IS Types.ProcedureType)
-       OR (t = Types.Real) OR (t = Types.LongReal) OR (t = Types.Set64)
+       OR (t = Types.Set64)
        OR (t IS Types.RecordType) & t(Types.RecordType).needsInit THEN
       Append(text, " (Phase 16)")
     ELSIF t IS Types.ArrayType THEN
@@ -467,10 +480,22 @@ MODULE VaxCodeGenerator;
     RETURN Suffix(x.type) = "Q"
   END IsQuad;
 
+  PROCEDURE IsReal(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (t = Types.Real) OR (t = Types.LongReal)
+  END IsReal;
+
+  (* Whether a value of type t takes two longwords, a pair of registers or
+     of slots: a quadword, or a LONGREAL, a G_floating *)
+  PROCEDURE IsWide(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (Suffix(t) = "Q") OR (Suffix(t) = "G")
+  END IsWide;
+
   PROCEDURE NewOperand(kind: INTEGER; t: Types.Type): Operand;
     VAR x: Operand;
   BEGIN
-    NEW(x); x.kind := kind; x.type := t; x.value := 0; x.bits := {};
+    NEW(x); x.kind := kind; x.type := t; x.value := 0; x.bits := {}; x.realText[0] := 0X;
     x.symbol[0] := 0X; x.outside := FALSE; x.offset := 0; x.slot := -1; x.slots := 0; x.reg := -1;
     x.onAP := FALSE; x.deferred := FALSE; x.baseOp := NIL; x.ownsBase := FALSE;
     x.index := NIL; x.ownsIndex := FALSE;
@@ -484,6 +509,15 @@ MODULE VaxCodeGenerator;
     x := NewOperand(immediate, t); x.value := value;
     RETURN x
   END Immediate;
+
+  (* A REAL or LONGREAL immediate, text its value as MACRO-32 reads it,
+     "0.0" for zero *)
+  PROCEDURE RealImmediate(t: Types.Type; text: ARRAY OF CHAR): Operand;
+    VAR x: Operand;
+  BEGIN
+    x := NewOperand(immediate, t); COPY(text, x.realText);
+    RETURN x
+  END RealImmediate;
 
   (* What an expression the backend cannot lower gives, so that generating
      goes on to report what else it cannot: nothing is written *)
@@ -519,6 +553,8 @@ MODULE VaxCodeGenerator;
       AppendChar(text, "#");
       IF Types.IsSet(x.type) THEN
         AppendSetHex(text, x.bits)
+      ELSIF IsReal(x.type) THEN
+        Append(text, x.realText)
       ELSIF IsQuad(x) THEN
         (* ASH, not DIV two32: voc's DIV is wrong for a dividend near
            MIN(LONGINT) (vishap-bugs 07), so that the voc-built poc wrote
@@ -560,12 +596,16 @@ MODULE VaxCodeGenerator;
 
   PROCEDURE IsImmediateValue(x: Operand; value: LONGINT): BOOLEAN;
   BEGIN
-    RETURN (x.kind = immediate) & ~Types.IsSet(x.type) & (x.value = value)
+    RETURN (x.kind = immediate) & ~Types.IsSet(x.type) & ~IsReal(x.type) & (x.value = value)
   END IsImmediateValue;
 
   PROCEDURE IsZero(x: Operand): BOOLEAN;
   BEGIN
-    RETURN (x.kind = immediate) & (Types.IsSet(x.type) & (x.bits = {}) OR ~Types.IsSet(x.type) & (x.value = 0))
+    IF x.kind # immediate THEN RETURN FALSE
+    ELSIF Types.IsSet(x.type) THEN RETURN x.bits = {}
+    ELSIF IsReal(x.type) THEN RETURN x.realText = "0.0"
+    ELSE RETURN x.value = 0
+    END
   END IsZero;
 
   (* Whether a and b are one location: the same register, variable or slot *)
@@ -644,7 +684,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF x.kind = register THEN
       INCL(free, x.reg);
-      IF IsQuad(x) THEN INCL(free, x.reg + 1) END;
+      IF IsWide(x.type) THEN INCL(free, x.reg + 1) END;
       Unlive(x); x.kind := immediate
     ELSIF x.kind = memory THEN
       IF x.slot >= 0 THEN
@@ -693,7 +733,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE Spill(x: Operand): BOOLEAN;
     VAR n, s: INTEGER; from: OperandText; op: ARRAY 8 OF CHAR;
   BEGIN
-    IF IsQuad(x) THEN n := 2 ELSE n := 1 END;
+    IF IsWide(x.type) THEN n := 2 ELSE n := 1 END;
     s := AllocateSlots(n);
     IF s < 0 THEN RETURN FALSE END;
     Text(x, from);
@@ -717,11 +757,11 @@ MODULE VaxCodeGenerator;
   END SpillOne;
 
   (* The first register from Rfrom free for type t - a pair for a
-     quadword - or -1 *)
+     quadword or a LONGREAL - or -1 *)
   PROCEDURE FreeRegister(t: Types.Type; from: INTEGER): INTEGER;
     VAR r: INTEGER; quad: BOOLEAN;
   BEGIN
-    quad := Suffix(t) = "Q";
+    quad := IsWide(t);
     r := from;
     WHILE r <= lastScratch DO
       IF (r IN free) & (~quad OR (r < lastScratch) & (r + 1 IN free)) THEN RETURN r END;
@@ -730,12 +770,12 @@ MODULE VaxCodeGenerator;
     RETURN -1
   END FreeRegister;
 
-  (* A register from Rfrom for a value of type t - a pair for a quadword -
-     spilling the oldest one in use when none is free *)
+  (* A register from Rfrom for a value of type t - a pair for a quadword
+     or a LONGREAL - spilling the oldest one in use when none is free *)
   PROCEDURE NewRegisterFrom(t: Types.Type; from, line, column: INTEGER): Operand;
     VAR x, p: Operand; r: INTEGER; quad: BOOLEAN;
   BEGIN
-    quad := Suffix(t) = "Q";
+    quad := IsWide(t);
     LOOP
       r := FreeRegister(t, from);
       IF r >= 0 THEN EXIT END;
@@ -774,8 +814,8 @@ MODULE VaxCodeGenerator;
         r := FreeRegister(x.type, 2);
         IF r >= 0 THEN
           Text(x, from);
-          INCL(free, x.reg); IF IsQuad(x) THEN INCL(free, x.reg + 1) END;
-          EXCL(free, r); INCL(used, r); IF IsQuad(x) THEN EXCL(free, r + 1); INCL(used, r + 1) END;
+          INCL(free, x.reg); IF IsWide(x.type) THEN INCL(free, x.reg + 1) END;
+          EXCL(free, r); INCL(used, r); IF IsWide(x.type) THEN EXCL(free, r + 1); INCL(used, r + 1) END;
           x.reg := r; Text(x, to);
           Op("MOV", Suffix(x.type), "", op); Operands(from, to, "", operands); Emit(op, operands)
         ELSIF x.pinned OR ~Spill(x) THEN
@@ -793,8 +833,8 @@ MODULE VaxCodeGenerator;
     VAR x, p: Operand;
   BEGIN
     x := NewOperand(register, t); x.reg := r;
-    EXCL(free, r); IF IsQuad(x) THEN EXCL(free, r + 1) END;
-    IF r >= 2 THEN INCL(used, r); IF IsQuad(x) THEN INCL(used, r + 1) END END;
+    EXCL(free, r); IF IsWide(x.type) THEN EXCL(free, r + 1) END;
+    IF r >= 2 THEN INCL(used, r); IF IsWide(x.type) THEN INCL(used, r + 1) END END;
     IF live = NIL THEN live := x
     ELSE
       p := live;
@@ -804,7 +844,8 @@ MODULE VaxCodeGenerator;
     RETURN x
   END Claim;
 
-  (* The result of a call, in R0, or R0 and R1 for a quadword *)
+  (* The result of a call, in R0, or R0 and R1 for a quadword or a
+     LONGREAL *)
   PROCEDURE CallResult(t: Types.Type): Operand;
   BEGIN
     RETURN Claim(t, 0)
@@ -843,15 +884,28 @@ MODULE VaxCodeGenerator;
   END MoveHalf;
 
   (* src's value, sign-extended if it is narrower, into dst (whose type
-     says how wide); src stays where it is *)
+     says how wide); src stays where it is. An integer into a real is
+     converted, by CVT, or by MACRO for a constant (#1 is 1.0 to MOVF,
+     checked on the development system), a REAL into a LONGREAL by CVTFG, a constant too, as LLVM's
+     fpext, so that it keeps a REAL's precision; a LONGREAL into a REAL,
+     for SHORT, by CVTGF. A quadword into a real takes poc's runtime
+     (AsReal), first. *)
   PROCEDURE MoveInto(src, dst: Operand);
     VAR s, d: CHAR; op: ARRAY 8 OF CHAR; lo, hi, from: OperandText; operands: ARRAY 160 OF CHAR;
         imm: Operand;
   BEGIN
     IF Same(src, dst) THEN RETURN END;
     s := Suffix(src.type); d := Suffix(dst.type);
-    IF src.kind = immediate THEN
-      imm := Immediate(dst.type, src.value); imm.bits := src.bits;
+    IF (src.kind = immediate) & IsReal(src.type) & (s # d) THEN
+      COPY("CVT", op); AppendChar(op, s); AppendChar(op, d);
+      Emit2(op, src, dst)
+    ELSIF src.kind = immediate THEN
+      IF IsReal(dst.type) & IsReal(src.type) THEN imm := RealImmediate(dst.type, src.realText)
+      ELSIF IsReal(dst.type) THEN
+        imm := RealImmediate(dst.type, ""); AppendInt(imm.realText, src.value);
+        IF src.value = 0 THEN imm.realText := "0.0" END
+      ELSE imm := Immediate(dst.type, src.value); imm.bits := src.bits
+      END;
       IF IsZero(imm) THEN Op("CLR", d, "", op); Emit1(op, dst)
       ELSIF d = "Q" THEN
         MoveHalf(imm, dst, 0); MoveHalf(imm, dst, 1)
@@ -928,7 +982,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE IsSliceScalar(t: Types.Type): BOOLEAN;
   BEGIN
     RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Set)
-      OR Types.IsInteger(t) & (Suffix(t) # 0X) OR IsSlicePointer(t) OR IsProcedureType(t)
+      OR Types.IsInteger(t) & (Suffix(t) # 0X) OR IsReal(t) OR IsSlicePointer(t) OR IsProcedureType(t)
   END IsSliceScalar;
 
   (* Whether t is in the slice (section 1): a scalar above, a fixed array
@@ -1759,12 +1813,14 @@ MODULE VaxCodeGenerator;
     RETURN Dummy()
   END StringArgument;
 
+  PROCEDURE ^ AsReal(x: Operand; t: Types.Type; line, column: INTEGER): Operand;
+
   (* A call of obj, a procedure of this module, an imported one or an
      external one, the last two in general mode, G^: the arguments
      evaluated left to right into an argument list in the frame, then
      CALLG (decided 2026-10-06, section 7), or CALLS #0 without arguments. A value parameter of a longword or less gets its value, a
-     VAR one its variable's address, a HUGEINT value parameter the address
-     of a copy, an array or record one its address, which the callee copies
+     VAR one its variable's address, a HUGEINT or LONGREAL value parameter
+     the address of a copy, an array or record one its address, which the callee copies
      from (section 7) - a string's padded to the formal's size, that being
      how much is copied. The result, a function's, in R0 (R0 and R1). *)
   PROCEDURE ^ Predeclared(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode; dest: Operand;
@@ -2037,8 +2093,8 @@ MODULE VaxCodeGenerator;
       ELSIF external & ~p.isVar & ~IsSliceScalar(p.type) THEN
         Unsupported(line, column, "an array or record value parameter of an external procedure (Phase 17 chooses its mechanism)");
         RETURN NIL
-      ELSIF external & ~p.isVar & (Suffix(p.type) = "Q") THEN
-        (* a HUGEINT, or under -OC a LONGINT *)
+      ELSIF external & ~p.isVar & IsWide(p.type) THEN
+        (* a HUGEINT, under -OC a LONGINT, or a LONGREAL *)
         COPY("a quadword value parameter, of type ", text); Types.Describe(p.type, text);
         Append(text, ", of an external procedure (Phase 17 chooses its mechanism)");
         Unsupported(line, column, text);
@@ -2047,7 +2103,7 @@ MODULE VaxCodeGenerator;
         Unsupported(line, column, "an open-array parameter of an external procedure (Phase 17 chooses its mechanism)");
         RETURN NIL
       END;
-      IF ~p.isVar & (Suffix(p.type) = "Q") THEN INC(copies) END;
+      IF ~p.isVar & IsWide(p.type) THEN INC(copies) END;
       INC(n, 1 + OpenDims(p.type));
       IF HasTag(p, external) THEN INC(n) END;
       p := p.next
@@ -2060,7 +2116,7 @@ MODULE VaxCodeGenerator;
         need := need.next
       END
     END;
-    IF copies > maxCopies THEN Unsupported(line, column, "a call with this many HUGEINT arguments"); RETURN NIL END;
+    IF copies > maxCopies THEN Unsupported(line, column, "a call with this many HUGEINT or LONGREAL arguments"); RETURN NIL END;
     IF t # NIL THEN
       (* the procedure value first, as on LLVM, checked for NIL (trap 4
          at the designator); in R2-R5, which the call does not need to
@@ -2116,7 +2172,8 @@ MODULE VaxCodeGenerator;
           IF IsProcedureType(p.type) THEN v := Expression(a, entry) (* a procedure, MOVAB to the list *)
           ELSE v := Expression(a, NIL)
           END;
-          IF Suffix(p.type) = "Q" THEN
+          IF IsReal(p.type) & IsQuad(v) THEN v := AsReal(v, p.type, a.line, a.column) END;
+          IF IsWide(p.type) THEN
             (* the address of a copy in the frame, kept until the call
                returns: the callee copies it again, or reads it if it is
                read-only (section 7) *)
@@ -2126,6 +2183,8 @@ MODULE VaxCodeGenerator;
             MoveInto(v, copy[copies]); Release(v);
             Emit2("MOVAQ", copy[copies], entry);
             INC(copies)
+          ELSIF IsReal(p.type) THEN (* a REAL, an F_floating longword *)
+            entry.type := p.type; MoveInto(v, entry); Release(v)
           ELSE
             MoveLong(v, entry); Release(v)
           END
@@ -2221,6 +2280,48 @@ MODULE VaxCodeGenerator;
 
   (* A constant expression, folded: an immediate, a string constant, or
      Dummy, reported, for a constant outside the slice *)
+  (* A REAL or LONGREAL constant (section 14, item 9) as an immediate, in
+     text that MACRO rounds to F_ or G_floating once, as the VAX rounds
+     (MACRO 9.2.8.3): the numeral as written when the value is one
+     (Types.ValueDesc.realText, its "D" made "E"), else the shortest text
+     that reads back to the value (ModuleInterface.FormatReal), as for a
+     .sym file. Zero is "0.0": the VAX has no -0.0, and MACRO writes the
+     sign of #-0.0, which makes it a reserved operand. MAX and MIN of the
+     type, IEEE 754's largest values as the front end folds them, are the
+     VAX format's largest instead, half as much; any other value beyond
+     those is an error, as it is to MACRO. A value too small for the
+     format is 0, as MACRO and the hardware make it (checked on the
+     development system). *)
+  PROCEDURE RealConstant(v: Types.Value; line, column: INTEGER): Operand;
+    VAR bound: Types.Value; magnitude, largest: LONGREAL; text: ARRAY 64 OF CHAR; ok: BOOLEAN; i: INTEGER;
+        message: ARRAY 256 OF CHAR;
+  BEGIN
+    ok := ConstantEvaluator.MaxMinBound(v.type, TRUE, bound);
+    largest := bound.realVal / 2.0D0;
+    magnitude := ABS(v.realVal);
+    i := 0; WHILE v.realText[i] # 0X DO INC(i) END;
+    IF magnitude = 0.0D0 THEN
+      COPY("0.0", text)
+    ELSIF magnitude = bound.realVal THEN
+      IF v.realVal < 0.0D0 THEN largest := -largest END;
+      ModuleInterface.FormatReal(largest, FALSE, text, ok)
+    ELSIF magnitude > largest THEN
+      COPY("a ", message);
+      Types.Describe(v.type, message); Append(message, " constant too large for the VAX, whose largest ");
+      Types.Describe(v.type, message); Append(message, " is ");
+      ModuleInterface.FormatReal(largest, FALSE, text, ok); Append(message, text);
+      Diagnostics.Error(line, column, message);
+      RETURN Dummy()
+    ELSIF (i > 0) & (i < realTextLength) THEN
+      COPY(v.realText, text)
+    ELSE
+      ModuleInterface.FormatReal(v.realVal, FALSE, text, ok)
+    END;
+    i := 0;
+    WHILE text[i] # 0X DO IF text[i] = "D" THEN text[i] := "E" END; INC(i) END;
+    RETURN RealImmediate(v.type, text)
+  END RealConstant;
+
   PROCEDURE Constant(e: SyntaxTree.ExprNode): Operand;
     VAR v: Types.Value; x: Operand;
   BEGIN
@@ -2240,7 +2341,7 @@ MODULE VaxCodeGenerator;
     ELSIF v.kind = Types.stringValue THEN
       RETURN StringOperand(v.stringVal, 0)
     ELSIF v.kind = Types.realValue THEN
-      Unsupported(e.line, e.column, "a REAL or LONGREAL value (Phase 16)")
+      RETURN RealConstant(v, e.line, e.column)
     ELSIF v.kind = Types.setValue THEN
       Unsupported(e.line, e.column, "a SYSTEM.SET64 value (Phase 16)")
     ELSIF v.kind = Types.nilValue THEN
@@ -2400,22 +2501,24 @@ MODULE VaxCodeGenerator;
     IF isDiv THEN Release(r); RETURN q ELSE Release(q); RETURN r END
   END DivMod;
 
+  (* x, a quadword or a LONGREAL, where a runtime routine may take its
+     address: a variable where it is, any other value copied to two slots
+     of the frame *)
+  PROCEDURE InMemory(VAR x: Operand);
+    VAR m: Operand;
+  BEGIN
+    IF x.kind # memory THEN
+      m := NewOperand(memory, x.type);
+      m.slot := AllocateSlots(2); m.slots := 2; m.offset := SlotOffset(m.slot, 2);
+      MoveInto(x, m); Release(x); x := m
+    END
+  END InMemory;
+
   (* A HUGEINT a * b, a DIV b or a MOD b: a call of poc's runtime (section
-     7), name(a, b), each by reference - a variable where it is, any other
-     value copied to the frame - its result in R0 and R1 *)
+     7), name(a, b), each by reference (InMemory), its result in R0 and
+     R1 *)
   PROCEDURE QuadRuntime(name: ARRAY OF CHAR; t: Types.Type; a, b: Operand; line, column: INTEGER): Operand;
     VAR list: INTEGER; x: Operand; target: ARRAY 64 OF CHAR;
-
-    PROCEDURE InMemory(VAR x: Operand);
-      VAR m: Operand;
-    BEGIN
-      IF x.kind # memory THEN
-        m := NewOperand(memory, t);
-        m.slot := AllocateSlots(2); m.slots := 2; m.offset := SlotOffset(m.slot, 2);
-        MoveInto(x, m); Release(x); x := m
-      END
-    END InMemory;
-
   BEGIN
     InMemory(a); InMemory(b);
     list := AllocateSlots(3);
@@ -2431,6 +2534,47 @@ MODULE VaxCodeGenerator;
     x := CallResult(t);
     RETURN x
   END QuadRuntime;
+
+  (* name(x), a call of poc's runtime with x, a quadword or a LONGREAL, by
+     reference (InMemory): its result, of type t, in R0, or R0 and R1 *)
+  PROCEDURE RuntimeOf(name: ARRAY OF CHAR; x: Operand; t: Types.Type; line, column: INTEGER): Operand;
+    VAR list: INTEGER; target: ARRAY 64 OF CHAR;
+  BEGIN
+    InMemory(x);
+    list := AllocateSlots(2);
+    IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN Dummy() END;
+    EmitTo("MOVL", "#1", ListEntry(list, 1, 0));
+    Emit2("MOVAQ", x, ListEntry(list, 1, 1));
+    FreeR0R1(line, column);
+    Text(ListEntry(list, 1, 0), target); Append(target, ", "); AppendExternal(target, name);
+    Emit("CALLG", target);
+    AddExternal(name);
+    ReleaseSlots(list, 2); Release(x);
+    RETURN CallResult(t)
+  END RuntimeOf;
+
+  (* x, a number, as a value of the real type t (section 14, item 9): x
+     itself when of type t, an integer constant as an immediate of t, which
+     MACRO converts; a quadword by POC_QTOG, which gives a LONGREAL rounded
+     once, then CVTGF for a REAL; anything else converted by CVT into a
+     register (MoveInto) - a REAL constant too, at run time, as LLVM's
+     fpext *)
+  PROCEDURE AsReal(x: Operand; t: Types.Type; line, column: INTEGER): Operand;
+    VAR r: Operand;
+  BEGIN
+    IF x.type = t THEN RETURN x
+    ELSIF (x.kind = immediate) & ~IsReal(x.type) THEN
+      r := RealImmediate(t, ""); AppendInt(r.realText, x.value);
+      IF x.value = 0 THEN r.realText := "0.0" END;
+      RETURN r
+    ELSIF IsQuad(x) THEN
+      x := RuntimeOf("POC_QTOG", x, Types.LongReal, line, column);
+      IF t = Types.LongReal THEN RETURN x END
+    END;
+    r := NewRegisterBeside(t, x, NIL, line, column);
+    MoveInto(x, r); Release(x);
+    RETURN r
+  END AsReal;
 
   (* The branch taken when a <op> b is false, a and b compared by CMP a, b:
      signed for integers, unsigned for CHAR *)
@@ -2495,12 +2639,17 @@ MODULE VaxCodeGenerator;
     RETURN d
   END QuadRelation;
 
-  (* a and b, for a <op> b, widened to one integer type; FALSE, reported,
-     for operands that cannot be compared so *)
+  (* a and b, for a <op> b, widened to one integer type, or made the wider
+     of two numbers when either is real (CMPF, CMPG: their condition codes
+     are signed); FALSE, reported, for operands that cannot be compared
+     so *)
   PROCEDURE PrepareRelation(op: INTEGER; VAR a, b: Operand; line, column: INTEGER): BOOLEAN;
     VAR t: Types.Type;
   BEGIN
-    IF Types.IsInteger(a.type) & Types.IsInteger(b.type) THEN
+    IF Types.IsNumeric(a.type) & Types.IsNumeric(b.type) & (IsReal(a.type) OR IsReal(b.type)) THEN
+      t := Types.WiderOf(a.type, b.type);
+      a := AsReal(a, t, line, column); b := AsReal(b, t, line, column)
+    ELSIF Types.IsInteger(a.type) & Types.IsInteger(b.type) THEN
       t := Types.WiderOf(a.type, b.type);
       a := Widen(a, t, line, column); b := Widen(b, t, line, column)
     ELSIF (IsSlicePointer(a.type) OR (a.type = Types.NilType)) & (IsSlicePointer(b.type) OR (b.type = Types.NilType))
@@ -2518,7 +2667,8 @@ MODULE VaxCodeGenerator;
     RETURN TRUE
   END PrepareRelation;
 
-  (* CMPx a, b, or TSTx a against zero, for operands not quadwords *)
+  (* CMPx a, b, or TSTx a against zero, for operands not quadwords: of
+     integers, or of reals, CMPF, TSTG *)
   PROCEDURE CompareOperands(a, b: Operand);
     VAR cmp: ARRAY 8 OF CHAR;
   BEGIN
@@ -2675,6 +2825,19 @@ MODULE VaxCodeGenerator;
         END;
         RETURN Arithmetic("BIC", FALSE, Types.Set, a, b, dest, e.line, e.column)
       END
+    ELSIF Types.IsNumeric(a.type) & Types.IsNumeric(b.type)
+          & (IsReal(a.type) OR IsReal(b.type) OR (op = Lexer.slash)) THEN
+      (* reals (section 14, item 9): LONGREAL when either is, else REAL, as
+         on LLVM, "/" of two integers too; ADDF3, SUBG2, DIVF3 and the like *)
+      IF (a.type = Types.LongReal) OR (b.type = Types.LongReal) THEN t := Types.LongReal
+      ELSE t := Types.Real
+      END;
+      a := AsReal(a, t, e.line, e.column); b := AsReal(b, t, e.line, e.column);
+      IF op = Lexer.plus THEN RETURN Arithmetic("ADD", TRUE, t, a, b, dest, e.line, e.column)
+      ELSIF op = Lexer.minus THEN RETURN Arithmetic("SUB", FALSE, t, a, b, dest, e.line, e.column)
+      ELSIF op = Lexer.times THEN RETURN Arithmetic("MUL", TRUE, t, a, b, dest, e.line, e.column)
+      ELSIF op = Lexer.slash THEN RETURN Arithmetic("DIV", FALSE, t, a, b, dest, e.line, e.column)
+      END
     ELSIF Types.IsInteger(a.type) & Types.IsInteger(b.type) THEN
       t := Types.WiderOf(a.type, b.type);
       a := Widen(a, t, e.line, e.column); b := Widen(b, t, e.line, e.column);
@@ -2707,7 +2870,7 @@ MODULE VaxCodeGenerator;
       ELSE Emit3("XORB3", Immediate(Types.Boolean, 1), v, result)
       END;
       Done(v, result); RETURN result
-    ELSIF (e.op = Lexer.minus) & ((v.type = Types.Set) OR Types.IsInteger(v.type)) THEN
+    ELSIF (e.op = Lexer.minus) & ((v.type = Types.Set) OR Types.IsInteger(v.type) OR IsReal(v.type)) THEN
       result := Target(v.type, v, NIL, dest, e.line, e.column);
       result.type := v.type;
       IF IsQuad(v) THEN (* -(hi:lo): -hi, -lo, then the borrow from the high longword *)
@@ -2801,18 +2964,16 @@ MODULE VaxCodeGenerator;
     RETURN h
   END LowHalf;
 
-  (* ABS(x), x an integer: x, negated when the move or the test sets N.
-     MNEG of the most negative value is that value, as poc's wrapping
-     arithmetic promises (language-extensions.md, "Overflow, division and
-     reals"); a HUGEINT tests its high longword and is negated as -x is
-     (Unary) *)
+  (* ABS(x), x an integer or a real: x, negated when the move or the test
+     sets N. MNEG of the most negative integer is that value, as poc's
+     wrapping arithmetic promises (language-extensions.md, "Overflow,
+     division and reals"); a HUGEINT tests its high longword and is negated
+     as -x is (Unary) *)
   PROCEDURE Abs(v, dest: Operand; line, column: INTEGER): Operand;
     VAR result: Operand; s: CHAR; op: ARRAY 8 OF CHAR; done: ARRAY 16 OF CHAR; from, to: OperandText;
         operands: ARRAY 160 OF CHAR;
   BEGIN
-    IF ~Types.IsInteger(v.type) THEN
-      Unsupported(line, column, "ABS of a REAL or LONGREAL value (Phase 16)"); RETURN Dummy()
-    END;
+    IF ~Types.IsNumeric(v.type) THEN RETURN Dummy() END;
     s := Suffix(v.type);
     result := Target(v.type, v, NIL, dest, line, column);
     result.type := v.type;
@@ -3217,10 +3378,8 @@ MODULE VaxCodeGenerator;
   PROCEDURE Long(v, dest: Operand; line, column: INTEGER): Operand;
     VAR t: Types.Type; result: Operand;
   BEGIN
-    IF ~Types.IsInteger(v.type) THEN
-      Unsupported(line, column, "LONG of a REAL value (Phase 16)"); RETURN Dummy()
-    END;
-    IF Types.LongShortByWidth(v.type) THEN t := Types.LongerInteger(v.type)
+    IF v.type = Types.Real THEN t := Types.LongReal (* CVTFG *)
+    ELSIF Types.LongShortByWidth(v.type) THEN t := Types.LongerInteger(v.type)
     ELSIF v.type = Types.ShortInt THEN t := Types.Integer
     ELSE t := Types.LongInt
     END;
@@ -3236,13 +3395,19 @@ MODULE VaxCodeGenerator;
      HUGEINT's low longword. With -range-checks an x that does not fit
      traps first (code 14, at SHORT's own position, as on LLVM): CVT sets
      V when the value does not fit (MACRO 9-16); a HUGEINT fits when its
-     high longword is its low one's sign, 0 or -1 *)
+     high longword is its low one's sign, 0 or -1. A LONGREAL x is a REAL
+     by CVTGF, rounded, never checked, as on LLVM: a value too large for
+     F_floating is the hardware's floating overflow (section 14, item 9) *)
   PROCEDURE Short(v, dest: Operand; line, column: INTEGER): Operand;
     VAR t: Types.Type; result: Operand; d: CHAR; op: ARRAY 8 OF CHAR; ok, negative, bad: ARRAY 16 OF CHAR;
         hi: OperandText; operands: ARRAY 160 OF CHAR;
   BEGIN
-    IF ~Types.IsInteger(v.type) THEN
-      Unsupported(line, column, "SHORT of a LONGREAL value (Phase 16)"); RETURN Dummy()
+    IF v.type = Types.LongReal THEN
+      result := Target(Types.Real, v, NIL, dest, line, column);
+      Emit2("CVTGF", v, result);
+      Done(v, result);
+      result.type := Types.Real;
+      RETURN result
     END;
     IF Types.LongShortByWidth(v.type) THEN t := Types.ShorterInteger(v.type)
     ELSIF v.type = Types.LongInt THEN t := Types.Integer
@@ -3379,6 +3544,48 @@ MODULE VaxCodeGenerator;
     NewLabel(ok); Emit(branch, ok); Trap(code, line, column); EmitLabel(ok)
   END TrapUnless;
 
+  (* ENTIER(x), x a real: the largest LONGINT not greater than x (section
+     14, item 9), as on LLVM (GenerateEntier). An x whose floor does not
+     fit is a trap (code 8, at ENTIER's position), tested first against
+     -2^(w-1) and 2^(w-1) for a LONGINT of w bits, both exact in either
+     format. Under -O2, a longword: CVTxL truncates toward zero, then, when
+     converting that back gives more than x, 1 less; the round trip is
+     exact wherever it matters, as LLVM's is. Under -OC, a quadword, which
+     no VAX instruction converts to: POC_ENTIERQ, with x by reference as a
+     G_floating (a REAL widened first, exactly), its result in R0 and R1 *)
+  PROCEDURE Entier(v: Operand; line, column: INTEGER): Operand;
+    VAR s: CHAR; n, back, g: Operand; op: ARRAY 8 OF CHAR; low, high: ARRAY 32 OF CHAR;
+        bad, done: ARRAY 16 OF CHAR; tv: OperandText; operands: ARRAY 160 OF CHAR;
+  BEGIN
+    IF ~IsReal(v.type) THEN RETURN Dummy() END;
+    s := Suffix(v.type);
+    IF Suffix(Types.LongInt) = "L" THEN COPY("#-2147483648.0", low); COPY("#2147483648.0", high)
+    ELSE COPY("#-9223372036854775808.0", low); COPY("#9223372036854775808.0", high)
+    END;
+    NewLabel(bad); NewLabel(done);
+    Op("CMP", s, "", op); Text(v, tv);
+    Operands(tv, low, "", operands); Emit(op, operands); Emit("BLSS", bad);
+    Operands(tv, high, "", operands); Emit(op, operands); Emit("BLSS", done);
+    EmitLabel(bad); Trap(8, line, column); EmitLabel(done);
+    IF Suffix(Types.LongInt) = "L" THEN
+      n := NewRegisterBeside(Types.LongInt, v, NIL, line, column);
+      COPY("CVT", op); AppendChar(op, s); AppendChar(op, "L"); Emit2(op, v, n);
+      back := NewRegisterBeside(v.type, v, n, line, column);
+      COPY("CVTL", op); AppendChar(op, s); Emit2(op, n, back);
+      NewLabel(done);
+      Op("CMP", s, "", op); Emit2(op, back, v); Emit("BLEQ", done);
+      Emit1("DECL", n);
+      EmitLabel(done);
+      Release(back); Release(v);
+      RETURN n
+    END;
+    IF s = "F" THEN
+      g := NewRegisterBeside(Types.LongReal, v, NIL, line, column);
+      Emit2("CVTFG", v, g); Release(v); v := g
+    END;
+    RETURN RuntimeOf("POC_ENTIERQ", v, Types.LongInt, line, column)
+  END Entier;
+
   (* NEW(p), and NEW(p, n0, ..., nk-1) for a pointer to an open array
      (section 14, item 3): POC_NEW(size, tag) by CALLG, whose result in R0,
      the block's address past its tag, or 0 when there is no memory, which
@@ -3510,9 +3717,10 @@ MODULE VaxCodeGenerator;
     ELSIF name = "NEW" THEN New(args, line, column); RETURN NIL
     ELSIF name = "LEN" THEN RETURN Len(args, line, column)
     ELSIF (name = "ABS") OR (name = "ODD") OR (name = "CHR") OR (name = "ORD") OR (name = "CAP")
-          OR (name = "LONG") OR (name = "SHORT") THEN
+          OR (name = "LONG") OR (name = "SHORT") OR (name = "ENTIER") THEN
       v := Expression(args, NIL);
       IF name = "ABS" THEN RETURN Abs(v, dest, line, column)
+      ELSIF name = "ENTIER" THEN RETURN Entier(v, line, column)
       ELSIF name = "LONG" THEN RETURN Long(v, dest, line, column)
       ELSIF name = "SHORT" THEN RETURN Short(v, dest, line, column)
       ELSIF name = "ODD" THEN RETURN Odd(v, dest, line, column)
@@ -3697,6 +3905,7 @@ MODULE VaxCodeGenerator;
       Release(target); RETURN
     ELSIF IsSliceScalar(target.type) THEN
       v := Expression(s.value, target);
+      IF IsReal(target.type) & IsQuad(v) THEN v := AsReal(v, target.type, s.value.line, s.value.column) END;
       IF Suffix(v.type) # 0X THEN MoveInto(v, target) END
     ELSIF ConstantEvaluator.IsConstantExpr(s.value, scope) THEN
       v := StringArgument(s.value, 0);
@@ -3853,7 +4062,7 @@ MODULE VaxCodeGenerator;
        OR (x.kind = memory) & (x.baseOp = NIL) & (x.index = NIL) & ((x.slot >= 0) OR ~copy) THEN
       RETURN x
     END;
-    IF IsQuad(x) THEN n := 2 ELSE n := 1 END;
+    IF IsWide(x.type) THEN n := 2 ELSE n := 1 END;
     slot := AllocateSlots(n);
     held := NewOperand(memory, x.type);
     held.offset := SlotOffset(slot, n); held.slot := slot; held.slots := n;
@@ -4101,8 +4310,9 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF (s.value # NIL) & (resultType # NIL) THEN
       v := Expression(s.value, NIL);
+      IF IsReal(resultType) & IsQuad(v) THEN v := AsReal(v, resultType, s.value.line, s.value.column) END;
       r0 := NewOperand(register, resultType); r0.reg := 0;
-      IF Suffix(resultType) = "Q" THEN MoveInto(v, r0) ELSE MoveLong(v, r0) END;
+      IF IsWide(resultType) OR IsReal(resultType) THEN MoveInto(v, r0) ELSE MoveLong(v, r0) END;
       Release(v)
     END;
     Emit("RET", "")
@@ -4476,10 +4686,10 @@ MODULE VaxCodeGenerator;
           END;
           l.lenOffset := 4 * (i + 1);
           INC(i, OpenDims(p.type))
-        ELSIF p.isVar OR p.isReadOnly & ((Suffix(p.type) = "Q") OR ~IsSliceScalar(p.type)) THEN
+        ELSIF p.isVar OR p.isReadOnly & (IsWide(p.type) OR ~IsSliceScalar(p.type)) THEN
           l := NewLocal(pobj, byReference, 4 * i);
           IF HasTag(p, FALSE) THEN l.tagOffset := 4 * (i + 1); INC(i) END
-        ELSIF (Suffix(p.type) = "Q") OR ~IsSliceScalar(p.type) OR Changes(pd.statements, id.name)
+        ELSIF IsWide(p.type) OR ~IsSliceScalar(p.type) OR Changes(pd.statements, id.name)
               OR Needed(pobj) THEN
           (* changed here, or perhaps by a nested procedure, whose hidden
              argument is its address: the argument list is read-only *)
@@ -4566,7 +4776,7 @@ MODULE VaxCodeGenerator;
         CopyBytes(VaxTypes.Size(l.obj.type), text, b)
       ELSIF l.copyFrom # 0 THEN
         Based(l.copyFrom, "AP", a); Based(l.offset, "FP", b);
-        IF Suffix(l.obj.type) = "Q" THEN COPY("MOVQ", op); text := "@"; Append(text, a)
+        IF IsWide(l.obj.type) THEN COPY("MOVQ", op); text := "@"; Append(text, a)
         ELSE Op("MOV", Suffix(l.obj.type), "", op); COPY(a, text)
         END;
         Append(text, ", "); Append(text, b);

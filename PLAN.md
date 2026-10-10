@@ -741,6 +741,14 @@ most, object libraries.
      procedures under the debugger and runs one source on both backends.
      Its `.mar` file was reviewed by the user (2026-10-09). Survey: 263,
      none of them nested procedures.
+   - *Reals* (section 14 item 9), done 2026-10-09: `REAL` is F_floating,
+     `LONGREAL` G_floating; a constant is decimal text MACRO converts,
+     rounding as the VAX does (halfway away from zero); `ENTIER` floors
+     and traps (8) past `LONGINT`'s range, with `POC_ENTIERQ` under
+     `-OC`, and a `HUGEINT` converts by `POC_QTOG`. Fixture `vax-reals`
+     examines the rounding, trap 8 and the divide-by-zero fault under
+     the debugger and runs one source on both backends. Its `.mar` file
+     awaits the user's review. Survey: 78, all `SYSTEM.BYTE` parameters.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

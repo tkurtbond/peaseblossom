@@ -15,6 +15,7 @@ run -emit-macro32 VaxTooMuch.mod
 run -emit-macro32 VaxNameClash.mod
 run -emit-macro32 VaxClashBetweenModulesA.mod
 run -emit-macro32 VaxReportedOnce.mod
+run -emit-macro32 VaxRealRange.mod
 run -target x86_64-unknown-linux-gnu -emit-macro32 VaxEmpty.mod
 run -target vax-dec-vms -emit-llvm-ir VaxEmpty.mod
 run -target vax-dec-vms -library vaxlib VaxEmpty.mod

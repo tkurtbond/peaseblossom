@@ -1,0 +1,6 @@
+! mode = 2: x / zero, in line 85: the hardware's floating divide-by-zero
+! fault, not a trap of poc's, so POC_TRAP_CODE stays 0
+DEPOSIT/WORD VAXREALS\VAXREALS_MODE_NA9DQUH6 = 2
+GO
+EXAMINE/LONG POC_TRAP_CODE
+EXIT

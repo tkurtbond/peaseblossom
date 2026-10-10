@@ -765,7 +765,10 @@ MODULE ModuleInterface;
     IF ok THEN COPY(candidate, result) END
   END FormatRealMagnitude;
 
-  PROCEDURE FormatReal(v: LONGREAL; isLongReal: BOOLEAN; VAR result: ARRAY OF CHAR; VAR ok: BOOLEAN);
+  (* v's shortest text that ParseReal reads back to exactly v, "-" first
+     for a negative v; a CONST's in a .sym file, and a real constant's in
+     the VAX backend's MACRO-32 (VaxCodeGenerator.RealImmediate) *)
+  PROCEDURE FormatReal*(v: LONGREAL; isLongReal: BOOLEAN; VAR result: ARRAY OF CHAR; VAR ok: BOOLEAN);
     VAR magnitude: LONGREAL; neg: BOOLEAN; body: ARRAY 64 OF CHAR; i, j: INTEGER;
   BEGIN
     neg := v < 0.0D0;

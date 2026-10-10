@@ -4,8 +4,8 @@ SI: size=1 align=1 suffix=B
 I: size=2 align=2 suffix=W
 LI: size=4 align=4 suffix=L
 HI: size=8 align=4 suffix=Q
-R: size=4 align=4 suffix=none
-LR: size=8 align=4 suffix=none
+R: size=4 align=4 suffix=F
+LR: size=8 align=4 suffix=G
 S: size=4 align=4 suffix=L
 S64: size=8 align=4 suffix=Q
 Byte: size=1 align=1 suffix=B
