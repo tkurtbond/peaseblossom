@@ -62,7 +62,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -394,6 +394,32 @@ $(DOC_DIR)/html/%.html: doc/%.md tools/doc/html-header.html
 	$(PANDOC) $(PANDOC_FLAGS) -H tools/doc/html-header.html -t html5 $< -o $@
 
 $(DOC_DIR)/pdf/%.pdf: doc/%.md tools/doc/pdf.lua tools/doc/pdf-header.tex
+	@mkdir -p $(@D)
+	$(PANDOC) $(PANDOC_FLAGS) --pdf-engine=$(DOC_PDF_ENGINE) \
+	  -H tools/doc/pdf-header.tex --lua-filter=tools/doc/pdf.lua \
+	  -V papersize=letter -V geometry:margin=1in \
+	  -V mainfont="$(DOC_MAIN_FONT)" -V monofont="$(DOC_MONO_FONT)" $< -o $@
+
+# The other documents, for reading here and never in the tarball:
+# doc/README.md, doc/research's and doc/history's, made as make doc makes
+# its own, in build/doc-other/html and build/doc-other/pdf, since make dist
+# copies build/doc's whole. make doc-all makes these and make doc's.
+DOC_OTHER_DIR := $(BUILD_DIR)/doc-other
+DOC_OTHER_MARKDOWN := doc/README.md $(sort $(wildcard doc/research/*.md) \
+  $(wildcard doc/history/*.md) $(wildcard doc/history/*/*.md))
+DOC_OTHER_NAMES := $(patsubst doc/%.md,%,$(DOC_OTHER_MARKDOWN))
+DOC_OTHER_HTML := $(DOC_OTHER_NAMES:%=$(DOC_OTHER_DIR)/html/%.html)
+DOC_OTHER_PDF := $(DOC_OTHER_NAMES:%=$(DOC_OTHER_DIR)/pdf/%.pdf)
+
+doc-all: doc doc-other-html doc-other-pdf
+doc-other-html: $(DOC_OTHER_HTML)
+doc-other-pdf: $(DOC_OTHER_PDF)
+
+$(DOC_OTHER_DIR)/html/%.html: doc/%.md tools/doc/html-header.html
+	@mkdir -p $(@D)
+	$(PANDOC) $(PANDOC_FLAGS) -H tools/doc/html-header.html -t html5 $< -o $@
+
+$(DOC_OTHER_DIR)/pdf/%.pdf: doc/%.md tools/doc/pdf.lua tools/doc/pdf-header.tex
 	@mkdir -p $(@D)
 	$(PANDOC) $(PANDOC_FLAGS) --pdf-engine=$(DOC_PDF_ENGINE) \
 	  -H tools/doc/pdf-header.tex --lua-filter=tools/doc/pdf.lua \
