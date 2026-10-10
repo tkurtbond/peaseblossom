@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from the design, Oberon2.pdf,
-;; the MACRO manual, LLVM's code generator and the guest runs; for the
-;; user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from the design,
+;; Oberon2.pdf, the MACRO manual, LLVM's code generator and the guest
+;; runs). Why this is right:
 ;; - Phase 16 step 3 (section 14): SYSTEM.BYTE is a byte, "B", as CHAR
 ;;   is. A value BYTE parameter is passed as the calling standard passes a
 ;;   byte, a longword: a CHAR zero-extended (MOVZBL), a SHORTINT sign-

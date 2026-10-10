@@ -1611,8 +1611,8 @@ length: the variable's size in bytes, as LLVM's
 constant. For an open array it is the lengths multiplied by `MULL2`, and
 then by the element's size.
 
-Fixture `vax-byte-params` has `VaxBytes`, written for the user's review,
-with each lowering once. A second program, `BytesOut`, is built by both
+Fixture `vax-byte-params` has `VaxBytes`, reviewed, with each lowering
+once. A second program, `BytesOut`, is built by both
 backends under `-O2` and `-OC` and run, and the two outputs must be the
 same. It copies through `BYTE` parameters, prints each byte of an integer,
 a `HUGEINT`, a record, a fixed array, an open one and a two-dimensional

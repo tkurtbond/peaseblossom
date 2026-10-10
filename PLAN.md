@@ -772,9 +772,9 @@ most, object libraries.
    - *`SYSTEM.BYTE` parameters*, done 2026-10-10: `BYTE` a byte in the
      slice; a `VAR ARRAY OF SYSTEM.BYTE` takes any variable, its length
      the variable's size in bytes. Fixture `vax-byte-params` runs one
-     program on both backends. Its `.mar` file awaits the user's review.
-     Survey: none in poc's own source; the 179 left are `rtl/llvm`'s,
-     which step 4 replaces.
+     program on both backends. Its `.mar` file was reviewed by the user
+     (2026-10-10). Survey: none in poc's own source; the 179 left are
+     `rtl/llvm`'s, which step 4 replaces.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:
