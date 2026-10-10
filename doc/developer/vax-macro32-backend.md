@@ -734,7 +734,7 @@ Proposals, by construct:
     `SHORTINT` `n` is used as it is and a wider one first limited to
     -64..64 (a constant when compiling).
   - `LEN` of an open array, and the predeclared procedures outside the
-    slice (`ASSERT`, until its trap is settled, `NEW`, `SIZE` of a
+    slice (`ASSERT`, until its trap is settled (done, §14 item 11), `NEW`, `SIZE` of a
     variable size, `ENTIER`, the `SYSTEM` ones, ...), are reported. A predeclared procedure is taken to change only the
     variable it changes (the first argument of `NEW`, `INC`, `DEC`, `INCL`
     and `EXCL`, `COPY`'s second), so `ABS(x)` does not make a value
@@ -1548,3 +1548,23 @@ VAX's status converted from LLVM's exit status by item 10's rule. The
 cases run with and without `-trap-location`, the VAX ones with
 `SYS$ERROR` defined as a file so that the message is printed after the
 output. `vax-range-checks`' `.mar` was reviewed again for `CHR`'s code.
+
+**Done: `ASSERT` (item 11), 2026-10-09.** `ASSERT(x)` branches on `x`
+as `IF` does (`JumpOn`), to a call of `POC_TRAP` with code 10 at the
+statement's line and column, as LLVM's statement trap is. `ASSERT(x, n)`
+puts *n* + 1 in the code's high word, as `CHR`'s code chooses its message
+(item 10): `#^X0001000A` for 0, `#^X0100000A` for 255. `POC_TRAP` then
+writes `assertion failed (n)` with `$FAO` into a counted string of its
+own, and `assertion failed` for 10 alone. The status is the trap's,
+`%X10000052`, as LLVM's is 10 whatever *n* is.
+
+Fixture `vax-assert` has `VaxAssert`, written for the user's review:
+`ASSERT` of a relation, of `&` and of `OR`, with and without *n*,
+`ASSERT(TRUE)`, and one in a procedure. A second program, `Asserts`, is
+built by both backends and run once for each case, with and without
+`-trap-location`: `ASSERT(x)`, `ASSERT(x, 0)`, `ASSERT(x, 255)` in a
+procedure, and one where every assertion holds. Each case's output,
+status and message must be the same. `vax-emit-errors`' `VaxTooMuch`
+now has `SYSTEM.GET` where it had `ASSERT`, as a predeclared procedure
+still refused. poc's own source has no `ASSERT`, so the survey is
+unchanged: 78, all `SYSTEM.BYTE` parameters.

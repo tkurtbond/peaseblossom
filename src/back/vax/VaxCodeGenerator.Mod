@@ -117,8 +117,9 @@ MODULE VaxCodeGenerator;
      and EXCL by BISL2 and BICL2 of the element's mask; ASH by ASHL or
      ASHQ, a wide count first limited; COPY by one MOVC5 of the characters
      before x's 0X (counted by LOCC), at most LEN(v) - 1, then 0X, or in
-     pieces past 65535; HALT by a call of POC_HALT, the routine Phase
-     16's. With -range-checks (rangeChecks) CHR of a value outside 0..255,
+     pieces past 65535; HALT by a call of POC_HALT (rtl/vax/PocRtl.mar);
+     ASSERT by a branch on its condition over trap 10 (section 14, item
+     11). With -range-checks (rangeChecks) CHR of a value outside 0..255,
      and SHORT of one that does not fit, trap. *)
 
   IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
@@ -136,8 +137,10 @@ MODULE VaxCodeGenerator;
     clearByCLR = 64; (* bytes of locals cleared by CLRQ and CLRL; more by MOVC5 *)
     maxMove = 65535; (* bytes one MOVC3 or MOVC5 moves, its length a word *)
     realTextLength = 32; (* an immediate real's text: a longer numeral is written by its value *)
-    (* POC_TRAP's code, 14, with its high word 1: CHR's message, not SHORT's *)
-    chrMessage = 65536;
+    (* a unit of POC_TRAP's code's high word, which chooses its message:
+       1 for code 14, CHR's, not SHORT's; n + 1 for code 10, ASSERT(x, n)'s,
+       "assertion failed (n)" (section 14, items 10 and 11) *)
+    messageWord = 65536;
 
   TYPE
     OperandText = ARRAY 48 OF CHAR;
@@ -3060,7 +3063,7 @@ MODULE VaxCodeGenerator;
       ELSE
         Op("CMP", s, "", op); Emit2(op, v, Immediate(v.type, 255)); Emit("BLEQU", ok)
       END;
-      Trap(14 + chrMessage, line, column);
+      Trap(14 + messageWord, line, column);
       EmitLabel(ok)
     END;
     IF s = "B" THEN v.type := Types.Char; RETURN v END;
@@ -3161,6 +3164,7 @@ MODULE VaxCodeGenerator;
   END IncDec;
 
   PROCEDURE ^ CopyBytes(size: LONGINT; src, dst: ARRAY OF CHAR);
+  PROCEDURE ^ JumpOn(e: SyntaxTree.ExprNode; label: ARRAY OF CHAR; sense: BOOLEAN);
 
   (* COPY from the array at from into the one at to, either longer than
      maxMove, m the most characters it may copy, LEN(v) - 1 or LEN(x) if
@@ -3349,6 +3353,21 @@ MODULE VaxCodeGenerator;
     used := used + {2 .. 5};
     Release(x); Release(v)
   END Copy;
+
+  (* ASSERT(x) and ASSERT(x, n), n a constant 0 to 255
+     (PredeclaredProcedures.CheckAssert): x, then, when it is FALSE, trap 10
+     at the statement, as on LLVM, n + 1 in the code's high word for the
+     message "assertion failed (n)" (messageWord) *)
+  PROCEDURE Assert(args: SyntaxTree.ExprNode; line, column: INTEGER);
+    VAR v: Types.Value; code: LONGINT; ok: ARRAY 16 OF CHAR;
+  BEGIN
+    code := 10;
+    IF args.next # NIL THEN
+      v := ConstantEvaluator.Evaluate(args.next, scope);
+      code := code + (v.intVal + 1) * messageWord
+    END;
+    NewLabel(ok); JumpOn(args, ok, TRUE); Trap(code, line, column); EmitLabel(ok)
+  END Assert;
 
   (* HALT(n), n a constant 0 to 255 (PredeclaredProcedures.CheckHalt): a
      call of poc's runtime, POC_HALT(n), by CALLS, which ends the program
@@ -3736,6 +3755,7 @@ MODULE VaxCodeGenerator;
     ELSIF name = "ASH" THEN RETURN Ash(args, dest, line, column)
     ELSIF name = "COPY" THEN Copy(args, line, column); RETURN NIL
     ELSIF name = "HALT" THEN Halt(args); RETURN NIL
+    ELSIF name = "ASSERT" THEN Assert(args, line, column); RETURN NIL
     ELSIF name = "NEW" THEN New(args, line, column); RETURN NIL
     ELSIF name = "LEN" THEN RETURN Len(args, line, column)
     ELSIF (name = "ABS") OR (name = "ODD") OR (name = "CHR") OR (name = "ORD") OR (name = "CAP")
@@ -4054,9 +4074,9 @@ MODULE VaxCodeGenerator;
   (* ---- Traps (the design's section 9) ---- *)
 
   (* POC_TRAP(code, module, line, column): the trap's code (the LLVM
-     backend's exit status; chrMessage added for CHR's), the address of
-     the module's name as a counted string, and the source position
-     (decided with the user 2026-10-06). Under -trap-location two more,
+     backend's exit status, which message in its high word: messageWord),
+     the address of the module's name as a counted string, and the source
+     position (decided with the user 2026-10-06). Under -trap-location two more,
      the counted strings of the module's file, L_FILE_NAME, and of the
      procedure, L_WHERE_<n>, one for each procedure that traps (section
      14, item 10). *)
@@ -4083,7 +4103,7 @@ MODULE VaxCodeGenerator;
     COPY("#", text); AppendInt(text, line); Emit("PUSHL", text);
     Emit("PUSHAB", "L_MODULE_NAME");
     (* a code with a message of its own in hexadecimal, ^X0001000E *)
-    COPY("#", text); IF code >= chrMessage THEN AppendHex(text, code) ELSE AppendInt(text, code) END;
+    COPY("#", text); IF code >= messageWord THEN AppendHex(text, code) ELSE AppendInt(text, code) END;
     Emit("PUSHL", text);
     IF trapLocation THEN Emit("CALLS", "#6, G^POC_TRAP") ELSE Emit("CALLS", "#4, G^POC_TRAP") END
   END Trap;

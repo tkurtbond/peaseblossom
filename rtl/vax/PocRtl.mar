@@ -43,6 +43,9 @@ POC_TX_CHR:	.ASCIC	/CHR argument out of range/
 ; -trap-location's form: file:line:column: message (in procedure)
 POC_TRAP_WHERE:
 	.ASCID	"!AC:!UL:!UL: !AC (in !AC)"
+; ASSERT(x, n)'s message
+POC_ASSERT_N:
+	.ASCID	"assertion failed (!UL)"
 
 	.PSECT	POC_DATA
 ; SYS$ERROR, written one record at a time (RMS 4.1: a variable-length
@@ -60,11 +63,22 @@ POC_TRAP_OUT:
 	.WORD	600
 	.BYTE	DSC$K_DTYPE_T, DSC$K_CLASS_S
 	.ADDRESS	POC_TRAP_BUFFER
+; ASSERT(x, n)'s message, made by $FAO after a count byte, and a
+; descriptor of the text
+POC_ASSERT_LENGTH:
+	.BLKW	1
+POC_ASSERT_TEXT:
+	.BLKB	40
+POC_ASSERT_OUT:
+	.WORD	39
+	.BYTE	DSC$K_DTYPE_T, DSC$K_CLASS_S
+	.ADDRESS	POC_ASSERT_TEXT+1
 
 	.PSECT	POC_CODE
 ; POC_TRAP(code, module, line, column[, file, procedure]), module, file
 ; and procedure counted strings, the code in the low word of its
-; longword and which of its messages in the high word: the message
+; longword and which of its messages in the high word (1 for 14, CHR's;
+; n + 1 for 10, ASSERT(x, n)'s "assertion failed (n)"): the message
 ; written to SYS$ERROR, as the LLVM backend writes it to the standard
 ; error, then the program ends with %X10000000 + 8 * code + 2, severity
 ; error, message number code, with STS$M_INHIB_MSG set so that DCL adds
@@ -84,7 +98,16 @@ POC_TRAP_OUT:
 	BRB	10$
 5$:	CLRL	R3
 10$:	MOVL	POC_TRAP_TEXTS[R3], R3
-	CMPB	(AP), #6
+	CMPL	R2, #10
+	BNEQ	15$
+	MOVZWL	6(AP), R0
+	BEQL	15$
+	DECL	R0
+	$FAO_S	CTRSTR=POC_ASSERT_N, OUTLEN=POC_ASSERT_LENGTH, -
+		OUTBUF=POC_ASSERT_OUT, P1=R0
+	MOVB	POC_ASSERT_LENGTH, POC_ASSERT_TEXT
+	MOVAB	POC_ASSERT_TEXT, R3
+15$:	CMPB	(AP), #6
 	BLSSU	20$
 	$FAO_S	CTRSTR=POC_TRAP_WHERE, OUTLEN=POC_TRAP_LENGTH, -
 		OUTBUF=POC_TRAP_OUT, P1=20(AP), P2=12(AP), P3=16(AP), -

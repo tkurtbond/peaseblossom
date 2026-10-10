@@ -758,6 +758,11 @@ most, object libraries.
      on both backends for each trap and `HALT`, and compares messages and
      statuses. Its `.mar` file, and `vax-range-checks`' again (`CHR`'s
      code), were reviewed by the user (2026-10-09).
+   - *`ASSERT`* (section 14 item 11), done 2026-10-09: a branch on the
+     condition to trap 10 at the statement, `ASSERT(x, n)`'s *n* + 1 in
+     the code's high word for "assertion failed (n)". Fixture `vax-assert`
+     runs one program on both backends for each case. Its `.mar` file
+     awaits the user's review. Survey: 78, unchanged.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

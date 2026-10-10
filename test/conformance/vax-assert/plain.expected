@@ -1,0 +1,4 @@
+== case 3, build status: %X10000001
+case 3
+status: %X10000052
+assertion failed (255)

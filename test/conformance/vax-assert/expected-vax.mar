@@ -1,0 +1,142 @@
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual, LLVM's code generator and the guest runs; for the user's
+;; review). Why this is right:
+;; - Phase 16 step 3 (section 14, item 11): ASSERT(x) branches on x as IF
+;;   does (JumpOn: BLBS, a compare and a signed branch, & and OR short-
+;;   circuit, each inverted branch over JMP L^), to a call of POC_TRAP at
+;;   the ASSERT statement's line and column, as LLVM's statement trap.
+;; - The code is 10, LLVM's status for a failed assertion; ASSERT(x, n)
+;;   puts n + 1 in its high word, ^X0001000A for 0, ^X0008000A for 7,
+;;   ^X0100000A for 255, so that POC_TRAP writes "assertion failed (n)"
+;;   with $FAO, and "assertion failed" for 10 alone.
+;; - ASSERT(TRUE) jumps over its trap, as LLVM evaluates it and branches.
+;; - Asserts, run on the guest with the real runtime for each case, prints
+;;   LLVM's messages and ends with %X10000052 where LLVM exits with 10
+;;   (output.expected, plain.expected).
+; VaxAssert, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXASSERT
+	.IDENT	/ae9350ddcfc8ef87/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; i: INTEGER
+	.ALIGN	WORD
+VAXASSERT_I_J7MJ4FPN:
+	.BLKW	1
+; b: BOOLEAN
+VAXASSERT_B_J7MJ4CQI:
+	.BLKB	1
+; c: BOOLEAN
+VAXASSERT_C_J7MJ4D85:
+	.BLKB	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxAssert/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Check
+VAXASSERT_CHECK_N7S4284C:
+	.WORD	^M<>
+; line 12
+	TSTW	4(AP)
+	BLSS	L_2
+	JMP	L^L_1
+L_2:
+	PUSHL	#5
+	PUSHL	#12
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#^X0100000A
+	CALLS	#4, G^POC_TRAP
+L_1:
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXASSERT_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#8, SP
+; line 16
+	MOVW	#3, VAXASSERT_I_J7MJ4FPN
+; line 16
+	MOVB	#1, VAXASSERT_B_J7MJ4CQI
+; line 16
+	CLRB	VAXASSERT_C_J7MJ4D85
+; line 17
+	TSTW	VAXASSERT_I_J7MJ4FPN
+	BLEQ	L_4
+	JMP	L^L_3
+L_4:
+	PUSHL	#3
+	PUSHL	#17
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#10
+	CALLS	#4, G^POC_TRAP
+L_3:
+; line 18
+	BLBS	VAXASSERT_B_J7MJ4CQI, L_7
+	JMP	L^L_6
+L_7:
+	CMPW	VAXASSERT_I_J7MJ4FPN, #10
+	BGEQ	L_8
+	JMP	L^L_5
+L_8:
+L_6:
+	PUSHL	#3
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#^X0001000A
+	CALLS	#4, G^POC_TRAP
+L_5:
+; line 19
+	BLBS	VAXASSERT_C_J7MJ4D85, L_10
+	JMP	L^L_9
+L_10:
+	CMPW	VAXASSERT_I_J7MJ4FPN, #4
+	BNEQ	L_11
+	JMP	L^L_9
+L_11:
+	PUSHL	#3
+	PUSHL	#19
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#^X0008000A
+	CALLS	#4, G^POC_TRAP
+L_9:
+; line 20
+	JMP	L^L_12
+	PUSHL	#3
+	PUSHL	#20
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#10
+	CALLS	#4, G^POC_TRAP
+L_12:
+; line 21
+	MOVL	#1, -8(FP)
+	CVTWL	VAXASSERT_I_J7MJ4FPN, -4(FP)
+	CALLG	-8(FP), VAXASSERT_CHECK_N7S4284C
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_AE9350DDCFC8EF87 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXASSERT_MAIN, ^M<>
+	CALLS	#0, VAXASSERT_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXASSERT_MAIN

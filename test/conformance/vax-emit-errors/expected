@@ -2,7 +2,7 @@
 VaxTooMuch.mod:8:7: error: module VaxTooMuch: the VAX backend cannot lower this yet: a variable of type ARRAY 2 OF SYSTEM.SET64 (Phase 16)
 VaxTooMuch.mod:9:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: an external ["C"] procedure (VAX/VMS takes "VMS")
 VaxTooMuch.mod:11:49: error: module VaxTooMuch: the VAX backend cannot lower this yet: an open-array parameter of an external procedure (Phase 17 chooses its mechanism)
-VaxTooMuch.mod:14:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: the predeclared procedure ASSERT (outside Phase 15's slice, section 1)
+VaxTooMuch.mod:14:3: error: module VaxTooMuch: the VAX backend cannot lower this yet: the predeclared procedure GET (outside Phase 15's slice, section 1)
 4 construct(s) the VAX backend cannot lower yet; not written
 exit 1
 == poc -emit-macro32 VaxNameClash.mod

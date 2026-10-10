@@ -1,0 +1,16 @@
+== case 1, build status: %X10000001
+case 1
+status: %X10000052
+Asserts.mod:19:17: assertion failed (in Asserts, module body)
+== case 2, build status: %X10000001
+case 2
+status: %X10000052
+Asserts.mod:20:20: assertion failed (0) (in Asserts, module body)
+== case 3, build status: %X10000001
+case 3
+status: %X10000052
+Asserts.mod:13:5: assertion failed (255) (in Asserts.Check)
+== case 4, build status: %X10000001
+case 4
+all held
+status: %X00000001
