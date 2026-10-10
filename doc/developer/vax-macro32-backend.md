@@ -1623,3 +1623,158 @@ The survey of poc's own source (`src/`) counts no refusals. The 179 left
 are all in `rtl/llvm`, which step 4 replaces: `SYSTEM.VAL` and
 `SYSTEM.ADR` (48 each), `["C"]` externals (47), `SYSTEM.GET` (20) and
 `PUT` (9), and quadword value parameters of externals (7).
+
+**Step 3 closed, 2026-10-10** (the user). poc's own source is written
+for the VAX with no refusal, as item 11 said the step would end. What is
+left of the survey is `rtl/llvm`'s, which step 4 replaces (section 15).
+
+## 15. The VAX runtime (Phase 16 step 4)
+
+Step 4 writes `rtl/vax`: what poc's own source needs from its runtime,
+for VAX/VMS, so that step 6 can build poc there. This section is the
+survey and the proposals, written for the user's approval before any of
+it is done, as section 14 was. **Approved by the user, 2026-10-10.**
+
+**The survey.** poc's own source imports five runtime modules directly,
+and through them six more (`ModuleTable`, `FileDescriptorOutput`,
+`GarbageCollectedHeap`, `RealDigits`, `FormattedText`,
+`FormattedOutput`), which are `rtl/llvm`'s own structure, not poc's
+needs. What `src/` calls, with the number of uses:
+
+| Module | Used by poc's source |
+|---|---|
+| `Files` | `File`, `Rider`; `Old` (26), `New` (11), `Register` (7), `Close` (27), `Set` (23), `Read` (8), `ReadLine` (11), `ReadString` (1), `Write` (72), `WriteString` (2), `Length` (4), `Delete` (2), `Base` (1) |
+| `Platform` | `System` (13), `Unlink` (12), `Chdir` (7), `CWD` (5), `PID` (4), `GetEnv` (3), `Exit` (1) |
+| `Out` | `String`, `Ln`, `Int`, `Char` |
+| `Err` | `String`, `Ln`, `Int`, `Char` |
+| `Modules` | `ArgCount`, `GetArg` (argument 0 is the program's own path, from which the library path's default is found), `Init` |
+
+`Platform.System` runs clang, `ar`, `cp` and `mkdir`: the LLVM
+toolchain, libraries and `-output-dir`'s directory. The 58 places where
+`src/` joins a directory and a file name put `/` between them.
+
+**Checked on the guest (2026-10-10)**, with `tools/vax-do`:
+- A foreign command (`FOREIGN := $dir:FOREIGN.EXE`) gets its line from
+  `LIB$GET_FOREIGN` with the unquoted text uppercased and each run of
+  spaces made one: `FOREIGN -build -o Hello Mixed.Mod` gives `-BUILD -O
+  HELLO MIXED.MOD`. Quoted text keeps its case, and the quotes are kept:
+  `"-o" "Hello"` gives `"-o" "Hello"`, `a"b"c` gives `A"b"C`, and `"x""y"`
+  stays as it was.
+- `MACRO` assembles a Stream_LF `.MAR` file (record format `STMLF`,
+  attributes `CR`, made by `CONVERT/FDL`), and `LINK` reads a Stream_LF
+  options file. The image runs. A file FTP sends in ASCII mode is
+  variable-length (`VAR`, `CR`).
+
+Proposals:
+
+1. **Shape.** `rtl/vax` gets the five modules poc imports, each with the
+   exported names and signatures poc uses, so that poc's source compiles
+   unchanged against either runtime. Each is Oberon-2, calling `LIB$`
+   and `SYS$` routines as `["VMS"]` externals where a string descriptor
+   or a longword is all they take. The rest goes in `PocRtl.mar`, where
+   the STARLET macros (`$FAB`, `$RAB`, `$NAM`) lay out the control blocks:
+   RMS file access, the stack base, and saving registers for the
+   collector. The six internal modules are not ported as they are; what
+   `Out` and `Err` share is one module of its own (as `Out` is now, over
+   `POC_PUT_LINE`).
+
+2. **Files over RMS.** A file poc creates is Stream_LF (`RFM=STMLF`,
+   `RAT=CR`). It is written and read with block I/O (`$WRITE`, `$READ`),
+   so every byte round-trips exactly, a `.sym` file's included. MACRO,
+   LINK and `TYPE` read it as text (checked above). A file of another
+   record format is read a record at a time (`$GET`), with an LF (`0AX`)
+   after each record. Such files are variable-length or VFC (from FTP in
+   ASCII mode, or written by an editor), so a source written on VMS reads
+   as it does on Unix. A fixed-length file is read as raw bytes. A
+   `Rider` keeps a buffer of one block (512 bytes); `Set` positions it,
+   and `Length` is the byte count from the file's end-of-file block and
+   first free byte. `Register` gives the new file its name, as a new
+   version. A file is never written in place.
+
+3. **File names.** A name is given to RMS as it is: case does not
+   matter, and a missing version means the highest. A module's `.Mod`,
+   `.sym` and `.mar` names fit ODS-2 (39 characters for the name, 39 for
+   the type; letters, digits, `$`, `_`, `-`) unless the module's name is
+   longer than 39 characters, which the VAX target makes an error. Two
+   modules whose names differ only in case are already one
+   (section 5.1). `Platform.Unlink` and `Files.Delete` delete the
+   highest version only, as `$ERASE` does when no version is given (to be
+   confirmed on the guest), so an older build is left in place, as VMS
+   leaves it. Old versions pile up until the user purges them.
+
+4. **Directories.** A new `Platform.MakePath(dir, name, VAR path)`
+   replaces the 58 joins with `/`. On Unix it puts `/` between them,
+   unless `dir` already ends in one. On VMS it puts nothing between them
+   when `dir` ends in `:`, `]` or `>` (a device, a directory, or a logical
+   name with its colon), and `:` when it does not (a logical name without
+   one). The two `Chdir`-and-back tests of whether a directory exists
+   become a new `Platform.IsDirectory(dir)`. On VMS that is a `$PARSE`
+   of `dir`, because `SYS$SETDDIR` would change the process's default
+   directory, which DCL keeps after poc exits. `-output-dir`'s `mkdir -p`
+   becomes a new `Platform.MakeDirectory(dir)`: `LIB$CREATE_DIR` on VMS,
+   the same `mkdir -p` on Unix. `CWD` is `SYS$DISK` and
+   `SYS$SETDDIR`'s directory joined. Its two uses are the LLVM backend's
+   (the debug directory) and a library's, neither of them on VMS.
+
+5. **The import path and the environment.** `Platform.GetEnv(name)`
+   reads a logical name (`$TRNLNM`, in the process, job, group and system
+   tables), not a DCL symbol. When the name is a search list, its
+   equivalence strings are joined with `,`. `,` is VMS's separator in
+   `POC_IMPORT_PATH`, since a directory contains `:`. A new constant,
+   `Platform.pathSeparator`, is `:` on Unix and `,` on VMS. So
+   `$ DEFINE POC_IMPORT_PATH DUA1:[POC.SRC.FRONT],DUA1:[POC.RTL.VAX]` gives
+   two directories, and so does a search list.
+
+6. **The command line.** poc is a foreign command
+   (`$ POC :== $DUA1:[POC]POC.EXE`); `Modules` takes `LIB$GET_FOREIGN`'s
+   line and splits it at spaces outside quotes. A quoted argument loses
+   its quotes, and `""` inside it is one `"`, as DCL's own rule has it
+   (DCL Dictionary, DCL1-5). It keeps its case; unquoted text arrives
+   in uppercase.
+   Options are matched without regard to case (decided 2026-10-05,
+   section 10); no two of poc's 31 options differ only in case. File
+   names do not care. Argument 0 is the image's file specification
+   (`$GETJPI`, `JPI$_IMAGNAME`). A DCL verb defined by a `.CLD` file is
+   rejected: it needs `SET COMMAND` in every process, and its qualifier
+   syntax (`/OUTPUT=`) is not poc's (`-o`).
+
+7. **Running nothing.** On VMS poc runs no other program (step 2's
+   decision): `-build` writes the `.COM` procedure. So `Platform.System`
+   returns a failure there, without spawning. poc's default target on VMS
+   is `vax-dec-vms` (`tools/build-info`), and an LLVM target is refused
+   ("not available on VAX/VMS"), as `-library` already is.
+
+8. **Exit, `Out` and `Err`.** `Platform.Exit(n)` exits as `HALT(n)`
+   does: `SS$_NORMAL` for 0, `%X10000000 + 8*n + 2` otherwise, so poc's
+   exit 1 after an error is an error status to DCL (`%X1000000A`).
+   `Err` writes `SYS$ERROR` through RMS, as `POC_TRAP` does, one record
+   for each `Ln`. Like `Out`, it writes a line left without `Ln` at
+   exit. `Platform.PID` is `$GETJPI`'s `JPI$_PID`.
+
+9. **The collector.** `GarbageCollectedHeap` is ported with its design
+   (chunks, the start map, size-class free lists, conservative stack
+   scanning, root tables, finalization). Chunks come from `LIB$GET_VM`.
+   The stack grows down from the base the program's start saves.
+   Registers R2-R11 are pushed by a `PocRtl.mar` routine (`PUSHR`)
+   before the stack is scanned. Finalization at exit is an exit
+   handler (`$DCLEXH`), not `atexit`. The VAX backend gains each
+   module's root table of its pointer variables, registered when the
+   module is initialised (as LLVM's are), and the main entry's call
+   saving the stack base. `POC_NEW` then allocates from the collector.
+   The heap's ceiling comes from the process's page-file quota
+   (`$GETJPI`, `JPI$_PGFLQUOTA`, 5 MB for `POC`), so that the collector
+   runs before VMS refuses memory. Whether poc fits in it is step 6's
+   question (step 1's memory decision).
+
+10. **Order of work and testing.** `Modules`, `Platform` and `Err` first,
+    each with a fixture run on both backends where the output can be
+    the same, and on the guest only where it cannot (argument splitting,
+    logical names). Then `Files`, its fixture writing and reading back
+    text and binary files, with variable-length sources made on the
+    guest. Then the collector, its fixture allocating far beyond the
+    quota. Changes in `src/` (`MakePath`, `IsDirectory`,
+    `MakeDirectory`, `pathSeparator`, the 39-character check, the
+    default target) are made on `vax`, with `rtl/llvm`'s new procedures
+    beside them, checked on the four hosts. The step ends when poc's
+    own source, with `rtl/vax`, builds into `POC.EXE` with `-build`, and
+    that image starts and prints `-help` on the guest.

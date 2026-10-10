@@ -656,7 +656,8 @@ most, object libraries.
    length failures become VMS conditions or a status exit, and what a poc
    program's exit status looks like to DCL.
 
-   **Record** (in progress, 2026-10-09):
+   **Record** (closed by the user 2026-10-10: poc's own source is written
+   with no refusal):
    - **Decided (the user, 2026-10-09): the VAX takes `-OC` as well as
      `-O2`.** poc's own source needs `-OC` (a 64-bit `LONGINT`) and must
      stay strict, so it can't use `HUGEINT`. Under `-OC` a `LONGINT` is a
@@ -775,6 +776,11 @@ most, object libraries.
      program on both backends. Its `.mar` file was reviewed by the user
      (2026-10-10). Survey: none in poc's own source; the 179 left are
      `rtl/llvm`'s, which step 4 replaces.
+   - *Closed* (the user, 2026-10-10). Step 3 ended as section 14 item 11
+     said it would: poc's own source is written for the VAX with no
+     refusal. Every construct it uses is lowered, each with a fixture run
+     on both backends, and every `expected-vax.mar` was reviewed by the
+     user.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:
@@ -803,6 +809,14 @@ most, object libraries.
    without regard to case, so `-BUILD` is `-build`; their names stay
    lowercase (`doc/developer/vax-macro32-backend.md` §10). Module and file
    names given as arguments are still this step's question.
+
+   **Record** (in progress, 2026-10-10):
+   - *The survey and proposals* are in
+     `doc/developer/vax-macro32-backend.md` section 15. **Approved by the
+     user, 2026-10-10.** poc's source imports `Files`, `Platform`, `Out`,
+     `Err` and `Modules`. Checked on the guest: what a foreign command's
+     line looks like (`LIB$GET_FOREIGN`), and that `MACRO` and `LINK`
+     read Stream_LF files.
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built
