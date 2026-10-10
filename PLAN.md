@@ -840,6 +840,18 @@ most, object libraries.
      by `$RENAME` as a new version. The fixture `vax-files` prints the
      same on Linux and on the guest; its `expected-vax.mar` and
      `expected-vax-Files.mar` were reviewed by the user (2026-10-10).
+   - *The collector* (2026-10-10) is `rtl/llvm`'s, ported to
+     `rtl/vax/GarbageCollectedHeap.Mod` over `LIB$GET_VM`, an entry mask
+     for the registers, `$DCLEXH` and the paging file quota left; `NEW`
+     calls its `Allocate`, each module with pointer variables registers
+     a root table, and the start of a program that calls `NEW` starts
+     the collector and saves the stack base. The fixture `vax-collector`
+     prints the same on Linux and on the guest. Its `expected-vax.mar`
+     and `expected-vax-GarbageCollectedHeap.mar`, and the redrafted
+     `expected-vax*.mar` of `vax-extension`, `vax-files`, `vax-nested`,
+     `vax-pointers`, `vax-procedure-values`, `vax-traps`,
+     `vax-type-bound` and `vax-var-records`, are drafts for the user's
+     review.
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built

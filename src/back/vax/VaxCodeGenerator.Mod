@@ -143,6 +143,7 @@ MODULE VaxCodeGenerator;
        1 for code 14, CHR's, not SHORT's; n + 1 for code 10, ASSERT(x, n)'s,
        "assertion failed (n)" (section 14, items 10 and 11) *)
     messageWord = 65536;
+    collectorModule = "GarbageCollectedHeap"; (* rtl/vax's, which NEW allocates from *)
 
   TYPE
     OperandText = ARRAY 48 OF CHAR;
@@ -292,6 +293,11 @@ MODULE VaxCodeGenerator;
        type-check under -O2 (AGENTS.md, "How poc itself is built"); poc runs
        built under -OC, where they are exact *)
     two31, two32: LONGINT;
+    (* the program allocates (NEW), so its start initializes rtl/vax's
+       GarbageCollectedHeap and gives it the stack's base, as on LLVM
+       (section 15, proposal 9); set by the driver before the main module
+       is written *)
+    withCollector*: BOOLEAN;
 
     (* the module being generated *)
     module: SyntaxTree.ModuleNode;
@@ -1012,6 +1018,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Byte) OR (t = Types.Set) OR (t = Types.Set64)
       OR Types.IsInteger(t) & (Suffix(t) # 0X) OR IsReal(t) OR IsSlicePointer(t) OR IsProcedureType(t)
+      OR (t = Types.Ptr) (* SYSTEM.PTR: a longword address, never dereferenced *)
   END IsSliceScalar;
 
   (* Whether t is in the slice (section 1): a scalar above, a fixed array
@@ -3881,8 +3888,9 @@ MODULE VaxCodeGenerator;
   END Entier;
 
   (* NEW(p), and NEW(p, n0, ..., nk-1) for a pointer to an open array
-     (section 14, item 3): POC_NEW(size, tag) by CALLG, whose result in R0,
-     the block's address past its tag, or 0 when there is no memory, which
+     (section 14, item 3): rtl/vax's GarbageCollectedHeap.Allocate(size,
+     tag) by CALLG (section 15, proposal 9), whose result in R0, the
+     block's address past its tag, or 0 when there is no memory, which
      leaves p NIL, as on LLVM (without -trap-heap-exhausted), is stored in
      p. tag is the record's type descriptor (RecordTag), or for an array
      its element type's when that holds pointers, else 0 (ArrayTag). An
@@ -3896,7 +3904,7 @@ MODULE VaxCodeGenerator;
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; t, base, elem: Types.Type;
         target, v, q, total: Operand; e: SyntaxTree.ExprNode; dims, j, s, list: INTEGER;
         size, offset: LONGINT; tag: ARRAY 64 OF CHAR; text: ARRAY 160 OF CHAR; hi, lo, at: OperandText;
-        skip: ARRAY 16 OF CHAR;
+        skip: ARRAY 16 OF CHAR; allocate: VaxTypes.Symbol;
 
     (* the lengths' slot j *)
     PROCEDURE Length(j: INTEGER): Operand;
@@ -3976,8 +3984,9 @@ MODULE VaxCodeGenerator;
     END;
     IF tag[0] = 0X THEN Emit1("CLRL", ListEntry(list, 2, 2)) ELSE EmitTo("MOVAB", tag, ListEntry(list, 2, 2)) END;
     FreeR0R1(line, column);
-    AddExternal("POC_NEW");
-    Text(ListEntry(list, 2, 0), text); Append(text, ", "); AppendExternal(text, "POC_NEW");
+    VaxTypes.MakeSymbol("GarbageCollectedHeap.Allocate", allocate);
+    AddExternal(allocate);
+    Text(ListEntry(list, 2, 0), text); Append(text, ", "); AppendExternal(text, allocate);
     Emit("CALLG", text);
     ReleaseSlots(list, 3);
     IF dims > 0 THEN
@@ -3997,10 +4006,127 @@ MODULE VaxCodeGenerator;
     Release(target)
   END New;
 
+  (* ---- SYSTEM (Appendix C), for rtl/vax's collector (section 15) ---- *)
+
+  (* a, an address of any integer type, as a longword in a register of
+     its own, pinned: a quadword's low longword, a narrower one
+     sign-extended *)
+  PROCEDURE AddressRegister(a: Operand; line, column: INTEGER): Operand;
+    VAR r: Operand;
+  BEGIN
+    IF IsQuad(a) THEN
+      r := NewRegisterBeside(longword, a, NIL, line, column);
+      Emit2("MOVL", LowHalf(a), r);
+      Release(a)
+    ELSIF a.kind = immediate THEN
+      r := NewRegister(longword, line, column);
+      a.type := longword; MoveInto(a, r)
+    ELSE
+      r := InRegister(Widen(a, longword, line, column), line, column)
+    END;
+    r.type := longword; r.pinned := TRUE;
+    RETURN r
+  END AddressRegister;
+
+  (* SYSTEM.ADR(v): v's address, a longword, by MOVAx (AddressInto), into
+     dest when that is a longword *)
+  PROCEDURE Adr(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
+    VAR r: Operand;
+  BEGIN
+    IF (dest # NIL) & (Suffix(dest.type) = "L") THEN r := dest
+    ELSE r := NewRegister(Types.Address, line, column)
+    END;
+    IF ~AddressInto(args, r) THEN
+      Unsupported(line, column, "SYSTEM.ADR of this"); Release(r); RETURN Dummy()
+    END;
+    RETURN r
+  END Adr;
+
+  (* SYSTEM.GET(a, v): v := the value of v's type at address a, a's
+     register the base of the source *)
+  PROCEDURE Get(args: SyntaxTree.ExprNode; line, column: INTEGER);
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; r, src, target: Operand;
+  BEGIN
+    r := AddressRegister(Expression(args, NIL), line, column);
+    IF ~(args.next IS SyntaxTree.DesignatorExprNode) THEN Release(r); RETURN END;
+    de := args.next(SyntaxTree.DesignatorExprNode);
+    obj := Resolve(de.designator.qualifier, de.designator.name, de.line, de.column);
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN Release(r); RETURN END;
+    target := Locate(de.designator, obj, de.line, de.column);
+    src := NewOperand(memory, target.type); src.baseOp := r; src.ownsBase := TRUE;
+    MoveInto(src, target);
+    Release(src); Release(target)
+  END Get;
+
+  (* SYSTEM.PUT(a, x): x's value, of x's own type, written at address a,
+     a's register the base of the destination *)
+  PROCEDURE Put(args: SyntaxTree.ExprNode; line, column: INTEGER);
+    VAR r, v, dst: Operand;
+  BEGIN
+    r := AddressRegister(Expression(args, NIL), line, column);
+    v := Expression(args.next, NIL);
+    IF v.standIn THEN Release(r); RETURN END;
+    dst := NewOperand(memory, v.type); dst.baseOp := r; dst.ownsBase := TRUE;
+    MoveInto(v, dst);
+    Release(v); Release(dst)
+  END Put;
+
+  (* SYSTEM.VAL(T, x): x's bytes read as a T, as on LLVM. x of T's size,
+     or wider and neither a real, is x itself retyped (a quadword's low
+     longword: the VAX is little-endian); x narrower is sign-extended if
+     it is an integer, else zero-extended, to a T of at most a longword.
+     A real is converted to nothing, only retyped. *)
+  PROCEDURE Val(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
+    VAR target: Types.Type; x, r: Operand; ts, xs: LONGINT; op: ARRAY 8 OF CHAR; text: ARRAY 160 OF CHAR;
+  BEGIN
+    target := NIL;
+    IF args IS SyntaxTree.DesignatorExprNode THEN
+      target := NamedType(args(SyntaxTree.DesignatorExprNode).designator.qualifier,
+        args(SyntaxTree.DesignatorExprNode).designator.name)
+    END;
+    IF target = NIL THEN Unsupported(line, column, "SYSTEM.VAL to this type"); RETURN Dummy() END;
+    x := Expression(args.next, NIL);
+    IF x.standIn THEN RETURN x END;
+    ts := VaxTypes.Size(target); xs := VaxTypes.Size(x.type);
+    IF x.type = Types.NilType THEN xs := 4 END;
+    IF (x.kind = immediate) & (IsReal(target) # IsReal(x.type)) THEN
+      (* an immediate is converted by MACRO, not reinterpreted *)
+      x := InRegister(x, line, column)
+    ELSIF (x.kind = memory) & (x.index # NIL) & (ts # xs) THEN
+      (* index mode scales by the operand's size (Fit) *)
+      x := InRegister(x, line, column)
+    END;
+    IF (ts = xs) OR (ts < xs) & ~IsReal(target) & ~IsReal(x.type) & (x.kind # register) THEN
+      x.type := target; RETURN x
+    ELSIF (ts < xs) & ~IsReal(target) & ~IsReal(x.type) THEN
+      (* a register, or a pair: the low longword, then narrower *)
+      r := NewRegisterBeside(longword, x, NIL, line, column);
+      IF IsQuad(x) THEN Emit2("MOVL", LowHalf(x), r) ELSE Emit2("MOVL", x, r) END;
+      Release(x); r.type := target;
+      RETURN r
+    ELSIF (ts <= 4) & ~IsReal(target) & ~IsReal(x.type) THEN
+      r := Target(target, x, NIL, dest, line, column);
+      IF Types.IsInteger(x.type) THEN COPY("CVT", op) ELSE COPY("MOVZ", op) END;
+      AppendChar(op, Suffix(x.type)); AppendChar(op, Suffix(target));
+      Emit2(op, x, r);
+      Done(x, r); r.type := target;
+      RETURN r
+    END;
+    COPY("SYSTEM.VAL from ", text); Types.Describe(x.type, text); Append(text, " to ");
+    Types.Describe(target, text);
+    Unsupported(line, column, text); Release(x);
+    RETURN Dummy()
+  END Val;
+
   PROCEDURE Predeclared(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode; dest: Operand;
                         line, column: INTEGER): Operand;
     VAR v: Operand; text: ARRAY 96 OF CHAR;
   BEGIN
+    IF name = "ADR" THEN RETURN Adr(args, dest, line, column)
+    ELSIF name = "GET" THEN Get(args, line, column); RETURN NIL
+    ELSIF name = "PUT" THEN Put(args, line, column); RETURN NIL
+    ELSIF name = "VAL" THEN RETURN Val(args, dest, line, column)
+    END;
     IF name = "INC" THEN IncDec(TRUE, args, line, column); RETURN NIL
     ELSIF name = "DEC" THEN IncDec(FALSE, args, line, column); RETURN NIL
     ELSIF name = "INCL" THEN InclExcl(TRUE, args, line, column); RETURN NIL
@@ -5328,6 +5454,78 @@ MODULE VaxCodeGenerator;
     RETURN ok
   END WriteVariables;
 
+  (* The module's root table in POC_DATA, L_ROOTS, when its variables hold
+     pointers (section 15, proposal 9): the next table, which POC_ROOTS
+     writes when the initializer registers it, the count, and the address
+     of each pointer, flattened through records and arrays as a type
+     descriptor's offsets are, as on LLVM (EmitRootTable); FALSE, and
+     nothing written, if they hold none *)
+  PROCEDURE WriteRoots(VAR w: Files.Rider): BOOLEAN;
+    VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
+        total: LONGINT; count: INTEGER; symbol: VaxTypes.Symbol; text: ARRAY 600 OF CHAR;
+
+    PROCEDURE Put(at: LONGINT);
+    BEGIN
+      IF count = 4 THEN Line(w, ".ADDRESS", text); count := 0 END;
+      IF count = 0 THEN text[0] := 0X ELSE Append(text, ", ") END;
+      Append(text, symbol);
+      IF at # 0 THEN Append(text, "+"); AppendInt(text, at) END;
+      INC(count)
+    END Put;
+
+    PROCEDURE Offsets(t: Types.Type; at: LONGINT);
+      VAR rec: Types.RecordType; f: Types.Field; arr: Types.ArrayType; i, size: LONGINT;
+    BEGIN
+      IF (t = NIL) OR (PointerCount(t) = 0) THEN RETURN
+      ELSIF t IS Types.PointerType THEN Put(at)
+      ELSIF t IS Types.ArrayType THEN
+        arr := t(Types.ArrayType); size := VaxTypes.Size(arr.elementType);
+        FOR i := 0 TO arr.length - 1 DO Offsets(arr.elementType, at + i * size) END
+      ELSIF t IS Types.RecordType THEN
+        rec := t(Types.RecordType);
+        Offsets(rec.baseType, at);
+        f := rec.fields;
+        WHILE f # NIL DO Offsets(f.type, at + VaxTypes.FieldOffset(rec, f)); f := f.next END
+      END
+    END Offsets;
+
+  BEGIN
+    IF module.declarations = NIL THEN RETURN FALSE END;
+    total := 0;
+    vd := module.declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(scope, nm.name);
+        IF obj # NIL THEN total := total + PointerCount(obj.type) END;
+        nm := nm.next
+      END;
+      vd := vd.next
+    END;
+    IF total = 0 THEN RETURN FALSE END;
+    WriteLn(w);
+    WriteStr(w, "; its root table, for the collector: the next table, the count,"); WriteLn(w);
+    WriteStr(w, "; and the address of each pointer its variables hold"); WriteLn(w);
+    Line(w, ".PSECT", "POC_DATA");
+    Line(w, ".ALIGN", "LONG");
+    Label(w, "L_ROOTS");
+    Line(w, ".LONG", "0");
+    text[0] := 0X; AppendInt(text, total); Line(w, ".LONG", text);
+    count := 0;
+    vd := module.declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(scope, nm.name);
+        IF obj # NIL THEN VariableSymbol(obj, symbol); Offsets(obj.type, 0) END;
+        nm := nm.next
+      END;
+      vd := vd.next
+    END;
+    IF count > 0 THEN Line(w, ".ADDRESS", text) END;
+    RETURN TRUE
+  END WriteRoots;
+
   (* The n bytes of s: each run of printing characters .ASCII, delimited
      by a character not in it (MACRO 6, .ASCII: not a space, "=", ";" or
      "<"), any other byte, or a run with every delimiter in it, by .BYTE *)
@@ -5591,7 +5789,8 @@ MODULE VaxCodeGenerator;
                             VAR w: Files.Rider): BOOLEAN;
     VAR init, main, symbol: VaxTypes.Symbol; title: ARRAY VaxTypes.symbolLength + 1 OF CHAR;
         ident: ARRAY 40 OF CHAR; entry: ARRAY 64 OF CHAR; mask: ARRAY 40 OF CHAR; frame: ARRAY 24 OF CHAR;
-        before, errorsBefore: INTEGER; ok: BOOLEAN; e: External; sc: StringConstant; where: Where;
+        before, errorsBefore: INTEGER; ok, hasRoots: BOOLEAN; e: External; sc: StringConstant; where: Where;
+        heapInit, stackBase: VaxTypes.Symbol;
   BEGIN
     module := m; scope := s; moduleScope := s; before := unsupportedCount;
     errorsBefore := Diagnostics.errorCount;
@@ -5622,12 +5821,18 @@ MODULE VaxCodeGenerator;
     Label(w, "L_INITIALISED");
     Line(w, ".BLKB", "1");
     ok := WriteVariables(w);
+    hasRoots := ok & WriteRoots(w);
+    IF hasRoots THEN AddExternal("POC_ROOTS") END;
     CollectDescriptors;
     Procedures;
     BeginBody;
     StatementSeq(module.statements);
     ResolveAncestors;
     IF ~DeclareImports() THEN ok := FALSE END;
+    IF isMain & withCollector THEN
+      IF VaxTypes.MakeInitSymbol(collectorModule, heapInit) THEN AddExternal(heapInit) END;
+      VaxTypes.MakeSymbol("GarbageCollectedHeap.SetStackBase", stackBase); AddExternal(stackBase)
+    END;
     IF ~ok OR (unsupportedCount > before) OR (Diagnostics.errorCount > errorsBefore) THEN RETURN FALSE END;
     IF externals # NIL THEN
       WriteLn(w);
@@ -5670,7 +5875,7 @@ MODULE VaxCodeGenerator;
     EntryMask(mask);
     COPY(init, entry); Append(entry, ", "); Append(entry, mask);
     Line(w, ".ENTRY", entry);
-    IF (first = NIL) & (module.imports = NIL) THEN
+    IF (first = NIL) & (module.imports = NIL) & ~hasRoots THEN
       (* no body: a byte branch over the fixed 7 bytes to RET *)
       Line(w, "BLBS", "L_INITIALISED, L_DONE");
       Line(w, "MOVB", "#1, L_INITIALISED");
@@ -5682,6 +5887,10 @@ MODULE VaxCodeGenerator;
       Line(w, "RET", "");
       Label(w, "L_BODY");
       Line(w, "MOVB", "#1, L_INITIALISED");
+      IF hasRoots THEN
+        Line(w, "PUSHAL", "L_ROOTS");
+        COPY("#1, ", entry); AppendExternal(entry, "POC_ROOTS"); Line(w, "CALLS", entry)
+      END;
       CallImports(w);
       IF first # NIL THEN
         IF frameSlots > 0 THEN
@@ -5701,8 +5910,16 @@ MODULE VaxCodeGenerator;
     IF isMain THEN
       WriteLn(w);
       WriteStr(w, "; the program's start: the module's initializer, then SS$_NORMAL"); WriteLn(w);
+      IF withCollector THEN
+        WriteStr(w, "; (first the collector's, and the stack's base, its frame's: section 15)"); WriteLn(w)
+      END;
       COPY(main, entry); Append(entry, ", ^M<>");
       Line(w, ".ENTRY", entry);
+      IF withCollector THEN
+        COPY("#0, ", entry); AppendExternal(entry, heapInit); Line(w, "CALLS", entry);
+        Line(w, "PUSHL", "FP");
+        COPY("#1, ", entry); AppendExternal(entry, stackBase); Line(w, "CALLS", entry)
+      END;
       COPY("#0, ", entry); Append(entry, init);
       Line(w, "CALLS", entry);
       Line(w, "MOVL", "#1, R0");

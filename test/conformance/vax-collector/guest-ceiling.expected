@@ -1,0 +1,5 @@
+build status: %X10000001
+NEW gave NIL: yes
+the heap holds more than half the quota left: yes
+and no more than three quarters: yes
+run status: %X00000001

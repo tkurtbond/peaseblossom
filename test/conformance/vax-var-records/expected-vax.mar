@@ -1,24 +1,42 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
-;; the MACRO manual and the debugger runs). Why this is
+;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
+;; manual and the debugger runs; for the user's review). Why this is
 ;; right:
 ;; - A VAR record parameter takes its actual's type tag as a hidden
 ;;   longword right after the address (section 14, item 5), as on LLVM;
 ;;   the parameters after it move up a longword: Move's dx is at 12(AP),
 ;;   Grow's bx at 8 and its tag at 12, again at 16 and its tag at 20.
 ;; - The tag passed: a variable's, a field's or an element's is its
-;;   static type's descriptor, by MOVAB (p, b, bx.lo and bx.hi, boxes[i],
-;;   boxes[0].hi); Twice passes on its own, 8(AP), as LLVM passes a VAR
-;;   record parameter's; pp^'s is its block's, the longword before the
-;;   record: its address minus 4, then the longword there, SUBL3 and MOVL
-;;   @-8(FP), into the list's own entry; pair, a VaxRecLib.Pair, passes
-;;   VaxRecLib's descriptor, G^VAXRECLIB_PAIR_DJFN0SFL, .EXTERNAL.
-;; - Box holds a pointer, owner, at 8: its descriptor's count is 1 and its
-;;   offset 8. Grow's NEW(bx.owner) names VaxRecLib's NodeDesc
+;;   static type's descriptor, by MOVAB (p, b, bx.lo and bx.hi,
+;;   boxes[i], boxes[0].hi); Twice passes on its own, 8(AP), as LLVM
+;;   passes a VAR record parameter's; pp^'s is its block's, the longword
+;;   before the record: its address minus 4, then the longword there,
+;;   SUBL3 and MOVL @-8(FP), into the list's own entry; pair, a
+;;   VaxRecLib.Pair, passes VaxRecLib's descriptor,
+;;   G^VAXRECLIB_PAIR_DJFN0SFL, .EXTERNAL.
+;; - Box holds a pointer, owner, at 8: its descriptor's count is 1 and
+;;   its offset 8. Grow's NEW(bx.owner) names VaxRecLib's NodeDesc
 ;;   descriptor; bx.owner's address is kept in R2, which Grow's mask
 ;;   saves, across the call. boxes[i] := b copies the pointer with the
 ;;   rest, MOVC3 #12.
 ;; - Nothing reads a tag yet: it is for IS, type guards, WITH and
 ;;   type-bound procedures. run-tags examines each one received.
+;; - NEW calls rtl/vax's GarbageCollectedHeap.Allocate by its symbol,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, .EXTERNAL, where it called
+;;   POC_NEW (Phase 16 step 4, section 15, proposal 9): the same
+;;   argument list, the size and the tag, and the same result in R0.
+;; - Its variables hold pointers, so it has a root table, L_ROOTS in
+;;   POC_DATA: a link, which POC_ROOTS sets, the count, 6, and the
+;;   address of each pointer (b.owner at b + 8, boxes[0].owner and
+;;   boxes[1].owner at boxes + 8 and + 20, pp, and pair's two pointers
+;;   at pair and pair + 4), flattened as a type descriptor's offsets
+;;   are. The initializer registers it with POC_ROOTS before it calls
+;;   its imports' initializers.
+;; - The program allocates, so its start calls the collector's
+;;   initializer, GARBAGECOLLECTEDHEAP_INIT, and then SetStackBase
+;;   (GARBAGECOLLECTEDHEAP_S_EA118OLO) with its own FP, the base the
+;;   collector scans the stack up to, before the module's initializer.
+;; - The debugger runs link tools/vax-runtime-stub.mar, whose Allocate
+;;   takes memory from LIB$GET_VM as POC_NEW did and never collects.
 ; VaxVarRecords, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXVARRECORDS
 	.IDENT	/d9797d37dc8fe6c6/
@@ -66,13 +84,26 @@ VAXVARRECORDS_I_RV1HOHVK:
 VAXVARRECORDS_COUNT_VJI09F44:
 	.BLKW	1
 
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	6
+	.ADDRESS	VAXVARRECORDS_B_RV1HOFRL+8, VAXVARRECORDS_BOXES_SB967I52+8, VAXVARRECORDS_BOXES_SB967I52+20, VAXVARRECORDS_PP_724CN2AT
+	.ADDRESS	VAXVARRECORDS_PAIR_U6VKG751, VAXVARRECORDS_PAIR_U6VKG751+4
+
 ; the symbols it uses of other modules
+	.EXTERNAL	POC_ROOTS
 	.EXTERNAL	VAXRECLIB_NODEDESC_BIFELNCS
-	.EXTERNAL	POC_NEW
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	.EXTERNAL	VAXRECLIB_COUNT_44VCVTIG
 	.EXTERNAL	VAXRECLIB_PAIR_DJFN0SFL
 	.EXTERNAL	VAXRECLIB_INIT
 	.EXTERNAL	POC_K1_E6C7C3444E50227B
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -146,7 +177,7 @@ VAXVARRECORDS_GROW_ALSI8D7A:
 	MOVL	#8, -8(FP)
 	MOVAB	G^VAXRECLIB_NODEDESC_BIFELNCS, -4(FP)
 	MOVL	R0, R2
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, 8(R2)
 ; line 31
 	MOVL	8(AP), R0
@@ -174,6 +205,8 @@ L_1:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
 	CALLS	#0, G^VAXRECLIB_INIT
 	SUBL2	#24, SP
 ; line 36
@@ -233,7 +266,7 @@ L_3:
 	MOVL	#2, -12(FP)
 	MOVL	#4, -8(FP)
 	MOVAB	VAXVARRECORDS_POINT_TUGNB7V1, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXVARRECORDS_PP_724CN2AT
 ; line 39
 	MOVL	#3, -16(FP)
@@ -292,7 +325,11 @@ L_6:
 POC_K1_D9797D37DC8FE6C6 == 0
 
 ; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
 	.ENTRY	VAXVARRECORDS_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
 	CALLS	#0, VAXVARRECORDS_INIT
 	MOVL	#1, R0
 	RET

@@ -92,8 +92,9 @@ MODULE Poc;
     (* -check, -emit-interface and -show-interface: imports come only from
        .sym files, a library's included, never compiled from source *)
     importsFromSymOnly: BOOLEAN;
-    (* The program is for vax-dec-vms (SetVaxTarget): NEW calls the VAX
-       runtime's POC_NEW, so LLVM's collector modules are not added *)
+    (* The program is for vax-dec-vms (SetVaxTarget): NEW calls rtl/vax's
+       GarbageCollectedHeap, which -build adds to the program alone,
+       without ModuleTable (AddRuntimeModules) *)
     forVax: BOOLEAN;
 
   TYPE
@@ -1202,6 +1203,32 @@ MODULE Poc;
     modules := front
   END AddRuntimeModules;
 
+  (* Phase 16 step 4 (doc/developer/vax-macro32-backend.md, section 15,
+     proposal 9): a VAX program that calls NEW allocates from rtl/vax's
+     GarbageCollectedHeap, which -build adds to it first, as
+     AddRuntimeModules does LLVM's, but alone: the root tables are
+     registered with poc's runtime (POC_ROOTS), not ModuleTable. *)
+  PROCEDURE AddVaxCollector(outputDir: ARRAY OF CHAR; VAR modules: LLVMCodeGenerator.ModuleList;
+                            VAR ok: BOOLEAN);
+    VAR heap, front, frontTail: LLVMCodeGenerator.ModuleList; visited: VisitedModule;
+  BEGIN
+    IF ~ok OR ~PredeclaredProcedures.NewWasCalled() THEN RETURN END;
+    visited := NIL;
+    RegenerateInterfaces("GarbageCollectedHeap", outputDir, visited, ok);
+    heap := TakeModule(modules, "GarbageCollectedHeap");
+    front := NIL; frontTail := NIL;
+    IF ok & (heap # NIL) THEN front := heap; frontTail := heap
+    ELSIF ok THEN DiscoverModule("GarbageCollectedHeap", front, frontTail, ok)
+    END;
+    IF ~ok THEN
+      failed := TRUE; Err.String("poc: NEW needs the runtime module GarbageCollectedHeap; put rtl/vax on the import path");
+      Err.Ln;
+      RETURN
+    END;
+    frontTail.next := modules;
+    modules := front
+  END AddVaxCollector;
+
   (* Builds the whole program's own dependency-ordered ModuleList: every
      module topModule transitively IMPORTs (via DiscoverModule above),
      then topModule itself, always last - matching ModuleList's own
@@ -1422,6 +1449,7 @@ MODULE Poc;
     END;
     errorsBefore := Diagnostics.errorCount;
     VaxCodeGenerator.unsupportedCount := 0;
+    VaxCodeGenerator.withCollector := PredeclaredProcedures.NewWasCalled();
     VaxCodeGenerator.programNames := VaxTypes.NewNameTable();
     m := modules; written := TRUE;
     COPY(Diagnostics.fileName, savedFileName);
@@ -1542,6 +1570,7 @@ MODULE Poc;
     IF ~SetVaxTarget("-build", VaxToolchainDriver.triple) THEN RETURN END;
     IF (exePath[0] # 0X) & ~VaxImagePaths(exePath, comPath, image) THEN RETURN END;
     CheckAndDiscoverProgram(name, outputDir, modules, ok);
+    AddVaxCollector(outputDir, modules, ok);
     IF ~ok THEN RETURN END;
     m := modules;
     WHILE m # NIL DO

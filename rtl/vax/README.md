@@ -11,12 +11,13 @@ writes their `.mar` files.
   links as `POCRTL.OBJ`. Its `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and
   `POC_HMOD` are the final routines. `POC_TRAP` writes the trap's
   message to `SYS$ERROR` and exits with the trap's status, and
-  `POC_HALT` exits with `HALT`'s (section 14, item 10). `POC_NEW`
-  allocates from `LIB$GET_VM` and never frees, until step 4 ports the
-  collector (section 15, proposal 9). The rest are what the modules
-  below call: writing records to `SYS$OUTPUT` and `SYS$ERROR`, logical
-  names, `$ERASE`, `$PARSE`, `LIB$CREATE_DIR`, `$SETDDIR`, `$GETJPI`,
-  `LIB$GET_FOREIGN`, and RMS file access for `Files`.
+  `POC_HALT` exits with `HALT`'s (section 14, item 10). `POC_ROOTS`
+  lists each module's root table, in every program. The rest are what
+  the modules below call: writing records to `SYS$OUTPUT` and
+  `SYS$ERROR`, logical names, `$ERASE`, `$PARSE`, `LIB$CREATE_DIR`,
+  `$SETDDIR`, `$GETJPI`, `LIB$GET_FOREIGN`, RMS file access for
+  `Files`, and memory, saved registers, an exit handler and the paging
+  file quota for the collector.
 - `Out.Mod` and `Err.Mod` (`Open`, `Flush`, `Char`, `String`, `Ln`,
   `Int`, `Hex`) write to `SYS$OUTPUT` and `SYS$ERROR` through
   `LineOutput.Mod`, a record for each `Ln` (section 14, item 2, and
@@ -35,5 +36,10 @@ writes their `.mar` files.
   `WriteString`, `Delete`): the files poc makes are Stream_LF, written
   and read by block I/O; a file of another record format is read a
   record at a time, an LF after each (section 15, proposal 2).
-
-The collector is still to come (section 15, proposals 9 and 10).
+- `GarbageCollectedHeap.Mod` (`Allocate`, `Collect`, `SetStackBase`,
+  `SetHeapLimit`, `SetChunkSize`, `SetMarkStackCapacity`,
+  `CollectionCount`, `HeapBytes`, `LiveBytes`, `IsAllocated`,
+  `RegisterFinalizer`, `FinalizeAll`): `rtl/llvm`'s collector, which
+  `NEW` allocates from; `-build` adds it to a program that calls `NEW`.
+  Its heap stops at three quarters of the paging file quota left when it
+  starts (section 15, proposal 9).

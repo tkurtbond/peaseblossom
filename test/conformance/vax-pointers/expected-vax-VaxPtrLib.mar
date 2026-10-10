@@ -1,16 +1,19 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
-;; the MACRO manual and the debugger runs). Why this is
+;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
+;; manual and the debugger runs; for the user's review). Why this is
 ;; right:
-;; - ItemDesc's descriptor (section 14, item 4), in POC_CONST, longwords:
-;;   its size, 8 (key at 0, link at 4), extension level 0, one pointer,
-;;   its own address as its base type at level 0, and that pointer's
-;;   offset, 4. ItemDesc is not exported, but its descriptor is global,
-;;   label::, since VaxPointers allocates an Item, the exported pointer
-;;   type bound to it (run-values finds it as the tag of that block).
-;; - Make's NEW(p) calls POC_NEW with an argument list built in the
-;;   frame, CALLG: the count, 2, the size, 8, and the descriptor's
-;;   address, MOVAB. The block's address, or 0 when there is no memory
-;;   left, comes back in R0, and is p.
+;; - ItemDesc's descriptor (section 14, item 4), in POC_CONST,
+;;   longwords: its size, 8 (key at 0, link at 4), extension level 0,
+;;   one pointer, its own address as its base type at level 0, and that
+;;   pointer's offset, 4. ItemDesc is not exported, but its descriptor
+;;   is global, label::, since VaxPointers allocates an Item, the
+;;   exported pointer type bound to it (run-values finds it as the tag
+;;   of that block).
+;; - Make's NEW(p) calls rtl/vax's GarbageCollectedHeap.Allocate,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI (Phase 16 step 4; POC_NEW until
+;;   then), with an argument list built in the frame, CALLG: the count,
+;;   2, the size, 8, and the descriptor's address, MOVAB. The block's
+;;   address, or 0 when there is no memory left, comes back in R0, and
+;;   is p.
 ;; - p.key and p.link are each a dereference: p is moved to R0, which
 ;;   sets the condition codes, and BNEQ skips the trap, code 4 at the
 ;;   designator's line and column (13:13 and 13:25), so a NIL p is never
@@ -30,7 +33,7 @@ L_INITIALISED:
 	.BLKB	1
 
 ; the symbols it uses of other modules
-	.EXTERNAL	POC_NEW
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -60,7 +63,7 @@ VAXPTRLIB_ITEMDESC_86IN7EB7::
 	MOVL	#2, -16(FP)
 	MOVL	#8, -12(FP)
 	MOVAB	VAXPTRLIB_ITEMDESC_86IN7EB7, -8(FP)
-	CALLG	-16(FP), G^POC_NEW
+	CALLG	-16(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, -4(FP)
 ; line 13
 	MOVL	-4(FP), R0

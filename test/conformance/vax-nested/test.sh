@@ -24,7 +24,7 @@ for model in -O2 -OC; do
   poc $model -target vax-dec-vms -import-path $rtl -build NestedOut.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
   { echo "build status: %X10000001"; cat output.expected; echo "run status: %X00000001"; } >guest-run.expected
-  vax_do guest-run.com guest-run.expected NestedOut.com NestedOut.mar Out.mar LineOutput.mar $rtl/PocRtl.mar
+  vax_do guest-run.com guest-run.expected NestedOut.com NestedOut.mar GarbageCollectedHeap.mar Out.mar LineOutput.mar $rtl/PocRtl.mar
 done
 rm -f output guest-run.expected
 . ../../testresult.sh

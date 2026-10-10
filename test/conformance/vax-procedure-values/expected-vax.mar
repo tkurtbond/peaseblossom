@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
-;; the MACRO manual, LLVM's code generator and the debugger runs). Why
-;; this is right:
+;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
+;; manual, LLVM's code generator and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - The main module of a program of two: poc -emit-macro32
 ;;   VaxProcVals.mod writes it and its import's VaxProcLib.mar
 ;;   (expected-vax-VaxProcLib.mar), assembled and linked together.
@@ -14,25 +14,41 @@
 ;;   entry when the procedure is an argument (Run(Bump, 3)).
 ;; - = and # compare two values, or one and NIL, as longwords: CMPL, or
 ;;   TSTL against NIL.
-;; - A call through a value evaluates the value first, as LLVM does, into
-;;   R2-R5, which the call does not have to move, and checks it for NIL:
-;;   BNEQ over POC_TRAP with code 4 at the designator's line and column.
-;;   The argument list follows from the procedure type's parameters, as
-;;   for a direct call: a VAR record parameter's tag (ins(circle)), an
-;;   open array's length (summer, measurer) and a HUGEINT's copy (wide).
-;;   Then CALLG list, (Rn), or CALLS #0, (Rn) with no arguments (act).
+;; - A call through a value evaluates the value first, as LLVM does,
+;;   into R2-R5, which the call does not have to move, and checks it for
+;;   NIL: BNEQ over POC_TRAP with code 4 at the designator's line and
+;;   column. The argument list follows from the procedure type's
+;;   parameters, as for a direct call: a VAR record parameter's tag
+;;   (ins(circle)), an open array's length (summer, measurer) and a
+;;   HUGEINT's copy (wide). Then CALLG list, (Rn), or CALLS #0, (Rn)
+;;   with no arguments (act).
 ;; - Calls through values in another's arguments (nested, line 225) keep
 ;;   each value in its own register, R2, R3 and R4, across the inner
 ;;   calls, and each argument list in its own slots of the frame.
 ;; - A function's procedure result comes back in R0 (Pick, chooser,
 ;;   L.Hidden), and a VAR parameter of procedure type is its address
 ;;   (Install's slot, given f and table[3]).
-;; - The debugger runs examine what it computes, which ProcValsOut, built
-;;   by both backends, also prints, and what four variables hold, which
-;;   the debugger names by their procedures. Then trap 4 from a NIL
-;;   variable at column 35, and from a NIL element of a pointer's array
-;;   at column 25, the designator, as LLVM's -trap-location gives them
-;;   (since 63f53c1 it no longer gives an element's index, 39).
+;; - The debugger runs examine what it computes, which ProcValsOut,
+;;   built by both backends, also prints, and what four variables hold,
+;;   which the debugger names by their procedures. Then trap 4 from a
+;;   NIL variable at column 35, and from a NIL element of a pointer's
+;;   array at column 25, the designator, as LLVM's -trap-location gives
+;;   them (since 63f53c1 it no longer gives an element's index, 39).
+;; - NEW calls rtl/vax's GarbageCollectedHeap.Allocate by its symbol,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, .EXTERNAL, where it called
+;;   POC_NEW (Phase 16 step 4, section 15, proposal 9): the same
+;;   argument list, the size and the tag, and the same result in R0.
+;; - Its variables hold pointers, so it has a root table, L_ROOTS in
+;;   POC_DATA: a link, which POC_ROOTS sets, the count, 2, and the
+;;   address of each pointer (machine and head), flattened as a type
+;;   descriptor's offsets are. The initializer registers it with
+;;   POC_ROOTS before it calls its imports' initializers.
+;; - The program allocates, so its start calls the collector's
+;;   initializer, GARBAGECOLLECTEDHEAP_INIT, and then SetStackBase
+;;   (GARBAGECOLLECTEDHEAP_S_EA118OLO) with its own FP, the base the
+;;   collector scans the stack up to, before the module's initializer.
+;; - The debugger runs link tools/vax-runtime-stub.mar, whose Allocate
+;;   takes memory from LIB$GET_VM as POC_NEW did and never collects.
 ; VaxProcVals, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXPROCVALS
 	.IDENT	/e332d43c5cc08e2c/
@@ -200,14 +216,26 @@ VAXPROCVALS_NESTED_5N6VTPK9:
 VAXPROCVALS_IMPORTED_BP9M5Q7Q:
 	.BLKW	1
 
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	2
+	.ADDRESS	VAXPROCVALS_MACHINE_VKT23BKF, VAXPROCVALS_HEAD_KUMMTUH0
+
 ; the symbols it uses of other modules
+	.EXTERNAL	POC_ROOTS
 	.EXTERNAL	VAXPROCLIB_MAX_3I6CV9GJ
 	.EXTERNAL	VAXPROCLIB_OP_68BGDI84
-	.EXTERNAL	POC_NEW
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	.EXTERNAL	VAXPROCLIB_APPLY_136JHR0T
 	.EXTERNAL	VAXPROCLIB_HIDDEN_3MGABAVB
 	.EXTERNAL	VAXPROCLIB_INIT
 	.EXTERNAL	POC_K1_188C5BEDC19F8462
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -805,6 +833,8 @@ L_48:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
 	CALLS	#0, G^VAXPROCLIB_INIT
 	SUBL2	#36, SP
 ; line 148
@@ -1078,7 +1108,7 @@ L_75:
 	MOVL	#2, -12(FP)
 	MOVL	#28, -8(FP)
 	MOVAB	VAXPROCVALS_MACHINEDES_7VR84RAQ, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXPROCVALS_MACHINE_VKT23BKF
 ; line 182
 	MOVL	VAXPROCVALS_MACHINE_VKT23BKF, R0
@@ -1483,7 +1513,7 @@ L_112:
 	MOVL	#2, -12(FP)
 	MOVL	#8, -8(FP)
 	MOVAB	VAXPROCVALS_NODEDESC_226DLQQ3, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXPROCVALS_HEAD_KUMMTUH0
 ; line 211
 	MOVL	VAXPROCVALS_HEAD_KUMMTUH0, R0
@@ -1508,7 +1538,7 @@ L_114:
 	MOVL	#8, -8(FP)
 	MOVAB	VAXPROCVALS_NODEDESC_226DLQQ3, -4(FP)
 	MOVL	R0, R2
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, 4(R2)
 ; line 212
 	MOVL	VAXPROCVALS_HEAD_KUMMTUH0, R0
@@ -1786,7 +1816,11 @@ L_138:
 POC_K1_E332D43C5CC08E2C == 0
 
 ; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
 	.ENTRY	VAXPROCVALS_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
 	CALLS	#0, VAXPROCVALS_INIT
 	MOVL	#1, R0
 	RET

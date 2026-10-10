@@ -1,23 +1,24 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
-;; the MACRO manual, LLVM's code generator and the debugger runs). Why
-;; this is right:
+;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
+;; manual, LLVM's code generator and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - The main module of a program of two: poc -emit-macro32
 ;;   VaxExtension.mod writes it and its import's VaxExtLib.mar
 ;;   (expected-vax-VaxExtLib.mar), assembled and linked together.
-;; - Phase 16 step 3 (section 14, item 11): a record's descriptor has its
-;;   extension level, how many base types it has, after its size, and
-;;   its base types' descriptors after the pointer count, the root first
-;;   and its own last, BaseTypes[L] at 12 + 4 * L, as on LLVM. SquareDesc
-;;   is level 1, VaxExtLib's ShapeDesc then its own; BigDesc level 2,
-;;   ShapeDesc, CircleDesc, its own, then the offset of next, 8; Local's
-;;   Ring, unnamed, L_TD_1, level 3, its inherited pointer at 8 too.
-;;   Another module's descriptor is its symbol, declared .EXTERNAL.
+;; - Phase 16 step 3 (section 14, item 11): a record's descriptor has
+;;   its extension level, how many base types it has, after its size,
+;;   and its base types' descriptors after the pointer count, the root
+;;   first and its own last, BaseTypes[L] at 12 + 4 * L, as on LLVM.
+;;   SquareDesc is level 1, VaxExtLib's ShapeDesc then its own; BigDesc
+;;   level 2, ShapeDesc, CircleDesc, its own, then the offset of next,
+;;   8; Local's Ring, unnamed, L_TD_1, level 3, its inherited pointer at
+;;   8 too. Another module's descriptor is its symbol, declared
+;;   .EXTERNAL.
 ;; - IS on a pointer: the pointer checked for NIL (trap 4 at the tested
 ;;   designator), its block's tag, -4(R0), into the same register, then
 ;;   the descriptor's level at least the type's, CMPL 4(R0), #L and BLSS
 ;;   (left out for a root), and BaseTypes[L] the type's descriptor, CMPL
-;;   12+4*L(R0); R1 is set to 1 when both hold. On a VAR record parameter
-;;   (Widen's d) the tag is the hidden one, 8(AP).
+;;   12+4*L(R0); R1 is set to 1 when both hold. On a VAR record
+;;   parameter (Widen's d) the tag is the hidden one, 8(AP).
 ;; - A guard is the same test, trap 5 at the guarded designator when it
 ;;   fails; the variable is then used with the guard's type, so
 ;;   s(L.Circle).r := 6 dereferences s again (and checks it for NIL) and
@@ -36,11 +37,26 @@
 ;;   c.x at 0, c.y at 2, c.r at 4 (MemoryLayout wants the declaring
 ;;   record; VaxTypes.FieldOffset finds it).
 ;; - The run (run-values): tests 1101, area 75, kinds 2341, r 6, side 9,
-;;   widened 10, tags 2740, sd 1 and 2, copied 12, assigned 809, local 3;
-;;   b's and q's tags BigDesc's and SquareDesc's descriptors (their sizes
-;;   12 and 6 shown), BigDesc's level 2, its base types ShapeDesc,
+;;   widened 10, tags 2740, sd 1 and 2, copied 12, assigned 809, local
+;;   3; b's and q's tags BigDesc's and SquareDesc's descriptors (their
+;;   sizes 12 and 6 shown), BigDesc's level 2, its base types ShapeDesc,
 ;;   CircleDesc and BigDesc. Modes 1 to 6 trap 5, 6, 13, 13, 13 and 4 at
 ;;   the positions above (run-*-trap).
+;; - NEW calls rtl/vax's GarbageCollectedHeap.Allocate by its symbol,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, .EXTERNAL, where it called
+;;   POC_NEW (Phase 16 step 4, section 15, proposal 9): the same
+;;   argument list, the size and the tag, and the same result in R0.
+;; - Its variables hold pointers, so it has a root table, L_ROOTS in
+;;   POC_DATA: a link, which POC_ROOTS sets, the count, 5, and the
+;;   address of each pointer (s, t, c, q and b), flattened as a type
+;;   descriptor's offsets are. The initializer registers it with
+;;   POC_ROOTS before it calls its imports' initializers.
+;; - The program allocates, so its start calls the collector's
+;;   initializer, GARBAGECOLLECTEDHEAP_INIT, and then SetStackBase
+;;   (GARBAGECOLLECTEDHEAP_S_EA118OLO) with its own FP, the base the
+;;   collector scans the stack up to, before the module's initializer.
+;; - The debugger runs link tools/vax-runtime-stub.mar, whose Allocate
+;;   takes memory from LIB$GET_VM as POC_NEW did and never collects.
 ; VaxExtension, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXEXTENSION
 	.IDENT	/bdf7e749d9f4b297/
@@ -128,13 +144,26 @@ VAXEXTENSION_SD_AFT9N14E:
 VAXEXTENSION_CD_AFTCL44U:
 	.BLKB	6
 
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	5
+	.ADDRESS	VAXEXTENSION_S_GPFL6LIU, VAXEXTENSION_T_GPFL6MRN, VAXEXTENSION_C_GPFL6SCE, VAXEXTENSION_Q_GPFL6KNO
+	.ADDRESS	VAXEXTENSION_B_GPFL6SQ1
+
 ; the symbols it uses of other modules
+	.EXTERNAL	POC_ROOTS
 	.EXTERNAL	VAXEXTLIB_CIRCLEDESC_IHO43NK1
 	.EXTERNAL	VAXEXTLIB_SHAPEDESC_TFD1FV9S
-	.EXTERNAL	POC_NEW
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	.EXTERNAL	VAXEXTLIB_AREA_P5JRK91D
 	.EXTERNAL	VAXEXTLIB_INIT
 	.EXTERNAL	POC_K1_0B50879169455655
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -474,7 +503,7 @@ VAXEXTENSION_LOCAL_CA4S95DC:
 	MOVL	#2, -20(FP)
 	MOVL	#16, -16(FP)
 	MOVAB	L_TD_1, -12(FP)
-	CALLG	-20(FP), G^POC_NEW
+	CALLG	-20(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, -4(FP)
 ; line 59
 	MOVL	-4(FP), R0
@@ -563,13 +592,15 @@ L_37:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
 	CALLS	#0, G^VAXEXTLIB_INIT
 	SUBL2	#20, SP
 ; line 64
 	MOVL	#2, -12(FP)
 	MOVL	#6, -8(FP)
 	MOVAB	G^VAXEXTLIB_CIRCLEDESC_IHO43NK1, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXEXTENSION_C_GPFL6SCE
 ; line 64
 	MOVL	VAXEXTENSION_C_GPFL6SCE, R0
@@ -607,7 +638,7 @@ L_48:
 	MOVL	#2, -12(FP)
 	MOVL	#6, -8(FP)
 	MOVAB	VAXEXTENSION_SQUAREDES_5JEQ7TOB, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXEXTENSION_Q_GPFL6KNO
 ; line 65
 	MOVL	VAXEXTENSION_Q_GPFL6KNO, R0
@@ -623,7 +654,7 @@ L_49:
 	MOVL	#2, -12(FP)
 	MOVL	#12, -8(FP)
 	MOVAB	VAXEXTENSION_BIGDESC_FHQKURG8, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXEXTENSION_B_GPFL6SQ1
 ; line 65
 	MOVL	VAXEXTENSION_B_GPFL6SQ1, R0
@@ -754,7 +785,7 @@ L_64:
 	MOVL	#2, -12(FP)
 	MOVL	#4, -8(FP)
 	MOVAB	G^VAXEXTLIB_SHAPEDESC_TFD1FV9S, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXEXTENSION_T_GPFL6MRN
 ; line 72
 	MOVL	#1, -8(FP)
@@ -972,7 +1003,7 @@ L_86:
 	MOVL	#2, -12(FP)
 	MOVL	#4, -8(FP)
 	MOVAB	G^VAXEXTLIB_SHAPEDESC_TFD1FV9S, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXEXTENSION_T_GPFL6MRN
 ; line 77
 	MOVL	VAXEXTENSION_T_GPFL6MRN, R0
@@ -1234,7 +1265,11 @@ L_95:
 POC_K1_BDF7E749D9F4B297 == 0
 
 ; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
 	.ENTRY	VAXEXTENSION_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
 	CALLS	#0, VAXEXTENSION_INIT
 	MOVL	#1, R0
 	RET

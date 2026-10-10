@@ -2,8 +2,9 @@ MODULE VaxTooMuch;
   (* PLAN.md Phase 15 steps 2-8: what the VAX backend cannot lower yet,
      each at its position - an array of records with field initializers
      (Phase 16), a ["C"] external procedure (VAX/VMS takes "VMS"), an open
-     array passed to an external (Phase 17), SYSTEM.GET (outside the slice)
-     - and no .mar is left, not even the imported module's *)
+     array passed to an external (Phase 17), SYSTEM.MOVE (outside the
+     slice; SYSTEM.GET was until Phase 16 step 4 lowered it) - and no .mar
+     is left, not even the imported module's *)
   IMPORT SYSTEM, VaxImported;
   VAR a: ARRAY 2 OF RECORD n: INTEGER := 1 END; i: INTEGER; l: LONGINT;
   PROCEDURE ["C", "abs"] Abs(x: LONGINT): LONGINT;
@@ -11,5 +12,5 @@ MODULE VaxTooMuch;
   PROCEDURE P; VAR v: ARRAY 2 OF INTEGER; BEGIN EXT$SUM(v) END P;
 BEGIN
   IF i = 0 THEN P END;
-  SYSTEM.GET(0, l)
+  SYSTEM.MOVE(0, 0, 4)
 END VaxTooMuch.

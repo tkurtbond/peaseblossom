@@ -1029,7 +1029,9 @@ end's information serves both:
    calls a runtime routine, `POC_NEW(size, tag)`. **Until step 4 ports
    the collector**, it takes memory from `LIB$GET_VM` and never frees
    any, so programs that allocate a lot will run out. That is enough for
-   step 3's fixtures, not for poc itself (step 6).
+   step 3's fixtures, not for poc itself (step 6). (Since step 4, `NEW`
+   calls the collector's `Allocate` with the same arguments: section
+   15, "Done: the collector".)
 4. **Type descriptors: LLVM's layout**, as one block per record type in
    `POC_CONST`, every field a longword: `ProcTab` below the tag, growing
    down; then `size`, `extLevel`, `ptrCount`, `BaseTypes[extLevel+1]` and
@@ -1183,7 +1185,9 @@ trap 7, since P0 space is 1 GB. The LLVM targets of 32 bits trap only from
 4 GB. When `POC_NEW` returns a block, the lengths are stored in its
 header, and `LEN(p^)` and the index checks read them there. The driver no
 longer adds LLVM's `GarbageCollectedHeap` and `ModuleTable` to a program
-for the VAX that calls `NEW`.
+for the VAX that calls `NEW`. (Since step 4, `NEW` calls the collector's
+`Allocate` instead, and the driver adds `rtl/vax`'s `GarbageCollectedHeap`:
+section 15, "Done: the collector".)
 
 A type descriptor is written in `POC_CONST` as LLVM lays it out, every
 field a longword: the size, the extension level (0 so far), the pointer
@@ -1874,3 +1878,46 @@ the guest.
   `Files` cannot report does (`POC_FILE_FAIL`, then `HALT(99)`).
 - *`tools/vax-runtime-stub.mar`* has the same routines, so that the
   debugger runs link.
+
+**Done: the collector (proposal 9), 2026-10-10.**
+`rtl/vax/GarbageCollectedHeap.Mod` is `rtl/llvm`'s collector, ported
+with its design and procedures, with the fixture `vax-collector`, whose
+program prints the same on Linux and on the guest.
+
+- *What it takes from the system* is in `PocRtl.mar`: memory from
+  `LIB$GET_VM`, cleared (`POC_GET_MEMORY`), and given back by
+  `LIB$FREE_VM` (`POC_FREE_MEMORY`), which needs the size, so each
+  caller passes it; R2-R11 saved by an entry mask (`POC_SAVE_REGISTERS`,
+  which then calls the stack scan); an exit handler (`POC_AT_EXIT`,
+  `$DCLEXH`) for finalizing at exit; and the paging file quota left
+  (`POC_PAGE_FILE_LEFT`, `JPI$_PAGFILCNT`). The heap's ceiling is three
+  quarters of that when the collector starts. On the guest a heap grown
+  until `NEW` gives `NIL` stops there, with the program still running.
+- *`NEW` calls `Allocate`* by its symbol, with `POC_NEW`'s arguments, and
+  `POC_NEW` is gone. `-build` adds the collector to a VAX program that
+  calls `NEW`, as it adds `rtl/llvm`'s to an LLVM program, but alone:
+  `ModuleTable` is not ported (proposal 1). `-emit-macro32` writes it
+  only when the program imports it, so the fixtures with `NEW` review
+  their own modules only.
+- *Root tables.* A module whose variables hold pointers has `L_ROOTS`,
+  laid out as `ModuleTable`'s tables are: a link, the count and the
+  address of each pointer. Its initializer registers it with
+  `POC_ROOTS`, in `PocRtl.mar` and so in every program, before its
+  imports' initializers, and the collector reads the list from
+  `POC_ROOT_TABLES`.
+- *The program's start*, when the program calls `NEW`, calls the
+  collector's initializer and then `SetStackBase` with its own `FP`,
+  before the main module's initializer.
+- *`SYSTEM.ADR`, `GET`, `PUT` and `VAL`* are lowered, for the collector:
+  an address in a register of its own, then a move of the variable's
+  type or the value's; `VAL` retypes a value of its target's size or
+  wider, and widens a narrower one, as on LLVM. `SYSTEM.PTR` is a
+  longword. `SYSTEM.MOVE` is not lowered yet.
+- *Conservative scanning keeps what a frame's slots still hold.* An
+  argument list in a frame keeps the pointers passed in it until the
+  slots are reused, so a list dropped in the frame that summed it
+  survived a collection on the guest. The fixture drops it from a frame
+  of its own. Whether this matters for poc is step 6's question.
+- *`tools/vax-runtime-stub.mar`*, for the debugger runs, defines
+  `Allocate`'s symbol, taking memory as `POC_NEW` did, and does nothing
+  for the collector's initializer, `SetStackBase` and `POC_ROOTS`.

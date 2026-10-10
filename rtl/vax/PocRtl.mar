@@ -4,12 +4,13 @@
 ; Step 2's first cut: POC_STRCMP, POC_HMUL, POC_HDIV and POC_HMOD compute
 ; what they will in the end, as tools/vax-runtime-stub.mar's do. Step 3's:
 ; POC_TRAP and POC_HALT, which end the program as section 14, item 10
-; says; POC_NEW, NEW's, from LIB$GET_VM until the collector is ported;
-; POC_QTOG and POC_ENTIERQ, the conversions between a quadword and a
-; G_floating.
+; says; POC_QTOG and POC_ENTIERQ, the conversions between a quadword
+; and a G_floating.
 ; Step 4's (section 15): Out's and Err's lines, written to SYS$OUTPUT and
-; SYS$ERROR, the services rtl/vax's Platform and Modules call, and RMS
-; file access for its Files.
+; SYS$ERROR, the services rtl/vax's Platform and Modules call, RMS file
+; access for its Files, and what its GarbageCollectedHeap needs: the
+; modules' root tables, memory, the registers saved, an exit handler and
+; the page-file quota.
 	.TITLE	POCRTL
 	.IDENT	/PHASE16-4/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
@@ -357,25 +358,63 @@ HDIVMOD:
 40$:	CVTGL	R2, R0
 	RET
 
-; POC_NEW(size, tag), for NEW (design section 14, item 3): a block of a
-; tag longword and size bytes from LIB$GET_VM, tag stored and the bytes
-; cleared, since LIB$GET_VM does not clear them and every variable starts
-; at zero (MOVC5 in pieces of at most 65535); R0 the address past the
-; tag, or 0, NIL, when there is no memory. Nothing is freed until the
-; collector is ported (step 4).
-	.ENTRY	POC_NEW, ^M<R2,R3,R4,R5,R6,R7>
+; The collector's (rtl/vax/GarbageCollectedHeap.Mod; design section 15,
+; proposal 9), which NEW allocates from.
+
+	.PSECT	POC_DATA
+; the root tables registered, the most recent first, 0 if none: each a
+; module's, its next table, count and the addresses of its pointers
+; (VaxCodeGenerator.WriteRoots)
+POC_ROOT_HEAD:
+	.BLKL	1
+; the collector's exit handler's control block: forward link, handler,
+; one argument, the address of the exit status
+POC_HEAP_EXIT_BLOCK:
+	.LONG	0
+	.BLKL	1
+	.LONG	1
+	.ADDRESS	POC_HEAP_EXIT_STATUS
+POC_HEAP_EXIT_STATUS:
+	.BLKL	1
+; $GETJPI's item list for the paging file quota left, in pages
+POC_JPI_PAGES:
+	.BLKL	1
+POC_JPI_PAGES_ITEMS:
+	.WORD	4, JPI$_PAGFILCNT
+	.ADDRESS	POC_JPI_PAGES
+	.LONG	0
+	.LONG	0
+
+	.PSECT	POC_CODE
+; POC_ROOTS(table): table, a module's root table, put first on the list,
+; its first longword linking it to the one before. Called by a module's
+; initializer, before its imports' and its body, in every program, with
+; the collector or without it
+	.ENTRY	POC_ROOTS, ^M<>
+	MOVL	4(AP), R0
+	MOVL	POC_ROOT_HEAD, (R0)
+	MOVL	R0, POC_ROOT_HEAD
+	RET
+
+; POC_ROOT_TABLES(): R0 the first root table, 0 if none
+	.ENTRY	POC_ROOT_TABLES, ^M<>
+	MOVL	POC_ROOT_HEAD, R0
+	RET
+
+; POC_GET_MEMORY(bytes): R0 the address of bytes bytes from LIB$GET_VM,
+; cleared, since LIB$GET_VM does not clear them (MOVC5 in pieces of at
+; most 65535), or 0 when there is no memory
+	.ENTRY	POC_GET_MEMORY, ^M<R2,R3,R4,R5,R6,R7>
 	SUBL2	#8, SP
-	ADDL3	#4, 4(AP), -8(FP)
+	MOVL	4(AP), -8(FP)
 	PUSHAL	-4(FP)
 	PUSHAL	-8(FP)
 	CALLS	#2, G^LIB$GET_VM
 	BLBS	R0, 10$
 	CLRL	R0
 	RET
-10$:	MOVL	-4(FP), R1
-	MOVL	8(AP), (R1)
-	MOVL	4(AP), R6
-	ADDL3	#4, R1, R3
+10$:	MOVL	4(AP), R6
+	MOVL	-4(FP), R3
 20$:	TSTL	R6
 	BEQL	30$
 	MOVL	R6, R7
@@ -385,7 +424,42 @@ HDIVMOD:
 25$:	SUBL2	R7, R6
 	MOVC5	#0, (R3), #0, R7, (R3)
 	BRB	20$
-30$:	ADDL3	#4, -4(FP), R0
+30$:	MOVL	-4(FP), R0
+	RET
+
+; POC_FREE_MEMORY(address, bytes): the bytes bytes at address, which
+; POC_GET_MEMORY gave, given back by LIB$FREE_VM; R0 its status
+	.ENTRY	POC_FREE_MEMORY, ^M<>
+	PUSHAL	8(AP)
+	PUSHAL	4(AP)
+	CALLS	#2, G^LIB$FREE_VM
+	RET
+
+; POC_SAVE_REGISTERS(procedure): procedure, which has no parameters,
+; called from a frame that holds R2-R11, which this entry mask saves,
+; so that a pointer a caller keeps only in a register is on the stack
+; the collector scans from procedure's frame
+	.ENTRY	POC_SAVE_REGISTERS, ^M<R2,R3,R4,R5,R6,R7,R8,R9,R10,R11>
+	CALLS	#0, @4(AP)
+	RET
+
+; POC_AT_EXIT(procedure): procedure, which has no parameters, declared
+; the collector's exit handler ($DCLEXH), so that it runs when the
+; image exits, as the C library's atexit runs one on LLVM; R0 the status
+	.ENTRY	POC_AT_EXIT, ^M<>
+	MOVL	4(AP), POC_HEAP_EXIT_BLOCK+4
+	$DCLEXH_S	DESBLK=POC_HEAP_EXIT_BLOCK
+	RET
+
+; POC_PAGE_FILE_LEFT(): R0 the process's paging file quota left, in
+; bytes ($GETJPI, JPI$_PAGFILCNT, in pages of 512), 0 if $GETJPI fails
+	.ENTRY	POC_PAGE_FILE_LEFT, ^M<>
+	CLRL	POC_JPI_PAGES
+	$GETJPIW_S	ITMLST=POC_JPI_PAGES_ITEMS
+	BLBC	R0, 10$
+	ASHL	#9, POC_JPI_PAGES, R0
+	RET
+10$:	CLRL	R0
 	RET
 
 ; Out's and Err's lines (rtl/vax/LineOutput.Mod; design section 14, item

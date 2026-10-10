@@ -222,13 +222,16 @@ HDIVMOD:
 40$:	CVTGL	R2, R0
 	RET
 
-; POC_NEW(size, tag), for NEW (design section 14, item 3): a block of a
-; tag longword and size bytes from LIB$GET_VM, tag stored and the bytes
-; cleared, since LIB$GET_VM does not clear them and every variable starts
-; at zero (MOVC5 in pieces of at most 65535); R0 the address past the
-; tag, or 0, NIL, when there is no memory. Nothing is freed until the
-; collector is ported (step 4).
-	.ENTRY	POC_NEW, ^M<R2,R3,R4,R5,R6,R7>
+; NEW's allocator, rtl/vax's GarbageCollectedHeap.Allocate(size, tag)
+; by its symbol (design section 15, proposal 9), a stand-in that never
+; collects: a block of a tag longword and size bytes from LIB$GET_VM, tag
+; stored and the bytes cleared, since LIB$GET_VM does not clear them and
+; every variable starts at zero (MOVC5 in pieces of at most 65535); R0
+; the address past the tag, or 0, NIL, when there is no memory. The
+; collector's initializer and SetStackBase, which a program that
+; allocates calls from its start, do nothing here, nor does POC_ROOTS,
+; which a module whose variables hold pointers calls
+	.ENTRY	GARBAGECOLLECTEDHEAP_A_A8NV38EI, ^M<R2,R3,R4,R5,R6,R7>
 	SUBL2	#8, SP
 	ADDL3	#4, 4(AP), -8(FP)
 	PUSHAL	-4(FP)
@@ -251,6 +254,15 @@ HDIVMOD:
 	MOVC5	#0, (R3), #0, R7, (R3)
 	BRB	20$
 30$:	ADDL3	#4, -4(FP), R0
+	RET
+
+	.ENTRY	GARBAGECOLLECTEDHEAP_INIT, ^M<>
+	RET
+
+	.ENTRY	GARBAGECOLLECTEDHEAP_S_EA118OLO, ^M<>
+	RET
+
+	.ENTRY	POC_ROOTS, ^M<>
 	RET
 
 ; Out's and Err's lines, and Platform's and Modules' services, as

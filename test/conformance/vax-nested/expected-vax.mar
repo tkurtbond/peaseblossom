@@ -1,13 +1,14 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
-;; the MACRO manual, LLVM's code generator and the debugger runs). Why
-;; this is right:
+;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
+;; manual, LLVM's code generator and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - Phase 16 step 3 (section 14, item 8): a nested procedure is lifted
-;;   to a procedure of its own, a local label and .WORD of its mask, never
-;;   .ENTRY, since only its enclosing procedures call it. Its symbol is
-;;   made from its enclosing procedure's full name and its own,
-;;   VaxNested.Deep.Middle.Inner, or VaxNested.CounterDesc.Bump.Once in a
-;;   type-bound procedure, so Basic's Add and Sum's Add differ. Each one
-;;   is written before the procedure it is nested in, parents first.
+;;   to a procedure of its own, a local label and .WORD of its mask,
+;;   never .ENTRY, since only its enclosing procedures call it. Its
+;;   symbol is made from its enclosing procedure's full name and its
+;;   own, VaxNested.Deep.Middle.Inner, or
+;;   VaxNested.CounterDesc.Bump.Once in a type-bound procedure, so
+;;   Basic's Add and Sum's Add differ. Each one is written before the
+;;   procedure it is nested in, parents first.
 ;; - After its own parameters it takes one hidden group per variable of
 ;;   the enclosing procedures it needs (NestedProcedures.Analyze, as on
 ;;   LLVM), outermost procedure first, then in declaration order: the
@@ -22,14 +23,29 @@
 ;;   lengths beside it.
 ;; - A value parameter or receiver a nested procedure needs is copied to
 ;;   the frame on entry (Deep's a, Bump's c and k), since the nested one
-;;   may assign it and the argument list is read-only. Bump's Once sets c
-;;   to NIL in Bump's copy, the trap run's mode 1.
-;; - Recursion of the enclosing procedure (Tree) gives each activation its
-;;   own frame, whose here its own Visit reaches.
-;; - The debugger runs examine what each check computes, which NestedOut,
-;;   built by both backends, also prints. Then trap 4 at line 107, column
-;;   11, c in INC(c.n, k), and trap 2 at line 87, column 51, the index,
-;;   both where LLVM's -trap-location gives them.
+;;   may assign it and the argument list is read-only. Bump's Once sets
+;;   c to NIL in Bump's copy, the trap run's mode 1.
+;; - Recursion of the enclosing procedure (Tree) gives each activation
+;;   its own frame, whose here its own Visit reaches.
+;; - The debugger runs examine what each check computes, which
+;;   NestedOut, built by both backends, also prints. Then trap 4 at line
+;;   107, column 11, c in INC(c.n, k), and trap 2 at line 87, column 51,
+;;   the index, both where LLVM's -trap-location gives them.
+;; - NEW calls rtl/vax's GarbageCollectedHeap.Allocate by its symbol,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, .EXTERNAL, where it called
+;;   POC_NEW (Phase 16 step 4, section 15, proposal 9): the same
+;;   argument list, the size and the tag, and the same result in R0.
+;; - Its variables hold pointers, so it has a root table, L_ROOTS in
+;;   POC_DATA: a link, which POC_ROOTS sets, the count, 1, and the
+;;   address of each pointer (cnt), flattened as a type descriptor's
+;;   offsets are. The initializer registers it with POC_ROOTS before it
+;;   calls its imports' initializers.
+;; - The program allocates, so its start calls the collector's
+;;   initializer, GARBAGECOLLECTEDHEAP_INIT, and then SetStackBase
+;;   (GARBAGECOLLECTEDHEAP_S_EA118OLO) with its own FP, the base the
+;;   collector scans the stack up to, before the module's initializer.
+;; - The debugger runs link tools/vax-runtime-stub.mar, whose Allocate
+;;   takes memory from LIB$GET_VM as POC_NEW did and never collects.
 ; VaxNested, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXNESTED
 	.IDENT	/6a7b710f77b7fe19/
@@ -113,8 +129,20 @@ VAXNESTED_ARR_V7NFC4IU:
 VAXNESTED_CNT_V7IB772E:
 	.BLKL	1
 
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	1
+	.ADDRESS	VAXNESTED_CNT_V7IB772E
+
 ; the symbols it uses of other modules
-	.EXTERNAL	POC_NEW
+	.EXTERNAL	POC_ROOTS
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -743,7 +771,7 @@ VAXNESTED_BUILD_PUSH_U74E8OSH:
 	MOVL	#2, -16(FP)
 	MOVL	#8, -12(FP)
 	MOVAB	VAXNESTED_NODEDESC_A8V1AI4A, -8(FP)
-	CALLG	-16(FP), G^POC_NEW
+	CALLG	-16(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, -4(FP)
 ; line 129
 	MOVL	-4(FP), R0
@@ -894,6 +922,8 @@ VAXNESTED_COUSINS_06AUROIV:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
 	SUBL2	#20, SP
 ; line 156
 	CALLS	#0, VAXNESTED_BASIC_C290CL2N
@@ -968,7 +998,7 @@ L_BODY:
 	MOVL	#2, -12(FP)
 	MOVL	#2, -8(FP)
 	MOVAB	VAXNESTED_COUNTERDESC_J3JD7F3S, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXNESTED_CNT_V7IB772E
 ; line 165
 	MOVL	VAXNESTED_CNT_V7IB772E, R0
@@ -1015,7 +1045,11 @@ L_48:
 POC_K1_6A7B710F77B7FE19 == 0
 
 ; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
 	.ENTRY	VAXNESTED_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
 	CALLS	#0, VAXNESTED_INIT
 	MOVL	#1, R0
 	RET

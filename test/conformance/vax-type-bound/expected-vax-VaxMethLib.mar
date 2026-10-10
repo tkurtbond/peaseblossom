@@ -1,22 +1,31 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
-;; the MACRO manual, LLVM's code generator and the debugger runs). Why
-;; this is right:
+;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
+;; manual, LLVM's code generator and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - The module VaxMethods imports (expected-vax.mar): the types it
 ;;   extends and the procedures it inherits and overrides.
 ;; - ShapeDesc's ProcTab, below its tag, last slot first: Code, Hidden,
 ;;   Area; CircleDesc's ShapeDesc's Code and its own Hidden and Area;
-;;   Counter's AddAll, Get, Add (AddAll's symbol shares Add's 22-character
-;;   stem, COUNTER_ADD, and differs in the hash).
+;;   Counter's AddAll, Get, Add (AddAll's symbol shares Add's
+;;   22-character stem, COUNTER_ADD, and differs in the hash).
 ;; - Every type-bound procedure is .ENTRY, Hidden too, which is not
 ;;   exported but which VaxMethods's SquareDesc's ProcTab names.
 ;; - Code calls Hidden and Area through its receiver's ProcTab, slots 1
 ;;   and 0, @-8(R1) and @-4(R1), so an importer's override is called;
 ;;   Hidden's result waits in R2 across the second call.
-;; - A VAR receiver's procedures: the record at @4(AP), its tag at 8(AP),
-;;   then the parameters, Add's k at 12(AP); AddAll's open array a at
-;;   12(AP) with its length at 16(AP), copied to the frame as any open
-;;   array value parameter is, and last at 20(AP). AddAll calls Add
+;; - A VAR receiver's procedures: the record at @4(AP), its tag at
+;;   8(AP), then the parameters, Add's k at 12(AP); AddAll's open array
+;;   a at 12(AP) with its length at 16(AP), copied to the frame as any
+;;   open array value parameter is, and last at 20(AP). AddAll calls Add
 ;;   through the receiver's tag, c being a VAR record parameter.
+;; - NEW calls rtl/vax's GarbageCollectedHeap.Allocate by its symbol,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, .EXTERNAL, where it called
+;;   POC_NEW (Phase 16 step 4, section 15, proposal 9): the same
+;;   argument list, the size and the tag, and the same result in R0.
+;; - Its variables hold pointers, so it has a root table, L_ROOTS in
+;;   POC_DATA: a link, which POC_ROOTS sets, the count, 1, and the
+;;   address of each pointer (shared), flattened as a type descriptor's
+;;   offsets are. The initializer registers it with POC_ROOTS before it
+;;   calls its imports' initializers.
 ; VaxMethLib, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXMETHLIB
 	.IDENT	/8e88986b97df9a36/
@@ -40,8 +49,18 @@ VAXMETHLIB_SHARED_1O3DAG14::
 VAXMETHLIB_TOTAL_THE2UUID::
 	.BLKB	2
 
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	1
+	.ADDRESS	VAXMETHLIB_SHARED_1O3DAG14
+
 ; the symbols it uses of other modules
-	.EXTERNAL	POC_NEW
+	.EXTERNAL	POC_ROOTS
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -294,12 +313,14 @@ L_11:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
 	SUBL2	#12, SP
 ; line 54
 	MOVL	#2, -12(FP)
 	MOVL	#2, -8(FP)
 	MOVAB	VAXMETHLIB_SHAPEDESC_TV366EBN, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXMETHLIB_SHARED_1O3DAG14
 ; line 54
 	MOVL	VAXMETHLIB_SHARED_1O3DAG14, R0

@@ -1,0 +1,9 @@
+local list's sum: 5050
+module list's sum: 500500
+table's sum: 2750
+collected: yes
+finalized: 10
+heap under 2 MB: yes
+NEW gave NIL under a ceiling: yes
+the list it made is whole: yes
+NEW allocates once it is dropped: yes

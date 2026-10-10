@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from design
-;; section 15 and the guest runs). Why this is right:
+;; Reviewed 2026-10-10 (written by Claude, from design section 15 and
+;; the guest runs; for the user's review). Why this is right:
 ;; - FilesUse imports Files, rtl/vax/Files.Mod compiled with it
 ;;   (expected-vax-Files.mar): its initializer calls FILES_INIT first,
 ;;   and it calls Files' procedures by their global symbols, with G^.
@@ -9,6 +9,16 @@
 ;;   and Read get the Rider's address and its type descriptor,
 ;;   FILES_RIDER, as every VAR record parameter does, then f and 0, or
 ;;   ch's address.
+;; - Its variables hold pointers, so it has a root table, L_ROOTS in
+;;   POC_DATA: a link, which POC_ROOTS sets, the count, 2, and the
+;;   address of each pointer (f, and r.file at r + 8), flattened as a
+;;   type descriptor's offsets are. The initializer registers it with
+;;   POC_ROOTS before it calls its imports' initializers.
+;; - Files allocates, so the program's start calls the collector's
+;;   initializer, GARBAGECOLLECTEDHEAP_INIT, and SetStackBase
+;;   (GARBAGECOLLECTEDHEAP_S_EA118OLO) with its own FP, the base the
+;;   collector scans the stack up to, before FILESUSE_INIT (Phase 16
+;;   step 4, section 15, proposal 9).
 ; FilesUse, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	FILESUSE
 	.IDENT	/bdfb66748e505db6/
@@ -35,13 +45,25 @@ FILESUSE_R_Q9IKQ1CF:
 FILESUSE_CH_G8GQV18C:
 	.BLKB	1
 
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	2
+	.ADDRESS	FILESUSE_F_Q9IKPOSJ, FILESUSE_R_Q9IKQ1CF+8
+
 ; the symbols it uses of other modules
+	.EXTERNAL	POC_ROOTS
 	.EXTERNAL	FILES_OLD_D6MQ7SJ7
 	.EXTERNAL	FILES_SET_D5QHH1BQ
 	.EXTERNAL	FILES_RIDER_85VGJP4M
 	.EXTERNAL	FILES_READ_4SSNK3R2
 	.EXTERNAL	FILES_INIT
 	.EXTERNAL	POC_K1_864112F5374F12A3
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 
 ; its string constants
 	.PSECT	POC_CONST
@@ -56,6 +78,8 @@ L_STR_1:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
 	CALLS	#0, G^FILES_INIT
 	SUBL2	#20, SP
 ; line 7
@@ -89,7 +113,11 @@ L_1:
 POC_K1_BDFB66748E505DB6 == 0
 
 ; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
 	.ENTRY	FILESUSE_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
 	CALLS	#0, FILESUSE_INIT
 	MOVL	#1, R0
 	RET

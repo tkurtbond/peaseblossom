@@ -1,21 +1,35 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
-;; the MACRO manual, the RMS and System Services manuals, LLVM's code
-;; generator and the guest runs). Why this is right:
+;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
+;; manual, the RMS and System Services manuals, LLVM's code generator
+;; and the guest runs; for the user's review). Why this is right:
 ;; - Phase 16 step 3 (section 14, item 10), under -trap-location: each
 ;;   trap calls POC_TRAP with six arguments, by CALLS #6: as before the
 ;;   code, L_MODULE_NAME, the line and the column, then L_FILE_NAME, the
 ;;   file as poc opened it, and L_WHERE_<n>, the procedure, a counted
 ;;   string (.BYTE of the length, then .ASCII) made when the procedure's
 ;;   first trap needs it: VaxTraps.NodeDesc.Sum, VaxTraps.Outer.Inner,
-;;   VaxTraps.Outer and "VaxTraps, module body", as LLVM's -trap-location
-;;   names them, so that rtl/vax/PocRtl.mar's POC_TRAP writes LLVM's
-;;   message, file:line:column: message (in procedure), with $FAO.
+;;   VaxTraps.Outer and "VaxTraps, module body", as LLVM's
+;;   -trap-location names them, so that rtl/vax/PocRtl.mar's POC_TRAP
+;;   writes LLVM's message, file:line:column: message (in procedure),
+;;   with $FAO.
 ;; - Under -range-checks CHR's code is ^X0001000E: 14, the status's, in
-;;   the low word, and 1 in the high word for "CHR argument out of range",
-;;   since SHORT's trap, #14 alone, is code 14 too.
+;;   the low word, and 1 in the high word for "CHR argument out of
+;;   range", since SHORT's trap, #14 alone, is code 14 too.
 ;; - Traps, run on the guest with the real runtime for each case, prints
 ;;   LLVM's messages to SYS$ERROR and ends with %X10000000 + 8 * c + 2
 ;;   where LLVM exits with c (output.expected, plain.expected).
+;; - NEW calls rtl/vax's GarbageCollectedHeap.Allocate by its symbol,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, .EXTERNAL, where it called
+;;   POC_NEW (Phase 16 step 4, section 15, proposal 9): the same
+;;   argument list, the size and the tag, and the same result in R0.
+;; - Its variables hold pointers, so it has a root table, L_ROOTS in
+;;   POC_DATA: a link, which POC_ROOTS sets, the count, 1, and the
+;;   address of each pointer (node), flattened as a type descriptor's
+;;   offsets are. The initializer registers it with POC_ROOTS before it
+;;   calls its imports' initializers.
+;; - The program allocates, so its start calls the collector's
+;;   initializer, GARBAGECOLLECTEDHEAP_INIT, and then SetStackBase
+;;   (GARBAGECOLLECTEDHEAP_S_EA118OLO) with its own FP, the base the
+;;   collector scans the stack up to, before the module's initializer.
 ; VaxTraps, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXTRAPS
 	.IDENT	/461bbe93a84e8ae5/
@@ -49,8 +63,20 @@ VAXTRAPS_S_CMK1LD5R:
 VAXTRAPS_A_CMK1L77H:
 	.BLKB	8
 
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	1
+	.ADDRESS	VAXTRAPS_NODE_U1HBPOS6
+
 ; the symbols it uses of other modules
-	.EXTERNAL	POC_NEW
+	.EXTERNAL	POC_ROOTS
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -197,6 +223,8 @@ L_5:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
 	SUBL2	#12, SP
 ; line 29
 	MOVW	#300, VAXTRAPS_I_CMK1L3QP
@@ -232,7 +260,7 @@ L_7:
 	MOVL	#2, -12(FP)
 	MOVL	#8, -8(FP)
 	MOVAB	VAXTRAPS_NODEDESC_DQNNU7Q7, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXTRAPS_NODE_U1HBPOS6
 ; line 30
 	MOVL	#1, -8(FP)
@@ -257,7 +285,11 @@ L_8:
 POC_K1_461BBE93A84E8AE5 == 0
 
 ; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
 	.ENTRY	VAXTRAPS_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
 	CALLS	#0, VAXTRAPS_INIT
 	MOVL	#1, R0
 	RET

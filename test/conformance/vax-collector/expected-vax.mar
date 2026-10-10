@@ -1,0 +1,154 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 15 and
+;; the guest runs; for the user's review). Why this is right:
+;; - CollectUse imports GarbageCollectedHeap,
+;;   rtl/vax/GarbageCollectedHeap.Mod compiled with it
+;;   (expected-vax-GarbageCollectedHeap.mar): its initializer calls
+;;   GARBAGECOLLECTEDHEAP_INIT, and it calls Collect and CollectionCount
+;;   by their global symbols, with G^.
+;; - head is a longword pointer; pair is 12 bytes under -O2: count, a
+;;   word padded to a longword, first at 4 and second at 8.
+;; - Its root table, L_ROOTS in POC_DATA (section 15, proposal 9): a
+;;   link, which POC_ROOTS sets, the count, 3, and the addresses of
+;;   head, pair.first (pair + 4) and pair.second (pair + 8). The
+;;   initializer registers it with POC_ROOTS before it calls
+;;   GarbageCollectedHeap's initializer, so a collection its imports or
+;;   its body start sees them.
+;; - NEW(head) and NEW(pair.second) call Allocate,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, by CALLG with a list in the
+;;   frame: the count, 2, ListDesc's size, 8, and its descriptor's
+;;   address; R0 is stored in the pointer, then checked for NIL where it
+;;   is dereferenced. ListDesc's descriptor: size 8, level 0, one
+;;   pointer, itself as its base type, the pointer's offset, 4.
+;; - The program's start calls GARBAGECOLLECTEDHEAP_INIT, then
+;;   SetStackBase (GARBAGECOLLECTEDHEAP_S_EA118OLO) with its own FP,
+;;   before COLLECTUSE_INIT: the collector is initialized before any
+;;   module allocates, and scans the stack from its own frame up to the
+;;   start's.
+;; - CollectionCount's LONGINT, a longword under -O2, comes back in R0.
+; CollectUse, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	COLLECTUSE
+	.IDENT	/4251283470417b75/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; head: POINTER TO CollectUse.ListDesc
+	.ALIGN	LONG
+COLLECTUSE_HEAD_Q0AFPB5C:
+	.BLKL	1
+; pair: RECORD
+	.ALIGN	LONG
+COLLECTUSE_PAIR_26FF286I:
+	.BLKB	12
+; collections: LONGINT
+	.ALIGN	LONG
+COLLECTUSE_COLLECTIONS_VVOBDBAJ:
+	.BLKL	1
+
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	3
+	.ADDRESS	COLLECTUSE_HEAD_Q0AFPB5C, COLLECTUSE_PAIR_26FF286I+4, COLLECTUSE_PAIR_26FF286I+8
+
+; the symbols it uses of other modules
+	.EXTERNAL	POC_ROOTS
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_C_G3O8P0I1
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_C_KH7U9V1O
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	POC_K1_6A025AE7DC390CF3
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/CollectUse/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; CollectUse.ListDesc
+	.ALIGN	LONG
+COLLECTUSE_LISTDESC_28187G5V::
+	.LONG	8
+	.LONG	0
+	.LONG	1
+	.ADDRESS	COLLECTUSE_LISTDESC_28187G5V
+	.LONG	4
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	COLLECTUSE_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	SUBL2	#12, SP
+; line 21
+	MOVL	#2, -12(FP)
+	MOVL	#8, -8(FP)
+	MOVAB	COLLECTUSE_LISTDESC_28187G5V, -4(FP)
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	MOVL	R0, COLLECTUSE_HEAD_Q0AFPB5C
+; line 21
+	MOVL	COLLECTUSE_HEAD_Q0AFPB5C, R0
+	BNEQ	L_1
+	PUSHL	#14
+	PUSHL	#21
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_1:
+	MOVW	#1, (R0)
+; line 22
+	MOVL	#2, -12(FP)
+	MOVL	#8, -8(FP)
+	MOVAB	COLLECTUSE_LISTDESC_28187G5V, -4(FP)
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	MOVL	R0, COLLECTUSE_PAIR_26FF286I+8
+; line 22
+	MOVL	COLLECTUSE_PAIR_26FF286I+8, R0
+	BNEQ	L_2
+	PUSHL	#21
+	PUSHL	#22
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_2:
+	MOVL	COLLECTUSE_HEAD_Q0AFPB5C, 4(R0)
+; line 23
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_C_G3O8P0I1
+; line 24
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_C_KH7U9V1O
+	MOVL	R0, COLLECTUSE_COLLECTIONS_VVOBDBAJ
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_4251283470417B75 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
+	.ENTRY	COLLECTUSE_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
+	CALLS	#0, COLLECTUSE_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	COLLECTUSE_MAIN

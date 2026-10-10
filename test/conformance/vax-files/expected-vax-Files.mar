@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from design
-;; section 15, the RMS Reference ($READ, $WRITE, $RENAME, the XABFHC)
-;; and the guest runs). Why this is right:
+;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
+;; RMS Reference ($READ, $WRITE, $RENAME, the XABFHC) and the guest
+;; runs; for the user's review). Why this is right:
 ;; - FileDesc is 1568 bytes under -O2: the control (768) at 0, the block
 ;;   (512) at 768, the name (256) at 1280, isNew, created, open, closed,
 ;;   dirty and byRecord at 1536 to 1541, then length, onDisk and
@@ -27,10 +27,10 @@
 ;;   record's byte or, after its last, 10 (LF).
 ;; - Old opens the file and, for block I/O, sets length to (EBK - 1) *
 ;;   512 + FFB when EBK > 0 (the MULL2 and ADDL3); otherwise it
-;;   allocates the 32767-byte record buffer (POC_NEW, tag 0), reads
-;;   every record to count the bytes, and rewinds. A failed open returns
-;;   NIL.
-;; - New only allocates the File (POC_NEW with FileDesc's descriptor,
+;;   allocates the 32767-byte record buffer
+;;   (GarbageCollectedHeap.Allocate, tag 0), reads every record to count
+;;   the bytes, and rewinds. A failed open returns NIL.
+;; - New only allocates the File (Allocate with FileDesc's descriptor,
 ;;   blockStart -1) and marks it new. Close creates and flushes a New
 ;;   file, then closes it; Register then renames it, a failure going to
 ;;   Fail. Write refuses a file that is not new or is closed; it stores
@@ -50,6 +50,10 @@
 ;;   read with an LF after each record; FILESOUT.TXT, registered twice,
 ;;   is ;1 and ;2, STMLF with CR, and TYPE shows ;1 as text; no
 ;;   POC_*.TMP is left.
+;; - NEW calls rtl/vax's GarbageCollectedHeap.Allocate by its symbol,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, .EXTERNAL, where it called
+;;   POC_NEW (Phase 16 step 4, section 15, proposal 9), with the same
+;;   arguments; -build adds the collector to FilesOut's program.
 ; Files, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	FILES
 	.IDENT	/864112f5374f12a3/
@@ -70,7 +74,7 @@ L_INITIALISED:
 	.EXTERNAL	POC_FILE_READ
 	.EXTERNAL	POC_FILE_GET
 	.EXTERNAL	POC_FILE_REWIND
-	.EXTERNAL	POC_NEW
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	.EXTERNAL	POC_FILE_OPEN
 	.EXTERNAL	POC_FILE_CLOSE
 	.EXTERNAL	POC_FILE_RENAME
@@ -1023,7 +1027,7 @@ FILES_NEWFILE_TR92216I:
 	MOVL	#2, -16(FP)
 	MOVL	#1568, -12(FP)
 	MOVAB	FILES_FILEDESC_D5IT3QTT, -8(FP)
-	CALLG	-16(FP), G^POC_NEW
+	CALLG	-16(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, -4(FP)
 ; line 211
 	MOVL	-4(FP), R0
@@ -1257,7 +1261,7 @@ L_135:
 	MOVL	#32767, -292(FP)
 	CLRL	-288(FP)
 	MOVL	R0, R2
-	CALLG	-296(FP), G^POC_NEW
+	CALLG	-296(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, 1556(R2)
 ; line 242
 L_136:

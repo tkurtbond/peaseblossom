@@ -1,44 +1,61 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
-;; the MACRO manual, LLVM's code generator and the debugger runs). Why
-;; this is right:
+;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
+;; manual, LLVM's code generator and the debugger runs; for the user's
+;; review). Why this is right:
 ;; - The main module of a program of two: poc -emit-macro32
 ;;   VaxMethods.mod writes it and its import's VaxMethLib.mar
 ;;   (expected-vax-VaxMethLib.mar), assembled and linked together.
 ;; - Phase 16 step 3 (section 14, item 6): a record's descriptor has its
 ;;   ProcTab below the tag, slot i at -4(i+1), so the last slot is
-;;   written first, as on LLVM (LLVMTypes.SlotMethod). SquareDesc's holds
-;;   its own Area, slot 0, then CircleDesc's Hidden, hidden in VaxMethLib
-;;   but overridden there, and ShapeDesc's Code; Twice's its own Add, then
-;;   Counter's Get and AddAll; Local's Thrice, L_TD_1, inherits Twice's.
-;;   Box has none and gets no ProcTab. Another module's procedure is its
-;;   symbol, declared .EXTERNAL.
+;;   written first, as on LLVM (LLVMTypes.SlotMethod). SquareDesc's
+;;   holds its own Area, slot 0, then CircleDesc's Hidden, hidden in
+;;   VaxMethLib but overridden there, and ShapeDesc's Code; Twice's its
+;;   own Add, then Counter's Get and AddAll; Local's Thrice, L_TD_1,
+;;   inherits Twice's. Box has none and gets no ProcTab. Another
+;;   module's procedure is its symbol, declared .EXTERNAL.
 ;; - A type-bound procedure is <Module>.<Type>.<P>'s symbol, after the
 ;;   record a pointer receiver's type points to (section 5), and always
 ;;   .ENTRY, global, since an importer's ProcTab may name it.
 ;; - Its receiver is its first argument: a pointer at 4(AP), or a VAR
-;;   record's address at 4(AP) and its tag at 8(AP), as for any VAR record
-;;   parameter; the other parameters follow (Twice.Add's k at 12(AP)). A
-;;   receiver the procedure changes is copied to the frame (Bump's n).
-;; - A call through a pointer, or a VAR record parameter or a guard on one,
-;;   or p^, whose dynamic type may differ, loads the tag into R1 - the
-;;   block's -4(Rn), the parameter's own (Use's c, 8(AP)) - and CALLG
-;;   list, @-4(i+1)(R1). The receiver is checked for NIL first (trap 4 at
-;;   the receiver). cp^.Add's tag is taken from the address in the list
-;;   (SUBL3 #4 and MOVL @), cp.Add's directly, MOVL -4(R0).
+;;   record's address at 4(AP) and its tag at 8(AP), as for any VAR
+;;   record parameter; the other parameters follow (Twice.Add's k at
+;;   12(AP)). A receiver the procedure changes is copied to the frame
+;;   (Bump's n).
+;; - A call through a pointer, or a VAR record parameter or a guard on
+;;   one, or p^, whose dynamic type may differ, loads the tag into R1 -
+;;   the block's -4(Rn), the parameter's own (Use's c, 8(AP)) - and
+;;   CALLG list, @-4(i+1)(R1). The receiver is checked for NIL first
+;;   (trap 4 at the receiver). cp^.Add's tag is taken from the address
+;;   in the list (SUBL3 #4 and MOVL @), cp.Add's directly, MOVL -4(R0).
 ;; - A record variable, field or element has its static type, so its
-;;   procedure is called directly, with that type's descriptor as the tag
-;;   (k.Add, box.cs[i].Add, L.total.Add); so is v.P^, the base type's
-;;   procedure (Square's Area calls CircleDesc's, Twice's Add Counter's,
-;;   Narrow's s.Area^ in WITH s: Square too).
-;; - A call's result survives the next call in R2, saved by the entry mask
-;;   (Sum, Narrow, the sum of box's counts).
-;; - The run (run-values): codes 1100, 2327, 2611, dispatched 111, counted
-;;   7, twice 143, sum 10, bumped 53, block 21, static 35, guarded 4214,
-;;   local 183, narrowed 11148, imported 1900, total 1001, all 21, last 9;
-;;   q's tag SquareDesc's descriptor (its size 6 shown), its ProcTab
-;;   Square's Area (mask ^M<R2>, 4), CircleDesc's Hidden (0) and
-;;   ShapeDesc's Code (4). Modes 1 to 3 trap 4, 5 and 4 at 85:35, 51:9 and
-;;   87:34, where the LLVM backend's -trap-location puts them (run-*-trap).
+;;   procedure is called directly, with that type's descriptor as the
+;;   tag (k.Add, box.cs[i].Add, L.total.Add); so is v.P^, the base
+;;   type's procedure (Square's Area calls CircleDesc's, Twice's Add
+;;   Counter's, Narrow's s.Area^ in WITH s: Square too).
+;; - A call's result survives the next call in R2, saved by the entry
+;;   mask (Sum, Narrow, the sum of box's counts).
+;; - The run (run-values): codes 1100, 2327, 2611, dispatched 111,
+;;   counted 7, twice 143, sum 10, bumped 53, block 21, static 35,
+;;   guarded 4214, local 183, narrowed 11148, imported 1900, total 1001,
+;;   all 21, last 9; q's tag SquareDesc's descriptor (its size 6 shown),
+;;   its ProcTab Square's Area (mask ^M<R2>, 4), CircleDesc's Hidden (0)
+;;   and ShapeDesc's Code (4). Modes 1 to 3 trap 4, 5 and 4 at 85:35,
+;;   51:9 and 87:34, where the LLVM backend's -trap-location puts them
+;;   (run-*-trap).
+;; - NEW calls rtl/vax's GarbageCollectedHeap.Allocate by its symbol,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, .EXTERNAL, where it called
+;;   POC_NEW (Phase 16 step 4, section 15, proposal 9): the same
+;;   argument list, the size and the tag, and the same result in R0.
+;; - Its variables hold pointers, so it has a root table, L_ROOTS in
+;;   POC_DATA: a link, which POC_ROOTS sets, the count, 6, and the
+;;   address of each pointer (s, c, q, n, m and cp), flattened as a type
+;;   descriptor's offsets are. The initializer registers it with
+;;   POC_ROOTS before it calls its imports' initializers.
+;; - The program allocates, so its start calls the collector's
+;;   initializer, GARBAGECOLLECTEDHEAP_INIT, and then SetStackBase
+;;   (GARBAGECOLLECTEDHEAP_S_EA118OLO) with its own FP, the base the
+;;   collector scans the stack up to, before the module's initializer.
+;; - The debugger runs link tools/vax-runtime-stub.mar, whose Allocate
+;;   takes memory from LIB$GET_VM as POC_NEW did and never collects.
 ; VaxMethods, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXMETHODS
 	.IDENT	/515ecc777b945ed6/
@@ -170,12 +187,23 @@ VAXMETHODS_ALL_ELR9D25B:
 VAXMETHODS_LAST_DRL4KC18:
 	.BLKW	1
 
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	6
+	.ADDRESS	VAXMETHODS_S_9QJPRSV1, VAXMETHODS_C_9QJPRM5H, VAXMETHODS_Q_9QJPRS3R, VAXMETHODS_N_9QJPRK1I
+	.ADDRESS	VAXMETHODS_M_9QJPRJJV, VAXMETHODS_CP_KR8JEJVJ
+
 ; the symbols it uses of other modules
+	.EXTERNAL	POC_ROOTS
 	.EXTERNAL	VAXMETHLIB_CIRCLEDESC__UI0DG5VR
 	.EXTERNAL	VAXMETHLIB_COUNTER_ADD_P0U2MKVI
 	.EXTERNAL	VAXMETHLIB_COUNTER_GET_P0FNEJAH
 	.EXTERNAL	VAXMETHLIB_SHAPEDESC_TV366EBN
-	.EXTERNAL	POC_NEW
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	.EXTERNAL	VAXMETHLIB_CIRCLEDESC_A7TRHOH4
 	.EXTERNAL	VAXMETHLIB_COUNTER_S164SKHJ
 	.EXTERNAL	VAXMETHLIB_SHARED_1O3DAG14
@@ -185,6 +213,8 @@ VAXMETHODS_LAST_DRL4KC18:
 	.EXTERNAL	VAXMETHLIB_SHAPEDESC_C_2AHLLTL2
 	.EXTERNAL	VAXMETHLIB_INIT
 	.EXTERNAL	POC_K1_8E88986B97DF9A36
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -606,13 +636,15 @@ L_21:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
 	CALLS	#0, G^VAXMETHLIB_INIT
 	SUBL2	#24, SP
 ; line 67
 	MOVL	#2, -12(FP)
 	MOVL	#2, -8(FP)
 	MOVAB	G^VAXMETHLIB_SHAPEDESC_TV366EBN, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXMETHODS_S_9QJPRSV1
 ; line 67
 	MOVL	VAXMETHODS_S_9QJPRSV1, R0
@@ -628,7 +660,7 @@ L_29:
 	MOVL	#2, -12(FP)
 	MOVL	#4, -8(FP)
 	MOVAB	G^VAXMETHLIB_CIRCLEDESC_A7TRHOH4, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXMETHODS_C_9QJPRM5H
 ; line 67
 	MOVL	VAXMETHODS_C_9QJPRM5H, R0
@@ -654,7 +686,7 @@ L_31:
 	MOVL	#2, -12(FP)
 	MOVL	#6, -8(FP)
 	MOVAB	VAXMETHODS_SQUAREDESC_QB76VOHI, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXMETHODS_Q_9QJPRS3R
 ; line 67
 	MOVL	VAXMETHODS_Q_9QJPRS3R, R0
@@ -804,7 +836,7 @@ L_41:
 	MOVL	#2, -12(FP)
 	MOVL	#8, -8(FP)
 	MOVAB	VAXMETHODS_NODEDESC_3O51512L, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXMETHODS_M_9QJPRJJV
 ; line 73
 	MOVL	VAXMETHODS_M_9QJPRJJV, R0
@@ -903,7 +935,7 @@ L_48:
 	MOVL	#2, -12(FP)
 	MOVL	#2, -8(FP)
 	MOVAB	G^VAXMETHLIB_COUNTER_S164SKHJ, -4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXMETHODS_CP_KR8JEJVJ
 ; line 75
 	MOVL	VAXMETHODS_CP_KR8JEJVJ, R0
@@ -1188,7 +1220,11 @@ L_64:
 POC_K1_515ECC777B945ED6 == 0
 
 ; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
 	.ENTRY	VAXMETHODS_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
 	CALLS	#0, VAXMETHODS_INIT
 	MOVL	#1, R0
 	RET

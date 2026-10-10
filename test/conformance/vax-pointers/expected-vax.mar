@@ -1,28 +1,29 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
-;; the MACRO manual and the debugger runs). Why this is
+;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
+;; manual and the debugger runs; for the user's review). Why this is
 ;; right:
 ;; - A pointer is a longword (section 14, item 3), .BLKL, and NIL is 0:
 ;;   list := NIL is CLRL, n # NIL is TSTL. It is the address of the
-;;   block's data; the block's tag, its descriptor's address or 0, is the
-;;   longword before.
+;;   block's data; the block's tag, its descriptor's address or 0, is
+;;   the longword before.
 ;; - Every dereference, written (n^.value) or implied by a field or an
 ;;   index, moves the pointer to a register, which sets the condition
 ;;   codes, and traps when it is 0: code 4 at the designator's line and
-;;   column (run-nil-trap, 50:38). it.link.key checks both pointers: MOVL
-;;   4(R0), R0 sets the codes for the second BNEQ.
+;;   column (run-nil-trap, 50:38). it.link.key checks both pointers:
+;;   MOVL 4(R0), R0 sets the codes for the second BNEQ.
 ;; - NodeDesc's descriptor: its size, 8 (value at 0, next at 4),
 ;;   extension level 0, one pointer, at 4, and its own address as its
 ;;   base type at level 0. Push's NEW(p) passes 8 and its address to
-;;   POC_NEW, CALLG with a list of 3 longwords in the frame, and stores
-;;   R0 in p; head, a VAR parameter, is @4(AP).
+;;   Allocate (below), CALLG with a list of 3 longwords in the frame,
+;;   and stores R0 in p; head, a VAR parameter, is @4(AP).
 ;; - NEW of an open array checks each length, kept in the frame, to be
 ;;   positive, else trap 7 at NEW's position (run-new-trap, 51:23). The
 ;;   size is the product of the lengths and the element's size, plus the
-;;   header, a longword per dimension: t's 6 + 4; g's 3 * 4 by EMUL, then
-;;   * 2, then + 8, each step checked (EMUL's high longword 0 and its low
-;;   one not negative, ADDL2's V bit) so that a block of 2 GB or more
-;;   traps 7 too. The tag is 0: CHAR and INTEGER hold no pointers. When
-;;   POC_NEW returns a block, the lengths are stored in its header.
+;;   header, a longword per dimension: t's 6 + 4; g's 3 * 4 by EMUL,
+;;   then * 2, then + 8, each step checked (EMUL's high longword 0 and
+;;   its low one not negative, ADDL2's V bit) so that a block of 2 GB or
+;;   more traps 7 too. The tag is 0: CHAR and INTEGER hold no pointers.
+;;   When Allocate returns a block, the lengths are stored in its
+;;   header.
 ;; - t's data is 4(R0) and its length (R0); g's lengths are (R0) and
 ;;   4(R0), its data 8(R0). An index is checked against its length, CMPL
 ;;   unsigned and BLSSU, else trap 2; g's row i is i times the second
@@ -33,12 +34,27 @@
 ;;   6(R0).
 ;; - NEW(it.link), of VaxPtrLib's Item, names VaxPtrLib's descriptor,
 ;;   G^VAXPTRLIB_ITEMDESC_86IN7EB7, .EXTERNAL. it.link is located first,
-;;   its base in R2, which POC_NEW's entry mask saves.
-;; - The initializer's mask saves R2-R5, for MOVC3, LOCC, and g[2, 3]
-;;   + g^[1][2]'s R2-R4.
+;;   its base in R2, which Allocate's entry mask saves.
+;; - The initializer's mask saves R2-R5, for MOVC3, LOCC, and g[2, 3] +
+;;   g^[1][2]'s R2-R4.
 ;; - run-values examines what it computes, and three tags, which the
 ;;   debugger names: NodeDesc's descriptor for the list's first block,
 ;;   VaxPtrLib's ItemDesc's for it and for it.link.
+;; - NEW calls rtl/vax's GarbageCollectedHeap.Allocate by its symbol,
+;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, .EXTERNAL, where it called
+;;   POC_NEW (Phase 16 step 4, section 15, proposal 9): the same
+;;   argument list, the size and the tag, and the same result in R0.
+;; - Its variables hold pointers, so it has a root table, L_ROOTS in
+;;   POC_DATA: a link, which POC_ROOTS sets, the count, 6, and the
+;;   address of each pointer (list, n, t, g, r and it), flattened as a
+;;   type descriptor's offsets are. The initializer registers it with
+;;   POC_ROOTS before it calls its imports' initializers.
+;; - The program allocates, so its start calls the collector's
+;;   initializer, GARBAGECOLLECTEDHEAP_INIT, and then SetStackBase
+;;   (GARBAGECOLLECTEDHEAP_S_EA118OLO) with its own FP, the base the
+;;   collector scans the stack up to, before the module's initializer.
+;; - The debugger runs link tools/vax-runtime-stub.mar, whose Allocate
+;;   takes memory from LIB$GET_VM as POC_NEW did and never collects.
 ; VaxPointers, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXPOINTERS
 	.IDENT	/a0971b815e9af8fa/
@@ -128,12 +144,25 @@ VAXPOINTERS_LINKED_9OH1K41P:
 VAXPOINTERS_WORD_JB214IM8:
 	.BLKB	8
 
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	6
+	.ADDRESS	VAXPOINTERS_LIST_NLNT5MIG, VAXPOINTERS_N_OP14Q1BI, VAXPOINTERS_T_OP14QAMK, VAXPOINTERS_G_OP14Q55T
+	.ADDRESS	VAXPOINTERS_R_OP14Q9RE, VAXPOINTERS_IT_SAKD26B5
+
 ; the symbols it uses of other modules
-	.EXTERNAL	POC_NEW
+	.EXTERNAL	POC_ROOTS
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	.EXTERNAL	VAXPTRLIB_MAKE_C6GM8TNF
 	.EXTERNAL	VAXPTRLIB_ITEMDESC_86IN7EB7
 	.EXTERNAL	VAXPTRLIB_INIT
 	.EXTERNAL	POC_K1_EB42D96BF32C1FC0
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -170,7 +199,7 @@ VAXPOINTERS_PUSH_DF6GFLQS:
 	MOVL	#2, -16(FP)
 	MOVL	#8, -12(FP)
 	MOVAB	VAXPOINTERS_NODEDESC_VFT5DBKL, -8(FP)
-	CALLG	-16(FP), G^POC_NEW
+	CALLG	-16(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, -4(FP)
 ; line 23
 	MOVL	-4(FP), R0
@@ -249,6 +278,8 @@ L_3:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
 	CALLS	#0, G^VAXPTRLIB_INIT
 	SUBL2	#24, SP
 ; line 35
@@ -338,7 +369,7 @@ L_20:
 	MOVL	#2, -20(FP)
 	MOVL	-4(FP), -16(FP)
 	CLRL	-12(FP)
-	CALLG	-20(FP), G^POC_NEW
+	CALLG	-20(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	TSTL	R0
 	BEQL	L_21
 	MOVL	-8(FP), (R0)
@@ -531,7 +562,7 @@ L_45:
 	MOVL	#2, -24(FP)
 	MOVL	-4(FP), -20(FP)
 	CLRL	-16(FP)
-	CALLG	-24(FP), G^POC_NEW
+	CALLG	-24(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	TSTL	R0
 	BEQL	L_46
 	MOVL	-12(FP), (R0)
@@ -676,7 +707,7 @@ L_63:
 	MOVL	#2, -12(FP)
 	MOVL	#8, -8(FP)
 	CLRL	-4(FP)
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, VAXPOINTERS_R_OP14Q9RE
 ; line 46
 	MOVL	VAXPOINTERS_R_OP14Q9RE, R0
@@ -751,7 +782,7 @@ L_70:
 	MOVL	#8, -8(FP)
 	MOVAB	G^VAXPTRLIB_ITEMDESC_86IN7EB7, -4(FP)
 	MOVL	R0, R2
-	CALLG	-12(FP), G^POC_NEW
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, 4(R2)
 ; line 47
 	MOVL	VAXPOINTERS_IT_SAKD26B5, R0
@@ -886,7 +917,7 @@ L_89:
 	MOVL	#2, -20(FP)
 	MOVL	-4(FP), -16(FP)
 	CLRL	-12(FP)
-	CALLG	-20(FP), G^POC_NEW
+	CALLG	-20(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	TSTL	R0
 	BEQL	L_90
 	MOVL	-8(FP), (R0)
@@ -899,7 +930,11 @@ L_83:
 POC_K1_A0971B815E9AF8FA == 0
 
 ; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
 	.ENTRY	VAXPOINTERS_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
 	CALLS	#0, VAXPOINTERS_INIT
 	MOVL	#1, R0
 	RET

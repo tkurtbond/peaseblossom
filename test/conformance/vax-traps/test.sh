@@ -45,8 +45,8 @@ run() {
     mv TrapMode.mar "TrapMode$n.mar"
   done
   cmp -s output "$expected" || { echo "the LLVM backend's output, $options:" >>result; diff "$expected" output >>result; }
-  vax_do guest-run.com "$expected" Traps.com Traps.mar TrapLib.mar Out.mar LineOutput.mar $rtl/PocRtl.mar TrapMode*.mar
-  rm -f TrapMode*.mar TrapMode.mod Traps.com Traps.mar TrapLib.mar Out.mar LineOutput.mar *.sym run.out run.err output
+  vax_do guest-run.com "$expected" Traps.com Traps.mar TrapLib.mar GarbageCollectedHeap.mar Out.mar LineOutput.mar $rtl/PocRtl.mar TrapMode*.mar
+  rm -f TrapMode*.mar TrapMode.mod Traps.com Traps.mar TrapLib.mar GarbageCollectedHeap.mar Out.mar LineOutput.mar *.sym run.out run.err output
 }
 run output.expected -trap-location -range-checks -- 1 2 3 4 5 6 7 8 9
 run plain.expected -range-checks -- 4 6

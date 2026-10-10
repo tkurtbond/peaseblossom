@@ -1,0 +1,10 @@
+semantic OK, wrote GarbageCollectedHeap.mar
+semantic OK, wrote CollectUse.mar
+exit 0
+CollectUse.mar matches expected-vax.mar
+GarbageCollectedHeap.mar matches expected-vax-GarbageCollectedHeap.mar
+LLVM build -O2 exit 0
+VAX build -O2 exit 0
+LLVM build -OC exit 0
+VAX build -OC exit 0
+VAX build HeapCeiling exit 0
