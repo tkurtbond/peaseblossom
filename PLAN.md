@@ -850,8 +850,8 @@ most, object libraries.
      and `expected-vax-GarbageCollectedHeap.mar`, and the redrafted
      `expected-vax*.mar` of `vax-extension`, `vax-files`, `vax-nested`,
      `vax-pointers`, `vax-procedure-values`, `vax-traps`,
-     `vax-type-bound` and `vax-var-records`, are drafts for the user's
-     review.
+     `vax-type-bound` and `vax-var-records`, were reviewed by the user
+     (2026-10-10).
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built

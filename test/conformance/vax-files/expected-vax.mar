@@ -1,5 +1,5 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 15 and
-;; the guest runs; for the user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 15 and the guest runs). Why this is right:
 ;; - FilesUse imports Files, rtl/vax/Files.Mod compiled with it
 ;;   (expected-vax-Files.mar): its initializer calls FILES_INIT first,
 ;;   and it calls Files' procedures by their global symbols, with G^.

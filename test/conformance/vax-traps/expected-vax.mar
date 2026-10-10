@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
-;; manual, the RMS and System Services manuals, LLVM's code generator
-;; and the guest runs; for the user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from the design,
+;; the MACRO manual, the RMS and System Services manuals, LLVM's code
+;; generator and the guest runs). Why this is right:
 ;; - Phase 16 step 3 (section 14, item 10), under -trap-location: each
 ;;   trap calls POC_TRAP with six arguments, by CALLS #6: as before the
 ;;   code, L_MODULE_NAME, the line and the column, then L_FILE_NAME, the

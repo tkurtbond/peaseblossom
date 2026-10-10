@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
-;; manual, LLVM's code generator and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from the design,
+;; the MACRO manual, LLVM's code generator and the debugger runs). Why
+;; this is right:
 ;; - The module VaxMethods imports (expected-vax.mar): the types it
 ;;   extends and the procedures it inherits and overrides.
 ;; - ShapeDesc's ProcTab, below its tag, last slot first: Code, Hidden,

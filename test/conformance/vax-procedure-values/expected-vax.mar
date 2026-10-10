@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from the design, the MACRO
-;; manual, LLVM's code generator and the debugger runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from the design,
+;; the MACRO manual, LLVM's code generator and the debugger runs). Why
+;; this is right:
 ;; - The main module of a program of two: poc -emit-macro32
 ;;   VaxProcVals.mod writes it and its import's VaxProcLib.mar
 ;;   (expected-vax-VaxProcLib.mar), assembled and linked together.

@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 15,
-;; rtl/llvm/GarbageCollectedHeap.Mod, the LIB$ and System Services
-;; manuals and the guest runs; for the user's review). Why this is
+;; Reviewed 2026-10-10 by the user (written by Claude, from
+;; design section 15, rtl/llvm/GarbageCollectedHeap.Mod, the LIB$
+;; and System Services manuals and the guest runs). Why this is
 ;; right:
 ;; - rtl/llvm's collector, its procedures and their order unchanged,
 ;;   compiled with SYSTEM.ADDRESS a longword: word, which the body sets
