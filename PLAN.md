@@ -852,6 +852,12 @@ most, object libraries.
      `vax-pointers`, `vax-procedure-values`, `vax-traps`,
      `vax-type-bound` and `vax-var-records`, were reviewed by the user
      (2026-10-10).
+   - *`POC.EXE`* (2026-10-10): poc's own source, with `rtl/vax`, builds
+     into `POC.EXE` with `-build` and, on the guest, prints `-help`. poc
+     on VMS now matches its options without regard to case (`-HELP`, as
+     DCL passes it), lowercases `-target`'s value, and prints no clang
+     line for `-version`. The fixture `vax-poc` builds it and runs it on
+     the guest. This is the end the step set itself.
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built

@@ -1921,3 +1921,24 @@ program prints the same on Linux and on the guest.
 - *`tools/vax-runtime-stub.mar`*, for the debugger runs, defines
   `Allocate`'s symbol, taking memory as `POC_NEW` did, and does nothing
   for the collector's initializer, `SetStackBase` and `POC_ROOTS`.
+
+**Done: `POC.EXE` (proposal 10's end), 2026-10-10.** poc's own source,
+with `rtl/vax` and a `BuildInfo` from `tools/build-info <dir>
+vax-dec-vms`, builds with `-OC -build` on the host into 31 `.mar` files
+and `Poc.com`, which assembles and links them on the guest into
+`POC.EXE` (2,175 blocks) in about 40 seconds, transfers included. As a
+foreign command it prints `-help`. The fixture `vax-poc` does this on
+every `make test` with the guest.
+
+- *Options without regard to case* (section 10; proposal 6) are built
+  now: the first run printed `poc: unknown option -HELP`. In a poc built
+  for VMS, an argument starting with `-` is lowercased before it is
+  matched, but `-O2` and `-OC` keep their capitals, and so is the value
+  of `-target`, a triple and not a name. Module and file names are not.
+- *`-version`* on VMS leaves out the clang line, since that poc runs no
+  clang (proposal 7).
+- `vax-poc` compares `-HELP` and `-H` with what the host's poc prints
+  for `-help`, so it needs no change when the help does, and
+  `-VERSION` with the version and the commit the build used. Its guest
+  procedure deletes the objects `POC.OPT` lists, so a module added to
+  poc needs no change there either.

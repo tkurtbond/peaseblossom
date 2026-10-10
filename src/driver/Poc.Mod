@@ -341,13 +341,15 @@ MODULE Poc;
      from a git checkout; the target and size model a command would use
      here, after any -target, -O2 or -OC before it; and the clang poc runs *)
   PROCEDURE PrintVersion(targetTriple: ARRAY OF CHAR);
-    VAR triple, line: ARRAY 256 OF CHAR; clang: BOOLEAN;
+    VAR triple, line: ARRAY 256 OF CHAR; clang, onVms: BOOLEAN;
   BEGIN
     Out.String("poc "); Out.String(Version.number);
     COPY(BuildInfo.commit, line);
     IF line[0] # 0X THEN Out.String(" ("); Out.String(line); Out.String(")") END;
     Out.Ln;
-    clang := LLVMToolchainDriver.ClangVersion(line);
+    (* a poc built to run on VAX/VMS runs no clang (section 15, proposal 7) *)
+    COPY(BuildInfo.defaultTarget, triple); onVms := triple[0] # 0X;
+    clang := ~onVms & LLVMToolchainDriver.ClangVersion(line);
     Out.String("target ");
     IF targetTriple[0] # 0X THEN Out.String(targetTriple)
     ELSIF clang & LLVMToolchainDriver.HostTriple(triple) & (triple[0] # 0X) THEN
@@ -357,8 +359,9 @@ MODULE Poc;
     Out.String(", size model ");
     IF ConstantEvaluator.sizeModel = MemoryLayout.sizeModelO2 THEN Out.String("-O2") ELSE Out.String("-OC") END;
     Out.Ln;
-    IF clang THEN Out.String(line) ELSE Out.String("clang: not found (poc runs clang from PATH)") END;
-    Out.Ln
+    IF clang THEN Out.String(line); Out.Ln
+    ELSIF ~onVms THEN Out.String("clang: not found (poc runs clang from PATH)"); Out.Ln
+    END
   END PrintVersion;
 
   (* ModuleInterface.explainMissingModule (Phase 12 step 2e): notes on the
@@ -2471,6 +2474,27 @@ MODULE Poc;
     IF value[0] # 0X THEN ModuleInterface.AddSearchPathList(value) END
   END InitImportPathFromEnvironment;
 
+  (* text in lowercase: on VAX/VMS, where DCL uppercases what is not
+     quoted, an option is matched without regard to case (section 10 and
+     section 15, proposal 6, of doc/developer/vax-macro32-backend.md) *)
+  PROCEDURE LowerCase(VAR text: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (i < LEN(text)) & (text[i] # 0X) DO
+      IF (text[i] >= "A") & (text[i] <= "Z") THEN text[i] := CHR(ORD(text[i]) - ORD("A") + ORD("a")) END;
+      INC(i)
+    END
+  END LowerCase;
+
+  (* an option as poc spells it, on VAX/VMS: lowercase, but -O2 and -OC,
+     which no other option differs from only in case *)
+  PROCEDURE OptionOnVms(VAR text: ARRAY OF CHAR);
+  BEGIN
+    LowerCase(text);
+    IF text = "-o2" THEN COPY("-O2", text) ELSIF text = "-oc" THEN COPY("-OC", text) END
+  END OptionOnVms;
+
   (* whether option is a command RunCommand runs on a file *)
   PROCEDURE IsFileCommand(option: ARRAY OF CHAR): BOOLEAN;
   BEGIN
@@ -2537,6 +2561,7 @@ MODULE Poc;
       done := FALSE;
       WHILE (i < Modules.ArgCount) & ~done DO
         Modules.GetArg(i, arg);
+        IF onVms & (arg[0] = "-") THEN OptionOnVms(arg) END;
         IF arg = "-import-path" THEN
           IF i + 1 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, param);
@@ -2723,6 +2748,8 @@ MODULE Poc;
         ELSIF arg = "-target" THEN
           IF i + 1 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, targetTriple);
+            (* a triple, not a name, so matched as an option is *)
+            IF onVms THEN LowerCase(targetTriple) END;
             IF onVms & (targetTriple # BuildInfo.defaultTarget) THEN
               (* on VAX/VMS poc runs no clang, so it has no other target *)
               failed := TRUE; Err.String("poc: -target "); Err.String(targetTriple);
