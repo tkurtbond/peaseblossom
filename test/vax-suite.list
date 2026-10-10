@@ -1,0 +1,45 @@
+# The programs tools/vax-suite (make test-vax) builds and runs on the VAX
+# and compares with the LLVM backend's (PLAN.md Phase 16 step 5;
+# doc/developer/vax-macro32-backend.md, section 16), a line each:
+#
+#   <fixture> <main module's file> <-O2 or -OC> [<argument>...]
+#
+# each under the size models its own test.sh builds it with.
+llvm-address-to-longint addresstolongint.mod -OC
+llvm-array-assign arrayassign.mod -O2
+llvm-array-assign arrayassign.mod -OC
+llvm-build-run stub.mod -O2
+llvm-char-string-constants client.mod -O2
+llvm-const-value-functions valuefns.mod -O2
+llvm-const-value-functions valuefns.mod -OC
+llvm-declarations-after-procedures client.mod -O2
+llvm-declarations-after-procedures client.mod -OC
+llvm-guard-assignment-target target.mod -O2
+llvm-hex-pattern-literals hexpatterns.mod -O2
+llvm-hex-pattern-literals hexpatterns.mod -OC
+llvm-large-records largerecords.mod -O2
+llvm-large-records largerecords.mod -OC
+llvm-long-short-width longshort.mod -O2
+llvm-long-short-width longshort.mod -OC
+llvm-long-strings client.mod -O2
+llvm-long-strings client.mod -OC
+llvm-module-init-order initorder.mod -O2
+llvm-open-array-many-dimensions manydims.mod -O2
+llvm-open-array-many-dimensions manydims.mod -OC
+llvm-ord-set ordset.mod -O2
+llvm-ord-set ordset.mod -OC
+llvm-overflow-wrap overflow.mod -O2
+llvm-overflow-wrap overflow.mod -OC
+llvm-parameter-names paramnames.mod -O2
+llvm-set64 set64.mod -O2
+llvm-set64 set64.mod -OC
+llvm-set64-import setuse.mod -O2
+llvm-set64-import setuse.mod -OC
+llvm-system-bytes bytestest.mod -O2
+llvm-system-int8-constants int8const.mod -O2
+llvm-system-int8-constants int8const.mod -OC
+llvm-system-new-trap newtrap.mod -O2
+llvm-var-initializers init.mod -O2
+llvm-voc-library-fixes libraryfixes.mod -O2
+llvm-voc-library-fixes libraryfixes.mod -OC
+vax-widen-and-new WidenNewOut.mod -OC

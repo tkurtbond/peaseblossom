@@ -1,0 +1,16 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 16, the
+;; VAX architecture's floating point and the guest runs; for the user's
+;; review). Why this is right:
+;; - The integer lines are the host's: wrapping is the same on the VAX.
+;; - The VAX has no infinity and no NaN. Reals() divides 1.0 by 0.0
+;;   first, which on the VAX is a floating divide by zero fault, not an
+;;   infinity, so the program stops there: none of the real lines is
+;;   printed (expected-vax-overflow-*.err and .status say how it stops).
+SHORTINT -32768 32767 -2 -32768
+INTEGER  -2147483648 2147483647 -2 -2147483648
+LONGINT  -9223372036854775808 9223372036854775807 -2 -9223372036854775808
+HUGEINT  -9223372036854775808 9223372036854775807 -2 -9223372036854775808
+ABS(MIN) -32768 -2147483648 -9223372036854775808 -9223372036854775808
+INC(MAX) -32768 -2147483648 -9223372036854775808 -9223372036854775808
+DEC(MIN) 32767 2147483647 9223372036854775807 9223372036854775807
+DIV/MOD  -4 -1 -4 1

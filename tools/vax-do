@@ -68,12 +68,21 @@ for f; do names="$names $(guest_name "$f")"; done
 ftp="ftp://$host/"
 curl_ftp() { curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@"; }
 out=$(mktemp "${TMPDIR:-/tmp}/vax-do.XXXXXX")
-# every version of each of this run's files deleted, in one session ("*": a
-# file that is not there is no failure)
+# every version of each of this run's files deleted, forty to a session
+# ("*": a file that is not there is no failure, and UCX answers 550 to a
+# DELE of name;* although it deletes them): one session of the ~150
+# tools/vax-suite sends stopped after about 90 (2026-10-10)
 cleanup() {
   rm -f "$out"
   set --
-  for n in $names $gets VAXDO.LOG; do set -- "$@" -Q "*DELE $n;*"; done
+  n=0
+  for f in $names $gets VAXDO.LOG; do
+    set -- "$@" -Q "*DELE $f;*"; n=$((n + 1))
+    if [ "$n" -eq 40 ]; then delete_session "$@"; set --; n=0; fi
+  done
+  [ "$n" -eq 0 ] || delete_session "$@"
+}
+delete_session() {
   curl -s --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@" "$ftp" -o /dev/null 2>/dev/null || true
 }
 # only once this run has the lock may it, or its cleanup, touch the guest

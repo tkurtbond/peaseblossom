@@ -1942,3 +1942,132 @@ every `make test` with the guest.
   `-VERSION` with the version and the commit the build used. Its guest
   procedure deletes the objects `POC.OPT` lists, so a module added to
   poc needs no change there either.
+
+## 16. The test harness on VMS (Phase 16 step 5)
+
+Step 5 runs the conformance fixtures' programs on the guest and compares
+what they print with the LLVM backend's (`PLAN.md` Phase 16 step 5).
+This section is the survey and the proposals, written for the user's
+approval before any of it is done, as sections 14 and 15 were.
+**Approved by the user, 2026-10-10, with (a) for proposal 5.**
+
+**The survey (2026-10-10).** Of the 408 fixtures, 57 are `vax-*` ones,
+which already run on the guest, and 206 build no program: they check
+the lexer, the parser, the checker's messages, interfaces and the
+documents, which run on VMS only once poc does (step 6). That leaves 145
+whose `test.sh` builds a program and runs it. 23 of those test LLVM's
+own features (IR text, clang, libraries, i686, `-lto`, `-g`, `-link`,
+`-static`, C parts) and stay LLVM's. Each program of the other 122 was
+built with `poc -target vax-dec-vms -import-path rtl/vax -build`:
+
+| What stops it | Fixtures |
+|---|---|
+| nothing: it builds | 23 |
+| an external `["C", "write"] SysWrite` (Phase 8's fixtures, written before `Out`), or another `["C"]` one | 45 |
+| a module `rtl/vax` lacks: `Console` 10, `In` 3, `Strings` 2, `Math` 2, `MathL`, `Reals`, `Texts`, `Oberon`, `OutStr`, `VT100`, `ModuleTable` 1 each | 24 |
+| a procedure `rtl/vax` lacks: `Modules.GetIntArg` 9, `Out.Real` 3, `Out.LongReal` 2, `Platform.FileHandle` 1, `Files.MaxPathLength` 1 | 16 |
+| a construct not lowered: `LSH` 2, a structured constant 1, an imported pointer type 1, a `DSC$DESCRIPTOR` variable 1 | 5 |
+| the survey could not find the program or its own modules (built in steps, from subdirectories) | 9 |
+
+Each fixture is counted under its first program's first error, so a
+fixture may need more than its row. The 23 that build:
+`llvm-address-to-longint`, `-array-assign`, `-build-run`,
+`-char-string-constants`, `-const-value-functions`,
+`-declarations-after-procedures`, `-guard-assignment-target`,
+`-hex-pattern-literals`, `-large-records`, `-long-short-width`,
+`-long-strings`, `-module-init-order`, `-open-array-many-dimensions`,
+`-ord-set`, `-overflow-wrap`, `-parameter-names`, `-set64`,
+`-set64-import`, `-system-bytes`, `-system-int8-constants`,
+`-system-new-trap`, `-var-initializers` and `-voc-library-fixes`.
+`rtl/llvm`'s `FormattedText`, `ModuleTable`, `OutStr`, `RealDigits` and
+`VT100` compile for the VAX as they are; its other modules call C.
+
+A fixture's `expected` is its `result`: poc's own messages, which name
+what poc wrote (`.ll`, `.o`, an executable) and so differ by target,
+mixed with the program's output and exit status, and on some hosts
+with lines a fixture writes itself. It cannot be compared with a guest
+run as it is.
+
+**Proposals.**
+
+1. **A suite of its own, `make test-vax`**, run by `tools/vax-suite`,
+   not by `make test`. It builds every program it lists on the host for
+   the VAX, sends them all to the guest at once, runs one procedure
+   there that assembles, links and runs each, and brings back what each
+   printed: one transfer each way and one hold of the guest's lock, where
+   a fixture each would take one of each per program, and would hold the
+   lock against every other VAX fixture in a parallel `make test`.
+   `make test` keeps the `vax-*` fixtures and `vax-poc`.
+2. **A list, `test/vax-suite.list`**, one line a program: the fixture,
+   its main module, the size model and the arguments it is run with.
+   It starts with the 23 that build and grows as the rest are made to,
+   rather than being found from each `test.sh`, which build their
+   programs in too many ways.
+3. **Compared with the same program built for the host**, in the same
+   run: its standard output, its standard error and its exit status,
+   each on its own, against the LLVM backend's build of the same source
+   run here. That build is checked by the fixture's own `expected` in
+   `make test`, so the suite checks the VAX against a checked program
+   without reading `expected`. (`PLAN.md`'s "the same `expected` files"
+   is met this way, since those files hold more than the program's
+   output.) On the guest:
+   - `SYS$OUTPUT` and `SYS$ERROR` go to two files (`DEFINE/USER_MODE`),
+     compared separately, so their interleaving is not compared;
+   - the status maps back to an exit code: `SS$_NORMAL` is 0, and
+     `%X10000000 + 8*n + 2` is `n` (section 14, item 10);
+   - arguments are passed quoted, so DCL keeps their case.
+4. **A difference with a reason is written down, not skipped.** Where
+   the VAX must print otherwise (a zero divisor: x86's `SIGFPE` against
+   VAX's integer divide trap; a real's last digits in F or G floating),
+   the fixture gets `expected-vax-<program>.out`, `.err` or `.status`,
+   starting with `;;`-style lines saying why, for the user's review as an
+   `expected-vax.mar` is, and the suite compares with that instead.
+5. **The 45 `SysWrite` fixtures.** Either (a) their sources write with
+   `Out` instead, the same characters with no line end, so that the
+   LLVM output and `expected` stay the same and the VAX can run them;
+   or (b) they stay LLVM's, since the `vax-*` fixtures of Phase 15
+   already cover Phase 8's slice on the VAX. *Decided by the user,
+   2026-10-10: (a)*, done as one mechanical change checked against each
+   `expected`.
+6. **What `rtl/vax` lacks stays Phase 17's** (its non-goals: libraries
+   beyond what poc needs), but for two small ones that let 19 fixtures
+   run: `Modules.GetIntArg` (9), and `Console` (10), written over
+   `LineOutput` as `Out` is. `In`, `Strings`, `Math`, `MathL`, `Reals`,
+   `Texts`, `Oberon`, `Out.Real` and the rest wait for Phase 17.
+7. **The constructs not lowered** (`LSH`, structured constants, the
+   other two) are lowered as the suite reaches them, each with a `vax-*`
+   fixture and its reviewed `expected-vax.mar`, as in step 3.
+8. **Order of work**: the suite and its list with the 23 (1-4); then
+   `Modules.GetIntArg` and `Console` (6); then the `SysWrite` fixtures
+   (5); then the constructs (7) and the 9 fixtures built in steps. The
+   step ends when every listed program runs and matches, or differs
+   only as an `expected-vax-<program>` file says, and the list holds
+   every fixture of the 122 that `rtl/vax` and the backend can run.
+
+**Done: the suite and its list (proposals 1-4), 2026-10-10.**
+`tools/vax-suite`, run by `make test-vax`, and `test/vax-suite.list`,
+with the 23 fixtures that built, each under the size models its
+`test.sh` uses: 37 programs, and `vax-widen-and-new`'s. One run takes
+about a minute, the guest's part one transfer each way.
+
+- *Its first run* found four faults in the backend, fixed and covered
+  by the new fixture `vax-widen-and-new`, whose `expected-vax.mar` is
+  for the user's review: `SHORT` of an `INT8` wrote `CVTBB`, which is no
+  VAX instruction (now a move); `NEW` of more than 11 open dimensions
+  skipped its length stores by a byte branch that could not reach (now
+  over a `JMP L^`); a longword computed into R0 and returned as an
+  `-OC` `LONGINT` kept R1 as it was (`MoveInto` did nothing for R0 into
+  R0; now `ASHL #-31` fills it); and `SYSTEM.NEW` was lowered as `NEW`,
+  its size ignored (now the block of that size, tag 0, trap 7 when the
+  size is not positive, as on LLVM). No reviewed `.mar` changed.
+- *A difference with a reason*: `llvm-overflow-wrap` divides 1.0 by
+  0.0, an infinity on IEEE hardware and a floating divide by zero fault
+  on the VAX, which has neither infinities nor NaNs. Its
+  `expected-vax-overflow-O2` and `-OC` `.out`, `.err` and `.status`
+  files, for the user's review, say what the guest prints instead.
+- *Code addresses* in VMS's own fault messages and tracebacks (`PC=`,
+  `PSL=`, a traceback line's last two columns) are masked on the
+  guest's standard error before it is compared, since any change to
+  the code moves them.
+- *A record has no "no line end"*: a host output whose last line has
+  none is compared as if it had one.

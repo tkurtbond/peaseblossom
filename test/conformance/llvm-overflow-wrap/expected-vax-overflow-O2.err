@@ -1,0 +1,13 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 16 and
+;; the guest runs; for the user's review). Why this is right:
+;; - VMS's own message for the fault, SS$_FLTDIV_F, at Reals' division
+;;   1.0 / 0.0, then its traceback: Reals, called from the module's
+;;   initializer, called from the program's start. tools/vax-suite
+;;   masks the code addresses, which any change to the code moves.
+%SYSTEM-F-FLTDIV_F, arithmetic fault, floating divide by zero at PC=xxxxxxxx, PSL=xxxxxxxx
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+OVERFLOW        OVERFLOW_REALS_N2UHIOIO                    xxxxxxxx  xxxxxxxx
+OVERFLOW        OVERFLOW_INIT                              xxxxxxxx  xxxxxxxx
+OVERFLOW        OVERFLOW_MAIN                              xxxxxxxx  xxxxxxxx

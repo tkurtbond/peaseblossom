@@ -926,8 +926,21 @@ MODULE VaxCodeGenerator;
     VAR s, d: CHAR; op: ARRAY 8 OF CHAR; lo, hi, from: OperandText; operands: ARRAY 160 OF CHAR;
         imm: Operand;
   BEGIN
-    IF Same(src, dst) THEN RETURN END;
     s := Suffix(src.type); d := Suffix(dst.type);
+    IF Same(src, dst) THEN
+      (* a narrower integer, or a SET, into the quadword it starts (a
+         function's result in R0, returned as a LONGINT under -OC): its
+         high longword, the sign or 0 *)
+      IF (d = "Q") & (s # "Q") & ~IsReal(src.type) THEN
+        HalfText(dst, 0, lo); HalfText(dst, 1, hi);
+        IF src.type = Types.Set THEN Emit("CLRL", hi)
+        ELSE
+          IF s # "L" THEN Op("CVT", s, "L", op); Operands(lo, lo, "", operands); Emit(op, operands) END;
+          Operands("#-31", lo, hi, operands); Emit("ASHL", operands)
+        END
+      END;
+      RETURN
+    END;
     IF (src.kind = immediate) & IsReal(src.type) & (s # d) THEN
       COPY("CVT", op); AppendChar(op, s); AppendChar(op, d);
       Emit2(op, src, dst)
@@ -1859,6 +1872,7 @@ MODULE VaxCodeGenerator;
      the address of a copy, an array or record one its address, which the callee copies
      from (section 7) - a string's padded to the formal's size, that being
      how much is copied. The result, a function's, in R0 (R0 and R1). *)
+  PROCEDURE ^ SystemNew(args: SyntaxTree.ExprNode; line, column: INTEGER);
   PROCEDURE ^ Predeclared(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode; dest: Operand;
                           line, column: INTEGER): Operand;
 
@@ -2109,6 +2123,8 @@ MODULE VaxCodeGenerator;
     END;
     IF m # NIL THEN
       pt := m.called.procType
+    ELSIF (obj.type = Types.PredeclaredProcedureType) & (d.qualifier[0] # 0X) & (d.name = "NEW") THEN
+      SystemNew(args, line, column); RETURN NIL
     ELSIF obj.type = Types.PredeclaredProcedureType THEN
       RETURN Predeclared(d.name, args, NIL, line, column)
     ELSIF obj.class = SymbolTable.varClass THEN
@@ -3693,7 +3709,7 @@ MODULE VaxCodeGenerator;
 
   (* SHORT(x), x an integer: its low bytes as the next narrower type, as
      PredeclaredProcedures.CheckShort types it: CVTLW or CVTWB, or a
-     HUGEINT's low longword. With -range-checks an x that does not fit
+     HUGEINT's low longword; an INT8's, a move. With -range-checks an x that does not fit
      traps first (code 14, at SHORT's own position, as on LLVM): CVT sets
      V when the value does not fit (MACRO 9-16); a HUGEINT fits when its
      high longword is its low one's sign, 0 or -1. A LONGREAL x is a REAL
@@ -3734,6 +3750,14 @@ MODULE VaxCodeGenerator;
       END;
       Emit2("MOVL", LowHalf(v), result);
       Release(v)
+    ELSIF Suffix(v.type) = d THEN
+      (* SHORT of an INT8, which has no narrower type, is an INT8 again
+         (voc's rule): the same value, which always fits, so a move, since
+         there is no CVTBB *)
+      result := Target(t, v, NIL, dest, line, column);
+      COPY("MOV", op); AppendChar(op, d);
+      Emit2(op, v, result);
+      Done(v, result)
     ELSE
       result := Target(t, v, NIL, dest, line, column);
       COPY("CVT", op); AppendChar(op, Suffix(v.type)); AppendChar(op, d);
@@ -3904,7 +3928,7 @@ MODULE VaxCodeGenerator;
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; t, base, elem: Types.Type;
         target, v, q, total: Operand; e: SyntaxTree.ExprNode; dims, j, s, list: INTEGER;
         size, offset: LONGINT; tag: ARRAY 64 OF CHAR; text: ARRAY 160 OF CHAR; hi, lo, at: OperandText;
-        skip: ARRAY 16 OF CHAR; allocate: VaxTypes.Symbol;
+        skip, over: ARRAY 16 OF CHAR; allocate: VaxTypes.Symbol;
 
     (* the lengths' slot j *)
     PROCEDURE Length(j: INTEGER): Operand;
@@ -3990,9 +4014,18 @@ MODULE VaxCodeGenerator;
     Emit("CALLG", text);
     ReleaseSlots(list, 3);
     IF dims > 0 THEN
-      (* the lengths, in a block there is *)
+      (* the lengths, in a block there is. Each store is at most 11 bytes
+         (MOVL and two operands of a longword displacement each), so a
+         byte branch, which reaches 127, skips 11; past that a byte branch
+         goes over a JMP L^ that does *)
       NewLabel(skip);
-      Emit("TSTL", "R0"); Emit("BEQL", skip);
+      Emit("TSTL", "R0");
+      IF dims <= 11 THEN Emit("BEQL", skip)
+      ELSE
+        NewLabel(over); Emit("BNEQ", over);
+        COPY("L^", text); Append(text, skip); Emit("JMP", text);
+        EmitLabel(over)
+      END;
       FOR j := 0 TO dims - 1 DO
         Text(Length(j), at); COPY(at, text); Append(text, ", ");
         IF j > 0 THEN AppendInt(text, 4 * j) END;
@@ -4005,6 +4038,48 @@ MODULE VaxCodeGenerator;
     EmitTo("MOVL", "R0", target);
     Release(target)
   END New;
+
+  (* SYSTEM.NEW(p, n): a raw block of n bytes, zeroed, from the
+     collector's Allocate with tag 0, so that it is kept while something
+     points at it but never looked into, as on LLVM; its address, or 0
+     when there is no memory, stored in p. An n that is not positive, or
+     does not fit a longword, is NEW's length trap (code 7, at its
+     position), as on LLVM. *)
+  PROCEDURE SystemNew(args: SyntaxTree.ExprNode; line, column: INTEGER);
+    VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object;
+        target, v, n: Operand; list: INTEGER; text: ARRAY 160 OF CHAR; hi, lo: OperandText;
+        allocate: VaxTypes.Symbol;
+  BEGIN
+    IF (args = NIL) OR ~(args IS SyntaxTree.DesignatorExprNode) OR (args.next = NIL) THEN RETURN END;
+    de := args(SyntaxTree.DesignatorExprNode);
+    obj := Resolve(de.designator.qualifier, de.designator.name, de.line, de.column);
+    IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
+    v := Expression(args.next, NIL);
+    IF IsQuad(v) THEN
+      HalfText(v, 1, hi); Emit("TSTL", hi); TrapUnless("BEQL", 7, line, column);
+      n := NewRegisterBeside(Types.Address, v, NIL, line, column);
+      HalfText(v, 0, lo); EmitTo("MOVL", lo, n);
+      Release(v)
+    ELSE
+      n := Widen(InRegister(v, line, column), Types.Address, line, column)
+    END;
+    Emit1("TSTL", n); TrapUnless("BGTR", 7, line, column);
+    list := AllocateSlots(3);
+    IF list < 0 THEN Unsupported(line, column, "SYSTEM.NEW when the frame is full"); RETURN END;
+    EmitTo("MOVL", "#2", ListEntry(list, 2, 0));
+    Emit2("MOVL", n, ListEntry(list, 2, 1));
+    Release(n);
+    Emit1("CLRL", ListEntry(list, 2, 2));
+    FreeR0R1(line, column);
+    VaxTypes.MakeSymbol("GarbageCollectedHeap.Allocate", allocate);
+    AddExternal(allocate);
+    Text(ListEntry(list, 2, 0), text); Append(text, ", "); AppendExternal(text, allocate);
+    Emit("CALLG", text);
+    ReleaseSlots(list, 3);
+    target := Locate(de.designator, obj, de.line, de.column);
+    EmitTo("MOVL", "R0", target);
+    Release(target)
+  END SystemNew;
 
   (* ---- SYSTEM (Appendix C), for rtl/vax's collector (section 15) ---- *)
 

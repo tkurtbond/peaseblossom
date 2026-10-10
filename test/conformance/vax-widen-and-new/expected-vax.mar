@@ -1,0 +1,471 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 16, the
+;; MACRO manual and the guest runs of tools/vax-suite; for the user's
+;; review). Why this is right:
+;; - Under -OC, the four things tools/vax-suite's first runs found.
+;; - Shorter: SHORT of an INT8 is an INT8 again (voc's rule), so the
+;;   parameter's byte is moved, MOVB, where CVTBB was written, which is
+;;   no VAX instruction; CVTBL then widens it for RET, as before.
+;; - Offset: the difference of two addresses, a longword computed in R0,
+;;   returned as a quadword LONGINT: ASHL #-31, R0, R1 now gives it its
+;;   high longword. Before, MoveInto saw R0 into R0 and did nothing, so
+;;   R1 kept the second address (llvm-address-to-longint printed
+;;   6665789243395 for 3).
+;; - MakeDeep: NEW of 12 open dimensions. Each length store can take
+;;   11 bytes, so past 11 a byte branch cannot skip them: BNEQ over
+;;   JMP L^L_36, the label after the stores, where BEQL L_36 was
+;;   (MACRO's BRDESTRANG for llvm-open-array-many-dimensions).
+;; - RawBlock: SYSTEM.NEW(any, size), lowered as NEW was before, its
+;;   size ignored. Now: the quadword size's high longword must be 0 and
+;;   its low one positive, else trap 7 (PUSHL #7) at SYSTEM.NEW's line
+;;   and column, then Allocate(size, 0) by CALLG with a list of two,
+;;   tag 0 (CLRL), as LLVM's, and R0 stored through the VAR parameter.
+; VaxWidenNew, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXWIDENNEW
+	.IDENT	/7c9b35009df9da7b/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; s: ARRAY 8 OF CHAR
+VAXWIDENNEW_S_OF1SVM6C:
+	.BLKB	8
+
+; the symbols it uses of other modules
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxWidenNew/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Shorter
+	.ENTRY	VAXWIDENNEW_SHORTER_APLEF9MK, ^M<>
+; line 18
+	MOVB	4(AP), R0
+	CVTBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#19
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Offset
+	.ENTRY	VAXWIDENNEW_OFFSET_39O1CCAC, ^M<>
+; line 22
+	MOVAB	VAXWIDENNEW_S_OF1SVM6C+3, R0
+	MOVAB	VAXWIDENNEW_S_OF1SVM6C, R1
+	SUBL2	R1, R0
+	ASHL	#-31, R0, R1
+	RET
+	PUSHL	#3
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE MakeDeep
+	.ENTRY	VAXWIDENNEW_MAKEDEEP_MKHJ57TF, ^M<>
+	SUBL2	#64, SP
+; line 26
+	MOVL	#1, -52(FP)
+	TSTL	-52(FP)
+	BGTR	L_1
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_1:
+	MOVL	#1, -48(FP)
+	TSTL	-48(FP)
+	BGTR	L_2
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_2:
+	MOVL	#1, -44(FP)
+	TSTL	-44(FP)
+	BGTR	L_3
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_3:
+	MOVL	#1, -40(FP)
+	TSTL	-40(FP)
+	BGTR	L_4
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_4:
+	MOVL	#1, -36(FP)
+	TSTL	-36(FP)
+	BGTR	L_5
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_5:
+	MOVL	#1, -32(FP)
+	TSTL	-32(FP)
+	BGTR	L_6
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_6:
+	MOVL	#1, -28(FP)
+	TSTL	-28(FP)
+	BGTR	L_7
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_7:
+	MOVL	#1, -24(FP)
+	TSTL	-24(FP)
+	BGTR	L_8
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_8:
+	MOVL	#1, -20(FP)
+	TSTL	-20(FP)
+	BGTR	L_9
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_9:
+	MOVL	#1, -16(FP)
+	TSTL	-16(FP)
+	BGTR	L_10
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_10:
+	MOVL	#1, -12(FP)
+	TSTL	-12(FP)
+	BGTR	L_11
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_11:
+	MOVL	#3, -8(FP)
+	TSTL	-8(FP)
+	BGTR	L_12
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_12:
+	MOVL	-52(FP), -4(FP)
+	EMUL	-48(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_13
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_13:
+	TSTL	R0
+	BGEQ	L_14
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_14:
+	MOVL	R0, -4(FP)
+	EMUL	-44(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_15
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_15:
+	TSTL	R0
+	BGEQ	L_16
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_16:
+	MOVL	R0, -4(FP)
+	EMUL	-40(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_17
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_17:
+	TSTL	R0
+	BGEQ	L_18
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_18:
+	MOVL	R0, -4(FP)
+	EMUL	-36(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_19
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_19:
+	TSTL	R0
+	BGEQ	L_20
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_20:
+	MOVL	R0, -4(FP)
+	EMUL	-32(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_21
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_21:
+	TSTL	R0
+	BGEQ	L_22
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_22:
+	MOVL	R0, -4(FP)
+	EMUL	-28(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_23
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_23:
+	TSTL	R0
+	BGEQ	L_24
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_24:
+	MOVL	R0, -4(FP)
+	EMUL	-24(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_25
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_25:
+	TSTL	R0
+	BGEQ	L_26
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_26:
+	MOVL	R0, -4(FP)
+	EMUL	-20(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_27
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_27:
+	TSTL	R0
+	BGEQ	L_28
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_28:
+	MOVL	R0, -4(FP)
+	EMUL	-16(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_29
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_29:
+	TSTL	R0
+	BGEQ	L_30
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_30:
+	MOVL	R0, -4(FP)
+	EMUL	-12(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_31
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_31:
+	TSTL	R0
+	BGEQ	L_32
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_32:
+	MOVL	R0, -4(FP)
+	EMUL	-8(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_33
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_33:
+	TSTL	R0
+	BGEQ	L_34
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_34:
+	MOVL	R0, -4(FP)
+	ADDL2	#48, -4(FP)
+	BVC	L_35
+	PUSHL	#9
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_35:
+	MOVL	#2, -64(FP)
+	MOVL	-4(FP), -60(FP)
+	CLRL	-56(FP)
+	CALLG	-64(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	TSTL	R0
+	BNEQ	L_37
+	JMP	L^L_36
+L_37:
+	MOVL	-52(FP), (R0)
+	MOVL	-48(FP), 4(R0)
+	MOVL	-44(FP), 8(R0)
+	MOVL	-40(FP), 12(R0)
+	MOVL	-36(FP), 16(R0)
+	MOVL	-32(FP), 20(R0)
+	MOVL	-28(FP), 24(R0)
+	MOVL	-24(FP), 28(R0)
+	MOVL	-20(FP), 32(R0)
+	MOVL	-16(FP), 36(R0)
+	MOVL	-12(FP), 40(R0)
+	MOVL	-8(FP), 44(R0)
+L_36:
+	MOVL	R0, @4(AP)
+	RET
+; PROCEDURE RawBlock
+	.ENTRY	VAXWIDENNEW_RAWBLOCK_4F8PR2A8, ^M<>
+	SUBL2	#20, SP
+	CLRQ	-8(FP)
+	MOVQ	@8(AP), -8(FP)
+; line 30
+	TSTL	-4(FP)
+	BEQL	L_38
+	PUSHL	#9
+	PUSHL	#30
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_38:
+	MOVL	-8(FP), R0
+	TSTL	R0
+	BGTR	L_39
+	PUSHL	#9
+	PUSHL	#30
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_39:
+	MOVL	#2, -20(FP)
+	MOVL	R0, -16(FP)
+	CLRL	-12(FP)
+	CALLG	-20(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	MOVL	R0, @4(AP)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXWIDENNEW_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_7C9B35009DF9DA7B == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
+	.ENTRY	VAXWIDENNEW_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
+	CALLS	#0, VAXWIDENNEW_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXWIDENNEW_MAIN

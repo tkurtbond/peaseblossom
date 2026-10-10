@@ -1,0 +1,4 @@
+semantic OK, wrote VaxWidenNew.mar
+exit 0
+VaxWidenNew.mar matches expected-vax.mar
+LLVM build exit 0

@@ -810,7 +810,8 @@ most, object libraries.
    lowercase (`doc/developer/vax-macro32-backend.md` §10). Module and file
    names given as arguments are still this step's question.
 
-   **Record** (in progress, 2026-10-10):
+   **Record** (closed by the user 2026-10-10: `POC.EXE` builds on the
+   guest and prints `-help`):
    - *The survey and proposals* are in
      `doc/developer/vax-macro32-backend.md` section 15. **Approved by the
      user, 2026-10-10.** poc's source imports `Files`, `Platform`, `Out`,
@@ -858,6 +859,14 @@ most, object libraries.
      DCL passes it), lowercases `-target`'s value, and prints no clang
      line for `-version`. The fixture `vax-poc` builds it and runs it on
      the guest. This is the end the step set itself.
+   - *Closed* (the user, 2026-10-10). Step 4 ended as section 15's
+     proposal 10 said it would: poc's own source, with `rtl/vax`, builds
+     into `POC.EXE` with `-build`, and that image starts and prints
+     `-help` on the guest. Left for later steps: splitting VMS names in
+     `VaxImagePaths` (`:`, `]`, `>`, `;version`) before poc compiles on
+     the guest, the rest of the file-name survey's proposal (Phase 17),
+     `SYSTEM.MOVE`, and whether conservative stack scanning keeps too
+     much of poc's memory (step 6).
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built
@@ -867,6 +876,20 @@ most, object libraries.
    guest-side build driver, whichever step 1 chose. Fixtures that cannot
    pass on VAX for a good reason (IEEE-specific constants) get a
    VAX-specific `expected` file rather than being skipped silently.
+
+   **Record** (in progress, 2026-10-10):
+   - *The survey and proposals* are in
+     `doc/developer/vax-macro32-backend.md` section 16. **Approved by
+     the user, 2026-10-10**, with Phase 8's `SysWrite` fixtures to write
+     with `Out` instead (proposal 5's (a)).
+   - *The suite* (2026-10-10, proposals 1-4): `tools/vax-suite` and
+     `make test-vax` run `test/vax-suite.list`'s 38 programs on the
+     guest, each compared with the LLVM backend's build of it. Its first
+     run found four backend faults, fixed, with the fixture
+     `vax-widen-and-new`; `llvm-overflow-wrap`'s IEEE results are
+     `expected-vax-overflow-*` files. Those files and
+     `vax-widen-and-new`'s `expected-vax.mar` are drafts for the user's
+     review.
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled

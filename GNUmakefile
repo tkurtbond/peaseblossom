@@ -64,7 +64,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-vax test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -529,6 +529,14 @@ test-llvm: build
 
 test-misc: build
 	test/run-tests.sh $(MISC_TESTS)
+
+# PLAN.md Phase 16 step 5: the programs test/vax-suite.list names, built
+# for the VAX and run on the VAX/VMS development system, each compared with
+# the same program built by the LLVM backend and run here (tools/vax-suite;
+# doc/developer/vax-macro32-backend.md, section 16). Not part of make test:
+# it needs the guest, and holds it for the whole run.
+test-vax: build
+	tools/vax-suite
 
 # Removes poc's own build output (tools/bootstrap/stage0's target).
 clean-build:

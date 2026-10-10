@@ -1,0 +1,9 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 16, the
+;; LIB$ manual's condition values and the guest runs; for the user's
+;; review). Why this is right:
+;; - The fault's own status, as VMS ended the image: %X4BC, which the
+;;   message in .err names FLTDIV_F, severity 4 (fatal), with bit 28
+;;   set, as the system's default handler sets it after printing the
+;;   message, so that $EXIT does not print it again. Not one of poc's
+;;   trap statuses (%X10000000 + 8n + 2), so it maps to no exit code.
+%X100004BC
