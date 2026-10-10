@@ -1599,3 +1599,27 @@ elements in and out of 0..63, `INCL` and `EXCL`, comparisons, and
 record with a field initializer where they had a `SET64`. poc's own
 source has no `SET64`, so the survey is unchanged: 78, all `SYSTEM.BYTE`
 parameters.
+
+**Done: `SYSTEM.BYTE` parameters, 2026-10-10.** `SYSTEM.BYTE` is a byte,
+`B`, in the slice as `CHAR` is. A value `BYTE` parameter is passed as a
+longword, as any byte is (section 7): a `CHAR` zero-extended, a
+`SHORTINT` sign-extended, and the callee reads its low byte. A `VAR` one
+takes the variable's address. A `VAR ARRAY OF SYSTEM.BYTE` takes any
+variable (Oberon2.pdf, Appendix C), passed as an open array is, with one
+length: the variable's size in bytes, as LLVM's
+(`GenerateOpenArrayArg`). For a variable of fixed size it is a
+constant. For an open array it is the lengths multiplied by `MULL2`, and
+then by the element's size.
+
+Fixture `vax-byte-params` has `VaxBytes`, written for the user's review,
+with each lowering once. A second program, `BytesOut`, is built by both
+backends under `-O2` and `-OC` and run, and the two outputs must be the
+same. It copies through `BYTE` parameters, prints each byte of an integer,
+a `HUGEINT`, a record, a fixed array, an open one and a two-dimensional
+one, and fills arrays. It uses only types of one size under both models;
+both targets are little-endian. No earlier fixture changes.
+
+The survey of poc's own source (`src/`) counts no refusals. The 179 left
+are all in `rtl/llvm`, which step 4 replaces: `SYSTEM.VAL` and
+`SYSTEM.ADR` (48 each), `["C"]` externals (47), `SYSTEM.GET` (20) and
+`PUT` (9), and quadword value parameters of externals (7).

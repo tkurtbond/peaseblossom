@@ -1,0 +1,14 @@
+A
+z
+B
+char 1: 41
+INT32 4: 04 03 02 01
+HUGEINT 8: FE FF FF FF FF FF FF FF
+record 4: 61 62 02 01
+array 6: 01 00 02 00 03 00
+open 6: 01 00 02 00 03 00
+open 2 12: 01 00 00 00 00 00 00 00 00 00 FF FF
+string 6: 68 65 6C 6C 6F 00
+2139062143
+257 257
+xxxxx

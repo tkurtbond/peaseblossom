@@ -16,7 +16,8 @@ MODULE VaxCodeGenerator;
      parameter's type tag (item 5); extension, IS, type guards and WITH;
      type-bound procedures (item 6); procedure values (item 7); nested
      procedures (item 8); reals (item 9); the real POC_TRAP and POC_HALT
-     (item 10); and ASSERT and SYSTEM.SET64 (item 11).
+     (item 10); ASSERT and SYSTEM.SET64 (item 11); and SYSTEM.BYTE
+     parameters.
 
      A module needing more - a predeclared procedure outside the slice, or
      a type outside the slice, such as a record with field initializers
@@ -1009,7 +1010,7 @@ MODULE VaxCodeGenerator;
 
   PROCEDURE IsSliceScalar(t: Types.Type): BOOLEAN;
   BEGIN
-    RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Set) OR (t = Types.Set64)
+    RETURN (t = Types.Boolean) OR (t = Types.Char) OR (t = Types.Byte) OR (t = Types.Set) OR (t = Types.Set64)
       OR Types.IsInteger(t) & (Suffix(t) # 0X) OR IsReal(t) OR IsSlicePointer(t) OR IsProcedureType(t)
   END IsSliceScalar;
 
@@ -1858,9 +1859,12 @@ MODULE VaxCodeGenerator;
      argument list at slots list.., n longwords, from its i-th: its
      address, then the length of each of t's open dimensions - a fixed
      array's or a string constant's own, an open array's from where it has
-     them (section 14) *)
+     them (section 14). For ARRAY OF SYSTEM.BYTE, whose VAR actual may be
+     any variable (Oberon2.pdf, Appendix C), the length is the
+     actual's size in bytes, as on LLVM: its type's, or an open array's
+     lengths multiplied by its element's size *)
   PROCEDURE OpenArgument(a: SyntaxTree.ExprNode; t: Types.Type; list, n, i: INTEGER);
-    VAR v: Operand; at: Types.Type; d, dims: INTEGER; text: ARRAY 24 OF CHAR;
+    VAR v, entry: Operand; at: Types.Type; d, dims: INTEGER; text: ARRAY 24 OF CHAR;
   BEGIN
     IF ConstantEvaluator.IsConstantExpr(a, scope) THEN v := StringArgument(a, 0)
     ELSE v := Expression(a, NIL)
@@ -1868,6 +1872,20 @@ MODULE VaxCodeGenerator;
     IF v.standIn THEN RETURN END;
     AddressOf(v, ListEntry(list, n, i));
     dims := OpenDims(t); at := v.type;
+    IF (dims = 1) & (OpenBase(t) = Types.Byte) THEN
+      entry := ListEntry(list, n, i + 1);
+      IF OpenDims(at) = 0 THEN
+        COPY("#", text); AppendInt(text, VaxTypes.Size(at)); EmitTo("MOVL", text, entry)
+      ELSE
+        Emit2("MOVL", LengthOf(v, 0), entry);
+        FOR d := 1 TO OpenDims(at) - 1 DO Emit2("MULL2", LengthOf(v, d), entry) END;
+        IF VaxTypes.Size(OpenBase(at)) # 1 THEN
+          COPY("#", text); AppendInt(text, VaxTypes.Size(OpenBase(at))); EmitTo("MULL2", text, entry)
+        END
+      END;
+      Release(v);
+      RETURN
+    END;
     FOR d := 0 TO dims - 1 DO
       IF (at IS Types.ArrayType) & at(Types.ArrayType).isOpen THEN
         Emit2("MOVL", LengthOf(v, d), ListEntry(list, n, i + 1 + d))

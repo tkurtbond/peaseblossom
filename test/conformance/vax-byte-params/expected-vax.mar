@@ -1,0 +1,175 @@
+;; Reviewed 2026-10-10 (written by Claude, from the design, Oberon2.pdf,
+;; the MACRO manual, LLVM's code generator and the guest runs; for the
+;; user's review). Why this is right:
+;; - Phase 16 step 3 (section 14): SYSTEM.BYTE is a byte, "B", as CHAR
+;;   is. A value BYTE parameter is passed as the calling standard passes a
+;;   byte, a longword: a CHAR zero-extended (MOVZBL), a SHORTINT sign-
+;;   extended (CVTBL), a constant by MOVL; the callee reads its low byte,
+;;   MOVB 4(AP). A VAR BYTE takes the variable's address (MOVAB).
+;; - A VAR ARRAY OF SYSTEM.BYTE takes any variable (Oberon2.pdf, Appendix
+;;   C), passed as an open array is: its address, then one length, the
+;;   variable's size in bytes, as LLVM's: #4 for a LONGINT and for the
+;;   record (a CHAR, a byte of padding, a word-aligned INTEGER), #12 for
+;;   ARRAY 2, 3 OF INTEGER; for an open array, its lengths multiplied
+;;   (MULL2) and then by its element's size, #2.
+;; - In Fill, x[n] is a byte: MOVB in index mode, which scales by one,
+;;   after the index check against that length.
+;; - BytesOut, built by both backends under -O2 and -OC, prints the same
+;;   (output.expected) here and on the guest: bytes copied through BYTE
+;;   parameters, each byte of an integer, a HUGEINT, a record, a fixed
+;;   array, an open one and a two-dimensional one, and arrays filled.
+; VaxBytes, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXBYTES
+	.IDENT	/7ada2d4899404b56/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; c: CHAR
+VAXBYTES_C_DBSBIG0K:
+	.BLKB	1
+; si: SHORTINT
+VAXBYTES_SI_OIH9I6SN:
+	.BLKB	1
+; l: LONGINT
+	.ALIGN	LONG
+VAXBYTES_L_DBSBIC69:
+	.BLKL	1
+; r: RECORD
+	.ALIGN	WORD
+VAXBYTES_R_DBSBI9KN:
+	.BLKB	4
+; m: ARRAY 2 OF ARRAY 3 OF INTEGER
+	.ALIGN	WORD
+VAXBYTES_M_DBSBIBOM:
+	.BLKB	12
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxBytes/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Copy
+VAXBYTES_COPY_DOI8CD9E:
+	.WORD	^M<>
+; line 15
+	MOVB	4(AP), @8(AP)
+	RET
+; PROCEDURE Fill
+VAXBYTES_FILL_AO6K5DT6:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRL	-4(FP)
+; line 21
+	CLRL	-4(FP)
+	MOVL	8(AP), R0
+	DECL	R0
+	MOVL	R0, -8(FP)
+L_1:
+	CMPL	-4(FP), -8(FP)
+	BLEQ	L_3
+	JMP	L^L_2
+L_3:
+; line 21
+	MOVL	-4(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_4
+	PUSHL	#35
+	PUSHL	#21
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_4:
+	MOVB	12(AP), @4(AP)[R0]
+	INCL	-4(FP)
+	JMP	L^L_1
+L_2:
+	RET
+; PROCEDURE Open
+VAXBYTES_OPEN_1LC7LQD3:
+	.WORD	^M<>
+	SUBL2	#16, SP
+; line 26
+	MOVL	#3, -16(FP)
+	MOVL	4(AP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	MULL2	12(AP), -8(FP)
+	MULL2	#2, -8(FP)
+	CLRL	-4(FP)
+	CALLG	-16(FP), VAXBYTES_FILL_AO6K5DT6
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXBYTES_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#16, SP
+; line 30
+	MOVL	#2, -12(FP)
+	MOVZBL	VAXBYTES_C_DBSBIG0K, -8(FP)
+	MOVAB	VAXBYTES_C_DBSBIG0K, -4(FP)
+	CALLG	-12(FP), VAXBYTES_COPY_DOI8CD9E
+; line 30
+	MOVL	#2, -12(FP)
+	CVTBL	VAXBYTES_SI_OIH9I6SN, -8(FP)
+	MOVAB	VAXBYTES_SI_OIH9I6SN, -4(FP)
+	CALLG	-12(FP), VAXBYTES_COPY_DOI8CD9E
+; line 30
+	MOVL	#2, -12(FP)
+	MOVL	#65, -8(FP)
+	MOVAB	VAXBYTES_C_DBSBIG0K, -4(FP)
+	CALLG	-12(FP), VAXBYTES_COPY_DOI8CD9E
+; line 30
+	MOVL	#2, -12(FP)
+	MOVL	#-1, -8(FP)
+	MOVAB	VAXBYTES_SI_OIH9I6SN, -4(FP)
+	CALLG	-12(FP), VAXBYTES_COPY_DOI8CD9E
+; line 31
+	MOVL	#3, -16(FP)
+	MOVAB	VAXBYTES_L_DBSBIC69, -12(FP)
+	MOVL	#4, -8(FP)
+	MOVZBL	VAXBYTES_C_DBSBIG0K, -4(FP)
+	CALLG	-16(FP), VAXBYTES_FILL_AO6K5DT6
+; line 31
+	MOVL	#3, -16(FP)
+	MOVAB	VAXBYTES_R_DBSBI9KN, -12(FP)
+	MOVL	#4, -8(FP)
+	MOVL	#1, -4(FP)
+	CALLG	-16(FP), VAXBYTES_FILL_AO6K5DT6
+; line 31
+	MOVL	#3, -16(FP)
+	MOVAB	VAXBYTES_M_DBSBIBOM, -12(FP)
+	MOVL	#12, -8(FP)
+	CVTBL	VAXBYTES_SI_OIH9I6SN, -4(FP)
+	CALLG	-16(FP), VAXBYTES_FILL_AO6K5DT6
+; line 32
+	MOVL	#3, -16(FP)
+	MOVAB	VAXBYTES_M_DBSBIBOM, -12(FP)
+	MOVL	#2, -8(FP)
+	MOVL	#3, -4(FP)
+	CALLG	-16(FP), VAXBYTES_OPEN_1LC7LQD3
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_7ADA2D4899404B56 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXBYTES_MAIN, ^M<>
+	CALLS	#0, VAXBYTES_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXBYTES_MAIN
