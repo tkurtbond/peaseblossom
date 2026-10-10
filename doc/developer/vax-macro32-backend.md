@@ -1486,20 +1486,20 @@ value, so poc running on the VAX will overflow there and must compute
 the VAX bound instead. `Out`'s `Real`, `LongReal` and `Ten` are still to
 come.
 
-Fixture `vax-reals` has `VaxReals`, written for the user's review:
-constants as written and as computed, arithmetic with integers and a
-`HUGEINT` converted, every relation, `ABS`, `LONG`, `SHORT` and `ENTIER`
-of positive and negative values, value and `VAR` parameters, results, a
-call while a `LONGREAL` waits in a register pair, a procedure variable,
-record fields, an open array, and an expression that spills a pair. Its
-debugger runs examine what it computes, and that 2^53 + 1, a `HUGEINT`
-converted and a sum, is 2^53 + 2, a halfway case rounded away from zero
-(MACRO 9.2.8.3), where IEEE 754 rounds to even, 2^53. Then they take
-trap 8 from `ENTIER` of 3.0D9, at the column LLVM's `-trap-location`
-gives, and the floating divide-by-zero fault. A second program,
-`RealsOut`, prints the same checks but the rounding one with `Out`, and
-adds `ENTIER` of values past 2^31; it is built by both backends under
-`-O2` and `-OC`, and must print the same.
+Fixture `vax-reals` has `VaxReals`, reviewed: constants as written and
+as computed, arithmetic with integers and a `HUGEINT` converted, every
+relation, `ABS`, `LONG`, `SHORT` and `ENTIER` of positive and negative
+values, value and `VAR` parameters, results, a call while a `LONGREAL`
+waits in a register pair, a procedure variable, record fields, an open
+array, and an expression that spills a pair. Its debugger runs examine
+what it computes, and that 2^53 + 1, a `HUGEINT` converted and a sum, is
+2^53 + 2, a halfway case rounded away from zero (MACRO 9.2.8.3), where
+IEEE 754 rounds to even, 2^53. Then they take trap 8 from `ENTIER` of
+3.0D9, at the column LLVM's `-trap-location` gives, and the floating
+divide-by-zero fault. A second program, `RealsOut`, prints the same
+checks but the rounding one with `Out`, and adds `ENTIER` of values past
+2^31; it is built by both backends under `-O2` and `-OC`, and must print
+the same.
 
 The survey counts 78 refusals, down from 263, all of them `SYSTEM.BYTE`
 parameters. The 19 calls and expressions that needed more registers than

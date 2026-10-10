@@ -748,7 +748,8 @@ most, object libraries.
      `-OC`, and a `HUGEINT` converts by `POC_QTOG`. Fixture `vax-reals`
      examines the rounding, trap 8 and the divide-by-zero fault under
      the debugger and runs one source on both backends. Its `.mar` file
-     awaits the user's review. Survey: 78, all `SYSTEM.BYTE` parameters.
+     was reviewed by the user (2026-10-09). Survey: 78, all `SYSTEM.BYTE`
+     parameters.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:
