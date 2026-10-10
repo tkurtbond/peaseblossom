@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 16, the
-;; LIB$ manual's condition values and the guest runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 16, the LIB$ manual's condition values and the guest runs).
+;; Why this is right:
 ;; - The fault's own status, as VMS ended the image: %X4BC, which the
 ;;   message in .err names FLTDIV_F, severity 4 (fatal), with bit 28
 ;;   set, as the system's default handler sets it after printing the

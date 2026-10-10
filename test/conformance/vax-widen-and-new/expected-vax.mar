@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 16, the
-;; MACRO manual and the guest runs of tools/vax-suite; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 16, the MACRO manual and the guest runs of tools/vax-suite).
+;; Why this is right:
 ;; - Under -OC, the four things tools/vax-suite's first runs found.
 ;; - Shorter: SHORT of an INT8 is an INT8 again (voc's rule), so the
 ;;   parameter's byte is moved, MOVB, where CVTBB was written, which is

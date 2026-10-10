@@ -888,8 +888,8 @@ most, object libraries.
      run found four backend faults, fixed, with the fixture
      `vax-widen-and-new`; `llvm-overflow-wrap`'s IEEE results are
      `expected-vax-overflow-*` files. Those files and
-     `vax-widen-and-new`'s `expected-vax.mar` are drafts for the user's
-     review.
+     `vax-widen-and-new`'s `expected-vax.mar` were reviewed by the user
+     (2026-10-10).
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled

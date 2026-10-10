@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 16, the
-;; VAX architecture's floating point and the guest runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 16, the VAX architecture's floating point and the guest
+;; runs). Why this is right:
 ;; - The integer lines are the host's: wrapping is the same on the VAX.
 ;; - The VAX has no infinity and no NaN. Reals() divides 1.0 by 0.0
 ;;   first, which on the VAX is a floating divide by zero fault, not an

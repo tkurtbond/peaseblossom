@@ -2051,8 +2051,8 @@ with the 23 fixtures that built, each under the size models its
 about a minute, the guest's part one transfer each way.
 
 - *Its first run* found four faults in the backend, fixed and covered
-  by the new fixture `vax-widen-and-new`, whose `expected-vax.mar` is
-  for the user's review: `SHORT` of an `INT8` wrote `CVTBB`, which is no
+  by the new fixture `vax-widen-and-new`, whose `expected-vax.mar` was
+  reviewed by the user (2026-10-10): `SHORT` of an `INT8` wrote `CVTBB`, which is no
   VAX instruction (now a move); `NEW` of more than 11 open dimensions
   skipped its length stores by a byte branch that could not reach (now
   over a `JMP L^`); a longword computed into R0 and returned as an
@@ -2064,7 +2064,8 @@ about a minute, the guest's part one transfer each way.
   0.0, an infinity on IEEE hardware and a floating divide by zero fault
   on the VAX, which has neither infinities nor NaNs. Its
   `expected-vax-overflow-O2` and `-OC` `.out`, `.err` and `.status`
-  files, for the user's review, say what the guest prints instead.
+  files, reviewed by the user (2026-10-10), say what the guest prints
+  instead.
 - *Code addresses* in VMS's own fault messages and tracebacks (`PC=`,
   `PSL=`, a traceback line's last two columns) are masked on the
   guest's standard error before it is compared, since any change to
