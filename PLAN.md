@@ -828,8 +828,8 @@ most, object libraries.
      first added to `Platform`, are a module of their own in `rtl/vax`,
      `rtl/llvm` and, for the Stage 0 poc, `rtl/voc`, so that `Platform`
      keeps voc's interface. `src/` names its files and directories
-     through it. `vax-platform`'s `expected-vax*.mar` files are drafts
-     again, for the user's review.
+     through it. `vax-platform`'s `expected-vax*.mar` files, redrafted,
+     were reviewed by the user (2026-10-10).
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built
