@@ -197,3 +197,4 @@ test/conformance/llvm-instr/llvm-instr
 test/conformance/vax-err/vax-err
 test/conformance/vax-command-line/vax-command-line
 test/conformance/vax-platform/vax-platform
+test/conformance/vax-files/vax-files

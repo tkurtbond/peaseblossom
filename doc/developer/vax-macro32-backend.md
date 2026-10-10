@@ -1842,5 +1842,35 @@ Proposals:
   a poc built on Linux: `-build` with no `-target` writes the `.mar`
   files and the `.COM` procedure, and `-emit-llvm-ir` is refused as for
   `-target vax-dec-vms`.
+
+**Done: `Files` (proposal 10's second part), 2026-10-10.**
+`rtl/vax/Files.Mod`, over `PocRtl.mar`'s `POC_FILE_*` routines, with
+the fixture `vax-files`, whose program prints the same on Linux and on
+the guest.
+
+- *Each File keeps its RMS blocks.* Its FAB, RAB, NAM block and XABFHC
+  and its resultant name are in a 768-byte array in the File, which
+  the routines get by reference, so no handle has to fit an `INTEGER`
+  word under `-O2`. `PocRtl.mar` lays them out from STARLET's lengths
+  and stops assembling if they outgrow it. A position goes by
+  reference, a `LONGINT` whose low longword the routine reads, since a
+  `LONGINT` will not become a longword under both size models.
+- *Block I/O.* `$WRITE` keeps a sequential file's end at the highest
+  byte written (RMS Reference, `$WRITE`), so the last block is written
+  with its own byte count. On the guest odd counts work, and 41, 1300
+  and 7 bytes come back exact. The length is the XABFHC's `(EBK - 1) *
+  512 + FFB`.
+- *`Register`.* `New` writes `POC_<pid>_<n>.TMP` in the directory of
+  its name (the name is `$CREATE`'s default), and `Register` renames it
+  with `$RENAME`. Given no version, the new name is a new version on
+  the guest: a file registered twice is `;1` and `;2`. No temporary
+  file is left.
+- *Other record formats.* A variable-length file made by `CREATE` and a
+  VFC one made by `OPEN/WRITE` read with an LF after each record. `Old`
+  reads such a file through once to count its bytes, as `Length` must
+  be the size of what `Read` gives: poc sizes a source's buffer by it.
+- *Written only while new.* A file `Old` opens is never written, and a
+  New one not after `Close`; either stops the program, as an error
+  `Files` cannot report does (`POC_FILE_FAIL`, then `HALT(99)`).
 - *`tools/vax-runtime-stub.mar`* has the same routines, so that the
   debugger runs link.

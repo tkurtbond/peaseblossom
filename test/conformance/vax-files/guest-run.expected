@@ -1,0 +1,39 @@
+build status: %X10000001
+FILESOUT.TXT: 41 bytes
+  [first line]
+  []
+  [the third, ended by spaces  ]
+before Register, byte 700: 188
+FILESOUT.BIN: 1300 bytes
+bytes that differ: 0
+eof before the end: FALSE
+eof at the end: TRUE
+Base: TRUE
+FILESOUT.STR: 7 bytes
+  [abc]
+  [de]
+FILESOUT.EMP: 0 bytes
+FILESOUT.TXT: 19 bytes
+  [the second version]
+FILESVAR.TXT: 60 bytes
+  [a variable-length source]
+  []
+  [  indented, after an empty record]
+FILESVFC.TXT: 59 bytes
+  [a VFC source, as DCL's OPEN/WRITE makes]
+  []
+  [  its last record]
+NO-SUCH-FILE.TXT: none
+deleted: TRUE
+gone: TRUE
+deleted a missing file: FALSE
+run status: %X00000001
+FILESVAR.TXT: VAR
+FILESVFC.TXT: VFC
+FILESOUT.TXT: STMLF CR
+FILESOUT.TXT version ;2
+FILESOUT.TXT version ;1
+first line
+
+the third, ended by spaces  
+no temporary file left

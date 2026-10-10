@@ -1,0 +1,9 @@
+semantic OK, wrote Files.mar
+semantic OK, wrote FilesUse.mar
+exit 0
+FilesUse.mar matches expected-vax.mar
+Files.mar matches expected-vax-Files.mar
+LLVM build -O2 exit 0
+VAX build -O2 exit 0
+LLVM build -OC exit 0
+VAX build -OC exit 0

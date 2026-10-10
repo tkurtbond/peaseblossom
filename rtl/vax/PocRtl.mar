@@ -8,15 +8,22 @@
 ; POC_QTOG and POC_ENTIERQ, the conversions between a quadword and a
 ; G_floating.
 ; Step 4's (section 15): Out's and Err's lines, written to SYS$OUTPUT and
-; SYS$ERROR, and the services rtl/vax's Platform and Modules call.
+; SYS$ERROR, the services rtl/vax's Platform and Modules call, and RMS
+; file access for its Files.
 	.TITLE	POCRTL
 	.IDENT	/PHASE16-4/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
 	$DSCDEF
+	$FABDEF
 	$JPIDEF
 	$LNMDEF
+	$NAMDEF
+	$RABDEF
+	$RMSDEF
+	$XABDEF
+	$XABFHCDEF
 
 ; a fixed-length string descriptor of the length bytes at text, made on
 ; the stack, its address in R1
@@ -610,6 +617,294 @@ POC_NAME_EXPANDED:
 	MOVZWL	-4(FP), R0
 	RET
 10$:	CLRL	R0
+	RET
+
+; Files' services (rtl/vax/Files.Mod; design section 15, proposal 2). A
+; file's FAB, RAB, NAM block and XABFHC, and the resultant name, are in
+; the control the File keeps (Files.Control, its address the first
+; argument), laid out as below. A position is passed as the address of a
+; LONGINT, whose low longword is the count under -O2 or -OC.
+
+POC_F_FAB = 0
+POC_F_RAB = POC_F_FAB + FAB$C_BLN
+POC_F_NAM = POC_F_RAB + RAB$C_BLN
+POC_F_FHC = POC_F_NAM + NAM$C_BLN
+POC_F_RSA = POC_F_FHC + XAB$C_FHCLEN
+POC_F_SIZE = POC_F_RSA + NAM$C_MAXRSS
+	.IF	GREATER, POC_F_SIZE - 768
+	.ERROR	; a file's RMS blocks do not fit Files.Control (768 bytes)
+	.ENDC
+
+	.PSECT	POC_CONST
+; the blocks each control's are copied from
+	.ALIGN	LONG
+POC_FILE_FAB_TEMPLATE:
+	$FAB	ORG=SEQ
+POC_FILE_RAB_TEMPLATE:
+	$RAB
+POC_FILE_NAM_TEMPLATE:
+	$NAM
+POC_FILE_FHC_TEMPLATE:
+	$XABFHC
+; a New file's name until Register: the process and a count, in the
+; directory of the name it is to be registered as
+POC_FILE_TEMP_CONTROL:
+	.ASCID	/POC_!XL_!UL.TMP/
+
+	.PSECT	POC_DATA
+POC_FILE_TEMP_COUNT:
+	.BLKL	1
+POC_FILE_TEMP_LENGTH:
+	.BLKW	1
+POC_FILE_TEMP_NAME:
+	.BLKB	40
+POC_FILE_TEMP_OUT:
+	.WORD	40
+	.BYTE	DSC$K_DTYPE_T, DSC$K_CLASS_S
+	.ADDRESS	POC_FILE_TEMP_NAME
+; $RENAME's FABs and NAM blocks, the old name's and the new one's, each
+; NAM block with the expanded string $RENAME requires, and the new name's
+; resultant string
+	.ALIGN	LONG
+POC_RENAME_OLD_FAB:
+	$FAB	NAM=POC_RENAME_OLD_NAM
+POC_RENAME_OLD_NAM:
+	$NAM	ESA=POC_RENAME_OLD_ESA, ESS=NAM$C_MAXRSS
+POC_RENAME_OLD_ESA:
+	.BLKB	NAM$C_MAXRSS
+	.ALIGN	LONG
+POC_RENAME_NEW_FAB:
+	$FAB	NAM=POC_RENAME_NEW_NAM
+POC_RENAME_NEW_NAM:
+	$NAM	ESA=POC_RENAME_NEW_ESA, ESS=NAM$C_MAXRSS, -
+		RSA=POC_RENAME_NEW_RSA, RSS=NAM$C_MAXRSS
+POC_RENAME_NEW_ESA:
+	.BLKB	NAM$C_MAXRSS
+POC_RENAME_NEW_RSA:
+	.BLKB	NAM$C_MAXRSS
+; POC_FILE_FAIL's message
+POC_FILE_MESSAGE:
+	.BLKB	600
+
+	.PSECT	POC_CODE
+; JSB, R6 the control: its blocks copied from the templates and linked,
+; the NAM block's resultant string in the control
+POC_FILE_INIT:
+	MOVC3	#FAB$C_BLN, POC_FILE_FAB_TEMPLATE, POC_F_FAB(R6)
+	MOVC3	#RAB$C_BLN, POC_FILE_RAB_TEMPLATE, POC_F_RAB(R6)
+	MOVC3	#NAM$C_BLN, POC_FILE_NAM_TEMPLATE, POC_F_NAM(R6)
+	MOVC3	#XAB$C_FHCLEN, POC_FILE_FHC_TEMPLATE, POC_F_FHC(R6)
+	MOVAB	POC_F_NAM(R6), POC_F_FAB+FAB$L_NAM(R6)
+	MOVAB	POC_F_FHC(R6), POC_F_FAB+FAB$L_XAB(R6)
+	MOVAB	POC_F_FAB(R6), POC_F_RAB+RAB$L_FAB(R6)
+	MOVAB	POC_F_RSA(R6), POC_F_NAM+NAM$L_RSA(R6)
+	MOVB	#NAM$C_MAXRSS, POC_F_NAM+NAM$B_RSS(R6)
+	RSB
+
+; JSB, R6 the control, R0 $OPEN's or $CREATE's status: the RAB connected,
+; for block I/O when R1's low bit is set; R0 the status, the file closed
+; again when $CONNECT fails
+POC_FILE_CONNECT:
+	BLBC	R0, 20$
+	BLBC	R1, 10$
+	BISL2	#RAB$M_BIO, POC_F_RAB+RAB$L_ROP(R6)
+10$:	CLRQ	-(SP)
+	PUSHAB	POC_F_RAB(R6)
+	CALLS	#3, G^SYS$CONNECT
+	BLBS	R0, 20$
+	PUSHL	R0
+	CLRQ	-(SP)
+	PUSHAB	POC_F_FAB(R6)
+	CALLS	#3, G^SYS$CLOSE
+	POPL	R0
+20$:	RSB
+
+; JSB, R6 the control with its name in the FAB, R7 the address of three
+; longwords: the file opened to be read, by block I/O when it is
+; Stream_LF, fixed-length or undefined (the first longword then 1, else
+; 0, to be read a record at a time), the end-of-file block and the first
+; free byte in it; R0 the status
+POC_FILE_OPEN_FAB:
+	MOVB	#<FAB$M_GET!FAB$M_BRO>, POC_F_FAB+FAB$B_FAC(R6)
+	MOVB	#<FAB$M_SHRGET!FAB$M_UPI>, POC_F_FAB+FAB$B_SHR(R6)
+	CLRQ	-(SP)
+	PUSHAB	POC_F_FAB(R6)
+	CALLS	#3, G^SYS$OPEN
+	BLBC	R0, 30$
+	MOVL	#1, R1
+	CMPB	POC_F_FAB+FAB$B_RFM(R6), #FAB$C_STMLF
+	BEQL	20$
+	CMPB	POC_F_FAB+FAB$B_RFM(R6), #FAB$C_FIX
+	BEQL	20$
+	CMPB	POC_F_FAB+FAB$B_RFM(R6), #FAB$C_UDF
+	BEQL	20$
+	CLRL	R1
+20$:	MOVL	R1, (R7)
+	MOVL	POC_F_FHC+XAB$L_EBK(R6), 4(R7)
+	MOVZWL	POC_F_FHC+XAB$W_FFB(R6), 8(R7)
+	JSB	POC_FILE_CONNECT
+30$:	RSB
+
+; POC_FILE_OPEN(control, name, length, info): the file name opened to be
+; read, info the three longwords POC_FILE_OPEN_FAB gives; R0 the status
+	.ENTRY	POC_FILE_OPEN, ^M<R2,R3,R4,R5,R6,R7>
+	MOVL	4(AP), R6
+	JSB	POC_FILE_INIT
+	MOVL	8(AP), POC_F_FAB+FAB$L_FNA(R6)
+	MOVB	12(AP), POC_F_FAB+FAB$B_FNS(R6)
+	MOVL	16(AP), R7
+	JSB	POC_FILE_OPEN_FAB
+	RET
+
+; POC_FILE_REOPEN(control, info): the file the control was last open on,
+; by its resultant name, opened again as POC_FILE_OPEN opens one; R0 the
+; status
+	.ENTRY	POC_FILE_REOPEN, ^M<R2,R3,R4,R5,R6,R7>
+	MOVL	4(AP), R6
+	MOVZBL	POC_F_NAM+NAM$B_RSL(R6), -(SP)
+	JSB	POC_FILE_INIT
+	MOVAB	POC_F_RSA(R6), POC_F_FAB+FAB$L_FNA(R6)
+	MOVL	(SP)+, R0
+	MOVB	R0, POC_F_FAB+FAB$B_FNS(R6)
+	MOVL	8(AP), R7
+	JSB	POC_FILE_OPEN_FAB
+	RET
+
+; POC_FILE_CREATE(control, name, length): a new Stream_LF file, with
+; carriage return carriage control, made under a name of its own in the
+; directory name is in (name the default name), to be written by block
+; I/O and read back; R0 the status
+	.ENTRY	POC_FILE_CREATE, ^M<R2,R3,R4,R5,R6>
+	MOVL	4(AP), R6
+	JSB	POC_FILE_INIT
+	INCL	POC_FILE_TEMP_COUNT
+	CALLS	#0, POC_PROCESS_ID
+	$FAO_S	CTRSTR=POC_FILE_TEMP_CONTROL, OUTLEN=POC_FILE_TEMP_LENGTH, -
+		OUTBUF=POC_FILE_TEMP_OUT, P1=R0, P2=POC_FILE_TEMP_COUNT
+	BLBC	R0, 10$
+	MOVAB	POC_FILE_TEMP_NAME, POC_F_FAB+FAB$L_FNA(R6)
+	MOVB	POC_FILE_TEMP_LENGTH, POC_F_FAB+FAB$B_FNS(R6)
+	MOVL	8(AP), POC_F_FAB+FAB$L_DNA(R6)
+	MOVB	12(AP), POC_F_FAB+FAB$B_DNS(R6)
+	MOVB	#<FAB$M_GET!FAB$M_PUT!FAB$M_BIO>, POC_F_FAB+FAB$B_FAC(R6)
+	MOVB	#FAB$M_NIL, POC_F_FAB+FAB$B_SHR(R6)
+	MOVB	#FAB$C_STMLF, POC_F_FAB+FAB$B_RFM(R6)
+	MOVB	#FAB$M_CR, POC_F_FAB+FAB$B_RAT(R6)
+	CLRQ	-(SP)
+	PUSHAB	POC_F_FAB(R6)
+	CALLS	#3, G^SYS$CREATE
+	MOVL	#1, R1
+	JSB	POC_FILE_CONNECT
+10$:	RET
+
+; POC_FILE_READ(control, position, block): the 512-byte block of the
+; file holding the byte at position read into block; R0 the status
+	.ENTRY	POC_FILE_READ, ^M<R6>
+	MOVL	4(AP), R6
+	DIVL3	#512, @8(AP), R0
+	ADDL3	#1, R0, POC_F_RAB+RAB$L_BKT(R6)
+	MOVL	12(AP), POC_F_RAB+RAB$L_UBF(R6)
+	MOVW	#512, POC_F_RAB+RAB$W_USZ(R6)
+	CLRQ	-(SP)
+	PUSHAB	POC_F_RAB(R6)
+	CALLS	#3, G^SYS$READ
+	RET
+
+; POC_FILE_WRITE(control, position, block, count): the first count bytes
+; of block written to the block of the file starting at position, a
+; multiple of 512; RMS keeps the file's end at the highest byte written
+; (RMS Reference, $WRITE); R0 the status
+	.ENTRY	POC_FILE_WRITE, ^M<R6>
+	MOVL	4(AP), R6
+	DIVL3	#512, @8(AP), R0
+	ADDL3	#1, R0, POC_F_RAB+RAB$L_BKT(R6)
+	MOVL	12(AP), POC_F_RAB+RAB$L_RBF(R6)
+	MOVW	16(AP), POC_F_RAB+RAB$W_RSZ(R6)
+	CLRQ	-(SP)
+	PUSHAB	POC_F_RAB(R6)
+	CALLS	#3, G^SYS$WRITE
+	RET
+
+; POC_FILE_GET(control, record, size): the next record into record, of
+; size bytes; R0 its length, -1 at the end of the file, -2 if it cannot
+; be read
+	.ENTRY	POC_FILE_GET, ^M<R6>
+	MOVL	4(AP), R6
+	MOVL	8(AP), POC_F_RAB+RAB$L_UBF(R6)
+	MOVW	12(AP), POC_F_RAB+RAB$W_USZ(R6)
+	CLRQ	-(SP)
+	PUSHAB	POC_F_RAB(R6)
+	CALLS	#3, G^SYS$GET
+	BLBC	R0, 10$
+	MOVZWL	POC_F_RAB+RAB$W_RSZ(R6), R0
+	RET
+10$:	CMPL	R0, #RMS$_EOF
+	BNEQ	20$
+	MNEGL	#1, R0
+	RET
+20$:	MNEGL	#2, R0
+	RET
+
+; POC_FILE_REWIND(control): the file's records to be read from the
+; first again; R0 the status
+	.ENTRY	POC_FILE_REWIND, ^M<R6>
+	MOVL	4(AP), R6
+	CLRQ	-(SP)
+	PUSHAB	POC_F_RAB(R6)
+	CALLS	#3, G^SYS$REWIND
+	RET
+
+; POC_FILE_CLOSE(control): the file closed; R0 the status
+	.ENTRY	POC_FILE_CLOSE, ^M<R6>
+	MOVL	4(AP), R6
+	CLRQ	-(SP)
+	PUSHAB	POC_F_FAB(R6)
+	CALLS	#3, G^SYS$CLOSE
+	RET
+
+; POC_FILE_RENAME(control, name, length): the file the control was last
+; open on, now closed, renamed name, whose resultant name the control
+; then keeps; R0 the status
+	.ENTRY	POC_FILE_RENAME, ^M<R2,R3,R4,R5,R6>
+	MOVL	4(AP), R6
+	MOVAB	POC_F_RSA(R6), POC_RENAME_OLD_FAB+FAB$L_FNA
+	MOVB	POC_F_NAM+NAM$B_RSL(R6), POC_RENAME_OLD_FAB+FAB$B_FNS
+	MOVL	8(AP), POC_RENAME_NEW_FAB+FAB$L_FNA
+	MOVB	12(AP), POC_RENAME_NEW_FAB+FAB$B_FNS
+	PUSHAB	POC_RENAME_NEW_FAB
+	CLRQ	-(SP)
+	PUSHAB	POC_RENAME_OLD_FAB
+	CALLS	#4, G^SYS$RENAME
+	BLBC	R0, 10$
+	PUSHL	R0
+	MOVB	POC_RENAME_NEW_NAM+NAM$B_RSL, POC_F_NAM+NAM$B_RSL(R6)
+	MOVZBL	POC_RENAME_NEW_NAM+NAM$B_RSL, R0
+	MOVC3	R0, POC_RENAME_NEW_RSA, POC_F_RSA(R6)
+	POPL	R0
+10$:	RET
+
+; POC_FILE_FAIL(message, mlength, name, nlength): Files' error that
+; nothing can be told about written to SYS$ERROR, after an empty record
+; as rtl/llvm's writes its message on a line of its own, "-- message" and
+; ": name" when there is one; then the program ends as HALT(99) ends it
+	.ENTRY	POC_FILE_FAIL, ^M<R2,R3,R4,R5>
+	CLRL	-(SP)
+	PUSHAB	POC_FILE_MESSAGE
+	CALLS	#2, POC_PUT_ERROR_LINE
+	MOVAB	POC_FILE_MESSAGE, R3
+	MOVW	#^A/--/, (R3)+
+	MOVB	#^A/ /, (R3)+
+	MOVC3	8(AP), @4(AP), (R3)
+	TSTL	16(AP)
+	BEQL	10$
+	MOVW	#^A/: /, (R3)+
+	MOVC3	16(AP), @12(AP), (R3)
+10$:	MOVAB	POC_FILE_MESSAGE, R1
+	SUBL3	R1, R3, -(SP)
+	PUSHAB	POC_FILE_MESSAGE
+	CALLS	#2, POC_PUT_ERROR_LINE
+	PUSHL	#99
+	CALLS	#1, POC_HALT
 	RET
 
 	.END

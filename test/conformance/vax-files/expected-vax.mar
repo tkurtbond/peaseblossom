@@ -1,0 +1,97 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 15 and
+;; the guest runs; for the user's review). Why this is right:
+;; - FilesUse imports Files, rtl/vax/Files.Mod compiled with it
+;;   (expected-vax-Files.mar): its initializer calls FILES_INIT first,
+;;   and it calls Files' procedures by their global symbols, with G^.
+;; - f is a longword pointer; r, a Files.Rider, is 16 bytes under -O2:
+;;   res, eof padded to a longword, file and position.
+;; - Old gets its string's address and its length with the 0X (13). Set
+;;   and Read get the Rider's address and its type descriptor,
+;;   FILES_RIDER, as every VAR record parameter does, then f and 0, or
+;;   ch's address.
+; FilesUse, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	FILESUSE
+	.IDENT	/bdfb66748e505db6/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; f: POINTER TO Files.FileDesc
+	.ALIGN	LONG
+FILESUSE_F_Q9IKPOSJ:
+	.BLKL	1
+; r: Files.Rider
+	.ALIGN	LONG
+FILESUSE_R_Q9IKQ1CF:
+	.BLKB	16
+; ch: CHAR
+FILESUSE_CH_G8GQV18C:
+	.BLKB	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	FILES_OLD_D6MQ7SJ7
+	.EXTERNAL	FILES_SET_D5QHH1BQ
+	.EXTERNAL	FILES_RIDER_85VGJP4M
+	.EXTERNAL	FILES_READ_4SSNK3R2
+	.EXTERNAL	FILES_INIT
+	.EXTERNAL	POC_K1_864112F5374F12A3
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/FILESUSE.MOD/
+	.BYTE	0
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	FILESUSE_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^FILES_INIT
+	SUBL2	#20, SP
+; line 7
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_1, -8(FP)
+	MOVL	#13, -4(FP)
+	CALLG	-12(FP), G^FILES_OLD_D6MQ7SJ7
+	MOVL	R0, FILESUSE_F_Q9IKPOSJ
+; line 8
+	TSTL	FILESUSE_F_Q9IKPOSJ
+	BNEQ	L_2
+	JMP	L^L_1
+L_2:
+; line 8
+	MOVL	#4, -20(FP)
+	MOVAB	FILESUSE_R_Q9IKQ1CF, -16(FP)
+	MOVAB	G^FILES_RIDER_85VGJP4M, -12(FP)
+	MOVL	FILESUSE_F_Q9IKPOSJ, -8(FP)
+	CLRL	-4(FP)
+	CALLG	-20(FP), G^FILES_SET_D5QHH1BQ
+; line 8
+	MOVL	#3, -16(FP)
+	MOVAB	FILESUSE_R_Q9IKQ1CF, -12(FP)
+	MOVAB	G^FILES_RIDER_85VGJP4M, -8(FP)
+	MOVAB	FILESUSE_CH_G8GQV18C, -4(FP)
+	CALLG	-16(FP), G^FILES_READ_4SSNK3R2
+L_1:
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_BDFB66748E505DB6 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	FILESUSE_MAIN, ^M<>
+	CALLS	#0, FILESUSE_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	FILESUSE_MAIN

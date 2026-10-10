@@ -15,8 +15,8 @@ writes their `.mar` files.
   allocates from `LIB$GET_VM` and never frees, until step 4 ports the
   collector (section 15, proposal 9). The rest are what the modules
   below call: writing records to `SYS$OUTPUT` and `SYS$ERROR`, logical
-  names, `$ERASE`, `$PARSE`, `LIB$CREATE_DIR`, `$SETDDIR`, `$GETJPI`
-  and `LIB$GET_FOREIGN`.
+  names, `$ERASE`, `$PARSE`, `LIB$CREATE_DIR`, `$SETDDIR`, `$GETJPI`,
+  `LIB$GET_FOREIGN`, and RMS file access for `Files`.
 - `Out.Mod` and `Err.Mod` (`Open`, `Flush`, `Char`, `String`, `Ln`,
   `Int`, `Hex`) write to `SYS$OUTPUT` and `SYS$ERROR` through
   `LineOutput.Mod`, a record for each `Ln` (section 14, item 2, and
@@ -30,4 +30,10 @@ writes their `.mar` files.
   `MakeDirectory`): directories, and the names of the files in them, as
   VMS writes them (section 15, proposal 4).
 
-`Files` and the collector are still to come (section 15, proposal 10).
+- `Files.Mod` (`File`, `Rider`, `Old`, `New`, `Register`, `Close`,
+  `Length`, `Set`, `Base`, `Read`, `Write`, `ReadString`, `ReadLine`,
+  `WriteString`, `Delete`): the files poc makes are Stream_LF, written
+  and read by block I/O; a file of another record format is read a
+  record at a time, an LF after each (section 15, proposal 2).
+
+The collector is still to come (section 15, proposals 9 and 10).

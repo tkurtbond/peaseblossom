@@ -1,0 +1,44 @@
+$ ! PLAN.md Phase 16 step 4: FILESOUT.COM, which poc -build wrote, run
+$ ! after poc's runtime is assembled; then the image, with FILESVAR.TXT
+$ ! made variable-length by CREATE and FILESVFC.TXT VFC by OPEN/WRITE.
+$ ! After it, the record formats, the versions of FILESOUT.TXT, which it
+$ ! registered twice, what TYPE makes of the first, and any temporary file
+$ ! left; then what the run made is deleted
+$ SET NOON
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF S THEN @FILESOUT
+$ IF S THEN S = $STATUS
+$ WRITE SYS$OUTPUT "build status: ", S
+$ IF .NOT. S THEN GOTO CLEAN
+$ CREATE FILESVAR.TXT
+a variable-length source
+
+  indented, after an empty record
+$ OPEN/WRITE V FILESVFC.TXT
+$ WRITE V "a VFC source, as DCL's OPEN/WRITE makes"
+$ WRITE V ""
+$ WRITE V "  its last record"
+$ CLOSE V
+$ FILESOUT :== $SYS$LOGIN:FILESOUT.EXE
+$ FILESOUT
+$ WRITE SYS$OUTPUT "run status: ", $STATUS
+$ WRITE SYS$OUTPUT "FILESVAR.TXT: ", F$FILE_ATTRIBUTES("FILESVAR.TXT", "RFM")
+$ WRITE SYS$OUTPUT "FILESVFC.TXT: ", F$FILE_ATTRIBUTES("FILESVFC.TXT", "RFM")
+$ WRITE SYS$OUTPUT "FILESOUT.TXT: ", F$FILE_ATTRIBUTES("FILESOUT.TXT", "RFM"), " ", -
+    F$FILE_ATTRIBUTES("FILESOUT.TXT", "RAT")
+$ VERSIONS:
+$ F = F$SEARCH("FILESOUT.TXT;*")
+$ IF F .EQS. "" THEN GOTO TYPED
+$ WRITE SYS$OUTPUT "FILESOUT.TXT version ", F$PARSE(F,,,"VERSION")
+$ GOTO VERSIONS
+$ TYPED:
+$ TYPE FILESOUT.TXT;-1
+$ IF F$SEARCH("POC_*.TMP;*") .EQS. "" THEN WRITE SYS$OUTPUT "no temporary file left"
+$ DELETE/NOLOG FILESOUT.TXT;*,FILESOUT.STR;*,FILESOUT.EMP;*,FILESVAR.TXT;*,FILESVFC.TXT;*
+$ IF F$SEARCH("FILESOUT.BIN;*") .NES. "" THEN DELETE/NOLOG FILESOUT.BIN;*
+$ IF F$SEARCH("POC_*.TMP;*") .NES. "" THEN DELETE/NOLOG POC_*.TMP;*
+$ DELETE/SYMBOL/GLOBAL FILESOUT
+$ CLEAN:
+$ DELETE/NOLOG POCRTL.OBJ;*,OUT.OBJ;*,LINEOUTPUT.OBJ;*,FILES.OBJ;*,FILESOUT.OBJ;*,FILESOUT.OPT;*,FILESOUT.EXE;*
+$ EXIT 1

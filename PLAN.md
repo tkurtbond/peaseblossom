@@ -835,6 +835,11 @@ most, object libraries.
      ODS-2's 39) is refused before its `.sym` is written; a poc built
      with `tools/build-info <dir> vax-dec-vms` compiles for the VAX by
      default and has no other target.
+   - *`Files`* (2026-10-10) is in `rtl/vax`, over RMS: Stream_LF files
+     by block I/O, other record formats a record at a time, `Register`
+     by `$RENAME` as a new version. The fixture `vax-files` prints the
+     same on Linux and on the guest; its `expected-vax.mar` and
+     `expected-vax-Files.mar` are drafts, for the user's review.
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built
