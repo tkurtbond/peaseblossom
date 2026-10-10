@@ -136,6 +136,8 @@ MODULE VaxCodeGenerator;
     clearByCLR = 64; (* bytes of locals cleared by CLRQ and CLRL; more by MOVC5 *)
     maxMove = 65535; (* bytes one MOVC3 or MOVC5 moves, its length a word *)
     realTextLength = 32; (* an immediate real's text: a longer numeral is written by its value *)
+    (* POC_TRAP's code, 14, with its high word 1: CHR's message, not SHORT's *)
+    chrMessage = 65536;
 
   TYPE
     OperandText = ARRAY 48 OF CHAR;
@@ -193,7 +195,16 @@ MODULE VaxCodeGenerator;
     NestedSymDesc = RECORD
       np: NestedProcedures.NestedProc;
       symbol: VaxTypes.Symbol;
+      full: ARRAY 3 * 256 + 3 OF CHAR; (* <root's full name>.<Inner>... *)
       next: NestedSym
+    END;
+
+    (* under -trap-location, what a trap's message says it is in, L_WHERE_<n> *)
+    Where = POINTER TO WhereDesc;
+    WhereDesc = RECORD
+      label: ARRAY 16 OF CHAR;
+      text: ARRAY 3 * 256 + 16 OF CHAR;
+      next: Where
     END;
 
     Narrowing = POINTER TO NarrowingDesc;
@@ -263,6 +274,9 @@ MODULE VaxCodeGenerator;
   VAR
     unsupportedCount*: INTEGER;
     rangeChecks*: BOOLEAN; (* -range-checks: CHR or SHORT of a value that does not fit traps (code 14) *)
+    (* -trap-location: a trap's message names its file, line, column and
+       procedure, as on LLVM (section 14, item 10) *)
+    trapLocation*: BOOLEAN;
     (* the global symbols of every module written in one run, a program's
        or -compile's, or NIL (section 5.1, layer 2, for modules compiled
        from source together): two exports of different modules with one
@@ -293,6 +307,14 @@ MODULE VaxCodeGenerator;
     frameSlots: INTEGER; (* the most slots in use at once *)
     loopExit: ARRAY 16 OF CHAR; (* the innermost LOOP's end, for EXIT *)
     usesTrap: BOOLEAN; (* a trap calls POC_TRAP with the module's name *)
+    (* the procedure being generated, "Module.P" or "Module.P.Inner" as
+       LLVM names it, empty in the module body; its L_WHERE_<n>, or empty
+       until a trap under -trap-location needs it; and the module's, in
+       the order made *)
+    procedureName: ARRAY 3 * 256 + 3 OF CHAR;
+    whereLabel: ARRAY 16 OF CHAR;
+    wheres, wheresLast: Where;
+    whereCount: INTEGER;
     externals: External;
     homes: Home; (* the imported variables and procedures it uses *)
     strings: StringConstant; (* in the order of first use *)
@@ -1216,7 +1238,7 @@ MODULE VaxCodeGenerator;
     RETURN x
   END Variable;
 
-  PROCEDURE ^ Trap(code, line, column: INTEGER);
+  PROCEDURE ^ Trap(code: LONGINT; line, column: INTEGER);
 
   (* x, a parameter reached by its address, @n(AP), as 0(Rn), its address
      moved to a register: a displacement from it, as a field's or an
@@ -3038,7 +3060,7 @@ MODULE VaxCodeGenerator;
       ELSE
         Op("CMP", s, "", op); Emit2(op, v, Immediate(v.type, 255)); Emit("BLEQU", ok)
       END;
-      Trap(14, line, column);
+      Trap(14 + chrMessage, line, column);
       EmitLabel(ok)
     END;
     IF s = "B" THEN v.type := Types.Char; RETURN v END;
@@ -4032,18 +4054,38 @@ MODULE VaxCodeGenerator;
   (* ---- Traps (the design's section 9) ---- *)
 
   (* POC_TRAP(code, module, line, column): the trap's code (the LLVM
-     backend's exit status), the address of the module's name as a
-     counted string, and the source position (decided with the user
-     2026-10-06). The routine is Phase 16's. *)
-  PROCEDURE Trap(code, line, column: INTEGER);
-    VAR text: ARRAY 16 OF CHAR;
+     backend's exit status; chrMessage added for CHR's), the address of
+     the module's name as a counted string, and the source position
+     (decided with the user 2026-10-06). Under -trap-location two more,
+     the counted strings of the module's file, L_FILE_NAME, and of the
+     procedure, L_WHERE_<n>, one for each procedure that traps (section
+     14, item 10). *)
+  PROCEDURE Trap(code: LONGINT; line, column: INTEGER);
+    VAR text: ARRAY 16 OF CHAR; where: Where;
   BEGIN
     usesTrap := TRUE;
+    IF trapLocation THEN
+      IF whereLabel[0] = 0X THEN
+        NEW(where); INC(whereCount);
+        COPY("L_WHERE_", where.label); AppendInt(where.label, whereCount);
+        IF procedureName[0] # 0X THEN COPY(procedureName, where.text)
+        ELSE COPY(module.name, where.text); Append(where.text, ", module body")
+        END;
+        where.next := NIL;
+        IF wheres = NIL THEN wheres := where ELSE wheresLast.next := where END;
+        wheresLast := where;
+        COPY(where.label, whereLabel)
+      END;
+      Emit("PUSHAB", whereLabel);
+      Emit("PUSHAB", "L_FILE_NAME")
+    END;
     COPY("#", text); AppendInt(text, column); Emit("PUSHL", text);
     COPY("#", text); AppendInt(text, line); Emit("PUSHL", text);
     Emit("PUSHAB", "L_MODULE_NAME");
-    COPY("#", text); AppendInt(text, code); Emit("PUSHL", text);
-    Emit("CALLS", "#4, G^POC_TRAP")
+    (* a code with a message of its own in hexadecimal, ^X0001000E *)
+    COPY("#", text); IF code >= chrMessage THEN AppendHex(text, code) ELSE AppendInt(text, code) END;
+    Emit("PUSHL", text);
+    IF trapLocation THEN Emit("CALLS", "#6, G^POC_TRAP") ELSE Emit("CALLS", "#4, G^POC_TRAP") END
   END Trap;
 
   (* ---- Statements ---- *)
@@ -4566,7 +4608,7 @@ MODULE VaxCodeGenerator;
     free := {firstScratch .. lastScratch}; used := {}; live := NIL;
     FOR i := 0 TO maxSlots - 1 DO slotUsed[i] := FALSE END;
     frameSlots := 0; loopExit[0] := 0X;
-    locals := NIL; localSize := 0; resultType := NIL
+    locals := NIL; localSize := 0; resultType := NIL; whereLabel[0] := 0X
   END BeginBody;
 
   (* "^M<R2,R3>", the registers R2..R5 the body writes, which the calling
@@ -4831,7 +4873,7 @@ MODULE VaxCodeGenerator;
       k := 0; WHILE nestedRoot.pathName[k] # 0X DO INC(k) END;
       WHILE (np.pathName[k] # 0X) & (j < LEN(full) - 1) DO full[j] := np.pathName[k]; INC(j); INC(k) END;
       full[j] := 0X;
-      NEW(ns); ns.np := np; ns.next := nestedSyms; nestedSyms := ns;
+      NEW(ns); ns.np := np; ns.next := nestedSyms; nestedSyms := ns; COPY(full, ns.full);
       IF ~VaxTypes.Enter(names, full, ns.symbol, clash) THEN
         COPY(full, text); Append(text, " and "); Append(text, clash);
         Append(text, " have the same VAX symbol, "); Append(text, ns.symbol);
@@ -4842,14 +4884,17 @@ MODULE VaxCodeGenerator;
     np := nestedRoot.following;
     WHILE np # NIL DO
       NestedSymbol(np, symbol);
+      ns := nestedSyms; WHILE ns.np # np DO ns := ns.next END;
+      COPY(ns.full, procedureName);
       Body(np.decl, np.scope, np.procType, np.needs, symbol, FALSE, np.pathName);
       np := np.following
     END;
     IF pd.receiver # NIL THEN IF MethodSymbol(owner, method.name, symbol) THEN END
     ELSE VariableSymbol(obj, symbol)
     END;
+    COPY(rootFull, procedureName);
     Body(pd, rootScope, pt, NIL, symbol, global, pd.name.name);
-    nestedRoot := NIL; nestedSyms := NIL;
+    nestedRoot := NIL; nestedSyms := NIL; procedureName[0] := 0X;
     scope := moduleScope
   END ProcedureDecl;
 
@@ -5010,22 +5055,19 @@ MODULE VaxCodeGenerator;
     RETURN ok
   END WriteVariables;
 
-  (* c's bytes: each run of printing characters .ASCII, delimited by a
-     character not in it (MACRO 6, .ASCII: not a space, "=", ";" or "<"),
-     any other byte, or a run with every delimiter in it, by .BYTE; then
-     .BYTE 0[n] to its size *)
-  PROCEDURE WriteString(VAR w: Files.Rider; c: StringConstant);
-    VAR i, j, k, n: LONGINT; d: INTEGER; run: ARRAY 64 OF CHAR; text: ARRAY 128 OF CHAR;
+  (* The n bytes of s: each run of printing characters .ASCII, delimited
+     by a character not in it (MACRO 6, .ASCII: not a space, "=", ";" or
+     "<"), any other byte, or a run with every delimiter in it, by .BYTE *)
+  PROCEDURE WriteBytes(VAR w: Files.Rider; VAR s: ARRAY OF CHAR; n: LONGINT);
+    VAR i, j, k: LONGINT; d: INTEGER; run: ARRAY 64 OF CHAR; text: ARRAY 128 OF CHAR;
         delimiters: ARRAY 16 OF CHAR; found: BOOLEAN;
   BEGIN
     COPY('/"|!#%&*+?@~', delimiters);
-    Label(w, c.label);
-    n := 0; WHILE (n < LEN(c.text^)) & (c.text[n] # 0X) DO INC(n) END;
     i := 0;
     WHILE i < n DO
       j := 0;
-      WHILE (i + j < n) & (j < 60) & (c.text[i + j] >= " ") & (c.text[i + j] <= "~") DO
-        run[j] := c.text[i + j]; INC(j)
+      WHILE (i + j < n) & (j < 60) & (s[i + j] >= " ") & (s[i + j] <= "~") DO
+        run[j] := s[i + j]; INC(j)
       END;
       run[j] := 0X;
       d := 0; found := FALSE;
@@ -5041,23 +5083,43 @@ MODULE VaxCodeGenerator;
       ELSE
         (* the bytes up to the next printing one, or the run *)
         IF j = 0 THEN
-          WHILE (i + j < n) & ((c.text[i + j] < " ") OR (c.text[i + j] > "~")) DO INC(j) END
+          WHILE (i + j < n) & ((s[i + j] < " ") OR (s[i + j] > "~")) DO INC(j) END
         END;
         WHILE j > 0 DO
           text[0] := 0X; k := 0;
           WHILE (k < j) & (k < 16) DO
             IF k > 0 THEN Append(text, ", ") END;
-            AppendInt(text, ORD(c.text[i + k])); INC(k)
+            AppendInt(text, ORD(s[i + k])); INC(k)
           END;
           Line(w, ".BYTE", text);
           i := i + k; j := j - k
         END
       END
-    END;
+    END
+  END WriteBytes;
+
+  (* c's bytes (WriteBytes), then .BYTE 0[n] to its size *)
+  PROCEDURE WriteString(VAR w: Files.Rider; c: StringConstant);
+    VAR n: LONGINT; text: ARRAY 32 OF CHAR;
+  BEGIN
+    Label(w, c.label);
+    n := 0; WHILE (n < LEN(c.text^)) & (c.text[n] # 0X) DO INC(n) END;
+    WriteBytes(w, c.text^, n);
     text[0] := 0X; AppendInt(text, 0);
     IF c.size - n > 1 THEN AppendChar(text, "["); AppendInt(text, c.size - n); AppendChar(text, "]") END;
     Line(w, ".BYTE", text)
   END WriteString;
+
+  (* s, at most its first 255 characters, as a counted string at label: a
+     .BYTE of its length, then its bytes (WriteBytes) *)
+  PROCEDURE WriteCounted(VAR w: Files.Rider; label, s: ARRAY OF CHAR);
+    VAR n: LONGINT; text: ARRAY 8 OF CHAR;
+  BEGIN
+    n := 0; WHILE (n < LEN(s)) & (n < 255) & (s[n] # 0X) DO INC(n) END;
+    Label(w, label);
+    text[0] := 0X; AppendInt(text, n); Line(w, ".BYTE", text);
+    WriteBytes(w, s, n)
+  END WriteCounted;
 
   (* The type descriptors in POC_CONST, in LLVM's layout with every field a
      longword (sections 14, items 4 and 6): a record's ProcTab, its type-
@@ -5256,12 +5318,12 @@ MODULE VaxCodeGenerator;
                             VAR w: Files.Rider): BOOLEAN;
     VAR init, main, symbol: VaxTypes.Symbol; title: ARRAY VaxTypes.symbolLength + 1 OF CHAR;
         ident: ARRAY 40 OF CHAR; entry: ARRAY 64 OF CHAR; mask: ARRAY 40 OF CHAR; frame: ARRAY 24 OF CHAR;
-        before, errorsBefore: INTEGER; ok: BOOLEAN; e: External; sc: StringConstant;
+        before, errorsBefore: INTEGER; ok: BOOLEAN; e: External; sc: StringConstant; where: Where;
   BEGIN
     module := m; scope := s; moduleScope := s; before := unsupportedCount;
     errorsBefore := Diagnostics.errorCount;
     names := VaxTypes.NewNameTable(); longword := VaxTypes.Longword(); narrowings := NIL;
-    nextLabel := 0; usesTrap := FALSE; externals := NIL; homes := NIL; strings := NIL; code := NIL; codeLast := NIL;
+    nextLabel := 0; usesTrap := FALSE; procedureName[0] := 0X; wheres := NIL; whereCount := 0; externals := NIL; homes := NIL; strings := NIL; code := NIL; codeLast := NIL;
     nestedRoot := NIL; nestedSyms := NIL;
     descriptors := NIL; descriptorCount := 0;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
@@ -5307,7 +5369,13 @@ MODULE VaxCodeGenerator;
       Line(w, ".PSECT", "POC_CONST");
       Label(w, "L_MODULE_NAME");
       COPY("/", ident); Append(ident, module.name); Append(ident, "/");
-      Line(w, ".ASCIC", ident)
+      Line(w, ".ASCIC", ident);
+      IF trapLocation THEN
+        WriteStr(w, "; -trap-location's: the module's file, and each procedure that traps"); WriteLn(w);
+        WriteCounted(w, "L_FILE_NAME", Diagnostics.fileName);
+        where := wheres;
+        WHILE where # NIL DO WriteCounted(w, where.label, where.text); where := where.next END
+      END
     END;
     IF strings # NIL THEN
       WriteLn(w);

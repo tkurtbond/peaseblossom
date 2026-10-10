@@ -27,10 +27,10 @@ POC_SCRATCH::
 	.BLKQ	8
 
 	.PSECT	POC_CODE
-; POC_TRAP(code, module, line, column), module a counted string: kept in
-; POC_TRAP_*, then the program ends with SS$_ABORT
+; POC_TRAP(code, module, line, column), module a counted string: the
+; code's low word and the rest kept in POC_TRAP_*; ends with SS$_ABORT
 	.ENTRY	POC_TRAP, ^M<R2,R3,R4,R5>
-	MOVL	4(AP), POC_TRAP_CODE
+	MOVZWL	4(AP), POC_TRAP_CODE
 	MOVL	12(AP), POC_TRAP_LINE
 	MOVL	16(AP), POC_TRAP_COLUMN
 	MOVL	8(AP), R1
@@ -40,7 +40,7 @@ POC_SCRATCH::
 	RET
 
 ; POC_HALT(code): kept in POC_HALT_CODE, then the program ends with
-; SS$_NORMAL (what VMS is to see of the code is Phase 16's)
+; SS$_NORMAL (rtl/vax/PocRtl.mar's exits with HALT(n)'s status)
 	.ENTRY	POC_HALT, ^M<>
 	MOVL	4(AP), POC_HALT_CODE
 	$EXIT_S	#1

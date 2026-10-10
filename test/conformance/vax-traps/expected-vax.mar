@@ -1,0 +1,265 @@
+;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
+;; manual, the RMS and System Services manuals, LLVM's code generator and
+;; the guest runs; for the user's review). Why this is right:
+;; - Phase 16 step 3 (section 14, item 10), under -trap-location: each
+;;   trap calls POC_TRAP with six arguments, by CALLS #6: as before the
+;;   code, L_MODULE_NAME, the line and the column, then L_FILE_NAME, the
+;;   file as poc opened it, and L_WHERE_<n>, the procedure, a counted
+;;   string (.BYTE of the length, then .ASCII) made when the procedure's
+;;   first trap needs it: VaxTraps.NodeDesc.Sum, VaxTraps.Outer.Inner,
+;;   VaxTraps.Outer and "VaxTraps, module body", as LLVM's -trap-location
+;;   names them, so that rtl/vax/PocRtl.mar's POC_TRAP writes LLVM's
+;;   message, file:line:column: message (in procedure), with $FAO.
+;; - Under -range-checks CHR's code is ^X0001000E: 14, the status's, in
+;;   the low word, and 1 in the high word for "CHR argument out of range",
+;;   since SHORT's trap, #14 alone, is code 14 too.
+;; - Traps, run on the guest with the real runtime for each case, prints
+;;   LLVM's messages to SYS$ERROR and ends with %X10000000 + 8 * c + 2
+;;   where LLVM exits with c (output.expected, plain.expected).
+; VaxTraps, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXTRAPS
+	.IDENT	/461bbe93a84e8ae5/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; node: POINTER TO VaxTraps.NodeDesc
+	.ALIGN	LONG
+VAXTRAPS_NODE_U1HBPOS6:
+	.BLKL	1
+; i: INTEGER
+	.ALIGN	WORD
+VAXTRAPS_I_CMK1L3QP:
+	.BLKW	1
+; c: CHAR
+VAXTRAPS_C_CMK1L6CB:
+	.BLKB	1
+; s: SHORTINT
+VAXTRAPS_S_CMK1LD5R:
+	.BLKB	1
+; a: ARRAY 4 OF INTEGER
+	.ALIGN	WORD
+VAXTRAPS_A_CMK1L77H:
+	.BLKB	8
+
+; the symbols it uses of other modules
+	.EXTERNAL	POC_NEW
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxTraps/
+; -trap-location's: the module's file, and each procedure that traps
+L_FILE_NAME:
+	.BYTE	12
+	.ASCII	/VaxTraps.mod/
+L_WHERE_1:
+	.BYTE	21
+	.ASCII	/VaxTraps.NodeDesc.Sum/
+L_WHERE_2:
+	.BYTE	20
+	.ASCII	/VaxTraps.Outer.Inner/
+L_WHERE_3:
+	.BYTE	14
+	.ASCII	/VaxTraps.Outer/
+L_WHERE_4:
+	.BYTE	21
+	.ASCII	/VaxTraps, module body/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxTraps.NodeDesc
+	.ALIGN	LONG
+; its ProcTab, the last slot first (section 14, item 6)
+	.ADDRESS	VAXTRAPS_NODEDESC_SUM_N27J1MGU
+VAXTRAPS_NODEDESC_DQNNU7Q7::
+	.LONG	8
+	.LONG	0
+	.LONG	1
+	.ADDRESS	VAXTRAPS_NODEDESC_DQNNU7Q7
+	.LONG	4
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE (Node) Sum
+	.ENTRY	VAXTRAPS_NODEDESC_SUM_N27J1MGU, ^M<R2>
+; line 16
+	MOVL	4(AP), R0
+	BNEQ	L_1
+	PUSHAB	L_WHERE_1
+	PUSHAB	L_FILE_NAME
+	PUSHL	#12
+	PUSHL	#16
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#6, G^POC_TRAP
+L_1:
+	MOVL	4(AP), R1
+	BNEQ	L_2
+	PUSHAB	L_WHERE_1
+	PUSHAB	L_FILE_NAME
+	PUSHL	#18
+	PUSHL	#16
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#6, G^POC_TRAP
+L_2:
+	MOVL	4(R1), R1
+	BNEQ	L_3
+	PUSHAB	L_WHERE_1
+	PUSHAB	L_FILE_NAME
+	PUSHL	#18
+	PUSHL	#16
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#6, G^POC_TRAP
+L_3:
+	ADDW3	(R1), (R0), R2
+	CVTWL	R2, R0
+	RET
+	PUSHAB	L_WHERE_1
+	PUSHAB	L_FILE_NAME
+	PUSHL	#3
+	PUSHL	#17
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#6, G^POC_TRAP
+; PROCEDURE Outer.Inner
+VAXTRAPS_OUTER_INNER_053HO337:
+	.WORD	^M<>
+; line 22
+	CVTWL	@4(AP), R0
+	CMPL	R0, #3
+	BLEQU	L_4
+	PUSHAB	L_WHERE_2
+	PUSHAB	L_FILE_NAME
+	PUSHL	#16
+	PUSHL	#22
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#6, G^POC_TRAP
+L_4:
+	CVTWL	VAXTRAPS_A_CMK1L77H[R0], R0
+	RET
+	PUSHAB	L_WHERE_2
+	PUSHAB	L_FILE_NAME
+	PUSHL	#5
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#6, G^POC_TRAP
+; PROCEDURE Outer
+VAXTRAPS_OUTER_HQJV9JR9:
+	.WORD	^M<>
+	SUBL2	#12, SP
+	CLRL	-4(FP)
+	MOVW	4(AP), -2(FP)
+; line 25
+	MOVL	#1, -12(FP)
+	MOVAB	-2(FP), -8(FP)
+	CALLG	-12(FP), VAXTRAPS_OUTER_INNER_053HO337
+	ADDW3	#1, -2(FP), R1
+	CVTWL	R1, R1
+	CMPL	R1, #3
+	BLEQU	L_5
+	PUSHAB	L_WHERE_3
+	PUSHAB	L_FILE_NAME
+	PUSHL	#26
+	PUSHL	#25
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#6, G^POC_TRAP
+L_5:
+	ADDW2	VAXTRAPS_A_CMK1L77H[R1], R0
+	CVTWL	R0, R0
+	RET
+	PUSHAB	L_WHERE_3
+	PUSHAB	L_FILE_NAME
+	PUSHL	#3
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#6, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXTRAPS_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#12, SP
+; line 29
+	MOVW	#300, VAXTRAPS_I_CMK1L3QP
+; line 29
+	CMPW	VAXTRAPS_I_CMK1L3QP, #255
+	BLEQU	L_6
+	PUSHAB	L_WHERE_4
+	PUSHAB	L_FILE_NAME
+	PUSHL	#18
+	PUSHL	#29
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#^X0001000E
+	CALLS	#6, G^POC_TRAP
+L_6:
+	CVTWB	VAXTRAPS_I_CMK1L3QP, VAXTRAPS_C_CMK1L6CB
+; line 29
+	CVTWB	VAXTRAPS_I_CMK1L3QP, VAXTRAPS_S_CMK1LD5R
+	BVC	L_7
+	PUSHAB	L_WHERE_4
+	PUSHAB	L_FILE_NAME
+	PUSHL	#31
+	PUSHL	#29
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#14
+	CALLS	#6, G^POC_TRAP
+L_7:
+; line 29
+	MOVL	#1, -8(FP)
+	MOVL	#1, -4(FP)
+	CALLG	-8(FP), VAXTRAPS_OUTER_HQJV9JR9
+	MOVW	R0, VAXTRAPS_I_CMK1L3QP
+; line 30
+	MOVL	#2, -12(FP)
+	MOVL	#8, -8(FP)
+	MOVAB	VAXTRAPS_NODEDESC_DQNNU7Q7, -4(FP)
+	CALLG	-12(FP), G^POC_NEW
+	MOVL	R0, VAXTRAPS_NODE_U1HBPOS6
+; line 30
+	MOVL	#1, -8(FP)
+	MOVL	VAXTRAPS_NODE_U1HBPOS6, R0
+	BNEQ	L_8
+	PUSHAB	L_WHERE_4
+	PUSHAB	L_FILE_NAME
+	PUSHL	#19
+	PUSHL	#30
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#6, G^POC_TRAP
+L_8:
+	MOVL	R0, -4(FP)
+	MOVL	-4(FP), R1
+	MOVL	-4(R1), R1
+	CALLG	-8(FP), @-4(R1)
+	MOVW	R0, VAXTRAPS_I_CMK1L3QP
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_461BBE93A84E8AE5 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXTRAPS_MAIN, ^M<>
+	CALLS	#0, VAXTRAPS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXTRAPS_MAIN

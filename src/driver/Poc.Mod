@@ -2596,7 +2596,7 @@ MODULE Poc;
           INC(i)
         ELSIF arg = "-trap-location" THEN
           (* Phase 11 C7: every trap message names its file, line, column and procedure *)
-          LLVMCodeGenerator.trapLocation := TRUE;
+          LLVMCodeGenerator.trapLocation := TRUE; VaxCodeGenerator.trapLocation := TRUE;
           INC(i)
         ELSIF arg = "-g" THEN
           (* Phase 11 A16: debug information for gdb and lldb *)

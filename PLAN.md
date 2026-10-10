@@ -750,6 +750,14 @@ most, object libraries.
      the debugger and runs one source on both backends. Its `.mar` file
      was reviewed by the user (2026-10-09). Survey: 78, all `SYSTEM.BYTE`
      parameters.
+   - *Traps and `HALT`* (section 14 item 10), done 2026-10-09:
+     `PocRtl.mar`'s `POC_TRAP` writes LLVM's message to `SYS$ERROR` and
+     exits with `%X10000000 + 8*c + 2`; `POC_HALT` exits with
+     `SS$_NORMAL` for 0, else the same; `-trap-location` adds the file
+     and the procedure to the call. Fixture `vax-traps` runs one program
+     on both backends for each trap and `HALT`, and compares messages and
+     statuses. Its `.mar` file, and `vax-range-checks`' again (`CHR`'s
+     code), await the user's review.
 
 4. **A minimal VAX runtime, `rtl/vax`.** Only what poc itself needs, as
    ordinary Oberon-2 over a thin MACRO-32/RTL layer wherever possible:

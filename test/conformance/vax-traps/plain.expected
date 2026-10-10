@@ -1,0 +1,8 @@
+== case 4, build status: %X10000001
+case 4
+status: %X10000012
+index out of range
+== case 6, build status: %X10000001
+case 6
+status: %X10000072
+CHR argument out of range

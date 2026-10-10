@@ -487,6 +487,16 @@ pointer `NIL`, and its first dereference is trap 4.
 A program that ends normally, returning from its main module's body, has
 exit status 0.
 
+**On VAX/VMS** (`-target vax-dec-vms`) a trap's message goes to
+`SYS$ERROR`, with the same text, and a trap with status *c*, or `HALT(c)`
+with *c* from 1 to 255, ends the program with the condition value
+`%X10000000 + 8*c + 2`: severity error, message number *c*, and DCL's own
+message suppressed, since the program's says what happened. `HALT(0)` and
+a normal end give `SS$_NORMAL`, `%X00000001`. A DCL procedure recovers *c*
+as `($STATUS .AND. %XFFF8) / 8`. Integer division by zero and a real
+overflow or division by zero are the hardware's conditions, which VMS
+reports.
+
 ## 7. The command line
 
     poc [option]... <file>

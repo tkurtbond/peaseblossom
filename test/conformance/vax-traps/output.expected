@@ -1,0 +1,34 @@
+== case 1, build status: %X10000001
+case 1
+status: %X1000001A
+Traps.mod:22:5: no matching CASE label (in Traps.Choose)
+== case 2, build status: %X10000001
+case 2
+status: %X10000022
+Traps.mod:28:18: NIL pointer dereference (in Traps.NodeDesc.Sum)
+== case 3, build status: %X10000001
+case 3
+status: %X1000002A
+Traps.mod:34:14: type guard failed (in Traps.Outer.Inner)
+== case 4, build status: %X10000001
+case 4
+status: %X10000012
+TrapLib.mod:8:14: index out of range (in TrapLib.Get)
+== case 5, build status: %X10000001
+case 5
+status: %X10000042
+Traps.mod:48:26: ENTIER argument out of range for LONGINT (in Traps, module body)
+== case 6, build status: %X10000001
+case 6
+status: %X10000072
+Traps.mod:49:23: CHR argument out of range (in Traps, module body)
+== case 7, build status: %X10000001
+case 7
+status: %X10000072
+Traps.mod:50:23: SHORT argument out of range (in Traps, module body)
+== case 8, build status: %X10000001
+case 8
+status: %X00000001
+== case 9, build status: %X10000001
+case 9
+status: %X1000003A

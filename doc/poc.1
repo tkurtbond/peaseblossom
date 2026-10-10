@@ -552,6 +552,26 @@ a file error the runtime module
 .Li Files
 cannot return
 .El
+.Pp
+Built for VAX/VMS
+.Pq Fl target Cm vax-dec-vms ,
+a program writes a trap's message to
+.Ev SYS$ERROR ,
+and a trap with status
+.Ar c ,
+or
+.Fn HALT c
+with
+.Ar c
+from 1 to 255, ends it with the condition value %X10000000 + 8 *
+.Ar c
++ 2: severity error, message number
+.Ar c ,
+and DCL's own message suppressed.
+.Fn HALT 0
+and a normal end give
+.Dv SS$_NORMAL ,
+%X00000001.
 .Sh EXAMPLES
 Build and run a program:
 .Bd -literal -offset indent

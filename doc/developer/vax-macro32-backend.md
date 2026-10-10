@@ -716,7 +716,7 @@ Proposals, by construct:
     sign-extended, a wider one's low bytes (`CVTxy`), a constant wrapped.
   - `HALT(n)`: `PUSHL #n` and `CALLS #1, G^POC_HALT`, poc's runtime
     routine, which ends the program with `n` as its status; it and what
-    VMS sees are Phase 16's, as for `POC_TRAP` (§9). **Decided with the
+    VMS sees are Phase 16's, as for `POC_TRAP` (§9; done, §14 item 10). **Decided with the
     user (2026-10-08): a routine, not `$EXIT_S` in line, so that Phase 16
     can run the modules' cleanup there first.**
   - `INCL(v, x)` and `EXCL(v, x)`: `BISL2` and `BICL2` of `x`'s mask on
@@ -793,7 +793,10 @@ and for a `HUGEINT` its high longword not zero too; done (step 7b) for
 `SHORT` under `-range-checks`, code 14 at `SHORT`'s position: `BVC` over
 the trap after `CVTLW` or `CVTWB`, which set V when the value does not fit
 (MACRO 9-16), and for a `HUGEINT` its high longword not its low one's
-sign; the others come with their constructs.
+sign; the others come with their constructs. Done (step 3, §14 item
+10): the routine, `POC_TRAP` in `rtl/vax/PocRtl.mar`, which writes LLVM's
+message to `SYS$ERROR` and exits with item 10's status, and the two more
+arguments `-trap-location` adds.
 
 ## 10. Output and fixtures
 
@@ -835,8 +838,8 @@ sign; the others come with their constructs.
   under the VAX debugger**, where the guest can be used, as it is
   assembled: `tools/vax-run` links it with stand-ins for poc's runtime
   routines (`tools/vax-runtime-stub.mar`; `POC_TRAP` keeps what it was
-  given in `POC_TRAP_CODE`, `_LINE`, `_COLUMN` and `_MODULE` and ends the
-  program, `POC_HALT` its code in `POC_HALT_CODE`; `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and `POC_HMOD` compute what
+  given in `POC_TRAP_CODE` (the code's low word), `_LINE`, `_COLUMN` and
+  `_MODULE` and ends the program, `POC_HALT` its code in `POC_HALT_CODE`; `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and `POC_HMOD` compute what
   the real ones will), the main module first, so the image starts at its
   `<MODULE>_MAIN` (§6; until step 8 a driver called `<MODULE>_INIT`), and
   runs it once for each `run-<name>.dbg`, its output compared with
@@ -957,7 +960,7 @@ VMS libraries are Phase 17's.
   stays as it is for the debugger runs. `POC_TRAP` and `POC_HALT` are
   provisional: they end the program with `SS$_ABORT` and `SS$_NORMAL`
   until step 3c decides what a trap reports and what DCL sees of
-  `HALT(n)`.
+  `HALT(n)`. (Done: §14, item 10.)
 - **What is checked.** `test/conformance/vax-hello` assembles, links and
   runs a hand-written program, `hand-hello.mar`. `vax-build` compares the
   procedures with `expected-<name>.com`, then runs them on the guest
@@ -1506,3 +1509,43 @@ parameters. The 19 calls and expressions that needed more registers than
 were left went with the reals: they followed refused `LONGREAL` calls in
 one procedure of `ConstantEvaluator`, whose registers stayed held. The
 structured constant went too: it was `ZeroValue`'s `0.0`.
+
+**Done: the real `POC_TRAP` and `POC_HALT` (item 10), 2026-10-09.**
+`rtl/vax/PocRtl.mar`'s `POC_TRAP` writes the LLVM backend's message for
+the trap's code, one record, to `SYS$ERROR`: RMS `$CREATE` and
+`$CONNECT` of a FAB naming `SYS$ERROR`, which gives indirect access to
+the process-permanent file, or makes the file it is defined as, and
+`$PUT` of a variable-length record with carriage-return carriage control
+(RMS 4.1 and 5.23). Then it exits with `%X10000000 + 8*c + 2`.
+`POC_HALT` exits with `SS$_NORMAL` for `HALT(0)`, else with the same
+status for *n*. `$EXIT` runs the exit handlers (System Services,
+`$DCLEXH`), so `Out`'s unfinished line is still written. Two codes have more than one message: 14 is
+`SHORT`'s and `CHR`'s. So the call passes the code in the low word of its
+longword, and in the high word which message: `CHR`'s code is pushed as
+`#^X0001000E`. `ASSERT`'s *n* can go there too. The debugger stub keeps
+only the low word, so the runs' logs are unchanged.
+
+Under `-trap-location` the call has two more arguments, so that the
+message is LLVM's, `file:line:column: message (in procedure)`:
+`L_FILE_NAME`, a counted string of the file as the driver opened it, and
+`L_WHERE_<n>`, one for each procedure with a trap, named as LLVM names
+it (`Module.P`, `Module.Record.Method`, `Module.P.Inner`, or `Module,
+module body`). `POC_TRAP` tells the forms apart by its argument count
+and formats the longer one with `$FAO`'s `!AC` and `!UL` (System
+Services, `$FAO`). Without the switch the call is as before, so no
+earlier fixture's `.mar` changed, except `vax-range-checks`', for
+`CHR`'s code.
+
+Fixture `vax-traps` has `VaxTraps`, written for the user's review,
+under `-trap-location` and `-range-checks`: the strings and the six
+arguments for a type-bound procedure, a nested one, its parent and the
+module body, and `CHR`'s code beside `SHORT`'s. A second program,
+`Traps`, is built by both backends and run once for each case, chosen by
+a module `TrapMode` that `test.sh` writes: `CASE`, NIL, a guard in a
+nested procedure, an index in an imported module, `ENTIER`, `CHR`,
+`SHORT`, `HALT(0)` and `HALT(7)`. Each case's output, status and message
+must be the same, the VAX's status converted from LLVM's exit status by
+item 10's rule. The cases run with and without `-trap-location`, the VAX
+ones with `SYS$ERROR` defined as a file so that the message is printed
+after the output. `vax-range-checks`' `.mar` returns to the user's
+review for `CHR`'s code.
