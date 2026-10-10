@@ -1,4 +1,4 @@
-! the program run: Platform's answers, kept in PlatformUse's variables
+! the program run: what Platform and Directories gave PlatformUse
 GO
 EXAMINE/ASCII:1 PLATFORMUSE\PLATFORMUSE_SEPARATOR_30HBLOVO
 EXAMINE/ASCIZ PLATFORMUSE\PLATFORMUSE_PATH_KK8CA3UA

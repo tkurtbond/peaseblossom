@@ -168,24 +168,6 @@ int32_t PlatformNameStatus(const char *name, int64_t *volume, int64_t *index, in
   return 0;
 }
 
-/* Whether name is a directory (PLAN.md Phase 16 step 4): S_ISDIR is a
-   macro of the system's headers. */
-int32_t PlatformIsDirectory(const char *name) NAME("is-directory");
-int32_t PlatformIsDirectory(const char *name)
-{
-  struct stat s;
-  return stat(name, &s) == 0 && S_ISDIR(s.st_mode);
-}
-
-/* Makes the directory name, readable, writable and searchable by all but
-   what the umask takes away: 0 or the errno value. mkdir's mode_t is
-   16 bits on FreeBSD, 32 elsewhere. */
-int32_t PlatformMakeDirectory(const char *name) NAME("make-directory");
-int32_t PlatformMakeDirectory(const char *name)
-{
-  return mkdir(name, 0777) < 0 ? errno : 0;
-}
-
 /* Sets the access and modification times of the file name to the local
    time given (month 1..12), as voc's: EINVAL if mktime cannot represent
    it. */

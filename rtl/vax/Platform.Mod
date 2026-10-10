@@ -1,11 +1,10 @@
 MODULE Platform;
 
   (* PLAN.md Phase 16 step 4 (doc/developer/vax-macro32-backend.md, section
-     15, proposals 3 to 8): the part of rtl/llvm/Platform.Mod's interface
-     that poc's own source uses, for VAX/VMS, over the services
+     15, proposals 3, 5, 7 and 8): the part of rtl/llvm/Platform.Mod's
+     interface that poc's own source uses, for VAX/VMS, over the services
      rtl/vax/PocRtl.mar calls: GetEnv, Unlink, System, Exit, PID, CWD and
-     NL, and step 4's MakePath, IsDirectory, MakeDirectory and
-     pathSeparator, which rtl/llvm's Platform has too.
+     NL. Directories, beside it, has the directories.
 
      A name is given to VMS as it is, so case does not matter in it, and a
      file name without a version means the highest one. RMS takes a file
@@ -22,10 +21,6 @@ MODULE Platform;
      its low word under -O2. A length, at most 1024, fits either. *)
 
   CONST
-    (* what separates the directories of a list of them, such as
-       POC_IMPORT_PATH's: "," on VMS, as a directory has ":" in it *)
-    pathSeparator* = ",";
-
     nameLength = 256; (* a name and its 0X *)
 
   TYPE
@@ -46,8 +41,6 @@ MODULE Platform;
 
   PROCEDURE ["VMS"] POC_TRNLNM(VAR name: Name; length, index: INTEGER; VAR value: Name; size: INTEGER): INTEGER;
   PROCEDURE ["VMS"] POC_ERASE(VAR name: Name; length: INTEGER): INTEGER;
-  PROCEDURE ["VMS"] POC_PARSE(VAR name: Name; length: INTEGER): INTEGER;
-  PROCEDURE ["VMS"] POC_CREATE_DIRECTORY(VAR name: Name; length: INTEGER): INTEGER;
   PROCEDURE ["VMS"] POC_DEFAULT_DIRECTORY(VAR value: Name; size: INTEGER): INTEGER;
   PROCEDURE ["VMS"] POC_PROCESS_ID(): INTEGER;
   PROCEDURE ["VMS"] POC_HALT(code: INTEGER);
@@ -83,28 +76,13 @@ MODULE Platform;
     FOR k := 0 TO count - 1 DO AppendChar(s, returned[k]) END
   END Append;
 
-  (* given, ended with ":" if it does not end with ":", "]" or ">": a
-     directory, or a logical name that stands for one; FALSE if it is ""
-     or there is no room *)
-  PROCEDURE AsDirectory(VAR length: INTEGER): BOOLEAN;
-    VAR last: CHAR;
-  BEGIN
-    IF length = 0 THEN RETURN FALSE END;
-    last := given[length - 1];
-    IF (last # ":") & (last # "]") & (last # ">") THEN
-      IF length = nameLength - 1 THEN RETURN FALSE END;
-      given[length] := ":"; INC(length); given[length] := 0X
-    END;
-    RETURN TRUE
-  END AsDirectory;
-
   (* The environment *)
 
   (* The logical name var translated, in val, cut short if val is too
      small for it; "" when there is no such name. It is looked up as a file
      name's is (LNM$FILE_DEV: the process's table, the job's, the group's,
      the system's), ignoring case. A search list's equivalence strings are
-     joined with ",", pathSeparator. *)
+     joined with ",", Directories.pathSeparator. *)
   PROCEDURE GetEnv*(var: ARRAY OF CHAR; VAR val: ARRAY OF CHAR);
     VAR length, index, count: INTEGER;
   BEGIN
@@ -115,7 +93,7 @@ MODULE Platform;
       REPEAT
         count := POC_TRNLNM(given, length, index, returned, nameLength - 1);
         IF count >= 0 THEN
-          IF index > 0 THEN AppendChar(val, pathSeparator) END;
+          IF index > 0 THEN AppendChar(val, ",") END;
           Append(val, count)
         END;
         INC(index)
@@ -143,44 +121,6 @@ MODULE Platform;
     IF ODD(status) THEN RETURN 0 END;
     RETURN status
   END Unlink;
-
-  (* Directories *)
-
-  (* The file name in the directory dir in path, cut short if path is too
-     small: dir and name joined, with ":" between them when dir does not
-     end with ":", "]" or ">" - a logical name standing for a directory -
-     and nothing between them when it does, or when dir is "". *)
-  PROCEDURE MakePath*(dir, name: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
-    VAR i, j: LONGINT; last: CHAR;
-  BEGIN
-    i := 0;
-    WHILE (i < LEN(dir)) & (dir[i] # 0X) & (i < LEN(path) - 1) DO path[i] := dir[i]; INC(i) END;
-    IF (i > 0) & (i < LEN(path) - 1) THEN
-      last := path[i - 1];
-      IF (last # ":") & (last # "]") & (last # ">") THEN path[i] := ":"; INC(i) END
-    END;
-    j := 0;
-    WHILE (j < LEN(name)) & (name[j] # 0X) & (i < LEN(path) - 1) DO path[i] := name[j]; INC(i); INC(j) END;
-    IF LEN(path) > 0 THEN path[i] := 0X END
-  END MakePath;
-
-  (* Whether dir names a directory that exists: RMS parses it, which looks
-     the directory up ($PARSE, with no file name). A dir that does not end
-     with ":", "]" or ">" is taken as a logical name, with ":" after it. *)
-  PROCEDURE IsDirectory*(dir: ARRAY OF CHAR): BOOLEAN;
-    VAR length: INTEGER;
-  BEGIN
-    RETURN Fill(dir, length) & AsDirectory(length) & ODD(POC_PARSE(given, length))
-  END IsDirectory;
-
-  (* Makes the directory dir and those it is in that are missing
-     (LIB$CREATE_DIR); whether dir is a directory afterwards. dir is taken
-     as IsDirectory takes it. *)
-  PROCEDURE MakeDirectory*(dir: ARRAY OF CHAR): BOOLEAN;
-    VAR length: INTEGER;
-  BEGIN
-    RETURN Fill(dir, length) & AsDirectory(length) & ODD(POC_CREATE_DIRECTORY(given, length))
-  END MakeDirectory;
 
   (* Ending the process *)
 

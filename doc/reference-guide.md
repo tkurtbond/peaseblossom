@@ -828,6 +828,45 @@ MODULE Console;
 END Console.
 ```
 
+### Directories
+
+```text
+PLAN.md Phase 16 step 4 (doc/developer/vax-macro32-backend.md, section
+15, proposal 4): directories, and the names of the files in them, the
+same way on Unix and on VAX/VMS, through which poc's own source names
+its files for either; rtl/vax/Directories.Mod has the same interface.
+voc has no such module: rtl/voc/Directories.Mod is this one over voc's
+Platform, for the poc voc builds.
+
+On Unix a directory and a file's name in it are joined with "/", and
+a list of directories, such as POC_IMPORT_PATH, is separated by ":".
+IsDirectory and MakeDirectory are in Directories.c beside this file,
+compiled by clang from the system's own headers, as Platform.c is.
+
+A string handed to C must end in 0X within its array; one that does
+not names nothing: IsDirectory and MakeDirectory return FALSE.
+```
+
+```oberon
+MODULE Directories;
+  CONST
+    (* what separates the directories of a list of them *)
+    pathSeparator* = ":";
+
+  (* The file name in the directory dir in path, cut short if path is too
+     small: dir and name with "/" between them, unless dir is "" or
+     already ends in "/". *)
+  PROCEDURE MakePath*(dir: ARRAY OF CHAR; name: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
+
+  (* Whether dir names a directory that exists. *)
+  PROCEDURE IsDirectory*(dir: ARRAY OF CHAR): BOOLEAN;
+
+  (* Makes the directory dir and those it is in that are missing, as mkdir
+     -p does; whether dir is a directory afterwards. *)
+  PROCEDURE MakeDirectory*(dir: ARRAY OF CHAR): BOOLEAN;
+END Directories.
+```
+
 ### Err
 
 ```text
@@ -2362,11 +2401,7 @@ identities and times, the clock, the environment, the working
 directory, signal handlers, memory from the system, running a shell
 command and ending the process. PLAN.md Phase 10 step 2 brought what
 poc's own driver needs (Chdir, CWD, GetEnv, PID, System, Unlink, Exit);
-Phase 12 step 5a the rest. Phase 16 step 4 added what voc's has not:
-MakePath, IsDirectory, MakeDirectory and pathSeparator, through which
-poc's own source names files and directories the same way for Unix
-and for VAX/VMS, whose rtl/vax/Platform.Mod has them too
-(doc/developer/vax-macro32-backend.md, section 15).
+Phase 12 step 5a the rest.
 
 Two parts. What is the same on Linux, NetBSD, OpenBSD and FreeBSD -
 the C names chdir, exit, free, getcwd, getenv, getpid, isatty, malloc,
@@ -2414,10 +2449,6 @@ MODULE Platform;
     StdIn* = 0;
     StdOut* = 1;
     StdErr* = 2;
-
-    (* what separates the directories of a list of them, such as
-       POC_IMPORT_PATH's *)
-    pathSeparator* = ":";
   TYPE
     (* 0, or the errno value of a call that failed; an open file's
        descriptor *)
@@ -2570,18 +2601,6 @@ MODULE Platform;
 
   (* Makes the directory n the working directory, and updates CWD. *)
   PROCEDURE Chdir*(VAR n: ARRAY OF CHAR): INTEGER;
-
-  (* The file name in the directory dir in path, cut short if path is too
-     small: dir and name with "/" between them, unless dir is "" or
-     already ends in "/". *)
-  PROCEDURE MakePath*(dir: ARRAY OF CHAR; name: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
-
-  (* Whether dir names a directory that exists. *)
-  PROCEDURE IsDirectory*(dir: ARRAY OF CHAR): BOOLEAN;
-
-  (* Makes the directory dir and those it is in that are missing, as mkdir
-     -p does; whether dir is a directory afterwards. *)
-  PROCEDURE MakeDirectory*(dir: ARRAY OF CHAR): BOOLEAN;
 
   (* Ends the process with status code, flushing C's buffered output first
      (voc's Platform.Exit, whose parameter is a LONGINT too). *)

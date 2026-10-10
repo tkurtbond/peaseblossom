@@ -10,7 +10,7 @@ MODULE LLVMToolchainDriver;
 
      Owns two responsibilities: writing LLVMCodeGenerator.Generate's
      output to a real `<ModuleName>.ll` file (EmitIR*, which checks the
-     output directory with Platform.Chdir and back first, as
+     output directory with Directories.IsDirectory first, as
      ModuleInterface.Write* does and for the same reason - see that
      procedure's header comment: voc's Files.New does not fail gracefully
      on a missing *directory*, unlike Files.Old), and then
@@ -20,7 +20,7 @@ MODULE LLVMToolchainDriver;
      LLVMCodeGenerator.Mod itself a pure tree-walker with no file-path/
      directory concerns of its own. *)
 
-  IMPORT Files, Platform, Err, Diagnostics, LLVMTypes, LLVMCodeGenerator, ModuleInterface;
+  IMPORT Files, Platform, Directories, Err, Diagnostics, LLVMTypes, LLVMCodeGenerator, ModuleInterface;
 
   CONST
     dirBufferLength = 1024;
@@ -75,17 +75,6 @@ MODULE LLVMToolchainDriver;
     cxxLibrary*: BOOLEAN;
     (* the clang command Build runs: the link names every module's object *)
     command: ARRAY 65536 OF CHAR;
-
-  PROCEDURE JoinPath(dir, name: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
-    VAR i, j: INTEGER;
-  BEGIN
-    i := 0;
-    WHILE dir[i] # 0X DO result[i] := dir[i]; INC(i) END;
-    result[i] := "/"; INC(i);
-    j := 0;
-    WHILE name[j] # 0X DO result[i] := name[j]; INC(i); INC(j) END;
-    result[i] := 0X
-  END JoinPath;
 
   PROCEDURE AppendInt(VAR s: ARRAY OF CHAR; x: INTEGER);
     (* x is always non-negative here (a PID) - no sign handling needed,
@@ -190,7 +179,7 @@ MODULE LLVMToolchainDriver;
     VAR name: ARRAY nameBufferLength OF CHAR;
   BEGIN
     COPY(moduleName, name); Strcat(name, suffix);
-    IF outputDir[0] # 0X THEN JoinPath(outputDir, name, path) ELSE COPY(name, path) END
+    Directories.MakePath(outputDir, name, path)
   END ModuleFilePath;
 
   (* Writes one module's IR, LLVMCodeGenerator.GenerateModule's, to
@@ -219,8 +208,8 @@ MODULE LLVMToolchainDriver;
      ordered ModuleList, the main module last) to <outputDir>/<module>.ll,
      one file per module (Phase 12 step 2a), and sets pathOut to the main
      module's. voc's Files.New does not fail gracefully on a missing
-     directory (unlike Files.Old), hence the Chdir into outputDir and at
-     once back, to check it, as in ModuleInterface.Write; the files are
+     directory (unlike Files.Old), hence the check that outputDir is one
+     (Directories.IsDirectory), as in ModuleInterface.Write; the files are
      made by their whole paths, never from inside outputDir (see
      ModuleInterface.Write on what that cost). *)
   PROCEDURE EmitIR*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
@@ -228,8 +217,7 @@ MODULE LLVMToolchainDriver;
     VAR
       name: ARRAY pathBufferLength OF CHAR;
       m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
-      savedDir, dir: ARRAY dirBufferLength OF CHAR;
-      chdirResult, deleteResult: INTEGER;
+      deleteResult: INTEGER;
       errorsBefore: INTEGER;
   BEGIN
     errorsBefore := Diagnostics.errorCount;
@@ -238,12 +226,7 @@ MODULE LLVMToolchainDriver;
     COPY(Platform.CWD, LLVMCodeGenerator.debugDirectory);
     ModuleFilePath(outputDir, topName, ".ll", pathOut);
     ok := TRUE;
-    IF outputDir[0] # 0X THEN
-      COPY(Platform.CWD, savedDir);
-      COPY(outputDir, dir);
-      ok := Platform.Chdir(dir) = 0;
-      IF ok THEN chdirResult := Platform.Chdir(savedDir) END
-    END;
+    IF outputDir[0] # 0X THEN ok := Directories.IsDirectory(outputDir) END;
     IF ok THEN
       m := modules;
       WHILE m # NIL DO

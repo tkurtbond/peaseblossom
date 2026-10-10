@@ -10,3 +10,8 @@ place of an `rtl/llvm` one that voc cannot compile.
   then `rtl/llvm`'s `RealDigits`, `FormattedText`, `FormattedOutput` and
   `Err`, so the
   voc-built poc writes its diagnostics to standard error (Phase 11 D11).
+- `Directories.Mod` - `rtl/llvm/Directories.Mod`'s interface
+  (`pathSeparator`, `MakePath`, `IsDirectory`, `MakeDirectory`) over voc's
+  `Platform`, which has no such procedures: `IsDirectory` changes to the
+  directory and back, and `MakeDirectory` runs `mkdir -p`. poc's own
+  source names its files and directories through it (Phase 16 step 4).

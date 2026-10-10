@@ -12,7 +12,7 @@ MODULE VaxToolchainDriver;
      "vax-dec-vms" (decided with the user 2026-10-06): -target vax-dec-vms
      selects it, and -emit-macro32 implies it. *)
 
-  IMPORT Files, Platform, Err, SyntaxTree, SymbolTable, VaxCodeGenerator;
+  IMPORT Files, Platform, Directories, Err, SyntaxTree, SymbolTable, VaxCodeGenerator;
 
   CONST
     triple* = "vax-dec-vms";
@@ -42,19 +42,10 @@ MODULE VaxToolchainDriver;
   END Append;
 
   PROCEDURE ModuleFilePath*(outputDir, moduleName: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
-    VAR i, j: INTEGER; suffix: ARRAY 5 OF CHAR;
+    VAR name: ARRAY 72 OF CHAR;
   BEGIN
-    suffix := ".mar";
-    i := 0;
-    IF outputDir[0] # 0X THEN
-      WHILE (outputDir[i] # 0X) & (i < LEN(path) - 1) DO path[i] := outputDir[i]; INC(i) END;
-      IF (i > 0) & (path[i - 1] # "/") & (i < LEN(path) - 1) THEN path[i] := "/"; INC(i) END
-    END;
-    j := 0;
-    WHILE (moduleName[j] # 0X) & (i < LEN(path) - 1) DO path[i] := moduleName[j]; INC(i); INC(j) END;
-    j := 0;
-    WHILE (suffix[j] # 0X) & (i < LEN(path) - 1) DO path[i] := suffix[j]; INC(i); INC(j) END;
-    path[i] := 0X
+    COPY(moduleName, name); Append(name, ".mar");
+    Directories.MakePath(outputDir, name, path)
   END ModuleFilePath;
 
   (* module's MACRO-32 to <outputDir>/<Module>.mar (path), with the

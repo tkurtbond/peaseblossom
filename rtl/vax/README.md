@@ -24,8 +24,10 @@ writes their `.mar` files.
 - `Modules.Mod` (`ArgCount`, `GetArg`): the command line of a foreign
   command, split as DCL quotes it (section 15, proposal 6).
 - `Platform.Mod` (`GetEnv`, `Unlink`, `System`, `Exit`, `PID`, `CWD`,
-  `NL`, `MakePath`, `IsDirectory`, `MakeDirectory`, `pathSeparator`):
-  logical names, files and directories by name, and ending the process
-  (section 15, proposals 3 to 8).
+  `NL`): logical names, files by name, and ending the process (section
+  15, proposals 3 and 5 to 8).
+- `Directories.Mod` (`pathSeparator`, `MakePath`, `IsDirectory`,
+  `MakeDirectory`): directories, and the names of the files in them, as
+  VMS writes them (section 15, proposal 4).
 
 `Files` and the collector are still to come (section 15, proposal 10).

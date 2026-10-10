@@ -1,0 +1,541 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
+;; RMS and LIB$ manuals, the guest runs and the debugger run; for the
+;; user's review). Why this is right:
+;; - GIVEN, 256 bytes, is the name given to PocRtl.mar's POC_PARSE and
+;;   POC_CREATE_DIRECTORY, as RMS takes at most 255 characters; it is
+;;   not exported. pathSeparator is a constant, with no symbol.
+;; - EndsDirectory is TRUE for ":" (#58), "]" (#93) or ">" (#62), the
+;;   ORs short-circuited. It and Fill are not exported: each is entered
+;;   by a .WORD mask and called without G^.
+;; - Fill copies dir up to its 0X into GIVEN, FALSE when dir is "" or
+;;   255 characters are copied and more remain; then ":" unless the last
+;;   character ends a directory (FALSE if there is no room), then 0X,
+;;   and the length, SHORT, to the VAR INTEGER (CVTLW, a word under
+;;   -O2).
+;; - MakePath copies its two value arrays, then puts dir in path up to
+;;   LEN(path) - 1, ":" when dir is not "" and does not end a directory,
+;;   then name, and 0X when path has room for it.
+;; - IsDirectory and MakeDirectory are Fill and then, only when it is
+;;   TRUE, POC_PARSE or POC_CREATE_DIRECTORY with GIVEN by reference and
+;;   the length by value (CVTWL); the status's low bit is the result
+;;   (BICB3 #254).
+;; - The trap 2 calls are the index checks; the trap 12 calls after the
+;;   last RET of a function are its end without RETURN, never reached.
+;;   The initializer only marks the module initialised: it imports
+;;   nothing.
+;; - In the debugger run, MakePath("SYS$LOGIN", "X.MOD") gives
+;;   SYS$LOGIN:X.MOD; SYS$LOGIN is a directory and [.NO-SUCH-DIRECTORY]
+;;   is not. On the guest, PlatformOut's MakeDirectory makes [.MADE.SUB]
+;;   and [.MADE] above it, and succeeds again when they are there.
+; Directories, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	DIRECTORIES
+	.IDENT	/1fa685e4ed3246e0/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; given: ARRAY 256 OF CHAR
+DIRECTORIES_GIVEN_KUTJQGFB:
+	.BLKB	256
+
+; the symbols it uses of other modules
+	.EXTERNAL	POC_PARSE
+	.EXTERNAL	POC_CREATE_DIRECTORY
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/Directories/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE EndsDirectory
+DIRECTORIES_ENDSDIRECT_MKVPF033:
+	.WORD	^M<>
+; line 34
+	CLRB	R0
+	CMPB	4(AP), #58
+	BNEQ	L_1
+	MOVB	#1, R0
+L_1:
+	BLBC	R0, L_2
+	JMP	L^L_3
+L_2:
+	CLRB	R1
+	CMPB	4(AP), #93
+	BNEQ	L_4
+	MOVB	#1, R1
+L_4:
+	MOVB	R1, R0
+L_3:
+	BLBC	R0, L_5
+	JMP	L^L_6
+L_5:
+	CLRB	R1
+	CMPB	4(AP), #62
+	BNEQ	L_7
+	MOVB	#1, R1
+L_7:
+	MOVB	R1, R0
+L_6:
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#35
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Fill
+DIRECTORIES_FILL_8JBOO9GR:
+	.WORD	^M<>
+	SUBL2	#12, SP
+	CLRL	-4(FP)
+; line 43
+	CLRL	-4(FP)
+; line 44
+L_8:
+	MOVL	8(AP), R0
+	CMPL	-4(FP), R0
+	BLSS	L_10
+	JMP	L^L_9
+L_10:
+	MOVL	-4(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_11
+	PUSHL	#33
+	PUSHL	#44
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_11:
+	TSTB	@4(AP)[R0]
+	BNEQ	L_12
+	JMP	L^L_9
+L_12:
+; line 45
+	CMPL	-4(FP), #255
+	BEQL	L_14
+	JMP	L^L_13
+L_14:
+; line 45
+	CLRL	R0
+	RET
+L_13:
+; line 46
+	MOVL	-4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_15
+	PUSHL	#13
+	PUSHL	#46
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_15:
+	MOVL	-4(FP), R1
+	CMPL	R1, 8(AP)
+	BLSSU	L_16
+	PUSHL	#23
+	PUSHL	#46
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_16:
+	MOVB	@4(AP)[R1], DIRECTORIES_GIVEN_KUTJQGFB[R0]
+; line 46
+	INCL	-4(FP)
+	JMP	L^L_8
+L_9:
+; line 48
+	TSTL	-4(FP)
+	BEQL	L_18
+	JMP	L^L_17
+L_18:
+; line 48
+	CLRL	R0
+	RET
+L_17:
+; line 49
+	MOVL	#1, -12(FP)
+	SUBL3	#1, -4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_20
+	PUSHL	#31
+	PUSHL	#49
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_20:
+	MOVZBL	DIRECTORIES_GIVEN_KUTJQGFB[R0], -8(FP)
+	CALLG	-12(FP), DIRECTORIES_ENDSDIRECT_MKVPF033
+	BLBC	R0, L_21
+	JMP	L^L_19
+L_21:
+; line 50
+	CMPL	-4(FP), #255
+	BEQL	L_23
+	JMP	L^L_22
+L_23:
+; line 50
+	CLRL	R0
+	RET
+L_22:
+; line 51
+	MOVL	-4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_24
+	PUSHL	#13
+	PUSHL	#51
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_24:
+	MOVB	#58, DIRECTORIES_GIVEN_KUTJQGFB[R0]
+; line 51
+	INCL	-4(FP)
+L_19:
+; line 53
+	MOVL	-4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_25
+	PUSHL	#11
+	PUSHL	#53
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_25:
+	CLRB	DIRECTORIES_GIVEN_KUTJQGFB[R0]
+; line 53
+	CVTLW	-4(FP), @12(AP)
+; line 54
+	MOVL	#1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#55
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE MakePath
+	.ENTRY	DIRECTORIES_MAKEPATH_6JI4JIJR, ^M<R2,R3,R4,R5>
+	SUBL2	#24, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVL	16(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -8(FP)
+	PUSHL	R0
+	MOVL	12(AP), R1
+	MOVL	-8(FP), R3
+L_51:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_52
+	MOVL	#65535, R0
+L_52:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_51
+	ADDL2	#4, SP
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_53:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_54
+	MOVL	#65535, R0
+L_54:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_53
+	ADDL2	#4, SP
+; line 64
+	CLRL	-12(FP)
+; line 65
+L_26:
+	MOVL	8(AP), R0
+	CMPL	-12(FP), R0
+	BLSS	L_28
+	JMP	L^L_27
+L_28:
+	MOVL	-12(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_29
+	PUSHL	#33
+	PUSHL	#65
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_29:
+	TSTB	@-4(FP)[R0]
+	BNEQ	L_30
+	JMP	L^L_27
+L_30:
+	MOVL	24(AP), R0
+	DECL	R0
+	CMPL	-12(FP), R0
+	BLSS	L_31
+	JMP	L^L_27
+L_31:
+; line 65
+	MOVL	-12(FP), R0
+	CMPL	R0, 24(AP)
+	BLSSU	L_32
+	PUSHL	#72
+	PUSHL	#65
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_32:
+	MOVL	-12(FP), R1
+	CMPL	R1, 8(AP)
+	BLSSU	L_33
+	PUSHL	#82
+	PUSHL	#65
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_33:
+	MOVB	@-4(FP)[R1], @20(AP)[R0]
+; line 65
+	INCL	-12(FP)
+	JMP	L^L_26
+L_27:
+; line 66
+	TSTL	-12(FP)
+	BGTR	L_35
+	JMP	L^L_34
+L_35:
+	MOVL	24(AP), R0
+	DECL	R0
+	CMPL	-12(FP), R0
+	BLSS	L_36
+	JMP	L^L_34
+L_36:
+	MOVL	#1, -24(FP)
+	SUBL3	#1, -12(FP), R0
+	CMPL	R0, 24(AP)
+	BLSSU	L_37
+	PUSHL	#62
+	PUSHL	#66
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_37:
+	MOVZBL	@20(AP)[R0], -20(FP)
+	CALLG	-24(FP), DIRECTORIES_ENDSDIRECT_MKVPF033
+	BLBC	R0, L_38
+	JMP	L^L_34
+L_38:
+; line 66
+	MOVL	-12(FP), R0
+	CMPL	R0, 24(AP)
+	BLSSU	L_39
+	PUSHL	#78
+	PUSHL	#66
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_39:
+	MOVB	#58, @20(AP)[R0]
+; line 66
+	INCL	-12(FP)
+L_34:
+; line 67
+	CLRL	-16(FP)
+; line 68
+L_40:
+	MOVL	16(AP), R0
+	CMPL	-16(FP), R0
+	BLSS	L_42
+	JMP	L^L_41
+L_42:
+	MOVL	-16(FP), R0
+	CMPL	R0, 16(AP)
+	BLSSU	L_43
+	PUSHL	#35
+	PUSHL	#68
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_43:
+	TSTB	@-8(FP)[R0]
+	BNEQ	L_44
+	JMP	L^L_41
+L_44:
+	MOVL	24(AP), R0
+	DECL	R0
+	CMPL	-12(FP), R0
+	BLSS	L_45
+	JMP	L^L_41
+L_45:
+; line 68
+	MOVL	-12(FP), R0
+	CMPL	R0, 24(AP)
+	BLSSU	L_46
+	PUSHL	#74
+	PUSHL	#68
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_46:
+	MOVL	-16(FP), R1
+	CMPL	R1, 16(AP)
+	BLSSU	L_47
+	PUSHL	#85
+	PUSHL	#68
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_47:
+	MOVB	@-8(FP)[R1], @20(AP)[R0]
+; line 68
+	INCL	-12(FP)
+; line 68
+	INCL	-16(FP)
+	JMP	L^L_40
+L_41:
+; line 69
+	MOVL	24(AP), R0
+	TSTL	R0
+	BGTR	L_49
+	JMP	L^L_48
+L_49:
+; line 69
+	MOVL	-12(FP), R0
+	CMPL	R0, 24(AP)
+	BLSSU	L_50
+	PUSHL	#32
+	PUSHL	#69
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_50:
+	CLRB	@20(AP)[R0]
+L_48:
+	RET
+; PROCEDURE IsDirectory
+	.ENTRY	DIRECTORIES_ISDIRECTOR_28TK62JP, ^M<R2,R3,R4,R5>
+	SUBL2	#24, SP
+	CLRQ	-8(FP)
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_57:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_58
+	MOVL	#65535, R0
+L_58:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_57
+	ADDL2	#4, SP
+; line 77
+	MOVL	#3, -24(FP)
+	MOVL	-4(FP), -20(FP)
+	MOVL	8(AP), -16(FP)
+	MOVAB	-6(FP), -12(FP)
+	CALLG	-24(FP), DIRECTORIES_FILL_8JBOO9GR
+	BLBS	R0, L_55
+	JMP	L^L_56
+L_55:
+	MOVL	#2, -20(FP)
+	MOVAB	DIRECTORIES_GIVEN_KUTJQGFB, -16(FP)
+	CVTWL	-6(FP), -12(FP)
+	MOVB	R0, R2
+	CALLG	-20(FP), G^POC_PARSE
+	BICB3	#254, R0, R0
+	MOVB	R0, R2
+	MOVB	R2, R0
+L_56:
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#78
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE MakeDirectory
+	.ENTRY	DIRECTORIES_MAKEDIRECT_6BIN70H7, ^M<R2,R3,R4,R5>
+	SUBL2	#24, SP
+	CLRQ	-8(FP)
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_61:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_62
+	MOVL	#65535, R0
+L_62:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_61
+	ADDL2	#4, SP
+; line 85
+	MOVL	#3, -24(FP)
+	MOVL	-4(FP), -20(FP)
+	MOVL	8(AP), -16(FP)
+	MOVAB	-6(FP), -12(FP)
+	CALLG	-24(FP), DIRECTORIES_FILL_8JBOO9GR
+	BLBS	R0, L_59
+	JMP	L^L_60
+L_59:
+	MOVL	#2, -20(FP)
+	MOVAB	DIRECTORIES_GIVEN_KUTJQGFB, -16(FP)
+	CVTWL	-6(FP), -12(FP)
+	MOVB	R0, R2
+	CALLG	-20(FP), G^POC_CREATE_DIRECTORY
+	BICB3	#254, R0, R0
+	MOVB	R0, R2
+	MOVB	R2, R0
+L_60:
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#86
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	DIRECTORIES_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_1FA685E4ED3246E0 == 0
+
+	.END

@@ -1,23 +1,24 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from design
-;; section 15, the guest runs and the debugger run). Why this is
+;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
+;; guest runs and the debugger run; for the user's review). Why this is
 ;; right:
-;; - PlatformUse imports Platform, rtl/vax/Platform.Mod compiled with it
-;;   (expected-vax-Platform.mar): its initializer calls PLATFORM_INIT
-;;   first, and it calls Platform's procedures by their global symbols,
-;;   with G^.
-;; - separator := Platform.pathSeparator is the constant "," (#44), with
-;;   no reference to Platform; pid := Platform.PID reads the exported word
-;;   through G^.
+;; - PlatformUse imports Platform and Directories, rtl/vax/Platform.Mod
+;;   and Directories.Mod compiled with it (expected-vax-Platform.mar and
+;;   expected-vax-Directories.mar): its initializer calls PLATFORM_INIT,
+;;   then DIRECTORIES_INIT, and it calls their procedures by their
+;;   global symbols, with G^.
+;; - separator := Directories.pathSeparator is the constant "," (#44),
+;;   with no reference to Directories; pid := Platform.PID reads the
+;;   exported word through G^.
 ;; - MakePath, IsDirectory, GetEnv and Unlink get each string as its
 ;;   address and its length with the 0X, and a VAR array's length (64);
 ;;   a BOOLEAN result is stored from R0's low byte.
-;; - The debugger run ends with separator ",", path SYS$LOGIN:X.MOD, disk
-;;   DUA1:, home 1 (SYS$LOGIN: is a directory), missing 0 ([.NO-SUCH-
-;;   DIRECTORY] is not), and gone 8292, the low word of RMS$_FNF
-;;   (%X00018292): the file to delete is not there.
+;; - The debugger run ends with separator ",", path SYS$LOGIN:X.MOD,
+;;   disk DUA1:, home 1 (SYS$LOGIN: is a directory), missing 0
+;;   ([.NO-SUCH-DIRECTORY] is not), and gone 8292, the low word of
+;;   RMS$_FNF (%X00018292): the file to delete is not there.
 ; PlatformUse, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	PLATFORMUSE
-	.IDENT	/cd06a746ee85663e/
+	.IDENT	/d0ecc0b98b085b09/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
@@ -54,13 +55,15 @@ PLATFORMUSE_GONE_AR9RTE1Q:
 	.BLKW	1
 
 ; the symbols it uses of other modules
-	.EXTERNAL	PLATFORM_MAKEPATH_SLB3UHI5
-	.EXTERNAL	PLATFORM_ISDIRECTORY_F1QRO1H7
+	.EXTERNAL	DIRECTORIES_MAKEPATH_6JI4JIJR
+	.EXTERNAL	DIRECTORIES_ISDIRECTOR_28TK62JP
 	.EXTERNAL	PLATFORM_GETENV_ATVM4QJV
 	.EXTERNAL	PLATFORM_PID_LCCSKLS1
 	.EXTERNAL	PLATFORM_UNLINK_KE1F78LR
 	.EXTERNAL	PLATFORM_INIT
-	.EXTERNAL	POC_K1_B6AE0C09CBAC81B7
+	.EXTERNAL	POC_K1_587C176E2BD2ADBE
+	.EXTERNAL	DIRECTORIES_INIT
+	.EXTERNAL	POC_K1_1FA685E4ED3246E0
 
 ; its string constants
 	.PSECT	POC_CONST
@@ -85,6 +88,7 @@ L_STR_4:
 L_BODY:
 	MOVB	#1, L_INITIALISED
 	CALLS	#0, G^PLATFORM_INIT
+	CALLS	#0, G^DIRECTORIES_INIT
 	SUBL2	#28, SP
 ; line 10
 	MOVB	#44, PLATFORMUSE_SEPARATOR_30HBLOVO
@@ -96,18 +100,18 @@ L_BODY:
 	MOVL	#6, -12(FP)
 	MOVAB	PLATFORMUSE_PATH_KK8CA3UA, -8(FP)
 	MOVL	#64, -4(FP)
-	CALLG	-28(FP), G^PLATFORM_MAKEPATH_SLB3UHI5
+	CALLG	-28(FP), G^DIRECTORIES_MAKEPATH_6JI4JIJR
 ; line 12
 	MOVL	#2, -12(FP)
 	MOVAB	L_STR_1, -8(FP)
 	MOVL	#10, -4(FP)
-	CALLG	-12(FP), G^PLATFORM_ISDIRECTORY_F1QRO1H7
+	CALLG	-12(FP), G^DIRECTORIES_ISDIRECTOR_28TK62JP
 	MOVB	R0, PLATFORMUSE_HOME_DTVA7CUI
 ; line 13
 	MOVL	#2, -12(FP)
 	MOVAB	L_STR_3, -8(FP)
 	MOVL	#21, -4(FP)
-	CALLG	-12(FP), G^PLATFORM_ISDIRECTORY_F1QRO1H7
+	CALLG	-12(FP), G^DIRECTORIES_ISDIRECTOR_28TK62JP
 	MOVB	R0, PLATFORMUSE_MISSING_63N4S093
 ; line 14
 	MOVL	#4, -20(FP)
@@ -129,7 +133,7 @@ L_BODY:
 	RET
 
 ; the module's key, which its importers refer to
-POC_K1_CD06A746EE85663E == 0
+POC_K1_D0ECC0B98B085B09 == 0
 
 ; the program's start: the module's initializer, then SS$_NORMAL
 	.ENTRY	PLATFORMUSE_MAIN, ^M<>

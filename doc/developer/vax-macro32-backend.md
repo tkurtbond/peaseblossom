@@ -1702,16 +1702,21 @@ Proposals:
    (confirmed on the guest, below), so an older build is left in place,
    as VMS leaves it. Old versions pile up until the user purges them.
 
-4. **Directories.** A new `Platform.MakePath(dir, name, VAR path)`
+4. **Directories.** A new module, `Directories`, holds what follows
+   (amended 2026-10-10, decided with the user: these were to be added
+   to `Platform`, but the Stage 0 poc is built by voc against voc's own
+   `Platform`, which has none of them; `rtl/voc/Directories.Mod` gives
+   that poc the same interface over voc's `Platform`, and `Platform`
+   keeps voc's). `Directories.MakePath(dir, name, VAR path)`
    replaces the 58 joins with `/`. On Unix it puts `/` between them,
    unless `dir` already ends in one. On VMS it puts nothing between them
    when `dir` ends in `:`, `]` or `>` (a device, a directory, or a logical
    name with its colon), and `:` when it does not (a logical name without
    one). The two `Chdir`-and-back tests of whether a directory exists
-   become a new `Platform.IsDirectory(dir)`. On VMS that is a `$PARSE`
+   become `Directories.IsDirectory(dir)`. On VMS that is a `$PARSE`
    of `dir`, because `SYS$SETDDIR` would change the process's default
    directory, which DCL keeps after poc exits. `-output-dir`'s `mkdir -p`
-   becomes a new `Platform.MakeDirectory(dir)`: `LIB$CREATE_DIR` on VMS,
+   becomes `Directories.MakeDirectory(dir)`: `LIB$CREATE_DIR` on VMS,
    the same `mkdir -p` on Unix. `CWD` is `SYS$DISK` and
    `SYS$SETDDIR`'s directory joined. Its two uses are the LLVM backend's
    (the debug directory) and a library's, neither of them on VMS.
@@ -1721,7 +1726,7 @@ Proposals:
    tables), not a DCL symbol. When the name is a search list, its
    equivalence strings are joined with `,`. `,` is VMS's separator in
    `POC_IMPORT_PATH`, since a directory contains `:`. A new constant,
-   `Platform.pathSeparator`, is `:` on Unix and `,` on VMS. So
+   `Directories.pathSeparator`, is `:` on Unix and `,` on VMS. So
    `$ DEFINE POC_IMPORT_PATH DUA1:[POC.SRC.FRONT],DUA1:[POC.RTL.VAX]` gives
    two directories, and so does a search list.
 
@@ -1803,15 +1808,26 @@ Proposals:
   `-OC`, its low word under `-O2`. Never 0 for an RMS status.
   `PocRtl.mar`'s routines return longwords. `Platform` declares them
   `INTEGER`, since `SYSTEM.VAL` is not lowered yet.
-- *`IsDirectory` and `MakeDirectory`* take a name that does not end in
-  `:`, `]` or `>` as a logical name, and add the `:`, as `MakePath`
-  does.
+- *`Directories`* (proposal 4, amended) is `rtl/vax/Directories.Mod`,
+  `rtl/llvm/Directories.Mod` and, for Stage 0, `rtl/voc/Directories.Mod`.
+  On VMS `IsDirectory` and `MakeDirectory` take a name that does not
+  end in `:`, `]` or `>` as a logical name, and add the `:`, as
+  `MakePath` does.
 - *`$ERASE` checked.* `Unlink` of a file with two versions left
   `;1`, as proposal 3 expected.
-- *`rtl/llvm`'s `Platform`* gained `MakePath`, `IsDirectory`,
-  `MakeDirectory` and `pathSeparator`. `IsDirectory` and each
-  `mkdir` are in `Platform.c`, as `S_ISDIR` is a macro and `mode_t`
-  is 16 bits on FreeBSD. `MakeDirectory` makes each missing level, as
-  `mkdir -p` does.
+- *`rtl/llvm`'s `Directories`* has `IsDirectory` and each `mkdir` in
+  `Directories.c`, as `S_ISDIR` is a macro and `mode_t` is 16 bits on
+  FreeBSD. `MakeDirectory` makes each missing level, as `mkdir -p`
+  does. `rtl/voc`'s changes to the directory and back for
+  `IsDirectory`, and runs `mkdir -p` for `MakeDirectory`.
+- *`src/`* names its files through `Directories`: `MakePath` replaces
+  the three `JoinPath` helpers and `Poc.Mod`'s and
+  `VaxToolchainDriver`'s own joins, `IsDirectory` the two
+  `Chdir`-and-back tests, and `MakeDirectory` the `mkdir -p` of
+  `-output-dir` and of a library's directory, which is now reported
+  when it fails. The import and library path lists split at
+  `pathSeparator`. The joins left with `/` are the LLVM backend's
+  library and run paths and the shell commands, none of them used on
+  VMS.
 - *`tools/vax-runtime-stub.mar`* has the same routines, so that the
   debugger runs link.

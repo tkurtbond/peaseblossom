@@ -23,9 +23,11 @@ BUILD_INFO := $(BUILD_DIR)/gen/BuildInfo.Mod
 RTL_SRCS := $(wildcard rtl/llvm/*.Mod)
 # Phase 12 step 5a: the C part of an rtl module, compiled with it by poc
 RTL_C_SRCS := $(wildcard rtl/llvm/*.c)
-# what Stage 0 builds with voc besides src/: Err and what it needs (Phase 11 D11)
+# what Stage 0 builds with voc besides src/: Err and what it needs (Phase 11
+# D11), and Directories (Phase 16 step 4)
 STAGE0_RTL_SRCS := rtl/voc/FileDescriptorOutput.Mod rtl/llvm/RealDigits.Mod \
-  rtl/llvm/FormattedText.Mod rtl/llvm/FormattedOutput.Mod rtl/llvm/Err.Mod
+  rtl/llvm/FormattedText.Mod rtl/llvm/FormattedOutput.Mod rtl/llvm/Err.Mod \
+  rtl/voc/Directories.Mod
 STAGE1_BIN := $(BUILD_DIR)/stage1/bin/poc
 # Phase 12 step 2d: rtl/llvm as the library poc-rtl, for this host's triple
 # and both size models, where each poc's default library path finds it

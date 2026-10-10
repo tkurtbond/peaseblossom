@@ -1,11 +1,11 @@
 MODULE PlatformOut;
   (* PLAN.md Phase 16 step 4 (doc/developer/vax-macro32-backend.md, section
-     15, proposals 3 to 8): Platform's procedures, on the names the
-     command line gives, which differ between Unix and VMS: 1 a directory
+     15, proposals 3 to 8): Platform's and Directories' procedures, on the
+     names the command line gives, which differ between Unix and VMS: 1 a directory
      there is, 2 one there is not, 3 one to make, two levels below one
      there is not yet, 4 a variable or logical name. A file doomed.tmp is
      there to be deleted. *)
-  IMPORT Platform, Modules, Out;
+  IMPORT Platform, Directories, Modules, Out;
   VAR dir, missing, made, name, path, value: ARRAY 256 OF CHAR; s: ARRAY 8 OF CHAR;
 
   PROCEDURE Bool(text: ARRAY OF CHAR; b: BOOLEAN);
@@ -15,20 +15,20 @@ MODULE PlatformOut;
 
   PROCEDURE Path(dir: ARRAY OF CHAR);
   BEGIN
-    Platform.MakePath(dir, "x.mod", path); Out.String("path ["); Out.String(path); Out.String("]"); Out.Ln
+    Directories.MakePath(dir, "x.mod", path); Out.String("path ["); Out.String(path); Out.String("]"); Out.Ln
   END Path;
 
 BEGIN
   Modules.GetArg(1, dir); Modules.GetArg(2, missing); Modules.GetArg(3, made); Modules.GetArg(4, name);
-  Out.String("separator "); Out.Char(Platform.pathSeparator); Out.Ln;
+  Out.String("separator "); Out.Char(Directories.pathSeparator); Out.Ln;
   Path(dir); Path(""); Path("lib"); Path("lib/"); Path("DISK:"); Path("[LIB]");
-  Platform.MakePath("dir", "x.mod", s); Out.String("cut short ["); Out.String(s); Out.String("]"); Out.Ln;
-  Bool("is a directory:", Platform.IsDirectory(dir));
-  Bool("missing is a directory:", Platform.IsDirectory(missing));
-  Bool("made is a directory:", Platform.IsDirectory(made));
-  Bool("made:", Platform.MakeDirectory(made));
-  Bool("made is a directory:", Platform.IsDirectory(made));
-  Bool("made again:", Platform.MakeDirectory(made));
+  Directories.MakePath("dir", "x.mod", s); Out.String("cut short ["); Out.String(s); Out.String("]"); Out.Ln;
+  Bool("is a directory:", Directories.IsDirectory(dir));
+  Bool("missing is a directory:", Directories.IsDirectory(missing));
+  Bool("made is a directory:", Directories.IsDirectory(made));
+  Bool("made:", Directories.MakeDirectory(made));
+  Bool("made is a directory:", Directories.IsDirectory(made));
+  Bool("made again:", Directories.MakeDirectory(made));
   Platform.GetEnv(name, value); Out.String("value ["); Out.String(value); Out.String("]"); Out.Ln;
   Platform.GetEnv("POC_NO_SUCH_NAME", value); Out.String("no value ["); Out.String(value); Out.String("]"); Out.Ln;
   value := "doomed.tmp";

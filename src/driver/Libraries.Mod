@@ -48,7 +48,7 @@ MODULE Libraries;
      finds, reads and writes manifests, and checks that the libraries a
      program would link agree with each other. *)
 
-  IMPORT Files, Platform, Err, Version;
+  IMPORT Files, Platform, Directories, Err, Version;
 
   CONST
     nameLength* = 256;
@@ -166,11 +166,6 @@ MODULE Libraries;
     s[i] := 0X
   END Append;
 
-  PROCEDURE JoinPath(dir, name: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
-  BEGIN
-    COPY(dir, result); Append(result, "/"); Append(result, name)
-  END JoinPath;
-
   (* ---- The library path ---- *)
 
   PROCEDURE AddPathDir*(dir: ARRAY OF CHAR);
@@ -182,17 +177,17 @@ MODULE Libraries;
     pathTail := e
   END AddPathDir;
 
-  (* dirs separated by ":", as POC_LIBRARY_PATH has them *)
+  (* dirs separated by Directories.pathSeparator, as POC_LIBRARY_PATH has them *)
   PROCEDURE AddPathList*(list: ARRAY OF CHAR);
     VAR i, j: INTEGER; piece: Path;
   BEGIN
     i := 0;
     WHILE list[i] # 0X DO
       j := 0;
-      WHILE (list[i] # 0X) & (list[i] # ":") DO piece[j] := list[i]; INC(j); INC(i) END;
+      WHILE (list[i] # 0X) & (list[i] # Directories.pathSeparator) DO piece[j] := list[i]; INC(j); INC(i) END;
       piece[j] := 0X;
       AddPathDir(piece);
-      IF list[i] = ":" THEN INC(i) END
+      IF list[i] = Directories.pathSeparator THEN INC(i) END
     END
   END AddPathList;
 
@@ -314,7 +309,7 @@ MODULE Libraries;
   PROCEDURE ReadOwner(dir, name: ARRAY OF CHAR; VAR owner: ARRAY OF CHAR): BOOLEAN;
     VAR path: Path; f: Files.File; r: Files.Rider;
   BEGIN
-    JoinPath(dir, name, path); Append(path, ".owner");
+    Directories.MakePath(dir, name, path); Append(path, ".owner");
     f := Files.Old(path);
     IF f # NIL THEN Files.Set(r, f, 0); Files.ReadLine(r, owner); Files.Close(f) END;
     RETURN f # NIL
@@ -515,7 +510,7 @@ MODULE Libraries;
         IF lib.refused THEN RETURN NIL ELSE RETURN lib END
       END
     END;
-    JoinPath(dir, name, path); Append(path, ".library");
+    Directories.MakePath(dir, name, path); Append(path, ".library");
     f := Files.Old(path);
     IF f = NIL THEN
       Err.String("poc: cannot read the manifest "); Err.String(path); Err.Ln;
@@ -639,11 +634,11 @@ MODULE Libraries;
     WHILE e # NIL DO
       IF debug THEN
         ModelDirectory(e.dir, TRUE, dir);
-        JoinPath(dir, name, path); Append(path, ".library");
+        Directories.MakePath(dir, name, path); Append(path, ".library");
         IF Exists(path) THEN RETURN Load(name, dir, TRUE) END
       END;
       ModelDirectory(e.dir, FALSE, dir);
-      JoinPath(dir, name, path); Append(path, ".library");
+      Directories.MakePath(dir, name, path); Append(path, ".library");
       IF Exists(path) THEN RETURN Load(name, dir, TRUE) END;
       e := e.next
     END;
@@ -674,7 +669,7 @@ MODULE Libraries;
   PROCEDURE WriteManifest*(lib: Library): BOOLEAN;
     VAR path: Path; f: Files.File; w: Files.Rider; m: Member; i: ImportKey; n: Need; a: LinkArgument;
   BEGIN
-    JoinPath(lib.dir, lib.name, path); Append(path, ".library");
+    Directories.MakePath(lib.dir, lib.name, path); Append(path, ".library");
     f := Files.New(path);
     IF f = NIL THEN Err.String("poc: cannot write "); Err.String(path); Err.Ln; RETURN FALSE END;
     Files.Set(w, f, 0);
@@ -704,7 +699,7 @@ MODULE Libraries;
     Files.Register(f); Files.Close(f);
     m := lib.modules;
     WHILE m # NIL DO
-      JoinPath(lib.dir, m.name, path); Append(path, ".owner");
+      Directories.MakePath(lib.dir, m.name, path); Append(path, ".owner");
       f := Files.New(path);
       IF f = NIL THEN Err.String("poc: cannot write "); Err.String(path); Err.Ln; RETURN FALSE END;
       Files.Set(w, f, 0); WriteLine(w, lib.name, "", "", "");

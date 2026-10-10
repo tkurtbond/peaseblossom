@@ -124,7 +124,7 @@ MODULE ModuleInterface;
      scientific notation, D.DDD followed by a scale factor. Out of scope:
      non-finite values. *)
 
-  IMPORT SYSTEM, SyntaxTree, SymbolTable, Types, Diagnostics, Lexer, Files, Platform,
+  IMPORT SYSTEM, SyntaxTree, SymbolTable, Types, Diagnostics, Lexer, Files, Directories,
          ConstantEvaluator, DecimalToDouble, Out;
 
   CONST
@@ -300,10 +300,10 @@ MODULE ModuleInterface;
     i := 0;
     WHILE list[i] # 0X DO
       j := 0;
-      WHILE (list[i] # 0X) & (list[i] # ":") DO piece[j] := list[i]; INC(j); INC(i) END;
+      WHILE (list[i] # 0X) & (list[i] # Directories.pathSeparator) DO piece[j] := list[i]; INC(j); INC(i) END;
       piece[j] := 0X;
       AddSearchPathDir(piece);
-      IF list[i] = ":" THEN INC(i) END
+      IF list[i] = Directories.pathSeparator THEN INC(i) END
     END
   END AddSearchPathList;
 
@@ -316,17 +316,6 @@ MODULE ModuleInterface;
   BEGIN
     RETURN searchPathHead
   END FirstSearchPathEntry;
-
-  PROCEDURE JoinPath(dir, name: ARRAY OF CHAR; VAR result: ARRAY OF CHAR);
-    VAR i, j: INTEGER;
-  BEGIN
-    i := 0;
-    WHILE dir[i] # 0X DO result[i] := dir[i]; INC(i) END;
-    result[i] := "/"; INC(i);
-    j := 0;
-    WHILE name[j] # 0X DO result[i] := name[j]; INC(i); INC(j) END;
-    result[i] := 0X
-  END JoinPath;
 
   (* ---- Reading (pure file I/O; see header comment) ---- *)
 
@@ -343,7 +332,7 @@ MODULE ModuleInterface;
     f := Files.Old(name);
     e := searchPathHead;
     WHILE (f = NIL) & (e # NIL) DO
-      JoinPath(e.dir, name, path);
+      Directories.MakePath(e.dir, name, path);
       f := Files.Old(path);
       e := e.next
     END;
@@ -492,11 +481,11 @@ MODULE ModuleInterface;
     SymFileName(moduleName, name);
     f := NIL;
     IF (libraryLookup # NIL) & libraryLookup(moduleName, dir) THEN
-      JoinPath(dir, name, path);
+      Directories.MakePath(dir, name, path);
       f := Files.Old(path)
     END;
     IF (f = NIL) & (interfaceDir[0] # 0X) THEN
-      JoinPath(interfaceDir, name, path);
+      Directories.MakePath(interfaceDir, name, path);
       f := Files.Old(path)
     END;
     IF f = NIL THEN f := OpenFound(name, path) END;
@@ -1478,45 +1467,34 @@ MODULE ModuleInterface;
      outputDir (PLAN.md's "Open design questions" / 000-todo.org's
      "output directory for build artifacts" item), when non-empty,
      replaces the current-working-directory default this always used
-     before. pathOut (built via JoinPath, the same helper the IMPORT
-     search path uses) always receives the path this attempted to write,
+     before. pathOut (built by Directories.MakePath, as the IMPORT search
+     path's are) always receives the path this attempted to write,
      success or not, for the caller to report either way.
 
      The directory itself must already exist: Files.New cannot create
-     one, and neither Files.Mod nor Platform.Mod exposes a mkdir. voc's
-     Files.New does not fail gracefully on a missing *directory* (it runs
-     the runtime's own Halt(99), which poc cannot catch), so the directory
-     is checked first with Platform.Chdir, which returns a plain error code,
-     and at once Chdir back; a missing one is reported as an ordinary write
-     failure (RETURN FALSE). The file is then made by its whole path, from
-     the directory poc started in. Until 2026-10-03 the file was made by
-     its bare name while in outputDir: voc's Files remembers that name, and
-     when a later Register of the same file found a File that Files.Old had
-     opened by the whole path, voc renamed it by that path from inside
-     outputDir and halted (ENOENT; doc/developer/bootstrapping-with-voc.md), now and
-     then, as the collector's timing decided.
-     This is the one place in this module that needs Platform.Mod, not
-     just Files.Mod - see Poc.Mod's own header comment on why a Vishap
-     library import like this is a documented, narrow exception, not a
-     violation of poc's own strict-Oberon2.pdf-syntax bootstrap
-     constraint (that constraint is about syntax, not which library
-     modules are used). *)
+     one. voc's Files.New does not fail gracefully on a missing
+     *directory* (it runs the runtime's own Halt(99), which poc cannot
+     catch), so the directory is checked first (Directories.IsDirectory;
+     until Phase 16 step 4, by changing to it and back), and a missing
+     one is reported as an ordinary write failure (RETURN FALSE). The file
+     is then made by its whole path, from the directory poc started in.
+     Until 2026-10-03 the file was made by its bare name while in
+     outputDir: voc's Files remembers that name, and when a later
+     Register of the same file found a File that Files.Old had opened by
+     the whole path, voc renamed it by that path from inside outputDir and
+     halted (ENOENT; doc/developer/bootstrapping-with-voc.md), now and
+     then, as the collector's timing decided. *)
   PROCEDURE Write*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
                    outputDir: ARRAY OF CHAR; VAR pathOut: ARRAY OF CHAR): BOOLEAN;
     VAR
       name: ARRAY nameBufferLength OF CHAR;
       f: Files.File; w: Files.Rider; ok: BOOLEAN;
-      savedDir, dir: ARRAY searchPathDirLength OF CHAR;
-      chdirResult: INTEGER;
   BEGIN
     SymFileName(module.name, name);
     ok := TRUE;
     IF outputDir[0] # 0X THEN
-      JoinPath(outputDir, name, pathOut);
-      COPY(Platform.CWD, savedDir);
-      COPY(outputDir, dir);
-      ok := Platform.Chdir(dir) = 0;
-      IF ok THEN chdirResult := Platform.Chdir(savedDir) END
+      Directories.MakePath(outputDir, name, pathOut);
+      ok := Directories.IsDirectory(outputDir)
     ELSE
       COPY(name, pathOut)
     END;

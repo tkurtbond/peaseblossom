@@ -1,7 +1,9 @@
 semantic OK, wrote Platform.mar
+semantic OK, wrote Directories.mar
 semantic OK, wrote PlatformUse.mar
 exit 0
 PlatformUse.mar matches expected-vax.mar
+Directories.mar matches expected-vax-Directories.mar
 Platform.mar matches expected-vax-Platform.mar
 LLVM build -O2 exit 0
 VAX build -O2 exit 0

@@ -38,11 +38,11 @@ MODULE Poc;
      the IMPORT search path, PLAN.md's "Open design questions") is the
      same kind of host-environment access, needed only here - see
      ModuleInterface.Mod's own AddSearchPathList* comment.
-     ModuleInterface.Mod separately imports Platform itself, but only for
-     Platform.Chdir/CWD (the -output-dir directory-validation workaround
-     documented on its own Write* - see 000-todo.org's "output directory
-     for build artifacts" item), never GetEnv - it still never reads the
-     process environment on its own.
+     ModuleInterface.Mod never reads the process environment on its own.
+     Files and directories are named through Directories (pathSeparator,
+     MakePath, IsDirectory, MakeDirectory; Phase 16 step 4), which each
+     runtime has its own of, so that poc names them as the system it runs
+     on does.
 
      PLAN.md Phase 8 step 2 adds "-emit-llvm-ir <file>" (writes
      <ModuleName>.ll via LLVMToolchainDriver.EmitIR, respecting
@@ -64,7 +64,7 @@ MODULE Poc;
      only what a command was asked to produce - a dump, an interface, the
      import path, the "syntax OK"/"semantic OK" lines, -help's list. *)
 
-  IMPORT Modules, Files, Out, Err, Platform, Lexer, Diagnostics, Parser, SyntaxTree,
+  IMPORT Modules, Files, Out, Err, Platform, Directories, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
          ConstantEvaluator, PredeclaredProcedures, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator,
          DecimalToDouble, NestedProcedures, VaxTypes, VaxCodeGenerator, VaxToolchainDriver,
@@ -884,7 +884,7 @@ MODULE Poc;
       symPath: LLVMCodeGenerator.SourcePath;
   BEGIN
     ModuleInterface.ReadSource(name, buffer, length, found);
-    COPY(lib.dir, symPath); Strcat(symPath, "/"); Strcat(symPath, name); Strcat(symPath, ".sym");
+    Directories.MakePath(lib.dir, name, symPath); Strcat(symPath, ".sym");
     IF ~found THEN
       failed := TRUE; Err.String("poc: cannot read "); Err.String(symPath); Err.Ln;
       ok := FALSE; RETURN
@@ -1748,7 +1748,7 @@ MODULE Poc;
     VAR
       triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
       dir: Libraries.Path; command: ARRAY 2 * Libraries.pathLength OF CHAR;
-      status: INTEGER; member: LibraryMember;
+      member: LibraryMember;
       owner, lib: Libraries.Library; libMember: Libraries.Member;
       modules, modulesTail, m: LLVMCodeGenerator.ModuleList; visited: VisitedModule; ok: BOOLEAN;
       imp: SyntaxTree.ImportNode; key: Libraries.Key;
@@ -1765,8 +1765,10 @@ MODULE Poc;
     Libraries.TupleDirectory(outputDir, dir);
     ReadMembers(firstFile, TRUE, ok);
     IF ~ok THEN RETURN END;
-    COPY("mkdir -p '", command); Strcat(command, dir); Strcat(command, "'");
-    status := Platform.System(command);
+    IF ~Directories.MakeDirectory(dir) THEN
+      failed := TRUE; Err.String("poc: cannot make the directory "); Err.String(dir); Err.Ln;
+      RETURN
+    END;
     ModuleInterface.SetInterfaceDir(dir);
     (* the .sym of each one compiled already, where the others' are written,
        and its .ll (Phase 12 step 2g), compiled there as theirs are *)
@@ -1781,8 +1783,7 @@ MODULE Poc;
           IF member.irPath[0] # 0X THEN Err.String(" and "); Err.String(member.irPath) END;
           Err.String(" to "); Err.String(dir); Err.Ln; ok := FALSE
         ELSIF member.irPath[0] # 0X THEN
-          COPY(dir, member.irPath); Strcat(member.irPath, "/"); Strcat(member.irPath, member.name);
-          Strcat(member.irPath, ".ll")
+          Directories.MakePath(dir, member.name, member.irPath); Strcat(member.irPath, ".ll")
         END
       END;
       member := member.next
@@ -2278,7 +2279,7 @@ MODULE Poc;
     END;
     IF ~ok THEN RETURN END;
     (* the files of a copy installed before *)
-    COPY(dir, file); Strcat(file, "/"); Strcat(file, name); Strcat(file, ".library");
+    Directories.MakePath(dir, name, file); Strcat(file, ".library");
     f := Files.Old(file);
     IF f # NIL THEN
       Files.Close(f);
@@ -2472,8 +2473,7 @@ MODULE Poc;
       i: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR;
       targetTriple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
       exePath: ARRAY 256 OF CHAR;
-      command: ARRAY 1024 OF CHAR;
-      done, made: BOOLEAN;
+      done: BOOLEAN;
   BEGIN
     InitImportPathFromEnvironment;
     ModuleInterface.libraryLookup := LibraryInterfaceDir;
@@ -2565,11 +2565,7 @@ MODULE Poc;
             (* made if it is not there (Phase 13 step 6: only -library and
                -install-library made it, and a build said "cannot write
                <dir>/<M>.sym") *)
-            COPY("mkdir -p", command);
-            (* poc's own message, not mkdir's, which each system words its own way *)
-            made := AppendQuoted(command, outputDir);
-            IF made THEN Strcat(command, " 2>/dev/null"); made := Platform.System(command) = 0 END;
-            IF ~made THEN
+            IF ~Directories.MakeDirectory(outputDir) THEN
               failed := TRUE; Err.String("poc: cannot make the directory "); Err.String(outputDir); Err.Ln;
               done := TRUE
             END;

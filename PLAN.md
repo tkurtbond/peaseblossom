@@ -821,10 +821,15 @@ most, object libraries.
      with the fixtures `vax-command-line`, `vax-platform` and `vax-err`.
      Their `expected-vax.mar` files were reviewed by the user
      (2026-10-10), as were `vax-out`'s, since `Out` now writes through
-     `LineOutput`, which it shares with `Err`. `rtl/llvm`'s `Platform` gained `MakePath`,
-     `IsDirectory`, `MakeDirectory` and `pathSeparator`; `src/` does not
-     use them yet. Checked on the guest: `Unlink` deletes only the
-     highest version.
+     `LineOutput`, which it shares with `Err`. Checked on the guest:
+     `Unlink` deletes only the highest version.
+   - *`Directories`* (2026-10-10; proposal 4, amended with the user):
+     `pathSeparator`, `MakePath`, `IsDirectory` and `MakeDirectory`,
+     first added to `Platform`, are a module of their own in `rtl/vax`,
+     `rtl/llvm` and, for the Stage 0 poc, `rtl/voc`, so that `Platform`
+     keeps voc's interface. `src/` names its files and directories
+     through it. `vax-platform`'s `expected-vax*.mar` files are drafts
+     again, for the user's review.
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built

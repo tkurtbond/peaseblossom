@@ -1,27 +1,21 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from design
-;; section 15, the System Services, RMS and LIB$ manuals, the guest runs
-;; and the debugger run). Why this is right:
+;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
+;; System Services, RMS and LIB$ manuals, the guest runs and the
+;; debugger run; for the user's review). Why this is right:
 ;; - PID (a word under -O2), CWD and NL are exported, global symbols
 ;;   ("::"); GIVEN and RETURNED are the names given to PocRtl.mar's
 ;;   routines and the values they give back, 256 bytes each, as RMS and
 ;;   $TRNLNM take at most 255 characters.
 ;; - Fill copies a string up to its 0X into GIVEN, with its 0X, and its
 ;;   length to a VAR INTEGER; FALSE once 255 characters are copied and
-;;   more remain. AsDirectory ends GIVEN with ":" unless it ends with ":",
-;;   "]" or ">", FALSE for "" or no room. The trap 12 calls after their
-;;   last RETURN are a function's end without RETURN, never reached.
+;;   more remain. The trap 12 calls after their last RETURN are a
+;;   function's end without RETURN, never reached.
 ;; - GetEnv clears val, then for index 0, 1, ... calls POC_TRNLNM with
 ;;   GIVEN, its length, the index, RETURNED and 255, until it gives -1;
 ;;   from the second string on, it appends "," (#44) before each. A word
 ;;   result is taken from R0's low word (MOVW), as INTEGER is under -O2.
-;; - System copies its argument, as any value open array, and returns -1.
-;; - Unlink returns 2 when the name does not fit, else POC_ERASE's status,
-;;   or 0 when that is odd, a success.
-;; - MakePath copies dir, then ":" unless it is "" or ends with ":", "]"
-;;   or ">", then name, all cut short to LEN(path) - 1, and ends with 0X.
-;;   IsDirectory and MakeDirectory are Fill, AsDirectory and POC_PARSE or
-;;   POC_CREATE_DIRECTORY, short-circuited, the status's low bit the
-;;   result (BICB3 #254).
+;; - System copies its argument, as a value open array, and returns -1.
+;; - Unlink returns 2 when the name does not fit, else POC_ERASE's
+;;   status, or 0 when that is odd, a success.
 ;; - Exit takes code MOD 256, floored (the DIVL3, MULL3, SUBL3 and the
 ;;   correction of a negative remainder), SHORT to an INTEGER, and calls
 ;;   POC_HALT, which exits with SS$_NORMAL for 0, else %X10000000 + 8 *
@@ -29,15 +23,18 @@
 ;; - The initializer sets PID from POC_PROCESS_ID's low word, plus 32768
 ;;   if negative (the ADDW3s), CWD from GetEnv("SYS$DISK") and then
 ;;   POC_DEFAULT_DIRECTORY's string appended, and NL to LF and 0X.
+;; - Since the review of 2026-10-10, MakePath, IsDirectory,
+;;   MakeDirectory, pathSeparator and AsDirectory have moved to
+;;   Directories (expected-vax-Directories.mar), with POC_PARSE and
+;;   POC_CREATE_DIRECTORY; what is left differs only in its line numbers
+;;   and labels.
 ;; - On the guest, PlatformOut prints guest-run.expected under -O2 and
-;;   -OC: SYS$LOGIN is a directory and [.NO-SUCH-DIRECTORY] is not;
-;;   MakeDirectory makes [.MADE.SUB] and [.MADE] above it, and again
-;;   succeeds; a search list's two strings come back joined with ",";
-;;   Unlink of DOOMED.TMP, with two versions, leaves DOOMED.TMP;1, as
-;;   section 15 said $ERASE would; Exit(3) gives %X1000001A.
+;;   -OC: a search list's two strings come back joined with ","; Unlink
+;;   of DOOMED.TMP, with two versions, leaves DOOMED.TMP;1, as section
+;;   15 said $ERASE would; Exit(3) gives %X1000001A.
 ; Platform, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	PLATFORM
-	.IDENT	/b6ae0c09cbac81b7/
+	.IDENT	/587c176e2bd2adbe/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
@@ -69,8 +66,6 @@ PLATFORM_RETURNED_DN3FF4NR:
 ; the symbols it uses of other modules
 	.EXTERNAL	POC_TRNLNM
 	.EXTERNAL	POC_ERASE
-	.EXTERNAL	POC_PARSE
-	.EXTERNAL	POC_CREATE_DIRECTORY
 	.EXTERNAL	POC_HALT
 	.EXTERNAL	POC_PROCESS_ID
 	.EXTERNAL	POC_DEFAULT_DIRECTORY
@@ -94,9 +89,9 @@ PLATFORM_FILL_600OH54D:
 	.WORD	^M<>
 	SUBL2	#4, SP
 	CLRL	-4(FP)
-; line 60
+; line 53
 	CLRL	-4(FP)
-; line 61
+; line 54
 L_1:
 	MOVL	8(AP), R0
 	CMPL	-4(FP), R0
@@ -107,7 +102,7 @@ L_3:
 	CMPL	R0, 8(AP)
 	BLSSU	L_4
 	PUSHL	#29
-	PUSHL	#61
+	PUSHL	#54
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -116,21 +111,21 @@ L_4:
 	BNEQ	L_5
 	JMP	L^L_2
 L_5:
-; line 62
+; line 55
 	CMPL	-4(FP), #255
 	BEQL	L_7
 	JMP	L^L_6
 L_7:
-; line 62
+; line 55
 	CLRL	R0
 	RET
 L_6:
-; line 63
+; line 56
 	MOVL	-4(FP), R0
 	CMPL	R0, #255
 	BLEQU	L_8
 	PUSHL	#13
-	PUSHL	#63
+	PUSHL	#56
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -139,34 +134,34 @@ L_8:
 	CMPL	R1, 8(AP)
 	BLSSU	L_9
 	PUSHL	#21
-	PUSHL	#63
+	PUSHL	#56
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
 L_9:
 	MOVB	@4(AP)[R1], PLATFORM_GIVEN_C76KH6IH[R0]
-; line 63
+; line 56
 	INCL	-4(FP)
 	JMP	L^L_1
 L_2:
-; line 65
+; line 58
 	MOVL	-4(FP), R0
 	CMPL	R0, #255
 	BLEQU	L_10
 	PUSHL	#11
-	PUSHL	#65
+	PUSHL	#58
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
 L_10:
 	CLRB	PLATFORM_GIVEN_C76KH6IH[R0]
-; line 65
+; line 58
 	CVTLW	-4(FP), @12(AP)
-; line 66
+; line 59
 	MOVL	#1, R0
 	RET
 	PUSHL	#3
-	PUSHL	#67
+	PUSHL	#60
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -175,9 +170,9 @@ PLATFORM_APPENDCHAR_TBKBU8I0:
 	.WORD	^M<>
 	SUBL2	#4, SP
 	CLRL	-4(FP)
-; line 73
+; line 66
 	CLRL	-4(FP)
-; line 74
+; line 67
 L_11:
 	MOVL	8(AP), R0
 	CMPL	-4(FP), R0
@@ -188,7 +183,7 @@ L_13:
 	CMPL	R0, 8(AP)
 	BLSSU	L_14
 	PUSHL	#29
-	PUSHL	#74
+	PUSHL	#67
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -197,34 +192,34 @@ L_14:
 	BNEQ	L_15
 	JMP	L^L_12
 L_15:
-; line 74
+; line 67
 	INCL	-4(FP)
 	JMP	L^L_11
 L_12:
-; line 75
+; line 68
 	MOVL	8(AP), R0
 	DECL	R0
 	CMPL	-4(FP), R0
 	BLSS	L_17
 	JMP	L^L_16
 L_17:
-; line 75
+; line 68
 	MOVL	-4(FP), R0
 	CMPL	R0, 8(AP)
 	BLSSU	L_18
 	PUSHL	#30
-	PUSHL	#75
+	PUSHL	#68
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
 L_18:
 	MOVB	12(AP), @4(AP)[R0]
-; line 75
+; line 68
 	ADDL3	#1, -4(FP), R0
 	CMPL	R0, 8(AP)
 	BLSSU	L_19
 	PUSHL	#44
-	PUSHL	#75
+	PUSHL	#68
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -237,7 +232,7 @@ PLATFORM_APPEND_2PKFR3MK:
 	.WORD	^M<>
 	SUBL2	#24, SP
 	CLRL	-4(FP)
-; line 83
+; line 76
 	CLRW	-2(FP)
 	SUBW3	#1, 12(AP), R0
 	MOVW	R0, -8(FP)
@@ -246,7 +241,7 @@ L_20:
 	BLEQ	L_22
 	JMP	L^L_21
 L_22:
-; line 83
+; line 76
 	MOVL	#3, -24(FP)
 	MOVL	4(AP), -20(FP)
 	MOVL	8(AP), -16(FP)
@@ -254,7 +249,7 @@ L_22:
 	CMPL	R0, #255
 	BLEQU	L_23
 	PUSHL	#55
-	PUSHL	#83
+	PUSHL	#76
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -265,87 +260,6 @@ L_23:
 	JMP	L^L_20
 L_21:
 	RET
-; PROCEDURE AsDirectory
-PLATFORM_ASDIRECTORY_D0UOPNUV:
-	.WORD	^M<>
-	SUBL2	#4, SP
-	CLRL	-4(FP)
-; line 92
-	TSTW	@4(AP)
-	BEQL	L_25
-	JMP	L^L_24
-L_25:
-; line 92
-	CLRL	R0
-	RET
-L_24:
-; line 93
-	SUBW3	#1, @4(AP), R0
-	CVTWL	R0, R0
-	CMPL	R0, #255
-	BLEQU	L_26
-	PUSHL	#26
-	PUSHL	#93
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_26:
-	MOVB	PLATFORM_GIVEN_C76KH6IH[R0], -1(FP)
-; line 94
-	CMPB	-1(FP), #58
-	BNEQ	L_28
-	JMP	L^L_27
-L_28:
-	CMPB	-1(FP), #93
-	BNEQ	L_29
-	JMP	L^L_27
-L_29:
-	CMPB	-1(FP), #62
-	BNEQ	L_30
-	JMP	L^L_27
-L_30:
-; line 95
-	CMPW	@4(AP), #255
-	BEQL	L_32
-	JMP	L^L_31
-L_32:
-; line 95
-	CLRL	R0
-	RET
-L_31:
-; line 96
-	CVTWL	@4(AP), R0
-	CMPL	R0, #255
-	BLEQU	L_33
-	PUSHL	#13
-	PUSHL	#96
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_33:
-	MOVB	#58, PLATFORM_GIVEN_C76KH6IH[R0]
-; line 96
-	INCW	@4(AP)
-; line 96
-	CVTWL	@4(AP), R0
-	CMPL	R0, #255
-	BLEQU	L_34
-	PUSHL	#48
-	PUSHL	#96
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_34:
-	CLRB	PLATFORM_GIVEN_C76KH6IH[R0]
-L_27:
-; line 98
-	MOVL	#1, R0
-	RET
-	PUSHL	#3
-	PUSHL	#99
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#12
-	CALLS	#4, G^POC_TRAP
 ; PROCEDURE GetEnv
 	.ENTRY	PLATFORM_GETENV_ATVM4QJV, ^M<R2,R3,R4,R5>
 	SUBL2	#36, SP
@@ -359,55 +273,55 @@ L_27:
 	PUSHL	R0
 	MOVL	4(AP), R1
 	MOVL	-4(FP), R3
-L_47:
+L_36:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_48
+	BLEQU	L_37
 	MOVL	#65535, R0
-L_48:
+L_37:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_47
+	BNEQ	L_36
 	ADDL2	#4, SP
-; line 111
+; line 89
 	MOVL	16(AP), R0
 	TSTL	R0
-	BEQL	L_36
-	JMP	L^L_35
-L_36:
-; line 111
+	BEQL	L_25
+	JMP	L^L_24
+L_25:
+; line 89
 	RET
-L_35:
-; line 112
+L_24:
+; line 90
 	CLRL	R0
 	CMPL	R0, 16(AP)
-	BLSSU	L_37
+	BLSSU	L_26
 	PUSHL	#9
-	PUSHL	#112
+	PUSHL	#90
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_37:
+L_26:
 	CLRB	@12(AP)[R0]
-; line 113
+; line 91
 	MOVL	#3, -28(FP)
 	MOVL	-4(FP), -24(FP)
 	MOVL	8(AP), -20(FP)
 	MOVAB	-6(FP), -16(FP)
 	CALLG	-28(FP), PLATFORM_FILL_600OH54D
-	BLBS	R0, L_39
-	JMP	L^L_38
-L_39:
+	BLBS	R0, L_28
+	JMP	L^L_27
+L_28:
 	TSTW	-6(FP)
-	BGTR	L_40
-	JMP	L^L_38
-L_40:
-; line 114
+	BGTR	L_29
+	JMP	L^L_27
+L_29:
+; line 92
 	CLRW	-8(FP)
-; line 115
-L_41:
-; line 116
+; line 93
+L_30:
+; line 94
 	MOVL	#5, -36(FP)
 	MOVAB	PLATFORM_GIVEN_C76KH6IH, -32(FP)
 	CVTWL	-6(FP), -28(FP)
@@ -416,37 +330,37 @@ L_41:
 	MOVL	#255, -16(FP)
 	CALLG	-36(FP), G^POC_TRNLNM
 	MOVW	R0, -10(FP)
-; line 117
+; line 95
 	TSTW	-10(FP)
-	BGEQ	L_43
-	JMP	L^L_42
-L_43:
-; line 118
+	BGEQ	L_32
+	JMP	L^L_31
+L_32:
+; line 96
 	TSTW	-8(FP)
-	BGTR	L_45
-	JMP	L^L_44
-L_45:
-; line 118
+	BGTR	L_34
+	JMP	L^L_33
+L_34:
+; line 96
 	MOVL	#3, -28(FP)
 	MOVL	12(AP), -24(FP)
 	MOVL	16(AP), -20(FP)
 	MOVL	#44, -16(FP)
 	CALLG	-28(FP), PLATFORM_APPENDCHAR_TBKBU8I0
-L_44:
-; line 119
+L_33:
+; line 97
 	MOVL	#3, -28(FP)
 	MOVL	12(AP), -24(FP)
 	MOVL	16(AP), -20(FP)
 	CVTWL	-10(FP), -16(FP)
 	CALLG	-28(FP), PLATFORM_APPEND_2PKFR3MK
-L_42:
-; line 121
+L_31:
+; line 99
 	INCW	-8(FP)
 	TSTW	-10(FP)
-	BLSS	L_46
-	JMP	L^L_41
-L_46:
-L_38:
+	BLSS	L_35
+	JMP	L^L_30
+L_35:
+L_27:
 	RET
 ; PROCEDURE System
 	.ENTRY	PLATFORM_SYSTEM_LG3HLBUD, ^M<R2,R3,R4,R5>
@@ -460,22 +374,22 @@ L_38:
 	PUSHL	R0
 	MOVL	4(AP), R1
 	MOVL	-4(FP), R3
-L_49:
+L_38:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_50
+	BLEQU	L_39
 	MOVL	#65535, R0
-L_50:
+L_39:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_49
+	BNEQ	L_38
 	ADDL2	#4, SP
-; line 132
+; line 110
 	MOVL	#-1, R0
 	RET
 	PUSHL	#3
-	PUSHL	#133
+	PUSHL	#111
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -483,390 +397,55 @@ L_50:
 	.ENTRY	PLATFORM_UNLINK_KE1F78LR, ^M<>
 	SUBL2	#20, SP
 	CLRL	-4(FP)
-; line 141
+; line 119
 	MOVL	#3, -20(FP)
 	MOVL	4(AP), -16(FP)
 	MOVL	8(AP), -12(FP)
 	MOVAB	-2(FP), -8(FP)
 	CALLG	-20(FP), PLATFORM_FILL_600OH54D
-	BLBC	R0, L_52
-	JMP	L^L_51
-L_52:
-; line 141
+	BLBC	R0, L_41
+	JMP	L^L_40
+L_41:
+; line 119
 	MOVL	#2, R0
 	RET
-L_51:
-; line 142
+L_40:
+; line 120
 	MOVL	#2, -16(FP)
 	MOVAB	PLATFORM_GIVEN_C76KH6IH, -12(FP)
 	CVTWL	-2(FP), -8(FP)
 	CALLG	-16(FP), G^POC_ERASE
 	MOVW	R0, -4(FP)
-; line 143
+; line 121
 	BICB3	#254, -4(FP), R0
-	BLBS	R0, L_54
-	JMP	L^L_53
-L_54:
-; line 143
+	BLBS	R0, L_43
+	JMP	L^L_42
+L_43:
+; line 121
 	CLRL	R0
 	RET
-L_53:
-; line 144
+L_42:
+; line 122
 	CVTWL	-4(FP), R0
 	RET
 	PUSHL	#3
-	PUSHL	#145
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#12
-	CALLS	#4, G^POC_TRAP
-; PROCEDURE MakePath
-	.ENTRY	PLATFORM_MAKEPATH_SLB3UHI5, ^M<R2,R3,R4,R5>
-	SUBL2	#20, SP
-	CLRQ	-20(FP)
-	CLRQ	-12(FP)
-	CLRL	-4(FP)
-	MOVL	16(AP), R0
-	ADDL3	#3, R0, R1
-	BICL2	#3, R1
-	SUBL2	R1, SP
-	MOVL	SP, -8(FP)
-	PUSHL	R0
-	MOVL	12(AP), R1
-	MOVL	-8(FP), R3
-L_83:
-	MOVL	(SP), R0
-	CMPL	R0, #65535
-	BLEQU	L_84
-	MOVL	#65535, R0
-L_84:
-	SUBL2	R0, (SP)
-	MOVC3	R0, (R1), (R3)
-	TSTL	(SP)
-	BNEQ	L_83
-	ADDL2	#4, SP
-	MOVL	8(AP), R0
-	ADDL3	#3, R0, R1
-	BICL2	#3, R1
-	SUBL2	R1, SP
-	MOVL	SP, -4(FP)
-	PUSHL	R0
-	MOVL	4(AP), R1
-	MOVL	-4(FP), R3
-L_85:
-	MOVL	(SP), R0
-	CMPL	R0, #65535
-	BLEQU	L_86
-	MOVL	#65535, R0
-L_86:
-	SUBL2	R0, (SP)
-	MOVC3	R0, (R1), (R3)
-	TSTL	(SP)
-	BNEQ	L_85
-	ADDL2	#4, SP
-; line 156
-	CLRL	-12(FP)
-; line 157
-L_55:
-	MOVL	8(AP), R0
-	CMPL	-12(FP), R0
-	BLSS	L_57
-	JMP	L^L_56
-L_57:
-	MOVL	-12(FP), R0
-	CMPL	R0, 8(AP)
-	BLSSU	L_58
-	PUSHL	#33
-	PUSHL	#157
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_58:
-	TSTB	@-4(FP)[R0]
-	BNEQ	L_59
-	JMP	L^L_56
-L_59:
-	MOVL	24(AP), R0
-	DECL	R0
-	CMPL	-12(FP), R0
-	BLSS	L_60
-	JMP	L^L_56
-L_60:
-; line 157
-	MOVL	-12(FP), R0
-	CMPL	R0, 24(AP)
-	BLSSU	L_61
-	PUSHL	#72
-	PUSHL	#157
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_61:
-	MOVL	-12(FP), R1
-	CMPL	R1, 8(AP)
-	BLSSU	L_62
-	PUSHL	#82
-	PUSHL	#157
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_62:
-	MOVB	@-4(FP)[R1], @20(AP)[R0]
-; line 157
-	INCL	-12(FP)
-	JMP	L^L_55
-L_56:
-; line 158
-	TSTL	-12(FP)
-	BGTR	L_64
-	JMP	L^L_63
-L_64:
-	MOVL	24(AP), R0
-	DECL	R0
-	CMPL	-12(FP), R0
-	BLSS	L_65
-	JMP	L^L_63
-L_65:
-; line 159
-	SUBL3	#1, -12(FP), R0
-	CMPL	R0, 24(AP)
-	BLSSU	L_66
-	PUSHL	#22
-	PUSHL	#159
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_66:
-	MOVB	@20(AP)[R0], -17(FP)
-; line 160
-	CMPB	-17(FP), #58
-	BNEQ	L_68
-	JMP	L^L_67
-L_68:
-	CMPB	-17(FP), #93
-	BNEQ	L_69
-	JMP	L^L_67
-L_69:
-	CMPB	-17(FP), #62
-	BNEQ	L_70
-	JMP	L^L_67
-L_70:
-; line 160
-	MOVL	-12(FP), R0
-	CMPL	R0, 24(AP)
-	BLSSU	L_71
-	PUSHL	#63
-	PUSHL	#160
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_71:
-	MOVB	#58, @20(AP)[R0]
-; line 160
-	INCL	-12(FP)
-L_67:
-L_63:
-; line 162
-	CLRL	-16(FP)
-; line 163
-L_72:
-	MOVL	16(AP), R0
-	CMPL	-16(FP), R0
-	BLSS	L_74
-	JMP	L^L_73
-L_74:
-	MOVL	-16(FP), R0
-	CMPL	R0, 16(AP)
-	BLSSU	L_75
-	PUSHL	#35
-	PUSHL	#163
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_75:
-	TSTB	@-8(FP)[R0]
-	BNEQ	L_76
-	JMP	L^L_73
-L_76:
-	MOVL	24(AP), R0
-	DECL	R0
-	CMPL	-12(FP), R0
-	BLSS	L_77
-	JMP	L^L_73
-L_77:
-; line 163
-	MOVL	-12(FP), R0
-	CMPL	R0, 24(AP)
-	BLSSU	L_78
-	PUSHL	#74
-	PUSHL	#163
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_78:
-	MOVL	-16(FP), R1
-	CMPL	R1, 16(AP)
-	BLSSU	L_79
-	PUSHL	#85
-	PUSHL	#163
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_79:
-	MOVB	@-8(FP)[R1], @20(AP)[R0]
-; line 163
-	INCL	-12(FP)
-; line 163
-	INCL	-16(FP)
-	JMP	L^L_72
-L_73:
-; line 164
-	MOVL	24(AP), R0
-	TSTL	R0
-	BGTR	L_81
-	JMP	L^L_80
-L_81:
-; line 164
-	MOVL	-12(FP), R0
-	CMPL	R0, 24(AP)
-	BLSSU	L_82
-	PUSHL	#32
-	PUSHL	#164
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_82:
-	CLRB	@20(AP)[R0]
-L_80:
-	RET
-; PROCEDURE IsDirectory
-	.ENTRY	PLATFORM_ISDIRECTORY_F1QRO1H7, ^M<R2,R3,R4,R5>
-	SUBL2	#24, SP
-	CLRQ	-8(FP)
-	MOVL	8(AP), R0
-	ADDL3	#3, R0, R1
-	BICL2	#3, R1
-	SUBL2	R1, SP
-	MOVL	SP, -4(FP)
-	PUSHL	R0
-	MOVL	4(AP), R1
-	MOVL	-4(FP), R3
-L_91:
-	MOVL	(SP), R0
-	CMPL	R0, #65535
-	BLEQU	L_92
-	MOVL	#65535, R0
-L_92:
-	SUBL2	R0, (SP)
-	MOVC3	R0, (R1), (R3)
-	TSTL	(SP)
-	BNEQ	L_91
-	ADDL2	#4, SP
-; line 173
-	MOVL	#3, -24(FP)
-	MOVL	-4(FP), -20(FP)
-	MOVL	8(AP), -16(FP)
-	MOVAB	-6(FP), -12(FP)
-	CALLG	-24(FP), PLATFORM_FILL_600OH54D
-	BLBS	R0, L_87
-	JMP	L^L_88
-L_87:
-	MOVL	#1, -16(FP)
-	MOVAB	-6(FP), -12(FP)
-	MOVB	R0, R2
-	CALLG	-16(FP), PLATFORM_ASDIRECTORY_D0UOPNUV
-	MOVB	R0, R2
-	MOVB	R2, R0
-L_88:
-	BLBS	R0, L_89
-	JMP	L^L_90
-L_89:
-	MOVL	#2, -20(FP)
-	MOVAB	PLATFORM_GIVEN_C76KH6IH, -16(FP)
-	CVTWL	-6(FP), -12(FP)
-	MOVB	R0, R2
-	CALLG	-20(FP), G^POC_PARSE
-	BICB3	#254, R0, R0
-	MOVB	R0, R2
-	MOVB	R2, R0
-L_90:
-	MOVZBL	R0, R0
-	RET
-	PUSHL	#3
-	PUSHL	#174
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#12
-	CALLS	#4, G^POC_TRAP
-; PROCEDURE MakeDirectory
-	.ENTRY	PLATFORM_MAKEDIRECTORY_0KRT4K6L, ^M<R2,R3,R4,R5>
-	SUBL2	#24, SP
-	CLRQ	-8(FP)
-	MOVL	8(AP), R0
-	ADDL3	#3, R0, R1
-	BICL2	#3, R1
-	SUBL2	R1, SP
-	MOVL	SP, -4(FP)
-	PUSHL	R0
-	MOVL	4(AP), R1
-	MOVL	-4(FP), R3
-L_97:
-	MOVL	(SP), R0
-	CMPL	R0, #65535
-	BLEQU	L_98
-	MOVL	#65535, R0
-L_98:
-	SUBL2	R0, (SP)
-	MOVC3	R0, (R1), (R3)
-	TSTL	(SP)
-	BNEQ	L_97
-	ADDL2	#4, SP
-; line 182
-	MOVL	#3, -24(FP)
-	MOVL	-4(FP), -20(FP)
-	MOVL	8(AP), -16(FP)
-	MOVAB	-6(FP), -12(FP)
-	CALLG	-24(FP), PLATFORM_FILL_600OH54D
-	BLBS	R0, L_93
-	JMP	L^L_94
-L_93:
-	MOVL	#1, -16(FP)
-	MOVAB	-6(FP), -12(FP)
-	MOVB	R0, R2
-	CALLG	-16(FP), PLATFORM_ASDIRECTORY_D0UOPNUV
-	MOVB	R0, R2
-	MOVB	R2, R0
-L_94:
-	BLBS	R0, L_95
-	JMP	L^L_96
-L_95:
-	MOVL	#2, -20(FP)
-	MOVAB	PLATFORM_GIVEN_C76KH6IH, -16(FP)
-	CVTWL	-6(FP), -12(FP)
-	MOVB	R0, R2
-	CALLG	-20(FP), G^POC_CREATE_DIRECTORY
-	BICB3	#254, R0, R0
-	MOVB	R0, R2
-	MOVB	R2, R0
-L_96:
-	MOVZBL	R0, R0
-	RET
-	PUSHL	#3
-	PUSHL	#183
+	PUSHL	#123
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Exit
 	.ENTRY	PLATFORM_EXIT_54N6GLU4, ^M<>
 	SUBL2	#8, SP
-; line 192
+; line 132
 	MOVL	#1, -8(FP)
 	DIVL3	#256, 4(AP), R0
 	MULL3	R0, #256, R1
 	SUBL3	R1, 4(AP), R1
-	BEQL	L_99
+	BEQL	L_44
 	XORL3	#256, R1, R0
-	BGEQ	L_99
+	BGEQ	L_44
 	ADDL2	#256, R1
-L_99:
+L_44:
 	CVTLW	R1, R0
 	CVTWL	R0, -4(FP)
 	CALLG	-8(FP), G^POC_HALT
@@ -874,38 +453,38 @@ L_99:
 ; PROCEDURE InitProcessId
 PLATFORM_INITPROCESSID_B0QTROC6:
 	.WORD	^M<>
-; line 197
+; line 137
 	CALLS	#0, G^POC_PROCESS_ID
 	MOVW	R0, PLATFORM_PID_LCCSKLS1
-; line 198
+; line 138
 	TSTW	PLATFORM_PID_LCCSKLS1
-	BLSS	L_101
-	JMP	L^L_100
-L_101:
-; line 198
+	BLSS	L_46
+	JMP	L^L_45
+L_46:
+; line 138
 	ADDW3	#32767, PLATFORM_PID_LCCSKLS1, R0
 	ADDW3	#1, R0, PLATFORM_PID_LCCSKLS1
-L_100:
+L_45:
 	RET
 ; PROCEDURE InitCWD
 PLATFORM_INITCWD_MVJQ70O4:
 	.WORD	^M<>
 	SUBL2	#24, SP
 	CLRL	-4(FP)
-; line 205
+; line 145
 	MOVL	#4, -24(FP)
 	MOVAB	L_STR_1, -20(FP)
 	MOVL	#9, -16(FP)
 	MOVAB	PLATFORM_CWD_LDQMQAI6, -12(FP)
 	MOVL	#256, -8(FP)
 	CALLG	-24(FP), PLATFORM_GETENV_ATVM4QJV
-; line 206
+; line 146
 	MOVL	#2, -16(FP)
 	MOVAB	PLATFORM_RETURNED_DN3FF4NR, -12(FP)
 	MOVL	#255, -8(FP)
 	CALLG	-16(FP), G^POC_DEFAULT_DIRECTORY
 	MOVW	R0, -2(FP)
-; line 207
+; line 147
 	MOVL	#3, -20(FP)
 	MOVAB	PLATFORM_CWD_LDQMQAI6, -16(FP)
 	MOVL	#256, -12(FP)
@@ -920,17 +499,17 @@ PLATFORM_INITCWD_MVJQ70O4:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
-; line 211
+; line 151
 	CALLS	#0, PLATFORM_INITPROCESSID_B0QTROC6
-; line 212
+; line 152
 	CALLS	#0, PLATFORM_INITCWD_MVJQ70O4
-; line 213
+; line 153
 	MOVB	#10, PLATFORM_NL_A1N5LGQ6
-; line 213
+; line 153
 	CLRB	PLATFORM_NL_A1N5LGQ6+1
 	RET
 
 ; the module's key, which its importers refer to
-POC_K1_B6AE0C09CBAC81B7 == 0
+POC_K1_587C176E2BD2ADBE == 0
 
 	.END
