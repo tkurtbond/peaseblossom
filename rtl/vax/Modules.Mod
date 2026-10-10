@@ -3,7 +3,8 @@ MODULE Modules;
   (* PLAN.md Phase 16 step 4 (doc/developer/vax-macro32-backend.md, section
      15, proposal 6): the part of rtl/llvm/Modules.Mod's interface that
      poc's own source uses, for VAX/VMS: the command line, ArgCount and
-     GetArg.
+     GetArg; and, for the fixtures step 5 runs on the VAX (section 16,
+     proposal 6), GetIntArg and ArgPos.
 
      A program is run on VMS as a foreign command ($ POC :== $dir:POC.EXE),
      and its body asks for the line after the command (LIB$GET_FOREIGN,
@@ -49,6 +50,41 @@ MODULE Modules;
     END;
     val[k] := 0X
   END GetArg;
+
+  (* Argument n as a number - an optional minus sign and decimal digits;
+     val is left alone if it does not start with a digit (after the sign).
+     Same as rtl/llvm's and voc's (PLAN.md Phase 16 step 5, section 16,
+     proposal 6). *)
+  PROCEDURE GetIntArg*(n: INTEGER; VAR val: LONGINT);
+    VAR s: ARRAY 64 OF CHAR; k, d, i: LONGINT;
+  BEGIN
+    GetArg(n, s);
+    i := 0;
+    IF s[0] = "-" THEN i := 1 END;
+    k := 0;
+    d := ORD(s[i]) - ORD("0");
+    WHILE (d >= 0) & (d <= 9) DO
+      k := k * 10 + d;
+      INC(i);
+      d := ORD(s[i]) - ORD("0")
+    END;
+    IF s[0] = "-" THEN k := -k; DEC(i) END;
+    IF i > 0 THEN val := k END
+  END GetIntArg;
+
+  (* The number of the first argument (from 0) equal to s, ArgCount if
+     none is. *)
+  PROCEDURE ArgPos*(s: ARRAY OF CHAR): INTEGER;
+    VAR i: INTEGER; arg: ARRAY 256 OF CHAR;
+  BEGIN
+    i := 0;
+    GetArg(i, arg);
+    WHILE (i < ArgCount) & (s # arg) DO
+      INC(i);
+      GetArg(i, arg)
+    END;
+    RETURN i
+  END ArgPos;
 
   (* The command line, split into text: argument 0, then those of the
      line's first length characters. *)

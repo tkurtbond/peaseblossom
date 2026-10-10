@@ -1,0 +1,22 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 16, the
+;; VAX architecture's floating point and the guest runs; for the user's
+;; review). Why this is right:
+;; - The VAX has no infinity and no NaN: case 6, x := big * big again,
+;;   then -x: the multiplication is the floating overflow fault, as in
+;;   case 5, before the negation or ENTIER is reached. LLVM's is minus
+;;   infinity, which ENTIER traps.
+;; - VMS's own message for the fault, then its traceback: the module's
+;;   initializer, called from the program's start. tools/vax-suite masks
+;;   the code addresses, which any change to the code moves.
+;; - The program has written nothing before the fault, so VMS's message
+;;   and traceback are in its standard output as well as its standard
+;;   error: a guest test (2026-10-10) showed them in a SYS$OUTPUT file
+;;   the program had not opened, and not in one it had written to first.
+;; - For every build; expected-vax-entiertrap-OC-7.out overrides it
+;;   under -OC.
+%SYSTEM-F-FLTOVF_F, arithmetic fault, floating overflow at PC=xxxxxxxx, PSL=xxxxxxxx
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+ENTIERTRAP      ENTIERTRAP_INIT                            xxxxxxxx  xxxxxxxx
+ENTIERTRAP      ENTIERTRAP_MAIN                            xxxxxxxx  xxxxxxxx

@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from design
-;; section 15, the RMS Reference ($READ, $WRITE, $RENAME, the XABFHC)
-;; and the guest runs). Why this is right:
+;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
+;; RMS Reference ($READ, $WRITE, $RENAME, the XABFHC), rtl/llvm's Files
+;; and the guest runs; for the user's review). Why this is right:
 ;; - FileDesc is 1568 bytes under -O2: the control (768) at 0, the block
 ;;   (512) at 768, the name (256) at 1280, isNew, created, open, closed,
 ;;   dirty and byRecord at 1536 to 1541, then length, onDisk and
@@ -33,9 +33,12 @@
 ;; - New only allocates the File (Allocate with FileDesc's descriptor,
 ;;   blockStart -1) and marks it new. Close creates and flushes a New
 ;;   file, then closes it; Register then renames it, a failure going to
-;;   Fail. Write refuses a file that is not new or is closed; it stores
-;;   the BYTE argument's low byte in the block, marks it dirty and
-;;   extends length. Read gives 0X and sets eof at the end.
+;;   Fail. Write refuses a file that is not new or is closed; it creates
+;;   a New file on disk if it is not yet (Create, so that one that
+;;   cannot be is reported at the first Write, as rtl/llvm's is, not
+;;   when the block is written out); it stores the BYTE argument's low
+;;   byte in the block, marks it dirty and extends length. Read gives 0X
+;;   and sets eof at the end.
 ;; - WriteString writes each character up to the 0X, then the 0X when
 ;;   there is room. ReadString and ReadLine stop at 0X, ReadLine at LF
 ;;   too, dropping a CR before it. Delete returns 2 for a bad name, else
@@ -1672,14 +1675,14 @@ L_175:
 	.ENTRY	FILES_WRITE_N7USGTA5, ^M<R2,R3>
 	SUBL2	#20, SP
 	CLRL	-4(FP)
-; line 323
+; line 325
 	MOVL	4(AP), R0
 	MOVL	8(R0), -4(FP)
-; line 324
+; line 326
 	MOVL	-4(FP), R0
 	BNEQ	L_188
 	PUSHL	#9
-	PUSHL	#324
+	PUSHL	#326
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
@@ -1690,7 +1693,7 @@ L_189:
 	MOVL	-4(FP), R0
 	BNEQ	L_190
 	PUSHL	#20
-	PUSHL	#324
+	PUSHL	#326
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
@@ -1699,24 +1702,28 @@ L_190:
 	JMP	L^L_186
 L_191:
 L_187:
-; line 324
+; line 326
 	MOVL	#3, -20(FP)
 	MOVAB	L_STR_7, -16(FP)
 	MOVL	#28, -12(FP)
 	MOVL	-4(FP), -8(FP)
 	CALLG	-20(FP), FILES_FAIL_PNHATUQQ
 L_186:
-; line 325
+; line 327
+	MOVL	#1, -12(FP)
+	MOVL	-4(FP), -8(FP)
+	CALLG	-12(FP), FILES_CREATE_J92O55VE
+; line 328
 	MOVL	#2, -16(FP)
 	MOVL	-4(FP), -12(FP)
 	MOVL	4(AP), R0
 	MOVL	12(R0), -8(FP)
 	CALLG	-16(FP), FILES_LOAD_JL3I394I
-; line 326
+; line 329
 	MOVL	-4(FP), R0
 	BNEQ	L_192
 	PUSHL	#5
-	PUSHL	#326
+	PUSHL	#329
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
@@ -1725,7 +1732,7 @@ L_192:
 	MOVL	-4(FP), R2
 	BNEQ	L_193
 	PUSHL	#26
-	PUSHL	#326
+	PUSHL	#329
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
@@ -1734,31 +1741,31 @@ L_193:
 	CMPL	R3, #511
 	BLEQU	L_194
 	PUSHL	#24
-	PUSHL	#326
+	PUSHL	#329
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
 L_194:
 	MOVB	12(AP), 768(R0)[R3]
-; line 327
+; line 330
 	MOVL	-4(FP), R0
 	BNEQ	L_195
 	PUSHL	#5
-	PUSHL	#327
+	PUSHL	#330
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
 L_195:
 	MOVB	#1, 1540(R0)
-; line 328
+; line 331
 	MOVL	4(AP), R0
 	INCL	12(R0)
-; line 329
+; line 332
 	MOVL	4(AP), R0
 	MOVL	-4(FP), R1
 	BNEQ	L_197
 	PUSHL	#21
-	PUSHL	#329
+	PUSHL	#332
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
@@ -1767,11 +1774,11 @@ L_197:
 	BGTR	L_198
 	JMP	L^L_196
 L_198:
-; line 329
+; line 332
 	MOVL	-4(FP), R0
 	BNEQ	L_199
 	PUSHL	#35
-	PUSHL	#329
+	PUSHL	#332
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
@@ -1779,7 +1786,7 @@ L_199:
 	MOVL	4(AP), R1
 	MOVL	12(R1), 1544(R0)
 L_196:
-; line 330
+; line 333
 	CLRL	@4(AP)
 	RET
 ; PROCEDURE WriteString
@@ -1805,9 +1812,9 @@ L_209:
 	TSTL	(SP)
 	BNEQ	L_208
 	ADDL2	#4, SP
-; line 339
+; line 342
 	CLRL	-8(FP)
-; line 340
+; line 343
 L_200:
 	MOVL	16(AP), R0
 	CMPL	-8(FP), R0
@@ -1818,7 +1825,7 @@ L_202:
 	CMPL	R0, 16(AP)
 	BLSSU	L_203
 	PUSHL	#29
-	PUSHL	#340
+	PUSHL	#343
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -1827,7 +1834,7 @@ L_203:
 	BNEQ	L_204
 	JMP	L^L_201
 L_204:
-; line 340
+; line 343
 	MOVL	#3, -24(FP)
 	MOVL	4(AP), -20(FP)
 	MOVL	8(AP), -16(FP)
@@ -1835,24 +1842,24 @@ L_204:
 	CMPL	R0, 16(AP)
 	BLSSU	L_205
 	PUSHL	#52
-	PUSHL	#340
+	PUSHL	#343
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
 L_205:
 	MOVZBL	@-4(FP)[R0], -12(FP)
 	CALLG	-24(FP), FILES_WRITE_N7USGTA5
-; line 340
+; line 343
 	INCL	-8(FP)
 	JMP	L^L_200
 L_201:
-; line 341
+; line 344
 	MOVL	16(AP), R0
 	CMPL	-8(FP), R0
 	BLSS	L_207
 	JMP	L^L_206
 L_207:
-; line 341
+; line 344
 	MOVL	#3, -24(FP)
 	MOVL	4(AP), -20(FP)
 	MOVL	8(AP), -16(FP)
@@ -1864,53 +1871,53 @@ L_206:
 	.ENTRY	FILES_READSTRING_4OUP4CRR, ^M<>
 	SUBL2	#24, SP
 	CLRQ	-8(FP)
-; line 349
+; line 352
 	CLRL	-4(FP)
-; line 350
+; line 353
 L_210:
-; line 351
+; line 354
 	MOVL	#3, -24(FP)
 	MOVL	4(AP), -20(FP)
 	MOVL	8(AP), -16(FP)
 	MOVAB	-5(FP), -12(FP)
 	CALLG	-24(FP), FILES_READ_4SSNK3R2
-; line 352
+; line 355
 	TSTB	-5(FP)
 	BEQL	L_213
 	JMP	L^L_212
 L_213:
-; line 352
+; line 355
 	JMP	L^L_211
 L_212:
-; line 353
+; line 356
 	MOVL	16(AP), R0
 	DECL	R0
 	CMPL	-4(FP), R0
 	BLSS	L_215
 	JMP	L^L_214
 L_215:
-; line 353
+; line 356
 	MOVL	-4(FP), R0
 	CMPL	R0, 16(AP)
 	BLSSU	L_216
 	PUSHL	#32
-	PUSHL	#353
+	PUSHL	#356
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
 L_216:
 	MOVB	-5(FP), @12(AP)[R0]
-; line 353
+; line 356
 	INCL	-4(FP)
 L_214:
 	JMP	L^L_210
 L_211:
-; line 355
+; line 358
 	MOVL	-4(FP), R0
 	CMPL	R0, 16(AP)
 	BLSSU	L_217
 	PUSHL	#7
-	PUSHL	#355
+	PUSHL	#358
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -1921,17 +1928,17 @@ L_217:
 	.ENTRY	FILES_READLINE_7H216Q5G, ^M<>
 	SUBL2	#24, SP
 	CLRQ	-8(FP)
-; line 365
+; line 368
 	CLRL	-4(FP)
-; line 366
+; line 369
 L_218:
-; line 367
+; line 370
 	MOVL	#3, -24(FP)
 	MOVL	4(AP), -20(FP)
 	MOVL	8(AP), -16(FP)
 	MOVAB	-5(FP), -12(FP)
 	CALLG	-24(FP), FILES_READ_4SSNK3R2
-; line 368
+; line 371
 	TSTB	-5(FP)
 	BNEQ	L_222
 	JMP	L^L_221
@@ -1941,33 +1948,33 @@ L_222:
 	JMP	L^L_220
 L_223:
 L_221:
-; line 368
+; line 371
 	JMP	L^L_219
 L_220:
-; line 369
+; line 372
 	MOVL	16(AP), R0
 	DECL	R0
 	CMPL	-4(FP), R0
 	BLSS	L_225
 	JMP	L^L_224
 L_225:
-; line 369
+; line 372
 	MOVL	-4(FP), R0
 	CMPL	R0, 16(AP)
 	BLSSU	L_226
 	PUSHL	#32
-	PUSHL	#369
+	PUSHL	#372
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
 L_226:
 	MOVB	-5(FP), @12(AP)[R0]
-; line 369
+; line 372
 	INCL	-4(FP)
 L_224:
 	JMP	L^L_218
 L_219:
-; line 371
+; line 374
 	CMPB	-5(FP), #10
 	BEQL	L_228
 	JMP	L^L_227
@@ -1980,7 +1987,7 @@ L_229:
 	CMPL	R0, 16(AP)
 	BLSSU	L_230
 	PUSHL	#36
-	PUSHL	#371
+	PUSHL	#374
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -1989,15 +1996,15 @@ L_230:
 	BEQL	L_231
 	JMP	L^L_227
 L_231:
-; line 371
+; line 374
 	DECL	-4(FP)
 L_227:
-; line 372
+; line 375
 	MOVL	-4(FP), R0
 	CMPL	R0, 16(AP)
 	BLSSU	L_232
 	PUSHL	#7
-	PUSHL	#372
+	PUSHL	#375
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -2027,7 +2034,7 @@ L_239:
 	TSTL	(SP)
 	BNEQ	L_238
 	ADDL2	#4, SP
-; line 381
+; line 384
 	MOVL	#4, -284(FP)
 	MOVL	-4(FP), -280(FP)
 	MOVL	8(AP), -276(FP)
@@ -2037,22 +2044,22 @@ L_239:
 	BLBC	R0, L_235
 	JMP	L^L_234
 L_235:
-; line 381
+; line 384
 	MOVW	#2, @12(AP)
 	JMP	L^L_233
 L_234:
-; line 383
+; line 386
 	MOVL	#2, -276(FP)
 	MOVAB	-260(FP), -272(FP)
 	CVTWL	-262(FP), -268(FP)
 	CALLG	-276(FP), G^POC_ERASE
 	MOVW	R0, @12(AP)
-; line 384
+; line 387
 	BICB3	#254, @12(AP), R0
 	BLBS	R0, L_237
 	JMP	L^L_236
 L_237:
-; line 384
+; line 387
 	CLRW	@12(AP)
 L_236:
 L_233:

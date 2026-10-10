@@ -2068,7 +2068,44 @@ about a minute, the guest's part one transfer each way.
   instead.
 - *Code addresses* in VMS's own fault messages and tracebacks (`PC=`,
   `PSL=`, a traceback line's last two columns) are masked on the
-  guest's standard error before it is compared, since any change to
-  the code moves them.
+  guest's standard output and standard error before they are compared,
+  since any change to the code moves them.
 - *A record has no "no line end"*: a host output whose last line has
   none is compared as if it had one.
+
+**Done: `Modules.GetIntArg` and `Console` (proposal 6), 2026-10-10.**
+`rtl/vax/Modules.Mod` gains `GetIntArg` and `ArgPos`, `rtl/llvm`'s, and
+`rtl/vax/Console.Mod` is new: `rtl/llvm`'s interface over `LineOutput`,
+into the same line as `Out`, so `Flush` does nothing. A list line now
+takes poc options after the size model and the runs' arguments after
+`:`, one run for each `;`-separated list. 18 lines join the list, from
+10 fixtures: 57 programs, 157 runs.
+
+- *The backend*: a `REAL` result moved into a `LONGREAL` in the same
+  register (a function's `REAL` returned as a `LONGREAL`) was not
+  converted (now `CVTFG` in place); and `-trap-heap-exhausted` was
+  ignored (now `NEW` and `SYSTEM.NEW` test R0 after `Allocate`, trap
+  11, as on LLVM). `vax-command-line`'s two `expected-vax` files change
+  for `GetIntArg`.
+- *`rtl/vax`'s `Files`* made a `New` file on disk only when its block
+  was written out, so a file that could not be created was not reported
+  at the first `Write`, as `rtl/llvm`'s is; it now is.
+- *Differences with a reason*, `expected-vax-*` files, as
+  `llvm-overflow-wrap`'s: `ENTIER` of an infinity or a NaN
+  (`llvm-entier-trap` cases 5 to 7) and `SHORT(1.0D300)`
+  (`llvm-range-checks` case 0) are floating faults on the VAX; and
+  `llvm-files-fail` names its file as given, not made absolute. An
+  `expected-vax-<module>[-<run>]` file without the build now serves
+  every build that has none of its own.
+- *Two things VMS does*, seen on the guest (2026-10-10): its message
+  for a fault goes to the `SYS$OUTPUT` file too when the program has
+  not yet opened it, so masking covers standard output as well; and its
+  traceback names a routine only for a PC within about a kilobyte of
+  its entry (907 bytes in, the routine; 1107, the program section), so
+  under `-OC` two faults in a long module body name `POC_CODE`.
+- *Not yet listed*, of the 19 fixtures proposal 6 counted: 9 need more
+  than these two. `Files.Pos`, `Modules.ArgVector`, `Out.LongReal`,
+  `Platform.Chdir` and `Platform.Absent` are Phase 17's;
+  `llvm-console-extra` declares a `["C"]` procedure;
+  `llvm-no-trap-behavior` uses `MOVE` (proposal 7); `llvm-trap-location`
+  links a library its `test.sh` builds for the host.

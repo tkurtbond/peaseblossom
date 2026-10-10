@@ -1,0 +1,12 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 16,
+;; rtl/vax/Files.Mod and the guest run; for the user's review). Why this
+;; is right:
+;; - The same message as LLVM's, after an empty record as LLVM's starts
+;;   with a line end, but naming the file as the program gave it:
+;;   rtl/vax's Files gives a name to RMS as it is (its header), where
+;;   rtl/llvm's makes it absolute. RMS cannot create no-such-
+;;   directory/data, so Files' first Write, which makes the file on
+;;   disk, stops the program (standard output and the status, 99, are
+;;   the host's).
+
+-- file not created: no-such-directory/data

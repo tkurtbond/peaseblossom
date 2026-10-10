@@ -2,9 +2,11 @@
 # and compares with the LLVM backend's (PLAN.md Phase 16 step 5;
 # doc/developer/vax-macro32-backend.md, section 16), a line each:
 #
-#   <fixture> <main module's file> <-O2 or -OC> [<argument>...]
+#   <fixture> <main module's file> <-O2 or -OC> [<poc option>...]
+#       [: <arguments> [; <arguments>]...]
 #
-# each under the size models its own test.sh builds it with.
+# each under the size models and options its own test.sh builds it with,
+# and run with the arguments its test.sh gives it (tools/vax-suite).
 llvm-address-to-longint addresstolongint.mod -OC
 llvm-array-assign arrayassign.mod -O2
 llvm-array-assign arrayassign.mod -OC
@@ -43,3 +45,22 @@ llvm-var-initializers init.mod -O2
 llvm-voc-library-fixes libraryfixes.mod -O2
 llvm-voc-library-fixes libraryfixes.mod -OC
 vax-widen-and-new WidenNewOut.mod -OC
+llvm-array-assign-trap arrayassigntrap.mod -O2 : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6
+llvm-array-assign-trap arrayassigntrap.mod -OC : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6
+llvm-assert assert.mod -O2 : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6
+llvm-assert assert.mod -OC : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6
+llvm-console consoletest.mod -O2
+llvm-entier-trap entiertrap.mod -O2 : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9
+llvm-entier-trap entiertrap.mod -OC : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9
+llvm-files-fail filesfail.mod -O2
+llvm-heap-exhausted heapexhausted.mod -O2 : 0 ; 1 ; 2 ; 3
+llvm-heap-exhausted heapexhausted.mod -O2 -trap-heap-exhausted : 0 ; 1 ; 2 ; 3
+llvm-heap-exhausted heapexhausted.mod -OC : 0 ; 1 ; 2 ; 3
+llvm-heap-exhausted heapexhausted.mod -OC -trap-heap-exhausted : 0 ; 1 ; 2 ; 3
+llvm-modules modulestest.mod -O2 : alpha "two words" "" 42 -7
+llvm-range-checks rangechecks.mod -O2 -range-checks : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9
+llvm-range-checks rangechecks.mod -O2 : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9
+llvm-range-checks rangechecks.mod -OC -range-checks : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9
+llvm-range-checks rangechecks.mod -OC : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9
+llvm-record-assign-trap recordassign.mod -O2 -trap-location : 0 ; 1 ; 2 ; 3 ; 4 ; 5
+llvm-return-trap returntrap.mod -O2 -trap-location : 0 ; 1 ; 2 ; 3 ; 4 ; 5

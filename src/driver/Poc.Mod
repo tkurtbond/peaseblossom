@@ -2739,7 +2739,7 @@ MODULE Poc;
           END
         ELSIF arg = "-trap-heap-exhausted" THEN
           (* Phase 11 A13: a NEW the heap cannot satisfy stops the program *)
-          LLVMCodeGenerator.trapHeapExhausted := TRUE;
+          LLVMCodeGenerator.trapHeapExhausted := TRUE; VaxCodeGenerator.trapHeapExhausted := TRUE;
           INC(i)
         (* PLAN.md Phase 8 step 2: -target/-o are flags, not commands,
            consumed by -emit-llvm-ir/-build the same way -output-dir is -

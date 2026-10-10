@@ -1,0 +1,23 @@
+;; Reviewed 2026-10-10 (written by Claude, from design sections 14 and
+;; 16 and the guest runs; for the user's review). Why this is right:
+;; - The lines before the last are the host's under -O2: SHORT and CHR
+;;   of values that fit are the same on the VAX.
+;; - The last statement, SHORT(1.0D300), cannot be done on the VAX:
+;;   SHORT of a LONGREAL is CVTGF, unchecked (design section 14, item
+;;   9), and 1.0D300 is past the largest F_floating number (about
+;;   1.7E38), so CVTGF is a floating overflow fault, not LLVM's
+;;   infinity. The program stops there, without its last line (.err and
+;;   .status say how).
+;; - For every build, with and without -range-checks; expected-vax-
+;;   rangechecks-OC-1.out and expected-vax-rangechecks-OC-range-
+;;   checks-1.out override it under -OC, whose first two lines differ:
+;;   INTEGER is 32 bits there.
+32767
+-32768
+127
+-128
+2147483647
+-2147483648
+0
+255
+127

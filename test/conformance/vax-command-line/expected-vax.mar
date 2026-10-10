@@ -1,15 +1,18 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from design
-;; section 15, the guest runs and the debugger run). Why this is
+;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
+;; guest runs and the debugger run; for the user's review). Why this is
 ;; right:
 ;; - CommandLine imports Modules, rtl/vax/Modules.Mod compiled with it
-;;   (expected-vax-Modules.mar): its initializer calls MODULES_INIT first,
-;;   which splits the command line before CommandLine's body runs.
+;;   (expected-vax-Modules.mar): its initializer calls MODULES_INIT
+;;   first, which splits the command line before CommandLine's body
+;;   runs.
 ;; - count := Modules.ArgCount reads Modules' exported variable through
-;;   G^, a word under -O2; each GetArg passes n as a longword (#0, #1), the
-;;   array's address and its length, 64, as any open-array argument.
-;; - The debugger run, not a foreign command, ends with count 1, argument
-;;   0 the image's file specification, DUA1:[USERS.POC]POCRUN.EXE;1, and
-;;   argument 1 "".
+;;   G^, a word under -O2; each GetArg passes n as a longword (#0, #1),
+;;   the array's address and its length, 64, as any open-array argument.
+;; - The debugger run, not a foreign command, ends with count 1,
+;;   argument 0 the image's file specification,
+;;   DUA1:[USERS.POC]POCRUN.EXE;1, and argument 1 "".
+;; - Modules' key, POC_K1_60A28B8ADC3D2FDD, is new (2026-10-10), since
+;;   its interface gained GetIntArg and ArgPos; nothing else changed.
 ; CommandLine, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	COMMANDLINE
 	.IDENT	/9ff0fd7d4cf6d7f8/
@@ -39,7 +42,7 @@ COMMANDLINE_SECOND_S1GT2N1M:
 	.EXTERNAL	MODULES_ARGCOUNT_DUBF7AL7
 	.EXTERNAL	MODULES_GETARG_PTGRJR14
 	.EXTERNAL	MODULES_INIT
-	.EXTERNAL	POC_K1_048B5A2AD8A1D0E5
+	.EXTERNAL	POC_K1_60A28B8ADC3D2FDD
 
 ; the module's initializer: once only
 	.PSECT	POC_CODE

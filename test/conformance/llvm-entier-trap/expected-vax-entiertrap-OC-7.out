@@ -1,0 +1,14 @@
+;; Reviewed 2026-10-10 (written by Claude, from design section 16 and
+;; the guest runs; for the user's review). Why this is right:
+;; - As expected-vax-entiertrap-7.out, but the traceback names the
+;;   program section, POC_CODE, not ENTIERTRAP_INIT: under -OC the fault
+;;   is past about a kilobyte into the initializer, and VMS's traceback
+;;   names a routine only that far (a guest test, 2026-10-10: a fault
+;;   907 bytes into a MACRO-32 routine is named by the routine, one 1107
+;;   bytes in by its section).
+%SYSTEM-F-FLTOVF_F, arithmetic fault, floating overflow at PC=xxxxxxxx, PSL=xxxxxxxx
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+ENTIERTRAP      POC_CODE                                   xxxxxxxx  xxxxxxxx
+ENTIERTRAP      ENTIERTRAP_MAIN                            xxxxxxxx  xxxxxxxx

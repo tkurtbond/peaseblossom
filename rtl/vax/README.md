@@ -22,8 +22,12 @@ writes their `.mar` files.
   `Int`, `Hex`) write to `SYS$OUTPUT` and `SYS$ERROR` through
   `LineOutput.Mod`, a record for each `Ln` (section 14, item 2, and
   section 15, proposal 8).
-- `Modules.Mod` (`ArgCount`, `GetArg`): the command line of a foreign
-  command, split as DCL quotes it (section 15, proposal 6).
+- `Modules.Mod` (`ArgCount`, `GetArg`, `GetIntArg`, `ArgPos`): the
+  command line of a foreign command, split as DCL quotes it (section 15,
+  proposal 6; section 16, proposal 6).
+- `Console.Mod` (`Flush`, `Char`, `String`, `Ln`, `Bool`, `Int`, `Hex`):
+  `rtl/llvm`'s `Console`, writing to `SYS$OUTPUT` through
+  `LineOutput.Mod` into the same line as `Out` (section 16, proposal 6).
 - `Platform.Mod` (`GetEnv`, `Unlink`, `System`, `Exit`, `PID`, `CWD`,
   `NL`): logical names, files by name, and ending the process (section
   15, proposals 3 and 5 to 8).

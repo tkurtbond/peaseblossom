@@ -316,12 +316,15 @@ MODULE Files;
   END Read;
 
   (* x at r's position, overwriting the byte there or, at the end,
-     extending the file, and on to the next. *)
+     extending the file, and on to the next. The file is made on disk at
+     the first write, as rtl/llvm's is, so that one that cannot be is
+     reported there, not when its block is written out. *)
   PROCEDURE Write*(VAR r: Rider; x: SYSTEM.BYTE);
     VAR f: File;
   BEGIN
     f := r.file;
     IF ~f.isNew OR f.closed THEN Fail("file not open to be written", f) END;
+    Create(f);
     Load(f, r.position);
     f.block[r.position - f.blockStart] := x;
     f.dirty := TRUE;

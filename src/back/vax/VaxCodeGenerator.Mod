@@ -280,6 +280,9 @@ MODULE VaxCodeGenerator;
   VAR
     unsupportedCount*: INTEGER;
     rangeChecks*: BOOLEAN; (* -range-checks: CHR or SHORT of a value that does not fit traps (code 14) *)
+    (* -trap-heap-exhausted: a NEW or SYSTEM.NEW whose block Allocate
+       cannot give (R0 is 0) traps (code 11, at its position), as on LLVM *)
+    trapHeapExhausted*: BOOLEAN;
     (* -trap-location: a trap's message names its file, line, column and
        procedure, as on LLVM (section 14, item 10) *)
     trapLocation*: BOOLEAN;
@@ -930,7 +933,8 @@ MODULE VaxCodeGenerator;
     IF Same(src, dst) THEN
       (* a narrower integer, or a SET, into the quadword it starts (a
          function's result in R0, returned as a LONGINT under -OC): its
-         high longword, the sign or 0 *)
+         high longword, the sign or 0. A quadword into a real takes
+         AsReal first, so never comes here. *)
       IF (d = "Q") & (s # "Q") & ~IsReal(src.type) THEN
         HalfText(dst, 0, lo); HalfText(dst, 1, hi);
         IF src.type = Types.Set THEN Emit("CLRL", hi)
@@ -938,6 +942,12 @@ MODULE VaxCodeGenerator;
           IF s # "L" THEN Op("CVT", s, "L", op); Operands(lo, lo, "", operands); Emit(op, operands) END;
           Operands("#-31", lo, hi, operands); Emit("ASHL", operands)
         END
+      ELSIF IsReal(dst.type) & (s # d) & (s # "Q") & ((s = "F") OR ~IsReal(src.type)) THEN
+        (* a REAL, or an integer, into the real it starts (a function's
+           LONGREAL result in R0): converted in place, CVTFG R0, R0, which
+           reads its operand before it writes *)
+        COPY("CVT", op); AppendChar(op, s); AppendChar(op, d);
+        Emit2(op, src, dst)
       END;
       RETURN
     END;
@@ -3869,6 +3879,14 @@ MODULE VaxCodeGenerator;
     NewLabel(ok); Emit(branch, ok); Trap(code, line, column); EmitLabel(ok)
   END TrapUnless;
 
+  (* After Allocate's CALLG, with -trap-heap-exhausted: R0 0, no block,
+     is a trap (code 11, at NEW's position), as LLVM's EmitHeapCheck;
+     without it, nothing, and p is left NIL *)
+  PROCEDURE HeapCheck(line, column: INTEGER);
+  BEGIN
+    IF trapHeapExhausted THEN Emit("TSTL", "R0"); TrapUnless("BNEQ", 11, line, column) END
+  END HeapCheck;
+
   (* ENTIER(x), x a real: the largest LONGINT not greater than x (section
      14, item 9), as on LLVM (GenerateEntier). An x whose floor does not
      fit is a trap (code 8, at ENTIER's position), tested first against
@@ -3915,9 +3933,10 @@ MODULE VaxCodeGenerator;
      (section 14, item 3): rtl/vax's GarbageCollectedHeap.Allocate(size,
      tag) by CALLG (section 15, proposal 9), whose result in R0, the
      block's address past its tag, or 0 when there is no memory, which
-     leaves p NIL, as on LLVM (without -trap-heap-exhausted), is stored in
-     p. tag is the record's type descriptor (RecordTag), or for an array
-     its element type's when that holds pointers, else 0 (ArrayTag). An
+     leaves p NIL, as on LLVM (with -trap-heap-exhausted, a trap:
+     HeapCheck), is stored in p. tag is the record's type descriptor
+     (RecordTag), or for an array its element type's when that holds
+     pointers, else 0 (ArrayTag). An
      open array's lengths come first, as on LLVM, each kept in the frame
      and checked to be positive, then the block's size from them, the
      product times the element's size plus DataOffset, checked to be less
@@ -4012,6 +4031,7 @@ MODULE VaxCodeGenerator;
     AddExternal(allocate);
     Text(ListEntry(list, 2, 0), text); Append(text, ", "); AppendExternal(text, allocate);
     Emit("CALLG", text);
+    HeapCheck(line, column);
     ReleaseSlots(list, 3);
     IF dims > 0 THEN
       (* the lengths, in a block there is. Each store is at most 11 bytes
@@ -4042,9 +4062,10 @@ MODULE VaxCodeGenerator;
   (* SYSTEM.NEW(p, n): a raw block of n bytes, zeroed, from the
      collector's Allocate with tag 0, so that it is kept while something
      points at it but never looked into, as on LLVM; its address, or 0
-     when there is no memory, stored in p. An n that is not positive, or
-     does not fit a longword, is NEW's length trap (code 7, at its
-     position), as on LLVM. *)
+     when there is no memory (a trap with -trap-heap-exhausted:
+     HeapCheck), stored in p. An n that is not positive, or does not fit
+     a longword, is NEW's length trap (code 7, at its position), as on
+     LLVM. *)
   PROCEDURE SystemNew(args: SyntaxTree.ExprNode; line, column: INTEGER);
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object;
         target, v, n: Operand; list: INTEGER; text: ARRAY 160 OF CHAR; hi, lo: OperandText;
@@ -4075,6 +4096,7 @@ MODULE VaxCodeGenerator;
     AddExternal(allocate);
     Text(ListEntry(list, 2, 0), text); Append(text, ", "); AppendExternal(text, allocate);
     Emit("CALLG", text);
+    HeapCheck(line, column);
     ReleaseSlots(list, 3);
     target := Locate(de.designator, obj, de.line, de.column);
     EmitTo("MOVL", "R0", target);

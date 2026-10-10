@@ -890,6 +890,14 @@ most, object libraries.
      `expected-vax-overflow-*` files. Those files and
      `vax-widen-and-new`'s `expected-vax.mar` were reviewed by the user
      (2026-10-10).
+   - *`Modules.GetIntArg` and `Console`* (2026-10-10, proposal 6): in
+     `rtl/vax`, with list lines that take poc options and run arguments;
+     57 programs, 157 runs. Two backend faults fixed (a `REAL` widened
+     in place, `-trap-heap-exhausted`), `rtl/vax`'s `Files` reports a
+     file it cannot create at the first `Write`, and the floating faults
+     of `llvm-entier-trap` and `llvm-range-checks` and `llvm-files-fail`'s
+     file name are `expected-vax-*` files (drafts, for the user's
+     review).
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled
