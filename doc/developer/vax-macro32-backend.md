@@ -1829,5 +1829,18 @@ Proposals:
   `pathSeparator`. The joins left with `/` are the LLVM backend's
   library and run paths and the shell commands, none of them used on
   VMS.
+- *The 39-character check* (proposal 3) is the 26-character limit
+  section 5 already set for `<MODULE>_INIT`, stricter than ODS-2's 39.
+  The driver now makes it as soon as a module is checked for the VAX,
+  so it is reported as the checker's errors are and before the module's
+  `.sym` is written, which on VMS would fail as a name RMS refuses
+  (`vax-module-name-length`).
+- *The default target* (proposal 7): `tools/build-info <dir>
+  vax-dec-vms`, for a poc built to run on VMS, writes
+  `BuildInfo.defaultTarget`, which `-target` is until one is given; that
+  poc refuses any other ("not available on VAX/VMS"). Checked with such
+  a poc built on Linux: `-build` with no `-target` writes the `.mar`
+  files and the `.COM` procedure, and `-emit-llvm-ir` is refused as for
+  `-target vax-dec-vms`.
 - *`tools/vax-runtime-stub.mar`* has the same routines, so that the
   debugger runs link.

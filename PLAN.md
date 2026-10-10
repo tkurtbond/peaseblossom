@@ -830,6 +830,11 @@ most, object libraries.
      keeps voc's interface. `src/` names its files and directories
      through it. `vax-platform`'s `expected-vax*.mar` files, redrafted,
      were reviewed by the user (2026-10-10).
+   - *The module name check and the default target* (2026-10-10): a VAX
+     module's name over 26 characters (which keeps its files within
+     ODS-2's 39) is refused before its `.sym` is written; a poc built
+     with `tools/build-info <dir> vax-dec-vms` compiles for the VAX by
+     default and has no other target.
 
 5. **Test harness on VMS.** `make test` gains a VAX target: the
    conformance fixtures poc can run there are copied to the guest, built

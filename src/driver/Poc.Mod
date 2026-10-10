@@ -1015,6 +1015,22 @@ MODULE Poc;
     COPY(savedFileName, Diagnostics.fileName); Diagnostics.strict := savedStrict
   END DiscoverModule;
 
+  (* For the VAX target, an error when module's name is too long for its
+     <MODULE>_INIT symbol, 26 characters (section 5 of
+     doc/developer/vax-macro32-backend.md), which also keeps its .sym and
+     .mar names within ODS-2's 39 (section 15, proposal 3). Made after the
+     module is checked, so that it is reported as the checker's errors are
+     and before its .sym is written: on VMS a longer name would be refused
+     by RMS, as a file that cannot be written. *)
+  PROCEDURE CheckVaxModuleName(module: SyntaxTree.ModuleNode);
+    VAR init: VaxTypes.Symbol;
+  BEGIN
+    IF forVax & ~VaxTypes.MakeInitSymbol(module.name, init) THEN
+      Diagnostics.Error(module.line, module.column,
+        "a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol")
+    END
+  END CheckVaxModuleName;
+
   (* PLAN.md Phase 9 step 4a: brings <name>.sym (and, first, every
      transitive import's) up to date from real source, post-order, before
      anything is type-checked against it. A .sym now carries an imported
@@ -1091,7 +1107,8 @@ MODULE Poc;
         imp := imp.next
       END;
       IF ok THEN
-        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter);
+        CheckVaxModuleName(module)
       END
     END;
     IF ~ok THEN
@@ -1264,7 +1281,8 @@ MODULE Poc;
           imp := imp.next
         END;
         IF regenerated THEN
-          scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+          scope := SemanticActions.CheckModule(module, ParseModuleAdapter);
+          CheckVaxModuleName(module)
         END
       END;
       IF ~regenerated THEN
@@ -2473,7 +2491,7 @@ MODULE Poc;
       i: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR;
       targetTriple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
       exePath: ARRAY 256 OF CHAR;
-      done: BOOLEAN;
+      done, onVms: BOOLEAN;
   BEGIN
     InitImportPathFromEnvironment;
     ModuleInterface.libraryLookup := LibraryInterfaceDir;
@@ -2484,7 +2502,8 @@ MODULE Poc;
     ELSE
       i := 1;
       outputDir[0] := 0X;
-      targetTriple[0] := 0X;
+      (* "" but in a poc built to run on VAX/VMS (section 15, proposal 7) *)
+      COPY(BuildInfo.defaultTarget, targetTriple); onVms := targetTriple[0] # 0X;
       exePath[0] := 0X;
       done := FALSE;
       WHILE (i < Modules.ArgCount) & ~done DO
@@ -2675,6 +2694,12 @@ MODULE Poc;
         ELSIF arg = "-target" THEN
           IF i + 1 < Modules.ArgCount THEN
             Modules.GetArg(i + 1, targetTriple);
+            IF onVms & (targetTriple # BuildInfo.defaultTarget) THEN
+              (* on VAX/VMS poc runs no clang, so it has no other target *)
+              failed := TRUE; Err.String("poc: -target "); Err.String(targetTriple);
+              Err.String(" is not available on VAX/VMS"); Err.Ln;
+              done := TRUE
+            END;
             INC(i, 2)
           ELSE
             failed := TRUE; Err.String("poc: -target requires a triple"); Err.Ln;

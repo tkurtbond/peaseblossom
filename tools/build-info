@@ -5,10 +5,21 @@
 # says (make dist writes it into a release tarball), or else "" (a copy
 # made with git archive). `poc -version` prints it after Version.number. The file
 # is rewritten only when its content changes, so a build is not redone for
-# nothing. Run with the directory as its one argument, from anywhere.
+# nothing. Run with the directory as its argument, from anywhere.
+#
+# A second argument, vax-dec-vms, is for a poc that will run on VAX/VMS
+# (Phase 16 step 4; doc/developer/vax-macro32-backend.md, section 15,
+# proposal 7): BuildInfo.defaultTarget is then that triple, the target poc
+# compiles for when no -target is given, and the only one it has. Without
+# it, defaultTarget is "", and poc compiles for the host.
 set -e
 
 dir=$1
+target=${2:-}
+case $target in
+  ""|vax-dec-vms) ;;
+  *) echo "build-info: no such target for poc to run on: $target" >&2; exit 1 ;;
+esac
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 commit=
 # the tree's own repository, not one it was unpacked inside
@@ -29,6 +40,8 @@ MODULE BuildInfo;
 
   CONST
     commit* = "$commit";
+    (* the target when no -target is given: "" for the host's *)
+    defaultTarget* = "$target";
 
 END BuildInfo.
 MOD

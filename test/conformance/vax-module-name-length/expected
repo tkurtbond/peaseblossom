@@ -2,3 +2,9 @@ ABCDEFGHIJKLMNOPQRSTUVWXYZ init ABCDEFGHIJKLMNOPQRSTUVWXYZ_INIT
 exit 0
 poc: module name ABCDEFGHIJKLMNOPQRSTUVWXYZa is longer than 26 characters, the most a VAX module's <MODULE>_INIT symbol allows
 exit 1
+ABCDEFGHIJKLMNOPQRSTUVWXYZa.mod:1:1: error: a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol
+1 error(s)
+exit 1
+ABCDEFGHIJKLMNOPQRSTUVWXYZa.mod:1:1: error: a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol
+1 error(s) in imported module ABCDEFGHIJKLMNOPQRSTUVWXYZa
+exit 1
