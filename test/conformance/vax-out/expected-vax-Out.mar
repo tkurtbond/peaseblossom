@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design sections 14 and
-;; 15, rtl/vax/Out.Mod, the guest runs and the debugger run; for the
-;; user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; sections 14 and 15, rtl/vax/Out.Mod, the guest runs and the debugger
+;; run). Why this is right:
 ;; - Out keeps nothing of its own now: each procedure calls LineOutput's,
 ;;   G^ and .EXTERNAL, with stream 0, LineOutput.output, as its first
 ;;   argument (CLRL), so its output is what it was (expected-vax-

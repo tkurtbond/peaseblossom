@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design sections 14 and
-;; 15, rtl/vax/LineOutput.Mod, the guest runs and the debugger run; for
-;; the user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; sections 14 and 15, rtl/vax/LineOutput.Mod, the guest runs and the
+;; debugger run). Why this is right:
 ;; - LineOutput is what Out was (reviewed 2026-10-09), for two streams:
 ;;   LINES is two lines of 1024 bytes, Out's (0) then Err's (1), and
 ;;   LENGTHS their two LONGINTs. Every procedure takes the stream first,

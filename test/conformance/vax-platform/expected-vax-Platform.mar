@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 15, the
-;; System Services, RMS and LIB$ manuals, the guest runs and the debugger
-;; run; for the user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 15, the System Services, RMS and LIB$ manuals, the guest runs
+;; and the debugger run). Why this is right:
 ;; - PID (a word under -O2), CWD and NL are exported, global symbols
 ;;   ("::"); GIVEN and RETURNED are the names given to PocRtl.mar's
 ;;   routines and the values they give back, 256 bytes each, as RMS and

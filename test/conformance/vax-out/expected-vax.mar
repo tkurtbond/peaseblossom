@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design sections 14 and
-;; 15, the LLVM backend's output, the guest runs and the debugger run; for
-;; the user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; sections 14 and 15, the LLVM backend's output, the guest runs and the
+;; debugger run). Why this is right:
 ;; - OutBasics imports Out, rtl/vax/Out.Mod compiled with it (its .mar is
 ;;   expected-vax-Out.mar): its initializer calls OUT_INIT first, and its
 ;;   calls of Out's procedures are to their global symbols, with G^.

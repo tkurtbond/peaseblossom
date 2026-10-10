@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 15,
-;; rtl/vax/Err.Mod, the guest runs and the debugger run; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design
+;; section 15, rtl/vax/Err.Mod, the guest runs and the debugger run).
+;; Why this is right:
 ;; - Err is Out (vax-out's expected-vax-Out.mar) with stream 1,
 ;;   LineOutput.error, for Out's 0: MOVL #1 where Out has CLRL, in each
 ;;   call of LineOutput's Char, String, Ln, Int and Hex. Every other line

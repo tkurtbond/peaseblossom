@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-10 (written by Claude, from design section 15, DCL
-;; Dictionary DCL1-5, the LIB$ and System Services manuals, the guest runs
-;; and the debugger run; for the user's review). Why this is right:
+;; Reviewed 2026-10-10 by the user (written by Claude, from design section
+;; 15, DCL Dictionary DCL1-5, the LIB$ and System Services manuals, the
+;; guest runs and the debugger run). Why this is right:
 ;; - TEXT holds the arguments, each ended by 0X: 2050 bytes, room for
 ;;   argument 0 (at most 1024 bytes, POC_IMAGE_NAME's buffer) and the line
 ;;   (1024) split, each with its 0X. STARTS holds where each starts: 513

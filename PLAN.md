@@ -819,9 +819,9 @@ most, object libraries.
      read Stream_LF files.
    - *`Modules`, `Platform` and `Err`* (2026-10-10) are in `rtl/vax`,
      with the fixtures `vax-command-line`, `vax-platform` and `vax-err`.
-     Their `expected-vax.mar` files await the user's review, and so do
-     `vax-out`'s, since `Out` now writes through `LineOutput`, which it
-     shares with `Err`. `rtl/llvm`'s `Platform` gained `MakePath`,
+     Their `expected-vax.mar` files were reviewed by the user
+     (2026-10-10), as were `vax-out`'s, since `Out` now writes through
+     `LineOutput`, which it shares with `Err`. `rtl/llvm`'s `Platform` gained `MakePath`,
      `IsDirectory`, `MakeDirectory` and `pathSeparator`; `src/` does not
      use them yet. Checked on the guest: `Unlink` deletes only the
      highest version.
