@@ -1558,13 +1558,13 @@ writes `assertion failed (n)` with `$FAO` into a counted string of its
 own, and `assertion failed` for 10 alone. The status is the trap's,
 `%X10000052`, as LLVM's is 10 whatever *n* is.
 
-Fixture `vax-assert` has `VaxAssert`, written for the user's review:
-`ASSERT` of a relation, of `&` and of `OR`, with and without *n*,
-`ASSERT(TRUE)`, and one in a procedure. A second program, `Asserts`, is
-built by both backends and run once for each case, with and without
-`-trap-location`: `ASSERT(x)`, `ASSERT(x, 0)`, `ASSERT(x, 255)` in a
-procedure, and one where every assertion holds. Each case's output,
-status and message must be the same. `vax-emit-errors`' `VaxTooMuch`
-now has `SYSTEM.GET` where it had `ASSERT`, as a predeclared procedure
-still refused. poc's own source has no `ASSERT`, so the survey is
-unchanged: 78, all `SYSTEM.BYTE` parameters.
+Fixture `vax-assert` has `VaxAssert`, reviewed: `ASSERT` of a relation,
+of `&` and of `OR`, with and without *n*, `ASSERT(TRUE)`, and one in a
+procedure. A second program, `Asserts`, is built by both backends and
+run once for each case, with and without `-trap-location`: `ASSERT(x)`,
+`ASSERT(x, 0)`, `ASSERT(x, 255)` in a procedure, and one where every
+assertion holds. Each case's output, status and message must be the
+same. `vax-emit-errors`' `VaxTooMuch` now has `SYSTEM.GET` where it had
+`ASSERT`, as a predeclared procedure still refused. poc's own source has
+no `ASSERT`, so the survey is unchanged: 78, all `SYSTEM.BYTE`
+parameters.

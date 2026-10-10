@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-09 (written by Claude, from the design, the MACRO
-;; manual, LLVM's code generator and the guest runs; for the user's
-;; review). Why this is right:
+;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
+;; the MACRO manual, LLVM's code generator and the guest runs). Why this
+;; is right:
 ;; - Phase 16 step 3 (section 14, item 11): ASSERT(x) branches on x as IF
 ;;   does (JumpOn: BLBS, a compare and a signed branch, & and OR short-
 ;;   circuit, each inverted branch over JMP L^), to a call of POC_TRAP at
