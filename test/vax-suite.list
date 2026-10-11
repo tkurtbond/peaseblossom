@@ -167,3 +167,7 @@ llvm-no-trap-behavior notrap.mod -O2 : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9 ; 1
 llvm-no-trap-behavior notrap.mod -OC : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9 ; 11
 llvm-system system.mod -O2
 vax-val ValOut.mod -O2
+llvm-readonly-params readonly.mod -O2
+llvm-readonly-params readonly.mod -OC
+vax-structured-constants ConstOut.mod -O2
+vax-structured-constants ConstOut.mod -OC

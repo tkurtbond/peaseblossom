@@ -2195,3 +2195,23 @@ programs, 278 runs. The user reviewed the `expected-vax*` files of
 `vax-move`, `vax-val` and `llvm-no-trap-behavior` and `POC_MOVE`
 (2026-10-11). `vax-emit-errors`' example of a construct not lowered,
 `MOVE`, is now `SYSTEM.VAL` from a `HUGEINT` to a `REAL`.
+
+**Done: structured constants (proposal 7's third part), 2026-10-11.** A
+structured constant (Phase 14) is data in `POC_CONST`, `L_CONST_<n>`,
+one for each value the module uses (an imported one too, from its
+`.sym`), as LLVM makes a private constant global of each module that
+uses one. Its bytes are a variable's, at `MemoryLayout`'s offsets, the
+padding and the elements not given zero; a scalar is `.BYTE`, `.WORD`
+or `.LONG`, a quadword two `.LONG`s, a real `.F_FLOATING` or
+`.G_FLOATING` of `RealConstant`'s text. It is used as a variable is:
+copied to assign, its address passed. Record and array literals that
+are not constant are still not lowered. Fixture
+`vax-structured-constants`, run under `-O2` and `-OC`.
+
+`llvm-readonly-params` joins the list too, under both size models, its
+fourth line an `expected-vax-readonly.out`: `First16`'s read-only `ARRAY 16 OF CHAR` is passed by reference
+on the VAX, which passes every read-only record or array so (section 7,
+decided 2026-10-06), and by value on LLVM, which passes one of at most
+16 bytes so; a program may not rely on which. 162 programs, 282 runs. The user
+reviewed it and `vax-structured-constants`' `expected-vax.mar`
+(2026-10-11).

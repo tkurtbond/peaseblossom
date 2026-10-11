@@ -1,0 +1,4 @@
+semantic OK, wrote VaxConstants.mar
+exit 0
+VaxConstants.mar matches expected-vax.mar
+LLVM build exit 0

@@ -256,6 +256,17 @@ MODULE VaxCodeGenerator;
       next: StringConstant
     END;
 
+    (* A structured constant in POC_CONST (Phase 14, a record or an array
+       whose elements are constant): its bytes, of type, laid out as a
+       variable of it is (WriteStructured) *)
+    StructuredConstant = POINTER TO StructuredConstantDesc;
+    StructuredConstantDesc = RECORD
+      value: Types.Value;
+      type: Types.Type;
+      label: ARRAY 16 OF CHAR;
+      next: StructuredConstant
+    END;
+
     (* A type descriptor the module writes in POC_CONST (section 14, item
        4): a record's, or, for the arrays NEW allocates whose elements hold
        pointers, their element type's (rec NIL) *)
@@ -332,6 +343,7 @@ MODULE VaxCodeGenerator;
     externals: External;
     homes: Home; (* the imported variables and procedures it uses *)
     strings: StringConstant; (* in the order of first use *)
+    structureds: StructuredConstant; (* in the order of first use *)
     descriptors: TypeDescriptor; (* in the order they were needed *)
     descriptorCount: INTEGER; (* the labels L_TD_<n> and L_AD_<n> made *)
     code, codeLast: Instruction; (* the procedures, written before the initializer *)
@@ -1845,6 +1857,23 @@ MODULE VaxCodeGenerator;
     RETURN x
   END StringOperand;
 
+  (* The structured constant v in POC_CONST: L_CONST_<n>, one for each
+     value, as a variable of v's type there *)
+  PROCEDURE StructuredOperand(v: Types.Value): Operand;
+    VAR c, p: StructuredConstant; count: LONGINT; x: Operand;
+  BEGIN
+    p := NIL; c := structureds; count := 0;
+    WHILE (c # NIL) & (c.value # v) DO p := c; c := c.next; INC(count) END;
+    IF c = NIL THEN
+      NEW(c); c.value := v; c.type := v.type; c.next := NIL;
+      COPY("L_CONST_", c.label); AppendInt(c.label, count + 1);
+      IF p = NIL THEN structureds := c ELSE p.next := c END
+    END;
+    x := NewOperand(memory, v.type);
+    COPY(c.label, x.symbol);
+    RETURN x
+  END StructuredOperand;
+
   (* x as a string: a CHAR constant, which a one-character string is
      (Constant), as one of a character *)
   PROCEDURE AsString(x: Operand): Operand;
@@ -1857,8 +1886,9 @@ MODULE VaxCodeGenerator;
     RETURN x
   END AsString;
 
-  (* The string constant e, padded to size bytes, as an argument; Dummy,
-     reported, for a structured constant *)
+  (* The string constant e, padded to size bytes, or the structured
+     constant e (StructuredOperand), as an argument; Dummy, reported, for
+     anything else *)
   PROCEDURE StringArgument(e: SyntaxTree.ExprNode; size: LONGINT): Operand;
     VAR v: Types.Value; text: Lexer.Text;
   BEGIN
@@ -1867,10 +1897,20 @@ MODULE VaxCodeGenerator;
     ELSIF v.kind = Types.charValue THEN
       NEW(text, 2); text[0] := v.charVal; text[1] := 0X;
       RETURN StringOperand(text, size)
+    ELSIF v.kind = Types.structuredValue THEN
+      RETURN StructuredOperand(v)
     END;
     Unsupported(e.line, e.column, "a structured constant (Phase 16)");
     RETURN Dummy()
   END StringArgument;
+
+  (* Whether e, a constant expression, is a record's or an array's *)
+  PROCEDURE IsStructuredConstant(e: SyntaxTree.ExprNode): BOOLEAN;
+    VAR v: Types.Value;
+  BEGIN
+    v := ConstantEvaluator.Evaluate(e, scope);
+    RETURN v.kind = Types.structuredValue
+  END IsStructuredConstant;
 
   PROCEDURE ^ AsReal(x: Operand; t: Types.Type; line, column: INTEGER): Operand;
 
@@ -2426,6 +2466,8 @@ MODULE VaxCodeGenerator;
       RETURN x
     ELSIF v.kind = Types.nilValue THEN
       RETURN Immediate(Types.NilType, 0)
+    ELSIF v.kind = Types.structuredValue THEN
+      RETURN StructuredOperand(v)
     ELSE
       Unsupported(e.line, e.column, "a structured constant (Phase 16)")
     END;
@@ -4637,7 +4679,9 @@ MODULE VaxCodeGenerator;
       v := Expression(s.value, target);
       IF IsReal(target.type) & IsQuad(v) THEN v := AsReal(v, target.type, s.value.line, s.value.column) END;
       IF Suffix(v.type) # 0X THEN MoveInto(v, target) END
-    ELSIF ConstantEvaluator.IsConstantExpr(s.value, scope) THEN
+    ELSIF ConstantEvaluator.IsConstantExpr(s.value, scope)
+          & ~IsStructuredConstant(s.value) THEN
+      (* a string; a structured constant is copied as a variable is, below *)
       v := StringArgument(s.value, 0);
       IF v.type IS Types.ArrayType THEN
         SpillAll; Text(v, from); Text(target, to);
@@ -5890,6 +5934,126 @@ MODULE VaxCodeGenerator;
     Line(w, ".BYTE", text)
   END WriteString;
 
+  (* Zero bytes from at up to to, at left at to *)
+  PROCEDURE PadTo(VAR w: Files.Rider; to: LONGINT; VAR at: LONGINT);
+    VAR text: ARRAY 32 OF CHAR;
+  BEGIN
+    IF to > at THEN
+      text[0] := 0X; AppendInt(text, 0);
+      IF to - at > 1 THEN AppendChar(text, "["); AppendInt(text, to - at); AppendChar(text, "]") END;
+      Line(w, ".BYTE", text);
+      at := to
+    END
+  END PadTo;
+
+  (* An immediate's text without its "#", as a directive's operand *)
+  PROCEDURE DropHash(VAR text: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    IF text[0] = "#" THEN
+      i := 0; WHILE text[i] # 0X DO text[i] := text[i + 1]; INC(i) END
+    END
+  END DropHash;
+
+  (* v, a constant of the scalar type t (AssignedValue made it one of t,
+     but an integer may stand for a real), as data: .BYTE, .WORD or .LONG,
+     a quadword as two .LONGs, low first, as HalfText writes an immediate;
+     a real as .F_FLOATING or .G_FLOATING of RealConstant's text, which
+     MACRO rounds as it does an immediate; NIL as 0 *)
+  PROCEDURE WriteScalar(VAR w: Files.Rider; t: Types.Type; v: Types.Value);
+    VAR x: Operand; r: Types.Value; size, value: LONGINT; text: OperandText; directive: ARRAY 16 OF CHAR;
+  BEGIN
+    size := VaxTypes.Size(t);
+    IF IsReal(t) THEN
+      NEW(r); r^ := v^; r.type := t;
+      IF v.kind = Types.intValue THEN r.kind := Types.realValue; r.realVal := v.intVal; r.realText[0] := 0X END;
+      x := RealConstant(r, 0, 0);
+      IF t = Types.Real THEN COPY(".F_FLOATING", directive) ELSE COPY(".G_FLOATING", directive) END;
+      Line(w, directive, x.realText)
+    ELSIF Types.IsSet(t) THEN
+      text[0] := 0X; AppendSetHex(text, v.setLow); Line(w, ".LONG", text);
+      IF size = 8 THEN text[0] := 0X; AppendSetHex(text, v.setHigh); Line(w, ".LONG", text) END
+    ELSE
+      IF v.kind = Types.boolValue THEN IF v.boolVal THEN value := 1 ELSE value := 0 END
+      ELSIF v.kind = Types.charValue THEN value := ORD(v.charVal)
+      ELSIF v.kind = Types.stringValue THEN value := ORD(v.stringVal[0])
+      ELSIF v.kind = Types.intValue THEN value := v.intVal
+      ELSE value := 0 (* NIL *)
+      END;
+      IF size = 8 THEN x := Immediate(Types.HugeInt, value) ELSE x := Immediate(longword, value) END;
+      IF (size = 4) OR (size = 8) THEN
+        HalfText(x, 0, text); DropHash(text); Line(w, ".LONG", text);
+        IF size = 8 THEN HalfText(x, 1, text); DropHash(text); Line(w, ".LONG", text) END
+      ELSE
+        text[0] := 0X; AppendInt(text, value);
+        IF size = 1 THEN Line(w, ".BYTE", text) ELSE Line(w, ".WORD", text) END
+      END
+    END
+  END WriteScalar;
+
+  PROCEDURE ^ WriteData(VAR w: Files.Rider; t: Types.Type; v: Types.Value; start: LONGINT; VAR at: LONGINT);
+
+  (* rec's part of a record constant whose field values, its bases' first,
+     start at fields, the record at start: each field at its offset;
+     fields is left after them *)
+  PROCEDURE WriteRecord(VAR w: Files.Rider; rec, whole: Types.RecordType; VAR fields: Types.Value;
+                        start: LONGINT; VAR at: LONGINT);
+    VAR f: Types.Field; v: Types.Value;
+  BEGIN
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) THEN
+      WriteRecord(w, rec.baseType(Types.RecordType), whole, fields, start, at)
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      v := fields;
+      IF fields # NIL THEN fields := fields.next END;
+      WriteData(w, f.type, v, start + VaxTypes.FieldOffset(whole, f), at);
+      f := f.next
+    END
+  END WriteRecord;
+
+  (* v, a constant of type t, as data from start, the bytes before it from
+     at, where the last one ended, zero; NIL, or nothing written, is zero
+     too, which the next one or the end fills in *)
+  PROCEDURE WriteData(VAR w: Files.Rider; t: Types.Type; v: Types.Value; start: LONGINT; VAR at: LONGINT);
+    VAR e: Types.Value; arr: Types.ArrayType; i, n, size: LONGINT;
+  BEGIN
+    IF v = NIL THEN RETURN END;
+    IF t IS Types.RecordType THEN
+      e := v.elements;
+      WriteRecord(w, t(Types.RecordType), t(Types.RecordType), e, start, at)
+    ELSIF t IS Types.ArrayType THEN
+      arr := t(Types.ArrayType); size := VaxTypes.Size(arr.elementType);
+      IF v.kind = Types.stringValue THEN
+        PadTo(w, start, at);
+        n := 0; WHILE (n < LEN(v.stringVal^)) & (v.stringVal[n] # 0X) DO INC(n) END;
+        WriteBytes(w, v.stringVal^, n); at := start + n
+      ELSE
+        e := v.elements; i := 0;
+        WHILE e # NIL DO WriteData(w, arr.elementType, e, start + i * size, at); e := e.next; INC(i) END;
+        IF v.fill # NIL THEN
+          WHILE i < arr.length DO WriteData(w, arr.elementType, v.fill, start + i * size, at); INC(i) END
+        END
+      END
+    ELSE
+      PadTo(w, start, at);
+      WriteScalar(w, t, v);
+      at := start + VaxTypes.Size(t)
+    END
+  END WriteData;
+
+  (* The structured constant c at its label, every byte of its type,
+     aligned as a variable of it (.ALIGN QUAD, 8 the most any type needs) *)
+  PROCEDURE WriteStructured(VAR w: Files.Rider; c: StructuredConstant);
+    VAR at: LONGINT;
+  BEGIN
+    Line(w, ".ALIGN", "QUAD");
+    Label(w, c.label);
+    at := 0;
+    WriteData(w, c.type, c.value, 0, at);
+    PadTo(w, VaxTypes.Size(c.type), at)
+  END WriteStructured;
+
   (* s, at most its first 255 characters, as a counted string at label: a
      .BYTE of its length, then its bytes (WriteBytes) *)
   PROCEDURE WriteCounted(VAR w: Files.Rider; label, s: ARRAY OF CHAR);
@@ -6098,13 +6262,13 @@ MODULE VaxCodeGenerator;
                             VAR w: Files.Rider): BOOLEAN;
     VAR init, main, symbol: VaxTypes.Symbol; title: ARRAY VaxTypes.symbolLength + 1 OF CHAR;
         ident: ARRAY 40 OF CHAR; entry: ARRAY 64 OF CHAR; mask: ARRAY 40 OF CHAR; frame: ARRAY 24 OF CHAR;
-        before, errorsBefore: INTEGER; ok, hasRoots: BOOLEAN; e: External; sc: StringConstant; where: Where;
+        before, errorsBefore: INTEGER; ok, hasRoots: BOOLEAN; e: External; sc: StringConstant; st: StructuredConstant; where: Where;
         heapInit, stackBase: VaxTypes.Symbol;
   BEGIN
     module := m; scope := s; moduleScope := s; before := unsupportedCount;
     errorsBefore := Diagnostics.errorCount;
     names := VaxTypes.NewNameTable(); longword := VaxTypes.Longword(); narrowings := NIL;
-    nextLabel := 0; usesTrap := FALSE; procedureName[0] := 0X; wheres := NIL; whereCount := 0; externals := NIL; homes := NIL; strings := NIL; code := NIL; codeLast := NIL;
+    nextLabel := 0; usesTrap := FALSE; procedureName[0] := 0X; wheres := NIL; whereCount := 0; externals := NIL; homes := NIL; strings := NIL; structureds := NIL; code := NIL; codeLast := NIL;
     nestedRoot := NIL; nestedSyms := NIL;
     descriptors := NIL; descriptorCount := 0;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
@@ -6170,6 +6334,13 @@ MODULE VaxCodeGenerator;
       Line(w, ".PSECT", "POC_CONST");
       sc := strings;
       WHILE sc # NIL DO WriteString(w, sc); sc := sc.next END
+    END;
+    IF structureds # NIL THEN
+      WriteLn(w);
+      WriteStr(w, "; its structured constants"); WriteLn(w);
+      Line(w, ".PSECT", "POC_CONST");
+      st := structureds;
+      WHILE st # NIL DO WriteStructured(w, st); st := st.next END
     END;
     WriteDescriptors(w);
     IF code # NIL THEN

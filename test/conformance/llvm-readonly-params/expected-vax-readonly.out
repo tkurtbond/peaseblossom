@@ -1,0 +1,17 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from design
+;; section 7 and the guest runs). Why this is right:
+;; - The fourth line shows how First16's read-only parameter, an ARRAY
+;;   16 OF CHAR, was passed: the procedure changes the caller's c16 and
+;;   then reads its parameter. LLVM passes one of at most 16 bytes by
+;;   value, so it still reads "s"; the VAX backend passes every read-only
+;;   record or array by reference, uncopied (design section 7, decided
+;;   2026-10-06), so it reads the "*". language-extensions.md, "Read-only
+;;   parameters", says a program may not rely on which; the fixture pins
+;;   LLVM's rule only.
+;; - Every other line is LLVM's. The same under -O2 and -OC.
+7 11  2
+5  3  9 14  5  0
+42 42
+**
+104 107  -9
+111  8

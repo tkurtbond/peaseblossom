@@ -921,6 +921,13 @@ most, object libraries.
      at address 0 are VMS faults, as `expected-vax-notrap-*` files say;
      the user reviewed them, `POC_MOVE` and both fixtures'
      `expected-vax.mar` (2026-10-11).
+   - *Structured constants* (2026-10-11, proposal 7's third part): data
+     in `POC_CONST`, laid out as a variable, used as one; fixture
+     `vax-structured-constants`; with `llvm-readonly-params` 162
+     programs and 282 runs, all passing on the guest. A read-only
+     parameter of at most 16 bytes is passed by reference on the VAX,
+     by value on LLVM, as `expected-vax-readonly.out` says; the user
+     reviewed it and the fixture's `expected-vax.mar` (2026-10-11).
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled
