@@ -725,9 +725,39 @@ MODULE ConstantEvaluator;
     RETURN r
   END RoundToSingle;
 
+  (* the value of v, a REAL constant, as a REAL holds it: a numeral rounded
+     once, straight from its text (DecimalToDouble.ParseSingle), anything
+     else, already a single-precision value, as it is *)
+  PROCEDURE SingleValue(v: Types.Value): LONGREAL;
+    VAR i: INTEGER; unsigned: ARRAY Types.stringValueLength + 1 OF CHAR;
+  BEGIN
+    IF v.realText[0] = 0X THEN RETURN RoundToSingle(v.realVal)
+    ELSIF v.realText[0] = "-" THEN
+      i := 0; REPEAT unsigned[i] := v.realText[i + 1]; INC(i) UNTIL unsigned[i - 1] = 0X;
+      RETURN -DecimalToDouble.ParseSingle(unsigned)
+    ELSE
+      RETURN DecimalToDouble.ParseSingle(v.realText)
+    END
+  END SingleValue;
+
+  (* a numeric constant v as an operand of an operation done in type t, as
+     the generated code has it: an integer converted, a REAL at single
+     precision, and in a REAL operation everything rounded to single, so
+     that a folded REAL expression is what it is at run time *)
+  PROCEDURE RealOperand(v: Types.Value; t: Types.Type): LONGREAL;
+    VAR x: LONGREAL;
+  BEGIN
+    IF v.kind = Types.intValue THEN x := v.intVal
+    ELSIF v.type = Types.Real THEN x := SingleValue(v)
+    ELSE x := v.realVal
+    END;
+    IF t = Types.Real THEN x := RoundToSingle(x) END;
+    RETURN x
+  END RealOperand;
+
   PROCEDURE EvaluateValueFunction(name: SyntaxTree.Ident; args: SyntaxTree.ExprNode;
                                   scope: SymbolTable.Scope; line, column: INTEGER): Types.Value;
-    VAR x, result: Types.Value; ch: CHAR; value: LONGINT; limit: LONGREAL;
+    VAR x, result: Types.Value; ch: CHAR; value: LONGINT; limit, real: LONGREAL;
   BEGIN
     IF (args = NIL) OR (args.next # NIL) THEN
       Diagnostics.Error(line, column, "a constant function call expects one argument");
@@ -789,12 +819,13 @@ MODULE ConstantEvaluator;
         Diagnostics.Error(line, column, "ENTIER requires a real argument");
         RETURN UndefinedValue()
       END;
+      IF x.type = Types.Real THEN real := SingleValue(x) ELSE real := x.realVal END;
       limit := PowerOfTwo(63);
-      IF (x.realVal >= limit) OR (x.realVal < -limit) THEN
+      IF (real >= limit) OR (real < -limit) THEN
         Diagnostics.Error(line, column, "constant ENTIER result too large for LONGINT");
         RETURN UndefinedValue()
       END;
-      value := ENTIER(x.realVal);
+      value := ENTIER(real);
       IF (value < minLongInt) OR (value > maxLongInt) THEN
         Diagnostics.Error(line, column, "constant ENTIER result too large for LONGINT");
         RETURN UndefinedValue()
@@ -803,7 +834,7 @@ MODULE ConstantEvaluator;
     ELSIF name = "LONG" THEN
       IF x.type = Types.Real THEN
         NEW(result); result.kind := Types.realValue; result.type := Types.LongReal;
-        result.realVal := RoundToSingle(x.realVal);
+        result.realVal := SingleValue(x);
         RETURN result
       ELSIF Types.LongShortByWidth(x.type) THEN
         RETURN TypedInteger(x.intVal, Types.LongerInteger(x.type))
@@ -1152,13 +1183,8 @@ MODULE ConstantEvaluator;
     END
   END EvaluateUnary;
 
-  PROCEDURE AsReal(v: Types.Value): LONGREAL;
-  BEGIN
-    IF v.kind = Types.intValue THEN RETURN v.intVal ELSE RETURN v.realVal END
-  END AsReal;
-
   PROCEDURE EvaluateNumericOp(op: INTEGER; l, r: Types.Value; line, column: INTEGER): Types.Value;
-    VAR result: Types.Value; resultType: Types.Type;
+    VAR result: Types.Value; resultType: Types.Type; x, y: LONGREAL;
   BEGIN
     resultType := Types.WiderOf(l.type, r.type);
     IF Types.Rank(resultType) <= Types.hugeIntRank THEN
@@ -1183,27 +1209,33 @@ MODULE ConstantEvaluator;
       END
     END;
     NEW(result); result.type := resultType; result.kind := Types.realValue;
-    IF op = Lexer.plus THEN result.realVal := AsReal(l) + AsReal(r)
-    ELSIF op = Lexer.minus THEN result.realVal := AsReal(l) - AsReal(r)
-    ELSE result.realVal := AsReal(l) * AsReal(r)
+    x := RealOperand(l, resultType); y := RealOperand(r, resultType);
+    IF op = Lexer.plus THEN result.realVal := x + y
+    ELSIF op = Lexer.minus THEN result.realVal := x - y
+    ELSE result.realVal := x * y
     END;
+    (* exact: a double holds more than twice a REAL's 24 bits, so rounding
+       its result to single is rounding the exact one *)
+    IF resultType = Types.Real THEN result.realVal := RoundToSingle(result.realVal) END;
     RETURN result
   END EvaluateNumericOp;
 
   PROCEDURE EvaluateDivide(l, r: Types.Value; line, column: INTEGER): Types.Value;
-    VAR result: Types.Value;
+    VAR result: Types.Value; resultType: Types.Type; x, y: LONGREAL;
   BEGIN
-    IF AsReal(r) = 0.0 THEN
+    IF Types.Rank(Types.WiderOf(l.type, r.type)) = Types.longRealRank THEN
+      resultType := Types.LongReal
+    ELSE
+      resultType := Types.Real
+    END;
+    x := RealOperand(l, resultType); y := RealOperand(r, resultType);
+    IF y = 0.0 THEN
       Diagnostics.Error(line, column, "division by zero");
       RETURN UndefinedValue()
     END;
-    NEW(result); result.kind := Types.realValue;
-    IF Types.Rank(Types.WiderOf(l.type, r.type)) = Types.longRealRank THEN
-      result.type := Types.LongReal
-    ELSE
-      result.type := Types.Real
-    END;
-    result.realVal := AsReal(l) / AsReal(r);
+    NEW(result); result.kind := Types.realValue; result.type := resultType;
+    result.realVal := x / y;
+    IF resultType = Types.Real THEN result.realVal := RoundToSingle(result.realVal) END;
     RETURN result
   END EvaluateDivide;
 
@@ -1287,14 +1319,16 @@ MODULE ConstantEvaluator;
 
   PROCEDURE EvaluateEquality(op: INTEGER; l, r: Types.Value;
                              line, column: INTEGER): Types.Value;
-    VAR result: Types.Value; eq: BOOLEAN;
+    VAR result: Types.Value; eq: BOOLEAN; t: Types.Type;
   BEGIN
     MatchCharWithString(l, r);
     IF Types.IsNumeric(l.type) & Types.IsNumeric(r.type) THEN
       (* two integers compare as integers: as LONGREALs, values beyond
          2^53 would compare equal to a neighbor *)
       IF (l.kind = Types.intValue) & (r.kind = Types.intValue) THEN eq := l.intVal = r.intVal
-      ELSE eq := AsReal(l) = AsReal(r)
+      ELSE
+        t := Types.WiderOf(l.type, r.type);
+        eq := RealOperand(l, t) = RealOperand(r, t)
       END
     ELSIF (l.type = Types.Char) & (r.type = Types.Char) THEN
       eq := l.charVal = r.charVal
@@ -1315,7 +1349,7 @@ MODULE ConstantEvaluator;
 
   PROCEDURE EvaluateOrder(op: INTEGER; l, r: Types.Value;
                           line, column: INTEGER): Types.Value;
-    VAR result: Types.Value; lt, le, gt, ge: BOOLEAN;
+    VAR result: Types.Value; lt, le, gt, ge: BOOLEAN; t: Types.Type; x, y: LONGREAL;
   BEGIN
     MatchCharWithString(l, r);
     IF Types.IsNumeric(l.type) & Types.IsNumeric(r.type) THEN
@@ -1323,8 +1357,9 @@ MODULE ConstantEvaluator;
         lt := l.intVal < r.intVal; le := l.intVal <= r.intVal;
         gt := l.intVal > r.intVal; ge := l.intVal >= r.intVal
       ELSE
-        lt := AsReal(l) < AsReal(r); le := AsReal(l) <= AsReal(r);
-        gt := AsReal(l) > AsReal(r); ge := AsReal(l) >= AsReal(r)
+        t := Types.WiderOf(l.type, r.type);
+        x := RealOperand(l, t); y := RealOperand(r, t);
+        lt := x < y; le := x <= y; gt := x > y; ge := x >= y
       END
     ELSIF (l.type = Types.Char) & (r.type = Types.Char) THEN
       lt := l.charVal < r.charVal; le := l.charVal <= r.charVal;
@@ -1614,18 +1649,12 @@ MODULE ConstantEvaluator;
      array (voc's array rule) filled with the defaults; otherwise v
      retyped *)
   PROCEDURE AssignedValue(v: Types.Value; t: Types.Type): Types.Value;
-    VAR c, from, last: Types.Value; n, i: INTEGER; missing: Types.Field; unsigned: ARRAY Types.stringValueLength + 1 OF CHAR;
+    VAR c, from, last: Types.Value; n, i: INTEGER; missing: Types.Field;
   BEGIN
     IF (v.kind = Types.realValue) & (t = Types.Real) & (v.realText[0] # 0X) THEN
       (* a numeral, rounded once, straight to a REAL: a backend writes the
          value into a constant, where it cannot round the numeral itself *)
-      c := CopyValue(v);
-      IF v.realText[0] = "-" THEN
-        i := 0; REPEAT unsigned[i] := v.realText[i + 1]; INC(i) UNTIL unsigned[i - 1] = 0X;
-        c.realVal := -DecimalToDouble.ParseSingle(unsigned)
-      ELSE
-        c.realVal := DecimalToDouble.ParseSingle(v.realText)
-      END;
+      c := CopyValue(v); c.realVal := SingleValue(v);
       (* a zero keeps its numeral, and so its sign *)
       IF c.realVal # 0.0D0 THEN c.realText := "" END
     ELSIF (v.kind = Types.realValue) & (t = Types.Real) THEN

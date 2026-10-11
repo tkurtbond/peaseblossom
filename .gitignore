@@ -171,3 +171,4 @@ test/conformance/llvm-oberon/*.exe
 test/conformance/llvm-readonly-params/llvm-readonly-params
 test/conformance/llvm-outstr/llvm-outstr
 test/conformance/llvm-instr/llvm-instr
+test/conformance/llvm-real-constant-folding/llvm-real-constant-folding

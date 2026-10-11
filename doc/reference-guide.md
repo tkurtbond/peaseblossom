@@ -382,7 +382,9 @@ whatever the optimization. `CC`, `GETREG` and `PUTREG` are not implemented.
 integer type its value fits, after folding (`2 * 100 + 2 * 10` is the
 `INTEGER` 220; `-128` is a `SHORTINT`, `128` an `INTEGER`), in a `CONST`
 declaration and in a statement alike. Folding is done in 64 bits, and only a
-result outside `HUGEINT` is an error. `ORD`, `ABS`, `CHR`, `CAP`, `ENTIER`,
+result outside `HUGEINT` is an error. A `REAL` constant expression folds to
+what it is at run time, in single precision: `SHORT(0.1D0) = 0.1` and
+`0.1 + 0.2 = 0.3` are both `TRUE`. `ORD`, `ABS`, `CHR`, `CAP`, `ENTIER`,
 `LONG`, `SHORT`, `ODD`, `ASH`, `MAX`, `MIN` and `SIZE` of constants fold. A
 constant argument that does not fit (`CHR(300)`, `SHORT` of an integer
 constant, `ENTIER(1.0E20)`) is a compile-time error. `CAP` changes a

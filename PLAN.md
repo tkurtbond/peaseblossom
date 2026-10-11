@@ -1160,6 +1160,19 @@ fixed in 526d7ba, are in `doc/history/phases/phase-14.md`.
    variable alone). Fixture `llvm-gc-compiled-roots`; `llvm-gc-roots-ir`
    and the type-descriptor IR fixtures show the tables and the check.
 
+7. **[fixed] A `REAL` constant expression folded in double precision**
+   (found 2026-10-11 running `llvm-reals` on the VAX, Phase 16 step 5).
+   `ConstantEvaluator` kept a `REAL` numeral's double value and computed
+   `REAL` operations and relations in double precision, while `SHORT`
+   rounded to single: `CONST b = SHORT(0.1D0) = 0.1` and `0.1 + 0.2 =
+   0.3` folded to `FALSE`, where the same on `REAL` variables is `TRUE`.
+   The LLVM backend reached it only in a `CONST`; the VAX backend, which
+   folds an `IF`'s condition, printed `llvm-reals`' "FAIL 27". Now a
+   `REAL` operand is its single value (a numeral rounded once, from its
+   text), an integer in a `REAL` operation is converted to `REAL`, and
+   each `REAL` result, and `ENTIER` and `LONG` of a `REAL`, take the
+   single value. Fixture `llvm-real-constant-folding`.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other
