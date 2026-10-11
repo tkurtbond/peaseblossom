@@ -1,0 +1,204 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from the design,
+;; the MACRO manual, LLVM's code generator and the guest runs). Why this
+;; is right:
+;; - Phase 16 step 5 (section 16, proposal 7): SYSTEM.VAL(HUGEINT, x),
+;;   x narrower, which Val did not lower. As LLVM's GenerateVal: x's
+;;   bytes widened to the quadword, sign-extended if x is an integer (a
+;;   SHORTINT, an INTEGER, a LONGINT, an ADDRESS: sext), zero-extended
+;;   otherwise (a CHAR, a SET, a pointer: zext).
+;; - The low longword is x moved (MOVL) or widened (CVTBL, CVTWL,
+;;   MOVZBL) into R0, the result's register pair; the high longword is
+;;   its sign, ASHL #-31, R0, R1, or 0, CLRL R1.
+;; - ToAddress, ToChar and ToSet are the narrowing and same-size cases
+;;   Val already lowered: the low longword or byte of the value, read in
+;;   place, and a longword retyped.
+;; - ValOut, run on the guest, prints what the LLVM build prints
+;;   (output.expected).
+; VaxVal, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXVAL
+	.IDENT	/c3e33d1826016e0c/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxVal/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxVal.Node.base
+	.ALIGN	LONG
+VAXVAL_NODE_BASE_73E073BQ::
+	.LONG	0
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXVAL_NODE_BASE_73E073BQ
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE FromShort
+	.ENTRY	VAXVAL_FROMSHORT_M30RSA77, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVB	4(AP), -1(FP)
+; line 13
+	CVTBL	-1(FP), R0
+	ASHL	#-31, R0, R1
+	RET
+	PUSHL	#3
+	PUSHL	#14
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE FromInteger
+	.ENTRY	VAXVAL_FROMINTEGER_L0AIO07V, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVW	4(AP), -2(FP)
+; line 17
+	CVTWL	-2(FP), R0
+	ASHL	#-31, R0, R1
+	RET
+	PUSHL	#3
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE FromLong
+	.ENTRY	VAXVAL_FROMLONG_29DB0VHP, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVL	4(AP), -4(FP)
+; line 21
+	MOVL	-4(FP), R0
+	ASHL	#-31, R0, R1
+	RET
+	PUSHL	#3
+	PUSHL	#22
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE FromAddress
+	.ENTRY	VAXVAL_FROMADDRESS_6I9JGUTD, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVL	4(AP), -4(FP)
+; line 25
+	MOVL	-4(FP), R0
+	ASHL	#-31, R0, R1
+	RET
+	PUSHL	#3
+	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE FromChar
+	.ENTRY	VAXVAL_FROMCHAR_B7K4EKGN, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVB	4(AP), -1(FP)
+; line 29
+	MOVZBL	-1(FP), R0
+	CLRL	R1
+	RET
+	PUSHL	#3
+	PUSHL	#30
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE FromSet
+	.ENTRY	VAXVAL_FROMSET_RG4B3GDL, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVL	4(AP), -4(FP)
+; line 33
+	MOVL	-4(FP), R0
+	CLRL	R1
+	RET
+	PUSHL	#3
+	PUSHL	#34
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE FromPointer
+	.ENTRY	VAXVAL_FROMPOINTER_3P9JJ83S, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVL	4(AP), -4(FP)
+; line 37
+	MOVL	-4(FP), R0
+	CLRL	R1
+	RET
+	PUSHL	#3
+	PUSHL	#38
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ToAddress
+	.ENTRY	VAXVAL_TOADDRESS_E4B3CM8M, ^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 41
+	MOVL	-8(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#42
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ToChar
+	.ENTRY	VAXVAL_TOCHAR_UT5T5U9I, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVW	4(AP), -2(FP)
+; line 45
+	MOVZBL	-2(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#46
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ToSet
+	.ENTRY	VAXVAL_TOSET_0M840GL6, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVL	4(AP), -4(FP)
+; line 49
+	MOVL	-4(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#50
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXVAL_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_C3E33D1826016E0C == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXVAL_MAIN, ^M<>
+	CALLS	#0, VAXVAL_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXVAL_MAIN

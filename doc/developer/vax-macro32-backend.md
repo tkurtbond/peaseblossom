@@ -2169,3 +2169,29 @@ records that `CVTLF` rounds 2^24+1 away
 from zero where poc folds as IEEE 754 does (the user, 2026-10-11): 153
 programs, 253 runs. That file and `vax-shifts`' `expected-vax.mar` were
 reviewed by the user (2026-10-11).
+
+**Done: `MOVE` and `VAL` into a `HUGEINT` (proposal 7's second part),
+2026-10-11.**
+- `SYSTEM.MOVE(a0, a1, n)` calls `POC_MOVE` (`rtl/vax/PocRtl.mar`)
+  through `CALLG`, each argument a longword written straight into the
+  list (a `HUGEINT` `n`'s low longword, as LLVM's on a 32-bit target).
+  The routine does what LLVM's `memmove` does: nothing when `n <= 0`,
+  and blocks that overlap as through a copy. `MOVC3` handles overlap
+  but moves at most 65535 bytes, so a longer block goes in pieces, from
+  the end when the destination is above the source. Fixture `vax-move`.
+- `SYSTEM.VAL(HUGEINT, x)`, `x` narrower: the low longword `x` moved or
+  widened, the high one its sign (`ASHL #-31`) for an integer, else 0,
+  as LLVM's `sext` and `zext`. Fixture `vax-val`.
+
+`vax-move`, `vax-val`, `llvm-system` (`-O2` only, as its `test.sh`:
+under `-OC` its `LONGINT` is wider than the VAX's `ADDRESS`, which
+cannot be assigned it) and `llvm-no-trap-behavior` join the list. Two of
+the latter's cases differ, as their `expected-vax-notrap-*` files say: a `REAL` divided by zero is a floating
+divide-by-zero fault (the VAX has no infinity), and a read at address 0
+an access violation, VMS's `SIGSEGV`. Case 12, unbounded recursion, is
+not run on the VAX: VMS's handler itself fails on the exhausted stack
+and prints a register dump and stack contents, which vary. 158
+programs, 278 runs. The user reviewed the `expected-vax*` files of
+`vax-move`, `vax-val` and `llvm-no-trap-behavior` and `POC_MOVE`
+(2026-10-11). `vax-emit-errors`' example of a construct not lowered,
+`MOVE`, is now `SYSTEM.VAL` from a `HUGEINT` to a `REAL`.

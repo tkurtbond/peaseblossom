@@ -913,6 +913,14 @@ most, object libraries.
      `CVTLF` differs from IEEE folding in `llvm-real-constant-folding`,
      as its `expected-vax-realfold.out` says. The user reviewed
      these files and `vax-shifts`' `expected-vax.mar` (2026-10-11).
+   - *`MOVE` and `VAL` into a `HUGEINT`* (2026-10-11, proposal 7's
+     second part): `MOVE` through the new `POC_MOVE`, as `memmove`;
+     fixtures `vax-move` and `vax-val`; with `llvm-system` and
+     `llvm-no-trap-behavior` (its case 12 left out) 158 programs and 278
+     runs, all passing on the guest. A `REAL` divided by zero and a read
+     at address 0 are VMS faults, as `expected-vax-notrap-*` files say;
+     the user reviewed them, `POC_MOVE` and both fixtures'
+     `expected-vax.mar` (2026-10-11).
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled

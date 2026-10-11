@@ -1,0 +1,5 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from the LIB$
+;; manual's condition values and the guest runs). Why this is right: the
+;; fault's own status as VMS ended the image, %XC (ACCVIO, severity 4)
+;; with bit 28 set; LLVM's is 139, SIGSEGV. The same under -O2 and -OC.
+%X1000000C

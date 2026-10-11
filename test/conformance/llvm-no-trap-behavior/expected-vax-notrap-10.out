@@ -1,0 +1,19 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from design
+;; section 14, item 9, the VAX architecture's floating point and the
+;; guest runs). Why this is right:
+;; - Case 9 divides the REAL 1.0 by 0.0. The VAX has no infinity and no
+;;   NaN, so DIVF is a floating divide-by-zero fault (FLTDIV_F) before
+;;   anything is printed, where LLVM's IEEE quotient is an infinity and
+;;   the program goes on (language-extensions.md, "Overflow, division
+;;   and reals"; as llvm-entier-trap's case 5 on the VAX).
+;; - VMS's own message, then its traceback: the module's code, called
+;;   from the program's start; tools/vax-suite masks the addresses.
+;; - The same under -O2 and -OC.
+;; - Nothing is printed before the fault, so VMS's message and
+;;   traceback are in standard output too (llvm-entier-trap, 2026-10-10).
+%SYSTEM-F-FLTDIV_F, arithmetic fault, floating divide by zero at PC=xxxxxxxx, PSL=xxxxxxxx
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+NOTRAP          POC_CODE                                   xxxxxxxx  xxxxxxxx
+NOTRAP          NOTRAP_MAIN                                xxxxxxxx  xxxxxxxx

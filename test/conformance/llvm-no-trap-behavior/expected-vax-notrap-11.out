@@ -1,0 +1,18 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from the VAX
+;; architecture and the guest runs). Why this is right:
+;; - Case 11 reads with SYSTEM.GET at address 0, which VMS leaves
+;;   unmapped (page 0 of P0 space is no access): an access violation
+;;   (ACCVIO, virtual address 00000000), VMS's counterpart of LLVM's
+;;   SIGSEGV (status 139; language-extensions.md, "What traps, and what
+;;   does not").
+;; - VMS's own message, then its traceback; tools/vax-suite masks the
+;;   addresses.
+;; - The same under -O2 and -OC.
+;; - Nothing is printed before the fault, so VMS's message and
+;;   traceback are in standard output too (llvm-entier-trap, 2026-10-10).
+%SYSTEM-F-ACCVIO, access violation, reason mask=00, virtual address=00000000, PC=xxxxxxxx, PSL=xxxxxxxx
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+NOTRAP          POC_CODE                                   xxxxxxxx  xxxxxxxx
+NOTRAP          NOTRAP_MAIN                                xxxxxxxx  xxxxxxxx

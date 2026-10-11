@@ -160,3 +160,10 @@ llvm-real-constant-folding realfold.mod -OC
 vax-shifts ShiftsOut.mod -O2
 llvm-system-shifts shiftstest.mod -O2
 llvm-system-extra systemextra.mod -O2
+vax-move MoveOut.mod -O2
+# without case 12, unbounded recursion: VMS's handler itself fails on the
+# exhausted stack and prints a register dump and stack contents, which vary
+llvm-no-trap-behavior notrap.mod -O2 : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9 ; 11
+llvm-no-trap-behavior notrap.mod -OC : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9 ; 11
+llvm-system system.mod -O2
+vax-val ValOut.mod -O2

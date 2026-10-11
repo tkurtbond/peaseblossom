@@ -93,6 +93,43 @@ POC_SCRATCH::
 	ADDL2	R2, R1
 	RET
 
+; POC_MOVE(src, dst, n), each a longword by value: n bytes moved from src
+; to dst as through a copy, whichever way the blocks overlap, nothing when
+; n <= 0 (SYSTEM.MOVE, LLVM's memmove). MOVC3 moves overlapping blocks
+; right, but at most 65535 bytes; longer ones go in pieces, from the end
+; when dst is above src, so that no piece overwrites bytes still to move.
+; MOVC3 overwrites R0-R5: R6 the bytes left, R7 a piece's, R8 and R9 where
+; the next piece is
+	.ENTRY	POC_MOVE, ^M<R2,R3,R4,R5,R6,R7,R8,R9>
+	MOVL	12(AP), R6
+	BLEQ	40$
+	MOVL	4(AP), R8
+	MOVL	8(AP), R9
+	CMPL	R9, R8
+	BGTRU	20$
+10$:	MOVZWL	#65535, R7
+	CMPL	R6, R7
+	BGEQU	15$
+	MOVL	R6, R7
+15$:	MOVC3	R7, (R8), (R9)
+	ADDL2	R7, R8
+	ADDL2	R7, R9
+	SUBL2	R7, R6
+	BNEQ	10$
+	RET
+20$:	ADDL2	R6, R8
+	ADDL2	R6, R9
+30$:	MOVZWL	#65535, R7
+	CMPL	R6, R7
+	BGEQU	35$
+	MOVL	R6, R7
+35$:	SUBL2	R7, R8
+	SUBL2	R7, R9
+	MOVC3	R7, (R8), (R9)
+	SUBL2	R7, R6
+	BNEQ	30$
+40$:	RET
+
 ; POC_ROTQ(x, n), x and n the addresses of quadwords: R0 and R1 x rotated
 ; left n MOD 64 bits (SYSTEM.ROT; n's low six bits are its floored modulo).
 ; From 32 on the halves change places and the rest is less than 32: each

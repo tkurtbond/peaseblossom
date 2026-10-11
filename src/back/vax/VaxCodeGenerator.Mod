@@ -4336,6 +4336,30 @@ MODULE VaxCodeGenerator;
     Release(v); Release(dst)
   END Put;
 
+  (* SYSTEM.MOVE(a0, a1, n): POC_MOVE(a0, a1, n), poc's runtime, each a
+     longword by value, written straight into the argument list (a
+     narrower one sign-extended, a quadword n's low longword, as LLVM's on
+     a 32-bit target), which moves as LLVM's memmove: blocks that overlap
+     as through a copy, nothing when n <= 0 *)
+  PROCEDURE Move(args: SyntaxTree.ExprNode; line, column: INTEGER);
+    VAR list, i: INTEGER; e: SyntaxTree.ExprNode; x, entry: Operand; target: ARRAY 64 OF CHAR;
+  BEGIN
+    list := AllocateSlots(4);
+    IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN END;
+    EmitTo("MOVL", "#3", ListEntry(list, 3, 0));
+    e := args;
+    FOR i := 1 TO 3 DO
+      x := Expression(e, NIL); entry := ListEntry(list, 3, i);
+      IF IsQuad(x) THEN Emit2("MOVL", LowHalf(x), entry) ELSE MoveInto(x, entry) END;
+      Release(x); e := e.next
+    END;
+    FreeR0R1(line, column);
+    Text(ListEntry(list, 3, 0), target); Append(target, ", "); AppendExternal(target, "POC_MOVE");
+    Emit("CALLG", target);
+    AddExternal("POC_MOVE");
+    ReleaseSlots(list, 4)
+  END Move;
+
   (* SYSTEM.VAL(T, x): x's bytes read as a T, as on LLVM. x of T's size,
      or wider and neither a real, is x itself retyped (a quadword's low
      longword: the VAX is little-endian); x narrower is sign-extended if
@@ -4343,6 +4367,7 @@ MODULE VaxCodeGenerator;
      A real is converted to nothing, only retyped. *)
   PROCEDURE Val(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
     VAR target: Types.Type; x, r: Operand; ts, xs: LONGINT; op: ARRAY 8 OF CHAR; text: ARRAY 160 OF CHAR;
+        lo, hi, from: OperandText;
   BEGIN
     target := NIL;
     IF args IS SyntaxTree.DesignatorExprNode THEN
@@ -4376,6 +4401,21 @@ MODULE VaxCodeGenerator;
       Emit2(op, x, r);
       Done(x, r); r.type := target;
       RETURN r
+    ELSIF (ts = 8) & ~IsReal(target) & ~IsReal(x.type) THEN
+      (* into a quadword: the low longword as above, the high one its
+         sign (ASHL #-31) for an integer, else 0, as LLVM's sext and zext *)
+      r := NewRegisterBeside(target, x, NIL, line, column);
+      HalfText(r, 0, lo); HalfText(r, 1, hi); Text(x, from);
+      IF xs = 4 THEN COPY("MOVL", op)
+      ELSIF Types.IsInteger(x.type) THEN COPY("CVT", op); AppendChar(op, Suffix(x.type)); AppendChar(op, "L")
+      ELSE COPY("MOVZ", op); AppendChar(op, Suffix(x.type)); AppendChar(op, "L")
+      END;
+      Operands(from, lo, "", text); Emit(op, text);
+      Release(x);
+      IF Types.IsInteger(x.type) THEN Operands("#-31", lo, hi, text); Emit("ASHL", text)
+      ELSE Emit("CLRL", hi)
+      END;
+      RETURN r
     END;
     COPY("SYSTEM.VAL from ", text); Types.Describe(x.type, text); Append(text, " to ");
     Types.Describe(target, text);
@@ -4390,6 +4430,7 @@ MODULE VaxCodeGenerator;
     IF name = "ADR" THEN RETURN Adr(args, dest, line, column)
     ELSIF name = "GET" THEN Get(args, line, column); RETURN NIL
     ELSIF name = "PUT" THEN Put(args, line, column); RETURN NIL
+    ELSIF name = "MOVE" THEN Move(args, line, column); RETURN NIL
     ELSIF name = "VAL" THEN RETURN Val(args, dest, line, column)
     END;
     IF name = "INC" THEN IncDec(TRUE, args, line, column); RETURN NIL

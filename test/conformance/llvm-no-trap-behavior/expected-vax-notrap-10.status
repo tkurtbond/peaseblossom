@@ -1,0 +1,7 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from the LIB$
+;; manual's condition values and the guest runs). Why this is right: the
+;; fault's own status as VMS ended the image, %X4BC (FLTDIV_F, severity
+;; 4) with bit 28 set, as for llvm-entier-trap's; not one of poc's trap
+;; statuses. LLVM's program goes on and exits 0. The same under -O2 and
+;; -OC.
+%X100004BC

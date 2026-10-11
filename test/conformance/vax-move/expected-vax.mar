@@ -1,0 +1,112 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from the design,
+;; the MACRO manual, LLVM's code generator and the guest runs). Why this
+;; is right:
+;; - Phase 16 step 5 (section 16, proposal 7): SYSTEM.MOVE(a0, a1, n) is
+;;   a call of POC_MOVE (PocRtl.mar) through CALLG, its three arguments
+;;   longwords by value, each written straight into the list in the
+;;   frame: an address or a LONGINT by MOVL, a SHORTINT sign-extended
+;;   (CVTBL), a HUGEINT's low longword (as LLVM's on a 32-bit target,
+;;   which truncates the count to an address), a constant as #4.
+;; - The routine does what LLVM's memmove does (language-extensions.md,
+;;   "What traps, and what does not"): nothing when n <= 0, and blocks
+;;   that overlap as through a copy. MOVC3 handles overlap, but its
+;;   length is a word, so a longer block goes in pieces of 65535, from
+;;   the end when the destination is above the source.
+;; - MoveOut, run on the guest, prints what the LLVM build prints
+;;   (output.expected): small moves each way, counts of 0, -4, -128 and
+;;   -1, overlap both ways, and 150000 bytes overlapping either way.
+; VaxMove, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXMOVE
+	.IDENT	/80ad301041a464b0/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	POC_MOVE
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Move
+	.ENTRY	VAXMOVE_MOVE_DGJ1TQIO, ^M<>
+	SUBL2	#28, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVL	12(AP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	MOVL	4(AP), -4(FP)
+; line 11
+	MOVL	#3, -28(FP)
+	MOVL	-4(FP), -24(FP)
+	MOVL	-8(FP), -20(FP)
+	MOVL	-12(FP), -16(FP)
+	CALLG	-28(FP), G^POC_MOVE
+	RET
+; PROCEDURE MoveByShort
+	.ENTRY	VAXMOVE_MOVEBYSHORT_M7RUCFR5, ^M<>
+	SUBL2	#28, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVB	12(AP), -9(FP)
+	MOVL	8(AP), -8(FP)
+	MOVL	4(AP), -4(FP)
+; line 15
+	MOVL	#3, -28(FP)
+	MOVL	-4(FP), -24(FP)
+	MOVL	-8(FP), -20(FP)
+	CVTBL	-9(FP), -16(FP)
+	CALLG	-28(FP), G^POC_MOVE
+	RET
+; PROCEDURE MoveByHuge
+	.ENTRY	VAXMOVE_MOVEBYHUGE_EEK3DP5I, ^M<>
+	SUBL2	#32, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVQ	@12(AP), -16(FP)
+	MOVL	8(AP), -8(FP)
+	MOVL	4(AP), -4(FP)
+; line 19
+	MOVL	#3, -32(FP)
+	MOVL	-4(FP), -28(FP)
+	MOVL	-8(FP), -24(FP)
+	MOVL	-16(FP), -20(FP)
+	CALLG	-32(FP), G^POC_MOVE
+	RET
+; PROCEDURE MoveFour
+	.ENTRY	VAXMOVE_MOVEFOUR_7BK9LHGK, ^M<>
+	SUBL2	#24, SP
+	CLRQ	-8(FP)
+	MOVL	8(AP), -8(FP)
+	MOVL	4(AP), -4(FP)
+; line 23
+	MOVL	#3, -24(FP)
+	MOVL	-4(FP), -20(FP)
+	MOVL	-8(FP), -16(FP)
+	MOVL	#4, -12(FP)
+	CALLG	-24(FP), G^POC_MOVE
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXMOVE_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_80AD301041A464B0 == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXMOVE_MAIN, ^M<>
+	CALLS	#0, VAXMOVE_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXMOVE_MAIN
