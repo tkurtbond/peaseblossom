@@ -1,5 +1,15 @@
 #+TITLE: Things to be done while developing the Peaseblossom Oberon Compiler
 * General Improvements
+** TODO Should poc use go's approach of rebuilding by content rather than timestamps?
+
+What do you mean when you say go rebuilds by content rather than timestamp.
+
+When you run go build or go test, Go decides whether a package needs compiling by hashing its inputs:
+- the bytes of its source files,
+- the compiler flags and Go version,
+- the hashes of the packages it imports.
+
+It looks that hash up in its build cache (~/.cache/go-build). File modification times play no part. 
 ** DONE Better CSS for HTML output.
 The default pandoc CSS makes the text wdith too narrow.
 Done 2026-10-08: tools/doc/html-header.html, included by make doc in each page pandoc writes: a 60em text column instead of pandoc's 36em, code blocks that scroll rather than wrap, shaded table headers, blue links.
