@@ -7,7 +7,7 @@ MODULE gctracing;
      capacity of 4 against a 100-way fan-out) and the coalescing of
      adjacent dead blocks into one that a larger request can use. Each
      check prints "FAIL nn " on failure; the run ends with "OK". *)
-  IMPORT SYSTEM, GarbageCollectedHeap;
+  IMPORT SYSTEM, GarbageCollectedHeap, Out;
   TYPE
     Node = POINTER TO NodeDesc;
     NodeDesc = RECORD
@@ -22,7 +22,6 @@ MODULE gctracing;
     big, filler: Node;
     i, count: LONGINT;
     address, element: SYSTEM.ADDRESS;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR text: ARRAY 9 OF CHAR;
@@ -31,7 +30,7 @@ MODULE gctracing;
       text[0] := "F"; text[1] := "A"; text[2] := "I"; text[3] := "L"; text[4] := " ";
       text[5] := CHR(ORD("0") + number DIV 10); text[6] := CHR(ORD("0") + number MOD 10);
       text[7] := " "; text[8] := 0X;
-      SysWrite(1, text, 8)
+      Out.String(text)
     END
   END Check;
 
@@ -157,5 +156,5 @@ BEGIN
             & (NodeValue(SYSTEM.VAL(SYSTEM.ADDRESS, kept[99])) = 99));
   Check(11, GarbageCollectedHeap.IsAllocated(SYSTEM.VAL(SYSTEM.ADDRESS, kept[140]))
             & (NodeValue(SYSTEM.VAL(SYSTEM.ADDRESS, kept[140])) = 140));
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END gctracing.

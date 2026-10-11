@@ -14,12 +14,11 @@ MODULE client;
      visible in this source) that lib's own "_init" runs before
      client's own - client's own body reads Lib.total starting from the
      value lib's own BEGIN block gave it (100), not zero. *)
-  IMPORT Lib := lib;
+  IMPORT Lib := lib, Out;
   VAR result: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 BEGIN
   result := Lib.Add(3, 4);
   Lib.Accumulate(result);
   Lib.total := Lib.total + 1;
-  IF (result = 7) & (Lib.total = 108) THEN SysWrite(1, "OK", 2) ELSE SysWrite(1, "FAIL", 4) END
+  IF (result = 7) & (Lib.total = 108) THEN Out.String("OK") ELSE Out.String("FAIL") END
 END client.

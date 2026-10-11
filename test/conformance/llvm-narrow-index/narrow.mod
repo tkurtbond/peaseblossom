@@ -6,22 +6,22 @@ MODULE narrow;
      of range); fixed in EmitIndexRangeCheck. Prints "OK" if every
      in-range constant index works and a computed one just past the end
      still traps. *)
+  IMPORT Out;
   VAR
     big: ARRAY 1024 OF INTEGER;
     huge: ARRAY 40000 OF CHAR;
     i: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 BEGIN
   big[0] := 1; big[99] := 2; big[127] := 3; big[128] := 4; big[1000] := 5; big[1023] := 6;
   IF (big[0] # 1) OR (big[99] # 2) OR (big[127] # 3) OR (big[128] # 4) OR (big[1000] # 5) OR (big[1023] # 6) THEN
-    SysWrite(1, "FAIL 1 ", 7)
+    Out.String("FAIL 1 ")
   END;
   huge[127] := "a"; huge[32767] := "b"; huge[32768] := "c"; huge[39999] := "d";
   IF (huge[127] # "a") OR (huge[32767] # "b") OR (huge[32768] # "c") OR (huge[39999] # "d") THEN
-    SysWrite(1, "FAIL 2 ", 7)
+    Out.String("FAIL 2 ")
   END;
-  SysWrite(1, "OK", 2);
+  Out.String("OK");
   i := 1024;
   big[i] := 7;
-  SysWrite(1, " not trapped", 12)
+  Out.String(" not trapped")
 END narrow.

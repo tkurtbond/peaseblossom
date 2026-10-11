@@ -1,13 +1,13 @@
 MODULE client;
   (* PLAN.md Phase 9 step 3's fixture for named STRING CONSTs: a constant's
      value has no storage of its own, so every use has to materialize
-     one - a call argument (the constant's own bytes reach write(2)),
+     one - a call argument (the constant's own bytes reach Out.String),
      COPY's source, assignment to an ARRAY OF CHAR, a comparison
      operand, and a one-character constant used as a CHAR. Includes a
      constant defined as another constant, an empty one, and (from
      lib.mod) an imported one. The visible output is the constants'
      own text; the checks after it print "FAIL nn " on failure. *)
-  IMPORT Lib := lib;
+  IMPORT Lib := lib, Out;
   CONST
     greeting = "Hello, world";
     alias = greeting;
@@ -18,37 +18,36 @@ MODULE client;
     ch: CHAR;
     rec: RECORD name: ARRAY 8 OF CHAR END;
     grid: ARRAY 2 OF ARRAY 6 OF CHAR;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 BEGIN
-  SysWrite(1, greeting, 12); SysWrite(1, "|", 1);
-  SysWrite(1, alias, 12); SysWrite(1, "|", 1);
-  SysWrite(1, Lib.Greeting, 5); SysWrite(1, "|", 1);
-  SysWrite(1, Lib.probe, 6); SysWrite(1, "|", 1);
+  Out.String(greeting); Out.String("|");
+  Out.String(alias); Out.String("|");
+  Out.String(Lib.Greeting); Out.String("|");
+  Out.String(Lib.probe); Out.String("|");
   COPY(greeting, buf);
-  SysWrite(1, buf, 12); SysWrite(1, "|", 1);
+  Out.String(buf); Out.String("|");
   buf := Lib.Greeting;
-  SysWrite(1, buf, 5); SysWrite(1, "|", 1);
-  IF ~(buf = Lib.Greeting) THEN SysWrite(1, "FAIL 01 ", 8) END;
-  IF ~(buf = "hello") THEN SysWrite(1, "FAIL 02 ", 8) END;
-  IF ~(buf # greeting) THEN SysWrite(1, "FAIL 03 ", 8) END;
-  IF ~("hello" = Lib.Greeting) THEN SysWrite(1, "FAIL 04 ", 8) END;
-  IF ~(greeting = alias) THEN SysWrite(1, "FAIL 05 ", 8) END;
-  IF ~(empty < greeting) THEN SysWrite(1, "FAIL 06 ", 8) END;
-  IF ~(greeting < Lib.Greeting) THEN SysWrite(1, "FAIL 07 ", 8) END;
-  IF ~(greeting <= alias) THEN SysWrite(1, "FAIL 08 ", 8) END;
+  Out.String(buf); Out.String("|");
+  IF ~(buf = Lib.Greeting) THEN Out.String("FAIL 01 ") END;
+  IF ~(buf = "hello") THEN Out.String("FAIL 02 ") END;
+  IF ~(buf # greeting) THEN Out.String("FAIL 03 ") END;
+  IF ~("hello" = Lib.Greeting) THEN Out.String("FAIL 04 ") END;
+  IF ~(greeting = alias) THEN Out.String("FAIL 05 ") END;
+  IF ~(empty < greeting) THEN Out.String("FAIL 06 ") END;
+  IF ~(greeting < Lib.Greeting) THEN Out.String("FAIL 07 ") END;
+  IF ~(greeting <= alias) THEN Out.String("FAIL 08 ") END;
   COPY(alias, other);
-  IF ~(other = greeting) THEN SysWrite(1, "FAIL 09 ", 8) END;
+  IF ~(other = greeting) THEN Out.String("FAIL 09 ") END;
   COPY(empty, other);
-  IF ~(other = empty) THEN SysWrite(1, "FAIL 10 ", 8) END;
-  IF ~(other[0] = 0X) THEN SysWrite(1, "FAIL 11 ", 8) END;
+  IF ~(other = empty) THEN Out.String("FAIL 10 ") END;
+  IF ~(other[0] = 0X) THEN Out.String("FAIL 11 ") END;
   ch := single;
-  IF ~(ch = 78X) THEN SysWrite(1, "FAIL 12 ", 8) END;
+  IF ~(ch = 78X) THEN Out.String("FAIL 12 ") END;
   ch := Lib.Initial;
-  IF ~(ch = 68X) THEN SysWrite(1, "FAIL 13 ", 8) END;
+  IF ~(ch = 68X) THEN Out.String("FAIL 13 ") END;
   rec.name := Lib.Greeting;
-  IF ~(rec.name = "hello") THEN SysWrite(1, "FAIL 14 ", 8) END;
+  IF ~(rec.name = "hello") THEN Out.String("FAIL 14 ") END;
   grid[1] := single;
-  IF ~(grid[1] = "x") THEN SysWrite(1, "FAIL 15 ", 8) END;
-  IF ~(Lib.probe = "secret") THEN SysWrite(1, "FAIL 16 ", 8) END;
-  SysWrite(1, "OK", 2)
+  IF ~(grid[1] = "x") THEN Out.String("FAIL 15 ") END;
+  IF ~(Lib.probe = "secret") THEN Out.String("FAIL 16 ") END;
+  Out.String("OK")
 END client.

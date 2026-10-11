@@ -11,12 +11,13 @@ MODULE chararrays;
      another array, so its length is not known at compile time,
      truncation to LEN(dst)-1, the empty string). Each check prints
      "FAIL nn " on failure; the run ends with "OK" if none did.
-     Also valid Oberon-2 for voc apart from SysWrite, and cross-checked
+     Also valid Oberon-2 for voc, and cross-checked
      against it: everything passes there except check 21, comparing two
      ARRAY 5 OF CHAR that hold five characters and no 0X - voc's C
      comparison keeps reading past the end of an unterminated array
      (undefined), where poc stops at the array's end, which is the
      only thing that can be meant. *)
+  IMPORT Out;
   VAR
     a, big: ARRAY 8 OF CHAR;
     b: ARRAY 20 OF CHAR;
@@ -30,68 +31,67 @@ MODULE chararrays;
     rec: RECORD name: ARRAY 8 OF CHAR END;
     list: ARRAY 2 OF ARRAY 8 OF CHAR;
     ch: CHAR;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 BEGIN
   a := "abc"; b := "abc"; c := "abd"; d := "abd";
-  IF ~(a = "abc") THEN SysWrite(1, "FAIL 01 ", 8) END;
-  IF ~(a # "abd") THEN SysWrite(1, "FAIL 02 ", 8) END;
-  IF ~(a < "abd") THEN SysWrite(1, "FAIL 03 ", 8) END;
-  IF ~(a <= "abc") THEN SysWrite(1, "FAIL 04 ", 8) END;
-  IF ~(a > "abb") THEN SysWrite(1, "FAIL 05 ", 8) END;
-  IF ~(a >= "abc") THEN SysWrite(1, "FAIL 06 ", 8) END;
-  IF ~(~(a < "abc")) THEN SysWrite(1, "FAIL 07 ", 8) END;
-  IF ~(~(a > "abc")) THEN SysWrite(1, "FAIL 08 ", 8) END;
-  IF ~("abc" = a) THEN SysWrite(1, "FAIL 09 ", 8) END;
-  IF ~("ab" < a) THEN SysWrite(1, "FAIL 10 ", 8) END;
-  IF ~(a < "abcd") THEN SysWrite(1, "FAIL 11 ", 8) END;
-  IF ~("" < a) THEN SysWrite(1, "FAIL 12 ", 8) END;
-  IF ~(a = b) THEN SysWrite(1, "FAIL 13 ", 8) END;
-  IF ~(a # c) THEN SysWrite(1, "FAIL 14 ", 8) END;
-  IF ~(a < c) THEN SysWrite(1, "FAIL 15 ", 8) END;
-  IF ~(c = d) THEN SysWrite(1, "FAIL 16 ", 8) END;
+  IF ~(a = "abc") THEN Out.String("FAIL 01 ") END;
+  IF ~(a # "abd") THEN Out.String("FAIL 02 ") END;
+  IF ~(a < "abd") THEN Out.String("FAIL 03 ") END;
+  IF ~(a <= "abc") THEN Out.String("FAIL 04 ") END;
+  IF ~(a > "abb") THEN Out.String("FAIL 05 ") END;
+  IF ~(a >= "abc") THEN Out.String("FAIL 06 ") END;
+  IF ~(~(a < "abc")) THEN Out.String("FAIL 07 ") END;
+  IF ~(~(a > "abc")) THEN Out.String("FAIL 08 ") END;
+  IF ~("abc" = a) THEN Out.String("FAIL 09 ") END;
+  IF ~("ab" < a) THEN Out.String("FAIL 10 ") END;
+  IF ~(a < "abcd") THEN Out.String("FAIL 11 ") END;
+  IF ~("" < a) THEN Out.String("FAIL 12 ") END;
+  IF ~(a = b) THEN Out.String("FAIL 13 ") END;
+  IF ~(a # c) THEN Out.String("FAIL 14 ") END;
+  IF ~(a < c) THEN Out.String("FAIL 15 ") END;
+  IF ~(c = d) THEN Out.String("FAIL 16 ") END;
   full[0] := "a"; full[1] := "b"; full[2] := "c"; full[3] := "d"; full[4] := "e";
-  IF ~(full = "abcde") THEN SysWrite(1, "FAIL 17 ", 8) END;
-  IF ~(full # "abcd") THEN SysWrite(1, "FAIL 18 ", 8) END;
-  IF ~(full > "abcd") THEN SysWrite(1, "FAIL 19 ", 8) END;
-  IF ~(~(full > "abcde")) THEN SysWrite(1, "FAIL 20 ", 8) END;
+  IF ~(full = "abcde") THEN Out.String("FAIL 17 ") END;
+  IF ~(full # "abcd") THEN Out.String("FAIL 18 ") END;
+  IF ~(full > "abcd") THEN Out.String("FAIL 19 ") END;
+  IF ~(~(full > "abcde")) THEN Out.String("FAIL 20 ") END;
   f2 := full;
-  IF ~(full = f2) THEN SysWrite(1, "FAIL 21 ", 8) END;
+  IF ~(full = f2) THEN Out.String("FAIL 21 ") END;
   rec.name := "rec";
-  IF ~((rec.name = "rec") & (rec.name < "reca")) THEN SysWrite(1, "FAIL 22 ", 8) END;
+  IF ~((rec.name = "rec") & (rec.name < "reca")) THEN Out.String("FAIL 22 ") END;
   list[0] := "one"; list[1] := "two";
-  IF ~((list[0] = "one") & (list[1] = "two") & (list[0] < list[1])) THEN SysWrite(1, "FAIL 23 ", 8) END;
-  IF ~(list[1] > list[0]) THEN SysWrite(1, "FAIL 24 ", 8) END;
+  IF ~((list[0] = "one") & (list[1] = "two") & (list[0] < list[1])) THEN Out.String("FAIL 23 ") END;
+  IF ~(list[1] > list[0]) THEN Out.String("FAIL 24 ") END;
   hi[0] := 0FFX; hi[1] := 0X;
-  IF ~(hi > "z") THEN SysWrite(1, "FAIL 25 ", 8) END;
+  IF ~(hi > "z") THEN Out.String("FAIL 25 ") END;
   lo[0] := 7FX; lo[1] := 0X;
-  IF ~(hi > lo) THEN SysWrite(1, "FAIL 26 ", 8) END;
-  IF ~(hi # "z") THEN SysWrite(1, "FAIL 27 ", 8) END;
+  IF ~(hi > lo) THEN Out.String("FAIL 26 ") END;
+  IF ~(hi # "z") THEN Out.String("FAIL 27 ") END;
   ch := "a";
-  IF ~(ch = "a") THEN SysWrite(1, "FAIL 28 ", 8) END;
-  IF ~("a" = ch) THEN SysWrite(1, "FAIL 29 ", 8) END;
-  IF ~(ch # "b") THEN SysWrite(1, "FAIL 30 ", 8) END;
-  IF ~(ch < "b") THEN SysWrite(1, "FAIL 31 ", 8) END;
-  IF ~(a[1] = "b") THEN SysWrite(1, "FAIL 32 ", 8) END;
-  IF ~(a[1] # "c") THEN SysWrite(1, "FAIL 33 ", 8) END;
+  IF ~(ch = "a") THEN Out.String("FAIL 28 ") END;
+  IF ~("a" = ch) THEN Out.String("FAIL 29 ") END;
+  IF ~(ch # "b") THEN Out.String("FAIL 30 ") END;
+  IF ~(ch < "b") THEN Out.String("FAIL 31 ") END;
+  IF ~(a[1] = "b") THEN Out.String("FAIL 32 ") END;
+  IF ~(a[1] # "c") THEN Out.String("FAIL 33 ") END;
   e := "a"; e[2] := "z"; e[3] := "y";
-  IF ~(e = "a") THEN SysWrite(1, "FAIL 34 ", 8) END;
+  IF ~(e = "a") THEN Out.String("FAIL 34 ") END;
   e := "ab";
-  IF ~(e = "ab") THEN SysWrite(1, "FAIL 35 ", 8) END;
+  IF ~(e = "ab") THEN Out.String("FAIL 35 ") END;
   COPY(a, copy);
-  IF ~((copy = "abc") & (copy[3] = 0X)) THEN SysWrite(1, "FAIL 36 ", 8) END;
+  IF ~((copy = "abc") & (copy[3] = 0X)) THEN Out.String("FAIL 36 ") END;
   COPY(a, short);
-  IF ~((short = "ab") & (short[2] = 0X)) THEN SysWrite(1, "FAIL 37 ", 8) END;
+  IF ~((short = "ab") & (short[2] = 0X)) THEN Out.String("FAIL 37 ") END;
   COPY("", one);
-  IF ~((one[0] = 0X)) THEN SysWrite(1, "FAIL 38 ", 8) END;
+  IF ~((one[0] = 0X)) THEN Out.String("FAIL 38 ") END;
   COPY(a, big);
-  IF ~((big = "abc") & (big[3] = 0X)) THEN SysWrite(1, "FAIL 39 ", 8) END;
-  IF ~((big = copy)) THEN SysWrite(1, "FAIL 40 ", 8) END;
+  IF ~((big = "abc") & (big[3] = 0X)) THEN Out.String("FAIL 39 ") END;
+  IF ~((big = copy)) THEN Out.String("FAIL 40 ") END;
   COPY(a, rec.name);
-  IF ~((rec.name = "abc")) THEN SysWrite(1, "FAIL 41 ", 8) END;
+  IF ~((rec.name = "abc")) THEN Out.String("FAIL 41 ") END;
   COPY(a, list[1]);
-  IF ~((list[1] = "abc")) THEN SysWrite(1, "FAIL 42 ", 8) END;
+  IF ~((list[1] = "abc")) THEN Out.String("FAIL 42 ") END;
   dst := "hello"; 
-  IF ~((dst = "hello")) THEN SysWrite(1, "FAIL 43 ", 8) END;
-  IF ~((dst[0] = 68X) & (dst[4] = 6FX) & (dst[5] = 0X)) THEN SysWrite(1, "FAIL 44 ", 8) END;
-  SysWrite(1, "OK", 2)
+  IF ~((dst = "hello")) THEN Out.String("FAIL 43 ") END;
+  IF ~((dst[0] = 68X) & (dst[4] = 6FX) & (dst[5] = 0X)) THEN Out.String("FAIL 44 ") END;
+  Out.String("OK")
 END chararrays.

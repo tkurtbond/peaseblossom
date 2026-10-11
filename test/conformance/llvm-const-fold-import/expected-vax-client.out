@@ -1,0 +1,13 @@
+;; Reviewed 2026-10-11 (written by Claude, from design section 14, item
+;; 9, the VAX architecture's floating point and the guest run; for the
+;; user's review). Why this is right:
+;; - Limits' bigReal and lowReal are MAX(REAL) and MIN(REAL), the
+;;   largest F_floating number in size, (1 - 2^-24) * 2^127, about
+;;   1.7014117E38, and bigLongReal and lowLongReal MAX(LONGREAL) and
+;;   MIN(LONGREAL), the largest G_floating one, (1 - 2^-53) * 2^1023,
+;;   about 8.988465674311579E307, not IEEE 754's 3.4E38 and
+;;   1.797693E308 (section 14, item 9).
+;; - Checks 12 and 13 want them / 1.0E30 between 3.0E8 and 3.5E8 in
+;;   size, about 1.7E8 on the VAX; checks 14 and 15 want the LONGREAL
+;;   ones / 1.0D300 above 1.79D8 in size, about 8.99E7 on the VAX.
+FAIL 12 FAIL 13 FAIL 14 FAIL 15 OK

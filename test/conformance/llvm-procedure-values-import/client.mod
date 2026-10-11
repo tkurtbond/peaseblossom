@@ -4,11 +4,10 @@ MODULE client;
      to an imported procedure that calls it, a procedure of this module
      handed to the library, and the library's own values called from here.
      Prints "FAIL nn " for each failed check, then "OK". *)
-  IMPORT Calc;
+  IMPORT Calc, Out;
   VAR
     f: Calc.Op;
     local: Calc.Table;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR msg: ARRAY 9 OF CHAR;
@@ -17,7 +16,7 @@ MODULE client;
       msg[0] := "F"; msg[1] := "A"; msg[2] := "I"; msg[3] := "L"; msg[4] := " ";
       msg[5] := CHR(ORD("0") + number DIV 10); msg[6] := CHR(ORD("0") + number MOD 10);
       msg[7] := " "; msg[8] := 0X;
-      SysWrite(1, msg, 8)
+      Out.String(msg)
     END
   END Check;
 
@@ -44,5 +43,5 @@ BEGIN
   local := Calc.table;
   local.add := Sub;
   Check(11, (local.add(9, 1) = 8) & (Calc.table.add(9, 1) = 10));
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END client.

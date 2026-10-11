@@ -3,6 +3,7 @@ MODULE bound;
      Shape <- Circle <- Ring, and a sibling Square, bound to pointer
      receivers; Point <- Point3 bound to VAR (record) receivers. Each check
      prints "FAIL nn " on failure; the run ends with "OK". *)
+  IMPORT Out;
   TYPE
     Shape = POINTER TO ShapeDesc;
     ShapeDesc = RECORD id: INTEGER END;
@@ -28,7 +29,6 @@ MODULE bound;
     shapes: ARRAY 3 OF Shape;
     pt: Point; p3: Point3; row: ARRAY 3 OF Point3;
     pp: PointPtr; p3p: Point3Ptr; cell: Cell; counter: Counter;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR text: ARRAY 9 OF CHAR;
@@ -37,7 +37,7 @@ MODULE bound;
       text[0] := "F"; text[1] := "A"; text[2] := "I"; text[3] := "L"; text[4] := " ";
       text[5] := CHR(ORD("0") + number DIV 10); text[6] := CHR(ORD("0") + number MOD 10);
       text[7] := " "; text[8] := 0X;
-      SysWrite(1, text, 8)
+      Out.String(text)
     END
   END Check;
 
@@ -229,5 +229,5 @@ BEGIN
   NEW(counter);
   Check(54, counter.Bump(2) = 2);
   Check(55, counter.Bump(3) = 5);
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END bound.

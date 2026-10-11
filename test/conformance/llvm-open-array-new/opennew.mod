@@ -7,6 +7,7 @@ MODULE opennew;
      over many pointer-holding arrays, to show the descriptor tells it to
      trace the elements past the lengths. Each check prints "FAIL nn " on
      failure; the run ends with "OK". *)
+  IMPORT Out;
   TYPE
     Node = POINTER TO NodeDesc;
     NodeDesc = RECORD value: INTEGER; next: Node END;
@@ -31,7 +32,6 @@ MODULE opennew;
     i, j, k, alive, round: INTEGER;
     wide: HUGEINT;
     local: ARRAY 6 OF CHAR;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR msg: ARRAY 9 OF CHAR;
@@ -40,7 +40,7 @@ MODULE opennew;
       msg[0] := "F"; msg[1] := "A"; msg[2] := "I"; msg[3] := "L"; msg[4] := " ";
       msg[5] := CHR(ORD("0") + number DIV 10); msg[6] := CHR(ORD("0") + number MOD 10);
       msg[7] := " "; msg[8] := 0X;
-      SysWrite(1, msg, 8)
+      Out.String(msg)
     END
   END Check;
 
@@ -53,7 +53,7 @@ MODULE opennew;
   END Length;
 
   PROCEDURE Emit(s: ARRAY OF CHAR);
-  BEGIN SysWrite(1, s, Length(s)) END Emit;
+  BEGIN Out.String(s) END Emit;
 
   PROCEDURE Sum(VAR a: ARRAY OF INTEGER): INTEGER;
     VAR k, total: INTEGER;

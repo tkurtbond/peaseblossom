@@ -12,13 +12,13 @@ MODULE procs;
      literal markers - see procs-ir for the same constructs verified by
      directly inspecting computed values via the C-harness technique
      instead. *)
+  IMPORT Out;
   TYPE
     Point = RECORD x, y: INTEGER END;
   VAR
     total: INTEGER;
     p: Point;
     v: ARRAY 3 OF INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Add(a, b: INTEGER): INTEGER;
     VAR sum: INTEGER;
@@ -62,5 +62,5 @@ BEGIN
   v[1] := 0;
   Increment(v[1], 5);
 
-  IF (total = 149) & (p.x = 2) & (v[1] = 5) THEN SysWrite(1, "OK", 2) ELSE SysWrite(1, "FAIL", 4) END
+  IF (total = 149) & (p.x = 2) & (v[1] = 5) THEN Out.String("OK") ELSE Out.String("FAIL") END
 END procs.

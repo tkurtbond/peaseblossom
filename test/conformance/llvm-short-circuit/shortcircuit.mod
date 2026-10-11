@@ -4,6 +4,7 @@ MODULE shortcircuit;
      Appendix A) - observable now that an operand can have a side effect
      (a call) or trap (an array index, a NIL dereference). Each check
      prints "FAIL nn " on failure; the run ends with "OK". *)
+  IMPORT Out;
   TYPE
     Node = POINTER TO NodeDesc;
     NodeDesc = RECORD
@@ -16,7 +17,6 @@ MODULE shortcircuit;
     a: ARRAY 4 OF INTEGER;
     i: INTEGER;
     flag: BOOLEAN;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR text: ARRAY 9 OF CHAR;
@@ -25,7 +25,7 @@ MODULE shortcircuit;
       text[0] := "F"; text[1] := "A"; text[2] := "I"; text[3] := "L"; text[4] := " ";
       text[5] := CHR(ORD("0") + number DIV 10); text[6] := CHR(ORD("0") + number MOD 10);
       text[7] := " "; text[8] := 0X;
-      SysWrite(1, text, 8)
+      Out.String(text)
     END
   END Check;
 
@@ -84,5 +84,5 @@ BEGIN
   i := 0;
   WHILE (i < 4) & (a[i] < 99) DO INC(i) END;
   Check(16, i = 4);
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END shortcircuit.

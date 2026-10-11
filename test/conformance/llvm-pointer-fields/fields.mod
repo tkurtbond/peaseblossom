@@ -3,6 +3,7 @@ MODULE fields;
      pointer - string compare and COPY on a field, INC/INCL, LEN, a chain
      of "." through a cycle, CASE and FOR over a field. Each check prints
      "FAIL nn " on failure; the run ends with "OK". *)
+  IMPORT Out;
   TYPE
     Named = POINTER TO NamedDesc;
     NamedDesc = RECORD
@@ -15,7 +16,6 @@ MODULE fields;
     END;
     Vec = POINTER TO ARRAY 5 OF INTEGER;
   VAR n, m: Named; v: Vec; i: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR text: ARRAY 9 OF CHAR;
   BEGIN
@@ -23,7 +23,7 @@ MODULE fields;
       text[0] := "F"; text[1] := "A"; text[2] := "I"; text[3] := "L"; text[4] := " ";
       text[5] := CHR(ORD("0") + number DIV 10); text[6] := CHR(ORD("0") + number MOD 10);
       text[7] := " "; text[8] := 0X;
-      SysWrite(1, text, 8)
+      Out.String(text)
     END
   END Check;
 BEGIN
@@ -54,5 +54,5 @@ BEGIN
   Check(14, i = 1);
   FOR i := 0 TO n.count DO m.count := i END;
   Check(15, m.count = 5);
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END fields.

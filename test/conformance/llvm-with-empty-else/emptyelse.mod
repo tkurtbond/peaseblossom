@@ -8,6 +8,7 @@ MODULE emptyelse;
      source is full of "ELSE END" WITHs, so poc built by poc trapped on
      the first one that fell through. Each check prints "FAIL nn " on
      failure; the run ends with "OK". *)
+  IMPORT Out;
   TYPE
     Shape = POINTER TO ShapeDesc;
     ShapeDesc = RECORD
@@ -26,7 +27,6 @@ MODULE emptyelse;
     c: Circle;
     q: Square;
     seen: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR text: ARRAY 9 OF CHAR;
@@ -35,7 +35,7 @@ MODULE emptyelse;
       text[0] := "F"; text[1] := "A"; text[2] := "I"; text[3] := "L"; text[4] := " ";
       text[5] := CHR(ORD("0") + number DIV 10); text[6] := CHR(ORD("0") + number MOD 10);
       text[7] := " "; text[8] := 0X;
-      SysWrite(1, text, 8)
+      Out.String(text)
     END
   END Check;
 
@@ -78,5 +78,5 @@ BEGIN
   END;
   seen := seen + 10;
   Check(5, seen = 10);
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END emptyelse.

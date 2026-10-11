@@ -28,7 +28,7 @@ MODULE predeclared;
          literal) into another call's own ARRAY OF CHAR argument -
          GenerateStringArgValue only lowers a literal string constant
          (PLAN.md Phase 8 step 8+'s own documented scope); this
-         fixture's SysWrite calls all pass literals directly rather
+         fixture's output calls all pass literals directly rather
          than through an intermediate wrapper procedure. A related but
          distinct bug WAS found and fixed this step: that unsupported
          path used to splice its own diagnostic comment directly into
@@ -36,6 +36,7 @@ MODULE predeclared;
          unsupported string/VAR argument appeared inside a call (not
          just this one) - see GenerateStringArgValue/GenerateVarArg-
          Value's own comments. *)
+  IMPORT Out;
   VAR
     v: ARRAY 5 OF INTEGER;
     m: ARRAY 3, 4 OF INTEGER;
@@ -45,7 +46,6 @@ MODULE predeclared;
     oddVal: BOOLEAN;
     chrVal, capVal, lowerCh: CHAR;
     i: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 BEGIN
   absVal := ABS(-7);
   oddVal := ODD(5);
@@ -65,8 +65,8 @@ BEGIN
   IF (absVal = 7) & oddVal & (chrVal = 41X) & (ordVal = 90) & (capVal = 51X) &
      (lenVal = 5) & (dim0 = 3) & (dim1 = 4) & (i = 10) &
      (s[0] = 68X) & (s[1] = 69X) & (s[2] = 0X) THEN
-    SysWrite(1, "OK", 2)
+    Out.String("OK")
   ELSE
-    SysWrite(1, "FAIL", 4)
+    Out.String("FAIL")
   END
 END predeclared.

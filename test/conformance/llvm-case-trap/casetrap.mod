@@ -10,15 +10,15 @@ MODULE casetrap;
      shape), so this only ever fails at run time, via the trap. See
      llvm-index-range-trap's own test.sh for why stderr/exit status are
      captured directly rather than reusing testenv.sh's poc_build_run. *)
+  IMPORT Out;
   VAR
     i: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 BEGIN
-  SysWrite(1, "A", 1);
+  Out.String("A");
   i := 5;
   CASE i OF
-    1: SysWrite(1, "X", 1)
-  | 2: SysWrite(1, "Y", 1)
+    1: Out.String("X")
+  | 2: Out.String("Y")
   END;
-  SysWrite(1, "B", 1)
+  Out.String("B")
 END casetrap.

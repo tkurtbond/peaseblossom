@@ -8,15 +8,16 @@ MODULE constDecls;
      isMember) and a named STRING CONST (greeting), so the CONST section
      below is now semantic-const-decls's own, complete - the same
      constants, the same expressions. Runtime-observable via the same
-     SysWrite/"OK"-vs-"FAIL" pattern every other runtime fixture uses
+     "OK"-vs-"FAIL" pattern every other runtime fixture uses
      (see llvm-multi-module/client.mod). See ../crosscheck for this same
      CONST section re-verified under voc/Console.Mod directly - genuinely
      practical here (PLAN.md step 13's own "cross-check ... where
      practical"), unlike every earlier Phase 8 runtime fixture, because
-     this one's own core logic needs no FFI at all - only the final
-     OK/FAIL print does, and that's trivially swapped for Console.String
-     there. The REAL checks are range checks, not equalities, since pi
+     this one's own core logic needed no FFI at all - only the final
+     OK/FAIL print did (a write(2) call until Phase 16 step 5), and that
+     was trivially swapped for Console.String there. The REAL checks are range checks, not equalities, since pi
      and widened are single-precision. *)
+  IMPORT Out;
   CONST
     n = 10;
     limit = 100;
@@ -34,12 +35,11 @@ MODULE constDecls;
     isMember = 5 IN aSet;
     doubled = n * 2;
   VAR ok: BOOLEAN; buf: ARRAY 16 OF CHAR;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 BEGIN
   COPY(greeting, buf);
   ok := (quotient = 3) & (remainder = 1) & flag & disjunction & (ORD(letter) = 65) & (doubled = 20)
       & (half = 3.5) & (pi > 3.13) & (pi < 3.15) & (widened > 13.13) & (widened < 13.15)
       & isMember & (aSet = {1, 2, 5, 6, 7, 8}) & (combinedSet = {2, 5, 6, 7, 8, 10})
       & (buf = greeting) & (buf[7] = 77X) & (greeting = "hello, world");
-  IF ok THEN SysWrite(1, "OK", 2) ELSE SysWrite(1, "FAIL", 4) END
+  IF ok THEN Out.String("OK") ELSE Out.String("FAIL") END
 END constDecls.

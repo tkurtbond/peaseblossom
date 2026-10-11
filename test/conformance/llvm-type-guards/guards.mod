@@ -3,6 +3,7 @@ MODULE guards;
      an extension hierarchy three levels deep: Shape <- Circle <- Ring,
      and a sibling Square (NIL operands are llvm-pointer-traps'). Each check prints "FAIL nn " on failure; the run
      ends with "OK". *)
+  IMPORT Out;
   TYPE
     Shape = POINTER TO ShapeDesc;
     ShapeDesc = RECORD
@@ -31,7 +32,6 @@ MODULE guards;
     q: Square;
     h: Holder;
     result: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR text: ARRAY 9 OF CHAR;
@@ -40,7 +40,7 @@ MODULE guards;
       text[0] := "F"; text[1] := "A"; text[2] := "I"; text[3] := "L"; text[4] := " ";
       text[5] := CHR(ORD("0") + number DIV 10); text[6] := CHR(ORD("0") + number MOD 10);
       text[7] := " "; text[8] := 0X;
-      SysWrite(1, text, 8)
+      Out.String(text)
     END
   END Check;
 
@@ -70,10 +70,10 @@ MODULE guards;
   (* string literals inside WITH branches and its ELSE part *)
   PROCEDURE Announce(shape: Shape);
   BEGIN
-    WITH shape: Ring DO SysWrite(1, "R", 1)
-    | shape: Circle DO SysWrite(1, "C", 1)
-    | shape: Square DO SysWrite(1, "S", 1)
-    ELSE SysWrite(1, "?", 1)
+    WITH shape: Ring DO Out.String("R")
+    | shape: Circle DO Out.String("C")
+    | shape: Square DO Out.String("S")
+    ELSE Out.String("?")
     END
   END Announce;
 
@@ -136,5 +136,5 @@ BEGIN
   WITH s: Circle DO result := 1 | s: Ring DO result := 2 END;   (* Circle is tried first *)
   Check(27, result = 1);
   Announce(r); Announce(c); Announce(q);
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END guards.

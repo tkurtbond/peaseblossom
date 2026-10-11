@@ -1,0 +1,14 @@
+;; Reviewed 2026-10-11 (written by Claude, from design section 14, item
+;; 9, the VAX architecture's floating point and the guest run; for the
+;; user's review). Why this is right:
+;; - MAX(REAL) is the largest F_floating number, (1 - 2^-24) * 2^127,
+;;   about 1.7014117E38, and MAX(LONGREAL) the largest G_floating one,
+;;   (1 - 2^-53) * 2^1023, about 8.988465674311579E307, not IEEE 754's
+;;   3.4E38 and 1.797693E308 (section 14, item 9: MAX and MIN of a real
+;;   type are written as the VAX format's largest value).
+;; - Checks 46 and 47 want MAX(REAL) / 1.0E30 and MIN(REAL) / 1.0E30
+;;   between 3.0E8 and 3.5E8 in size; on the VAX they are about 1.7E8.
+;; - Checks 48, 49 and 52 want MAX(LONGREAL) / 1.0D300 and MIN's above
+;;   1.79D8 in size; on the VAX they are about 8.99E7.
+;; - Checks 50 and 51 pass: they compare the bounds with each other.
+FAIL 46 FAIL 47 FAIL 48 FAIL 49 FAIL 52 OK

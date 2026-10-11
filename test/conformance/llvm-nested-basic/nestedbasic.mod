@@ -1,5 +1,5 @@
 MODULE nestedbasic;
-  IMPORT SYSTEM; (* write's int and size_t are 4 bytes on a 32-bit target under -OC too *)
+  IMPORT Out;
   (* Phase 11 step 8, step 2 (doc/developer/nested-procedures.md): procedures declared
      inside procedures that use nothing of the enclosing ones - only globals,
      their own parameters and locals, and other procedures. Each is lifted to
@@ -19,12 +19,9 @@ MODULE nestedbasic;
     x, y: INTEGER;
     acc: Acc;
 
-  PROCEDURE ["C", "write"] SysWrite(fd: SYSTEM.INT32; s: ARRAY OF CHAR; n: SYSTEM.ADDRESS);
-
   PROCEDURE Newline;
-    VAR c: ARRAY 2 OF CHAR;
   BEGIN
-    c[0] := 0AX; SysWrite(1, c, 1)
+    Out.Ln
   END Newline;
 
   PROCEDURE Report(number: INTEGER; ok: BOOLEAN);
@@ -32,9 +29,9 @@ MODULE nestedbasic;
   BEGIN
     line[0] := CHR(ORD("0") + number DIV 10); line[1] := CHR(ORD("0") + number MOD 10); line[2] := " ";
     IF ok THEN
-      line[3] := "o"; line[4] := "k"; line[5] := 0AX; SysWrite(1, line, 6)
+      line[3] := "o"; line[4] := "k"; line[5] := 0X; Out.String(line); Out.Ln
     ELSE
-      line[3] := "B"; line[4] := "A"; line[5] := "D"; line[6] := 0AX; SysWrite(1, line, 7)
+      line[3] := "B"; line[4] := "A"; line[5] := "D"; line[6] := 0X; Out.String(line); Out.Ln
     END
   END Report;
 
@@ -132,7 +129,7 @@ MODULE nestedbasic;
     END Half;
 
     PROCEDURE Say;
-    BEGIN SysWrite(1, "nested string", 13)
+    BEGIN Out.String("nested string")
     END Say;
 
   BEGIN

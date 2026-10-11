@@ -10,6 +10,7 @@ MODULE openparams;
      a type-bound procedure, and an open array passed on to an external C
      procedure (which gets the bare address). Each check prints "FAIL nn "
      on failure; the run ends with "OK". *)
+  IMPORT Out;
   TYPE
     Point = RECORD x, y: INTEGER END;
     Counter = POINTER TO CounterDesc;
@@ -21,7 +22,6 @@ MODULE openparams;
     points: ARRAY 3 OF Point;
     counter: Counter;
     i, j: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR msg: ARRAY 9 OF CHAR;
@@ -30,7 +30,7 @@ MODULE openparams;
       msg[0] := "F"; msg[1] := "A"; msg[2] := "I"; msg[3] := "L"; msg[4] := " ";
       msg[5] := CHR(ORD("0") + number DIV 10); msg[6] := CHR(ORD("0") + number MOD 10);
       msg[7] := " "; msg[8] := 0X;
-      SysWrite(1, msg, 8)
+      Out.String(msg)
     END
   END Check;
 
@@ -111,7 +111,7 @@ MODULE openparams;
 
   (* an open array given to an external C procedure: the bare address *)
   PROCEDURE Emit(s: ARRAY OF CHAR);
-  BEGIN SysWrite(1, s, Length(s)) END Emit;
+  BEGIN Out.String(s) END Emit;
 
   PROCEDURE (c: Counter) AddAll(VAR a: ARRAY OF INTEGER);
   BEGIN c.total := c.total + Sum(a) END AddAll;
@@ -148,5 +148,5 @@ BEGIN
   counter.AddAll(grid[0]);
   Check(20, counter.total = 60 + 0 + 1 + 2 + 3);
   Emit("[emitted]");
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END openparams.

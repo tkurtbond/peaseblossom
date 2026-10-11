@@ -6,7 +6,7 @@
 # poc_build_run's ">result"/">>result" plumbing captures - every other
 # LLVM runtime fixture only ever needs stdout. stderr is folded into
 # the same "result" stream via "2>&1" rather than a second diff target:
-# both write(2) targets are unbuffered raw syscalls in this single-
+# Out and the trap's message are both unbuffered in this single-
 # threaded program, so their combined byte order is exactly execution
 # order, not just "eventually consistent."
 exe=$(basename "$PWD")

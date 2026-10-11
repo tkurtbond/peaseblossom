@@ -2,7 +2,7 @@ MODULE client;
   (* PLAN.md Phase 9 step 6: extends and overrides what figures exports,
      and calls back and forth across the module boundary. Each check prints
      "FAIL nn " on failure; the run ends with "OK". *)
-  IMPORT figures;
+  IMPORT figures, Out;
   TYPE
     Box = POINTER TO BoxDesc;
     BoxDesc = RECORD (figures.FigureDesc)
@@ -15,7 +15,6 @@ MODULE client;
     f: figures.Figure; b: Box; own: Box;
     mk: figures.Mark; big: BigMark;
     bp: POINTER TO BigMark;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR text: ARRAY 9 OF CHAR;
@@ -24,7 +23,7 @@ MODULE client;
       text[0] := "F"; text[1] := "A"; text[2] := "I"; text[3] := "L"; text[4] := " ";
       text[5] := CHR(ORD("0") + number DIV 10); text[6] := CHR(ORD("0") + number MOD 10);
       text[7] := " "; text[8] := 0X;
-      SysWrite(1, text, 8)
+      Out.String(text)
     END
   END Check;
 
@@ -84,5 +83,5 @@ BEGIN
   Check(25, figures.Measure(figures.tally) = 22);
   figures.current := b;
   Check(26, figures.current.Area() = 12);
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END client.

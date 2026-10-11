@@ -11,9 +11,9 @@ MODULE predhalt;
      poc_build_run's plumbing. The statement after HALT(3) is real,
      front-end-accepted, but genuinely dead code - proving it is never
      reached is exactly the point of this fixture. *)
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
+  IMPORT Out;
 BEGIN
-  SysWrite(1, "before", 6);
+  Out.String("before");
   HALT(3);
-  SysWrite(1, "after", 5)
+  Out.String("after")
 END predhalt.

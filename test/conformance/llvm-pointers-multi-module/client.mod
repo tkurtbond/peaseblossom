@@ -7,7 +7,7 @@ MODULE client;
      mixes objects allocated in either module, walked while the collector
      runs under a small heap cap. Each check prints "FAIL nn " on
      failure; the run ends with "OK". *)
-  IMPORT Lib := shapelib, GarbageCollectedHeap;
+  IMPORT Lib := shapelib, GarbageCollectedHeap, Out;
   TYPE
     Square = POINTER TO SquareDesc;
     SquareDesc = RECORD (Lib.ShapeDesc)
@@ -20,7 +20,6 @@ MODULE client;
     p: Lib.Shape;
     kept, count, total: LONGINT;
     i: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR text: ARRAY 9 OF CHAR;
@@ -29,7 +28,7 @@ MODULE client;
       text[0] := "F"; text[1] := "A"; text[2] := "I"; text[3] := "L"; text[4] := " ";
       text[5] := CHR(ORD("0") + number DIV 10); text[6] := CHR(ORD("0") + number MOD 10);
       text[7] := " "; text[8] := 0X;
-      SysWrite(1, text, 8)
+      Out.String(text)
     END
   END Check;
 
@@ -77,5 +76,5 @@ BEGIN
   WHILE p # NIL DO INC(count); total := total + Lib.Hidden(p); p := p.next END;
   Check(13, count = 3);
   Check(14, total = (1000 + 20000 + 10) + 2002 + 1001);
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END client.

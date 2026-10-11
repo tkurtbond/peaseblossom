@@ -7,6 +7,7 @@ MODULE trees;
      dynamic type of a child is whatever was inserted. The report's own
      Trees module keys on strings held through open arrays, which is
      step 7's; the keys here are small integers, printed as letters. *)
+  IMPORT Out;
   TYPE
     Tree = POINTER TO Node;
     Node = RECORD key: INTEGER; left, right: Tree END;
@@ -14,13 +15,12 @@ MODULE trees;
     CenterNode = RECORD (Node) width: INTEGER END;
   VAR
     root: CenterTree; plain: Tree; node: Tree; center: CenterTree; found: Tree;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Put(c: CHAR);
     VAR text: ARRAY 2 OF CHAR;
   BEGIN
     text[0] := c; text[1] := 0X;
-    SysWrite(1, text, 1)
+    Out.String(text)
   END Put;
 
   PROCEDURE NewTree(key: INTEGER): Tree;
@@ -108,5 +108,5 @@ BEGIN
   IF found # NIL THEN Put("f") ELSE Put("-") END;
   found := plain.Search(9);
   IF found # NIL THEN found.Write ELSE Put("-") END;
-  Put(CHR(10))
+  Out.Ln
 END trees.

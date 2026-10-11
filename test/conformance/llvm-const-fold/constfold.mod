@@ -11,6 +11,7 @@ MODULE constfold;
      check under its default -O2 sizes; under -OC several of the values
      below are different, since SHORTINT and INTEGER are wider. *)
 
+  IMPORT Out;
   CONST
     total = 2 * 100 + 2 * 10;         (* 220: INTEGER *)
     beyondShort = MAX(SHORTINT) + 1;  (* 128: INTEGER *)
@@ -34,8 +35,6 @@ MODULE constfold;
     s: SHORTINT; i, k: INTEGER; l: LONGINT; h: HUGEINT;
     r: REAL; d: LONGREAL; b: BOOLEAN; x: SET; grid: Grid;
 
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
-
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR msg: ARRAY 9 OF CHAR;
   BEGIN
@@ -43,7 +42,7 @@ MODULE constfold;
       msg[0] := "F"; msg[1] := "A"; msg[2] := "I"; msg[3] := "L"; msg[4] := " ";
       msg[5] := CHR(ORD("0") + number DIV 10); msg[6] := CHR(ORD("0") + number MOD 10);
       msg[7] := " "; msg[8] := 0X;
-      SysWrite(1, msg, 8)
+      Out.String(msg)
     END
   END Check;
 
@@ -196,5 +195,5 @@ BEGIN
   Check(52, d / 1.0D300 > 1.797693D8);
   (* poc only *)
 
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END constfold.

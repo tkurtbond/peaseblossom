@@ -8,12 +8,12 @@ MODULE ashmaxmin;
      compares the 64-bit value it computed it in. The part between the
      "poc only" markers (ASH by 64 places or more, which voc leaves to the
      C compiler) is dropped when the program is cross-checked under voc. *)
+  IMPORT Out;
   TYPE
     Small = SHORTINT;
   VAR
     s: SHORTINT; i: INTEGER; l, m: LONGINT; h, g: HUGEINT;
     r, r2: REAL; d: LONGREAL; c: CHAR; b: BOOLEAN; set: SET;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR msg: ARRAY 9 OF CHAR;
@@ -22,7 +22,7 @@ MODULE ashmaxmin;
       msg[0] := "F"; msg[1] := "A"; msg[2] := "I"; msg[3] := "L"; msg[4] := " ";
       msg[5] := CHR(ORD("0") + number DIV 10); msg[6] := CHR(ORD("0") + number MOD 10);
       msg[7] := " "; msg[8] := 0X;
-      SysWrite(1, msg, 8)
+      Out.String(msg)
     END
   END Check;
 
@@ -171,5 +171,5 @@ BEGIN
   d := MIN(LONGREAL);
   Check(63, (d < 0.0D0) & (d / 2.0D0 > d));
 
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END ashmaxmin.

@@ -5,7 +5,7 @@ MODULE heapfull;
      "A", keeps allocating with every block still reachable (so no
      collection can help) until the ceiling stops it, then uses the NIL
      it got; must trap before "B". *)
-  IMPORT GarbageCollectedHeap;
+  IMPORT GarbageCollectedHeap, Out;
   TYPE
     Node = POINTER TO NodeDesc;
     NodeDesc = RECORD
@@ -14,12 +14,11 @@ MODULE heapfull;
     END;
   VAR
     keep, n: Node;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 BEGIN
   GarbageCollectedHeap.SetHeapLimit(300000);
-  SysWrite(1, "A", 1);
+  Out.String("A");
   LOOP
     NEW(n); n.next := keep; keep := n
   END;
-  SysWrite(1, "B", 1)
+  Out.String("B")
 END heapfull.

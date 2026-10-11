@@ -2,6 +2,7 @@ MODULE pointers;
   (* PLAN.md Phase 9 step 5: POINTER, NIL, NEW, and the dereference
      (explicit and implied) of a linked structure. Each check prints
      "FAIL nn " on failure; the run ends with "OK". *)
+  IMPORT Out;
   TYPE
     Node = POINTER TO NodeDesc;
     NodeDesc = RECORD
@@ -26,7 +27,6 @@ MODULE pointers;
     base: Base;
     derived: Derived;
     i, sum: LONGINT;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR text: ARRAY 9 OF CHAR;
@@ -35,7 +35,7 @@ MODULE pointers;
       text[0] := "F"; text[1] := "A"; text[2] := "I"; text[3] := "L"; text[4] := " ";
       text[5] := CHR(ORD("0") + number DIV 10); text[6] := CHR(ORD("0") + number MOD 10);
       text[7] := " "; text[8] := 0X;
-      SysWrite(1, text, 8)
+      Out.String(text)
     END
   END Check;
 
@@ -125,5 +125,5 @@ BEGIN
   cursor := NIL;
   Check(28, ~((cursor # NIL) & (cursor.value = 0)));
   Check(29, (cursor = NIL) OR (cursor.value = 0));
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END pointers.

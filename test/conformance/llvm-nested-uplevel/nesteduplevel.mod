@@ -10,22 +10,20 @@ MODULE nesteduplevel;
      CASE, INC, NEW, SYSTEM.ADR (the address must be the enclosing variable's
      own), an enclosing variable passed on as a VAR argument, two variables in
      one procedure, and a nested procedure's own variable of the same name. *)
-  IMPORT SYSTEM;
+  IMPORT SYSTEM, Out;
   TYPE
     Rec = RECORD f: INTEGER; g: REAL END;
     Vec = ARRAY 4 OF INTEGER;
     Ptr = POINTER TO Rec;
-
-  PROCEDURE ["C", "write"] SysWrite(fd: SYSTEM.INT32; s: ARRAY OF CHAR; n: SYSTEM.ADDRESS);
 
   PROCEDURE Report(number: INTEGER; ok: BOOLEAN);
     VAR line: ARRAY 12 OF CHAR;
   BEGIN
     line[0] := CHR(ORD("0") + number DIV 10); line[1] := CHR(ORD("0") + number MOD 10); line[2] := " ";
     IF ok THEN
-      line[3] := "o"; line[4] := "k"; line[5] := 0AX; SysWrite(1, line, 6)
+      line[3] := "o"; line[4] := "k"; line[5] := 0X; Out.String(line); Out.Ln
     ELSE
-      line[3] := "B"; line[4] := "A"; line[5] := "D"; line[6] := 0AX; SysWrite(1, line, 7)
+      line[3] := "B"; line[4] := "A"; line[5] := "D"; line[6] := 0X; Out.String(line); Out.Ln
     END
   END Report;
 

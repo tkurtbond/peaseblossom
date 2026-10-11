@@ -1,11 +1,11 @@
 MODULE varwithnomatch;
   (* PLAN.md Phase 9 step 6: a WITH on a VAR record parameter with no
      matching branch and no ELSE aborts the program. *)
+  IMPORT Out;
   TYPE
     Base = RECORD id: INTEGER END;
     Wide = RECORD (Base) extra: INTEGER END;
   VAR b: Base; n: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
   PROCEDURE Extra(VAR x: Base): INTEGER;
     VAR result: INTEGER;
   BEGIN
@@ -13,7 +13,7 @@ MODULE varwithnomatch;
     RETURN result
   END Extra;
 BEGIN
-  SysWrite(1, "A", 1);
+  Out.String("A");
   n := Extra(b);
-  SysWrite(1, "B", 1)
+  Out.String("B")
 END varwithnomatch.

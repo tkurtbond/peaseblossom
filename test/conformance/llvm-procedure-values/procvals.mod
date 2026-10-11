@@ -7,6 +7,7 @@ MODULE procvals;
      brings its type tag (so WITH and IS work in the callee) and an open
      array its lengths. Each check prints "FAIL nn " on failure; the run
      ends with "OK". *)
+  IMPORT Out;
   TYPE
     Binary = PROCEDURE (a, b: INTEGER): INTEGER;
     Action = PROCEDURE;
@@ -47,7 +48,6 @@ MODULE procvals;
     head: Node;
     junk: Node;
     items, item: Item; total: INTEGER;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE Check(number: INTEGER; ok: BOOLEAN);
     VAR msg: ARRAY 9 OF CHAR;
@@ -56,7 +56,7 @@ MODULE procvals;
       msg[0] := "F"; msg[1] := "A"; msg[2] := "I"; msg[3] := "L"; msg[4] := " ";
       msg[5] := CHR(ORD("0") + number DIV 10); msg[6] := CHR(ORD("0") + number MOD 10);
       msg[7] := " "; msg[8] := 0X;
-      SysWrite(1, msg, 8)
+      Out.String(msg)
     END
   END Check;
 
@@ -293,5 +293,5 @@ BEGIN
   step := Fact;
   Check(41, step(5) = 120);
 
-  SysWrite(1, "OK", 2)
+  Out.String("OK")
 END procvals.

@@ -5,15 +5,15 @@ MODULE Trees;
      with NEW(p.name, LEN(name)+1) and filled by COPY, compared with
      "name = p.name^". (The 2022 revision's form, with NewTree(): Tree in
      place of an Init procedure.) Only what the example does with Texts
-     and Oberon.Log is different: Write puts each name straight to
-     write(2), a space after it. *)
+     and Oberon.Log is different: Write puts each name to Out, a
+     space after it. *)
+  IMPORT Out;
   TYPE
     Tree* = POINTER TO Node;
     Node* = RECORD
       name-: POINTER TO ARRAY OF CHAR;
       left, right: Tree
     END;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 
   PROCEDURE (t: Tree) Insert* (name: ARRAY OF CHAR);
     VAR p, father: Tree;
@@ -41,7 +41,7 @@ MODULE Trees;
     IF t.left # NIL THEN t.left.Write END;
     length := 0;
     WHILE t.name[length] # 0X DO INC(length) END;
-    SysWrite(1, t.name^, length); SysWrite(1, " ", 1);
+    Out.String(t.name^); Out.String(" ");
     IF t.right # NIL THEN t.right.Write END
   END Write;
 

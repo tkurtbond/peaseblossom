@@ -3,10 +3,11 @@ MODULE ctrlflow;
      exercises IF/ELSIF/ELSE, CASE (over both INTEGER and CHAR, including
      a range label), WHILE, REPEAT, FOR (both ascending and descending,
      the latter exercising a negative BY step), and LOOP+EXIT, using
-     step 6's write(2) FFI to print a one-letter marker for whichever
-     branch/iteration actually ran - real runtime behavior, not just a
-     golden-diffed .ll (see llvm-control-flow-ir for that style, covering
-     the same constructs from the other direction). No marker is
+     Out (step 6's write(2) FFI until Phase 16 step 5) to print a
+     one-letter marker for whichever branch/iteration actually ran -
+     real runtime behavior, not just a golden-diffed .ll (see
+     llvm-control-flow-ir for that style, covering the same constructs
+     from the other direction). No marker is
      separated by a newline: Oberon-2 string literals have no backslash-
      escape syntax and can't span a line, so there is no way to embed a
      literal 0AX byte inside one - the whole expected output is simply
@@ -18,46 +19,46 @@ MODULE ctrlflow;
      to return a value from - see LLVMCodeGenerator.GenerateReturnStatement's
      own header comment); exercised directly via -emit-llvm-ir inspection
      during development instead. *)
+  IMPORT Out;
   VAR i, n: INTEGER; ch: CHAR;
-  PROCEDURE ["C", "write"] SysWrite(fd: LONGINT; s: ARRAY OF CHAR; n: HUGEINT);
 BEGIN
   n := 7;
-  IF n < 5 THEN SysWrite(1, "A", 1)
-  ELSIF n < 10 THEN SysWrite(1, "B", 1)
-  ELSE SysWrite(1, "C", 1)
+  IF n < 5 THEN Out.String("A")
+  ELSIF n < 10 THEN Out.String("B")
+  ELSE Out.String("C")
   END;
 
   CASE n OF
-    1, 2: SysWrite(1, "P", 1)
-  | 5..9: SysWrite(1, "Q", 1)
-  ELSE SysWrite(1, "S", 1)
+    1, 2: Out.String("P")
+  | 5..9: Out.String("Q")
+  ELSE Out.String("S")
   END;
 
   ch := 5AX;
   CASE ch OF
-    41X..5AX: SysWrite(1, "T", 1)
-  ELSE SysWrite(1, "U", 1)
+    41X..5AX: Out.String("T")
+  ELSE Out.String("U")
   END;
 
   i := 0;
   WHILE i < 3 DO
-    SysWrite(1, "W", 1);
+    Out.String("W");
     i := i + 1
   END;
 
   i := 0;
   REPEAT
-    SysWrite(1, "X", 1);
+    Out.String("X");
     i := i + 1
   UNTIL i >= 2;
 
-  FOR i := 1 TO 3 DO SysWrite(1, "Y", 1) END;
-  FOR i := 3 TO 1 BY -1 DO SysWrite(1, "Z", 1) END;
+  FOR i := 1 TO 3 DO Out.String("Y") END;
+  FOR i := 3 TO 1 BY -1 DO Out.String("Z") END;
 
   i := 0;
   LOOP
     IF i >= 2 THEN EXIT END;
-    SysWrite(1, "M", 1);
+    Out.String("M");
     i := i + 1
   END
 END ctrlflow.
