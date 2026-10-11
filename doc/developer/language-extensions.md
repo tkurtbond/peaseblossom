@@ -414,6 +414,15 @@ like voc's), outermost dimension first:
   errors 203-207), and "division by zero" for a constant `DIV`/`MOD`. The
   error is reported at compile time in a statement as well as in a `CONST`.
   `DIV`/`MOD` of constants floor. Integer constants compare exactly.
+- **A `REAL` constant expression folds to what it is at run time**
+  (2026-10-11): each `REAL` operand is its single-precision value (a
+  numeral rounded once, from its text), an integer in a `REAL` operation is
+  converted to `REAL`, and each `REAL` result is rounded to single, so
+  `SHORT(0.1D0) = 0.1` and `0.1 + 0.2 = 0.3` are `TRUE`, as on `REAL`
+  variables; a `REAL` in a `LONGREAL` operation is its single value
+  widened. Until then a `REAL` expression folded in double precision and
+  both were `FALSE`; the VAX backend, which folds an `IF`'s condition,
+  showed it. Fixture `llvm-real-constant-folding`.
 - **`ASH(x, n)` of constants folds**: a count outside -62..62, or a left
   shift whose result does not fit HUGEINT, is an error (voc's error 208,
   same boundaries). The result is at least a LONGINT, wider if `x` or the

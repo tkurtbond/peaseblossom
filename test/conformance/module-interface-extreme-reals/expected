@@ -13,8 +13,8 @@ MODULE extreme;
     sum* = 3.0000000000000004D-1;
     negative* = -1.4285714285714285D-1;
     exact* = 7.5D-1;
-    single* = 3.333333333333333E-1;
-    singleBig* = 3.0000000000000003E30;
+    single* = 3.333333432674408E-1;
+    singleBig* = 3.000000196258126E30;
     huge* = 9.0D307;
 END extreme.
 round trip exact
