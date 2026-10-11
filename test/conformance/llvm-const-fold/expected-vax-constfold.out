@@ -1,6 +1,6 @@
-;; Reviewed 2026-10-11 (written by Claude, from design section 14, item
-;; 9, the VAX architecture's floating point and the guest run; for the
-;; user's review). Why this is right:
+;; Reviewed 2026-10-11 by the user (written by Claude, from design
+;; section 14, item 9, the VAX architecture's floating point and the
+;; guest run). Why this is right:
 ;; - MAX(REAL) is the largest F_floating number, (1 - 2^-24) * 2^127,
 ;;   about 1.7014117E38, and MAX(LONGREAL) the largest G_floating one,
 ;;   (1 - 2^-53) * 2^1023, about 8.988465674311579E307, not IEEE 754's

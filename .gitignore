@@ -201,3 +201,4 @@ test/conformance/vax-files/vax-files
 test/conformance/vax-collector/vax-collector
 test/conformance/vax-widen-and-new/vax-widen-and-new
 test/conformance/llvm-real-constant-folding/llvm-real-constant-folding
+test/conformance/vax-shifts/vax-shifts

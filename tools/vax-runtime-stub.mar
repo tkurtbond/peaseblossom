@@ -93,6 +93,32 @@ POC_SCRATCH::
 	ADDL2	R2, R1
 	RET
 
+; POC_ROTQ(x, n), x and n the addresses of quadwords: R0 and R1 x rotated
+; left n MOD 64 bits (SYSTEM.ROT; n's low six bits are its floored modulo).
+; From 32 on the halves change places and the rest is less than 32: each
+; half rotated by k (ROTL), then the low k bits, which belong to the other
+; half, exchanged between them (XOR through a mask of them)
+	.ENTRY	POC_ROTQ, ^M<R2,R3,R4,R5>
+	MOVL	4(AP), R3
+	MOVQ	(R3), R0
+	BICL3	#-64, @8(AP), R2
+	CMPL	R2, #32
+	BLSS	10$
+	MOVL	R0, R5
+	MOVL	R1, R0
+	MOVL	R5, R1
+	SUBL2	#32, R2
+10$:	TSTL	R2
+	BEQL	20$
+	ROTL	R2, R0, R0
+	ROTL	R2, R1, R1
+	ASHL	R2, #-1, R5
+	XORL3	R0, R1, R4
+	BICL2	R5, R4
+	XORL2	R4, R0
+	XORL2	R4, R1
+20$:	RET
+
 ; POC_HDIV(a, b) and POC_HMOD(a, b), a and b the addresses of HUGEINTs:
 ; R0 and R1 the floored quotient or the remainder (with b's sign); a zero
 ; b gets the VAX's integer divide-by-zero trap

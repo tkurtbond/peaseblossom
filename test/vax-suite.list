@@ -146,3 +146,17 @@ llvm-type-bound bound.mod -O2
 llvm-type-bound-multi-module client.mod -O2
 llvm-type-guards guards.mod -O2
 llvm-with-empty-else emptyelse.mod -O2
+llvm-hugeint-arithmetic hugeint.mod -O2
+llvm-hugeint-arithmetic hugeint.mod -OC
+llvm-gc-finalize finalize.mod -O2
+llvm-gc-finalize atend.mod -O2
+llvm-gc-finalize halt.mod -O2
+llvm-gc-finalize assertfail.mod -O2
+llvm-gc-finalize indextrap.mod -O2
+llvm-gc-finalize niltrap.mod -O2
+llvm-gc-finalize platformexit.mod -O2
+llvm-real-constant-folding realfold.mod -O2
+llvm-real-constant-folding realfold.mod -OC
+vax-shifts ShiftsOut.mod -O2
+llvm-system-shifts shiftstest.mod -O2
+llvm-system-extra systemextra.mod -O2

@@ -1,0 +1,14 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from design
+;; section 14, item 9, the VAX architecture's floating point and the
+;; guest run). Why this is right:
+;; - Check 9 adds the LONGINT 16777217 to the REAL 0.0. 16777217 is
+;;   2^24 + 1, halfway between the REALs 16777216 and 16777218. poc folds
+;;   the constant as IEEE 754 rounds, ties to even: 16777216, so the
+;;   folded comparison is TRUE. At run time the VAX's CVTLF rounds a
+;;   halfway case away from zero: 16777218, and the comparison is FALSE.
+;;   The VAX rounds every halfway case so (vax-reals' 2^53 + 1 is
+;;   2^53 + 2); poc folds REAL and LONGREAL constants as IEEE 754 does
+;;   on every target (decided by the user, 2026-10-11).
+;; - The other checks have no halfway case and agree.
+;; - The same under -O2 and -OC.
+FAIL 09 OK

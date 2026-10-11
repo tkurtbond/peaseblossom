@@ -899,6 +899,20 @@ most, object libraries.
      file name are `expected-vax-*` files. Those files and the
      `expected-vax*.mar` files of `vax-command-line` and `vax-files`
      that change were reviewed by the user (2026-10-10).
+   - *The `SysWrite` fixtures* (2026-10-11, proposal 5): 47 fixtures
+     write with `Out` instead, their `expected` unchanged; 82 programs
+     join the list, 139 programs and 239 runs, all passing on the guest.
+     `MAX(REAL)` and `MAX(LONGREAL)` checks in three fixtures differ
+     with the VAX's bounds, as `expected-vax-*.out` files say;
+     `llvm-reals` found a front-end fault in folding `REAL` constants,
+     fixed on `main` ("Ongoing bug fixing" 7).
+   - *`LSH`, `ROT` and `BIT`* (2026-10-11, proposal 7's first part):
+     lowered at every width (`POC_ROTQ` for a `HUGEINT` `ROT`), fixture
+     `vax-shifts`; it and five more fixtures join the list, 153
+     programs and 253 runs, all passing on the guest. VAX rounding of
+     `CVTLF` differs from IEEE folding in `llvm-real-constant-folding`,
+     as its `expected-vax-realfold.out` says. The user reviewed
+     these files and `vax-shifts`' `expected-vax.mar` (2026-10-11).
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled
@@ -1012,6 +1026,14 @@ C++, and so on) unless step 4 chooses one deliberately.
    which an Oberon record cannot express, need a convention of their own. Implement it, and write the
    interface modules step 4 chose, each with a fixture that calls the real
    service on the guest and checks a result.
+
+   **First look** (2026-10-11, `doc/developer/vms-sdl-interfaces.md`):
+   UNSDL is a set of SDL back ends that `SDL/NOPARSE` calls with the
+   parsed tree of one of `STARLETSD.TLB`'s 65 modules, and a verb of its
+   own (`unsdl.cld`) that runs `SDL/NOPARSE`; the guest has the library,
+   `SDLNPARSE.EXE` and the `SDL` verb, so it runs there as it is. **Decided by the user
+   the same day**: the generator, a back end of its own, runs on the VAX
+   and is built with VAX C; the `.SDI` files are not read on the host.
 
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`

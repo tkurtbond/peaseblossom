@@ -1,0 +1,445 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from the design,
+;; the MACRO manual and the guest runs). Why this is right:
+;; - Phase 16 step 5 (section 16, proposal 7): SYSTEM.LSH, ROT and BIT.
+;;   The value is widened to a longword (a CHAR by MOVZBL, a word by
+;;   MOVZWL, since a logical shift must not see a sign) or is a quadword
+;;   in R0/R1 (HUGEINT); the result is narrowed back (MOVZBL, CVTWL).
+;; - The count of LSH (ShiftCount, shared with ASH) is clamped to
+;;   -64..64 unless its type cannot exceed that (a SHORTINT), since ASHL's
+;;   and ASHQ's count is a signed byte; a HUGEINT count is clamped by its
+;;   high longword first (0: unsigned compare of the low with 64; -1:
+;;   unsigned compare with -64; otherwise the sign decides).
+;; - LSH left is ASHL/ASHQ by the count. LSH right is logical, which the
+;;   VAX has no instruction for: shift right by 1 (ASHL/ASHQ #-1), clear
+;;   the sign bit of the (high) longword (BICL2 #^X80000000), then shift
+;;   arithmetically by the count plus 1 (INCL). A constant count is folded
+;;   into the second shift, LSH(l, -4) as #-1 and #-3, LSH(h, -40) as #-1
+;;   and #-39.
+;; - ROT of a longword is ROTL, its count n AND 31 (BICL3 #-32), which
+;;   is n's floored modulo, so a negative n rotates right. A byte or word
+;;   x has no rotate: x zero-extended times 2^w+1 (257, 65537) holds two
+;;   copies of x; shifted left by n AND (w-1) and arithmetically right by w,
+;;   its low w bits are x rotated (the MULL2 may set V, which traps only
+;;   with IV in the entry mask, never set). ROT(i, -3) of a word is 13,
+;;   ROT(l, 33) is 1.
+;; - ROT of a HUGEINT calls POC_ROTQ (PocRtl.mar) with the addresses of
+;;   x and of the count sign-extended to a quadword (ASHL #-31) through
+;;   CALLG, as the other quadword routines; it returns R0/R1.
+;; - BIT(a, n) is bit n of the memory at a, as voc reads it on a
+;;   little-endian machine: BBC n, (Ra) is the VAX's variable bit field,
+;;   any longword position from the byte at a. The BOOLEAN is CLRB, and
+;;   INCB when the bit is set. A HUGEINT n is split: its byte offset
+;;   (ASHQ #-3, low longword) added to a, its low three bits (BICL3 #-8)
+;;   the position.
+;; - ShiftsOut, run on the guest, prints what the LLVM build prints
+;;   (output.expected), each case at each width.
+; VaxShifts, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXSHIFTS
+	.IDENT	/a06250420628208f/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	POC_ROTQ
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxShifts/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE LshChar
+	.ENTRY	VAXSHIFTS_LSHCHAR_MJHVLOG8, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVB	8(AP), -2(FP)
+	MOVB	4(AP), -1(FP)
+; line 11
+	MOVZBL	-1(FP), R0
+	CVTBL	-2(FP), R1
+	TSTL	R1
+	BLSS	L_1
+	ASHL	R1, R0, R0
+	BRB	L_2
+L_1:
+	ASHL	#-1, R0, R0
+	BICL2	#^X80000000, R0
+	INCL	R1
+	ASHL	R1, R0, R0
+L_2:
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#12
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE LshWord
+	.ENTRY	VAXSHIFTS_LSHWORD_35AFJ924, ^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVL	8(AP), -8(FP)
+	MOVW	4(AP), -2(FP)
+; line 15
+	MOVZWL	-2(FP), R0
+	MOVL	-8(FP), R1
+	CMPL	R1, #64
+	BGTR	L_3
+	CMPL	R1, #-64
+	BGEQ	L_5
+L_4:
+	MOVL	#-64, R1
+	BRB	L_5
+L_3:
+	MOVL	#64, R1
+L_5:
+	TSTL	R1
+	BLSS	L_6
+	ASHL	R1, R0, R0
+	BRB	L_7
+L_6:
+	ASHL	#-1, R0, R0
+	BICL2	#^X80000000, R0
+	INCL	R1
+	ASHL	R1, R0, R0
+L_7:
+	CVTWL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#16
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE LshLong
+	.ENTRY	VAXSHIFTS_LSHLONG_6S74ODRA, ^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVL	8(AP), -8(FP)
+	MOVL	4(AP), -4(FP)
+; line 19
+	MOVL	-4(FP), R0
+	MOVL	-8(FP), R1
+	CMPL	R1, #64
+	BGTR	L_8
+	CMPL	R1, #-64
+	BGEQ	L_10
+L_9:
+	MOVL	#-64, R1
+	BRB	L_10
+L_8:
+	MOVL	#64, R1
+L_10:
+	TSTL	R1
+	BLSS	L_11
+	ASHL	R1, R0, R0
+	BRB	L_12
+L_11:
+	ASHL	#-1, R0, R0
+	BICL2	#^X80000000, R0
+	INCL	R1
+	ASHL	R1, R0, R0
+L_12:
+	RET
+	PUSHL	#3
+	PUSHL	#20
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE LshLongByHuge
+	.ENTRY	VAXSHIFTS_LSHLONGBYHUG_HD5CC9VC, ^M<>
+	SUBL2	#12, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVQ	@8(AP), -12(FP)
+	MOVL	4(AP), -4(FP)
+; line 23
+	MOVL	-4(FP), R0
+	MOVL	-12(FP), R1
+	TSTL	-8(FP)
+	BEQL	L_16
+	BGTR	L_13
+	CMPL	-8(FP), #-1
+	BNEQ	L_14
+	CMPL	R1, #-64
+	BGEQU	L_15
+	BRB	L_14
+L_16:
+	CMPL	R1, #64
+	BLEQU	L_15
+	BRB	L_13
+L_14:
+	MOVL	#-64, R1
+	BRB	L_15
+L_13:
+	MOVL	#64, R1
+L_15:
+	TSTL	R1
+	BLSS	L_17
+	ASHL	R1, R0, R0
+	BRB	L_18
+L_17:
+	ASHL	#-1, R0, R0
+	BICL2	#^X80000000, R0
+	INCL	R1
+	ASHL	R1, R0, R0
+L_18:
+	RET
+	PUSHL	#3
+	PUSHL	#24
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE LshQuad
+	.ENTRY	VAXSHIFTS_LSHQUAD_4P5PML53, ^M<R2>
+	SUBL2	#12, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVL	8(AP), -12(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 27
+	MOVQ	-8(FP), R0
+	MOVL	-12(FP), R2
+	CMPL	R2, #64
+	BGTR	L_19
+	CMPL	R2, #-64
+	BGEQ	L_21
+L_20:
+	MOVL	#-64, R2
+	BRB	L_21
+L_19:
+	MOVL	#64, R2
+L_21:
+	TSTL	R2
+	BLSS	L_22
+	ASHQ	R2, R0, R0
+	BRB	L_23
+L_22:
+	ASHQ	#-1, R0, R0
+	BICL2	#^X80000000, R1
+	INCL	R2
+	ASHQ	R2, R0, R0
+L_23:
+	RET
+	PUSHL	#3
+	PUSHL	#28
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE LshConstants
+	.ENTRY	VAXSHIFTS_LSHCONSTANTS_EH5RF3B1, ^M<R2,R3,R4>
+	SUBL2	#12, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVQ	@8(AP), -12(FP)
+	MOVL	4(AP), -4(FP)
+; line 31
+	MOVL	-4(FP), R0
+	ASHL	#-1, R0, R0
+	BICL2	#^X80000000, R0
+	ASHL	#-3, R0, R0
+	MOVL	-4(FP), R1
+	ASHL	#3, R1, R1
+	ADDL2	R1, R0
+	MOVQ	-12(FP), R1
+	ASHQ	#-1, R1, R1
+	BICL2	#^X80000000, R2
+	ASHQ	#-39, R1, R1
+	MOVL	R0, R3
+	ASHL	#-31, R3, R4
+	ADDL2	R1, R3
+	ADWC	R2, R4
+	MOVQ	R3, R0
+	RET
+	PUSHL	#3
+	PUSHL	#32
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE RotChar
+	.ENTRY	VAXSHIFTS_ROTCHAR_5P9O4HK6, ^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVL	8(AP), -8(FP)
+	MOVB	4(AP), -1(FP)
+; line 35
+	MOVL	-8(FP), R0
+	BICL2	#-8, R0
+	MOVZBL	-1(FP), R1
+	MULL2	#257, R1
+	ASHL	R0, R1, R1
+	ASHL	#-8, R1, R1
+	MOVZBL	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#36
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE RotWord
+	.ENTRY	VAXSHIFTS_ROTWORD_P7BVUF66, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVB	8(AP), -3(FP)
+	MOVW	4(AP), -2(FP)
+; line 39
+	CVTBL	-3(FP), R0
+	BICL2	#-16, R0
+	MOVZWL	-2(FP), R1
+	MULL2	#65537, R1
+	ASHL	R0, R1, R1
+	ASHL	#-16, R1, R1
+	CVTWL	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#40
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE RotLong
+	.ENTRY	VAXSHIFTS_ROTLONG_J9Q4UUSS, ^M<>
+	SUBL2	#12, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVQ	@8(AP), -12(FP)
+	MOVL	4(AP), -4(FP)
+; line 43
+	BICL3	#-32, -12(FP), R0
+	ROTL	R0, -4(FP), R1
+	MOVL	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#44
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE RotQuad
+	.ENTRY	VAXSHIFTS_ROTQUAD_MVU4H751, ^M<R2,R3>
+	SUBL2	#40, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVL	8(AP), -12(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 47
+	MOVQ	-8(FP), R0
+	MOVL	-12(FP), R2
+	ASHL	#-31, R2, R3
+	MOVQ	R0, -20(FP)
+	MOVQ	R2, -28(FP)
+	MOVL	#2, -40(FP)
+	MOVAQ	-20(FP), -36(FP)
+	MOVAQ	-28(FP), -32(FP)
+	CALLG	-40(FP), G^POC_ROTQ
+	RET
+	PUSHL	#3
+	PUSHL	#48
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE RotConstants
+	.ENTRY	VAXSHIFTS_ROTCONSTANTS_D8L81D7J, ^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVL	8(AP), -8(FP)
+	MOVW	4(AP), -2(FP)
+; line 51
+	MOVZWL	-2(FP), R0
+	MULL2	#65537, R0
+	ASHL	#13, R0, R0
+	ASHL	#-16, R0, R0
+	ROTL	#1, -8(FP), R1
+	CVTWL	R0, R0
+	ADDL2	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#52
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Bit
+	.ENTRY	VAXSHIFTS_BIT_7T346ECC, ^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVL	8(AP), -8(FP)
+	MOVL	4(AP), -4(FP)
+; line 55
+	MOVL	-4(FP), R0
+	CLRB	R1
+	BBC	-8(FP), (R0), L_24
+	INCB	R1
+L_24:
+	MOVZBL	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#56
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE BitByHuge
+	.ENTRY	VAXSHIFTS_BITBYHUGE_HQ0VAF8U, ^M<R2>
+	SUBL2	#12, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVQ	@8(AP), -12(FP)
+	MOVL	4(AP), -4(FP)
+; line 59
+	MOVL	-4(FP), R0
+	ASHQ	#-3, -12(FP), R1
+	ADDL2	R1, R0
+	BICL3	#-8, -12(FP), R1
+	CLRB	R2
+	BBC	R1, (R0), L_25
+	INCB	R2
+L_25:
+	MOVZBL	R2, R0
+	RET
+	PUSHL	#3
+	PUSHL	#60
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE BitConstant
+	.ENTRY	VAXSHIFTS_BITCONSTANT_9BUH7RG8, ^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVL	4(AP), -4(FP)
+; line 63
+	MOVL	-4(FP), R0
+	CLRB	R1
+	BBC	#11, (R0), L_26
+	INCB	R1
+L_26:
+	MOVZBL	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#64
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXSHIFTS_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_A06250420628208F == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXSHIFTS_MAIN, ^M<>
+	CALLS	#0, VAXSHIFTS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXSHIFTS_MAIN

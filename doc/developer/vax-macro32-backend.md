@@ -2112,3 +2112,60 @@ takes poc options after the size model and the runs' arguments after
   `llvm-console-extra` declares a `["C"]` procedure;
   `llvm-no-trap-behavior` uses `MOVE` (proposal 7); `llvm-trap-location`
   links a library its `test.sh` builds for the host.
+
+**Done: the `SysWrite` fixtures (proposal 5), 2026-10-11.** 47
+fixtures whose programs wrote through an external `["C", "write"]
+SysWrite` write with `Out` now, the same characters, so each `expected`
+stays as it was. A line end written as a character (`0AX`, `CHR(10)`)
+is `Out.Ln` now, since on VMS it would land inside the record, an
+extra blank line; comments that described `SysWrite` were changed with
+the code. Six fixtures that declare it keep it: `llvm-var-record-params`
+and `llvm-console-extra` test the C call itself, `llvm-sets-strings-ir`
+compares IR, and `llvm-reject-external-vms`, `poc-exit-status` and
+`poc-output-streams` test poc, not the program. `llvm-system-ir`, which
+compiled `llvm-system`'s program to IR for two other triples, keeps a
+copy of the program as it was, so its IR has none of the runtime's
+declarations. 82 of the 84 programs build for the VAX and join the
+list (139 programs, 239 runs); `llvm-gc-collect` needs `ModuleTable`
+(Phase 17) and `llvm-system` `SYSTEM.VAL` from `ADDRESS` to `HUGEINT`
+(proposal 7).
+
+- *Differences with a reason*: `llvm-ash-max-min`, `llvm-const-fold`
+  and `llvm-const-fold-import` check `MAX(REAL)` and `MAX(LONGREAL)`
+  against IEEE 754's bounds, where the VAX's are F_floating's and
+  G_floating's (section 14, item 9). Their `expected-vax-*.out` files
+  were reviewed by the user (2026-10-11).
+- *A front-end fault*: `llvm-reals` printed "FAIL 27" on the VAX.
+  `ConstantEvaluator` folded a `REAL` expression in double precision
+  (`SHORT(0.1D0) = 0.1` folded to `FALSE`), which the LLVM backend
+  reached only in a `CONST` and the VAX backend, which folds an `IF`'s
+  condition, here. Fixed on `main` (482375e, `PLAN.md`, "Ongoing bug
+  fixing" 7) and merged (bf9c233).
+
+**Done: `LSH`, `ROT` and `BIT` (proposal 7's first part), 2026-10-11.**
+`VaxCodeGenerator` lowers the three at every width, each count a
+constant or a variable of any integer type:
+- `LSH` shares `ASH`'s count (`ShiftCount`, clamped to -64..64 for
+  `ASHL`/`ASHQ`'s byte count). Left is `ASHL`/`ASHQ`; right, which the
+  VAX has no logical shift for, is a shift right by 1, the sign bit
+  cleared (`BICL2 #^X80000000` on the high longword), then the rest of
+  the count. A `CHAR` or word is zero-extended first (`ZeroExtended`).
+- `ROT` of a longword is `ROTL` by `n AND 31`, `n`'s floored modulo. A
+  byte or word, which has no rotate, is multiplied by 2^w+1 to hold two
+  copies, shifted left by `n AND (w-1)` and right by `w`. A `HUGEINT`
+  calls `POC_ROTQ` (`rtl/vax/PocRtl.mar`): the halves exchanged for 32
+  and more, each rotated by `ROTL`, and their low bits swapped through a
+  mask.
+- `BIT(a, n)` is `BBC n, (Ra)`, the VAX's variable bit field from the
+  byte at `a`; a `HUGEINT` `n` adds its byte offset to `a` first.
+
+The fixture `vax-shifts` has the reviewed `expected-vax.mar` and
+`ShiftsOut`, which prints each case at each width on both backends; it,
+`llvm-system-shifts` and `llvm-system-extra` join the list. So do three
+fixtures that already built for the VAX but were not listed,
+`llvm-hugeint-arithmetic`, `llvm-gc-finalize` (seven programs) and
+`llvm-real-constant-folding`, whose `expected-vax-realfold.out`
+records that `CVTLF` rounds 2^24+1 away
+from zero where poc folds as IEEE 754 does (the user, 2026-10-11): 153
+programs, 253 runs. That file and `vax-shifts`' `expected-vax.mar` were
+reviewed by the user (2026-10-11).

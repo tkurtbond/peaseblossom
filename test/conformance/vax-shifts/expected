@@ -1,0 +1,4 @@
+semantic OK, wrote VaxShifts.mar
+exit 0
+VaxShifts.mar matches expected-vax.mar
+LLVM build exit 0

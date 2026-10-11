@@ -3784,22 +3784,15 @@ MODULE VaxCodeGenerator;
     RETURN result
   END Short;
 
-  (* ASH(x, n): x shifted left n bits, or right (sign-filling) for a
-     negative n, in the wider of LONGINT and x's type (ASHL, or ASHQ for a
-     HUGEINT), as PredeclaredProcedures.CheckAsh types it. A shift of the
-     type's width or more leaves 0, or the sign for a right one
-     (language-extensions.md, "Procedure values, ASH, MAX and MIN"), as ASHL
-     and ASHQ do for any count of -128..127; but their count is a byte, so
-     an n wider than a SHORTINT is first limited to -64..64 *)
-  PROCEDURE Ash(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
-    VAR t: Types.Type; x, n, count, result: Operand; c: LONGINT; op: ARRAY 8 OF CHAR;
-        big, small, positive, done: ARRAY 16 OF CHAR; hi, cnt: OperandText; operands: ARRAY 160 OF CHAR;
+  (* n, a shift count, as the byte count ASHL and ASHQ take, while x stays
+     where it is: a constant limited to -64..64, which shifts any value as
+     far as any larger count does; a SHORTINT as it is; anything wider in a
+     register of its own, limited to -64..64 at run time (a HUGEINT by its
+     high longword first) *)
+  PROCEDURE ShiftCount(n, x: Operand; line, column: INTEGER): Operand;
+    VAR count: Operand; c: LONGINT; big, small, positive, done: ARRAY 16 OF CHAR;
+        hi, cnt: OperandText; operands: ARRAY 160 OF CHAR;
   BEGIN
-    x := Expression(args, NIL);
-    n := Expression(args.next, NIL);
-    IF ~Types.IsInteger(x.type) OR ~Types.IsInteger(n.type) THEN RETURN Dummy() END;
-    t := Types.WiderOf(Types.LongInt, x.type);
-    x := Widen(x, t, line, column);
     IF n.kind = immediate THEN
       c := n.value;
       IF c > 64 THEN c := 64 ELSIF c < -64 THEN c := -64 END;
@@ -3831,8 +3824,28 @@ MODULE VaxCodeGenerator;
       EmitLabel(big);
       Operands("#64", cnt, "", operands); Emit("MOVL", operands);
       EmitLabel(done);
-      Release(n); n := NIL
+      Release(n)
     END;
+    RETURN count
+  END ShiftCount;
+
+  (* ASH(x, n): x shifted left n bits, or right (sign-filling) for a
+     negative n, in the wider of LONGINT and x's type (ASHL, or ASHQ for a
+     HUGEINT), as PredeclaredProcedures.CheckAsh types it. A shift of the
+     type's width or more leaves 0, or the sign for a right one
+     (language-extensions.md, "Procedure values, ASH, MAX and MIN"), as ASHL
+     and ASHQ do for any count of -128..127; but their count is a byte, so
+     an n wider than a SHORTINT is first limited to -64..64 (ShiftCount) *)
+  PROCEDURE Ash(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
+    VAR t: Types.Type; x, n, count, result: Operand; op: ARRAY 8 OF CHAR;
+  BEGIN
+    x := Expression(args, NIL);
+    n := Expression(args.next, NIL);
+    IF ~Types.IsInteger(x.type) OR ~Types.IsInteger(n.type) THEN RETURN Dummy() END;
+    t := Types.WiderOf(Types.LongInt, x.type);
+    x := Widen(x, t, line, column);
+    count := ShiftCount(n, x, line, column);
+    IF count # n THEN n := NIL END;
     IF (dest # NIL) & (Suffix(dest.type) = Suffix(t)) THEN result := dest
     ELSIF x.kind = register THEN result := x
     ELSIF (count.kind = register) & (count # n) & ~IsQuad(x) THEN result := count (* read before written *)
@@ -3845,6 +3858,161 @@ MODULE VaxCodeGenerator;
     result.type := t;
     RETURN result
   END Ash;
+
+  (* x, an integer, CHAR or SYSTEM.BYTE, zero-extended into a register of
+     its own: a longword, or a pair for a quadword *)
+  PROCEDURE ZeroExtended(x: Operand; line, column: INTEGER): Operand;
+    VAR r: Operand;
+  BEGIN
+    IF IsQuad(x) THEN
+      r := NewRegisterBeside(x.type, x, NIL, line, column);
+      MoveInto(x, r)
+    ELSE
+      r := NewRegisterBeside(longword, x, NIL, line, column);
+      IF Suffix(x.type) = "B" THEN Emit2("MOVZBL", x, r)
+      ELSIF Suffix(x.type) = "W" THEN Emit2("MOVZWL", x, r)
+      ELSE Emit2("MOVL", x, r)
+      END
+    END;
+    Release(x);
+    RETURN r
+  END ZeroExtended;
+
+  (* SYSTEM.LSH(x, n): x shifted left n bits, or right for a negative n,
+     filling with zeros, at x's own width and of its type
+     (language-extensions.md, "SYSTEM subset"); a count of the width or
+     more leaves 0. x is zero-extended into a register, a longword (so
+     that bits shifted past a byte's or a word's width are not part of the
+     result) or a pair, and shifted by ASHL or ASHQ, whose count is a
+     byte (ShiftCount). The VAX has no logical right shift: one of k bits
+     is an arithmetic one of 1 bit, the sign bit cleared, then one of
+     k - 1 bits more *)
+  PROCEDURE Lsh(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
+    VAR t: Types.Type; x, n, count, r: Operand; op: ARRAY 8 OF CHAR; signBit: OperandText;
+        right, done: ARRAY 16 OF CHAR; operands: ARRAY 160 OF CHAR;
+  BEGIN
+    x := Expression(args, NIL);
+    n := Expression(args.next, NIL);
+    IF ~Types.IsInteger(n.type) THEN RETURN Dummy() END;
+    t := x.type;
+    r := ZeroExtended(x, line, column);
+    count := ShiftCount(n, r, line, column);
+    IF IsQuad(r) THEN COPY("ASHQ", op); HalfText(r, 1, signBit) ELSE COPY("ASHL", op); Text(r, signBit) END;
+    Operands("#^X80000000", signBit, "", operands);
+    IF count.kind = immediate THEN
+      IF count.value >= 0 THEN
+        IF count.value # 0 THEN Emit3(op, count, r, r) END
+      ELSE
+        Emit3(op, Immediate(Types.ShortInt, -1), r, r);
+        Emit("BICL2", operands);
+        IF count.value # -1 THEN Emit3(op, Immediate(Types.ShortInt, count.value + 1), r, r) END
+      END
+    ELSE
+      IF count.kind # register THEN
+        x := count;
+        count := NewRegisterBeside(longword, x, r, line, column);
+        Emit2("CVTBL", x, count); Release(x)
+      ELSIF Suffix(count.type) = "B" THEN
+        Emit2("CVTBL", count, count)
+      END;
+      count.type := longword;
+      NewLabel(right); NewLabel(done);
+      Emit1("TSTL", count); Emit("BLSS", right);
+      Emit3(op, count, r, r); Emit("BRB", done);
+      EmitLabel(right);
+      Emit3(op, Immediate(Types.ShortInt, -1), r, r);
+      Emit("BICL2", operands);
+      Emit1("INCL", count);
+      Emit3(op, count, r, r);
+      EmitLabel(done);
+      Release(count)
+    END;
+    r.type := t;
+    RETURN r
+  END Lsh;
+
+  (* SYSTEM.ROT(x, n): x rotated left n bits, or right for a negative n,
+     within x's own width, n taken modulo the width, so its low bits,
+     AND (width - 1), which is the floored modulo of any two's complement
+     n. A longword by ROTL; a byte or a word w bits wide is zero-extended
+     into a longword, multiplied by 2^w + 1 to hold it twice, side by
+     side, shifted left by n MOD w, and right by w, where its low w bits
+     are the rotated value; a quadword by poc's runtime, POC_ROTQ *)
+  PROCEDURE Rot(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
+    VAR t: Types.Type; x, n, k, r: Operand; w: LONGINT;
+  BEGIN
+    x := Expression(args, NIL);
+    n := Expression(args.next, NIL);
+    IF ~Types.IsInteger(n.type) THEN RETURN Dummy() END;
+    t := x.type;
+    IF IsQuad(x) THEN
+      x := InRegister(x, line, column);
+      n := Widen(n, Types.HugeInt, line, column);
+      RETURN QuadRuntime("POC_ROTQ", t, x, n, line, column)
+    END;
+    w := 8 * VaxTypes.Size(t);
+    IF n.kind = immediate THEN
+      k := Immediate(Types.ShortInt, n.value MOD w)
+    ELSE
+      k := NewRegisterBeside(longword, n, x, line, column);
+      IF IsQuad(n) THEN Emit3("BICL3", Immediate(longword, -w), LowHalf(n), k)
+      ELSE MoveInto(n, k); Emit2("BICL2", Immediate(longword, -w), k)
+      END;
+      Release(n)
+    END;
+    IF (k.kind = immediate) & (k.value = 0) THEN
+      r := ZeroExtended(x, line, column)
+    ELSIF w = 32 THEN
+      r := NewRegisterBeside(longword, x, k, line, column);
+      Emit3("ROTL", k, x, r);
+      Release(x)
+    ELSE
+      r := ZeroExtended(x, line, column);
+      Emit2("MULL2", Immediate(longword, ASH(1, w) + 1), r);
+      Emit3("ASHL", k, r, r);
+      Emit3("ASHL", Immediate(Types.ShortInt, -w), r, r)
+    END;
+    IF k.kind = register THEN Release(k) END;
+    r.type := t;
+    RETURN r
+  END Rot;
+
+  (* SYSTEM.BIT(a, n): bit n MOD 8 of the byte at a + n DIV 8 (floored),
+     for any n (language-extensions.md, "SYSTEM subset"), which is BBC's
+     own bit field: a position, any signed longword, from a base address.
+     A quadword n is split: the byte n DIV 8 (ASHQ) added to the base, and
+     n MOD 8 its position *)
+  PROCEDURE Bit(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
+    VAR a, n, base, pos, q, r: Operand; posText, baseText: OperandText; zero: ARRAY 16 OF CHAR;
+        operands: ARRAY 160 OF CHAR;
+  BEGIN
+    a := Expression(args, NIL);
+    n := Expression(args.next, NIL);
+    base := NewRegisterBeside(longword, a, n, line, column);
+    Emit2("MOVL", a, base); Release(a);
+    IF IsQuad(n) THEN
+      q := NewRegisterBeside(n.type, n, base, line, column);
+      Emit3("ASHQ", Immediate(Types.ShortInt, -3), n, q);
+      Emit2("ADDL2", LowHalf(q), base); Release(q);
+      pos := NewRegisterBeside(longword, n, base, line, column);
+      Emit3("BICL3", Immediate(longword, -8), LowHalf(n), pos);
+      Release(n)
+    ELSIF n.kind = immediate THEN
+      pos := n
+    ELSE
+      pos := Widen(n, longword, line, column)
+    END;
+    r := NewRegisterBeside(Types.Boolean, base, pos, line, column);
+    baseText := "("; Text(base, posText); Append(baseText, posText); AppendChar(baseText, ")");
+    Text(pos, posText);
+    NewLabel(zero);
+    Emit1("CLRB", r);
+    Operands(posText, baseText, zero, operands); Emit("BBC", operands);
+    Emit1("INCB", r);
+    EmitLabel(zero);
+    Release(base); IF pos.kind # immediate THEN Release(pos) END;
+    RETURN r
+  END Bit;
 
   (* A call of the predeclared procedure name; a function's value, or NIL *)
   (* LEN(a) or LEN(a, n), not constant, so of an open dimension of a, an
@@ -4229,6 +4397,9 @@ MODULE VaxCodeGenerator;
     ELSIF name = "INCL" THEN InclExcl(TRUE, args, line, column); RETURN NIL
     ELSIF name = "EXCL" THEN InclExcl(FALSE, args, line, column); RETURN NIL
     ELSIF name = "ASH" THEN RETURN Ash(args, dest, line, column)
+    ELSIF name = "LSH" THEN RETURN Lsh(args, dest, line, column)
+    ELSIF name = "ROT" THEN RETURN Rot(args, dest, line, column)
+    ELSIF name = "BIT" THEN RETURN Bit(args, dest, line, column)
     ELSIF name = "COPY" THEN Copy(args, line, column); RETURN NIL
     ELSIF name = "HALT" THEN Halt(args); RETURN NIL
     ELSIF name = "ASSERT" THEN Assert(args, line, column); RETURN NIL
