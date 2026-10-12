@@ -934,6 +934,10 @@ most, object libraries.
      with `llvm-extension-through-pointers` 166 programs and 286 runs,
      all passing on the guest. The user reviewed the fixture's two
      `expected-vax*.mar` files (2026-10-11).
+   - *Proposal 7's last fixture* (2026-10-11): `llvm-underscore-dollar`,
+     whose imported record type has a field default, runs as it is; 168
+     programs and 288 runs. Every construct the survey found unlowered is
+     lowered; the 9 fixtures built in steps remain.
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled

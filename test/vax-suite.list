@@ -175,3 +175,5 @@ llvm-extension-through-pointers lsb.mod -O2
 llvm-extension-through-pointers lsb.mod -OC
 vax-field-initializers FieldsOut.mod -O2
 vax-field-initializers FieldsOut.mod -OC
+llvm-underscore-dollar dollar.mod -O2
+llvm-underscore-dollar dollar.mod -OC

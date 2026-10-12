@@ -2249,3 +2249,15 @@ their length. `vax-emit-errors`' examples of what is not lowered, an
 array of records with a default and a pointer to one, are now a record
 literal that is not constant and `SYSTEM.VAL` from a `REAL` to a
 `SET64`.
+
+**Done: proposal 7's last fixture, 2026-10-11.** `llvm-underscore-dollar`
+was held back by a variable of the imported `Ss$Def.DSC$DESCRIPTOR`,
+which has a field with a default (`$init`, named like the backend's own
+names); field initializers lowered, it runs on the guest under both size
+models as it is and joins the list: 168 programs, 288 runs. Every
+construct the survey found unlowered (`LSH`, `ROT`, `BIT`, `MOVE`,
+`SYSTEM.VAL` into a `HUGEINT`, structured constants, field initializers)
+is lowered now; record and array literals that are not constant, and
+`SYSTEM.VAL` between a real and a type of another size, are not, and no
+listed fixture needs them. What remains of step 5 is the 9 fixtures
+built in steps.
