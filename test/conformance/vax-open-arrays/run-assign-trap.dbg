@@ -1,5 +1,5 @@
 ! mode = 2: Assign("123456789"), 10 characters into t's 8: code 9 at line
-! 67, column 10, t untouched
+! 67, column 5 (the assignment's, as LLVM's), t untouched
 DEPOSIT/WORD VAXOPENARRAYS\VAXOPENARRAYS_MODE_EV21NUI7 = 2
 GO
 EXAMINE/ASCII:8 VAXOPENARRAYS\VAXOPENARRAYS_T_OOKJRC2G

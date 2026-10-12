@@ -29,8 +29,10 @@
 ;;   within it, moves that many and ends with 0X; = calls POC_STRCMP with
 ;;   both lengths.
 ;; - Assigning an open array to a fixed one traps with code 9 at line 67,
-;;   column 10, before anything is moved, when LEN(a) > 8 (the assign-trap
-;;   run, t still empty); else it moves LEN(a) times the element size
+;;   column 5, the assignment's, as the LLVM backend's trap does (column
+;;   10, a's, until 2026-10-11; reviewed by the user 2026-10-11), before
+;;   anything is moved, when LEN(a) > 8 (the assign-trap run, t still
+;;   empty); else it moves LEN(a) times the element size
 ;;   bytes, so that AssignInts moves all 8 bytes of n into u (bit 1024).
 ;; - The values run exits with bits = 2047, %X00007FF1: all 11 checks
 ;;   hold, as they do in the -O2 and -OC builds run on the VAX.
@@ -586,7 +588,7 @@ L_52:
 	MOVAB	VAXOPENARRAYS_T_OOKJRC2G, -16(FP)
 	CMPL	8(AP), #8
 	BLEQU	L_48
-	PUSHL	#10
+	PUSHL	#5
 	PUSHL	#67
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#9
@@ -731,7 +733,7 @@ VAXOPENARRAYS_ASSIGNIN_2UD8ES0N:
 	MOVAB	VAXOPENARRAYS_U_OOKJRCG3, -12(FP)
 	CMPL	8(AP), #4
 	BLEQU	L_63
-	PUSHL	#10
+	PUSHL	#5
 	PUSHL	#86
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#9

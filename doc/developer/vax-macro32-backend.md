@@ -2261,3 +2261,52 @@ is lowered now; record and array literals that are not constant, and
 `SYSTEM.VAL` between a real and a type of another size, are not, and no
 listed fixture needs them. What remains of step 5 is the 9 fixtures
 built in steps.
+
+**Done: the 9 fixtures built in steps (proposal 8), 2026-10-11.** The
+survey could not find their programs because each `test.sh` builds in
+steps: in work directories, from subdirectories, with `-compile` first.
+`tools/vax-suite` now builds a list line's main module that is in a
+subdirectory (`src/M.Mod`) from that directory, so its own modules are
+found beside it and a relative `-import-path` is relative to it. Of the
+nine:
+
+- *Four join the list*, their programs as their `test.sh` runs them:
+  `llvm-trap-location` (`-import-path lib -trap-location
+  -trap-heap-exhausted`, all 16 cases under both size models, and case
+  0 without `-trap-location`), `llvm-gc-compiled-roots` (`M`, whose `G`
+  holds what a collection must keep, and `N`), `llvm-using-modules`
+  (`main`, `app`, and the other `app` with `-import-path ../src`) and
+  `semantic-strict-compiled-imports` (its `client` and the new
+  `uselocals`, under `-strict`). Built here from source, not from a
+  `.sym` and `.o` compiled first, a library or an object's weak
+  references: those are the LLVM driver's, and stay in their fixtures.
+- *Five stay the LLVM driver's or poc's own*: `llvm-module-keys` (the
+  key symbols that make an object link only with the interface it was
+  compiled against), `llvm-object-reuse` (clang's objects reused by
+  their stamps, with a C part), `poc-opt-level` (clang's `-O`), and
+  `poc-exit-status` and `poc-output-streams` (poc's own status and
+  streams, which run on VMS when poc does, step 6).
+
+Found on the way, and fixed:
+- Under `-strict`, an import compiled from source with a `HUGEINT`
+  among a procedure's locals was an error, named with the importer's
+  file, on both backends: the checker turns `-strict` off for an import,
+  but each backend reopens a procedure's body to generate it
+  (`SemanticActions.OpenProcedureBodyScope`), which resolved the locals
+  again with it on. `rtl/vax`'s `LineOutput` has such locals, so every
+  `-strict` program that wrote with `Out` failed for the VAX. Reopening
+  a body now reports nothing under `-strict`; fixed on `main` too, and
+  `semantic-strict-compiled-imports` has the case (`uselocals`, not
+  `locals`, which VMS would not tell from `Locals`).
+- The VAX's trap 9, an open array too long for the fixed array assigned
+  it, named the value's column (`a` in `t := a`), LLVM's the
+  assignment's; it is the assignment's now (`AssignTo` takes the
+  position), which changes two lines of `vax-open-arrays`'
+  `expected-vax.mar` and its debugger run's column.
+
+178 programs, 328 runs: the list holds every fixture of the 122 that
+`rtl/vax` and the backend can run, so step 5's list is complete (a
+sweep of the rest found none that builds). The others need what
+`rtl/vax` lacks (`Out.Real`, `Modules.Halt`, `In`, `Strings`, `Math` and
+the rest: Phase 17), a `["C"]` external, or a record or array literal
+that is not constant, which the backend does not lower yet.

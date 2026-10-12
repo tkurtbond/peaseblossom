@@ -3691,15 +3691,20 @@ MODULE SemanticActions;
      in textual order with CheckDeclarations; resolving every data
      declaration first, as this does, gives the same Objects because
      CheckLateName keeps a declaration after a procedure from hiding
-     anything that procedure could see. *)
+     anything that procedure could see. Nothing is reported under -strict
+     here: the checker reported what the command line's module uses, and an
+     import's body is exempt, but the backend reopens it while -strict is on
+     (until 2026-10-11 a HUGEINT local of an import from source was an
+     error, named with the importer's file). *)
   PROCEDURE OpenProcedureBodyScope*(d: SyntaxTree.ProcDeclNode; outer: SymbolTable.Scope;
                                     receiverType: Types.Type; pt: Types.ProcedureType): SymbolTable.Scope;
-    VAR bodyScope: SymbolTable.Scope; savedCollect: BOOLEAN;
+    VAR bodyScope: SymbolTable.Scope; savedCollect, savedStrict: BOOLEAN;
   BEGIN
     bodyScope := OpenParameterScope(d, outer, receiverType, pt);
     savedCollect := collectFields; collectFields := FALSE; (* checked already *)
+    savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE;
     IF d.declarations # NIL THEN ResolveDeclSeq(d.declarations, bodyScope) END;
-    collectFields := savedCollect;
+    collectFields := savedCollect; Diagnostics.strict := savedStrict;
     RETURN bodyScope
   END OpenProcedureBodyScope;
 

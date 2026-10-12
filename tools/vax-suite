@@ -11,6 +11,9 @@
 #   <fixture> <main module's file> <-O2 or -OC> [<poc option>...]
 #       [: <arguments> [; <arguments>]...]
 #
+# A main module in a subdirectory of the fixture (src/M.Mod) is built and
+# run from there, so its own modules are found beside it and a relative
+# directory among the options is relative to it.
 # '#' starts a comment line. The program is built once with the options,
 # and run once with each list of arguments after ":" (quoted as in the
 # shell: "two words", ""), or once with none. For each line, the
@@ -85,7 +88,11 @@ parse() {
   # shellcheck disable=SC2086
   set -- $build
   fixture=$1; main=$2; shift 2; options=$*
-  base=${main%.mod}
+  case $main in
+    */*) subdir=/${main%/*}; main=${main##*/} ;;
+    *) subdir= ;;
+  esac
+  base=${main%.[Mm]od}
   tag=$(echo "$options" | sed 's/^-//; s/ -/-/g; s/ /-/g')
   if [ "$numbered" = yes ]; then
     printf '%s\n' "$runs" | tr ';' '\n' | sed 's/^ *//; s/ *$//' >"$work/$id.runs"
@@ -97,10 +104,10 @@ parse() {
 while read -r id line; do
   parse "$line"
   # the host's runs
-  h=$work/host/$id
-  cp -R "$ROOT/test/conformance/$fixture" "$h"
+  cp -R "$ROOT/test/conformance/$fixture" "$work/host/$id"
+  h=$work/host/$id$subdir
   # shellcheck disable=SC2086
-  if (cd "$h" && poc $options -o prog -build "$main") >"$h.build" 2>&1; then hostbuilt=yes; else hostbuilt=no; fi
+  if (cd "$h" && poc $options -o prog -build "$main") >"$work/host/$id.build" 2>&1; then hostbuilt=yes; else hostbuilt=no; fi
   k=0
   while IFS= read -r args; do
     k=$((k + 1))
@@ -112,11 +119,11 @@ while read -r id line; do
     fi
   done <"$work/$id.runs"
   # the VAX's build, renamed for the guest
-  v=$work/vax/$id
-  cp -R "$ROOT/test/conformance/$fixture" "$v"
+  cp -R "$ROOT/test/conformance/$fixture" "$work/vax/$id"
+  v=$work/vax/$id$subdir
   top=$(sed -n 's/^[[:space:]]*MODULE[[:space:]]*\([A-Za-z0-9_]*\).*/\1/p' "$v/$main" | head -1)
   # shellcheck disable=SC2086
-  if ! (cd "$v" && poc $options -target vax-dec-vms -import-path "$ROOT/rtl/vax" -build "$main") >"$v.build" 2>&1 \
+  if ! (cd "$v" && poc $options -target vax-dec-vms -import-path "$ROOT/rtl/vax" -build "$main") >"$work/vax/$id.build" 2>&1 \
      || [ ! -f "$v/$top.com" ]; then
     echo "VAX build failed" >"$work/$id.vax.failed"
     continue

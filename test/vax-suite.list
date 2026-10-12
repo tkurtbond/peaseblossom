@@ -5,7 +5,8 @@
 #   <fixture> <main module's file> <-O2 or -OC> [<poc option>...]
 #       [: <arguments> [; <arguments>]...]
 #
-# each under the size models and options its own test.sh builds it with,
+# A main module in a subdirectory (src/M.Mod) is built and run there. Each
+# under the size models and options its own test.sh builds it with,
 # and run with the arguments its test.sh gives it (tools/vax-suite).
 llvm-address-to-longint addresstolongint.mod -OC
 llvm-array-assign arrayassign.mod -O2
@@ -177,3 +178,16 @@ vax-field-initializers FieldsOut.mod -O2
 vax-field-initializers FieldsOut.mod -OC
 llvm-underscore-dollar dollar.mod -O2
 llvm-underscore-dollar dollar.mod -OC
+# the fixtures built in steps: their programs, each built from its own
+# directory; what they test of the LLVM driver (-compile, libraries, an
+# object's weak references, a .sym from another build) stays theirs
+llvm-trap-location traplocation.mod -O2 -import-path lib -trap-location -trap-heap-exhausted : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9 ; 10 ; 11 ; 12 ; 13 ; 14 ; 15
+llvm-trap-location traplocation.mod -OC -import-path lib -trap-location -trap-heap-exhausted : 0 ; 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9 ; 10 ; 11 ; 12 ; 13 ; 14 ; 15
+llvm-trap-location traplocation.mod -O2 -import-path lib : 0
+llvm-gc-compiled-roots src/M.Mod -O2
+llvm-gc-compiled-roots src/N.Mod -O2
+llvm-using-modules src/main.mod -O2
+llvm-using-modules src/app.mod -O2
+llvm-using-modules others/app.mod -O2 -import-path ../src
+semantic-strict-compiled-imports client.mod -O2 -strict -import-path lib
+semantic-strict-compiled-imports uselocals.mod -O2 -strict -import-path lib

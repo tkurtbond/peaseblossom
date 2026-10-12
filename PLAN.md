@@ -938,6 +938,17 @@ most, object libraries.
      whose imported record type has a field default, runs as it is; 168
      programs and 288 runs. Every construct the survey found unlowered is
      lowered; the 9 fixtures built in steps remain.
+   - *The 9 fixtures built in steps* (2026-10-11): `tools/vax-suite`
+     builds a main module in a subdirectory from there. The programs of
+     `llvm-trap-location`, `llvm-gc-compiled-roots`, `llvm-using-modules`
+     and `semantic-strict-compiled-imports` join the list; what those
+     test of the LLVM driver stays theirs, and `llvm-module-keys`,
+     `llvm-object-reuse`, `poc-opt-level`, `poc-exit-status` and
+     `poc-output-streams` test only the LLVM driver or poc itself (step
+     6). Found and fixed: a source import's procedure locals were held to
+     the importer's `-strict` (both backends; fixed on `main` too), and
+     the VAX's trap 9 named the value's column, not the assignment's.
+     178 programs, 328 runs: step 5's list is complete.
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled

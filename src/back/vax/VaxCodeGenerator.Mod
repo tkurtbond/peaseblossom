@@ -4714,8 +4714,8 @@ MODULE VaxCodeGenerator;
 
   (* target := v, v an open array, target a fixed array of the same
      element type (voc's rule, language-extensions.md, "Array assignment";
-     section 14): LEN(v) elements copied, or the trap (code 9, at v's
-     position) when that is more than target's length. The bytes to move
+     section 14): LEN(v) elements copied, or the trap (code 9, at
+     line:column) when that is more than target's length. The bytes to move
      and both addresses are kept in slots of the frame, since MoveCounted
      overwrites R0-R5. *)
   PROCEDURE AssignOpen(v, target: Operand; line, column: INTEGER);
@@ -4786,7 +4786,7 @@ MODULE VaxCodeGenerator;
     NewLabel(ok); Emit("BEQL", ok); Trap(13, s.line, s.column); EmitLabel(ok)
   END RecordAssignmentCheck;
 
-  PROCEDURE ^ AssignTo(target: Operand; value: SyntaxTree.ExprNode);
+  PROCEDURE ^ AssignTo(target: Operand; value: SyntaxTree.ExprNode; line, column: INTEGER);
 
   PROCEDURE Assignment(s: SyntaxTree.AssignStatementNode);
     VAR obj: SymbolTable.Object; target: Operand; text: ARRAY 160 OF CHAR;
@@ -4799,12 +4799,14 @@ MODULE VaxCodeGenerator;
     END;
     target := Locate(s.target, obj, s.target.line, s.target.column);
     IF ~target.standIn THEN RecordAssignmentCheck(s, obj, target) END;
-    AssignTo(target, s.value)
+    AssignTo(target, s.value, s.line, s.column)
   END Assignment;
 
   (* target := value, target located: a scalar computed into it where it
-     can be, a string or an array or a record copied *)
-  PROCEDURE AssignTo(target: Operand; value: SyntaxTree.ExprNode);
+     can be, a string or an array or a record copied; an open array too
+     long for target traps at line:column, the statement's, as the LLVM
+     backend's does (until 2026-10-11 the value's) *)
+  PROCEDURE AssignTo(target: Operand; value: SyntaxTree.ExprNode; line, column: INTEGER);
     VAR v: Operand; from, to: OperandText;
   BEGIN
     IF target.standIn OR (target.lens # NIL) THEN (* reported, or an open array, which the checker refuses *)
@@ -4824,7 +4826,7 @@ MODULE VaxCodeGenerator;
     ELSE
       v := Expression(value, NIL);
       IF v.lens # NIL THEN
-        AssignOpen(v, target, value.line, value.column)
+        AssignOpen(v, target, line, column)
       ELSE
         (* a record, the target's size: one of an extension assigned to
            one of its base type gives only the base's fields; an array,
@@ -5987,7 +5989,7 @@ MODULE VaxCodeGenerator;
         IF f.initializer # NIL THEN
           target := NewOperand(memory, f.type); target.baseOp := r; target.ownsBase := TRUE;
           target.offset := VaxTypes.FieldOffset(rec, f);
-          AssignTo(target, f.initializer)
+          AssignTo(target, f.initializer, f.initializer.line, f.initializer.column)
         ELSE
           Emit2("ADDL2", Immediate(longword, VaxTypes.FieldOffset(rec, f)), r);
           InitializeAt(r, f.type, 0, 0); Release(r)
