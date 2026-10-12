@@ -1585,11 +1585,15 @@ MODULE Poc;
      compiled from source, written as <Module>.mar in outputDir, and the
      DCL procedure that assembles them and links the image, at exePath
      with ".com" (by default the main module's name, in the current
-     directory, as for LLVM); poc runs nothing on VMS. Silent on
-     success, as a build is. *)
+     directory, as for LLVM); poc runs nothing on VMS. A module may also
+     come from a VAX library (Phase 17 step 1, section 18): the procedure
+     links each library the program uses, its object library or, with
+     -shared-libraries, its shareable image, and POCRTL's whenever POCRTL
+     is on the library path. Silent on success, as a build is. *)
   PROCEDURE BuildVax(name, outputDir, exePath: ARRAY OF CHAR);
     VAR
       modules, m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
+      lib: Libraries.Library; libraries, librariesTail, u: VaxToolchainDriver.Unit;
       topName: SyntaxTree.Ident;
       comPath: ARRAY 300 OF CHAR; image: ARRAY 64 OF CHAR;
   BEGIN
@@ -1600,19 +1604,32 @@ MODULE Poc;
     IF ~ok THEN RETURN END;
     m := modules;
     WHILE m # NIL DO
-      IF ~IsVaxUnit(m, FALSE) THEN
+      IF ~m.inLibrary & ~IsVaxUnit(m, FALSE) THEN
         failed := TRUE;
         Err.String("poc: module "); Err.String(m.module.name);
-        Err.String(" is not compiled from source; a program for "); Err.String(VaxToolchainDriver.triple);
-        Err.String(" is built from source only (VMS libraries are Phase 17's)"); Err.Ln;
+        Err.String(" is compiled already; a program for "); Err.String(VaxToolchainDriver.triple);
+        Err.String(" takes a module from source or from a library"); Err.Ln;
         RETURN
       END;
       m := m.next
     END;
+    (* with the runtime's library on the library path, its runtime is that
+       library's (section 18, proposal 4) *)
+    lib := Libraries.FindLibrary(VaxToolchainDriver.runtimeLibrary);
+    IF lib # NIL THEN Libraries.Use(lib) END;
+    IF ~CheckLibraries(modules) THEN RETURN END;
+    libraries := NIL; librariesTail := NIL; lib := Libraries.linkOrder;
+    WHILE lib # NIL DO
+      NEW(u); COPY(lib.name, u.name); u.next := NIL;
+      IF librariesTail = NIL THEN libraries := u ELSE librariesTail.next := u END;
+      librariesTail := u;
+      lib := lib.linkNext
+    END;
     ProgramTopName(modules, topName);
     IF (exePath[0] = 0X) & ~VaxImagePaths(topName, comPath, image) THEN RETURN END;
     IF WriteMacro32(modules, outputDir, FALSE, FALSE)
-       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, name, image, VaxUnits(modules, FALSE)) THEN
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, name, image, VaxUnits(modules, FALSE), libraries,
+                                                 sharedLibraries) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
   END BuildVax;
@@ -1792,7 +1809,7 @@ MODULE Poc;
     i := 0; WHILE comPath[i] # 0X DO INC(i) END;
     comPath[i - 4] := 0X; Strcat(comPath, ".com"); (* <First>.mar's .com *)
     IF WriteMacro32(modules, outputDir, TRUE, FALSE)
-       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE)) THEN
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE), NIL, FALSE) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
   END CompileVax;

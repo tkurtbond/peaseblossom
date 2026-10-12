@@ -355,6 +355,11 @@ which defines the logical names
 and
 .Ar NAME
 that building against the library and running with it need.
+A program's modules may come from such libraries: its
+.Fl build
+procedure links each one's object library, or with
+.Fl shared-libraries
+its shareable image, and the runtime's when it is on the library path.
 Every library but the runtime's,
 .Li POCRTL ,
 made from
@@ -362,7 +367,8 @@ made from
 and
 .Pa PocRtl.mar ,
 needs it.
-Every module must be compiled from source, the runtime's
+Without libraries, every module must be compiled from source, the
+runtime's
 .Li Out , Err , Modules
 and
 .Li Platform

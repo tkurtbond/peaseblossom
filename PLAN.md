@@ -573,8 +573,12 @@ C++, and so on) unless step 4 chooses one deliberately.
    `<name>_setup.com` defines its logical names, and the runtime is the
    library `POCRTL`, which every other needs; fixture `vax-library`
    builds both on the guest and runs a program linked against each kind.
-   Proposal 6 changed as the guest showed (section 18.5). Next: `-build`
-   against libraries.
+   Proposal 6 changed as the guest showed (section 18.5). `-build`
+   links a program against VAX libraries, their object libraries or,
+   with `-shared-libraries`, their shareable images, and `POCRTL`'s
+   whenever it is on the library path (`vax-library` runs both on the
+   guest). Next: `-install-library` and the library path on VMS, and the
+   collision check from `.sym` files (proposal 7).
 
 2. **Which existing Oberon libraries and modules to support on VMS.**
    Take Phase 12's complete inventory of voc's modules and Phase 10's

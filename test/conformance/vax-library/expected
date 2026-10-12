@@ -50,9 +50,12 @@ in the library directory: VaxLibShapes.sym
 in the library directory: VaxLibSums.mar
 in the library directory: VaxLibSums.owner
 in the library directory: VaxLibSums.sym
-== poc -target vax-dec-vms -library-path libs -output-dir main -emit-macro32 VaxLibUse.mod
-semantic OK, wrote main/VaxLibUse.mar
+== poc -target vax-dec-vms -library-path libs -output-dir main -o useolb -build VaxLibUse.mod
 exit 0
+useolb.com matches expected-useolb.com
+== poc -target vax-dec-vms -library-path libs -shared-libraries -output-dir main -o useshr -build VaxLibUse.mod
+exit 0
+useshr.com matches expected-useshr.com
 == poc -target vax-dec-vms -library-path libs -library A234567890123456789012345678901234 VaxLibBase.mod
 poc: A234567890123456789012345678901234 cannot name a library for vax-dec-vms (1 to 33 letters, digits, _, $ and -)
 exit 1

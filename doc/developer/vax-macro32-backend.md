@@ -2822,9 +2822,20 @@ image found through the logical name `SHRLIB`:
   defined for each library it needs, and stops, before doing anything,
   with "library VAXLIB needs library POCRTL: run its POCRTL_SETUP.COM
   first" (`%X1000002C`, `SS$_ABORT` with its message inhibited).
-- *Left for the next steps*: `-build` linking a program against VAX
-  libraries (it still compiles the runtime from source and links
-  `POCRTL.OBJ`; a module taken from a library is refused), the program's
-  check of each needed library's logical names, `-install-library` and
+- *`-build` against libraries* (2026-10-12). A program's module may
+  come from a VAX library; `-build`'s procedure checks, as a library's
+  does, that each library the program uses has been set up, and links
+  each one's object library, `POC$LIB_<NAME>:<NAME>.OLB/LIBRARY`, in link
+  order (a library before those it needs), or with `-shared-libraries`
+  its shareable image, `POC$LIB_<NAME>:<NAME>.EXE/SHAREABLE`, found at
+  run time by the logical name `<NAME>`. With `POCRTL` on the library
+  path the program always links it, and the runtime's modules come from
+  it, not from `rtl/vax`'s source, and `POCRTL.OBJ` is not linked; with
+  no library, the procedure is what it was (`vax-build`'s are unchanged).
+  `vax-library` builds its program both ways with `-build`
+  (`expected-useolb.com`, `expected-useshr.com`) and runs both on the
+  guest; those files and the new `guest-library.com` were reviewed by
+  the user (2026-10-12).
+- *Left for the next steps*: `-install-library` and
   the library path on VMS (the subdirectory join), and the collision
   check from `.sym` files (proposal 7).

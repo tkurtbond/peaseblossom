@@ -134,6 +134,30 @@ MODULE VaxToolchainDriver;
     WriteText(w, s); Files.Write(w, 0AX)
   END WriteLine;
 
+  (* Whether a and b are one file name on VMS, which ignores case *)
+  PROCEDURE IsSameVmsName*(a, b: ARRAY OF CHAR): BOOLEAN;
+    VAR ua, ub: ARRAY 72 OF CHAR;
+  BEGIN
+    Upper(a, ua); Upper(b, ub);
+    RETURN ua = ub
+  END IsSameVmsName;
+
+  (* Lines of a procedure that stop it, with a message, unless the
+     logical name POC$LIB_<NEED> is defined, as library need's setup
+     procedure defines it (section 18, proposal 6); user the library or
+     program that needs it, uppercased, label a label of its own *)
+  PROCEDURE WriteNeedCheck(VAR w: Files.Rider; user, need, label: ARRAY OF CHAR);
+    VAR line: ARRAY 300 OF CHAR;
+  BEGIN
+    COPY('$ IF F$TRNLNM("POC$LIB_', line); Append(line, need); Append(line, '") .NES. "" THEN GOTO ');
+    Append(line, label); WriteLine(w, line);
+    COPY('$ WRITE SYS$ERROR "', line); Append(line, user); Append(line, " needs library ");
+    Append(line, need); Append(line, ": run its "); Append(line, need);
+    Append(line, '_SETUP.COM first"'); WriteLine(w, line);
+    WriteLine(w, "$ EXIT %X1000002C"); (* SS$_ABORT, its message inhibited: the line above is it *)
+    COPY("$", line); Append(line, label); Append(line, ":"); WriteLine(w, line)
+  END WriteNeedCheck;
+
   (* The DCL procedure at path that assembles units, each <UNIT>.MAR in the
      directory it runs in, and, when image is not empty, links them with
      poc's runtime into <IMAGE>.EXE, units the program's modules with the
@@ -145,11 +169,23 @@ MODULE VaxToolchainDriver;
      main module's first, since DCL limits a command's length and poc's
      own program has over forty modules; POCRTL.OBJ is in the directory
      POC$RTL names, when that logical name is defined, else in the current
-     one. FALSE if the file could not be written. *)
-  PROCEDURE WriteBuildProcedure*(path, source, image: ARRAY OF CHAR; units: Unit): BOOLEAN;
+     one. With libraries, the libraries the program takes modules from,
+     in link order (Phase 17 step 1, section 18), it first checks that
+     each one's setup procedure has been run (POC$LIB_<NAME>), and links
+     each one's object library, POC$LIB_<NAME>:<NAME>.OLB, or with shared
+     its shareable image, POC$LIB_<NAME>:<NAME>.EXE; when POCRTL is one of
+     them, the runtime is its, and POCRTL.OBJ is not linked. FALSE if the
+     file could not be written. *)
+  PROCEDURE WriteBuildProcedure*(path, source, image: ARRAY OF CHAR; units, libraries: Unit;
+                                 shared: BOOLEAN): BOOLEAN;
     VAR f: Files.File; w: Files.Rider; u, main: Unit; name, imageName: ARRAY 64 OF CHAR;
-        line: ARRAY 200 OF CHAR;
+        line: ARRAY 200 OF CHAR; label: ARRAY 16 OF CHAR; count: INTEGER; rtlLibrary: BOOLEAN;
   BEGIN
+    rtlLibrary := FALSE; u := libraries;
+    WHILE u # NIL DO
+      IF IsSameVmsName(u.name, runtimeLibrary) THEN rtlLibrary := TRUE END;
+      u := u.next
+    END;
     f := Files.New(path);
     IF f = NIL THEN RETURN FALSE END;
     Files.Set(w, f, 0);
@@ -162,11 +198,23 @@ MODULE VaxToolchainDriver;
     WriteLine(w, line);
     WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 13). Run it where");
     WriteLine(w, "$ ! the modules' .MAR files are.");
-    IF image[0] # 0X THEN
+    IF (image[0] # 0X) & ~rtlLibrary THEN
       WriteLine(w, "$ ! poc's runtime, POCRTL.OBJ, is taken from POC$RTL: when that");
       WriteLine(w, "$ ! logical name is defined, else from the current directory.")
     END;
+    IF libraries # NIL THEN
+      WriteLine(w, "$ ! The libraries it uses are found by the logical names their setup");
+      WriteLine(w, "$ ! procedures define (section 18).")
+    END;
     WriteLine(w, "$ ON WARNING THEN EXIT $STATUS");
+    count := 0; u := libraries;
+    WHILE u # NIL DO
+      Upper(u.name, name); INC(count);
+      COPY("NEED_", label); line[0] := 0X; AppendInt(line, count); Append(label, line);
+      COPY("program ", line); Append(line, imageName);
+      WriteNeedCheck(w, line, name, label);
+      u := u.next
+    END;
     u := units; main := NIL;
     WHILE u # NIL DO
       Upper(u.name, name);
@@ -182,10 +230,23 @@ MODULE VaxToolchainDriver;
         Upper(u.name, name); COPY(name, line); Append(line, ".OBJ"); WriteLine(w, line);
         u := u.next
       END;
-      WriteLine(w, '$ RTL = "POCRTL.OBJ"');
-      WriteLine(w, '$ IF F$TRNLNM("POC$RTL") .NES. "" THEN RTL = "POC$RTL:POCRTL.OBJ"');
-      COPY("$ LINK/EXECUTABLE=", line); Append(line, imageName); Append(line, ".EXE ");
-      Append(line, imageName); Append(line, ".OPT/OPTIONS, 'RTL'");
+      u := libraries;
+      WHILE u # NIL DO
+        Upper(u.name, name);
+        COPY("POC$LIB_", line); Append(line, name); Append(line, ":"); Append(line, name);
+        IF shared THEN Append(line, ".EXE/SHAREABLE") ELSE Append(line, ".OLB/LIBRARY") END;
+        WriteLine(w, line);
+        u := u.next
+      END;
+      IF rtlLibrary THEN
+        COPY("$ LINK/EXECUTABLE=", line); Append(line, imageName); Append(line, ".EXE ");
+        Append(line, imageName); Append(line, ".OPT/OPTIONS")
+      ELSE
+        WriteLine(w, '$ RTL = "POCRTL.OBJ"');
+        WriteLine(w, '$ IF F$TRNLNM("POC$RTL") .NES. "" THEN RTL = "POC$RTL:POCRTL.OBJ"');
+        COPY("$ LINK/EXECUTABLE=", line); Append(line, imageName); Append(line, ".EXE ");
+        Append(line, imageName); Append(line, ".OPT/OPTIONS, 'RTL'")
+      END;
       WriteLine(w, line)
     END;
     WriteLine(w, "$ EXIT $STATUS");
@@ -274,13 +335,6 @@ MODULE VaxToolchainDriver;
     RETURN ok
   END CopyText;
 
-  (* Whether a and b are one file name on VMS, which ignores case *)
-  PROCEDURE IsSameVmsName*(a, b: ARRAY OF CHAR): BOOLEAN;
-    VAR ua, ub: ARRAY 72 OF CHAR;
-  BEGIN
-    Upper(a, ua); Upper(b, ub);
-    RETURN ua = ub
-  END IsSameVmsName;
 
   (* Whether name can name a VAX library: a VMS file name (IsVmsFileName)
      of at most 33 characters, room for its "_SETUP" procedure's name *)
@@ -291,21 +345,6 @@ MODULE VaxToolchainDriver;
     RETURN IsVmsFileName(name) & (i <= 33)
   END IsLibraryName;
 
-  (* Lines of a procedure that stop it, with a message, unless the
-     logical name POC$LIB_<NEED> is defined, as library need's setup
-     procedure defines it (section 18, proposal 6); user the library or
-     program that needs it, uppercased, label a label of its own *)
-  PROCEDURE WriteNeedCheck(VAR w: Files.Rider; user, need, label: ARRAY OF CHAR);
-    VAR line: ARRAY 300 OF CHAR;
-  BEGIN
-    COPY('$ IF F$TRNLNM("POC$LIB_', line); Append(line, need); Append(line, '") .NES. "" THEN GOTO ');
-    Append(line, label); WriteLine(w, line);
-    COPY('$ WRITE SYS$ERROR "', line); Append(line, user); Append(line, " needs library ");
-    Append(line, need); Append(line, ": run its "); Append(line, need);
-    Append(line, '_SETUP.COM first"'); WriteLine(w, line);
-    WriteLine(w, "$ EXIT %X1000002C"); (* SS$_ABORT, its message inhibited: the line above is it *)
-    COPY("$", line); Append(line, label); Append(line, ":"); WriteLine(w, line)
-  END WriteNeedCheck;
 
   (* The DCL procedures of the VAX library name in the directory dir (its
      tuple directory, section 18, proposal 1), units its modules, in the
