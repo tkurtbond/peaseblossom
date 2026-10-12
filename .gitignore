@@ -205,3 +205,4 @@ test/conformance/vax-shifts/vax-shifts
 test/conformance/vax-move/vax-move
 test/conformance/vax-val/vax-val
 test/conformance/vax-structured-constants/vax-structured-constants
+test/conformance/vax-field-initializers/vax-field-initializers

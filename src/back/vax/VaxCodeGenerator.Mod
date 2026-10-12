@@ -267,6 +267,19 @@ MODULE VaxCodeGenerator;
       next: StructuredConstant
     END;
 
+    (* A record type with field initializers whose initialization
+       procedure the module defines (Phase 11 D17, as on LLVM): wanted
+       once it is needed, emitted once written *)
+    (* which of the frame's slots are in use *)
+    SlotsInUse = ARRAY maxSlots OF BOOLEAN;
+
+    InitRecord = POINTER TO InitRecordDesc;
+    InitRecordDesc = RECORD
+      rec: Types.RecordType;
+      wanted, emitted: BOOLEAN;
+      next: InitRecord
+    END;
+
     (* A type descriptor the module writes in POC_CONST (section 14, item
        4): a record's, or, for the arrays NEW allocates whose elements hold
        pointers, their element type's (rec NIL) *)
@@ -328,7 +341,7 @@ MODULE VaxCodeGenerator;
     nextLabel: INTEGER;
     free, used: SET; (* registers free now; registers written *)
     live: Operand; (* registers in use, oldest first *)
-    slotUsed: ARRAY maxSlots OF BOOLEAN;
+    slotUsed: SlotsInUse;
     frameSlots: INTEGER; (* the most slots in use at once *)
     loopExit: ARRAY 16 OF CHAR; (* the innermost LOOP's end, for EXIT *)
     usesTrap: BOOLEAN; (* a trap calls POC_TRAP with the module's name *)
@@ -344,6 +357,8 @@ MODULE VaxCodeGenerator;
     homes: Home; (* the imported variables and procedures it uses *)
     strings: StringConstant; (* in the order of first use *)
     structureds: StructuredConstant; (* in the order of first use *)
+    initRecords: InitRecord; (* the records whose initialization procedures it defines *)
+    anonymousInits: INTEGER; (* the -anon<n> names made *)
     descriptors: TypeDescriptor; (* in the order they were needed *)
     descriptorCount: INTEGER; (* the labels L_TD_<n> and L_AD_<n> made *)
     code, codeLast: Instruction; (* the procedures, written before the initializer *)
@@ -453,8 +468,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE AppendWhen(t: Types.Type; VAR text: ARRAY OF CHAR);
     VAR f: Types.Field; n: INTEGER;
   BEGIN
-    IF Types.IsOpenArray(t) OR (t IS Types.PointerType) OR (t IS Types.ProcedureType)
-       OR (t IS Types.RecordType) & t(Types.RecordType).needsInit THEN
+    IF Types.IsOpenArray(t) OR (t IS Types.PointerType) OR (t IS Types.ProcedureType) THEN
       Append(text, " (Phase 16)")
     ELSIF t IS Types.ArrayType THEN
       AppendWhen(t(Types.ArrayType).elementType, text)
@@ -499,7 +513,7 @@ MODULE VaxCodeGenerator;
 
   PROCEDURE EmitComment(text: ARRAY OF CHAR);
   BEGIN
-    Add(FALSE, TRUE, text, "")
+    Add(FALSE, TRUE, "", text) (* in operands, which are long enough for a procedure's name *)
   END EmitComment;
 
   PROCEDURE NewLabel(VAR label: ARRAY OF CHAR);
@@ -1028,8 +1042,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE ^ Expression(e: SyntaxTree.ExprNode; dest: Operand): Operand;
 
   (* Whether t is a pointer the backend lowers (section 14, items 3 and
-     4): to a record with no base type and no field initializers, or to an
-     array, fixed or open. Only the base's kind is looked at, not its
+     4): to a record or to an array, fixed or open. Only the base's kind is looked at, not its
      contents, which are checked where they are used, so that a record
      reaching itself through its pointers needs no guard. *)
   PROCEDURE IsSlicePointer(t: Types.Type): BOOLEAN;
@@ -1037,9 +1050,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF (t = NIL) OR ~(t IS Types.PointerType) THEN RETURN FALSE END;
     base := t(Types.PointerType).base;
-    RETURN (base # NIL)
-      & ((base IS Types.ArrayType)
-         OR (base IS Types.RecordType) & ~base(Types.RecordType).needsInit)
+    RETURN (base # NIL) & ((base IS Types.ArrayType) OR (base IS Types.RecordType))
   END IsSlicePointer;
 
   (* Whether t is a procedure type (section 14, item 7): its values are
@@ -1057,8 +1068,7 @@ MODULE VaxCodeGenerator;
   END IsSliceScalar;
 
   (* Whether t is in the slice (section 1): a scalar above, a fixed array
-     of such a type, or a record of such fields with no base type and no
-     field initializers *)
+     of such a type, or a record of such fields *)
   PROCEDURE IsSliceType(t: Types.Type): BOOLEAN;
     VAR f: Types.Field;
   BEGIN
@@ -1066,7 +1076,7 @@ MODULE VaxCodeGenerator;
     ELSIF IsSliceScalar(t) THEN RETURN TRUE
     ELSIF t IS Types.ArrayType THEN
       RETURN ~t(Types.ArrayType).isOpen & IsSliceType(t(Types.ArrayType).elementType)
-    ELSIF (t IS Types.RecordType) & ~t(Types.RecordType).needsInit THEN
+    ELSIF t IS Types.RecordType THEN
       f := t(Types.RecordType).fields;
       WHILE f # NIL DO
         IF ~IsSliceType(f.type) THEN RETURN FALSE END;
@@ -4153,6 +4163,101 @@ MODULE VaxCodeGenerator;
      than 2^31 (code 7 for either, at NEW's position; VMS's P0 region is a
      gigabyte); the lengths are stored in the block's first longwords
      before p is. *)
+  (* ---- Field initializers (Phase 11 D17) ---- *)
+
+  (* rec's entry in the module's list of initialization procedures *)
+  PROCEDURE InitRecordOf(rec: Types.RecordType): InitRecord;
+    VAR e, tail: InitRecord;
+  BEGIN
+    e := initRecords; tail := NIL;
+    WHILE (e # NIL) & (e.rec # rec) DO tail := e; e := e.next END;
+    IF e = NIL THEN
+      NEW(e); e.rec := rec; e.wanted := FALSE; e.emitted := FALSE; e.next := NIL;
+      IF tail = NIL THEN initRecords := e ELSE tail.next := e END
+    END;
+    RETURN e
+  END InitRecordOf;
+
+  (* The symbol of rec's initialization procedure, "<Module>.<path>.-init"
+     as on LLVM (VaxTypes.MakeSymbol): a record the front end named
+     (initPath) has it defined by its own module, which may be another;
+     any other is this module's, named -anon<n> here the first time it is
+     needed, which asks for its procedure. Whether the symbol is another
+     module's, reached by G^ *)
+  PROCEDURE InitSymbol(rec: Types.RecordType; VAR symbol: VaxTypes.Symbol; line, column: INTEGER): BOOLEAN;
+    VAR e: InitRecord; full: ARRAY 2 * 256 + 8 OF CHAR;
+  BEGIN
+    IF rec.moduleName[0] = 0X THEN COPY(module.name, rec.moduleName) END;
+    IF (rec.initPath[0] = 0X) & (rec.moduleName = module.name) THEN
+      INC(anonymousInits);
+      COPY("-anon", rec.initPath); AppendInt(rec.initPath, anonymousInits);
+      e := InitRecordOf(rec); e.wanted := TRUE
+    ELSIF rec.initPath[0] = 0X THEN
+      Unsupported(line, column, "a record of another module's whose field initializers cannot be reached from here")
+    END;
+    COPY(rec.moduleName, full); Append(full, "."); Append(full, rec.initPath); Append(full, ".-init");
+    VaxTypes.MakeSymbol(full, symbol);
+    IF rec.moduleName # module.name THEN AddExternal(symbol); RETURN TRUE END;
+    RETURN FALSE
+  END InitSymbol;
+
+  (* rec's initialization procedure called with addr, a register holding
+     the address of a record of type rec: CALLS #1, the address pushed *)
+  PROCEDURE InitRecordAt(addr: Operand; rec: Types.RecordType; line, column: INTEGER);
+    VAR symbol: VaxTypes.Symbol; target: ARRAY 64 OF CHAR;
+  BEGIN
+    COPY("#1, ", target);
+    IF InitSymbol(rec, symbol, line, column) THEN AppendExternal(target, symbol) ELSE Append(target, symbol) END;
+    Emit1("PUSHL", addr);
+    FreeR0R1(line, column);
+    Emit("CALLS", target)
+  END InitRecordAt;
+
+  (* count records of the type element's innermost element type (a fixed
+     array of them multiplying count), one after another from addr,
+     initialized: a loop over them, its registers from R2, which a call
+     keeps, pinned. count an operand of a longword, at least 1 *)
+  PROCEDURE InitElements(addr: Operand; element: Types.Type; count: Operand; line, column: INTEGER);
+    VAR p, c: Operand; size, n: LONGINT; loop, done: ARRAY 16 OF CHAR; target: ARRAY 24 OF CHAR;
+  BEGIN
+    p := NewRegisterFrom(longword, 2, line, column); Emit2("MOVL", addr, p); p.pinned := TRUE;
+    c := NewRegisterFrom(longword, 2, line, column); c.pinned := TRUE;
+    IF count.kind = immediate THEN
+      n := count.value;
+      WHILE element IS Types.ArrayType DO
+        n := n * element(Types.ArrayType).length; element := element(Types.ArrayType).elementType
+      END;
+      Emit2("MOVL", Immediate(longword, n), c)
+    ELSE
+      Emit2("MOVL", count, c);
+      WHILE element IS Types.ArrayType DO
+        Emit2("MULL2", Immediate(longword, element(Types.ArrayType).length), c);
+        element := element(Types.ArrayType).elementType
+      END
+    END;
+    size := VaxTypes.Size(element);
+    NewLabel(loop); NewLabel(done);
+    EmitLabel(loop);
+    InitRecordAt(p, element(Types.RecordType), line, column);
+    Emit2("ADDL2", Immediate(longword, size), p);
+    Emit1("DECL", c);
+    Emit("BLEQ", done);
+    COPY("L^", target); Append(target, loop); Emit("JMP", target);
+    EmitLabel(done);
+    Release(p); Release(c)
+  END InitElements;
+
+  (* The variable of type t at the address in addr, a register, already
+     zero, given its fields' defaults if Types.NeedsInit(t): a record by
+     its initialization procedure, a fixed array element by element *)
+  PROCEDURE InitializeAt(addr: Operand; t: Types.Type; line, column: INTEGER);
+  BEGIN
+    IF ~Types.NeedsInit(t) THEN RETURN END;
+    IF t IS Types.RecordType THEN InitRecordAt(addr, t(Types.RecordType), line, column)
+    ELSE InitElements(addr, t, Immediate(longword, 1), line, column)
+    END
+  END InitializeAt;
+
   PROCEDURE New(args: SyntaxTree.ExprNode; line, column: INTEGER);
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; t, base, elem: Types.Type;
         target, v, q, total: Operand; e: SyntaxTree.ExprNode; dims, j, s, list: INTEGER;
@@ -4262,11 +4367,30 @@ MODULE VaxCodeGenerator;
         Append(text, "(R0)");
         Emit("MOVL", text)
       END;
-      EmitLabel(skip);
-      ReleaseSlots(s, dims + 1)
+      EmitLabel(skip)
     END;
     EmitTo("MOVL", "R0", target);
-    Release(target)
+    Release(target);
+    IF Types.NeedsInit(base) THEN
+      (* the defaults, once p holds the block, and not if there is none *)
+      v := NewRegisterFrom(longword, 2, line, column); v.pinned := TRUE;
+      EmitTo("MOVL", "R0", v);
+      NewLabel(skip); NewLabel(over);
+      Emit("BNEQ", over); COPY("L^", text); Append(text, skip); Emit("JMP", text); EmitLabel(over);
+      IF dims > 0 THEN
+        COPY("#", text); AppendInt(text, DataOffset(base)); EmitTo("ADDL2", text, v);
+        total := NewRegisterFrom(longword, 2, line, column); Emit2("MOVL", Length(0), total);
+        FOR j := 1 TO dims - 1 DO Emit2("MULL2", Length(j), total) END;
+        InitElements(v, OpenBase(base), total, line, column); Release(total)
+      ELSIF base IS Types.ArrayType THEN (* a fixed array's elements start the block *)
+        InitializeAt(v, base, line, column)
+      ELSE
+        InitializeAt(v, base, line, column)
+      END;
+      EmitLabel(skip);
+      Release(v)
+    END;
+    IF dims > 0 THEN ReleaseSlots(s, dims + 1) END
   END New;
 
   (* SYSTEM.NEW(p, n): a raw block of n bytes, zeroed, from the
@@ -4662,8 +4786,10 @@ MODULE VaxCodeGenerator;
     NewLabel(ok); Emit("BEQL", ok); Trap(13, s.line, s.column); EmitLabel(ok)
   END RecordAssignmentCheck;
 
+  PROCEDURE ^ AssignTo(target: Operand; value: SyntaxTree.ExprNode);
+
   PROCEDURE Assignment(s: SyntaxTree.AssignStatementNode);
-    VAR obj: SymbolTable.Object; target, v: Operand; text: ARRAY 160 OF CHAR; from, to: OperandText;
+    VAR obj: SymbolTable.Object; target: Operand; text: ARRAY 160 OF CHAR;
   BEGIN
     obj := Resolve(s.target.qualifier, s.target.name, s.target.line, s.target.column);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
@@ -4673,24 +4799,32 @@ MODULE VaxCodeGenerator;
     END;
     target := Locate(s.target, obj, s.target.line, s.target.column);
     IF ~target.standIn THEN RecordAssignmentCheck(s, obj, target) END;
+    AssignTo(target, s.value)
+  END Assignment;
+
+  (* target := value, target located: a scalar computed into it where it
+     can be, a string or an array or a record copied *)
+  PROCEDURE AssignTo(target: Operand; value: SyntaxTree.ExprNode);
+    VAR v: Operand; from, to: OperandText;
+  BEGIN
     IF target.standIn OR (target.lens # NIL) THEN (* reported, or an open array, which the checker refuses *)
       Release(target); RETURN
     ELSIF IsSliceScalar(target.type) THEN
-      v := Expression(s.value, target);
-      IF IsReal(target.type) & IsQuad(v) THEN v := AsReal(v, target.type, s.value.line, s.value.column) END;
+      v := Expression(value, target);
+      IF IsReal(target.type) & IsQuad(v) THEN v := AsReal(v, target.type, value.line, value.column) END;
       IF Suffix(v.type) # 0X THEN MoveInto(v, target) END
-    ELSIF ConstantEvaluator.IsConstantExpr(s.value, scope)
-          & ~IsStructuredConstant(s.value) THEN
+    ELSIF ConstantEvaluator.IsConstantExpr(value, scope)
+          & ~IsStructuredConstant(value) THEN
       (* a string; a structured constant is copied as a variable is, below *)
-      v := StringArgument(s.value, 0);
+      v := StringArgument(value, 0);
       IF v.type IS Types.ArrayType THEN
         SpillAll; Text(v, from); Text(target, to);
         FillBytes(v.type(Types.ArrayType).length - 1, from, VaxTypes.Size(target.type), to)
       END
     ELSE
-      v := Expression(s.value, NIL);
+      v := Expression(value, NIL);
       IF v.lens # NIL THEN
-        AssignOpen(v, target, s.value.line, s.value.column)
+        AssignOpen(v, target, value.line, value.column)
       ELSE
         (* a record, the target's size: one of an extension assigned to
            one of its base type gives only the base's fields; an array,
@@ -4703,7 +4837,7 @@ MODULE VaxCodeGenerator;
       END
     END;
     Release(v); Release(target)
-  END Assignment;
+  END AssignTo;
 
   (* ---- Conditions and jumps ----
 
@@ -5152,28 +5286,31 @@ MODULE VaxCodeGenerator;
     EmitLabel(endLabel)
   END WithStatement;
 
-  PROCEDURE StatementSeq(s: SyntaxTree.StatementNode);
+  (* One statement, after a comment with its line *)
+  PROCEDURE Statement(s: SyntaxTree.StatementNode);
     VAR comment: ARRAY 32 OF CHAR;
   BEGIN
-    WHILE s # NIL DO
-      COPY("; line ", comment); AppendInt(comment, s.line);
-      EmitComment(comment);
-      WITH
-        s: SyntaxTree.AssignStatementNode DO Assignment(s)
-      | s: SyntaxTree.IfStatementNode DO IfStatement(s)
-      | s: SyntaxTree.CaseStatementNode DO CaseStatement(s)
-      | s: SyntaxTree.WhileStatementNode DO WhileStatement(s)
-      | s: SyntaxTree.RepeatStatementNode DO RepeatStatement(s)
-      | s: SyntaxTree.ForStatementNode DO ForStatement(s)
-      | s: SyntaxTree.LoopStatementNode DO LoopStatement(s)
-      | s: SyntaxTree.ExitStatementNode DO Jump(loopExit)
-      | s: SyntaxTree.CallStatementNode DO CallStatement(s)
-      | s: SyntaxTree.ReturnStatementNode DO ReturnStatement(s)
-      | s: SyntaxTree.WithStatementNode DO WithStatement(s)
-      ELSE Unsupported(s.line, s.column, "this statement")
-      END;
-      s := s.next
+    COPY("; line ", comment); AppendInt(comment, s.line);
+    EmitComment(comment);
+    WITH
+      s: SyntaxTree.AssignStatementNode DO Assignment(s)
+    | s: SyntaxTree.IfStatementNode DO IfStatement(s)
+    | s: SyntaxTree.CaseStatementNode DO CaseStatement(s)
+    | s: SyntaxTree.WhileStatementNode DO WhileStatement(s)
+    | s: SyntaxTree.RepeatStatementNode DO RepeatStatement(s)
+    | s: SyntaxTree.ForStatementNode DO ForStatement(s)
+    | s: SyntaxTree.LoopStatementNode DO LoopStatement(s)
+    | s: SyntaxTree.ExitStatementNode DO Jump(loopExit)
+    | s: SyntaxTree.CallStatementNode DO CallStatement(s)
+    | s: SyntaxTree.ReturnStatementNode DO ReturnStatement(s)
+    | s: SyntaxTree.WithStatementNode DO WithStatement(s)
+    ELSE Unsupported(s.line, s.column, "this statement")
     END
+  END Statement;
+
+  PROCEDURE StatementSeq(s: SyntaxTree.StatementNode);
+  BEGIN
+    WHILE s # NIL DO Statement(s); s := s.next END
   END StatementSeq;
 
   (* ---- The module ---- *)
@@ -5437,6 +5574,55 @@ MODULE VaxCodeGenerator;
      the variable's address, then its tag or its open dimensions' lengths
      as a parameter of its kind has them (item 8). bodyScope is the scope
      to generate the body in, title what its comment calls it. *)
+  (* The defaults of the variables declarations declares whose types
+     have field initializers (InitializeAt), in declaration order with
+     the variable initializers, which lead statements (Phase 11 A23 and
+     D17, as on LLVM): each variable's defaults before its own
+     initializer, after those declared before it. The statements after
+     the variable initializers; statements itself when no variable needs
+     defaults *)
+  PROCEDURE DeclarationInits(declarations: SyntaxTree.DeclSeqNode;
+                             statements: SyntaxTree.StatementNode): SyntaxTree.StatementNode;
+    VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
+        s: SyntaxTree.StatementNode; x, r: Operand; any: BOOLEAN;
+  BEGIN
+    IF declarations = NIL THEN RETURN statements END;
+    any := FALSE; vd := declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(scope, nm.name);
+        IF (obj # NIL) & Types.NeedsInit(obj.type) THEN any := TRUE END;
+        nm := nm.next
+      END;
+      vd := vd.next
+    END;
+    IF ~any THEN RETURN statements END;
+    vd := declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        obj := SymbolTable.FindLocal(scope, nm.name);
+        IF (obj # NIL) & Types.NeedsInit(obj.type) THEN
+          x := Variable(obj, nm.line, nm.column);
+          r := NewRegisterFrom(longword, 2, nm.line, nm.column); r.pinned := TRUE;
+          AddressOf(x, r); Release(x);
+          InitializeAt(r, obj.type, nm.line, nm.column);
+          Release(r)
+        END;
+        nm := nm.next
+      END;
+      s := vd.initializers; nm := vd.names;
+      WHILE (s # NIL) & (nm # NIL) DO Statement(s); s := s.next; nm := nm.next END;
+      vd := vd.next
+    END;
+    s := statements;
+    WHILE (s # NIL) & (s IS SyntaxTree.AssignStatementNode) & (s(SyntaxTree.AssignStatementNode).initializerLine # 0) DO
+      s := s.next
+    END;
+    RETURN s
+  END DeclarationInits;
+
   PROCEDURE Body(pd: SyntaxTree.ProcDeclNode; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType;
                  needs: NestedProcedures.Need; symbol: VaxTypes.Symbol; global: BOOLEAN;
                  title: ARRAY OF CHAR);
@@ -5528,7 +5714,7 @@ MODULE VaxCodeGenerator;
       END
     END;
     localSize := (localSize + 3) DIV 4 * 4;
-    StatementSeq(pd.statements);
+    StatementSeq(DeclarationInits(pd.declarations, pd.statements));
     IF resultType # NIL THEN Trap(12, pd.endLine, pd.endColumn) ELSE Emit("RET", "") END;
     scope := moduleScope;
     IF unsupportedCount > before THEN RETURN END;
@@ -5669,8 +5855,7 @@ MODULE VaxCodeGenerator;
      <Module>.<Type> - an anonymous record under a named pointer type is
      <Type>.base, as on LLVM - entered as a variable's is and global, since
      an importer may allocate one through any pointer type it can name,
-     even one to a record it cannot (TYPE P* = POINTER TO R). A record with
-     field initializers waits. *)
+     even one to a record it cannot (TYPE P* = POINTER TO R). *)
   PROCEDURE CollectDescriptors;
     VAR td: SyntaxTree.TypeDeclNode; obj: SymbolTable.Object; rec: Types.RecordType; base: Types.Type;
         name: ARRAY 256 OF CHAR; full, clash: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol;
@@ -5687,7 +5872,7 @@ MODULE VaxCodeGenerator;
         base := obj.type(Types.PointerType).base;
         IF (base # NIL) & (base IS Types.RecordType) THEN rec := base(Types.RecordType); Append(name, ".base") END
       END;
-      IF (rec # NIL) & (rec.name = name) & (rec.moduleName = module.name) & ~rec.needsInit THEN
+      IF (rec # NIL) & (rec.name = name) & (rec.moduleName = module.name) THEN
         COPY(module.name, full); Append(full, "."); Append(full, name);
         IF ~VaxTypes.Enter(names, full, symbol, clash) THEN
           COPY(full, text); Append(text, " and "); Append(text, clash);
@@ -5749,6 +5934,114 @@ MODULE VaxCodeGenerator;
     p := module.declarations.procDecls;
     WHILE p # NIL DO ProcedureDecl(p); p := p.next END
   END Procedures;
+
+  (* Every record reached from t that this module declares and the front
+     end named (initPath), which another module may make too: wanted, so
+     that its initialization procedure is defined, when it needs one *)
+  PROCEDURE CollectInitRecords(t: Types.Type);
+    VAR rec: Types.RecordType; e: InitRecord; f: Types.Field;
+  BEGIN
+    IF t = NIL THEN RETURN END;
+    IF t IS Types.RecordType THEN
+      rec := t(Types.RecordType);
+      IF (rec.moduleName # module.name) OR (rec.initPath[0] = 0X) THEN RETURN END;
+      e := initRecords;
+      WHILE (e # NIL) & (e.rec # rec) DO e := e.next END;
+      IF e # NIL THEN RETURN END;
+      e := InitRecordOf(rec); e.wanted := rec.needsInit;
+      f := rec.fields;
+      WHILE f # NIL DO CollectInitRecords(f.type); f := f.next END
+    ELSIF t IS Types.ArrayType THEN
+      CollectInitRecords(t(Types.ArrayType).elementType)
+    ELSIF t IS Types.PointerType THEN
+      CollectInitRecords(t(Types.PointerType).base)
+    END
+  END CollectInitRecords;
+
+  (* The initialization procedure of e's record, as on LLVM: called with
+     the record's address, 4(AP); its base type's procedure first, then
+     each field of its own in order - one with an initializer assigned its
+     own copy of it (AssignTo), in the scope the record was declared in;
+     one whose type needs defaults given them (InitializeAt). A procedure
+     like any other (section 7), .ENTRY for a record another module may
+     make, a local label for one only this module can (-anon<n>) *)
+  PROCEDURE InitProcedure(e: InitRecord);
+    VAR rec: Types.RecordType; f: Types.Field; r, target: Operand; symbol: VaxTypes.Symbol;
+        bodyFirst, bodyLast: Instruction; mask: ARRAY 40 OF CHAR; text: ARRAY 600 OF CHAR;
+        outside: BOOLEAN;
+  BEGIN
+    rec := e.rec;
+    outside := InitSymbol(rec, symbol, 0, 0);
+    BeginBody;
+    scope := rec.declScope(SymbolTable.Scope);
+    COPY(rec.moduleName, procedureName); Append(procedureName, "."); Append(procedureName, rec.initPath);
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) & rec.baseType(Types.RecordType).needsInit THEN
+      r := NewRegisterFrom(longword, 2, 0, 0); r.pinned := TRUE; EmitTo("MOVL", "4(AP)", r);
+      InitRecordAt(r, rec.baseType(Types.RecordType), 0, 0); Release(r)
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      IF (f.initializer # NIL) OR Types.NeedsInit(f.type) THEN
+        IF f.initializer # NIL THEN COPY("; line ", text); AppendInt(text, f.initializer.line); EmitComment(text) END;
+        r := NewRegisterFrom(longword, 2, 0, 0); r.pinned := TRUE; EmitTo("MOVL", "4(AP)", r);
+        IF f.initializer # NIL THEN
+          target := NewOperand(memory, f.type); target.baseOp := r; target.ownsBase := TRUE;
+          target.offset := VaxTypes.FieldOffset(rec, f);
+          AssignTo(target, f.initializer)
+        ELSE
+          Emit2("ADDL2", Immediate(longword, VaxTypes.FieldOffset(rec, f)), r);
+          InitializeAt(r, f.type, 0, 0); Release(r)
+        END
+      END;
+      f := f.next
+    END;
+    Emit("RET", "");
+    scope := moduleScope; procedureName[0] := 0X;
+    bodyFirst := first; bodyLast := last; first := NIL; last := NIL;
+    COPY("; the field initializers of ", text); Append(text, rec.moduleName); Append(text, ".");
+    Append(text, rec.initPath); EmitComment(text);
+    EntryMask(mask);
+    IF rec.initPath[0] # "-" THEN
+      COPY(symbol, text); Append(text, ", "); Append(text, mask); Emit(".ENTRY", text)
+    ELSE
+      EmitLabel(symbol); Emit(".WORD", mask)
+    END;
+    IF 4 * frameSlots > 0 THEN
+      COPY("#", text); AppendInt(text, 4 * frameSlots); Append(text, ", SP"); Emit("SUBL2", text)
+    END;
+    IF bodyFirst # NIL THEN last.next := bodyFirst; last := bodyLast END;
+    IF code = NIL THEN code := first ELSE codeLast.next := first END;
+    codeLast := last
+  END InitProcedure;
+
+  (* Every initialization procedure wanted and not yet written, into the
+     module's procedures; writing one can want more (InitSymbol). The
+     body being generated, the module's, is kept *)
+  PROCEDURE InitProcedures;
+    VAR e: InitRecord; td: SyntaxTree.TypeDeclNode; obj: SymbolTable.Object;
+        keepFirst, keepLast: Instruction; keepFree, keepUsed: SET; keepLive: Operand;
+        keepSlots: SlotsInUse; keepFrame: INTEGER; keepLocals: Local; keepSize: LONGINT;
+  BEGIN
+    IF module.declarations # NIL THEN
+      td := module.declarations.typeDecls;
+      WHILE td # NIL DO
+        obj := SymbolTable.FindLocal(moduleScope, td.name.name);
+        IF obj # NIL THEN CollectInitRecords(obj.type) END;
+        td := td.next
+      END
+    END;
+    keepFirst := first; keepLast := last; keepFree := free; keepUsed := used; keepLive := live;
+    keepSlots := slotUsed; keepFrame := frameSlots; keepLocals := locals; keepSize := localSize;
+    LOOP
+      e := initRecords;
+      WHILE (e # NIL) & (~e.wanted OR e.emitted) DO e := e.next END;
+      IF e = NIL THEN EXIT END;
+      e.emitted := TRUE;
+      InitProcedure(e)
+    END;
+    first := keepFirst; last := keepLast; free := keepFree; used := keepUsed; live := keepLive;
+    slotUsed := keepSlots; frameSlots := keepFrame; locals := keepLocals; localSize := keepSize
+  END InitProcedures;
 
   (* The module's variables in POC_DATA, each aligned as MemoryLayout
      says, an exported one a global symbol: FALSE, reported, if one is
@@ -6193,7 +6486,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     WHILE i # NIL DO
       IF i.isLabel THEN Label(w, i.op)
-      ELSIF i.isComment THEN WriteStr(w, i.op); WriteLn(w)
+      ELSIF i.isComment THEN WriteStr(w, i.operands); WriteLn(w)
       ELSE Line(w, i.op, i.operands)
       END;
       i := i.next
@@ -6268,7 +6561,7 @@ MODULE VaxCodeGenerator;
     module := m; scope := s; moduleScope := s; before := unsupportedCount;
     errorsBefore := Diagnostics.errorCount;
     names := VaxTypes.NewNameTable(); longword := VaxTypes.Longword(); narrowings := NIL;
-    nextLabel := 0; usesTrap := FALSE; procedureName[0] := 0X; wheres := NIL; whereCount := 0; externals := NIL; homes := NIL; strings := NIL; structureds := NIL; code := NIL; codeLast := NIL;
+    nextLabel := 0; usesTrap := FALSE; procedureName[0] := 0X; wheres := NIL; whereCount := 0; externals := NIL; homes := NIL; strings := NIL; structureds := NIL; initRecords := NIL; anonymousInits := 0; code := NIL; codeLast := NIL;
     nestedRoot := NIL; nestedSyms := NIL;
     descriptors := NIL; descriptorCount := 0;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
@@ -6298,8 +6591,10 @@ MODULE VaxCodeGenerator;
     IF hasRoots THEN AddExternal("POC_ROOTS") END;
     CollectDescriptors;
     Procedures;
+    InitProcedures;
     BeginBody;
-    StatementSeq(module.statements);
+    StatementSeq(DeclarationInits(module.declarations, module.statements));
+    InitProcedures;
     ResolveAncestors;
     IF ~DeclareImports() THEN ok := FALSE END;
     IF isMain & withCollector THEN

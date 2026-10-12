@@ -1,0 +1,6 @@
+semantic OK, wrote VaxFields.mar
+semantic OK, wrote VaxFieldsUse.mar
+exit 0
+VaxFieldsUse.mar matches expected-vax.mar
+VaxFields.mar matches expected-vax-VaxFields.mar
+LLVM build exit 0

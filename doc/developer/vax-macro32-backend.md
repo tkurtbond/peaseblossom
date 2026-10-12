@@ -2215,3 +2215,37 @@ decided 2026-10-06), and by value on LLVM, which passes one of at most
 16 bytes so; a program may not rely on which. 162 programs, 282 runs. The user
 reviewed it and `vax-structured-constants`' `expected-vax.mar`
 (2026-10-11).
+
+**Done: record field initializers (proposal 7's fourth part),
+2026-10-11.** `llvm-extension-through-pointers` was held back not by its
+pointers but by a field initializer (`language-extensions.md`, "Record
+field initializers"), which the VAX backend refused with every type that
+reached one. It now lowers them as LLVM does:
+- Each record type with defaults has an initialization procedure,
+  `<Module>.<path>.-init` through `VaxTypes.MakeSymbol`, called with the
+  record's address (`PUSHL`, `CALLS #1`): its base type's procedure
+  first, then each field with a default assigned it (`AssignTo`, split
+  out of `Assignment`), in the scope the record was declared in, and
+  each field holding records with defaults given them. A record the
+  front end named (`initPath`) has `.ENTRY`, which another module calls
+  through `G^`; any other, `-anon<n>`, is private, a label and `.WORD`
+  mask. The module defines them after its procedures and again after
+  its body, which can ask for more (`InitProcedures`).
+- They are called where a record is made: module variables and locals,
+  in declaration order with the variable initializers
+  (`DeclarationInits`); `NEW` of a record, of a fixed array and of an
+  open array, once the pointer holds the block and not when there is
+  none. An array of records is a loop, its address and count in two
+  pinned registers from R2, which a call keeps.
+
+Fixture `vax-field-initializers`, three modules, under `-O2` and `-OC`;
+it and `llvm-extension-through-pointers` join the list
+(`llvm-field-initializers` waits for `Out.Real`, Phase 17): 166
+programs, 286 runs. The user reviewed the fixture's `expected-vax.mar`
+and `expected-vax-VaxFields.mar` (2026-10-11). Found on the way: a comment in the code list was
+cut to 31 characters, so two procedures' titles in `vax-collector`'s
+`expected-vax-GarbageCollectedHeap.mar` were cut too; comments now keep
+their length. `vax-emit-errors`' examples of what is not lowered, an
+array of records with a default and a pointer to one, are now a record
+literal that is not constant and `SYSTEM.VAL` from a `REAL` to a
+`SET64`.

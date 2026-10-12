@@ -1,0 +1,403 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from the design,
+;; LLVM's code generator, language-extensions.md and the guest runs).
+;; Why this is right:
+;; - Phase 16 step 5 (section 16, proposal 7): record field initializers
+;;   (language-extensions.md, "Record field initializers"), as on LLVM.
+;;   Every record of a type with defaults gets them when it is made, by
+;;   the type's initialization procedure (expected-vax-VaxFields.mar),
+;;   called with the record's address: PUSHL, CALLS #1, through G^ for
+;;   another module's type. Not a copy (Copy: MOVC3 only).
+;; - Module variables, in the initializer, and locals, after the frame is
+;;   cleared, in declaration order with the variable initializers: n's
+;;   and copy's defaults, h's, then seen := n.serial (line 17), then
+;;   lab's and anonymous's; in Local, first := F.counter (line 29), then
+;;   q's, in's and arr's. The address is MOVAB of the variable into a
+;;   register from R2, which a call keeps.
+;; - NEW (Make): once the pointer holds the block, and not when there is
+;;   none (MOVL R0, R2; BNEQ over a JMP L^ past it). A record's block is
+;;   the record; a fixed array's elements start the block; an open array's
+;;   follow its lengths (DataOffset, 8 for two), their count the lengths
+;;   multiplied, read from the slots NEW kept them in.
+;; - An array of records is a loop: the address and the count in two
+;;   registers from R2, pinned, the procedure called for each element,
+;;   the address advanced by the element's size, DECL, and BLEQ over a JMP
+;;   L^ back, which reaches any distance. A fixed array of arrays is
+;;   counted whole (MOVL #2 for arr, #4 for points).
+;; - Labelled extends VaxFields.Named: its procedure calls Named's first
+;;   (G^), then sets label and size (start + 2, a constant of the module).
+;;   Inner, declared in Local, and the anonymous record have procedures of
+;;   this module only, -anon<n>, private: a local label and .WORD mask, as
+;;   a private procedure's (section 7). Inner's default uses Local's
+;;   constant base.
+;; - FieldsOut, run on the guest under -O2 and -OC, prints what the LLVM
+;;   build prints (output.expected).
+; VaxFieldsUse, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXFIELDSUSE
+	.IDENT	/b052432aa28a368d/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; n: VaxFields.Named, exported
+	.ALIGN	WORD
+VAXFIELDSUSE_N_E4T6UJ3O::
+	.BLKB	18
+; copy: VaxFields.Named, exported
+	.ALIGN	WORD
+VAXFIELDSUSE_COPY_49N2R2LR::
+	.BLKB	18
+; h: VaxFields.Holder, exported
+	.ALIGN	LONG
+VAXFIELDSUSE_H_E4T6ULLA::
+	.BLKB	28
+; seen: INTEGER, exported
+	.ALIGN	WORD
+VAXFIELDSUSE_SEEN_L9RBSVOT::
+	.BLKW	1
+; lab: VaxFieldsUse.Labelled, exported
+	.ALIGN	LONG
+VAXFIELDSUSE_LAB_Q6NGHI8T::
+	.BLKB	24
+; list: POINTER TO RECORD, exported
+	.ALIGN	LONG
+VAXFIELDSUSE_LIST_9H154T3I::
+	.BLKL	1
+; points: POINTER TO ARRAY 4 OF VaxFields.Point, exported
+	.ALIGN	LONG
+VAXFIELDSUSE_POINTS_NUMG9TQH::
+	.BLKL	1
+; open: POINTER TO ARRAY OF ARRAY OF VaxFields.Named, exported
+	.ALIGN	LONG
+VAXFIELDSUSE_OPEN_8MC9KGC6::
+	.BLKL	1
+; anonymous: RECORD, exported
+VAXFIELDSUSE_ANONYMOUS_TVOC8Q4R::
+	.BLKB	2
+
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	3
+	.ADDRESS	VAXFIELDSUSE_LIST_9H154T3I, VAXFIELDSUSE_POINTS_NUMG9TQH, VAXFIELDSUSE_OPEN_8MC9KGC6
+
+; the symbols it uses of other modules
+	.EXTERNAL	POC_ROOTS
+	.EXTERNAL	VAXFIELDS_LIST_BASE_CB5D4OBS
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	.EXTERNAL	VAXFIELDS_LIST_BASE__I_GV40RLVV
+	.EXTERNAL	VAXFIELDS_POINT__INIT_4LUAINO6
+	.EXTERNAL	VAXFIELDS_NAMED__INIT_DPTH1TRL
+	.EXTERNAL	VAXFIELDS_COUNTER_5LOPFRNN
+	.EXTERNAL	VAXFIELDS_POINT_DU49IREL
+	.EXTERNAL	VAXFIELDS_HOLDER__INIT_NGLUO9IK
+	.EXTERNAL	VAXFIELDS_NAMED_42L5LUQ2
+	.EXTERNAL	VAXFIELDS_INIT
+	.EXTERNAL	POC_K1_8E4A546BF262CCD5
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxFieldsUse/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxFieldsUse.Labelled
+	.ALIGN	LONG
+VAXFIELDSUSE_LABELLED_89FK81O1::
+	.LONG	24
+	.LONG	2
+	.LONG	0
+	.ADDRESS	VAXFIELDS_POINT_DU49IREL
+	.ADDRESS	VAXFIELDS_NAMED_42L5LUQ2
+	.ADDRESS	VAXFIELDSUSE_LABELLED_89FK81O1
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Make
+	.ENTRY	VAXFIELDSUSE_MAKE_9CKOL4UC, ^M<R2,R3,R4,R5>
+	SUBL2	#24, SP
+; line 23
+	MOVL	#2, -12(FP)
+	MOVL	#8, -8(FP)
+	MOVAB	G^VAXFIELDS_LIST_BASE_CB5D4OBS, -4(FP)
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	MOVL	R0, VAXFIELDSUSE_LIST_9H154T3I
+	MOVL	R0, R2
+	BNEQ	L_2
+	JMP	L^L_1
+L_2:
+	PUSHL	R2
+	CALLS	#1, G^VAXFIELDS_LIST_BASE__I_GV40RLVV
+L_1:
+; line 23
+	MOVL	VAXFIELDSUSE_LIST_9H154T3I, R0
+	BNEQ	L_3
+	PUSHL	#20
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_3:
+	MOVL	#2, -12(FP)
+	MOVL	#8, -8(FP)
+	MOVAB	G^VAXFIELDS_LIST_BASE_CB5D4OBS, -4(FP)
+	MOVL	R0, R2
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	MOVL	R0, 4(R2)
+	MOVL	R0, R2
+	BNEQ	L_5
+	JMP	L^L_4
+L_5:
+	PUSHL	R2
+	CALLS	#1, G^VAXFIELDS_LIST_BASE__I_GV40RLVV
+L_4:
+; line 23
+	MOVL	#2, -12(FP)
+	MOVL	#24, -8(FP)
+	CLRL	-4(FP)
+	CALLG	-12(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	MOVL	R0, VAXFIELDSUSE_POINTS_NUMG9TQH
+	MOVL	R0, R2
+	BNEQ	L_7
+	JMP	L^L_6
+L_7:
+	MOVL	R2, R3
+	MOVL	#4, R4
+L_8:
+	PUSHL	R3
+	CALLS	#1, G^VAXFIELDS_POINT__INIT_4LUAINO6
+	ADDL2	#6, R3
+	DECL	R4
+	BLEQ	L_9
+	JMP	L^L_8
+L_9:
+L_6:
+; line 23
+	MOVL	#2, -12(FP)
+	TSTL	-12(FP)
+	BGTR	L_10
+	PUSHL	#45
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_10:
+	MOVL	#3, -8(FP)
+	TSTL	-8(FP)
+	BGTR	L_11
+	PUSHL	#45
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_11:
+	MOVL	-12(FP), -4(FP)
+	EMUL	-8(FP), -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_12
+	PUSHL	#45
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_12:
+	TSTL	R0
+	BGEQ	L_13
+	PUSHL	#45
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_13:
+	MOVL	R0, -4(FP)
+	EMUL	#18, -4(FP), #0, R0
+	TSTL	R1
+	BEQL	L_14
+	PUSHL	#45
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_14:
+	TSTL	R0
+	BGEQ	L_15
+	PUSHL	#45
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_15:
+	MOVL	R0, -4(FP)
+	ADDL2	#8, -4(FP)
+	BVC	L_16
+	PUSHL	#45
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_16:
+	MOVL	#2, -24(FP)
+	MOVL	-4(FP), -20(FP)
+	CLRL	-16(FP)
+	CALLG	-24(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	TSTL	R0
+	BEQL	L_17
+	MOVL	-12(FP), (R0)
+	MOVL	-8(FP), 4(R0)
+L_17:
+	MOVL	R0, VAXFIELDSUSE_OPEN_8MC9KGC6
+	MOVL	R0, R2
+	BNEQ	L_19
+	JMP	L^L_18
+L_19:
+	ADDL2	#8, R2
+	MOVL	-12(FP), R3
+	MULL2	-8(FP), R3
+	MOVL	R2, R4
+	MOVL	R3, R5
+L_20:
+	PUSHL	R4
+	CALLS	#1, G^VAXFIELDS_NAMED__INIT_DPTH1TRL
+	ADDL2	#18, R4
+	DECL	R5
+	BLEQ	L_21
+	JMP	L^L_20
+L_21:
+L_18:
+	RET
+; PROCEDURE Local
+	.ENTRY	VAXFIELDSUSE_LOCAL_VMOJM8OD, ^M<R2,R3,R4,R5>
+	SUBL2	#16, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+; line 29
+	MOVW	G^VAXFIELDS_COUNTER_5LOPFRNN, -2(FP)
+	MOVAB	-8(FP), R2
+	PUSHL	R2
+	CALLS	#1, G^VAXFIELDS_POINT__INIT_4LUAINO6
+	MOVAB	-10(FP), R2
+	PUSHL	R2
+	CALLS	#1, VAXFIELDSUSE__ANON1__I_7DDVF4E9
+	MOVAB	-14(FP), R2
+	MOVL	R2, R3
+	MOVL	#2, R4
+L_22:
+	PUSHL	R3
+	CALLS	#1, VAXFIELDSUSE__ANON1__I_7DDVF4E9
+	ADDL2	#2, R3
+	DECL	R4
+	BLEQ	L_23
+	JMP	L^L_22
+L_23:
+; line 31
+	MOVW	-2(FP), @4(AP)
+; line 31
+	MOVAB	G^VAXFIELDS_POINT_DU49IREL, R0
+	CMPL	12(AP), R0
+	BEQL	L_24
+	PUSHL	#22
+	PUSHL	#31
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#13
+	CALLS	#4, G^POC_TRAP
+L_24:
+	MOVC3	#6, -8(FP), @8(AP)
+; line 31
+	MOVW	-10(FP), @16(AP)
+; line 31
+	MOVW	-12(FP), @20(AP)
+	RET
+; PROCEDURE Copy
+	.ENTRY	VAXFIELDSUSE_COPY_2PMBQ5MR, ^M<R2,R3,R4,R5>
+; line 35
+	MOVW	#9, VAXFIELDSUSE_N_E4T6UJ3O
+; line 35
+	MOVC3	#18, VAXFIELDSUSE_N_E4T6UJ3O, VAXFIELDSUSE_COPY_49N2R2LR
+	RET
+; the field initializers of VaxFieldsUse.-anon1
+VAXFIELDSUSE__ANON1__I_7DDVF4E9:
+	.WORD	^M<R2>
+; line 28
+	MOVL	4(AP), R2
+	MOVW	#105, (R2)
+	RET
+; the field initializers of VaxFieldsUse.Labelled
+	.ENTRY	VAXFIELDSUSE_LABELLED__NFN8U0KI, ^M<R2>
+	MOVL	4(AP), R2
+	PUSHL	R2
+	CALLS	#1, G^VAXFIELDS_NAMED__INIT_DPTH1TRL
+; line 13
+	MOVL	4(AP), R2
+	MOVB	#76, 18(R2)
+; line 13
+	MOVL	4(AP), R2
+	MOVL	#42, 20(R2)
+	RET
+; the field initializers of VaxFieldsUse.-anon2
+VAXFIELDSUSE__ANON2__I_62ANB3T4:
+	.WORD	^M<R2>
+; line 19
+	MOVL	4(AP), R2
+	MOVB	#1, (R2)
+; line 19
+	MOVL	4(AP), R2
+	MOVB	#-3, 1(R2)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXFIELDSUSE_INIT, ^M<R2>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
+	CALLS	#0, G^VAXFIELDS_INIT
+	MOVAB	VAXFIELDSUSE_N_E4T6UJ3O, R2
+	PUSHL	R2
+	CALLS	#1, G^VAXFIELDS_NAMED__INIT_DPTH1TRL
+	MOVAB	VAXFIELDSUSE_COPY_49N2R2LR, R2
+	PUSHL	R2
+	CALLS	#1, G^VAXFIELDS_NAMED__INIT_DPTH1TRL
+	MOVAB	VAXFIELDSUSE_H_E4T6ULLA, R2
+	PUSHL	R2
+	CALLS	#1, G^VAXFIELDS_HOLDER__INIT_NGLUO9IK
+; line 17
+	MOVW	VAXFIELDSUSE_N_E4T6UJ3O+14, VAXFIELDSUSE_SEEN_L9RBSVOT
+	MOVAB	VAXFIELDSUSE_LAB_Q6NGHI8T, R2
+	PUSHL	R2
+	CALLS	#1, VAXFIELDSUSE_LABELLED__NFN8U0KI
+	MOVAB	VAXFIELDSUSE_ANONYMOUS_TVOC8Q4R, R2
+	PUSHL	R2
+	CALLS	#1, VAXFIELDSUSE__ANON2__I_62ANB3T4
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_B052432AA28A368D == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
+	.ENTRY	VAXFIELDSUSE_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
+	CALLS	#0, VAXFIELDSUSE_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXFIELDSUSE_MAIN

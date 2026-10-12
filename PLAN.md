@@ -928,6 +928,12 @@ most, object libraries.
      parameter of at most 16 bytes is passed by reference on the VAX,
      by value on LLVM, as `expected-vax-readonly.out` says; the user
      reviewed it and the fixture's `expected-vax.mar` (2026-10-11).
+   - *Record field initializers* (2026-10-11, proposal 7's fourth part):
+     an initialization procedure per record type, called for variables,
+     locals and `NEW`, as on LLVM; fixture `vax-field-initializers`;
+     with `llvm-extension-through-pointers` 166 programs and 286 runs,
+     all passing on the guest. The user reviewed the fixture's two
+     `expected-vax*.mar` files (2026-10-11).
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled

@@ -1,0 +1,162 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from the design,
+;; LLVM's code generator, language-extensions.md and the guest runs).
+;; Why this is right:
+;; - VaxFields' types' initialization procedures, "<Module>.<path>.-init"
+;;   as on LLVM through VaxTypes.MakeSymbol, .ENTRY since another module
+;;   makes records of them (VaxFieldsUse), the record's address at 4(AP).
+;;   List's record is anonymous under a named pointer: List.base.
+;; - Each field with a default is assigned it as an assignment would be,
+;;   at its offset from the address, moved to R2 for each (a call keeps
+;;   R2, and MOVC5 needs R2-R5 saved, as Named's mask does): Point's x
+;;   and y 1 and tag "p"; Named's name "none" padded to 8 by MOVC5.
+;;   Named's serial and other each call Next, its own call (a field list
+;;   evaluates its default once for each field).
+;; - A base type's defaults come first (Named calls Point's procedure);
+;;   a field holding a record with defaults is given them, corner at 4
+;;   and row at 10, a loop over row's three Points (6 bytes each).
+; VaxFields, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXFIELDS
+	.IDENT	/8e4a546bf262ccd5/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; counter: INTEGER, exported
+	.ALIGN	WORD
+VAXFIELDS_COUNTER_5LOPFRNN::
+	.BLKW	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxFields/
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/none/
+	.BYTE	0
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxFields.Point
+	.ALIGN	LONG
+VAXFIELDS_POINT_DU49IREL::
+	.LONG	6
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXFIELDS_POINT_DU49IREL
+; VaxFields.Named
+	.ALIGN	LONG
+VAXFIELDS_NAMED_42L5LUQ2::
+	.LONG	18
+	.LONG	1
+	.LONG	0
+	.ADDRESS	VAXFIELDS_POINT_DU49IREL
+	.ADDRESS	VAXFIELDS_NAMED_42L5LUQ2
+; VaxFields.Holder
+	.ALIGN	LONG
+VAXFIELDS_HOLDER_ASSDSAH3::
+	.LONG	28
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXFIELDS_HOLDER_ASSDSAH3
+; VaxFields.List.base
+	.ALIGN	LONG
+VAXFIELDS_LIST_BASE_CB5D4OBS::
+	.LONG	8
+	.LONG	0
+	.LONG	1
+	.ADDRESS	VAXFIELDS_LIST_BASE_CB5D4OBS
+	.LONG	4
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Next
+	.ENTRY	VAXFIELDS_NEXT_EP45BNB4, ^M<>
+; line 14
+	INCW	VAXFIELDS_COUNTER_5LOPFRNN
+; line 14
+	CVTWL	VAXFIELDS_COUNTER_5LOPFRNN, R0
+	RET
+	PUSHL	#3
+	PUSHL	#15
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; the field initializers of VaxFields.Point
+	.ENTRY	VAXFIELDS_POINT__INIT_4LUAINO6, ^M<R2>
+; line 18
+	MOVL	4(AP), R2
+	MOVW	#1, (R2)
+; line 18
+	MOVL	4(AP), R2
+	MOVW	#1, 2(R2)
+; line 18
+	MOVL	4(AP), R2
+	MOVB	#112, 4(R2)
+	RET
+; the field initializers of VaxFields.Named
+	.ENTRY	VAXFIELDS_NAMED__INIT_DPTH1TRL, ^M<R2,R3,R4,R5>
+	MOVL	4(AP), R2
+	PUSHL	R2
+	CALLS	#1, VAXFIELDS_POINT__INIT_4LUAINO6
+; line 19
+	MOVL	4(AP), R2
+	MOVC5	#4, L_STR_1, #0, #8, 6(R2)
+; line 19
+	MOVL	4(AP), R2
+	CALLS	#0, VAXFIELDS_NEXT_EP45BNB4
+	MOVW	R0, 14(R2)
+; line 19
+	MOVL	4(AP), R2
+	CALLS	#0, VAXFIELDS_NEXT_EP45BNB4
+	MOVW	R0, 16(R2)
+	RET
+; the field initializers of VaxFields.Holder
+	.ENTRY	VAXFIELDS_HOLDER__INIT_NGLUO9IK, ^M<R2,R3,R4>
+	MOVL	4(AP), R2
+	ADDL2	#4, R2
+	PUSHL	R2
+	CALLS	#1, VAXFIELDS_POINT__INIT_4LUAINO6
+	MOVL	4(AP), R2
+	ADDL2	#10, R2
+	MOVL	R2, R3
+	MOVL	#3, R4
+L_1:
+	PUSHL	R3
+	CALLS	#1, VAXFIELDS_POINT__INIT_4LUAINO6
+	ADDL2	#6, R3
+	DECL	R4
+	BLEQ	L_2
+	JMP	L^L_1
+L_2:
+	RET
+; the field initializers of VaxFields.List.base
+	.ENTRY	VAXFIELDS_LIST_BASE__I_GV40RLVV, ^M<R2>
+; line 21
+	MOVL	4(AP), R2
+	MOVW	#7, (R2)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXFIELDS_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_8E4A546BF262CCD5 == 0
+
+	.END
