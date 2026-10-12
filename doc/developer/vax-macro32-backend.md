@@ -2407,3 +2407,12 @@ names the source file as given (`POC.MOD`, the host's full path). A
 `POC.EXE` built from the current tree is kept in `DUA1:[USERS.POC.BIN]`
 for the user (`POC :== $DUA1:[USERS.POC.BIN]POC.EXE`).
 
+**Done: V3 (2026-10-12).** One procedure on the guest, from commit
+`752a676`: V1's `.mar`, the host's, assembled and linked; V1's
+`POC.EXE` compiling poc (44.8 minutes, 991 s of CPU), its `.mar`
+assembled and linked into V2's `POC.EXE`; and V2's image compiling poc
+again (45.1 minutes, 987 s), its `.mar` linked too. All 31 of V3's
+`.mar` are byte-identical to V2's and to V1's: the fixed point holds on
+VMS itself. What step 6 still asks for: `tools/bootstrap`'s scripts for
+the stages, and the conformance suite under the compiler built on VMS.
+

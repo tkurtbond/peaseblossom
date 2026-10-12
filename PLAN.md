@@ -986,6 +986,10 @@ most, object libraries.
    - *V2* (2026-10-12): `POC.EXE` compiled all of poc on VMS in 45.7
      minutes (90 MB peak); its 31 `.mar` are byte-identical to V1's.
      A current `POC.EXE` is kept in `DUA1:[USERS.POC.BIN]`.
+   - *V3* (2026-10-12): the chain on the guest, V1's image making V2's
+     and V2's compiling poc again: V3's 31 `.mar` are byte-identical to
+     V2's and V1's. Left: `tools/bootstrap` scripts, and the suite under
+     the VMS-built compiler.
 
 **Testing summary**: step 2's fixtures and step 3's shared fixtures
 are compile+assemble+link+run+diff on the guest; step 6's fixed point is
