@@ -1,0 +1,70 @@
+== poc -target vax-dec-vms -output-dir libs -library POCRTL ../../../rtl/vax/Console.Mod ../../../rtl/vax/Directories.Mod ../../../rtl/vax/Err.Mod ../../../rtl/vax/Files.Mod ../../../rtl/vax/GarbageCollectedHeap.Mod ../../../rtl/vax/LineOutput.Mod ../../../rtl/vax/Modules.Mod ../../../rtl/vax/Out.Mod ../../../rtl/vax/Platform.Mod ../../../rtl/vax/PocRtl.mar
+exit 0
+== poc -target vax-dec-vms -output-dir libs -library-path libs -library VAXLIB VaxLibBase.mod VaxLibShapes.mod VaxLibSums.mod
+exit 0
+libs/vax-dec-vms/O2/VAXLIB_build.com matches expected-VAXLIB_build.com
+libs/vax-dec-vms/O2/VAXLIB_setup.com matches expected-VAXLIB_setup.com
+manifest matches expected-VAXLIB.library
+POCRTL symbols made universal: 125
+PocRtl.mar copied whole
+in the library directory: Console.mar
+in the library directory: Console.owner
+in the library directory: Console.sym
+in the library directory: Directories.mar
+in the library directory: Directories.owner
+in the library directory: Directories.sym
+in the library directory: Err.mar
+in the library directory: Err.owner
+in the library directory: Err.sym
+in the library directory: Files.mar
+in the library directory: Files.owner
+in the library directory: Files.sym
+in the library directory: GarbageCollectedHeap.mar
+in the library directory: GarbageCollectedHeap.owner
+in the library directory: GarbageCollectedHeap.sym
+in the library directory: LineOutput.mar
+in the library directory: LineOutput.owner
+in the library directory: LineOutput.sym
+in the library directory: Modules.mar
+in the library directory: Modules.owner
+in the library directory: Modules.sym
+in the library directory: Out.mar
+in the library directory: Out.owner
+in the library directory: Out.sym
+in the library directory: POCRTL.library
+in the library directory: POCRTL_build.com
+in the library directory: POCRTL_setup.com
+in the library directory: Platform.mar
+in the library directory: Platform.owner
+in the library directory: Platform.sym
+in the library directory: PocRtl.mar
+in the library directory: VAXLIB.library
+in the library directory: VAXLIB_build.com
+in the library directory: VAXLIB_setup.com
+in the library directory: VaxLibBase.mar
+in the library directory: VaxLibBase.owner
+in the library directory: VaxLibBase.sym
+in the library directory: VaxLibShapes.mar
+in the library directory: VaxLibShapes.owner
+in the library directory: VaxLibShapes.sym
+in the library directory: VaxLibSums.mar
+in the library directory: VaxLibSums.owner
+in the library directory: VaxLibSums.sym
+== poc -target vax-dec-vms -library-path libs -output-dir main -emit-macro32 VaxLibUse.mod
+semantic OK, wrote main/VaxLibUse.mar
+exit 0
+== poc -target vax-dec-vms -library-path libs -library A234567890123456789012345678901234 VaxLibBase.mod
+poc: A234567890123456789012345678901234 cannot name a library for vax-dec-vms (1 to 33 letters, digits, _, $ and -)
+exit 1
+== poc -target vax-dec-vms -library-path libs -library BAD.NAME VaxLibBase.mod
+poc: BAD.NAME cannot name a library for vax-dec-vms (1 to 33 letters, digits, _, $ and -)
+exit 1
+== poc -target vax-dec-vms -output-dir libs2 -library NORTL VaxLibBase.mod
+poc: a library for vax-dec-vms needs the runtime library POCRTL on the library path (poc -target vax-dec-vms -library POCRTL rtl/vax/*.Mod rtl/vax/PocRtl.mar)
+exit 1
+== poc -target vax-dec-vms -output-dir libs2 -library-path libs -library TWICE VaxLibBase.mod
+poc: module VaxLibBase is in library VAXLIB (libs/vax-dec-vms/O2) already; a module belongs to one library
+exit 1
+== poc -target vax-dec-vms -output-dir libs2 -library-path libs -library PARTS VaxLibUse.mod vaxlibuse.mar
+poc: vaxlibuse.mar has the file name of module VaxLibUse's .mar
+exit 1

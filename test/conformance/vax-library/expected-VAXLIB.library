@@ -1,0 +1,13 @@
+library VAXLIB
+triple vax-dec-vms
+model O2
+needs POCRTL
+module VaxLibBase fd4b8f96f031bd45
+module VaxLibShapes 43e7513dd5b53378
+module VaxLibSums 905333bdead117c8
+source VaxLibBase 372dbb9348f658b6
+source VaxLibShapes 9d9600241df6474f
+source VaxLibSums 658a0c9a54a7704f
+import VaxLibShapes VaxLibBase fd4b8f96f031bd45
+import VaxLibSums VaxLibBase fd4b8f96f031bd45
+import VaxLibSums VaxLibShapes 43e7513dd5b53378

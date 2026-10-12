@@ -316,9 +316,10 @@ is the VAX/VMS target, which takes
 .Fl check ,
 .Fl emit-interface ,
 .Fl show-interface ,
-.Fl build
-and
+.Fl build ,
 .Fl compile
+and
+.Fl library
 so far.
 For it,
 .Fl build
@@ -333,7 +334,34 @@ into
 .Fl compile
 writes the named modules'
 .Pa .mar
-and a procedure that assembles them.
+and a procedure that assembles them;
+.Fl library
+writes the library's modules'
+.Pa .sym
+and
+.Pa .mar ,
+any
+.Pa .mar
+file named copied beside them, its manifest, and two DCL procedures:
+.Ar name Ns Pa _build.com ,
+which makes the object library
+.Pa NAME.OLB
+and the shareable image
+.Pa NAME.EXE
+on VMS, and
+.Ar name Ns Pa _setup.com ,
+which defines the logical names
+.Li POC$LIB_ Ns Ar NAME
+and
+.Ar NAME
+that building against the library and running with it need.
+Every library but the runtime's,
+.Li POCRTL ,
+made from
+.Pa rtl/vax
+and
+.Pa PocRtl.mar ,
+needs it.
 Every module must be compiled from source, the runtime's
 .Li Out , Err , Modules
 and

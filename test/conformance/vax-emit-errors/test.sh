@@ -3,7 +3,7 @@
 # PLAN.md Phase 15 steps 2-9 (doc/developer/vax-macro32-backend.md, sections
 # 5 and 10): what -emit-macro32 and -target vax-dec-vms refuse, each with
 # exit status 1 and nothing written (-build and -compile, Phase 16 step 2's,
-# are vax-build's)
+# are vax-build's, and -library, Phase 17 step 1's, vax-library's)
 run() {
   echo "== poc $*" >>result
   poc "$@" >>result 2>&1
@@ -18,5 +18,5 @@ run -emit-macro32 VaxReportedOnce.mod
 run -emit-macro32 VaxRealRange.mod
 run -target x86_64-unknown-linux-gnu -emit-macro32 VaxEmpty.mod
 run -target vax-dec-vms -emit-llvm-ir VaxEmpty.mod
-run -target vax-dec-vms -library vaxlib VaxEmpty.mod
+run -target vax-dec-vms -install-library vaxlib
 . ../../testresult.sh

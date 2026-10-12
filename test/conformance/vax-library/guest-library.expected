@@ -1,0 +1,12 @@
+library VAXLIB needs library POCRTL: run its POCRTL_SETUP.COM first
+VAXLIB_BUILD before POCRTL_SETUP: %X1000002C
+POCRTL_BUILD: %X10000001
+VAXLIB_BUILD: %X10000001
+linked against the shareable images: %X10000001
+total 25
+count 12
+run: %X00000001
+linked against the object libraries: %X10000001
+total 25
+count 12
+run: %X00000001

@@ -16,6 +16,9 @@ MODULE VaxToolchainDriver;
 
   CONST
     triple* = "vax-dec-vms";
+    (* the library rtl/vax and PocRtl.mar make, which every other library
+       and program for the VAX links (section 18, proposal 4) *)
+    runtimeLibrary* = "POCRTL";
     pathBufferLength* = 1400;
 
   TYPE
@@ -40,6 +43,18 @@ MODULE VaxToolchainDriver;
     WHILE (t[j] # 0X) & (i < LEN(s) - 1) DO s[i] := t[j]; INC(i); INC(j) END;
     s[i] := 0X
   END Append;
+
+  (* n, not negative, appended to s in decimal *)
+  PROCEDURE AppendInt(VAR s: ARRAY OF CHAR; n: INTEGER);
+    VAR reversed: ARRAY 8 OF CHAR; digits: ARRAY 8 OF CHAR; i, j: INTEGER;
+  BEGIN
+    i := 0;
+    REPEAT reversed[i] := CHR(ORD("0") + n MOD 10); n := n DIV 10; INC(i) UNTIL n = 0;
+    j := 0;
+    WHILE i > 0 DO DEC(i); digits[j] := reversed[i]; INC(j) END;
+    digits[j] := 0X;
+    Append(s, digits)
+  END AppendInt;
 
   PROCEDURE ModuleFilePath*(outputDir, moduleName: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
     VAR name: ARRAY 72 OF CHAR;
@@ -177,5 +192,229 @@ MODULE VaxToolchainDriver;
     Files.Register(f); Files.Close(f);
     RETURN TRUE
   END WriteBuildProcedure;
+
+  (* Whether line is <prefix><symbol><suffix>, symbol made of MACRO's
+     symbol characters, at least one; symbol is set when it is *)
+  PROCEDURE SymbolBetween(line, prefix, suffix: ARRAY OF CHAR; VAR symbol: ARRAY OF CHAR): BOOLEAN;
+    VAR i, j, k: INTEGER; ch: CHAR;
+  BEGIN
+    i := 0;
+    WHILE prefix[i] # 0X DO
+      IF line[i] # prefix[i] THEN RETURN FALSE END;
+      INC(i)
+    END;
+    j := 0; ch := line[i];
+    WHILE (ch >= "A") & (ch <= "Z") OR (ch >= "0") & (ch <= "9") OR (ch = "_") OR (ch = "$") DO
+      IF j < LEN(symbol) - 1 THEN symbol[j] := ch; INC(j) END;
+      INC(i); ch := line[i]
+    END;
+    symbol[j] := 0X;
+    k := 0;
+    WHILE suffix[k] # 0X DO
+      IF line[i + k] # suffix[k] THEN RETURN FALSE END;
+      INC(k)
+    END;
+    RETURN j > 0
+  END SymbolBetween;
+
+  (* The global symbols the .mar file at path defines, in the order it
+     defines them, appended to symbols: a label "<symbol>::", a direct
+     assignment "<symbol> == ", and an ".ENTRY", which MACRO makes global
+     (MACRO 5.4, section 3.3) - what poc writes for an exported variable,
+     procedure or type descriptor, <MODULE>_INIT and the key POC_K1_<key>
+     (sections 5 and 18). FALSE if the file cannot be read. *)
+  PROCEDURE ReadGlobalSymbols*(path: ARRAY OF CHAR; VAR symbols: Unit): BOOLEAN;
+    VAR f: Files.File; r: Files.Rider; line: ARRAY 512 OF CHAR; symbol: ARRAY 64 OF CHAR;
+        u, last: Unit; tab: ARRAY 2 OF CHAR; entry: ARRAY 9 OF CHAR;
+  BEGIN
+    f := Files.Old(path);
+    IF f = NIL THEN RETURN FALSE END;
+    tab[0] := 09X; tab[1] := 0X;
+    COPY(tab, entry); Append(entry, ".ENTRY"); Append(entry, tab);
+    last := symbols;
+    IF last # NIL THEN WHILE last.next # NIL DO last := last.next END END;
+    Files.Set(r, f, 0);
+    LOOP
+      Files.ReadLine(r, line);
+      IF r.eof & (line[0] = 0X) THEN EXIT END;
+      IF SymbolBetween(line, "", "::", symbol) OR SymbolBetween(line, "", " == ", symbol)
+         OR SymbolBetween(line, entry, ",", symbol) THEN
+        NEW(u); COPY(symbol, u.name); u.next := NIL;
+        IF last = NIL THEN symbols := u ELSE last.next := u END;
+        last := u
+      END;
+      IF r.eof THEN EXIT END
+    END;
+    Files.Close(f);
+    RETURN TRUE
+  END ReadGlobalSymbols;
+
+  (* The text file from copied to the file to, a line at a time, as
+     poc on VMS can as well as on Unix (no cp there): a hand-written .mar
+     put in a library (section 18). FALSE if either cannot be opened, or a
+     line is longer than 1023 characters. *)
+  PROCEDURE CopyText*(from, to: ARRAY OF CHAR): BOOLEAN;
+    VAR f, g: Files.File; r, w: Files.Rider; line: ARRAY 1024 OF CHAR; n: INTEGER; ok: BOOLEAN;
+  BEGIN
+    f := Files.Old(from);
+    IF f = NIL THEN RETURN FALSE END;
+    g := Files.New(to);
+    IF g = NIL THEN Files.Close(f); RETURN FALSE END;
+    Files.Set(r, f, 0); Files.Set(w, g, 0); ok := TRUE;
+    LOOP
+      Files.ReadLine(r, line);
+      IF r.eof & (line[0] = 0X) THEN EXIT END;
+      n := 0; WHILE line[n] # 0X DO INC(n) END;
+      IF n >= LEN(line) - 1 THEN ok := FALSE END;
+      WriteLine(w, line);
+      IF r.eof THEN EXIT END
+    END;
+    Files.Close(f);
+    Files.Register(g); Files.Close(g);
+    RETURN ok
+  END CopyText;
+
+  (* Whether a and b are one file name on VMS, which ignores case *)
+  PROCEDURE IsSameVmsName*(a, b: ARRAY OF CHAR): BOOLEAN;
+    VAR ua, ub: ARRAY 72 OF CHAR;
+  BEGIN
+    Upper(a, ua); Upper(b, ub);
+    RETURN ua = ub
+  END IsSameVmsName;
+
+  (* Whether name can name a VAX library: a VMS file name (IsVmsFileName)
+     of at most 33 characters, room for its "_SETUP" procedure's name *)
+  PROCEDURE IsLibraryName*(name: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0; WHILE (i < LEN(name)) & (name[i] # 0X) DO INC(i) END;
+    RETURN IsVmsFileName(name) & (i <= 33)
+  END IsLibraryName;
+
+  (* Lines of a procedure that stop it, with a message, unless the
+     logical name POC$LIB_<NEED> is defined, as library need's setup
+     procedure defines it (section 18, proposal 6); user the library or
+     program that needs it, uppercased, label a label of its own *)
+  PROCEDURE WriteNeedCheck(VAR w: Files.Rider; user, need, label: ARRAY OF CHAR);
+    VAR line: ARRAY 300 OF CHAR;
+  BEGIN
+    COPY('$ IF F$TRNLNM("POC$LIB_', line); Append(line, need); Append(line, '") .NES. "" THEN GOTO ');
+    Append(line, label); WriteLine(w, line);
+    COPY('$ WRITE SYS$ERROR "', line); Append(line, user); Append(line, " needs library ");
+    Append(line, need); Append(line, ": run its "); Append(line, need);
+    Append(line, '_SETUP.COM first"'); WriteLine(w, line);
+    WriteLine(w, "$ EXIT %X1000002C"); (* SS$_ABORT, its message inhibited: the line above is it *)
+    COPY("$", line); Append(line, label); Append(line, ":"); WriteLine(w, line)
+  END WriteNeedCheck;
+
+  (* The DCL procedures of the VAX library name in the directory dir (its
+     tuple directory, section 18, proposal 1), units its modules, in the
+     order MACRO takes them, parts its hand-written .MAR files, needs the
+     libraries it needs, in link order, and symbols the global symbols of
+     them all. <name>_build.com, run on VMS in the directory that holds the
+     library's files, assembles them, makes the object library <NAME>.OLB,
+     one module at a time (LIBRARY/INSERT refuses a global symbol the
+     library has already, section 18.1), and links the shareable image
+     <NAME>.EXE from their objects and the needed libraries' images, with
+     every global symbol UNIVERSAL= (proposal 2) and no GSMATCH= (proposal
+     3); it stops at a warning, as -build's does, and first, with a
+     message, when a needed library's setup procedure has not been run.
+     <name>_setup.com defines POC$LIB_<NAME>, the directory it is in, and
+     <NAME>, its image, the logical name the image activator looks for
+     (proposal 6). Neither procedure is <name>.com: once the setup has
+     defined the logical name <NAME>, "@<NAME>" would be its image, since
+     RMS takes a file specification without punctuation as a logical name
+     (found on the development system, 2026-10-12). FALSE if a file could
+     not be written. *)
+  PROCEDURE WriteLibraryProcedures*(dir, name: ARRAY OF CHAR; units, parts, needs, symbols: Unit): BOOLEAN;
+    VAR f: Files.File; w: Files.Rider; u: Unit; libName, unitName: ARRAY 64 OF CHAR;
+        line: ARRAY 300 OF CHAR; label: ARRAY 16 OF CHAR; file: ARRAY 64 OF CHAR;
+        path: ARRAY pathBufferLength OF CHAR; count: INTEGER;
+  BEGIN
+    Upper(name, libName);
+    COPY(name, file); Append(file, "_build.com");
+    Directories.MakePath(dir, file, path);
+    f := Files.New(path);
+    IF f = NIL THEN RETURN FALSE END;
+    Files.Set(w, f, 0);
+    COPY("$ ! Written by poc: builds the library ", line); Append(line, libName); Append(line, ", ");
+    Append(line, libName); Append(line, ".OLB and ");
+    Append(line, libName); Append(line, ".EXE"); WriteLine(w, line);
+    WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 18). Run it where");
+    WriteLine(w, "$ ! the library's .MAR files are, once the setup procedure of each");
+    WriteLine(w, "$ ! library it needs has been run.");
+    WriteLine(w, "$ ON WARNING THEN EXIT $STATUS");
+    count := 0; u := needs;
+    WHILE u # NIL DO
+      Upper(u.name, unitName); INC(count);
+      COPY("NEED_", label); line[0] := 0X; AppendInt(line, count); Append(label, line);
+      COPY("library ", line); Append(line, libName);
+      WriteNeedCheck(w, line, unitName, label);
+      u := u.next
+    END;
+    u := units;
+    WHILE u # NIL DO
+      Upper(u.name, unitName);
+      COPY("$ MACRO/OBJECT ", line); Append(line, unitName); Append(line, ".MAR"); WriteLine(w, line);
+      u := u.next
+    END;
+    u := parts;
+    WHILE u # NIL DO
+      Upper(u.name, unitName);
+      COPY("$ MACRO/OBJECT ", line); Append(line, unitName); Append(line, ".MAR"); WriteLine(w, line);
+      u := u.next
+    END;
+    COPY("$ LIBRARY/CREATE/OBJECT ", line); Append(line, libName); Append(line, ".OLB"); WriteLine(w, line);
+    u := units;
+    WHILE u # NIL DO
+      Upper(u.name, unitName);
+      COPY("$ LIBRARY/INSERT ", line); Append(line, libName); Append(line, ".OLB ");
+      Append(line, unitName); Append(line, ".OBJ"); WriteLine(w, line);
+      u := u.next
+    END;
+    u := parts;
+    WHILE u # NIL DO
+      Upper(u.name, unitName);
+      COPY("$ LIBRARY/INSERT ", line); Append(line, libName); Append(line, ".OLB ");
+      Append(line, unitName); Append(line, ".OBJ"); WriteLine(w, line);
+      u := u.next
+    END;
+    COPY("$ CREATE ", line); Append(line, libName); Append(line, ".OPT"); WriteLine(w, line);
+    u := units;
+    WHILE u # NIL DO Upper(u.name, unitName); COPY(unitName, line); Append(line, ".OBJ"); WriteLine(w, line); u := u.next END;
+    u := parts;
+    WHILE u # NIL DO Upper(u.name, unitName); COPY(unitName, line); Append(line, ".OBJ"); WriteLine(w, line); u := u.next END;
+    u := needs;
+    WHILE u # NIL DO Upper(u.name, unitName); COPY(unitName, line); Append(line, "/SHAREABLE"); WriteLine(w, line); u := u.next END;
+    u := symbols;
+    WHILE u # NIL DO COPY("UNIVERSAL=", line); Append(line, u.name); WriteLine(w, line); u := u.next END;
+    COPY("$ LINK/SHAREABLE=", line); Append(line, libName); Append(line, ".EXE ");
+    Append(line, libName); Append(line, ".OPT/OPTIONS"); WriteLine(w, line);
+    WriteLine(w, "$ EXIT $STATUS");
+    Files.Register(f); Files.Close(f);
+
+    COPY(name, file); Append(file, "_setup.com");
+    Directories.MakePath(dir, file, path);
+    f := Files.New(path);
+    IF f = NIL THEN RETURN FALSE END;
+    Files.Set(w, f, 0);
+    COPY("$ ! Written by poc: defines the logical names of the library ", line); Append(line, libName);
+    WriteLine(w, line);
+    WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 18, proposal 6):");
+    COPY("$ ! POC$LIB_", line); Append(line, libName); Append(line, ", the directory this procedure is in, and ");
+    Append(line, libName); Append(line, ",");
+    WriteLine(w, line);
+    WriteLine(w, "$ ! its shareable image, which the image activator looks for. Run it");
+    WriteLine(w, "$ ! once a session, or from LOGIN.COM, before building or running a");
+    WriteLine(w, "$ ! program that uses the library.");
+    WriteLine(w, '$ PROC = F$ENVIRONMENT("PROCEDURE")');
+    WriteLine(w, '$ DIR = F$PARSE(PROC,,,"DEVICE") + F$PARSE(PROC,,,"DIRECTORY")');
+    COPY("$ DEFINE/NOLOG POC$LIB_", line); Append(line, libName); Append(line, " 'DIR'"); WriteLine(w, line);
+    COPY("$ DEFINE/NOLOG ", line); Append(line, libName); Append(line, " 'DIR'"); Append(line, libName);
+    Append(line, ".EXE"); WriteLine(w, line);
+    WriteLine(w, "$ EXIT 1");
+    Files.Register(f); Files.Close(f);
+    RETURN TRUE
+  END WriteLibraryProcedures;
 
 END VaxToolchainDriver.

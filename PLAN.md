@@ -568,6 +568,13 @@ C++, and so on) unless step 4 chooses one deliberately.
    Done (section 18.5): `POC_ADDR`, the constants that hold addresses
    (type descriptors, `PocRtl`'s trap texts) out of `POC_CONST`
    (proposal 5).
+   `-library` for the VAX (proposals 1, 2 and 4): `<name>_build.com`
+   makes `<NAME>.OLB` and the shareable `<NAME>.EXE` on VMS,
+   `<name>_setup.com` defines its logical names, and the runtime is the
+   library `POCRTL`, which every other needs; fixture `vax-library`
+   builds both on the guest and runs a program linked against each kind.
+   Proposal 6 changed as the guest showed (section 18.5). Next: `-build`
+   against libraries.
 
 2. **Which existing Oberon libraries and modules to support on VMS.**
    Take Phase 12's complete inventory of voc's modules and Phase 10's

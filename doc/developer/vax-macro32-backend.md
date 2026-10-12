@@ -2788,3 +2788,43 @@ image found through the logical name `SHRLIB`:
   were already in `POC_DATA`. No other constant poc writes holds an
   address. 23 fixtures' `expected-vax*.mar` change in one line each,
   the `.PSECT` before the descriptors.
+- *`-library` for the VAX, and `POCRTL`* (proposals 1, 2 and 4,
+  2026-10-12). `poc -target vax-dec-vms -library <name> <file>...`
+  makes the library in `<output-dir>/vax-dec-vms/<O2|OC>/` as on LLVM
+  (`Poc.BuildLibraryVax`): its modules' `.sym` and `.mar`, compiled from
+  source only, any `.mar` file named copied beside them (a part, as
+  `PocRtl.mar` is `POCRTL`'s; copied a line at a time, so that poc on
+  VMS can too), the manifest and the `.owner` files, and two DCL
+  procedures (`VaxToolchainDriver.WriteLibraryProcedures`).
+  `<name>_build.com` assembles everything, makes `<NAME>.OLB` a module
+  at a time with `LIBRARY/INSERT`, and links `<NAME>.EXE` shareable
+  from the objects and each needed library's image, with every global
+  symbol of its `.mar` files `UNIVERSAL=`: a label `::`, an assignment
+  `==` and an `.ENTRY`, which MACRO makes global (MACRO 5.4, section
+  3.3), read back from the files (`ReadGlobalSymbols`). Every library but
+  `POCRTL` needs `POCRTL`, made by `poc -target vax-dec-vms -library
+  POCRTL rtl/vax/*.Mod rtl/vax/PocRtl.mar`: its code calls `POC_TRAP` and
+  the runtime's other routines, which a shareable image cannot leave
+  undefined. Fixture `vax-library`: `POCRTL`, and `VAXLIB` of three
+  dependent modules (a type-bound procedure, an exported variable, `NEW`),
+  built on the guest, and a program linked against their shareable images
+  (6 blocks) and against their object libraries (47 blocks), both
+  printing what they should. Its `expected-VAXLIB_build.com`,
+  `expected-VAXLIB_setup.com`, `expected-VAXLIB.library` and
+  `guest-library.com` were reviewed by the user (2026-10-12).
+- *Two changes to proposal 6, found on the guest.* The build procedure
+  is `<name>_build.com`, not `<name>.com`: once the setup procedure has
+  defined the logical name `<NAME>`, `@<NAME>` runs the image, since RMS
+  takes a file specification without punctuation as a logical name
+  (`%DCL-E-OPENIN ... POCRTL.EXE`). And `<name>_setup.com` defines only
+  its own library's names, since it cannot know where a needed library
+  is on VMS; instead a build procedure checks that `POC$LIB_<NEED>` is
+  defined for each library it needs, and stops, before doing anything,
+  with "library VAXLIB needs library POCRTL: run its POCRTL_SETUP.COM
+  first" (`%X1000002C`, `SS$_ABORT` with its message inhibited).
+- *Left for the next steps*: `-build` linking a program against VAX
+  libraries (it still compiles the runtime from source and links
+  `POCRTL.OBJ`; a module taken from a library is refused), the program's
+  check of each needed library's logical names, `-install-library` and
+  the library path on VMS (the subdirectory join), and the collision
+  check from `.sym` files (proposal 7).

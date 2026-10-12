@@ -108,7 +108,19 @@ MODULE Poc;
       next: LibraryMember
     END;
 
+    (* Phase 17 step 1: a hand-written MACRO-32 file poc -library puts in a
+       library for vax-dec-vms beside its modules, as PocRtl.mar is put in
+       POCRTL (doc/developer/vax-macro32-backend.md, section 18) *)
+    VaxPart = POINTER TO VaxPartDesc;
+    VaxPartDesc = RECORD
+      name: ARRAY 64 OF CHAR; (* its file name without .mar *)
+      path: Libraries.Path;
+      next: VaxPart
+    END;
+
   VAR
+    (* -library for vax-dec-vms: its .mar files, NIL for every other command *)
+    vaxParts: VaxPart;
     (* Phase 12 step 2c: poc -library's modules, and poc -compile's (step
        2f); NIL for every other command *)
     members: LibraryMember;
@@ -474,10 +486,12 @@ MODULE Poc;
      one checked against its library's manifest - the key of the .sym the
      program was compiled against. Handed to LLVMToolchainDriver in link
      order. FALSE, having said why, when they cannot be linked. *)
-  PROCEDURE PrepareLibraries(modules: LLVMCodeGenerator.ModuleList; shared: BOOLEAN): BOOLEAN;
-    VAR
-      m: LLVMCodeGenerator.ModuleList; lib: Libraries.Library; member: Libraries.Member;
-      key: Libraries.Key; seen, link, other: Libraries.LinkArgument; ok: BOOLEAN;
+  (* The libraries modules needs in link order (Libraries.ComputeLinkOrder),
+     and each module taken from one checked against its library's manifest,
+     for any target: FALSE, said why, if they do not agree *)
+  PROCEDURE CheckLibraries(modules: LLVMCodeGenerator.ModuleList): BOOLEAN;
+    VAR m: LLVMCodeGenerator.ModuleList; lib: Libraries.Library; member: Libraries.Member;
+        key: Libraries.Key; ok: BOOLEAN;
   BEGIN
     ok := (Libraries.errors = 0) & Libraries.ComputeLinkOrder();
     m := modules;
@@ -494,6 +508,15 @@ MODULE Poc;
       END;
       m := m.next
     END;
+    IF ~ok THEN failed := TRUE END;
+    RETURN ok
+  END CheckLibraries;
+
+  PROCEDURE PrepareLibraries(modules: LLVMCodeGenerator.ModuleList; shared: BOOLEAN): BOOLEAN;
+    VAR
+      lib: Libraries.Library; seen, link, other: Libraries.LinkArgument; ok: BOOLEAN;
+  BEGIN
+    ok := CheckLibraries(modules);
     LLVMToolchainDriver.ClearLibraries;
     LLVMToolchainDriver.ltoLink := FALSE;
     lib := Libraries.linkOrder;
@@ -1648,6 +1671,41 @@ MODULE Poc;
     RETURN TRUE
   END AppendQuoted;
 
+  (* Whether file's name ends in ".mar", in any case *)
+  PROCEDURE IsMarFile(file: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER; ext: ARRAY 5 OF CHAR; j: INTEGER;
+  BEGIN
+    i := 0; WHILE file[i] # 0X DO INC(i) END;
+    IF i < 5 THEN RETURN FALSE END;
+    FOR j := 0 TO 3 DO
+      ext[j] := file[i - 4 + j];
+      IF (ext[j] >= "A") & (ext[j] <= "Z") THEN ext[j] := CHR(ORD(ext[j]) - ORD("A") + ORD("a")) END
+    END;
+    ext[4] := 0X;
+    RETURN ext = ".mar"
+  END IsMarFile;
+
+  (* file, a .mar, added to vaxParts, by its file name without .mar, which
+     must be a VMS file name and not another part's *)
+  PROCEDURE AddVaxPart(file: ARRAY OF CHAR; VAR ok: BOOLEAN);
+    VAR part, p: VaxPart; i, start, j: INTEGER;
+  BEGIN
+    NEW(part); COPY(file, part.path); part.next := NIL;
+    i := 0; start := 0;
+    WHILE file[i] # 0X DO IF file[i] = "/" THEN start := i + 1 END; INC(i) END;
+    j := 0;
+    WHILE (start + j < i - 4) & (j < LEN(part.name) - 1) DO part.name[j] := file[start + j]; INC(j) END;
+    part.name[j] := 0X;
+    IF ~VaxToolchainDriver.IsVmsFileName(part.name) THEN
+      failed := TRUE; Err.String("poc: "); Err.String(file);
+      Err.String(" does not name a VMS file (1 to 39 letters, digits, _, $ and -, then .mar)"); Err.Ln;
+      ok := FALSE; RETURN
+    END;
+    p := vaxParts;
+    WHILE (p # NIL) & (p.next # NIL) DO p := p.next END;
+    IF p = NIL THEN vaxParts := part ELSE p.next := part END
+  END AddVaxPart;
+
   (* The modules of the command line's files from firstFile on, by the
      names their files declare, in members: poc -library's (forLibrary),
      where a file may also be a module's .sym or .o (Phase 12 step 2f) and
@@ -1658,9 +1716,12 @@ MODULE Poc;
       buffer: Lexer.CharBuffer; length: LONGINT; parser: Parser.Parser; module: SyntaxTree.ModuleNode;
       owner: Libraries.Library; compiled: BOOLEAN; symFile, objectFile, irFile: Libraries.Path;
   BEGIN
-    ok := TRUE; members := NIL; tail := NIL; membersOnly := forLibrary;
+    ok := TRUE; members := NIL; tail := NIL; membersOnly := forLibrary; vaxParts := NIL;
     FOR i := firstFile TO Modules.ArgCount - 1 DO
       Modules.GetArg(i, file); objectFile[0] := 0X; irFile[0] := 0X;
+      IF ok & forLibrary & forVax & IsMarFile(file) THEN
+        AddVaxPart(file, ok)
+      ELSE
       (* a module compiled already, named by its .sym, its .o (Phase 12
          step 2f) or its .ll (2g): the .sym and what is beside it *)
       compiled := PairFiles(file, symFile);
@@ -1698,6 +1759,7 @@ MODULE Poc;
             tail := member
           END
         END
+      END
       END
     END;
   END ReadMembers;
@@ -1783,6 +1845,148 @@ MODULE Poc;
     (* silent on success (Phase 13 step 2), as clang -c is *)
   END CompileOnly;
 
+  (* poc -target vax-dec-vms -library <name> <file>... (Phase 17 step 1;
+     doc/developer/vax-macro32-backend.md, section 18): the library name
+     for the VAX, made as on LLVM (BuildLibrary) from its modules, each
+     compiled from source, and any hand-written .mar files named
+     (vaxParts), in <outputDir>/vax-dec-vms/<O2|OC>/: each module's .sym
+     and .mar, each part copied there, the manifest and the .owner files,
+     and the DCL procedures VaxToolchainDriver.WriteLibraryProcedures
+     writes, <name>_build.com, which makes <NAME>.OLB and <NAME>.EXE on
+     VMS, and <name>_setup.com. Silent on success. *)
+  PROCEDURE BuildLibraryVax(name: ARRAY OF CHAR; firstFile: INTEGER; outputDir: ARRAY OF CHAR);
+    VAR
+      dir: Libraries.Path;
+      member: LibraryMember; part: VaxPart; owner, lib: Libraries.Library; libMember: Libraries.Member;
+      modules, modulesTail, m: LLVMCodeGenerator.ModuleList; visited: VisitedModule; ok: BOOLEAN;
+      imp: SyntaxTree.ImportNode; key: Libraries.Key;
+      units, parts, partsTail, needs, needsTail, symbols, u: VaxToolchainDriver.Unit;
+      path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
+  BEGIN
+    IF ~SetVaxTarget("-library", VaxToolchainDriver.triple) THEN RETURN END;
+    IF ~VaxToolchainDriver.IsLibraryName(name) THEN
+      failed := TRUE; Err.String("poc: "); Err.String(name);
+      Err.String(" cannot name a library for "); Err.String(VaxToolchainDriver.triple);
+      Err.String(" (1 to 33 letters, digits, _, $ and -)"); Err.Ln;
+      RETURN
+    END;
+    Libraries.Exclude(name);
+    Libraries.TupleDirectory(outputDir, dir);
+    ReadMembers(firstFile, TRUE, ok);
+    IF ~ok THEN RETURN END;
+    member := members;
+    WHILE member # NIL DO
+      IF member.compiled THEN
+        failed := TRUE; Err.String("poc: "); Err.String(member.path);
+        Err.String(" is compiled already; a library for "); Err.String(VaxToolchainDriver.triple);
+        Err.String(" is built from source"); Err.Ln;
+        RETURN
+      END;
+      part := vaxParts;
+      WHILE part # NIL DO
+        IF VaxToolchainDriver.IsSameVmsName(part.name, member.name) THEN
+          failed := TRUE; Err.String("poc: "); Err.String(part.path); Err.String(" has the file name of module ");
+          Err.String(member.name); Err.String("'s .mar"); Err.Ln;
+          RETURN
+        END;
+        part := part.next
+      END;
+      member := member.next
+    END;
+    IF ~Directories.MakeDirectory(dir) THEN
+      failed := TRUE; Err.String("poc: cannot make the directory "); Err.String(dir); Err.Ln;
+      RETURN
+    END;
+    (* each hand-written .mar copied beside the modules' *)
+    parts := NIL; partsTail := NIL; part := vaxParts;
+    WHILE part # NIL DO
+      Directories.MakePath(dir, part.name, path); Strcat(path, ".mar");
+      IF ~VaxToolchainDriver.CopyText(part.path, path) THEN
+        failed := TRUE; Err.String("poc: cannot copy "); Err.String(part.path); Err.String(" to "); Err.String(dir); Err.Ln;
+        RETURN
+      END;
+      NEW(u); COPY(part.name, u.name); u.next := NIL;
+      IF partsTail = NIL THEN parts := u ELSE partsTail.next := u END;
+      partsTail := u;
+      part := part.next
+    END;
+    ModuleInterface.SetInterfaceDir(dir);
+    visited := NIL; member := members;
+    WHILE ok & (member # NIL) DO RegenerateInterfaces(member.name, dir, visited, ok); member := member.next END;
+    modules := NIL; modulesTail := NIL; member := members;
+    WHILE ok & (member # NIL) DO DiscoverModule(member.name, modules, modulesTail, ok); member := member.next END;
+    AddVaxCollector(dir, modules, ok);
+    IF ~ok THEN
+      IF Diagnostics.errorCount > 0 THEN Err.Int(Diagnostics.errorCount, 0); Err.String(" error(s)"); Err.Ln END;
+      RETURN
+    END;
+    (* every library but the runtime's needs the runtime's, POCRTL, whose
+       routines (POC_TRAP and the rest) its code calls: a shareable image
+       cannot leave them undefined (section 18, proposal 4) *)
+    IF ~VaxToolchainDriver.IsSameVmsName(name, VaxToolchainDriver.runtimeLibrary) THEN
+      lib := Libraries.FindLibrary(VaxToolchainDriver.runtimeLibrary);
+      IF lib = NIL THEN
+        failed := TRUE;
+        Err.String("poc: a library for "); Err.String(VaxToolchainDriver.triple); Err.String(" needs the runtime library ");
+        Err.String(VaxToolchainDriver.runtimeLibrary); Err.String(" on the library path (poc -target ");
+        Err.String(VaxToolchainDriver.triple); Err.String(" -library "); Err.String(VaxToolchainDriver.runtimeLibrary);
+        Err.String(" rtl/vax/*.Mod rtl/vax/PocRtl.mar)"); Err.Ln;
+        RETURN
+      END;
+      Libraries.Use(lib)
+    END;
+    IF ~CheckLibraries(modules) OR ~WriteMacro32(modules, dir, TRUE, FALSE) THEN RETURN END;
+    (* every global symbol of its modules and parts, for UNIVERSAL= *)
+    units := VaxUnits(modules, TRUE); symbols := NIL;
+    u := units;
+    WHILE u # NIL DO
+      VaxToolchainDriver.ModuleFilePath(dir, u.name, path);
+      IF ~VaxToolchainDriver.ReadGlobalSymbols(path, symbols) THEN
+        failed := TRUE; Err.String("poc: cannot read "); Err.String(path); Err.Ln; RETURN
+      END;
+      u := u.next
+    END;
+    u := parts;
+    WHILE u # NIL DO
+      VaxToolchainDriver.ModuleFilePath(dir, u.name, path);
+      IF ~VaxToolchainDriver.ReadGlobalSymbols(path, symbols) THEN
+        failed := TRUE; Err.String("poc: cannot read "); Err.String(path); Err.Ln; RETURN
+      END;
+      u := u.next
+    END;
+    needs := NIL; needsTail := NIL; owner := Libraries.linkOrder;
+    WHILE owner # NIL DO
+      NEW(u); COPY(owner.name, u.name); u.next := NIL;
+      IF needsTail = NIL THEN needs := u ELSE needsTail.next := u END;
+      needsTail := u;
+      owner := owner.linkNext
+    END;
+    IF ~VaxToolchainDriver.WriteLibraryProcedures(dir, name, units, parts, needs, symbols) THEN
+      failed := TRUE; Err.String("poc: cannot write library "); Err.String(name); Err.String("'s procedures in ");
+      Err.String(dir); Err.Ln;
+      RETURN
+    END;
+    (* the manifest, as on LLVM *)
+    lib := Libraries.NewLibrary(name, dir);
+    m := modules;
+    WHILE m # NIL DO
+      IF ~m.inLibrary THEN
+        IF ~ModuleInterface.KeyOf(m.module.name, key) THEN key[0] := 0X END;
+        libMember := Libraries.AddMember(lib, m.module.name, key);
+        IF ModuleInterface.KeyOfFile(m.fileName, key) THEN COPY(key, libMember.source) END;
+        imp := m.module.imports;
+        WHILE imp # NIL DO
+          IF ModuleInterface.KeyOf(imp.moduleName, key) THEN Libraries.AddImport(libMember, imp.moduleName, key) END;
+          imp := imp.next
+        END
+      END;
+      m := m.next
+    END;
+    owner := Libraries.linkOrder;
+    WHILE owner # NIL DO Libraries.AddNeed(lib, owner.name); owner := owner.linkNext END;
+    IF ~Libraries.WriteManifest(lib) THEN failed := TRUE END
+  END BuildLibraryVax;
+
   (* poc -library <name> <file>... (Phase 12 step 2c): the modules of the
      files named, and nothing else - each import one of them or a module a
      library on the library path has - compiled into the library name, in
@@ -1803,7 +2007,7 @@ MODULE Poc;
       modules, modulesTail, m: LLVMCodeGenerator.ModuleList; visited: VisitedModule; ok: BOOLEAN;
       imp: SyntaxTree.ImportNode; key: Libraries.Key;
   BEGIN
-    IF RejectVaxTarget("-library", explicitTriple) THEN RETURN END;
+    IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN BuildLibraryVax(name, firstFile, outputDir); RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
       RETURN
