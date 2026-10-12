@@ -1,0 +1,447 @@
+#!/bin/sh
+# Runs the conformance fixtures' compilations under poc running on VAX/VMS,
+# and compares what it does with what the host's poc does for the VAX
+# (PLAN.md Phase 16 step 6; doc/developer/vax-macro32-backend.md, section
+# 17, "The suite under the compiler built on VMS"). make test-vax-guest-poc
+# runs it.
+#
+#   tools/vax-guest-poc [-only <regex>]
+#
+# The poc on the guest is V1's (tools/bootstrap/vax-v1), linked there at the
+# start of the run: V2's .mar are V1's, so its image is the one V2's would
+# be (tools/bootstrap/vax-stages checks that). It compiles three groups:
+#
+#   A  each program of test/vax-suite.list, with its options, -target
+#      vax-dec-vms and -build
+#   B  each VAX fixture's vax_mar line: -emit-macro32 with its options
+#   C  each fixture whose test.sh runs only poc [-strict] [-O2|-OC] -check
+#      <file>, those commands in order, each with -target vax-dec-vms
+#
+# -only keeps the fixtures whose names match the regular expression (grep's).
+# Each item is a directory of its own on the guest, [.GUESTPOC.<id>],
+# holding the fixture's sources (git's tracked *.mod files, in their
+# subdirectories); rtl/vax is in [.GUESTPOC.RTL], on POC_IMPORT_PATH, a
+# logical name, and the host's runs have it on POC_IMPORT_PATH too, which
+# stands for vax_mar's -import-path of rtl/vax. A relative directory among
+# the options is a VMS one on the guest (lib is [.LIB], ../src [-.SRC]), and
+# every argument is quoted, so that it keeps its case. The same commands are
+# run here in a copy of the same sources, in build/vax-guest-poc/host.
+#
+# For each command the guest's standard output, standard error and status
+# must be the host's (SS$_NORMAL is 0, %X10000000 + 8 * n + 2 is n, as for
+# tools/vax-suite), and for each item the files written must be the host's,
+# by name (without regard to case) and content. One procedure, GUESTPOC.COM,
+# does it all on the guest (tools/vax-do), appending each output and each
+# file written to RESULTS.TXT, which comes back. Prints PASSED or FAILED for
+# each item, with the differences, then the counts. Exits 0 if all passed,
+# 1 if not, 2 if the guest could not be used (VAX_DO_TIMEOUT, default here
+# 14400 seconds, bounds the guest's run).
+set -u
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+POC_BIN_DIR=${POC_BIN_DIR:-$ROOT/build/bin}
+PATH="$POC_BIN_DIR:$PATH"
+export PATH
+VAX_DO_TIMEOUT=${VAX_DO_TIMEOUT:-14400}
+export VAX_DO_TIMEOUT
+unset POC_IMPORT_PATH POC_LIBRARY_PATH
+
+only=.
+case ${1:-} in
+  -only) [ $# -eq 2 ] || { echo "usage: tools/vax-guest-poc [-only <regex>]" >&2; exit 2; }; only=$2 ;;
+  "") ;;
+  *) echo "usage: tools/vax-guest-poc [-only <regex>]" >&2; exit 2 ;;
+esac
+
+"$ROOT/tools/vax-assemble" -available || { echo "vax-guest-poc: the VAX guest is not available" >&2; exit 2; }
+"$ROOT/tools/bootstrap/vax-v1" >/dev/null || { echo "vax-guest-poc: V1 did not build" >&2; exit 1; }
+V1=$ROOT/build/vax-bootstrap/v1
+
+work=$ROOT/build/vax-guest-poc
+rm -rf "$work"
+mkdir -p "$work/host" "$work/up" "$work/back" "$work/items"
+conformance=$ROOT/test/conformance
+
+# ---- the items: <id> <fixture> <subdirectory or .> <key>, and <id>.cmds,
+# one command's arguments a line, as shell words; the key names the
+# fixture's expected-vax-guest-<key>.diff
+items=$work/items.list
+: >"$items"
+# add_item <group> <fixture> <subdir> <key>, its commands in $work/cmds;
+# not in a pipeline, which would lose n
+add_item() {
+  n=$((n + 1))
+  id=$(printf '%s%03d' "$1" "$n")
+  echo "$id $2 $3 $4" >>"$items"
+  mv "$work/cmds" "$work/items/$id.cmds"
+}
+
+# A: the list's programs
+n=0
+grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/test/vax-suite.list" | sed 's/ : .*//' >"$work/list"
+while read -r fixture main options; do
+  echo "$fixture" | grep -q -- "$only" || continue
+  case $main in */*) subdir=${main%/*}; main=${main##*/} ;; *) subdir=. ;; esac
+  echo "$options -target vax-dec-vms -build $main" >"$work/cmds"
+  tag=$(echo "$options" | sed 's/^-//; s/ -/-/g; s/ /-/g')
+  add_item A "$fixture" "$subdir" "${main%.[Mm]od}-$tag"
+done <"$work/list"
+# B: vax_mar lines, the -import-path of rtl/vax left to POC_IMPORT_PATH
+n=0
+for t in "$conformance"/vax-*/test.sh; do
+  fixture=$(basename "$(dirname "$t")")
+  echo "$fixture" | grep -q -- "$only" || continue
+  line=$(sed -n 's/^[[:space:]]*vax_mar[[:space:]]*//p' "$t")
+  [ -n "$line" ] || continue
+  # shellcheck disable=SC2086
+  set -- $line
+  module=$1; shift
+  options=$(echo "$*" | sed 's/-import-path \$rtl//; s/  */ /g; s/^ //; s/ $//')
+  echo "$options -emit-macro32 $module.mod" | sed 's/^ //' >"$work/cmds"
+  add_item B "$fixture" . "$module"
+done
+# C: fixtures that only run poc -check
+n=0
+for t in "$conformance"/*/test.sh; do
+  fixture=$(basename "$(dirname "$t")")
+  case $fixture in vax-*|llvm-*) continue ;; esac
+  echo "$fixture" | grep -q -- "$only" || continue
+  body=$(grep -v '^[[:space:]]*#\|^\. \|^[[:space:]]*$\|^: >result$' "$t")
+  [ -n "$body" ] || continue
+  echo "$body" | grep -qv '^poc \(-strict \|-O2 \|-OC \)*-check [A-Za-z0-9_./-]* >>*result 2>&1$' && continue
+  echo "$body" | sed 's/^poc \(.*\) -check \([^ ]*\) .*/\1 -target vax-dec-vms -check \2/; s/^poc -check \([^ ]*\) .*/-target vax-dec-vms -check \1/' \
+    >"$work/cmds"
+  add_item C "$fixture" . check
+done
+
+count=$(wc -l <"$items" | tr -d ' ')
+[ "$count" -gt 0 ] || { echo "vax-guest-poc: no fixture matches $only" >&2; exit 2; }
+
+# a relative Unix directory as a VMS one: lib [.LIB], ../src [-.SRC]
+vms_dir() {
+  echo "$1" | awk '{
+    n = split($0, part, "/"); up = ""; down = ""
+    for (i = 1; i <= n; i++) {
+      if (part[i] == "" || part[i] == ".") continue
+      if (part[i] == "..") up = up (up == "" ? "-" : ".-")
+      else down = down "." toupper(part[i])
+    }
+    if (up == "") print "[" (down == "" ? "" : down) "]"
+    else print "[" up down "]"
+  }' | sed 's/^\[\.\{0,1\}\]$/[]/'
+}
+
+# the command's arguments for DCL, each quoted, a relative -import-path a
+# VMS directory
+dcl_args() {
+  eval "set -- $1"
+  out=
+  while [ $# -gt 0 ]; do
+    a=$1; shift
+    if [ "$a" = -import-path ] && [ $# -gt 0 ]; then
+      out="$out \"-import-path\" \"$(vms_dir "$1")\""; shift; continue
+    fi
+    out="$out \"$(printf '%s' "$a" | sed 's/"/""/g')\""
+  done
+  echo "$out"
+}
+
+# ---- the host's runs, and what goes to the guest
+upper() { echo "$1" | tr a-z A-Z; }
+uploads=$work/up
+k=0
+for f in "$V1"/*.mar "$V1/Poc.com"; do
+  cp "$f" "$uploads/V1F$k.TXT"; echo "V1F$k.TXT $(upper "$(basename "$f")")" >>"$work/v1.moves"; k=$((k + 1))
+done
+cp "$ROOT/rtl/vax/PocRtl.mar" "$uploads/V1F$k.TXT"; echo "V1F$k.TXT POCRTL.MAR" >>"$work/v1.moves"
+k=0
+for f in "$ROOT"/rtl/vax/*.Mod; do
+  cp "$f" "$uploads/RTLF$k.TXT"; echo "RTLF$k.TXT $(upper "$(basename "$f")")" >>"$work/rtl.moves"; k=$((k + 1))
+done
+
+skipped=
+while read -r id fixture subdir key; do
+  h=$work/host/$id
+  mkdir -p "$h"
+  sources=$(cd "$ROOT" && git ls-files "test/conformance/$fixture" | grep -i '\.mod$' | sed "s|^test/conformance/$fixture/||")
+  : >"$work/items/$id.moves"
+  k=0
+  bad=
+  for s in $sources; do
+    mkdir -p "$h/$(dirname "$s")"
+    cp "$conformance/$fixture/$s" "$h/$s"
+    base=$(upper "$(basename "$s")")
+    # ODS-2: a name and a type of at most 39 characters each
+    case $base in *[!A-Z0-9_\$.-]*|*.*.*) bad=$s ;; esac
+    stem=${base%.*}; type=${base##*.}
+    [ "${#stem}" -le 39 ] && [ "${#type}" -le 39 ] || bad=$s
+    cp "$conformance/$fixture/$s" "$uploads/${id}F$k.TXT"
+    echo "${id}F$k.TXT $(dirname "$s") $base" >>"$work/items/$id.moves"
+    k=$((k + 1))
+  done
+  if [ -n "$bad" ]; then
+    skipped="$skipped $id"; echo "$bad is not a VMS file name" >"$work/items/$id.skipped"
+    rm -f "$uploads/$id"F*.TXT; continue
+  fi
+  (cd "$h" && find . -type f | sed 's|^\./||' | sort) >"$work/items/$id.before"
+  c=0
+  while IFS= read -r cmd; do
+    c=$((c + 1))
+    (cd "$h/$subdir" && eval "set -- $cmd" && POC_IMPORT_PATH=$ROOT/rtl/vax timeout 120 poc "$@" \
+      >"$work/items/$id.$c.host.out" 2>"$work/items/$id.$c.host.err"; echo "$?" >"$work/items/$id.$c.host.status")
+  done <"$work/items/$id.cmds"
+  (cd "$h" && find . -type f | sed 's|^\./||' | sort) | comm -13 "$work/items/$id.before" - >"$work/items/$id.written"
+done <"$items"
+
+# ---- the procedure
+proc=$uploads/GUESTPOC.COM
+{
+  cat <<'DCL'
+$ ! Written by tools/vax-guest-poc: links V1's POC.EXE and runs the
+$ ! fixtures' compilations under it, each output and file written appended
+$ ! to RESULTS.TXT
+$ SET NOON
+$ HOME = F$ENVIRONMENT("DEFAULT")
+$ RES = HOME + "RESULTS.TXT"
+$ GOSUB REMOVE_TREE
+$ CREATE/DIRECTORY [.GUESTPOC.POC]
+$ CREATE/DIRECTORY [.GUESTPOC.RTL]
+DCL
+  while read -r up name; do echo "\$ RENAME/NOLOG $up [.GUESTPOC.POC]$name"; done <"$work/v1.moves"
+  while read -r up name; do echo "\$ RENAME/NOLOG $up [.GUESTPOC.RTL]$name"; done <"$work/rtl.moves"
+  cat <<'DCL'
+$ SET DEFAULT [.GUESTPOC]
+$ GP = F$ENVIRONMENT("DEFAULT")
+$ SET DEFAULT [.RTL]
+$ DEFINE/NOLOG POC_IMPORT_PATH 'F$ENVIRONMENT("DEFAULT")'
+$ SET DEFAULT [-.POC]
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF .NOT. S THEN GOTO NO_POC
+$ DEFINE/NOLOG POC$RTL 'F$ENVIRONMENT("DEFAULT")'
+$ @POC
+$ S = $STATUS
+$ DEASSIGN POC$RTL
+$ IF .NOT. S THEN GOTO NO_POC
+$ POC :== $'F$ENVIRONMENT("DEFAULT")'POC.EXE
+$ WRITE SYS$OUTPUT "linked V1's POC.EXE"
+$ SET DEFAULT 'HOME'
+$ OPEN/WRITE R 'RES'
+$ CLOSE R
+DCL
+  while read -r id fixture subdir key; do
+    [ -f "$work/items/$id.skipped" ] && continue
+    for d in $(awk '{print $2}' "$work/items/$id.moves" | sort -u); do
+      if [ "$d" = . ]; then echo "\$ CREATE/DIRECTORY [.GUESTPOC.$id]"
+      else echo "\$ CREATE/DIRECTORY $(vms_dir "$d" | sed "s/^\[/[.GUESTPOC.$id/")"; fi
+    done
+    while read -r up d name; do
+      if [ "$d" = . ]; then echo "\$ RENAME/NOLOG $up [.GUESTPOC.$id]$name"
+      else echo "\$ RENAME/NOLOG $up $(vms_dir "$d" | sed "s/^\[/[.GUESTPOC.$id/")$name"; fi
+    done <"$work/items/$id.moves"
+    if [ "$subdir" = . ]; then echo "\$ SET DEFAULT [.GUESTPOC.$id]"
+    else echo "\$ SET DEFAULT $(vms_dir "$subdir" | sed "s/^\[/[.GUESTPOC.$id/")"; fi
+    c=0
+    while IFS= read -r cmd; do
+      c=$((c + 1))
+      cat <<DCL
+\$ DEFINE/USER_MODE SYS\$OUTPUT 'GP'${id}_$c.OUT
+\$ DEFINE/USER_MODE SYS\$ERROR 'GP'${id}_$c.ERR
+\$ POC$(dcl_args "$cmd")
+\$ S = \$STATUS
+\$ OPEN/APPEND R 'RES'
+\$ WRITE R "%%vgp status $id.$c ", S
+\$ WRITE R "%%vgp out $id.$c"
+\$ CLOSE R
+\$ IF F\$SEARCH(GP + "${id}_$c.OUT") .NES. "" THEN APPEND 'GP'${id}_$c.OUT 'RES'
+\$ OPEN/APPEND R 'RES'
+\$ WRITE R "%%vgp err $id.$c"
+\$ CLOSE R
+\$ IF F\$SEARCH(GP + "${id}_$c.ERR") .NES. "" THEN APPEND 'GP'${id}_$c.ERR 'RES'
+DCL
+    done <"$work/items/$id.cmds"
+    echo "\$ SET DEFAULT 'HOME'"
+    echo "\$ ITEM = \"$id\""
+    echo "\$ GOSUB FILES_WRITTEN"
+  done <"$items"
+  cat <<'DCL'
+$ OPEN/APPEND R 'RES'
+$ WRITE R "%%vgp end"
+$ CLOSE R
+$ DELETE/SYMBOL/GLOBAL POC
+$ DEASSIGN POC_IMPORT_PATH
+$ GOSUB REMOVE_TREE
+$ EXIT 1
+$ NO_POC:
+$ WRITE SYS$OUTPUT "V1's POC.EXE did not link, status ", S
+$ SET DEFAULT 'HOME'
+$ GOSUB REMOVE_TREE
+$ EXIT 44
+$ !
+$ ! each file in ITEM's directory but its sources (*.MOD), the highest
+$ ! version, appended to RESULTS.TXT after a line naming it
+$ FILES_WRITTEN:
+$ F = F$SEARCH("[.GUESTPOC.''ITEM'...]*.*")
+$ IF F .EQS. "" THEN RETURN
+$ FTYPE = F$PARSE(F, , , "TYPE")
+$ IF FTYPE .EQS. ".MOD" .OR. FTYPE .EQS. ".DIR" THEN GOTO FILES_WRITTEN
+$ OPEN/APPEND R 'RES'
+$ WRITE R "%%vgp file ", ITEM, " ", F
+$ CLOSE R
+$ ! poc's files and RESULTS.TXT have other record attributes, which APPEND
+$ ! warns of (APPEND-W-INCOMPAT) but copies the records: no message, and
+$ ! only an error or worse is reported
+$ SET MESSAGE/NOFACILITY/NOSEVERITY/NOIDENTIFICATION/NOTEXT
+$ APPEND 'F' 'RES'
+$ S = $STATUS
+$ SET MESSAGE/FACILITY/SEVERITY/IDENTIFICATION/TEXT
+$ IF (S .AND. 7) .EQ. 2 .OR. (S .AND. 7) .EQ. 4 THEN WRITE SYS$OUTPUT "%%vgp append-failed ", ITEM, " ", F, " ", S
+$ GOTO FILES_WRITTEN
+$ !
+$ ! [.GUESTPOC] and everything in it: each pass deletes the files and the
+$ ! directories left empty, and has a search context of its own (a second
+$ ! F$SEARCH of a spec would go on with the first one's search)
+$ REMOVE_TREE:
+$ SET DEFAULT 'HOME'
+$ IF F$SEARCH("GUESTPOC.DIR") .EQS. "" THEN RETURN
+$ PASS = 1
+$ REMOVE_PASS:
+$ IF F$SEARCH("[.GUESTPOC...]*.*;*", PASS) .EQS. "" THEN GOTO REMOVE_TOP
+$ SET PROTECTION=(O:RWED) [.GUESTPOC...]*.DIR;*
+$ DELETE/NOLOG [.GUESTPOC...]*.*;*
+$ PASS = PASS + 1
+$ IF PASS .LE. 6 THEN GOTO REMOVE_PASS
+$ REMOVE_TOP:
+$ SET PROTECTION=(O:RWED) GUESTPOC.DIR;
+$ DELETE/NOLOG GUESTPOC.DIR;
+$ RETURN
+DCL
+} >"$proc"
+
+(cd "$uploads" && "$ROOT/tools/vax-do" -o "$work/back" -get RESULTS.TXT GUESTPOC.COM $(ls | grep -v '^GUESTPOC\.COM$')) \
+  >"$work/guest.log" 2>&1
+status=$?
+if [ "$status" -eq 2 ] || [ ! -f "$work/back/RESULTS.TXT" ] || grep -q '^%%vgp append-failed' "$work/guest.log"; then
+  echo "vax-guest-poc: the VAX guest's run did not finish:" >&2; cat "$work/guest.log" >&2; exit 2
+fi
+
+# ---- the guest's results, split: <id>.<c>.vax.{status,out,err}, and each
+# file written as guest/<id>/<path>, its path relative to the item's
+# directory, in uppercase, and its name in <id>.vax.written
+mkdir -p "$work/guest"
+awk -v dir="$work" '
+  function close_it() { if (target != "") close(target); target = "" }
+  /^%%vgp status / { close_it(); print $4 >(dir "/items/" $3 ".vax.status"); close(dir "/items/" $3 ".vax.status"); next }
+  /^%%vgp (out|err) / { close_it(); target = dir "/items/" $3 ".vax." $2; printf "" >target; next }
+  /^%%vgp file / {
+    close_it(); id = $3; spec = $4
+    sub(/;[0-9]*$/, "", spec)
+    rel = spec; sub(/^.*GUESTPOC\./, "", rel); sub("^" id, "", rel)
+    # .SRC]NAME.EXT or ]NAME.EXT
+    split(rel, p, "]"); d = p[1]; name = p[2]; sub(/^\./, "", d); gsub(/\./, "/", d)
+    path = (d == "" ? name : d "/" name)
+    print path >>(dir "/items/" id ".vax.written")
+    system("mkdir -p \"" dir "/guest/" id "/" (d == "" ? "." : d) "\"")
+    target = dir "/guest/" id "/" path; printf "" >target; next
+  }
+  /^%%vgp end$/ { close_it(); next }
+  target != "" { print >target }
+' "$work/back/RESULTS.TXT"
+
+# A .mar with each string naming a source file (-trap-location's, ending
+# in .mod) as one line, ".FILENAME <name>", lowercase, its directory
+# spelled alike on both sides: rtl/vax's as <rtl>/, a relative VMS one
+# ([.LIB], [-.SRC]) as a Unix one (lib/, ../src/). poc names a file as it
+# found it, which differs by system: the name is compared, not its spelling.
+mask_paths() {
+  awk -v root="$ROOT/rtl/vax/" '
+    function flush(   t, dir, rest, m, i, part, path) {
+      if (n == 0) return
+      if (tolower(text) ~ /\.mod$/) {
+        t = text
+        if (index(t, root) == 1) t = "<rtl>/" substr(t, length(root) + 1)
+        else if (t ~ /^[A-Za-z0-9$_]+:\[[^]]*GUESTPOC\.RTL\]/) sub(/^[^]]*\]/, "<rtl>/", t)
+        else if (t ~ /^\[[-.A-Za-z0-9$_]*\]/) {
+          dir = t; sub(/\].*$/, "", dir); sub(/^\[/, "", dir)
+          rest = t; sub(/^[^]]*\]/, "", rest)
+          m = split(dir, part, "."); path = ""
+          for (i = 1; i <= m; i++) if (part[i] != "") path = path (part[i] == "-" ? ".." : part[i]) "/"
+          t = path rest
+        }
+        print "\t.FILENAME\t" tolower(t)
+      } else for (i = 1; i <= n; i++) print saved[i]
+      n = 0; text = ""
+    }
+    /^\t\.BYTE\t[0-9]+$/ { flush(); saved[++n] = $0; next }
+    n > 0 && /^\t\.ASCII\t/ { saved[++n] = $0; s = $0; sub(/^\t\.ASCII\t/, "", s); text = text substr(s, 2, length(s) - 2); next }
+    { flush(); print }
+    END { flush() }
+  '
+}
+
+# a VMS status as an exit status
+exit_status() {
+  case $1 in
+    %X00000001) echo 0 ;;
+    %X1*) n=$(( (0x${1#%X} - 0x10000002) )); if [ $((n % 8)) -eq 0 ] && [ "$n" -ge 0 ]; then echo $((n / 8)); else echo "$1"; fi ;;
+    *) echo "$1" ;;
+  esac
+}
+
+passed=0; failed=0; leftout=0
+while read -r id fixture subdir key; do
+  name="$id $fixture"
+  d=$work/items/$id.diff
+  : >"$d"
+  if [ -f "$work/items/$id.skipped" ]; then
+    leftout=$((leftout + 1)); echo "LEFT OUT: $name: $(cat "$work/items/$id.skipped")"; continue
+  else
+    c=0
+    while IFS= read -r cmd; do
+      c=$((c + 1)); r=$work/items/$id.$c
+      echo "poc $cmd:" >"$r.head"
+      for kind in out err; do
+        [ -s "$r.host.$kind" ] && sed '$a\' "$r.host.$kind" >"$r.want.$kind" || : >"$r.want.$kind"
+        [ -f "$r.vax.$kind" ] || : >"$r.vax.$kind"
+        if ! diff "$r.want.$kind" "$r.vax.$kind" >"$r.d" 2>&1; then
+          case $kind in out) echo "standard output differs (< the host's, > the VAX's):" ;;
+                        err) echo "standard error differs (< the host's, > the VAX's):" ;; esac >>"$r.head"
+          cat "$r.d" >>"$r.head"
+        fi
+      done
+      got=$(exit_status "$(cat "$r.vax.status" 2>/dev/null)")
+      wanted=$(cat "$r.host.status")
+      [ "$got" = "$wanted" ] || echo "exit status: the host's $wanted, the VAX's $got" >>"$r.head"
+      [ "$(wc -l <"$r.head")" -gt 1 ] && cat "$r.head" >>"$d"
+    done <"$work/items/$id.cmds"
+    # the files written: the same names, the same content
+    tr a-z A-Z <"$work/items/$id.written" | sort >"$work/items/$id.want-names"
+    sort "$work/items/$id.vax.written" 2>/dev/null >"$work/items/$id.got-names" || : >"$work/items/$id.got-names"
+    comm -23 "$work/items/$id.want-names" "$work/items/$id.got-names" | sed 's/^/not written on the VAX: /' >>"$d"
+    comm -13 "$work/items/$id.want-names" "$work/items/$id.got-names" | sed 's/^/written only on the VAX: /' >>"$d"
+    while IFS= read -r f; do
+      F=$(upper "$f")
+      [ -f "$work/guest/$id/$F" ] || continue
+      case $f in
+        *.mar) mask_paths <"$work/host/$id/$f" >"$work/items/$id.fh"; mask_paths <"$work/guest/$id/$F" >"$work/items/$id.fg" ;;
+        *) cp "$work/host/$id/$f" "$work/items/$id.fh"; cp "$work/guest/$id/$F" "$work/items/$id.fg" ;;
+      esac
+      if ! diff "$work/items/$id.fh" "$work/items/$id.fg" >"$work/items/$id.fd" 2>&1; then
+        echo "$f differs (< the host's, > the VAX's):" >>"$d"; head -40 "$work/items/$id.fd" >>"$d"
+      fi
+    done <"$work/items/$id.written"
+  fi
+  # a difference the fixture says the VAX must have, reviewed
+  allowed=$conformance/$fixture/expected-vax-guest-$key.diff
+  if [ -s "$d" ] && [ -f "$allowed" ] && grep -v '^;;' "$allowed" | cmp -s - "$d"; then
+    : >"$d"; name="$name (as expected-vax-guest-$key.diff says)"
+  fi
+  if [ -s "$d" ]; then
+    failed=$((failed + 1)); echo "FAILED: $name"; sed 's/^/  /' "$d"
+  else
+    passed=$((passed + 1)); echo "PASSED: $name"
+  fi
+done <"$items"
+echo
+echo "$passed passed, $failed failed, $leftout left out"
+[ "$failed" -eq 0 ]

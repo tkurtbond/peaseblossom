@@ -1,0 +1,180 @@
+;; Reviewed 2026-10-12 by the user (written by Claude, from the design and
+;; the guest runs). Why this is right:
+;; - Phase 16 step 6 (section 17): POC.EXE on the guest failed with an
+;;   access violation compiling a type-bound call, in
+;;   VaxCodeGenerator.MethodCallTarget: m.fromParam := ~m.fromBlock &
+;;   (real = NIL) & (ParamTag(obj) # NIL). m's address was in R0, pinned
+;;   as the field's base; the call on the right side's path moved it to R3
+;;   (FreeR0R1) on that path only, and the store after the join, MOVB R2,
+;;   25(R3), went through a stale R3 when m.fromBlock decided, overwriting
+;;   the local method.
+;; - Now ShortCircuit moves every pinned register out of R0 and R1 before
+;;   its left side, as SpillAll already moved the others to the frame: in
+;;   Set, MOVL R0, R2 comes before each branch, and both stores, MOVB R1,
+;;   2(R2) and MOVB R1, 3(R2), go through R2 on either path.
+;; - The result of the left side, R1, which the call does move (to R3),
+;;   comes back to R1 before the join, as it did before (MOVB R3, R1).
+;; - ShortOut, run on the guest under -O2 and -OC, prints what the LLVM
+;;   build prints (output.expected): each case's flags and calls, both
+;;   paths of each & and OR.
+; VaxShortCircuit, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXSHORTCIRCUIT
+	.IDENT	/e31e1eb323bafdad/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; calls: INTEGER, exported
+	.ALIGN	WORD
+VAXSHORTCIRCUIT_CALLS_GN1IN8SQ::
+	.BLKW	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxShortCircuit/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxShortCircuit.FlagsDesc
+	.ALIGN	LONG
+VAXSHORTCIRCUIT_FLAGSD_R12LDEEH::
+	.LONG	6
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXSHORTCIRCUIT_FLAGSD_R12LDEEH
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Positive
+VAXSHORTCIRCUIT_POSITI_F2733MQU:
+	.WORD	^M<>
+; line 17
+	INCW	VAXSHORTCIRCUIT_CALLS_GN1IN8SQ
+; line 17
+	CLRB	R0
+	TSTW	4(AP)
+	BLEQ	L_1
+	MOVB	#1, R0
+L_1:
+	MOVZBL	R0, R0
+	RET
+	PUSHL	#3
+	PUSHL	#18
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Set
+	.ENTRY	VAXSHORTCIRCUIT_SET_5F8IIDBV, ^M<R2,R3>
+	SUBL2	#12, SP
+	CLRL	-4(FP)
+	MOVL	4(AP), -4(FP)
+; line 23
+	MOVL	-4(FP), R0
+	BNEQ	L_2
+	PUSHL	#5
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_2:
+	MOVL	R0, R2
+	MOVL	-4(FP), R0
+	BNEQ	L_3
+	PUSHL	#13
+	PUSHL	#23
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_3:
+	XORB3	#1, (R0), R1
+	BLBS	R1, L_4
+	JMP	L^L_5
+L_4:
+	CLRB	R0
+	TSTW	8(AP)
+	BEQL	L_6
+	MOVB	#1, R0
+L_6:
+	MOVB	R0, R1
+L_5:
+	BLBS	R1, L_7
+	JMP	L^L_8
+L_7:
+	MOVL	#1, -12(FP)
+	CVTWL	8(AP), -8(FP)
+	MOVB	R1, R3
+	CALLG	-12(FP), VAXSHORTCIRCUIT_POSITI_F2733MQU
+	MOVB	R0, R3
+	MOVB	R3, R1
+L_8:
+	MOVB	R1, 2(R2)
+; line 24
+	MOVL	-4(FP), R0
+	BNEQ	L_9
+	PUSHL	#5
+	PUSHL	#24
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_9:
+	MOVL	R0, R2
+	MOVL	-4(FP), R0
+	BNEQ	L_10
+	PUSHL	#12
+	PUSHL	#24
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_10:
+	MOVB	1(R0), R1
+	BLBC	R1, L_11
+	JMP	L^L_12
+L_11:
+	MOVL	#1, -12(FP)
+	CVTWL	8(AP), -8(FP)
+	MOVB	R1, R3
+	CALLG	-12(FP), VAXSHORTCIRCUIT_POSITI_F2733MQU
+	MOVB	R0, R3
+	MOVB	R3, R1
+L_12:
+	MOVB	R1, 3(R2)
+; line 25
+	MOVL	-4(FP), R0
+	BNEQ	L_13
+	PUSHL	#5
+	PUSHL	#25
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_13:
+	MOVW	8(AP), 4(R0)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXSHORTCIRCUIT_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_E31E1EB323BAFDAD == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXSHORTCIRCUIT_MAIN, ^M<>
+	CALLS	#0, VAXSHORTCIRCUIT_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXSHORTCIRCUIT_MAIN

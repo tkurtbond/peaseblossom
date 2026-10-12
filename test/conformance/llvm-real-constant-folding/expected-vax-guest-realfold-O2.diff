@@ -1,0 +1,17 @@
+;; Reviewed 2026-10-12 by the user (written by Claude, from the guest run).
+;; Why the VAX must differ here (tools/vax-guest-poc; design section 17):
+;; - Check 9, integerSumEqual, folds 16777217 + 0.0 = 16777216.0 as a
+;;   constant. 16777217 is 2^24 + 1, halfway between the REALs 16777216
+;;   and 16777218. poc on the host folds in IEEE 754 arithmetic, ties to
+;;   even: 16777216, so the constant is TRUE (MOVL #1). poc on the VAX
+;;   folds real constants in the VAX's own arithmetic, which rounds a
+;;   halfway case away from zero: 16777218, so it is FALSE (CLRL).
+;; - This is the limitation the user accepted on 2026-10-11 (section 17,
+;;   "Real constants when poc runs on the VAX"): IEEE folding in software
+;;   on every host is later work. The other checks have no halfway case.
+;; - The line is the -O2 build's; the same under -O2 and -OC.
+realfold.mar differs (< the host's, > the VAX's):
+278c278
+< 	MOVL	#1, -8(FP)
+---
+> 	CLRL	-8(FP)

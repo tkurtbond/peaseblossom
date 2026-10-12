@@ -193,3 +193,5 @@ semantic-strict-compiled-imports client.mod -O2 -strict -import-path lib
 semantic-strict-compiled-imports uselocals.mod -O2 -strict -import-path lib
 vax-deferred-wide WideOut.mod -O2
 vax-deferred-wide WideOut.mod -OC
+vax-short-circuit-call ShortOut.mod -O2
+vax-short-circuit-call ShortOut.mod -OC

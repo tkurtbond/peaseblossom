@@ -167,6 +167,8 @@ MODULE VaxCodeGenerator;
       slot, slots: INTEGER; (* memory: the frame's slots it holds, slot -1 if none *)
       reg: INTEGER; (* register: Rn, with Rn+1 for a quadword *)
       pinned: BOOLEAN; (* not to be spilled now *)
+      joining: BOOLEAN; (* an & or OR's left side, which ShortCircuit brings
+                           back to its register at the join itself *)
       standIn: BOOLEAN; (* Dummy's, for what was reported *)
       (* an open array (section 14): the length of its first open
          dimension, a longword in memory, the next dimensions' in the
@@ -560,7 +562,7 @@ MODULE VaxCodeGenerator;
     x.symbol[0] := 0X; x.outside := FALSE; x.offset := 0; x.slot := -1; x.slots := 0; x.reg := -1;
     x.onAP := FALSE; x.deferred := FALSE; x.baseOp := NIL; x.ownsBase := FALSE;
     x.index := NIL; x.ownsIndex := FALSE;
-    x.pinned := FALSE; x.lens := NIL; x.nextLive := NIL;
+    x.pinned := FALSE; x.joining := FALSE; x.lens := NIL; x.nextLive := NIL;
     RETURN x
   END NewOperand;
 
@@ -862,16 +864,15 @@ MODULE VaxCodeGenerator;
     RETURN NewRegisterFrom(t, firstScratch, line, column)
   END NewRegister;
 
-  (* Before a call: the values in R0 and R1, which a procedure does not
-     keep (the design's section 7), moved up to R2-R5, which it does, or
-     to the frame *)
-  PROCEDURE FreeR0R1(line, column: INTEGER);
+  (* The values in R0 and R1 moved up to R2-R5, or to the frame; an & or
+     OR's left side too unless keepJoining *)
+  PROCEDURE MoveOutOfR0R1(keepJoining: BOOLEAN; line, column: INTEGER);
     VAR x, next: Operand; r: INTEGER; from, to: OperandText; op: ARRAY 8 OF CHAR; operands: ARRAY 160 OF CHAR;
   BEGIN
     x := live;
     WHILE x # NIL DO
       next := x.nextLive;
-      IF x.reg <= 1 THEN
+      IF (x.reg <= 1) & ~(keepJoining & x.joining) THEN
         r := FreeRegister(x.type, 2);
         IF r >= 0 THEN
           Text(x, from);
@@ -887,6 +888,14 @@ MODULE VaxCodeGenerator;
       END;
       x := next
     END
+  END MoveOutOfR0R1;
+
+  (* Before a call: the values in R0 and R1, which a procedure does not
+     keep (the design's section 7), moved up to R2-R5, which it does, or
+     to the frame *)
+  PROCEDURE FreeR0R1(line, column: INTEGER);
+  BEGIN
+    MoveOutOfR0R1(FALSE, line, column)
   END FreeR0R1;
 
   (* Register r, free, for a value of type t *)
@@ -2999,15 +3008,21 @@ MODULE VaxCodeGenerator;
     RETURN FALSE
   END IsLeaf;
 
-  (* a & b, a OR b: b only when a does not decide *)
+  (* a & b, a OR b: b only when a does not decide. Before a, every
+     register in use goes to the frame, and a pinned one, which cannot, out
+     of R0 and R1: a call in b would move it (FreeR0R1) on b's path only,
+     and what uses it after the join would find it where it is on the
+     other path only. An enclosing & or OR's left side stays: it is
+     brought back at that one's join, as a's is at this one's. *)
   PROCEDURE ShortCircuit(e: SyntaxTree.BinaryExprNode): Operand;
     VAR a, b, d, back: Operand; reg: INTEGER; skip, rhs: ARRAY 16 OF CHAR; jump: ARRAY 24 OF CHAR;
   BEGIN
     SpillAll;
+    MoveOutOfR0R1(TRUE, e.line, e.column);
     a := Expression(e.left, NIL);
     IF a.type # Types.Boolean THEN RETURN Dummy() END;
     d := InRegister(a, e.line, e.column);
-    d.pinned := TRUE; reg := d.reg;
+    d.pinned := TRUE; d.joining := TRUE; reg := d.reg;
     IF IsLeaf(e.right) THEN
       NewLabel(skip);
       IF e.op = Lexer.ampersand THEN EmitBranch("BLBC", d, skip) ELSE EmitBranch("BLBS", d, skip) END
@@ -3023,7 +3038,7 @@ MODULE VaxCodeGenerator;
     IF (d.kind # register) OR (d.reg # reg) THEN
       (* a call in b moved d out of R0 or R1 (FreeR0R1): back to where it
          is when b is skipped *)
-      d.pinned := FALSE;
+      d.pinned := FALSE; d.joining := FALSE;
       IF reg IN free THEN
         back := Claim(Types.Boolean, reg); MoveInto(d, back); Release(d); d := back; d.pinned := TRUE
       ELSE
@@ -3031,7 +3046,7 @@ MODULE VaxCodeGenerator;
       END
     END;
     EmitLabel(skip);
-    d.pinned := FALSE;
+    d.pinned := FALSE; d.joining := FALSE;
     RETURN d
   END ShortCircuit;
 

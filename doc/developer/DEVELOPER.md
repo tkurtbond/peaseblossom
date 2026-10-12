@@ -275,6 +275,14 @@ compares their `.mar` with V1's. It holds the guest's lock for about an
 hour and a half, so a VAX fixture run meanwhile waits. `-install` makes
 the last stage's image `POC`'s `[.BIN]POC.EXE`.
 
+`make test-vax-guest-poc` (`tools/vax-guest-poc [-only <regex>]`) runs
+the fixtures' compilations under poc on the guest: V1's image, linked
+there at the start. The compilations are the programs of
+`test/vax-suite.list`, the `vax_mar` lines, and the fixtures that only
+run `poc -check`. It compares what poc prints, its status and the files
+it writes with the host's poc doing the same for the VAX. `-only` keeps
+the fixtures whose names match.
+
 ### With other machines
 
 None of this needs those particular machines. What matters is that a

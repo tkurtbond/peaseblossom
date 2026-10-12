@@ -730,7 +730,9 @@ MODULE ModuleInterface;
      scientific notation, of the digits of v correctly rounded to 1, 2, ...
      significant digits (DecimalToDouble.Digits, exact) that
      ConstantEvaluator.ParseReal (DecimalToDouble.Parse, exact) reads back to
-     exactly v: at most 17 digits for a LONGREAL, whatever its magnitude,
+     exactly v (ParseRealInRange, so that a candidate rounded up past the
+     host's largest value is passed over, not computed: on a VAX host that
+     would trap, Phase 16 step 6): at most 17 digits for a LONGREAL, whatever its magnitude,
      subnormals included, so ok is always TRUE (Phase 11 step 2, inventory
      A2; before it, both directions were approximate and this searched a
      window of neighbouring digit strings for one that happened to verify,
@@ -742,13 +744,14 @@ MODULE ModuleInterface;
       precision, exponent: INTEGER;
       digits: ARRAY maxSignificantDigits + 1 OF CHAR;
       candidate: ARRAY 64 OF CHAR;
+      parsed: LONGREAL;
   BEGIN
     ok := FALSE;
     precision := 1;
     WHILE ~ok & (precision <= maxSignificantDigits) DO
       DecimalToDouble.Digits(v, precision, digits, exponent);
       BuildCandidate(digits, precision, exponent, isLongReal, candidate);
-      ok := ConstantEvaluator.ParseReal(candidate) = v;
+      ok := ConstantEvaluator.ParseRealInRange(candidate, parsed) & (parsed = v);
       INC(precision)
     END;
     IF ok THEN COPY(candidate, result) END

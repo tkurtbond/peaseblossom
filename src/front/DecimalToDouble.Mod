@@ -303,14 +303,17 @@ MODULE DecimalToDouble;
      whose largest finite value has a last bit of exponent highest: a
      LONGREAL's (53, -1074, 971), or a REAL's (24, -149, 104), returned in
      a LONGREAL, which holds it exactly. *)
-  PROCEDURE ParseRounded(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER): LONGREAL;
+  (* The value of the numeral lexeme rounded to precision bits, its last
+     bit's binary exponent at least lowest, into value; FALSE, value
+     untouched, when that exponent is beyond highest, a value the host's
+     LONGREAL may not hold, so that nothing out of range is computed. *)
+  PROCEDURE Rounded(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER; VAR value: LONGREAL): BOOLEAN;
     VAR
       digits, left, factor, product, twice: Big;
       i, kept, exponent10, magnitude, estimate, e, bits: INTEGER;
       d, q, m: LONGINT;
       inFraction, sticky, negativeExponent: BOOLEAN;
       cmp: INTEGER;
-      huge: LONGREAL;
   BEGIN
     digits.n := 0; kept := 0; exponent10 := 0; sticky := FALSE;
     i := 0; inFraction := FALSE;
@@ -345,15 +348,14 @@ MODULE DecimalToDouble;
       END;
       IF negativeExponent THEN exponent10 := exponent10 - e ELSE exponent10 := exponent10 + e END
     END;
-    IF digits.n = 0 THEN RETURN 0.0D0 END;
+    IF digits.n = 0 THEN value := 0.0D0; RETURN TRUE END;
     IF sticky THEN MulAdd(digits, 10, 1); INC(kept); DEC(exponent10) END;
     (* the value is in [10^(magnitude - 1), 10^magnitude) *)
     magnitude := kept + exponent10;
     IF magnitude > 310 THEN
-      huge := PowerOfTwo(1000);
-      RETURN huge * huge
+      RETURN FALSE
     ELSIF magnitude < -330 THEN
-      RETURN 0.0D0
+      value := 0.0D0; RETURN TRUE
     END;
 
     (* a lower bound of the binary exponent e for which V / 2^e has
@@ -384,11 +386,21 @@ MODULE DecimalToDouble;
     IF BitLength(m) > precision THEN (* rounded up: exactly 2^(precision - 1) * 2^(e + 1) *)
       m := m DIV 2; INC(e)
     END;
-    IF e > highest THEN
+    IF e > highest THEN RETURN FALSE END;
+    value := ScaleByPowerOfTwo(m, e);
+    RETURN TRUE
+  END Rounded;
+
+  (* Rounded's value, or infinity when it is beyond highest, a product
+     that overflows (which traps where there is no infinity, on a VAX) *)
+  PROCEDURE ParseRounded(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER): LONGREAL;
+    VAR value, huge: LONGREAL;
+  BEGIN
+    IF ~Rounded(lexeme, precision, lowest, highest, value) THEN
       huge := PowerOfTwo(1000);
-      RETURN huge * huge
+      value := huge * huge
     END;
-    RETURN ScaleByPowerOfTwo(m, e)
+    RETURN value
   END ParseRounded;
 
   (* The LONGREAL nearest the numeral lexeme (as ParseRounded) *)
@@ -396,6 +408,15 @@ MODULE DecimalToDouble;
   BEGIN
     RETURN ParseRounded(lexeme, 53, minExponent, 971)
   END Parse;
+
+  (* The LONGREAL nearest the numeral lexeme into value, when its binary
+     exponent, as Rounded's, is at most highest (971 for IEEE 754's
+     largest, 970 for a VAX's G_floating's): FALSE, and nothing computed,
+     if not *)
+  PROCEDURE ParseWithin*(lexeme: ARRAY OF CHAR; highest: INTEGER; VAR value: LONGREAL): BOOLEAN;
+  BEGIN
+    RETURN Rounded(lexeme, 53, minExponent, highest, value)
+  END ParseWithin;
 
   (* The REAL nearest the numeral lexeme, held in a LONGREAL (Phase 14: an
      element of a record or array constant, written into an LLVM constant,

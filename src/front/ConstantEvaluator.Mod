@@ -339,6 +339,17 @@ MODULE ConstantEvaluator;
     RETURN DecimalToDouble.Parse(lexeme)
   END ParseReal;
 
+  (* ParseReal's value into v, when this host's LONGREAL holds it (on a VAX
+     host, vaxHost, G_floating's range, whose largest is half IEEE's): FALSE
+     if not, without computing it, which would trap there. For
+     ModuleInterface.FormatReal, whose candidate texts of the VAX's largest
+     value round up past it. *)
+  PROCEDURE ParseRealInRange*(lexeme: ARRAY OF CHAR; VAR v: LONGREAL): BOOLEAN;
+  BEGIN
+    IF vaxHost THEN RETURN DecimalToDouble.ParseWithin(lexeme, 970, v) END;
+    RETURN DecimalToDouble.ParseWithin(lexeme, 971, v)
+  END ParseRealInRange;
+
   PROCEDURE EvaluateLiteral(expr: SyntaxTree.LiteralExprNode): Types.Value;
     VAR v: Types.Value;
   BEGIN

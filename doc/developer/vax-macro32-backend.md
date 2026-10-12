@@ -2438,3 +2438,119 @@ tree: V2 in 45.7 minutes (985 s of CPU), V3 in 46.0 (997 s), a peak of
 184,516 pages, and all 31 `.mar` of both identical to V1's. What step 6
 still asks for: the conformance suite under the compiler built on VMS.
 
+**The suite under the compiler built on VMS: survey (2026-10-12).** The
+fixtures that could run under a poc on VMS, by what they do:
+
+| What it does | Fixtures | How it compares |
+|---|---|---|
+| builds a program, listed in `test/vax-suite.list` | 178 programs | its run on the guest with the LLVM build's (step 5) |
+| `vax_mar <Module> [<option>...]`: poc `-emit-macro32` | 56 `vax-*` | each `.mar` with an `expected-vax*.mar` |
+| only `poc [-strict] [-O2\|-OC] -check <file>`, one or more | 115 | `result` (messages and exit status) with `expected` |
+| poc's own commands, nothing else (debug dumps, `-emit-interface`, `-show-interface`, `-output-dir`) | 30 | `result` with `expected` |
+| poc's commands in a script (loops, `sed`, `cmp`) | 17 | as the script does |
+| the LLVM driver, clang, voc, the documents, another target, or poc's own help and version | 23, and the other 8 `vax-*` | stay the host's |
+
+Messages name a source file as poc was given it, so a guest run must
+give it in the same case. A fixture whose expected output depends on the
+target (`ADDRESS`'s width, the default size model) differs on the VAX
+without anything being wrong.
+
+**Proposals.**
+
+1. **The compiler: V1's image, linked at the start of each run.** V2's
+   `.mar` are V1's, assembled and linked by the same `MACRO` and `LINK`,
+   so V1's `POC.EXE` is the image V2's would be; `vax-stages` is what
+   checks that, in 90 minutes. Linking costs about a minute, and the run
+   then depends on nothing left on the guest (not `[.BIN]POC.EXE`).
+2. **Compared with the host's poc for the VAX.** Each command runs on
+   the guest as the host would run it with `-target vax-dec-vms`; what
+   the guest's poc prints, its exit status, and every text file it
+   writes (`.mar`, `.sym`, the build procedure after its first line)
+   must be the host's. The reference is made in the same run, as
+   `vax-suite`'s LLVM builds are, so no fixture needs an expected file
+   of its own for this, and the target-dependent fixtures need none.
+3. **Three groups, one tool**, `tools/vax-guest-poc` (`make
+   test-vax-guest-poc`), one `vax-do` run:
+   - (a) *the 178 programs*: each compiled with `-build` on the guest,
+     its files compared with the host's. They are not linked or run
+     again: identical `.mar` make identical programs, and step 5 ran
+     them.
+   - (b) *the 56 `vax_mar` fixtures*: `-emit-macro32` with the
+     fixture's options; each `.mar` is compared with the host's (and so
+     with `expected-vax*.mar`, which `make test` checks).
+   - (c) *the 115 `-check` fixtures*: found from `test.sh` by that one
+     pattern, so a new one joins by itself; messages and exit status
+     compared with the host's.
+   The 30 plain and 17 scripted ones join later, through a list as (a)
+   has, once (a)-(c) pass; the 31 that stay the host's are named in the
+   tool with the reason for each.
+4. **Each in a directory of its own** on the guest, under
+   `[.GUESTPOC]`, holding the fixture's sources, so that two fixtures'
+   modules of one name cannot meet; `rtl/vax` is sent once and found
+   through `POC_IMPORT_PATH`, a logical name (section 15, proposal 5).
+   A source is named on the command line quoted, in the case the
+   fixture uses.
+5. **Its cost.** poc compiles `Lexer` on the guest in 10 seconds; a
+   fixture's module is far smaller, but each run starts a 2,175-block
+   image. About 350 compilations should take well under an hour, all in
+   one hold of the guest's lock. Not part of `make check`.
+
+**Approved by the user, 2026-10-12.**
+
+**Done: `tools/vax-guest-poc` (2026-10-12).** `make test-vax-guest-poc`
+runs proposals 1-5 as written: 344 items (182 programs, 57 `vax_mar`
+lines, 105 `-check` fixtures; `-only <regex>` keeps some), about 35
+minutes. Each item's files come back in one file, `RESULTS.TXT`, which
+`APPEND` builds on the guest. `APPEND` warns that poc's files and it
+have other record attributes (`APPEND-W-INCOMPAT`) but copies the
+records, so its messages are turned off and only an error is reported.
+Three things the proposals did not foresee:
+- *File names in `-trap-location`'s strings.* A program built with it
+  names each source file as poc found it, `/home/.../rtl/vax/Out.Mod`
+  on the host and `DUA1:[USERS.POC.GUESTPOC.RTL]Out.mod` on the guest,
+  `lib/traplib.mod` and `[.LIB]traplib.mod`. The tool compares those
+  strings as names: rtl/vax's directory as `<rtl>/`, a VMS directory as
+  a relative Unix one, in lowercase.
+- *A file name VMS cannot hold.* An item whose source has one (a name
+  or type past ODS-2's 39 characters) is reported as left out, not
+  failed. The one there was, `semantic-decl-order-const-refs-later-
+  section-type`'s 40-character source, is now `later-section-type.mod`
+  (the user, 2026-10-12).
+- *A difference the VAX must have.* A fixture's
+  `expected-vax-guest-<key>.diff` (`<key>` the main module and the
+  list's options, as `vax-suite`'s, or the `vax_mar` module, or
+  `check`) is the whole difference the item may show, its lines
+  starting `;;` saying why.
+
+Its first run, 329 of 341 passing, found two faults in poc running on
+the VAX, both fixed:
+- *A register moved on one path of an `&` or `OR`.* `ShortCircuit`
+  spilled every register in use before its left side, but not a pinned
+  one, a field's base, which a call on the right side's path then moved
+  out of R0 (`FreeR0R1`) on that path only: the store after the join
+  went through a stale register when the left side decided.
+  `MethodCallTarget`'s `m.fromParam := ~m.fromBlock & (real = NIL) &
+  (ParamTag(obj) # NIL)` overwrote the local `method` that way, and
+  every type-bound call through a pointer with a second procedure failed
+  (`llvm-type-bound`, `vax-type-bound`). Found by printing from poc on
+  the guest. `ShortCircuit` now moves a pinned register out of R0 and R1
+  before its left side, except an enclosing `&` or `OR`'s left side,
+  which that one brings back at its own join. Fixture
+  `vax-short-circuit-call`, whose `expected-vax.mar` the user reviewed
+  (2026-10-12); no other fixture's `.mar` changes.
+- *`MAX(LONGREAL)` written on the VAX.* `ModuleInterface.FormatReal`
+  looks for the shortest text that parses back to its value, and for
+  the VAX's largest a candidate rounded up past it overflowed in
+  `DecimalToDouble` (a floating overflow on the guest; infinity, and
+  the search goes on, on IEEE). `DecimalToDouble.ParseWithin` now says
+  that a numeral is beyond a binary exponent without computing it, and
+  `ConstantEvaluator.ParseRealInRange` uses it with G_floating's (970)
+  on a VAX host, IEEE's (971) elsewhere (`llvm-ash-max-min`,
+  `llvm-const-fold`, `llvm-const-fold-import`).
+
+The second run: 341 passed, the long file name was left out (since
+renamed, and passing), and the 2 builds of `llvm-real-constant-folding`
+differ as their `expected-vax-guest-realfold-*.diff` say, reviewed by
+the user (2026-10-12): a halfway case folds by the VAX's own rounding,
+the limitation the user accepted (2026-10-11). So all 344 pass.
+

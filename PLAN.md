@@ -993,8 +993,18 @@ most, object libraries.
      V1 on the host; `tools/bootstrap/vax-stages` runs the chain on the
      guest with one procedure and compares V2's and V3's `.mar` with
      V1's (`make vax-v1`, `make vax-stages`; not part of `make check`).
-     Its first full run: V2 45.7 minutes, V3 46.0, all identical. Left:
-     the suite under the VMS-built compiler.
+     Its first full run: V2 45.7 minutes, V3 46.0, all identical.
+   - *The suite under the VMS-built compiler* (2026-10-12; proposals
+     approved by the user): `tools/vax-guest-poc` (`make
+     test-vax-guest-poc`) runs 344 fixtures' compilations under poc on
+     the guest and compares what it prints, its status and its files
+     with the host's poc for the VAX. It found two faults, fixed: a
+     register moved on one path of an `&` or `OR` (fixture
+     `vax-short-circuit-call`) and `MAX(LONGREAL)` overflowing in
+     `FormatReal` on the VAX. All 344 pass: a fixture's source over
+     ODS-2's 39 characters was renamed, and `llvm-real-constant-
+     folding`'s 2 builds differ as their reviewed
+     `expected-vax-guest-realfold-*.diff` say.
 
 **Testing summary**: step 2's fixtures and step 3's shared fixtures
 are compile+assemble+link+run+diff on the guest; step 6's fixed point is
