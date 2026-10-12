@@ -282,8 +282,8 @@ MODULE VaxCodeGenerator;
       next: InitRecord
     END;
 
-    (* A type descriptor the module writes in POC_CONST (section 14, item
-       4): a record's, or, for the arrays NEW allocates whose elements hold
+    (* A type descriptor the module writes in POC_ADDR (section 14, item
+       4; section 18, proposal 5): a record's, or, for the arrays NEW allocates whose elements hold
        pointers, their element type's (rec NIL) *)
     TypeDescriptor = POINTER TO TypeDescriptorDesc;
     TypeDescriptorDesc = RECORD
@@ -6402,7 +6402,10 @@ MODULE VaxCodeGenerator;
     WriteBytes(w, s, n)
   END WriteCounted;
 
-  (* The type descriptors in POC_CONST, in LLVM's layout with every field a
+  (* The type descriptors in POC_ADDR, the section of the constants that
+     hold addresses, so that POC_CONST stays shareable in a shareable image
+     (section 18, proposal 5; defined here, with its attributes, as only a
+     module with descriptors has it), in LLVM's layout with every field a
      longword (sections 14, items 4 and 6): a record's ProcTab, its type-
      bound procedures, slot i at -4(i+1) from the tag, the last slot first;
      the tag, the label, at size; then the extension level; the pointer
@@ -6492,7 +6495,7 @@ MODULE VaxCodeGenerator;
     WriteLn(w);
     WriteStr(w, "; its type descriptors (section 14, item 4): size, extension level,"); WriteLn(w);
     WriteStr(w, "; pointer count, base types, pointer offsets"); WriteLn(w);
-    Line(w, ".PSECT", "POC_CONST");
+    Line(w, ".PSECT", "POC_ADDR,  PIC,NOSHR,NOWRT,NOEXE,LONG");
     d := descriptors;
     WHILE d # NIL DO
       IF d.rec # NIL THEN

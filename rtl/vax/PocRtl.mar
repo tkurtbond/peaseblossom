@@ -16,6 +16,7 @@
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+	.PSECT	POC_ADDR,  PIC,NOSHR,NOWRT,NOEXE,LONG
 	$DSCDEF
 	$FABDEF
 	$JPIDEF
@@ -41,12 +42,15 @@
 ; LLVM backend's, a counted string here for each code, 2 to 14 (section
 ; 9; LLVMCodeGenerator's trap messages), and CHR's for 14 when the code's
 ; high word is 1, SHORT's being the other
-	.PSECT	POC_CONST
+; the table in POC_ADDR, the constants that hold addresses, so that
+; POC_CONST stays shareable in a shareable image (section 18, proposal 5)
+	.PSECT	POC_ADDR
 POC_TRAP_TEXTS:
 	.ADDRESS	POC_TX_0, POC_TX_0, POC_TX_2, POC_TX_3, POC_TX_4
 	.ADDRESS	POC_TX_5, POC_TX_6, POC_TX_7, POC_TX_8, POC_TX_9
 	.ADDRESS	POC_TX_10, POC_TX_11, POC_TX_12, POC_TX_13, POC_TX_14
 	.ADDRESS	POC_TX_CHR
+	.PSECT	POC_CONST
 POC_TX_0:	.ASCIC	/trap/
 POC_TX_2:	.ASCIC	/index out of range/
 POC_TX_3:	.ASCIC	/no matching CASE label/

@@ -398,7 +398,10 @@ Proposal, one `.mar` file per module:
 ```
 
 - `POC_CODE` holds the procedures, `POC_CONST` string and structured
-  constants, `POC_DATA` the module's variables, zero-initialised (`.BLKB`)
+  constants, `POC_ADDR` (`PIC,NOSHR,NOWRT,NOEXE,LONG`, defined where it
+  is first used, in a module with type descriptors) the constants that
+  hold an `.ADDRESS`, so that `POC_CONST` stays shareable (§18, proposal
+  5; Phase 17), `POC_DATA` the module's variables, zero-initialised (`.BLKB`)
   as on LLVM, and a flag "initialised". Done (step 3): each variable is a
   `.BLKx 1` of its size after an `.ALIGN` of its alignment, labelled by
   its §5 symbol, `::` (global) if it is exported and `:` (local)
@@ -2775,3 +2778,13 @@ image found through the logical name `SHRLIB`:
 - *A hyphen in a directory name works*: `CREATE/DIRECTORY
   [.SHRTEST.VAX-DEC-VMS.OC]`, a file copied in and listed, so the VMS
   tuple directory can keep the triple's spelling (proposal 6).
+
+### 18.5 Done
+
+- *`POC_ADDR`* (proposal 5, 2026-10-12). The type descriptors, with
+  their ProcTabs and base-type lists, are written in `POC_ADDR`,
+  defined with its attributes where a module first uses it, and
+  `PocRtl.mar`'s table of trap texts moves there too; the root tables
+  were already in `POC_DATA`. No other constant poc writes holds an
+  address. 23 fixtures' `expected-vax*.mar` change in one line each,
+  the `.PSECT` before the descriptors.

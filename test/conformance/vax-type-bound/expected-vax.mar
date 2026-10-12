@@ -224,7 +224,7 @@ L_MODULE_NAME:
 
 ; its type descriptors (section 14, item 4): size, extension level,
 ; pointer count, base types, pointer offsets
-	.PSECT	POC_CONST
+	.PSECT	POC_ADDR,  PIC,NOSHR,NOWRT,NOEXE,LONG
 ; VaxMethods.SquareDesc
 	.ALIGN	LONG
 ; its ProcTab, the last slot first (section 14, item 6)

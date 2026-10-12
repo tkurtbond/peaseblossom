@@ -565,6 +565,9 @@ C++, and so on) unless step 4 chooses one deliberately.
    poc's sections, reached by `G^` alone, resolves every kind of
    reference; a missing image, a relinked one and a wrong key each give
    a message; `[.VAX-DEC-VMS.OC]` is a usable directory.
+   Done (section 18.5): `POC_ADDR`, the constants that hold addresses
+   (type descriptors, `PocRtl`'s trap texts) out of `POC_CONST`
+   (proposal 5).
 
 2. **Which existing Oberon libraries and modules to support on VMS.**
    Take Phase 12's complete inventory of voc's modules and Phase 10's

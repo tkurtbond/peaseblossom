@@ -34,7 +34,7 @@ L_INITIALISED:
 
 ; its type descriptors (section 14, item 4): size, extension level,
 ; pointer count, base types, pointer offsets
-	.PSECT	POC_CONST
+	.PSECT	POC_ADDR,  PIC,NOSHR,NOWRT,NOEXE,LONG
 ; VaxDeclarationsOnly.Point
 	.ALIGN	LONG
 VAXDECLARATIONSONLY_PO_UEV18DS3::
