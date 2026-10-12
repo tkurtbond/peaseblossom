@@ -1,0 +1,267 @@
+#!/bin/sh
+# The bootstrap on VAX/VMS (PLAN.md Phase 16 step 6;
+# doc/developer/vax-macro32-backend.md, section 17), on the VAX/VMS
+# development system:
+#
+#   V1  tools/bootstrap/vax-v1 cross-compiles poc's own source on the host
+#       to .mar; assembled and linked on the guest, it is a VAX POC.EXE.
+#   V2  that POC.EXE compiles poc's own source on VMS to .mar, which must be
+#       byte-identical to V1's: the fixed point.
+#   V3  the POC.EXE linked from V2's .mar compiles the source again, its
+#       .mar again identical.
+#
+#   tools/bootstrap/vax-stages [-to v1|v2|v3] [-install] [-keep]
+#
+# -to is the last stage (default v3). A stage's image is linked when the
+# next stage needs it, and the last stage's only with -install, which then
+# copies it to POC's [.BIN]POC.EXE, keeping the version before it (PURGE
+# /KEEP=2); -to v1 always links V1's. -keep leaves the work tree on the
+# guest, [.BOOTSTRAP.V1], [.BOOTSTRAP.V2] and [.BOOTSTRAP.V3], which is
+# otherwise deleted at the end, as is any left by an earlier run at the
+# start.
+#
+# V1's .mar, Poc.com, poc's sources, rtl/vax's and BuildInfo.Mod go to the
+# guest at once, and one procedure, VAXBOOT.COM, written here, runs every
+# stage there (tools/vax-do), with each compilation's time, CPU time and the
+# process's peak virtual memory in its log. Each compilation of poc takes
+# about 45 minutes on the SIMH VAX, so VAX_DO_TIMEOUT (default here 14400
+# seconds) bounds the whole run, and the guest's lock (tools/vax-lock.sh) is
+# held throughout: a VAX fixture run meanwhile waits for it.
+#
+# Each later stage's .mar files and POC.COM come back to
+# build/vax-bootstrap/v2 and v3, named as V1's, and are compared with V1's;
+# POC.COM only after its first line, which names the source file as it was
+# given (POC.MOD on the guest, the full path on the host). Exits 0 if they
+# are all identical, 1 if not or if a stage failed, 2 if the guest could
+# not be used.
+set -u
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}/vax-bootstrap
+VAX_DO_TIMEOUT=${VAX_DO_TIMEOUT:-14400}
+export VAX_DO_TIMEOUT
+
+usage() { echo "usage: tools/bootstrap/vax-stages [-to v1|v2|v3] [-install] [-keep]" >&2; exit 2; }
+last=3
+install=0
+keep=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    -to)
+      [ $# -ge 2 ] || usage
+      case $2 in v1|V1) last=1 ;; v2|V2) last=2 ;; v3|V3) last=3 ;; *) usage ;; esac
+      shift 2 ;;
+    -install) install=1; shift ;;
+    -keep) keep=1; shift ;;
+    *) usage ;;
+  esac
+done
+
+"$ROOT/tools/bootstrap/vax-v1" || exit 1
+
+upper() { echo "$1" | tr a-z A-Z; }
+
+# what goes to the guest, each under its own name uppercased, which must
+# be unique
+work=$BUILD/guest
+rm -rf "$work" "$BUILD/v2" "$BUILD/v3"
+mkdir -p "$work/in" "$work/back"
+cp "$BUILD"/v1/*.mar "$BUILD/v1/Poc.com" "$BUILD/gen/BuildInfo.Mod" \
+  "$ROOT"/src/front/*.Mod "$ROOT"/src/back/llvm/*.Mod "$ROOT"/src/back/vax/*.Mod \
+  "$ROOT"/src/driver/*.Mod "$ROOT"/rtl/vax/*.Mod "$work/in/"
+cp "$ROOT/rtl/vax/PocRtl.mar" "$work/in/POCRTL.MAR"
+clashes=$(ls "$work/in" | tr a-z A-Z | sort | uniq -d)
+if [ -n "$clashes" ]; then
+  echo "vax-stages: more than one file is named $clashes on the guest" >&2
+  exit 1
+fi
+modules=$(cd "$BUILD/v1" && ls *.mar | sed 's/\.mar$//')
+
+# link stage k when stage k + 1 runs it, or when it is the last and is
+# to be installed (V1's always, so that -to v1 does something)
+links() {
+  [ "$1" -lt "$last" ] || [ "$install" -eq 1 ] || [ "$1" -eq 1 ]
+}
+
+proc=$work/in/VAXBOOT.COM
+{
+  cat <<'DCL'
+$ ! Written by tools/bootstrap/vax-stages: the bootstrap of poc on VAX/VMS
+$ ! (PLAN.md Phase 16 step 6), each stage in its own directory under
+$ ! [.BOOTSTRAP], each later stage's .MAR copied back to this directory
+$ ! as V<n><module>.MAR
+$ SET NOON
+$ HOME = F$ENVIRONMENT("DEFAULT")
+$ RESULT = 1
+$ GOSUB REMOVE_TREE
+$ CREATE/DIRECTORY [.BOOTSTRAP.V1]
+DCL
+  for f in "$work"/in/*; do
+    name=$(upper "$(basename "$f")")
+    [ "$name" = VAXBOOT.COM ] || echo "\$ RENAME/NOLOG $name [.BOOTSTRAP.V1]"
+  done
+  echo '$ STAGE = "V1"'
+  echo '$ SET DEFAULT [.BOOTSTRAP.V1]'
+  if links 1; then
+    echo '$ GOSUB LINK_STAGE'
+    echo '$ IF .NOT. RESULT THEN GOTO FINISH'
+  fi
+  stage=2
+  while [ "$stage" -le "$last" ]; do
+    echo "\$ STAGE = \"V$stage\""
+    echo '$ GOSUB COMPILE_STAGE'
+    echo '$ SET DEFAULT '"'"'HOME'"'"
+    for m in $modules; do
+      M=$(upper "$m")
+      echo "\$ COPY/NOLOG [.BOOTSTRAP.V$stage]$M.MAR V$stage$M.MAR"
+    done
+    echo "\$ COPY/NOLOG [.BOOTSTRAP.V$stage]POC.COM V${stage}POC.COM"
+    echo '$ IF .NOT. RESULT THEN GOTO FINISH'
+    echo "\$ SET DEFAULT [.BOOTSTRAP.V$stage]"
+    if links "$stage"; then
+      echo '$ GOSUB LINK_STAGE'
+      echo '$ IF .NOT. RESULT THEN GOTO FINISH'
+    fi
+    stage=$((stage + 1))
+  done
+  if [ "$install" -eq 1 ]; then
+    echo '$ GOSUB INSTALL'
+  fi
+  echo '$ FINISH:'
+  echo '$ SET DEFAULT '"'"'HOME'"'"
+  if [ "$keep" -eq 0 ]; then
+    echo '$ GOSUB REMOVE_TREE'
+  fi
+  cat <<'DCL'
+$ EXIT RESULT
+$ !
+$ ! assembles poc's runtime and runs POC.COM in the current directory,
+$ ! with POCRTL.OBJ taken from there
+$ LINK_STAGE:
+$ WRITE SYS$OUTPUT STAGE, ": linking POC.EXE"
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF .NOT. S THEN GOTO LINK_FAILED
+$ DEFINE/NOLOG POC$RTL 'F$ENVIRONMENT("DEFAULT")'
+$ @POC
+$ S = $STATUS
+$ DEASSIGN POC$RTL
+$ IF .NOT. S THEN GOTO LINK_FAILED
+$ IMAGE_DIR = F$ENVIRONMENT("DEFAULT")
+$ WRITE SYS$OUTPUT STAGE, ": linked ", IMAGE_DIR, "POC.EXE"
+$ RETURN
+$ LINK_FAILED:
+$ WRITE SYS$OUTPUT STAGE, ": linking failed, status ", S
+$ RESULT = 44
+$ RETURN
+$ !
+$ ! the last image linked compiles poc's sources, copied from V1's
+$ ! directory, in a directory of the stage's own
+$ COMPILE_STAGE:
+$ SET DEFAULT 'HOME'
+$ CREATE/DIRECTORY [.BOOTSTRAP.'STAGE']
+$ COPY/NOLOG [.BOOTSTRAP.V1]*.MOD, [.BOOTSTRAP.V1]POCRTL.MAR [.BOOTSTRAP.'STAGE']
+$ SET DEFAULT [.BOOTSTRAP.'STAGE']
+$ POC :== $'IMAGE_DIR'POC.EXE
+$ WRITE SYS$OUTPUT STAGE, ": compiling poc with ", IMAGE_DIR, "POC.EXE"
+$ T0 = F$TIME()
+$ C0 = F$GETJPI("", "CPUTIM")
+$ DEFINE/USER_MODE SYS$ERROR POC.ERR
+$ POC -OC -TARGET VAX-DEC-VMS -BUILD POC.MOD
+$ S = $STATUS
+$ CPU = (F$GETJPI("", "CPUTIM") - C0) / 100
+$ DELETE/SYMBOL/GLOBAL POC
+$ WRITE SYS$OUTPUT STAGE, ": status ", S, ", from ", T0, " to ", F$TIME(), ", ", CPU, " s of CPU"
+$ WRITE SYS$OUTPUT STAGE, ": peak virtual memory so far ", F$GETJPI("", "VIRTPEAK"), " pages"
+$ IF F$SEARCH("POC.ERR") .NES. "" THEN TYPE POC.ERR
+$ N = 0
+$ COUNT_MAR:
+$ F = F$SEARCH("*.MAR")
+$ IF F .EQS. "" THEN GOTO COUNTED
+$ IF F$PARSE(F, , , "NAME") .NES. "POCRTL" THEN N = N + 1
+$ GOTO COUNT_MAR
+$ COUNTED:
+$ WRITE SYS$OUTPUT STAGE, ": ", N, " .MAR files"
+$ IF .NOT. S THEN RESULT = 44
+$ RETURN
+$ !
+$ ! the last image linked becomes [.BIN]POC.EXE, the version before it kept
+$ INSTALL:
+$ SET DEFAULT 'HOME'
+$ IF F$SEARCH("BIN.DIR") .EQS. "" THEN CREATE/DIRECTORY [.BIN]
+$ COPY/NOLOG 'IMAGE_DIR'POC.EXE [.BIN]POC.EXE
+$ S = $STATUS
+$ IF .NOT. S THEN RESULT = 44
+$ IF .NOT. S THEN RETURN
+$ PURGE/NOLOG/KEEP=2 [.BIN]POC.EXE
+$ WRITE SYS$OUTPUT "installed ", IMAGE_DIR, "POC.EXE as ", HOME, "[.BIN]POC.EXE"
+$ RETURN
+$ !
+$ ! [.BOOTSTRAP] and everything in it
+$ REMOVE_TREE:
+$ SET DEFAULT 'HOME'
+$ IF F$SEARCH("BOOTSTRAP.DIR") .EQS. "" THEN RETURN
+$ IF F$SEARCH("[.BOOTSTRAP.V1]*.*;*") .NES. "" THEN DELETE/NOLOG [.BOOTSTRAP.V1]*.*;*
+$ IF F$SEARCH("[.BOOTSTRAP.V2]*.*;*") .NES. "" THEN DELETE/NOLOG [.BOOTSTRAP.V2]*.*;*
+$ IF F$SEARCH("[.BOOTSTRAP.V3]*.*;*") .NES. "" THEN DELETE/NOLOG [.BOOTSTRAP.V3]*.*;*
+$ ! (one F$SEARCH of a wildcard spec: a second of the same spec would go
+$ ! on with the first one's search)
+$ IF F$SEARCH("[.BOOTSTRAP]*.DIR;*") .EQS. "" THEN GOTO REMOVE_TOP
+$ SET PROTECTION=(O:RWED) [.BOOTSTRAP]*.DIR;*
+$ DELETE/NOLOG [.BOOTSTRAP]*.DIR;*
+$ REMOVE_TOP:
+$ SET PROTECTION=(O:RWED) BOOTSTRAP.DIR;
+$ DELETE/NOLOG BOOTSTRAP.DIR;
+$ RETURN
+DCL
+} >"$proc"
+
+gets=
+stage=2
+while [ "$stage" -le "$last" ]; do
+  for m in $modules; do gets="$gets -get V$stage$(upper "$m").MAR"; done
+  gets="$gets -get V${stage}POC.COM"
+  stage=$((stage + 1))
+done
+
+status=0
+(cd "$work/in" && "$ROOT/tools/vax-do" -o ../back $gets VAXBOOT.COM $(ls | grep -v '^VAXBOOT\.COM$')) \
+  >"$work/vaxboot.log" 2>&1 || status=$?
+cat "$work/vaxboot.log"
+[ "$status" -ne 2 ] || exit 2
+
+stage=2
+while [ "$stage" -le "$last" ]; do
+  dir=$BUILD/v$stage
+  mkdir -p "$dir"
+  for m in $modules; do
+    back=$work/back/V$stage$(upper "$m").MAR
+    if [ ! -f "$back" ]; then
+      echo "V$stage: MISSING $m.mar"; status=1; continue
+    fi
+    mv "$back" "$dir/$m.mar"
+    cmp -s "$BUILD/v1/$m.mar" "$dir/$m.mar" || { echo "V$stage: DIFFERS $m.mar"; status=1; }
+  done
+  if [ -f "$work/back/V${stage}POC.COM" ]; then
+    mv "$work/back/V${stage}POC.COM" "$dir/Poc.com"
+    sed 1d "$BUILD/v1/Poc.com" >"$work/v1-poc.com"
+    sed 1d "$dir/Poc.com" | cmp -s "$work/v1-poc.com" - || { echo "V$stage: DIFFERS Poc.com"; status=1; }
+  else
+    echo "V$stage: MISSING Poc.com"; status=1
+  fi
+  count=$(sed -n "s/^V$stage: \([0-9]*\) \.MAR files\$/\1/p" "$work/vaxboot.log")
+  expected=$(echo "$modules" | wc -l | tr -d ' ')
+  [ "$count" = "$expected" ] || { echo "V$stage: wrote ${count:-no} .mar files, V1 $expected"; status=1; }
+  stage=$((stage + 1))
+done
+
+if [ "$status" -eq 0 ]; then
+  if [ "$last" -ge 2 ]; then
+    echo "Fixed point: V1 to V$last wrote identical .mar files"
+  else
+    echo "V1 linked on the guest"
+  fi
+else
+  echo "NOT a fixed point, or a stage failed: see above" >&2
+fi
+exit $status

@@ -2413,6 +2413,28 @@ for the user (`POC :== $DUA1:[USERS.POC.BIN]POC.EXE`).
 assembled and linked into V2's `POC.EXE`; and V2's image compiling poc
 again (45.1 minutes, 987 s), its `.mar` linked too. All 31 of V3's
 `.mar` are byte-identical to V2's and to V1's: the fixed point holds on
-VMS itself. What step 6 still asks for: `tools/bootstrap`'s scripts for
-the stages, and the conformance suite under the compiler built on VMS.
+VMS itself.
+
+**Done: the scripts (2026-10-12).** `tools/bootstrap/vax-v1` is V1:
+the host's poc cross-compiles poc's source, with `rtl/vax` and a VMS
+`BuildInfo`, into `build/vax-bootstrap/v1`. `tools/bootstrap/vax-stages
+[-to v1|v2|v3] [-install] [-keep]` runs it, then sends V1's `.mar` and
+`Poc.com`, poc's sources, `rtl/vax`'s and `BuildInfo.Mod` to the guest
+in one transfer. There one procedure it writes, `VAXBOOT.COM`, runs each
+stage in its own directory under `[.BOOTSTRAP]`:
+- it links a stage's image only when the next stage runs it, or with
+  `-install`, which copies the last one to `[.BIN]POC.EXE`;
+- it logs each compilation's elapsed time, CPU time and the process's
+  peak virtual memory;
+- it copies V2's and V3's `.mar` and `POC.COM` back as
+  `V<n><MODULE>.MAR`.
+
+The script compares those files with V1's (`POC.COM` after its first
+line) and checks that each stage wrote as many `.mar` files. Its
+removal of `[.BOOTSTRAP]` uses one `F$SEARCH` per wildcard spec, since a
+second call with the same spec continues the first call's search: the
+first try kept the directory that way. The first full run, from this
+tree: V2 in 45.7 minutes (985 s of CPU), V3 in 46.0 (997 s), a peak of
+184,516 pages, and all 31 `.mar` of both identical to V1's. What step 6
+still asks for: the conformance suite under the compiler built on VMS.
 

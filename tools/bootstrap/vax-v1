@@ -1,0 +1,27 @@
+#!/bin/sh
+# V1 of the bootstrap on VAX/VMS (PLAN.md Phase 16 step 6;
+# doc/developer/vax-macro32-backend.md, section 17): the host's poc
+# (build/bin/poc, or POC_BIN_DIR's) cross-compiles poc's own source for
+# vax-dec-vms, with rtl/vax and a BuildInfo for a poc that runs there
+# (tools/build-info <dir> vax-dec-vms), under -OC as poc itself needs. It
+# writes build/vax-bootstrap/v1: a .mar for each module and Poc.com, which
+# assembles and links them on the guest into POC.EXE; and
+# build/vax-bootstrap/gen/BuildInfo.Mod, which the later stages compile on
+# the guest. Nothing here uses the guest: tools/bootstrap/vax-stages does.
+# Run with no arguments from anywhere.
+set -e
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}/vax-bootstrap
+POC_BIN_DIR=${POC_BIN_DIR:-$ROOT/build/bin}
+unset POC_IMPORT_PATH
+
+rm -rf "$BUILD/v1"
+mkdir -p "$BUILD/v1" "$BUILD/gen"
+"$ROOT/tools/build-info" "$BUILD/gen" vax-dec-vms
+cd "$BUILD/v1"
+"$POC_BIN_DIR/poc" -OC -target vax-dec-vms \
+  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/llvm" -import-path "$ROOT/src/back/vax" \
+  -import-path "$ROOT/rtl/vax" -import-path "$ROOT/src/driver" -import-path "$BUILD/gen" \
+  -build "$ROOT/src/driver/Poc.Mod"
+echo "V1: wrote $(ls *.mar | wc -l | tr -d ' ') .mar files and Poc.com in $BUILD/v1"

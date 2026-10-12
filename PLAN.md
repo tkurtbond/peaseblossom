@@ -988,8 +988,13 @@ most, object libraries.
      A current `POC.EXE` is kept in `DUA1:[USERS.POC.BIN]`.
    - *V3* (2026-10-12): the chain on the guest, V1's image making V2's
      and V2's compiling poc again: V3's 31 `.mar` are byte-identical to
-     V2's and V1's. Left: `tools/bootstrap` scripts, and the suite under
-     the VMS-built compiler.
+     V2's and V1's.
+   - *The scripts* (2026-10-12): `tools/bootstrap/vax-v1` cross-compiles
+     V1 on the host; `tools/bootstrap/vax-stages` runs the chain on the
+     guest with one procedure and compares V2's and V3's `.mar` with
+     V1's (`make vax-v1`, `make vax-stages`; not part of `make check`).
+     Its first full run: V2 45.7 minutes, V3 46.0, all identical. Left:
+     the suite under the VMS-built compiler.
 
 **Testing summary**: step 2's fixtures and step 3's shared fixtures
 are compile+assemble+link+run+diff on the guest; step 6's fixed point is

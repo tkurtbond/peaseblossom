@@ -64,7 +64,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-vax test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-vax vax-v1 vax-stages test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -537,6 +537,18 @@ test-misc: build
 # it needs the guest, and holds it for the whole run.
 test-vax: build
 	tools/vax-suite
+
+# PLAN.md Phase 16 step 6: the bootstrap on VAX/VMS (doc/developer/
+# vax-macro32-backend.md, section 17). vax-v1 cross-compiles poc's own
+# source for the VAX here; vax-stages links it on the guest, compiles poc
+# there with it (V2) and with V2's image (V3), and compares their .mar
+# with V1's. Not part of make check: vax-stages holds the guest for about
+# an hour and a half.
+vax-v1: build
+	tools/bootstrap/vax-v1
+
+vax-stages: build
+	tools/bootstrap/vax-stages
 
 # Removes poc's own build output (tools/bootstrap/stage0's target).
 clean-build:

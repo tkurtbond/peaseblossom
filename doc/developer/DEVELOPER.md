@@ -45,6 +45,9 @@ terminology"):
 | 1 | Stage 0 | `make stage1` | `build/stage1/bin/poc` |
 | 2 | Stage 1, compared with Stage 1's output | `make stage2` | `build/stage2/bin/poc` |
 
+poc for VAX/VMS has stages of its own, V1-V3, which run on a VAX
+(section 4, `make vax-stages`).
+
 `make` is the quick loop: Stage 0 and poc-rtl for both size models. `make
 installable` builds what `make install` copies (Stage 2 and poc-rtl's four
 copies), `make seed` the bootstrap seed (`build/seed`, section 7), and `make
@@ -262,6 +265,15 @@ tools' runs share `POC`'s home directory, so each waits for and holds a
 lock on this host while it uses the guest (`tools/vax-lock.sh`, a
 directory in `/tmp`): the VAX fixtures, run in parallel with the rest,
 take the guest one at a time.
+
+`make vax-stages` (`tools/bootstrap/vax-stages [-to v1|v2|v3] [-install]
+[-keep]`) is the bootstrap on VMS (`PLAN.md` Phase 16 step 6;
+`tools/bootstrap/README.md`). `make vax-v1` cross-compiles poc for the VAX
+here, into `build/vax-bootstrap/v1`. `vax-stages` then links that on the
+guest, compiles poc there with it (V2) and with V2's image (V3), and
+compares their `.mar` with V1's. It holds the guest's lock for about an
+hour and a half, so a VAX fixture run meanwhile waits. `-install` makes
+the last stage's image `POC`'s `[.BIN]POC.EXE`.
 
 ### With other machines
 
