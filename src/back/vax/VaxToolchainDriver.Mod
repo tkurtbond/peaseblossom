@@ -7,12 +7,12 @@ MODULE VaxToolchainDriver;
      LLVMToolchainDriver.EmitIR does for IR. Assembling and linking are
      done on VMS: for -build and -compile poc writes a DCL build procedure
      beside the .mar files (WriteBuildProcedure, decided with the user
-     2026-10-09) and runs nothing there itself. A command that needs more
-     says so (ReportUnavailable). The target is named by the triple
-     "vax-dec-vms" (decided with the user 2026-10-06): -target vax-dec-vms
+     2026-10-09) and runs nothing there itself, and for -library a
+     library's (WriteLibraryProcedures, Phase 17). The target is named by
+     the triple "vax-dec-vms" (decided with the user 2026-10-06): -target vax-dec-vms
      selects it, and -emit-macro32 implies it. *)
 
-  IMPORT Files, Platform, Directories, Err, SyntaxTree, SymbolTable, VaxCodeGenerator;
+  IMPORT Files, Platform, Directories, SyntaxTree, SymbolTable, VaxCodeGenerator;
 
   CONST
     triple* = "vax-dec-vms";
@@ -83,15 +83,6 @@ MODULE VaxToolchainDriver;
     END;
     RETURN ok
   END EmitModule;
-
-  (* what, for the VAX target, is a later phase's: libraries are Phase 17's *)
-  PROCEDURE ReportUnavailable*(what: ARRAY OF CHAR);
-  BEGIN
-    Err.String("poc: "); Err.String(what);
-    Err.String(" is not available for "); Err.String(triple);
-    Err.String(" yet (VMS libraries are Phase 17's)");
-    Err.Ln
-  END ReportUnavailable;
 
   PROCEDURE Upper(s: ARRAY OF CHAR; VAR t: ARRAY OF CHAR);
     VAR i: INTEGER;

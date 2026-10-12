@@ -208,6 +208,8 @@ test/conformance/vax-structured-constants/vax-structured-constants
 test/conformance/vax-field-initializers/vax-field-initializers
 test/conformance/vax-deferred-wide/vax-deferred-wide
 test/conformance/vax-short-circuit-call/vax-short-circuit-call
-# the libraries vax-library makes, and its program's .mar (Phase 17 step 1)
+# the libraries vax-library makes and installs, and its program's .mar
+# (Phase 17 step 1)
 test/conformance/vax-library/libs/
 test/conformance/vax-library/main/
+test/conformance/vax-library/inst/

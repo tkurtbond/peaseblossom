@@ -56,6 +56,36 @@ useolb.com matches expected-useolb.com
 == poc -target vax-dec-vms -library-path libs -shared-libraries -output-dir main -o useshr -build VaxLibUse.mod
 exit 0
 useshr.com matches expected-useshr.com
+== poc -target vax-dec-vms -library-path libs -output-dir inst -install-library POCRTL
+installed library POCRTL in inst/vax-dec-vms/O2
+exit 0
+== poc -target vax-dec-vms -library-path libs -output-dir inst -install-library VAXLIB
+installed library VAXLIB in inst/vax-dec-vms/O2
+exit 0
+== poc -target vax-dec-vms -library-path libs -output-dir inst -install-library VAXLIB
+installed library VAXLIB in inst/vax-dec-vms/O2
+exit 0
+inst/vax-dec-vms/O2 has the files of libs/vax-dec-vms/O2
+== poc -target vax-dec-vms -library-path inst -output-dir main2 -o useinst -build VaxLibUse.mod
+exit 0
+useinst-renamed.com matches useolb.com
+== poc -target vax-dec-vms -library-path libs -output-dir libs -install-library VAXLIB
+poc: library VAXLIB is in libs/vax-dec-vms/O2 already
+exit 1
+== poc -target vax-dec-vms -library-path libs -output-dir inst -install-library NONE
+poc: no library NONE for vax-dec-vms -O2 on the library path
+exit 1
+== poc -target vax-dec-vms -library-path libs -output-dir inst2 -install-library POCRTL
+installed library POCRTL in inst2/vax-dec-vms/O2
+exit 0
+== poc -target vax-dec-vms -library-path inst2 -output-dir libs3 -library OTHER VaxLibBase.mod
+exit 0
+== poc -target vax-dec-vms -library-path libs3 -library-path inst2 -output-dir inst2 -install-library OTHER
+installed library OTHER in inst2/vax-dec-vms/O2
+exit 0
+== poc -target vax-dec-vms -library-path libs -output-dir inst2 -install-library VAXLIB
+poc: module VaxLibBase is in library OTHER in inst2/vax-dec-vms/O2 already
+exit 1
 == poc -target vax-dec-vms -library-path libs -library A234567890123456789012345678901234 VaxLibBase.mod
 poc: A234567890123456789012345678901234 cannot name a library for vax-dec-vms (1 to 33 letters, digits, _, $ and -)
 exit 1

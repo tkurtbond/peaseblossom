@@ -9,10 +9,13 @@
 # whose procedures link it with their object libraries (useolb.com) or,
 # with -shared-libraries, their shareable images (useshr.com). Where the
 # VAX development system can be used (../../vaxfixture.sh, vax_do), the
-# procedures run there, and the program both ways. Then what -library
-# for the VAX refuses, each with exit status 1.
+# procedures run there, and the program both ways. -install-library
+# copies each library, as text, into inst/vax-dec-vms/O2, the files the
+# host has of it whole, over a copy installed before too, and -build
+# finds them there. Then what -library and -install-library for the VAX
+# refuse, each with exit status 1.
 . ../../vaxfixture.sh
-rm -rf libs main
+rm -rf libs main inst
 rm -f useolb.com useshr.com
 run() {
   echo "== poc $*" >>result
@@ -50,6 +53,27 @@ run -target vax-dec-vms -library-path libs -shared-libraries -output-dir main -o
 compare expected-useshr.com useshr.com
 vax_do guest-library.com guest-library.expected $lib/*.mar $lib/*_build.com $lib/*_setup.com \
   main/VaxLibUse.mar useolb.com useshr.com
+run -target vax-dec-vms -library-path libs -output-dir inst -install-library POCRTL
+run -target vax-dec-vms -library-path libs -output-dir inst -install-library VAXLIB
+run -target vax-dec-vms -library-path libs -output-dir inst -install-library VAXLIB
+for f in $lib/*; do
+  cmp -s $f inst/vax-dec-vms/O2/${f##*/} || echo "${f##*/} is not installed whole" >>result
+done
+(cd $lib && LC_ALL=C ls) >files.libs; (cd inst/vax-dec-vms/O2 && LC_ALL=C ls) >files.inst
+cmp -s files.libs files.inst && echo "inst/vax-dec-vms/O2 has the files of $lib" >>result
+rm -f files.libs files.inst
+mkdir main2
+run -target vax-dec-vms -library-path inst -output-dir main2 -o useinst -build VaxLibUse.mod
+sed 's/USEINST/USEOLB/g' useinst.com >useinst-renamed.com
+compare useolb.com useinst-renamed.com
+rm -rf main2 useinst.com useinst-renamed.com
+run -target vax-dec-vms -library-path libs -output-dir libs -install-library VAXLIB
+run -target vax-dec-vms -library-path libs -output-dir inst -install-library NONE
+run -target vax-dec-vms -library-path libs -output-dir inst2 -install-library POCRTL
+run -target vax-dec-vms -library-path inst2 -output-dir libs3 -library OTHER VaxLibBase.mod
+run -target vax-dec-vms -library-path libs3 -library-path inst2 -output-dir inst2 -install-library OTHER
+run -target vax-dec-vms -library-path libs -output-dir inst2 -install-library VAXLIB
+rm -rf inst2 libs3
 run -target vax-dec-vms -library-path libs -library A234567890123456789012345678901234 VaxLibBase.mod
 run -target vax-dec-vms -library-path libs -library BAD.NAME VaxLibBase.mod
 run -target vax-dec-vms -output-dir libs2 -library NORTL VaxLibBase.mod

@@ -577,8 +577,9 @@ C++, and so on) unless step 4 chooses one deliberately.
    links a program against VAX libraries, their object libraries or,
    with `-shared-libraries`, their shareable images, and `POCRTL`'s
    whenever it is on the library path (`vax-library` runs both on the
-   guest). Next: `-install-library` and the library path on VMS, and the
-   collision check from `.sym` files (proposal 7).
+   guest). `-install-library` copies a VAX library's files, as text, the
+   manifest now listing its parts. Next: the library path on VMS, and
+   the collision check from `.sym` files (proposal 7).
 
 2. **Which existing Oberon libraries and modules to support on VMS.**
    Take Phase 12's complete inventory of voc's modules and Phase 10's

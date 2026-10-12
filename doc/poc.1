@@ -133,6 +133,17 @@ or without
 into
 .Nm Ns 's
 own library directory.
+For
+.Cm vax-dec-vms
+it copies the files the host has, the
+.Pa .mar
+files and DCL procedures with the rest, and the library's
+.Ar name Ns Pa _build.com
+makes its
+.Pa NAME.OLB
+and
+.Pa NAME.EXE
+there on VMS.
 .It Fl emit-interface Ar file
 Write the module's interface,
 .Pa Module.sym .
@@ -317,9 +328,10 @@ is the VAX/VMS target, which takes
 .Fl emit-interface ,
 .Fl show-interface ,
 .Fl build ,
-.Fl compile
-and
+.Fl compile ,
 .Fl library
+and
+.Fl install-library
 so far.
 For it,
 .Fl build

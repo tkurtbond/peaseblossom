@@ -2836,6 +2836,24 @@ image found through the logical name `SHRLIB`:
   (`expected-useolb.com`, `expected-useshr.com`) and runs both on the
   guest; those files and the new `guest-library.com` were reviewed by
   the user (2026-10-12).
-- *Left for the next steps*: `-install-library` and
-  the library path on VMS (the subdirectory join), and the collision
+- *`-install-library` for the VAX* (2026-10-12).
+  `poc -target vax-dec-vms -install-library <name>` copies what the host
+  has of the library (`Poc.InstallLibraryVax`) into
+  `<base>/vax-dec-vms/<O2|OC>/`, as on LLVM: each module's `.sym`,
+  `.owner` and `.mar`, its parts' `.mar`, its two DCL procedures and,
+  last, the manifest, each as text with `Files`, not the shell, so that
+  poc on VMS can too. The manifest now lists the parts, a `part <name>`
+  line each (`Libraries.Library.parts`), which was not needed until a
+  library was copied. `<NAME>.OLB` and `<NAME>.EXE` are made where it is
+  installed, by running its `<name>_build.com` there, whose setup
+  procedure then names that directory. The refusals are LLVM's: the
+  library is in that directory already (found by a file made there and
+  looked for in the library's own directory, which needs no shell), or a
+  module of it is another library's there; a copy installed before has
+  its modules' and parts' files removed first. `vax-library` installs
+  `POCRTL` and `VAXLIB` twice into `inst`, checks every file is copied
+  whole, builds its program against `inst` and checks both refusals;
+  `vax-emit-errors` no longer has an `-install-library` case, and the
+  refusal for a later phase (`ReportUnavailable`) is gone.
+- *Left for the next steps*: the library path on VMS (the subdirectory join), and the collision
   check from `.sym` files (proposal 7).

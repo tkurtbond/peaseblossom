@@ -598,17 +598,6 @@ MODULE Poc;
     END
   END SetWordSizeFromTriple;
 
-  (* For a command the VAX target does not have yet (PLAN.md Phase 15):
-     TRUE, reported, when explicitTriple is vax-dec-vms *)
-  PROCEDURE RejectVaxTarget(what: ARRAY OF CHAR; explicitTriple: ARRAY OF CHAR): BOOLEAN;
-  BEGIN
-    IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN
-      failed := TRUE; VaxToolchainDriver.ReportUnavailable(what);
-      RETURN TRUE
-    END;
-    RETURN FALSE
-  END RejectVaxTarget;
-
   (* For a command that checks a module without building it (-check,
      -emit-interface, -show-interface): the libraries on the library path,
      as a build reads them (Phase 13 steps 6 and 7: a module importing Out
@@ -2001,6 +1990,8 @@ MODULE Poc;
     END;
     owner := Libraries.linkOrder;
     WHILE owner # NIL DO Libraries.AddNeed(lib, owner.name); owner := owner.linkNext END;
+    u := parts;
+    WHILE u # NIL DO Libraries.AddPart(lib, u.name); u := u.next END;
     IF ~Libraries.WriteManifest(lib) THEN failed := TRUE END
   END BuildLibraryVax;
 
@@ -2496,6 +2487,138 @@ MODULE Poc;
      .owner file. A copy installed before is replaced, the files of modules
      it no longer has removed, whichever version of poc wrote it. Refused when that directory already has one
      of its modules from another library, or is where the library is. *)
+  (* The file dir/name, deleted if it is there *)
+  PROCEDURE DeleteIn(dir, name: ARRAY OF CHAR);
+    VAR path: Libraries.Path; res: INTEGER;
+  BEGIN
+    Directories.MakePath(dir, name, path); Files.Delete(path, res)
+  END DeleteIn;
+
+  (* The file name copied from the directory from to the directory to,
+     as text; FALSE, reported, if it could not be *)
+  PROCEDURE CopyInto(from, to, name: ARRAY OF CHAR): BOOLEAN;
+    VAR source, target: Libraries.Path;
+  BEGIN
+    Directories.MakePath(from, name, source); Directories.MakePath(to, name, target);
+    IF ~VaxToolchainDriver.CopyText(source, target) THEN
+      failed := TRUE; Err.String("poc: cannot copy "); Err.String(source); Err.String(" to ");
+      Err.String(to); Err.Ln;
+      RETURN FALSE
+    END;
+    RETURN TRUE
+  END CopyInto;
+
+  (* Whether the directories a and b, both there, are one: a file made in a
+     is looked for in b. With no shell, as poc on VMS has none to ask. *)
+  PROCEDURE IsSameDirectory(a, b, name: ARRAY OF CHAR): BOOLEAN;
+    VAR file: ARRAY 72 OF CHAR; path: Libraries.Path; f: Files.File; same: BOOLEAN;
+  BEGIN
+    COPY(name, file); Strcat(file, ".probe");
+    Directories.MakePath(a, file, path);
+    f := Files.New(path);
+    IF f = NIL THEN RETURN FALSE END;
+    Files.Register(f); Files.Close(f);
+    Directories.MakePath(b, file, path);
+    f := Files.Old(path); same := f # NIL;
+    IF same THEN Files.Close(f) END;
+    DeleteIn(a, file);
+    RETURN same
+  END IsSameDirectory;
+
+  (* Phase 17 step 1: poc -target vax-dec-vms -install-library name, as
+     InstallLibrary for LLVM, but the files the host has of a VAX library
+     (section 18): its manifest, each module's .sym, .owner and .mar, its
+     parts' .mar and its two DCL procedures, copied as text, by Files, so
+     that poc on VMS can do it too. Its .OLB and .EXE are made where it is
+     installed, by its build procedure there, which its setup procedure
+     then names. *)
+  PROCEDURE InstallLibraryVax(name, outputDir: ARRAY OF CHAR);
+    VAR
+      base, dir, file: Libraries.Path; program: Libraries.Path; owner: Libraries.Name;
+      lib, old: Libraries.Library; m: Libraries.Member; n: Libraries.Need; ok: BOOLEAN; f: Files.File;
+      model: ARRAY 3 OF CHAR; triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+  BEGIN
+    IF ~SetVaxTarget("-install-library", VaxToolchainDriver.triple) THEN RETURN END;
+    lib := Libraries.FindLibrary(name);
+    IF lib = NIL THEN
+      Libraries.GetTarget(triple, model);
+      failed := TRUE; Err.String("poc: no library "); Err.String(name); Err.String(" for ");
+      Err.String(triple); Err.String(" -"); Err.String(model); Err.String(" on the library path"); Err.Ln;
+      RETURN
+    END;
+    IF outputDir[0] # 0X THEN COPY(outputDir, base)
+    ELSE
+      Modules.GetArg(0, program);
+      IF ~Libraries.PocLibraryDir(program, TRUE, base) THEN
+        failed := TRUE; Err.String("poc: cannot make poc's library directory"); Err.Ln;
+        RETURN
+      END
+    END;
+    Libraries.TupleDirectory(base, dir);
+    IF ~Directories.MakeDirectory(dir) THEN
+      failed := TRUE; Err.String("poc: cannot make the directory "); Err.String(dir); Err.Ln;
+      RETURN
+    END;
+    IF IsSameDirectory(dir, lib.dir, name) THEN
+      failed := TRUE; Err.String("poc: library "); Err.String(name); Err.String(" is in ");
+      Err.String(dir); Err.String(" already"); Err.Ln;
+      RETURN
+    END;
+    (* a module another library there has *)
+    m := lib.modules; ok := TRUE;
+    WHILE m # NIL DO
+      IF Libraries.HasOwner(dir, m.name, owner) & (owner # name) THEN
+        failed := TRUE; Err.String("poc: module "); Err.String(m.name); Err.String(" is in library ");
+        Err.String(owner); Err.String(" in "); Err.String(dir); Err.String(" already"); Err.Ln;
+        ok := FALSE
+      END;
+      m := m.next
+    END;
+    IF ~ok THEN RETURN END;
+    (* the files of a copy installed before *)
+    Directories.MakePath(dir, name, file); Strcat(file, ".library");
+    f := Files.Old(file);
+    IF f # NIL THEN
+      Files.Close(f);
+      old := Libraries.LoadInstalled(name, dir);
+      IF old # NIL THEN
+        m := old.modules;
+        WHILE m # NIL DO
+          COPY(m.name, file); Strcat(file, ".sym"); DeleteIn(dir, file);
+          COPY(m.name, file); Strcat(file, ".owner"); DeleteIn(dir, file);
+          COPY(m.name, file); Strcat(file, ".mar"); DeleteIn(dir, file);
+          m := m.next
+        END;
+        n := old.parts;
+        WHILE n # NIL DO COPY(n.name, file); Strcat(file, ".mar"); DeleteIn(dir, file); n := n.next END
+      END
+    END;
+    (* the files, copied, the manifest last *)
+    m := lib.modules;
+    WHILE m # NIL DO
+      COPY(m.name, file); Strcat(file, ".sym");
+      IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
+      COPY(m.name, file); Strcat(file, ".owner");
+      IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
+      COPY(m.name, file); Strcat(file, ".mar");
+      IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
+      m := m.next
+    END;
+    n := lib.parts;
+    WHILE n # NIL DO
+      COPY(n.name, file); Strcat(file, ".mar");
+      IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
+      n := n.next
+    END;
+    COPY(name, file); Strcat(file, "_build.com");
+    IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
+    COPY(name, file); Strcat(file, "_setup.com");
+    IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
+    COPY(name, file); Strcat(file, ".library");
+    IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
+    Out.String("installed library "); Out.String(name); Out.String(" in "); Out.String(dir); Out.Ln
+  END InstallLibraryVax;
+
   PROCEDURE InstallLibrary(name, outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
       triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
@@ -2503,7 +2626,7 @@ MODULE Poc;
       command: ARRAY 16 * Libraries.pathLength OF CHAR; lib, old: Libraries.Library;
       m: Libraries.Member; ok: BOOLEAN; status: INTEGER; f: Files.File; model: ARRAY 3 OF CHAR;
   BEGIN
-    IF RejectVaxTarget("-install-library", explicitTriple) THEN RETURN END;
+    IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN InstallLibraryVax(name, outputDir); RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
       RETURN

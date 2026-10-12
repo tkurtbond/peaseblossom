@@ -688,6 +688,7 @@ The manifest is text, one fact a line, words separated by a space:
 | `model <O2\|OC>` | the size model |
 | `lto` | its objects are LLVM bitcode |
 | `needs <library>` | a library its modules import from, one line each |
+| `part <name>` | for `vax-dec-vms`, each hand-written `<name>.mar` built with it, one line each |
 | `c++` | a module of it has a C++ part, so clang++ links a program that uses it |
 | `link <arg>` | each `-link <arg>` it was built with, the rest of the line; a program that links it, directly or through `needs`, gets each one, once, after the libraries and before its own `-link` arguments |
 | `module <Module> <key>` | each module and its key |

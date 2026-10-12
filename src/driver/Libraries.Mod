@@ -14,6 +14,8 @@ MODULE Libraries;
        model <O2|OC>
        lto                              (its objects are LLVM bitcode, for -flto)
        needs <library>                  (each library its modules import from)
+       part <name>                      (each hand-written .mar of a VAX library,
+                                         <name>.mar, as PocRtl is POCRTL's)
        c++                              (a module has a part in C++)
        link <arg>                       (each -link <arg> it was built with)
        module <Module> <key>            (each module, with its key)
@@ -133,6 +135,7 @@ MODULE Libraries;
       pocVersion*: Name; (* the poc that wrote it; empty if its manifest does not say *)
       modules*: Member;
       needs*: Need;
+      parts*: Need; (* a VAX library's hand-written .mar files, by name (Phase 17) *)
       lto*: BOOLEAN; (* its objects are LLVM bitcode (Phase 12 step 2g) *)
       cxx*: BOOLEAN; (* a module of it has a part in C++, so clang++ links it *)
       links*: LinkArgument; (* its -link arguments, in order *)
@@ -469,6 +472,17 @@ MODULE Libraries;
     IF n = NIL THEN NEW(n); COPY(name, n.name); n.next := lib.needs; lib.needs := n END
   END AddNeed;
 
+  (* a VAX library's hand-written part name.mar, after those it has *)
+  PROCEDURE AddPart*(lib: Library; name: ARRAY OF CHAR);
+    VAR p, last: Need;
+  BEGIN
+    NEW(p); COPY(name, p.name); p.next := NIL;
+    last := lib.parts;
+    IF last = NIL THEN lib.parts := p
+    ELSE WHILE last.next # NIL DO last := last.next END; last.next := p
+    END
+  END AddPart;
+
   (* arg added at the end of list *)
   PROCEDURE AddLinkArgument*(VAR list: LinkArgument; arg: ARRAY OF CHAR);
     VAR a, tail: LinkArgument;
@@ -487,7 +501,7 @@ MODULE Libraries;
   BEGIN
     NEW(lib); COPY(name, lib.name); COPY(dir, lib.dir);
     COPY(triple, lib.triple); COPY(model, lib.model);
-    lib.modules := NIL; lib.needs := NIL; lib.lto := FALSE; lib.cxx := FALSE; lib.links := NIL; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
+    lib.modules := NIL; lib.needs := NIL; lib.parts := NIL; lib.lto := FALSE; lib.cxx := FALSE; lib.links := NIL; lib.used := FALSE; lib.next := NIL; lib.linkNext := NIL;
     RETURN lib
   END NewLibrary;
 
@@ -530,6 +544,7 @@ MODULE Libraries;
       ELSIF w0 = "triple" THEN COPY(w1, lib.triple)
       ELSIF w0 = "model" THEN COPY(w1, lib.model)
       ELSIF w0 = "needs" THEN AddNeed(lib, w1)
+      ELSIF w0 = "part" THEN AddPart(lib, w1)
       ELSIF w0 = "lto" THEN lib.lto := TRUE
       ELSIF w0 = "c++" THEN lib.cxx := TRUE
       ELSIF w0 = "link" THEN
@@ -680,6 +695,8 @@ MODULE Libraries;
     IF lib.lto THEN WriteLine(w, "lto", "", "", "") END;
     n := lib.needs;
     WHILE n # NIL DO WriteLine(w, "needs", n.name, "", ""); n := n.next END;
+    n := lib.parts;
+    WHILE n # NIL DO WriteLine(w, "part", n.name, "", ""); n := n.next END;
     IF lib.cxx THEN WriteLine(w, "c++", "", "", "") END;
     a := lib.links;
     WHILE a # NIL DO WriteLine(w, "link", a.arg, "", ""); a := a.next END;
