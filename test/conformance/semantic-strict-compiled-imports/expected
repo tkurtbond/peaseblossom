@@ -2,3 +2,4 @@
 semantic OK
 own.mod:2:10: error: HUGEINT is not in the Oberon-2 report (-strict)
 1 error(s)
+42
