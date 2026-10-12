@@ -427,8 +427,11 @@ HTML and PDF, and a fix were released as **Peaseblossom 0.4.0 on
 Phase 15, the VAX/VMS MACRO-32 backend, writes MACRO-32 for Phase 8's
 slice, each fixture reviewed by the user, assembled and mostly run on the
 SIMH VAX (closed 2026-10-08, on the `vax` branch;
-`doc/history/phases/phase-15.md`). Phase 16, running on VAX/VMS, is
-next; 15-18 are the VAX/VMS work, 19 further extensions, 20 voc's library modules. Bugs found by using
+`doc/history/phases/phase-15.md`). Phase 16 runs poc's output on
+VAX/VMS with a minimal runtime (`rtl/vax`), and poc built for the VAX
+compiles itself there to a fixed point (V1 = V2 = V3, `make vax-stages`;
+closed 2026-10-12, on the `vax` branch; `doc/history/phases/phase-16.md`).
+Phase 17, library and module support for VAX/VMS, is next; 15-18 are the VAX/VMS work, 19 further extensions, 20 voc's library modules. Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
 fixing"), and the runtime-library additions and language extensions it
 shows are wanted are made the same way (`PLAN.md`, "Ongoing library

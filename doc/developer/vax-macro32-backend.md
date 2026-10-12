@@ -2,7 +2,9 @@
 
 Status: written before any code (2026-10-05) for `PLAN.md` Phase 15, and
 kept as the record of its decisions; the phase was done on 2026-10-08
-(`doc/history/phases/phase-15.md`). Each section says what the manuals
+(`doc/history/phases/phase-15.md`). Sections 13-17 hold Phase 16's
+design and decisions, done on 2026-10-12
+(`doc/history/phases/phase-16.md`). Each section says what the manuals
 fix (a fact, with its source) and what poc chooses: **Decided** where
 the user has agreed (2026-10-05), otherwise a proposal. The questions
 still open are in §11, and the proposed order of work in §12.
