@@ -4,7 +4,8 @@ Status: written before any code (2026-10-05) for `PLAN.md` Phase 15, and
 kept as the record of its decisions; the phase was done on 2026-10-08
 (`doc/history/phases/phase-15.md`). Sections 13-17 hold Phase 16's
 design and decisions, done on 2026-10-12
-(`doc/history/phases/phase-16.md`). Each section says what the manuals
+(`doc/history/phases/phase-16.md`). Section 18 begins Phase 17's.
+Each section says what the manuals
 fix (a fact, with its source) and what poc chooses: **Decided** where
 the user has agreed (2026-10-05), otherwise a proposal. The questions
 still open are in §11, and the proposed order of work in §12.
@@ -2556,3 +2557,221 @@ differ as their `expected-vax-guest-realfold-*.diff` say, reviewed by
 the user (2026-10-12): a halfway case folds by the VAX's own rounding,
 the limitation the user accepted (2026-10-11). So all 344 pass.
 
+
+## 18. Libraries on VAX/VMS (Phase 17 step 1)
+
+Step 1 works out how poc builds a library for VAX/VMS, static and
+dynamic, and how a program links against one (`PLAN.md` Phase 17 step
+1). This section is the survey and the proposals, written for the
+user's approval before any code, as sections 13-17 were.
+
+**Sources.** The *VMS Linker Utility Manual* (`AA-LA62A`, 5.0, April
+1988; no later revision exists, `vax-vms-manuals-to-get.md`): chapter 3
+(options: `UNIVERSAL=`, `GSMATCH=`, `CLUSTER=`, `PSECT_ATTR=`), chapter
+4 (shareable images), 6.3.6.2 (the fix-up image section) and chapter 7
+(the object language, `TIR$C_STO_PICR` and `TIR$C_STQ_PIDR`). The *VMS
+Librarian Utility Manual* (`AA-LA61A`, 5.0). The *VAX MACRO and
+Instruction Set Reference Manual* (`AA-LA89B`, 5.4), `.PSECT`. Checked
+against the *VMS Version 5.5 Release Notes* (`AA-LB22D`, section 3.17),
+the *VMS Version 5.5 New Features Manual* (`AA-LA97D`, section 19.1) and
+the *VMS Version 5.5-2 Release Notes* (`AV-PQZAB`): the only Linker
+changes are the `CASE_SENSITIVE=` option (5.5), `MULSHRPSC` (5.5, below)
+and a debugger-symbol fix (5.5-2). Nothing in them changes shareable
+images, transfer vectors or `GSMATCH`. (The linker's `SYMBOL_VECTOR=`
+option, often cited for shareable images, is OpenVMS AXP's and does not
+exist on VAX 5.5-2.)
+
+### 18.1 What the manuals fix
+
+- **An object library** (`LIBRARY/CREATE/OBJECT`, `.OLB`) indexes its
+  modules by module name (MACRO's `.TITLE`) and by every global symbol
+  they define, case kept (Librarian, sections 2-3). `LINK prog,
+  lib/LIBRARY` takes a module from it only to resolve a symbol still
+  undefined. `LIBRARY/INSERT` refuses a module whose name *or global
+  symbol* is already in the library ("an error message is issued and the
+  module or symbol is not added", Librarian, `/INSERT`), which answers
+  section 5.1's question about `DUPGLOBAL` from the manual; it still sees
+  one library only. `/REPLACE` (the default) replaces a module of the
+  same name.
+- **A shareable image** is made by `LINK/SHAREABLE` from object modules
+  and, optionally, other shareable images (Linker 4.3), and is used by
+  naming it in an options file, `NAME/SHAREABLE`, or through a
+  shareable-image library (`LIBRARY/CREATE/SHARE`, Librarian section 4).
+  Only its **universal** symbols are visible to what links with it,
+  made so by `UNIVERSAL=` or MACRO's `.TRANSFER` (4.3.1); an absolute
+  symbol can be universal too ("sometimes other constants").
+- **Position independence** (4.2.2). Inside the image, PC-relative
+  references; to a target outside it, general mode, `G^`. MACRO writes a
+  `G^` operand as `TIR$C_STO_PICR`: the linker makes it relative when
+  the target is in the image being linked and *relative deferred through
+  a fix-up cell* when the target is in another shareable image (chapter
+  7, command 28), for a data operand as for a call. `.ADDRESS` is
+  relocated by the image activator from the fix-up image section
+  (6.3.6.2); `.LONG` of a relocatable address makes the image
+  position-dependent and draws a linker warning.
+- **Sharing between processes** (4.2.1). Sections with `WRT` and
+  `NOSHR` become copy-on-reference: each process its own copy, which is
+  what Oberon's module variables need. A section that holds an
+  `.ADDRESS` "is not shareable", since the activator writes into it.
+- **Finding the image at run time** (4.4). The activator takes the file
+  name from the image's global section name and looks for
+  `SYS$SHARE:<name>.EXE`, unless a logical name `<name>` says where it
+  is: `DEFINE LBRSHR DISK$WORK:[MYDIR]LBRSHR`. An image that is not
+  installed is mapped as a private copy, which needs no privilege; only
+  sharing the physical pages needs `INSTALL`, a privileged command, so
+  the unprivileged user `POC` can use shareable images without it.
+- **Versions** (3.3, `GSMATCH=`). The image header carries a match
+  keyword and a major and minor id, copied into each executable linked
+  with it; at activation the major ids must be equal and the minor ids
+  must satisfy `EQUAL`, `LEQUAL` or `ALWAYS`, else the activator refuses
+  with a message that the program must be relinked. With no `GSMATCH=`
+  the ids come from the image's creation time, so any relink of the
+  shareable image forces a relink of its users.
+- **Upward compatibility** (4.2.3-4.2.4) comes from transfer vectors:
+  `.TRANSFER`/`.MASK`/`JMP L^routine+2`, eight bytes each, in one module
+  linked first, never reordered. They cover *routines* only; a universal
+  data symbol has the address its section gave it in this link.
+- **`MULSHRPSC`** (5.5 Release Notes 3.17.2). The 5.5 linker refuses two
+  shareable images that define the same *global* program section. poc's
+  sections are local: `LCL` is `.PSECT`'s default (MACRO, Table 6-7) and
+  poc writes no `GBL`, so every module's `POC_CODE`, `POC_CONST` and
+  `POC_DATA` stay in their own image.
+
+### 18.2 What poc already has
+
+Most of what a shareable image needs was decided for other reasons in
+Phase 15:
+
+- Every reference to another module is `G^` (section 7, `vax-modules`):
+  variables, procedures, an element through an index (`G^X[R1]`) and a
+  field through an offset (`G^X+2`) alike. So code compiled once links
+  unchanged against a module in the same image, an object library, or
+  another shareable image.
+- `POC_CODE` and `POC_CONST` are `PIC,SHR,NOWRT`, `POC_DATA` is
+  `NOPIC,NOSHR,WRT`: per-process module variables.
+- Symbols are a function of the full name alone (section 5), so they
+  are the same whatever else is in a library, and each module defines
+  `POC_K1_<key>` (section 5.1), which its importers name.
+- The collector finds module variables through root tables that each
+  module's initializer registers (`POC_ROOTS`, section 15), not through
+  section bounds, so roots in several images are found.
+- What does not fit: type descriptors, method tables and the
+  runtime's tables of addresses are `.ADDRESS` lines in `POC_CONST`
+  (90 in the fixtures' `.mar`), and no `-library` for the VAX target.
+
+### 18.3 Proposals
+
+**Approved by the user, 2026-10-12**, all eight as written: object
+libraries by default (1), relink on every relink (3) and a
+`<NAME>_SETUP.COM` per library (6) included.
+
+1. **Two kinds, as on LLVM.** `poc -target vax-dec-vms -library <name>
+   <modules>` makes a library as Phase 12 does (`Libraries.Mod`: the
+   manifest, `.sym`, `<Module>.owner`), with the VAX's files in place of
+   the archive and the shared library: `<NAME>.OLB`, an object library of
+   the modules' objects, and `<NAME>.EXE`, a shareable image of the same
+   modules. As with `-build`, the host writes the `.mar` and a DCL
+   procedure, `<NAME>.COM`, that assembles them and runs `LIBRARY` and
+   `LINK` on VMS; poc on the guest does the same. A program links the
+   object libraries by default, the shareable images when asked (the
+   reverse of LLVM's default, since an image found by logical name needs
+   setting up, proposal 6; to be settled with the user). No layered
+   product: DCL, not MMS, as decided on 2026-10-09 (Phase 16 step 1);
+   step 1's "the build descriptions are MMS ones" in `PLAN.md` changes to
+   match.
+2. **What a shareable image exports.** `UNIVERSAL=` for every symbol an
+   importer can name: each exported variable and procedure, each type
+   descriptor and the tables beside it that an importer's code refers
+   to, `<MODULE>_INIT`, and `POC_K1_<key>`.
+   poc writes the options file from what it knows of each module; it
+   never relies on the linker to guess. Psects stay local (18.1,
+   `MULSHRPSC`).
+3. **Versions: relink on every relink, for now.** No `GSMATCH=`, so a
+   program must be relinked whenever a shareable image it uses is, and
+   the activator says so if it is not. Transfer vectors would spare
+   that for procedures only: an exported variable or type descriptor
+   moves with any change to the module's data, which no vector covers.
+   Holding the data's layout too (exported data first, in `.sym` order,
+   in a section clustered ahead of the rest, plus vectors and
+   `GSMATCH=LEQUAL`) is possible later if the user wants upward
+   compatibility. The interface check stays where it is: an importer
+   compiled against another `.sym` fails at link time on `POC_K1_<key>`
+   (`%LINK-W-NUDFSYMS`, which the build procedure treats as fatal).
+4. **One runtime and one copy of each module per process.** The runtime
+   (`POCRTL.MAR` and `rtl/vax`'s modules) becomes a library itself,
+   `POCRTL` (`.OLB` and `.EXE`), as `poc-rtl` is on LLVM. A shareable
+   library is linked against the shareable images of the libraries it
+   needs, `POCRTL` included, never against their objects: two images
+   with their own copy of the collector would each run one heap. A
+   program links either every library's object library or every
+   library's shareable image, not a mixture, so that no module is in the
+   program twice; poc checks it from the manifests, as Phase 12 does.
+5. **Addresses out of the shared constants.** A new section,
+   `POC_ADDR` (`PIC,NOSHR,NOWRT,NOEXE,LONG`), takes every constant that
+   holds an `.ADDRESS` (type descriptors and their tables, the
+   runtime's tables of addresses), so that `POC_CODE` and `POC_CONST`
+   can be shared between processes when an image is installed (18.1).
+   It changes many fixtures' `expected-vax.mar` (a `.PSECT` line before
+   each descriptor), each to be reviewed as usual; behavior does not
+   change.
+6. **Finding libraries.** At compile time, as on LLVM: `-library-path`,
+   then the logical name `POC$LIBRARY` (a search list) on VMS in place of
+   `POC_LIBRARY_PATH`, then `<poc's directory>/../lib/poc`, each with
+   its tuple directory; on VMS the joins are `Directories`' (section 15),
+   which gains a subdirectory join (`[A]` and `B` give `[A.B]`).
+   Whether `VAX-DEC-VMS` is a usable directory name (the hyphen) is to be
+   checked on the guest; if not, the VMS tuple directory is
+   `[.VAX_DEC_VMS.<O2|OC>]`. At run time, the activator's way (18.1): a
+   logical name `<NAME>` for each library's image. A library's
+   directory gets a `<NAME>_SETUP.COM` that defines them (the library's
+   and those it needs), which a user runs once a session, or puts in
+   `LOGIN.COM`, as VMS products do; a program's build procedure runs it
+   for its own test run.
+7. **Collisions across libraries** (section 5.1, layer 2), now that
+   modules are compiled apart: at `-library` and at a program's link,
+   poc recomputes each symbol of the import closure from the `.sym`
+   files and stops on two full names with one symbol. The Librarian
+   (18.1) catches one within one library; this catches the rest.
+8. **Testing.** A fixture with a small library of three dependent
+   modules, built both ways; a program linked against each and run on
+   the guest; and the failure cases, each a message rather than a crash:
+   an importer compiled against a different `.sym` (link time,
+   `NUDFSYMS`), a missing image (activation), a relinked image under an
+   old program (`GSMATCH`). Before any of that, a hand-written check on
+   the guest that the facts above hold for poc's code: a `G^` data
+   reference, an indexed one and one with an offset into another
+   shareable image; a type descriptor's `.ADDRESS` in a `NOWRT` section
+   of a shareable image; and the hyphen in a directory name.
+
+### 18.4 Checked on the development system (2026-10-12)
+
+A hand-written shareable image `SHRLIB` in poc's sections - variables
+in `POC_DATA`, a two-address "descriptor" in `POC_CONST` as poc writes
+one now and another in a `POC_ADDR` as proposal 5 has it, two routines
+and a `POC_K1_` key, all `UNIVERSAL=` - and a program `SHRMAIN` that
+links it as `SHRLIB.EXE/SHAREABLE` and reaches it only by `G^`, the
+image found through the logical name `SHRLIB`:
+
+- *Everything resolves.* `SHRMAIN`'s nine checks pass: a variable, an
+  indexed element (`G^SHR_T[R1]`), a field at an offset (`G^SHR_R+4`),
+  two calls, a variable the image itself changed (one copy, the
+  image's), both descriptors' `.ADDRESS` of a variable as `MOVAB G^`
+  gives it, a routine's address as the program and the image see it, and
+  a call through the descriptor. Linked with no messages.
+- *How the linker lays it out* (`/MAP/FULL`, `ANALYZE/IMAGE`). Each
+  section is its own image section: `POC_DATA` copy-on-reference,
+  `POC_CODE` read-only and shareable, and `POC_CONST` and `POC_ADDR`
+  each "READ WRITE NON-SHAREABLE ADDRESS DATA", plus the fix-up vectors.
+  So the linker already keeps an `.ADDRESS` out of the code, but today
+  it takes the whole of `POC_CONST`, strings and real constants
+  included, out of sharing; with proposal 5 only `POC_ADDR` is.
+- *The failure cases each print a message.* No logical name and no
+  `SYS$SHARE:SHRLIB.EXE`: `%DCL-W-ACTIMAGE` with `-CLI-E-IMAGEFNF`. The
+  image relinked and the program not: `-SYSTEM-F-SHRIDMISMAT, ident
+  mismatch with shareable image` (proposal 3). The image without the
+  key the program names: `%LINK-W-NUDFSYMS` and `%LINK-I-UDFSYM
+  POC_K1_0123456789ABCDEF` - a warning, the image still written, so the
+  build procedure's `ON WARNING THEN EXIT` is what stops it.
+- *A hyphen in a directory name works*: `CREATE/DIRECTORY
+  [.SHRTEST.VAX-DEC-VMS.OC]`, a file copied in and listed, so the VMS
+  tuple directory can keep the triple's spelling (proposal 6).

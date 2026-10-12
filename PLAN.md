@@ -555,6 +555,17 @@ C++, and so on) unless step 4 chooses one deliberately.
    (a `.sym` that does not match its image, a missing image, a version
    mismatch) reporting a message rather than crashing.
 
+   **Record** (in progress, 2026-10-12): the survey of the 5.0 Linker
+   and Librarian manuals, checked against the 5.5 and 5.5-2 release
+   notes, and eight proposals are in `doc/developer/vax-macro32-backend.md`
+   section 18, **approved by the user, 2026-10-12**. Found: 5.5-2 has no symbol
+   vector (`UNIVERSAL=` and `.TRANSFER` only), and the build procedures
+   are DCL, not MMS, as decided 2026-10-09 (Phase 16 step 1).
+   Checked on the guest (section 18.4): a hand-written shareable image in
+   poc's sections, reached by `G^` alone, resolves every kind of
+   reference; a missing image, a relinked one and a wrong key each give
+   a message; `[.VAX-DEC-VMS.OC]` is a usable directory.
+
 2. **Which existing Oberon libraries and modules to support on VMS.**
    Take Phase 12's complete inventory of voc's modules and Phase 10's
    Oakwood set, and sort each for VAX/VMS: portable as they are; needing a
