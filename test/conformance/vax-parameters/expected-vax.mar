@@ -33,6 +33,13 @@
 ;;   it is the program's main module, the program's start,
 ;;   VAXPARAMETERS_MAIN, which calls the initializer, returns SS$_NORMAL
 ;;   and is named by .END.
+;; - A quadword sum into a destination reached through a register, or
+;;   from an operand reached through one, now goes through a register
+;;   pair and is then moved there (MOVQ R0, (R2)): moving the first
+;;   operand into the destination before reading the second is right
+;;   only when the two cannot overlap, which a register's address cannot
+;;   show (2026-10-11, Phase 16 step 6, VaxCodeGenerator.WritableBefore;
+;;   reviewed by the user 2026-10-11).
 ; VaxParameters, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXPARAMETERS
 	.IDENT	/d38be97da73d4737/
@@ -146,9 +153,10 @@ VAXPARAMETERS_DOUBLE_RQMJ5T9J:
 	MOVQ	@4(AP), -8(FP)
 ; line 43
 	MOVL	8(AP), R2
-	MOVQ	-8(FP), (R2)
-	ADDL2	-8(FP), (R2)
-	ADWC	-4(FP), 4(R2)
+	MOVQ	-8(FP), R0
+	ADDL2	-8(FP), R0
+	ADWC	-4(FP), R1
+	MOVQ	R0, (R2)
 	RET
 ; PROCEDURE High
 VAXPARAMETERS_HIGH_QON8QAOE:

@@ -69,9 +69,9 @@ POCSTUB\POC_SCRATCH[1]+2:       5
 value returned is 0
 POCSTUB\POC_SCRATCH[1]: 9
 POCSTUB\POC_SCRATCH[1]+2:       1
-value returned is 0
+value returned is 1705032704
 POCSTUB\POC_SCRATCH[3]: 6000000000
-value returned is 0
+value returned is -2
 POCSTUB\POC_SCRATCH[3]: -2
 value returned is 0
 POCSTUB\POC_SCRATCH[3]: -9223372036854775808

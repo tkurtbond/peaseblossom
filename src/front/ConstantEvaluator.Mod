@@ -111,6 +111,17 @@ MODULE ConstantEvaluator;
        SetWordSize*, leaving this at its wordSize32 default - unchanged
        behavior for those commands. *)
     wordSize*: INTEGER;
+    (* TRUE when poc itself runs on VAX/VMS (Poc.Mod sets it from
+       BuildInfo.defaultTarget; PLAN.md Phase 16 step 6, decided with the
+       user 2026-10-11): its LONGREAL is then G_floating, which cannot
+       hold IEEE 754's largest values, so MAX and MIN of REAL and
+       LONGREAL fold to the VAX's own largest (MaxReal, MaxLongReal),
+       which are what the VAX target writes for them anyway
+       (VaxCodeGenerator.RealConstant). Every other real is folded in
+       the host's arithmetic, IEEE or G_floating; a constant beyond G's
+       range traps there (a floating overflow), and a rounding tie may
+       fold differently in its last bit. *)
+    vaxHost*: BOOLEAN;
 
   PROCEDURE ^ EvaluateExpr(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): Types.Value;
   PROCEDURE ^ IsConstant(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): BOOLEAN;
@@ -432,7 +443,11 @@ MODULE ConstantEvaluator;
      significant bits, so both terms and their difference are exact. *)
   PROCEDURE MaxReal(): LONGREAL;
   BEGIN
-    RETURN PowerOfTwo(128) - PowerOfTwo(104)
+    IF vaxHost THEN (* F_floating's, (1 - 2^-24) * 2^127, half IEEE's *)
+      RETURN PowerOfTwo(127) - PowerOfTwo(103)
+    ELSE
+      RETURN PowerOfTwo(128) - PowerOfTwo(104)
+    END
   END MaxReal;
 
   (* Double precision's, (2 - 2^-52) * 2^1023 = 2^1024 - 2^971 =
@@ -442,7 +457,12 @@ MODULE ConstantEvaluator;
      little low (its OPM.Mod says so) - AGENTS.md. *)
   PROCEDURE MaxLongReal(): LONGREAL;
   BEGIN
-    RETURN (PowerOfTwo(1023) - PowerOfTwo(970)) * 2.0D0
+    IF vaxHost THEN (* G_floating's, (1 - 2^-53) * 2^1023, half IEEE's;
+                       2^1023 itself is beyond it *)
+      RETURN (PowerOfTwo(1022) - PowerOfTwo(969)) * 2.0D0
+    ELSE
+      RETURN (PowerOfTwo(1023) - PowerOfTwo(970)) * 2.0D0
+    END
   END MaxLongReal;
 
   (* MAX/MIN(T)'s bound for every T PredeclaredProcedures.CheckMaxMin
@@ -2217,5 +2237,6 @@ MODULE ConstantEvaluator;
 
 BEGIN
   SetSizeModel(MemoryLayout.sizeModelO2);
-  SetWordSize(MemoryLayout.wordSize32)
+  SetWordSize(MemoryLayout.wordSize32);
+  vaxHost := FALSE
 END ConstantEvaluator.

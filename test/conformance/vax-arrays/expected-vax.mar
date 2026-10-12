@@ -42,6 +42,13 @@
 ;;   it is the program's main module, the program's start,
 ;;   VAXARRAYS_MAIN, which calls the initializer, returns SS$_NORMAL and
 ;;   is named by .END.
+;; - A quadword sum into a destination reached through a register, or
+;;   from an operand reached through one, now goes through a register
+;;   pair and is then moved there (MOVQ R0, (R2)): moving the first
+;;   operand into the destination before reading the second is right
+;;   only when the two cannot overlap, which a register's address cannot
+;;   show (2026-10-11, Phase 16 step 6, VaxCodeGenerator.WritableBefore;
+;;   reviewed by the user 2026-10-11).
 ; VaxArrays, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXARRAYS
 	.IDENT	/5656a9157adcf92b/
@@ -216,9 +223,10 @@ L_6:
 L_7:
 	MULL2	#8, R0
 	MOVAB	VAXARRAYS_H_D1U9BJ6C[R0], R0
-	MOVQ	VAXARRAYS_H_D1U9BJ6C+16, VAXARRAYS_Q_D1U9BTQ7
-	ADDL2	(R0), VAXARRAYS_Q_D1U9BTQ7
-	ADWC	4(R0), VAXARRAYS_Q_D1U9BTQ7+4
+	MOVQ	VAXARRAYS_H_D1U9BJ6C+16, R1
+	ADDL2	(R0), R1
+	ADWC	4(R0), R2
+	MOVQ	R1, VAXARRAYS_Q_D1U9BTQ7
 ; line 35
 	CVTWL	VAXARRAYS_I_D1U9BJJV, R0
 	CMPL	R0, #2

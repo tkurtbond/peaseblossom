@@ -1313,13 +1313,16 @@ MODULE VaxCodeGenerator;
     x.onAP := FALSE; x.deferred := FALSE; x.offset := 0; x.baseOp := r; x.ownsBase := TRUE
   END Rebase;
 
-  (* x moved n bytes on, to a field or an element *)
-  PROCEDURE Displace(x: Operand; n: LONGINT; line, column: INTEGER);
+  (* x moved n bytes on, to a field or an element of type t. A deferred
+     x is rebased for a wide t too, at offset 0: a quadword's or a
+     G_floating's high longword is 4 bytes past the target of @n(AP),
+     which no operand names (until 2026-10-11, @n+4(AP), the next
+     argument's target: hash[0] := 25H, hash a VAR ARRAY 8 OF LONGINT,
+     under -OC) *)
+  PROCEDURE Displace(x: Operand; n: LONGINT; t: Types.Type; line, column: INTEGER);
   BEGIN
-    IF n # 0 THEN
-      IF x.deferred THEN Rebase(x, line, column) END;
-      x.offset := x.offset + n
-    END
+    IF x.deferred & ((n # 0) OR IsWide(t)) THEN Rebase(x, line, column) END;
+    x.offset := x.offset + n
   END Displace;
 
   (* The index e of an array of length elements, as a longword in a
@@ -1375,7 +1378,7 @@ MODULE VaxCodeGenerator;
     size := VaxTypes.Size(arr.elementType);
     IF ConstantEvaluator.IsConstantExpr(e, scope) THEN
       v := ConstantEvaluator.Evaluate(e, scope);
-      Displace(x, v.intVal * size, e.line, e.column)
+      Displace(x, v.intVal * size, arr.elementType, e.line, e.column)
     ELSE
       i := CheckedIndex(e, arr.length, NIL);
       s := Suffix(arr.elementType);
@@ -1662,7 +1665,7 @@ MODULE VaxCodeGenerator;
         rec := x.type(Types.RecordType);
         f := Types.FindField(rec, sel(SyntaxTree.FieldSelector).name);
         IF f = NIL THEN RETURN x END;
-        Displace(x, VaxTypes.FieldOffset(rec, f), sel.line, sel.column);
+        Displace(x, VaxTypes.FieldOffset(rec, f), f.type, sel.line, sel.column);
         x.type := f.type
       ELSIF sel IS SyntaxTree.IndexSelector THEN
         e := sel(SyntaxTree.IndexSelector).indices;
@@ -2417,7 +2420,9 @@ MODULE VaxCodeGenerator;
      .sym file. Zero is "0.0": the VAX has no -0.0, and MACRO writes the
      sign of #-0.0, which makes it a reserved operand. MAX and MIN of the
      type, IEEE 754's largest values as the front end folds them, are the
-     VAX format's largest instead, half as much; any other value beyond
+     VAX format's largest instead, half as much (when poc runs on the VAX
+     the front end folds them to those already,
+     ConstantEvaluator.vaxHost); any other value beyond
      those is an error, as it is to MACRO. A value too small for the
      format is 0, as MACRO and the hardware make it (checked on the
      development system). *)
@@ -2426,7 +2431,7 @@ MODULE VaxCodeGenerator;
         message: ARRAY 256 OF CHAR;
   BEGIN
     ok := ConstantEvaluator.MaxMinBound(v.type, TRUE, bound);
-    largest := bound.realVal / 2.0D0;
+    IF ConstantEvaluator.vaxHost THEN largest := bound.realVal ELSE largest := bound.realVal / 2.0D0 END;
     magnitude := ABS(v.realVal);
     i := 0; WHILE v.realText[i] # 0X DO INC(i) END;
     IF magnitude = 0.0D0 THEN
@@ -2581,8 +2586,28 @@ MODULE VaxCodeGenerator;
     RETURN result
   END Arithmetic;
 
+  (* Whether dest, a quadword, can be written before b is read: b is not in
+     memory, or is dest itself, or is a variable or slot named apart from
+     dest's (a symbol or a frame offset, with no register in either) whose
+     8 bytes do not reach dest's. A register-based operand can hold any
+     address: r[i + j] := r[i + j] + p wrote p into r[i + j], through one
+     register, and then added r[i + j], through another, to itself (until
+     2026-10-11; found by POC.EXE on the guest, in VaxTypes'
+     MultiplyByPrime). *)
+  PROCEDURE WritableBefore(dest, b: Operand): BOOLEAN;
+  BEGIN
+    IF (b.kind # memory) OR Same(b, dest) THEN RETURN TRUE
+    ELSIF (dest.kind # memory) THEN RETURN TRUE
+    ELSIF (b.baseOp # NIL) OR (dest.baseOp # NIL) OR b.deferred OR dest.deferred
+          OR (b.index # NIL) OR (dest.index # NIL) THEN RETURN FALSE
+    ELSIF b.symbol # dest.symbol THEN RETURN TRUE
+    ELSE RETURN (b.onAP # dest.onAP) OR (ABS(b.offset - dest.offset) >= 8)
+    END
+  END WritableBefore;
+
   (* a + b or a - b on quadwords: ADDL2/ADWC, SUBL2/SBWC on the result's
-     two longwords *)
+     two longwords; into dest only when a is there already or dest can be
+     written before b is read (WritableBefore) *)
   PROCEDURE QuadAddSub(add: BOOLEAN; t: Types.Type; a, b, dest: Operand; line, column: INTEGER): Operand;
     VAR result, swap: Operand; low, high: ARRAY 8 OF CHAR; from, to: OperandText;
         operands: ARRAY 160 OF CHAR;
@@ -2590,7 +2615,8 @@ MODULE VaxCodeGenerator;
     IF add & ~Same(a, dest) & (Same(b, dest) OR (b.kind = register) & (a.kind # register)) THEN
       swap := a; a := b; b := swap
     END;
-    IF (dest # NIL) & (Suffix(dest.type) = "Q") & ~(Same(b, dest) & ~Same(a, dest)) THEN result := dest
+    IF (dest # NIL) & (Suffix(dest.type) = "Q") & ~(Same(b, dest) & ~Same(a, dest))
+       & (Same(a, dest) OR WritableBefore(dest, b)) THEN result := dest
     ELSIF a.kind = register THEN result := a
     ELSE result := NewRegisterBeside(t, a, b, line, column)
     END;
@@ -2626,7 +2652,8 @@ MODULE VaxCodeGenerator;
     IF commutes & ~Same(a, dest) & (Same(b, dest) OR (b.kind = register) & (a.kind # register)) THEN
       swap := a; a := b; b := swap
     END;
-    IF (dest # NIL) & (Suffix(dest.type) = "Q") & ~(Same(b, dest) & ~Same(a, dest)) THEN result := dest
+    IF (dest # NIL) & (Suffix(dest.type) = "Q") & ~(Same(b, dest) & ~Same(a, dest))
+       & (Same(a, dest) OR WritableBefore(dest, b)) THEN result := dest
     ELSIF a.kind = register THEN result := a
     ELSE result := NewRegisterBeside(Types.Set64, a, b, line, column)
     END;

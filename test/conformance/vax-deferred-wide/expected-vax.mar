@@ -1,0 +1,169 @@
+;; Reviewed 2026-10-11 by the user (written by Claude, from the design,
+;; the MACRO manual and the guest runs). Why this is right:
+;; - Phase 16 step 6 (section 17): POC.EXE on the guest failed with an
+;;   access violation at its first .sym, in ModuleInterface.HashStart:
+;;   hash[0] := 25H, hash a VAR ARRAY 8 OF LONGINT, a quadword under -OC,
+;;   was MOVL #^X25, @4(AP) and CLRL @8(AP). Element 0 kept the
+;;   parameter's deferred operand, @4(AP), and the high longword added 4
+;;   to its displacement, which names the next argument's target. No
+;;   operand names 4 bytes past the target of @4(AP).
+;; - Now a deferred parameter is rebased for a wide element or field (a
+;;   quadword or a G_floating) at offset 0 too, as it already was for one
+;;   at any other offset: MOVL 4(AP), R0, then (R0) and 4(R0). So
+;;   StartFirst's two quadword immediates are two MOVLs each through R0
+;;   (a, then p at 8(AP), its type tag at 12(AP) unused), and IncFirst
+;;   is ADDL2 to (R0) and ADWC to 4(R0).
+;; - A whole quadword or G_floating moved (MOVQ, MOVG) was right before
+;;   and is the same form now, through R0: First, PairFirst, RealFirst,
+;;   SetPair's p.h and SetReal's r.r; a value parameter still comes in
+;;   by MOVQ @n(AP) into the frame.
+;; - WideOut, run on the guest under -O2 and -OC, prints what the LLVM
+;;   build prints (output.expected).
+; VaxDeferredWide, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXDEFERREDWIDE
+	.IDENT	/b5297e0df44bc04a/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxDeferredWide/
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_CONST
+; VaxDeferredWide.Pair
+	.ALIGN	LONG
+VAXDEFERREDWIDE_PAIR_8CCNKVBU::
+	.LONG	16
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXDEFERREDWIDE_PAIR_8CCNKVBU
+; VaxDeferredWide.Reals
+	.ALIGN	LONG
+VAXDEFERREDWIDE_REALS_ES4J3QKN::
+	.LONG	12
+	.LONG	0
+	.LONG	0
+	.ADDRESS	VAXDEFERREDWIDE_REALS_ES4J3QKN
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE SetFirst
+	.ENTRY	VAXDEFERREDWIDE_SETFIR_5JTSCV4K, ^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@8(AP), -8(FP)
+; line 15
+	MOVL	4(AP), R0
+	MOVQ	-8(FP), (R0)
+; line 15
+	MOVL	4(AP), R0
+	MOVQ	-8(FP), 8(R0)
+	ADDL2	#^X00000001, 8(R0)
+	ADWC	#^X00000000, 12(R0)
+	RET
+; PROCEDURE First
+	.ENTRY	VAXDEFERREDWIDE_FIRST_0GNTISOC, ^M<>
+; line 19
+	MOVL	4(AP), R0
+	MOVQ	(R0), R0
+	RET
+	PUSHL	#3
+	PUSHL	#20
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE SetPair
+	.ENTRY	VAXDEFERREDWIDE_SETPAI_0JE923MM, ^M<>
+	SUBL2	#16, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVQ	@16(AP), -16(FP)
+	MOVQ	@12(AP), -8(FP)
+; line 23
+	MOVL	4(AP), R0
+	MOVQ	-8(FP), (R0)
+; line 23
+	MOVL	4(AP), R0
+	MOVG	-16(FP), 8(R0)
+	RET
+; PROCEDURE PairFirst
+	.ENTRY	VAXDEFERREDWIDE_PAIRFI_DR59A4QS, ^M<>
+; line 27
+	MOVL	4(AP), R0
+	MOVQ	(R0), R0
+	RET
+	PUSHL	#3
+	PUSHL	#28
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE SetReal
+	.ENTRY	VAXDEFERREDWIDE_SETREA_UBGU832M, ^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+	MOVQ	@12(AP), -8(FP)
+; line 31
+	MOVL	4(AP), R0
+	MOVG	-8(FP), (R0)
+; line 31
+	MOVL	4(AP), R0
+	MOVW	#7, 8(R0)
+	RET
+; PROCEDURE RealFirst
+	.ENTRY	VAXDEFERREDWIDE_REALFI_V9OJO66S, ^M<>
+; line 35
+	MOVL	4(AP), R0
+	MOVG	(R0), R0
+	RET
+	PUSHL	#3
+	PUSHL	#36
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE StartFirst
+	.ENTRY	VAXDEFERREDWIDE_STARTF_6LH3DD8S, ^M<>
+; line 39
+	MOVL	4(AP), R0
+	MOVL	#^X84222325, (R0)
+	MOVL	#^XCBF29CE4, 4(R0)
+; line 39
+	MOVL	8(AP), R0
+	MOVL	#^XFFFFFFFE, (R0)
+	MOVL	#^XFFFFFFFF, 4(R0)
+	RET
+; PROCEDURE IncFirst
+	.ENTRY	VAXDEFERREDWIDE_INCFIR_EOUFGNLK, ^M<>
+; line 43
+	MOVL	4(AP), R0
+	ADDL2	#^X4876E800, (R0)
+	ADWC	#^X00000017, 4(R0)
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXDEFERREDWIDE_INIT, ^M<>
+	BLBS	L_INITIALISED, L_DONE
+	MOVB	#1, L_INITIALISED
+L_DONE:
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_B5297E0DF44BC04A == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXDEFERREDWIDE_MAIN, ^M<>
+	CALLS	#0, VAXDEFERREDWIDE_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXDEFERREDWIDE_MAIN

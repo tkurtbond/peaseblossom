@@ -949,6 +949,7 @@ most, object libraries.
      the importer's `-strict` (both backends; fixed on `main` too), and
      the VAX's trap 9 named the value's column, not the assignment's.
      178 programs, 328 runs: step 5's list is complete.
+   - *Closed* (the user, 2026-10-11, going on to step 6).
 
 6. **Bootstrap on VAX/VMS.** poc for VAX/VMS is built in stages. **V1**:
    the host's `poc` cross-compiles poc's own source to `.mar`; assembled
@@ -959,6 +960,32 @@ most, object libraries.
    `poc.exe` assembled from V2's `.mar` compiles the source again, again
    identical. The whole conformance suite then passes under the V2/V3
    compiler. `tools/bootstrap` gains the corresponding scripts.
+
+   **Record** (in progress, 2026-10-11; `doc/developer/
+   vax-macro32-backend.md` section 17):
+   - *The first runs*: `POC.EXE` on the guest found two backend faults,
+     fixed (a wide element at offset 0 of a `VAR` parameter, fixture
+     `vax-deferred-wide`; a quadword sum into a destination its operand
+     may overlap, which broke every mangled name's hash). It then
+     compiles `hello` and poc's `Lexer` on VMS to `.mar` byte-identical
+     to the host's.
+   - *Memory*: `VaxCodeGenerator`, and all of poc, exhaust the heap at
+     about 3.6 MB, three quarters of `POC`'s paging file quota; the host
+     needs 63 MB and 112 MB. **Decided (the user, 2026-10-11): the
+     guest's limits are raised** (`POC`'s `PGFLQUOTA` and working set,
+     `VIRTUALPAGECNT`, the paging file, SIMH's memory), reversing step
+     1's decision. Making poc need less (measuring what holds its
+     memory, compiling module by module against `.sym` files, leaving
+     the LLVM backend out of the VMS image) is later work.
+   - *Real constants on a VAX host*: poc folds them in its own
+     `LONGREAL`, `G_floating` on the VAX, which cannot hold IEEE's
+     largest. **Decided (the user, 2026-10-11): fold in `G_floating`**;
+     `MAX`/`MIN` of `REAL`/`LONGREAL` are the VAX's own largest
+     (`ConstantEvaluator.vaxHost`). IEEE folding in software is later
+     work.
+   - *V2* (2026-10-12): `POC.EXE` compiled all of poc on VMS in 45.7
+     minutes (90 MB peak); its 31 `.mar` are byte-identical to V1's.
+     A current `POC.EXE` is kept in `DUA1:[USERS.POC.BIN]`.
 
 **Testing summary**: step 2's fixtures and step 3's shared fixtures
 are compile+assemble+link+run+diff on the guest; step 6's fixed point is

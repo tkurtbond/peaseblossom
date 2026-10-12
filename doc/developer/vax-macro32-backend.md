@@ -2310,3 +2310,100 @@ sweep of the rest found none that builds). The others need what
 `rtl/vax` lacks (`Out.Real`, `Modules.Halt`, `In`, `Strings`, `Math` and
 the rest: Phase 17), a `["C"]` external, or a record or array literal
 that is not constant, which the backend does not lower yet.
+
+## 17. Bootstrapping on VAX/VMS (Phase 16 step 6)
+
+Step 6 builds poc for VAX/VMS in stages (`PLAN.md` Phase 16 step 6):
+V1, the host's poc cross-compiling poc's source, assembled and linked on
+the guest into `POC.EXE`; V2, that `POC.EXE` compiling the same source
+on VMS, its `.mar` the same as V1's; V3, V2's image doing it again.
+
+**The first runs (2026-10-11).** V1 is what `vax-poc` already builds.
+`POC.EXE`, run on the guest from a directory holding poc's sources and
+`rtl/vax`'s side by side (VMS directory names in the import path are
+not split yet, section 15), found two faults in the backend, each
+fixed with the fixture beside it:
+
+- *A wide element or field at offset 0 of a parameter reached by its
+  address.* `hash[0] := 25H`, `hash` a `VAR ARRAY 8 OF LONGINT` (a
+  quadword under `-OC`), was `MOVL #^X25, @4(AP)` and `CLRL @8(AP)`:
+  element 0 kept the parameter's deferred operand, and its high
+  longword added 4 to the displacement, the next argument's target. No
+  operand names 4 bytes past the target of `@4(AP)`, so `Displace` now
+  rebases a deferred operand for a quadword or `G_floating` element or
+  field at offset 0 too. `POC.EXE` died with an access violation at its
+  first `.sym` (`ModuleInterface.HashStart`). Fixture
+  `vax-deferred-wide`.
+- *A quadword sum into a destination that its second operand may
+  overlap.* `r[i + j] := r[i + j] + p` moved `p` into `r[i + j]`,
+  through one register, and then added `r[i + j]`, through another, to
+  itself. `QuadAddSub` and `QuadSet` now write into the destination
+  first only when the second operand cannot overlap it
+  (`WritableBefore`: not in memory, the same operand, or a variable or
+  slot named apart from it), else they go through a register pair.
+  Every mangled name's hash (`VaxTypes.AppendHash`) was wrong, so the
+  `.mar` `POC.EXE` wrote named other symbols than the host's. This
+  changes `vax-arrays'`, `vax-nested'` and `vax-parameters'`
+  `expected-vax.mar` and one debugger log. The user reviewed them and
+  `vax-deferred-wide`'s `expected-vax.mar` (2026-10-11).
+
+With both fixed, `POC.EXE` compiles `hello` (with `Out`) and poc's own
+`Lexer` (with `LineOutput`, `Err` and `Diagnostics`) on the guest to
+`.mar` byte-identical to the host's: `Lexer` in 10 s, 8 s of CPU, and
+`-build` of `hello` makes a program that runs.
+
+**Memory.** `VaxCodeGenerator` alone, and all of poc with `-build`,
+stop in `NEW` (`-trap-heap-exhausted`: "heap exhausted" in
+`SemanticActions.NewDesignator`) at about 12,000 pages of virtual
+memory: the heap's ceiling is three quarters of the paging file quota
+left at the start (section 15), about 7,200 pages (3.6 MB) of `POC`'s
+10,240. On the host the same compilations for the VAX need 63 MB
+(`VaxCodeGenerator`) and 112 MB (all of poc, `-build`) of resident
+memory on x86-64; step 1 measured 105 MB for all of poc on 32-bit
+OpenBSD. The guest has 64 MB of memory (131,072 pages; step 1 recorded
+256 MB), `VIRTUALPAGECNT` 139,072 pages (68 MB), `WSMAX` 32,800, and a
+paging file of 139,096 blocks (68 MB; 109,661 reservable).
+
+**Decided (the user, 2026-10-11): the guest's limits are raised**,
+reversing step 1's decision that poc must fit them, so that the fixed
+point can be reached; making poc need less is later work, recorded in
+`PLAN.md`. What it needs, with room for the collector's three quarters:
+a `PGFLQUOTA` for `POC` of about 300,000 pages (150 MB), a
+`VIRTUALPAGECNT` above that, a paging file to hold it, and a larger
+working set (`WSQUOTA`, `WSEXTENT`, within `WSMAX`) so that poc does not
+page on every allocation; and the memory SIMH gives the VAX back to 256
+MB. These are privileged changes the user makes on the guest.
+
+**Done: the guest's limits raised (the user, 2026-10-11).** The VAX
+has 256 MB again (524,288 pages), `VIRTUALPAGECNT` is 350,000,
+`PAGEFILE.SYS` 350,000 blocks, and `POC`'s `PGFLQUOTA` 300,000 pages,
+`WSQUOTA` 8,192 and `WSEXTENT` 16,384.
+
+**Real constants when poc runs on the VAX.** All of poc then got as far
+as its 15th module and stopped on a floating overflow: every real
+constant the VAX backend writes is compared with IEEE 754's largest of
+its type (`RealConstant`), and poc folds real constants in its own
+`LONGREAL`, which on the VAX is `G_floating`, whose largest is half
+IEEE's: `ConstantEvaluator.MaxLongReal` computed `2^1023`, beyond it.
+**Decided (the user, 2026-10-11): a poc running on the VAX folds in
+`G_floating`.** `ConstantEvaluator.vaxHost`, set by `Poc.Mod` from
+`BuildInfo.defaultTarget`, makes `MAX` and `MIN` of `REAL` and
+`LONGREAL` the VAX's own largest values (built from powers of two that
+fit), which are what the VAX target writes for them anyway, and
+`RealConstant` compares with those directly; the `.mar` is the host's.
+Every other real constant is folded in the host's arithmetic, so on the
+VAX one beyond `G_floating`'s range traps (a floating overflow) instead
+of being reported, and a rounding tie may fold differently in its last
+bit (the VAX rounds ties away from zero). Making the folding IEEE in
+software on every host is later work.
+
+**Done: V2 (2026-10-12).** `POC.EXE`, cross-compiled from this tree and
+linked on the guest (V1), compiled all of poc on VMS with `-OC -target
+vax-dec-vms -build POC.MOD`, from one directory holding poc's sources,
+`rtl/vax`'s and `BuildInfo.Mod`: 45.7 minutes, 1,060 s of CPU, a peak of
+184,516 pages (90 MB) of virtual memory. All 31 `.mar` files are
+byte-identical to V1's; `POC.COM` differs only in its first line, which
+names the source file as given (`POC.MOD`, the host's full path). A
+`POC.EXE` built from the current tree is kept in `DUA1:[USERS.POC.BIN]`
+for the user (`POC :== $DUA1:[USERS.POC.BIN]POC.EXE`).
+

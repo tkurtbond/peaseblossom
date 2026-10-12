@@ -46,6 +46,13 @@
 ;;   collector scans the stack up to, before the module's initializer.
 ;; - The debugger runs link tools/vax-runtime-stub.mar, whose Allocate
 ;;   takes memory from LIB$GET_VM as POC_NEW did and never collects.
+;; - A quadword sum into a destination reached through a register, or
+;;   from an operand reached through one, now goes through a register
+;;   pair and is then moved there (MOVQ R0, (R2)): moving the first
+;;   operand into the destination before reading the second is right
+;;   only when the two cannot overlap, which a register's address cannot
+;;   show (2026-10-11, Phase 16 step 6, VaxCodeGenerator.WritableBefore;
+;;   reviewed by the user 2026-10-11).
 ; VaxNested, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VAXNESTED
 	.IDENT	/6a7b710f77b7fe19/
@@ -617,16 +624,18 @@ VAXNESTED_WIDE_GROW_R4QH6U55:
 	MOVL	8(AP), R2
 	MOVL	8(AP), R3
 	MOVL	4(AP), R4
-	MOVQ	(R3), (R2)
-	ADDL2	(R4), (R2)
-	ADWC	4(R4), 4(R2)
+	MOVQ	(R3), R0
+	ADDL2	(R4), R0
+	ADWC	4(R4), R1
+	MOVQ	R0, (R2)
 ; line 97
 	MOVL	4(AP), R2
 	MOVL	4(AP), R3
 	MOVL	4(AP), R4
-	MOVQ	(R3), (R2)
-	ADDL2	(R4), (R2)
-	ADWC	4(R4), 4(R2)
+	MOVQ	(R3), R0
+	ADDL2	(R4), R0
+	ADWC	4(R4), R1
+	MOVQ	R0, (R2)
 	RET
 ; PROCEDURE Wide
 VAXNESTED_WIDE_0IGHUTE0:

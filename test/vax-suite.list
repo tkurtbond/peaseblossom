@@ -191,3 +191,5 @@ llvm-using-modules src/app.mod -O2
 llvm-using-modules others/app.mod -O2 -import-path ../src
 semantic-strict-compiled-imports client.mod -O2 -strict -import-path lib
 semantic-strict-compiled-imports uselocals.mod -O2 -strict -import-path lib
+vax-deferred-wide WideOut.mod -O2
+vax-deferred-wide WideOut.mod -OC

@@ -2557,6 +2557,7 @@ MODULE Poc;
       outputDir[0] := 0X;
       (* "" but in a poc built to run on VAX/VMS (section 15, proposal 7) *)
       COPY(BuildInfo.defaultTarget, targetTriple); onVms := targetTriple[0] # 0X;
+      ConstantEvaluator.vaxHost := onVms; (* its LONGREAL is G_floating *)
       exePath[0] := 0X;
       done := FALSE;
       WHILE (i < Modules.ArgCount) & ~done DO
