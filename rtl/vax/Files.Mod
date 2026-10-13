@@ -43,7 +43,7 @@ MODULE Files;
 
   TYPE
     Name = ARRAY nameLength OF CHAR;
-    (* the file's FAB, RAB, NAM block and XABFHC, and its resultant name *)
+    (* the file's FAB, RAB, NAM block, XABFHC and XABDAT, and its resultant name *)
     Control = ARRAY controlSize OF CHAR;
     Block = ARRAY blockSize OF SYSTEM.BYTE;
     Record = ARRAY recordSize OF CHAR;

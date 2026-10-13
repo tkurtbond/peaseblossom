@@ -25,7 +25,13 @@
 	$RABDEF
 	$RMSDEF
 	$XABDEF
+	$XABDATDEF
 	$XABFHCDEF
+	$XABRDTDEF
+	$DCDEF
+	$DVIDEF
+	$PSLDEF
+	$SSDEF
 
 ; a fixed-length string descriptor of the length bytes at text, made on
 ; the stack, its address in R1
@@ -782,16 +788,17 @@ POC_NAME_EXPANDED:
 	RET
 
 ; Files' services (rtl/vax/Files.Mod; design section 15, proposal 2). A
-; file's FAB, RAB, NAM block and XABFHC, and the resultant name, are in
-; the control the File keeps (Files.Control, its address the first
-; argument), laid out as below. A position is passed as the address of a
+; file's FAB, RAB, NAM block, XABFHC and XABDAT, and the resultant name,
+; are in the control the File keeps (Files.Control, its address the
+; first argument), laid out as below. A position is passed as the address of a
 ; LONGINT, whose low longword is the count under -O2 or -OC.
 
 POC_F_FAB = 0
 POC_F_RAB = POC_F_FAB + FAB$C_BLN
 POC_F_NAM = POC_F_RAB + RAB$C_BLN
 POC_F_FHC = POC_F_NAM + NAM$C_BLN
-POC_F_RSA = POC_F_FHC + XAB$C_FHCLEN
+POC_F_DAT = POC_F_FHC + XAB$C_FHCLEN
+POC_F_RSA = POC_F_DAT + XAB$C_DATLEN
 POC_F_SIZE = POC_F_RSA + NAM$C_MAXRSS
 	.IF	GREATER, POC_F_SIZE - 768
 	.ERROR	; a file's RMS blocks do not fit Files.Control (768 bytes)
@@ -808,6 +815,8 @@ POC_FILE_NAM_TEMPLATE:
 	$NAM
 POC_FILE_FHC_TEMPLATE:
 	$XABFHC
+POC_FILE_DAT_TEMPLATE:
+	$XABDAT
 ; a New file's name until Register: the process and a count, in the
 ; directory of the name it is to be registered as
 POC_FILE_TEMP_CONTROL:
@@ -856,6 +865,8 @@ POC_FILE_INIT:
 	MOVC3	#RAB$C_BLN, POC_FILE_RAB_TEMPLATE, POC_F_RAB(R6)
 	MOVC3	#NAM$C_BLN, POC_FILE_NAM_TEMPLATE, POC_F_NAM(R6)
 	MOVC3	#XAB$C_FHCLEN, POC_FILE_FHC_TEMPLATE, POC_F_FHC(R6)
+	MOVC3	#XAB$C_DATLEN, POC_FILE_DAT_TEMPLATE, POC_F_DAT(R6)
+	MOVAB	POC_F_DAT(R6), POC_F_FHC+XAB$L_NXT(R6)
 	MOVAB	POC_F_NAM(R6), POC_F_FAB+FAB$L_NAM(R6)
 	MOVAB	POC_F_FHC(R6), POC_F_FAB+FAB$L_XAB(R6)
 	MOVAB	POC_F_FAB(R6), POC_F_RAB+RAB$L_FAB(R6)
@@ -1067,6 +1078,418 @@ POC_FILE_OPEN_FAB:
 	CALLS	#2, POC_PUT_ERROR_LINE
 	PUSHL	#99
 	CALLS	#1, POC_HALT
+	RET
+
+; Platform's files by handle, time, commands, directories and statuses
+; (rtl/vax/Platform.Mod; design section 19.1, Phase 17 step 3). A
+; handle's control is laid out as a File's, above.
+
+	.PSECT	POC_CODE
+; POC_FILE_OPEN_MODE(control, name, length, mode, info): the file name
+; opened as mode says, info the three longwords POC_FILE_OPEN_FAB gives
+; (1 when it is read by block I/O, the end-of-file block, the first free
+; byte in it); R0 the status. Mode 0: to read, as POC_FILE_OPEN opens
+; one. 1: to read and write by block I/O, for which a file of another
+; format than Stream_LF, fixed-length or undefined is refused with
+; RMS$_ORG, since writing bytes would break its records. 2: a new
+; version, Stream_LF with carriage return carriage control, read and
+; written by block I/O. 3: to read a record at a time, as SYS$INPUT is.
+	.ENTRY	POC_FILE_OPEN_MODE, ^M<R2,R3,R4,R5,R6,R7>
+	MOVL	4(AP), R6
+	JSB	POC_FILE_INIT
+	MOVL	8(AP), POC_F_FAB+FAB$L_FNA(R6)
+	MOVB	12(AP), POC_F_FAB+FAB$B_FNS(R6)
+	MOVL	20(AP), R7
+	CASEL	16(AP), #0, #3
+10$:	.WORD	20$-10$, 30$-10$, 40$-10$, 50$-10$
+	MOVL	#SS$_BADPARAM, R0
+	RET
+20$:	JSB	POC_FILE_OPEN_FAB
+	RET
+30$:	MOVB	#<FAB$M_GET!FAB$M_PUT!FAB$M_BIO!FAB$M_TRN>, POC_F_FAB+FAB$B_FAC(R6)
+	MOVB	#FAB$M_NIL, POC_F_FAB+FAB$B_SHR(R6)
+	CLRQ	-(SP)
+	PUSHAB	POC_F_FAB(R6)
+	CALLS	#3, G^SYS$OPEN
+	BLBC	R0, 39$
+	CMPB	POC_F_FAB+FAB$B_RFM(R6), #FAB$C_STMLF
+	BEQL	35$
+	CMPB	POC_F_FAB+FAB$B_RFM(R6), #FAB$C_FIX
+	BEQL	35$
+	CMPB	POC_F_FAB+FAB$B_RFM(R6), #FAB$C_UDF
+	BEQL	35$
+	CLRQ	-(SP)
+	PUSHAB	POC_F_FAB(R6)
+	CALLS	#3, G^SYS$CLOSE
+	MOVL	#RMS$_ORG, R0
+	RET
+35$:	MOVL	#1, (R7)
+	MOVL	POC_F_FHC+XAB$L_EBK(R6), 4(R7)
+	MOVZWL	POC_F_FHC+XAB$W_FFB(R6), 8(R7)
+	MOVL	#1, R1
+	JSB	POC_FILE_CONNECT
+39$:	RET
+40$:	MOVB	#<FAB$M_GET!FAB$M_PUT!FAB$M_BIO!FAB$M_TRN>, POC_F_FAB+FAB$B_FAC(R6)
+	MOVB	#FAB$M_NIL, POC_F_FAB+FAB$B_SHR(R6)
+	MOVB	#FAB$C_STMLF, POC_F_FAB+FAB$B_RFM(R6)
+	MOVB	#FAB$M_CR, POC_F_FAB+FAB$B_RAT(R6)
+	CLRQ	-(SP)
+	PUSHAB	POC_F_FAB(R6)
+	CALLS	#3, G^SYS$CREATE
+	BLBC	R0, 49$
+	MOVL	#1, (R7)
+	MOVL	#1, 4(R7)
+	CLRL	8(R7)
+	MOVL	#1, R1
+	JSB	POC_FILE_CONNECT
+49$:	RET
+50$:	MOVB	#FAB$M_GET, POC_F_FAB+FAB$B_FAC(R6)
+	MOVB	#<FAB$M_SHRGET!FAB$M_SHRPUT>, POC_F_FAB+FAB$B_SHR(R6)
+	CLRQ	-(SP)
+	PUSHAB	POC_F_FAB(R6)
+	CALLS	#3, G^SYS$OPEN
+	BLBC	R0, 59$
+	CLRL	(R7)
+	CLRQ	4(R7)
+	CLRL	R1
+	JSB	POC_FILE_CONNECT
+59$:	RET
+
+; POC_FILE_TRUNCATE(control, position, block, count): as POC_FILE_WRITE,
+; with truncate-on-put, so that the file ends after the bytes written
+; (RMS 7.19; on the guest also for a $WRITE at a given block, and of 0
+; bytes); R0 the status
+	.ENTRY	POC_FILE_TRUNCATE, ^M<R6>
+	MOVL	4(AP), R6
+	BISL2	#RAB$M_TPT, POC_F_RAB+RAB$L_ROP(R6)
+	PUSHL	16(AP)
+	PUSHL	12(AP)
+	PUSHL	8(AP)
+	PUSHL	R6
+	CALLS	#4, POC_FILE_WRITE
+	BICL2	#RAB$M_TPT, POC_F_RAB+RAB$L_ROP(R6)
+	RET
+
+; POC_FILE_FLUSH(control): what RMS holds of the file written out
+; ($FLUSH); R0 the status
+	.ENTRY	POC_FILE_FLUSH, ^M<R6>
+	MOVL	4(AP), R6
+	CLRQ	-(SP)
+	PUSHAB	POC_F_RAB(R6)
+	CALLS	#3, G^SYS$FLUSH
+	RET
+
+; POC_FILE_IDENTITY(control, identity): the open file's identity in the
+; 32 bytes at identity, after $DISPLAY has brought its XABs up to date:
+; the device's name as a counted string, zero-filled to 16 bytes
+; (NAM$T_DVI), the file ID (NAM$W_FID, three words) and two zero bytes,
+; and the revision date (XAB$Q_RDT); R0 the status
+	.ENTRY	POC_FILE_IDENTITY, ^M<R2,R3,R4,R5,R6>
+	MOVL	4(AP), R6
+	CLRQ	-(SP)
+	PUSHAB	POC_F_FAB(R6)
+	CALLS	#3, G^SYS$DISPLAY
+	BLBC	R0, 10$
+	MOVC5	#0, (SP), #0, #32, @8(AP)
+	MOVZBL	POC_F_NAM+NAM$T_DVI(R6), R0
+	INCL	R0
+	CMPL	R0, #16
+	BLEQ	5$
+	MOVL	#16, R0
+5$:	MOVC3	R0, POC_F_NAM+NAM$T_DVI(R6), @8(AP)
+	MOVL	8(AP), R3
+	MOVC3	#6, POC_F_NAM+NAM$W_FID(R6), 16(R3)
+	MOVL	8(AP), R3
+	MOVQ	POC_F_DAT+XAB$Q_RDT(R6), 24(R3)
+	MOVL	#1, R0
+10$:	RET
+
+	.PSECT	POC_DATA
+; SetFileMTime's file, opened to be written, and its XABRDT
+	.ALIGN	LONG
+POC_REVISION_FAB:
+	$FAB	FAC=<PUT>, XAB=POC_REVISION_RDT
+POC_REVISION_RDT:
+	$XABRDT
+
+	.PSECT	POC_CODE
+; POC_SET_REVISION(name, length, time): the file opened to be written
+; and closed with its revision date the quadword at time, which RMS
+; takes at $CLOSE from a file accessed to be modified (RMS 15.1), as it
+; is when opened for writing, without a write (seen on the guest); R0
+; the status
+	.ENTRY	POC_SET_REVISION, ^M<>
+	MOVL	4(AP), POC_REVISION_FAB+FAB$L_FNA
+	MOVB	8(AP), POC_REVISION_FAB+FAB$B_FNS
+	$OPEN	FAB=POC_REVISION_FAB
+	BLBC	R0, 10$
+	MOVQ	@12(AP), POC_REVISION_RDT+XAB$Q_RDT
+	$CLOSE	FAB=POC_REVISION_FAB
+10$:	RET
+
+; POC_GET_TIME(time): the system time ($GETTIM), the quadword at time;
+; R0 the status
+	.ENTRY	POC_GET_TIME, ^M<>
+	PUSHL	4(AP)
+	CALLS	#1, G^SYS$GETTIM
+	RET
+
+; POC_NUMTIM(time, vector): the quadword time at time taken apart by
+; $NUMTIM into seven words at vector: year, month, day, hour, minute,
+; second, hundredths; R0 the status
+	.ENTRY	POC_NUMTIM, ^M<>
+	PUSHL	4(AP)
+	PUSHL	8(AP)
+	CALLS	#2, G^SYS$NUMTIM
+	RET
+
+; POC_VECTIM(vector, time): seven words as $NUMTIM gives them made a
+; quadword time at time, by LIB$CVT_VECTIM; R0 its status
+	.ENTRY	POC_VECTIM, ^M<>
+	PUSHL	8(AP)
+	PUSHL	4(AP)
+	CALLS	#2, G^LIB$CVT_VECTIM
+	RET
+
+	.PSECT	POC_DATA
+; Delay's event flag, 1 in POC_DELAY_HAS_EF once LIB$GET_EF has given
+; it, and the delta time
+POC_DELAY_HAS_EF:
+	.BLKL	1
+POC_DELAY_EF:
+	.BLKL	1
+POC_DELAY_TIME:
+	.BLKQ	1
+
+	.PSECT	POC_CODE
+; POC_DELAY(ms): the process waits the number of milliseconds the
+; longword at ms holds ($SETIMR, $WAITFR); R0 the status
+	.ENTRY	POC_DELAY, ^M<>
+	MOVL	@4(AP), R0
+	BGTR	5$
+	MOVL	#SS$_NORMAL, R0
+	RET
+5$:	TSTL	POC_DELAY_HAS_EF
+	BNEQ	10$
+	PUSHAL	POC_DELAY_EF
+	CALLS	#1, G^LIB$GET_EF
+	BLBC	R0, 20$
+	MOVL	#1, POC_DELAY_HAS_EF
+10$:	EMUL	#-10000, @4(AP), #0, POC_DELAY_TIME
+	$SETIMR_S	EFN=POC_DELAY_EF, DAYTIM=POC_DELAY_TIME
+	BLBC	R0, 20$
+	$WAITFR_S	EFN=POC_DELAY_EF
+20$:	RET
+
+; POC_SPAWN(command, length, status): the DCL command run in a
+; subprocess by LIB$SPAWN, waited for, its completion status in the
+; longword at status; R0 LIB$SPAWN's status
+	.ENTRY	POC_SPAWN, ^M<>
+	POC_DESCRIBE	4(AP), 8(AP)
+	PUSHL	12(AP)
+	CLRQ	-(SP)
+	CLRQ	-(SP)
+	CLRL	-(SP)
+	PUSHL	R1
+	CALLS	#7, G^LIB$SPAWN
+	RET
+
+	.PSECT	POC_DATA
+; the default directory the process had before Platform's first Chdir,
+; put back by an exit handler (design section 19.1, proposal 7)
+POC_DIRECTORY_SAVED:
+	.BLKL	1
+POC_DIRECTORY_ORIGINAL:
+	.WORD	255
+	.BYTE	DSC$K_DTYPE_T, DSC$K_CLASS_S
+	.ADDRESS	POC_DIRECTORY_TEXT
+POC_DIRECTORY_TEXT:
+	.BLKB	255
+POC_DIRECTORY_EXIT_BLOCK:
+	.LONG	0
+	.ADDRESS	POC_DIRECTORY_EXIT
+	.LONG	1
+	.ADDRESS	POC_DIRECTORY_EXIT_STATUS
+POC_DIRECTORY_EXIT_STATUS:
+	.BLKL	1
+; SYS$DISK, defined in user mode in the process's table, which image
+; rundown deletes
+POC_PROCESS_TABLE:
+	.ASCID	/LNM$PROCESS_TABLE/
+POC_SYS_DISK:
+	.ASCID	/SYS$DISK/
+POC_USER_MODE:
+	.BYTE	PSL$C_USER
+	.ALIGN	LONG
+POC_DISK_ITEMS:
+	.WORD	0, LNM$_STRING
+	.LONG	0
+	.LONG	0
+	.LONG	0
+
+	.PSECT	POC_CODE
+; POC_PARSE_DIRECTORY(name, length, value, parts): the name parsed as a
+; directory, $PARSE looking it up, its device then its directory copied
+; to value, their lengths in the two longwords at parts; R0 the status,
+; RMS$_DIR when the name has a file name or a type in it
+	.ENTRY	POC_PARSE_DIRECTORY, ^M<R2,R3,R4,R5>
+	MOVL	4(AP), POC_NAME_FAB+FAB$L_FNA
+	MOVB	8(AP), POC_NAME_FAB+FAB$B_FNS
+	$PARSE	FAB=POC_NAME_FAB
+	BLBC	R0, 10$
+	TSTB	POC_NAME_NAM+NAM$B_NAME
+	BNEQ	5$
+	CMPB	POC_NAME_NAM+NAM$B_TYPE, #1
+	BGTRU	5$
+	MOVL	16(AP), R2
+	MOVZBL	POC_NAME_NAM+NAM$B_DEV, (R2)
+	MOVZBL	POC_NAME_NAM+NAM$B_DIR, 4(R2)
+	MOVC3	(R2), @POC_NAME_NAM+NAM$L_DEV, @12(AP)
+	MOVL	16(AP), R2
+	MOVC3	4(R2), @POC_NAME_NAM+NAM$L_DIR, (R3)
+	MOVL	#1, R0
+	RET
+5$:	MOVL	#RMS$_DIR, R0
+10$:	RET
+
+; POC_DEFINE_DISK(device, length): SYS$DISK defined as device in the
+; process's table in user mode, so that image rundown deletes it and
+; the supervisor-mode SYS$DISK DCL had is what it was; R0 the status
+	.ENTRY	POC_DEFINE_DISK, ^M<>
+	MOVW	8(AP), POC_DISK_ITEMS
+	MOVL	4(AP), POC_DISK_ITEMS+4
+	$CRELNM_S	TABNAM=POC_PROCESS_TABLE, LOGNAM=POC_SYS_DISK, -
+		ACMODE=POC_USER_MODE, ITMLST=POC_DISK_ITEMS
+	RET
+
+; POC_SET_DIRECTORY(directory, length): the process's default directory
+; set ($SETDDIR), the first time after the one it had is saved and an
+; exit handler that puts it back is declared; R0 the status
+	.ENTRY	POC_SET_DIRECTORY, ^M<>
+	TSTL	POC_DIRECTORY_SAVED
+	BNEQ	10$
+	PUSHAQ	POC_DIRECTORY_ORIGINAL
+	PUSHAW	POC_DIRECTORY_ORIGINAL
+	CLRL	-(SP)
+	CALLS	#3, G^SYS$SETDDIR
+	BLBC	R0, 20$
+	$DCLEXH_S	DESBLK=POC_DIRECTORY_EXIT_BLOCK
+	BLBC	R0, 20$
+	MOVL	#1, POC_DIRECTORY_SAVED
+10$:	POC_DESCRIBE	4(AP), 8(AP)
+	CLRQ	-(SP)
+	PUSHL	R1
+	CALLS	#3, G^SYS$SETDDIR
+20$:	RET
+
+	.ENTRY	POC_DIRECTORY_EXIT, ^M<>
+	CLRQ	-(SP)
+	PUSHAQ	POC_DIRECTORY_ORIGINAL
+	CALLS	#3, G^SYS$SETDDIR
+	RET
+
+	.PSECT	POC_DATA
+; $GETDVIW's item list: the device's class
+POC_DVI_CLASS:
+	.BLKL	1
+POC_DVI_ITEMS:
+	.WORD	4, DVI$_DEVCLASS
+	.ADDRESS	POC_DVI_CLASS
+	.LONG	0
+	.LONG	0
+
+	.PSECT	POC_CODE
+; POC_IS_TERMINAL(name, length): R0 1 when the device the name is on is a
+; terminal ($GETDVIW, DVI$_DEVCLASS DC$_TERM), else 0
+	.ENTRY	POC_IS_TERMINAL, ^M<>
+	POC_DESCRIBE	4(AP), 8(AP)
+	CLRQ	-(SP)
+	CLRQ	-(SP)
+	PUSHAL	POC_DVI_ITEMS
+	PUSHL	R1
+	CLRQ	-(SP)
+	CALLS	#8, G^SYS$GETDVIW
+	BLBC	R0, 10$
+	CMPL	POC_DVI_CLASS, #DC$_TERM
+	BNEQ	10$
+	MOVL	#1, R0
+	RET
+10$:	CLRL	R0
+	RET
+
+; POC_RENAME(old, olength, new, nlength): the file old renamed new, as
+; a new version if new is there ($RENAME); R0 the status
+	.ENTRY	POC_RENAME, ^M<>
+	MOVL	4(AP), POC_RENAME_OLD_FAB+FAB$L_FNA
+	MOVB	8(AP), POC_RENAME_OLD_FAB+FAB$B_FNS
+	MOVL	12(AP), POC_RENAME_NEW_FAB+FAB$L_FNA
+	MOVB	16(AP), POC_RENAME_NEW_FAB+FAB$B_FNS
+	PUSHAB	POC_RENAME_NEW_FAB
+	CLRQ	-(SP)
+	PUSHAB	POC_RENAME_OLD_FAB
+	CALLS	#4, G^SYS$RENAME
+	RET
+
+; POC_STATUS(which): R0 the status Platform reports for which: 0 a
+; handle that is no open file's (SS$_IVCHAN), 1 no handle left
+; (SS$_NOIOCHAN), 2 an operation the file was not opened for (RMS$_FAC),
+; 3 a bad argument (SS$_BADPARAM), 4 a name with no 0X, which names no
+; file (RMS$_FNF)
+	.ENTRY	POC_STATUS, ^M<>
+	CASEL	4(AP), #0, #4
+10$:	.WORD	20$-10$, 30$-10$, 40$-10$, 50$-10$, 60$-10$
+50$:	MOVL	#SS$_BADPARAM, R0
+	RET
+60$:	MOVL	#RMS$_FNF, R0
+	RET
+20$:	MOVL	#SS$_IVCHAN, R0
+	RET
+30$:	MOVL	#SS$_NOIOCHAN, R0
+	RET
+40$:	MOVL	#RMS$_FAC, R0
+	RET
+
+; POC_STATUS_CLASS(status): R0 the classes Platform's error tests ask
+; about that the status is in, a bit each: 1 absent, 2 no such
+; directory, 4 inaccessible, 8 too many files, 16 another device, 32
+; timed out. Only the low word is compared, all of an ErrorCode under -O2
+	.ENTRY	POC_STATUS_CLASS, ^M<R2>
+	CLRL	R0
+	MOVW	4(AP), R2
+	CMPW	R2, #<RMS$_FNF & ^XFFFF>
+	BEQL	10$
+	CMPW	R2, #<RMS$_SYN & ^XFFFF>
+	BEQL	10$
+	CMPW	R2, #<RMS$_DNF & ^XFFFF>
+	BEQL	15$
+	CMPW	R2, #<RMS$_DIR & ^XFFFF>
+	BEQL	17$
+	CMPW	R2, #<RMS$_DEV & ^XFFFF>
+	BEQL	18$
+	CMPW	R2, #<RMS$_PRV & ^XFFFF>
+	BEQL	20$
+	CMPW	R2, #<SS$_NOPRIV & ^XFFFF>
+	BEQL	20$
+	CMPW	R2, #<SS$_NOIOCHAN & ^XFFFF>
+	BEQL	30$
+	CMPW	R2, #<SS$_EXQUOTA & ^XFFFF>
+	BEQL	30$
+	CMPW	R2, #<SS$_TIMEOUT & ^XFFFF>
+	BEQL	40$
+	RET
+10$:	MOVL	#1, R0
+	RET
+15$:	MOVL	#3, R0
+	RET
+17$:	MOVL	#2, R0
+	RET
+18$:	MOVL	#17, R0
+	RET
+20$:	MOVL	#4, R0
+	RET
+30$:	MOVL	#8, R0
+	RET
+40$:	MOVL	#32, R0
 	RET
 
 	.END

@@ -2955,3 +2955,162 @@ image found through the logical name `SHRLIB`:
   the other key, and the procedure stops there. Each is VMS's own
   message and a failing status, not a crash.
 - *Step 1 is complete.*
+
+## 19. poc's runtime on VMS (Phase 17 step 3)
+
+Step 2 decided that every interface in `rtl/llvm` comes to VMS, in
+`POCRTL`, in import order (`doc/research/vms-module-inventory.md`,
+proposals 1 to 6). This section records how each one is done, starting
+with `Platform`. The sources are the 5.0 RMS manual (`AA-LA83A`), the
+5.0 LIB$ manual (`AA-LA76A`) and the 5.5 System Services Reference
+(`AA-LA69B`).
+
+### 19.1 Platform: proposals
+
+`rtl/vax/Platform.Mod` has 4 of the 46 procedures (`GetEnv`, `System`,
+`Unlink`, `Exit`), plus `PID`, `CWD` and `NL`. The other 42 come over
+new routines in `PocRtl.mar`, as the existing ones do. **Approved by the
+user, 2026-10-12**, all eight as written.
+
+1. **A `FileHandle` is a small number, an index into `Platform`'s own
+   table of open files.** Each entry has its RMS blocks (a FAB, a RAB, a
+   NAM block, an XABFHC and an XABRDT), a 512-byte block buffer, the
+   file's length and the position. `StdIn`, `StdOut` and `StdErr` (0, 1
+   and 2) are `SYS$INPUT`, `SYS$OUTPUT` and `SYS$ERROR`:
+   - `Read` from `StdIn` reads records, with an LF after each.
+   - `Write` to `StdOut` or `StdErr` goes through `LineOutput`: each LF
+     ends a record, so the output comes out in order with `Out`'s and
+     `Err`'s.
+
+   The table holds 32 files, the 3 standard ones included. Opening one
+   more gives an error that `TooManyFiles` recognizes, as does
+   `SS$_EXQUOTA`.
+2. **Files by handle are `Files`' files** (section 15, proposal 2):
+   - `New` makes a new version of the name. That is VMS's answer to
+     Unix's emptying of an existing file. The new version is Stream_LF
+     with carriage-return carriage control, read and written by block
+     I/O.
+   - `OldRO` and `OldRW` open a Stream_LF, fixed-length or undefined
+     file as its bytes.
+   - `OldRO` reads a file of another record format a record at a time,
+     with an LF after each, as `Files.Old` does. `OldRW` refuses such a
+     file with `RMS$_ORG`, because writing bytes into it would break
+     its records.
+   - `Read`, `Write` and `Seek` work on the handle's position, through
+     the block buffer, which is written back when the position leaves
+     the block, at `Sync` (with `$FLUSH`), and at `Close`. Writing past
+     the end fills the gap with zeros.
+   - `Truncate` to a shorter length rewrites the block that holds the
+     new end, with truncate-on-put (`RAB$V_TPT`, which needs `FAB$V_TRN`
+     at open). RMS then puts the end of the file after the last byte
+     written (RMS 7.19). Truncating to a longer length writes zeros.
+   - `Size` is the handle's length.
+3. **An `ErrorCode` is the VMS status of the service that failed**, as it
+   is today: the whole longword under `-OC`, its low word under `-O2`.
+   The low word keeps the message number and severity but not the
+   facility. `Error()` is the last status that any of `Platform`'s
+   procedures failed with, as errno is on Unix. The tests compare the
+   message part:
+   - `Absent`: `RMS$_FNF`, `RMS$_DNF`, `RMS$_DEV`, `RMS$_SYN`
+   - `NoSuchDirectory`: `RMS$_DNF`, `RMS$_DIR`
+   - `Inaccessible`: `RMS$_PRV`, `SS$_NOPRIV`
+   - `TooManyFiles`: proposal 1's error, `SS$_EXQUOTA`
+   - `DifferentFilesystems`: `RMS$_DEV` from a rename
+   - `TimedOut`: `SS$_TIMEOUT`
+   - `ConnectionFailed` and `Interrupted`: always FALSE. Nothing here
+     makes connections, and VMS restarts no service when a signal
+     arrives.
+4. **Time is local time, because VMS 5.5 has no other.** The system
+   clock is local, and nothing in 5.5 says what zone it is in:
+   `SYS$TIMEZONE_DIFFERENTIAL` came later.
+   - `GetClock` is `$GETTIM` taken apart by `$NUMTIM`.
+   - `GetTimeOfDay` counts seconds and microseconds since 1 January 1970
+     *local*, so it differs from Unix's count by the zone's offset.
+   - `Time` counts milliseconds since the program started.
+   - `Delay` is `$SETIMR` with a delta time and `$WAITFR` on an event
+     flag that `LIB$GET_EF` allocates.
+5. **A `FileIdentity` holds VMS's own identity of a file**, since its
+   fields are not exported:
+   - the device name (`NAM$T_DVI`) and the file ID (`NAM$W_FID`, three
+     words), for `SameFile`;
+   - the revision date (`XAB$Q_RDT`, a quadword of 100-nanosecond
+     units), for `SameFileTime` and `MTimeAsClock`, the latter through
+     `$NUMTIM`.
+
+   `SetFileMTime` opens the file for writing, sets `XAB$Q_RDT` and closes
+   it. RMS applies a revision date given at `$CLOSE` only to a file
+   accessed for modification (RMS 15.1). The guest will show whether
+   opening with `FAB$V_PUT` is enough or a write is needed.
+6. **`System` runs its command in a subprocess through `LIB$SPAWN`**, and
+   waits:
+   - it returns 0 when the subprocess's completion status is a success;
+   - otherwise it returns that status, narrowed to an `INTEGER` but never
+     to 0;
+   - it returns -1 if `LIB$SPAWN` itself fails.
+
+   This is the VMS answer to `/bin/sh -c`. poc's own driver runs no
+   programs on VMS (section 13), so it does not change.
+7. **`Chdir` sets the default directory with `$SETDDIR`, and the default
+   device by redefining `SYS$DISK`**, then updates `CWD`. On VMS both
+   outlive the image, unlike a Unix process's working directory, which
+   dies with it. So `Platform` records the originals on its first
+   `Chdir` and puts them back from an exit handler, leaving DCL where it
+   was.
+8. **The rest**:
+   - `Rename` is `$RENAME`. The new name becomes a new version, so an
+     existing file of that name stays as an older one.
+   - `MaxNameLength` is 39 and `MaxPathLength` 255 (ODS-2,
+     `NAM$C_MAXRSS`).
+   - `OSAllocate` and `OSFree` are `LIB$GET_VM` and `LIB$FREE_VM`, the
+     size kept in a longword before the block.
+   - `IsConsole` asks `$GETDVI` whether the handle's device is a
+     terminal (`DC$_TERM`).
+   - `getEnv` is `GetEnv`, but FALSE when there is no such logical name.
+   - `LittleEndian` is TRUE, and `SeekSet`, `SeekCur` and `SeekEnd` are
+     0, 1 and 2.
+   - `SetInterruptHandler`, `SetQuitHandler` and
+     `SetBadInstructionHandler` keep the handler and do nothing more
+     until step 6, which decides how Ctrl-C (an AST) and a bad
+     instruction (a condition) reach it.
+
+**Testing.** `llvm-platform`, `llvm-platform-extra` and
+`llvm-platform-files` run on the guest wherever their output does not
+depend on the system. Where it does (error numbers, time zones,
+`System`'s command), a VAX fixture of their own covers it.
+
+### 19.2 Done
+
+- *`Platform`* (section 19.1, proposals 1 to 8, 2026-10-12).
+  `rtl/vax/Platform.Mod` has the whole interface, over 18 new routines
+  in `PocRtl.mar`: `POC_FILE_OPEN_MODE`, `POC_FILE_TRUNCATE`,
+  `POC_FILE_FLUSH`, `POC_FILE_IDENTITY`, `POC_SET_REVISION`,
+  `POC_GET_TIME`, `POC_NUMTIM`, `POC_VECTIM`, `POC_DELAY`, `POC_SPAWN`,
+  `POC_PARSE_DIRECTORY`, `POC_DEFINE_DISK`, `POC_SET_DIRECTORY` and its
+  exit handler `POC_DIRECTORY_EXIT` (which puts the default directory
+  back), `POC_IS_TERMINAL`, `POC_RENAME`, `POC_STATUS` and
+  `POC_STATUS_CLASS`. Three things differ from the proposals:
+  - Each file's control has an XABDAT, not an XABRDT: it reads the
+    revision date on open. `SetMTime` sets it through a FAB of its own,
+    opened for `PUT` with an XABRDT and closed with no write, which the
+    guest showed is the way: a file closed after a write gets the
+    current time instead.
+  - `Truncate` writes the block holding the new end with `RAB$V_TPT`
+    (truncate-on-put), which the guest showed truncates at VBN 1 too,
+    to 0 bytes included.
+  - A name with no 0X in its array names nothing, as in `rtl/llvm`:
+    `GetEnv` finds no value, `System` returns -1, and a file procedure
+    returns `RMS$_FNF`, which `Absent` recognizes. A name too long for
+    a service gets `SS$_BADPARAM`.
+
+  `StdOut` and `StdErr` write through `LineOutput`, so `Platform`
+  imports it. `FileIdentity` is 32 bytes: the device name (counted, at
+  most 16), the file ID and the revision date. Fixture
+  `vax-platform-files`, new, is `llvm-platform-files` for VMS, with
+  the checks of `llvm-platform` and `llvm-platform-extra` that do not
+  depend on the system: 70 checks, passing on the guest under `-O2`
+  and `-OC`. Its `guest-run.com` checks that the default directory and
+  `SYS$DISK` are put back after the program changes them. The rest of
+  those two fixtures runs Unix commands and is not repeated. In
+  `vax-platform`, `System("exit 1")` is 256 under LLVM and 0 on VMS
+  (an odd status is success), and `expected-vax-Platform.mar` is new.
+  `vax-library`'s `POCRTL` makes 198 symbols universal, 66 more.

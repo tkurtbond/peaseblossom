@@ -38,6 +38,6 @@ deleted: TRUE
 deleted a missing file: FALSE
 PID positive: TRUE
 CWD known: TRUE
-System -1
+System 0
 run status: %X1000001A
 left: DOOMED.TMP;1

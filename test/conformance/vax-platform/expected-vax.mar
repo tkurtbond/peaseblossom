@@ -16,6 +16,9 @@
 ;;   disk DUA1:, home 1 (SYS$LOGIN: is a directory), missing 0
 ;;   ([.NO-SUCH-DIRECTORY] is not), and gone 8292, the low word of
 ;;   RMS$_FNF (%X00018292): the file to delete is not there.
+;; - Phase 17 step 3 (2026-10-12): Platform has its whole interface
+;;   (expected-vax-Platform.mar), so its interface key, the
+;;   POC_K1_ symbol named here, is another; nothing else differs.
 ; PlatformUse, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	PLATFORMUSE
 	.IDENT	/d0ecc0b98b085b09/
@@ -61,7 +64,7 @@ PLATFORMUSE_GONE_AR9RTE1Q:
 	.EXTERNAL	PLATFORM_PID_LCCSKLS1
 	.EXTERNAL	PLATFORM_UNLINK_KE1F78LR
 	.EXTERNAL	PLATFORM_INIT
-	.EXTERNAL	POC_K1_587C176E2BD2ADBE
+	.EXTERNAL	POC_K1_2A203935C54E257B
 	.EXTERNAL	DIRECTORIES_INIT
 	.EXTERNAL	POC_K1_989088C6901B9744
 

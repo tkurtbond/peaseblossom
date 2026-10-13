@@ -4,9 +4,11 @@
 # 15, proposals 3 to 8): rtl/vax's Platform, and Directories, which both
 # runtimes have (MakePath, IsDirectory, MakeDirectory, pathSeparator; and
 # MakeSubdirectory and NameStart, Phase 17 step 1). poc
-# -emit-macro32's output for PlatformUse.mod, rtl/vax/Platform.Mod and
-# Directories.Mod against the reviewed expected-vax.mar,
-# expected-vax-Platform.mar and expected-vax-Directories.mar, assembled
+# -emit-macro32's output for PlatformUse.mod, rtl/vax/Platform.Mod,
+# Directories.Mod and LineOutput.Mod (which Platform imports since Phase
+# 17 step 3) against the reviewed expected-vax.mar,
+# expected-vax-Platform.mar, expected-vax-Directories.mar and
+# expected-vax-LineOutput.mar, assembled
 # and run under the debugger on the VAX where the development system can
 # be used (../../vaxfixture.sh). Then, for -O2 and -OC, PlatformOut built
 # by the LLVM backend and run here on Unix names, which must print

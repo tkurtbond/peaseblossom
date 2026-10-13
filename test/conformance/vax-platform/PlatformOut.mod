@@ -64,6 +64,6 @@ BEGIN
   Bool("deleted a missing file:", Platform.Unlink(value) = 0);
   Bool("PID positive:", Platform.PID > 0);
   Bool("CWD known:", Platform.CWD[0] # 0X);
-  Out.String("System "); Out.Int(Platform.System("true"), 0); Out.Ln;
+  Out.String("System "); Out.Int(Platform.System("exit 1"), 0); Out.Ln;
   Platform.Exit(3)
 END PlatformOut.

@@ -622,6 +622,13 @@ C++, and so on) unless step 4 chooses one deliberately.
    on both), and VAX-specific fixtures where the behavior differs on
    purpose, documented where it differs.
 
+   **Record** (in progress): `Platform` is done (2026-10-12): its eight
+   proposals, **approved by the user, 2026-10-12**, are
+   `doc/developer/vax-macro32-backend.md` section 19.1, and section 19.2
+   records the work. It has voc's whole interface, over 18 new routines
+   in `PocRtl.mar`. Fixture `vax-platform-files` runs 70 checks on the
+   guest. Next, `Files`.
+
 4. **Which native VAX/VMS libraries to support.** From the manuals, not
    memory, list what a VMS programmer expects to reach: the run-time
    library families (`LIB$` general utilities, `STR$` strings, `MTH$` and

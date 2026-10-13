@@ -47,6 +47,9 @@
 ;;   even it calls POC_FIND_FILE_END, clears the context and returns
 ;;   FALSE; else it copies FOUND up to its first blank or ";" (the
 ;;   padding and the version) into name, cut short to fit, with a 0X.
+;; - Phase 17 step 3 (2026-10-12): Platform has its whole interface
+;;   (expected-vax-Platform.mar), so its interface key, the
+;;   POC_K1_ symbol named here, is another; nothing else differs.
 ; Directories, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	DIRECTORIES
 	.IDENT	/989088c6901b9744/
@@ -72,7 +75,7 @@ DIRECTORIES_GIVEN_KUTJQGFB:
 	.EXTERNAL	POC_PARSE
 	.EXTERNAL	POC_CREATE_DIRECTORY
 	.EXTERNAL	PLATFORM_INIT
-	.EXTERNAL	POC_K1_587C176E2BD2ADBE
+	.EXTERNAL	POC_K1_2A203935C54E257B
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP

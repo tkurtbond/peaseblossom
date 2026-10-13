@@ -30,9 +30,14 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
 - `Console.Mod` (`Flush`, `Char`, `String`, `Ln`, `Bool`, `Int`, `Hex`):
   `rtl/llvm`'s `Console`, writing to `SYS$OUTPUT` through
   `LineOutput.Mod` into the same line as `Out` (section 16, proposal 6).
-- `Platform.Mod` (`GetEnv`, `Unlink`, `System`, `Exit`, `PID`, `CWD`,
-  `NL`): logical names, files by name, and ending the process (section
-  15, proposals 3 and 5 to 8).
+- `Platform.Mod`: voc's and `rtl/llvm`'s whole interface (section 19.1,
+  Phase 17 step 3): files by handle in a table of 32 (Stream_LF ones by
+  block I/O, others read a record at a time with an LF after each),
+  identities and revision dates, the clock, logical names, the default
+  directory, a command in a subprocess (`LIB$SPAWN`), memory, and the
+  error tests over RMS and system-service statuses; `StdOut` and
+  `StdErr` go through `LineOutput`. Earlier, `GetEnv`, `Unlink`,
+  `System` and `Exit` (section 15, proposals 3 and 5 to 8).
 - `Directories.Mod` (`pathSeparator`, `MakePath`, `MakeSubdirectory`,
   `NameStart`, `IsDirectory`, `MakeDirectory`, and `Search`,
   `StartSearch`, `NextFile` for wildcards): directories, and the names
