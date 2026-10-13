@@ -13,7 +13,9 @@
 # copies each library, as text, into inst/vax-dec-vms/O2, the files the
 # host has of it whole, over a copy installed before too, and -build
 # finds them there. Then what -library and -install-library for the VAX
-# refuse, each with exit status 1.
+# refuse, each with exit status 1, and two exported names with one VAX
+# symbol, when one or both modules come from a library, refused before
+# anything is written.
 . ../../vaxfixture.sh
 rm -rf libs main inst
 rm -f useolb.com useshr.com
@@ -80,4 +82,19 @@ run -target vax-dec-vms -output-dir libs2 -library NORTL VaxLibBase.mod
 run -target vax-dec-vms -output-dir libs2 -library-path libs -library TWICE VaxLibBase.mod
 run -target vax-dec-vms -output-dir libs2 -library-path libs -library PARTS VaxLibUse.mod vaxlibuse.mar
 rm -rf libs2
+# Phase 17 step 1 (section 18, proposal 7): two names with one VAX symbol
+# in one program, vax-build's pair (copied here, with the names that give
+# it), one or both taken from a library
+run -target vax-dec-vms -output-dir libs3 -library-path libs -library CLASHA VaxClashBetweenModulesA.mod
+mkdir clash1
+run -target vax-dec-vms -library-path libs3 -library-path libs -output-dir clash1 -build VaxBuildClash.mod
+run -target vax-dec-vms -output-dir libs4 -library-path libs3 -library-path libs -library CLASHUSE \
+  VaxClashBetweenModulesB.mod VaxBuildClash.mod
+run -target vax-dec-vms -output-dir libs3 -library-path libs -library CLASHB VaxClashBetweenModulesB.mod
+mkdir clash2
+run -target vax-dec-vms -library-path libs3 -library-path libs -output-dir clash2 -build VaxBuildClash.mod
+ls clash2/*.mar 2>/dev/null | sed 's/^/written: /' >>result
+rm -rf libs3 libs4 clash1 clash2
+rm -f VaxBuildClash.sym VaxClashBetweenModulesB.sym
+rm -f VaxBuildClash.com
 . ../../testresult.sh

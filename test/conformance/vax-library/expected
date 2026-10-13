@@ -101,3 +101,18 @@ exit 1
 == poc -target vax-dec-vms -output-dir libs2 -library-path libs -library PARTS VaxLibUse.mod vaxlibuse.mar
 poc: vaxlibuse.mar has the file name of module VaxLibUse's .mar
 exit 1
+== poc -target vax-dec-vms -output-dir libs3 -library-path libs -library CLASHA VaxClashBetweenModulesA.mod
+exit 0
+== poc -target vax-dec-vms -library-path libs3 -library-path libs -output-dir clash1 -build VaxBuildClash.mod
+VaxClashBetweenModulesB.mod:3:7: error: module VaxClashBetweenModulesB: VaxClashBetweenModulesB.clashfHvJRlcQIjum and VaxClashBetweenModulesA.clashcQfgBVxgojQf have the same VAX symbol, VAXCLASHBETWEENMODULES_TV649M8G, in one program
+1 error(s); nothing written
+exit 1
+== poc -target vax-dec-vms -output-dir libs4 -library-path libs3 -library-path libs -library CLASHUSE VaxClashBetweenModulesB.mod VaxBuildClash.mod
+VaxClashBetweenModulesB.mod:3:7: error: module VaxClashBetweenModulesB: VaxClashBetweenModulesB.clashfHvJRlcQIjum and VaxClashBetweenModulesA.clashcQfgBVxgojQf have the same VAX symbol, VAXCLASHBETWEENMODULES_TV649M8G, in one program
+1 error(s); nothing written
+exit 1
+== poc -target vax-dec-vms -output-dir libs3 -library-path libs -library CLASHB VaxClashBetweenModulesB.mod
+exit 0
+== poc -target vax-dec-vms -library-path libs3 -library-path libs -output-dir clash2 -build VaxBuildClash.mod
+poc: VaxClashBetweenModulesB.clashfHvJRlcQIjum and VaxClashBetweenModulesA.clashcQfgBVxgojQf have the same VAX symbol, VAXCLASHBETWEENMODULES_TV649M8G, in one program (rename one)
+exit 1

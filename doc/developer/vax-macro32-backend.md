@@ -333,7 +333,8 @@ wrong program with no diagnostic.
    already there is an error at its declaration, in its own file
    (`vax-build`, `VaxBuildClash`); so are two modules whose names differ
    only in case. The check from `.sym` files, for modules compiled
-   separately or in libraries, comes with them (Phase 17).
+   separately or in libraries, comes with them (Phase 17; done, section
+   18.5).
    **The name scheme's version belongs to the VAX target, not to the
    interface.** A `.sym`'s text does not depend on the target (it is
    stored per target and size model, `lib/poc/<triple>/<O2|OC>/`, but
@@ -2925,5 +2926,25 @@ image found through the logical name `SHRLIB`:
   (naming `@MODS.TXT`, one of whose lines is a pattern) build `VAXLIB`,
   and `-build VAXLIBUS%.MOD` link a program against both, which printed
   "total 25" and "count 12".
-- *Left for the next steps*: the collision check from `.sym` files
-  (proposal 7).
+- *Collisions across libraries* (proposal 7, 2026-10-12). Before
+  `WriteMacro32` writes anything, `VaxCodeGenerator.EnterInterface`
+  enters in the program's table the global symbols of every module of
+  the closure it does not write, one from a library or given as its
+  `.sym`, recomputed from what the `.sym` declares by the generator's own
+  rules: each exported variable and procedure, each type-bound
+  procedure (a `.sym` lists every one, hidden ones included, as forward
+  declarations) and the descriptor of each record type it declares. A
+  clash between two such modules stops the build there ("`A.X` and `B.Y`
+  have the same VAX symbol, ..., in one program (rename one)"); a
+  written module's clash with one is an error at its own declaration, as
+  before. The check that two modules' names differ in more than case now
+  covers them too. A record type or type-bound procedure that a `.sym`
+  leaves out, which no importer can reach, is still caught at the link
+  (layer 1: `MULDEF`, fatal in every build procedure). `vax-library`
+  builds vax-build's colliding pair with one or both in a library: a
+  program's `-build`, and a library's, are refused.
+- *Left for the next steps*: proposal 8's failure cases, run on the
+  guest, each to be a message rather than a crash: an importer compiled
+  against a different `.sym` (`NUDFSYMS` at the link), a missing
+  shareable image (at activation), and a relinked image under a program
+  linked against the old one (no `GSMATCH`, proposal 3).

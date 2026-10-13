@@ -1569,8 +1569,10 @@ MODULE Poc;
      outputDir, the program's start in the main module, the last, unless
      onlyMembers (-compile, which has no main); with announce, "semantic
      OK, wrote" for each. Their exported symbols go in one table, so that
-     two modules with one symbol are an error (section 5.1, layer 2), and
-     two whose names differ only in case, whose files and initializers
+     two modules with one symbol are an error (section 5.1, layer 2), with
+     those of the modules not written, from libraries or .sym files,
+     entered first (Phase 17 step 1, section 18, proposal 7); and two
+     modules whose names differ only in case, whose files and initializers
      would be one on VMS, are refused. As for IR: every module's .mar, or
      none, when one could not be made, is left. FALSE, reported, if not
      written. *)
@@ -1582,6 +1584,7 @@ MODULE Poc;
       key: ARRAY 32 OF CHAR;
       path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
       a, b: VaxTypes.Symbol;
+      full, clash: ARRAY 3 * 256 + 3 OF CHAR;
       errorsBefore, unlinkResult: INTEGER;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
   BEGIN
@@ -1589,8 +1592,7 @@ MODULE Poc;
     WHILE m # NIL DO
       n := m.next;
       WHILE n # NIL DO
-        IF IsVaxUnit(m, onlyMembers) & IsVaxUnit(n, onlyMembers)
-           & VaxTypes.MakeInitSymbol(m.module.name, a) & VaxTypes.MakeInitSymbol(n.module.name, b) & (a = b) THEN
+        IF VaxTypes.MakeInitSymbol(m.module.name, a) & VaxTypes.MakeInitSymbol(n.module.name, b) & (a = b) THEN
           failed := TRUE;
           Err.String("poc: modules "); Err.String(m.module.name); Err.String(" and "); Err.String(n.module.name);
           Err.String(" differ only in case, and VMS does not tell their files or symbols apart"); Err.Ln;
@@ -1604,6 +1606,22 @@ MODULE Poc;
     VaxCodeGenerator.unsupportedCount := 0;
     VaxCodeGenerator.withCollector := PredeclaredProcedures.NewWasCalled();
     VaxCodeGenerator.programNames := VaxTypes.NewNameTable();
+    (* Phase 17 step 1 (section 18, proposal 7): first the symbols of the
+       modules not written here, from their .sym, so that a written
+       module's clash with one is an error at its own declaration *)
+    m := modules;
+    WHILE m # NIL DO
+      IF ~IsVaxUnit(m, onlyMembers)
+         & ~VaxCodeGenerator.EnterInterface(m.module, m.scope, full, clash, a) THEN
+        failed := TRUE;
+        Err.String("poc: "); Err.String(full); Err.String(" and "); Err.String(clash);
+        Err.String(" have the same VAX symbol, "); Err.String(a);
+        Err.String(", in one program (rename one)"); Err.Ln;
+        VaxCodeGenerator.programNames := NIL;
+        RETURN FALSE
+      END;
+      m := m.next
+    END;
     m := modules; written := TRUE;
     COPY(Diagnostics.fileName, savedFileName);
     WHILE m # NIL DO

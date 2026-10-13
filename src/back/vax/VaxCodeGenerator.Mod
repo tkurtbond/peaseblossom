@@ -5894,6 +5894,73 @@ MODULE VaxCodeGenerator;
     END
   END EnterGlobal;
 
+  (* Phase 17 step 1 (section 5.1, layer 2; section 18, proposal 7): the
+     global symbols of a module poc does not write in this run, one from a
+     library or given as its .sym, recomputed from what its .sym declares
+     (its syntax tree and scope) and entered in programNames, by the rules
+     the module's own generation followed: each exported variable and
+     procedure, each type-bound procedure, <Module>.<Type>.<Procedure>,
+     and the descriptor of each record type it declares, <Module>.<Type>
+     or <Module>.<Type>.base. A .sym declares a procedure forward, with no
+     body. TRUE if none has the symbol of a different full name there
+     already; else FALSE, at the first, with full that name, clash the
+     other and symbol theirs. A record type or type-bound procedure the
+     .sym leaves out, one no importer can reach, is still caught at the
+     link, where every build procedure makes LINK's MULDEF fatal (layer
+     1). *)
+  PROCEDURE EnterInterface*(mod: SyntaxTree.ModuleNode; modScope: SymbolTable.Scope;
+                            VAR full, clash: ARRAY OF CHAR; VAR symbol: VaxTypes.Symbol): BOOLEAN;
+    VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; p: SyntaxTree.ProcDeclNode;
+        td: SyntaxTree.TypeDeclNode; obj: SymbolTable.Object; rec: Types.RecordType; base: Types.Type;
+        name: ARRAY 256 OF CHAR;
+  BEGIN
+    IF (programNames = NIL) OR (mod.declarations = NIL) THEN RETURN TRUE END;
+    vd := mod.declarations.varDecls;
+    WHILE vd # NIL DO
+      nm := vd.names;
+      WHILE nm # NIL DO
+        IF nm.exportMark # SyntaxTree.exportNone THEN
+          COPY(mod.name, full); Append(full, "."); Append(full, nm.name);
+          IF ~VaxTypes.Enter(programNames, full, symbol, clash) THEN RETURN FALSE END
+        END;
+        nm := nm.next
+      END;
+      vd := vd.next
+    END;
+    td := mod.declarations.typeDecls;
+    WHILE td # NIL DO
+      obj := SymbolTable.FindLocal(modScope, td.name.name);
+      rec := NIL; COPY(td.name.name, name);
+      IF (obj # NIL) & (obj.type # NIL) & (obj.type IS Types.RecordType) THEN
+        rec := obj.type(Types.RecordType)
+      ELSIF (obj # NIL) & (obj.type # NIL) & (obj.type IS Types.PointerType) THEN
+        base := obj.type(Types.PointerType).base;
+        IF (base # NIL) & (base IS Types.RecordType) THEN rec := base(Types.RecordType); Append(name, ".base") END
+      END;
+      IF (rec # NIL) & (rec.name = name) & (rec.moduleName = mod.name) THEN
+        COPY(mod.name, full); Append(full, "."); Append(full, name);
+        IF ~VaxTypes.Enter(programNames, full, symbol, clash) THEN RETURN FALSE END
+      END;
+      td := td.next
+    END;
+    p := mod.declarations.procDecls;
+    WHILE p # NIL DO
+      IF ~p.isExternal & ((p.name.exportMark # SyntaxTree.exportNone) OR (p.receiver # NIL)) THEN
+        COPY(mod.name, full); Append(full, ".");
+        IF p.receiver # NIL THEN
+          obj := SymbolTable.FindLocal(modScope, p.receiver.typeName); rec := NIL;
+          IF obj # NIL THEN rec := TargetRecord(obj.type) END;
+          IF rec # NIL THEN Append(full, rec.name) ELSE Append(full, p.receiver.typeName) END;
+          Append(full, ".")
+        END;
+        Append(full, p.name.name);
+        IF ~VaxTypes.Enter(programNames, full, symbol, clash) THEN RETURN FALSE END
+      END;
+      p := p.next
+    END;
+    RETURN TRUE
+  END EnterInterface;
+
   (* The descriptors of the record types the module names at its level
      (section 14, item 4), each in the list under the symbol of
      <Module>.<Type> - an anonymous record under a named pointer type is
