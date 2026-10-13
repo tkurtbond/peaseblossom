@@ -3174,8 +3174,10 @@ user, 2026-10-12**, all nine as written.
    full resultant name (`DUA1:[USERS.POC]POC_000002A4_1.TMP;1`), or "" if
    it has not been made yet.
 
-6. **The search path is VMS directories.** As in voc, the directories
-   are separated by ";" and blanks around them are ignored. Each is a
+6. **The search path is VMS directories.** The directories are
+   separated by "," (";" as in voc until 2026-10-13, when the user chose
+   "," to match `POC$IMPORT` and `Directories`), and blanks around them
+   are ignored. Each is a
    directory specification (`[.SUB]`, `DUA1:[X.Y]`) or a logical name;
    a bare logical name gets a ":" after it. A leading "~" stands for
    `SYS$LOGIN`. `Old` puts each directory in front of the name, in
@@ -3259,3 +3261,7 @@ its checks of reading variable-length and VFC files.
   - `vax-files` compares the three modules `Files` now imports, each the
     same as a reviewed copy elsewhere.
   - `vax-library`'s `POCRTL` makes 226 symbols universal, 28 more.
+- *Changed* (the user, 2026-10-13): the search path's directories are
+  separated by ",", not ";", so that it reads as `POC$IMPORT` and
+  `Directories` do (proposal 6). `vax-files-extra`'s checks 62-64 use
+  ",".

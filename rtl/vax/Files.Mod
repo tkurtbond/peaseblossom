@@ -46,10 +46,10 @@ MODULE Files;
      OLD AND THE SEARCH PATH. A name with ":", "[" or "<" in it is looked
      for where it says. Any other is looked for in each directory of the
      search path in turn, which is just the default directory until
-     SetSearchPath sets one: directories separated by ";", blanks around
-     them ignored, as voc's. Each is a directory ([.SUB], DUA1:[X.Y]) or a
-     logical name, which gets a ":" after it; a leading "~" stands for
-     SYS$LOGIN, and "~[.LIB]" is the directory LIB in it.
+     SetSearchPath sets one: directories separated by ",", as in
+     POC$IMPORT, blanks around them ignored. Each is a directory ([.SUB],
+     DUA1:[X.Y]) or a logical name, which gets a ":" after it; a leading
+     "~" stands for SYS$LOGIN, and "~[.LIB]" is the directory LIB in it.
 
      THE TYPED RIDERS write Oakwood's external format, as rtl/llvm's, the
      same bytes on every system: a REAL is converted from F_floating to
@@ -364,7 +364,7 @@ MODULE Files;
   BEGIN
     i := 0;
     ch := searchPath[position];
-    WHILE (ch = " ") OR (ch = ";") DO INC(position); ch := searchPath[position] END;
+    WHILE (ch = " ") OR (ch = ",") DO INC(position); ch := searchPath[position] END;
     IF ch = "~" THEN
       INC(position); ch := searchPath[position];
       WHILE (home[i] # 0X) & (i < nameLength - 1) DO dir[i] := home[i]; INC(i) END;
@@ -373,7 +373,7 @@ MODULE Files;
         DEC(i); INC(position); ch := searchPath[position]
       END
     END;
-    WHILE (ch # 0X) & (ch # ";") DO
+    WHILE (ch # 0X) & (ch # ",") DO
       IF i < nameLength - 1 THEN dir[i] := ch; INC(i) END;
       INC(position); ch := searchPath[position]
     END;

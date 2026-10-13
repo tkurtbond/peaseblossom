@@ -6,12 +6,13 @@
 # guest-run.com), which must print what llvm-files-riders' expected says
 # poc prints on Unix - the typed riders' bytes, IEEE reals included, and
 # the Files dropped without Close - with riders.mod's directory names
-# made VMS's (riders.sub [.RIDERSSUB], .. [-], . []) and signed's exit
+# made VMS's (riders.sub [.RIDERSSUB], .. [-], . [], the search path's
+# ";" ",") and signed's exit
 # status 2 the status VMS gives a trap 2 (design section 14, item 10).
 . ../../vaxfixture.sh
 rtl=../../../rtl/vax
 src=../llvm-files-riders
-sed -e 's/"nowhere; riders\.sub ;\."/"nowhere; [.RIDERSSUB] ;[]"/' \
+sed -e 's/"nowhere; riders\.sub ;\."/"nowhere, [.RIDERSSUB] ,[]"/' \
     -e 's/ChangeDirectory("riders\.sub"/ChangeDirectory("[.RIDERSSUB]"/' \
     -e 's/ChangeDirectory("\.\."/ChangeDirectory("[-]"/' $src/riders.mod >riders.mod
 cp $src/signed.mod signed.mod

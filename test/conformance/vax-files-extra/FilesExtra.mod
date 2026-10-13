@@ -429,11 +429,11 @@ BEGIN
   (* 62-64: the search path: a directory, "~" for SYS$LOGIN, a logical
      name *)
   Check(62, Files.Old("INNER.") = NIL);
-  Files.SetSearchPath("NOWHERE; [.FXWORK.SUB] ;[]");
+  Files.SetSearchPath("NOWHERE, [.FXWORK.SUB] ,[]");
   g := Files.Old("INNER.");
   Files.GetName(g, line);
   Check(63, (g # NIL) & (line = "INNER."));
-  Files.SetSearchPath("~[.FXWORK]; FXLIB");
+  Files.SetSearchPath("~[.FXWORK], FXLIB");
   Check(64, (Files.Old("INNER.") # NIL) & (Files.Old("SWAP.") # NIL));
   Files.SetSearchPath("");
 
