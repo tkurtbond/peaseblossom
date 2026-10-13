@@ -1,9 +1,10 @@
 #!/bin/sh
 . ../../testenv.sh
 # PLAN.md Phase 16 step 4 (doc/developer/vax-macro32-backend.md, section
-# 15, proposal 2): rtl/vax's Files. poc -emit-macro32's output for
-# FilesUse.mod and rtl/vax/Files.Mod against the reviewed expected-vax.mar
-# and expected-vax-Files.mar, assembled on the VAX where the development
+# 15, proposal 2; section 19.3, Phase 17 step 3): rtl/vax's Files. poc
+# -emit-macro32's output for FilesUse.mod and rtl/vax/Files.Mod, and the
+# modules Files imports, against the reviewed expected-vax.mar and
+# expected-vax-<Module>.mar, assembled on the VAX where the development
 # system can be used (../../vaxfixture.sh). Then, for -O2 and -OC,
 # FilesOut built by the LLVM backend and run here, with FILESVAR.TXT and
 # FILESVFC.TXT plain text, which must print output.expected, and built for
@@ -28,7 +29,7 @@ for model in -O2 -OC; do
   rm -f *.sym
   poc $model -target vax-dec-vms -import-path $rtl -build FilesOut.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
-  vax_do guest-run.com guest-run.expected FilesOut.com FilesOut.mar Files.mar GarbageCollectedHeap.mar \
+  vax_do guest-run.com guest-run.expected FilesOut.com FilesOut.mar Files.mar Platform.mar GarbageCollectedHeap.mar \
     Out.mar LineOutput.mar $rtl/PocRtl.mar
 done
 rm -f output

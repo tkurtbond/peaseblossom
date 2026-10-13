@@ -1,0 +1,59 @@
+$ ! PLAN.md Phase 17 step 3: RIDERS.COM and SIGNED.COM, which poc -build
+$ ! wrote, run after poc's runtime is assembled. Then RIDERS, with
+$ ! [.RIDERSSUB]INNER.TXT for it to find, and SIGNED, which stops with a
+$ ! trap 2: its message, on SYS$ERROR, is typed before its status, where
+$ ! Unix's 2>&1 shows it. Then what llvm-files-riders' test.sh prints after
+$ ! it: KEPT.TXT's text without its 0X, which the collector's exit handler
+$ ! wrote out; whether DROPPED.TXT is there; how many POC_*.TMP files are
+$ ! left. Everything made is deleted
+$ SET NOON
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF S THEN @RIDERS
+$ IF S THEN S = $STATUS
+$ IF S THEN @SIGNED
+$ IF S THEN S = $STATUS
+$ IF .NOT. S THEN WRITE SYS$OUTPUT "build status: ", S
+$ IF .NOT. S THEN GOTO CLEAN
+$ CREATE/DIRECTORY [.RIDERSSUB]
+$ CREATE [.RIDERSSUB]INNER.TXT
+inner line
+$ RUN RIDERS
+$ DEFINE/USER_MODE SYS$ERROR SIGNED.ERR
+$ RUN SIGNED
+$ S = $STATUS
+$ IF F$SEARCH("SIGNED.ERR") .NES. "" THEN TYPE SIGNED.ERR
+$ IF F$SEARCH("SIGNED.ERR") .NES. "" THEN DELETE/NOLOG SIGNED.ERR;*
+$ WRITE SYS$OUTPUT "status: ", S
+$ NUL = " "
+$ NUL[0,8] = 0
+$ TEXT = ""
+$ OPEN/READ/ERROR=NOKEPT KEPT KEPT.TXT
+$ READ/END_OF_FILE=READ KEPT TEXT
+$ READ:
+$ CLOSE KEPT
+$ NOKEPT:
+$ TEXT = TEXT - NUL
+$ WRITE SYS$OUTPUT "kept.txt: ", TEXT
+$ DROPPED = ""
+$ IF F$SEARCH("DROPPED.TXT") .NES. "" THEN DROPPED = "dropped.txt"
+$ WRITE SYS$OUTPUT "dropped.txt: ", DROPPED
+$ LEFT = 0
+$ COUNT:
+$ IF F$SEARCH("POC_*.TMP;*") .EQS. "" THEN GOTO COUNTED
+$ LEFT = LEFT + 1
+$ GOTO COUNT
+$ COUNTED:
+$ WRITE SYS$OUTPUT "temporary files left: ", LEFT
+$ IF F$SEARCH("[.RIDERSSUB]*.*;*") .NES. "" THEN DELETE/NOLOG [.RIDERSSUB]*.*;*
+$ IF F$SEARCH("RIDERSSUB.DIR") .NES. "" THEN SET PROTECTION=O:RWED RIDERSSUB.DIR
+$ IF F$SEARCH("RIDERSSUB.DIR") .NES. "" THEN DELETE/NOLOG RIDERSSUB.DIR;
+$ IF F$SEARCH("KEPT.TXT;*") .NES. "" THEN DELETE/NOLOG KEPT.TXT;*
+$ IF F$SEARCH("DROPPED.TXT;*") .NES. "" THEN DELETE/NOLOG DROPPED.TXT;*
+$ IF F$SEARCH("RIDERS.BIN;*") .NES. "" THEN DELETE/NOLOG RIDERS.BIN;*
+$ IF F$SEARCH("SIGNED.BIN;*") .NES. "" THEN DELETE/NOLOG SIGNED.BIN;*
+$ IF F$SEARCH("POC_*.TMP;*") .NES. "" THEN DELETE/NOLOG POC_*.TMP;*
+$ CLEAN:
+$ DELETE/NOLOG POCRTL.OBJ;*,OUT.OBJ;*,LINEOUTPUT.OBJ;*,GARBAGECOLLECTEDHEAP.OBJ;*,PLATFORM.OBJ;*,FILES.OBJ;*
+$ DELETE/NOLOG RIDERS.OBJ;*,RIDERS.OPT;*,RIDERS.EXE;*,SIGNED.OBJ;*,SIGNED.OPT;*,SIGNED.EXE;*
+$ EXIT 1

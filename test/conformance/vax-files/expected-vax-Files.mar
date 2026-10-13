@@ -1,65 +1,55 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from design
-;; section 15, the RMS Reference ($READ, $WRITE, $RENAME, the XABFHC),
-;; rtl/llvm's Files and the guest runs). Why this is right:
-;; - FileDesc is 1568 bytes under -O2: the control (768) at 0, the block
-;;   (512) at 768, the name (256) at 1280, isNew, created, open, closed,
-;;   dirty and byRecord at 1536 to 1541, then length, onDisk and
-;;   blockStart at 1544, 1548 and 1552, the record pointer at 1556 (its
-;;   descriptor's one pointer offset), recordStart and recordLength. A
-;;   Rider is 16 bytes: res, eof, file at 8 (its one pointer) and
-;;   position at 12.
-;; - Each PocRtl.mar routine gets the control, a name, the block or the
-;;   record buffer by reference, and a length or count by value as a
-;;   longword (CVTWL from an INTEGER word). A position, Load's start or
-;;   the File's blockStart, goes by reference: a LONGINT whose low
-;;   longword POC_FILE_READ and POC_FILE_WRITE divide by 512 for the
-;;   block number. A status's low bit is the result (BICB3 #254);
-;;   POC_FILE_GET's length, -1 or -2 is taken as a word.
-;; - Flush creates the file if need be, writes MIN(length - blockStart,
-;;   512) bytes of the block (SHORT, then CVTWL) and moves onDisk up to
-;;   the end written. Load flushes, then reads the block holding
-;;   position when it starts before onDisk, reopening a closed file;
-;;   blockStart then names it.
-;; - NextRecord adds the record's length and 1, for the LF, in a
-;;   longword (CVTWL, INCL), so that a 32767-byte record is counted
-;;   right under -O2. RecordByte rewinds when position is before the
-;;   current record, moves forward a record at a time, and gives the
-;;   record's byte or, after its last, 10 (LF).
-;; - Old opens the file and, for block I/O, sets length to (EBK - 1) *
-;;   512 + FFB when EBK > 0 (the MULL2 and ADDL3); otherwise it
-;;   allocates the 32767-byte record buffer
-;;   (GarbageCollectedHeap.Allocate, tag 0), reads every record to count
-;;   the bytes, and rewinds. A failed open returns NIL.
-;; - New only allocates the File (Allocate with FileDesc's descriptor,
-;;   blockStart -1) and marks it new. Close creates and flushes a New
-;;   file, then closes it; Register then renames it, a failure going to
-;;   Fail. Write refuses a file that is not new or is closed; it creates
-;;   a New file on disk if it is not yet (Create, so that one that
-;;   cannot be is reported at the first Write, as rtl/llvm's is, not
-;;   when the block is written out); it stores the BYTE argument's low
-;;   byte in the block, marks it dirty and extends length. Read gives 0X
-;;   and sets eof at the end.
-;; - WriteString writes each character up to the 0X, then the 0X when
-;;   there is room. ReadString and ReadLine stop at 0X, ReadLine at LF
-;;   too, dropping a CR before it. Delete returns 2 for a bad name, else
-;;   POC_ERASE's status's low word, 0 when it is odd.
-;; - Fail copies the message and the file's name into 256-byte buffers
-;;   and calls POC_FILE_FAIL, which does not return. The trap 4 calls
-;;   are the NIL checks, the trap 2 calls the index checks, and the trap
-;;   12 calls a function's end without RETURN, never reached.
-;; - On the guest, FilesOut prints guest-run.expected under -O2 and -OC,
-;;   the same as the LLVM backend's output.expected: 41, 1300 and 7
-;;   bytes exact (odd counts written by $WRITE); a VAR and a VFC file
-;;   read with an LF after each record; FILESOUT.TXT, registered twice,
-;;   is ;1 and ;2, STMLF with CR, and TYPE shows ;1 as text; no
-;;   POC_*.TMP is left.
-;; - NEW calls rtl/vax's GarbageCollectedHeap.Allocate by its symbol,
-;;   G^GARBAGECOLLECTEDHEAP_A_A8NV38EI, .EXTERNAL, where it called
-;;   POC_NEW (Phase 16 step 4, section 15, proposal 9), with the same
-;;   arguments; -build adds the collector to FilesOut's program.
+;; Written by Claude, 2026-10-12, for Phase 17 step 3 (design section
+;; 19.3, proposals 1 to 9, approved by the user); not yet reviewed. It
+;; replaces the file the user reviewed on 2026-10-10, whose Old, New,
+;; Register, Close, Read, Write and the string procedures this one keeps
+;; or extends. Why this is right:
+;; - FileDesc is 1824 bytes under -O2: the control (768) at 0, the block
+;;   (512) at 768, name (256) at 1280, registerName (256) at 1536, isNew,
+;;   created, open, writable, dirty and byRecord at 1792 to 1797, length,
+;;   onDisk and blockStart at 1800, 1804 and 1808, the record pointer at
+;;   1812 (its descriptor's one pointer offset), recordStart and
+;;   recordLength. A Rider is 16 bytes, as before.
+;; - New expands its name with POC_EXPAND_NAME into registerName (the
+;;   name itself when that fails, for Create to report); Create makes the
+;;   temporary file in registerName's directory, and Register renames it
+;;   registerName. NewFile registers every File with
+;;   GarbageCollectedHeap.RegisterFinalizer and Finalize, which writes a
+;;   dirty block out, closes the file, and erases an unregistered New
+;;   file's temporary file by its resultant name (POC_FILE_NAME), ignoring
+;;   every status.
+;; - Old opens to read (POC_FILE_OPEN); MakeWritable, called by Write and
+;;   Purge, creates a New file or closes the file and reopens it to be
+;;   written (POC_FILE_REOPEN with 1), a failure going to Fail. Open
+;;   reopens a closed file to read (POC_FILE_REOPEN with 0); RecordByte
+;;   starts again at the first record after it. Close creates a New file,
+;;   flushes, closes, and clears open and writable.
+;; - Old looks where the name says when it has ":", "[" or "<", or when
+;;   there is no search path; else NextDirectory takes each directory of
+;;   searchPath, "~" giving home (SYS$LOGIN) and "~[." merging into it,
+;;   and JoinPath puts it before the name, with ":" after a logical name.
+;; - Purge writes no bytes at position 0 with POC_FILE_TRUNCATE; GetDate
+;;   gives Platform.GetClock's time for a File open to be written, else
+;;   POC_FILE_IDENTITY's revision date through Platform.MTimeAsClock;
+;;   GetName gives name, or a New file's POC_FILE_NAME, or "".
+;; - ReadBytes and WriteBytes go a byte at a time through Read and Write,
+;;   after the index check of x[n - 1] when n > LEN(x).
+;; - The typed riders' REAL and LONGREAL: FFields, GFields, SingleFields
+;;   and DoubleFields take the bytes apart into sign, exponent and a
+;;   HUGEINT fraction, VaxToIeee and IeeeToVax adjust them (the exponent
+;;   by 2; ShiftRounded's tie to even for denormals; zero, the largest
+;;   value and the reserved operand), and the Bytes procedures put them
+;;   together. PowerOfTwo shifts a HUGEINT 1, so that 2^52 is not a
+;;   LONGINT's ASH under -O2.
+;; - Delete, Rename and ChangeDirectory call Platform's Unlink, Rename and
+;;   Chdir; the initializer takes MaxPathLength and MaxNameLength from
+;;   Platform and home from SYS$LOGIN.
+;; - On the guest, vax-files' FilesOut prints guest-run.expected under
+;;   -O2 and -OC, as before; vax-files-riders' riders and signed print
+;;   what llvm-files-riders' poc prints on Unix, the riders' bytes
+;;   included; vax-files-extra's FilesExtra passes its 75 checks.
 ; Files, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	FILES
-	.IDENT	/864112f5374f12a3/
+	.IDENT	/a0694f69c7b15b3c/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
@@ -69,19 +59,68 @@
 L_INITIALISED:
 	.BLKB	1
 
+; the module's variables
+	.PSECT	POC_DATA
+; MaxPathLength: INTEGER, exported
+	.ALIGN	WORD
+FILES_MAXPATHLENGTH_ARAMRS13::
+	.BLKW	1
+; MaxNameLength: INTEGER, exported
+	.ALIGN	WORD
+FILES_MAXNAMELENGTH_NQ44O5S7::
+	.BLKW	1
+; searchPath: POINTER TO ARRAY OF CHAR
+	.ALIGN	LONG
+FILES_SEARCHPATH_G34TCHAH:
+	.BLKL	1
+; home: ARRAY 256 OF CHAR
+FILES_HOME_GQ76VUP5:
+	.BLKB	256
+
+; its root table, for the collector: the next table, the count,
+; and the address of each pointer its variables hold
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_ROOTS:
+	.LONG	0
+	.LONG	1
+	.ADDRESS	FILES_SEARCHPATH_G34TCHAH
+
 ; the symbols it uses of other modules
+	.EXTERNAL	POC_ROOTS
 	.EXTERNAL	POC_FILE_FAIL
 	.EXTERNAL	POC_FILE_CREATE
 	.EXTERNAL	POC_FILE_REOPEN
+	.EXTERNAL	POC_FILE_CLOSE
 	.EXTERNAL	POC_FILE_WRITE
 	.EXTERNAL	POC_FILE_READ
 	.EXTERNAL	POC_FILE_GET
 	.EXTERNAL	POC_FILE_REWIND
-	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
-	.EXTERNAL	POC_FILE_OPEN
-	.EXTERNAL	POC_FILE_CLOSE
-	.EXTERNAL	POC_FILE_RENAME
+	.EXTERNAL	POC_FILE_NAME
 	.EXTERNAL	POC_ERASE
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_R_3GIL0OCO
+	.EXTERNAL	POC_EXPAND_NAME
+	.EXTERNAL	POC_FILE_OPEN
+	.EXTERNAL	POC_FILE_RENAME
+	.EXTERNAL	POC_FILE_TRUNCATE
+	.EXTERNAL	PLATFORM_GETCLOCK_KQ66VPF6
+	.EXTERNAL	POC_FILE_IDENTITY
+	.EXTERNAL	PLATFORM_MTIMEASCLOCK_DF0RS1L0
+	.EXTERNAL	PLATFORM_UNLINK_KE1F78LR
+	.EXTERNAL	PLATFORM_RENAME_15BSB77M
+	.EXTERNAL	PLATFORM_CHDIR_BMI6VTK6
+	.EXTERNAL	POC_HMOD
+	.EXTERNAL	POC_HMUL
+	.EXTERNAL	POC_HDIV
+	.EXTERNAL	POC_MOVE
+	.EXTERNAL	PLATFORM_MAXPATHLENGTH_7JJHAPOP
+	.EXTERNAL	PLATFORM_MAXNAMELENGTH_5GHAQMKH
+	.EXTERNAL	PLATFORM_GETENV_ATVM4QJV
+	.EXTERNAL	PLATFORM_INIT
+	.EXTERNAL	POC_K1_2A203935C54E257B
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	POC_K1_6A025AE7DC390CF3
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -98,10 +137,10 @@ L_STR_2:
 	.ASCII	/file not reopened/
 	.BYTE	0
 L_STR_3:
-	.ASCII	/error writing file/
+	.ASCII	/error reading file/
 	.BYTE	0
 L_STR_4:
-	.ASCII	/error reading file/
+	.ASCII	/error writing file/
 	.BYTE	0
 L_STR_5:
 	.ASCII	/file name too long/
@@ -110,7 +149,13 @@ L_STR_6:
 	.ASCII	/could not rename temporary file as its registered name/
 	.BYTE	0
 L_STR_7:
-	.ASCII	/file not open to be written/
+	.ASCII	/file not truncated/
+	.BYTE	0
+L_STR_8:
+	.ASCII	/file not identified/
+	.BYTE	0
+L_STR_9:
+	.ASCII	/SYS$LOGIN/
 	.BYTE	0
 
 ; its type descriptors (section 14, item 4): size, extension level,
@@ -119,11 +164,11 @@ L_STR_7:
 ; Files.FileDesc
 	.ALIGN	LONG
 FILES_FILEDESC_D5IT3QTT::
-	.LONG	1568
+	.LONG	1824
 	.LONG	0
 	.LONG	1
 	.ADDRESS	FILES_FILEDESC_D5IT3QTT
-	.LONG	1556
+	.LONG	1812
 ; Files.Rider
 	.ALIGN	LONG
 FILES_RIDER_85VGJP4M::
@@ -140,9 +185,9 @@ FILES_LENGTH0X_2G8N39EM:
 	.WORD	^M<>
 	SUBL2	#4, SP
 	CLRL	-4(FP)
-; line 98
+; line 152
 	CLRW	-2(FP)
-; line 99
+; line 153
 L_1:
 	MOVL	8(AP), R0
 	CVTWL	-2(FP), R1
@@ -154,7 +199,7 @@ L_3:
 	CMPL	R0, 8(AP)
 	BLSSU	L_4
 	PUSHL	#29
-	PUSHL	#99
+	PUSHL	#153
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -163,15 +208,15 @@ L_4:
 	BNEQ	L_5
 	JMP	L^L_2
 L_5:
-; line 99
+; line 153
 	INCW	-2(FP)
 	JMP	L^L_1
 L_2:
-; line 100
+; line 154
 	CVTWL	-2(FP), R0
 	RET
 	PUSHL	#3
-	PUSHL	#101
+	PUSHL	#155
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -199,7 +244,7 @@ L_18:
 	TSTL	(SP)
 	BNEQ	L_17
 	ADDL2	#4, SP
-; line 108
+; line 162
 	MOVL	8(AP), -524(FP)
 	MOVL	#255, R1
 	CMPL	-524(FP), R1
@@ -235,16 +280,16 @@ L_11:
 	BNEQ	L_10
 	ADDL2	#4, SP
 	CLRB	(R3)
-; line 109
+; line 163
 	TSTL	12(AP)
 	BNEQ	L_14
 	JMP	L^L_13
 L_14:
-; line 109
+; line 163
 	MOVL	12(AP), R0
 	BNEQ	L_15
 	PUSHL	#26
-	PUSHL	#109
+	PUSHL	#163
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
@@ -258,7 +303,7 @@ L_15:
 L_16:
 	ADDL3	#1, R0, R1
 	MOVC5	R0, @-524(FP), #0, R1, -516(FP)
-; line 109
+; line 163
 	MOVL	#2, -532(FP)
 	MOVAB	-516(FP), -528(FP)
 	MOVL	#256, -524(FP)
@@ -266,10 +311,10 @@ L_16:
 	MOVW	R0, -518(FP)
 	JMP	L^L_12
 L_13:
-; line 109
+; line 163
 	CLRW	-518(FP)
 L_12:
-; line 110
+; line 164
 	MOVL	#4, -540(FP)
 	MOVAB	-260(FP), -536(FP)
 	MOVL	#2, -552(FP)
@@ -285,13 +330,13 @@ L_12:
 FILES_COPYNAME_GQO9HAN4:
 	.WORD	^M<R2,R3,R4,R5>
 	SUBL2	#12, SP
-; line 116
+; line 170
 	MOVL	#2, -12(FP)
 	MOVL	4(AP), -8(FP)
 	MOVL	8(AP), -4(FP)
 	CALLG	-12(FP), FILES_LENGTH0X_2G8N39EM
 	MOVW	R0, @16(AP)
-; line 117
+; line 171
 	TSTW	@16(AP)
 	BNEQ	L_21
 	JMP	L^L_20
@@ -301,11 +346,11 @@ L_21:
 	JMP	L^L_19
 L_22:
 L_20:
-; line 117
+; line 171
 	CLRL	R0
 	RET
 L_19:
-; line 118
+; line 172
 	MOVL	8(AP), -4(FP)
 	MOVL	#255, R1
 	CMPL	-4(FP), R1
@@ -341,11 +386,11 @@ L_28:
 	BNEQ	L_27
 	ADDL2	#4, SP
 	CLRB	(R3)
-; line 119
+; line 173
 	MOVL	#1, R0
 	RET
 	PUSHL	#3
-	PUSHL	#120
+	PUSHL	#174
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -355,24 +400,24 @@ FILES_CREATE_J92O55VE:
 	SUBL2	#32, SP
 	CLRL	-4(FP)
 	MOVL	4(AP), -4(FP)
-; line 125
+; line 179
 	MOVL	-4(FP), R0
 	BNEQ	L_30
 	PUSHL	#9
-	PUSHL	#125
+	PUSHL	#179
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
 L_30:
-	BLBC	1537(R0), L_31
+	BLBC	1793(R0), L_31
 	JMP	L^L_29
 L_31:
-; line 126
+; line 180
 	MOVL	#3, -20(FP)
 	MOVL	-4(FP), R0
 	BNEQ	L_33
 	PUSHL	#31
-	PUSHL	#126
+	PUSHL	#180
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
@@ -381,22 +426,22 @@ L_33:
 	MOVL	-4(FP), R0
 	BNEQ	L_34
 	PUSHL	#42
-	PUSHL	#126
+	PUSHL	#180
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
 L_34:
-	MOVAB	1280(R0), -12(FP)
+	MOVAB	1536(R0), -12(FP)
 	MOVL	#2, -32(FP)
 	MOVL	-4(FP), R0
 	BNEQ	L_35
-	PUSHL	#59
-	PUSHL	#126
+	PUSHL	#67
+	PUSHL	#180
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
 L_35:
-	MOVAB	1280(R0), -28(FP)
+	MOVAB	1536(R0), -28(FP)
 	MOVL	#256, -24(FP)
 	CALLG	-32(FP), FILES_LENGTH0X_2G8N39EM
 	CVTWL	R0, -8(FP)
@@ -405,89 +450,230 @@ L_35:
 	BLBC	R0, L_36
 	JMP	L^L_32
 L_36:
-; line 126
+; line 181
 	MOVL	#3, -20(FP)
 	MOVAB	L_STR_1, -16(FP)
 	MOVL	#17, -12(FP)
 	MOVL	-4(FP), -8(FP)
 	CALLG	-20(FP), FILES_FAIL_PNHATUQQ
 L_32:
-; line 127
+; line 183
 	MOVL	-4(FP), R0
 	BNEQ	L_37
 	PUSHL	#7
-	PUSHL	#127
+	PUSHL	#183
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
 L_37:
-	MOVB	#1, 1537(R0)
-; line 127
+	MOVB	#1, 1793(R0)
+; line 183
 	MOVL	-4(FP), R0
 	BNEQ	L_38
 	PUSHL	#26
-	PUSHL	#127
+	PUSHL	#183
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
 L_38:
-	MOVB	#1, 1538(R0)
+	MOVB	#1, 1794(R0)
+; line 183
+	MOVL	-4(FP), R0
+	BNEQ	L_39
+	PUSHL	#42
+	PUSHL	#183
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_39:
+	MOVB	#1, 1795(R0)
 L_29:
 	RET
-; PROCEDURE Reopen
-FILES_REOPEN_8K93HA5B:
+; PROCEDURE Open
+FILES_OPEN_IAB23FQ2:
 	.WORD	^M<>
 	SUBL2	#32, SP
 	CLRQ	-16(FP)
 	CLRQ	-8(FP)
 	MOVL	4(AP), -4(FP)
-; line 135
+; line 191
 	MOVL	-4(FP), R0
-	BNEQ	L_40
+	BNEQ	L_41
 	PUSHL	#9
-	PUSHL	#135
+	PUSHL	#191
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_40:
-	BLBC	1538(R0), L_41
-	JMP	L^L_39
 L_41:
-; line 136
-	MOVL	#2, -28(FP)
+	BLBC	1794(R0), L_42
+	JMP	L^L_40
+L_42:
+; line 192
+	MOVL	#3, -32(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_43
+	BNEQ	L_44
 	PUSHL	#31
-	PUSHL	#136
+	PUSHL	#192
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_43:
-	MOVAB	(R0), -24(FP)
-	MOVAB	-16(FP), -20(FP)
-	CALLG	-28(FP), G^POC_FILE_REOPEN
-	BICB3	#254, R0, R0
-	BLBC	R0, L_44
-	JMP	L^L_42
 L_44:
-; line 136
+	MOVAB	(R0), -28(FP)
+	MOVAB	-16(FP), -24(FP)
+	CLRL	-20(FP)
+	CALLG	-32(FP), G^POC_FILE_REOPEN
+	BICB3	#254, R0, R0
+	BLBC	R0, L_45
+	JMP	L^L_43
+L_45:
+; line 192
 	MOVL	#3, -32(FP)
 	MOVAB	L_STR_2, -28(FP)
 	MOVL	#18, -24(FP)
 	MOVL	-4(FP), -20(FP)
 	CALLG	-32(FP), FILES_FAIL_PNHATUQQ
-L_42:
-; line 137
+L_43:
+; line 193
 	MOVL	-4(FP), R0
-	BNEQ	L_45
+	BNEQ	L_46
 	PUSHL	#7
-	PUSHL	#137
+	PUSHL	#193
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_45:
-	MOVB	#1, 1538(R0)
-L_39:
+L_46:
+	MOVB	#1, 1794(R0)
+L_40:
+	RET
+; PROCEDURE MakeWritable
+FILES_MAKEWRITABLE_J9UJDL08:
+	.WORD	^M<>
+	SUBL2	#32, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVL	4(AP), -4(FP)
+; line 202
+	MOVL	-4(FP), R0
+	BNEQ	L_49
+	PUSHL	#9
+	PUSHL	#202
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_49:
+	BLBC	1793(R0), L_50
+	JMP	L^L_48
+L_50:
+; line 202
+	MOVL	#1, -24(FP)
+	MOVL	-4(FP), -20(FP)
+	CALLG	-24(FP), FILES_CREATE_J92O55VE
+	JMP	L^L_47
+L_48:
+; line 203
+	MOVL	-4(FP), R0
+	BNEQ	L_51
+	PUSHL	#12
+	PUSHL	#203
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_51:
+	BLBC	1795(R0), L_52
+	JMP	L^L_47
+L_52:
+; line 204
+	MOVL	-4(FP), R0
+	BNEQ	L_54
+	PUSHL	#10
+	PUSHL	#204
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_54:
+	BLBS	1794(R0), L_55
+	JMP	L^L_53
+L_55:
+; line 205
+	MOVL	#1, -24(FP)
+	MOVL	-4(FP), R0
+	BNEQ	L_57
+	PUSHL	#32
+	PUSHL	#205
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_57:
+	MOVAB	(R0), -20(FP)
+	CALLG	-24(FP), G^POC_FILE_CLOSE
+	BICB3	#254, R0, R0
+	BLBC	R0, L_58
+	JMP	L^L_56
+L_58:
+; line 205
+	MOVL	#3, -32(FP)
+	MOVAB	L_STR_3, -28(FP)
+	MOVL	#19, -24(FP)
+	MOVL	-4(FP), -20(FP)
+	CALLG	-32(FP), FILES_FAIL_PNHATUQQ
+L_56:
+; line 206
+	MOVL	-4(FP), R0
+	BNEQ	L_59
+	PUSHL	#9
+	PUSHL	#206
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_59:
+	CLRB	1794(R0)
+L_53:
+; line 208
+	MOVL	#3, -32(FP)
+	MOVL	-4(FP), R0
+	BNEQ	L_61
+	PUSHL	#31
+	PUSHL	#208
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_61:
+	MOVAB	(R0), -28(FP)
+	MOVAB	-16(FP), -24(FP)
+	MOVL	#1, -20(FP)
+	CALLG	-32(FP), G^POC_FILE_REOPEN
+	BICB3	#254, R0, R0
+	BLBC	R0, L_62
+	JMP	L^L_60
+L_62:
+; line 208
+	MOVL	#3, -32(FP)
+	MOVAB	L_STR_4, -28(FP)
+	MOVL	#19, -24(FP)
+	MOVL	-4(FP), -20(FP)
+	CALLG	-32(FP), FILES_FAIL_PNHATUQQ
+L_60:
+; line 209
+	MOVL	-4(FP), R0
+	BNEQ	L_63
+	PUSHL	#7
+	PUSHL	#209
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_63:
+	MOVB	#1, 1794(R0)
+; line 209
+	MOVL	-4(FP), R0
+	BNEQ	L_64
+	PUSHL	#23
+	PUSHL	#209
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_64:
+	MOVB	#1, 1795(R0)
+L_47:
 	RET
 ; PROCEDURE Flush
 FILES_FLUSH_U269N2GS:
@@ -495,143 +681,139 @@ FILES_FLUSH_U269N2GS:
 	SUBL2	#28, SP
 	CLRQ	-8(FP)
 	MOVL	4(AP), -4(FP)
-; line 145
+; line 217
 	MOVL	-4(FP), R0
-	BNEQ	L_47
+	BNEQ	L_66
 	PUSHL	#8
-	PUSHL	#145
+	PUSHL	#217
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_47:
-	BLBS	1540(R0), L_48
-	JMP	L^L_46
-L_48:
-; line 146
-	MOVL	#1, -16(FP)
-	MOVL	-4(FP), -12(FP)
-	CALLG	-16(FP), FILES_CREATE_J92O55VE
-; line 147
+L_66:
+	BLBS	1796(R0), L_67
+	JMP	L^L_65
+L_67:
+; line 218
 	MOVL	-4(FP), R0
-	BNEQ	L_49
+	BNEQ	L_68
 	PUSHL	#16
-	PUSHL	#147
+	PUSHL	#218
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_49:
+L_68:
 	MOVL	-4(FP), R1
-	BNEQ	L_50
+	BNEQ	L_69
 	PUSHL	#27
-	PUSHL	#147
+	PUSHL	#218
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_50:
-	SUBL3	1552(R1), 1544(R0), -8(FP)
-; line 148
+L_69:
+	SUBL3	1808(R1), 1800(R0), -8(FP)
+; line 219
 	CMPL	-8(FP), #512
-	BGTR	L_52
-	JMP	L^L_51
-L_52:
-; line 148
+	BGTR	L_71
+	JMP	L^L_70
+L_71:
+; line 219
 	MOVL	#512, -8(FP)
-L_51:
-; line 149
+L_70:
+; line 220
 	MOVL	#4, -28(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_54
+	BNEQ	L_73
 	PUSHL	#30
-	PUSHL	#149
+	PUSHL	#220
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_54:
+L_73:
 	MOVAB	(R0), -24(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_55
+	BNEQ	L_74
 	PUSHL	#41
-	PUSHL	#149
+	PUSHL	#220
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_55:
-	MOVAB	1552(R0), -20(FP)
+L_74:
+	MOVAB	1808(R0), -20(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_56
+	BNEQ	L_75
 	PUSHL	#55
-	PUSHL	#149
+	PUSHL	#220
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_56:
+L_75:
 	MOVAB	768(R0), -16(FP)
 	CVTLW	-8(FP), R0
 	CVTWL	R0, -12(FP)
 	CALLG	-28(FP), G^POC_FILE_WRITE
 	BICB3	#254, R0, R0
-	BLBC	R0, L_57
-	JMP	L^L_53
-L_57:
-; line 150
+	BLBC	R0, L_76
+	JMP	L^L_72
+L_76:
+; line 221
 	MOVL	#3, -24(FP)
-	MOVAB	L_STR_3, -20(FP)
+	MOVAB	L_STR_4, -20(FP)
 	MOVL	#19, -16(FP)
 	MOVL	-4(FP), -12(FP)
 	CALLG	-24(FP), FILES_FAIL_PNHATUQQ
-L_53:
-; line 152
+L_72:
+; line 223
 	MOVL	-4(FP), R0
-	BNEQ	L_59
+	BNEQ	L_78
 	PUSHL	#10
-	PUSHL	#152
+	PUSHL	#223
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_59:
-	ADDL3	-8(FP), 1552(R0), R1
+L_78:
+	ADDL3	-8(FP), 1808(R0), R1
 	MOVL	-4(FP), R0
-	BNEQ	L_60
+	BNEQ	L_79
 	PUSHL	#33
-	PUSHL	#152
+	PUSHL	#223
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_60:
-	CMPL	R1, 1548(R0)
-	BGTR	L_61
-	JMP	L^L_58
-L_61:
-; line 152
+L_79:
+	CMPL	R1, 1804(R0)
+	BGTR	L_80
+	JMP	L^L_77
+L_80:
+; line 223
 	MOVL	-4(FP), R0
-	BNEQ	L_62
+	BNEQ	L_81
 	PUSHL	#47
-	PUSHL	#152
+	PUSHL	#223
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_62:
+L_81:
 	MOVL	-4(FP), R1
-	BNEQ	L_63
+	BNEQ	L_82
 	PUSHL	#59
-	PUSHL	#152
+	PUSHL	#223
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_63:
-	ADDL3	-8(FP), 1552(R1), 1548(R0)
-L_58:
-; line 153
+L_82:
+	ADDL3	-8(FP), 1808(R1), 1804(R0)
+L_77:
+; line 224
 	MOVL	-4(FP), R0
-	BNEQ	L_64
+	BNEQ	L_83
 	PUSHL	#7
-	PUSHL	#153
+	PUSHL	#224
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_64:
-	CLRB	1540(R0)
-L_46:
+L_83:
+	CLRB	1796(R0)
+L_65:
 	RET
 ; PROCEDURE Load
 FILES_LOAD_JL3I394I:
@@ -639,95 +821,95 @@ FILES_LOAD_JL3I394I:
 	SUBL2	#24, SP
 	CLRQ	-8(FP)
 	MOVL	4(AP), -4(FP)
-; line 161
+; line 232
 	DIVL3	#512, 8(AP), R0
 	MULL3	R0, #512, R1
 	SUBL3	R1, 8(AP), R1
-	BEQL	L_65
+	BEQL	L_84
 	XORL3	#512, R1, R0
-	BGEQ	L_65
+	BGEQ	L_84
 	ADDL2	#512, R1
-L_65:
+L_84:
 	SUBL3	R1, 8(AP), -8(FP)
-; line 162
+; line 233
 	MOVL	-4(FP), R0
-	BNEQ	L_67
+	BNEQ	L_86
 	PUSHL	#8
-	PUSHL	#162
+	PUSHL	#233
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_67:
-	CMPL	1552(R0), -8(FP)
-	BNEQ	L_68
-	JMP	L^L_66
-L_68:
-; line 163
+L_86:
+	CMPL	1808(R0), -8(FP)
+	BNEQ	L_87
+	JMP	L^L_85
+L_87:
+; line 234
 	MOVL	#1, -16(FP)
 	MOVL	-4(FP), -12(FP)
 	CALLG	-16(FP), FILES_FLUSH_U269N2GS
-; line 164
+; line 235
 	MOVL	-4(FP), R0
-	BNEQ	L_70
+	BNEQ	L_89
 	PUSHL	#18
-	PUSHL	#164
+	PUSHL	#235
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_70:
-	CMPL	-8(FP), 1548(R0)
-	BLSS	L_71
-	JMP	L^L_69
-L_71:
-; line 165
+L_89:
+	CMPL	-8(FP), 1804(R0)
+	BLSS	L_90
+	JMP	L^L_88
+L_90:
+; line 236
 	MOVL	#1, -16(FP)
 	MOVL	-4(FP), -12(FP)
-	CALLG	-16(FP), FILES_REOPEN_8K93HA5B
-; line 166
+	CALLG	-16(FP), FILES_OPEN_IAB23FQ2
+; line 237
 	MOVL	#3, -24(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_73
+	BNEQ	L_92
 	PUSHL	#31
-	PUSHL	#166
+	PUSHL	#237
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_73:
+L_92:
 	MOVAB	(R0), -20(FP)
 	MOVAB	-8(FP), -16(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_74
+	BNEQ	L_93
 	PUSHL	#49
-	PUSHL	#166
+	PUSHL	#237
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_74:
+L_93:
 	MOVAB	768(R0), -12(FP)
 	CALLG	-24(FP), G^POC_FILE_READ
 	BICB3	#254, R0, R0
-	BLBC	R0, L_75
-	JMP	L^L_72
-L_75:
-; line 166
+	BLBC	R0, L_94
+	JMP	L^L_91
+L_94:
+; line 237
 	MOVL	#3, -24(FP)
-	MOVAB	L_STR_4, -20(FP)
+	MOVAB	L_STR_3, -20(FP)
 	MOVL	#19, -16(FP)
 	MOVL	-4(FP), -12(FP)
 	CALLG	-24(FP), FILES_FAIL_PNHATUQQ
-L_72:
-L_69:
-; line 168
+L_91:
+L_88:
+; line 239
 	MOVL	-4(FP), R0
-	BNEQ	L_76
+	BNEQ	L_95
 	PUSHL	#7
-	PUSHL	#168
+	PUSHL	#239
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_76:
-	MOVL	-8(FP), 1552(R0)
-L_66:
+L_95:
+	MOVL	-8(FP), 1808(R0)
+L_85:
 	RET
 ; PROCEDURE NextRecord
 FILES_NEXTRECORD_S2U6KOMU:
@@ -735,110 +917,110 @@ FILES_NEXTRECORD_S2U6KOMU:
 	SUBL2	#24, SP
 	CLRQ	-8(FP)
 	MOVL	4(AP), -4(FP)
-; line 177
+; line 248
 	MOVL	#3, -24(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_77
+	BNEQ	L_96
 	PUSHL	#23
-	PUSHL	#177
+	PUSHL	#248
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_77:
+L_96:
 	MOVAB	(R0), -20(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_78
+	BNEQ	L_97
 	PUSHL	#34
-	PUSHL	#177
+	PUSHL	#248
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_78:
-	MOVL	1556(R0), R0
-	BNEQ	L_79
+L_97:
+	MOVL	1812(R0), R0
+	BNEQ	L_98
 	PUSHL	#34
-	PUSHL	#177
+	PUSHL	#248
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_79:
+L_98:
 	MOVAB	(R0), -16(FP)
 	MOVL	#32767, -12(FP)
 	CALLG	-24(FP), G^POC_FILE_GET
 	MOVW	R0, -6(FP)
-; line 178
+; line 249
 	CMPW	-6(FP), #-1
-	BEQL	L_82
-	JMP	L^L_81
-L_82:
-; line 178
+	BEQL	L_101
+	JMP	L^L_100
+L_101:
+; line 249
 	CLRL	R0
 	RET
-	JMP	L^L_80
-L_81:
-; line 179
+	JMP	L^L_99
+L_100:
+; line 250
 	TSTW	-6(FP)
-	BLSS	L_83
-	JMP	L^L_80
-L_83:
-; line 179
+	BLSS	L_102
+	JMP	L^L_99
+L_102:
+; line 250
 	MOVL	#3, -24(FP)
-	MOVAB	L_STR_4, -20(FP)
+	MOVAB	L_STR_3, -20(FP)
 	MOVL	#19, -16(FP)
 	MOVL	-4(FP), -12(FP)
 	CALLG	-24(FP), FILES_FAIL_PNHATUQQ
-L_80:
-; line 181
+L_99:
+; line 252
 	MOVL	-4(FP), R0
-	BNEQ	L_84
+	BNEQ	L_103
 	PUSHL	#5
-	PUSHL	#181
+	PUSHL	#252
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_84:
+L_103:
 	MOVL	-4(FP), R1
-	BNEQ	L_85
+	BNEQ	L_104
 	PUSHL	#22
-	PUSHL	#181
+	PUSHL	#252
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_85:
+L_104:
 	MOVL	-4(FP), R2
-	BNEQ	L_86
+	BNEQ	L_105
 	PUSHL	#38
-	PUSHL	#181
+	PUSHL	#252
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_86:
-	ADDL3	1564(R2), 1560(R1), 1560(R0)
-; line 182
+L_105:
+	ADDL3	1820(R2), 1816(R1), 1816(R0)
+; line 253
 	MOVL	-4(FP), R0
-	BNEQ	L_87
+	BNEQ	L_106
 	PUSHL	#5
-	PUSHL	#182
+	PUSHL	#253
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_87:
-	CVTWL	-6(FP), 1564(R0)
-; line 182
+L_106:
+	CVTWL	-6(FP), 1820(R0)
+; line 253
 	MOVL	-4(FP), R0
-	BNEQ	L_88
+	BNEQ	L_107
 	PUSHL	#30
-	PUSHL	#182
+	PUSHL	#253
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_88:
-	INCL	1564(R0)
-; line 183
+L_107:
+	INCL	1820(R0)
+; line 254
 	MOVL	#1, R0
 	RET
 	PUSHL	#3
-	PUSHL	#184
+	PUSHL	#255
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -848,223 +1030,452 @@ FILES_REWIND_GS26UO7H:
 	SUBL2	#20, SP
 	CLRL	-4(FP)
 	MOVL	4(AP), -4(FP)
-; line 189
+; line 260
 	MOVL	#1, -12(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_90
-	PUSHL	#29
-	PUSHL	#189
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_90:
-	MOVAB	(R0), -8(FP)
-	CALLG	-12(FP), G^POC_FILE_REWIND
-	BICB3	#254, R0, R0
-	BLBC	R0, L_91
-	JMP	L^L_89
-L_91:
-; line 189
-	MOVL	#3, -20(FP)
-	MOVAB	L_STR_4, -16(FP)
-	MOVL	#19, -12(FP)
-	MOVL	-4(FP), -8(FP)
-	CALLG	-20(FP), FILES_FAIL_PNHATUQQ
-L_89:
-; line 190
-	MOVL	-4(FP), R0
-	BNEQ	L_92
-	PUSHL	#5
-	PUSHL	#190
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_92:
-	CLRL	1560(R0)
-; line 190
-	MOVL	-4(FP), R0
-	BNEQ	L_93
-	PUSHL	#25
-	PUSHL	#190
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_93:
-	CLRL	1564(R0)
-	RET
-; PROCEDURE RecordByte
-FILES_RECORDBYTE_EI837RMD:
-	.WORD	^M<R2>
-	SUBL2	#16, SP
-; line 197
-	MOVL	#1, -8(FP)
-	MOVL	4(AP), -4(FP)
-	CALLG	-8(FP), FILES_REOPEN_8K93HA5B
-; line 198
-	MOVL	4(AP), R0
-	BNEQ	L_95
-	PUSHL	#19
-	PUSHL	#198
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_95:
-	CMPL	8(AP), 1560(R0)
-	BLSS	L_96
-	JMP	L^L_94
-L_96:
-; line 198
-	MOVL	#1, -8(FP)
-	MOVL	4(AP), -4(FP)
-	CALLG	-8(FP), FILES_REWIND_GS26UO7H
-L_94:
-; line 199
-L_97:
-	MOVL	4(AP), R0
-	BNEQ	L_99
-	PUSHL	#23
-	PUSHL	#199
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_99:
-	MOVL	4(AP), R1
-	BNEQ	L_100
-	PUSHL	#39
-	PUSHL	#199
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_100:
-	ADDL3	1564(R1), 1560(R0), R2
-	CMPL	8(AP), R2
-	BGEQ	L_101
-	JMP	L^L_98
-L_101:
-; line 200
-	MOVL	#1, -8(FP)
-	MOVL	4(AP), -4(FP)
-	CALLG	-8(FP), FILES_NEXTRECORD_S2U6KOMU
-	BLBC	R0, L_103
-	JMP	L^L_102
-L_103:
-; line 200
-	MOVL	#3, -16(FP)
-	MOVAB	L_STR_4, -12(FP)
-	MOVL	#19, -8(FP)
-	MOVL	4(AP), -4(FP)
-	CALLG	-16(FP), FILES_FAIL_PNHATUQQ
-L_102:
-	JMP	L^L_97
-L_98:
-; line 202
-	MOVL	4(AP), R0
-	BNEQ	L_106
-	PUSHL	#19
-	PUSHL	#202
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_106:
-	SUBL3	1560(R0), 8(AP), R1
-	MOVL	4(AP), R0
-	BNEQ	L_107
-	PUSHL	#35
-	PUSHL	#202
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_107:
-	SUBL3	#1, 1564(R0), R2
-	CMPL	R1, R2
-	BLSS	L_108
-	JMP	L^L_105
-L_108:
-; line 202
-	MOVL	4(AP), R0
 	BNEQ	L_109
-	PUSHL	#64
-	PUSHL	#202
+	PUSHL	#29
+	PUSHL	#260
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
 L_109:
-	MOVL	1556(R0), R0
-	BNEQ	L_110
-	PUSHL	#64
-	PUSHL	#202
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
+	MOVAB	(R0), -8(FP)
+	CALLG	-12(FP), G^POC_FILE_REWIND
+	BICB3	#254, R0, R0
+	BLBC	R0, L_110
+	JMP	L^L_108
 L_110:
-	MOVL	4(AP), R1
+; line 260
+	MOVL	#3, -20(FP)
+	MOVAB	L_STR_3, -16(FP)
+	MOVL	#19, -12(FP)
+	MOVL	-4(FP), -8(FP)
+	CALLG	-20(FP), FILES_FAIL_PNHATUQQ
+L_108:
+; line 261
+	MOVL	-4(FP), R0
 	BNEQ	L_111
-	PUSHL	#84
-	PUSHL	#202
+	PUSHL	#5
+	PUSHL	#261
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
 L_111:
-	SUBL3	1560(R1), 8(AP), R2
+	CLRL	1816(R0)
+; line 261
+	MOVL	-4(FP), R0
+	BNEQ	L_112
+	PUSHL	#25
+	PUSHL	#261
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_112:
+	CLRL	1820(R0)
+	RET
+; PROCEDURE RecordByte
+FILES_RECORDBYTE_EI837RMD:
+	.WORD	^M<R2>
+	SUBL2	#20, SP
+	CLRL	-4(FP)
+	MOVL	4(AP), -4(FP)
+; line 268
+	MOVL	-4(FP), R0
+	BNEQ	L_114
+	PUSHL	#9
+	PUSHL	#268
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_114:
+	BLBC	1794(R0), L_115
+	JMP	L^L_113
+L_115:
+; line 268
+	MOVL	#1, -12(FP)
+	MOVL	-4(FP), -8(FP)
+	CALLG	-12(FP), FILES_OPEN_IAB23FQ2
+; line 268
+	MOVL	-4(FP), R0
+	BNEQ	L_116
+	PUSHL	#30
+	PUSHL	#268
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_116:
+	CLRL	1816(R0)
+; line 268
+	MOVL	-4(FP), R0
+	BNEQ	L_117
+	PUSHL	#50
+	PUSHL	#268
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_117:
+	CLRL	1820(R0)
+L_113:
+; line 269
+	MOVL	-4(FP), R0
+	BNEQ	L_119
+	PUSHL	#19
+	PUSHL	#269
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_119:
+	CMPL	8(AP), 1816(R0)
+	BLSS	L_120
+	JMP	L^L_118
+L_120:
+; line 269
+	MOVL	#1, -12(FP)
+	MOVL	-4(FP), -8(FP)
+	CALLG	-12(FP), FILES_REWIND_GS26UO7H
+L_118:
+; line 270
+L_121:
+	MOVL	-4(FP), R0
+	BNEQ	L_123
+	PUSHL	#23
+	PUSHL	#270
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_123:
+	MOVL	-4(FP), R1
+	BNEQ	L_124
+	PUSHL	#39
+	PUSHL	#270
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_124:
+	ADDL3	1820(R1), 1816(R0), R2
+	CMPL	8(AP), R2
+	BGEQ	L_125
+	JMP	L^L_122
+L_125:
+; line 271
+	MOVL	#1, -12(FP)
+	MOVL	-4(FP), -8(FP)
+	CALLG	-12(FP), FILES_NEXTRECORD_S2U6KOMU
+	BLBC	R0, L_127
+	JMP	L^L_126
+L_127:
+; line 271
+	MOVL	#3, -20(FP)
+	MOVAB	L_STR_3, -16(FP)
+	MOVL	#19, -12(FP)
+	MOVL	-4(FP), -8(FP)
+	CALLG	-20(FP), FILES_FAIL_PNHATUQQ
+L_126:
+	JMP	L^L_121
+L_122:
+; line 273
+	MOVL	-4(FP), R0
+	BNEQ	L_130
+	PUSHL	#19
+	PUSHL	#273
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_130:
+	SUBL3	1816(R0), 8(AP), R1
+	MOVL	-4(FP), R0
+	BNEQ	L_131
+	PUSHL	#35
+	PUSHL	#273
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_131:
+	SUBL3	#1, 1820(R0), R2
+	CMPL	R1, R2
+	BLSS	L_132
+	JMP	L^L_129
+L_132:
+; line 273
+	MOVL	-4(FP), R0
+	BNEQ	L_133
+	PUSHL	#64
+	PUSHL	#273
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_133:
+	MOVL	1812(R0), R0
+	BNEQ	L_134
+	PUSHL	#64
+	PUSHL	#273
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_134:
+	MOVL	-4(FP), R1
+	BNEQ	L_135
+	PUSHL	#84
+	PUSHL	#273
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_135:
+	SUBL3	1816(R1), 8(AP), R2
 	CMPL	R2, #32766
-	BLEQU	L_112
+	BLEQU	L_136
 	PUSHL	#82
-	PUSHL	#202
+	PUSHL	#273
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_112:
+L_136:
 	MOVB	(R0)[R2], @12(AP)
-	JMP	L^L_104
-L_105:
-; line 203
+	JMP	L^L_128
+L_129:
+; line 274
 	MOVB	#10, @12(AP)
-L_104:
+L_128:
+	RET
+; PROCEDURE Finalize
+FILES_FINALIZE_5B9M7GAG:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#292, SP
+	MOVC5	#0, (SP), #0, #272, -272(FP)
+	MOVL	4(AP), -4(FP)
+; line 283
+	MOVL	-4(FP), -8(FP)
+; line 284
+	MOVL	-8(FP), R0
+	BNEQ	L_138
+	PUSHL	#8
+	PUSHL	#284
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_138:
+	BLBS	1796(R0), L_139
+	JMP	L^L_137
+L_139:
+	MOVL	-8(FP), R0
+	BNEQ	L_140
+	PUSHL	#18
+	PUSHL	#284
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_140:
+	BLBS	1794(R0), L_141
+	JMP	L^L_137
+L_141:
+; line 285
+	MOVL	-8(FP), R0
+	BNEQ	L_142
+	PUSHL	#16
+	PUSHL	#285
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_142:
+	MOVL	-8(FP), R1
+	BNEQ	L_143
+	PUSHL	#27
+	PUSHL	#285
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_143:
+	SUBL3	1808(R1), 1800(R0), -12(FP)
+; line 286
+	CMPL	-12(FP), #512
+	BGTR	L_145
+	JMP	L^L_144
+L_145:
+; line 286
+	MOVL	#512, -12(FP)
+L_144:
+; line 287
+	MOVL	#4, -292(FP)
+	MOVL	-8(FP), R0
+	BNEQ	L_146
+	PUSHL	#32
+	PUSHL	#287
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_146:
+	MOVAB	(R0), -288(FP)
+	MOVL	-8(FP), R0
+	BNEQ	L_147
+	PUSHL	#43
+	PUSHL	#287
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_147:
+	MOVAB	1808(R0), -284(FP)
+	MOVL	-8(FP), R0
+	BNEQ	L_148
+	PUSHL	#57
+	PUSHL	#287
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_148:
+	MOVAB	768(R0), -280(FP)
+	CVTLW	-12(FP), R0
+	CVTWL	R0, -276(FP)
+	CALLG	-292(FP), G^POC_FILE_WRITE
+	MOVW	R0, -14(FP)
+; line 288
+	MOVL	-8(FP), R0
+	BNEQ	L_149
+	PUSHL	#7
+	PUSHL	#288
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_149:
+	CLRB	1796(R0)
+L_137:
+; line 290
+	MOVL	-8(FP), R0
+	BNEQ	L_151
+	PUSHL	#8
+	PUSHL	#290
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_151:
+	BLBS	1794(R0), L_152
+	JMP	L^L_150
+L_152:
+; line 290
+	MOVL	#1, -280(FP)
+	MOVL	-8(FP), R0
+	BNEQ	L_153
+	PUSHL	#45
+	PUSHL	#290
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_153:
+	MOVAB	(R0), -276(FP)
+	CALLG	-280(FP), G^POC_FILE_CLOSE
+	MOVW	R0, -14(FP)
+; line 290
+	MOVL	-8(FP), R0
+	BNEQ	L_154
+	PUSHL	#57
+	PUSHL	#290
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_154:
+	CLRB	1794(R0)
+L_150:
+; line 291
+	MOVL	-8(FP), R0
+	BNEQ	L_156
+	PUSHL	#8
+	PUSHL	#291
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_156:
+	BLBS	1792(R0), L_157
+	JMP	L^L_155
+L_157:
+	MOVL	-8(FP), R0
+	BNEQ	L_158
+	PUSHL	#18
+	PUSHL	#291
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_158:
+	BLBS	1793(R0), L_159
+	JMP	L^L_155
+L_159:
+; line 292
+	MOVL	#3, -288(FP)
+	MOVL	-8(FP), R0
+	BNEQ	L_160
+	PUSHL	#31
+	PUSHL	#292
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_160:
+	MOVAB	(R0), -284(FP)
+	MOVAB	-270(FP), -280(FP)
+	MOVL	#255, -276(FP)
+	CALLG	-288(FP), G^POC_FILE_NAME
+	MOVW	R0, -14(FP)
+; line 293
+	TSTW	-14(FP)
+	BGTR	L_162
+	JMP	L^L_161
+L_162:
+; line 293
+	MOVL	#2, -284(FP)
+	MOVAB	-270(FP), -280(FP)
+	CVTWL	-14(FP), -276(FP)
+	CALLG	-284(FP), G^POC_ERASE
+	MOVW	R0, -14(FP)
+L_161:
+L_155:
 	RET
 ; PROCEDURE NewFile
 FILES_NEWFILE_TR92216I:
 	.WORD	^M<R2,R3,R4,R5>
 	SUBL2	#16, SP
 	CLRL	-4(FP)
-; line 210
+; line 300
 	MOVL	#2, -16(FP)
-	MOVL	#1568, -12(FP)
+	MOVL	#1824, -12(FP)
 	MOVAB	FILES_FILEDESC_D5IT3QTT, -8(FP)
 	CALLG	-16(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
 	MOVL	R0, -4(FP)
-; line 211
+; line 301
 	MOVL	-4(FP), R0
-	BNEQ	L_113
+	BNEQ	L_163
 	PUSHL	#16
-	PUSHL	#211
+	PUSHL	#301
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_113:
+L_163:
 	MOVAB	1280(R0), -8(FP)
 	LOCC	#0, #256, @4(AP)
 	SUBL3	R0, #256, R0
 	CMPL	R0, #255
-	BLEQU	L_114
+	BLEQU	L_164
 	MOVL	#255, R0
-L_114:
+L_164:
 	ADDL3	#1, R0, R1
 	MOVC5	R0, @4(AP), #0, R1, @-8(FP)
-; line 212
+; line 302
 	MOVL	-4(FP), R0
-	BNEQ	L_115
+	BNEQ	L_165
 	PUSHL	#5
-	PUSHL	#212
+	PUSHL	#302
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_115:
-	MOVL	#-1, 1552(R0)
-; line 213
+L_165:
+	MOVL	#-1, 1808(R0)
+; line 303
+	MOVL	#2, -16(FP)
+	MOVL	-4(FP), -12(FP)
+	MOVAB	FILES_FINALIZE_5B9M7GAG, -8(FP)
+	CALLG	-16(FP), G^GARBAGECOLLECTEDHEAP_R_3GIL0OCO
+; line 304
 	MOVL	-4(FP), R0
 	RET
 	PUSHL	#3
-	PUSHL	#214
+	PUSHL	#305
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -1080,61 +1491,822 @@ L_115:
 	PUSHL	R0
 	MOVL	4(AP), R1
 	MOVL	-4(FP), R3
-L_119:
+L_176:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_120
+	BLEQU	L_177
 	MOVL	#65535, R0
-L_120:
+L_177:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_119
+	BNEQ	L_176
 	ADDL2	#4, SP
-; line 221
+; line 313
 	MOVL	#4, -288(FP)
 	MOVL	-4(FP), -284(FP)
 	MOVL	8(AP), -280(FP)
 	MOVAB	-264(FP), -276(FP)
 	MOVAB	-266(FP), -272(FP)
 	CALLG	-288(FP), FILES_COPYNAME_GQO9HAN4
-	BLBC	R0, L_117
-	JMP	L^L_116
-L_117:
-; line 221
+	BLBC	R0, L_167
+	JMP	L^L_166
+L_167:
+; line 313
 	MOVL	#3, -284(FP)
 	MOVAB	L_STR_5, -280(FP)
 	MOVL	#19, -276(FP)
 	CLRL	-272(FP)
 	CALLG	-284(FP), FILES_FAIL_PNHATUQQ
-L_116:
-; line 222
+L_166:
+; line 314
 	MOVL	#1, -276(FP)
 	MOVAB	-264(FP), -272(FP)
 	CALLG	-276(FP), FILES_NEWFILE_TR92216I
 	MOVL	R0, -8(FP)
-; line 223
+; line 315
 	MOVL	-8(FP), R0
-	BNEQ	L_118
+	BNEQ	L_168
 	PUSHL	#5
-	PUSHL	#223
+	PUSHL	#315
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_118:
-	MOVB	#1, 1536(R0)
-; line 224
+L_168:
+	MOVB	#1, 1792(R0)
+; line 316
+	MOVL	#4, -288(FP)
+	MOVAB	-264(FP), -284(FP)
+	CVTWL	-266(FP), -280(FP)
+	MOVL	-8(FP), R0
+	BNEQ	L_169
+	PUSHL	#32
+	PUSHL	#316
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_169:
+	MOVAB	1536(R0), -276(FP)
+	MOVL	#255, -272(FP)
+	CALLG	-288(FP), G^POC_EXPAND_NAME
+	MOVW	R0, -266(FP)
+; line 317
+	TSTW	-266(FP)
+	BGEQ	L_172
+	JMP	L^L_171
+L_172:
+; line 317
+	MOVL	-8(FP), R0
+	BNEQ	L_173
+	PUSHL	#20
+	PUSHL	#317
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_173:
+	CVTWL	-266(FP), R1
+	CMPL	R1, #255
+	BLEQU	L_174
+	PUSHL	#35
+	PUSHL	#317
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_174:
+	CLRB	1536(R0)[R1]
+	JMP	L^L_170
+L_171:
+; line 318
+	MOVL	-8(FP), R0
+	BNEQ	L_175
+	PUSHL	#10
+	PUSHL	#318
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_175:
+	MOVC3	#256, -264(FP), 1536(R0)
+L_170:
+; line 320
 	MOVL	-8(FP), R0
 	RET
 	PUSHL	#3
-	PUSHL	#225
+	PUSHL	#321
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE OpenOld
+FILES_OPENOLD_9TEVBQCV:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#312, SP
+	MOVC5	#0, (SP), #0, #280, -280(FP)
+; line 328
+	MOVL	#4, -300(FP)
+	MOVL	8(AP), -296(FP)
+	MOVL	12(AP), -292(FP)
+	MOVAB	-260(FP), -288(FP)
+	MOVAB	-262(FP), -284(FP)
+	CALLG	-300(FP), FILES_COPYNAME_GQO9HAN4
+	BLBC	R0, L_179
+	JMP	L^L_178
+L_179:
+; line 328
+	CLRL	R0
+	RET
+L_178:
+; line 329
+	MOVL	#1, -288(FP)
+	MOVAB	-260(FP), -284(FP)
+	CALLG	-288(FP), FILES_NEWFILE_TR92216I
+	MOVL	R0, -4(FP)
+; line 330
+	MOVL	#4, -300(FP)
+	MOVL	-4(FP), R0
+	BNEQ	L_181
+	PUSHL	#27
+	PUSHL	#330
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_181:
+	MOVAB	(R0), -296(FP)
+	MOVL	4(AP), -292(FP)
+	MOVL	#2, -312(FP)
+	MOVL	4(AP), -308(FP)
+	MOVL	#256, -304(FP)
+	CALLG	-312(FP), FILES_LENGTH0X_2G8N39EM
+	CVTWL	R0, -288(FP)
+	MOVAB	-276(FP), -284(FP)
+	CALLG	-300(FP), G^POC_FILE_OPEN
+	BICB3	#254, R0, R0
+	BLBC	R0, L_182
+	JMP	L^L_180
+L_182:
+; line 330
+	CLRL	R0
+	RET
+L_180:
+; line 331
+	MOVL	-4(FP), R0
+	BNEQ	L_183
+	PUSHL	#5
+	PUSHL	#331
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_183:
+	MOVB	#1, 1794(R0)
+; line 331
+	MOVL	-4(FP), R0
+	BNEQ	L_184
+	PUSHL	#21
+	PUSHL	#331
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_184:
+	MOVB	#1, 1793(R0)
+; line 332
+	CMPL	-276(FP), #1
+	BEQL	L_187
+	JMP	L^L_186
+L_187:
+; line 333
+	MOVL	-272(FP), -280(FP)
+; line 334
+	TSTL	-280(FP)
+	BGTR	L_189
+	JMP	L^L_188
+L_189:
+; line 334
+	MOVL	-4(FP), R0
+	BNEQ	L_190
+	PUSHL	#25
+	PUSHL	#334
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_190:
+	SUBL3	#1, -280(FP), R1
+	MULL2	#512, R1
+	ADDL3	-268(FP), R1, 1800(R0)
+L_188:
+	JMP	L^L_185
+L_186:
+; line 336
+	MOVL	-4(FP), R0
+	BNEQ	L_191
+	PUSHL	#7
+	PUSHL	#336
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_191:
+	MOVB	#1, 1797(R0)
+; line 337
+	MOVL	-4(FP), R0
+	BNEQ	L_192
+	PUSHL	#11
+	PUSHL	#337
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_192:
+	MOVL	#2, -292(FP)
+	MOVL	#32767, -288(FP)
+	CLRL	-284(FP)
+	MOVL	R0, R2
+	CALLG	-292(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	MOVL	R0, 1812(R2)
+; line 338
+L_193:
+	MOVL	#1, -288(FP)
+	MOVL	-4(FP), -284(FP)
+	CALLG	-288(FP), FILES_NEXTRECORD_S2U6KOMU
+	BLBS	R0, L_195
+	JMP	L^L_194
+L_195:
+	JMP	L^L_193
+L_194:
+; line 339
+	MOVL	-4(FP), R0
+	BNEQ	L_196
+	PUSHL	#7
+	PUSHL	#339
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_196:
+	MOVL	-4(FP), R1
+	BNEQ	L_197
+	PUSHL	#19
+	PUSHL	#339
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_197:
+	MOVL	-4(FP), R2
+	BNEQ	L_198
+	PUSHL	#35
+	PUSHL	#339
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_198:
+	ADDL3	1820(R2), 1816(R1), 1800(R0)
+; line 340
+	MOVL	#1, -288(FP)
+	MOVL	-4(FP), -284(FP)
+	CALLG	-288(FP), FILES_REWIND_GS26UO7H
+L_185:
+; line 342
+	MOVL	-4(FP), R0
+	BNEQ	L_199
+	PUSHL	#5
+	PUSHL	#342
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_199:
+	MOVL	-4(FP), R1
+	BNEQ	L_200
+	PUSHL	#17
+	PUSHL	#342
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_200:
+	MOVL	1800(R1), 1804(R0)
+; line 343
+	MOVL	-4(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#344
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE HasDirectory
+FILES_HASDIRECTORY_OGGGHDOH:
+	.WORD	^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+; line 351
+	CLRL	-4(FP)
+; line 352
+L_201:
+	MOVL	8(AP), R0
+	CMPL	-4(FP), R0
+	BLSS	L_203
+	JMP	L^L_202
+L_203:
+	MOVL	-4(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_204
+	PUSHL	#35
+	PUSHL	#352
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_204:
+	TSTB	@4(AP)[R0]
+	BNEQ	L_205
+	JMP	L^L_202
+L_205:
+; line 353
+	MOVL	-4(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_208
+	PUSHL	#16
+	PUSHL	#353
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_208:
+	CMPB	@4(AP)[R0], #58
+	BNEQ	L_209
+	JMP	L^L_207
+L_209:
+	MOVL	-4(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_210
+	PUSHL	#35
+	PUSHL	#353
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_210:
+	CMPB	@4(AP)[R0], #91
+	BNEQ	L_211
+	JMP	L^L_207
+L_211:
+	MOVL	-4(FP), R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_212
+	PUSHL	#54
+	PUSHL	#353
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_212:
+	CMPB	@4(AP)[R0], #60
+	BEQL	L_213
+	JMP	L^L_206
+L_213:
+L_207:
+; line 353
+	MOVL	#1, R0
+	RET
+L_206:
+; line 354
+	INCL	-4(FP)
+	JMP	L^L_201
+L_202:
+; line 356
+	CLRL	R0
+	RET
+	PUSHL	#3
+	PUSHL	#357
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE NextDirectory
+FILES_NEXTDIRECTORY_302TMJOE:
+	.WORD	^M<>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+; line 365
+	CLRL	-4(FP)
+; line 366
+	MOVL	FILES_SEARCHPATH_G34TCHAH, R0
+	BNEQ	L_214
+	PUSHL	#11
+	PUSHL	#366
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_214:
+	MOVL	@4(AP), R1
+	CMPL	R1, (R0)
+	BLSSU	L_215
+	PUSHL	#22
+	PUSHL	#366
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_215:
+	MOVB	4(R0)[R1], -5(FP)
+; line 367
+L_216:
+	CMPB	-5(FP), #32
+	BNEQ	L_219
+	JMP	L^L_218
+L_219:
+	CMPB	-5(FP), #59
+	BEQL	L_220
+	JMP	L^L_217
+L_220:
+L_218:
+; line 367
+	INCL	@4(AP)
+; line 367
+	MOVL	FILES_SEARCHPATH_G34TCHAH, R0
+	BNEQ	L_221
+	PUSHL	#60
+	PUSHL	#367
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_221:
+	MOVL	@4(AP), R1
+	CMPL	R1, (R0)
+	BLSSU	L_222
+	PUSHL	#71
+	PUSHL	#367
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_222:
+	MOVB	4(R0)[R1], -5(FP)
+	JMP	L^L_216
+L_217:
+; line 368
+	CMPB	-5(FP), #126
+	BEQL	L_224
+	JMP	L^L_223
+L_224:
+; line 369
+	INCL	@4(AP)
+; line 369
+	MOVL	FILES_SEARCHPATH_G34TCHAH, R0
+	BNEQ	L_225
+	PUSHL	#28
+	PUSHL	#369
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_225:
+	MOVL	@4(AP), R1
+	CMPL	R1, (R0)
+	BLSSU	L_226
+	PUSHL	#39
+	PUSHL	#369
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_226:
+	MOVB	4(R0)[R1], -5(FP)
+; line 370
+L_227:
+	MOVL	-4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_229
+	PUSHL	#19
+	PUSHL	#370
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_229:
+	TSTB	FILES_HOME_GQ76VUP5[R0]
+	BNEQ	L_230
+	JMP	L^L_228
+L_230:
+	CMPL	-4(FP), #255
+	BLSS	L_231
+	JMP	L^L_228
+L_231:
+; line 370
+	MOVL	-4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_232
+	PUSHL	#58
+	PUSHL	#370
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_232:
+	MOVL	-4(FP), R1
+	CMPL	R1, #255
+	BLEQU	L_233
+	PUSHL	#69
+	PUSHL	#370
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_233:
+	MOVB	FILES_HOME_GQ76VUP5[R1], @8(AP)[R0]
+; line 370
+	INCL	-4(FP)
+	JMP	L^L_227
+L_228:
+; line 372
+	CMPB	-5(FP), #91
+	BEQL	L_235
+	JMP	L^L_234
+L_235:
+	MOVL	FILES_SEARCHPATH_G34TCHAH, R0
+	BNEQ	L_236
+	PUSHL	#24
+	PUSHL	#372
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_236:
+	ADDL3	#1, @4(AP), R1
+	CMPL	R1, (R0)
+	BLSSU	L_237
+	PUSHL	#44
+	PUSHL	#372
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_237:
+	CMPB	4(R0)[R1], #46
+	BEQL	L_238
+	JMP	L^L_234
+L_238:
+	TSTL	-4(FP)
+	BGTR	L_239
+	JMP	L^L_234
+L_239:
+	SUBL3	#1, -4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_240
+	PUSHL	#75
+	PUSHL	#372
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_240:
+	CMPB	@8(AP)[R0], #93
+	BEQL	L_241
+	JMP	L^L_234
+L_241:
+; line 373
+	DECL	-4(FP)
+; line 373
+	INCL	@4(AP)
+; line 373
+	MOVL	FILES_SEARCHPATH_G34TCHAH, R0
+	BNEQ	L_242
+	PUSHL	#38
+	PUSHL	#373
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_242:
+	MOVL	@4(AP), R1
+	CMPL	R1, (R0)
+	BLSSU	L_243
+	PUSHL	#49
+	PUSHL	#373
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_243:
+	MOVB	4(R0)[R1], -5(FP)
+L_234:
+L_223:
+; line 376
+L_244:
+	TSTB	-5(FP)
+	BNEQ	L_246
+	JMP	L^L_245
+L_246:
+	CMPB	-5(FP), #59
+	BNEQ	L_247
+	JMP	L^L_245
+L_247:
+; line 377
+	CMPL	-4(FP), #255
+	BLSS	L_249
+	JMP	L^L_248
+L_249:
+; line 377
+	MOVL	-4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_250
+	PUSHL	#38
+	PUSHL	#377
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_250:
+	MOVB	-5(FP), @8(AP)[R0]
+; line 377
+	INCL	-4(FP)
+L_248:
+; line 378
+	INCL	@4(AP)
+; line 378
+	MOVL	FILES_SEARCHPATH_G34TCHAH, R0
+	BNEQ	L_251
+	PUSHL	#28
+	PUSHL	#378
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_251:
+	MOVL	@4(AP), R1
+	CMPL	R1, (R0)
+	BLSSU	L_252
+	PUSHL	#39
+	PUSHL	#378
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_252:
+	MOVB	4(R0)[R1], -5(FP)
+	JMP	L^L_244
+L_245:
+; line 380
+L_253:
+	TSTL	-4(FP)
+	BGTR	L_255
+	JMP	L^L_254
+L_255:
+	SUBL3	#1, -4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_256
+	PUSHL	#28
+	PUSHL	#380
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_256:
+	CMPB	@8(AP)[R0], #32
+	BEQL	L_257
+	JMP	L^L_254
+L_257:
+; line 380
+	DECL	-4(FP)
+	JMP	L^L_253
+L_254:
+; line 381
+	MOVL	-4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_258
+	PUSHL	#9
+	PUSHL	#381
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_258:
+	CLRB	@8(AP)[R0]
+	RET
+; PROCEDURE JoinPath
+FILES_JOINPATH_IUIM2R9D:
+	.WORD	^M<>
+	SUBL2	#28, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+; line 389
+	MOVL	#2, -28(FP)
+	MOVL	4(AP), -24(FP)
+	MOVL	#256, -20(FP)
+	CALLG	-28(FP), FILES_LENGTH0X_2G8N39EM
+	CVTWL	R0, -4(FP)
+; line 390
+	MOVL	#2, -28(FP)
+	MOVL	8(AP), -24(FP)
+	MOVL	12(AP), -20(FP)
+	CALLG	-28(FP), FILES_LENGTH0X_2G8N39EM
+	CVTWL	R0, -12(FP)
+; line 391
+	ADDL3	#1, -4(FP), R0
+	ADDL2	-12(FP), R0
+	CMPL	R0, #256
+	BGEQ	L_260
+	JMP	L^L_259
+L_260:
+; line 391
+	CLRL	R0
+	RET
+L_259:
+; line 392
+	CLRL	-8(FP)
+	SUBL3	#1, -4(FP), R0
+	MOVL	R0, -20(FP)
+L_261:
+	CMPL	-8(FP), -20(FP)
+	BLEQ	L_263
+	JMP	L^L_262
+L_263:
+; line 392
+	MOVL	-8(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_264
+	PUSHL	#33
+	PUSHL	#392
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_264:
+	MOVL	-8(FP), R1
+	CMPL	R1, #255
+	BLEQU	L_265
+	PUSHL	#43
+	PUSHL	#392
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_265:
+	MOVB	@4(AP)[R1], @16(AP)[R0]
+	INCL	-8(FP)
+	JMP	L^L_261
+L_262:
+; line 393
+	SUBL3	#1, -4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_266
+	PUSHL	#19
+	PUSHL	#393
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_266:
+	MOVB	@4(AP)[R0], -13(FP)
+; line 394
+	CMPB	-13(FP), #93
+	BNEQ	L_268
+	JMP	L^L_267
+L_268:
+	CMPB	-13(FP), #62
+	BNEQ	L_269
+	JMP	L^L_267
+L_269:
+	CMPB	-13(FP), #58
+	BNEQ	L_270
+	JMP	L^L_267
+L_270:
+; line 394
+	MOVL	-4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_271
+	PUSHL	#61
+	PUSHL	#394
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_271:
+	MOVB	#58, @16(AP)[R0]
+; line 394
+	INCL	-4(FP)
+L_267:
+; line 395
+	CLRL	-8(FP)
+	SUBL3	#1, -12(FP), R0
+	MOVL	R0, -20(FP)
+L_272:
+	CMPL	-8(FP), -20(FP)
+	BLEQ	L_274
+	JMP	L^L_273
+L_274:
+; line 395
+	ADDL3	-8(FP), -4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_275
+	PUSHL	#35
+	PUSHL	#395
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_275:
+	MOVL	-8(FP), R1
+	CMPL	R1, 12(AP)
+	BLSSU	L_276
+	PUSHL	#48
+	PUSHL	#395
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_276:
+	MOVB	@8(AP)[R1], @16(AP)[R0]
+	INCL	-8(FP)
+	JMP	L^L_272
+L_273:
+; line 396
+	ADDL3	-12(FP), -4(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_277
+	PUSHL	#12
+	PUSHL	#396
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_277:
+	CLRB	@16(AP)[R0]
+; line 397
+	MOVL	#1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#398
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Old
 	.ENTRY	FILES_OLD_D6MQ7SJ7, ^M<R2,R3,R4,R5>
-	SUBL2	#304, SP
-	MOVC5	#0, (SP), #0, #284, -284(FP)
+	SUBL2	#548, SP
+	MOVC5	#0, (SP), #0, #528, -528(FP)
 	MOVL	8(AP), R0
 	ADDL3	#3, R0, R1
 	BICL2	#3, R1
@@ -1143,193 +2315,100 @@ L_118:
 	PUSHL	R0
 	MOVL	4(AP), R1
 	MOVL	-4(FP), R3
-L_144:
+L_291:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_145
+	BLEQU	L_292
 	MOVL	#65535, R0
-L_145:
+L_292:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_144
+	BNEQ	L_291
 	ADDL2	#4, SP
-; line 232
-	MOVL	#4, -304(FP)
-	MOVL	-4(FP), -300(FP)
-	MOVL	8(AP), -296(FP)
-	MOVAB	-264(FP), -292(FP)
-	MOVAB	-266(FP), -288(FP)
-	CALLG	-304(FP), FILES_COPYNAME_GQO9HAN4
-	BLBC	R0, L_122
-	JMP	L^L_121
-L_122:
-; line 232
-	CLRL	R0
-	RET
-L_121:
-; line 233
-	MOVL	#1, -292(FP)
-	MOVAB	-264(FP), -288(FP)
-	CALLG	-292(FP), FILES_NEWFILE_TR92216I
+; line 405
+	CLRL	-8(FP)
+; line 406
+	MOVL	#4, -548(FP)
+	MOVL	-4(FP), -544(FP)
+	MOVL	8(AP), -540(FP)
+	MOVAB	-264(FP), -536(FP)
+	MOVAB	-526(FP), -532(FP)
+	CALLG	-548(FP), FILES_COPYNAME_GQO9HAN4
+	BLBS	R0, L_279
+	JMP	L^L_278
+L_279:
+; line 407
+	MOVL	#2, -540(FP)
+	MOVL	-4(FP), -536(FP)
+	MOVL	8(AP), -532(FP)
+	CALLG	-540(FP), FILES_HASDIRECTORY_OGGGHDOH
+	BLBC	R0, L_283
+	JMP	L^L_282
+L_283:
+	TSTL	FILES_SEARCHPATH_G34TCHAH
+	BEQL	L_284
+	JMP	L^L_281
+L_284:
+L_282:
+; line 408
+	MOVL	#3, -544(FP)
+	MOVAB	-264(FP), -540(FP)
+	MOVL	-4(FP), -536(FP)
+	MOVL	8(AP), -532(FP)
+	CALLG	-544(FP), FILES_OPENOLD_9TEVBQCV
 	MOVL	R0, -8(FP)
-; line 234
-	MOVL	#4, -304(FP)
-	MOVL	-8(FP), R0
-	BNEQ	L_124
-	PUSHL	#27
-	PUSHL	#234
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_124:
-	MOVAB	(R0), -300(FP)
-	MOVL	-8(FP), R0
-	BNEQ	L_125
-	PUSHL	#38
-	PUSHL	#234
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_125:
-	MOVAB	1280(R0), -296(FP)
-	CVTWL	-266(FP), -292(FP)
-	MOVAB	-280(FP), -288(FP)
-	CALLG	-304(FP), G^POC_FILE_OPEN
-	BICB3	#254, R0, R0
-	BLBC	R0, L_126
-	JMP	L^L_123
-L_126:
-; line 234
-	CLRL	R0
-	RET
-L_123:
-; line 235
-	MOVL	-8(FP), R0
-	BNEQ	L_127
-	PUSHL	#5
-	PUSHL	#235
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_127:
-	MOVB	#1, 1538(R0)
-; line 236
-	CMPL	-280(FP), #1
-	BEQL	L_130
-	JMP	L^L_129
-L_130:
-; line 237
-	MOVL	-276(FP), -284(FP)
-; line 238
-	TSTL	-284(FP)
-	BGTR	L_132
-	JMP	L^L_131
-L_132:
-; line 238
-	MOVL	-8(FP), R0
-	BNEQ	L_133
-	PUSHL	#25
-	PUSHL	#238
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_133:
-	SUBL3	#1, -284(FP), R1
-	MULL2	#512, R1
-	ADDL3	-272(FP), R1, 1544(R0)
-L_131:
-	JMP	L^L_128
-L_129:
-; line 240
-	MOVL	-8(FP), R0
-	BNEQ	L_134
-	PUSHL	#7
-	PUSHL	#240
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_134:
-	MOVB	#1, 1541(R0)
-; line 241
-	MOVL	-8(FP), R0
-	BNEQ	L_135
-	PUSHL	#11
-	PUSHL	#241
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_135:
-	MOVL	#2, -296(FP)
-	MOVL	#32767, -292(FP)
-	CLRL	-288(FP)
-	MOVL	R0, R2
-	CALLG	-296(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
-	MOVL	R0, 1556(R2)
-; line 242
-L_136:
-	MOVL	#1, -292(FP)
-	MOVL	-8(FP), -288(FP)
-	CALLG	-292(FP), FILES_NEXTRECORD_S2U6KOMU
-	BLBS	R0, L_138
-	JMP	L^L_137
-L_138:
-	JMP	L^L_136
-L_137:
-; line 243
-	MOVL	-8(FP), R0
-	BNEQ	L_139
-	PUSHL	#7
-	PUSHL	#243
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_139:
-	MOVL	-8(FP), R1
-	BNEQ	L_140
-	PUSHL	#19
-	PUSHL	#243
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_140:
-	MOVL	-8(FP), R2
-	BNEQ	L_141
-	PUSHL	#35
-	PUSHL	#243
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_141:
-	ADDL3	1564(R2), 1560(R1), 1544(R0)
-; line 244
-	MOVL	#1, -292(FP)
-	MOVL	-8(FP), -288(FP)
-	CALLG	-292(FP), FILES_REWIND_GS26UO7H
-L_128:
-; line 246
-	MOVL	-8(FP), R0
-	BNEQ	L_142
-	PUSHL	#5
-	PUSHL	#246
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_142:
-	MOVL	-8(FP), R1
-	BNEQ	L_143
-	PUSHL	#17
-	PUSHL	#246
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_143:
-	MOVL	1544(R1), 1548(R0)
-; line 247
+	JMP	L^L_280
+L_281:
+; line 410
+	CLRL	-524(FP)
+; line 411
+	MOVL	#2, -540(FP)
+	MOVAB	-524(FP), -536(FP)
+	MOVAB	-520(FP), -532(FP)
+	CALLG	-540(FP), FILES_NEXTDIRECTORY_302TMJOE
+; line 412
+L_285:
+	TSTL	-8(FP)
+	BEQL	L_287
+	JMP	L^L_286
+L_287:
+	TSTB	-520(FP)
+	BNEQ	L_288
+	JMP	L^L_286
+L_288:
+; line 413
+	MOVL	#4, -548(FP)
+	MOVAB	-520(FP), -544(FP)
+	MOVL	-4(FP), -540(FP)
+	MOVL	8(AP), -536(FP)
+	MOVAB	-264(FP), -532(FP)
+	CALLG	-548(FP), FILES_JOINPATH_IUIM2R9D
+	BLBS	R0, L_290
+	JMP	L^L_289
+L_290:
+; line 413
+	MOVL	#3, -544(FP)
+	MOVAB	-264(FP), -540(FP)
+	MOVL	-4(FP), -536(FP)
+	MOVL	8(AP), -532(FP)
+	CALLG	-544(FP), FILES_OPENOLD_9TEVBQCV
+	MOVL	R0, -8(FP)
+L_289:
+; line 414
+	MOVL	#2, -540(FP)
+	MOVAB	-524(FP), -536(FP)
+	MOVAB	-520(FP), -532(FP)
+	CALLG	-540(FP), FILES_NEXTDIRECTORY_302TMJOE
+	JMP	L^L_285
+L_286:
+L_280:
+L_278:
+; line 418
 	MOVL	-8(FP), R0
 	RET
 	PUSHL	#3
-	PUSHL	#248
+	PUSHL	#419
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -1338,247 +2417,597 @@ L_143:
 	SUBL2	#20, SP
 	CLRL	-4(FP)
 	MOVL	4(AP), -4(FP)
-; line 255
+; line 426
 	MOVL	-4(FP), R0
-	BNEQ	L_147
+	BNEQ	L_294
 	PUSHL	#8
-	PUSHL	#255
+	PUSHL	#426
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_147:
-	BLBS	1536(R0), L_148
-	JMP	L^L_146
-L_148:
-; line 255
+L_294:
+	BLBS	1792(R0), L_295
+	JMP	L^L_293
+L_295:
+; line 426
 	MOVL	#1, -12(FP)
 	MOVL	-4(FP), -8(FP)
 	CALLG	-12(FP), FILES_CREATE_J92O55VE
-; line 255
+L_293:
+; line 427
 	MOVL	#1, -12(FP)
 	MOVL	-4(FP), -8(FP)
 	CALLG	-12(FP), FILES_FLUSH_U269N2GS
-L_146:
-; line 256
+; line 428
 	MOVL	-4(FP), R0
-	BNEQ	L_150
+	BNEQ	L_297
 	PUSHL	#8
-	PUSHL	#256
+	PUSHL	#428
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_150:
-	BLBS	1538(R0), L_151
-	JMP	L^L_149
-L_151:
-; line 257
+L_297:
+	BLBS	1794(R0), L_298
+	JMP	L^L_296
+L_298:
+; line 429
 	MOVL	#1, -12(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_153
+	BNEQ	L_300
 	PUSHL	#30
-	PUSHL	#257
+	PUSHL	#429
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_153:
+L_300:
 	MOVAB	(R0), -8(FP)
 	CALLG	-12(FP), G^POC_FILE_CLOSE
 	BICB3	#254, R0, R0
-	BLBC	R0, L_154
-	JMP	L^L_152
-L_154:
-; line 257
+	BLBC	R0, L_301
+	JMP	L^L_299
+L_301:
+; line 429
 	MOVL	#3, -20(FP)
-	MOVAB	L_STR_3, -16(FP)
+	MOVAB	L_STR_4, -16(FP)
 	MOVL	#19, -12(FP)
 	MOVL	-4(FP), -8(FP)
 	CALLG	-20(FP), FILES_FAIL_PNHATUQQ
-L_152:
-; line 258
+L_299:
+; line 430
 	MOVL	-4(FP), R0
-	BNEQ	L_155
+	BNEQ	L_302
 	PUSHL	#7
-	PUSHL	#258
+	PUSHL	#430
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_155:
-	CLRB	1538(R0)
-L_149:
-; line 260
+L_302:
+	CLRB	1794(R0)
+; line 430
 	MOVL	-4(FP), R0
-	BNEQ	L_156
-	PUSHL	#5
-	PUSHL	#260
+	BNEQ	L_303
+	PUSHL	#24
+	PUSHL	#430
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_156:
-	MOVB	#1, 1539(R0)
+L_303:
+	CLRB	1795(R0)
+L_296:
 	RET
 ; PROCEDURE Register
 	.ENTRY	FILES_REGISTER_L3G5MIL3, ^M<>
 	SUBL2	#32, SP
 	CLRL	-4(FP)
 	MOVL	4(AP), -4(FP)
-; line 267
+; line 438
 	MOVL	#1, -12(FP)
 	MOVL	-4(FP), -8(FP)
 	CALLG	-12(FP), FILES_CLOSE_89JV6UJ6
-; line 268
+; line 439
 	MOVL	-4(FP), R0
-	BNEQ	L_158
+	BNEQ	L_305
 	PUSHL	#8
-	PUSHL	#268
+	PUSHL	#439
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_158:
-	BLBS	1536(R0), L_159
-	JMP	L^L_157
-L_159:
-; line 269
+L_305:
+	BLBS	1792(R0), L_306
+	JMP	L^L_304
+L_306:
+; line 440
 	MOVL	#3, -20(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_161
+	BNEQ	L_308
 	PUSHL	#31
-	PUSHL	#269
+	PUSHL	#440
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_161:
+L_308:
 	MOVAB	(R0), -16(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_162
+	BNEQ	L_309
 	PUSHL	#42
-	PUSHL	#269
+	PUSHL	#440
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_162:
-	MOVAB	1280(R0), -12(FP)
+L_309:
+	MOVAB	1536(R0), -12(FP)
 	MOVL	#2, -32(FP)
 	MOVL	-4(FP), R0
-	BNEQ	L_163
-	PUSHL	#59
-	PUSHL	#269
+	BNEQ	L_310
+	PUSHL	#67
+	PUSHL	#440
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_163:
-	MOVAB	1280(R0), -28(FP)
+L_310:
+	MOVAB	1536(R0), -28(FP)
 	MOVL	#256, -24(FP)
 	CALLG	-32(FP), FILES_LENGTH0X_2G8N39EM
 	CVTWL	R0, -8(FP)
 	CALLG	-20(FP), G^POC_FILE_RENAME
 	BICB3	#254, R0, R0
-	BLBC	R0, L_164
-	JMP	L^L_160
-L_164:
-; line 270
+	BLBC	R0, L_311
+	JMP	L^L_307
+L_311:
+; line 441
 	MOVL	#3, -20(FP)
 	MOVAB	L_STR_6, -16(FP)
 	MOVL	#55, -12(FP)
 	MOVL	-4(FP), -8(FP)
 	CALLG	-20(FP), FILES_FAIL_PNHATUQQ
-L_160:
-; line 272
+L_307:
+; line 443
 	MOVL	-4(FP), R0
-	BNEQ	L_165
+	BNEQ	L_312
 	PUSHL	#7
-	PUSHL	#272
+	PUSHL	#443
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_165:
-	CLRB	1536(R0)
-L_157:
+L_312:
+	CLRB	1792(R0)
+L_304:
 	RET
 ; PROCEDURE Length
 	.ENTRY	FILES_LENGTH_QP2ONRBU, ^M<>
-; line 279
+; line 450
 	MOVL	4(AP), R0
-	BNEQ	L_166
+	BNEQ	L_313
 	PUSHL	#12
-	PUSHL	#279
+	PUSHL	#450
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_166:
-	MOVL	1544(R0), R0
+L_313:
+	MOVL	1800(R0), R0
 	RET
 	PUSHL	#3
-	PUSHL	#280
+	PUSHL	#451
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
+; PROCEDURE Purge
+	.ENTRY	FILES_PURGE_8PLT662D, ^M<>
+	SUBL2	#28, SP
+	CLRQ	-8(FP)
+	MOVL	4(AP), -4(FP)
+; line 458
+	MOVL	-4(FP), R0
+	BNEQ	L_315
+	PUSHL	#8
+	PUSHL	#458
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_315:
+	BLBS	1793(R0), L_316
+	JMP	L^L_314
+L_316:
+; line 459
+	MOVL	#1, -16(FP)
+	MOVL	-4(FP), -12(FP)
+	CALLG	-16(FP), FILES_MAKEWRITABLE_J9UJDL08
+; line 460
+	CLRL	-8(FP)
+; line 461
+	MOVL	#4, -28(FP)
+	MOVL	-4(FP), R0
+	BNEQ	L_318
+	PUSHL	#33
+	PUSHL	#461
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_318:
+	MOVAB	(R0), -24(FP)
+	MOVAB	-8(FP), -20(FP)
+	MOVL	-4(FP), R0
+	BNEQ	L_319
+	PUSHL	#51
+	PUSHL	#461
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_319:
+	MOVAB	768(R0), -16(FP)
+	CLRL	-12(FP)
+	CALLG	-28(FP), G^POC_FILE_TRUNCATE
+	BICB3	#254, R0, R0
+	BLBC	R0, L_320
+	JMP	L^L_317
+L_320:
+; line 461
+	MOVL	#3, -24(FP)
+	MOVAB	L_STR_7, -20(FP)
+	MOVL	#19, -16(FP)
+	MOVL	-4(FP), -12(FP)
+	CALLG	-24(FP), FILES_FAIL_PNHATUQQ
+L_317:
+; line 462
+	MOVL	-4(FP), R0
+	BNEQ	L_321
+	PUSHL	#7
+	PUSHL	#462
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_321:
+	CLRB	1796(R0)
+; line 462
+	MOVL	-4(FP), R0
+	BNEQ	L_322
+	PUSHL	#25
+	PUSHL	#462
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_322:
+	MOVL	#-1, 1808(R0)
+; line 462
+	MOVL	-4(FP), R0
+	BNEQ	L_323
+	PUSHL	#45
+	PUSHL	#462
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_323:
+	CLRL	1804(R0)
+L_314:
+; line 464
+	MOVL	-4(FP), R0
+	BNEQ	L_324
+	PUSHL	#5
+	PUSHL	#464
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_324:
+	CLRL	1800(R0)
+	RET
+; PROCEDURE GetDate
+	.ENTRY	FILES_GETDATE_577IGUK2, ^M<>
+	SUBL2	#52, SP
+	CLRQ	-36(FP)
+	CLRQ	-28(FP)
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVL	4(AP), -4(FP)
+; line 474
+	MOVL	-4(FP), R0
+	BNEQ	L_326
+	PUSHL	#9
+	PUSHL	#474
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_326:
+	BLBC	1793(R0), L_327
+	JMP	L^L_325
+L_327:
+; line 474
+	MOVL	#1, -44(FP)
+	MOVL	-4(FP), -40(FP)
+	CALLG	-44(FP), FILES_CREATE_J92O55VE
+L_325:
+; line 475
+	MOVL	-4(FP), R0
+	BNEQ	L_330
+	PUSHL	#8
+	PUSHL	#475
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_330:
+	BLBS	1795(R0), L_331
+	JMP	L^L_329
+L_331:
+; line 475
+	MOVL	#2, -48(FP)
+	MOVL	8(AP), -44(FP)
+	MOVL	12(AP), -40(FP)
+	CALLG	-48(FP), G^PLATFORM_GETCLOCK_KQ66VPF6
+	JMP	L^L_328
+L_329:
+; line 477
+	MOVL	#1, -44(FP)
+	MOVL	-4(FP), -40(FP)
+	CALLG	-44(FP), FILES_OPEN_IAB23FQ2
+; line 478
+	MOVL	#2, -48(FP)
+	MOVL	-4(FP), R0
+	BNEQ	L_333
+	PUSHL	#33
+	PUSHL	#478
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_333:
+	MOVAB	(R0), -44(FP)
+	MOVAB	-36(FP), -40(FP)
+	CALLG	-48(FP), G^POC_FILE_IDENTITY
+	BICB3	#254, R0, R0
+	BLBC	R0, L_334
+	JMP	L^L_332
+L_334:
+; line 478
+	MOVL	#3, -52(FP)
+	MOVAB	L_STR_8, -48(FP)
+	MOVL	#20, -44(FP)
+	MOVL	-4(FP), -40(FP)
+	CALLG	-52(FP), FILES_FAIL_PNHATUQQ
+L_332:
+; line 479
+	MOVL	#3, -52(FP)
+	MOVAB	-36(FP), -48(FP)
+	MOVL	8(AP), -44(FP)
+	MOVL	12(AP), -40(FP)
+	CALLG	-52(FP), G^PLATFORM_MTIMEASCLOCK_DF0RS1L0
+L_328:
+	RET
+; PROCEDURE GetName
+	.ENTRY	FILES_GETNAME_B5G9DOPL, ^M<R2,R3,R4,R5>
+	SUBL2	#280, SP
+	MOVC5	#0, (SP), #0, #264, -264(FP)
+	MOVL	4(AP), -4(FP)
+; line 489
+	MOVL	-4(FP), R0
+	BNEQ	L_337
+	PUSHL	#9
+	PUSHL	#489
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_337:
+	BLBC	1792(R0), L_338
+	JMP	L^L_336
+L_338:
+; line 489
+	MOVL	-4(FP), R0
+	BNEQ	L_339
+	PUSHL	#27
+	PUSHL	#489
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_339:
+	MOVAB	1280(R0), -268(FP)
+	MOVL	#256, -272(FP)
+	SUBL3	#1, 12(AP), R1
+	CMPL	-272(FP), R1
+	BLEQU	L_340
+	MOVL	R1, -272(FP)
+L_340:
+	MOVAB	@-268(FP), R1
+	MOVL	-272(FP), R2
+L_341:
+	MOVL	R2, R3
+	CMPL	R3, #65535
+	BLEQU	L_342
+	MOVL	#65535, R3
+L_342:
+	LOCC	#0, R3, (R1)
+	BNEQ	L_343
+	SUBL2	R3, R2
+	BNEQ	L_341
+L_343:
+	MOVAB	@-268(FP), R0
+	SUBL3	R0, R1, -(SP)
+	MOVAB	@-268(FP), R1
+	MOVAB	@8(AP), R3
+L_344:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_345
+	MOVL	#65535, R0
+L_345:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_344
+	ADDL2	#4, SP
+	CLRB	(R3)
+	JMP	L^L_335
+L_336:
+; line 490
+	MOVL	-4(FP), R0
+	BNEQ	L_347
+	PUSHL	#11
+	PUSHL	#490
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_347:
+	BLBS	1793(R0), L_348
+	JMP	L^L_346
+L_348:
+; line 491
+	MOVL	#3, -280(FP)
+	MOVL	-4(FP), R0
+	BNEQ	L_349
+	PUSHL	#26
+	PUSHL	#491
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_349:
+	MOVAB	(R0), -276(FP)
+	MOVAB	-260(FP), -272(FP)
+	MOVL	#255, -268(FP)
+	CALLG	-280(FP), G^POC_FILE_NAME
+	MOVW	R0, -262(FP)
+; line 492
+	CVTWL	-262(FP), R0
+	CMPL	R0, #255
+	BLEQU	L_350
+	PUSHL	#17
+	PUSHL	#492
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_350:
+	CLRB	-260(FP)[R0]
+; line 493
+	MOVL	#256, -268(FP)
+	SUBL3	#1, 12(AP), R1
+	CMPL	-268(FP), R1
+	BLEQU	L_351
+	MOVL	R1, -268(FP)
+L_351:
+	MOVAB	-260(FP), R1
+	MOVL	-268(FP), R2
+L_352:
+	MOVL	R2, R3
+	CMPL	R3, #65535
+	BLEQU	L_353
+	MOVL	#65535, R3
+L_353:
+	LOCC	#0, R3, (R1)
+	BNEQ	L_354
+	SUBL2	R3, R2
+	BNEQ	L_352
+L_354:
+	MOVAB	-260(FP), R0
+	SUBL3	R0, R1, -(SP)
+	MOVAB	-260(FP), R1
+	MOVAB	@8(AP), R3
+L_355:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_356
+	MOVL	#65535, R0
+L_356:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_355
+	ADDL2	#4, SP
+	CLRB	(R3)
+	JMP	L^L_335
+L_346:
+; line 494
+	MOVL	12(AP), R0
+	TSTL	R0
+	BGTR	L_357
+	JMP	L^L_335
+L_357:
+; line 494
+	CLRL	R0
+	CMPL	R0, 12(AP)
+	BLSSU	L_358
+	PUSHL	#35
+	PUSHL	#494
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_358:
+	CLRB	@8(AP)[R0]
+L_335:
+	RET
 ; PROCEDURE Set
 	.ENTRY	FILES_SET_D5QHH1BQ, ^M<>
 	SUBL2	#4, SP
 	CLRL	-4(FP)
 	MOVL	16(AP), -4(FP)
-; line 286
+; line 502
 	TSTL	12(AP)
-	BEQL	L_169
-	JMP	L^L_168
-L_169:
-; line 286
+	BEQL	L_361
+	JMP	L^L_360
+L_361:
+; line 502
 	CLRL	-4(FP)
-	JMP	L^L_167
-L_168:
-; line 287
+	JMP	L^L_359
+L_360:
+; line 503
 	MOVL	12(AP), R0
-	BNEQ	L_171
+	BNEQ	L_363
 	PUSHL	#17
-	PUSHL	#287
+	PUSHL	#503
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_171:
-	CMPL	-4(FP), 1544(R0)
-	BGTR	L_172
-	JMP	L^L_170
-L_172:
-; line 287
+L_363:
+	CMPL	-4(FP), 1800(R0)
+	BGTR	L_364
+	JMP	L^L_362
+L_364:
+; line 503
 	MOVL	12(AP), R0
-	BNEQ	L_173
+	BNEQ	L_365
 	PUSHL	#38
-	PUSHL	#287
+	PUSHL	#503
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_173:
-	MOVL	1544(R0), -4(FP)
-	JMP	L^L_167
-L_170:
-; line 288
+L_365:
+	MOVL	1800(R0), -4(FP)
+	JMP	L^L_359
+L_362:
+; line 504
 	TSTL	-4(FP)
-	BLSS	L_174
-	JMP	L^L_167
-L_174:
-; line 288
+	BLSS	L_366
+	JMP	L^L_359
+L_366:
+; line 504
 	CLRL	-4(FP)
-L_167:
-; line 290
+L_359:
+; line 506
 	MOVL	4(AP), R0
 	MOVL	12(AP), 8(R0)
-; line 291
+; line 507
 	MOVL	4(AP), R0
 	MOVL	-4(FP), 12(R0)
-; line 292
+; line 508
 	MOVL	4(AP), R0
 	CLRB	4(R0)
-; line 293
+; line 509
 	CLRL	@4(AP)
 	RET
+; PROCEDURE Pos
+	.ENTRY	FILES_POS_D5SHKL7G, ^M<>
+; line 515
+	MOVL	4(AP), R0
+	MOVL	12(R0), R0
+	RET
+	PUSHL	#3
+	PUSHL	#516
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
 ; PROCEDURE Base
 	.ENTRY	FILES_BASE_LRTUOUBN, ^M<>
-; line 299
+; line 521
 	MOVL	4(AP), R0
 	MOVL	8(R0), R0
 	RET
 	PUSHL	#3
-	PUSHL	#300
+	PUSHL	#522
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -1586,207 +3015,324 @@ L_167:
 	.ENTRY	FILES_READ_4SSNK3R2, ^M<R2,R3>
 	SUBL2	#20, SP
 	CLRL	-4(FP)
-; line 307
+; line 529
 	MOVL	4(AP), R0
 	MOVL	8(R0), -4(FP)
-; line 308
+; line 530
 	MOVL	4(AP), R0
 	MOVL	-4(FP), R1
-	BNEQ	L_177
+	BNEQ	L_369
 	PUSHL	#21
-	PUSHL	#308
+	PUSHL	#530
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_177:
-	CMPL	12(R0), 1544(R1)
-	BLSS	L_178
-	JMP	L^L_176
-L_178:
-; line 309
+L_369:
+	CMPL	12(R0), 1800(R1)
+	BLSS	L_370
+	JMP	L^L_368
+L_370:
+; line 531
 	MOVL	-4(FP), R0
-	BNEQ	L_181
+	BNEQ	L_373
 	PUSHL	#10
-	PUSHL	#309
+	PUSHL	#531
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_181:
-	BLBS	1541(R0), L_182
-	JMP	L^L_180
-L_182:
-; line 309
+L_373:
+	BLBS	1797(R0), L_374
+	JMP	L^L_372
+L_374:
+; line 531
 	MOVL	#3, -20(FP)
 	MOVL	-4(FP), -16(FP)
 	MOVL	4(AP), R0
 	MOVL	12(R0), -12(FP)
 	MOVL	12(AP), -8(FP)
 	CALLG	-20(FP), FILES_RECORDBYTE_EI837RMD
-	JMP	L^L_179
-L_180:
-; line 310
+	JMP	L^L_371
+L_372:
+; line 532
 	MOVL	#2, -16(FP)
 	MOVL	-4(FP), -12(FP)
 	MOVL	4(AP), R0
 	MOVL	12(R0), -8(FP)
 	CALLG	-16(FP), FILES_LOAD_JL3I394I
-; line 310
+; line 532
 	MOVL	-4(FP), R0
-	BNEQ	L_183
+	BNEQ	L_375
 	PUSHL	#38
-	PUSHL	#310
+	PUSHL	#532
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_183:
+L_375:
 	MOVL	4(AP), R1
 	MOVL	-4(FP), R2
-	BNEQ	L_184
+	BNEQ	L_376
 	PUSHL	#59
-	PUSHL	#310
+	PUSHL	#532
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_184:
-	SUBL3	1552(R2), 12(R1), R3
+L_376:
+	SUBL3	1808(R2), 12(R1), R3
 	CMPL	R3, #511
-	BLEQU	L_185
+	BLEQU	L_377
 	PUSHL	#57
-	PUSHL	#310
+	PUSHL	#532
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_185:
+L_377:
 	MOVB	768(R0)[R3], @12(AP)
-L_179:
-; line 312
+L_371:
+; line 534
 	MOVL	4(AP), R0
 	INCL	12(R0)
-	JMP	L^L_175
-L_176:
-; line 314
+	JMP	L^L_367
+L_368:
+; line 536
 	CLRB	@12(AP)
-; line 314
+; line 536
 	MOVL	4(AP), R0
 	MOVB	#1, 4(R0)
-L_175:
+L_367:
 	RET
 ; PROCEDURE Write
 	.ENTRY	FILES_WRITE_N7USGTA5, ^M<R2,R3>
-	SUBL2	#20, SP
+	SUBL2	#16, SP
 	CLRL	-4(FP)
-; line 325
+; line 547
 	MOVL	4(AP), R0
 	MOVL	8(R0), -4(FP)
-; line 326
-	MOVL	-4(FP), R0
-	BNEQ	L_188
-	PUSHL	#9
-	PUSHL	#326
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_188:
-	BLBS	1536(R0), L_189
-	JMP	L^L_187
-L_189:
-	MOVL	-4(FP), R0
-	BNEQ	L_190
-	PUSHL	#20
-	PUSHL	#326
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#4
-	CALLS	#4, G^POC_TRAP
-L_190:
-	BLBS	1539(R0), L_191
-	JMP	L^L_186
-L_191:
-L_187:
-; line 326
-	MOVL	#3, -20(FP)
-	MOVAB	L_STR_7, -16(FP)
-	MOVL	#28, -12(FP)
-	MOVL	-4(FP), -8(FP)
-	CALLG	-20(FP), FILES_FAIL_PNHATUQQ
-L_186:
-; line 327
+; line 548
 	MOVL	#1, -12(FP)
 	MOVL	-4(FP), -8(FP)
-	CALLG	-12(FP), FILES_CREATE_J92O55VE
-; line 328
+	CALLG	-12(FP), FILES_MAKEWRITABLE_J9UJDL08
+; line 549
 	MOVL	#2, -16(FP)
 	MOVL	-4(FP), -12(FP)
 	MOVL	4(AP), R0
 	MOVL	12(R0), -8(FP)
 	CALLG	-16(FP), FILES_LOAD_JL3I394I
-; line 329
+; line 550
 	MOVL	-4(FP), R0
-	BNEQ	L_192
+	BNEQ	L_378
 	PUSHL	#5
-	PUSHL	#329
+	PUSHL	#550
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_192:
+L_378:
 	MOVL	4(AP), R1
 	MOVL	-4(FP), R2
-	BNEQ	L_193
+	BNEQ	L_379
 	PUSHL	#26
-	PUSHL	#329
+	PUSHL	#550
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_193:
-	SUBL3	1552(R2), 12(R1), R3
+L_379:
+	SUBL3	1808(R2), 12(R1), R3
 	CMPL	R3, #511
-	BLEQU	L_194
+	BLEQU	L_380
 	PUSHL	#24
-	PUSHL	#329
+	PUSHL	#550
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_194:
+L_380:
 	MOVB	12(AP), 768(R0)[R3]
-; line 330
+; line 551
 	MOVL	-4(FP), R0
-	BNEQ	L_195
+	BNEQ	L_381
 	PUSHL	#5
-	PUSHL	#330
+	PUSHL	#551
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_195:
-	MOVB	#1, 1540(R0)
-; line 331
+L_381:
+	MOVB	#1, 1796(R0)
+; line 552
 	MOVL	4(AP), R0
 	INCL	12(R0)
-; line 332
+; line 553
 	MOVL	4(AP), R0
 	MOVL	-4(FP), R1
-	BNEQ	L_197
+	BNEQ	L_383
 	PUSHL	#21
-	PUSHL	#332
+	PUSHL	#553
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_197:
-	CMPL	12(R0), 1544(R1)
-	BGTR	L_198
-	JMP	L^L_196
-L_198:
-; line 332
+L_383:
+	CMPL	12(R0), 1800(R1)
+	BGTR	L_384
+	JMP	L^L_382
+L_384:
+; line 553
 	MOVL	-4(FP), R0
-	BNEQ	L_199
+	BNEQ	L_385
 	PUSHL	#35
-	PUSHL	#332
+	PUSHL	#553
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_199:
+L_385:
 	MOVL	4(AP), R1
-	MOVL	12(R1), 1544(R0)
-L_196:
-; line 333
+	MOVL	12(R1), 1800(R0)
+L_382:
+; line 554
+	CLRL	@4(AP)
+	RET
+; PROCEDURE ReadByte
+	.ENTRY	FILES_READBYTE_OMQKRRM8, ^M<>
+	SUBL2	#16, SP
+; line 560
+	MOVL	#3, -16(FP)
+	MOVL	4(AP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	MOVL	12(AP), -4(FP)
+	CALLG	-16(FP), FILES_READ_4SSNK3R2
+	RET
+; PROCEDURE ReadBytes
+	.ENTRY	FILES_READBYTES_UC9MP9U1, ^M<>
+	SUBL2	#28, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVL	20(AP), -4(FP)
+; line 569
+	MOVL	16(AP), R0
+	CMPL	-4(FP), R0
+	BGTR	L_387
+	JMP	L^L_386
+L_387:
+; line 569
+	SUBL3	#1, -4(FP), R0
+	CMPL	R0, 16(AP)
+	BLSSU	L_388
+	PUSHL	#39
+	PUSHL	#569
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_388:
+	MOVB	@12(AP)[R0], -9(FP)
+L_386:
+; line 570
+	CLRL	-8(FP)
+; line 571
+	TSTL	-4(FP)
+	BGTR	L_391
+	JMP	L^L_390
+L_391:
+; line 572
+L_392:
+	CMPL	-8(FP), -4(FP)
+	BLSS	L_394
+	JMP	L^L_393
+L_394:
+	MOVL	4(AP), R0
+	MOVL	4(AP), R1
+	MOVL	8(R1), R1
+	BNEQ	L_395
+	PUSHL	#39
+	PUSHL	#572
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_395:
+	CMPL	12(R0), 1800(R1)
+	BLSS	L_396
+	JMP	L^L_393
+L_396:
+; line 572
+	MOVL	#3, -28(FP)
+	MOVL	4(AP), -24(FP)
+	MOVL	8(AP), -20(FP)
+	MOVL	-8(FP), R0
+	CMPL	R0, 16(AP)
+	BLSSU	L_397
+	PUSHL	#67
+	PUSHL	#572
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_397:
+	MOVAB	@12(AP)[R0], -16(FP)
+	CALLG	-28(FP), FILES_READ_4SSNK3R2
+; line 572
+	INCL	-8(FP)
+	JMP	L^L_392
+L_393:
+	JMP	L^L_389
+L_390:
+; line 574
+	CLRL	-4(FP)
+L_389:
+; line 576
+	SUBL3	-8(FP), -4(FP), @4(AP)
+; line 577
+	MOVL	4(AP), R0
+	CLRB	R1
+	TSTL	@4(AP)
+	BLEQ	L_398
+	MOVB	#1, R1
+L_398:
+	MOVB	R1, 4(R0)
+	RET
+; PROCEDURE WriteBytes
+	.ENTRY	FILES_WRITEBYTES_P66HLQ14, ^M<>
+	SUBL2	#28, SP
+	CLRQ	-8(FP)
+; line 584
+	MOVL	16(AP), R0
+	CMPL	20(AP), R0
+	BGTR	L_400
+	JMP	L^L_399
+L_400:
+; line 584
+	SUBL3	#1, 20(AP), R0
+	CMPL	R0, 16(AP)
+	BLSSU	L_401
+	PUSHL	#39
+	PUSHL	#584
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_401:
+	MOVB	@12(AP)[R0], -5(FP)
+L_399:
+; line 585
+	CLRL	-4(FP)
+	SUBL3	#1, 20(AP), R0
+	MOVL	R0, -12(FP)
+L_402:
+	CMPL	-4(FP), -12(FP)
+	BLEQ	L_404
+	JMP	L^L_403
+L_404:
+; line 585
+	MOVL	#3, -28(FP)
+	MOVL	4(AP), -24(FP)
+	MOVL	8(AP), -20(FP)
+	MOVL	-4(FP), R0
+	CMPL	R0, 16(AP)
+	BLSSU	L_405
+	PUSHL	#39
+	PUSHL	#585
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_405:
+	CVTBL	@12(AP)[R0], -16(FP)
+	CALLG	-28(FP), FILES_WRITE_N7USGTA5
+	INCL	-4(FP)
+	JMP	L^L_402
+L_403:
+; line 586
 	CLRL	@4(AP)
 	RET
 ; PROCEDURE WriteString
@@ -1801,220 +3347,220 @@ L_196:
 	PUSHL	R0
 	MOVL	12(AP), R1
 	MOVL	-4(FP), R3
-L_208:
+L_414:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_209
+	BLEQU	L_415
 	MOVL	#65535, R0
-L_209:
+L_415:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_208
+	BNEQ	L_414
 	ADDL2	#4, SP
-; line 342
+; line 595
 	CLRL	-8(FP)
-; line 343
-L_200:
+; line 596
+L_406:
 	MOVL	16(AP), R0
 	CMPL	-8(FP), R0
-	BLSS	L_202
-	JMP	L^L_201
-L_202:
+	BLSS	L_408
+	JMP	L^L_407
+L_408:
 	MOVL	-8(FP), R0
 	CMPL	R0, 16(AP)
-	BLSSU	L_203
+	BLSSU	L_409
 	PUSHL	#29
-	PUSHL	#343
+	PUSHL	#596
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_203:
+L_409:
 	TSTB	@-4(FP)[R0]
-	BNEQ	L_204
-	JMP	L^L_201
-L_204:
-; line 343
+	BNEQ	L_410
+	JMP	L^L_407
+L_410:
+; line 596
 	MOVL	#3, -24(FP)
 	MOVL	4(AP), -20(FP)
 	MOVL	8(AP), -16(FP)
 	MOVL	-8(FP), R0
 	CMPL	R0, 16(AP)
-	BLSSU	L_205
+	BLSSU	L_411
 	PUSHL	#52
-	PUSHL	#343
+	PUSHL	#596
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_205:
+L_411:
 	MOVZBL	@-4(FP)[R0], -12(FP)
 	CALLG	-24(FP), FILES_WRITE_N7USGTA5
-; line 343
+; line 596
 	INCL	-8(FP)
-	JMP	L^L_200
-L_201:
-; line 344
+	JMP	L^L_406
+L_407:
+; line 597
 	MOVL	16(AP), R0
 	CMPL	-8(FP), R0
-	BLSS	L_207
-	JMP	L^L_206
-L_207:
-; line 344
+	BLSS	L_413
+	JMP	L^L_412
+L_413:
+; line 597
 	MOVL	#3, -24(FP)
 	MOVL	4(AP), -20(FP)
 	MOVL	8(AP), -16(FP)
 	CLRL	-12(FP)
 	CALLG	-24(FP), FILES_WRITE_N7USGTA5
-L_206:
+L_412:
 	RET
 ; PROCEDURE ReadString
 	.ENTRY	FILES_READSTRING_4OUP4CRR, ^M<>
 	SUBL2	#24, SP
 	CLRQ	-8(FP)
-; line 352
+; line 605
 	CLRL	-4(FP)
-; line 353
-L_210:
-; line 354
+; line 606
+L_416:
+; line 607
 	MOVL	#3, -24(FP)
 	MOVL	4(AP), -20(FP)
 	MOVL	8(AP), -16(FP)
 	MOVAB	-5(FP), -12(FP)
 	CALLG	-24(FP), FILES_READ_4SSNK3R2
-; line 355
+; line 608
 	TSTB	-5(FP)
-	BEQL	L_213
-	JMP	L^L_212
-L_213:
-; line 355
-	JMP	L^L_211
-L_212:
-; line 356
+	BEQL	L_419
+	JMP	L^L_418
+L_419:
+; line 608
+	JMP	L^L_417
+L_418:
+; line 609
 	MOVL	16(AP), R0
 	DECL	R0
 	CMPL	-4(FP), R0
-	BLSS	L_215
-	JMP	L^L_214
-L_215:
-; line 356
+	BLSS	L_421
+	JMP	L^L_420
+L_421:
+; line 609
 	MOVL	-4(FP), R0
 	CMPL	R0, 16(AP)
-	BLSSU	L_216
+	BLSSU	L_422
 	PUSHL	#32
-	PUSHL	#356
+	PUSHL	#609
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_216:
+L_422:
 	MOVB	-5(FP), @12(AP)[R0]
-; line 356
+; line 609
 	INCL	-4(FP)
-L_214:
-	JMP	L^L_210
-L_211:
-; line 358
+L_420:
+	JMP	L^L_416
+L_417:
+; line 611
 	MOVL	-4(FP), R0
 	CMPL	R0, 16(AP)
-	BLSSU	L_217
+	BLSSU	L_423
 	PUSHL	#7
-	PUSHL	#358
+	PUSHL	#611
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_217:
+L_423:
 	CLRB	@12(AP)[R0]
 	RET
 ; PROCEDURE ReadLine
 	.ENTRY	FILES_READLINE_7H216Q5G, ^M<>
 	SUBL2	#24, SP
 	CLRQ	-8(FP)
-; line 368
+; line 621
 	CLRL	-4(FP)
-; line 369
-L_218:
-; line 370
+; line 622
+L_424:
+; line 623
 	MOVL	#3, -24(FP)
 	MOVL	4(AP), -20(FP)
 	MOVL	8(AP), -16(FP)
 	MOVAB	-5(FP), -12(FP)
 	CALLG	-24(FP), FILES_READ_4SSNK3R2
-; line 371
+; line 624
 	TSTB	-5(FP)
-	BNEQ	L_222
-	JMP	L^L_221
-L_222:
+	BNEQ	L_428
+	JMP	L^L_427
+L_428:
 	CMPB	-5(FP), #10
-	BEQL	L_223
-	JMP	L^L_220
-L_223:
-L_221:
-; line 371
-	JMP	L^L_219
-L_220:
-; line 372
+	BEQL	L_429
+	JMP	L^L_426
+L_429:
+L_427:
+; line 624
+	JMP	L^L_425
+L_426:
+; line 625
 	MOVL	16(AP), R0
 	DECL	R0
 	CMPL	-4(FP), R0
-	BLSS	L_225
-	JMP	L^L_224
-L_225:
-; line 372
+	BLSS	L_431
+	JMP	L^L_430
+L_431:
+; line 625
 	MOVL	-4(FP), R0
 	CMPL	R0, 16(AP)
-	BLSSU	L_226
+	BLSSU	L_432
 	PUSHL	#32
-	PUSHL	#372
+	PUSHL	#625
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_226:
+L_432:
 	MOVB	-5(FP), @12(AP)[R0]
-; line 372
+; line 625
 	INCL	-4(FP)
-L_224:
-	JMP	L^L_218
-L_219:
-; line 374
+L_430:
+	JMP	L^L_424
+L_425:
+; line 627
 	CMPB	-5(FP), #10
-	BEQL	L_228
-	JMP	L^L_227
-L_228:
+	BEQL	L_434
+	JMP	L^L_433
+L_434:
 	TSTL	-4(FP)
-	BGTR	L_229
-	JMP	L^L_227
-L_229:
+	BGTR	L_435
+	JMP	L^L_433
+L_435:
 	SUBL3	#1, -4(FP), R0
 	CMPL	R0, 16(AP)
-	BLSSU	L_230
+	BLSSU	L_436
 	PUSHL	#36
-	PUSHL	#374
+	PUSHL	#627
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_230:
+L_436:
 	CMPB	@12(AP)[R0], #13
-	BEQL	L_231
-	JMP	L^L_227
-L_231:
-; line 374
+	BEQL	L_437
+	JMP	L^L_433
+L_437:
+; line 627
 	DECL	-4(FP)
-L_227:
-; line 375
+L_433:
+; line 628
 	MOVL	-4(FP), R0
 	CMPL	R0, 16(AP)
-	BLSSU	L_232
+	BLSSU	L_438
 	PUSHL	#7
-	PUSHL	#375
+	PUSHL	#628
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_232:
+L_438:
 	CLRB	@12(AP)[R0]
 	RET
 ; PROCEDURE Delete
 	.ENTRY	FILES_DELETE_LRR1CLD5, ^M<R2,R3,R4,R5>
-	SUBL2	#284, SP
-	MOVC5	#0, (SP), #0, #264, -264(FP)
+	SUBL2	#16, SP
+	CLRL	-4(FP)
 	MOVL	8(AP), R0
 	ADDL3	#3, R0, R1
 	BICL2	#3, R1
@@ -2023,46 +3569,2169 @@ L_232:
 	PUSHL	R0
 	MOVL	4(AP), R1
 	MOVL	-4(FP), R3
-L_238:
+L_439:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_239
+	BLEQU	L_440
 	MOVL	#65535, R0
-L_239:
+L_440:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_238
+	BNEQ	L_439
 	ADDL2	#4, SP
-; line 384
-	MOVL	#4, -284(FP)
-	MOVL	-4(FP), -280(FP)
-	MOVL	8(AP), -276(FP)
-	MOVAB	-260(FP), -272(FP)
-	MOVAB	-262(FP), -268(FP)
-	CALLG	-284(FP), FILES_COPYNAME_GQO9HAN4
-	BLBC	R0, L_235
-	JMP	L^L_234
-L_235:
-; line 384
-	MOVW	#2, @12(AP)
-	JMP	L^L_233
-L_234:
-; line 386
-	MOVL	#2, -276(FP)
-	MOVAB	-260(FP), -272(FP)
-	CVTWL	-262(FP), -268(FP)
-	CALLG	-276(FP), G^POC_ERASE
+; line 635
+	MOVL	#2, -16(FP)
+	MOVL	-4(FP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	CALLG	-16(FP), G^PLATFORM_UNLINK_KE1F78LR
 	MOVW	R0, @12(AP)
-; line 387
-	BICB3	#254, @12(AP), R0
-	BLBS	R0, L_237
-	JMP	L^L_236
-L_237:
-; line 387
-	CLRW	@12(AP)
-L_236:
-L_233:
+	RET
+; PROCEDURE Rename
+	.ENTRY	FILES_RENAME_A0K02PV4, ^M<R2,R3,R4,R5>
+	SUBL2	#28, SP
+	CLRQ	-8(FP)
+	MOVL	16(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -8(FP)
+	PUSHL	R0
+	MOVL	12(AP), R1
+	MOVL	-8(FP), R3
+L_441:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_442
+	MOVL	#65535, R0
+L_442:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_441
+	ADDL2	#4, SP
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_443:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_444
+	MOVL	#65535, R0
+L_444:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_443
+	ADDL2	#4, SP
+; line 642
+	MOVL	#4, -28(FP)
+	MOVL	-4(FP), -24(FP)
+	MOVL	8(AP), -20(FP)
+	MOVL	-8(FP), -16(FP)
+	MOVL	16(AP), -12(FP)
+	CALLG	-28(FP), G^PLATFORM_RENAME_15BSB77M
+	MOVW	R0, @20(AP)
+	RET
+; PROCEDURE ChangeDirectory
+	.ENTRY	FILES_CHANGEDIRECTORY_EQF8BMKL, ^M<R2,R3,R4,R5>
+	SUBL2	#16, SP
+	CLRL	-4(FP)
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_445:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_446
+	MOVL	#65535, R0
+L_446:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_445
+	ADDL2	#4, SP
+; line 649
+	MOVL	#2, -16(FP)
+	MOVL	-4(FP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	CALLG	-16(FP), G^PLATFORM_CHDIR_BMI6VTK6
+	MOVW	R0, @12(AP)
+	RET
+; PROCEDURE SetSearchPath
+	.ENTRY	FILES_SETSEARCHPATH_NVKEA04H, ^M<R2,R3,R4,R5>
+	SUBL2	#28, SP
+	CLRQ	-8(FP)
+	MOVL	8(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -4(FP)
+	PUSHL	R0
+	MOVL	4(AP), R1
+	MOVL	-4(FP), R3
+L_460:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_461
+	MOVL	#65535, R0
+L_461:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_460
+	ADDL2	#4, SP
+; line 658
+	MOVL	#2, -20(FP)
+	MOVL	-4(FP), -16(FP)
+	MOVL	8(AP), -12(FP)
+	CALLG	-20(FP), FILES_LENGTH0X_2G8N39EM
+	CVTWL	R0, -8(FP)
+; line 659
+	TSTL	-8(FP)
+	BEQL	L_449
+	JMP	L^L_448
+L_449:
+; line 659
+	CLRL	FILES_SEARCHPATH_G34TCHAH
+	JMP	L^L_447
+L_448:
+; line 660
+	ADDL3	#1, -8(FP), R0
+	MOVL	R0, -16(FP)
+	TSTL	-16(FP)
+	BGTR	L_450
+	PUSHL	#10
+	PUSHL	#660
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_450:
+	MOVL	-16(FP), -12(FP)
+	ADDL2	#4, -12(FP)
+	BVC	L_451
+	PUSHL	#10
+	PUSHL	#660
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#7
+	CALLS	#4, G^POC_TRAP
+L_451:
+	MOVL	#2, -28(FP)
+	MOVL	-12(FP), -24(FP)
+	CLRL	-20(FP)
+	CALLG	-28(FP), G^GARBAGECOLLECTEDHEAP_A_A8NV38EI
+	TSTL	R0
+	BEQL	L_452
+	MOVL	-16(FP), (R0)
+L_452:
+	MOVL	R0, FILES_SEARCHPATH_G34TCHAH
+; line 660
+	MOVL	FILES_SEARCHPATH_G34TCHAH, R0
+	BNEQ	L_453
+	PUSHL	#45
+	PUSHL	#660
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#4
+	CALLS	#4, G^POC_TRAP
+L_453:
+	MOVAB	4(R0), -12(FP)
+	MOVL	8(AP), -16(FP)
+	SUBL3	#1, (R0), R1
+	CMPL	-16(FP), R1
+	BLEQU	L_454
+	MOVL	R1, -16(FP)
+L_454:
+	MOVAB	@-4(FP), R1
+	MOVL	-16(FP), R2
+L_455:
+	MOVL	R2, R3
+	CMPL	R3, #65535
+	BLEQU	L_456
+	MOVL	#65535, R3
+L_456:
+	LOCC	#0, R3, (R1)
+	BNEQ	L_457
+	SUBL2	R3, R2
+	BNEQ	L_455
+L_457:
+	MOVAB	@-4(FP), R0
+	SUBL3	R0, R1, -(SP)
+	MOVAB	@-4(FP), R1
+	MOVAB	@-12(FP), R3
+L_458:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_459
+	MOVL	#65535, R0
+L_459:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_458
+	ADDL2	#4, SP
+	CLRB	(R3)
+L_447:
+	RET
+; PROCEDURE Signed
+FILES_SIGNED_8VB9IV56:
+	.WORD	^M<>
+; line 669
+	MOVZBW	4(AP), R0
+	CMPW	R0, #128
+	BGEQ	L_464
+	JMP	L^L_463
+L_464:
+; line 669
+	MOVZBW	4(AP), R0
+	SUBW2	#256, R0
+	CVTWL	R0, R0
+	RET
+	JMP	L^L_462
+L_463:
+; line 669
+	MOVZBW	4(AP), R0
+	CVTWL	R0, R0
+	RET
+L_462:
+	PUSHL	#3
+	PUSHL	#670
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE PowerOfTwo
+FILES_POWEROFTWO_KJVM4U3C:
+	.WORD	^M<R2>
+	SUBL2	#8, SP
+	CLRQ	-8(FP)
+; line 676
+	MOVL	#^X00000001, -8(FP)
+	CLRL	-4(FP)
+; line 677
+	CVTWL	4(AP), R0
+	CMPL	R0, #64
+	BGTR	L_465
+	CMPL	R0, #-64
+	BGEQ	L_467
+L_466:
+	MOVL	#-64, R0
+	BRB	L_467
+L_465:
+	MOVL	#64, R0
+L_467:
+	ASHQ	R0, -8(FP), R1
+	MOVQ	R1, R0
+	RET
+	PUSHL	#3
+	PUSHL	#678
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE ShiftRounded
+FILES_SHIFTROUNDED_80OFGFPJ:
+	.WORD	^M<R2>
+	SUBL2	#40, SP
+	CLRQ	-32(FP)
+	CLRQ	-24(FP)
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 684
+	MNEGW	8(AP), R0
+	CVTWL	R0, R1
+	CMPL	R1, #64
+	BGTR	L_468
+	CMPL	R1, #-64
+	BGEQ	L_470
+L_469:
+	MOVL	#-64, R1
+	BRB	L_470
+L_468:
+	MOVL	#64, R1
+L_470:
+	ASHQ	R1, -8(FP), -16(FP)
+; line 685
+	CVTWL	8(AP), R0
+	CMPL	R0, #64
+	BGTR	L_471
+	CMPL	R0, #-64
+	BGEQ	L_473
+L_472:
+	MOVL	#-64, R0
+	BRB	L_473
+L_471:
+	MOVL	#64, R0
+L_473:
+	ASHQ	R0, -16(FP), R1
+	MOVQ	-8(FP), -24(FP)
+	SUBL2	R1, -24(FP)
+	SBWC	R2, -20(FP)
+; line 686
+	MOVL	#1, -40(FP)
+	SUBW3	#1, 8(AP), R0
+	CVTWL	R0, -36(FP)
+	CALLG	-40(FP), FILES_POWEROFTWO_KJVM4U3C
+	MOVQ	R0, -32(FP)
+; line 687
+	CLRB	R0
+	CMPL	-20(FP), -28(FP)
+	BGTR	L_476
+	BLSS	L_477
+	CMPL	-24(FP), -32(FP)
+	BLEQU	L_477
+L_476:
+	MOVB	#1, R0
+L_477:
+	BLBC	R0, L_478
+	JMP	L^L_475
+L_478:
+	CLRB	R0
+	CMPL	-20(FP), -28(FP)
+	BNEQ	L_479
+	CMPL	-24(FP), -32(FP)
+	BNEQ	L_479
+	MOVB	#1, R0
+L_479:
+	BLBS	R0, L_480
+	JMP	L^L_474
+L_480:
+	BICB3	#254, -16(FP), R0
+	BLBS	R0, L_481
+	JMP	L^L_474
+L_481:
+L_475:
+; line 687
+	ADDL2	#^X00000001, -16(FP)
+	ADWC	#^X00000000, -12(FP)
+L_474:
+; line 688
+	MOVQ	-16(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#689
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE VaxToIeee
+FILES_VAXTOIEEE_J98J6SE4:
+	.WORD	^M<R2,R3>
+	SUBL2	#28, SP
+	CLRQ	-8(FP)
+; line 698
+	MOVL	#1, -16(FP)
+	CVTWL	16(AP), -12(FP)
+	CALLG	-16(FP), FILES_POWEROFTWO_KJVM4U3C
+	MOVQ	R0, -8(FP)
+; line 699
+	TSTW	@8(AP)
+	BEQL	L_484
+	JMP	L^L_483
+L_484:
+; line 700
+	CMPW	@4(AP), #1
+	BEQL	L_486
+	JMP	L^L_485
+L_486:
+; line 700
+	MOVW	20(AP), @8(AP)
+; line 700
+	MOVL	12(AP), R2
+	ASHQ	#-1, -8(FP), (R2)
+L_485:
+; line 701
+	CLRW	@4(AP)
+	JMP	L^L_482
+L_483:
+; line 702
+	CMPW	@8(AP), #2
+	BGTR	L_488
+	JMP	L^L_487
+L_488:
+; line 703
+	SUBW2	#2, @8(AP)
+	JMP	L^L_482
+L_487:
+; line 705
+	MOVL	12(AP), R2
+	MOVL	#2, -20(FP)
+	MOVL	12(AP), R3
+	MOVQ	-8(FP), R0
+	ADDL2	(R3), R0
+	ADWC	4(R3), R1
+	MOVQ	R0, -28(FP)
+	MOVAQ	-28(FP), -16(FP)
+	SUBW3	@8(AP), #3, R0
+	CVTWL	R0, -12(FP)
+	CALLG	-20(FP), FILES_SHIFTROUNDED_80OFGFPJ
+	MOVQ	R0, (R2)
+; line 706
+	CLRW	@8(AP)
+; line 707
+	MOVL	12(AP), R2
+	CLRB	R0
+	CMPL	4(R2), -4(FP)
+	BGTR	L_490
+	BLSS	L_491
+	CMPL	(R2), -8(FP)
+	BLSSU	L_491
+L_490:
+	MOVB	#1, R0
+L_491:
+	BLBS	R0, L_492
+	JMP	L^L_489
+L_492:
+; line 707
+	MOVW	#1, @8(AP)
+; line 707
+	MOVL	12(AP), R2
+	SUBL2	-8(FP), (R2)
+	SBWC	-4(FP), 4(R2)
+L_489:
+L_482:
+	RET
+; PROCEDURE IeeeToVax
+FILES_IEEETOVAX_L4IODL7A:
+	.WORD	^M<R2>
+	SUBL2	#8, SP
+; line 715
+	TSTW	@8(AP)
+	BEQL	L_495
+	JMP	L^L_494
+L_495:
+; line 716
+	CLRW	@4(AP)
+; line 716
+	MOVL	12(AP), R2
+	CLRQ	(R2)
+	JMP	L^L_493
+L_494:
+; line 717
+	CMPW	@8(AP), 20(AP)
+	BEQL	L_497
+	JMP	L^L_496
+L_497:
+	MOVL	12(AP), R2
+	CLRB	R0
+	TSTL	4(R2)
+	BNEQ	L_498
+	TSTL	(R2)
+	BEQL	L_499
+L_498:
+	MOVB	#1, R0
+L_499:
+	BLBS	R0, L_500
+	JMP	L^L_496
+L_500:
+; line 718
+	MOVW	#1, @4(AP)
+; line 718
+	CLRW	@8(AP)
+; line 718
+	MOVL	12(AP), R2
+	CLRQ	(R2)
+	JMP	L^L_493
+L_496:
+; line 719
+	ADDW3	#2, @8(AP), R0
+	CMPW	R0, 20(AP)
+	BGTR	L_502
+	JMP	L^L_501
+L_502:
+; line 720
+	MOVW	20(AP), @8(AP)
+; line 720
+	MOVL	12(AP), R2
+	MOVL	#1, -8(FP)
+	CVTWL	16(AP), -4(FP)
+	CALLG	-8(FP), FILES_POWEROFTWO_KJVM4U3C
+	MOVQ	R0, (R2)
+	SUBL2	#^X00000001, (R2)
+	SBWC	#^X00000000, 4(R2)
+	JMP	L^L_493
+L_501:
+; line 722
+	ADDW2	#2, @8(AP)
+L_493:
+	RET
+; PROCEDURE SingleFields
+FILES_SINGLEFIELDS_E5534MBF:
+	.WORD	^M<R2,R3>
+; line 730
+	MOVL	#3, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_503
+	PUSHL	#19
+	PUSHL	#730
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_503:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R2
+	SUBW3	R2, R1, R2
+	BEQL	L_504
+	XORW2	#128, R2
+	BGEQ	L_504
+	DECW	R0
+L_504:
+	MOVW	R0, @12(AP)
+; line 731
+	MOVL	#3, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_505
+	PUSHL	#23
+	PUSHL	#731
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_505:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R2
+	SUBW3	R2, R1, R2
+	BEQL	L_506
+	XORW3	#128, R2, R0
+	BGEQ	L_506
+	ADDW2	#128, R2
+L_506:
+	MULW2	#2, R2
+	MOVL	#2, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_507
+	PUSHL	#47
+	PUSHL	#731
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_507:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R3
+	SUBW3	R3, R1, R3
+	BEQL	L_508
+	XORW2	#128, R3
+	BGEQ	L_508
+	DECW	R0
+L_508:
+	ADDW3	R0, R2, @16(AP)
+; line 732
+	MOVL	20(AP), R2
+	MOVL	#2, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_509
+	PUSHL	#29
+	PUSHL	#732
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_509:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R3
+	SUBW3	R3, R1, R3
+	BEQL	L_510
+	XORW3	#128, R3, R0
+	BGEQ	L_510
+	ADDW2	#128, R3
+L_510:
+	CVTWL	R3, R0
+	MULL2	#256, R0
+	MOVL	#1, R1
+	CMPL	R1, 8(AP)
+	BLSSU	L_511
+	PUSHL	#56
+	PUSHL	#732
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_511:
+	MOVZBW	@4(AP)[R1], R3
+	CVTWL	R3, R3
+	ADDL2	R3, R0
+	MULL2	#256, R0
+	CLRL	R1
+	CMPL	R1, 8(AP)
+	BLSSU	L_512
+	PUSHL	#75
+	PUSHL	#732
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_512:
+	MOVZBW	@4(AP)[R1], R3
+	CVTWL	R3, R3
+	ADDL2	R3, R0
+	MOVL	R0, (R2)
+	ASHL	#-31, (R2), 4(R2)
+	RET
+; PROCEDURE SingleBytes
+FILES_SINGLEBYTES_D81VPR81:
+	.WORD	^M<R2,R3,R4>
+	SUBL2	#36, SP
+	CLRQ	-8(FP)
+	MOVQ	@12(AP), -8(FP)
+; line 737
+	MOVL	#3, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_513
+	PUSHL	#7
+	PUSHL	#737
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_513:
+	MULW3	#128, 4(AP), R1
+	DIVW3	#2, 8(AP), R2
+	MULW3	R2, #2, R3
+	SUBW3	R3, 8(AP), R3
+	BEQL	L_514
+	XORW2	#2, R3
+	BGEQ	L_514
+	DECW	R2
+L_514:
+	ADDW2	R2, R1
+	CVTWB	R1, @16(AP)[R0]
+; line 738
+	MOVL	#2, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_515
+	PUSHL	#7
+	PUSHL	#738
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_515:
+	DIVW3	#2, 8(AP), R1
+	MULW3	R1, #2, R2
+	SUBW3	R2, 8(AP), R2
+	BEQL	L_516
+	XORW3	#2, R2, R1
+	BGEQ	L_516
+	ADDW2	#2, R2
+L_516:
+	MULW2	#128, R2
+	ASHQ	#-16, -8(FP), R3
+	MOVL	R3, R1
+	CVTLW	R1, R3
+	ADDW2	R3, R2
+	CVTWB	R2, @16(AP)[R0]
+; line 739
+	MOVL	#1, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_517
+	PUSHL	#7
+	PUSHL	#739
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_517:
+	ASHQ	#-8, -8(FP), R1
+	MOVQ	R1, -16(FP)
+	MOVL	#^X00000100, -24(FP)
+	CLRL	-20(FP)
+	MOVL	#2, -36(FP)
+	MOVAQ	-16(FP), -32(FP)
+	MOVAQ	-24(FP), -28(FP)
+	MOVL	R0, R2
+	CALLG	-36(FP), G^POC_HMOD
+	MOVL	R0, R3
+	CVTLW	R3, R0
+	CVTWB	R0, @16(AP)[R2]
+; line 740
+	CLRL	R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_518
+	PUSHL	#7
+	PUSHL	#740
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_518:
+	MOVL	#^X00000100, -16(FP)
+	CLRL	-12(FP)
+	MOVL	#2, -28(FP)
+	MOVAQ	-8(FP), -24(FP)
+	MOVAQ	-16(FP), -20(FP)
+	MOVL	R0, R2
+	CALLG	-28(FP), G^POC_HMOD
+	MOVL	R0, R3
+	CVTLW	R3, R0
+	CVTWB	R0, @16(AP)[R2]
+	RET
+; PROCEDURE FFields
+FILES_FFIELDS_N3GB1FU1:
+	.WORD	^M<R2,R3>
+; line 747
+	MOVL	#1, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_519
+	PUSHL	#19
+	PUSHL	#747
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_519:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R2
+	SUBW3	R2, R1, R2
+	BEQL	L_520
+	XORW2	#128, R2
+	BGEQ	L_520
+	DECW	R0
+L_520:
+	MOVW	R0, @12(AP)
+; line 748
+	MOVL	#1, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_521
+	PUSHL	#23
+	PUSHL	#748
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_521:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R2
+	SUBW3	R2, R1, R2
+	BEQL	L_522
+	XORW3	#128, R2, R0
+	BGEQ	L_522
+	ADDW2	#128, R2
+L_522:
+	MULW2	#2, R2
+	CLRL	R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_523
+	PUSHL	#47
+	PUSHL	#748
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_523:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R3
+	SUBW3	R3, R1, R3
+	BEQL	L_524
+	XORW2	#128, R3
+	BGEQ	L_524
+	DECW	R0
+L_524:
+	ADDW3	R0, R2, @16(AP)
+; line 749
+	MOVL	20(AP), R2
+	CLRL	R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_525
+	PUSHL	#29
+	PUSHL	#749
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_525:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R3
+	SUBW3	R3, R1, R3
+	BEQL	L_526
+	XORW3	#128, R3, R0
+	BGEQ	L_526
+	ADDW2	#128, R3
+L_526:
+	CVTWL	R3, R0
+	MULL2	#256, R0
+	MOVL	#3, R1
+	CMPL	R1, 8(AP)
+	BLSSU	L_527
+	PUSHL	#56
+	PUSHL	#749
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_527:
+	MOVZBW	@4(AP)[R1], R3
+	CVTWL	R3, R3
+	ADDL2	R3, R0
+	MULL2	#256, R0
+	MOVL	#2, R1
+	CMPL	R1, 8(AP)
+	BLSSU	L_528
+	PUSHL	#75
+	PUSHL	#749
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_528:
+	MOVZBW	@4(AP)[R1], R3
+	CVTWL	R3, R3
+	ADDL2	R3, R0
+	MOVL	R0, (R2)
+	ASHL	#-31, (R2), 4(R2)
+	RET
+; PROCEDURE FBytes
+FILES_FBYTES_1JSM29AN:
+	.WORD	^M<R2,R3,R4>
+	SUBL2	#36, SP
+	CLRQ	-8(FP)
+	MOVQ	@12(AP), -8(FP)
+; line 754
+	MOVL	#1, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_529
+	PUSHL	#7
+	PUSHL	#754
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_529:
+	MULW3	#128, 4(AP), R1
+	DIVW3	#2, 8(AP), R2
+	MULW3	R2, #2, R3
+	SUBW3	R3, 8(AP), R3
+	BEQL	L_530
+	XORW2	#2, R3
+	BGEQ	L_530
+	DECW	R2
+L_530:
+	ADDW2	R2, R1
+	CVTWB	R1, @16(AP)[R0]
+; line 755
+	CLRL	R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_531
+	PUSHL	#7
+	PUSHL	#755
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_531:
+	DIVW3	#2, 8(AP), R1
+	MULW3	R1, #2, R2
+	SUBW3	R2, 8(AP), R2
+	BEQL	L_532
+	XORW3	#2, R2, R1
+	BGEQ	L_532
+	ADDW2	#2, R2
+L_532:
+	MULW2	#128, R2
+	ASHQ	#-16, -8(FP), R3
+	MOVL	R3, R1
+	CVTLW	R1, R3
+	ADDW2	R3, R2
+	CVTWB	R2, @16(AP)[R0]
+; line 756
+	MOVL	#3, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_533
+	PUSHL	#7
+	PUSHL	#756
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_533:
+	ASHQ	#-8, -8(FP), R1
+	MOVQ	R1, -16(FP)
+	MOVL	#^X00000100, -24(FP)
+	CLRL	-20(FP)
+	MOVL	#2, -36(FP)
+	MOVAQ	-16(FP), -32(FP)
+	MOVAQ	-24(FP), -28(FP)
+	MOVL	R0, R2
+	CALLG	-36(FP), G^POC_HMOD
+	MOVL	R0, R3
+	CVTLW	R3, R0
+	CVTWB	R0, @16(AP)[R2]
+; line 757
+	MOVL	#2, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_534
+	PUSHL	#7
+	PUSHL	#757
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_534:
+	MOVL	#^X00000100, -16(FP)
+	CLRL	-12(FP)
+	MOVL	#2, -28(FP)
+	MOVAQ	-8(FP), -24(FP)
+	MOVAQ	-16(FP), -20(FP)
+	MOVL	R0, R2
+	CALLG	-28(FP), G^POC_HMOD
+	MOVL	R0, R3
+	CVTLW	R3, R0
+	CVTWB	R0, @16(AP)[R2]
+	RET
+; PROCEDURE DoubleFields
+FILES_DOUBLEFIELDS_SM1U7CEU:
+	.WORD	^M<R2,R3,R4>
+	SUBL2	#24, SP
+	CLRL	-4(FP)
+; line 765
+	MOVL	#7, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_535
+	PUSHL	#19
+	PUSHL	#765
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_535:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R2
+	SUBW3	R2, R1, R2
+	BEQL	L_536
+	XORW2	#128, R2
+	BGEQ	L_536
+	DECW	R0
+L_536:
+	MOVW	R0, @12(AP)
+; line 766
+	MOVL	#7, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_537
+	PUSHL	#23
+	PUSHL	#766
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_537:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R2
+	SUBW3	R2, R1, R2
+	BEQL	L_538
+	XORW3	#128, R2, R0
+	BGEQ	L_538
+	ADDW2	#128, R2
+L_538:
+	MULW2	#16, R2
+	MOVL	#6, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_539
+	PUSHL	#48
+	PUSHL	#766
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_539:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#16, R1, R0
+	MULW3	R0, #16, R3
+	SUBW3	R3, R1, R3
+	BEQL	L_540
+	XORW2	#16, R3
+	BGEQ	L_540
+	DECW	R0
+L_540:
+	ADDW3	R0, R2, @16(AP)
+; line 767
+	MOVL	20(AP), R2
+	MOVL	#6, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_541
+	PUSHL	#23
+	PUSHL	#767
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_541:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#16, R1, R0
+	MULW3	R0, #16, R3
+	SUBW3	R3, R1, R3
+	BEQL	L_542
+	XORW3	#16, R3, R0
+	BGEQ	L_542
+	ADDW2	#16, R3
+L_542:
+	CVTWL	R3, (R2)
+	ASHL	#-31, (R2), 4(R2)
+; line 768
+	MOVW	#5, -2(FP)
+L_543:
+	TSTW	-2(FP)
+	BGEQ	L_545
+	JMP	L^L_544
+L_545:
+; line 768
+	MOVL	20(AP), R2
+	MOVL	20(AP), R3
+	MOVL	#^X00000100, -12(FP)
+	CLRL	-8(FP)
+	MOVL	#2, -24(FP)
+	MOVAQ	(R3), -20(FP)
+	MOVAQ	-12(FP), -16(FP)
+	CALLG	-24(FP), G^POC_HMUL
+	CVTWL	-2(FP), R3
+	CMPL	R3, 8(AP)
+	BLSSU	L_546
+	PUSHL	#65
+	PUSHL	#768
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_546:
+	MOVZBW	@4(AP)[R3], R4
+	MOVQ	R0, -12(FP)
+	CVTWL	R4, R0
+	ASHL	#-31, R0, R1
+	ADDL2	-12(FP), R0
+	ADWC	-8(FP), R1
+	MOVQ	R0, (R2)
+	DECW	-2(FP)
+	JMP	L^L_543
+L_544:
+	RET
+; PROCEDURE DoubleBytes
+FILES_DOUBLEBYTES_KSUDM3FI:
+	.WORD	^M<R2,R3,R4>
+	SUBL2	#40, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVQ	@12(AP), -8(FP)
+; line 774
+	MOVL	#7, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_547
+	PUSHL	#7
+	PUSHL	#774
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_547:
+	MULW3	#128, 4(AP), R1
+	DIVW3	#16, 8(AP), R2
+	MULW3	R2, #16, R3
+	SUBW3	R3, 8(AP), R3
+	BEQL	L_548
+	XORW2	#16, R3
+	BGEQ	L_548
+	DECW	R2
+L_548:
+	ADDW2	R2, R1
+	CVTWB	R1, @16(AP)[R0]
+; line 775
+	MOVL	#6, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_549
+	PUSHL	#7
+	PUSHL	#775
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_549:
+	DIVW3	#16, 8(AP), R1
+	MULW3	R1, #16, R2
+	SUBW3	R2, 8(AP), R2
+	BEQL	L_550
+	XORW3	#16, R2, R1
+	BGEQ	L_550
+	ADDW2	#16, R2
+L_550:
+	MULW2	#16, R2
+	ASHQ	#-48, -8(FP), R3
+	MOVL	R3, R1
+	CVTLW	R1, R3
+	ADDW2	R3, R2
+	CVTWB	R2, @16(AP)[R0]
+; line 776
+	CLRW	-10(FP)
+L_551:
+	CMPW	-10(FP), #5
+	BLEQ	L_553
+	JMP	L^L_552
+L_553:
+; line 776
+	CVTWL	-10(FP), R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_554
+	PUSHL	#26
+	PUSHL	#776
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_554:
+	MULW3	-10(FP), #8, R1
+	MNEGW	R1, R1
+	CVTWL	R1, R2
+	CMPL	R2, #64
+	BGTR	L_555
+	CMPL	R2, #-64
+	BGEQ	L_557
+L_556:
+	MOVL	#-64, R2
+	BRB	L_557
+L_555:
+	MOVL	#64, R2
+L_557:
+	ASHQ	R2, -8(FP), R3
+	MOVQ	R3, -20(FP)
+	MOVL	#^X00000100, -28(FP)
+	CLRL	-24(FP)
+	MOVL	#2, -40(FP)
+	MOVAQ	-20(FP), -36(FP)
+	MOVAQ	-28(FP), -32(FP)
+	MOVL	R0, R2
+	CALLG	-40(FP), G^POC_HMOD
+	MOVL	R0, R3
+	CVTLW	R3, R0
+	CVTWB	R0, @16(AP)[R2]
+	INCW	-10(FP)
+	JMP	L^L_551
+L_552:
+	RET
+; PROCEDURE GFields
+FILES_GFIELDS_S83898NU:
+	.WORD	^M<R2,R3,R4>
+	SUBL2	#32, SP
+	CLRL	-4(FP)
+; line 784
+	MOVL	#1, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_558
+	PUSHL	#19
+	PUSHL	#784
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_558:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R2
+	SUBW3	R2, R1, R2
+	BEQL	L_559
+	XORW2	#128, R2
+	BGEQ	L_559
+	DECW	R0
+L_559:
+	MOVW	R0, @12(AP)
+; line 785
+	MOVL	#1, R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_560
+	PUSHL	#23
+	PUSHL	#785
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_560:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#128, R1, R0
+	MULW3	R0, #128, R2
+	SUBW3	R2, R1, R2
+	BEQL	L_561
+	XORW3	#128, R2, R0
+	BGEQ	L_561
+	ADDW2	#128, R2
+L_561:
+	MULW2	#16, R2
+	CLRL	R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_562
+	PUSHL	#48
+	PUSHL	#785
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_562:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#16, R1, R0
+	MULW3	R0, #16, R3
+	SUBW3	R3, R1, R3
+	BEQL	L_563
+	XORW2	#16, R3
+	BGEQ	L_563
+	DECW	R0
+L_563:
+	ADDW3	R0, R2, @16(AP)
+; line 786
+	MOVL	20(AP), R2
+	CLRL	R0
+	CMPL	R0, 8(AP)
+	BLSSU	L_564
+	PUSHL	#23
+	PUSHL	#786
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_564:
+	MOVZBW	@4(AP)[R0], R1
+	DIVW3	#16, R1, R0
+	MULW3	R0, #16, R3
+	SUBW3	R3, R1, R3
+	BEQL	L_565
+	XORW3	#16, R3, R0
+	BGEQ	L_565
+	ADDW2	#16, R3
+L_565:
+	CVTWL	R3, (R2)
+	ASHL	#-31, (R2), 4(R2)
+; line 787
+	MOVW	#1, -2(FP)
+L_566:
+	CMPW	-2(FP), #3
+	BLEQ	L_568
+	JMP	L^L_567
+L_568:
+; line 787
+	MOVL	20(AP), R2
+	MOVL	20(AP), R3
+	MOVL	#^X00000100, -12(FP)
+	CLRL	-8(FP)
+	MOVL	#2, -24(FP)
+	MOVAQ	(R3), -20(FP)
+	MOVAQ	-12(FP), -16(FP)
+	CALLG	-24(FP), G^POC_HMUL
+	MULW3	-2(FP), #2, R3
+	INCW	R3
+	CVTWL	R3, R3
+	CMPL	R3, 8(AP)
+	BLSSU	L_569
+	PUSHL	#66
+	PUSHL	#787
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_569:
+	MOVZBW	@4(AP)[R3], R4
+	MOVQ	R0, -12(FP)
+	CVTWL	R4, R0
+	ASHL	#-31, R0, R1
+	ADDL2	-12(FP), R0
+	ADWC	-8(FP), R1
+	MOVQ	R0, -12(FP)
+	MOVL	#^X00000100, -20(FP)
+	CLRL	-16(FP)
+	MOVL	#2, -32(FP)
+	MOVAQ	-12(FP), -28(FP)
+	MOVAQ	-20(FP), -24(FP)
+	CALLG	-32(FP), G^POC_HMUL
+	MULW3	-2(FP), #2, R3
+	CVTWL	R3, R3
+	CMPL	R3, 8(AP)
+	BLSSU	L_570
+	PUSHL	#89
+	PUSHL	#787
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_570:
+	MOVZBW	@4(AP)[R3], R4
+	MOVQ	R0, -12(FP)
+	CVTWL	R4, R0
+	ASHL	#-31, R0, R1
+	ADDL2	-12(FP), R0
+	ADWC	-8(FP), R1
+	MOVQ	R0, (R2)
+	INCW	-2(FP)
+	JMP	L^L_566
+L_567:
+	RET
+; PROCEDURE GBytes
+FILES_GBYTES_BP0KD24I:
+	.WORD	^M<R2,R3,R4>
+	SUBL2	#48, SP
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVQ	@12(AP), -8(FP)
+; line 793
+	MOVL	#1, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_571
+	PUSHL	#7
+	PUSHL	#793
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_571:
+	MULW3	#128, 4(AP), R1
+	DIVW3	#16, 8(AP), R2
+	MULW3	R2, #16, R3
+	SUBW3	R3, 8(AP), R3
+	BEQL	L_572
+	XORW2	#16, R3
+	BGEQ	L_572
+	DECW	R2
+L_572:
+	ADDW2	R2, R1
+	CVTWB	R1, @16(AP)[R0]
+; line 794
+	CLRL	R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_573
+	PUSHL	#7
+	PUSHL	#794
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_573:
+	DIVW3	#16, 8(AP), R1
+	MULW3	R1, #16, R2
+	SUBW3	R2, 8(AP), R2
+	BEQL	L_574
+	XORW3	#16, R2, R1
+	BGEQ	L_574
+	ADDW2	#16, R2
+L_574:
+	MULW2	#16, R2
+	ASHQ	#-48, -8(FP), R3
+	MOVL	R3, R1
+	CVTLW	R1, R3
+	ADDW2	R3, R2
+	CVTWB	R2, @16(AP)[R0]
+; line 795
+	MOVW	#1, -10(FP)
+L_575:
+	CMPW	-10(FP), #3
+	BLEQ	L_577
+	JMP	L^L_576
+L_577:
+; line 796
+	SUBW3	-10(FP), #3, R0
+	MULW2	#16, R0
+	MNEGW	R0, R0
+	CVTWL	R0, R1
+	CMPL	R1, #64
+	BGTR	L_578
+	CMPL	R1, #-64
+	BGEQ	L_580
+L_579:
+	MOVL	#-64, R1
+	BRB	L_580
+L_578:
+	MOVL	#64, R1
+L_580:
+	ASHQ	R1, -8(FP), R2
+	MOVQ	R2, -28(FP)
+	MOVL	#^X00010000, -36(FP)
+	CLRL	-32(FP)
+	MOVL	#2, -48(FP)
+	MOVAQ	-28(FP), -44(FP)
+	MOVAQ	-36(FP), -40(FP)
+	CALLG	-48(FP), G^POC_HMOD
+	MOVQ	R0, -20(FP)
+; line 797
+	MULW3	-10(FP), #2, R0
+	INCW	R0
+	CVTWL	R0, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_581
+	PUSHL	#15
+	PUSHL	#797
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_581:
+	MOVL	#^X00000100, -28(FP)
+	CLRL	-24(FP)
+	MOVL	#2, -40(FP)
+	MOVAQ	-20(FP), -36(FP)
+	MOVAQ	-28(FP), -32(FP)
+	MOVL	R0, R2
+	CALLG	-40(FP), G^POC_HDIV
+	MOVL	R0, R3
+	CVTLW	R3, R0
+	CVTWB	R0, @16(AP)[R2]
+; line 798
+	MULW3	-10(FP), #2, R0
+	CVTWL	R0, R0
+	CMPL	R0, 20(AP)
+	BLSSU	L_582
+	PUSHL	#11
+	PUSHL	#798
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_582:
+	MOVL	#^X00000100, -28(FP)
+	CLRL	-24(FP)
+	MOVL	#2, -40(FP)
+	MOVAQ	-20(FP), -36(FP)
+	MOVAQ	-28(FP), -32(FP)
+	MOVL	R0, R2
+	CALLG	-40(FP), G^POC_HMOD
+	MOVL	R0, R3
+	CVTLW	R3, R0
+	CVTWB	R0, @16(AP)[R2]
+	INCW	-10(FP)
+	JMP	L^L_575
+L_576:
+	RET
+; PROCEDURE ReadBool
+	.ENTRY	FILES_READBOOL_OM244D6E, ^M<>
+	SUBL2	#20, SP
+	CLRL	-4(FP)
+; line 808
+	MOVL	#3, -20(FP)
+	MOVL	4(AP), -16(FP)
+	MOVL	8(AP), -12(FP)
+	MOVAB	-1(FP), -8(FP)
+	CALLG	-20(FP), FILES_READ_4SSNK3R2
+; line 808
+	CLRB	R0
+	TSTB	-1(FP)
+	BEQL	L_583
+	MOVB	#1, R0
+L_583:
+	MOVB	R0, @12(AP)
+	RET
+; PROCEDURE ReadInt
+	.ENTRY	FILES_READINT_JBE9UHAR, ^M<>
+	SUBL2	#28, SP
+	CLRL	-4(FP)
+; line 814
+	MOVL	#5, -28(FP)
+	MOVL	4(AP), -24(FP)
+	MOVL	8(AP), -20(FP)
+	MOVAB	-2(FP), -16(FP)
+	MOVL	#2, -12(FP)
+	MOVL	#2, -8(FP)
+	CALLG	-28(FP), FILES_READBYTES_UC9MP9U1
+; line 815
+	MOVL	#1, -12(FP)
+	MOVZBL	-1(FP), -8(FP)
+	CALLG	-12(FP), FILES_SIGNED_8VB9IV56
+	MULW2	#256, R0
+	MOVZBW	-2(FP), R1
+	ADDW3	R1, R0, @12(AP)
+	RET
+; PROCEDURE ReadLInt
+	.ENTRY	FILES_READLINT_7JGSOMSJ, ^M<>
+	SUBL2	#28, SP
+	CLRL	-4(FP)
+; line 821
+	MOVL	#5, -28(FP)
+	MOVL	4(AP), -24(FP)
+	MOVL	8(AP), -20(FP)
+	MOVAB	-4(FP), -16(FP)
+	MOVL	#4, -12(FP)
+	MOVL	#4, -8(FP)
+	CALLG	-28(FP), FILES_READBYTES_UC9MP9U1
+; line 822
+	MOVL	#1, -12(FP)
+	MOVZBL	-1(FP), -8(FP)
+	CALLG	-12(FP), FILES_SIGNED_8VB9IV56
+	CVTWL	R0, R1
+	MULL2	#256, R1
+	MOVZBW	-2(FP), R0
+	CVTWL	R0, R0
+	ADDL2	R0, R1
+	MULL2	#256, R1
+	MOVZBW	-3(FP), R0
+	CVTWL	R0, R0
+	ADDL2	R0, R1
+	MULL2	#256, R1
+	MOVZBW	-4(FP), R0
+	CVTWL	R0, R0
+	ADDL3	R0, R1, @12(AP)
+	RET
+; PROCEDURE ReadSet
+	.ENTRY	FILES_READSET_JBS7T5MI, ^M<R2>
+	SUBL2	#32, SP
+	CLRQ	-8(FP)
+; line 828
+	MOVL	#5, -32(FP)
+	MOVL	4(AP), -28(FP)
+	MOVL	8(AP), -24(FP)
+	MOVAB	-4(FP), -20(FP)
+	MOVL	#4, -16(FP)
+	MOVL	#4, -12(FP)
+	CALLG	-32(FP), FILES_READBYTES_UC9MP9U1
+; line 829
+	CLRL	@12(AP)
+; line 830
+	CLRW	-6(FP)
+L_584:
+	CMPW	-6(FP), #31
+	BLEQ	L_586
+	JMP	L^L_585
+L_586:
+; line 831
+	DIVW3	#8, -6(FP), R0
+	MULW3	R0, #8, R1
+	SUBW3	R1, -6(FP), R1
+	BEQL	L_588
+	XORW2	#8, R1
+	BGEQ	L_588
+	DECW	R0
+L_588:
+	CVTWL	R0, R0
+	CMPL	R0, #3
+	BLEQU	L_589
+	PUSHL	#26
+	PUSHL	#831
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_589:
+	MOVZBW	-4(FP)[R0], R1
+	DIVW3	#8, -6(FP), R0
+	MULW3	R0, #8, R2
+	SUBW3	R2, -6(FP), R2
+	BEQL	L_590
+	XORW3	#8, R2, R0
+	BGEQ	L_590
+	ADDW2	#8, R2
+L_590:
+	MNEGW	R2, R2
+	CVTWL	R1, R1
+	CVTWL	R2, R0
+	CMPL	R0, #64
+	BGTR	L_591
+	CMPL	R0, #-64
+	BGEQ	L_593
+L_592:
+	MOVL	#-64, R0
+	BRB	L_593
+L_591:
+	MOVL	#64, R0
+L_593:
+	ASHL	R0, R1, R1
+	BICB3	#254, R1, R1
+	BLBS	R1, L_594
+	JMP	L^L_587
+L_594:
+; line 831
+	ASHL	-6(FP), #1, R0
+	BISL2	R0, @12(AP)
+L_587:
+	INCW	-6(FP)
+	JMP	L^L_584
+L_585:
+	RET
+; PROCEDURE ReadReal
+	.ENTRY	FILES_READREAL_9PIM4ENI, ^M<>
+	SUBL2	#52, SP
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+; line 838
+	MOVL	#5, -44(FP)
+	MOVL	4(AP), -40(FP)
+	MOVL	8(AP), -36(FP)
+	MOVAB	-4(FP), -32(FP)
+	MOVL	#4, -28(FP)
+	MOVL	#4, -24(FP)
+	CALLG	-44(FP), FILES_READBYTES_UC9MP9U1
+; line 839
+	MOVL	#5, -44(FP)
+	MOVAB	-4(FP), -40(FP)
+	MOVL	#4, -36(FP)
+	MOVAB	-10(FP), -32(FP)
+	MOVAB	-12(FP), -28(FP)
+	MOVAB	-20(FP), -24(FP)
+	CALLG	-44(FP), FILES_SINGLEFIELDS_E5534MBF
+; line 840
+	MOVL	#5, -44(FP)
+	MOVAB	-10(FP), -40(FP)
+	MOVAB	-12(FP), -36(FP)
+	MOVAB	-20(FP), -32(FP)
+	MOVL	#23, -28(FP)
+	MOVL	#255, -24(FP)
+	CALLG	-44(FP), FILES_IEEETOVAX_L4IODL7A
+; line 841
+	MOVL	#5, -44(FP)
+	CVTWL	-10(FP), -40(FP)
+	CVTWL	-12(FP), -36(FP)
+	MOVQ	-20(FP), -52(FP)
+	MOVAQ	-52(FP), -32(FP)
+	MOVAB	-8(FP), -28(FP)
+	MOVL	#4, -24(FP)
+	CALLG	-44(FP), FILES_FBYTES_1JSM29AN
+; line 842
+	MOVL	#3, -36(FP)
+	MOVAB	-8(FP), R0
+	MOVL	R0, -32(FP)
+	MOVL	12(AP), R0
+	MOVL	R0, -28(FP)
+	MOVL	#4, -24(FP)
+	CALLG	-36(FP), G^POC_MOVE
+	RET
+; PROCEDURE ReadLReal
+	.ENTRY	FILES_READLREAL_41OAJMVA, ^M<>
+	SUBL2	#60, SP
+	CLRQ	-28(FP)
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+; line 848
+	MOVL	#5, -52(FP)
+	MOVL	4(AP), -48(FP)
+	MOVL	8(AP), -44(FP)
+	MOVAB	-8(FP), -40(FP)
+	MOVL	#8, -36(FP)
+	MOVL	#8, -32(FP)
+	CALLG	-52(FP), FILES_READBYTES_UC9MP9U1
+; line 849
+	MOVL	#5, -52(FP)
+	MOVAB	-8(FP), -48(FP)
+	MOVL	#8, -44(FP)
+	MOVAB	-18(FP), -40(FP)
+	MOVAB	-20(FP), -36(FP)
+	MOVAB	-28(FP), -32(FP)
+	CALLG	-52(FP), FILES_DOUBLEFIELDS_SM1U7CEU
+; line 850
+	MOVL	#5, -52(FP)
+	MOVAB	-18(FP), -48(FP)
+	MOVAB	-20(FP), -44(FP)
+	MOVAB	-28(FP), -40(FP)
+	MOVL	#52, -36(FP)
+	MOVL	#2047, -32(FP)
+	CALLG	-52(FP), FILES_IEEETOVAX_L4IODL7A
+; line 851
+	MOVL	#5, -52(FP)
+	CVTWL	-18(FP), -48(FP)
+	CVTWL	-20(FP), -44(FP)
+	MOVQ	-28(FP), -60(FP)
+	MOVAQ	-60(FP), -40(FP)
+	MOVAB	-16(FP), -36(FP)
+	MOVL	#8, -32(FP)
+	CALLG	-52(FP), FILES_GBYTES_BP0KD24I
+; line 852
+	MOVL	#3, -44(FP)
+	MOVAB	-16(FP), R0
+	MOVL	R0, -40(FP)
+	MOVL	12(AP), R0
+	MOVL	R0, -36(FP)
+	MOVL	#8, -32(FP)
+	CALLG	-44(FP), G^POC_MOVE
+	RET
+; PROCEDURE ReadNum
+	.ENTRY	FILES_READNUM_JBG15ILA, ^M<R2,R3>
+	SUBL2	#48, SP
+	CLRQ	-24(FP)
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+; line 860
+	MOVL	16(AP), R0
+	CMPL	R0, #8
+	BGTR	L_596
+	JMP	L^L_595
+L_596:
+	PUSHL	#5
+	PUSHL	#860
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#10
+	CALLS	#4, G^POC_TRAP
+L_595:
+; line 861
+	CLRW	-4(FP)
+; line 861
+	CLRQ	-12(FP)
+; line 862
+	MOVL	#3, -40(FP)
+	MOVL	4(AP), -36(FP)
+	MOVL	8(AP), -32(FP)
+	MOVAB	-1(FP), -28(FP)
+	CALLG	-40(FP), FILES_READ_4SSNK3R2
+; line 863
+L_597:
+	MOVZBW	-1(FP), R0
+	CMPW	R0, #128
+	BGEQ	L_599
+	JMP	L^L_598
+L_599:
+; line 864
+	MOVZBW	-1(FP), R0
+	SUBW2	#128, R0
+	CVTWL	R0, -20(FP)
+	ASHL	#-31, -20(FP), -16(FP)
+; line 864
+	CVTWL	-4(FP), R0
+	CMPL	R0, #64
+	BGTR	L_600
+	CMPL	R0, #-64
+	BGEQ	L_602
+L_601:
+	MOVL	#-64, R0
+	BRB	L_602
+L_600:
+	MOVL	#64, R0
+L_602:
+	ASHQ	R0, -20(FP), R1
+	ADDL2	R1, -12(FP)
+	ADWC	R2, -8(FP)
+; line 865
+	ADDW2	#7, -4(FP)
+; line 866
+	MOVL	#3, -40(FP)
+	MOVL	4(AP), -36(FP)
+	MOVL	8(AP), -32(FP)
+	MOVAB	-1(FP), -28(FP)
+	CALLG	-40(FP), FILES_READ_4SSNK3R2
+	JMP	L^L_597
+L_598:
+; line 868
+	MOVZBW	-1(FP), R0
+	DIVW3	#64, R0, R1
+	MULW3	R1, #64, R2
+	SUBW3	R2, R0, R2
+	BEQL	L_603
+	XORW3	#64, R2, R1
+	BGEQ	L_603
+	ADDW2	#64, R2
+L_603:
+	MOVZBW	-1(FP), R0
+	DIVW3	#64, R0, R1
+	MULW3	R1, #64, R3
+	SUBW3	R3, R0, R3
+	BEQL	L_604
+	XORW2	#64, R3
+	BGEQ	L_604
+	DECW	R1
+L_604:
+	MULW2	#64, R1
+	SUBW2	R1, R2
+	CVTWL	R2, -20(FP)
+	ASHL	#-31, -20(FP), -16(FP)
+; line 868
+	CVTWL	-4(FP), R0
+	CMPL	R0, #64
+	BGTR	L_605
+	CMPL	R0, #-64
+	BGEQ	L_607
+L_606:
+	MOVL	#-64, R0
+	BRB	L_607
+L_605:
+	MOVL	#64, R0
+L_607:
+	ASHQ	R0, -20(FP), R1
+	ADDL2	R1, -12(FP)
+	ADWC	R2, -8(FP)
+; line 869
+	CLRL	-24(FP)
+	MOVL	16(AP), R0
+	DECL	R0
+	MOVL	R0, -28(FP)
+L_608:
+	CMPL	-24(FP), -28(FP)
+	BLEQ	L_610
+	JMP	L^L_609
+L_610:
+; line 869
+	MOVL	12(AP), R0
+	ADDL2	-24(FP), R0
+	MOVL	#^X00000100, -36(FP)
+	CLRL	-32(FP)
+	MOVL	#2, -48(FP)
+	MOVAQ	-12(FP), -44(FP)
+	MOVAQ	-36(FP), -40(FP)
+	MOVL	R0, R2
+	CALLG	-48(FP), G^POC_HMOD
+	CVTLB	R0, R3
+	MOVB	R3, (R2)
+; line 869
+	ASHQ	#-8, -12(FP), -12(FP)
+	INCL	-24(FP)
+	JMP	L^L_608
+L_609:
+	RET
+; PROCEDURE WriteBool
+	.ENTRY	FILES_WRITEBOOL_NR4JN7NT, ^M<>
+	SUBL2	#16, SP
+; line 876
+	BLBS	12(AP), L_613
+	JMP	L^L_612
+L_613:
+; line 876
+	MOVL	#3, -16(FP)
+	MOVL	4(AP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	MOVL	#1, -4(FP)
+	CALLG	-16(FP), FILES_WRITE_N7USGTA5
+	JMP	L^L_611
+L_612:
+; line 876
+	MOVL	#3, -16(FP)
+	MOVL	4(AP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	CLRL	-4(FP)
+	CALLG	-16(FP), FILES_WRITE_N7USGTA5
+L_611:
+	RET
+; PROCEDURE WriteInt
+	.ENTRY	FILES_WRITEINT_NSQTETBU, ^M<R2>
+	SUBL2	#28, SP
+	CLRL	-4(FP)
+; line 882
+	DIVW3	#256, 12(AP), R0
+	MULW3	R0, #256, R1
+	SUBW3	R1, 12(AP), R1
+	BEQL	L_614
+	XORW3	#256, R1, R0
+	BGEQ	L_614
+	ADDW2	#256, R1
+L_614:
+	CVTWB	R1, -2(FP)
+; line 882
+	DIVW3	#256, 12(AP), R0
+	MULW3	R0, #256, R1
+	SUBW3	R1, 12(AP), R1
+	BEQL	L_615
+	XORW2	#256, R1
+	BGEQ	L_615
+	DECW	R0
+L_615:
+	DIVW3	#256, R0, R1
+	MULW3	R1, #256, R2
+	SUBW3	R2, R0, R2
+	BEQL	L_616
+	XORW3	#256, R2, R1
+	BGEQ	L_616
+	ADDW2	#256, R2
+L_616:
+	CVTWB	R2, -1(FP)
+; line 883
+	MOVL	#5, -28(FP)
+	MOVL	4(AP), -24(FP)
+	MOVL	8(AP), -20(FP)
+	MOVAB	-2(FP), -16(FP)
+	MOVL	#2, -12(FP)
+	MOVL	#2, -8(FP)
+	CALLG	-28(FP), FILES_WRITEBYTES_P66HLQ14
+	RET
+; PROCEDURE WriteLInt
+	.ENTRY	FILES_WRITELINT_PV726R84, ^M<R2>
+	SUBL2	#36, SP
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVL	12(AP), -4(FP)
+; line 889
+	CLRW	-10(FP)
+L_617:
+	CMPW	-10(FP), #3
+	BLEQ	L_619
+	JMP	L^L_618
+L_619:
+; line 889
+	CVTWL	-10(FP), R0
+	CMPL	R0, #3
+	BLEQU	L_620
+	PUSHL	#26
+	PUSHL	#889
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_620:
+	DIVL3	#256, -4(FP), R1
+	MULL3	R1, #256, R2
+	SUBL3	R2, -4(FP), R2
+	BEQL	L_621
+	XORL3	#256, R2, R1
+	BGEQ	L_621
+	ADDL2	#256, R2
+L_621:
+	CVTLB	R2, -8(FP)[R0]
+; line 889
+	DIVL3	#256, -4(FP), R0
+	MULL3	R0, #256, R1
+	SUBL3	R1, -4(FP), R1
+	BEQL	L_622
+	XORL2	#256, R1
+	BGEQ	L_622
+	DECL	R0
+L_622:
+	MOVL	R0, -4(FP)
+	INCW	-10(FP)
+	JMP	L^L_617
+L_618:
+; line 890
+	MOVL	#5, -36(FP)
+	MOVL	4(AP), -32(FP)
+	MOVL	8(AP), -28(FP)
+	MOVAB	-8(FP), -24(FP)
+	MOVL	#4, -20(FP)
+	MOVL	#4, -16(FP)
+	CALLG	-36(FP), FILES_WRITEBYTES_P66HLQ14
+	RET
+; PROCEDURE WriteSet
+	.ENTRY	FILES_WRITESET_NTJE9ER3, ^M<R2>
+	SUBL2	#32, SP
+	CLRQ	-8(FP)
+; line 896
+	CLRW	-8(FP)
+L_623:
+	CMPW	-8(FP), #3
+	BLEQ	L_625
+	JMP	L^L_624
+L_625:
+; line 897
+	CVTWL	-8(FP), R0
+	CMPL	R0, #3
+	BLEQU	L_626
+	PUSHL	#9
+	PUSHL	#897
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_626:
+	CLRB	-4(FP)[R0]
+; line 898
+	MOVW	#7, -6(FP)
+L_627:
+	TSTW	-6(FP)
+	BGEQ	L_629
+	JMP	L^L_628
+L_629:
+; line 899
+	CVTWL	-8(FP), R0
+	CMPL	R0, #3
+	BLEQU	L_630
+	PUSHL	#11
+	PUSHL	#899
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_630:
+	CVTWL	-8(FP), R1
+	CMPL	R1, #3
+	BLEQU	L_631
+	PUSHL	#27
+	PUSHL	#899
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_631:
+	MOVZBW	-4(FP)[R1], R2
+	MULW2	#2, R2
+	CVTWB	R2, -4(FP)[R0]
+; line 900
+	MULW3	#8, -8(FP), R0
+	ADDW2	-6(FP), R0
+	CVTWL	R0, R0
+	CLRB	R1
+	CMPL	R0, #31
+	BGTRU	L_633
+	BBC	R0, 12(AP), L_633
+	MOVB	#1, R1
+L_633:
+	BLBS	R1, L_634
+	JMP	L^L_632
+L_634:
+; line 900
+	CVTWL	-8(FP), R0
+	CMPL	R0, #3
+	BLEQU	L_635
+	PUSHL	#34
+	PUSHL	#900
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_635:
+	CVTWL	-8(FP), R1
+	CMPL	R1, #3
+	BLEQU	L_636
+	PUSHL	#50
+	PUSHL	#900
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_636:
+	MOVZBW	-4(FP)[R1], R2
+	INCW	R2
+	CVTWB	R2, -4(FP)[R0]
+L_632:
+	DECW	-6(FP)
+	JMP	L^L_627
+L_628:
+	INCW	-8(FP)
+	JMP	L^L_623
+L_624:
+; line 903
+	MOVL	#5, -32(FP)
+	MOVL	4(AP), -28(FP)
+	MOVL	8(AP), -24(FP)
+	MOVAB	-4(FP), -20(FP)
+	MOVL	#4, -16(FP)
+	MOVL	#4, -12(FP)
+	CALLG	-32(FP), FILES_WRITEBYTES_P66HLQ14
+	RET
+; PROCEDURE WriteReal
+	.ENTRY	FILES_WRITEREAL_8UL6G66T, ^M<>
+	SUBL2	#56, SP
+	CLRQ	-24(FP)
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVF	12(AP), -4(FP)
+; line 909
+	MOVL	#3, -40(FP)
+	MOVAB	-4(FP), R0
+	MOVL	R0, -36(FP)
+	MOVAB	-12(FP), R0
+	MOVL	R0, -32(FP)
+	MOVL	#4, -28(FP)
+	CALLG	-40(FP), G^POC_MOVE
+; line 910
+	MOVL	#5, -48(FP)
+	MOVAB	-12(FP), -44(FP)
+	MOVL	#4, -40(FP)
+	MOVAB	-14(FP), -36(FP)
+	MOVAB	-16(FP), -32(FP)
+	MOVAB	-24(FP), -28(FP)
+	CALLG	-48(FP), FILES_FFIELDS_N3GB1FU1
+; line 911
+	MOVL	#5, -48(FP)
+	MOVAB	-14(FP), -44(FP)
+	MOVAB	-16(FP), -40(FP)
+	MOVAB	-24(FP), -36(FP)
+	MOVL	#23, -32(FP)
+	MOVL	#255, -28(FP)
+	CALLG	-48(FP), FILES_VAXTOIEEE_J98J6SE4
+; line 912
+	MOVL	#5, -48(FP)
+	CVTWL	-14(FP), -44(FP)
+	CVTWL	-16(FP), -40(FP)
+	MOVQ	-24(FP), -56(FP)
+	MOVAQ	-56(FP), -36(FP)
+	MOVAB	-8(FP), -32(FP)
+	MOVL	#4, -28(FP)
+	CALLG	-48(FP), FILES_SINGLEBYTES_D81VPR81
+; line 913
+	MOVL	#5, -48(FP)
+	MOVL	4(AP), -44(FP)
+	MOVL	8(AP), -40(FP)
+	MOVAB	-8(FP), -36(FP)
+	MOVL	#4, -32(FP)
+	MOVL	#4, -28(FP)
+	CALLG	-48(FP), FILES_WRITEBYTES_P66HLQ14
+	RET
+; PROCEDURE WriteLReal
+	.ENTRY	FILES_WRITELREAL_RC3UHI8N, ^M<>
+	SUBL2	#68, SP
+	CLRQ	-36(FP)
+	CLRQ	-28(FP)
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVQ	@12(AP), -8(FP)
+; line 919
+	MOVL	#3, -52(FP)
+	MOVAB	-8(FP), R0
+	MOVL	R0, -48(FP)
+	MOVAB	-24(FP), R0
+	MOVL	R0, -44(FP)
+	MOVL	#8, -40(FP)
+	CALLG	-52(FP), G^POC_MOVE
+; line 920
+	MOVL	#5, -60(FP)
+	MOVAB	-24(FP), -56(FP)
+	MOVL	#8, -52(FP)
+	MOVAB	-26(FP), -48(FP)
+	MOVAB	-28(FP), -44(FP)
+	MOVAB	-36(FP), -40(FP)
+	CALLG	-60(FP), FILES_GFIELDS_S83898NU
+; line 921
+	MOVL	#5, -60(FP)
+	MOVAB	-26(FP), -56(FP)
+	MOVAB	-28(FP), -52(FP)
+	MOVAB	-36(FP), -48(FP)
+	MOVL	#52, -44(FP)
+	MOVL	#2047, -40(FP)
+	CALLG	-60(FP), FILES_VAXTOIEEE_J98J6SE4
+; line 922
+	MOVL	#5, -60(FP)
+	CVTWL	-26(FP), -56(FP)
+	CVTWL	-28(FP), -52(FP)
+	MOVQ	-36(FP), -68(FP)
+	MOVAQ	-68(FP), -48(FP)
+	MOVAB	-16(FP), -44(FP)
+	MOVL	#8, -40(FP)
+	CALLG	-60(FP), FILES_DOUBLEBYTES_KSUDM3FI
+; line 923
+	MOVL	#5, -60(FP)
+	MOVL	4(AP), -56(FP)
+	MOVL	8(AP), -52(FP)
+	MOVAB	-16(FP), -48(FP)
+	MOVL	#8, -44(FP)
+	MOVL	#8, -40(FP)
+	CALLG	-60(FP), FILES_WRITEBYTES_P66HLQ14
+	RET
+; PROCEDURE WriteNum
+	.ENTRY	FILES_WRITENUM_NSP2N16J, ^M<R2>
+	SUBL2	#44, SP
+	CLRQ	-8(FP)
+	MOVQ	@12(AP), -8(FP)
+; line 930
+L_637:
+	CLRB	R0
+	CMPL	-4(FP), #^XFFFFFFFF
+	BLSS	L_640
+	BGTR	L_641
+	CMPL	-8(FP), #^XFFFFFFC0
+	BGEQU	L_641
+L_640:
+	MOVB	#1, R0
+L_641:
+	BLBC	R0, L_642
+	JMP	L^L_639
+L_642:
+	CLRB	R0
+	CMPL	-4(FP), #^X00000000
+	BGTR	L_643
+	BLSS	L_644
+	CMPL	-8(FP), #^X0000003F
+	BLEQU	L_644
+L_643:
+	MOVB	#1, R0
+L_644:
+	BLBS	R0, L_645
+	JMP	L^L_638
+L_645:
+L_639:
+; line 931
+	MOVL	#3, -24(FP)
+	MOVL	4(AP), -20(FP)
+	MOVL	8(AP), -16(FP)
+	MOVL	#^X00000080, -32(FP)
+	CLRL	-28(FP)
+	MOVL	#2, -44(FP)
+	MOVAQ	-8(FP), -40(FP)
+	MOVAQ	-32(FP), -36(FP)
+	CALLG	-44(FP), G^POC_HMOD
+	ADDL2	#^X00000080, R0
+	ADWC	#^X00000000, R1
+	CVTLB	R0, R2
+	MOVZBL	R2, -12(FP)
+	CALLG	-24(FP), FILES_WRITE_N7USGTA5
+; line 931
+	MOVL	#^X00000080, -16(FP)
+	CLRL	-12(FP)
+	MOVL	#2, -28(FP)
+	MOVAQ	-8(FP), -24(FP)
+	MOVAQ	-16(FP), -20(FP)
+	CALLG	-28(FP), G^POC_HDIV
+	MOVQ	R0, -8(FP)
+	JMP	L^L_637
+L_638:
+; line 933
+	MOVL	#3, -24(FP)
+	MOVL	4(AP), -20(FP)
+	MOVL	8(AP), -16(FP)
+	MOVL	#^X00000080, -32(FP)
+	CLRL	-28(FP)
+	MOVL	#2, -44(FP)
+	MOVAQ	-8(FP), -40(FP)
+	MOVAQ	-32(FP), -36(FP)
+	CALLG	-44(FP), G^POC_HMOD
+	CVTLB	R0, R2
+	MOVZBL	R2, -12(FP)
+	CALLG	-24(FP), FILES_WRITE_N7USGTA5
 	RET
 
 ; the module's initializer: once only
@@ -2072,9 +5741,27 @@ L_233:
 	RET
 L_BODY:
 	MOVB	#1, L_INITIALISED
+	PUSHAL	L_ROOTS
+	CALLS	#1, G^POC_ROOTS
+	CALLS	#0, G^PLATFORM_INIT
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	SUBL2	#20, SP
+; line 937
+	CALLS	#0, G^PLATFORM_MAXPATHLENGTH_7JJHAPOP
+	MOVW	R0, FILES_MAXPATHLENGTH_ARAMRS13
+; line 938
+	CALLS	#0, G^PLATFORM_MAXNAMELENGTH_5GHAQMKH
+	MOVW	R0, FILES_MAXNAMELENGTH_NQ44O5S7
+; line 939
+	MOVL	#4, -20(FP)
+	MOVAB	L_STR_9, -16(FP)
+	MOVL	#10, -12(FP)
+	MOVAB	FILES_HOME_GQ76VUP5, -8(FP)
+	MOVL	#256, -4(FP)
+	CALLG	-20(FP), G^PLATFORM_GETENV_ATVM4QJV
 	RET
 
 ; the module's key, which its importers refer to
-POC_K1_864112F5374F12A3 == 0
+POC_K1_A0694F69C7B15B3C == 0
 
 	.END

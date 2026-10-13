@@ -39,6 +39,9 @@ test/conformance/**/*.com
 !test/conformance/**/expected-*.com
 !test/conformance/**/guest-*.com
 test/conformance/**/result
+# vax-files-riders' copies of llvm-files-riders' sources, and what it expects
+test/conformance/vax-files-riders/*.mod
+test/conformance/vax-files-riders/guest.expected
 test/conformance/hello/hello
 test/conformance/llvm-build-run/llvm-build-run
 test/conformance/llvm-args/llvm-args

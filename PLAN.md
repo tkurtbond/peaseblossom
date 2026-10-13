@@ -627,7 +627,12 @@ C++, and so on) unless step 4 chooses one deliberately.
    `doc/developer/vax-macro32-backend.md` section 19.1, and section 19.2
    records the work. It has voc's whole interface, over 18 new routines
    in `PocRtl.mar`. Fixture `vax-platform-files` runs 70 checks on the
-   guest. Next, `Files`.
+   guest. `Files` is done (2026-10-12): its nine proposals, **approved by
+   the user, 2026-10-12**, are section 19.3, and section 19.4 records the
+   work. It has the whole interface, and its typed riders write IEEE
+   reals. Fixtures `vax-files-riders` (`llvm-files-riders`' programs on
+   the guest) and `vax-files-extra` (75 checks) are new. Next,
+   `Modules`.
 
 4. **Which native VAX/VMS libraries to support.** From the manuals, not
    memory, list what a VMS programmer expects to reach: the run-time

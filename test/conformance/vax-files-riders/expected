@@ -1,0 +1,4 @@
+VAX build riders -O2 exit 0
+VAX build signed -O2 exit 0
+VAX build riders -OC exit 0
+VAX build signed -OC exit 0

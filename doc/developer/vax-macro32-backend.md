@@ -3078,9 +3078,9 @@ user, 2026-10-12**, all eight as written.
 depend on the system. Where it does (error numbers, time zones,
 `System`'s command), a VAX fixture of their own covers it.
 
-### 19.2 Done
+### 19.2 Platform: done
 
-- *`Platform`* (section 19.1, proposals 1 to 8, 2026-10-12).
+- *Done* (section 19.1, proposals 1 to 8, 2026-10-12).
   `rtl/vax/Platform.Mod` has the whole interface, over 18 new routines
   in `PocRtl.mar`: `POC_FILE_OPEN_MODE`, `POC_FILE_TRUNCATE`,
   `POC_FILE_FLUSH`, `POC_FILE_IDENTITY`, `POC_SET_REVISION`,
@@ -3114,3 +3114,148 @@ depend on the system. Where it does (error numbers, time zones,
   `vax-platform`, `System("exit 1")` is 256 under LLVM and 0 on VMS
   (an odd status is success), and `expected-vax-Platform.mar` is new.
   `vax-library`'s `POCRTL` makes 198 symbols universal, 66 more.
+
+### 19.3 Files: proposals
+
+`rtl/vax/Files.Mod` has the part of the interface poc's own source uses
+(section 15, proposal 2): `New`, `Old`, `Register`, `Close`, `Length`,
+`Set`, `Base`, `Read`, `Write`, `ReadString`, `ReadLine`, `WriteString`
+and `Delete`. The rest comes over `Platform` (section 19.1) and a few
+more routines in `PocRtl.mar`. Section 15's model stays: a file `Files`
+makes is Stream_LF, read and written by block I/O a 512-byte block at a
+time, and a file of another record format is read a record at a time,
+with an LF after each. The sources are the 5.0 RMS manual (`AA-LA83A`)
+and the 5.5 System Services Reference (`AA-LA69B`). **Approved by the
+user, 2026-10-12**, all nine as written.
+
+1. **The whole interface, as `rtl/llvm`'s.** `Purge`, `GetDate`,
+   `GetName`, `Pos`, `ReadByte`, `ReadBytes`, `WriteBytes`, `Rename`,
+   `ChangeDirectory`, `SetSearchPath`, the typed riders (`Read`/`Write`
+   `Bool`, `Int`, `LInt`, `Set`, `Real`, `LReal`, `Num`), and
+   `MaxPathLength` and `MaxNameLength` (255 and 39, `Platform`'s). Each
+   has `rtl/llvm`'s comment and behaves as it does there, except where
+   these proposals say otherwise.
+
+2. **`Old` opens a file to be read, and the first write reopens it to
+   be written.** RMS sets a file's revision date to the time of its
+   `$CLOSE` whenever it was opened for writing, written to or not (RMS
+   Reference, chapter 15; and on the guest, 2026-10-12). If `Old`
+   opened every file to be read and written, as `rtl/llvm`'s does when
+   the system allows, every file poc reads would get a new date. Instead
+   `Old` opens it for `GET` with block I/O. The first `Write`,
+   `WriteBytes`, typed write or `Purge` closes it and opens it again
+   for `GET` and `PUT`. If it cannot be opened for writing (no
+   privilege), or its format is not Stream_LF, fixed-length or
+   undefined, the program stops with "error writing file" and
+   `HALT(99)`, as `rtl/llvm`'s does when a write fails. Both opens share
+   with `SHRGET`, `SHRPUT` and `UPI`, the only sharing RMS allows for
+   block I/O (RMS Reference, `FAB$B_SHR`). So two `Old` calls for one
+   file give two independent Files, as on Unix (vishap-bugs D14).
+
+3. **A File stays usable after `Close` and `Register`, as on Unix.** The
+   next operation opens it again: to be read, or to be written as in
+   proposal 2. Today a File can be written only before its `Close`, and
+   a File `Old` opened can never be written.
+
+4. **`GetDate` is the revision date.** It writes out the block, reads
+   the date with `$DISPLAY` into the control's XABDAT, and converts it
+   to `t` and `d` as `Platform.MTimeAsClock` does. A File written since it was last
+   opened is given the current time: RMS sets its date only when it is
+   closed, and then to the time of the `$CLOSE`. A New file not yet
+   written to is made first, as `rtl/llvm`'s is.
+
+5. **New names are fixed when they are given.** `New` has `$PARSE`
+   expand the name against the current default directory and keeps the
+   result without its version (a new routine, `POC_EXPAND_NAME`). The
+   temporary file is made, and `Register` names it, there, even if the
+   program has called `ChangeDirectory` in between, as on Unix.
+   `GetName` gives the name `Old` was asked for, or `New`'s name once
+   the file is registered. Before that it gives the temporary file's
+   full resultant name (`DUA1:[USERS.POC]POC_000002A4_1.TMP;1`), or "" if
+   it has not been made yet.
+
+6. **The search path is VMS directories.** As in voc, the directories
+   are separated by ";" and blanks around them are ignored. Each is a
+   directory specification (`[.SUB]`, `DUA1:[X.Y]`) or a logical name;
+   a bare logical name gets a ":" after it. A leading "~" stands for
+   `SYS$LOGIN`. `Old` puts each directory in front of the name, in
+   turn. A name with ":", "[" or "<" in it is looked for only where it
+   says, as a name with "/" is on Unix. A search-list logical name
+   (`DEFINE LIB [A],[B]`, `Old("LIB:X.TXT")`) works too, because RMS
+   handles it itself.
+
+7. **`Delete`, `Rename` and `ChangeDirectory` are `Platform`'s**
+   (section 19.1): `Unlink` deletes the highest version, `Rename` makes
+   the new name a new version, and `Chdir` sets the default directory.
+   As with `Register`, an existing file of the new name stays, as an
+   older version, where on Unix it is replaced. `Old` of the name finds
+   the new one either way.
+
+8. **The typed riders write Oakwood's format, the same bytes as on
+   Unix.** That is the step 2 decision (`vms-module-inventory.md`,
+   proposal 4). Integers, sets, Booleans, strings and `WriteNum`'s
+   numbers need no change. A `REAL` is converted between F_floating and
+   IEEE single, a `LONGREAL` between G_floating and IEEE double, by
+   `Files`' own code. Each pair has the same field widths. The exponent
+   is 2 more on the VAX: a VAX fraction is 0.1f where IEEE's is 1.f, and
+   the bias is 128 or 1024 where IEEE's is 127 or 1023. And a VAX value's
+   16-bit words are in the other order. Where the ranges differ:
+   - Writing: a VAX value whose exponent field is 1 or 2 becomes an IEEE
+     denormal, rounded to nearest, ties to even. VAX zero is IEEE +0.
+   - Reading: an IEEE denormal or zero becomes VAX 0, since the VAX has
+     neither denormals nor -0.
+   - Reading: an IEEE value too large for the VAX (exponent field 254 or
+     2046), or an infinity, becomes the largest VAX value of its sign.
+   - Reading: a NaN becomes the VAX reserved operand (sign 1, exponent
+     0). Arithmetic on it stops the program with a reserved-operand
+     fault, the nearest thing the VAX has to a NaN.
+
+9. **Files are finalized, as on Unix.** Each File is registered with
+   `GarbageCollectedHeap.RegisterFinalizer`. When it is no longer
+   reachable, or the program ends (the collector's exit handler, which
+   runs after a trap too), its block is written out and it is closed.
+   A New file never registered has its temporary file deleted.
+
+**Testing.** `llvm-files-riders`' `riders.mod` and `signed.mod` run on the
+guest under `-O2` and `-OC`. They must print what they print under
+LLVM, the dump of the typed riders' bytes included. Only `riders.mod`'s
+three directory names are changed, with sed, to VMS ones (`riders.sub`
+to `[.RIDERSSUB]`, `..` to `[-]`). `llvm-files` and `llvm-files-extra`
+check their files with Unix commands, so a new fixture,
+`vax-files-extra`, makes the same checks with DCL's. `vax-files` keeps
+its checks of reading variable-length and VFC files.
+
+### 19.4 Files: done
+
+- *Done* (section 19.3, proposals 1 to 9, 2026-10-12).
+  `rtl/vax/Files.Mod` has the whole interface. It imports `Platform`
+  and `GarbageCollectedHeap`, and uses three routines that are new or
+  changed in `PocRtl.mar`:
+  - `POC_FILE_REOPEN` takes a third argument: 1 opens the file to be
+    written, refusing a format other than Stream_LF, fixed-length or
+    undefined.
+  - `POC_EXPAND_NAME` is New's `$PARSE`.
+  - `POC_FILE_NAME` gives the resultant name.
+
+  Every open shares with `SHRGET`, `SHRPUT` and `UPI`. That includes
+  `POC_FILE_CREATE`'s, beyond proposal 2, so that `Old` of a New file's
+  temporary name works while the New file is open, as on Unix.
+  `Platform.OldRO`'s open shares the same way. On the guest RMS accepts
+  this sharing on variable-length and VFC files read a record at a time
+  too (`vax-files`).
+- *Fixtures.*
+  - `vax-files-riders`, new, runs `llvm-files-riders`' two programs on
+    the guest. It takes its expected output from that fixture's
+    `expected`, with `exit=2` as `status: %X10000012`. The trap's
+    message is on `SYS$ERROR`, typed before the status where Unix's
+    `2>&1` shows it. The dump of the typed riders' bytes is the same as
+    on Unix, and so are `KEPT.TXT`, written out by the collector's exit
+    handler after a trap, and no `POC_*.TMP` left.
+  - `vax-files-extra`, new: 75 checks. 1-36 are `llvm-files`', 37-54
+    `llvm-files-extra`'s, with DCL for the shell. 55-75 check section
+    19.3: the date kept by a read, two Files on one file, `Purge`, the
+    search path with "~" and a logical name, and eleven real
+    conversions at the edges, including denormal ties both ways.
+  - `vax-files` compares the three modules `Files` now imports, each the
+    same as a reviewed copy elsewhere.
+  - `vax-library`'s `POCRTL` makes 226 symbols universal, 28 more.

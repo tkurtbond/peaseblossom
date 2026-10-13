@@ -44,11 +44,14 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   of the files in them, as VMS writes them (section 15, proposal 4;
   section 18.5).
 
-- `Files.Mod` (`File`, `Rider`, `Old`, `New`, `Register`, `Close`,
-  `Length`, `Set`, `Base`, `Read`, `Write`, `ReadString`, `ReadLine`,
-  `WriteString`, `Delete`): the files poc makes are Stream_LF, written
-  and read by block I/O; a file of another record format is read a
-  record at a time, an LF after each (section 15, proposal 2).
+- `Files.Mod`: voc's and `rtl/llvm`'s whole interface (section 19.3,
+  Phase 17 step 3). The files it makes are Stream_LF, written and read by
+  block I/O; a file of another record format is read a record at a time,
+  an LF after each (section 15, proposal 2). `Old` opens to read and the
+  first write reopens to write, so that reading keeps a file's revision
+  date; `New` fixes its name when given; the search path is VMS
+  directories; the typed riders write IEEE reals, converted from
+  F_floating and G_floating; every File is finalized.
 - `GarbageCollectedHeap.Mod` (`Allocate`, `Collect`, `SetStackBase`,
   `SetHeapLimit`, `SetChunkSize`, `SetMarkStackCapacity`,
   `CollectionCount`, `HeapBytes`, `LiveBytes`, `IsAllocated`,
