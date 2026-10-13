@@ -2943,8 +2943,15 @@ image found through the logical name `SHRLIB`:
   (layer 1: `MULDEF`, fatal in every build procedure). `vax-library`
   builds vax-build's colliding pair with one or both in a library: a
   program's `-build`, and a library's, are refused.
-- *Left for the next steps*: proposal 8's failure cases, run on the
-  guest, each to be a message rather than a crash: an importer compiled
-  against a different `.sym` (`NUDFSYMS` at the link), a missing
-  shareable image (at activation), and a relinked image under a program
-  linked against the old one (no `GSMATCH`, proposal 3).
+- *The failure cases* (proposal 8, 2026-10-12), as 18.4 found them by
+  hand, now with poc's libraries, in `vax-library`'s
+  `guest-library.com`: `USESHR` run with the logical name `VAXLIB`
+  gone, `%DCL-W-ACTIMAGE` and `-CLI-E-IMAGEFNF`; run again after
+  `VAXLIB_BUILD.COM` has relinked the image, `-SYSTEM-F-SHRIDMISMAT`
+  (no `GSMATCH`, proposal 3); and `STALE.COM`, a program compiled
+  against a `VAXLIB` whose `VaxLibSums` exports one more constant (made
+  on the host, its module renamed `STALEUSE` to sit beside the other),
+  linked with the real one: `%LINK-W-NUDFSYMS` and `%LINK-I-UDFSYM` for
+  the other key, and the procedure stops there. Each is VMS's own
+  message and a failing status, not a crash.
+- *Step 1 is complete.*

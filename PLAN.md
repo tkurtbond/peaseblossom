@@ -587,9 +587,10 @@ C++, and so on) unless step 4 chooses one deliberately.
    `@file` response files (everywhere) and expands `*` and `%` itself
    on VMS (section 18.5). Two exported names with one VAX symbol are
    refused when one or both modules come from a library, recomputed
-   from their `.sym` files (proposal 7). Next: proposal 8's failure
-   cases on the guest (a `.sym` that does not match, a missing image, a
-   relinked image under an old program); then step 2.
+   from their `.sym` files (proposal 7). On the guest, a missing image,
+   an image relinked under an old program and a program compiled against
+   another `.sym` each stop with VMS's message (proposal 8). Step 1 is
+   complete; next, step 2.
 
 2. **Which existing Oberon libraries and modules to support on VMS.**
    Take Phase 12's complete inventory of voc's modules and Phase 10's

@@ -10,3 +10,14 @@ USEOLB.COM, against the object libraries: %X10000001
 total 25
 count 12
 run: %X00000001
+%DCL-W-ACTIMAGE, error activating image VAXLIB
+-CLI-E-IMAGEFNF, image file not found DUA0:[SYS0.SYSCOMMON.][SYSLIB]VAXLIB.EXE;
+run, VAXLIB's image not found: %X100388B2
+VAXLIB_BUILD again: %X10000001
+%DCL-W-ACTIMAGE, error activating image VAXLIB
+-CLI-E-IMGNAME, image file DUA1:[USERS.POC]VAXLIB.EXE;2
+-SYSTEM-F-SHRIDMISMAT, ident mismatch with shareable image
+run, VAXLIB relinked: %X100020BC
+%LINK-W-NUDFSYMS, 1 undefined symbol:
+%LINK-I-UDFSYM, 	POC_K1_A3C80D9A07A0DA0C 
+STALE.COM, against another VaxLibSums: %X10648268

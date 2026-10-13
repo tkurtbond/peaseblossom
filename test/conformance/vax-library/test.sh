@@ -15,7 +15,11 @@
 # finds them there. Then what -library and -install-library for the VAX
 # refuse, each with exit status 1, and two exported names with one VAX
 # symbol, when one or both modules come from a library, refused before
-# anything is written.
+# anything is written. On the guest, also the failures a library's user
+# can meet (proposal 8): its shareable image not found, the image
+# relinked under a program linked against it before, and a program
+# compiled against another interface of a module linked with the
+# library, each stopped with VMS's message.
 . ../../vaxfixture.sh
 rm -rf libs main inst
 rm -f useolb.com useshr.com
@@ -53,8 +57,23 @@ run -target vax-dec-vms -library-path libs -output-dir main -o useolb -build Vax
 compare expected-useolb.com useolb.com
 run -target vax-dec-vms -library-path libs -shared-libraries -output-dir main -o useshr -build VaxLibUse.mod
 compare expected-useshr.com useshr.com
+# proposal 8's failure cases: the program compiled against a VAXLIB
+# whose VaxLibSums has another interface, so another key (stale.com,
+# renamed STALEUSE so that it can sit beside VAXLIBUSE on the guest)
+mkdir stale stale-src
+cp VaxLibBase.mod VaxLibShapes.mod stale-src/
+sed 's/^  IMPORT VaxLibBase, VaxLibShapes;$/&\
+  CONST changed* = 1;/' VaxLibSums.mod >stale-src/VaxLibSums.mod
+run -target vax-dec-vms -output-dir stale -library-path libs -library VAXLIB \
+  stale-src/VaxLibBase.mod stale-src/VaxLibShapes.mod stale-src/VaxLibSums.mod
+run -target vax-dec-vms -library-path stale -library-path libs -output-dir stale -o stale -build VaxLibUse.mod
+sed -e 's/^\$ MACRO\/OBJECT VAXLIBUSE\.MAR$/$ MACRO\/OBJECT STALEUSE.MAR/' -e 's/^VAXLIBUSE\.OBJ$/STALEUSE.OBJ/' \
+  stale.com >stale-renamed.com && mv stale-renamed.com stale.com
+cp stale/VaxLibUse.mar StaleUse.mar
+cmp -s main/VaxLibUse.mar StaleUse.mar || echo "stale.com's program names another VaxLibSums key" >>result
 vax_do guest-library.com guest-library.expected $lib/*.mar $lib/*_build.com $lib/*_setup.com \
-  main/VaxLibUse.mar useolb.com useshr.com
+  main/VaxLibUse.mar useolb.com useshr.com StaleUse.mar stale.com
+rm -rf stale stale-src StaleUse.mar stale.com
 run -target vax-dec-vms -library-path libs -output-dir inst -install-library POCRTL
 run -target vax-dec-vms -library-path libs -output-dir inst -install-library VAXLIB
 run -target vax-dec-vms -library-path libs -output-dir inst -install-library VAXLIB

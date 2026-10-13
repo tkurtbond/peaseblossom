@@ -56,6 +56,15 @@ useolb.com matches expected-useolb.com
 == poc -target vax-dec-vms -library-path libs -shared-libraries -output-dir main -o useshr -build VaxLibUse.mod
 exit 0
 useshr.com matches expected-useshr.com
+== poc -target vax-dec-vms -output-dir stale -library-path libs -library VAXLIB stale-src/VaxLibBase.mod stale-src/VaxLibShapes.mod stale-src/VaxLibSums.mod
+exit 0
+== poc -target vax-dec-vms -library-path stale -library-path libs -output-dir stale -o stale -build VaxLibUse.mod
+poc: warning: module VaxLibBase is taken from library VAXLIB (stale/vax-dec-vms/O2), which hides library VAXLIB's (libs/vax-dec-vms/O2)
+poc: warning: module VaxLibShapes is taken from library VAXLIB (stale/vax-dec-vms/O2), which hides library VAXLIB's (libs/vax-dec-vms/O2)
+poc: warning: module VaxLibSums is taken from library VAXLIB (stale/vax-dec-vms/O2), which hides library VAXLIB's (libs/vax-dec-vms/O2)
+poc: warning: module VaxLibSums is taken from library VAXLIB (stale/vax-dec-vms/O2), not compiled from VaxLibSums.mod, which is not the source it was built from
+exit 0
+stale.com's program names another VaxLibSums key
 == poc -target vax-dec-vms -library-path libs -output-dir inst -install-library POCRTL
 installed library POCRTL in inst/vax-dec-vms/O2
 exit 0
