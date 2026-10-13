@@ -42,6 +42,7 @@ options, before the command (the last one counts, except those that add):
 environment:
   POC_IMPORT_PATH            the import path to start from (dir:dir:...)
   POC_LIBRARY_PATH           library path after -library-path (dir:dir:...)
+  POC$LIBRARY                on VMS, the library path after -library-path
 
 for testing poc itself:
   -dump-tokens <file>        print the module's tokens

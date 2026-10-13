@@ -6,6 +6,20 @@ path [lib/x.mod]
 path [DISK:/x.mod]
 path [[LIB]/x.mod]
 cut short [dir/x.m]
+subdirectory [./sub]
+subdirectory [sub]
+subdirectory [lib/sub]
+subdirectory [[LIB]/sub]
+subdirectory [[]/sub]
+subdirectory [DISK:[A.]/sub]
+subdirectory [<A.B>/sub]
+subdirectory [DISK:/sub]
+subdirectory [POC_PLATFORM_TEST/sub]
+cut short [[A]/sub]
+name of [dir/x.mod] at 4
+name of [DISK:[A]x.mod] at 0
+name of [<A>x.mod] at 0
+name of [x.mod] at 0
 is a directory: TRUE
 missing is a directory: FALSE
 made is a directory: FALSE

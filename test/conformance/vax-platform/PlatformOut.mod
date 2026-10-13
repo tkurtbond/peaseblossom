@@ -4,7 +4,8 @@ MODULE PlatformOut;
      names the command line gives, which differ between Unix and VMS: 1 a directory
      there is, 2 one there is not, 3 one to make, two levels below one
      there is not yet, 4 a variable or logical name. A file doomed.tmp is
-     there to be deleted. *)
+     there to be deleted. MakeSubdirectory and NameStart (Phase 17 step 1)
+     on names of both systems: on VMS, a logical name is translated. *)
   IMPORT Platform, Directories, Modules, Out;
   VAR dir, missing, made, name, path, value: ARRAY 256 OF CHAR; s: ARRAY 8 OF CHAR;
 
@@ -12,6 +13,16 @@ MODULE PlatformOut;
   BEGIN
     Out.String(text); IF b THEN Out.String(" TRUE") ELSE Out.String(" FALSE") END; Out.Ln
   END Bool;
+
+  PROCEDURE Sub(dir: ARRAY OF CHAR);
+  BEGIN
+    Directories.MakeSubdirectory(dir, "sub", path); Out.String("subdirectory ["); Out.String(path); Out.String("]"); Out.Ln
+  END Sub;
+
+  PROCEDURE Start(path: ARRAY OF CHAR);
+  BEGIN
+    Out.String("name of ["); Out.String(path); Out.String("] at "); Out.Int(Directories.NameStart(path), 0); Out.Ln
+  END Start;
 
   PROCEDURE Path(dir: ARRAY OF CHAR);
   BEGIN
@@ -23,6 +34,9 @@ BEGIN
   Out.String("separator "); Out.Char(Directories.pathSeparator); Out.Ln;
   Path(dir); Path(""); Path("lib"); Path("lib/"); Path("DISK:"); Path("[LIB]");
   Directories.MakePath("dir", "x.mod", s); Out.String("cut short ["); Out.String(s); Out.String("]"); Out.Ln;
+  Sub(dir); Sub(""); Sub("lib"); Sub("[LIB]"); Sub("[]"); Sub("DISK:[A.]"); Sub("<A.B>"); Sub("DISK:"); Sub(name);
+  Directories.MakeSubdirectory("[A]", "subdirectory", s); Out.String("cut short ["); Out.String(s); Out.String("]"); Out.Ln;
+  Start("dir/x.mod"); Start("DISK:[A]x.mod"); Start("<A>x.mod"); Start("x.mod");
   Bool("is a directory:", Directories.IsDirectory(dir));
   Bool("missing is a directory:", Directories.IsDirectory(missing));
   Bool("made is a directory:", Directories.IsDirectory(made));

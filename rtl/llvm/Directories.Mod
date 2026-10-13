@@ -47,6 +47,25 @@ MODULE Directories;
     IF LEN(path) > 0 THEN path[i] := 0X END
   END MakePath;
 
+  (* The subdirectory name of the directory dir in path, cut short if path
+     is too small: on Unix, as MakePath joins them. *)
+  PROCEDURE MakeSubdirectory*(dir, name: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
+  BEGIN
+    MakePath(dir, name, path)
+  END MakeSubdirectory;
+
+  (* Where the file's own name starts in path: after its last "/", or 0. *)
+  PROCEDURE NameStart*(path: ARRAY OF CHAR): INTEGER;
+    VAR i, start: INTEGER;
+  BEGIN
+    i := 0; start := 0;
+    WHILE (i < LEN(path)) & (path[i] # 0X) DO
+      IF path[i] = "/" THEN start := i + 1 END;
+      INC(i)
+    END;
+    RETURN start
+  END NameStart;
+
   (* Whether dir names a directory that exists. *)
   PROCEDURE IsDirectory*(dir: ARRAY OF CHAR): BOOLEAN;
   BEGIN

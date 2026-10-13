@@ -34,8 +34,9 @@ MODULE Libraries;
      module belongs to one library only.
 
      The library path is the list of base directories searched, in order:
-     -library-path, POC_LIBRARY_PATH, then <poc's directory>/../lib/poc. The
-     first one whose tuple directory has <Module>.owner owns the module; a
+     -library-path, POC_LIBRARY_PATH, then <poc's directory>/../lib/poc;
+     on VMS, POC$LIBRARY, a logical name and so a search list, and
+     [<poc's directory's parent>.LIB.POC] (Phase 17 step 1). The first one whose tuple directory has <Module>.owner owns the module; a
      warning names any later one that has it too (Phase 12 step 2e).
 
      Under poc -g (Phase 13 step 3) a library is built in, and looked for
@@ -50,7 +51,7 @@ MODULE Libraries;
      finds, reads and writes manifests, and checks that the libraries a
      program would link agree with each other. *)
 
-  IMPORT Files, Platform, Directories, Err, Version;
+  IMPORT Files, Platform, Directories, Err, Version, BuildInfo;
 
   CONST
     nameLength* = 256;
@@ -231,11 +232,47 @@ MODULE Libraries;
     scratch[n] := 0X
   END ScratchFile;
 
+  (* On VMS, PocLibraryDir: program, argument 0, is the image's file
+     specification, DUA1:[A.BIN]POC.EXE;1, whose directory's parent has
+     LIB.POC, DUA1:[A.LIB.POC]; one at the top, DUA1:[BIN], gives
+     DUA1:[LIB.POC]. No shell, as VMS has none for poc to run. *)
+  PROCEDURE VmsLibraryDir(program: ARRAY OF CHAR; create: BOOLEAN; VAR result: ARRAY OF CHAR): BOOLEAN;
+    VAR parent, lib: Path; i, k, close, dot: INTEGER;
+  BEGIN
+    result[0] := 0X;
+    close := -1; i := 0;
+    WHILE program[i] # 0X DO
+      IF (program[i] = "]") OR (program[i] = ">") THEN close := i END;
+      INC(i)
+    END;
+    IF close < 1 THEN RETURN FALSE END;
+    dot := -1; i := close - 1;
+    WHILE (i >= 0) & (program[i] # "[") & (program[i] # "<") DO
+      IF (dot < 0) & (program[i] = ".") THEN dot := i END;
+      DEC(i)
+    END;
+    IF i < 0 THEN RETURN FALSE END;
+    (* the parent: up to the last ".", closed; or, at the top, the
+       device and an empty directory, which MakeSubdirectory fills *)
+    IF dot > i THEN
+      FOR k := 0 TO dot - 1 DO parent[k] := program[k] END;
+      parent[dot] := program[close]; parent[dot + 1] := 0X
+    ELSE
+      FOR k := 0 TO i - 1 DO parent[k] := program[k] END;
+      parent[i] := 0X
+    END;
+    Directories.MakeSubdirectory(parent, "LIB", lib);
+    Directories.MakeSubdirectory(lib, "POC", result);
+    IF create THEN RETURN Directories.MakeDirectory(result) END;
+    RETURN Directories.IsDirectory(result)
+  END VmsLibraryDir;
+
   PROCEDURE PocLibraryDir*(program: ARRAY OF CHAR; create: BOOLEAN; VAR result: ARRAY OF CHAR): BOOLEAN;
     VAR
       scratch: ARRAY 64 OF CHAR; command: ARRAY 2 * pathLength OF CHAR;
       i, status: INTEGER; f: Files.File; r: Files.Rider;
   BEGIN
+    IF BuildInfo.defaultTarget # "" THEN RETURN VmsLibraryDir(program, create, result) END;
     result[0] := 0X;
     i := 0;
     WHILE program[i] # 0X DO
@@ -295,11 +332,25 @@ MODULE Libraries;
   END SetDebug;
 
   (* base/<triple>/<model>, or <model>-g with withDebug *)
-  PROCEDURE ModelDirectory(base: ARRAY OF CHAR; withDebug: BOOLEAN; VAR dir: ARRAY OF CHAR);
+  (* base/<target>/<sizeModel>, base "" the current directory, joined by
+     Directories (on VMS, [base.<target>.<sizeModel>]) *)
+  PROCEDURE TargetDirectory(base, target, sizeModel: ARRAY OF CHAR; VAR dir: ARRAY OF CHAR);
+    VAR targetDir: Path;
   BEGIN
-    IF base[0] = 0X THEN COPY(".", dir) ELSE COPY(base, dir) END;
-    Append(dir, "/"); Append(dir, triple); Append(dir, "/"); Append(dir, model);
-    IF withDebug THEN Append(dir, "-g") END
+    IF (base[0] = 0X) & (BuildInfo.defaultTarget = "") THEN
+      Directories.MakeSubdirectory(".", target, targetDir)
+    ELSE
+      Directories.MakeSubdirectory(base, target, targetDir)
+    END;
+    Directories.MakeSubdirectory(targetDir, sizeModel, dir)
+  END TargetDirectory;
+
+  PROCEDURE ModelDirectory(base: ARRAY OF CHAR; withDebug: BOOLEAN; VAR dir: ARRAY OF CHAR);
+    VAR sizeModel: ARRAY 8 OF CHAR;
+  BEGIN
+    COPY(model, sizeModel);
+    IF withDebug THEN Append(sizeModel, "-g") END;
+    TargetDirectory(base, triple, sizeModel, dir)
   END ModelDirectory;
 
   (* base/<triple>/<model>, where a library is built: <model>-g under -g *)
@@ -347,8 +398,7 @@ MODULE Libraries;
      where a module the path does not give was found anyway. *)
   PROCEDURE OwnerFor*(base, target, sizeModel, name: ARRAY OF CHAR; VAR owner, dir: ARRAY OF CHAR): BOOLEAN;
   BEGIN
-    IF base[0] = 0X THEN COPY(".", dir) ELSE COPY(base, dir) END;
-    Append(dir, "/"); Append(dir, target); Append(dir, "/"); Append(dir, sizeModel);
+    TargetDirectory(base, target, sizeModel, dir);
     RETURN ReadOwner(dir, name, owner)
   END OwnerFor;
 

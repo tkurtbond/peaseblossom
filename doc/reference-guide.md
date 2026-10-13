@@ -861,6 +861,13 @@ MODULE Directories;
      already ends in "/". *)
   PROCEDURE MakePath*(dir: ARRAY OF CHAR; name: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
 
+  (* The subdirectory name of the directory dir in path, cut short if path
+     is too small: on Unix, as MakePath joins them. *)
+  PROCEDURE MakeSubdirectory*(dir: ARRAY OF CHAR; name: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
+
+  (* Where the file's own name starts in path: after its last "/", or 0. *)
+  PROCEDURE NameStart*(path: ARRAY OF CHAR): INTEGER;
+
   (* Whether dir names a directory that exists. *)
   PROCEDURE IsDirectory*(dir: ARRAY OF CHAR): BOOLEAN;
 

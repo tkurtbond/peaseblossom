@@ -78,6 +78,8 @@ MODULE Poc;
     maxLineLength = 4096;
     importPathEnvVar = "POC_IMPORT_PATH";
     libraryPathEnvVar = "POC_LIBRARY_PATH";
+    (* on VMS, a logical name, so a search list (Phase 17 step 1) *)
+    vmsLibraryPathName = "POC$LIBRARY";
 
   VAR
     (* Whether anything went wrong that is not counted in Diagnostics.errorCount
@@ -322,7 +324,9 @@ MODULE Poc;
   BEGIN
     IF libraryPathCleared THEN RETURN END;
     libraryPathCleared := TRUE;
-    Platform.GetEnv(libraryPathEnvVar, value);
+    IF BuildInfo.defaultTarget # "" THEN Platform.GetEnv(vmsLibraryPathName, value)
+    ELSE Platform.GetEnv(libraryPathEnvVar, value)
+    END;
     IF value[0] # 0X THEN Libraries.AddPathList(value) END;
     Modules.GetArg(0, program);
     Libraries.AddDefaultPathDir(program)
@@ -1530,8 +1534,8 @@ MODULE Poc;
     VAR i, j, slash: INTEGER; ext: ARRAY 5 OF CHAR;
   BEGIN
     COPY(exePath, comPath);
-    i := 0; slash := -1;
-    WHILE comPath[i] # 0X DO IF comPath[i] = "/" THEN slash := i END; INC(i) END;
+    slash := Directories.NameStart(comPath) - 1;
+    i := 0; WHILE comPath[i] # 0X DO INC(i) END;
     IF i - slash > 4 THEN
       FOR j := 0 TO 3 DO
         ext[j] := comPath[i - 4 + j];
@@ -1697,8 +1701,8 @@ MODULE Poc;
     VAR part, p: VaxPart; i, start, j: INTEGER;
   BEGIN
     NEW(part); COPY(file, part.path); part.next := NIL;
-    i := 0; start := 0;
-    WHILE file[i] # 0X DO IF file[i] = "/" THEN start := i + 1 END; INC(i) END;
+    start := Directories.NameStart(file);
+    i := 0; WHILE file[i] # 0X DO INC(i) END;
     j := 0;
     WHILE (start + j < i - 4) & (j < LEN(part.name) - 1) DO part.name[j] := file[start + j]; INC(j) END;
     part.name[j] := 0X;
@@ -2767,6 +2771,7 @@ MODULE Poc;
     HelpLine("environment:");
     HelpLine("  POC_IMPORT_PATH            the import path to start from (dir:dir:...)");
     HelpLine("  POC_LIBRARY_PATH           library path after -library-path (dir:dir:...)");
+    HelpLine("  POC$LIBRARY                on VMS, the library path after -library-path");
     HelpLine("");
     HelpLine("for testing poc itself:");
     HelpLine("  -dump-tokens <file>        print the module's tokens");

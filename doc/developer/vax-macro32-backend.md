@@ -2855,5 +2855,35 @@ image found through the logical name `SHRLIB`:
   whole, builds its program against `inst` and checks both refusals;
   `vax-emit-errors` no longer has an `-install-library` case, and the
   refusal for a later phase (`ReportUnavailable`) is gone.
-- *Left for the next steps*: the library path on VMS (the subdirectory join), and the collision
-  check from `.sym` files (proposal 7).
+- *The library path on VMS* (proposal 6, 2026-10-12). `Directories`
+  has two more procedures, in all three runtimes: `MakeSubdirectory`,
+  the join proposal 6 asked for (on Unix `MakePath`'s; on VMS `[A]` and
+  `B` give `[A.B]`, `[]` gives `[.B]`, a rooted `[A.]` gives `[A.B]`),
+  and `NameStart`, where a file's own name starts in a path (after the
+  last `/`; on VMS after the last `:`, `]` or `>`), which `-o` and a
+  part's `.mar` now use. The guest showed that `LOG:[.B]` and `LOG:[B]`
+  find nothing when `LOG` is not a rooted logical name, so on VMS
+  `MakeSubdirectory` first translates a directory that does not end in
+  `]` or `>` (`Platform.GetEnv`, a search list's first string, at most
+  ten times). `Libraries` makes every tuple directory with it
+  (`TargetDirectory`), so on VMS a library is in
+  `[<base>.VAX-DEC-VMS.<O2|OC>]`. poc on VMS (`BuildInfo.defaultTarget`
+  set) reads the logical name `POC$LIBRARY`, a search list, where Unix
+  reads `POC_LIBRARY_PATH` (`-help` and poc(1) say so), and finds its
+  own library directory without a shell: `[<parent>.LIB.POC]`, where
+  `<parent>` is the directory above the one its image is in
+  (`Libraries.VmsLibraryDir`). `vax-platform`'s `PlatformOut` checks
+  both new procedures on Unix and on the guest, and its reviewed
+  `expected-vax-Directories.mar` has the new code, reviewed by the user
+  (2026-10-12).
+  A one-off run on the guest, with V1's `POC.EXE` linked in `[.LP.POC]`
+  (not a fixture: linking poc there takes the guest for a long while),
+  had poc on VMS print the path with and without `POC$LIBRARY` (one of
+  its strings a logical name), build `POCRTL` into `[-.L1]` and `VAXLIB`
+  into the logical name `LPL2`, install both into its own
+  `[.LP.LIB.POC]`, find them there with `POC$LIBRARY` gone, and build
+  `VAXLIB`'s program against them; their build procedures, run in the
+  installed directory, made the libraries, and the program printed
+  "total 25" and "count 12".
+- *Left for the next steps*: the collision check from `.sym` files
+  (proposal 7).

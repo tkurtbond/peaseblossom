@@ -9,7 +9,14 @@ MODULE Directories;
      of directories, such as POC_IMPORT_PATH, is separated by ",", since a
      directory has ":" in it. A directory given without one of those ends
      is taken as a logical name, and ":" added. RMS takes a name of at most
-     255 characters; a longer one names nothing here. *)
+     255 characters; a longer one names nothing here.
+
+     A subdirectory goes inside the brackets ([A] and B give [A.B]), so
+     a directory named by a logical name is translated first: RMS finds
+     nothing through LOG:[.B] or LOG:[B] unless LOG is a rooted logical
+     name (found on the development system, 2026-10-12). *)
+
+  IMPORT Platform;
 
   CONST
     (* what separates the directories of a list of them *)
@@ -68,6 +75,67 @@ MODULE Directories;
     WHILE (j < LEN(name)) & (name[j] # 0X) & (i < LEN(path) - 1) DO path[i] := name[j]; INC(i); INC(j) END;
     IF LEN(path) > 0 THEN path[i] := 0X END
   END MakePath;
+
+  (* The subdirectory name of the directory dir in path, cut short if path
+     is too small: name inside dir's brackets, [A] and B giving [A.B], []
+     and B [.B], and a rooted directory's [A.] and B [A.B]. A dir that
+     does not end in "]" or ">" is a logical name, or a device, and is
+     translated (Platform.GetEnv; a search list's first string), until it
+     does, at most ten times; one that cannot be gives dir[B], and "" gives
+     [.B], a subdirectory of the default directory. *)
+  PROCEDURE MakeSubdirectory*(dir, name: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
+    VAR
+      d, translated: Name; i, k: LONGINT; translations: INTEGER; close, last: CHAR;
+  BEGIN
+    i := 0;
+    WHILE (i < LEN(dir)) & (dir[i] # 0X) & (i < nameLength - 1) DO d[i] := dir[i]; INC(i) END;
+    d[i] := 0X;
+    translations := 0;
+    WHILE (i > 0) & ~((d[i - 1] = "]") OR (d[i - 1] = ">")) & (translations < 10) DO
+      last := d[i - 1];
+      IF last = ":" THEN d[i - 1] := 0X END;
+      Platform.GetEnv(d, translated);
+      IF translated[0] = 0X THEN
+        d[i - 1] := last; translations := 10 (* not a logical name *)
+      ELSE
+        i := 0;
+        WHILE (translated[i] # 0X) & (translated[i] # pathSeparator) DO d[i] := translated[i]; INC(i) END;
+        d[i] := 0X; INC(translations)
+      END
+    END;
+    k := 0;
+    IF (i > 0) & ((d[i - 1] = "]") OR (d[i - 1] = ">")) THEN
+      close := d[i - 1]; DEC(i);
+      WHILE (k < i) & (k < LEN(path) - 1) DO path[k] := d[k]; INC(k) END;
+      IF (i > 0) & (d[i - 1] # ".") & (k < LEN(path) - 1) THEN path[k] := "."; INC(k) END
+    ELSE
+      close := "]";
+      WHILE (k < i) & (k < LEN(path) - 1) DO path[k] := d[k]; INC(k) END;
+      IF i > 0 THEN
+        IF ~EndsDirectory(d[i - 1]) & (k < LEN(path) - 1) THEN path[k] := ":"; INC(k) END;
+        IF k < LEN(path) - 1 THEN path[k] := "["; INC(k) END
+      ELSIF LEN(path) > 2 THEN
+        path[0] := "["; path[1] := "."; k := 2
+      END
+    END;
+    i := 0;
+    WHILE (i < LEN(name)) & (name[i] # 0X) & (k < LEN(path) - 1) DO path[k] := name[i]; INC(i); INC(k) END;
+    IF k < LEN(path) - 1 THEN path[k] := close; INC(k) END;
+    IF LEN(path) > 0 THEN path[k] := 0X END
+  END MakeSubdirectory;
+
+  (* Where the file's own name starts in path: after its last ":", "]" or
+     ">", or 0. *)
+  PROCEDURE NameStart*(path: ARRAY OF CHAR): INTEGER;
+    VAR i, start: INTEGER;
+  BEGIN
+    i := 0; start := 0;
+    WHILE (i < LEN(path)) & (path[i] # 0X) DO
+      IF EndsDirectory(path[i]) THEN start := i + 1 END;
+      INC(i)
+    END;
+    RETURN start
+  END NameStart;
 
   (* Whether dir names a directory that exists: RMS parses it, which looks
      the directory up ($PARSE, with no file name). *)

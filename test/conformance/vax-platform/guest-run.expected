@@ -7,6 +7,20 @@ path [lib/:x.mod]
 path [DISK:x.mod]
 path [[LIB]x.mod]
 cut short [dir:x.m]
+subdirectory [DUA1:[USERS.POC.sub]]
+subdirectory [[.sub]]
+subdirectory [lib:[sub]]
+subdirectory [[LIB.sub]]
+subdirectory [[.sub]]
+subdirectory [DISK:[A.sub]]
+subdirectory [<A.B.sub>]
+subdirectory [DISK:[sub]]
+subdirectory [[A.sub]]
+cut short [[A.subd]
+name of [dir/x.mod] at 0
+name of [DISK:[A]x.mod] at 8
+name of [<A>x.mod] at 3
+name of [x.mod] at 0
 is a directory: TRUE
 missing is a directory: FALSE
 made is a directory: FALSE

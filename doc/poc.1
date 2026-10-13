@@ -523,6 +523,25 @@ Directories, separated by colons, searched for modules before those of
 .It Ev POC_LIBRARY_PATH
 Directories, separated by colons, searched for libraries after those of
 .Fl library-path .
+.It Ev POC$LIBRARY
+For a
+.Nm
+running on VAX/VMS, in place of
+.Ev POC_LIBRARY_PATH :
+a logical name, whose equivalence strings, a search list, are the
+directories searched for libraries after those of
+.Fl library-path .
+There,
+.Nm Ns 's
+own library directory is
+.Li \&[ Ns Ar parent Ns Li \&.LIB.POC\&] ,
+where
+.Ar parent
+is the directory above the one
+.Pa POC.EXE
+is in, and a library is in its subdirectory
+.Li \&[.VAX-DEC-VMS.\& Ns Ar model Ns Li \&] ;
+a directory named by a logical name is translated to find it.
 .It Ev PATH
 Where
 .Nm

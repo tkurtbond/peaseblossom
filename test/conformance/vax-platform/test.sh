@@ -2,7 +2,8 @@
 . ../../testenv.sh
 # PLAN.md Phase 16 step 4 (doc/developer/vax-macro32-backend.md, section
 # 15, proposals 3 to 8): rtl/vax's Platform, and Directories, which both
-# runtimes have (MakePath, IsDirectory, MakeDirectory, pathSeparator). poc
+# runtimes have (MakePath, IsDirectory, MakeDirectory, pathSeparator; and
+# MakeSubdirectory and NameStart, Phase 17 step 1). poc
 # -emit-macro32's output for PlatformUse.mod, rtl/vax/Platform.Mod and
 # Directories.Mod against the reviewed expected-vax.mar,
 # expected-vax-Platform.mar and expected-vax-Directories.mar, assembled
