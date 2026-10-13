@@ -2,10 +2,12 @@
 
 poc's runtime for the VAX/VMS target (`PLAN.md` Phase 16), in Oberon-2
 over a thin MACRO-32 layer (`doc/developer/vax-macro32-backend.md`,
-section 15). There are no VMS libraries yet (Phase 17), so a program
-finds these modules as source: `poc -target vax-dec-vms -import-path
-<this directory> -build ...` compiles the ones it imports with it and
-writes their `.mar` files.
+section 15). A program finds these modules as source, `poc -target
+vax-dec-vms -import-path <this directory> -build ...` compiling the ones
+it imports with it, or in the library `POCRTL` (Phase 17 step 1,
+section 18), made by `poc -target vax-dec-vms -library POCRTL
+rtl/vax/*.Mod rtl/vax/PocRtl.mar`. Which of `rtl/llvm`'s modules are to
+come, and what each needs, is in `doc/research/vms-module-inventory.md`.
 
 - `PocRtl.mar`, MACRO-32, which a program poc builds for `vax-dec-vms`
   links as `POCRTL.OBJ`. Its `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and
@@ -31,9 +33,11 @@ writes their `.mar` files.
 - `Platform.Mod` (`GetEnv`, `Unlink`, `System`, `Exit`, `PID`, `CWD`,
   `NL`): logical names, files by name, and ending the process (section
   15, proposals 3 and 5 to 8).
-- `Directories.Mod` (`pathSeparator`, `MakePath`, `IsDirectory`,
-  `MakeDirectory`): directories, and the names of the files in them, as
-  VMS writes them (section 15, proposal 4).
+- `Directories.Mod` (`pathSeparator`, `MakePath`, `MakeSubdirectory`,
+  `NameStart`, `IsDirectory`, `MakeDirectory`, and `Search`,
+  `StartSearch`, `NextFile` for wildcards): directories, and the names
+  of the files in them, as VMS writes them (section 15, proposal 4;
+  section 18.5).
 
 - `Files.Mod` (`File`, `Rider`, `Old`, `New`, `Register`, `Close`,
   `Length`, `Set`, `Base`, `Read`, `Write`, `ReadString`, `ReadLine`,

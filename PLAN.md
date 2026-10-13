@@ -555,7 +555,7 @@ C++, and so on) unless step 4 chooses one deliberately.
    (a `.sym` that does not match its image, a missing image, a version
    mismatch) reporting a message rather than crashing.
 
-   **Record** (in progress, 2026-10-12): the survey of the 5.0 Linker
+   **Record** (done, 2026-10-12): the survey of the 5.0 Linker
    and Librarian manuals, checked against the 5.5 and 5.5-2 release
    notes, and eight proposals are in `doc/developer/vax-macro32-backend.md`
    section 18, **approved by the user, 2026-10-12**. Found: 5.5-2 has no symbol
@@ -603,6 +603,18 @@ C++, and so on) unless step 4 chooses one deliberately.
    VMS 5.5-2 has by default; or hostile to ODS-2 file names. The output is
    a table of module and verdict, kept as a file the plan names, and the
    decisions.
+
+   **Record** (done, 2026-10-12): the table is
+   `doc/research/vms-module-inventory.md`. It covers poc's runtime,
+   module by module: what `rtl/vax` has, what the VAX backend makes of
+   `rtl/llvm`'s module, and what VMS must supply. It also covers voc's
+   129 library modules: 51 need only poc's runtime, 17 take reals apart
+   as IEEE, 55 are written for another system, and 6 need C or X11. Six
+   proposals, **approved by the user, 2026-10-12**: step 3 is all of
+   `rtl/llvm`'s interfaces in `POCRTL`; voc's libraries stay in Phase
+   20; reals are converted by poc's own code, not VAXCRTL's; `Files`'
+   typed riders write IEEE; `Math`/`MathL` go over `MTH$`; a part-line
+   `Out.Flush` reaches a terminal. Next, step 3, starting with `Platform`.
 
 3. **Implementing the chosen Oberon modules on VMS**, into step 1's
    libraries, in dependency order, each with fixtures shared with the LLVM
