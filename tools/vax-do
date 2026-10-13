@@ -4,13 +4,13 @@
 # 1: the one host-side command every later step's fixtures depend on;
 # doc/developer/DEVELOPER.md, section 4). The procedure and the input files
 # are copied to POC's home directory by FTP, in active and ASCII mode, each
-# as its file name uppercased; the procedure is run by telnet
-# (tools/vax-do.exp) as @NAME/OUTPUT=VAXDO.LOG, so that what it writes comes
-# back by FTP whole, not read from a terminal; then VAXDO.LOG and each
-# -get file are copied back into the output directory, as named, and every
-# copy on the guest is deleted. Each of those FTP steps is one session.
-# Prints the procedure's output and a last line "<proc>: <hex $STATUS>
-# <severity>".
+# as its file name uppercased; the procedure is run by telnet as
+# @NAME/OUTPUT=VAXDO.LOG, so that what it writes comes back by FTP whole,
+# not read from a terminal; then VAXDO.LOG and each -get file are copied
+# back into the output directory, as named, and every copy on the guest is
+# deleted. tools/vax-do.exp does all of that in one FTP session and one
+# telnet session (tools/vax-ftp.tcl says why). Prints the procedure's
+# output and a last line "<proc>: <hex $STATUS> <severity>".
 #
 #   tools/vax-do [-o <dir>] [-get <NAME.EXT>]... <proc.com> [<file>...]
 #
@@ -22,8 +22,7 @@
 # one and every file came back, 1 if not, 2 if the guest could not be used.
 #
 # The login and password are $VAX_NETRC's (default ~/.netrc-poc-vax), read by
-# curl and by the expect script themselves, never on a command line or
-# printed. VAX_HOST names the guest (default 192.168.2.20). Runs share POC's
+# the expect script itself, never on a command line or printed. VAX_HOST names the guest (default 192.168.2.20). Runs share POC's
 # home directory, so each holds this host's lock while it uses the guest
 # (tools/vax-lock.sh).
 set -e
@@ -62,54 +61,26 @@ for f; do [ -r "$f" ] || { echo "vax-do: cannot read $f" >&2; exit 2; }; done
 [ -d "$outdir" ] || { echo "vax-do: $outdir is not a directory" >&2; exit 2; }
 procfile=$1
 proc=$(guest_name "$1")
-names=
-for f; do names="$names $(guest_name "$f")"; done
+for f; do guest_name "$f" >/dev/null || exit 2; done
 
-ftp="ftp://$host/"
-curl_ftp() { curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@"; }
 out=$(mktemp "${TMPDIR:-/tmp}/vax-do.XXXXXX")
-# every version of each of this run's files deleted, forty to a session
-# ("*": a file that is not there is no failure, and UCX answers 550 to a
-# DELE of name;* although it deletes them): one session of the ~150
-# tools/vax-suite sends stopped after about 90 (2026-10-10)
-cleanup() {
-  rm -f "$out"
-  set --
-  n=0
-  for f in $names $gets VAXDO.LOG; do
-    set -- "$@" -Q "*DELE $f;*"; n=$((n + 1))
-    if [ "$n" -eq 40 ]; then delete_session "$@"; set --; n=0; fi
-  done
-  [ "$n" -eq 0 ] || delete_session "$@"
-}
-delete_session() {
-  curl -s --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@" "$ftp" -o /dev/null 2>/dev/null || true
-}
-# only once this run has the lock may it, or its cleanup, touch the guest
+# only once this run has the lock may it touch the guest
 vax_lock
 trap 'rm -f "$out"; vax_unlock' EXIT
-"$here/vax-assemble" -available || { echo "vax-do: the VAX guest $host is not available" >&2; exit 2; }
-trap 'cleanup; vax_unlock' EXIT
 
-# the procedure and the files copied there in one session
-upload() {
-  for f; do
-    set -- "$@" -T "$f" "$ftp$(guest_name "$f")"
-    shift
-  done
-  curl_ftp --use-ascii "$@"
-}
-upload "$@"
+# each file and its name there, then the files to bring back
+set -- "$@" --
+while [ "$1" != -- ]; do
+  set -- "$@" "$1" "$(guest_name "$1")"
+  shift
+done
+shift
+# shellcheck disable=SC2086
+set -- "$@" -- $gets
 
-session=0
-expect -f "$here/vax-do.exp" "$host" "${proc%.COM}" >"$out" || session=$?
-[ "$session" -eq 0 ] || { cat "$out" >&2; exit 2; }
-
-# the log and the files asked for brought back in one session
 status=0
-set --
-for n in VAXDO.LOG $gets; do set -- "$@" -o "$outdir/$n" "$ftp$n"; done
-curl_ftp --use-ascii "$@" || status=1
+expect -f "$here/vax-do.exp" "$host" "${proc%.COM}" "$outdir" "$@" >"$out" || status=$?
+[ "$status" -ne 2 ] || { cat "$out" >&2; exit 2; }
 [ -f "$outdir/VAXDO.LOG" ] && cat "$outdir/VAXDO.LOG"
 hex=$(sed -n 's/^VAXDO-STATUS \([0-9A-F]*\)$/\1/p' "$out")
 if [ -z "$hex" ]; then

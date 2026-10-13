@@ -1,9 +1,14 @@
-# Runs MACRO/OBJECT/LIST on the VAX/VMS development system, by telnet, for
-# each file name given (already copied to POC's home directory by
-# tools/vax-assemble, which runs this). Prints, for each, the assembler's
-# messages and then one line "VAXASM-STATUS <name> <hex $STATUS>".
+# Runs MACRO/OBJECT/LIST on the VAX/VMS development system for
+# tools/vax-assemble, which runs this: in one FTP session
+# (tools/vax-ftp.tcl), copies each file to POC's home directory as
+# <NAME>.MAR, assembles them by telnet, keeping the FTP session alive,
+# brings each listing back as <listing>, and deletes every version of each
+# .MAR, .OBJ and .LIS there, whatever happened. Prints, for each, the
+# assembler's messages and then one line "VAXASM-STATUS <NAME>.MAR <hex
+# $STATUS>". Exits 0, 1 if a listing did not come back (its error on the
+# standard error), 2 if the guest could not be used.
 #
-#   expect -f tools/vax-assemble.exp <host> <NAME.MAR>...
+#   expect -f tools/vax-assemble.exp <host> {<file> <NAME> <listing>}...
 #
 # The password is read from $VAX_NETRC here (tools/vax-login.tcl), so it is
 # never on a command line, and nothing is shown while it is sent (log_user 0
@@ -16,13 +21,30 @@ set timeout 60
 log_user 0
 
 source [file join [file dirname [info script]] vax-login.tcl]
-vax_login $host
+source [file join [file dirname [info script]] vax-ftp.tcl]
 
-foreach name $files {
-  send "MACRO/OBJECT/LIST $name\r"
+if {[catch {ftp_open $host} message]} {
+  puts stderr "vax-assemble: the VAX guest $host is not available ($message)"
+  exit 2
+}
+# from here on, whatever happens, every file of this run is deleted there
+exit -onexit {
+  foreach {file name listing} $::files {
+    foreach type {MAR OBJ LIS} { catch {ftp_delete $name.$type} }
+  }
+  ftp_close
+}
+
+foreach {file name listing} $files {
+  if {[catch {ftp_put $file $name.MAR} message]} { fail "cannot copy $file there: $message" }
+}
+
+vax_login $host
+foreach {file name listing} $files {
+  send "MACRO/OBJECT/LIST $name.MAR\r"
   expect {
     -re $prompt {}
-    timeout { fail "MACRO did not finish $name" }
+    timeout { fail "MACRO did not finish $name.MAR" }
   }
   # everything after the echoed command line is MACRO's own output
   set out $expect_out(buffer)
@@ -33,15 +55,24 @@ foreach name $files {
   # $STATUS is a string, "%X10000001"; F$FAO's !XL would print its address
   send "WRITE SYS\$OUTPUT \"VAXASM-STATUS \", \$STATUS\r"
   expect {
-    -re {VAXASM-STATUS %X([0-9A-F]{8})\r?\n} { puts "VAXASM-STATUS $name $expect_out(1,string)" }
-    timeout { fail "no status for $name" }
+    -re {VAXASM-STATUS %X([0-9A-F]{8})\r?\n} { puts "VAXASM-STATUS $name.MAR $expect_out(1,string)" }
+    timeout { fail "no status for $name.MAR" }
   }
   expect {
     -re $prompt {}
-    timeout { fail "no prompt after the status of $name" }
+    timeout { fail "no prompt after the status of $name.MAR" }
   }
+  catch ftp_noop
 }
-
 send "LOGOUT\r"
 expect eof
-exit 0
+
+set status 0
+foreach {file name listing} $files {
+  if {[catch {ftp_get $name.LIS $listing} message]} {
+    puts stderr "vax-assemble: cannot copy $name.LIS back: $message"
+    file delete $listing
+    set status 1
+  }
+}
+exit $status

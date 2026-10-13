@@ -190,8 +190,8 @@ fixtures there. The password is kept out of the tree, in
 
     machine 192.168.2.20 login poc password ...
 
-which curl reads itself (`--netrc-file`), so it never appears on a
-command line. The FTP server works only in active mode: `curl --netrc-file
+which the tools' expect scripts and curl (`--netrc-file`) read
+themselves, so it never appears on a command line. The FTP server works only in active mode: `curl --netrc-file
 ~/.netrc-poc-vax -P - ftp://192.168.2.20/` lists the home directory, and in `ftp`, turn passive
 mode off first. Send source files in ASCII mode (curl's `--use-ascii`, or
 `ascii` in `ftp`): in binary mode VMS stores them as fixed-length 512-byte
@@ -207,9 +207,15 @@ assembled without a warning or an error. `VAX_HOST` names another guest.
 VAX fixtures assemble their `expected-vax.mar` only where it can, and skip
 that part elsewhere. Copies are retried, since the guest's FTP server now
 and then refuses one ("425"), and so is that check, since a guest busy with
-another run can be slow to answer it. Each FTP step (the copies there, the
-copies back, the deletions) is one session, a login on the guest: most of
-a run's time on the guest is these logins, not `MACRO`.
+another run can be slow to answer it. A run of `vax-assemble`, `vax-do` or
+`vax-run` logs in twice: one FTP session (`tools/vax-ftp.tcl`, a small
+client in the expect script itself, kept alive with NOOP) for the copies
+there, the copies back and the deletions, and one telnet session for the
+commands. A session per step, as at first (with curl), was most of a run's
+time on the guest, and the stream of logins it made twice brought the guest
+down: UCX 3.1's INETACP failed in kernel mode (bugcheck SSRVEXCEPT, an
+access violation at offset 0xAF of a NIL pointer; 2026-10-12 and
+2026-10-13).
 
 The guest sees only the expected `.mar` files, the same whichever poc runs the
 suite, so only `make test`'s run uses it: `test-stage1`, `check-opt2` and

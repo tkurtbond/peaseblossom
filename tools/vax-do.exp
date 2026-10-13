@@ -1,26 +1,64 @@
-# Runs a command procedure on the VAX/VMS development system, by telnet, as
-# @<NAME>/OUTPUT=VAXDO.LOG, the procedure already copied to POC's home
-# directory by tools/vax-do, which runs this and brings the log back by FTP.
-# Prints one line "VAXDO-STATUS <hex $STATUS>".
+# Runs a command procedure on the VAX/VMS development system for
+# tools/vax-do, which runs this: in one FTP session (tools/vax-ftp.tcl),
+# copies the procedure and the files to POC's home directory, then, by
+# telnet, runs @<NAME>/OUTPUT=VAXDO.LOG, keeping the FTP session alive,
+# then copies VAXDO.LOG and each <GET> back into <dir>, and deletes every
+# version of all of them on the guest, whatever happened. Prints one line
+# "VAXDO-STATUS <hex $STATUS>". Exits 0, 1 if a file did not come back
+# (its error on the standard error), 2 if the guest could not be used.
 #
-#   expect -f tools/vax-do.exp <host> <NAME>
+#   expect -f tools/vax-do.exp <host> <NAME> <dir> {<file> <NAME.EXT>}... -- <GET>...
 #
 # The password is read from $VAX_NETRC here (tools/vax-login.tcl), never on
 # a command line, and nothing is shown while it is sent (log_user 0).
 
 set host [lindex $argv 0]
 set name [lindex $argv 1]
+set outdir [lindex $argv 2]
+set rest [lrange $argv 3 end]
+set split [lsearch -exact $rest --]
+set puts [lrange $rest 0 [expr {$split - 1}]]
+set gets [lrange $rest [expr {$split + 1}] end]
 set timeout 600
 if {[info exists ::env(VAX_DO_TIMEOUT)] && $::env(VAX_DO_TIMEOUT) ne ""} { set timeout $::env(VAX_DO_TIMEOUT) }
 log_user 0
 
 source [file join [file dirname [info script]] vax-login.tcl]
-vax_login $host
+source [file join [file dirname [info script]] vax-ftp.tcl]
 
+if {[catch {ftp_open $host} message]} {
+  puts stderr "vax-do: the VAX guest $host is not available ($message)"
+  exit 2
+}
+# from here on, whatever happens, every file of this run is deleted there
+set made {}
+foreach {file remote} $puts { lappend made $remote }
+lappend made VAXDO.LOG {*}$gets
+exit -onexit {
+  foreach remote $::made { catch {ftp_delete $remote} }
+  ftp_close
+}
+
+foreach {file remote} $puts {
+  if {[catch {ftp_put $file $remote} message]} { fail "cannot copy $file there: $message" }
+}
+
+vax_login $host
 send "@$name/OUTPUT=VAXDO.LOG\r"
-expect {
-  -re $prompt {}
-  timeout { fail "$name did not finish within $timeout seconds" }
+# a minute at a time, the FTP session kept alive in between
+set deadline [expr {[clock seconds] + $timeout}]
+set done 0
+while {!$done} {
+  expect {
+    -timeout 60
+    -re $prompt { set done 1 }
+    timeout {}
+    eof { fail "the telnet session ended while $name ran" }
+  }
+  if {!$done} {
+    if {[clock seconds] >= $deadline} { fail "$name did not finish within $timeout seconds" }
+    catch ftp_noop
+  }
 }
 # $STATUS is a string, "%X10000001"
 send "WRITE SYS\$OUTPUT \"VAXDO-STATUS \", \$STATUS\r"
@@ -32,7 +70,15 @@ expect {
   -re $prompt {}
   timeout { fail "no prompt after the status of $name" }
 }
-
 send "LOGOUT\r"
 expect eof
-exit 0
+
+set status 0
+foreach remote [concat VAXDO.LOG $gets] {
+  if {[catch {ftp_get $remote [file join $outdir $remote]} message]} {
+    puts stderr "vax-do: cannot copy $remote back: $message"
+    file delete [file join $outdir $remote]
+    set status 1
+  }
+}
+exit $status

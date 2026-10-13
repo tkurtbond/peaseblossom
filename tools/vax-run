@@ -10,10 +10,10 @@
 # DEPOSIT the inputs, GO, and EXAMINE what the program left (the stub's
 # POC_TRAP_* say what a trap was given). The debugger's output comes back
 # as <run>.out beside it, from its first line after "%DEBUG-I-INITIAL".
-# Copying is by FTP (active, ASCII), the session by telnet
-# (tools/vax-run.exp), as tools/vax-assemble does; the copies on the guest
-# are deleted. The copies there, the copies back and the deletions are
-# one FTP session each, a login on the guest. Exits 0 if everything
+# Copying is by FTP (active, ASCII), the session by telnet, as
+# tools/vax-assemble does; the copies on the guest are deleted.
+# tools/vax-run.exp does all of that in one FTP session and one telnet
+# session (tools/vax-ftp.tcl says why). Exits 0 if everything
 # assembled, linked and ran, 1 if a step failed (its messages are
 # printed), 2 if the guest could not be used.
 #
@@ -55,32 +55,11 @@ done
 main=${mars# }; main=${main%% *}
 grep -q '^	\.END	[A-Z0-9_$]*_MAIN$' "$main" || { echo "vax-run: no program's start (.END <MODULE>_MAIN) in $main" >&2; exit 2; }
 
-ftp="ftp://$host/"
-curl_ftp() { curl -s -S --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@"; }
 work=$(mktemp -d "${TMPDIR:-/tmp}/vax-run.XXXXXX")
-# every version of each of this run's files deleted, in one session ("*": a
-# file that is not there is no failure)
-cleanup() {
-  rm -rf "$work"
-  set --
-  for m in $modules POCSTUB; do
-    set -- "$@" -Q "*DELE $m.MAR;*" -Q "*DELE $m.OBJ;*"
-  done
-  set -- "$@" -Q "*DELE POCRUN.EXE;*"
-  i=1
-  while [ $i -le "$runs" ]; do
-    set -- "$@" -Q "*DELE R$i.DBG;*" -Q "*DELE R$i.OUT;*"
-    i=$((i + 1))
-  done
-  curl -s --netrc-file "$VAX_NETRC" -P - --retry 3 --retry-delay 2 "$@" "$ftp" -o /dev/null 2>/dev/null || true
-}
 runs=$#
-# only once this run has the lock may it, or its cleanup, touch the guest
-# (a guest busy with another run can be slow to answer)
+# only once this run has the lock may it touch the guest
 vax_lock
 trap 'rm -rf "$work"; vax_unlock' EXIT
-"$here/vax-assemble" -available || { echo "vax-run: the VAX guest $host is not available" >&2; exit 2; }
-trap 'cleanup; vax_unlock' EXIT
 
 i=1
 for dbg in "$@"; do
@@ -88,27 +67,24 @@ for dbg in "$@"; do
   { echo "SET RADIX DECIMAL"; echo "SET MODULE/ALL"; cat "$dbg"; } >"$work/R$i.DBG"
   i=$((i + 1))
 done
-# everything copied to the guest in one session
-upload() {
-  set -- -T "$here/vax-runtime-stub.mar" "${ftp}POCSTUB.MAR"
-  ms=$modules
-  for f in $mars; do
-    m=${ms# }; m=${m%% *}; ms=${ms# }; ms=${ms#"$m"}
-    set -- "$@" -T "$f" "$ftp$m.MAR"
-  done
-  i=1
-  while [ $i -le "$runs" ]; do
-    set -- "$@" -T "$work/R$i.DBG" "${ftp}R$i.DBG"
-    i=$((i + 1))
-  done
-  curl_ftp --use-ascii "$@"
-}
-upload
+dbgs=$*
+# each file and its name there: the stub, the modules, the runs
+set -- "$here/vax-runtime-stub.mar" POCSTUB.MAR
+ms=$modules
+for f in $mars; do
+  m=${ms# }; m=${m%% *}; ms=${ms# }; ms=${ms#"$m"}
+  set -- "$@" "$f" "$m.MAR"
+done
+i=1
+while [ $i -le "$runs" ]; do
+  set -- "$@" "$work/R$i.DBG" "R$i.DBG"
+  i=$((i + 1))
+done
 
 session=0
 # shellcheck disable=SC2086
-expect -f "$here/vax-run.exp" "$host" "$runs" $modules >"$work/session" || session=$?
-[ "$session" -eq 0 ] || exit 2
+expect -f "$here/vax-run.exp" "$host" "$runs" "$work" "$@" -- $modules >"$work/session" || session=$?
+[ "$session" -ne 2 ] || exit 2
 
 # every step's $STATUS a success, or what the steps said; not a run's,
 # which is the program's own (a trap's SS$_ABORT), in its debugger output
@@ -119,19 +95,9 @@ else
   exit 1
 fi
 
-# every run's debugger output brought back in one session
-download() {
-  set --
-  i=1
-  while [ $i -le "$runs" ]; do
-    set -- "$@" -o "$work/R$i.OUT" "${ftp}R$i.OUT"
-    i=$((i + 1))
-  done
-  curl_ftp --use-ascii "$@"
-}
-download
+[ "$session" -eq 0 ] || exit 1
 i=1
-for dbg in "$@"; do
+for dbg in $dbgs; do
   sed '1,/^%DEBUG-I-INITIAL/d' "$work/R$i.OUT" >"${dbg%.dbg}.out"
   i=$((i + 1))
 done
