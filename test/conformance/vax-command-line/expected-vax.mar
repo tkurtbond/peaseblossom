@@ -13,6 +13,16 @@
 ;;   DUA1:[USERS.POC]POCRUN.EXE;1, and argument 1 "".
 ;; - Modules' key, POC_K1_60A28B8ADC3D2FDD, is new (2026-10-10), since
 ;;   its interface gained GetIntArg and ArgPos; nothing else changed.
+;; Changed by Claude, 2026-10-13, for Phase 17 step 3 (design section
+;; 19.5, approved by the user); not yet reviewed: Modules now imports
+;; Platform and LineOutput and uses NEW, so the program contains
+;; GarbageCollectedHeap, and CommandLine, its main module, calls
+;; GARBAGECOLLECTEDHEAP_INIT and passes its frame (PUSHL FP) as the
+;; stack's base, as any main module of such a program does (section 15).
+;; It also has a descriptor, as every module of a program containing
+;; Modules does (proposals 2 to 4): its name, Modules imported, no
+;; commands, registered by POC_MODULE after MODULES_INIT. Modules' key
+;; is now POC_K1_C77D093894FB628F.
 ; CommandLine, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	COMMANDLINE
 	.IDENT	/9ff0fd7d4cf6d7f8/
@@ -39,10 +49,30 @@ COMMANDLINE_SECOND_S1GT2N1M:
 	.BLKB	64
 
 ; the symbols it uses of other modules
+	.EXTERNAL	POC_MODULE
 	.EXTERNAL	MODULES_ARGCOUNT_DUBF7AL7
 	.EXTERNAL	MODULES_GETARG_PTGRJR14
 	.EXTERNAL	MODULES_INIT
-	.EXTERNAL	POC_K1_60A28B8ADC3D2FDD
+	.EXTERNAL	POC_K1_C77D093894FB628F
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
+	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
+
+; its descriptor, for Modules (section 19.5): the next descriptor, the
+; name, the numbers of imports and of commands, the imports' names, and
+; each command's name and procedure
+	.PSECT	POC_CONST
+L_MD_NAME:
+	.ASCIZ	/CommandLine/
+L_MD_IMPORT_1:
+	.ASCIZ	/Modules/
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_MODULE_DESCRIPTOR:
+	.LONG	0
+	.ADDRESS	L_MD_NAME
+	.LONG	1
+	.LONG	0
+	.ADDRESS	L_MD_IMPORT_1
 
 ; the module's initializer: once only
 	.PSECT	POC_CODE
@@ -52,6 +82,8 @@ COMMANDLINE_SECOND_S1GT2N1M:
 L_BODY:
 	MOVB	#1, L_INITIALISED
 	CALLS	#0, G^MODULES_INIT
+	PUSHAL	L_MODULE_DESCRIPTOR
+	CALLS	#1, G^POC_MODULE
 	SUBL2	#16, SP
 ; line 9
 	MOVW	G^MODULES_ARGCOUNT_DUBF7AL7, COMMANDLINE_COUNT_DHQAJEV1
@@ -73,7 +105,11 @@ L_BODY:
 POC_K1_9FF0FD7D4CF6D7F8 == 0
 
 ; the program's start: the module's initializer, then SS$_NORMAL
+; (first the collector's, and the stack's base, its frame's: section 15)
 	.ENTRY	COMMANDLINE_MAIN, ^M<>
+	CALLS	#0, G^GARBAGECOLLECTEDHEAP_INIT
+	PUSHL	FP
+	CALLS	#1, G^GARBAGECOLLECTEDHEAP_S_EA118OLO
 	CALLS	#0, COMMANDLINE_INIT
 	MOVL	#1, R0
 	RET

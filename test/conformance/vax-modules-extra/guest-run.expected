@@ -1,0 +1,18 @@
+build status: %X10000001
+ 1 ok
+ 2 ok
+ 3 ok
+ 4 ok
+ 5 ok
+ 6 ok
+ 7 ok
+ 8 ok
+run status: %X00000001
+count 3
+0 as GetArg
+1 as GetArg [ONE]
+2 as GetArg [Two]
+BinaryDir ends in ]: yes
+after it: ARGVECTOR.EXE;1
+MainStackFrame in P1: yes
+run status: %X00000001

@@ -24,9 +24,14 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   `Int`, `Hex`) write to `SYS$OUTPUT` and `SYS$ERROR` through
   `LineOutput.Mod`, a record for each `Ln` (section 14, item 2, and
   section 15, proposal 8).
-- `Modules.Mod` (`ArgCount`, `GetArg`, `GetIntArg`, `ArgPos`): the
-  command line of a foreign command, split as DCL quotes it (section 15,
-  proposal 6; section 16, proposal 6).
+- `Modules.Mod`: `rtl/llvm`'s whole interface but `Init` (section 19.5,
+  Phase 17 step 3). It has the command line of a foreign command, split
+  as DCL quotes it, with `ArgVector` as C's `argv`. It has the list of
+  modules and their commands, from the descriptors the VAX backend
+  writes and `POC_MODULE` registers (`ThisMod`, `ThisCommand`, `Free`).
+  It has voc's `Halt` and `AssertFail`, and `BinaryDir` (the image's
+  device and directory) and `MainStackFrame`. Earlier, the command line
+  alone (section 15, proposal 6; section 16, proposal 6).
 - `Console.Mod` (`Flush`, `Char`, `String`, `Ln`, `Bool`, `Int`, `Hex`):
   `rtl/llvm`'s `Console`, writing to `SYS$OUTPUT` through
   `LineOutput.Mod` into the same line as `Out` (section 16, proposal 6).

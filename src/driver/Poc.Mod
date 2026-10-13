@@ -1605,6 +1605,13 @@ MODULE Poc;
     errorsBefore := Diagnostics.errorCount;
     VaxCodeGenerator.unsupportedCount := 0;
     VaxCodeGenerator.withCollector := PredeclaredProcedures.NewWasCalled();
+    (* section 19.5, proposal 3: descriptors only in a program with Modules *)
+    VaxCodeGenerator.withModules := FALSE;
+    m := modules;
+    WHILE m # NIL DO
+      IF m.module.name = "Modules" THEN VaxCodeGenerator.withModules := TRUE END;
+      m := m.next
+    END;
     VaxCodeGenerator.programNames := VaxTypes.NewNameTable();
     (* Phase 17 step 1 (section 18, proposal 7): first the symbols of the
        modules not written here, from their .sym, so that a written

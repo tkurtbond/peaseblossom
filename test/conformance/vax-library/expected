@@ -5,7 +5,7 @@ exit 0
 libs/vax-dec-vms/O2/VAXLIB_build.com matches expected-VAXLIB_build.com
 libs/vax-dec-vms/O2/VAXLIB_setup.com matches expected-VAXLIB_setup.com
 manifest matches expected-VAXLIB.library
-POCRTL symbols made universal: 226
+POCRTL symbols made universal: 242
 PocRtl.mar copied whole
 in the library directory: Console.mar
 in the library directory: Console.owner

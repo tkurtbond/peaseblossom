@@ -631,8 +631,14 @@ C++, and so on) unless step 4 chooses one deliberately.
    the user, 2026-10-12**, are section 19.3, and section 19.4 records the
    work. It has the whole interface, and its typed riders write IEEE
    reals. Fixtures `vax-files-riders` (`llvm-files-riders`' programs on
-   the guest) and `vax-files-extra` (75 checks) are new. Next,
-   `Modules`.
+   the guest) and `vax-files-extra` (75 checks) are new. `Modules` is
+   done (2026-10-13): its eight proposals, **approved by the user,
+   2026-10-13**, are section 19.5, and section 19.6 records the work. It
+   has the whole interface but `Init`. The VAX backend writes each
+   module's descriptor in a program that contains `Modules`. Fixtures
+   `vax-modules-commands` (`llvm-modules-commands`' programs) and
+   `vax-modules-extra` are new. Next, `RealDigits` and `Reals` for F and
+   G.
 
 4. **Which native VAX/VMS libraries to support.** From the manuals, not
    memory, list what a VMS programmer expects to reach: the run-time

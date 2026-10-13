@@ -1,0 +1,176 @@
+;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
+;; 19.5, proposals 1 to 8, approved by the user); not yet reviewed. Why
+;; this is right:
+;; - Greeter's descriptor, in POC_DATA, is rtl/llvm's layout in
+;;   longwords: 0 (the link POC_MODULE sets), the address of its name,
+;;   "Greeter", 1 import, 2 commands, the import's name, "Out", then each
+;;   command's name and procedure: Hello and Bye, in declaration order.
+;;   Twice (a parameter), Count (a result), Hidden (not exported) and the
+;;   type-bound Show are not commands (proposal 3). The names are .ASCIZ
+;;   in POC_CONST.
+;; - The initializer calls OUT_INIT, then registers the descriptor
+;;   (PUSHAL L_MODULE_DESCRIPTOR, CALLS #1, G^POC_MODULE), then runs the
+;;   body, Hidden and calls := 0: a module is found once its
+;;   initialization has started (proposal 4).
+;; - The rest is any module's code: Hello and Bye count a call and write
+;;   their line through Out; Rec's type descriptor has Show in its
+;;   ProcTab.
+; Greeter, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	GREETER
+	.IDENT	/b4a18b3dd650ef4f/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; calls: INTEGER, exported
+	.ALIGN	WORD
+GREETER_CALLS_3TMGLDEQ::
+	.BLKW	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	POC_MODULE
+	.EXTERNAL	OUT_STRING_VTB3DE16
+	.EXTERNAL	OUT_LN_1M29JSO9
+	.EXTERNAL	OUT_INIT
+	.EXTERNAL	POC_K1_721056B4BE8FF51C
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/Greeter/
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/Hello from Greeter/
+	.BYTE	0
+L_STR_2:
+	.ASCII	/Rec/
+	.BYTE	0
+L_STR_3:
+	.ASCII	/Bye from Greeter/
+	.BYTE	0
+
+; its type descriptors (section 14, item 4): size, extension level,
+; pointer count, base types, pointer offsets
+	.PSECT	POC_ADDR,  PIC,NOSHR,NOWRT,NOEXE,LONG
+; Greeter.Rec
+	.ALIGN	LONG
+; its ProcTab, the last slot first (section 14, item 6)
+	.ADDRESS	GREETER_REC_SHOW_UJHN98HG
+GREETER_REC_KPK45S8T::
+	.LONG	0
+	.LONG	0
+	.LONG	0
+	.ADDRESS	GREETER_REC_KPK45S8T
+
+; its descriptor, for Modules (section 19.5): the next descriptor, the
+; name, the numbers of imports and of commands, the imports' names, and
+; each command's name and procedure
+	.PSECT	POC_CONST
+L_MD_NAME:
+	.ASCIZ	/Greeter/
+L_MD_IMPORT_1:
+	.ASCIZ	/Out/
+L_MD_COMMAND_1:
+	.ASCIZ	/Hello/
+L_MD_COMMAND_2:
+	.ASCIZ	/Bye/
+	.PSECT	POC_DATA
+	.ALIGN	LONG
+L_MODULE_DESCRIPTOR:
+	.LONG	0
+	.ADDRESS	L_MD_NAME
+	.LONG	1
+	.LONG	2
+	.ADDRESS	L_MD_IMPORT_1
+	.ADDRESS	L_MD_COMMAND_1, GREETER_HELLO_42CP3TF7
+	.ADDRESS	L_MD_COMMAND_2, GREETER_BYE_KOC2TJR7
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Hello
+	.ENTRY	GREETER_HELLO_42CP3TF7, ^M<>
+	SUBL2	#12, SP
+; line 8
+	INCW	GREETER_CALLS_3TMGLDEQ
+; line 8
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_1, -8(FP)
+	MOVL	#19, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+; line 8
+	CALLS	#0, G^OUT_LN_1M29JSO9
+	RET
+; PROCEDURE Twice
+	.ENTRY	GREETER_TWICE_78JHN2UN, ^M<>
+; line 9
+	MULW3	4(AP), #2, GREETER_CALLS_3TMGLDEQ
+	RET
+; PROCEDURE Count
+	.ENTRY	GREETER_COUNT_8T81EIJG, ^M<>
+; line 10
+	CVTWL	GREETER_CALLS_3TMGLDEQ, R0
+	RET
+	PUSHL	#51
+	PUSHL	#10
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Hidden
+GREETER_HIDDEN_MNBN4BJD:
+	.WORD	^M<>
+; line 11
+	INCW	GREETER_CALLS_3TMGLDEQ
+	RET
+; PROCEDURE (Rec) Show
+	.ENTRY	GREETER_REC_SHOW_UJHN98HG, ^M<>
+	SUBL2	#12, SP
+; line 12
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_2, -8(FP)
+	MOVL	#4, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+	RET
+; PROCEDURE Bye
+	.ENTRY	GREETER_BYE_KOC2TJR7, ^M<>
+	SUBL2	#12, SP
+; line 13
+	INCW	GREETER_CALLS_3TMGLDEQ
+; line 13
+	MOVL	#2, -12(FP)
+	MOVAB	L_STR_3, -8(FP)
+	MOVL	#17, -4(FP)
+	CALLG	-12(FP), G^OUT_STRING_VTB3DE16
+; line 13
+	CALLS	#0, G^OUT_LN_1M29JSO9
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	GREETER_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^OUT_INIT
+	PUSHAL	L_MODULE_DESCRIPTOR
+	CALLS	#1, G^POC_MODULE
+; line 14
+	CALLS	#0, GREETER_HIDDEN_MNBN4BJD
+; line 14
+	CLRW	GREETER_CALLS_3TMGLDEQ
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_B4A18B3DD650EF4F == 0
+
+	.END

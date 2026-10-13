@@ -327,6 +327,10 @@ MODULE VaxCodeGenerator;
        (section 15, proposal 9); set by the driver before the main module
        is written *)
     withCollector*: BOOLEAN;
+    (* the program contains Modules, so every module written has a
+       descriptor, which its initializer registers (section 19.5,
+       proposals 2 to 4); set by the driver before any module is written *)
+    withModules*: BOOLEAN;
 
     (* the module being generated *)
     module: SyntaxTree.ModuleNode;
@@ -6641,6 +6645,87 @@ MODULE VaxCodeGenerator;
     RETURN ok
   END DeclareImports;
 
+  (* ---- the module descriptor, for Modules (section 19.5) ---- *)
+
+  (* A command: an exported procedure, not type-bound, with no parameters
+     and no result, as on LLVM (IsCommand) *)
+  PROCEDURE IsCommand(pd: SyntaxTree.ProcDeclNode): BOOLEAN;
+  BEGIN
+    RETURN ~pd.isExternal & ~pd.isForward & (pd.receiver = NIL)
+      & (pd.name.exportMark # SyntaxTree.exportNone)
+      & ((pd.formals = NIL) OR (pd.formals.sections = NIL) & (pd.formals.returnType = NIL))
+  END IsCommand;
+
+  (* The module's descriptor, L_MODULE_DESCRIPTOR in POC_DATA, in
+     rtl/llvm's layout with every field a longword (proposal 2): the next
+     descriptor, which POC_MODULE writes; the name's address; the number
+     of imports, I, and of commands, C; the I imports' names; C pairs of
+     a command's name and its procedure. The names are .ASCIZ in
+     POC_CONST. *)
+  PROCEDURE WriteModuleDescriptor(VAR w: Files.Rider);
+    VAR import: SyntaxTree.ImportNode; pd: SyntaxTree.ProcDeclNode; imports, commands: INTEGER;
+        text: ARRAY 300 OF CHAR; label: ARRAY 32 OF CHAR; full: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol;
+
+    PROCEDURE Name(label, name: ARRAY OF CHAR);
+    BEGIN
+      Label(w, label);
+      COPY("/", text); Append(text, name); Append(text, "/");
+      Line(w, ".ASCIZ", text)
+    END Name;
+
+    PROCEDURE Numbered(prefix: ARRAY OF CHAR; n: INTEGER);
+    BEGIN
+      COPY(prefix, label); AppendInt(label, n)
+    END Numbered;
+
+  BEGIN
+    WriteLn(w);
+    WriteStr(w, "; its descriptor, for Modules (section 19.5): the next descriptor, the"); WriteLn(w);
+    WriteStr(w, "; name, the numbers of imports and of commands, the imports' names, and"); WriteLn(w);
+    WriteStr(w, "; each command's name and procedure"); WriteLn(w);
+    Line(w, ".PSECT", "POC_CONST");
+    Name("L_MD_NAME", module.name);
+    imports := 0; import := module.imports;
+    WHILE import # NIL DO
+      IF HasCode(import) THEN INC(imports); Numbered("L_MD_IMPORT_", imports); Name(label, import.moduleName) END;
+      import := import.next
+    END;
+    commands := 0;
+    IF module.declarations # NIL THEN
+      pd := module.declarations.procDecls;
+      WHILE pd # NIL DO
+        IF IsCommand(pd) THEN INC(commands); Numbered("L_MD_COMMAND_", commands); Name(label, pd.name.name) END;
+        pd := pd.next
+      END
+    END;
+    Line(w, ".PSECT", "POC_DATA");
+    Line(w, ".ALIGN", "LONG");
+    Label(w, "L_MODULE_DESCRIPTOR");
+    Line(w, ".LONG", "0");
+    Line(w, ".ADDRESS", "L_MD_NAME");
+    text[0] := 0X; AppendInt(text, imports); Line(w, ".LONG", text);
+    text[0] := 0X; AppendInt(text, commands); Line(w, ".LONG", text);
+    imports := 0; import := module.imports;
+    WHILE import # NIL DO
+      IF HasCode(import) THEN INC(imports); Numbered("L_MD_IMPORT_", imports); Line(w, ".ADDRESS", label) END;
+      import := import.next
+    END;
+    commands := 0;
+    IF module.declarations # NIL THEN
+      pd := module.declarations.procDecls;
+      WHILE pd # NIL DO
+        IF IsCommand(pd) THEN
+          INC(commands); Numbered("L_MD_COMMAND_", commands);
+          COPY(module.name, full); Append(full, "."); Append(full, pd.name.name);
+          VaxTypes.MakeSymbol(full, symbol);
+          COPY(label, text); Append(text, ", "); Append(text, symbol);
+          Line(w, ".ADDRESS", text)
+        END;
+        pd := pd.next
+      END
+    END
+  END WriteModuleDescriptor;
+
   (* CALLS #0 of each import's initializer, in the order of the IMPORT list,
      as on LLVM *)
   PROCEDURE CallImports(VAR w: Files.Rider);
@@ -6703,6 +6788,7 @@ MODULE VaxCodeGenerator;
     ok := WriteVariables(w);
     hasRoots := ok & WriteRoots(w);
     IF hasRoots THEN AddExternal("POC_ROOTS") END;
+    IF withModules THEN AddExternal("POC_MODULE") END;
     CollectDescriptors;
     Procedures;
     InitProcedures;
@@ -6752,6 +6838,7 @@ MODULE VaxCodeGenerator;
       WHILE st # NIL DO WriteStructured(w, st); st := st.next END
     END;
     WriteDescriptors(w);
+    IF withModules THEN WriteModuleDescriptor(w) END;
     IF code # NIL THEN
       WriteLn(w);
       WriteStr(w, "; the module's procedures"); WriteLn(w);
@@ -6764,7 +6851,7 @@ MODULE VaxCodeGenerator;
     EntryMask(mask);
     COPY(init, entry); Append(entry, ", "); Append(entry, mask);
     Line(w, ".ENTRY", entry);
-    IF (first = NIL) & (module.imports = NIL) & ~hasRoots THEN
+    IF (first = NIL) & (module.imports = NIL) & ~hasRoots & ~withModules THEN
       (* no body: a byte branch over the fixed 7 bytes to RET *)
       Line(w, "BLBS", "L_INITIALISED, L_DONE");
       Line(w, "MOVB", "#1, L_INITIALISED");
@@ -6781,6 +6868,11 @@ MODULE VaxCodeGenerator;
         COPY("#1, ", entry); AppendExternal(entry, "POC_ROOTS"); Line(w, "CALLS", entry)
       END;
       CallImports(w);
+      IF withModules THEN
+        (* listed once its initialization has started, as on LLVM *)
+        Line(w, "PUSHAL", "L_MODULE_DESCRIPTOR");
+        COPY("#1, ", entry); AppendExternal(entry, "POC_MODULE"); Line(w, "CALLS", entry)
+      END;
       IF first # NIL THEN
         IF frameSlots > 0 THEN
           COPY("#", frame); AppendInt(frame, 4 * frameSlots); Append(frame, ", SP");

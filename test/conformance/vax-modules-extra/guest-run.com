@@ -1,0 +1,28 @@
+$ ! PLAN.md Phase 17 step 3 (design section 19.5, proposal 8):
+$ ! MODULESEXTRA.COM and ARGVECTOR.COM, which poc -build wrote, run after
+$ ! poc's runtime is assembled; then each image as a foreign command:
+$ ! MODULESEXTRA with 200 zeros, made by F$FAO, and "b", quoted so that
+$ ! DCL leaves it lowercase; ARGVECTOR with an argument DCL makes
+$ ! uppercase and a quoted one. Everything made is deleted
+$ SET NOON
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF S THEN @MODULESEXTRA
+$ IF S THEN S = $STATUS
+$ IF S THEN @ARGVECTOR
+$ IF S THEN S = $STATUS
+$ WRITE SYS$OUTPUT "build status: ", S
+$ IF .NOT. S THEN GOTO CLEAN
+$ ZEROS = F$FAO("!200*0")
+$ MODULESEXTRA :== $SYS$LOGIN:MODULESEXTRA.EXE
+$ MODULESEXTRA 'ZEROS' "b"
+$ WRITE SYS$OUTPUT "run status: ", $STATUS
+$ ARGVECTOR :== $SYS$LOGIN:ARGVECTOR.EXE
+$ ARGVECTOR one "Two"
+$ WRITE SYS$OUTPUT "run status: ", $STATUS
+$ DELETE/SYMBOL/GLOBAL MODULESEXTRA
+$ DELETE/SYMBOL/GLOBAL ARGVECTOR
+$ CLEAN:
+$ DELETE/NOLOG POCRTL.OBJ;*,GARBAGECOLLECTEDHEAP.OBJ;*,LINEOUTPUT.OBJ;*,PLATFORM.OBJ;*,MODULES.OBJ;*,CONSOLE.OBJ;*,OUT.OBJ;*
+$ DELETE/NOLOG MODULESEXTRA.OBJ;*,MODULESEXTRA.OPT;*,MODULESEXTRA.EXE;*,ARGVECTOR.OBJ;*,ARGVECTOR.OPT;*,ARGVECTOR.EXE;*
+$ EXIT 1

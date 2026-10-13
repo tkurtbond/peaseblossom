@@ -440,6 +440,10 @@ HDIVMOD:
 ; (VaxCodeGenerator.WriteRoots)
 POC_ROOT_HEAD:
 	.BLKL	1
+; the module descriptors registered, the most recent first, 0 if none
+; (design section 19.5; VaxCodeGenerator.WriteModuleDescriptor)
+POC_MODULE_HEAD:
+	.BLKL	1
 ; the collector's exit handler's control block: forward link, handler,
 ; one argument, the address of the exit status
 POC_HEAP_EXIT_BLOCK:
@@ -472,6 +476,21 @@ POC_JPI_PAGES_ITEMS:
 ; POC_ROOT_TABLES(): R0 the first root table, 0 if none
 	.ENTRY	POC_ROOT_TABLES, ^M<>
 	MOVL	POC_ROOT_HEAD, R0
+	RET
+
+; POC_MODULE(descriptor): a module's descriptor put first on the list,
+; its first longword linking it to the one before. Called by a module's
+; initializer, after its imports' and before its body, in a program
+; that contains Modules (design section 19.5, proposals 4 and 5)
+	.ENTRY	POC_MODULE, ^M<>
+	MOVL	4(AP), R0
+	MOVL	POC_MODULE_HEAD, (R0)
+	MOVL	R0, POC_MODULE_HEAD
+	RET
+
+; POC_MODULES(): R0 the most recently registered descriptor, 0 if none
+	.ENTRY	POC_MODULES, ^M<>
+	MOVL	POC_MODULE_HEAD, R0
 	RET
 
 ; POC_GET_MEMORY(bytes): R0 the address of bytes bytes from LIB$GET_VM,

@@ -1,0 +1,4 @@
+VAX build modulesextra -O2 exit 0
+VAX build ArgVector -O2 exit 0
+VAX build modulesextra -OC exit 0
+VAX build ArgVector -OC exit 0

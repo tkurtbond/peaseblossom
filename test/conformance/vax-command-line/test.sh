@@ -25,7 +25,8 @@ for model in -O2 -OC; do
   rm -f *.sym
   poc $model -target vax-dec-vms -import-path $rtl -build ArgsOut.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
-  vax_do guest-run.com guest-run.expected ArgsOut.com ArgsOut.mar Modules.mar Out.mar LineOutput.mar $rtl/PocRtl.mar
+  vax_do guest-run.com guest-run.expected ArgsOut.com ArgsOut.mar Modules.mar Out.mar LineOutput.mar Platform.mar \
+    GarbageCollectedHeap.mar $rtl/PocRtl.mar
 done
 rm -f output
 . ../../testresult.sh

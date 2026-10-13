@@ -3265,3 +3265,137 @@ its checks of reading variable-length and VFC files.
   separated by ",", not ";", so that it reads as `POC$IMPORT` and
   `Directories` do (proposal 6). `vax-files-extra`'s checks 62-64 use
   ",".
+
+### 19.5 Modules: proposals
+
+`rtl/vax/Modules.Mod` has the command line (section 15, proposal 6;
+section 16, proposal 6): `ArgCount`, `GetArg`, `GetIntArg` and `ArgPos`,
+the line from `LIB$GET_FOREIGN` split at blanks outside quotes and
+argument 0 the image's name. `rtl/llvm`'s also has the list of modules
+and their commands (`ThisMod`, `ThisCommand`, `Free`, `res`, `resMsg`,
+`imported`, `importing`, the `Module` and `Cmd` records), voc's run-time
+error stops (`Halt`, `AssertFail`), `ArgVector`, `MainStackFrame`,
+`BinaryDir` and `Init`. The list rests on a descriptor of each module,
+which the LLVM backend writes and each module's initializer registers
+(`ModuleTable.Mod`, "MODULE DESCRIPTORS"; Phase 12 step 5e). The VAX
+backend writes none yet. **Approved by the user, 2026-10-13**, all eight
+as written.
+
+1. **The whole interface but `Init`.** `Init` is called by the `main` the
+   LLVM backend writes, with C's `argc` and `argv`, and a program must
+   not call it. On VMS the command line comes from VMS (section 15,
+   proposal 6), so there is nothing for `Init` to do, and leaving it out
+   means a program that calls it is told so when it is compiled.
+2. **The VAX backend writes a module descriptor**, in `rtl/llvm`'s
+   layout with every field a longword: the next descriptor (0, written
+   when it is registered), the address of the module's name, the
+   number of imports *I*, the number of commands *C*, the addresses of
+   the *I* imported modules' names, then *C* pairs of a command's name
+   and its procedure's address. A command is what it is on LLVM: an
+   exported procedure, not type-bound, with no parameters and no
+   result. The descriptor is `L_MODULE_DESCRIPTOR` in `POC_DATA`, since
+   its first longword is written; the names are `.ASCIZ` in
+   `POC_CONST`, under local labels; a command's address is its
+   procedure's symbol. `SYSTEM` is not an import here, as on LLVM.
+3. **Only in a program that contains `Modules`**, as on LLVM. The driver
+   tells the backend so, as it tells it whether the program uses the
+   collector (`withCollector`). A module compiled on its own
+   (`-compile`, a library) has a descriptor only if `Modules` was among
+   the modules compiled with it. `POCRTL` is built with `Modules`, so
+   every module in it has one. Unlike LLVM's, VMS's linker keeps every
+   object module it takes whole, so a command costs nothing more for
+   being in its descriptor.
+4. **The initializer registers the descriptor right after its imports'
+   initializers**, before the module's body, as on LLVM: a module is
+   found once its initialization has started. The call is `PUSHAL
+   L_MODULE_DESCRIPTOR` and `CALLS #1, POC_MODULE`. The root table is
+   still registered first (section 15, proposal 9).
+5. **The list is kept by `PocRtl.mar`, not by a `ModuleTable` module.**
+   On VMS the root tables are already `PocRtl.mar`'s (`POC_ROOTS`,
+   `POC_ROOT_TABLES`), and `rtl/vax` has no `ModuleTable`. Two more
+   routines, `POC_MODULE(descriptor)` and `POC_MODULES()`, the newest
+   descriptor or 0, do the same for descriptors. `Modules` declares
+   them `["VMS"]` and follows each descriptor's first longword to the
+   next. One difference a program can see: `ThisMod("ModuleTable")` is
+   NIL on VMS, since there is no such module.
+6. **`ThisMod`, `ThisCommand`, `Free` and the records are
+   `rtl/llvm`'s**, with the same differences from voc's (names of up to
+   255 characters, commands in declaration order, `Free` unloading
+   nothing). A command is called as any procedure value is on the VAX:
+   its address is the entry mask, which `CALLS #0` takes. `Modules` uses
+   `NEW`, so a program that contains it gets the collector, as on LLVM.
+7. **`Halt` and `AssertFail` say what voc's say**, through `LineOutput`
+   to `SYS$ERROR`, as `POC_TRAP`'s messages go, and then end the program
+   with `Platform.Exit`. The status is section 14, item 10's: `Halt(0)`
+   is `SS$_NORMAL`, and `Halt(n)` is `%X10000000 + 8*(n MOD 256) + 2`, so
+   `Halt(-1)` and a failed `AssertFail(0)` both end as 255 does.
+   Registered finalizers run afterwards, from the collector's exit
+   handler (section 19.4).
+8. **`ArgVector`, `MainStackFrame` and `BinaryDir` in VMS's terms.**
+   - `ArgVector` is the address of an array of `ArgCount` longwords,
+     each the address of an argument, 0X-terminated, in `Modules`' own
+     copy of the line. That is C's `argv`, so code that walks it, as
+     `Args` does, works unchanged.
+   - `MainStackFrame` is an address near the bottom of the stack: a
+     local variable's address in a procedure that `Modules`' body
+     calls, as `rtl/llvm`'s is `argv`'s address. Nothing in poc uses it.
+   - `BinaryDir` is the device and directory of the image's file
+     specification, argument 0 (`JPI$_IMAGNAME`), such as
+     `DUA1:[USERS.POC.BIN]`, in VMS's form, which `Files` takes. VMS
+     always gives the image's full name, so there is no `PATH` to
+     search as voc's `FindBinaryDir` does.
+
+Fixtures on the guest, under `-O2` and `-OC`:
+
+- `vax-modules-commands`, new: `llvm-modules-commands`' programs
+  (`commands`, `halt`, `haltcode`, `assertcode`, `assertzero`), whose
+  output must be LLVM's except for `ModuleTable` (proposal 5), the
+  exit statuses (proposal 7), and `BinaryDir` (proposal 8).
+- `vax-modules`, extended: `VaxModLib` gets a command, so that its
+  `expected-vax-VaxModLib.mar` shows a descriptor, for review.
+- `vax-modules-extra`, new: `llvm-modules-extra`'s checks, with its
+  long argument as long as a DCL command line allows rather than 3000
+  characters, and `ArgVector` read as `argv`.
+- `expected-vax-Modules.mar` is new, and `vax-library`'s `POCRTL` gains
+  `POC_MODULE`, `POC_MODULES` and `Modules`' new symbols.
+
+### 19.6 Modules: done
+
+- *Done* (section 19.5, proposals 1 to 8, 2026-10-13).
+  `rtl/vax/Modules.Mod` has the whole interface but `Init`. It imports
+  `Platform` and `LineOutput`, and uses `NEW`, so a program that
+  contains it gets the collector.
+  - `VaxCodeGenerator.WriteModuleDescriptor` writes each module's
+    descriptor when the program contains a module named `Modules`
+    (`Poc.Mod` sets `withModules`): the descriptor in `POC_DATA`, its
+    names as `.ASCIZ` in `POC_CONST`. The initializer registers it with
+    `POC_MODULE` after its imports' initializers. A module with no body
+    still gets an initializer then.
+  - `PocRtl.mar` keeps the list: `POC_MODULE` links a descriptor in at
+    the head, and `POC_MODULES` returns the head.
+    `tools/vax-runtime-stub.mar` has both, for debugger runs.
+  - `Modules` reads the list lazily: `ThisMod` and `Free` first enter the
+    descriptors registered since their last look, oldest first.
+- *Fixtures.*
+  - `vax-modules-commands`, new: `llvm-modules-commands`' five programs
+    on the guest. Its expected MACRO-32 covers `commands`, `Greeter`
+    (whose descriptor lists its two commands), `Modules`, and `Out`,
+    `Platform` and `LineOutput` with their descriptors. The output is
+    LLVM's, but `ModuleTable` is not found, and the statuses are
+    `%X1000001A` for `Halt(3)`, `%X100007F2` for `Halt(-2)`,
+    `%X1000003A` for `AssertFail(7)` and `%X100007FA` for
+    `AssertFail(0)`.
+  - `vax-modules-extra`, new: `llvm-modules-extra`'s eight checks, its
+    long argument 200 zeros, and `ArgVector.mod`. `ArgVector.mod` reads
+    each argument through `ArgVector` as `argv`, checks that
+    `BinaryDir` is argument 0 up to its "]", and checks that
+    `MainStackFrame` is in P1 space.
+  - `vax-command-line`: `Modules` now brings in `Platform`, `LineOutput`
+    and `GarbageCollectedHeap`. So `CommandLine`, the main module,
+    starts the collector. The fixture compares `Platform` and
+    `LineOutput` too, and links and deletes their objects on the guest.
+  - `vax-library`'s `POCRTL` makes 242 symbols universal, 16 more.
+- *Not done as proposed*: `vax-modules` was not extended. Its program
+  does not import `Modules`, so it gets no descriptors, and a command
+  in `VaxModLib` would show nothing. `vax-modules-commands`'
+  `expected-vax-Greeter.mar` shows a descriptor with commands instead.

@@ -328,6 +328,22 @@ HDIVMOD:
 	.ENTRY	POC_ROOTS, ^M<>
 	RET
 
+; Modules' list of module descriptors (design section 19.5), as
+; PocRtl.mar keeps it
+	.PSECT	POC_DATA
+POC_MODULE_HEAD:
+	.BLKL	1
+	.PSECT	POC_CODE
+	.ENTRY	POC_MODULE, ^M<>
+	MOVL	4(AP), R0
+	MOVL	POC_MODULE_HEAD, (R0)
+	MOVL	R0, POC_MODULE_HEAD
+	RET
+
+	.ENTRY	POC_MODULES, ^M<>
+	MOVL	POC_MODULE_HEAD, R0
+	RET
+
 ; Out's and Err's lines, and Platform's and Modules' services, as
 ; rtl/vax/PocRtl.mar has them (design section 15), so that a program
 ; using rtl/vax runs under the debugger as it does without it
