@@ -20,10 +20,25 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   `$SETDDIR`, `$GETJPI`, `LIB$GET_FOREIGN`, RMS file access for
   `Files`, and memory, saved registers, an exit handler and the paging
   file quota for the collector.
-- `Out.Mod` and `Err.Mod` (`Open`, `Flush`, `Char`, `String`, `Ln`,
-  `Int`, `Hex`) write to `SYS$OUTPUT` and `SYS$ERROR` through
-  `LineOutput.Mod`, a record for each `Ln` (section 14, item 2, and
-  section 15, proposal 8).
+- `Out.Mod` and `Err.Mod`, `rtl/llvm`'s whole interface, write to
+  `SYS$OUTPUT` and `SYS$ERROR` through `LineOutput.Mod`, a record for
+  each `Ln` (section 14, item 2, and section 15, proposal 8). `Real`,
+  `LongReal` and `Ten` take their text from `FormattedText`, and
+  `IsConsole` asks `$GETDVIW` whether the stream is a terminal (section
+  19.7, proposal 3).
+- `FormattedText.Mod` and `RealDigits.Mod`: `rtl/llvm`'s, internal, for
+  F_floating and G_floating. `RealDigits` takes a G_floating value apart
+  for its exact digits, and `FormattedText` tests a real without IEEE
+  754's bits and squares `Ten`'s powers only while it needs them
+  (section 19.7, proposals 1 and 2).
+- `DecimalToReal.Mod`, internal: the F_floating or G_floating value
+  nearest a decimal numeral, ties to even, by
+  `src/front/DecimalToDouble.Mod`'s exact method (section 19.7,
+  proposal 4).
+- `Reals.Mod`: voc's and `rtl/llvm`'s interface for F and G. `Ten` and
+  `TenL` come from `DecimalToReal`, the largest value beyond the range.
+  The exponent fields are the VAX's own, and `ConvertH` writes F's and
+  G's bytes (section 19.7, proposal 5).
 - `Modules.Mod`: `rtl/llvm`'s whole interface but `Init` (section 19.5,
   Phase 17 step 3). It has the command line of a foreign command, split
   as DCL quotes it, with `ArgVector` as C's `argv`. It has the list of

@@ -15,6 +15,10 @@
 ;;   exit handler.
 ;; - The debugger run ends with Err's line, LineOutput's second, holding
 ;;   that last one, and its length 0, the exit handler having written it.
+;; Changed by Claude, 2026-10-13, for Phase 17 step 3 (design section
+;; 19.7, approved by the user); reviewed by the user, 2026-10-13: Err's
+;; key is now POC_K1_128D1F9E69058A6A, since its interface gained Real,
+;; LongReal, Ten and IsConsole; nothing else changed.
 ; ErrBasics, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	ERRBASICS
 	.IDENT	/46384e707b463900/
@@ -36,7 +40,7 @@ L_INITIALISED:
 	.EXTERNAL	ERR_HEX_7HDEIC1V
 	.EXTERNAL	ERR_FLUSH_QHE7JF08
 	.EXTERNAL	ERR_INIT
-	.EXTERNAL	POC_K1_A9EED434BB07F592
+	.EXTERNAL	POC_K1_128D1F9E69058A6A
 
 ; its string constants
 	.PSECT	POC_CONST

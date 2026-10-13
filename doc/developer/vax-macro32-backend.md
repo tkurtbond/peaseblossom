@@ -3399,3 +3399,222 @@ Fixtures on the guest, under `-O2` and `-OC`:
   does not import `Modules`, so it gets no descriptors, and a command
   in `VaxModLib` would show nothing. `vax-modules-commands`'
   `expected-vax-Greeter.mar` shows a descriptor with commands instead.
+
+### 19.7 RealDigits and Reals: proposals
+
+The fourth group in the inventory's order (`vms-module-inventory.md`,
+proposal 1) is `RealDigits` and `Reals` for F_floating and G_floating,
+and with them `Out`'s and `Err`'s `Real`, `LongReal` and `Ten`.
+Several `rtl/llvm` modules read a real's bits as IEEE 754's, which a VAX
+value is not (section 14, item 9):
+- `RealDigits.ExactDigits` reads the exponent and fraction.
+- `FormattedText.RealP` tests for zero, the sign, infinities and NaNs.
+- `Reals` reads `Expo`, `SetExpo` and `ConvertL` from the bits, and gets
+  `Ten` and `TenL` from C's `strtof` and `strtod`.
+
+`Files` already takes F and G apart (section 19.3, proposal 8). Every
+decision here takes its layouts from that reviewed code:
+- F: the sign is bit 15 and the exponent bits 14:7 (excess 128). The
+  fraction is bits 6:0 and then the second word.
+- G: the exponent is bits 14:4 (excess 1024), and the fraction runs on
+  through three more words.
+- Both: the value is 0.1f times 2 to the power (exponent - bias), and
+  exponent 0 is zero, or the reserved operand when the sign is 1.
+
+**Approved by the user, 2026-10-13**, all six as written.
+
+1. **`rtl/vax/RealDigits.Mod` is `rtl/llvm`'s, with only the reading of
+   the bits changed.**
+   - `ExactDigits` takes a G_floating value apart: m = 2^52 + f, and e =
+     exponent - 1077, so that v = m * 2^e exactly. The digits and
+     rounding are then `rtl/llvm`'s, unchanged: nearest, ties to even,
+     with no floating-point arithmetic.
+   - A `REAL` reaches `Digits` and `Fixed` through `CVTFG`, which is
+     exact.
+   - A value with G's smallest exponent has up to 769 exact digits,
+     which fits the 800-character buffer. Its big integer needs about
+     2550 bits, under the 6000 there is room for.
+   - The interface (`Digits`, `Fixed`) is unchanged, so `Out` and later
+     `Texts` call it as on LLVM.
+2. **`rtl/vax/FormattedText.Mod` is `rtl/llvm`'s, with `RealP`'s tests
+   changed.**
+   - Zero is `x = 0`, and the sign is `x < 0`.
+   - The `Infinity` and `NaN` branch goes, since the VAX has neither.
+     The reserved operand faults on the first comparison, as any use of
+     it does (section 19.3, proposal 8).
+   - Everything else is the same text, so `Out.Real(x, n)` prints what
+     it prints on LLVM for every value both formats hold.
+   - Changing `rtl/llvm`'s module instead, to test without the bits,
+     would lose `-0`, `Infinity` and `NaN` on Unix. It would also change
+     a module Stage 0 builds.
+   - `Ten`, by repeated squaring, is exact up to 10^22 on both. It
+     changes in one place: on LLVM it squares once more after the last
+     bit of e it uses. For e >= 256 that last square is past G's range,
+     which ends just under 9 * 10^307. On LLVM the infinity is thrown
+     away, but on the VAX it is a floating-overflow fault. The VAX copy
+     stops squaring once e is used up, so `Ten(256)` to `Ten(307)` work.
+     Past 307 it stops on the VAX's floating overflow, where LLVM gives
+     infinity.
+3. **`Out` and `Err` get `Real`, `LongReal`, `Ten` and `IsConsole`**,
+   with `rtl/llvm`'s interface and output, which completes both
+   interfaces.
+   - `Real` and `LongReal` get the text from `FormattedText`, then write
+     the blanks that fill the field and the text, through `LineOutput`,
+     as `Int` already does. `LineOutput` itself is unchanged, so its six
+     reviewed copies stay as they are.
+   - `IsConsole` is set by each module's body. A new `PocRtl.mar`
+     routine, `POC_IS_TERMINAL`, asks `$GETDVIW` for the device class
+     (`DVI$_DEVCLASS`) of `SYS$OUTPUT` or `SYS$ERROR`. The answer is
+     TRUE when that class is `DC$_TERM` (System Services 5.5,
+     `$GETDVI`), and FALSE when the call fails.
+   - `IsConsole` comes now rather than in `VT100`'s step because
+     `llvm-out`'s and `llvm-err`'s programs print it.
+   - The part-line `Flush` to a terminal stays in `VT100`'s step.
+4. **Decimal to F and G by poc's own conversion: a new internal module,
+   `rtl/vax/DecimalToReal.Mod`** (the inventory's proposal 3).
+   - It is `src/front/DecimalToDouble.Mod`'s exact method, with
+     `HUGEINT` for its 8-byte `LONGINT`, which the runtime cannot assume
+     under `-O2`. The method is a big-integer binary search for the
+     significand, and a comparison with the midpoint, so ties go to
+     even.
+   - G's parameters are 53 bits, no value below 2^-1024 and a last bit
+     of at most 2^970; F's are 24 bits, 2^-128 and 2^103.
+   - `ToLongReal(numeral, VAR value): BOOLEAN` and `ToReal` give the
+     nearest value, and FALSE beyond the largest. Below the smallest
+     value the result is the nearer of 0 and the smallest, since the VAX
+     has nothing between them.
+   - `Reals` uses it now. `Strings`, `In`, `InStr` and `FormattedInput`
+     use it in their steps.
+   - Ties go to even, as IEEE rounds and as `RealDigits` does, not away
+     from zero as the VAX's own arithmetic and MACRO do (section 14, item
+     9). So a numeral exactly halfway between two values can differ in
+     its last bit from the same numeral written as a constant in a
+     program. Everywhere else the two agree.
+5. **`Reals` on the VAX.**
+   - `Ten(e)` and `TenL(e)` are `DecimalToReal`'s value of "1E<e>",
+     built by `PowerText` as on LLVM. Beyond the range they give the
+     largest value of the type. `Files` reads an IEEE infinity the same
+     way (section 19.3, proposal 8), and a VAX value cannot overflow to
+     anything else. Below the range they give 0, as LLVM does past its
+     subnormals.
+     - On LLVM, `Ten(39)` and `TenL(309)` are infinity. Here they are
+       the largest F and G values.
+     - `TenL(-309)` to `TenL(-323)` are subnormals on LLVM and 0 here.
+     - `Ten(-38)` is a full-precision normal number here, where it is a
+       subnormal on LLVM.
+   - `Expo`, `SetExpo`, `ExpoL` and `SetExpoL` read and write the VAX's
+     own exponent field: 8 bits excess 128, and 11 bits excess 1024. So
+     `Expo(1.0)` is 129, where IEEE's is 127. The interface promises
+     "the biased exponent field of x", and code that wants IEEE's on the
+     VAX is already wrong about the fraction and the bias.
+     - `Texts`' `RealBits` assumes IEEE's field and sign bit. It gets
+       its VAX answer in `Texts`' own step.
+     - `SetExpo(x, 0)` of a negative x makes the reserved operand, as
+       writing that field by hand would.
+   - `ConvertL` takes m and e from G's fields as in proposal 1, then
+     writes digits as on LLVM. `Convert` is `ConvertL` of `LONG(x)`. A
+     zero or the reserved operand writes zeros.
+   - `ConvertH` and `ConvertHL` are unchanged: the bytes as they are in
+     memory, least significant address first, as voc's document. On the
+     VAX those are F's and G's bytes, so `ConvertH(1.0)` is "80400000",
+     where IEEE's is "0000803F".
+6. **Fixtures on the guest, under `-O2` and `-OC`.**
+   - `vax-real-digits`, new. `llvm-real-digits/generate.py` also writes
+     a VAX program and its expected output.
+     - The program's values are `llvm-real-digits`' values that are
+       normal in both formats: 2^-1022 to just under 2^1023 for a
+       `LONGREAL`, and 2^-126 to just under 2^127 for a `REAL`. The same
+       oracle, the C library's correctly rounded `%e`, holds for them.
+     - Some values only the VAX has are added: its smallest and
+       largest of each type, and a few between 2^-1024 and 2^-1022 and
+       between 2^-128 and 2^-126, with digits from Python's exact
+       fractions.
+   - `vax-reals-module`, new: `llvm-reals-module`'s `reals.mod` and
+     `beyond.mod`, built for the VAX.
+     - Their expected output is the VAX's: F's and G's bytes, fields
+       and ranges.
+     - It is written by a generator from the formats' definitions and
+       Python's exact fractions, not by running the programs.
+   - `vax-out-reals`, new.
+     - `llvm-out-extra`'s `outextra.mod` and `llvm-err`'s `errtest.mod`
+       must print their LLVM `expected` on the guest. Neither uses an
+       infinity, a NaN or a -0.
+     - `llvm-out`'s `outtest.mod` runs too, without the lines that make
+       an infinity and a NaN by multiplying past the range, which fault
+       on the VAX.
+     - The procedure sends `SYS$OUTPUT` and `SYS$ERROR` to files, as the
+       LLVM fixtures redirect them, so `IsConsole` is FALSE for both.
+       TRUE is checked by hand in a telnet session, since `tools/vax-do`
+       sends everything to a log file.
+     - The VAX rounds a tie away from zero, so where a program computes
+       a tie, as `outtest`'s repeated multiplications by ten might, its
+       last digit can differ from LLVM's. Any such line is reported in
+       the fixture's own expected output, with the reason, not hidden.
+   - `vax-library`'s `POCRTL` gains `RealDigits`, `FormattedText`,
+     `DecimalToReal`, `Reals` and the new `Out` and `Err` procedures.
+     `vax-out` and `vax-err` gain those procedures in their reviewed
+     `expected-vax-Out.mar` and `expected-vax-Err.mar`.
+
+### 19.8 RealDigits and Reals: done
+
+- *Done* (section 19.7, proposals 1 to 6, 2026-10-13). Four new
+  modules in `rtl/vax`, and `Out` and `Err` complete:
+  - `RealDigits.Mod` is `rtl/llvm`'s, but `ExactDigits` takes a
+    G_floating value apart.
+  - `FormattedText.Mod` is `rtl/llvm`'s, but `RealP` tests the sign and
+    zero with `TSTG`, there is no Infinity or NaN, and `Ten` stops
+    squaring once e is used up.
+  - `DecimalToReal.Mod` is `src/front/DecimalToDouble.Mod`'s method with
+    `HUGEINT`, for G and F, saturating past the largest value.
+  - `Reals.Mod` gets `Ten`/`TenL` from `DecimalToReal` and reads the
+    VAX's own exponent fields.
+  - `Out` and `Err` get `Real`, `LongReal`, `Ten` and `IsConsole`
+    through `FormattedText`.
+- *Not done as proposed*:
+  - `IsConsole` calls `POC_IS_TERMINAL`, which `Platform.IsConsole`
+    already had in `PocRtl.mar` (section 19.1), rather than a new
+    routine.
+  - `SetExpo` and `SetExpoL` read and write `x` as an integer (`SYSTEM.GET`
+    and `PUT`), not as a real. A floating move of a negative `x` with
+    exponent 0 would fault inside `SetExpo`, where proposal 5 says the
+    reserved operand faults only when it is used. A positive one would
+    become a true zero, since the VAX takes any positive value with
+    exponent 0 as an exact zero wherever it is used as a real (MACRO
+    and Instruction Set 5.4, "Floating-point 0"). So `SetExpo(3.0, 0)`
+    leaves the fraction bits in `x`, but `x` passed to `ConvertH` as a
+    `REAL` is copied by `MOVF` and is 0 there.
+- *What differs from LLVM on the guest*, all as section 19.7 predicted:
+  - A numeral exactly halfway between two values is the upper one, as
+    MACRO rounds ties away from zero: 1.0D23 and 8.41D21, which LLVM
+    reads as the lower ones (`vax-real-digits`).
+  - A computed tie is rounded the same way. `outextra`'s and `outtest`'s
+    products of tens past 10^22 differ from LLVM's in their last digits
+    (`vax-out-reals`). A Python model of both roundings gives every
+    differing line exactly: 10^23, 10^40 and 10^300 as products, and a
+    third of 10^300.
+  - `Ten`, `TenL`, `Expo`, `ConvertH` and the rest give F's and G's
+    answers (`vax-reals-module`).
+  - `Err` writes to `SYS$ERROR`, which under `tools/vax-do` is the telnet
+    session, not the log. `vax-out-reals` therefore sends `errtest`'s
+    two streams to files and types them.
+- *Fixtures.*
+  - `vax-real-digits`, new: 1083 lines. `llvm-real-digits/generate.py`
+    writes its `digits.mod` and `guest-run.expected` after its own
+    files, which it leaves unchanged. The oracle is exact fractions and
+    MACRO's rounding of each numeral.
+  - `vax-reals-module`, new: `llvm-reals-module`'s `reals.mod`, as
+    `RealsUse.mod` since VMS does not tell `reals` from `Reals`, and
+    `beyond.mod`, 440 lines. Its `generate.py` writes the expected output
+    from the formats' definitions; `generate.py ieee` reproduces what the
+    two programs print on Unix, line for line.
+  - `vax-out-reals`, new: `outextra`, `errtest` and `outtest`, with one
+    expected file per size model, since `outtest` prints `MAX(INTEGER)`.
+  - `Out` and `Err` now import `FormattedText`, which imports
+    `RealDigits`. So the 22 fixtures whose programs use `Out` or `Err`
+    on the guest send those two `.mar` files too and delete their
+    objects.
+    - `vax-out`, `vax-err` and `vax-modules-commands` compare them, and
+      their `Out` or `Err`, with new expected copies.
+    - Their main modules differ only in `Out`'s or `Err`'s key.
+  - `vax-library`'s `POCRTL` has 13 modules and makes 280 symbols
+    universal, 38 more.

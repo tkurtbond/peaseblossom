@@ -15,7 +15,7 @@
 . ../../vaxfixture.sh
 rtl=../../../rtl/vax
 # what poc writes here, not the expected .mar files
-written="commands.mar haltcode.mar halt.mar assertcode.mar assertzero.mar Greeter.mar Modules.mar Out.mar LineOutput.mar Platform.mar GarbageCollectedHeap.mar"
+written="commands.mar haltcode.mar halt.mar assertcode.mar assertzero.mar Greeter.mar Modules.mar Out.mar LineOutput.mar FormattedText.mar RealDigits.mar Platform.mar GarbageCollectedHeap.mar"
 src=../llvm-modules-commands
 programs="commands haltcode halt assertcode assertzero"
 for p in $programs; do cp $src/$p.mod $p.mod; done
@@ -31,7 +31,7 @@ for model in -O2 -OC; do
   done
   vax_do guest-run.com guest-run.expected commands.com haltcode.com halt.com assertcode.com assertzero.com \
     commands.mar haltcode.mar halt.mar assertcode.mar assertzero.mar Greeter.mar Modules.mar Out.mar \
-    LineOutput.mar Platform.mar GarbageCollectedHeap.mar $rtl/PocRtl.mar
+    LineOutput.mar FormattedText.mar RealDigits.mar Platform.mar GarbageCollectedHeap.mar $rtl/PocRtl.mar
 done
 rm -f *.sym $written commands.com haltcode.com halt.com assertcode.com assertzero.com
 rm -f commands.mod haltcode.mod halt.mod assertcode.mod assertzero.mod Greeter.Mod

@@ -1,6 +1,6 @@
 ;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.5, proposals 1 to 8, approved by the user); not yet reviewed. Why
-;; this is right:
+;; 19.5, proposals 1 to 8, approved by the user); reviewed by the user,
+;; 2026-10-13. Why this is right:
 ;; - commands (llvm-modules-commands' program) imports Modules, Greeter,
 ;;   Out and Platform; its descriptor names the four, in that order, and
 ;;   has no commands, as it exports nothing. Its initializer calls the
@@ -15,6 +15,10 @@
 ;;   ModuleTable's, not found, since VMS has no ModuleTable module
 ;;   (proposal 5), and BinaryDir is the current directory
 ;;   (guest-run.expected).
+;; Changed by Claude, 2026-10-13, for Phase 17 step 3 (design section
+;; 19.7, approved by the user); reviewed by the user, 2026-10-13: Out's
+;; key is now POC_K1_7857318F9F511ACE, since its interface gained Real,
+;; LongReal, Ten and IsConsole; nothing else changed.
 ; commands, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	COMMANDS
 	.IDENT	/507c1bfbe6014157/
@@ -72,7 +76,7 @@ L_ROOTS:
 	.EXTERNAL	GREETER_INIT
 	.EXTERNAL	POC_K1_B4A18B3DD650EF4F
 	.EXTERNAL	OUT_INIT
-	.EXTERNAL	POC_K1_721056B4BE8FF51C
+	.EXTERNAL	POC_K1_7857318F9F511ACE
 	.EXTERNAL	PLATFORM_INIT
 	.EXTERNAL	POC_K1_2A203935C54E257B
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT

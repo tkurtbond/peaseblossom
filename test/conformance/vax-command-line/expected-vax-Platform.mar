@@ -55,11 +55,12 @@
 ;;   are as they were after it.
 ;; Compiled here in a program that contains Modules (Phase 17 step 3,
 ;; design section 19.5, proposals 2 to 4, approved by the user; written
-;; by Claude 2026-10-13, not yet reviewed). It differs from
-;; vax-files/expected-vax-Platform.mar only by the descriptor: the
-;; .EXTERNAL POC_MODULE, the block "its descriptor, for Modules" (its name, LineOutput imported, no commands),
-;; and the initializer's PUSHAL L_MODULE_DESCRIPTOR and CALLS #1,
-;; G^POC_MODULE after its imports' initializers.
+;; by Claude 2026-10-13, reviewed by the user, 2026-10-13). It differs
+;; from vax-files/expected-vax-Platform.mar only by the descriptor: the
+;; .EXTERNAL POC_MODULE, the block "its descriptor, for Modules" (its
+;; name, LineOutput imported, no commands), and the initializer's PUSHAL
+;; L_MODULE_DESCRIPTOR and CALLS #1, G^POC_MODULE after its imports'
+;; initializers.
 ; Platform, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	PLATFORM
 	.IDENT	/2a203935c54e257b/

@@ -14,15 +14,15 @@
 ;; - Modules' key, POC_K1_60A28B8ADC3D2FDD, is new (2026-10-10), since
 ;;   its interface gained GetIntArg and ArgPos; nothing else changed.
 ;; Changed by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.5, approved by the user); not yet reviewed: Modules now imports
-;; Platform and LineOutput and uses NEW, so the program contains
-;; GarbageCollectedHeap, and CommandLine, its main module, calls
-;; GARBAGECOLLECTEDHEAP_INIT and passes its frame (PUSHL FP) as the
-;; stack's base, as any main module of such a program does (section 15).
-;; It also has a descriptor, as every module of a program containing
-;; Modules does (proposals 2 to 4): its name, Modules imported, no
-;; commands, registered by POC_MODULE after MODULES_INIT. Modules' key
-;; is now POC_K1_C77D093894FB628F.
+;; 19.5, approved by the user); reviewed by the user, 2026-10-13:
+;; Modules now imports Platform and LineOutput and uses NEW, so the
+;; program contains GarbageCollectedHeap, and CommandLine, its main
+;; module, calls GARBAGECOLLECTEDHEAP_INIT and passes its frame (PUSHL
+;; FP) as the stack's base, as any main module of such a program does
+;; (section 15). It also has a descriptor, as every module of a program
+;; containing Modules does (proposals 2 to 4): its name, Modules
+;; imported, no commands, registered by POC_MODULE after MODULES_INIT.
+;; Modules' key is now POC_K1_C77D093894FB628F.
 ; CommandLine, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	COMMANDLINE
 	.IDENT	/9ff0fd7d4cf6d7f8/

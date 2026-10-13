@@ -637,8 +637,14 @@ C++, and so on) unless step 4 chooses one deliberately.
    has the whole interface but `Init`. The VAX backend writes each
    module's descriptor in a program that contains `Modules`. Fixtures
    `vax-modules-commands` (`llvm-modules-commands`' programs) and
-   `vax-modules-extra` are new. Next, `RealDigits` and `Reals` for F and
-   G.
+   `vax-modules-extra` are new. `RealDigits` and `Reals` are done
+   (2026-10-13): their six proposals, **approved by the user,
+   2026-10-13**, are section 19.7, and section 19.8 records the work.
+   They come with a new `DecimalToReal` (correctly rounded decimal to F
+   and G), `FormattedText` for the VAX, and `Out`'s and `Err`'s `Real`,
+   `LongReal`, `Ten` and `IsConsole`. Fixtures `vax-real-digits`,
+   `vax-reals-module` and `vax-out-reals` are new. Next, `FormattedOutput`
+   and `OutStr`.
 
 4. **Which native VAX/VMS libraries to support.** From the manuals, not
    memory, list what a VMS programmer expects to reach: the run-time

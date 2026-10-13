@@ -1,16 +1,20 @@
 semantic OK, wrote LineOutput.mar
 semantic OK, wrote Platform.mar
 semantic OK, wrote Modules.mar
+semantic OK, wrote RealDigits.mar
+semantic OK, wrote FormattedText.mar
 semantic OK, wrote Out.mar
 semantic OK, wrote Greeter.mar
 semantic OK, wrote commands.mar
 exit 0
 commands.mar matches expected-vax.mar
+FormattedText.mar matches expected-vax-FormattedText.mar
 Greeter.mar matches expected-vax-Greeter.mar
 LineOutput.mar matches expected-vax-LineOutput.mar
 Modules.mar matches expected-vax-Modules.mar
 Out.mar matches expected-vax-Out.mar
 Platform.mar matches expected-vax-Platform.mar
+RealDigits.mar matches expected-vax-RealDigits.mar
 VAX build commands -O2 exit 0
 VAX build haltcode -O2 exit 0
 VAX build halt -O2 exit 0

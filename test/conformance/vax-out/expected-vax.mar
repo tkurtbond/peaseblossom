@@ -19,6 +19,10 @@
 ;; - 2026-10-10 (step 4): Out now writes through LineOutput, which it
 ;;   shares with Err, so Out's key, the .EXTERNAL POC_K1_..., is new; that
 ;;   is the one line that changed since the user's review of 2026-10-09.
+;; Changed by Claude, 2026-10-13, for Phase 17 step 3 (design section
+;; 19.7, approved by the user); reviewed by the user, 2026-10-13: Out's
+;; key is now POC_K1_7857318F9F511ACE, since its interface gained Real,
+;; LongReal, Ten and IsConsole; nothing else changed.
 ; OutBasics, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	OUTBASICS
 	.IDENT	/fe1e9b3ecd5d7cbb/
@@ -58,7 +62,7 @@ OUTBASICS_H_6NSKH85A:
 	.EXTERNAL	OUT_HEX_V0UAM9IC
 	.EXTERNAL	OUT_FLUSH_ITJ00AMN
 	.EXTERNAL	OUT_INIT
-	.EXTERNAL	POC_K1_721056B4BE8FF51C
+	.EXTERNAL	POC_K1_7857318F9F511ACE
 
 ; its string constants
 	.PSECT	POC_CONST

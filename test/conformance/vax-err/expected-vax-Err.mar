@@ -1,14 +1,29 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from design
-;; section 15, rtl/vax/Err.Mod, the guest runs and the debugger run).
-;; Why this is right:
-;; - Err is Out (vax-out's expected-vax-Out.mar) with stream 1,
-;;   LineOutput.error, for Out's 0: MOVL #1 where Out has CLRL, in each
-;;   call of LineOutput's Char, String, Ln, Int and Hex. Every other line
-;;   differs only in the module's names and key.
-;; - Its initializer calls LINEOUTPUT_INIT, as Out's does.
+;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
+;; 19.7, proposal 3, approved by the user); reviewed by the user,
+;; 2026-10-13. It replaces the file the user reviewed on 2026-10-10,
+;; whose Open, Flush, Char, String, Ln, Int and Hex this one keeps
+;; unchanged. Why this is right:
+;; - Err now imports FormattedText too, so its initializer calls
+;;   FORMATTEDTEXT_INIT after LINEOUTPUT_INIT, then FindConsole.
+;; - IsConsole is an exported BOOLEAN ("::"). FindConsole copies
+;;   "SYS$ERROR" (MOVC5, 9 bytes, zero-filled to 16) and calls
+;;   POC_IS_TERMINAL, Platform's routine ($GETDVIW, DVI$_DEVCLASS
+;;   DC$_TERM), with its address and length 9, and sets IsConsole when
+;;   R0 is 1.
+;; - Ten passes e as a longword (CVTWL) to FORMATTEDTEXT_TEN and returns
+;;   its G_floating result in R0 and R1; a function that reached its END
+;;   would trap (12).
+;; - Real copies its REAL argument (MOVF) and n, has FORMATTEDTEXT_REAL
+;;   write the text into a 32-byte local (FormattedText.maxText), then
+;;   Field writes n minus its length (FORMATTEDTEXT_LENGTH) blanks, then
+;;   the text, through LINEOUTPUT_CHAR and LINEOUTPUT_STRING. LongReal is
+;;   the same with the LONGREAL passed as the address of a copy (MOVG).
+;; - On the guest, vax-out-reals' errtest prints llvm-err's output on
+;;   SYS$ERROR as on standard error, and IsConsole is FALSE with
+;;   SYS$ERROR in a file.
 ; Err, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	ERR
-	.IDENT	/a9eed434bb07f592/
+	.IDENT	/128d1f9e69058a6a/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
@@ -18,14 +33,39 @@
 L_INITIALISED:
 	.BLKB	1
 
+; the module's variables
+	.PSECT	POC_DATA
+; IsConsole: BOOLEAN, exported
+ERR_ISCONSOLE_B9PIMVFJ::
+	.BLKB	1
+
 ; the symbols it uses of other modules
 	.EXTERNAL	LINEOUTPUT_CHAR_HDBHEMT8
 	.EXTERNAL	LINEOUTPUT_STRING_DKRIT2LD
 	.EXTERNAL	LINEOUTPUT_LN_RROULHTA
 	.EXTERNAL	LINEOUTPUT_INT_QKLE32AL
 	.EXTERNAL	LINEOUTPUT_HEX_QKJD2AE9
+	.EXTERNAL	FORMATTEDTEXT_TEN_DJ9CEDFT
+	.EXTERNAL	FORMATTEDTEXT_LENGTH_B8VGBT0Q
+	.EXTERNAL	FORMATTEDTEXT_REAL_VBB34ISE
+	.EXTERNAL	FORMATTEDTEXT_LONGREAL_5EKQFPF4
+	.EXTERNAL	POC_IS_TERMINAL
 	.EXTERNAL	LINEOUTPUT_INIT
 	.EXTERNAL	POC_K1_325CA5CA1A3D6BD4
+	.EXTERNAL	FORMATTEDTEXT_INIT
+	.EXTERNAL	POC_K1_F4FBDDE2020BC8CF
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/Err/
+
+; its string constants
+	.PSECT	POC_CONST
+L_STR_1:
+	.ASCII	/SYS$ERROR/
+	.BYTE	0
 
 ; the module's procedures
 	.PSECT	POC_CODE
@@ -40,7 +80,7 @@ L_INITIALISED:
 	SUBL2	#16, SP
 	CLRL	-4(FP)
 	MOVB	4(AP), -1(FP)
-; line 33
+; line 43
 	MOVL	#2, -16(FP)
 	MOVL	#1, -12(FP)
 	MOVZBL	-1(FP), -8(FP)
@@ -69,7 +109,7 @@ L_2:
 	TSTL	(SP)
 	BNEQ	L_1
 	ADDL2	#4, SP
-; line 40
+; line 50
 	MOVL	#3, -20(FP)
 	MOVL	#1, -16(FP)
 	MOVL	-4(FP), -12(FP)
@@ -79,7 +119,7 @@ L_2:
 ; PROCEDURE Ln
 	.ENTRY	ERR_LN_C7A9PFSG, ^M<>
 	SUBL2	#8, SP
-; line 45
+; line 55
 	MOVL	#1, -8(FP)
 	MOVL	#1, -4(FP)
 	CALLG	-8(FP), G^LINEOUTPUT_LN_RROULHTA
@@ -91,7 +131,7 @@ L_2:
 	CLRQ	-8(FP)
 	MOVQ	@8(AP), -16(FP)
 	MOVQ	@4(AP), -8(FP)
-; line 53
+; line 63
 	MOVL	#3, -32(FP)
 	MOVL	#1, -28(FP)
 	MOVQ	-8(FP), -40(FP)
@@ -107,7 +147,7 @@ L_2:
 	CLRQ	-8(FP)
 	MOVQ	@8(AP), -16(FP)
 	MOVQ	@4(AP), -8(FP)
-; line 61
+; line 71
 	MOVL	#3, -32(FP)
 	MOVL	#1, -28(FP)
 	MOVQ	-8(FP), -40(FP)
@@ -115,6 +155,124 @@ L_2:
 	MOVQ	-16(FP), -48(FP)
 	MOVAQ	-48(FP), -20(FP)
 	CALLG	-32(FP), G^LINEOUTPUT_HEX_QKJD2AE9
+	RET
+; PROCEDURE Ten
+	.ENTRY	ERR_TEN_7HMG0DE5, ^M<>
+	SUBL2	#12, SP
+	CLRL	-4(FP)
+	MOVW	4(AP), -2(FP)
+; line 78
+	MOVL	#1, -12(FP)
+	CVTWL	-2(FP), -8(FP)
+	CALLG	-12(FP), G^FORMATTEDTEXT_TEN_DJ9CEDFT
+	RET
+	PUSHL	#3
+	PUSHL	#79
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Field
+ERR_FIELD_NHI0FN72:
+	.WORD	^M<>
+	SUBL2	#20, SP
+	CLRL	-4(FP)
+; line 85
+	MOVL	#2, -16(FP)
+	MOVL	4(AP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	CALLG	-16(FP), G^FORMATTEDTEXT_LENGTH_B8VGBT0Q
+	SUBL3	R0, 12(AP), -4(FP)
+; line 86
+L_3:
+	TSTL	-4(FP)
+	BGTR	L_5
+	JMP	L^L_4
+L_5:
+; line 86
+	MOVL	#2, -16(FP)
+	MOVL	#1, -12(FP)
+	MOVL	#32, -8(FP)
+	CALLG	-16(FP), G^LINEOUTPUT_CHAR_HDBHEMT8
+; line 86
+	DECL	-4(FP)
+	JMP	L^L_3
+L_4:
+; line 87
+	MOVL	#3, -20(FP)
+	MOVL	#1, -16(FP)
+	MOVL	4(AP), -12(FP)
+	MOVL	8(AP), -8(FP)
+	CALLG	-20(FP), G^LINEOUTPUT_STRING_DKRIT2LD
+	RET
+; PROCEDURE Real
+	.ENTRY	ERR_REAL_NSESJSS6, ^M<>
+	SUBL2	#60, SP
+	CLRQ	-40(FP)
+	CLRQ	-32(FP)
+	CLRQ	-24(FP)
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVW	8(AP), -6(FP)
+	MOVF	4(AP), -4(FP)
+; line 97
+	MOVL	#4, -60(FP)
+	MOVF	-4(FP), -56(FP)
+	CVTWL	-6(FP), -52(FP)
+	MOVAB	-38(FP), -48(FP)
+	MOVL	#32, -44(FP)
+	CALLG	-60(FP), G^FORMATTEDTEXT_REAL_VBB34ISE
+; line 98
+	MOVL	#3, -56(FP)
+	MOVAB	-38(FP), -52(FP)
+	MOVL	#32, -48(FP)
+	CVTWL	-6(FP), -44(FP)
+	CALLG	-56(FP), ERR_FIELD_NHI0FN72
+	RET
+; PROCEDURE LongReal
+	.ENTRY	ERR_LONGREAL_UP6DIUFC, ^M<>
+	SUBL2	#72, SP
+	CLRQ	-44(FP)
+	CLRQ	-36(FP)
+	CLRQ	-28(FP)
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVW	8(AP), -10(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 106
+	MOVL	#4, -64(FP)
+	MOVG	-8(FP), -72(FP)
+	MOVAQ	-72(FP), -60(FP)
+	CVTWL	-10(FP), -56(FP)
+	MOVAB	-42(FP), -52(FP)
+	MOVL	#32, -48(FP)
+	CALLG	-64(FP), G^FORMATTEDTEXT_LONGREAL_5EKQFPF4
+; line 107
+	MOVL	#3, -60(FP)
+	MOVAB	-42(FP), -56(FP)
+	MOVL	#32, -52(FP)
+	CVTWL	-10(FP), -48(FP)
+	CALLG	-60(FP), ERR_FIELD_NHI0FN72
+	RET
+; PROCEDURE FindConsole
+ERR_FINDCONSOLE_VOI4T6N6:
+	.WORD	^M<R2,R3,R4,R5>
+	SUBL2	#28, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+; line 113
+	MOVC5	#9, L_STR_1, #0, #16, -16(FP)
+; line 114
+	MOVL	#2, -28(FP)
+	MOVAB	-16(FP), -24(FP)
+	MOVL	#9, -20(FP)
+	CALLG	-28(FP), G^POC_IS_TERMINAL
+	CLRB	R1
+	CMPW	R0, #1
+	BNEQ	L_6
+	MOVB	#1, R1
+L_6:
+	MOVB	R1, ERR_ISCONSOLE_B9PIMVFJ
 	RET
 
 ; the module's initializer: once only
@@ -125,9 +283,12 @@ L_2:
 L_BODY:
 	MOVB	#1, L_INITIALISED
 	CALLS	#0, G^LINEOUTPUT_INIT
+	CALLS	#0, G^FORMATTEDTEXT_INIT
+; line 118
+	CALLS	#0, ERR_FINDCONSOLE_VOI4T6N6
 	RET
 
 ; the module's key, which its importers refer to
-POC_K1_A9EED434BB07F592 == 0
+POC_K1_128D1F9E69058A6A == 0
 
 	.END

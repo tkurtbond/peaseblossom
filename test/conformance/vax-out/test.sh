@@ -26,11 +26,11 @@ for model in -O2 -OC; do
   poc $model -target vax-dec-vms -import-path $rtl -build OutBasics.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
   { echo "build status: %X10000001"; cat output$model.expected; echo "run status: %X00000001"; } >guest-run.expected
-  vax_do guest-run.com guest-run.expected OutBasics.com OutBasics.mar Out.mar LineOutput.mar $rtl/PocRtl.mar
+  vax_do guest-run.com guest-run.expected OutBasics.com OutBasics.mar Out.mar LineOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 done
 rm -f *.sym
 poc -target vax-dec-vms -import-path $rtl -build OutUnfinished.mod >>result 2>&1
 echo "VAX build OutUnfinished exit $?" >>result
-vax_do guest-unfinished.com guest-unfinished.expected OutUnfinished.com OutUnfinished.mar Out.mar LineOutput.mar $rtl/PocRtl.mar
+vax_do guest-unfinished.com guest-unfinished.expected OutUnfinished.com OutUnfinished.mar Out.mar LineOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 rm -f output guest-run.expected
 . ../../testresult.sh

@@ -1,7 +1,8 @@
 ;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.5, proposals 1 to 8, approved by the user); not yet reviewed. It
-;; replaces the file the user reviewed on 2026-10-10, whose Split,
-;; GetArg, GetIntArg and ArgPos this one keeps. Why this is right:
+;; 19.5, proposals 1 to 8, approved by the user); reviewed by the user,
+;; 2026-10-13. It replaces the file the user reviewed on 2026-10-10,
+;; whose Split, GetArg, GetIntArg and ArgPos this one keeps. Why this is
+;; right:
 ;; - It imports Platform and LineOutput, so its initializer calls
 ;;   PLATFORM_INIT and LINEOUTPUT_INIT, then registers its own
 ;;   descriptor (PUSHAL L_MODULE_DESCRIPTOR, CALLS #1, G^POC_MODULE), as

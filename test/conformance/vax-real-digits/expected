@@ -1,0 +1,2 @@
+VAX build -O2 exit 0
+VAX build -OC exit 0

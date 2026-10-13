@@ -26,12 +26,12 @@ for model in -O2 -OC; do
   echo "VAX build $model exit $?" >>result
   { echo "build status: %X10000001"; cat output.expected; echo "run status: %X00000001"; } >guest-run.expected
   vax_do guest-run.com guest-run.expected CollectOut.com CollectOut.mar GarbageCollectedHeap.mar \
-    Out.mar LineOutput.mar $rtl/PocRtl.mar
+    Out.mar LineOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 done
 rm -f *.sym
 poc -target vax-dec-vms -import-path $rtl -build HeapCeiling.mod >>result 2>&1
 echo "VAX build HeapCeiling exit $?" >>result
 vax_do guest-ceiling.com guest-ceiling.expected HeapCeiling.com HeapCeiling.mar GarbageCollectedHeap.mar \
-  Out.mar LineOutput.mar $rtl/PocRtl.mar
+  Out.mar LineOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 rm -f output guest-run.expected
 . ../../testresult.sh

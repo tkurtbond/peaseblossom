@@ -1,0 +1,6 @@
+VAX build outextra -O2 exit 0
+VAX build errtest -O2 exit 0
+VAX build outtest -O2 exit 0
+VAX build outextra -OC exit 0
+VAX build errtest -OC exit 0
+VAX build outtest -OC exit 0
