@@ -76,7 +76,11 @@ MODULE Poc;
 
   CONST
     maxLineLength = 4096;
+    (* how deep a response file may name another (Phase 17 step 1) *)
+    maxResponseDepth = 8;
     importPathEnvVar = "POC_IMPORT_PATH";
+    (* on VMS, a logical name, so a search list, named as POC$LIBRARY is *)
+    vmsImportPathName = "POC$IMPORT";
     libraryPathEnvVar = "POC_LIBRARY_PATH";
     (* on VMS, a logical name, so a search list (Phase 17 step 1) *)
     vmsLibraryPathName = "POC$LIBRARY";
@@ -110,6 +114,11 @@ MODULE Poc;
       next: LibraryMember
     END;
 
+    (* Phase 17 step 1: the command line, its response files and
+       wildcards expanded (ReadArguments) *)
+    ArgumentText = POINTER TO ARRAY OF CHAR;
+    ArgumentList = POINTER TO ARRAY OF ArgumentText;
+
     (* Phase 17 step 1: a hand-written MACRO-32 file poc -library puts in a
        library for vax-dec-vms beside its modules, as PocRtl.mar is put in
        POCRTL (doc/developer/vax-macro32-backend.md, section 18) *)
@@ -121,6 +130,9 @@ MODULE Poc;
     END;
 
   VAR
+    (* the arguments, argument 0 the program's own name (ReadArguments) *)
+    argumentList: ArgumentList;
+    argumentCount: INTEGER;
     (* -library for vax-dec-vms: its .mar files, NIL for every other command *)
     vaxParts: VaxPart;
     (* Phase 12 step 2c: poc -library's modules, and poc -compile's (step
@@ -281,6 +293,128 @@ MODULE Poc;
     s[i] := 0X
   END Strcat;
 
+  (* ---- The command line (Phase 17 step 1) ---- *)
+
+  (* poc's arguments, as Modules has them, but with each argument @file
+     replaced by the arguments in file, one a line (blanks at either end
+     dropped, empty lines skipped), where an @file may name another, to a
+     depth of maxResponseDepth, and an argument @@text standing for @text,
+     so that an argument can start with "@" (the user's idea, 2026-10-12:
+     -link @@x gives clang its response file @x); and, for a poc running on VAX/VMS, each
+     argument that is not an option and has a wildcard, "*" or "%",
+     replaced by the files it matches, in the order RMS finds them
+     (Directories.NextFile). DCL gives a foreign command at most 255
+     characters of arguments, one command element, continuation lines or
+     not (found on the development system, 2026-10-12): too few for a
+     library's modules, so a response file, a wildcard, or both. *)
+  PROCEDURE AddArgument(text: ARRAY OF CHAR);
+    VAR copy: ArgumentList; i, n: INTEGER;
+  BEGIN
+    IF argumentCount = LEN(argumentList^) THEN
+      NEW(copy, 2 * LEN(argumentList^));
+      FOR i := 0 TO argumentCount - 1 DO copy[i] := argumentList[i] END;
+      argumentList := copy
+    END;
+    n := 0; WHILE text[n] # 0X DO INC(n) END;
+    NEW(argumentList[argumentCount], n + 1);
+    COPY(text, argumentList[argumentCount]^);
+    INC(argumentCount)
+  END AddArgument;
+
+  (* Whether text, not an option, has a VMS wildcard, on VMS *)
+  PROCEDURE IsVmsPattern(text: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    IF (BuildInfo.defaultTarget = "") OR (text[0] = "-") THEN RETURN FALSE END;
+    i := 0;
+    WHILE text[i] # 0X DO
+      IF (text[i] = "*") OR (text[i] = "%") THEN RETURN TRUE END;
+      INC(i)
+    END;
+    RETURN FALSE
+  END IsVmsPattern;
+
+  PROCEDURE ^ExpandArgument(text: ARRAY OF CHAR; depth: INTEGER; VAR ok: BOOLEAN);
+
+  (* The arguments in the response file name, a line each, expanded *)
+  PROCEDURE ReadResponseFile(name: ARRAY OF CHAR; depth: INTEGER; VAR ok: BOOLEAN);
+    VAR f: Files.File; r: Files.Rider; line: ARRAY maxLineLength OF CHAR; i, j, start: INTEGER;
+  BEGIN
+    IF depth > maxResponseDepth THEN
+      failed := TRUE; ok := FALSE;
+      Err.String("poc: @"); Err.String(name); Err.String(": response files nested more than ");
+      Err.Int(maxResponseDepth, 0); Err.String(" deep"); Err.Ln;
+      RETURN
+    END;
+    f := Files.Old(name);
+    IF f = NIL THEN
+      failed := TRUE; ok := FALSE;
+      Err.String("poc: cannot read the response file "); Err.String(name); Err.Ln;
+      RETURN
+    END;
+    Files.Set(r, f, 0);
+    LOOP
+      Files.ReadLine(r, line);
+      IF r.eof & (line[0] = 0X) THEN EXIT END;
+      start := 0;
+      WHILE (line[start] = " ") OR (line[start] = 9X) DO INC(start) END;
+      i := start; WHILE line[i] # 0X DO INC(i) END;
+      WHILE (i > start) & ((line[i - 1] = " ") OR (line[i - 1] = 9X) OR (line[i - 1] = 0DX)) DO DEC(i) END;
+      line[i] := 0X;
+      IF start > 0 THEN
+        j := 0; WHILE line[start + j] # 0X DO line[j] := line[start + j]; INC(j) END; line[j] := 0X
+      END;
+      IF line[0] # 0X THEN ExpandArgument(line, depth, ok) END;
+      IF ~ok OR r.eof THEN EXIT END
+    END;
+    Files.Close(f)
+  END ReadResponseFile;
+
+  (* text, an argument, added: a response file's arguments, a pattern's
+     files, or text itself, with "@@" at its start "@" *)
+  PROCEDURE ExpandArgument(text: ARRAY OF CHAR; depth: INTEGER; VAR ok: BOOLEAN);
+    VAR search: Directories.Search; name: ARRAY maxLineLength OF CHAR; i: INTEGER; any: BOOLEAN;
+  BEGIN
+    IF (text[0] = "@") & (text[1] = "@") THEN
+      i := 0; WHILE text[i + 1] # 0X DO name[i] := text[i + 1]; INC(i) END; name[i] := 0X;
+      AddArgument(name)
+    ELSIF text[0] = "@" THEN
+      i := 0; WHILE text[i + 1] # 0X DO name[i] := text[i + 1]; INC(i) END; name[i] := 0X;
+      ReadResponseFile(name, depth + 1, ok)
+    ELSIF IsVmsPattern(text) THEN
+      Directories.StartSearch(search); any := FALSE;
+      WHILE Directories.NextFile(search, text, name) DO AddArgument(name); any := TRUE END;
+      IF ~any THEN
+        failed := TRUE; ok := FALSE;
+        Err.String("poc: no file matches "); Err.String(text); Err.Ln
+      END
+    ELSE
+      AddArgument(text)
+    END
+  END ExpandArgument;
+
+  (* The arguments, from Modules's; FALSE, reported, if one could not be
+     expanded *)
+  PROCEDURE ReadArguments(): BOOLEAN;
+    VAR i: INTEGER; text: ARRAY maxLineLength OF CHAR; ok: BOOLEAN;
+  BEGIN
+    NEW(argumentList, 16); argumentCount := 0; ok := TRUE;
+    Modules.GetArg(0, text); AddArgument(text);
+    i := 1;
+    WHILE ok & (i < Modules.ArgCount) DO
+      Modules.GetArg(i, text); ExpandArgument(text, 0, ok); INC(i)
+    END;
+    RETURN ok
+  END ReadArguments;
+
+  (* Argument n in val, cut short if val is too small; "" if there is none *)
+  PROCEDURE GetArgument(n: INTEGER; VAR val: ARRAY OF CHAR);
+  BEGIN
+    IF (n >= 0) & (n < argumentCount) THEN COPY(argumentList[n]^, val)
+    ELSIF LEN(val) > 0 THEN val[0] := 0X
+    END
+  END GetArgument;
+
   PROCEDURE FindMember(name: ARRAY OF CHAR): LibraryMember;
     VAR m: LibraryMember;
   BEGIN
@@ -328,7 +462,7 @@ MODULE Poc;
     ELSE Platform.GetEnv(libraryPathEnvVar, value)
     END;
     IF value[0] # 0X THEN Libraries.AddPathList(value) END;
-    Modules.GetArg(0, program);
+    GetArgument(0, program);
     Libraries.AddDefaultPathDir(program)
   END FinishLibraryPath;
 
@@ -1727,8 +1861,8 @@ MODULE Poc;
       owner: Libraries.Library; compiled: BOOLEAN; symFile, objectFile, irFile: Libraries.Path;
   BEGIN
     ok := TRUE; members := NIL; tail := NIL; membersOnly := forLibrary; vaxParts := NIL;
-    FOR i := firstFile TO Modules.ArgCount - 1 DO
-      Modules.GetArg(i, file); objectFile[0] := 0X; irFile[0] := 0X;
+    FOR i := firstFile TO argumentCount - 1 DO
+      GetArgument(i, file); objectFile[0] := 0X; irFile[0] := 0X;
       IF ok & forLibrary & forVax & IsMarFile(file) THEN
         AddVaxPart(file, ok)
       ELSE
@@ -2552,7 +2686,7 @@ MODULE Poc;
     END;
     IF outputDir[0] # 0X THEN COPY(outputDir, base)
     ELSE
-      Modules.GetArg(0, program);
+      GetArgument(0, program);
       IF ~Libraries.PocLibraryDir(program, TRUE, base) THEN
         failed := TRUE; Err.String("poc: cannot make poc's library directory"); Err.Ln;
         RETURN
@@ -2645,7 +2779,7 @@ MODULE Poc;
     END;
     IF outputDir[0] # 0X THEN COPY(outputDir, base)
     ELSE
-      Modules.GetArg(0, program);
+      GetArgument(0, program);
       IF ~Libraries.PocLibraryDir(program, TRUE, base) THEN
         failed := TRUE; Err.String("poc: cannot make poc's library directory"); Err.Ln;
         RETURN
@@ -2729,6 +2863,9 @@ MODULE Poc;
   BEGIN
     HelpLine("usage: poc [option]... <file>       build a program from <file>'s module");
     HelpLine("       poc [option]... <command>");
+    HelpLine("an argument @<file> stands for the arguments in <file>, one a line,");
+    HelpLine("and @@<text> for @<text>;");
+    HelpLine("on VMS poc itself expands a file name's wildcards, * and %");
     HelpLine("");
     HelpLine("commands:");
     HelpLine("  -build <file>              build a program, as poc <file> does");
@@ -2770,6 +2907,7 @@ MODULE Poc;
     HelpLine("");
     HelpLine("environment:");
     HelpLine("  POC_IMPORT_PATH            the import path to start from (dir:dir:...)");
+    HelpLine("  POC$IMPORT                 on VMS, the import path to start from");
     HelpLine("  POC_LIBRARY_PATH           library path after -library-path (dir:dir:...)");
     HelpLine("  POC$LIBRARY                on VMS, the library path after -library-path");
     HelpLine("");
@@ -2819,7 +2957,9 @@ MODULE Poc;
   PROCEDURE InitImportPathFromEnvironment;
     VAR value: ARRAY maxLineLength OF CHAR;
   BEGIN
-    Platform.GetEnv(importPathEnvVar, value);
+    IF BuildInfo.defaultTarget # "" THEN Platform.GetEnv(vmsImportPathName, value)
+    ELSE Platform.GetEnv(importPathEnvVar, value)
+    END;
     IF value[0] # 0X THEN ModuleInterface.AddSearchPathList(value) END
   END InitImportPathFromEnvironment;
 
@@ -2898,7 +3038,8 @@ MODULE Poc;
     InitImportPathFromEnvironment;
     ModuleInterface.libraryLookup := LibraryInterfaceDir;
     ModuleInterface.explainMissingModule := ExplainMissingModule;
-    IF Modules.ArgCount < 2 THEN
+    IF ~ReadArguments() THEN RETURN END;
+    IF argumentCount < 2 THEN
       (* every command and option, as an error *)
       failed := TRUE; helpToErr := TRUE; Help
     ELSE
@@ -2909,12 +3050,12 @@ MODULE Poc;
       ConstantEvaluator.vaxHost := onVms; (* its LONGREAL is G_floating *)
       exePath[0] := 0X;
       done := FALSE;
-      WHILE (i < Modules.ArgCount) & ~done DO
-        Modules.GetArg(i, arg);
+      WHILE (i < argumentCount) & ~done DO
+        GetArgument(i, arg);
         IF onVms & (arg[0] = "-") THEN OptionOnVms(arg) END;
         IF arg = "-import-path" THEN
-          IF i + 1 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, param);
+          IF i + 1 < argumentCount THEN
+            GetArgument(i + 1, param);
             ModuleInterface.AddSearchPathDir(param);
             INC(i, 2)
           ELSE
@@ -2929,8 +3070,8 @@ MODULE Poc;
           INC(i); done := TRUE
         (* Phase 12 step 2c: the library path, and linking libraries *)
         ELSIF arg = "-library-path" THEN
-          IF i + 1 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, param);
+          IF i + 1 < argumentCount THEN
+            GetArgument(i + 1, param);
             Libraries.AddPathDir(param);
             INC(i, 2)
           ELSE
@@ -2953,23 +3094,23 @@ MODULE Poc;
           sharedLibraries := TRUE;
           INC(i)
         ELSIF arg = "-compile" THEN
-          IF i + 1 < Modules.ArgCount THEN
+          IF i + 1 < argumentCount THEN
             CompileOnly(i + 1, outputDir, targetTriple)
           ELSE
             failed := TRUE; Err.String("poc: -compile requires at least one file"); Err.Ln
           END;
           done := TRUE
         ELSIF arg = "-install-library" THEN
-          IF i + 1 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, param);
+          IF i + 1 < argumentCount THEN
+            GetArgument(i + 1, param);
             InstallLibrary(param, outputDir, targetTriple)
           ELSE
             failed := TRUE; Err.String("poc: -install-library requires a name"); Err.Ln
           END;
           done := TRUE
         ELSIF arg = "-library" THEN
-          IF i + 2 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, param);
+          IF i + 2 < argumentCount THEN
+            GetArgument(i + 1, param);
             BuildLibrary(param, i + 2, outputDir, targetTriple)
           ELSE
             failed := TRUE; Err.String("poc: -library requires a name and at least one file"); Err.Ln
@@ -2983,8 +3124,8 @@ MODULE Poc;
            seed (unlike -import-path) since the request that prompted this
            was CLI-only. *)
         ELSIF arg = "-output-dir" THEN
-          IF i + 1 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, outputDir);
+          IF i + 1 < argumentCount THEN
+            GetArgument(i + 1, outputDir);
             (* made if it is not there (Phase 13 step 6: only -library and
                -install-library made it, and a build said "cannot write
                <dir>/<M>.sym") *)
@@ -3024,8 +3165,8 @@ MODULE Poc;
           INC(i)
         ELSIF arg = "-opt" THEN
           (* Phase 11 D13: the optimization level -build passes clang *)
-          IF i + 1 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, param);
+          IF i + 1 < argumentCount THEN
+            GetArgument(i + 1, param);
             IF ~LLVMToolchainDriver.SetOptimizationLevel(param) THEN
               failed := TRUE;
               Err.String("poc: -opt takes 0, 1, 2, 3, s, z or g, not "); Err.String(param); Err.Ln;
@@ -3058,8 +3199,8 @@ MODULE Poc;
           INC(i)
         ELSIF arg = "-c-flag" THEN
           (* Phase 13 step 2: flags for clang when it compiles a module's C part *)
-          IF i + 1 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, param);
+          IF i + 1 < argumentCount THEN
+            GetArgument(i + 1, param);
             IF ~LLVMToolchainDriver.AddCFlag(param) THEN
               failed := TRUE; Err.String("poc: too many -c-flag arguments"); Err.Ln;
               done := TRUE
@@ -3071,8 +3212,8 @@ MODULE Poc;
           END
         ELSIF arg = "-link" THEN
           (* Phase 12 step 1: voc's LDFLAGS/LDLIBS *)
-          IF i + 1 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, param);
+          IF i + 1 < argumentCount THEN
+            GetArgument(i + 1, param);
             IF ~LLVMToolchainDriver.AddLinkArgument(param) THEN
               failed := TRUE; Err.String("poc: too many -link arguments"); Err.Ln;
               done := TRUE
@@ -3096,8 +3237,8 @@ MODULE Poc;
            see RunCommand/ResolveTriple. A later flag wins if given more
            than once, matching every other flag above. *)
         ELSIF arg = "-target" THEN
-          IF i + 1 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, targetTriple);
+          IF i + 1 < argumentCount THEN
+            GetArgument(i + 1, targetTriple);
             (* a triple, not a name, so matched as an option is *)
             IF onVms THEN LowerCase(targetTriple) END;
             IF onVms & (targetTriple # BuildInfo.defaultTarget) THEN
@@ -3112,8 +3253,8 @@ MODULE Poc;
             done := TRUE
           END
         ELSIF arg = "-o" THEN
-          IF i + 1 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, exePath);
+          IF i + 1 < argumentCount THEN
+            GetArgument(i + 1, exePath);
             INC(i, 2)
           ELSE
             failed := TRUE; Err.String("poc: -o requires a path"); Err.Ln;
@@ -3125,8 +3266,8 @@ MODULE Poc;
           Build(arg, outputDir, targetTriple, exePath);
           done := TRUE
         ELSE
-          IF i + 1 < Modules.ArgCount THEN
-            Modules.GetArg(i + 1, param);
+          IF i + 1 < argumentCount THEN
+            GetArgument(i + 1, param);
             RunCommand(arg, param, outputDir, targetTriple, exePath)
           ELSIF IsFileCommand(arg) THEN
             BadUsage(arg, " requires a file")

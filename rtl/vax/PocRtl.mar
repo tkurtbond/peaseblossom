@@ -709,6 +709,27 @@ POC_NAME_EXPANDED:
 	CALLS	#1, G^LIB$CREATE_DIR
 	RET
 
+; POC_FIND_FILE(name, length, context, value, size): the next file the
+; specification matches, by LIB$FIND_FILE, in value, blank-padded to
+; size, the search kept in the longword context (0 to start); R0 its
+; status, RMS$_NMF when there is no other and RMS$_FNF when none matches
+	.ENTRY	POC_FIND_FILE, ^M<R2>
+	POC_DESCRIBE	16(AP), 20(AP)
+	MOVL	R1, R2
+	POC_DESCRIBE	4(AP), 8(AP)
+	PUSHL	12(AP)
+	PUSHL	R2
+	PUSHL	R1
+	CALLS	#3, G^LIB$FIND_FILE
+	RET
+
+; POC_FIND_FILE_END(context): LIB$FIND_FILE's search ended, its context
+; freed; R0 its status
+	.ENTRY	POC_FIND_FILE_END, ^M<>
+	PUSHL	4(AP)
+	CALLS	#1, G^LIB$FIND_FILE_END
+	RET
+
 ; POC_DEFAULT_DIRECTORY(value, size): the process's default directory, as
 ; $SETDDIR reads it, in value; R0 its length, 0 if it cannot be read
 	.ENTRY	POC_DEFAULT_DIRECTORY, ^M<>

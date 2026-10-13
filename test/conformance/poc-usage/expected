@@ -1,5 +1,8 @@
 usage: poc [option]... <file>       build a program from <file>'s module
        poc [option]... <command>
+an argument @<file> stands for the arguments in <file>, one a line,
+and @@<text> for @<text>;
+on VMS poc itself expands a file name's wildcards, * and %
 
 commands:
   -build <file>              build a program, as poc <file> does
@@ -41,6 +44,7 @@ options, before the command (the last one counts, except those that add):
 
 environment:
   POC_IMPORT_PATH            the import path to start from (dir:dir:...)
+  POC$IMPORT                 on VMS, the import path to start from
   POC_LIBRARY_PATH           library path after -library-path (dir:dir:...)
   POC$LIBRARY                on VMS, the library path after -library-path
 

@@ -1,0 +1,25 @@
+== poc @check.txt
+semantic OK
+exit 0
+== poc @options.txt
+exit 0
+part 42
+== poc -output-dir libs @library.txt
+exit 0
+the library has RESP.library
+the library has RespPart.sym
+== poc @lonely.txt RespPart.mod
+semantic OK
+exit 0
+== poc -check @@at.mod
+semantic OK
+exit 0
+== poc @quoted.txt
+semantic OK
+exit 0
+== poc @missing.txt
+poc: cannot read the response file missing.txt
+exit 1
+== poc @loop.txt
+poc: @loop.txt: response files nested more than 8 deep
+exit 1

@@ -6,7 +6,7 @@ MODULE Directories;
 
      A directory ends with ":" (a device, or a logical name standing for a
      directory), "]" or ">", and a file's name follows it at once; a list
-     of directories, such as POC_IMPORT_PATH, is separated by ",", since a
+     of directories, such as POC$IMPORT, is separated by ",", since a
      directory has ":" in it. A directory given without one of those ends
      is taken as a logical name, and ":" added. RMS takes a name of at most
      255 characters; a longer one names nothing here.
@@ -16,7 +16,7 @@ MODULE Directories;
      nothing through LOG:[.B] or LOG:[B] unless LOG is a rooted logical
      name (found on the development system, 2026-10-12). *)
 
-  IMPORT Platform;
+  IMPORT SYSTEM, Platform;
 
   CONST
     (* what separates the directories of a list of them *)
@@ -26,6 +26,11 @@ MODULE Directories;
 
   TYPE
     Name = ARRAY nameLength OF CHAR;
+    (* a search for the files a pattern names (StartSearch, NextFile),
+       LIB$FIND_FILE's context *)
+    Search* = RECORD
+      context: SYSTEM.INT32
+    END;
 
   VAR
     given: Name; (* the name given to a service *)
@@ -34,6 +39,11 @@ MODULE Directories;
      and of LIB$CREATE_DIR's making it *)
   PROCEDURE ["VMS"] POC_PARSE(VAR name: Name; length: INTEGER): INTEGER;
   PROCEDURE ["VMS"] POC_CREATE_DIRECTORY(VAR name: Name; length: INTEGER): INTEGER;
+  (* LIB$FIND_FILE's next file, blank-padded to size, and its status;
+     LIB$FIND_FILE_END *)
+  PROCEDURE ["VMS"] POC_FIND_FILE(VAR name: Name; length: INTEGER; VAR context: SYSTEM.INT32;
+                                  VAR value: Name; size: INTEGER): INTEGER;
+  PROCEDURE ["VMS"] POC_FIND_FILE_END(VAR context: SYSTEM.INT32): INTEGER;
 
   (* Whether c ends a directory. *)
   PROCEDURE EndsDirectory(c: CHAR): BOOLEAN;
@@ -136,6 +146,43 @@ MODULE Directories;
     END;
     RETURN start
   END NameStart;
+
+  (* A search for the files a pattern names, through NextFile *)
+  PROCEDURE StartSearch*(VAR search: Search);
+  BEGIN
+    search.context := 0
+  END StartSearch;
+
+  (* The next file the pattern names, in name, cut short if name is too
+     small: FALSE, the search ended, when there is no other
+     (LIB$FIND_FILE, then LIB$FIND_FILE_END). A name is RMS's whole
+     specification without its version, DUA1:[A]B.MOD; a pattern without
+     a wildcard gives the file it names, if it is there. *)
+  PROCEDURE NextFile*(VAR search: Search; pattern: ARRAY OF CHAR; VAR name: ARRAY OF CHAR): BOOLEAN;
+    VAR length, status, i, end: INTEGER; found: Name;
+  BEGIN
+    IF LEN(name) = 0 THEN RETURN FALSE END;
+    name[0] := 0X;
+    IF Fill(pattern, length) THEN
+      (* a file's name, not a directory's: without the ":" Fill adds *)
+      i := 0; WHILE (i < LEN(pattern)) & (pattern[i] # 0X) DO INC(i) END;
+      IF ~EndsDirectory(pattern[i - 1]) THEN DEC(length) END;
+      status := POC_FIND_FILE(given, length, search.context, found, nameLength - 1)
+    ELSE
+      status := 0
+    END;
+    IF ~ODD(status) THEN
+      status := POC_FIND_FILE_END(search.context); search.context := 0;
+      RETURN FALSE
+    END;
+    (* the specification, its blanks and version dropped *)
+    i := 0;
+    WHILE (i < nameLength - 1) & (found[i] # " ") & (found[i] # ";") DO INC(i) END;
+    end := i; i := 0;
+    WHILE (i < end) & (i < LEN(name) - 1) DO name[i] := found[i]; INC(i) END;
+    name[i] := 0X;
+    RETURN TRUE
+  END NextFile;
 
   (* Whether dir names a directory that exists: RMS parses it, which looks
      the directory up ($PARSE, with no file name). *)

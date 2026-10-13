@@ -1738,7 +1738,9 @@ Proposals:
    `POC_IMPORT_PATH`, since a directory contains `:`. A new constant,
    `Directories.pathSeparator`, is `:` on Unix and `,` on VMS. So
    `$ DEFINE POC_IMPORT_PATH DUA1:[POC.SRC.FRONT],DUA1:[POC.RTL.VAX]` gives
-   two directories, and so does a search list.
+   two directories, and so does a search list. (On VMS the logical name
+   is `POC$IMPORT` since 2026-10-12, named as `POC$LIBRARY` is; section
+   18.5.)
 
 6. **The command line.** poc is a foreign command
    (`$ POC :== $DUA1:[POC]POC.EXE`); `Modules` takes `LIB$GET_FOREIGN`'s
@@ -2493,7 +2495,8 @@ without anything being wrong.
 4. **Each in a directory of its own** on the guest, under
    `[.GUESTPOC]`, holding the fixture's sources, so that two fixtures'
    modules of one name cannot meet; `rtl/vax` is sent once and found
-   through `POC_IMPORT_PATH`, a logical name (section 15, proposal 5).
+   through `POC_IMPORT_PATH`, a logical name (section 15, proposal 5;
+   `POC$IMPORT` since 2026-10-12).
    A source is named on the command line quoted, in the case the
    fixture uses.
 5. **Its cost.** poc compiles `Lexer` on the guest in 10 seconds; a
@@ -2884,6 +2887,43 @@ image found through the logical name `SHRLIB`:
   `[.LP.LIB.POC]`, find them there with `POC$LIBRARY` gone, and build
   `VAXLIB`'s program against them; their build procedures, run in the
   installed directory, made the libraries, and the program printed
+  "total 25" and "count 12".
+- *`POC$IMPORT`* (2026-10-12, the user: the two names should be
+  consistent). On VMS the import path's logical name is `POC$IMPORT`,
+  named as `POC$LIBRARY` is, in place of `POC_IMPORT_PATH`, which Unix
+  keeps; `tools/vax-guest-poc` defines it, and `-help` and poc(1) name
+  both.
+- *DCL's limits, response files and wildcards* (2026-10-12; the user
+  chose both). Measured on the guest: DCL reads a command procedure's
+  record of 256 bytes but refuses one of 258 (`%RMS-W-RTB`, which stops
+  the procedure, `SET NOON` or not); continuation lines take a command
+  past that, but a foreign command's arguments are one command element,
+  of at most 255 characters (`%DCL-W-TKNOVF`), continued or substituted
+  from a symbol alike, and past about 940 characters the 1024-byte
+  command buffer overflows first (`%DCL-W-BUFOVF`). The procedures poc
+  writes stay far inside the first limit (their longest lines are under
+  160 characters, bounded by names), but a poc command line with a
+  library's modules does not fit the second. So poc reads its arguments
+  through `Poc.ReadArguments`: an argument `@file` stands for the
+  arguments in the file, one a line (blanks at either end and a CR
+  dropped, empty lines skipped), nested to a depth of 8, on Unix too,
+  and `@@text` stands for `@text` (the user's suggestion, so that
+  `-link @@x` still gives clang its response file `@x`);
+  and on VMS an argument that is not an option and has `*` or `%` is
+  replaced by the files it matches, as a Unix shell would, in RMS's
+  order, versions dropped, an error when none does. `Directories` has
+  `Search`, `StartSearch` and `NextFile` for that, in all three
+  runtimes (on Unix the pattern itself, once), over `POC_FIND_FILE` and
+  `POC_FIND_FILE_END` in `PocRtl.mar` (`LIB$FIND_FILE`,
+  `LIB$FIND_FILE_END`; LIB$ manual 5.0, LIB-155 to LIB-159).
+  `poc-response-files` tests the response files on Unix;
+  `vax-platform`'s `PlatformOut` tests `NextFile` on both. A one-off
+  guest run with V1's poc (linked there in under two minutes) had
+  `POC$IMPORT` give the import path, a pattern matching nothing and a
+  missing response file each refused (status 1), `-library POCRTL
+  [-.RTL]*.MOD [-.RTL]*.MAR` build the runtime's library, `POC @ARGS.TXT`
+  (naming `@MODS.TXT`, one of whose lines is a pattern) build `VAXLIB`,
+  and `-build VAXLIBUS%.MOD` link a program against both, which printed
   "total 25" and "count 12".
 - *Left for the next steps*: the collision check from `.sym` files
   (proposal 7).

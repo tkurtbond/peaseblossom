@@ -20,8 +20,8 @@
 # -only keeps the fixtures whose names match the regular expression (grep's).
 # Each item is a directory of its own on the guest, [.GUESTPOC.<id>],
 # holding the fixture's sources (git's tracked *.mod files, in their
-# subdirectories); rtl/vax is in [.GUESTPOC.RTL], on POC_IMPORT_PATH, a
-# logical name, and the host's runs have it on POC_IMPORT_PATH too, which
+# subdirectories); rtl/vax is in [.GUESTPOC.RTL], on POC$IMPORT, a
+# logical name, and the host's runs have it on POC_IMPORT_PATH, which
 # stands for vax_mar's -import-path of rtl/vax. A relative directory among
 # the options is a VMS one on the guest (lib is [.LIB], ../src [-.SRC]), and
 # every argument is quoted, so that it keeps its case. The same commands are
@@ -86,7 +86,8 @@ while read -r fixture main options; do
   tag=$(echo "$options" | sed 's/^-//; s/ -/-/g; s/ /-/g')
   add_item A "$fixture" "$subdir" "${main%.[Mm]od}-$tag"
 done <"$work/list"
-# B: vax_mar lines, the -import-path of rtl/vax left to POC_IMPORT_PATH
+# B: vax_mar lines, the -import-path of rtl/vax left to the import path's
+# logical name or environment variable
 n=0
 for t in "$conformance"/vax-*/test.sh; do
   fixture=$(basename "$(dirname "$t")")
@@ -213,7 +214,7 @@ DCL
 $ SET DEFAULT [.GUESTPOC]
 $ GP = F$ENVIRONMENT("DEFAULT")
 $ SET DEFAULT [.RTL]
-$ DEFINE/NOLOG POC_IMPORT_PATH 'F$ENVIRONMENT("DEFAULT")'
+$ DEFINE/NOLOG POC$IMPORT 'F$ENVIRONMENT("DEFAULT")'
 $ SET DEFAULT [-.POC]
 $ MACRO/OBJECT POCRTL.MAR
 $ S = $STATUS
@@ -269,7 +270,7 @@ $ OPEN/APPEND R 'RES'
 $ WRITE R "%%vgp end"
 $ CLOSE R
 $ DELETE/SYMBOL/GLOBAL POC
-$ DEASSIGN POC_IMPORT_PATH
+$ DEASSIGN POC$IMPORT
 $ GOSUB REMOVE_TREE
 $ EXIT 1
 $ NO_POC:

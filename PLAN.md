@@ -581,8 +581,12 @@ C++, and so on) unless step 4 chooses one deliberately.
    manifest now listing its parts. On VMS the library path is
    `-library-path`, the search list `POC$LIBRARY` and poc's own
    `[<parent>.LIB.POC]`, joined by `Directories.MakeSubdirectory`, which
-   translates a logical name first (run on the guest by V1's poc). Next:
-   the collision check from `.sym` files (proposal 7).
+   translates a logical name first (run on the guest by V1's poc); the
+   import path's logical name is `POC$IMPORT` to match. DCL gives a
+   foreign command at most 255 characters of arguments, so poc takes
+   `@file` response files (everywhere) and expands `*` and `%` itself
+   on VMS (section 18.5). Next: the collision check from `.sym` files
+   (proposal 7).
 
 2. **Which existing Oberon libraries and modules to support on VMS.**
    Take Phase 12's complete inventory of voc's modules and Phase 10's

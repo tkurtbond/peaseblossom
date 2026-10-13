@@ -56,6 +56,34 @@ The modules it imports are found in libraries, then as sources or compiled
 modules on the import path
 .Pq see Sx MODULES AND LIBRARIES .
 .Pp
+An argument
+.Li @ Ns Ar file
+stands for the arguments in
+.Ar file ,
+one a line, blanks at either end dropped and empty lines skipped;
+.Ar file
+may name another.
+An argument that starts with
+.Li @@
+stands for itself with one
+.Li @
+dropped, so that
+.Fl link Li @@ Ns Ar x
+gives
+.Xr clang 1
+its response file
+.Li @ Ns Ar x .
+On VAX/VMS, where DCL gives a command at most 255 characters of
+arguments,
+.Nm
+expands the wildcards
+.Li *
+and
+.Li %
+of an argument that is not an option itself, as a Unix shell does, to
+the files that match, in the order RMS finds them; one that matches
+nothing is an error.
+.Pp
 Options come before the command.
 .Fl import-path ,
 .Fl library-path ,
@@ -519,6 +547,14 @@ compiled, so a program links only if all its modules agree.
 .Bl -tag -width Ds
 .It Ev POC_IMPORT_PATH
 Directories, separated by colons, searched for modules before those of
+.Fl import-path .
+.It Ev POC$IMPORT
+For a
+.Nm
+running on VAX/VMS, in place of
+.Ev POC_IMPORT_PATH :
+a logical name, whose equivalence strings, a search list, are the
+directories searched for modules before those of
 .Fl import-path .
 .It Ev POC_LIBRARY_PATH
 Directories, separated by colons, searched for libraries after those of

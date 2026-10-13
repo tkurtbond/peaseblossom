@@ -29,6 +29,11 @@ made is a directory: TRUE
 made again: TRUE
 value [[A],[B]]
 no value []
+found [DUA1:[USERS.POC]DOOMED.TMP]
+files doomed.tmp 1
+found [DUA1:[USERS.POC]DOOMED.TMP]
+files *.tmp 1
+files no-such-file*.xyz 0
 deleted: TRUE
 deleted a missing file: FALSE
 PID positive: TRUE

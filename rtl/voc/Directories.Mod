@@ -13,6 +13,12 @@ MODULE Directories;
     (* what separates the directories of a list of them *)
     pathSeparator* = ":";
 
+  TYPE
+    (* a search for the files a pattern names (StartSearch, NextFile) *)
+    Search* = RECORD
+      context: INTEGER
+    END;
+
   (* The file name in the directory dir in path, cut short if path is too
      small: dir and name with "/" between them, unless dir is "" or
      already ends in "/". *)
@@ -45,6 +51,22 @@ MODULE Directories;
     END;
     RETURN start
   END NameStart;
+
+  (* A search for the files a pattern names, through NextFile *)
+  PROCEDURE StartSearch*(VAR search: Search);
+  BEGIN
+    search.context := 0
+  END StartSearch;
+
+  (* The next file the pattern names, in name: FALSE, the search ended,
+     when there is no other. On Unix, where the shell expands a pattern,
+     the pattern itself, once. *)
+  PROCEDURE NextFile*(VAR search: Search; pattern: ARRAY OF CHAR; VAR name: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    IF search.context # 0 THEN search.context := 0; RETURN FALSE END;
+    COPY(pattern, name); search.context := 1;
+    RETURN TRUE
+  END NextFile;
 
   (* Whether dir names a directory that exists: whether the process can
      change to it, which it then changes back from. *)
