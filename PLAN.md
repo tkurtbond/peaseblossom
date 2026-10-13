@@ -1039,6 +1039,20 @@ Those done while Phase 15 was current, 1-4, are in
   and Pentium machines. x87 reals stay either way. It needs 32-bit x86 test
   hosts first: a 32-bit NetBSD at least, and a 32-bit FreeBSD if FreeBSD
   still ships an i386 build (today only OpenBSD, cymoril, is 32-bit x86).
+- **poc on VAX/VMS carries the LLVM back end** (raised by the user,
+  2026-10-13). `Poc.Mod` imports both back ends, and poc has no
+  conditional compilation, so `POC.EXE` built for the VAX includes
+  `LLVMCodeGenerator`, `LLVMTypes` and `LLVMToolchainDriver`: about 1.46
+  MB of the V1 stage's `.mar` files, against about 1.31 MB for the VAX
+  back end's three. A poc on VMS never runs clang, and its default target
+  is `vax-dec-vms`, so that code runs only if an LLVM `-target` is named.
+  Nothing tests that use, as a cross-compiler from VMS writing `.ll`
+  files, and parts of the LLVM driver assume a Unix host. The code costs
+  `POC.EXE`'s size and the time to assemble it in every `make
+  vax-stages` stage. The question is whether to leave it, or keep it out
+  of the VMS build. Keeping it out would mean splitting the driver: two
+  programs, or a driver per back end chosen at build time, for example
+  by which `BackEnds` module the build puts on the import path.
 
 Decided, with the full reasoning in `doc/developer/design-decisions.md` under the
 same names:
