@@ -657,7 +657,12 @@ C++, and so on) unless step 4 chooses one deliberately.
    (2026-10-13): its three proposals, **approved by the user,
    2026-10-13**, are section 19.13, and section 19.14 records the work.
    Its reals are read by `DecimalToReal`. Fixture `vax-strings-module` is
-   new. Next, `Math` and `MathL`.
+   new. `Math` and `MathL` are done (2026-10-14): their five proposals,
+   **approved by the user, 2026-10-14**, are section 19.15, and section
+   19.16 records the work. They call `MTH$` and `OTS$` through a new
+   `PocRtl` routine, `POC_MATH`, which returns a signalled condition as a
+   status. Fixtures `vax-math-module` and `vax-math-extra` are new.
+   Next, `Args` and `VT100`.
 
 4. **Which native VAX/VMS libraries to support.** From the manuals, not
    memory, list what a VMS programmer expects to reach: the run-time

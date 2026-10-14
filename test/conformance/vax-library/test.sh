@@ -42,7 +42,9 @@ compare() {
 : >result
 rtl=../../../rtl/vax
 lib=libs/vax-dec-vms/O2
-run -target vax-dec-vms -output-dir libs -library POCRTL $rtl/*.Mod $rtl/PocRtl.mar
+# in C's order, as ls sorts the library directory below: a glob follows the
+# locale, which puts MathL.Mod before Math.Mod in en_US
+run -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar
 run -target vax-dec-vms -output-dir libs -library-path libs -library VAXLIB VaxLibBase.mod VaxLibShapes.mod VaxLibSums.mod
 compare expected-VAXLIB_build.com $lib/VAXLIB_build.com
 compare expected-VAXLIB_setup.com $lib/VAXLIB_setup.com

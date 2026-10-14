@@ -1609,4 +1609,168 @@ POC_DVI_ITEMS:
 40$:	MOVL	#32, R0
 	RET
 
+
+; Math's and MathL's calls of MTH$ and OTS$ (design section 19.15,
+; proposal 1). POC_MATH(function, x, y, result): the routine numbered
+; function called with x, and y where it takes two, its value stored in
+; result; R0 1, or the condition the routine signalled, which
+; LIB$SIG_TO_RET, established as this routine's handler, returns from
+; here (LIB$ manual, LIB$SIG_TO_RET), so that no message is printed and
+; the program goes on. x, y and result are addresses. 0 to 15 are F,
+; 16 to 31 the same for G: SQRT, SIN, COS, TAN, ASIN, ACOS, ATAN, EXP,
+; LOG, SINH, COSH, TANH, ATANH, which take x by reference; ATAN2(x, y),
+; both by reference; then x to the power y, OTS$POWRR and OTS$POWGG, and
+; to the longword y, OTS$POWRJ and OTS$POWGJ, which take their arguments
+; by value (OTS$ manual). Another function gives SS$_BADPARAM
+	.ENTRY	POC_MATH, ^M<R2,R3>
+	MOVAB	G^LIB$SIG_TO_RET, (FP)
+	MOVL	8(AP), R2
+	MOVL	12(AP), R3
+	CASEL	4(AP), #0, #31
+10$:
+	.WORD	100$-10$
+	.WORD	101$-10$
+	.WORD	102$-10$
+	.WORD	103$-10$
+	.WORD	104$-10$
+	.WORD	105$-10$
+	.WORD	106$-10$
+	.WORD	107$-10$
+	.WORD	108$-10$
+	.WORD	109$-10$
+	.WORD	110$-10$
+	.WORD	111$-10$
+	.WORD	112$-10$
+	.WORD	113$-10$
+	.WORD	114$-10$
+	.WORD	115$-10$
+	.WORD	116$-10$
+	.WORD	117$-10$
+	.WORD	118$-10$
+	.WORD	119$-10$
+	.WORD	120$-10$
+	.WORD	121$-10$
+	.WORD	122$-10$
+	.WORD	123$-10$
+	.WORD	124$-10$
+	.WORD	125$-10$
+	.WORD	126$-10$
+	.WORD	127$-10$
+	.WORD	128$-10$
+	.WORD	129$-10$
+	.WORD	130$-10$
+	.WORD	131$-10$
+	MOVL	#SS$_BADPARAM, R0
+	RET
+100$:	PUSHL	R2
+	CALLS	#1, G^MTH$SQRT
+	BRW	900$
+101$:	PUSHL	R2
+	CALLS	#1, G^MTH$SIN
+	BRW	900$
+102$:	PUSHL	R2
+	CALLS	#1, G^MTH$COS
+	BRW	900$
+103$:	PUSHL	R2
+	CALLS	#1, G^MTH$TAN
+	BRW	900$
+104$:	PUSHL	R2
+	CALLS	#1, G^MTH$ASIN
+	BRW	900$
+105$:	PUSHL	R2
+	CALLS	#1, G^MTH$ACOS
+	BRW	900$
+106$:	PUSHL	R2
+	CALLS	#1, G^MTH$ATAN
+	BRW	900$
+107$:	PUSHL	R2
+	CALLS	#1, G^MTH$EXP
+	BRW	900$
+108$:	PUSHL	R2
+	CALLS	#1, G^MTH$ALOG
+	BRW	900$
+109$:	PUSHL	R2
+	CALLS	#1, G^MTH$SINH
+	BRW	900$
+110$:	PUSHL	R2
+	CALLS	#1, G^MTH$COSH
+	BRW	900$
+111$:	PUSHL	R2
+	CALLS	#1, G^MTH$TANH
+	BRW	900$
+112$:	PUSHL	R2
+	CALLS	#1, G^MTH$ATANH
+	BRW	900$
+113$:	PUSHL	R3
+	PUSHL	R2
+	CALLS	#2, G^MTH$ATAN2
+	BRW	900$
+114$:	PUSHL	(R3)
+	PUSHL	(R2)
+	CALLS	#2, G^OTS$POWRR
+	BRW	900$
+115$:	PUSHL	(R3)
+	PUSHL	(R2)
+	CALLS	#2, G^OTS$POWRJ
+	BRW	900$
+116$:	PUSHL	R2
+	CALLS	#1, G^MTH$GSQRT
+	BRW	910$
+117$:	PUSHL	R2
+	CALLS	#1, G^MTH$GSIN
+	BRW	910$
+118$:	PUSHL	R2
+	CALLS	#1, G^MTH$GCOS
+	BRW	910$
+119$:	PUSHL	R2
+	CALLS	#1, G^MTH$GTAN
+	BRW	910$
+120$:	PUSHL	R2
+	CALLS	#1, G^MTH$GASIN
+	BRW	910$
+121$:	PUSHL	R2
+	CALLS	#1, G^MTH$GACOS
+	BRW	910$
+122$:	PUSHL	R2
+	CALLS	#1, G^MTH$GATAN
+	BRW	910$
+123$:	PUSHL	R2
+	CALLS	#1, G^MTH$GEXP
+	BRW	910$
+124$:	PUSHL	R2
+	CALLS	#1, G^MTH$GLOG
+	BRW	910$
+125$:	PUSHL	R2
+	CALLS	#1, G^MTH$GSINH
+	BRW	910$
+126$:	PUSHL	R2
+	CALLS	#1, G^MTH$GCOSH
+	BRW	910$
+127$:	PUSHL	R2
+	CALLS	#1, G^MTH$GTANH
+	BRW	910$
+128$:	PUSHL	R2
+	CALLS	#1, G^MTH$GATANH
+	BRW	910$
+129$:	PUSHL	R3
+	PUSHL	R2
+	CALLS	#2, G^MTH$GATAN2
+	BRW	910$
+130$:	PUSHL	4(R3)
+	PUSHL	(R3)
+	PUSHL	4(R2)
+	PUSHL	(R2)
+	CALLS	#4, G^OTS$POWGG
+	BRW	910$
+131$:	PUSHL	(R3)
+	PUSHL	4(R2)
+	PUSHL	(R2)
+	CALLS	#3, G^OTS$POWGJ
+	BRW	910$
+900$:	MOVL	R0, @16(AP)
+	BRB	920$
+910$:	MOVQ	R0, @16(AP)
+920$:	MOVL	#1, R0
+	RET
+
 	.END

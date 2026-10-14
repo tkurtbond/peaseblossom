@@ -1,0 +1,3 @@
+build status: %X10000001
+all VAX Math and MathL checks passed
+run status: %X00000001

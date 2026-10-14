@@ -3988,3 +3988,175 @@ leaves the variable alone.
     a normal G value (48).
   - `vax-library`'s `POCRTL` has 19 modules and makes 363 symbols
     universal, 13 more.
+
+### 19.15 Math and MathL: proposals
+
+The eighth group in the inventory's order (`vms-module-inventory.md`,
+proposal 1) is `Math` and `MathL`. The inventory decided that they go
+over `MTH$`: `MTH$`'s F routines for `Math`, its G ones for `MathL`, with
+`MTH$`'s signalled errors mapped to voc's codes (proposal 5). `rtl/llvm`'s
+modules are calls of libm's double functions with error checks around
+them. A domain error is checked before the call (`ln` of a number <= 0,
+`arcsin` beyond 1, ...). An overflow is seen in the result, an infinity.
+The real-number properties (`exponent`, `fraction`, `scale`, `ulp`,
+`succ`, `pred`) come from libm's `logb`, `ldexp` and `nextafter`. The
+sources here are the 5.4 MTH$ manual (`AA-LA72B`; we do not have the 5.5
+edition), the 5.0 OTS$ manual (`AA-LA73A`) and the 5.0 LIB$ manual
+(`AA-LA76A`).
+
+What `MTH$` does with an error (MTH$ 1.4): it signals the condition, as
+SEVERE, by `LIB$SIGNAL`, and with no handler the image exits with the
+message. Overflow is `MTH$_FLOOVEMAT`, for example `MTH$GEXP` above about
+709.089 (MTH$ manual, MTH-66). Underflow is signalled only if the
+caller has enabled floating underflow, which poc does not, and the
+result is 0.
+`MTH$` has no `asinh`, `acosh`, `ldexp`, `logb` or `nextafter`, and no
+power. Power is `OTS$`'s: `OTS$POWRR` and `OTS$POWGG` (F and G to an F
+or G power) and `OTS$POWRJ` and `OTS$POWGJ` (to a longword power). Their
+arguments go by value (OTS$ manual, OTS-67 to OTS-87).
+
+A first look on the guest, 2026-10-14, with a MACRO routine that
+establishes `LIB$SIG_TO_RET` and calls `MTH$` routines from a table:
+
+- A signal comes back as the routine's status: `MTH$GEXP(709.5)` gives
+  `MTH$_FLOOVEMAT` (`%X001682C4`), `MTH$GLOG(0)` gives `MTH$_LOGZERNEG`
+  (`%X0016829C`), and nothing is printed. `LIB$SIG_TO_RET` unwinds to the
+  caller of the routine that established it, with the condition in `R0`
+  (LIB$ manual, `LIB$SIG_TO_RET`).
+- `MTH$` reduces a large argument accurately. `MTH$GSIN` of 2^60 and of
+  1.0D300, `MTH$GCOS` of 1.0D22 and `MTH$SIN` of 2^40 and of 1.0E30 agree
+  with Python's values to every digit printed. `MTH$GTAN` at the double
+  nearest pi/2 is 1.633123935319537D16, as libm's.
+- `MTH$GEXP(709)` is 8.2184074615549724D307, `MTH$EXP(88)` is
+  1.65163627E38, and `MTH$GEXP(-720)` and `MTH$EXP(-100)` are 0 with no
+  signal.
+
+**Approved by the user, 2026-10-14**, all five as written.
+
+1. **Math and MathL call MTH$ and OTS$ through one new routine,
+   `POC_MATH(function, x, y, result)`, in `PocRtl.mar`.**
+   - It establishes `LIB$SIG_TO_RET` as its own handler (`MOVAB
+     G^LIB$SIG_TO_RET, (FP)`). Then it calls the routine numbered
+     `function` in a table, with `x` and `y` given to it as that routine
+     takes them, and stores its value in `result`. `R0` is 1, or else the
+     condition that the routine signalled.
+   - The table has one entry per routine:
+     - F: `MTH$SQRT`, `SIN`, `COS`, `TAN`, `ASIN`, `ACOS`, `ATAN`,
+       `ATAN2`, `EXP`, `ALOG`, `SINH`, `COSH`, `TANH`, `ATANH`, and
+       `OTS$POWRR` and `OTS$POWRJ`.
+     - G: `MTH$GSQRT` to `MTH$GATANH`, and `OTS$POWGG` and `OTS$POWGJ`.
+   - Each entry gives the routine's address, how many arguments it takes
+     and how (by reference for `MTH$`, by value for `OTS$`), and the size
+     of its result (a longword for F, a quadword for G). The table is in
+     `POC_ADDR`, since it holds addresses (section 18.5).
+   - `Math` and `MathL` declare it `["VMS"]`, with `x`, `y` and `result`
+     as `VAR` parameters and `function` as a `SYSTEM.INT32` value. That
+     is all section 7's lowering needs, and it is the same under `-O2`
+     and `-OC`.
+   - The other way is for `Math` to establish a handler itself. That
+     needs step 5's mechanisms, or step 6's handlers from Oberon, as
+     the inventory said. This routine does the work now in `PocRtl`, and
+     no other module needs it.
+   - `tools/vax-runtime-stub.mar` gets a stand-in for it in the same
+     change (the lesson of d012626).
+2. **Errors as on LLVM: what is an error, what comes back, and the code
+   given to `ErrorHandler` are those of `rtl/llvm`'s table.**
+   - Every domain error is checked in Oberon before the call, as on
+     LLVM, so `MTH$` is never given an argument it would signal for.
+   - What is left is overflow: `exp`, `power`, `ipower`, `sinh`, `cosh`
+     and `tan` can signal `MTH$_FLOOVEMAT` (or `OTS$`'s `SS$_FLTOVF` or
+     `MTH$_UNDEXP` for 0 to a negative power, in `ipower`). A failing
+     status from `POC_MATH` reports `Overflow` and gives `large`, or
+     `-large` where the true result is negative (`sinh` of a negative
+     number, `ipower` of a negative number to an odd power).
+   - Underflow is as on LLVM: a result of 0 from a nonzero argument
+     reports `Underflow` (`exp`, `power`). The VAX gives 0 there without
+     a signal.
+   - `sin`, `cos` and `tan` give `MTH$`'s answer for every argument,
+     which keeps LLVM's promise (vishap-bugs 48).
+3. **What MTH$ lacks is written in Oberon.**
+   - `arcsinh` is ln(|x| + sqrt(x^2 + 1)) with x's sign, or ln(|x|) +
+     ln 2 where x^2 would overflow, and x itself where |x| is so small
+     that x^2 vanishes beside 1.
+   - `arccosh` is ln(x + sqrt(x^2 - 1)), or ln(x) + ln 2 for a large x.
+   - The properties come from F's and G's own fields. `SYSTEM.VAL`
+     gives the bits as a `LONGINT` (F) or a `HUGEINT` (G). Their low 16
+     bits are the first word in memory, which holds the sign and the
+     exponent: 8 bits from bit 7 for F, and 11 bits from bit 4 for G.
+     `exponent` is the field less 129 for F, and less 1025 for G.
+     `fraction` and `scale` set the field, with the range checked first.
+     `ulp` is 2^(exponent - places + 1).
+   - `succ` and `pred` step one unit in the last place, a half unit
+     where they cross a power of 2 downward. The formats have no
+     denormals, so `succ(0)` is `small` and `pred(0)` is `-small`, and
+     `succ(-small)` is 0. `scale` below the range gives 0 with no error,
+     as LLVM's `scale` to zero does.
+   - `Finite` goes: the formats have no infinities or NaNs. `round`,
+     `fcmp`, `sign`, `log` and `sincos` keep `rtl/llvm`'s text.
+4. **The interface's constants are F's and G's**, in `rtl/llvm`'s
+   convention (1 <= |fraction(x)| < 2).
+
+   | Constant | `Math` (F) | `MathL` (G) |
+   |---|---|---|
+   | `places` | 24 | 53 |
+   | `large` | `MAX(REAL)`, 1.7014117E38 | `MAX(LONGREAL)`, 8.98846567431158D307 |
+   | `small` | 2^-128, 2.9387359E-39 | 2^-1024, 5.562684646268003D-309 |
+   | `expoMax` | 126 | 1022 |
+   | `expoMin` | -128 | -1024 |
+
+   `pi`, `e`, the error codes, `ErrorHandler`, `err` and `ClearError`
+   are unchanged. `TanhMax` is still `arctanh(1 - 2^-places)`.
+5. **Fixtures, on the guest under `-O2`, as the LLVM ones are built.**
+   - `vax-math-module`, new: `llvm-math`'s `mathtest.mod` and
+     `llvm-mathl`'s `mathltest.mod`, which check every function against
+     Python's values within 1.0E-5, must print those fixtures'
+     `expected`. `test.sh` copies them and changes only the `expoMax` and
+     `expoMin` checks to proposal 4's values, with `sed`. Those are the
+     only lines that state IEEE's ranges.
+   - `vax-math-extra`, new, in place of `llvm-math-extra`, which checks
+     IEEE's bit patterns, denormals and infinities. It checks:
+     - F's and G's bit patterns of `large` and `small`;
+     - `succ` and `pred` at 0, at +-1, at +-`small` and at +-`large`;
+     - `exponent` and `fraction` at both ends of the range;
+     - `scale` beyond the range both ways;
+     - the overflows of item 2, each with its code and its sign;
+     - the probe's large arguments to `sin`, `cos` and `tan`, against
+       Python's values;
+     - `arcsinh` and `arccosh` at small, ordinary and large arguments.
+   - `vax-library`'s `POCRTL` gains `Math` and `MathL`.
+
+### 19.16 Math and MathL: done
+
+- *Done* (section 19.15, proposals 1 to 5, 2026-10-14):
+  - `PocRtl.mar`'s `POC_MATH` dispatches on `function` by `CASEL`, each
+    arm pushing the arguments as its routine takes them and calling it
+    by `G^`. It has no table of addresses, so it needs nothing in
+    `POC_ADDR` and stays position independent. `tools/vax-runtime-stub.mar`
+    has a stand-in for it.
+  - `rtl/vax/Math.Mod` and `MathL.Mod` keep `rtl/llvm`'s interface, its
+    table of errors and its text where nothing VAX-specific is involved.
+    Each function checks its domain, calls `POC_MATH`, and turns a
+    failing status into `Overflow` and +-`large`. `ipower(x, 0)` is 1
+    without a call, since `OTS$` signals for 0^0.
+  - `arcsinh` and `arccosh` use fdlibm's forms: ln(2|x| + ...) for
+    ordinary arguments, ln|x| + ln 2 beyond 2^(places/2), and ln(1 + u)
+    as ln(w) * u / (w - 1) near 0, which keeps u's digits.
+  - The properties read and set the exponent field of the first word.
+    `succ` and `pred` step the magnitude made from the words in the other
+    order. `ulp` is 0 where the unit is below the range, as `scale` is.
+  - `MathL.small` is written `5.5626846462680035D-309`. The backend
+    writes a literal's numeral as it is (`RealConstant`), and IEEE's
+    shortest numeral for 2^-1024, `5.562684646268003D-309`, is just below
+    it, which MACRO makes 0.
+- *Fixtures.*
+  - `vax-math-module`, new: `mathtest` and `mathltest` print `llvm-math`'s
+    and `llvm-mathl`'s `expected` on the guest, with only the `expoMax`
+    and `expoMin` checks changed by `sed`.
+  - `vax-math-extra`, new: the checks of what differs from LLVM. Among
+    them, the overflows of `exp`, `sinh`, `cosh`, `power` and `ipower`
+    caught as `Overflow` with their sign, and `ipower(2, -1080)` 0 with
+    no error.
+  - `vax-library`'s `POCRTL` has 21 modules and makes 431 symbols
+    universal, 68 more. Its `test.sh` now lists `rtl/vax`'s modules in
+    C's order (`LC_ALL=C ls`). The glob followed the locale, which put
+    `MathL.Mod` before `Math.Mod` on atla and after it on the BSD hosts.
