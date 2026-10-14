@@ -21,6 +21,9 @@ BEGIN
   IF Args.getEnv("ARGSTEST_EMPTY", value) THEN Out.String("empty TRUE [") ELSE Out.String("empty FALSE [") END;
   Out.String(value); Out.String("]"); Out.Ln;
   value := "unchanged";
+  IF Args.getEnv("ARGSTEST_NUMBER", value) THEN Out.String("number TRUE [") ELSE Out.String("number FALSE [") END;
+  Out.String(value); Out.String("]"); Out.Ln;
+  value := "unchanged";
   IF Args.getEnv("ARGSTEST_UNSET", value) THEN Out.String("unset TRUE [") ELSE Out.String("unset FALSE [") END;
   Out.String(value); Out.String("]"); Out.Ln;
   value := "unchanged"; Args.GetEnv("ARGSTEST_SET", value); Out.String("GetEnv set ["); Out.String(value); Out.String("]"); Out.Ln;

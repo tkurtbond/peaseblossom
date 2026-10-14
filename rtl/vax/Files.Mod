@@ -22,7 +22,10 @@ MODULE Files;
      name of its own, POC_<process>_<n>.TMP, in that directory, and
      Register renames it that name, as a new version: a compiler that stops
      half way leaves the files it had, and a program that changes directory
-     in between still registers where it meant to.
+     in between still registers where it meant to. New("") is a file with
+     no name, as Texts' writers use: its temporary file is in the default
+     directory, Register leaves it so, and it is deleted when the File is
+     finalized, as rtl/llvm's is (design section 19.20).
 
      OLD AND WRITING. Old opens a file to be read, and the first write
      (Write, WriteBytes, a typed write, Purge) opens it again to be read
@@ -310,6 +313,10 @@ MODULE Files;
   PROCEDURE New*(name: ARRAY OF CHAR): File;
     VAR f: File; s: Name; n: INTEGER;
   BEGIN
+    IF Length0X(name) = 0 THEN (* no name: never registered *)
+      s := ""; f := NewFile(s); f.isNew := TRUE; f.registerName := "";
+      RETURN f
+    END;
     IF ~CopyName(name, s, n) THEN Fail("file name too long", NIL) END;
     f := NewFile(s);
     f.isNew := TRUE;
@@ -436,7 +443,7 @@ MODULE Files;
   PROCEDURE Register*(f: File);
   BEGIN
     Close(f);
-    IF f.isNew THEN
+    IF f.isNew & (f.registerName[0] # 0X) THEN
       IF ~ODD(POC_FILE_RENAME(f.control, f.registerName, Length0X(f.registerName))) THEN
         Fail("could not rename temporary file as its registered name", f)
       END;

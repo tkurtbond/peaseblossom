@@ -16,9 +16,9 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   `POC_HALT` exits with `HALT`'s (section 14, item 10). `POC_ROOTS`
   lists each module's root table, in every program. The rest are what
   the modules below call: writing records to `SYS$OUTPUT` and
-  `SYS$ERROR`, logical names, `$ERASE`, `$PARSE`, `LIB$CREATE_DIR`,
-  `$SETDDIR`, `$GETJPI`, `LIB$GET_FOREIGN`, RMS file access for
-  `Files`, and memory, saved registers, an exit handler and the paging
+  `SYS$ERROR`, logical names, DCL symbols, `$ERASE`, `$PARSE`,
+  `LIB$CREATE_DIR`, `$SETDDIR`, `$GETJPI`, `LIB$GET_FOREIGN`, RMS file
+  access for `Files`, and memory, saved registers, an exit handler and the paging
   file quota for the collector.
 - `Out.Mod` and `Err.Mod`, `rtl/llvm`'s whole interface, write to
   `SYS$OUTPUT` and `SYS$ERROR` through `FormattedOutput.Mod` and
@@ -51,6 +51,11 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   `Out.Flush`, which writes Out's line so far to a terminal without
   ending it (`POC_FLUSH_OUTPUT`), so that it reaches the screen when it
   is sent (section 19.17, proposals 2 and 3).
+- `Texts.Mod`: `rtl/llvm`'s, but `Scan` converts a real by
+  `DecimalToReal`, the bits of a real are F_floating's and G_floating's,
+  and `Close` keeps the old file as the version below the new one, not
+  as `<name>.Bak` (section 19.19, proposal 1).
+- `Oberon.Mod`: `rtl/llvm`'s, unchanged (section 19.19, proposal 2).
 - `FormattedText.Mod` and `RealDigits.Mod`: `rtl/llvm`'s, internal, for
   F_floating and G_floating. `RealDigits` takes a G_floating value apart
   for its exact digits, and `FormattedText` tests a real without IEEE
@@ -78,8 +83,9 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
 - `Platform.Mod`: voc's and `rtl/llvm`'s whole interface (section 19.1,
   Phase 17 step 3): files by handle in a table of 32 (Stream_LF ones by
   block I/O, others read a record at a time with an LF after each),
-  identities and revision dates, the clock, logical names, the default
-  directory, a command in a subprocess (`LIB$SPAWN`), memory, and the
+  identities and revision dates, the clock, logical names and, where
+  there is none, DCL symbols (`LIB$GET_SYMBOL`, section 19.19, proposal
+  3), the default directory, a command in a subprocess (`LIB$SPAWN`), memory, and the
   error tests over RMS and system-service statuses; `StdOut` and
   `StdErr` go through `LineOutput`. Earlier, `GetEnv`, `Unlink`,
   `System` and `Exit` (section 15, proposals 3 and 5 to 8).
@@ -94,7 +100,8 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   block I/O; a file of another record format is read a record at a time,
   an LF after each (section 15, proposal 2). `Old` opens to read and the
   first write reopens to write, so that reading keeps a file's revision
-  date; `New` fixes its name when given; the search path is VMS
+  date; `New` fixes its name when given, and `New("")` is a file never
+  registered (section 19.20); the search path is VMS
   directories; the typed riders write IEEE reals, converted from
   F_floating and G_floating; every File is finalized.
 - `GarbageCollectedHeap.Mod` (`Allocate`, `Collect`, `SetStackBase`,

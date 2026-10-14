@@ -4303,3 +4303,185 @@ string.
   - The line still open when the program ended was ended by the exit
     handler, and DCL's prompt came on a new line.
 
+
+### 19.19 Texts and Oberon: proposals
+
+The tenth group in the inventory's order (`vms-module-inventory.md`,
+proposal 1) is `Texts` and `Oberon`. It also takes `Platform`'s `getEnv`
+on to DCL symbols, as the user asked on 2026-10-14.
+
+`rtl/llvm`'s `Texts` imports `Files`, `Modules`, `Reals` and
+`RealDigits`, which `rtl/vax` has had since sections 19.3, 19.5 and 19.8.
+Three parts of it assume the LLVM targets.
+- `Scan` converts a real with C's `strtof` and `strtod` (lines 195-196
+  and 668-674).
+- `RealBits` and `LongRealBits` (lines 825-845) read IEEE 754's sign bit,
+  zero, infinity and NaN.
+- `Close` keeps the old file as `<name>.Bak`, renamed with
+  `Files.Rename`. `plain.Text.Bak` is not an ODS-2 name: after the type,
+  a second dot starts the version (RMS, "file specification"), and `Bak`
+  is not a number, so the rename fails. `Close` ignores the result, so the
+  old file would stay as an older version.
+
+`rtl/llvm`'s `Oberon` uses `Platform`'s clocks, `Modules.ArgCount`, and
+`Modules.ArgVector` read as C's `argv`. Section 19.5 made `ArgVector` that
+on VMS too (proposal 8).
+
+VAX C's `getenv` (VAX C RTL Reference, March 1987, 11.2.5) looks a name
+up in this order.
+1. Its environment array: `HOME`, `TERM`, `PATH` and `USER`.
+2. A logical name, in the standard tables in order.
+3. A CLI symbol, through DCL.
+
+It returns NULL when none of them has the name. `LIB$GET_SYMBOL` (5.0
+LIB$ manual, LIB-218 to LIB-220) gives a symbol's value, local first and
+then global, with a numeric symbol as decimal text. It returns
+`LIB$_NOSUCHSYM` when there is no such symbol and `LIB$_NOCLI` when there
+is no CLI. A symbol can be defined empty (`X == ""`), as a logical name
+cannot (section 19.17).
+
+**Approved by the user, 2026-10-14**, with no `.Bak` (proposal 1) and
+without `HOME` and `USER` (proposal 3).
+
+1. **`rtl/vax/Texts.Mod` is `rtl/llvm`'s with four changes.** The header
+   comment lists them.
+   - `Scan` converts a real's numeral, without its sign, with
+     `DecimalToReal.ToReal` or `ToLongReal`, as `Strings` and
+     `FormattedInput` do (sections 19.12 and 19.14). `Scan` already sets
+     the sign itself. The `["C"]` declarations go.
+     - The result is the nearest value, ties to even, as `strtof` and
+       `strtod` give.
+     - A numeral beyond the range gives the largest value and not
+       infinity, which the VAX does not have.
+   - `RealBits` and `LongRealBits` read the VAX's formats.
+     - The sign is bit 15, in the first word, under both.
+     - Zero is an exponent field of 0 (`Reals.Expo` and `ExpoL`). With
+       the sign set, that is the reserved operand, which no value has.
+     - `special` and `isNaN` are always FALSE, so `WriteSpecial`'s
+       "Infinity" and "NaN" are never written. It stays, so that the rest
+       stays as LLVM's.
+   - `WriteRealHex` and `WriteLongRealHex` are unchanged. They give the
+     value's bytes in memory order (`Reals.ConvertH`), which on the VAX
+     are F_floating's and G_floating's bytes. 1.0 is `80400000` and -2.0D0
+     is `20C0000000000000`, where LLVM gives `0000803F` and
+     `00000000000000C0`.
+   - `Close` keeps no `.Bak` on VMS. `Files.Register` already makes the
+     new file a new version, and the old one stays as the version below
+     it (section 19.3, `Register`; section 19.1, proposal 8). That is
+     what VMS keeps instead of a backup, and what PURGE clears.
+     - The alternative is a name of VMS's own, such as
+       `<name>_BAK`, with the rename's result still ignored.
+2. **`rtl/vax/Oberon.Mod` is `rtl/llvm`'s, unchanged.** `Par.text` holds
+   the arguments as section 19.5's `ArgVector` gives them:
+   - quotes are removed;
+   - quoted text keeps its case;
+   - unquoted text is upper case, as DCL makes it.
+3. **`Platform.getEnv` and `GetEnv` look up a DCL symbol when there is no
+   logical name**, through a new `PocRtl` routine, `POC_GET_SYMBOL`,
+   which calls `LIB$GET_SYMBOL`. `Args.GetEnv` and `getEnv` are
+   `Platform`'s, so they follow.
+   - The order is VAX C's, without its environment array: logical names
+     first, as now (`POC_TRNLNM`, section 19.1), then a symbol, local
+     before global. `LIB$_NOSUCHSYM`, `LIB$_NOCLI` or any other failure
+     is "not set".
+   - A symbol defined empty is set but empty. `getEnv` returns TRUE with
+     an empty value, as on Unix, and the case section 19.17 said could
+     not happen on VMS now can.
+   - A value longer than the caller's array is cut, as a logical name's
+     is now.
+   - VAX C's four environment names are left out. `HOME` would be
+     `SYS$LOGIN`'s translation, `USER` the user name (`$GETJPI`,
+     `JPI$_USERNAME`) and `PATH` the default device and directory. The
+     manual does not say what form `TERM` takes. A program that wants
+     them can ask for `SYS$LOGIN` itself. They can be added later if a
+     program needs them.
+4. **Fixtures, on the guest.**
+   - `vax-texts`, new: `llvm-texts`' `texts.mod` under `-O2`.
+     - It must print `llvm-texts`' `expected`, except for the lines that
+       show a real's bytes in hexadecimal. Those are the `bits:` part of
+       the first text, and each scanned real's `x=` or `y=`. The fixture
+       commits those lines as the VAX gives them, and `test.sh` takes the
+       rest from `llvm-texts`' `expected`, as `vax-vt100` does. Each VAX
+       line is checked by hand against the F_floating and G_floating
+       formats before it is committed.
+     - `elements.Text`, `plain.Text` and `lines.txt` are fetched back in
+       binary and compared with what the LLVM build of `texts.mod` writes
+       on the host. A text's file holds no reals, so the bytes must be
+       the same. `plain.Text` must be on the guest as two versions, and
+       no `.Bak` file is made.
+   - `vax-oberon`, new: `llvm-oberon`'s `oberon.mod` and `beyond.mod`,
+     under `-O2` and `-OC`, run as foreign commands.
+     - `oberon` gets `"Name.sub" 12 """a string""" -7 / "x"`. The quotes
+       keep case and give the quoted string, and it must print
+       `llvm-oberon`'s `oberon` lines. If DCL does not pass a lone `/`
+       through `LIB$GET_FOREIGN`, the fixture quotes it.
+     - `beyond`'s argument on LLVM is 300 characters. DCL limits a
+       foreign command's line to 255 characters (section 18.5), so here
+       it gets 200, and its first line is `par 201`. The rest is
+       `llvm-oberon`'s.
+   - `vax-args` defines `ARGSTEST_EMPTY == ""` and `ARGSTEST_SYM ==
+     "from a symbol"` in its procedure, after the logical names.
+     - `argstest` then prints `llvm-args`' `expected` exactly. The
+       "empty FALSE [unchanged]" line section 19.18 recorded goes.
+     - A line is added for the symbol, so `argstest.mod` gets a VAX copy
+       or a guarded line. Which is decided when it is written; I would
+       rather add one variable to the shared `argstest.mod`, which LLVM
+       prints as "not set".
+   - `vax-platform`'s `getEnv` cases, if any read a name that could be a
+     symbol on the guest, are checked so that `POC`'s own `LOGIN.COM`
+     symbols cannot change them.
+   - `vax-library`'s `POCRTL` gains `Texts` and `Oberon`.
+     `tools/vax-runtime-stub.mar` gets a stand-in for `POC_GET_SYMBOL`.
+   - The four `expected-vax-Platform.mar` files are regenerated:
+     `vax-platform`'s, `vax-command-line`'s, `vax-files`' and
+     `vax-modules-commands`'. Their `;;` headers are updated when the
+     user has reviewed them.
+
+### 19.20 Texts and Oberon: done
+
+- *Done* (section 19.19, proposals 1 to 4, 2026-10-14):
+  - `rtl/vax/Texts.Mod` is `rtl/llvm`'s with the four changes of
+    proposal 1. `Scan` converts by `DecimalToReal.ToReal` and
+    `ToLongReal`. `RealBits` and `LongRealBits` take the sign from bit 15
+    and zero from the exponent field. `Close` writes the new version and
+    renames nothing. The header comment lists the changes.
+  - `rtl/vax/Oberon.Mod` is a copy of `rtl/llvm`'s.
+  - `PocRtl.mar`'s `POC_GET_SYMBOL` calls `LIB$GET_SYMBOL` and returns the
+    value's length, or -1 on any failure. `Platform.getEnv` calls it when
+    `POC_TRNLNM` finds no logical name. `GetEnv` and `Args` follow.
+- *Found and fixed: `Files.New("")`.* Texts' writers keep what they write
+  in a file with no name, `Files.New("")`, as on LLVM. `rtl/vax`'s `New`
+  stopped the program for an empty name ("file name too long",
+  `HALT(99)`, status `%X1000031A`), so every Texts writer did. `New("")`
+  now makes a File whose temporary file, `POC_<pid>_<n>.TMP` in the
+  default directory, `Register` does not rename. It is deleted when the
+  File is finalized, as an unregistered file's always was. After
+  `vax-texts` ran, no `.TMP` file was left in `POC`'s directory.
+- *Fixtures.*
+  - `vax-texts`, new: `llvm-texts`' `texts.mod` as `TextsUse.mod`, with its
+    elements naming that module. `vax-reals.sed` turns `llvm-texts`'
+    `expected` into the VAX's, eight lines with a real's bytes. On the
+    guest, `TextsUse` prints that, and `plain.Text`, closed twice, is two
+    versions.
+    - `FileBytes.mod` dumps `elements.Text`, `plain.Text` and `lines.txt`
+      in hexadecimal. Those are the bytes that `TextsUse` built by poc
+      for the host writes, as `od` shows them. The element names its
+      module in the file, so the host build is of `TextsUse.mod` too.
+  - `vax-oberon`, new: `OberonUse.mod` (`llvm-oberon`'s `oberon.mod`) and
+    `beyond.mod` under `-O2` and `-OC`. They print `llvm-oberon`'s lines
+    for each model, but `par 201` for `beyond`'s 200-character argument,
+    which the procedure makes with `F$FAO("!199*0")`. An unquoted `/`
+    reaches the program as it is.
+  - `vax-args`: the procedure defines `ARGSTEST_EMPTY == ""` and the
+    local `ARGSTEST_NUMBER = 12`, and `argstest` prints `llvm-args`'
+    `expected`: "empty TRUE []" and "number TRUE [12]".
+  - `llvm-args`' `argstest.mod` reads `ARGSTEST_NUMBER` too, which its
+    `test.sh` sets to 12 for voc's build and poc's.
+  - `vax-library`'s `POCRTL` has 25 modules and makes 533 symbols
+    universal, 65 more. `tools/vax-runtime-stub.mar` has a stand-in for
+    `POC_GET_SYMBOL`.
+  - `expected-vax-Platform.mar` in `vax-platform`, `vax-command-line`,
+    `vax-files` and `vax-modules-commands`: the new `.EXTERNAL` and
+    `getEnv`'s symbol branch, and the line numbers after it move.
+    `vax-files`' `expected-vax-Files.mar`: `New`'s branch for "" and its
+    string, and the line numbers and labels after it.

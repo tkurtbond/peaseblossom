@@ -154,6 +154,7 @@ MODULE Platform;
     interruptHandler, quitHandler, badInstructionHandler: SignalHandler;
 
   PROCEDURE ["VMS"] POC_TRNLNM(VAR name: Name; length, index: INTEGER; VAR value: Name; size: INTEGER): INTEGER;
+  PROCEDURE ["VMS"] POC_GET_SYMBOL(VAR name: Name; length: INTEGER; VAR value: Name; size: INTEGER): INTEGER;
   PROCEDURE ["VMS"] POC_ERASE(VAR name: Name; length: INTEGER): INTEGER;
   PROCEDURE ["VMS"] POC_DEFAULT_DIRECTORY(VAR value: Name; size: INTEGER): INTEGER;
   PROCEDURE ["VMS"] POC_PROCESS_ID(): INTEGER;
@@ -334,17 +335,27 @@ MODULE Platform;
   (* The environment *)
 
   (* The logical name var translated, in val, cut short if val is too
-     small for it; FALSE, and val unchanged, when there is no such name. It
-     is looked up as a file name's is (LNM$FILE_DEV: the process's table,
-     the job's, the group's, the system's), ignoring case. A search list's
-     equivalence strings are joined with ",", Directories.pathSeparator. *)
+     small for it, or when there is no such name, the DCL symbol var's
+     value (design section 19.19, proposal 3); FALSE, and val unchanged,
+     when there is neither. The logical name is looked up as a file name's
+     is (LNM$FILE_DEV: the process's table, the job's, the group's, the
+     system's), ignoring case, and a search list's equivalence strings are
+     joined with ",", Directories.pathSeparator. The symbol is the local
+     one, else the global one, a number's as decimal text; one defined
+     empty gives TRUE and "", as a variable set but empty does on Unix. *)
   PROCEDURE getEnv*(var: ARRAY OF CHAR; VAR val: ARRAY OF CHAR): BOOLEAN;
     VAR length, index, count: INTEGER;
   BEGIN
     IF ~Fill(var, length) OR (length = 0) THEN RETURN FALSE END;
     index := 0;
     count := POC_TRNLNM(given, length, index, returned, nameLength - 1);
-    IF count < 0 THEN RETURN FALSE END;
+    IF count < 0 THEN
+      count := POC_GET_SYMBOL(given, length, returned, nameLength - 1);
+      IF count < 0 THEN RETURN FALSE END;
+      IF LEN(val) > 0 THEN val[0] := 0X END;
+      Append(val, count);
+      RETURN TRUE
+    END;
     IF LEN(val) > 0 THEN val[0] := 0X END;
     REPEAT
       IF index > 0 THEN AppendChar(val, ",") END;
@@ -355,7 +366,7 @@ MODULE Platform;
     RETURN TRUE
   END getEnv;
 
-  (* The same, "" when there is no such name. *)
+  (* The same, "" when there is neither. *)
   PROCEDURE GetEnv*(var: ARRAY OF CHAR; VAR val: ARRAY OF CHAR);
   BEGIN
     IF ~getEnv(var, val) & (LEN(val) > 0) THEN val[0] := 0X END

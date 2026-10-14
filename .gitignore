@@ -42,6 +42,15 @@ test/conformance/**/result
 # vax-files-riders' copies of llvm-files-riders' sources, and what it expects
 test/conformance/vax-files-riders/*.mod
 test/conformance/vax-files-riders/guest.expected
+# vax-texts' and vax-oberon's renamed copies of llvm-texts' and
+# llvm-oberon's programs, the host build vax-texts compares with, and what
+# they expect
+test/conformance/vax-texts/TextsUse.mod
+test/conformance/vax-texts/host/
+test/conformance/vax-texts/texts.expected
+test/conformance/vax-oberon/OberonUse.mod
+test/conformance/vax-oberon/beyond.mod
+test/conformance/vax-oberon/oberon.expected
 test/conformance/hello/hello
 test/conformance/llvm-build-run/llvm-build-run
 test/conformance/llvm-args/llvm-args

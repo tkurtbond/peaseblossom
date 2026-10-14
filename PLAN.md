@@ -666,7 +666,17 @@ C++, and so on) unless step 4 chooses one deliberately.
    **approved by the user, 2026-10-14**, are section 19.17, and section
    19.18 records the work. `Out.Flush` writes a part line to a terminal
    without ending it, and `VT100` flushes each sequence. Fixtures
-   `vax-args` and `vax-vt100` are new. Next, `Texts` and `Oberon`.
+   `vax-args` and `vax-vt100` are new. `Texts` and `Oberon` are done
+   (2026-10-14): their four proposals, **approved by the user,
+   2026-10-14** (no `.Bak`, and no `HOME` or `USER`), are section 19.19,
+   and section 19.20 records the work. `Texts` scans reals by
+   `DecimalToReal` and keeps the old file as an older version, `Oberon`
+   is `rtl/llvm`'s, and `Platform.getEnv` falls back to a DCL symbol.
+   `Files.New("")` was fixed on the way. Fixtures `vax-texts` and
+   `vax-oberon` are new. That is the last of the inventory's ten
+   groups: every module of `rtl/llvm` has its VAX version, but for the
+   internal `ModuleTable` and `FileDescriptorOutput`, whose work
+   `PocRtl`'s `POC_ROOTS` and `LineOutput` do.
 
 4. **Which native VAX/VMS libraries to support.** From the manuals, not
    memory, list what a VMS programmer expects to reach: the run-time

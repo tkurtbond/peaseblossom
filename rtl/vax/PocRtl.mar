@@ -810,6 +810,26 @@ POC_NAME_EXPANDED:
 10$:	MNEGL	#1, R0
 	RET
 
+; POC_GET_SYMBOL(name, length, value, size): the DCL symbol's value, the
+; local one before the global, cut to size, in value (LIB$GET_SYMBOL,
+; design section 19.19, proposal 3); R0 its length, or -1 when there is
+; no such symbol, no CLI, or it cannot be read
+	.ENTRY	POC_GET_SYMBOL, ^M<R2>
+	CLRL	-(SP)
+	MOVL	SP, R0
+	POC_DESCRIBE	12(AP), 16(AP)
+	MOVL	R1, R2
+	POC_DESCRIBE	4(AP), 8(AP)
+	PUSHL	R0
+	PUSHL	R2
+	PUSHL	R1
+	CALLS	#3, G^LIB$GET_SYMBOL
+	BLBC	R0, 10$
+	MOVZWL	16(SP), R0
+	RET
+10$:	MNEGL	#1, R0
+	RET
+
 ; POC_ERASE(name, length): the file deleted, the highest version when
 ; the name gives none; R0 RMS's status
 	.ENTRY	POC_ERASE, ^M<>

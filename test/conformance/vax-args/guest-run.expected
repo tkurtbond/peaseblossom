@@ -10,7 +10,8 @@ cut short [alp]
 Pos(42) 3
 Pos(absent) 6
 set TRUE [value]
-empty FALSE [unchanged]
+empty TRUE []
+number TRUE [12]
 unset FALSE [unchanged]
 GetEnv set [value]
 GetEnv unset []

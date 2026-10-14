@@ -1,0 +1,4 @@
+VAX build OberonUse -O2 exit 0
+VAX build beyond -O2 exit 0
+VAX build OberonUse -OC exit 0
+VAX build beyond -OC exit 0
