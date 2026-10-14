@@ -653,7 +653,11 @@ C++, and so on) unless step 4 chooses one deliberately.
    section 19.12 records the work. `In` reads SYS$INPUT through
    `Platform`, which gives `Out`'s unfinished line as the prompt on a
    terminal, and reals are read by `DecimalToReal`. Fixtures `vax-in`,
-   `vax-in-extra` and `vax-instr` are new. Next, `Strings`.
+   `vax-in-extra` and `vax-instr` are new. `Strings` is done
+   (2026-10-13): its three proposals, **approved by the user,
+   2026-10-13**, are section 19.13, and section 19.14 records the work.
+   Its reals are read by `DecimalToReal`. Fixture `vax-strings-module` is
+   new. Next, `Math` and `MathL`.
 
 4. **Which native VAX/VMS libraries to support.** From the manuals, not
    memory, list what a VMS programmer expects to reach: the run-time

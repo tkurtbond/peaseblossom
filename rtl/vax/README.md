@@ -38,6 +38,8 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   SYS$INPUT and SYS$OUTPUT are terminals; `FormattedInput` reads a real
   by `DecimalToReal`; `InStr` is a copy kept the same (fixture
   `vax-instr`; section 19.11).
+- `Strings.Mod`: `rtl/llvm`'s, but `StrToReal` and `StrToLongReal`
+  convert by `DecimalToReal` (section 19.13).
 - `FormattedText.Mod` and `RealDigits.Mod`: `rtl/llvm`'s, internal, for
   F_floating and G_floating. `RealDigits` takes a G_floating value apart
   for its exact digits, and `FormattedText` tests a real without IEEE

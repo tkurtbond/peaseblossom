@@ -1,0 +1,26 @@
+$ ! PLAN.md Phase 17 step 3 (design section 19.13, proposals 1 and 2):
+$ ! STRINGSTEST.COM and STRINGSEXTRA.COM (llvm-strings' and
+$ ! llvm-strings-extra's programs), which poc -build wrote, run after
+$ ! poc's runtime is assembled; then each image. Everything made is
+$ ! deleted
+$ SET NOON
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF S THEN @STRINGSTEST
+$ IF S THEN S = $STATUS
+$ IF S THEN @STRINGSEXTRA
+$ IF S THEN S = $STATUS
+$ WRITE SYS$OUTPUT "build status: ", S
+$ IF .NOT. S THEN GOTO CLEAN
+$ WRITE SYS$OUTPUT "== stringstest"
+$ RUN STRINGSTEST.EXE
+$ WRITE SYS$OUTPUT "run status: ", $STATUS
+$ WRITE SYS$OUTPUT "== stringsextra"
+$ RUN STRINGSEXTRA.EXE
+$ WRITE SYS$OUTPUT "run status: ", $STATUS
+$ CLEAN:
+$ DELETE/NOLOG POCRTL.OBJ;*,LINEOUTPUT.OBJ;*,FORMATTEDOUTPUT.OBJ;*,FORMATTEDTEXT.OBJ;*,REALDIGITS.OBJ;*,OUT.OBJ;*
+$ DELETE/NOLOG STRINGS.OBJ;*,DECIMALTOREAL.OBJ;*
+$ DELETE/NOLOG STRINGSTEST.OBJ;*,STRINGSTEST.OPT;*,STRINGSTEST.EXE;*
+$ DELETE/NOLOG STRINGSEXTRA.OBJ;*,STRINGSEXTRA.OPT;*,STRINGSEXTRA.EXE;*
+$ EXIT 1

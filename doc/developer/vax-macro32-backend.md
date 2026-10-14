@@ -3912,3 +3912,79 @@ What VMS changes:
     number or a renumbered label. `Platform`'s key is unchanged.
   - `vax-library`'s `POCRTL` has 18 modules and makes 350 symbols
     universal, 51 more.
+
+### 19.13 Strings: proposals
+
+The seventh group in the inventory's order (`vms-module-inventory.md`,
+proposal 1) is `Strings`. `rtl/llvm`'s is plain Oberon, apart from
+`StrToReal` and `StrToLongReal`. Those find the numeral at the start of
+`s` (`Numeral`: blanks, [+-] digits [. digits] [E|D [+-] digits], at most
+`maxNumeral` = 511 characters, the letter written as E) and hand it to C's
+`strtof` or `strtod`. A string with no numeral gives 0, and one too long
+leaves the variable alone.
+
+**Approved by the user, 2026-10-13**, all three as written.
+
+1. **`rtl/vax/Strings.Mod` is `rtl/llvm`'s, but `StrToReal` and
+   `StrToLongReal` convert by `DecimalToReal`.**
+   - As in `FormattedInput` (section 19.11, proposal 3), the sign that
+     `Numeral` copies is set aside. The rest goes to `ToReal` or
+     `ToLongReal`, and the result is negated after a "-". A local
+     procedure does this, as `FormattedInput`'s `Unsigned` does, rather
+     than `Strings` importing `FormattedInput`.
+   - The value is the nearest F or G value, ties to even, the largest
+     beyond the range, and the nearer of 0 and the smallest below it.
+     This is `FormattedInput`'s rule. `strtod` gives an infinity, or a
+     subnormal, there.
+   - A numeral of up to 511 characters is within what `DecimalToReal`
+     reads: it keeps 800 significant digits, and past them only whether
+     any is nonzero.
+   - Everything else is the same text. The header comment's account of
+     the conversions says `DecimalToReal` where it says libc.
+   - The other way to set the sign aside is in `DecimalToReal` itself,
+     which would then take a sign for `FormattedInput` and `Strings`
+     alike. That changes a reviewed module that `Reals` also uses, so it
+     is not proposed.
+2. **Fixture `vax-strings-module`, new, on the guest under `-O2`, as the
+   LLVM fixtures are built.** `vax-strings` is already the backend's
+   fixture for string operations.
+   - `llvm-strings`' `stringstest.mod` must print `llvm-strings`'
+     `expected`, which voc agrees with. Its reals are printed by
+     `Out.Real` and `Out.LongReal` in decimal, and are the same on the
+     VAX.
+   - `llvm-strings-extra`'s `stringsextra.mod` prints that fixture's
+     `expected`, except for the lines of `Numbers` that print a real's
+     bits as a decimal integer (`SYSTEM.VAL(HUGEINT, x)`, or `LONGINT`
+     for a `REAL`). Those are F's and G's words on the VAX.
+   - A `generate.py` writes them as `vax-in-extra`'s does (section 19.12).
+     It takes each numeral as `Numeral` does and converts it as
+     `DecimalToReal` does, keeping `stringsextra`'s 42 and 7 where no
+     numeral is read or it is too long. 1.7976931348623157E308 becomes
+     G's largest value, 4.9E-324 becomes 0, and 2.2250738585072014D-308,
+     which is IEEE's smallest normal value, is an ordinary normal G
+     value.
+   - `stringsextra`'s 40000-character array and its lengths past 32767
+     are the same under `-O2` on both, since `INTEGER` is 16 bits there.
+3. **`vax-library`'s `POCRTL` gains `Strings`.** No other module imports
+   it, so no other fixture changes.
+
+### 19.14 Strings: done
+
+- *Done* (section 19.13, proposals 1 to 3, 2026-10-13): `Strings.Mod` is
+  `rtl/llvm`'s, but `StrToReal` and `StrToLongReal` set the sign aside
+  (`Unsigned`, as in `FormattedInput`) and convert the rest by
+  `DecimalToReal`. It imports `DecimalToReal` in place of `SYSTEM`, which
+  it then no longer needs.
+- *Fixtures.*
+  - `vax-strings-module`, new: `stringstest` prints `llvm-strings`'
+    `expected` on the guest. `stringsextra` prints `llvm-strings-extra`'s,
+    but for `Numbers`' bit patterns.
+  - Its `generate.py` writes those from the numerals in
+    `stringsextra.mod`, read as `Numeral` reads them and converted as
+    `DecimalToReal` does, with each `x := 42` in its place. Each VAX
+    pattern is the IEEE one with the exponent field 2 larger, but at the
+    range's edges: 1.7976931348623157E308 is G's largest value (-32769 as
+    a `HUGEINT`), and 4.9E-324 is 0. 2.2250738585072014D-308 is 2^-1022,
+    a normal G value (48).
+  - `vax-library`'s `POCRTL` has 19 modules and makes 363 symbols
+    universal, 13 more.
