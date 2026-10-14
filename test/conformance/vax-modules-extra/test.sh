@@ -18,7 +18,7 @@ for model in -O2 -OC; do
     echo "VAX build $program $model exit $?" >>result
   done
   vax_do guest-run.com guest-run.expected modulesextra.com ArgVector.com modulesextra.mar ArgVector.mar \
-    Modules.mar Console.mar Out.mar LineOutput.mar FormattedText.mar RealDigits.mar Platform.mar GarbageCollectedHeap.mar $rtl/PocRtl.mar
+    Modules.mar Console.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar Platform.mar GarbageCollectedHeap.mar $rtl/PocRtl.mar
 done
 rm -f *.sym *.mar modulesextra.com ArgVector.com modulesextra.mod
 . ../../testresult.sh

@@ -643,8 +643,12 @@ C++, and so on) unless step 4 chooses one deliberately.
    They come with a new `DecimalToReal` (correctly rounded decimal to F
    and G), `FormattedText` for the VAX, and `Out`'s and `Err`'s `Real`,
    `LongReal`, `Ten` and `IsConsole`. Fixtures `vax-real-digits`,
-   `vax-reals-module` and `vax-out-reals` are new. Next, `FormattedOutput`
-   and `OutStr`.
+   `vax-reals-module` and `vax-out-reals` are new. `FormattedOutput` and
+   `OutStr` are done (2026-10-13): their five proposals, **approved by
+   the user, 2026-10-13**, are section 19.9, and section 19.10 records
+   the work. `Out` and `Err` now format through `FormattedOutput`, as on
+   LLVM, and `OutStr` is `rtl/llvm`'s. Fixture `vax-outstr` is new. Next,
+   `In`, `InStr` and `FormattedInput`.
 
 4. **Which native VAX/VMS libraries to support.** From the manuals, not
    memory, list what a VMS programmer expects to reach: the run-time

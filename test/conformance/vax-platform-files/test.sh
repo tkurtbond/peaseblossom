@@ -15,7 +15,7 @@ for model in -O2 -OC; do
   poc $model -target vax-dec-vms -import-path $rtl -build PlatformFiles.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
   vax_do guest-run.com guest-run.expected PlatformFiles.com PlatformFiles.mar Platform.mar Out.mar \
-    LineOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
+    LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 done
 rm -f *.sym *.mar PlatformFiles.com
 . ../../testresult.sh

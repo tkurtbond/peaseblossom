@@ -19,6 +19,11 @@
 ;; 19.7, approved by the user); reviewed by the user, 2026-10-13: Out's
 ;; key is now POC_K1_7857318F9F511ACE, since its interface gained Real,
 ;; LongReal, Ten and IsConsole; nothing else changed.
+;; Changed by Claude, 2026-10-13, for Phase 17 step 3 (design section
+;; 19.9, approved by the user); reviewed by the user, 2026-10-13: Out's
+;; key is now POC_K1_8C488E0DC6BE8FE8, since its symbol file lists
+;; FormattedOutput among its imports instead of FormattedText; nothing
+;; else changed.
 ; Greeter, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	GREETER
 	.IDENT	/b4a18b3dd650ef4f/
@@ -43,7 +48,7 @@ GREETER_CALLS_3TMGLDEQ::
 	.EXTERNAL	OUT_STRING_VTB3DE16
 	.EXTERNAL	OUT_LN_1M29JSO9
 	.EXTERNAL	OUT_INIT
-	.EXTERNAL	POC_K1_7857318F9F511ACE
+	.EXTERNAL	POC_K1_8C488E0DC6BE8FE8
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP

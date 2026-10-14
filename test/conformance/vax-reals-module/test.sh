@@ -11,7 +11,7 @@
 # on Unix).
 . ../../vaxfixture.sh
 rtl=../../../rtl/vax
-written="RealsUse.mar beyond.mar Reals.mar DecimalToReal.mar Out.mar LineOutput.mar FormattedText.mar RealDigits.mar"
+written="RealsUse.mar beyond.mar Reals.mar DecimalToReal.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar"
 sed -e 's/^MODULE reals;/MODULE RealsUse;/' -e 's/^END reals\./END RealsUse./' ../llvm-reals-module/reals.mod >RealsUse.mod
 cp ../llvm-reals-module/beyond.mod .
 rm -f RealsUse.com beyond.com

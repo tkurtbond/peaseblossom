@@ -9,7 +9,7 @@
 # -O2 and -OC, built for the VAX and run there (vax_do, guest-run.com).
 . ../../vaxfixture.sh
 rtl=../../../rtl/vax
-written="digits.mar Out.mar LineOutput.mar FormattedText.mar RealDigits.mar"
+written="digits.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar"
 rm -f digits.com
 : >result
 for model in -O2 -OC; do

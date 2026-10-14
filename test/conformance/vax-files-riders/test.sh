@@ -30,7 +30,7 @@ for model in -O2 -OC; do
     keep { if ($0 == "exit=2") print "status: %X10000012"; else print }
   ' $src/expected >guest.expected
   vax_do guest-run.com guest.expected riders.com riders.mar signed.com signed.mar Files.mar Platform.mar \
-    GarbageCollectedHeap.mar Out.mar LineOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
+    GarbageCollectedHeap.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 done
 rm -f *.sym *.mar riders.com signed.com riders.mod signed.mod guest.expected
 . ../../testresult.sh

@@ -1,6 +1,6 @@
 ;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.7, proposal 2, approved by the user); reviewed by the user, 2026-10-13. Why this
-;; is right:
+;; 19.7, proposal 2, approved by the user); reviewed by the user,
+;; 2026-10-13. Why this is right:
 ;; - FormattedText is rtl/llvm's, compiled for the VAX: Length, Int,
 ;;   Hex, digit, Real and LongReal are the same code as any module's.
 ;; - RealP tells the sign and zero by TSTG of x (BGEQ, then BEQL), not
@@ -16,9 +16,10 @@
 ;; - On the guest, vax-out-reals and vax-real-digits print what LLVM
 ;;   prints, but where the VAX's values differ.
 ;; Compiled here in a program that contains Modules (section 19.5): it
-;; differs from vax-out/expected-vax-FormattedText.mar only by the descriptor, the
-;; .EXTERNAL POC_MODULE, the block "its descriptor, for Modules" and the
-;; initializer's PUSHAL L_MODULE_DESCRIPTOR and CALLS #1, G^POC_MODULE.
+;; differs from vax-out/expected-vax-FormattedText.mar only by the
+;; descriptor, the .EXTERNAL POC_MODULE, the block "its descriptor, for
+;; Modules" and the initializer's PUSHAL L_MODULE_DESCRIPTOR and CALLS
+;; #1, G^POC_MODULE.
 ; FormattedText, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	FORMATTEDTEXT
 	.IDENT	/f4fbdde2020bc8cf/

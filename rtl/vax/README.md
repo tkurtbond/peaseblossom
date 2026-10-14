@@ -21,11 +21,17 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   `Files`, and memory, saved registers, an exit handler and the paging
   file quota for the collector.
 - `Out.Mod` and `Err.Mod`, `rtl/llvm`'s whole interface, write to
-  `SYS$OUTPUT` and `SYS$ERROR` through `LineOutput.Mod`, a record for
-  each `Ln` (section 14, item 2, and section 15, proposal 8). `Real`,
-  `LongReal` and `Ten` take their text from `FormattedText`, and
-  `IsConsole` asks `$GETDVIW` whether the stream is a terminal (section
-  19.7, proposal 3).
+  `SYS$OUTPUT` and `SYS$ERROR` through `FormattedOutput.Mod` and
+  `LineOutput.Mod`, a record for each `Ln` (section 14, item 2, and
+  section 15, proposal 8). `IsConsole` asks `$GETDVIW` whether the
+  stream is a terminal (section 19.7, proposal 3).
+- `FormattedOutput.Mod`, internal: `rtl/llvm`'s formatting that `Out`
+  and `Err` share, with `LineOutput`'s stream in place of a file
+  descriptor; the text of a real is `FormattedText`'s (section 19.9,
+  proposals 1 and 2).
+- `OutStr.Mod`: `rtl/llvm`'s, a copy kept the same (fixture
+  `vax-outstr`), `Out`'s output appended to a string (section 19.9,
+  proposal 3).
 - `FormattedText.Mod` and `RealDigits.Mod`: `rtl/llvm`'s, internal, for
   F_floating and G_floating. `RealDigits` takes a G_floating value apart
   for its exact digits, and `FormattedText` tests a real without IEEE

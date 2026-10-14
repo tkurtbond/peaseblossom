@@ -1,11 +1,13 @@
 semantic OK, wrote LineOutput.mar
 semantic OK, wrote RealDigits.mar
 semantic OK, wrote FormattedText.mar
+semantic OK, wrote FormattedOutput.mar
 semantic OK, wrote Err.mar
 semantic OK, wrote ErrBasics.mar
 exit 0
 ErrBasics.mar matches expected-vax.mar
 Err.mar matches expected-vax-Err.mar
+FormattedOutput.mar matches expected-vax-FormattedOutput.mar
 FormattedText.mar matches expected-vax-FormattedText.mar
 LineOutput.mar matches expected-vax-LineOutput.mar
 RealDigits.mar matches expected-vax-RealDigits.mar

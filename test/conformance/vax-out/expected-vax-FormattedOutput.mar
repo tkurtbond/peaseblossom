@@ -1,0 +1,289 @@
+;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
+;; 19.9, proposal 1, approved by the user); reviewed by the user,
+;; 2026-10-13. Why this is right:
+;; - FormattedOutput is rtl/llvm's procedures over LineOutput: each
+;;   procedure's first parameter is the stream, an INTEGER (MOVW 4(AP)),
+;;   passed on as a longword (CVTWL) to LINEOUTPUT_CHAR, _STRING, _LN,
+;;   _INT and _HEX, which do the writing as before.
+;; - String copies its value open array s on entry (MOVC3 in pieces of at
+;;   most 65535 bytes, onto the stack), as any value open array is, then
+;;   passes the copy's address and length to LINEOUTPUT_STRING.
+;; - Int and Hex copy their two HUGEINTs (MOVQ @8(AP), @12(AP)) and pass
+;;   each as the address of a quadword copy (MOVAQ), as any HUGEINT value
+;;   parameter is.
+;; - Ten passes e as a longword to FORMATTEDTEXT_TEN and returns its
+;;   G_floating result in R0 and R1; a function that reached its END
+;;   would trap (12).
+;; - Field, local (no .ENTRY, not universal), is the Field that Out and
+;;   Err each had, with n a HUGEINT: blanks := n minus the text's length
+;;   (FORMATTEDTEXT_LENGTH, widened by ASHL #-31 and subtracted with
+;;   SBWC), then one LINEOUTPUT_CHAR of 32 while blanks > 0 (the quadword
+;;   compared high longword first), then LINEOUTPUT_STRING of the text.
+;; - Real copies x (MOVF) and n, has FORMATTEDTEXT_REAL write the text
+;;   into a 32-byte local (FormattedText.maxText), then calls Field with
+;;   n widened to a quadword. LongReal is the same with the LONGREAL
+;;   passed as the address of a copy (MOVG).
+;; - Its initializer calls LINEOUTPUT_INIT, then FORMATTEDTEXT_INIT.
+;; - On the guest every fixture that prints through Out or Err prints
+;;   what it printed before, through this module.
+; FormattedOutput, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	FORMATTEDOUTPUT
+	.IDENT	/10221897d1046e8a/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	LINEOUTPUT_CHAR_HDBHEMT8
+	.EXTERNAL	LINEOUTPUT_STRING_DKRIT2LD
+	.EXTERNAL	LINEOUTPUT_LN_RROULHTA
+	.EXTERNAL	FORMATTEDTEXT_LENGTH_B8VGBT0Q
+	.EXTERNAL	LINEOUTPUT_INT_QKLE32AL
+	.EXTERNAL	LINEOUTPUT_HEX_QKJD2AE9
+	.EXTERNAL	FORMATTEDTEXT_TEN_DJ9CEDFT
+	.EXTERNAL	FORMATTEDTEXT_REAL_VBB34ISE
+	.EXTERNAL	FORMATTEDTEXT_LONGREAL_5EKQFPF4
+	.EXTERNAL	LINEOUTPUT_INIT
+	.EXTERNAL	POC_K1_325CA5CA1A3D6BD4
+	.EXTERNAL	FORMATTEDTEXT_INIT
+	.EXTERNAL	POC_K1_F4FBDDE2020BC8CF
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/FormattedOutput/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Char
+	.ENTRY	FORMATTEDOUTPUT_CHAR_1P48F69C, ^M<>
+	SUBL2	#16, SP
+	CLRL	-4(FP)
+	MOVB	8(AP), -3(FP)
+	MOVW	4(AP), -2(FP)
+; line 22
+	MOVL	#2, -16(FP)
+	CVTWL	-2(FP), -12(FP)
+	MOVZBL	-3(FP), -8(FP)
+	CALLG	-16(FP), G^LINEOUTPUT_CHAR_HDBHEMT8
+	RET
+; PROCEDURE String
+	.ENTRY	FORMATTEDOUTPUT_STRING_DF2I8F7P, ^M<R2,R3,R4,R5>
+	SUBL2	#24, SP
+	CLRQ	-8(FP)
+	MOVL	12(AP), R0
+	ADDL3	#3, R0, R1
+	BICL2	#3, R1
+	SUBL2	R1, SP
+	MOVL	SP, -8(FP)
+	PUSHL	R0
+	MOVL	8(AP), R1
+	MOVL	-8(FP), R3
+L_1:
+	MOVL	(SP), R0
+	CMPL	R0, #65535
+	BLEQU	L_2
+	MOVL	#65535, R0
+L_2:
+	SUBL2	R0, (SP)
+	MOVC3	R0, (R1), (R3)
+	TSTL	(SP)
+	BNEQ	L_1
+	ADDL2	#4, SP
+	MOVW	4(AP), -2(FP)
+; line 29
+	MOVL	#3, -24(FP)
+	CVTWL	-2(FP), -20(FP)
+	MOVL	-8(FP), -16(FP)
+	MOVL	12(AP), -12(FP)
+	CALLG	-24(FP), G^LINEOUTPUT_STRING_DKRIT2LD
+	RET
+; PROCEDURE Ln
+	.ENTRY	FORMATTEDOUTPUT_LN_OU3EA87E, ^M<>
+	SUBL2	#12, SP
+	CLRL	-4(FP)
+	MOVW	4(AP), -2(FP)
+; line 34
+	MOVL	#1, -12(FP)
+	CVTWL	-2(FP), -8(FP)
+	CALLG	-12(FP), G^LINEOUTPUT_LN_RROULHTA
+	RET
+; PROCEDURE Field
+FORMATTEDOUTPUT_FIELD_I7OUHH0S:
+	.WORD	^M<R2>
+	SUBL2	#36, SP
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVQ	@16(AP), -12(FP)
+	MOVW	4(AP), -2(FP)
+; line 42
+	MOVL	#2, -32(FP)
+	MOVL	8(AP), -28(FP)
+	MOVL	12(AP), -24(FP)
+	CALLG	-32(FP), G^FORMATTEDTEXT_LENGTH_B8VGBT0Q
+	MOVL	R0, R1
+	ASHL	#-31, R1, R2
+	MOVQ	-12(FP), -20(FP)
+	SUBL2	R1, -20(FP)
+	SBWC	R2, -16(FP)
+; line 43
+L_3:
+	CLRB	R0
+	TSTL	-16(FP)
+	BGTR	L_5
+	BLSS	L_6
+	TSTL	-20(FP)
+	BLEQU	L_6
+L_5:
+	MOVB	#1, R0
+L_6:
+	BLBS	R0, L_7
+	JMP	L^L_4
+L_7:
+; line 43
+	MOVL	#2, -32(FP)
+	CVTWL	-2(FP), -28(FP)
+	MOVL	#32, -24(FP)
+	CALLG	-32(FP), G^LINEOUTPUT_CHAR_HDBHEMT8
+; line 43
+	SUBL2	#^X00000001, -20(FP)
+	SBWC	#^X00000000, -16(FP)
+	JMP	L^L_3
+L_4:
+; line 44
+	MOVL	#3, -36(FP)
+	CVTWL	-2(FP), -32(FP)
+	MOVL	8(AP), -28(FP)
+	MOVL	12(AP), -24(FP)
+	CALLG	-36(FP), G^LINEOUTPUT_STRING_DKRIT2LD
+	RET
+; PROCEDURE Int
+	.ENTRY	FORMATTEDOUTPUT_INT_18KJ9UM1, ^M<>
+	SUBL2	#52, SP
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVQ	@12(AP), -20(FP)
+	MOVQ	@8(AP), -12(FP)
+	MOVW	4(AP), -2(FP)
+; line 52
+	MOVL	#3, -36(FP)
+	CVTWL	-2(FP), -32(FP)
+	MOVQ	-12(FP), -44(FP)
+	MOVAQ	-44(FP), -28(FP)
+	MOVQ	-20(FP), -52(FP)
+	MOVAQ	-52(FP), -24(FP)
+	CALLG	-36(FP), G^LINEOUTPUT_INT_QKLE32AL
+	RET
+; PROCEDURE Hex
+	.ENTRY	FORMATTEDOUTPUT_HEX_18H465ST, ^M<>
+	SUBL2	#52, SP
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVQ	@12(AP), -20(FP)
+	MOVQ	@8(AP), -12(FP)
+	MOVW	4(AP), -2(FP)
+; line 60
+	MOVL	#3, -36(FP)
+	CVTWL	-2(FP), -32(FP)
+	MOVQ	-12(FP), -44(FP)
+	MOVAQ	-44(FP), -28(FP)
+	MOVQ	-20(FP), -52(FP)
+	MOVAQ	-52(FP), -24(FP)
+	CALLG	-36(FP), G^LINEOUTPUT_HEX_QKJD2AE9
+	RET
+; PROCEDURE Ten
+	.ENTRY	FORMATTEDOUTPUT_TEN_1700MGMV, ^M<>
+	SUBL2	#12, SP
+	CLRL	-4(FP)
+	MOVW	4(AP), -2(FP)
+; line 67
+	MOVL	#1, -12(FP)
+	CVTWL	-2(FP), -8(FP)
+	CALLG	-12(FP), G^FORMATTEDTEXT_TEN_DJ9CEDFT
+	RET
+	PUSHL	#3
+	PUSHL	#68
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Real
+	.ENTRY	FORMATTEDOUTPUT_REAL_GHANRVJC, ^M<>
+	SUBL2	#68, SP
+	CLRQ	-40(FP)
+	CLRQ	-32(FP)
+	CLRQ	-24(FP)
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVW	12(AP), -6(FP)
+	MOVF	8(AP), -4(FP)
+; line 77
+	MOVL	#4, -60(FP)
+	MOVF	-4(FP), -56(FP)
+	CVTWL	-6(FP), -52(FP)
+	MOVAB	-38(FP), -48(FP)
+	MOVL	#32, -44(FP)
+	CALLG	-60(FP), G^FORMATTEDTEXT_REAL_VBB34ISE
+; line 78
+	MOVL	#4, -60(FP)
+	CVTWL	4(AP), -56(FP)
+	MOVAB	-38(FP), -52(FP)
+	MOVL	#32, -48(FP)
+	CVTWL	-6(FP), -68(FP)
+	ASHL	#-31, -68(FP), -64(FP)
+	MOVAQ	-68(FP), -44(FP)
+	CALLG	-60(FP), FORMATTEDOUTPUT_FIELD_I7OUHH0S
+	RET
+; PROCEDURE LongReal
+	.ENTRY	FORMATTEDOUTPUT_LONGRE_9KF7VPVU, ^M<>
+	SUBL2	#72, SP
+	CLRQ	-44(FP)
+	CLRQ	-36(FP)
+	CLRQ	-28(FP)
+	CLRQ	-20(FP)
+	CLRQ	-12(FP)
+	CLRL	-4(FP)
+	MOVW	12(AP), -10(FP)
+	MOVQ	@8(AP), -8(FP)
+; line 86
+	MOVL	#4, -64(FP)
+	MOVG	-8(FP), -72(FP)
+	MOVAQ	-72(FP), -60(FP)
+	CVTWL	-10(FP), -56(FP)
+	MOVAB	-42(FP), -52(FP)
+	MOVL	#32, -48(FP)
+	CALLG	-64(FP), G^FORMATTEDTEXT_LONGREAL_5EKQFPF4
+; line 87
+	MOVL	#4, -64(FP)
+	CVTWL	4(AP), -60(FP)
+	MOVAB	-42(FP), -56(FP)
+	MOVL	#32, -52(FP)
+	CVTWL	-10(FP), -72(FP)
+	ASHL	#-31, -72(FP), -68(FP)
+	MOVAQ	-72(FP), -48(FP)
+	CALLG	-64(FP), FORMATTEDOUTPUT_FIELD_I7OUHH0S
+	RET
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	FORMATTEDOUTPUT_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	CALLS	#0, G^LINEOUTPUT_INIT
+	CALLS	#0, G^FORMATTEDTEXT_INIT
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_10221897D1046E8A == 0
+
+	.END

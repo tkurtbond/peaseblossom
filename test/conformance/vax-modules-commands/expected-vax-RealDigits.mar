@@ -1,6 +1,6 @@
 ;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.7, proposal 1, approved by the user); reviewed by the user, 2026-10-13. Why this
-;; is right:
+;; 19.7, proposal 1, approved by the user); reviewed by the user,
+;; 2026-10-13. Why this is right:
 ;; - RealDigits is rtl/llvm's but ExactDigits' reading of the bits:
 ;;   v's quadword (MOVQ) is taken apart by POC_HMOD and POC_HDIV with
 ;;   65536 into four words, the first lowest. first DIV 16 MOD 2048 is
@@ -18,9 +18,10 @@
 ;;   fractions under -O2 and -OC, including G's and F's smallest and
 ;;   largest values.
 ;; Compiled here in a program that contains Modules (section 19.5): it
-;; differs from vax-out/expected-vax-RealDigits.mar only by the descriptor, the
-;; .EXTERNAL POC_MODULE, the block "its descriptor, for Modules" and the
-;; initializer's PUSHAL L_MODULE_DESCRIPTOR and CALLS #1, G^POC_MODULE.
+;; differs from vax-out/expected-vax-RealDigits.mar only by the
+;; descriptor, the .EXTERNAL POC_MODULE, the block "its descriptor, for
+;; Modules" and the initializer's PUSHAL L_MODULE_DESCRIPTOR and CALLS
+;; #1, G^POC_MODULE.
 ; RealDigits, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	REALDIGITS
 	.IDENT	/8f1e34b9b65a7909/

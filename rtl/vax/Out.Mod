@@ -10,13 +10,14 @@ MODULE Out;
      on LLVM, and IsConsole asks $GETDVIW whether SYS$OUTPUT is a
      terminal.
 
-     It writes to SYS$OUTPUT through LineOutput, which it shares with Err
-     (step 4, section 15): a line is kept until Ln and written as one
-     record, and one not ended by Ln when the program ends is written by
+     The formatting is FormattedOutput's, shared with Err as on LLVM
+     (section 19.9, proposal 2). It writes to SYS$OUTPUT through
+     LineOutput (step 4, section 15): a line is kept until Ln and written
+     as one record, and one not ended by Ln when the program ends is written by
      an exit handler. Flush therefore does nothing, as on LLVM: writing
      part of a line would end the record there. *)
 
-  IMPORT LineOutput, FormattedText;
+  IMPORT LineOutput, FormattedOutput;
 
   CONST
     stream = LineOutput.output;
@@ -42,19 +43,19 @@ MODULE Out;
 
   PROCEDURE Char*(ch: CHAR);
   BEGIN
-    LineOutput.Char(stream, ch)
+    FormattedOutput.Char(stream, ch)
   END Char;
 
   (* The characters of str up to its 0X (all of it if it has none), without
      the 0X. *)
   PROCEDURE String*(str: ARRAY OF CHAR);
   BEGIN
-    LineOutput.String(stream, str)
+    FormattedOutput.String(stream, str)
   END String;
 
   PROCEDURE Ln*;
   BEGIN
-    LineOutput.Ln(stream)
+    FormattedOutput.Ln(stream)
   END Ln;
 
   (* x in decimal, right-aligned in a field n characters wide: padded with
@@ -62,7 +63,7 @@ MODULE Out;
      No plus sign. *)
   PROCEDURE Int*(x, n: HUGEINT);
   BEGIN
-    LineOutput.Int(stream, x, n)
+    FormattedOutput.Int(stream, x, n)
   END Int;
 
   (* x as hexadecimal digits, upper case, at least n of them (n is taken to
@@ -70,43 +71,30 @@ MODULE Out;
      x gets exactly n, the low ones of its two's complement, as in voc. *)
   PROCEDURE Hex*(x, n: HUGEINT);
   BEGIN
-    LineOutput.Hex(stream, x, n)
+    FormattedOutput.Hex(stream, x, n)
   END Hex;
 
   (* 10^e for e >= 0, by repeated squaring - exact up to 10^22; up to
      10^307, past which G_floating overflows *)
   PROCEDURE Ten*(e: INTEGER): LONGREAL;
   BEGIN
-    RETURN FormattedText.Ten(e)
+    RETURN FormattedOutput.Ten(e)
   END Ten;
-
-  (* text right-aligned in a field of n characters *)
-  PROCEDURE Field(VAR text: ARRAY OF CHAR; n: LONGINT);
-    VAR blanks: LONGINT;
-  BEGIN
-    blanks := n - FormattedText.Length(text);
-    WHILE blanks > 0 DO LineOutput.Char(stream, " "); DEC(blanks) END;
-    LineOutput.String(stream, text)
-  END Field;
 
   (* x in exponential form (d.dddE+dd), right-aligned in a field of n
      characters: as many digits as fit, from 2 to 9, at least 6 generated
      to drop trailing zeros from. A plus sign of the mantissa is not
      written. *)
   PROCEDURE Real*(x: REAL; n: INTEGER);
-    VAR text: ARRAY FormattedText.maxText OF CHAR;
   BEGIN
-    FormattedText.Real(x, n, text);
-    Field(text, n)
+    FormattedOutput.Real(stream, x, n)
   END Real;
 
   (* The same for a LONGREAL, with D and a three-digit exponent, and up to
      17 digits. *)
   PROCEDURE LongReal*(x: LONGREAL; n: INTEGER);
-    VAR text: ARRAY FormattedText.maxText OF CHAR;
   BEGIN
-    FormattedText.LongReal(x, n, text);
-    Field(text, n)
+    FormattedOutput.LongReal(stream, x, n)
   END LongReal;
 
   PROCEDURE FindConsole;

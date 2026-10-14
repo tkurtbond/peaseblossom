@@ -3618,3 +3618,118 @@ decision here takes its layouts from that reviewed code:
     - Their main modules differ only in `Out`'s or `Err`'s key.
   - `vax-library`'s `POCRTL` has 13 modules and makes 280 symbols
     universal, 38 more.
+
+### 19.9 FormattedOutput and OutStr: proposals
+
+The fifth group in the inventory's order (`vms-module-inventory.md`,
+proposal 1) is `FormattedOutput` and `OutStr`. On LLVM they are:
+- `FormattedOutput` (Phase 11 A26) is internal. It is the formatting
+  behind `Out` and `Err`, written once, with the file descriptor to
+  write to as each procedure's first parameter. It writes through
+  `FileDescriptorOutput`, which VMS does not have.
+- `OutStr` (Phase 15's "Ongoing library enhancements" 1) is `Out`'s
+  output procedures appending to a string. It is plain Oberon over
+  `FormattedText`, and the inventory found it compiles for the VAX as it
+  is. Its `String` takes a read-only parameter, `str-`, which the VAX
+  backend passes as section 7 says.
+
+On the VAX, `Out` and `Err` came before `FormattedOutput` and each
+formats for itself (section 19.7, proposal 3). Each has its own `Field`,
+`Real` and `LongReal` over `LineOutput` and `FormattedText`.
+
+**Approved by the user, 2026-10-13**, all five as written.
+
+1. **`rtl/vax/FormattedOutput.Mod`: `rtl/llvm`'s procedures over
+   `LineOutput`, with `LineOutput`'s stream as the first parameter.**
+   - `Char`, `String`, `Ln`, `Int`, `Hex`, `Ten`, `Real` and `LongReal`,
+     with `rtl/llvm`'s comments and output.
+   - The first parameter is `stream: INTEGER`, `LineOutput.output` or
+     `LineOutput.error`, not a file descriptor. VMS has no descriptors,
+     and the module is internal: only `Out` and `Err` call it, and they
+     already name `LineOutput`'s streams.
+   - `Char`, `String`, `Ln`, `Int` and `Hex` are `LineOutput`'s. `Real`
+     and `LongReal` are the `Field` that `Out` and `Err` each have now,
+     moved here. `LineOutput` itself is unchanged, so its reviewed copies
+     stay as they are.
+   - Output is kept until `Ln`, as now, not written at once as on LLVM.
+     A record is written whole (section 15, proposal 8).
+2. **`Out` and `Err` call `FormattedOutput`, as on LLVM.** Their own
+   `Field`, `Real` and `LongReal` go, so the formatting of a number is
+   in one place on both targets, as A26 intended. Their interfaces and
+   output do not change, and `IsConsole` stays in each.
+   - The cost is a ripple like section 19.8's. The 25 fixtures that send
+     `Out`'s or `Err`'s `.mar` also send `FormattedOutput.mar`, and their
+     guest procedures delete its object. `vax-out`, `vax-err` and
+     `vax-modules-commands` get a new reviewed copy,
+     `expected-vax-FormattedOutput.mar`, and their copies of `Out` or
+     `Err` change again.
+   - The alternative is to leave `Out` and `Err` as they are. Then
+     `FormattedOutput` is a module that nothing in `POCRTL` imports, and
+     the formatting stays in three places.
+3. **`rtl/vax/OutStr.Mod` is `rtl/llvm`'s, unchanged.**
+   - It is a copy, since a program finds `POCRTL`'s modules in
+     `rtl/vax` alone (`rtl/vax/README.md`). Its header comment gains one
+     line saying so.
+   - `vax-outstr`'s `test.sh` compares the two files (`cmp`, ignoring
+     that line), so a change to one that misses the other fails the
+     gate.
+4. **Fixture `vax-outstr`, new, on the guest under `-O2` and `-OC`.**
+   - Its program is `llvm-outstr`'s `outstr.mod`, renamed if VMS's single
+     case clashes with `OutStr`, as `RealsUse.mod` was (section 19.8).
+     Every case is written by `Out`, then by `OutStr` into a string that
+     `Out` writes, and the two lines must be the same. `test.sh` checks
+     this as `llvm-outstr`'s does.
+   - The lines that build a value from IEEE 754's bits go, since on the
+     VAX those bits mean something else: the smallest subnormals, the
+     infinities and the NaNs. Most of those bit patterns have exponent 0
+     in F's or G's first word, so they would print as 0.
+   - In their place are the VAX's own extremes: `MAX` and `MIN` of
+     `REAL` and `LONGREAL`, which the VAX target writes as F's and G's
+     largest values (section 14).
+   - Its `expected` is `llvm-outstr`'s, without the removed lines and
+     with the new ones. Their digits are computed from F's and G's
+     largest values with Python's exact fractions, as
+     `vax-real-digits`' are, and are not taken from the guest.
+   - `Out`'s lines and `OutStr`'s are the same text from the same
+     `FormattedText`, so a tie rounded differently from LLVM's
+     (section 19.8) would show in both lines alike, and in `expected`
+     only.
+5. **`vax-library`'s `POCRTL` gains `FormattedOutput` and `OutStr`.**
+   Its expected list of universal symbols grows by theirs, and `Out`'s
+   and `Err`'s removed `Field` is a local procedure and was never
+   universal.
+
+### 19.10 FormattedOutput and OutStr: done
+
+- *Done* (section 19.9, proposals 1 to 5, 2026-10-13):
+  - `FormattedOutput.Mod` is `rtl/llvm`'s procedures over `LineOutput`,
+    with the stream as the first parameter. Its local `Field` is the one
+    `Out` and `Err` each had, with n a `HUGEINT`, as on LLVM.
+  - `Out` and `Err` call it for everything but `IsConsole`. Their
+    interfaces are unchanged, but their keys are new, since a symbol
+    file lists its module's imports.
+  - `OutStr.Mod` is `rtl/llvm`'s, plus one comment line saying it is a
+    copy. `vax-outstr` checks that it is otherwise the same.
+- *Not done as proposed*: the expected digits of F's and G's largest
+  values (proposal 4) come from poc's LLVM build of the same program, with
+  the two values made from their IEEE 754 bits, since IEEE single and
+  double hold them exactly: (1 - 2^-24) * 2^127 is `7EFFFFFFH`, and
+  (1 - 2^-53) * 2^1023 is `7FDFFFFFFFFFFFFFH`. That build gives the
+  layout as well as the digits. Python's exact fractions confirm the
+  digits, 1.70141173E+38 and 8.9884656743115785D+307.
+- *Fixtures.*
+  - `vax-outstr`, new. `test.sh` makes `OutStrUse.mod` from
+    `llvm-outstr`'s `outstr.mod` with `awk`, so a change to that program
+    reaches it. Its `guest-run.expected` is `llvm-outstr`'s output with
+    the bit-pattern lines replaced, and the pair check runs on that
+    file.
+  - `Out` and `Err` now import `FormattedOutput`. So the 25 fixtures
+    that send `FormattedText.mar` also send `FormattedOutput.mar`, and
+    their guest procedures delete its object.
+    - `vax-out`, `vax-err` and `vax-modules-commands` compare it in a
+      new expected copy, `expected-vax-FormattedOutput.mar`, and their
+      changed `Out` or `Err` too.
+    - Their main modules, and `Greeter`, differ only in `Out`'s or
+      `Err`'s key.
+  - `vax-library`'s `POCRTL` has 15 modules and makes 299 symbols
+    universal, 19 more.

@@ -1,6 +1,6 @@
 ;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.7, proposal 1, approved by the user); reviewed by the user, 2026-10-13. Why this
-;; is right:
+;; 19.7, proposal 1, approved by the user); reviewed by the user,
+;; 2026-10-13. Why this is right:
 ;; - RealDigits is rtl/llvm's but ExactDigits' reading of the bits:
 ;;   v's quadword (MOVQ) is taken apart by POC_HMOD and POC_HDIV with
 ;;   65536 into four words, the first lowest. first DIV 16 MOD 2048 is
