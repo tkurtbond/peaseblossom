@@ -1,0 +1,16 @@
+== bigindex
+Aindex out of range
+
+exit=2
+== openindex
+Aindex out of range
+
+exit=2
+== shortrange
+ASHORT argument out of range
+
+exit=14
+== chrrange
+ACHR argument out of range
+
+exit=14

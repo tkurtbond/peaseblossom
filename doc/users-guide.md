@@ -929,7 +929,14 @@ written for voc usually builds unchanged. What differs:
   of section 10 are.
 - **Variables start at zero**, locals included: every pointer starts NIL,
   as with voc's `-p`, and every number at 0.
+- **A `FOR` loop ends before a step past its final value**: after it, the
+  control variable holds the last value it had in the body, where voc's
+  has one step more, and a loop up to `MAX` of its type ends (Reference
+  Guide, section 3, "Not extensions, though the report differs").
 
 poc also takes some of voc's extensions, among them `HUGEINT`,
 `SYSTEM.INT8` to `SYSTEM.INT64`, `ASSERT`, and hexadecimal constants of 16
-digits as 64-bit patterns. `-strict` rejects them all.
+digits as 64-bit patterns, and has some of its own, among them the unsigned
+integer types `SYSTEM.CARD8` to `SYSTEM.CARD64` and `SYSTEM.CARD`, which
+voc does not have (Reference Guide, "Unsigned integer types"). `-strict`
+rejects them all.

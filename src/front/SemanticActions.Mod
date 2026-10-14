@@ -2134,7 +2134,7 @@ MODULE SemanticActions;
   PROCEDURE IsByteVarFormal(formal, actual: Types.Type): BOOLEAN;
   BEGIN
     RETURN (formal = Types.Byte)
-      & ((actual = Types.Char) OR (actual = Types.Boolean)
+      & ((actual = Types.Char) OR (actual = Types.Boolean) OR (actual = Types.Card8)
          OR (actual = Types.ShortInt) & (Types.IntegerBytes(Types.ShortInt) = 1))
   END IsByteVarFormal;
 
@@ -2494,28 +2494,26 @@ MODULE SemanticActions;
      must name a type, so it must not be run through the general
      CheckExpr(scope, node.right) call below (that would misreport a bare
      type name as "not a value"). *)
-  (* Types.ConstantAdoptsType: in an arithmetic operation an integer constant
-     whose own type is wider than the other operand's (an INT8, under -OC)
-     but whose value fits that type is typed as it, so "b + 1" is an INT8.
-     l and r are the operands' types, changed accordingly. *)
+  (* Types.ConstantOperandType: in an arithmetic operation or a comparison an
+     integer constant takes the type of the other operand where its value
+     fits that type - an INT8 under -OC, so "b + 1" is an INT8, or an
+     unsigned type, so "c + 1" is a CARD8 and "c + 300" a CARD16. l and r
+     are the operands' types, changed accordingly. *)
   PROCEDURE AdoptConstantOperandType(scope: SymbolTable.Scope; node: SyntaxTree.BinaryExprNode;
                                      VAR l, r: Types.Type);
-    VAR v: Types.Value;
+    VAR v: Types.Value; left, right: Types.Type;
   BEGIN
     IF ~Types.IsInteger(l) OR ~Types.IsInteger(r) THEN RETURN END;
-    IF Types.Order(l) < Types.Order(r) THEN
-      IF ConstantEvaluator.IsConstantExpr(node.right, scope) THEN
-        v := ConstantEvaluator.Evaluate(node.right, scope);
-        IF (v.type # Types.Undefined) & (v.kind = Types.intValue)
-           & Types.ConstantAdoptsType(r, l, v.intVal) THEN r := l END
-      END
-    ELSIF Types.Order(r) < Types.Order(l) THEN
-      IF ConstantEvaluator.IsConstantExpr(node.left, scope) THEN
-        v := ConstantEvaluator.Evaluate(node.left, scope);
-        IF (v.type # Types.Undefined) & (v.kind = Types.intValue)
-           & Types.ConstantAdoptsType(l, r, v.intVal) THEN l := r END
-      END
-    END
+    left := l; right := r;
+    IF ConstantEvaluator.IsConstantExpr(node.right, scope) THEN
+      v := ConstantEvaluator.Evaluate(node.right, scope);
+      IF v.type # Types.Undefined THEN right := Types.ConstantOperandType(v, l) END
+    END;
+    IF ConstantEvaluator.IsConstantExpr(node.left, scope) THEN
+      v := ConstantEvaluator.Evaluate(node.left, scope);
+      IF v.type # Types.Undefined THEN left := Types.ConstantOperandType(v, r) END
+    END;
+    l := left; r := right
   END AdoptConstantOperandType;
 
   PROCEDURE CheckBinaryExpr(scope: SymbolTable.Scope; node: SyntaxTree.BinaryExprNode): Types.Type;
@@ -2557,8 +2555,17 @@ MODULE SemanticActions;
     l := CheckExpr(scope, node.left); r := CheckExpr(scope, node.right);
     IF (l = Types.Undefined) OR (r = Types.Undefined) THEN RETURN Types.Undefined END;
     IF (node.op = Lexer.plus) OR (node.op = Lexer.minus) OR (node.op = Lexer.times)
-       OR (node.op = Lexer.divKeyword) OR (node.op = Lexer.modKeyword) THEN
-      AdoptConstantOperandType(scope, node, l, r)
+       OR (node.op = Lexer.divKeyword) OR (node.op = Lexer.modKeyword)
+       OR (node.op = Lexer.equal) OR (node.op = Lexer.notEqual) OR (node.op = Lexer.less)
+       OR (node.op = Lexer.lessEqual) OR (node.op = Lexer.greater) OR (node.op = Lexer.greaterEqual) THEN
+      AdoptConstantOperandType(scope, node, l, r);
+      IF Types.MixesFamilies(l, r) THEN
+        (* the unsigned integers are a family of their own ("Unsigned
+           integer types"): SYSTEM.VAL is the only way across *)
+        ReportTypes(node.line, node.column, "an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL)",
+                    l, " and ", r);
+        RETURN Types.Undefined
+      END
     END;
     IF (node.op = Lexer.plus) OR (node.op = Lexer.minus) OR (node.op = Lexer.times) THEN
       IF Types.IsNumeric(l) & Types.IsNumeric(r) THEN
@@ -3065,7 +3072,14 @@ MODULE SemanticActions;
       v := ConstantEvaluator.Evaluate(srcExpr, scope);
       ok := (v.type # Types.Undefined) & (v.kind = Types.intValue)
         & (v.intVal >= -128) & (v.intVal <= 127)
-    ELSIF ~ok & Types.IsInteger(dstType) & Types.IsInteger(srcType)
+    ELSIF ~ok & Types.IsCardinal(dstType) & Types.IsInteger(srcType)
+        & ConstantEvaluator.IsConstantExpr(srcExpr, scope) THEN
+      (* an integer constant that is a value of the unsigned type: 0 to its
+         MAX, whatever the constant's own type, or a 64-bit hexadecimal
+         pattern for an 8-byte one (Types.CardFits) *)
+      v := ConstantEvaluator.Evaluate(srcExpr, scope);
+      ok := (v.type # Types.Undefined) & Types.CardFits(dstType, v)
+    ELSIF ~ok & Types.IsInteger(dstType) & Types.IsInteger(srcType) & ~Types.IsCardinal(srcType)
         & ConstantEvaluator.IsConstantExpr(srcExpr, scope) THEN
       (* an integer constant whose *value* fits a SYSTEM.INTn is assignable
          to it whatever its own (minimal) type: under -OC that is never
@@ -3249,7 +3263,16 @@ MODULE SemanticActions;
           ok := FALSE
         END
       END;
-      IF ok & ~charMode & ~CaseLabelFits(selType, low, high) THEN
+      IF ok & ~charMode & Types.IsCardinal(selType) THEN
+        (* each a value of the selector's unsigned type *)
+        IF ~Types.CardFits(selType, lowVal) OR (l.high # NIL) & ~Types.CardFits(selType, highVal) THEN
+          Diagnostics.Error(l.line, l.column, "case label is outside the range of the CASE selector's type");
+          ok := FALSE
+        END
+      ELSIF ok & ~charMode & (Types.IsCardinal(lowVal.type) OR (l.high # NIL) & Types.IsCardinal(highVal.type)) THEN
+        ReportTypes(l.line, l.column, "an unsigned case label for a signed CASE selector", lowVal.type, "", NIL);
+        ok := FALSE
+      ELSIF ok & ~charMode & ~CaseLabelFits(selType, low, high) THEN
         Diagnostics.Error(l.line, l.column, "case label is outside the range of the CASE selector's type");
         ok := FALSE
       END;

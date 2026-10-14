@@ -142,58 +142,70 @@ L23:
 L24:
   %t51 = load i16, ptr @ctrl.i
   %t52 = icmp sle i16 %t51, %t50
-  br i1 %t52, label %L25, label %L26
+  br i1 %t52, label %L25, label %L28
 L25:
   %t53 = load i16, ptr @ctrl.forSum
   %t54 = load i16, ptr @ctrl.i
   %t55 = add i16 %t53, %t54
   store i16 %t55, ptr @ctrl.forSum
-  %t56 = load i16, ptr @ctrl.i
-  %t57 = add i16 %t56, 1
-  store i16 %t57, ptr @ctrl.i
-  br label %L24
+  br label %L26
 L26:
-  %t58 = sext i8 5 to i16
-  store i16 %t58, ptr @ctrl.i
-  %t59 = sext i8 1 to i16
-  br label %L27
+  %t56 = load i16, ptr @ctrl.i
+  %t57 = sub i16 %t50, %t56
+  %t58 = icmp ult i16 %t57, 1
+  br i1 %t58, label %L28, label %L27
 L27:
-  %t60 = load i16, ptr @ctrl.i
-  %t61 = icmp sge i16 %t60, %t59
-  br i1 %t61, label %L28, label %L29
+  %t59 = add i16 %t56, 1
+  store i16 %t59, ptr @ctrl.i
+  br label %L24
 L28:
-  %t62 = load i16, ptr @ctrl.forSum
-  %t63 = load i16, ptr @ctrl.i
-  %t64 = add i16 %t62, %t63
-  store i16 %t64, ptr @ctrl.forSum
-  %t65 = load i16, ptr @ctrl.i
-  %t66 = add i16 %t65, -1
-  store i16 %t66, ptr @ctrl.i
-  br label %L27
+  %t60 = sext i8 5 to i16
+  store i16 %t60, ptr @ctrl.i
+  %t61 = sext i8 1 to i16
+  br label %L29
 L29:
-  %t67 = sext i8 0 to i16
-  store i16 %t67, ptr @ctrl.loopCount
-  br label %L30
+  %t62 = load i16, ptr @ctrl.i
+  %t63 = icmp sge i16 %t62, %t61
+  br i1 %t63, label %L30, label %L33
 L30:
-  %t68 = load i16, ptr @ctrl.loopCount
-  %t69 = sext i8 1 to i16
-  %t70 = add i16 %t68, %t69
-  store i16 %t70, ptr @ctrl.loopCount
-  %t71 = load i16, ptr @ctrl.loopCount
-  %t72 = sext i8 7 to i16
-  %t73 = icmp sge i16 %t71, %t72
-  %t74 = zext i1 %t73 to i8
-  %t75 = icmp ne i8 %t74, 0
-  br i1 %t75, label %L33, label %L34
-L33:
+  %t64 = load i16, ptr @ctrl.forSum
+  %t65 = load i16, ptr @ctrl.i
+  %t66 = add i16 %t64, %t65
+  store i16 %t66, ptr @ctrl.forSum
   br label %L31
-L35:
-  br label %L32
-L34:
-  br label %L32
-L32:
-  br label %L30
 L31:
+  %t67 = load i16, ptr @ctrl.i
+  %t68 = sub i16 %t67, %t61
+  %t69 = icmp ult i16 %t68, 1
+  br i1 %t69, label %L33, label %L32
+L32:
+  %t70 = add i16 %t67, -1
+  store i16 %t70, ptr @ctrl.i
+  br label %L29
+L33:
+  %t71 = sext i8 0 to i16
+  store i16 %t71, ptr @ctrl.loopCount
+  br label %L34
+L34:
+  %t72 = load i16, ptr @ctrl.loopCount
+  %t73 = sext i8 1 to i16
+  %t74 = add i16 %t72, %t73
+  store i16 %t74, ptr @ctrl.loopCount
+  %t75 = load i16, ptr @ctrl.loopCount
+  %t76 = sext i8 7 to i16
+  %t77 = icmp sge i16 %t75, %t76
+  %t78 = zext i1 %t77 to i8
+  %t79 = icmp ne i8 %t78, 0
+  br i1 %t79, label %L37, label %L38
+L37:
+  br label %L35
+L39:
+  br label %L36
+L38:
+  br label %L36
+L36:
+  br label %L34
+L35:
   ret void
 }
 

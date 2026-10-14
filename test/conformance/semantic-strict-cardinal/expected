@@ -1,0 +1,7 @@
+strict.mod:3:10: error: SYSTEM.CARD8 is not in the Oberon-2 report (-strict)
+strict.mod:3:27: error: SYSTEM.CARD16 is not in the Oberon-2 report (-strict)
+strict.mod:3:45: error: SYSTEM.CARD32 is not in the Oberon-2 report (-strict)
+strict.mod:3:63: error: SYSTEM.CARD64 is not in the Oberon-2 report (-strict)
+strict.mod:3:81: error: SYSTEM.CARD is not in the Oberon-2 report (-strict)
+5 error(s)
+semantic OK

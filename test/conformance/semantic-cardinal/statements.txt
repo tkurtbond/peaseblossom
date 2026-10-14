@@ -1,0 +1,74 @@
+a := 255
+a := 256
+a := -1
+a := MAX(SYSTEM.CARD8)
+q := MAX(SYSTEM.CARD64)
+q := MIN(SYSTEM.CARD64)
+d := 4294967295
+d := 4294967296
+q := big
+d := big
+q := 18446744073709551615
+q := SYSTEM.VAL(SYSTEM.CARD64, 0) - 1
+w := a
+a := w
+d := w
+q := d
+c := d
+q := c
+n := a
+a := n
+h := q
+q := h
+x := q
+q := x
+a := ch
+a := ORD(ch)
+ch := CHR(a)
+a := a + 1
+w := a + 300
+a := a + 300
+a := a + n
+a := n + 1
+IF a = 0 THEN END
+IF a < -1 THEN END
+IF a = w THEN END
+IF a = n THEN END
+IF a < d THEN END
+a := -a
+a := ABS(a)
+w := LONG(a)
+a := SHORT(w)
+q := LONG(q)
+a := SHORT(a)
+a := a DIV 2
+h := a DIV 2
+x := q * 1.5
+n := SYSTEM.VAL(INTEGER, a)
+a := SYSTEM.VAL(SYSTEM.CARD8, n)
+d := SYSTEM.VAL(SYSTEM.CARD32, -1)
+c := SYSTEM.VAL(SYSTEM.CARD, adr)
+adr := c
+s := SYSTEM.VAL(SET, d)
+d := SYSTEM.VAL(SYSTEM.CARD32, s)
+INC(a)
+INC(a, 200)
+INC(a, 300)
+INC(a, n)
+DEC(q, 2)
+CASE a OF 0..127: | 128..255: END
+CASE a OF -1: END
+CASE a OF 256: END
+CASE n OF SYSTEM.VAL(SYSTEM.CARD8, 3): END
+FOR a := 10 TO 0 BY -1 DO END
+FOR a := 0 TO n DO END
+FOR a := 0 TO 255 DO END
+FOR q := 0 TO big DO END
+a := ASH(a, 1)
+a := SYSTEM.LSH(a, 1)
+a := SYSTEM.ROT(a, -1)
+IF ODD(a) THEN END
+IF a IN s THEN END
+INCL(s, a)
+arr[a] := 0
+b := a

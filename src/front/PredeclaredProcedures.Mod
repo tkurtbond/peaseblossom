@@ -202,6 +202,9 @@ MODULE PredeclaredProcedures;
        voc's "LONGINT, or INT64 if larger", so ASH(hugeVal, 1) does not
        lose the top of a 64-bit x. *)
     IF (xt = Types.Undefined) OR (nt = Types.Undefined) THEN RETURN Types.LongInt END;
+    (* of an unsigned x, x's own type, shifted in zeros either way ("Unsigned
+       integer types") *)
+    IF Types.IsCardinal(xt) THEN RETURN xt END;
     RETURN Types.WiderOf(Types.LongInt, xt)
   END CheckAsh;
 
@@ -437,7 +440,7 @@ MODULE PredeclaredProcedures;
                         line, column: INTEGER;
                         checkExpr: CheckExprProc; checkDesignator: CheckDesignatorProc;
                         name: ARRAY OF CHAR);
-    VAR vt, nt: Types.Type; readOnly, isVariable: BOOLEAN;
+    VAR vt, nt: Types.Type; readOnly, isVariable: BOOLEAN; v: Types.Value;
   BEGIN
     IF (ArgCount(args) < 1) OR (ArgCount(args) > 2) THEN
       Diagnostics.Error(line, column, "INC/DEC expects one or two arguments"); RETURN
@@ -455,6 +458,16 @@ MODULE PredeclaredProcedures;
       nt := checkExpr(scope, Arg(args, 1));
       IF (nt # Types.Undefined) & ~Types.IsInteger(nt) THEN
         ReportType(line, column, "INC/DEC's second argument must be an integer", nt)
+      ELSIF Types.MixesFamilies(vt, nt) THEN
+        (* a constant amount is typed as it is in v + n
+           (Types.ConstantOperandType): INC(c, 1) for an unsigned c *)
+        IF ConstantEvaluator.IsConstantExpr(Arg(args, 1), scope) THEN
+          v := ConstantEvaluator.Evaluate(Arg(args, 1), scope);
+          IF v.type # Types.Undefined THEN nt := Types.ConstantOperandType(v, vt) END
+        END;
+        IF Types.MixesFamilies(vt, nt) THEN
+          ReportType(line, column, "an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL)", nt)
+        END
       END
     END
   END CheckIncDec;

@@ -90,6 +90,21 @@ MODULE InStr;
     i := SYSTEM.VAL(LONGINT, h)
   END LongInt;
 
+  (* An unsigned integer, as In.Card: decimal digits, or hexadecimal digits
+     followed by H, up to 2^64 - 1; a minus sign is not a number. c is left
+     alone if there is nothing left to read. *)
+  PROCEDURE Card*(VAR c: SYSTEM.CARD64; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+    VAR source: FormattedInput.StringSource; h: HUGEINT;
+  BEGIN
+    IF Open(source, s, pos) THEN
+      h := SYSTEM.VAL(HUGEINT, c);
+      Finish(FormattedInput.Card(source, h), source, pos);
+      c := SYSTEM.VAL(SYSTEM.CARD64, h)
+    ELSE
+      Done := FALSE
+    END
+  END Card;
+
   (* The rest of the line - up to a line feed, and without the carriage
      return before it - cut short if line cannot hold it all (the rest is
      then left for the next read). Done is FALSE at the end of s. *)

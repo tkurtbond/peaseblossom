@@ -148,7 +148,7 @@ MODULE nesteduplevel;
     FillString; Report(13, (str[0] = "h") & (str[4] = "o") & (str[5] = 0X));
     n := 0;
     FOR i := 1 TO 3 DO AddIndex END; Report(14, n = 6);
-    LoopInside; Report(15, (n = 12) & (i = 4));
+    LoopInside; Report(15, (n = 12) & (i = 3)); (* a FOR ends without stepping past its final value *)
     param := 5; UseParam; Report(16, param = 15);
     n := 3; Report(17, Pick() = 20); n := 1; Report(18, Pick() = 10); n := 9; Report(19, Pick() = 30);
     n := 4; Report(20, Sum() = 4 + v[0] + v[3]);

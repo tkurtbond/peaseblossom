@@ -70,6 +70,7 @@ MODULE ConstantEvaluator;
                                       needs to be written down. *)
 
     maxAshCount = 62; (* voc's maxExp: see EvaluateAsh *)
+    twoTo32 = 4294967296; (* 2^32: unsigned constant arithmetic, see WrappingSum *)
 
   VAR
     (* MemoryLayout.sizeModelO2/OC currently in effect for this
@@ -334,7 +335,8 @@ MODULE ConstantEvaluator;
     NEW(v);
     IF expr.literalKind = Lexer.integer THEN
       v.kind := Types.intValue;
-      v.type := IntegerLiteralType(expr, v.intVal)
+      v.type := IntegerLiteralType(expr, v.intVal);
+      v.pattern := IsWrappedHexLiteral(expr)
     ELSIF expr.literalKind = Lexer.real THEN
       v.kind := Types.realValue;
       IF expr.isLongReal THEN v.type := Types.LongReal ELSE v.type := Types.Real END;
@@ -460,6 +462,11 @@ MODULE ConstantEvaluator;
      ModuleInterface writes a CONST holding one through FormatReal.
      Returns FALSE (v left unpopulated) for a type MAX/MIN doesn't apply
      to. LLVMCodeGenerator's GenerateMaxMin uses this for every type. *)
+  PROCEDURE ^ WrapToCard(x: LONGINT; t: Types.Type): LONGINT;
+  PROCEDURE ^ WrappingProduct(x, y: LONGINT): LONGINT;
+  PROCEDURE ^ UnsignedDivision(x, y: LONGINT; VAR quotient, remainder: LONGINT);
+  PROCEDURE ^ TypedInteger(value: LONGINT; type: Types.Type): Types.Value;
+
   PROCEDURE MaxMinBound*(t: Types.Type; wantMax: BOOLEAN; VAR v: Types.Value): BOOLEAN;
   BEGIN
     NEW(v);
@@ -494,6 +501,10 @@ MODULE ConstantEvaluator;
     ELSIF t = Types.Int64 THEN
       v.type := t; v.kind := Types.intValue;
       IF wantMax THEN v.intVal := maxHugeInt ELSE v.intVal := minHugeInt END
+    ELSIF Types.IsCardinal(t) THEN
+      (* 0 and 2^n - 1; CARD64's (and a 64-bit CARD's) as its pattern, -1 *)
+      v.type := t; v.kind := Types.intValue; v.intVal := 0;
+      IF wantMax THEN v.intVal := WrapToCard(-1, t) END
     ELSIF t = Types.Char THEN
       v.type := t; v.kind := Types.charValue;
       IF wantMax THEN v.charVal := 0FFX ELSE v.charVal := 0X END
@@ -578,7 +589,7 @@ MODULE ConstantEvaluator;
      re-typed downward: ASH(1, 3) stays a LONGINT (also voc's). *)
   PROCEDURE EvaluateAsh(args: SyntaxTree.ExprNode; scope: SymbolTable.Scope;
                         line, column: INTEGER): Types.Value;
-    VAR x, n, result: Types.Value; factor, value: LONGINT; i: INTEGER;
+    VAR x, n, result: Types.Value; factor, value, rest: LONGINT; i: INTEGER;
   BEGIN
     IF (args = NIL) OR (args.next = NIL) OR (args.next.next # NIL) THEN
       Diagnostics.Error(line, column, "ASH expects two arguments");
@@ -593,6 +604,15 @@ MODULE ConstantEvaluator;
     IF (n.intVal < -maxAshCount) OR (n.intVal > maxAshCount) THEN
       Diagnostics.Error(line, column, "constant ASH count out of range");
       RETURN UndefinedValue()
+    END;
+    IF Types.IsCardinal(x.type) THEN
+      (* of an unsigned x, its own type, shifted in zeros either way *)
+      factor := 1; i := 0;
+      WHILE i < ABS(n.intVal) DO factor := factor * 2; INC(i) END;
+      IF n.intVal >= 0 THEN value := WrapToCard(WrappingProduct(x.intVal, factor), x.type)
+      ELSE UnsignedDivision(x.intVal, factor, value, rest)
+      END;
+      RETURN TypedInteger(value, x.type)
     END;
     IF n.intVal >= 0 THEN
       factor := 1; i := 0;
@@ -744,10 +764,12 @@ MODULE ConstantEvaluator;
      the generated code has it: an integer converted, a REAL at single
      precision, and in a REAL operation everything rounded to single, so
      that a folded REAL expression is what it is at run time *)
+  PROCEDURE ^ IntegerAsReal(v: Types.Value): LONGREAL;
+
   PROCEDURE RealOperand(v: Types.Value; t: Types.Type): LONGREAL;
     VAR x: LONGREAL;
   BEGIN
-    IF v.kind = Types.intValue THEN x := v.intVal
+    IF v.kind = Types.intValue THEN x := IntegerAsReal(v)
     ELSIF v.type = Types.Real THEN x := SingleValue(v)
     ELSE x := v.realVal
     END;
@@ -772,7 +794,9 @@ MODULE ConstantEvaluator;
       END;
       RETURN TypedInteger(ORD(ch), Types.Integer)
     ELSIF name = "ABS" THEN
-      IF Types.IsInteger(x.type) THEN
+      IF Types.IsCardinal(x.type) THEN
+        RETURN x (* the identity *)
+      ELSIF Types.IsInteger(x.type) THEN
         IF x.intVal = minHugeInt THEN
           Diagnostics.Error(line, column, "constant ABS result too large for HUGEINT");
           RETURN UndefinedValue()
@@ -861,7 +885,8 @@ MODULE ConstantEvaluator;
         Diagnostics.Error(line, column, "SHORT requires a LONGINT, INTEGER, LONGREAL, HUGEINT, or fixed-width integer argument");
         RETURN UndefinedValue()
       END;
-      IF ~FitsBytes(result.intVal, Types.IntegerBytes(result.type)) THEN
+      IF Types.IsCardinal(result.type) & (WrapToCard(result.intVal, result.type) # result.intVal)
+         OR ~Types.IsCardinal(result.type) & ~FitsBytes(result.intVal, Types.IntegerBytes(result.type)) THEN
         Diagnostics.Error(line, column, "constant SHORT result too large for its type");
         RETURN UndefinedValue()
       END;
@@ -976,11 +1001,43 @@ MODULE ConstantEvaluator;
       & FixedLength(expr(SyntaxTree.DesignatorExprNode).args, scope, length)
   END IsConstantLen;
 
-  PROCEDURE EvaluateDesignator(expr: SyntaxTree.DesignatorExprNode;
-                               scope: SymbolTable.Scope): Types.Value;
-    VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; length: LONGINT;
+  (* Whether expr calls SYSTEM's procedure name, however SYSTEM was named
+     in the import *)
+  PROCEDURE IsSystemCall(expr: SyntaxTree.DesignatorExprNode; scope: SymbolTable.Scope;
+                         name: ARRAY OF CHAR): BOOLEAN;
+    VAR modObj: SymbolTable.Object; d: SyntaxTree.Designator;
   BEGIN
     d := expr.designator;
+    IF (d.selectors # NIL) OR ~expr.hasParens OR (d.qualifier[0] = 0X) OR (d.name # name) THEN RETURN FALSE END;
+    modObj := SymbolTable.Find(scope, d.qualifier);
+    RETURN (modObj # NIL) & (modObj.class = SymbolTable.moduleClass)
+           & (modObj.moduleScope = SymbolTable.SystemScope)
+  END IsSystemCall;
+
+  (* SYSTEM.VAL(T, x), T an unsigned type and x an integer constant, is a
+     constant: x's low bits, as many as T has ("Unsigned integer types";
+     it is how a .sym file writes an unsigned constant, ModuleInterface) *)
+  PROCEDURE IsConstantSystemVal(expr: SyntaxTree.DesignatorExprNode; scope: SymbolTable.Scope): BOOLEAN;
+    VAR x: Types.Value;
+  BEGIN
+    IF ~IsSystemCall(expr, scope, "VAL") OR (expr.args = NIL) OR (expr.args.next = NIL)
+       OR (expr.args.next.next # NIL) OR ~Types.IsCardinal(LookupBareTypeName(scope, expr.args))
+       OR ~IsConstant(expr.args.next, scope) THEN
+      RETURN FALSE
+    END;
+    x := EvaluateExpr(expr.args.next, scope);
+    RETURN (x.kind = Types.intValue) & Types.IsInteger(x.type)
+  END IsConstantSystemVal;
+
+  PROCEDURE EvaluateDesignator(expr: SyntaxTree.DesignatorExprNode;
+                               scope: SymbolTable.Scope): Types.Value;
+    VAR obj: SymbolTable.Object; d: SyntaxTree.Designator; length: LONGINT; t: Types.Type; x: Types.Value;
+  BEGIN
+    d := expr.designator;
+    IF IsConstantSystemVal(expr, scope) THEN
+      t := LookupBareTypeName(scope, expr.args); x := EvaluateExpr(expr.args.next, scope);
+      RETURN TypedInteger(WrapToCard(x.intVal, t), t)
+    END;
     IF IsLenCall(expr, scope) THEN
       IF FixedLength(expr.args, scope, length) THEN RETURN TypedInteger(length, Types.LongInt) END;
       Diagnostics.Error(expr.line, expr.column, "not a constant expression: LEN of an open array");
@@ -1100,6 +1157,127 @@ MODULE ConstantEvaluator;
     END
   END FloorRemainder;
 
+  (* ---- unsigned integer constant arithmetic ----
+
+     The unsigned types (doc/developer/language-extensions.md, "Unsigned
+     integer types") are folded as they run: modulo 2^n, compared, divided
+     and shifted as unsigned. A value of one is held in intVal as its n bits:
+     0 to 2^n - 1 below 8 bytes, and for CARD64 (and an 8-byte CARD) the
+     64-bit pattern, negative above MAX(HUGEINT). The arithmetic below works
+     on such patterns through their two 32-bit halves, 0 to 2^32 - 1 each,
+     so that no host operation overflows: poc is built by voc, whose C
+     leaves a signed overflow undefined. *)
+
+  (* x's two halves: x = hi * 2^32 + lo, as an unsigned 64-bit value *)
+  PROCEDURE SplitHalves(x: LONGINT; VAR hi, lo: LONGINT);
+  BEGIN
+    hi := FloorQuotient(x, twoTo32); lo := FloorRemainder(x, twoTo32);
+    IF hi < 0 THEN hi := hi + twoTo32 END
+  END SplitHalves;
+
+  (* the 64-bit pattern of hi * 2^32 + lo, hi and lo each 0 to 2^32 - 1 *)
+  PROCEDURE JoinHalves(hi, lo: LONGINT): LONGINT;
+  BEGIN
+    IF hi >= twoTo32 DIV 2 THEN RETURN (hi - twoTo32) * twoTo32 + lo
+    ELSE RETURN hi * twoTo32 + lo
+    END
+  END JoinHalves;
+
+  PROCEDURE WrappingSum(x, y: LONGINT): LONGINT;
+    VAR xHi, xLo, yHi, yLo, hi, lo: LONGINT;
+  BEGIN
+    SplitHalves(x, xHi, xLo); SplitHalves(y, yHi, yLo);
+    lo := xLo + yLo;
+    hi := (xHi + yHi + lo DIV twoTo32) MOD twoTo32;
+    RETURN JoinHalves(hi, lo MOD twoTo32)
+  END WrappingSum;
+
+  PROCEDURE WrappingDifference(x, y: LONGINT): LONGINT;
+    VAR xHi, xLo, yHi, yLo, hi, lo: LONGINT;
+  BEGIN
+    SplitHalves(x, xHi, xLo); SplitHalves(y, yHi, yLo);
+    lo := xLo - yLo;
+    hi := FloorRemainder(xHi - yHi + FloorQuotient(lo, twoTo32), twoTo32);
+    RETURN JoinHalves(hi, FloorRemainder(lo, twoTo32))
+  END WrappingDifference;
+
+  (* x * y modulo 2^64, by 16-bit digits: no partial product or sum below
+     reaches 2^35 *)
+  PROCEDURE WrappingProduct(x, y: LONGINT): LONGINT;
+    CONST twoTo16 = 65536;
+    VAR a, b, r: ARRAY 4 OF LONGINT; hi, lo, carry: LONGINT; i, j: INTEGER;
+  BEGIN
+    SplitHalves(x, hi, lo);
+    a[0] := lo MOD twoTo16; a[1] := lo DIV twoTo16; a[2] := hi MOD twoTo16; a[3] := hi DIV twoTo16;
+    SplitHalves(y, hi, lo);
+    b[0] := lo MOD twoTo16; b[1] := lo DIV twoTo16; b[2] := hi MOD twoTo16; b[3] := hi DIV twoTo16;
+    carry := 0;
+    FOR i := 0 TO 3 DO
+      r[i] := carry;
+      FOR j := 0 TO i DO r[i] := r[i] + a[j] * b[i - j] END;
+      carry := r[i] DIV twoTo16; r[i] := r[i] MOD twoTo16
+    END;
+    RETURN JoinHalves(r[3] * twoTo16 + r[2], r[1] * twoTo16 + r[0])
+  END WrappingProduct;
+
+  (* x < y, both unsigned 64-bit patterns *)
+  PROCEDURE UnsignedLess(x, y: LONGINT): BOOLEAN;
+    VAR xHi, xLo, yHi, yLo: LONGINT;
+  BEGIN
+    SplitHalves(x, xHi, xLo); SplitHalves(y, yHi, yLo);
+    RETURN (xHi < yHi) OR (xHi = yHi) & (xLo < yLo)
+  END UnsignedLess;
+
+  (* x DIV y and x MOD y of two unsigned 64-bit patterns, y not 0. Both
+     below 2^63, the host divides; a divisor at or above 2^63 goes into x
+     once or not at all; and a dividend at or above it is halved first, as
+     a logical shift, and the one bit it loses put back by correcting the
+     remainder (Hacker's Delight, 9-3). *)
+  PROCEDURE UnsignedDivision(x, y: LONGINT; VAR quotient, remainder: LONGINT);
+    VAR hi, lo, half: LONGINT;
+  BEGIN
+    IF (x >= 0) & (y > 0) THEN
+      quotient := x DIV y; remainder := x MOD y
+    ELSIF y = 1 THEN
+      quotient := x; remainder := 0
+    ELSIF y < 0 THEN
+      IF UnsignedLess(x, y) THEN quotient := 0; remainder := x
+      ELSE quotient := 1; remainder := WrappingDifference(x, y)
+      END
+    ELSE
+      SplitHalves(x, hi, lo);
+      half := (hi DIV 2) * twoTo32 + ((hi MOD 2) * twoTo32 + lo) DIV 2;
+      quotient := (half DIV y) * 2;
+      remainder := WrappingDifference(x, WrappingProduct(quotient, y));
+      IF ~UnsignedLess(remainder, y) THEN
+        INC(quotient); remainder := WrappingDifference(remainder, y)
+      END
+    END
+  END UnsignedDivision;
+
+  (* x, an integer's bits, as a value of the unsigned type t: its low bits,
+     as many as t has (a pattern for 8 bytes) *)
+  PROCEDURE WrapToCard(x: LONGINT; t: Types.Type): LONGINT;
+    VAR bytes: INTEGER;
+  BEGIN
+    bytes := Types.IntegerBytes(t);
+    IF bytes = 1 THEN RETURN FloorRemainder(x, 256)
+    ELSIF bytes = 2 THEN RETURN FloorRemainder(x, 65536)
+    ELSIF bytes = 4 THEN RETURN FloorRemainder(x, twoTo32)
+    ELSE RETURN x
+    END
+  END WrapToCard;
+
+  (* an integer constant's value as a real: an unsigned pattern above
+     MAX(HUGEINT) is 2^64 more than the negative number it is as a LONGINT *)
+  PROCEDURE IntegerAsReal(v: Types.Value): LONGREAL;
+    VAR x: LONGREAL;
+  BEGIN
+    x := v.intVal;
+    IF Types.IsCardinal(v.type) & (v.intVal < 0) THEN x := x + PowerOfTwo(64) END;
+    RETURN x
+  END IntegerAsReal;
+
   (* The type a set constant has, by its value as an integer constant's is
      (voc's rule for the result of an operation on constants): a SET if every
      element is 0..31, else a SET64. Element by element, and no set constant
@@ -1145,7 +1323,10 @@ MODULE ConstantEvaluator;
       END
     ELSIF expr.op = Lexer.minus THEN
       IF Types.IsNumeric(v.type) THEN
-        IF v.kind = Types.intValue THEN
+        IF Types.IsCardinal(v.type) THEN
+          (* 0 - x, modulo 2^n *)
+          RETURN TypedInteger(WrapToCard(WrappingDifference(0, v.intVal), v.type), v.type)
+        ELSIF v.kind = Types.intValue THEN
           IF v.intVal = minHugeInt THEN
             Diagnostics.Error(expr.line, expr.column, "constant negation too large for HUGEINT");
             RETURN UndefinedValue()
@@ -1380,6 +1561,44 @@ MODULE ConstantEvaluator;
     RETURN result
   END EvaluateOrder;
 
+  (* An arithmetic operation or a comparison of two integer constants of
+     which at least one is unsigned: each typed as Types.ConstantOperandType
+     says, an error if that still mixes the families, else done in the wider
+     of the two, as at run time *)
+  PROCEDURE EvaluateCardinalOp(op: INTEGER; l, r: Types.Value; line, column: INTEGER): Types.Value;
+    VAR lType, rType, t: Types.Type; x, y, quotient, remainder: LONGINT; result: Types.Value;
+  BEGIN
+    lType := Types.ConstantOperandType(l, r.type); rType := Types.ConstantOperandType(r, l.type);
+    IF Types.MixesFamilies(lType, rType) THEN
+      ReportTypes(line, column, "an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL)", lType, rType);
+      RETURN UndefinedValue()
+    END;
+    t := Types.WiderOf(lType, rType); x := l.intVal; y := r.intVal;
+    IF (op = Lexer.plus) OR (op = Lexer.minus) OR (op = Lexer.times) THEN
+      IF op = Lexer.plus THEN x := WrappingSum(x, y)
+      ELSIF op = Lexer.minus THEN x := WrappingDifference(x, y)
+      ELSE x := WrappingProduct(x, y)
+      END;
+      RETURN TypedInteger(WrapToCard(x, t), t)
+    ELSIF (op = Lexer.divKeyword) OR (op = Lexer.modKeyword) THEN
+      IF y = 0 THEN
+        Diagnostics.Error(line, column, "division by zero");
+        RETURN UndefinedValue()
+      END;
+      UnsignedDivision(x, y, quotient, remainder);
+      IF op = Lexer.divKeyword THEN RETURN TypedInteger(quotient, t) ELSE RETURN TypedInteger(remainder, t) END
+    END;
+    NEW(result); result.type := Types.Boolean; result.kind := Types.boolValue;
+    IF op = Lexer.equal THEN result.boolVal := x = y
+    ELSIF op = Lexer.notEqual THEN result.boolVal := x # y
+    ELSIF op = Lexer.less THEN result.boolVal := UnsignedLess(x, y)
+    ELSIF op = Lexer.lessEqual THEN result.boolVal := ~UnsignedLess(y, x)
+    ELSIF op = Lexer.greater THEN result.boolVal := UnsignedLess(y, x)
+    ELSE result.boolVal := ~UnsignedLess(x, y)
+    END;
+    RETURN result
+  END EvaluateCardinalOp;
+
   PROCEDURE EvaluateBinary(expr: SyntaxTree.BinaryExprNode;
                            scope: SymbolTable.Scope): Types.Value;
     VAR l, r, result: Types.Value;
@@ -1387,6 +1606,11 @@ MODULE ConstantEvaluator;
     l := EvaluateExpr(expr.left, scope); r := EvaluateExpr(expr.right, scope);
     IF (l.type = Types.Undefined) OR (r.type = Types.Undefined) THEN
       RETURN UndefinedValue()
+    END;
+    IF (Types.IsCardinal(l.type) OR Types.IsCardinal(r.type)) & Types.IsInteger(l.type) & Types.IsInteger(r.type)
+       & (expr.op # Lexer.slash) & (expr.op # Lexer.inKeyword) & (expr.op # Lexer.ampersand)
+       & (expr.op # Lexer.orKeyword) & (expr.op # Lexer.isKeyword) THEN
+      RETURN EvaluateCardinalOp(expr.op, l, r, expr.line, expr.column)
     END;
     IF (expr.op = Lexer.plus) OR (expr.op = Lexer.minus) OR (expr.op = Lexer.times) THEN
       IF Types.IsNumeric(l.type) & Types.IsNumeric(r.type) THEN
@@ -2119,7 +2343,7 @@ MODULE ConstantEvaluator;
     END;
     IF d.selectors # NIL THEN RETURN FALSE END;
     IF expr.hasParens THEN
-      IF d.qualifier[0] # 0X THEN RETURN FALSE END;
+      IF d.qualifier[0] # 0X THEN RETURN IsConstantSystemVal(expr, scope) END;
       obj := SymbolTable.Find(scope, d.name);
       IF (obj = NIL) OR (obj.type # Types.PredeclaredProcedureType) THEN RETURN FALSE END;
       IF (d.name = "MAX") OR (d.name = "MIN") OR (d.name = "SIZE") THEN

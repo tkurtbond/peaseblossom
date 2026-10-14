@@ -349,6 +349,14 @@ BEGIN
   InsertSystemType("INT16", Types.Int16);
   InsertSystemType("INT32", Types.Int32);
   InsertSystemType("INT64", Types.Int64);
+  (* the unsigned integers (doc/developer/language-extensions.md, "Unsigned
+     integer types"): CARD8..CARD64 of exactly 1/2/4/8 bytes, and CARD, as
+     wide as ADDRESS *)
+  InsertSystemType("CARD8", Types.Card8);
+  InsertSystemType("CARD16", Types.Card16);
+  InsertSystemType("CARD32", Types.Card32);
+  InsertSystemType("CARD64", Types.Card64);
+  InsertSystemType("CARD", Types.Card);
   InsertSystemType("SET32", Types.Set);
   InsertSystemType("SET64", Types.Set64);
   InsertSystemProc("ADR"); InsertSystemProc("GET"); InsertSystemProc("PUT");
@@ -359,5 +367,8 @@ BEGIN
   MarkExtension(SystemScope, "ADDRESS");
   MarkExtension(SystemScope, "INT8"); MarkExtension(SystemScope, "INT16");
   MarkExtension(SystemScope, "INT32"); MarkExtension(SystemScope, "INT64");
+  MarkExtension(SystemScope, "CARD8"); MarkExtension(SystemScope, "CARD16");
+  MarkExtension(SystemScope, "CARD32"); MarkExtension(SystemScope, "CARD64");
+  MarkExtension(SystemScope, "CARD");
   MarkExtension(SystemScope, "SET32"); MarkExtension(SystemScope, "SET64")
 END SymbolTable.

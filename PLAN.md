@@ -948,7 +948,13 @@ A24, moved here 2026-09-26), are Phase 14 now.
    other; it and the `CARDn` of its width include each other, and it is
    otherwise a member of the CARD family (`SYSTEM.VAL` to and from
    `ADDRESS`). No signed counterpart: `ADDRESS` is the signed word-sized
-   type, under that name only (the user). Not built yet.
+   type, under that name only (the user). **Implemented 2026-10-14** for
+   the LLVM backend, with the new end of every `FOR` loop and the text
+   procedures `Card` and `CardHex` (`Out`, `Err`, `OutStr`) and `Card`
+   (`In`, `InStr`), named with the user that day; what was settled while
+   building it, and the fixtures, are in `language-extensions.md`,
+   "Unsigned integer types". The VAX backend's part follows on the `vax`
+   branch (Phase 17).
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the

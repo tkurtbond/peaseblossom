@@ -172,3 +172,7 @@ test/conformance/llvm-readonly-params/llvm-readonly-params
 test/conformance/llvm-outstr/llvm-outstr
 test/conformance/llvm-instr/llvm-instr
 test/conformance/llvm-real-constant-folding/llvm-real-constant-folding
+test/conformance/llvm-cardinal/llvm-cardinal
+test/conformance/llvm-cardinal-import/llvm-cardinal-import
+test/conformance/llvm-cardinal-traps/*.exe
+test/conformance/llvm-for-loop-end/llvm-for-loop-end

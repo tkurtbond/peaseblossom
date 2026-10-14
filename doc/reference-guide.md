@@ -56,7 +56,9 @@ compiled under one does not link with a program compiled under the other.
 | `SYSTEM.SET64` | 8 | 8 | subsets of 0..63 |
 | `SYSTEM.BYTE` | 1 | 1 | a byte |
 | `SYSTEM.INT8`, `INT16`, `INT32`, `INT64` | 1, 2, 4, 8 | 1, 2, 4, 8 | two's complement of that width |
+| `SYSTEM.CARD8`, `CARD16`, `CARD32`, `CARD64` | 1, 2, 4, 8 | 1, 2, 4, 8 | 0..2^n-1, n the width in bits |
 | `SYSTEM.ADDRESS` | word | word | an integer as wide as a pointer |
+| `SYSTEM.CARD` | word | word | an unsigned integer as wide as a pointer |
 | pointers, procedure values, `SYSTEM.PTR` | word | word | `NIL` or an address |
 
 Sizes are in bytes. Integers are two's complement. `MAX(REAL)` is
@@ -304,6 +306,56 @@ constant with an element above MAX(SET) is not in the Oberon-2 report
 (-strict)`, and a constructor's element above 31, `a set element above
 MAX(SET) is not in the Oberon-2 report (-strict)`.
 
+### Unsigned integer types
+
+`SYSTEM.CARD8`, `CARD16`, `CARD32` and `CARD64` are the integers 0 to
+2^n - 1 in exactly n bits under both size models. `SYSTEM.CARD` is one as
+wide as `SYSTEM.ADDRESS`, 32 or 64 bits by the target: a type of its own,
+which the `CARDn` of its width includes and is included in. They are a
+family apart from the signed integers: `CARD8` ⊆ `CARD16` ⊆ `CARD32` ⊆
+`CARD64`, and every one of them ⊆ `REAL` ⊆ `LONGREAL`. No CARD type
+includes a signed one, nor a signed one a CARD type, so an operation, a
+comparison or an assignment that mixes the two is an error, `an unsigned
+and a signed integer cannot be mixed (use SYSTEM.VAL)`. `SYSTEM.VAL` is the
+only way across; it extends a CARD with zeros and a signed value with its
+sign.
+
+- **Constants.** A non-negative integer constant can be used with a CARD
+  type wherever its value fits. Next to a CARD operand it takes the
+  narrowest CARD type that holds it and is at least as wide as that
+  operand: with `c` a `CARD8`, `c + 1` is a `CARD8` and `c + 300` a
+  `CARD16`. A negative constant mixes the families. A constant of a CARD
+  type is written `SYSTEM.VAL(SYSTEM.CARD32, 4294967295)`. `MIN` of each
+  type is 0 and `MAX` is 2^n - 1.
+- **Values above `MAX(HUGEINT)`** are hexadecimal patterns: where a
+  `CARD64` takes it, `0FFFFFFFFFFFFFFFFH` is 2^64 - 1. As a constant
+  expression on its own it is still -1, so 2^64 - 2 is
+  `MAX(SYSTEM.CARD64) - 1`, not `0FFFFFFFFFFFFFFFFH - 1`. A decimal
+  literal above `MAX(HUGEINT)` is an error.
+- **Arithmetic wraps** modulo 2^n, `INC` and `DEC` included: `MAX + 1` is
+  0 and `0 - 1` is `MAX`. Unary minus is `0 - x`. `ABS` is the identity.
+- **Comparisons, `DIV` and `MOD` are unsigned.** A zero divisor is not
+  checked.
+- **`LONG` and `SHORT`** stay in the family: `LONG` of a `CARD8` is a
+  `CARD16`. `SHORT` keeps the low bits, and traps under `-range-checks`
+  (status 14).
+- **Shifts.** `ASH` and `SYSTEM.LSH` shift zeros in from the left, and
+  `ASH`'s result has `x`'s type. `SYSTEM.ROT` rotates within the width.
+- **`ORD`, `LEN` and `SIZE`** keep their signed types, so comparing a CARD
+  with `LEN(a)` of an open array needs `SYSTEM.VAL`.
+- **Indexes, `CASE` and `FOR`.** A CARD index is checked as any other. A
+  `CASE` on a CARD selector takes labels from 0 up to its `MAX`, and a
+  label of a CARD type is an error for a signed selector. A `FOR` control
+  variable of a CARD type may count down: `FOR c := 10 TO 0 BY -1` runs 11
+  times.
+- **`SYSTEM.BYTE`** takes a `CARD8`.
+- **Text.** `Out`, `Err` and `OutStr` write any CARD in decimal with
+  `Card(x, n)` and in hexadecimal with `CardHex(x, n)`; `In` and `InStr`
+  read one with `Card(c)`, `c` a `CARD64` (section 9).
+
+Under `-strict`, naming one is an error, such as `SYSTEM.CARD32 is not in
+the Oberon-2 report (-strict)`.
+
 ### Read-only parameters
 
 A formal parameter written `x-`, as in voc: `PROCEDURE Length(s-: ARRAY OF
@@ -337,15 +389,19 @@ is allowed.
   is an error: `comparing SYSTEM.PTR with another pointer type is not in the
   Oberon-2 report (-strict)`.
 - **`SYSTEM`'s names beyond Appendix C** (section 4): `ADDRESS`, `INT8`,
-  `INT16`, `INT32`, `INT64`, `SET32`, `SET64`. Under `-strict` naming one is
-  an error, such as `SYSTEM.INT32 is not in the Oberon-2 report (-strict)`.
+  `INT16`, `INT32`, `INT64`, `SET32`, `SET64`, `CARD8`, `CARD16`, `CARD32`,
+  `CARD64`, `CARD`. Under `-strict` naming one is an error, such as
+  `SYSTEM.INT32 is not in the Oberon-2 report (-strict)`.
 
 ### Not extensions, though the report differs
 
 - **The final value of `FOR`**: in `FOR v := low TO high`, `high` must be
   assignment compatible with `v`, as `low` is, where §9.8 asks only that it
   be comparable: a wider or real `high` is a compile-time error. `low` is
-  assigned to `v` before `high` is evaluated, once.
+  assigned to `v` before `high` is evaluated, once. The loop ends before a
+  step that would take `v` past `high`, so `FOR i := 0 TO MAX(INTEGER)`
+  ends, where the report's `WHILE` would wrap and go on, and after a loop
+  that ran, `v` holds the last value it had in the body.
 - **A guard, `IS` or `WITH` on a pointer names a pointer type**, never a
   record type; `=` and `#` compare pointers of related types only, and
   procedure values of one type only.
@@ -365,13 +421,14 @@ report's sense: nothing checks what they do.
 | `BIT(a, n)` | Bit `n MOD 8` of the byte at `a + n DIV 8` (floored), bit 0 the lowest: a bit string starting at `a`, for any `n`. One byte is read. |
 | `GET(a, v)`, `PUT(a, x)` | Read `v`, or write `x`, at address `a`, at the type of `v` or `x` (a bare numeral at its minimal type), with no alignment assumed. |
 | `MOVE(a0, a1, n)` | Copies `n` bytes from `a0` to `a1`; nothing when `n <= 0`. |
-| `VAL(T, x)` | `x`'s bits as a `T`; between scalars of different sizes, sign-extended or truncated. |
+| `VAL(T, x)` | `x`'s bits as a `T`; between scalars of different sizes, truncated, or extended with zeros for an unsigned `x` and with its sign otherwise. |
 | `LSH(x, n)`, `ROT(x, n)` | `x` shifted or rotated left by `n`, right for a negative `n`, at `x`'s own width; the result has `x`'s type. `LSH` by the width or more gives 0; `ROT` counts modulo the width. |
 | `NEW(v, n)` | `n` zeroed bytes for the pointer `v`, which the collector keeps while something points at them but never looks inside: they must not hold the only reference to anything. `n <= 0`, or too large, is a trap (status 7). |
-| `BYTE` | One byte. A `CHAR` or `SHORTINT` is assignable to it, not back. A parameter of type `BYTE` takes a `CHAR`, a one-byte `SHORTINT` or a `BYTE`, a `VAR` one a `BOOLEAN` too; a `VAR x: ARRAY OF BYTE` takes a variable of any type, its length the variable's size. |
+| `BYTE` | One byte. A `CHAR`, `SHORTINT` or `CARD8` is assignable to it, not back. A parameter of type `BYTE` takes a `CHAR`, a one-byte `SHORTINT`, a `CARD8` or a `BYTE`, a `VAR` one a `BOOLEAN` too; a `VAR x: ARRAY OF BYTE` takes a variable of any type, its length the variable's size. |
 | `PTR` | A pointer to anything: any pointer is assignable to it. It cannot be dereferenced, `NEW`ed, guarded, tested with `IS` or used in `WITH`; assign it to a typed pointer first. |
 | `INT8`, `INT16`, `INT32`, `INT64` | Integers of exactly 1, 2, 4 and 8 bytes under both size models, placed among the integers by size as `ADDRESS` is. An integer constant whose value fits is assignable to each. |
 | `SET32`, `SET64` | Section 3. |
+| `CARD8`, `CARD16`, `CARD32`, `CARD64`, `CARD` | Unsigned integers of exactly 1, 2, 4 and 8 bytes, and of a pointer's width: section 3. |
 
 `GET`, `PUT` and `MOVE` happen once each, where the program has them,
 whatever the optimization. `CC`, `GETREG` and `PUTREG` are not implemented.
@@ -425,7 +482,8 @@ is a trap (status 8): it is the one arithmetic trap.
 (`CHR(300)` is `","`); with `-range-checks` they trap (status 14).
 
 **`ASH(x, n)`** shifts left by `n`, or right (flooring) for a negative `n`;
-the result has the wider of `LONGINT` and `x`'s type. A count of the
+the result has the wider of `LONGINT` and `x`'s type, or `x`'s own for an
+unsigned `x`. A count of the
 result's width or more gives 0, or the sign for a right shift.
 
 **`LONG` and `SHORT`** of the `SYSTEM.INTn` types and `HUGEINT` go by size:
@@ -758,6 +816,26 @@ MODULE Args;
 END Args.
 ```
 
+### CardinalTypes (poc's own)
+
+```text
+The unsigned type Err's Card and CardHex take, under a name voc can
+compile too: SYSTEM.CARD64 here, which every CARD type is included in
+(AGENTS.md, "Unsigned integer types"). voc compiles Err for Stage 0
+(tools/bootstrap/stage0) and has no unsigned types, so Stage 0
+compiles rtl/voc's twin of this module instead, where Card64 is
+HUGEINT; Err's procedures take the bits with SYSTEM.VAL(HUGEINT, x),
+which both compile. Internal, like FormattedText: a program names
+SYSTEM.CARD64.
+```
+
+```oberon
+MODULE CardinalTypes;
+  TYPE
+    Card64* = SYSTEM.CARD64;
+END CardinalTypes.
+```
+
 ### Console
 
 ```text
@@ -819,7 +897,7 @@ END Console.
 
 ```text
 Phase 11 A26: Out's interface - Open, Flush, Char, String, Int, Hex,
-Ln, Real, LongReal, Ten and IsConsole - writing to the standard error
+Card, CardHex, Ln, Real, LongReal, Ten and IsConsole - writing to the standard error
 stream (descriptor 2) instead of standard output, for messages that
 must not mix with a program's output when it is redirected. voc has no
 such module; the names and what each procedure prints are Out's (see
@@ -859,6 +937,17 @@ MODULE Err;
      be within 1..16): as many as x needs if that is more - but a negative
      x gets exactly n, the low ones of its two's complement, as in voc. *)
   PROCEDURE Hex*(x: HUGEINT; n: HUGEINT);
+
+  (* x, of any CARD type, in decimal, right-aligned in a field n characters
+     wide, as Int (AGENTS.md, "Unsigned integer types"). Its type,
+     CardinalTypes.Card64, is SYSTEM.CARD64, under a name voc can compile
+     for Stage 0 (see CardinalTypes). *)
+  PROCEDURE Card*(x: CardinalTypes.Card64; n: HUGEINT);
+
+  (* x, of any CARD type, as hexadecimal digits, upper case, at least n of
+     them (n is taken to be within 1..16), and as many as x needs if that
+     is more *)
+  PROCEDURE CardHex*(x: CardinalTypes.Card64; n: HUGEINT);
 
   (* 10^e for e >= 0, by repeated squaring - exact up to 10^22 *)
   PROCEDURE Ten*(e: INTEGER): LONGREAL;
@@ -1201,6 +1290,13 @@ MODULE FormattedInput;
      number. *)
   PROCEDURE HugeInt*(VAR source: Source; VAR h: HUGEINT): BOOLEAN;
 
+  (* An unsigned integer, after any blanks: decimal digits, or hexadecimal
+     digits and an H, as HugeInt reads them but with no minus sign; h holds
+     its bits, a value up to 2^64 - 1 (larger ones wrap). A minus sign is
+     not a number: FALSE, h 0, and the sign is not read. h is left alone if
+     there is nothing to read. *)
+  PROCEDURE Card*(VAR source: Source; VAR h: HUGEINT): BOOLEAN;
+
   (* The rest of the line - up to a line feed, and without the carriage
      return before it - cut short if line cannot hold it all (the rest is
      then left for the next read). FALSE if there is nothing to read. *)
@@ -1266,6 +1362,15 @@ MODULE FormattedOutput;
      x gets exactly n, the low ones of its two's complement, as in voc. *)
   PROCEDURE Hex*(descriptor: SYSTEM.INT32; x: HUGEINT; n: HUGEINT);
 
+  (* x's 64 bits read as an unsigned integer, in decimal, right-aligned in
+     a field n characters wide, as Int *)
+  PROCEDURE Card*(descriptor: SYSTEM.INT32; x: HUGEINT; n: HUGEINT);
+
+  (* x's 64 bits read as an unsigned integer, in hexadecimal digits, upper
+     case: at least n of them (n is taken to be within 1..16), as many as
+     the value needs if that is more *)
+  PROCEDURE CardHex*(descriptor: SYSTEM.INT32; x: HUGEINT; n: HUGEINT);
+
   (* 10^e for e >= 0, by repeated squaring - exact up to 10^22 *)
   PROCEDURE Ten*(e: INTEGER): LONGREAL;
 
@@ -1318,6 +1423,19 @@ MODULE FormattedText;
      be within 1..16): as many as x needs if that is more - but a negative
      x gets exactly n, the low ones of its two's complement, as in voc. *)
   PROCEDURE Hex*(x: HUGEINT; n: HUGEINT; VAR text: ARRAY OF CHAR);
+
+  (* x's 64 bits read as an unsigned integer (a SYSTEM.CARD64's, taken as
+     a HUGEINT so that voc can compile this module), in decimal: x itself
+     if it is not negative, else x + 2^64. For a negative x, that is 2h + b
+     with b its low bit and h = ASH(x, -1) + 2^63 (the arithmetic shift,
+     moved up by 2^63, is the logical one), and h = 5q + s, so the value
+     is 10q + 2s + b: q's digits, then 2s + b. *)
+  PROCEDURE Card*(x: HUGEINT; VAR text: ARRAY OF CHAR);
+
+  (* x's 64 bits read as an unsigned integer, as Card, in hexadecimal
+     digits, upper case: at least n of them (n is taken to be within
+     1..16), and as many as the value needs if that is more. *)
+  PROCEDURE CardHex*(x: HUGEINT; n: HUGEINT; VAR text: ARRAY OF CHAR);
 
   (* 10^e for e >= 0, by repeated squaring - exact up to 10^22 *)
   PROCEDURE Ten*(e: INTEGER): LONGREAL;
@@ -1524,7 +1642,8 @@ END GarbageCollectedHeap.
 the Oakwood Guidelines' In module, formatted
 input from the standard input stream, with voc's interface (src/
 runtime/In.Mod): Open, Char, Int, LongInt, HugeInt, Real, LongReal,
-Line, String, Name and the flag Done. Each reads what it can from the
+Line, String, Name and the flag Done; and poc's Card, which reads a
+value of the unsigned types. Each reads what it can from the
 stream, sets Done to say whether it found what it was asked for, and
 leaves its argument alone (or, for some, zero) when it did not.
 
@@ -1571,6 +1690,12 @@ MODULE In;
   PROCEDURE HugeInt*(VAR h: HUGEINT);
   PROCEDURE Int*(VAR i: INTEGER);
   PROCEDURE LongInt*(VAR i: LONGINT);
+
+  (* An unsigned integer (AGENTS.md, "Unsigned integer types"): decimal
+     digits, or hexadecimal digits followed by H, up to 2^64 - 1; a minus
+     sign is not a number (Done FALSE, c 0). A program with a narrower CARD
+     variable reads into a SYSTEM.CARD64 and SHORTs it. *)
+  PROCEDURE Card*(VAR c: SYSTEM.CARD64);
 
   (* The rest of the line - up to a line feed, and without the carriage
      return before it - cut short if line cannot hold it all (the rest is
@@ -1641,6 +1766,11 @@ MODULE InStr;
   (* HugeInt, narrowed to the low bits of a LONGINT, as In.LongInt: 0 if
      there is nothing left to read *)
   PROCEDURE LongInt*(VAR i: LONGINT; s-: ARRAY OF CHAR; VAR pos: LONGINT);
+
+  (* An unsigned integer, as In.Card: decimal digits, or hexadecimal digits
+     followed by H, up to 2^64 - 1; a minus sign is not a number. c is left
+     alone if there is nothing left to read. *)
+  PROCEDURE Card*(VAR c: SYSTEM.CARD64; s-: ARRAY OF CHAR; VAR pos: LONGINT);
 
   (* The rest of the line - up to a line feed, and without the carriage
      return before it - cut short if line cannot hold it all (the rest is
@@ -2219,7 +2349,8 @@ END Oberon.
 the Oakwood Guidelines' Out module, formatted
 output to the standard output stream, with voc's interface (src/
 runtime/Out.Mod): Open, Flush, Char, String, Int, Hex, Ln, Real,
-LongReal, and voc's Ten and IsConsole. It is the module poc's own
+LongReal, and voc's Ten and IsConsole; and poc's Card and CardHex,
+which write a value of the unsigned types. It is the module poc's own
 Diagnostics.Mod prints through (Char, String, Int, Ln).
 
 The formatting is FormattedOutput's, shared with Err (Phase 11 A26),
@@ -2269,6 +2400,15 @@ MODULE Out;
      x gets exactly n, the low ones of its two's complement, as in voc. *)
   PROCEDURE Hex*(x: HUGEINT; n: HUGEINT);
 
+  (* x, of any CARD type, in decimal, right-aligned in a field n characters
+     wide, as Int (AGENTS.md, "Unsigned integer types") *)
+  PROCEDURE Card*(x: SYSTEM.CARD64; n: HUGEINT);
+
+  (* x, of any CARD type, as hexadecimal digits, upper case, at least n of
+     them (n is taken to be within 1..16), and as many as x needs if that
+     is more *)
+  PROCEDURE CardHex*(x: SYSTEM.CARD64; n: HUGEINT);
+
   (* 10^e for e >= 0, by repeated squaring - exact up to 10^22 *)
   PROCEDURE Ten*(e: INTEGER): LONGREAL;
 
@@ -2287,7 +2427,8 @@ END Out.
 ### OutStr
 
 ```text
-Out's output procedures - Char, String, Int, Hex, Ln, Real, LongReal -
+Out's output procedures - Char, String, Int, Hex, Card, CardHex, Ln,
+Real, LongReal -
 appending to a string instead of writing to standard output (PLAN.md,
 "Ongoing library enhancements" 1). Each takes Out's parameters followed
 by s, and adds its text at s's first 0X, so a run of calls builds a
@@ -2326,6 +2467,15 @@ MODULE OutStr;
      be within 1..16): as many as x needs if that is more - but a negative
      x gets exactly n, the low ones of its two's complement, as in voc. *)
   PROCEDURE Hex*(x: HUGEINT; n: HUGEINT; VAR s: ARRAY OF CHAR);
+
+  (* x, of any CARD type, in decimal, right-aligned in a field n characters
+     wide, as Int (AGENTS.md, "Unsigned integer types") *)
+  PROCEDURE Card*(x: SYSTEM.CARD64; n: HUGEINT; VAR s: ARRAY OF CHAR);
+
+  (* x, of any CARD type, as hexadecimal digits, upper case, at least n of
+     them (n is taken to be within 1..16), and as many as x needs if that
+     is more *)
+  PROCEDURE CardHex*(x: SYSTEM.CARD64; n: HUGEINT; VAR s: ARRAY OF CHAR);
 
   (* x in exponential form (d.dddE+dd), right-aligned in a field of n
      characters: as many digits as fit, from 2 to 9, at least 6 generated

@@ -31,9 +31,8 @@ exit=0
 -1 IN {0..31}: FALSE
 exit=0
 == -O2 case 8
-32766 32767 -32768 -32767 -32766 -32765 
-the loop went on past MAX(INTEGER)
-exit=77
+32766 32767 the loop ended
+exit=0
 == -O2 case 9
 REAL 1.0/0.0 survived, is large: TRUE
 0.0/0.0 survived, is not equal to itself: TRUE
@@ -75,9 +74,8 @@ exit=0
 -1 IN {0..31}: FALSE
 exit=0
 == -OC case 8
-2147483646 2147483647 -2147483648 -2147483647 -2147483646 -2147483645 
-the loop went on past MAX(INTEGER)
-exit=77
+2147483646 2147483647 the loop ended
+exit=0
 == -OC case 9
 REAL 1.0/0.0 survived, is large: TRUE
 0.0/0.0 survived, is not equal to itself: TRUE

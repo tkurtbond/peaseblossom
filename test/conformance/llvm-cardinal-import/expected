@@ -1,0 +1,30 @@
+== -O2
+2147483647
+18446744073709551614 FFFFFFFFFFFFFFFE
+top > 5
+small > 150
+0 1
+00FF8001
+== -OC
+2147483647
+18446744073709551614 FFFFFFFFFFFFFFFE
+top > 5
+small > 150
+0 1
+00FF8001
+== CardLib.sym
+MODULE CardLib;
+  IMPORT S := SYSTEM;
+  CONST
+    top* = S.VAL(S.CARD32, 4294967295);
+    huge* = S.VAL(S.CARD64, 0FFFFFFFFFFFFFFFEH);
+    small* = S.VAL(S.CARD8, 200);
+  TYPE
+    Color* = RECORD red*: S.CARD8; green*: S.CARD8; blue*: S.CARD8; packed: S.CARD32 END;
+  VAR
+    count*: S.CARD16;
+  PROCEDURE^ Half*(x: S.CARD32): S.CARD32;
+  PROCEDURE^ Bump*(VAR x: S.CARD): S.CARD;
+  PROCEDURE^ Pack*(VAR c: Color);
+  PROCEDURE^ Packed*(c: Color): S.CARD32;
+END CardLib.

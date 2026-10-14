@@ -106,4 +106,6 @@ check llvm-math-extra mathextra.mod
 check llvm-system-shifts shiftstest.mod
 check llvm-system-bytes bytestest.mod
 check llvm-system-extra systemextra.mod
+check llvm-cardinal cardinal.mod
+check llvm-for-loop-end forend.mod
 . ../../testresult.sh

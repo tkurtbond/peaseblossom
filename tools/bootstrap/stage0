@@ -49,9 +49,10 @@ export PATH="$VOC_BIN_DIR:$PATH"
 
 cd "$BUILD/obj"
 # Err (Phase 11 D11), which Diagnostics and Poc write their errors through:
-# rtl/llvm's own source, over voc's version of the one module that calls the
-# operating system
+# rtl/llvm's own source, over voc's versions of the one module that calls the
+# operating system and of the one that names an unsigned type
 voc -OC -s "$ROOT/rtl/voc/FileDescriptorOutput.Mod"
+voc -OC -s "$ROOT/rtl/voc/CardinalTypes.Mod"
 voc -OC -s "$ROOT/rtl/llvm/RealDigits.Mod"
 voc -OC -s "$ROOT/rtl/llvm/FormattedText.Mod"
 voc -OC -s "$ROOT/rtl/llvm/FormattedOutput.Mod"
