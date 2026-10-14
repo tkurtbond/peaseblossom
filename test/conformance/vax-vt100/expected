@@ -1,0 +1,4 @@
+VAX build vt100same -O2 exit 0
+VAX build vt100diff -O2 exit 0
+VAX build vt100same -OC exit 0
+VAX build vt100diff -OC exit 0

@@ -1,7 +1,13 @@
-;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.9, proposal 2, approved by the user); reviewed by the user,
-;; 2026-10-13. It replaces the file the user reviewed on 2026-10-13. Why
+;; Written by Claude, 2026-10-14, for Phase 17 step 3 (design section
+;; 19.17, proposal 2, approved by the user); reviewed by the user,
+;; 2026-10-14. It replaces the file the user reviewed on 2026-10-13. Why
 ;; this is right:
+;; - Flush now calls POC_FLUSH_OUTPUT (.EXTERNAL, CALLS #0), PocRtl's
+;;   routine that writes Out's line so far to a terminal without ending
+;;   it, and does nothing to a file. The header comment is six lines
+;;   longer, so every line number after it is six more, the one a trap
+;;   passes (PUSHL #88) included.
+;; The rest is as the user reviewed it on 2026-10-13:
 ;; - Out now imports FormattedOutput, not FormattedText, and calls it
 ;;   for everything but IsConsole, as on LLVM; its own Field is gone. Its
 ;;   initializer calls LINEOUTPUT_INIT, then FORMATTEDOUTPUT_INIT, then
@@ -47,6 +53,7 @@ OUT_ISCONSOLE_LM98L9IC::
 
 ; the symbols it uses of other modules
 	.EXTERNAL	POC_MODULE
+	.EXTERNAL	POC_FLUSH_OUTPUT
 	.EXTERNAL	FORMATTEDOUTPUT_CHAR_1P48F69C
 	.EXTERNAL	FORMATTEDOUTPUT_STRING_DF2I8F7P
 	.EXTERNAL	FORMATTEDOUTPUT_LN_OU3EA87E
@@ -109,13 +116,15 @@ L_MODULE_DESCRIPTOR:
 	RET
 ; PROCEDURE Flush
 	.ENTRY	OUT_FLUSH_ITJ00AMN, ^M<>
+; line 47
+	CALLS	#0, G^POC_FLUSH_OUTPUT
 	RET
 ; PROCEDURE Char
 	.ENTRY	OUT_CHAR_EIQL42IB, ^M<>
 	SUBL2	#16, SP
 	CLRL	-4(FP)
 	MOVB	4(AP), -1(FP)
-; line 46
+; line 52
 	MOVL	#2, -16(FP)
 	CLRL	-12(FP)
 	MOVZBL	-1(FP), -8(FP)
@@ -144,7 +153,7 @@ L_2:
 	TSTL	(SP)
 	BNEQ	L_1
 	ADDL2	#4, SP
-; line 53
+; line 59
 	MOVL	#3, -20(FP)
 	CLRL	-16(FP)
 	MOVL	-4(FP), -12(FP)
@@ -154,7 +163,7 @@ L_2:
 ; PROCEDURE Ln
 	.ENTRY	OUT_LN_1M29JSO9, ^M<>
 	SUBL2	#8, SP
-; line 58
+; line 64
 	MOVL	#1, -8(FP)
 	CLRL	-4(FP)
 	CALLG	-8(FP), G^FORMATTEDOUTPUT_LN_OU3EA87E
@@ -166,7 +175,7 @@ L_2:
 	CLRQ	-8(FP)
 	MOVQ	@8(AP), -16(FP)
 	MOVQ	@4(AP), -8(FP)
-; line 66
+; line 72
 	MOVL	#3, -32(FP)
 	CLRL	-28(FP)
 	MOVQ	-8(FP), -40(FP)
@@ -182,7 +191,7 @@ L_2:
 	CLRQ	-8(FP)
 	MOVQ	@8(AP), -16(FP)
 	MOVQ	@4(AP), -8(FP)
-; line 74
+; line 80
 	MOVL	#3, -32(FP)
 	CLRL	-28(FP)
 	MOVQ	-8(FP), -40(FP)
@@ -196,13 +205,13 @@ L_2:
 	SUBL2	#12, SP
 	CLRL	-4(FP)
 	MOVW	4(AP), -2(FP)
-; line 81
+; line 87
 	MOVL	#1, -12(FP)
 	CVTWL	-2(FP), -8(FP)
 	CALLG	-12(FP), G^FORMATTEDOUTPUT_TEN_1700MGMV
 	RET
 	PUSHL	#3
-	PUSHL	#82
+	PUSHL	#88
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -212,7 +221,7 @@ L_2:
 	CLRQ	-8(FP)
 	MOVW	8(AP), -6(FP)
 	MOVF	4(AP), -4(FP)
-; line 90
+; line 96
 	MOVL	#3, -24(FP)
 	CLRL	-20(FP)
 	MOVF	-4(FP), -16(FP)
@@ -226,7 +235,7 @@ L_2:
 	CLRL	-4(FP)
 	MOVW	8(AP), -10(FP)
 	MOVQ	@4(AP), -8(FP)
-; line 97
+; line 103
 	MOVL	#3, -28(FP)
 	CLRL	-24(FP)
 	MOVG	-8(FP), -36(FP)
@@ -240,9 +249,9 @@ OUT_FINDCONSOLE_BCU5940P:
 	SUBL2	#28, SP
 	CLRQ	-16(FP)
 	CLRQ	-8(FP)
-; line 103
+; line 109
 	MOVC5	#10, L_STR_1, #0, #16, -16(FP)
-; line 104
+; line 110
 	MOVL	#2, -28(FP)
 	MOVAB	-16(FP), -24(FP)
 	MOVL	#10, -20(FP)
@@ -266,7 +275,7 @@ L_BODY:
 	CALLS	#0, G^FORMATTEDOUTPUT_INIT
 	PUSHAL	L_MODULE_DESCRIPTOR
 	CALLS	#1, G^POC_MODULE
-; line 108
+; line 114
 	CALLS	#0, OUT_FINDCONSOLE_BCU5940P
 	RET
 

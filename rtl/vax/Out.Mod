@@ -14,8 +14,11 @@ MODULE Out;
      (section 19.9, proposal 2). It writes to SYS$OUTPUT through
      LineOutput (step 4, section 15): a line is kept until Ln and written
      as one record, and one not ended by Ln when the program ends is written by
-     an exit handler. Flush therefore does nothing, as on LLVM: writing
-     part of a line would end the record there. *)
+     an exit handler. Flush writes the line so far to a terminal without
+     ending it, so that VT100's sequences reach the screen when they are
+     sent (POC_FLUSH_OUTPUT; section 19.17, proposal 2); to a file it
+     does nothing, since writing part of a line would end the record
+     there. *)
 
   IMPORT LineOutput, FormattedOutput;
 
@@ -30,15 +33,18 @@ MODULE Out;
     IsConsole-: BOOLEAN;
 
   PROCEDURE ["VMS"] POC_IS_TERMINAL(VAR name: DeviceName; length: INTEGER): INTEGER;
+  PROCEDURE ["VMS"] POC_FLUSH_OUTPUT;
 
   (* Initializes the output stream; there is nothing to do. *)
   PROCEDURE Open*;
   BEGIN
   END Open;
 
-  (* Nothing is written before Ln, which ends the record. *)
+  (* To a terminal, the line so far, which Ln or the program's end then
+     ends; to anything else nothing, Ln ending the record. *)
   PROCEDURE Flush*;
   BEGIN
+    POC_FLUSH_OUTPUT
   END Flush;
 
   PROCEDURE Char*(ch: CHAR);

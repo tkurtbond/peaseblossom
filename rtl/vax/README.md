@@ -46,6 +46,11 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   (`LIB$SIG_TO_RET`); `arcsinh`, `arccosh` and the real-number
   properties in Oberon, from F's and G's fields; the constants F's and
   G's (section 19.15).
+- `Args.Mod`: `rtl/llvm`'s, unchanged (section 19.17, proposal 1).
+- `VT100.Mod`: `rtl/llvm`'s, but each sequence is followed by
+  `Out.Flush`, which writes Out's line so far to a terminal without
+  ending it (`POC_FLUSH_OUTPUT`), so that it reaches the screen when it
+  is sent (section 19.17, proposals 2 and 3).
 - `FormattedText.Mod` and `RealDigits.Mod`: `rtl/llvm`'s, internal, for
   F_floating and G_floating. `RealDigits` takes a G_floating value apart
   for its exact digits, and `FormattedText` tests a real without IEEE

@@ -4160,3 +4160,146 @@ establishes `LIB$SIG_TO_RET` and calls `MTH$` routines from a table:
     universal, 68 more. Its `test.sh` now lists `rtl/vax`'s modules in
     C's order (`LC_ALL=C ls`). The glob followed the locale, which put
     `MathL.Mod` before `Math.Mod` on atla and after it on the BSD hosts.
+
+### 19.17 Args and VT100: proposals
+
+The ninth group in the inventory's order (`vms-module-inventory.md`,
+proposal 1) is `Args` and `VT100`.
+- `rtl/llvm`'s `Args` is voc's interface over `Modules`' command line and
+  `Platform`'s environment, which `rtl/vax` has had since sections 19.1
+  and 19.5.
+- `rtl/llvm`'s `VT100` writes each escape sequence through `Out` in one
+  piece. On LLVM `Out` writes at once, so a sequence reaches the screen
+  when it is sent. On VMS `Out` keeps a line until `Ln` (section 15), and
+  `Out.Flush` does nothing. A cursor movement would wait for the end of
+  the line.
+- The inventory decided that `Out.Flush` writes a part line to a
+  terminal without ending the record, and keeps doing nothing to a file,
+  so that records stay whole (proposal 6).
+
+What VMS gives for that: a terminal write by `$QIO` with
+`IO$_WRITEVBLK` whose `P4`, the carriage control, is 0 writes the buffer
+with no carriage control before or after it (5.4 I/O manual, part 1,
+8.4.2.2). A record that `LIB$PUT_OUTPUT` writes to a terminal is a line
+feed, the text and a carriage return, which is why `POC_INPUT_GET`'s
+prompt starts with a line feed (section 19.12). Checked on the guest,
+2026-10-14: `DEFINE ARGSTEST_EMPTY ""` fails with
+`%SYSTEM-F-IVLOGNAM`, so a logical name cannot translate to an empty
+string.
+
+**Approved by the user, 2026-10-14**, all four as written.
+
+1. **`rtl/vax/Args.Mod` is `rtl/llvm`'s, unchanged.** `Get`, `GetInt`,
+   `Pos`, `argc` and `argv` are `Modules`', and `GetEnv` and `getEnv` are
+   `Platform`'s, which translate a logical name (section 19.1). A
+   variable set but empty, which `getEnv` tells from one not set, cannot
+   happen on VMS.
+2. **`Out.Flush` writes Out's line so far to a terminal, without ending
+   it, by a new `PocRtl` routine, `POC_FLUSH_OUTPUT`.**
+   - When SYS$OUTPUT is a terminal (`$GETDVIW`, as `Out.IsConsole`
+     asks), it writes Out's line (`POC_LINES`) by `$QIOW` with
+     `IO$_WRITEVBLK` and `P4` 0. The channel is `$ASSIGN`ed to SYS$OUTPUT
+     on the first flush.
+   - If the line has not been started on the terminal, a line feed goes
+     first, as before a record. Out's line is then empty, and a flag in
+     `PocRtl` says that the terminal's line is open.
+   - While the line is open, whatever ends it writes the rest the same
+     way and then a carriage return, which leaves the terminal as a
+     record would, and clears the flag. That is `Ln` (`POC_PUT_LINE`), or
+     a line longer than `LineOutput`'s 1024 characters, or the exit
+     handler (`POC_LINES_EXIT`).
+   - `POC_INPUT_GET`'s prompt leaves out its line feed while the line is
+     open, so a prompt written in pieces with `Flush` between them
+     stays on one line. Reading ends the line, as the terminal's echo of
+     the return does, so the flag is cleared.
+   - To anything but a terminal `Flush` does nothing, as now, and the
+     flag is never set, so a file's records are what they are now.
+   - `Err.Flush` keeps doing nothing. `VT100` writes through `Out`, and
+     SYS$ERROR's lines go by RMS (section 15).
+3. **`rtl/vax/VT100.Mod` is `rtl/llvm`'s, but each procedure that sends a
+   sequence calls `Out.Flush` after it**, so that the sequence reaches a
+   terminal when it is sent, as on LLVM. Text the program wrote with
+   `Out` before it goes with it, in order. To a file the output is the
+   records it is now. The header comment says so. VT100 and later DEC
+   terminals take ECMA-48's sequences as they are.
+4. **Fixtures, on the guest.**
+   - `vax-args`, new: `llvm-args`' `argstest.mod` built under `-O2`, run
+     as a foreign command with `"alpha" "" 42 -7 x9`. `alpha` is quoted,
+     since DCL makes an unquoted parameter upper case
+     (`vax-command-line`). `ARGSTEST_SET` is defined as a process logical
+     name and the others are not defined. It must print `llvm-args`'
+     `expected`, except that the set-but-empty variable's lines are "not
+     set" ones (proposal 1). A `generate` step is not needed: those two
+     lines are written in the fixture's `guest-run.expected`.
+   - `vax-vt100`, new: `llvm-vt100`'s `vt100same.mod` and `vt100diff.mod`
+     under `-O2` and `-OC`, their output to a file. They must write
+     `llvm-vt100`'s bytes, as `cat -v` shows them. Where a program ends
+     a line on LLVM, its record ends there on VMS, and output not ended
+     by `Ln` is ended by the exit handler as a record of its own.
+   - `Flush` on a terminal cannot be a fixture, since `tools/vax-do`'s
+     output is a file. It is checked by hand in a telnet session as POC,
+     as the prompt was (section 19.12), with a program that writes part
+     of a line, moves the cursor with `VT100`, flushes, prompts with
+     `In`, ends a line with `Ln`, and ends with a line not ended. The
+     session's bytes are recorded in section 19.18.
+   - `vax-library`'s `POCRTL` gains `Args` and `VT100`, and
+     `tools/vax-runtime-stub.mar` gets a stand-in for `POC_FLUSH_OUTPUT`.
+
+### 19.18 Args and VT100: done
+
+- *Done* (section 19.17, proposals 1 to 4, 2026-10-14):
+  - `rtl/vax/Args.Mod` is a copy of `rtl/llvm`'s.
+  - `PocRtl.mar`'s `POC_FLUSH_OUTPUT` asks once whether SYS$OUTPUT is a
+    terminal (`POC_IS_TERMINAL`), and if it is, `$ASSIGN`s a channel to
+    it. `POC_TERMINAL_WRITE` writes by `$QIOW` with `IO$_WRITEVBLK` and
+    `P4` 0. `POC_OPEN_LINE` is the flag.
+  - `POC_PUT_LINE`, on an open line, writes the text and a carriage
+    return to the terminal instead of calling `LIB$PUT_OUTPUT`.
+    `POC_LINES_EXIT` calls it for an open line even when Out's line is
+    empty, so the line is ended.
+  - `POC_INPUT_GET`, on an open line, makes Out's line of 1 to 255
+    characters the prompt without a line feed, or writes a longer one by
+    `POC_FLUSH_OUTPUT`, and clears the flag.
+  - `Out.Flush` calls `POC_FLUSH_OUTPUT`. `rtl/vax/VT100.Mod` is
+    `rtl/llvm`'s with `Out.Flush` after `Send`, `SendNumber`,
+    `SendNumbers` and `SetAttr`'s sequences; `Reset` ends its line with
+    `Ln` already.
+- *Fixtures.*
+  - `vax-args`, new: `argstest` prints `llvm-args`' `expected` on the
+    guest, but "empty FALSE [unchanged]". `x9` is quoted as well as
+    `alpha`, since DCL would make it `X9`.
+  - `vax-vt100`, new: `vt100same` and `vt100diff` under `-O2` and `-OC`
+    write `llvm-vt100`'s bytes on the guest. `test.sh` takes each
+    model's lines from `llvm-vt100`'s `expected`, with `cat -v`'s `^[`
+    and `^V` made ESC and SYN again, so no control character is
+    committed.
+  - `vax-out`'s and `vax-modules-commands`' `expected-vax-Out.mar`: `Flush`
+    calls `POC_FLUSH_OUTPUT`, and the line numbers after it move.
+  - `vax-library`'s `POCRTL` has 23 modules and makes 468 symbols
+    universal, 37 more. `tools/vax-runtime-stub.mar` has a stand-in for
+    `POC_FLUSH_OUTPUT`.
+- *Checked by hand* (2026-10-14), in a telnet session as POC driven by
+  expect, its bytes logged, with a program that flushes part of a line,
+  moves the cursor with `VT100`, prompts in pieces and ends with a line
+  open. `^M` is a carriage return; each line here ended with a line
+  feed:
+
+  ```
+  part one part two^[[4D^[[1mB^[[0m^M
+  a record^M
+  count? 42^M
+  ^Mgot 42^M
+  name? world^M
+  ^Mgot world^M
+  open at the end^M
+  ^MVAXASM>
+  ```
+
+  - "part one" was written by `Flush` after a line feed. " part two", the
+    cursor movement and the bold B followed on the same line as `VT100`
+    sent them, and `Ln` ended the line with a carriage return.
+  - "name" was flushed, and "? " was then `In`'s prompt without a line
+    feed, so the prompt stayed on one line.
+  - The line still open when the program ended was ended by the exit
+    handler, and DCL's prompt came on a new line.
+

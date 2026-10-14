@@ -662,7 +662,11 @@ C++, and so on) unless step 4 chooses one deliberately.
    19.16 records the work. They call `MTH$` and `OTS$` through a new
    `PocRtl` routine, `POC_MATH`, which returns a signalled condition as a
    status. Fixtures `vax-math-module` and `vax-math-extra` are new.
-   Next, `Args` and `VT100`.
+   `Args` and `VT100` are done (2026-10-14): their four proposals,
+   **approved by the user, 2026-10-14**, are section 19.17, and section
+   19.18 records the work. `Out.Flush` writes a part line to a terminal
+   without ending it, and `VT100` flushes each sequence. Fixtures
+   `vax-args` and `vax-vt100` are new. Next, `Texts` and `Oberon`.
 
 4. **Which native VAX/VMS libraries to support.** From the manuals, not
    memory, list what a VMS programmer expects to reach: the run-time
