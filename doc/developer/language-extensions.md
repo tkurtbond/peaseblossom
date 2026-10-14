@@ -1038,6 +1038,63 @@ Peaseblossom's own.
   (`SymbolTable.ObjectDesc.externalConvention`/`externalName`) for a
   later backend to consume.
 
+### How a `["VMS"]` procedure takes its arguments (Phase 17 step 5, 2026-10-14)
+
+The VAX Procedure Calling Standard passes an argument by immediate value,
+by reference or by descriptor, and asks each language for "explicit
+control" of which (*Introduction to VMS System Routines*, 5.4, 2.3.2.2).
+As in VAX Pascal and Ada, a `["VMS"]` declaration says it once, by its
+formal parameters, and a call is written as any Oberon call is
+(`doc/developer/vms-sdl-interfaces.md`, part 1, approved by the user
+2026-10-14). Only `["VMS"]` declarations are affected:
+
+| Formal parameter | Passed |
+|---|---|
+| value, a scalar, `SET`, pointer or procedure of 4 bytes or less | by value, a longword (narrower ones extended) |
+| `VAR x: T`, `T` not an open `ARRAY OF CHAR` | by reference, the variable's address |
+| `x-: T`, `T` not an open `ARRAY OF CHAR` | by reference, always: a variable of `T` its own address, anything else (a constant, an expression, a variable of another type) a copy's in the caller's frame |
+| `ARRAY OF CHAR` (open), value, `x-` or `VAR` | by a `CLASS_S` string descriptor built in the caller's frame |
+| open `ARRAY OF T`, `T` not `CHAR`, `VAR` or `x-` | by reference, element 0's address, with no lengths |
+
+- **A value parameter that does not fit a longword** - a record, an
+  array (but an open `ARRAY OF CHAR`), a `HUGEINT`, a `LONGREAL`, a
+  `SYSTEM.SET64`, a `LONGINT` under `-OC` - is a compile-time error that
+  says to declare it `x-` or `VAR`.
+- **`x-` means by reference here.** In an Oberon procedure a read-only
+  parameter of at most 16 bytes is passed by value ("Read-only
+  parameters"); VMS's "by reference, read only" is always an address.
+- **The descriptor** is 8 bytes: the length (a word), `DSC$K_DTYPE_T`
+  (14), `DSC$K_CLASS_S` (1), the address. A value or `x-` actual is
+  described up to its first `0X`, or all of `LEN(a)` if it has none; a
+  string constant at its own length; a `VAR` actual, VMS's output, at
+  `LEN(a)`, VMS leaving it blank-padded with no `0X`, so the program ends
+  it with the routine's resultant length. A length over 65,535 is cut to
+  65,535.
+- **`NIL` omits an argument**: the word `NIL` may be the actual for any
+  parameter passed by reference or by descriptor, and is passed as 0,
+  VMS's omitted or null argument. A value parameter is omitted by
+  passing 0 itself. Only `["VMS"]` procedures take `NIL` so; a `["C"]`
+  one does not.
+- **A procedure-typed parameter** is passed as its entry mask's address,
+  and its type must be one VMS can call: value parameters of 4 bytes or
+  less, `VAR` parameters that are neither records (which take a hidden
+  tag) nor open arrays (hidden lengths), no read-only ones, and a result
+  of at most 8 bytes. A synchronous callback (`LIB$TRAVERSE_TREE`'s
+  action routine, `SOR$`'s comparison) works as it is; an AST routine or
+  a condition handler compiles but runs asynchronously, and whether that
+  is safe is Phase 17 step 6's question.
+- **A result** narrower than a longword is widened by the caller from
+  `R0`'s low byte or word, since the standard leaves `R0`'s high bits
+  undefined (2.4).
+- **Records keep poc's layout**, each field aligned to its size up to 4
+  bytes, which is VMS's for a string descriptor, an item list entry and
+  an I/O status block; `rtl/vax/VmsArguments.Mod` declares those, with
+  `Describe`, `SetItem` and `EndList`.
+- **Not yet, each a compile-time error or not expressible**: variable
+  argument lists, descriptors of other classes (unless built by hand and
+  passed as a `SYSTEM.ADDRESS`), results returned through a hidden first
+  argument, and JSB entries.
+
 ## `-strict` (decided and implemented, Phase 11 B2, 2026-09-25)
 
 **`poc -strict`** rejects everything beyond `Oberon2.pdf` in the source of the

@@ -346,7 +346,12 @@ be called by name. `WITH` follows voc's rule for non-local pointers.
 procedure. An optional second string gives the linkage name, emitted
 verbatim and never mangled: `PROCEDURE ["C", "malloc"] AllocateBytes*(size:
 SYSTEM.ADDRESS): SYSTEM.ADDRESS;`. `"VMS"` is lowered by the VAX backend only
-(Phase 15 step 5), which refuses `"C"`.
+(Phase 15 step 5), which refuses `"C"`. A `["VMS"]` procedure takes each
+argument as its formal says (Phase 17 step 5): a value one of a longword or
+less by value, a `VAR` or `x-` one by reference (`x-` from a copy when it is
+not a variable of its type), an open `ARRAY OF CHAR` by a `CLASS_S`
+descriptor; a wider value parameter is an error, and `NIL` omits a by-reference
+or descriptor argument.
 
 ### `-strict` (decided and implemented, Phase 11 B2, 2026-09-25)
 

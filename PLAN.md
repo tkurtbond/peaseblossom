@@ -733,6 +733,19 @@ C++, and so on) unless step 4 chooses one deliberately.
    the same day**: the generator, a back end of its own, runs on the VAX
    and is built with VAX C; the `.SDI` files are not read on the host.
 
+   **Part 1, the mechanisms (2026-10-14)**: eight proposals in
+   `vms-sdl-interfaces.md`, **approved by the user, 2026-10-14**, and
+   implemented the same day (its "Part 1 done"). In a `["VMS"]`
+   declaration the formal says the mechanism: a value parameter of a
+   longword or less by value, a wider one an error; `VAR` and `x-` by
+   reference; an open `ARRAY OF CHAR` by a `CLASS_S` descriptor the
+   caller builds; `NIL` an omitted argument; a procedure-typed parameter
+   checked to be one VMS can call. `rtl/vax/VmsArguments.Mod` has the
+   descriptor, item list and I/O status block types. Fixtures
+   `vax-vms-calls` (real routines on the guest), `vax-vms-arguments`,
+   `semantic-vms-arguments`, `semantic-reject-vms-arguments`. Next, part
+   2: the generator's design.
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)

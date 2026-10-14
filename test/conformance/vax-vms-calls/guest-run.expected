@@ -1,0 +1,15 @@
+build status: %X10000001
+symbol [from poc] status %X00000001
+length 8 table 1
+symbol again [from poc] status %X00000001
+deleted: %X00158364
+logical name [translated value] status %X00000001
+username [POC         ] status %X00000001
+I/O status %X00000001
+binary time status %X00000001
+time [14-OCT-2026 12:34:56.78] status %X00000001
+delta [   0 00:01:00.00] status %X00000001
+tree, status %X00158001: 1 2 5 8
+traversed, status %X00158001
+formatted [42 and 000000FF] status %X00000001
+run status: %X00000001

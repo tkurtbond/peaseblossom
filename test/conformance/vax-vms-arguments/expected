@@ -1,0 +1,5 @@
+semantic OK, wrote VmsArguments.mar
+semantic OK, wrote VaxVmsArguments.mar
+exit 0
+VaxVmsArguments.mar matches expected-vax.mar
+VmsArguments.mar matches expected-vax-VmsArguments.mar

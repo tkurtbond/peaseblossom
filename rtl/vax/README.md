@@ -56,6 +56,12 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   and `Close` keeps the old file as the version below the new one, not
   as `<name>.Bak` (section 19.19, proposal 1).
 - `Oberon.Mod`: `rtl/llvm`'s, unchanged (section 19.19, proposal 2).
+- `VmsArguments.Mod`, VMS's own: the structures a program builds to call
+  VMS through a `["VMS"]` declaration - a `CLASS_S` string descriptor,
+  `item_list_3` and `item_list_2` entries and an I/O status block, with
+  exact-width fields - and `Describe`, `SetItem` and `EndList` to fill
+  them (Phase 17 step 5, `doc/developer/vms-sdl-interfaces.md`, part 1,
+  proposal 6).
 - `FormattedText.Mod` and `RealDigits.Mod`: `rtl/llvm`'s, internal, for
   F_floating and G_floating. `RealDigits` takes a G_floating value apart
   for its exact digits, and `FormattedText` tests a real without IEEE

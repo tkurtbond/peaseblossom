@@ -1995,6 +1995,137 @@ MODULE VaxCodeGenerator;
     Release(v)
   END OpenArgument;
 
+  (* Whether t is an open ARRAY OF CHAR, which a ["VMS"] procedure takes
+     by a string descriptor *)
+  PROCEDURE IsOpenCharArray(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (OpenDims(t) = 1) & (OpenBase(t) = Types.Char)
+  END IsOpenCharArray;
+
+  (* Frame slots for a value of type t, which stay until released: a
+     temporary the callee reads; NIL, reported, if the frame is full *)
+  PROCEDURE FrameTemporary(t: Types.Type; line, column: INTEGER): Operand;
+    VAR x: Operand; n: INTEGER;
+  BEGIN
+    n := SHORT((VaxTypes.Size(t) + 3) DIV 4);
+    x := NewOperand(memory, t); x.slot := AllocateSlots(n);
+    IF x.slot < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN NIL END;
+    x.slots := n; x.offset := SlotOffset(x.slot, n);
+    RETURN x
+  END FrameTemporary;
+
+  (* a, the argument of an open ARRAY OF CHAR parameter p of a ["VMS"]
+     procedure, as a CLASS_S string descriptor built in the frame, its
+     address into entry (doc/developer/vms-sdl-interfaces.md, part 1,
+     proposal 2; Introduction to VMS System Routines, 2.9.2): the length,
+     a word; DSC$K_DTYPE_T, 14, and DSC$K_CLASS_S, 1, a byte each; the
+     address. A constant string is described at its own length; a VAR
+     parameter's actual, VMS's output, at LEN(a); any other's up to its
+     first 0X, found by LOCC, or at LEN(a) if it has none. A length over
+     65,535 is cut to that. The descriptor is returned, to be released
+     after the call. *)
+  PROCEDURE StringDescriptor(a: SyntaxTree.ExprNode; p: Types.Param; entry: Operand): Operand;
+    VAR desc, length, kind, address, v: Operand; c: Types.Value; n: LONGINT;
+        text, locc: ARRAY 64 OF CHAR; label: ARRAY 16 OF CHAR; constant: BOOLEAN;
+  BEGIN
+    desc := FrameTemporary(Types.Int64, a.line, a.column); (* two slots *)
+    IF desc = NIL THEN RETURN NIL END;
+    desc.type := Types.Int16; (* its length *)
+    length := NewOperand(memory, longword); length.offset := desc.offset;
+    kind := NewOperand(memory, Types.Int16); kind.offset := desc.offset + 2;
+    address := NewOperand(memory, longword); address.offset := desc.offset + 4;
+    constant := ConstantEvaluator.IsConstantExpr(a, scope);
+    IF constant THEN
+      c := ConstantEvaluator.Evaluate(a, scope);
+      constant := (c.kind = Types.stringValue) OR (c.kind = Types.charValue)
+    END;
+    IF constant THEN
+      v := StringArgument(a, 0);
+      n := v.type(Types.ArrayType).length - 1 (* without its 0X *)
+    ELSE
+      v := Expression(a, NIL);
+      IF v.standIn THEN RETURN desc END;
+      IF (v.type IS Types.ArrayType) & ~v.type(Types.ArrayType).isOpen THEN n := v.type(Types.ArrayType).length
+      ELSE n := -1
+      END
+    END;
+    IF n >= 0 THEN
+      IF n > 65535 THEN n := 65535 END;
+      COPY("#", text); AppendInt(text, n); EmitTo("MOVW", text, desc)
+    ELSE
+      (* an open array's length, its high word overwritten next *)
+      Emit2("MOVL", LengthOf(v, 0), length);
+      Emit2("CMPL", length, Immediate(longword, 65535));
+      NewLabel(label); Emit("BLEQU", label);
+      EmitTo("MOVW", "#65535", desc);
+      EmitLabel(label)
+    END;
+    EmitTo("MOVW", "#^X010E", kind); (* DSC$K_CLASS_S, 1, and DSC$K_DTYPE_T, 14 *)
+    AddressOf(v, address);
+    Release(v);
+    IF ~constant & ~p.isVar THEN
+      (* up to the first 0X: LOCC leaves in R0 the bytes from it to the end,
+         0 if there is none *)
+      FreeR0R1(a.line, a.column);
+      COPY("#0, ", locc); Text(desc, text); Append(locc, text);
+      Append(locc, ", @"); Text(address, text); Append(locc, text);
+      Emit("LOCC", locc);
+      EmitTo("SUBW2", "R0", desc)
+    END;
+    Emit2("MOVAQ", desc, entry);
+    RETURN desc
+  END StringDescriptor;
+
+  (* a, the argument of a parameter p of a ["VMS"] procedure that it takes
+     by reference or by descriptor, into entry, its longword of the
+     argument list (doc/developer/vms-sdl-interfaces.md, part 1): NIL a 0,
+     VMS's omitted argument; an open ARRAY OF CHAR a string descriptor
+     (StringDescriptor); a VAR parameter its variable's address; a
+     read-only one, x-, its actual's address - of an open array, element
+     0's, with no lengths - a scalar's copied to the frame unless it is a
+     variable of the formal's own type. What it leaves in the frame is
+     returned, to be released after the call; NIL when nothing is. *)
+  PROCEDURE VmsArgument(a: SyntaxTree.ExprNode; p: Types.Param; entry: Operand): Operand;
+    VAR v, temp: Operand;
+  BEGIN
+    temp := NIL;
+    IF a IS SyntaxTree.NilExprNode THEN Emit1("CLRL", entry)
+    ELSIF IsOpenCharArray(p.type) THEN temp := StringDescriptor(a, p, entry)
+    ELSIF p.isVar THEN
+      IF ~AddressInto(a, entry) THEN Unsupported(a.line, a.column, "this VAR argument") END
+    ELSIF (OpenDims(p.type) > 0) OR ~IsSliceScalar(p.type) THEN
+      IF ConstantEvaluator.IsConstantExpr(a, scope) THEN
+        IF OpenDims(p.type) > 0 THEN v := StringArgument(a, 0)
+        ELSE v := StringArgument(a, VaxTypes.Size(p.type))
+        END
+      ELSE v := Expression(a, NIL)
+      END;
+      AddressOf(v, entry); Release(v)
+    ELSIF IsProcedureType(p.type) THEN
+      temp := FrameTemporary(p.type, a.line, a.column);
+      IF temp # NIL THEN
+        v := Expression(a, temp); (* a procedure, MOVAB to the temporary *)
+        MoveLong(v, temp); Release(v); temp.type := p.type;
+        AddressOf(temp, entry)
+      END
+    ELSE
+      v := Expression(a, NIL);
+      IF (v.kind = memory) & (v.type = p.type) & ~v.standIn THEN
+        AddressOf(v, entry);
+        (* a value spilled to the frame stays there until the call *)
+        IF v.slot >= 0 THEN temp := v ELSE Release(v) END
+      ELSE
+        temp := FrameTemporary(p.type, a.line, a.column);
+        IF temp # NIL THEN
+          IF IsReal(p.type) & IsQuad(v) THEN v := AsReal(v, p.type, a.line, a.column) END;
+          MoveInto(v, temp); Release(v);
+          AddressOf(temp, entry)
+        END
+      END
+    END;
+    RETURN temp
+  END VmsArgument;
+
   (* Whether p, a parameter of a procedure, takes its actual's type tag as
      a hidden longword after the address: a VAR record parameter of an
      Oberon procedure (section 14, item 5), as on LLVM (NeedsHiddenTag),
@@ -2235,21 +2366,16 @@ MODULE VaxCodeGenerator;
       IF ~IsParamType(p.type) THEN
         COPY("a parameter of type ", text); Types.Describe(p.type, text); AppendWhen(p.type, text);
         Unsupported(line, column, text); RETURN NIL
-      ELSIF external & ~p.isVar & ~IsSliceScalar(p.type) THEN
-        Unsupported(line, column, "an array or record value parameter of an external procedure (Phase 17 chooses its mechanism)");
-        RETURN NIL
-      ELSIF external & ~p.isVar & IsWide(p.type) THEN
-        (* a HUGEINT, under -OC a LONGINT, or a LONGREAL *)
-        COPY("a quadword value parameter, of type ", text); Types.Describe(p.type, text);
-        Append(text, ", of an external procedure (Phase 17 chooses its mechanism)");
-        Unsupported(line, column, text);
-        RETURN NIL
-      ELSIF external & (OpenDims(p.type) > 0) THEN
-        Unsupported(line, column, "an open-array parameter of an external procedure (Phase 17 chooses its mechanism)");
-        RETURN NIL
       END;
-      IF ~p.isVar & IsWide(p.type) THEN INC(copies) END;
-      INC(n, 1 + OpenDims(p.type));
+      IF external THEN
+        (* one longword each; a descriptor or a read-only argument may take
+           the frame (VmsArgument) *)
+        IF p.isReadOnly OR (OpenDims(p.type) > 0) THEN INC(copies) END;
+        INC(n)
+      ELSE
+        IF ~p.isVar & IsWide(p.type) THEN INC(copies) END;
+        INC(n, 1 + OpenDims(p.type))
+      END;
       IF HasTag(p, external) THEN INC(n) END;
       p := p.next
     END;
@@ -2261,7 +2387,7 @@ MODULE VaxCodeGenerator;
         need := need.next
       END
     END;
-    IF copies > maxCopies THEN Unsupported(line, column, "a call with this many HUGEINT or LONGREAL arguments"); RETURN NIL END;
+    IF copies > maxCopies THEN Unsupported(line, column, "a call with this many arguments copied to the frame"); RETURN NIL END;
     IF t # NIL THEN
       (* the procedure value first, as on LLVM, checked for NIL (trap 4
          at the designator); in R2-R5, which the call does not need to
@@ -2300,7 +2426,10 @@ MODULE VaxCodeGenerator;
       p := pt.params; a := args; i := 1 + first; copies := 0;
       WHILE p # NIL DO
         entry := ListEntry(list, n, i);
-        IF OpenDims(p.type) > 0 THEN
+        IF external & (p.isVar OR p.isReadOnly OR (OpenDims(p.type) > 0)) THEN
+          copy[copies] := VmsArgument(a, p, entry);
+          IF copy[copies] # NIL THEN INC(copies) END
+        ELSIF OpenDims(p.type) > 0 THEN
           OpenArgument(a, p.type, list, n, i);
           INC(i, OpenDims(p.type))
         ELSIF p.isVar THEN

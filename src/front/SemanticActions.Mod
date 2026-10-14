@@ -23,7 +23,7 @@ MODULE SemanticActions;
      in the grammar. *)
 
   IMPORT SyntaxTree, SymbolTable, Types, ConstantEvaluator, Diagnostics, Lexer,
-         PredeclaredProcedures, ModuleInterface;
+         PredeclaredProcedures, ModuleInterface, MemoryLayout;
 
   TYPE
     (* Private to the CASE-statement overlap check (PLAN.md Phase 5) -
@@ -2138,6 +2138,13 @@ MODULE SemanticActions;
          OR (actual = Types.ShortInt) & (Types.IntegerBytes(Types.ShortInt) = 1))
   END IsByteVarFormal;
 
+  (* Whether t is an open ARRAY OF CHAR *)
+  PROCEDURE IsOpenCharArray(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (t # NIL) & (t IS Types.ArrayType) & t(Types.ArrayType).isOpen
+      & (t(Types.ArrayType).elementType = Types.Char)
+  END IsOpenCharArray;
+
   (* Appendix A "matching formal parameter lists" at last has a real call
      site (PLAN.md Phase 6) - params/args are walked together: a value
      parameter's argument is checked via CheckExpr and required
@@ -2149,7 +2156,7 @@ MODULE SemanticActions;
      isVariable, and required either the same type or (§10.1) a record-
      extension relationship. Wrong arity is one diagnostic at the call's
      own position, not per missing/extra argument. *)
-  PROCEDURE CheckArguments(scope: SymbolTable.Scope; params: Types.Param;
+  PROCEDURE CheckArguments(scope: SymbolTable.Scope; params: Types.Param; vms: BOOLEAN;
                            args: SyntaxTree.ExprNode; line, column: INTEGER);
     VAR
       p: Types.Param; a: SyntaxTree.ExprNode;
@@ -2159,7 +2166,11 @@ MODULE SemanticActions;
   BEGIN
     p := params; a := args;
     WHILE (p # NIL) & (a # NIL) DO
-      IF p.isVar THEN
+      IF vms & (a IS SyntaxTree.NilExprNode) & (p.isVar OR p.isReadOnly OR IsOpenCharArray(p.type)) THEN
+        (* NIL omits an argument a ["VMS"] procedure takes by reference or
+           by descriptor: a longword 0 (doc/developer/language-
+           extensions.md, "External procedures") *)
+      ELSIF p.isVar THEN
         (* de is bound in its own statement, never chained straight off
            the "a(...)" cast in the same expression - Parser.Mod cannot
            yet parse that (a documented, deferred limitation; see this
@@ -2411,7 +2422,7 @@ MODULE SemanticActions;
       RETURN Types.Undefined
     ELSE
       pt := baseType(Types.ProcedureType);
-      CheckArguments(scope, pt.params, node.args, node.line, node.column);
+      CheckArguments(scope, pt.params, pt.isVms, node.args, node.line, node.column);
       IF pt.resultType = NIL THEN
         Diagnostics.Error(node.line, node.column, "a proper procedure has no result value");
         RETURN Types.Undefined
@@ -3138,7 +3149,7 @@ MODULE SemanticActions;
       CheckExprList(scope, s.args)
     ELSE
       pt := baseType(Types.ProcedureType);
-      CheckArguments(scope, pt.params, s.args, s.line, s.column)
+      CheckArguments(scope, pt.params, pt.isVms, s.args, s.line, s.column)
     END
   END CheckCallStatement;
 
@@ -3595,6 +3606,70 @@ MODULE SemanticActions;
     END
   END CheckOverride;
 
+  (* t's size on the VAX, the only target of a ["VMS"] procedure: a
+     longword address *)
+  PROCEDURE VaxSize(t: Types.Type): LONGINT;
+  BEGIN
+    RETURN MemoryLayout.Size(t, 4, ConstantEvaluator.sizeModel)
+  END VaxSize;
+
+  (* Whether t is passed in a longword: not an array or record, and 4
+     bytes or less *)
+  PROCEDURE FitsLongword(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (t # NIL) & ~(t IS Types.ArrayType) & ~(t IS Types.RecordType) & (VaxSize(t) <= 4)
+  END FitsLongword;
+
+  (* A procedure type a ["VMS"] procedure takes as a parameter, name: one
+     VMS can call, with no hidden argument (doc/developer/
+     vms-sdl-interfaces.md, part 1, proposal 4): its value parameters
+     fit a longword, a VAR one is not a record (which carries its tag) or
+     an open array (its lengths), and its result is at most a quadword *)
+  PROCEDURE CheckVmsCallbackType(pt: Types.ProcedureType; name: ARRAY OF CHAR; line, column: INTEGER);
+    VAR q: Types.Param; text: ARRAY 160 OF CHAR;
+  BEGIN
+    q := pt.params;
+    WHILE q # NIL DO
+      COPY(name, text); AppendText(text, ", its parameter "); AppendText(text, q.name);
+      IF q.isReadOnly THEN
+        Diagnostics.ErrorAbout(line, column,
+          'a procedure VMS calls cannot have a read-only parameter; declare it VAR or a value', text)
+      ELSIF q.isVar & ((q.type IS Types.RecordType)
+                      OR (q.type IS Types.ArrayType) & q.type(Types.ArrayType).isOpen) THEN
+        Diagnostics.ErrorAbout(line, column,
+          'a procedure VMS calls cannot have a VAR record or open-array parameter, which takes a hidden argument',
+          text)
+      ELSIF ~q.isVar & ~FitsLongword(q.type) THEN
+        Diagnostics.ErrorAbout(line, column,
+          'a procedure VMS calls can have only value parameters of 4 bytes or less', text)
+      END;
+      q := q.next
+    END;
+    IF (pt.resultType # NIL) & (VaxSize(pt.resultType) > 8) THEN (* a record or an array is already an error *)
+      Diagnostics.ErrorAbout(line, column, 'a procedure VMS calls can return only a value of 8 bytes or less', name)
+    END
+  END CheckVmsCallbackType;
+
+  (* A ["VMS"] procedure's parameters, each passed by the mechanism its
+     formal says (doc/developer/vms-sdl-interfaces.md, part 1, proposal
+     1): a value parameter fits a longword, or is an open ARRAY OF CHAR,
+     passed by descriptor; a procedure type is one VMS can call *)
+  PROCEDURE CheckVmsParameters(pt: Types.ProcedureType; line, column: INTEGER);
+    VAR p: Types.Param;
+  BEGIN
+    p := pt.params;
+    WHILE p # NIL DO
+      IF ~p.isVar & ~p.isReadOnly & ~IsOpenCharArray(p.type) & ~FitsLongword(p.type) THEN
+        Diagnostics.ErrorAbout(line, column,
+          'a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR', p.name)
+      END;
+      IF (p.type # NIL) & (p.type IS Types.ProcedureType) THEN
+        CheckVmsCallbackType(p.type(Types.ProcedureType), p.name, line, column)
+      END;
+      p := p.next
+    END
+  END CheckVmsParameters;
+
   (* AGENTS.md's "External procedures": already-decided bracket-
      attribute syntax, grammar side handled by Parser.Mod. externalName
      defaults to the procedure's own Oberon identifier when no override
@@ -3614,6 +3689,7 @@ MODULE SemanticActions;
     obj := SymbolTable.Insert(scope, d.name.name, SymbolTable.procClass, pt, exported, FALSE,
                                d.line, d.column);
     obj.externalConvention := d.externalConvention;
+    IF d.externalConvention = "VMS" THEN pt.isVms := TRUE; CheckVmsParameters(pt, d.line, d.column) END;
     IF d.externalName[0] # 0X THEN obj.externalName := d.externalName
     ELSE obj.externalName := d.name.name
     END

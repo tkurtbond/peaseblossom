@@ -544,7 +544,11 @@ Proposals:
   value parameter of 4 bytes or less by immediate value, a `VAR` parameter
   by reference. Descriptors and an explicit choice of mechanism per
   parameter are Phase 17 step 5's (`PLAN.md`); a parameter needing one is
-  an error until then.
+  an error until then. **Done (Phase 17 step 5, 2026-10-14)**: the
+  mechanism follows the formal (`vms-sdl-interfaces.md`, part 1, and its
+  record): `x-` by reference, an open `ARRAY OF CHAR` by a `CLASS_S`
+  descriptor, another open array by reference, `NIL` an omitted argument
+  (`VaxCodeGenerator.VmsArgument`).
 - **Done (step 5)**, as decided above, with these details. A value
   parameter of a longword or less is read at its own width at `4n(AP)`;
   one the body may change - assigns, uses as a `FOR` variable, or passes
@@ -562,7 +566,8 @@ Proposals:
   nested or type-bound procedure, an open-array parameter (Phase 16), a
   `["C"]` external (VAX/VMS takes `"VMS"`), and a `HUGEINT`, array or
   record value parameter of an external one (Phase 17 chooses its
-  mechanism).
+  mechanism; step 5 did, `vms-sdl-interfaces.md`, part 1: such a value
+  parameter is an error, and `x-` passes it by reference).
 - **Done (step 6): array and record parameters.** A value parameter is
   passed by its address, the caller making no copy; the callee copies it
   into its frame on entry by `MOVC3`, after the locals are cleared,
@@ -1126,7 +1131,8 @@ many bytes and ends with 0X, as step 7 does for fixed arrays. `=` and
 the other comparisons pass both lengths to `POC_STRCMP`. Assigning an
 open array to a fixed one traps with code 9 when it is too long, before
 anything moves. An external procedure's open-array parameter is still
-refused, since Phase 17 chooses its mechanism. Fixture `vax-open-arrays`
+refused, since Phase 17 chooses its mechanism (step 5 did: by reference,
+an open `ARRAY OF CHAR` by descriptor; `vms-sdl-interfaces.md`, part 1). Fixture `vax-open-arrays`
 tests all of this. Its debugger runs cover both traps, and the program is
 built and run on the guest under `-O2` and `-OC`, with all 11 checks
 holding. Two of the checks use `ARRAY OF INTEGER`, for the copy at entry

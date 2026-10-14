@@ -176,7 +176,11 @@ MODULE Types;
     ProcedureType* = POINTER TO ProcedureTypeDesc;
     ProcedureTypeDesc* = RECORD (TypeDesc)
       params*: Param; (* declaration order *)
-      resultType*: Type (* NIL for a proper procedure *)
+      resultType*: Type; (* NIL for a proper procedure *)
+      isVms*: BOOLEAN (* a ["VMS"] procedure's own type: each argument is
+        passed by the mechanism its formal says, and NIL may omit one
+        passed by reference or by descriptor (doc/developer/
+        language-extensions.md, "External procedures") *)
     END;
 
     (* A type-bound procedure (PLAN.md Phase 6, Oberon2.pdf §10.2).
@@ -601,7 +605,7 @@ MODULE Types;
   PROCEDURE NewProcedureType*(resultType: Type): ProcedureType;
     VAR t: ProcedureType;
   BEGIN
-    NEW(t); t.params := NIL; t.resultType := resultType;
+    NEW(t); t.params := NIL; t.resultType := resultType; t.isVms := FALSE;
     RETURN t
   END NewProcedureType;
 

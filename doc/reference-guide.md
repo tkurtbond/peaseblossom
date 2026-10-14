@@ -252,10 +252,43 @@ is one, is the name to link with, used as it is; without it, the
 procedure's own name. A `VAR` parameter is passed as the variable's
 address, an open array as its first element's address alone (no lengths),
 and a `VAR` record without its type. An external procedure is not a
-procedure value. `"VMS"` is the VMS calling standard, for the VAX/VMS
-target (`-emit-macro32`): a value parameter of a longword or less is
-passed by value, a `VAR` one by reference. The User's
-Guide, "Calling C", shows the C types' equivalents.
+procedure value. The User's Guide, "Calling C", shows the C types'
+equivalents.
+
+`"VMS"` is the VMS calling standard, for the VAX/VMS target
+(`-emit-macro32`), and each argument is passed as its formal parameter
+says:
+
+```oberon
+PROCEDURE ["VMS", "LIB$GET_SYMBOL"] GetSymbol(symbol-: ARRAY OF CHAR;
+    VAR value: ARRAY OF CHAR; VAR length: SYSTEM.INT16;
+    VAR table: LONGINT): LONGINT;
+PROCEDURE ["VMS", "SYS$ASCTIM"] AsciiTime(VAR length: SYSTEM.INT16;
+    VAR text: ARRAY OF CHAR; time-: HUGEINT; flag: LONGINT): LONGINT;
+...
+status := GetSymbol("HOME", value, length, NIL);
+status := AsciiTime(length, text, -600000000, 0) (* "   0 00:01:00.00" *)
+```
+
+- A value parameter of a longword or less is passed by value. A wider
+  one, a record or an array is an error: declare it `x-` or `VAR`.
+- A `VAR` parameter is passed by reference, an open array as its first
+  element's address alone.
+- A read-only parameter, `x-`, is passed by reference whatever its size:
+  a variable of its type by its own address, anything else, a constant
+  included, by a copy's.
+- An open `ARRAY OF CHAR`, in any mode, is passed by a `CLASS_S` string
+  descriptor the caller builds: a constant at its length, a value or `x-`
+  actual up to its first `0X`, a `VAR` one, VMS's output, at `LEN`, with
+  no `0X` written. At most 65,535 characters are described.
+- `NIL` omits an argument passed by reference or by descriptor (a 0 in
+  the argument list).
+- A procedure is passed as its address. Its type may have only value
+  parameters of a longword or less and `VAR` parameters that are not
+  records or open arrays, and a result of at most 8 bytes.
+- The module `VmsArguments` has a string descriptor, item list entries
+  and an I/O status block, and `Describe`, `SetItem` and `EndList` to
+  fill them.
 
 Under `-strict` the declaration is an error: `an external procedure is not
 in the Oberon-2 report (-strict)`.
