@@ -1,8 +1,8 @@
 ;; Written by Claude, 2026-10-12, for Phase 17 step 3 (design section
-;; 19.3, proposals 1 to 9, approved by the user); not yet reviewed. It
-;; replaces the file the user reviewed on 2026-10-10, whose Old, New,
-;; Register, Close, Read, Write and the string procedures this one keeps
-;; or extends. Why this is right:
+;; 19.3, proposals 1 to 9, approved by the user); reviewed by the user,
+;; 2026-10-13. It replaces the file the user reviewed on 2026-10-10,
+;; whose Old, New, Register, Close, Read, Write and the string
+;; procedures this one keeps or extends. Why this is right:
 ;; - FileDesc is 1824 bytes under -O2: the control (768) at 0, the block
 ;;   (512) at 768, name (256) at 1280, registerName (256) at 1536, isNew,
 ;;   created, open, writable, dirty and byRecord at 1792 to 1797, length,

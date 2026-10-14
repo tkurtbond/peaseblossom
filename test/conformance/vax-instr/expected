@@ -1,0 +1,2 @@
+VAX build InStrUse -O2 exit 0
+VAX build InStrUse -OC exit 0

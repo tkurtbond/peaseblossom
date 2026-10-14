@@ -1104,6 +1104,37 @@ POC_FILE_OPEN_FAB:
 20$:	MNEGL	#2, R0
 	RET
 
+	.PSECT	POC_DATA
+; the prompt POC_INPUT_GET gives $GET: a line feed, then Out's line
+POC_PROMPT:
+	.BLKB	255
+
+	.PSECT	POC_CODE
+; POC_INPUT_GET(control, record, size): POC_FILE_GET, but if Out's line
+; (POC_LINES) holds 1 to 254 characters, they are $GET's prompt (RMS
+; 7.13, RAB$V_PMT), after a line feed, which starts the line as a record
+; written to the terminal starts, and Out's line is then empty. Platform
+; calls it for SYS$INPUT when it and SYS$OUTPUT are terminals (design
+; section 19.11, proposal 2)
+	.ENTRY	POC_INPUT_GET, ^M<R2,R3,R4,R5,R6>
+	MOVL	4(AP), R6
+	BICL2	#RAB$M_PMT, POC_F_RAB+RAB$L_ROP(R6)
+	MOVL	POC_LINES+4, R2
+	BEQL	10$
+	MOVL	(R2), R0
+	BLEQ	10$
+	CMPL	R0, #254
+	BGTR	10$
+	MOVB	#10, POC_PROMPT
+	MOVC3	R0, @POC_LINES, POC_PROMPT+1
+	MOVL	POC_LINES+4, R2
+	ADDB3	#1, (R2), POC_F_RAB+RAB$B_PSZ(R6)
+	MOVAB	POC_PROMPT, POC_F_RAB+RAB$L_PBF(R6)
+	BISL2	#RAB$M_PMT, POC_F_RAB+RAB$L_ROP(R6)
+	CLRL	(R2)
+10$:	CALLG	(AP), POC_FILE_GET
+	RET
+
 ; POC_FILE_REWIND(control): the file's records to be read from the
 ; first again; R0 the status
 	.ENTRY	POC_FILE_REWIND, ^M<R6>

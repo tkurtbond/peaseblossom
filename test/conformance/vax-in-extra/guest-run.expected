@@ -1,0 +1,30 @@
+build status: %X10000001
+HugeInt 12345678901 done
+HugeInt -9223372036854775807 done
+HugeInt 549755813887 done
+HugeInt -31 done
+HugeInt 0 not done
+HugeInt 12 done
+rest [x] done
+Name [word1] done
+Name [word2] done
+Line [  end] done
+Line [windows line] done
+LongReal 0000000000000000 not done
+LongReal 999A999999993FD9 done
+LongReal FFFFFFFFFFFF7FFF done
+LongReal 0000000000000000 done
+LongReal 0000000000003FF0 done
+LongReal 0000000000003FF0 not done
+LongReal 0000000000003FF0 not done
+LongReal 0000000000003FF0 not done
+LongReal 0000000000004034 done
+LongReal 0000000000004000 done
+LongReal 0000000000003FF0 done
+Real 800045BB done
+Real 00004C80 done
+Real 76997F96 done
+LongReal at the end not done
+Name at the end not done
+Char at the end not done
+run status: %X00000001

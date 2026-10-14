@@ -1,0 +1,28 @@
+$ ! PLAN.md Phase 17 step 3 (design section 19.11, proposals 4 and 5):
+$ ! INSTRUSE.COM (llvm-instr's instr.mod), which poc -build wrote, run
+$ ! after poc's runtime is assembled; then the image as a foreign command,
+$ ! with "in" and with "instr", SYS$INPUT its input file each time.
+$ ! Everything made is deleted
+$ SET NOON
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF S THEN @INSTRUSE
+$ IF S THEN S = $STATUS
+$ WRITE SYS$OUTPUT "build status: ", S
+$ IF .NOT. S THEN GOTO CLEAN
+$ INSTRUSE :== $SYS$LOGIN:INSTRUSE.EXE
+$ WRITE SYS$OUTPUT "== in"
+$ DEFINE/USER SYS$INPUT INPUT.TXT
+$ INSTRUSE "in"
+$ WRITE SYS$OUTPUT "run status: ", $STATUS
+$ WRITE SYS$OUTPUT "== instr"
+$ DEFINE/USER SYS$INPUT INPUT.TXT
+$ INSTRUSE "instr"
+$ WRITE SYS$OUTPUT "run status: ", $STATUS
+$ DELETE/SYMBOL/GLOBAL INSTRUSE
+$ CLEAN:
+$ DELETE/NOLOG POCRTL.OBJ;*,LINEOUTPUT.OBJ;*,FORMATTEDOUTPUT.OBJ;*,FORMATTEDTEXT.OBJ;*,REALDIGITS.OBJ;*,OUT.OBJ;*
+$ DELETE/NOLOG IN.OBJ;*,INSTR.OBJ;*,FORMATTEDINPUT.OBJ;*,DECIMALTOREAL.OBJ;*,PLATFORM.OBJ;*
+$ DELETE/NOLOG MODULES.OBJ;*,GARBAGECOLLECTEDHEAP.OBJ;*
+$ DELETE/NOLOG INSTRUSE.OBJ;*,INSTRUSE.OPT;*,INSTRUSE.EXE;*,INPUT.TXT;*
+$ EXIT 1

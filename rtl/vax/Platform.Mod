@@ -16,7 +16,10 @@ MODULE Platform;
      them. StdIn, StdOut and StdErr are SYS$INPUT, SYS$OUTPUT and
      SYS$ERROR: StdIn is read a record at a time, an LF after each, and what
      is written to StdOut or StdErr goes through LineOutput, an LF ending a
-     record, so that it comes out in order with Out's and Err's. A file
+     record, so that it comes out in order with Out's and Err's. When
+     SYS$INPUT and SYS$OUTPUT are terminals, the text of an unfinished line
+     of Out's is the prompt for StdIn's next record (Phase 17 step 3,
+     section 19.11, proposal 2). A file
      opened by name is Files': New makes a new version, Stream_LF, and
      OldRO and OldRW open a Stream_LF, fixed-length or undefined file as
      its bytes, by block I/O, through one 512-byte block of it; OldRO reads
@@ -139,6 +142,10 @@ MODULE Platform;
     (* a name given to a service, and a value one gives back *)
     given, returned: Name;
     table: ARRAY handles OF Entry;
+    (* whether SYS$INPUT and SYS$OUTPUT are terminals, when StdIn was
+       opened: then Out's unfinished line is the prompt for its next
+       record (design section 19.11, proposal 2) *)
+    promptInput: BOOLEAN;
     (* the status of the last procedure here that failed, for Error *)
     lastError: ErrorCode;
     (* Time's zero, a VMS time *)
@@ -159,6 +166,7 @@ MODULE Platform;
   PROCEDURE ["VMS"] POC_FILE_TRUNCATE(VAR control: Control; VAR position: LONGINT; VAR block: Block;
                                       count: SYSTEM.INT32): INTEGER;
   PROCEDURE ["VMS"] POC_FILE_GET(VAR control: Control; record: SYSTEM.ADDRESS; size: SYSTEM.INT32): INTEGER;
+  PROCEDURE ["VMS"] POC_INPUT_GET(VAR control: Control; record: SYSTEM.ADDRESS; size: SYSTEM.INT32): INTEGER;
   PROCEDURE ["VMS"] POC_FILE_REWIND(VAR control: Control): INTEGER;
   PROCEDURE ["VMS"] POC_FILE_FLUSH(VAR control: Control): INTEGER;
   PROCEDURE ["VMS"] POC_FILE_CLOSE(VAR control: Control): INTEGER;
@@ -473,7 +481,9 @@ MODULE Platform;
     VAR n: INTEGER;
   BEGIN
     status := 0;
-    n := POC_FILE_GET(table[k].control, table[k].record, recordSize);
+    IF (k = StdIn) & promptInput THEN n := POC_INPUT_GET(table[k].control, table[k].record, recordSize)
+    ELSE n := POC_FILE_GET(table[k].control, table[k].record, recordSize)
+    END;
     IF n = -1 THEN RETURN FALSE END;
     IF n < 0 THEN status := POC_STATUS(badArgument); RETURN FALSE END;
     INC(table[k].recordStart, table[k].recordLength);
@@ -570,6 +580,8 @@ MODULE Platform;
     VAR length, status: INTEGER; info: Info;
   BEGIN
     IF table[StdIn].inUse THEN RETURN 0 END;
+    promptInput := Fill("SYS$INPUT", length) & (POC_IS_TERMINAL(given, length) = 1)
+      & Fill("SYS$OUTPUT", length) & (POC_IS_TERMINAL(given, length) = 1);
     IF ~Fill("SYS$INPUT", length) THEN RETURN Failure(badArgument) END;
     status := POC_FILE_OPEN_MODE(table[StdIn].control, given, length, openRecords, info);
     IF ~ODD(status) THEN RETURN Result(status) END;

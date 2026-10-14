@@ -32,6 +32,12 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
 - `OutStr.Mod`: `rtl/llvm`'s, a copy kept the same (fixture
   `vax-outstr`), `Out`'s output appended to a string (section 19.9,
   proposal 3).
+- `In.Mod`, `InStr.Mod` and `FormattedInput.Mod`: `rtl/llvm`'s. `In`
+  reads SYS$INPUT through `Platform.Read(StdIn)`, a record at a time with
+  an LF after each, with `Out`'s unfinished line as the prompt when
+  SYS$INPUT and SYS$OUTPUT are terminals; `FormattedInput` reads a real
+  by `DecimalToReal`; `InStr` is a copy kept the same (fixture
+  `vax-instr`; section 19.11).
 - `FormattedText.Mod` and `RealDigits.Mod`: `rtl/llvm`'s, internal, for
   F_floating and G_floating. `RealDigits` takes a G_floating value apart
   for its exact digits, and `FormattedText` tests a real without IEEE

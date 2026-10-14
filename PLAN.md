@@ -647,8 +647,13 @@ C++, and so on) unless step 4 chooses one deliberately.
    `OutStr` are done (2026-10-13): their five proposals, **approved by
    the user, 2026-10-13**, are section 19.9, and section 19.10 records
    the work. `Out` and `Err` now format through `FormattedOutput`, as on
-   LLVM, and `OutStr` is `rtl/llvm`'s. Fixture `vax-outstr` is new. Next,
-   `In`, `InStr` and `FormattedInput`.
+   LLVM, and `OutStr` is `rtl/llvm`'s. Fixture `vax-outstr` is new. `In`,
+   `InStr` and `FormattedInput` are done (2026-10-13): their five
+   proposals, **approved by the user, 2026-10-13**, are section 19.11, and
+   section 19.12 records the work. `In` reads SYS$INPUT through
+   `Platform`, which gives `Out`'s unfinished line as the prompt on a
+   terminal, and reals are read by `DecimalToReal`. Fixtures `vax-in`,
+   `vax-in-extra` and `vax-instr` are new. Next, `Strings`.
 
 4. **Which native VAX/VMS libraries to support.** From the manuals, not
    memory, list what a VMS programmer expects to reach: the run-time

@@ -3733,3 +3733,182 @@ formats for itself (section 19.7, proposal 3). Each has its own `Field`,
       `Err`'s key.
   - `vax-library`'s `POCRTL` has 15 modules and makes 299 symbols
     universal, 19 more.
+
+### 19.11 In, InStr and FormattedInput: proposals
+
+The sixth group in the inventory's order (`vms-module-inventory.md`,
+proposal 1) is `In`, `InStr` and `FormattedInput`. On LLVM they are:
+- `FormattedInput` (internal) recognizes the tokens, over an abstract
+  `Source` of characters. It converts a real numeral with C's `strtof`
+  and `strtod`.
+- `In` reads standard input through C's `getchar`, one character ahead,
+  but not past a line end until the next character is wanted. It reads
+  `Real` and `LongReal` as a whole line.
+- `InStr` reads a string through `FormattedInput`'s `StringSource`. It is
+  plain Oberon, and its `s-` is a read-only parameter.
+
+What VMS changes:
+- SYS$INPUT is records, not a stream of bytes.
+- There is no `strtod`.
+- `Out` keeps a line until `Ln` (section 15, proposal 8). So a prompt
+  written without `Ln`, as in `Out.String("Count? "); In.Int(n)`, is not
+  on the terminal when the program waits for input. On LLVM `Out` is
+  unbuffered and the prompt shows.
+
+**Approved by the user, 2026-10-13**, all five as written.
+
+1. **`In` reads SYS$INPUT through `Platform.Read(StdIn)`, not through a
+   new `LineInput`.**
+   - `Platform` already reads SYS$INPUT a record at a time (RMS `$GET`)
+     and gives an LF after each record (section 19.1). It reads the next
+     record only when a byte past the LF is asked for, so a program that
+     prompts for a line does not wait for the following one. `In`'s
+     `StandardInput` asks it for one byte at a time, where `rtl/llvm`'s
+     calls `getchar`.
+   - Everything else in `In` is `rtl/llvm`'s text: the one character
+     read ahead, the state at a line end, and `Done`. The end of the file
+     (`RMS$_EOF`, Ctrl/Z at a terminal), or a read that fails, is the end
+     of the input, as `getchar`'s -1 is.
+   - Since `Platform.Read(StdIn)` and `In` read the same records, a
+     program can use both without losing input.
+   - The cost is that a program using `In` contains `Platform`. The
+     alternative is the inventory's own `LineInput`: a second reader of
+     SYS$INPUT, with its own RMS stream, buffer and MACRO-32 routine.
+   - Inside a record, a CR is an ordinary character. `Line` still drops
+     a CR just before the LF, as on LLVM, but a record does not end in
+     one.
+2. **A prompt: what `Out` holds of an unfinished line is written as
+   `$GET`'s prompt when SYS$INPUT and SYS$OUTPUT are both terminals.**
+   - RMS writes the prompt buffer (`RAB$L_PBF`, `RAB$B_PSZ`, with
+     `RAB$V_PMT` in `RAB$L_ROP`) to the terminal before a `$GET`, as it
+     stands: "to perform any carriage control on the terminal, you must
+     insert the appropriate carriage control characters into this
+     character string" (RMS 5.0, sections 7.13 and 7.14).
+   - A new `PocRtl.mar` routine, `POC_INPUT_GET`, is `POC_FILE_GET` with
+     the prompt. It needs no change to `LineOutput`, since
+     `POC_LINES_REGISTER` already gives the runtime the address of
+     `Out`'s line and its length (section 15, proposal 8). If the length
+     is between 1 and 254, the prompt is a line feed and then the line,
+     the line feed taking the place of the one that starts a record
+     written to the terminal. The routine then sets the length to 0, so
+     the text is not written again. A longer line is left as it is.
+   - `Platform` calls `POC_INPUT_GET` for StdIn, and only when
+     `IsConsole(StdIn)` and `IsConsole(StdOut)` were both TRUE when it
+     opened SYS$INPUT. Otherwise it calls `POC_FILE_GET`, and `Out`'s
+     line stays where it is and is written by the next `Ln`. RMS ignores
+     a prompt for a device that is not a terminal, so taking the line
+     would lose it. Files read by name are unchanged.
+   - What the terminal shows is checked by hand in a telnet session:
+     the prompt, the echo of what is typed, and where the next line of
+     output starts. The line feed in front is changed if that shows it
+     is wrong.
+   - Only `Out`'s line is a prompt: an unfinished line of `Err`'s still
+     waits for its `Ln`.
+   - The part-line `Flush` to a terminal, for `VT100`, stays in that step
+     (section 19.7, proposal 3).
+3. **`rtl/vax/FormattedInput.Mod` is `rtl/llvm`'s, but `Real` and
+   `LongReal` convert by `DecimalToReal`.**
+   - `Numeral` is unchanged: [+-] digits [. digits] [E|D [+-] digits],
+     at most `maxNumber` characters, with the D written as E.
+     `DecimalToReal` takes the numeral without its sign (section 19.7,
+     proposal 4), so `Real` and `LongReal` pass what follows a sign and
+     negate the result after a "-".
+   - The value is the nearest F or G value, ties to even, as `strtof`'s
+     and `strtod`'s is the nearest IEEE value.
+   - Beyond the largest value, the result is the largest, with `Done`
+     TRUE, where `strtod` gives an infinity and `Done` is TRUE. This is
+     what `Reals.Ten`, and `Files` reading an IEEE infinity, already do
+     (sections 19.3 and 19.7).
+   - Below the smallest value, the result is the nearer of 0 and the
+     smallest. The VAX has no subnormals.
+   - `Source`, `StringSource` and every other token are the same text.
+4. **`rtl/vax/InStr.Mod` is `rtl/llvm`'s, unchanged.** It is a copy with
+   one comment line saying so, and a fixture compares the two, as for
+   `OutStr` (section 19.9, proposal 3).
+5. **Fixtures on the guest, each program run with SYS$INPUT defined as its
+   input file** (`DEFINE/USER SYS$INPUT`). The input files go by FTP in
+   ASCII mode, so each line is a record.
+   - `vax-in`, new: `llvm-in`'s `intest.mod` and `input.txt`, under `-O2`
+     as on LLVM. It must print `llvm-in`'s `expected` output, which voc
+     agrees with.
+     - A second program, `prompt.mod`, writes `Out.String("count? ")`,
+       reads `In.Int`, then writes the number and `Ln`. With SYS$INPUT a
+       file, the prompt must stay in `Out`'s line: "count? 42" on one
+       line (proposal 2).
+   - `vax-in-extra`, new: `llvm-in-extra`'s `inextra.mod`, under `-O2`.
+     - Its input is `llvm-in-extra`'s, without the two lines that end in
+       CR LF, since a VMS record has no line-end characters.
+     - Its lines that print an integer or a token are `llvm-in-extra`'s.
+     - Its lines that print a real print its bits in hex, which are F's
+       and G's on the VAX. A generator writes them from the formats'
+       definitions and Python's exact fractions, as `vax-reals-module`'s
+       does (section 19.8). This includes 1.7976931348623157E308, which
+       becomes G's largest value, and 4.9E-324, which becomes 0.
+   - `vax-instr`, new: `llvm-instr`'s `instr.mod`, as `InStrUse.mod` since
+     VMS does not tell `instr` from `InStr`, under `-O2` and `-OC`. It is
+     run with "in" and with "instr" as its foreign command's argument
+     (section 19.5). The two must read the same tokens, as `llvm-instr`
+     checks, and the output must be `llvm-instr`'s `expected`. Its
+     `test.sh` also compares `InStr.Mod` with `rtl/llvm`'s.
+   - `vax-platform-files`, the one fixture that reads SYS$INPUT with
+     `Platform`, keeps its output. Under `tools/vax-do` its SYS$INPUT is
+     the command procedure, not a terminal (its check 61), so it still
+     reads through `POC_FILE_GET`.
+   - `vax-library`'s `POCRTL` gains `FormattedInput`, `In` and `InStr`.
+   - The four expected copies of `Platform.mar` change where StdIn is
+     opened and read: in `vax-platform`, `vax-files`, `vax-command-line`
+     and `vax-modules-commands`. `Platform`'s interface is unchanged, so
+     its key is too, and no importer's `.mar` changes.
+
+### 19.12 In, InStr and FormattedInput: done
+
+- *Done* (section 19.11, proposals 1 to 5, 2026-10-13):
+  - `In.Mod` is `rtl/llvm`'s, but `ReadChar` reads one byte at a time
+    with `Platform.Read(StdIn)`. Anything but one byte read is the end of
+    the input.
+  - `PocRtl.mar`'s new `POC_INPUT_GET` gives `$GET` `Out`'s unfinished
+    line as its prompt, after a line feed, and empties that line.
+    `Platform` calls it for StdIn when `promptInput` is set: SYS$INPUT
+    and SYS$OUTPUT were both terminals when StdIn was opened.
+  - `FormattedInput.Mod` is `rtl/llvm`'s, but `Real` and `LongReal` set a
+    sign aside and convert the rest with `DecimalToReal`.
+  - `InStr.Mod` is `rtl/llvm`'s, plus one comment line saying it is a
+    copy.
+- *Checked by hand* (proposal 2): `In` reads with the prompt in a telnet
+  session of POC's own, a `TN` terminal, driven by an expect script.
+  The program wrote "a line before" and `Ln`, then "count? " and read an
+  integer, then "name? " and read a word. The terminal showed:
+
+      a line before
+      count? 42
+      got 42
+      name? world
+      hello, world
+
+  Each prompt was on the screen before the read, the typed text was
+  echoed after it, and the next line of output started below. So the
+  line feed in front is right as proposed.
+- *Not done as proposed*: `vax-in-extra`'s input keeps `llvm-in-extra`'s
+  two lines that end in CR LF, with the CRs removed, where proposal 5
+  left them out. `inextra` reads its input line by line, so leaving them
+  out would move every later read to another line. With the CRs removed,
+  "windows line" is read as it is on LLVM, and the empty line is the
+  `LongReal` that is not done, as the line holding only a CR is on LLVM.
+- *Fixtures.*
+  - `vax-in`, new: `intest` prints `llvm-in`'s `expected` on the guest,
+    and `prompt` prints "count? 42" with SYS$INPUT a file.
+  - `vax-in-extra`, new: its `generate.py` writes `guest-run.expected`
+    from `llvm-in-extra`'s `expected` and input. It models how `In` reads
+    a real, converts the value as `DecimalToReal` does, and prints F's and
+    G's words as `Out.Hex` shows them. Each VAX pattern is the IEEE one
+    with the exponent field 2 larger, but at the range's edges:
+    1.7976931348623157E308 is G's largest value, `FFFFFFFFFFFF7FFF`,
+    and 4.9E-324 is 0.
+  - `vax-instr`, new: `InStrUse` with "in" and with "instr", under `-O2`
+    and `-OC`, prints `llvm-instr`'s `expected` and the `In` part of it.
+    Its `test.sh` also checks that `InStr.Mod` is `rtl/llvm`'s.
+  - The four expected copies of `Platform.mar` change in `OpenInput`,
+    `NextRecord` and the new variable. Every other difference is a line
+    number or a renumbered label. `Platform`'s key is unchanged.
+  - `vax-library`'s `POCRTL` has 18 modules and makes 350 symbols
+    universal, 51 more.
