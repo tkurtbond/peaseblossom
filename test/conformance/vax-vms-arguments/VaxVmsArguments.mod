@@ -4,7 +4,8 @@ MODULE VaxVmsArguments;
      procedure for each - by value, by reference for VAR, by reference for
      a read-only parameter (a variable's own address, or a copy's in the
      frame), by a CLASS_S descriptor for an open ARRAY OF CHAR, NIL as an
-     omitted argument, a procedure VMS calls back - and the caller's
+     omitted argument, a procedure VMS calls back, a read-only ARRAY OF
+     SYSTEM.BYTE given any actual (part 2, proposal 7) - and the caller's
      widening of a result narrower than a longword. Imports VmsArguments,
      whose MACRO-32 is reviewed with it. The routines are not real ones;
      vax-vms-calls calls real ones. *)
@@ -35,6 +36,7 @@ MODULE VaxVmsArguments;
   PROCEDURE ["VMS", "TEST$NARROW"] Narrow(): SHORTINT;
   PROCEDURE ["VMS", "TEST$WORD"] NarrowWord(): SYSTEM.INT16;
   PROCEDURE ["VMS", "TEST$TRUTH"] Truth(): BOOLEAN;
+  PROCEDURE ["VMS", "TEST$BYTES"] Bytes(b-: ARRAY OF SYSTEM.BYTE);
 
   PROCEDURE CompareKey(VAR symbol: SYSTEM.INT32; node, data: SYSTEM.ADDRESS): SYSTEM.INT32;
   BEGIN RETURN symbol
@@ -79,6 +81,17 @@ MODULE VaxVmsArguments;
     Strings(NIL, NIL, NIL)
   END PassStrings;
 
+  (* a read-only ARRAY OF SYSTEM.BYTE (part 2, proposal 7) takes any
+     actual: a variable by its own address, whatever its type; a value
+     copied to the frame; a string or structured constant from POC_CONST;
+     NIL 0 *)
+  PROCEDURE PassBytes;
+  BEGIN
+    Bytes(huge); Bytes(item); Bytes(name); Bytes(status);
+    Bytes(huge + 1); Bytes(-600000000); Bytes(real * 2.0);
+    Bytes("text"); Bytes(origin); Bytes(NIL)
+  END PassBytes;
+
   (* a result narrower than a longword, widened by the caller: R0's high
      bits are undefined (calling standard 2.4) *)
   PROCEDURE NarrowResults;
@@ -92,5 +105,5 @@ BEGIN
   VmsArguments.Describe(descriptor, name);
   VmsArguments.SetItem(items, 0, 2, name, length);
   VmsArguments.EndList(items, 1);
-  PassValues; PassVars(items); PassReadOnly(items); PassStrings(name, "value"); NarrowResults
+  PassValues; PassVars(items); PassReadOnly(items); PassStrings(name, "value"); PassBytes; NarrowResults
 END VaxVmsArguments.

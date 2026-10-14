@@ -2076,14 +2076,26 @@ MODULE VaxCodeGenerator;
     RETURN desc
   END StringDescriptor;
 
+  (* Whether e is a string, a character or a structured constant, which
+     StringArgument puts in POC_CONST *)
+  PROCEDURE IsTextOrStructuredConstant(e: SyntaxTree.ExprNode): BOOLEAN;
+    VAR v: Types.Value;
+  BEGIN
+    IF ~ConstantEvaluator.IsConstantExpr(e, scope) THEN RETURN FALSE END;
+    v := ConstantEvaluator.Evaluate(e, scope);
+    RETURN (v.kind = Types.stringValue) OR (v.kind = Types.charValue)
+      OR (v.kind = Types.structuredValue)
+  END IsTextOrStructuredConstant;
+
   (* a, the argument of a parameter p of a ["VMS"] procedure that it takes
      by reference or by descriptor, into entry, its longword of the
      argument list (doc/developer/vms-sdl-interfaces.md, part 1): NIL a 0,
      VMS's omitted argument; an open ARRAY OF CHAR a string descriptor
      (StringDescriptor); a VAR parameter its variable's address; a
      read-only one, x-, its actual's address - of an open array, element
-     0's, with no lengths - a scalar's copied to the frame unless it is a
-     variable of the formal's own type. What it leaves in the frame is
+     0's, with no lengths, and of a value an x- ARRAY OF SYSTEM.BYTE takes
+     (part 2, proposal 7), a copy's in the frame - a scalar's copied to
+     the frame unless it is a variable of the formal's own type. What it leaves in the frame is
      returned, to be released after the call; NIL when nothing is. *)
   PROCEDURE VmsArgument(a: SyntaxTree.ExprNode; p: Types.Param; entry: Operand): Operand;
     VAR v, temp: Operand;
@@ -2094,13 +2106,21 @@ MODULE VaxCodeGenerator;
     ELSIF p.isVar THEN
       IF ~AddressInto(a, entry) THEN Unsupported(a.line, a.column, "this VAR argument") END
     ELSIF (OpenDims(p.type) > 0) OR ~IsSliceScalar(p.type) THEN
-      IF ConstantEvaluator.IsConstantExpr(a, scope) THEN
+      IF IsTextOrStructuredConstant(a) THEN
         IF OpenDims(p.type) > 0 THEN v := StringArgument(a, 0)
         ELSE v := StringArgument(a, VaxTypes.Size(p.type))
         END
       ELSE v := Expression(a, NIL)
       END;
-      AddressOf(v, entry); Release(v)
+      IF (v.kind = memory) & ~v.standIn THEN
+        AddressOf(v, entry);
+        IF v.slot >= 0 THEN temp := v ELSE Release(v) END
+      ELSE
+        (* a value, which an x- ARRAY OF SYSTEM.BYTE takes (part 2,
+           proposal 7): its address is a copy's in the frame *)
+        temp := FrameTemporary(v.type, a.line, a.column);
+        IF temp # NIL THEN MoveInto(v, temp); Release(v); AddressOf(temp, entry) END
+      END
     ELSIF IsProcedureType(p.type) THEN
       temp := FrameTemporary(p.type, a.line, a.column);
       IF temp # NIL THEN

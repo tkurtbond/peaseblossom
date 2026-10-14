@@ -61,7 +61,8 @@ the tree and writes the declarations for its language.
   logical name the user of a back end defines to point at the directory
   holding the back ends (`DEFINE SDL$SHARE DISK:[DIR]`), since SDLNPARSE
   finds one by `LIB$FIND_IMAGE_SYMBOL("SDL$SHARE:SDL<x>", "SDL$OUTPUT")`.
-  UNSDL and its back ends should therefore run on the guest as they are.
+  UNSDL and its back ends should therefore run on the guest as they are
+  (wrong: 5.5-2's SDLNPARSE looks only in `SYS$SHARE`; part 2).
 - VAX C 3.2, which builds the back end.
 
 ## Decided (the user, 2026-10-11)
@@ -373,3 +374,357 @@ what was found:
   rules in a subsection, `AGENTS.md` a summary, the Reference Guide an
   example, `vax-macro32-backend.md` sections 7 and 14 a pointer here,
   and `rtl/vax/README.md` the module.
+
+## Proposals, part 2: the generator
+
+Part 1 made the mechanisms the generator writes. This part is the
+generator itself: where it runs, what it reads, and what Oberon it
+writes for each kind of SDL node. Step 4's proposals 1 and 2 decided
+that all of `STARLETSD.TLB` is generated, as a faithful transcription:
+the system's names, SDL's mechanisms, constants and structures.
+
+**What was found on the guest first (2026-10-14).**
+
+- **`SDLNPARSE` loads a back end only from `SYS$SHARE`.** The user's
+  `sdldump` (`~/Repos/myunsdl`) builds and links as it is. But
+  `SDL/NOPARSE/LANGUAGE=DUMP` failed with `%SDL-E-INVSHRIMG, Shareable
+  language image not found DUMP`:
+  - with `SDL$SHARE` defined in `POC`'s process as `SYS$DISK:[]`,
+    `DUA1:[USERS.POC]` or `SYS$SCRATCH:`;
+  - and with `SDL$SHARE` defined system-wide in executive mode as
+    `DUA1:[USERS.POC.SDL]`, by the user.
+  - A test program's `LIB$FIND_IMAGE_SYMBOL("SDLDUMP", "SDL$OUTPUT",
+    ..., "SDL$SHARE:.EXE")` finds the same image, so the image is sound.
+  - Once the user copied `SDLDUMP.EXE` to `SYS$SHARE` (`SYS$COMMON:
+    [SYSLIB]`), the dumps worked. So this version (SDL V3.2-12,
+    `SDLNPARSE.EXE` of 17-OCT-1991) looks only there, and the first
+    section's "should run on the guest as they are" was wrong.
+- **No other renderings show the mechanisms.**
+  - `SYS$LIBRARY:STARLET.H` declares each service with no parameters
+    (`long int sys$qiow() ;`).
+  - `STARLET.REQ`'s BLISS keyword macros give the order and the
+    defaults (`EFN=0, CHAN, FUNC, IOSB=0 ...`), but not the mechanisms.
+  - Only the tree has them.
+- **VAX C's headers, `SYS$LIBRARY:VAXCDEF.TLB`** (30-NOV-1990, 208
+  modules), are SDL's own C output. There is one header for each SDL
+  `MODULE` node: `IODEF`, `JPIDEF`, `SSDEF`, `FAB` (`MODULE $fabdef`),
+  `LIB$ROUTINES`. The FAB shows SDL's common shape: a union of a
+  scalar and a structure of bit fields (`fab$r_fop_overlay`: `fab$l_fop`
+  and `fab$v_asy ...`), and an address of another structure (`struct
+  NAM *fab$l_nam`).
+- **An `x-: ARRAY OF SYSTEM.BYTE` formal takes only byte arrays today**
+  ("argument is not array compatible"). A `VAR` one takes any variable
+  (`Oberon2.pdf`, Appendix C).
+
+**What the dumps show (2026-10-14).** `SDLDUMP` was run on seven of
+`STARLETSD.TLB`'s modules: `SSMSG`, `STARLET`, `LIB$ROUTINES`,
+`STR$ROUTINES`, `STARDEFFL`, `RMSDEF` and `RMSUSR`. `sdldef.h`'s node
+layout of 1988 reads 5.5-2's trees correctly. What the generator must
+follow:
+
+- **Module nodes.** A library module holds one or more SDL `MODULE`
+  nodes: `STARDEFFL` has 17 (`$FACDEF`, `$FIBDEF`, `$IODEF`, `$JPIDEF`,
+  ... `$LPDEF`), `RMSUSR` has 19 (`$FABDEF`, `$RABDEF`, `$NAMDEF`, the
+  `$XAB...DEF`s, `$FSCNDEF`, `$RMEDEF`), and `SSMSG`, `STARLET`,
+  `LIB$ROUTINES` and `STR$ROUTINES` one each (`$SSDEF`, `STARLET`,
+  `lib$routines`, `str$routines`). The names come in either case.
+  `RMSDEF` holds only RMS's status codes; the structures are in `RMSUSR`.
+- **Constants.** Each has its full name (`SS$_NORMAL`) and its value
+  (`typeinfo`; none means 0).
+  - A `$M_` mask is a constant node with the `mask` flag. Three have
+    bit 31 set (`LKI$M_SYSNAM`, `LMF$M_LOOKUP_LICENSE_SPARE`,
+    `LP$M_PAGE_L`).
+  - Some other constants are negative (`KGB$K_*`, 8000000xH; `JPI$_CHAIN`,
+    -1).
+  - `$V_`, `$S_` and the field-offset constants are not nodes. SDL's
+    MACRO back end computes them from the items, and so must this one.
+- **Items** (an aggregate's members).
+  - An offset is from the start of the outermost aggregate; `fldsiz` is
+    the size in bytes, a dimensioned field's whole size (`dimen`,
+    `hidim`).
+  - A bit field's offset is its enclosing structure's, and its `fldsiz`
+    is its width in bits. Its position is the sum of the widths of the
+    bit fields before it in that structure: this gives every one of the
+    543 masks in `STARDEFFL` and `RMSUSR`.
+  - A union is an overlay. 62 unions lead with a scalar as large as the
+    union (`FAB$R_FOP_OVERLAY`: `FAB$L_FOP`, then a structure of bit
+    fields); 2 lead with a structure that fills the union and holds
+    fields (`FIB$R_FUNCDEPEND`, `LKI$R_NAMSPACE_UNION`); 1 has no member
+    that fills it with fields (`LAT$R_ESTATFLAGS`), and in 1 the member
+    that fills it is not the first (`LAT$R_ITEM_VALUE`: a 2-byte counted
+    string, then a longword).
+  - 8 aggregates are top-level unions of bit structures (`IODEF`,
+    `LCKDEF`, `XABPRODEF`, ...) and 7 are structures of bit fields only:
+    they exist to give `$V_`/`$M_` constants.
+  - Fields are named `FAB$L_FOP`, fillers `FABDEF$$_FILL_7` or
+    `FAB$V_fill_0`. An aggregate is named `FABDEF`, with prefix `FAB$`.
+  - Two scalars are not at their natural alignment, both longwords:
+    `XAB$L_RVB` at offset 14 of `XABKEYDEF`, and `LAT$R_ITEM_VALUE`'s
+    `LAT$L_ITEM_SCALAR_VALUE` at offset 2 of `ITEM_ENTRY` (`$LATDEF`).
+- **Entries.** `STARLET` has 254, `LIB$ROUTINES` 162, `STR$ROUTINES` 32.
+  - **An optional parameter** carries the flag `default` in `STARLET`
+    and `optional` in the `LIB$`/`STR$` modules.
+  - **A variable argument list** is the entry's flag `variable`: only
+    `SYS$FAO` (its last parameter's type name is `VARYING_ARG`).
+  - **Type names** are VMS usages: `EF_NUMBER`, `ITEM_LIST`,
+    `IO_STATUS_BLOCK`, `DATE_TIME`, `CHAR_STRING`, `PROCEDURE`, ...
+  - **Character parameters**: by `descriptor`; by reference with flag 26
+    (`sdldef.h`'s "RTL string descriptor", on the `LIB$`/`STR$` ones),
+    which is a descriptor too; and plainly by reference in 6 (the
+    characters' address, their length another argument, as
+    `LIB$CVT_DTB`'s, or one character, `STR$DUPL_CHAR`'s).
+  - **A routine argument** (`ASTADR`, `ACTRTN`, `user_procedure`) is an
+    `address` parameter whose object is an `entry` node. `STARLET` marks
+    it by reference, `LIB$` by value; the argument list holds the
+    routine's address either way (the calling standard's procedure
+    value). `LIB$DECODE_FAULT`'s is by descriptor.
+  - **Other parameters**: longwords, words and bytes by value or
+    reference; arrays of them (`dimen`); quadwords (times, lock IDs),
+    `any` (an item list, a FAB, `SYS$QIOW`'s P1 buffer, which it writes
+    though SDL says `IN`) and structures by reference; addresses by value
+    or reference; F and G floating by reference. None is D, H or complex.
+  - **Results**: every `SYS$` service a longword; `LIB$` 149 longwords,
+    9 none, 2 addresses (`LIB$ESTABLISH`), a word (`LIB$LEN`) and a
+    boolean (`LIB$AST_IN_PROG`); `STR$` 31 longwords and a word.
+  - 29 entries carry the flag `link`, among them every RMS service
+    (`SYS$OPEN` ...), which take `ERR` and `SUC` routines. The `.REQ`
+    and C renderings call them as any other, so the generator ignores it.
+
+**Proposals.**
+
+1. **The generator is a back end, `SDLOBERON`, which runs from
+   `SYS$SHARE`.** `POC` builds it in `DUA1:[USERS.POC.SDL]`, and the user
+   copies it to `SYS$SHARE` (protection `W:RE`), as with `SDLDUMP`: once
+   for each rebuild. The executive-mode `SDL$SHARE` is not needed, and the
+   user may deassign it.
+
+2. **Where it lives and how it runs.**
+   - `tools/sdloberon/`: `sdloberon.c`, written as `sdlscm.c` is, and
+     copies of `sdldef.h` and `readable.mar` from `~/Repos/myunsdl`,
+     with a note saying where they came from. `sdldump.c` goes there too,
+     as the tool for looking at a tree.
+   - `tools/vax-sdl`, a host script over `tools/vax-do`. It sends the
+     sources and builds the back end with VAX C (the user then copies it).
+     Run again, it extracts each `STARLETSD.TLB` module, runs
+     `SDL/NOPARSE/LANGUAGE=OBERON` on it, and brings the `.Mod` files
+     back.
+   - The output is committed under `rtl/vax/vms/`. A user of poc never
+     runs the generator; the user reruns it only for another kit.
+   - The modules make a VAX library of their own, `VMSDEF` (`poc
+     -library`, Phase 17 step 1), not part of `POCRTL`. Most have no
+     code, and `POCRTL` stays the runtime.
+
+3. **One Oberon module for each SDL `MODULE` node**, as VAX C has one
+   header for each.
+   - So `STARDEFFL`'s `$IODEF`, `$JPIDEF` and the rest are separate
+     modules, and `RMSUSR` gives `FABDEF`, `RABDEF`, `NAMDEF` and the
+     `XAB`s.
+   - **The name is the node's, upper case, with a leading `$` dropped
+     and any other `$` made `_`**: `IODEF`, `SSDEF`, `FABDEF`,
+     `STARLET`, `LIB_ROUTINES`, `SMG_ROUTINES`. A file name with `$`
+     needs quoting in a Unix shell.
+   - None of these names differs only in case from a runtime module.
+   - Each module starts with a banner: the library module and SDL node,
+     `STARLETSD.TLB`'s creation date (9-JUL-1993), SDL's version, and
+     "generated by tools/sdloberon; do not edit".
+
+4. **Constants** are written as `CONST` with the system's name
+   verbatim: `SS$_NORMAL* = 1;`.
+   - A mask is written in hexadecimal. One with bit 31 set uses the
+     16-digit pattern (`0FFFFFFFF80000000H`, `AGENTS.md`, "Hexadecimal
+     constants as 64-bit patterns"), so that it is the negative
+     longword VMS means and fits a `SYSTEM.INT32`.
+   - Any other constant is decimal, a negative one included.
+   - A string constant is a string.
+   - SDL's comment on a constant goes after it, as an Oberon comment.
+
+5. **Structures.** Every field gets its offset constant, as MACRO's
+   `$xxxDEF` gives it: `FAB$L_FOP* = 4;`. A bit field gets `$V_` (its
+   position, from the widths before it), `$S_` (its width) and, from
+   SDL, `$M_`: `FAB$V_GET`, `FAB$S_GET`, `FAB$M_GET`. Fillers get none.
+   Then the aggregate is laid out as a list of fields:
+   - **A union** gives its first member that fills it: a scalar or an
+     array of scalars is one field (`FAB$L_FOP`, `FIB$W_FID`); a
+     structure holding fields gives those fields (`FIB$R_FUNCDEPEND`).
+     The other members appear only as constants. A union with no such
+     member is `ARRAY size OF SYSTEM.BYTE`, named after the union.
+   - **A nested structure** gives its fields in place.
+   - **Bit fields** outside a union's scalar are `ARRAY n OF SYSTEM.BYTE`
+     over the bytes they cover, named after the first one.
+   - **A scalar that is not at its natural offset** (`XAB$L_RVB`) is
+     `ARRAY size OF SYSTEM.BYTE`, with a comment giving its type, and is
+     used through `SYSTEM.GET`/`SYSTEM.PUT` and its offset constant.
+   - **A filler** is a field named `fill<n>`, not exported, so that
+     every byte keeps its place.
+   - An aggregate that is a union, or holds only bit fields, gives only
+     constants: no type.
+
+   The `RECORD` is then written, named as the aggregate (`FABDEF.FABDEF`;
+   VAX C's `struct FAB` is a name the C back end makes, and SDL's own is
+   `FABDEF`), with fields of the system's names (`FAB$L_FOP`).
+   - The generator checks that poc's layout (each field aligned to its
+     size, at most 4: `MemoryLayout`) puts every field at SDL's offset.
+     With the rules above, all 52 aggregates of `STARDEFFL` and `RMSUSR`
+     pass, but one differs at the end: `XABDEF1` is 23 bytes, which poc
+     pads to 24. Such a record is still written, with a comment, since
+     VMS reads only its own bytes. One that fails anything else is
+     written as `ARRAY size OF SYSTEM.BYTE` with a comment saying which
+     field breaks it, and the generator reports it.
+   - The field types are part 1's exact widths: byte `SYSTEM.INT8`, word
+     `SYSTEM.INT16`, longword `SYSTEM.INT32`, quadword `SYSTEM.INT64`,
+     address `SYSTEM.ADDRESS`, F `REAL`, G `LONGREAL`.
+   - Characters are `ARRAY n OF CHAR`. A dimension is `ARRAY n OF T`.
+   - D floating is `ARRAY 8 OF SYSTEM.BYTE`; H floating, an octaword and
+     decimal are their size in bytes.
+   - `unsigned` is noted in a comment, since poc has no unsigned types.
+   - SDL's boolean is a byte, `SYSTEM.INT8`, since VMS tests only its low
+     bit and an Oberon `BOOLEAN` must be 0 or 1.
+
+6. **Entries.** `PROCEDURE ["VMS", "SYS$QIOW"] SYS$QIOW*(...): SYSTEM.INT32;`,
+   with the entry's own name, upper case. Each parameter by part 1's
+   rules, `x-` when SDL says `IN` and `VAR` when `OUT` or `IN OUT`:
+
+   | SDL parameter | Oberon formal |
+   |---|---|
+   | a longword, word, byte or boolean by value | a value of that width; a boolean `SYSTEM.INT8` |
+   | the same by reference | `x-` or `VAR x` of that width |
+   | the same with a dimension | `x-` or `VAR x: ARRAY OF` that width |
+   | characters by descriptor, or by reference with flag 26 | `x-` or `VAR x: ARRAY OF CHAR` (part 1's descriptor) |
+   | characters by reference, no flag 26 | one character `x-: CHAR`, else `x-` or `VAR x: ARRAY OF SYSTEM.BYTE` |
+   | a quadword, octaword, `any` or structure by reference | `x-` or `VAR x: ARRAY OF SYSTEM.BYTE` |
+   | F or G floating by reference | `x-` or `VAR x` of `REAL` or `LONGREAL` |
+   | an address by value | `x: SYSTEM.ADDRESS` |
+   | an address by reference | `x-` or `VAR x: SYSTEM.ADDRESS` |
+   | `any` by value | `x: SYSTEM.ADDRESS` |
+   | a routine (an address of an entry) | `x: SYSTEM.ADDRESS` now; a procedure type in step 6 |
+   | anything by another descriptor | `x: SYSTEM.ADDRESS`, a descriptor built by hand |
+
+   - The quadword row lets one formal take a `HUGEINT`, an
+     `IOStatusBlock`, a FAB or an item list (proposal 7). `SYS$QIOW`'s
+     `P1`, which SDL calls `IN`, is written `VAR` when the generator is
+     told so by a short list of known exceptions in `sdloberon.c`, with
+     a comment; otherwise `x-` still passes a variable's own address,
+     so a read works.
+   - A routine is `SYSTEM.ADDRESS` until step 6 decides how an Oberon
+     procedure is given to VMS (part 1's `CheckVmsCallbackType` already
+     checks a procedure type). `SYSTEM.ADR(P)` gives its address now.
+   - **An optional parameter** (`default` or `optional`) is marked in a
+     comment: `(* optional: NIL omits it *)`, or for a value "0 omits
+     it". Every argument is still written, as Oberon requires.
+   - **The type name** (`EF_NUMBER`, `IO_STATUS_BLOCK`, ...) and SDL's
+     comment go in a comment after the formal.
+   - **A name that is an Oberon keyword** (`IN`, `TO`, `SET`, `END` ...)
+     gets a trailing `_`; `LIB$`'s lower-case names stay as they are.
+     A predeclared name may be redeclared and is kept.
+   - **Entries left out**, each with a comment saying why (part 1,
+     proposal 7): `SYS$FAO`, the one variable argument list, and any
+     entry with a parameter or result no rule covers. None of the three
+     modules dumped has another.
+   - **Results**: a longword is `SYSTEM.INT32`, a word `SYSTEM.INT16`, an
+     address `SYSTEM.ADDRESS`, a boolean `SYSTEM.INT8` (its low bit is
+     the answer); none is a proper procedure.
+
+7. **`x-: ARRAY OF SYSTEM.BYTE` takes any actual, in a `["VMS"]`
+   declaration.** As a `VAR` one takes any variable, it takes a
+   variable, a constant or an expression of any type. The address is
+   the actual's, or a temporary's. This is SDL's quadword, `any` and
+   structure by reference, read only. Outside `["VMS"]` nothing changes.
+
+8. **What is checked.**
+   - **On the host**, a fixture compiles every generated module under
+     `-O2` and `-OC` and writes its `.mar`. A fixture builds the `VMSDEF`
+     library on the guest, as `vax-library` does for `POCRTL`.
+   - **Against VAX C's headers**, the independent rendering of the same
+     SDL:
+     - The generator also writes a C program that includes
+       `VAXCDEF.TLB`'s header for the module and prints each constant
+       and each field's offset (`offsetof`).
+     - An Oberon program prints the same from the generated module.
+     - A fixture compares the two on the guest.
+     - The headers are from 1990 and the kit from 1993, so only names
+       in both are compared, and the count of the others is reported.
+   - **The generator's own checks**: the layout check of proposal 5, and
+     each computed `$V_`/`$S_` against SDL's `$M_` (all 543 agree in the
+     dumps).
+   - **The supported tier** (step 4, proposal 3) keeps its own fixtures,
+     each written when its group is done (step 4, proposal 7).
+   - **The first output for review** is part of the work for this part:
+     `SSMSG` (constants only), `$IODEF` and `$JPIDEF` (constants with
+     masks), `$FABDEF` (a record with overlays), `$XABKEYDEF` (a
+     misaligned field) and `STARLET`'s `SYS$TRNLNM`, `SYS$GETJPIW`,
+     `SYS$QIOW` and `SYS$ASCTIM` (entries). The rest are generated once
+     these are approved.
+
+## Part 2 so far: what was implemented (2026-10-14)
+
+The proposals above were **approved by the user, 2026-10-14**, and the
+generator, proposal 7 and the checks were made the same day. The first
+output, for review, is seven of `STARLETSD.TLB`'s modules: `SSMSG`,
+`STARLET`, `LIB$ROUTINES`, `STR$ROUTINES`, `STARDEFFL`, `RMSDEF` and
+`RMSUSR`, 41 Oberon modules in `rtl/vax/vms`; the other 58 library
+modules follow once these are approved.
+
+- **The generator**, `tools/sdloberon/sdloberon.c` (VAX C), built and run
+  on the guest by `tools/vax-sdl` (proposals 1 and 2). The user copies
+  `SDLOBERON.EXE` to `SYS$SHARE`. `tools/sdloberon/sdlload.c` runs the
+  same back end on atla over an `SDLDUMP` dump, which prints every node's
+  address and links, so a change is tried before the guest.
+- **`x-: ARRAY OF SYSTEM.BYTE` takes any actual** in a `["VMS"]`
+  declaration (proposal 7): `SemanticActions.CheckArguments`, and
+  `VaxCodeGenerator.VmsArgument`, which passes a variable's own address
+  or a copy's in the frame. Fixtures `semantic-vms-arguments`,
+  `semantic-reject-vms-arguments` and `vax-vms-arguments` (`PassBytes`).
+- **The check against SDL's other rendering is `STARLET.MLB`, not VAX C's
+  headers** (proposal 8 changed). The MACRO back end's `$xxxDEF` macros
+  come from the same kit and define every constant the generator computes
+  (`$V_`, `$S_`, offsets), where `VAXCDEF.TLB`'s headers, of 1990, hold
+  only `$M_`, `$C_` and `$K_` and name no offsets or bits. Fixture
+  `vax-vmsdef` assembles `$<M> GLOBAL` for each of the 38 `$xxxDEF`
+  modules with a listing and compares its symbol table with the module
+  (`compare-mlb.awk`, `expected-mlb`): **3587 names agree, none differs
+  in value**. Four `$S_` of two `$LATDEF` aggregates are in `STARLET.MLB`
+  only (`LAT$S_EFLAG`, `LAT$S_EFLAGBITS`, `LAT$S_ESTATFLAGS`,
+  `LAT$S_ITM_CODE`), for nested unions that MACRO's back end sizes
+  there and nowhere else; they are left out.
+- **What the comparison corrected** (proposal 5): `$S_` is MACRO's rule,
+  not every bit field's - a bit field's only when wider than a bit; a
+  field's whose type does not give its size (more than one character, an
+  array, a quadword); each aggregate's own (`FAB$S_FABDEF`), unless it
+  is a filler.
+- **Found in the trees, beyond the dumps' first findings**: a `LIB$` or
+  `STR$` string parameter carries flag 26 *alone*, no reference or
+  descriptor flag, and is a descriptor; a character parameter by
+  reference with `typeinfo` -999 (`LENGTH *`) is the address of
+  characters counted elsewhere (`LIB$CVT_DTB`), declared `x-: ARRAY OF
+  SYSTEM.BYTE`; `STARLET` has one conditional (an `IFSYMBOL`, node type 13,
+  which `SDLDUMP` prints as "unknown"): its `typeinfo2` is the
+  condition, its child ring
+  older forms of the DECdtm branch services (`SYS$ADD_BRANCH` ...) that
+  the main ring declares again in their current form, so the generator
+  leaves it out.
+- **VAX C's `fputs` writes nothing of a string longer than 65535
+  characters**: the guest's first `STARLET` and `LIB_ROUTINES` (190000
+  and 93000 characters) came out empty, so the generator writes a
+  module a line at a time. VAX C's `isprint` also passes Latin-1 (a `©`
+  in `SSDEF`); comments keep only ASCII.
+- **`SYS$QIOW`'s `P1` stays `x-`** (proposal 6 allowed a list of
+  exceptions to make it `VAR`): `x-` passes a variable's own address, so
+  a read into a buffer works, and a write can take a string constant,
+  which `VAR` would refuse. The list is empty.
+- **Left out, each with a comment**: `SYS$FAO`, a variable argument list,
+  and the `LIB$`/`STR$` entries with a `LIST` parameter: `LIB$SIGNAL`,
+  `LIB$STOP`, `LIB$SYS_FAO`, `LIB$MATCH_COND`, `STR$CONCAT`,
+  `STR$FIND_FIRST_SUBSTRING`.
+- **Fixture `vax-vmsdef`**: each module compiled under `-O2` and `-OC`;
+  the library `VMSDEF` made, and built on the guest with `POCRTL`;
+  `VmsDefLayout`, written by `layout-check.awk`, checks poc's offset of
+  each field of the 37 record types against its constant, and each size
+  (0 errors); `VmsDefCalls` calls `LIB$`, `STR$`, `$TRNLNM`, `$GETJPIW`,
+  `$BINTIM`, `$ASCTIM`, `$ASSIGN`, `$QIOW` and RMS's `$OPEN` and
+  `$CLOSE` through the generated declarations, with a `FABDEF.FABDEF`
+  that RMS fills in.
+- **Open question for the user**: a quadword in, `x-: ARRAY OF
+  SYSTEM.BYTE`, takes a constant's own bytes, so `-600000000` gives VMS
+  4 bytes, not a delta time; `SYSTEM.VAL(HUGEINT, c)` is needed. Declaring
+  an `IN` quadword `x-: HUGEINT` instead would convert a constant, and
+  still take a `HUGEINT` variable by address, but not a record.

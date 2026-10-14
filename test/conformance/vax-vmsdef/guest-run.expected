@@ -1,0 +1,61 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSDEFLAYOUT.COM: %X10000001
+FABDEF.FABDEF: 33 fields, 80 bytes
+FIBDEF.FIBDEF: 20 fields, 72 bytes
+FIBDEF.FIBDEF1: 2 fields, 28 bytes
+FIDDEF.FIDDEF: 3 fields, 6 bytes
+FSCNDEF.FSCNDEF: 3 fields, 8 bytes
+INITDEF.BADBLOCKS_LBN_DEF: 2 fields, 8 bytes
+INITDEF.BADBLOCKS_SEC_DEF: 4 fields, 16 bytes
+JPIDEF.JPICTLDEF: 0 fields, 4 bytes
+JPIDEF.JPILGIDEF: 0 fields, 4 bytes
+KGBDEF.KGBDEF: 7 fields, 64 bytes
+LATDEF.ENTITY: 1 fields, 3 bytes
+LATDEF.ITEM_ENTRY: 2 fields, 6 bytes
+LKIDEF.LKIDEF: 12 fields, 56 bytes
+LKIDEF.NAMSPACE: 3 fields, 4 bytes
+LKIDEF.STATEF: 3 fields, 3 bytes
+LKIDEF.LKIUSRDEF: 4 fields, 20 bytes
+LKIDEF.RNGDEF: 4 fields, 32 bytes
+LKIDEF.LKISNDDEF: 10 fields, 16 bytes
+NAMDEF.NAMDEF: 28 fields, 96 bytes
+RABDEF.RABDEF: 23 fields, 68 bytes
+XABALLDEF.XABALLDEF: 8 fields, 32 bytes
+XABCXFDEF.XABCXFDEF: 13 fields, 60 bytes
+XABCXRDEF.XABCXRDEF: 22 fields, 84 bytes
+XABDATDEF.XABDATDEF: 3 fields, 44 bytes
+XABDEF.XABDEF: 5 fields, 20 bytes
+XABDEF.XABDEF1: 1 fields, 24 bytes
+XABFHCDEF.XABFHCDEF: 12 fields, 44 bytes
+XABITMDEF.XABITMDEF: 2 fields, 32 bytes
+XABITMDEF.XABNETEXTPROT: 4 fields, 8 bytes
+XABITMDEF.XABNETDAPVER: 5 fields, 5 bytes
+XABJNLDEF.XABJNLDEF: 10 fields, 80 bytes
+XABKEYDEF.XABKEYDEF: 25 fields, 100 bytes
+XABPRODEF.XABPRODEF1: 10 fields, 88 bytes
+XABRDTDEF.XABRDTDEF: 0 fields, 20 bytes
+XABRUDEF.XABRUDEF: 3 fields, 48 bytes
+XABSUMDEF.XABSUMDEF: 3 fields, 12 bytes
+XABTRMDEF.XABTRMDEF: 2 fields, 36 bytes
+0 layout errors
+run: %X00000001
+VMSDEFCALLS.COM: %X10000001
+symbol [from poc] status %X00000001
+upcased [UPPER CASE] status %X00000001
+SS$_NORMAL
+get_vm status %X00000001
+free_vm status %X00000001
+logical name [translated value] status %X00000001
+username [POC         ] status %X00000001
+I/O status %X00000001
+time [14-OCT-2026 12:34:56.78] status %X00000001
+delta [   0 00:01:00.00] status %X00000001
+assign status %X00000001
+qiow status %X00000001, I/O status %X00000001, count 0
+open status %X00010001, FAB$L_STS %X00010001
+organization 0, record format 2, attributes 2
+an internal file index
+close status %X00010001
+RMS$_FNF
+run: %X00000001

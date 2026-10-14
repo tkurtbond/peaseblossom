@@ -1,31 +1,37 @@
 == -O2
-vms-arguments.mod:20:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: r
-vms-arguments.mod:21:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: a
-vms-arguments.mod:21:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: b
-vms-arguments.mod:22:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: h
-vms-arguments.mod:22:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: g
-vms-arguments.mod:22:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: s
-vms-arguments.mod:24:3: error: a procedure VMS calls cannot have a VAR record or open-array parameter, which takes a hidden argument: a, its parameter r
-vms-arguments.mod:24:3: error: a procedure VMS calls cannot have a VAR record or open-array parameter, which takes a hidden argument: b, its parameter a
-vms-arguments.mod:24:3: error: a procedure VMS calls can have only value parameters of 4 bytes or less: c, its parameter x
-vms-arguments.mod:24:3: error: a procedure VMS calls cannot have a read-only parameter; declare it VAR or a value: d, its parameter x
-vms-arguments.mod:24:3: error: a procedure VMS calls can have only value parameters of 4 bytes or less: e, its parameter r
-vms-arguments.mod:30:17: error: argument is not assignment compatible with the parameter: NIL to SYSTEM.INT32
-vms-arguments.mod:31:8: error: a VAR parameter requires a variable argument
-13 error(s)
+vms-arguments.mod:21:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: r
+vms-arguments.mod:22:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: a
+vms-arguments.mod:22:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: b
+vms-arguments.mod:23:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: h
+vms-arguments.mod:23:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: g
+vms-arguments.mod:23:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: s
+vms-arguments.mod:25:3: error: a procedure VMS calls cannot have a VAR record or open-array parameter, which takes a hidden argument: a, its parameter r
+vms-arguments.mod:25:3: error: a procedure VMS calls cannot have a VAR record or open-array parameter, which takes a hidden argument: b, its parameter a
+vms-arguments.mod:25:3: error: a procedure VMS calls can have only value parameters of 4 bytes or less: c, its parameter x
+vms-arguments.mod:25:3: error: a procedure VMS calls cannot have a read-only parameter; declare it VAR or a value: d, its parameter x
+vms-arguments.mod:25:3: error: a procedure VMS calls can have only value parameters of 4 bytes or less: e, its parameter r
+vms-arguments.mod:34:17: error: argument is not assignment compatible with the parameter: NIL to SYSTEM.INT32
+vms-arguments.mod:35:8: error: a VAR parameter requires a variable argument
+vms-arguments.mod:36:10: error: argument is not array compatible with the open-array parameter
+vms-arguments.mod:36:25: error: argument is not array compatible with the open-array parameter
+vms-arguments.mod:36:35: error: argument is not array compatible with the open-array parameter
+16 error(s)
 == -OC
-vms-arguments.mod:20:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: r
-vms-arguments.mod:21:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: a
-vms-arguments.mod:21:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: b
-vms-arguments.mod:22:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: h
-vms-arguments.mod:22:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: g
-vms-arguments.mod:22:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: s
-vms-arguments.mod:23:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: x
-vms-arguments.mod:24:3: error: a procedure VMS calls cannot have a VAR record or open-array parameter, which takes a hidden argument: a, its parameter r
-vms-arguments.mod:24:3: error: a procedure VMS calls cannot have a VAR record or open-array parameter, which takes a hidden argument: b, its parameter a
-vms-arguments.mod:24:3: error: a procedure VMS calls can have only value parameters of 4 bytes or less: c, its parameter x
-vms-arguments.mod:24:3: error: a procedure VMS calls cannot have a read-only parameter; declare it VAR or a value: d, its parameter x
-vms-arguments.mod:24:3: error: a procedure VMS calls can have only value parameters of 4 bytes or less: e, its parameter r
-vms-arguments.mod:30:17: error: argument is not assignment compatible with the parameter: NIL to SYSTEM.INT32
-vms-arguments.mod:31:8: error: a VAR parameter requires a variable argument
-14 error(s)
+vms-arguments.mod:21:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: r
+vms-arguments.mod:22:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: a
+vms-arguments.mod:22:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: b
+vms-arguments.mod:23:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: h
+vms-arguments.mod:23:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: g
+vms-arguments.mod:23:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: s
+vms-arguments.mod:24:3: error: a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR: x
+vms-arguments.mod:25:3: error: a procedure VMS calls cannot have a VAR record or open-array parameter, which takes a hidden argument: a, its parameter r
+vms-arguments.mod:25:3: error: a procedure VMS calls cannot have a VAR record or open-array parameter, which takes a hidden argument: b, its parameter a
+vms-arguments.mod:25:3: error: a procedure VMS calls can have only value parameters of 4 bytes or less: c, its parameter x
+vms-arguments.mod:25:3: error: a procedure VMS calls cannot have a read-only parameter; declare it VAR or a value: d, its parameter x
+vms-arguments.mod:25:3: error: a procedure VMS calls can have only value parameters of 4 bytes or less: e, its parameter r
+vms-arguments.mod:34:17: error: argument is not assignment compatible with the parameter: NIL to SYSTEM.INT32
+vms-arguments.mod:35:8: error: a VAR parameter requires a variable argument
+vms-arguments.mod:36:10: error: argument is not array compatible with the open-array parameter
+vms-arguments.mod:36:25: error: argument is not array compatible with the open-array parameter
+vms-arguments.mod:36:35: error: argument is not array compatible with the open-array parameter
+17 error(s)

@@ -1,0 +1,42 @@
+FABDEF: 204 agree
+FACDEF: 184 agree
+FDLDEF: 11 agree
+FIBDEF: 193 agree
+FIDDEF: 18 agree
+FSCNDEF: 28 agree
+HWDEF: 1 agree
+IACDEF: 46 agree
+INITDEF: 62 agree
+IODEF: 473 agree
+JPIDEF: 153 agree
+KGBDEF: 35 agree
+LADEF: 36 agree
+LATDEF: 217 agree
+  only in STARLET.MLB: LAT$S_EFLAG
+  only in STARLET.MLB: LAT$S_EFLAGBITS
+  only in STARLET.MLB: LAT$S_ESTATFLAGS
+  only in STARLET.MLB: LAT$S_ITM_CODE
+LCKDEF: 41 agree
+LKIDEF: 112 agree
+LMFDEF: 31 agree
+LNMDEF: 35 agree
+LPDEF: 31 agree
+NAMDEF: 164 agree
+RABDEF: 131 agree
+RMEDEF: 5 agree
+RMSDEF: 263 agree
+SSDEF: 520 agree
+XABALLDEF: 33 agree
+XABCXFDEF: 21 agree
+XABCXRDEF: 34 agree
+XABDATDEF: 24 agree
+XABDEF: 14 agree
+XABFHCDEF: 32 agree
+XABITMDEF: 228 agree
+XABJNLDEF: 27 agree
+XABKEYDEF: 104 agree
+XABPRODEF: 48 agree
+XABRDTDEF: 4 agree
+XABRUDEF: 11 agree
+XABSUMDEF: 7 agree
+XABTRMDEF: 6 agree

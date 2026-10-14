@@ -743,8 +743,19 @@ C++, and so on) unless step 4 chooses one deliberately.
    checked to be one VMS can call. `rtl/vax/VmsArguments.Mod` has the
    descriptor, item list and I/O status block types. Fixtures
    `vax-vms-calls` (real routines on the guest), `vax-vms-arguments`,
-   `semantic-vms-arguments`, `semantic-reject-vms-arguments`. Next, part
-   2: the generator's design.
+   `semantic-vms-arguments`, `semantic-reject-vms-arguments`.
+
+   **Part 2, the generator (2026-10-14)**: eight proposals, **approved by
+   the user, 2026-10-14**, after `SDLDUMP` showed 5.5-2's trees; made the
+   same day (`vms-sdl-interfaces.md`, "Part 2 so far"). `tools/sdloberon`,
+   an SDL back end in VAX C that `tools/vax-sdl` builds and runs on the
+   guest (from `SYS$SHARE`, where the user copies it), writes one Oberon
+   module for each SDL `MODULE` node into `rtl/vax/vms`, the library
+   `VMSDEF`; in a `["VMS"]` declaration an `x-` `ARRAY OF SYSTEM.BYTE`
+   takes any actual. The constants agree with `STARLET.MLB`'s, 3587 names;
+   poc's layout of every record type with SDL's. Fixture `vax-vmsdef`.
+   The first seven library modules are generated, for review; the rest
+   follow once they are approved.
 
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`

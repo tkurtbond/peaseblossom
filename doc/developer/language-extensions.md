@@ -1055,6 +1055,7 @@ formal parameters, and a call is written as any Oberon call is
 | `x-: T`, `T` not an open `ARRAY OF CHAR` | by reference, always: a variable of `T` its own address, anything else (a constant, an expression, a variable of another type) a copy's in the caller's frame |
 | `ARRAY OF CHAR` (open), value, `x-` or `VAR` | by a `CLASS_S` string descriptor built in the caller's frame |
 | open `ARRAY OF T`, `T` not `CHAR`, `VAR` or `x-` | by reference, element 0's address, with no lengths |
+| `x-: ARRAY OF SYSTEM.BYTE` | by reference, and it takes any actual, as a `VAR` one takes any variable: a variable of any type its own address, anything else a copy's in the caller's frame (part 2, proposal 7) |
 
 - **A value parameter that does not fit a longword** - a record, an
   array (but an open `ARRAY OF CHAR`), a `HUGEINT`, a `LONGREAL`, a
@@ -1070,6 +1071,14 @@ formal parameters, and a call is written as any Oberon call is
   `LEN(a)`, VMS leaving it blank-padded with no `0X`, so the program ends
   it with the routine's resultant length. A length over 65,535 is cut to
   65,535.
+- **`x-: ARRAY OF SYSTEM.BYTE` passes the actual's own bytes.** It is
+  SDL's quadword, `ANY` or structure by reference, read only, which
+  `tools/sdloberon` declares so (a time, an item list, a FAB). A copy has
+  the actual's type, so a constant has its minimal type's bytes:
+  `-600000000` is a `LONGINT`, 4 bytes, not a quadword time. Give such a
+  constant as `SYSTEM.VAL(HUGEINT, c)`, which is 8 bytes under `-O2` and
+  `-OC`, or in a `HUGEINT` variable. Outside `["VMS"]` declarations
+  such a formal takes only arrays, as before.
 - **`NIL` omits an argument**: the word `NIL` may be the actual for any
   parameter passed by reference or by descriptor, and is passed as 0,
   VMS's omitted or null argument. A value parameter is omitted by

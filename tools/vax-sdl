@@ -1,0 +1,125 @@
+#!/bin/sh
+# Makes Oberon modules from the VAX's own SDL definitions, STARLETSD.TLB,
+# with the SDL back end tools/sdloberon (doc/developer/vms-sdl-interfaces.md,
+# "Proposals, part 2: the generator"), over tools/vax-do.
+#
+#   tools/vax-sdl build
+#   tools/vax-sdl run <dir> <module>...
+#   tools/vax-sdl dump <dir> <module>...
+#
+# build sends tools/sdloberon's sources to POC's directory and builds
+# [.SDL]SDLOBERON.EXE and [.SDL]SDLDUMP.EXE with VAX C. SDL/NOPARSE loads
+# a back end only from SYS$SHARE, so the user copies each one there, as
+# SYSTEM, after each build:
+#
+#   $ COPY DUA1:[USERS.POC.SDL]SDLOBERON.EXE SYS$COMMON:[SYSLIB]
+#   $ SET FILE/PROTECTION=W:RE SYS$COMMON:[SYSLIB]SDLOBERON.EXE
+#
+# run extracts each named module of STARLETSD.TLB (STARLET, STARDEFFL,
+# RMSUSR, LIB$ROUTINES ...), runs SDL/NOPARSE/LANGUAGE=OBERON on it, and
+# brings back the Oberon modules it makes, one <NAME>.Mod each, into <dir>.
+# dump does the same with SDLDUMP, a <module>.DMP each (tools/sdloberon/
+# sdlload.c reads one). Exits as tools/vax-do does, and 1 also if the back
+# end reported anything it could not transcribe.
+set -e
+
+here=$(cd "$(dirname "$0")" && pwd)
+src=$here/sdloberon
+
+usage() {
+  echo "usage: tools/vax-sdl build | run <dir> <module>... | dump <dir> <module>..." >&2
+  exit 2
+}
+
+[ $# -ge 1 ] || usage
+work=$(mktemp -d "${TMPDIR:-/tmp}/vax-sdl.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+
+case $1 in
+build)
+  [ $# -eq 1 ] || usage
+  cat >"$work/sdlbuild.com" <<'EOF'
+$ SET NOON
+$ IF F$SEARCH("SDL.DIR") .EQS. "" THEN CREATE/DIRECTORY [.SDL]
+$ CC SDLOBERON
+$ S = $STATUS
+$ IF S THEN LINK/SHARE=[.SDL]SDLOBERON.EXE SDLOBERON,SDL/OPTION
+$ IF S THEN S = $STATUS
+$ CC SDLDUMP
+$ IF S THEN S = $STATUS
+$ MACRO READABLE
+$ IF S THEN S = $STATUS
+$ IF S THEN LINK/SHARE=[.SDL]SDLDUMP.EXE SDLDUMP,READABLE,SDL/OPTION
+$ IF S THEN S = $STATUS
+$ DELETE/NOLOG SDLOBERON.OBJ;*,SDLDUMP.OBJ;*,READABLE.OBJ;*
+$ PURGE/NOLOG [.SDL]
+$ IF S THEN DIRECTORY/DATE/SIZE [.SDL]
+$ EXIT S
+EOF
+  "$here/vax-do" -o "$work" "$work/sdlbuild.com" "$src/sdloberon.c" "$src/sdldef.h" \
+    "$src/sdldump.c" "$src/readable.mar" "$src/sdl.opt"
+  echo "vax-sdl: now, as SYSTEM, copy [USERS.POC.SDL]SDLOBERON.EXE and SDLDUMP.EXE to SYS\$SHARE"
+  ;;
+run|dump)
+  [ $# -ge 3 ] || usage
+  what=$1 dir=$2
+  shift 2
+  [ -d "$dir" ] || { echo "vax-sdl: $dir is not a directory" >&2; exit 2; }
+  if [ "$what" = run ]; then language=OBERON type=OBN; else language=DUMP type=DMP; fi
+  modules= gets=
+  for m; do
+    case $m in *[!A-Za-z0-9_\$]*) echo "vax-sdl: $m is not a library module's name" >&2; exit 2 ;; esac
+    m=$(echo "$m" | tr a-z A-Z)
+    f=$(echo "$m" | sed 's/\$//')
+    modules="$modules${modules:+,}$m"
+    gets="$gets -get $f.$type"
+  done
+  # SDLOBERON_SOURCE, global so that the back end's LIB$GET_SYMBOL finds
+  # it, names the library and the module for each module's banner
+  cat >"$work/sdlrun.com" <<EOF
+\$ SET NOON
+\$ M = "$modules"
+\$ TLB = F\$SEARCH("SYS\$LIBRARY:STARLETSD.TLB")
+\$ CDT = F\$EDIT(F\$FILE_ATTRIBUTES(TLB, "CDT"), "TRIM")
+\$ CDT = F\$ELEMENT(0, " ", CDT)
+\$ S = 1
+\$ I = 0
+\$ LOOP:
+\$ N = F\$ELEMENT(I, ",", M)
+\$ IF N .EQS. "," THEN GOTO DONE
+\$ F = N - "\$"
+\$ LIBRARY/EXTRACT='N'/OUTPUT='F'.SDI/TEXT SYS\$LIBRARY:STARLETSD.TLB
+\$ IF .NOT. \$STATUS THEN S = \$STATUS
+\$ SDLOBERON_SOURCE == "STARLETSD.TLB of ''CDT', module ''N'"
+\$ SDL/NOPARSE/LANGUAGE=$language='F'.$type 'F'.SDI
+\$ IF .NOT. \$STATUS THEN S = \$STATUS
+\$ DELETE/NOLOG 'F'.SDI;*
+\$ I = I + 1
+\$ GOTO LOOP
+\$ DONE:
+\$ DELETE/SYMBOL/GLOBAL SDLOBERON_SOURCE
+\$ EXIT S
+EOF
+  status=0
+  # shellcheck disable=SC2086
+  "$here/vax-do" -o "$work" $gets "$work/sdlrun.com" >"$work/printed" 2>&1 || status=$?
+  cat "$work/printed"
+  [ $status -eq 0 ] || exit $status
+  if [ "$what" = dump ]; then
+    for m; do
+      f=$(echo "$m" | tr a-z A-Z | sed 's/\$//')
+      mv "$work/$f.DMP" "$dir/"
+    done
+  else
+    # each (*** FILE <NAME>.Mod ***) line starts a module
+    for m; do
+      f=$(echo "$m" | tr a-z A-Z | sed 's/\$//')
+      awk -v dir="$dir" '
+        /^\(\*\*\* FILE [A-Z0-9_]+\.Mod \*\*\*\)$/ { if (out) close(out); out = dir "/" $3; next }
+        out { print > out }' "$work/$f.OBN"
+    done
+    if grep -q '^sdloberon: .*: ' "$work/printed"; then exit 1; fi
+  fi
+  ;;
+*) usage ;;
+esac

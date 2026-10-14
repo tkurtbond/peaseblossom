@@ -1,0 +1,16 @@
+; version 1.0 Feb 4, 1988
+; first version - no modifications
+;
+	.title	readable
+	.entry	readable,0
+
+	movzbl	#-1,r0	; assume it will work
+
+	prober	#0,#4,@4(ap)
+
+	bneq	10$
+	clrl	r0	; clear it if it didn't work
+
+10$:	ret
+
+	.end

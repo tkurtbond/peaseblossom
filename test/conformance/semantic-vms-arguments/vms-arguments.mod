@@ -5,7 +5,9 @@ MODULE vmsArguments;
      read-only parameters of any type, an open ARRAY OF CHAR in any mode,
      a procedure type VMS can call; and at a call, a read-only parameter
      given a constant or an expression, NIL for any parameter passed by
-     reference or by descriptor, an imported procedure's too *)
+     reference or by descriptor, an imported procedure's too; and (part 2,
+     proposal 7) a read-only ARRAY OF SYSTEM.BYTE given any actual, a
+     variable, a constant or an expression of any type *)
   IMPORT SYSTEM, VmsServices;
 
   TYPE
@@ -32,6 +34,7 @@ MODULE vmsArguments;
                                                   g-: LONGREAL; h-: SYSTEM.SET64; VAR q: HUGEINT);
   PROCEDURE ["VMS", "TEST$CALLBACKS"] Callbacks(c: Compare; h: Handler; w: Wide);
   PROCEDURE ["VMS", "TEST$RESULT"] Result(): LONGREAL;
+  PROCEDURE ["VMS", "TEST$BYTES"] Bytes(b-: ARRAY OF SYSTEM.BYTE; VAR v: ARRAY OF SYSTEM.BYTE);
 
   PROCEDURE CompareKey(VAR symbol: SYSTEM.INT32; node, data: SYSTEM.ADDRESS): SYSTEM.INT32;
   BEGIN RETURN 0 END CompareKey;
@@ -58,5 +61,9 @@ BEGIN
   Callbacks(NIL, NIL, NIL);
   real := Result();
   status := VmsServices.TranslateName(0, "LNM$FILE_DEV", name, NIL, NIL);
-  status := VmsServices.TraverseTree(head, Visit, 0)
+  status := VmsServices.TraverseTree(head, Visit, 0);
+  status := VmsServices.TranslateName(0, "LNM$FILE_DEV", name, NIL, items);
+  Bytes(time, time); Bytes(item, items); Bytes(items, item); Bytes(real, set);
+  Bytes(-600000000, name); Bytes(status + 1, status); Bytes("text", letter);
+  Bytes(1.5, flag); Bytes({1, 40}, small); Bytes(NIL, NIL)
 END vmsArguments.

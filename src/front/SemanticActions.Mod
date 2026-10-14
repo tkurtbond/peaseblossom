@@ -2219,7 +2219,12 @@ MODULE SemanticActions;
         IF argType # Types.Undefined THEN
           isArrayParam := (p.type # NIL) & (p.type IS Types.ArrayType);
           IF isArrayParam THEN formalArr := p.type(Types.ArrayType) END;
-          IF isArrayParam & formalArr.isOpen THEN
+          IF vms & p.isReadOnly & IsByteArrayFormal(p.type) THEN
+            (* a ["VMS"] procedure's x-: ARRAY OF SYSTEM.BYTE takes any
+               actual, as a VAR one takes any variable: SDL's quadword,
+               ANY or structure by reference, read only (doc/developer/
+               vms-sdl-interfaces.md, part 2, proposal 7) *)
+          ELSIF isArrayParam & formalArr.isOpen THEN
             (* Appendix A "array compatible" rule 3 ("f is a value
                parameter of type ARRAY OF CHAR and a is a string") - a
                real gap Types.ArrayCompatible* alone leaves, since it is
