@@ -691,6 +691,18 @@ C++, and so on) unless step 4 chooses one deliberately.
    interface, and what it costs. Record the choices, and what is left
    out and why.
 
+   **Done (2026-10-14)**: `doc/research/vms-native-library-inventory.md`,
+   seven proposals, **approved by the user, 2026-10-14**. Every one of
+   `STARLETSD.TLB`'s 65 SDL modules is generated in step 5. A smaller
+   tier gets fixtures on the guest: the synchronous system services
+   listed there, RMS's relative and indexed files, parts of `LIB$`,
+   `SMG$`, `SOR$`, and `STR$`'s decimal arithmetic. Three hand-written
+   modules (`Conditions`, `LogicalNames`, `Symbols`) and a hand-declared
+   `CLI$` complete it. The privileged and vector services, DECdtm,
+   DECdns, DECthreads, `PPL$`, `DTK$`, D and H floating, and the
+   utilities without SDL routines other than `CLI$` are left out, each
+   for a reason the file records.
+
 5. **Calling native libraries from Oberon.** The external-procedure
    declaration (`PROCEDURE ["VMS", ...]`, already accepted, recording only
    a convention and a linkage name) is not enough for VMS, and what more
