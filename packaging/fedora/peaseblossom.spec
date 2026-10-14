@@ -19,7 +19,7 @@
 %global __provides_exclude_from ^%{_prefix}/lib/poc/.*$
 
 Name:           peaseblossom
-Version:        0.5.0
+Version:        0.6.0
 Release:        1%{?dist}
 Summary:        Oberon-2 compiler (poc) using LLVM
 
@@ -76,6 +76,16 @@ test/install/check.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install
 %{_pkgdocdir}/
 
 %changelog
+* Wed Oct 14 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.6.0-1
+- Update to 0.6.0: the unsigned integer types SYSTEM.CARD8, CARD16,
+  CARD32, CARD64 and SYSTEM.CARD, with Card and CardHex in Out, Err and
+  OutStr and Card in In and InStr; every FOR loop ends before a step
+  past its final value, so a loop up to MAX of its type ends; make
+  doc-all; and three fixes (REAL constant expressions folded in double
+  precision, traps after an index or in an argument designator reported
+  at the wrong place, and -strict applied to an imported module's
+  procedure locals).
+
 * Fri Oct 09 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.5.0-1
 - Update to 0.5.0: SYSTEM.ADDRESS and an integer type of its width
   are assignable to each other; a build reuses an object that is up to
