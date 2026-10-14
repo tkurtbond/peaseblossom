@@ -1077,6 +1077,45 @@ made as `doc/developer/DEVELOPER.md` section 7 says:
   `mock` built and checked the RPM, and on atla 0.4.1 replaces 0.4.0.
 - **The RPMs and `SHA256SUMS`** were signed and attached to the release.
 
+## Peaseblossom 0.6.0
+
+What `main` had gained since 0.5.0 was released as **Peaseblossom 0.6.0**
+on 2026-10-14: the unsigned integer types `SYSTEM.CARD8`..`CARD64` and
+`SYSTEM.CARD`, with `Card`/`CardHex` in `Out`, `Err` and `OutStr` and
+`Card` in `In` and `InStr` (`ff457c2`); every `FOR` loop ending before a
+step past its final value (the same commit); `make doc-all` (`03e346e`);
+and three fixes (`482375e`, `63f53c1` with `c398467`, `a9938d6`). The
+RPM's `%changelog` lists them. It was made as
+`doc/developer/DEVELOPER.md` section 7 says:
+
+- **The version** was set in `0627d7b` by `make set-version`, after
+  `tools/check-hosts -t check-install -t check-seed` passed on atla,
+  cymoril, artos and alerik (358 fixtures at each stage). rackhir passed
+  `0627d7b`.
+- **The tarball** came from `make distcheck` (SHA-256 `b75772ed...`,
+  5047826 bytes). It is signed, with the signed tag `v0.6.0`, and
+  published as a GitHub release.
+- **Each package** was made from the published tarball (`makesum`; the
+  `distinfo` files are committed after the release), then built and
+  checked on its system: FreeBSD amd64 (alerik) and arm64 (rackhir),
+  OpenBSD i386 (cymoril) and amd64 (jherek), NetBSD amd64 (artos) and
+  i386 (yishana); `check.sh` on the stage, check-plist, portlint and
+  pkglint clean, packing lists unchanged. Each was installed as root over
+  0.5.0, checked with `check.sh` against the installed poc, removed with
+  nothing of its packing list left, and installed again. `mock` built and
+  checked the RPM, and on atla 0.6.0 replaces 0.5.0.
+- **Clock skew.** cymoril's and jherek's OpenBSD `ntpd` trusted the QEMU
+  `pvclock0` sensor, 32 minutes off after a host suspend, and the first
+  builds there and on artos warned of clock skew. With the user, `sensor
+  *` was commented out on both OpenBSD hosts, artos's clock was stepped
+  with `ntpdate`, and the three packages were rebuilt with no warning.
+- **OpenBSD's `pkg_add -u`** takes package names, not files: given a
+  path it says "Problem finding" and exits 0. A newer package file given
+  without `-u` updates the installed one.
+- **The RPMs and `SHA256SUMS`** were signed, gathered by
+  `tools/release-files` and attached to the release; every file was
+  downloaded again and checked against `SHA256SUMS` and the signatures.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -

@@ -442,8 +442,11 @@ HTML and PDF, and a fix were released as **Peaseblossom 0.4.0 on
 `SYSTEM.ADDRESS` and an integer type of its width included in each other,
 `-lto` on 32-bit NetBSD, and two fixes were released as **Peaseblossom
 0.5.0 on 2026-10-09** (tag `v0.5.0`; the RPM's `%changelog` lists them).
-The unsigned integer types and the new end of a `FOR` loop (both
-2026-10-14, for 0.6.0) are in "Language extensions beyond Oberon2.pdf".
+The unsigned integer types (`SYSTEM.CARD8`..`CARD64`, `SYSTEM.CARD`), the
+new end of a `FOR` loop (both in "Language extensions beyond
+Oberon2.pdf"), `make doc-all` and three fixes were released as
+**Peaseblossom 0.6.0 on 2026-10-14** (tag `v0.6.0`; the record is in
+`PLAN.md`, "Peaseblossom 0.6.0").
 Phase 15, the VAX/VMS MACRO-32 backend, is next; 15-18 are the VAX/VMS
 work, 19 further extensions, 20 voc's library modules. Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
