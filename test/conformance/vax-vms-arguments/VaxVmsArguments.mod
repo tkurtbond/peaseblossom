@@ -22,7 +22,7 @@ MODULE VaxVmsArguments;
   VAR
     status: SYSTEM.INT32; flag: BOOLEAN; letter: CHAR; small: SHORTINT; word: INTEGER;
     real: REAL; long: LONGREAL; set: SET; huge: HUGEINT; address: SYSTEM.ADDRESS;
-    name: ARRAY 32 OF CHAR; short: Short; length: SYSTEM.INT16; items: ARRAY 3 OF Item; item: Item;
+    name: ARRAY 32 OF CHAR; short: Short; length: SYSTEM.CARD16; items: ARRAY 3 OF Item; item: Item;
     descriptor: VmsArguments.StringDescriptor;
 
   PROCEDURE ["VMS", "TEST$VALUES"] Values(b: BOOLEAN; c: CHAR; s: SHORTINT; i: SYSTEM.INT32;

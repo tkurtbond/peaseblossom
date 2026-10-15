@@ -29,11 +29,11 @@ MODULE XABDEF;
 
   TYPE
     XABDEF* = RECORD (* 20 bytes *)
-      XAB$B_COD*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_BLN*: SYSTEM.INT8; (* unsigned *)
+      XAB$B_COD*: SYSTEM.CARD8;
+      XAB$B_BLN*: SYSTEM.CARD8;
       fill1: SYSTEM.INT16;
-      XAB$L_NXT*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_RVN*: SYSTEM.INT16; (* unsigned *)
+      XAB$L_NXT*: SYSTEM.CARD32;
+      XAB$W_RVN*: SYSTEM.CARD16;
       fill2: SYSTEM.INT16;
       XAB$Q_RDT*: SYSTEM.INT64
     END;
@@ -51,7 +51,7 @@ MODULE XABDEF;
       fill5: SYSTEM.INT32;
       fill6: SYSTEM.INT32;
       fill7: SYSTEM.INT16;
-      XAB$B_BKZ*: SYSTEM.INT8 (* unsigned *)
+      XAB$B_BKZ*: SYSTEM.CARD8
     END;
 
   CONST

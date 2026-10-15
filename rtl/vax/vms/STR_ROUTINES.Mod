@@ -35,13 +35,13 @@ MODULE STR_ROUTINES;
      The Add Two Decimal Strings routine
      adds two decimal strings of digits. *)
   PROCEDURE ["VMS", "STR$ADD"] STR$ADD*(
-      asign-: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      asign-: SYSTEM.CARD32; (* longword_unsigned *)
       aexp-: SYSTEM.INT32; (* longword_signed *)
       adigits-: ARRAY OF CHAR; (* char_string *)
-      bsign-: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      bsign-: SYSTEM.CARD32; (* longword_unsigned *)
       bexp-: SYSTEM.INT32; (* longword_signed *)
       bdigits-: ARRAY OF CHAR; (* char_string *)
-      VAR csign: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      VAR csign: SYSTEM.CARD32; (* longword_unsigned *)
       VAR cexp: SYSTEM.INT32; (* longword_signed *)
       VAR cdigits: ARRAY OF CHAR (* char_string *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -55,8 +55,8 @@ MODULE STR_ROUTINES;
      for a variety of string descriptor classes. *)
   PROCEDURE ["VMS", "STR$ANALYZE_SDESC"] STR$ANALYZE_SDESC*(
       input_descriptor-: ARRAY OF CHAR; (* char_string *)
-      VAR word_integer_length: SYSTEM.INT16; (* word_unsigned, unsigned *)
-      VAR data_address: SYSTEM.INT32 (* ADDRESS, unsigned *)
+      VAR word_integer_length: SYSTEM.CARD16; (* word_unsigned *)
+      VAR data_address: SYSTEM.CARD32 (* ADDRESS *)
     ): SYSTEM.INT16; (* cond_value *)
 
   (* STR$APPEND
@@ -124,7 +124,7 @@ MODULE STR_ROUTINES;
      string. *)
   PROCEDURE ["VMS", "STR$COPY_R"] STR$COPY_R*(
       VAR destination_string: ARRAY OF CHAR; (* char_string *)
-      word_integer_source_length-: SYSTEM.INT16; (* word_unsigned, unsigned *)
+      word_integer_source_length-: SYSTEM.CARD16; (* word_unsigned *)
       source_string_address-: ARRAY OF SYSTEM.BYTE (* char_string *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -134,15 +134,15 @@ MODULE STR_ROUTINES;
 
      The Divide Two Decimal Strings routine divides two decimal strings. *)
   PROCEDURE ["VMS", "STR$DIVIDE"] STR$DIVIDE*(
-      asign-: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      asign-: SYSTEM.CARD32; (* longword_unsigned *)
       aexp-: SYSTEM.INT32; (* longword_signed *)
       adigits-: ARRAY OF CHAR; (* char_string *)
-      bsign-: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      bsign-: SYSTEM.CARD32; (* longword_unsigned *)
       bexp-: SYSTEM.INT32; (* longword_signed *)
       bdigits-: ARRAY OF CHAR; (* char_string *)
       total_digits-: SYSTEM.INT32; (* longword_signed *)
-      round_truncate_indicator-: SYSTEM.INT32; (* mask_longword, unsigned *)
-      VAR csign: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      round_truncate_indicator-: SYSTEM.CARD32; (* mask_longword *)
+      VAR csign: SYSTEM.CARD32; (* longword_unsigned *)
       VAR cexp: SYSTEM.INT32; (* longword_signed *)
       VAR cdigits: ARRAY OF CHAR (* char_string *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -185,7 +185,7 @@ MODULE STR_ROUTINES;
   PROCEDURE ["VMS", "STR$COMPARE_EQL"] STR$COMPARE_EQL*(
       first_source_string-: ARRAY OF CHAR; (* char_string *)
       second_source_string-: ARRAY OF CHAR (* char_string *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* STR$FIND_FIRST_IN_SET
 
@@ -244,7 +244,7 @@ MODULE STR_ROUTINES;
      allocates a specified number of bytes of dynamic virtual memory
      to a specified dynamic string descriptor. *)
   PROCEDURE ["VMS", "STR$GET1_DX"] STR$GET1_DX*(
-      word_integer_length-: SYSTEM.INT16; (* word_unsigned, unsigned *)
+      word_integer_length-: SYSTEM.CARD16; (* word_unsigned *)
       VAR character_string: ARRAY OF CHAR (* char_string *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -295,13 +295,13 @@ MODULE STR_ROUTINES;
 
      The Multiply Two Decimal Strings routine multiplies two decimal strings. *)
   PROCEDURE ["VMS", "STR$MUL"] STR$MUL*(
-      asign-: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      asign-: SYSTEM.CARD32; (* longword_unsigned *)
       aexp-: SYSTEM.INT32; (* longword_signed *)
       adigits-: ARRAY OF CHAR; (* char_string *)
-      bsign-: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      bsign-: SYSTEM.CARD32; (* longword_unsigned *)
       bexp-: SYSTEM.INT32; (* longword_signed *)
       bdigits-: ARRAY OF CHAR; (* char_string *)
-      VAR csign: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      VAR csign: SYSTEM.CARD32; (* longword_unsigned *)
       VAR cexp: SYSTEM.INT32; (* longword_signed *)
       VAR cdigits: ARRAY OF CHAR (* char_string *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -317,8 +317,8 @@ MODULE STR_ROUTINES;
   PROCEDURE ["VMS", "STR$COMPARE_MULTI"] STR$COMPARE_MULTI*(
       first_source_string-: ARRAY OF CHAR; (* char_string *)
       second_source_string-: ARRAY OF CHAR; (* char_string *)
-      flags_value: SYSTEM.INT32; (* mask_longword, unsigned, optional: 0 omits it *)
-      foreign_language: SYSTEM.INT32 (* longword_unsigned, unsigned, optional: 0 omits it *)
+      flags_value: SYSTEM.CARD32; (* mask_longword, optional: 0 omits it *)
+      foreign_language: SYSTEM.CARD32 (* longword_unsigned, optional: 0 omits it *)
     ): SYSTEM.INT32; (* longword_signed *)
 
   (* STR$POS_EXTR
@@ -348,7 +348,7 @@ MODULE STR_ROUTINES;
       source_string-: ARRAY OF CHAR; (* char_string *)
       substring-: ARRAY OF CHAR; (* char_string *)
       start_position-: SYSTEM.INT32 (* longword_signed, optional: NIL omits it *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* STR$PREFIX
 
@@ -371,13 +371,13 @@ MODULE STR_ROUTINES;
      limit specified by the second decimal string and returns the result as a
      decimal string. *)
   PROCEDURE ["VMS", "STR$RECIP"] STR$RECIP*(
-      asign-: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      asign-: SYSTEM.CARD32; (* longword_unsigned *)
       aexp-: SYSTEM.INT32; (* longword_signed *)
       adigits-: ARRAY OF CHAR; (* char_string *)
-      bsign-: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      bsign-: SYSTEM.CARD32; (* longword_unsigned *)
       bexp-: SYSTEM.INT32; (* longword_signed *)
       bdigits-: ARRAY OF CHAR; (* char_string *)
-      VAR csign: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      VAR csign: SYSTEM.CARD32; (* longword_unsigned *)
       VAR cexp: SYSTEM.INT32; (* longword_signed *)
       VAR cdigits: ARRAY OF CHAR (* char_string *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -420,11 +420,11 @@ MODULE STR_ROUTINES;
      significant digits and places the result in another decimal string. *)
   PROCEDURE ["VMS", "STR$ROUND"] STR$ROUND*(
       places-: SYSTEM.INT32; (* longword_signed *)
-      flags-: SYSTEM.INT32; (* mask_longword, unsigned *)
-      asign-: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      flags-: SYSTEM.CARD32; (* mask_longword *)
+      asign-: SYSTEM.CARD32; (* longword_unsigned *)
       aexp-: SYSTEM.INT32; (* longword_signed *)
       adigits-: ARRAY OF CHAR; (* char_string *)
-      VAR csign: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      VAR csign: SYSTEM.CARD32; (* longword_unsigned *)
       VAR cexp: SYSTEM.INT32; (* longword_signed *)
       VAR cdigits: ARRAY OF CHAR (* char_string *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -454,7 +454,7 @@ MODULE STR_ROUTINES;
   PROCEDURE ["VMS", "STR$TRIM"] STR$TRIM*(
       VAR destination_string: ARRAY OF CHAR; (* char_string *)
       source_string-: ARRAY OF CHAR; (* char_string *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* STR$UPCASE

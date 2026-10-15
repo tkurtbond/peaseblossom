@@ -20,9 +20,9 @@ MODULE STARLET;
      holder = address of the holder identifier quadword
      attrib = attributes longword to grant to the holder *)
   PROCEDURE ["VMS", "SYS$ADD_HOLDER"] SYS$ADD_HOLDER*(
-      ID: SYSTEM.INT32; (* RIGHTS_ID, unsigned *)
+      ID: SYSTEM.CARD32; (* RIGHTS_ID *)
       HOLDER-: ARRAY OF SYSTEM.BYTE; (* RIGHTS_HOLDER, unsigned *)
-      ATTRIB: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      ATTRIB: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ADD_IDENT
@@ -40,9 +40,9 @@ MODULE STARLET;
      identifier *)
   PROCEDURE ["VMS", "SYS$ADD_IDENT"] SYS$ADD_IDENT*(
       NAME-: ARRAY OF CHAR; (* CHAR_STRING *)
-      ID: SYSTEM.INT32; (* RIGHTS_ID, unsigned, optional: 0 omits it *)
-      ATTRIB: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      VAR RESID: SYSTEM.INT32 (* RIGHTS_ID, unsigned, optional: NIL omits it *)
+      ID: SYSTEM.CARD32; (* RIGHTS_ID, optional: 0 omits it *)
+      ATTRIB: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      VAR RESID: SYSTEM.CARD32 (* RIGHTS_ID, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ADJSTK
@@ -55,9 +55,9 @@ MODULE STARLET;
      adjust = 16-bit signed adjustment value
      newadr = address of longword to store updated value *)
   PROCEDURE ["VMS", "SYS$ADJSTK"] SYS$ADJSTK*(
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       ADJUST: SYSTEM.INT16; (* WORD_SIGNED, optional: 0 omits it *)
-      VAR NEWADR: SYSTEM.INT32 (* ADDRESS, unsigned *)
+      VAR NEWADR: SYSTEM.CARD32 (* ADDRESS *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ADJWSL
@@ -73,7 +73,7 @@ MODULE STARLET;
      or current working set limit if pagcnt not specified. *)
   PROCEDURE ["VMS", "SYS$ADJWSL"] SYS$ADJWSL*(
       PAGCNT: SYSTEM.INT32; (* LONGWORD_SIGNED, optional: 0 omits it *)
-      VAR WSETLM: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      VAR WSETLM: SYSTEM.CARD32 (* LONGWORD_UNSIGNED, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ALLOC
@@ -90,10 +90,10 @@ MODULE STARLET;
      flags  = options flags longword *)
   PROCEDURE ["VMS", "SYS$ALLOC"] SYS$ALLOC*(
       DEVNAM-: ARRAY OF CHAR; (* DEVICE_NAME *)
-      VAR PHYLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      VAR PHYLEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       VAR PHYBUF: ARRAY OF CHAR; (* DEVICE_NAME, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ASCEFC
@@ -112,7 +112,7 @@ MODULE STARLET;
      0 -> temporary cluster
      1 -> permanent cluster *)
   PROCEDURE ["VMS", "SYS$ASCEFC"] SYS$ASCEFC*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER *)
       NAME-: ARRAY OF CHAR; (* EF_CLUSTER_NAME *)
       PROT: SYSTEM.INT8; (* BOOLEAN, boolean, optional: 0 omits it *)
       PERM: SYSTEM.INT8 (* BOOLEAN, boolean, optional: 0 omits it *)
@@ -134,7 +134,7 @@ MODULE STARLET;
      0 -> return full date and time
      1 -> return converted time only *)
   PROCEDURE ["VMS", "SYS$ASCTIM"] SYS$ASCTIM*(
-      VAR TIMLEN: SYSTEM.INT16; (* WORD_SIGNED, unsigned, optional: NIL omits it *)
+      VAR TIMLEN: SYSTEM.CARD16; (* WORD_SIGNED, optional: NIL omits it *)
       VAR TIMBUF: ARRAY OF CHAR; (* TIME_NAME *)
       TIMADR-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
       CVTFLG: SYSTEM.INT8 (* LONGWORD_UNSIGNED, boolean, optional: 0 omits it *)
@@ -152,8 +152,8 @@ MODULE STARLET;
      attrib = address to return the attributes longword *)
   PROCEDURE ["VMS", "SYS$ASCTOID"] SYS$ASCTOID*(
       NAME-: ARRAY OF CHAR; (* CHAR_STRING *)
-      VAR ID: SYSTEM.INT32; (* RIGHTS_ID, unsigned, optional: NIL omits it *)
-      VAR ATTRIB: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      VAR ID: SYSTEM.CARD32; (* RIGHTS_ID, optional: NIL omits it *)
+      VAR ATTRIB: SYSTEM.CARD32 (* MASK_LONGWORD, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ASCUTC
@@ -184,10 +184,10 @@ MODULE STARLET;
      The default value 0 specifies that $ASCUTC should return
      the full date and time. *)
   PROCEDURE ["VMS", "SYS$ASCUTC"] SYS$ASCUTC*(
-      VAR TIMLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned *)
+      VAR TIMLEN: SYSTEM.CARD16; (* WORD_UNSIGNED *)
       TIMBUF-: ARRAY OF CHAR; (* TIME_NAME *)
       TIMADR-: SYSTEM.ADDRESS; (* ADDRESS *)
-      CVTFLG: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned *)
+      CVTFLG: SYSTEM.CARD32 (* LONGWORD_UNSIGNED *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ASSIGN
@@ -206,10 +206,10 @@ MODULE STARLET;
      $ASSIGN operation *)
   PROCEDURE ["VMS", "SYS$ASSIGN"] SYS$ASSIGN*(
       DEVNAM-: ARRAY OF CHAR; (* DEVICE_NAME *)
-      VAR CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      VAR CHAN: SYSTEM.CARD16; (* CHANNEL *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       MBXNAM-: ARRAY OF CHAR; (* DEVICE_NAME, optional: NIL omits it *)
-      FLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $BINTIM
@@ -264,8 +264,8 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$BRDCST"] SYS$BRDCST*(
       MSGBUF-: ARRAY OF CHAR; (* CHAR_STRING *)
       DEVNAM-: ARRAY OF CHAR; (* DEVICE_NAME, optional: NIL omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      CARCON: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      CARCON: SYSTEM.CARD32 (* LONGWORD_UNSIGNED, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $BRKTHRU
@@ -298,31 +298,31 @@ MODULE STARLET;
 
      astprm = value to be passed to AST routine as an argument *)
   PROCEDURE ["VMS", "SYS$BRKTHRU"] SYS$BRKTHRU*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
       MSGBUF-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
       SENDTO-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      SNDTYP: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      SNDTYP: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
-      CARCON: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      REQID: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      TIMOUT: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      CARCON: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      REQID: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      TIMOUT: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$BRKTHRUW"] SYS$BRKTHRUW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
       MSGBUF-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
       SENDTO-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      SNDTYP: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      SNDTYP: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
-      CARCON: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      REQID: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      TIMOUT: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      CARCON: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      REQID: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      TIMOUT: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CANCEL
@@ -333,7 +333,7 @@ MODULE STARLET;
 
      chan   = number of the channel on which I/O is to be canceled *)
   PROCEDURE ["VMS", "SYS$CANCEL"] SYS$CANCEL*(
-      CHAN: SYSTEM.INT16 (* CHANNEL, unsigned *)
+      CHAN: SYSTEM.CARD16 (* CHANNEL *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CANCEL_SELECTIVE
@@ -346,9 +346,9 @@ MODULE STARLET;
      iosblst = address of a vector of IOSB pointers
      lenlst  = number of entries in the vector pointed by iosblst *)
   PROCEDURE ["VMS", "SYS$CANCEL_SELECTIVE"] SYS$CANCEL_SELECTIVE*(
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL *)
       IOSBLST-: ARRAY OF SYSTEM.BYTE; (* VECTOR_LONGWORD_UNSIGNED, optional: NIL omits it *)
-      LENLST: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      LENLST: SYSTEM.CARD32 (* LONGWORD_UNSIGNED, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CANEVTAST
@@ -374,11 +374,11 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$CANEVTAST"] SYS$CANEVTAST*(
       EVTNAM-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
       EVTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      EVTFAC-: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      FLAGS-: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
-      REQID: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      EVTID: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      EVTFAC-: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      FLAGS-: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
+      REQID: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      EVTID: SYSTEM.CARD32 (* LONGWORD_UNSIGNED, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CANEXH
@@ -403,8 +403,8 @@ MODULE STARLET;
      If 0, all requests canceled.
      acmode = access mode of requests to be canceled *)
   PROCEDURE ["VMS", "SYS$CANTIM"] SYS$CANTIM*(
-      REQIDT: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      REQIDT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CANWAK
@@ -417,7 +417,7 @@ MODULE STARLET;
      which wakeups are to be canceled
      prcnam = address of process name string descriptor *)
   PROCEDURE ["VMS", "SYS$CANWAK"] SYS$CANWAK*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR (* PROCESS_NAME, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -451,15 +451,15 @@ MODULE STARLET;
 
      orbadr = address of a user supplied ORB *)
   PROCEDURE ["VMS", "SYS$CHANGE_ACL"] SYS$CHANGE_ACL*(
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned, optional: 0 omits it *)
-      OBJTYP-: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL, optional: 0 omits it *)
+      OBJTYP-: SYSTEM.CARD32; (* LONGWORD_UNSIGNED *)
       OBJNAM-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
-      ACMODE-: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: NIL omits it *)
+      ACMODE-: SYSTEM.CARD32; (* ACCESS_MODE, optional: NIL omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
-      VAR CONTXT: SYSTEM.INT32; (* CONTEXT, unsigned, optional: NIL omits it *)
+      VAR CONTXT: SYSTEM.CARD32; (* CONTEXT, optional: NIL omits it *)
       ROUTIN: SYSTEM.ADDRESS; (* PROCEDURE, a routine's address, optional: 0 omits it *)
-      ORBADR-: SYSTEM.INT32 (* ADDRESS, unsigned, optional: NIL omits it *)
+      ORBADR-: SYSTEM.CARD32 (* ADDRESS, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CHANGE_CLASS objtyp, [objnam], itmlst
@@ -478,11 +478,11 @@ MODULE STARLET;
 
      orbadr = address of routine to be executed in kernel mode *)
   PROCEDURE ["VMS", "SYS$CHANGE_CLASS"] SYS$CHANGE_CLASS*(
-      OBJTYP-: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned *)
+      OBJTYP-: SYSTEM.CARD32; (* LONGWORD_UNSIGNED *)
       OBJNAM-: ARRAY OF CHAR; (* CHAR_STRING *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      ORBADR-: SYSTEM.INT32 (* ADDRESS, unsigned, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      ORBADR-: SYSTEM.CARD32 (* ADDRESS, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CHECK_ACCESS
@@ -499,11 +499,11 @@ MODULE STARLET;
 
      orbadr = address of a user supplied ORB *)
   PROCEDURE ["VMS", "SYS$CHECK_ACCESS"] SYS$CHECK_ACCESS*(
-      OBJTYP-: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned *)
+      OBJTYP-: SYSTEM.CARD32; (* LONGWORD_UNSIGNED *)
       OBJNAM-: ARRAY OF CHAR; (* CHAR_STRING *)
       USRNAM-: ARRAY OF CHAR; (* CHAR_STRING *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
-      ORBADR-: SYSTEM.INT32 (* ADDRESS, unsigned, optional: NIL omits it *)
+      ORBADR-: SYSTEM.CARD32 (* ADDRESS, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CHKPRO
@@ -525,7 +525,7 @@ MODULE STARLET;
 
      efn    = number of event flag to be cleared *)
   PROCEDURE ["VMS", "SYS$CLREF"] SYS$CLREF*(
-      EFN: SYSTEM.INT32 (* EF_NUMBER, unsigned *)
+      EFN: SYSTEM.CARD32 (* EF_NUMBER *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CLOSE
@@ -607,9 +607,9 @@ MODULE STARLET;
      region = region indicator
      0 -> program (P0) region   1 -> control (P1) region *)
   PROCEDURE ["VMS", "SYS$CNTREG"] SYS$CNTREG*(
-      PAGCNT: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      PAGCNT: SYSTEM.CARD32; (* LONGWORD_UNSIGNED *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       REGION: SYSTEM.INT8 (* LONGWORD_UNSIGNED, boolean, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -665,10 +665,10 @@ MODULE STARLET;
      buffer_handle = address of a quadword to receive the buffer handle
      that identifies the created buffer object *)
   PROCEDURE ["VMS", "SYS$CREATE_BUFOBJ"] SYS$CREATE_BUFOBJ*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR BUFFER_HANDLE: ARRAY OF SYSTEM.BYTE (* QUADWORD_UNSIGNED, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -705,10 +705,10 @@ MODULE STARLET;
 
      itmlst = address of a list of item descriptors *)
   PROCEDURE ["VMS", "SYS$CRELNM"] SYS$CRELNM*(
-      ATTR-: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      ATTR-: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
       TABNAM-: ARRAY OF CHAR; (* LOGICAL_NAME *)
       LOGNAM-: ARRAY OF CHAR; (* LOGICAL_NAME *)
-      ACMODE-: SYSTEM.INT8; (* ACCESS_MODE, unsigned, optional: NIL omits it *)
+      ACMODE-: SYSTEM.CARD8; (* ACCESS_MODE, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE (* ITEM_LIST, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -737,14 +737,14 @@ MODULE STARLET;
 
      acmode = address of access mode for logical name *)
   PROCEDURE ["VMS", "SYS$CRELNT"] SYS$CRELNT*(
-      ATTR-: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      ATTR-: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
       VAR RESNAM: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
-      VAR RESLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      QUOTA-: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      PROMSK-: SYSTEM.INT16; (* FILE_PROTECTION, unsigned, optional: NIL omits it *)
+      VAR RESLEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
+      QUOTA-: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: NIL omits it *)
+      PROMSK-: SYSTEM.CARD16; (* FILE_PROTECTION, optional: NIL omits it *)
       TABNAM-: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
       PARTAB-: ARRAY OF CHAR; (* CHAR_STRING *)
-      ACMODE-: SYSTEM.INT8 (* ACCESS_MODE, unsigned, optional: NIL omits it *)
+      ACMODE-: SYSTEM.CARD8 (* ACCESS_MODE, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CRELOG
@@ -762,10 +762,10 @@ MODULE STARLET;
 
      acmode = access mode for logical name (process table only) *)
   PROCEDURE ["VMS", "SYS$CRELOG"] SYS$CRELOG*(
-      TBLFLG: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      TBLFLG: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
       LOGNAM-: ARRAY OF CHAR; (* LOGICAL_NAME *)
       EQLNAM-: ARRAY OF CHAR; (* LOGICAL_NAME *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CREMBX
@@ -792,13 +792,13 @@ MODULE STARLET;
      flags = flags for mailbox creation and channel assignment *)
   PROCEDURE ["VMS", "SYS$CREMBX"] SYS$CREMBX*(
       PRMFLG: SYSTEM.INT8; (* BOOLEAN, boolean, optional: 0 omits it *)
-      VAR CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
-      MAXMSG: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      BUFQUO: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      PROMSK: SYSTEM.INT32; (* FILE_PROTECTION, unsigned, optional: 0 omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      VAR CHAN: SYSTEM.CARD16; (* CHANNEL *)
+      MAXMSG: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      BUFQUO: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      PROMSK: SYSTEM.CARD32; (* FILE_PROTECTION, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       LOGNAM-: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
-      FLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CREPRC
@@ -845,7 +845,7 @@ MODULE STARLET;
 
      itmlst = address of a list of item descriptors *)
   PROCEDURE ["VMS", "SYS$CREPRC"] SYS$CREPRC*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       IMAGE-: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
       INPUT-: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
       OUTPUT-: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
@@ -853,10 +853,10 @@ MODULE STARLET;
       PRVADR-: ARRAY OF SYSTEM.BYTE; (* MASK_PRIVILEGES, unsigned, optional: NIL omits it *)
       QUOTA-: ARRAY OF SYSTEM.BYTE; (* ITEM_QUOTA_LIST, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
-      BASPRI: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      UIC: SYSTEM.INT32; (* UIC, unsigned, optional: 0 omits it *)
-      MBXUNT: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      STSFLG: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      BASPRI: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      UIC: SYSTEM.CARD32; (* UIC, optional: 0 omits it *)
+      MBXUNT: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: 0 omits it *)
+      STSFLG: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE (* ITEM_LIST, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -875,9 +875,9 @@ MODULE STARLET;
      acmode = access  mode  for  the  new  pages   (protection   is
      read/write for acmode and more privileged modes) *)
   PROCEDURE ["VMS", "SYS$CRETVA"] SYS$CRETVA*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CRMPSC
@@ -925,18 +925,18 @@ MODULE STARLET;
 
      pfc    = page fault cluster size *)
   PROCEDURE ["VMS", "SYS$CRMPSC"] SYS$CRMPSC*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       GSDNAM-: ARRAY OF CHAR; (* SECTION_NAME, optional: NIL omits it *)
       IDENT-: ARRAY OF SYSTEM.BYTE; (* SECTION_ID, unsigned, optional: NIL omits it *)
-      RELPAG: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned, optional: 0 omits it *)
-      PAGCNT: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      VBN: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      PROT: SYSTEM.INT32; (* FILE_PROTECTION, unsigned, optional: 0 omits it *)
-      PFC: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      RELPAG: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL, optional: 0 omits it *)
+      PAGCNT: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      VBN: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      PROT: SYSTEM.CARD32; (* FILE_PROTECTION, optional: 0 omits it *)
+      PFC: SYSTEM.CARD32 (* LONGWORD_UNSIGNED, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DACEFC
@@ -947,7 +947,7 @@ MODULE STARLET;
 
      efn    = number of any event flag in the cluster *)
   PROCEDURE ["VMS", "SYS$DACEFC"] SYS$DACEFC*(
-      EFN: SYSTEM.INT32 (* EF_NUMBER, unsigned *)
+      EFN: SYSTEM.CARD32 (* EF_NUMBER *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DALLOC
@@ -961,7 +961,7 @@ MODULE STARLET;
      acmode = access mode associated with device *)
   PROCEDURE ["VMS", "SYS$DALLOC"] SYS$DALLOC*(
       DEVNAM-: ARRAY OF CHAR; (* DEVICE_NAME, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DASSGN
@@ -972,7 +972,7 @@ MODULE STARLET;
 
      chan   = number of channel to be deassigned *)
   PROCEDURE ["VMS", "SYS$DASSGN"] SYS$DASSGN*(
-      CHAN: SYSTEM.INT16 (* CHANNEL, unsigned *)
+      CHAN: SYSTEM.CARD16 (* CHANNEL *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DCLAST
@@ -988,8 +988,8 @@ MODULE STARLET;
      acmode = access mode for which the AST is to be declared *)
   PROCEDURE ["VMS", "SYS$DCLAST"] SYS$DCLAST*(
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DCLCMH
@@ -1006,7 +1006,7 @@ MODULE STARLET;
      0 -> change mode (current mode)   1 -> compatibility mode *)
   PROCEDURE ["VMS", "SYS$DCLCMH"] SYS$DCLCMH*(
       ADDRES: SYSTEM.ADDRESS; (* PROCEDURE, a routine's address *)
-      VAR PRVHND: SYSTEM.INT32; (* ADDRESS, unsigned, optional: NIL omits it *)
+      VAR PRVHND: SYSTEM.CARD32; (* ADDRESS, optional: NIL omits it *)
       TYPE_: SYSTEM.INT8 (* LONGWORD_UNSIGNED, boolean, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -1031,14 +1031,14 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$DCLEVT"] SYS$DCLEVT*(
       EVTNAM-: ARRAY OF CHAR; (* CHAR_STRING *)
       RCVACL-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      EVTFAC-: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EVTFAC-: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       EVTDATA-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      NULLARG1: SYSTEM.INT32; (* NULL_ARG, unsigned, optional: 0 omits it *)
-      NULLARG2: SYSTEM.INT32; (* NULL_ARG, unsigned, optional: 0 omits it *)
-      NULLARG3: SYSTEM.INT32; (* NULL_ARG, unsigned, optional: 0 omits it *)
-      NULLARG4: SYSTEM.INT32 (* NULL_ARG, unsigned, optional: 0 omits it *)
+      NULLARG1: SYSTEM.CARD32; (* NULL_ARG, optional: 0 omits it *)
+      NULLARG2: SYSTEM.CARD32; (* NULL_ARG, optional: 0 omits it *)
+      NULLARG3: SYSTEM.CARD32; (* NULL_ARG, optional: 0 omits it *)
+      NULLARG4: SYSTEM.CARD32 (* NULL_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DCLEXH
@@ -1097,7 +1097,7 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$DELLNM"] SYS$DELLNM*(
       TABNAM-: ARRAY OF CHAR; (* LOGICAL_NAME *)
       LOGNAM-: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
-      ACMODE-: SYSTEM.INT8 (* ACCESS_MODE, unsigned, optional: NIL omits it *)
+      ACMODE-: SYSTEM.CARD8 (* ACCESS_MODE, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DELLOG
@@ -1114,9 +1114,9 @@ MODULE STARLET;
 
      acmode = access mode of logical name (process table only) *)
   PROCEDURE ["VMS", "SYS$DELLOG"] SYS$DELLOG*(
-      TBLFLG: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      TBLFLG: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
       LOGNAM-: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DELMBX
@@ -1127,7 +1127,7 @@ MODULE STARLET;
 
      chan   = channel number assigned to the mailbox *)
   PROCEDURE ["VMS", "SYS$DELMBX"] SYS$DELMBX*(
-      CHAN: SYSTEM.INT16 (* CHANNEL, unsigned *)
+      CHAN: SYSTEM.CARD16 (* CHANNEL *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DELPRC
@@ -1140,7 +1140,7 @@ MODULE STARLET;
 
      prcnam = address of string descriptor for process name to be deleted *)
   PROCEDURE ["VMS", "SYS$DELPRC"] SYS$DELPRC*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR (* PROCESS_NAME, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -1158,9 +1158,9 @@ MODULE STARLET;
 
      acmode = access mode for which service is performed *)
   PROCEDURE ["VMS", "SYS$DELTVA"] SYS$DELTVA*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DELETE_BUFOBJ
@@ -1191,10 +1191,10 @@ MODULE STARLET;
 
      LCK$M_DEQALL *)
   PROCEDURE ["VMS", "SYS$DEQ"] SYS$DEQ*(
-      LKID: SYSTEM.INT32; (* LOCK_ID, unsigned, optional: 0 omits it *)
+      LKID: SYSTEM.CARD32; (* LOCK_ID, optional: 0 omits it *)
       VAR VALBLK: ARRAY OF SYSTEM.BYTE; (* LOCK_VALUE_BLOCK, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DEVICE_SCAN
@@ -1214,7 +1214,7 @@ MODULE STARLET;
      contxt        = address of quadword context structures *)
   PROCEDURE ["VMS", "SYS$DEVICE_SCAN"] SYS$DEVICE_SCAN*(
       VAR RETURN_DEVNAM: ARRAY OF CHAR; (* DEVICE_NAME *)
-      VAR RETLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned *)
+      VAR RETLEN: SYSTEM.CARD16; (* WORD_UNSIGNED *)
       SEARCH_DEVNAM-: ARRAY OF CHAR; (* DEVICE_NAME, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST, optional: NIL omits it *)
       VAR CONTXT: ARRAY OF SYSTEM.BYTE (* USER_ARG, unsigned, optional: NIL omits it *)
@@ -1233,7 +1233,7 @@ MODULE STARLET;
 
      ident  = address of quadword containing version id and match control *)
   PROCEDURE ["VMS", "SYS$DGBLSC"] SYS$DGBLSC*(
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       GSDNAM-: ARRAY OF CHAR; (* SECTION_NAME *)
       IDENT-: ARRAY OF SYSTEM.BYTE (* SECTION_ID, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -1255,10 +1255,10 @@ MODULE STARLET;
      affinity is set for image or process duration,
      whether to set affinity to primary cpu. *)
   PROCEDURE ["VMS", "SYS$DIAGNOSE"] SYS$DIAGNOSE*(
-      FUNCTION: SYSTEM.INT32; (* FUNCTION_CODE, unsigned, optional: 0 omits it *)
-      P2: SYSTEM.INT32; (* VARYING_ARG, unsigned, optional: 0 omits it *)
-      CPU_ID: SYSTEM.INT32; (* LONGWORD_SIGNED, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      FUNCTION: SYSTEM.CARD32; (* FUNCTION_CODE, optional: 0 omits it *)
+      P2: SYSTEM.CARD32; (* VARYING_ARG, optional: 0 omits it *)
+      CPU_ID: SYSTEM.CARD32; (* LONGWORD_SIGNED, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DISABLE_VP_USE
@@ -1273,9 +1273,9 @@ MODULE STARLET;
 
      prvflg = address of longword to receive previous flags *)
   PROCEDURE ["VMS", "SYS$DISABLE_VP_USE"] SYS$DISABLE_VP_USE*(
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      VAR CURFLG: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
-      VAR PRVFLG: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      VAR CURFLG: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
+      VAR PRVFLG: SYSTEM.CARD32 (* MASK_LONGWORD, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DISABLE_VP_USE_INT
@@ -1290,9 +1290,9 @@ MODULE STARLET;
 
      prvflg = address of longword to receive previous flags *)
   PROCEDURE ["VMS", "SYS$DISABLE_VP_USE_INT"] SYS$DISABLE_VP_USE_INT*(
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      VAR CURFLG: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
-      VAR PRVFLG: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      VAR CURFLG: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
+      VAR PRVFLG: SYSTEM.CARD32 (* MASK_LONGWORD, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DISCONNECT
@@ -1332,7 +1332,7 @@ MODULE STARLET;
      than the entire volume set. *)
   PROCEDURE ["VMS", "SYS$DISMOU"] SYS$DISMOU*(
       DEVNAM-: ARRAY OF CHAR; (* DEVICE_NAME *)
-      FLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DISPLAY
@@ -1383,21 +1383,21 @@ MODULE STARLET;
 
      astprm = value to be passed to AST routine as argument *)
   PROCEDURE ["VMS", "SYS$DNS"] SYS$DNS*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FUNC: SYSTEM.INT32; (* FUNCTION_CODE, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FUNC: SYSTEM.CARD32; (* FUNCTION_CODE *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST_3 *)
       VAR DNSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$DNSW"] SYS$DNSW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FUNC: SYSTEM.INT32; (* FUNCTION_CODE, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FUNC: SYSTEM.CARD32; (* FUNCTION_CODE *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST_3 *)
       VAR DNSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $EMAA
@@ -1407,7 +1407,7 @@ MODULE STARLET;
      $EMAA *)
   PROCEDURE ["VMS", "SYS$EMAA"] SYS$EMAA*(
       ARGLIST-: ARRAY OF CHAR; (* CHAR_STRING *)
-      INVOKEID-: SYSTEM.INT32 (* USER_ARG, unsigned *)
+      INVOKEID-: SYSTEM.CARD32 (* USER_ARG *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ENABLE_VP_USE
@@ -1422,9 +1422,9 @@ MODULE STARLET;
 
      prvflg = address of longword to receive previous flags *)
   PROCEDURE ["VMS", "SYS$ENABLE_VP_USE"] SYS$ENABLE_VP_USE*(
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      VAR CURFLG: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
-      VAR PRVFLG: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      VAR CURFLG: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
+      VAR PRVFLG: SYSTEM.CARD32 (* MASK_LONGWORD, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ENABLE_VP_USE_INT
@@ -1439,9 +1439,9 @@ MODULE STARLET;
 
      prvflg = address of longword to receive previous flags *)
   PROCEDURE ["VMS", "SYS$ENABLE_VP_USE_INT"] SYS$ENABLE_VP_USE_INT*(
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      VAR CURFLG: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
-      VAR PRVFLG: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      VAR CURFLG: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
+      VAR PRVFLG: SYSTEM.CARD32 (* MASK_LONGWORD, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ENQ
@@ -1490,35 +1490,35 @@ MODULE STARLET;
 
      priority = optional priority of request *)
   PROCEDURE ["VMS", "SYS$ENQ"] SYS$ENQ*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      LKMODE: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      LKMODE: SYSTEM.CARD32; (* LONGWORD_UNSIGNED *)
       VAR LKSB: ARRAY OF SYSTEM.BYTE; (* LOCK_STATUS_BLOCK *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       RESNAM-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      PARID: SYSTEM.INT32; (* LOCK_ID, unsigned, optional: 0 omits it *)
+      PARID: SYSTEM.CARD32; (* LOCK_ID, optional: 0 omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       BLKAST: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      PROT: SYSTEM.INT32; (* NULL_ARG, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      PROT: SYSTEM.CARD32; (* NULL_ARG, optional: 0 omits it *)
       RANGE: SYSTEM.ADDRESS; (* RANGE, a routine's address, optional: 0 omits it *)
-      PRIORITY: SYSTEM.INT32 (* PRIORITY, unsigned, optional: 0 omits it *)
+      PRIORITY: SYSTEM.CARD32 (* PRIORITY, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$ENQW"] SYS$ENQW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      LKMODE: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      LKMODE: SYSTEM.CARD32; (* LONGWORD_UNSIGNED *)
       VAR LKSB: ARRAY OF SYSTEM.BYTE; (* LOCK_STATUS_BLOCK *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       RESNAM-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      PARID: SYSTEM.INT32; (* LOCK_ID, unsigned, optional: 0 omits it *)
+      PARID: SYSTEM.CARD32; (* LOCK_ID, optional: 0 omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       BLKAST: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      PROT: SYSTEM.INT32; (* NULL_ARG, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      PROT: SYSTEM.CARD32; (* NULL_ARG, optional: 0 omits it *)
       RANGE: SYSTEM.ADDRESS; (* RANGE, a routine's address, optional: 0 omits it *)
-      PRIORITY: SYSTEM.INT32 (* PRIORITY, unsigned, optional: 0 omits it *)
+      PRIORITY: SYSTEM.CARD32 (* PRIORITY, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ENTER
@@ -1551,8 +1551,8 @@ MODULE STARLET;
      patadr = address of longword to receive erase pattern *)
   PROCEDURE ["VMS", "SYS$ERAPAT"] SYS$ERAPAT*(
       TYPE_: SYSTEM.INT32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
-      COUNT: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      VAR PATADR: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      COUNT: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      VAR PATADR: SYSTEM.CARD32 (* LONGWORD_UNSIGNED, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ERASE
@@ -1589,7 +1589,7 @@ MODULE STARLET;
 
      code   = longword completion status *)
   PROCEDURE ["VMS", "SYS$EXIT"] SYS$EXIT*(
-      CODE: SYSTEM.INT32 (* COND_VALUE, unsigned, optional: 0 omits it *)
+      CODE: SYSTEM.CARD32 (* COND_VALUE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $EXPREG
@@ -1608,9 +1608,9 @@ MODULE STARLET;
      region = region indicator
      0 -> program (P0) region   1 -> control (P1) region *)
   PROCEDURE ["VMS", "SYS$EXPREG"] SYS$EXPREG*(
-      PAGCNT: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      PAGCNT: SYSTEM.CARD32; (* LONGWORD_UNSIGNED *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       REGION: SYSTEM.INT8 (* LONGWORD_UNSIGNED, boolean, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -1661,7 +1661,7 @@ MODULE STARLET;
      prmlst = address of a list of longword parameters *)
   PROCEDURE ["VMS", "SYS$FAOL"] SYS$FAOL*(
       CTRSTR-: ARRAY OF CHAR; (* CHAR_STRING *)
-      VAR OUTLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      VAR OUTLEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       VAR OUTBUF: ARRAY OF CHAR; (* CHAR_STRING *)
       PRMLST-: ARRAY OF SYSTEM.BYTE (* VECTOR_LONGWORD_UNSIGNED *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -1680,7 +1680,7 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$FILESCAN"] SYS$FILESCAN*(
       SRCSTR-: ARRAY OF CHAR; (* CHAR_STRING *)
       VAR VALUELST: ARRAY OF SYSTEM.BYTE; (* LIST_ITEM, optional: NIL omits it *)
-      VAR FLDFLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      VAR FLDFLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $FIND
@@ -1715,9 +1715,9 @@ MODULE STARLET;
      on first call, value input on subsequent calls. *)
   PROCEDURE ["VMS", "SYS$FIND_HELD"] SYS$FIND_HELD*(
       HOLDER-: ARRAY OF SYSTEM.BYTE; (* RIGHTS_HOLDER, unsigned *)
-      VAR ID: SYSTEM.INT32; (* RIGHTS_ID, unsigned, optional: NIL omits it *)
-      VAR ATTRIB: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
-      VAR CONTXT: SYSTEM.INT32 (* CONTEXT, unsigned, optional: NIL omits it *)
+      VAR ID: SYSTEM.CARD32; (* RIGHTS_ID, optional: NIL omits it *)
+      VAR ATTRIB: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
+      VAR CONTXT: SYSTEM.CARD32 (* CONTEXT, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $FIND_HOLDER
@@ -1734,10 +1734,10 @@ MODULE STARLET;
      context. initially should be zero, value output
      on first call, value input on subsequent calls. *)
   PROCEDURE ["VMS", "SYS$FIND_HOLDER"] SYS$FIND_HOLDER*(
-      ID: SYSTEM.INT32; (* RIGHTS_ID, unsigned *)
+      ID: SYSTEM.CARD32; (* RIGHTS_ID *)
       VAR HOLDER: ARRAY OF SYSTEM.BYTE; (* RIGHTS_HOLDER, unsigned, optional: NIL omits it *)
-      VAR ATTRIB: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
-      VAR CONTXT: SYSTEM.INT32 (* CONTEXT, unsigned, optional: NIL omits it *)
+      VAR ATTRIB: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
+      VAR CONTXT: SYSTEM.CARD32 (* CONTEXT, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $FINISH_RDB
@@ -1749,7 +1749,7 @@ MODULE STARLET;
      contxt = address of a longword containing the record stream
      context. *)
   PROCEDURE ["VMS", "SYS$FINISH_RDB"] SYS$FINISH_RDB*(
-      VAR CONTXT: SYSTEM.INT32 (* CONTEXT, unsigned *)
+      VAR CONTXT: SYSTEM.CARD32 (* CONTEXT *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $FORCEX
@@ -1764,9 +1764,9 @@ MODULE STARLET;
 
      code   = longword completion status for exit service *)
   PROCEDURE ["VMS", "SYS$FORCEX"] SYS$FORCEX*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
-      CODE: SYSTEM.INT32 (* COND_VALUE, unsigned, optional: 0 omits it *)
+      CODE: SYSTEM.CARD32 (* COND_VALUE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $FORMAT_ACL
@@ -1801,11 +1801,11 @@ MODULE STARLET;
      routin  = address of routine to be executed in kernel mode *)
   PROCEDURE ["VMS", "SYS$FORMAT_ACL"] SYS$FORMAT_ACL*(
       ACLENT-: ARRAY OF CHAR; (* CHAR_STRING *)
-      VAR ACLLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      VAR ACLLEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       VAR ACLSTR: ARRAY OF CHAR; (* CHAR_STRING *)
-      WIDTH-: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      WIDTH-: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       TRMDSC-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      INDENT-: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      INDENT-: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       ACCNAM-: ARRAY OF SYSTEM.BYTE; (* ACCESS_BIT_NAMES, optional: NIL omits it *)
       ROUTIN: SYSTEM.ADDRESS (* PROCEDURE, a routine's address, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -1833,14 +1833,14 @@ MODULE STARLET;
 
      fmtflg  = format control flags *)
   PROCEDURE ["VMS", "SYS$FORMAT_AUDIT"] SYS$FORMAT_AUDIT*(
-      FMTTYP: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned *)
+      FMTTYP: SYSTEM.CARD32; (* LONGWORD_UNSIGNED *)
       AUDMSG-: ARRAY OF CHAR; (* CHAR_STRING *)
-      VAR OUTLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      VAR OUTLEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       VAR OUTBUF: ARRAY OF CHAR; (* CHAR_STRING *)
-      WIDTH-: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      WIDTH-: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       TRMDSC-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
       ROUTIN: SYSTEM.ADDRESS; (* PROCEDURE, a routine's address, optional: 0 omits it *)
-      FMTFLG: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      FMTFLG: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $FORMAT_CLASS itmlst, [routin]
@@ -1922,10 +1922,10 @@ MODULE STARLET;
 
      scdbuf = address of secondary buffer descriptor *)
   PROCEDURE ["VMS", "SYS$GETCHN"] SYS$GETCHN*(
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
-      VAR PRILEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL *)
+      VAR PRILEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       VAR PRIBUF: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      VAR SCDLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      VAR SCDLEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       VAR SCDBUF: ARRAY OF CHAR (* CHAR_STRING, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -1946,9 +1946,9 @@ MODULE STARLET;
      scdbuf = address of secondary buffer descriptor *)
   PROCEDURE ["VMS", "SYS$GETDEV"] SYS$GETDEV*(
       DEVNAM-: ARRAY OF CHAR; (* DEVICE_NAME *)
-      VAR PRILEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      VAR PRILEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       VAR PRIBUF: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      VAR SCDLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      VAR SCDLEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       VAR SCDBUF: ARRAY OF CHAR (* CHAR_STRING, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -1969,25 +1969,25 @@ MODULE STARLET;
      search = address of a list of search criteria items
      itmlst = address of a list of item descriptors *)
   PROCEDURE ["VMS", "SYS$GETDTI"] SYS$GETDTI*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       LOG_ID-: ARRAY OF SYSTEM.BYTE; (* OCTAWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      VAR CONTXT: SYSTEM.INT32; (* CONTEXT, unsigned *)
+      VAR CONTXT: SYSTEM.CARD32; (* CONTEXT *)
       SEARCH-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       ITMLST-: ARRAY OF SYSTEM.BYTE (* ITEM_LIST *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$GETDTIW"] SYS$GETDTIW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       LOG_ID-: ARRAY OF SYSTEM.BYTE; (* OCTAWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      VAR CONTXT: SYSTEM.INT32; (* CONTEXT, unsigned *)
+      VAR CONTXT: SYSTEM.CARD32; (* CONTEXT *)
       SEARCH-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       ITMLST-: ARRAY OF SYSTEM.BYTE (* ITEM_LIST *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -2016,24 +2016,24 @@ MODULE STARLET;
 
      nullarg = reserved argument *)
   PROCEDURE ["VMS", "SYS$GETDVI"] SYS$GETDVI*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL, optional: 0 omits it *)
       DEVNAM-: ARRAY OF CHAR; (* DEVICE_NAME, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       NULLARG-: ARRAY OF SYSTEM.BYTE (* NULL_ARG, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$GETDVIW"] SYS$GETDVIW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL, optional: 0 omits it *)
       DEVNAM-: ARRAY OF CHAR; (* DEVICE_NAME, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       NULLARG-: ARRAY OF SYSTEM.BYTE (* NULL_ARG, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -2046,7 +2046,7 @@ MODULE STARLET;
      itmlst = address of a list of item descriptors *)
   PROCEDURE ["VMS", "SYS$GETEVI"] SYS$GETEVI*(
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
-      NULLARG: SYSTEM.INT32 (* NULL_ARG, unsigned, optional: 0 omits it *)
+      NULLARG: SYSTEM.CARD32 (* NULL_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GETJPI
@@ -2070,23 +2070,23 @@ MODULE STARLET;
 
      astprm = value to be passed to AST routine as an argument *)
   PROCEDURE ["VMS", "SYS$GETJPI"] SYS$GETJPI*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$GETJPIW"] SYS$GETJPIW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GETLKI
@@ -2110,23 +2110,23 @@ MODULE STARLET;
 
      reserved = reserved parameter *)
   PROCEDURE ["VMS", "SYS$GETLKI"] SYS$GETLKI*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      VAR LKIDADR: SYSTEM.INT32; (* LOCK_ID, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      VAR LKIDADR: SYSTEM.CARD32; (* LOCK_ID *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      RESERVED: SYSTEM.INT32 (* NULL_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      RESERVED: SYSTEM.CARD32 (* NULL_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$GETLKIW"] SYS$GETLKIW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      VAR LKIDADR: SYSTEM.INT32; (* LOCK_ID, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      VAR LKIDADR: SYSTEM.CARD32; (* LOCK_ID *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      RESERVED: SYSTEM.INT32 (* NULL_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      RESERVED: SYSTEM.CARD32 (* NULL_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GETMSG
@@ -2165,11 +2165,11 @@ MODULE STARLET;
      2  User value
      3  Reserved *)
   PROCEDURE ["VMS", "SYS$GETMSG"] SYS$GETMSG*(
-      MSGID: SYSTEM.INT32; (* COND_VALUE, unsigned *)
-      VAR MSGLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned *)
+      MSGID: SYSTEM.CARD32; (* COND_VALUE *)
+      VAR MSGLEN: SYSTEM.CARD16; (* WORD_UNSIGNED *)
       VAR BUFADR: ARRAY OF CHAR; (* CHAR_STRING *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      VAR OUTADR: ARRAY OF SYSTEM.INT8 (* VECTOR_BYTE_UNSIGNED, unsigned, optional: NIL omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      VAR OUTADR: ARRAY OF SYSTEM.CARD8 (* VECTOR_BYTE_UNSIGNED, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GETPTI
@@ -2190,11 +2190,11 @@ MODULE STARLET;
 
      pagcnt = minimum page count *)
   PROCEDURE ["VMS", "SYS$GETPTI"] SYS$GETPTI*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      MASK: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      PAGCNT: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      MASK: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      PAGCNT: SYSTEM.CARD32 (* LONGWORD_UNSIGNED, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GETQUI
@@ -2212,23 +2212,23 @@ MODULE STARLET;
      astadr  = address of an ast routine to be called when request completes
      astprm  = 32-bit ast parameter *)
   PROCEDURE ["VMS", "SYS$GETQUI"] SYS$GETQUI*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FUNC: SYSTEM.INT16; (* FUNCTION_CODE, unsigned *)
-      NULLARG: SYSTEM.INT32; (* NULL_ARG, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FUNC: SYSTEM.CARD16; (* FUNCTION_CODE *)
+      NULLARG: SYSTEM.CARD32; (* NULL_ARG, optional: 0 omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST, optional: NIL omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$GETQUIW"] SYS$GETQUIW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FUNC: SYSTEM.INT16; (* FUNCTION_CODE, unsigned *)
-      NULLARG: SYSTEM.INT32; (* NULL_ARG, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FUNC: SYSTEM.CARD16; (* FUNCTION_CODE *)
+      NULLARG: SYSTEM.CARD32; (* NULL_ARG, optional: 0 omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST, optional: NIL omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GETSYI
@@ -2256,23 +2256,23 @@ MODULE STARLET;
      The second and third arguments in the $GETSYI argument list are
      not used; they are reserved for future use. *)
   PROCEDURE ["VMS", "SYS$GETSYI"] SYS$GETSYI*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      VAR CSIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      VAR CSIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       NODENAME-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$GETSYIW"] SYS$GETSYIW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      VAR CSIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      VAR CSIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       NODENAME-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GETTIM
@@ -2319,13 +2319,13 @@ MODULE STARLET;
 
      astprm = value to be passed to AST routine *)
   PROCEDURE ["VMS", "SYS$GETUAI"] SYS$GETUAI*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      CONTXT-: SYSTEM.INT32; (* CONTEXT, unsigned, optional: NIL omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      CONTXT-: SYSTEM.CARD32; (* CONTEXT, optional: NIL omits it *)
       USRNAM-: ARRAY OF CHAR; (* CHAR_STRING *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GRANTID
@@ -2340,11 +2340,11 @@ MODULE STARLET;
      name    = address of string descriptor of identifier name
      prvatr  = address to store attributes of superseded id *)
   PROCEDURE ["VMS", "SYS$GRANTID"] SYS$GRANTID*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
       VAR ID: ARRAY OF SYSTEM.BYTE; (* RIGHTS_HOLDER, unsigned, optional: NIL omits it *)
       NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      VAR PRVATR: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      VAR PRVATR: SYSTEM.CARD32 (* MASK_LONGWORD, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GRANT_LICENSE
@@ -2360,7 +2360,7 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$GRANT_LICENSE"] SYS$GRANT_LICENSE*(
       PRDNAM-: ARRAY OF CHAR; (* CHAR_STRING *)
       PRDUCER-: ARRAY OF CHAR; (* CHAR_STRING *)
-      CONTXT-: ARRAY OF SYSTEM.INT32; (* CONTEXT, unsigned, optional: NIL omits it *)
+      CONTXT-: ARRAY OF SYSTEM.CARD32; (* CONTEXT, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE (* ITEM_LIST_3, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -2377,8 +2377,8 @@ MODULE STARLET;
      hash = address of output quadword hash buffer *)
   PROCEDURE ["VMS", "SYS$HASH_PASSWORD"] SYS$HASH_PASSWORD*(
       PWD-: ARRAY OF CHAR; (* CHAR_STRING *)
-      ALG: SYSTEM.INT8; (* BYTE_UNSIGNED, unsigned *)
-      SALT: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      ALG: SYSTEM.CARD8; (* BYTE_UNSIGNED *)
+      SALT: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: 0 omits it *)
       USRNAM-: ARRAY OF CHAR; (* CHAR_STRING *)
       VAR HASH: ARRAY OF SYSTEM.BYTE (* QUADWORD_UNSIGNED, unsigned *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -2409,12 +2409,12 @@ MODULE STARLET;
      context. initially should be zero, value output
      on first call, value input on subsequent calls. *)
   PROCEDURE ["VMS", "SYS$IDTOASC"] SYS$IDTOASC*(
-      ID: SYSTEM.INT32; (* RIGHTS_ID, unsigned *)
-      VAR NAMLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      ID: SYSTEM.CARD32; (* RIGHTS_ID *)
+      VAR NAMLEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       VAR NAMBUF: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      VAR RESID: SYSTEM.INT32; (* RIGHTS_ID, unsigned, optional: NIL omits it *)
-      VAR ATTRIB: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
-      VAR CONTXT: SYSTEM.INT32 (* CONTEXT, unsigned, optional: NIL omits it *)
+      VAR RESID: SYSTEM.CARD32; (* RIGHTS_ID, optional: NIL omits it *)
+      VAR ATTRIB: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
+      VAR CONTXT: SYSTEM.CARD32 (* CONTEXT, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $IMGACT
@@ -2447,11 +2447,11 @@ MODULE STARLET;
       NAME-: ARRAY OF CHAR; (* CHAR_STRING *)
       DFLNAM-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
       VAR HDRBUF: SYSTEM.ADDRESS; (* CNTRLBLK *)
-      IMGCTL: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
+      IMGCTL: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
       IDENT-: ARRAY OF SYSTEM.BYTE; (* SECTION_ID, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $IMGFIX
@@ -2495,19 +2495,19 @@ MODULE STARLET;
 
      astprm = value to be passed to AST routine as argument *)
   PROCEDURE ["VMS", "SYS$IPC"] SYS$IPC*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FUNC: SYSTEM.INT16; (* FUNCTION_CODE, unsigned *)
-      IPCB-: SYSTEM.INT32; (* ADDRESS, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FUNC: SYSTEM.CARD16; (* FUNCTION_CODE *)
+      IPCB-: SYSTEM.CARD32; (* ADDRESS *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$IPCW"] SYS$IPCW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FUNC: SYSTEM.INT16; (* FUNCTION_CODE, unsigned *)
-      IPCB-: SYSTEM.INT32; (* ADDRESS, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FUNC: SYSTEM.CARD16; (* FUNCTION_CODE *)
+      IPCB-: SYSTEM.CARD32; (* ADDRESS *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $LCKPAG
@@ -2524,9 +2524,9 @@ MODULE STARLET;
 
      acmode = access mode to check against the owner of the pages *)
   PROCEDURE ["VMS", "SYS$LCKPAG"] SYS$LCKPAG*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $LKWSET
@@ -2543,9 +2543,9 @@ MODULE STARLET;
 
      acmode = access mode to be checked against the page owner *)
   PROCEDURE ["VMS", "SYS$LKWSET"] SYS$LKWSET*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $MGBLSC
@@ -2576,13 +2576,13 @@ MODULE STARLET;
 
      relpag = relative page number within global section *)
   PROCEDURE ["VMS", "SYS$MGBLSC"] SYS$MGBLSC*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       GSDNAM-: ARRAY OF CHAR; (* SECTION_NAME *)
       IDENT-: ARRAY OF SYSTEM.BYTE; (* SECTION_ID, unsigned, optional: NIL omits it *)
-      RELPAG: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      RELPAG: SYSTEM.CARD32 (* LONGWORD_UNSIGNED, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $MODIFY
@@ -2615,10 +2615,10 @@ MODULE STARLET;
      clr_attrib = longword containing the attributes to clear
      in the holder record *)
   PROCEDURE ["VMS", "SYS$MOD_HOLDER"] SYS$MOD_HOLDER*(
-      ID: SYSTEM.INT32; (* RIGHTS_ID, unsigned *)
+      ID: SYSTEM.CARD32; (* RIGHTS_ID *)
       HOLDER-: ARRAY OF SYSTEM.BYTE; (* RIGHTS_HOLDER, unsigned *)
-      SET_ATTRIB: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      CLR_ATTRIB: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      SET_ATTRIB: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      CLR_ATTRIB: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $MOD_IDENT
@@ -2636,11 +2636,11 @@ MODULE STARLET;
      string descriptor
      new_value  = new identifier value longword *)
   PROCEDURE ["VMS", "SYS$MOD_IDENT"] SYS$MOD_IDENT*(
-      ID: SYSTEM.INT32; (* RIGHTS_ID, unsigned *)
-      SET_ATTRIB: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      CLR_ATTRIB: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      ID: SYSTEM.CARD32; (* RIGHTS_ID *)
+      SET_ATTRIB: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      CLR_ATTRIB: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       NEW_NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      NEW_VALUE: SYSTEM.INT32 (* RIGHTS_ID, unsigned, optional: 0 omits it *)
+      NEW_VALUE: SYSTEM.CARD32 (* RIGHTS_ID, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $MOUNT
@@ -2688,12 +2688,12 @@ MODULE STARLET;
      MTA$K_OUTVOL1 = Output a VOL1 label
      MTA$K_OUTHDR1 = Output a HDR1 label *)
   PROCEDURE ["VMS", "SYS$MTACCESS"] SYS$MTACCESS*(
-      LBLNAM-: SYSTEM.INT32; (* VECTOR_LONGWORD_UNSIGNED, unsigned *)
-      UIC: SYSTEM.INT32; (* RIGHTS_ID, unsigned, optional: 0 omits it *)
-      STD_VERSION: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      ACCESS_CHAR: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      ACCESS_SPEC: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      TYPE_: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned *)
+      LBLNAM-: SYSTEM.CARD32; (* VECTOR_LONGWORD_UNSIGNED *)
+      UIC: SYSTEM.CARD32; (* RIGHTS_ID, optional: 0 omits it *)
+      STD_VERSION: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      ACCESS_CHAR: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      ACCESS_SPEC: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      TYPE_: SYSTEM.CARD32 (* LONGWORD_UNSIGNED *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $NUMTIM
@@ -2708,7 +2708,7 @@ MODULE STARLET;
      timadr = address of a quadword containing the 64-bit time.  If
      0, use current time *)
   PROCEDURE ["VMS", "SYS$NUMTIM"] SYS$NUMTIM*(
-      VAR TIMBUF: ARRAY OF SYSTEM.INT16; (* VECTOR_WORD_UNSIGNED, unsigned *)
+      VAR TIMBUF: ARRAY OF SYSTEM.CARD16; (* VECTOR_WORD_UNSIGNED *)
       TIMADR-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -2741,7 +2741,7 @@ MODULE STARLET;
      timadr = address of a quadword containing the 64-bit time.  If
      0, use current time *)
   PROCEDURE ["VMS", "SYS$NUMUTC"] SYS$NUMUTC*(
-      VAR TIMBUF: ARRAY OF SYSTEM.INT16; (* VECTOR_WORD_UNSIGNED, unsigned *)
+      VAR TIMBUF: ARRAY OF SYSTEM.CARD16; (* VECTOR_WORD_UNSIGNED *)
       TIMADR-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -2820,7 +2820,7 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$PARSE_ACL"] SYS$PARSE_ACL*(
       ACLSTR-: ARRAY OF CHAR; (* CHAR_STRING *)
       VAR ACLENT: ARRAY OF CHAR; (* CHAR_STRING *)
-      VAR ERRPOS: SYSTEM.INT16; (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      VAR ERRPOS: SYSTEM.CARD16; (* LONGWORD_UNSIGNED, optional: NIL omits it *)
       ACCNAM-: ARRAY OF SYSTEM.BYTE; (* ACCESS_BIT_NAMES, optional: NIL omits it *)
       ROUTIN: SYSTEM.ADDRESS (* PROCEDURE, a routine's address, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -2847,7 +2847,7 @@ MODULE STARLET;
 
      itmlst = address of a list of item descriptors *)
   PROCEDURE ["VMS", "SYS$PROCESS_SCAN"] SYS$PROCESS_SCAN*(
-      VAR PIDCTX: SYSTEM.INT32; (* PROCESS_ID, unsigned *)
+      VAR PIDCTX: SYSTEM.CARD32; (* PROCESS_ID *)
       ITMLST-: ARRAY OF SYSTEM.BYTE (* ITEM_LIST, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -2860,7 +2860,7 @@ MODULE STARLET;
      inadr  = address of 2-longword array containing starting and
      ending addresses of pages to be removed *)
   PROCEDURE ["VMS", "SYS$PURGWS"] SYS$PURGWS*(
-      INADR-: ARRAY OF SYSTEM.INT32 (* ADDRESS_RANGE, unsigned *)
+      INADR-: ARRAY OF SYSTEM.CARD32 (* ADDRESS_RANGE *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $PUT
@@ -2897,7 +2897,7 @@ MODULE STARLET;
       MSGVEC-: ARRAY OF SYSTEM.BYTE; (* CNTRLBLK *)
       ACTRTN: SYSTEM.ADDRESS; (* PROCEDURE, a routine's address, optional: 0 omits it *)
       FACNAM-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      ACTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ACTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $QIO
@@ -2922,12 +2922,12 @@ MODULE STARLET;
 
      p1...  = optional device- and function-specific parameters *)
   PROCEDURE ["VMS", "SYS$QIO"] SYS$QIO*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
-      FUNC: SYSTEM.INT16; (* FUNCTION_CODE, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL *)
+      FUNC: SYSTEM.CARD16; (* FUNCTION_CODE *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       P1-: ARRAY OF SYSTEM.BYTE; (* VARYING_ARG, optional: NIL omits it *)
       P2: SYSTEM.INT32; (* VARYING_ARG, optional: 0 omits it *)
       P3: SYSTEM.INT32; (* VARYING_ARG, optional: 0 omits it *)
@@ -2937,12 +2937,12 @@ MODULE STARLET;
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$QIOW"] SYS$QIOW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
-      FUNC: SYSTEM.INT16; (* FUNCTION_CODE, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL *)
+      FUNC: SYSTEM.CARD16; (* FUNCTION_CODE *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       P1-: ARRAY OF SYSTEM.BYTE; (* VARYING_ARG, optional: NIL omits it *)
       P2: SYSTEM.INT32; (* VARYING_ARG, optional: 0 omits it *)
       P3: SYSTEM.INT32; (* VARYING_ARG, optional: 0 omits it *)
@@ -2979,8 +2979,8 @@ MODULE STARLET;
      state  = address of a longword to receive current state of all
      flags in the cluster *)
   PROCEDURE ["VMS", "SYS$READEF"] SYS$READEF*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned *)
-      VAR STATE: SYSTEM.INT32 (* MASK_LONGWORD, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER *)
+      VAR STATE: SYSTEM.CARD32 (* MASK_LONGWORD *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $RELEASE
@@ -3052,7 +3052,7 @@ MODULE STARLET;
      id = identifier longword
      holder = address of the holder identifier quadword *)
   PROCEDURE ["VMS", "SYS$REM_HOLDER"] SYS$REM_HOLDER*(
-      ID: SYSTEM.INT32; (* RIGHTS_ID, unsigned *)
+      ID: SYSTEM.CARD32; (* RIGHTS_ID *)
       HOLDER-: ARRAY OF SYSTEM.BYTE (* RIGHTS_HOLDER, unsigned *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -3064,7 +3064,7 @@ MODULE STARLET;
 
      id = identifier longword *)
   PROCEDURE ["VMS", "SYS$REM_IDENT"] SYS$REM_IDENT*(
-      ID: SYSTEM.INT32 (* RIGHTS_ID, unsigned *)
+      ID: SYSTEM.CARD32 (* RIGHTS_ID *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $RENAME
@@ -3095,7 +3095,7 @@ MODULE STARLET;
 
      excid = address of a context longword *)
   PROCEDURE ["VMS", "SYS$RESTORE_VP_EXCEPTION"] SYS$RESTORE_VP_EXCEPTION*(
-      EXCID-: SYSTEM.INT32 (* CONTEXT, unsigned *)
+      EXCID-: SYSTEM.CARD32 (* CONTEXT *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $RESTORE_VP_EXC_INT
@@ -3106,7 +3106,7 @@ MODULE STARLET;
 
      excid = address of a context longword *)
   PROCEDURE ["VMS", "SYS$RESTORE_VP_EXC_INT"] SYS$RESTORE_VP_EXC_INT*(
-      EXCID-: SYSTEM.INT32 (* CONTEXT, unsigned *)
+      EXCID-: SYSTEM.CARD32 (* CONTEXT *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $RESTORE_VP_STATE
@@ -3126,7 +3126,7 @@ MODULE STARLET;
 
      prcnam = address of process name string descriptor *)
   PROCEDURE ["VMS", "SYS$RESUME"] SYS$RESUME*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR (* PROCESS_NAME, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -3142,11 +3142,11 @@ MODULE STARLET;
      name    = address of string descriptor of identifier name
      prvatr  = address to store attributes of superseded id *)
   PROCEDURE ["VMS", "SYS$REVOKID"] SYS$REVOKID*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
       VAR ID: ARRAY OF SYSTEM.BYTE; (* RIGHTS_HOLDER, unsigned, optional: NIL omits it *)
       NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      VAR PRVATR: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      VAR PRVATR: SYSTEM.CARD32 (* MASK_LONGWORD, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $REWIND
@@ -3175,7 +3175,7 @@ MODULE STARLET;
      acmode = access mode to rundown; this and all less
      privileged access modes are rundown *)
   PROCEDURE ["VMS", "SYS$RUNDWN"] SYS$RUNDWN*(
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SAVE_VP_EXCEPTION
@@ -3189,8 +3189,8 @@ MODULE STARLET;
      flags = noallocation flag
      0 -> allocate        1 -> don't allocate *)
   PROCEDURE ["VMS", "SYS$SAVE_VP_EXCEPTION"] SYS$SAVE_VP_EXCEPTION*(
-      VAR EXCID: SYSTEM.INT32; (* CONTEXT, unsigned *)
-      FLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      VAR EXCID: SYSTEM.CARD32; (* CONTEXT *)
+      FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SAVE_VP_EXC_INT
@@ -3204,8 +3204,8 @@ MODULE STARLET;
      flags = noallocation flag
      0 -> allocate        1 -> don't allocate *)
   PROCEDURE ["VMS", "SYS$SAVE_VP_EXC_INT"] SYS$SAVE_VP_EXC_INT*(
-      VAR EXCID: SYSTEM.INT32; (* CONTEXT, unsigned *)
-      FLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      VAR EXCID: SYSTEM.CARD32; (* CONTEXT *)
+      FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SCHDWK
@@ -3222,7 +3222,7 @@ MODULE STARLET;
 
      reptim = address of quadword containing repeat time interval *)
   PROCEDURE ["VMS", "SYS$SCHDWK"] SYS$SCHDWK*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
       DAYTIM-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned *)
       REPTIM-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
@@ -3265,7 +3265,7 @@ MODULE STARLET;
 
      efn    = event flag number of flag to set *)
   PROCEDURE ["VMS", "SYS$SETEF"] SYS$SETEF*(
-      EFN: SYSTEM.INT32 (* EF_NUMBER, unsigned *)
+      EFN: SYSTEM.CARD32 (* EF_NUMBER *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SETEVTAST
@@ -3302,33 +3302,33 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$SETEVTAST"] SYS$SETEVTAST*(
       EVTNAM-: ARRAY OF CHAR; (* CHAR_STRING *)
       EVTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address *)
-      EVTFAC-: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      REQID: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      VAR EVTID: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      EVTCRD: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
+      EVTFAC-: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      REQID: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      VAR EVTID: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: NIL omits it *)
+      EVTCRD: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      NULLARG: SYSTEM.INT32 (* NULL_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      NULLARG: SYSTEM.CARD32 (* NULL_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$SETEVTASTW"] SYS$SETEVTASTW*(
       EVTNAM-: ARRAY OF CHAR; (* CHAR_STRING *)
       EVTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address *)
-      EVTFAC-: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      REQID: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      VAR EVTID: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      EVTCRD: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
+      EVTFAC-: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      REQID: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      VAR EVTID: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: NIL omits it *)
+      EVTCRD: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      NULLARG: SYSTEM.INT32 (* NULL_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      NULLARG: SYSTEM.CARD32 (* NULL_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SETEXV
@@ -3346,10 +3346,10 @@ MODULE STARLET;
 
      prvhnd = address of longword to receive previous handler address *)
   PROCEDURE ["VMS", "SYS$SETEXV"] SYS$SETEXV*(
-      VECTOR: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      VECTOR: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
       ADDRES: SYSTEM.ADDRESS; (* PROCEDURE, a routine's address, optional: 0 omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      VAR PRVHND: SYSTEM.INT32 (* PROCEDURE, unsigned, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      VAR PRVHND: SYSTEM.CARD32 (* PROCEDURE, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SETIME
@@ -3382,11 +3382,11 @@ MODULE STARLET;
      flags = only bit 0 used right now.  If bit 0 is set,
      then this timer request is in terms of CPU time. *)
   PROCEDURE ["VMS", "SYS$SETIMR"] SYS$SETIMR*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
       DAYTIM-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      REQIDT: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      REQIDT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SETPFM
@@ -3406,10 +3406,10 @@ MODULE STARLET;
      bufcntadr = address of longword for which the number of
      page fault monitoring buffers allocated is stored. *)
   PROCEDURE ["VMS", "SYS$SETPFM"] SYS$SETPFM*(
-      PFMFLG: SYSTEM.INT32; (* FUNCTION_CODE, unsigned, optional: 0 omits it *)
+      PFMFLG: SYSTEM.CARD32; (* FUNCTION_CODE, optional: 0 omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       BUFCNTADR: SYSTEM.INT32 (* LONGWORD_SIGNED, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -3424,7 +3424,7 @@ MODULE STARLET;
      acmode = access mode of AST *)
   PROCEDURE ["VMS", "SYS$SETPRA"] SYS$SETPRA*(
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SETPRI
@@ -3441,10 +3441,10 @@ MODULE STARLET;
 
      prvpri = address of longword to receive previous base priority *)
   PROCEDURE ["VMS", "SYS$SETPRI"] SYS$SETPRI*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
-      PRI: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned *)
-      VAR PRVPRI: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      PRI: SYSTEM.CARD32; (* LONGWORD_UNSIGNED *)
+      VAR PRVPRI: SYSTEM.CARD32 (* LONGWORD_UNSIGNED, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SETPRN
@@ -3477,11 +3477,11 @@ MODULE STARLET;
      prvprt = address of byte to receive previous protection of
      last page changed *)
   PROCEDURE ["VMS", "SYS$SETPRT"] SYS$SETPRT*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      PROT: SYSTEM.INT32; (* PAGE_PROTECTION, unsigned *)
-      VAR PRVPRT: SYSTEM.INT8 (* PAGE_PROTECTION, unsigned, optional: NIL omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      PROT: SYSTEM.CARD32; (* PAGE_PROTECTION *)
+      VAR PRVPRT: SYSTEM.CARD8 (* PAGE_PROTECTION, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SETPRV
@@ -3541,7 +3541,7 @@ MODULE STARLET;
 
      mask = flags for services to inhibit *)
   PROCEDURE ["VMS", "SYS$SETSSF"] SYS$SETSSF*(
-      MASK: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      MASK: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SETSTK
@@ -3558,9 +3558,9 @@ MODULE STARLET;
 
      acmode = access  mode  for  the  stack to change *)
   PROCEDURE ["VMS", "SYS$SETSTK"] SYS$SETSTK*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SETSWM
@@ -3591,24 +3591,24 @@ MODULE STARLET;
      func = function code to be performed
      itmlst = address of a list of item descriptors *)
   PROCEDURE ["VMS", "SYS$SETDTI"] SYS$SETDTI*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      CONTXT-: SYSTEM.INT32; (* CONTEXT, unsigned *)
-      FUNC: SYSTEM.INT16; (* FUNCTION_CODE, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      CONTXT-: SYSTEM.CARD32; (* CONTEXT *)
+      FUNC: SYSTEM.CARD16; (* FUNCTION_CODE *)
       ITMLST-: ARRAY OF SYSTEM.BYTE (* ITEM_LIST *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$SETDTIW"] SYS$SETDTIW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      CONTXT-: SYSTEM.INT32; (* CONTEXT, unsigned *)
-      FUNC: SYSTEM.INT16; (* FUNCTION_CODE, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      CONTXT-: SYSTEM.CARD32; (* CONTEXT *)
+      FUNC: SYSTEM.CARD16; (* FUNCTION_CODE *)
       ITMLST-: ARRAY OF SYSTEM.BYTE (* ITEM_LIST *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -3633,13 +3633,13 @@ MODULE STARLET;
 
      astprm = value to be passed to AST routine *)
   PROCEDURE ["VMS", "SYS$SETUAI"] SYS$SETUAI*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      CONTXT-: SYSTEM.INT32; (* CONTEXT, unsigned, optional: NIL omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      CONTXT-: SYSTEM.CARD32; (* CONTEXT, optional: NIL omits it *)
       USRNAM-: ARRAY OF CHAR; (* CHAR_STRING *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SNDACC
@@ -3653,7 +3653,7 @@ MODULE STARLET;
      chan   = number of channel assigned to mailbox to receive reply *)
   PROCEDURE ["VMS", "SYS$SNDACC"] SYS$SNDACC*(
       MSGBUF-: ARRAY OF CHAR; (* CHAR_STRING *)
-      CHAN: SYSTEM.INT16 (* CHANNEL, unsigned, optional: 0 omits it *)
+      CHAN: SYSTEM.CARD16 (* CHANNEL, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SNDERR
@@ -3678,7 +3678,7 @@ MODULE STARLET;
      chan   = number of channel assigned to mailbox to receive reply *)
   PROCEDURE ["VMS", "SYS$SNDOPR"] SYS$SNDOPR*(
       MSGBUF-: ARRAY OF CHAR; (* CHAR_STRING *)
-      CHAN: SYSTEM.INT16 (* CHANNEL, unsigned, optional: 0 omits it *)
+      CHAN: SYSTEM.CARD16 (* CHANNEL, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SNDSMB
@@ -3692,7 +3692,7 @@ MODULE STARLET;
      chan   = number of channel assigned to mailbox to receive reply *)
   PROCEDURE ["VMS", "SYS$SNDSMB"] SYS$SNDSMB*(
       MSGBUF-: ARRAY OF CHAR; (* CHAR_STRING *)
-      CHAN: SYSTEM.INT16 (* CHANNEL, unsigned, optional: 0 omits it *)
+      CHAN: SYSTEM.CARD16 (* CHANNEL, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SNDJBC
@@ -3710,23 +3710,23 @@ MODULE STARLET;
      astadr  = address of an ast routine to be called when request completes
      astprm  = 32-bit ast parameter *)
   PROCEDURE ["VMS", "SYS$SNDJBC"] SYS$SNDJBC*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FUNC: SYSTEM.INT16; (* FUNCTION_CODE, unsigned *)
-      NULLARG: SYSTEM.INT32; (* NULL_ARG, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FUNC: SYSTEM.CARD16; (* FUNCTION_CODE *)
+      NULLARG: SYSTEM.CARD32; (* NULL_ARG, optional: 0 omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST, optional: NIL omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$SNDJBCW"] SYS$SNDJBCW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FUNC: SYSTEM.INT16; (* FUNCTION_CODE, unsigned *)
-      NULLARG: SYSTEM.INT32; (* NULL_ARG, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FUNC: SYSTEM.CARD16; (* FUNCTION_CODE *)
+      NULLARG: SYSTEM.CARD32; (* NULL_ARG, optional: 0 omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE; (* ITEM_LIST, optional: NIL omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SPACE
@@ -3761,9 +3761,9 @@ MODULE STARLET;
      is a hard suspend request; if clear this is
      a soft suspend request. *)
   PROCEDURE ["VMS", "SYS$SUSPND"] SYS$SUSPND*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
-      FLAGS: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SYNCH
@@ -3776,7 +3776,7 @@ MODULE STARLET;
 
      iosb   = address of a quadword I/O status block *)
   PROCEDURE ["VMS", "SYS$SYNCH"] SYS$SYNCH*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -3790,7 +3790,7 @@ MODULE STARLET;
      0 => disable image identifiers
      1 => restore image identifiers *)
   PROCEDURE ["VMS", "SYS$SUBSYSTEM"] SYS$SUBSYSTEM*(
-      ENBFLG: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      ENBFLG: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $TIMCON
@@ -3815,7 +3815,7 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$TIMCON"] SYS$TIMCON*(
       SMNTIM-: SYSTEM.ADDRESS; (* DATE_TIME *)
       UTCTIM-: SYSTEM.ADDRESS; (* DATE_TIME *)
-      CVTFLG: SYSTEM.INT32 (* LONGWORD_UNSIGNED, unsigned *)
+      CVTFLG: SYSTEM.CARD32 (* LONGWORD_UNSIGNED *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $TRNLNM
@@ -3837,10 +3837,10 @@ MODULE STARLET;
 
      itmlst = address of a list of item descriptors *)
   PROCEDURE ["VMS", "SYS$TRNLNM"] SYS$TRNLNM*(
-      ATTR-: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: NIL omits it *)
+      ATTR-: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
       TABNAM-: ARRAY OF CHAR; (* LOGICAL_NAME *)
       LOGNAM-: ARRAY OF CHAR; (* LOGICAL_NAME *)
-      ACMODE-: SYSTEM.INT8; (* ACCESS_MODE, unsigned, optional: NIL omits it *)
+      ACMODE-: SYSTEM.CARD8; (* ACCESS_MODE, optional: NIL omits it *)
       ITMLST-: ARRAY OF SYSTEM.BYTE (* ITEM_LIST, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -3871,11 +3871,11 @@ MODULE STARLET;
      2       Do not search process table *)
   PROCEDURE ["VMS", "SYS$TRNLOG"] SYS$TRNLOG*(
       LOGNAM-: ARRAY OF CHAR; (* LOGICAL_NAME *)
-      VAR RSLLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      VAR RSLLEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: NIL omits it *)
       VAR RSLBUF: ARRAY OF CHAR; (* CHAR_STRING *)
-      VAR TABLE: SYSTEM.INT8; (* BYTE_UNSIGNED, unsigned, optional: NIL omits it *)
-      VAR ACMODE: SYSTEM.INT8; (* ACCESS_MODE, unsigned, optional: NIL omits it *)
-      DSBMSK: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      VAR TABLE: SYSTEM.CARD8; (* BYTE_UNSIGNED, optional: NIL omits it *)
+      VAR ACMODE: SYSTEM.CARD8; (* ACCESS_MODE, optional: NIL omits it *)
+      DSBMSK: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $TRUNCATE
@@ -3909,9 +3909,9 @@ MODULE STARLET;
 
      acmode = access mode to check against the owner of the pages *)
   PROCEDURE ["VMS", "SYS$ULKPAG"] SYS$ULKPAG*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ULWSET
@@ -3928,9 +3928,9 @@ MODULE STARLET;
 
      acmode = access mode to check against the owner of the pages *)
   PROCEDURE ["VMS", "SYS$ULWSET"] SYS$ULWSET*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $UNWIND
@@ -3944,8 +3944,8 @@ MODULE STARLET;
 
      newpc  = address to be given control when the unwind is complete *)
   PROCEDURE ["VMS", "SYS$UNWIND"] SYS$UNWIND*(
-      DEPADR-: SYSTEM.INT32; (* LONGWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      NEWPC-: SYSTEM.INT32 (* ADDRESS, unsigned, optional: NIL omits it *)
+      DEPADR-: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: NIL omits it *)
+      NEWPC-: SYSTEM.CARD32 (* ADDRESS, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $UPDATE
@@ -3996,25 +3996,25 @@ MODULE STARLET;
 
      astprm = AST parameter to be passed to the AST service routine *)
   PROCEDURE ["VMS", "SYS$UPDSEC"] SYS$UPDSEC*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       UPDFLG: SYSTEM.INT8; (* LONGWORD_UNSIGNED, boolean, optional: 0 omits it *)
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$UPDSECW"] SYS$UPDSECW*(
-      INADR-: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned *)
-      VAR RETADR: ARRAY OF SYSTEM.INT32; (* ADDRESS_RANGE, unsigned, optional: NIL omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE *)
+      VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       UPDFLG: SYSTEM.INT8; (* LONGWORD_UNSIGNED, boolean, optional: 0 omits it *)
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32 (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32 (* USER_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $WAIT
@@ -4036,7 +4036,7 @@ MODULE STARLET;
 
      efn    = event flag number to wait for *)
   PROCEDURE ["VMS", "SYS$WAITFR"] SYS$WAITFR*(
-      EFN: SYSTEM.INT32 (* EF_NUMBER, unsigned *)
+      EFN: SYSTEM.CARD32 (* EF_NUMBER *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $WAKE
@@ -4050,7 +4050,7 @@ MODULE STARLET;
      prcnam = address of name string descriptor of process to be
      awakened *)
   PROCEDURE ["VMS", "SYS$WAKE"] SYS$WAKE*(
-      VAR PIDADR: SYSTEM.INT32; (* PROCESS_ID, unsigned, optional: NIL omits it *)
+      VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR (* PROCESS_NAME, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -4064,8 +4064,8 @@ MODULE STARLET;
 
      mask   = 32-bit mask of flags that must be set *)
   PROCEDURE ["VMS", "SYS$WFLAND"] SYS$WFLAND*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned *)
-      MASK: SYSTEM.INT32 (* MASK_LONGWORD, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER *)
+      MASK: SYSTEM.CARD32 (* MASK_LONGWORD *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $WFLOR
@@ -4078,8 +4078,8 @@ MODULE STARLET;
 
      mask   = 32-bit mask of flags, any of which must be set *)
   PROCEDURE ["VMS", "SYS$WFLOR"] SYS$WFLOR*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned *)
-      MASK: SYSTEM.INT32 (* MASK_LONGWORD, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER *)
+      MASK: SYSTEM.CARD32 (* MASK_LONGWORD *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $WRITE
@@ -4154,22 +4154,22 @@ MODULE STARLET;
      reason  = optional extended abort reason code
      bid = identifier of transaction branch to be aborted *)
   PROCEDURE ["VMS", "SYS$ABORT_TRANS"] SYS$ABORT_TRANS*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       REASON: SYSTEM.INT32; (* COND_VALUE, optional: 0 omits it *)
       BID-: ARRAY OF SYSTEM.BYTE (* BRANCH_ID, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$ABORT_TRANSW"] SYS$ABORT_TRANSW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       REASON: SYSTEM.INT32; (* COND_VALUE, optional: 0 omits it *)
       BID-: ARRAY OF SYSTEM.BYTE (* BRANCH_ID, unsigned, optional: NIL omits it *)
@@ -4193,14 +4193,14 @@ MODULE STARLET;
      rm_context = RM private value to be passed to evt_rtn
      timout  = transaction execution time-out value *)
   PROCEDURE ["VMS", "SYS$ACK_EVENT"] SYS$ACK_EVENT*(
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
-      REPORT_ID: SYSTEM.INT32; (* IDENTIFIER, unsigned *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
+      REPORT_ID: SYSTEM.CARD32; (* IDENTIFIER *)
       REPORT_REPLY: SYSTEM.INT32; (* COND_VALUE *)
       REASON: SYSTEM.INT32; (* COND_VALUE, optional: 0 omits it *)
       BEFTIME-: ARRAY OF SYSTEM.BYTE; (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
       AFTTIME-: ARRAY OF SYSTEM.BYTE; (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
       PART_NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      RM_CONTEXT-: SYSTEM.INT32; (* USER_ARG, unsigned, optional: NIL omits it *)
+      RM_CONTEXT-: SYSTEM.CARD32; (* USER_ARG, optional: NIL omits it *)
       TIMOUT-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -4220,22 +4220,22 @@ MODULE STARLET;
      tm_name = address of transaction manager name descriptor
      bid = address to receive new branch identifier *)
   PROCEDURE ["VMS", "SYS$ADD_BRANCH"] SYS$ADD_BRANCH*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       TM_NAME-: ARRAY OF CHAR; (* CHAR_STRING *)
       VAR BID: ARRAY OF SYSTEM.BYTE (* BRANCH_ID, unsigned *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$ADD_BRANCHW"] SYS$ADD_BRANCHW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       TM_NAME-: ARRAY OF CHAR; (* CHAR_STRING *)
       VAR BID: ARRAY OF SYSTEM.BYTE (* BRANCH_ID, unsigned *)
@@ -4259,11 +4259,11 @@ MODULE STARLET;
      acmode = access mode for $CREATE_BRANCH call
      tx_class= user transaction class name *)
   PROCEDURE ["VMS", "SYS$CREATE_BRANCH"] SYS$CREATE_BRANCH*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       VAR TID: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
       VAR BID: ARRAY OF SYSTEM.BYTE; (* BRANCH_ID, unsigned *)
       TIMOUT-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
@@ -4272,11 +4272,11 @@ MODULE STARLET;
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$CREATE_BRANCHW"] SYS$CREATE_BRANCHW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       VAR TID: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
       VAR BID: ARRAY OF SYSTEM.BYTE; (* BRANCH_ID, unsigned *)
       TIMOUT-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
@@ -4303,33 +4303,33 @@ MODULE STARLET;
      tm_log_id   = transaction manager log id for validation checks
      event_mask  = mask of events required by this resource manager *)
   PROCEDURE ["VMS", "SYS$DECLARE_RM"] SYS$DECLARE_RM*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      VAR RM_ID: SYSTEM.INT32; (* IDENTIFIER, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      VAR RM_ID: SYSTEM.CARD32; (* IDENTIFIER *)
       EVENT_HANDLER: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address *)
       PART_NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      RM_CONTEXT: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      RM_CONTEXT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
       VAR TM_LOG_ID: ARRAY OF SYSTEM.BYTE; (* OCTAWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      EVENT_MASK: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EVENT_MASK: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$DECLARE_RMW"] SYS$DECLARE_RMW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      VAR RM_ID: SYSTEM.INT32; (* IDENTIFIER, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      VAR RM_ID: SYSTEM.CARD32; (* IDENTIFIER *)
       EVENT_HANDLER: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address *)
       PART_NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      RM_CONTEXT: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      RM_CONTEXT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
       VAR TM_LOG_ID: ARRAY OF SYSTEM.BYTE; (* OCTAWORD_UNSIGNED, unsigned, optional: NIL omits it *)
-      EVENT_MASK: SYSTEM.INT32 (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EVENT_MASK: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $END_BRANCH
@@ -4347,21 +4347,21 @@ MODULE STARLET;
      tid = address of transaction identifier
      bid = address of transaction branch identifier *)
   PROCEDURE ["VMS", "SYS$END_BRANCH"] SYS$END_BRANCH*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
       BID-: ARRAY OF SYSTEM.BYTE (* BRANCH_ID, unsigned *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$END_BRANCHW"] SYS$END_BRANCHW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
       BID-: ARRAY OF SYSTEM.BYTE (* BRANCH_ID, unsigned *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -4380,20 +4380,20 @@ MODULE STARLET;
      astprm = value to be passed to AST routine as an argument
      tid = identifier of transaction to be committed *)
   PROCEDURE ["VMS", "SYS$END_TRANS"] SYS$END_TRANS*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$END_TRANSW"] SYS$END_TRANSW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -4416,12 +4416,12 @@ MODULE STARLET;
      beftim  = lower bound of commit timestamp
      afttim  = upper bound of commit timestamp *)
   PROCEDURE ["VMS", "SYS$FINISH_RMOP"] SYS$FINISH_RMOP*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      PART_ID: SYSTEM.INT32; (* IDENTIFIER, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      PART_ID: SYSTEM.CARD32; (* IDENTIFIER *)
       RETSTS: SYSTEM.INT32; (* COND_VALUE *)
       REASON: SYSTEM.INT32; (* COND_VALUE, optional: 0 omits it *)
       BEFTIME-: ARRAY OF SYSTEM.BYTE; (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
@@ -4429,12 +4429,12 @@ MODULE STARLET;
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$FINISH_RMOPW"] SYS$FINISH_RMOPW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      PART_ID: SYSTEM.INT32; (* IDENTIFIER, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      PART_ID: SYSTEM.CARD32; (* IDENTIFIER *)
       RETSTS: SYSTEM.INT32; (* COND_VALUE *)
       REASON: SYSTEM.INT32; (* COND_VALUE, optional: 0 omits it *)
       BEFTIME-: ARRAY OF SYSTEM.BYTE; (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
@@ -4455,21 +4455,21 @@ MODULE STARLET;
      astprm = value to be passed to AST routine
      rm_id = resource manager id value *)
   PROCEDURE ["VMS", "SYS$FORGET_RM"] SYS$FORGET_RM*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      RM_ID: SYSTEM.INT32 (* IDENTIFIER, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      RM_ID: SYSTEM.CARD32 (* IDENTIFIER *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$FORGET_RMW"] SYS$FORGET_RMW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      RM_ID: SYSTEM.INT32 (* IDENTIFIER, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      RM_ID: SYSTEM.CARD32 (* IDENTIFIER *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GET_DEFAULT_TRANS
@@ -4501,28 +4501,28 @@ MODULE STARLET;
      rm_context  = RM private value to pass to event routine
      timout     = transaction execution time-out value *)
   PROCEDURE ["VMS", "SYS$JOIN_RM"] SYS$JOIN_RM*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      RM_ID: SYSTEM.INT32; (* IDENTIFIER, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      RM_ID: SYSTEM.CARD32; (* IDENTIFIER *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       PART_NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      RM_CONTEXT: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      RM_CONTEXT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TIMOUT-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$JOIN_RMW"] SYS$JOIN_RMW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      RM_ID: SYSTEM.INT32; (* IDENTIFIER, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      RM_ID: SYSTEM.CARD32; (* IDENTIFIER *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       PART_NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      RM_CONTEXT: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      RM_CONTEXT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TIMOUT-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -4548,35 +4548,35 @@ MODULE STARLET;
      acmode          = value of access mode in which event ASTs should be delivered
      max_events      = value of maximum number of events to be queued concurrently *)
   PROCEDURE ["VMS", "SYS$RECOVER"] SYS$RECOVER*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       RECOVERY_PREFIX-: ARRAY OF CHAR; (* CHAR_STRING *)
       EVENT_HANDLER: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address *)
       TM_LOG_ID-: ARRAY OF SYSTEM.BYTE; (* OCTAWORD_UNSIGNED, unsigned *)
       TID-: ARRAY OF SYSTEM.BYTE; (* OCTAWORD_UNSIGNED, unsigned, optional: NIL omits it *)
       NODE-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      RM_CONTEXT: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      RM_CONTEXT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
-      MAX_EVENTS: SYSTEM.INT16 (* WORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      MAX_EVENTS: SYSTEM.CARD16 (* WORD_UNSIGNED, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$RECOVERW"] SYS$RECOVERW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       RECOVERY_PREFIX-: ARRAY OF CHAR; (* CHAR_STRING *)
       EVENT_HANDLER: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address *)
       TM_LOG_ID-: ARRAY OF SYSTEM.BYTE; (* OCTAWORD_UNSIGNED, unsigned *)
       TID-: ARRAY OF SYSTEM.BYTE; (* OCTAWORD_UNSIGNED, unsigned, optional: NIL omits it *)
       NODE-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
-      RM_CONTEXT: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      RM_CONTEXT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
-      MAX_EVENTS: SYSTEM.INT16 (* WORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      MAX_EVENTS: SYSTEM.CARD16 (* WORD_UNSIGNED, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SET_DEFAULT_TRANS
@@ -4594,21 +4594,21 @@ MODULE STARLET;
      new_tid = identifier of new process default transaction
      old_tid = identifier of superceded process default transaction *)
   PROCEDURE ["VMS", "SYS$SET_DEFAULT_TRANS"] SYS$SET_DEFAULT_TRANS*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       NEW_TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       OLD_TID-: ARRAY OF SYSTEM.BYTE (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$SET_DEFAULT_TRANSW"] SYS$SET_DEFAULT_TRANSW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       NEW_TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       OLD_TID-: ARRAY OF SYSTEM.BYTE (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -4632,11 +4632,11 @@ MODULE STARLET;
      acmode = access mode for $END_BRANCH call
      tx_class= user transaction class name *)
   PROCEDURE ["VMS", "SYS$START_BRANCH"] SYS$START_BRANCH*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
       TM_NAME-: ARRAY OF CHAR; (* CHAR_STRING *)
       BID-: ARRAY OF SYSTEM.BYTE; (* BRANCH_ID, unsigned *)
@@ -4646,11 +4646,11 @@ MODULE STARLET;
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$START_BRANCHW"] SYS$START_BRANCHW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
       TM_NAME-: ARRAY OF CHAR; (* CHAR_STRING *)
       BID-: ARRAY OF SYSTEM.BYTE; (* BRANCH_ID, unsigned *)
@@ -4676,11 +4676,11 @@ MODULE STARLET;
      acmode = outermost access mode allowed to end the transaction
      tx_class= user transaction class name *)
   PROCEDURE ["VMS", "SYS$START_TRANS"] SYS$START_TRANS*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       VAR TID: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       TIMOUT-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
@@ -4688,11 +4688,11 @@ MODULE STARLET;
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$START_TRANSW"] SYS$START_TRANSW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       VAR TID: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       TIMOUT-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
@@ -4717,26 +4717,26 @@ MODULE STARLET;
      beftime     = lower bound of commit timestamp
      afttime     = upper bound of commit timestamp *)
   PROCEDURE ["VMS", "SYS$TRANS_EVENT"] SYS$TRANS_EVENT*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
-      TX_EVENT-: SYSTEM.INT32; (* TX_EVENT, unsigned *)
+      TX_EVENT-: SYSTEM.CARD32; (* TX_EVENT *)
       VAR CMTTIME: ARRAY OF SYSTEM.BYTE; (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
       BEFTIME-: ARRAY OF SYSTEM.BYTE; (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
       AFTTIME-: ARRAY OF SYSTEM.BYTE (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$TRANS_EVENTW"] SYS$TRANS_EVENTW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      FLAGS: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
-      TX_EVENT-: SYSTEM.INT32; (* TX_EVENT, unsigned *)
+      TX_EVENT-: SYSTEM.CARD32; (* TX_EVENT *)
       VAR CMTTIME: ARRAY OF SYSTEM.BYTE; (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
       BEFTIME-: ARRAY OF SYSTEM.BYTE; (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
       AFTTIME-: ARRAY OF SYSTEM.BYTE (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
@@ -4762,14 +4762,14 @@ MODULE STARLET;
      ending virtual address of pages to be used as
      I/O buffers *)
   PROCEDURE ["VMS", "PTD$CREATE"] PTD$CREATE*(
-      VAR CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      VAR CHAN: SYSTEM.CARD16; (* CHANNEL *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       CHARBUFF-: ARRAY OF SYSTEM.BYTE; (* VECTOR_LONGWORD_UNSIGNED, optional: NIL omits it *)
-      BUFLEN: SYSTEM.INT16; (* WORD_UNSIGNED, unsigned, optional: 0 omits it *)
+      BUFLEN: SYSTEM.CARD16; (* WORD_UNSIGNED, optional: 0 omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      AST_ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      INADR-: ARRAY OF SYSTEM.INT32 (* ADDRESS_RANGE, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      AST_ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      INADR-: ARRAY OF SYSTEM.CARD32 (* ADDRESS_RANGE *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* PTD$READ
@@ -4784,21 +4784,21 @@ MODULE STARLET;
      READBUF       = Address character string to hold characters read
      READBUF_LEN   = Number of character to be read from pseudo terminal *)
   PROCEDURE ["VMS", "PTD$READ"] PTD$READ*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       READBUF-: ARRAY OF SYSTEM.BYTE; (* VARYING_ARG, optional: NIL omits it *)
-      READBUF_LEN: SYSTEM.INT32 (* VARYING_ARG, unsigned, optional: 0 omits it *)
+      READBUF_LEN: SYSTEM.CARD32 (* VARYING_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "PTD$READW"] PTD$READW*(
-      EFN: SYSTEM.INT32; (* EF_NUMBER, unsigned, optional: 0 omits it *)
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
+      EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       READBUF-: ARRAY OF SYSTEM.BYTE; (* VARYING_ARG, optional: NIL omits it *)
-      READBUF_LEN: SYSTEM.INT32 (* VARYING_ARG, unsigned, optional: 0 omits it *)
+      READBUF_LEN: SYSTEM.CARD32 (* VARYING_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* PTD$WRITE
@@ -4816,13 +4816,13 @@ MODULE STARLET;
      ECHOBUF       = Address character string to hold characters read
      ECHOBUF_LEN   = Number of character to be read from pseudo terminal *)
   PROCEDURE ["VMS", "PTD$WRITE"] PTD$WRITE*(
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       WRTBUF-: ARRAY OF SYSTEM.BYTE; (* VARYING_ARG, optional: NIL omits it *)
-      WRTBUF_LEN: SYSTEM.INT32; (* VARYING_ARG, unsigned, optional: 0 omits it *)
+      WRTBUF_LEN: SYSTEM.CARD32; (* VARYING_ARG, optional: 0 omits it *)
       ECHOBUF-: ARRAY OF SYSTEM.BYTE; (* VARYING_ARG, optional: NIL omits it *)
-      ECHOBUF_LEN: SYSTEM.INT32 (* VARYING_ARG, unsigned, optional: 0 omits it *)
+      ECHOBUF_LEN: SYSTEM.CARD32 (* VARYING_ARG, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* PTD$SET_EVENT_NOTIFICATION
@@ -4837,11 +4837,11 @@ MODULE STARLET;
      ACMODE       = Access mode for whjich the AST is to be delivered
      TYPE       = Longword containing *)
   PROCEDURE ["VMS", "PTD$SET_EVENT_NOTIFICATION"] PTD$SET_EVENT_NOTIFICATION*(
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
-      ASTPRM: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      ACMODE: SYSTEM.INT32; (* ACCESS_MODE, unsigned, optional: 0 omits it *)
-      TYPE_: SYSTEM.INT32 (* VARYING_ARG, unsigned *)
+      ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
+      TYPE_: SYSTEM.CARD32 (* VARYING_ARG *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* PTD$CANCEL
@@ -4852,7 +4852,7 @@ MODULE STARLET;
 
      CHAN       = Word containing number of channel on which I/O is to be performed *)
   PROCEDURE ["VMS", "PTD$CANCEL"] PTD$CANCEL*(
-      CHAN: SYSTEM.INT16 (* CHANNEL, unsigned *)
+      CHAN: SYSTEM.CARD16 (* CHANNEL *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* PTD$DELETE
@@ -4863,7 +4863,7 @@ MODULE STARLET;
 
      CHAN       = Word containing number of channel on which I/O is to be performed *)
   PROCEDURE ["VMS", "PTD$DELETE"] PTD$DELETE*(
-      CHAN: SYSTEM.INT16 (* CHANNEL, unsigned *)
+      CHAN: SYSTEM.CARD16 (* CHANNEL *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* PTD$DECTERM_SET_PAGE_SIZE
@@ -4876,9 +4876,9 @@ MODULE STARLET;
      PAGE_LEN      = Longword containing new page length of terminal
      PAGE_WIDTH    = Longword containing new page width of terminal *)
   PROCEDURE ["VMS", "PTD$DECTERM_SET_PAGE_SIZE"] PTD$DECTERM_SET_PAGE_SIZE*(
-      CHAN: SYSTEM.INT16; (* CHANNEL, unsigned *)
-      PAGE_LEN: SYSTEM.INT32; (* VARYING_ARG, unsigned *)
-      PAGE_WIDTH: SYSTEM.INT32 (* VARYING_ARG, unsigned *)
+      CHAN: SYSTEM.CARD16; (* CHANNEL *)
+      PAGE_LEN: SYSTEM.CARD32; (* VARYING_ARG *)
+      PAGE_WIDTH: SYSTEM.CARD32 (* VARYING_ARG *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $POSIX_FORK_CONTROL
@@ -4897,11 +4897,11 @@ MODULE STARLET;
 
      acmode = access mode at which to make the specified callback *)
   PROCEDURE ["VMS", "SYS$POSIX_FORK_CONTROL"] SYS$POSIX_FORK_CONTROL*(
-      CNTRL: SYSTEM.INT32; (* FUNCTION_CODE, unsigned *)
-      WHEN: SYSTEM.INT32; (* MASK_LONGWORD, unsigned, optional: 0 omits it *)
+      CNTRL: SYSTEM.CARD32; (* FUNCTION_CODE *)
+      WHEN: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       HANDLER: SYSTEM.ADDRESS; (* PROCEDURE, a routine's address, optional: 0 omits it *)
-      ARG: SYSTEM.INT32; (* USER_ARG, unsigned, optional: 0 omits it *)
-      ACMODE: SYSTEM.INT32 (* ACCESS_MODE, unsigned, optional: 0 omits it *)
+      ARG: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
+      ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
 END STARLET.

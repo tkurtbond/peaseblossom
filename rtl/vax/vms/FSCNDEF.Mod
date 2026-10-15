@@ -41,9 +41,9 @@ MODULE FSCNDEF;
 
   TYPE
     FSCNDEF* = RECORD (* 8 bytes *)
-      FSCN$W_LENGTH*: SYSTEM.INT16; (* unsigned *)
-      FSCN$W_ITEM_CODE*: SYSTEM.INT16; (* unsigned *)
-      FSCN$L_ADDR*: SYSTEM.INT32 (* unsigned *)
+      FSCN$W_LENGTH*: SYSTEM.CARD16;
+      FSCN$W_ITEM_CODE*: SYSTEM.CARD16;
+      FSCN$L_ADDR*: SYSTEM.CARD32
     END;
 
 END FSCNDEF.

@@ -124,34 +124,34 @@ MODULE XABKEYDEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$B_IAN*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_LAN*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_DAN*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_LVL*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_IBS*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_DBS*: SYSTEM.INT8; (* unsigned *)
-      XAB$L_RVB*: ARRAY 4 OF SYSTEM.BYTE; (* SYSTEM.INT32 at offset 14, which poc would align *)
-      XAB$B_FLG*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_DTP*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_NSG*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_NUL*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_TKS*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_REF*: SYSTEM.INT8; (* unsigned *)
-      XAB$W_MRL*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_IFL*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_DFL*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_POS*: ARRAY 8 OF SYSTEM.INT16; (* unsigned *)
-      XAB$B_SIZ*: ARRAY 8 OF SYSTEM.INT8; (* unsigned *)
+      XAB$B_IAN*: SYSTEM.CARD8;
+      XAB$B_LAN*: SYSTEM.CARD8;
+      XAB$B_DAN*: SYSTEM.CARD8;
+      XAB$B_LVL*: SYSTEM.CARD8;
+      XAB$B_IBS*: SYSTEM.CARD8;
+      XAB$B_DBS*: SYSTEM.CARD8;
+      XAB$L_RVB*: ARRAY 4 OF SYSTEM.BYTE; (* SYSTEM.CARD32 at offset 14, which poc would align *)
+      XAB$B_FLG*: SYSTEM.CARD8;
+      XAB$B_DTP*: SYSTEM.CARD8;
+      XAB$B_NSG*: SYSTEM.CARD8;
+      XAB$B_NUL*: SYSTEM.CARD8;
+      XAB$B_TKS*: SYSTEM.CARD8;
+      XAB$B_REF*: SYSTEM.CARD8;
+      XAB$W_MRL*: SYSTEM.CARD16;
+      XAB$W_IFL*: SYSTEM.CARD16;
+      XAB$W_DFL*: SYSTEM.CARD16;
+      XAB$W_POS*: ARRAY 8 OF SYSTEM.CARD16;
+      XAB$B_SIZ*: ARRAY 8 OF SYSTEM.CARD8;
       fill5: SYSTEM.INT16;
-      XAB$L_KNM*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_DVB*: SYSTEM.INT32; (* unsigned *)
-      XAB$B_TYP*: ARRAY 8 OF SYSTEM.INT8; (* unsigned *)
-      XAB$B_PROLOG*: SYSTEM.INT8; (* unsigned *)
+      XAB$L_KNM*: SYSTEM.CARD32;
+      XAB$L_DVB*: SYSTEM.CARD32;
+      XAB$B_TYP*: ARRAY 8 OF SYSTEM.CARD8;
+      XAB$B_PROLOG*: SYSTEM.CARD8;
       fill6: SYSTEM.INT8;
       fill7: SYSTEM.INT16;
-      XAB$L_COLTBL*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_COLSIZ*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_COLNAM*: SYSTEM.INT32; (* unsigned *)
+      XAB$L_COLTBL*: SYSTEM.CARD32;
+      XAB$L_COLSIZ*: SYSTEM.CARD32;
+      XAB$L_COLNAM*: SYSTEM.CARD32;
       fill8: SYSTEM.INT32;
       fill9: SYSTEM.INT32;
       fill10: SYSTEM.INT32

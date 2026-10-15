@@ -29,10 +29,10 @@ MODULE XABRUDEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$W_RU_FLAGS*: SYSTEM.INT16; (* unsigned *)
+      XAB$W_RU_FLAGS*: SYSTEM.CARD16;
       fill5: SYSTEM.INT16;
-      XAB$L_RU_HANDLE*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_RU_HANDLE_JOINED*: SYSTEM.INT32; (* unsigned *)
+      XAB$L_RU_HANDLE*: SYSTEM.CARD32;
+      XAB$L_RU_HANDLE_JOINED*: SYSTEM.CARD32;
       fill6: SYSTEM.INT32;
       fill7: SYSTEM.INT32;
       fill8: SYSTEM.INT32;

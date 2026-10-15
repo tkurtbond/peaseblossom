@@ -25,8 +25,8 @@ MODULE XABTRMDEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$L_ITMLST*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_ITMLST_LEN*: SYSTEM.INT16; (* unsigned *)
+      XAB$L_ITMLST*: SYSTEM.CARD32;
+      XAB$W_ITMLST_LEN*: SYSTEM.CARD16;
       fill5: SYSTEM.INT16;
       fill6: SYSTEM.INT32;
       fill7: SYSTEM.INT32;

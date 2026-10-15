@@ -217,40 +217,40 @@ MODULE FABDEF;
 
   TYPE
     FABDEF* = RECORD (* 80 bytes *)
-      FAB$B_BID*: SYSTEM.INT8; (* unsigned *)
-      FAB$B_BLN*: SYSTEM.INT8; (* unsigned *)
-      FAB$W_IFI*: SYSTEM.INT16; (* unsigned *)
-      FAB$L_FOP*: SYSTEM.INT32; (* unsigned *)
-      FAB$L_STS*: SYSTEM.INT32; (* unsigned *)
-      FAB$L_STV*: SYSTEM.INT32; (* unsigned *)
-      FAB$L_ALQ*: SYSTEM.INT32; (* unsigned *)
-      FAB$W_DEQ*: SYSTEM.INT16; (* unsigned *)
-      FAB$B_FAC*: SYSTEM.INT8; (* unsigned *)
-      FAB$B_SHR*: SYSTEM.INT8; (* unsigned *)
-      FAB$L_CTX*: SYSTEM.INT32; (* unsigned *)
+      FAB$B_BID*: SYSTEM.CARD8;
+      FAB$B_BLN*: SYSTEM.CARD8;
+      FAB$W_IFI*: SYSTEM.CARD16;
+      FAB$L_FOP*: SYSTEM.CARD32;
+      FAB$L_STS*: SYSTEM.CARD32;
+      FAB$L_STV*: SYSTEM.CARD32;
+      FAB$L_ALQ*: SYSTEM.CARD32;
+      FAB$W_DEQ*: SYSTEM.CARD16;
+      FAB$B_FAC*: SYSTEM.CARD8;
+      FAB$B_SHR*: SYSTEM.CARD8;
+      FAB$L_CTX*: SYSTEM.CARD32;
       FAB$B_RTV*: SYSTEM.INT8;
-      FAB$B_ORG*: SYSTEM.INT8; (* unsigned *)
-      FAB$B_RAT*: SYSTEM.INT8; (* unsigned *)
-      FAB$B_RFM*: SYSTEM.INT8; (* unsigned *)
-      FAB$B_JOURNAL*: SYSTEM.INT8; (* unsigned *)
-      FAB$B_RU_FACILITY*: SYSTEM.INT8; (* unsigned *)
+      FAB$B_ORG*: SYSTEM.CARD8;
+      FAB$B_RAT*: SYSTEM.CARD8;
+      FAB$B_RFM*: SYSTEM.CARD8;
+      FAB$B_JOURNAL*: SYSTEM.CARD8;
+      FAB$B_RU_FACILITY*: SYSTEM.CARD8;
       fill1: SYSTEM.INT16;
-      FAB$L_XAB*: SYSTEM.INT32; (* unsigned *)
-      FAB$L_NAM*: SYSTEM.INT32; (* unsigned *)
-      FAB$L_FNA*: SYSTEM.INT32; (* unsigned *)
-      FAB$L_DNA*: SYSTEM.INT32; (* unsigned *)
-      FAB$B_FNS*: SYSTEM.INT8; (* unsigned *)
-      FAB$B_DNS*: SYSTEM.INT8; (* unsigned *)
-      FAB$W_MRS*: SYSTEM.INT16; (* unsigned *)
-      FAB$L_MRN*: SYSTEM.INT32; (* unsigned *)
-      FAB$W_BLS*: SYSTEM.INT16; (* unsigned *)
-      FAB$B_BKS*: SYSTEM.INT8; (* unsigned *)
-      FAB$B_FSZ*: SYSTEM.INT8; (* unsigned *)
-      FAB$L_DEV*: SYSTEM.INT32; (* unsigned *)
-      FAB$L_SDC*: SYSTEM.INT32; (* unsigned *)
-      FAB$W_GBC*: SYSTEM.INT16; (* unsigned *)
-      FAB$B_ACMODES*: SYSTEM.INT8; (* unsigned *)
-      FAB$B_RCF*: SYSTEM.INT8; (* unsigned *)
+      FAB$L_XAB*: SYSTEM.CARD32;
+      FAB$L_NAM*: SYSTEM.CARD32;
+      FAB$L_FNA*: SYSTEM.CARD32;
+      FAB$L_DNA*: SYSTEM.CARD32;
+      FAB$B_FNS*: SYSTEM.CARD8;
+      FAB$B_DNS*: SYSTEM.CARD8;
+      FAB$W_MRS*: SYSTEM.CARD16;
+      FAB$L_MRN*: SYSTEM.CARD32;
+      FAB$W_BLS*: SYSTEM.CARD16;
+      FAB$B_BKS*: SYSTEM.CARD8;
+      FAB$B_FSZ*: SYSTEM.CARD8;
+      FAB$L_DEV*: SYSTEM.CARD32;
+      FAB$L_SDC*: SYSTEM.CARD32;
+      FAB$W_GBC*: SYSTEM.CARD16;
+      FAB$B_ACMODES*: SYSTEM.CARD8;
+      FAB$B_RCF*: SYSTEM.CARD8;
       fill2: SYSTEM.INT32
     END;
 

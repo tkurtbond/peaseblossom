@@ -150,31 +150,31 @@ MODULE RABDEF;
 
   TYPE
     RABDEF* = RECORD (* 68 bytes *)
-      RAB$B_BID*: SYSTEM.INT8; (* unsigned *)
-      RAB$B_BLN*: SYSTEM.INT8; (* unsigned *)
-      RAB$W_ISI*: SYSTEM.INT16; (* unsigned *)
-      RAB$L_ROP*: SYSTEM.INT32; (* unsigned *)
-      RAB$L_STS*: SYSTEM.INT32; (* unsigned *)
-      RAB$L_STV*: SYSTEM.INT32; (* unsigned *)
-      RAB$W_RFA*: ARRAY 3 OF SYSTEM.INT16; (* unsigned *)
+      RAB$B_BID*: SYSTEM.CARD8;
+      RAB$B_BLN*: SYSTEM.CARD8;
+      RAB$W_ISI*: SYSTEM.CARD16;
+      RAB$L_ROP*: SYSTEM.CARD32;
+      RAB$L_STS*: SYSTEM.CARD32;
+      RAB$L_STV*: SYSTEM.CARD32;
+      RAB$W_RFA*: ARRAY 3 OF SYSTEM.CARD16;
       fill1: SYSTEM.INT16;
-      RAB$L_CTX*: SYSTEM.INT32; (* unsigned *)
+      RAB$L_CTX*: SYSTEM.CARD32;
       fill2: SYSTEM.INT16;
-      RAB$B_RAC*: SYSTEM.INT8; (* unsigned *)
-      RAB$B_TMO*: SYSTEM.INT8; (* unsigned *)
-      RAB$W_USZ*: SYSTEM.INT16; (* unsigned *)
-      RAB$W_RSZ*: SYSTEM.INT16; (* unsigned *)
-      RAB$L_UBF*: SYSTEM.INT32; (* unsigned *)
-      RAB$L_RBF*: SYSTEM.INT32; (* unsigned *)
-      RAB$L_RHB*: SYSTEM.INT32; (* unsigned *)
-      RAB$L_KBF*: SYSTEM.INT32; (* unsigned *)
-      RAB$B_KSZ*: SYSTEM.INT8; (* unsigned *)
-      RAB$B_KRF*: SYSTEM.INT8; (* unsigned *)
+      RAB$B_RAC*: SYSTEM.CARD8;
+      RAB$B_TMO*: SYSTEM.CARD8;
+      RAB$W_USZ*: SYSTEM.CARD16;
+      RAB$W_RSZ*: SYSTEM.CARD16;
+      RAB$L_UBF*: SYSTEM.CARD32;
+      RAB$L_RBF*: SYSTEM.CARD32;
+      RAB$L_RHB*: SYSTEM.CARD32;
+      RAB$L_KBF*: SYSTEM.CARD32;
+      RAB$B_KSZ*: SYSTEM.CARD8;
+      RAB$B_KRF*: SYSTEM.CARD8;
       RAB$B_MBF*: SYSTEM.INT8;
-      RAB$B_MBC*: SYSTEM.INT8; (* unsigned *)
-      RAB$L_BKT*: SYSTEM.INT32; (* unsigned *)
-      RAB$L_FAB*: SYSTEM.INT32; (* unsigned *)
-      RAB$L_XAB*: SYSTEM.INT32 (* unsigned *)
+      RAB$B_MBC*: SYSTEM.CARD8;
+      RAB$L_BKT*: SYSTEM.CARD32;
+      RAB$L_FAB*: SYSTEM.CARD32;
+      RAB$L_XAB*: SYSTEM.CARD32
     END;
 
 END RABDEF.

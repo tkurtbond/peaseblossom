@@ -50,33 +50,33 @@ MODULE XABCXRDEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$L_CXRSTS*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_CXRSTV*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_CXRCOP*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_CXRBKP*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_CXRISI*: SYSTEM.INT16; (* unsigned *)
-      XAB$B_CXRVER*: SYSTEM.INT8; (* unsigned *)
+      XAB$L_CXRSTS*: SYSTEM.CARD32;
+      XAB$L_CXRSTV*: SYSTEM.CARD32;
+      XAB$L_CXRCOP*: SYSTEM.CARD32;
+      XAB$L_CXRBKP*: SYSTEM.CARD32;
+      XAB$W_CXRISI*: SYSTEM.CARD16;
+      XAB$B_CXRVER*: SYSTEM.CARD8;
       fill5: SYSTEM.INT8;
       fill6: SYSTEM.INT32;
-      XAB$B_CXRMBF*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_CXRMBC*: SYSTEM.INT8; (* unsigned *)
-      XAB$W_CXRBFZ*: SYSTEM.INT16; (* unsigned *)
-      XAB$L_CXRVBN*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_CXROFF*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_FILL_8*: SYSTEM.INT16; (* unsigned *)
-      XAB$L_CXRPOS0*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_CXRPOS4*: SYSTEM.INT16; (* unsigned *)
+      XAB$B_CXRMBF*: SYSTEM.CARD8;
+      XAB$B_CXRMBC*: SYSTEM.CARD8;
+      XAB$W_CXRBFZ*: SYSTEM.CARD16;
+      XAB$L_CXRVBN*: SYSTEM.CARD32;
+      XAB$W_CXROFF*: SYSTEM.CARD16;
+      XAB$W_FILL_8*: SYSTEM.CARD16;
+      XAB$L_CXRPOS0*: SYSTEM.CARD32;
+      XAB$W_CXRPOS4*: SYSTEM.CARD16;
       fill7: SYSTEM.INT16;
-      XAB$L_CXRCUR0*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_CXRCUR4*: SYSTEM.INT16; (* unsigned *)
+      XAB$L_CXRCUR0*: SYSTEM.CARD32;
+      XAB$W_CXRCUR4*: SYSTEM.CARD16;
       fill8: SYSTEM.INT16;
-      XAB$L_CXRSID0*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_CXRSID4*: SYSTEM.INT16; (* unsigned *)
+      XAB$L_CXRSID0*: SYSTEM.CARD32;
+      XAB$W_CXRSID4*: SYSTEM.CARD16;
       fill9: SYSTEM.INT16;
-      XAB$W_CXRCNT*: SYSTEM.INT16; (* unsigned *)
-      XAB$B_CXRKREF*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_CXRKLEN*: SYSTEM.INT8; (* unsigned *)
-      XAB$L_CXRBUF*: SYSTEM.INT32; (* unsigned *)
+      XAB$W_CXRCNT*: SYSTEM.CARD16;
+      XAB$B_CXRKREF*: SYSTEM.CARD8;
+      XAB$B_CXRKLEN*: SYSTEM.CARD8;
+      XAB$L_CXRBUF*: SYSTEM.CARD32;
       fill10: ARRAY 2 OF SYSTEM.INT32
     END;
 

@@ -45,17 +45,17 @@ MODULE XABJNLDEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$B_XABJNL_TYPE*: SYSTEM.INT8; (* unsigned *)
+      XAB$B_XABJNL_TYPE*: SYSTEM.CARD8;
       fill5: SYSTEM.INT8;
-      XAB$W_JNL_FLAGS*: SYSTEM.INT16; (* unsigned *)
-      XAB$L_JNL_FAB*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_VOLNAM_BUF*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_VOLNAM_SIZ*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_VOLNAM_LEN*: SYSTEM.INT16; (* unsigned *)
-      XAB$Q_JNL_VERIFY_CDATE*: SYSTEM.INT64; (* unsigned *)
-      XAB$L_JNLIDX*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_BACKUP_SEQNO*: SYSTEM.INT32; (* unsigned *)
-      XAB$Q_JNL_MOD_TIME*: SYSTEM.INT64; (* unsigned *)
+      XAB$W_JNL_FLAGS*: SYSTEM.CARD16;
+      XAB$L_JNL_FAB*: SYSTEM.CARD32;
+      XAB$L_VOLNAM_BUF*: SYSTEM.CARD32;
+      XAB$W_VOLNAM_SIZ*: SYSTEM.CARD16;
+      XAB$W_VOLNAM_LEN*: SYSTEM.CARD16;
+      XAB$Q_JNL_VERIFY_CDATE*: SYSTEM.CARD64;
+      XAB$L_JNLIDX*: SYSTEM.CARD32;
+      XAB$L_BACKUP_SEQNO*: SYSTEM.CARD32;
+      XAB$Q_JNL_MOD_TIME*: SYSTEM.CARD64;
       fill6: SYSTEM.INT32;
       fill7: SYSTEM.INT32;
       fill8: SYSTEM.INT32;

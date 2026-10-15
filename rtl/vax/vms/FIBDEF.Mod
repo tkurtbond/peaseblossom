@@ -184,26 +184,26 @@ MODULE FIBDEF;
 
   TYPE
     FIBDEF* = RECORD (* 72 bytes *)
-      FIB$L_ACCTL*: SYSTEM.INT32; (* unsigned *)
-      FIB$W_FID*: ARRAY 3 OF SYSTEM.INT16; (* unsigned *)
-      FIB$W_DID*: ARRAY 3 OF SYSTEM.INT16; (* unsigned *)
-      FIB$L_WCC*: SYSTEM.INT32; (* unsigned *)
-      FIB$W_NMCTL*: SYSTEM.INT16; (* unsigned *)
-      FIB$W_EXCTL*: SYSTEM.INT16; (* unsigned *)
-      FIB$L_EXSZ*: SYSTEM.INT32; (* unsigned *)
-      FIB$L_EXVBN*: SYSTEM.INT32; (* unsigned *)
-      FIB$B_ALOPTS*: SYSTEM.INT8; (* unsigned *)
-      FIB$B_ALALIGN*: SYSTEM.INT8; (* unsigned *)
-      FIB$W_ALLOC*: ARRAY 5 OF SYSTEM.INT16; (* unsigned *)
-      FIB$W_VERLIMIT*: SYSTEM.INT16; (* unsigned *)
-      FIB$B_AGENT_MODE*: SYSTEM.INT8; (* unsigned *)
-      FIB$B_RU_FACILITY*: SYSTEM.INT8; (* unsigned *)
-      FIB$L_ACLCTX*: SYSTEM.INT32; (* unsigned *)
-      FIB$L_ACL_STATUS*: SYSTEM.INT32; (* unsigned *)
-      FIB$L_STATUS*: SYSTEM.INT32; (* unsigned *)
-      FIB$L_ALT_ACCESS*: SYSTEM.INT32; (* unsigned *)
-      FIB$L_MOV_SVBN*: SYSTEM.INT32; (* unsigned *)
-      FIB$L_MOV_VBNCNT*: SYSTEM.INT32 (* unsigned *)
+      FIB$L_ACCTL*: SYSTEM.CARD32;
+      FIB$W_FID*: ARRAY 3 OF SYSTEM.CARD16;
+      FIB$W_DID*: ARRAY 3 OF SYSTEM.CARD16;
+      FIB$L_WCC*: SYSTEM.CARD32;
+      FIB$W_NMCTL*: SYSTEM.CARD16;
+      FIB$W_EXCTL*: SYSTEM.CARD16;
+      FIB$L_EXSZ*: SYSTEM.CARD32;
+      FIB$L_EXVBN*: SYSTEM.CARD32;
+      FIB$B_ALOPTS*: SYSTEM.CARD8;
+      FIB$B_ALALIGN*: SYSTEM.CARD8;
+      FIB$W_ALLOC*: ARRAY 5 OF SYSTEM.CARD16;
+      FIB$W_VERLIMIT*: SYSTEM.CARD16;
+      FIB$B_AGENT_MODE*: SYSTEM.CARD8;
+      FIB$B_RU_FACILITY*: SYSTEM.CARD8;
+      FIB$L_ACLCTX*: SYSTEM.CARD32;
+      FIB$L_ACL_STATUS*: SYSTEM.CARD32;
+      FIB$L_STATUS*: SYSTEM.CARD32;
+      FIB$L_ALT_ACCESS*: SYSTEM.CARD32;
+      FIB$L_MOV_SVBN*: SYSTEM.CARD32;
+      FIB$L_MOV_VBNCNT*: SYSTEM.CARD32
     END;
 
   CONST
@@ -250,8 +250,8 @@ MODULE FIBDEF;
   TYPE
     FIBDEF1* = RECORD (* 28 bytes *)
       fill1: ARRAY 22 OF SYSTEM.INT8;
-      FIB$W_CNTRLFUNC*: SYSTEM.INT16; (* unsigned *)
-      FIB$L_CNTRLVAL*: SYSTEM.INT32 (* unsigned *)
+      FIB$W_CNTRLFUNC*: SYSTEM.CARD16;
+      FIB$L_CNTRLVAL*: SYSTEM.CARD32
     END;
 
 END FIBDEF.

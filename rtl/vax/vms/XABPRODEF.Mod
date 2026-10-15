@@ -67,16 +67,16 @@ MODULE XABPRODEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$W_PRO*: SYSTEM.INT16; (* unsigned *)
-      XAB$B_MTACC*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_PROT_OPT*: SYSTEM.INT8; (* unsigned *)
-      XAB$L_UIC*: SYSTEM.INT32; (* unsigned *)
+      XAB$W_PRO*: SYSTEM.CARD16;
+      XAB$B_MTACC*: SYSTEM.CARD8;
+      XAB$B_PROT_OPT*: SYSTEM.CARD8;
+      XAB$L_UIC*: SYSTEM.CARD32;
       XAB$Q_PROT_MODE*: SYSTEM.INT64;
-      XAB$L_ACLBUF*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_ACLSIZ*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_ACLLEN*: SYSTEM.INT16; (* unsigned *)
-      XAB$L_ACLCTX*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_ACLSTS*: SYSTEM.INT32; (* unsigned *)
+      XAB$L_ACLBUF*: SYSTEM.CARD32;
+      XAB$W_ACLSIZ*: SYSTEM.CARD16;
+      XAB$W_ACLLEN*: SYSTEM.CARD16;
+      XAB$L_ACLCTX*: SYSTEM.CARD32;
+      XAB$L_ACLSTS*: SYSTEM.CARD32;
       fill5: SYSTEM.INT32;
       fill6: SYSTEM.INT32;
       fill7: SYSTEM.INT32;

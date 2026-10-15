@@ -728,3 +728,127 @@ modules follow once these are approved.
   4 bytes, not a delta time; `SYSTEM.VAL(HUGEINT, c)` is needed. Declaring
   an `IN` quadword `x-: HUGEINT` instead would convert a constant, and
   still take a `HUGEINT` variable by address, but not a record.
+
+## Proposals, part 3: SDL's unsigned types as poc's CARDs (2026-10-14)
+
+**Approved by the user, 2026-10-14**, all seven, with the recommendations
+for 3 (a condition value stays `SYSTEM.INT32`) and 5 (an address SDL
+declares as an unsigned longword stays `CARD32`).
+
+poc has had unsigned types since 0.6.0 (`language-extensions.md`,
+"Unsigned integer types"), on the VAX since `2c1802d`
+(`vax-macro32-backend.md`, section 20). The plan agreed with the user on
+2026-10-14 is that the generator declares every SDL-unsigned field and
+parameter, value parameters too, as the CARD of its width, where part 2,
+proposal 5 only noted `unsigned` in a comment.
+
+Before writing these proposals, a scratch copy of the generator was run on
+atla over dumps of the seven modules made that day; the unchanged
+generator reproduces `rtl/vax/vms` exactly. The scratch copy changes 280
+fields and 715 parameters: 409 by value, 145 `x-` and 161 `VAR`, 45 of
+them open arrays. That is 122 `CARD8`, 177 `CARD16`, 682 `CARD32` and 14
+`CARD64` declarations. All 41 modules compile under `-O2` and `-OC`.
+`VmsDefCalls` gets 11 errors, which proposals 4 to 6 answer.
+
+1. **Fields.** A byte, word, longword or quadword item that SDL marks
+   `unsigned` is `SYSTEM.CARD8`, `CARD16`, `CARD32` or `CARD64`, and an
+   array of them `ARRAY n OF` that. An SDL boolean stays `SYSTEM.INT8`,
+   as part 2 says. The `(* unsigned *)` comment goes, since the type
+   says it. Layout is unchanged, since each CARD has its signed twin's
+   size.
+2. **Parameters.** The same, whatever the mechanism: a value of that
+   width, `x-` or `VAR` of it, or `ARRAY OF` it when open. A quadword or
+   octaword by reference stays `ARRAY OF SYSTEM.BYTE` (part 2, proposal
+   6), `any` by value stays `SYSTEM.ADDRESS`, and a boolean stays
+   `SYSTEM.INT8`. A program then needs a CARD variable for a `VAR`
+   unsigned formal: `VAR channel: SYSTEM.CARD16` for `SYS$ASSIGN`'s
+   `CHAN`. A non-negative constant goes to a value or `x-` formal as it
+   is.
+3. **Results: a condition value stays `SYSTEM.INT32`.** SDL is not
+   consistent here: `STARLET`'s 262 `COND_VALUE` results are not marked
+   unsigned, while `LIB$`'s and `STR$`'s 156 `cond_value` results are.
+   So that one `status` variable takes any routine's result, and compares
+   with `SS$_` and `RMS$_` constants, as now, every result whose type
+   name is a condition value stays `SYSTEM.INT32`. The 17 results whose
+   type name is `longword_unsigned` or `word_unsigned` (`LIB$` routines
+   returning a count or a value) are `CARD32` or `CARD16`, as proposal 2
+   would make a parameter. *The alternative* is the flag alone, which
+   gives `LIB$`'s and `STR$`'s statuses one type and `SYS$`'s another.
+4. **`VmsArguments`, part 1's hand-written module, follows.** VMS's
+   lengths and counts become CARDs, so that one variable serves an item
+   list and a routine's unsigned length (`VmsDefCalls`' `length` goes to
+   `LIB$GET_SYMBOL` and to `SetItem`).
+   - `StringDescriptor`: `length: SYSTEM.CARD16`, `dataType` and `class:
+     SYSTEM.CARD8`.
+   - `ItemListEntry3` and `ItemListEntry2`: `bufferLength:
+     SYSTEM.CARD16`. `itemCode` stays `SYSTEM.INT16`, since a chain code
+     is negative (`JPI$_CHAIN = -1`, `LNM$_CHAIN = -1`).
+   - `IOStatusBlock`: `status` and `count: SYSTEM.CARD16`. With a CARD,
+     a status above 32767 compares equal to its constant.
+   - `SetItem`'s `returnLength`: `VAR SYSTEM.CARD16`.
+   - The comment's "one over 32,767 is negative to Oberon" goes.
+5. **An address SDL declares as an unsigned longword stays `CARD32`.**
+   `FAB$L_FNA`, `FAB$L_DNA`, `FAB$L_XAB`, `FAB$L_NAM` and others like
+   them are longwords in SDL, not addresses; only their comments say
+   "address". So the tree gives nothing to tell them apart, and the
+   generator does not guess from comments. A program sets one with
+   `SYSTEM.VAL(SYSTEM.CARD32, SYSTEM.ADR(name))`. That is a new cost:
+   now the field is a `SYSTEM.INT32`, which `ADDRESS` (4 bytes on the
+   VAX under both size models) includes, so `fab.FAB$L_FNA :=
+   SYSTEM.ADR(name)` works as it is. *The alternative* is a short list
+   of such fields in `sdloberon.c`, declared `SYSTEM.ADDRESS`, as part
+   2, proposal 6 allowed for exceptions; the list would have to be kept
+   by hand as more of the 65 modules are generated.
+6. **`VmsDefCalls` is updated to the new types.**
+   - `length`, `usernameLength` and `channel` become `CARD16`.
+   - `FAB$L_FNA` is set by `SYSTEM.VAL`.
+   - CARD fields are printed with `Out.Card`, and `FAB$L_STS` by
+     `SYSTEM.VAL(LONGINT, ...)` for `Status`.
+   - It prints the same lines on the guest as now.
+7. **Regenerated and checked as part 2 was.**
+   - `sdloberon.c` is changed and tried on atla with `sdlload`.
+   - `tools/vax-sdl build` rebuilds it on the guest. The user copies
+     `SDLOBERON.EXE` to `SYS$SHARE`, and `tools/vax-sdl run` writes
+     `rtl/vax/vms` from the guest. That must equal what `sdlload` made.
+   - `vax-vmsdef` passes: the 3587 constants still agree with
+     `STARLET.MLB`, `VmsDefLayout` finds 0 errors, and `VmsDefCalls` runs.
+   - `vax-vms-arguments` and `vax-vms-calls`, which use
+     `VmsArguments`, are updated where its types change.
+
+## Part 3 done: what was implemented (2026-10-14)
+
+- **The generator.** `sdloberon.c`'s `unsigned_type` gives a byte,
+  word, longword or quadword that SDL marks unsigned the CARD of its
+  width (proposals 1 and 2).
+  - It applies to fields and arrays of them, and to parameters by value,
+    `x-`, `VAR` and open.
+  - Booleans, `any`, and a quadword or octaword by reference keep their
+    types.
+  - "unsigned" stays in a comment only where the type does not say it,
+    such as `date_time`'s `ARRAY OF SYSTEM.BYTE`.
+  - Results (proposal 3): a condition value stays `SYSTEM.INT32`. The 15
+    results whose type name is `longword_unsigned` or `word_unsigned`
+    are CARDs, `LIB$LEN`'s a `CARD16`. The other 2 of SDL's 17 belong to
+    `LIB$MATCH_COND` and `STR$FIND_FIRST_SUBSTRING`, which are left out.
+- **`rtl/vax/vms`, regenerated.**
+  - 1010 declarations changed in 26 of the 41 modules. The two
+    misaligned fields' comments now name `SYSTEM.CARD32`.
+  - `sdlload` made them on atla, and the guest's `tools/vax-sdl run`,
+    with the rebuilt back end in `SYS$SHARE`, made the same 41 files.
+- **`VmsArguments`** (proposal 4).
+  - `length`, `bufferLength`, `status` and `count` are `CARD16`, and
+    `dataType` and `class` are `CARD8`.
+  - `SetItem`'s `returnLength` is `VAR SYSTEM.CARD16`.
+  - The new `Card16` makes a length a `CARD16`. `Word` stays for the
+    item code.
+- **Fixtures** (proposal 6).
+  - `VmsDefCalls` and `VmsCalls` hold lengths and the channel in `CARD16`
+    variables, and their `Show` takes a `CARD16` length.
+  - They print a CARD by `Out.Card` and a CARD status by
+    `SYSTEM.VAL(LONGINT, ...)`, and set `FAB$L_FNA` by
+    `SYSTEM.VAL(SYSTEM.CARD32, SYSTEM.ADR(name))`.
+  - `VaxVmsArguments`' `length` is a `CARD16`. Its expected MACRO-32 and
+    `VmsArguments`' were regenerated, for review.
+  - `vax-vmsdef` (0 layout errors, `STARLET.MLB`'s 3587 constants
+    unchanged), `vax-vms-calls` and `vax-vms-arguments` pass on the
+    guest, and print what they printed before.

@@ -37,22 +37,22 @@ MODULE XABCXFDEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$L_CXFSTS*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_CXFSTV*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_CXFCOP*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_CXFBKP*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_CXFIFI*: SYSTEM.INT16; (* unsigned *)
-      XAB$B_CXFVER*: SYSTEM.INT8; (* unsigned *)
+      XAB$L_CXFSTS*: SYSTEM.CARD32;
+      XAB$L_CXFSTV*: SYSTEM.CARD32;
+      XAB$L_CXFCOP*: SYSTEM.CARD32;
+      XAB$L_CXFBKP*: SYSTEM.CARD32;
+      XAB$W_CXFIFI*: SYSTEM.CARD16;
+      XAB$B_CXFVER*: SYSTEM.CARD8;
       fill5: SYSTEM.INT8;
       fill6: SYSTEM.INT32;
-      XAB$W_CXFDEQ*: SYSTEM.INT16; (* unsigned *)
-      XAB$B_CXFFAC*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_CXFSHR*: SYSTEM.INT8; (* unsigned *)
-      XAB$W_CXFRTE*: SYSTEM.INT16; (* unsigned *)
+      XAB$W_CXFDEQ*: SYSTEM.CARD16;
+      XAB$B_CXFFAC*: SYSTEM.CARD8;
+      XAB$B_CXFSHR*: SYSTEM.CARD8;
+      XAB$W_CXFRTE*: SYSTEM.CARD16;
       fill7: SYSTEM.INT8;
-      XAB$B_CXFORG*: SYSTEM.INT8; (* unsigned *)
-      XAB$W_CXFGBC*: SYSTEM.INT16; (* unsigned *)
-      XAB$B_CXFRTV*: SYSTEM.INT8; (* unsigned *)
+      XAB$B_CXFORG*: SYSTEM.CARD8;
+      XAB$W_CXFGBC*: SYSTEM.CARD16;
+      XAB$B_CXFRTV*: SYSTEM.CARD8;
       fill8: SYSTEM.INT8;
       fill9: ARRAY 4 OF SYSTEM.INT32
     END;

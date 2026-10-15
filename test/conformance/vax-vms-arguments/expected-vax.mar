@@ -1,7 +1,13 @@
 ;; Written by Claude, 2026-10-14, for Phase 17 step 5
-;; (doc/developer/vms-sdl-interfaces.md, part 1, proposals 1 to 4 and 8,
-;; approved by the user); reviewed by the user,
-;; 2026-10-14. Why this is right:
+;; (doc/developer/vms-sdl-interfaces.md, part 3, proposal 4, approved by
+;; the user); reviewed by the user, 2026-10-15. It replaces the file the user
+;; reviewed on 2026-10-14. Why this is right:
+;; - length, which SetItem takes as its returnLength, is now a
+;;   SYSTEM.CARD16, as VmsArguments' is (its comment in the variables'
+;;   list says so); the source keeps its lines, so no line number moves.
+;; - VmsArguments' key (the .EXTERNAL POC_K1_) is new, as its interface
+;;   changed.
+;; The rest is as the user reviewed it on 2026-10-14:
 ;; - Each argument list is CALLG's, one longword an argument (the count
 ;;   first), as for any external; nothing else is pushed.
 ;; - By value (PassValues): BOOLEAN and CHAR zero-extended (MOVZBL),
@@ -100,7 +106,7 @@ VAXVMSARGUMENTS_NAME_N8BORJOV:
 ; short: ARRAY 8 OF CHAR
 VAXVMSARGUMENTS_SHORT_GNK0TLIU:
 	.BLKB	8
-; length: SYSTEM.INT16
+; length: SYSTEM.CARD16
 	.ALIGN	WORD
 VAXVMSARGUMENTS_LENGTH_33URGD18:
 	.BLKW	1
@@ -131,7 +137,7 @@ VAXVMSARGUMENTS_DESCRI_NH9PRTJL:
 	.EXTERNAL	VMSARGUMENTS_SETITEM_PFKLI9H2
 	.EXTERNAL	VMSARGUMENTS_ENDLIST_N4A9J8HG
 	.EXTERNAL	VMSARGUMENTS_INIT
-	.EXTERNAL	POC_K1_0A21CA0539BFBE45
+	.EXTERNAL	POC_K1_0EE282E4AED0B919
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP

@@ -26,9 +26,9 @@ MODULE XABSUMDEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$B_NOA*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_NOK*: SYSTEM.INT8; (* unsigned *)
-      XAB$W_PVN*: SYSTEM.INT16 (* unsigned *)
+      XAB$B_NOA*: SYSTEM.CARD8;
+      XAB$B_NOK*: SYSTEM.CARD8;
+      XAB$W_PVN*: SYSTEM.CARD16
     END;
 
 END XABSUMDEF.

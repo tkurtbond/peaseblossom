@@ -437,6 +437,20 @@ static char *scalar_type(t, size, align)
   return 0;
 }
 
+/* t, an Oberon scalar type, as the CARD of its width when flags mark it
+   unsigned (part 3, proposals 1 and 2) */
+static char *unsigned_type(t, flags)
+  char *t;
+  int flags;
+{
+  if (!t || !(flags & SDL$M_UNSIGNED)) return t;
+  if (strcmp(t, "SYSTEM.INT8") == 0) return "SYSTEM.CARD8";
+  if (strcmp(t, "SYSTEM.INT16") == 0) return "SYSTEM.CARD16";
+  if (strcmp(t, "SYSTEM.INT32") == 0) return "SYSTEM.CARD32";
+  if (strcmp(t, "SYSTEM.INT64") == 0) return "SYSTEM.CARD64";
+  return t;
+}
+
 /* a field's type from item m: a scalar, an array of them, characters,
    or bytes */
 static void field_type(f, m)
@@ -450,6 +464,8 @@ static void field_type(f, m)
   if (m->sdl_flag_bits.flags & SDL$M_DIMEN) count = m->hidim - m->lodim + 1;
   if (count < 1) count = 1;
   t = scalar_type(m->datatype, &size, &align);
+  if (m->datatype != SDL$C_TYPE_BOOLEAN)
+    t = unsigned_type(t, m->sdl_flag_bits.flags);
   element = m->fldsiz / count;
   if (m->datatype == SDL$C_TYPE_CHARACTER) {
     if (count == 1)
@@ -469,7 +485,8 @@ static void field_type(f, m)
   else if (m->datatype == SDL$C_TYPE_DFLOAT) strcpy(f->note, "D floating");
   else if (m->datatype == SDL$C_TYPE_HFLOAT) strcpy(f->note, "H floating");
   else if (m->datatype == SDL$C_TYPE_OCTAWORD) strcpy(f->note, "octaword");
-  if (m->sdl_flag_bits.flags & SDL$M_UNSIGNED) {
+  /* noted only where the type does not say it */
+  if ((m->sdl_flag_bits.flags & SDL$M_UNSIGNED) && !strstr(f->type, "CARD")) {
     if (f->note[0]) strcat(f->note, ", ");
     strcat(f->note, "unsigned");
   };
@@ -790,6 +807,8 @@ static int formal(p, number, buf, why)
       sprintf(why, "%s is wider than a longword by value", name);
       return 0;
     };
+    if (p->datatype != SDL$C_TYPE_BOOLEAN && p->datatype != SDL$C_TYPE_ANY)
+      t = unsigned_type(t, flags);
     strcpy(type, t);
   } else if (by_ref) {
     strcpy(mode, out ? "VAR" : "-");
@@ -800,6 +819,7 @@ static int formal(p, number, buf, why)
       else strcpy(type, "ARRAY OF SYSTEM.BYTE");
     } else {
       t = scalar_type(p->datatype, &size, &align);
+      if (p->datatype != SDL$C_TYPE_BOOLEAN) t = unsigned_type(t, flags);
       if (t && p->datatype != SDL$C_TYPE_QUADWORD) {
         if (open) sprintf(type, "ARRAY OF %s", t);
         else strcpy(type, t);
@@ -814,7 +834,7 @@ static int formal(p, number, buf, why)
     if (*note) strcat(note, ", ");
     strcat(note, "boolean");
   };
-  if (flags & SDL$M_UNSIGNED) {
+  if ((flags & SDL$M_UNSIGNED) && !strstr(type, "CARD")) {
     if (*note) strcat(note, ", ");
     strcat(note, "unsigned");
   };
@@ -859,7 +879,7 @@ static char (*formals)[600]; /* MAXPARAMS of them, from sdl$output */
 static void entry(e)
   struct Node *e;
 {
-  char name[80], why[200], *result, *note, *tn;
+  char name[80], why[200], *result, *note, *tn, typename[80];
   struct Node *head, *p;
   int n, i;
 
@@ -869,6 +889,15 @@ static void entry(e)
   if (e->sdl_flag_bits.flags & SDL$M_VARIABLE)
     strcpy(why, "a variable argument list");
   result = result_type(e->datatype);
+  /* a condition value stays SYSTEM.INT32 however SDL marks it; a result
+     whose type name says unsigned is the CARD of its width (part 3,
+     proposal 3) */
+  strncpy(typename, str(&e->typename), sizeof typename - 1);
+  typename[sizeof typename - 1] = '\0';
+  upper(typename);
+  if (result && (strcmp(typename, "LONGWORD_UNSIGNED") == 0
+                 || strcmp(typename, "WORD_UNSIGNED") == 0))
+    result = unsigned_type(result, SDL$M_UNSIGNED);
   if (!result) sprintf(why, "its result is SDL type %d", e->datatype);
   n = 0;
   head = e->child;

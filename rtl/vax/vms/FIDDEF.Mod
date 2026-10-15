@@ -29,9 +29,9 @@ MODULE FIDDEF;
 
   TYPE
     FIDDEF* = RECORD (* 6 bytes *)
-      FID$W_NUM*: SYSTEM.INT16; (* unsigned *)
-      FID$W_SEQ*: SYSTEM.INT16; (* unsigned *)
-      FID$W_RVN*: SYSTEM.INT16 (* unsigned *)
+      FID$W_NUM*: SYSTEM.CARD16;
+      FID$W_SEQ*: SYSTEM.CARD16;
+      FID$W_RVN*: SYSTEM.CARD16
     END;
 
 END FIDDEF.

@@ -57,15 +57,15 @@ MODULE XABALLDEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$B_AOP*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_ALN*: SYSTEM.INT8; (* unsigned *)
-      XAB$W_VOL*: SYSTEM.INT16; (* unsigned *)
-      XAB$L_LOC*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_ALQ*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_DEQ*: SYSTEM.INT16; (* unsigned *)
+      XAB$B_AOP*: SYSTEM.CARD8;
+      XAB$B_ALN*: SYSTEM.CARD8;
+      XAB$W_VOL*: SYSTEM.CARD16;
+      XAB$L_LOC*: SYSTEM.CARD32;
+      XAB$L_ALQ*: SYSTEM.CARD32;
+      XAB$W_DEQ*: SYSTEM.CARD16;
       fill5: SYSTEM.INT8;
-      XAB$B_AID*: SYSTEM.INT8; (* unsigned *)
-      XAB$W_RFI*: ARRAY 3 OF SYSTEM.INT16; (* unsigned *)
+      XAB$B_AID*: SYSTEM.CARD8;
+      XAB$W_RFI*: ARRAY 3 OF SYSTEM.CARD16;
       fill6: SYSTEM.INT16
     END;
 

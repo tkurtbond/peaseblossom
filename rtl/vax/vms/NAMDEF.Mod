@@ -181,35 +181,35 @@ MODULE NAMDEF;
 
   TYPE
     NAMDEF* = RECORD (* 96 bytes *)
-      NAM$B_BID*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_BLN*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_RSS*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_RSL*: SYSTEM.INT8; (* unsigned *)
-      NAM$L_RSA*: SYSTEM.INT32; (* unsigned *)
-      NAM$B_NOP*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_RFS*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_ESS*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_ESL*: SYSTEM.INT8; (* unsigned *)
-      NAM$L_ESA*: SYSTEM.INT32; (* unsigned *)
-      NAM$L_RLF*: SYSTEM.INT32; (* unsigned *)
+      NAM$B_BID*: SYSTEM.CARD8;
+      NAM$B_BLN*: SYSTEM.CARD8;
+      NAM$B_RSS*: SYSTEM.CARD8;
+      NAM$B_RSL*: SYSTEM.CARD8;
+      NAM$L_RSA*: SYSTEM.CARD32;
+      NAM$B_NOP*: SYSTEM.CARD8;
+      NAM$B_RFS*: SYSTEM.CARD8;
+      NAM$B_ESS*: SYSTEM.CARD8;
+      NAM$B_ESL*: SYSTEM.CARD8;
+      NAM$L_ESA*: SYSTEM.CARD32;
+      NAM$L_RLF*: SYSTEM.CARD32;
       NAM$T_DVI*: ARRAY 16 OF CHAR;
-      NAM$W_FID*: ARRAY 3 OF SYSTEM.INT16; (* unsigned *)
-      NAM$W_DID*: ARRAY 3 OF SYSTEM.INT16; (* unsigned *)
-      NAM$L_WCC*: SYSTEM.INT32; (* unsigned *)
-      NAM$L_FNB*: SYSTEM.INT32; (* unsigned *)
-      NAM$B_NODE*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_DEV*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_DIR*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_NAME*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_TYPE*: SYSTEM.INT8; (* unsigned *)
-      NAM$B_VER*: SYSTEM.INT8; (* unsigned *)
+      NAM$W_FID*: ARRAY 3 OF SYSTEM.CARD16;
+      NAM$W_DID*: ARRAY 3 OF SYSTEM.CARD16;
+      NAM$L_WCC*: SYSTEM.CARD32;
+      NAM$L_FNB*: SYSTEM.CARD32;
+      NAM$B_NODE*: SYSTEM.CARD8;
+      NAM$B_DEV*: SYSTEM.CARD8;
+      NAM$B_DIR*: SYSTEM.CARD8;
+      NAM$B_NAME*: SYSTEM.CARD8;
+      NAM$B_TYPE*: SYSTEM.CARD8;
+      NAM$B_VER*: SYSTEM.CARD8;
       fill1: ARRAY 2 OF SYSTEM.INT8;
-      NAM$L_NODE*: SYSTEM.INT32; (* unsigned *)
-      NAM$L_DEV*: SYSTEM.INT32; (* unsigned *)
-      NAM$L_DIR*: SYSTEM.INT32; (* unsigned *)
-      NAM$L_NAME*: SYSTEM.INT32; (* unsigned *)
-      NAM$L_TYPE*: SYSTEM.INT32; (* unsigned *)
-      NAM$L_VER*: SYSTEM.INT32; (* unsigned *)
+      NAM$L_NODE*: SYSTEM.CARD32;
+      NAM$L_DEV*: SYSTEM.CARD32;
+      NAM$L_DIR*: SYSTEM.CARD32;
+      NAM$L_NAME*: SYSTEM.CARD32;
+      NAM$L_TYPE*: SYSTEM.CARD32;
+      NAM$L_VER*: SYSTEM.CARD32;
       fill2: ARRAY 2 OF SYSTEM.INT32
     END;
 

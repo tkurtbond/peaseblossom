@@ -204,8 +204,8 @@ MODULE LATDEF;
 
   TYPE
     ITEM_ENTRY* = RECORD (* 6 bytes *)
-      LAT$W_ITEMCODE*: SYSTEM.INT16; (* unsigned *)
-      LAT$L_ITEM_SCALAR_VALUE*: ARRAY 4 OF SYSTEM.BYTE (* SYSTEM.INT32 at offset 2, which poc would align *)
+      LAT$W_ITEMCODE*: SYSTEM.CARD16;
+      LAT$L_ITEM_SCALAR_VALUE*: ARRAY 4 OF SYSTEM.BYTE (* SYSTEM.CARD32 at offset 2, which poc would align *)
     END;
 
   CONST

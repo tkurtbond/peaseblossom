@@ -7,8 +7,11 @@ MODULE VmsArguments;
      mean the same under -O2 and -OC, and poc's alignment, each field to
      its size, gives each its VMS layout (proposal 5).
 
-     A word field holds a length or a code up to 65,535 as the bits VMS
-     reads: one over 32,767 is negative to Oberon.
+     A length, a count, a descriptor's class and data type, and an I/O
+     status are unsigned, VMS's own types for them, so that one variable
+     serves here and as a generated routine's unsigned argument (part 3,
+     proposal 4). An item code is a signed word, since a chain code is
+     -1 (JPI$_CHAIN, LNM$_CHAIN); one over 32,767 is negative to Oberon.
 
      An item list is an ARRAY n OF ItemListEntry3, n one more than its
      items, passed to a VAR or read-only open-array parameter, which a
@@ -32,16 +35,16 @@ MODULE VmsArguments;
   TYPE
     (* a CLASS_S descriptor of a string, 8 bytes *)
     StringDescriptor* = RECORD
-      length*: SYSTEM.INT16; (* DSC$W_LENGTH, in characters *)
-      dataType*: SYSTEM.INT8; (* DSC$B_DTYPE *)
-      class*: SYSTEM.INT8; (* DSC$B_CLASS *)
+      length*: SYSTEM.CARD16; (* DSC$W_LENGTH, in characters *)
+      dataType*: SYSTEM.CARD8; (* DSC$B_DTYPE *)
+      class*: SYSTEM.CARD8; (* DSC$B_CLASS *)
       address*: SYSTEM.ADDRESS (* DSC$A_POINTER, the first character's *)
     END;
 
     (* an entry of an item_list_3, 12 bytes: the buffer, its size, and
        where VMS writes the length it returns *)
     ItemListEntry3* = RECORD
-      bufferLength*: SYSTEM.INT16; (* in bytes *)
+      bufferLength*: SYSTEM.CARD16; (* in bytes *)
       itemCode*: SYSTEM.INT16;
       buffer*: SYSTEM.ADDRESS;
       returnLength*: SYSTEM.ADDRESS (* a word's, or 0 *)
@@ -49,7 +52,7 @@ MODULE VmsArguments;
 
     (* an entry of an item_list_2, 8 bytes, which returns no length *)
     ItemListEntry2* = RECORD
-      bufferLength*: SYSTEM.INT16;
+      bufferLength*: SYSTEM.CARD16;
       itemCode*: SYSTEM.INT16;
       buffer*: SYSTEM.ADDRESS
     END;
@@ -57,8 +60,8 @@ MODULE VmsArguments;
     (* an I/O status block, 8 bytes: the condition value, a count, and
        what the service or device puts in the last longword *)
     IOStatusBlock* = RECORD
-      status*: SYSTEM.INT16;
-      count*: SYSTEM.INT16;
+      status*: SYSTEM.CARD16;
+      count*: SYSTEM.CARD16;
       deviceSpecific*: SYSTEM.INT32
     END;
 
@@ -70,6 +73,12 @@ MODULE VmsArguments;
     RETURN SYSTEM.VAL(SYSTEM.INT16, n)
   END Word;
 
+  (* n, 0 to 65,535, as a CARD16: SYSTEM.VAL truncates, as for Word *)
+  PROCEDURE Card16(n: LONGINT): SYSTEM.CARD16;
+  BEGIN
+    RETURN SYSTEM.VAL(SYSTEM.CARD16, n)
+  END Card16;
+
   (* descriptor, a CLASS_S descriptor of text up to its first 0X, or of
      all of it if it has none; of its first 65,535 characters if it is
      longer *)
@@ -78,7 +87,7 @@ MODULE VmsArguments;
   BEGIN
     n := 0;
     WHILE (n < LEN(text)) & (n < 65535) & (text[n] # 0X) DO INC(n) END;
-    descriptor.length := Word(n);
+    descriptor.length := Card16(n);
     descriptor.dataType := dataTypeT; descriptor.class := classS;
     descriptor.address := SYSTEM.ADR(text)
   END Describe;
@@ -86,12 +95,12 @@ MODULE VmsArguments;
   (* list[index], the item code with buffer, all of it, and returnLength,
      where VMS writes how much of buffer it filled *)
   PROCEDURE SetItem*(VAR list: ARRAY OF ItemListEntry3; index, code: LONGINT;
-                     VAR buffer: ARRAY OF SYSTEM.BYTE; VAR returnLength: SYSTEM.INT16);
+                     VAR buffer: ARRAY OF SYSTEM.BYTE; VAR returnLength: SYSTEM.CARD16);
     VAR length: LONGINT;
   BEGIN
     length := LEN(buffer);
     IF length > 65535 THEN length := 65535 END;
-    list[index].bufferLength := Word(length);
+    list[index].bufferLength := Card16(length);
     list[index].itemCode := Word(code);
     list[index].buffer := SYSTEM.ADR(buffer);
     list[index].returnLength := SYSTEM.ADR(returnLength)

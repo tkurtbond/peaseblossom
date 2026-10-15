@@ -30,7 +30,7 @@ MODULE VmsCalls;
   VAR
     status: LONGINT;
     value: ARRAY 64 OF CHAR;
-    length, usernameLength: SYSTEM.INT16;
+    length, usernameLength: SYSTEM.CARD16;
     table: LONGINT;
     items: ARRAY 2 OF VmsArguments.ItemListEntry3;
     iosb: VmsArguments.IOStatusBlock;
@@ -46,7 +46,7 @@ MODULE VmsCalls;
   PROCEDURE ["VMS", "LIB$SET_SYMBOL"] SetSymbol(symbol-, valueString-: ARRAY OF CHAR;
                                                 table-: LONGINT): LONGINT;
   PROCEDURE ["VMS", "LIB$GET_SYMBOL"] GetSymbol(symbol-: ARRAY OF CHAR; VAR resultant: ARRAY OF CHAR;
-                                                VAR resultantLength: SYSTEM.INT16;
+                                                VAR resultantLength: SYSTEM.CARD16;
                                                 VAR tableType: LONGINT): LONGINT;
   PROCEDURE ["VMS", "LIB$DELETE_SYMBOL"] DeleteSymbol(symbol-: ARRAY OF CHAR; table-: LONGINT): LONGINT;
   PROCEDURE ["VMS", "SYS$TRNLNM"] TranslateName(attributes-: LONGINT; tableName-, logicalName-: ARRAY OF CHAR;
@@ -58,7 +58,7 @@ MODULE VmsCalls;
                                                      VAR ioStatus: VmsArguments.IOStatusBlock;
                                                      astRoutine, astParameter: SYSTEM.ADDRESS): LONGINT;
   PROCEDURE ["VMS", "SYS$BINTIM"] BinaryTime(text-: ARRAY OF CHAR; VAR time: HUGEINT): LONGINT;
-  PROCEDURE ["VMS", "SYS$ASCTIM"] AsciiTime(VAR textLength: SYSTEM.INT16; VAR text: ARRAY OF CHAR;
+  PROCEDURE ["VMS", "SYS$ASCTIM"] AsciiTime(VAR textLength: SYSTEM.CARD16; VAR text: ARRAY OF CHAR;
                                             time-: HUGEINT; convertFlag: LONGINT): LONGINT;
   PROCEDURE ["VMS", "LIB$INSERT_TREE"] InsertTree(VAR treeHead: SYSTEM.ADDRESS; symbol-: SYSTEM.INT32;
                                                   flags-: LONGINT; compare: Compare; allocate: Allocate;
@@ -66,7 +66,7 @@ MODULE VmsCalls;
                                                   data: SYSTEM.ADDRESS): LONGINT;
   PROCEDURE ["VMS", "LIB$TRAVERSE_TREE"] TraverseTree(VAR treeHead: SYSTEM.ADDRESS; action: Action;
                                                       data: SYSTEM.ADDRESS): LONGINT;
-  PROCEDURE ["VMS", "SYS$FAOL"] FormatList(control-: ARRAY OF CHAR; VAR outputLength: SYSTEM.INT16;
+  PROCEDURE ["VMS", "SYS$FAOL"] FormatList(control-: ARRAY OF CHAR; VAR outputLength: SYSTEM.CARD16;
                                            VAR output: ARRAY OF CHAR;
                                            VAR parameterList: ARRAY OF SYSTEM.BYTE): LONGINT;
 
@@ -76,10 +76,13 @@ MODULE VmsCalls;
     Out.String(text); Out.String("%X"); Out.Hex(s, 8)
   END Status;
 
-  (* s's first n characters, in brackets, then the status *)
-  PROCEDURE Show(what: ARRAY OF CHAR; VAR s: ARRAY OF CHAR; n: LONGINT);
+  (* s's first n characters, in brackets, then the status; n a length
+     VMS returns, unsigned (vms-sdl-interfaces.md, part 3, proposal 4) *)
+  PROCEDURE Show(what: ARRAY OF CHAR; VAR s: ARRAY OF CHAR; n: SYSTEM.CARD16);
+    VAR k: LONGINT;
   BEGIN
-    IF (n >= 0) & (n < LEN(s)) THEN s[n] := 0X END;
+    k := SYSTEM.VAL(LONGINT, n);
+    IF k < LEN(s) THEN s[k] := 0X END;
     Out.String(what); Out.String(" ["); Out.String(s); Status("] status ", status); Out.Ln
   END Show;
 
@@ -111,7 +114,7 @@ BEGIN
   status := SetSymbol("POC_VMSCALLS", "from poc", NIL);
   table := 0; value := "untouched";
   status := GetSymbol("POC_VMSCALLS", value, length, table);
-  Show("symbol", value, length); Out.String("length "); Out.Int(length, 0);
+  Show("symbol", value, length); Out.String("length "); Out.Card(length, 0);
   Out.String(" table "); Out.Int(table, 0); Out.Ln;
   value := "poc_vmscalls"; (* an input described up to its 0X *)
   status := GetSymbol(value, value, length, table);
@@ -131,7 +134,7 @@ BEGIN
   VmsArguments.SetItem(items, 0, jpiUsername, username, usernameLength);
   status := GetJobProcessInfo(0, NIL, NIL, items, iosb, 0, 0);
   Show("username", username, usernameLength);
-  Status("I/O status ", iosb.status); Out.Ln;
+  Status("I/O status ", SYSTEM.VAL(LONGINT, iosb.status)); Out.Ln;
 
   (* a quadword by reference, read only: a variable, then a constant *)
   status := BinaryTime("14-OCT-2026 12:34:56.78", time);

@@ -1,7 +1,20 @@
 ;; Written by Claude, 2026-10-14, for Phase 17 step 5
-;; (doc/developer/vms-sdl-interfaces.md, part 1, proposals 5 and 6,
-;; approved by the user); reviewed by the user,
-;; 2026-10-14. Why this is right:
+;; (doc/developer/vms-sdl-interfaces.md, part 3, proposal 4, approved by
+;; the user); reviewed by the user, 2026-10-15. It replaces the file the user
+;; reviewed on 2026-10-14. Why this is right:
+;; - The lengths, counts, a descriptor's class and data type, and an I/O
+;;   status are CARDs now; each has its signed twin's size, so no layout
+;;   changes, and the module's key (.IDENT, POC_K1_) is new.
+;; - Card16, new, gives SetItem's buffer length and Describe's length as
+;;   a CARD16: SYSTEM.VAL(SYSTEM.CARD16, n) is n's low word, MOVZWL
+;;   -4(FP), R0 from n's copy in the frame, zero-extended as a CARD's
+;;   result is; a function that reached its END would trap (12, line
+;;   80). SetItem's and Describe's CALLG go to it in place of Word's;
+;;   Word stays for the item code, which may be negative.
+;; - The header comment is three lines longer, so every line number
+;;   after it, and each trap's PUSHL of one, is 3 more, then 9 more
+;;   after Card16.
+;; The rest is as the user reviewed it on 2026-10-14:
 ;; - VmsArguments has no code of its own beyond its three procedures and
 ;;   Word: its types' layouts are poc's ordinary ones, each field aligned
 ;;   to its size, which are VMS's (StringDescriptor 8 bytes, length at 0,
@@ -20,7 +33,7 @@
 ;;   the entry.
 ; VmsArguments, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	VMSARGUMENTS
-	.IDENT	/0a21ca0539bfbe45/
+	.IDENT	/0ee282e4aed0b919/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
@@ -76,19 +89,33 @@ VMSARGUMENTS_WORD_CEM980G7:
 	SUBL2	#4, SP
 	CLRL	-4(FP)
 	MOVL	4(AP), -4(FP)
-; line 69
+; line 72
 	CMPL	-4(FP), #32767
 	BGTR	L_2
 	JMP	L^L_1
 L_2:
-; line 69
+; line 72
 	SUBL2	#65536, -4(FP)
 L_1:
-; line 70
+; line 73
 	CVTWL	-4(FP), R0
 	RET
 	PUSHL	#3
-	PUSHL	#71
+	PUSHL	#74
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+; PROCEDURE Card16
+VMSARGUMENTS_CARD16_2GCKJ5R6:
+	.WORD	^M<>
+	SUBL2	#4, SP
+	CLRL	-4(FP)
+	MOVL	4(AP), -4(FP)
+; line 79
+	MOVZWL	-4(FP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#80
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -96,9 +123,9 @@ L_1:
 	.ENTRY	VMSARGUMENTS_DESCRIBE_AQR4PPE6, ^M<>
 	SUBL2	#12, SP
 	CLRL	-4(FP)
-; line 79
+; line 88
 	CLRL	-4(FP)
-; line 80
+; line 89
 L_3:
 	MOVL	16(AP), R0
 	CMPL	-4(FP), R0
@@ -113,7 +140,7 @@ L_6:
 	CMPL	R0, 16(AP)
 	BLSSU	L_7
 	PUSHL	#49
-	PUSHL	#80
+	PUSHL	#89
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -122,22 +149,22 @@ L_7:
 	BNEQ	L_8
 	JMP	L^L_4
 L_8:
-; line 80
+; line 89
 	INCL	-4(FP)
 	JMP	L^L_3
 L_4:
-; line 81
+; line 90
 	MOVL	#1, -12(FP)
 	MOVL	-4(FP), -8(FP)
-	CALLG	-12(FP), VMSARGUMENTS_WORD_CEM980G7
+	CALLG	-12(FP), VMSARGUMENTS_CARD16_2GCKJ5R6
 	MOVW	R0, @4(AP)
-; line 82
+; line 91
 	MOVL	4(AP), R0
 	MOVB	#14, 2(R0)
-; line 82
+; line 91
 	MOVL	4(AP), R0
 	MOVB	#1, 3(R0)
-; line 83
+; line 92
 	MOVL	4(AP), R0
 	MOVL	12(AP), R1
 	MOVL	R1, 4(R0)
@@ -146,23 +173,23 @@ L_4:
 	.ENTRY	VMSARGUMENTS_SETITEM_PFKLI9H2, ^M<R2>
 	SUBL2	#12, SP
 	CLRL	-4(FP)
-; line 92
+; line 101
 	MOVL	24(AP), R0
 	MOVL	R0, -4(FP)
-; line 93
+; line 102
 	CMPL	-4(FP), #65535
 	BGTR	L_10
 	JMP	L^L_9
 L_10:
-; line 93
+; line 102
 	MOVL	#65535, -4(FP)
 L_9:
-; line 94
+; line 103
 	MOVL	12(AP), R0
 	CMPL	R0, 8(AP)
 	BLSSU	L_11
 	PUSHL	#10
-	PUSHL	#94
+	PUSHL	#103
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -172,14 +199,14 @@ L_11:
 	MOVL	#1, -12(FP)
 	MOVL	-4(FP), -8(FP)
 	MOVL	R0, R2
-	CALLG	-12(FP), VMSARGUMENTS_WORD_CEM980G7
+	CALLG	-12(FP), VMSARGUMENTS_CARD16_2GCKJ5R6
 	MOVW	R0, (R2)
-; line 95
+; line 104
 	MOVL	12(AP), R0
 	CMPL	R0, 8(AP)
 	BLSSU	L_12
 	PUSHL	#10
-	PUSHL	#95
+	PUSHL	#104
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -191,12 +218,12 @@ L_12:
 	MOVL	R0, R2
 	CALLG	-12(FP), VMSARGUMENTS_WORD_CEM980G7
 	MOVW	R0, 2(R2)
-; line 96
+; line 105
 	MOVL	12(AP), R0
 	CMPL	R0, 8(AP)
 	BLSSU	L_13
 	PUSHL	#10
-	PUSHL	#96
+	PUSHL	#105
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -205,12 +232,12 @@ L_13:
 	MOVAB	@4(AP)[R0], R0
 	MOVL	20(AP), R1
 	MOVL	R1, 4(R0)
-; line 97
+; line 106
 	MOVL	12(AP), R0
 	CMPL	R0, 8(AP)
 	BLSSU	L_14
 	PUSHL	#10
-	PUSHL	#97
+	PUSHL	#106
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -222,12 +249,12 @@ L_14:
 	RET
 ; PROCEDURE EndList
 	.ENTRY	VMSARGUMENTS_ENDLIST_N4A9J8HG, ^M<>
-; line 103
+; line 112
 	MOVL	12(AP), R0
 	CMPL	R0, 8(AP)
 	BLSSU	L_15
 	PUSHL	#10
-	PUSHL	#103
+	PUSHL	#112
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -235,12 +262,12 @@ L_15:
 	MULL2	#12, R0
 	MOVAB	@4(AP)[R0], R0
 	CLRW	(R0)
-; line 103
+; line 112
 	MOVL	12(AP), R0
 	CMPL	R0, 8(AP)
 	BLSSU	L_16
 	PUSHL	#41
-	PUSHL	#103
+	PUSHL	#112
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -248,12 +275,12 @@ L_16:
 	MULL2	#12, R0
 	MOVAB	@4(AP)[R0], R0
 	CLRW	2(R0)
-; line 104
+; line 113
 	MOVL	12(AP), R0
 	CMPL	R0, 8(AP)
 	BLSSU	L_17
 	PUSHL	#10
-	PUSHL	#104
+	PUSHL	#113
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -261,12 +288,12 @@ L_17:
 	MULL2	#12, R0
 	MOVAB	@4(AP)[R0], R0
 	CLRL	4(R0)
-; line 104
+; line 113
 	MOVL	12(AP), R0
 	CMPL	R0, 8(AP)
 	BLSSU	L_18
 	PUSHL	#35
-	PUSHL	#104
+	PUSHL	#113
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
@@ -286,6 +313,6 @@ L_BODY:
 	RET
 
 ; the module's key, which its importers refer to
-POC_K1_0A21CA0539BFBE45 == 0
+POC_K1_0EE282E4AED0B919 == 0
 
 	.END

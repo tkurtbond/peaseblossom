@@ -47,19 +47,19 @@ MODULE LKIDEF;
 
   TYPE
     LKIDEF* = RECORD (* 56 bytes *)
-      LKI$L_MSTLKID*: SYSTEM.INT32; (* unsigned *)
-      LKI$L_PID*: SYSTEM.INT32; (* unsigned *)
-      LKI$L_MSTCSID*: SYSTEM.INT32; (* unsigned *)
-      LKI$B_RQMODE*: SYSTEM.INT8; (* unsigned *)
-      LKI$B_GRMODE*: SYSTEM.INT8; (* unsigned *)
+      LKI$L_MSTLKID*: SYSTEM.CARD32;
+      LKI$L_PID*: SYSTEM.CARD32;
+      LKI$L_MSTCSID*: SYSTEM.CARD32;
+      LKI$B_RQMODE*: SYSTEM.CARD8;
+      LKI$B_GRMODE*: SYSTEM.CARD8;
       LKI$B_QUEUE*: SYSTEM.INT8;
       fill1: SYSTEM.INT8;
-      LKI$L_LKID*: SYSTEM.INT32; (* unsigned *)
-      LKI$L_CSID*: SYSTEM.INT32; (* unsigned *)
-      LKI$Q_RQSTART*: SYSTEM.INT64; (* unsigned *)
-      LKI$Q_RQLENGTH*: SYSTEM.INT64; (* unsigned *)
-      LKI$Q_GRSTART*: SYSTEM.INT64; (* unsigned *)
-      LKI$Q_GRLENGTH*: SYSTEM.INT64 (* unsigned *)
+      LKI$L_LKID*: SYSTEM.CARD32;
+      LKI$L_CSID*: SYSTEM.CARD32;
+      LKI$Q_RQSTART*: SYSTEM.CARD64;
+      LKI$Q_RQLENGTH*: SYSTEM.CARD64;
+      LKI$Q_GRSTART*: SYSTEM.CARD64;
+      LKI$Q_GRLENGTH*: SYSTEM.CARD64
     END;
 
   CONST
@@ -74,9 +74,9 @@ MODULE LKIDEF;
 
   TYPE
     NAMSPACE* = RECORD (* 4 bytes *)
-      LKI$W_GROUP*: SYSTEM.INT16; (* unsigned *)
-      LKI$B_RMOD*: SYSTEM.INT8; (* unsigned *)
-      LKI$B_STATUS*: SYSTEM.INT8 (* unsigned *)
+      LKI$W_GROUP*: SYSTEM.CARD16;
+      LKI$B_RMOD*: SYSTEM.CARD8;
+      LKI$B_STATUS*: SYSTEM.CARD8
     END;
 
   CONST
@@ -88,8 +88,8 @@ MODULE LKIDEF;
 
   TYPE
     STATEF* = RECORD (* 3 bytes *)
-      LKI$B_STATE_RQMODE*: SYSTEM.INT8; (* unsigned *)
-      LKI$B_STATE_GRMODE*: SYSTEM.INT8; (* unsigned *)
+      LKI$B_STATE_RQMODE*: SYSTEM.CARD8;
+      LKI$B_STATE_GRMODE*: SYSTEM.CARD8;
       LKI$B_STATE_QUEUE*: SYSTEM.INT8
     END;
 
@@ -107,10 +107,10 @@ MODULE LKIDEF;
 
   TYPE
     LKIUSRDEF* = RECORD (* 20 bytes *)
-      LKIUSR$Q_START*: SYSTEM.INT64; (* unsigned *)
-      LKIUSR$Q_LENGTH*: SYSTEM.INT64; (* unsigned *)
-      LKIUSR$B_RQMODE*: SYSTEM.INT8; (* unsigned *)
-      LKIUSR$B_IGNORE_OWN*: SYSTEM.INT8; (* unsigned *)
+      LKIUSR$Q_START*: SYSTEM.CARD64;
+      LKIUSR$Q_LENGTH*: SYSTEM.CARD64;
+      LKIUSR$B_RQMODE*: SYSTEM.CARD8;
+      LKIUSR$B_IGNORE_OWN*: SYSTEM.CARD8;
       fill1: SYSTEM.INT16
     END;
 
@@ -127,10 +127,10 @@ MODULE LKIDEF;
 
   TYPE
     RNGDEF* = RECORD (* 32 bytes *)
-      LKI$_RNG_Q_RQSTART*: SYSTEM.INT64; (* unsigned *)
-      LKI$_RNG_Q_RQLENGTH*: SYSTEM.INT64; (* unsigned *)
-      LKI$_RNG_Q_GRSTART*: SYSTEM.INT64; (* unsigned *)
-      LKI$_RNG_Q_GRLENGTH*: SYSTEM.INT64 (* unsigned *)
+      LKI$_RNG_Q_RQSTART*: SYSTEM.CARD64;
+      LKI$_RNG_Q_RQLENGTH*: SYSTEM.CARD64;
+      LKI$_RNG_Q_GRSTART*: SYSTEM.CARD64;
+      LKI$_RNG_Q_GRLENGTH*: SYSTEM.CARD64
     END;
 
   CONST
@@ -203,16 +203,16 @@ MODULE LKIDEF;
 
   TYPE
     LKISNDDEF* = RECORD (* 16 bytes *)
-      LKISND$W_RETSIZE*: SYSTEM.INT16; (* unsigned *)
-      LKISND$W_STATUS*: SYSTEM.INT16; (* unsigned *)
-      LKISND$W_FLAGS*: SYSTEM.INT16; (* unsigned *)
-      LKISND$W_SEQNUM*: SYSTEM.INT16; (* unsigned *)
-      LKISND$W_SIZE*: SYSTEM.INT16; (* unsigned *)
-      LKISND$B_TYPE*: SYSTEM.INT8; (* unsigned *)
-      LKISND$B_FILL_2*: SYSTEM.INT8; (* unsigned *)
-      LKISND$B_ITEM_LENGTH*: SYSTEM.INT8; (* unsigned *)
-      LKISND$B_FILL_3*: SYSTEM.INT8; (* unsigned *)
-      LKISND$W_FILL_4*: SYSTEM.INT16 (* unsigned *)
+      LKISND$W_RETSIZE*: SYSTEM.CARD16;
+      LKISND$W_STATUS*: SYSTEM.CARD16;
+      LKISND$W_FLAGS*: SYSTEM.CARD16;
+      LKISND$W_SEQNUM*: SYSTEM.CARD16;
+      LKISND$W_SIZE*: SYSTEM.CARD16;
+      LKISND$B_TYPE*: SYSTEM.CARD8;
+      LKISND$B_FILL_2*: SYSTEM.CARD8;
+      LKISND$B_ITEM_LENGTH*: SYSTEM.CARD8;
+      LKISND$B_FILL_3*: SYSTEM.CARD8;
+      LKISND$W_FILL_4*: SYSTEM.CARD16
     END;
 
 END LKIDEF.

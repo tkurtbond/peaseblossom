@@ -41,7 +41,7 @@ MODULE JPIDEF;
 
   TYPE
     JPICTLDEF* = RECORD (* 4 bytes *)
-      fill1: SYSTEM.INT32 (* unsigned *)
+      fill1: SYSTEM.CARD32
     END;
 
   CONST
@@ -73,7 +73,7 @@ MODULE JPIDEF;
 
   TYPE
     JPILGIDEF* = RECORD (* 4 bytes *)
-      fill1: SYSTEM.INT32 (* unsigned *)
+      fill1: SYSTEM.CARD32
     END;
 
   CONST

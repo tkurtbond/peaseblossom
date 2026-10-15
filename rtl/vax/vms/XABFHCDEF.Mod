@@ -53,20 +53,20 @@ MODULE XABFHCDEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$B_RFO*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_ATR*: SYSTEM.INT8; (* unsigned *)
-      XAB$W_LRL*: SYSTEM.INT16; (* unsigned *)
-      XAB$L_HBK*: SYSTEM.INT32; (* unsigned *)
-      XAB$L_EBK*: SYSTEM.INT32; (* unsigned *)
-      XAB$W_FFB*: SYSTEM.INT16; (* unsigned *)
+      XAB$B_RFO*: SYSTEM.CARD8;
+      XAB$B_ATR*: SYSTEM.CARD8;
+      XAB$W_LRL*: SYSTEM.CARD16;
+      XAB$L_HBK*: SYSTEM.CARD32;
+      XAB$L_EBK*: SYSTEM.CARD32;
+      XAB$W_FFB*: SYSTEM.CARD16;
       fill5: SYSTEM.INT8;
-      XAB$B_HSZ*: SYSTEM.INT8; (* unsigned *)
-      XAB$W_MRZ*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_DXQ*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_GBC*: SYSTEM.INT16; (* unsigned *)
+      XAB$B_HSZ*: SYSTEM.CARD8;
+      XAB$W_MRZ*: SYSTEM.CARD16;
+      XAB$W_DXQ*: SYSTEM.CARD16;
+      XAB$W_GBC*: SYSTEM.CARD16;
       fill6: ARRAY 8 OF SYSTEM.INT8;
-      XAB$W_VERLIMIT*: SYSTEM.INT16; (* unsigned *)
-      XAB$L_SBN*: SYSTEM.INT32 (* unsigned *)
+      XAB$W_VERLIMIT*: SYSTEM.CARD16;
+      XAB$L_SBN*: SYSTEM.CARD32
     END;
 
 END XABFHCDEF.

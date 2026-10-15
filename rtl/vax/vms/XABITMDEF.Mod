@@ -120,8 +120,8 @@ MODULE XABITMDEF;
       fill2: SYSTEM.INT8;
       fill3: SYSTEM.INT16;
       fill4: SYSTEM.INT32;
-      XAB$L_ITEMLIST*: SYSTEM.INT32; (* unsigned *)
-      XAB$B_MODE*: SYSTEM.INT8; (* unsigned *)
+      XAB$L_ITEMLIST*: SYSTEM.CARD32;
+      XAB$B_MODE*: SYSTEM.CARD8;
       fill5: ARRAY 3 OF SYSTEM.INT8;
       fill6: ARRAY 4 OF SYSTEM.INT32
     END;
@@ -199,10 +199,10 @@ MODULE XABITMDEF;
 
   TYPE
     XABNETEXTPROT* = RECORD (* 8 bytes *)
-      XAB$W_SYSTEM_ACC*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_OWNER_ACC*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_GROUP_ACC*: SYSTEM.INT16; (* unsigned *)
-      XAB$W_WORLD_ACC*: SYSTEM.INT16 (* unsigned *)
+      XAB$W_SYSTEM_ACC*: SYSTEM.CARD16;
+      XAB$W_OWNER_ACC*: SYSTEM.CARD16;
+      XAB$W_GROUP_ACC*: SYSTEM.CARD16;
+      XAB$W_WORLD_ACC*: SYSTEM.CARD16
     END;
 
   CONST
@@ -215,11 +215,11 @@ MODULE XABITMDEF;
 
   TYPE
     XABNETDAPVER* = RECORD (* 5 bytes *)
-      XAB$B_VER_DAP*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_VER_ECO*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_VER_CUS*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_VER_DSV*: SYSTEM.INT8; (* unsigned *)
-      XAB$B_VER_CSV*: SYSTEM.INT8 (* unsigned *)
+      XAB$B_VER_DAP*: SYSTEM.CARD8;
+      XAB$B_VER_ECO*: SYSTEM.CARD8;
+      XAB$B_VER_CUS*: SYSTEM.CARD8;
+      XAB$B_VER_DSV*: SYSTEM.CARD8;
+      XAB$B_VER_CSV*: SYSTEM.CARD8
     END;
 
   CONST

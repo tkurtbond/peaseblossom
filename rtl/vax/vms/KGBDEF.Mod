@@ -40,14 +40,14 @@ MODULE KGBDEF;
 
   TYPE
     KGBDEF* = RECORD (* 64 bytes *)
-      KGB$L_IDENTIFIER*: SYSTEM.INT32; (* unsigned *)
-      KGB$L_ATTRIBUTES*: SYSTEM.INT32; (* unsigned *)
-      KGB$Q_HOLDER*: SYSTEM.INT64; (* unsigned *)
+      KGB$L_IDENTIFIER*: SYSTEM.CARD32;
+      KGB$L_ATTRIBUTES*: SYSTEM.CARD32;
+      KGB$Q_HOLDER*: SYSTEM.CARD64;
       KGB$T_NAME*: ARRAY 32 OF CHAR;
-      KGB$W_LEVEL*: SYSTEM.INT16; (* unsigned *)
+      KGB$W_LEVEL*: SYSTEM.CARD16;
       fill1: SYSTEM.INT16;
-      KGB$Q_SYS_ID*: SYSTEM.INT64; (* unsigned *)
-      KGB$L_NEXT_ID*: SYSTEM.INT32 (* unsigned *)
+      KGB$Q_SYS_ID*: SYSTEM.CARD64;
+      KGB$L_NEXT_ID*: SYSTEM.CARD32
     END;
 
   CONST

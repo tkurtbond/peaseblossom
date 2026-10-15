@@ -72,7 +72,7 @@ MODULE LIB_ROUTINES;
      which the data starts for a variety of string descriptor classes. *)
   PROCEDURE ["VMS", "LIB$ANALYZE_SDESC"] LIB$ANALYZE_SDESC*(
       input_descriptor-: ARRAY OF SYSTEM.BYTE; (* DESCRIPTOR, unsigned *)
-      VAR data_length: SYSTEM.INT16; (* word_unsigned, unsigned *)
+      VAR data_length: SYSTEM.CARD16; (* word_unsigned *)
       VAR data_address: SYSTEM.ADDRESS (* ADDRESS *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -99,8 +99,8 @@ MODULE LIB_ROUTINES;
       device_name-: ARRAY OF CHAR; (* device_name *)
       maximum_message_size-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
       buffer_quota-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
-      VAR device_channel: SYSTEM.INT16; (* word_unsigned, unsigned *)
-      VAR mailbox_channel: SYSTEM.INT16 (* channel, unsigned *)
+      VAR device_channel: SYSTEM.CARD16; (* word_unsigned *)
+      VAR mailbox_channel: SYSTEM.CARD16 (* channel *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$AST_IN_PROG
@@ -118,7 +118,7 @@ MODULE LIB_ROUTINES;
      Language Interpreter (CLI) to detach the terminal of the calling process and to
      reattach it to a different process. *)
   PROCEDURE ["VMS", "LIB$ATTACH"] LIB$ATTACH*(
-      process_id-: SYSTEM.INT32 (* process_id, unsigned *)
+      process_id-: SYSTEM.CARD32 (* process_id *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$BBCCI
@@ -131,7 +131,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$BBCCI"] LIB$BBCCI*(
       position-: SYSTEM.INT32; (* longword_signed *)
       bit_zero_address: SYSTEM.ADDRESS (* ANY *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$BBSSI
 
@@ -143,7 +143,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$BBSSI"] LIB$BBSSI*(
       position-: SYSTEM.INT32; (* longword_signed *)
       bit_zero_address: SYSTEM.ADDRESS (* ANY *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$CALLG
 
@@ -156,7 +156,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$CALLG"] LIB$CALLG*(
       argument_list-: ARRAY OF SYSTEM.BYTE; (* arg_list *)
       user_procedure: SYSTEM.ADDRESS (* procedure, a routine's address *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$COMPARE_UID
 
@@ -177,11 +177,11 @@ MODULE LIB_ROUTINES;
      The Create a Directory routine creates a directory or subdirectory. *)
   PROCEDURE ["VMS", "LIB$CREATE_DIR"] LIB$CREATE_DIR*(
       device_directory_spec-: ARRAY OF CHAR; (* device_name *)
-      owner_UIC-: SYSTEM.INT32; (* uic, unsigned, optional: NIL omits it *)
-      protection_enable-: SYSTEM.INT16; (* mask_word, unsigned, optional: NIL omits it *)
-      protection_value-: SYSTEM.INT16; (* file_protection, unsigned, optional: NIL omits it *)
-      maximum_versions-: SYSTEM.INT16; (* word_unsigned, unsigned, optional: NIL omits it *)
-      relative_volume_number-: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      owner_UIC-: SYSTEM.CARD32; (* uic, optional: NIL omits it *)
+      protection_enable-: SYSTEM.CARD16; (* mask_word, optional: NIL omits it *)
+      protection_value-: SYSTEM.CARD16; (* file_protection, optional: NIL omits it *)
+      maximum_versions-: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
+      relative_volume_number-: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$CHAR
@@ -194,7 +194,7 @@ MODULE LIB_ROUTINES;
      the input byte is 0 through 255. *)
   PROCEDURE ["VMS", "LIB$CHAR"] LIB$CHAR*(
       VAR one_character_string: ARRAY OF CHAR; (* char_string *)
-      ascii_code-: SYSTEM.INT8 (* byte_unsigned, unsigned *)
+      ascii_code-: SYSTEM.CARD8 (* byte_unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$CONVERT_DATE_STRING
@@ -209,10 +209,10 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$CONVERT_DATE_STRING"] LIB$CONVERT_DATE_STRING*(
       date_string-: ARRAY OF CHAR; (* time_name *)
       VAR date_time: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned *)
-      VAR user_context: SYSTEM.INT32; (* context, unsigned, optional: NIL omits it *)
-      flags-: SYSTEM.INT32; (* mask_longword, unsigned, optional: NIL omits it *)
-      defaults-: ARRAY OF SYSTEM.INT16; (* vector_word_unsigned, unsigned, optional: NIL omits it *)
-      VAR defaulted_fields: SYSTEM.INT32 (* mask_longword, unsigned, optional: NIL omits it *)
+      VAR user_context: SYSTEM.CARD32; (* context, optional: NIL omits it *)
+      flags-: SYSTEM.CARD32; (* mask_longword, optional: NIL omits it *)
+      defaults-: ARRAY OF SYSTEM.CARD16; (* vector_word_unsigned, optional: NIL omits it *)
+      VAR defaulted_fields: SYSTEM.CARD32 (* mask_longword, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$CRC
@@ -226,7 +226,7 @@ MODULE LIB_ROUTINES;
       crc_table-: ARRAY OF SYSTEM.INT32; (* vector_longword_signed *)
       initial_crc-: SYSTEM.INT32; (* longword_signed *)
       stream-: ARRAY OF CHAR (* char_string *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$CRC_TABLE
 
@@ -236,7 +236,7 @@ MODULE LIB_ROUTINES;
      table that uses a cyclic redundancy check polynomial specification as a bit
      mask. *)
   PROCEDURE ["VMS", "LIB$CRC_TABLE"] LIB$CRC_TABLE*(
-      polynomial_coefficient-: SYSTEM.INT32; (* mask_longword, unsigned *)
+      polynomial_coefficient-: SYSTEM.CARD32; (* mask_longword *)
       VAR crc_table: ARRAY OF SYSTEM.INT32 (* vector_longword_signed *)
     );
 
@@ -250,7 +250,7 @@ MODULE LIB_ROUTINES;
       control_table-: ARRAY OF SYSTEM.INT32; (* vector_longword_signed *)
       key_string-: ARRAY OF CHAR; (* char_string *)
       symbol_value-: SYSTEM.INT32; (* longword_signed *)
-      flags-: SYSTEM.INT32 (* mask_longword, unsigned *)
+      flags-: SYSTEM.CARD32 (* mask_longword *)
     );
 
   (* LIB$CRF_INS_REF
@@ -289,7 +289,7 @@ MODULE LIB_ROUTINES;
      The Get System Currency Symbol routine returns the system's currency symbol. *)
   PROCEDURE ["VMS", "LIB$CURRENCY"] LIB$CURRENCY*(
       VAR currency_string: ARRAY OF CHAR; (* char_string *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$CREATE_USER_VM_ZONE
@@ -299,8 +299,8 @@ MODULE LIB_ROUTINES;
      The Create User-Defined Storage Zone routine creates a new user-defined storage
      zone. *)
   PROCEDURE ["VMS", "LIB$CREATE_USER_VM_ZONE"] LIB$CREATE_USER_VM_ZONE*(
-      VAR zone_id: SYSTEM.INT32; (* identifier, unsigned *)
-      user_argument-: SYSTEM.INT32; (* user_arg, unsigned, optional: NIL omits it *)
+      VAR zone_id: SYSTEM.CARD32; (* identifier *)
+      user_argument-: SYSTEM.CARD32; (* user_arg, optional: NIL omits it *)
       user_allocation_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address, optional: 0 omits it *)
       user_deallocation_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address, optional: 0 omits it *)
       user_reset_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address, optional: 0 omits it *)
@@ -319,7 +319,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$CVT_DX_DX"] LIB$CVT_DX_DX*(
       source_item-: ARRAY OF SYSTEM.BYTE; (* ANY *)
       VAR destination_item: ARRAY OF SYSTEM.BYTE; (* ANY *)
-      VAR word_integer_dest_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR word_integer_dest_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$CVTF_FROM_INTERNAL_TIME
@@ -330,7 +330,7 @@ MODULE LIB_ROUTINES;
      routine converts a delta internal VMS system time into an external
      F-floating time. *)
   PROCEDURE ["VMS", "LIB$CVTF_FROM_INTERNAL_TIME"] LIB$CVTF_FROM_INTERNAL_TIME*(
-      operation-: SYSTEM.INT32; (* function_code, unsigned *)
+      operation-: SYSTEM.CARD32; (* function_code *)
       VAR resultant_time: REAL; (* F_FLOATING *)
       input_time-: ARRAY OF SYSTEM.BYTE (* date_time, unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -342,8 +342,8 @@ MODULE LIB_ROUTINES;
      The Convert Internal Time to External Time routine converts an internal VMS system time
      (either absolute or delta) into an external time. *)
   PROCEDURE ["VMS", "LIB$CVT_FROM_INTERNAL_TIME"] LIB$CVT_FROM_INTERNAL_TIME*(
-      operation-: SYSTEM.INT32; (* function_code, unsigned *)
-      VAR resultant_time: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      operation-: SYSTEM.CARD32; (* function_code *)
+      VAR resultant_time: SYSTEM.CARD32; (* longword_unsigned *)
       input_time-: ARRAY OF SYSTEM.BYTE (* date_time, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -355,7 +355,7 @@ MODULE LIB_ROUTINES;
      converts an external time interval into a VMS internal format F-floating delta
      time. *)
   PROCEDURE ["VMS", "LIB$CVTF_TO_INTERNAL_TIME"] LIB$CVTF_TO_INTERNAL_TIME*(
-      operation-: SYSTEM.INT32; (* function_code, unsigned *)
+      operation-: SYSTEM.CARD32; (* function_code *)
       input_time-: REAL; (* varying_arg *)
       VAR resultant_time: ARRAY OF SYSTEM.BYTE (* date_time, unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -367,7 +367,7 @@ MODULE LIB_ROUTINES;
      The Convert External Time to Internal Time routine converts an external time
      interval into a VMS internal format delta time. *)
   PROCEDURE ["VMS", "LIB$CVT_TO_INTERNAL_TIME"] LIB$CVT_TO_INTERNAL_TIME*(
-      operation-: SYSTEM.INT32; (* function_code, unsigned *)
+      operation-: SYSTEM.CARD32; (* function_code *)
       input_time-: SYSTEM.INT32; (* varying_arg *)
       VAR resultant_time: ARRAY OF SYSTEM.BYTE (* date_time, unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -380,7 +380,7 @@ MODULE LIB_ROUTINES;
      seven-word vector
      into a VMS internal format delta or absolute time. *)
   PROCEDURE ["VMS", "LIB$CVT_VECTIM"] LIB$CVT_VECTIM*(
-      input_time-: ARRAY OF SYSTEM.INT16; (* vector_word_unsigned, unsigned *)
+      input_time-: ARRAY OF SYSTEM.CARD16; (* vector_word_unsigned *)
       VAR resultant_time: ARRAY OF SYSTEM.BYTE (* date_time, unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -427,10 +427,10 @@ MODULE LIB_ROUTINES;
      The Create a New Zone routine creates a new storage zone according to specified
      arguments. *)
   PROCEDURE ["VMS", "LIB$CREATE_VM_ZONE"] LIB$CREATE_VM_ZONE*(
-      VAR zone_id: SYSTEM.INT32; (* identifier, unsigned *)
+      VAR zone_id: SYSTEM.CARD32; (* identifier *)
       algorithm-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
       algorithm_argument-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
-      flags-: SYSTEM.INT32; (* mask_longword, unsigned, optional: NIL omits it *)
+      flags-: SYSTEM.CARD32; (* mask_longword, optional: NIL omits it *)
       extend_size-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
       initial_size-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
       block_size-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
@@ -475,7 +475,7 @@ MODULE LIB_ROUTINES;
      day 7. *)
   PROCEDURE ["VMS", "LIB$DAY_OF_WEEK"] LIB$DAY_OF_WEEK*(
       user_time-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned, optional: NIL omits it *)
-      VAR day_number: SYSTEM.INT32 (* longword_unsigned, unsigned *)
+      VAR day_number: SYSTEM.CARD32 (* longword_unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$DEC_OVER
@@ -486,8 +486,8 @@ MODULE LIB_ROUTINES;
      decimal overflow detection for the calling routine activation.  The previous
      decimal overflow setting is returned. *)
   PROCEDURE ["VMS", "LIB$DEC_OVER"] LIB$DEC_OVER*(
-      new_setting-: SYSTEM.INT32 (* longword_unsigned, unsigned *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+      new_setting-: SYSTEM.CARD32 (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$DECODE_FAULT
 
@@ -501,7 +501,7 @@ MODULE LIB_ROUTINES;
       mechanism_arguments-: ARRAY OF SYSTEM.BYTE; (* vector_longword_unsigned *)
       user_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address *)
       unspecified_user_argument: SYSTEM.ADDRESS; (* user_arg, optional: 0 omits it *)
-      instruction_definitions-: ARRAY OF SYSTEM.INT8 (* vector_byte_unsigned, unsigned, optional: NIL omits it *)
+      instruction_definitions-: ARRAY OF SYSTEM.CARD8 (* vector_byte_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$DELETE_FILE
@@ -521,7 +521,7 @@ MODULE LIB_ROUTINES;
       user_confirm_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address, optional: 0 omits it *)
       user_specified_argument: SYSTEM.ADDRESS; (* user_arg, optional: 0 omits it *)
       VAR resultant_name: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR file_scan_context: SYSTEM.INT32 (* context, unsigned, optional: NIL omits it *)
+      VAR file_scan_context: SYSTEM.CARD32 (* context, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$DIGIT_SEP
@@ -532,7 +532,7 @@ MODULE LIB_ROUTINES;
      symbol. *)
   PROCEDURE ["VMS", "LIB$DIGIT_SEP"] LIB$DIGIT_SEP*(
       VAR digit_separator_string: ARRAY OF CHAR; (* char_string *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$DISABLE_CTRL
@@ -544,8 +544,8 @@ MODULE LIB_ROUTINES;
      control characters when they are typed during an interactive terminal session.
      LIB$DISABLE_CTRL provides the same function as the DCL command SET NOCONTROL. *)
   PROCEDURE ["VMS", "LIB$DISABLE_CTRL"] LIB$DISABLE_CTRL*(
-      disable_mask-: SYSTEM.INT32; (* mask_longword, unsigned *)
-      VAR old_mask: SYSTEM.INT32 (* mask_longword, unsigned, optional: NIL omits it *)
+      disable_mask-: SYSTEM.CARD32; (* mask_longword *)
+      VAR old_mask: SYSTEM.CARD32 (* mask_longword, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$DELETE_LOGICAL
@@ -594,9 +594,9 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$FORMAT_DATE_TIME"] LIB$FORMAT_DATE_TIME*(
       VAR date_string: ARRAY OF CHAR; (* char_string *)
       date-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned, optional: NIL omits it *)
-      VAR user_context: SYSTEM.INT32; (* context, unsigned, optional: NIL omits it *)
+      VAR user_context: SYSTEM.CARD32; (* context, optional: NIL omits it *)
       VAR date_length: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
-      flags-: SYSTEM.INT32 (* mask_longword, unsigned, optional: NIL omits it *)
+      flags-: SYSTEM.CARD32 (* mask_longword, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$DELETE_VM_ZONE
@@ -606,7 +606,7 @@ MODULE LIB_ROUTINES;
      The Delete Virtual Memory Zone routine deletes a zone and returns all pages
      owned by the zone to the processwide page pool. *)
   PROCEDURE ["VMS", "LIB$DELETE_VM_ZONE"] LIB$DELETE_VM_ZONE*(
-      zone_id-: SYSTEM.INT32 (* identifier, unsigned *)
+      zone_id-: SYSTEM.CARD32 (* identifier *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$EDIV
@@ -631,7 +631,7 @@ MODULE LIB_ROUTINES;
      arguments. *)
   PROCEDURE ["VMS", "LIB$EMODD"] LIB$EMODD*(
       floating_point_multiplier-: ARRAY OF SYSTEM.BYTE; (* D_FLOATING *)
-      multiplier_extension-: SYSTEM.INT8; (* byte_unsigned, unsigned *)
+      multiplier_extension-: SYSTEM.CARD8; (* byte_unsigned *)
       floating_point_multiplicand-: ARRAY OF SYSTEM.BYTE; (* D_FLOATING *)
       VAR integer_portion: SYSTEM.INT32; (* longword_signed *)
       VAR fractional_portion: ARRAY OF SYSTEM.BYTE (* D_FLOATING *)
@@ -646,7 +646,7 @@ MODULE LIB_ROUTINES;
      arguments. *)
   PROCEDURE ["VMS", "LIB$EMODF"] LIB$EMODF*(
       floating_point_multiplier-: REAL; (* F_FLOATING *)
-      multiplier_extension-: SYSTEM.INT8; (* byte_unsigned, unsigned *)
+      multiplier_extension-: SYSTEM.CARD8; (* byte_unsigned *)
       floating_point_multiplicand-: REAL; (* F_FLOATING *)
       VAR integer_portion: SYSTEM.INT32; (* longword_signed *)
       VAR fractional_portion: REAL (* F_FLOATING *)
@@ -661,7 +661,7 @@ MODULE LIB_ROUTINES;
      arguments. *)
   PROCEDURE ["VMS", "LIB$EMODG"] LIB$EMODG*(
       floating_point_multiplier-: LONGREAL; (* G_FLOATING *)
-      multiplier_extension-: SYSTEM.INT16; (* word_unsigned, unsigned *)
+      multiplier_extension-: SYSTEM.CARD16; (* word_unsigned *)
       floating_point_multiplicand-: LONGREAL; (* G_FLOATING *)
       VAR integer_portion: SYSTEM.INT32; (* longword_signed *)
       VAR fractional_portion: LONGREAL (* G_FLOATING *)
@@ -676,7 +676,7 @@ MODULE LIB_ROUTINES;
      arguments. *)
   PROCEDURE ["VMS", "LIB$EMODH"] LIB$EMODH*(
       floating_point_multiplier-: ARRAY OF SYSTEM.BYTE; (* H_FLOATING *)
-      multiplier_extension-: SYSTEM.INT16; (* word_unsigned, unsigned *)
+      multiplier_extension-: SYSTEM.CARD16; (* word_unsigned *)
       floating_point_multiplicand-: ARRAY OF SYSTEM.BYTE; (* H_FLOATING *)
       VAR integer_portion: SYSTEM.INT32; (* longword_signed *)
       VAR fractional_portion: ARRAY OF SYSTEM.BYTE (* H_FLOATING *)
@@ -706,8 +706,8 @@ MODULE LIB_ROUTINES;
      session. LIB$ENABLE_CTRL provides the same function as the DCL command SET
      CONTROL. *)
   PROCEDURE ["VMS", "LIB$ENABLE_CTRL"] LIB$ENABLE_CTRL*(
-      enable_mask-: SYSTEM.INT32; (* mask_longword, unsigned *)
-      VAR old_mask: SYSTEM.INT32 (* mask_longword, unsigned, optional: NIL omits it *)
+      enable_mask-: SYSTEM.CARD32; (* mask_longword *)
+      VAR old_mask: SYSTEM.CARD32 (* mask_longword, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$ESTABLISH
@@ -730,7 +730,7 @@ MODULE LIB_ROUTINES;
      makes the VAX EXTV instruction available as a callable routine. *)
   PROCEDURE ["VMS", "LIB$EXTV"] LIB$EXTV*(
       position-: SYSTEM.INT32; (* longword_signed *)
-      size-: SYSTEM.INT8; (* byte_unsigned, unsigned *)
+      size-: SYSTEM.CARD8; (* byte_unsigned *)
       base_address: SYSTEM.ADDRESS (* ADDRESS *)
     ): SYSTEM.INT32; (* longword_signed *)
 
@@ -743,7 +743,7 @@ MODULE LIB_ROUTINES;
      the VAX EXTZV instruction available as a callable routine. *)
   PROCEDURE ["VMS", "LIB$EXTZV"] LIB$EXTZV*(
       position-: SYSTEM.INT32; (* longword_signed *)
-      size-: SYSTEM.INT8; (* byte_unsigned, unsigned *)
+      size-: SYSTEM.CARD8; (* byte_unsigned *)
       base_address: SYSTEM.ADDRESS (* ADDRESS *)
     ): SYSTEM.INT32; (* longword_signed *)
 
@@ -756,7 +756,7 @@ MODULE LIB_ROUTINES;
      the virtual memory associated with the context area used by the date/time
      input and output Formatting Routines. *)
   PROCEDURE ["VMS", "LIB$FREE_DATE_TIME_CONTEXT"] LIB$FREE_DATE_TIME_CONTEXT*(
-      VAR user_context: SYSTEM.INT32 (* context, unsigned, optional: NIL omits it *)
+      VAR user_context: SYSTEM.CARD32 (* context, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$FREE_EF
@@ -766,7 +766,7 @@ MODULE LIB_ROUTINES;
      The Free Event Flag routine frees a local event flag previously allocated by
      LIB$GET_EF. LIB$FREE_EF is the complement of LIB$GET_EF. *)
   PROCEDURE ["VMS", "LIB$FREE_EF"] LIB$FREE_EF*(
-      event_flag_number-: SYSTEM.INT32 (* ef_number, unsigned *)
+      event_flag_number-: SYSTEM.CARD32 (* ef_number *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$FIND_FILE_END
@@ -778,7 +778,7 @@ MODULE LIB_ROUTINES;
      (RMS) context and deallocates the virtual memory used to hold the allocated
      context block. *)
   PROCEDURE ["VMS", "LIB$FIND_FILE_END"] LIB$FIND_FILE_END*(
-      context-: SYSTEM.INT32 (* context, unsigned *)
+      context-: SYSTEM.CARD32 (* context *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$FIND_FILE
@@ -791,11 +791,11 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$FIND_FILE"] LIB$FIND_FILE*(
       filespec-: ARRAY OF CHAR; (* char_string *)
       VAR resultant_filespec: ARRAY OF CHAR; (* char_string *)
-      VAR context: SYSTEM.INT32; (* context, unsigned *)
+      VAR context: SYSTEM.CARD32; (* context *)
       default_filespec-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
       related_filespec-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR status_value: SYSTEM.INT32; (* longword_unsigned, unsigned, optional: NIL omits it *)
-      flags-: SYSTEM.INT32 (* mask_longword, unsigned, optional: NIL omits it *)
+      VAR status_value: SYSTEM.CARD32; (* longword_unsigned, optional: NIL omits it *)
+      flags-: SYSTEM.CARD32 (* mask_longword, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$FFC
@@ -807,7 +807,7 @@ MODULE LIB_ROUTINES;
      make the VAX FFC and FFS instructions available as callable routines. *)
   PROCEDURE ["VMS", "LIB$FFC"] LIB$FFC*(
       position-: SYSTEM.INT32; (* longword_signed *)
-      size-: SYSTEM.INT8; (* byte_unsigned, unsigned *)
+      size-: SYSTEM.CARD8; (* byte_unsigned *)
       base-: SYSTEM.ADDRESS; (* ADDRESS *)
       VAR find_position: SYSTEM.INT32 (* longword_signed *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -821,7 +821,7 @@ MODULE LIB_ROUTINES;
      make the VAX FFC and FFS instructions available as callable routines. *)
   PROCEDURE ["VMS", "LIB$FFS"] LIB$FFS*(
       position-: SYSTEM.INT32; (* longword_signed *)
-      size-: SYSTEM.INT8; (* byte_unsigned, unsigned *)
+      size-: SYSTEM.CARD8; (* byte_unsigned *)
       base-: SYSTEM.ADDRESS; (* ADDRESS *)
       VAR find_position: SYSTEM.INT32 (* longword_signed *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -834,11 +834,11 @@ MODULE LIB_ROUTINES;
      device name and file identifier to a file specification. *)
   PROCEDURE ["VMS", "LIB$FID_TO_NAME"] LIB$FID_TO_NAME*(
       device_name-: ARRAY OF CHAR; (* char_string *)
-      file_id-: ARRAY OF SYSTEM.INT16; (* vector_word_unsigned, unsigned *)
+      file_id-: ARRAY OF SYSTEM.CARD16; (* vector_word_unsigned *)
       VAR filespec: ARRAY OF CHAR; (* char_string *)
-      VAR filespec_length: SYSTEM.INT16; (* word_unsigned, unsigned, optional: NIL omits it *)
-      directory_id-: ARRAY OF SYSTEM.INT16; (* vector_word_unsigned, unsigned, optional: NIL omits it *)
-      VAR acp_status: SYSTEM.INT32 (* longword_unsigned, unsigned, optional: NIL omits it *)
+      VAR filespec_length: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
+      directory_id-: ARRAY OF SYSTEM.CARD16; (* vector_word_unsigned, optional: NIL omits it *)
+      VAR acp_status: SYSTEM.CARD32 (* longword_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$FIND_IMAGE_SYMBOL
@@ -879,8 +879,8 @@ MODULE LIB_ROUTINES;
      floating-point underflow detection for the calling routine activation.  The
      previous setting is returned as a function value. *)
   PROCEDURE ["VMS", "LIB$FLT_UNDER"] LIB$FLT_UNDER*(
-      new_setting-: SYSTEM.INT32 (* longword_unsigned, unsigned *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+      new_setting-: SYSTEM.CARD32 (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$FREE_LUN
 
@@ -918,7 +918,7 @@ MODULE LIB_ROUTINES;
       fab-: ARRAY OF SYSTEM.BYTE; (* fab *)
       user_success_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address *)
       user_error_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address *)
-      VAR context: SYSTEM.INT32 (* context, unsigned, optional: NIL omits it *)
+      VAR context: SYSTEM.CARD32 (* context, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$FILE_SCAN_END
@@ -931,7 +931,7 @@ MODULE LIB_ROUTINES;
      holding the related file specification information. *)
   PROCEDURE ["VMS", "LIB$FILE_SCAN_END"] LIB$FILE_SCAN_END*(
       VAR fab: ARRAY OF SYSTEM.BYTE; (* fab, optional: NIL omits it *)
-      VAR context: SYSTEM.INT32 (* context, unsigned, optional: NIL omits it *)
+      VAR context: SYSTEM.CARD32 (* context, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$FREE_TIMER
@@ -954,7 +954,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$FREE_VM"] LIB$FREE_VM*(
       number_of_bytes-: SYSTEM.INT32; (* longword_signed *)
       base_address-: SYSTEM.ADDRESS; (* ADDRESS *)
-      zone_id-: SYSTEM.INT32 (* identifier, unsigned, optional: NIL omits it *)
+      zone_id-: SYSTEM.CARD32 (* identifier, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$FIND_VM_ZONE
@@ -965,8 +965,8 @@ MODULE LIB_ROUTINES;
      zone identifier of the next valid zone in the heap management
      database. *)
   PROCEDURE ["VMS", "LIB$FIND_VM_ZONE"] LIB$FIND_VM_ZONE*(
-      VAR context: SYSTEM.INT32; (* context, unsigned *)
-      VAR zone_id: SYSTEM.INT32 (* identifier, unsigned *)
+      VAR context: SYSTEM.CARD32; (* context *)
+      VAR zone_id: SYSTEM.CARD32 (* identifier *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$GET_COMMAND
@@ -978,7 +978,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$GET_COMMAND"] LIB$GET_COMMAND*(
       VAR resultant_string: ARRAY OF CHAR; (* char_string *)
       prompt_string-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$GET_COMMON
@@ -991,7 +991,7 @@ MODULE LIB_ROUTINES;
      the first longword of the common area. *)
   PROCEDURE ["VMS", "LIB$GET_COMMON"] LIB$GET_COMMON*(
       VAR resultant_string: ARRAY OF CHAR; (* char_string *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$GET_DATE_FORMAT
@@ -1002,7 +1002,7 @@ MODULE LIB_ROUTINES;
      the user's choice of a date/time input format. *)
   PROCEDURE ["VMS", "LIB$GET_DATE_FORMAT"] LIB$GET_DATE_FORMAT*(
       VAR format_string: ARRAY OF CHAR; (* char_string *)
-      VAR user_context: SYSTEM.INT32 (* context, unsigned, optional: NIL omits it *)
+      VAR user_context: SYSTEM.CARD32 (* context, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$GET_MAXIMUM_DATE_LENGTH
@@ -1014,8 +1014,8 @@ MODULE LIB_ROUTINES;
      date-string string returned by LIB$FORMAT_DATE_TIME. *)
   PROCEDURE ["VMS", "LIB$GET_MAXIMUM_DATE_LENGTH"] LIB$GET_MAXIMUM_DATE_LENGTH*(
       VAR date_length: SYSTEM.INT32; (* longword_signed *)
-      VAR user_context: SYSTEM.INT32; (* context, unsigned, optional: NIL omits it *)
-      flags-: SYSTEM.INT32 (* mask_longword, unsigned, optional: NIL omits it *)
+      VAR user_context: SYSTEM.CARD32; (* context, optional: NIL omits it *)
+      flags-: SYSTEM.CARD32 (* mask_longword, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$GETDVI
@@ -1028,11 +1028,11 @@ MODULE LIB_ROUTINES;
      channel assigned to the device about which it wants information. *)
   PROCEDURE ["VMS", "LIB$GETDVI"] LIB$GETDVI*(
       item_code-: SYSTEM.INT32; (* longword_signed *)
-      channel-: SYSTEM.INT16; (* channel, unsigned, optional: NIL omits it *)
+      channel-: SYSTEM.CARD16; (* channel, optional: NIL omits it *)
       device_name-: ARRAY OF CHAR; (* device_name, optional: NIL omits it *)
       VAR longword_integer_value: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
       VAR resultant_string: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$GET_EF
@@ -1043,7 +1043,7 @@ MODULE LIB_ROUTINES;
      pool and returns the number of the allocated flag to the caller. If no flags are
      available, LIB$GET_EF returns an error as its function value. *)
   PROCEDURE ["VMS", "LIB$GET_EF"] LIB$GET_EF*(
-      VAR event_flag_number: SYSTEM.INT32 (* ef_number, unsigned *)
+      VAR event_flag_number: SYSTEM.CARD32 (* ef_number *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$GET_FOREIGN
@@ -1057,8 +1057,8 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$GET_FOREIGN"] LIB$GET_FOREIGN*(
       VAR resultant_string: ARRAY OF CHAR; (* char_string *)
       prompt_string-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR resultant_length: SYSTEM.INT16; (* word_unsigned, unsigned, optional: NIL omits it *)
-      VAR flags: SYSTEM.INT32 (* mask_longword, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
+      VAR flags: SYSTEM.CARD32 (* mask_longword, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$GET_INPUT
@@ -1070,7 +1070,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$GET_INPUT"] LIB$GET_INPUT*(
       VAR resultant_string: ARRAY OF CHAR; (* char_string *)
       prompt_string-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$GETJPI
@@ -1084,11 +1084,11 @@ MODULE LIB_ROUTINES;
      LIB$GETJPI obtains only one item of information in a single call. *)
   PROCEDURE ["VMS", "LIB$GETJPI"] LIB$GETJPI*(
       item_code-: SYSTEM.INT32; (* longword_signed *)
-      VAR process_id: SYSTEM.INT32; (* process_id, unsigned, optional: NIL omits it *)
+      VAR process_id: SYSTEM.CARD32; (* process_id, optional: NIL omits it *)
       process_name-: ARRAY OF CHAR; (* process_name, optional: NIL omits it *)
       VAR resultant_value: ARRAY OF SYSTEM.BYTE; (* varying_arg, optional: NIL omits it *)
       VAR resultant_string: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$GET_USERS_LANGUAGE
@@ -1139,7 +1139,7 @@ MODULE LIB_ROUTINES;
       item_code-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
       search_number-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
       search_name-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      search_flags-: SYSTEM.INT32; (* longword_unsigned, unsigned, optional: NIL omits it *)
+      search_flags-: SYSTEM.CARD32; (* longword_unsigned, optional: NIL omits it *)
       VAR resultant_value: ARRAY OF SYSTEM.BYTE; (* varying_arg, optional: NIL omits it *)
       VAR resultant_string: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
       VAR resultant_length: SYSTEM.INT16 (* word_signed, optional: NIL omits it *)
@@ -1157,8 +1157,8 @@ MODULE LIB_ROUTINES;
       item_code-: SYSTEM.INT32; (* longword_signed *)
       VAR resultant_value: ARRAY OF SYSTEM.BYTE; (* varying_arg, optional: NIL omits it *)
       VAR resultant_string: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR resultant_length: SYSTEM.INT16; (* word_unsigned, unsigned, optional: NIL omits it *)
-      VAR cluster_system_id: SYSTEM.INT32; (* identifier, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
+      VAR cluster_system_id: SYSTEM.CARD32; (* identifier, optional: NIL omits it *)
       node_name-: ARRAY OF CHAR (* char_string, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -1174,7 +1174,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$GET_SYMBOL"] LIB$GET_SYMBOL*(
       symbol-: ARRAY OF CHAR; (* char_string *)
       VAR resultant_string: ARRAY OF CHAR; (* char_string *)
-      VAR resultant_length: SYSTEM.INT16; (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
       VAR table_type_indicator: SYSTEM.INT32 (* longword_signed, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -1188,7 +1188,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$GET_VM"] LIB$GET_VM*(
       number_of_bytes-: SYSTEM.INT32; (* longword_signed *)
       VAR base_address: SYSTEM.ADDRESS; (* ADDRESS *)
-      zone_id-: SYSTEM.INT32 (* identifier, unsigned, optional: NIL omits it *)
+      zone_id-: SYSTEM.CARD32 (* identifier, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$ICHAR
@@ -1199,7 +1199,7 @@ MODULE LIB_ROUTINES;
      character of a source string to an 8-bit ASCII integer extended to a longword. *)
   PROCEDURE ["VMS", "LIB$ICHAR"] LIB$ICHAR*(
       source_string-: ARRAY OF CHAR (* char_string *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$INDEX
 
@@ -1211,7 +1211,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$INDEX"] LIB$INDEX*(
       source_string-: ARRAY OF CHAR; (* char_string *)
       sub_string-: ARRAY OF CHAR (* char_string *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$INIT_TIMER
 
@@ -1221,7 +1221,7 @@ MODULE LIB_ROUTINES;
      times and counts for use by LIB$SHOW_TIMER
      or LIB$STAT_TIMER. *)
   PROCEDURE ["VMS", "LIB$INIT_TIMER"] LIB$INIT_TIMER*(
-      VAR context: SYSTEM.INT32 (* context, unsigned, optional: NIL omits it *)
+      VAR context: SYSTEM.CARD32 (* context, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$INSERT_TREE
@@ -1233,7 +1233,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$INSERT_TREE"] LIB$INSERT_TREE*(
       VAR treehead: SYSTEM.ADDRESS; (* ADDRESS *)
       symbol-: ARRAY OF SYSTEM.BYTE; (* user_arg *)
-      flags-: SYSTEM.INT32; (* mask_longword, unsigned *)
+      flags-: SYSTEM.CARD32; (* mask_longword *)
       user_compare_routine: SYSTEM.ADDRESS; (* procedure, a routine's address *)
       user_allocation_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address *)
       VAR new_node: SYSTEM.ADDRESS; (* ADDRESS *)
@@ -1250,7 +1250,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$INSQHI"] LIB$INSQHI*(
       VAR ENTRY: ARRAY OF SYSTEM.BYTE; (* ANY *)
       VAR header: ARRAY OF SYSTEM.BYTE; (* quadword_signed *)
-      retry_count-: SYSTEM.INT32 (* longword_unsigned, unsigned, optional: NIL omits it *)
+      retry_count-: SYSTEM.CARD32 (* longword_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$INSQTI
@@ -1263,7 +1263,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$INSQTI"] LIB$INSQTI*(
       VAR ENTRY: ARRAY OF SYSTEM.BYTE; (* ANY *)
       VAR header: ARRAY OF SYSTEM.BYTE; (* quadword_signed *)
-      retry_count-: SYSTEM.INT32 (* longword_unsigned, unsigned, optional: NIL omits it *)
+      retry_count-: SYSTEM.CARD32 (* longword_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$INSV
@@ -1278,7 +1278,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$INSV"] LIB$INSV*(
       longword_integer_source-: SYSTEM.INT32; (* longword_signed *)
       position-: SYSTEM.INT32; (* longword_signed *)
-      size-: SYSTEM.INT8; (* byte_unsigned, unsigned *)
+      size-: SYSTEM.CARD8; (* byte_unsigned *)
       base_address: SYSTEM.ADDRESS (* ADDRESS *)
     );
 
@@ -1290,8 +1290,8 @@ MODULE LIB_ROUTINES;
      detection for the calling routine activation.  The previous integer overflow
      enable setting is returned. *)
   PROCEDURE ["VMS", "LIB$INT_OVER"] LIB$INT_OVER*(
-      new_setting-: SYSTEM.INT32 (* longword_unsigned, unsigned *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+      new_setting-: SYSTEM.CARD32 (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$INIT_DATE_TIME_CONTEXT
 
@@ -1303,7 +1303,7 @@ MODULE LIB_ROUTINES;
      LIB$FORMAT_DATE_TIME or LIB$CONVERT_DATE_STRING with specific strings,
      instead of through logical name translation. *)
   PROCEDURE ["VMS", "LIB$INIT_DATE_TIME_CONTEXT"] LIB$INIT_DATE_TIME_CONTEXT*(
-      VAR user_context: SYSTEM.INT32; (* context, unsigned *)
+      VAR user_context: SYSTEM.CARD32; (* context *)
       component-: SYSTEM.INT32; (* longword_signed *)
       init_string-: ARRAY OF CHAR (* char_string *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -1316,7 +1316,7 @@ MODULE LIB_ROUTINES;
      string. *)
   PROCEDURE ["VMS", "LIB$LEN"] LIB$LEN*(
       source_string-: ARRAY OF CHAR (* char_string *)
-    ): SYSTEM.INT16; (* word_unsigned *)
+    ): SYSTEM.CARD16; (* word_unsigned *)
 
   (* LIB$LOCC
 
@@ -1329,7 +1329,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$LOCC"] LIB$LOCC*(
       character_string-: ARRAY OF CHAR; (* char_string *)
       source_string-: ARRAY OF CHAR (* char_string *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$LOOKUP_KEY
 
@@ -1341,9 +1341,9 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$LOOKUP_KEY"] LIB$LOOKUP_KEY*(
       search_string-: ARRAY OF CHAR; (* char_string *)
       key_table_array-: ARRAY OF SYSTEM.BYTE; (* ANY *)
-      VAR key_value: SYSTEM.INT32; (* longword_unsigned, unsigned, optional: NIL omits it *)
+      VAR key_value: SYSTEM.CARD32; (* longword_unsigned, optional: NIL omits it *)
       VAR keyword_string: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$LOOKUP_TREE
@@ -1382,7 +1382,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$MATCHC"] LIB$MATCHC*(
       sub_string-: ARRAY OF CHAR; (* char_string *)
       source_string-: ARRAY OF CHAR (* char_string *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$MATCH_COND
 
@@ -1400,7 +1400,7 @@ MODULE LIB_ROUTINES;
      callable routine. The source item is moved to the destination item. Overlap of
      the source and destination items does not affect the result. *)
   PROCEDURE ["VMS", "LIB$MOVC3"] LIB$MOVC3*(
-      word_integer_length-: SYSTEM.INT16; (* word_unsigned, unsigned *)
+      word_integer_length-: SYSTEM.CARD16; (* word_unsigned *)
       source-: ARRAY OF SYSTEM.BYTE; (* ANY *)
       VAR destination: ARRAY OF SYSTEM.BYTE (* ANY *)
     );
@@ -1413,10 +1413,10 @@ MODULE LIB_ROUTINES;
      as a callable routine.  The source item is moved to the destination item.
      Overlap of the source and destination items does not affect the result. *)
   PROCEDURE ["VMS", "LIB$MOVC5"] LIB$MOVC5*(
-      word_integer_source_length-: SYSTEM.INT16; (* word_unsigned, unsigned *)
+      word_integer_source_length-: SYSTEM.CARD16; (* word_unsigned *)
       source-: ARRAY OF SYSTEM.BYTE; (* ANY *)
       FILL-: SYSTEM.INT8; (* byte_signed, optional: NIL omits it *)
-      word_integer_destination_length-: SYSTEM.INT16; (* word_unsigned, unsigned *)
+      word_integer_destination_length-: SYSTEM.CARD16; (* word_unsigned *)
       VAR destination: ARRAY OF SYSTEM.BYTE (* ANY *)
     );
 
@@ -1449,7 +1449,7 @@ MODULE LIB_ROUTINES;
       translation_table-: ARRAY OF CHAR; (* char_string *)
       VAR destination_string: ARRAY OF CHAR; (* char_string *)
       fill_character-: ARRAY OF CHAR (* char_string, optional: NIL omits it *)
-    ): SYSTEM.INT32; (* longword_unsigned *)
+    ): SYSTEM.CARD32; (* longword_unsigned *)
 
   (* LIB$MULT_DELTA_TIME
 
@@ -1544,7 +1544,7 @@ MODULE LIB_ROUTINES;
      copied is 252. *)
   PROCEDURE ["VMS", "LIB$PUT_COMMON"] LIB$PUT_COMMON*(
       source_string-: ARRAY OF CHAR; (* char_string *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$PUT_OUTPUT
@@ -1567,7 +1567,7 @@ MODULE LIB_ROUTINES;
      SYS$RADIX_POINT as a process, group, or system logical name. *)
   PROCEDURE ["VMS", "LIB$RADIX_POINT"] LIB$RADIX_POINT*(
       VAR radix_point_string: ARRAY OF CHAR; (* char_string *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$REMQHI
@@ -1580,7 +1580,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$REMQHI"] LIB$REMQHI*(
       VAR header: ARRAY OF SYSTEM.BYTE; (* quadword_signed *)
       VAR remque_address: SYSTEM.ADDRESS; (* ADDRESS *)
-      retry_count-: SYSTEM.INT32 (* longword_unsigned, unsigned, optional: NIL omits it *)
+      retry_count-: SYSTEM.CARD32 (* longword_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$REMQTI
@@ -1593,7 +1593,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$REMQTI"] LIB$REMQTI*(
       VAR header: ARRAY OF SYSTEM.BYTE; (* quadword_signed *)
       VAR remque_address: SYSTEM.ADDRESS; (* ADDRESS *)
-      retry_count-: SYSTEM.INT32 (* longword_unsigned, unsigned, optional: NIL omits it *)
+      retry_count-: SYSTEM.CARD32 (* longword_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$RENAME_FILE
@@ -1609,14 +1609,14 @@ MODULE LIB_ROUTINES;
       new_filespec-: ARRAY OF CHAR; (* char_string *)
       default_filespec-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
       related_filespec-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      flags-: SYSTEM.INT32; (* mask_longword, unsigned, optional: NIL omits it *)
+      flags-: SYSTEM.CARD32; (* mask_longword, optional: NIL omits it *)
       user_success_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address, optional: 0 omits it *)
       user_error_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address, optional: 0 omits it *)
       user_confirm_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address, optional: 0 omits it *)
       user_specified_argument: SYSTEM.ADDRESS; (* user_arg, optional: 0 omits it *)
       VAR old_resultant_name: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
       VAR new_resultant_name: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR file_scan_context: SYSTEM.INT32 (* context, unsigned, optional: NIL omits it *)
+      VAR file_scan_context: SYSTEM.CARD32 (* context, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$RESERVE_EF
@@ -1626,7 +1626,7 @@ MODULE LIB_ROUTINES;
      The Reserve Event Flag routine allocates a local event flag number specified by
      event-flag-number. *)
   PROCEDURE ["VMS", "LIB$RESERVE_EF"] LIB$RESERVE_EF*(
-      event_flag_number-: SYSTEM.INT32 (* ef_number, unsigned *)
+      event_flag_number-: SYSTEM.CARD32 (* ef_number *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$RESET_VM_ZONE
@@ -1636,7 +1636,7 @@ MODULE LIB_ROUTINES;
      The Reset Virtual Memory Zone routine frees all blocks of memory that were
      previously allocated from the zone. *)
   PROCEDURE ["VMS", "LIB$RESET_VM_ZONE"] LIB$RESET_VM_ZONE*(
-      zone_id-: SYSTEM.INT32 (* identifier, unsigned *)
+      zone_id-: SYSTEM.CARD32 (* identifier *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$REVERT
@@ -1666,10 +1666,10 @@ MODULE LIB_ROUTINES;
      system service $ASCTIM to convert a binary date and time value, returning the
      ASCII string using the semantics of the caller's string. *)
   PROCEDURE ["VMS", "LIB$SYS_ASCTIM"] LIB$SYS_ASCTIM*(
-      VAR resultant_length: SYSTEM.INT16; (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
       VAR time_string: ARRAY OF CHAR; (* time_name *)
       user_time-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned, optional: NIL omits it *)
-      flags-: SYSTEM.INT32 (* mask_longword, unsigned, optional: NIL omits it *)
+      flags-: SYSTEM.CARD32 (* mask_longword, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$SCANC
@@ -1681,8 +1681,8 @@ MODULE LIB_ROUTINES;
      instruction available as callable routine. *)
   PROCEDURE ["VMS", "LIB$SCANC"] LIB$SCANC*(
       source_string-: ARRAY OF CHAR; (* char_string *)
-      table_array-: ARRAY OF SYSTEM.INT8; (* vector_mask_byte, unsigned *)
-      byte_integer_mask-: SYSTEM.INT8 (* mask_byte, unsigned *)
+      table_array-: ARRAY OF SYSTEM.CARD8; (* vector_mask_byte *)
+      byte_integer_mask-: SYSTEM.CARD8 (* mask_byte *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$SCOPY_DXDX
@@ -1703,7 +1703,7 @@ MODULE LIB_ROUTINES;
      The Copy Source String Passed by Reference to Destination String routine copies
      a source string passed by reference to a destination string. *)
   PROCEDURE ["VMS", "LIB$SCOPY_R_DX"] LIB$SCOPY_R_DX*(
-      word_integer_source_length-: SYSTEM.INT16; (* word_unsigned, unsigned *)
+      word_integer_source_length-: SYSTEM.CARD16; (* word_unsigned *)
       source_string-: ARRAY OF SYSTEM.BYTE; (* char_string *)
       VAR destination_string: ARRAY OF CHAR (* char_string *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -1719,7 +1719,7 @@ MODULE LIB_ROUTINES;
       logical_name-: ARRAY OF CHAR; (* logical_name *)
       value_string-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
       table-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      attributes-: SYSTEM.INT32; (* mask_longword, unsigned, optional: NIL omits it *)
+      attributes-: SYSTEM.CARD32; (* mask_longword, optional: NIL omits it *)
       item_list-: ARRAY OF SYSTEM.BYTE (* item_list_3, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -1755,9 +1755,9 @@ MODULE LIB_ROUTINES;
      resultant string is limited to 256 bytes and truncation will occur. *)
   PROCEDURE ["VMS", "LIB$SYS_FAOL"] LIB$SYS_FAOL*(
       character_string-: ARRAY OF CHAR; (* char_string *)
-      VAR resultant_length: SYSTEM.INT16; (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
       VAR resultant_string: ARRAY OF CHAR; (* char_string *)
-      directive_argument_address-: SYSTEM.INT32 (* ADDRESS, unsigned *)
+      directive_argument_address-: SYSTEM.CARD32 (* ADDRESS *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$SFREE1_DD
@@ -1777,7 +1777,7 @@ MODULE LIB_ROUTINES;
      The Free One or More Dynamic Strings routine returns one or more dynamic strings
      to free storage. *)
   PROCEDURE ["VMS", "LIB$SFREEN_DD"] LIB$SFREEN_DD*(
-      number_of_descriptors-: SYSTEM.INT32; (* longword_unsigned, unsigned *)
+      number_of_descriptors-: SYSTEM.CARD32; (* longword_unsigned *)
       VAR first_descriptor_array: ARRAY OF SYSTEM.BYTE (* descriptor_array, unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -1788,7 +1788,7 @@ MODULE LIB_ROUTINES;
      The Get One Dynamic String routine allocates dynamic virtual memory to the
      string descriptor you specify. *)
   PROCEDURE ["VMS", "LIB$SGET1_DD"] LIB$SGET1_DD*(
-      word_integer_length-: SYSTEM.INT16; (* word_unsigned, unsigned *)
+      word_integer_length-: SYSTEM.CARD16; (* word_unsigned *)
       VAR descriptor_part: ARRAY OF SYSTEM.BYTE (* quadword_unsigned, unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -1800,10 +1800,10 @@ MODULE LIB_ROUTINES;
      Service $GETMSG and returns a message string into destination-string
      using the semantics of the caller's string. *)
   PROCEDURE ["VMS", "LIB$SYS_GETMSG"] LIB$SYS_GETMSG*(
-      message_id-: SYSTEM.INT32; (* identifier, unsigned *)
-      VAR message_length: SYSTEM.INT16; (* word_unsigned, unsigned, optional: NIL omits it *)
+      message_id-: SYSTEM.CARD32; (* identifier *)
+      VAR message_length: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
       VAR destination_string: ARRAY OF CHAR; (* char_string *)
-      flags-: SYSTEM.INT32; (* mask_longword, unsigned, optional: NIL omits it *)
+      flags-: SYSTEM.CARD32; (* mask_longword, optional: NIL omits it *)
       VAR unsigned_resultant_array: ARRAY OF SYSTEM.BYTE (* ANY, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -1845,7 +1845,7 @@ MODULE LIB_ROUTINES;
      characteristics, and areas, and then passes the information to the specified or
      default action routine. *)
   PROCEDURE ["VMS", "LIB$SHOW_VM_ZONE"] LIB$SHOW_VM_ZONE*(
-      zone_id-: SYSTEM.INT32; (* identifier, unsigned *)
+      zone_id-: SYSTEM.CARD32; (* identifier *)
       detail_level-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
       user_action_procedure: SYSTEM.ADDRESS; (* procedure, a routine's address, optional: 0 omits it *)
       user_arg: SYSTEM.ADDRESS (* user_arg, optional: 0 omits it *)
@@ -1919,8 +1919,8 @@ MODULE LIB_ROUTINES;
      available as a callable routine. *)
   PROCEDURE ["VMS", "LIB$SPANC"] LIB$SPANC*(
       source_string-: ARRAY OF CHAR; (* char_string *)
-      table_array-: ARRAY OF SYSTEM.INT8; (* vector_mask_byte, unsigned *)
-      byte_integer_mask-: SYSTEM.INT8 (* mask_byte, unsigned *)
+      table_array-: ARRAY OF SYSTEM.CARD8; (* vector_mask_byte *)
+      byte_integer_mask-: SYSTEM.CARD8 (* mask_byte *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$SPAWN
@@ -1934,11 +1934,11 @@ MODULE LIB_ROUTINES;
       command_string-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
       input_file-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
       output_file-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      flags-: SYSTEM.INT32; (* mask_longword, unsigned, optional: NIL omits it *)
+      flags-: SYSTEM.CARD32; (* mask_longword, optional: NIL omits it *)
       process_name-: ARRAY OF CHAR; (* process_name, optional: NIL omits it *)
-      VAR process_id: SYSTEM.INT32; (* process_id, unsigned, optional: NIL omits it *)
+      VAR process_id: SYSTEM.CARD32; (* process_id, optional: NIL omits it *)
       completion_status_address: SYSTEM.ADDRESS; (* ADDRESS, optional: 0 omits it *)
-      byte_integer_event_flag_num-: SYSTEM.INT8; (* byte_unsigned, unsigned, optional: NIL omits it *)
+      byte_integer_event_flag_num-: SYSTEM.CARD8; (* byte_unsigned, optional: NIL omits it *)
       AST_address: SYSTEM.ADDRESS; (* procedure, a routine's address, optional: 0 omits it *)
       varying_AST_argument: SYSTEM.ADDRESS; (* user_arg, optional: 0 omits it *)
       prompt_string-: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
@@ -1994,11 +1994,11 @@ MODULE LIB_ROUTINES;
      logical name's translation using the semantics of the caller's string. *)
   PROCEDURE ["VMS", "LIB$SYS_TRNLOG"] LIB$SYS_TRNLOG*(
       logical_name-: ARRAY OF CHAR; (* logical_name *)
-      VAR word_integer_dest_length: SYSTEM.INT16; (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR word_integer_dest_length: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
       VAR destination_string: ARRAY OF CHAR; (* char_string *)
       VAR byte_integer_table: SYSTEM.INT8; (* byte_signed, optional: NIL omits it *)
-      VAR access_mode: SYSTEM.INT8; (* access_mode, unsigned, optional: NIL omits it *)
-      byte_integer_disable_mask-: SYSTEM.INT8 (* mask_byte, unsigned, optional: NIL omits it *)
+      VAR access_mode: SYSTEM.CARD8; (* access_mode, optional: NIL omits it *)
+      byte_integer_disable_mask-: SYSTEM.CARD8 (* mask_byte, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$STAT_VM_ZONE
@@ -2008,11 +2008,11 @@ MODULE LIB_ROUTINES;
      The Return Information About a Zone routine returns a single piece of
      information about the specified zone. *)
   PROCEDURE ["VMS", "LIB$STAT_VM_ZONE"] LIB$STAT_VM_ZONE*(
-      zone_id-: SYSTEM.INT32; (* identifier, unsigned *)
+      zone_id-: SYSTEM.CARD32; (* identifier *)
       item_code-: SYSTEM.INT32; (* longword_signed *)
       VAR resultant_value: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
       VAR resultant_string: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$SUB_TIMES
@@ -2098,8 +2098,8 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$TRIM_FILESPEC"] LIB$TRIM_FILESPEC*(
       old_filespec-: ARRAY OF CHAR; (* char_string *)
       VAR new_filespec: ARRAY OF CHAR; (* char_string *)
-      word_integer_width-: SYSTEM.INT16; (* word_unsigned, unsigned, optional: NIL omits it *)
-      VAR resultant_length: SYSTEM.INT16 (* word_unsigned, unsigned, optional: NIL omits it *)
+      word_integer_width-: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
+      VAR resultant_length: SYSTEM.CARD16 (* word_unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$UID_TO_ASCII
@@ -2119,7 +2119,7 @@ MODULE LIB_ROUTINES;
 
      The Verify a Zone routine performs verification of a zone. *)
   PROCEDURE ["VMS", "LIB$VERIFY_VM_ZONE"] LIB$VERIFY_VM_ZONE*(
-      zone_id-: SYSTEM.INT32 (* identifier, unsigned *)
+      zone_id-: SYSTEM.CARD32 (* identifier *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$WAIT
