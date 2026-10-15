@@ -133,6 +133,15 @@ MODULE ModuleInterface;
     searchPathDirLength = 1024;
     pathBufferLength* = searchPathDirLength + nameBufferLength;
     keyLength* = 16; (* hexadecimal digits of a module key *)
+    (* Phase 17 step 7: the longest line WriteStr lets a .sym have, where it
+       can break one: DCL's CREATE, which unpacks the kit of poc for
+       VAX/VMS, takes a line of 255 characters from a procedure and not
+       one of 973 (doc/developer/vax-macro32-backend.md, section 21) *)
+    symLineLimit = 250;
+    (* what WriteStr holds of a line before it writes it *)
+    lineBufferLength = 1024;
+    (* the spaces that indent a line WriteStr broke *)
+    continuationIndent = 6;
     maxSignificantDigits = 19; (* IEEE double needs at most 17 to round-trip
       through a correctly-rounded parser, which ParseReal is; the extra two
       only bound the search should that ever be wrong, and the text is
@@ -261,6 +270,12 @@ MODULE ModuleInterface;
        WriteStr/WriteLn to Out instead of the file. Both are FALSE outside
        one Show* call. *)
     exportedView, toConsole: BOOLEAN;
+    (* Phase 17 step 7: the line being written, held until WriteLn, so that
+       one longer than symLineLimit can be broken after its last separator
+       (WriteSeparator): breakAt is the index of the space that follows
+       it, or -1 *)
+    lineBuffer: ARRAY lineBufferLength OF CHAR;
+    lineUsed, breakAt: INTEGER;
 
   (* ---- File naming ---- *)
 
@@ -590,20 +605,60 @@ MODULE ModuleInterface;
      bytes between every single piece written. WriteStr below writes
      exactly the characters up to (not including) the terminator, via
      Files.Write - confirmed accepting a bare CHAR value directly. *)
+  (* lineBuffer[from..to - 1], to the file or standard output *)
+  PROCEDURE EmitLine(VAR w: Files.Rider; from, to: INTEGER);
+    VAR text: ARRAY lineBufferLength + 1 OF CHAR; i: INTEGER;
+  BEGIN
+    IF toConsole THEN
+      i := 0;
+      WHILE from + i < to DO text[i] := lineBuffer[from + i]; INC(i) END;
+      text[i] := 0X; Out.String(text)
+    ELSE
+      WHILE from < to DO Files.Write(w, lineBuffer[from]); INC(from) END
+    END
+  END EmitLine;
+
+  (* Each character into lineBuffer. A line that passes symLineLimit is
+     broken where WriteSeparator allowed it: what comes before its space
+     is written, with a line break, and the rest stays, after
+     continuationIndent spaces. A line with nowhere to break is written as it
+     comes once lineBuffer is full. *)
   PROCEDURE WriteStr(VAR w: Files.Rider; s: ARRAY OF CHAR);
-    VAR i: LONGINT;
+    VAR i, k, indentLength, restLength: INTEGER;
   BEGIN
     IF dryRun THEN RETURN END;
-    IF toConsole THEN Out.String(s); RETURN END;
+    indentLength := continuationIndent;
     i := 0;
-    WHILE s[i] # 0X DO Files.Write(w, s[i]); INC(i) END
+    WHILE s[i] # 0X DO
+      IF lineUsed = lineBufferLength THEN EmitLine(w, 0, lineUsed); lineUsed := 0; breakAt := -1 END;
+      lineBuffer[lineUsed] := s[i]; INC(lineUsed); INC(i);
+      (* breakAt >= indentLength: the rest moves towards the start *)
+      IF (lineUsed > symLineLimit) & (breakAt >= indentLength) THEN
+        EmitLine(w, 0, breakAt);
+        IF toConsole THEN Out.Ln ELSE Files.Write(w, 0AX) END;
+        restLength := lineUsed - breakAt - 1; (* after the space *)
+        FOR k := 0 TO restLength - 1 DO lineBuffer[indentLength + k] := lineBuffer[breakAt + 1 + k] END;
+        FOR k := 0 TO indentLength - 1 DO lineBuffer[k] := " " END;
+        lineUsed := indentLength + restLength;
+        breakAt := -1
+      END
+    END
   END WriteStr;
 
   PROCEDURE WriteLn(VAR w: Files.Rider);
   BEGIN
     IF dryRun THEN RETURN END;
+    EmitLine(w, 0, lineUsed); lineUsed := 0; breakAt := -1;
     IF toConsole THEN Out.Ln ELSE Files.Write(w, 0AX) END
   END WriteLn;
+
+  (* separator, ";" or ",", and a space, where WriteStr may break the line *)
+  PROCEDURE WriteSeparator(VAR w: Files.Rider; separator: ARRAY OF CHAR);
+  BEGIN
+    WriteStr(w, separator);
+    IF ~dryRun THEN breakAt := lineUsed END;
+    WriteStr(w, " ")
+  END WriteSeparator;
 
   (* Digits for a negative x are not taken from -x, which does not exist at
      the smallest LONGINT (MIN(HUGEINT), and MIN(LONGINT) under -OC): that
@@ -1070,7 +1125,7 @@ MODULE ModuleInterface;
          tell them apart and refuse access. *)
       WHILE f # NIL DO
         IF f.exported OR ~exportedView THEN
-          IF ~first THEN WriteStr(w, "; ") END;
+          IF ~first THEN WriteSeparator(w, ";") END;
           WriteStr(w, f.name);
           IF f.exported THEN
             IF f.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END
@@ -1094,7 +1149,7 @@ MODULE ModuleInterface;
         first := TRUE;
         p := pct.params;
         WHILE p # NIL DO
-          IF ~first THEN WriteStr(w, "; ") END;
+          IF ~first THEN WriteSeparator(w, ";") END;
           IF p.isVar THEN WriteStr(w, "VAR ") END;
           WriteStr(w, p.name); IF p.isReadOnly THEN WriteStr(w, "-") END;
           WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
@@ -1159,7 +1214,7 @@ MODULE ModuleInterface;
     END;
     f := rec.fields;
     WHILE (f # NIL) & (e # NIL) DO
-      IF ~first THEN WriteStr(w, ", ") END;
+      IF ~first THEN WriteSeparator(w, ",") END;
       WriteStr(w, f.name); WriteStr(w, " := ");
       PrintElementValue(w, scope, e, line, column);
       first := FALSE;
@@ -1178,7 +1233,7 @@ MODULE ModuleInterface;
       PrintFieldValues(w, scope, v.type(Types.RecordType), e, first, line, column)
     ELSE
       WHILE e # NIL DO
-        IF ~first THEN WriteStr(w, ", ") END;
+        IF ~first THEN WriteSeparator(w, ",") END;
         PrintElementValue(w, scope, e, line, column);
         first := FALSE; e := e.next
       END
@@ -1335,7 +1390,7 @@ MODULE ModuleInterface;
     first := TRUE;
     p := m.procType.params;
     WHILE p # NIL DO
-      IF ~first THEN WriteStr(w, "; ") END;
+      IF ~first THEN WriteSeparator(w, ";") END;
       IF p.isVar THEN WriteStr(w, "VAR ") END;
       WriteStr(w, p.name); IF p.isReadOnly THEN WriteStr(w, "-") END;
       WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
@@ -1443,7 +1498,7 @@ MODULE ModuleInterface;
           WriteStr(w, "*(");
           first := TRUE; p := pt.params;
           WHILE p # NIL DO
-            IF ~first THEN WriteStr(w, "; ") END;
+            IF ~first THEN WriteSeparator(w, ";") END;
             IF p.isVar THEN WriteStr(w, "VAR ") END;
             WriteStr(w, p.name); IF p.isReadOnly THEN WriteStr(w, "-") END;
             WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
@@ -1467,7 +1522,7 @@ MODULE ModuleInterface;
     any := FALSE; o := scope.objects;
     WHILE o # NIL DO
       IF o.class = SymbolTable.moduleClass THEN
-        IF ~any THEN WriteStr(w, "  IMPORT ") ELSE WriteStr(w, ", ") END;
+        IF ~any THEN WriteStr(w, "  IMPORT ") ELSE WriteSeparator(w, ",") END;
         IF o.name = o.realModuleName THEN
           WriteStr(w, o.name)
         ELSE
@@ -1552,7 +1607,7 @@ MODULE ModuleInterface;
         needChanged := FALSE;
         PrintDeclarations(w, module, scope)
       UNTIL ~needChanged;
-      dryRun := FALSE;
+      dryRun := FALSE; lineUsed := 0; breakAt := -1;
       WriteStr(w, "MODULE "); WriteStr(w, module.name); WriteStr(w, ";");
       WriteLn(w);
       PrintImports(w, scope);
@@ -1579,7 +1634,7 @@ MODULE ModuleInterface;
     VAR w: Files.Rider;
   BEGIN
     neededHead := NIL; printingDecl := NIL; forwardBaseOK := FALSE;
-    dryRun := FALSE; exportedView := TRUE; toConsole := TRUE;
+    dryRun := FALSE; exportedView := TRUE; toConsole := TRUE; lineUsed := 0; breakAt := -1;
     WriteStr(w, "MODULE "); WriteStr(w, module.name); WriteStr(w, ";");
     WriteLn(w);
     PrintImports(w, scope);

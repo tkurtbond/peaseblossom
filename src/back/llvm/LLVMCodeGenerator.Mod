@@ -176,7 +176,7 @@ MODULE LLVMCodeGenerator;
      attempted here. *)
 
   IMPORT Files, SyntaxTree, SymbolTable, Types, LLVMTypes, ConstantEvaluator, Lexer, SemanticActions,
-         MemoryLayout, Diagnostics, NestedProcedures, ModuleInterface, SYSTEM;
+         MemoryLayout, Diagnostics, NestedProcedures, ModuleInterface, ModuleLists, MethodSlots, SYSTEM;
 
   VAR
     (* How many constructs GenerateProgram met that this backend cannot lower
@@ -309,7 +309,7 @@ MODULE LLVMCodeGenerator;
     dynParam = 2;
 
   TYPE
-    SourcePath* = ARRAY 1400 OF CHAR; (* ModuleInterface.sourcePath fits *)
+    SourcePath* = ModuleLists.SourcePath;
     ValueText = ARRAY textLength + 1 OF CHAR;
     (* Room for "@<module>.<type>.<procedure>" built from three full-length
        (255-character) identifiers plus separators - ValueText's own 64
@@ -508,44 +508,20 @@ MODULE LLVMCodeGenerator;
       next: PendingString
     END;
 
-    (* PLAN.md Phase 8 step 12: one entry per module in a whole program's
-       own dependency-ordered compile list (GenerateProgram*'s own
-       parameter, near this file's end) - imports before importers, the
-       real top (command-line) module always last, matching
-       Oberon2.pdf §11's own module-initialization order. Built entirely
-       outside this module (Poc.Mod's own driver owns Parser/
-       SemanticActions/ModuleInterface, none of which this backend
-       imports - see this module's own header comment on why
-       LLVMCodeGenerator.Mod stays a pure tree-walker); exported purely
-       as a transport type between that discovery pass and
-       GenerateProgram*. *)
-    ModuleList* = POINTER TO ModuleListDesc;
-    ModuleListDesc* = RECORD
-      module*: SyntaxTree.ModuleNode;
-      scope*: SymbolTable.Scope;
-      (* the module's source file, as poc opened it - named in trap messages
-         under -trap-location *)
-      fileName*: SourcePath;
-      (* Phase 12 step 2c: a module a library on the library path has:
-         module and scope come from its .sym, and it is declared to the
-         others (EmitImportDeclarations), not generated *)
-      inLibrary*: BOOLEAN;
-      (* Phase 12 step 2f: a module given as its .sym and .o, objectPath:
-         declared like a library's, not generated, its object linked *)
-      compiled*: BOOLEAN;
-      objectPath*: SourcePath;
-      usesCollector*: BOOLEAN; (* its object calls GarbageCollectedHeap *)
-      (* Phase 12 step 2g: a module given as its .sym and .ll, irPath: not
-         generated, its IR compiled like a generated module's *)
-      irPath*: SourcePath;
-      next*: ModuleList
-    END;
+    (* PLAN.md Phase 8 step 12: the modules of a whole program, imports
+       first (GenerateProgram*'s parameter, near this file's end), are
+       ModuleLists.ModuleList: built entirely outside this module (Poc.Mod's
+       driver owns Parser/SemanticActions/ModuleInterface, none of which
+       this backend imports - see this module's own header comment on why
+       LLVMCodeGenerator.Mod stays a pure tree-walker). It was declared here
+       until Phase 17 step 7 (doc/developer/vax-macro32-backend.md, section
+       21, proposal 8). *)
 
     (* Phase 12 step 2a: a module of the program in the import closure of the
        one being generated (EmitImportDeclarations) *)
     ClosureModule = POINTER TO ClosureModuleDesc;
     ClosureModuleDesc = RECORD
-      module: ModuleList;
+      module: ModuleLists.ModuleList;
       next: ClosureModule
     END;
 
@@ -4754,13 +4730,13 @@ MODULE LLVMCodeGenerator;
       END
     ELSE
       called := method;
-      slot := LLVMTypes.SlotOfMethod(rec, method);
+      slot := MethodSlots.SlotOfMethod(rec, method);
       IF slot < 0 THEN
         Unsupported(w, cg, "type-bound procedure with no ProcTab slot", Types.Undefined, result);
         RETURN
       END;
       IF dyn.kind = dynStatic THEN
-        called := LLVMTypes.SlotMethod(rec, slot, owner)
+        called := MethodSlots.SlotMethod(rec, slot, owner)
       ELSE
         indirect := TRUE
       END
@@ -7225,7 +7201,7 @@ MODULE LLVMCodeGenerator;
     VAR i: INTEGER; owner: Types.RecordType; m: Types.Method; sym: LongText;
   BEGIN
     FOR i := slotCount - 1 TO 0 BY -1 DO
-      m := LLVMTypes.SlotMethod(rec, i, owner);
+      m := MethodSlots.SlotMethod(rec, i, owner);
       MethodSymbol(owner, m.name, sym);
       WriteStr(w, "ptr "); WriteStr(w, sym);
       IF i > 0 THEN WriteStr(w, ", ") END
@@ -7238,7 +7214,7 @@ MODULE LLVMCodeGenerator;
       pointerCount: LONGINT; first: BOOLEAN; text: ValueText;
   BEGIN
     WordIntType(wordInt);
-    slotCount := LLVMTypes.MethodSlotCount(rec);
+    slotCount := MethodSlots.MethodSlotCount(rec);
     level := LLVMTypes.ExtensionLevel(rec);
     pointerCount := CountPointerSlots(rec);
     RecordSymbolBase(rec, base);
@@ -7405,8 +7381,8 @@ MODULE LLVMCodeGenerator;
     EmitLabel(w, cg, registered)
   END EmitRootTableRegistration;
 
-  PROCEDURE HasModuleNamed(modules: ModuleList; name: ARRAY OF CHAR): BOOLEAN;
-    VAR m: ModuleList;
+  PROCEDURE HasModuleNamed(modules: ModuleLists.ModuleList; name: ARRAY OF CHAR): BOOLEAN;
+    VAR m: ModuleLists.ModuleList;
   BEGIN
     m := modules;
     WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
@@ -8022,7 +7998,7 @@ MODULE LLVMCodeGenerator;
   (* The whole-program driver (PLAN.md Phase 8 step 12), generalizing
      what used to be this module's own single-module Generate* (removed -
      its only caller, LLVMToolchainDriver.Mod, now always builds a
-     ModuleList, a one-element list for the every-fixture-before-step-12
+     ModuleLists.ModuleList, a one-element list for the every-fixture-before-step-12
      case of a module with no real IMPORTs). For a one-element list this
      produces byte-identical IR to the old Generate*: each of the four
      passes below degenerates to exactly what Generate* used to do
@@ -8409,8 +8385,8 @@ MODULE LLVMCodeGenerator;
      to the symbol. The declarations come from each module's scope, not its
      syntax tree, so a module known only from its .sym is declared alike. *)
 
-  PROCEDURE FindProgramModule(program: ModuleList; name: ARRAY OF CHAR): ModuleList;
-    VAR m: ModuleList;
+  PROCEDURE FindProgramModule(program: ModuleLists.ModuleList; name: ARRAY OF CHAR): ModuleLists.ModuleList;
+    VAR m: ModuleLists.ModuleList;
   BEGIN
     m := program;
     WHILE (m # NIL) & (m.module.name # name) DO m := m.next END;
@@ -8505,7 +8481,7 @@ MODULE LLVMCodeGenerator;
   END DeclareTypeSymbols;
 
   (* everything module x defines that another module can use *)
-  PROCEDURE DeclareModuleSymbols(VAR w: Files.Rider; VAR cg: Codegen; x: ModuleList);
+  PROCEDURE DeclareModuleSymbols(VAR w: Files.Rider; VAR cg: Codegen; x: ModuleLists.ModuleList);
     VAR obj: SymbolTable.Object; symbol: ValueText; pt: Types.ProcedureType; p: Types.Param;
   BEGIN
     obj := x.scope.objects;
@@ -8532,8 +8508,8 @@ MODULE LLVMCodeGenerator;
 
   (* adds x and, through its scope's IMPORTs, every module of the program it
      reaches to closure, each once *)
-  PROCEDURE CollectClosure(program, x: ModuleList; VAR closure: ClosureModule);
-    VAR c: ClosureModule; obj: SymbolTable.Object; y: ModuleList;
+  PROCEDURE CollectClosure(program, x: ModuleLists.ModuleList; VAR closure: ClosureModule);
+    VAR c: ClosureModule; obj: SymbolTable.Object; y: ModuleLists.ModuleList;
   BEGIN
     IF x = NIL THEN RETURN END;
     c := closure;
@@ -8577,7 +8553,7 @@ MODULE LLVMCodeGenerator;
      (Ongoing implementation enhancements, item 3: an object -compile made
      is reused by -build). GarbageCollectedHeap.Allocate is declared when
      NEW used it (EmitPointerSupport). *)
-  PROCEDURE EmitImportDeclarations(VAR w: Files.Rider; VAR cg: Codegen; program, target: ModuleList;
+  PROCEDURE EmitImportDeclarations(VAR w: Files.Rider; VAR cg: Codegen; program, target: ModuleLists.ModuleList;
                                    withHeap, withArguments, isMain: BOOLEAN);
     VAR closure, c: ClosureModule;
   BEGIN
@@ -8700,7 +8676,7 @@ MODULE LLVMCodeGenerator;
     WriteStr(w, " to "); WriteStr(w, wordInt); WriteStr(w, ")")
   END WriteAddressWord;
 
-  PROCEDURE EmitModuleDescriptor(VAR w: Files.Rider; program: ModuleList; module: SyntaxTree.ModuleNode);
+  PROCEDURE EmitModuleDescriptor(VAR w: Files.Rider; program: ModuleLists.ModuleList; module: SyntaxTree.ModuleNode);
     VAR
       import: SyntaxTree.ImportNode; pd: SyntaxTree.ProcDeclNode; imports, commands: LONGINT;
       wordInt, name, text, countText, symbol: ValueText; first: BOOLEAN;
@@ -8794,9 +8770,9 @@ MODULE LLVMCodeGenerator;
      modules the generated code uses without an IMPORT (ModuleTable,
      GarbageCollectedHeap), then the main module's. unsupportedCount is the
      caller's to reset, once per program. *)
-  PROCEDURE GenerateModule*(program, target: ModuleList; triple: ARRAY OF CHAR; VAR w, body: Files.Rider);
+  PROCEDURE GenerateModule*(program, target: ModuleLists.ModuleList; triple: ARRAY OF CHAR; VAR w, body: Files.Rider);
     VAR
-      cg: Codegen; m: ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments, realign: BOOLEAN;
+      cg: Codegen; m: ModuleLists.ModuleList; pd: SyntaxTree.ProcDeclNode; withRootTables, withHeap, withArguments, realign: BOOLEAN;
       isMain: BOOLEAN; td: SyntaxTree.TypeDeclNode; typeObj: SymbolTable.Object; import: SyntaxTree.ImportNode;
       wordInt, symbol, flag, done, already, first: ValueText; r: Files.Rider; ch: CHAR; i, realignId, debugVersionId: INTEGER;
       layout: ARRAY 128 OF CHAR;

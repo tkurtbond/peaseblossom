@@ -20,7 +20,10 @@
 ;;   collector scans the stack up to, before FILESUSE_INIT (Phase 16
 ;;   step 4, section 15, proposal 9).
 ;; Phase 17 step 3 (2026-10-12): Files has its whole interface, so its
-;; key is new (POC_K1_A0694F69C7B15B3C); nothing else differs.
+;; key is new; nothing else differs. Phase 17 step 7 (2026-10-15): a .sym
+;; line over 250 characters is broken (section 21), Files.sym's among
+;; them, so the key is new again (POC_K1_A36A07621DAFB166); nothing else
+;; differs.
 ; FilesUse, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	FILESUSE
 	.IDENT	/bdfb66748e505db6/
@@ -63,7 +66,7 @@ L_ROOTS:
 	.EXTERNAL	FILES_RIDER_85VGJP4M
 	.EXTERNAL	FILES_READ_4SSNK3R2
 	.EXTERNAL	FILES_INIT
-	.EXTERNAL	POC_K1_A0694F69C7B15B3C
+	.EXTERNAL	POC_K1_A36A07621DAFB166
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 

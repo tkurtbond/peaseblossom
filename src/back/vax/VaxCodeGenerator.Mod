@@ -125,7 +125,7 @@ MODULE VaxCodeGenerator;
      and SHORT of one that does not fit, trap. *)
 
   IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
-    ModuleInterface, LLVMTypes, VaxTypes, NestedProcedures;
+    ModuleInterface, MethodSlots, VaxTypes, NestedProcedures;
 
   CONST
     tab = 9X;
@@ -2285,10 +2285,10 @@ MODULE VaxCodeGenerator;
       END;
       IF m.called = NIL THEN Unsupported(line, column, "a base-type call with no base procedure"); RETURN m END
     ELSE
-      m.slot := LLVMTypes.SlotOfMethod(rec, method);
+      m.slot := MethodSlots.SlotOfMethod(rec, method);
       IF m.slot < 0 THEN Unsupported(line, column, "a type-bound procedure with no ProcTab slot"); RETURN m END;
       IF m.fromBlock OR m.fromParam THEN m.indirect := TRUE; m.called := method
-      ELSE m.called := LLVMTypes.SlotMethod(rec, m.slot, m.owner)
+      ELSE m.called := MethodSlots.SlotMethod(rec, m.slot, m.owner)
       END
     END;
     IF ~m.called.receiverIsVar & ~m.fromBlock THEN
@@ -6848,8 +6848,8 @@ MODULE VaxCodeGenerator;
       IF d.rec # NIL THEN
         r := d.rec.baseType;
         WHILE r # NIL DO RecordTag(r(Types.RecordType), text); r := r(Types.RecordType).baseType END;
-        FOR i := 0 TO LLVMTypes.MethodSlotCount(d.rec) - 1 DO
-          m := LLVMTypes.SlotMethod(d.rec, i, owner);
+        FOR i := 0 TO MethodSlots.MethodSlotCount(d.rec) - 1 DO
+          m := MethodSlots.SlotMethod(d.rec, i, owner);
           IF MethodSymbol(owner, m.name, symbol) THEN END
         END
       END;
@@ -6887,11 +6887,11 @@ MODULE VaxCodeGenerator;
     PROCEDURE ProcTab(rec: Types.RecordType);
       VAR symbol: VaxTypes.Symbol; i: INTEGER; owner: Types.RecordType; m: Types.Method;
     BEGIN
-      IF LLVMTypes.MethodSlotCount(rec) > 0 THEN
+      IF MethodSlots.MethodSlotCount(rec) > 0 THEN
         WriteStr(w, "; its ProcTab, the last slot first (section 14, item 6)"); WriteLn(w)
       END;
-      FOR i := LLVMTypes.MethodSlotCount(rec) - 1 TO 0 BY -1 DO
-        m := LLVMTypes.SlotMethod(rec, i, owner);
+      FOR i := MethodSlots.MethodSlotCount(rec) - 1 TO 0 BY -1 DO
+        m := MethodSlots.SlotMethod(rec, i, owner);
         IF MethodSymbol(owner, m.name, symbol) THEN END;
         Line(w, ".ADDRESS", symbol)
       END

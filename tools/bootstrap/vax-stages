@@ -67,8 +67,8 @@ work=$BUILD/guest
 rm -rf "$work" "$BUILD/v2" "$BUILD/v3"
 mkdir -p "$work/in" "$work/back"
 cp "$BUILD"/v1/*.mar "$BUILD/v1/Poc.com" "$BUILD/gen/BuildInfo.Mod" \
-  "$ROOT"/src/front/*.Mod "$ROOT"/src/back/llvm/*.Mod "$ROOT"/src/back/vax/*.Mod \
-  "$ROOT"/src/driver/*.Mod "$ROOT"/rtl/vax/*.Mod "$work/in/"
+  "$ROOT"/src/front/*.Mod "$ROOT"/src/back/vax/*.Mod \
+  "$ROOT"/src/driver/*.Mod "$ROOT"/src/driver/no-llvm/*.Mod "$ROOT"/rtl/vax/*.Mod "$work/in/"
 cp "$ROOT/rtl/vax/PocRtl.mar" "$work/in/POCRTL.MAR"
 clashes=$(ls "$work/in" | tr a-z A-Z | sort | uniq -d)
 if [ -n "$clashes" ]; then

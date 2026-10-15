@@ -65,7 +65,7 @@
 ;;   included; vax-files-extra's FilesExtra passes its 75 checks.
 ; Files, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	FILES
-	.IDENT	/a0694f69c7b15b3c/
+	.IDENT	/a36a07621dafb166/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
@@ -5892,6 +5892,6 @@ L_BODY:
 	RET
 
 ; the module's key, which its importers refer to
-POC_K1_A0694F69C7B15B3C == 0
+POC_K1_A36A07621DAFB166 == 0
 
 	.END

@@ -28,6 +28,7 @@ which fails when what the guide shows is not what poc does.
 9. Calling C
 10. The runtime modules
 11. Coming from voc
+12. poc on VAX/VMS
 
 ## 1. Installing
 
@@ -940,3 +941,79 @@ digits as 64-bit patterns, and has some of its own, among them the unsigned
 integer types `SYSTEM.CARD8` to `SYSTEM.CARD64` and `SYSTEM.CARD`, which
 voc does not have (Reference Guide, "Unsigned integer types"). `-strict`
 rejects them all.
+
+## 12. poc on VAX/VMS
+
+poc also compiles for VAX/VMS 5.5-2, to VAX MACRO-32, which VMS's own MACRO
+assembles; LINK links the objects into an image. It can do so on Unix, as a
+cross-compiler (`-target vax-dec-vms`), or on VMS itself, where poc runs
+too. poc on VMS has no LLVM back end: it compiles for VAX/VMS only, and
+refuses the options that only the LLVM back end has (`-lto`, `-g`, `-opt`,
+`-static`, `-link`, `-c-flag`, `-rebuild`, `-verbose`, `-emit-llvm-ir` and
+`-dump-llvm-types`). `doc/developer/vax-macro32-backend.md` describes the
+back end.
+
+### Installing poc on VMS
+
+A release has poc for VMS as two text files, beside the tarball and in it
+as `vax/`, with the version's periods made hyphens:
+
+- `POC-<version>.COM` (`POC-0-7-0.COM`), the base kit: poc and its
+  runtime library, `POCRTL`;
+- `POC-VMS-<version>.COM`, the STARLET kit: VMS's own interfaces, the
+  libraries `VMSDEF` (the system services, run-time library routines and
+  definitions of STARLET, generated from `STARLETSD.TLB`) and `VMSLIB`
+  (conditions, logical names and DCL symbols, built on them). A program
+  that uses neither needs only the base kit.
+
+Each is a DCL procedure that unpacks itself into the directory it is run
+in, and everything in it is text, since VMS keeps a file copied by FTP in
+binary mode as fixed 512-byte records. `make vax-kit` writes both from the
+source tree, in `build/vax-kit`.
+
+1. Copy the kits to VMS in ASCII (text) mode: with FTP, `ascii` before
+   `put`.
+2. Make an empty directory for poc, at most four names deep, and unpack the
+   base kit there, and the STARLET kit if you want it, now or later:
+
+       $ CREATE/DIRECTORY [.POC]
+       $ SET DEFAULT [.POC]
+       $ @[-]POC-0-7-0
+       $ @[-]POC-VMS-0-7-0
+
+   The base kit makes `[.BIN]`, `[.KIT]` (poc's own MACRO-32),
+   `[.LIB.POC.VAX-DEC-VMS.O2]` and `[.OC]` (the libraries), `[.SRC]`
+   (the source poc for VMS is built from), `BUILD.COM`, `SETUP.COM`,
+   `README.TXT`, `LICENSE.TXT` and `VERSION.TXT`. The STARLET kit adds its
+   libraries and their sources, and `README-VMS.TXT`; it refuses a
+   directory without a poc of its own version.
+3. `@BUILD` assembles and links `POC.EXE` into `[.BIN]`, then builds the
+   libraries that are there under both size models, with MACRO, LIBRARY
+   and LINK alone: no privilege and nothing beyond the base system is
+   needed. It takes a while; `BUILD.LOG` has each step's time. It builds
+   only what is not built yet, so after the STARLET kit is unpacked into
+   a built installation, `@BUILD` builds just `VMSDEF` and `VMSLIB`; to
+   build something again, delete it (`POC.EXE`, or a library's `.OLB`)
+   first. `@BUILD O2` or `@BUILD OC` builds one size model's libraries,
+   and `@BUILD BOTH CLEAN` deletes `[.KIT]` once `POC.EXE` is built.
+4. `@SETUP`, once a session or from `LOGIN.COM`, defines the command `POC`
+   and the logical names of the `-O2` libraries that are built; `@SETUP
+   OC`, of the `-OC` ones. A library's logical names name one directory, so a process builds
+   against one size model's libraries at a time.
+
+### Building a program on VMS
+
+       $ POC HELLO.MOD
+       $ @HELLO
+       $ RUN HELLO
+
+poc compiles `HELLO.MOD` and the modules it imports to MACRO-32 and writes
+`HELLO.COM`, which assembles them and links `HELLO.EXE` against the
+libraries' object libraries, or with `-shared-libraries` their shareable
+images, which the program then finds at run time through the logical names
+`SETUP.COM` defined. Options may be typed in any case. poc finds imports on
+its import path and the search list `POC$IMPORT`, and libraries in
+`[.LIB.POC]` beside its `[.BIN]`, then on the search list `POC$LIBRARY`.
+An argument `@<file>` stands for the arguments in `<file>`, one a line,
+for a command longer than DCL takes; poc expands a file name's wildcards,
+`*` and `%`, itself.

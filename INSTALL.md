@@ -4,7 +4,8 @@ poc, the Peaseblossom Oberon Compiler, is built and installed with GNU make.
 This file says how: from a release tarball (section 2), which is also the
 way to install poc on any Linux distribution or BSD that has no package
 for it; from the git repository (section 3); and into a place other than
-`/usr/local` (section 4). Section 5 is the operating systems' packages. The User's Guide
+`/usr/local` (section 4). Section 5 is the operating systems' packages,
+and section 6 poc for VAX/VMS. The User's Guide
 (`doc/users-guide.md`) is how to use poc once it is installed;
 `doc/developer/DEVELOPER.md` is how to work on it.
 
@@ -247,3 +248,13 @@ the `i386` one or the `amd64` one:
 `signify(1)`; the release's `SHA256SUMS` is signed with GPG instead. On
 any other system release or architecture, build poc from the tarball
 (section 2).
+
+## 6. VAX/VMS
+
+poc runs on VAX/VMS 5.5-2 too, built there from the kits in a release,
+beside the tarball and in it as `vax/`, each a DCL procedure that unpacks
+itself on VMS: `POC-<version>.COM`, poc, and `POC-VMS-<version>.COM`,
+VMS's own interfaces (`VMSDEF` and `VMSLIB`), unpacked into the same
+directory. `make vax-kit` writes them from the source tree. The User's
+Guide, section 12, says how to install and use them, and the kits' own
+`README.TXT` and `README-VMS.TXT` say the same.

@@ -1,7 +1,8 @@
 $ ! PLAN.md Phase 16 step 4's end: POC.COM, which poc -build wrote for
 $ ! poc's own source, run after poc's runtime is assembled; then POC.EXE,
 $ ! as a foreign command, with options DCL uppercases, its SYS$ERROR a
-$ ! file, printed after its status
+$ ! file, printed after its status. -lto is refused, poc on VMS having
+$ ! no LLVM back end (Phase 17 step 7).
 $ SET NOON
 $ MACRO/OBJECT POCRTL.MAR
 $ S = $STATUS
@@ -11,7 +12,7 @@ $ WRITE SYS$OUTPUT "build status: ", S
 $ IF .NOT. S THEN GOTO CLEAN
 $ POC :== $'F$ENVIRONMENT("DEFAULT")'POC.EXE
 $ OPTIONS = "-help/-h/-version/-target vax-dec-vms -version/" + -
-    "-target x86_64-linux-gnu -version/-nosuch"
+    "-target x86_64-linux-gnu -version/-lto -version/-nosuch"
 $ I = 0
 $ RUN_ONE:
 $ OPTION = F$ELEMENT(I, "/", OPTIONS)

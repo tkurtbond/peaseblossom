@@ -9,7 +9,7 @@ handling. For each family this file says three things:
 - what the interface costs.
 
 It then lists the proposals, what is left out and why. Step 5 builds the
-interfaces chosen here, step 6 the asynchronous parts, and step 7 is the
+interfaces chosen here, step 6 the asynchronous parts, and step 8 is the
 gate.
 
 ## Sources and method

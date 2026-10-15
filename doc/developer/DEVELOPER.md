@@ -279,7 +279,12 @@ here, into `build/vax-bootstrap/v1`. `vax-stages` then links that on the
 guest, compiles poc there with it (V2) and with V2's image (V3), and
 compares their `.mar` with V1's. It holds the guest's lock for about an
 hour and a half, so a VAX fixture run meanwhile waits. `-install` makes
-the last stage's image `POC`'s `[.BIN]POC.EXE`.
+the last stage's image `POC`'s `[.BIN]POC.EXE`. `make vax-kit` writes
+the kits a release carries, poc for VAX/VMS as two DCL procedures,
+`build/vax-kit/POC-<version>.COM`, poc, and `POC-VMS-<version>.COM`,
+`VMSDEF` and `VMSLIB`, and `make check-vax-kit` installs them in
+`[.KITCHECK]` on the guest and builds programs with them, for an hour or
+more (`tools/bootstrap/README.md`; `vax-macro32-backend.md`, section 21).
 
 `make test-vax-guest-poc` (`tools/vax-guest-poc [-only <regex>]`) runs
 the fixtures' compilations under poc on the guest: V1's image, linked
@@ -445,7 +450,10 @@ the names, and the variables that give them to the tools, are yours.
        tools/check-hosts -t check-install -t check-seed
 
 3. **Commit and push**, then check that commit on rackhir:
-   `tools/check-hosts -c HEAD rackhir`.
+   `tools/check-hosts -c HEAD rackhir`. Check the kits of poc for VAX/VMS
+   on the guest too (section 4, "The VAX/VMS development system"), from
+   that commit: `make check-vax-kit` (with `CHECK_VAX_KIT_FLAGS=-full`
+   when poc's own source changed for the VAX).
 4. **The tarball**, from that commit, on atla (any machine with
    `make doc`'s tools, section 2):
 
@@ -456,7 +464,11 @@ the names, and the variables that give them to the tools, are yours.
        make dist-sign            # .asc, with gpg's default key (GPG_KEY=... for another)
 
    `make dist` refuses a tree that differs from HEAD, or a Stage 2 built
-   from another commit. It runs `make doc` (section 2), and puts the HTML
+   from another commit. It also writes the kits of poc for VAX/VMS,
+   `build/dist/POC-<version>.COM` and `POC-VMS-<version>.COM` (the
+   version's periods made hyphens; `tools/bootstrap/make-vax-kit`,
+   `vax-macro32-backend.md` section 21), and puts copies in the tarball as
+   `vax/`. It runs `make doc` (section 2), and puts the HTML
    and PDF documents in the tarball, as `doc/html` and `doc/pdf`, so that
    a package needs no document tools. Each `make dist` writes a new tarball (tar and
    gzip record times), so run it once, through `make distcheck`, and sign
@@ -474,10 +486,11 @@ the names, and the variables that give them to the tools, are yours.
        git tag -v v0.1.0
        git push origin v0.1.0
 
-6. **Publish** the tarball with its `.sha256` and `.asc`:
+6. **Publish** the tarball with its `.sha256` and `.asc`, and the VAX/VMS
+   kits:
 
        gh release create v0.1.0 build/dist/peaseblossom-0.1.0.tar.gz{,.sha256,.asc} \
-         --title "Peaseblossom 0.1.0" --notes-file <notes>
+         build/dist/POC-0-1-0.COM build/dist/POC-VMS-0-1-0.COM --title "Peaseblossom 0.1.0" --notes-file <notes>
 
    and on the project's own site. Besides what changed, the notes say how
    to install each package (`INSTALL.md`, section 5, "Installing a
@@ -485,7 +498,9 @@ the names, and the variables that give them to the tools, are yours.
    `dnf install ./<rpm>`, `pkg add ./<pkg>` or `pkg_add ./<tgz>`; and for
    OpenBSD, whose `pkg_add` takes a package only under its own name,
    `peaseblossom-<version>.tgz`, the download under that name with
-   `ftp -o` and `pkg_add -D unsigned`.
+   `ftp -o` and `pkg_add -D unsigned`. For VAX/VMS they point to the
+   User's Guide, section 12: the kits copied in ASCII mode, the
+   STARLET kit unpacked over the base kit, `@BUILD`, `@SETUP`.
 7. **The packages.** Each package's checksums (`distinfo`) are of the
    published tarball, so they come after it: make them on each system
    (section 6), with the packing lists if what is installed changed;
@@ -506,7 +521,7 @@ the names, and the variables that give them to the tools, are yours.
 
    `make release-files` (`tools/release-files`) gathers them in
    `build/release/<version>/`:
-   - the tarball's three files from `build/dist`;
+   - the tarball's three files, and the VAX/VMS kit, from `build/dist`;
    - the RPMs from `~/rpmbuild` (`RPM_DIR`);
    - each BSD package by `scp` from the host that built it, named for that
      host's `uname`. `FREEBSD_HOSTS`, `OPENBSD_HOSTS` and `NETBSD_HOSTS`

@@ -15,7 +15,12 @@ CONFORMANCE_DIR := test/conformance
 FRONT_SRCS := $(wildcard src/front/*.Mod)
 BACK_LLVM_SRCS := $(wildcard src/back/llvm/*.Mod)
 BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod)
-DRIVER_SRCS := src/driver/Version.Mod src/driver/Libraries.Mod src/driver/Poc.Mod
+DRIVER_SRCS := src/driver/Version.Mod src/driver/Libraries.Mod src/driver/llvm/LLVMBackEnd.Mod \
+  src/driver/Poc.Mod
+# Phase 17 step 7: the LLVMBackEnd of a poc without the LLVM back end, which
+# poc for VAX/VMS is built with (tools/bootstrap/vax-v1); checked by
+# check-strict, not part of poc here
+NO_LLVM_SRCS := src/driver/no-llvm/LLVMBackEnd.Mod
 # Phase 13 step 1: the commit `poc -version` names, written by tools/build-info
 # on every make (it rewrites the file only when the commit or the tree's state
 # changed, so only then is poc rebuilt)
@@ -64,7 +69,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-vax test-vax-guest-poc vax-v1 vax-stages test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-vax test-vax-guest-poc vax-v1 vax-stages vax-kit check-vax-kit test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -210,7 +215,7 @@ check-lto: build
 # SYSTEM.ADDRESS and external procedures, and is not checked.
 check-strict: $(STAGE1_BIN)
 	@status=0; \
-	for f in $(SRCS); do \
+	for f in $(SRCS) $(NO_LLVM_SRCS); do \
 	  out=$$($(STAGE1_BIN) -OC -strict -import-path $(BUILD_DIR)/stage1/obj -check $$f 2>&1); \
 	  if [ "$$out" != "semantic OK" ]; then \
 	    echo "$$out"; echo "check-strict: $$f uses more than Oberon2.pdf"; status=1; \
@@ -432,7 +437,10 @@ $(DOC_OTHER_DIR)/pdf/%.pdf: doc/%.md tools/doc/pdf.lua tools/doc/pdf-header.tex
 
 # Phase 13 step 5: make dist writes build/dist/peaseblossom-<version>.tar.gz
 # and its SHA-256 sum: the tracked files of HEAD (git archive, so no build
-# products or test outputs), the bootstrap seed as seed/, the documents as
+# products or test outputs), the bootstrap seed as seed/, the two kits of
+# poc for VAX/VMS as vax/POC-<version>.COM and vax/POC-VMS-<version>.COM
+# (Phase 17 step 7), which are also written beside the tarball, the
+# documents as
 # HTML and PDF in doc/html and doc/pdf (make doc), and COMMIT, the
 # commit, which tools/build-info reads where there is no .git. Refused
 # unless the tracked files are HEAD's and the Stage 2 poc that writes the
@@ -444,6 +452,10 @@ VERSION := $(shell sed -n 's/^ *number\* *= *"\(.*\)";.*/\1/p' src/driver/Versio
 DIST_NAME := peaseblossom-$(VERSION)
 DIST_DIR := $(BUILD_DIR)/dist
 DIST_TARBALL := $(DIST_DIR)/$(DIST_NAME).tar.gz
+# Phase 17 step 7: the kits of poc for VAX/VMS, the base kit and the
+# STARLET kit (tools/bootstrap/make-vax-kit), in the tarball as vax/ and
+# beside it, each a release's file of its own
+VAX_KIT_NAMES := POC-$(subst .,-,$(VERSION)).COM POC-VMS-$(subst .,-,$(VERSION)).COM
 
 dist: $(STAGE2_BIN) doc
 	@git diff --quiet HEAD -- || { echo "dist: the tracked files differ from HEAD; commit first"; exit 1; }
@@ -457,6 +469,11 @@ dist: $(STAGE2_BIN) doc
 	git rev-parse --short HEAD > $(DIST_DIR)/$(DIST_NAME)/COMMIT
 	cp -R $(DOC_DIR)/html $(DOC_DIR)/pdf $(DIST_DIR)/$(DIST_NAME)/doc/
 	SEED_DIR=$(abspath $(DIST_DIR)/$(DIST_NAME)/seed) tools/bootstrap/make-seed
+	POC_BIN_DIR=$(abspath $(dir $(STAGE2_BIN))) VAX_KIT_DIR=$(abspath $(DIST_DIR)/vax-kit) \
+	  tools/bootstrap/make-vax-kit >/dev/null
+	mkdir -p $(DIST_DIR)/$(DIST_NAME)/vax
+	cd $(DIST_DIR)/vax-kit && cp $(VAX_KIT_NAMES) ../$(DIST_NAME)/vax/ && mv $(VAX_KIT_NAMES) ..
+	rm -rf $(DIST_DIR)/vax-kit
 	cd $(DIST_DIR) && tar -cf - $(DIST_NAME) | gzip -9 > $(DIST_NAME).tar.gz
 	cd $(DIST_DIR) && if command -v sha256sum >/dev/null; then sha256sum $(DIST_NAME).tar.gz; \
 	  else sha256 -r $(DIST_NAME).tar.gz; fi > $(DIST_NAME).tar.gz.sha256
@@ -556,6 +573,20 @@ test-vax-guest-poc: build
 
 vax-stages: build
 	tools/bootstrap/vax-stages
+
+# PLAN.md Phase 17 step 7: poc for VAX/VMS as two text files, each a DCL
+# procedure that unpacks itself on VMS (doc/developer/vax-macro32-backend.md,
+# section 21): vax-kit writes them, build/vax-kit/POC-<version>.COM, poc,
+# and POC-VMS-<version>.COM, VMSDEF and VMSLIB, on this host alone;
+# check-vax-kit installs them on the guest, as a site would, and builds
+# and runs programs with them (CHECK_VAX_KIT_FLAGS=-full also checks
+# the fixed point there). Not part of make check: check-vax-kit holds the
+# guest for an hour or more.
+vax-kit: build
+	tools/bootstrap/make-vax-kit
+
+check-vax-kit: build
+	tools/bootstrap/check-vax-kit $(CHECK_VAX_KIT_FLAGS)
 
 # Removes poc's own build output (tools/bootstrap/stage0's target).
 clean-build:

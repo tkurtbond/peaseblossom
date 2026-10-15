@@ -1,7 +1,9 @@
 #!/bin/sh
 # Gathers the files a release attaches (doc/developer/DEVELOPER.md, section
 # 7, step 7) into build/release/<version>/: the tarball with its .sha256
-# and .asc, from build/dist (make distcheck and make dist-sign); the RPMs,
+# and .asc, and the two kits of poc for VAX/VMS, POC-<version>.COM and
+# POC-VMS-<version>.COM, from
+# build/dist (make distcheck and make dist-sign); the RPMs,
 # binary and source, from ~/rpmbuild (RPM_DIR); and each BSD package, by
 # scp from the host that built it (section 6), renamed for its system as
 # uname there says, e.g. peaseblossom-<version>-freebsd15.1-amd64.pkg. Then
@@ -39,6 +41,10 @@ take() {
 for f in "$name.tar.gz" "$name.tar.gz.sha256" "$name.tar.gz.asc"; do
   take "$ROOT/build/dist/$f"
 done
+# the kits of poc for VAX/VMS, which make dist writes beside the tarball
+# (Phase 17 step 7; doc/developer/vax-macro32-backend.md, section 21)
+take "$ROOT/build/dist/POC-$(echo "$version" | tr . -).COM"
+take "$ROOT/build/dist/POC-VMS-$(echo "$version" | tr . -).COM"
 
 # take_one PATTERN: takes the one file PATTERN matches, or refuses,
 # naming them all

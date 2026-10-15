@@ -1,0 +1,252 @@
+#!/bin/sh
+# make vax-kit (PLAN.md Phase 17 step 7; doc/developer/vax-macro32-backend.md,
+# section 21, proposals 1, 2, 5 and 10): poc for VAX/VMS as two text files,
+# each a DCL procedure that unpacks itself on VMS into the directory it is
+# run in. Everything in them is text, since a file copied to VMS by FTP in
+# binary mode lands as fixed 512-byte records; BUILD.COM makes POC.EXE and
+# the libraries there, with MACRO, LIBRARY and LINK alone.
+#
+# POC-<version>.COM (the version's periods made hyphens), the base kit:
+#
+#   [.BIN]                     empty, for POC.EXE
+#   [.KIT]                     poc's V1 stage (tools/bootstrap/vax-v1): its
+#                              .mar files, Poc.com and PocRtl.mar
+#   [.LIB.POC.VAX-DEC-VMS.O2]  the library POCRTL (rtl/vax), as poc -library
+#   [.LIB.POC.VAX-DEC-VMS.OC]  writes it for each model
+#   [.SRC...]                  the source poc for VMS is built from, and the
+#                              runtime's
+#   BUILD.COM, SETUP.COM,      from tools/bootstrap/vax-kit, README.TXT with
+#   README.TXT, LICENSE.TXT,   the version filled in; VERSION.TXT, one line
+#   VERSION.TXT                that names the version and commit
+#
+# POC-VMS-<version>.COM, the STARLET kit, run later in the same top: the
+# libraries VMSDEF (rtl/vax/vms, generated from STARLETSD.TLB) and VMSLIB
+# (rtl/vax/vmslib) for each model, their sources in [.SRC.RTL.VMS] and
+# [.SRC.RTL.VMSLIB], and README-VMS.TXT. It refuses a directory whose
+# VERSION.TXT is missing or names another version, and one it has been
+# unpacked in already.
+#
+# A library's files go to the kit its manifest (<name>.library) puts them
+# in: <name>.library, <name>_build.com and <name>_setup.com, each module's
+# .mar, .sym and .owner, and each part's .mar; a file of no library, or of
+# two, is an error. For each file a kit has "$ CREATE <file>",
+# "$ DECK/DOLLARS=<marker>", the file's lines and the marker (DCL
+# Dictionary 5.4, DCL1-111), so that a line may begin with "$"; no line
+# begins with the marker, and none is longer than 255 characters, which
+# CREATE takes, both checked. Every name is the file's own uppercased, and
+# must be unique in its directory. Nothing here uses the guest:
+# tools/bootstrap/check-vax-kit does. The host's poc is POC_BIN_DIR's
+# (default build/bin), as vax-v1's; the kits go in VAX_KIT_DIR (default
+# build/vax-kit), and their paths are the last two lines printed, the base
+# kit's first. Run with no arguments from anywhere.
+set -e
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}
+POC_BIN_DIR=${POC_BIN_DIR:-$ROOT/build/bin}
+export POC_BIN_DIR
+KIT=${VAX_KIT_DIR:-$BUILD/vax-kit}
+TEMPLATES=$ROOT/tools/bootstrap/vax-kit
+MARKER='$_POC_KIT_EOF'
+unset POC_IMPORT_PATH POC_LIBRARY_PATH
+
+"$ROOT/tools/bootstrap/vax-v1" >/dev/null
+V1=$BUILD/vax-bootstrap/v1
+GEN=$BUILD/vax-bootstrap/gen
+
+version=$(sed -n 's/^ *number\* *= *"\(.*\)";.*/\1/p' "$ROOT/src/driver/Version.Mod")
+commit=$(sed -n 's/^ *commit\* *= *"\(.*\)";.*/\1/p' "$GEN/BuildInfo.Mod")
+versionName=$(echo "$version" | tr . -)
+baseKit=POC-$versionName.COM
+vmsKit=POC-VMS-$versionName.COM
+if [ -n "$commit" ]; then commitText=" ($commit)"; else commitText=; fi
+versionLine="Peaseblossom $version$commitText"
+
+rm -rf "$KIT"
+mkdir -p "$KIT/base" "$KIT/vms" "$KIT/libs"
+
+# copy <stage> <dir in the kit> <file>...: each file into the stage, named
+# in uppercase
+copy() {
+  dir=$KIT/$1/$2; shift 2
+  mkdir -p "$dir"
+  for f; do
+    target=$dir/$(basename "$f" | tr a-z A-Z)
+    if [ -e "$target" ]; then echo "make-vax-kit: $target is named twice" >&2; exit 1; fi
+    cp "$f" "$target"
+  done
+}
+
+# [.BIN], where BUILD.COM puts POC.EXE, made empty by the base kit
+mkdir "$KIT/base/BIN"
+copy base KIT "$V1"/*.mar "$V1/Poc.com" "$ROOT/rtl/vax/PocRtl.mar"
+
+# the libraries, each after the ones it needs, and each library's files
+# into its kit's stage
+for model in O2 OC; do
+  libs=$KIT/libs/vax-dec-vms/$model
+  (cd "$KIT/libs" &&
+   "$POC_BIN_DIR/poc" -$model -target vax-dec-vms -clear-library-path -output-dir . -library POCRTL \
+     $(LC_ALL=C ls "$ROOT"/rtl/vax/*.Mod) "$ROOT/rtl/vax/PocRtl.mar" &&
+   "$POC_BIN_DIR/poc" -$model -target vax-dec-vms -clear-library-path -library-path . -output-dir . \
+     -library VMSDEF $(LC_ALL=C ls "$ROOT"/rtl/vax/vms/*.Mod) &&
+   "$POC_BIN_DIR/poc" -$model -target vax-dec-vms -clear-library-path -library-path . -output-dir . \
+     -library VMSLIB $(LC_ALL=C ls "$ROOT"/rtl/vax/vmslib/*.Mod)) >"$KIT/libs/$model.log" 2>&1 || {
+    cat "$KIT/libs/$model.log" >&2
+    echo "make-vax-kit: building the -$model libraries failed" >&2
+    exit 1
+  }
+  for library in POCRTL VMSDEF VMSLIB; do
+    case $library in POCRTL) stage=base ;; *) stage=vms ;; esac
+    files=$(awk -v l="$library" -v d="$libs" '
+      BEGIN { print d "/" l ".library"; print d "/" l "_build.com"; print d "/" l "_setup.com" }
+      $1 == "module" { print d "/" $2 ".mar"; print d "/" $2 ".sym"; print d "/" $2 ".owner" }
+      $1 == "part" { print d "/" $2 ".mar" }' "$libs/$library.library")
+    for f in $files; do
+      if [ ! -e "$f" ]; then echo "make-vax-kit: $library.library names $f, which is not there" >&2; exit 1; fi
+    done
+    # shellcheck disable=SC2086
+    copy $stage LIB/POC/VAX-DEC-VMS/$model $files
+  done
+  # every file of the directory went to one kit (copy refuses a second)
+  inDirectory=$(ls "$libs" | wc -l)
+  inKits=$(ls "$KIT/base/LIB/POC/VAX-DEC-VMS/$model" "$KIT/vms/LIB/POC/VAX-DEC-VMS/$model" | grep -c '\.')
+  if [ "$inDirectory" -ne "$inKits" ]; then
+    echo "make-vax-kit: -$model: $inDirectory library files, $inKits of them in a kit" >&2
+    exit 1
+  fi
+done
+
+copy base SRC/FRONT "$ROOT"/src/front/*.Mod
+copy base SRC/BACK/VAX "$ROOT"/src/back/vax/*.Mod
+copy base SRC/DRIVER "$ROOT"/src/driver/*.Mod
+copy base SRC/DRIVER/NO-LLVM "$ROOT"/src/driver/no-llvm/*.Mod
+copy base SRC/RTL "$ROOT"/rtl/vax/*.Mod "$ROOT/rtl/vax/PocRtl.mar"
+copy base SRC/GEN "$GEN/BuildInfo.Mod"
+copy vms SRC/RTL/VMS "$ROOT"/rtl/vax/vms/*.Mod
+copy vms SRC/RTL/VMSLIB "$ROOT"/rtl/vax/vmslib/*.Mod
+
+copy base . "$TEMPLATES/BUILD.COM" "$TEMPLATES/SETUP.COM"
+cp "$ROOT/LICENSE" "$KIT/base/LICENSE.TXT"
+echo "$versionLine" >"$KIT/base/VERSION.TXT"
+fill() { # fill <template> <target>
+  sed -e "s/@VERSION@/$version/g" -e "s/@VERSIONNAME@/$versionName/g" -e "s/@COMMIT@/$commitText/g" \
+    "$TEMPLATES/$1" >"$2"
+}
+fill README.TXT "$KIT/base/README.TXT"
+fill README-VMS.TXT "$KIT/vms/README-VMS.TXT"
+
+# each a VMS name: a name and a type of at most 39 characters of A-Z, 0-9,
+# $, _ and - (Guide to VMS Files and Devices 5.0); copy has checked that
+# none is there twice
+for stage in base vms; do
+  bad=$(cd "$KIT/$stage" && find . -type f | sed 's|.*/||' |
+        grep -Ev '^[A-Z0-9$_-]{1,39}\.[A-Z0-9$_-]{0,39}$' || true)
+  if [ -n "$bad" ]; then
+    echo "make-vax-kit: not a VMS file name: $bad" >&2
+    exit 1
+  fi
+  if (cd "$KIT/$stage" && find . -type f -exec grep -l "^ *\\$MARKER" {} +) >/dev/null 2>&1; then
+    echo "make-vax-kit: a line of the kit begins with $MARKER" >&2
+    exit 1
+  fi
+done
+
+vmsDirectory() { # ./LIB/POC -> [.LIB.POC]; . -> nothing
+  case $1 in .) echo "" ;; *) echo "[$(echo "$1" | sed 's|^\./|.|; s|/|.|g')]" ;; esac
+}
+
+# body <stage> <readme>: the stage's directories made, then its files, the
+# README first, so that what to do next is there even if the kit does not
+# unpack whole; then the rest of the top's files, then each directory's
+body() {
+  (cd "$KIT/$1"
+   files=$( { echo "./$2"; find . -maxdepth 1 -type f ! -name "$2" | LC_ALL=C sort
+              find . -mindepth 2 -type f | awk '{ d = $0; sub(/\/[^\/]*$/, "", d); print d "\t" $0 }' |
+                LC_ALL=C sort -t "$(printf '\t')" -k1,1 -k2,2 | cut -f2; } )
+   for d in $(find . -mindepth 1 -type d | LC_ALL=C sort); do echo "\$ CREATE/DIRECTORY $(vmsDirectory "$d")"; done
+   last=
+   for f in $files; do
+     d=$(dirname "$f")
+     if [ -n "$last" ] && [ "$last" != . ] && [ "$d" != "$last" ]; then
+       echo "\$ WRITE SYS\$OUTPUT \"unpacked $(vmsDirectory "$last")\""
+     fi
+     last=$d
+     echo "\$ CREATE $(vmsDirectory "$d")$(basename "$f")"
+     echo "\$ DECK/DOLLARS=\"$MARKER\""
+     awk '{ print }' "$f"
+     echo "$MARKER"
+   done
+   echo "\$ WRITE SYS\$OUTPUT \"unpacked $(vmsDirectory "$last")\"")
+}
+
+{
+  cat <<EOF
+\$ ! $baseKit: $versionLine, poc for VAX/VMS 5.5-2,
+\$ ! as a kit that unpacks itself. Copied to VMS in ASCII mode, it is run in
+\$ ! an empty directory, which becomes poc's: @$(echo "$baseKit" | sed 's/\.COM$//'), then @BUILD and
+\$ ! @SETUP. README.TXT, the first file it writes, says more; $vmsKit
+\$ ! adds VMS's own interfaces. Written by tools/bootstrap/make-vax-kit
+\$ ! (doc/developer/vax-macro32-backend.md, section 21).
+\$ ON WARNING THEN EXIT \$STATUS
+\$ IF F\$SEARCH("BUILD.COM") .EQS. "" THEN GOTO EMPTY
+\$ WRITE SYS\$ERROR "$baseKit: this directory has a kit already; unpack it in an empty one"
+\$ EXIT %X10000014
+\$EMPTY:
+\$ WRITE SYS\$OUTPUT "unpacking $versionLine for VAX/VMS"
+EOF
+  body base README.TXT
+  echo "\$ WRITE SYS\$OUTPUT \"unpacked $versionLine; now @BUILD (README.TXT)\""
+  echo "\$ EXIT 1"
+} >"$KIT/$baseKit"
+
+{
+  cat <<EOF
+\$ ! $vmsKit: $versionLine's STARLET kit for VAX/VMS 5.5-2:
+\$ ! the libraries VMSDEF, VMS's interfaces generated from STARLETSD.TLB, and
+\$ ! VMSLIB, with their sources, as a kit that unpacks itself. Copied to VMS
+\$ ! in ASCII mode, it is run in the top of a poc installation of the same
+\$ ! version, made by $baseKit, and then @BUILD builds the two
+\$ ! libraries. README-VMS.TXT, the first file it writes, says more. Written
+\$ ! by tools/bootstrap/make-vax-kit (doc/developer/vax-macro32-backend.md,
+\$ ! section 21, proposal 10).
+\$ ON WARNING THEN EXIT \$STATUS
+\$ IF F\$SEARCH("VERSION.TXT") .NES. "" THEN GOTO BASE_KIT
+\$ WRITE SYS\$ERROR "$vmsKit: no poc here; run it where $baseKit was unpacked"
+\$ EXIT %X10000014
+\$BASE_KIT:
+\$ OPEN/READ POC_KIT_VERSION VERSION.TXT
+\$ READ POC_KIT_VERSION INSTALLED
+\$ CLOSE POC_KIT_VERSION
+\$ IF INSTALLED .EQS. "$versionLine" THEN GOTO SAME_VERSION
+\$ WRITE SYS\$ERROR "$vmsKit: this is ", INSTALLED, "; the kit is $versionLine"
+\$ EXIT %X10000014
+\$SAME_VERSION:
+\$ IF F\$SEARCH("[.SRC.RTL]VMS.DIR") .EQS. "" THEN GOTO NEW
+\$ WRITE SYS\$ERROR "$vmsKit: it has been unpacked here already"
+\$ EXIT %X10000014
+\$NEW:
+\$ WRITE SYS\$OUTPUT "unpacking the STARLET kit of $versionLine"
+EOF
+  body vms README-VMS.TXT
+  echo "\$ WRITE SYS\$OUTPUT \"unpacked the STARLET kit of $versionLine; now @BUILD (README-VMS.TXT)\""
+  echo "\$ EXIT 1"
+} >"$KIT/$vmsKit"
+rm -rf "$KIT/base" "$KIT/vms" "$KIT/libs"
+
+# DCL's CREATE takes a line of 255 characters from a procedure, and not
+# one of 973 ("-RMS-W-RTB, 973 byte record too large for user's buffer";
+# tried on the guest 2026-10-15); ModuleInterface breaks a .sym's longer
+# lines
+cd "$KIT"
+for kit in "$baseKit" "$vmsKit"; do
+  longest=$(awk '{ if (length > m) m = length } END { print m }' "$kit")
+  if [ "$longest" -gt 255 ]; then
+    awk 'length > 255 { print FILENAME ": line " FNR ", " length " characters" }' "$kit" | head >&2
+    echo "make-vax-kit: a line of $kit is longer than DCL's CREATE takes, 255 characters" >&2
+    exit 1
+  fi
+  echo "make-vax-kit: $kit: $(grep -c '^\$ CREATE [^/]' "$kit") files, $(wc -c <"$kit" | tr -d ' ') bytes, longest line $longest"
+done
+echo "$KIT/$baseKit"
+echo "$KIT/$vmsKit"

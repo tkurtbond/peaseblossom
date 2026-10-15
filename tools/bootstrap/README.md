@@ -30,6 +30,9 @@ named V1-V3, run on the VAX/VMS development system:
 - **V1** (`vax-v1`): the host's poc cross-compiles poc's own source, with
   `rtl/vax` and a `BuildInfo` for a poc that runs on VMS, to `.mar` files
   and `Poc.com` in `build/vax-bootstrap/v1`. It does not use the guest.
+  poc for VMS has no LLVM back end (Phase 17 step 7): V1 is built with
+  `src/driver/no-llvm`'s `LLVMBackEnd` on the import path, and neither
+  `src/driver/llvm` nor `src/back/llvm`.
 - **V2 and V3** (`vax-stages [-to v1|v2|v3] [-install] [-keep]`): runs
   `vax-v1`, then sends what it wrote and poc's sources to the guest, where
   one procedure links V1's `POC.EXE`, compiles poc with it (V2), links
@@ -42,3 +45,22 @@ named V1-V3, run on the VAX/VMS development system:
 
 `make vax-v1` and `make vax-stages` run them. Neither is part of
 `make check`.
+
+The kits of poc for VAX/VMS (`PLAN.md` Phase 17 step 7;
+`doc/developer/vax-macro32-backend.md`, section 21) are made from V1:
+
+- **`make-vax-kit`** (`make vax-kit`): two DCL procedures that unpack
+  themselves, in `build/vax-kit`. `POC-<version>.COM` holds V1, the
+  library `POCRTL` as `poc -library` writes it under `-O2` and `-OC`, the
+  source poc for VMS is built from, and `vax-kit/`'s `BUILD.COM`,
+  `SETUP.COM` and `README.TXT`; `POC-VMS-<version>.COM` holds `VMSDEF`
+  and `VMSLIB`, their sources and `README-VMS.TXT`, and is unpacked into
+  the same top. It does not use the guest; `make dist` puts both in the
+  tarball as `vax/` and beside it.
+- **`check-vax-kit [-full]`** (`make check-vax-kit`, with
+  `CHECK_VAX_KIT_FLAGS=-full`): installs the kits on the guest in
+  `[.KITCHECK]`, as a site would, the base kit alone first and then the
+  STARLET kit over it, and builds and runs `vax-kit/check`'s two programs
+  with them, under both size models; `-full` also has the
+  kit's poc compile its own source there and compares the `.mar` with V1's.
+  Not part of `make check`.

@@ -66,9 +66,13 @@ MODULE Poc;
 
   IMPORT Modules, Files, Out, Err, Platform, Directories, Lexer, Diagnostics, Parser, SyntaxTree,
          SemanticActions, SymbolTable, Types, MemoryLayout, ModuleInterface,
-         ConstantEvaluator, PredeclaredProcedures, LLVMToolchainDriver, LLVMTypes, LLVMCodeGenerator,
+         ConstantEvaluator, PredeclaredProcedures, ModuleLists, LLVMBackEnd,
          DecimalToDouble, NestedProcedures, VaxTypes, VaxCodeGenerator, VaxToolchainDriver,
          Libraries, Version, BuildInfo;
+  (* LLVMBackEnd is src/driver/llvm's, or for a poc that runs on VAX/VMS
+     src/driver/no-llvm's, which has no LLVM back end (Phase 17 step 7;
+     doc/developer/vax-macro32-backend.md, section 21, proposal 8): the
+     build's import path decides. *)
   (* DecimalToDouble is used only inside ConstantEvaluator's procedure
      bodies, and voc's symbol file records only the imports an exported
      declaration needs, so Stage 0's link line would otherwise miss it: this
@@ -76,6 +80,8 @@ MODULE Poc;
 
   CONST
     maxLineLength = 4096;
+    (* a buffer for a target triple *)
+    tripleLength = 128;
     (* how deep a response file may name another (Phase 17 step 1) *)
     maxResponseDepth = 8;
     importPathEnvVar = "POC_IMPORT_PATH";
@@ -88,7 +94,7 @@ MODULE Poc;
   VAR
     (* Whether anything went wrong that is not counted in Diagnostics.errorCount
        (a file that would not open, a build that failed, bad usage): set where
-       it is reported, and with errorCount and LLVMCodeGenerator.unsupportedCount
+       it is reported, and with errorCount and LLVMBackEnd.UnsupportedCount()
        what makes the process exit with status 1 (below, after Run). Until
        2026-09-20 poc always exited 0, so make and scripts could not tell. *)
     failed: BOOLEAN;
@@ -499,10 +505,10 @@ MODULE Poc;
     Out.Ln;
     (* a poc built to run on VAX/VMS runs no clang (section 15, proposal 7) *)
     COPY(BuildInfo.defaultTarget, triple); onVms := triple[0] # 0X;
-    clang := ~onVms & LLVMToolchainDriver.ClangVersion(line);
+    clang := ~onVms & LLVMBackEnd.ClangVersion(line);
     Out.String("target ");
     IF targetTriple[0] # 0X THEN Out.String(targetTriple)
-    ELSIF clang & LLVMToolchainDriver.HostTriple(triple) & (triple[0] # 0X) THEN
+    ELSIF clang & LLVMBackEnd.HostTriple(triple) & (triple[0] # 0X) THEN
       Out.String(triple); Out.String(" (clang's default)")
     ELSE Out.String("unknown (clang's default, and there is no clang)")
     END;
@@ -622,13 +628,13 @@ MODULE Poc;
   (* The libraries the program modules (from DiscoverModule) needs, checked
      (Libraries.ComputeLinkOrder), and each module the program takes from
      one checked against its library's manifest - the key of the .sym the
-     program was compiled against. Handed to LLVMToolchainDriver in link
+     program was compiled against. Handed to LLVMBackEnd in link
      order. FALSE, having said why, when they cannot be linked. *)
   (* The libraries modules needs in link order (Libraries.ComputeLinkOrder),
      and each module taken from one checked against its library's manifest,
      for any target: FALSE, said why, if they do not agree *)
-  PROCEDURE CheckLibraries(modules: LLVMCodeGenerator.ModuleList): BOOLEAN;
-    VAR m: LLVMCodeGenerator.ModuleList; lib: Libraries.Library; member: Libraries.Member;
+  PROCEDURE CheckLibraries(modules: ModuleLists.ModuleList): BOOLEAN;
+    VAR m: ModuleLists.ModuleList; lib: Libraries.Library; member: Libraries.Member;
         key: Libraries.Key; ok: BOOLEAN;
   BEGIN
     ok := (Libraries.errors = 0) & Libraries.ComputeLinkOrder();
@@ -650,40 +656,10 @@ MODULE Poc;
     RETURN ok
   END CheckLibraries;
 
-  PROCEDURE PrepareLibraries(modules: LLVMCodeGenerator.ModuleList; shared: BOOLEAN): BOOLEAN;
-    VAR
-      lib: Libraries.Library; seen, link, other: Libraries.LinkArgument; ok: BOOLEAN;
+  PROCEDURE PrepareLibraries(modules: ModuleLists.ModuleList; shared: BOOLEAN): BOOLEAN;
+    VAR ok: BOOLEAN;
   BEGIN
-    ok := CheckLibraries(modules);
-    LLVMToolchainDriver.ClearLibraries;
-    LLVMToolchainDriver.ltoLink := FALSE;
-    lib := Libraries.linkOrder;
-    WHILE ok & (lib # NIL) DO
-      LLVMToolchainDriver.AddLibrary(lib.name, lib.dir, shared, Libraries.IsInstalled(lib.dir));
-      (* an LTO library's archive is bitcode, which only -flto links (Phase
-         12 step 2g); its shared library is not *)
-      IF lib.lto & ~shared THEN LLVMToolchainDriver.ltoLink := TRUE END;
-      IF lib.cxx THEN LLVMToolchainDriver.cxxLibrary := TRUE END;
-      lib := lib.linkNext
-    END;
-    (* after them all, the link arguments their manifests record, each once
-       (Ongoing implementation enhancements, item 1) *)
-    seen := NIL; lib := Libraries.linkOrder;
-    WHILE ok & (lib # NIL) DO
-      link := lib.links;
-      WHILE ok & (link # NIL) DO
-        other := seen;
-        WHILE (other # NIL) & (other.arg # link.arg) DO other := other.next END;
-        IF other = NIL THEN
-          Libraries.AddLinkArgument(seen, link.arg);
-          IF ~LLVMToolchainDriver.AddLibraryArgument(link.arg) THEN
-            Err.String("poc: too many libraries and link arguments to link"); Err.Ln; ok := FALSE
-          END
-        END;
-        link := link.next
-      END;
-      lib := lib.linkNext
-    END;
+    ok := CheckLibraries(modules) & LLVMBackEnd.PrepareLibraries(shared);
     IF ~ok THEN failed := TRUE END;
     RETURN ok
   END PrepareLibraries;
@@ -696,7 +672,7 @@ MODULE Poc;
       COPY(explicitTriple, triple);
       RETURN TRUE
     END;
-    RETURN LLVMToolchainDriver.HostTriple(triple)
+    RETURN LLVMBackEnd.HostTriple(triple)
   END ResolveTriple;
 
   (* PLAN.md Phase 8 step 4: sets ConstantEvaluator's word size from the
@@ -706,24 +682,6 @@ MODULE Poc;
      (LLVMTypes.WordSizeForTriple* returns FALSE) is not an error here -
      word size just stays at whatever it already was (wordSize32 by
      default), the same fallback SIZE(T) already had before this existed. *)
-  (* -lto for a target whose linking of bitcode is known not to work is
-     dropped, with a warning: 32-bit x86 NetBSD built for on another
-     host. GNU ld cannot link bitcode, so NetBSD's -lto links with lld,
-     and on NetBSD 11 amd64 lld's dynamically linked i386 executables fail
-     with "Exec format error" (artos, 2026-09-27, again 2026-10-08). On
-     i386 NetBSD itself, whose clang's own target is 32-bit x86 NetBSD,
-     they run, with -lto or without (yishana, NetBSD 11.0 i386,
-     2026-10-08). *)
-  PROCEDURE CheckLTOTarget(triple: ARRAY OF CHAR);
-    VAR host: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
-  BEGIN
-    IF LLVMToolchainDriver.lto & LLVMTypes.IsNetBSD(triple) & LLVMTypes.Is32BitX86(triple)
-       & ~(LLVMToolchainDriver.HostTriple(host) & LLVMTypes.IsNetBSD(host) & LLVMTypes.Is32BitX86(host)) THEN
-      Err.String("poc: warning: -lto ignored for "); Err.String(triple);
-      Err.String(", which has no linker for LLVM bitcode"); Err.Ln;
-      LLVMToolchainDriver.lto := FALSE
-    END
-  END CheckLTOTarget;
 
   PROCEDURE SetWordSizeFromTriple(triple: ARRAY OF CHAR);
     VAR wordSize: INTEGER; recognized: BOOLEAN;
@@ -731,7 +689,7 @@ MODULE Poc;
     IF VaxToolchainDriver.IsVaxTriple(triple) THEN
       ConstantEvaluator.SetWordSize(MemoryLayout.wordSize32) (* the VAX's 32-bit word *)
     ELSE
-      recognized := LLVMTypes.WordSizeForTriple(triple, wordSize);
+      recognized := LLVMBackEnd.WordSizeForTriple(triple, wordSize);
       IF recognized THEN ConstantEvaluator.SetWordSize(wordSize) END
     END
   END SetWordSizeFromTriple;
@@ -747,12 +705,12 @@ MODULE Poc;
      size until Phase 14's "Ongoing bug fixing" 2, so it judged a 64-bit
      host's module by 32-bit rules, and it ignored -target. *)
   PROCEDURE SetCheckTarget(explicitTriple: ARRAY OF CHAR);
-    VAR triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR; clangLine: ARRAY 256 OF CHAR;
+    VAR triple: ARRAY tripleLength OF CHAR; clangLine: ARRAY 256 OF CHAR;
   BEGIN
     importsFromSymOnly := TRUE;
     IF explicitTriple[0] # 0X THEN
       IF ResolveTriple(explicitTriple, triple) THEN SetWordSizeFromTriple(triple); SetLibraryTarget(triple) END
-    ELSIF LLVMToolchainDriver.ClangVersion(clangLine) & LLVMToolchainDriver.HostTriple(triple) THEN
+    ELSIF LLVMBackEnd.ClangVersion(clangLine) & LLVMBackEnd.HostTriple(triple) THEN
       SetWordSizeFromTriple(triple); SetLibraryTarget(triple)
     END
   END SetCheckTarget;
@@ -860,7 +818,7 @@ MODULE Poc;
   END WarnIfSourceDiffers;
 
   PROCEDURE ^ DiscoverModule(name: SyntaxTree.Ident;
-                             VAR modules, tail: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
+                             VAR modules, tail: ModuleLists.ModuleList; VAR ok: BOOLEAN);
 
   (* Whether path names a file *)
   PROCEDURE FileExists(path: ARRAY OF CHAR): BOOLEAN;
@@ -886,7 +844,7 @@ MODULE Poc;
     COPY(symPath, irPath); irPath[i - 3] := "l"; irPath[i - 2] := "l"; irPath[i - 1] := 0X;
     hasObject := FileExists(objectPath);
     IF FileExists(irPath)
-       & (LLVMToolchainDriver.lto OR ~hasObject OR Libraries.IsBitcode(objectPath)) THEN
+       & (LLVMBackEnd.Lto() OR ~hasObject OR Libraries.IsBitcode(objectPath)) THEN
       objectPath[0] := 0X; RETURN TRUE
     END;
     irPath[0] := 0X;
@@ -931,11 +889,11 @@ MODULE Poc;
      IR irPath instead (Phase 12 step 2g, objectPath ""), what the IR says
      of itself (Libraries.ReadIR), and the IR compiled with the program. *)
   PROCEDURE DiscoverCompiledModule(name: SyntaxTree.Ident; symPath, objectPath, irPath: ARRAY OF CHAR;
-                                   VAR modules, tail: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
+                                   VAR modules, tail: ModuleLists.ModuleList; VAR ok: BOOLEAN);
     VAR
       buffer: Lexer.CharBuffer; length: LONGINT; found: BOOLEAN;
       module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode;
-      entry: LLVMCodeGenerator.ModuleList; errorCountBefore: INTEGER;
+      entry: ModuleLists.ModuleList; errorCountBefore: INTEGER;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR; savedStrict: BOOLEAN;
       info: Libraries.ObjectInfo; own, used: Libraries.ObjectKey;
       key: Libraries.Key; triple: Libraries.Name; model: ARRAY 3 OF CHAR; file: Libraries.Path;
@@ -1029,13 +987,13 @@ MODULE Poc;
      be in libraries too: it is declared to the modules generated, and
      linked from lib *)
   PROCEDURE DiscoverLibraryModule(name: SyntaxTree.Ident; lib: Libraries.Library;
-                                  VAR modules, tail: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
+                                  VAR modules, tail: ModuleLists.ModuleList; VAR ok: BOOLEAN);
     VAR
       buffer: Lexer.CharBuffer; length: LONGINT; found: BOOLEAN;
       module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode;
-      entry: LLVMCodeGenerator.ModuleList; errorCountBefore: INTEGER;
+      entry: ModuleLists.ModuleList; errorCountBefore: INTEGER;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR; savedStrict: BOOLEAN;
-      symPath: LLVMCodeGenerator.SourcePath;
+      symPath: ModuleLists.SourcePath;
   BEGIN
     ModuleInterface.ReadSource(name, buffer, length, found);
     Directories.MakePath(lib.dir, name, symPath); Strcat(symPath, ".sym");
@@ -1081,7 +1039,7 @@ MODULE Poc;
   END DiscoverLibraryModule;
 
   PROCEDURE DiscoverModule(name: SyntaxTree.Ident;
-                           VAR modules, tail: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
+                           VAR modules, tail: ModuleLists.ModuleList; VAR ok: BOOLEAN);
     VAR
       buffer: Lexer.CharBuffer;
       length: LONGINT;
@@ -1090,10 +1048,10 @@ MODULE Poc;
       module: SyntaxTree.ModuleNode;
       scope: SymbolTable.Scope;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
-      sourcePath: LLVMCodeGenerator.SourcePath;
+      sourcePath: ModuleLists.SourcePath;
       errorCountBefore: INTEGER; savedStrict: BOOLEAN;
       imp: SyntaxTree.ImportNode;
-      m, entry: LLVMCodeGenerator.ModuleList;
+      m, entry: ModuleLists.ModuleList;
       lib: Libraries.Library; member: LibraryMember;
       symPath, objectPath, irPath: Libraries.Path;
   BEGIN
@@ -1213,7 +1171,7 @@ MODULE Poc;
       imp: SyntaxTree.ImportNode;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
       path: ARRAY ModuleInterface.pathBufferLength OF CHAR;
-      sourcePath: LLVMCodeGenerator.SourcePath;
+      sourcePath: ModuleLists.SourcePath;
       errorCountBefore: INTEGER; savedStrict: BOOLEAN; member: LibraryMember;
   BEGIN
     IF ~ok THEN RETURN END;
@@ -1280,9 +1238,9 @@ MODULE Poc;
 
   (* Unlinks and returns the entry for the module called name from the
      list, or NIL if it is not there. *)
-  PROCEDURE TakeModule(VAR modules: LLVMCodeGenerator.ModuleList; name: SyntaxTree.Ident):
-      LLVMCodeGenerator.ModuleList;
-    VAR m, previous: LLVMCodeGenerator.ModuleList;
+  PROCEDURE TakeModule(VAR modules: ModuleLists.ModuleList; name: SyntaxTree.Ident):
+      ModuleLists.ModuleList;
+    VAR m, previous: ModuleLists.ModuleList;
   BEGIN
     previous := NIL; m := modules;
     WHILE (m # NIL) & (m.module.name # name) DO previous := m; m := m.next END;
@@ -1304,10 +1262,10 @@ MODULE Poc;
      using NEW needs the runtime directory on it. Not for the VAX, whose NEW
      calls POC_NEW in rtl/vax/PocRtl.mar (Phase 16, doc/developer/
      vax-macro32-backend.md, section 14, item 3). *)
-  PROCEDURE AddRuntimeModules(outputDir: ARRAY OF CHAR; VAR modules: LLVMCodeGenerator.ModuleList;
+  PROCEDURE AddRuntimeModules(outputDir: ARRAY OF CHAR; VAR modules: ModuleLists.ModuleList;
                               VAR ok: BOOLEAN);
     VAR
-      table, heap, front, frontTail, m: LLVMCodeGenerator.ModuleList; visited: VisitedModule;
+      table, heap, front, frontTail, m: ModuleLists.ModuleList; visited: VisitedModule;
       fromLibrary, usesCollector: BOOLEAN;
   BEGIN
     IF ~ok OR forVax THEN RETURN END;
@@ -1361,9 +1319,9 @@ MODULE Poc;
      GarbageCollectedHeap, which -build adds to it first, as
      AddRuntimeModules does LLVM's, but alone: the root tables are
      registered with poc's runtime (POC_ROOTS), not ModuleTable. *)
-  PROCEDURE AddVaxCollector(outputDir: ARRAY OF CHAR; VAR modules: LLVMCodeGenerator.ModuleList;
+  PROCEDURE AddVaxCollector(outputDir: ARRAY OF CHAR; VAR modules: ModuleLists.ModuleList;
                             VAR ok: BOOLEAN);
-    VAR heap, front, frontTail: LLVMCodeGenerator.ModuleList; visited: VisitedModule;
+    VAR heap, front, frontTail: ModuleLists.ModuleList; visited: VisitedModule;
   BEGIN
     IF ~ok OR ~PredeclaredProcedures.NewWasCalled() THEN RETURN END;
     visited := NIL;
@@ -1390,8 +1348,8 @@ MODULE Poc;
      step 12), so this only discovers and compiles the *rest* of the
      program. *)
   PROCEDURE BuildProgramModuleList(topModule: SyntaxTree.ModuleNode; topScope: SymbolTable.Scope;
-                                   outputDir: ARRAY OF CHAR; VAR modules: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
-    VAR imp: SyntaxTree.ImportNode; tail, entry: LLVMCodeGenerator.ModuleList;
+                                   outputDir: ARRAY OF CHAR; VAR modules: ModuleLists.ModuleList; VAR ok: BOOLEAN);
+    VAR imp: SyntaxTree.ImportNode; tail, entry: ModuleLists.ModuleList;
   BEGIN
     ok := TRUE; modules := NIL; tail := NIL;
     imp := topModule.imports;
@@ -1414,8 +1372,8 @@ MODULE Poc;
      ok is only ever TRUE (the precondition every caller checks first)
      once BuildProgramModuleList has appended at least the top module
      itself. *)
-  PROCEDURE ProgramTopName(modules: LLVMCodeGenerator.ModuleList; VAR name: SyntaxTree.Ident);
-    VAR m: LLVMCodeGenerator.ModuleList;
+  PROCEDURE ProgramTopName(modules: ModuleLists.ModuleList; VAR name: SyntaxTree.Ident);
+    VAR m: ModuleLists.ModuleList;
   BEGIN
     m := modules;
     WHILE m.next # NIL DO m := m.next END;
@@ -1432,7 +1390,7 @@ MODULE Poc;
      files are regenerated from source (RegenerateInterfaces above), and
      only then is the top module type-checked against them. *)
   PROCEDURE CheckAndDiscoverProgram(name, outputDir: ARRAY OF CHAR;
-                                    VAR modules: LLVMCodeGenerator.ModuleList; VAR ok: BOOLEAN);
+                                    VAR modules: ModuleLists.ModuleList; VAR ok: BOOLEAN);
     VAR
       buffer: Lexer.CharBuffer;
       length: LONGINT;
@@ -1484,7 +1442,7 @@ MODULE Poc;
   PROCEDURE ReportUnsupportedConstructs;
   BEGIN
     failed := TRUE;
-    Err.Int(LLVMCodeGenerator.unsupportedCount, 0);
+    Err.Int(LLVMBackEnd.UnsupportedCount(), 0);
     Err.String(" construct(s) the LLVM backend cannot lower yet; nothing written"); Err.Ln
   END ReportUnsupportedConstructs;
 
@@ -1498,10 +1456,10 @@ MODULE Poc;
 
   PROCEDURE EmitLLVMIR(name, outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
-      modules, m: LLVMCodeGenerator.ModuleList;
+      modules, m: ModuleLists.ModuleList;
       ok: BOOLEAN;
-      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
-      path: ARRAY LLVMToolchainDriver.pathBufferLength OF CHAR;
+      triple: ARRAY tripleLength OF CHAR;
+      path: ARRAY LLVMBackEnd.pathLength OF CHAR;
       topName: SyntaxTree.Ident;
   BEGIN
     IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN
@@ -1518,17 +1476,17 @@ MODULE Poc;
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
       IF ok & PrepareLibraries(modules, sharedLibraries) THEN
         ProgramTopName(modules, topName);
-        IF LLVMToolchainDriver.EmitIR(modules, topName, triple, outputDir, path) THEN
+        IF LLVMBackEnd.EmitIR(modules, topName, triple, outputDir, path) THEN
           (* one .ll per module (Phase 12 step 2a), none for a library's *)
           m := modules;
           WHILE m # NIL DO
             IF ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) THEN
-              LLVMToolchainDriver.ModuleFilePath(outputDir, m.module.name, ".ll", path);
+              LLVMBackEnd.ModuleFilePath(outputDir, m.module.name, ".ll", path);
               Out.String("semantic OK, wrote "); Out.String(path); Out.Ln
             END;
             m := m.next
           END
-        ELSIF LLVMCodeGenerator.unsupportedCount > 0 THEN
+        ELSIF LLVMBackEnd.UnsupportedCount() > 0 THEN
           ReportUnsupportedConstructs
         ELSIF Diagnostics.errorCount > 0 THEN
           ReportGenerationErrors
@@ -1560,7 +1518,7 @@ MODULE Poc;
 
   (* Whether m is a module poc writes the .mar of: one compiled from
      source, and for -compile (onlyMembers) one of the files named *)
-  PROCEDURE IsVaxUnit(m: LLVMCodeGenerator.ModuleList; onlyMembers: BOOLEAN): BOOLEAN;
+  PROCEDURE IsVaxUnit(m: ModuleLists.ModuleList; onlyMembers: BOOLEAN): BOOLEAN;
   BEGIN
     RETURN ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) & (~onlyMembers OR (FindMember(m.module.name) # NIL))
   END IsVaxUnit;
@@ -1576,10 +1534,10 @@ MODULE Poc;
      would be one on VMS, are refused. As for IR: every module's .mar, or
      none, when one could not be made, is left. FALSE, reported, if not
      written. *)
-  PROCEDURE WriteMacro32(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR;
+  PROCEDURE WriteMacro32(modules: ModuleLists.ModuleList; outputDir: ARRAY OF CHAR;
                          onlyMembers, announce: BOOLEAN): BOOLEAN;
     VAR
-      m, n: LLVMCodeGenerator.ModuleList;
+      m, n: ModuleLists.ModuleList;
       written: BOOLEAN;
       key: ARRAY 32 OF CHAR;
       path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
@@ -1677,7 +1635,7 @@ MODULE Poc;
      modules are checked and their .sym files written as for any other
      target. *)
   PROCEDURE EmitMacro32(name, outputDir, explicitTriple: ARRAY OF CHAR);
-    VAR modules: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
+    VAR modules: ModuleLists.ModuleList; ok: BOOLEAN;
   BEGIN
     IF SetVaxTarget("-emit-macro32", explicitTriple) THEN
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
@@ -1717,8 +1675,8 @@ MODULE Poc;
   END VaxImagePaths;
 
   (* The units of modules, in their order, for a build procedure *)
-  PROCEDURE VaxUnits(modules: LLVMCodeGenerator.ModuleList; onlyMembers: BOOLEAN): VaxToolchainDriver.Unit;
-    VAR m: LLVMCodeGenerator.ModuleList; first, last, u: VaxToolchainDriver.Unit;
+  PROCEDURE VaxUnits(modules: ModuleLists.ModuleList; onlyMembers: BOOLEAN): VaxToolchainDriver.Unit;
+    VAR m: ModuleLists.ModuleList; first, last, u: VaxToolchainDriver.Unit;
   BEGIN
     first := NIL; last := NIL; m := modules;
     WHILE m # NIL DO
@@ -1744,7 +1702,7 @@ MODULE Poc;
      is on the library path. Silent on success, as a build is. *)
   PROCEDURE BuildVax(name, outputDir, exePath: ARRAY OF CHAR);
     VAR
-      modules, m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
+      modules, m: ModuleLists.ModuleList; ok: BOOLEAN;
       lib: Libraries.Library; libraries, librariesTail, u: VaxToolchainDriver.Unit;
       topName: SyntaxTree.Ident;
       comPath: ARRAY 300 OF CHAR; image: ARRAY 64 OF CHAR;
@@ -1788,16 +1746,16 @@ MODULE Poc;
 
   PROCEDURE Build(name, outputDir, explicitTriple, exePath: ARRAY OF CHAR);
     VAR
-      modules: LLVMCodeGenerator.ModuleList;
+      modules: ModuleLists.ModuleList;
       ok: BOOLEAN;
-      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+      triple: ARRAY tripleLength OF CHAR;
       topName: SyntaxTree.Ident;
   BEGIN
     IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN BuildVax(name, outputDir, exePath); RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
     ELSE
-      SetWordSizeFromTriple(triple); CheckLTOTarget(triple);
+      SetWordSizeFromTriple(triple); LLVMBackEnd.CheckLTOTarget(triple);
       SetLibraryTarget(triple);
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
       IF ok & PrepareLibraries(modules, sharedLibraries) THEN
@@ -1805,9 +1763,9 @@ MODULE Poc;
         (* Phase 13 step 2: without -o, the executable is named after the
            program's module, in the current directory, as voc names it *)
         IF exePath[0] = 0X THEN COPY(topName, exePath) END;
-        IF LLVMToolchainDriver.Build(modules, topName, triple, outputDir, exePath) THEN
+        IF LLVMBackEnd.Build(modules, topName, triple, outputDir, exePath) THEN
           (* silent on success (Phase 13 step 2), as clang is *)
-        ELSIF LLVMCodeGenerator.unsupportedCount > 0 THEN
+        ELSIF LLVMBackEnd.UnsupportedCount() > 0 THEN
           ReportUnsupportedConstructs
         ELSIF Diagnostics.errorCount > 0 THEN
           ReportGenerationErrors
@@ -1941,7 +1899,7 @@ MODULE Poc;
      checked, not written. Silent on success. *)
   PROCEDURE CompileVax(firstFile: INTEGER; outputDir: ARRAY OF CHAR);
     VAR
-      member: LibraryMember; modules, modulesTail: LLVMCodeGenerator.ModuleList;
+      member: LibraryMember; modules, modulesTail: ModuleLists.ModuleList;
       visited: VisitedModule; ok: BOOLEAN; i: INTEGER;
       comPath: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
   BEGIN
@@ -1974,8 +1932,8 @@ MODULE Poc;
      module named here is compiled even when a library has it. *)
   PROCEDURE CompileOnly(firstFile: INTEGER; outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
-      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
-      member: LibraryMember; modules, modulesTail, m: LLVMCodeGenerator.ModuleList;
+      triple: ARRAY tripleLength OF CHAR;
+      member: LibraryMember; modules, modulesTail, m: ModuleLists.ModuleList;
       visited: VisitedModule; ok: BOOLEAN;
   BEGIN
     IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN CompileVax(firstFile, outputDir); RETURN END;
@@ -1983,9 +1941,9 @@ MODULE Poc;
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
       RETURN
     END;
-    SetWordSizeFromTriple(triple); CheckLTOTarget(triple);
+    SetWordSizeFromTriple(triple); LLVMBackEnd.CheckLTOTarget(triple);
     SetLibraryTarget(triple);
-    LLVMCodeGenerator.buildingLibrary := TRUE; (* no main *)
+    LLVMBackEnd.SetBuildingLibrary; (* no main *)
     ReadMembers(firstFile, FALSE, ok);
     IF ~ok THEN RETURN END;
     ModuleInterface.SetInterfaceDir(outputDir);
@@ -2004,8 +1962,8 @@ MODULE Poc;
       IF ~m.inLibrary & (FindMember(m.module.name) = NIL) THEN m.compiled := TRUE; m.irPath[0] := 0X END;
       m := m.next
     END;
-    IF ~LLVMToolchainDriver.Compile(modules, members.name, triple, outputDir) THEN
-      IF LLVMCodeGenerator.unsupportedCount > 0 THEN ReportUnsupportedConstructs
+    IF ~LLVMBackEnd.Compile(modules, members.name, triple, outputDir) THEN
+      IF LLVMBackEnd.UnsupportedCount() > 0 THEN ReportUnsupportedConstructs
       ELSIF Diagnostics.errorCount > 0 THEN ReportGenerationErrors
       ELSE failed := TRUE; Err.String("poc: compiling failed"); Err.Ln
       END;
@@ -2027,7 +1985,7 @@ MODULE Poc;
     VAR
       dir: Libraries.Path;
       member: LibraryMember; part: VaxPart; owner, lib: Libraries.Library; libMember: Libraries.Member;
-      modules, modulesTail, m: LLVMCodeGenerator.ModuleList; visited: VisitedModule; ok: BOOLEAN;
+      modules, modulesTail, m: ModuleLists.ModuleList; visited: VisitedModule; ok: BOOLEAN;
       imp: SyntaxTree.ImportNode; key: Libraries.Key;
       units, parts, partsTail, needs, needsTail, symbols, u: VaxToolchainDriver.Unit;
       path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
@@ -2171,11 +2129,11 @@ MODULE Poc;
      the archive and the shared library as it is. *)
   PROCEDURE BuildLibrary(name: ARRAY OF CHAR; firstFile: INTEGER; outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
-      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+      triple: ARRAY tripleLength OF CHAR;
       dir: Libraries.Path; command: ARRAY 2 * Libraries.pathLength OF CHAR;
       member: LibraryMember;
       owner, lib: Libraries.Library; libMember: Libraries.Member;
-      modules, modulesTail, m: LLVMCodeGenerator.ModuleList; visited: VisitedModule; ok: BOOLEAN;
+      modules, modulesTail, m: ModuleLists.ModuleList; visited: VisitedModule; ok: BOOLEAN;
       imp: SyntaxTree.ImportNode; key: Libraries.Key;
   BEGIN
     IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN BuildLibraryVax(name, firstFile, outputDir); RETURN END;
@@ -2183,10 +2141,10 @@ MODULE Poc;
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln;
       RETURN
     END;
-    SetWordSizeFromTriple(triple); CheckLTOTarget(triple);
+    SetWordSizeFromTriple(triple); LLVMBackEnd.CheckLTOTarget(triple);
     Libraries.Exclude(name);
     SetLibraryTarget(triple);
-    LLVMCodeGenerator.buildingLibrary := TRUE;
+    LLVMBackEnd.SetBuildingLibrary;
     Libraries.TupleDirectory(outputDir, dir);
     ReadMembers(firstFile, TRUE, ok);
     IF ~ok THEN RETURN END;
@@ -2225,8 +2183,8 @@ MODULE Poc;
     END;
     (* the libraries its modules use, as shared ones for its shared library *)
     IF ~PrepareLibraries(modules, TRUE) THEN RETURN END;
-    IF ~LLVMToolchainDriver.BuildLibrary(modules, name, triple, dir) THEN
-      IF LLVMCodeGenerator.unsupportedCount > 0 THEN ReportUnsupportedConstructs
+    IF ~LLVMBackEnd.BuildLibrary(modules, name, triple, dir) THEN
+      IF LLVMBackEnd.UnsupportedCount() > 0 THEN ReportUnsupportedConstructs
       ELSIF Diagnostics.errorCount > 0 THEN ReportGenerationErrors
       ELSE failed := TRUE; Err.String("poc: building library "); Err.String(name); Err.String(" failed"); Err.Ln
       END;
@@ -2234,8 +2192,8 @@ MODULE Poc;
     END;
     (* the manifest: each module's key and the keys of its imports *)
     lib := Libraries.NewLibrary(name, dir);
-    lib.lto := LLVMToolchainDriver.lto;
-    lib.cxx := LLVMToolchainDriver.HasCxxPart(modules, dir);
+    lib.lto := LLVMBackEnd.Lto();
+    lib.cxx := LLVMBackEnd.HasCxxPart(modules, dir);
     lib.links := linkArguments;
     m := modules;
     WHILE m # NIL DO
@@ -2326,9 +2284,9 @@ MODULE Poc;
     VAR s: ARRAY 512 OF CHAR;
   BEGIN
     Out.String(name);
-    LLVMTypes.TypeLiteral(t, MemoryLayout.sizeModelO2, s);
+    LLVMBackEnd.TypeLiteral(t, MemoryLayout.sizeModelO2, s);
     Out.String(": O2="); Out.String(s);
-    LLVMTypes.TypeLiteral(t, MemoryLayout.sizeModelOC, s);
+    LLVMBackEnd.TypeLiteral(t, MemoryLayout.sizeModelOC, s);
     Out.String(" OC="); Out.String(s);
     Out.Ln
   END PrintLLVMTypeLine;
@@ -2699,7 +2657,7 @@ MODULE Poc;
     VAR
       base, dir, file: Libraries.Path; program: Libraries.Path; owner: Libraries.Name;
       lib, old: Libraries.Library; m: Libraries.Member; n: Libraries.Need; ok: BOOLEAN; f: Files.File;
-      model: ARRAY 3 OF CHAR; triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+      model: ARRAY 3 OF CHAR; triple: ARRAY tripleLength OF CHAR;
   BEGIN
     IF ~SetVaxTarget("-install-library", VaxToolchainDriver.triple) THEN RETURN END;
     lib := Libraries.FindLibrary(name);
@@ -2784,7 +2742,7 @@ MODULE Poc;
 
   PROCEDURE InstallLibrary(name, outputDir, explicitTriple: ARRAY OF CHAR);
     VAR
-      triple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+      triple: ARRAY tripleLength OF CHAR;
       base, dir, file: Libraries.Path; program: Libraries.Path; owner: Libraries.Name;
       command: ARRAY 16 * Libraries.pathLength OF CHAR; lib, old: Libraries.Library;
       m: Libraries.Member; ok: BOOLEAN; status: INTEGER; f: Files.File; model: ARRAY 3 OF CHAR;
@@ -2856,7 +2814,7 @@ MODULE Poc;
     COPY("cd", command); ok := AppendQuoted(command, lib.dir); Strcat(command, " && cp");
     COPY(name, file); Strcat(file, ".library"); ok := AppendQuoted(command, file);
     COPY("lib", file); Strcat(file, name); Strcat(file, ".a"); ok := AppendQuoted(command, file);
-    LLVMToolchainDriver.SharedLibraryName(name, triple, file); ok := AppendQuoted(command, file);
+    LLVMBackEnd.SharedLibraryName(name, triple, file); ok := AppendQuoted(command, file);
     m := lib.modules;
     WHILE m # NIL DO
       COPY(m.name, file); Strcat(file, ".sym"); ok := AppendQuoted(command, file);
@@ -2881,6 +2839,13 @@ MODULE Poc;
     IF helpToErr THEN Err.String(line); Err.Ln ELSE Out.String(line); Out.Ln END
   END HelpLine;
 
+  (* a line of Help for an LLVM option or command, which a poc without the
+     LLVM back end leaves out (poc for VAX/VMS; Phase 17 step 7) *)
+  PROCEDURE LLVMHelpLine(line: ARRAY OF CHAR);
+  BEGIN
+    IF LLVMBackEnd.Available() THEN HelpLine(line) END
+  END LLVMHelpLine;
+
   (* poc -help (Phase 13 step 2), and poc with no arguments: every command
      and option, those for testing poc itself last. poc(1) and the
      Reference Guide explain them. *)
@@ -2900,7 +2865,7 @@ MODULE Poc;
     HelpLine("  -install-library <name>    install the library <name> from the library path");
     HelpLine("  -emit-interface <file>     write the module's interface, <Module>.sym");
     HelpLine("  -show-interface <file>     print the module's interface");
-    HelpLine("  -emit-llvm-ir <file>       write the module's LLVM IR, <Module>.ll");
+    LLVMHelpLine("  -emit-llvm-ir <file>       write the module's LLVM IR, <Module>.ll");
     HelpLine("  -emit-macro32 <file>       write the module's VAX MACRO-32, <Module>.mar");
     HelpLine("  -print-import-path         print the import path, a directory a line");
     HelpLine("  -print-library-path        print the library path, a directory a line");
@@ -2916,19 +2881,19 @@ MODULE Poc;
     HelpLine("  -clear-library-path        forget the library path so far, poc's own too");
     HelpLine("  -O2 | -OC                  size model: INTEGER 16/32 bits, LONGINT 32/64");
     HelpLine("  -strict                    only the Oberon-2 report: no extensions");
-    HelpLine("  -g                         debug information for gdb and lldb");
-    HelpLine("  -opt <level>               clang's -O: 0-3 s z g (default 2, 0 on 32-bit x86)");
-    HelpLine("  -lto                       optimize the whole program when it is linked");
-    HelpLine("  -rebuild                   compile every module, reusing no object");
+    LLVMHelpLine("  -g                         debug information for gdb and lldb");
+    LLVMHelpLine("  -opt <level>               clang's -O: 0-3 s z g (default 2, 0 on 32-bit x86)");
+    LLVMHelpLine("  -lto                       optimize the whole program when it is linked");
+    LLVMHelpLine("  -rebuild                   compile every module, reusing no object");
     HelpLine("  -trap-location             a trap's message names its file, line, procedure");
     HelpLine("  -trap-heap-exhausted       a NEW that finds no memory stops the program");
     HelpLine("  -range-checks              SHORT and CHR of a value that does not fit trap");
-    HelpLine("  -static                    link a fully static executable");
+    LLVMHelpLine("  -static                    link a fully static executable");
     HelpLine("  -shared-libraries          link libraries dynamically");
-    HelpLine("  -link <arg>                add <arg> to the link (-lz, -L<dir>)");
-    HelpLine("  -c-flag <arg>              add <arg> to clang's flags for a module's C part");
+    LLVMHelpLine("  -link <arg>                add <arg> to the link (-lz, -L<dir>)");
+    LLVMHelpLine("  -c-flag <arg>              add <arg> to clang's flags for a module's C part");
     HelpLine("  -target <triple>           compile for another target (vax-dec-vms: the VAX)");
-    HelpLine("  -verbose                   print the commands poc runs");
+    LLVMHelpLine("  -verbose                   print the commands poc runs");
     HelpLine("");
     HelpLine("environment:");
     HelpLine("  POC_IMPORT_PATH            the import path to start from (dir:dir:...)");
@@ -2940,7 +2905,7 @@ MODULE Poc;
     HelpLine("  -dump-tokens <file>        print the module's tokens");
     HelpLine("  -check-syntax <file>       parse the module only");
     HelpLine("  -dump-layout <file>        print the memory layout of its records");
-    HelpLine("  -dump-llvm-types <file>    print the LLVM type of each of its types");
+    LLVMHelpLine("  -dump-llvm-types <file>    print the LLVM type of each of its types");
     HelpLine("  -dump-nested <file>        print what its nested procedures need");
     HelpLine("  -dump-vax-types <file>     print the VAX size and suffix of each of its types");
     HelpLine("  -dump-vax-names <file>     print the VAX symbol of each of its names");
@@ -3009,6 +2974,16 @@ MODULE Poc;
     IF text = "-o2" THEN COPY("-O2", text) ELSIF text = "-oc" THEN COPY("-OC", text) END
   END OptionOnVms;
 
+  (* whether option is one only the LLVM back end takes, which a poc
+     without it refuses (poc for VAX/VMS; Phase 17 step 7,
+     doc/developer/vax-macro32-backend.md, section 21, proposal 8) *)
+  PROCEDURE IsLLVMOption(option: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN (option = "-emit-llvm-ir") OR (option = "-dump-llvm-types") OR (option = "-g")
+      OR (option = "-opt") OR (option = "-lto") OR (option = "-rebuild") OR (option = "-static")
+      OR (option = "-link") OR (option = "-c-flag") OR (option = "-verbose")
+  END IsLLVMOption;
+
   (* whether option is a command RunCommand runs on a file *)
   PROCEDURE IsFileCommand(option: ARRAY OF CHAR): BOOLEAN;
   BEGIN
@@ -3056,7 +3031,7 @@ MODULE Poc;
   PROCEDURE Run;
     VAR
       i: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR;
-      targetTriple: ARRAY LLVMToolchainDriver.tripleBufferLength OF CHAR;
+      targetTriple: ARRAY tripleLength OF CHAR;
       exePath: ARRAY 256 OF CHAR;
       done, onVms: BOOLEAN;
   BEGIN
@@ -3078,7 +3053,11 @@ MODULE Poc;
       WHILE (i < argumentCount) & ~done DO
         GetArgument(i, arg);
         IF onVms & (arg[0] = "-") THEN OptionOnVms(arg) END;
-        IF arg = "-import-path" THEN
+        IF IsLLVMOption(arg) & ~LLVMBackEnd.Available() THEN
+          failed := TRUE; Err.String("poc: "); Err.String(arg);
+          Err.String(" is not available on VAX/VMS, where poc has no LLVM back end"); Err.Ln;
+          done := TRUE
+        ELSIF arg = "-import-path" THEN
           IF i + 1 < argumentCount THEN
             GetArgument(i + 1, param);
             ModuleInterface.AddSearchPathDir(param);
@@ -3181,18 +3160,18 @@ MODULE Poc;
           INC(i)
         ELSIF arg = "-trap-location" THEN
           (* Phase 11 C7: every trap message names its file, line, column and procedure *)
-          LLVMCodeGenerator.trapLocation := TRUE; VaxCodeGenerator.trapLocation := TRUE;
+          LLVMBackEnd.SetTrapLocation; VaxCodeGenerator.trapLocation := TRUE;
           INC(i)
         ELSIF arg = "-g" THEN
           (* Phase 11 A16: debug information for gdb and lldb *)
-          LLVMCodeGenerator.debugInfo := TRUE;
+          LLVMBackEnd.SetDebugInfo;
           Libraries.SetDebug(TRUE);
           INC(i)
         ELSIF arg = "-opt" THEN
           (* Phase 11 D13: the optimization level -build passes clang *)
           IF i + 1 < argumentCount THEN
             GetArgument(i + 1, param);
-            IF ~LLVMToolchainDriver.SetOptimizationLevel(param) THEN
+            IF ~LLVMBackEnd.SetOptimizationLevel(param) THEN
               failed := TRUE;
               Err.String("poc: -opt takes 0, 1, 2, 3, s, z or g, not "); Err.String(param); Err.Ln;
               done := TRUE
@@ -3204,29 +3183,29 @@ MODULE Poc;
           END
         ELSIF arg = "-range-checks" THEN
           (* Phase 12 step 1: voc's -r *)
-          LLVMCodeGenerator.rangeChecks := TRUE; VaxCodeGenerator.rangeChecks := TRUE;
+          LLVMBackEnd.SetRangeChecks; VaxCodeGenerator.rangeChecks := TRUE;
           INC(i)
         ELSIF arg = "-static" THEN
           (* Phase 12 step 1: voc's -M *)
-          LLVMToolchainDriver.staticLink := TRUE;
+          LLVMBackEnd.SetStaticLink;
           INC(i)
         ELSIF arg = "-lto" THEN
           (* Phase 12 step 2g: whole-program optimization *)
-          LLVMToolchainDriver.lto := TRUE;
+          LLVMBackEnd.SetLto;
           INC(i)
         ELSIF arg = "-rebuild" THEN
           (* Ongoing implementation enhancements, item 3: no object reused *)
-          LLVMToolchainDriver.rebuild := TRUE;
+          LLVMBackEnd.SetRebuild;
           INC(i)
         ELSIF arg = "-verbose" THEN
           (* Phase 12 step 1: voc's -V, as far as it shows the C compiler's command *)
-          LLVMToolchainDriver.verbose := TRUE;
+          LLVMBackEnd.SetVerbose;
           INC(i)
         ELSIF arg = "-c-flag" THEN
           (* Phase 13 step 2: flags for clang when it compiles a module's C part *)
           IF i + 1 < argumentCount THEN
             GetArgument(i + 1, param);
-            IF ~LLVMToolchainDriver.AddCFlag(param) THEN
+            IF ~LLVMBackEnd.AddCFlag(param) THEN
               failed := TRUE; Err.String("poc: too many -c-flag arguments"); Err.Ln;
               done := TRUE
             END;
@@ -3239,7 +3218,7 @@ MODULE Poc;
           (* Phase 12 step 1: voc's LDFLAGS/LDLIBS *)
           IF i + 1 < argumentCount THEN
             GetArgument(i + 1, param);
-            IF ~LLVMToolchainDriver.AddLinkArgument(param) THEN
+            IF ~LLVMBackEnd.AddLinkArgument(param) THEN
               failed := TRUE; Err.String("poc: too many -link arguments"); Err.Ln;
               done := TRUE
             ELSIF HasLineBreak(param) THEN
@@ -3255,7 +3234,7 @@ MODULE Poc;
           END
         ELSIF arg = "-trap-heap-exhausted" THEN
           (* Phase 11 A13: a NEW the heap cannot satisfy stops the program *)
-          LLVMCodeGenerator.trapHeapExhausted := TRUE; VaxCodeGenerator.trapHeapExhausted := TRUE;
+          LLVMBackEnd.SetTrapHeapExhausted; VaxCodeGenerator.trapHeapExhausted := TRUE;
           INC(i)
         (* PLAN.md Phase 8 step 2: -target/-o are flags, not commands,
            consumed by -emit-llvm-ir/-build the same way -output-dir is -
@@ -3311,7 +3290,7 @@ MODULE Poc;
 BEGIN
   failed := FALSE; forVax := FALSE; helpToErr := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; libraryPathCleared := FALSE;
   Run;
-  IF failed OR (Diagnostics.errorCount > 0) OR (LLVMCodeGenerator.unsupportedCount > 0) THEN
+  IF failed OR (Diagnostics.errorCount > 0) OR (LLVMBackEnd.UnsupportedCount() > 0) THEN
     Platform.Exit(1)
   END
 END Poc.

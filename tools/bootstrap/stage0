@@ -72,6 +72,10 @@ voc -OC -s "$ROOT/src/front/ModuleInterface.Mod"
 voc -OC -s "$ROOT/src/front/SemanticActions.Mod"
 voc -OC -s "$ROOT/src/front/NestedProcedures.Mod"
 voc -OC -s "$ROOT/src/front/Parser.Mod"
+# the module list and the method slots, which both back ends share (Phase
+# 17 step 7)
+voc -OC -s "$ROOT/src/front/ModuleLists.Mod"
+voc -OC -s "$ROOT/src/front/MethodSlots.Mod"
 voc -OC -s "$ROOT/src/back/llvm/LLVMTypes.Mod"
 voc -OC -s "$ROOT/src/back/llvm/LLVMCodeGenerator.Mod"
 voc -OC -s "$ROOT/src/back/llvm/LLVMToolchainDriver.Mod"
@@ -81,6 +85,8 @@ voc -OC -s "$ROOT/src/back/vax/VaxToolchainDriver.Mod"
 voc -OC -s "$ROOT/src/driver/Version.Mod"
 voc -OC -s "$BUILD/gen/BuildInfo.Mod"
 voc -OC -s "$ROOT/src/driver/Libraries.Mod"
+# the LLVM back end as the driver sees it (Phase 17 step 7)
+voc -OC -s "$ROOT/src/driver/llvm/LLVMBackEnd.Mod"
 # voc's collector misses a pointer held only in a callee-saved register
 # (doc/developer/bootstrapping-with-voc.md): poc is linked with a Heap_GC
 # that stores them on the stack first, then calls libvoc's. voc adds

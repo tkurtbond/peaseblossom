@@ -4730,3 +4730,360 @@ follows this, as its own step (the plan agreed with the user,
     moves.
 - *poc on the VAX.* poc's own `FOR` loops changed, so `make vax-stages`
   was run again to the fixed point (V1 = V2 = V3).
+
+## 21. Distributing poc on VAX/VMS (Phase 17 close-out)
+
+poc runs on VAX/VMS (section 17: `make vax-stages` reaches V1 = V2 = V3)
+and builds libraries there (section 18), but the only way a VMS system
+gets a `POC.EXE` today is `vax-stages -install` on the development
+system, and nothing puts poc for VMS into a release. The Unix side has
+the seed (Phase 13 step 4): poc's own LLVM IR in the tarball's `seed/`,
+from which clang alone builds poc. These proposals do the same for VMS,
+from what already exists:
+
+- `tools/bootstrap/vax-v1` writes poc's V1 stage on the host: 35 `.mar`
+  files, 5.4 MB, with their `.sym` files and `Poc.com`, which assembles
+  and links them into `POC.EXE` with `POCRTL.OBJ` from `POC$RTL`.
+- `poc -target vax-dec-vms -library` writes a library's `.mar`, `.sym`,
+  `.owner`, manifest, `<name>_build.com` and `<name>_setup.com`
+  (section 18.5). `POCRTL`, `VMSDEF` and `VMSLIB` together are 829 files
+  and 4.5 MB under each size model (measured 2026-10-15).
+- poc on VMS finds its libraries in `[<parent>.LIB.POC]`, beside the
+  `[.BIN]` its image is in (`Libraries.VmsLibraryDir`), then in the
+  search list `POC$LIBRARY`; a library sits in
+  `[.VAX-DEC-VMS.<O2|OC>]` below that.
+
+Two facts shape what a kit can be. A file copied to VMS by FTP in binary
+mode lands as fixed 512-byte records, so an image, an object or a
+`BACKUP` saveset made elsewhere does not survive the crossing, while text
+in ASCII mode does. And nothing on the host can write a `BACKUP`
+saveset or a VMSINSTAL kit. All of the kit's file names were checked
+against ODS-2's rules: a name and a type of at most 39 characters each,
+of `A`-`Z`, `0`-`9`, `$`, `_` and `-` (*Guide to VMS Files and Devices*
+5.0), and no two that differ only in case. A directory hierarchy is at
+most nine levels deep, the master directory included (*VMS File System
+Internals*, 2.4.3).
+
+### 21.1 Proposals
+
+**Approved by the user, 2026-10-15**, all nine as written. Proposal 10,
+two kits, was asked for and approved by the user the same day; it
+changes proposals 1, 2, 3, 4, 6 and 7 where they say "the kit".
+
+1. **A VAX kit, all text, made on the host.** `make vax-kit`
+   (`tools/bootstrap/make-vax-kit`) writes `build/vax-kit`. It runs on
+   the host only and never uses the guest. The kit holds:
+   - poc's V1 stage: the `.mar` files and `Poc.com`, with `PocRtl.mar`;
+   - the libraries `POCRTL`, `VMSDEF` and `VMSLIB`, each written by
+     `-library` under both `-O2` and `-OC`, as text only (no `.OLB` and
+     no `.EXE`);
+   - poc's source and `rtl/vax`'s, as much of them as poc for VMS is
+     built from, so that poc can recompile itself there (proposal 7);
+   - `README.TXT` and `LICENSE.TXT`.
+
+   It holds nothing binary: `POC.EXE` and each library's `.OLB` and
+   `.EXE` are made on VMS, by the base kit's MACRO, LINK and LIBRARY
+   (proposal 3). That takes longer than copying an image, but it is the
+   only way across that a plain FTP transfer allows. It also means a
+   site can check what it runs against the release's source.
+
+2. **One file: a DCL procedure that unpacks itself.** The kit is a
+   single file, `POC-<version>.COM`, with the version's periods made
+   hyphens (`POC-0-7-0.COM`). For each file it holds:
+
+       $ CREATE [.LIB.POC.VAX-DEC-VMS.O2]LIBDEF.MAR
+       $ DECK/DOLLARS="<marker>"
+       ...the file's lines...
+       <marker>
+
+   `DECK` lets a data line begin with `$` (*DCL Dictionary* 5.4,
+   DCL1-111). `make-vax-kit` picks a marker no line of the kit begins
+   with, and checks that it did. The file is about 15 MB, and it is
+   carried by one ASCII FTP transfer (or any text transfer), and run
+   with `@POC-0-7-0` in an empty directory, which becomes the top of the
+   installation. That top gets:
+   - `[.BIN]`, for `POC.EXE`;
+   - `[.KIT]`, V1's `.mar` files, which can be deleted once `POC.EXE` is
+     built;
+   - `[.LIB.POC.VAX-DEC-VMS.O2]` and `[.OC]`;
+   - `[.SRC]`, holding `[.FRONT]`, `[.BACK.VAX]`, `[.DRIVER]`,
+     `[.DRIVER.NO-LLVM]`, `[.RTL]` and `[.RTL.VMS]`, without the LLVM
+     back end (proposal 8);
+   - `BUILD.COM`, `SETUP.COM`, `README.TXT` and `LICENSE.TXT`.
+
+   The deepest of these, `[.LIB.POC.VAX-DEC-VMS.O2]`, is four names
+   below the top, so the top may be four names deep at most
+   (`DUA1:[USERS.POC.TOOLS.POC]`).
+
+   The rejected ways:
+   - one ASCII transfer per file: 1,700 files in nine directories;
+   - a `BACKUP` saveset or a VMSINSTAL kit: binary, and nothing on the
+     host makes one.
+
+   One thing must be tried on the guest before the rest is built: the
+   longest line a `CREATE` in a procedure takes whole. No `.mar` line,
+   V1's or a library's, is longer than 140 characters. The long lines
+   are in `VMSDEF`'s `.sym` files, where `ModuleInterface` writes a
+   record type on one line: 378 lines exceed 255 characters, and the
+   longest, `ENSDEF`'s, has 973. If DCL takes less, `.sym` files break
+   such a declaration over lines.
+
+3. **`BUILD.COM` builds everything in place.** `@BUILD` does three
+   things:
+   - It assembles `[.KIT]`'s `.mar` files and `PocRtl.mar` and runs
+     `Poc.com` there, as `vax-stages` does, then moves `POC.EXE` to
+     `[.BIN]`.
+   - Under each size model it runs, in `[.LIB.POC.VAX-DEC-VMS.<model>]`,
+     `POCRTL_SETUP` and `POCRTL_BUILD`, then `VMSDEF`'s, then `VMSLIB`'s.
+   - It deletes the objects.
+
+   P1 is `O2`, `OC` or `BOTH` (the default), so that a site that wants
+   only one size model can halve the work. P2 `CLEAN` also deletes
+   `[.KIT]`. Each step writes its time and status to `BUILD.LOG`, and
+   the first failure stops the build with its status. It needs no
+   privilege, and it needs nothing outside the base kit. `VMSDEF`
+   already links from its `.OLB` within POC's quotas (section 18.5).
+
+4. **`SETUP.COM` makes poc usable in a process.** `@SETUP` does two
+   things:
+   - It defines `POC :== $<device>[<top>.BIN]POC.EXE`.
+   - It runs the three libraries' `_SETUP.COM` under one size model: P1
+     is `O2` (the default, as `poc`'s) or `OC`.
+
+   It is meant to be called from `LOGIN.COM`. poc then finds its
+   libraries by itself, through `VmsLibraryDir`, so `POC$LIBRARY` is
+   needed only for a site's own libraries elsewhere.
+
+   The size model is a parameter because a library's setup names one
+   directory in `POC$LIB_<NAME>`: a process can build against `-O2`'s
+   libraries or `-OC`'s, not both at once. Changing models means running
+   `@SETUP OC` again. This is a limit of section 18's design, written
+   down here and left for later. Names per model, such as
+   `POC$LIB_OC_POCRTL`, would lift it.
+
+   A site-wide installation is not proposed:
+   - `DEFINE/SYSTEM` needs `SYSNAM`;
+   - `INSTALL` of the shareable images needs `CMKRNL`;
+   - neither has been tried.
+
+5. **The version is the release's.** `make-vax-kit` writes
+   `BuildInfo.Mod` from the tree (`tools/build-info <dir> vax-dec-vms`),
+   so the VMS poc's `-version` names the same version and commit as the
+   tarball's poc. The kit's first lines are comments that give the
+   version, the commit and how to install. As `make dist` does for the
+   seed, the kit is refused from a tree with uncommitted changes when it
+   goes into a release.
+
+6. **Into the release.**
+   - `make dist` runs `make-vax-kit` and puts the file in the tarball as
+     `vax/POC-<version>.COM`.
+   - The GitHub release also carries it as its own asset, since that one
+     file is all a VMS site needs, and it goes into `SHA256SUMS` like the
+     rest.
+   - `doc/developer/DEVELOPER.md` section 7 gets the steps.
+
+   None of this happens before `vax` is merged into `main`, which is the
+   user's decision. Until then, `make vax-kit` works on `vax` alone.
+
+7. **Checked on the guest.** `make check-vax-kit`
+   (`tools/bootstrap/check-vax-kit`) runs the kit as a site would, in a
+   scratch `[.KITCHECK]` under POC's home, with the guest's lock held:
+   - it carries the one file to the guest by ASCII FTP;
+   - it runs the file, then `@BUILD`, then `@SETUP`;
+   - it runs `poc -version`;
+   - it builds and runs `hello` under `-O2` and `-OC`, and a program that
+     uses `VMSLIB` against the installed libraries;
+   - at the end it deletes the scratch directory.
+
+   With `-full`, it also recompiles `[.SRC]` with the kit's `POC.EXE`
+   and compares the result with `[.KIT]`'s `.mar`: the fixed point,
+   about 45 minutes more. This target, like `vax-stages`, is not part of
+   `make check`. It runs at this phase's close and before each release
+   with a kit.
+
+8. **poc for VMS leaves the LLVM back end out.** This settles the open
+   design question "poc on VAX/VMS carries the LLVM back end"
+   (`PLAN.md`), and it is done before the kit is made, since it changes
+   what goes into the kit.
+
+   - *What it saves.* `LLVMCodeGenerator`, `LLVMToolchainDriver` and
+     `LLVMTypes` are 1.48 MB of V1's 5.4 MB of `.mar`. `Poc.mar`'s share
+     of LLVM work comes on top. Leaving them out cuts:
+     - the time to assemble `POC.EXE` in `BUILD.COM`;
+     - the time to compile in each `vax-stages` stage, since those
+       modules have about 10,500 lines;
+     - `POC.EXE`'s size.
+
+     It also removes code that, on VMS, could only run untested: an LLVM
+     `-target` writing `.ll` files from VMS, through a driver that
+     assumes a Unix host.
+   - *What ties them in today* (2026-10-15):
+     - `Poc.Mod` names the LLVM modules in 106 places. 35 of those are
+       `LLVMCodeGenerator.ModuleList`, the driver's own list of modules
+       being compiled. The rest are the LLVM options, the host triple,
+       clang, and `EmitIR`, `Build` and `BuildLibrary`.
+     - `VaxCodeGenerator` imports `LLVMTypes` for the method slots:
+       `MethodSlotCount`, `SlotMethod` and `SlotOfMethod`, which use only
+       `Types`.
+     - `VaxToolchainDriver` names `LLVMToolchainDriver` only in a
+       comment.
+   - *The shared pieces move out of the LLVM back end:*
+     - `ModuleList`, `ModuleListDesc` and `SourcePath` move to a new
+       front-end module, `ModuleLists`, which `LLVMCodeGenerator` and the
+       driver both import.
+     - The three method-slot procedures move to a new front-end module,
+       `MethodSlots`, which both code generators import.
+   - *Poc.Mod's LLVM work moves behind one module.* A new
+     `LLVMBackEnd` in `src/driver/llvm` holds what `Poc.Mod` does only
+     for an LLVM target. That means handling the LLVM options (`-lto`,
+     `-opt`, `-emit-llvm-ir`, `-static`, `-link`, a C or C++ part, and so
+     on), the host triple and clang's version, compiling, building, and
+     making and installing a library. It also holds the LLVM half of
+     `-help`. `Poc.Mod` then imports `LLVMBackEnd` and none of the three
+     LLVM modules.
+   - *A second `LLVMBackEnd` for VMS.* `src/driver/no-llvm/
+     LLVMBackEnd.Mod` has the same exported interface, and each of its
+     procedures refuses: "poc on VAX/VMS has no LLVM back end: -lto"
+     (exit 2). Its `-help` half is empty, so poc on VMS lists only the
+     options it takes. The import path decides which one a build gets:
+     - Stage 1, Stage 2 and the seed use `src/driver/llvm`;
+     - `vax-v1`, and so `vax-stages` and the kit, use
+       `src/driver/no-llvm` and leave `src/back/llvm` off the path.
+
+     A new fixture compiles both and compares their interfaces
+     (`-show-interface`), so the two cannot drift apart unnoticed.
+   - *Unchanged:* poc on Unix, every `.ll`, the Stage 1/Stage 2 fixed
+     point, and V1 = V2 = V3. Each build is consistent with itself. V1's
+     `.mar` changes once, by the modules that leave it, and `make
+     vax-stages` is run again to the fixed point.
+   - The decision goes into `doc/developer/design-decisions.md`, and
+     `PLAN.md`'s question moves to "Decided".
+
+9. **Documentation.**
+   - The User's Guide gets a section "poc on VAX/VMS": getting and
+     running the kit, `BUILD.COM` and `SETUP.COM`, the size models, the
+     libraries, and `-build`'s procedures.
+   - `README.TXT` in the kit is that section as text.
+   - `INSTALL.md` points to it.
+   - This section gets a "21.2 Done".
+
+10. **Two kits: poc, and the STARLET part.** Much of one kit is
+    `VMSDEF`, the 243 modules `tools/sdloberon` generates from
+    `STARLETSD.TLB`, each assembled on VMS under both size models. With
+    `VMSLIB` it is 3.9 MB of the 11.4 MB and 1,739 of the 2,005 files
+    (measured 2026-10-15). poc needs none of it, nor does `POCRTL`. So
+    the release carries two files, made by `make vax-kit` together:
+    - `POC-<version>.COM`, the base kit: everything proposal 2 lists
+      but `VMSDEF` and `VMSLIB`, their sources included, plus
+      `VERSION.TXT`, one line naming the version and commit.
+    - `POC-VMS-<version>.COM`, the STARLET kit: `VMSDEF` and `VMSLIB`
+      (which imports `STARLET`, `LIB_ROUTINES` and `LNMDEF`) under both
+      size models, `[.SRC.RTL.VMS]`, `[.SRC.RTL.VMSLIB]` and
+      `README-VMS.TXT`.
+
+    The STARLET kit is run in the top of a base installation, at once
+    or later, and refuses unless `VERSION.TXT` is there and names its
+    own version and commit (a library from another poc is refused by
+    poc anyway), or if it has been unpacked there already. A library's
+    files go to the kit of the library its `.owner` names.
+
+    `BUILD.COM` builds what is not built yet: `POC.EXE` unless `[.BIN]`
+    has one, and each library whose build procedure is there and whose
+    `.OLB` is not. So `@BUILD` after unpacking the STARLET kit builds
+    only `VMSDEF` and `VMSLIB`; deleting a product makes the next
+    `@BUILD` make it again. `SETUP.COM` runs the setup procedure of
+    every library that is built, `POCRTL`'s at least.
+
+    `make check-vax-kit` installs the base kit and builds and runs
+    `hello` with it alone, checks that the STARLET kit refuses an empty
+    directory, then unpacks the STARLET kit over the base and goes on
+    as proposal 7 says, `@BUILD` building only the two libraries. Both
+    files go into the tarball's `vax/`, into the release and into
+    `SHA256SUMS`.
+
+The exit gate (step 8) gains one condition: the kits build and pass
+`make check-vax-kit` on the guest.
+
+### 21.2 Distributing poc on VAX/VMS: done
+
+- *Proposal 8, no LLVM back end on VMS* (2026-10-15):
+  - `src/front/ModuleLists.Mod` holds `SourcePath`, `ModuleList` and
+    `ModuleListDesc`; `LLVMCodeGenerator` keeps `SourcePath*` as an
+    alias. `src/front/MethodSlots.Mod` holds `MethodSlotCount`,
+    `SlotMethod`, `MethodSlot` and `SlotOfMethod`; `VaxCodeGenerator`
+    imports it, not `LLVMTypes`, and `LLVMTypes` no longer imports
+    `SyntaxTree`.
+  - `src/driver/llvm/LLVMBackEnd.Mod` is the facade: the LLVM options'
+    setters, the host triple and clang's version, `CheckLTOTarget`
+    (moved from `Poc.Mod`), the LLVM part of preparing libraries, and
+    `EmitIR`, `Compile`, `Build` and `BuildLibrary`.
+    `src/driver/no-llvm/LLVMBackEnd.Mod` has the same interface;
+    `Available` is FALSE there. `Poc.Mod` imports neither LLVM module.
+  - *One difference from the proposal:* the refusal is made once, by
+    `Poc.Mod` (`IsLLVMOption`), as the arguments are read, not by each
+    stub procedure: "poc: -lto is not available on VAX/VMS, where poc
+    has no LLVM back end", and poc exits 1, as for any other bad
+    argument (`%X1000000A` on VMS), not 2. `-help` leaves those options'
+    lines out (`LLVMHelpLine`).
+  - The build scripts: Stage 0, Stage 1, Stage 2, `stage0-poc` and the
+    seed put `src/driver/llvm` on the import path; `vax-v1` and
+    `vax-stages` put `src/driver/no-llvm` there and leave
+    `src/back/llvm` off. `make check-strict` also checks
+    `src/driver/no-llvm`.
+  - V1's `.mar`: 5,524,118 bytes before, 4,065,979 after, still 35
+    files.
+  - Fixtures: `driver-llvm-back-end`, new, compiles both
+    `LLVMBackEnd`s and compares their interfaces. `vax-poc`'s `-help`
+    expectation leaves out the LLVM options, and it adds `-LTO
+    -VERSION`, refused.
+- *`.sym` lines broken for DCL* (proposal 2's open point, tried on the
+  guest 2026-10-15): `CREATE` in a procedure took a line of 255
+  characters and refused one of 973 ("-RMS-W-RTB, 973 byte record too
+  large for user's buffer"); a line beginning with `$`, `$EOD` and tabs
+  came through `DECK/DOLLARS` whole. `ModuleInterface` now holds a line
+  in a buffer and breaks one longer than 250 characters after its last
+  `;` or `,` (record fields, parameter lists, value lists, `IMPORT`),
+  continuing it six spaces in; shorter lines are as before. A module
+  with such a line gets a new key: `VMSDEF`'s, `Files` in `rtl/vax`, and
+  eight of poc's own (`Libraries`, `NestedProcedures`, `Poc`,
+  `PredeclaredProcedures`, `SemanticActions`, `SymbolTable`,
+  `SyntaxTree`, `Types`), which changes V1's `.mar` where they are
+  imported. Of the reviewed fixtures only `vax-files` names such a key:
+  its two `.mar` files take `Files`' new one, and nothing else in them
+  differs.
+- *Proposals 1 to 7 and 10, the kits* (2026-10-15):
+  - `tools/bootstrap/make-vax-kit` (`make vax-kit`) writes
+    `POC-<version>.COM`, 266 files and 7.5 MB, and `POC-VMS-<version>.COM`,
+    1,739 files and 3.9 MB, in about 40 s; the longest line is 250
+    characters. Each library file goes to the kit its manifest puts it
+    in, and every file must go to exactly one.
+  - `tools/bootstrap/vax-kit/` holds `BUILD.COM`, `SETUP.COM`,
+    `README.TXT`, `README-VMS.TXT` and `check/`'s two programs.
+  - `vax-v1` writes `Poc.com`'s first line with `src/driver/Poc.Mod`,
+    not the host's path to it, since the kit carries it elsewhere.
+  - `tools/bootstrap/check-vax-kit [-full]` (`make check-vax-kit`) as
+    proposals 7 and 10 say.
+  - `make dist` puts both kits in the tarball's `vax/` and beside it, and
+    `tools/release-files` takes both.
+  - Documents: the User's Guide, section 12, "poc on VAX/VMS";
+    `INSTALL.md`, section 6; `DEVELOPER.md`, section 7's steps 3, 4 and
+    6; `tools/bootstrap/README.md`.
+- *What the guest found*, each fixed:
+  - The base kit made no `[.BIN]`, the directory being empty on the
+    host, so `RENAME` of `POC.EXE` into it failed. The kit now makes
+    it, and `BUILD.COM` makes it when it is missing.
+  - `$STATUS` is a string (`"%X00000001"`), so `F$FAO("!XL", ...)` of it
+    printed an address (*DCL Dictionary* 5.4, DCL1-299: an argument of
+    the wrong type gives "unpredictable results"). Every status is taken
+    through `F$INTEGER`.
+  - `BUILD.COM`'s symbol `LIBRARY` was seen by the library build
+    procedures it runs, so their `LIBRARY/CREATE` became `POCRTL/CREATE`
+    (`%DCL-W-IVVERB`). It is `LIBRARY_NAME` now, and `BUILD.COM` says
+    why.
+- *Measured on the guest*, 2026-10-15: `make check-vax-kit` passed.
+  `@BUILD` of the base kit took 52 s (`POC.EXE` 28 s, `POCRTL` 11 s and
+  12 s); after the STARLET kit, 1 min 53 s (`VMSDEF` 56 s and 53 s,
+  `VMSLIB` 2 s each), `POC.EXE` and `POCRTL` left as they were. So
+  `VMSDEF` costs little time on the emulated MicroVAX 3900; the split
+  saves its 1,739 files and 3.9 MB for a site that does not want them.
+  `-full` and `make vax-stages` to V1 = V2 = V3 with the new V1: pending.

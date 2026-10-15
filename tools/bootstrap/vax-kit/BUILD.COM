@@ -1,0 +1,151 @@
+$ ! BUILD.COM - builds Peaseblossom's poc for VAX/VMS where its kits were
+$ ! unpacked (README.TXT): POC.EXE in [.BIN], assembled and linked from
+$ ! the MACRO-32 in [.KIT], and the libraries in [.LIB.POC.VAX-DEC-VMS.O2]
+$ ! and [.LIB.POC.VAX-DEC-VMS.OC], each by its own build procedure: POCRTL,
+$ ! and VMSDEF and VMSLIB once the STARLET kit is unpacked here. It uses
+$ ! MACRO, LIBRARY and LINK alone. Written by tools/bootstrap/make-vax-kit
+$ ! (doc/developer/vax-macro32-backend.md, section 21, proposals 3 and 10).
+$ !
+$ !   @BUILD [O2|OC|BOTH] [CLEAN]
+$ !
+$ ! It builds what is not built yet: POC.EXE unless [.BIN] has one, and
+$ ! each library whose build procedure is here and whose .OLB is not; to
+$ ! build one again, delete it first. P1 is the size models whose
+$ ! libraries are built, BOTH by default. P2 CLEAN deletes [.KIT] once
+$ ! POC.EXE is built. Each step's start, end, status and CPU time are added
+$ ! to BUILD.LOG as well; the first that fails stops the build, with its
+$ ! status. A symbol here is seen by the procedures it runs, so none is
+$ ! named as a command they use (LIBRARY, LINK, MACRO).
+$ SET NOON
+$ MODELS = F$EDIT(P1, "UPCASE,TRIM")
+$ IF MODELS .EQS. "" THEN MODELS = "BOTH"
+$ IF MODELS .EQS. "O2" .OR. MODELS .EQS. "OC" .OR. MODELS .EQS. "BOTH" THEN GOTO P1_OK
+$ WRITE SYS$ERROR "BUILD: P1 is O2, OC or BOTH, not ", MODELS
+$ EXIT %X10000014
+$P1_OK:
+$ CLEAN = F$EDIT(P2, "UPCASE,TRIM")
+$ IF CLEAN .EQS. "" .OR. CLEAN .EQS. "CLEAN" THEN GOTO P2_OK
+$ WRITE SYS$ERROR "BUILD: P2 is CLEAN or nothing, not ", CLEAN
+$ EXIT %X10000014
+$P2_OK:
+$ PROC = F$ENVIRONMENT("PROCEDURE")
+$ TOP = F$PARSE(PROC, , , "DEVICE") + F$PARSE(PROC, , , "DIRECTORY")
+$ ! the top directory without its closing bracket, for a subdirectory
+$ TOP_OPEN = F$EXTRACT(0, F$LENGTH(TOP) - 1, TOP)
+$ CLOSE_BRACKET = F$EXTRACT(F$LENGTH(TOP) - 1, 1, TOP)
+$ HOME = F$ENVIRONMENT("DEFAULT")
+$ IF F$SEARCH(TOP + "BUILD.LOG") .EQS. "" THEN OPEN/WRITE BUILD_LOG 'TOP'BUILD.LOG
+$ IF F$SEARCH(TOP + "BUILD.LOG") .NES. "" THEN OPEN/APPEND BUILD_LOG 'TOP'BUILD.LOG
+$ STATUS = 1
+$ LINE = F$TIME() + " @BUILD " + MODELS + " " + CLEAN
+$ GOSUB SAY
+$ !
+$ STEP = "POC.EXE"
+$ IF F$SEARCH(TOP_OPEN + ".BIN" + CLOSE_BRACKET + "POC.EXE") .EQS. "" THEN GOTO BUILD_POC
+$ LINE = F$TIME() + " " + STEP + ": built already"
+$ GOSUB SAY
+$ GOTO POC_BUILT
+$BUILD_POC:
+$ GOSUB START_STEP
+$ SET DEFAULT 'TOP_OPEN'.KIT'CLOSE_BRACKET'
+$ MACRO/OBJECT POCRTL.MAR
+$ STATUS = F$INTEGER($STATUS)
+$ IF .NOT. STATUS THEN GOTO FAILED
+$ DEFINE/NOLOG POC$RTL 'TOP_OPEN'.KIT'CLOSE_BRACKET'
+$ @'TOP_OPEN'.KIT'CLOSE_BRACKET'POC.COM
+$ STATUS = F$INTEGER($STATUS)
+$ DEASSIGN POC$RTL
+$ IF .NOT. STATUS THEN GOTO FAILED
+$ IF F$SEARCH(TOP + "BIN.DIR") .EQS. "" THEN -
+    CREATE/DIRECTORY 'TOP_OPEN'.BIN'CLOSE_BRACKET'
+$ RENAME/NOLOG POC.EXE 'TOP_OPEN'.BIN'CLOSE_BRACKET'POC.EXE
+$ STATUS = F$INTEGER($STATUS)
+$ IF .NOT. STATUS THEN GOTO FAILED
+$ DELETE/NOLOG *.OBJ;*, POC.OPT;*
+$ GOSUB END_STEP
+$POC_BUILT:
+$ !
+$ IF MODELS .NES. "OC" THEN MODEL = "O2"
+$ IF MODELS .NES. "OC" THEN GOSUB BUILD_MODEL
+$ IF .NOT. STATUS THEN GOTO FAILED
+$ IF MODELS .NES. "O2" THEN MODEL = "OC"
+$ IF MODELS .NES. "O2" THEN GOSUB BUILD_MODEL
+$ IF .NOT. STATUS THEN GOTO FAILED
+$ GOSUB FORGET_LIBRARIES
+$ !
+$ IF CLEAN .NES. "CLEAN" THEN GOTO FINISHED
+$ SET DEFAULT 'TOP'
+$ IF F$SEARCH("KIT.DIR") .EQS. "" THEN GOTO FINISHED
+$ STEP = "deleting [.KIT]"
+$ GOSUB START_STEP
+$ DELETE/NOLOG [.KIT]*.*;*
+$ SET PROTECTION=O:RWED KIT.DIR
+$ DELETE/NOLOG KIT.DIR;*
+$ STATUS = F$INTEGER($STATUS)
+$ IF .NOT. STATUS THEN GOTO FAILED
+$ GOSUB END_STEP
+$FINISHED:
+$ LINE = F$TIME() + " built poc; now @" + TOP + "SETUP"
+$ GOSUB SAY
+$ CLOSE BUILD_LOG
+$ SET DEFAULT 'HOME'
+$ EXIT 1
+$FAILED:
+$ LINE = F$TIME() + " " + STEP + ": failed, status " + F$FAO("%X!XL", STATUS)
+$ GOSUB SAY
+$ GOSUB FORGET_LIBRARIES
+$ CLOSE BUILD_LOG
+$ SET DEFAULT 'HOME'
+$ EXIT STATUS
+$ !
+$ ! the libraries of one size model, MODEL, each after the ones it needs:
+$ ! each that is here is set up, and built unless its .OLB is
+$BUILD_MODEL:
+$ SET DEFAULT 'TOP_OPEN'.LIB.POC.VAX-DEC-VMS.'MODEL''CLOSE_BRACKET'
+$ I = 0
+$NEXT_LIBRARY:
+$ LIBRARY_NAME = F$ELEMENT(I, " ", "POCRTL VMSDEF VMSLIB")
+$ IF LIBRARY_NAME .EQS. " " THEN RETURN
+$ I = I + 1
+$ IF F$SEARCH(LIBRARY_NAME + "_BUILD.COM") .EQS. "" THEN GOTO NEXT_LIBRARY
+$ STEP = LIBRARY_NAME + " (-" + MODEL + ")"
+$ @'LIBRARY_NAME'_SETUP
+$ IF F$SEARCH(LIBRARY_NAME + ".OLB") .EQS. "" THEN GOTO BUILD_LIBRARY
+$ LINE = F$TIME() + " " + STEP + ": built already"
+$ GOSUB SAY
+$ GOTO NEXT_LIBRARY
+$BUILD_LIBRARY:
+$ GOSUB START_STEP
+$ @'LIBRARY_NAME'_BUILD
+$ STATUS = F$INTEGER($STATUS)
+$ IF .NOT. STATUS THEN RETURN
+$ DELETE/NOLOG *.OBJ;*
+$ GOSUB END_STEP
+$ GOTO NEXT_LIBRARY
+$ !
+$ ! the logical names the libraries' setup procedures defined, which name
+$ ! the last size model built: SETUP.COM defines them for the one wanted
+$FORGET_LIBRARIES:
+$ I = 0
+$NEXT_NAME:
+$ LIBRARY_NAME = F$ELEMENT(I, " ", "POCRTL VMSDEF VMSLIB")
+$ IF LIBRARY_NAME .EQS. " " THEN RETURN
+$ IF F$TRNLNM("POC$LIB_" + LIBRARY_NAME, "LNM$PROCESS") .NES. "" THEN DEASSIGN/PROCESS POC$LIB_'LIBRARY_NAME'
+$ IF F$TRNLNM(LIBRARY_NAME, "LNM$PROCESS") .NES. "" THEN DEASSIGN/PROCESS 'LIBRARY_NAME'
+$ I = I + 1
+$ GOTO NEXT_NAME
+$ !
+$START_STEP:
+$ LINE = F$TIME() + " " + STEP + ": started"
+$ GOSUB SAY
+$ CPU_START = F$GETJPI("", "CPUTIM")
+$ RETURN
+$END_STEP:
+$ CPU = (F$GETJPI("", "CPUTIM") - CPU_START) / 100
+$ LINE = F$TIME() + " " + STEP + ": done, " + F$STRING(CPU) + " s of CPU"
+$ GOSUB SAY
+$ RETURN
+$SAY:
+$ WRITE SYS$OUTPUT LINE
+$ WRITE BUILD_LOG LINE
+$ RETURN

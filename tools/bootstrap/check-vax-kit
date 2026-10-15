@@ -1,0 +1,309 @@
+#!/bin/sh
+# make check-vax-kit (PLAN.md Phase 17 step 7;
+# doc/developer/vax-macro32-backend.md, section 21, proposals 7 and 10):
+# the two kits make-vax-kit writes, installed on the VAX/VMS development
+# system as a site would install them, in a scratch [.KITCHECK] under
+# POC's home, both carried by ASCII FTP. The STARLET kit is run there
+# first and must refuse, there being no poc; then the base kit is run,
+# @BUILD and @SETUP, poc -version, and a program against POCRTL alone is
+# built with the kit's poc and run under -O2. Then the STARLET kit is run,
+# and run again, which must refuse; @BUILD, which must leave POC.EXE and
+# POCRTL.OLB as they are, and @SETUP; and that program and one against
+# VMSLIB and VMSDEF are built and run, under -O2 linked from the object
+# libraries and under -OC (after @SETUP OC) from the shareable images.
+#
+#   tools/bootstrap/check-vax-kit [-full]
+#
+# -full also has the kit's poc compile [.SRC], poc's own source, under -OC
+# from source alone (-clear-library-path), as vax-stages' V2 does, and
+# compares each .mar it writes with the kit's own [.KIT]: the fixed point,
+# about 45 minutes more. What the guest prints is compared, but for the
+# times and the unpacking's, with what this host expects; BUILD.COM's log
+# comes back as build/vax-kit/KITBUILD.LOG. [.KITCHECK] is deleted at the
+# start and the end. The guest's lock is held throughout (tools/vax-do),
+# and VAX_DO_TIMEOUT (default here 14400 seconds, 18000 with -full)
+# bounds the whole run. Exits 0 if all is as expected, 1 if not, 2 if the
+# guest could not be used.
+set -u
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}
+KIT=${VAX_KIT_DIR:-$BUILD/vax-kit}
+export VAX_KIT_DIR=$KIT
+
+full=0
+case ${1:-} in
+  "") ;;
+  -full) full=1 ;;
+  *) echo "usage: tools/bootstrap/check-vax-kit [-full]" >&2; exit 2 ;;
+esac
+if [ "$full" -eq 1 ]; then VAX_DO_TIMEOUT=${VAX_DO_TIMEOUT:-18000}; else VAX_DO_TIMEOUT=${VAX_DO_TIMEOUT:-14400}; fi
+export VAX_DO_TIMEOUT
+
+kitPaths=$("$ROOT/tools/bootstrap/make-vax-kit" | tail -2) || exit 1
+basePath=$(echo "$kitPaths" | sed -n 1p)
+vmsPath=$(echo "$kitPaths" | sed -n 2p)
+baseKit=$(basename "$basePath")
+vmsKit=$(basename "$vmsPath")
+version=$(sed -n 's/^ *number\* *= *"\(.*\)";.*/\1/p' "$ROOT/src/driver/Version.Mod")
+commit=$(sed -n 's/^ *commit\* *= *"\(.*\)";.*/\1/p' "$BUILD/vax-bootstrap/gen/BuildInfo.Mod")
+modules=$(cd "$BUILD/vax-bootstrap/v1" && ls *.mar | sed 's/\.mar$//' | tr a-z A-Z)
+
+work=$KIT/check
+rm -rf "$work"
+mkdir -p "$work/back"
+cp "$ROOT/tools/bootstrap/vax-kit/check/KitHello.Mod" "$work/KITHELLO.MOD"
+cp "$ROOT/tools/bootstrap/vax-kit/check/KitVmsLib.Mod" "$work/KITVMSLIB.MOD"
+proc=$work/CHECKKIT.COM
+
+{
+  cat <<DCL
+\$ ! Written by tools/bootstrap/check-vax-kit: installs $baseKit and
+\$ ! $vmsKit in [.KITCHECK], builds and runs programs with them, and
+\$ ! deletes it.
+\$ SET NOON
+\$ HOME = F\$ENVIRONMENT("DEFAULT")
+\$ GOSUB REMOVE_TREE
+\$ CREATE/DIRECTORY [.KITCHECK]
+\$ SET DEFAULT [.KITCHECK]
+\$ @'HOME'$vmsKit
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "STARLET kit with no poc"
+\$ GOSUB REFUSED
+\$ @'HOME'$baseKit
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "unpack"
+\$ GOSUB REPORT
+\$ @BUILD
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "build"
+\$ GOSUB REPORT
+\$ @SETUP
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "setup"
+\$ GOSUB REPORT
+\$ POC -VERSION
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "poc -version"
+\$ GOSUB REPORT
+\$ CREATE/DIRECTORY [.WORK]
+\$ SET DEFAULT [.WORK]
+\$ COPY/NOLOG 'HOME'KITHELLO.MOD []
+\$ MODEL = "-O2"
+\$ OPTIONS = ""
+\$ PROGRAM = "KITHELLO"
+\$ GOSUB PROGRAM
+\$ DELETE/NOLOG *.*;*
+\$ SET DEFAULT [-]
+\$ !
+\$ ! the STARLET kit, over the base
+\$ @'HOME'$vmsKit
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "unpack STARLET kit"
+\$ GOSUB REPORT
+\$ @'HOME'$vmsKit
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "STARLET kit again"
+\$ GOSUB REFUSED
+\$ POC_TIME = F\$FILE_ATTRIBUTES("[.BIN]POC.EXE", "CDT")
+\$ POCRTL_TIME = F\$FILE_ATTRIBUTES("[.LIB.POC.VAX-DEC-VMS.O2]POCRTL.OLB", "CDT")
+\$ @BUILD
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "build with the STARLET kit"
+\$ GOSUB REPORT
+\$ S = POC_TIME .EQS. F\$FILE_ATTRIBUTES("[.BIN]POC.EXE", "CDT")
+\$ S = S .AND. POCRTL_TIME .EQS. F\$FILE_ATTRIBUTES("[.LIB.POC.VAX-DEC-VMS.O2]POCRTL.OLB", "CDT")
+\$ STEP = "POC.EXE and POCRTL built already"
+\$ GOSUB REPORT
+\$ COPY/NOLOG BUILD.LOG 'HOME'KITBUILD.LOG
+\$ @SETUP
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "setup"
+\$ GOSUB REPORT
+\$ SET DEFAULT [.WORK]
+\$ COPY/NOLOG 'HOME'KITHELLO.MOD, 'HOME'KITVMSLIB.MOD []
+\$ MODEL = "-O2"
+\$ OPTIONS = ""
+\$ GOSUB PROGRAMS
+\$ SET DEFAULT [-]
+\$ @SETUP OC
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "setup OC"
+\$ GOSUB REPORT
+\$ SET DEFAULT [.WORK]
+\$ DELETE/NOLOG *.*;*
+\$ COPY/NOLOG 'HOME'KITHELLO.MOD, 'HOME'KITVMSLIB.MOD []
+\$ MODEL = "-OC"
+\$ OPTIONS = "-SHARED-LIBRARIES"
+\$ GOSUB PROGRAMS
+\$ SET DEFAULT [-]
+DCL
+  if [ "$full" -eq 1 ]; then
+    cat <<'DCL'
+$ ! poc's own source, compiled by the kit's poc from source alone, in
+$ ! [.FULL], each .mar copied home as F<NAME>.MAR
+$ CREATE/DIRECTORY [.FULL]
+$ SET DEFAULT [.FULL]
+$ T0 = F$TIME()
+$ ! the arguments in a response file, one a line, the command being
+$ ! longer than DCL's
+$ CREATE FULL.ARGS
+-OC
+-clear-library-path
+-import-path
+[-.SRC.FRONT]
+-import-path
+[-.SRC.BACK.VAX]
+-import-path
+[-.SRC.DRIVER]
+-import-path
+[-.SRC.DRIVER.NO-LLVM]
+-import-path
+[-.SRC.RTL]
+-import-path
+[-.SRC.GEN]
+-build
+[-.SRC.DRIVER]POC.MOD
+$ DEFINE/USER_MODE SYS$ERROR FULL.ERR
+$ POC @FULL.ARGS
+$ S = F$INTEGER($STATUS)
+$ STEP = "-full: poc compiled by itself"
+$ GOSUB REPORT
+$ WRITE SYS$OUTPUT "time: -full from ", T0, " to ", F$TIME()
+$ IF F$SEARCH("FULL.ERR") .NES. "" THEN TYPE FULL.ERR
+DCL
+    for m in $modules; do
+      echo "\$ COPY/NOLOG $m.MAR 'HOME'F$m.MAR"
+    done
+    echo '$ SET DEFAULT [-]'
+  fi
+  cat <<'DCL'
+$ SET DEFAULT 'HOME'
+$ GOSUB REMOVE_TREE
+$ WRITE SYS$OUTPUT "check: removed [.KITCHECK]"
+$ EXIT 1
+$ !
+$ ! KITHELLO and KITVMSLIB built under MODEL with OPTIONS, and run
+$PROGRAMS:
+$ PROGRAM = "KITHELLO"
+$ GOSUB PROGRAM
+$ PROGRAM = "KITVMSLIB"
+$ GOSUB PROGRAM
+$ RETURN
+$PROGRAM:
+$ POC 'MODEL' 'OPTIONS' 'PROGRAM'.MOD
+$ S = F$INTEGER($STATUS)
+$ STEP = MODEL + " " + PROGRAM + ": compiled"
+$ GOSUB REPORT
+$ @'PROGRAM'
+$ S = F$INTEGER($STATUS)
+$ STEP = MODEL + " " + PROGRAM + ": linked"
+$ GOSUB REPORT
+$ RUN 'PROGRAM'
+$ S = F$INTEGER($STATUS)
+$ STEP = MODEL + " " + PROGRAM + ": run"
+$ GOSUB REPORT
+$ RETURN
+$ !
+$REPORT:
+$ IF S THEN WRITE SYS$OUTPUT "check: ", STEP, ": ok"
+$ IF .NOT. S THEN WRITE SYS$OUTPUT "check: ", STEP, ": failed, ", F$FAO("%X!XL", S)
+$ RETURN
+$REFUSED:
+$ IF .NOT. S THEN WRITE SYS$OUTPUT "check: ", STEP, ": refused"
+$ IF S THEN WRITE SYS$OUTPUT "check: ", STEP, ": not refused"
+$ RETURN
+$ !
+$ ! [.KITCHECK] and everything in it: a pass deletes what is empty
+$REMOVE_TREE:
+$ SET DEFAULT 'HOME'
+$ IF F$SEARCH("KITCHECK.DIR") .EQS. "" THEN RETURN
+$ DEFINE/USER_MODE SYS$OUTPUT NL:
+$ DEFINE/USER_MODE SYS$ERROR NL:
+$ SET PROTECTION=(O:RWED) [.KITCHECK...]*.DIR;*
+$ PASS = 0
+$REMOVE_PASS:
+$ DEFINE/USER_MODE SYS$OUTPUT NL:
+$ DEFINE/USER_MODE SYS$ERROR NL:
+$ DELETE/NOLOG [.KITCHECK...]*.*;*
+$ PASS = PASS + 1
+$ IF PASS .LT. 8 THEN GOTO REMOVE_PASS
+$ SET PROTECTION=(O:RWED) KITCHECK.DIR;
+$ DELETE/NOLOG KITCHECK.DIR;
+$ RETURN
+DCL
+} >"$proc"
+
+gets="-get KITBUILD.LOG"
+if [ "$full" -eq 1 ]; then
+  for m in $modules; do gets="$gets -get F$m.MAR"; done
+fi
+
+if [ -n "$commit" ]; then versionLine="poc $version ($commit)"; else versionLine="poc $version"; fi
+{
+  echo "check: STARLET kit with no poc: refused"
+  echo "check: unpack: ok"
+  echo "check: build: ok"
+  echo "check: setup: ok"
+  echo "$versionLine"
+  echo "target vax-dec-vms, size model -O2"
+  echo "check: poc -version: ok"
+  echo "check: -O2 KITHELLO: compiled: ok"
+  echo "check: -O2 KITHELLO: linked: ok"
+  echo "program: hello from the kit, INTEGER has 16 bits"
+  echo "check: -O2 KITHELLO: run: ok"
+  echo "check: unpack STARLET kit: ok"
+  echo "check: STARLET kit again: refused"
+  echo "check: build with the STARLET kit: ok"
+  echo "check: POC.EXE and POCRTL built already: ok"
+  echo "check: setup: ok"
+  for model in O2 OC; do
+    if [ $model = OC ]; then echo "check: setup OC: ok"; fi
+    bits=16; [ $model = OC ] && bits=32
+    echo "check: -$model KITHELLO: compiled: ok"
+    echo "check: -$model KITHELLO: linked: ok"
+    echo "program: hello from the kit, INTEGER has $bits bits"
+    echo "check: -$model KITHELLO: run: ok"
+    echo "check: -$model KITVMSLIB: compiled: ok"
+    echo "check: -$model KITVMSLIB: linked: ok"
+    echo "program: %SYSTEM-F-ABORT, abort"
+    echo "check: -$model KITVMSLIB: run: ok"
+  done
+  if [ "$full" -eq 1 ]; then echo "check: -full: poc compiled by itself: ok"; fi
+  echo "check: removed [.KITCHECK]"
+} >"$work/expected"
+
+cd "$work"
+# shellcheck disable=SC2086
+"$ROOT/tools/vax-do" -o back $gets CHECKKIT.COM "$basePath" "$vmsPath" KITHELLO.MOD KITVMSLIB.MOD >guest.log 2>&1
+status=$?
+if [ "$status" -eq 2 ]; then
+  cat guest.log
+  echo "check-vax-kit: the guest could not be used" >&2
+  exit 2
+fi
+cp back/KITBUILD.LOG "$KIT/KITBUILD.LOG" 2>/dev/null
+grep -E '^(check:|program:|poc |target |time:)' guest.log | grep -v '^time:' >result
+grep '^time:' guest.log
+cat "$KIT/KITBUILD.LOG" 2>/dev/null
+result=0
+if ! diff expected result; then
+  echo "check-vax-kit: the guest printed what was not expected (all of it: $work/guest.log)" >&2
+  result=1
+fi
+if [ "$full" -eq 1 ]; then
+  for m in $modules; do
+    lower=$(cd "$BUILD/vax-bootstrap/v1" && ls | grep -ix "$m.mar")
+    if ! cmp -s "$BUILD/vax-bootstrap/v1/$lower" "back/F$m.MAR"; then
+      echo "check-vax-kit: -full: $m.MAR differs from the kit's" >&2
+      result=1
+    fi
+  done
+  [ "$result" -eq 0 ] && echo "check-vax-kit: -full: poc compiled by the kit's poc is the kit's poc"
+fi
+if [ "$status" -ne 0 ] && [ "$result" -eq 0 ]; then
+  echo "check-vax-kit: CHECKKIT.COM failed (all of it: $work/guest.log)" >&2
+  result=1
+fi
+[ "$result" -eq 0 ] && echo "check-vax-kit: $baseKit and $vmsKit install and build programs on the guest"
+exit $result

@@ -427,3 +427,27 @@ questions" - \<name\> means the entry of that name here.
     so explicitly, without changing `ADDRESS`. The type was adopted the
     same day as `SYSTEM.CARD` (`language-extensions.md`, "Unsigned
     integer types"), with no signed alias of `ADDRESS` beside it.
+- **poc on VAX/VMS has no LLVM back end**: decided with the user
+  2026-10-15 (`vax-macro32-backend.md`, section 21, proposal 8), raised
+  2026-10-13. On VMS poc runs no clang, and before this it refused every
+  `-target` but `vax-dec-vms`, so `LLVMCodeGenerator`, `LLVMTypes` and
+  `LLVMToolchainDriver` could never run there; they were 1.46 MB of the
+  5.5 MB of `.mar` the VAX bootstrap and the kit assemble on the guest.
+  poc has no conditional compilation, so the choice is made by the import
+  path:
+  - What the VAX back end shared with the LLVM one moved to the front
+    end: the driver's list of modules (`ModuleLists`, from
+    `LLVMCodeGenerator`) and the type-bound procedures' slots
+    (`MethodSlots`, from `LLVMTypes`).
+  - `Poc.Mod` reaches the LLVM back end only through `LLVMBackEnd`, in
+    `src/driver/llvm`. `src/driver/no-llvm` has a second `LLVMBackEnd` of
+    the same interface whose `Available` is FALSE; `Poc.Mod` then refuses
+    the LLVM options and commands and leaves them out of `-help`.
+    `tools/bootstrap/vax-v1` builds poc for VMS with that one, and neither
+    `src/driver/llvm` nor `src/back/llvm`. Fixture `driver-llvm-back-end`
+    checks that the two interfaces agree.
+  - V1's `.mar` went from 5.52 MB to 4.07 MB.
+  - The other way, leaving the VAX back end out of poc on Unix, was not
+    taken (the user, 2026-10-15): poc on Unix is the cross-compiler that
+    makes V1, the kit and every VAX fixture's MACRO-32, and the saving
+    would be small there.

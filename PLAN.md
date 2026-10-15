@@ -807,14 +807,48 @@ C++, and so on) unless step 4 chooses one deliberately.
    them is tested where it would fail - and that fail if the AST
    delivery rules are wrong.
 
-7. **Exit gate.** Every module and interface chosen builds into both
+7. **Distributing poc on VAX/VMS.** A release has to give a VMS site
+   poc and its libraries. Nine proposals were written 2026-10-15 and
+   **approved by the user, 2026-10-15**. The full text is in
+   `vax-macro32-backend.md`, section 21.
+   - The kit is all text, since an FTP binary copy lands as fixed
+     512-byte records. It is made on the host by `make vax-kit` and holds:
+     - poc's V1 `.mar` files;
+     - `POCRTL`, `VMSDEF` and `VMSLIB`, as `-library` writes them for
+       `-O2` and `-OC`;
+     - poc's source.
+   - It is one self-unpacking DCL procedure, `POC-<version>.COM`, with a
+     `CREATE` and a `DECK/DOLLARS` for each file.
+   - `BUILD.COM` assembles and links `POC.EXE` into `[.BIN]` and builds
+     the libraries into `[.LIB.POC]`, where poc finds them by itself.
+     `SETUP.COM` defines the `POC` command and one size model's library
+     names.
+   - `make dist` puts the kit in the tarball as `vax/`, and the GitHub
+     release carries it as an asset, once `vax` is merged.
+   - `make check-vax-kit` installs it on the guest and builds programs
+     with it; with `-full` it also checks the fixed point.
+   - poc for VMS leaves the LLVM back end out, which settles that open
+     design question.
+     - The module list and the method slots move to the front end.
+     - `Poc.Mod`'s LLVM work moves into `LLVMBackEnd`. A second module
+       of that name, in `src/driver/no-llvm`, refuses every LLVM option,
+       and the import path decides which one a build gets.
+     - V1's `.mar` loses about 1.48 MB of its 5.4 MB.
+   - A tenth proposal, asked for and approved by the user the same day,
+     splits the kit in two: `POC-<version>.COM`, poc and `POCRTL`, and
+     `POC-VMS-<version>.COM`, `VMSDEF` and `VMSLIB`, unpacked into the
+     same top at once or later. `@BUILD` builds what is not built yet.
+
+8. **Exit gate.** Every module and interface chosen builds into both
    library kinds and passes its fixtures on the guest, the AST fixtures
-   pass repeatedly (asynchrony makes a single pass weak evidence), and the
-   whole VAX conformance suite from Phase 16 is still clean.
+   pass repeatedly (asynchrony makes a single pass weak evidence), the
+   whole VAX conformance suite from Phase 16 is still clean, and step 7's
+   kits install and pass `make check-vax-kit` on the guest.
 
 **Testing summary**: steps 1, 3, 5 and 6 are fixtures run on the guest;
 steps 2 and 4 are decisions with written artifacts, verified against the
-manuals they cite; step 7 is the gate.
+manuals they cite; step 7 is checked by `make check-vax-kit` on the
+guest; step 8 is the gate.
 
 ### Phase 18 — Direct VAX/VMS object files (no MACRO-32 in the loop)
 
@@ -1181,20 +1215,6 @@ Those done while Phase 15 was current, 1-4, are in
   and Pentium machines. x87 reals stay either way. It needs 32-bit x86 test
   hosts first: a 32-bit NetBSD at least, and a 32-bit FreeBSD if FreeBSD
   still ships an i386 build (today only OpenBSD, cymoril, is 32-bit x86).
-- **poc on VAX/VMS carries the LLVM back end** (raised by the user,
-  2026-10-13). `Poc.Mod` imports both back ends, and poc has no
-  conditional compilation, so `POC.EXE` built for the VAX includes
-  `LLVMCodeGenerator`, `LLVMTypes` and `LLVMToolchainDriver`: about 1.46
-  MB of the V1 stage's `.mar` files, against about 1.31 MB for the VAX
-  back end's three. A poc on VMS never runs clang, and its default target
-  is `vax-dec-vms`, so that code runs only if an LLVM `-target` is named.
-  Nothing tests that use, as a cross-compiler from VMS writing `.ll`
-  files, and parts of the LLVM driver assume a Unix host. The code costs
-  `POC.EXE`'s size and the time to assemble it in every `make
-  vax-stages` stage. The question is whether to leave it, or keep it out
-  of the VMS build. Keeping it out would mean splitting the driver: two
-  programs, or a driver per back end chosen at build time, for example
-  by which `BackEnds` module the build puts on the import path.
 
 Decided, with the full reasoning in `doc/developer/design-decisions.md` under the
 same names:
@@ -1209,6 +1229,8 @@ same names:
 - Declaration order: voc relaxes CONST/TYPE/VAR *section* order, never reference order
 - `SYSTEM.ADDRESS` stays signed (decided 2026-10-08, with the unsigned
   types of Phase 19 candidate 5)
+- poc on VAX/VMS has no LLVM back end (decided 2026-10-15, Phase 17
+  step 7)
 
 ## Critical files
 

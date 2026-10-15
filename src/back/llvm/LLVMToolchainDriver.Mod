@@ -20,7 +20,7 @@ MODULE LLVMToolchainDriver;
      LLVMCodeGenerator.Mod itself a pure tree-walker with no file-path/
      directory concerns of its own. *)
 
-  IMPORT Files, Platform, Directories, Err, Diagnostics, LLVMTypes, LLVMCodeGenerator, ModuleInterface;
+  IMPORT Files, Platform, Directories, Err, Diagnostics, LLVMTypes, LLVMCodeGenerator, ModuleInterface, ModuleLists;
 
   CONST
     dirBufferLength = 1024;
@@ -187,7 +187,7 @@ MODULE LLVMToolchainDriver;
      definitions come first, and only the end of generating tells which
      there are, so the rest goes to <moduleName>.ll.body first and is
      copied after them. *)
-  PROCEDURE EmitModuleIR(modules, target: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR);
+  PROCEDURE EmitModuleIR(modules, target: ModuleLists.ModuleList; triple, outputDir: ARRAY OF CHAR);
     VAR
       name, bodyName: ARRAY pathBufferLength OF CHAR;
       f, bodyFile: Files.File; w, body: Files.Rider; deleteResult: INTEGER;
@@ -212,11 +212,11 @@ MODULE LLVMToolchainDriver;
      (Directories.IsDirectory), as in ModuleInterface.Write; the files are
      made by their whole paths, never from inside outputDir (see
      ModuleInterface.Write on what that cost). *)
-  PROCEDURE EmitIR*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
+  PROCEDURE EmitIR*(modules: ModuleLists.ModuleList; topName: ARRAY OF CHAR;
                     triple, outputDir: ARRAY OF CHAR; VAR pathOut: ARRAY OF CHAR): BOOLEAN;
     VAR
       name: ARRAY pathBufferLength OF CHAR;
-      m: LLVMCodeGenerator.ModuleList; ok: BOOLEAN;
+      m: ModuleLists.ModuleList; ok: BOOLEAN;
       deleteResult: INTEGER;
       errorsBefore: INTEGER;
   BEGIN
@@ -370,7 +370,7 @@ MODULE LLVMToolchainDriver;
      step 2g), so that a .o of the pair's own beside it is never
      overwritten (a module's name has no ".", so no other module's object
      is called that) *)
-  PROCEDURE ObjectFilePath(outputDir: ARRAY OF CHAR; m: LLVMCodeGenerator.ModuleList; VAR path: ARRAY OF CHAR);
+  PROCEDURE ObjectFilePath(outputDir: ARRAY OF CHAR; m: ModuleLists.ModuleList; VAR path: ARRAY OF CHAR);
   BEGIN
     ModuleFilePath(outputDir, m.module.name, ".ll", path);
     IF (m.irPath[0] # 0X) & (m.irPath # path) THEN ModuleFilePath(outputDir, m.module.name, ".ir.o", path)
@@ -418,7 +418,7 @@ MODULE LLVMToolchainDriver;
      links whatever that object goes into (Linker), for the C++ runtime.
      path: the C or C++ source of m, compiled from its source here; cxx:
      it is C++. *)
-  PROCEDURE CompanionSource(m: LLVMCodeGenerator.ModuleList; VAR path: ARRAY OF CHAR; VAR cxx: BOOLEAN): BOOLEAN;
+  PROCEDURE CompanionSource(m: ModuleLists.ModuleList; VAR path: ARRAY OF CHAR; VAR cxx: BOOLEAN): BOOLEAN;
   BEGIN
     cxx := FALSE;
     IF m.inLibrary OR m.compiled OR (m.irPath[0] # 0X) OR (m.fileName[0] = 0X) THEN RETURN FALSE
@@ -437,7 +437,7 @@ MODULE LLVMToolchainDriver;
      the one CompileModules makes, or for a module given as its .sym and
      its .o or .ll, the <M>.c.o or <M>.cpp.o beside that file if there is
      one (as -compile leaves it); cxx: the part is C++ *)
-  PROCEDURE CompanionObject(outputDir: ARRAY OF CHAR; m: LLVMCodeGenerator.ModuleList;
+  PROCEDURE CompanionObject(outputDir: ARRAY OF CHAR; m: ModuleLists.ModuleList;
                             VAR path: ARRAY OF CHAR; VAR cxx: BOOLEAN): BOOLEAN;
     VAR source, given: ARRAY pathBufferLength OF CHAR; suffix: ARRAY 8 OF CHAR;
   BEGIN
@@ -456,8 +456,8 @@ MODULE LLVMToolchainDriver;
 
   (* a module of modules not from a library has a part in C++, so a library
      of them says c++ in its manifest *)
-  PROCEDURE HasCxxPart*(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR): BOOLEAN;
-    VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList; cxx: BOOLEAN;
+  PROCEDURE HasCxxPart*(modules: ModuleLists.ModuleList; outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR path: ARRAY pathBufferLength OF CHAR; m: ModuleLists.ModuleList; cxx: BOOLEAN;
   BEGIN
     m := modules;
     WHILE m # NIL DO
@@ -469,7 +469,7 @@ MODULE LLVMToolchainDriver;
 
   (* clang, or clang++ when a module of modules not from a library, or a
      library linked (cxxLibrary), has a part in C++ *)
-  PROCEDURE Linker(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR; VAR linker: ARRAY OF CHAR);
+  PROCEDURE Linker(modules: ModuleLists.ModuleList; outputDir: ARRAY OF CHAR; VAR linker: ARRAY OF CHAR);
   BEGIN
     IF cxxLibrary OR HasCxxPart(modules, outputDir) THEN COPY("clang++", linker) ELSE COPY("clang", linker) END
   END Linker;
@@ -618,11 +618,11 @@ MODULE LLVMToolchainDriver;
      is not stamped with what it would be compiled from now (Reusing
      objects, above), unless reuse is FALSE (a library's modules: its
      directory is installed, and a .d names the build's files). *)
-  PROCEDURE CompileModules(modules: LLVMCodeGenerator.ModuleList; triple, outputDir: ARRAY OF CHAR;
+  PROCEDURE CompileModules(modules: ModuleLists.ModuleList; triple, outputDir: ARRAY OF CHAR;
                            reuse: BOOLEAN): BOOLEAN;
     VAR
       path, source, other, ir, deps: ARRAY pathBufferLength OF CHAR; suffix: ARRAY 8 OF CHAR;
-      m: LLVMCodeGenerator.ModuleList; ok, cxx, stamped: BOOLEAN; hash: ModuleInterface.Hash;
+      m: ModuleLists.ModuleList; ok, cxx, stamped: BOOLEAN; hash: ModuleInterface.Hash;
       stamp, recorded: ARRAY ModuleInterface.keyLength + 1 OF CHAR;
       symbol: ARRAY nameBufferLength + 40 OF CHAR; line: ARRAY nameBufferLength + 80 OF CHAR;
   BEGIN
@@ -710,8 +710,8 @@ MODULE LLVMToolchainDriver;
   (* appends the object of each module that is not from a library: the
      one compiled, or the one given with its .sym; and its C part's
      (CompanionObject) *)
-  PROCEDURE AppendObjects(modules: LLVMCodeGenerator.ModuleList; outputDir: ARRAY OF CHAR);
-    VAR path: ARRAY pathBufferLength OF CHAR; m: LLVMCodeGenerator.ModuleList; cxx: BOOLEAN;
+  PROCEDURE AppendObjects(modules: ModuleLists.ModuleList; outputDir: ARRAY OF CHAR);
+    VAR path: ARRAY pathBufferLength OF CHAR; m: ModuleLists.ModuleList; cxx: BOOLEAN;
   BEGIN
     m := modules;
     WHILE m # NIL DO
@@ -870,7 +870,7 @@ MODULE LLVMToolchainDriver;
      lib<name>.a and linked into its shared library (SharedLibraryName)
      against the libraries AddLibrary named, as shared ones, and the -link
      arguments *)
-  PROCEDURE BuildLibrary*(modules: LLVMCodeGenerator.ModuleList; name, triple, dir: ARRAY OF CHAR): BOOLEAN;
+  PROCEDURE BuildLibrary*(modules: ModuleLists.ModuleList; name, triple, dir: ARRAY OF CHAR): BOOLEAN;
     VAR path, file: ARRAY pathBufferLength OF CHAR; linker: ARRAY 8 OF CHAR; deleteResult: INTEGER;
   BEGIN
     IF ~EmitIR(modules, name, triple, dir, path) THEN RETURN FALSE END;
@@ -897,7 +897,7 @@ MODULE LLVMToolchainDriver;
   (* Phase 12 step 2f, poc -compile: the IR and object of every module of
      modules that is generated (the others are compiled already or in a
      library), in outputDir, and nothing linked *)
-  PROCEDURE Compile*(modules: LLVMCodeGenerator.ModuleList; topName, triple, outputDir: ARRAY OF CHAR): BOOLEAN;
+  PROCEDURE Compile*(modules: ModuleLists.ModuleList; topName, triple, outputDir: ARRAY OF CHAR): BOOLEAN;
     VAR path: ARRAY pathBufferLength OF CHAR;
   BEGIN
     RETURN EmitIR(modules, topName, triple, outputDir, path) & CompileModules(modules, triple, outputDir, TRUE)
@@ -908,7 +908,7 @@ MODULE LLVMToolchainDriver;
      the objects - the main module's last - with the libraries, the -link
      arguments, libm and -static if asked: clang++ instead when a C++ part
      is linked (Linker). *)
-  PROCEDURE Build*(modules: LLVMCodeGenerator.ModuleList; topName: ARRAY OF CHAR;
+  PROCEDURE Build*(modules: ModuleLists.ModuleList; topName: ARRAY OF CHAR;
                    triple, outputDir, exePath: ARRAY OF CHAR): BOOLEAN;
     VAR path, exeDir: ARRAY pathBufferLength OF CHAR; linker: ARRAY 8 OF CHAR; i, slash: INTEGER;
   BEGIN
