@@ -1142,7 +1142,7 @@ MODULE LLVMCodeGenerator;
         IF t = Types.Boolean THEN WriteRaw(w, "DW_ATE_boolean")
         ELSIF (t = Types.Char) OR (t = Types.Byte) THEN WriteRaw(w, "DW_ATE_unsigned_char")
         ELSIF (t = Types.Real) OR (t = Types.LongReal) THEN WriteRaw(w, "DW_ATE_float")
-        ELSIF Types.IsSet(t) THEN WriteRaw(w, "DW_ATE_unsigned")
+        ELSIF Types.IsSet(t) OR Types.IsCardinal(t) THEN WriteRaw(w, "DW_ATE_unsigned")
         ELSE WriteRaw(w, "DW_ATE_signed")
         END
       END
@@ -1954,6 +1954,31 @@ MODULE LLVMCodeGenerator;
     END
   END EmitResizeInt;
 
+  (* v, an integer, as one of LLVM type toType, as EmitResizeInt, but
+     zero-extended when v is unsigned (SYSTEM.CARDn). *)
+  PROCEDURE EmitResizeValue(VAR w: Files.Rider; VAR cg: Codegen; v: Value; toType: ARRAY OF CHAR;
+                            VAR dest: ARRAY OF CHAR);
+  BEGIN
+    IF Types.IsCardinal(v.oberonType) & (IntWidth(v.llvmType) < IntWidth(toType)) THEN
+      EmitConvert(w, cg, "zext", v.llvmType, v.text, toType, dest)
+    ELSE
+      EmitResizeInt(w, cg, v.llvmType, v.text, toType, dest)
+    END
+  END EmitResizeValue;
+
+  (* An unsigned index as a signed i64 of the same value, so that the
+     range checks, which compare signed, and getelementptr, which reads its
+     index signed, see 200 in a CARD8 as 200 and not -56. A CARD64 above
+     MAX(HUGEINT) becomes negative, which the check then rejects. *)
+  PROCEDURE WidenCardinalIndex(VAR w: Files.Rider; VAR cg: Codegen; VAR idx: Value);
+    VAR wide: ValueText;
+  BEGIN
+    IF Types.IsCardinal(idx.oberonType) THEN
+      EmitResizeValue(w, cg, idx, "i64", wide);
+      COPY(wide, idx.text); COPY("i64", idx.llvmType); idx.oberonType := Types.HugeInt
+    END
+  END WidenCardinalIndex;
+
   (* The element check of an open array, whose length is a run-time value
      (a word-sized SSA value or constant): idx < length as unsigned
      numbers, which also catches a negative index. Both are compared at
@@ -2078,9 +2103,11 @@ MODULE LLVMCodeGenerator;
            includes (a 32-bit target under -OC); every other integer
            inclusion widens *)
         IF IntWidth(targetLLVMType) < IntWidth(v.llvmType) THEN COPY("trunc", opText)
+        ELSIF Types.IsCardinal(v.oberonType) THEN COPY("zext", opText)
         ELSE COPY("sext", opText)
         END
       ELSIF IsRealType(v.oberonType) THEN COPY("fpext", opText)
+      ELSIF Types.IsCardinal(v.oberonType) THEN COPY("uitofp", opText)
       ELSE COPY("sitofp", opText)
       END;
       EmitConvert(w, cg, opText, v.llvmType, v.text, targetLLVMType, result.text);
@@ -2581,6 +2608,11 @@ MODULE LLVMCodeGenerator;
     ELSIF op = Lexer.plus THEN EmitBinOp(w, cg, "add", ty, le.text, re.text, result.text)
     ELSIF op = Lexer.minus THEN EmitBinOp(w, cg, "sub", ty, le.text, re.text, result.text)
     ELSIF op = Lexer.times THEN EmitBinOp(w, cg, "mul", ty, le.text, re.text, result.text)
+    ELSIF Types.IsCardinal(target) THEN
+      (* unsigned: truncation and flooring agree *)
+      IF op = Lexer.divKeyword THEN EmitBinOp(w, cg, "udiv", ty, le.text, re.text, result.text)
+      ELSE EmitBinOp(w, cg, "urem", ty, le.text, re.text, result.text)
+      END
     ELSIF op = Lexer.divKeyword THEN
       GenerateDivMod(w, cg, ty, le, re, divText, remText); COPY(divText, result.text)
     ELSE (* Lexer.modKeyword *)
@@ -2660,13 +2692,13 @@ MODULE LLVMCodeGenerator;
       END
     ELSIF op = Lexer.equal THEN COPY("icmp eq", pred)
     ELSIF op = Lexer.notEqual THEN COPY("icmp ne", pred)
-    ELSIF Types.IsInteger(le.oberonType) THEN
+    ELSIF Types.IsInteger(le.oberonType) & ~Types.IsCardinal(le.oberonType) THEN
       IF op = Lexer.less THEN COPY("icmp slt", pred)
       ELSIF op = Lexer.lessEqual THEN COPY("icmp sle", pred)
       ELSIF op = Lexer.greater THEN COPY("icmp sgt", pred)
       ELSE COPY("icmp sge", pred)
       END
-    ELSIF le.oberonType = Types.Char THEN
+    ELSIF (le.oberonType = Types.Char) OR Types.IsCardinal(le.oberonType) THEN
       IF op = Lexer.less THEN COPY("icmp ult", pred)
       ELSIF op = Lexer.lessEqual THEN COPY("icmp ule", pred)
       ELSIF op = Lexer.greater THEN COPY("icmp ugt", pred)
@@ -2700,7 +2732,10 @@ MODULE LLVMCodeGenerator;
     IF fromWidth = toWidth THEN
       result := v
     ELSE
-      IF fromWidth < toWidth THEN COPY("sext", opText) ELSE COPY("trunc", opText) END;
+      IF fromWidth > toWidth THEN COPY("trunc", opText)
+      ELSIF Types.IsCardinal(v.oberonType) THEN COPY("zext", opText)
+      ELSE COPY("sext", opText)
+      END;
       EmitConvert(w, cg, opText, v.llvmType, v.text, setLLVMType, result.text);
       COPY(setLLVMType, result.llvmType);
       result.oberonType := v.oberonType
@@ -3249,36 +3284,47 @@ MODULE LLVMCodeGenerator;
     COPY("i8", result.llvmType); result.oberonType := Types.Boolean
   END GenerateIsExpr;
 
+  (* value, an integer of width bits taken as unsigned where it is above
+     the signed range (a CARD32's 4294967295), as the signed number with
+     the same bits (-1), the spelling LLVM's i32 reads. *)
+  PROCEDURE SignedOfWidth(value: LONGINT; width: INTEGER): LONGINT;
+    VAR modulus: LONGINT;
+  BEGIN
+    IF width < 64 THEN
+      modulus := 1; modulus := ASH(modulus, width);
+      IF value >= modulus DIV 2 THEN value := value - modulus END
+    END;
+    RETURN value
+  END SignedOfWidth;
+
   PROCEDURE ^ EmitConstantValue(VAR w: Files.Rider; VAR cg: Codegen; type: Types.Type; cv: Types.Value;
                                 VAR result: Value);
 
-  (* Types.ConstantAdoptsType, the code generator's side of it (the checker's
-     is SemanticActions.AdoptConstantOperandType): an integer constant operand
-     wider than the other but fitting it - "1" next to an INT8 under -OC - is
-     emitted at the other operand's type, so the operation is at that type and
-     its result is the INT8 the checker gave it. A constant expression is
-     always one immediate here (GenerateFoldedInteger), so it is simply
-     emitted again. *)
+  (* Types.ConstantOperandType, the code generator's side of it (the
+     checker's is SemanticActions.AdoptConstantOperandType): an integer
+     constant operand is emitted at the type it takes next to the other
+     operand - "1" next to an INT8 under -OC is an INT8, "300" next to a
+     CARD8 a CARD16 - so the operation is at the type the checker gave it.
+     A constant expression is always one immediate here
+     (GenerateFoldedInteger), so it is simply emitted again. *)
   PROCEDURE AdoptConstantOperands(VAR w: Files.Rider; VAR cg: Codegen; expr: SyntaxTree.BinaryExprNode;
                                   VAR l, r: Value);
-    VAR v: Types.Value;
+    VAR v: Types.Value; t: Types.Type; leftType, rightType: Types.Type;
   BEGIN
     IF ~Types.IsInteger(l.oberonType) OR ~Types.IsInteger(r.oberonType) THEN RETURN END;
-    IF Types.Order(l.oberonType) < Types.Order(r.oberonType) THEN
-      IF ConstantEvaluator.IsConstantExpr(expr.right, cg.scope) THEN
-        v := ConstantEvaluator.Evaluate(expr.right, cg.scope);
-        IF (v.type # Types.Undefined) & (v.kind = Types.intValue)
-           & Types.ConstantAdoptsType(r.oberonType, l.oberonType, v.intVal) THEN
-          EmitConstantValue(w, cg, l.oberonType, v, r)
-        END
+    leftType := l.oberonType; rightType := r.oberonType;
+    IF ConstantEvaluator.IsConstantExpr(expr.right, cg.scope) THEN
+      v := ConstantEvaluator.Evaluate(expr.right, cg.scope);
+      IF (v.type # Types.Undefined) & (v.kind = Types.intValue) THEN
+        t := Types.ConstantOperandType(v, leftType);
+        IF t # rightType THEN EmitConstantValue(w, cg, t, v, r) END
       END
-    ELSIF Types.Order(r.oberonType) < Types.Order(l.oberonType) THEN
-      IF ConstantEvaluator.IsConstantExpr(expr.left, cg.scope) THEN
-        v := ConstantEvaluator.Evaluate(expr.left, cg.scope);
-        IF (v.type # Types.Undefined) & (v.kind = Types.intValue)
-           & Types.ConstantAdoptsType(l.oberonType, r.oberonType, v.intVal) THEN
-          EmitConstantValue(w, cg, r.oberonType, v, l)
-        END
+    END;
+    IF ConstantEvaluator.IsConstantExpr(expr.left, cg.scope) THEN
+      v := ConstantEvaluator.Evaluate(expr.left, cg.scope);
+      IF (v.type # Types.Undefined) & (v.kind = Types.intValue) THEN
+        t := Types.ConstantOperandType(v, rightType);
+        IF t # leftType THEN EmitConstantValue(w, cg, t, v, l) END
       END
     END
   END AdoptConstantOperands;
@@ -3304,7 +3350,9 @@ MODULE LLVMCodeGenerator;
     GenerateExpr(w, cg, expr.left, l);
     GenerateExpr(w, cg, expr.right, r);
     IF (expr.op = Lexer.plus) OR (expr.op = Lexer.minus) OR (expr.op = Lexer.times)
-       OR (expr.op = Lexer.divKeyword) OR (expr.op = Lexer.modKeyword) THEN
+       OR (expr.op = Lexer.divKeyword) OR (expr.op = Lexer.modKeyword)
+       OR (expr.op = Lexer.equal) OR (expr.op = Lexer.notEqual) OR (expr.op = Lexer.less)
+       OR (expr.op = Lexer.lessEqual) OR (expr.op = Lexer.greater) OR (expr.op = Lexer.greaterEqual) THEN
       AdoptConstantOperands(w, cg, expr, l, r)
     END;
     IF (expr.op = Lexer.plus) OR (expr.op = Lexer.minus) OR (expr.op = Lexer.times) THEN
@@ -3376,7 +3424,7 @@ MODULE LLVMCodeGenerator;
     result.oberonType := type;
     IF cv.kind = Types.intValue THEN
       LLVMTypes.TypeString(type, cg.sizeModel, result.llvmType);
-      result.text[0] := 0X; AppendLongInt(result.text, cv.intVal)
+      result.text[0] := 0X; AppendLongInt(result.text, SignedOfWidth(cv.intVal, IntWidth(result.llvmType)))
     ELSIF cv.kind = Types.charValue THEN
       COPY("i8", result.llvmType);
       result.text[0] := 0X; AppendLongInt(result.text, ORD(cv.charVal))
@@ -3588,6 +3636,7 @@ MODULE LLVMCodeGenerator;
             IF arr.isOpen THEN
               IF dyn.dope.count < 1 THEN RETURN FALSE END;
               GenerateExpr(w, cg, idx, idxVal);
+              WidenCardinalIndex(w, cg, idxVal);
               EmitOpenIndexCheck(w, cg, idxVal, dyn.dope.first.text);
               IF IsOpenArrayType(arr.elementType) THEN
                 (* the element is an array of its own: skip whole inner
@@ -3605,6 +3654,7 @@ MODULE LLVMCodeGenerator;
               END
             ELSE
               GenerateExpr(w, cg, idx, idxVal);
+              WidenCardinalIndex(w, cg, idxVal);
               EmitIndexRangeCheck(w, cg, idxVal, arr.length);
               LLVMTypes.TypeString(addrType, cg.sizeModel, pointeeType);
               EmitGEP(w, cg, pointeeType, addrText, idxVal.llvmType, idxVal.text, addrText)
@@ -4780,6 +4830,7 @@ MODULE LLVMCodeGenerator;
       Unsupported(w, cg, "ABS on a non-numeric type (should be unreachable post-CheckModule)", v.oberonType, result);
       RETURN
     END;
+    IF Types.IsCardinal(v.oberonType) THEN result := v; RETURN END;
     EmitBinOp(w, cg, "sub", v.llvmType, "0", v.text, negText);
     EmitBinOp(w, cg, "icmp slt", v.llvmType, v.text, "0", isNegText);
     EmitSelect(w, cg, isNegText, v.llvmType, negText, v.text, selText);
@@ -4832,7 +4883,9 @@ MODULE LLVMCodeGenerator;
       COPY(targetLLVMType, result.llvmType);
       IF rangeChecks & (target # Types.Real) THEN
         cg.needShortRangeTrap := TRUE;
-        EmitConvert(w, cg, "sext", targetLLVMType, result.text, v.llvmType, back);
+        IF Types.IsCardinal(target) THEN EmitConvert(w, cg, "zext", targetLLVMType, result.text, v.llvmType, back)
+        ELSE EmitConvert(w, cg, "sext", targetLLVMType, result.text, v.llvmType, back)
+        END;
         EmitBinOp(w, cg, "icmp eq", v.llvmType, back, v.text, fits);
         NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
         EmitCondBr(w, fits, okLabel, trapLabel);
@@ -4915,9 +4968,9 @@ MODULE LLVMCodeGenerator;
   BEGIN
     line := cg.currentLine; column := cg.currentColumn; (* CHR's own, not its argument's *)
     GenerateExpr(w, cg, args, v);
-    IF rangeChecks THEN
+    IF rangeChecks & ~((v.llvmType = "i8") & Types.IsCardinal(v.oberonType)) THEN
       cg.needChrRangeTrap := TRUE;
-      IF v.llvmType = "i8" THEN EmitBinOp(w, cg, "icmp sge", v.llvmType, v.text, "0", fits)
+      IF (v.llvmType = "i8") & ~Types.IsCardinal(v.oberonType) THEN EmitBinOp(w, cg, "icmp sge", v.llvmType, v.text, "0", fits)
       ELSE EmitBinOp(w, cg, "icmp ult", v.llvmType, v.text, "256", fits)
       END;
       NewLabel(cg, trapLabel); NewLabel(cg, okLabel);
@@ -5406,17 +5459,19 @@ MODULE LLVMCodeGenerator;
      any count up to 63 (past that, C's shift is itself undefined). Branch-
      free, via select, like ABS and DIV/MOD; the count is taken as an i64 so
      that a HUGEINT n is not truncated before the comparison, and its
-     magnitude is compared unsigned, which also covers -2^63. *)
+     magnitude is compared unsigned, which also covers -2^63. An unsigned x
+     keeps its own type and shifts right logically, filling with zeros. *)
   PROCEDURE GenerateAsh(VAR w: Files.Rider; VAR cg: Codegen; args: SyntaxTree.ExprNode; VAR result: Value);
     VAR
       x, n, xe: Value; target: Types.Type;
       ty, bitsText, lastBitText, count, isNeg, negCount, absCount, big, safeCount, narrowCount,
       left, right, shifted, signFill, fill, final: ValueText;
-      bits: INTEGER;
+      bits: INTEGER; unsigned: BOOLEAN;
   BEGIN
     GenerateExpr(w, cg, args, x);
     GenerateExpr(w, cg, args.next, n);
-    target := Types.WiderOf(Types.LongInt, x.oberonType);
+    unsigned := Types.IsCardinal(x.oberonType);
+    IF unsigned THEN target := x.oberonType ELSE target := Types.WiderOf(Types.LongInt, x.oberonType) END;
     IF target = NIL THEN
       Unsupported(w, cg, "ASH of a non-integer (should be unreachable post-CheckModule)", Types.LongInt, result);
       RETURN
@@ -5426,18 +5481,25 @@ MODULE LLVMCodeGenerator;
     bits := IntWidth(ty);
     bitsText[0] := 0X; AppendLongInt(bitsText, bits);
     lastBitText[0] := 0X; AppendLongInt(lastBitText, bits - 1);
-    EmitResizeInt(w, cg, n.llvmType, n.text, "i64", count);
-    EmitBinOp(w, cg, "icmp slt", "i64", count, "0", isNeg);
+    EmitResizeValue(w, cg, n, "i64", count);
+    IF Types.IsCardinal(n.oberonType) THEN COPY("false", isNeg)
+    ELSE EmitBinOp(w, cg, "icmp slt", "i64", count, "0", isNeg)
+    END;
     EmitBinOp(w, cg, "sub", "i64", "0", count, negCount);
     EmitSelect(w, cg, isNeg, "i64", negCount, count, absCount);
     EmitBinOp(w, cg, "icmp uge", "i64", absCount, bitsText, big);
     EmitSelect(w, cg, big, "i64", "0", absCount, safeCount);
     EmitResizeInt(w, cg, "i64", safeCount, ty, narrowCount);
     EmitBinOp(w, cg, "shl", ty, xe.text, narrowCount, left);
-    EmitBinOp(w, cg, "ashr", ty, xe.text, narrowCount, right);
+    IF unsigned THEN EmitBinOp(w, cg, "lshr", ty, xe.text, narrowCount, right)
+    ELSE EmitBinOp(w, cg, "ashr", ty, xe.text, narrowCount, right)
+    END;
     EmitSelect(w, cg, isNeg, ty, right, left, shifted);
-    EmitBinOp(w, cg, "ashr", ty, xe.text, lastBitText, signFill);
-    EmitSelect(w, cg, isNeg, ty, signFill, "0", fill);
+    IF unsigned THEN COPY("0", fill)
+    ELSE
+      EmitBinOp(w, cg, "ashr", ty, xe.text, lastBitText, signFill);
+      EmitSelect(w, cg, isNeg, ty, signFill, "0", fill)
+    END;
     EmitSelect(w, cg, big, ty, fill, shifted, final);
     result.text := final; COPY(ty, result.llvmType); result.oberonType := target
   END GenerateAsh;
@@ -5482,7 +5544,7 @@ MODULE LLVMCodeGenerator;
         COPY(xInt, resized)
       ELSE
         IF xBits > tBits THEN COPY("trunc", opText)
-        ELSIF Types.IsInteger(x.oberonType) THEN COPY("sext", opText)
+        ELSIF Types.IsInteger(x.oberonType) & ~Types.IsCardinal(x.oberonType) THEN COPY("sext", opText)
         ELSE COPY("zext", opText)
         END;
         EmitConvert(w, cg, opText, intType, xInt, resizedText, resized)
@@ -5830,7 +5892,7 @@ MODULE LLVMCodeGenerator;
     e := lengths; j := 0;
     WHILE (e # NIL) & (j < dims) DO
       GenerateExpr(w, cg, e, v);
-      EmitResizeInt(w, cg, v.llvmType, v.text, "i64", n64);
+      EmitResizeValue(w, cg, v, "i64", n64);
       EmitBinOp(w, cg, "icmp sle", "i64", n64, "0", nonPositive);
       EmitBinOp(w, cg, "or", "i1", bad, nonPositive, merged); COPY(merged, bad);
       EmitCheckedOp(w, cg, "umul", acc, n64, product, overflow);
@@ -6028,7 +6090,7 @@ MODULE LLVMCodeGenerator;
     COPY(x.llvmType, ty);
     bits := IntWidth(ty);
     bitsText[0] := 0X; AppendLongInt(bitsText, bits);
-    EmitResizeInt(w, cg, n.llvmType, n.text, "i64", count);
+    EmitResizeValue(w, cg, n, "i64", count);
     IF ~rotate THEN
       EmitBinOp(w, cg, "icmp slt", "i64", count, "0", isNeg);
       EmitBinOp(w, cg, "sub", "i64", "0", count, negCount);
@@ -6072,7 +6134,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     AddressToPointer(w, cg, args, ptrText);
     GenerateExpr(w, cg, args.next, n);
-    EmitResizeInt(w, cg, n.llvmType, n.text, "i64", count);
+    EmitResizeValue(w, cg, n, "i64", count);
     EmitBinOp(w, cg, "ashr", "i64", count, "3", byteIndex);
     EmitBinOp(w, cg, "and", "i64", count, "7", bitInByte);
     EmitByteGEP(w, cg, ptrText, "i64", byteIndex, slot);
@@ -6103,7 +6165,7 @@ MODULE LLVMCodeGenerator;
     cg.usedAllocate := TRUE; cg.needLengthTrap := TRUE;
     WordIntType(wordInt);
     GenerateExpr(w, cg, args.next, v);
-    EmitResizeInt(w, cg, v.llvmType, v.text, "i64", n64);
+    EmitResizeValue(w, cg, v, "i64", n64);
     EmitBinOp(w, cg, "icmp sle", "i64", n64, "0", bad);
     IF wordInt = "i32" THEN
       EmitBinOp(w, cg, "icmp ugt", "i64", n64, "4294967295", tooBig);
@@ -6396,14 +6458,14 @@ MODULE LLVMCodeGenerator;
   END GenerateIfStatement;
 
   (* ge=TRUE picks ">=", ge=FALSE picks "<=" - CHAR compares unsigned
-     (matching GenerateRelational's own CHAR predicate choice), the
-     SHORTINT..HUGEINT family signed. CheckCaseStatement already
+     (matching GenerateRelational's own CHAR predicate choice), as does
+     the SYSTEM.CARDn family, the SHORTINT..HUGEINT family signed. CheckCaseStatement already
      guarantees the case selector's type is exactly one of these two
      (an integer type or CHAR, never BOOLEAN/SET/REAL/pointer), so no
      further fallback is needed here. *)
   PROCEDURE CaseRangePredicate(oberonType: Types.Type; ge: BOOLEAN; VAR pred: ARRAY OF CHAR);
   BEGIN
-    IF oberonType = Types.Char THEN
+    IF (oberonType = Types.Char) OR Types.IsCardinal(oberonType) THEN
       IF ge THEN COPY("icmp uge", pred) ELSE COPY("icmp ule", pred) END
     ELSIF ge THEN COPY("icmp sge", pred)
     ELSE COPY("icmp sle", pred)
@@ -6428,7 +6490,7 @@ MODULE LLVMCodeGenerator;
     (* narrower too: a label typed wider than the selector (200-odd against
        an INT8 under -OC, where a constant is at least two bytes) always
        fits it - SemanticActions.CaseLabelFits - so truncating is exact *)
-    EmitResizeInt(w, cg, v.llvmType, v.text, targetLLVMType, result)
+    EmitResizeValue(w, cg, v, targetLLVMType, result)
   END WidenCaseLabel;
 
   (* A single CaseLabelNode: "low" alone (high = NIL) tests equality;
@@ -6570,38 +6632,33 @@ MODULE LLVMCodeGenerator;
     RETURN v.intVal
   END ForStepValue;
 
-  (* FOR v := start TO stop BY step DO body END, lowered exactly per
-     Oberon2.pdf 9.8's own equivalence:
+  (* FOR v := start TO stop BY step DO body END, lowered per Oberon2.pdf
+     9.8's own equivalence:
        v := low; temp := high;
        IF step > 0 THEN WHILE v <= temp DO statements; v := v + step END
        ELSE WHILE v >= temp DO statements; v := v + step END END
-     "high"/temp is evaluated once, before the loop (per the report's own
-     "temp := high" up front, not re-evaluated per iteration) - its
-     computed register value is reused directly in the header block on
-     every iteration without needing a PHI node or a memory spill: it's
-     defined exactly once, in the block that dominates every use (the
-     loop preheader dominates the header, which dominates the body/back-
-     edge), which is all plain SSA reuse across blocks ever requires.
-     "step"'s sign, needed to choose <= vs. >=, is resolved once at
-     compile time via ForStepValue rather than compared at runtime - the
-     report's own IF-step-attributes are themselves compile-time facts
-     here since step is always a constant. The control variable itself
-     is never kept in a register across iterations, unlike stop -
-     reloaded/stored through its own global on every iteration via
-     LoadVar/StoreIntoVar instead, the same memory-backed model every
-     other mutable VAR in this module already uses (no SSA form for
-     ordinary variables anywhere in this codegen yet). CheckForStatement
-     already guarantees the control variable is a plain, integer-typed
-     module VAR (never CHAR - "must be an integer variable"), so the
-     loop test's predicate is always the signed one, unlike CASE's own
-     (which must also cover CHAR). It also guarantees stop is assignment
-     compatible with the control variable, so ExtendTo only widens it, or
-     narrows a constant whose value fits. *)
+     except that the loop ends before a step that would pass temp (AGENTS.md,
+     "FOR final value"): after the body, the distance left - temp - v
+     counting up, v - temp counting down, modulo 2^n at v's width - is
+     compared unsigned with the step's size, and the loop exits when it is
+     smaller, so FOR i := 0 TO MAX(INTEGER) ends, and so does a SYSTEM.CARDn
+     counted down to 0. Otherwise v is stepped and the header's test runs
+     again (which matters only if the body itself moved v past temp).
+     "high"/temp is evaluated once, after low is stored into v; its SSA
+     value is reused in the header and the latch, which its block
+     dominates. "step"'s sign, needed to choose <= vs. >=, is resolved at
+     compile time via ForStepValue, step being a constant. The control
+     variable is reloaded and stored through memory (LoadVar/
+     StoreIntoVar), as every other variable is. CheckForStatement
+     guarantees the control variable is an integer variable, so the
+     header's predicate is the signed one, or the unsigned one for a
+     SYSTEM.CARDn, and that stop is assignment compatible with it, so
+     ExtendTo only widens it, or narrows a constant whose value fits. *)
   PROCEDURE GenerateForStatement(VAR w: Files.Rider; VAR cg: Codegen; s: SyntaxTree.ForStatementNode);
     VAR
       obj: SymbolTable.Object; startVal, stopVal, stopExt, vVal, incVal: Value;
-      stepAmount: LONGINT; stepText, condText: ValueText;
-      headLabel, bodyLabel, endLabel: ValueText; pred: ARRAY 16 OF CHAR;
+      stepAmount: LONGINT; width: INTEGER; stepText, stepSizeText, condText, distance, lastStep: ValueText;
+      headLabel, bodyLabel, latchLabel, stepLabel, endLabel: ValueText; pred: ARRAY 16 OF CHAR;
   BEGIN
     obj := SymbolTable.Find(cg.scope, s.variable);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
@@ -6612,18 +6669,33 @@ MODULE LLVMCodeGenerator;
     StoreIntoVar(w, cg, obj, startVal);
     GenerateExpr(w, cg, s.stop, stopVal);
     ExtendTo(w, cg, stopVal, obj.type, stopExt);
+    width := IntWidth(stopExt.llvmType);
     stepAmount := ForStepValue(cg, s);
-    stepText[0] := 0X; AppendLongInt(stepText, stepAmount);
-    NewLabel(cg, headLabel); NewLabel(cg, bodyLabel); NewLabel(cg, endLabel);
+    stepText[0] := 0X; AppendLongInt(stepText, SignedOfWidth(stepAmount, width));
+    stepSizeText[0] := 0X; AppendLongInt(stepSizeText, SignedOfWidth(ABS(stepAmount), width));
+    NewLabel(cg, headLabel); NewLabel(cg, bodyLabel); NewLabel(cg, latchLabel); NewLabel(cg, stepLabel);
+    NewLabel(cg, endLabel);
     EmitBr(w, headLabel);
     EmitLabel(w, cg, headLabel);
     LoadVar(w, cg, obj, vVal);
-    IF stepAmount > 0 THEN COPY("icmp sle", pred) ELSE COPY("icmp sge", pred) END;
+    IF Types.IsCardinal(obj.type) THEN
+      IF stepAmount > 0 THEN COPY("icmp ule", pred) ELSE COPY("icmp uge", pred) END
+    ELSIF stepAmount > 0 THEN COPY("icmp sle", pred)
+    ELSE COPY("icmp sge", pred)
+    END;
     EmitBinOp(w, cg, pred, vVal.llvmType, vVal.text, stopExt.text, condText);
     EmitCondBr(w, condText, bodyLabel, endLabel);
     EmitLabel(w, cg, bodyLabel);
     GenerateStatementSeq(w, cg, s.body);
+    EmitBr(w, latchLabel);
+    EmitLabel(w, cg, latchLabel);
     LoadVar(w, cg, obj, vVal);
+    IF stepAmount > 0 THEN EmitBinOp(w, cg, "sub", vVal.llvmType, stopExt.text, vVal.text, distance)
+    ELSE EmitBinOp(w, cg, "sub", vVal.llvmType, vVal.text, stopExt.text, distance)
+    END;
+    EmitBinOp(w, cg, "icmp ult", vVal.llvmType, distance, stepSizeText, lastStep);
+    EmitCondBr(w, lastStep, endLabel, stepLabel);
+    EmitLabel(w, cg, stepLabel);
     EmitBinOp(w, cg, "add", vVal.llvmType, vVal.text, stepText, incVal.text);
     incVal.llvmType := vVal.llvmType; incVal.oberonType := vVal.oberonType;
     StoreIntoVar(w, cg, obj, incVal);

@@ -3,7 +3,8 @@ MODULE Out;
   (* PLAN.md Phase 10 step 5: the Oakwood Guidelines' Out module, formatted
      output to the standard output stream, with voc's interface (src/
      runtime/Out.Mod): Open, Flush, Char, String, Int, Hex, Ln, Real,
-     LongReal, and voc's Ten and IsConsole. It is the module poc's own
+     LongReal, and voc's Ten and IsConsole; and poc's Card and CardHex,
+     which write a value of the unsigned types. It is the module poc's own
      Diagnostics.Mod prints through (Char, String, Int, Ln).
 
      The formatting is FormattedOutput's, shared with Err (Phase 11 A26),
@@ -24,7 +25,7 @@ MODULE Out;
        digits (31). The reading of text, In's, is the C library's, which is
        correct. *)
 
-  IMPORT FileDescriptorOutput, FormattedOutput;
+  IMPORT SYSTEM, FileDescriptorOutput, FormattedOutput;
 
   CONST
     standardOutput = FileDescriptorOutput.standardOutput;
@@ -75,6 +76,21 @@ MODULE Out;
   BEGIN
     FormattedOutput.Hex(standardOutput, x, n)
   END Hex;
+
+  (* x, of any CARD type, in decimal, right-aligned in a field n characters
+     wide, as Int (AGENTS.md, "Unsigned integer types") *)
+  PROCEDURE Card*(x: SYSTEM.CARD64; n: HUGEINT);
+  BEGIN
+    FormattedOutput.Card(standardOutput, SYSTEM.VAL(HUGEINT, x), n)
+  END Card;
+
+  (* x, of any CARD type, as hexadecimal digits, upper case, at least n of
+     them (n is taken to be within 1..16), and as many as x needs if that
+     is more *)
+  PROCEDURE CardHex*(x: SYSTEM.CARD64; n: HUGEINT);
+  BEGIN
+    FormattedOutput.CardHex(standardOutput, SYSTEM.VAL(HUGEINT, x), n)
+  END CardHex;
 
   (* 10^e for e >= 0, by repeated squaring - exact up to 10^22 *)
   PROCEDURE Ten*(e: INTEGER): LONGREAL;

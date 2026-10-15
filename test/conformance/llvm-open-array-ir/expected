@@ -50,7 +50,13 @@ LN:
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   store i16 %tN, ptr %tN
+  br label %LN
+LN:
   %tN = load i16, ptr %tN
+  %tN = sub i16 %tN, %tN
+  %tN = icmp ult i16 %tN, 1
+  br i1 %tN, label %LN, label %LN
+LN:
   %tN = add i16 %tN, 1
   store i16 %tN, ptr %tN
   br label %LN
@@ -408,7 +414,13 @@ LN:
   %tN = load i16, ptr %tN
   %tN = add i16 %tN, %tN
   store i16 %tN, ptr %tN
+  br label %LN
+LN:
   %tN = load i16, ptr %tN
+  %tN = sub i16 %tN, %tN
+  %tN = icmp ult i16 %tN, 1
+  br i1 %tN, label %LN, label %LN
+LN:
   %tN = add i16 %tN, 1
   store i16 %tN, ptr %tN
   br label %LN

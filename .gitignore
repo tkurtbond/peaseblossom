@@ -230,3 +230,7 @@ test/conformance/vax-vmsdef/work/
 # poc-response-files builds a program and a library (Phase 17 step 1)
 test/conformance/poc-response-files/resp-main
 test/conformance/poc-response-files/libs/
+test/conformance/llvm-cardinal/llvm-cardinal
+test/conformance/llvm-cardinal-import/llvm-cardinal-import
+test/conformance/llvm-cardinal-traps/*.exe
+test/conformance/llvm-for-loop-end/llvm-for-loop-end

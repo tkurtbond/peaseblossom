@@ -166,6 +166,21 @@ MODULE FormattedInput;
     RETURN done
   END HugeInt;
 
+  (* An unsigned integer, after any blanks: decimal digits, or hexadecimal
+     digits and an H, as HugeInt reads them but with no minus sign; h holds
+     its bits, a value up to 2^64 - 1 (larger ones wrap). A minus sign is
+     not a number: FALSE, h 0, and the sign is not read. h is left alone if
+     there is nothing to read. *)
+  PROCEDURE Card*(VAR source: Source; VAR h: HUGEINT): BOOLEAN;
+  BEGIN
+    Skip(source);
+    IF source.Ready() & (source.Current() = "-") THEN
+      h := 0;
+      RETURN FALSE
+    END;
+    RETURN HugeInt(source, h)
+  END Card;
+
   (* The rest of the line - up to a line feed, and without the carriage
      return before it - cut short if line cannot hold it all (the rest is
      then left for the next read). FALSE if there is nothing to read. *)

@@ -1,7 +1,7 @@
 MODULE Err;
 
   (* Phase 11 A26: Out's interface - Open, Flush, Char, String, Int, Hex,
-     Ln, Real, LongReal, Ten and IsConsole - writing to the standard error
+     Card, CardHex, Ln, Real, LongReal, Ten and IsConsole - writing to the standard error
      stream (descriptor 2) instead of standard output, for messages that
      must not mix with a program's output when it is redirected. voc has no
      such module; the names and what each procedure prints are Out's (see
@@ -13,7 +13,7 @@ MODULE Err;
      the calls. Flush and Open do nothing. IsConsole says whether standard
      error is a terminal. *)
 
-  IMPORT FileDescriptorOutput, FormattedOutput;
+  IMPORT SYSTEM, FileDescriptorOutput, FormattedOutput, CardinalTypes;
 
   CONST
     standardError = FileDescriptorOutput.standardError;
@@ -64,6 +64,23 @@ MODULE Err;
   BEGIN
     FormattedOutput.Hex(standardError, x, n)
   END Hex;
+
+  (* x, of any CARD type, in decimal, right-aligned in a field n characters
+     wide, as Int (AGENTS.md, "Unsigned integer types"). Its type,
+     CardinalTypes.Card64, is SYSTEM.CARD64, under a name voc can compile
+     for Stage 0 (see CardinalTypes). *)
+  PROCEDURE Card*(x: CardinalTypes.Card64; n: HUGEINT);
+  BEGIN
+    FormattedOutput.Card(standardError, SYSTEM.VAL(HUGEINT, x), n)
+  END Card;
+
+  (* x, of any CARD type, as hexadecimal digits, upper case, at least n of
+     them (n is taken to be within 1..16), and as many as x needs if that
+     is more *)
+  PROCEDURE CardHex*(x: CardinalTypes.Card64; n: HUGEINT);
+  BEGIN
+    FormattedOutput.CardHex(standardError, SYSTEM.VAL(HUGEINT, x), n)
+  END CardHex;
 
   (* 10^e for e >= 0, by repeated squaring - exact up to 10^22 *)
   PROCEDURE Ten*(e: INTEGER): LONGREAL;

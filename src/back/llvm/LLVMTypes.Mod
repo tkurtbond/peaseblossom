@@ -173,6 +173,13 @@ MODULE LLVMTypes;
     ELSIF t = Types.Int16 THEN COPY("i16", result)
     ELSIF t = Types.Int32 THEN COPY("i32", result)
     ELSIF t = Types.Int64 THEN COPY("i64", result)
+    ELSIF t = Types.Card8 THEN COPY("i8", result) (* SYSTEM.CARD8..CARD64 likewise *)
+    ELSIF t = Types.Card16 THEN COPY("i16", result)
+    ELSIF t = Types.Card32 THEN COPY("i32", result)
+    ELSIF t = Types.Card64 THEN COPY("i64", result)
+    ELSIF t = Types.Card THEN
+      (* SYSTEM.CARD: as wide as ADDRESS *)
+      IF ConstantEvaluator.wordSize = MemoryLayout.wordSize64 THEN COPY("i64", result) ELSE COPY("i32", result) END
     ELSIF t = Types.Real THEN COPY("float", result)
     ELSIF t = Types.LongReal THEN COPY("double", result)
     ELSIF t = Types.Set THEN COPY("i32", result) (* the same under either model, as in voc *)

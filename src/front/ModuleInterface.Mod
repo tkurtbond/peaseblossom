@@ -848,12 +848,36 @@ MODULE ModuleInterface;
     RETURN FALSE
   END ExtremeRealSpelling;
 
+  (* x, a negative LONGINT, as the hexadecimal numeral of its 64-bit pattern,
+     "0FFFFFFFFFFFFFFFFH" for -1: how a value of an unsigned type above
+     MAX(HUGEINT) is written, which reads back as that value wherever an
+     8-byte unsigned type takes it (Types.CardFits). The digits come from
+     x + 2^63, which no LONGINT operation below overflows. *)
+  PROCEDURE FormatPattern(x: LONGINT; VAR result: ARRAY OF CHAR);
+    VAR rest: LONGINT; i: INTEGER;
+
+    PROCEDURE Digit(d: LONGINT): CHAR;
+    BEGIN
+      IF d < 10 THEN RETURN CHR(ORD("0") + d) ELSE RETURN CHR(ORD("A") + d - 10) END
+    END Digit;
+
+  BEGIN
+    rest := x + MAX(LONGINT) + 1;
+    result[0] := "0"; result[17] := "H"; result[18] := 0X;
+    FOR i := 16 TO 2 BY -1 DO
+      result[i] := Digit(rest MOD 16); rest := rest DIV 16
+    END;
+    result[1] := Digit(rest + 8)
+  END FormatPattern;
+
   PROCEDURE PrintConstValue(VAR w: Files.Rider; v: Types.Value; expr: SyntaxTree.ExprNode;
                             line, column: INTEGER);
     VAR buf: ARRAY 320 OF CHAR; ok: BOOLEAN;
   BEGIN
     IF v.kind = Types.intValue THEN
-      IF v.intVal = MIN(LONGINT) THEN
+      IF Types.IsCardinal(v.type) & (v.intVal < 0) THEN
+        FormatPattern(v.intVal, buf); WriteStr(w, buf)
+      ELSIF v.intVal = MIN(LONGINT) THEN
         (* -2^63, HUGEINT's minimum (the host's LONGINT is its stand-in, see
            ConstantEvaluator.maxHugeInt): its digits are a numeral no type
            holds - "integer literal too large for HUGEINT" - so written as
@@ -1221,6 +1245,7 @@ MODULE ModuleInterface;
   PROCEDURE PrintConsts(VAR w: Files.Rider; scope: SymbolTable.Scope; decls: SyntaxTree.ConstDeclNode;
                         structured: BOOLEAN);
     VAR d: SyntaxTree.ConstDeclNode; obj: SymbolTable.Object; any: BOOLEAN;
+        name: ARRAY 512 OF CHAR; qualifier: SyntaxTree.Ident; i: INTEGER;
   BEGIN
     any := FALSE; d := decls;
     WHILE d # NIL DO
@@ -1231,6 +1256,17 @@ MODULE ModuleInterface;
         WriteStr(w, "    "); WriteStr(w, obj.name); WriteStr(w, "* = ");
         IF structured THEN
           PrintStructuredValue(w, scope, obj.value, TRUE, d.line, d.column)
+        ELSIF (obj.value.kind = Types.intValue) & Types.IsCardinal(obj.value.type)
+              & FindBoundName(scope, obj.value.type, NIL, name) THEN
+          (* an unsigned constant keeps its type, as a SYSTEM.VAL of it
+             (ConstantEvaluator.IsConstantSystemVal), through the name the
+             module imports SYSTEM by: S.VAL(S.CARD32, 4294967295) *)
+          i := 0;
+          WHILE name[i] # "." DO qualifier[i] := name[i]; INC(i) END;
+          qualifier[i] := 0X;
+          WriteStr(w, qualifier); WriteStr(w, ".VAL("); WriteStr(w, name); WriteStr(w, ", ");
+          PrintConstValue(w, obj.value, d.value, d.line, d.column);
+          WriteStr(w, ")")
         ELSE
           PrintConstValue(w, obj.value, d.value, d.line, d.column)
         END;

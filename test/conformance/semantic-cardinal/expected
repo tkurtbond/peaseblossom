@@ -1,0 +1,148 @@
+-O2  a := 255                                     ok
+-OC  a := 255                                     ok
+-O2  a := 256                                     assignment is not type-compatible: INTEGER to SYSTEM.CARD8
+-OC  a := 256                                     assignment is not type-compatible: SHORTINT to SYSTEM.CARD8
+-O2  a := -1                                      assignment is not type-compatible: SHORTINT to SYSTEM.CARD8
+-OC  a := -1                                      assignment is not type-compatible: SHORTINT to SYSTEM.CARD8
+-O2  a := MAX(SYSTEM.CARD8)                       ok
+-OC  a := MAX(SYSTEM.CARD8)                       ok
+-O2  q := MAX(SYSTEM.CARD64)                      ok
+-OC  q := MAX(SYSTEM.CARD64)                      ok
+-O2  q := MIN(SYSTEM.CARD64)                      ok
+-OC  q := MIN(SYSTEM.CARD64)                      ok
+-O2  d := 4294967295                              ok
+-OC  d := 4294967295                              ok
+-O2  d := 4294967296                              assignment is not type-compatible: HUGEINT to SYSTEM.CARD32
+-OC  d := 4294967296                              assignment is not type-compatible: LONGINT to SYSTEM.CARD32
+-O2  q := big                                     ok
+-OC  q := big                                     ok
+-O2  d := big                                     assignment is not type-compatible: SHORTINT to SYSTEM.CARD32
+-OC  d := big                                     assignment is not type-compatible: SHORTINT to SYSTEM.CARD32
+-O2  q := 18446744073709551615                    integer literal too large for HUGEINT
+-OC  q := 18446744073709551615                    integer literal too large for HUGEINT
+-O2  q := SYSTEM.VAL(SYSTEM.CARD64, 0) - 1        ok
+-OC  q := SYSTEM.VAL(SYSTEM.CARD64, 0) - 1        ok
+-O2  w := a                                       ok
+-OC  w := a                                       ok
+-O2  a := w                                       assignment is not type-compatible: SYSTEM.CARD16 to SYSTEM.CARD8
+-OC  a := w                                       assignment is not type-compatible: SYSTEM.CARD16 to SYSTEM.CARD8
+-O2  d := w                                       ok
+-OC  d := w                                       ok
+-O2  q := d                                       ok
+-OC  q := d                                       ok
+-O2  c := d                                       ok
+-OC  c := d                                       ok
+-O2  q := c                                       ok
+-OC  q := c                                       ok
+-O2  n := a                                       assignment is not type-compatible: SYSTEM.CARD8 to INTEGER
+-OC  n := a                                       assignment is not type-compatible: SYSTEM.CARD8 to INTEGER
+-O2  a := n                                       assignment is not type-compatible: INTEGER to SYSTEM.CARD8
+-OC  a := n                                       assignment is not type-compatible: INTEGER to SYSTEM.CARD8
+-O2  h := q                                       assignment is not type-compatible: SYSTEM.CARD64 to HUGEINT
+-OC  h := q                                       assignment is not type-compatible: SYSTEM.CARD64 to HUGEINT
+-O2  q := h                                       assignment is not type-compatible: HUGEINT to SYSTEM.CARD64
+-OC  q := h                                       assignment is not type-compatible: HUGEINT to SYSTEM.CARD64
+-O2  x := q                                       ok
+-OC  x := q                                       ok
+-O2  q := x                                       assignment is not type-compatible: REAL to SYSTEM.CARD64
+-OC  q := x                                       assignment is not type-compatible: REAL to SYSTEM.CARD64
+-O2  a := ch                                      assignment is not type-compatible: CHAR to SYSTEM.CARD8
+-OC  a := ch                                      assignment is not type-compatible: CHAR to SYSTEM.CARD8
+-O2  a := ORD(ch)                                 assignment is not type-compatible: INTEGER to SYSTEM.CARD8
+-OC  a := ORD(ch)                                 assignment is not type-compatible: INTEGER to SYSTEM.CARD8
+-O2  ch := CHR(a)                                 ok
+-OC  ch := CHR(a)                                 ok
+-O2  a := a + 1                                   ok
+-OC  a := a + 1                                   ok
+-O2  w := a + 300                                 ok
+-OC  w := a + 300                                 ok
+-O2  a := a + 300                                 assignment is not type-compatible: SYSTEM.CARD16 to SYSTEM.CARD8
+-OC  a := a + 300                                 assignment is not type-compatible: SYSTEM.CARD16 to SYSTEM.CARD8
+-O2  a := a + n                                   an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and INTEGER
+-OC  a := a + n                                   an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and INTEGER
+-O2  a := n + 1                                   assignment is not type-compatible: INTEGER to SYSTEM.CARD8
+-OC  a := n + 1                                   assignment is not type-compatible: INTEGER to SYSTEM.CARD8
+-O2  IF a = 0 THEN END                            ok
+-OC  IF a = 0 THEN END                            ok
+-O2  IF a < -1 THEN END                           an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and SHORTINT
+-OC  IF a < -1 THEN END                           an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and SHORTINT
+-O2  IF a = w THEN END                            ok
+-OC  IF a = w THEN END                            ok
+-O2  IF a = n THEN END                            an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and INTEGER
+-OC  IF a = n THEN END                            an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): SYSTEM.CARD8 and INTEGER
+-O2  IF a < d THEN END                            ok
+-OC  IF a < d THEN END                            ok
+-O2  a := -a                                      ok
+-OC  a := -a                                      ok
+-O2  a := ABS(a)                                  ok
+-OC  a := ABS(a)                                  ok
+-O2  w := LONG(a)                                 ok
+-OC  w := LONG(a)                                 ok
+-O2  a := SHORT(w)                                ok
+-OC  a := SHORT(w)                                ok
+-O2  q := LONG(q)                                 ok
+-OC  q := LONG(q)                                 ok
+-O2  a := SHORT(a)                                ok
+-OC  a := SHORT(a)                                ok
+-O2  a := a DIV 2                                 ok
+-OC  a := a DIV 2                                 ok
+-O2  h := a DIV 2                                 assignment is not type-compatible: SYSTEM.CARD8 to HUGEINT
+-OC  h := a DIV 2                                 assignment is not type-compatible: SYSTEM.CARD8 to HUGEINT
+-O2  x := q * 1.5                                 ok
+-OC  x := q * 1.5                                 ok
+-O2  n := SYSTEM.VAL(INTEGER, a)                  ok
+-OC  n := SYSTEM.VAL(INTEGER, a)                  ok
+-O2  a := SYSTEM.VAL(SYSTEM.CARD8, n)             ok
+-OC  a := SYSTEM.VAL(SYSTEM.CARD8, n)             ok
+-O2  d := SYSTEM.VAL(SYSTEM.CARD32, -1)           ok
+-OC  d := SYSTEM.VAL(SYSTEM.CARD32, -1)           ok
+-O2  c := SYSTEM.VAL(SYSTEM.CARD, adr)            ok
+-OC  c := SYSTEM.VAL(SYSTEM.CARD, adr)            ok
+-O2  adr := c                                     assignment is not type-compatible: SYSTEM.CARD to SYSTEM.ADDRESS
+-OC  adr := c                                     assignment is not type-compatible: SYSTEM.CARD to SYSTEM.ADDRESS
+-O2  s := SYSTEM.VAL(SET, d)                      ok
+-OC  s := SYSTEM.VAL(SET, d)                      ok
+-O2  d := SYSTEM.VAL(SYSTEM.CARD32, s)            ok
+-OC  d := SYSTEM.VAL(SYSTEM.CARD32, s)            ok
+-O2  INC(a)                                       ok
+-OC  INC(a)                                       ok
+-O2  INC(a, 200)                                  ok
+-OC  INC(a, 200)                                  ok
+-O2  INC(a, 300)                                  ok
+-OC  INC(a, 300)                                  ok
+-O2  INC(a, n)                                    an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): INTEGER
+-OC  INC(a, n)                                    an unsigned and a signed integer cannot be mixed (use SYSTEM.VAL): INTEGER
+-O2  DEC(q, 2)                                    ok
+-OC  DEC(q, 2)                                    ok
+-O2  CASE a OF 0..127: | 128..255: END            ok
+-OC  CASE a OF 0..127: | 128..255: END            ok
+-O2  CASE a OF -1: END                            case label is outside the range of the CASE selector's type
+-OC  CASE a OF -1: END                            case label is outside the range of the CASE selector's type
+-O2  CASE a OF 256: END                           case label is outside the range of the CASE selector's type
+-OC  CASE a OF 256: END                           case label is outside the range of the CASE selector's type
+-O2  CASE n OF SYSTEM.VAL(SYSTEM.CARD8, 3): END   an unsigned case label for a signed CASE selector: SYSTEM.CARD8
+-OC  CASE n OF SYSTEM.VAL(SYSTEM.CARD8, 3): END   an unsigned case label for a signed CASE selector: SYSTEM.CARD8
+-O2  FOR a := 10 TO 0 BY -1 DO END                ok
+-OC  FOR a := 10 TO 0 BY -1 DO END                ok
+-O2  FOR a := 0 TO n DO END                       FOR final value is not assignment compatible with the control variable: INTEGER to SYSTEM.CARD8
+-OC  FOR a := 0 TO n DO END                       FOR final value is not assignment compatible with the control variable: INTEGER to SYSTEM.CARD8
+-O2  FOR a := 0 TO 255 DO END                     ok
+-OC  FOR a := 0 TO 255 DO END                     ok
+-O2  FOR q := 0 TO big DO END                     ok
+-OC  FOR q := 0 TO big DO END                     ok
+-O2  a := ASH(a, 1)                               ok
+-OC  a := ASH(a, 1)                               ok
+-O2  a := SYSTEM.LSH(a, 1)                        ok
+-OC  a := SYSTEM.LSH(a, 1)                        ok
+-O2  a := SYSTEM.ROT(a, -1)                       ok
+-OC  a := SYSTEM.ROT(a, -1)                       ok
+-O2  IF ODD(a) THEN END                           ok
+-OC  IF ODD(a) THEN END                           ok
+-O2  IF a IN s THEN END                           ok
+-OC  IF a IN s THEN END                           ok
+-O2  INCL(s, a)                                   ok
+-OC  INCL(s, a)                                   ok
+-O2  arr[a] := 0                                  ok
+-OC  arr[a] := 0                                  ok
+-O2  b := a                                       ok
+-OC  b := a                                       ok

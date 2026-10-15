@@ -115,6 +115,11 @@ MODULE MemoryLayout;
     ELSIF t = Types.Int16 THEN RETURN 2
     ELSIF t = Types.Int32 THEN RETURN 4
     ELSIF t = Types.Int64 THEN RETURN 8
+    ELSIF t = Types.Card8 THEN RETURN 1 (* SYSTEM.CARD8..CARD64 likewise *)
+    ELSIF t = Types.Card16 THEN RETURN 2
+    ELSIF t = Types.Card32 THEN RETURN 4
+    ELSIF t = Types.Card64 THEN RETURN 8
+    ELSIF t = Types.Card THEN RETURN wordSize (* SYSTEM.CARD: as wide as ADDRESS *)
     ELSIF t = Types.Real THEN RETURN 4
     ELSIF t = Types.LongReal THEN RETURN 8
     ELSIF t = Types.Set THEN RETURN 4 (* the same under either model, as in voc *)

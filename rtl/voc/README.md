@@ -10,6 +10,10 @@ place of an `rtl/llvm` one that voc cannot compile.
   then `rtl/llvm`'s `RealDigits`, `FormattedText`, `FormattedOutput` and
   `Err`, so the
   voc-built poc writes its diagnostics to standard error (Phase 11 D11).
+- `CardinalTypes.Mod` - `rtl/llvm/CardinalTypes.Mod`'s `Card64`, the type
+  of `Err.Card`'s and `Err.CardHex`'s parameter, which is `SYSTEM.CARD64`
+  there and `HUGEINT` here, voc having no unsigned types ("Unsigned
+  integer types" in `doc/developer/language-extensions.md`).
 - `Directories.Mod` - `rtl/llvm/Directories.Mod`'s interface
   (`pathSeparator`, `MakePath`, `IsDirectory`, `MakeDirectory`) over voc's
   `Platform`, which has no such procedures: `IsDirectory` changes to the

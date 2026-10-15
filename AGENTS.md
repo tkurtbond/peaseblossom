@@ -292,7 +292,9 @@ array is never an assignment target. An open source that is too long traps
 Stricter than `Oberon2.pdf` §9.8, as voc: `high` in `FOR v := low TO high`
 must be assignment compatible with `v`, not merely comparable, so a wider or
 real bound is a compile-time error. `low` is evaluated before `high`, as the
-report says.
+report says. A loop ends before a step that would pass `high` (2026-10-14,
+with the unsigned types), so one up to `MAX` of its type ends, and `v` keeps
+the last value it had in the body.
 
 ### Declarations after procedures (decided and implemented, Phase 11 A22, 2026-09-25)
 
@@ -408,6 +410,21 @@ are constant field initializers. `-strict` rejects it. The LLVM backend
 makes a literal in a stack slot of the function's entry block; a structured
 constant is a private constant global of each module that uses it.
 
+### Unsigned integer types (decided 2026-10-08, implemented 2026-10-14; Phase 19, candidate 5)
+
+`SYSTEM.CARD8`, `CARD16`, `CARD32` and `CARD64`, 0..2^n - 1 in exactly n
+bits under both size models, and `SYSTEM.CARD`, as wide as `ADDRESS`, a type
+of its own. A family apart from the signed integers, included in `REAL`:
+mixing the two is an error, and `SYSTEM.VAL` (which zero-extends a CARD) the
+only way across; `LONG` and `SHORT` within it. A non-negative constant that
+fits is usable with them (with `c` a `CARD8`, `c + 300` is a `CARD16`); one
+above `MAX(HUGEINT)` only as a hexadecimal pattern. Arithmetic wraps, unary
+minus is allowed, `ABS` is the identity; comparison, `DIV` and `MOD` are
+unsigned, and `ASH` and `LSH` shift in zeros. `Out`, `Err` and `OutStr` have
+`Card` and `CardHex`, `In` and `InStr` `Card`; `Err`'s name their type
+through `CardinalTypes`, whose `rtl/voc` twin Stage 0 compiles. `-strict`
+rejects them. The VAX backend's support follows on the `vax` branch.
+
 ## Project state
 
 Phases 0-15 of `PLAN.md` are complete (records in `doc/history/phases/` and
@@ -430,7 +447,15 @@ their link arguments, C++ parts, a complete `-help`, the documents as
 HTML and PDF, and a fix were released as **Peaseblossom 0.4.0 on
 2026-10-06** (tag `v0.4.0`; the record is in `PLAN.md`, "Peaseblossom
 0.4.0"), and **0.4.1** followed the same day with one fix (`ORD` of a
-`SET` under `-OC`; tag `v0.4.1`).
+`SET` under `-OC`; tag `v0.4.1`). Objects reused when up to date,
+`SYSTEM.ADDRESS` and an integer type of its width included in each other,
+`-lto` on 32-bit NetBSD, and two fixes were released as **Peaseblossom
+0.5.0 on 2026-10-09** (tag `v0.5.0`; the RPM's `%changelog` lists them).
+The unsigned integer types (`SYSTEM.CARD8`..`CARD64`, `SYSTEM.CARD`), the
+new end of a `FOR` loop (both in "Language extensions beyond
+Oberon2.pdf"), `make doc-all` and three fixes were released as
+**Peaseblossom 0.6.0 on 2026-10-14** (tag `v0.6.0`; the record is in
+`PLAN.md`, "Peaseblossom 0.6.0").
 Phase 15, the VAX/VMS MACRO-32 backend, writes MACRO-32 for Phase 8's
 slice, each fixture reviewed by the user, assembled and mostly run on the
 SIMH VAX (closed 2026-10-08, on the `vax` branch;

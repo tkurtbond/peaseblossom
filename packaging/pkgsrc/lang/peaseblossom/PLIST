@@ -2,6 +2,8 @@
 bin/poc
 lib/poc/${POC_TRIPLE}/O2-g/Args.owner
 lib/poc/${POC_TRIPLE}/O2-g/Args.sym
+lib/poc/${POC_TRIPLE}/O2-g/CardinalTypes.owner
+lib/poc/${POC_TRIPLE}/O2-g/CardinalTypes.sym
 lib/poc/${POC_TRIPLE}/O2-g/Console.owner
 lib/poc/${POC_TRIPLE}/O2-g/Console.sym
 lib/poc/${POC_TRIPLE}/O2-g/Err.owner
@@ -53,6 +55,8 @@ lib/poc/${POC_TRIPLE}/O2-g/libpoc-rtl.so
 lib/poc/${POC_TRIPLE}/O2-g/poc-rtl.library
 lib/poc/${POC_TRIPLE}/O2/Args.owner
 lib/poc/${POC_TRIPLE}/O2/Args.sym
+lib/poc/${POC_TRIPLE}/O2/CardinalTypes.owner
+lib/poc/${POC_TRIPLE}/O2/CardinalTypes.sym
 lib/poc/${POC_TRIPLE}/O2/Console.owner
 lib/poc/${POC_TRIPLE}/O2/Console.sym
 lib/poc/${POC_TRIPLE}/O2/Err.owner
@@ -104,6 +108,8 @@ lib/poc/${POC_TRIPLE}/O2/libpoc-rtl.so
 lib/poc/${POC_TRIPLE}/O2/poc-rtl.library
 lib/poc/${POC_TRIPLE}/OC-g/Args.owner
 lib/poc/${POC_TRIPLE}/OC-g/Args.sym
+lib/poc/${POC_TRIPLE}/OC-g/CardinalTypes.owner
+lib/poc/${POC_TRIPLE}/OC-g/CardinalTypes.sym
 lib/poc/${POC_TRIPLE}/OC-g/Console.owner
 lib/poc/${POC_TRIPLE}/OC-g/Console.sym
 lib/poc/${POC_TRIPLE}/OC-g/Err.owner
@@ -155,6 +161,8 @@ lib/poc/${POC_TRIPLE}/OC-g/libpoc-rtl.so
 lib/poc/${POC_TRIPLE}/OC-g/poc-rtl.library
 lib/poc/${POC_TRIPLE}/OC/Args.owner
 lib/poc/${POC_TRIPLE}/OC/Args.sym
+lib/poc/${POC_TRIPLE}/OC/CardinalTypes.owner
+lib/poc/${POC_TRIPLE}/OC/CardinalTypes.sym
 lib/poc/${POC_TRIPLE}/OC/Console.owner
 lib/poc/${POC_TRIPLE}/OC/Console.sym
 lib/poc/${POC_TRIPLE}/OC/Err.owner

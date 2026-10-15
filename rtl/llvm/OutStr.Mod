@@ -1,6 +1,7 @@
 MODULE OutStr;
 
-  (* Out's output procedures - Char, String, Int, Hex, Ln, Real, LongReal -
+  (* Out's output procedures - Char, String, Int, Hex, Card, CardHex, Ln,
+     Real, LongReal -
      appending to a string instead of writing to standard output (Phase 15's
      "Ongoing library enhancements" 1). Each takes Out's parameters followed
      by s, and adds its text at s's first 0X, so a run of calls builds a
@@ -17,7 +18,7 @@ MODULE OutStr;
      poc's own: voc has no OutStr, and String's read-only parameter, str-,
      takes a string constant, which voc's would not. *)
 
-  IMPORT FormattedText;
+  IMPORT SYSTEM, FormattedText;
 
   (* Where s's text ends: its first 0X, made the last character if it has
      none *)
@@ -102,6 +103,26 @@ MODULE OutStr;
     e := End(s);
     Put(text, s, e)
   END Hex;
+
+  (* x, of any CARD type, in decimal, right-aligned in a field n characters
+     wide, as Int (AGENTS.md, "Unsigned integer types") *)
+  PROCEDURE Card*(x: SYSTEM.CARD64; n: HUGEINT; VAR s: ARRAY OF CHAR);
+    VAR text: ARRAY FormattedText.maxText OF CHAR;
+  BEGIN
+    FormattedText.Card(SYSTEM.VAL(HUGEINT, x), text);
+    PutField(text, n, s)
+  END Card;
+
+  (* x, of any CARD type, as hexadecimal digits, upper case, at least n of
+     them (n is taken to be within 1..16), and as many as x needs if that
+     is more *)
+  PROCEDURE CardHex*(x: SYSTEM.CARD64; n: HUGEINT; VAR s: ARRAY OF CHAR);
+    VAR text: ARRAY FormattedText.maxText OF CHAR; e: LONGINT;
+  BEGIN
+    FormattedText.CardHex(SYSTEM.VAL(HUGEINT, x), n, text);
+    e := End(s);
+    Put(text, s, e)
+  END CardHex;
 
   (* x in exponential form (d.dddE+dd), right-aligned in a field of n
      characters: as many digits as fit, from 2 to 9, at least 6 generated

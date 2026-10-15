@@ -8,7 +8,7 @@ ONLY_FOR_ARCHS =	amd64 i386
 
 COMMENT =		Oberon-2 compiler (poc) using LLVM
 
-V =			0.5.0
+V =			0.6.0
 DISTNAME =		peaseblossom-${V}
 CATEGORIES =		lang
 # poc names it libpoc-rtl.so.0.0 itself (LLVMToolchainDriver.Mod)

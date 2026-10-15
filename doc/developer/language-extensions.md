@@ -636,7 +636,7 @@ the same type as v".) What a program can observe:
   the ones voc rejects.
 - **A loop ends before a step that would pass `temp`** (decided with the
   user 2026-10-08, with the unsigned types, "Unsigned integer types"
-  below; not yet implemented). After the body, the loop exits when the
+  below; implemented 2026-10-14, fixture `llvm-for-loop-end`). After the body, the loop exits when the
   distance left, `temp - v` counting up or `v - temp` counting down, is
   less than the step's size, and only otherwise adds the step. The
   distance is computed modulo 2^n at `v`'s width and compared unsigned,
@@ -885,7 +885,7 @@ what that value is.
 | `INCL`/`EXCL` with an element outside the set, `{n}` with a variable `n` >= 32 | undefined: the shift wraps at the machine's width (`INCL(s, 33)` set bit 1 on x86), unchecked; constant ones are compile-time errors |
 | Real overflow, underflow, `x/0.0`, `0.0/0.0` | infinity, 0, infinity, NaN, silently (C5); `llvm-no-trap-behavior` case 9 |
 | `SHORT` or `CHR` of a value that does not fit | truncates (`CHR(300)` is 44), as voc without `-r`; **`poc -range-checks`** makes it trap 14 (Phase 12 step 1, `doc/developer/voc-options.md`) |
-| `FOR v := a TO b` when `b` is `MAX` of `v`'s type | never ends: `v` wraps to `MIN` and the loop runs on, as the report's own expansion (`v <= b`) says once overflow is undefined; voc the same (`llvm-no-trap-behavior` case 8) |
+| `FOR v := a TO b` when `b` is `MAX` of `v`'s type | ends after the iteration with `v = b`, since every `FOR` ends before a step past its final value (2026-10-14, "FOR final value"). Until then it never ended: `v` wrapped to `MIN` and the loop ran on, as the report's own expansion (`v <= b`) says once overflow is undefined, and voc's still does (`llvm-no-trap-behavior` case 8) |
 | `ASH(x, n)`, `LSH`, `ROT` with a count of the type's width or more | defined and not a trap: `ASH` gives 0 (the sign for a right shift), `LSH` 0, `ROT` counts modulo the width; voc's are C's undefined shifts (`ROT(1, 33)` is 0 there, 2 here) |
 | `MOVE(a, b, n)` with `n <= 0` | moves nothing (voc, probed with `n = -4`, copied) (`llvm-no-trap-behavior` case 6) |
 | `COPY(x, v)` | copies up to the source's `0X`, at most `LEN(v) - 1` characters, and always terminates `v`; a source without a `0X` is read to its end (`llvm-no-trap-behavior` case 4) |
@@ -1568,9 +1568,10 @@ is no use without `QUOT` (the user). Not built yet: Phase 19 does it, with
 fixtures for each sign of each operand, constants and variables, every
 integer type, and `-strict`.
 
-## Unsigned integer types (decided 2026-10-08, not yet implemented; Phase 19, candidate 5)
+## Unsigned integer types (decided 2026-10-08, implemented 2026-10-14; Phase 19, candidate 5)
 
-**Adopted by the user 2026-10-08, to be implemented later.** The FLTK binding (`~/Repos/Oberon/pofltk`)
+**Adopted by the user 2026-10-08, implemented 2026-10-14** for the LLVM
+backend (the VAX backend follows on the `vax` branch). The FLTK binding (`~/Repos/Oberon/pofltk`)
 declares C's unsigned types as the signed `SYSTEM.INTn` of the same width,
 which pass the bits but compare, divide and widen as signed: `Fl.RGB`
 builds an `Fl_Color`, a C `unsigned int`, with `SYSTEM.VAL`, and a color
@@ -1678,7 +1679,46 @@ family, with a 64-bit type; named `SYSTEM.CARD8`, `CARD16`, `CARD32` and
 and `LONG` within it; included in `REAL` and `LONGREAL`; unary minus
 allowed; wrapping on overflow and underflow; no decimal literals above
 `MAX(HUGEINT)`, hexadecimal patterns instead; `FOR` counting down by
-subtraction, and every `FOR` ending before a step past its final value. Not built yet: Phase 19 does
-it, with fixtures for each operation at each width, constants, `SHORT`
-and `LONG`, `SYSTEM.VAL` both ways, mixing errors, `-strict`, and the
-text modules.
+subtraction, and every `FOR` ending before a step past its final value.
+
+**Settled while implementing it** (2026-10-14):
+
+- **A constant next to a CARD operand** (`Types.ConstantOperandType`,
+  shared by the checker, the folder and the LLVM backend) takes the
+  narrowest CARD type that holds it and is at least as wide as the other
+  operand: with `c` a `CARD8`, `c + 1` is a `CARD8` and `c + 300` a
+  `CARD16`, as a signed constant next to a narrower signed operand is
+  typed. The same goes for comparisons and `INC`/`DEC`'s amount. A
+  constant of a CARD type is written `SYSTEM.VAL(SYSTEM.CARDn, k)`, which
+  is a constant; a CARD constant next to a signed operand mixes the
+  families.
+- **A hexadecimal pattern stays signed as a constant expression**:
+  `0FFFFFFFFFFFFFFFFH - 1` is -2, and 2^64 - 2 is `MAX(SYSTEM.CARD64) - 1`.
+  The pattern is 2^64 - 1 only where a `CARD64` takes the constant itself.
+- **`.sym`**: a constant of a CARD type is written `S.VAL(S.CARDn, k)`, and
+  a value above `MAX(HUGEINT)` as its 16-digit pattern.
+- **`SHORT` of a `CARD8`** is a `CARD8`, as `SHORT` of a `SYSTEM.INT8` is an
+  `INT8`, and `LONG` of a `CARD64` a `CARD64`, as for `HUGEINT`.
+  `INC(c, k)` with a constant `k` too large for `c` is accepted and wraps,
+  as it is for the signed types.
+- **`CASE`**: a CARD selector takes labels from 0 to its `MAX`; a label
+  of a CARD type is an error for a signed selector ("an unsigned case label
+  for a signed CASE selector").
+- **The text procedures** (the user, 2026-10-14): `Out`, `Err` and
+  `OutStr` have `Card(x: SYSTEM.CARD64; n)` in decimal and `CardHex(x, n)`
+  in hexadecimal, at least `n` digits and as many as `x` needs; `In` and
+  `InStr` have `Card(VAR c: SYSTEM.CARD64)`, decimal or hexadecimal with
+  `H`, a minus sign not a number. voc compiles `Err` for Stage 0 and has no
+  unsigned types, so `Err`'s take `CardinalTypes.Card64`, which is
+  `SYSTEM.CARD64` in `rtl/llvm` and `HUGEINT` in Stage 0's `rtl/voc` twin;
+  `FormattedText.Card` makes the digits from a `HUGEINT`'s bits, which voc
+  compiles.
+- **LLVM**: a CARD index is zero-extended to 64 bits before its check and
+  `getelementptr`; constants are spelled as the signed number of the same
+  bits (`i32 -1` for 4294967295).
+
+Fixtures: `semantic-cardinal` (one statement per line, accepted or
+rejected, under both size models), `semantic-strict-cardinal`,
+`llvm-cardinal` (every operation, at each width, and the text
+procedures), `llvm-cardinal-import` (the `.sym` file),
+`llvm-cardinal-traps` and `llvm-for-loop-end`.
