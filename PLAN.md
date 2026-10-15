@@ -807,6 +807,26 @@ C++, and so on) unless step 4 chooses one deliberately.
    them is tested where it would fail - and that fail if the AST
    delivery rules are wrong.
 
+   **Proposals (2026-10-15)**: nine, in `vax-macro32-backend.md`,
+   section 22, from the 5.x manuals and the runtime as it is;
+   **approved by the user, 2026-10-15**. In short: an AST routine is a global Oberon
+   procedure of type `AsynchronousTraps.Routine`, the calling convention
+   needing no adapter; the heap runs with ASTs disabled once a program
+   can have them; the rest of the runtime is a documented rule;
+   `AsynchronousTraps`, `EventFlags`, `Timers`, `ExitHandlers` and
+   handlers in `Conditions`; four questions tried on the guest first.
+   **Built 2026-10-15** (section 22.6): the modules, the generator's
+   typed AST routines, CTRL/C by `Platform.SetInterruptHandler` (tried by
+   hand), and fixtures `vax-asts`, `vax-asts-heap` and
+   `vax-conditions-handlers`. Two departures: a handler's arrays are fixed
+   arrays, since a `VAR` record takes a hidden tag, and `Timers.After`
+   takes no request argument. Also found: a `$EXIT` from an exit handler
+   skips the rest, poc's own included.
+   **Approved 2026-10-15** (section 22.7): trap 15
+   when an AST re-enters the heap in a program that does not import
+   `AsynchronousTraps`, so that breaking that rule fails at once, with a
+   message, instead of corrupting the heap.
+
 7. **Distributing poc on VAX/VMS.** A release has to give a VMS site
    poc and its libraries. Nine proposals were written 2026-10-15 and
    **approved by the user, 2026-10-15**. The full text is in

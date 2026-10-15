@@ -10,8 +10,11 @@ under both size models, with their sources:
           records of SYS$LIBRARY:STARLETSD.TLB's other modules (SSDEF,
           RMSDEF, IODEF, ...), generated from STARLETSD.TLB. Their
           sources are in [.SRC.RTL.VMS].
-  VMSLIB  Conditions, LogicalNames and Symbols, built on VMSDEF: condition
-          values and their messages, logical names, and DCL symbols.
+  VMSLIB  Conditions, EventFlags, ExitHandlers, LogicalNames, Symbols
+          and Timers, built on VMSDEF: condition values, their messages
+          and condition handlers, event flags, exit handlers, logical
+          names, DCL symbols, and timers that call an AST routine. An
+          AST routine is an AsynchronousTraps.Routine, from POCRTL.
           Their sources are in [.SRC.RTL.VMSLIB].
 
 Installing

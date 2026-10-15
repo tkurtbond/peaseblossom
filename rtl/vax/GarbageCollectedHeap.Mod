@@ -20,6 +20,24 @@ MODULE GarbageCollectedHeap;
      (VaxCodeGenerator.GenerateModule). A word is a longword, and the VAX
      stack grows down, as the others' do.
 
+     ASTs (vax-macro32-backend.md, section 22.3, proposal 2): a user-mode
+     AST may come between any two instructions of the main line, and may
+     allocate. Once ExpectAsts has been called - by AsynchronousTraps'
+     initializer, so in every program that imports it, which every module
+     that can request an AST does but Platform - Allocate,
+     Collect and RegisterFinalizer change the heap with user-mode ASTs
+     disabled ($SETAST), and enable them again only if they were; so an
+     AST never finds the heap halfway changed, and NEW is safe at AST
+     level, where they are disabled already. A finalizer runs with them
+     enabled, its entry taken from the table with them disabled, and not
+     at AST level: a collection there leaves its finalizers pending, for
+     the next on the main line, or for exit. Without ExpectAsts nothing
+     of this costs more than a test of one byte. Either way the heap is
+     marked at work while they run (inHeap), so that an AST that
+     interrupts it in a program without AsynchronousTraps, a CTRL/C
+     handler's NEW, ends the program by trap 15 instead of changing the
+     heap halfway (section 22.7). rtl/llvm's twin has none of it.
+
      HEAP SHAPE. Memory comes from calloc in *chunks*. A chunk holds, in
      order: a small header (the ChunkNext.. words below), a *start map* -
      one byte per 16-byte granule of the block area, non-zero where a
@@ -143,6 +161,8 @@ MODULE GarbageCollectedHeap;
   IMPORT SYSTEM;
 
   CONST
+    (* the trap when an AST re-enters the heap (section 22.7) *)
+    heapReentered = 15;
     granule = 16;
     (* header word = data or block size * sizeUnit + flag bits *)
     sizeUnit = 4;
@@ -197,6 +217,12 @@ MODULE GarbageCollectedHeap;
     registered, registeredCount, registeredCapacity: SYSTEM.ADDRESS;
     pending, pendingCount, pendingCapacity: SYSTEM.ADDRESS;
     exitHandlerSet: BOOLEAN;
+    (* ExpectAsts has been called: the heap disables ASTs while it works *)
+    astsPossible: BOOLEAN;
+    (* Allocate, Collect or RegisterFinalizer is at work: found set on
+       entry, the heap has been entered by an AST that interrupted it, in
+       a program that does not import AsynchronousTraps (section 22.7) *)
+    inHeap: BOOLEAN;
 
   TYPE
     (* called with an object the collector found unreachable (RegisterFinalizer) *)
@@ -209,6 +235,10 @@ MODULE GarbageCollectedHeap;
   PROCEDURE ["VMS", "POC_AT_EXIT"] AtExit(handler: ExitHandler): SYSTEM.INT32;
   PROCEDURE ["VMS", "POC_ROOT_TABLES"] RootTables(): SYSTEM.ADDRESS;
   PROCEDURE ["VMS", "POC_PAGE_FILE_LEFT"] PageFileLeft(): SYSTEM.ADDRESS;
+  PROCEDURE ["VMS", "SYS$SETAST"] SetAst(enable: SYSTEM.INT32): SYSTEM.INT32;
+  PROCEDURE ["VMS", "LIB$AST_IN_PROG"] AstInProgress(): SYSTEM.INT32;
+  (* POC_TRAP with no location: the message for code, then $EXIT *)
+  PROCEDURE ["VMS", "POC_TRAP"] Trap(code, module, line, column: SYSTEM.INT32);
 
   (* count * size bytes of zeroed memory, or 0: calloc's *)
   PROCEDURE CAllocate(count, size: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
@@ -692,21 +722,66 @@ MODULE GarbageCollectedHeap;
     FinishMarking
   END FindUnreachable;
 
+  (* ---- ASTs ---- *)
+
+  (* Disables user-mode ASTs if any may come, and tells whether they were
+     enabled, for LeaveHeap (SS$_WASSET is 9); then marks the heap at
+     work. Finding it at work already, the caller is an AST that
+     interrupted the heap, which only a program that does not import
+     AsynchronousTraps lets happen: trap 15, before anything is changed
+     (section 22.7). With ASTs disabled the test cannot be interrupted;
+     without, an AST that comes between the test and the mark finds the
+     heap not yet at work, and does its work before the main line starts. *)
+  PROCEDURE EnterHeap(): BOOLEAN;
+    VAR wasEnabled: BOOLEAN;
+  BEGIN
+    wasEnabled := astsPossible & (SetAst(0) = 9);
+    IF inHeap THEN Trap(heapReentered, 0, 0, 0) END;
+    inHeap := TRUE;
+    RETURN wasEnabled
+  END EnterHeap;
+
+  (* Marks the heap no longer at work, and enables user-mode ASTs again if
+     EnterHeap disabled them *)
+  PROCEDURE LeaveHeap(wasEnabled: BOOLEAN);
+    VAR status: SYSTEM.INT32;
+  BEGIN
+    inHeap := FALSE;
+    IF wasEnabled THEN status := SetAst(1) END
+  END LeaveHeap;
+
+  (* TRUE if a finalizer may run here: not at AST level *)
+  PROCEDURE MayFinalize(): BOOLEAN;
+  BEGIN
+    RETURN ~astsPossible OR (AstInProgress() = 0)
+  END MayFinalize;
+
   (* Calls the finalizer of the last entry of a table, taken off it
      first. *)
-  PROCEDURE FinalizeLast(table: SYSTEM.ADDRESS; VAR count: SYSTEM.ADDRESS);
-    VAR object: SYSTEM.ADDRESS; finalize: Finalizer;
+  PROCEDURE FinalizeLast(VAR table, count: SYSTEM.ADDRESS);
+    VAR object: SYSTEM.ADDRESS; finalize: Finalizer; taken, wasEnabled: BOOLEAN;
   BEGIN
-    DEC(count);
-    object := GetWord(table + 2 * count * word);
-    SYSTEM.GET(table + (2 * count + 1) * word, finalize);
-    finalize(SYSTEM.VAL(SYSTEM.PTR, object))
+    (* the entry taken with ASTs disabled, since an AST's collection may
+       add to the table, or move it; the finalizer run with them as they
+       were *)
+    wasEnabled := EnterHeap();
+    taken := count > 0;
+    IF taken THEN
+      DEC(count);
+      object := GetWord(table + 2 * count * word);
+      SYSTEM.GET(table + (2 * count + 1) * word, finalize)
+    END;
+    LeaveHeap(wasEnabled);
+    IF taken THEN finalize(SYSTEM.VAL(SYSTEM.PTR, object)) END
   END FinalizeLast;
 
-  (* Runs the finalizers of the pending objects, newest first. *)
+  (* Runs the finalizers of the pending objects, newest first; not at AST
+     level, where they wait for the main line. *)
   PROCEDURE RunPending;
   BEGIN
-    WHILE pendingCount > 0 DO FinalizeLast(pending, pendingCount) END
+    IF MayFinalize() THEN
+      WHILE pendingCount > 0 DO FinalizeLast(pending, pendingCount) END
+    END
   END RunPending;
 
   (* ---- sweeping ---- *)
@@ -767,10 +842,9 @@ MODULE GarbageCollectedHeap;
 
   (* ---- the public interface ---- *)
 
-  (* One full collection: roots, then the machine stack, then whatever
-     they reach, then the sweep. Called by Allocate when it has run out
-     of room, and directly by anything that wants one. *)
-  PROCEDURE Collect*;
+  (* Collect's work, with ASTs disabled by its caller, but for the
+     finalizers, which the caller runs after. *)
+  PROCEDURE CollectNow;
   BEGIN
     IF collecting THEN RETURN END;
     collecting := TRUE;
@@ -788,7 +862,18 @@ MODULE GarbageCollectedHeap;
       Sweep;
       INC(collections)
     END;
-    collecting := FALSE;
+    collecting := FALSE
+  END CollectNow;
+
+  (* One full collection: roots, then the machine stack, then whatever
+     they reach, then the sweep. Called by Allocate when it has run out
+     of room, and directly by anything that wants one. *)
+  PROCEDURE Collect*;
+    VAR wasEnabled: BOOLEAN;
+  BEGIN
+    wasEnabled := EnterHeap();
+    CollectNow;
+    LeaveHeap(wasEnabled);
     RunPending
   END Collect;
 
@@ -806,10 +891,9 @@ MODULE GarbageCollectedHeap;
     END
   END GrowAfterCollection;
 
-  (* dataSize bytes of zeroed memory whose tag word (at the returned
-     address - one word) is tag - 0, or the address of a type descriptor.
-     0 if the request is out of range or the heap ceiling stops it. *)
-  PROCEDURE Allocate*(dataSize, tag: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+  (* Allocate's work, with ASTs disabled by its caller, but for the
+     finalizers of a collection it starts, which the caller runs after. *)
+  PROCEDURE AllocateNow(dataSize, tag: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
     VAR need, block, cursor, end: SYSTEM.ADDRESS;
   BEGIN
     IF (dataSize < 0) OR (dataSize > maxObjectSize) THEN RETURN 0 END;
@@ -817,7 +901,7 @@ MODULE GarbageCollectedHeap;
     block := TakeBlock(need);
     IF block = 0 THEN
       (* with no chunk at all there is nothing to collect *)
-      IF chunkHead # 0 THEN Collect; GrowAfterCollection END;
+      IF chunkHead # 0 THEN CollectNow; GrowAfterCollection END;
       block := TakeBlock(need);
       IF (block = 0) & AddChunk(need) THEN block := TakeBlock(need) END
     END;
@@ -831,6 +915,19 @@ MODULE GarbageCollectedHeap;
       cursor := cursor + word
     END;
     RETURN block + 2 * word
+  END AllocateNow;
+
+  (* dataSize bytes of zeroed memory whose tag word (at the returned
+     address - one word) is tag - 0, or the address of a type descriptor.
+     0 if the request is out of range or the heap ceiling stops it. *)
+  PROCEDURE Allocate*(dataSize, tag: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
+    VAR data: SYSTEM.ADDRESS; wasEnabled: BOOLEAN;
+  BEGIN
+    wasEnabled := EnterHeap();
+    data := AllocateNow(dataSize, tag);
+    LeaveHeap(wasEnabled);
+    IF pendingCount > 0 THEN RunPending END;
+    RETURN data
   END Allocate;
 
   (* The base of the machine stack, as the program's `main` sees it. *)
@@ -913,6 +1010,9 @@ MODULE GarbageCollectedHeap;
   PROCEDURE FinalizeAtExit;
     VAR marker: SYSTEM.ADDRESS;
   BEGIN
+    (* a trap or a condition inside the heap leaves it marked at work;
+       a finalizer's NEW is no AST's *)
+    inHeap := FALSE;
     stackBase := SYSTEM.ADR(marker) + word;
     FinalizeAll
   END FinalizeAtExit;
@@ -922,8 +1022,9 @@ MODULE GarbageCollectedHeap;
      object on this heap, finalize is NIL, or calloc refuses the table
      room. *)
   PROCEDURE RegisterFinalizer*(obj: SYSTEM.PTR; finalize: Finalizer);
-    VAR object: SYSTEM.ADDRESS; status: SYSTEM.INT32;
+    VAR object: SYSTEM.ADDRESS; status: SYSTEM.INT32; wasEnabled: BOOLEAN;
   BEGIN
+    wasEnabled := EnterHeap();
     object := SYSTEM.VAL(SYSTEM.ADDRESS, obj);
     IF (finalize # NIL) & IsAllocated(object)
         & RoomForEntry(registered, registeredCount, registeredCapacity) THEN
@@ -934,8 +1035,16 @@ MODULE GarbageCollectedHeap;
         exitHandlerSet := TRUE;
         status := AtExit(FinalizeAtExit)
       END
-    END
+    END;
+    LeaveHeap(wasEnabled)
   END RegisterFinalizer;
+
+  (* Has the heap disable ASTs while it works, from now on: called by
+     AsynchronousTraps' initializer, before any AST can be requested. *)
+  PROCEDURE ExpectAsts*;
+  BEGIN
+    astsPossible := TRUE
+  END ExpectAsts;
 
 BEGIN
   word := SIZE(SYSTEM.ADDRESS);

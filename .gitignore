@@ -227,6 +227,13 @@ test/conformance/vax-library/main/
 test/conformance/vax-library/inst/
 # vax-vmsdef's libraries, programs and listings (Phase 17 step 5)
 test/conformance/vax-vmsdef/work/
+# the AST and condition fixtures' libraries and programs, and
+# vax-asts-heap's (Phase 17 step 6)
+test/conformance/vax-asts/work/
+test/conformance/vax-conditions-handlers/work/
+test/conformance/vax-asts-heap/*.mar
+test/conformance/vax-asts-heap/*.sym
+test/conformance/vax-asts-heap/AstHeap.com
 # poc-response-files builds a program and a library (Phase 17 step 1)
 test/conformance/poc-response-files/resp-main
 test/conformance/poc-response-files/libs/

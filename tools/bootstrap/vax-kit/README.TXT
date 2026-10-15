@@ -53,7 +53,8 @@ POC-VMS-@VERSIONNAME@.COM holds two more libraries, with their sources:
 VMSDEF, VMS's system services, run-time library routines, condition
 values and data structures as Oberon modules (STARLET, LIB_ROUTINES,
 SSDEF, ...), generated from SYS$LIBRARY:STARLETSD.TLB, and VMSLIB
-(Conditions, LogicalNames and Symbols), built on them. It is about half
+(Conditions, EventFlags, ExitHandlers, LogicalNames, Symbols and
+Timers), built on them. It is about half
 this kit's size but has most of the files, about 1,700. Copy it in ASCII
 mode, and run it in the top of this installation, now or later, then
 build and set up again:

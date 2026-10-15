@@ -56,6 +56,11 @@ MODULE Platform;
     recordSize = 32767; (* the longest record RMS reads *)
     handles = 32;
 
+    (* the signal number an interrupt handler is given, SIGINT's *)
+    interruptSignal = 2;
+    (* IO$_SETMODE!IO$M_CTRLCAST *)
+    setModeControlCAst = 35 + 256;
+
     (* POC_FILE_OPEN_MODE's modes *)
     openReadOnly = 0;
     openReadWrite = 1;
@@ -83,6 +88,9 @@ MODULE Platform;
 
   TYPE
     SignalHandler = PROCEDURE (signal: SYSTEM.INT32);
+
+    (* an AST routine, as AsynchronousTraps.Routine *)
+    AstRoutine = PROCEDURE (parameter: SYSTEM.CARD32);
 
     (* 0, or the status of a service that failed; an open file's index in
        the table *)
@@ -150,8 +158,13 @@ MODULE Platform;
     lastError: ErrorCode;
     (* Time's zero, a VMS time *)
     timeStart: HUGEINT;
-    (* the handlers set, kept for step 6 (design section 19.1, proposal 8) *)
+    (* the handlers set; only the interrupt handler is called (section
+       22.3, proposal 6) *)
     interruptHandler, quitHandler, badInstructionHandler: SignalHandler;
+    (* SYS$COMMAND's channel for CTRL/C, 0 until one is assigned, and
+       whether the CTRL/C AST is enabled *)
+    commandChannel: SYSTEM.CARD16;
+    interruptArmed: BOOLEAN;
 
   PROCEDURE ["VMS"] POC_TRNLNM(VAR name: Name; length, index: INTEGER; VAR value: Name; size: INTEGER): INTEGER;
   PROCEDURE ["VMS"] POC_GET_SYMBOL(VAR name: Name; length: INTEGER; VAR value: Name; size: INTEGER): INTEGER;
@@ -188,6 +201,16 @@ MODULE Platform;
   PROCEDURE ["VMS"] POC_STATUS_CLASS(status: INTEGER): INTEGER;
   PROCEDURE ["VMS"] POC_GET_MEMORY(bytes: SYSTEM.ADDRESS): SYSTEM.ADDRESS;
   PROCEDURE ["VMS"] POC_FREE_MEMORY(address, bytes: SYSTEM.ADDRESS): INTEGER;
+  PROCEDURE ["VMS", "SYS$ASSIGN"] AssignChannel(device: ARRAY OF CHAR; VAR channel: SYSTEM.CARD16;
+                                                accessMode: SYSTEM.INT32; mailbox: SYSTEM.ADDRESS;
+                                                flags: SYSTEM.INT32): SYSTEM.INT32;
+  (* $QIOW with IO$_SETMODE!IO$M_CTRLCAST's arguments: P1 the AST
+     routine, NIL to disable the AST, P2 its parameter, P3 the access mode;
+     P4 to P6 unused, but a system service wants all its arguments *)
+  PROCEDURE ["VMS", "SYS$QIOW"] SetControlCAst(eventFlag: SYSTEM.INT32; channel: SYSTEM.CARD16;
+                                               function: SYSTEM.INT32; statusBlock, astRoutine: SYSTEM.ADDRESS;
+                                               astParameter: SYSTEM.INT32; routine: AstRoutine;
+                                               parameter, accessMode, p4, p5, p6: SYSTEM.INT32): SYSTEM.INT32;
 
   (* s up to its 0X in given, and its length in length; FALSE if it is
      longer than a service takes, or has no 0X in its array and so names
@@ -372,12 +395,58 @@ MODULE Platform;
     IF ~getEnv(var, val) & (LEN(val) > 0) THEN val[0] := 0X END
   END GetEnv;
 
-  (* Signals: on VMS Ctrl-C reaches a program as an AST and a bad
-     instruction as a condition, which Phase 17 step 6 decides how to
-     deliver; until then a handler set here is kept and never called
-     (design section 19.1, proposal 8). *)
+  (* Signals. CTRL/C at SYS$COMMAND calls the interrupt handler with 2,
+     as SIGINT on Unix, by the terminal driver's CTRL/C AST
+     (IO$_SETMODE!IO$M_CTRLCAST, I/O User's Reference Manual, Part I,
+     8.4.3.2; design section 22.3, proposal 6), so the handler runs at AST
+     level, and AsynchronousTraps' rules apply to it: no Out, Err, In,
+     Files, Texts or Oberon there. NEW is safe there only in a program
+     that imports AsynchronousTraps, whose initializer has the heap
+     disable ASTs while it works; Platform does not import it, so that a
+     program without a handler does not pay for that (design section
+     22.6). Without it, a handler's NEW that interrupts the heap ends the
+     program by trap 15, "heap re-entered at AST level", and one that does
+     not interrupt it runs, but by luck (section 22.7). The AST is enabled again before the
+     handler is called, since it is one-time. While a handler is set,
+     CTRL/C no longer interrupts the program as CTRL/Y does; setting NIL
+     disables the AST, and CTRL/C does again. With no terminal (a batch
+     job) the handler is kept and never called. CTRL/Y is left to DCL, as
+     the manual asks, and a bad instruction is a condition (Conditions,
+     in VMSLIB), so the quit and bad instruction handlers are kept and
+     never called (design section 19.1, proposal 8). *)
+  PROCEDURE InterruptAst(parameter: SYSTEM.CARD32);
+    VAR status: SYSTEM.INT32;
+  BEGIN
+    IF interruptHandler # NIL THEN
+      status := SetControlCAst(0, commandChannel, setModeControlCAst, 0, 0, 0, InterruptAst, 0, 0, 0, 0, 0);
+      interruptArmed := ODD(status);
+      interruptHandler(interruptSignal)
+    END
+  END InterruptAst;
+
+  (* the CTRL/C AST enabled, or disabled when interruptHandler is NIL,
+     on SYS$COMMAND's channel, assigned the first time *)
+  PROCEDURE ArmInterrupt;
+    VAR status: SYSTEM.INT32;
+  BEGIN
+    IF (commandChannel = 0) & (interruptHandler # NIL) THEN
+      status := AssignChannel("SYS$COMMAND", commandChannel, 0, 0, 0);
+      IF ~ODD(status) THEN commandChannel := 0 END
+    END;
+    IF commandChannel # 0 THEN
+      IF interruptHandler # NIL THEN
+        status := SetControlCAst(0, commandChannel, setModeControlCAst, 0, 0, 0, InterruptAst, 0, 0, 0, 0, 0)
+      ELSE
+        status := SetControlCAst(0, commandChannel, setModeControlCAst, 0, 0, 0, NIL, 0, 0, 0, 0, 0)
+      END;
+      interruptArmed := ODD(status) & (interruptHandler # NIL)
+    END
+  END ArmInterrupt;
+
   PROCEDURE SetInterruptHandler*(handler: SignalHandler);
-  BEGIN interruptHandler := handler
+  BEGIN
+    interruptHandler := handler;
+    IF (handler # NIL) # interruptArmed THEN ArmInterrupt END
   END SetInterruptHandler;
 
   PROCEDURE SetQuitHandler*(handler: SignalHandler);

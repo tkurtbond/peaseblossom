@@ -607,7 +607,12 @@ follow:
      so a read works.
    - A routine is `SYSTEM.ADDRESS` until step 6 decides how an Oberon
      procedure is given to VMS (part 1's `CheckVmsCallbackType` already
-     checks a procedure type). `SYSTEM.ADR(P)` gives its address now.
+     checks a procedure type). Until then `SYSTEM.VAL(SYSTEM.ADDRESS, P)`
+     gives its address; `SYSTEM.ADR(P)` does not ("SYSTEM.ADR requires a
+     variable"), as this said until 2026-10-15. Step 6 decided
+     (`vax-macro32-backend.md`, section 22.3, proposal 1): an AST
+     routine parameter is an `AsynchronousTraps.Routine`, and the other
+     routine parameters stay `SYSTEM.ADDRESS`.
    - **An optional parameter** (`default` or `optional`) is marked in a
      comment: `(* optional: NIL omits it *)`, or for a value "0 omits
      it". Every argument is still written, as Oberon requires.

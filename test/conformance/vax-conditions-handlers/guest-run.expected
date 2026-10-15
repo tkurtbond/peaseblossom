@@ -1,0 +1,38 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+programs built: %X10000001
+== Handlers
+== continue
+no handler before: yes
+continuer: %SYSTEM-W-NOSUCHFILE, no such file
+  arguments 3, depth 1
+continuer: %SYSTEM-E-NOSUCHFILE, no such file
+  arguments 5, depth 1
+after the signals
+== resignal
+resignaller: %SYSTEM-W-NOSUCHFILE, no such file
+continuer: %SYSTEM-W-NOSUCHFILE, no such file
+  arguments 3, depth 2
+after the signal in Inner
+Inner returned
+== unwind
+cleaner, resignalling: %SYSTEM-E-NOSUCHFILE, no such file
+unwinder: %SYSTEM-E-NOSUCHFILE, no such file
+  Unwind: %SYSTEM-S-NORMAL, normal successful completion
+cleaner: unwinding
+unwinder: unwinding
+Guarded returned 77
+== access violation
+access violation at 00000000
+address 0 readable: no
+a variable readable: yes
+== revert
+Revert gave the continuer: yes
+then none: yes
+run: %X00000001
+nothing on SYS$ERROR
+== ExitStatus
+the program ends
+second declared, called first: status %X00000001
+run: %X10000009

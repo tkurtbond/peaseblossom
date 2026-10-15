@@ -23,7 +23,7 @@ for model in O2 OC; do
   dir=work/$(echo $model | tr A-Z a-z)
   count=0
   for m in $modules; do
-    if poc -$model -target vax-dec-vms -output-dir $dir -emit-macro32 $vms/$m >$dir/out 2>&1; then
+    if poc -$model -target vax-dec-vms -import-path $rtl -output-dir $dir -emit-macro32 $vms/$m >$dir/out 2>&1; then
       count=$((count + 1))
     else
       cat $dir/out >>result

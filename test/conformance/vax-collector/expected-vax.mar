@@ -25,6 +25,10 @@
 ;;   module allocates, and scans the stack from its own frame up to the
 ;;   start's.
 ;; - CollectionCount's LONGINT, a longword under -O2, comes back in R0.
+;; Updated by Claude, 2026-10-15, for Phase 17 step 6: only the
+;; external POC_K1_..., GarbageCollectedHeap's key, changed, since its
+;; interface gained ExpectAsts (design section 22.3, proposal 2); the
+;; rest is as reviewed before:
 ; CollectUse, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	COLLECTUSE
 	.IDENT	/4251283470417b75/
@@ -67,7 +71,7 @@ L_ROOTS:
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_C_G3O8P0I1
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_C_KH7U9V1O
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
-	.EXTERNAL	POC_K1_6A025AE7DC390CF3
+	.EXTERNAL	POC_K1_BA2F4F29C5877DF6
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_S_EA118OLO
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name

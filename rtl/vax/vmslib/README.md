@@ -20,7 +20,19 @@ up to its `0X`. Fixture `vax-vmslib` runs them on the guest.
   `LIB$SIGNAL` and `LIB$STOP`, and `SignalWith` and `StopWith`, with one
   FAO argument. A poc program has no condition handler of its own, so
   VMS's prints a signalled message and a traceback to `SYS$ERROR` and
-  goes on, unless the condition is severe. `Stop` never returns.
+  goes on, unless the condition is severe. `Stop` never returns. A
+  procedure establishes a `Handler` for its own frame by `Establish`
+  (`LIB$ESTABLISH` itself) and removes it by `Revert`. A handler returns
+  `Continue` or `Resignal`, or calls `Unwind` to make its establisher
+  return, and while an unwind passes, each frame's handler is called with
+  `Unwinding`. Fixture `vax-conditions-handlers` runs them.
+- `EventFlags.Mod`: a local event flag got by `Get` (`LIB$GET_EF`) and
+  given back by `Free`; `Set`, `Clear`, `IsSet`, `Wait` and `WaitAny`.
+- `ExitHandlers.Mod`: `Declare`, a `Handler` called with the exit status
+  when the program exits, last declared first, before poc's own. Changing
+  the status changes nothing; a handler that calls `$EXIT` ends the
+  program there, and the handlers not yet called, poc's own among them,
+  are not.
 - `LogicalNames.Mod`: `Define`, `Deassign`, `Translate` and
   `TranslateAt`, in a named table (`Process`, `Job`, `Group`, `System`,
   `FileDevice`) and access mode (`User`, `Supervisor`, `Executive`,
@@ -32,3 +44,11 @@ up to its `0X`. Fixture `vax-vmslib` runs them on the guest.
 - `Symbols.Mod`: `Get`, `Set` and `Delete` a DCL symbol, `Local` or
   `Global`, by `LIB$GET_SYMBOL`, `LIB$SET_SYMBOL` and
   `LIB$DELETE_SYMBOL`. A symbol is a string here.
+- `Timers.Mod`: `After`, an `AsynchronousTraps.Routine` called at AST
+  level with its parameter after a number of milliseconds (`$SETIMR`);
+  `Cancel`, by that parameter (`$CANTIM`); and `Sleep` (`$SCHDWK` and
+  `$HIBER`). Fixture `vax-asts` runs them, with `EventFlags`.
+
+An AST routine runs at AST level, under `AsynchronousTraps`' rules
+(`rtl/vax/AsynchronousTraps.Mod`; `doc/developer/vax-macro32-backend.md`,
+section 22).

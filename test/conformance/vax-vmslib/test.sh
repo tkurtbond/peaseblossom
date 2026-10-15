@@ -2,7 +2,8 @@
 . ../../testenv.sh
 # Phase 17 step 5 (doc/developer/vms-sdl-interfaces.md, part 4, proposal
 # 6): the hand-written modules of rtl/vax/vmslib, Conditions, LogicalNames
-# and Symbols. Each compiles for the VAX under -O2 and -OC; they make the
+# and Symbols, and step 6's EventFlags, ExitHandlers and Timers, which
+# vax-asts and vax-conditions-handlers run. Each compiles for the VAX under -O2 and -OC; they make the
 # library VMSLIB, which needs POCRTL and VMSDEF. Here VMSDEF holds only
 # the generated modules VMSLIB and the programs import, not all of
 # rtl/vax/vms, which vax-vmsdef builds. Where the VAX development system
@@ -17,7 +18,7 @@ rm -rf work
 mkdir work work/o2 work/oc
 : >result
 generated="LIBDEF LIB_ROUTINES LNMDEF RMSDEF SSDEF STARLET"
-modules="Conditions LogicalNames Symbols"
+modules="Conditions EventFlags ExitHandlers LogicalNames Symbols Timers"
 for model in O2 OC; do
   dir=work/$(echo $model | tr A-Z a-z)
   for m in $modules; do

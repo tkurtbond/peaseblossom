@@ -63,6 +63,10 @@
 ;;   -O2 and -OC, as before; vax-files-riders' riders and signed print
 ;;   what llvm-files-riders' poc prints on Unix, the riders' bytes
 ;;   included; vax-files-extra's FilesExtra passes its 75 checks.
+;; Updated by Claude, 2026-10-15, for Phase 17 step 6: only the
+;; external POC_K1_..., GarbageCollectedHeap's key, changed, since its
+;; interface gained ExpectAsts (design section 22.3, proposal 2); the
+;; rest is as reviewed before:
 ; Files, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	FILES
 	.IDENT	/a36a07621dafb166/
@@ -136,7 +140,7 @@ L_ROOTS:
 	.EXTERNAL	PLATFORM_INIT
 	.EXTERNAL	POC_K1_2A203935C54E257B
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT
-	.EXTERNAL	POC_K1_6A025AE7DC390CF3
+	.EXTERNAL	POC_K1_BA2F4F29C5877DF6
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP

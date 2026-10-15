@@ -5086,4 +5086,438 @@ The exit gate (step 8) gains one condition: the kits build and pass
   `VMSLIB` 2 s each), `POC.EXE` and `POCRTL` left as they were. So
   `VMSDEF` costs little time on the emulated MicroVAX 3900; the split
   saves its 1,739 files and 3.9 MB for a site that does not want them.
-  `-full` and `make vax-stages` to V1 = V2 = V3 with the new V1: pending.
+  `make vax-stages` reached V1 = V2 = V3 with the new V1, the no-LLVM
+  build and the broken `.sym` lines, in 39 minutes. `make check-vax-kit`
+  with `-full` passed in 27 minutes: the kit's poc, compiling `[.SRC]`
+  with `README.TXT`'s arguments, wrote V1's `.mar` files.
+
+## 22. Asynchronous system traps (Phase 17 step 6)
+
+`PLAN.md`'s step 6 asks what VMS's asynchrony demands of poc: AST
+routines written in Oberon, the collector interrupted by an AST, the
+runtime's other state, how a program shares data with its ASTs safely,
+and condition and exit handlers. It is to be designed before any of it
+is written. This section is that design: what the manuals say, what poc
+does today, and the proposals.
+
+### 22.1 What the manuals say
+
+Only 5.x manuals, read 2026-10-15. *Introduction to VMS 5.5 System
+Services* (`AA-LA68B`), *VMS 5.5 System Services Reference Manual*
+(`AA-LA69B`), *Introduction to VMS 5.4 System Routines* (`AA-LA66B`,
+whose chapter 2 is the calling standard) and the *VMS 5.0 RTL Library
+(LIB$) Manual* (`AA-LA76A`).
+
+- *An AST routine is an ordinary procedure.* "The system calls the AST
+  with a CALLG instruction; the routine must return using a RET
+  instruction", and saves what it uses beyond R0 and R1 in its entry
+  mask (`AA-LA68B`, 5-3). Its argument list has five longwords: the AST
+  parameter, then the R0, R1, PC and PSL "saved when the process was
+  interrupted by delivery of the AST" (5-4). The calling standard's
+  type `ast_procedure` is an entry mask's address, as `procedure` is
+  (`AA-LA66B`, A-2).
+- *One at a time.* "Because ASTs are implicitly disabled when an AST
+  service routine executes, one AST routine cannot be interrupted by
+  another AST routine declared for the same access mode" (`AA-LA68B`,
+  5-5). A user-mode AST is not delivered while the process runs in an
+  inner mode, a system service included, nor while delivery is disabled
+  by `$SETAST`, which returns `SS$_WASSET` or `SS$_WASCLR`
+  (`AA-LA69B`, SYS-512). Undelivered ASTs wait, in order. Otherwise the
+  start of an AST routine "is impossible" to know (`AA-LA68B`, 5-3).
+  `$WAITFR` and `$HIBER` are interrupted by an AST and resumed after it
+  (`AA-LA69B`, SYS-663, SYS-402).
+- *Quota.* An AST counts against `ASTLM` from its request to its
+  delivery; past it, the request fails with `SS$_EXQUOTA`, with no
+  wait (`AA-LA68B`, 7-3; `AA-LA69B`, SYS-134, SYS-486, SYS-521).
+- *What is safe at AST level.* `LIB$GET_VM` and `LIB$FREE_VM` "are fully
+  reentrant, so they can be called by code running at AST level"
+  (`AA-LA76A`, LIB-224, LIB-178), and so are the queue routines
+  `LIB$INSQHI` and the rest (LIB-249). `LIB$GET_INPUT` and
+  `LIB$PUT_OUTPUT` keep RMS state in static storage and are not
+  (LIB-213, LIB-311). Waiting at AST level for something only another
+  AST of the same mode can bring is a deadlock (LIB-465). The manuals
+  held say nothing of RMS at AST level.
+- *Sharing data.* The manuals offer disabling ASTs around a sequence
+  "that should not be interrupted" (`AA-LA68B`, 5-5), the interlocked
+  queues, and `LIB$AST_IN_PROG`, for code that keeps separate storage
+  for AST level (`AA-LA76A`, LIB-15).
+- *Event flags.* Flags 0-31 and 32-63 are the process's own; 24-31 are
+  VMS's. `LIB$GET_EF` hands out 32-63 at first, and 1-23 only once
+  freed; flag 0 is every service's default, so two users of it collide
+  (`AA-LA76A`, LIB-206; `AA-LA68B`, 2-11). A wait is for the flag, not
+  the event, so an asynchronous service is finished by `$SYNCH` with its
+  flag and I/O status block, which is what the `W` forms do (`AA-LA68B`,
+  2-11, 7-15).
+- *Condition handlers.* A handler's address in a frame's first
+  longword, 0(FP), establishes it, as `LIB$ESTABLISH` does for its
+  caller (`AA-LA66B`, 2-46). VMS calls it with the signal and mechanism
+  arrays (2-49); it returns `SS$_CONTINUE` or `SS$_RESIGNAL`, or calls
+  `$UNWIND`. A handler may use only its arguments, not the establishing
+  procedure's locals (`AA-LA66B`, 2-51). The search goes through the
+  current mode's frames by the saved FP (`AA-LA68B`, 11-6); whether it
+  passes from an AST routine into the interrupted frames is not said.
+- *Exit handlers.* `$DCLEXH` takes a control block: a link, the
+  handler's address, an argument count, the address of a longword VMS
+  fills with the exit status, and further arguments (`AA-LA69B`,
+  SYS-137). They run, last declared first, from `$EXIT`, a return from
+  the image, `$FORCEX` and an exit after an unhandled condition, "not a
+  part of image rundown" (`AA-LA68B`, 8-13 to 8-15). Whether ASTs are
+  delivered while they run is not said.
+
+- *CTRL/C and mailbox attention.* `IO$_SETMODE!IO$M_CTRLCAST` on a
+  terminal channel takes the AST routine in P1 (0 disables it), its
+  parameter in P2 and the access mode in P3. It is "one-time": "After
+  the AST occurs, it must be explicitly reenabled". All the enabled
+  CTRL/C ASTs are delivered; `$CANCEL` flushes them; a program "should
+  not enable CTRL/Y" (*VMS I/O User's Reference Manual: Part I*,
+  `AA-LA84B`, 5.4, the 5.5 kit's edition, 8-42 to 8-43). A mailbox's
+  `IO$M_READATTN` and `IO$M_WRTATTN` take the same P1 and P2, are also
+  one-time, and a write attention AST requested while a message waits is
+  delivered at once (7-9).
+
+Not settled by the manuals held: the handler search from an AST, ASTs
+during exit and condition handlers, whether `$CANTIM` withdraws a queued
+AST, and RMS at AST level.
+
+### 22.2 What poc does today
+
+- *One calling convention, the standard's* (section 7, decided for
+  Phase 15 so that "Phase 17's ASTs need nothing special"). An Oberon
+  procedure with no hidden arguments - none of a `VAR` record's tag, an
+  open array's lengths or a nested procedure's environment - is already
+  a procedure VMS can call, and a procedure value is its entry mask's
+  address. So `PLAN.md`'s choice between one convention and an adapter
+  is already made: no adapter is needed. `CheckVmsCallbackType`
+  (`SemanticActions.Mod`) admits exactly such procedure types.
+- *The collector is not reentrant.* `Allocate` takes from per-size free
+  lists and a bump pointer; `Collect` marks and sweeps through the same
+  lists, the chunk table and a mark stack, all plain globals
+  (`GarbageCollectedHeap.Mod`). An AST that allocates while the main
+  line is inside `Allocate` or a collection corrupts them. A collection
+  inside an AST would find every root: it scans the stack conservatively
+  from its own frame up to the main program's FP, which covers the AST
+  routine's frames, VMS's argument list holding the interrupted R0 and
+  R1, and the interrupted frames, and `POC_SAVE_REGISTERS` saves R2-R11
+  first. But it would run finalizers at AST level.
+- *The rest of the runtime is not reentrant either.* Out and Err build
+  lines in `LineOutput`'s two buffers; `In`, `Files`, `Texts` and
+  `Platform` keep scratch state; a trap writes through `PocRtl`'s one
+  buffer and then exits.
+- *No handlers.* No poc frame establishes a condition handler; traps
+  exit through `$EXIT`, not `LIB$SIGNAL`. `Platform.SetInterruptHandler`
+  keeps its handler and never calls it ("Phase 17 step 6 decides").
+- *Declarations.* `STARLET` declares every AST routine parameter
+  `SYSTEM.ADDRESS`, with a comment `AST_PROCEDURE` (139 of them: 134 in
+  `STARLET`, 4 in `SMG_ROUTINES`, 1 in `PPL_ROUTINES`), and the AST parameter `SYSTEM.CARD32`. Today a program
+  passes `SYSTEM.VAL(SYSTEM.ADDRESS, P)`; `SYSTEM.ADR(P)` is an error
+  ("SYSTEM.ADR requires a variable"), so `vms-sdl-interfaces.md`'s
+  "`SYSTEM.ADR(P)` gives its address now" is wrong.
+- *No interlocked instructions.* SYSTEM has none; `LIB$INSQHI`,
+  `LIB$BBSSI` and the rest are declared in `LIB_ROUTINES`.
+
+### 22.3 Proposals
+
+**Approved by the user, 2026-10-15**, all nine as written.
+
+1. **An AST routine is an Oberon procedure of one type.** A new module
+   in `rtl/vax`, part of `POCRTL`, `AsynchronousTraps`, declares
+
+       Routine* = PROCEDURE (parameter: SYSTEM.CARD32);
+
+   and `tools/sdloberon` declares every parameter SDL types
+   `AST_PROCEDURE` as `AsynchronousTraps.Routine` - and `LIB$SPAWN`'s
+   `AST_address`, which SDL types only `procedure`, by its list of known
+   exceptions - so that
+   `STARLET.SYS$SETIMR(0, time, Tick, 7, 0)` is checked. `NIL` still
+   omits it. A routine declares only the AST parameter; the four saved
+   longwords after it are VMS's and are not read. No adapter and no new
+   procedure kind: any global procedure of that type is an AST routine.
+   Other routine parameters (`procedure`, `user_arg`) stay
+   `SYSTEM.ADDRESS` until a module needs them typed. The wrong sentence
+   in `vms-sdl-interfaces.md` is corrected.
+
+2. **The heap is made safe against ASTs by disabling them, in programs
+   that can have them.** `Allocate`, `Collect` and `RegisterFinalizer`
+   run with user-mode ASTs disabled (`$SETAST 0` on entry, and `$SETAST
+   1` on exit only if it returned `SS$_WASSET`), so an AST never finds
+   the heap half changed, and NEW at AST level is safe. The cost, two
+   system service calls for each NEW, is paid only once
+   `AsynchronousTraps` is initialized: its body sets a flag the heap
+   tests. Every module that can request an AST imports it - `STARLET`,
+   `SMG_ROUTINES`, `PPL_ROUTINES` and `LIB_ROUTINES`, the generated
+   modules with an AST routine parameter, and the modules of proposal 5 - so a program that cannot have an AST
+   (poc itself, any program without `VMSDEF`) pays one byte test per
+   NEW. The cost of the pair is measured on the guest before this is
+   settled; if it is too high, the alternative is a flag the main line
+   sets on entering the heap, which an AST's NEW tests, but then NEW
+   at AST level can fail, and that is worse.
+
+   A collection that runs at AST level (an AST's NEW, or `Collect`)
+   does not run finalizers: they wait for the next collection on the
+   main line, or for exit. `AsynchronousTraps.InProgress`
+   (`LIB$AST_IN_PROG`) tells which.
+
+3. **What else an AST routine may do is a documented rule, not made
+   safe.** At AST level a program may use NEW, its own module's
+   variables, the VMS interfaces - system services and `LIB$` routines
+   documented reentrant - and the modules of proposal 5. It may not use
+   `Out`, `Err`, `In`, `Files`, `Texts` or `Oberon`, whose state the
+   main line may be halfway through, and it must not wait for something
+   only another AST can bring. poc does not check this; the Reference
+   Guide and `AsynchronousTraps`' comments say it. A trap at AST level
+   ends the program as anywhere, through `$EXIT` with its status, and a
+   fixture shows it.
+
+4. **The main line shares data with ASTs by disabling them.** Since a
+   user-mode AST cannot be interrupted by the main line or by another
+   user-mode AST, only the main line needs protecting:
+   `AsynchronousTraps.Disable(): BOOLEAN` and `Restore(wasEnabled)`
+   bracket its use of what an AST changes. That is the manuals' own
+   way, and all a program on one processor needs. SYSTEM gains no
+   interlocked instructions; `LIB_ROUTINES`' `LIB$INSQHI` and the rest
+   remain for whoever wants them (an entry linked only through a
+   self-relative queue is invisible to the collector, which the
+   comments say).
+
+5. **The `VMS` modules `PLAN.md` asks for, in `VMSLIB`.**
+   - `AsynchronousTraps` (`POCRTL`, proposal 1): `Routine`, `Disable`,
+     `Restore`, `InProgress`, and `Declare(routine, parameter)` by
+     `$DCLAST`.
+   - `EventFlags`: `Get`, `Free` (`LIB$GET_EF`, `LIB$FREE_EF`), `Set`,
+     `Clear`, `IsSet`, `Wait` and `WaitAny` of a local flag.
+   - `Timers`: `After(milliseconds, routine, parameter, VAR request)` by
+     `$SETIMR` with a delta time, `Cancel(request)` by `$CANTIM`, and
+     `Sleep(milliseconds)` by `$SCHDWK` and `$HIBER`.
+   - `Conditions` gains `Handler* = PROCEDURE (VAR signal:
+     SignalArray; VAR mechanism: MechanismArray): SYSTEM.INT32`, with
+     the two arrays as records of longwords, and `Establish` and
+     `Revert`, declared as `LIB$ESTABLISH` and `LIB$REVERT` themselves so
+     that the call comes straight from the procedure whose frame gets
+     the handler, plus `Unwind` (`$UNWIND`). A handler is a global
+     procedure, so it cannot touch its establisher's locals, which is the
+     standard's own rule.
+   - `ExitHandlers`: `Declare(handler)`, `handler` a `PROCEDURE (VAR
+     status: SYSTEM.CARD32)`, VMS passing the exit status's address
+     (`AA-LA69B`, SYS-137), each by its own
+     `$DCLEXH` block kept by the module, so reachable. They run before
+     poc's own (last declared, first run), so Out's last line is still
+     flushed after them.
+   - `$QIO` with a completion AST, and mailboxes, need nothing more than
+     `STARLET` with proposal 1 and `VmsArguments`' I/O status block;
+     a fixture shows them.
+
+6. **CTRL/C by the terminal driver's AST.** `Platform.SetInterruptHandler`
+   (now kept and never called) assigns a channel to `SYS$COMMAND` and
+   enables `IO$_SETMODE!IO$M_CTRLCAST` with an AST routine in
+   `Platform` that calls the handler and enables the AST again, it being
+   one-time (`AA-LA84B`, 8-43). The handler runs at AST level, so
+   proposal 3's rule applies to it. Not CTRL/Y, which the manual says a
+   program should leave to DCL. With no terminal (a batch job) the
+   handler is kept and never called, as now. A fixture cannot press
+   CTRL/C, so it is tried by hand in the guest's telnet session.
+
+7. **Tried on the guest first.** Before the rest is built:
+   - `$SETAST` inside an AST routine: that disabling and re-enabling
+     there does not let a second AST in (proposal 2's bracket runs at
+     AST level too).
+   - The cost of a `$SETAST` pair, against the time of a NEW, and so
+     what proposal 2 costs a program that allocates much.
+   - Whether a condition handler established in the interrupted code is
+     found from an AST routine (decides what proposal 5's `Conditions`
+     says).
+   - Whether ASTs are delivered during an exit handler.
+
+8. **Fixtures on the guest.**
+   - `vax-asts`: `$DCLAST` and `Timers.After` deliver the parameter
+     given; a timer that expires while `Disable` holds is not delivered
+     until `Restore`, and then before the next statement; `$QIOW` from
+     an AST; a mailbox read completed by an AST; a trap at AST level.
+     It fails if any delivery rule above is wrong.
+   - `vax-asts-heap`: a timer AST every 10 ms that builds lists with NEW
+     and hangs them on a global list, while the main line allocates and
+     collects for several seconds and checks every list's contents each
+     pass; run several times (the gate's "repeatedly"). Made with the
+     heap's protection off on purpose, it must fail, at least once in
+     its runs, or it proves nothing; that is tried and recorded.
+   - `vax-conditions-handlers`: a handler that continues, one that
+     resignals, `Unwind`, an exit handler's status.
+   - `vax-vmsdef` and `vax-vms-calls` take the typed `ASTADR`.
+
+9. **What does not change.** The LLVM back end and every Unix program;
+   poc's own speed (it imports no `VMSDEF`); the calling convention;
+   the collector's algorithm.
+
+### 22.4 Tried on the guest (proposal 7)
+
+Four programs, run on the guest 2026-10-15 (built by poc, with their own
+`["VMS"]` declarations; not fixtures):
+
+- *Delivery.* The main line recorded 1, queued AST A by `$DCLAST`, and
+  recorded 2; A recorded 101, queued B, called `$SETAST 0` and `$SETAST
+  1`, and recorded 151; B recorded 200 plus its parameter. Then the main
+  line disabled ASTs, queued B with 3, recorded 3 and 4, enabled them,
+  and recorded 5. The order was 1 101 151 202 2 3 4 203 5: an AST
+  queued by `$DCLAST` is delivered as the service returns, before the
+  next statement; one queued inside an AST waits for it to return,
+  though that AST disabled and enabled delivery; one held by `$SETAST 0`
+  on the main line is delivered by `$SETAST 1`, before the next
+  statement. `$SETAST 0` returned `SS$_WASSET` inside the AST as on the
+  main line. So proposal 2's bracket is safe at AST level too.
+- *Cost.* 20,000 `$SETAST` pairs took 120 ms, 6 us each, on the
+  emulated MicroVAX 3900; 20,000 NEWs of an 8-byte record, 660 ms, the
+  first chunk's clearing among them; 20,000 NEWs each in a pair, 430
+  ms, after it. So the bracket adds about a quarter to a NEW, in the
+  programs proposal 2 gives it to; that is accepted.
+- *Handler search.* A handler established by the procedure an AST
+  interrupted caught a warning the AST routine signalled by
+  `LIB$SIGNAL`, both for an AST queued by `$DCLAST` (at depth 2) and for
+  a timer AST that came during a busy loop (depth 1): the search goes
+  on from the AST routine into the interrupted frames. So a handler the
+  main line established can be called for a condition at AST level, and
+  one that unwinds would leave the AST unfinished and the main line's
+  frames gone. `Conditions`' comments (proposal 5) say a handler must
+  not unwind for a condition signalled at AST level
+  (`AsynchronousTraps.InProgress` tells).
+- *Exit handlers.* An exit handler that queued an AST by `$DCLAST` got
+  it delivered at once: ASTs are delivered while exit handlers run. So
+  `GarbageCollectedHeap.FinalizeAtExit`, run by poc's exit handler, is
+  within proposal 2's bracket like the rest of the heap.
+
+### 22.5 The heap's protection, tried (proposals 2 and 8)
+
+`vax-asts-heap`'s program, a timer AST every 10 ms making batches of 16
+nodes with NEW while the main line makes lists of 500 and collects, was
+run on the guest 2026-10-15 in three forms, from the same source but
+for the lines that differ:
+
+- With the heap's protection (it imports `AsynchronousTraps`): five runs,
+  each checking 200 batches and their every node, with five or more
+  collections, all intact.
+- Without it (its own `Routine` type and `$SETAST`, no
+  `AsynchronousTraps`): five runs, each ended by `%SYSTEM-F-ACCVIO` at
+  virtual address 22 (hexadecimal) in the main program, at the same
+  instruction each time, the emulator being deterministic.
+- Without it, but with the main line's own NEWs bracketed by `$SETAST`
+  by hand: three runs, all intact.
+
+So the failure is an AST's NEW coming while the main line is inside the
+heap, and the protection prevents it; the fixture fails without it.
+
+### 22.6 As built
+
+The proposals were carried out as approved, with these differences and
+findings, each tried on the guest 2026-10-15:
+
+- **The modules.** `AsynchronousTraps` is in `POCRTL`. `EventFlags`,
+  `ExitHandlers` and `Timers` are new in `VMSLIB`, which `Conditions`
+  joins with handlers. `tools/sdloberon` types every `AST_PROCEDURE`
+  parameter, and `LIB$SPAWN`'s `AST_address`, as
+  `AsynchronousTraps.Routine`: 134 in `STARLET`, 4 in `SMG_ROUTINES`, 1
+  each in `LIB_ROUTINES` and `PPL_ROUTINES`. They were regenerated on atla
+  by `sdlload` over SDL dumps, and differ from the old ones in those
+  parameters and the `IMPORT` lines alone. `Timers` declares its own
+  `$SETIMR`, and `Platform` its own `$ASSIGN` and `$QIOW`.
+- **A handler's arrays are fixed arrays, not records.**
+  `Conditions.SignalArray` is `ARRAY 256 OF SYSTEM.INT32` and
+  `MechanismArray` is `ARRAY 5 OF SYSTEM.INT32`. An Oberon procedure's
+  `VAR` record parameter takes the actual's type tag as a hidden second
+  longword (section 14, item 5). VMS calls a handler with two addresses
+  and no tags, so a record would put the mechanism array's address where
+  the procedure looks for the signal array's tag. A `VAR` fixed array is
+  one address.
+- **`Timers.After(milliseconds, routine, parameter)` has no request
+  argument.** `$SETIMR`'s request identification is the AST parameter
+  itself, so `Cancel(parameter)` cancels every request made with it.
+  `After` and `Sleep` take at least 10 ms, the clock's resolution.
+- **Unwinding.** `Conditions.Unwind` is `$UNWIND` with its defaults. The
+  establisher returns to its caller with `mechanism[3]` as its result.
+  Every frame removed, the establisher's own included, has its handler
+  called first with `SS$_UNWIND` (`Conditions.Unwinding`), so a handler
+  that unwinds is called again: `vax-conditions-handlers` shows the
+  order. An access violation is caught and unwound the same way.
+- **Exit handlers.** Changing the status argument does nothing, since VMS
+  writes the status into each handler's own longword. A handler that calls
+  `$EXIT` ends the program there, with that status, which DCL sees. The
+  handlers not yet called are skipped, poc's own among them, so Out's
+  unfinished line is lost and no finalizer runs. `ExitHandlers` says so.
+- **CTRL/C** (proposal 6), tried by hand by the user in a terminal
+  session. A program that set a handler was given CTRL/C three times: the
+  terminal driver echoed "Cancel" and the handler was called each time,
+  with signal 2. After `SetInterruptHandler(NIL)`, which disables the AST,
+  the next CTRL/C interrupted the program as CTRL/Y does ("Interrupt").
+  `Platform` does not import `AsynchronousTraps` or the heap, so that
+  every program using `Platform` neither links the heap nor pays for its
+  protection (the user's choice, 2026-10-15). The rule instead: a handler
+  that uses NEW needs the program to import `AsynchronousTraps`. A handler
+  without NEW is safe either way, since the AST touches nothing of the
+  heap's.
+- **Fixtures.**
+  - `vax-asts`: the delivery order, `Disable` and `Restore`, timers,
+    `Cancel`, event flags, a mailbox read completed by a `$QIOW` from a
+    timer's AST, and a trap at AST level, which ends the program with its
+    message and status.
+  - `vax-asts-heap`: section 22.5.
+  - `vax-conditions-handlers`: the handlers and exit handlers above.
+  - `vax-vmsdef` passes `NIL` for the AST routines it omits, and
+    `vax-vmslib` compiles all six `VMSLIB` modules.
+
+### 22.7 Proposal: a trap when the heap is re-entered
+
+**Proposed 2026-10-15; approved by the user, 2026-10-15.**
+
+The user chose (section 22.6) that `Platform` not import
+`AsynchronousTraps`, so a program pays for the heap's protection only
+when it imports that module itself. The rule that follows is: a CTRL/C
+handler, or any AST routine, that uses NEW needs the program to import
+`AsynchronousTraps`. Broken, the rule fails silently and by chance. An AST
+that allocates while the main line is inside NEW or a collection corrupts
+the heap. The program dies later, somewhere else: section 22.5's
+unprotected runs ended by `ACCVIO` 5 of 5 times. The NEW may also be
+hidden in a procedure the handler calls. This proposal makes that failure
+immediate and named.
+
+1. **A byte that says the heap is busy.** `rtl/vax/GarbageCollectedHeap`
+   gains `inHeap: BOOLEAN`. `Allocate`, `Collect` and `RegisterFinalizer`
+   test it after `EnterHeap`, set it, do their work, and clear it before
+   `LeaveHeap`. Finalizers run outside it, as they run outside the `$SETAST`
+   bracket now, so a finalizer's own NEW is not a re-entry. The inner
+   `AllocateNow` and `CollectNow`, which call each other, do not touch it.
+2. **Finding it set is a trap.** On VMS only an AST can interrupt the main
+   line, so a public entry point that finds `inHeap` set has been entered
+   by an AST that interrupted the heap. That is the one case that corrupts
+   it. The program traps, as poc's other run-time checks do, before
+   touching anything. The check has no window. An AST that comes between
+   the main line's test and its setting of the byte, or after the byte is
+   cleared, finds the heap untouched and not in use, and so does its work
+   safely.
+   - It is a new trap, **15**, with the text `heap re-entered at AST level:
+     import AsynchronousTraps`, in `PocRtl.mar`'s `POC_TRAP_TEXTS`.
+   - It is added to `language-extensions.md`'s table, "What traps, and what
+     does not", as VAX only. Its location, under `-trap-location`, is
+     inside the heap, so the message, not the location, tells the reader
+     what to do.
+3. **What it costs.** A `TSTB`, a `MOVB #1` and a `CLRB` per NEW, beside
+   the 21-33 µs a NEW takes: nothing measurable. A program that imports
+   `AsynchronousTraps` never finds the byte set, since ASTs are disabled
+   while it is set, so the trap changes nothing for it.
+4. **What it does not do.** It does not make NEW in a handler safe without
+   the import. It reports the collision when it happens, and a program
+   whose AST allocates when the main line is not in the heap still runs
+   and is still wrong. The comments of `Platform` and `AsynchronousTraps`
+   say both: the rule, and that breaking it ends in trap 15 at best.
+5. **A fixture.** `vax-asts-heap` gains a second program,
+   `AstNoImport.mod`, section 22.5's unprotected form: its own `Routine`
+   type and `$SETIMR`, no `AsynchronousTraps`. Its AST allocates while the
+   main line allocates and collects, and it must end in trap 15, with its
+   message and status, not `ACCVIO` or a wrong list. It is run as often as
+   the protected one. The emulator is deterministic, and the trial hit the
+   same instruction every time, so the expected output is stable.
+6. **The reviewed `.mar` files.** The heap's two copies, `vax-collector`'s
+   and `vax-files`', are regenerated again for review. The heap's key does
+   not change, since its interface does not, so no other reviewed file
+   does.
+7. **Not part of this.** The LLVM back end has the same hazard: a Unix
+   signal handler, set by `Platform.SetInterruptHandler`, that allocates
+   while the main line is in `GarbageCollectedHeap`. The same byte would
+   catch it there, but the rule for signal handlers is a separate decision,
+   left for `PLAN.md`'s "Ongoing" sections.

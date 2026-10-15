@@ -1,0 +1,23 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+programs built: %X10000001
+== AstOrder
+main line at AST level: no
+after Declare(1): 1
+Disable: was enabled yes, again no, noted while disabled 0
+after Restore: 2
+after a timer of 50 ms: 7
+the timer's routine at AST level: yes
+flag set: yes
+flag set after Clear: no
+expired while disabled, noted before Restore: 0
+after Restore: 8
+cancelled timer, after 300 ms:
+mailbox: 11 10
+read 11 characters: from an AST
+run: %X00000001
+== AstTrap
+before the AST
+run: %X10000012
+index out of range

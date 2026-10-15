@@ -81,11 +81,13 @@ bootstraps poc.
   never to be printed**: `curl --netrc-file ~/.netrc-poc-vax -P -
   ftp://192.168.2.20/` lists the home directory. FTP works only in **active mode** (curl's `-P -`; in `ftp`,
   turn passive off first), and text must go in **ASCII mode** (curl's
-  `--use-ascii`), or VMS stores it as fixed 512-byte records. In the user's tmux, window 7 is the console
-  for this work, a telnet session logged in as `POC`, and window 8 runs
-  SIMH itself, the VAX's operator console. DCL commands may be typed into
-  window 7 (`tmux send-keys`; the user, 2026-10-05), kept to `POC`'s own
-  directory; never type into window 8 unless the user asks.
+  `--use-ascii`), or VMS stores it as fixed 512-byte records. The user's
+  tmux windows are numbered differently each time a tmux is started
+  (2026-10-15): ask the user for the current order before using one. One
+  window runs SIMH itself, the VAX's operator console: never type into it
+  unless the user asks. DCL commands may be typed (`tmux send-keys`; the
+  user, 2026-10-05) only into a telnet session the user confirms is logged
+  in as `POC`, and kept to `POC`'s own directory.
 - CLI: `voc options {files {options}}`. Options before the first file apply
   to all files, options after a file apply only to that file, and repeating
   a flag toggles it.
