@@ -591,7 +591,7 @@ follow:
    | the same with a dimension | `x-` or `VAR x: ARRAY OF` that width |
    | characters by descriptor, or by reference with flag 26 | `x-` or `VAR x: ARRAY OF CHAR` (part 1's descriptor) |
    | characters by reference, no flag 26 | one character `x-: CHAR`, else `x-` or `VAR x: ARRAY OF SYSTEM.BYTE` |
-   | a quadword, octaword, `any` or structure by reference | `x-` or `VAR x: ARRAY OF SYSTEM.BYTE` |
+   | a quadword, octaword, `any` or structure by reference | `x-` or `VAR x: ARRAY OF SYSTEM.BYTE`; since 2026-10-15 a quadword in is `x-: HUGEINT` (below, "Part 2 so far") |
    | F or G floating by reference | `x-` or `VAR x` of `REAL` or `LONGREAL` |
    | an address by value | `x: SYSTEM.ADDRESS` |
    | an address by reference | `x-` or `VAR x: SYSTEM.ADDRESS` |
@@ -659,10 +659,11 @@ follow:
 
 The proposals above were **approved by the user, 2026-10-14**, and the
 generator, proposal 7 and the checks were made the same day. The first
-output, for review, is seven of `STARLETSD.TLB`'s modules: `SSMSG`,
-`STARLET`, `LIB$ROUTINES`, `STR$ROUTINES`, `STARDEFFL`, `RMSDEF` and
-`RMSUSR`, 41 Oberon modules in `rtl/vax/vms`; the other 58 library
-modules follow once these are approved.
+output is seven of `STARLETSD.TLB`'s modules: `SSMSG`, `STARLET`,
+`LIB$ROUTINES`, `STR$ROUTINES`, `STARDEFFL`, `RMSDEF` and `RMSUSR`, 41
+Oberon modules in `rtl/vax/vms`, **approved by the user, 2026-10-15**,
+with the CARDs of part 3 and a quadword in as a `HUGEINT` (below); the
+other 58 library modules follow.
 
 - **The generator**, `tools/sdloberon/sdloberon.c` (VAX C), built and run
   on the guest by `tools/vax-sdl` (proposals 1 and 2). The user copies
@@ -723,11 +724,18 @@ modules follow once these are approved.
   `$BINTIM`, `$ASCTIM`, `$ASSIGN`, `$QIOW` and RMS's `$OPEN` and
   `$CLOSE` through the generated declarations, with a `FABDEF.FABDEF`
   that RMS fills in.
-- **Open question for the user**: a quadword in, `x-: ARRAY OF
-  SYSTEM.BYTE`, takes a constant's own bytes, so `-600000000` gives VMS
-  4 bytes, not a delta time; `SYSTEM.VAL(HUGEINT, c)` is needed. Declaring
-  an `IN` quadword `x-: HUGEINT` instead would convert a constant, and
-  still take a `HUGEINT` variable by address, but not a record.
+- **A quadword in** (an open question, **decided by the user,
+  2026-10-15**): `x-: ARRAY OF SYSTEM.BYTE` took a constant's own bytes,
+  so `-600000000` gave VMS 4 bytes, not a delta time, unless written
+  `SYSTEM.VAL(HUGEINT, c)`. Such a quadword is now `x-: HUGEINT`, signed
+  or unsigned, since a delta time is negative: a constant is converted
+  and passed as an 8-byte copy, a `HUGEINT` variable by its address, and
+  `NIL` still omits an optional one. A record no longer fits there. A
+  quadword out stays `VAR x: ARRAY OF SYSTEM.BYTE`, for an I/O status
+  block, and so does one whose type name is `DESCRIPTOR`
+  (`LIB$ANALYZE_SDESC`'s), for a `StringDescriptor`. 41 parameters
+  changed, in `STARLET` and `LIB_ROUTINES`; `VmsDefCalls` passes the
+  delta time as a constant.
 
 ## Proposals, part 3: SDL's unsigned types as poc's CARDs (2026-10-14)
 

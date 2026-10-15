@@ -754,7 +754,7 @@ static int formal(p, number, buf, why)
   int number;
   char *buf, *why;
 {
-  char name[80], type[100], note[300], *t, mode[8], *tn;
+  char name[80], type[100], note[300], *t, mode[8], *tn, typename[80];
   int flags, size, align, by_value, by_ref, by_descr, out, optional;
   int open, routine;
   struct Node *o;
@@ -777,6 +777,9 @@ static int formal(p, number, buf, why)
   note[0] = '\0';
   tn = str(&p->typename);
   if (*tn) strcpy(note, tn);
+  strncpy(typename, tn, sizeof typename - 1);
+  typename[sizeof typename - 1] = '\0';
+  upper(typename);
   routine = 0;
   if (p->datatype == SDL$C_TYPE_ENTRY) routine = 1;
   if (p->datatype == SDL$C_TYPE_ADDRESS) {
@@ -823,7 +826,14 @@ static int formal(p, number, buf, why)
       if (t && p->datatype != SDL$C_TYPE_QUADWORD) {
         if (open) sprintf(type, "ARRAY OF %s", t);
         else strcpy(type, t);
-      } else
+      } else if (p->datatype == SDL$C_TYPE_QUADWORD && !out && !open
+                 && strcmp(typename, "DESCRIPTOR") != 0)
+        /* a quadword in is a HUGEINT, so a constant reaches VMS as 8
+           bytes, signed or not: a delta time is negative (the user,
+           2026-10-15); one out, or a descriptor, stays bytes, for a
+           record such as an I/O status block or StringDescriptor */
+        strcpy(type, "HUGEINT");
+      else
         strcpy(type, "ARRAY OF SYSTEM.BYTE");
     };
   } else {

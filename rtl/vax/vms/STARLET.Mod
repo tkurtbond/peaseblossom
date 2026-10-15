@@ -21,7 +21,7 @@ MODULE STARLET;
      attrib = attributes longword to grant to the holder *)
   PROCEDURE ["VMS", "SYS$ADD_HOLDER"] SYS$ADD_HOLDER*(
       ID: SYSTEM.CARD32; (* RIGHTS_ID *)
-      HOLDER-: ARRAY OF SYSTEM.BYTE; (* RIGHTS_HOLDER, unsigned *)
+      HOLDER-: HUGEINT; (* RIGHTS_HOLDER, unsigned *)
       ATTRIB: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -136,7 +136,7 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$ASCTIM"] SYS$ASCTIM*(
       VAR TIMLEN: SYSTEM.CARD16; (* WORD_SIGNED, optional: NIL omits it *)
       VAR TIMBUF: ARRAY OF CHAR; (* TIME_NAME *)
-      TIMADR-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMADR-: HUGEINT; (* DATE_TIME, unsigned, optional: NIL omits it *)
       CVTFLG: SYSTEM.INT8 (* LONGWORD_UNSIGNED, boolean, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -681,7 +681,7 @@ MODULE STARLET;
      sysid = address of the quadword system identifier
      to store in the maintenance record *)
   PROCEDURE ["VMS", "SYS$CREATE_RDB"] SYS$CREATE_RDB*(
-      SYSID-: ARRAY OF SYSTEM.BYTE (* SYSTEM_ACCESS_ID, unsigned, optional: NIL omits it *)
+      SYSID-: HUGEINT (* SYSTEM_ACCESS_ID, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $CRELNM
@@ -850,7 +850,7 @@ MODULE STARLET;
       INPUT-: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
       OUTPUT-: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
       ERROR-: ARRAY OF CHAR; (* LOGICAL_NAME, optional: NIL omits it *)
-      PRVADR-: ARRAY OF SYSTEM.BYTE; (* MASK_PRIVILEGES, unsigned, optional: NIL omits it *)
+      PRVADR-: HUGEINT; (* MASK_PRIVILEGES, unsigned, optional: NIL omits it *)
       QUOTA-: ARRAY OF SYSTEM.BYTE; (* ITEM_QUOTA_LIST, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
       BASPRI: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
@@ -930,7 +930,7 @@ MODULE STARLET;
       ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       GSDNAM-: ARRAY OF CHAR; (* SECTION_NAME, optional: NIL omits it *)
-      IDENT-: ARRAY OF SYSTEM.BYTE; (* SECTION_ID, unsigned, optional: NIL omits it *)
+      IDENT-: HUGEINT; (* SECTION_ID, unsigned, optional: NIL omits it *)
       RELPAG: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
       CHAN: SYSTEM.CARD16; (* CHANNEL, optional: 0 omits it *)
       PAGCNT: SYSTEM.CARD32; (* LONGWORD_UNSIGNED, optional: 0 omits it *)
@@ -1172,7 +1172,7 @@ MODULE STARLET;
      buffer_handle = address of a quadword that contains the buffer handle
      identifying the buffer object to be deleted *)
   PROCEDURE ["VMS", "SYS$DELETE_BUFOBJ"] SYS$DELETE_BUFOBJ*(
-      BUFFER_HANDLE-: ARRAY OF SYSTEM.BYTE (* QUADWORD_UNSIGNED, unsigned, optional: NIL omits it *)
+      BUFFER_HANDLE-: HUGEINT (* QUADWORD_UNSIGNED, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DEQ
@@ -1235,7 +1235,7 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$DGBLSC"] SYS$DGBLSC*(
       FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       GSDNAM-: ARRAY OF CHAR; (* SECTION_NAME *)
-      IDENT-: ARRAY OF SYSTEM.BYTE (* SECTION_ID, unsigned, optional: NIL omits it *)
+      IDENT-: HUGEINT (* SECTION_ID, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $DIAGNOSE
@@ -1714,7 +1714,7 @@ MODULE STARLET;
      context. initially should be zero, value output
      on first call, value input on subsequent calls. *)
   PROCEDURE ["VMS", "SYS$FIND_HELD"] SYS$FIND_HELD*(
-      HOLDER-: ARRAY OF SYSTEM.BYTE; (* RIGHTS_HOLDER, unsigned *)
+      HOLDER-: HUGEINT; (* RIGHTS_HOLDER, unsigned *)
       VAR ID: SYSTEM.CARD32; (* RIGHTS_ID, optional: NIL omits it *)
       VAR ATTRIB: SYSTEM.CARD32; (* MASK_LONGWORD, optional: NIL omits it *)
       VAR CONTXT: SYSTEM.CARD32 (* CONTEXT, optional: NIL omits it *)
@@ -2023,7 +2023,7 @@ MODULE STARLET;
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
       ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
-      NULLARG-: ARRAY OF SYSTEM.BYTE (* NULL_ARG, unsigned, optional: NIL omits it *)
+      NULLARG-: HUGEINT (* NULL_ARG, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$GETDVIW"] SYS$GETDVIW*(
@@ -2034,7 +2034,7 @@ MODULE STARLET;
       VAR IOSB: ARRAY OF SYSTEM.BYTE; (* IO_STATUS_BLOCK, unsigned, optional: NIL omits it *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
       ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
-      NULLARG-: ARRAY OF SYSTEM.BYTE (* NULL_ARG, unsigned, optional: NIL omits it *)
+      NULLARG-: HUGEINT (* NULL_ARG, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $GETEVI
@@ -2450,7 +2450,7 @@ MODULE STARLET;
       IMGCTL: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       INADR-: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
       VAR RETADR: ARRAY OF SYSTEM.CARD32; (* ADDRESS_RANGE, optional: NIL omits it *)
-      IDENT-: ARRAY OF SYSTEM.BYTE; (* SECTION_ID, unsigned, optional: NIL omits it *)
+      IDENT-: HUGEINT; (* SECTION_ID, unsigned, optional: NIL omits it *)
       ACMODE: SYSTEM.CARD32 (* ACCESS_MODE, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -2581,7 +2581,7 @@ MODULE STARLET;
       ACMODE: SYSTEM.CARD32; (* ACCESS_MODE, optional: 0 omits it *)
       FLAGS: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       GSDNAM-: ARRAY OF CHAR; (* SECTION_NAME *)
-      IDENT-: ARRAY OF SYSTEM.BYTE; (* SECTION_ID, unsigned, optional: NIL omits it *)
+      IDENT-: HUGEINT; (* SECTION_ID, unsigned, optional: NIL omits it *)
       RELPAG: SYSTEM.CARD32 (* LONGWORD_UNSIGNED, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
@@ -2616,7 +2616,7 @@ MODULE STARLET;
      in the holder record *)
   PROCEDURE ["VMS", "SYS$MOD_HOLDER"] SYS$MOD_HOLDER*(
       ID: SYSTEM.CARD32; (* RIGHTS_ID *)
-      HOLDER-: ARRAY OF SYSTEM.BYTE; (* RIGHTS_HOLDER, unsigned *)
+      HOLDER-: HUGEINT; (* RIGHTS_HOLDER, unsigned *)
       SET_ATTRIB: SYSTEM.CARD32; (* MASK_LONGWORD, optional: 0 omits it *)
       CLR_ATTRIB: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -2709,7 +2709,7 @@ MODULE STARLET;
      0, use current time *)
   PROCEDURE ["VMS", "SYS$NUMTIM"] SYS$NUMTIM*(
       VAR TIMBUF: ARRAY OF SYSTEM.CARD16; (* VECTOR_WORD_UNSIGNED *)
-      TIMADR-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMADR-: HUGEINT (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $NUMUTC
@@ -2742,7 +2742,7 @@ MODULE STARLET;
      0, use current time *)
   PROCEDURE ["VMS", "SYS$NUMUTC"] SYS$NUMUTC*(
       VAR TIMBUF: ARRAY OF SYSTEM.CARD16; (* VECTOR_WORD_UNSIGNED *)
-      TIMADR-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMADR-: HUGEINT (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $NXTVOL
@@ -3053,7 +3053,7 @@ MODULE STARLET;
      holder = address of the holder identifier quadword *)
   PROCEDURE ["VMS", "SYS$REM_HOLDER"] SYS$REM_HOLDER*(
       ID: SYSTEM.CARD32; (* RIGHTS_ID *)
-      HOLDER-: ARRAY OF SYSTEM.BYTE (* RIGHTS_HOLDER, unsigned *)
+      HOLDER-: HUGEINT (* RIGHTS_HOLDER, unsigned *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $REM_IDENT
@@ -3224,8 +3224,8 @@ MODULE STARLET;
   PROCEDURE ["VMS", "SYS$SCHDWK"] SYS$SCHDWK*(
       VAR PIDADR: SYSTEM.CARD32; (* PROCESS_ID, optional: NIL omits it *)
       PRCNAM-: ARRAY OF CHAR; (* PROCESS_NAME, optional: NIL omits it *)
-      DAYTIM-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned *)
-      REPTIM-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
+      DAYTIM-: HUGEINT; (* DATE_TIME, unsigned *)
+      REPTIM-: HUGEINT (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SEARCH
@@ -3362,7 +3362,7 @@ MODULE STARLET;
      64-bit  format.   If 0, recalibrate system time using
      hardware time-of-year clock. *)
   PROCEDURE ["VMS", "SYS$SETIME"] SYS$SETIME*(
-      TIMADR-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMADR-: HUGEINT (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $SETIMR
@@ -3383,7 +3383,7 @@ MODULE STARLET;
      then this timer request is in terms of CPU time. *)
   PROCEDURE ["VMS", "SYS$SETIMR"] SYS$SETIMR*(
       EFN: SYSTEM.CARD32; (* EF_NUMBER, optional: 0 omits it *)
-      DAYTIM-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned *)
+      DAYTIM-: HUGEINT; (* DATE_TIME, unsigned *)
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
       REQIDT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       FLAGS: SYSTEM.CARD32 (* MASK_LONGWORD, optional: 0 omits it *)
@@ -3501,7 +3501,7 @@ MODULE STARLET;
      prvprv = address of quadword buffer to receive previous privileges *)
   PROCEDURE ["VMS", "SYS$SETPRV"] SYS$SETPRV*(
       ENBFLG: SYSTEM.INT8; (* BOOLEAN, boolean, optional: 0 omits it *)
-      PRVADR-: ARRAY OF SYSTEM.BYTE; (* MASK_PRIVILEGES, unsigned, optional: NIL omits it *)
+      PRVADR-: HUGEINT; (* MASK_PRIVILEGES, unsigned, optional: NIL omits it *)
       PRMFLG: SYSTEM.INT8; (* BOOLEAN, boolean, optional: 0 omits it *)
       VAR PRVPRV: ARRAY OF SYSTEM.BYTE (* MASK_PRIVILEGES, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -4201,7 +4201,7 @@ MODULE STARLET;
       AFTTIME-: ARRAY OF SYSTEM.BYTE; (* UTC_DATE_TIME, unsigned, optional: NIL omits it *)
       PART_NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
       RM_CONTEXT-: SYSTEM.CARD32; (* USER_ARG, optional: NIL omits it *)
-      TIMOUT-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMOUT-: HUGEINT (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $ADD_BRANCH
@@ -4266,7 +4266,7 @@ MODULE STARLET;
       ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       VAR TID: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
       VAR BID: ARRAY OF SYSTEM.BYTE; (* BRANCH_ID, unsigned *)
-      TIMOUT-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMOUT-: HUGEINT; (* DATE_TIME, unsigned, optional: NIL omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
       TX_CLASS-: ARRAY OF CHAR (* CHAR_STRING, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -4279,7 +4279,7 @@ MODULE STARLET;
       ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       VAR TID: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
       VAR BID: ARRAY OF SYSTEM.BYTE; (* BRANCH_ID, unsigned *)
-      TIMOUT-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMOUT-: HUGEINT; (* DATE_TIME, unsigned, optional: NIL omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
       TX_CLASS-: ARRAY OF CHAR (* CHAR_STRING, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -4510,7 +4510,7 @@ MODULE STARLET;
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       PART_NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
       RM_CONTEXT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
-      TIMOUT-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMOUT-: HUGEINT (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   PROCEDURE ["VMS", "SYS$JOIN_RMW"] SYS$JOIN_RMW*(
@@ -4523,7 +4523,7 @@ MODULE STARLET;
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
       PART_NAME-: ARRAY OF CHAR; (* CHAR_STRING, optional: NIL omits it *)
       RM_CONTEXT: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
-      TIMOUT-: ARRAY OF SYSTEM.BYTE (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMOUT-: HUGEINT (* DATE_TIME, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
 
   (* $RECOVER
@@ -4640,7 +4640,7 @@ MODULE STARLET;
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
       TM_NAME-: ARRAY OF CHAR; (* CHAR_STRING *)
       BID-: ARRAY OF SYSTEM.BYTE; (* BRANCH_ID, unsigned *)
-      TIMOUT-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMOUT-: HUGEINT; (* DATE_TIME, unsigned, optional: NIL omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
       TX_CLASS-: ARRAY OF CHAR (* CHAR_STRING, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -4654,7 +4654,7 @@ MODULE STARLET;
       TID-: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned *)
       TM_NAME-: ARRAY OF CHAR; (* CHAR_STRING *)
       BID-: ARRAY OF SYSTEM.BYTE; (* BRANCH_ID, unsigned *)
-      TIMOUT-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMOUT-: HUGEINT; (* DATE_TIME, unsigned, optional: NIL omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
       TX_CLASS-: ARRAY OF CHAR (* CHAR_STRING, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -4682,7 +4682,7 @@ MODULE STARLET;
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
       ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       VAR TID: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
-      TIMOUT-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMOUT-: HUGEINT; (* DATE_TIME, unsigned, optional: NIL omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
       TX_CLASS-: ARRAY OF CHAR (* CHAR_STRING, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)
@@ -4694,7 +4694,7 @@ MODULE STARLET;
       ASTADR: SYSTEM.ADDRESS; (* AST_PROCEDURE, a routine's address, optional: 0 omits it *)
       ASTPRM: SYSTEM.CARD32; (* USER_ARG, optional: 0 omits it *)
       VAR TID: ARRAY OF SYSTEM.BYTE; (* TRANSACTION_ID, unsigned, optional: NIL omits it *)
-      TIMOUT-: ARRAY OF SYSTEM.BYTE; (* DATE_TIME, unsigned, optional: NIL omits it *)
+      TIMOUT-: HUGEINT; (* DATE_TIME, unsigned, optional: NIL omits it *)
       ACMODE: SYSTEM.INT8; (* ACCESS_MODE, optional: 0 omits it *)
       TX_CLASS-: ARRAY OF CHAR (* CHAR_STRING, optional: NIL omits it *)
     ): SYSTEM.INT32; (* COND_VALUE *)

@@ -46,8 +46,8 @@ MODULE LIB_ROUTINES;
 
      The Add Two Quadword Times routine adds two VMS internal time format times. *)
   PROCEDURE ["VMS", "LIB$ADD_TIMES"] LIB$ADD_TIMES*(
-      time1-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned *)
-      time2-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned *)
+      time1-: HUGEINT; (* date_time, unsigned *)
+      time2-: HUGEINT; (* date_time, unsigned *)
       VAR resultant_time: ARRAY OF SYSTEM.BYTE (* date_time, unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -332,7 +332,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$CVTF_FROM_INTERNAL_TIME"] LIB$CVTF_FROM_INTERNAL_TIME*(
       operation-: SYSTEM.CARD32; (* function_code *)
       VAR resultant_time: REAL; (* F_FLOATING *)
-      input_time-: ARRAY OF SYSTEM.BYTE (* date_time, unsigned *)
+      input_time-: HUGEINT (* date_time, unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$CVT_FROM_INTERNAL_TIME
@@ -344,7 +344,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$CVT_FROM_INTERNAL_TIME"] LIB$CVT_FROM_INTERNAL_TIME*(
       operation-: SYSTEM.CARD32; (* function_code *)
       VAR resultant_time: SYSTEM.CARD32; (* longword_unsigned *)
-      input_time-: ARRAY OF SYSTEM.BYTE (* date_time, unsigned, optional: NIL omits it *)
+      input_time-: HUGEINT (* date_time, unsigned, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
   (* LIB$CVTF_TO_INTERNAL_TIME
@@ -461,7 +461,7 @@ MODULE LIB_ROUTINES;
      November 17, 1858, to a user-supplied date. *)
   PROCEDURE ["VMS", "LIB$DAY"] LIB$DAY*(
       VAR number_of_days: SYSTEM.INT32; (* longword_signed *)
-      user_time-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned, optional: NIL omits it *)
+      user_time-: HUGEINT; (* date_time, unsigned, optional: NIL omits it *)
       VAR day_time: SYSTEM.INT32 (* longword_signed, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -474,7 +474,7 @@ MODULE LIB_ROUTINES;
      returned.  The days are numbered 1 through 7, with Monday as day 1 and Sunday as
      day 7. *)
   PROCEDURE ["VMS", "LIB$DAY_OF_WEEK"] LIB$DAY_OF_WEEK*(
-      user_time-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned, optional: NIL omits it *)
+      user_time-: HUGEINT; (* date_time, unsigned, optional: NIL omits it *)
       VAR day_number: SYSTEM.CARD32 (* longword_unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -593,7 +593,7 @@ MODULE LIB_ROUTINES;
      specific output language and format for a date or time, or both. *)
   PROCEDURE ["VMS", "LIB$FORMAT_DATE_TIME"] LIB$FORMAT_DATE_TIME*(
       VAR date_string: ARRAY OF CHAR; (* char_string *)
-      date-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned, optional: NIL omits it *)
+      date-: HUGEINT; (* date_time, unsigned, optional: NIL omits it *)
       VAR user_context: SYSTEM.CARD32; (* context, optional: NIL omits it *)
       VAR date_length: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)
       flags-: SYSTEM.CARD32 (* mask_longword, optional: NIL omits it *)
@@ -617,7 +617,7 @@ MODULE LIB_ROUTINES;
      LIB$EDIV makes the VAX EDIV instruction available as a callable routine. *)
   PROCEDURE ["VMS", "LIB$EDIV"] LIB$EDIV*(
       longword_integer_divisor-: SYSTEM.INT32; (* longword_signed *)
-      quadword_integer_dividend-: ARRAY OF SYSTEM.BYTE; (* quadword_signed *)
+      quadword_integer_dividend-: HUGEINT; (* quadword_signed *)
       VAR longword_integer_quotient: SYSTEM.INT32; (* longword_signed *)
       VAR remainder: SYSTEM.INT32 (* longword_signed *)
     ): SYSTEM.INT32; (* cond_value *)
@@ -1668,7 +1668,7 @@ MODULE LIB_ROUTINES;
   PROCEDURE ["VMS", "LIB$SYS_ASCTIM"] LIB$SYS_ASCTIM*(
       VAR resultant_length: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
       VAR time_string: ARRAY OF CHAR; (* time_name *)
-      user_time-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned, optional: NIL omits it *)
+      user_time-: HUGEINT; (* date_time, unsigned, optional: NIL omits it *)
       flags-: SYSTEM.CARD32 (* mask_longword, optional: NIL omits it *)
     ): SYSTEM.INT32; (* cond_value *)
 
@@ -2022,8 +2022,8 @@ MODULE LIB_ROUTINES;
      The Subtract Two Quadword Times routine subtracts two VMS
      internal-time-format times. *)
   PROCEDURE ["VMS", "LIB$SUB_TIMES"] LIB$SUB_TIMES*(
-      time1-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned *)
-      time2-: ARRAY OF SYSTEM.BYTE; (* date_time, unsigned *)
+      time1-: HUGEINT; (* date_time, unsigned *)
+      time2-: HUGEINT; (* date_time, unsigned *)
       VAR resultant_time: ARRAY OF SYSTEM.BYTE (* date_time, unsigned *)
     ): SYSTEM.INT32; (* cond_value *)
 

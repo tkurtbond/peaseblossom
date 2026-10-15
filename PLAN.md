@@ -754,8 +754,15 @@ C++, and so on) unless step 4 chooses one deliberately.
    `VMSDEF`; in a `["VMS"]` declaration an `x-` `ARRAY OF SYSTEM.BYTE`
    takes any actual. The constants agree with `STARLET.MLB`'s, 3587 names;
    poc's layout of every record type with SDL's. Fixture `vax-vmsdef`.
-   The first seven library modules are generated, for review; the rest
-   follow once they are approved.
+   The first seven library modules are generated and were **approved by
+   the user, 2026-10-15**, with a quadword in declared `x-: HUGEINT`;
+   the other 58 follow.
+
+   **Part 3, SDL's unsigned types (2026-10-14)**: seven proposals,
+   **approved by the user, 2026-10-14**, and made the same day
+   (`vms-sdl-interfaces.md`, "Part 3 done"): an unsigned field or
+   parameter is the CARD of its width, and `VmsArguments`' lengths are
+   `CARD16`.
 
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`

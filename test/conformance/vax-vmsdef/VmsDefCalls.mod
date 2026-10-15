@@ -4,10 +4,10 @@ MODULE VmsDefCalls;
      from STARLETSD.TLB (rtl/vax/vms), with their constants - LIB$ and
      STR$ strings by descriptor; LIB$GET_VM's address out; $TRNLNM's and
      $GETJPIW's item lists and I/O status block as ARRAY OF SYSTEM.BYTE
-     (part 2, proposal 7); $BINTIM and $ASCTIM, a quadword from a
-     variable and from a constant; $ASSIGN and $QIOW, a string constant
-     as P1; and RMS's $OPEN and $CLOSE with a FAB of FABDEF's record type,
-     whose fields RMS fills in. SDL's unsigned lengths, channels and
+     (part 2, proposal 7); $BINTIM and $ASCTIM, a quadword in, an x-:
+     HUGEINT, from a variable and from a constant; $ASSIGN and $QIOW, a
+     string constant as P1; and RMS's $OPEN and $CLOSE with a FAB of
+     FABDEF's record type, whose fields RMS fills in. SDL's unsigned lengths, channels and
      fields are CARDs (part 3): an address into an unsigned longword by
      SYSTEM.VAL, a CARD printed by Out.Card. Run by guest-run.com, which
      makes VMSDEFCALLS.TXT and defines POC_VMSDEF_LNM. *)
@@ -73,11 +73,12 @@ BEGIN
   Show("username", username, usernameLength);
   Status("I/O status ", SYSTEM.VAL(LONGINT, iosb.status)); Out.Ln;
 
-  (* a quadword in, from a variable and from a constant made a HUGEINT *)
+  (* a quadword in, from a variable and from a constant, which poc
+     passes as an 8-byte copy *)
   status := STARLET.SYS$BINTIM("14-OCT-2026 12:34:56.78", time);
   status := STARLET.SYS$ASCTIM(length, value, time, 0);
   Show("time", value, length);
-  status := STARLET.SYS$ASCTIM(length, value, SYSTEM.VAL(HUGEINT, oneMinute), 0);
+  status := STARLET.SYS$ASCTIM(length, value, oneMinute, 0);
   Show("delta", value, length);
 
   (* a string constant as $QIOW's P1, to the null device *)
