@@ -1,13 +1,65 @@
+ACCDEF: 63 agree
+ACEDEF: 117 agree
+ACLDEF: 54 agree
+ACRDEF: 102 agree
+AGNDEF: 5 agree
+ARMDEF: 13 agree
+ATRDEF: 108 agree
+BASDEF: 324 agree
+BRKDEF: 40 agree
+CHFDEF: 21 agree
+CHKPNTDEF: 7 agree
+CHPDEF: 43 agree
+  only here: CHP$S_FLAG_BITS
+  only here: CHP$S_PRIVS_USED_BITS
+CLIDEF: 190 agree
+CLIMSGDEF: 175 agree
+CLISERVDEF: 24 agree
+CLIVERBDEF: 60 agree
+CLSDEF: 18 agree
+CMBDEF: 5 agree
+COBDEF: 122 agree
+CONVDEF: 4 agree
+CQUALDEF: 26 agree
+  only in STARLET.MLB: LIB$S_QUALIFIER_FLAGS
+CRDEF: 6 agree
+CREDEF: 25 agree
+CRFDEF: 40 agree
+DCDEF: 451 agree
+DDTMDEF: 78 agree
+  only in STARLET.MLB: DDTM$S_TRANSACTION_ID
+  only in STARLET.MLB: DDTM$S_UTC_DATE_TIME
+  only in STARLET.MLB: DDTM$X_TRANSACTION_ID
+  only in STARLET.MLB: DDTM$X_UTC_DATE_TIME
+DDTMMSGDEF: 15 agree
+DEVDEF: 115 agree
+DIBDEF: 23 agree
+DMPDEF: 63 agree
+DMTDEF: 17 agree
+DSCDEF: 132 agree
+DSTDEF: 26 agree
+DTIDEF: 71 agree
+DTKDEF: 108 agree
+DVIDEF: 173 agree
+DVSDEF: 2 agree
+ENSDEF: 69 agree
+EPBDEF: 35 agree
+ERADEF: 7 agree
+EVIDEF: 25 agree
 FABDEF: 204 agree
 FACDEF: 184 agree
+FALDEF: 175 agree
 FDLDEF: 11 agree
 FIBDEF: 193 agree
 FIDDEF: 18 agree
+FORDEF: 104 agree
 FSCNDEF: 28 agree
+HLPDEF: 45 agree
 HWDEF: 1 agree
 IACDEF: 46 agree
 INITDEF: 62 agree
 IODEF: 473 agree
+JBCMSGDEF: 141 agree
 JPIDEF: 153 agree
 KGBDEF: 35 agree
 LADEF: 36 agree
@@ -16,16 +68,126 @@ LATDEF: 217 agree
   only in STARLET.MLB: LAT$S_EFLAGBITS
   only in STARLET.MLB: LAT$S_ESTATFLAGS
   only in STARLET.MLB: LAT$S_ITM_CODE
+LBRDEF: 111 agree
 LCKDEF: 41 agree
+LHIDEF: 26 agree
+LIBCLIDEF: 7 agree
+  only in STARLET.MLB: CLI$CTRL_FIELDS
+LIBDCFDEF: 71 agree
+  only in STARLET.MLB: LIB$B_DCF_OPERAND
+LIBDEF: 115 agree
+LIBDTDEF: 61 agree
+  only in STARLET.MLB: DT_DEFAULT_FIELDS
+  only in STARLET.MLB: DT_PRINT_FIELDS
+LIBVMDEF: 12 agree
+LICENSEDEF: 14 agree
 LKIDEF: 112 agree
 LMFDEF: 31 agree
 LNMDEF: 35 agree
 LPDEF: 31 agree
+MAILDEF: 318 agree
+MAILMSGDEF: 176 agree
+MHDDEF: 30 agree
+MNTDEF: 116 agree
+MOUNDEF: 149 agree
+  only here: MOUNT$_FACILITY
+  only in STARLET.MLB: MOUN$_FACILITY
+MSGDEF: 86 agree
+MT2DEF: 18 agree
+MTADEF: 6 agree
+MTDEF: 57 agree
+MTHDEF: 17 agree
 NAMDEF: 164 agree
+NETDEF: 5 agree
+NSADEF: 721 agree
+NSARECDEF: 303 agree
+OPCDEF: 77 agree
+OPCMSG: 133 agree
+  only here: OPCOM$_FACILITY
+  only in STARLET.MLB: OPC$_FACILITY
+OPDEF: 361 agree
+OPRDEF: 40 agree
+OTSDEF: 11 agree
+PCCDEF: 19 agree
+PLVDEF: 11 agree
+POSIX_SERVICEDEF: 19 agree
+PPLDEF: 51 agree
+PQLDEF: 16 agree
+PR009DEF: 6 agree
+PR1202DEF: 235 agree
+PR1302DEF: 2 agree
+PR13DEF: 612 agree
+PR1701DEF: 519 agree
+PR410DEF: 3 agree
+PR420DEF: 18 agree
+PR43DEF: 79 agree
+PR440DEF: 29 agree
+PR46DEF: 81 agree
+PR49DEF: 2 agree
+PR520DEF: 14 agree
+PR60DEF: 39 agree
+PR650DEF: 6 agree
+PR660DEF: 29 agree
+PR670DEF: 131 agree
+PR730DEF: 16 agree
+PR750DEF: 16 agree
+PR780DEF: 15 agree
+PR790DEF: 22 agree
+PR8NNDEF: 163 agree
+PR8PSDEF: 48 agree
+PR8SSDEF: 93 agree
+PR9AQDEF: 150 agree
+PR9CCDEF: 59 agree
+PR9RRDEF: 204 agree
+PRCDEF: 42 agree
+PRDEF: 164 agree
+PRTDEF: 16 agree
+PRUV1DEF: 3 agree
+PRUV2DEF: 4 agree
+PRVDEF: 74 agree
+PSCANDEF: 52 agree
+PSLDEF: 39 agree
+PSWDEF: 17 agree
+PTDDEF: 13 agree
+QUIDEF: 456 agree
 RABDEF: 131 agree
 RMEDEF: 5 agree
 RMSDEF: 263 agree
+RNHBLKDEF: 7 agree
+SBKDEF: 18 agree
+SCRDEF: 45 agree
+SECDEF: 69 agree
+SFDEF: 29 agree
+SHRDEF: 117 agree
+SJCDEF: 364 agree
+SMGDEF: 557 agree
+  only here: SMG$S_SMGDEF_BITS
+  only here: SMG$S_SMGMODE_BITS
+  only in STARLET.MLB: SMG$S_BAND_INFORMATION_TABLE
+  only in STARLET.MLB: SMG$S_COUNT_STRUCT
+  only in STARLET.MLB: SMG$S_KEYBOARD_INFO_BLOCK
+  only in STARLET.MLB: SMG$S_PASTEBOARD_INFO_BLOCK
+SMRDEF: 91 agree
+SNAPEVTDEF: 8 agree
+SRMDEF: 10 agree
 SSDEF: 520 agree
+STRDEF: 18 agree
+STSDEF: 32 agree
+SYIDEF: 414 agree
+TPADEF: 23 agree
+TRMDEF: 69 agree
+TT2DEF: 65 agree
+TT3DEF: 7 agree
+TTCDEF: 15 agree
+TTDEF: 142 agree
+UAIDEF: 129 agree
+UICDEF: 26 agree
+UIDDEF: 27 agree
+USGDEF: 29 agree
+USRIDEF: 3 agree
+VAERDEF: 17 agree
+VAXDEF: 1010 agree
+VPSRDEF: 21 agree
 XABALLDEF: 33 agree
 XABCXFDEF: 21 agree
 XABCXRDEF: 34 agree
@@ -40,3 +202,10 @@ XABRDTDEF: 4 agree
 XABRUDEF: 11 agree
 XABSUMDEF: 7 agree
 XABTRMDEF: 6 agree
+XADEF: 5 agree
+XFDEF: 146 agree
+XKDEVDEF: 10 agree
+XKSTSDEF: 33 agree
+XMDEF: 101 agree
+XRVDEF: 176 agree
+XWDEF: 44 agree

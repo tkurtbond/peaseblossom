@@ -66,37 +66,33 @@ run|dump)
   shift 2
   [ -d "$dir" ] || { echo "vax-sdl: $dir is not a directory" >&2; exit 2; }
   if [ "$what" = run ]; then language=OBERON type=OBN; else language=DUMP type=DMP; fi
-  modules= gets=
-  for m; do
-    case $m in *[!A-Za-z0-9_\$]*) echo "vax-sdl: $m is not a library module's name" >&2; exit 2 ;; esac
-    m=$(echo "$m" | tr a-z A-Z)
-    f=$(echo "$m" | sed 's/\$//')
-    modules="$modules${modules:+,}$m"
-    gets="$gets -get $f.$type"
-  done
+  gets=
   # SDLOBERON_SOURCE, global so that the back end's LIB$GET_SYMBOL finds
-  # it, names the library and the module for each module's banner
+  # it, names the library and the module for each module's banner. Each
+  # module has lines of its own: DCL reads a command of at most 255
+  # characters, too few for a list of all 65 modules in one symbol.
   cat >"$work/sdlrun.com" <<EOF
 \$ SET NOON
-\$ M = "$modules"
 \$ TLB = F\$SEARCH("SYS\$LIBRARY:STARLETSD.TLB")
 \$ CDT = F\$EDIT(F\$FILE_ATTRIBUTES(TLB, "CDT"), "TRIM")
 \$ CDT = F\$ELEMENT(0, " ", CDT)
 \$ S = 1
-\$ I = 0
-\$ LOOP:
-\$ N = F\$ELEMENT(I, ",", M)
-\$ IF N .EQS. "," THEN GOTO DONE
-\$ F = N - "\$"
-\$ LIBRARY/EXTRACT='N'/OUTPUT='F'.SDI/TEXT SYS\$LIBRARY:STARLETSD.TLB
+EOF
+  for m; do
+    case $m in *[!A-Za-z0-9_\$]*) echo "vax-sdl: $m is not a library module's name" >&2; exit 2 ;; esac
+    m=$(echo "$m" | tr a-z A-Z)
+    f=$(echo "$m" | sed 's/\$//')
+    gets="$gets -get $f.$type"
+    cat >>"$work/sdlrun.com" <<EOF
+\$ LIBRARY/EXTRACT=$m/OUTPUT=$f.SDI/TEXT SYS\$LIBRARY:STARLETSD.TLB
 \$ IF .NOT. \$STATUS THEN S = \$STATUS
-\$ SDLOBERON_SOURCE == "STARLETSD.TLB of ''CDT', module ''N'"
-\$ SDL/NOPARSE/LANGUAGE=$language='F'.$type 'F'.SDI
+\$ SDLOBERON_SOURCE == "STARLETSD.TLB of ''CDT', module $m"
+\$ SDL/NOPARSE/LANGUAGE=$language=$f.$type $f.SDI
 \$ IF .NOT. \$STATUS THEN S = \$STATUS
-\$ DELETE/NOLOG 'F'.SDI;*
-\$ I = I + 1
-\$ GOTO LOOP
-\$ DONE:
+\$ DELETE/NOLOG $f.SDI;*
+EOF
+  done
+  cat >>"$work/sdlrun.com" <<EOF
 \$ DELETE/SYMBOL/GLOBAL SDLOBERON_SOURCE
 \$ EXIT S
 EOF
@@ -111,7 +107,16 @@ EOF
       mv "$work/$f.DMP" "$dir/"
     done
   else
-    # each (*** FILE <NAME>.Mod ***) line starts a module
+    # each (*** FILE <NAME>.Mod ***) line starts a module; one name
+    # written by two modules of a run is refused, not written over
+    twice=$(for m; do
+      f=$(echo "$m" | tr a-z A-Z | sed 's/\$//')
+      sed -n 's/^(\*\*\* FILE \([A-Z0-9_]*\.Mod\) \*\*\*)$/\1/p' "$work/$f.OBN"
+    done | sort | uniq -d)
+    if [ -n "$twice" ]; then
+      echo "vax-sdl: written by more than one module:" $twice >&2
+      exit 1
+    fi
     for m; do
       f=$(echo "$m" | tr a-z A-Z | sed 's/\$//')
       awk -v dir="$dir" '

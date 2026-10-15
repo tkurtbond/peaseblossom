@@ -2,9 +2,10 @@
 # in the generated modules named on the command line against SDL's
 # offsets: each exported field's offset, SYSTEM.ADR(v.f) - SYSTEM.ADR(v),
 # against the module's constant of the field's name, and the record's
-# size against its comment, "(* n bytes" or "which poc pads to n". A
-# field of bit fields has a $V_ constant, a bit's position, not an
-# offset, and is left out.
+# size against its comment, "(* n bytes" or "which poc pads to n". An
+# aggregate with an ORIGIN says so there, "ORIGIN, n bytes in", and its
+# constants count from it. A field of bit fields has a $V_ constant, a
+# bit's position, not an offset, and is left out.
 FNR == 1 {
   module = FILENAME; sub(/.*\//, "", module); sub(/\.Mod$/, "", module)
   inrecord = 0
@@ -16,7 +17,10 @@ FNR == 1 {
   type = $1; sub(/\*$/, "", type)
   size = $5
   if (match($0, /pads to [0-9]+/)) size = substr($0, RSTART + 8, RLENGTH - 8)
+  origin = 0
+  if (match($0, /ORIGIN, [0-9]+ bytes in/)) origin = substr($0, RSTART + 8, RLENGTH - 17)
   nrecords++; rmodule[nrecords] = module; rtype[nrecords] = type; rsize[nrecords] = size
+  rorigin[nrecords] = origin
   nfields[nrecords] = 0; inrecord = 1; used[module] = 1
   next
 }
@@ -64,7 +68,10 @@ END {
       f = field[r, i]
       if (!((rmodule[r] "." f) in constant)) continue
       checked++
-      printf "  Check(\"%s.%s\", SYSTEM.ADR(v%d.%s) - SYSTEM.ADR(v%d), %s.%s);\n", rmodule[r], f, r, f, r, rmodule[r], f
+      if (rorigin[r])
+        printf "  Check(\"%s.%s\", SYSTEM.ADR(v%d.%s) - SYSTEM.ADR(v%d) - %d, %s.%s);\n", rmodule[r], f, r, f, r, rorigin[r], rmodule[r], f
+      else
+        printf "  Check(\"%s.%s\", SYSTEM.ADR(v%d.%s) - SYSTEM.ADR(v%d), %s.%s);\n", rmodule[r], f, r, f, r, rmodule[r], f
     }
     printf "  Record(\"%s.%s\", %d, SIZE(%s.%s), %d);\n", rmodule[r], rtype[r], checked, rmodule[r], rtype[r], rsize[r]
   }

@@ -11,7 +11,9 @@ and runs it, and what it writes is committed in `rtl/vax/vms`.
   and field offsets computed as SDL's MACRO back end computes them
   (`STARLET.MLB`); a record type for each aggregate poc can lay out as
   SDL does; a `["VMS"]` declaration for each entry, its parameters by
-  part 1's mechanisms.
+  part 1's mechanisms. A library module whose SDL module has another's
+  name is renamed by its table `renamed` (`SMBMSG`'s `$PSMMSGDEF` is
+  `SMBMSGDEF`), keyed by the output file's name.
 - `sdlload.c`: runs `sdloberon.c` on atla over an `SDLDUMP` dump of a
   tree (`tools/vax-sdl dump`), to try a change before the guest:
   `cc -m32 -std=gnu89 -o sdlload sdlload.c sdloberon.c`, then

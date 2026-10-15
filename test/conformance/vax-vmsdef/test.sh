@@ -4,9 +4,9 @@
 # 8): the modules tools/sdloberon generated from STARLETSD.TLB, in
 # rtl/vax/vms. Each compiles for the VAX under -O2 and -OC; together they
 # make the library VMSDEF. Where the VAX development system can be used:
-# - every constant of each $xxxDEF module is compared with what SDL's
-#   MACRO back end defines in STARLET.MLB, the macro $xxxDEF GLOBAL's
-#   listing, by compare-mlb.awk, against expected-mlb;
+# - every constant of each module <M> that mlb-modules lists is compared
+#   with what SDL's MACRO back end defines in STARLET.MLB, the macro
+#   $<M> GLOBAL's listing, by compare-mlb.awk, against expected-mlb;
 # - POCRTL and VMSDEF are built there, and two programs against them
 #   (guest-run.com): VmsDefLayout, which layout-check.awk writes, checks
 #   poc's layout of every record type against SDL's offsets and sizes;
@@ -51,17 +51,17 @@ if [ "${VAX_GUEST:-}" = skip ]; then
 elif "$tools/vax-assemble" -available; then
   mkdir work/mlb
   gets= files=
-  for m in $modules; do
-    case $m in *DEF.Mod) ;; *) continue ;; esac
-    n=${m%.Mod}
-    printf '\t.TITLE\tC_%s\n\t$%s GLOBAL\n\t.END\n' "$n" "$n" >work/mlb/C_$n.MAR
+  mlb=$(grep -v '^#' mlb-modules | cut -d' ' -f1)
+  grep -v '^#' mlb-modules | while read -r n argument; do
+    printf '\t.TITLE\tC_%s\n\t$%s %s\n\t.END\n' "$n" "$n" "${argument:-GLOBAL}" >work/mlb/C_$n.MAR
+  done
+  for n in $mlb; do
     gets="$gets -get C_$n.LIS" files="$files work/mlb/C_$n.MAR"
   done
   # shellcheck disable=SC2086
   if "$tools/vax-do" -o work/mlb $gets mlb-listings.com $files >work/mlb/out 2>&1; then
-    for m in $modules; do
-      case $m in *DEF.Mod) ;; *) continue ;; esac
-      awk -f compare-mlb.awk $vms/$m work/mlb/C_${m%.Mod}.LIS
+    for n in $mlb; do
+      awk -f compare-mlb.awk $vms/$n.Mod work/mlb/C_$n.LIS
     done >work/mlb-compared
     diff expected-mlb work/mlb-compared >work/mlb-diff 2>&1 \
       || { echo "the constants differ from expected-mlb:" >>result; cat work/mlb-diff >>result; }

@@ -345,7 +345,11 @@ MODULE VaxToolchainDriver;
      library's files, assembles them, makes the object library <NAME>.OLB,
      one module at a time (LIBRARY/INSERT refuses a global symbol the
      library has already, section 18.1), and links the shareable image
-     <NAME>.EXE from their objects and the needed libraries' images, with
+     <NAME>.EXE from them and the needed libraries' images - the modules
+     taken from <NAME>.OLB by /INCLUDE, so that LINK holds one file open
+     however many there are, not one for each, which the quotas of a
+     process stop near a hundred (section 18.5); the hand-written parts,
+     whose module names need not be their files', as objects - with
      every global symbol UNIVERSAL= (proposal 2) and no GSMATCH= (proposal
      3); it stops at a warning, as -build's does, and first, with a
      message, when a needed library's setup procedure has not been run.
@@ -410,8 +414,15 @@ MODULE VaxToolchainDriver;
       u := u.next
     END;
     COPY("$ CREATE ", line); Append(line, libName); Append(line, ".OPT"); WriteLine(w, line);
-    u := units;
-    WHILE u # NIL DO Upper(u.name, unitName); COPY(unitName, line); Append(line, ".OBJ"); WriteLine(w, line); u := u.next END;
+    IF units # NIL THEN
+      COPY(libName, line); Append(line, ".OLB/INCLUDE=(-"); WriteLine(w, line);
+      u := units;
+      WHILE u # NIL DO
+        Upper(u.name, unitName); COPY(unitName, line);
+        IF u.next # NIL THEN Append(line, ",-") ELSE Append(line, ")") END;
+        WriteLine(w, line); u := u.next
+      END
+    END;
     u := parts;
     WHILE u # NIL DO Upper(u.name, unitName); COPY(unitName, line); Append(line, ".OBJ"); WriteLine(w, line); u := u.next END;
     u := needs;

@@ -756,7 +756,13 @@ C++, and so on) unless step 4 chooses one deliberately.
    poc's layout of every record type with SDL's. Fixture `vax-vmsdef`.
    The first seven library modules are generated and were **approved by
    the user, 2026-10-15**, with a quadword in declared `x-: HUGEINT`;
-   the other 58 follow.
+   the other 58 were generated the same day ("Part 2 finished"): 243
+   Oberon modules from all 65, leaving out DECthreads and `MTH$`'s D, H
+   and complex entries. `STARLET.MLB` agrees on 17,559 names of 186
+   modules, none differing in value; poc's layout of 225 record types
+   agrees with SDL's. On the way: SDL's `ORIGIN`, `SMBMSG`'s module
+   renamed `SMBMSGDEF`, and a VAX library's shareable image linked from
+   its `.OLB` by `/INCLUDE` (`vax-macro32-backend.md`, section 18.5).
 
    **Part 3, SDL's unsigned types (2026-10-14)**: seven proposals,
    **approved by the user, 2026-10-14**, and made the same day

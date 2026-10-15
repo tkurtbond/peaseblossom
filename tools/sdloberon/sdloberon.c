@@ -142,6 +142,7 @@ static void add_name(s, is_constant, value)
 
 static struct Text body;
 static char module_name[64];
+static char library_module[64]; /* the output file's name: SMBMSG */
 static char source[400];
 static int problems;
 
@@ -342,9 +343,11 @@ static char *size_name(n)
    whose type does not say it, in bytes - more than one character, an
    array, a quadword or anything else not of 1, 2 or 4 bytes - but not a
    nested structure's or union's; the aggregate's own unless it is a
-   filler (aggregate). */
-static void member_constants(s)
+   filler (aggregate). An offset is counted from the aggregate's ORIGIN,
+   origin bytes in, as MACRO's are (DSCDEF, NSARECDEF). */
+static void member_constants(s, origin)
   struct Node *s;
+  int origin;
 {
   struct Node *head, *m;
   int bit;
@@ -363,7 +366,7 @@ static void member_constants(s)
       bit += m->fldsiz;
     } else {
       if (!is_fill(m)) {
-        constant(str(&m->name), m->offset, 0, end_comment(m));
+        constant(str(&m->name), m->offset - origin, 0, end_comment(m));
         if (m->datatype != SDL$C_TYPE_STRUCTURE && m->datatype != SDL$C_TYPE_UNION
             && m->fldsiz > 0
             && ((m->sdl_flag_bits.flags & SDL$M_DIMEN)
@@ -373,7 +376,7 @@ static void member_constants(s)
       };
       bit = (m->offset - s->offset + m->fldsiz) * 8;
       if (m->datatype == SDL$C_TYPE_STRUCTURE || m->datatype == SDL$C_TYPE_UNION)
-        member_constants(m);
+        member_constants(m, origin);
     };
   };
 }
@@ -680,12 +683,14 @@ static void aggregate(a)
   struct Node *a;
 {
   char why[200], name[64];
-  int i, poc_size, all_bits;
+  int i, poc_size, all_bits, origin;
   struct Field *f;
 
+  /* SDL's ORIGIN: its typeinfo is minus the origin's offset */
+  origin = (a->typeinfo < 0 && -a->typeinfo < a->fldsiz) ? -a->typeinfo : 0;
   enter_section(SECTION_CONST);
   if (!is_fill(a)) constant(size_name(a), a->fldsiz, 0, "");
-  member_constants(a);
+  member_constants(a, origin);
   if (a->datatype == SDL$C_TYPE_UNION) return;
   nfields = 0;
   fills = 0;
@@ -714,6 +719,11 @@ static void aggregate(a)
   put(&body, line);
   if (poc_size != a->fldsiz) {
     sprintf(line, ", which poc pads to %d", poc_size);
+    put(&body, line);
+  };
+  if (origin) {
+    sprintf(line, "; its offset constants count from its ORIGIN, %d bytes in",
+            origin);
     put(&body, line);
   };
   put(&body, " *)\n");
@@ -1018,16 +1028,29 @@ static void declarations(h)
 
 static FILE *outfile;
 
+/* an Oberon module named otherwise than its SDL module, where the kit
+   gives two library modules' SDL modules one name: SMBMSG's says
+   $PSMMSGDEF, as PSMMSG's does, but its codes are SMB$_ (the user,
+   2026-10-15) */
+static struct { char *library, *sdl, *oberon; } renamed[] = {
+  {"SMBMSG", "$PSMMSGDEF", "SMBMSGDEF"},
+  {0, 0, 0}
+};
+
 static void module(m)
   struct Node *m;
 {
-  char *s, *d, c;
+  char *s, *d, c, name[64];
   int i;
 
   s = str(&m->name);
   if (*s == '$') s++;
   for (d = module_name; *s; s++) *d++ = (*s == '$') ? '_' : toupper(*s);
   *d = '\0';
+  for (i = 0; renamed[i].library; i++)
+    if (strcmp(library_module, renamed[i].library) == 0
+        && strcmp(upper(strcpy(name, str(&m->name))), renamed[i].sdl) == 0)
+      strcpy(module_name, renamed[i].oberon);
   for (i = 0; i < nnames; i++) free(names[i].name);
   nnames = 0;
   body.len = 0;
@@ -1095,13 +1118,21 @@ sdl$output(outputname, module_node, root)
   struct Head *root;
 {
   struct Node *r, *m;
-  char out[256], version[20];
+  char out[256], version[20], *s;
   int i;
 
   for (i = 0; i < outputname->len && outputname->str[i] != ' '; i++)
     out[i] = outputname->str[i];
   out[i] = '\0';
   if (i == 0) sprintf(out, "%s.OBN", str(module_node));
+  /* the library module, from the file's name: no directory, no type */
+  s = strrchr(out, ']');
+  if (!s) s = strrchr(out, '/');
+  strncpy(library_module, s ? s + 1 : out, sizeof library_module - 1);
+  library_module[sizeof library_module - 1] = '\0';
+  s = strchr(library_module, '.');
+  if (s) *s = '\0';
+  upper(library_module);
 #ifdef vms
   outfile = fopen(out, "w", "rfm=var", "rat=cr");
 #else

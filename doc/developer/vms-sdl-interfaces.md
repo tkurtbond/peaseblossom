@@ -860,3 +860,64 @@ them open arrays. That is 122 `CARD8`, 177 `CARD16`, 682 `CARD32` and 14
   - `vax-vmsdef` (0 layout errors, `STARLET.MLB`'s 3587 constants
     unchanged), `vax-vms-calls` and `vax-vms-arguments` pass on the
     guest, and print what they printed before.
+
+## Part 2 finished: the other 58 modules (2026-10-15)
+
+The user approved the first seven library modules on 2026-10-15, and the
+other 58 of `STARLETSD.TLB` were generated the same day. `rtl/vax/vms`
+now has 243 Oberon modules, from all 65 library modules, and 45,000
+lines. The first 41 did not change.
+
+- **What is left out**, each with a comment in its module. All of it is
+  what the native library inventory left out already:
+  - `CMA`, DECthreads: 64 routines whose results are SDL types 23 and
+    24, which `sdldef.h` does not name, and 14 items that are not
+    aggregates.
+  - `MTH$`: the D floating, H floating and complex entries (results of
+    types 6, 19, 20 and 21), 68 of them, and 20 with a `LIST` argument.
+  - `DDTMDEF`, DECdtm: 4 octaword items that are not aggregates
+    (`DDTM$X_TRANSACTION_ID`, `DDTM$X_UTC_DATE_TIME` and their `$S_`).
+- **Two library modules with one SDL module's name** (decided by the
+  user, 2026-10-15). `SMBMSG`'s SDL module is `$PSMMSGDEF`, as is
+  `PSMMSG`'s, but its codes are `SMB$_`. `sdloberon.c`'s table
+  `renamed`, keyed by the library module (the output file's name) and
+  the SDL module, makes it `SMBMSGDEF`. `tools/vax-sdl run` refuses a
+  run in which two library modules write one `.Mod`, rather than
+  writing one over the other.
+- **SDL's `ORIGIN`**: an aggregate's `typeinfo` is minus the offset of
+  its origin field, and SDL's MACRO back end counts every offset
+  constant from there (`DSCDEF`'s -12, `NSARECDEF`'s -4). The generator
+  does so too, and says so in the record type's comment ("its offset
+  constants count from its ORIGIN, n bytes in"), which
+  `layout-check.awk` reads. The record's layout is unchanged.
+- **`tools/vax-sdl`**: DCL reads a command of at most 255 characters,
+  and the list of 58 modules in one symbol made a line of 492. Each
+  module now has lines of its own in the procedure.
+- **The library `VMSDEF`**, 243 modules, could not be linked on the
+  guest: LINK holds every input file open, past `POC`'s FILLM and BYTLM.
+  `-library`'s build procedure now links the shareable image from the
+  object library with `/INCLUDE` (decided by the user, 2026-10-15;
+  `vax-macro32-backend.md`, section 18.5).
+- **`vax-vmsdef`**:
+  - Every module compiles under `-O2` and `-OC`. `VMSDEF` builds on the
+    guest, and `VmsDefLayout` checks 225 record types against SDL's
+    offsets and sizes: 0 layout errors.
+  - `STARLET.MLB` has a `$<M>` macro for 186 of the modules, listed in
+    `mlb-modules`. The others are the routine modules, the message
+    modules but `OPCMSG`, `OBJFMT`'s modules (`STARLET.MLB` has one
+    `$OBJDEF` for them all), `PPL$DEF`, `SMGTRMPTR`, `LBRCTLTBL` and
+    `CMA`. The `$LIB...DEF` macros take `..EQU` as their first
+    parameter, not `$GBL`, so they are given `<==>`.
+  - **17,559 names agree, and none differs in value.** 25 names are on
+    one side only, recorded in `expected-mlb`, all `$S_` sizes or names
+    that the macros were made with otherwise:
+    - `LATDEF`'s four `$S_`, as before;
+    - `$S_` of nested aggregates in `SMGDEF`, `CQUALDEF` and `DDTMDEF`
+      that `STARLET.MLB` has, and of three bits aggregates in `CHPDEF`
+      and `SMGDEF` that it has not, though it has `CHP$S_PROFILE_FLAGS`
+      of the same shape. Those facilities' macros were evidently made by
+      another run of SDL, so the generator follows the 41 modules' rule;
+    - the facility codes `MOUN$_FACILITY` and `OPC$_FACILITY`, which
+      the SDL trees call `MOUNT$_FACILITY` and `OPCOM$_FACILITY`;
+    - four names that only the `..EQU` macros define: `CLI$CTRL_FIELDS`,
+      `LIB$B_DCF_OPERAND`, `DT_DEFAULT_FIELDS` and `DT_PRINT_FIELDS`.

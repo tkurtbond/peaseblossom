@@ -2961,6 +2961,18 @@ image found through the logical name `SHRLIB`:
   the other key, and the procedure stops there. Each is VMS's own
   message and a failing status, not a crash.
 - *Step 1 is complete.*
+- *The shareable image from the object library* (2026-10-15, approved
+  by the user). LINK holds every input file open, and a process's
+  quotas stop that near a hundred: on the development system `POC` has
+  FILLM 100 and BYTLM 8000, and CHANNELCNT is 127, so `VMSDEF`, 243
+  modules generated from SDL (Phase 17 step 5), failed with
+  `%LINK-F-OPENIN` and `-SYSTEM-F-EXBYTLM`. `<name>_build.com`'s options
+  file now takes the modules from the `.OLB` it has just made,
+  `<NAME>.OLB/INCLUDE=(...)`, one module to a continued line: one file
+  open, the same image. A hand-written part, whose module name (its
+  `.TITLE`) need not be its file's, is still linked as its `.OBJ`.
+  A program's `-build` still names each module's `.OBJ`: poc's own has
+  35.
 
 ## 19. poc's runtime on VMS (Phase 17 step 3)
 
