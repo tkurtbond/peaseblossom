@@ -153,6 +153,8 @@ MODULE VaxCodeGenerator;
       kind: INTEGER;
       type: Types.Type;
       value: LONGINT; (* immediate, not a SET *)
+      constant: Types.Value; (* immediate integer of a constant expression: its value, which
+                                Types.ConstantOperandType types next to a CARD (section 20) *)
       bits, bitsHigh: SET; (* immediate SET, or SYSTEM.SET64's low and high longwords *)
       realText: ARRAY realTextLength OF CHAR; (* immediate REAL or LONGREAL: its MACRO-32 text (RealConstant) *)
       symbol: VaxTypes.Symbol; (* memory: a variable; empty for the frame *)
@@ -552,6 +554,22 @@ MODULE VaxCodeGenerator;
     RETURN (t = Types.Real) OR (t = Types.LongReal)
   END IsReal;
 
+  (* Whether t is one of the unsigned integer types, SYSTEM.CARD8..CARD64
+     and SYSTEM.CARD (section 20) *)
+  PROCEDURE IsCardinal(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN Types.IsCardinal(t)
+  END IsCardinal;
+
+  (* The instruction that widens an integer of suffix s to suffix d, by the
+     source's family (section 20, proposal 1): MOVZ for a CARD, which is
+     zero-extended, CVT for anything else *)
+  PROCEDURE Extension(t: Types.Type; s, d: CHAR; VAR op: ARRAY OF CHAR);
+  BEGIN
+    IF IsCardinal(t) THEN COPY("MOVZ", op) ELSE COPY("CVT", op) END;
+    AppendChar(op, s); AppendChar(op, d)
+  END Extension;
+
   (* Whether a value of type t takes two longwords, a pair of registers or
      of slots: a quadword, or a LONGREAL, a G_floating *)
   PROCEDURE IsWide(t: Types.Type): BOOLEAN;
@@ -634,6 +652,9 @@ MODULE VaxCodeGenerator;
         AppendHex(text, v)
       ELSIF x.value = -2147483647 - 1 THEN
         AppendHex(text, two31)
+      ELSIF IsCardinal(x.type) & (x.value > 2147483647) & (x.value < two32) THEN
+        (* a CARD32 above LONGINT's range, by its bits (section 20, proposal 7) *)
+        AppendHex(text, x.value)
       ELSE
         AppendInt(text, x.value)
       END
@@ -978,8 +999,10 @@ MODULE VaxCodeGenerator;
         HalfText(dst, 0, lo); HalfText(dst, 1, hi);
         IF src.type = Types.Set THEN Emit("CLRL", hi)
         ELSE
-          IF s # "L" THEN Op("CVT", s, "L", op); Operands(lo, lo, "", operands); Emit(op, operands) END;
-          Operands("#-31", lo, hi, operands); Emit("ASHL", operands)
+          IF s # "L" THEN Extension(src.type, s, "L", op); Operands(lo, lo, "", operands); Emit(op, operands) END;
+          IF IsCardinal(src.type) THEN Emit("CLRL", hi)
+          ELSE Operands("#-31", lo, hi, operands); Emit("ASHL", operands)
+          END
         END
       ELSIF IsReal(dst.type) & (s # d) & (s # "Q") & ((s = "F") OR ~IsReal(src.type)) THEN
         (* a REAL, or an integer, into the real it starts (a function's
@@ -1013,9 +1036,14 @@ MODULE VaxCodeGenerator;
       Operands(from, lo, "", operands); Emit("MOVL", operands); Emit("CLRL", hi)
     ELSIF d = "Q" THEN
       Text(src, from); HalfText(dst, 0, lo); HalfText(dst, 1, hi);
-      IF s = "L" THEN COPY("MOVL", op) ELSE Op("CVT", s, "L", op) END;
+      IF s = "L" THEN COPY("MOVL", op) ELSE Extension(src.type, s, "L", op) END;
       Operands(from, lo, "", operands); Emit(op, operands);
-      Operands("#-31", lo, hi, operands); Emit("ASHL", operands)
+      IF IsCardinal(src.type) THEN Emit("CLRL", hi)
+      ELSE Operands("#-31", lo, hi, operands); Emit("ASHL", operands)
+      END
+    ELSIF IsCardinal(src.type) & ~IsReal(dst.type) & (VaxTypes.Size(src.type) < VaxTypes.Size(dst.type)) THEN
+      Extension(src.type, s, d, op);
+      Emit2(op, src, dst)
     ELSE
       COPY("CVT", op); AppendChar(op, s); AppendChar(op, d);
       Emit2(op, src, dst)
@@ -1029,7 +1057,7 @@ MODULE VaxCodeGenerator;
     IF (x.kind = immediate) OR (Suffix(x.type) = Suffix(t)) THEN
       x.type := t; RETURN x
     ELSIF (x.kind = register) & (Suffix(t) # "Q") THEN
-      COPY("CVT", op); AppendChar(op, Suffix(x.type)); AppendChar(op, Suffix(t));
+      Extension(x.type, Suffix(x.type), Suffix(t), op);
       Emit2(op, x, x);
       x.type := t; RETURN x
     END;
@@ -2137,7 +2165,7 @@ MODULE VaxCodeGenerator;
       ELSE
         temp := FrameTemporary(p.type, a.line, a.column);
         IF temp # NIL THEN
-          IF IsReal(p.type) & IsQuad(v) THEN v := AsReal(v, p.type, a.line, a.column) END;
+          IF IsReal(p.type) & (IsQuad(v) OR IsCardinal(v.type)) THEN v := AsReal(v, p.type, a.line, a.column) END;
           MoveInto(v, temp); Release(v);
           AddressOf(temp, entry)
         END
@@ -2466,7 +2494,7 @@ MODULE VaxCodeGenerator;
           IF IsProcedureType(p.type) THEN v := Expression(a, entry) (* a procedure, MOVAB to the list *)
           ELSE v := Expression(a, NIL)
           END;
-          IF IsReal(p.type) & IsQuad(v) THEN v := AsReal(v, p.type, a.line, a.column) END;
+          IF IsReal(p.type) & (IsQuad(v) OR IsCardinal(v.type)) THEN v := AsReal(v, p.type, a.line, a.column) END;
           IF IsWide(p.type) THEN
             (* the address of a copy in the frame, kept until the call
                returns: the callee copies it again, or reads it if it is
@@ -2624,7 +2652,8 @@ MODULE VaxCodeGenerator;
     v := ConstantEvaluator.Evaluate(e, scope);
     IF v.type = Types.Undefined THEN RETURN Dummy() END;
     IF (v.kind = Types.intValue) & Types.IsInteger(v.type) & (Suffix(v.type) # 0X) THEN
-      RETURN Immediate(v.type, v.intVal)
+      x := Immediate(v.type, v.intVal); x.constant := v;
+      RETURN x
     ELSIF v.kind = Types.boolValue THEN
       IF v.boolVal THEN RETURN Immediate(Types.Boolean, 1) ELSE RETURN Immediate(Types.Boolean, 0) END
     ELSIF v.kind = Types.charValue THEN
@@ -2926,20 +2955,96 @@ MODULE VaxCodeGenerator;
     RETURN CallResult(t)
   END RuntimeOf;
 
+  (* The low longword of x, a quadword, as an operand of its own: the
+     register Rn of a pair, or the first four bytes of a location *)
+  PROCEDURE LowHalf(x: Operand): Operand;
+    VAR h: Operand;
+  BEGIN
+    NEW(h); h^ := x^; h.type := longword; h.slot := -1; h.ownsBase := FALSE; h.ownsIndex := FALSE;
+    h.nextLive := NIL;
+    RETURN h
+  END LowHalf;
+
+  (* a DIV b or a MOD b of a CARD type t, a and b of it, unsigned, where
+     truncation and flooring agree (section 20, proposal 3): a CARD8 or a
+     CARD16 zero-extended to longwords, DIVL3, and the remainder by MULL3
+     and SUBL3, the values being below 2^16 so that the signed divide is
+     the unsigned one; a CARD32 zero-extended to quadwords and divided by
+     POC_HDIV or POC_HMOD, exact for values below 2^32, its result the low
+     longword; a CARD64 by POC_CDIV or POC_CMOD. A zero divisor is the
+     VAX's divide-by-zero trap, as for the signed types. *)
+  PROCEDURE CardDivMod(isDiv: BOOLEAN; t: Types.Type; a, b: Operand; line, column: INTEGER): Operand;
+    VAR q, r, x: Operand;
+  BEGIN
+    IF IsQuad(a) THEN
+      IF isDiv THEN RETURN QuadRuntime("POC_CDIV", t, a, b, line, column)
+      ELSE RETURN QuadRuntime("POC_CMOD", t, a, b, line, column)
+      END
+    ELSIF Suffix(t) = "L" THEN
+      a := InRegister(Widen(a, Types.Card64, line, column), line, column);
+      b := Widen(b, Types.Card64, line, column);
+      IF isDiv THEN x := QuadRuntime("POC_HDIV", Types.Card64, a, b, line, column)
+      ELSE x := QuadRuntime("POC_HMOD", Types.Card64, a, b, line, column)
+      END;
+      r := NewRegisterBeside(t, x, NIL, line, column);
+      Emit2("MOVL", LowHalf(x), r);
+      Release(x);
+      RETURN r
+    END;
+    a := Widen(a, Types.Card32, line, column); b := Widen(b, Types.Card32, line, column);
+    a.pinned := TRUE; b.pinned := TRUE;
+    q := NewRegister(Types.Card32, line, column);
+    a.pinned := FALSE; b.pinned := FALSE;
+    Emit3("DIVL3", b, a, q);
+    IF isDiv THEN
+      Release(a); Release(b);
+      q.type := t;
+      RETURN q
+    END;
+    q.pinned := TRUE;
+    r := NewRegister(Types.Card32, line, column);
+    q.pinned := FALSE;
+    Emit3("MULL3", q, b, r);
+    Emit3("SUBL3", r, a, r);
+    Release(q); Release(a); Release(b);
+    r.type := t;
+    RETURN r
+  END CardDivMod;
+
   (* x, a number, as a value of the real type t (section 14, item 9): x
      itself when of type t, an integer constant as an immediate of t, which
      MACRO converts; a quadword by POC_QTOG, which gives a LONGREAL rounded
      once, then CVTGF for a REAL; anything else converted by CVT into a
      register (MoveInto) - a REAL constant too, at run time, as LLVM's
-     fpext *)
+     fpext. A CARD is its unsigned value, rounded once (section 20,
+     proposal 4): a CARD8 or CARD16 zero-extended to a longword, then
+     CVTLF or CVTLG; a CARD32 by CVTLG, with 2^32 added when the longword
+     is negative, both exact, then CVTGF for a REAL; a CARD64 by POC_CTOG,
+     then CVTGF for a REAL, rounded twice then as a HUGEINT is. A CARD64
+     constant above MAX(HUGEINT) is a value in registers first. *)
   PROCEDURE AsReal(x: Operand; t: Types.Type; line, column: INTEGER): Operand;
-    VAR r: Operand;
+    VAR r: Operand; done: ARRAY 16 OF CHAR;
   BEGIN
     IF x.type = t THEN RETURN x
-    ELSIF (x.kind = immediate) & ~IsReal(x.type) THEN
+    ELSIF (x.kind = immediate) & ~IsReal(x.type) & ((x.value >= 0) OR ~IsCardinal(x.type)) THEN
       r := RealImmediate(t, ""); AppendInt(r.realText, x.value);
       IF x.value = 0 THEN r.realText := "0.0" END;
       RETURN r
+    ELSIF IsCardinal(x.type) & IsQuad(x) THEN
+      x := RuntimeOf("POC_CTOG", x, Types.LongReal, line, column);
+      IF t = Types.LongReal THEN RETURN x END
+    ELSIF IsCardinal(x.type) & (Suffix(x.type) = "L") THEN
+      r := NewRegisterBeside(Types.LongReal, x, NIL, line, column);
+      Emit2("CVTLG", x, r);
+      NewLabel(done);
+      Emit("BGEQ", done);
+      Emit2("ADDG2", RealImmediate(Types.LongReal, "4294967296.0"), r);
+      EmitLabel(done);
+      Release(x); x := r;
+      IF t = Types.LongReal THEN RETURN x END
+    ELSIF IsCardinal(x.type) THEN
+      x := Widen(x, Types.Card32, line, column);
+      x.type := longword (* its value, which is not negative *)
     ELSIF IsQuad(x) THEN
       x := RuntimeOf("POC_QTOG", x, Types.LongReal, line, column);
       IF t = Types.LongReal THEN RETURN x END
@@ -2949,8 +3054,26 @@ MODULE VaxCodeGenerator;
     RETURN r
   END AsReal;
 
+  (* Whether values of type t are compared unsigned: CHAR and the CARDs *)
+  PROCEDURE IsUnsigned(t: Types.Type): BOOLEAN;
+  BEGIN
+    RETURN (t = Types.Char) OR IsCardinal(t)
+  END IsUnsigned;
+
+  (* x, an immediate integer of a constant expression next to other, a
+     CARD, typed as Types.ConstantOperandType types it, as the checker and
+     the LLVM backend do (section 20, proposal 1): c + 300, c a CARD8, is
+     a CARD16 operation. Next to a signed operand it keeps its type. *)
+  PROCEDURE AdoptConstantType(x, other: Operand);
+  BEGIN
+    IF (x.kind = immediate) & (x.constant # NIL) & IsCardinal(other.type) & ~IsCardinal(x.type) THEN
+      x.type := Types.ConstantOperandType(x.constant, other.type)
+    END
+  END AdoptConstantType;
+
   (* The branch taken when a <op> b is false, a and b compared by CMP a, b:
-     signed for integers, unsigned for CHAR *)
+     signed for integers, unsigned for CHAR and the CARDs (section 20,
+     proposal 2) *)
   PROCEDURE FalseBranch(op: INTEGER; unsigned: BOOLEAN; VAR branch: ARRAY OF CHAR);
   BEGIN
     IF op = Lexer.equal THEN COPY("BNEQ", branch)
@@ -2988,7 +3111,8 @@ MODULE VaxCodeGenerator;
   END Compare;
 
   (* HUGEINT a <op> b: the high longwords signed, then, when they are
-     equal, the low ones unsigned *)
+     equal, the low ones unsigned; a CARD64's high longwords unsigned too
+     (section 20, proposal 2) *)
   PROCEDURE QuadRelation(op: INTEGER; a, b: Operand; line, column: INTEGER): Operand;
     VAR d: Operand; isTrue, isFalse: ARRAY 16 OF CHAR; ahi, bhi, alo, blo: OperandText;
         low: ARRAY 8 OF CHAR;
@@ -3000,6 +3124,9 @@ MODULE VaxCodeGenerator;
     Compare(ahi, bhi, IsZero(b));
     IF op = Lexer.equal THEN Emit("BNEQ", isFalse)
     ELSIF op = Lexer.notEqual THEN Emit("BNEQ", isTrue)
+    ELSIF IsCardinal(a.type) & ((op = Lexer.less) OR (op = Lexer.lessEqual)) THEN
+      Emit("BLSSU", isTrue); Emit("BGTRU", isFalse)
+    ELSIF IsCardinal(a.type) THEN Emit("BGTRU", isTrue); Emit("BLSSU", isFalse)
     ELSIF (op = Lexer.less) OR (op = Lexer.lessEqual) THEN Emit("BLSS", isTrue); Emit("BGTR", isFalse)
     ELSE Emit("BGTR", isTrue); Emit("BLSS", isFalse)
     END;
@@ -3023,6 +3150,7 @@ MODULE VaxCodeGenerator;
       t := Types.WiderOf(a.type, b.type);
       a := AsReal(a, t, line, column); b := AsReal(b, t, line, column)
     ELSIF Types.IsInteger(a.type) & Types.IsInteger(b.type) THEN
+      AdoptConstantType(a, b); AdoptConstantType(b, a);
       t := Types.WiderOf(a.type, b.type);
       a := Widen(a, t, line, column); b := Widen(b, t, line, column)
     ELSIF Types.IsSet(a.type) & Types.IsSet(b.type) & (a.type # b.type) THEN
@@ -3068,7 +3196,7 @@ MODULE VaxCodeGenerator;
     d := NewFlag(a, b, line, column);
     NewLabel(isFalse);
     CompareOperands(a, b);
-    FalseBranch(op, a.type = Types.Char, branch);
+    FalseBranch(op, IsUnsigned(a.type), branch);
     Emit(branch, isFalse);
     SetFlag(d, isFalse);
     Release(a); Release(b);
@@ -3277,9 +3405,12 @@ MODULE VaxCodeGenerator;
       ELSIF op = Lexer.slash THEN RETURN Arithmetic("DIV", FALSE, t, a, b, dest, e.line, e.column)
       END
     ELSIF Types.IsInteger(a.type) & Types.IsInteger(b.type) THEN
+      AdoptConstantType(a, b); AdoptConstantType(b, a);
       t := Types.WiderOf(a.type, b.type);
       a := Widen(a, t, e.line, e.column); b := Widen(b, t, e.line, e.column);
-      IF Suffix(t) = "Q" THEN
+      IF IsCardinal(t) & ((op = Lexer.divKeyword) OR (op = Lexer.modKeyword)) THEN
+        RETURN CardDivMod(op = Lexer.divKeyword, t, a, b, e.line, e.column)
+      ELSIF Suffix(t) = "Q" THEN
         IF op = Lexer.plus THEN RETURN QuadAddSub(TRUE, t, a, b, dest, e.line, e.column)
         ELSIF op = Lexer.minus THEN RETURN QuadAddSub(FALSE, t, a, b, dest, e.line, e.column)
         ELSIF op = Lexer.times THEN RETURN QuadRuntime("POC_HMUL", t, a, b, e.line, e.column)
@@ -3481,16 +3612,6 @@ MODULE VaxCodeGenerator;
      ConstantEvaluator (Expression), LEN of a fixed array among them, so
      what comes here has a variable argument. *)
 
-  (* The low longword of x, a quadword, as an operand of its own: the
-     register Rn of a pair, or the first four bytes of a location *)
-  PROCEDURE LowHalf(x: Operand): Operand;
-    VAR h: Operand;
-  BEGIN
-    NEW(h); h^ := x^; h.type := longword; h.slot := -1; h.ownsBase := FALSE; h.ownsIndex := FALSE;
-    h.nextLive := NIL;
-    RETURN h
-  END LowHalf;
-
   (* ABS(x), x an integer or a real: x, negated when the move or the test
      sets N. MNEG of the most negative integer is that value, as poc's
      wrapping arithmetic promises (language-extensions.md, "Overflow,
@@ -3500,7 +3621,9 @@ MODULE VaxCodeGenerator;
     VAR result: Operand; s: CHAR; op: ARRAY 8 OF CHAR; done: ARRAY 16 OF CHAR; from, to: OperandText;
         operands: ARRAY 160 OF CHAR;
   BEGIN
-    IF ~Types.IsNumeric(v.type) THEN RETURN Dummy() END;
+    IF ~Types.IsNumeric(v.type) THEN RETURN Dummy()
+    ELSIF IsCardinal(v.type) THEN RETURN v (* section 20, proposal 6 *)
+    END;
     s := Suffix(v.type);
     result := Target(v.type, v, NIL, dest, line, column);
     result.type := v.type;
@@ -3555,7 +3678,9 @@ MODULE VaxCodeGenerator;
     s := Suffix(v.type);
     IF rangeChecks THEN
       NewLabel(ok);
-      IF s = "B" THEN
+      IF (s = "B") & IsCardinal(v.type) THEN
+        (* a CARD8 always fits (section 20, proposal 6) *)
+      ELSIF s = "B" THEN
         Emit1("TSTB", v); Emit("BGEQ", ok)
       ELSIF s = "Q" THEN
         NewLabel(trap);
@@ -3565,7 +3690,7 @@ MODULE VaxCodeGenerator;
       ELSE
         Op("CMP", s, "", op); Emit2(op, v, Immediate(v.type, 255)); Emit("BLEQU", ok)
       END;
-      Trap(14 + messageWord, line, column);
+      IF ~((s = "B") & IsCardinal(v.type)) THEN Trap(14 + messageWord, line, column) END;
       EmitLabel(ok)
     END;
     IF s = "B" THEN v.type := Types.Char; RETURN v END;
@@ -3971,7 +4096,10 @@ MODULE VaxCodeGenerator;
      V when the value does not fit (MACRO 9-16); a HUGEINT fits when its
      high longword is its low one's sign, 0 or -1. A LONGREAL x is a REAL
      by CVTGF, rounded, never checked, as on LLVM: a value too large for
-     F_floating is the hardware's floating overflow (section 14, item 9) *)
+     F_floating is the hardware's floating overflow (section 14, item 9).
+     A CARD fits when it is at most the narrower type's MAX, compared
+     unsigned, CVT's V being the signed test, and a CARD64 when its high
+     longword is 0 (section 20, proposal 6) *)
   PROCEDURE Short(v, dest: Operand; line, column: INTEGER): Operand;
     VAR t: Types.Type; result: Operand; d: CHAR; op: ARRAY 8 OF CHAR; ok, negative, bad: ARRAY 16 OF CHAR;
         hi: OperandText; operands: ARRAY 160 OF CHAR;
@@ -3988,7 +4116,20 @@ MODULE VaxCodeGenerator;
     ELSE t := Types.ShortInt
     END;
     d := Suffix(t);
-    IF IsQuad(v) THEN
+    IF IsQuad(v) & IsCardinal(v.type) THEN
+      IF rangeChecks THEN
+        NewLabel(ok);
+        HalfText(v, 1, hi);
+        Emit("TSTL", hi); Emit("BEQL", ok);
+        Trap(14, line, column);
+        EmitLabel(ok)
+      END;
+      IF (dest # NIL) & (Suffix(dest.type) = d) THEN result := dest
+      ELSE result := NewRegisterBeside(t, v, NIL, line, column)
+      END;
+      Emit2("MOVL", LowHalf(v), result);
+      Release(v)
+    ELSIF IsQuad(v) THEN
       IF rangeChecks THEN
         NewLabel(ok); NewLabel(negative); NewLabel(bad);
         HalfText(v, 1, hi);
@@ -4015,6 +4156,19 @@ MODULE VaxCodeGenerator;
       COPY("MOV", op); AppendChar(op, d);
       Emit2(op, v, result);
       Done(v, result)
+    ELSIF IsCardinal(v.type) THEN
+      IF rangeChecks THEN
+        NewLabel(ok);
+        Op("CMP", Suffix(v.type), "", op);
+        IF d = "B" THEN Emit2(op, v, Immediate(v.type, 255)) ELSE Emit2(op, v, Immediate(v.type, 65535)) END;
+        Emit("BLEQU", ok);
+        Trap(14, line, column);
+        EmitLabel(ok)
+      END;
+      result := Target(t, v, NIL, dest, line, column);
+      COPY("CVT", op); AppendChar(op, Suffix(v.type)); AppendChar(op, d);
+      Emit2(op, v, result);
+      Done(v, result)
     ELSE
       result := Target(t, v, NIL, dest, line, column);
       COPY("CVT", op); AppendChar(op, Suffix(v.type)); AppendChar(op, d);
@@ -4035,22 +4189,36 @@ MODULE VaxCodeGenerator;
      where it is: a constant limited to -64..64, which shifts any value as
      far as any larger count does; a SHORTINT as it is; anything wider in a
      register of its own, limited to -64..64 at run time (a HUGEINT by its
-     high longword first) *)
+     high longword first). A CARD count is never negative (section 20,
+     proposal 5): zero-extended, and limited to 64 by unsigned compares *)
   PROCEDURE ShiftCount(n, x: Operand; line, column: INTEGER): Operand;
     VAR count: Operand; c: LONGINT; big, small, positive, done: ARRAY 16 OF CHAR;
         hi, cnt: OperandText; operands: ARRAY 160 OF CHAR;
   BEGIN
     IF n.kind = immediate THEN
       c := n.value;
-      IF c > 64 THEN c := 64 ELSIF c < -64 THEN c := -64 END;
+      IF IsCardinal(n.type) & (c < 0) THEN c := 64 (* a CARD64 above MAX(HUGEINT) *)
+      ELSIF c > 64 THEN c := 64
+      ELSIF c < -64 THEN c := -64
+      END;
       count := Immediate(Types.ShortInt, c)
-    ELSIF Suffix(n.type) = "B" THEN
+    ELSIF (Suffix(n.type) = "B") & ~IsCardinal(n.type) THEN
       count := n
     ELSE
       count := NewRegisterBeside(longword, n, x, line, column);
       Text(count, cnt);
       NewLabel(big); NewLabel(small); NewLabel(done);
-      IF IsQuad(n) THEN
+      IF IsCardinal(n.type) THEN
+        IF IsQuad(n) THEN
+          HalfText(n, 1, hi);
+          Emit2("MOVL", LowHalf(n), count);
+          Emit("TSTL", hi); Emit("BNEQ", big)
+        ELSE
+          MoveInto(n, count)
+        END;
+        Operands(cnt, "#64", "", operands); Emit("CMPL", operands); Emit("BLEQU", done);
+        Emit("BRB", big)
+      ELSIF IsQuad(n) THEN
         NewLabel(positive);
         HalfText(n, 1, hi);
         Emit2("MOVL", LowHalf(n), count);
@@ -4082,13 +4250,18 @@ MODULE VaxCodeGenerator;
      type's width or more leaves 0, or the sign for a right one
      (language-extensions.md, "Procedure values, ASH, MAX and MIN"), as ASHL
      and ASHQ do for any count of -128..127; but their count is a byte, so
-     an n wider than a SHORTINT is first limited to -64..64 (ShiftCount) *)
+     an n wider than a SHORTINT is first limited to -64..64 (ShiftCount).
+     ASH of a CARD is SYSTEM.LSH of it, of its own type, filling with
+     zeros (section 20, proposal 5) *)
+  PROCEDURE ^ LogicalShift(x, n: Operand; line, column: INTEGER): Operand;
+
   PROCEDURE Ash(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
     VAR t: Types.Type; x, n, count, result: Operand; op: ARRAY 8 OF CHAR;
   BEGIN
     x := Expression(args, NIL);
     n := Expression(args.next, NIL);
     IF ~Types.IsInteger(x.type) OR ~Types.IsInteger(n.type) THEN RETURN Dummy() END;
+    IF IsCardinal(x.type) THEN RETURN LogicalShift(x, n, line, column) END;
     t := Types.WiderOf(Types.LongInt, x.type);
     x := Widen(x, t, line, column);
     count := ShiftCount(n, x, line, column);
@@ -4125,7 +4298,7 @@ MODULE VaxCodeGenerator;
     RETURN r
   END ZeroExtended;
 
-  (* SYSTEM.LSH(x, n): x shifted left n bits, or right for a negative n,
+  (* SYSTEM.LSH(x, n) (Lsh), and ASH of a CARD: x shifted left n bits, or right for a negative n,
      filling with zeros, at x's own width and of its type
      (language-extensions.md, "SYSTEM subset"); a count of the width or
      more leaves 0. x is zero-extended into a register, a longword (so
@@ -4134,13 +4307,10 @@ MODULE VaxCodeGenerator;
      byte (ShiftCount). The VAX has no logical right shift: one of k bits
      is an arithmetic one of 1 bit, the sign bit cleared, then one of
      k - 1 bits more *)
-  PROCEDURE Lsh(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
-    VAR t: Types.Type; x, n, count, r: Operand; op: ARRAY 8 OF CHAR; signBit: OperandText;
+  PROCEDURE LogicalShift(x, n: Operand; line, column: INTEGER): Operand;
+    VAR t: Types.Type; count, r: Operand; op: ARRAY 8 OF CHAR; signBit: OperandText;
         right, done: ARRAY 16 OF CHAR; operands: ARRAY 160 OF CHAR;
   BEGIN
-    x := Expression(args, NIL);
-    n := Expression(args.next, NIL);
-    IF ~Types.IsInteger(n.type) THEN RETURN Dummy() END;
     t := x.type;
     r := ZeroExtended(x, line, column);
     count := ShiftCount(n, r, line, column);
@@ -4176,6 +4346,15 @@ MODULE VaxCodeGenerator;
     END;
     r.type := t;
     RETURN r
+  END LogicalShift;
+
+  PROCEDURE Lsh(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
+    VAR x, n: Operand;
+  BEGIN
+    x := Expression(args, NIL);
+    n := Expression(args.next, NIL);
+    IF ~Types.IsInteger(n.type) THEN RETURN Dummy() END;
+    RETURN LogicalShift(x, n, line, column)
   END Lsh;
 
   (* SYSTEM.ROT(x, n): x rotated left n bits, or right for a negative n,
@@ -4757,23 +4936,25 @@ MODULE VaxCodeGenerator;
       RETURN r
     ELSIF (ts <= 4) & ~IsReal(target) & ~IsReal(x.type) THEN
       r := Target(target, x, NIL, dest, line, column);
-      IF Types.IsInteger(x.type) THEN COPY("CVT", op) ELSE COPY("MOVZ", op) END;
+      IF Types.IsInteger(x.type) & ~IsCardinal(x.type) THEN COPY("CVT", op) ELSE COPY("MOVZ", op) END;
       AppendChar(op, Suffix(x.type)); AppendChar(op, Suffix(target));
       Emit2(op, x, r);
       Done(x, r); r.type := target;
       RETURN r
     ELSIF (ts = 8) & ~IsReal(target) & ~IsReal(x.type) THEN
       (* into a quadword: the low longword as above, the high one its
-         sign (ASHL #-31) for an integer, else 0, as LLVM's sext and zext *)
+         sign (ASHL #-31) for a signed integer, else 0 (a CARD, CHAR or
+         BYTE), as LLVM's sext and zext *)
       r := NewRegisterBeside(target, x, NIL, line, column);
       HalfText(r, 0, lo); HalfText(r, 1, hi); Text(x, from);
       IF xs = 4 THEN COPY("MOVL", op)
-      ELSIF Types.IsInteger(x.type) THEN COPY("CVT", op); AppendChar(op, Suffix(x.type)); AppendChar(op, "L")
+      ELSIF Types.IsInteger(x.type) & ~IsCardinal(x.type) THEN
+        COPY("CVT", op); AppendChar(op, Suffix(x.type)); AppendChar(op, "L")
       ELSE COPY("MOVZ", op); AppendChar(op, Suffix(x.type)); AppendChar(op, "L")
       END;
       Operands(from, lo, "", text); Emit(op, text);
       Release(x);
-      IF Types.IsInteger(x.type) THEN Operands("#-31", lo, hi, text); Emit("ASHL", text)
+      IF Types.IsInteger(x.type) & ~IsCardinal(x.type) THEN Operands("#-31", lo, hi, text); Emit("ASHL", text)
       ELSE Emit("CLRL", hi)
       END;
       RETURN r
@@ -5008,7 +5189,9 @@ MODULE VaxCodeGenerator;
       Release(target); RETURN
     ELSIF IsSliceScalar(target.type) THEN
       v := Expression(value, target);
-      IF IsReal(target.type) & IsQuad(v) THEN v := AsReal(v, target.type, value.line, value.column) END;
+      IF IsReal(target.type) & (IsQuad(v) OR IsCardinal(v.type)) THEN
+        v := AsReal(v, target.type, value.line, value.column)
+      END;
       IF Suffix(v.type) # 0X THEN MoveInto(v, target) END
     ELSIF ConstantEvaluator.IsConstantExpr(value, scope)
           & ~IsStructuredConstant(value) THEN
@@ -5089,8 +5272,8 @@ MODULE VaxCodeGenerator;
       JumpOnValue(QuadRelation(op, a, b, line, column), label, sense)
     ELSE
       CompareOperands(a, b);
-      IF sense THEN FalseBranch(op, a.type = Types.Char, stay)
-      ELSE FalseBranch(Negated(op), a.type = Types.Char, stay)
+      IF sense THEN FalseBranch(op, IsUnsigned(a.type), stay)
+      ELSE FalseBranch(Negated(op), IsUnsigned(a.type), stay)
       END;
       JumpUnless(stay, label);
       Release(a); Release(b)
@@ -5255,18 +5438,25 @@ MODULE VaxCodeGenerator;
     COPY(saved, loopExit)
   END LoopStatement;
 
-  (* FOR v := low TO high BY step, as Oberon2.pdf 9.8 says: v := low, then
-     high evaluated once, before the loop - kept in a slot of the frame
-     unless it is a constant, since even a variable may change in the
-     body. The test is at the top, v > high (v < high for a negative step)
-     leaving the loop, and v := v + step at the bottom, wrapping as all
-     integer arithmetic does.
+  (* FOR v := low TO high BY step, as Oberon2.pdf 9.8 says, but ending
+     before a step that would pass high (AGENTS.md, "FOR final value";
+     section 20, proposal 8): v := low, then high evaluated once, before the
+     loop - kept in a slot of the frame unless it is a constant, since even
+     a variable may change in the body. The test is at the top, v > high
+     (v < high for a negative step) leaving the loop, unsigned for a CARD.
+     After the body the distance left, high - v counting up and v - high
+     counting down, at v's width and so modulo 2^n, is compared unsigned
+     with the step's size, and the loop ends when it is smaller, so that
+     FOR i := 0 TO MAX(INTEGER) ends, and a CARD counts down to 0;
+     otherwise v := v + step, wrapping as all integer arithmetic does, and
+     the test at the top again, which matters only when the body moved v
+     past high. v keeps the last value the body had.
      ACBx and AOBLEQ would do the step and the test in one instruction,
      but their branch is a word or a byte, which a long body would not
      reach (the design's section 3); Phase 18 can choose them. *)
   PROCEDURE ForStatement(s: SyntaxTree.ForStatementNode);
-    VAR obj: SymbolTable.Object; v, start, limit, step: Operand; stepValue: Types.Value; amount: LONGINT;
-        head, end: ARRAY 16 OF CHAR; op: INTEGER;
+    VAR obj: SymbolTable.Object; v, start, limit, step, distance: Operand; stepValue: Types.Value;
+        amount: LONGINT; head, end: ARRAY 16 OF CHAR; op: INTEGER; unsigned: Types.Type;
   BEGIN
     obj := SymbolTable.Find(scope, s.variable);
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) OR ~Types.IsInteger(obj.type) THEN RETURN END;
@@ -5281,10 +5471,21 @@ MODULE VaxCodeGenerator;
     amount := 1;
     IF s.step # NIL THEN stepValue := ConstantEvaluator.Evaluate(s.step, scope); amount := stepValue.intVal END;
     IF amount > 0 THEN op := Lexer.greater ELSE op := Lexer.less END;
+    unsigned := Types.CardOfBytes(SHORT(VaxTypes.Size(obj.type)));
     NewLabel(head); NewLabel(end);
     EmitLabel(head);
     JumpOnRelation(op, Use(v), Use(limit), end, TRUE, s.line, s.column);
     StatementSeq(s.body);
+    IF IsQuad(v) THEN
+      IF amount > 0 THEN distance := QuadAddSub(FALSE, unsigned, Use(limit), Use(v), NIL, s.line, s.column)
+      ELSE distance := QuadAddSub(FALSE, unsigned, Use(v), Use(limit), NIL, s.line, s.column)
+      END
+    ELSIF amount > 0 THEN
+      distance := Arithmetic("SUB", FALSE, unsigned, Use(limit), Use(v), NIL, s.line, s.column)
+    ELSE
+      distance := Arithmetic("SUB", FALSE, unsigned, Use(v), Use(limit), NIL, s.line, s.column)
+    END;
+    JumpOnRelation(Lexer.less, distance, Immediate(unsigned, ABS(amount)), end, TRUE, s.line, s.column);
     step := Immediate(obj.type, amount);
     IF IsQuad(v) THEN v := QuadAddSub(TRUE, obj.type, Use(v), step, v, s.line, s.column)
     ELSE v := Arithmetic("ADD", TRUE, obj.type, Use(v), step, v, s.line, s.column)
@@ -5435,7 +5636,9 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF (s.value # NIL) & (resultType # NIL) THEN
       v := Expression(s.value, NIL);
-      IF IsReal(resultType) & IsQuad(v) THEN v := AsReal(v, resultType, s.value.line, s.value.column) END;
+      IF IsReal(resultType) & (IsQuad(v) OR IsCardinal(v.type)) THEN
+        v := AsReal(v, resultType, s.value.line, s.value.column)
+      END;
       r0 := NewOperand(register, resultType); r0.reg := 0;
       IF IsWide(resultType) OR IsReal(resultType) THEN MoveInto(v, r0) ELSE MoveLong(v, r0) END;
       Release(v)

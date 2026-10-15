@@ -12,7 +12,7 @@
 # where outtest prints MAX(INTEGER), MIN(INTEGER) and MAX(LONGINT).
 . ../../vaxfixture.sh
 rtl=../../../rtl/vax
-written="outextra.mar errtest.mar outtest.mar Out.mar Err.mar Console.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar"
+written="outextra.mar errtest.mar outtest.mar Out.mar Err.mar CardinalTypes.mar Console.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar"
 cp ../llvm-out-extra/outextra.mod ../llvm-err/errtest.mod .
 sed -e '/infinity and not a number/,/Out.LongReal(y, 0); Out.Ln;/d' ../llvm-out/outtest.mod >outtest.mod
 rm -f outextra.com errtest.com outtest.com

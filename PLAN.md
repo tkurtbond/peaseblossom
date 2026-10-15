@@ -1005,7 +1005,10 @@ A24, moved here 2026-09-26), are Phase 14 now.
    (`In`, `InStr`), named with the user that day; what was settled while
    building it, and the fixtures, are in `language-extensions.md`,
    "Unsigned integer types". The VAX backend's part follows on the `vax`
-   branch (Phase 17).
+   branch (Phase 17). **Done for the VAX on 2026-10-14**, on the `vax`
+   branch. That includes the new `FOR` end, the runtime's `Card`
+   procedures, and `POC_CDIV`, `POC_CMOD` and `POC_CTOG`. The record is
+   `vax-macro32-backend.md` section 20; `sdloberon`'s `CARDn` follows.
 
 **Exit gate**: every candidate has a recorded decision; each adopted one has
 fixtures, is rejected by `-strict`, and passes `make check` on Linux and the

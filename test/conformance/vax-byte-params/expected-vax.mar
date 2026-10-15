@@ -1,6 +1,14 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from the design,
-;; Oberon2.pdf, the MACRO manual, LLVM's code generator and the guest
-;; runs). Why this is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 8, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-10. Why this is right:
+;; - The FOR loop ends before a step that would pass its final value
+;;   (proposal 8), as on LLVM: after the body, SUBx3 at the variable's
+;;   width computes the distance left (the final value less the variable
+;;   counting up, the variable less the final value counting down), CMPx
+;;   compares it with the step's size, and BGEQU goes on to the step,
+;;   else JMP L^ leaves the loop. It adds one label, so the labels after
+;;   it are numbered one more.
+;; The rest is as the user reviewed it on 2026-10-10:
 ;; - Phase 16 step 3 (section 14): SYSTEM.BYTE is a byte, "B", as CHAR
 ;;   is. A value BYTE parameter is passed as the calling standard passes a
 ;;   byte, a longword: a CHAR zero-extended (MOVZBL), a SHORTINT sign-
@@ -91,6 +99,11 @@ L_3:
 	CALLS	#4, G^POC_TRAP
 L_4:
 	MOVB	12(AP), @4(AP)[R0]
+	SUBL3	-4(FP), -8(FP), R0
+	CMPL	R0, #1
+	BGEQU	L_5
+	JMP	L^L_2
+L_5:
 	INCL	-4(FP)
 	JMP	L^L_1
 L_2:

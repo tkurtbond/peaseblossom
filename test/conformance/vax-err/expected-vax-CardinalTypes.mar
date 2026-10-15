@@ -1,0 +1,38 @@
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 9, approved by the user); reviewed by the user, 2026-10-14.
+;; Why this is right:
+;; - rtl/vax/CardinalTypes.Mod is rtl/llvm's, unchanged: one exported
+;;   type, Card64 = SYSTEM.CARD64, and nothing else, so the module has
+;;   no code or data of its own.
+;; - What is left is what every module gets: the three PSECTs, the
+;;   L_INITIALISED byte, an initializer CARDINALTYPES_INIT that sets it
+;;   once and imports nothing to call, and the key, POC_K1_ and the
+;;   .IDENT, which Err refers to (expected-vax-Err.mar), as it imports
+;;   CardinalTypes for Err.Card's and Err.CardHex's x.
+;; - On the guest it is assembled and linked into vax-err's program
+;;   with the other modules Err needs.
+; CardinalTypes, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	CARDINALTYPES
+	.IDENT	/140eb5589368da71/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	CARDINALTYPES_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_140EB5589368DA71 == 0
+
+	.END

@@ -1,4 +1,4 @@
-value returned is 9
+value returned is 0
 value returned is 0
 140023: 65
 140024: 65
@@ -12,12 +12,12 @@ value returned is 0
 VAXCOPYLONG\VAXCOPYLONG_SMALL_F3403EEU[7]:      65
 VAXCOPYLONG\VAXCOPYLONG_SMALL_F3403EEU[8]:      65
 VAXCOPYLONG\VAXCOPYLONG_SMALL_F3403EEU[9]:      0
-value returned is 9
+value returned is 0
 value returned is 0
 VAXCOPYLONG\VAXCOPYLONG_BIGGER_MKEJEI5N[9]:     65
 VAXCOPYLONG\VAXCOPYLONG_BIGGER_MKEJEI5N[10]:    0
 VAXCOPYLONG\VAXCOPYLONG_BIGGER_MKEJEI5N[11]:    90
-value returned is 9
+value returned is 0
 value returned is 0
 141024: 65
 141025: 0

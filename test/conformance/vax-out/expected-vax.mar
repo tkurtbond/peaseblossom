@@ -1,6 +1,10 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from design
-;; sections 14 and 15, the LLVM backend's output, the guest runs and the
-;; debugger run). Why this is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 9, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-13. Why this is right:
+;; - Only Out's key changes (the .EXTERNAL POC_K1_ symbol): Out gained
+;;   Card and CardHex (proposal 9), so its symbol file, and with it its
+;;   key, is new.
+;; The rest is as the user reviewed it on 2026-10-13:
 ;; - OutBasics imports Out, rtl/vax/Out.Mod compiled with it (its .mar is
 ;;   expected-vax-Out.mar): its initializer calls OUT_INIT first, and its
 ;;   calls of Out's procedures are to their global symbols, with G^.
@@ -67,7 +71,7 @@ OUTBASICS_H_6NSKH85A:
 	.EXTERNAL	OUT_HEX_V0UAM9IC
 	.EXTERNAL	OUT_FLUSH_ITJ00AMN
 	.EXTERNAL	OUT_INIT
-	.EXTERNAL	POC_K1_8C488E0DC6BE8FE8
+	.EXTERNAL	POC_K1_49909A716100B54C
 
 ; its string constants
 	.PSECT	POC_CONST

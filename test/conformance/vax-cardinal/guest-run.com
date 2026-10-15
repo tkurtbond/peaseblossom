@@ -1,0 +1,24 @@
+$ ! PLAN.md Phase 17 (design section 20, proposal 10): CARDINAL.COM
+$ ! (llvm-cardinal's cardinal.mod), which poc -build wrote, run after
+$ ! poc's runtime is assembled; then the image, with SYS$ERROR a file,
+$ ! typed after it, since this session's output does not take what
+$ ! SYS$ERROR writes. Everything made is deleted
+$ SET NOON
+$ MACRO/OBJECT POCRTL.MAR
+$ S = $STATUS
+$ IF S THEN @CARDINAL
+$ IF S THEN S = $STATUS
+$ WRITE SYS$OUTPUT "build status: ", S
+$ IF .NOT. S THEN GOTO CLEAN
+$ DEFINE/USER SYS$ERROR CARDINAL-ERR.TXT
+$ RUN CARDINAL.EXE
+$ WRITE SYS$OUTPUT "run status: ", $STATUS
+$ WRITE SYS$OUTPUT "-- SYS$ERROR"
+$ TYPE CARDINAL-ERR.TXT
+$ CLEAN:
+$ IF F$SEARCH("CARDINAL-ERR.TXT") .NES. "" THEN DELETE/NOLOG CARDINAL-ERR.TXT;*
+$ DELETE/NOLOG POCRTL.OBJ;*,CARDINALTYPES.OBJ;*,DECIMALTOREAL.OBJ;*,ERR.OBJ;*,FORMATTEDINPUT.OBJ;*
+$ DELETE/NOLOG FORMATTEDOUTPUT.OBJ;*,FORMATTEDTEXT.OBJ;*,INSTR.OBJ;*,LINEOUTPUT.OBJ;*,OUT.OBJ;*
+$ DELETE/NOLOG OUTSTR.OBJ;*,REALDIGITS.OBJ;*
+$ DELETE/NOLOG CARDINAL.OBJ;*,CARDINAL.OPT;*,CARDINAL.EXE;*
+$ EXIT 1

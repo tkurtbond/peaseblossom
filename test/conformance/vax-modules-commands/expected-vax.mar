@@ -1,6 +1,10 @@
-;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.5, proposals 1 to 8, approved by the user); reviewed by the user,
-;; 2026-10-13. Why this is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 9, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-13. Why this is right:
+;; - Only Out's key changes (the .EXTERNAL POC_K1_ symbol): Out gained
+;;   Card and CardHex (proposal 9), so its symbol file, and with it its
+;;   key, is new.
+;; The rest is as the user reviewed it on 2026-10-13:
 ;; - commands (llvm-modules-commands' program) imports Modules, Greeter,
 ;;   Out and Platform; its descriptor names the four, in that order, and
 ;;   has no commands, as it exports nothing. Its initializer calls the
@@ -81,7 +85,7 @@ L_ROOTS:
 	.EXTERNAL	GREETER_INIT
 	.EXTERNAL	POC_K1_B4A18B3DD650EF4F
 	.EXTERNAL	OUT_INIT
-	.EXTERNAL	POC_K1_8C488E0DC6BE8FE8
+	.EXTERNAL	POC_K1_49909A716100B54C
 	.EXTERNAL	PLATFORM_INIT
 	.EXTERNAL	POC_K1_2A203935C54E257B
 	.EXTERNAL	GARBAGECOLLECTEDHEAP_INIT

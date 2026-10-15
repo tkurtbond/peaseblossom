@@ -1,6 +1,10 @@
-;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.5, proposals 1 to 8, approved by the user); reviewed by the user,
-;; 2026-10-13. Why this is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 9, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-13. Why this is right:
+;; - Only Out's key changes (the .EXTERNAL POC_K1_ symbol): Out gained
+;;   Card and CardHex (proposal 9), so its symbol file, and with it its
+;;   key, is new.
+;; The rest is as the user reviewed it on 2026-10-13:
 ;; - Greeter's descriptor, in POC_DATA, is rtl/llvm's layout in
 ;;   longwords: 0 (the link POC_MODULE sets), the address of its name,
 ;;   "Greeter", 1 import, 2 commands, the import's name, "Out", then each
@@ -48,7 +52,7 @@ GREETER_CALLS_3TMGLDEQ::
 	.EXTERNAL	OUT_STRING_VTB3DE16
 	.EXTERNAL	OUT_LN_1M29JSO9
 	.EXTERNAL	OUT_INIT
-	.EXTERNAL	POC_K1_8C488E0DC6BE8FE8
+	.EXTERNAL	POC_K1_49909A716100B54C
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP

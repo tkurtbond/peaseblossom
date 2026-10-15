@@ -1,6 +1,24 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the
-;; design, the MACRO manual and the VAX's listing). Why this is
-;; right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 8, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-08. Why this is right:
+;; - Each of the 4 FOR loops ends before a step that would pass its
+;;   final value (proposal 8), as on LLVM and as language-extensions.md,
+;;   "FOR final value", says since 0.6.0, no longer by the report's
+;;   equivalence, which steps past the limit: after the body, SUBx3 at
+;;   the variable's width computes the distance left, CMPx compares it
+;;   with the step's size, and BGEQU goes on to the step, else JMP L^
+;;   leaves the loop, so the variable keeps the last value the body had.
+;;   - FOR i := 0 TO n: SUBW3 i, -4(FP) (n's slot), n - i, against #1.
+;;   - FOR i := 10 TO 1 BY -2, counting down: SUBW3 #1, i, i - 1,
+;;     against #2, the step's size.
+;;   - FOR l := n TO 100000 BY 3: SUBL3 l, #100000, against #3.
+;;   - FOR i := s TO s + 5: SUBW3 i, -4(FP), against #1.
+;;   - Each adds one label, so the labels after each are numbered one
+;;     more. The head's test (the next bullet but one) is unchanged:
+;;     signed, as these variables are.
+;;   - The comment of VaxFor.mod is reworded within its 5 lines, so no
+;;     line number changes.
+;; The rest is as the user reviewed it on 2026-10-08:
 ;; - FOR as Oberon2.pdf 9.8 says: the start assigned first (CLRW i for
 ;;   0), then the limit evaluated once, before the loop. A variable limit
 ;;   is copied to a slot of the frame, -4(FP), as the body may change it
@@ -72,46 +90,66 @@ L_3:
 ; line 11
 	CVTWL	VAXFOR_I_PLT3H91E, R0
 	ADDL2	R0, VAXFOR_L_PLT3HB5D
+	SUBW3	VAXFOR_I_PLT3H91E, -4(FP), R0
+	CMPW	R0, #1
+	BGEQU	L_4
+	JMP	L^L_2
+L_4:
 	INCW	VAXFOR_I_PLT3H91E
 	JMP	L^L_1
 L_2:
 ; line 12
 	MOVW	#10, VAXFOR_I_PLT3H91E
-L_4:
+L_5:
 	CMPW	VAXFOR_I_PLT3H91E, #1
-	BGEQ	L_6
-	JMP	L^L_5
-L_6:
+	BGEQ	L_7
+	JMP	L^L_6
+L_7:
 ; line 12
 	DECL	VAXFOR_L_PLT3HB5D
+	SUBW3	#1, VAXFOR_I_PLT3H91E, R0
+	CMPW	R0, #2
+	BGEQU	L_8
+	JMP	L^L_6
+L_8:
 	ADDW2	#-2, VAXFOR_I_PLT3H91E
-	JMP	L^L_4
-L_5:
+	JMP	L^L_5
+L_6:
 ; line 13
 	CVTWL	VAXFOR_N_PLT3HAA7, VAXFOR_L_PLT3HB5D
-L_7:
-	CMPL	VAXFOR_L_PLT3HB5D, #100000
-	BLEQ	L_9
-	JMP	L^L_8
 L_9:
+	CMPL	VAXFOR_L_PLT3HB5D, #100000
+	BLEQ	L_11
+	JMP	L^L_10
+L_11:
+	SUBL3	VAXFOR_L_PLT3HB5D, #100000, R0
+	CMPL	R0, #3
+	BGEQU	L_12
+	JMP	L^L_10
+L_12:
 	ADDL2	#3, VAXFOR_L_PLT3HB5D
-	JMP	L^L_7
-L_8:
+	JMP	L^L_9
+L_10:
 ; line 14
 	CVTBW	VAXFOR_S_PLT3GU00, VAXFOR_I_PLT3H91E
 	ADDB3	#5, VAXFOR_S_PLT3GU00, R0
 	CVTBW	R0, R0
 	MOVW	R0, -4(FP)
-L_10:
+L_13:
 	CMPW	VAXFOR_I_PLT3H91E, -4(FP)
-	BLEQ	L_12
-	JMP	L^L_11
-L_12:
+	BLEQ	L_15
+	JMP	L^L_14
+L_15:
 ; line 14
 	INCW	VAXFOR_N_PLT3HAA7
+	SUBW3	VAXFOR_I_PLT3H91E, -4(FP), R0
+	CMPW	R0, #1
+	BGEQU	L_16
+	JMP	L^L_14
+L_16:
 	INCW	VAXFOR_I_PLT3H91E
-	JMP	L^L_10
-L_11:
+	JMP	L^L_13
+L_14:
 	RET
 
 ; the module's key, which its importers refer to

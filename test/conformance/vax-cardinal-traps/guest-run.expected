@@ -1,0 +1,16 @@
+== bigindex, build status: %X10000001
+A
+status: %X10000012
+index out of range
+== openindex, build status: %X10000001
+A
+status: %X10000012
+index out of range
+== shortrange, build status: %X10000001
+A
+status: %X10000072
+SHORT argument out of range
+== chrrange, build status: %X10000001
+A
+status: %X10000072
+CHR argument out of range

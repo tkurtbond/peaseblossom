@@ -315,11 +315,31 @@ POC_ASSERT_OUT:
 	MOVQ	R2, R0
 	RET
 
+; POC_CDIV(a, b) and POC_CMOD(a, b), a and b the addresses of
+; SYSTEM.CARD64s: R0 and R1 the unsigned quotient or remainder (design
+; section 20, proposal 3), by HDIVMOD's division without the signs; a zero
+; b gets the VAX's integer divide-by-zero trap
+	.ENTRY	POC_CDIV, ^M<R2,R3,R4,R5,R6,R7,R8,R9,R10,R11>
+	JSB	CDIVMOD
+	RET
+
+	.ENTRY	POC_CMOD, ^M<R2,R3,R4,R5,R6,R7,R8,R9,R10,R11>
+	JSB	CDIVMOD
+	MOVQ	R2, R0
+	RET
+
 ; a, b as above: R0 and R1 the quotient, R2 and R3 the remainder. The
 ; magnitudes are divided bit by bit, the quotient's bits shifted in where
 ; the dividend's leave (R2 and R3), the remainder in R8 and R9; then the
-; signs (R10: 1 a negative, 2 b negative) and the floor
+; signs (R10: 1 a negative, 2 b negative) and the floor. CDIVMOD, for
+; POC_CDIV and POC_CMOD, comes in with R10 negative: a and b are divided
+; as they are, every quadword being a magnitude, with no signs or floor
+CDIVMOD:
+	MNEGL	#1, R10
+	BRB	DIVMOD
 HDIVMOD:
+	CLRL	R10
+DIVMOD:
 	MOVL	4(AP), R0
 	MOVQ	(R0), R2
 	MOVL	8(AP), R0
@@ -327,9 +347,12 @@ HDIVMOD:
 	BISL3	R4, R5, R0
 	BNEQ	5$
 	DIVL2	R0, R1
-5$:	CLRL	R10
-	MOVQ	R4, R6
-	TSTL	R3
+5$:	MOVQ	R4, R6
+	TSTL	R10
+	BGEQ	7$
+	CLRL	R10
+	BRB	20$
+7$:	TSTL	R3
 	BGEQ	10$
 	MNEGL	R3, R3
 	MNEGL	R2, R2
@@ -386,6 +409,22 @@ HDIVMOD:
 	MOVL	4(AP), R4
 	CVTLG	4(R4), R0
 	MULG2	#4294967296.0, R0
+	CVTLG	(R4), R2
+	BGEQ	10$
+	ADDG2	#4294967296.0, R2
+10$:	ADDG2	R2, R0
+	RET
+
+; POC_CTOG(q), q the address of a SYSTEM.CARD64: R0 and R1 its unsigned
+; value as a G_floating (design section 20, proposal 4), as POC_QTOG
+; makes a HUGEINT's but with the high longword unsigned too: each half
+; exact, their sum rounded once
+	.ENTRY	POC_CTOG, ^M<R2,R3,R4>
+	MOVL	4(AP), R4
+	CVTLG	4(R4), R0
+	BGEQ	5$
+	ADDG2	#4294967296.0, R0
+5$:	MULG2	#4294967296.0, R0
 	CVTLG	(R4), R2
 	BGEQ	10$
 	ADDG2	#4294967296.0, R2

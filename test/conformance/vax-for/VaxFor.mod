@@ -1,9 +1,9 @@
 MODULE VaxFor;
-  (* PLAN.md Phase 15 step 4: FOR as Oberon2.pdf 9.8 says - the control
-     variable set to the start, the limit evaluated once, before the loop
-     (a variable's value kept in the frame, as the body may change it),
-     the test at the top, > for a positive step and < for a negative one,
-     and the step added at the bottom *)
+  (* PLAN.md Phase 15 step 4: FOR - the control variable set to the
+     start, the limit evaluated once, before the loop (a variable's value
+     kept in the frame, as the body may change it), the test at the top,
+     and the step added at the bottom unless it would pass the limit
+     (vax-macro32-backend.md 20.1, proposal 8; Oberon2.pdf 9.8's form) *)
 
   VAR i, n: INTEGER; s: SHORTINT; l: LONGINT;
 

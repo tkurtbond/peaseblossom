@@ -5,7 +5,7 @@ MODULE Err;
      SYS$ERROR, with what rtl/llvm/Err.Mod prints: Open, Flush, Char,
      String, Ln, Int and Hex; and Real, LongReal, Ten and IsConsole, which
      complete the interface (Phase 17 step 3, section 19.7, proposal 3), as
-     in Out.
+     in Out; and poc's Card and CardHex (section 20, proposal 9).
 
      The formatting is FormattedOutput's, shared with Out as on LLVM
      (section 19.9, proposal 2). It writes through LineOutput, as Out
@@ -15,7 +15,7 @@ MODULE Err;
      stopped by a trap writes the trap's message before a line it had not
      ended. *)
 
-  IMPORT LineOutput, FormattedOutput;
+  IMPORT SYSTEM, LineOutput, FormattedOutput, CardinalTypes;
 
   CONST
     stream = LineOutput.error;
@@ -71,6 +71,23 @@ MODULE Err;
   BEGIN
     FormattedOutput.Hex(stream, x, n)
   END Hex;
+
+  (* x, of any CARD type, in decimal, right-aligned in a field n characters
+     wide, as Int (AGENTS.md, "Unsigned integer types"). Its type,
+     CardinalTypes.Card64, is SYSTEM.CARD64, under the name rtl/llvm's Err
+     takes it by, for Stage 0 (see CardinalTypes). *)
+  PROCEDURE Card*(x: CardinalTypes.Card64; n: HUGEINT);
+  BEGIN
+    FormattedOutput.Card(stream, SYSTEM.VAL(HUGEINT, x), n)
+  END Card;
+
+  (* x, of any CARD type, as hexadecimal digits, upper case, at least n of
+     them (n is taken to be within 1..16), and as many as x needs if that
+     is more *)
+  PROCEDURE CardHex*(x: CardinalTypes.Card64; n: HUGEINT);
+  BEGIN
+    FormattedOutput.CardHex(stream, SYSTEM.VAL(HUGEINT, x), n)
+  END CardHex;
 
   (* 10^e for e >= 0, by repeated squaring - exact up to 10^22; up to
      10^307, past which G_floating overflows *)

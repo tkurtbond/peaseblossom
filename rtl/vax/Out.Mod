@@ -8,7 +8,8 @@ MODULE Out;
      and IsConsole, which complete the interface, came with Phase 17 step 3
      (section 19.7, proposal 3): the text of a real is FormattedText's, as
      on LLVM, and IsConsole asks $GETDVIW whether SYS$OUTPUT is a
-     terminal.
+     terminal. Card and CardHex, poc's, write a value of the unsigned
+     types (section 20, proposal 9).
 
      The formatting is FormattedOutput's, shared with Err as on LLVM
      (section 19.9, proposal 2). It writes to SYS$OUTPUT through
@@ -20,7 +21,7 @@ MODULE Out;
      does nothing, since writing part of a line would end the record
      there. *)
 
-  IMPORT LineOutput, FormattedOutput;
+  IMPORT SYSTEM, LineOutput, FormattedOutput;
 
   CONST
     stream = LineOutput.output;
@@ -79,6 +80,21 @@ MODULE Out;
   BEGIN
     FormattedOutput.Hex(stream, x, n)
   END Hex;
+
+  (* x, of any CARD type, in decimal, right-aligned in a field n characters
+     wide, as Int (AGENTS.md, "Unsigned integer types") *)
+  PROCEDURE Card*(x: SYSTEM.CARD64; n: HUGEINT);
+  BEGIN
+    FormattedOutput.Card(stream, SYSTEM.VAL(HUGEINT, x), n)
+  END Card;
+
+  (* x, of any CARD type, as hexadecimal digits, upper case, at least n of
+     them (n is taken to be within 1..16), and as many as x needs if that
+     is more *)
+  PROCEDURE CardHex*(x: SYSTEM.CARD64; n: HUGEINT);
+  BEGIN
+    FormattedOutput.CardHex(stream, SYSTEM.VAL(HUGEINT, x), n)
+  END CardHex;
 
   (* 10^e for e >= 0, by repeated squaring - exact up to 10^22; up to
      10^307, past which G_floating overflows *)

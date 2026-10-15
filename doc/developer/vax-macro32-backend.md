@@ -4491,3 +4491,230 @@ without `HOME` and `USER` (proposal 3).
     `getEnv`'s symbol branch, and the line numbers after it move.
     `vax-files`' `expected-vax-Files.mar`: `New`'s branch for "" and its
     string, and the line numbers and labels after it.
+
+## 20. Unsigned integer types on the VAX (Phase 17, after 0.6.0)
+
+`main`'s unsigned types, `SYSTEM.CARD8`..`CARD64` and `SYSTEM.CARD`, and
+the new end of every `FOR` loop (`language-extensions.md`, "Unsigned
+integer types" and "FOR final value"; released in 0.6.0) came to `vax` in
+the merge `2ff7cef`. The front end accepts them for the VAX as for LLVM,
+but the VAX backend treats a CARD as the signed integer of its size, and
+still lowers `FOR` by the report's own equivalence, so a loop up to
+`MAX` of its type never ends there. `rtl/vax` has none of the runtime's
+new `Card` procedures, and `vax-instr` and `vax-outstr` fail, since
+`rtl/vax`'s `InStr` and `OutStr` are no longer copies of `rtl/llvm`'s.
+`SYSTEM.CARD` is a `CARD32` on the VAX, addresses being longwords.
+`sdloberon` declaring SDL's unsigned fields and parameters as `CARDn`
+follows this, as its own step (the plan agreed with the user,
+2026-10-14).
+
+### 20.1 Proposals
+
+**Approved by the user, 2026-10-14**, all ten as written.
+
+1. **A CARD is zero-extended wherever it widens.** `MoveInto`, `Widen`
+   and `SYSTEM.VAL` choose by the source's family: `MOVZBW`, `MOVZBL` or
+   `MOVZWL` for a CARD, `CVT` for a signed integer; into a quadword, the
+   low longword so, then `CLRL` of the high one in place of `ASHL #-31`.
+   - This one place covers `LONG`, assignment, a CARD passed to a wider
+     CARD parameter (`Out.Card(a)` of a `CARD8`), a CARD index
+     (`CheckedIndex`'s `Widen` to a longword: 200 in a `CARD8` is 200,
+     not -56), a `CASE` selector, `IN`, `INCL` and `EXCL`'s element, and
+     the integer half of a conversion to a real (proposal 4).
+   - `SYSTEM.VAL` extends by the source's family, as on LLVM:
+     `SYSTEM.VAL(LONGINT, c)` of a `CARD16` is its value.
+2. **Comparisons of CARDs are unsigned.** `FalseBranch` gives `BLSSU`,
+   `BLEQU`, `BGTRU` and `BGEQU` for a CARD, as it does for a `CHAR`, and
+   `QuadRelation` compares a `CARD64`'s high longwords unsigned too (its
+   low ones already are). `Relation`, `JumpOnRelation`, `CASE`'s tests
+   outside a `CASEx` table and `FOR`'s head (proposal 8) all come
+   through these.
+3. **`DIV` and `MOD` of CARDs are unsigned; truncation and flooring
+   agree.**
+   - A `CARD8` or `CARD16`: both operands zero-extended to longwords,
+     `DIVL3`, and the remainder by `MULL3` and `SUBL3`, as `DivMod` does,
+     without its floor correction. The values are below 2^16, so the
+     signed divide is the unsigned one; the result is of the CARD's own
+     size.
+   - A `CARD32`: both zero-extended to quadwords and divided by
+     `POC_HDIV` or `POC_HMOD`, whose 64-bit signed division is exact for
+     values below 2^32; the result is the low longword. `EDIV`, the only
+     divide taking a quadword, is signed in its divisor and overflows
+     on a quotient of 2^31 or more, so it serves neither.
+   - A `CARD64`: new runtime routines `POC_CDIV` and `POC_CMOD` in
+     `PocRtl.mar`, `HDIVMOD`'s bit-by-bit division of the magnitudes, for
+     which every `CARD64` is one already, without the sign handling and
+     the floor.
+   - A zero divisor is not checked, as for the signed types. It is the
+     VAX's integer divide-by-zero trap: `DIVL3` for the narrow ones, and
+     the routines' `DIVL2` by the divisor, as `HDIVMOD` does already.
+4. **A CARD converted to a real is its unsigned value, rounded once.**
+   - A `CARD8` or `CARD16` is zero-extended to a longword, then
+     `CVTLF` or `CVTLG`.
+   - A `CARD32`: `CVTLG`, which is exact, and when the longword is
+     negative, `ADDG2 #4294967296.0`, which is exact too, being below 2^33;
+     for a `REAL`, `CVTGF` of that, the only rounding.
+   - A `CARD64`: a new routine `POC_CTOG`, `POC_QTOG` with its high
+     longword read unsigned as its low one already is, then `CVTGF` for a
+     `REAL`, as a `HUGEINT` is converted (rounded twice for a `REAL`, as a
+     `HUGEINT` already is; section 14, item 9).
+5. **Shifts.** `ASH` of a CARD is `SYSTEM.LSH` of it, as on LLVM: of its
+   own type, filling with zeros (`Lsh`, which shifts a longword or a pair
+   right by an arithmetic shift of 1 bit, the sign bit cleared, then the
+   rest). `ShiftCount` takes a CARD count as never negative: zero-extended,
+   then compared unsigned with 64, so a `CARD8` count of 200 shifts every
+   bit out rather than being read as -56. `SYSTEM.ROT` is unchanged, its
+   count being taken modulo the width.
+6. **The checked and the identity operations.**
+   - `SHORT` of a CARD with `-range-checks` traps (14) when the value is
+     above the narrower type's `MAX`: `CMPx v, #MAX` and `BLEQU`, since
+     `CVT`'s V is the signed test; a `CARD64` fits a `CARD32` when its
+     high longword is 0. The value is then the low bytes, by `MOVx` from
+     the low end, as `CVT` would give for a value that fits.
+   - `CHR` of a `CARD8` always fits; `Chr`'s `TSTB` test, the signed one
+     for a byte, is skipped for it. Wider CARDs keep the unsigned compare
+     with 255 that `Chr` makes already.
+   - `ABS` of a CARD is the value itself; unary minus is `MNEGx`, modulo
+     2^n, as it is now.
+7. **A CARD constant above its width's signed range is written in
+   hexadecimal**, `#^XFFFFFFFF` for `MAX(SYSTEM.CARD32)`, as `HalfText`
+   already writes `MIN(LONGINT)` as `^X80000000`, so that MACRO reads the
+   bits. A `CARD64`'s halves are written from its bits already. A byte's
+   or a word's value above its signed range (`#200` in a `MOVB`) is
+   written in decimal as a `CHAR`'s is now, if MACRO takes it for the
+   byte or word; the fixtures' assembly on the guest shows whether it
+   does, and if not those are written in hexadecimal too.
+8. **Every `FOR` loop ends before a step that would pass its final
+   value**, signed or unsigned, as on LLVM (`ForStatement`). After the
+   body, the distance left, `temp - v` counting up and `v - temp`
+   counting down, at `v`'s width and so modulo 2^n, is compared unsigned
+   with the step's size, and the loop ends when it is smaller; otherwise
+   `v` is stepped and the head's test runs again (which matters only when
+   the body moved `v` past `temp`). The head's test is unsigned for a CARD
+   (proposal 2). A quadword's distance is a quadword subtraction and an
+   unsigned `QuadRelation`. The loop leaves `v` at the last value the body
+   had.
+   - This changes the code of every `FOR`, so the expected MACRO-32 of the
+     21 fixtures with one changes, and those of `rtl/vax`'s 10 modules
+     with one in each fixture that sends them, all for review.
+   - poc's own source has `FOR` loops, so the VAX-built poc changes too;
+     `make vax-stages` is run again, to the fixed point.
+9. **`rtl/vax` gains the runtime's `Card` procedures, from `rtl/llvm`
+   unchanged.** They are plain Oberon over `HUGEINT`, which the VAX
+   backend compiles already.
+   - `CardinalTypes.Mod`, a copy of `rtl/llvm`'s.
+   - `FormattedText.Card` and `CardHex`, `FormattedInput.Card`,
+     `FormattedOutput.Card` and `CardHex`, `Out.Card` and `CardHex`,
+     `Err.Card` and `CardHex` (over `CardinalTypes.Card64`), `In.Card`,
+     each added to `rtl/vax`'s module, and the header comments' lists.
+   - `InStr` and `OutStr` become copies of `rtl/llvm`'s again, so
+     `vax-instr` and `vax-outstr` pass.
+   - `PocRtl.mar` gains `POC_CDIV`, `POC_CMOD` and `POC_CTOG`, and
+     `tools/vax-runtime-stub.mar` stand-ins for them (section 19.12's
+     lesson: a new `PocRtl` entry needs one there).
+   - `vax-library`'s `POCRTL` gains `CardinalTypes`.
+10. **Fixtures, new, built under `-O2` and run on the guest, as the LLVM
+    fixtures are.**
+    - `vax-cardinal`: `llvm-cardinal`'s `cardinal.mod`, which must print
+      `llvm-cardinal`'s `expected`. Nothing it prints depends on
+      `SYSTEM.CARD`'s width or on IEEE: its reals are printed in
+      decimal, and `MAX(SYSTEM.CARD64)` as a `LONGREAL` is
+      1.8446744073709552E19 in G too. Its expected MACRO-32 is kept, for
+      review, as the backend's fixtures keep theirs.
+    - `vax-for-loop-end`: `llvm-for-loop-end`'s `forend.mod`, which must
+      print that fixture's `expected`.
+    - `vax-cardinal-traps`: `llvm-cardinal-traps`' four programs, each
+      ending in its trap (2 for the indexes; 14 for `SHORT` and `CHR`,
+      under `-range-checks`), with the status and message the VAX gives
+      for each.
+
+### 20.2 Unsigned integer types: done
+
+- *Done* (section 20.1, proposals 1 to 10, 2026-10-14):
+  - `VaxCodeGenerator` chooses by the operand's family wherever a CARD
+    differs from a signed integer.
+    - `Extension` gives `MOVZ` for a CARD and `CVT` otherwise, for
+      `MoveInto`, `Widen` and `SYSTEM.VAL`.
+    - `IsUnsigned` (a `CHAR` or a CARD) picks the unsigned branches for
+      `FalseBranch`'s callers and `QuadRelation`.
+    - `CardDivMod` divides as proposal 3 says.
+    - `AsReal` converts a CARD, and its four callers now convert
+      whenever the operand is a CARD, not only for a quadword.
+    - `Lsh` became `LogicalShift`, which `Ash` of a CARD calls.
+      `ShiftCount` takes a CARD count.
+    - `Short`, `Chr` and `Abs` are as proposal 6 says.
+    - `HalfText` writes a `CARD32` above 2^31 - 1 in hexadecimal.
+    - The new `ForStatement` ends every loop as proposal 8 says.
+    - An operand keeps its constant's `Types.Value`. A constant compared
+      or combined with a CARD takes the CARD's type
+      (`AdoptConstantType`, by `Types.ConstantOperandType`), so that
+      200 against a `CARD8` is compared unsigned.
+  - *One difference from proposal 6:* `SHORT` of a CARD still truncates
+    by `CVT`, not by `MOVx` from the low end. For a value that has
+    passed the check, the result is the same.
+  - *Proposal 7's open point:* MACRO assembles a byte or word immediate
+    above its signed range written in decimal (`MOVB #200`, `CMPB
+    ..., #255`, `MOVW #65535`) to the same bits. So those stay in
+    decimal, and only longwords and quadwords are written in
+    hexadecimal.
+  - `rtl/vax`:
+    - `CardinalTypes.Mod` is `rtl/llvm`'s.
+    - `FormattedText`, `FormattedInput` and `In` take `ff457c2`'s hunks.
+    - `FormattedOutput`, `Out` and `Err` gain `Card` and `CardHex`, by
+      hand; `Err`'s are over `CardinalTypes.Card64`.
+    - `InStr` and `OutStr` are `rtl/llvm`'s again, plus the one line
+      noting that they are copies.
+    - `PocRtl.mar` gains `POC_CDIV` and `POC_CMOD`. They enter
+      `HDIVMOD`'s loop past its sign handling and floor, with R10
+      negative (`MNEGL #1`) marking the unsigned case. It also gains `POC_CTOG`.
+    - `tools/vax-runtime-stub.mar` has the same three, with its `HDIV`
+      to `ENTIERQ` block identical to `PocRtl`'s.
+- *Fixtures.*
+  - `vax-cardinal`, new: `llvm-cardinal`'s `cardinal.mod`, which prints
+    `llvm-cardinal`'s `expected` on the guest.
+    - The procedure sends `SYS$ERROR` to `CARDINAL-ERR.TXT` and types it
+      after the run, as the run captures only `SYS$OUTPUT`.
+    - `test.sh` makes `guest-run.expected` from `llvm-cardinal`'s
+      `expected`, with the `Err` line moved below "-- SYS$ERROR".
+  - `vax-for-loop-end`, new: `llvm-for-loop-end`'s `forend.mod`, which
+    prints that fixture's `expected`.
+  - `vax-cardinal-traps`, new: `llvm-cardinal-traps`' four programs under
+    `-range-checks`.
+    - Each prints "A" and traps: status `%X10000012` (2, "index out of
+      range") for the two indexes, and `%X10000072` (14, "SHORT
+      argument out of range" and "CHR argument out of range").
+    - Making one expectation wrong failed the fixture, so the guest
+      really runs it.
+  - The reviewed expected MACRO-32 that changed, 40 files:
+    - Proposal 8, the `FOR` loops' new end (five lines and one label a
+      loop): the main modules of 13 fixtures, `vax-modules`' `VaxModLib`
+      and `vax-type-bound`'s `VaxMethLib`, and `rtl/vax`'s `GarbageCollectedHeap`, `Modules`,
+      `RealDigits`, `Platform`, `Files` and `FormattedText`, in each
+      fixture that sends them.
+    - Proposal 9, the new `Card` and `CardHex`: `Out`, `Err`,
+      `FormattedOutput` and `FormattedText`, with their keys and line
+      numbers. Also the main modules of `vax-out`, `vax-err` and
+      `vax-modules-commands` and its `Greeter`, whose only change is the
+      key of `Out` or `Err`.
+  - `vax-err` compiles and compares `CardinalTypes`
+    (`expected-vax-CardinalTypes.mar`, new). It and `vax-out-reals` send
+    `CardinalTypes.mar` to the guest with `Err`'s other imports.
+  - The debugger runs' reviewed transcripts (`run-*.log`) that changed:
+    - `vax-for`'s three: each loop's variable keeps its last value (3, 2,
+      99999 and 5 for n = 3). The breakpoints (`SET BREAK %LINE`) move to
+      the listing's new lines 102, 119, 134 and 153, which count the
+      header comment too.
+    - `vax-index-registers`: the `FOR` leaves i at 1, so the `WHILE`
+      does not step and `s[1]` becomes {0, 1}.
+    - `vax-copy-long` and `vax-parameters`: "value returned" is R0 after
+      a proper procedure, now the last loop's distance, 0, where it was
+      a value left from before.
+    - `vax-reals`: the divide fault's PC, label and listing line.
+  - `vax-library`'s `POCRTL` has 26 modules and makes 560 symbols
+    universal, 18 more.
+  - `vax-instr` and `vax-outstr` pass again.
+  - `VaxFor.mod`'s comment no longer says the loop is the report's
+    equivalence. It is reworded within the same lines, so no line number
+    moves.
+- *poc on the VAX.* poc's own `FOR` loops changed, so `make vax-stages`
+  was run again to the fixed point (V1 = V2 = V3).

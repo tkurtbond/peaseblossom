@@ -1,6 +1,14 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the design,
-;; the MACRO manual, the VAX's listing and the debugger runs). Why this
-;; is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 8, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-08. Why this is right:
+;; - Each of the 4 FOR loops ends before a step that would pass its
+;;   final value (proposal 8), as on LLVM: after the body, SUBx3 at the
+;;   variable's width computes the distance left (the final value less
+;;   the variable counting up, the variable less the final value
+;;   counting down), CMPx compares it with the step's size, and BGEQU
+;;   goes on to the step, else JMP L^ leaves the loop. Each adds one
+;;   label, so the labels after each are numbered one more.
+;; The rest is as the user reviewed it on 2026-10-08:
 ;; - COPY(x, v) with x or v longer than 65535 characters, LOCC's and
 ;;   MOVC5's most, is done in pieces (decided with the user 2026-10-08):
 ;;   m, the most characters it may copy, is LEN(v) - 1, or LEN(x) if
@@ -87,89 +95,109 @@ L_3:
 	CALLS	#4, G^POC_TRAP
 L_4:
 	MOVB	#65, VAXCOPYLONG_BIG_5LGVARR7[R0]
+	SUBL3	-4(FP), -8(FP), R0
+	CMPL	R0, #1
+	BGEQU	L_5
+	JMP	L^L_2
+L_5:
 	INCL	-4(FP)
 	JMP	L^L_1
 L_2:
 ; line 16
 	CMPL	4(AP), #70000
-	BLSS	L_6
-	JMP	L^L_5
-L_6:
+	BLSS	L_7
+	JMP	L^L_6
+L_7:
 ; line 16
 	MOVL	4(AP), R0
 	CMPL	R0, #69999
-	BLEQU	L_7
+	BLEQU	L_8
 	PUSHL	#30
 	PUSHL	#16
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_7:
+L_8:
 	CLRB	VAXCOPYLONG_BIG_5LGVARR7[R0]
-L_5:
+L_6:
 ; line 17
 	CLRL	-4(FP)
-L_8:
+L_9:
 	CMPL	-4(FP), #70009
-	BLEQ	L_10
-	JMP	L^L_9
-L_10:
+	BLEQ	L_11
+	JMP	L^L_10
+L_11:
 ; line 17
 	MOVL	-4(FP), R0
 	CMPL	R0, #70009
-	BLEQU	L_11
+	BLEQU	L_12
 	PUSHL	#45
 	PUSHL	#17
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_11:
+L_12:
 	MOVB	#90, VAXCOPYLONG_BIGGER_MKEJEI5N[R0]
+	SUBL3	-4(FP), #70009, R0
+	CMPL	R0, #1
+	BGEQU	L_13
+	JMP	L^L_10
+L_13:
 	INCL	-4(FP)
-	JMP	L^L_8
-L_9:
+	JMP	L^L_9
+L_10:
 ; line 18
 	CLRL	-4(FP)
-L_12:
-	CMPL	-4(FP), #65999
-	BLEQ	L_14
-	JMP	L^L_13
 L_14:
+	CMPL	-4(FP), #65999
+	BLEQ	L_16
+	JMP	L^L_15
+L_16:
 ; line 18
 	MOVL	-4(FP), R0
 	CMPL	R0, #65999
-	BLEQU	L_15
+	BLEQU	L_17
 	PUSHL	#39
 	PUSHL	#18
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_15:
+L_17:
 	MOVB	#90, VAXCOPYLONG_MID_5KKTF4RR[R0]
+	SUBL3	-4(FP), #65999, R0
+	CMPL	R0, #1
+	BGEQU	L_18
+	JMP	L^L_15
+L_18:
 	INCL	-4(FP)
-	JMP	L^L_12
-L_13:
+	JMP	L^L_14
+L_15:
 ; line 19
 	CLRL	-4(FP)
-L_16:
+L_19:
 	CMPL	-4(FP), #9
-	BLEQ	L_18
-	JMP	L^L_17
-L_18:
+	BLEQ	L_21
+	JMP	L^L_20
+L_21:
 ; line 19
 	MOVL	-4(FP), R0
 	CMPL	R0, #9
-	BLEQU	L_19
+	BLEQU	L_22
 	PUSHL	#43
 	PUSHL	#19
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_19:
+L_22:
 	MOVB	#90, VAXCOPYLONG_SMALL_F3403EEU[R0]
+	SUBL3	-4(FP), #9, R0
+	CMPL	R0, #1
+	BGEQU	L_23
+	JMP	L^L_20
+L_23:
 	INCL	-4(FP)
-	JMP	L^L_16
-L_17:
+	JMP	L^L_19
+L_20:
 	RET
 ; PROCEDURE CopyBigger
 VAXCOPYLONG_COPYBIGGER_068S9LUM:
@@ -177,31 +205,31 @@ VAXCOPYLONG_COPYBIGGER_068S9LUM:
 ; line 23
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
 	MOVL	#70000, R2
-L_20:
+L_24:
 	MOVL	R2, R3
 	CMPL	R3, #65535
-	BLEQU	L_21
+	BLEQU	L_25
 	MOVL	#65535, R3
-L_21:
+L_25:
 	LOCC	#0, R3, (R1)
-	BNEQ	L_22
+	BNEQ	L_26
 	SUBL2	R3, R2
-	BNEQ	L_20
-L_22:
+	BNEQ	L_24
+L_26:
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R0
 	SUBL3	R0, R1, -(SP)
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
 	MOVAB	VAXCOPYLONG_BIGGER_MKEJEI5N, R3
-L_23:
+L_27:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_24
+	BLEQU	L_28
 	MOVL	#65535, R0
-L_24:
+L_28:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_23
+	BNEQ	L_27
 	ADDL2	#4, SP
 	CLRB	(R3)
 	RET
@@ -211,31 +239,31 @@ VAXCOPYLONG_COPYMID_SF3VMTMC:
 ; line 27
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
 	MOVL	#65999, R2
-L_25:
+L_29:
 	MOVL	R2, R3
 	CMPL	R3, #65535
-	BLEQU	L_26
+	BLEQU	L_30
 	MOVL	#65535, R3
-L_26:
+L_30:
 	LOCC	#0, R3, (R1)
-	BNEQ	L_27
+	BNEQ	L_31
 	SUBL2	R3, R2
-	BNEQ	L_25
-L_27:
+	BNEQ	L_29
+L_31:
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R0
 	SUBL3	R0, R1, -(SP)
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
 	MOVAB	VAXCOPYLONG_MID_5KKTF4RR, R3
-L_28:
+L_32:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_29
+	BLEQU	L_33
 	MOVL	#65535, R0
-L_29:
+L_33:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_28
+	BNEQ	L_32
 	ADDL2	#4, SP
 	CLRB	(R3)
 	RET
@@ -245,31 +273,31 @@ VAXCOPYLONG_COPYSMALL_AT7O83AT:
 ; line 31
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
 	MOVL	#9, R2
-L_30:
+L_34:
 	MOVL	R2, R3
 	CMPL	R3, #65535
-	BLEQU	L_31
+	BLEQU	L_35
 	MOVL	#65535, R3
-L_31:
+L_35:
 	LOCC	#0, R3, (R1)
-	BNEQ	L_32
+	BNEQ	L_36
 	SUBL2	R3, R2
-	BNEQ	L_30
-L_32:
+	BNEQ	L_34
+L_36:
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R0
 	SUBL3	R0, R1, -(SP)
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
 	MOVAB	VAXCOPYLONG_SMALL_F3403EEU, R3
-L_33:
+L_37:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_34
+	BLEQU	L_38
 	MOVL	#65535, R0
-L_34:
+L_38:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_33
+	BNEQ	L_37
 	ADDL2	#4, SP
 	CLRB	(R3)
 	RET
@@ -279,31 +307,31 @@ VAXCOPYLONG_COPYTO_0G6U8O33:
 ; line 35
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
 	MOVL	#70000, R2
-L_35:
+L_39:
 	MOVL	R2, R3
 	CMPL	R3, #65535
-	BLEQU	L_36
+	BLEQU	L_40
 	MOVL	#65535, R3
-L_36:
+L_40:
 	LOCC	#0, R3, (R1)
-	BNEQ	L_37
+	BNEQ	L_41
 	SUBL2	R3, R2
-	BNEQ	L_35
-L_37:
+	BNEQ	L_39
+L_41:
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R0
 	SUBL3	R0, R1, -(SP)
 	MOVAB	VAXCOPYLONG_BIG_5LGVARR7, R1
 	MOVAB	@4(AP), R3
-L_38:
+L_42:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_39
+	BLEQU	L_43
 	MOVL	#65535, R0
-L_39:
+L_43:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_38
+	BNEQ	L_42
 	ADDL2	#4, SP
 	CLRB	(R3)
 	RET

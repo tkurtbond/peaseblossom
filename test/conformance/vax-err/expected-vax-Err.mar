@@ -1,7 +1,14 @@
-;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.9, proposal 2, approved by the user); reviewed by the user,
-;; 2026-10-13. It replaces the file the user reviewed on 2026-10-13. Why
-;; this is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 9, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-13. Why this is right:
+;; - Card and CardHex are new (proposal 9), as Out's but on stream 1
+;;   (MOVL #1), their x a CardinalTypes.Card64, so Err imports
+;;   CardinalTypes: .EXTERNAL CARDINALTYPES_INIT and its key, and its
+;;   initializer calls CARDINALTYPES_INIT (CALLS #0) after the others.
+;;   FormattedOutput's key and Err's own (.IDENT, POC_K1_) are new.
+;;   Every line number after the new procedures is 17 more, the trap's
+;;   PUSHL included.
+;; The rest is as the user reviewed it on 2026-10-13:
 ;; - Err now imports FormattedOutput, not FormattedText, and calls it
 ;;   for everything but IsConsole, as on LLVM; its own Field is gone. Its
 ;;   initializer calls LINEOUTPUT_INIT, then FORMATTEDOUTPUT_INIT, then
@@ -25,7 +32,7 @@
 ;;   printed before.
 ; Err, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	ERR
-	.IDENT	/68f150995b974ad4/
+	.IDENT	/87af85548572a3e7/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
@@ -47,6 +54,8 @@ ERR_ISCONSOLE_B9PIMVFJ::
 	.EXTERNAL	FORMATTEDOUTPUT_LN_OU3EA87E
 	.EXTERNAL	FORMATTEDOUTPUT_INT_18KJ9UM1
 	.EXTERNAL	FORMATTEDOUTPUT_HEX_18H465ST
+	.EXTERNAL	FORMATTEDOUTPUT_CARD_1PLN7GIE
+	.EXTERNAL	FORMATTEDOUTPUT_CARDHE_NB6AI7NN
 	.EXTERNAL	FORMATTEDOUTPUT_TEN_1700MGMV
 	.EXTERNAL	FORMATTEDOUTPUT_REAL_GHANRVJC
 	.EXTERNAL	FORMATTEDOUTPUT_LONGRE_9KF7VPVU
@@ -54,7 +63,9 @@ ERR_ISCONSOLE_B9PIMVFJ::
 	.EXTERNAL	LINEOUTPUT_INIT
 	.EXTERNAL	POC_K1_325CA5CA1A3D6BD4
 	.EXTERNAL	FORMATTEDOUTPUT_INIT
-	.EXTERNAL	POC_K1_10221897D1046E8A
+	.EXTERNAL	POC_K1_41D93F18327CF36F
+	.EXTERNAL	CARDINALTYPES_INIT
+	.EXTERNAL	POC_K1_140EB5589368DA71
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -157,18 +168,50 @@ L_2:
 	MOVAQ	-48(FP), -20(FP)
 	CALLG	-32(FP), G^FORMATTEDOUTPUT_HEX_18H465ST
 	RET
+; PROCEDURE Card
+	.ENTRY	ERR_CARD_88D438SK, ^M<>
+	SUBL2	#48, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVQ	@8(AP), -16(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 81
+	MOVL	#3, -32(FP)
+	MOVL	#1, -28(FP)
+	MOVQ	-8(FP), -40(FP)
+	MOVAQ	-40(FP), -24(FP)
+	MOVQ	-16(FP), -48(FP)
+	MOVAQ	-48(FP), -20(FP)
+	CALLG	-32(FP), G^FORMATTEDOUTPUT_CARD_1PLN7GIE
+	RET
+; PROCEDURE CardHex
+	.ENTRY	ERR_CARDHEX_VRQON7U1, ^M<>
+	SUBL2	#48, SP
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVQ	@8(AP), -16(FP)
+	MOVQ	@4(AP), -8(FP)
+; line 89
+	MOVL	#3, -32(FP)
+	MOVL	#1, -28(FP)
+	MOVQ	-8(FP), -40(FP)
+	MOVAQ	-40(FP), -24(FP)
+	MOVQ	-16(FP), -48(FP)
+	MOVAQ	-48(FP), -20(FP)
+	CALLG	-32(FP), G^FORMATTEDOUTPUT_CARDHE_NB6AI7NN
+	RET
 ; PROCEDURE Ten
 	.ENTRY	ERR_TEN_7HMG0DE5, ^M<>
 	SUBL2	#12, SP
 	CLRL	-4(FP)
 	MOVW	4(AP), -2(FP)
-; line 79
+; line 96
 	MOVL	#1, -12(FP)
 	CVTWL	-2(FP), -8(FP)
 	CALLG	-12(FP), G^FORMATTEDOUTPUT_TEN_1700MGMV
 	RET
 	PUSHL	#3
-	PUSHL	#80
+	PUSHL	#97
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -178,7 +221,7 @@ L_2:
 	CLRQ	-8(FP)
 	MOVW	8(AP), -6(FP)
 	MOVF	4(AP), -4(FP)
-; line 88
+; line 105
 	MOVL	#3, -24(FP)
 	MOVL	#1, -20(FP)
 	MOVF	-4(FP), -16(FP)
@@ -192,7 +235,7 @@ L_2:
 	CLRL	-4(FP)
 	MOVW	8(AP), -10(FP)
 	MOVQ	@4(AP), -8(FP)
-; line 95
+; line 112
 	MOVL	#3, -28(FP)
 	MOVL	#1, -24(FP)
 	MOVG	-8(FP), -36(FP)
@@ -206,9 +249,9 @@ ERR_FINDCONSOLE_VOI4T6N6:
 	SUBL2	#28, SP
 	CLRQ	-16(FP)
 	CLRQ	-8(FP)
-; line 101
+; line 118
 	MOVC5	#9, L_STR_1, #0, #16, -16(FP)
-; line 102
+; line 119
 	MOVL	#2, -28(FP)
 	MOVAB	-16(FP), -24(FP)
 	MOVL	#9, -20(FP)
@@ -230,11 +273,12 @@ L_BODY:
 	MOVB	#1, L_INITIALISED
 	CALLS	#0, G^LINEOUTPUT_INIT
 	CALLS	#0, G^FORMATTEDOUTPUT_INIT
-; line 106
+	CALLS	#0, G^CARDINALTYPES_INIT
+; line 123
 	CALLS	#0, ERR_FINDCONSOLE_VOI4T6N6
 	RET
 
 ; the module's key, which its importers refer to
-POC_K1_68F150995B974AD4 == 0
+POC_K1_87AF85548572A3E7 == 0
 
 	.END

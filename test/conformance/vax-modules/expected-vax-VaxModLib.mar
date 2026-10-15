@@ -1,6 +1,14 @@
-;; Reviewed 2026-10-09 by the user (written by Claude, from the design,
-;; the MACRO manual, the VAX's listing and the debugger runs). Why this
-;; is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 8, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-09. Why this is right:
+;; - The FOR loop ends before a step that would pass its final value
+;;   (proposal 8), as on LLVM: after the body, SUBx3 at the variable's
+;;   width computes the distance left (the final value less the variable
+;;   counting up, the variable less the final value counting down), CMPx
+;;   compares it with the step's size, and BGEQU goes on to the step,
+;;   else JMP L^ leaves the loop. It adds one label, so the labels after
+;;   it are numbered one more.
+;; The rest is as the user reviewed it on 2026-10-09:
 ;; - VaxModLib, imported by VaxModules (expected-vax.mar). Its exported
 ;;   variables are global, label::, and its exported procedures' .ENTRY
 ;;   makes them global too (MACRO 6.5, .ENTRY), so the importer's
@@ -114,6 +122,11 @@ L_3:
 L_4:
 	CVTWL	-8(FP)[R0], R1
 	ADDL2	R1, -16(FP)
+	SUBW3	-10(FP), #3, R0
+	CMPW	R0, #1
+	BGEQU	L_5
+	JMP	L^L_2
+L_5:
 	INCW	-10(FP)
 	JMP	L^L_1
 L_2:

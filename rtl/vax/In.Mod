@@ -13,7 +13,8 @@ MODULE In;
      PLAN.md Phase 10 step 5: the Oakwood Guidelines' In module, formatted
      input from the standard input stream, with voc's interface (src/
      runtime/In.Mod): Open, Char, Int, LongInt, HugeInt, Real, LongReal,
-     Line, String, Name and the flag Done. Each reads what it can from the
+     Line, String, Name and the flag Done; and poc's Card, which reads a
+     value of the unsigned types. Each reads what it can from the
      stream, sets Done to say whether it found what it was asked for, and
      leaves its argument alone (or, for some, zero) when it did not.
 
@@ -130,6 +131,18 @@ MODULE In;
     HugeInt(h);
     i := SYSTEM.VAL(LONGINT, h)
   END LongInt;
+
+  (* An unsigned integer (AGENTS.md, "Unsigned integer types"): decimal
+     digits, or hexadecimal digits followed by H, up to 2^64 - 1; a minus
+     sign is not a number (Done FALSE, c 0). A program with a narrower CARD
+     variable reads into a SYSTEM.CARD64 and SHORTs it. *)
+  PROCEDURE Card*(VAR c: SYSTEM.CARD64);
+    VAR h: HUGEINT;
+  BEGIN
+    h := SYSTEM.VAL(HUGEINT, c);
+    Done := FormattedInput.Card(input, h);
+    c := SYSTEM.VAL(SYSTEM.CARD64, h)
+  END Card;
 
   (* The rest of the line - up to a line feed, and without the carriage
      return before it - cut short if line cannot hold it all (the rest is

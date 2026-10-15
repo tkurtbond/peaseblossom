@@ -1,6 +1,14 @@
-;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.9, proposal 1, approved by the user); reviewed by the user,
-;; 2026-10-13. Why this is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 9, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-13. Why this is right:
+;; - Card and CardHex are new (proposal 9): Card makes the digits in a
+;;   32-byte frame buffer with FORMATTEDTEXT_CARD and writes them with
+;;   Field in width n (CVTWL 4(AP), the stream); CardHex makes them with
+;;   FORMATTEDTEXT_CARDHEX and writes them with String. The two
+;;   .EXTERNALs, FormattedText's key and the module's own (.IDENT,
+;;   POC_K1_) are new. Every line number after them is 19 more, the
+;;   trap's PUSHL included.
+;; The rest is as the user reviewed it on 2026-10-13:
 ;; - FormattedOutput is rtl/llvm's procedures over LineOutput: each
 ;;   procedure's first parameter is the stream, an INTEGER (MOVW 4(AP)),
 ;;   passed on as a longword (CVTWL) to LINEOUTPUT_CHAR, _STRING, _LN,
@@ -34,7 +42,7 @@
 ;; parameters.
 ; FormattedOutput, written by poc (doc/developer/vax-macro32-backend.md)
 	.TITLE	FORMATTEDOUTPUT
-	.IDENT	/10221897d1046e8a/
+	.IDENT	/41d93f18327cf36f/
 	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
 	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
 	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
@@ -52,13 +60,15 @@ L_INITIALISED:
 	.EXTERNAL	FORMATTEDTEXT_LENGTH_B8VGBT0Q
 	.EXTERNAL	LINEOUTPUT_INT_QKLE32AL
 	.EXTERNAL	LINEOUTPUT_HEX_QKJD2AE9
+	.EXTERNAL	FORMATTEDTEXT_CARD_H7A1N6KC
+	.EXTERNAL	FORMATTEDTEXT_CARDHEX_QV4UDIA9
 	.EXTERNAL	FORMATTEDTEXT_TEN_DJ9CEDFT
 	.EXTERNAL	FORMATTEDTEXT_REAL_VBB34ISE
 	.EXTERNAL	FORMATTEDTEXT_LONGREAL_5EKQFPF4
 	.EXTERNAL	LINEOUTPUT_INIT
 	.EXTERNAL	POC_K1_325CA5CA1A3D6BD4
 	.EXTERNAL	FORMATTEDTEXT_INIT
-	.EXTERNAL	POC_K1_F4FBDDE2020BC8CF
+	.EXTERNAL	POC_K1_210B7CBCFF3F34A3
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP
@@ -227,18 +237,72 @@ L_4:
 	MOVAQ	-52(FP), -24(FP)
 	CALLG	-36(FP), G^LINEOUTPUT_HEX_QKJD2AE9
 	RET
+; PROCEDURE Card
+	.ENTRY	FORMATTEDOUTPUT_CARD_1PLN7GIE, ^M<>
+	SUBL2	#76, SP
+	CLRQ	-48(FP)
+	CLRQ	-40(FP)
+	CLRQ	-32(FP)
+	CLRQ	-24(FP)
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVQ	@12(AP), -16(FP)
+	MOVQ	@8(AP), -8(FP)
+; line 68
+	MOVL	#3, -64(FP)
+	MOVQ	-8(FP), -72(FP)
+	MOVAQ	-72(FP), -60(FP)
+	MOVAB	-48(FP), -56(FP)
+	MOVL	#32, -52(FP)
+	CALLG	-64(FP), G^FORMATTEDTEXT_CARD_H7A1N6KC
+; line 69
+	MOVL	#4, -68(FP)
+	CVTWL	4(AP), -64(FP)
+	MOVAB	-48(FP), -60(FP)
+	MOVL	#32, -56(FP)
+	MOVQ	-16(FP), -76(FP)
+	MOVAQ	-76(FP), -52(FP)
+	CALLG	-68(FP), FORMATTEDOUTPUT_FIELD_I7OUHH0S
+	RET
+; PROCEDURE CardHex
+	.ENTRY	FORMATTEDOUTPUT_CARDHE_NB6AI7NN, ^M<>
+	SUBL2	#84, SP
+	CLRQ	-48(FP)
+	CLRQ	-40(FP)
+	CLRQ	-32(FP)
+	CLRQ	-24(FP)
+	CLRQ	-16(FP)
+	CLRQ	-8(FP)
+	MOVQ	@12(AP), -16(FP)
+	MOVQ	@8(AP), -8(FP)
+; line 78
+	MOVL	#4, -68(FP)
+	MOVQ	-8(FP), -76(FP)
+	MOVAQ	-76(FP), -64(FP)
+	MOVQ	-16(FP), -84(FP)
+	MOVAQ	-84(FP), -60(FP)
+	MOVAB	-48(FP), -56(FP)
+	MOVL	#32, -52(FP)
+	CALLG	-68(FP), G^FORMATTEDTEXT_CARDHEX_QV4UDIA9
+; line 79
+	MOVL	#3, -64(FP)
+	CVTWL	4(AP), -60(FP)
+	MOVAB	-48(FP), -56(FP)
+	MOVL	#32, -52(FP)
+	CALLG	-64(FP), FORMATTEDOUTPUT_STRING_DF2I8F7P
+	RET
 ; PROCEDURE Ten
 	.ENTRY	FORMATTEDOUTPUT_TEN_1700MGMV, ^M<>
 	SUBL2	#12, SP
 	CLRL	-4(FP)
 	MOVW	4(AP), -2(FP)
-; line 67
+; line 86
 	MOVL	#1, -12(FP)
 	CVTWL	-2(FP), -8(FP)
 	CALLG	-12(FP), G^FORMATTEDTEXT_TEN_DJ9CEDFT
 	RET
 	PUSHL	#3
-	PUSHL	#68
+	PUSHL	#87
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#4, G^POC_TRAP
@@ -252,14 +316,14 @@ L_4:
 	CLRQ	-8(FP)
 	MOVW	12(AP), -6(FP)
 	MOVF	8(AP), -4(FP)
-; line 77
+; line 96
 	MOVL	#4, -60(FP)
 	MOVF	-4(FP), -56(FP)
 	CVTWL	-6(FP), -52(FP)
 	MOVAB	-38(FP), -48(FP)
 	MOVL	#32, -44(FP)
 	CALLG	-60(FP), G^FORMATTEDTEXT_REAL_VBB34ISE
-; line 78
+; line 97
 	MOVL	#4, -60(FP)
 	CVTWL	4(AP), -56(FP)
 	MOVAB	-38(FP), -52(FP)
@@ -280,7 +344,7 @@ L_4:
 	CLRL	-4(FP)
 	MOVW	12(AP), -10(FP)
 	MOVQ	@8(AP), -8(FP)
-; line 86
+; line 105
 	MOVL	#4, -64(FP)
 	MOVG	-8(FP), -72(FP)
 	MOVAQ	-72(FP), -60(FP)
@@ -288,7 +352,7 @@ L_4:
 	MOVAB	-42(FP), -52(FP)
 	MOVL	#32, -48(FP)
 	CALLG	-64(FP), G^FORMATTEDTEXT_LONGREAL_5EKQFPF4
-; line 87
+; line 106
 	MOVL	#4, -64(FP)
 	CVTWL	4(AP), -60(FP)
 	MOVAB	-42(FP), -56(FP)
@@ -313,6 +377,6 @@ L_BODY:
 	RET
 
 ; the module's key, which its importers refer to
-POC_K1_10221897D1046E8A == 0
+POC_K1_41D93F18327CF36F == 0
 
 	.END

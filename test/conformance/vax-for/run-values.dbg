@@ -1,12 +1,15 @@
-! n = 3, s = 0: after each FOR i, n, l are 4, 3, 6 (0 + 1 + 2 + 3);
-! 0, 3, 1 (10, 8, 6, 4, 2: five times); l 100002 (3, 6, ..., 99999, the
-! limit read once); i 6, n 9 (0 .. 5)
+! n = 3, s = 0: after each FOR i, n, l are 3, 3, 6 (0 + 1 + 2 + 3);
+! 2, 3, 1 (10, 8, 6, 4, 2: five times); l 99999 (3, 6, ..., 99999, the
+! limit read once); i 5, n 9 (0 .. 5). Each loop ends before a step that
+! would pass its limit, so its variable keeps the last value it had in
+! the body (design section 20.1, proposal 8); breakpoints at the
+! listing's lines of the instruction after each loop
 DEPOSIT/WORD VAXFOR\VAXFOR_N_PLT3HAA7 = 3
 DEPOSIT/BYTE VAXFOR\VAXFOR_S_PLT3GU00 = 0
-SET BREAK VAXFOR\%LINE 79
-SET BREAK VAXFOR\%LINE 91
-SET BREAK VAXFOR\%LINE 101
-SET BREAK VAXFOR\%LINE 115
+SET BREAK VAXFOR\%LINE 102
+SET BREAK VAXFOR\%LINE 119
+SET BREAK VAXFOR\%LINE 134
+SET BREAK VAXFOR\%LINE 153
 GO
 EXAMINE/WORD VAXFOR\VAXFOR_I_PLT3H91E:VAXFOR\VAXFOR_N_PLT3HAA7
 EXAMINE/BYTE VAXFOR\VAXFOR_S_PLT3GU00

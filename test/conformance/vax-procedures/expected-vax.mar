@@ -1,6 +1,14 @@
-;; Reviewed 2026-10-08 by the user (written by Claude, from the
-;; design, the MACRO manual and the VAX's listing). Why this is
-;; right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 8, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-08. Why this is right:
+;; - The FOR loop ends before a step that would pass its final value
+;;   (proposal 8), as on LLVM: after the body, SUBx3 at the variable's
+;;   width computes the distance left (the final value less the variable
+;;   counting up, the variable less the final value counting down), CMPx
+;;   compares it with the step's size, and BGEQU goes on to the step,
+;;   else JMP L^ leaves the loop. It adds one label, so the labels after
+;;   it are numbered one more.
+;; The rest is as the user reviewed it on 2026-10-08:
 ;; - Tick is exported, so .ENTRY, a global symbol (MACRO 6, .ENTRY); the
 ;;   others are private: a local label (":") and .WORD of the mask, which
 ;;   CALLS and CALLG take as .ENTRY's (section 7, decided 2026-10-06).
@@ -137,6 +145,11 @@ L_11:
 	ASHL	#-31, R0, R1
 	ADDL2	R0, -12(FP)
 	ADWC	R1, -8(FP)
+	SUBW3	-2(FP), -16(FP), R0
+	CMPW	R0, #1
+	BGEQU	L_12
+	JMP	L^L_10
+L_12:
 	INCW	-2(FP)
 	JMP	L^L_9
 L_10:
@@ -170,13 +183,13 @@ VAXPROCEDURES_LAST_QSD8E9N4:
 	.WORD	^M<>
 ; line 44
 	TSTW	VAXPROCEDURES_COUNT_UOKFS6SR
-	BGTR	L_13
-	JMP	L^L_12
-L_13:
+	BGTR	L_14
+	JMP	L^L_13
+L_14:
 ; line 44
 	MOVL	#120, R0
 	RET
-L_12:
+L_13:
 	PUSHL	#3
 	PUSHL	#45
 	PUSHAB	L_MODULE_NAME

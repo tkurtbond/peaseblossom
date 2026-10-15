@@ -81,6 +81,35 @@ MODULE FormattedText;
     text[count] := 0X
   END Hex;
 
+  (* x's 64 bits read as an unsigned integer (a SYSTEM.CARD64's, taken as
+     a HUGEINT so that voc can compile this module), in decimal: x itself
+     if it is not negative, else x + 2^64. For a negative x, that is 2h + b
+     with b its low bit and h = ASH(x, -1) + 2^63 (the arithmetic shift,
+     moved up by 2^63, is the logical one), and h = 5q + s, so the value
+     is 10q + 2s + b: q's digits, then 2s + b. *)
+  PROCEDURE Card*(x: HUGEINT; VAR text: ARRAY OF CHAR);
+    VAR half, last: HUGEINT; l: LONGINT;
+  BEGIN
+    IF x >= 0 THEN
+      Int(x, text)
+    ELSE
+      half := ASH(x, -1) - MIN(HUGEINT);
+      Int(half DIV 5, text);
+      last := 2 * (half MOD 5);
+      IF ODD(x) THEN INC(last) END;
+      l := Length(text);
+      text[l] := CHR(ORD("0") + last); text[l + 1] := 0X
+    END
+  END Card;
+
+  (* x's 64 bits read as an unsigned integer, as Card, in hexadecimal
+     digits, upper case: at least n of them (n is taken to be within
+     1..16), and as many as the value needs if that is more. *)
+  PROCEDURE CardHex*(x, n: HUGEINT; VAR text: ARRAY OF CHAR);
+  BEGIN
+    IF x < 0 THEN Hex(x, 16, text) ELSE Hex(x, n, text) END
+  END CardHex;
+
   (* Real and LongReal *)
 
   PROCEDURE digit(n: HUGEINT; VAR s: ARRAY OF CHAR; VAR i: INTEGER);

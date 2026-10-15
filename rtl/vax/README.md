@@ -11,7 +11,9 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
 
 - `PocRtl.mar`, MACRO-32, which a program poc builds for `vax-dec-vms`
   links as `POCRTL.OBJ`. Its `POC_STRCMP`, `POC_HMUL`, `POC_HDIV` and
-  `POC_HMOD` are the final routines. `POC_TRAP` writes the trap's
+  `POC_HMOD` are the final routines, as are `POC_CDIV`, `POC_CMOD` and
+  `POC_CTOG`, the `CARD64` division and conversion to G_floating
+  (section 20.1, proposals 3 and 4). `POC_TRAP` writes the trap's
   message to `SYS$ERROR` and exits with the trap's status, and
   `POC_HALT` exits with `HALT`'s (section 14, item 10). `POC_ROOTS`
   lists each module's root table, in every program. The rest are what
@@ -24,7 +26,11 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   `SYS$OUTPUT` and `SYS$ERROR` through `FormattedOutput.Mod` and
   `LineOutput.Mod`, a record for each `Ln` (section 14, item 2, and
   section 15, proposal 8). `IsConsole` asks `$GETDVIW` whether the
-  stream is a terminal (section 19.7, proposal 3).
+  stream is a terminal (section 19.7, proposal 3). `Card` and `CardHex`
+  write a CARD's value (section 20.1, proposal 9). `Err`'s take a
+  `CardinalTypes.Card64`.
+- `CardinalTypes.Mod`, internal: `rtl/llvm`'s. It names `SYSTEM.CARD64`
+  for `Err`, as voc builds `Err` for Stage 0 (section 20.1, proposal 9).
 - `FormattedOutput.Mod`, internal: `rtl/llvm`'s formatting that `Out`
   and `Err` share, with `LineOutput`'s stream in place of a file
   descriptor; the text of a real is `FormattedText`'s (section 19.9,

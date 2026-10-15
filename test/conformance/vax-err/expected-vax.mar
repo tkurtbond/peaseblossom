@@ -1,6 +1,10 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from design
-;; section 15, the LLVM backend's output, the guest runs and the
-;; debugger run). Why this is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 9, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-13. Why this is right:
+;; - Only Err's key changes (the .EXTERNAL POC_K1_ symbol): Err gained
+;;   Card and CardHex (proposal 9), so its symbol file, and with it its
+;;   key, is new.
+;; The rest is as the user reviewed it on 2026-10-13:
 ;; - ErrBasics imports Err, rtl/vax/Err.Mod compiled with it
 ;;   (expected-vax-Err.mar, and LineOutput's, expected-vax-
 ;;   LineOutput.mar): its initializer calls ERR_INIT first, and its calls
@@ -45,7 +49,7 @@ L_INITIALISED:
 	.EXTERNAL	ERR_HEX_7HDEIC1V
 	.EXTERNAL	ERR_FLUSH_QHE7JF08
 	.EXTERNAL	ERR_INIT
-	.EXTERNAL	POC_K1_68F150995B974AD4
+	.EXTERNAL	POC_K1_87AF85548572A3E7
 
 ; its string constants
 	.PSECT	POC_CONST

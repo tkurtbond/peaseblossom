@@ -1,6 +1,14 @@
-;; Written by Claude, 2026-10-13, for Phase 17 step 3 (design section
-;; 19.7, proposal 1, approved by the user); reviewed by the user,
-;; 2026-10-13. Why this is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 8, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-13. Why this is right:
+;; - The FOR loop ends before a step that would pass its final value
+;;   (proposal 8), as on LLVM: after the body, SUBx3 at the variable's
+;;   width computes the distance left (the final value less the variable
+;;   counting up, the variable less the final value counting down), CMPx
+;;   compares it with the step's size, and BGEQU goes on to the step,
+;;   else JMP L^ leaves the loop. It adds one label, so the labels after
+;;   it are numbered one more.
+;; The rest is as the user reviewed it on 2026-10-13:
 ;; - RealDigits is rtl/llvm's but ExactDigits' reading of the bits:
 ;;   v's quadword (MOVQ) is taken apart by POC_HMOD and POC_HDIV with
 ;;   65536 into four words, the first lowest. first DIV 16 MOD 2048 is
@@ -470,6 +478,11 @@ L_40:
 	MOVQ	R2, -3236(FP)
 	ADDL2	R0, -3236(FP)
 	ADWC	R1, -3232(FP)
+	SUBW3	-3250(FP), #3, R0
+	CMPW	R0, #1
+	BGEQU	L_41
+	JMP	L^L_39
+L_41:
 	INCW	-3250(FP)
 	JMP	L^L_38
 L_39:
@@ -481,29 +494,29 @@ L_39:
 ; line 119
 	CLRW	-3212(FP)
 ; line 120
-L_41:
+L_42:
 	CLRB	R0
 	TSTL	-3232(FP)
-	BGTR	L_43
-	BLSS	L_44
+	BGTR	L_44
+	BLSS	L_45
 	TSTL	-3236(FP)
-	BLEQU	L_44
-L_43:
-	MOVB	#1, R0
+	BLEQU	L_45
 L_44:
-	BLBS	R0, L_45
-	JMP	L^L_42
+	MOVB	#1, R0
 L_45:
+	BLBS	R0, L_46
+	JMP	L^L_43
+L_46:
 ; line 121
 	CVTWL	-3212(FP), R0
 	CMPL	R0, #399
-	BLEQU	L_46
+	BLEQU	L_47
 	PUSHL	#14
 	PUSHL	#121
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_46:
+L_47:
 	MULL2	#8, R0
 	MOVAB	-3208(FP)[R0], R0
 	MOVL	#^X00008000, -3264(FP)
@@ -524,13 +537,13 @@ L_46:
 	MOVQ	R0, -3236(FP)
 ; line 121
 	INCW	-3212(FP)
-	JMP	L^L_41
-L_42:
+	JMP	L^L_42
+L_43:
 ; line 123
 	TSTW	-3248(FP)
-	BGEQ	L_49
-	JMP	L^L_48
-L_49:
+	BGEQ	L_50
+	JMP	L^L_49
+L_50:
 ; line 124
 	MOVL	#3, -3272(FP)
 	MOVAB	-3212(FP), -3268(FP)
@@ -539,8 +552,8 @@ L_49:
 	CALLG	-3272(FP), REALDIGITS_SHIFTLEFT_E4GULVO4
 ; line 124
 	CLRW	-3254(FP)
-	JMP	L^L_47
-L_48:
+	JMP	L^L_48
+L_49:
 ; line 126
 	MOVL	#3, -3272(FP)
 	MOVAB	-3212(FP), -3268(FP)
@@ -550,15 +563,15 @@ L_48:
 	CALLG	-3272(FP), REALDIGITS_MULPOWER5_6D1UG2ER
 ; line 126
 	MOVW	-3248(FP), -3254(FP)
-L_47:
+L_48:
 ; line 129
 	CLRW	@16(AP)
 ; line 130
-L_50:
+L_51:
 	TSTW	-3212(FP)
-	BGTR	L_52
-	JMP	L^L_51
-L_52:
+	BGTR	L_53
+	JMP	L^L_52
+L_53:
 ; line 131
 	MOVL	#3, -3272(FP)
 	MOVAB	-3212(FP), -3268(FP)
@@ -571,21 +584,21 @@ L_52:
 ; line 132
 	CLRW	-3250(FP)
 ; line 133
-L_53:
+L_54:
 	CMPW	-3250(FP), #4
-	BLSS	L_55
-	JMP	L^L_54
-L_55:
+	BLSS	L_56
+	JMP	L^L_55
+L_56:
 ; line 134
 	CVTWL	@16(AP), R0
 	CMPL	R0, 12(AP)
-	BLSSU	L_56
+	BLSSU	L_57
 	PUSHL	#13
 	PUSHL	#134
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_56:
+L_57:
 	MOVL	#^X0000000A, -3264(FP)
 	CLRL	-3260(FP)
 	MOVL	#2, -3276(FP)
@@ -608,92 +621,92 @@ L_56:
 	INCW	@16(AP)
 ; line 135
 	INCW	-3250(FP)
-	JMP	L^L_53
-L_54:
-	JMP	L^L_50
-L_51:
+	JMP	L^L_54
+L_55:
+	JMP	L^L_51
+L_52:
 ; line 138
-L_57:
+L_58:
 	CMPW	@16(AP), #1
-	BGTR	L_59
-	JMP	L^L_58
-L_59:
+	BGTR	L_60
+	JMP	L^L_59
+L_60:
 	SUBW3	#1, @16(AP), R0
 	CVTWL	R0, R0
 	CMPL	R0, 12(AP)
-	BLSSU	L_60
+	BLSSU	L_61
 	PUSHL	#36
 	PUSHL	#138
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_60:
-	CMPB	@8(AP)[R0], #48
-	BEQL	L_61
-	JMP	L^L_58
 L_61:
+	CMPB	@8(AP)[R0], #48
+	BEQL	L_62
+	JMP	L^L_59
+L_62:
 ; line 138
 	DECW	@16(AP)
-	JMP	L^L_57
-L_58:
+	JMP	L^L_58
+L_59:
 ; line 139
 	CLRW	-3250(FP)
 ; line 139
 	SUBW3	#1, @16(AP), -3252(FP)
 ; line 140
-L_62:
+L_63:
 	CMPW	-3250(FP), -3252(FP)
-	BLSS	L_64
-	JMP	L^L_63
-L_64:
+	BLSS	L_65
+	JMP	L^L_64
+L_65:
 ; line 140
 	CVTWL	-3250(FP), R0
 	CMPL	R0, 12(AP)
-	BLSSU	L_65
+	BLSSU	L_66
 	PUSHL	#32
 	PUSHL	#140
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_65:
+L_66:
 	MOVB	@8(AP)[R0], -3255(FP)
 ; line 140
 	CVTWL	-3250(FP), R0
 	CMPL	R0, 12(AP)
-	BLSSU	L_66
+	BLSSU	L_67
 	PUSHL	#40
 	PUSHL	#140
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_66:
+L_67:
 	CVTWL	-3252(FP), R1
 	CMPL	R1, 12(AP)
-	BLSSU	L_67
+	BLSSU	L_68
 	PUSHL	#50
 	PUSHL	#140
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_67:
+L_68:
 	MOVB	@8(AP)[R1], @8(AP)[R0]
 ; line 140
 	CVTWL	-3252(FP), R0
 	CMPL	R0, 12(AP)
-	BLSSU	L_68
+	BLSSU	L_69
 	PUSHL	#58
 	PUSHL	#140
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_68:
+L_69:
 	MOVB	-3255(FP), @8(AP)[R0]
 ; line 140
 	INCW	-3250(FP)
 ; line 140
 	DECW	-3252(FP)
-	JMP	L^L_62
-L_63:
+	JMP	L^L_63
+L_64:
 ; line 141
 	SUBW3	#1, @16(AP), R0
 	ADDW3	-3254(FP), R0, @20(AP)
@@ -707,19 +720,19 @@ REALDIGITS_ROUNDDIGITS_448U2TKJ:
 	CLRB	-5(FP)
 ; line 154
 	CMPW	12(AP), 16(AP)
-	BGTR	L_70
-	JMP	L^L_69
-L_70:
+	BGTR	L_71
+	JMP	L^L_70
+L_71:
 ; line 155
 	CVTWL	16(AP), R0
 	CMPL	R0, 8(AP)
-	BLSSU	L_71
+	BLSSU	L_72
 	PUSHL	#20
 	PUSHL	#155
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_71:
+L_72:
 	MOVZBW	@4(AP)[R0], R1
 	SUBW3	#48, R1, -4(FP)
 ; line 156
@@ -727,226 +740,226 @@ L_71:
 ; line 156
 	ADDW3	#1, 16(AP), -2(FP)
 ; line 157
-L_72:
+L_73:
 	CMPW	-2(FP), 12(AP)
-	BLSS	L_74
-	JMP	L^L_73
-L_74:
+	BLSS	L_75
+	JMP	L^L_74
+L_75:
 ; line 157
 	CVTWL	-2(FP), R0
 	CMPL	R0, 8(AP)
-	BLSSU	L_76
+	BLSSU	L_77
 	PUSHL	#33
 	PUSHL	#157
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_76:
-	CMPB	@4(AP)[R0], #48
-	BNEQ	L_77
-	JMP	L^L_75
 L_77:
+	CMPB	@4(AP)[R0], #48
+	BNEQ	L_78
+	JMP	L^L_76
+L_78:
 ; line 157
 	MOVB	#1, -6(FP)
-L_75:
+L_76:
 ; line 157
 	INCW	-2(FP)
-	JMP	L^L_72
-L_73:
+	JMP	L^L_73
+L_74:
 ; line 158
 	TSTW	16(AP)
-	BGTR	L_80
-	JMP	L^L_79
-L_80:
+	BGTR	L_81
+	JMP	L^L_80
+L_81:
 ; line 158
 	SUBW3	#1, 16(AP), R0
 	CVTWL	R0, R0
 	CMPL	R0, 8(AP)
-	BLSSU	L_81
+	BLSSU	L_82
 	PUSHL	#66
 	PUSHL	#158
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_81:
+L_82:
 	MOVZBW	@4(AP)[R0], R1
 	SUBW2	#48, R1
 	BICB3	#254, R1, R1
 	MOVB	R1, -7(FP)
-	JMP	L^L_78
-L_79:
+	JMP	L^L_79
+L_80:
 ; line 159
 	CLRB	-7(FP)
-L_78:
+L_79:
 ; line 161
 	CMPW	-4(FP), #5
-	BGTR	L_84
-	JMP	L^L_83
-L_84:
+	BGTR	L_85
+	JMP	L^L_84
+L_85:
 ; line 161
 	MOVB	#1, -5(FP)
-	JMP	L^L_82
-L_83:
+	JMP	L^L_83
+L_84:
 ; line 162
 	CMPW	-4(FP), #5
-	BEQL	L_85
-	JMP	L^L_82
-L_85:
+	BEQL	L_86
+	JMP	L^L_83
+L_86:
 ; line 162
 	MOVB	-6(FP), R0
-	BLBS	R0, L_86
+	BLBS	R0, L_87
 	MOVB	-7(FP), R0
-L_86:
+L_87:
 	MOVB	R0, -5(FP)
-L_82:
-L_69:
+L_83:
+L_70:
 ; line 165
 	CLRW	-2(FP)
 ; line 166
-L_87:
+L_88:
 	CMPW	-2(FP), 16(AP)
-	BLSS	L_89
-	JMP	L^L_88
-L_89:
+	BLSS	L_90
+	JMP	L^L_89
+L_90:
 ; line 167
 	CMPW	-2(FP), 12(AP)
-	BLSS	L_92
-	JMP	L^L_91
-L_92:
+	BLSS	L_93
+	JMP	L^L_92
+L_93:
 ; line 167
 	CVTWL	-2(FP), R0
 	CMPL	R0, 24(AP)
-	BLSSU	L_93
-	PUSHL	#32
-	PUSHL	#167
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_93:
-	CVTWL	-2(FP), R1
-	CMPL	R1, 8(AP)
 	BLSSU	L_94
-	PUSHL	#42
+	PUSHL	#32
 	PUSHL	#167
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
 L_94:
-	MOVB	@4(AP)[R1], @20(AP)[R0]
-	JMP	L^L_90
-L_91:
-; line 167
-	CVTWL	-2(FP), R0
-	CMPL	R0, 24(AP)
+	CVTWL	-2(FP), R1
+	CMPL	R1, 8(AP)
 	BLSSU	L_95
-	PUSHL	#57
+	PUSHL	#42
 	PUSHL	#167
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
 L_95:
+	MOVB	@4(AP)[R1], @20(AP)[R0]
+	JMP	L^L_91
+L_92:
+; line 167
+	CVTWL	-2(FP), R0
+	CMPL	R0, 24(AP)
+	BLSSU	L_96
+	PUSHL	#57
+	PUSHL	#167
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_96:
 	MOVB	#48, @20(AP)[R0]
-L_90:
+L_91:
 ; line 168
 	INCW	-2(FP)
-	JMP	L^L_87
-L_88:
+	JMP	L^L_88
+L_89:
 ; line 170
-	BLBS	-5(FP), L_97
-	JMP	L^L_96
-L_97:
+	BLBS	-5(FP), L_98
+	JMP	L^L_97
+L_98:
 ; line 171
 	SUBW3	#1, 16(AP), -2(FP)
 ; line 172
-L_98:
+L_99:
 	TSTW	-2(FP)
-	BGEQ	L_100
-	JMP	L^L_99
-L_100:
+	BGEQ	L_101
+	JMP	L^L_100
+L_101:
 	CVTWL	-2(FP), R0
 	CMPL	R0, 24(AP)
-	BLSSU	L_101
+	BLSSU	L_102
 	PUSHL	#32
 	PUSHL	#172
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_101:
-	CMPB	@20(AP)[R0], #57
-	BEQL	L_102
-	JMP	L^L_99
 L_102:
+	CMPB	@20(AP)[R0], #57
+	BEQL	L_103
+	JMP	L^L_100
+L_103:
 ; line 172
 	CVTWL	-2(FP), R0
 	CMPL	R0, 24(AP)
-	BLSSU	L_103
+	BLSSU	L_104
 	PUSHL	#52
 	PUSHL	#172
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_103:
+L_104:
 	MOVB	#48, @20(AP)[R0]
 ; line 172
 	DECW	-2(FP)
-	JMP	L^L_98
-L_99:
+	JMP	L^L_99
+L_100:
 ; line 173
 	TSTW	-2(FP)
-	BGEQ	L_106
-	JMP	L^L_105
-L_106:
+	BGEQ	L_107
+	JMP	L^L_106
+L_107:
 ; line 174
 	CVTWL	-2(FP), R0
 	CMPL	R0, 24(AP)
-	BLSSU	L_107
-	PUSHL	#16
-	PUSHL	#174
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#4, G^POC_TRAP
-L_107:
-	CVTWL	-2(FP), R1
-	CMPL	R1, 24(AP)
 	BLSSU	L_108
-	PUSHL	#37
+	PUSHL	#16
 	PUSHL	#174
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
 L_108:
+	CVTWL	-2(FP), R1
+	CMPL	R1, 24(AP)
+	BLSSU	L_109
+	PUSHL	#37
+	PUSHL	#174
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#4, G^POC_TRAP
+L_109:
 	MOVZBW	@20(AP)[R1], R2
 	INCW	R2
 	CVTWB	R2, @20(AP)[R0]
-	JMP	L^L_104
-L_105:
+	JMP	L^L_105
+L_106:
 ; line 176
 	CLRL	R0
 	CMPL	R0, 24(AP)
-	BLSSU	L_109
+	BLSSU	L_110
 	PUSHL	#16
 	PUSHL	#176
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_109:
+L_110:
 	MOVB	#49, @20(AP)[R0]
 ; line 176
 	INCW	@28(AP)
-L_104:
-L_96:
+L_105:
+L_97:
 ; line 179
 	MOVB	-5(FP), R0
-	BLBS	R0, L_110
-	JMP	L^L_111
-L_110:
+	BLBS	R0, L_111
+	JMP	L^L_112
+L_111:
 	CLRB	R1
 	TSTW	-2(FP)
-	BGEQ	L_112
+	BGEQ	L_113
 	MOVB	#1, R1
-L_112:
+L_113:
 	MOVB	R1, R0
-L_111:
+L_112:
 	MOVZBL	R0, R0
 	RET
 	PUSHL	#3
@@ -982,13 +995,13 @@ L_111:
 ; line 192
 	CVTWL	8(AP), R0
 	CMPL	R0, 16(AP)
-	BLSSU	L_113
+	BLSSU	L_114
 	PUSHL	#12
 	PUSHL	#192
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_113:
+L_114:
 	CLRB	@12(AP)[R0]
 	RET
 ; PROCEDURE Fixed
@@ -1010,21 +1023,21 @@ L_113:
 	ADDW3	8(AP), R0, -812(FP)
 ; line 207
 	CMPW	-812(FP), 12(AP)
-	BGTR	L_115
-	JMP	L^L_114
-L_115:
+	BGTR	L_116
+	JMP	L^L_115
+L_116:
 ; line 207
 	MOVW	12(AP), -812(FP)
-L_114:
+L_115:
 ; line 208
 	TSTW	-812(FP)
-	BLSS	L_118
-	JMP	L^L_117
-L_118:
+	BLSS	L_119
+	JMP	L^L_118
+L_119:
 ; line 209
 	CLRW	@24(AP)
-	JMP	L^L_116
-L_117:
+	JMP	L^L_117
+L_118:
 ; line 210
 	MOVL	#7, -844(FP)
 	MOVAB	-808(FP), -840(FP)
@@ -1035,24 +1048,24 @@ L_117:
 	MOVL	20(AP), -820(FP)
 	MOVL	28(AP), -816(FP)
 	CALLG	-844(FP), REALDIGITS_ROUNDDIGITS_448U2TKJ
-	BLBS	R0, L_120
-	JMP	L^L_119
-L_120:
+	BLBS	R0, L_121
+	JMP	L^L_120
+L_121:
 ; line 211
 	MOVW	-812(FP), @24(AP)
 ; line 212
 	TSTW	@24(AP)
-	BEQL	L_122
-	JMP	L^L_121
-L_122:
+	BEQL	L_123
+	JMP	L^L_122
+L_123:
 ; line 212
 	MOVW	#1, @24(AP)
-L_121:
-	JMP	L^L_116
-L_119:
+L_122:
+	JMP	L^L_117
+L_120:
 ; line 214
 	MOVW	-812(FP), @24(AP)
-L_116:
+L_117:
 	RET
 
 ; the module's initializer: once only

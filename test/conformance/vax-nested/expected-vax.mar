@@ -1,6 +1,14 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from the design,
-;; the MACRO manual, LLVM's code generator and the debugger runs). Why
-;; this is right:
+;; Written by Claude, 2026-10-14, for Phase 17 (design section 20,
+;; proposal 8, approved by the user); reviewed by the user, 2026-10-14. It
+;; replaces the file the user reviewed on 2026-10-11. Why this is right:
+;; - Each of the 2 FOR loops ends before a step that would pass its
+;;   final value (proposal 8), as on LLVM: after the body, SUBx3 at the
+;;   variable's width computes the distance left (the final value less
+;;   the variable counting up, the variable less the final value
+;;   counting down), CMPx compares it with the step's size, and BGEQU
+;;   goes on to the step, else JMP L^ leaves the loop. Each adds one
+;;   label, so the labels after each are numbered one more.
+;; The rest is as the user reviewed it on 2026-10-11:
 ;; - Phase 16 step 3 (section 14, item 8): a nested procedure is lifted
 ;;   to a procedure of its own, a local label and .WORD of its mask,
 ;;   never .ENTRY, since only its enclosing procedures call it. Its
@@ -516,40 +524,45 @@ L_20:
 	CALLS	#4, G^POC_TRAP
 L_21:
 	CLRW	@12(AP)[R0]
+	SUBW3	-2(FP), -8(FP), R0
+	CMPW	R0, #1
+	BGEQU	L_22
+	JMP	L^L_17
+L_22:
 	INCW	-2(FP)
 	JMP	L^L_16
 L_17:
 ; line 86
 	CLRL	R0
 	CMPL	R0, 8(AP)
-	BLSSU	L_22
+	BLSSU	L_23
 	PUSHL	#9
 	PUSHL	#86
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_22:
+L_23:
 	MOVW	#99, @4(AP)[R0]
 ; line 87
 	CMPW	VAXNESTED_MODE_9GNDIATO, #2
-	BEQL	L_24
-	JMP	L^L_23
-L_24:
+	BEQL	L_25
+	JMP	L^L_24
+L_25:
 ; line 87
 	MOVL	8(AP), R0
 	CVTLW	R0, -2(FP)
 ; line 87
 	CVTWL	-2(FP), R0
 	CMPL	R0, 8(AP)
-	BLSSU	L_25
+	BLSSU	L_26
 	PUSHL	#51
 	PUSHL	#87
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_25:
+L_26:
 	MOVW	@4(AP)[R0], -4(FP)
-L_23:
+L_24:
 ; line 88
 	CVTWL	-4(FP), R0
 	RET
@@ -572,16 +585,16 @@ VAXNESTED_SUM_V8QBIJVA:
 	PUSHL	R0
 	MOVL	4(AP), R1
 	MOVL	-4(FP), R3
-L_28:
+L_29:
 	MOVL	(SP), R0
 	CMPL	R0, #65535
-	BLEQU	L_29
+	BLEQU	L_30
 	MOVL	#65535, R0
-L_29:
+L_30:
 	SUBL2	R0, (SP)
 	MOVC3	R0, (R1), (R3)
 	TSTL	(SP)
-	BNEQ	L_28
+	BNEQ	L_29
 	ADDL2	#4, SP
 ; line 91
 	MOVL	#4, -24(FP)
@@ -592,23 +605,23 @@ L_29:
 	CALLG	-24(FP), VAXNESTED_SUM_ADD_NA6PS4MN
 	CLRL	R1
 	CMPL	R1, 8(AP)
-	BLSSU	L_26
+	BLSSU	L_27
 	PUSHL	#22
 	PUSHL	#91
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_26:
+L_27:
 	ADDW2	@-4(FP)[R1], R0
 	MOVL	#1, R1
 	CMPL	R1, 16(AP)
-	BLSSU	L_27
+	BLSSU	L_28
 	PUSHL	#29
 	PUSHL	#91
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#4, G^POC_TRAP
-L_27:
+L_28:
 	ADDW2	@12(AP)[R1], R0
 	CVTWL	R0, R0
 	RET
@@ -672,21 +685,21 @@ VAXNESTED_COUNTERDESC__08ASE5CP:
 	.WORD	^M<>
 ; line 106
 	CMPW	VAXNESTED_MODE_9GNDIATO, #1
-	BEQL	L_31
-	JMP	L^L_30
-L_31:
+	BEQL	L_32
+	JMP	L^L_31
+L_32:
 ; line 106
 	CLRL	@4(AP)
-L_30:
+L_31:
 ; line 107
 	MOVL	@4(AP), R0
-	BNEQ	L_32
+	BNEQ	L_33
 	PUSHL	#11
 	PUSHL	#107
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_32:
+L_33:
 	ADDW2	@8(AP), (R0)
 	RET
 ; PROCEDURE (Counter) Bump
@@ -707,13 +720,13 @@ L_32:
 	CALLG	-20(FP), VAXNESTED_COUNTERDESC__08ASE5CP
 ; line 110
 	MOVL	-4(FP), R0
-	BNEQ	L_33
+	BNEQ	L_34
 	PUSHL	#24
 	PUSHL	#110
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_33:
+L_34:
 	CVTWL	(R0), R0
 	RET
 	PUSHL	#3
@@ -727,20 +740,20 @@ VAXNESTED_TREE_VISIT_CS2NDVKQ:
 	SUBL2	#8, SP
 ; line 117
 	TSTW	@4(AP)
-	BGTR	L_36
-	JMP	L^L_35
-L_36:
+	BGTR	L_37
+	JMP	L^L_36
+L_37:
 ; line 117
 	MOVL	#1, -8(FP)
 	SUBW3	#1, @4(AP), R0
 	CVTWL	R0, -4(FP)
 	CALLG	-8(FP), VAXNESTED_TREE_3H2VA0K3
 	ADDW3	@4(AP), R0, @8(AP)
-	JMP	L^L_34
-L_35:
+	JMP	L^L_35
+L_36:
 ; line 117
 	CLRW	@8(AP)
-L_34:
+L_35:
 ; line 118
 	CVTWL	@8(AP), R0
 	RET
@@ -784,23 +797,23 @@ VAXNESTED_BUILD_PUSH_U74E8OSH:
 	MOVL	R0, -4(FP)
 ; line 129
 	MOVL	-4(FP), R0
-	BNEQ	L_37
+	BNEQ	L_38
 	PUSHL	#15
 	PUSHL	#129
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_37:
+L_38:
 	MOVW	4(AP), (R0)
 ; line 129
 	MOVL	-4(FP), R0
-	BNEQ	L_38
+	BNEQ	L_39
 	PUSHL	#27
 	PUSHL	#129
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_38:
+L_39:
 	MOVL	@8(AP), 4(R0)
 ; line 129
 	MOVL	-4(FP), @8(AP)
@@ -815,50 +828,55 @@ VAXNESTED_BUILD_OPB9Q5LL:
 ; line 133
 	MOVW	#1, -6(FP)
 	MOVW	4(AP), -12(FP)
-L_39:
+L_40:
 	CMPW	-6(FP), -12(FP)
-	BLEQ	L_41
-	JMP	L^L_40
-L_41:
+	BLEQ	L_42
+	JMP	L^L_41
+L_42:
 ; line 133
 	MOVL	#2, -24(FP)
 	CVTWL	-6(FP), -20(FP)
 	MOVAB	-4(FP), -16(FP)
 	CALLG	-24(FP), VAXNESTED_BUILD_PUSH_U74E8OSH
+	SUBW3	-6(FP), -12(FP), R0
+	CMPW	R0, #1
+	BGEQU	L_43
+	JMP	L^L_41
+L_43:
 	INCW	-6(FP)
-	JMP	L^L_39
-L_40:
+	JMP	L^L_40
+L_41:
 ; line 134
 	CLRW	-8(FP)
 ; line 135
-L_42:
-	TSTL	-4(FP)
-	BNEQ	L_44
-	JMP	L^L_43
 L_44:
+	TSTL	-4(FP)
+	BNEQ	L_46
+	JMP	L^L_45
+L_46:
 ; line 135
 	MULW3	#10, -8(FP), R0
 	MOVL	-4(FP), R1
-	BNEQ	L_45
+	BNEQ	L_47
 	PUSHL	#39
 	PUSHL	#135
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_45:
+L_47:
 	ADDW3	(R1), R0, -8(FP)
 ; line 135
 	MOVL	-4(FP), R0
-	BNEQ	L_46
+	BNEQ	L_48
 	PUSHL	#57
 	PUSHL	#135
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_46:
+L_48:
 	MOVL	4(R0), -4(FP)
-	JMP	L^L_42
-L_43:
+	JMP	L^L_44
+L_45:
 ; line 136
 	CVTWL	-8(FP), R0
 	RET
@@ -1011,24 +1029,24 @@ L_BODY:
 	MOVL	R0, VAXNESTED_CNT_V7IB772E
 ; line 165
 	MOVL	VAXNESTED_CNT_V7IB772E, R0
-	BNEQ	L_47
+	BNEQ	L_49
 	PUSHL	#13
 	PUSHL	#165
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_47:
+L_49:
 	MOVW	#1, (R0)
 ; line 166
 	MOVL	#2, -12(FP)
 	MOVL	VAXNESTED_CNT_V7IB772E, R0
-	BNEQ	L_48
+	BNEQ	L_50
 	PUSHL	#13
 	PUSHL	#166
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#4
 	CALLS	#4, G^POC_TRAP
-L_48:
+L_50:
 	MOVL	R0, -8(FP)
 	MOVL	#4, -4(FP)
 	MOVL	-8(FP), R1

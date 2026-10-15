@@ -60,6 +60,25 @@ MODULE FormattedOutput;
     LineOutput.Hex(stream, x, n)
   END Hex;
 
+  (* x's 64 bits read as an unsigned integer, in decimal, right-aligned in
+     a field n characters wide, as Int *)
+  PROCEDURE Card*(stream: INTEGER; x, n: HUGEINT);
+    VAR text: ARRAY FormattedText.maxText OF CHAR;
+  BEGIN
+    FormattedText.Card(x, text);
+    Field(stream, text, n)
+  END Card;
+
+  (* x's 64 bits read as an unsigned integer, in hexadecimal digits, upper
+     case: at least n of them (n is taken to be within 1..16), as many as
+     the value needs if that is more *)
+  PROCEDURE CardHex*(stream: INTEGER; x, n: HUGEINT);
+    VAR text: ARRAY FormattedText.maxText OF CHAR;
+  BEGIN
+    FormattedText.CardHex(x, n, text);
+    String(stream, text)
+  END CardHex;
+
   (* 10^e for e >= 0, by repeated squaring - exact up to 10^22; up to
      10^307, past which G_floating overflows *)
   PROCEDURE Ten*(e: INTEGER): LONGREAL;
