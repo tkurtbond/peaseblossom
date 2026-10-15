@@ -5521,3 +5521,289 @@ immediate and named.
    while the main line is in `GarbageCollectedHeap`. The same byte would
    catch it there, but the rule for signal handlers is a separate decision,
    left for `PLAN.md`'s "Ongoing" sections.
+
+## 23. The command language routines, `CLI$` (Phase 17 step 5)
+
+The inventory's item 5 (`doc/research/vms-native-library-inventory.md`)
+leaves the `CLI$` routines to be declared by hand, since no SDL module
+declares them. They let a program take DCL's qualifiers, parameters and
+keywords as every VMS utility does, instead of splitting its line
+itself, as `Modules` does. This section is the proposal for them. Its
+sources are the VMS 5.0 *Command Definition Utility* manual (`AA-LA60A`,
+"CDU" below) and the VMS 5.4 *Utility Routines* manual (`AA-LA67B`,
+chapter CLI).
+
+### 23.1 What the manuals say
+
+- **Two ways to use them** (CDU, section 2.1). In the first, the
+  program is run as a verb: a command definition file (`.CLD`) defines
+  the verb with `IMAGE`, and `SET COMMAND` adds it to the process's
+  command table. DCL then parses the line before the image runs, and
+  the program asks about it with `CLI$PRESENT` and `CLI$GET_VALUE`. In
+  the second, `SET COMMAND/OBJECT` makes an object module holding a
+  command table, which is linked with the program. The program then acts
+  as a command interpreter: it reads lines, parses each with
+  `CLI$DCL_PARSE`, and runs the verb's routine with `CLI$DISPATCH`. A
+  foreign command, CDU says, parses its own line: DCL does not.
+- **`CLI$DCL_PARSE([command_string], table, [param_routine],
+  [prompt_routine], [prompt_string])`.**
+  - The command string is passed by descriptor and is at most 256
+    characters.
+  - The table is passed *by value*: the address of the global symbol
+    that `SET COMMAND/OBJECT` defines, named by the `.CLD`'s `MODULE`
+    statement, or else by its file name.
+  - The two routines are called in `LIB$GET_INPUT`'s form, to ask for a
+    missing parameter and for a line when the command string is left
+    out. The prompt string is at most 32 characters.
+  - It does no symbol substitution.
+  - It both signals and returns an error. It returns `CLI$_NORMAL`,
+    `CLI$_IVVERB`, `CLI$_NOCOMD` (an empty line), or `RMS$_EOF` (CTRL/Z
+    at a prompt).
+- **`CLI$DISPATCH([userarg])`** calls the routine that the `.CLD`'s
+  `ROUTINE` clause names for the last verb parsed. It returns that
+  routine's status, or `CLI$_INVROUT`. CDU says to give a `ROUTINE` for
+  each verb of an object-module table. Its own example declares the table
+  `EXTERNAL INTEGER TEST_TABLE`, and its routines are global names.
+- **`CLI$GET_VALUE(entity, retdesc, [retlength])`** copies the next value
+  of a parameter, qualifier or keyword path into `retdesc` by
+  `STR$COPY_DX`, and gives its length in a word. It also knows `$VERB`
+  (the verb's first four letters) and `$LINE` (the whole command). It
+  returns `CLI$_COMMA` or `CLI$_CONCAT` when more values follow, and
+  `SS$_NORMAL` for the last one. Absent, it returns `CLI$_ABSENT`. It
+  signals when the entity is not in the table.
+- **`CLI$PRESENT(entity)`** returns `CLI$_PRESENT`, `CLI$_NEGATED`,
+  `CLI$_LOCPRES`, `CLI$_LOCNEG`, `CLI$_DEFAULTED` or `CLI$_ABSENT`.
+- **A CLI must exist.** A detached process has none, and the manual
+  says to check with `$GETJPI` first.
+- A verb's and a qualifier's first four letters must be unique (CDU,
+  `DEFINE VERB`), so `$VERB` tells the verbs of one table apart.
+- The status codes are in the generated `CLIMSGDEF` (`rtl/vax/vms`).
+
+### 23.2 What poc cannot do today (tried, 2026-10-15)
+
+- **Name the table.** A `["VMS"]` declaration names only a procedure.
+  poc has no way to take the address of an external *data* symbol, and
+  `SYSTEM.ADR` takes only a variable.
+- **Pass `LIB$GET_INPUT` as a routine.** "An external procedure cannot be
+  used as a procedure value", for `["VMS"]` as for `["C"]`. An Oberon
+  procedure in its place cannot be written either: VMS passes it a
+  descriptor, and a procedure VMS calls "cannot have a VAR record or
+  open-array parameter" (part 1, proposal 4). `PLAN.md`'s "Ongoing
+  language enhancements", item 3, makes `SYSTEM.VAL(SYSTEM.ADDRESS,
+  LIB$GET_INPUT)` the way.
+- **Give a `ROUTINE` a name.** Every global symbol poc makes is a stem
+  plus a hash (section 5), so a `.CLD` cannot name an Oberon procedure.
+- **Link an extra object into a program.** `-build`'s options file lists
+  the program's modules and libraries only (section 13), and `-link` is an
+  LLVM option.
+
+### 23.3 Proposals
+
+**Approved by the user, 2026-10-15**, all nine as written; section 23.4
+changes how proposal 1's `HasInterpreter` is done, and adds
+`ParseForeign`. Proposal 3 is replaced (the user, 2026-10-15) by
+`PLAN.md`'s "Ongoing language enhancements", item 3: `SYSTEM.VAL(
+SYSTEM.ADDRESS, E)` of an external procedure `E` gives its address. That
+is made on `main` and merged into `vax` first. Then `ParsePrompting`
+passes `SYSTEM.VAL(SYSTEM.ADDRESS, LIB$GET_INPUT)` for both routines,
+from Oberon, as CDU's example does, and `CommandLanguage.mar` keeps only
+the table's weak reference and a routine that returns its address.
+
+1. **A hand-written module, `CommandLanguage`, in `VMSLIB`**, beside
+   `Conditions`, with a hand-written MACRO-32 part,
+   `CommandLanguage.mar`, as a library's part is built (section 18). It
+   declares the four routines as `["VMS"]` procedures and has typed
+   procedures over them. The interface would look like this:
+
+       PROCEDURE Present*(entity: ARRAY OF CHAR): SYSTEM.INT32;
+         (* CLI$PRESENT's status, one of the constants below *)
+       PROCEDURE IsPresent*(entity: ARRAY OF CHAR): BOOLEAN;
+         (* present, present locally, or by default *)
+       PROCEDURE GetValue*(entity: ARRAY OF CHAR;
+                           VAR value: ARRAY OF CHAR): SYSTEM.INT32;
+         (* the next value, 0X-terminated; Last, More, Concatenated
+            or Absent *)
+       PROCEDURE GetVerb*(VAR verb: ARRAY OF CHAR);   (* $VERB *)
+       PROCEDURE GetLine*(VAR line: ARRAY OF CHAR);   (* $LINE *)
+       PROCEDURE HasInterpreter*(): BOOLEAN;
+         (* $GETJPI's JPI$_CLINAME is not empty *)
+       PROCEDURE Parse*(line: ARRAY OF CHAR): SYSTEM.INT32;
+       PROCEDURE ParsePrompting*(prompt: ARRAY OF CHAR): SYSTEM.INT32;
+       PROCEDURE RestoreParse*(): SYSTEM.INT32;
+
+   The status constants are renamed from `CLIMSGDEF`'s (`Present`,
+   `Negated`, `Absent`, and so on). `GetValue` gives `STR$COPY_DX` the
+   array as a `CLASS_S` descriptor and ends the value with 0X at the
+   returned length. A value longer than the array is cut short, and it
+   returns `Truncated` then, not one of `CLI$`'s codes. Errors that VMS
+   signals stay signalled: `CLI$DCL_PARSE` prints DCL's own message for a
+   bad line, as the CDU example relies on, and a misspelled entity stops
+   the program with `CLI$`'s message, as it would in any other language.
+   `Conditions` handles either, as usual. The name follows poc's naming
+   (`AGENTS.md`); the module's comment says which `CLI$` routine each
+   procedure is.
+
+2. **The table is found by a weak reference to a fixed name.** In a
+   program with a linked table, the `.CLD`'s `MODULE` statement must
+   name the table `POC$COMMAND_TABLE`. `CommandLanguage.mar` refers to
+   that symbol with `.WEAK`, so a program without a table links with no
+   undefined-symbol warning and finds address 0. `Parse` and
+   `ParsePrompting` take the address there. When it is 0 they return a
+   status of their own, `NoTable`, without calling VMS. A program has at
+   most one table, which is what CDU's examples show. Before anything
+   depends on it, I will check that MACRO-32 and LINK in 5.5-2 handle
+   `.WEAK` this way. That check uses the guest only, since I do not hold
+   the 5.x MACRO-32 manual. If `.WEAK` fails, the fallback is a strong
+   reference in a second object, `CommandTable.mar`, linked only when a
+   table is.
+
+3. **The prompting routines are `LIB$GET_INPUT`'s.** `ParsePrompting`
+   passes `LIB$GET_INPUT` for both routines, plus the prompt.
+   (Replaced; see above. As first proposed, a routine in
+   `CommandLanguage.mar` passed `G^LIB$GET_INPUT`, since Oberon could not
+   name an external's address.) `Parse` passes 0 for both routines, so a
+   missing parameter is an error (`CLI$_INSFPRM`) and is not prompted
+   for. A program that reads its lines itself, from a file for instance,
+   wants exactly that. In a command procedure `SYS$INPUT` is the
+   procedure, so data lines after the call answer `ParsePrompting`'s
+   prompts, and `vax-cli-table` tests it that way (proposal 8).
+
+4. **No `CLI$DISPATCH`: dispatch is done in Oberon on `$VERB`.** Since
+   CDU makes a verb's first four letters unique, a program compares
+   `GetVerb`'s result and calls its own procedure. This adds no names,
+   no hash and no new linkage rule. A `.CLD` for poc then gives its verbs
+   no `ROUTINE`. Whether `SET COMMAND/OBJECT` accepts a verb without one,
+   and whether such a table parses, is a guest check (proposal 7). If CDU
+   demands a `ROUTINE`, every verb names one never-called routine,
+   `POC$NO_ROUTINE`, which `CommandLanguage.mar` defines, and the
+   module's comment says so. `CLI$DISPATCH` is left undeclared, and the
+   inventory says why.
+
+5. **`poc -build` takes a `.cld` file.** On the command line of
+   `-target vax-dec-vms -build`, a file ending `.cld`, in any case, is
+   copied beside the `.mar` files. The procedure runs `SET
+   COMMAND/OBJECT=<NAME>.OBJ <NAME>.CLD` before linking, and lists
+   `<NAME>.OBJ` in `<IMAGE>.OPT` after the main module. At most one is
+   allowed, since proposal 2 allows one table, and a second is an error.
+   For an LLVM target, and with `-compile` or `-library`, a `.cld` is an
+   error: "a command table is linked only by -build for vax-dec-vms".
+   Leaving `-link` LLVM-only keeps section 21's split and needs no VMS
+   options-file syntax on the host. `-help` and the User's Guide's chapter 12
+   mention it.
+
+6. **A program run as a verb needs nothing more.** The `.CLD` defines
+   the verb with `IMAGE`. The user, or the program's setup procedure, runs
+   `SET COMMAND`, and the program calls `IsPresent` and `GetValue` only.
+   The guest check is that `Modules`' body still starts cleanly when run
+   that way: it calls `LIB$GET_FOREIGN`, and the manuals do not say what
+   that returns for a CDU verb. Whatever it returns, `Modules.ArgCount`'s
+   behaviour there is written into `CommandLanguage`'s comment.
+
+7. **Checks on the guest before the module is written**, in a scratch
+   directory under `POC`'s home, run with `tools/vax-do`. Each result is
+   written into section 23.4 before any code depends on it.
+   - `.WEAK` with and without the table linked (proposal 2).
+   - `SET COMMAND/OBJECT` on a `.CLD` whose verbs have no `ROUTINE`, and
+     whether `CLI$DCL_PARSE` then parses (proposal 4).
+   - `LIB$GET_FOREIGN` in an image run as a CDU verb (proposal 6).
+   - The inventory's open question: a program run as a foreign command,
+     with `LIB$GET_FOREIGN`'s line given to `CLI$DCL_PARSE` and a linked
+     table whose verb is the program's name. If that works, a foreign
+     command can have DCL-style qualifiers without `SET COMMAND`, and the
+     comment says how. If it does not, the comment says to use a verb.
+   - What `CLI$PRESENT` returns in a process with no CLI, if one can be
+     made unprivileged (a `RUN/DETACHED` of the image, `POC`'s quota
+     permitting). If not, `HasInterpreter` is tested only for TRUE.
+
+8. **Fixtures, on the guest**, each in the `vax-` family, run by `make
+   check` when the guest is up, as the other `vax-` fixtures are.
+   - `vax-cli-verb`: a `.CLD` defining a verb with `IMAGE`, one
+     parameter with a list of values, a negatable qualifier with a
+     value, a default qualifier, and a keyword. The procedure runs `SET
+     COMMAND` and the verb several ways. The program prints what
+     `Present`, `GetValue` and `GetLine` give, each `CLI$` status
+     included.
+   - `vax-cli-table`: a program built by `-build` with a `.cld`, reading
+     command lines from a file and parsing each with `Parse`. It
+     dispatches on `GetVerb` and prints each verb's qualifiers and
+     parameters. Its lines include an unknown verb (signalled message,
+     `IVVERB`), an empty line (`NOCOMD`), a missing parameter
+     (`INSFPRM`), and a value longer than the array (`Truncated`).
+     Last, `RestoreParse` brings back the invoking command's parse.
+   - `vax-cli-table` also calls `ParsePrompting`, answered by data lines
+     in its procedure: a whole line, then a line with its parameter
+     missing, which the CLI prompts for. A `semantic-` fixture on the
+     host checks the `.cld` errors of proposal 5.
+
+9. **The documents.** This section's 23.4 (the guest's answers) and 23.5
+   (as built). The inventory's item 5 is marked done, with what was left
+   out and why: `CLI$DISPATCH`, and the prompting routines as Oberon
+   procedure values. `rtl/vax/vmslib/README.md` lists the module.
+   The User's Guide's chapter 12, "poc on VAX/VMS", gets a short example of a verb with a
+   qualifier. `PLAN.md` step 5 gets a record of it all.
+
+### 23.4 Tried on the guest (proposal 7, 2026-10-15)
+
+Small MACRO-32 programs, run with `tools/vax-do` in `POC`'s directory.
+Every `CLI$` call was made as `CommandLanguage` will make it.
+
+- **`.WEAK` works as proposal 2 needs.** `.WEAK POC$COMMAND_TABLE`, with a
+  longword `.ADDRESS POC$COMMAND_TABLE`, assembles, and links with no
+  warning and the address 0 when no table is linked. With the table
+  linked, the address is the table's, and `CLI$DCL_PARSE` parses with it.
+- **A verb needs no `ROUTINE`** (proposal 4). `SET COMMAND/OBJECT` takes a
+  `.CLD` whose verbs have none, with status `%X10118009`, a success.
+  `CLI$DCL_PARSE` parses its lines: `SEND FOO.TXT,BAR.TXT/EDIT` gives
+  `CLI$_NORMAL`, `CLI$PRESENT("EDIT")` gives `CLI$_PRESENT`, and
+  `CLI$GET_VALUE` gives `FOO.TXT` with `CLI$_COMMA`, then `BAR.TXT` with
+  `SS$_NORMAL`. `$VERB` gives `SEND`, and `$LINE` gives the line as given.
+  `CLI$DISPATCH` signals and returns `CLI$_INVROUT`, so `POC$NO_ROUTINE`
+  is not needed.
+- **Errors are signalled, with a traceback.** An unknown verb prints
+  `%CLI-W-IVVERB` and the verb, then `%TRACE-W-TRACEBACK` and the stack,
+  and returns `CLI$_IVVERB`. An unknown qualifier does the same with
+  `CLI$_IVQUAL`. The program goes on, since both are warnings. The
+  traceback comes from linking with `/TRACEBACK`, LINK's default, which
+  poc uses, and `Conditions.Signal` prints one too. A `CLI$PRESENT` or
+  `CLI$GET_VALUE` of a name not in the table is fatal: `%CLI-F-SYNTAX`
+  and `-CLI-E-ENTNF`, and the image stops. `CommandLanguage` leaves all of
+  these as VMS does them, as proposal 1 says.
+- **Run as a CDU verb, `Modules` works unchanged** (proposal 6). With
+  `DEFINE VERB POCVERB IMAGE ...`, `POCVERB ALPHA/Q=BETA` gives
+  `LIB$GET_FOREIGN` `ALPHA/Q=BETA` with `SS$_NORMAL`, the line after the
+  verb as for a foreign command, so `Modules.ArgCount` is 2. `CLI$PRESENT`
+  and `CLI$GET_VALUE` then answer from DCL's parse, with no table linked.
+  A bare `POCVERB` gives an empty line, and `CLI$_ABSENT` for both.
+- **A foreign command can parse its own line** (the inventory's open
+  question). The image is run as `FOREIGN2 := $...FORT.EXE`, and a
+  table is linked whose verb is `FORT`. `FORT `, followed by
+  `LIB$GET_FOREIGN`'s line, is given to `CLI$DCL_PARSE`, and
+  `CLI$PRESENT` and `CLI$GET_VALUE` then work as for a verb:
+  - `FOREIGN2 ALPHA/Q=BETA` gives `BETA` and `ALPHA`;
+  - `FOREIGN2 "lower case"/Q` gives `lower case`, with the quotes gone
+    and the case kept;
+  - `FOREIGN2 /BOGUS` gives `IVQUAL`, signalled.
+
+  Before that parse, though, the process's parse is DCL's of the foreign
+  command itself, so a question about the program's own qualifier is
+  fatal (`ENTNF`). A foreign command must therefore parse first.
+  `CommandLanguage` gets one more procedure for it,
+  `ParseForeign*(verb: ARRAY OF CHAR): SYSTEM.INT32`, which parses
+  `verb`, a blank, and `LIB$GET_FOREIGN`'s line with the linked table. A
+  program can then be run either way, verb or foreign command, by
+  calling `ParseForeign` only when `GetVerb` is not its own verb.
+- **With no CLI**, in a process started by `RUN/DETACHED` (allowed to
+  `POC`), every `CLI$` call returns `CLI$_INVREQTYP` (`%X00038822`). None
+  signals or stops. `CLI$DCL_PARSE` does the same, even with a table
+  linked. `LIB$GET_FOREIGN` gives `SS$_NORMAL` and an empty line. But
+  `$GETJPI`'s `JPI$_CLINAME` is `DCL` there too, the UAF's CLI and not
+  whether one is mapped, so it cannot answer `HasInterpreter`. Instead
+  `HasInterpreter` asks `CLI$GET_VALUE("$LINE")`, which fails only when
+  there is no CLI. The fixture runs one program detached, to show
+  `HasInterpreter` FALSE and `Present` returning `InvalidRequest`, a new
+  constant for `CLI$_INVREQTYP`.
+- **A value's text after a failure is not to be read.** In the
+  detached process, `CLI$GET_VALUE` returned an error but still copied
+  the entity's own name into the value, with its length (`Q`, `P1`,
+  `$LINE`). `GetValue` gives an empty value whenever the status is not a
+  success.

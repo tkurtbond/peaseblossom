@@ -777,6 +777,14 @@ C++, and so on) unless step 4 chooses one deliberately.
    `VMSLIB`, which needs `VMSDEF` and `POCRTL`. Fixture `vax-vmslib`
    runs them on the guest.
 
+   **Part 5, `CLI$` (2026-10-15)**: nine proposals in
+   `vax-macro32-backend.md`, section 23, **approved by the user,
+   2026-10-15**; the guest's answers are in its 23.4. They cover a `CommandLanguage` module in `VMSLIB` with a
+   MACRO-32 part; the table found by a weak reference to
+   `POC$COMMAND_TABLE`; dispatch on `$VERB` instead of `CLI$DISPATCH`;
+   `-build` taking a `.cld` file; five checks on the guest first; and
+   fixtures `vax-cli-verb` and `vax-cli-table`.
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)
@@ -1206,6 +1214,81 @@ that phase's record.
 
 Those done while Phase 15 was current, 1 and 2, are in
 `doc/history/phases/phase-15.md`.
+
+3. **An external procedure's address, by `SYSTEM.VAL`** (proposed
+   2026-10-15, **approved by the user, 2026-10-15**). Found while writing Phase
+   17's `CommandLanguage` (`vax-macro32-backend.md`, section 23):
+   `CLI$DCL_PARSE` wants `LIB$GET_INPUT`'s address, and poc has no way
+   to give it. What poc does today (tried, 2026-10-15):
+   - A global Oberon procedure's address is already reachable, as
+     `SYSTEM.VAL(SYSTEM.ADDRESS, P)`, on both back ends. Its procedure
+     value is its entry address: LLVM's function pointer, the VAX's entry
+     mask by `MOVAB`. So `SYSTEM.ADR(P)` is not needed for one, and is not
+     proposed.
+   - An external procedure's name, `["C"]` or `["VMS"]`, is refused in
+     every expression, `VAL`'s argument included: "an external procedure
+     cannot be used as a procedure value"
+     (`SemanticActions.CheckProcedureValue`). The reason holds for a
+     value that Oberon may call: such a value is always called with
+     Oberon's convention, hidden arguments included, and an external
+     takes C's or VMS's. It does not hold for an address, which Oberon
+     cannot call.
+
+   The proposals:
+   1. **`SYSTEM.VAL(SYSTEM.ADDRESS, E)` takes an external procedure `E`**,
+      declared in the module or imported, and gives the address of its
+      linkage name. On the VAX that is `G^name`, VMS's "procedure value,
+      by reference". On LLVM it is the C function pointer, which also
+      serves C callbacks (`qsort`, `atexit`, `signal`). The target must be
+      `SYSTEM.ADDRESS` itself.
+   2. **Everything else stays refused, with the present message:**
+      - `VAL` of an external to any other type, a procedure type above
+        all, since that makes a value Oberon would call with the wrong
+        convention;
+      - an external assigned, passed as an argument, returned, or compared
+        with `=` or `#`.
+
+      Nested, type-bound and predeclared procedures stay refused
+      everywhere, `VAL` included, as now.
+   3. **Unchecked, as `SYSTEM` is.** An address carries no type, so
+      handing VMS or C an external that cannot take what it will be passed
+      goes wrong at run time. Nothing else checks it. The text says so.
+   4. **Not a new extension.** `VAL` is already `SYSTEM`'s unchecked
+      conversion, and external procedures are already poc's own.
+      `language-extensions.md`'s "External procedures" and `AGENTS.md`'s
+      summary of it each gain a sentence. `-strict` rejects it as it
+      rejects an external declaration. poc's own source does not use it.
+   5. **Both back ends.**
+      - LLVM: the address is the function's `ptrtoint`, and the module
+        declares the external even when nothing calls it.
+      - VAX: `MOVAB` of the linkage name, the external listed in the
+        module as a call lists it, as `ProcedureValue` does for an Oberon
+        procedure.
+
+      No runtime change.
+   6. **Made on `main`, then merged into `vax`** (the user,
+      2026-10-15), where `CommandLanguage` uses it. On `main`:
+      - the front end, both back ends, the documents and the gate;
+      - `llvm-system-val-external`: C's `qsort` sorts an array of
+        `SYSTEM.INT32`, given by `VAL` a C comparison from the fixture's C
+        part, declared `["C"]`. A second module importing the first checks
+        that `VAL(ADDRESS, E)` gives the same address when `E` is named
+        from either module;
+      - `semantic-reject-system-val-external`: each refusal of
+        proposal 2 with its message, and `-strict`;
+      - a `vax-` MACRO-32 fixture showing the `MOVAB` of an external.
+
+      On `vax`, after the merge, `vax-vms-calls` gains two calls of
+      `LIB$CALLG`, whose `user_procedure` the generator already declares
+      `SYSTEM.ADDRESS`. One passes `VAL(ADDRESS, LIB$PUT_OUTPUT)` with an
+      argument list holding a descriptor. The other passes `VAL` of an
+      Oberon procedure that VMS can call, and checks the status it
+      returns.
+   7. **What changes in section 23.** Proposal 3 there becomes:
+      `ParsePrompting` passes `SYSTEM.VAL(SYSTEM.ADDRESS,
+      LIB$GET_INPUT)` for both routines, as CDU's own example does, from
+      Oberon. `CommandLanguage.mar` keeps only the weak reference to the
+      table and a routine that returns its address.
 
 ## Ongoing implementation enhancements
 
