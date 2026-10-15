@@ -1,0 +1,84 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+programs built: %X10000001
+== Conditions
+SS$_NORMAL: succeeded, severity 1, facility 0, number 0
+  %SYSTEM-S-NORMAL, normal successful completion
+SS$_ABORT: failed, severity 4, facility 0, number 5
+  %SYSTEM-F-ABORT, abort
+RMS$_FNF: failed, severity 2, facility 1, number 4178
+  %RMS-E-FNF, file not found
+LIB$_NOSUCHSYM: failed, severity 4, facility 21, number 4204
+  %LIB-F-NOSUCHSYM, no such symbol
+SS$_SUPERSEDE: succeeded, severity 1, facility 0, number 198
+  %SYSTEM-S-SUPERSEDE, logical name superseded
+no message: failed, severity 2, facility 4095, number 4096
+  %NONAME-E-NOMSG, Message number 0FFF8002
+short: %SYSTEM-F
+severities: 0 1 2 3 4
+run: %X00000001
+== LogicalNames
+define user: %SYSTEM-S-NORMAL, normal successful completion
+POC_VMSLIB_USER: %SYSTEM-S-NORMAL, normal successful completion
+  = user value
+redefine user: %SYSTEM-S-SUPERSEDE, logical name superseded
+POC_VMSLIB_USER: %SYSTEM-S-NORMAL, normal successful completion
+  = user again
+define supervisor: %SYSTEM-S-NORMAL, normal successful completion
+poc_vmslib_super: %SYSTEM-S-NORMAL, normal successful completion
+  = super value
+define supervisor 2: %SYSTEM-S-NORMAL, normal successful completion
+deassign supervisor 2: %SYSTEM-S-NORMAL, normal successful completion
+POC_VMSLIB_SUPER2: %SYSTEM-F-NOLOGNAM, no logical name match
+search list: %SYSTEM-S-NORMAL, normal successful completion
+  last index 2
+  0: FIRST
+  1: SECOND
+  2: THIRD
+define executive: %SYSTEM-S-NORMAL, normal successful completion
+POC_VMSLIB_EXEC: %SYSTEM-S-NORMAL, normal successful completion
+  = exec value
+define in the group table: %SYSTEM-F-NOPRIV, no privilege for attempted operation
+short: super
+deassign user: %SYSTEM-S-NORMAL, normal successful completion
+POC_VMSLIB_USER: %SYSTEM-F-NOLOGNAM, no logical name match
+run: %X00000001
+   "POC_VMSLIB_SUPER" = "super value" (LNM$PROCESS_TABLE)
+%SHOW-S-NOTRAN, no translation for logical name POC_VMSLIB_SUPER2
+%SHOW-S-NOTRAN, no translation for logical name POC_VMSLIB_USER
+%SHOW-S-NOTRAN, no translation for logical name POC_VMSLIB_EXEC
+== Symbols
+set local: %SYSTEM-S-NORMAL, normal successful completion
+set global: %SYSTEM-S-NORMAL, normal successful completion
+POC_VMSLIB_LOCAL: %SYSTEM-S-NORMAL, normal successful completion
+  = local value, table 1
+POC_VMSLIB_GLOBAL: %SYSTEM-S-NORMAL, normal successful completion
+  = global value, table 2
+POC_VMSLIB_NUMBER: %SYSTEM-S-NORMAL, normal successful completion
+  = 42, table 1
+POC_VMSLIB_NONE: %LIB-F-NOSUCHSYM, no such symbol
+  = , table 0
+short: %LIB-S-STRTRU, string truncated
+  = local
+delete global: %SYSTEM-S-NORMAL, normal successful completion
+POC_VMSLIB_OLD: %LIB-F-NOSUCHSYM, no such symbol
+  = , table 0
+run: %X00000001
+  POC_VMSLIB_LOCAL = "local value"
+  POC_VMSLIB_GLOBAL == "global value"
+%DCL-W-UNDSYM, undefined symbol - check validity and spelling
+== Signal
+run: %X1000002C
+program: start
+program: after a warning
+program: after an error
+program: after an error with an argument
+%SYSTEM-W-ENDOFFILE, end of file
+%RMS-E-FNF, file not found
+%LIB-E-ACTIMAGE, error activating image POC_NO_IMAGE
+%SYSTEM-F-ABORT, abort
+== StopWith
+run: %X101512BC
+program: start
+%LIB-F-ACTIMAGE, error activating image POC_NO_IMAGE

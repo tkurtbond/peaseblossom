@@ -921,3 +921,184 @@ lines. The first 41 did not change.
       the SDL trees call `MOUNT$_FACILITY` and `OPCOM$_FACILITY`;
     - four names that only the `..EQU` macros define: `CLI$CTRL_FIELDS`,
       `LIB$B_DCF_OPERAND`, `DT_DEFAULT_FIELDS` and `DT_PRINT_FIELDS`.
+
+## Proposals, part 4: the hand-written modules (2026-10-15)
+
+The native library inventory's proposal 4 (approved 2026-10-14) chose
+three small modules over the generated interfaces: `Conditions`,
+`LogicalNames` and `Symbols`. What the generated modules give them:
+- `STARLET`: `SYS$GETMSG`, `SYS$TRNLNM`, `SYS$CRELNM` and `SYS$DELLNM`.
+- `LIB_ROUTINES`: `LIB$GET_SYMBOL`, `LIB$SET_SYMBOL`,
+  `LIB$DELETE_SYMBOL`, `LIB$SET_LOGICAL` and `LIB$DELETE_LOGICAL`, but
+  not `LIB$SIGNAL` and `LIB$STOP`, which take a list.
+- `STSDEF`, `PSLDEF`, `LNMDEF` and `LIBCLIDEF`: a condition's fields,
+  the access modes, `$TRNLNM`'s items, the symbol tables.
+
+Found in the manuals:
+- **`LIB$SET_LOGICAL` asks DCL to define a supervisor-mode process
+  logical name**, the same as `DEFINE`. Unlike `$CRELNM`, it needs no
+  privilege, and the name outlives the image (`LIB$` manual, LIB-341). A
+  name `$CRELNM` makes from user mode is deleted when the image exits.
+  `LIB$DELETE_LOGICAL` is `DEASSIGN`.
+- **`$CRELNM` maximizes the mode asked for with the caller's**, using
+  the less privileged of the two, unless the caller has `SYSNAM`. So
+  without it, a program in user mode that asks for an executive-mode
+  name gets a user-mode one, with no error. A mode of 0 (kernel) means
+  the caller's mode. The group table needs `GRPNAM` or `SYSPRV`, and
+  the system table `SYSNAM` or `SYSPRV`; without them, `SS$_NOPRIV`
+  (System Services Reference, SYS-82 to SYS-86).
+- **`LIB$SET_LOGICAL` and the symbol routines need DCL.** Run as a
+  subprocess or detached process, there is none, and they return
+  `LIB$_NOCLI` (LIB-220, LIB-341).
+- **`LIB$GET_SYMBOL` searches the local table, then the global one.** It
+  uppercases the name, and returns a number as signed decimal text. A
+  symbol's name has at most 255 characters (LIB-219).
+- **A poc program establishes no condition handler**, apart from
+  `POC_MATH`'s `LIB$SIG_TO_RET`. A signalled condition therefore reaches
+  VMS's own handlers. A program is linked `/TRACEBACK`, LINK's default,
+  so the handler prints the message and a traceback. It exits on a
+  severe condition and otherwise continues (`LIB$` manual, LIB-366 to
+  LIB-368).
+
+### Proposals
+
+**Approved by the user, 2026-10-15**, all seven.
+
+1. **A library of their own, `VMSLIB`, in `rtl/vax/vmslib`**, which needs
+   `VMSDEF` and `POCRTL`. They import the generated modules, so they
+   cannot be in `POCRTL`, which `VMSDEF` needs. Nor can they be in
+   `rtl/vax/vms`, which holds only what the generator writes. Step 6's
+   `VMS` module would join them.
+
+2. **A status is a `SYSTEM.INT32`**, as the generated declarations' is.
+   Each procedure that calls VMS returns the condition value it got, not
+   a `BOOLEAN`, so a program can test it with `Conditions.Success` and
+   print it with `Conditions.Message`. An output string is truncated to
+   its array, less one character, and ends with `0X`. The truncation is
+   reported by the routine's own success status (`LIB$_STRTRU`,
+   `SS$_BUFFEROVF`). An input string is passed up to its `0X`.
+
+3. **`Conditions`**:
+   ```oberon
+   CONST Warning* = 0; Success* = 1; Error* = 2; Informational* = 3; Severe* = 4;
+   PROCEDURE Succeeded*(status: SYSTEM.INT32): BOOLEAN;   (* bit 0 *)
+   PROCEDURE Severity*(status: SYSTEM.INT32): INTEGER;    (* bits 0-2 *)
+   PROCEDURE Facility*(status: SYSTEM.INT32): INTEGER;    (* bits 16-27 *)
+   PROCEDURE MessageNumber*(status: SYSTEM.INT32): INTEGER; (* bits 3-15 *)
+   PROCEDURE Message*(status: SYSTEM.INT32; VAR text: ARRAY OF CHAR);
+   PROCEDURE Signal*(status: SYSTEM.INT32);
+   PROCEDURE SignalWith*(status, argument: SYSTEM.INT32);
+   PROCEDURE Stop*(status: SYSTEM.INT32);
+   PROCEDURE StopWith*(status, argument: SYSTEM.INT32);
+   ```
+   - The test is `Succeeded`, since `Success` names the severity, as
+     `STS$K_SUCCESS` does.
+   - `Message` gives `$GETMSG`'s whole text, "%SYSTEM-F-ABORT, abort",
+     which is what `$GETMSG` writes with every part of the message
+     selected. Its `!` directives are left as written; `$FAO` is the
+     supported tier's.
+   - `Signal` and `Stop` call `LIB$SIGNAL` and `LIB$STOP` with the
+     condition alone. `SignalWith` and `StopWith` pass one FAO
+     argument, a longword: `(status, 1, argument)`. They are declared by
+     hand in `Conditions`, with a fixed number of arguments each, two
+     declarations to one routine. `Stop` never returns.
+
+4. **`LogicalNames`**:
+   ```oberon
+   CONST User* = 3; Supervisor* = 2; Executive* = 1; Kernel* = 0;
+     Process* = "LNM$PROCESS"; Job* = "LNM$JOB"; Group* = "LNM$GROUP";
+     System* = "LNM$SYSTEM"; FileDevice* = "LNM$FILE_DEV";
+   PROCEDURE Define*(table, name, value: ARRAY OF CHAR; mode: INTEGER): SYSTEM.INT32;
+   PROCEDURE Deassign*(table, name: ARRAY OF CHAR; mode: INTEGER): SYSTEM.INT32;
+   PROCEDURE Translate*(table, name: ARRAY OF CHAR; VAR value: ARRAY OF CHAR): SYSTEM.INT32;
+   PROCEDURE TranslateAt*(table, name: ARRAY OF CHAR; index: INTEGER;
+                          VAR value: ARRAY OF CHAR; VAR last: INTEGER): SYSTEM.INT32;
+   ```
+   - **The mode chooses the routine.**
+     - `Supervisor` defines and deassigns by `LIB$SET_LOGICAL` and
+       `LIB$DELETE_LOGICAL`. The name outlives the program, as
+       `DEFINE`'s does, and needs DCL.
+     - Any other mode is `$CRELNM` and `$DELLNM`. A `User` name is gone
+       when the program ends. `Executive` and `Kernel` take effect only
+       with `SYSNAM`; without it, VMS makes a user-mode name, as
+       `$CRELNM` says. `Kernel`, 0, is passed as 0, which `$CRELNM`
+       takes as the caller's mode.
+   - **One equivalence string** for `Define`; a list can come later.
+   - **`Translate` is index 0.** `TranslateAt` gives the equivalence
+     string at `index`, and in `last` the name's highest index, so a
+     search list can be walked.
+   - **Translation ignores case**, by `LNM$M_CASE_BLIND`, as
+     `Platform.getEnv` and DCL do. Definition keeps the case written.
+
+5. **`Symbols`**:
+   ```oberon
+   CONST Local* = 1; Global* = 2;   (* LIB$K_CLI_LOCAL_SYM, LIB$K_CLI_GLOBAL_SYM *)
+   PROCEDURE Get*(name: ARRAY OF CHAR; VAR value: ARRAY OF CHAR; VAR table: INTEGER): SYSTEM.INT32;
+   PROCEDURE Set*(name, value: ARRAY OF CHAR; table: INTEGER): SYSTEM.INT32;
+   PROCEDURE Delete*(name: ARRAY OF CHAR; table: INTEGER): SYSTEM.INT32;
+   ```
+   `Get` looks in the local table, then the global one, and sets `table`
+   to where it found the symbol. A symbol is always a string here. A
+   number comes back as its decimal text, and `Set` makes a string
+   symbol, as `LIB$SET_SYMBOL` does.
+
+6. **Fixture `vax-vmslib`**: `VMSLIB` built on the guest with `VMSDEF`
+   and `POCRTL`, and programs linked against all three:
+   - A program that tests `Conditions`' fields and messages on
+     `SS$_NORMAL`, `SS$_ABORT`, `RMS$_FNF` and `LIB$_NOSUCHSYM`, and on
+     an unknown code.
+   - A program that defines, translates, redefines and deassigns names
+     in each table it may use: user and supervisor modes, a search list
+     made by DCL and walked by `TranslateAt`.
+     It checks that an `Executive` name is made in user mode without
+     `SYSNAM`, and that the group table is refused (`SS$_NOPRIV`). The
+     guest procedure then shows with `SHOW LOGICAL` that the supervisor
+     name outlived the program and the user name did not.
+   - A program that sets, gets and deletes local and global symbols. The
+     procedure checks the symbols that the program left.
+   - Programs that call `Signal` (a warning, then an error: message,
+     traceback, and the program goes on), `SignalWith` (an argument in
+     the message) and `Stop` (a severe condition, which ends the
+     program). Their status reaches DCL's `$STATUS`.
+
+7. **Reference**: `rtl/vax/vmslib/README.md` lists the three
+   interfaces, as `rtl/vax/README.md` does the runtime's. They are
+   VAX-only, so the Reference Guide's runtime chapter, generated from
+   `rtl/llvm`, does not change.
+
+## Part 4 done: what was implemented (2026-10-15)
+
+- **`rtl/vax/vmslib`**: `Conditions`, `LogicalNames` and `Symbols`, as
+  proposed, and a `README.md`. They compile under `-O2` and `-OC`.
+  - `Conditions` declares `LIB$SIGNAL` and `LIB$STOP` twice each, with
+    one argument and with three. The VAX backend writes one `.EXTERNAL`
+    for each linkage name.
+  - A field of a status is taken by `DIV` and `MOD`, which floor, so a
+    negative longword gives its bits.
+- **Fixture `vax-vmslib`.** It builds `POCRTL`, a `VMSDEF` of only the
+  six generated modules it imports (`LIBDEF`, `LIB_ROUTINES`, `LNMDEF`,
+  `RMSDEF`, `SSDEF`, `STARLET`), and `VMSLIB`, on the guest, and runs
+  five programs against them. Everything proposal 6 named came out as
+  proposed:
+  - **Conditions.** The parts and messages are as `F$MESSAGE` gives
+    them. A code with no message gives "%NONAME-E-NOMSG, Message number
+    0FFF8002", and a short array gets "%SYSTEM-F".
+  - **Logical names.** Redefining gives `SS$_SUPERSEDE`, and translation
+    ignores case. The search list's three names are walked. The group
+    table gives `SS$_NOPRIV`. Afterwards DCL finds the supervisor name,
+    and not the user name, the executive one (made in user mode) or the
+    deassigned supervisor one.
+  - **Symbols.** A local and a global symbol are set and got back. A
+    number is got as "42" from the local table, a missing symbol gives
+    `LIB$_NOSUCHSYM`, and a short array `LIB$_STRTRU`. DCL sees the two
+    symbols set and not the global one deleted.
+  - **Signals.** A warning, an error and an error with `!AS` are each
+    printed, and the program goes on. `Stop` ends it with `SS$_ABORT`;
+    DCL's `$STATUS` is `%X1000002C`, with the bit that says the message
+    was printed. `StopWith` makes `LIB$_ACTIMAGE` severe,
+    `%X101512BC`.
+- **Found on the guest.** VMS's handler writes a signalled message and
+  the traceback to `SYS$ERROR` only. Two `DEFINE/USER`s of one file, for
+  `SYS$OUTPUT` and `SYS$ERROR`, open it twice, as two versions. So
+  `guest-run.com` gives each stream a file of its own, and keeps only
+  the `%` lines of `SYS$ERROR`'s, without the traceback.

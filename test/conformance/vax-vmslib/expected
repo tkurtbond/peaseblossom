@@ -1,0 +1,8 @@
+-O2: compiled
+-OC: compiled
+VMSLIB exit 0
+VAX build VmsLibConditions exit 0
+VAX build VmsLibLogicals exit 0
+VAX build VmsLibSymbols exit 0
+VAX build VmsLibSignal exit 0
+VAX build VmsLibStopWith exit 0

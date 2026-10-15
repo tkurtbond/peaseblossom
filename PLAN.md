@@ -770,6 +770,13 @@ C++, and so on) unless step 4 chooses one deliberately.
    parameter is the CARD of its width, and `VmsArguments`' lengths are
    `CARD16`.
 
+   **Part 4, the hand-written modules (2026-10-15)**: seven proposals,
+   **approved by the user, 2026-10-15**, and made the same day
+   (`vms-sdl-interfaces.md`, "Part 4 done"): `Conditions`,
+   `LogicalNames` and `Symbols` in `rtl/vax/vmslib`, the library
+   `VMSLIB`, which needs `VMSDEF` and `POCRTL`. Fixture `vax-vmslib`
+   runs them on the guest.
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)

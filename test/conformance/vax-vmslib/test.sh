@@ -1,0 +1,46 @@
+#!/bin/sh
+. ../../testenv.sh
+# Phase 17 step 5 (doc/developer/vms-sdl-interfaces.md, part 4, proposal
+# 6): the hand-written modules of rtl/vax/vmslib, Conditions, LogicalNames
+# and Symbols. Each compiles for the VAX under -O2 and -OC; they make the
+# library VMSLIB, which needs POCRTL and VMSDEF. Here VMSDEF holds only
+# the generated modules VMSLIB and the programs import, not all of
+# rtl/vax/vms, which vax-vmsdef builds. Where the VAX development system
+# can be used, guest-run.com builds the three libraries there and runs
+# programs linked against them, with the logical names and symbols they
+# expect, and shows what each leaves.
+. ../../vaxfixture.sh
+vms=../../../rtl/vax/vms
+vmslib=../../../rtl/vax/vmslib
+rtl=../../../rtl/vax
+rm -rf work
+mkdir work work/o2 work/oc
+: >result
+generated="LIBDEF LIB_ROUTINES LNMDEF RMSDEF SSDEF STARLET"
+modules="Conditions LogicalNames Symbols"
+for model in O2 OC; do
+  dir=work/$(echo $model | tr A-Z a-z)
+  for m in $modules; do
+    poc -$model -target vax-dec-vms -import-path $vms -import-path $rtl -output-dir $dir \
+      -emit-macro32 $vmslib/$m.Mod >$dir/out 2>&1 || cat $dir/out >>result
+  done
+  echo "-$model: compiled" >>result
+done
+(cd work && poc -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls ../$rtl/*.Mod) ../$rtl/PocRtl.mar) >work/out 2>&1 \
+  || cat work/out >>result
+(cd work && poc -target vax-dec-vms -output-dir libs -library-path libs -library VMSDEF \
+  $(for m in $generated; do echo ../$vms/$m.Mod; done)) >work/out 2>&1 || cat work/out >>result
+(cd work && poc -target vax-dec-vms -output-dir libs -library-path libs -library VMSLIB \
+  $(for m in $modules; do echo ../$vmslib/$m.Mod; done)) >>result 2>&1
+echo "VMSLIB exit $?" >>result
+programs="VmsLibConditions VmsLibLogicals VmsLibSymbols VmsLibSignal VmsLibStopWith"
+for p in $programs; do
+  cp $p.mod work/
+  (cd work && poc -target vax-dec-vms -library-path libs -o $p -build $p.mod) >>result 2>&1
+  echo "VAX build $p exit $?" >>result
+done
+lib=work/libs/vax-dec-vms/O2
+vax_do guest-run.com guest-run.expected $lib/*.mar $lib/*_build.com $lib/*_setup.com \
+  $(for p in $programs; do echo work/$p.mar work/$p.com; done)
+rm -rf work
+. ../../testresult.sh
