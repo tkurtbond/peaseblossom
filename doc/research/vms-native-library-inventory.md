@@ -296,8 +296,14 @@ Two conditions apply to a synchronous callback:
          routines), both
          through the generated declarations.
 
-       Left out: process control (`LIB$SPAWN` ...), a part of its own;
-       file search, dynamic loading, zones, timers and conversions.
+       Left out: file search, dynamic loading, zones, timers and
+       conversions.
+     - **Process control done** (2026-10-16; `vms-sdl-interfaces.md`,
+       part 11): VMSLIB's `Subprocesses` over `LIB$SPAWN`, which keeps
+       a subprocess not waited for alive until `Wait` sees it end, and
+       fixture `vax-subprocesses`, with `LIB$DO_COMMAND`,
+       `LIB$RUN_PROGRAM`, `LIB$PUT_COMMON` and `LIB$GET_COMMON` through
+       the generated declarations. `LIB$ATTACH` is checked by hand.
    - **`SMG$`:**
      - What a full-screen program uses: pasteboards, virtual displays,
        virtual keyboards, writing with renditions, reading keys and

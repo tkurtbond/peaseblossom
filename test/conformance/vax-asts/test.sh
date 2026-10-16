@@ -16,7 +16,7 @@ rtl=../../../rtl/vax
 rm -rf work
 mkdir work
 : >result
-generated="CLIMSGDEF IODEF LIBDEF LIB_ROUTINES LNMDEF RMSDEF SSDEF STARLET STR_ROUTINES"
+generated="CLIDEF CLIMSGDEF IODEF LIBDEF LIB_ROUTINES LNMDEF RMSDEF SSDEF STARLET STR_ROUTINES"
 modules=$(cd $vmslib && LC_ALL=C ls *.Mod)
 (cd work && poc -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls ../$rtl/*.Mod) ../$rtl/PocRtl.mar) >work/out 2>&1 \
   || cat work/out >>result

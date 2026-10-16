@@ -857,6 +857,18 @@ C++, and so on) unless step 4 chooses one deliberately.
    blank-padded, and that an empty queue gives the header's address
    ("Part 10 done"; `vax-macro32-backend.md`, section 22.8).
 
+   **Part 12, process control (2026-10-16)**: eight proposals in
+   `vms-sdl-interfaces.md`, part 11, **approved by the user,
+   2026-10-16**. VMSLIB gains `Subprocesses`: `Run` and `Start`, and a
+   started subprocess kept alive until `Wait` sees it end, since VMS
+   writes its status later. Fixture `vax-subprocesses` also chains two
+   programs by `LIB$RUN_PROGRAM` and `LIB$DO_COMMAND`. The guest showed
+   that `Wait` gives `SS$_NORMAL` after `Stop`, that a procedure goes on
+   after `LIB$DO_COMMAND`'s command, and that a process name has at most
+   15 characters, which the fixture's first version broke and hung on
+   ("Part 11 done"; `vax-macro32-backend.md`, section 22.9). `LIB$ATTACH`
+   is still to be checked by hand.
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)
@@ -957,6 +969,38 @@ C++, and so on) unless step 4 chooses one deliberately.
    pass repeatedly (asynchrony makes a single pass weak evidence), the
    whole VAX conformance suite from Phase 16 is still clean, and step 7's
    kits install and pass `make check-vax-kit` on the guest.
+
+   **Plan, approved by the user, 2026-10-16.** Reading the tree against
+   that text found four gaps, closed in this order, each committed on its
+   own:
+   - **The supported tier's system services** without a fixture on the
+     guest: `$GETSYIW`, `$GETDVIW`, `$NUMTIM`, `$FAO` (only `$FAOL` is
+     tried), `$ENQW` and `$DEQ`, `$WAKE` and `$SETPRN`. A part 13 of step
+     5, proposals first, with one fixture, `vax-system-services`, and no
+     module.
+   - **VMSLIB from its shareable image.** Every library build makes both
+     kinds, but every VMSLIB fixture links against the object libraries,
+     and a shareable image has its own copy of the writable data that
+     `Subprocesses`, `ExitHandlers`, `AsynchronousTraps` and
+     `BalancedTrees` keep. Fixture `vax-vmslib-shareable`: one program
+     using every VMSLIB module's state, linked both ways under `-O2` and
+     `-OC`, all four runs printing the same.
+   - **The AST fixtures, repeatedly.** `vax_do` takes `VAX_REPEAT=<n>`:
+     a fixture that honours it builds once on the guest and runs each
+     program n times, compares each later run with the first there
+     (`DIFFERENCES`), and prints only a difference, so its
+     `guest-run.expected` is unchanged. `make test-vax-asts` (default 20)
+     runs `vax-asts`, `vax-asts-heap`, `vax-conditions-handlers` and
+     `vax-subprocesses` so; not part of `make check`.
+   - **The kits.** `make vax-kit` takes VMSLIB by a glob, but the kit's
+     `README.TXT` and `README-VMS.TXT` name six of its modules, now
+     twelve, and `KitVmsLib` uses `Conditions` alone: it is to import
+     every VMSLIB module.
+
+   Before them, part 12 finished and `LIB$ATTACH` checked by hand. Then
+   the gate's run: `make check` on the four hosts, `make test-vax-asts`,
+   `make test-vax`, `make test-vax-guest-poc`, `make check-vax-kit
+   CHECK_VAX_KIT_FLAGS=-full`, and rackhir on the pushed commit.
 
 **Testing summary**: steps 1, 3, 5 and 6 are fixtures run on the guest;
 steps 2 and 4 are decisions with written artifacts, verified against the

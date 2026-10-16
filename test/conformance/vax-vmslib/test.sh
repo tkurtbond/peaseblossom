@@ -13,9 +13,10 @@
 # StopList, through LIB$CALLG (VmsLibSignal, VmsLibStopList), and a list
 # too long for CALLG (VmsLibListTooLong). CommandLanguage, SortMerge
 # (part 8), DecimalStrings (part 9), and BalancedTrees and DateTimes (part
-# 10) compile here; vax-cli-verb and vax-cli-table run CommandLanguage,
-# vax-sort SortMerge, vax-decimal-strings DecimalStrings,
-# vax-balanced-trees BalancedTrees, and vax-date-times DateTimes.
+# 10) and Subprocesses (part 11) compile here; vax-cli-verb and
+# vax-cli-table run CommandLanguage, vax-sort SortMerge,
+# vax-decimal-strings DecimalStrings, vax-balanced-trees BalancedTrees,
+# vax-date-times DateTimes, and vax-subprocesses Subprocesses.
 . ../../vaxfixture.sh
 vms=../../../rtl/vax/vms
 vmslib=../../../rtl/vax/vmslib
@@ -23,12 +24,12 @@ rtl=../../../rtl/vax
 rm -rf work
 mkdir work work/o2 work/oc
 : >result
-generated="CLIMSGDEF LIBDEF LIB_ROUTINES LNMDEF RMSDEF SSDEF STARLET STR_ROUTINES"
-modules="BalancedTrees CommandLanguage Conditions DateTimes DecimalStrings EventFlags ExitHandlers LogicalNames SortMerge Symbols Timers"
+generated="CLIDEF CLIMSGDEF LIBDEF LIB_ROUTINES LNMDEF RMSDEF SSDEF STARLET STR_ROUTINES"
+modules="BalancedTrees CommandLanguage Conditions DateTimes DecimalStrings EventFlags ExitHandlers LogicalNames SortMerge Subprocesses Symbols Timers"
 for model in O2 OC; do
   dir=work/$(echo $model | tr A-Z a-z)
   for m in $modules; do
-    poc -$model -target vax-dec-vms -import-path $vms -import-path $rtl -output-dir $dir \
+    poc -$model -target vax-dec-vms -import-path $vms -import-path $rtl -import-path $vmslib -output-dir $dir \
       -emit-macro32 $vmslib/$m.Mod >$dir/out 2>&1 || cat $dir/out >>result
   done
   echo "-$model: compiled" >>result

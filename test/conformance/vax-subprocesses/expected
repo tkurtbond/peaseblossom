@@ -1,0 +1,4 @@
+VMSDEF exit 0
+VMSLIB exit 0
+VAX build SpawnUse exit 0
+VAX build ChainedUse exit 0

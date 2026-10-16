@@ -5550,6 +5550,19 @@ the guest:
   overflows (32767 + 1 leaves -32768), and its `sign` is the new sum's
   sign: 1 for 105, -1 for -95 and for -32768.
 
+### 22.9 Subprocesses and ASTs (Phase 17 step 5)
+
+`vms-sdl-interfaces.md`, part 11, proposal 4: two facts from the `LIB$`
+manual (`AA-LA76A`) for a program that spawns.
+- **A `LIB$SPAWN` that waits hibernates in supervisor mode** (LIB-386):
+  `Subprocesses.Run`, and the routine without `CLI$M_NOWAIT`. A user-mode
+  AST, a `Timers.After` among them, is not delivered until the
+  subprocess ends and the call returns.
+- **A completion AST** (`LIB$SPAWN`'s `AST_address`, with `NOWAIT`) runs
+  at AST level under this section's rules, as any other; its status cell
+  must still exist when VMS writes it, so it is a global, or a heap
+  object the program keeps. Fixture `vax-subprocesses` uses one.
+
 ## 23. The command language routines, `CLI$` (Phase 17 step 5)
 
 The inventory's item 5 (`doc/research/vms-native-library-inventory.md`)

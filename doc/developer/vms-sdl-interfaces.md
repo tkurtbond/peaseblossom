@@ -2312,3 +2312,219 @@ And what the proposals did not ask:
 Left out, as proposal 7 says. Process control is a part of its own. The
 inventory's `LIB$` entry is marked done, and with it step 5's supported
 tier.
+
+## Proposals, part 11: process control (2026-10-16)
+
+The part the user set apart from part 10: `LIB$`'s routines that start or
+give way to another process or image, `LIB$SPAWN`, `LIB$ATTACH`,
+`LIB$DO_COMMAND` and `LIB$RUN_PROGRAM`, with `LIB$PUT_COMMON` and
+`LIB$GET_COMMON`, which carry data from one image to the next. The facts
+come from the *VMS RTL Library (LIB$) Manual* (`AA-LA76A`, 5.0), LIB-17,
+LIB-124, LIB-332 and LIB-382. **Approved by the user, 2026-10-16**, all
+eight.
+
+What the generated declarations already have, all matching the manual:
+- `LIB$SPAWN`, with each argument optional (`NIL`, or 0 for the two
+  passed by value). Its AST is typed `AsynchronousTraps.Routine` (step
+  6), and its `completion_status_address` is a `SYSTEM.ADDRESS` *by
+  value*, as LIB-384 says: the address where VMS later writes the
+  status. 5.5-2's SDL adds a thirteenth argument, `table`, after the
+  5.0 manual's `cli`.
+- The flags are `CLIDEF`'s `CLI$M_NOWAIT`, `NOCLISYM`, `NOLOGNAM`,
+  `NOKEYPAD`, `NOTIFY` and `NOCONTROL`.
+- `LIB$ATTACH`, `LIB$DO_COMMAND`, `LIB$RUN_PROGRAM`, `LIB$PUT_COMMON` and
+  `LIB$GET_COMMON`, each a string or a process id.
+
+Each needs DCL: a program run without a CLI, as a subprocess or detached
+process run directly, gets `LIB$_NOCLI`.
+
+1. **A small VMSLIB module, `Subprocesses`, for `LIB$SPAWN`.** One
+   problem makes the bare routine unsafe in Oberon. With `CLI$M_NOWAIT`,
+   VMS writes the completion status into the program's memory *later*,
+   when the subprocess ends (LIB-384: "Your program must ensure that
+   the address is still valid when the longword is written"). A local
+   is gone by then. A heap object is safe only while the program holds
+   it, and if it does not, the collector frees memory that VMS later
+   writes. The module settles that once:
+   ```
+   Subprocess* = POINTER TO SubprocessDesc;  (* fields hidden *)
+   PROCEDURE Run*(command, input, output: ARRAY OF CHAR; options: SET;
+                  VAR completion: SYSTEM.INT32): SYSTEM.INT32;
+   PROCEDURE Start*(command, input, output: ARRAY OF CHAR; options: SET;
+                    VAR s: Subprocess): SYSTEM.INT32;
+   PROCEDURE Done*(s: Subprocess): BOOLEAN;
+   PROCEDURE Wait*(s: Subprocess): SYSTEM.INT32;
+   PROCEDURE Stop*(s: Subprocess): SYSTEM.INT32;
+   PROCEDURE Id*(s: Subprocess): SYSTEM.CARD32;
+   ```
+   - `Run` spawns and waits. VMS writes the completion status before
+     the call returns, so the address of a local is enough, and
+     `completion` is the subprocess's final `$STATUS`.
+   - `Start` spawns with `CLI$M_NOWAIT`. The status cell and an event
+     flag (`EventFlags.Get`) belong to the `Subprocess`, which the module
+     keeps on a list of its own until `Wait` has seen it end. So the
+     program may drop `s`, and the collector never frees the cell under
+     VMS.
+   - `Done` says whether the event flag is set, without waiting. `Wait`
+     waits for it (`$WAITFR`), frees the flag, takes the `Subprocess` off
+     the list, and returns the completion status.
+   - `Stop` deletes the subprocess (`$DELPRC`). `Wait` then gives the
+     status VMS reports for a deleted process, which the guest shows.
+   - An empty `command`, `input` or `output` is omitted (`NIL`). With
+     `output` given, the subprocess's `SYS$OUTPUT` and `SYS$ERROR` go to
+     that file.
+   - `options` holds the module's `noSymbols`, `noLogicalNames` and
+     `noKeypad`, which become `CLI$M_NOCLISYM`, `NOLOGNAM` and `NOKEYPAD`.
+     `NOWAIT` is chosen by `Run` or `Start`. `NOTIFY` and `NOCONTROL`
+     (a broadcast message and a prompt's line feed) are left to the
+     generated declaration.
+   - A subprocess's own name, prompt and CLI are left to the generated
+     declaration too; VMS makes a unique name.
+
+   With a completion AST, a program uses the generated `LIB$SPAWN`
+   itself, under step 6's rules for AST routines, and keeps its status
+   cell in a global. The module's comment says so, and the fixture does
+   it once.
+
+2. **`LIB$DO_COMMAND` and `LIB$RUN_PROGRAM`: the generated declarations,
+   no module.** Both end the image at the call; nothing returns on
+   success.
+   - The image exits by `$EXIT` (LIB-332), so poc's exit handler runs:
+     finalizers, and `Out`'s last line not ended by `Ln`. The guest shows
+     that it does.
+   - `LIB$PUT_COMMON` and `LIB$GET_COMMON` pass a string to the next
+     image, up to 252 characters. They are the manual's way to give
+     `LIB$RUN_PROGRAM`'s program its arguments (LIB-333). It also says
+     the practice "is not recommended", so the module's comment points
+     to a foreign command line or a logical name instead.
+
+   A module would add only a wrapper around one string each.
+
+3. **`LIB$ATTACH`: the generated declaration, checked by hand.** It moves
+   the terminal to another process of the job, and the caller hibernates
+   until something attaches back. A fixture cannot do that unattended:
+   `vax-do`'s session would lose its terminal. A hand check like
+   `SmgScreen`'s is the proof: a program spawns a subprocess with
+   `NOWAIT`, attaches to it, the user types `ATTACH` back with the
+   program's process name, and the program goes on. Recorded in "Part
+   11 done".
+
+4. **Subprocesses and ASTs.** The two facts the manual gives, written
+   into `Subprocesses`' comment and `vax-macro32-backend.md` section 22:
+   - `Run`, and any `LIB$SPAWN` without `NOWAIT`, hibernates **in
+     supervisor mode**. So the program's user-mode ASTs, a `Timers.After`
+     among them, wait until the subprocess ends (LIB-386).
+   - A completion AST runs under step 6's rules: at AST level, as any
+     other.
+
+5. **Fixture `vax-subprocesses`, on the guest:** one program,
+   `SpawnUse`, prints only what does not change from run to run, never a
+   PID or a generated process name.
+   - **`Run`:**
+     - a `WRITE SYS$OUTPUT` with its output to a file, which the program
+       then reads by `Files` and prints;
+     - `EXIT 44`, completion status 44;
+     - a command with no output file, whose line appears in the program's
+       own output;
+     - a symbol and a process logical name defined by `Symbols` and
+       `LogicalNames`, seen by the subprocess, and not seen with
+       `noSymbols` and `noLogicalNames`;
+     - `input`, a command file written by the program, run through.
+   - **`Start` and `Wait`:** two subprocesses at once, each with its own
+     output file, waited for in turn. Then a third, `WAIT 00:01:00`,
+     stopped by `Stop`, and `Wait`'s status for it.
+   - **`LIB$SPAWN` itself** with `NOWAIT` and a completion AST. The AST
+     routine records its parameter and the status, and the main line
+     sleeps by `Timers.Sleep` until it has run.
+   - **`LIB$SPAWN` itself** with a process name, twice. The second is
+     `SS$_DUPLNAM`; the first is then waited for.
+   - **The chain:** `LIB$PUT_COMMON` of a line, then `LIB$RUN_PROGRAM` of
+     a second program, `ChainedUse`, which `LIB$GET_COMMON`s it, prints
+     it, and ends by `LIB$DO_COMMAND` of a `WRITE SYS$OUTPUT`.
+     `guest-run.com` builds both programs and shows what follows each
+     exit. A last line written with no `Ln` before `LIB$RUN_PROGRAM`
+     shows that the exit handler ran.
+
+6. **Checked on the guest as written, not before:**
+   - what status `Wait` gives for a subprocess `Stop` deleted;
+   - whether `LIB$DO_COMMAND`'s command runs, inside `guest-run.com`'s
+     procedure, before the procedure's next line, and whether that line
+     runs at all;
+   - whether `LIB$RUN_PROGRAM`'s image runs, and with which `$STATUS`;
+   - whether the POC account's subprocess quota (`PRCLM`) allows two at
+     once, or `SS$_EXQUOTA`;
+   - where the output of a subprocess with no output file goes when the
+     program is run by `vax-do`.
+
+   `Subprocesses`' comment states the answers.
+
+7. **Left out:**
+   - `$CREPRC`, detached processes and `LOGINOUT`: a process without
+     DCL, which none of these routines serves.
+   - `$FORCEX`, `$SUSPND` and `$RESUME` of a subprocess, and `$GETJPI`
+     on it beyond its PID: callable through `STARLET`, not checked.
+   - `CLI$M_NOTIFY`, `CLI$M_NOCONTROL`, a subprocess's prompt and its CLI
+     or command table.
+
+8. **The documents:**
+   - "Part 11 done" here;
+   - the inventory's `LIB$` entry, process control done;
+   - `vax-macro32-backend.md` section 22, proposal 4's two facts;
+   - `rtl/vax/vmslib/README.md` for `Subprocesses`;
+   - `PLAN.md` step 5, "Part 12".
+
+   `vax-vmslib`'s list gains `Subprocesses`, and `vax-asts` and
+   `vax-conditions-handlers` build it with every other VMSLIB module.
+
+## Part 11 done: what was implemented (2026-10-16)
+
+Proposals 1 to 8 as written, but for a slip in the fixture that the guest
+caught (below):
+- **`rtl/vax/vmslib/Subprocesses.Mod`**, compiled under `-O2` and `-OC`
+  by `vax-vmslib` and put in VMSLIB. It declares its own `LIB$SPAWN`
+  with each string a descriptor's address, 0 when omitted, so that one
+  call serves every combination of empty arguments; `Describe` makes a
+  descriptor only for a string that is not empty. `Start` takes its event
+  flag from `EventFlags.Get`, and gives it back if the spawn fails.
+- **Fixture `vax-subprocesses`** (`SpawnUse` and `ChainedUse`), which
+  passes on the guest. `vax-vmslib`, `vax-asts` and
+  `vax-conditions-handlers` build `Subprocesses` with every other VMSLIB
+  module, and their VMSDEF gains `CLIDEF`, which it imports.
+
+The first guest run hung until `vax-do` gave up. The fixture gave its own
+`LIB$SPAWN` the process name `POC_SPAWN_FIXTURE`, 17 characters, and a
+process name has at most 15, so the spawn failed with `SS$_IVLOGNAM`, no
+event flag was ever set, and the `$WAITFR` for it never returned. The
+fixture now uses `POC_SPAWN_TEST`, adds a third call with the long name to
+show `SS$_IVLOGNAM`, and waits for the flag at most 30 seconds, so that a
+spawn that fails cannot hang it again. `Subprocesses.Wait` waits only on a
+`Subprocess` whose spawn succeeded, since `Start` returns `NIL` for one
+that failed.
+
+What the guest showed, proposal 6's points first:
+- **`Wait` after `Stop`** gives `SS$_NORMAL` for the subprocess `$DELPRC`
+  deleted, not a condition that says it was deleted.
+- **`LIB$DO_COMMAND`, inside `guest-run.com`'s procedure**, ends the
+  image, and its command runs before the procedure's next line, which
+  then runs as usual, with `$STATUS` `%X00010001`.
+- **`LIB$RUN_PROGRAM`** runs its image in place of the caller's: the
+  `Show` after the call never printed, and `ChainedUse` printed the line
+  `LIB$PUT_COMMON` had given it, 30 characters.
+- **`PRCLM`** allows the POC account two subprocesses at once.
+- **A subprocess with no output file** writes to the caller's
+  `SYS$OUTPUT`, here `vax-do`'s log file: the line appears in the
+  program's own output, and so does the `%SYSTEM-F-ABORT` message DCL
+  prints for `EXIT 44`.
+- **The exit handler runs at a chain**: the line written with no `Ln`
+  before `LIB$RUN_PROGRAM` appears, on a line of its own.
+
+And:
+- A symbol and a process logical name are seen by the subprocess (`F$TYPE`
+  gives `STRING`) and not with `noSymbols` and `noLogicalNames`.
+- An input file's commands run, and its `EXIT 3` is the completion status.
+- The completion AST runs with its parameter, 7, and the status cell is
+  written before it.
+
+`Subprocesses`' comment states these answers, as proposal 6 says.
+`LIB$ATTACH` is left to a hand check with the user (proposal 3), not yet
+made. The inventory's `LIB$` entry is marked done, with process control.

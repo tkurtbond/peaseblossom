@@ -1,0 +1,52 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+SPAWNUSE built: %X10000001
+CHAINEDUSE built: %X10000001
+Run
+WRITE, to SPAWN1.OUT: SS$_NORMAL
+  completion %X00010001
+  | from a subprocess
+%SYSTEM-F-ABORT, abort
+EXIT 44: SS$_NORMAL
+  completion %X0000002C
+to the output of the caller
+WRITE, to the caller's output: SS$_NORMAL
+  completion %X00010001
+inherited: SS$_NORMAL
+  | STRING/a logical name
+not inherited: SS$_NORMAL
+  | /
+input SPAWN3.COM: SS$_NORMAL
+  completion %X00000003
+  | from the input file
+Start and Wait
+Start first: SS$_NORMAL
+Start second: SS$_NORMAL
+  completion %X00010001
+  second done: yes
+  | second
+Start WAIT 00:01:00: SS$_NORMAL
+Stop: SS$_NORMAL
+  completion %X00000001
+  | first
+LIB$SPAWN with a completion AST
+LIB$SPAWN: SS$_NORMAL
+  AST called: yes, parameter 7
+  completion %X00010001
+  | for the AST
+LIB$SPAWN with a process name, twice, and one too long
+first: SS$_NORMAL
+second: SS$_DUPLNAM
+too long: SS$_IVLOGNAM
+  the first ended: yes
+  completion %X00000001
+the chain
+LIB$PUT_COMMON: SS$_NORMAL
+  length 30
+a line with no Ln, before LIB$RUN_PROGRAM
+ChainedUse: LIB$GET_COMMON status %X00000001, |a line through the common area|
+ChainedUse ends by LIB$DO_COMMAND
+from LIB$DO_COMMAND
+run: %X00010001
+after the run

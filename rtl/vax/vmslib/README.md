@@ -79,6 +79,14 @@ up to its `0X`. Fixture `vax-vmslib` runs them on the guest.
   linker by fixture `vax-sort`; a key's `ascending` and `descending`; and
   `AddKey`, which fills `SOR$BEGIN_SORT`'s key buffer. The routines are
   `SOR_ROUTINES`' (`doc/developer/vms-sdl-interfaces.md`, part 8).
+- `Subprocesses.Mod`: DCL commands in a subprocess by `LIB$SPAWN`: `Run`,
+  which waits and gives the subprocess's final status, and `Start`, which
+  does not, with `Done`, `Wait`, `Stop` (`$DELPRC`) and `Id`; an input and
+  an output file, and options that keep symbols, logical names or the
+  keypad from the subprocess. A started subprocess stays on the module's
+  list until `Wait` sees it end, since VMS writes its status into the
+  program's memory then. Fixture `vax-subprocesses`
+  (`doc/developer/vms-sdl-interfaces.md`, part 11).
 - `Symbols.Mod`: `Get`, `Set` and `Delete` a DCL symbol, `Local` or
   `Global`, by `LIB$GET_SYMBOL`, `LIB$SET_SYMBOL` and
   `LIB$DELETE_SYMBOL`. A symbol is a string here.
