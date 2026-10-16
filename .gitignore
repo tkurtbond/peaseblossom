@@ -255,6 +255,8 @@ test/conformance/vax-interlocked/work/
 test/conformance/vax-lib-information/work/
 # vax-subprocesses' libraries and programs (Phase 17 step 5, part 11)
 test/conformance/vax-subprocesses/work/
+# vax-system-services' libraries and program (Phase 17 step 5, part 12)
+test/conformance/vax-system-services/work/
 # poc-response-files builds a program and a library (Phase 17 step 1)
 test/conformance/poc-response-files/resp-main
 test/conformance/poc-response-files/libs/

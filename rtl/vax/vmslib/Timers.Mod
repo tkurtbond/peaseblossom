@@ -41,7 +41,9 @@ MODULE Timers;
 
   (* the process hibernates for milliseconds ($SCHDWK and $HIBER); ASTs
      are delivered meanwhile. A wake request ($WAKE) made before or
-     during it ends it sooner. Not at AST level. *)
+     during it ends it sooner, one made long before that no $HIBER has
+     used too; VMS keeps no count of them (vms-sdl-interfaces.md, part
+     12). Not at AST level. *)
   PROCEDURE Sleep*(milliseconds: LONGINT): SYSTEM.INT32;
     VAR result: SYSTEM.INT32;
   BEGIN

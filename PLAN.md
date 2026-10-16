@@ -869,6 +869,17 @@ C++, and so on) unless step 4 chooses one deliberately.
    ("Part 11 done"; `vax-macro32-backend.md`, section 22.9). `LIB$ATTACH`
    is still to be checked by hand.
 
+   **Part 13, the synchronous system services (2026-10-16)**: seven
+   proposals in `vms-sdl-interfaces.md`, part 12, **approved by the user,
+   2026-10-16**, the first gap of step 8's plan. Fixture
+   `vax-system-services` calls `$GETSYIW`, `$GETDVIW`, `$NUMTIM`, `$FAO`
+   and `$FAOL`, `$ENQW` and `$DEQ`, `$WAKE`, `$SETPRN` and a mailbox's
+   `$CREMBX`, `$QIOW` and `$DASSGN` through `STARLET`; `VmsArguments`
+   gains `LockStatusBlock`. All passed on the first run. The guest showed
+   that a new resource's value block is valid and zero, that VMS keeps
+   no count of wakes, and that it is a `VAXserver 3900` ("Part 12
+   done").
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)
@@ -973,8 +984,8 @@ C++, and so on) unless step 4 chooses one deliberately.
    **Plan, approved by the user, 2026-10-16.** Reading the tree against
    that text found four gaps, closed in this order, each committed on its
    own:
-   - **The supported tier's system services** without a fixture on the
-     guest: `$GETSYIW`, `$GETDVIW`, `$NUMTIM`, `$FAO` (only `$FAOL` is
+   - **Done (part 13).** **The supported tier's system services**
+     without a fixture on the guest: `$GETSYIW`, `$GETDVIW`, `$NUMTIM`, `$FAO` (only `$FAOL` is
      tried), `$ENQW` and `$DEQ`, `$WAKE` and `$SETPRN`. A part 13 of step
      5, proposals first, with one fixture, `vax-system-services`, and no
      module.

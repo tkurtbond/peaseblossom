@@ -1,7 +1,10 @@
 ;; Written by Claude, 2026-10-16, for Phase 17 step 5
-;; (doc/developer/vms-sdl-interfaces.md, part 7, proposal 2, approved by
-;; the user); reviewed by the user, 2026-10-16. It replaces the file the user
-;; reviewed on 2026-10-15. Why this is right:
+;; (doc/developer/vms-sdl-interfaces.md, part 12, proposal 1, approved by
+;; the user); reviewed by the user, 2026-10-16. It replaces the file the
+;; user reviewed earlier that day. Why this is right:
+;; - Only VmsArguments' key (the .EXTERNAL POC_K1_) changes, since its
+;;   interface gained LockStatusBlock; this program does not use it.
+;; As the user reviewed it on 2026-10-16 (part 7, proposal 2):
 ;; - Only VmsArguments' key (the .EXTERNAL POC_K1_) changes, since its
 ;;   interface gained ArrayDescriptor and DescribeArray; this program
 ;;   does not use them.
@@ -141,7 +144,7 @@ VAXVMSARGUMENTS_DESCRI_NH9PRTJL:
 	.EXTERNAL	VMSARGUMENTS_SETITEM_PFKLI9H2
 	.EXTERNAL	VMSARGUMENTS_ENDLIST_N4A9J8HG
 	.EXTERNAL	VMSARGUMENTS_INIT
-	.EXTERNAL	POC_K1_03CFD526CE16F763
+	.EXTERNAL	POC_K1_3B4F3789B933191B
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP

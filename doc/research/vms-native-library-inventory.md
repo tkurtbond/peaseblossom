@@ -255,6 +255,13 @@ Two conditions apply to a synchronous callback:
 
      Their asynchronous forms, `$SETIMR` with an AST, and the rest of
      what step 6 lists, are step 6's.
+     - **Done** (2026-10-16; `vms-sdl-interfaces.md`, part 12). Logical
+       names, `$GETJPIW`, `$BINTIM`, `$ASCTIM`, `$GETMSG`, `$FAOL` and
+       the event flags were called by earlier fixtures; fixture
+       `vax-system-services` calls the rest through `STARLET`, with
+       `VmsArguments.LockStatusBlock` for the locks, and `$FAO` through
+       a declaration with a fixed number of parameters, since the
+       generator leaves it out.
    - **RMS:** the services and `FAB`, `RAB`, `NAM` and the `XAB`s, used
      synchronously.
      - The point is what `Files` cannot do: relative and indexed files,

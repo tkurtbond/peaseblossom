@@ -1,0 +1,85 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+SERVICEUSE built: %X10000001
+$GETSYIW
+version, hardware, CPU: SS$_NORMAL
+  I/O status: SS$_NORMAL
+  SYI$_VERSION |V5.5-2H4|
+  SYI$_HW_NAME |VAXserver 3900 Series|
+  SYI$_CPU 10, length 4
+item 9999: SS$_BADPARAM
+$GETDVIW
+SYS$DISK: SS$_NORMAL
+  I/O status: SS$_NORMAL
+  DVI$_DEVCLASS is DC$_DISK: yes
+  DVI$_DEVNAM |_DUA1:|
+a mailbox
+$CREMBX: SS$_NORMAL
+$GETDVIW by channel: SS$_NORMAL
+  DVI$_DEVCLASS is DC$_MAILBOX: yes, DVI$_DEVBUFSIZ 64
+$QIOW write: SS$_NORMAL
+  I/O status: SS$_NORMAL
+$QIOW read: SS$_NORMAL
+  I/O status: SS$_NORMAL
+  read |a line through the mailbox|
+$QIOW read, empty, IO$M_NOW: SS$_NORMAL
+  I/O status: SS$_ENDOFFILE
+$DASSGN: SS$_NORMAL
+$DASSGN again: SS$_IVCHAN
+$NUMTIM
+16-OCT-2026 12:34:56.78: SS$_NORMAL
+  2026 10 16 12 34 56 78
+0: SS$_NORMAL
+  1858 11 17 0 0 0 0
+a delta of 3 04:00:00.00: SS$_NORMAL
+  0 0 3 4 0 0 0
+now: SS$_NORMAL
+$FAO and $FAOL
+!UL and !XL: SS$_NORMAL
+   |42 and 000000FF|
+!AS, !SL: SS$_NORMAL
+   |a string, -42|
+!%D, !UL: SS$_NORMAL
+   |16-OCT-2026 12:34:56.78, 7|
+$FAOL !UL and !XL: SS$_NORMAL
+   |42 and 000000FF|
+$ENQW and $DEQ on POC_SSTEST
+A, EX, VALBLK: SS$_NORMAL
+  in the lock status block: SS$_NORMAL
+  A's lock id is not 0: yes
+  value ||
+B, EX, NOQUEUE: SS$_NOTQUEUED
+B, CR, NOQUEUE: SS$_NOTQUEUED
+B, NL: SS$_NORMAL
+  in the lock status block: SS$_NORMAL
+A converted to NL, VALBLK: SS$_NORMAL
+  in the lock status block: SS$_NORMAL
+B converted to PR, VALBLK: SS$_NORMAL
+  in the lock status block: SS$_NORMAL
+  value |from lock A|
+C, NL, SYNCSTS: SS$_SYNCH
+  in the lock status block: SS$_NORMAL
+$DEQ A: SS$_NORMAL
+$DEQ B: SS$_NORMAL
+$DEQ C: SS$_NORMAL
+$DEQ A again: SS$_IVLOCKID
+$WAKE and $HIBER
+$WAKE: SS$_NORMAL
+$HIBER: SS$_NORMAL
+$WAKE: SS$_NORMAL
+$WAKE: SS$_NORMAL
+$HIBER: SS$_NORMAL
+Timers.Sleep(2000): SS$_NORMAL
+  at least 1.5 seconds: yes
+$WAKE POC_NO_SUCH: SS$_NONEXPR
+$SETPRN
+$GETJPIW: SS$_NORMAL
+POC_SSTEST: SS$_NORMAL
+  JPI$_PRCNAM |POC_SSTEST|
+POC_SSTEST_LONG_: SS$_IVLOGNAM
+a subprocess POC_SSDUP: SS$_NORMAL
+POC_SSDUP: SS$_DUPLNAM
+the first name again: SS$_NORMAL
+  restored: yes
+run: %X00000001

@@ -2,10 +2,11 @@ MODULE VmsArguments;
 
   (* The structures a program builds to call a VMS routine through a
      ["VMS"] declaration (doc/developer/vms-sdl-interfaces.md, part 1,
-     proposal 6): a string descriptor, the entries of an item list, and
-     an I/O status block. Their fields have exact widths, so that they
-     mean the same under -O2 and -OC, and poc's alignment, each field to
-     its size, gives each its VMS layout (proposal 5).
+     proposal 6): a string descriptor, the entries of an item list, an
+     I/O status block, and a lock status block (part 12). Their fields
+     have exact widths, so that they mean the same under -O2 and -OC, and
+     poc's alignment, each field to its size, gives each its VMS layout
+     (proposal 5).
 
      A length, a count, a descriptor's class and data type, and an I/O
      status are unsigned, VMS's own types for them, so that one variable
@@ -82,6 +83,18 @@ MODULE VmsArguments;
       status*: SYSTEM.CARD16;
       count*: SYSTEM.CARD16;
       deviceSpecific*: SYSTEM.INT32
+    END;
+
+    (* a lock status block, 24 bytes (VMS System Services Reference Manual,
+       5.5, $ENQ; vms-sdl-interfaces.md, part 12, proposal 1): the
+       request's final condition value, a reserved word, the lock's id,
+       which $ENQ writes for a new lock and a conversion is given, and the
+       lock value block, read and written with LCK$M_VALBLK *)
+    LockStatusBlock* = RECORD
+      status*: SYSTEM.CARD16;
+      reserved: SYSTEM.CARD16;
+      lockId*: SYSTEM.CARD32;
+      value*: ARRAY 16 OF SYSTEM.BYTE
     END;
 
   (* n, 0 to 65,535, as the bits of a word: SYSTEM.VAL, which truncates,

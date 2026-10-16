@@ -2528,3 +2528,198 @@ And:
 `Subprocesses`' comment states these answers, as proposal 6 says.
 `LIB$ATTACH` is left to a hand check with the user (proposal 3), not yet
 made. The inventory's `LIB$` entry is marked done, with process control.
+
+## Proposals, part 12: the synchronous system services (2026-10-16)
+
+`PLAN.md` step 8's plan (approved 2026-10-16) found that some of the
+system services in the inventory's supported tier (proposal 3, "System
+services, synchronous forms") have never been called on the guest:
+`$GETSYIW`, `$GETDVIW`, `$NUMTIM`, `$FAO`, `$ENQW`, `$DEQ`, `$WAKE` and
+`$SETPRN`, with `$CREMBX`, `$DASSGN` and a synchronous `$QIOW` tried only
+inside the AST fixture. This part calls each through the generated
+`STARLET` and checks what comes back, as part 10 did for `LIB$`.
+**Approved by the user, 2026-10-16**, all seven. The facts
+come from the *VMS System Services Reference Manual* for 5.5 (`AA-LA69B`),
+SYS-149 ($DEQ), SYS-202 to SYS-213 ($ENQ, $ENQW), SYS-221 ($FAO), SYS-285
+($GETDVIW), SYS-381 ($GETSYIW), SYS-455 ($NUMTIM), SYS-527 ($SETPRN) and
+SYS-665 ($WAKE).
+
+What the generated declarations already have, each matching the manual:
+- `$GETSYIW` and `$GETDVIW`, an item list as `ARRAY OF SYSTEM.BYTE` (so
+  `VmsArguments`' `ItemListEntry3` array), an I/O status block, and the
+  AST arguments, which are `NIL` and 0 here.
+- `$NUMTIM`, a 7-word buffer and an optional time: year, month, day,
+  hour, minute, second, hundredths (SYS-455).
+- `$FAOL`, its parameters as a longword array.
+- `$ENQW` and `$DEQ`, the lock status block as `VAR ARRAY OF SYSTEM.BYTE`,
+  `LCKDEF`'s modes (`LCK$K_NLMODE` .. `LCK$K_EXMODE`) and flags
+  (`LCK$M_VALBLK`, `CONVERT`, `NOQUEUE`, `SYNCSTS`).
+- `$WAKE`, a PID or a process name, both optional, and `$SETPRN`, a
+  name.
+
+**`$FAO` is not generated.** The generator left it out with a comment
+("a variable argument list"), and `$FAOL` is the same service with its
+parameters in an array.
+
+1. **No module, and one type for the lock status block.** As in part 6,
+   7 and 10, the fixture calls the generated declarations directly. One
+   structure has no Oberon type yet, the lock status block (SYS-203): a
+   word of condition value, a reserved word, the lock id, and, with
+   `LCK$M_VALBLK`, a 16-byte value block after them. I propose
+   `VmsArguments.LockStatusBlock`, beside its `IOStatusBlock`:
+   ```
+   LockStatusBlock* = RECORD
+     status*: SYSTEM.CARD16;   (* the request's final condition value *)
+     reserved: SYSTEM.CARD16;
+     lockId*: SYSTEM.CARD32;   (* written for a new lock; given for a conversion *)
+     value*: ARRAY 16 OF SYSTEM.BYTE  (* the lock value block, with LCK$M_VALBLK *)
+   END;
+   ```
+   24 bytes, which serves with the value block or without. The
+   alternative is a record of the fixture's own, which every program that
+   locks would then copy. `vax-vms-arguments` checks its layout.
+
+2. **`$FAO` by a declaration with a fixed number of parameters.** VMS
+   takes as many as the control string uses, so a declaration that names
+   two passes two, and is correct for any control string that uses two:
+   ```
+   PROCEDURE ["VMS", "SYS$FAO"] Format2(control-: ARRAY OF CHAR;
+       VAR length: SYSTEM.CARD16; VAR buffer: ARRAY OF CHAR;
+       p1, p2: SYSTEM.CARD32): SYSTEM.INT32;
+   ```
+   The fixture declares it so. The guide (chapter 7) says this is how a
+   program reaches `$FAO`; the generator is not changed. A string
+   parameter (`!AS`) is a descriptor's address, passed as a `CARD32`
+   from `SYSTEM.ADR`; the fixture shows it once.
+
+3. **Fixture `vax-system-services`, one program, `ServiceUse`**,
+   printing only what does not change from run to run on the guest:
+   - **`$GETSYIW`**: `SYI$_VERSION` (`V5.5-2H4`, as `LIB$GETSYI` gave),
+     `SYI$_HW_NAME` and `SYI$_CPU` in one item list, each with its
+     return length, and the I/O status block's status; an item code that
+     does not exist, and what that gives (`SS$_BADPARAM`, by the manual).
+   - **`$GETDVIW`**, by name: `SYS$DISK`'s `DVI$_DEVCLASS` (`DC$_DISK`)
+     and `DVI$_DEVNAM`. By channel: a mailbox made by `$CREMBX` (64-byte
+     messages), whose `DVI$_DEVCLASS` is `DC$_MAILBOX` and
+     `DVI$_DEVBUFSIZ` 64.
+   - **The mailbox, synchronously**: `$QIOW` `IO$_WRITEVBLK` with
+     `IO$M_NOW` of a line, `$QIOW` `IO$_READVBLK` of it back, with the
+     I/O status block's count; a read of the empty mailbox with `IO$M_NOW`
+     (`SS$_ENDOFFILE` in the I/O status block: *VMS I/O User's
+     Reference Manual: Part I*, 5.4, `AA-LA84B`, section 7.3); then
+     `$DASSGN`, and a second `$DASSGN` of the same channel
+     (`SS$_IVCHAN`).
+   - **`$NUMTIM`** of a time made by `$BINTIM` from `16-OCT-2026
+     12:34:56.78`: the seven words. Of the time 0: the base date, 17
+     November 1858. Of a delta of 3 days 4 hours: year and month 0, day
+     3. Of the current time (no `timadr`) only the status.
+   - **`$FAO`** through proposal 2's declaration: `!UL` and `!XL` of two
+     numbers, `!AS` of a string, `!SL` of a negative number, and
+     `!%D` of the time above; `$FAOL` through `STARLET`, with the same
+     control string, giving the same text.
+   - **`$ENQW` and `$DEQ`**, on a resource named `POC_SSTEST`, all in the
+     one process, each request a lock of its own:
+     - lock A in `EX` mode with `LCK$M_VALBLK`: `SS$_NORMAL` in R0 and in
+       the lock status block, and a lock id;
+     - lock B, `EX` with `LCK$M_NOQUEUE`: `SS$_NOTQUEUED` in R0 (the manual
+       lists it among the values returned in R0, not in the block); then `CR` with `NOQUEUE`,
+       the same, since `EX` admits only `NL`; then `NL`, granted;
+     - A converted (`LCK$M_CONVERT`) from `EX` to `NL` with `VALBLK` and a
+       value of the program's: the lock database keeps it (`$ENQ`'s "lock value block");
+     - B converted from `NL` to `PR` with `VALBLK`: its value block holds
+       A's value;
+     - lock C, `NL` with `LCK$M_SYNCSTS`: `SS$_SYNCH`, granted at once;
+     - `$DEQ` of each, and of an id that is no lock (`SS$_IVLOCKID`).
+   - **`$WAKE` and `$HIBER`**: `$WAKE` of the program's own process (no
+     arguments), then `$HIBER`, which returns at once. `$WAKE` twice, then
+     `$HIBER` once, then `Timers.Sleep(2000)`, which is `$SCHDWK` and
+     `$HIBER`: the manual says no count of wakes is kept, so the sleep
+     takes its two seconds; the program measures it by `$GETTIM` and
+     prints only "at least 1.5 seconds: yes". `$WAKE` of a process name
+     that does not exist (`SS$_NONEXPR`).
+   - **`$SETPRN`**: the process's name read by `$GETJPIW`
+     (`JPI$_PRCNAM`), not printed; set to `POC_SSTEST` and read back; a
+     16-character name (`SS$_IVLOGNAM`); the name of a subprocess the
+     program started with that name (`SS$_DUPLNAM`); then the first name
+     put back, and "restored: yes" printed. The `vax-do` session ends
+     soon after in any case.
+
+4. **What the guest must answer** (checked as written, not before):
+   - whether the guest's `SYI$_HW_NAME` and `SYI$_CPU` are SIMH's
+     MicroVAX 3900 ones, and so stable to print;
+   - whether `DVI$_DEVNAM` of `SYS$DISK` is `_DUA1:` with no node name,
+     the guest having no DECnet;
+   - whether a lock value block is valid the first time a resource is
+     made, or `SS$_VALNOTVALID` (a warning, in the lock status block);
+   - whether `$ENQW` without `LCK$M_SYSTEM` needs no privilege, the
+     resource being the UIC group's, as the manual implies.
+
+   The answers go into "Part 12 done" and the guide's chapter 9.
+
+5. **`Timers.Sleep` and a pending `$WAKE`.** `Sleep` is `$SCHDWK` then
+   `$HIBER`, so a `$WAKE` the program issued earlier and nobody consumed
+   makes the next `Sleep` return at once. `Timers`' comment says so; the
+   code is not changed, since a loop that sleeps until a time would
+   change what `Sleep` costs everyone.
+
+6. **Left out:**
+   - the asynchronous forms (`$GETSYI`, `$GETDVI`, `$ENQ` with an AST,
+     blocking ASTs): step 6's rules, not checked here;
+   - `$GETLKI`, sublocks (`parid`), `LCK$M_SYSTEM` (privilege
+     `SYSLCK`), and cluster-wide `$GETSYIW` (`csidadr`);
+   - `$WAKE` and `$SETPRN` of another UIC group's process (privileges
+     `GROUP`, `WORLD`).
+
+7. **The documents:**
+   - "Part 12 done" here;
+   - the inventory's proposal 3 marks the synchronous services done;
+   - `rtl/vax/README.md` for `LockStatusBlock`, if proposal 1 is approved;
+   - `PLAN.md` step 5, "Part 13", and step 8's plan, its first gap
+     closed.
+
+## Part 12 done: what was implemented (2026-10-16)
+
+All seven proposals as written:
+- **`VmsArguments.LockStatusBlock`** (`rtl/vax/VmsArguments.Mod`): its
+  type descriptor gives 24 bytes. `vax-vms-arguments`'
+  `expected-vax-VmsArguments.mar` is regenerated for it: the descriptor,
+  the module's key, and line numbers 13 later.
+- **Fixture `vax-system-services`** (`ServiceUse`), which passed on its
+  first run on the guest. It builds VMSLIB's `EventFlags` and `Timers`
+  with it, for the subprocess and the sleep.
+- `Timers.Sleep`'s comment says that VMS keeps no count of wakes, so one
+  `$WAKE` that no `$HIBER` has used ends the next `Sleep` at once
+  (proposal 5).
+
+What the guest showed, proposal 4's points first:
+- `SYI$_HW_NAME` is `VAXserver 3900 Series` and `SYI$_CPU` 10, SIMH's
+  `microvax3900` as VMS names it; `SYI$_VERSION` is `V5.5-2H4`, as
+  `LIB$GETSYI` gave it.
+- `DVI$_DEVNAM` of `SYS$DISK` is `_DUA1:`, with no node name.
+- The value block of a resource just made is valid and all zeros, not
+  `SS$_VALNOTVALID`.
+- `$ENQW` without `LCK$M_SYSTEM` needs no privilege.
+
+And:
+- An item code that does not exist is `SS$_BADPARAM` from `$GETSYIW`.
+- A mailbox's `DVI$_DEVBUFSIZ` is its `maxmsg`, 64. A read of the empty
+  mailbox with `IO$M_NOW` returns `SS$_NORMAL` and puts `SS$_ENDOFFILE`
+  in the I/O status block; a second `$DASSGN` is `SS$_IVCHAN`.
+- `$NUMTIM` of 0 is 17 November 1858, midnight, and of a delta of
+  `3 04:00:00.00` gives year and month 0, day 3, hour 4.
+- `$FAO` through a declaration of two parameters formats `!UL`, `!XL`,
+  `!AS` (a descriptor's address), `!SL` (-42) and `!%D` (a quadword's
+  address), and `$FAOL` with the same control string gives the same text.
+- `SS$_NOTQUEUED` comes back in R0, as the manual lists it, for `EX` and
+  for `CR` against a granted `EX`; `NL` is granted. A value written with
+  the conversion of `EX` to `NL` is read by another lock's conversion to
+  `PR`. `LCK$M_SYNCSTS` gives `SS$_SYNCH` in R0 and `SS$_NORMAL` in the
+  lock status block. A lock dequeued is `SS$_IVLOCKID` to `$DEQ` again.
+- `$WAKE` twice and `$HIBER` once leave no wake pending: the
+  `Timers.Sleep(2000)` after them took its two seconds. `$WAKE` of a
+  process name that does not exist is `SS$_NONEXPR`.
+- `$SETPRN` of 16 characters is `SS$_IVLOGNAM`, and of a subprocess's
+  name `SS$_DUPLNAM`; the process's first name was put back.
+
+The inventory's synchronous system services are marked done, which closes
+the first gap of step 8's plan.
