@@ -1734,4 +1734,251 @@ The `CLI$` routines need DCL. A detached process, started by `RUN
 of `CommandLanguage` returns `InvalidRequest` there. `HasInterpreter`
 tells a program before it asks.
 
-<!-- Chapters 11 to 17 and the appendices are to be written. -->
+<!-- Chapters 11 and 12 are to be written. -->
+
+## 13. Conditions and handlers
+
+*For the Unix reader: VMS's way of reporting errors, which works more
+like an exception than like a returned error code. For the VMS reader:
+condition handlers in Oberon.*
+
+Most VMS routines return a condition value (chapter 7). Some **signal**
+one instead: they hand it to VMS, which looks for a handler to deal with
+it, as an exception is thrown. Most of `STR$` and `MTH$` signal their
+errors. So do `LIB$SIGNAL` and `LIB$STOP`, which a program calls to
+signal a condition itself. The hardware signals too, for an access
+violation, a division by zero or a real overflow.
+
+### When nothing handles a signal
+
+A poc program establishes no handler of its own, so a signal reaches VMS's
+last one. It prints the condition's message and a traceback of the calls
+that led to it, to `SYS$OUTPUT` and to `SYS$ERROR`. Then:
+
+- **For a warning, a success, an informational condition or an error**,
+  the program goes on after the call that signalled.
+- **For a severe (fatal) condition**, the program ends, with that
+  condition as its status. `LIB$STOP` always makes its condition severe,
+  and so a stop always ends the program.
+
+A real overflow, in chapter 5, is a severe hardware condition, and ends
+the program so.
+
+### Signalling a condition
+
+`Conditions` signals with `Signal`, or with `SignalWith` when the
+message has one FAO directive, such as `!AS` for a string, which takes a
+descriptor's address. With no handler, this prints, before its traceback:
+
+    VmsArguments.Describe(descriptor, image);
+    Conditions.SignalWith(LIBDEF.LIB$_ACTIMAGE, SYSTEM.VAL(SYSTEM.INT32, SYSTEM.ADR(descriptor)));
+
+    %LIB-E-ACTIMAGE, error activating image POC_NO_IMAGE
+
+`Stop` and `StopWith` stop. `SignalList` and `StopList` take the whole
+list `LIB$SIGNAL` takes, in an array: a condition, the number of its FAO
+arguments and the arguments, then optionally another condition with its
+own, and so on. Each condition after the first is printed with a `-`, as
+the cause of the one before it:
+
+    %LIB-E-ACTIMAGE, error activating image POC_FIRST
+    -LIB-E-ACTIMAGE, error activating image POC_SECOND
+    -SYSTEM-F-IVLOGNAM, invalid logical name
+
+Nothing checks a list: a wrong one prints a wrong message.
+
+### Handlers
+
+A procedure gives itself a handler with `Conditions.Establish`. A
+condition signalled while the procedure runs, in it or in anything it
+calls, is offered to its handler. The handlers are tried from the newest
+frame outwards, each procedure's in turn, until one deals with the
+condition. A handler is removed when its procedure returns, or earlier
+by `Conditions.Revert`.
+
+A handler is a global procedure of type `Conditions.Handler`:
+
+    PROCEDURE (VAR signal: Conditions.SignalArray;
+               VAR mechanism: Conditions.MechanismArray): SYSTEM.INT32;
+
+`signal[1]` is the condition, `signal[0]` the number of longwords after
+`signal[0]`, the last two of them being the PC and PSL where the
+condition was signalled, and the FAO arguments between. `mechanism[2]` is
+how many frames out from the signal the handler's own procedure is, and
+`mechanism[3]` the value its procedure returns if the handler unwinds.
+The handler then does one of three things:
+
+- **Returns `Conditions.Continue`**: the program goes on after the call
+  that signalled, as if the signal had returned. A severe condition
+  cannot be continued, and ends the program.
+- **Returns `Conditions.Resignal`**: the condition is offered to the next
+  handler out, and finally to VMS's.
+- **Calls `Conditions.Unwind` and returns**: the handler's own procedure
+  returns to its caller at once, with `mechanism[3]` as its result, and
+  every frame between it and the signal is removed.
+
+This handler notes each warning and continues, and offers any other
+condition further out:
+
+<!-- example: vax/warnings/Warnings.Mod -->
+```
+MODULE Warnings;
+  IMPORT SYSTEM, Out, Conditions, SSDEF;
+
+  VAR warnings: INTEGER;
+
+  (* a warning noted and continued; anything else offered further out *)
+  PROCEDURE NoteWarnings(VAR signal: Conditions.SignalArray;
+                         VAR mechanism: Conditions.MechanismArray): SYSTEM.INT32;
+    VAR text: ARRAY 100 OF CHAR;
+  BEGIN
+    IF Conditions.Severity(signal[1]) # Conditions.Warning THEN
+      RETURN Conditions.Resignal
+    END;
+    INC(warnings);
+    Conditions.Message(signal[1], text);
+    Out.String("noted: "); Out.String(text); Out.Ln;
+    RETURN Conditions.Continue
+  END NoteWarnings;
+
+  PROCEDURE Work;
+    VAR previous: Conditions.Handler;
+  BEGIN
+    previous := Conditions.Establish(NoteWarnings);
+    Conditions.Signal(SSDEF.SS$_ENDOFFILE);
+    Conditions.Signal(SSDEF.SS$_NOSUCHFILE);
+    Out.String("the work goes on"); Out.Ln
+  END Work;
+
+BEGIN
+  Work;
+  Out.Int(warnings, 0); Out.String(" warnings"); Out.Ln
+END Warnings.
+```
+
+<!-- vax-session: warnings -->
+
+    $ RUN WARNINGS
+    noted: %SYSTEM-W-ENDOFFILE, end of file
+    noted: %SYSTEM-W-NOSUCHFILE, no such file
+    the work goes on
+    2 warnings
+
+No message or traceback is printed for either warning: the handler dealt
+with them. `Conditions.Message` gives a message's text as VMS writes it,
+with its FAO directives left as they are.
+
+A handler that unwinds turns a signal into a result. `Readable` here
+tries to read an address. An access violation, a hardware condition, is
+signalled to its handler, which makes `Readable` return 0, `FALSE`:
+
+<!-- example: vax/probe/Probe.Mod -->
+```
+MODULE Probe;
+  IMPORT SYSTEM, Out, Conditions, SSDEF;
+
+  VAR global: INTEGER;
+
+  (* an access violation ends Readable, which returns FALSE *)
+  PROCEDURE AccessHandler(VAR signal: Conditions.SignalArray;
+                          VAR mechanism: Conditions.MechanismArray): SYSTEM.INT32;
+    VAR status: SYSTEM.INT32;
+  BEGIN
+    IF signal[1] # SSDEF.SS$_ACCVIO THEN RETURN Conditions.Resignal END;
+    mechanism[3] := 0; (* what Readable returns *)
+    status := Conditions.Unwind();
+    RETURN Conditions.Continue
+  END AccessHandler;
+
+  (* whether the longword at address can be read *)
+  PROCEDURE Readable(address: SYSTEM.ADDRESS): BOOLEAN;
+    VAR previous: Conditions.Handler; value: SYSTEM.INT32;
+  BEGIN
+    previous := Conditions.Establish(AccessHandler);
+    SYSTEM.GET(address, value);
+    RETURN TRUE
+  END Readable;
+
+  PROCEDURE Show(what: ARRAY OF CHAR; address: SYSTEM.ADDRESS);
+  BEGIN
+    Out.String(what); Out.String(" readable: ");
+    IF Readable(address) THEN Out.String("yes") ELSE Out.String("no") END;
+    Out.Ln
+  END Show;
+
+BEGIN
+  Show("address 0", 0);
+  Show("a variable", SYSTEM.ADR(global))
+END Probe.
+```
+
+<!-- vax-session: probe -->
+
+    $ RUN PROBE
+    address 0 readable: no
+    a variable readable: yes
+
+While an unwind removes the frames, VMS calls each of their handlers
+once more, with the condition `Conditions.Unwinding`, so that a
+procedure being left can clean up. Such a handler returns, and its
+answer does not matter. `DecimalStrings` uses VMS's own handler
+`LIB$SIG_TO_RET` in the same way, to turn `STR$`'s signals into returned
+statuses.
+
+Three rules follow from how VMS calls a handler:
+
+- **A handler is global.** It cannot be a nested procedure, so it cannot
+  see its establisher's local variables. What the two share goes in
+  global variables, or in `mechanism[3]` for a result.
+- **A handler sees conditions from everything its procedure calls**,
+  library routines and the runtime included. One that continues every
+  condition it is given hides errors it did not expect, so a handler
+  should resignal what it does not know, as both examples do.
+- **At AST level, a handler must not unwind.** A condition signalled in
+  an AST routine is also offered to the handlers of the frames that the
+  AST interrupted. Unwinding one of those would remove frames of code
+  that is not running. A handler tests `AsynchronousTraps.InProgress`
+  first (chapter 14).
+
+### Exit handlers
+
+An exit handler is called when the program ends, however it ends:
+normally, by `$EXIT` or `HALT`, by a trap or by a severe condition.
+`ExitHandlers.Declare` declares one. The handler is given the exit
+status:
+
+<!-- example: vax/goodbye/Goodbye.Mod -->
+```
+MODULE Goodbye;
+  IMPORT SYSTEM, Out, ExitHandlers;
+
+  VAR status: SYSTEM.INT32;
+
+  PROCEDURE AtExit(VAR exitStatus: SYSTEM.CARD32);
+  BEGIN
+    Out.String("exiting with status %X"); Out.CardHex(exitStatus, 8); Out.Ln
+  END AtExit;
+
+BEGIN
+  status := ExitHandlers.Declare(AtExit);
+  Out.String("the program ends by HALT(3)"); Out.Ln;
+  HALT(3)
+END Goodbye.
+```
+
+<!-- vax-session: goodbye -->
+
+    $ RUN GOODBYE
+    the program ends by HALT(3)
+    exiting with status %X1000001A
+
+`HALT(3)` ends the program with status `%X1000001A`, as chapter 5 says.
+Exit handlers run last declared, first called, and each once. poc's own,
+which writes `Out`'s last line and runs the finalizers, was declared
+first, so it runs after the program's: output from an exit handler still
+appears. Changing the status in a handler changes nothing. A handler
+that calls `$EXIT` itself ends the program there, with the status it
+gives. The handlers not yet called are then skipped, poc's own among
+them, so `Out`'s unfinished line is lost and no finalizer runs.
+
+<!-- Chapters 14 to 17 and the appendices are to be written. -->

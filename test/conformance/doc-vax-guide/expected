@@ -9,3 +9,6 @@ VAX build Words exit 0
 VAX build SystemInfo exit 0
 VAX build Greet exit 0
 VAX build Shell exit 0
+VAX build Warnings exit 0
+VAX build Probe exit 0
+VAX build Goodbye exit 0

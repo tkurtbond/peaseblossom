@@ -4,7 +4,7 @@ $ ! guide's session of its name runs it, under "== <name>". A build's
 $ ! log is shown only if it fails. Everything made is deleted.
 $ SET NOON
 $ MACRO/OBJECT POCRTL.MAR
-$ PROGRAMS = "HELLO,VERSIONS,WHERELOGIN,WHERELOGIN2,DATES,FACTORIAL,WORDS,SYSTEMINFO,GREET,SHELL"
+$ PROGRAMS = "HELLO,VERSIONS,WHERELOGIN,WHERELOGIN2,DATES,FACTORIAL,WORDS,SYSTEMINFO,GREET,SHELL,WARNINGS,PROBE,GOODBYE"
 $ I = 0
 $NEXT_BUILD:
 $ P = F$ELEMENT(I, ",", PROGRAMS)
@@ -45,6 +45,12 @@ greet world
 greet/noexclaim "Dear Reader"
 count
 exit
+$ WRITE SYS$OUTPUT "== warnings"
+$ RUN WARNINGS
+$ WRITE SYS$OUTPUT "== probe"
+$ RUN PROBE
+$ WRITE SYS$OUTPUT "== goodbye"
+$ RUN GOODBYE
 $ IF F$SEARCH("NOTES.TXT") .NES. "" THEN DELETE/NOLOG NOTES.TXT;*
 $ DELETE/NOLOG *.OBJ;*, *.EXE;*, *.OPT;*
 $ EXIT 1

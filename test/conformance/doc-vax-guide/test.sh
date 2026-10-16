@@ -22,7 +22,7 @@ sh $root/tools/guide-examples check $guide $root/doc/examples work/listings >>re
 echo "listings exit $?" >>result
 mkdir -p work/build
 cp $root/doc/examples/vax/*/*.Mod $root/doc/examples/vax/*/*.cld work/build/
-for program in Hello Versions WhereLogin WhereLogin2 Dates Factorial Words SystemInfo Greet Shell; do
+for program in Hello Versions WhereLogin WhereLogin2 Dates Factorial Words SystemInfo Greet Shell Warnings Probe Goodbye; do
   extra=
   [ $program = Shell ] && extra=ShellCommands.cld
   (cd work/build && poc -target vax-dec-vms -import-path ../../$rtl -import-path ../../$rtl/vms \
