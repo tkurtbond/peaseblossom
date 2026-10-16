@@ -291,9 +291,14 @@ Line numbers in the debugger's output are those of `expected-vax.mar`, so a
 change to its reviewer's comment means moving the run's breakpoints and
 making the log again. Runs under one account share its home directory,
 so each waits for and holds that account's lock on this host while it
-uses the guest (`tools/vax-lock.sh`, a directory in `/tmp` for each
-account): the VAX fixtures, run in parallel with the rest, take the
-guest's accounts one run each at a time.
+uses the guest (`tools/vax-lock.sh`): the VAX fixtures, run in parallel
+with the rest, take the guest's accounts one run each at a time. Where
+`flock(1)` is, as on Linux, the lock is `flock`'s on
+`/tmp/poc-vax-<uid>-<account>.flock`, which the kernel frees when the run
+ends, however it ends. Elsewhere it is a directory made by `mkdir`, and a
+run that finds one left by a run that was killed stops and names it, to
+be removed by hand: taking such a lock over raced, and once let two runs
+share an account (2026-10-16).
 
 `make vax-stages` (`tools/bootstrap/vax-stages [-to v1|v2|v3] [-install]
 [-keep]`) is the bootstrap on VMS (`PLAN.md` Phase 16 step 6;
