@@ -308,6 +308,13 @@ Two conditions apply to a synchronous callback:
      with a fixture that sorts a file by a key. Its record interface,
      with a comparison routine of the program's, follows once proposal
      4's callbacks are checked.
+     - **Done** (2026-10-16; `vms-sdl-interfaces.md`, part 8): fixture
+       `vax-sort`, file and record interfaces, a merge, a comparison routine
+       of the program's, and binary keys through a descriptor of the
+       program's; VMSLIB's `SortMerge` holds the constants `SORTSHR`
+       defines, checked against the linker. Left out: specification files,
+       `SOR$DTYPE` and other collating sequences, tag, address and index
+       sorts, `user_equal`, the merge's record interface, work files.
    - **`STR$`**, the decimal-string arithmetic only, the one part that
      Oberon and `Strings` lack: `STR$ADD`, `STR$MUL`, `STR$DIV`,
      `STR$RECIP`, `STR$ROUND`. One fixture.

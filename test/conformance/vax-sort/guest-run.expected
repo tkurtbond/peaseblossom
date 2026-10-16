@@ -1,0 +1,83 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+SORTFILES built: %X10000001
+SORTSYMBOLS linked: %X10000001
+25 constants agree with SORTSHR, 0 differ
+calls out of order
+sort with none begun: SOR$_SORT_ON
+STAFF.DAT by department, then salary descending, stable
+pass files: SS$_NORMAL
+begin sort: SS$_NORMAL
+sort: SS$_NORMAL
+  records in 8
+  records out 8
+  longest record in 512
+end sort: SS$_NORMAL
+  Hughes      ADMIN 045000
+  Baker       ADMIN 038500
+  Evans       ADMIN 038500
+  Diaz        ENGINE061000
+  Foster      ENGINE058000
+  Carter      SALES 052000
+  Garcia      SALES 041000
+  Adams       SALES 041000
+STAFF.DAT by department, no duplicates
+pass files: SS$_NORMAL
+begin sort: SS$_NORMAL
+sort: SS$_NORMAL
+end sort: SS$_NORMAL
+  Baker       ADMIN 038500
+  Diaz        ENGINE061000
+  Adams       SALES 041000
+NAMES1.DAT and NAMES2.DAT merged
+pass files: SS$_NORMAL
+pass files: SS$_NORMAL
+begin merge: SS$_NORMAL
+end sort: SS$_NORMAL
+  Adams
+  Baker
+  Carter
+  Diaz
+  Evans
+  Foster
+  Garcia
+  Hughes
+names released, sorted by CompareNames, returned
+begin sort: SS$_NORMAL
+  release: SS$_NORMAL
+  release: SS$_NORMAL
+  release: SS$_NORMAL
+  release: SS$_NORMAL
+  release: SS$_NORMAL
+  release: SS$_NORMAL
+  release: SS$_NORMAL
+sort: SS$_NORMAL
+  Mabry
+  McAllister
+  mcbride
+  MacDonald
+  macintosh
+  Martin
+  Mason
+return: SS$_ENDOFFILE
+end sort: SS$_NORMAL
+  context after end 0
+records with a longword key, released by a descriptor of the program's
+begin sort: SS$_NORMAL
+  release: SS$_NORMAL
+  release: SS$_NORMAL
+  release: SS$_NORMAL
+  release: SS$_NORMAL
+sort: SS$_NORMAL
+  -5 neg , length 8
+  0 zero, length 8
+  300 ccc , length 8
+  70000 big , length 8
+return: SS$_ENDOFFILE
+end sort: SS$_NORMAL
+run: %X00000001
+STAFF.DAT: STMLF
+STAFF.SRT: STMLF
+DEPTS.SRT: STMLF
+NAMES.MRG: STMLF

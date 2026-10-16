@@ -54,6 +54,12 @@ up to its `0X`. Fixture `vax-vmslib` runs them on the guest.
   do, and outlives the program; any other mode is `$CRELNM`'s and
   `$DELLNM`'s, and without `SYSNAM` a user-mode name, gone when the
   program ends. Translation ignores case.
+- `SortMerge.Mod`: the constants SORT defines as universal symbols of
+  `SORTSHR`, in no SDL module: its options (`stable`, `noDuplicates` ...),
+  sort processes and `SOR$STAT`'s statistic codes, checked against the
+  linker by fixture `vax-sort`; a key's `ascending` and `descending`; and
+  `AddKey`, which fills `SOR$BEGIN_SORT`'s key buffer. The routines are
+  `SOR_ROUTINES`' (`doc/developer/vms-sdl-interfaces.md`, part 8).
 - `Symbols.Mod`: `Get`, `Set` and `Delete` a DCL symbol, `Local` or
   `Global`, by `LIB$GET_SYMBOL`, `LIB$SET_SYMBOL` and
   `LIB$DELETE_SYMBOL`. A symbol is a string here.

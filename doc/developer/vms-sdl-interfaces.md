@@ -1633,3 +1633,179 @@ choice 4, "Violet", terminator 13
 key 276, LEFT
 typed "this is fun!"
 ```
+
+## Proposals, part 8: `SOR$` sorting and merging (2026-10-16)
+
+The third supported-tier group (`doc/research/vms-native-library-inventory.md`,
+proposal 3, "`SOR$`"): sorting files by a key with `SOR$PASS_FILES` and
+`SOR$SORT_MERGE`, and, since part 1's callbacks are proven (`vax-vms-calls`
+passes Oberon procedures to `LIB$INSERT_TREE` and `LIB$TRAVERSE_TREE`), the
+record interface with a comparison routine of the program's. The facts come
+from the *VMS Utility Routines Manual* (`AA-LA67B`, 5.4), chapter 13,
+extracted to text for this, and from the guest. **Approved by the user,
+2026-10-16**, all eight.
+
+1. **The constants that SORT defines are in no SDL module, so a small
+   VMSLIB module holds them.** `SORDEF` has only the `SOR$_` status codes.
+   The option flags (`SOR$M_`), the sort processes (`SOR$GK_`) and the
+   statistic codes (`SOR$K_`) are universal symbols of `SORTSHR`, which
+   "the application program should declare ... as external symbols"
+   (SOR-1). A `CONST` cannot hold a linker's value, and a reference to an
+   absolute symbol is the backend work the inventory left for later
+   (proposal 4, "A program's own message codes"). So
+   `rtl/vax/vmslib/SortMerge.Mod` declares them as constants, with the
+   values a link against the guest's `SORTSHR` (V5-026, 8-JUL-1992) gives.
+   Two differ from what the manual's order suggests:
+   - `SOR$M_NODUPS` is 40H, not 10H.
+   - `SOR$GK_INDEX` is 3 and `SOR$GK_ADDRESS` 4.
+
+   The names are English, as VMSLIB's are (`CommandLanguage.Parsed`),
+   each with its VMS name in a comment: `stable`, `ebcdic`,
+   `multinational`, `noSignal`, `noDuplicates`; `recordSort`, `tagSort`,
+   `indexSort`, `addressSort`; `recordsIn`, `recordsSorted`, `recordsOut`
+   and the other thirteen statistics. The other way, VMS's own names
+   (`SOR$M_STABLE`), would read like the manual; I recommend the English
+   ones for VMSLIB's sake.
+
+   `SortMerge` also has the key buffer's two orders (`ascending` 0,
+   `descending` 1) and `AddKey(VAR keys: ARRAY OF SYSTEM.CARD16; dataType,
+   order, offset, length: LONGINT)`, which puts one key's four words after
+   those already there and counts it in `keys[0]` (SOR-25: the first word
+   is the number of keys, then four words a key). Nothing else: the
+   routines are `SOR_ROUTINES`'.
+
+2. **The constants are checked against the linker on the guest.**
+   `vax-sort`'s `guest-run.com` links a MACRO-32 module of `.LONG`
+   references to the 25 symbols with `/MAP/FULL` and writes the map's
+   lines for them. The program prints `SortMerge`'s constants the same
+   way, and `test.sh` compares the two lists, so a `SORTSHR` with other
+   values fails the fixture, as `vax-vmsdef` checks `VMSDEF` against
+   `STARLET.MLB`.
+
+3. **Statuses are compared without their severity.** "Some of the
+   following condition values are used with different severities,
+   depending on whether SORT/MERGE can recover. Thus, if you want to
+   check for a specific status, you should use LIB$MATCH_COND" (SOR-29).
+   The fixture compares a status with a code by facility and message
+   number, bits 3 to 27, as `LIB$MATCH_COND` does. It prints one by its
+   name when it knows it, and by its value otherwise.
+
+4. **Fixture `vax-sort`, on the guest.** One program, `SortFiles`,
+   imports `SOR_ROUTINES`, `SORDEF`, `SSDEF`, `DSCDEF`, `SortMerge`,
+   `VmsArguments`, `Files` and `Out`. It prints each step's status and
+   writes its input with `Files`, so the files are `Files`' own
+   Stream_LF ones. Its records are 24 characters: a name (12), a
+   department (6) and a salary (6 digits).
+   - **The file interface:** `STAFF.DAT`, eight records, sorted to
+     `STAFF.SRT` by department ascending (`DSC$K_DTYPE_T`), then salary
+     descending (`DSC$K_DTYPE_NU`, a numeric string), with `stable`.
+     `SOR$STAT` gives the records in and out and the longest record, and
+     `STAFF.SRT` is printed through `Files`.
+   - **No duplicates:** the same file sorted by department alone with
+     `noDuplicates`, one record a department.
+   - **A merge:** two files the program writes in name order, merged by
+     `SOR$BEGIN_MERGE` (file interface, merge order 2) into one.
+   - **The record interface with a comparison routine:**
+     - Names are released one by one (`SOR$RELEASE_REC`), sorted with
+       `lrl` and `user_compare`, and returned (`SOR$RETURN_REC`) to
+       `SS$_ENDOFFILE`.
+     - The routine is the manual's own example (SOR-2): names beginning
+       "Mc" and "Mac" are placed together, and case is ignored.
+     - It is passed as `SYSTEM.VAL(SYSTEM.ADDRESS, CompareNames)`. That
+       sort uses a `context` longword, which starts at 0, so the routines'
+       optional last argument is seen to work.
+   - **Calls out of order:** `SOR$SORT_MERGE` with no sort begun gives
+     `SOR$_SORT_ON` as a status, not a signal, since `noSignal` is the
+     default (SOR-27).
+
+5. **Two points about the generated declarations, which the fixture
+   shows and its comments explain:**
+   - **The comparison routine** is called by SORT with five arguments by
+     reference: the two records, their two lengths, and the context
+     (SOR-27). The Oberon procedure is `CompareNames(VAR a, b: Record;
+     VAR lengthA, lengthB: SYSTEM.CARD16; VAR context: SYSTEM.CARD32):
+     SYSTEM.INT32`, `Record` a fixed `ARRAY n OF CHAR`, and it returns
+     -1, 0 or 1. Its `VAR` parameters must carry no hidden argument (not
+     a record, which carries its tag, and not an open array), part 1's
+     proposal 4. `user_compare` is a `SYSTEM.ADDRESS`, so poc cannot
+     check that rule here; the program keeps it.
+   - **`SOR$RELEASE_REC`'s record** is an `x-: ARRAY OF CHAR`, which
+     poc describes up to its first `0X` (part 1, proposal 2). So a text
+     record goes as its text, of any length up to the array's, but a
+     record with a binary key in it would be cut at its first zero byte.
+     The fixture's last step sorts four records with a signed longword
+     key (`DSC$K_DTYPE_L`), one key 0 and one negative. They are released
+     through a declaration of the program's own,
+     `PROCEDURE ["VMS", "SOR$RELEASE_REC"] ReleaseBytes(descriptor:
+     SYSTEM.ADDRESS; VAR context: SYSTEM.CARD32): SYSTEM.INT32`, given
+     `SYSTEM.ADR` of a `VmsArguments.StringDescriptor` that covers the
+     whole record. Records come back by `SOR$RETURN_REC`, whose `VAR`
+     buffer is described whole, with the length returned.
+
+6. **Checked on the guest as written, not before.** Every call in
+   proposal 4 is in the 5.4 manual. What it does not settle is shown by
+   the run and written into "Part 8 done":
+   - whether SORT takes `Files`' Stream_LF files as input, and what
+     record format its output has (by default, the first input's);
+   - the statistics' values;
+   - whether `noDuplicates` keeps the first record of each department.
+
+   If SORT refuses Stream_LF, `guest-run.com` writes the input with
+   DCL's `CREATE` instead, and the record says so.
+
+7. **Left out**:
+   - `SOR$SPEC_FILE` (specification files);
+   - `SOR$DTYPE` and collating sequences other than ASCII, including
+     `ebcdic` and `multinational`;
+   - tag, address and index sorts;
+   - `user_equal`;
+   - the merge's record interface (`user_input`);
+   - work-file placement.
+
+   All are callable through `SOR_ROUTINES` and `SortMerge`'s constants.
+
+8. **The documents:**
+   - "Part 8 done" here;
+   - the inventory's `SOR$` entry marked done;
+   - `rtl/vax/vmslib/README.md`;
+   - `PLAN.md` step 5.
+
+   `vax-vmslib`'s list of modules gains `SortMerge`. `vax-asts` and
+   `vax-conditions-handlers`, which build every module in
+   `rtl/vax/vmslib`, build it too.
+
+## Part 8 done: what was implemented (2026-10-16)
+
+Proposals 1 to 8 as written:
+- **`rtl/vax/vmslib/SortMerge.Mod`**: the 25 constants, `ascending` and
+  `descending`, and `AddKey`. It imports only `SYSTEM`.
+- **Fixture `vax-sort`:** `SortFiles` and `hand-sortsymbols.mar` (the
+  `hand-` prefix keeps `testenv.sh` from deleting it). It passes on the
+  guest, and the first thing it prints is "25 constants agree with
+  SORTSHR, 0 differ".
+- **`vax-vmslib`** compiles `SortMerge` under `-O2` and `-OC` and puts it
+  in `VMSLIB`.
+
+What the guest showed, proposal 6's points first:
+- **SORT takes `Files`' Stream_LF files, and its output keeps their
+  format.** `STAFF.SRT`, `DEPTS.SRT` and the merge's `NAMES.MRG` are all
+  `STMLF`, as the manual's default (the first input's format) says, so
+  `Files` reads them back as they are.
+- **The statistics:** 8 records in and 8 out. The longest record in is 512
+  for a Stream_LF input, which records no longest record of its own.
+- **`noDuplicates` does not keep the first record of each key.** Of
+  SALES's three, Garcia (first in) and Carter and Adams, it kept Adams;
+  of ADMIN's, Baker; of ENGINE's, Diaz. Which record survives is SORT's
+  business, and a program that cares uses `user_equal`.
+- `stable` kept equal keys in their input order: Baker before Evans,
+  Garcia before Adams.
+- `SOR$SORT_MERGE` with no sort begun returns `SOR$_SORT_ON`.
+- The comparison routine was called as proposal 5 says, and put
+  "Mabry", "McAllister", "mcbride", "MacDonald", "macintosh", "Martin",
+  "Mason" in that order. `SOR$END_SORT` left the context 0.
+- **The binary keys** (-5, 0, 300 and 70000, whose bytes hold zeros) came
+  back in order, each record its whole 8 bytes, through the program's
+  own `SOR$RELEASE_REC` declaration.
+
+Left out, as proposal 7 says. The inventory's `SOR$` entry is marked
+done.

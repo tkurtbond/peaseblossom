@@ -825,6 +825,15 @@ C++, and so on) unless step 4 chooses one deliberately.
    pasteboard on a file is 66 by 132, and that a menu is chosen only on a
    terminal ("Part 7 done").
 
+   **Part 9, `SOR$` sorting and merging (2026-10-16)**: eight proposals in
+   `vms-sdl-interfaces.md`, part 8, **approved by the user, 2026-10-16**.
+   VMSLIB gains `SortMerge`, the constants `SORTSHR` defines and no SDL
+   module has, checked against the linker. Fixture `vax-sort` sorts files
+   and records, merges, calls a comparison routine of the program's, and
+   releases binary records through a descriptor of the program's. The guest
+   showed that SORT keeps `Files`' Stream_LF format and that
+   `noDuplicates` does not keep the first record ("Part 8 done").
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)

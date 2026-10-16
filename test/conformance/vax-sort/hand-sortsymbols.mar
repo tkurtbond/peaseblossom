@@ -1,0 +1,17 @@
+;; Phase 17 step 5 (doc/developer/vms-sdl-interfaces.md, part 8, proposal
+;; 2): references to the 25 universal symbols of SORTSHR that SortMerge
+;; declares as constants. guest-run.com links this with /MAP/FULL, and
+;; SortFiles compares the map's values with SortMerge's.
+	.TITLE	SORTSYMBOLS
+	.PSECT	DATA,LONG,NOEXE,WRT
+	.LONG	SOR$M_STABLE, SOR$M_EBCDIC, SOR$M_MULTI, SOR$M_NOSIGNAL, SOR$M_NODUPS
+	.LONG	SOR$GK_RECORD, SOR$GK_TAG, SOR$GK_INDEX, SOR$GK_ADDRESS
+	.LONG	SOR$K_IDENT, SOR$K_REC_INP, SOR$K_REC_SOR, SOR$K_REC_OUT
+	.LONG	SOR$K_LRL_INP, SOR$K_LRL_INT, SOR$K_LRL_OUT, SOR$K_NODES
+	.LONG	SOR$K_INI_RUNS, SOR$K_MRG_ORDER, SOR$K_MRG_PASSES, SOR$K_WRK_ALQ
+	.LONG	SOR$K_MBC_INP, SOR$K_MBC_OUT, SOR$K_MBF_INP, SOR$K_MBF_OUT
+	.PSECT	CODE,NOWRT,EXE
+	.ENTRY	START, ^M<>
+	MOVL	#1, R0
+	RET
+	.END	START

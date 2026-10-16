@@ -244,6 +244,8 @@ test/conformance/vax-cli-table/work/
 test/conformance/vax-rms-indexed/work/
 # vax-smg's libraries and programs (Phase 17 step 5)
 test/conformance/vax-smg/work/
+# vax-sort's libraries and program (Phase 17 step 5)
+test/conformance/vax-sort/work/
 # poc-response-files builds a program and a library (Phase 17 step 1)
 test/conformance/poc-response-files/resp-main
 test/conformance/poc-response-files/libs/
