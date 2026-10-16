@@ -958,7 +958,13 @@ C++, and so on) unless step 4 chooses one deliberately.
        `peaseblossom-vax` package, or `make install-vax` from source:
        `rtl/vax` (2.8 MB, VMSDEF's 65 modules 2.3 MB of it), VMSLIB, the
        kit, and **a VAX/VMS guide of its own**, apart from the User's and
-       Reference Guides (the user).
+       Reference Guides (the user). `doc/vax-vms-guide.md`, its outline
+       reviewed 2026-10-16: the front matter and chapters 1-5 and 7 are
+       written and reviewed, their programs in `doc/examples/vax`
+       (2026-10-16). Chapters 6 and 8-17, the appendices, and its checks
+       (`doc-vax-guide`, `make doc`, `install-vax`, the kit's text copy)
+       are to come. The User's Guide's chapter 12 shrinks to a pointer
+       once chapter 10 has taken its `GREET` example.
      - Without that package, `poc -target vax-dec-vms` says that the VAX
        runtime is not installed and which package has it.
    - `make check-vax-kit` installs it on the guest and builds programs
