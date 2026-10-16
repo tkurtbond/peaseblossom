@@ -248,6 +248,11 @@ test/conformance/vax-smg/work/
 test/conformance/vax-sort/work/
 # vax-decimal-strings' libraries and program (Phase 17 step 5)
 test/conformance/vax-decimal-strings/work/
+# the libraries and programs of part 10's fixtures (Phase 17 step 5)
+test/conformance/vax-balanced-trees/work/
+test/conformance/vax-date-times/work/
+test/conformance/vax-interlocked/work/
+test/conformance/vax-lib-information/work/
 # poc-response-files builds a program and a library (Phase 17 step 1)
 test/conformance/poc-response-files/resp-main
 test/conformance/poc-response-files/libs/

@@ -12,9 +12,10 @@
 # expect, and shows what each leaves. Part 5: Conditions.SignalList and
 # StopList, through LIB$CALLG (VmsLibSignal, VmsLibStopList), and a list
 # too long for CALLG (VmsLibListTooLong). CommandLanguage, SortMerge
-# (part 8) and DecimalStrings (part 9) compile here; vax-cli-verb and
-# vax-cli-table run CommandLanguage, vax-sort SortMerge, and
-# vax-decimal-strings DecimalStrings.
+# (part 8), DecimalStrings (part 9), and BalancedTrees and DateTimes (part
+# 10) compile here; vax-cli-verb and vax-cli-table run CommandLanguage,
+# vax-sort SortMerge, vax-decimal-strings DecimalStrings,
+# vax-balanced-trees BalancedTrees, and vax-date-times DateTimes.
 . ../../vaxfixture.sh
 vms=../../../rtl/vax/vms
 vmslib=../../../rtl/vax/vmslib
@@ -23,7 +24,7 @@ rm -rf work
 mkdir work work/o2 work/oc
 : >result
 generated="CLIMSGDEF LIBDEF LIB_ROUTINES LNMDEF RMSDEF SSDEF STARLET STR_ROUTINES"
-modules="CommandLanguage Conditions DecimalStrings EventFlags ExitHandlers LogicalNames SortMerge Symbols Timers"
+modules="BalancedTrees CommandLanguage Conditions DateTimes DecimalStrings EventFlags ExitHandlers LogicalNames SortMerge Symbols Timers"
 for model in O2 OC; do
   dir=work/$(echo $model | tr A-Z a-z)
   for m in $modules; do

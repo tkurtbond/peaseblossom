@@ -1,0 +1,40 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+TREEUSE built: %X10000001
+BalancedTrees, duplicates refused, empty: yes
+  pear, linked in: LIB$_NORMAL
+  apple, linked in: LIB$_NORMAL
+  fig, linked in: LIB$_NORMAL
+  apple, there already: apple: LIB$_KEYALRINS
+  kiwi, linked in: LIB$_NORMAL
+  banana, linked in: LIB$_NORMAL
+  fig, there already: fig: LIB$_KEYALRINS
+  cherry, linked in: LIB$_NORMAL
+  apple, there already: apple: LIB$_KEYALRINS
+after a collection, empty: no
+  walk: apple*3 banana*1 cherry*1 fig*2 kiwi*1 pear*1
+Traverse: LIB$_NORMAL
+  walk of three: apple banana cherry
+Traverse: LIB$_NORMAL
+  Lookup(kiwi): kiwi, count 1
+  Lookup(apple): apple, count 3
+  Lookup(plum): NIL
+BalancedTrees, duplicates allowed
+  b, linked in: LIB$_NORMAL
+  a, linked in: LIB$_NORMAL
+  b, linked in: LIB$_NORMAL
+  c, linked in: LIB$_NORMAL
+  a, linked in: LIB$_NORMAL
+  walk: a*1 a*1 b*1 b*1 c*1
+LIB$INSERT_TREE itself, duplicates refused
+  m, allocate called 1, new node is the symbol: yes: LIB$_NORMAL
+  d, allocate called 1, new node is the symbol: yes: LIB$_NORMAL
+  m, allocate called 0, new node is the symbol: no: LIB$_KEYALRINS
+  t, allocate called 1, new node is the symbol: yes: LIB$_NORMAL
+  a, allocate called 1, new node is the symbol: yes: LIB$_NORMAL
+  z, allocate called 1, new node is the symbol: yes: LIB$_NORMAL
+LIB$TRAVERSE_TREE itself, the third action failing: a d m
+  actions called 3
+  LIB$TRAVERSE_TREE: SS$_ABORT
+run: %X00000001

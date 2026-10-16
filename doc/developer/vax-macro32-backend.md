@@ -5522,6 +5522,34 @@ immediate and named.
    catch it there, but the rule for signal handlers is a separate decision,
    left for `PLAN.md`'s "Ongoing" sections.
 
+### 22.8 Interlocked queues and bits, tried (Phase 17 step 5)
+
+Proposal 4 left `LIB$INSQHI` and the rest as `LIB_ROUTINES`' declarations.
+`vms-sdl-interfaces.md`, part 10, proposal 4, wrote down the rules a
+program follows to use them, and fixture `vax-interlocked` showed them on
+the guest:
+- **A header and every entry are quadword aligned** (`AA-LA76A`, LIB-248).
+  poc aligns a global or a local to at most a longword
+  (`MemoryLayout.Align`), but `NEW` gives quadword-aligned memory, since an
+  object's data starts 8 bytes into a 16-byte granule. So a header and
+  its entries are made by `NEW`: every address the fixture printed was 0
+  modulo 8. A new header is zero, the empty queue.
+- **An entry linked only through a queue is invisible to the collector**,
+  since the links are displacements. A program keeps an ordinary pointer
+  to each entry while it is queued. The fixture collects with four
+  entries queued and removes them all intact.
+- `LIB$REMQHI` and `LIB$REMQTI` give the entry's address, which
+  `SYSTEM.VAL` makes the program's pointer type again. `LIB$_ONEENTQUE`
+  on an insertion means the queue now holds one entry, and on a removal
+  that it held one and is now empty. From an empty queue they return
+  `LIB$_QUEWASEMP` and give **the header's own address**, not 0, so a
+  program tests the status, not the address.
+- `LIB$BBSSI` and `LIB$BBCCI` return the bit's old state, 0 or 1, and
+  take any bit of a `SET` by `SYSTEM.ADR`.
+- `LIB$ADAWI` returns `LIB$_NORMAL`, or `LIB$_INTOVF` when the word
+  overflows (32767 + 1 leaves -32768), and its `sign` is the new sum's
+  sign: 1 for 105, -1 for -95 and for -32768.
+
 ## 23. The command language routines, `CLI$` (Phase 17 step 5)
 
 The inventory's item 5 (`doc/research/vms-native-library-inventory.md`)

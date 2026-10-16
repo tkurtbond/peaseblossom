@@ -844,6 +844,19 @@ C++, and so on) unless step 4 chooses one deliberately.
    significant digits, and that after `STR$_TRU` a result is not its value
    ("Part 9 done").
 
+   **Part 11, the rest of `LIB$` (2026-10-16)**: eight proposals in
+   `vms-sdl-interfaces.md`, part 10, **approved by the user,
+   2026-10-16**, with process control a part of its own still to come.
+   VMSLIB gains `DateTimes` and `BalancedTrees`, whose nodes are the
+   program's records, extended from `LIB$`'s node header, so the collector
+   traces them. Fixtures `vax-date-times`, `vax-balanced-trees`,
+   `vax-lib-information` (with `LIB$GETQUI`, added by the user's
+   amendment) and `vax-interlocked`. The guest showed that
+   `LIB$TRAVERSE_TREE` stops at an action's failure, that a refused
+   duplicate is never allocated, that `JPI$_USERNAME` comes back
+   blank-padded, and that an empty queue gives the header's address
+   ("Part 10 done"; `vax-macro32-backend.md`, section 22.8).
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)
@@ -912,6 +925,19 @@ C++, and so on) unless step 4 chooses one deliberately.
      names.
    - `make dist` puts the kit in the tarball as `vax/`, and the GitHub
      release carries it as an asset, once `vax` is merged.
+   - **The packages, once `vax` is merged** (decided with the user,
+     2026-10-16). Few want VAX/VMS, so it is an optional package, not a
+     second compiler:
+     - The Unix packages keep one `poc`, with the VAX code generator built
+       in. It is about a quarter of poc's objects (0.65 of 2.8 MB) and
+       needs no tool on Unix.
+     - What the VAX target needs besides goes in an optional
+       `peaseblossom-vax` package, or `make install-vax` from source:
+       `rtl/vax` (2.8 MB, VMSDEF's 65 modules 2.3 MB of it), VMSLIB, the
+       kit, and **a VAX/VMS guide of its own**, apart from the User's and
+       Reference Guides (the user).
+     - Without that package, `poc -target vax-dec-vms` says that the VAX
+       runtime is not installed and which package has it.
    - `make check-vax-kit` installs it on the guest and builds programs
      with it; with `-full` it also checks the fixed point.
    - poc for VMS leaves the LLVM back end out, which settles that open

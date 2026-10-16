@@ -1,0 +1,37 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+QUEUEUSE built: %X10000001
+a queue
+  header's address modulo 8: 0
+  entry 1's address modulo 8: 0
+  entry 2's address modulo 8: 0
+  entry 3's address modulo 8: 0
+  entry 4's address modulo 8: 0
+LIB$INSQHI 1: LIB$_ONEENTQUE
+LIB$INSQTI 2: SS$_NORMAL
+LIB$INSQHI 3: SS$_NORMAL
+LIB$INSQTI 4: SS$_NORMAL
+LIB$REMQHI: SS$_NORMAL
+  entry 3
+LIB$REMQTI: SS$_NORMAL
+  entry 4
+LIB$REMQHI: SS$_NORMAL
+  entry 1
+LIB$REMQHI: LIB$_ONEENTQUE
+  entry 2
+LIB$REMQHI: LIB$_QUEWASEMP
+  the address given: the header's
+LIB$REMQTI: LIB$_QUEWASEMP
+  the address given: the header's
+bits
+  LIB$BBSSI 3: was 0, 3 IN flags: yes
+  LIB$BBSSI 3 again: was 1
+  LIB$BBCCI 3: was 1, flags empty: yes
+LIB$ADAWI
+  100 + 5: LIB$_NORMAL
+  sum 105, sign 1
+  105 + -200: LIB$_NORMAL
+  sum -95, sign -1
+  32767 + 1: LIB$_INTOVF
+  sum -32768, sign -1
+run: %X00000001

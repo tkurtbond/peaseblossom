@@ -13,6 +13,13 @@ VMS's condition value, a `SYSTEM.INT32`. An output string is cut to its
 array less one character and ends with `0X`; an input string is passed
 up to its `0X`. Fixture `vax-vmslib` runs them on the guest.
 
+- `BalancedTrees.Mod`: balanced binary trees of the program's records,
+  by `LIB$INSERT_TREE`, `LIB$LOOKUP_TREE` and `LIB$TRAVERSE_TREE`. A
+  program extends `NodeDesc`, whose fields are `LIB$`'s 10-byte node
+  header, so the collector traces a tree's links; makes a node by `NEW`;
+  and calls `Insert`, `Lookup` and `Traverse` with a `Compare` (and an
+  `Action`) of its own. Fixture `vax-balanced-trees`
+  (`doc/developer/vms-sdl-interfaces.md`, part 10).
 - `CommandLanguage.Mod`: a command line parsed by DCL with a command
   table, and its verb, parameters, qualifiers and keywords asked for by
   name: `Presence`, `IsPresent`, `GetValue`, `GetVerb` and `GetLine`, by
@@ -39,6 +46,12 @@ up to its `0X`. Fixture `vax-vmslib` runs them on the guest.
   `Continue` or `Resignal`, or calls `Unwind` to make its establisher
   return, and while an unwind passes, each frame's handler is called with
   `Unwinding`. Fixture `vax-conditions-handlers` runs them.
+- `DateTimes.Mod`: VMS's times, a `HUGEINT` of 100-nanosecond units:
+  `Now`, `FromText` and `ToText` (`$BINTIM`, `$ASCTIM`), `Add` and
+  `Subtract` (`LIB$ADD_TIMES`, `LIB$SUB_TIMES`), `Delta` from units,
+  `Part`, `DayOfWeek`, and `Format` by `LIB$FORMAT_DATE_TIME` with a
+  context. Fixture `vax-date-times` (`doc/developer/vms-sdl-interfaces.md`,
+  part 10).
 - `DecimalStrings.Mod`: a `Decimal` of up to 255 digits as `STR$` gives
   one (sign, exponent, digits); `Add`, `Subtract`, `Multiply`, `Divide`,
   `Reciprocal` and `Round`, which return `STR$`'s status, a signal

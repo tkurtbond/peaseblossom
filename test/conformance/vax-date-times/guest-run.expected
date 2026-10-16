@@ -1,0 +1,50 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+DATEUSE built: %X10000001
+text
+16-OCT-2026 12:34:56.78: SS$_NORMAL
+  |16-OCT-2026 12:34:56.78|
+1-JAN-2026 00:00:00.00: SS$_NORMAL
+  | 1-JAN-2026 00:00:00.00|
+1 02:00:00: SS$_NORMAL
+  |   1 02:00:00.00|
+31-FEB-2026 00:00: SS$_IVTIME
+  |17-NOV-1858 00:00:00.00|
+sums and differences
+t + 1 02:00: LIB$_NORMAL
+  |17-OCT-2026 14:34:56.78|
+t - 1 02:00: LIB$_NORMAL
+  |15-OCT-2026 10:34:56.78|
+t - 1-JAN-2026: LIB$_NORMAL
+  | 288 12:34:56.78|
+t + 1-JAN-2026: LIB$_ONEDELTIM
+  |17-NOV-1858 00:00:00.00|
+90 minutes: LIB$_NORMAL
+  |   0 01:30:00.00|
+t + 90 minutes: LIB$_NORMAL
+  |16-OCT-2026 14:04:56.78|
+20000 days: LIB$_IVTIME
+  |17-NOV-1858 00:00:00.00|
+  as a number: -5400 seconds
+parts of t
+  day of the week 5
+  month of the year 10: LIB$_NORMAL
+  day of the year 289: LIB$_NORMAL
+  day of the month 16: LIB$_NORMAL
+  hour of the day 12: LIB$_NORMAL
+  second of the minute 56: LIB$_NORMAL
+  Julian date 61329: LIB$_NORMAL
+  delta minutes of 90 minutes 90: LIB$_NORMAL
+  day of the year of 90 minutes 0: LIB$_ABSTIMREQ
+  delta days of t 0: LIB$_DELTIMREQ
+Format
+default format: SS$_NORMAL
+  |16-OCT-2026 12:34:56.78|
+LIB$INIT_DATE_TIME_CONTEXT: SS$_NORMAL
+set format: SS$_NORMAL
+  |2026-10-16 12:34:56|
+LIB$FREE_DATE_TIME_CONTEXT: SS$_NORMAL
+now
+  an absolute time after 1-JAN-2000: yes
+run: %X00000001

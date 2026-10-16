@@ -1,0 +1,54 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+INFOUSE built: %X10000001
+LIB$GETJPI
+JPI$_USERNAME: SS$_NORMAL
+  |POC         |, length 12
+JPI$_MODE: SS$_NORMAL
+  |INTERACTIVE|, length 11
+JPI$_PID: SS$_NORMAL
+  string of length 8, the value in hex: the same
+LIB$GETSYI
+SYI$_VERSION: SS$_NORMAL
+  |V5.5-2H4|, length 8
+SYI$_NODENAME: SS$_NORMAL
+  ||, length 0
+LIB$GETDVI
+DVI$_DEVCLASS of SYS$LOGIN: SS$_NORMAL
+  a disk: yes
+DVI$_DEVCLASS's string: SS$_NORMAL
+  |1|, length 1
+LIB$GETQUI
+SYS$BATCH's QUI$_QUEUE_NAME: SS$_NORMAL
+  value 0  |SYS$BATCH|, length 9
+SYS$BATCH's QUI$_JOB_LIMIT: SS$_NORMAL
+  value 3  |3|, length 1
+SYS$BATCH's QUI$_QUEUE_FLAGS: SS$_NORMAL
+  value 3802113  |3802113|, length 7
+  a batch queue: yes
+QUI$_TRANSLATE_QUEUE of sys$batch: SS$_NORMAL
+  value 0  |SYS$BATCH|, length 9
+a wildcard walk, three calls
+* QUI$_QUEUE_NAME: SS$_NORMAL
+  value 0  |SYS$BATCH|, length 9
+* QUI$_QUEUE_NAME: JBC$_NOMOREQUE
+  value 0  ||, length 0
+* QUI$_QUEUE_NAME: SS$_NORMAL
+  value 0  |SYS$BATCH|, length 9
+a wildcard frozen on its queue
+* QUI$_QUEUE_NAME, frozen: SS$_NORMAL
+  value 0  |SYS$BATCH|, length 9
+* QUI$_JOB_LIMIT, frozen: SS$_NORMAL
+  value 3  |3|, length 1
+QUI$_CANCEL_OPERATION: SS$_NORMAL
+* QUI$_QUEUE_NAME after the cancel: SS$_NORMAL
+  value 0  |SYS$BATCH|, length 9
+QUI$_CANCEL_OPERATION: SS$_NORMAL
+errors
+item code 12345: SS$_BADPARAM
+JPI$_USERNAME with no string: LIB$_INVARG
+JPI$_USERNAME into 2 characters: LIB$_STRTRU
+  length 2, PO
+NO_SUCH_QUEUE's QUI$_QUEUE_NAME: JBC$_NOSUCHQUE
+  value 0  ||, length 0
+run: %X00000001

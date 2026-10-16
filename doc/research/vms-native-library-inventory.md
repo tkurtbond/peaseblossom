@@ -191,7 +191,7 @@ each family costs is the set of mechanisms it uses that poc lacks today:
 | String by descriptor, `CLASS_S`, in or out | no: an error | nearly every `SYS$`, `LIB$`, `STR$`, `SMG$` routine with text |
 | Dynamic string, `CLASS_D` | no | `LIB$SGET1_DD`, `SFREE1_DD`, `SFREEN_DD`, `STR$GET1_DX`, `FREE1_DX`, three `OTS$`. Every other output takes `CLASS_S`: the routine writes by the class it is given (STR$ manual 2.2, Table 2-3) |
 | Optional arguments (0 for omitted) | no | most system services, many `LIB$` and `SMG$` routines |
-| `item_list_3` | no | 25 services, `LIB$GETQUI`, every `MAIL$` routine |
+| `item_list_3` | no | 25 services (`$GETQUI` among them), every `MAIL$` routine |
 | I/O status block | as a `VAR` record or array, yes | 24 services |
 | Record laid out with no alignment | no: poc aligns a field to its size (`vax-macro32-backend.md`, section 4) | RMS's blocks, the `$xxxDEF` structures |
 | Union, bit field | no | RMS, `$xxxDEF`. SDL also gives each bit's `$V_`, `$S_` and `$M_` |
@@ -269,8 +269,9 @@ Two conditions apply to a synchronous callback:
    - **`LIB$`:**
      - Symbols and logical names: `LIB$SET_SYMBOL`, `LIB$DELETE_SYMBOL`,
        `LIB$SET_LOGICAL`, `LIB$DELETE_LOGICAL`.
-     - Information: `LIB$GETJPI`, `LIB$GETSYI`, `LIB$GETDVI`, each one
-       item to a longword or a string, with no item list.
+     - Information: `LIB$GETJPI`, `LIB$GETSYI`, `LIB$GETDVI` and
+       `LIB$GETQUI` (added 2026-10-16), each one item to a longword or a
+       string, with no item list.
      - Dates and times: `LIB$DATE_TIME`, `LIB$FORMAT_DATE_TIME` and its
        context routines, `LIB$CVT_TO_INTERNAL_TIME`, `LIB$ADD_TIMES`,
        `LIB$SUB_TIMES`, `LIB$DAY_OF_WEEK`.
@@ -283,6 +284,20 @@ Two conditions apply to a synchronous callback:
      - The condition routines (`LIB$ESTABLISH`, `LIB$REVERT`,
        `LIB$SIGNAL`, `LIB$STOP`, `LIB$MATCH_COND`, `LIB$SIG_TO_RET`) are
        step 6's.
+     - **Done** (2026-10-16; `vms-sdl-interfaces.md`, part 10). Symbols
+       and logical names were done by part 4 (VMSLIB's `Symbols` and
+       `LogicalNames`), event flags and the condition routines by step 6
+       (`EventFlags`, `Conditions`). Part 10 added:
+       - VMSLIB's `DateTimes` and fixture `vax-date-times`;
+       - VMSLIB's `BalancedTrees`, trees of the program's records that the
+         collector sees, and fixture `vax-balanced-trees`;
+       - fixture `vax-lib-information` (`LIB$GETJPI`, `GETSYI`, `GETDVI`,
+         `GETQUI`) and fixture `vax-interlocked` (the queue and bit
+         routines), both
+         through the generated declarations.
+
+       Left out: process control (`LIB$SPAWN` ...), a part of its own;
+       file search, dynamic loading, zones, timers and conversions.
    - **`SMG$`:**
      - What a full-screen program uses: pasteboards, virtual displays,
        virtual keyboards, writing with renditions, reading keys and

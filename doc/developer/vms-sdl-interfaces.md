@@ -1995,3 +1995,320 @@ prints exponent 5 on "42" as 4200000, and exponent -8 as -0.00000042.
 
 Left out, as proposal 7 says. The inventory's `STR$` entry is marked
 done, with `STR$DIVIDE`'s name corrected.
+
+## Proposals, part 10: the rest of `LIB$`'s supported tier (2026-10-16)
+
+The fifth and last supported-tier group (`doc/research/vms-native-library-inventory.md`,
+proposal 3, "`LIB$`"). The facts come from the *VMS RTL Library (LIB$)
+Manual* (`AA-LA76A`, 5.0), extracted to text for this. **Approved by
+the user, 2026-10-16**, all eight, with process control a part of its own.
+
+The inventory names six kinds of routine. Three are done already:
+- **Symbols and logical names:** VMSLIB's `Symbols` and `LogicalNames`
+  (part 4).
+- **Event flags:** VMSLIB's `EventFlags` (step 6).
+- **The condition routines:** VMSLIB's `Conditions` and step 6.
+
+This part covers the other three: information, dates and times, and
+balanced trees, with the interlocked queue and bit routines step 6 left as
+bare declarations. The generated declarations in `LIB_ROUTINES` match the
+manual for all of them, so nothing in `sdloberon.c` changes.
+
+1. **Information: the generated declarations, no module.** `LIB$GETJPI`,
+   `LIB$GETSYI` and `LIB$GETDVI` already take one item each with no item
+   list, which is the whole point of them (LIB-187: "Instead of a list of
+   item descriptors, which may be difficult to construct in high-level
+   languages"). Every optional argument is omitted by `NIL`.
+   - A numeric item comes back in `resultant_value`, an `ARRAY OF
+     SYSTEM.BYTE` that takes a `SYSTEM.INT32` or a `HUGEINT`, as Table
+     LIB-5 says the item needs.
+   - A string comes back in `resultant_string`, a `CLASS_S` buffer, with
+     its length in `resultant_length`. The program ends it by `0X`, as it
+     does for `SMG$`'s and `RMS`'s strings.
+   - For a numeric item, `LIB$GETJPI` also writes a string form: a UIC as
+     `[g,m]`, a PID as 8 hex digits, a privilege mask as names, a state
+     as `LEF`, `COM` ... A module would add nothing over that.
+
+   The item codes come from `JPIDEF`, `SYIDEF` and `DVIDEF`, which are
+   generated already.
+
+2. **Dates and times: a small VMSLIB module, `DateTimes`.** A VMS time is
+   a quadword of 100-nanosecond units: an absolute time counts from 17
+   November 1858 and is positive, and a delta time is negative. In poc
+   that is a `HUGEINT`. The generated declarations take one as it is
+   (`x-` by reference), so the module is mostly about text, which always
+   needs its length and a `0X`:
+   - `Time* = HUGEINT`, with `ticksPerSecond* = 10000000`.
+   - `Now(): Time` (`$GETTIM`).
+   - `FromText(text, VAR t): SYSTEM.INT32` (`$BINTIM`): an absolute time
+     `16-OCT-2026 12:34:56.78` or a delta `1 02:00:00`, with `$BINTIM`'s
+     defaults for the fields left out.
+   - `ToText(t, VAR text)` (`$ASCTIM`): the standard form, ended by `0X`.
+   - `Add(a, b, VAR c)` and `Subtract(a, b, VAR c)`, each returning
+     `SYSTEM.INT32` (`LIB$ADD_TIMES`, `LIB$SUB_TIMES`). These and not
+     Oberon's `+` and `-`, because they check what the manual requires:
+     two absolute times cannot be added (`LIB$_ONEDELTIM`), and a delta
+     must be under 10,000 days (`LIB$_IVTIME`).
+   - `Delta(units, n: SYSTEM.INT32; VAR t): SYSTEM.INT32`
+     (`LIB$CVT_TO_INTERNAL_TIME`): `n` weeks, days, hours, minutes or
+     seconds as a delta time, `units` one of `LIBDTDEF`'s
+     `LIB$K_DELTA_*`.
+   - `Part(part, t; VAR value: SYSTEM.INT32): SYSTEM.INT32`
+     (`LIB$CVT_FROM_INTERNAL_TIME`): one of `LIBDTDEF`'s `LIB$K_*`
+     (day of year, hour of day, Julian date ...).
+   - `DayOfWeek(t): INTEGER` (`LIB$DAY_OF_WEEK`): 1 for Monday to 7 for
+     Sunday.
+   - `Format(t, VAR context: SYSTEM.CARD32, VAR text): SYSTEM.INT32`
+     (`LIB$FORMAT_DATE_TIME`), with the context cell the manual
+     recommends (LIB-170: without one, two threads of execution, such as
+     an AST and the main line, may break it). The context starts at 0,
+     and the program frees it with `LIB$FREE_DATE_TIME_CONTEXT`. A
+     language or format chosen in the program goes through the generated
+     `LIB$INIT_DATE_TIME_CONTEXT`.
+
+   These `LIB$` routines return their errors and do not signal them, so
+   the module needs no handler, unlike `DecimalStrings`, and AST routines
+   can use it. For portable programs, `Oberon.Time` and
+   `Platform.GetClock` stay as they are.
+
+   Without the module, every program would need its own `$ASCTIM`
+   buffer, length and `0X`, and its own delta from units. I recommend
+   it.
+
+3. **Balanced trees: a VMSLIB module, `BalancedTrees`, of records the
+   collector sees.** Part 1's `vax-vms-calls` already showed the callbacks
+   working, with nodes in a static array. That is the problem: nodes from
+   `NEW` would be lost to the collector, and `LIB$GET_VM` memory cannot
+   hold Oberon pointers. But a `LIB$` node's 10-byte header is two
+   absolute addresses and a word (LIB-240), which is exactly what an
+   Oberon record of two pointers and a `SYSTEM.INT16` is, since an
+   object's address is that of its first field. So:
+   ```
+   Node* = POINTER TO NodeDesc;
+   NodeDesc* = RECORD left, right: Node; balance: SYSTEM.INT16 END;
+   Tree* = RECORD root: Node END;
+   Compare* = PROCEDURE (a, b: Node): LONGINT;
+   Action* = PROCEDURE (node: Node): BOOLEAN;
+   ```
+   - A program extends `NodeDesc` with its own key and data, and the
+     collector traces `left` and `right` as it traces any pointer field.
+     `LIB$` writes them, so they are not exported.
+   - `Insert(VAR tree: Tree; node: Node; compare: Compare; duplicates:
+     BOOLEAN; VAR found: Node): SYSTEM.INT32`. The program makes and
+     fills the node before the call, and the allocation routine
+     `LIB$INSERT_TREE` requires just hands it back. The status is
+     `LIB$_NORMAL`, or `LIB$_KEYALRINS` with `found` the node already
+     there when `duplicates` is `FALSE`; `node` is then left out, and
+     the collector frees it if nothing else holds it.
+   - `Lookup(VAR tree: Tree; key: Node; compare: Compare): Node`: the
+     node `compare` finds equal to `key`, or `NIL`. `key` is a node of
+     the program's type with only its key filled.
+   - `Traverse(VAR tree: Tree; action: Action): SYSTEM.INT32`: `action`
+     for each node, in key order; `FALSE` stops the walk.
+
+   **How the program's procedures reach the callbacks.** `LIB$`
+   passes its `symbol` argument through to the comparison and
+   allocation routines unchanged. `LIB$LOOKUP_TREE` has no `user-data`.
+   So the module passes as `symbol` the address of a record in its own
+   frame, holding the node and the program's procedure. Its three
+   callbacks are module procedures of the shape part 1 allows: value
+   parameters of 4 bytes, a `Node` among them. They read that record
+   and call the program's procedure. The module declares its own
+   `["VMS", "LIB$INSERT_TREE"]` and the other two, so that `treehead`
+   is the `Node` field itself and not a `SYSTEM.ADDRESS`, as `vax-sort`
+   declared its own `SOR$RELEASE_REC`. It keeps no state of its own
+   between calls.
+
+   I recommend this over leaving trees to the generated declarations,
+   which leaves each program to manage its node memory by hand.
+
+4. **Interlocked queues and bits: the generated declarations, no
+   module, and the rules written down.** Step 6 chose to share data with
+   an AST by disabling ASTs, and left `LIB$INSQHI` and the rest "for
+   whoever wants them" (`vax-macro32-backend.md`, section 22.3,
+   proposal 4). That holds. What this part adds is a fixture and the rules
+   a program must follow, in the `vax-macro32-backend.md` section and the
+   VMSLIB README:
+   - **A header and every entry must be quadword aligned** (LIB-248).
+     poc aligns a global or a local to at most a longword
+     (`MemoryLayout.Align`), but `NEW` gives quadword-aligned memory: an
+     object's data starts 8 bytes into a 16-byte granule. So a header
+     and its entries are made by `NEW`, and a header starts at 0, its
+     empty state.
+   - **An entry linked only through a queue is invisible to the
+     collector**, since the links are displacements. A program keeps an
+     ordinary pointer to each entry while it is queued.
+   - `LIB$REMQHI` gives the entry's address, and `SYSTEM.VAL` makes it
+     the program's pointer type again.
+   - `LIB$BBSSI` and `LIB$BBCCI` return the bit's old state, and
+     `LIB$ADAWI` adds to a word that is word aligned.
+
+5. **Fixtures, on the guest:**
+   - **`vax-lib-information`:** prints only what does not change from
+     run to run: `JPI$_USERNAME` (`POC`), `JPI$_MODE`, `SYI$_VERSION`
+     and `SYI$_NODENAME`, and `DVI$_DEVCLASS` of a disk. Then it
+     checks that `JPI$_PID`'s value and its 8-digit string agree. It
+     also shows `SS$_BADPARAM` for a bad item code, `LIB$_INVARG` for a
+     string-only item with no `resultant_string`, and `LIB$_STRTRU`
+     for a buffer too short.
+   - **`vax-date-times`:**
+     - `16-OCT-2026 12:34:56.78` read and printed back;
+     - plus a delta of 1 day 2 hours, and the delta between two times;
+     - two absolute times added, `LIB$_ONEDELTIM`;
+     - the day of the week (5, a Friday), the day of the year (289), and
+       the Julian date;
+     - `Format` of the same time, with a context and with the default
+       format;
+     - a delta of 90 minutes from `Delta`.
+   - **`vax-balanced-trees`:** a program's records with a word as the
+     key, inserted out of order with a repeat:
+     - once with duplicates refused (`LIB$_KEYALRINS`, `found` the first
+       node) and once allowed;
+     - a `GarbageCollectedHeap.Collect` between the inserts and the walk,
+       to show the nodes survive it;
+     - the walk in order, a walk stopped early, and a lookup that finds
+       and one that does not.
+   - **`vax-interlocked`:**
+     - entries made by `NEW`, inserted at the head and the tail and
+       removed from both, with `LIB$_ONEENTQUE` and `LIB$_QUEWASEMP`;
+     - each entry's address printed modulo 8, to show the alignment;
+     - `LIB$BBSSI` and `LIB$BBCCI` on a set's bits;
+     - `LIB$ADAWI`, with the sign it reports.
+   - `vax-vmslib` compiles `DateTimes` and `BalancedTrees` under `-O2`
+     and `-OC` and puts them in VMSLIB, and `vax-asts` and
+     `vax-conditions-handlers` build them with every other VMSLIB module.
+
+6. **Checked on the guest as written, not before.** What the manual does
+   not settle is shown by the run and written into "Part 10 done":
+   - **`LIB$FORMAT_DATE_TIME`'s formats.** It reads executive-mode
+     logical names that `SYS$STARTUP:LIB$DT_STARTUP.COM` defines (LIB-171).
+     Has the guest run it, and what does the default format give
+     without it?
+   - **`LIB$INSERT_TREE` with a duplicate refused:** is the allocation
+     routine called at all? (LIB-239: "LIB$INSERT_TREE always calls the
+     allocate routine.")
+   - **`LIB$TRAVERSE_TREE`:** is the order in key order, as the manual's
+     example implies, and does an action's failure status stop the walk?
+     If not, `Traverse` stops by itself, and its comment says how.
+   - **`LIB$GETJPI`:** whether a `JPI$_MODE` or `SYI$_VERSION` string is
+     blank-padded; the manual removes trailing blanks only from
+     blank-padded items such as `JPI$_USERNAME`.
+   - **`LIB$CVT_FROM_INTERNAL_TIME`** of a delta time, for the units
+     that allow one.
+
+   The modules' comments state the answers.
+
+7. **Left out:**
+   - process control (`LIB$SPAWN`, `LIB$DO_COMMAND`, `LIB$RUN_PROGRAM`,
+     `LIB$ATTACH`);
+   - `LIB$FIND_FILE` and `LIB$RENAME_FILE`/`LIB$DELETE_FILE`, which
+     `Files` and `Directories` cover in part;
+   - `LIB$FIND_IMAGE_SYMBOL`, dynamic loading, which would need the
+     image's symbols to match poc's names;
+   - virtual memory zones, timers (`LIB$INIT_TIMER`, `LIB$SHOW_TIMER`);
+   - conversions (`LIB$CVT_DTB` ...), the character instructions
+     (`LIB$LOCC`, `LIB$MATCHC`, `LIB$SCANC` ...), `LIB$CRC`,
+     `LIB$EDIV` and `LIB$EMUL`;
+   - `LIB$TPARSE` and `LIB$CRF_*`, as the inventory says.
+
+   They are callable through `LIB_ROUTINES`, but not checked. Process
+   control is a part of its own (the user, 2026-10-16): `LIB$SPAWN` of a
+   DCL command with output to a file, and its completion, which can be an
+   AST.
+
+   **Amended (the user, 2026-10-16):** `LIB$GETQUI`, first left out here,
+   joins proposal 1. It is the same kind of routine as the other three,
+   one item without an item list, with a function code (`QUI$_DISPLAY_QUEUE`
+   ...) and an optional search name, number and flags. `vax-lib-information`
+   asks about the guest's one queue, `SYS$BATCH`.
+
+8. **The documents:**
+   - "Part 10 done" in `vms-sdl-interfaces.md`;
+   - the inventory's `LIB$` entry marked done, with what was already done
+     by parts 4 and step 6 said so;
+   - `vax-macro32-backend.md`, section 22, gets the queue rules;
+   - `rtl/vax/vmslib/README.md` for `DateTimes` and `BalancedTrees`;
+   - `PLAN.md` step 5, "Part 11". With this, step 5's supported tier is
+     done, and step 8's exit gate is next.
+
+## Part 10 done: what was implemented (2026-10-16)
+
+Proposals 1 to 8 as written, with one change to `BalancedTrees` that the
+guest asked for (below):
+- **`rtl/vax/vmslib/DateTimes.Mod`** and **`rtl/vax/vmslib/BalancedTrees.Mod`**,
+  each compiled under `-O2` and `-OC` by `vax-vmslib` and put in
+  VMSLIB. `BalancedTrees` declares its own `LIB$INSERT_TREE`,
+  `LIB$LOOKUP_TREE` and `LIB$TRAVERSE_TREE`, with the tree head a `Node`
+  and the callbacks typed.
+- **Four fixtures on the guest:**
+  - `vax-lib-information` (`InfoUse`);
+  - `vax-date-times` (`DateUse`);
+  - `vax-balanced-trees` (`TreeUse`), which also calls `LIB$INSERT_TREE`
+    and `LIB$TRAVERSE_TREE` through declarations of its own, to answer
+    proposal 6's questions;
+  - `vax-interlocked` (`QueueUse`).
+
+  All four pass.
+- `vax-asts` and `vax-conditions-handlers` build both with every other
+  VMSLIB module; the generated modules they already build hold all that
+  the two import.
+
+What the guest showed, proposal 6's points first:
+- **`LIB$FORMAT_DATE_TIME`'s default format is VMS's standard form,**
+  `16-OCT-2026 12:34:56.78`, with `SS$_NORMAL`: the guest defines no
+  `LIB$DT_FORMAT`. A format set by `LIB$INIT_DATE_TIME_CONTEXT` works
+  without the startup's logical names: `|!Y4-!MN0-!D0|!H04:!M0:!S0|`
+  gave `2026-10-16 12:34:56`.
+- **`LIB$INSERT_TREE` does not call the allocate routine for a duplicate
+  it refuses**, whatever "always" means on LIB-239: four inserts and a
+  refused repeat made four calls.
+- **`LIB$TRAVERSE_TREE` walks in key order, and an action's failure stops
+  it** and becomes its status: with five nodes and `SS$_ABORT` from the
+  third action, three actions ran and the walk returned `SS$_ABORT`.
+  So `BalancedTrees.Traverse`'s action routine returns a failure when
+  the program's `Action` returns `FALSE`, and `Traverse` returns
+  `LIB$_NORMAL` for a walk stopped so. As first written, it went on
+  calling `LIB$`'s action and skipped the program's.
+- **`LIB$GETJPI` pads `JPI$_USERNAME` with blanks** (`POC` and nine blanks,
+  length 12), though LIB-187 says it removes them. `JPI$_MODE` is
+  `INTERACTIVE` and `SYI$_VERSION` `V5.5-2H4`, unpadded. `SYI$_NODENAME`
+  is empty on the guest, which has no DECnet. A numeric item's string is
+  its decimal value (`DVI$_DEVCLASS` of a disk: `1`), and `JPI$_PID`'s
+  string is the value's 8 hex digits.
+- **`LIB$GETQUI`** (the amendment) answers as DCL's `F$GETQUI` does on the
+  guest, whose one queue is `SYS$BATCH`:
+  - by name, its `QUI$_QUEUE_NAME`, its `QUI$_JOB_LIMIT` (3) and its
+    `QUI$_QUEUE_FLAGS`, with `QUI$M_QUEUE_BATCH` set;
+  - `QUI$_TRANSLATE_QUEUE` of `sys$batch`, `SYS$BATCH`;
+  - a wildcard `*`, called three times: `SYS$BATCH`, then
+    `JBC$_NOMOREQUE` with an empty string, then `SYS$BATCH` again, as
+    the manual's "retains context" means;
+  - `QUI$M_SEARCH_FREEZE_CONTEXT` keeps the wildcard on its queue, so two
+    items come from the same queue, and `QUI$_CANCEL_OPERATION` ends it;
+  - a queue that does not exist, `JBC$_NOSUCHQUE`.
+
+  Its `resultant_length` is a signed word, unlike the other three's.
+- **`LIB$CVT_FROM_INTERNAL_TIME`** of a delta gives its `LIB$K_DELTA_`
+  units (90 for 90 minutes) and refuses the others with
+  `LIB$_ABSTIMREQ`. A `LIB$K_DELTA_` part of an absolute time is
+  `LIB$_DELTIMREQ`.
+
+And what the proposals did not ask:
+- `LIB$K_HOUR_OF_DAY` counts from 0 (12 at 12:34), though LIBDTDEF's
+  comment says 1-24. `LIB$K_JULIAN_DATE` is the day's number from 17
+  November 1858 (61329 for 16 October 2026), not the astronomers' Julian
+  day.
+- `$BINTIM` takes a field left out of an absolute time from the current
+  time, so `16-OCT-2026` is that day at this moment's time of day. The
+  fixture does not print it.
+- `LIB$ADD_TIMES` of two absolute times is `LIB$_ONEDELTIM`, and a delta
+  of 20,000 days is `LIB$_IVTIME` from `LIB$CVT_TO_INTERNAL_TIME`, as
+  the manual's 10,000-day limit says.
+- The queues: `NEW` gave a quadword-aligned header and entries; an empty
+  queue gives back the header's own address with `LIB$_QUEWASEMP`; and
+  `LIB$ADAWI` returns `LIB$_NORMAL` or `LIB$_INTOVF`, not `SS$` codes
+  (`vax-macro32-backend.md`, section 22.8).
+
+Left out, as proposal 7 says. Process control is a part of its own. The
+inventory's `LIB$` entry is marked done, and with it step 5's supported
+tier.
