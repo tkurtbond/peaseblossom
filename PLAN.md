@@ -1003,10 +1003,12 @@ C++, and so on) unless step 4 chooses one deliberately.
      `guest-run.expected` is unchanged. `make test-vax-asts` (default 20)
      runs `vax-asts`, `vax-asts-heap`, `vax-conditions-handlers` and
      `vax-subprocesses` so; not part of `make check`.
-   - **The kits.** `make vax-kit` takes VMSLIB by a glob, but the kit's
-     `README.TXT` and `README-VMS.TXT` name six of its modules, now
-     twelve, and `KitVmsLib` uses `Conditions` alone: it is to import
-     every VMSLIB module.
+   - **Done.** **The kits.** `make vax-kit` takes VMSLIB by a glob, but
+     the kit's `README.TXT` and `README-VMS.TXT` named six of its
+     modules, now twelve, and `KitVmsLib` used `Conditions` alone. Both
+     READMEs now name all twelve, `README-VMS.TXT` with a line on what
+     each covers, and `KitVmsLib` uses every VMSLIB module and prints a
+     line for each, which `check-vax-kit` expects.
 
    Before them, part 12 finished and `LIB$ATTACH` checked by hand. Then
    the gate's run: `make check` on the four hosts, `make test-vax-asts`,

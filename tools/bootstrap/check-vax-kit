@@ -266,7 +266,19 @@ if [ -n "$commit" ]; then versionLine="poc $version ($commit)"; else versionLine
     echo "check: -$model KITHELLO: run: ok"
     echo "check: -$model KITVMSLIB: compiled: ok"
     echo "check: -$model KITVMSLIB: linked: ok"
-    echo "program: %SYSTEM-F-ABORT, abort"
+    cat <<'LINES'
+program: BalancedTrees:  0 1 2 3 4
+program: CommandLanguage: under DCL
+program: Conditions: %SYSTEM-F-ABORT, abort
+program: DateTimes: 16-OCT-2026 12:34:56.78
+program: DecimalStrings: 37037036703703703670
+program: EventFlags and Timers: the timer's AST got 42
+program: LogicalNames: a logical name
+program: SortMerge: 1 key, type 14
+program: Subprocesses: EXIT 3's status: 3
+program: Symbols: a symbol
+program: ExitHandlers: the handler called at exit
+LINES
     echo "check: -$model KITVMSLIB: run: ok"
   done
   if [ "$full" -eq 1 ]; then echo "check: -full: poc compiled by itself: ok"; fi

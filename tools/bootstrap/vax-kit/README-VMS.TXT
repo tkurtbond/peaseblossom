@@ -10,11 +10,24 @@ under both size models, with their sources:
           records of SYS$LIBRARY:STARLETSD.TLB's other modules (SSDEF,
           RMSDEF, IODEF, ...), generated from STARLETSD.TLB. Their
           sources are in [.SRC.RTL.VMS].
-  VMSLIB  Conditions, EventFlags, ExitHandlers, LogicalNames, Symbols
-          and Timers, built on VMSDEF: condition values, their messages
-          and condition handlers, event flags, exit handlers, logical
-          names, DCL symbols, and timers that call an AST routine. An
-          AST routine is an AsynchronousTraps.Routine, from POCRTL.
+  VMSLIB  Twelve modules built on VMSDEF:
+            BalancedTrees    balanced binary trees (LIB$INSERT_TREE)
+            CommandLanguage  a command's parameters and qualifiers,
+                             and command tables (CLI$)
+            Conditions       condition values, their messages, and
+                             condition handlers
+            DateTimes        VMS's times, as text and in parts
+            DecimalStrings   decimal numbers as long as 255 digits
+                             (STR$)
+            EventFlags       event flags
+            ExitHandlers     exit handlers
+            LogicalNames     logical names
+            SortMerge        SORT's constants and keys, for
+                             SOR_ROUTINES
+            Subprocesses     subprocesses (LIB$SPAWN)
+            Symbols          DCL symbols
+            Timers           timers that call an AST routine, an
+                             AsynchronousTraps.Routine from POCRTL
           Their sources are in [.SRC.RTL.VMSLIB].
 
 Installing
