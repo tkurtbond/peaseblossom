@@ -48,6 +48,7 @@ test/conformance/vax-files-riders/guest.expected
 # they expect
 test/conformance/vax-texts/TextsUse.mod
 test/conformance/vax-texts/host/
+test/conformance/doc-vax-guide/work/
 test/conformance/vax-texts/texts.expected
 test/conformance/vax-oberon/OberonUse.mod
 test/conformance/vax-oberon/beyond.mod

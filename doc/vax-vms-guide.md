@@ -151,6 +151,8 @@ END Hello.
 
 ### On VMS
 
+<!-- vax-session: hello -->
+
     $ POC HELLO.MOD
     $ @HELLO
     $ RUN HELLO
@@ -521,7 +523,218 @@ Unix does not have either. `SYSTEM.CC`, `GETREG` and `PUTREG`. D_floating
 and H_floating, and the vector and privileged system services
 (appendix B).
 
-<!-- Chapter 6, the runtime modules on VMS, is to be written. -->
+## 6. The runtime modules on VMS
+
+*For the Unix reader: which of the runtime's modules behave differently
+on VMS, and how. For the VMS reader: what each of Oberon's own modules is
+built on.*
+
+The library `POCRTL` has the same modules as the runtime on Unix, with
+the same interfaces, so a program written for them compiles for VMS
+unchanged. The *Reference Guide*'s chapter 9 describes each one. This
+chapter says what each is built on in VMS, and where it behaves
+differently from Unix. Chapter 5 has already covered the differences
+that most programs meet. `POCRTL` also has two modules that only VMS
+has, described at the end of this chapter.
+
+| Module | On VMS, built on | What differs |
+|---|---|---|
+| `Out`, `Err`, `Console` | `SYS$OUTPUT`, `SYS$ERROR` | A record for each `Ln` (chapter 5). `IsConsole` asks `$GETDVIW`. |
+| `OutStr` | | Nothing. |
+| `In`, `InStr` | `SYS$INPUT` | A record at a time, with `Out`'s unfinished line as the prompt (chapter 5). |
+| `Args` | `LIB$GET_FOREIGN` | A foreign command's line, as DCL gives it (chapter 5). |
+| `Modules` | `LIB$GET_FOREIGN`, `$GETJPI` | No `Init`. Only the modules linked into the program exist. |
+| `Platform` | RMS, `$TRNLNM`, `LIB$GET_SYMBOL`, `LIB$SPAWN`, `$SETAST` | Statuses are VMS's. Time is local time. Only an interrupt handler is ever called. |
+| `Directories` | `$PARSE`, `LIB$CREATE_DIR`, `$SETDDIR` | Directories as VMS writes them. |
+| `Files` | RMS | Versions, and record formats (chapter 5). |
+| `Texts`, `Oberon` | `Files` | `Texts.Close` keeps the old file as an older version. |
+| `Strings` | | Reals convert to and from F_floating and G_floating. |
+| `Reals` | | The fields are F_floating's and G_floating's. |
+| `Math`, `MathL` | `MTH$`, `OTS$` | The constants are F_floating's and G_floating's. |
+| `VT100` | `Out.Flush` | Each sequence reaches the terminal as it is sent. |
+| `GarbageCollectedHeap` | `LIB$GET_VM`, `$DCLEXH` | The heap is limited by the paging file quota. |
+
+### Files
+
+`Files` on VMS keeps the model it has on Unix. A file is a sequence of
+bytes, and the bytes a program writes come back as they were written.
+Chapter 5 described versions and record formats. Beyond those:
+
+- **`New` makes nothing on disk.** The first block written, or `Close`,
+  or `Register`, creates the file under a temporary name,
+  `POC_<process>_<n>.TMP`, in the default directory. `Register` then
+  renames it to its own name as a new version. A program that stops half
+  way leaves its temporary files behind, which can be deleted. `New("")`
+  makes a file that never gets a name, and is deleted when the program
+  no longer holds it.
+- **`Old` opens a file only to read it**, and the first write opens it
+  again to write. RMS sets a file's revision date whenever it is closed
+  after being opened to write, so a file a program only reads keeps its
+  date. Two `Old` calls for one file give two independent `File`s.
+- **`Delete` deletes the highest version**, and the version below it
+  becomes the one `Old` finds. `Rename`, like `Register`, makes a new
+  version of the new name.
+- **`Purge` empties a file**, as on Unix. It does not delete older
+  versions the way DCL's `PURGE` does.
+- **The search path** (`SetSearchPath`) is a list of directories
+  separated by commas, such as `[.SRC],DUA1:[LIB]`. A logical name in it
+  stands for the directory it translates to. A `~` at the start stands
+  for `SYS$LOGIN`, so `~[.LIB]` is the directory `LIB` in the login
+  directory. A name with `:`, `[` or `<` in it is found where it says,
+  not on the path.
+- **A name is given to RMS as it is.** Case does not matter in it, and a
+  name with no version means the highest one. A name may have at most
+  255 characters.
+- **An error that cannot be reported to the caller**, such as a file
+  that cannot be created or written, stops the program with a message
+  and `HALT(99)`, as on Unix.
+
+The program below writes two versions of `NOTES.TXT`, then deletes them
+one at a time:
+
+<!-- example: vax/versions/Versions.Mod -->
+```
+MODULE Versions;
+  IMPORT Files, Out;
+
+  VAR res: INTEGER;
+
+  PROCEDURE Write(text: ARRAY OF CHAR);
+    VAR f: Files.File; r: Files.Rider; i: INTEGER;
+  BEGIN
+    f := Files.New("NOTES.TXT"); Files.Set(r, f, 0);
+    i := 0;
+    WHILE text[i] # 0X DO Files.Write(r, text[i]); INC(i) END;
+    Files.Write(r, 0AX);
+    Files.Register(f); Files.Close(f)
+  END Write;
+
+  PROCEDURE Show;
+    VAR f: Files.File; r: Files.Rider; ch: CHAR;
+  BEGIN
+    f := Files.Old("NOTES.TXT");
+    IF f = NIL THEN
+      Out.String("no NOTES.TXT"); Out.Ln
+    ELSE
+      Files.Set(r, f, 0); Files.Read(r, ch);
+      WHILE ~r.eof DO
+        IF ch = 0AX THEN Out.Ln ELSE Out.Char(ch) END;
+        Files.Read(r, ch)
+      END;
+      Files.Close(f)
+    END
+  END Show;
+
+BEGIN
+  Write("the first version");
+  Write("the second version");
+  Show;
+  Files.Delete("NOTES.TXT", res); Show;
+  Files.Delete("NOTES.TXT", res); Show
+END Versions.
+```
+
+<!-- vax-session: versions -->
+
+    $ RUN VERSIONS
+    the second version
+    the first version
+    no NOTES.TXT
+
+On Unix the same program prints `the second version` and then
+`no NOTES.TXT` twice, since the second `Register` replaced the first
+file.
+
+### Platform
+
+`Platform` is the layer under `Files`, `In`, `Out` and `Modules`, and
+voc's programs call it directly. It has its whole interface on VMS, with
+these differences:
+
+- **An `ErrorCode` is a VMS status.** It is 0 for success, and otherwise
+  the status of the service that failed: the whole longword under `-OC`,
+  its low word under `-O2`, where an `INTEGER` is a word. The error
+  tests, such as `Absent`, `NoSuchDirectory` and `Inaccessible`,
+  recognize RMS's and the system services' statuses. `ConnectionFailed`
+  and `Interrupted` are always `FALSE`: `Platform` makes no connections,
+  and an AST does not make a system service fail.
+- **Time is local time**, the only time VMS 5.5 keeps. `GetTimeOfDay`
+  counts seconds from 1 January 1970 in local time, so its count differs
+  from Unix's by the time zone's offset.
+- **Files by handle** are those of a table of 32 files. `StdIn`, `StdOut`
+  and `StdErr` are `SYS$INPUT`, `SYS$OUTPUT` and `SYS$ERROR`, and what is
+  written to the last two comes out in order with `Out`'s and `Err`'s.
+  `OldRW` refuses a file whose record format `Files` cannot write.
+- **`GetEnv` and `System`** are as chapter 5 says. `GetEnv` translates a
+  logical name, or else reads a DCL symbol. `System` runs a command in a
+  subprocess.
+- **`SetInterruptHandler`** installs a handler for CTRL/C, typed at the
+  terminal `SYS$COMMAND` names. VMS calls the handler as an asynchronous
+  system trap, with 2, Unix's `SIGINT`, as its argument, so it must
+  follow chapter 14's rules for code that runs at AST level. A program
+  with no handler is stopped by CTRL/C, as usual. `SetQuitHandler` and
+  `SetBadInstructionHandler` accept a handler but never call it, since
+  VMS sends a process no such signals.
+
+### Modules and the command line
+
+`Modules` gets the command line itself from VMS, with
+`LIB$GET_FOREIGN`. There is no `Init`, which a program on Unix never
+calls either. Argument 0 is the image's file specification, such as
+`DUA1:[USERS.ME]ECHO.EXE;1`, as argument 0 on Unix is the program's
+name. `BinaryDir` is the image's device and directory.
+
+`ThisMod` and `ThisCommand` work as on Unix, over the modules linked
+into the program. Each one's initializer registers it as it starts, so
+`ThisMod` finds a module once its initialization has begun. `Free`
+unloads nothing, as on Unix. `Halt` and `AssertFail` write voc's
+messages to `SYS$ERROR` and end the program with the status chapter 5
+gives for a trap.
+
+### Reals and mathematics
+
+`Strings`, `Texts` and `In` convert decimal text to the nearest
+F_floating or G_floating value, rounding a tie to even, by the same exact
+method poc uses for a real constant. `Out` writes a real's decimal digits
+correctly rounded, as it does on Unix.
+
+`Math` and `MathL` call VMS's own `MTH$` routines, and `OTS$`'s for a
+power. Their errors are the same as on Unix: a domain error is checked
+before the call, an overflow is reported to `ErrorHandler`, and each
+function returns the same value in each case. Their constants describe
+the VAX formats. `Math`'s `expoMin` and `expoMax` are -128 and 126, and
+`MathL`'s are -1024 and 1022. The largest values are those in chapter
+5's table. `exponent`, `fraction`, `scale`, `ulp`, `succ` and `pred`
+work on F_floating's and G_floating's own fields, and are exact.
+
+### The heap
+
+`NEW` allocates from the same collector as on Unix, which takes its
+memory from `LIB$GET_VM`. The heap stops growing at three quarters of
+the paging file quota the process has left when the program starts, so
+a collection runs before VMS refuses the memory. A process with a small
+`PGFLQUOTA` therefore has a small heap. `SHOW PROCESS/QUOTAS` shows how
+much it has left. When the heap is full, `NEW` leaves its pointer `NIL`,
+or traps with `-trap-heap-exhausted`, as on Unix.
+
+Finalizers (`GarbageCollectedHeap.RegisterFinalizer`) run at the end of
+the program from an exit handler, `$DCLEXH`. A program's own exit
+handler that calls `$EXIT` skips the handlers declared before it, poc's
+included, so files would then be left unwritten (chapter 8's
+`ExitHandlers`).
+
+In a program that imports `AsynchronousTraps`, the heap disables ASTs
+while it allocates or collects, so `NEW` is safe at AST level (chapter
+14).
+
+### Two modules VMS alone has
+
+- **`VmsArguments`** has the structures a program builds to call VMS: a
+  string descriptor, item lists, an I/O status block and a lock status
+  block, with procedures that fill them (chapter 7).
+- **`AsynchronousTraps`** makes an Oberon procedure an AST routine, and
+  lets the main program disable and restore AST delivery around data
+  that it shares with one (chapter 14).
 
 ## 7. Calling VMS
 
@@ -568,6 +781,8 @@ BEGIN
   END
 END WhereLogin.
 ```
+
+<!-- vax-session: wherelogin -->
 
     $ POC WHERELOGIN.MOD
     $ @WHERELOGIN
@@ -720,5 +935,803 @@ with VMS's message unless a handler catches it; chapter 13 shows how, and
 VMSLIB's `DecimalStrings` turns `STR$`'s signals back into returned
 statuses with `LIB$SIG_TO_RET`.
 
-<!-- Chapters 8 to 17 and the appendices are to be written (the outline,
-PLAN.md Phase 17 step 8). -->
+## 8. VMSLIB
+
+*For both kinds of reader: what each of VMSLIB's modules does, and when
+to reach past it to VMSDEF.*
+
+VMSLIB is twelve small Oberon modules over the parts of VMS that most
+programs need. Each is written by hand over VMSDEF's declarations, and
+gives VMS's facilities Oberon's types: a string is an `ARRAY OF CHAR`, a
+time a `HUGEINT`, a callback an Oberon procedure. It comes in the STARLET
+kit (chapter 1) and is a library like any other, so a program that
+imports one of its modules links it, from its object library or, with
+`-shared-libraries`, its shareable image (chapter 3).
+
+| Module | For | Built on | More in |
+|---|---|---|---|
+| `Conditions` | Condition values, their messages, signals and handlers | `$GETMSG`, `LIB$SIGNAL`, `LIB$STOP`, `LIB$ESTABLISH` | chapter 13 |
+| `LogicalNames` | Defining, deassigning and translating logical names | `$CRELNM`, `$DELLNM`, `$TRNLNM`, `LIB$SET_LOGICAL` | chapter 7 |
+| `Symbols` | DCL symbols | `LIB$GET_SYMBOL`, `LIB$SET_SYMBOL`, `LIB$DELETE_SYMBOL` | |
+| `CommandLanguage` | A command's parameters and qualifiers, as DCL parses them | `CLI$` | chapter 10 |
+| `DateTimes` | VMS's dates and times | `$GETTIM`, `$BINTIM`, `$ASCTIM`, `LIB$` | |
+| `DecimalStrings` | Exact decimal arithmetic of up to 255 digits | `STR$` | |
+| `BalancedTrees` | Balanced binary trees of the program's records | `LIB$INSERT_TREE`, `LIB$LOOKUP_TREE`, `LIB$TRAVERSE_TREE` | |
+| `SortMerge` | SORT's constants and keys | `SORTSHR` | chapter 9 |
+| `EventFlags` | Local event flags | `LIB$GET_EF`, `$SETEF`, `$WAITFR` | chapter 14 |
+| `Timers` | A routine called after a time, and sleeping | `$SETIMR`, `$CANTIM`, `$HIBER` | chapter 14 |
+| `Subprocesses` | DCL commands in a subprocess | `LIB$SPAWN` | chapter 15 |
+| `ExitHandlers` | Procedures called when the program exits | `$DCLEXH` | |
+
+The modules share three conventions:
+
+- **A procedure that calls VMS returns VMS's condition value**, a
+  `SYSTEM.INT32`, which `Conditions.Succeeded` (or `ODD`) tests and
+  `Conditions.Message` turns into text (chapter 7). VMSDEF's message
+  modules name each one: `SSDEF.SS$_NORMAL`, `LIBDEF.LIB$_KEYALRINS`.
+- **A string it returns** is cut to fit its array, less one character,
+  and ends with `0X`.
+- **A string it is given** is passed up to its `0X`.
+
+When VMSLIB lacks something, VMSDEF has every routine VMS declares
+(chapter 9), and a program can use both.
+
+### Conditions
+
+A condition value is a longword with a severity in its low three bits,
+a message number above them and a facility number above that.
+`Conditions` takes one apart (`Succeeded`, `Severity`, `MessageNumber`,
+`Facility`), and gives its text, as VMS prints it, by `Message`:
+
+    %SYSTEM-F-ABORT, abort
+
+`Signal` signals a condition, as `LIB$SIGNAL` does. Unless a handler
+deals with it, VMS prints its message and a traceback to `SYS$ERROR` and
+goes on, unless the severity is `Severe`, which ends the program. `Stop`
+signals one that cannot go on, and never returns. `SignalWith` and
+`StopWith` add one argument for the message's FAO directive, and
+`SignalList` and `StopList` take a whole argument list: several FAO
+arguments, or one condition chained to another. `Establish`, `Revert`
+and `Unwind` give a procedure a condition handler of its own (chapter
+13).
+
+### LogicalNames and Symbols
+
+`LogicalNames` defines, deassigns and translates a logical name in a
+table (`Process`, `Job`, `Group`, `System`, or `FileDevice`, the search
+list DCL uses for a file name) and an access mode:
+
+    status := LogicalNames.Define(LogicalNames.Process, "REPORTS", "DUA1:[ME.REPORTS]",
+      LogicalNames.Supervisor);
+    status := LogicalNames.Translate(LogicalNames.Process, "REPORTS", value);
+
+The mode chooses how long a name lasts:
+
+- **A `Supervisor` name** is made by `LIB$SET_LOGICAL`, as DCL's
+  `DEFINE` makes it, and outlives the program.
+- **A `User` name** is deleted when the program ends.
+- **An `Executive` or `Kernel` name** needs the privilege `SYSNAM`.
+  Without it, the request makes a `User` name.
+
+The group and system tables need privileges too. A translation ignores
+case, as DCL's does. `TranslateAt` gives each equivalence string of a
+search list in turn, and the index of the last.
+
+`Symbols` gets, sets and deletes a DCL symbol, `Local` or `Global`. A
+symbol's value is a string here, a number's its decimal text. `Get` looks
+in the local table first and then the global one, and says where it found
+the name:
+
+    status := Symbols.Set("RESULT", "42", Symbols.Global);
+    status := Symbols.Get("RESULT", value, table);
+
+Both need DCL, so `Symbols`, and `LogicalNames` with `Supervisor`, return
+`LIB$_NOCLI` in a process that has none, such as a subprocess run without
+a command line or a detached process. For a program that is not only for
+VMS, `Platform.GetEnv` translates a logical name, or else reads a DCL
+symbol, as on Unix it reads an environment variable (chapter 5).
+
+### DateTimes
+
+A VMS time is a quadword of 100-nanosecond units, a `HUGEINT` here
+(`DateTimes.Time`). An absolute time counts from 17 November 1858 and is
+positive. A delta time, a length of time, is negative. `Now` gives the
+time, `FromText` and `ToText` convert both kinds to and from VMS's
+standard text, `Add` and `Subtract` combine them, `Delta` makes a delta
+of so many weeks, days, hours, minutes or seconds, and `Part` and
+`DayOfWeek` take one apart:
+
+<!-- example: vax/dates/Dates.Mod -->
+```
+MODULE Dates;
+  IMPORT SYSTEM, Out, DateTimes, LIBDTDEF;
+  VAR
+    start, week, later: DateTimes.Time;
+    julian, status: SYSTEM.INT32;
+    text: ARRAY 32 OF CHAR;
+BEGIN
+  status := DateTimes.FromText("16-OCT-2026 12:34:56.78", start);
+  status := DateTimes.Delta(LIBDTDEF.LIB$K_DELTA_WEEKS, 1, week);
+  status := DateTimes.Add(start, week, later);
+  DateTimes.ToText(later, text);
+  Out.String(text); Out.Ln;
+  Out.String("day of the week: "); Out.Int(DateTimes.DayOfWeek(later), 0); Out.Ln;
+  status := DateTimes.Part(LIBDTDEF.LIB$K_JULIAN_DATE, later, julian);
+  Out.String("day number: "); Out.Int(julian, 0); Out.Ln
+END Dates.
+```
+
+<!-- vax-session: dates -->
+
+    $ RUN DATES
+    23-OCT-2026 12:34:56.78
+    day of the week: 5
+    day number: 61336
+
+`DayOfWeek` counts from 1 for Monday. The day number is the Julian day
+VMS counts from 17 November 1858. `LIBDTDEF`, a VMSDEF module, names the
+units and parts.
+
+`Format` formats a time as `LIB$FORMAT_DATE_TIME` does, in the language
+and format the logical names `SYS$LANGUAGE` and `LIB$DT_FORMAT` choose,
+or in one a program sets with `LIB$INIT_DATE_TIME_CONTEXT` on the context
+it passes. A program that runs on Unix too should use `Oberon.Time` or
+`Platform.GetClock` instead.
+
+### DecimalStrings
+
+`STR$`'s decimal arithmetic is exact for numbers of up to 255 digits,
+which is what money and other counting want. A `Decimal` is a number as
+`STR$` gives it: a sign, the exponent of ten, and the digits as text.
+`FromText`, `FromInteger` and `ToText` convert, and `Add`, `Subtract`,
+`Multiply`, `Divide`, `Reciprocal` and `Round` compute:
+
+<!-- example: vax/factorial/Factorial.Mod -->
+```
+MODULE Factorial;
+  IMPORT SYSTEM, Out, Conditions, DecimalStrings;
+  VAR
+    product, factor: DecimalStrings.Decimal;
+    i: INTEGER;
+    status: SYSTEM.INT32;
+    text: ARRAY 300 OF CHAR;
+BEGIN
+  DecimalStrings.FromInteger(1, product);
+  i := 2; status := 1;
+  WHILE (i <= 50) & Conditions.Succeeded(status) DO
+    DecimalStrings.FromInteger(i, factor);
+    status := DecimalStrings.Multiply(product, factor, product);
+    INC(i)
+  END;
+  IF Conditions.Succeeded(status) THEN
+    DecimalStrings.ToText(product, text)
+  ELSE
+    Conditions.Message(status, text)
+  END;
+  Out.String("50! = "); Out.String(text); Out.Ln
+END Factorial.
+```
+
+<!-- vax-session: factorial -->
+
+    $ RUN FACTORIAL
+    50! = 30414093201713378043612608166064768844377641568960512000000000000
+
+Each arithmetic procedure returns `STR$`'s status:
+
+- **`SS$_NORMAL`** when the result is exact.
+- **`STR$_TRU`** when it would need more than 255 digits.
+- **A condition `STR$` would have signalled**, such as `STR$_DIVBY_ZER`,
+  which is severe. It is returned here, not signalled, so it does not
+  end the program.
+
+After any status but `SS$_NORMAL` the result is not the value.
+
+`Divide`'s digits are those after the decimal point, and `Round`'s
+places are significant digits: 123456.789 rounded to 2 is 120000. The
+module returns signals as statuses by a handler of its own, so it is not
+for AST routines.
+
+### BalancedTrees
+
+`LIB$`'s balanced binary trees keep records in order of a key and find
+one quickly. The records are the program's own: a program extends
+`BalancedTrees.NodeDesc` with its key and data, makes each node by `NEW`,
+and gives `Insert`, `Lookup` and `Traverse` a comparison of its own.
+`NodeDesc` is `LIB$`'s node header, so the collector traces the links
+`LIB$` writes, and a node lives as long as its tree does.
+
+<!-- example: vax/words/Words.Mod -->
+```
+MODULE Words;
+  IMPORT SYSTEM, Out, BalancedTrees, LIBDEF;
+
+  TYPE
+    Word = POINTER TO WordDesc;
+    WordDesc = RECORD (BalancedTrees.NodeDesc)
+      text: ARRAY 16 OF CHAR;
+      count: INTEGER
+    END;
+
+  VAR
+    tree: BalancedTrees.Tree;
+    status: SYSTEM.INT32;
+
+  PROCEDURE Compare(a, b: BalancedTrees.Node): LONGINT;
+  BEGIN
+    IF a(Word).text < b(Word).text THEN RETURN -1
+    ELSIF a(Word).text = b(Word).text THEN RETURN 0
+    ELSE RETURN 1
+    END
+  END Compare;
+
+  PROCEDURE Add(text: ARRAY OF CHAR);
+    VAR w: Word; found: BalancedTrees.Node; status: SYSTEM.INT32;
+  BEGIN
+    NEW(w); COPY(text, w.text); w.count := 1;
+    status := BalancedTrees.Insert(tree, w, Compare, FALSE, found);
+    IF status = LIBDEF.LIB$_KEYALRINS THEN INC(found(Word).count) END
+  END Add;
+
+  PROCEDURE Print(n: BalancedTrees.Node): BOOLEAN;
+  BEGIN
+    Out.String(n(Word).text); Out.Char(" "); Out.Int(n(Word).count, 0); Out.Ln;
+    RETURN TRUE
+  END Print;
+
+BEGIN
+  Add("the"); Add("quick"); Add("brown"); Add("fox"); Add("jumps");
+  Add("over"); Add("the"); Add("lazy"); Add("dog"); Add("the");
+  status := BalancedTrees.Traverse(tree, Print)
+END Words.
+```
+
+<!-- vax-session: words -->
+
+    $ RUN WORDS
+    brown 1
+    dog 1
+    fox 1
+    jumps 1
+    lazy 1
+    over 1
+    quick 1
+    the 3
+
+`Insert` with duplicates `FALSE` refuses a node equal to one already in
+the tree. It returns `LIB$_KEYALRINS` and that node in `found`, and the
+new node is not linked in. With duplicates `TRUE` it links in each one.
+`Lookup` takes a node of the program's type with its key filled, and
+returns the node equal to it, or `NIL`. `Traverse` stops when the action
+returns `FALSE`.
+
+### SortMerge
+
+SORT, VMS's sort and merge utility, can be called from a program: `SOR$`
+in VMSDEF's `SOR_ROUTINES` (chapter 9). It sorts files, or records the
+program passes it one at a time, by keys a program describes in a key
+buffer. `SortMerge` has what VMSDEF does not: SORT's options, sort
+processes and statistic codes, which VMS defines only in its shareable
+image, and `AddKey`, which adds a key to a key buffer. This sorts a file
+of 24-character records by the department in characters 12 to 17, then
+by the salary in 18 to 23, highest first:
+
+    keys[0] := 0;
+    SortMerge.AddKey(keys, DSCDEF.DSC$K_DTYPE_T, SortMerge.ascending, 12, 6);
+    SortMerge.AddKey(keys, DSCDEF.DSC$K_DTYPE_NU, SortMerge.descending, 18, 6);
+    status := SOR_ROUTINES.SOR$PASS_FILES("STAFF.DAT", "STAFF.SRT",
+      NIL, NIL, NIL, NIL, NIL, NIL, NIL, NIL, NIL);
+    status := SOR_ROUTINES.SOR$BEGIN_SORT(keys, NIL, SortMerge.stable, NIL, 0, 0,
+      NIL, NIL, NIL);
+    status := SOR_ROUTINES.SOR$SORT_MERGE(NIL);
+    status := SOR_ROUTINES.SOR$END_SORT(NIL);
+
+`keys` is an `ARRAY 9 OF SYSTEM.CARD16`: a count, then four words for
+each key. `stable` keeps records with equal keys in their input order.
+SORT keeps the input file's record format, so a file `Files` wrote is
+sorted into another that `Files` can read.
+
+### EventFlags and Timers
+
+A process has 64 local event flags. A system service that completes
+later sets one when it does, and a program waits for it. `EventFlags.Get`
+gives a program a flag no other part of it is using, and `Free` gives it
+back. `Set`, `Clear`, `IsSet`, `Wait` and `WaitAny` work on flags.
+
+`Timers.After` has VMS call an Oberon procedure, as an asynchronous
+system trap, after so many milliseconds. `Cancel` cancels it, and `Sleep`
+makes the process hibernate for a time. Chapter 14 says how a program
+shares data safely with a procedure called so. This waits for a timer:
+
+    status := EventFlags.Get(flag);
+    status := EventFlags.Clear(flag);
+    status := Timers.After(100, Fired, 42);
+    status := EventFlags.Wait(flag);
+    status := EventFlags.Free(flag)
+
+where `Fired(parameter: SYSTEM.CARD32)`, called with 42, sets `flag`.
+
+### Subprocesses
+
+`Subprocesses.Run` runs a DCL command in a subprocess and waits for it.
+It returns whether the subprocess could be made, and the command's final
+status comes back in `completion`. `Start` starts one and does not wait,
+and `Done`, `Wait` and `Stop` follow it:
+
+    status := Subprocesses.Run("DIRECTORY/SIZE", "", "DIR.LIS", {}, completion);
+
+Each takes an input and an output file (`""` for the program's own), and
+options that keep the program's symbols, logical names or keypad from the
+subprocess. A process may have only as many subprocesses at once as its
+quota `PRCLM` allows, and one that has ended counts until VMS has
+deleted it. Chapter 15 has the rest.
+
+### ExitHandlers
+
+`ExitHandlers.Declare` has VMS call a procedure when the program exits,
+however it does: normally, by `$EXIT`, by a trap or by a severe
+condition. The handler gets the exit status:
+
+    PROCEDURE AtExit(VAR status: SYSTEM.CARD32);
+    BEGIN
+      Out.String("exiting"); Out.Ln
+    END AtExit;
+    ...
+    status := ExitHandlers.Declare(AtExit);
+
+Handlers run last declared, first called, and before poc's own, so
+`Out`'s last line and the finalizers still come after them. Changing
+`status` changes nothing. A handler that calls `$EXIT` ends the program
+there: the handlers not yet called are skipped, poc's own among them, so
+`Out`'s unfinished line is lost and no finalizer runs.
+
+### CommandLanguage
+
+A VMS program can have its command line parsed by DCL, as DCL's own
+commands are: its qualifiers checked, its parameters prompted for, and
+each asked for by name. `CommandLanguage` asks for them (`IsPresent`,
+`Presence`, `GetValue`), in a program run as a verb defined by `SET
+COMMAND`, or one that parses its own line with a command table
+compiled from a `.cld` file. Chapter 10 has the whole of it.
+
+## 9. The supported routines in VMSDEF
+
+*For both kinds of reader: what VMSDEF holds, how to find a routine or a
+constant in it, and which parts have been tried on a VAX.*
+
+VMSDEF is VMS's own definitions as Oberon modules. VMS keeps one
+description of its interfaces, written in SDL, for every language
+(`SYS$LIBRARY:STARLETSD.TLB`): MACRO's `$xxxDEF` macros and VAX C's
+header files are made from it. VMSDEF was made from it too, by poc's
+generator, so it has every system service, every run-time library
+routine SDL describes, and every constant and structure, under the names
+the VMS manuals use.
+
+### What is in it
+
+`STARLETSD.TLB` holds 65 library modules, and those hold 243 SDL
+modules. VMSDEF has one Oberon module for each, named as SDL names it,
+without its leading `$`, and with `_` for a `$` inside the name:
+
+| Kind | Modules | What they hold |
+|---|---|---|
+| Routines | `STARLET` (the system services), `LIB_ROUTINES`, `STR_ROUTINES`, `SMG_ROUTINES`, `SOR_ROUTINES`, `OTS_ROUTINES`, `MTH_ROUTINES`, `NCS_ROUTINES`, `PPL_ROUTINES`, `DTK_ROUTINES` | `["VMS"]` declarations: `STARLET.SYS$TRNLNM`, `LIB_ROUTINES.LIB$GETSYI`. |
+| Condition values | `SSDEF`, `RMSDEF`, `LIBDEF`, `STRDEF`, `CLIMSGDEF`, `SMGMSG` ... | `SSDEF.SS$_NORMAL`, `RMSDEF.RMS$_FNF`. |
+| Definitions | `FABDEF`, `RABDEF`, `IODEF`, `JPIDEF`, `SYIDEF`, `DVIDEF`, `LNMDEF`, `DSCDEF` ... | Item codes, function codes, masks and record types. |
+
+A routine module's declaration says what VMS takes, argument by
+argument, in the comments the generator writes from SDL:
+
+    PROCEDURE ["VMS", "LIB$GETSYI"] LIB$GETSYI*(
+        item_code-: SYSTEM.INT32; (* longword_signed *)
+        VAR resultant_value: ARRAY OF SYSTEM.BYTE; (* varying_arg, optional: NIL omits it *)
+        VAR resultant_string: ARRAY OF CHAR; (* char_string, optional: NIL omits it *)
+        VAR resultant_length: SYSTEM.CARD16; (* word_unsigned, optional: NIL omits it *)
+        VAR cluster_system_id: SYSTEM.CARD32; (* identifier, optional: NIL omits it *)
+        node_name-: ARRAY OF CHAR (* char_string, optional: NIL omits it *)
+      ): SYSTEM.INT32; (* cond_value *)
+
+Each comment is the argument's VMS usage from the manual, and whether it
+may be left out. Chapter 7 says how each kind of argument is passed. Here
+is the declaration in use:
+
+<!-- example: vax/systeminfo/SystemInfo.Mod -->
+```
+MODULE SystemInfo;
+  IMPORT SYSTEM, Out, LIB_ROUTINES, SYIDEF, Conditions;
+
+  (* the system's string item, by LIB$GETSYI *)
+  PROCEDURE Show(label: ARRAY OF CHAR; item: SYSTEM.INT32);
+    VAR text: ARRAY 64 OF CHAR; length: SYSTEM.CARD16; status: SYSTEM.INT32;
+  BEGIN
+    length := 0;
+    status := LIB_ROUTINES.LIB$GETSYI(item, NIL, text, length, NIL, NIL);
+    IF Conditions.Succeeded(status) THEN
+      text[SYSTEM.VAL(INTEGER, length)] := 0X
+    ELSE
+      Conditions.Message(status, text)
+    END;
+    Out.String(label); Out.String(": "); Out.String(text); Out.Ln
+  END Show;
+
+BEGIN
+  Show("VMS", SYIDEF.SYI$_VERSION);
+  Show("hardware", SYIDEF.SYI$_HW_NAME)
+END SystemInfo.
+```
+
+<!-- vax-session: systeminfo -->
+
+    $ RUN SYSTEMINFO
+    VMS: V5.5-2H4
+    hardware: VAXserver 3900 Series
+
+### Finding a routine or a constant
+
+Look a routine up in the VMS manual for its facility, then in VMSDEF's
+module for it: `SYS$` routines in `STARLET`, `LIB$` in `LIB_ROUTINES`,
+and so on. A constant or a record type is in the module named for its
+prefix, as the manual's `$xxxDEF` macro names it: `SYI$_VERSION` in
+`SYIDEF`, `FAB$L_FOP` in `FABDEF`. A condition value is in its
+facility's message module, such as `SS$_NOPRIV` in `SSDEF`.
+
+The modules' sources come with the STARLET kit, in `[.SRC.RTL.VMS]`, and
+are in `rtl/vax/vms` in poc's source tree. `poc -show-interface` prints a
+module's interface without the comments:
+
+    $ POC -SHOW-INTERFACE [.SRC.RTL.VMS]SYIDEF.MOD
+
+### Records
+
+A structure is a record type named for the structure, with fields named
+as the manual names them, so a FAB is `FABDEF.FABDEF`, and its fields
+are `FAB$B_FAC`, `FAB$L_FNA` and so on. Its layout is SDL's, checked when
+the modules were made. The module also has each field's offset as a
+constant, as MACRO's macros give it (`FABDEF.FAB$L_FOP = 4`). A flag
+field's bits have constants too: `FAB$V_DLT`, the bit's position, and
+`FAB$M_DLT`, its mask, with `$S_` for the width of a field of more than
+one bit:
+
+    parts.FAB$B_ORG := FABDEF.FAB$C_IDX;
+    parts.FAB$B_RFM := FABDEF.FAB$C_FIX;
+    parts.FAB$L_FOP := FABDEF.FAB$M_DLT;
+
+What an Oberon record cannot express, VMSDEF gives as bytes and
+constants:
+
+- **A union** is its first member that fills it, such as `FAB$L_FOP`.
+  The other members are only constants.
+- **Bit fields** outside a union are an array of bytes, named after the
+  first, and are set through their `$M_` masks.
+- **A field not at its natural alignment**, as `XAB$L_RVB` at offset 14,
+  is an array of bytes. A program reaches it with `SYSTEM.GET` and
+  `SYSTEM.PUT` at its offset constant.
+
+Chapter 11 builds RMS's control blocks this way.
+
+### What has been tried on a VAX
+
+"Generated" is not "supported". VMSDEF has more than 900 routines, and
+each declaration is as SDL describes it, but only some have fixtures in
+poc's test suite that call the real routine on a VAX and check what it
+returns:
+
+| Facility | Supported | Where |
+|---|---|---|
+| System services | Logical names (`$TRNLNM`, `$CRELNM`, `$DELLNM`); information by item list (`$GETJPIW`, `$GETSYIW`, `$GETDVIW`); time (`$GETTIM`, `$BINTIM`, `$ASCTIM`, `$NUMTIM`); messages (`$GETMSG`, `$FAOL`); I/O on a channel (`$ASSIGN`, `$QIOW`, `$DASSGN`, `$CREMBX`); event flags; locks (`$ENQW`, `$DEQ`); `$HIBER`, `$WAKE`, `$SETPRN`; timers and ASTs (`$SETIMR`, `$CANTIM`, `$DCLAST`, `$SETAST`); exit handlers (`$DCLEXH`) | chapters 7, 8, 14 |
+| RMS | Indexed and relative files: `$CREATE`, `$OPEN`, `$CONNECT`, `$PUT`, `$GET`, `$FIND`, `$UPDATE`, `$DELETE`, `$REWIND`, `$CLOSE`, keyed access, with `FAB`, `RAB` and `XABKEY` | chapter 11 |
+| `LIB$` | Symbols and logical names, `LIB$GETJPI`, `LIB$GETSYI`, `LIB$GETDVI`, `LIB$GETQUI`, dates and times, event flags, balanced trees, the interlocked queue and bit routines, `LIB$SPAWN` and process control, the condition routines, `LIB$CALLG` | chapters 8, 13, 15 |
+| `SMG$` | Pasteboards, virtual displays and keyboards, renditions, reading keys and strings, menus | chapter 12 |
+| `SOR$` | Sorting and merging files, and records the program passes, with its own comparison routine | chapter 8 |
+| `STR$` | The decimal arithmetic: `STR$ADD`, `STR$MUL`, `STR$DIVIDE`, `STR$RECIP`, `STR$ROUND` | chapter 8 |
+| `CLI$` | `CLI$DCL_PARSE`, `CLI$PRESENT`, `CLI$GET_VALUE` | chapter 10 |
+| `MTH$`, `OTS$` | The F_floating and G_floating functions that `Math` and `MathL` use | chapter 6 |
+
+Everything else is likely to work, since it was generated by the same
+rules from the same description, but nothing has checked it. Treat a
+routine outside this table as you would a declaration of your own: try
+it, and check its status.
+
+### What is left out
+
+A few entries are not declared at all, each with a comment in its
+module saying why:
+
+- **A routine that takes a variable number of arguments**: `SYS$FAO`,
+  and `LIB$` and `STR$` routines with a `LIST` argument, such as
+  `LIB$SIGNAL`, `LIB$STOP` and `STR$CONCAT`. `Conditions` has
+  `Signal`, `Stop` and `SignalList` for the first two. `SYS$FAOL`, which
+  takes its arguments as an array, serves for `SYS$FAO`, and a
+  declaration of your own with a fixed number of arguments serves too
+  (chapter 7).
+- **D_floating, H_floating and complex numbers**, which poc has no type
+  for: the entries of `MTH$` that take or return them.
+- **DECthreads**, the module `CMA`, whose types SDL does not name.
+
+Appendix B lists the facilities left out altogether, such as the
+privileged and vector services, and why.
+
+## 10. Commands with qualifiers
+
+*For the Unix reader: how a VMS command line is defined and parsed, which
+is nothing like `argv`. For the VMS reader: the Command Definition
+Utility's tables and the `CLI$` routines, from Oberon.*
+
+A DCL command is a verb, its parameters and its qualifiers:
+`COPY/LOG A.TXT B.TXT`, `DIRECTORY/SIZE=ALL [...]*.MOD`. DCL does not hand
+the words to the program to sort out. A **command definition**, written
+for the Command Definition Utility in a `.cld` file, says what the verb
+takes, and DCL parses the line against it before the program starts: it
+checks the qualifiers, applies the defaults, prompts for a missing
+parameter, and refuses a line that does not fit, with its own message.
+The program then asks for each part by name. VMSLIB's `CommandLanguage`
+asks for them, through the `CLI$` routines.
+
+A program can do this in three ways:
+
+- **As a verb of its own**, defined by `SET COMMAND`, which DCL parses
+  before it starts.
+- **With a table of its own**, compiled from a `.cld` file and linked
+  with it, to parse lines it reads itself: a command loop, or a file of
+  commands.
+- **As a foreign command** that parses its own line with such a table.
+
+A program that wants Unix-style arguments needs none of this:
+`Args` and `Modules` give a foreign command's words (chapter 5).
+
+### A verb of your own
+
+`GREET.CLD` defines the verb `GREET`:
+
+<!-- example: vax/greet/Greet.cld -->
+```
+DEFINE VERB GREET
+    IMAGE GREET_IMAGE
+    PARAMETER P1, LABEL=NAMES, PROMPT="Whom", VALUE(REQUIRED, LIST)
+    QUALIFIER TIMES, VALUE(REQUIRED, TYPE=$NUMBER)
+    QUALIFIER EXCLAIM, DEFAULT
+```
+
+- `IMAGE` names the program to run, here by a logical name, so that the
+  table need not say where the program is.
+- `P1`, the first parameter, has the label `NAMES`, by which the program
+  asks for it. It is required, and DCL prompts `Whom` for it at a
+  terminal when it is missing. `LIST` lets it be several values separated
+  by commas.
+- `/TIMES` must have a value, and DCL checks that the value is a number.
+- `/EXCLAIM` is present by `DEFAULT`, so it is on unless the command
+  says `/NOEXCLAIM`. Every qualifier can be negated so unless its
+  definition says `NONEGATABLE`.
+
+The program asks for what DCL parsed:
+
+<!-- example: vax/greet/Greet.Mod -->
+```
+MODULE Greet;
+  IMPORT SYSTEM, Out, CommandLanguage;
+
+  VAR
+    name, count: ARRAY 64 OF CHAR;
+    status: SYSTEM.INT32;
+    times, i: INTEGER;
+    ending: CHAR;
+
+  PROCEDURE Number(text: ARRAY OF CHAR): INTEGER;
+    VAR n, i: INTEGER;
+  BEGIN
+    n := 0; i := 0;
+    WHILE (text[i] >= "0") & (text[i] <= "9") DO
+      n := n * 10 + ORD(text[i]) - ORD("0"); INC(i)
+    END;
+    RETURN n
+  END Number;
+
+BEGIN
+  times := 1;
+  IF CommandLanguage.IsPresent("TIMES") THEN
+    status := CommandLanguage.GetValue("TIMES", count);
+    times := Number(count)
+  END;
+  IF CommandLanguage.IsPresent("EXCLAIM") THEN ending := "!" ELSE ending := "." END;
+  REPEAT
+    status := CommandLanguage.GetValue("NAMES", name);
+    IF status # CommandLanguage.Absent THEN
+      FOR i := 1 TO times DO
+        Out.String("Hello, "); Out.String(name); Out.Char(ending); Out.Ln
+      END
+    END
+  UNTIL status = CommandLanguage.Absent
+END Greet.
+```
+
+It is built as any program is. `SET COMMAND` adds the verb to the
+process's command table, and the logical name tells DCL where the image
+is:
+
+<!-- vax-session: greet -->
+
+    $ POC GREET.MOD
+    $ @GREET
+    $ DEFINE GREET_IMAGE DISK$USER:[ME.WORK]GREET.EXE
+    $ SET COMMAND GREET.CLD
+    $ GREET world
+    Hello, WORLD!
+    $ GREET/TIMES=2/NOEXCLAIM world,"Dear Reader"
+    Hello, WORLD.
+    Hello, WORLD.
+    Hello, Dear Reader.
+    Hello, Dear Reader.
+    $ GREET/TIMES=many world
+    %DCL-W-NUMBER, invalid numeric value - supply an integer
+     \MANY\
+    $ GREET/LOUD world
+    %DCL-W-IVQUAL, unrecognized qualifier - check validity, spelling, and placement
+     \LOUD\
+
+The last two never start the program: DCL refuses the line itself. As
+DCL does with every command, it makes the text outside quotes uppercase.
+`SET COMMAND` lasts for the process, so a user who wants the verb always
+puts it in `LOGIN.COM`. A system manager can add it to the system's DCL
+tables for everyone.
+
+### Asking about the line
+
+`CommandLanguage` names a parameter or qualifier by its label, or by its
+name when it has none (`P1`, `TIMES`). A keyword of a qualifier's value is
+named after a period, `STYLE.FULL`.
+
+`Presence(entity)` says how the entity is on the line:
+
+| Result | Means |
+|---|---|
+| `Present` | On the line. |
+| `Negated` | On the line with `NO`: `/NOEXCLAIM`. |
+| `Defaulted` | Not on the line, but present by `DEFAULT`. |
+| `LocallyPresent`, `LocallyNegated` | A positional qualifier, after a parameter value rather than the verb. |
+| `Absent` | None of these. |
+
+`IsPresent` is `TRUE` for `Present`, `LocallyPresent` and `Defaulted`.
+
+`GetValue(entity, value)` gives the entity's next value each time it is
+called. Its result says what follows the value: `More` for a comma,
+`Concatenated` for a plus sign, `Last` for nothing. After the last value
+it returns `Absent`, with `value` empty, so a loop asks until `Absent`,
+as `Greet` does. A value too long for `value` is cut short, and the
+result is `Truncated`.
+
+Two entities are DCL's own. `$VERB` is the verb's first four letters,
+which `GetVerb` gives, and `$LINE` is the whole line as DCL keeps it,
+which `GetLine` gives.
+
+A program run as a verb still has `Args` and `Modules`. Their arguments
+are the words of DCL's copy of the line after the verb, as `GetLine`
+shows it: uppercase except quoted text, with the quotes gone.
+
+### A table of your own
+
+A program that reads commands itself, from a terminal or a file,
+parses each line with its own table. The `.cld` file has a `MODULE`
+statement, which names the table:
+
+<!-- example: vax/shell/ShellCommands.cld -->
+```
+MODULE SHELL_COMMANDS
+DEFINE VERB GREET
+    PARAMETER P1, LABEL=NAME, PROMPT="Whom", VALUE(REQUIRED)
+    QUALIFIER EXCLAIM, DEFAULT
+DEFINE VERB COUNT
+DEFINE VERB EXIT
+```
+
+A verb in a table of its own needs no `IMAGE` or `ROUTINE` clause. The
+program finds out which verb it has from `GetVerb`, by the verb's first
+four letters, which are unique in a table.
+
+The table is data, at the address of a global symbol, `SHELL_COMMANDS`.
+Oberon cannot name an external variable, so the program declares the
+symbol as an external procedure, never called, and passes its address:
+
+<!-- example: vax/shell/Shell.Mod -->
+```
+MODULE Shell;
+  IMPORT SYSTEM, Out, CommandLanguage;
+
+  VAR
+    table: SYSTEM.ADDRESS;
+    status: SYSTEM.INT32;
+    verb: ARRAY 8 OF CHAR;
+    name: ARRAY 64 OF CHAR;
+    greetings: INTEGER;
+
+  (* the table's global symbol, named by ShellCommands.cld's MODULE *)
+  PROCEDURE ["VMS", "SHELL_COMMANDS"] Commands;
+
+BEGIN
+  table := SYSTEM.VAL(SYSTEM.ADDRESS, Commands);
+  greetings := 0;
+  REPEAT
+    status := CommandLanguage.ParsePrompting("SHELL> ", table);
+    verb := "";
+    IF status = CommandLanguage.Parsed THEN
+      CommandLanguage.GetVerb(verb);
+      IF verb = "GREE" THEN
+        status := CommandLanguage.GetValue("NAME", name);
+        Out.String("Hello, "); Out.String(name);
+        IF CommandLanguage.IsPresent("EXCLAIM") THEN Out.Char("!") ELSE Out.Char(".") END;
+        Out.Ln;
+        INC(greetings)
+      ELSIF verb = "COUN" THEN
+        Out.Int(greetings, 0); Out.String(" greeted"); Out.Ln
+      END
+    END
+  UNTIL (status = CommandLanguage.EndOfInput) OR (verb = "EXIT")
+END Shell.
+```
+
+Give poc the `.cld` file after the program, and the procedure poc writes
+compiles the table with `SET COMMAND/OBJECT` and links it in. The `.cld`
+file must not have the same name as one of the program's modules, since
+each becomes an object file of that name.
+
+    $ POC SHELL.MOD SHELLCOMMANDS.CLD
+    $ @SHELL
+
+`ParsePrompting` reads a line from `SYS$INPUT`, prompting `SHELL> ` at a
+terminal, and parses it. Here it reads the lines of a command procedure:
+
+    $ RUN SHELL
+    greet world
+    greet/noexclaim "Dear Reader"
+    count
+    exit
+
+prints
+
+<!-- vax-session: shell -->
+
+    Hello, WORLD!
+    Hello, Dear Reader.
+    2 greeted
+
+For a line that does not fit, such as `frob`, DCL prints its message,
+`%CLI-W-IVVERB` here, and, since the program has no condition handler, a
+traceback (chapter 13). The procedure returns the status as well, so the
+loop goes on. At a terminal,
+`ParsePrompting` prompts for a missing parameter with its `PROMPT` text,
+and a line ending with a hyphen is continued on the next. CTRL/Z, or an
+empty line, returns `EndOfInput`.
+
+`Parse(line, table)` parses a line the program already has, of at most
+256 characters. It does not prompt, and returns `MissingParameter` for a
+missing parameter.
+
+| What a Parse procedure returns | When |
+|---|---|
+| `Parsed` | The line fits the table. |
+| `UnknownVerb`, `UnknownQualifier`, `MissingParameter` | It does not. DCL has printed its message too. |
+| `NoCommand` | The line is empty. |
+| `EndOfInput` | CTRL/Z or an empty line at `ParsePrompting`'s prompt. |
+| `NoTable` | The table's address is 0. |
+| `InvalidRequest` | The process has no command interpreter. |
+
+After a Parse procedure, `RestoreParse` brings back DCL's parse of the
+command that ran the program.
+
+### A foreign command with qualifiers
+
+A program run as a foreign command (`GREET :== $DISK$USER:[ME]GREET.EXE`)
+has no parse until it makes one, and asking `Presence` or `GetValue`
+about an entity the running command's verb does not have stops the
+program (`%CLI-F-SYNTAX`). `ParseForeign(verb, table)` parses the
+program's own command line as if `verb` came before it, so its
+qualifiers work too. A program that may be run both ways tests
+`GetVerb` first: under its own verb DCL has already parsed the line.
+
+### Without a command interpreter
+
+The `CLI$` routines need DCL. A detached process, started by `RUN
+/DETACHED` without a command interpreter, has none, and every procedure
+of `CommandLanguage` returns `InvalidRequest` there. `HasInterpreter`
+tells a program before it asks.
+
+<!-- Chapters 11 to 17 and the appendices are to be written. -->
