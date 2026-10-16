@@ -74,11 +74,15 @@ bootstraps poc.
   `VOC_LIB_DIR`).
 - **The VAX/VMS development system** (Phase 15 on; the user, 2026-10-05): a
   SIMH `microvax3900` on atla running VMS 5.5-2H4 with UCX, at
-  `192.168.2.20` while SIMH runs. The unprivileged user `poc` (home
-  `DUA1:[USERS.POC]`) has telnet and FTP. **Its password is in the user's
-  `~/.netrc-poc-vax` (mode 600; not `~/.netrc`, which the user's other VAX
-  needs, since 2026-10-08), never in the repo or a command line, and is
-  never to be printed**: `curl --netrc-file ~/.netrc-poc-vax -P -
+  `192.168.2.20` while SIMH runs. The unprivileged users `poc` and `poc2`
+  (homes `DUA1:[USERS.POC]` and `[USERS.POC2]`, both UIC group 128; `poc2`
+  since 2026-10-16) have telnet and FTP. The tools (`vax-do`, `vax-run`,
+  `vax-assemble`) take whichever account's lock is free, so two runs go at
+  once; `VAX_USER=poc` pins one (`tools/vax-lock.sh`; `vax-stages` pins
+  `poc`, whose `[.BIN]` gets `POC.EXE`). **Their passwords are in the
+  user's `~/.netrc-poc-vax` (mode 600; not `~/.netrc`, which the user's
+  other VAX needs, since 2026-10-08), never in the repo or a command line,
+  and are never to be printed**: `curl --netrc-file ~/.netrc-poc-vax -P -
   ftp://192.168.2.20/` lists the home directory. FTP works only in **active mode** (curl's `-P -`; in `ftp`,
   turn passive off first), and text must go in **ASCII mode** (curl's
   `--use-ascii`), or VMS stores it as fixed 512-byte records. The user's

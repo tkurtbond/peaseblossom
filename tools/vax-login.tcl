@@ -12,25 +12,39 @@ proc netrc_file {} {
   return [file join $::env(HOME) .netrc-poc-vax]
 }
 
-# login and password of "machine $host" in the netrc file
+# login and password of "machine $host" in the netrc file: the entry whose
+# login is $VAX_USER, ignoring case, which tools/vax-lock.sh sets to the
+# account whose lock the run holds; without VAX_USER, the first entry, as
+# curl takes it
 proc netrc {host} {
   if {[catch {open [netrc_file] r} f]} { fail "cannot read [netrc_file]" }
   set tokens [regexp -all -inline {\S+} [read $f]]
   close $f
+  set wanted ""
+  if {[info exists ::env(VAX_USER)]} { set wanted [string tolower $::env(VAX_USER)] }
+  set entries {}
   set login ""; set password ""; set here 0
   for {set i 0} {$i < [llength $tokens]} {incr i} {
     set t [lindex $tokens $i]
-    if {$t eq "machine"} {
-      incr i; set here [expr {[lindex $tokens $i] eq $host}]
-    } elseif {$t eq "default"} {
-      set here 0
+    if {$t eq "machine" || $t eq "default"} {
+      if {$here} { lappend entries [list $login $password] }
+      set login ""; set password ""
+      if {$t eq "machine"} {
+        incr i; set here [expr {[lindex $tokens $i] eq $host}]
+      } else {
+        set here 0
+      }
     } elseif {$here && $t eq "login"} {
       incr i; set login [lindex $tokens $i]
     } elseif {$here && $t eq "password"} {
       incr i; set password [lindex $tokens $i]
     }
   }
-  return [list $login $password]
+  if {$here} { lappend entries [list $login $password] }
+  foreach entry $entries {
+    if {$wanted eq "" || [string tolower [lindex $entry 0]] eq $wanted} { return $entry }
+  }
+  return [list "" ""]
 }
 
 # the message, after the name of the tool's script, on the standard error

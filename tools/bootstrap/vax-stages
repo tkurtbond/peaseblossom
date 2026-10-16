@@ -40,6 +40,9 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}/vax-bootstrap
 VAX_DO_TIMEOUT=${VAX_DO_TIMEOUT:-14400}
 export VAX_DO_TIMEOUT
+# POC's account, whose [.BIN] gets POC.EXE (tools/vax-lock.sh)
+VAX_USER=poc
+export VAX_USER
 
 usage() { echo "usage: tools/bootstrap/vax-stages [-to v1|v2|v3] [-install] [-keep]" >&2; exit 2; }
 last=3

@@ -189,9 +189,17 @@ fixtures there. The password is kept out of the tree, in
 `~/.netrc`, so that a `~/.netrc` other machines need can stay as it is:
 
     machine 192.168.2.20 login poc password ...
+    machine 192.168.2.20 login poc2 password ...
 
 which the tools' expect scripts and curl (`--netrc-file`) read
-themselves, so it never appears on a command line. The FTP server works only in active mode: `curl --netrc-file
+themselves, so it never appears on a command line. curl takes the first
+entry. `tools/vax-do`, `vax-run` and `vax-assemble` take the first account
+whose lock is free (`tools/vax-lock.sh`, a lock for each account in
+`/tmp`), so with two accounts two runs use the guest at once, each in its
+own home directory; `VAX_USER=<login>` pins a run to one account. The two
+accounts share a UIC group, and so its process names, lock resources and
+group logical names: a fixture names its own, so only the same fixture
+run twice at once could collide. The FTP server works only in active mode: `curl --netrc-file
 ~/.netrc-poc-vax -P - ftp://192.168.2.20/` lists the home directory, and in `ftp`, turn passive
 mode off first. Send source files in ASCII mode (curl's `--use-ascii`, or
 `ascii` in `ftp`): in binary mode VMS stores them as fixed-length 512-byte
