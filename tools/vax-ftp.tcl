@@ -33,6 +33,8 @@ namespace eval ftp {
   variable copy_timeout 3600
   variable event ""
   variable data ""
+  # DELEs in this session (ftp_delete)
+  variable deletes 0
 }
 
 # wait until ::ftp::event is set, or the timeout passes ("timeout")
@@ -101,6 +103,7 @@ proc ftp_open {host} {
   unset password
   ftp::expect_reply $reply 2 "the FTP login"
   ftp::expect_reply [ftp::command "TYPE A"] 2 "TYPE A"
+  set ::ftp::deletes 0
 }
 
 # a nonblocking channel to host's port, or the error, within ten seconds
@@ -242,7 +245,16 @@ proc ftp::get_bytes {out data} {
 }
 
 # every version of name deleted; UCX answers 550 to DELE name;* although it
-# deletes them, and a file that is not there is no failure either
+# deletes them, and a file that is not there is no failure either. After
+# about 109 DELEs in one session, UCX deletes nothing more and answers each
+# 550 ("Failed to delete file", then "Not a regular FILE."), so a run that
+# sent more files left the rest behind; a new session every 50 DELEs
+# avoids it (2026-10-16)
 proc ftp_delete {name} {
+  if {$::ftp::deletes >= 50} {
+    ftp_close
+    ftp_open $::ftp::host
+  }
+  incr ::ftp::deletes
   ftp::retrying [list ftp::command "DELE $name;*"]
 }
