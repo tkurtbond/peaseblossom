@@ -23,7 +23,9 @@ MODULE SpawnUse;
   (* until the process has no subprocess, at most 10 seconds: one that has
      ended counts against its subprocess quota, PRCLM, 2 on the guest,
      until VMS has deleted it, so a spawn soon after can fail with
-     SS$_EXQUOTA (make test-vax-asts found it). Prints only if one is left. *)
+     SS$_EXQUOTA (make test-vax-asts found it before the name test, and a
+     gate before Start second). So it runs before each group that starts
+     one. Prints only if one is left. *)
   PROCEDURE AwaitNoSubprocess;
     VAR count, status: SYSTEM.INT32; tries: INTEGER;
   BEGIN
@@ -116,6 +118,7 @@ BEGIN
   ShowCompletion(completion); PrintFile("SPAWN3.OUT");
 
   Out.String("Start and Wait"); Out.Ln;
+  AwaitNoSubprocess;
   Show("Start first", Subprocesses.Start('WRITE SYS$OUTPUT "first"', "", "SPAWN4.OUT", {}, first));
   Show("Start second", Subprocesses.Start('WRITE SYS$OUTPUT "second"', "", "SPAWN5.OUT", {}, second));
   first := NIL; (* still kept by Subprocesses *)
@@ -123,12 +126,14 @@ BEGIN
   Out.String("  second done: ");
   IF Subprocesses.Done(second) THEN Out.String("yes") ELSE Out.String("no") END; Out.Ln;
   PrintFile("SPAWN5.OUT");
+  AwaitNoSubprocess;
   Show("Start WAIT 00:01:00", Subprocesses.Start("WAIT 00:01:00", "", "", {}, stopped));
   Show("Stop", Subprocesses.Stop(stopped));
   ShowCompletion(Subprocesses.Wait(stopped));
   PrintFile("SPAWN4.OUT");
 
   Out.String("LIB$SPAWN with a completion AST"); Out.Ln;
+  AwaitNoSubprocess;
   flags := CLIDEF.CLI$M_NOWAIT; astCalled := FALSE; astStatus := 0;
   Show("LIB$SPAWN", LIB_ROUTINES.LIB$SPAWN('WRITE SYS$OUTPUT "for the AST"', NIL, "SPAWN6.OUT", flags,
     NIL, NIL, SYSTEM.ADR(astStatus), NIL, Completed, 7, NIL, NIL, NIL));

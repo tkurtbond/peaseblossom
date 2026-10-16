@@ -12,6 +12,9 @@
 # which must print guest-run.expected: DCL makes text outside quotes
 # uppercase, and Modules splits the line as DCL's own rule has it.
 . ../../vaxfixture.sh
+# what the guest prints names POC's account (its home, in the image's
+# name), so this runs under POC's alone, not POC2's (tools/vax-lock.sh)
+VAX_USER=poc; export VAX_USER
 rtl=../../../rtl/vax
 rm -f ArgsOut.com
 : >result
