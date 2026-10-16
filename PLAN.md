@@ -834,6 +834,16 @@ C++, and so on) unless step 4 chooses one deliberately.
    showed that SORT keeps `Files`' Stream_LF format and that
    `noDuplicates` does not keep the first record ("Part 8 done").
 
+   **Part 10, `STR$`'s decimal arithmetic (2026-10-16)**: eight proposals
+   in `vms-sdl-interfaces.md`, part 9, **approved by the user,
+   2026-10-16**. VMSLIB gains `DecimalStrings`: numbers of up to 255
+   digits, the five routines' arithmetic with their signals returned as
+   statuses through `LIB$SIG_TO_RET`, and conversions to and from text.
+   Fixture `vax-decimal-strings`. The guest showed that `STR$` writes a
+   result right-justified with zeros, that `STR$ROUND`'s places are
+   significant digits, and that after `STR$_TRU` a result is not its value
+   ("Part 9 done").
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)

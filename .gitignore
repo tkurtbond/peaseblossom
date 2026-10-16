@@ -246,6 +246,8 @@ test/conformance/vax-rms-indexed/work/
 test/conformance/vax-smg/work/
 # vax-sort's libraries and program (Phase 17 step 5)
 test/conformance/vax-sort/work/
+# vax-decimal-strings' libraries and program (Phase 17 step 5)
+test/conformance/vax-decimal-strings/work/
 # poc-response-files builds a program and a library (Phase 17 step 1)
 test/conformance/poc-response-files/resp-main
 test/conformance/poc-response-files/libs/

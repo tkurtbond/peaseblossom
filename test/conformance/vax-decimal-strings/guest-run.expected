@@ -1,0 +1,63 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+DECIMALUSE built: %X10000001
+the manual's example, through STR$ADD itself, a 40-character result
+STR$ADD: SS$_NORMAL
+  |0000000000000000000000000000000009999998|
+  sign 1, exponent -4
+the same through DecimalStrings: -1000 + 0.0002
+Add: SS$_NORMAL
+  -999.9998  (sign 1, exponent -4, digits 9999998)
+Subtract: SS$_NORMAL
+  -1000.0002  (sign 1, exponent -4, digits 10000002)
+beyond HUGEINT
+Multiply: SS$_NORMAL
+  121932631137021795226185032733622923332237463801111263526900  (sign 0, exponent 2, digits 1219326311370217952261850327336229233322374638011112635269)
+Subtract 0.5 - 12.75: SS$_NORMAL
+  -12.25  (sign 1, exponent -2, digits 1225)
+  -9223372036854775808  (sign 1, exponent 0, digits 9223372036854775808)
+Add MIN(HUGEINT) + -1: SS$_NORMAL
+  -9223372036854775809  (sign 1, exponent 0, digits 9223372036854775809)
+Divide
+1 / 3, 20 digits, truncated: SS$_NORMAL
+  0.33333333333333333333  (sign 0, exponent -20, digits 33333333333333333333)
+2 / 3, 20 digits, truncated: SS$_NORMAL
+  0.66666666666666666666  (sign 0, exponent -20, digits 66666666666666666666)
+2 / 3, 20 digits, rounded: SS$_NORMAL
+  0.66666666666666666667  (sign 0, exponent -20, digits 66666666666666666667)
+-22.5 / 4, 3 digits, rounded: SS$_NORMAL
+  -5.625  (sign 1, exponent -3, digits 5625)
+2 / 0: STR$_DIVBY_ZER
+  0.00000  (sign 1, exponent -5, digits 0)
+Reciprocal
+1 / 7, precision 1E-15: SS$_NORMAL
+  0.1428571428571428  (sign 0, exponent -16, digits 1428571428571428)
+1 / 0: STR$_DIVBY_ZER
+  0  (sign 0, exponent 0, digits 0)
+Round
+3.14159265, 4, rounded: SS$_NORMAL
+  3.142  (sign 0, exponent -3, digits 3142)
+3.14159265, 4, truncated: SS$_NORMAL
+  3.141  (sign 0, exponent -3, digits 3141)
+-2.5, 1, rounded: SS$_NORMAL
+  -3  (sign 1, exponent 0, digits 3)
+123456.789, 2, rounded: SS$_NORMAL
+  120000  (sign 0, exponent 4, digits 12)
+text
+  FromText(+12): TRUE
+  12  (sign 0, exponent 0, digits 12)
+  FromText(.5): TRUE
+  0.5  (sign 0, exponent -1, digits 5)
+  FromText(-0.000): TRUE
+  0.000  (sign 1, exponent -3, digits 0000)
+  FromText(1.2.3): FALSE
+  FromText(12a): FALSE
+  FromText(-): FALSE
+  4200000  (sign 0, exponent 5, digits 42)
+  -0.00000042  (sign 1, exponent -8, digits 42)
+STR$MUL itself, a 5-character result
+STR$MUL: STR$_TRU
+  |83810|
+  sign 0, exponent 0
+run: %X00000001

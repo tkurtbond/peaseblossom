@@ -316,8 +316,13 @@ Two conditions apply to a synchronous callback:
        `SOR$DTYPE` and other collating sequences, tag, address and index
        sorts, `user_equal`, the merge's record interface, work files.
    - **`STR$`**, the decimal-string arithmetic only, the one part that
-     Oberon and `Strings` lack: `STR$ADD`, `STR$MUL`, `STR$DIV`,
+     Oberon and `Strings` lack: `STR$ADD`, `STR$MUL`, `STR$DIVIDE`,
      `STR$RECIP`, `STR$ROUND`. One fixture.
+     - **Done** (2026-10-16; `vms-sdl-interfaces.md`, part 9): VMSLIB's
+       `DecimalStrings`, numbers of up to 255 digits with text
+       conversions, its signals returned as statuses through
+       `LIB$SIG_TO_RET`; fixture `vax-decimal-strings`. Left out: the
+       rest of `STR$`, which `Strings` covers.
    - **`OTS$` and `MTH$`**: generated, and not supported beyond what
      `Math`, `MathL` and the runtime already call. Their F and G
      functions are what `Math` and `MathL` use

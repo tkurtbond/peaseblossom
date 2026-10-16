@@ -1809,3 +1809,189 @@ What the guest showed, proposal 6's points first:
 
 Left out, as proposal 7 says. The inventory's `SOR$` entry is marked
 done.
+
+## Proposals, part 9: `STR$`'s decimal-string arithmetic (2026-10-16)
+
+The fourth supported-tier group (`doc/research/vms-native-library-inventory.md`,
+proposal 3, "`STR$`"): the one part of `STR$` that Oberon and `Strings`
+lack, arithmetic on decimal numbers of any length: `STR$ADD`, `STR$MUL`,
+`STR$DIVIDE` (the inventory's "`STR$DIV`"; `STR$DIVIDE` is its name),
+`STR$RECIP` and `STR$ROUND`. The facts come from the *VMS RTL String
+Manipulation (STR$) Manual* (`AA-LA75A`, 5.0), extracted to text for this.
+**Approved by the user, 2026-10-16**, all eight.
+
+How `STR$` gives a number: three arguments, a sign (0 positive, 1
+negative), an exponent and a string of unsigned digits, so that the value
+is the digits times 10 to the exponent with the sign applied. The manual's
+example (STR-6): -1000 is sign 1, exponent 3, digits "1"; 0.0002 is sign 0,
+exponent -4, digits "2"; their sum, -999.9998, comes back as sign 1,
+exponent -4, digits "9999998". The generated declarations match the
+manual: each part `x-` in and `VAR` out, the digits an `ARRAY OF CHAR` by
+descriptor.
+
+1. **A small VMSLIB module, `DecimalStrings`, and not the generated
+   declarations alone**, unlike RMS's, SMG$'s and SOR$'s groups. Three
+   things make the bare routines awkward in Oberon, and a module settles
+   each once:
+   - **Errors are signalled, not returned.** `STR$_DIVBY_ZER` and
+     `LIB$_INVARG` are under "CONDITION VALUES SIGNALED" (STR-30). A poc
+     program has no handler of its own, so a division by zero would print
+     a message and a traceback and go on with an undefined result.
+   - **The result has no length.** The digits come back in a fixed-length
+     `CLASS_S` buffer with nothing to say how many there are.
+   - **A number is three variables.** Reading one from text, or printing
+     one, is the same code in every program.
+
+   With the generated declarations alone, every program would need its
+   own handler and its own conversions. I recommend the module.
+
+2. **The representation and text.** `DecimalStrings.Decimal` is a record
+   of `STR$`'s three parts, so each goes to the routine as it is:
+   `sign: SYSTEM.CARD32`, `exponent: SYSTEM.INT32`, and `digits: ARRAY
+   256 OF CHAR`, up to 255 digits ended by `0X`. Conversions:
+   - `FromText(text, VAR d): BOOLEAN` reads an optional sign, digits and
+     an optional point with digits after it (`-999.9998`, `+12`, `.5`),
+     and returns `FALSE` for anything else.
+   - `ToText(d, VAR text)` writes the plain form, with a point where the
+     exponent puts one and zeros as needed (`-999.9998`, `2000`, `0.0002`).
+   - `FromInteger(n: HUGEINT, VAR d)` makes one from an integer.
+
+3. **Signals become statuses through `LIB$SIG_TO_RET`.** Each procedure of
+   the module establishes `LIB$SIG_TO_RET` as its frame's handler before
+   it calls `STR$`:
+   ```
+   LIB_ROUTINES.LIB$ESTABLISH(SYSTEM.VAL(SYSTEM.ADDRESS, LIB_ROUTINES.LIB$SIG_TO_RET))
+   ```
+   This uses the address of an external procedure (`SYSTEM.VAL`,
+   2026-10-15). A signal then makes the procedure return the condition as
+   its status, with no message, which is what `POC_MATH` does for `Math`
+   in MACRO-32 (`vax-macro32-backend.md`, section 19.16). So `Divide` by
+   zero returns `STR$_DIVBY_ZER`.
+
+   The caveat is `Math`'s too. Called at AST level, a condition signalled
+   by the code the AST interrupted would also find this handler, so the
+   module is not for AST routines. Its comment says so.
+
+4. **The procedures:**
+   - `Add`, `Subtract` (`STR$ADD` with the second sign flipped) and
+     `Multiply`, each `(a, b: Decimal; VAR c: Decimal): SYSTEM.INT32`.
+   - `Divide(a, b: Decimal; digits: LONGINT; round: BOOLEAN; VAR c)`:
+     `STR$DIVIDE`'s total digits (digits to the right of the point) and
+     its round-or-truncate indicator.
+   - `Reciprocal(a, precision: Decimal; VAR c)` (`STR$RECIP`).
+   - `Round(a: Decimal; places: LONGINT; truncate: BOOLEAN; VAR c)`
+     (`STR$ROUND`).
+
+   Each result's digits are trimmed to the digits proper and ended by
+   `0X`, however `STR$` filled the buffer (proposal 6). The result is
+   normalized, with no leading zeros, so that `ToText` and comparisons
+   see one form. A result of more than 255 digits returns `STR$_TRU`,
+   the routine's own truncation warning, as the manual says. An operand
+   is a value parameter and a result a `VAR` one, as in `Strings`. The
+   operands are copies, so `Add(x, y, x)` works.
+
+5. **Fixture `vax-decimal-strings`, on the guest.** One program,
+   `DecimalUse`, imports `DecimalStrings`, `STR_ROUTINES`, `STRDEF`, `Out`
+   and the codes it prints. It prints each step's status by name:
+   - **The manual's example,** -1000 + 0.0002 = -999.9998, through the
+     module and once through `STR$ADD` itself, printing the raw 40-character
+     buffer between bars, to show how `STR$` fills it.
+   - **Beyond `HUGEINT`:** 123456789012345678901234567890 ×
+     987654321098765432109876543210, exactly, and a subtraction that
+     crosses zero.
+   - **`Divide`:** 1 / 3 and 2 / 3 to 20 digits, truncated and rounded,
+     then a division by zero, `STR$_DIVBY_ZER` as a status with no
+     traceback.
+   - **`Reciprocal`** of 7 to a precision of 10 to the -15th.
+   - **`Round`** of 3.14159265 and of -2.5 to a few places, rounded and
+     truncated.
+   - **`FromText`** refusing `1.2.3` and `12a`; `ToText` of large and
+     small exponents.
+   - **A buffer too short,** through `STR$MUL` itself with a 5-character
+     result, which returns `STR$_TRU` and shows what is kept.
+
+6. **Checked on the guest as written, not before.** What the manual does
+   not settle is shown by the run and written into "Part 9 done":
+   - **how `STR$` fills a fixed-length result:** left-justified and
+     blank-padded, as `STR$`'s string copies are (STR manual 2.2), or
+     right-justified with zeros;
+   - whether a result carries trailing zeros or leading zeros, and which
+     exponent it chooses;
+   - **`STR$ROUND`'s `places`:** "maximum number of decimal digits"
+     (STR-80), digits after the point or significant digits ("rounds ... to
+     a specified number of significant digits", STR-81);
+   - **`STR$RECIP`'s precision:** what the second operand's value means;
+   - **`STR$_DIVBY_ZER`'s severity,** and whether `LIB$SIG_TO_RET`'s unwind
+     gives it back unchanged.
+
+   The module's comment states the answers, and its trimming does what the
+   guest shows.
+
+7. **Left out:**
+   - The rest of `STR$` (copies, comparisons, searches, translations,
+     dynamic strings), which `Strings` and Oberon's own strings cover;
+   - `STR$CONCAT` and `STR$FIND_FIRST_SUBSTRING`, whose list arguments
+     the generator leaves out.
+
+   They are callable through `STR_ROUTINES`, but not wrapped.
+
+8. **The documents:**
+   - "Part 9 done" here;
+   - the inventory's `STR$` entry marked done, with `STR$DIVIDE`'s name
+     corrected;
+   - `rtl/vax/vmslib/README.md`;
+   - `PLAN.md` step 5.
+
+   `vax-vmslib`'s list gains `DecimalStrings`, and `vax-asts` and
+   `vax-conditions-handlers` build it with every other VMSLIB module.
+
+## Part 9 done: what was implemented (2026-10-16)
+
+Proposals 1 to 8 as written:
+- **`rtl/vax/vmslib/DecimalStrings.Mod`**: `Decimal`, the six arithmetic
+  procedures, each establishing `LIB$SIG_TO_RET`, and `FromText`,
+  `FromInteger` and `ToText`. It imports `STR_ROUTINES` and
+  `LIB_ROUTINES`, so `vax-vmslib`, `vax-asts` and
+  `vax-conditions-handlers`, which build every VMSLIB module, now put
+  `STR_ROUTINES` in VMSDEF.
+- **Fixture `vax-decimal-strings`:** `DecimalUse`, which passes on the
+  guest. Every result is exact: the 60-digit product, 1 / 3 and 2 / 3 to
+  20 digits, `MIN(HUGEINT)` - 1.
+- **`vax-vmslib`** compiles `DecimalStrings` under `-O2` and `-OC` and puts
+  it in `VMSLIB`.
+
+What the guest showed, proposal 6's points in order:
+- **A fixed-length result is right-justified and filled with zeros**, not
+  blanks: `STR$ADD`'s 40-character buffer for the manual's example came
+  back as `|000...0009999998|`, sign 1, exponent -4, as the manual says.
+- **Trailing zeros go into the exponent.** The product
+  123456789012345678901234567890 × 987654321098765432109876543210 came back
+  as 58 digits with exponent 2, and 123456.789 rounded to 2 places as
+  digits "12", exponent 4. Leading zeros are the fill only, and
+  `DecimalStrings` drops them.
+- **`STR$ROUND`'s `places` counts significant digits**: 123456.789 to 2 is
+  120000, 3.14159265 to 4 is 3.142 (3.141 truncated), and -2.5 to 1 is -3,
+  a half rounded away from zero.
+- **`STR$RECIP`'s precision** is the place of the last digit wanted, and
+  the result has one digit past it, truncated: 1 / 7 to a precision of
+  0.000000000000001 is 0.1428571428571428 (exponent -16).
+- **`STR$_DIVBY_ZER` is severe** (%X0024804C), and `LIB$SIG_TO_RET` returns
+  it unchanged, with no message. After it, `c` is not a value: `Divide`
+  left sign 1 and exponent -5 from what `STR$DIVIDE` had written, with
+  digits "0".
+
+And one point the proposals did not ask:
+- **`STR$_TRU` gives a wrong result, not a shortened one.** 12345 × 6789
+  into a 5-character buffer returned `STR$_TRU` with digits `83810` and
+  exponent 0: the product's first five digits, 83810205's, without the
+  exponent that would make them its approximation. So after `STR$_TRU` a
+  result is not a value, as after an error, and `DecimalStrings`' comment
+  says so. With its 255-character buffer, a `DecimalStrings` result is cut
+  only past 255 digits.
+
+`FromText` accepts "+12", ".5" and "-0.000" (keeping digits "0000", so
+`ToText` prints "0.000"), and refuses "1.2.3", "12a" and "-". `ToText`
+prints exponent 5 on "42" as 4200000, and exponent -8 as -0.00000042.
+
+Left out, as proposal 7 says. The inventory's `STR$` entry is marked
+done, with `STR$DIVIDE`'s name corrected.

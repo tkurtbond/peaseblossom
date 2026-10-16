@@ -39,6 +39,12 @@ up to its `0X`. Fixture `vax-vmslib` runs them on the guest.
   `Continue` or `Resignal`, or calls `Unwind` to make its establisher
   return, and while an unwind passes, each frame's handler is called with
   `Unwinding`. Fixture `vax-conditions-handlers` runs them.
+- `DecimalStrings.Mod`: a `Decimal` of up to 255 digits as `STR$` gives
+  one (sign, exponent, digits); `Add`, `Subtract`, `Multiply`, `Divide`,
+  `Reciprocal` and `Round`, which return `STR$`'s status, a signal
+  included (`LIB$SIG_TO_RET`), so not for AST routines; `FromText`,
+  `FromInteger` and `ToText`. Fixture `vax-decimal-strings`
+  (`doc/developer/vms-sdl-interfaces.md`, part 9).
 - `EventFlags.Mod`: a local event flag got by `Get` (`LIB$GET_EF`) and
   given back by `Free`; `Set`, `Clear`, `IsSet`, `Wait` and `WaitAny`.
 - `ExitHandlers.Mod`: `Declare`, a `Handler` called with the exit status
