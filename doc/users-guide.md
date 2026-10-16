@@ -558,6 +558,13 @@ $ ./Absolute
 42
 ```
 
+**A C function's address.** A C function that takes another's address,
+such as `qsort` its comparison, is given it as `SYSTEM.VAL(SYSTEM.ADDRESS,
+P)`, where `P` is the other, declared `["C"]`: `Sort(SYSTEM.ADR(a),
+LEN(a), SIZE(SYSTEM.INT32), SYSTEM.VAL(SYSTEM.ADDRESS, CompareIntegers))`.
+An external procedure is not otherwise a value, and nothing checks that
+the function can call it as it will.
+
 **A module's part in C.** A file `<Module>.c` beside `<Module>.Mod` is
 compiled with the module and linked wherever the module is, into a program
 or a library: the module's own C, which its `["C"]` procedures call.

@@ -254,7 +254,10 @@ is one, is the name to link with, used as it is; without it, the
 procedure's own name. A `VAR` parameter is passed as the variable's
 address, an open array as its first element's address alone (no lengths),
 and a `VAR` record without its type. An external procedure is not a
-procedure value. The User's Guide, "Calling C", shows the C types'
+procedure value, but `SYSTEM.VAL(SYSTEM.ADDRESS, P)` is its address, for
+a C function that takes another's, such as `qsort`; nothing checks that
+it can be called as the taker will call it. That is the one place its
+name may stand alone. The User's Guide, "Calling C", shows the C types'
 equivalents.
 
 `"VMS"` is the VMS calling standard, for the VAX/VMS target
@@ -287,13 +290,17 @@ status := AsciiTime(length, text, -600000000, 0) (* "   0 00:01:00.00" *)
   the argument list).
 - A procedure is passed as its address. Its type may have only value
   parameters of a longword or less and `VAR` parameters that are not
-  records or open arrays, and a result of at most 8 bytes.
+  records or open arrays, and a result of at most 8 bytes. A `["VMS"]`
+  routine's own address, for one that takes another's (`CLI$DCL_PARSE`
+  `LIB$GET_INPUT`), is `SYSTEM.VAL(SYSTEM.ADDRESS, P)`, passed to a
+  `SYSTEM.ADDRESS` parameter.
 - The module `VmsArguments` has a string descriptor, item list entries
   and an I/O status block, and `Describe`, `SetItem` and `EndList` to
   fill them.
 
 Under `-strict` the declaration is an error: `an external procedure is not
-in the Oberon-2 report (-strict)`.
+in the Oberon-2 report (-strict)`, and so is taking its address: `the
+address of an external procedure is not in the Oberon-2 report (-strict)`.
 
 ### Underscores and dollar signs in identifiers
 

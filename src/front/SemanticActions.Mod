@@ -2277,7 +2277,9 @@ MODULE SemanticActions;
      procedure is refused as well: it takes the C calling convention, while
      a procedure value is always called as an Oberon procedure, with the
      hidden VAR-record tag and open-array length arguments an external one
-     never receives. *)
+     never receives. The one exception is SYSTEM.VAL(SYSTEM.ADDRESS, E),
+     E's address, which cannot be called (PredeclaredProcedures.
+     addressedProcedure). *)
   PROCEDURE CheckProcedureValue(scope: SymbolTable.Scope; d: SyntaxTree.Designator; boundProc: BOOLEAN);
     VAR obj: SymbolTable.Object;
   BEGIN
@@ -2287,7 +2289,9 @@ MODULE SemanticActions;
     ELSIF d.selectors = NIL THEN
       obj := FindQualified(scope, d.qualifier, d.name, d.line, d.column);
       IF (obj # NIL) & (obj.class = SymbolTable.procClass) THEN
-        IF obj.externalConvention[0] # 0X THEN
+        IF (obj.externalConvention[0] # 0X) & (d = PredeclaredProcedures.addressedProcedure) THEN
+          Diagnostics.NotInReport(d.line, d.column, "the address of an external procedure")
+        ELSIF obj.externalConvention[0] # 0X THEN
           Diagnostics.Error(d.line, d.column, "an external procedure cannot be used as a procedure value")
         ELSIF (d.qualifier[0] = 0X) & IsNestedProcedureName(scope, d.name) THEN
           Diagnostics.Error(d.line, d.column,

@@ -53,6 +53,11 @@ MODULE PredeclaredProcedures;
 
   VAR
     newCalled: BOOLEAN; (* set the first time any module's NEW is checked; never reset *)
+    (* the designator x of SYSTEM.VAL(SYSTEM.ADDRESS, x) while x is checked,
+       else NIL: the one place an external procedure's name may stand as a
+       value (SemanticActions.CheckProcedureValue; PLAN.md, "Ongoing
+       language enhancements", item 3) *)
+    addressedProcedure*: SyntaxTree.Designator;
 
   (* PLAN.md Phase 9 step 5: whether any module type-checked so far in
      this process contains a call to NEW. A whole-program build asks once
@@ -722,10 +727,13 @@ MODULE PredeclaredProcedures;
   (* VAL(T, x): x's bytes read as a T. Both must be scalars (IsScalar);
      the backend widens or truncates an integer-class value to T's width
      and moves between integers, pointers and same-width reals bit for
-     bit. *)
+     bit. With T SYSTEM.ADDRESS itself, x may name an external procedure,
+     whose address it then is (addressedProcedure): an address, which
+     Oberon cannot call, so the convention an external takes does not
+     matter, as it would for a procedure value. *)
   PROCEDURE CheckVal(scope: SymbolTable.Scope; args: SyntaxTree.ExprNode;
                      line, column: INTEGER; checkExpr: CheckExprProc): Types.Type;
-    VAR target, xt: Types.Type;
+    VAR target, xt: Types.Type; x: SyntaxTree.ExprNode;
   BEGIN
     IF ArgCount(args) # 2 THEN
       Diagnostics.Error(line, column, "SYSTEM.VAL expects two arguments");
@@ -736,7 +744,13 @@ MODULE PredeclaredProcedures;
       Diagnostics.Error(line, column, "SYSTEM.VAL's first argument must be a type");
       RETURN Types.Undefined
     END;
-    xt := checkExpr(scope, Arg(args, 1));
+    x := Arg(args, 1);
+    IF (target = Types.Address) & (x IS SyntaxTree.DesignatorExprNode)
+       & ~x(SyntaxTree.DesignatorExprNode).hasParens THEN
+      addressedProcedure := x(SyntaxTree.DesignatorExprNode).designator
+    END;
+    xt := checkExpr(scope, x);
+    addressedProcedure := NIL;
     IF xt = Types.Undefined THEN RETURN Types.Undefined END;
     IF ~IsScalar(target) OR (~IsScalar(xt) & (xt # Types.NilType)
                               & ~ConstantEvaluator.IsSingleCharString(Arg(args, 1), scope)) THEN
