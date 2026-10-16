@@ -6,7 +6,7 @@ $ ! against their object libraries, and run, with the logical names and
 $ ! symbols it expects; what each leaves is shown. The signal programs'
 $ ! SYS$OUTPUT goes to one file, shown whole, and their SYS$ERROR, where
 $ ! VMS's handler writes a message and the traceback, to another, of
-$ ! which only the lines with "%" are kept, not the traceback's.
+$ ! which only the lines with "%" or "-" are kept, not the traceback's.
 $ ! Everything made is deleted.
 $ SET NOON
 $ @POCRTL_SETUP
@@ -23,6 +23,8 @@ $ @VMSLIBLOGICALS
 $ @VMSLIBSYMBOLS
 $ @VMSLIBSIGNAL
 $ @VMSLIBSTOPWITH
+$ @VMSLIBSTOPLIST
+$ @VMSLIBLISTTOOLONG
 $ WRITE SYS$OUTPUT "programs built: ", $STATUS
 $ !
 $ WRITE SYS$OUTPUT "== Conditions"
@@ -59,7 +61,7 @@ $ RUN VMSLIBSIGNAL
 $ WRITE SYS$OUTPUT "run: ", $STATUS
 $ TYPE SIGOUT.TXT
 $ SEARCH SIGERR.TXT "%TRACE"/MATCH=NOR/OUTPUT=SIGERR2.TXT
-$ SEARCH SIGERR2.TXT "%"
+$ SEARCH SIGERR2.TXT "%","-"
 $ WRITE SYS$OUTPUT "== StopWith"
 $ DEFINE/USER SYS$OUTPUT STOPOUT.TXT
 $ DEFINE/USER SYS$ERROR STOPERR.TXT
@@ -67,6 +69,22 @@ $ RUN VMSLIBSTOPWITH
 $ WRITE SYS$OUTPUT "run: ", $STATUS
 $ TYPE STOPOUT.TXT
 $ SEARCH STOPERR.TXT "%TRACE"/MATCH=NOR/OUTPUT=STOPERR2.TXT
-$ SEARCH STOPERR2.TXT "%"
-$ DELETE/NOLOG *.OBJ;*, *.OLB;*, *.EXE;*, *.OPT;*, SIGOUT.TXT;*, SIGERR*.TXT;*, STOPOUT.TXT;*, STOPERR*.TXT;*
+$ SEARCH STOPERR2.TXT "%","-"
+$ WRITE SYS$OUTPUT "== StopList"
+$ DEFINE/USER SYS$OUTPUT LISTOUT.TXT
+$ DEFINE/USER SYS$ERROR LISTERR.TXT
+$ RUN VMSLIBSTOPLIST
+$ WRITE SYS$OUTPUT "run: ", $STATUS
+$ TYPE LISTOUT.TXT
+$ SEARCH LISTERR.TXT "%TRACE"/MATCH=NOR/OUTPUT=LISTERR2.TXT
+$ SEARCH LISTERR2.TXT "%","-"
+$ WRITE SYS$OUTPUT "== a list too long"
+$ DEFINE/USER SYS$OUTPUT LONGOUT.TXT
+$ DEFINE/USER SYS$ERROR LONGERR.TXT
+$ RUN VMSLIBLISTTOOLONG
+$ WRITE SYS$OUTPUT "run: ", $STATUS
+$ TYPE LONGOUT.TXT
+$ SEARCH LONGERR.TXT "%TRACE"/MATCH=NOR/OUTPUT=LONGERR2.TXT
+$ SEARCH LONGERR2.TXT "%","-"
+$ DELETE/NOLOG *.OBJ;*, *.OLB;*, *.EXE;*, *.OPT;*, SIGOUT.TXT;*, SIGERR*.TXT;*, STOPOUT.TXT;*, STOPERR*.TXT;*, LISTOUT.TXT;*, LISTERR*.TXT;*, LONGOUT.TXT;*, LONGERR*.TXT;*
 $ EXIT 1

@@ -9,7 +9,9 @@
 # rtl/vax/vms, which vax-vmsdef builds. Where the VAX development system
 # can be used, guest-run.com builds the three libraries there and runs
 # programs linked against them, with the logical names and symbols they
-# expect, and shows what each leaves.
+# expect, and shows what each leaves. Part 5: Conditions.SignalList and
+# StopList, through LIB$CALLG (VmsLibSignal, VmsLibStopList), and a list
+# too long for CALLG (VmsLibListTooLong).
 . ../../vaxfixture.sh
 vms=../../../rtl/vax/vms
 vmslib=../../../rtl/vax/vmslib
@@ -34,7 +36,7 @@ done
 (cd work && poc -target vax-dec-vms -output-dir libs -library-path libs -library VMSLIB \
   $(for m in $modules; do echo ../$vmslib/$m.Mod; done)) >>result 2>&1
 echo "VMSLIB exit $?" >>result
-programs="VmsLibConditions VmsLibLogicals VmsLibSymbols VmsLibSignal VmsLibStopWith"
+programs="VmsLibConditions VmsLibLogicals VmsLibSymbols VmsLibSignal VmsLibStopWith VmsLibStopList VmsLibListTooLong"
 for p in $programs; do
   cp $p.mod work/
   (cd work && poc -target vax-dec-vms -library-path libs -o $p -build $p.mod) >>result 2>&1

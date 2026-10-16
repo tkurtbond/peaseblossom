@@ -1202,3 +1202,96 @@ merge and the item's VAX half.
 
 5. **Documents.** A "Part 5 done" section here, `rtl/vax/vmslib/
    README.md`, and `PLAN.md` step 5's record.
+
+## Part 5, tried on the guest (proposal 1, 2026-10-15)
+
+A MACRO-32 program called `LIB$SIGNAL` both ways, with the same list each
+time. Directly is `CALLG list, G^LIB$SIGNAL`. Through `LIB$CALLG` is
+`LIB$CALLG(list, G^LIB$SIGNAL)`. Two programs did the same for `LIB$STOP`.
+The lists were:
+- `LIB$_ACTIMAGE` with one FAO argument, a `!AS` descriptor;
+- that, with `SS$_IVLOGNAM` chained after it with none.
+
+What came out:
+
+- **The messages are the same.** "%LIB-E-ACTIMAGE, error activating image
+  SOME_IMAGE", and for the chained list "-SYSTEM-F-IVLOGNAM, invalid
+  logical name" on the next line. The program goes on after each, both
+  ways.
+- **The traceback has one more frame** through `LIB$CALLG`. It is a line
+  with no module or routine name, at `LIB$CALLG`'s return address in
+  `LIBRTL` (`%X00003EC4` here), above the routine that called it.
+- **A handler sees the same signal array but for the PC.** The count
+  (7 with a chained condition, 5 without) and the condition are the same,
+  and so is the PSL (`%X03C00000`). Directly, the PC is the caller's return
+  point. Through `LIB$CALLG`, it is `LIB$CALLG`'s, `%X00003EC4`. The
+  mechanism array's depth is 0 directly and 1 through `LIB$CALLG`, since
+  its frame is between.
+- **Continue works both ways.** Control returns to the routine that
+  signalled. The R0 it gets back is the mechanism array's, which
+  `AA-LA66B` 2.12.1 says is "the same as at the time of the call to
+  LIB$SIGNAL": the program's own directly (1 here), and `LIB$CALLG`'s
+  through it (0). A `SignalList` that returns nothing does
+  not see it.
+- **An unwind works both ways.** A handler that calls `$UNWIND` with the
+  mechanism array's depth (`DEPADR`) makes the signalling call return to
+  the establisher, at the same place both ways, with the R0 it put in
+  the mechanism array (`%X77`). The handler is not called again with
+  `SS$_UNWIND` either way. The depth differs, so the same depth argument
+  means the same thing both ways.
+- **`LIB$STOP` is the same:** "%SYSTEM-F-ABORT, abort", the image ends,
+  and DCL's `$STATUS` is `%X1000002C` both ways, with the traceback's extra
+  frame through `LIB$CALLG`.
+- **A hardware exception's code takes no FAO count.** The first lists
+  tried were `SS$_ACCVIO`, made a warning, with "4" as its FAO count, and
+  four arguments. VMS printed the 4 as ACCVIO's reason mask, and then the
+  list's last argument and the signal array's PC and PSL as conditions of
+  their own (`BADIMGHDR`, `OVRDSKQUOTA`, `NORMAL`). The 5.4 *Introduction
+  to VMS System Routines* (`AA-LA66B`, 2.12.1) gives a hardware
+  exception's signal array as its condition value, then "0 or several
+  longwords" of "additional parameters", then the PC and PSL, with no
+  count. It leaves the full format to `SYS$PUTMSG`'s description, in the
+  System Services manual, which is not held yet. `SignalList`'s comment
+  says that a list is exactly what `LIB$SIGNAL` takes, with no FAO count
+  after a hardware exception's code.
+
+So the handler's view differs in the PC, the depth, and the R0 given back
+on a Continue. Proposal 1 asked for no more than the PC and the depth. The
+R0 is invisible to `SignalList` and `StopList`, which return nothing, and
+proposal 2 stands as written.
+
+## Part 5 done: what was implemented (2026-10-15)
+
+- **`Conditions.SignalList` and `StopList`**, as proposal 2 says. Each
+  takes `arguments-: ARRAY OF SYSTEM.INT32`. A private `CallWithList`
+  copies the list after its count into an `ARRAY 256` and calls
+  `LIB_ROUTINES.LIB$CALLG` with `SYSTEM.VAL(SYSTEM.ADDRESS, SignalAlone)`
+  or `StopAlone`. More than 255 longwords stop the program with
+  `LIB$_WRONUMARG`. `Conditions` now imports `LIB_ROUTINES` and `LIBDEF`,
+  which every `VMSDEF` that `VMSLIB` is built against already holds. The
+  module's comment says how a list is written, that a hardware
+  exception's code takes no FAO count, and what a handler sees
+  differently (part 5, tried on the guest).
+- **The VAX backend has no array literals yet** ("a record or array
+  literal (Phase 16)"), so proposal 2's example of a literal list does not
+  compile there. The comment and the fixtures fill a list element by
+  element instead.
+- **Fixture `vax-vmslib`**, against proposal 4. No VMS message with
+  both a number and a `!AS` argument was found, so `VmsLibSignal`'s list
+  is three chained conditions instead: `LIB$_ACTIMAGE` twice, each with
+  its own `!AS`, then `SS$_IVLOGNAM` with none, 8 longwords in all.
+  - Without a handler, VMS prints the three messages, the second and
+    third as "-" lines, and the program goes on.
+  - With a handler, the handler is given a count of 10: the 8, then the
+    PC and PSL. It sees each condition and descriptor in order, at depth
+    3 (`LIB$CALLG`, `CallWithList` and `SignalList` between), and the
+    program goes on after it continues.
+  - `VmsLibStopList` ends with `LIB$_ACTIMAGE` made severe, `$STATUS`
+    `%X101512BC`, as `StopWith` does.
+  - `VmsLibListTooLong` ends with `%LIB-F-WRONUMARG`, `%X1015835C`.
+  - `guest-run.com` now keeps a `SYS$ERROR` line that starts "-" too, so
+    the chained messages show. Each program run gets output files of its
+    own: when `StopList` reused `StopWith`'s file names, `TYPE` showed
+    both runs' lines.
+  - `vax-asts` and `vax-conditions-handlers`, which build `VMSLIB` too,
+    still pass.

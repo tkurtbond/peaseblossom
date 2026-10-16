@@ -74,11 +74,25 @@ program: start
 program: after a warning
 program: after an error
 program: after an error with an argument
+program: after SignalList
+handler: count 10: %X001512BA %X00000001 first %X001512BA %X00000001 second %X00000154 %X00000000; depth 3
+program: after SignalList with a handler
 %SYSTEM-W-ENDOFFILE, end of file
 %RMS-E-FNF, file not found
 %LIB-E-ACTIMAGE, error activating image POC_NO_IMAGE
+%LIB-E-ACTIMAGE, error activating image POC_FIRST
+-LIB-E-ACTIMAGE, error activating image POC_SECOND
+-SYSTEM-F-IVLOGNAM, invalid logical name
 %SYSTEM-F-ABORT, abort
 == StopWith
 run: %X101512BC
 program: start
 %LIB-F-ACTIMAGE, error activating image POC_NO_IMAGE
+== StopList
+run: %X101512BC
+program: start
+%LIB-F-ACTIMAGE, error activating image POC_NO_IMAGE
+== a list too long
+run: %X1015835C
+program: start
+%LIB-F-WRONUMARG, wrong number of arguments

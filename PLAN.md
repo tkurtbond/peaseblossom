@@ -791,7 +791,11 @@ C++, and so on) unless step 4 chooses one deliberately.
    3 is merged from `main` with its VAX half. A guest test first compares
    `LIB$SIGNAL` called directly and through `LIB$CALLG`. Then
    `Conditions.SignalList` and `StopList` take a whole argument list:
-   several FAO arguments, or chained conditions.
+   several FAO arguments, or chained conditions. The guest test was run
+   the same day (part 5, "tried on the guest"): only the PC, the depth
+   and a Continue's R0 differ, so proposal 2 stands. `SignalList` and
+   `StopList` built the same day ("Part 5 done"); fixture `vax-vmslib`
+   runs them.
 
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`

@@ -6,3 +6,5 @@ VAX build VmsLibLogicals exit 0
 VAX build VmsLibSymbols exit 0
 VAX build VmsLibSignal exit 0
 VAX build VmsLibStopWith exit 0
+VAX build VmsLibStopList exit 0
+VAX build VmsLibListTooLong exit 0

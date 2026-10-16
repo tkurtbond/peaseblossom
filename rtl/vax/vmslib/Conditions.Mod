@@ -14,7 +14,26 @@ MODULE Conditions;
      on unless the condition is severe (LIB$ manual, LIB$SIGNAL). Stop
      never returns. LIB$SIGNAL and LIB$STOP take a list, which the
      generator leaves out, so they are declared here with a fixed number
-     of arguments each.
+     of arguments each, for Signal, SignalWith, Stop and StopWith.
+
+     SignalList and StopList take the whole list, in an array, as
+     LIB$SIGNAL takes it after its argument count: a condition, the number
+     of its FAO arguments and those arguments, then optionally another
+     condition with its own, and so on. A number is an FAO argument as it
+     is, a string the address of its descriptor (VmsArguments). A hardware
+     exception's code, such as SS$_ACCVIO, is followed by its parameters
+     with no count before them (Introduction to VMS System Routines,
+     2.12.1). For example, list: ARRAY 5 OF SYSTEM.INT32 holding
+     LIBDEF.LIB$_ACTIMAGE, 1, SYSTEM.ADR(name), SSDEF.SS$_IVLOGNAM and 0
+     signals two conditions, the first with name's descriptor for its
+     !AS, the second with none. (The VAX backend has no array literals
+     yet, so a list is filled element by element.) A list is not
+     checked: a wrong one
+     prints a wrong message, as from MACRO-32 or C. They call LIB$SIGNAL
+     and LIB$STOP through LIB$CALLG, so a handler finds the signal's PC in
+     LIB$CALLG, not in the caller, and the depth one greater than a direct
+     call's; the message, Continue, Unwind and a handler's other arguments
+     are the same (doc/developer/vms-sdl-interfaces.md, part 5).
 
      A procedure establishes a Handler for its own frame by Establish,
      which is LIB$ESTABLISH itself, so that it is called straight from
@@ -33,7 +52,7 @@ MODULE Conditions;
      (AsynchronousTraps), so a handler must not unwind for one: it tells
      by AsynchronousTraps.InProgress. *)
 
-  IMPORT SYSTEM, STARLET;
+  IMPORT SYSTEM, STARLET, LIB_ROUTINES, LIBDEF;
 
   CONST
     (* the severities, STS$K_ *)
@@ -49,6 +68,10 @@ MODULE Conditions;
     (* the condition a handler is called with while an unwind passes its
        frame, SS$_UNWIND: it should clean up and return *)
     Unwinding* = 2336;
+
+    (* the most longwords a list may have: CALLG's argument count is a
+       byte *)
+    maxListLength = 255;
 
   TYPE
     (* what VMS passes a handler about the condition (LIB$ manual, chapter
@@ -147,6 +170,31 @@ MODULE Conditions;
   BEGIN
     StopArgument(status, 1, argument)
   END StopWith;
+
+  (* routine, LIB$SIGNAL or LIB$STOP, called through LIB$CALLG with
+     arguments after their count; more than maxListLength is
+     LIB$_WRONUMARG, stopped *)
+  PROCEDURE CallWithList(arguments-: ARRAY OF SYSTEM.INT32; routine: SYSTEM.ADDRESS);
+    VAR list: ARRAY maxListLength + 1 OF SYSTEM.INT32; i: LONGINT; ignored: SYSTEM.CARD32;
+  BEGIN
+    IF LEN(arguments) > maxListLength THEN StopAlone(LIBDEF.LIB$_WRONUMARG) END;
+    list[0] := SYSTEM.VAL(SYSTEM.INT32, LEN(arguments));
+    FOR i := 0 TO LEN(arguments) - 1 DO list[i + 1] := arguments[i] END;
+    ignored := LIB_ROUTINES.LIB$CALLG(list, routine)
+  END CallWithList;
+
+  (* the conditions of arguments signalled, each with its FAO arguments:
+     the list LIB$SIGNAL takes, after its count (see above) *)
+  PROCEDURE SignalList*(arguments-: ARRAY OF SYSTEM.INT32);
+  BEGIN
+    CallWithList(arguments, SYSTEM.VAL(SYSTEM.ADDRESS, SignalAlone))
+  END SignalList;
+
+  (* SignalList, as severe: the program ends, with the first condition *)
+  PROCEDURE StopList*(arguments-: ARRAY OF SYSTEM.INT32);
+  BEGIN
+    CallWithList(arguments, SYSTEM.VAL(SYSTEM.ADDRESS, StopAlone))
+  END StopList;
 
   (* called by a handler, which then returns (what it returns does not
      matter): every frame from the one that signalled to the handler's

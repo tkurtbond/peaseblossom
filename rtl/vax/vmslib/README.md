@@ -18,7 +18,9 @@ up to its `0X`. Fixture `vax-vmslib` runs them on the guest.
   `Error`, `Informational` and `Severe`; `Message`, its text by
   `$GETMSG` ("%SYSTEM-F-ABORT, abort"); `Signal` and `Stop`, by
   `LIB$SIGNAL` and `LIB$STOP`, and `SignalWith` and `StopWith`, with one
-  FAO argument. A poc program has no condition handler of its own, so
+  FAO argument; `SignalList` and `StopList`, with a whole list in an
+  array, any number of FAO arguments and chained conditions, through
+  `LIB$CALLG` (`vms-sdl-interfaces.md`, part 5). A poc program has no condition handler of its own, so
   VMS's prints a signalled message and a traceback to `SYS$ERROR` and
   goes on, unless the condition is severe. `Stop` never returns. A
   procedure establishes a `Handler` for its own frame by `Establish`
