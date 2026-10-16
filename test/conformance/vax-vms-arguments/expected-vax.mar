@@ -1,7 +1,11 @@
-;; Written by Claude, 2026-10-14, for Phase 17 step 5
-;; (doc/developer/vms-sdl-interfaces.md, part 3, proposal 4, approved by
-;; the user); reviewed by the user, 2026-10-15. It replaces the file the user
-;; reviewed on 2026-10-14. Why this is right:
+;; Written by Claude, 2026-10-16, for Phase 17 step 5
+;; (doc/developer/vms-sdl-interfaces.md, part 7, proposal 2, approved by
+;; the user); reviewed by the user, 2026-10-16. It replaces the file the user
+;; reviewed on 2026-10-15. Why this is right:
+;; - Only VmsArguments' key (the .EXTERNAL POC_K1_) changes, since its
+;;   interface gained ArrayDescriptor and DescribeArray; this program
+;;   does not use them.
+;; As the user reviewed it on 2026-10-15:
 ;; - length, which SetItem takes as its returnLength, is now a
 ;;   SYSTEM.CARD16, as VmsArguments' is (its comment in the variables'
 ;;   list says so); the source keeps its lines, so no line number moves.
@@ -137,7 +141,7 @@ VAXVMSARGUMENTS_DESCRI_NH9PRTJL:
 	.EXTERNAL	VMSARGUMENTS_SETITEM_PFKLI9H2
 	.EXTERNAL	VMSARGUMENTS_ENDLIST_N4A9J8HG
 	.EXTERNAL	VMSARGUMENTS_INIT
-	.EXTERNAL	POC_K1_0EE282E4AED0B919
+	.EXTERNAL	POC_K1_03CFD526CE16F763
 
 ; for traps: poc's runtime routine (Phase 16), and the module's name
 	.EXTERNAL	POC_TRAP

@@ -296,6 +296,14 @@ Two conditions apply to a synchronous callback:
        (`vax-macro32-backend.md`, section 19.18), shows the screen.
      - `SMG$`'s AST routines (unsolicited input, broadcast trapping, out
        of band) are step 6's.
+     - **Done** (2026-10-16; `vms-sdl-interfaces.md`, part 7): fixture
+       `vax-smg`, a pasteboard on a file captured by `SMG$SNAPSHOT` and
+       a keyboard on a file, through the generated declarations, with no
+       module over them; `SmgScreen`, the same on a terminal, checked by
+       hand. A menu's choices are a `CLASS_A` descriptor
+       (`VmsArguments.DescribeArray`). Left out: the AST routines,
+       viewports, subprocesses, key definition tables, the terminal table
+       routines, `SMG$PRINT_PASTEBOARD`.
    - **`SOR$`**, sorting files: `SOR$PASS_FILES` and `SOR$SORT_MERGE`,
      with a fixture that sorts a file by a key. Its record interface,
      with a comparison routine of the program's, follows once proposal

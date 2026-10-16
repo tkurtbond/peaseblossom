@@ -815,6 +815,16 @@ C++, and so on) unless step 4 chooses one deliberately.
    and that duplicates come back in the order they were put ("Part 6
    done").
 
+   **Part 8, `SMG$` screen management (2026-10-16)**: seven proposals in
+   `vms-sdl-interfaces.md`, part 7, **approved by the user, 2026-10-16**.
+   There is no module: fixture `vax-smg` draws on a pasteboard on a file
+   and captures it by `SMG$SNAPSHOT`, and reads a keyboard on a file;
+   `SmgScreen` does the same on a terminal, checked by hand. A menu's
+   choices are a `CLASS_A` descriptor, which the generator now leaves to
+   the program (`VmsArguments.DescribeArray`). The guest showed that a
+   pasteboard on a file is 66 by 132, and that a menu is chosen only on a
+   terminal ("Part 7 done").
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)

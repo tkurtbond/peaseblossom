@@ -86,6 +86,15 @@ static char *upper(s)
   return s;
 }
 
+/* whether s, an SDL type name in upper case, contains ARRAY */
+static int names_array(s)
+  char *s;
+{
+  for (; *s; s++)
+    if (strncmp(s, "ARRAY", 5) == 0) return 1;
+  return 0;
+}
+
 static char *keywords[] = {"ARRAY", "BEGIN", "BY", "CASE", "CONST", "DIV",
   "DO", "ELSE", "ELSIF", "END", "EXIT", "FOR", "IF", "IMPORT", "IN", "IS",
   "LOOP", "MOD", "MODULE", "NIL", "OF", "OR", "POINTER", "PROCEDURE",
@@ -819,7 +828,11 @@ static int formal(p, number, buf, why)
     if (*note) strcat(note, ", ");
     strcat(note, "a routine's address");
   } else if (by_descr) {
-    if (p->datatype == SDL$C_TYPE_CHARACTER) {
+    /* an array of strings (SMG$CREATE_MENU's STATICARRAYOFCHAR_STRING)
+       takes a CLASS_A descriptor, which the program builds
+       (VmsArguments.DescribeArray; part 7, proposal 2), not the CLASS_S
+       one poc builds for an ARRAY OF CHAR */
+    if (p->datatype == SDL$C_TYPE_CHARACTER && !names_array(typename)) {
       strcpy(type, "ARRAY OF CHAR");
       strcpy(mode, out ? "VAR" : "-");
     } else {

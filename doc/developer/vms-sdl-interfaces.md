@@ -597,7 +597,7 @@ follow:
    | an address by reference | `x-` or `VAR x: SYSTEM.ADDRESS` |
    | `any` by value | `x: SYSTEM.ADDRESS` |
    | a routine (an address of an entry) | `x: SYSTEM.ADDRESS` now; a procedure type in step 6 |
-   | anything by another descriptor | `x: SYSTEM.ADDRESS`, a descriptor built by hand |
+   | anything by another descriptor, or characters whose type names an array (part 7, proposal 2) | `x: SYSTEM.ADDRESS`, a descriptor built by hand |
 
    - The quadword row lets one formal take a `HUGEINT`, an
      `IOStatusBlock`, a FAB or an item list (proposal 7). `SYS$QIOW`'s
@@ -1421,3 +1421,215 @@ What the guest showed, the two points of proposal 5 first:
 
 Left out, as proposal 6 says: `XABALL` areas, `XABPRO`, journaling, and
 asynchronous RMS (step 6's rules would apply).
+
+## Proposals, part 7: `SMG$` screen management (2026-10-16)
+
+The second supported-tier group (`doc/research/vms-native-library-inventory.md`,
+proposal 3, "`SMG$`"): what a full-screen program uses, which means
+pasteboards, virtual displays, virtual keyboards, writing with renditions,
+reading keys and strings, and menus. The facts come from the *VMS RTL Screen
+Management (SMG$) Manual* (`AA-LA77A`, 5.0), extracted to text for this.
+**Approved by the user, 2026-10-16**, all seven.
+
+1. **No new module: fixtures that use the generated declarations**, as for
+   RMS (part 6, proposal 1). `SMG_ROUTINES` declares the routines, `SMGDEF`
+   gives the masks and codes (`SMG$M_BORDER`, `SMG$M_BOLD`, `SMG$K_VERTICAL`,
+   `SMG$K_VTTERMTABLE`, `SMG$M_FORM_FEED`) and `SMGMSG` the statuses
+   (`SMG$_EOF`, `SMG$_PASALREXI`, `SMG$_NOTRMSOUT`). A VMSLIB module over
+   them (`Screens`, say) is left for when a program wants one.
+
+   One cost comes with them. `SMG_ROUTINES` imports `AsynchronousTraps`,
+   because of `SMG$`'s AST routines, so every program that calls `SMG$` gets
+   the heap's AST bracket (section 22.5 of `vax-macro32-backend.md`: about 6
+   microseconds a `NEW`). I propose to accept it. It is the price of the
+   AST arguments being typed, and a full-screen program is not
+   allocation-bound.
+
+2. **A menu's choices need an array descriptor, and the generator gets
+   them wrong.** `SMG$CREATE_MENU`'s `choices` is "static array of
+   char_string ... by descriptor" (SMG-37): a `CLASS_A` descriptor of
+   fixed-length strings. `tools/sdloberon` gives every character parameter
+   passed by descriptor an open `ARRAY OF CHAR`, which poc passes as a
+   `CLASS_S` descriptor of one string, so SMG would see a single choice.
+   It is the only such parameter in the 243 modules.
+   - **The generator:** a character parameter passed by descriptor whose
+     SDL type name names an array (`STATICARRAYOFCHAR_STRING`) becomes "a
+     descriptor built by hand", a `SYSTEM.ADDRESS` by value. That is the
+     existing rule for a non-character descriptor, so the program passes
+     `SYSTEM.ADR(descriptor)`. `VMSDEF` is regenerated: `SDLOBERON.EXE` is
+     rebuilt on the guest, the user copies it to `SYS$SHARE`, and the guest's
+     run must match the host's again. Only `SMG_ROUTINES` changes.
+   - **`VmsArguments`:** `VmsArguments` gains an `ArrayDescriptor`, block 1 of
+     the `CLASS_A` layout in `DSCDEF`'s comment. That is 16 bytes: length,
+     type, class, pointer, scale, digits, flags, dimensions and `ARSIZE`,
+     with no multipliers or bounds, since those blocks are optional.
+     `DescribeArray(VAR descriptor: ArrayDescriptor; VAR elements: ARRAY OF
+     ARRAY OF CHAR)` sets it up:
+     - the length is `LEN(elements, 1)`;
+     - the type is `T` and the class `A`;
+     - the dimension count is 1, the flags 0;
+     - `ARSIZE` is the whole array's bytes.
+
+     It sits beside `StringDescriptor` and `Describe`. `DSCDEF5` could hold
+     the same fields, but it carries `A0`, which belongs to block 2.
+   - **Fixed-length strings:** the choices are fixed-length strings, so one
+     shorter than its element is padded with blanks, not ended by `0X`. The
+     manual says only that blank items are ignored; what SMG makes of a `0X`
+     is for the guest to show (proposal 5). `DescribeArray` leaves the
+     strings alone, and the fixture pads them itself, with a comment saying
+     why, as `vax-rms-indexed` pads its keys.
+
+3. **Fixture `vax-smg`, on the guest: the screen to a file.** The manual's
+   way to capture a screen is a pasteboard on a file: "If input-device does
+   not refer to a terminal, the file is opened using RMS", and `SMG$SNAPSHOT`
+   "writes the current pasteboard buffer to the file" (SMG-367, section
+   2.2.14). One program, `SmgFile`, prints each step's status by name with
+   `Out` (on `SYS$OUTPUT`, which SMG does not use here) and does these
+   steps:
+   - **The pasteboard:** creates a pasteboard on `SCREEN.LIS` and prints the
+     rows, columns and terminal type it gets back. That type is not
+     `SMG$K_VTTERMTABLE`, so the manual says to snapshot. A second
+     `SMG$CREATE_PASTEBOARD` on the same file is the manual's
+     `SMG$_PASALREXI`, if a file counts as a device.
+   - **The displays:**
+     - A bordered display, its border labelled (`SMG$LABEL_BORDER`), with
+       text put at given places in bold and in reverse (`SMG$PUT_CHARS`).
+     - A second display, with a rectangle drawn in it (`SMG$DRAW_RECTANGLE`)
+       and enough lines put to scroll it (`SMG$PUT_LINE`).
+     - Both pasted so that one hides part of the other, then a snapshot.
+     - The second moved and the first unpasted, then a snapshot with
+       `SMG$M_FORM_FEED`, so that the two screens are told apart in the file.
+   - **A menu:** a vertical menu (`SMG$CREATE_MENU`, through proposal 2)
+     in a third display, and a snapshot.
+   - **A keyboard on a file:** `KEYS.DAT`, written first by the program
+     with `Files`.
+     - `SMG$READ_STRING` reads its records one by one, to `SMG$_EOF`.
+     - `SMG$READ_KEYSTROKE` reads a record, printing the code it returns.
+     - `SMG$SELECT_FROM_MENU` reads from it, printing the choice or the
+       status.
+   - **The screens:** last, the program prints `SCREEN.LIS` through `Files`,
+     so that the screens are in the fixture's output and its expected file.
+     `guest-run.com` deletes both files.
+
+   The program imports only `VMSDEF`'s modules, `VmsArguments`, `Files` and
+   `Out`, with no VMSLIB.
+
+4. **A terminal checked by hand, as `VT100` was (section 19.18 of
+   `vax-macro32-backend.md`).** A second program, `SmgScreen`, in the same
+   fixture directory but not run by `test.sh`, does the same on
+   `SYS$OUTPUT` and `SYS$INPUT`:
+   - the displays with their renditions;
+   - a menu chosen with the arrow keys and Return;
+   - a keystroke named by `SMG$KEYCODE_TO_NAME`;
+   - a string read with a prompt;
+   - and the screen restored at the end.
+
+   It writes only through SMG, since `Out`'s buffered lines on the same
+   terminal would come between SMG's. It is run through a telnet session by
+   `expect`, with `VAX_ASSEMBLE_LOG` keeping the bytes, and by the user at a
+   real VT100 emulator. "Part 7 done" records both.
+
+5. **Checked on the guest as written, not before.** Every routine in
+   proposals 3 and 4 is in the 5.0 manual. What it does not settle is shown
+   by the run and written into "Part 7 done":
+   - how big a pasteboard on a file is, and its terminal type;
+   - what a border, a rectangle and a rendition become in a file;
+   - whether a snapshot's lines keep their trailing blanks;
+   - whether `SMG$PASALREXI` applies to a file;
+   - what `SMG$READ_KEYSTROKE` and `SMG$SELECT_FROM_MENU` do with a keyboard
+     on a file;
+   - whether a `0X` in a choice shows.
+
+   If `SMG$SELECT_FROM_MENU` needs a terminal, the fixture keeps the status
+   it gets, and menus are checked only by hand (proposal 4).
+
+6. **Left out**:
+   - `SMG$`'s AST routines (unsolicited input, broadcast trapping, out of
+     band): step 6's rules apply when a program wants them.
+   - Viewports, subprocesses (`SMG$CREATE_SUBPROCESS`), key definition
+     tables (`SMG$DEFINE_KEY`, `SMG$LOAD_KEY_DEFS`), the terminal table
+     routines, and `SMG$PRINT_PASTEBOARD`, which queues the file to a
+     printer.
+
+   All are generated and callable. They are only not in a fixture.
+
+7. **The documents:**
+   - "Part 7 done" here;
+   - proposal 2's rule in part 2's account of the generator;
+   - `VmsArguments`' comment;
+   - the inventory's `SMG$` entry marked done, with what was left out;
+   - `PLAN.md` step 5.
+
+## Part 7 done: what was implemented (2026-10-16)
+
+Proposals 1 to 7 as written.
+- **The generator** (proposal 2): `tools/sdloberon` gives a character
+  parameter passed by descriptor whose type name contains `ARRAY` the
+  hand-built descriptor's `SYSTEM.ADDRESS`. Run on atla by `sdlload` over a
+  fresh dump of `SMG$ROUTINES`, it changes one line of the 243 modules,
+  `SMG$CREATE_MENU`'s `choices`. `SDLOBERON.EXE` was rebuilt on the guest
+  (`tools/vax-sdl build`). The guest's regeneration of all 65 SDL modules,
+  which must match, waits for the user's copy to `SYS$SHARE`.
+- **`VmsArguments`** has `classA`, `ArrayDescriptor` (16 bytes, the
+  prototype block) and `DescribeArray`. `vax-vms-arguments`' two expected
+  `.mar` files were regenerated: a new key, the new procedure, and moved
+  line numbers.
+- **Fixture `vax-smg`:** `SmgFile` imports only `SSDEF`, `SMGDEF`,
+  `SMGMSG`, `SMG_ROUTINES`, `VmsArguments`, `Files` and `Out`, and passes
+  on the guest. `SmgScreen` is compiled by `test.sh` and run by hand.
+
+What the guest showed, proposal 5's points first:
+- **A pasteboard on a file is 66 rows by 132 columns, of type
+  `SMG$K_UNKNOWN` (0)**, a printer's page. A snapshot writes all 66 rows as
+  variable-length records with carriage-return carriage control, each row's
+  trailing blanks dropped. A blank row is a record of two blanks, which
+  `SmgFile` prints as a count. `SMG$M_FORM_FEED` adds a record of its own,
+  a form feed, before the rows.
+- **A second `SMG$CREATE_PASTEBOARD` on the same file is not
+  `SMG$_PASALREXI`**: it succeeds with another pasteboard and a new, empty
+  version of the file (`SCREEN.LIS;2`), so `SmgFile` reads `;1`.
+- **In a file, a border and a rectangle are `+`, `-` and `|`, and a
+  rendition is dropped.** Text in bold and in reverse is plain. On a
+  terminal they are the DEC special graphics characters (`lqqk`, `x`,
+  `mqqj` between SO and SI), with `ESC [1m`, `ESC [7m` and `ESC [4m` for
+  the renditions.
+- **`SMG$MOVE_VIRTUAL_DISPLAY` and `SMG$UNPASTE_VIRTUAL_DISPLAY` return
+  `SMG$_WILUSERMS`** on a file, a success. The next snapshot shows what
+  they did. The others return `SS$_NORMAL`.
+- **A keyboard on a file:**
+  - `SMG$READ_STRING` returns a record a call, ended by 13 (Return), then
+    `SMG$_EOF`.
+  - `SMG$READ_KEYSTROKE` returns a record's first character (`x`, 120).
+  - `SMG$SELECT_FROM_MENU` reads the next record's first character as a
+    terminator (`B`, 66), leaves choice 1, and returns `SMG$_EOF`. **A menu
+    is chosen only on a terminal**, so the fixture keeps that status, and
+    menus were checked by hand.
+- **The menu, built from blank-padded choices through
+  `DescribeArray`**, shows the four choices in its bordered display, in the
+  file and on the terminal. A choice padded with `0X` was not tried, since
+  the fixture pads with blanks as the proposal says.
+
+**Checked by hand** (2026-10-16), in a telnet session as POC driven by
+expect, the terminal a VT100 with advanced video, its bytes logged.
+`SmgScreen` drew the bordered display with its label, the bold, reverse
+and underlined text, the `Colour` menu with "Red" in reverse, and the
+prompt display. Two Down arrows (`ESC [B`) moved the reverse video to
+"Green", then "Blue", and Return chose it. PF1 (`ESC OP`) at the
+keystroke prompt and "hello smg" at the line prompt followed. Deleting the
+pasteboard cleared the screen (`ESC [;H ESC [2J`) and reset the keypad
+(`ESC >`), and the program printed:
+
+```
+choice 3, "Blue", terminator 13
+key 256, PF1
+typed "hello smg"
+```
+
+The user ran `SMGSCREEN.EXE` at a terminal the same day, choosing
+"Violet", pressing Left as the keystroke, and typing the line by hand:
+
+```
+choice 4, "Violet", terminator 13
+key 276, LEFT
+typed "this is fun!"
+```

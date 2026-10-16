@@ -22,7 +22,10 @@ MODULE VmsArguments;
 
      A descriptor a ["VMS"] procedure builds itself for an open ARRAY OF
      CHAR parameter; a StringDescriptor is for a routine that takes one
-     inside a structure, or through a SYSTEM.ADDRESS parameter. *)
+     inside a structure, or through a SYSTEM.ADDRESS parameter. An
+     ArrayDescriptor is for one that takes an array of strings, such as
+     SMG$CREATE_MENU's choices (part 7, proposal 2), passed as
+     SYSTEM.ADR(descriptor). *)
 
   IMPORT SYSTEM;
 
@@ -30,6 +33,7 @@ MODULE VmsArguments;
     (* a descriptor's class and data type (Introduction to VMS System
        Routines, 2.9.2) *)
     classS* = 1; (* DSC$K_CLASS_S, a fixed-length string *)
+    classA* = 4; (* DSC$K_CLASS_A, an array *)
     dataTypeT* = 14; (* DSC$K_DTYPE_T, characters *)
 
   TYPE
@@ -39,6 +43,21 @@ MODULE VmsArguments;
       dataType*: SYSTEM.CARD8; (* DSC$B_DTYPE *)
       class*: SYSTEM.CARD8; (* DSC$B_CLASS *)
       address*: SYSTEM.ADDRESS (* DSC$A_POINTER, the first character's *)
+    END;
+
+    (* a CLASS_A descriptor of a one-dimensional array, 16 bytes: the
+       prototype block alone, since the multipliers and bounds are
+       optional (DSCDEF's comment) *)
+    ArrayDescriptor* = RECORD
+      length*: SYSTEM.CARD16; (* DSC$W_LENGTH, an element's, in bytes *)
+      dataType*: SYSTEM.CARD8; (* DSC$B_DTYPE *)
+      class*: SYSTEM.CARD8; (* DSC$B_CLASS *)
+      address*: SYSTEM.ADDRESS; (* DSC$A_POINTER, the first element's *)
+      scale*: SYSTEM.INT8; (* DSC$B_SCALE *)
+      digits*: SYSTEM.CARD8; (* DSC$B_DIGITS *)
+      flags*: SYSTEM.CARD8; (* DSC$B_AFLAGS *)
+      dimensions*: SYSTEM.CARD8; (* DSC$B_DIMCT *)
+      size*: SYSTEM.CARD32 (* DSC$L_ARSIZE, the whole array's, in bytes *)
     END;
 
     (* an entry of an item_list_3, 12 bytes: the buffer, its size, and
@@ -91,6 +110,20 @@ MODULE VmsArguments;
     descriptor.dataType := dataTypeT; descriptor.class := classS;
     descriptor.address := SYSTEM.ADR(text)
   END Describe;
+
+  (* descriptor, a CLASS_A descriptor of elements, each a fixed-length
+     string of LEN(elements, 1) characters. A string shorter than that
+     ends in blanks, not 0X, since VMS takes all of an element; the
+     strings are left as they are. *)
+  PROCEDURE DescribeArray*(VAR descriptor: ArrayDescriptor; VAR elements: ARRAY OF ARRAY OF CHAR);
+  BEGIN
+    descriptor.length := Card16(LEN(elements, 1));
+    descriptor.dataType := dataTypeT; descriptor.class := classA;
+    descriptor.address := SYSTEM.ADR(elements);
+    descriptor.scale := 0; descriptor.digits := 0; descriptor.flags := 0;
+    descriptor.dimensions := 1;
+    descriptor.size := SYSTEM.VAL(SYSTEM.CARD32, LEN(elements) * LEN(elements, 1))
+  END DescribeArray;
 
   (* list[index], the item code with buffer, all of it, and returnLength,
      where VMS writes how much of buffer it filled *)

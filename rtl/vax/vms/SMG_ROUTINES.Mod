@@ -158,7 +158,7 @@ MODULE SMG_ROUTINES;
      in the virtual display indicated, starting at the specified row. *)
   PROCEDURE ["VMS", "SMG$CREATE_MENU"] SMG$CREATE_MENU*(
       display_id-: SYSTEM.CARD32; (* identifier *)
-      choices-: ARRAY OF CHAR; (* staticarrayofchar_string *)
+      choices: SYSTEM.ADDRESS; (* staticarrayofchar_string, a descriptor built by hand *)
       menu_type-: SYSTEM.CARD32; (* longword_unsigned, optional: NIL omits it *)
       flags-: SYSTEM.CARD32; (* mask_longword, optional: NIL omits it *)
       row-: SYSTEM.INT32; (* longword_signed, optional: NIL omits it *)

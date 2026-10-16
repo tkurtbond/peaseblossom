@@ -1,0 +1,76 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+SMGFILE built: %X10000001
+create pasteboard: SS$_NORMAL
+rows 66, columns 132, type 0 (unknown)
+create it again: SS$_NORMAL
+another pasteboard
+create framed: SS$_NORMAL
+label border: SS$_NORMAL
+put plain: SS$_NORMAL
+put bold: SS$_NORMAL
+put reverse: SS$_NORMAL
+create boxed: SS$_NORMAL
+draw rectangle: SS$_NORMAL
+set cursor: SS$_NORMAL
+put line: SS$_NORMAL
+put line: SS$_NORMAL
+put line: SS$_NORMAL
+put line: SS$_NORMAL
+paste framed: SS$_NORMAL
+paste boxed: SS$_NORMAL
+snapshot 1: SS$_NORMAL
+move boxed: SMG$_WILUSERMS
+unpaste framed: SMG$_WILUSERMS
+snapshot 2: SS$_NORMAL
+create menu display: SS$_NORMAL
+create menu: SS$_NORMAL
+paste menu: SS$_NORMAL
+snapshot 3: SS$_NORMAL
+create keyboard: SS$_NORMAL
+read string: SS$_NORMAL
+  10 characters, "first line", terminator 13
+read string: SS$_NORMAL
+  6 characters, "second", terminator 13
+read keystroke: SS$_NORMAL
+  code 120
+select from menu: SMG$_EOF
+  choice 1, terminator 66
+read string: SMG$_EOF
+delete keyboard: SS$_NORMAL
+delete menu: SS$_NORMAL
+delete pasteboard: SS$_NORMAL
+delete the other: SS$_NORMAL
+SCREEN.LIS;1:
+| +-------- Peaseblossom --------+|
+| | plain text                   ||
+| | bold text                    ||
+| |   reverse text               ||
+| |                      |      ||
+| |                      +------+|
+| +----------------------line 1|
+|                        line 2|
+|                        line 3|
+|                        line 4|
+(blank lines: 56)
+|^L|
+(blank lines: 1)
+| |      ||
+| +------+|
+| line 1|
+| line 2|
+| line 3|
+| line 4|
+(blank lines: 59)
+|^L|
+(blank lines: 1)
+| |      |                             +--------------+|
+| +------+                             | Red          ||
+| line 1                               | Green        ||
+| line 2                               | Blue         ||
+| line 3                               | Violet       ||
+| line 4                               |              ||
+|                                      |              ||
+|                                      +--------------+|
+(blank lines: 57)
+run: %X00000001
