@@ -2526,8 +2526,21 @@ And:
   written before it.
 
 `Subprocesses`' comment states these answers, as proposal 6 says.
-`LIB$ATTACH` is left to a hand check with the user (proposal 3), not yet
-made. The inventory's `LIB$` entry is marked done, with process control.
+`LIB$ATTACH` was checked by hand with the user on 2026-10-16 (proposal
+3; PLAN.md step 8), in a telnet session as `POC`, by a program built for
+the purpose and not kept. Proposal 3's sequence did not work as written:
+a subprocess spawned with `NOWAIT` that reads the shared terminal is not
+"currently detached", which LIB-17 requires of the process attached to,
+and `LIB$ATTACH` to it is refused with `LIB$_ATTREQREF`. The way that
+works is the manual's: `LIB$SPAWN` without `NOWAIT` puts the terminal in
+the subprocess; `ATTACH "<the program's process name>"` there returns it,
+`LIB$SPAWN` returns `SS$_NORMAL`, and the subprocess is left detached;
+`LIB$ATTACH` to it then succeeds (`%DCL-S-RETURNED, control returned to
+process POC_ATTACH_SUB`), and a second `ATTACH` back resumes the program
+with `SS$_NORMAL`. `LIB$ATTACH` to the caller itself is also
+`LIB$_ATTREQREF`, and to a process that does not exist `SS$_NONEXPR`.
+The generated declaration needs no change. The inventory's `LIB$` entry
+is marked done, with process control.
 
 ## Proposals, part 12: the synchronous system services (2026-10-16)
 

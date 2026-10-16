@@ -1021,7 +1021,8 @@ C++, and so on) unless step 4 chooses one deliberately.
      each covers, and `KitVmsLib` uses every VMSLIB module and prints a
      line for each, which `check-vax-kit` expects.
 
-   Before them, part 12 finished and `LIB$ATTACH` checked by hand. Then
+   Before them, part 12 finished and `LIB$ATTACH` checked by hand (done
+   2026-10-16; `vms-sdl-interfaces.md`, "Part 11 done"). Then
    the gate's run: `make check` on the four hosts, `make test-vax-asts`,
    `make test-vax`, `make test-vax-guest-poc`, `make check-vax-kit
    CHECK_VAX_KIT_FLAGS=-full`, and rackhir on the pushed commit.
