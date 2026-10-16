@@ -11,7 +11,8 @@
 # programs linked against them, with the logical names and symbols they
 # expect, and shows what each leaves. Part 5: Conditions.SignalList and
 # StopList, through LIB$CALLG (VmsLibSignal, VmsLibStopList), and a list
-# too long for CALLG (VmsLibListTooLong).
+# too long for CALLG (VmsLibListTooLong). CommandLanguage compiles here;
+# vax-cli-verb and vax-cli-table run it.
 . ../../vaxfixture.sh
 vms=../../../rtl/vax/vms
 vmslib=../../../rtl/vax/vmslib
@@ -19,8 +20,8 @@ rtl=../../../rtl/vax
 rm -rf work
 mkdir work work/o2 work/oc
 : >result
-generated="LIBDEF LIB_ROUTINES LNMDEF RMSDEF SSDEF STARLET"
-modules="Conditions EventFlags ExitHandlers LogicalNames Symbols Timers"
+generated="CLIMSGDEF LIBDEF LIB_ROUTINES LNMDEF RMSDEF SSDEF STARLET"
+modules="CommandLanguage Conditions EventFlags ExitHandlers LogicalNames Symbols Timers"
 for model in O2 OC; do
   dir=work/$(echo $model | tr A-Z a-z)
   for m in $modules; do

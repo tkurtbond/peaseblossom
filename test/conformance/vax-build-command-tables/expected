@@ -1,0 +1,29 @@
+== poc -target vax-dec-vms -build Tables.mod One.cld Two.CLD
+exit 0
+Tables.com matches expected-Tables.com
+One.cld copied to One.cld
+Two.CLD copied to Two.cld
+== poc -target vax-dec-vms -build Tables.mod Tables.cld
+poc: Tables.cld has the file name of module Tables's .mar
+exit 1
+== poc -target vax-dec-vms -build Tables.mod bad.name.cld
+poc: bad.name.cld does not name a VMS file (1 to 39 letters, digits, _, $ and -, then .mar or .cld)
+exit 1
+== poc -target vax-dec-vms -build Tables.mod missing.cld
+poc: cannot open missing.cld
+exit 1
+== poc -build Tables.mod One.cld
+poc: a command table (.cld) is linked only by -build for vax-dec-vms
+exit 1
+== poc Tables.mod One.cld
+poc: a command table (.cld) is linked only by -build for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -emit-macro32 Tables.mod One.cld
+poc: a command table (.cld) is linked only by -build for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -compile Tables.mod One.cld
+poc: a command table (.cld) is linked only by -build for vax-dec-vms
+exit 1
+== poc -target vax-dec-vms -library TABLES Tables.mod One.cld
+poc: a command table (.cld) is linked only by -build for vax-dec-vms
+exit 1

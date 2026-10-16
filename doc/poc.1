@@ -371,6 +371,12 @@ that assembles them on VMS and links them with poc's runtime,
 .Pa POCRTL.OBJ ,
 into
 .Pa NAME.EXE ;
+a
+.Pa .cld
+file after the program's file is a command table, which the procedure
+compiles by
+.Li SET COMMAND/OBJECT
+and links with them;
 .Fl compile
 writes the named modules'
 .Pa .mar

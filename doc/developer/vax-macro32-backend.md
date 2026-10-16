@@ -5599,15 +5599,17 @@ chapter CLI).
 
 ### 23.3 Proposals
 
-**Approved by the user, 2026-10-15**, all nine as written; section 23.4
-changes how proposal 1's `HasInterpreter` is done, and adds
-`ParseForeign`. Proposal 3 is replaced (the user, 2026-10-15) by
-`PLAN.md`'s "Ongoing language enhancements", item 3: `SYSTEM.VAL(
-SYSTEM.ADDRESS, E)` of an external procedure `E` gives its address. That
-is made on `main` and merged into `vax` first. Then `ParsePrompting`
-passes `SYSTEM.VAL(SYSTEM.ADDRESS, LIB$GET_INPUT)` for both routines,
-from Oberon, as CDU's example does, and `CommandLanguage.mar` keeps only
-the table's weak reference and a routine that returns its address.
+**Approved by the user, 2026-10-15**, all nine as written, then changed
+three ways. Section 23.4 changes how proposal 1's `HasInterpreter` is done
+and adds `ParseForeign`. Proposal 3 is replaced (the user, 2026-10-15) by
+`PLAN.md`'s "Ongoing language enhancements", item 3:
+`SYSTEM.VAL(SYSTEM.ADDRESS, E)` of an external procedure `E` gives its
+address. That was made on `main` and merged into `vax`, so `ParsePrompting`
+passes `SYSTEM.VAL(SYSTEM.ADDRESS, LIB$GET_INPUT)` for both routines, from
+Oberon, as CDU's example does. Proposal 2 is replaced too (the user,
+2026-10-15, after 23.4): the program passes its table's address, so
+`CommandLanguage` has no MACRO-32 part at all. Section 23.5 has five more
+changes, approved by the user the same day.
 
 1. **A hand-written module, `CommandLanguage`, in `VMSLIB`**, beside
    `Conditions`, with a hand-written MACRO-32 part,
@@ -5657,6 +5659,30 @@ the table's weak reference and a routine that returns its address.
    reference in a second object, `CommandTable.mar`, linked only when a
    table is.
 
+   **Replaced: the program passes the table** (the user, 2026-10-15).
+   Item 3 makes an external procedure's address something Oberon can take,
+   and a table's global symbol can be declared as one:
+   `PROCEDURE ["VMS", "SHELL_TABLE"] ShellTable;` for a `.CLD` whose
+   `MODULE` statement is `SHELL_TABLE`. The procedure is never called; the
+   program passes `SYSTEM.VAL(SYSTEM.ADDRESS, ShellTable)` to `Parse`,
+   `ParsePrompting` and `ParseForeign`, which take it as their last
+   argument. The weak reference was given up for three reasons:
+   - **It fails in a shared VMSLIB.** A `.WEAK` reference is resolved when
+     its own image is linked, so in `VMSLIB.EXE` (`-shared-libraries`) it
+     would be 0 for good, whatever table the program links. Passing the
+     address works whether VMSLIB comes from the `.OLB` or the shareable
+     image.
+   - **The name is the program's.** Any `MODULE` name works, not only
+     `POC$COMMAND_TABLE`, and a program can have more than one table, a
+     main one and one for a subcommand loop, say.
+   - **No MACRO-32 part.** `CommandLanguage` is plain Oberon, built like
+     the rest of VMSLIB.
+
+   What it costs is one declaration in the program, whose comment says that
+   the "procedure" is the table's data. A table address of 0, from a
+   symbol LINK left undefined, gives `NoTable` (`CLI$_TABNOTFND`) without
+   calling VMS, where `CLI$DCL_PARSE` would take an access violation.
+
 3. **The prompting routines are `LIB$GET_INPUT`'s.** `ParsePrompting`
    passes `LIB$GET_INPUT` for both routines, plus the prompt.
    (Replaced; see above. As first proposed, a routine in
@@ -5685,6 +5711,8 @@ the table's weak reference and a routine that returns its address.
    COMMAND/OBJECT=<NAME>.OBJ <NAME>.CLD` before linking, and lists
    `<NAME>.OBJ` in `<IMAGE>.OPT` after the main module. At most one is
    allowed, since proposal 2 allows one table, and a second is an error.
+   (Changed, section 23.5: any number, now that the program passes the
+   table.)
    For an LLVM target, and with `-compile` or `-library`, a `.cld` is an
    error: "a command table is linked only by -build for vax-dec-vms".
    Leaving `-link` LLVM-only keeps section 21's split and needs no VMS
@@ -5807,3 +5835,79 @@ Every `CLI$` call was made as `CommandLanguage` will make it.
   the entity's own name into the value, with its length (`Q`, `P1`,
   `$LINE`). `GetValue` gives an empty value whenever the status is not a
   success.
+
+### 23.5 As built (2026-10-15)
+
+`rtl/vax/vmslib/CommandLanguage.Mod` is Oberon only. It imports
+`LIB_ROUTINES`, `CLIMSGDEF`, `LIBDEF` and `RMSDEF`, and declares
+`CLI$DCL_PARSE`, `CLI$PRESENT` and `CLI$GET_VALUE` privately, since the
+generator has no `CLI$` routines. Its interface is proposal 1's, with
+`ParseForeign` (23.4) and the table passed (proposal 2, replaced), and five
+more changes, all approved by the user, 2026-10-15:
+
+1. **`Presence`, not `Present`**, is `CLI$PRESENT`: `Present` is the
+   constant for `CLI$_PRESENT`, and one name cannot be both.
+2. **More constants**, so that a program can test the results by name:
+   `Parsed` (`CLI$_NORMAL`), `UnknownVerb`, `UnknownQualifier`,
+   `MissingParameter`, `NoCommand` and `EndOfInput` (`RMS$_EOF`), besides
+   23.3's and `InvalidRequest` (23.4).
+3. **`NoTable` only for a table address of 0**, as proposal 2, replaced,
+   says.
+4. **`Truncated` (`LIB$_STRTRU`, a success) replaces `More`,
+   `Concatenated` or `Last`** for a value cut short, so a loop over a list
+   runs until `Absent`, as the `CLI$` manual's own loops do.
+5. **`-build` takes any number of `.cld` files** (proposal 5).
+
+`RestoreParse` passes 0 for the table too: the manual says only that a
+command string and a prompt routine of 0 restore the parse of the command
+that ran the image, and on the guest a table of 0 does as well.
+
+**`poc -build`** (`Poc.Mod`, `VaxToolchainDriver.WriteBuildProcedure`):
+each `.cld` after the program's file, in any case, is copied beside the
+`.mar` files, compiled by `SET COMMAND/OBJECT=<T>.OBJ <T>.CLD` after the
+modules are assembled, and its object listed after theirs in
+`<IMAGE>.OPT`. A table whose object would be a module's is refused (the
+module's `.mar` names the same `.OBJ`), as is one whose name is not a VMS
+file name or that is not there. A `.cld` given to any other command, or to
+`-build` for an LLVM target, is "a command table (.cld) is linked only by
+-build for vax-dec-vms". `-help`, poc(1), the Reference Guide and the
+User's Guide's chapter 12 say so.
+
+**Fixtures:**
+- `vax-build-command-tables` (host only): the procedure for two tables,
+  and the refusals.
+- `vax-cli-verb` (guest): the verb `POCCLI` from `CliVerb.cld`, run three
+  ways, then detached. `Presence` gives `LocallyPresent` and
+  `LocallyNegated` for a positional qualifier after each value, `Defaulted`
+  and `Negated` for a default qualifier; `GetValue` gives `More`,
+  `Concatenated`, `Last`, `Absent`, `Truncated`, and a keyword path's value
+  (`STYLE.FULL`). Detached, `HasInterpreter` is FALSE and both return
+  `InvalidRequest`.
+- `vax-cli-table` (guest): `CliTable` with `CliCommands.cld`, built by
+  `-build`. Its own lines, a table of 0, `RestoreParse` (`RUN CLITABLE`),
+  three lines read by `ParsePrompting`, one with its second parameter
+  asked for and given by the next data line, then `EndOfInput`; and run as
+  a foreign command, through `ParseForeign`, a quoted parameter keeping its
+  case.
+- `vax-vmslib` compiles `CommandLanguage` under `-O2` and `-OC`.
+
+**Found on the guest:**
+- **Under a verb, `Modules` sees DCL's copy of the line**: uppercased but
+  for quoted text, with the quotes gone and no blank before a qualifier
+  (`A.TXT/LOG`), so its arguments are not the words typed. The module's
+  comment says so.
+- **`$LINE` drops quotes too**: `POCCLI/MARK "Lower Case"` is
+  `POCCLI/MARK Lower Case/...`.
+- **A program's output and VMS's messages overwrite each other in a file
+  named by `DEFINE/USER SYS$OUTPUT`**: the image opens it once for `Out`
+  and once for the message, each with its own position. A file DCL opens
+  (`@P/OUTPUT=`, a batch log) is shared. `vax-cli-table` runs its program
+  from a small procedure with `/OUTPUT` for this, and leaves out the
+  tracebacks, whose addresses change with the code.
+- **The User's Guide's example** (chapter 12, "A command with
+  qualifiers") was run there as written, with its image named by a
+  logical name: `GREET/TIMES=3 world` prints `3 times: Hello, WORLD`.
+
+`CLI$DISPATCH` is not declared (proposal 4), and the prompting routines are
+`LIB$GET_INPUT`'s only, not Oberon procedures (`vms-sdl-interfaces.md`,
+part 1, proposal 4).

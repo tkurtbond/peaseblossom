@@ -165,9 +165,11 @@ MODULE VaxToolchainDriver;
      each one's setup procedure has been run (POC$LIB_<NAME>), and links
      each one's object library, POC$LIB_<NAME>:<NAME>.OLB, or with shared
      its shareable image, POC$LIB_<NAME>:<NAME>.EXE; when POCRTL is one of
-     them, the runtime is its, and POCRTL.OBJ is not linked. FALSE if the
-     file could not be written. *)
-  PROCEDURE WriteBuildProcedure*(path, source, image: ARRAY OF CHAR; units, libraries: Unit;
+     them, the runtime is its, and POCRTL.OBJ is not linked. With tables,
+     command tables (Phase 17 step 5, section 23), each <TABLE>.CLD is
+     compiled by SET COMMAND/OBJECT into <TABLE>.OBJ, listed after the
+     modules. FALSE if the file could not be written. *)
+  PROCEDURE WriteBuildProcedure*(path, source, image: ARRAY OF CHAR; units, libraries, tables: Unit;
                                  shared: BOOLEAN): BOOLEAN;
     VAR f: Files.File; w: Files.Rider; u, main: Unit; name, imageName: ARRAY 64 OF CHAR;
         line: ARRAY 200 OF CHAR; label: ARRAY 16 OF CHAR; count: INTEGER; rtlLibrary: BOOLEAN;
@@ -213,11 +215,24 @@ MODULE VaxToolchainDriver;
       WriteLine(w, line);
       main := u; u := u.next
     END;
+    u := tables;
+    WHILE u # NIL DO
+      Upper(u.name, name);
+      COPY("$ SET COMMAND/OBJECT=", line); Append(line, name); Append(line, ".OBJ ");
+      Append(line, name); Append(line, ".CLD");
+      WriteLine(w, line);
+      u := u.next
+    END;
     IF (image[0] # 0X) & (main # NIL) THEN
       COPY("$ CREATE ", line); Append(line, imageName); Append(line, ".OPT"); WriteLine(w, line);
       Upper(main.name, name); COPY(name, line); Append(line, ".OBJ"); WriteLine(w, line);
       u := units;
       WHILE u # main DO
+        Upper(u.name, name); COPY(name, line); Append(line, ".OBJ"); WriteLine(w, line);
+        u := u.next
+      END;
+      u := tables;
+      WHILE u # NIL DO
         Upper(u.name, name); COPY(name, line); Append(line, ".OBJ"); WriteLine(w, line);
         u := u.next
       END;

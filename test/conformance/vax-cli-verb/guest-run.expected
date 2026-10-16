@@ -1,0 +1,72 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+CLIVERB built: %X10000001
+SET COMMAND: %X10118009
+== POCCLI
+verb POCC
+line POCCLI
+FILES: Absent
+  FILES = '' Absent
+MARK: Absent
+LOG: Absent
+CONFIRM: Defaulted, present
+OUTPUT: Absent
+  OUTPUT = '' Absent
+STYLE: Absent
+  STYLE = '' Absent
+STYLE.FULL: Absent
+  STYLE.FULL = '' Absent
+short: Truncated 'POC'
+arguments 1
+run: %X00000001
+== POCCLI A.TXT/MARK,B.TXT/NOMARK+C.TXT /LOG/NOCONFIRM/OUTPUT=out.lis
+verb POCC
+line POCCLI A.TXT/MARK,B.TXT/NOMARK+C.TXT/LOG/NOCONFIRM/OUTPUT=OUT.LIS
+FILES: Present, present
+  FILES = 'A.TXT' More, MARK LocallyPresent
+  FILES = 'B.TXT' Concatenated, MARK LocallyNegated
+  FILES = 'C.TXT' Last, MARK Absent
+  FILES = '' Absent
+MARK: Absent
+LOG: Present, present
+CONFIRM: Negated
+OUTPUT: Present, present
+  OUTPUT = 'OUT.LIS' Last
+  OUTPUT = '' Absent
+STYLE: Absent
+  STYLE = '' Absent
+STYLE.FULL: Absent
+  STYLE.FULL = '' Absent
+short: Truncated 'POC'
+arguments 2
+  A.TXT/MARK,B.TXT/NOMARK+C.TXT/LOG/NOCONFIRM/OUTPUT=OUT.LIS
+run: %X00000001
+== POCCLI/MARK "Lower Case" /STYLE=(BRIEF,FULL=9)
+verb POCC
+line POCCLI/MARK Lower Case/STYLE=(BRIEF,FULL=9)
+FILES: Present, present
+  FILES = 'Lower Case' Last, MARK Present
+  FILES = '' Absent
+MARK: Present, present
+LOG: Absent
+CONFIRM: Defaulted, present
+OUTPUT: Absent
+  OUTPUT = '' Absent
+STYLE: Present, present
+  STYLE = 'BRIEF' More
+  STYLE = 'FULL=9' Last
+  STYLE = '' Absent
+STYLE.FULL: Present, present
+  STYLE.FULL = '9' Last
+  STYLE.FULL = '' Absent
+short: Truncated 'POC'
+arguments 4
+  /MARK
+  Lower
+  Case/STYLE=(BRIEF,FULL=9)
+run: %X00000001
+== detached
+no interpreter
+Presence: InvalidRequest
+GetValue: InvalidRequest ''

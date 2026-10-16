@@ -13,6 +13,17 @@ VMS's condition value, a `SYSTEM.INT32`. An output string is cut to its
 array less one character and ends with `0X`; an input string is passed
 up to its `0X`. Fixture `vax-vmslib` runs them on the guest.
 
+- `CommandLanguage.Mod`: a command line parsed by DCL with a command
+  table, and its verb, parameters, qualifiers and keywords asked for by
+  name: `Presence`, `IsPresent`, `GetValue`, `GetVerb` and `GetLine`, by
+  `CLI$PRESENT` and `CLI$GET_VALUE`, for a program run as a verb `SET
+  COMMAND` defined. A program with its own table, a `.cld` file given to
+  `poc -build`, parses with `Parse`, `ParsePrompting` (by `LIB$GET_INPUT`)
+  or `ParseForeign` (its foreign command line), passing the table's
+  address, and `RestoreParse` brings back DCL's parse; `HasInterpreter`
+  says whether the process has a CLI at all
+  (`doc/developer/vax-macro32-backend.md`, section 23). Fixtures
+  `vax-cli-verb` and `vax-cli-table` run it.
 - `Conditions.Mod`: a condition value's parts, `Succeeded`, `Severity`,
   `Facility` and `MessageNumber`; the severities `Warning`, `Success`,
   `Error`, `Informational` and `Severe`; `Message`, its text by

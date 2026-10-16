@@ -1,0 +1,12 @@
+! vax-cli-table: the table CliTable parses its lines with, linked by
+! poc -build; MODULE names its global symbol. No verb has a ROUTINE:
+! CliTable dispatches on CommandLanguage.GetVerb.
+MODULE POC_CLI_TABLE
+DEFINE VERB COPY
+	PARAMETER P1, LABEL=FROM, PROMPT="From", VALUE(REQUIRED)
+	PARAMETER P2, LABEL=TO, PROMPT="To", VALUE(REQUIRED)
+	QUALIFIER LOG
+DEFINE VERB SHOW
+	PARAMETER P1, LABEL=ITEM, VALUE(LIST)
+	QUALIFIER FULL
+DEFINE VERB QUIT

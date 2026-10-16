@@ -141,6 +141,9 @@ MODULE Poc;
     argumentCount: INTEGER;
     (* -library for vax-dec-vms: its .mar files, NIL for every other command *)
     vaxParts: VaxPart;
+    (* -build for vax-dec-vms: its command tables, .cld files (section 23,
+       proposal 5); NIL for every other command *)
+    commandTables: VaxPart;
     (* Phase 12 step 2c: poc -library's modules, and poc -compile's (step
        2f); NIL for every other command *)
     members: LibraryMember;
@@ -1643,6 +1646,81 @@ MODULE Poc;
     END
   END EmitMacro32;
 
+  (* Whether file's name ends in extension, a period and three lower-case
+     letters, in any case *)
+  PROCEDURE HasExtension(file, extension: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER; ext: ARRAY 5 OF CHAR; j: INTEGER;
+  BEGIN
+    i := 0; WHILE file[i] # 0X DO INC(i) END;
+    IF i < 5 THEN RETURN FALSE END;
+    FOR j := 0 TO 3 DO
+      ext[j] := file[i - 4 + j];
+      IF (ext[j] >= "A") & (ext[j] <= "Z") THEN ext[j] := CHR(ORD(ext[j]) - ORD("A") + ORD("a")) END
+    END;
+    ext[4] := 0X;
+    RETURN ext = extension
+  END HasExtension;
+
+  (* Whether file's name ends in ".mar", in any case *)
+  PROCEDURE IsMarFile(file: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN HasExtension(file, ".mar")
+  END IsMarFile;
+
+  (* Whether file's name ends in ".cld", in any case: a command table *)
+  PROCEDURE IsCldFile(file: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN HasExtension(file, ".cld")
+  END IsCldFile;
+
+  (* file, a .mar or a .cld, added to the list parts, by its file name
+     without the extension, which must be a VMS file name *)
+  PROCEDURE AddVaxPart(file: ARRAY OF CHAR; VAR parts: VaxPart; VAR ok: BOOLEAN);
+    VAR part, p: VaxPart; i, start, j: INTEGER;
+  BEGIN
+    NEW(part); COPY(file, part.path); part.next := NIL;
+    start := Directories.NameStart(file);
+    i := 0; WHILE file[i] # 0X DO INC(i) END;
+    j := 0;
+    WHILE (start + j < i - 4) & (j < LEN(part.name) - 1) DO part.name[j] := file[start + j]; INC(j) END;
+    part.name[j] := 0X;
+    IF ~VaxToolchainDriver.IsVmsFileName(part.name) THEN
+      failed := TRUE; Err.String("poc: "); Err.String(file);
+      Err.String(" does not name a VMS file (1 to 39 letters, digits, _, $ and -, then .mar or .cld)"); Err.Ln;
+      ok := FALSE; RETURN
+    END;
+    p := parts;
+    WHILE (p # NIL) & (p.next # NIL) DO p := p.next END;
+    IF p = NIL THEN parts := part ELSE p.next := part END
+  END AddVaxPart;
+
+  (* a command table given where only -build for vax-dec-vms takes one *)
+  PROCEDURE NotForCommandTables;
+  BEGIN
+    failed := TRUE;
+    Err.String("poc: a command table (.cld) is linked only by -build for "); Err.String(VaxToolchainDriver.triple);
+    Err.Ln
+  END NotForCommandTables;
+
+  (* the .cld files among the arguments from first on, in commandTables:
+     -build's command tables (section 23, proposal 5) *)
+  PROCEDURE CollectCommandTables(first: INTEGER; VAR ok: BOOLEAN);
+    VAR i: INTEGER; file: Libraries.Path; f: Files.File;
+  BEGIN
+    ok := TRUE; commandTables := NIL;
+    FOR i := first TO argumentCount - 1 DO
+      GetArgument(i, file);
+      IF ok & IsCldFile(file) THEN
+        f := Files.Old(file);
+        IF f = NIL THEN
+          failed := TRUE; Err.String("poc: cannot open "); Err.String(file); Err.Ln; ok := FALSE
+        ELSE
+          Files.Close(f); AddVaxPart(file, commandTables, ok)
+        END
+      END
+    END
+  END CollectCommandTables;
+
   (* Where -build's procedure goes for -o's exePath, and the image's name:
      exePath with ".com" for a last ".exe" (in any case), or added; its
      last component, without ".exe", must be a VMS file name. FALSE,
@@ -1703,9 +1781,9 @@ MODULE Poc;
   PROCEDURE BuildVax(name, outputDir, exePath: ARRAY OF CHAR);
     VAR
       modules, m: ModuleLists.ModuleList; ok: BOOLEAN;
-      lib: Libraries.Library; libraries, librariesTail, u: VaxToolchainDriver.Unit;
-      topName: SyntaxTree.Ident;
-      comPath: ARRAY 300 OF CHAR; image: ARRAY 64 OF CHAR;
+      lib: Libraries.Library; libraries, librariesTail, u, units, tables, tablesTail: VaxToolchainDriver.Unit;
+      topName: SyntaxTree.Ident; table: VaxPart;
+      comPath: ARRAY 300 OF CHAR; image: ARRAY 64 OF CHAR; path: Libraries.Path;
   BEGIN
     IF ~SetVaxTarget("-build", VaxToolchainDriver.triple) THEN RETURN END;
     IF (exePath[0] # 0X) & ~VaxImagePaths(exePath, comPath, image) THEN RETURN END;
@@ -1737,8 +1815,31 @@ MODULE Poc;
     END;
     ProgramTopName(modules, topName);
     IF (exePath[0] = 0X) & ~VaxImagePaths(topName, comPath, image) THEN RETURN END;
+    (* each command table copied beside the modules' .mar files; its
+       object must not be a module's *)
+    units := VaxUnits(modules, FALSE);
+    tables := NIL; tablesTail := NIL; table := commandTables;
+    WHILE table # NIL DO
+      u := units;
+      WHILE (u # NIL) & ~VaxToolchainDriver.IsSameVmsName(u.name, table.name) DO u := u.next END;
+      IF u # NIL THEN
+        failed := TRUE; Err.String("poc: "); Err.String(table.path); Err.String(" has the file name of module ");
+        Err.String(u.name); Err.String("'s .mar"); Err.Ln;
+        RETURN
+      END;
+      Directories.MakePath(outputDir, table.name, path); Strcat(path, ".cld");
+      IF ~VaxToolchainDriver.CopyText(table.path, path) THEN
+        failed := TRUE; Err.String("poc: cannot copy "); Err.String(table.path); Err.String(" to ");
+        Err.String(path); Err.Ln;
+        RETURN
+      END;
+      NEW(u); COPY(table.name, u.name); u.next := NIL;
+      IF tablesTail = NIL THEN tables := u ELSE tablesTail.next := u END;
+      tablesTail := u;
+      table := table.next
+    END;
     IF WriteMacro32(modules, outputDir, FALSE, FALSE)
-       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, name, image, VaxUnits(modules, FALSE), libraries,
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, name, image, units, libraries, tables,
                                                  sharedLibraries) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
@@ -1752,6 +1853,7 @@ MODULE Poc;
       topName: SyntaxTree.Ident;
   BEGIN
     IF VaxToolchainDriver.IsVaxTriple(explicitTriple) THEN BuildVax(name, outputDir, exePath); RETURN END;
+    IF commandTables # NIL THEN NotForCommandTables; RETURN END;
     IF ~ResolveTriple(explicitTriple, triple) THEN
       failed := TRUE; Err.String("poc: cannot determine target triple (is clang installed?)"); Err.Ln
     ELSE
@@ -1798,41 +1900,6 @@ MODULE Poc;
     RETURN TRUE
   END AppendQuoted;
 
-  (* Whether file's name ends in ".mar", in any case *)
-  PROCEDURE IsMarFile(file: ARRAY OF CHAR): BOOLEAN;
-    VAR i: INTEGER; ext: ARRAY 5 OF CHAR; j: INTEGER;
-  BEGIN
-    i := 0; WHILE file[i] # 0X DO INC(i) END;
-    IF i < 5 THEN RETURN FALSE END;
-    FOR j := 0 TO 3 DO
-      ext[j] := file[i - 4 + j];
-      IF (ext[j] >= "A") & (ext[j] <= "Z") THEN ext[j] := CHR(ORD(ext[j]) - ORD("A") + ORD("a")) END
-    END;
-    ext[4] := 0X;
-    RETURN ext = ".mar"
-  END IsMarFile;
-
-  (* file, a .mar, added to vaxParts, by its file name without .mar, which
-     must be a VMS file name and not another part's *)
-  PROCEDURE AddVaxPart(file: ARRAY OF CHAR; VAR ok: BOOLEAN);
-    VAR part, p: VaxPart; i, start, j: INTEGER;
-  BEGIN
-    NEW(part); COPY(file, part.path); part.next := NIL;
-    start := Directories.NameStart(file);
-    i := 0; WHILE file[i] # 0X DO INC(i) END;
-    j := 0;
-    WHILE (start + j < i - 4) & (j < LEN(part.name) - 1) DO part.name[j] := file[start + j]; INC(j) END;
-    part.name[j] := 0X;
-    IF ~VaxToolchainDriver.IsVmsFileName(part.name) THEN
-      failed := TRUE; Err.String("poc: "); Err.String(file);
-      Err.String(" does not name a VMS file (1 to 39 letters, digits, _, $ and -, then .mar)"); Err.Ln;
-      ok := FALSE; RETURN
-    END;
-    p := vaxParts;
-    WHILE (p # NIL) & (p.next # NIL) DO p := p.next END;
-    IF p = NIL THEN vaxParts := part ELSE p.next := part END
-  END AddVaxPart;
-
   (* The modules of the command line's files from firstFile on, by the
      names their files declare, in members: poc -library's (forLibrary),
      where a file may also be a module's .sym or .o (Phase 12 step 2f) and
@@ -1847,7 +1914,9 @@ MODULE Poc;
     FOR i := firstFile TO argumentCount - 1 DO
       GetArgument(i, file); objectFile[0] := 0X; irFile[0] := 0X;
       IF ok & forLibrary & forVax & IsMarFile(file) THEN
-        AddVaxPart(file, ok)
+        AddVaxPart(file, vaxParts, ok)
+      ELSIF ok & IsCldFile(file) THEN
+        NotForCommandTables; ok := FALSE
       ELSE
       (* a module compiled already, named by its .sym, its .o (Phase 12
          step 2f) or its .ll (2g): the .sym and what is beside it *)
@@ -1919,7 +1988,7 @@ MODULE Poc;
     i := 0; WHILE comPath[i] # 0X DO INC(i) END;
     comPath[i - 4] := 0X; Strcat(comPath, ".com"); (* <First>.mar's .com *)
     IF WriteMacro32(modules, outputDir, TRUE, FALSE)
-       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE), NIL, FALSE) THEN
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE), NIL, NIL, FALSE) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
   END CompileVax;
@@ -2859,6 +2928,7 @@ MODULE Poc;
     HelpLine("");
     HelpLine("commands:");
     HelpLine("  -build <file>              build a program, as poc <file> does");
+    HelpLine("  -build <file> <t>.cld...   for vax-dec-vms: and link command tables");
     HelpLine("  -check <file>              check a module, writing nothing");
     HelpLine("  -compile <file>...         compile modules to .sym, .ll and .o, not linked");
     HelpLine("  -library <name> <file>...  build the library <name> of the modules");
@@ -3033,7 +3103,7 @@ MODULE Poc;
       i: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR;
       targetTriple: ARRAY tripleLength OF CHAR;
       exePath: ARRAY 256 OF CHAR;
-      done, onVms: BOOLEAN;
+      done, onVms, ok: BOOLEAN;
   BEGIN
     InitImportPathFromEnvironment;
     ModuleInterface.libraryLookup := LibraryInterfaceDir;
@@ -3266,13 +3336,21 @@ MODULE Poc;
           END
         ELSIF arg[0] # "-" THEN
           (* Phase 13 step 2: a file and no command builds a program, as
-             -build does *)
-          Build(arg, outputDir, targetTriple, exePath);
+             -build does, its command tables after it *)
+          CollectCommandTables(i + 1, ok);
+          IF ok THEN Build(arg, outputDir, targetTriple, exePath) END;
           done := TRUE
         ELSE
           IF i + 1 < argumentCount THEN
             GetArgument(i + 1, param);
-            RunCommand(arg, param, outputDir, targetTriple, exePath)
+            CollectCommandTables(i + 2, ok);
+            IF ~ok THEN
+              (* reported *)
+            ELSIF (commandTables # NIL) & (arg # "-build") THEN
+              NotForCommandTables
+            ELSE
+              RunCommand(arg, param, outputDir, targetTriple, exePath)
+            END
           ELSIF IsFileCommand(arg) THEN
             BadUsage(arg, " requires a file")
           ELSE

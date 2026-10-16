@@ -783,7 +783,16 @@ C++, and so on) unless step 4 chooses one deliberately.
    MACRO-32 part; the table found by a weak reference to
    `POC$COMMAND_TABLE`; dispatch on `$VERB` instead of `CLI$DISPATCH`;
    `-build` taking a `.cld` file; five checks on the guest first; and
-   fixtures `vax-cli-verb` and `vax-cli-table`.
+   fixtures `vax-cli-verb` and `vax-cli-table`. **Built 2026-10-15**
+   (section 23.5), with two changes from the proposals. First, the program
+   passes its table's address (the user's choice): the table's symbol is
+   declared as an external procedure, and `SYSTEM.VAL(SYSTEM.ADDRESS, T)`
+   gives the address, so the module has no MACRO-32 part and works with a
+   shared `VMSLIB`. Second, five interface changes were approved by the
+   user (`Presence`, more constants, `NoTable` for 0, `Truncated`, any
+   number of `.cld` files). `-build` takes `.cld` files (fixture
+   `vax-build-command-tables`). `vax-cli-verb` and `vax-cli-table` pass on
+   the guest, and the User's Guide's chapter 12 example was run there.
 
    **Part 6, argument lists through `LIB$CALLG` (2026-10-15)**: five
    proposals in `vms-sdl-interfaces.md`, part 5, **approved by the user,
@@ -1302,7 +1311,9 @@ Those done while Phase 15 was current, 1 and 2, are in
       `ParsePrompting` passes `SYSTEM.VAL(SYSTEM.ADDRESS,
       LIB$GET_INPUT)` for both routines, as CDU's own example does, from
       Oberon. `CommandLanguage.mar` keeps only the weak reference to the
-      table and a routine that returns its address.
+      table and a routine that returns its address. (As built, there is no
+      `CommandLanguage.mar`: the program passes the table's address too,
+      section 23.5.)
 
    **Built on `main` (2026-10-15):** `PredeclaredProcedures.CheckVal`
    marks its operand (`addressedProcedure`), `SemanticActions.

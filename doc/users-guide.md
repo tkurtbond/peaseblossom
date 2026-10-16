@@ -1024,3 +1024,43 @@ its import path and the search list `POC$IMPORT`, and libraries in
 An argument `@<file>` stands for the arguments in `<file>`, one a line,
 for a command longer than DCL takes; poc expands a file name's wildcards,
 `*` and `%`, itself.
+
+### A command with qualifiers
+
+A program can take DCL's qualifiers and parameters by being a command
+verb. `GREET.CLD` defines the verb `GREET` with one parameter and a
+qualifier with a value:
+
+    DEFINE VERB GREET
+        IMAGE DISK$USER:[ME]GREET.EXE
+        PARAMETER P1, LABEL=NAME
+        QUALIFIER TIMES, VALUE
+
+and the program asks `CommandLanguage`, in the library `VMSLIB`, what DCL
+parsed:
+
+    MODULE Greet;
+      IMPORT SYSTEM, Out, CommandLanguage;
+      VAR name, times: ARRAY 64 OF CHAR; status: SYSTEM.INT32;
+    BEGIN
+      status := CommandLanguage.GetValue("NAME", name);
+      IF CommandLanguage.IsPresent("TIMES") THEN
+        status := CommandLanguage.GetValue("TIMES", times);
+        Out.String(times); Out.String(" times: ")
+      END;
+      Out.String("Hello, "); Out.String(name); Out.Ln
+    END Greet.
+
+    $ POC GREET.MOD
+    $ @GREET
+    $ SET COMMAND GREET.CLD
+    $ GREET/TIMES=3 world
+    3 times: Hello, WORLD
+
+A program that reads commands itself parses them with its own table
+instead: give `poc` the `.cld` file after the program's
+(`POC SHELL.MOD SHELL.CLD`), and the procedure compiles and links it. The
+program declares the table's global symbol, which the `.cld` file's
+`MODULE` statement names, as an external procedure and passes its
+address: `CommandLanguage.Parse(line, SYSTEM.VAL(SYSTEM.ADDRESS,
+ShellTable))`. `rtl/vax/vmslib/CommandLanguage.Mod` says more.

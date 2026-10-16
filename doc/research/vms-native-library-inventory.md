@@ -341,6 +341,12 @@ Two conditions apply to a synchronous callback:
      not stated in any manual held. If it does not, a program is run as
      a verb defined by `SET COMMAND`, which CDU recommends.
    - `CLIMSG`'s codes come from the generator.
+   - **Done** (2026-10-15; `vax-macro32-backend.md`, section 23):
+     `CommandLanguage` in `VMSLIB`, and `poc -build` takes `.cld` files.
+     A foreign command can parse its own line (`ParseForeign`). Left
+     out: `CLI$DISPATCH`, since a program dispatches on `GetVerb`, and
+     Oberon procedures as `CLI$DCL_PARSE`'s prompting routines, which
+     are `LIB$GET_INPUT`'s.
 
 6. **Left out, and why.** None of these gets an interface or a fixture in
    Phase 17. Each can come later if a program needs it:

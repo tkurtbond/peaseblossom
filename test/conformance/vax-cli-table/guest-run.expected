@@ -1,0 +1,79 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+CLITABLE built: %X10000001
+== RUN CLITABLE
+run: %X00000001
+== 'COPY A.TXT B.TXT/LOG'
+  Parsed
+  verb COPY
+  FROM = 'A.TXT' Last
+  TO = 'B.TXT' Last
+  /LOG Present
+== 'show x,y+z/full ! a comment'
+  Parsed
+  verb SHOW
+  ITEM = 'X' More
+  ITEM = 'Y' Concatenated
+  ITEM = 'Z' Last
+  /FULL Present
+== 'SHOW THIS_VALUE_IS_TOO_LONG,SHORT'
+  Parsed
+  verb SHOW
+  ITEM = 'THIS_VALUE_IS_T' Truncated
+  ITEM = 'SHORT' Last
+  /FULL Absent
+== 'QUIT'
+  Parsed
+  verb QUIT
+  quit
+== 'FROB X'
+%CLI-W-IVVERB, unrecognized command verb - check validity and spelling
+ \FROB\
+  UnknownVerb
+== 'COPY A.TXT B.TXT/BOGUS'
+%CLI-W-IVQUAL, unrecognized qualifier - check validity, spelling, and placement
+ \BOGUS\
+  UnknownQualifier
+== ''
+  NoCommand
+== 'COPY A.TXT'
+%CLI-W-INSFPRM, missing command parameters - supply all required parameters
+  MissingParameter
+== table 0
+  NoTable
+== RestoreParse
+  Parsed
+  verb RUN
+  line RUN CLITABLE
+== ParsePrompting
+  Parsed
+  verb COPY
+  FROM = 'X.TXT' Last
+  TO = 'Y.TXT' Last
+  /LOG Present
+== ParsePrompting
+  Parsed
+  verb COPY
+  FROM = 'X.TXT' Last
+  TO = 'Y.TXT' Last
+  /LOG Absent
+== ParsePrompting
+  Parsed
+  verb SHOW
+  ITEM = 'A' More
+  ITEM = 'B' Last
+  /FULL Absent
+== ParsePrompting
+  EndOfInput
+%CLI-W-IVVERB, unrecognized command verb - check validity and spelling
+%CLI-W-IVQUAL, unrecognized qualifier - check validity, spelling, and placement
+%CLI-W-INSFPRM, missing command parameters - supply all required parameters
+== CLITABLE as a foreign command
+== ParseForeign
+  Parsed
+  verb COPY
+  FROM = 'Mixed Case' Last
+  TO = 'OUT.TXT' Last
+  /LOG Present
+run: %X00000001
