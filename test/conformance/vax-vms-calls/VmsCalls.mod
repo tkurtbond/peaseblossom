@@ -5,8 +5,10 @@ MODULE VmsCalls;
      out by descriptor, with the resultant length; an item list and an I/O
      status block by reference, from VmsArguments; an argument omitted by
      NIL; a quadword by reference, read only, from a variable and from a
-     constant; Oberon procedures VMS calls back; and an array of longwords
-     by reference as an ARRAY OF SYSTEM.BYTE. Run with the logical name
+     constant; Oberon procedures VMS calls back; an array of longwords
+     by reference as an ARRAY OF SYSTEM.BYTE; and LIB$CALLG given a routine's
+     address by SYSTEM.VAL(SYSTEM.ADDRESS, P), an external's and an Oberon
+     procedure's (PLAN.md, "Ongoing language enhancements", item 3). Run with the logical name
      POC_VMSCALLS_LNM defined in the process table (guest-run.com). *)
   IMPORT SYSTEM, Out, VmsArguments;
 
@@ -42,6 +44,9 @@ MODULE VmsCalls;
     keys: ARRAY 4 OF SYSTEM.INT32;
     i: INTEGER;
     parameters: ARRAY 2 OF SYSTEM.INT32;
+    argumentList: ARRAY 3 OF SYSTEM.INT32;
+    line: ARRAY 40 OF CHAR;
+    lineDescriptor: VmsArguments.StringDescriptor;
 
   PROCEDURE ["VMS", "LIB$SET_SYMBOL"] SetSymbol(symbol-, valueString-: ARRAY OF CHAR;
                                                 table-: LONGINT): LONGINT;
@@ -69,6 +74,9 @@ MODULE VmsCalls;
   PROCEDURE ["VMS", "SYS$FAOL"] FormatList(control-: ARRAY OF CHAR; VAR outputLength: SYSTEM.CARD16;
                                            VAR output: ARRAY OF CHAR;
                                            VAR parameterList: ARRAY OF SYSTEM.BYTE): LONGINT;
+  PROCEDURE ["VMS", "LIB$CALLG"] CallWithList(argumentList-: ARRAY OF SYSTEM.BYTE;
+                                             routine: SYSTEM.ADDRESS): LONGINT;
+  PROCEDURE ["VMS", "LIB$PUT_OUTPUT"] PutOutput(text-: ARRAY OF CHAR): LONGINT;
 
   (* a condition value as DCL writes one, %X and 8 digits *)
   PROCEDURE Status(text: ARRAY OF CHAR; s: LONGINT);
@@ -85,6 +93,12 @@ MODULE VmsCalls;
     IF k < LEN(s) THEN s[k] := 0X END;
     Out.String(what); Out.String(" ["); Out.String(s); Status("] status ", status); Out.Ln
   END Show;
+
+  (* called by LIB$CALLG with two longwords by value *)
+  PROCEDURE Sum(a, b: SYSTEM.INT32): LONGINT;
+  BEGIN
+    RETURN a + b
+  END Sum;
 
   PROCEDURE CompareKey(VAR symbol: SYSTEM.INT32; node, data: SYSTEM.ADDRESS): LONGINT;
     VAR key: SYSTEM.INT32;
@@ -157,5 +171,16 @@ BEGIN
   (* an array of longwords by reference *)
   parameters[0] := 42; parameters[1] := 255;
   status := FormatList("!UL and !XL", length, value, parameters);
-  Show("formatted", value, length)
+  Show("formatted", value, length);
+
+  (* LIB$CALLG: an external's address, LIB$PUT_OUTPUT's, with a list
+     holding a descriptor's address; then an Oberon procedure's *)
+  line := "LIB$PUT_OUTPUT through LIB$CALLG";
+  VmsArguments.Describe(lineDescriptor, line);
+  argumentList[0] := 1; argumentList[1] := SYSTEM.VAL(SYSTEM.INT32, SYSTEM.ADR(lineDescriptor));
+  status := CallWithList(argumentList, SYSTEM.VAL(SYSTEM.ADDRESS, PutOutput));
+  Status("LIB$CALLG of LIB$PUT_OUTPUT, status ", status); Out.Ln;
+  argumentList[0] := 2; argumentList[1] := 40; argumentList[2] := 2;
+  status := CallWithList(argumentList, SYSTEM.VAL(SYSTEM.ADDRESS, Sum));
+  Out.String("LIB$CALLG of Sum(40, 2): "); Out.Int(status, 0); Out.Ln
 END VmsCalls.

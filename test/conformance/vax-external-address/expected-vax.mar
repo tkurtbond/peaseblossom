@@ -1,0 +1,114 @@
+;; Written by Claude, 2026-10-15, for PLAN.md's "Ongoing language
+;; enhancements", item 3 (approved by the user); reviewed by the user,
+;; 2026-10-15. Why this is right:
+;; - SYSTEM.VAL(SYSTEM.ADDRESS, SetEventFlag), the address of an external
+;;   ["VMS"] procedure of this module, is MOVAB G^SYS$SETEF: its linkage
+;;   name in general mode, declared .EXTERNAL in the order of first use,
+;;   as a call names it (vax-external, section 7). The linker resolves it
+;;   to the routine's entry mask in its shareable image, VMS's "procedure
+;;   value, by reference" (CallStd), which LIB$CALLG calls by CALLG.
+;; - VAL of the Oberon procedure Sum is MOVAB of its own symbol, not G^,
+;;   as a procedure value of this module always was (vax-procedure-values,
+;;   section 14, item 7).
+;; - Each address is LIB$CALLG's second argument, a SYSTEM.ADDRESS by
+;;   value; the list, an x- ARRAY OF SYSTEM.BYTE, its first, by reference,
+;;   MOVAB of the variable.
+;; - Sum takes two longwords by value, at 4(AP) and 8(AP): what LIB$CALLG's
+;;   CALLG passes from list[1] and list[2], with list[0] the count.
+; VaxExternalAddress, written by poc (doc/developer/vax-macro32-backend.md)
+	.TITLE	VAXEXTERNALADDRESS
+	.IDENT	/4003f1b57dde367e/
+	.PSECT	POC_CODE,  PIC,SHR,NOWRT,EXE,LONG
+	.PSECT	POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD
+	.PSECT	POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD
+
+; set once the module has been initialised
+	.PSECT	POC_DATA
+L_INITIALISED:
+	.BLKB	1
+
+; the module's variables
+	.PSECT	POC_DATA
+; routine: SYSTEM.ADDRESS
+	.ALIGN	LONG
+VAXEXTERNALADDRESS_ROU_KHN8F33F:
+	.BLKL	1
+; list: ARRAY 3 OF SYSTEM.INT32
+	.ALIGN	LONG
+VAXEXTERNALADDRESS_LIS_MAHMKF8D:
+	.BLKB	12
+; status: LONGINT
+	.ALIGN	LONG
+VAXEXTERNALADDRESS_STA_DVR43EF3:
+	.BLKL	1
+
+; the symbols it uses of other modules
+	.EXTERNAL	SYS$SETEF
+	.EXTERNAL	LIB$CALLG
+
+; for traps: poc's runtime routine (Phase 16), and the module's name
+	.EXTERNAL	POC_TRAP
+	.PSECT	POC_CONST
+L_MODULE_NAME:
+	.ASCIC	/VaxExternalAddress/
+
+; the module's procedures
+	.PSECT	POC_CODE
+; PROCEDURE Sum
+VAXEXTERNALADDRESS_SUM_5PI7KH5S:
+	.WORD	^M<>
+; line 20
+	ADDL3	8(AP), 4(AP), R0
+	RET
+	PUSHL	#3
+	PUSHL	#21
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#4, G^POC_TRAP
+
+; the module's initializer: once only
+	.PSECT	POC_CODE
+	.ENTRY	VAXEXTERNALADDRESS_INIT, ^M<>
+	BLBC	L_INITIALISED, L_BODY
+	RET
+L_BODY:
+	MOVB	#1, L_INITIALISED
+	SUBL2	#12, SP
+; line 24
+	MOVAB	G^SYS$SETEF, R0
+	MOVL	R0, VAXEXTERNALADDRESS_ROU_KHN8F33F
+; line 25
+	MOVL	#1, VAXEXTERNALADDRESS_LIS_MAHMKF8D
+; line 25
+	MOVL	#33, VAXEXTERNALADDRESS_LIS_MAHMKF8D+4
+; line 26
+	MOVL	#2, -12(FP)
+	MOVAB	VAXEXTERNALADDRESS_LIS_MAHMKF8D, -8(FP)
+	MOVL	VAXEXTERNALADDRESS_ROU_KHN8F33F, -4(FP)
+	CALLG	-12(FP), G^LIB$CALLG
+	MOVL	R0, VAXEXTERNALADDRESS_STA_DVR43EF3
+; line 27
+	MOVL	#2, VAXEXTERNALADDRESS_LIS_MAHMKF8D
+; line 27
+	MOVL	#40, VAXEXTERNALADDRESS_LIS_MAHMKF8D+4
+; line 27
+	MOVL	#2, VAXEXTERNALADDRESS_LIS_MAHMKF8D+8
+; line 28
+	MOVL	#2, -12(FP)
+	MOVAB	VAXEXTERNALADDRESS_LIS_MAHMKF8D, -8(FP)
+	MOVAB	VAXEXTERNALADDRESS_SUM_5PI7KH5S, R0
+	MOVL	R0, -4(FP)
+	CALLG	-12(FP), G^LIB$CALLG
+	MOVL	R0, VAXEXTERNALADDRESS_STA_DVR43EF3
+	RET
+
+; the module's key, which its importers refer to
+POC_K1_4003F1B57DDE367E == 0
+
+; the program's start: the module's initializer, then SS$_NORMAL
+	.ENTRY	VAXEXTERNALADDRESS_MAIN, ^M<>
+	CALLS	#0, VAXEXTERNALADDRESS_INIT
+	MOVL	#1, R0
+	RET
+
+	.END	VAXEXTERNALADDRESS_MAIN

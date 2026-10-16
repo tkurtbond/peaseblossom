@@ -2681,13 +2681,15 @@ MODULE VaxCodeGenerator;
   END Constant;
 
   (* A procedure as a value (section 14, item 7): the address of its entry
-     mask, MOVAB, into dest when that is a longword, else a register *)
+     mask, MOVAB, into dest when that is a longword, else a register. An
+     external ["VMS"] one, SYSTEM.VAL(SYSTEM.ADDRESS, E)'s operand, is named
+     by its linkage name in general mode, as a call names it *)
   PROCEDURE ProcedureValue(obj: SymbolTable.Object; dest: Operand; line, column: INTEGER): Operand;
     VAR x, r: Operand;
   BEGIN
     x := NewOperand(memory, obj.type);
     ProcedureSymbol(obj, x.symbol);
-    IF HomeOf(obj) # NIL THEN x.outside := TRUE; AddExternal(x.symbol) END;
+    IF (HomeOf(obj) # NIL) OR (obj.externalConvention # "") THEN x.outside := TRUE; AddExternal(x.symbol) END;
     IF (dest # NIL) & (Suffix(dest.type) = "L") THEN r := dest ELSE r := NewRegister(obj.type, line, column) END;
     Emit2("MOVAB", x, r);
     RETURN r
@@ -2717,7 +2719,10 @@ MODULE VaxCodeGenerator;
     END;
     obj := Resolve(d.qualifier, d.name, e.line, e.column);
     IF (obj # NIL) & (obj.class = SymbolTable.procClass) & IsProcedureType(obj.type)
-       & (obj.externalConvention = "") & (d.selectors = NIL) THEN
+       & ((obj.externalConvention = "") OR (obj.externalConvention = "VMS")) & (d.selectors = NIL) THEN
+      (* an external one only as SYSTEM.VAL(SYSTEM.ADDRESS, E), which the
+         checker allows nowhere else (PLAN.md, "Ongoing language
+         enhancements", item 3) *)
       RETURN ProcedureValue(obj, dest, e.line, e.column)
     ELSIF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN
       Unsupported(e.line, e.column, "this designator as a value"); RETURN Dummy()

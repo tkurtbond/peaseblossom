@@ -1107,3 +1107,98 @@ Found in the manuals:
   `SYS$OUTPUT` and `SYS$ERROR`, open it twice, as two versions. So
   `guest-run.com` gives each stream a file of its own, and keeps only
   the `%` lines of `SYS$ERROR`'s, without the traceback.
+
+## Proposals, part 5: argument lists through `LIB$CALLG` (2026-10-15)
+
+**Approved by the user, 2026-10-15**, all five as written.
+
+`LIB$SIGNAL` and `LIB$STOP` take a list: a condition, the count of its FAO
+arguments and the arguments, then optionally another condition with its
+own, and so on. poc has no variadic call. So the generator leaves both out,
+along with `SYS$FAO`, `LIB$SYS_FAO`, `LIB$MATCH_COND`, `STR$CONCAT` and
+`STR$FIND_FIRST_SUBSTRING` (part 2). `Conditions` declares each of the
+first two twice, with one argument and with three. That gives `Signal`,
+`SignalWith` (one FAO argument), `Stop` and `StopWith`, and nothing for a
+message with two FAO arguments or for chained conditions.
+
+`LIB$CALLG(argument_list, user_procedure)` calls a routine with an
+argument list the caller builds, by `CALLG`, which is how a language
+without variadic calls reaches such a routine. `LIB_ROUTINES` declares it,
+with the list an `x-` `ARRAY OF SYSTEM.BYTE` and the routine a
+`SYSTEM.ADDRESS`. `PLAN.md`'s "Ongoing language enhancements", item 3,
+made on `main` and merged into `vax`, gives the address:
+`SYSTEM.VAL(SYSTEM.ADDRESS, SignalAlone)`. These proposals come after that
+merge and the item's VAX half.
+
+1. **A guest test first**, in MACRO-32, with `tools/vax-do`. It calls
+   `LIB$SIGNAL` directly by `CALLS`, and again through `LIB$CALLG`, each
+   time with the same list, and compares:
+   - the printed message and the traceback, with one condition and two
+     FAO arguments, and with two chained conditions;
+   - what a handler established in the caller sees: the signal array, its
+     PC and PSL above all, and the mechanism array's depth;
+   - Continue (both return to the caller) and an unwind to the
+     establisher's caller;
+   - `LIB$STOP` through `LIB$CALLG`: the message, and the image's exit
+     status in DCL's `$STATUS`.
+
+   What I expect, untried: `LIB$SIGNAL` takes the PC of its caller,
+   which is now `LIB$CALLG`. The signal's PC and the top of the traceback
+   then point into `LIBRTL`, one frame above the program's. The handler
+   search starts at `LIB$CALLG`'s frame, which has no handler, and goes
+   on to the program's, so handlers, Continue and unwinding work as for a
+   direct call, at a depth one greater. The answers are written into a
+   "Part 5, tried on the guest" section before any code depends on them.
+   If the handler's view differs in more than the PC and the depth,
+   proposal 2 is brought back to the user before it is built.
+
+2. **`Conditions.SignalList` and `Conditions.StopList`:**
+
+       PROCEDURE SignalList*(arguments-: ARRAY OF SYSTEM.INT32);
+       PROCEDURE StopList*(arguments-: ARRAY OF SYSTEM.INT32);
+
+   `arguments` is the list exactly as `LIB$SIGNAL` takes it, without
+   the argument count: for example `{status, 2, count, name}` with a
+   `!AS` argument as a descriptor's address (`VmsArguments`), or
+   `{status1, 0, status2, 1, n}` for two conditions. The procedure copies
+   it after a count into a local `ARRAY 256 OF SYSTEM.INT32` and calls
+   `LIB$CALLG` with `SignalAlone`'s or `StopAlone`'s address.
+   - `CALLG`'s count is a byte, so more than 255 arguments are refused:
+     `Stop(LIB$_WRONUMARG)`, as a routine VMS calls with the wrong count
+     refuses it.
+   - `StopList` never returns. `SignalList` returns when a handler
+     continues.
+   - `Signal`, `SignalWith`, `Stop` and `StopWith` stay as they are,
+     direct calls with no extra frame. The module comment says that a
+     list's PC, as part 5's test found it, is `LIB$CALLG`'s.
+   - `Conditions` imports `LIB_ROUTINES` for `LIB$CALLG`. `VMSLIB` needs
+     `VMSDEF` already.
+
+   Since `arguments` is an `x-` parameter, it takes an array variable or
+   an array literal of a named type (Phase 14). The module's comment
+   shows both: `TYPE Four = ARRAY 4 OF SYSTEM.INT32`, then
+   `Conditions.SignalList(Four{status, 2, count, SYSTEM.ADR(name)})`, with `name` a
+   `VmsArguments` descriptor.
+   A wrong list is the caller's mistake, and is not checked, as from
+   MACRO-32 or C.
+
+3. **The other routines the generator leaves out stay left out.** Any of
+   them can be reached the same way, `LIB$CALLG` with its address, and
+   this file's part 2 note on them ("Left out, each with a comment")
+   says so. Each gets an
+   Oberon interface only when a program needs it, by the VAX module
+   workflow. The generator is not changed.
+
+4. **Fixture.** `vax-vmslib`'s `VmsLibSignal` gains:
+   - a condition with two FAO arguments, one a number and one `!AS`;
+   - two chained conditions;
+   - a handler that prints the signal array it is given for a list, and
+     continues;
+   - and a program of its own, `VmsLibStopList`, that ends by `StopList`
+     with one FAO argument, checked by DCL's `$STATUS`.
+
+   The 256-argument refusal is shown by a third program,
+   `VmsLibListTooLong`, which ends with `LIB$_WRONUMARG`.
+
+5. **Documents.** A "Part 5 done" section here, `rtl/vax/vmslib/
+   README.md`, and `PLAN.md` step 5's record.

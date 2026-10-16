@@ -785,6 +785,14 @@ C++, and so on) unless step 4 chooses one deliberately.
    `-build` taking a `.cld` file; five checks on the guest first; and
    fixtures `vax-cli-verb` and `vax-cli-table`.
 
+   **Part 6, argument lists through `LIB$CALLG` (2026-10-15)**: five
+   proposals in `vms-sdl-interfaces.md`, part 5, **approved by the user,
+   2026-10-15**. They are made after "Ongoing language enhancements" item
+   3 is merged from `main` with its VAX half. A guest test first compares
+   `LIB$SIGNAL` called directly and through `LIB$CALLG`. Then
+   `Conditions.SignalList` and `StopList` take a whole argument list:
+   several FAO arguments, or chained conditions.
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)
@@ -1302,6 +1310,14 @@ Those done while Phase 15 was current, 1 and 2, are in
    Reference Guide, the User's Guide ("Calling C") and `AGENTS.md` say
    what it is. `make check` passed on atla, cymoril, artos and alerik
    (360 each, the fixed point and `check-strict` included).
+
+   **Merged into `vax` (509cebd), and the VAX half made there
+   (2026-10-15):** `VaxCodeGenerator.Designator` takes an external
+   `["VMS"]` procedure's name, which the checker allows only in `VAL`,
+   and `ProcedureValue` names it `G^` and `.EXTERNAL`, as a call does.
+   Fixtures `vax-external-address` (its `.mar` assembled on the guest and
+   reviewed by the user) and `vax-vms-calls` (`LIB$CALLG` of
+   `LIB$PUT_OUTPUT` and of an Oberon `Sum`, run on the guest).
 
 ## Ongoing implementation enhancements
 

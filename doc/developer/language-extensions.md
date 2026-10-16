@@ -1052,9 +1052,11 @@ Peaseblossom's own.
   address carries no type, so nothing checks that the routine given it
   can call `E` with what it passes. A global Oberon procedure's address
   was already `SYSTEM.VAL(SYSTEM.ADDRESS, P)`, and is unchanged. The LLVM
-  backend gives the C function's address. A `["VMS"]` one is the VAX
-  backend's (on the `vax` branch), which gives `G^name` by `MOVAB`, as for
-  an Oberon procedure.
+  backend gives the C function's address. The VAX backend gives a
+  `["VMS"]` one's as `MOVAB G^name`, the name declared `.EXTERNAL`, as a
+  call names it (fixtures `vax-external-address`, and `vax-vms-calls`,
+  which passes `LIB$PUT_OUTPUT`'s address and an Oberon procedure's to
+  `LIB$CALLG` on the guest).
   `-strict` rejects it, beside the declaration. Fixtures
   `llvm-system-val-external` (C's `qsort` given a C comparison from the
   module's C part, the address taken from two modules) and

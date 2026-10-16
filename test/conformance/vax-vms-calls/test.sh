@@ -8,8 +8,9 @@
 # by NIL; $BINTIM and $ASCTIM, a quadword read-only parameter from a
 # variable and from a constant; LIB$INSERT_TREE and LIB$TRAVERSE_TREE,
 # Oberon procedures VMS calls back; $FAOL, an array of longwords as an
-# ARRAY OF SYSTEM.BYTE. Built for the VAX under -O2 and run there (vax_do,
-# guest-run.com), with POC_VMSCALLS_LNM defined.
+# ARRAY OF SYSTEM.BYTE; LIB$CALLG given LIB$PUT_OUTPUT's address and an Oberon
+# procedure's, by SYSTEM.VAL(SYSTEM.ADDRESS, P). Built for the VAX under -O2
+# and run there (vax_do, guest-run.com), with POC_VMSCALLS_LNM defined.
 . ../../vaxfixture.sh
 rtl=../../../rtl/vax
 written="VmsCalls.mar VmsArguments.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar"

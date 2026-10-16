@@ -1,0 +1,3 @@
+semantic OK, wrote VaxExternalAddress.mar
+exit 0
+VaxExternalAddress.mar matches expected-vax.mar

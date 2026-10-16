@@ -12,4 +12,7 @@ delta [   0 00:01:00.00] status %X00000001
 tree, status %X00158001: 1 2 5 8
 traversed, status %X00158001
 formatted [42 and 000000FF] status %X00000001
+LIB$PUT_OUTPUT through LIB$CALLG
+LIB$CALLG of LIB$PUT_OUTPUT, status %X00000001
+LIB$CALLG of Sum(40, 2): 42
 run status: %X00000001
