@@ -21,6 +21,9 @@
 # compiled against another interface of a module linked with the
 # library, each stopped with VMS's message.
 . ../../vaxfixture.sh
+# what the guest prints names POC's account (its user name or home), so
+# this runs under POC's alone, not POC2's (tools/vax-lock.sh)
+VAX_USER=poc; export VAX_USER
 rm -rf libs main inst
 rm -f useolb.com useshr.com
 run() {

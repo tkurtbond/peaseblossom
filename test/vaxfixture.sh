@@ -106,15 +106,27 @@ vax_runs() {
 # without vax-do's own last line, with <expected>: a failure or a
 # difference is added to result. Skipped elsewhere, and when VAX_GUEST is
 # "skip", saying so on the output but not in result, as vax_mar's guest
-# parts are.
+# parts are. With VAX_REPEAT=<n> above 1, the procedure is given n as its
+# P1, and one that honours it (make test-vax-asts' fixtures) builds its
+# programs once and runs them n times, printing the first run's output and
+# only where a later one differs from it, so <expected> still holds; the
+# run may then take 600 seconds and 120 more a run.
 vax_do() {
   vax_tools=../../../tools
   vax_proc=$1; vax_expected=$2; shift 2
+  vax_repeat=
+  case ${VAX_REPEAT:-} in
+    ""|*[!0-9]*|0|1) ;;
+    *) vax_repeat="-p $VAX_REPEAT"
+       echo "running $vax_proc's programs $VAX_REPEAT times (VAX_REPEAT)"
+       : "${VAX_DO_TIMEOUT:=$((600 + 120 * VAX_REPEAT))}"; export VAX_DO_TIMEOUT ;;
+  esac
   if [ "${VAX_GUEST:-}" = skip ]; then
     echo "SKIPPED: running $vax_proc on the VAX (VAX_GUEST=skip)"
   elif "$vax_tools/vax-assemble" -available; then
     mkdir -p vax-do
-    if ! "$vax_tools/vax-do" -o vax-do "$vax_proc" "$@" >vax-do/out 2>&1; then
+    # shellcheck disable=SC2086
+    if ! "$vax_tools/vax-do" -o vax-do $vax_repeat "$vax_proc" "$@" >vax-do/out 2>&1; then
       echo "$vax_proc failed on the VAX:" >>result
       cat vax-do/out >>result
     else

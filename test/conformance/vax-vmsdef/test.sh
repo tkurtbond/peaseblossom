@@ -12,6 +12,9 @@
 #   poc's layout of every record type against SDL's offsets and sizes;
 #   VmsDefCalls calls real routines through the generated declarations.
 . ../../vaxfixture.sh
+# what the guest prints names POC's account (its user name or home), so
+# this runs under POC's alone, not POC2's (tools/vax-lock.sh)
+VAX_USER=poc; export VAX_USER
 vms=../../../rtl/vax/vms
 rtl=../../../rtl/vax
 tools=../../../tools

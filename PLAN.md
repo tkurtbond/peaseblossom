@@ -989,20 +989,25 @@ C++, and so on) unless step 4 chooses one deliberately.
      tried), `$ENQW` and `$DEQ`, `$WAKE` and `$SETPRN`. A part 13 of step
      5, proposals first, with one fixture, `vax-system-services`, and no
      module.
-   - **VMSLIB from its shareable image.** Every library build makes both
-     kinds, but every VMSLIB fixture links against the object libraries,
-     and a shareable image has its own copy of the writable data that
-     `Subprocesses`, `ExitHandlers`, `AsynchronousTraps` and
+   - **Done.** **VMSLIB from its shareable image.** Every library build
+     makes both kinds, but every VMSLIB fixture linked against the object
+     libraries, and a shareable image has its own copy of the writable
+     data that `Subprocesses`, `ExitHandlers`, `AsynchronousTraps` and
      `BalancedTrees` keep. Fixture `vax-vmslib-shareable`: one program
-     using every VMSLIB module's state, linked both ways under `-O2` and
-     `-OC`, all four runs printing the same.
-   - **The AST fixtures, repeatedly.** `vax_do` takes `VAX_REPEAT=<n>`:
+     using every VMSLIB module, its subprocess and exit handler reachable
+     only from VMSLIB's lists across two collections, linked both ways
+     under `-O2` and `-OC`; all four runs print the same.
+   - **Done.** **The AST fixtures, repeatedly.** `vax_do` takes `VAX_REPEAT=<n>`:
      a fixture that honours it builds once on the guest and runs each
      program n times, compares each later run with the first there
      (`DIFFERENCES`), and prints only a difference, so its
      `guest-run.expected` is unchanged. `make test-vax-asts` (default 20)
      runs `vax-asts`, `vax-asts-heap`, `vax-conditions-handlers` and
-     `vax-subprocesses` so; not part of `make check`.
+     `vax-subprocesses` so; not part of `make check`. `tools/vax-do -p`
+     gives the procedure its P1, and the procedure calls itself with
+     `/OUTPUT` for each run (`DEVELOPER.md`, section 4). `vax-asts-heap`
+     now builds `AstNoImport` before its runs, which moved one line of its
+     `guest-run.expected`.
    - **Done.** **The kits.** `make vax-kit` takes VMSLIB by a glob, but
      the kit's `README.TXT` and `README-VMS.TXT` named six of its
      modules, now twelve, and `KitVmsLib` used `Conditions` alone. Both

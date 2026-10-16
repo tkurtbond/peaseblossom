@@ -196,7 +196,10 @@ themselves, so it never appears on a command line. curl takes the first
 entry. `tools/vax-do`, `vax-run` and `vax-assemble` take the first account
 whose lock is free (`tools/vax-lock.sh`, a lock for each account in
 `/tmp`), so with two accounts two runs use the guest at once, each in its
-own home directory; `VAX_USER=<login>` pins a run to one account. The two
+own home directory; `VAX_USER=<login>` pins a run to one account. A
+fixture whose guest output names the account, its user name or its home
+directory, pins `VAX_USER=poc` (`vax-lib-information`, `vax-library`,
+`vax-platform`, `vax-vms-calls`, `vax-vmsdef`). The two
 accounts share a UIC group, and so its process names, lock resources and
 group logical names: a fixture names its own, so only the same fixture
 run twice at once could collide. The FTP server works only in active mode: `curl --netrc-file
@@ -230,10 +233,10 @@ suite, so only `make test`'s run uses it: `test-stage1`, `check-opt2` and
 `check-lto` set `VAX_GUEST=skip`, which skips that part of every VAX
 fixture, as on a host without the guest.
 
-`tools/vax-do [-o <dir>] [-get <NAME.EXT>]... <proc.com> [<file>...]`
+`tools/vax-do [-o <dir>] [-get <NAME.EXT>]... [-p <word>] <proc.com> [<file>...]`
 runs a DCL command procedure there (PLAN.md Phase 16 step 1): it copies
 the procedure and the files in, as their names uppercased, runs
-`@<PROC>/OUTPUT=VAXDO.LOG`, prints the log, copies it and each `-get` file
+`@<PROC>/OUTPUT=VAXDO.LOG`, with `-p`'s word as its P1, prints the log, copies it and each `-get` file
 back into `-o`'s directory (default `.`), and deletes its copies on the
 guest. A procedure writes what it has to say to files or to its output,
 never to a terminal for the tool to read; it exits with the status
@@ -247,6 +250,18 @@ it says it skipped, as the other guest parts do. Such procedures are named
 `guest-<name>.com`, and a hand-written MACRO-32 source in a fixture is
 named `hand-<name>.mar`, which `test/testenv.sh` keeps (`vax-hello`,
 `vax-build`; Phase 16 step 2).
+
+Where a fixture's failure is a matter of chance, as with ASTs, one run
+proves little. With `VAX_REPEAT=<n>` above 1, `vax_do` gives the procedure
+n as its P1 (and more time, 600 seconds and 120 a run). A procedure that
+honours it builds its programs once and runs them n times: its runs follow
+a `RUNS` label, and it calls itself, `@'SELF'/OUTPUT=PASS<i>.TXT RUNS`, for
+each. It prints the first run's output, and compares each later one with
+it by `DIFFERENCES`, printing only a difference, so `<expected>` still
+holds. Redirecting DCL's own output with `DEFINE SYS$OUTPUT` instead
+breaks `vax-do`'s `/OUTPUT`. `make test-vax-asts` runs `vax-asts`,
+`vax-asts-heap`, `vax-conditions-handlers` and `vax-subprocesses` so,
+`VAX_ASTS_REPEAT` times (default 20), two at a time (Phase 17 step 8).
 
 `tools/vax-run <main.mar> [<import.mar>...] <run.dbg>...` runs a program
 there under the debugger: it assembles its modules, each named on the
@@ -274,11 +289,11 @@ calling a proper procedure, whose R0 is otherwise left over. A `FOR` up to
 its variable's `MAX` never ends (`Oberon2.pdf` §9.8), nor does the run.
 Line numbers in the debugger's output are those of `expected-vax.mar`, so a
 change to its reviewer's comment means moving the run's breakpoints and
-making the log again. The two
-tools' runs share `POC`'s home directory, so each waits for and holds a
-lock on this host while it uses the guest (`tools/vax-lock.sh`, a
-directory in `/tmp`): the VAX fixtures, run in parallel with the rest,
-take the guest one at a time.
+making the log again. Runs under one account share its home directory,
+so each waits for and holds that account's lock on this host while it
+uses the guest (`tools/vax-lock.sh`, a directory in `/tmp` for each
+account): the VAX fixtures, run in parallel with the rest, take the
+guest's accounts one run each at a time.
 
 `make vax-stages` (`tools/bootstrap/vax-stages [-to v1|v2|v3] [-install]
 [-keep]`) is the bootstrap on VMS (`PLAN.md` Phase 16 step 6;

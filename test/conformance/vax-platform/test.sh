@@ -15,6 +15,9 @@
 # output.expected, and built for the VAX and run there on VMS names
 # (vax_do, guest-run.com), which must print guest-run.expected.
 . ../../vaxfixture.sh
+# what the guest prints names POC's account (its user name or home), so
+# this runs under POC's alone, not POC2's (tools/vax-lock.sh)
+VAX_USER=poc; export VAX_USER
 rtl=../../../rtl/vax
 rm -f PlatformOut.com
 rm -rf made

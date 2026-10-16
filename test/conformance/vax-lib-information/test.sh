@@ -7,6 +7,9 @@
 # InfoUse against them. Where the VAX development system can be used,
 # guest-run.com builds them there and runs it.
 . ../../vaxfixture.sh
+# what the guest prints names POC's account (its user name or home), so
+# this runs under POC's alone, not POC2's (tools/vax-lock.sh)
+VAX_USER=poc; export VAX_USER
 vms=../../../rtl/vax/vms
 vmslib=../../../rtl/vax/vmslib
 rtl=../../../rtl/vax

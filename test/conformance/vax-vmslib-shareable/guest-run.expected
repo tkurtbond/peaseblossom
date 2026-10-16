@@ -1,0 +1,55 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+VMSLIB_BUILD: %X10000001
+SHAREOLB, against the object libraries: %X10000001
+SHARESHR, against the shareable images: %X10000001
+== SHAREOLB
+ExitHandlers.Declare: SS$_NORMAL
+Subprocesses.Start: SS$_NORMAL
+collected twice
+BalancedTrees: 1 2 5 8 9
+Subprocesses.Wait: %X00000003
+EventFlags.Get: SS$_NORMAL
+Timers.After: SS$_NORMAL
+EventFlags.Wait: SS$_NORMAL
+  the AST's parameter: 42
+Conditions.Message: %SYSTEM-F-ABORT, abort
+LogicalNames.Define: SS$_NORMAL
+LogicalNames.Translate: SS$_NORMAL
+  a value
+Symbols.Set: SS$_NORMAL
+Symbols.Get: SS$_NORMAL
+  a symbol
+DateTimes.FromText: SS$_NORMAL
+  16-OCT-2026 12:34:56.78
+DecimalStrings.Multiply: SS$_NORMAL
+  37037036703703703670
+SortMerge.stable: 1
+CommandLanguage.IsPresent("P1") under RUN, whose P1 is the image: yes
+exit handler: called
+run: %X00000001
+== SHARESHR
+ExitHandlers.Declare: SS$_NORMAL
+Subprocesses.Start: SS$_NORMAL
+collected twice
+BalancedTrees: 1 2 5 8 9
+Subprocesses.Wait: %X00000003
+EventFlags.Get: SS$_NORMAL
+Timers.After: SS$_NORMAL
+EventFlags.Wait: SS$_NORMAL
+  the AST's parameter: 42
+Conditions.Message: %SYSTEM-F-ABORT, abort
+LogicalNames.Define: SS$_NORMAL
+LogicalNames.Translate: SS$_NORMAL
+  a value
+Symbols.Set: SS$_NORMAL
+Symbols.Get: SS$_NORMAL
+  a symbol
+DateTimes.FromText: SS$_NORMAL
+  16-OCT-2026 12:34:56.78
+DecimalStrings.Multiply: SS$_NORMAL
+  37037036703703703670
+SortMerge.stable: 1
+CommandLanguage.IsPresent("P1") under RUN, whose P1 is the image: yes
+exit handler: called
+run: %X00000001

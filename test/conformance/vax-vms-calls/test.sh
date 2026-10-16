@@ -12,6 +12,9 @@
 # procedure's, by SYSTEM.VAL(SYSTEM.ADDRESS, P). Built for the VAX under -O2
 # and run there (vax_do, guest-run.com), with POC_VMSCALLS_LNM defined.
 . ../../vaxfixture.sh
+# what the guest prints names POC's account (its user name or home), so
+# this runs under POC's alone, not POC2's (tools/vax-lock.sh)
+VAX_USER=poc; export VAX_USER
 rtl=../../../rtl/vax
 written="VmsCalls.mar VmsArguments.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar"
 rm -f VmsCalls.com

@@ -1,20 +1,20 @@
 build status: %X10000001
-batches checked: 200 or more
-bad batches: 0
-bad lists of the main line: 0
-collections during the run: 3 or more
-run status: %X00000001
-batches checked: 200 or more
-bad batches: 0
-bad lists of the main line: 0
-collections during the run: 3 or more
-run status: %X00000001
-batches checked: 200 or more
-bad batches: 0
-bad lists of the main line: 0
-collections during the run: 3 or more
-run status: %X00000001
 AstNoImport build status: %X10000001
+batches checked: 200 or more
+bad batches: 0
+bad lists of the main line: 0
+collections during the run: 3 or more
+run status: %X00000001
+batches checked: 200 or more
+bad batches: 0
+bad lists of the main line: 0
+collections during the run: 3 or more
+run status: %X00000001
+batches checked: 200 or more
+bad batches: 0
+bad lists of the main line: 0
+collections during the run: 3 or more
+run status: %X00000001
 AstNoImport run status: %X1000007A
 heap re-entered at AST level: import AsynchronousTraps
 AstNoImport run status: %X1000007A

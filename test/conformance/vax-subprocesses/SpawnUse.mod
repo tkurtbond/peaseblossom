@@ -6,7 +6,7 @@ MODULE SpawnUse;
      LIB$DO_COMMAND. What it prints does not change from run to run: no
      PID and no process name VMS made. *)
   IMPORT SYSTEM, Out, Files, Subprocesses, Symbols, LogicalNames, Timers, EventFlags,
-    LIB_ROUTINES, CLIDEF, SSDEF, LIBDEF;
+    LIB_ROUTINES, CLIDEF, SSDEF, LIBDEF, JPIDEF;
 
   VAR
     status, completion, astStatus, firstStatus: SYSTEM.INT32;
@@ -19,6 +19,22 @@ MODULE SpawnUse;
     length: SYSTEM.CARD16;
     f: Files.File;
     r: Files.Rider;
+
+  (* until the process has no subprocess, at most 10 seconds: one that has
+     ended counts against its subprocess quota, PRCLM, 2 on the guest,
+     until VMS has deleted it, so a spawn soon after can fail with
+     SS$_EXQUOTA (make test-vax-asts found it). Prints only if one is left. *)
+  PROCEDURE AwaitNoSubprocess;
+    VAR count, status: SYSTEM.INT32; tries: INTEGER;
+  BEGIN
+    tries := 0;
+    REPEAT
+      count := 0;
+      status := LIB_ROUTINES.LIB$GETJPI(JPIDEF.JPI$_PRCCNT, NIL, NIL, count, NIL, NIL);
+      IF count # 0 THEN status := Timers.Sleep(100); INC(tries) END
+    UNTIL (count = 0) OR (tries = 100);
+    IF count # 0 THEN Out.String("  subprocesses left: "); Out.Int(count, 0); Out.Ln END
+  END AwaitNoSubprocess;
 
   PROCEDURE Show(what: ARRAY OF CHAR; status: SYSTEM.INT32);
   BEGIN
@@ -124,6 +140,7 @@ BEGIN
 
   (* a process name has at most 15 characters; the third is 17 *)
   Out.String("LIB$SPAWN with a process name, twice, and one too long"); Out.Ln;
+  AwaitNoSubprocess;
   status := EventFlags.Get(flagNumber); status := EventFlags.Clear(flagNumber);
   flag := SHORT(SHORT(flagNumber)); id := 0; firstStatus := 0;
   Show("first", LIB_ROUTINES.LIB$SPAWN("WAIT 00:00:02", NIL, NIL, flags, "POC_SPAWN_TEST", id,

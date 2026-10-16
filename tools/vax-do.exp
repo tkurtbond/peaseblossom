@@ -1,13 +1,15 @@
 # Runs a command procedure on the VAX/VMS development system for
 # tools/vax-do, which runs this: in one FTP session (tools/vax-ftp.tcl),
 # copies the procedure and the files to POC's home directory, then, by
-# telnet, runs @<NAME>/OUTPUT=VAXDO.LOG, keeping the FTP session alive,
+# telnet, runs @<NAME>/OUTPUT=VAXDO.LOG [<P1>], keeping the FTP session alive,
 # then copies VAXDO.LOG and each <GET> back into <dir>, and deletes every
 # version of all of them on the guest, whatever happened. Prints one line
 # "VAXDO-STATUS <hex $STATUS>". Exits 0, 1 if a file did not come back
 # (its error on the standard error), 2 if the guest could not be used.
 #
 #   expect -f tools/vax-do.exp <host> <NAME> <dir> {<file> <NAME.EXT>}... -- <GET>...
+#
+# <P1> is $VAX_DO_PARAMETER, when tools/vax-do's -p sets it.
 #
 # The password is read from $VAX_NETRC here (tools/vax-login.tcl), never on
 # a command line, and nothing is shown while it is sent (log_user 0).
@@ -44,7 +46,9 @@ foreach {file remote} $puts {
 }
 
 vax_login $host
-send "@$name/OUTPUT=VAXDO.LOG\r"
+set parameter ""
+if {[info exists ::env(VAX_DO_PARAMETER)] && $::env(VAX_DO_PARAMETER) ne ""} { set parameter " $::env(VAX_DO_PARAMETER)" }
+send "@$name/OUTPUT=VAXDO.LOG$parameter\r"
 # a minute at a time, the FTP session kept alive in between
 set deadline [expr {[clock seconds] + $timeout}]
 set done 0

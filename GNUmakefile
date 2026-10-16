@@ -69,7 +69,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-vax test-vax-guest-poc vax-v1 vax-stages vax-kit check-vax-kit test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-vax test-vax-asts test-vax-guest-poc vax-v1 vax-stages vax-kit check-vax-kit test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -570,6 +570,18 @@ vax-v1: build
 # Not part of make check: it holds the guest for the whole run.
 test-vax-guest-poc: build
 	tools/vax-guest-poc
+
+# PLAN.md Phase 17 step 8: the AST fixtures, whose failures are a matter
+# of chance, with VAX_REPEAT (test/vaxfixture.sh, vax_do): each builds its
+# programs once on the guest and runs them VAX_ASTS_REPEAT times (default
+# 20), printing only where a later run differs from the first. Two at a
+# time, one on each of the guest's accounts. Not part of make check: it
+# holds both accounts, about five minutes at 20.
+VAX_ASTS_REPEAT ?= 20
+VAX_AST_TESTS = vax-asts vax-asts-heap vax-conditions-handlers vax-subprocesses
+
+test-vax-asts: build
+	VAX_REPEAT=$(VAX_ASTS_REPEAT) test/run-tests.sh -j 2 $(VAX_AST_TESTS)
 
 vax-stages: build
 	tools/bootstrap/vax-stages
