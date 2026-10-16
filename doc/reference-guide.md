@@ -406,6 +406,36 @@ is allowed.
   step that would take `v` past `high`, so `FOR i := 0 TO MAX(INTEGER)`
   ends, where the report's `WHILE` would wrap and go on, and after a loop
   that ran, `v` holds the last value it had in the body.
+
+  Where §9.8 gives the report's loop, poc's `FOR v := low TO high BY
+  step DO statements END` is equivalent to
+
+  ```oberon
+  v := low; temp := high;
+  IF step > 0 THEN
+    LOOP
+      IF ~(v <= temp) THEN EXIT END;
+      statements;
+      IF temp - v < step THEN EXIT END;
+      v := v + step
+    END
+  ELSE
+    LOOP
+      IF ~(v >= temp) THEN EXIT END;
+      statements;
+      IF v - temp < -step THEN EXIT END;
+      v := v + step
+    END
+  END
+  ```
+
+  Here `temp` is a hidden variable of `v`'s type, and `step`, a constant,
+  is 1 when `BY` is left out. `v <= temp` and `v >= temp` compare as `v`'s
+  type does, unsigned for a CARD. `temp - v` and `v - temp`, the distance
+  left, are computed modulo 2^n at `v`'s width, n its bits, and compared
+  with the step's size as unsigned numbers, which is exact, since `v` has
+  not passed `temp`. The test before the body runs again after each step,
+  which matters only when the body itself changes `v`.
 - **A guard, `IS` or `WITH` on a pointer names a pointer type**, never a
   record type; `=` and `#` compare pointers of related types only, and
   procedure values of one type only.
