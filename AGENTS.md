@@ -347,6 +347,9 @@ be called by name. `WITH` follows voc's rule for non-local pointers.
 procedure. An optional second string gives the linkage name, emitted
 verbatim and never mangled: `PROCEDURE ["C", "malloc"] AllocateBytes*(size:
 SYSTEM.ADDRESS): SYSTEM.ADDRESS;`. `"VMS"` is accepted but not yet lowered.
+An external is never a procedure value, but `SYSTEM.VAL(SYSTEM.ADDRESS, E)`
+is its address (2026-10-15), for `qsort`'s comparison or `CLI$DCL_PARSE`'s
+`LIB$GET_INPUT`.
 
 ### `-strict` (decided and implemented, Phase 11 B2, 2026-09-25)
 

@@ -1,0 +1,14 @@
+valexternal.mod:25:16: error: an external procedure cannot be used as a procedure value
+valexternal.mod:31:37: error: a procedure local to another procedure cannot be used as a procedure value
+valexternal.mod:36:29: error: an external procedure cannot be used as a procedure value
+valexternal.mod:37:33: error: an external procedure cannot be used as a procedure value
+valexternal.mod:38:8: error: an external procedure cannot be used as a procedure value
+valexternal.mod:39:8: error: an external procedure cannot be used as a procedure value
+valexternal.mod:40:35: error: a type-bound procedure cannot be used as a procedure value
+7 error(s)
+== -strict
+strictaddress.mod:5:10: error: SYSTEM.ADDRESS is not in the Oberon-2 report (-strict)
+strictaddress.mod:6:3: error: an external procedure is not in the Oberon-2 report (-strict)
+strictaddress.mod:8:19: error: SYSTEM.ADDRESS is not in the Oberon-2 report (-strict)
+strictaddress.mod:8:35: error: the address of an external procedure is not in the Oberon-2 report (-strict)
+4 error(s)

@@ -3758,6 +3758,12 @@ MODULE LLVMCodeGenerator;
          through it lays its arguments out exactly as the function expects *)
       QualifiedName(homeModule, obj.name, result.text);
       COPY("ptr", result.llvmType); result.oberonType := obj.type
+    ELSIF (obj.class = SymbolTable.procClass) & (obj.externalConvention = "C") THEN
+      (* the operand of SYSTEM.VAL(SYSTEM.ADDRESS, E), which the checker
+         allows nowhere else: the C function's address, declared already
+         (EmitExternalDeclares, DeclareModuleSymbols) *)
+      COPY("@", result.text); Strcat(result.text, obj.externalName);
+      COPY("ptr", result.llvmType); result.oberonType := obj.type
     ELSE
       Unsupported(w, cg, "designator referring to a predeclared or external procedure, or a module",
                   Types.Undefined, result)

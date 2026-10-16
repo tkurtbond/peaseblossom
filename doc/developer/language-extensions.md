@@ -1037,6 +1037,27 @@ Peaseblossom's own.
   Phase 8/14 work; Phase 6 only records the linkage info
   (`SymbolTable.ObjectDesc.externalConvention`/`externalName`) for a
   later backend to consume.
+- **An external procedure's address** (2026-10-15, `PLAN.md`, "Ongoing
+  language enhancements", item 3). An external procedure is never a
+  procedure value: one is always called with Oberon's convention, its
+  hidden arguments included, and an external takes C's or VMS's. But
+  `SYSTEM.VAL(SYSTEM.ADDRESS, E)` gives the address of `E`'s linkage
+  name, for a routine that takes another's address: C's `qsort` its
+  comparison, VMS's `CLI$DCL_PARSE` `LIB$GET_INPUT`. `E` may be declared
+  in the module or imported. That is the only place its name may stand
+  as a value. `VAL` of it to any other type, a procedure type above all,
+  and assigning, passing, returning or comparing it are refused as
+  before: "an external procedure cannot be used as a procedure value". An
+  address carries no type, so nothing checks that the routine given it
+  can call `E` with what it passes. A global Oberon procedure's address
+  was already `SYSTEM.VAL(SYSTEM.ADDRESS, P)`, and is unchanged. The LLVM
+  backend gives the C function's address. A `["VMS"]` one is the VAX
+  backend's (on the `vax` branch), which gives `G^name` by `MOVAB`, as for
+  an Oberon procedure.
+  `-strict` rejects it, beside the declaration. Fixtures
+  `llvm-system-val-external` (C's `qsort` given a C comparison from the
+  module's C part, the address taken from two modules) and
+  `semantic-reject-system-val-external`.
 
 ## `-strict` (decided and implemented, Phase 11 B2, 2026-09-25)
 
@@ -1053,7 +1074,9 @@ Each use is an error, "\<construct\> is not in the Oberon-2 report (-strict)"
   `INT8`/`INT16`/`INT32`/`INT64`, `SET32`, `SET64` - wherever written, types,
   `MAX`/`MIN`/`SIZE` arguments and `SYSTEM.VAL` included (`SymbolTable.
   ObjectDesc.isExtension`);
-- an external procedure (`PROCEDURE ["C", ...]`);
+- an external procedure (`PROCEDURE ["C", ...]`), and an external
+  procedure's address, `SYSTEM.VAL(SYSTEM.ADDRESS, E)` (since 2026-10-15,
+  "External procedures" above; fixture `semantic-reject-system-val-external`);
 - voc's array assignment (an array of another type assigned whole);
 - an integer constant that needs `HUGEINT` (a literal, or where folding first
   goes past `LONGINT` - so it depends on the size model), and a set constant or
