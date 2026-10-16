@@ -1295,3 +1295,129 @@ proposal 2 stands as written.
     both runs' lines.
   - `vax-asts` and `vax-conditions-handlers`, which build `VMSLIB` too,
     still pass.
+
+## Proposals, part 6: RMS's indexed and relative files (2026-10-15)
+
+The first of step 5's supported-tier groups
+(`doc/research/vms-native-library-inventory.md`, proposal 4, "RMS"): what
+`Files` cannot do, used synchronously. That means indexed and relative files,
+keyed access, `$FIND`, `$UPDATE`, `$DELETE` and record locking. Asynchronous
+RMS stays step 6's. The facts come from the *VMS Record Management Services
+Manual* (`AA-LA83A`, 5.0), extracted to text for this. **Approved by the
+user, 2026-10-15**, all six.
+
+1. **No new module: a fixture that uses the generated declarations**, as the
+   supported tier was defined. `STARLET` declares the services (`SYS$CREATE`,
+   `SYS$CONNECT`, `SYS$PUT`, `SYS$GET`, `SYS$FIND`, `SYS$UPDATE`,
+   `SYS$DELETE`, `SYS$CLOSE`). `FABDEF`, `RABDEF`, `XABDEF` and `XABKEYDEF`
+   give the blocks as records, and `RMSDEF` gives the codes (`RMS$_DUP`,
+   `RMS$_RNF`, `RMS$_RLK`, `RMS$_EOF`). A block is passed as `VAR ...: ARRAY
+   OF SYSTEM.BYTE`, so a variable of its record type goes straight in. The
+   fixture is also the worked example, and its comment shows the idiom. A
+   VMSLIB module over keyed files (`IndexedFiles`, say) is left for when a
+   program wants one; the fixture shows what it would wrap.
+
+2. **What the program does in place of `$FAB`, `$RAB` and `$XABKEY`.** The
+   macros fill in the block's identifier and length and their defaults.
+   poc zeroes every variable, so the program sets those fields itself:
+   - `BID`/`BLN` (`FAB$C_BID`, `FAB$C_BLN`, and so on);
+   - every field the file needs: `ORG`, `RFM` (which the manual says must be
+     set before `$CREATE`), `MRS`, `FAC`, `SHR`;
+   - each address field (`FNA`, `XAB`, `FAB`, `UBF`, `RBF`, `KBF`), as
+     `SYSTEM.VAL(SYSTEM.CARD32, SYSTEM.ADR(x))`, since the generated fields
+     are `CARD32`s.
+
+   One difference matters. The manual says that a `$XABKEY` macro gives an
+   alternate key duplicates and changeable values when `XAB$B_FLG` is
+   defaulted, but a block not made by the macro gets the primary key's
+   defaults: neither. A program sets `XAB$M_DUP` and `XAB$M_CHG` itself
+   when it wants them. The fixture's comment says so.
+
+3. **An XAB's common header has no names in its record.** `XABKEYDEF`, like
+   every `XAB...DEF`, starts with `fill1` to `fill4`, since SDL defines
+   `XAB$B_COD`, `XAB$B_BLN` and `XAB$L_NXT` once, in `$XABDEF`; the
+   constants for their offsets are in `XABDEF`. I propose the program sets
+   them by `SYSTEM.PUT` at those offsets, with no change to the generator:
+
+       SYSTEM.PUT(SYSTEM.ADR(key) + XABDEF.XAB$B_COD, SYSTEM.VAL(SYSTEM.CARD8, XABKEYDEF.XAB$C_KEY));
+       SYSTEM.PUT(SYSTEM.ADR(key) + XABDEF.XAB$B_BLN, SYSTEM.VAL(SYSTEM.CARD8, XABKEYDEF.XAB$C_KEYLEN));
+       SYSTEM.PUT(SYSTEM.ADR(key) + XABDEF.XAB$L_NXT, SYSTEM.VAL(SYSTEM.CARD32, SYSTEM.ADR(next)));
+
+   The other way would be for `tools/sdloberon` to name a `FILL` that lies
+   under `$XABDEF`'s fields, in each `XAB` it generates. That needs a special
+   case for one SDL module, and a regeneration of `VMSDEF`, so I recommend
+   against it unless the `PUT`s prove a nuisance.
+
+4. **Fixture `vax-rms-indexed`, on the guest.** One program, `RmsIndexed`,
+   prints each step's RMS status by name:
+   - **Create** `PARTS.DAT`: indexed, fixed 40-byte records, two keys. The
+     primary key (0) is an 8-character part number with no duplicates. The
+     alternate key (1) is a 12-character location, with duplicates and
+     changeable values.
+   - **Put** six records out of order, then one whose part number is taken
+     (`RMS$_DUP`).
+   - **Read sequentially** by key 0 (part-number order), then by key 1
+     (location order, the duplicates in the order they were put), each to
+     `RMS$_EOF`.
+   - **Keyed `$GET`s**: an exact match, a part number that is not there
+     (`RMS$_RNF`), a generic match on its first characters (`RAB$B_KSZ`
+     shorter than the key), and greater-or-equal (`RAB$M_KGE`).
+   - **`$FIND` then `$UPDATE`**, changing a record's location, then a read
+     by key 1 showing it moved. **`$FIND` then `$DELETE`**, then a read
+     showing the record gone.
+   - **Record locking**: a second `FAB` and `RAB` on the same file, opened
+     for shared writing. The first stream holds a record it has read; the
+     second's `$GET` of it is `RMS$_RLK`, since `RAB$M_WAT` is not set.
+     After the first stream moves on, the second gets it.
+   - **A relative file**, `SLOTS.DAT`, with records put by number (`RAC
+     KEY`, `KBF` the record number), read by number, one number left empty
+     (`RMS$_RNF`).
+
+   The program imports only `VMSDEF`'s modules and `Out`, with no VMSLIB,
+   and deletes its files at the end.
+
+5. **Checked on the guest as written, not before.** Every call in proposal
+   4 is in the 5.0 manual. What the manual does not settle is shown by the
+   run and written into "Part 6 done":
+   - whether a second stream in the same process sees `RMS$_RLK`, as two
+     processes would;
+   - the order of duplicates read by key 1.
+
+   If either differs from the manual's reading, the fixture shows what the
+   guest does, and the record says so.
+
+6. **The documents.** "Part 6 done" here, the inventory's RMS entry marked
+   done (with what was left out: `XABALL` areas, `XABPRO`, journaling,
+   asynchronous RMS), and `PLAN.md` step 5.
+
+## Part 6 done: what was implemented (2026-10-15)
+
+Proposals 1-4 as written: no module, and fixture `vax-rms-indexed`
+(`RmsIndexed.mod`), which imports only `STARLET`, `FABDEF`, `RABDEF`,
+`XABDEF`, `XABKEYDEF`, `RMSDEF` and `Out`, and passes on the guest. The XAB
+header is set by `SYSTEM.PUT` at `XABDEF`'s offsets, and the generator is
+unchanged.
+
+What the guest showed, the two points of proposal 5 first:
+- **Two streams in one process lock each other out**, as two processes
+  would. While the first stream holds P300 from a `$GET`, the second's
+  `$GET` of it is `RMS$_RLK`; after the first reads another record, the
+  second gets P300.
+- **Duplicates of an alternate key come back in the order they were put**
+  (`BIN-7`: P500, then Q100; `SHELF-A`: P100, then P310).
+- **A `$PUT` whose alternate key is a duplicate gives `RMS$_OK_DUP`**, a
+  success, not `RMS$_NORMAL`; a primary key already there gives
+  `RMS$_DUP`.
+- **A key buffer must hold the key as the record does.** RMS compares
+  `RAB$B_KSZ` bytes of `RAB$L_KBF` with the record's, so a key `COPY`'d
+  into a buffer, ending in `0X` and garbage, matches nothing (`RMS$_RNF`),
+  and the `$UPDATE` and `$DELETE` after a failed `$FIND` give `RMS$_CUR`.
+  The fixture pads its key with blanks, and its comment says why.
+- A generic key (`RAB$B_KSZ` 2 for `P3`) finds the first record whose key
+  starts so, and `RAB$M_KGE` the first at or after the key. A relative
+  file's empty slot is `RMS$_RNF`.
+- `FAB$M_DLT` in `FAB$L_FOP` before `$CLOSE` deletes the file; the
+  procedure checks that none is left.
+
+Left out, as proposal 6 says: `XABALL` areas, `XABPRO`, journaling, and
+asynchronous RMS (step 6's rules would apply).

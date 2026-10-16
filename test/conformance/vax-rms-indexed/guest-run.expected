@@ -1,0 +1,69 @@
+POCRTL_BUILD: %X10000001
+VMSDEF_BUILD: %X10000001
+RMSINDEXED built: %X10000001
+create PARTS.DAT: RMS$_NORMAL
+connect: RMS$_NORMAL
+P300: RMS$_NORMAL
+P100: RMS$_NORMAL
+P500: RMS$_NORMAL
+P200: RMS$_OK_DUP
+Q100: RMS$_OK_DUP
+P310: RMS$_OK_DUP
+P200: RMS$_DUP
+by key 0
+  P100    SHELF-A     bolt                
+  P200    SHELF-B     nut                 
+  P300    SHELF-B     hinge               
+  P310    SHELF-A     hinge pin           
+  P500    BIN-7       washer              
+  Q100    BIN-7       spring              
+  end: RMS$_EOF
+by key 1
+  P500    BIN-7       washer              
+  Q100    BIN-7       spring              
+  P100    SHELF-A     bolt                
+  P310    SHELF-A     hinge pin           
+  P300    SHELF-B     hinge               
+  P200    SHELF-B     nut                 
+  end: RMS$_EOF
+get P500/8: RMS$_NORMAL
+  P500    BIN-7       washer              
+get P400/8: RMS$_RNF
+get P3/2: RMS$_NORMAL
+  P300    SHELF-B     hinge               
+get P400/8: RMS$_NORMAL
+  P500    BIN-7       washer              
+find P100: RMS$_NORMAL
+update P100: RMS$_NORMAL
+find P500: RMS$_NORMAL
+delete P500: RMS$_NORMAL
+by key 1
+  P100    BIN-1       bolt                
+  Q100    BIN-7       spring              
+  P310    SHELF-A     hinge pin           
+  P300    SHELF-B     hinge               
+  P200    SHELF-B     nut                 
+  end: RMS$_EOF
+open again: RMS$_NORMAL
+connect: RMS$_NORMAL
+get P300/8: RMS$_NORMAL
+  P300    SHELF-B     hinge               
+get P300/8: RMS$_RLK
+get Q100/8: RMS$_NORMAL
+  Q100    BIN-7       spring              
+get P300/8: RMS$_NORMAL
+  P300    SHELF-B     hinge               
+close again: RMS$_NORMAL
+close PARTS.DAT: RMS$_NORMAL
+create SLOTS.DAT: RMS$_NORMAL
+connect: RMS$_NORMAL
+put slot 1: RMS$_NORMAL
+put slot 2: RMS$_NORMAL
+put slot 4: RMS$_NORMAL
+get slot 4: RMS$_NORMAL
+  fourth    
+get slot 1: RMS$_NORMAL
+  first     
+get slot 3: RMS$_RNF
+close SLOTS.DAT: RMS$_NORMAL
+run: %X00000001

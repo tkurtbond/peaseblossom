@@ -262,6 +262,10 @@ Two conditions apply to a synchronous callback:
      - A fixture creates an indexed file, puts records, reads them back
        by key, and updates one.
      - Asynchronous RMS (`RAB$V_ASY`, completion ASTs) is step 6's.
+     - **Done** (2026-10-15; `vms-sdl-interfaces.md`, part 6): fixture
+       `vax-rms-indexed`, an indexed and a relative file through the
+       generated declarations, with no module over them. Left out:
+       `XABALL` areas, `XABPRO`, journaling, asynchronous RMS.
    - **`LIB$`:**
      - Symbols and logical names: `LIB$SET_SYMBOL`, `LIB$DELETE_SYMBOL`,
        `LIB$SET_LOGICAL`, `LIB$DELETE_LOGICAL`.

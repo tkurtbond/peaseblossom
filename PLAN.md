@@ -806,6 +806,15 @@ C++, and so on) unless step 4 chooses one deliberately.
    `StopList` built the same day ("Part 5 done"); fixture `vax-vmslib`
    runs them.
 
+   **Part 7, RMS's indexed and relative files (2026-10-15)**: six
+   proposals in `vms-sdl-interfaces.md`, part 6, **approved by the user,
+   2026-10-15**, the first supported-tier group. There is no module: fixture
+   `vax-rms-indexed` uses `STARLET` and the `FAB`, `RAB` and `XABKEY` records
+   directly, with the XAB header set by `SYSTEM.PUT`. It passes on the
+   guest, which showed that two streams in one process lock each other out
+   and that duplicates come back in the order they were put ("Part 6
+   done").
+
 6. **Asynchronous system traps and other asynchrony.** VMS systems
    programming leans on them: a service such as `$QIO`, `$SETIMR` or `$ENQ`
    is asked to *complete* asynchronously and to call a routine (an AST)

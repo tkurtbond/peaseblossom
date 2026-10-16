@@ -240,6 +240,8 @@ test/conformance/vax-asts-heap/AstHeap.com
 test/conformance/vax-build-command-tables/work/
 test/conformance/vax-cli-verb/work/
 test/conformance/vax-cli-table/work/
+# vax-rms-indexed's libraries and program (Phase 17 step 5)
+test/conformance/vax-rms-indexed/work/
 # poc-response-files builds a program and a library (Phase 17 step 1)
 test/conformance/poc-response-files/resp-main
 test/conformance/poc-response-files/libs/
