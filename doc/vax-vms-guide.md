@@ -92,9 +92,10 @@ run in, and everything in it is text.
    The base kit makes `[.BIN]`, `[.KIT]` (poc's own MACRO-32),
    `[.LIB.POC.VAX-DEC-VMS.O2]` and `[.OC]` (the libraries), `[.SRC]` (the
    source poc for VMS is built from), `BUILD.COM`, `SETUP.COM`,
-   `README.TXT`, `LICENSE.TXT` and `VERSION.TXT`. The STARLET kit adds its
-   two libraries with their sources, and `README-VMS.TXT`. It refuses to
-   unpack anywhere but in a poc of its own version.
+   `README.TXT`, `VAX-VMS-GUIDE.TXT` (this guide, as text, for `TYPE/PAGE
+   VAX-VMS-GUIDE.TXT`), `LICENSE.TXT` and `VERSION.TXT`. The STARLET kit
+   adds its two libraries with their sources, and `README-VMS.TXT`. It
+   refuses to unpack anywhere but in a poc of its own version.
 3. **Build:**
 
        $ @BUILD
@@ -131,10 +132,26 @@ What it needs besides is the VAX runtime, the modules of `rtl/vax` in
 poc's source tree, as source or made into the library `POCRTL` (chapter
 3). The STARLET kit's modules are `rtl/vax/vms` and `rtl/vax/vmslib`.
 
+Built from source, `make install-vax`, after `make install`, installs
+them (`INSTALL.md`, section 6):
+
+- the libraries `POCRTL`, `VMSDEF` and `VMSLIB` for `vax-dec-vms`, under
+  both size models, beside `poc-rtl` (in `/usr/local/lib/poc` by
+  default). poc finds them by itself, so a program needs no
+  `-import-path`:
+
+      $ poc -target vax-dec-vms -build Hello.Mod
+
+  This writes `Hello.mar`, `Hello.sym` and `Hello.com`, and none of the
+  runtime's modules: `Hello.com` links `POCRTL` on VMS (chapter 2);
+- the two kits (in `/usr/local/share/peaseblossom/vax`), since a program
+  built against these libraries needs a VMS installation from the kit
+  of the same version;
+- this guide, as HTML, PDF and text, with the other documents (in
+  `/usr/local/share/doc/peaseblossom`).
+
 <!-- TODO with the packaging work, after vax is merged: the
-peaseblossom-vax package and make install-vax, and where they put
-POCRTL, VMSDEF and VMSLIB, so that -target vax-dec-vms finds them as
-poc-rtl is found. -->
+peaseblossom-vax package, which installs the same. -->
 
 ## 2. A first program
 

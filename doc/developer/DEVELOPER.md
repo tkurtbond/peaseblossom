@@ -24,7 +24,7 @@ machines".
 | `src/driver/` | `Poc.Mod` (the command), `Libraries.Mod`, `Version.Mod` |
 | `rtl/llvm/` | the runtime, the library `poc-rtl`; `Platform.c` is its part in C |
 | `test/conformance/` | the fixtures, one directory each |
-| `test/install/` | `check.sh`, what `make check-install` runs on an installed poc |
+| `test/install/` | `check.sh`, what `make check-install` runs on an installed poc, and `check-vax.sh`, what `make check-install-vax` runs |
 | `tools/bootstrap/` | the stages: `stage0` (voc, `BOOTSTRAP_POC` or the seed), `stage1`, `stage2`, `make-seed` |
 | `tools/` | also `build-info`, `guide-examples`, `rtl-reference`, `voc-inventory`, `bench`, and for a release `set-version`, `check-hosts`, `release-files` (section 7) |
 | `doc/` | the user's documents: the guides, `poc.1`, `examples/`; `doc/README.md` lists everything |
@@ -96,6 +96,7 @@ writes `build/gen/BuildInfo.Mod` with the commit on every build, so `poc
 | `make check-opt2` | everything built at `-opt 2` |
 | `make check-lto` | the fixtures with `-lto` (not a gate) |
 | `make check-install` | installs into a scratch directory and runs `test/install/check.sh` with only that poc and clang |
+| `make check-install-vax` | installs poc and `make install-vax`'s libraries, kits and guide into a scratch directory and runs `test/install/check-vax.sh`, which builds programs for the VAX with that poc alone (no guest) |
 | `make check-seed` | poc built from the seed builds the same Stage 1 as poc built by voc |
 | `make distcheck` | the release tarball builds without voc and passes `check-install` |
 
@@ -313,6 +314,13 @@ the kits a release carries, poc for VAX/VMS as two DCL procedures,
 `VMSDEF` and `VMSLIB`, and `make check-vax-kit` installs them in
 `[.KITCHECK]` on the guest and builds programs with them, for an hour or
 more (`tools/bootstrap/README.md`; `vax-macro32-backend.md`, section 21).
+The base kit holds the VAX/VMS Guide as text, `VAX-VMS-GUIDE.TXT`
+(`tools/doc/plain-text`, so `make vax-kit` needs pandoc). `make
+install-vax` installs, beside `make install`'s poc, what the VAX target
+needs on Unix: `POCRTL`, `VMSDEF` and `VMSLIB` for `vax-dec-vms` under
+both size models in `LIBDIR/poc`, the two kits in
+`DATADIR/peaseblossom/vax`, and the guide in `DOCDIR`; `make
+uninstall-vax` removes them, and `make check-install-vax` checks both.
 
 `make test-vax-guest-poc` (`tools/vax-guest-poc [-only <regex>]`) runs
 the fixtures' compilations under poc on the guest: V1's image, linked

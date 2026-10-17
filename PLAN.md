@@ -909,6 +909,22 @@ at a convenient point.
 Those done while Phase 15 was current, 1-4, are in
 `doc/history/phases/phase-15.md`.
 
+5.  **[done] The VAX/VMS Guide in the kit, and `make install-vax`.** Left
+    open by Phase 17's exit review; decided with the user 2026-10-17.
+    Made on `vax`, since only it has the VAX target. The base kit holds
+    the guide as text, `VAX-VMS-GUIDE.TXT` (`tools/doc/plain-text`:
+    pandoc, grid tables, ASCII), and `check-vax-kit` checks it unpacked.
+    `make install-vax` installs `POCRTL`, `VMSDEF` and `VMSLIB` for
+    `vax-dec-vms` under `-O2` and `-OC` beside `poc-rtl`, where poc
+    finds them with no `-import-path`, the two kits in
+    `DATADIR/peaseblossom/vax`, and the guide as text, HTML and PDF in
+    `DOCDIR`; not `rtl/vax`'s source. `make uninstall-vax` removes them
+    by the libraries' manifests; `make check-install-vax` (no guest)
+    installs both into a scratch directory and builds programs for the
+    VAX with that poc alone (`test/install/check-vax.sh`). The
+    `peaseblossom-vax` packages, and poc saying the VAX runtime is not
+    installed, come with the packaging work after the merge.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on

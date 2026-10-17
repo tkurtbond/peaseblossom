@@ -74,6 +74,9 @@ proc=$work/CHECKKIT.COM
 \$ S = F\$INTEGER(\$STATUS)
 \$ STEP = "unpack"
 \$ GOSUB REPORT
+\$ S = F\$SEARCH("VAX-VMS-GUIDE.TXT") .NES. ""
+\$ STEP = "the guide as text"
+\$ GOSUB REPORT
 \$ @BUILD
 \$ S = F\$INTEGER(\$STATUS)
 \$ STEP = "build"
@@ -243,6 +246,7 @@ if [ -n "$commit" ]; then versionLine="poc $version ($commit)"; else versionLine
 {
   echo "check: STARLET kit with no poc: refused"
   echo "check: unpack: ok"
+  echo "check: the guide as text: ok"
   echo "check: build: ok"
   echo "check: setup: ok"
   echo "$versionLine"

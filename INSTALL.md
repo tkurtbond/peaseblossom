@@ -255,6 +255,22 @@ poc runs on VAX/VMS 5.5-2 too, built there from the kits in a release,
 beside the tarball and in it as `vax/`, each a DCL procedure that unpacks
 itself on VMS: `POC-<version>.COM`, poc, and `POC-VMS-<version>.COM`,
 VMS's own interfaces (`VMSDEF` and `VMSLIB`), unpacked into the same
-directory. `make vax-kit` writes them from the source tree. The User's
-Guide, section 12, says how to install and use them, and the kits' own
-`README.TXT` and `README-VMS.TXT` say the same.
+directory. `make vax-kit` writes them from the source tree. The VAX/VMS
+Guide says how to install and use them, and the kits' own `README.TXT`
+and `README-VMS.TXT` say the same; the base kit has the guide too, as
+`VAX-VMS-GUIDE.TXT`.
+
+On Unix, poc compiles for VAX/VMS with `-target vax-dec-vms`. After
+`make install`,
+
+    make install-vax
+
+installs what that target needs besides: the libraries `POCRTL`,
+`VMSDEF` and `VMSLIB` for `vax-dec-vms`, beside `poc-rtl` in
+`$(LIBDIR)/poc`, where poc finds them with no `-import-path`; the two
+kits, in `$(DATADIR)/peaseblossom/vax` (`DATADIR` is `$(PREFIX)/share`),
+since a program built against those libraries needs the same version's
+kit on VMS; and the VAX/VMS Guide, in `$(DOCDIR)`. It needs pandoc, for
+the guide as text. `make uninstall-vax` removes them, and `make
+check-install-vax` installs into a scratch directory and builds programs
+for the VAX with the installed poc alone.

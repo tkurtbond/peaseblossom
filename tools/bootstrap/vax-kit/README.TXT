@@ -24,7 +24,8 @@ Installing
        $ @[-]POC-@VERSIONNAME@
 
    It makes [.BIN], [.KIT], [.LIB.POC.VAX-DEC-VMS.O2] and [.OC], [.SRC],
-   BUILD.COM, SETUP.COM, this README.TXT, LICENSE.TXT and VERSION.TXT.
+   BUILD.COM, SETUP.COM, this README.TXT, VAX-VMS-GUIDE.TXT, LICENSE.TXT
+   and VERSION.TXT.
 
 3. Build poc and its libraries:
 
@@ -121,5 +122,10 @@ POC.EXE, with POCRTL.OBJ assembled from [.SRC.RTL]POCRTL.MAR, as [.KIT]'s
 did; on the emulated MicroVAX 3900 (SIMH) poc was developed on, that
 took about 45 minutes.
 
-Peaseblossom's User's Guide and Reference Guide, and its source, are at
-https://github.com/tkurtbond/peaseblossom. LICENSE.TXT is its license.
+VAX-VMS-GUIDE.TXT is the Peaseblossom VAX/VMS Guide, which says all of
+this at more length, and how a program reaches VMS's own facilities:
+
+    $ TYPE/PAGE VAX-VMS-GUIDE.TXT
+
+It, Peaseblossom's User's Guide and Reference Guide, and its source, are
+at https://github.com/tkurtbond/peaseblossom. LICENSE.TXT is its license.

@@ -17,7 +17,8 @@
 #                              runtime's
 #   BUILD.COM, SETUP.COM,      from tools/bootstrap/vax-kit, README.TXT with
 #   README.TXT, LICENSE.TXT,   the version filled in; VERSION.TXT, one line
-#   VERSION.TXT                that names the version and commit
+#   VERSION.TXT,               that names the version and commit; the VAX/VMS
+#   VAX-VMS-GUIDE.TXT          guide as text (tools/doc/plain-text: pandoc)
 #
 # POC-VMS-<version>.COM, the STARLET kit, run later in the same top: the
 # libraries VMSDEF (rtl/vax/vms, generated from STARLETSD.TLB) and VMSLIB
@@ -135,6 +136,7 @@ fill() { # fill <template> <target>
 }
 fill README.TXT "$KIT/base/README.TXT"
 fill README-VMS.TXT "$KIT/vms/README-VMS.TXT"
+"$ROOT/tools/doc/plain-text" "$ROOT/doc/vax-vms-guide.md" "$KIT/base/VAX-VMS-GUIDE.TXT"
 
 # each a VMS name: a name and a type of at most 39 characters of A-Z, 0-9,
 # $, _ and - (Guide to VMS Files and Devices 5.0); copy has checked that

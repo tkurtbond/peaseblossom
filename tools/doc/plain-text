@@ -1,0 +1,27 @@
+#!/bin/sh
+# tools/doc/plain-text <guide.md> <output.txt>: a guide as plain ASCII
+# text, 72 columns, for a reader with no browser, such as VMS's TYPE/PAGE:
+# the VAX/VMS guide's VAX-VMS-GUIDE.TXT, in the base kit
+# (tools/bootstrap/make-vax-kit) and installed by make install-vax. Its
+# tables are grid tables, whose cells wrap, since a simple table's row
+# is one line however long. The one letter outside ASCII the guides use,
+# the o-umlaut of Mössenböck, is written "oe"; any other is an error, as
+# is a line over 255 characters, which the kit's DCL CREATE does not take.
+set -e
+if [ $# -ne 2 ]; then echo "usage: tools/doc/plain-text <guide.md> <output.txt>" >&2; exit 2; fi
+command -v pandoc >/dev/null 2>&1 || {
+  echo "plain-text: pandoc is needed to write $2 (as for make doc)" >&2
+  exit 1
+}
+pandoc -f gfm -t plain-simple_tables-pipe_tables-multiline_tables --columns=72 "$1" |
+  sed 's/ö/oe/g' >"$2.tmp"
+if LC_ALL=C grep -n '[^ -~]' "$2.tmp" >&2; then
+  echo "plain-text: $1 has a character outside ASCII (above)" >&2
+  rm -f "$2.tmp"; exit 1
+fi
+long=$(awk 'length > 255 { print NR; exit }' "$2.tmp")
+if [ -n "$long" ]; then
+  echo "plain-text: line $long of $2 is over 255 characters" >&2
+  rm -f "$2.tmp"; exit 1
+fi
+mv "$2.tmp" "$2"
