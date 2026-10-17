@@ -269,6 +269,9 @@ path; else as a `.sym` with its `.mar`. On VMS:
   list `POC$LIBRARY`, where Unix has `POC_LIBRARY_PATH`, then
   `[.LIB.POC]` beside poc's own `[.BIN]`, where the kit's libraries are.
 
+A search list is a logical name with several translations, tried in
+order:
+
     $ DEFINE POC$IMPORT DISK$USER:[ME.MODULES], DISK$USER:[ME.SHARED]
 
 ### Long command lines and wildcards
@@ -1734,7 +1737,468 @@ The `CLI$` routines need DCL. A detached process, started by `RUN
 of `CommandLanguage` returns `InvalidRequest` there. `HasInterpreter`
 tells a program before it asks.
 
-<!-- Chapters 11 and 12 are to be written. -->
+## 11. Records RMS keeps
+
+*For the Unix reader: files that hold records, which VMS can find by key
+or by number. For the VMS reader: RMS's services from Oberon.*
+
+Every VMS file is kept by RMS, the Record Management Services, and has
+an **organization**:
+
+- **Sequential**: records one after another, read and written in order.
+  Text files are sequential, and `Files` reads and writes them (chapter
+  5), so a program needs nothing more for them.
+- **Relative**: numbered cells of one size, each empty or holding a
+  record, read and written by number, as an array on disk.
+- **Indexed**: records kept in the order of a **key**, a field of each
+  record, and found by its value, as in a small database. A file can
+  have several keys, each with its own order.
+
+`Files` is made for sequential files, and knows nothing of record
+numbers or keys. A program uses RMS's services for relative and indexed
+files, from VMSDEF (chapter 9).
+
+### RMS's blocks
+
+A program describes what it wants in **control blocks**, records RMS
+reads and writes, and passes them to the services:
+
+- **A FAB**, `FABDEF.FABDEF`, describes a file: its name, organization,
+  record format and size, and what the program will do with it.
+- **A RAB**, `RABDEF.RABDEF`, describes a **stream** of record operations
+  on an open file: where records come from and go to, and how the next
+  one is found.
+- **XABs** add attributes. An `XABKEYDEF.XABKEYDEF` describes a key of an
+  indexed file being created.
+
+MACRO-32 programs make them with the `$FAB`, `$RAB` and `$XABKEY`
+macros. An Oberon program does what the macros do:
+
+- **Each block's identifier and length** are set first:
+  `FAB$B_BID := FABDEF.FAB$C_BID` and `FAB$B_BLN := FABDEF.FAB$C_BLN`. An
+  XAB's, which its record has no fields for, are set by `SYSTEM.PUT` at
+  `XABDEF`'s offsets, as `SetKey` below does.
+- **An address is a `SYSTEM.CARD32`**, the address of the name, the
+  buffer, the next block. RMS keeps these addresses from one call to the
+  next, so the blocks and what they point to are global variables, or on
+  the heap, never a procedure's local variables.
+- **A file name is an address and a length** (`FAB$L_FNA` and
+  `FAB$B_FNS`), not a string descriptor.
+- **Every service returns a condition value**, `RMS$_NORMAL` or another
+  `RMS$_` code of `RMSDEF`, and leaves it in the block's `STS` field too.
+  `Conditions.Message` gives its text.
+
+### An indexed file
+
+This program creates an indexed file of parts, whose records hold a
+part's number (key 0), where it is kept (key 1), and what it is. It adds
+records, lists them by each key, finds some, and moves one part:
+
+<!-- example: vax/parts/Parts.Mod -->
+```
+MODULE Parts;
+  IMPORT SYSTEM, Out, Conditions, STARLET, FABDEF, RABDEF, XABDEF, XABKEYDEF;
+
+  CONST
+    (* a record: a part's number, the place it is kept, and what it is *)
+    numberSize = 6; placeSize = 8; recordSize = 32;
+
+  TYPE Record = ARRAY recordSize OF CHAR;
+
+  VAR (* global, since RMS keeps their addresses *)
+    name: ARRAY 16 OF CHAR;
+    file: FABDEF.FABDEF;
+    stream: RABDEF.RABDEF;
+    byNumber, byPlace: XABKEYDEF.XABKEYDEF;
+    record: Record;
+    key: ARRAY numberSize OF CHAR;
+    status: SYSTEM.INT32;
+    found: BOOLEAN; (* whether the last Get found a record *)
+
+  (* x's address, as RMS's blocks hold it *)
+  PROCEDURE Address(VAR x: ARRAY OF SYSTEM.BYTE): SYSTEM.CARD32;
+  BEGIN
+    RETURN SYSTEM.VAL(SYSTEM.CARD32, SYSTEM.ADR(x))
+  END Address;
+
+  (* RMS's message for status, if it is not a success *)
+  PROCEDURE Check(what: ARRAY OF CHAR; status: SYSTEM.INT32);
+    VAR text: ARRAY 100 OF CHAR;
+  BEGIN
+    IF ~ODD(status) THEN
+      Conditions.Message(status, text);
+      Out.String(what); Out.String(": "); Out.String(text); Out.Ln
+    END
+  END Check;
+
+  (* s into record from at, padded with blanks to size *)
+  PROCEDURE Fill(at, size: INTEGER; s: ARRAY OF CHAR);
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (i < size) & (s[i] # 0X) DO record[at + i] := s[i]; INC(i) END;
+    WHILE i < size DO record[at + i] := " "; INC(i) END
+  END Fill;
+
+  (* record, less its trailing blanks *)
+  PROCEDURE Print;
+    VAR i, n: INTEGER;
+  BEGIN
+    n := recordSize;
+    WHILE (n > 0) & (record[n - 1] = " ") DO DEC(n) END;
+    Out.String("  ");
+    FOR i := 0 TO n - 1 DO Out.Char(record[i]) END;
+    Out.Ln
+  END Print;
+
+  (* a key of reference, at position, of size characters; next the
+     address of the next key's block, or 0 *)
+  PROCEDURE SetKey(VAR k: XABKEYDEF.XABKEYDEF; reference: SYSTEM.CARD8;
+                   position: SYSTEM.CARD16; size, flags: SYSTEM.CARD8; next: SYSTEM.CARD32);
+  BEGIN
+    SYSTEM.PUT(SYSTEM.ADR(k) + XABDEF.XAB$B_COD, SYSTEM.VAL(SYSTEM.CARD8, XABKEYDEF.XAB$C_KEY));
+    SYSTEM.PUT(SYSTEM.ADR(k) + XABDEF.XAB$B_BLN, SYSTEM.VAL(SYSTEM.CARD8, XABKEYDEF.XAB$C_KEYLEN));
+    SYSTEM.PUT(SYSTEM.ADR(k) + XABDEF.XAB$L_NXT, next);
+    k.XAB$B_REF := reference; k.XAB$B_DTP := XABKEYDEF.XAB$C_STG;
+    k.XAB$W_POS[0] := position; k.XAB$B_SIZ[0] := size; k.XAB$B_FLG := flags
+  END SetKey;
+
+  PROCEDURE Add(number, place, description: ARRAY OF CHAR);
+  BEGIN
+    Fill(0, numberSize, number); Fill(numberSize, placeSize, place);
+    Fill(numberSize + placeSize, recordSize - numberSize - placeSize, description);
+    stream.RAB$B_RAC := RABDEF.RAB$C_KEY;
+    Check(number, STARLET.SYS$PUT(stream, NIL, NIL))
+  END Add;
+
+  (* every record, in the order of key reference *)
+  PROCEDURE List(what: ARRAY OF CHAR; reference: SYSTEM.CARD8);
+    VAR status: SYSTEM.INT32;
+  BEGIN
+    Out.String(what); Out.Ln;
+    stream.RAB$B_KRF := reference;
+    Check("rewind", STARLET.SYS$REWIND(stream, NIL, NIL));
+    stream.RAB$B_RAC := RABDEF.RAB$C_SEQ;
+    status := STARLET.SYS$GET(stream, NIL, NIL);
+    WHILE ODD(status) DO
+      Print; status := STARLET.SYS$GET(stream, NIL, NIL)
+    END
+  END List;
+
+  (* the first record whose number starts with the first size
+     characters of number, if there is one: found *)
+  PROCEDURE Get(number: ARRAY OF CHAR; size: SYSTEM.CARD8);
+    VAR i: INTEGER; status: SYSTEM.INT32;
+  BEGIN
+    FOR i := 0 TO numberSize - 1 DO key[i] := " " END;
+    i := 0; WHILE number[i] # 0X DO key[i] := number[i]; INC(i) END;
+    stream.RAB$B_RAC := RABDEF.RAB$C_KEY; stream.RAB$B_KRF := 0;
+    stream.RAB$L_KBF := Address(key); stream.RAB$B_KSZ := size;
+    status := STARLET.SYS$GET(stream, NIL, NIL);
+    Out.String("get "); Out.String(number); Out.Ln;
+    Check("  not found", status);
+    found := ODD(status);
+    IF found THEN Print END
+  END Get;
+
+BEGIN
+  name := "PARTS.DAT";
+  file.FAB$B_BID := FABDEF.FAB$C_BID; file.FAB$B_BLN := FABDEF.FAB$C_BLN;
+  file.FAB$L_FNA := Address(name); file.FAB$B_FNS := 9; (* its length *)
+  file.FAB$B_FAC := FABDEF.FAB$M_GET + FABDEF.FAB$M_PUT + FABDEF.FAB$M_UPD;
+  file.FAB$B_ORG := FABDEF.FAB$C_IDX; file.FAB$B_RFM := FABDEF.FAB$C_FIX;
+  file.FAB$W_MRS := recordSize; file.FAB$L_XAB := Address(byNumber);
+  SetKey(byNumber, 0, 0, numberSize, 0, Address(byPlace));
+  SetKey(byPlace, 1, numberSize, placeSize, XABKEYDEF.XAB$M_DUP + XABKEYDEF.XAB$M_CHG, 0);
+  status := STARLET.SYS$CREATE(file, NIL, NIL); Check("create", status);
+  IF ODD(status) THEN
+    stream.RAB$B_BID := RABDEF.RAB$C_BID; stream.RAB$B_BLN := RABDEF.RAB$C_BLN;
+    stream.RAB$L_FAB := Address(file);
+    stream.RAB$L_UBF := Address(record); stream.RAB$W_USZ := recordSize;
+    stream.RAB$L_RBF := Address(record); stream.RAB$W_RSZ := recordSize;
+    Check("connect", STARLET.SYS$CONNECT(stream, NIL, NIL));
+
+    Add("P300", "SHELF-B", "hinge");
+    Add("P100", "SHELF-A", "bolt");
+    Add("P500", "BIN-7", "washer");
+    Add("P200", "SHELF-B", "nut");
+    Add("P310", "SHELF-A", "hinge pin");
+    Add("P200", "BIN-1", "a second P200");
+    List("by number", 0);
+    List("by place", 1);
+
+    Get("P300", numberSize); Get("P400", numberSize); Get("P3", 2);
+    Get("P100", numberSize);
+    IF found THEN
+      Fill(numberSize, placeSize, "BIN-1");
+      Check("update", STARLET.SYS$UPDATE(stream, NIL, NIL))
+    END;
+    List("by place", 1);
+
+    file.FAB$L_FOP := FABDEF.FAB$M_DLT; (* delete the file when it is closed *)
+    Check("close", STARLET.SYS$CLOSE(file, NIL, NIL))
+  END
+END Parts.
+```
+
+<!-- vax-session: parts -->
+
+    $ RUN PARTS
+    P200: %RMS-E-DUP, duplicate key detected (DUP not set)
+    by number
+      P100  SHELF-A bolt
+      P200  SHELF-B nut
+      P300  SHELF-B hinge
+      P310  SHELF-A hinge pin
+      P500  BIN-7   washer
+    by place
+      P500  BIN-7   washer
+      P100  SHELF-A bolt
+      P310  SHELF-A hinge pin
+      P300  SHELF-B hinge
+      P200  SHELF-B nut
+    get P300
+      P300  SHELF-B hinge
+    get P400
+      not found: %RMS-E-RNF, record not found
+    get P3
+      P300  SHELF-B hinge
+    get P100
+      P100  SHELF-A bolt
+    by place
+      P100  BIN-1   bolt
+      P500  BIN-7   washer
+      P310  SHELF-A hinge pin
+      P300  SHELF-B hinge
+      P200  SHELF-B nut
+
+What the program does, step by step:
+
+- **`$CREATE`** makes the file from the FAB: organization
+  `FAB$C_IDX`, fixed-length records (`FAB$C_FIX`) of `FAB$W_MRS`
+  characters, and its keys, from the XABs chained from `FAB$L_XAB`. Key 0,
+  the primary key, may not have duplicates, so the second `P200` is
+  refused. Key 1 allows them (`XAB$M_DUP`) and allows an update to change
+  it (`XAB$M_CHG`). `FAB$B_FAC` says what the program will do: get, put
+  and update records.
+- **`$CONNECT`** makes the RAB a stream on the open file. The RAB's
+  `UBF` and `USZ` are the buffer a `$GET` reads into, `RBF` and `RSZ` the
+  record a `$PUT` or `$UPDATE` writes.
+- **`$PUT`** adds the record, which goes in each key's order wherever
+  it belongs.
+- **`$REWIND`** and sequential **`$GET`s** (`RAB$C_SEQ`) read the records
+  in the order of key `RAB$B_KRF`. Records with the same key come in the
+  order they were put. The last `$GET` returns `RMS$_EOF`.
+- **A keyed `$GET`** (`RAB$C_KEY`) finds the first record whose key
+  starts with the `RAB$B_KSZ` characters at `RAB$L_KBF`: all of the key
+  for an exact match, fewer for a generic one, as `P3` finds `P300`.
+  `RAB$M_KGE` in `RAB$L_ROP` finds the first key greater than or equal
+  instead. A key is compared with the record's bytes, so it is padded as
+  the record is: `P400` with two blanks.
+- **`$UPDATE`** rewrites the record the stream last found, and moves it
+  in the order of each key that changed. `$DELETE` would delete it.
+  `$FIND` finds a record as `$GET` does, without reading it, for an
+  update or a delete.
+- **`$CLOSE`** closes the file. `FAB$M_DLT` in `FAB$L_FOP` deletes it as
+  it closes, so that the example leaves nothing behind.
+
+### A relative file
+
+A relative file is made with organization `FAB$C_REL`. A keyed operation
+on it takes a record number, a longword, as its key:
+
+    slots.FAB$B_ORG := FABDEF.FAB$C_REL;
+    slots.FAB$B_RFM := FABDEF.FAB$C_FIX;
+    slots.FAB$W_MRS := slotSize;
+    ...
+    slotStream.RAB$B_RAC := RABDEF.RAB$C_KEY;
+    slotStream.RAB$L_KBF := Address(number);
+    slotStream.RAB$B_KSZ := 4;
+
+With `number` set to 4, a `$PUT` writes cell 4, and a `$GET` reads it. A
+`$GET` of a cell never written returns `RMS$_RNF`. A sequential `$GET`
+skips the empty cells.
+
+### Sharing a file
+
+`FAB$B_SHR` says what other streams may do with a file while this one
+has it open: `FAB$M_SHRGET`, `SHRPUT`, `SHRUPD` and `SHRDEL`, added
+together. Without them, another `$OPEN` of the file fails. With them,
+each stream locks the record it last read, and another stream's `$GET`
+of that record returns `RMS$_RLK`, "record locked", until the first
+stream goes on to another record or releases it with `$RELEASE`. A
+program that shares a file must be ready for `RMS$_RLK`, and try again.
+
+### Files made by DCL
+
+A file need not be made by the program that uses it. `CREATE/FDL` makes
+a file from a description in the File Definition Language, which `EDIT
+/FDL` writes, keys included. A program then opens it with `$OPEN`, which
+needs no XABs, since RMS reads the keys from the file. `DIRECTORY/FULL`
+shows a file's organization and record format, and `ANALYZE/RMS_FILE`
+its keys and structure.
+
+## 12. Screens
+
+*For the Unix reader: escape sequences work as they do on Unix, and VMS
+has a screen library of its own, much as curses is. For the VMS reader:
+`SMG$` from Oberon.*
+
+A program draws on a terminal's screen in one of two ways: with `VT100`,
+the escape sequences of the runtime's module, as on Unix, or with VMS's
+Screen Management routines, `SMG$`, which know every terminal type VMS
+knows and keep track of what is on the screen.
+
+### `VT100`
+
+`VT100` is the module the *User's Guide* describes, with the same
+procedures and constants: `CUP` moves the cursor, `ED` erases the
+display, `SetAttr` sets a rendition, and so on. On VMS, each procedure
+calls `Out.Flush` after its sequence. `Out` keeps a line until `Ln`
+there, and `Flush` writes what it holds to a terminal without ending the
+line, so a sequence reaches the screen when it is sent, after the text
+written before it. To a file `Flush` does nothing, and the file gets the
+sequences in the lines they were written in.
+
+    VT100.ED(2); VT100.CUP(1, 1);
+    VT100.SetAttr(VT100.Bold); Out.String("Peaseblossom");
+    VT100.SetAttr(VT100.ResetAll); Out.Ln
+
+VMS's terminal driver passes the sequences to the terminal as they are,
+so this works on a VT100 or any later DEC terminal, and on any emulator
+of one.
+
+### `SMG$`
+
+The Screen Management routines draw on a terminal through objects of
+their own, each named by a longword identifier that the program keeps:
+
+- **A pasteboard** is a screen, the terminal's or a file's.
+- **A virtual display** is a rectangle of text, with an optional
+  border and a label on it. A program writes into a display, and pastes
+  it onto a pasteboard at a row and column. Displays can overlap, be
+  moved and be unpasted, and SMG redraws what changes.
+- **A virtual keyboard** reads keys and lines, the terminal's or a
+  file's.
+
+They are reached through VMSDEF's `SMG_ROUTINES`, with `SMGDEF`'s
+constants and `SMGMSG`'s condition values. VMSLIB has no module over
+them. An argument SMG takes by reference may be any expression, a string
+included, since the generated parameters are read-only, and `NIL` omits
+an optional one.
+
+This program draws a bordered display with a label, and text in three
+renditions. On the terminal it waits for a key, and given a file name
+it draws there instead:
+
+<!-- example: vax/panel/Panel.Mod -->
+```
+MODULE Panel;
+  IMPORT SYSTEM, Out, Args, SMGDEF, SMG_ROUTINES;
+
+  VAR
+    pasteboard, keyboard, panel: SYSTEM.CARD32;
+    device: ARRAY 64 OF CHAR;
+    key: SYSTEM.CARD16;
+    failed: SYSTEM.INT32;
+    step: ARRAY 32 OF CHAR;
+
+  (* the first step that fails, and its status, kept to print at the end *)
+  PROCEDURE Check(what: ARRAY OF CHAR; status: SYSTEM.INT32);
+  BEGIN
+    IF ~ODD(status) & (failed = 0) THEN failed := status; COPY(what, step) END
+  END Check;
+
+BEGIN
+  Args.Get(1, device); (* the file to draw into; the terminal if none *)
+  IF device = "" THEN
+    Check("create pasteboard", SMG_ROUTINES.SMG$CREATE_PASTEBOARD(pasteboard, NIL, NIL, NIL, NIL, NIL))
+  ELSE
+    Check("create pasteboard", SMG_ROUTINES.SMG$CREATE_PASTEBOARD(pasteboard, device, NIL, NIL, NIL, NIL))
+  END;
+  Check("create display", SMG_ROUTINES.SMG$CREATE_VIRTUAL_DISPLAY(4, 30, panel,
+    SMGDEF.SMG$M_BORDER, NIL, NIL));
+  Check("label", SMG_ROUTINES.SMG$LABEL_BORDER(panel, " Peaseblossom ", SMGDEF.SMG$K_TOP,
+    NIL, NIL, NIL, NIL));
+  Check("put", SMG_ROUTINES.SMG$PUT_CHARS(panel, "an Oberon-2 compiler", 1, 2, NIL, NIL, NIL, NIL));
+  Check("put", SMG_ROUTINES.SMG$PUT_CHARS(panel, "for VAX/VMS 5.5-2", 2, 2, NIL,
+    SMGDEF.SMG$M_BOLD, NIL, NIL));
+  Check("put", SMG_ROUTINES.SMG$PUT_CHARS(panel, "Press any key", 4, 2, NIL,
+    SMGDEF.SMG$M_REVERSE, NIL, NIL));
+  Check("paste", SMG_ROUTINES.SMG$PASTE_VIRTUAL_DISPLAY(panel, pasteboard, 2, 3, NIL));
+  IF device = "" THEN
+    Check("create keyboard", SMG_ROUTINES.SMG$CREATE_VIRTUAL_KEYBOARD(keyboard, NIL, NIL, NIL, NIL));
+    Check("read keystroke", SMG_ROUTINES.SMG$READ_KEYSTROKE(keyboard, key, NIL, NIL, NIL, NIL, NIL));
+    Check("delete keyboard", SMG_ROUTINES.SMG$DELETE_VIRTUAL_KEYBOARD(keyboard))
+  ELSE
+    Check("snapshot", SMG_ROUTINES.SMG$SNAPSHOT(pasteboard, NIL))
+  END;
+  Check("delete pasteboard", SMG_ROUTINES.SMG$DELETE_PASTEBOARD(pasteboard, NIL));
+  IF failed # 0 THEN
+    Out.String(step); Out.String(" failed: %X"); Out.Hex(failed, 8); Out.Ln
+  END
+END Panel.
+```
+
+On a terminal the display appears at the top left, with "for VAX/VMS
+5.5-2" in bold and "Press any key" in reverse video. A key clears the screen, since
+deleting the pasteboard does. Run as a foreign command with a file name,
+it draws into the file:
+
+<!-- vax-session: panel -->
+
+    $ PANEL := $'F$ENVIRONMENT("DEFAULT")'PANEL
+    $ PANEL PANEL.LIS
+    $ SEARCH PANEL.LIS "|","+"
+     +-------- Peaseblossom --------+
+     | an Oberon-2 compiler         |
+     | for VAX/VMS 5.5-2            |
+     |                              |
+     | Press any key                |
+     +------------------------------+
+
+A file is not a terminal, so the border is drawn with `+`, `-` and `|`,
+and the renditions do not show. (On a VT100 the bytes logged showed the
+same displays in bold and reverse video, and the screen cleared at the
+end.) A pasteboard on a file is written only
+by `SMG$SNAPSHOT`, which writes the whole screen as it is then, 66 lines
+of 132 columns, each without its trailing blanks. `SEARCH` here shows
+just the lines with the display on them.
+
+### Keys and menus
+
+`SMG$READ_STRING` reads a line, with a prompt, into a string, and
+`SMG$READ_KEYSTROKE` one key, as a code: a character's own code, or one
+of `SMGDEF`'s `SMG$K_TRM_` codes for a function key, such as
+`SMG$K_TRM_PF1` or `SMG$K_TRM_UP`. `SMG$KEYCODE_TO_NAME` names it.
+
+A menu is a display that `SMG$CREATE_MENU` fills with choices, and
+`SMG$SELECT_FROM_MENU` lets the user move among them with the arrow keys
+and pick one with Return. The choices are an array of fixed-length
+strings, passed as a `CLASS_A` descriptor by its address:
+
+    VAR choices: ARRAY 4 OF ARRAY 10 OF CHAR;
+        descriptor: VmsArguments.ArrayDescriptor;
+    ...
+    VmsArguments.DescribeArray(descriptor, choices);
+    status := SMG_ROUTINES.SMG$CREATE_MENU(menu, SYSTEM.ADR(descriptor),
+      SMGDEF.SMG$K_VERTICAL, NIL, NIL, NIL, NIL);
+
+Each choice is padded with blanks to its length, not ended by `0X`,
+which SMG would show. A menu is chosen only on a terminal: on a keyboard
+that reads a file, `SMG$SELECT_FROM_MENU` returns `SMG$_EOF`.
+
+### Rules for a program that uses `SMG$`
+
+- **Write nothing with `Out` while a pasteboard is on the terminal.**
+  SMG does not know of `Out`'s lines, which would come between its own
+  and spoil the screen. Print after deleting the pasteboard instead.
+- **Delete the pasteboard before the program ends**, or the terminal
+  is left as SMG set it. Deleting it clears the screen unless the flags
+  say otherwise.
+- **Check each status.** Most `SMG$` routines return one rather than
+  signal, so a mistake goes unseen unless the program looks, as `Check`
+  does above.
 
 ## 13. Conditions and handlers
 
@@ -1981,4 +2445,810 @@ that calls `$EXIT` itself ends the program there, with the status it
 gives. The handlers not yet called are then skipped, poc's own among
 them, so `Out`'s unfinished line is lost and no finalizer runs.
 
-<!-- Chapters 14 to 17 and the appendices are to be written. -->
+## 14. Asynchronous system traps
+
+*For the Unix reader: VMS's way of telling a program that something has
+happened, like a signal handler, but queued and orderly. For the VMS
+reader: AST routines in Oberon.*
+
+An **asynchronous system trap** (AST) is a call VMS makes to a routine of
+the program's when something it asked for happens: a timer expires, an
+I/O request completes, CTRL/C is typed. The program asks for one with the
+request, naming the routine and a longword parameter to give it, and goes
+on with its work. When the event comes, VMS interrupts the program
+wherever it is, calls the routine, and lets the program go on from there
+when the routine returns.
+
+### An AST routine
+
+An AST routine is a global procedure of type `AsynchronousTraps.Routine`:
+
+    PROCEDURE (parameter: SYSTEM.CARD32);
+
+The parameter is the one the request gave, so one routine can serve
+several requests and tell them apart. Every routine VMSDEF declares with
+an AST argument, such as `$QIO`'s, takes a `Routine`, and `NIL` omits it.
+These request ASTs:
+
+- **`Timers.After(milliseconds, routine, parameter)`** calls the routine
+  after a time, at least 10 milliseconds, the system clock's resolution.
+  `Timers.Cancel(parameter)` cancels the requests made with that
+  parameter, and their routine is not called.
+- **A system service that completes later**, such as `$QIO`, calls one
+  when it does.
+- **`AsynchronousTraps.Declare(routine, parameter)`** calls one as soon
+  as delivery allows, which is at once, before the next statement, unless
+  delivery is disabled.
+- **`Platform.SetInterruptHandler`** has one called for CTRL/C, below.
+
+### When an AST runs
+
+An AST is delivered whenever the program runs with delivery enabled:
+between any two instructions of the main program, and while it waits, in
+`EventFlags.Wait` or `Timers.Sleep`, for instance. Then:
+
+- **An AST routine runs to its end** before the main program, or any
+  other AST routine, runs again. A second AST that comes meanwhile waits
+  its turn. So an AST routine needs no protection from the main program.
+- **The main program needs protection from AST routines.** What it shares
+  with one can change between any two of its statements. It disables
+  delivery around its use of that data:
+
+        wasEnabled := AsynchronousTraps.Disable();
+        ... take what the AST routine left ...
+        AsynchronousTraps.Restore(wasEnabled)
+
+  An AST that comes meanwhile waits, and `Restore` delivers it. `Disable`
+  returns whether delivery was enabled, so a procedure that disables it
+  while its caller already has restores what it found, and the caller's
+  protection lasts.
+- **`AsynchronousTraps.InProgress()`** tells whether the code calling it
+  runs at AST level.
+
+A single variable that one side writes and the other only reads, such as
+a flag the AST routine sets, needs no protection. An event flag
+(`EventFlags`, chapter 8) is often better still: the main program can wait
+for it.
+
+### What an AST routine may do
+
+An AST routine interrupts the main program anywhere, possibly in the
+middle of a library routine. So at AST level a program may use:
+
+- `NEW` and its own variables;
+- system services, and the `LIB$` routines the RTL manual calls
+  AST-reentrant;
+- `AsynchronousTraps`, `EventFlags.Set`, `Clear` and `IsSet`, and
+  `Timers.After` and `Cancel`.
+
+It may not use `Out`, `Err`, `In`, `Files`, `Texts` or `Oberon`, whose
+state the main program may be halfway through changing. It must not wait
+for something that only another AST can bring, which cannot be delivered
+until it returns: `Timers.Sleep` is one of those. Waiting for an I/O
+request with `$QIOW` is allowed, since its completion is not an AST. poc
+checks none of this.
+
+This program's AST routine notes each tick in a list it makes with
+`NEW`, and asks for the next. The main program takes the list under
+`Disable`, prints it, and stops after the fifth tick, which sets an event
+flag:
+
+<!-- example: vax/ticks/Ticks.Mod -->
+```
+MODULE Ticks;
+  IMPORT SYSTEM, Out, AsynchronousTraps, EventFlags, Timers;
+
+  TYPE
+    Tick = POINTER TO TickRecord;
+    TickRecord = RECORD number: SYSTEM.CARD32; next: Tick END;
+
+  VAR
+    ticks: Tick; (* noted by Arrived, newest first, not yet taken *)
+    done: SYSTEM.CARD32; (* the event flag the last tick sets *)
+
+  (* an AST routine: notes its tick, and asks for the next until the fifth *)
+  PROCEDURE Arrived(number: SYSTEM.CARD32);
+    VAR tick: Tick; status: SYSTEM.INT32;
+  BEGIN
+    NEW(tick); tick.number := number; tick.next := ticks; ticks := tick;
+    IF number < 5 THEN
+      status := Timers.After(20, Arrived, number + 1)
+    ELSE
+      status := EventFlags.Set(done)
+    END
+  END Arrived;
+
+  (* the ticks Arrived has noted since the last Take, oldest first *)
+  PROCEDURE Take(): Tick;
+    VAR wasEnabled: BOOLEAN; taken, oldestFirst, next: Tick;
+  BEGIN
+    wasEnabled := AsynchronousTraps.Disable();
+    taken := ticks; ticks := NIL;
+    AsynchronousTraps.Restore(wasEnabled);
+    oldestFirst := NIL;
+    WHILE taken # NIL DO
+      next := taken.next; taken.next := oldestFirst; oldestFirst := taken; taken := next
+    END;
+    RETURN oldestFirst
+  END Take;
+
+  PROCEDURE Run;
+    VAR status: SYSTEM.INT32; finished: BOOLEAN; tick: Tick;
+  BEGIN
+    status := EventFlags.Get(done);
+    status := EventFlags.Clear(done);
+    status := Timers.After(20, Arrived, 1);
+    Out.String("ticks:");
+    REPEAT
+      status := Timers.Sleep(30);
+      finished := EventFlags.IsSet(done);
+      tick := Take();
+      WHILE tick # NIL DO
+        Out.Char(" "); Out.Card(tick.number, 0); tick := tick.next
+      END
+    UNTIL finished;
+    Out.Ln;
+    status := EventFlags.Free(done)
+  END Run;
+
+BEGIN
+  Run
+END Ticks.
+```
+
+<!-- vax-session: ticks -->
+
+    $ RUN TICKS
+    ticks: 1 2 3 4 5
+
+The main program may take one tick at a time, or several, depending on
+how its sleeps and the ticks fall, but it prints them in order, and it
+reads the event flag before it takes the list, so that the last tick is
+never left behind. Only the main program prints.
+
+### A completion AST
+
+A system service that completes later, such as `$QIO`, takes an AST
+routine and its parameter, and calls the routine when the request is
+done. The request's I/O status block is filled in first. This program
+queues a read from a mailbox, writes to the mailbox, and waits for the
+event flag the read's AST sets:
+
+<!-- example: vax/mailbox/Mailbox.Mod -->
+```
+MODULE Mailbox;
+  IMPORT SYSTEM, Out, EventFlags, STARLET, IODEF, VmsArguments;
+
+  VAR
+    channel: SYSTEM.CARD16;
+    readStatus: VmsArguments.IOStatusBlock;
+    received: ARRAY 64 OF CHAR;
+    done: SYSTEM.CARD32; (* the event flag ReadDone sets *)
+
+  (* an AST routine, the read's completion *)
+  PROCEDURE ReadDone(parameter: SYSTEM.CARD32);
+    VAR status: SYSTEM.INT32;
+  BEGIN
+    received[readStatus.count] := 0X;
+    status := EventFlags.Set(done)
+  END ReadDone;
+
+  PROCEDURE Run;
+    VAR status: SYSTEM.INT32; writeStatus: VmsArguments.IOStatusBlock;
+      message: ARRAY 32 OF CHAR;
+  BEGIN
+    status := EventFlags.Get(done);
+    status := EventFlags.Clear(done);
+    status := STARLET.SYS$CREMBX(0, channel, 64, 128, 0, 0, NIL, 0);
+    status := STARLET.SYS$QIO(0, channel, IODEF.IO$_READVBLK, readStatus,
+      ReadDone, 0, received, LEN(received) - 1, 0, 0, 0, 0);
+    Out.String("a read is queued"); Out.Ln;
+    message := "sent by mailbox";
+    status := STARLET.SYS$QIOW(0, channel, IODEF.IO$_WRITEVBLK + IODEF.IO$M_NOW,
+      writeStatus, NIL, 0, message, 15, 0, 0, 0, 0);
+    Out.String("wrote "); Out.Card(writeStatus.count, 0); Out.String(" characters"); Out.Ln;
+    status := EventFlags.Wait(done);
+    Out.String("read "); Out.Card(readStatus.count, 0); Out.String(" characters: ");
+    Out.String(received); Out.Ln;
+    status := STARLET.SYS$DASSGN(channel);
+    status := EventFlags.Free(done)
+  END Run;
+
+BEGIN
+  Run
+END Mailbox.
+```
+
+<!-- vax-session: mailbox -->
+
+    $ RUN MAILBOX
+    a read is queued
+    wrote 15 characters
+    read 15 characters: sent by mailbox
+
+`$QIOW` is `$QIO` and a wait for its completion. The read completes
+during the write, and its AST runs then, at the latest before `$QIOW`
+returns. `$QIO`'s buffer, its `P1`, is passed by reference, since
+`received` is a variable (chapter 7), and VMS writes to it.
+
+### `NEW` at AST level
+
+`NEW` is safe at AST level in a program that imports `AsynchronousTraps`,
+directly or through `Timers`, `EventFlags` or VMSDEF's modules, as nearly
+every program that requests an AST does. Its initializer has the heap
+disable delivery while it works, so that an AST never finds it halfway
+through a change. Without that, an AST routine's `NEW` that interrupts
+the heap ends the program by trap 15, with status `%X1000007A`:
+
+    heap re-entered at AST level: import AsynchronousTraps
+
+One that does not interrupt the heap works, but only by luck. The one way
+to have an AST without importing `AsynchronousTraps` is a CTRL/C handler.
+
+### CTRL/C
+
+`Platform.SetInterruptHandler` installs a handler for CTRL/C typed at the
+terminal `SYS$COMMAND` names. VMS calls it as an AST, with 2, Unix's
+`SIGINT`, as its argument, so the rules above apply to it:
+
+    MODULE Patient;
+      IMPORT SYSTEM, Platform, AsynchronousTraps;
+      VAR interrupted: BOOLEAN;
+
+      PROCEDURE Interrupt(signal: SYSTEM.INT32);
+      BEGIN
+        interrupted := TRUE
+      END Interrupt;
+      ...
+      Platform.SetInterruptHandler(Interrupt);
+      WHILE ~interrupted & (work to do) DO ... END
+
+While a handler is set, CTRL/C no longer stops the program; CTRL/Y
+still interrupts it. `SetInterruptHandler(NIL)` removes it, and CTRL/C stops the
+program again. Since `Platform` does not import `AsynchronousTraps`, a
+handler that uses `NEW` needs the import shown. With no terminal, in a
+batch job, the handler is kept and never called.
+
+### Traps and conditions at AST level
+
+A trap at AST level, such as an index out of range, ends the program as
+anywhere, with its message and status. A condition signalled at AST level
+is offered to the AST routine's handlers, and then to the handlers of
+the frames the AST interrupted, which belong to code that is not
+running. So a handler must not unwind at AST level: it tests
+`AsynchronousTraps.InProgress` first (chapter 13).
+
+## 15. Subprocesses
+
+*For the Unix reader: what VMS has instead of `fork`, `exec` and
+`wait`. For the VMS reader: `LIB$SPAWN` from Oberon, and its quotas.*
+
+VMS has no `fork`. A program runs a command in a **subprocess**, a new
+process with its own DCL, made by `LIB$SPAWN`, which runs one command or
+a command procedure and then ends. The subprocess belongs to the
+program's job, and by default it starts with copies of the program's DCL
+symbols, process logical names and keypad state. Making a process is
+much slower than a Unix `fork`: a program that runs many commands does
+better to write them to one command procedure and spawn that once.
+
+### `Platform.System`
+
+`Platform.System(command)` is the portable way, as on the Unix targets.
+It runs the DCL command in a subprocess and waits for it, and returns:
+
+- **0** when the command's final status is a success;
+- **the final status** otherwise, its low word under `-O2`, where
+  `INTEGER` has 16 bits;
+- **-1** when no subprocess could be made, or the command is too long.
+
+### `Run`
+
+`Subprocesses.Run(command, input, output, options, completion)` does the
+same, and says more. Its result is `LIB$SPAWN`'s, which says whether the
+subprocess was made, and the command's final status comes back in
+`completion`. Either is a condition value, so test it with `ODD`.
+
+- **`input`** is a file the subprocess reads as `SYS$INPUT`. With an
+  empty `command`, DCL takes its commands from it, so a command
+  procedure can be run so.
+- **`output`** is a file the subprocess writes as `SYS$OUTPUT` and
+  `SYS$ERROR`. Left empty, it is the program's own output, a file
+  included.
+- **`options`** is a set of `Subprocesses.noSymbols`, `noLogicalNames` and
+  `noKeypad`, each of which keeps the subprocess from copying that.
+
+A command that fails leaves its message where DCL writes messages, the
+subprocess's `SYS$OUTPUT`, as it does at the terminal. This program runs
+a command that succeeds, one that fails twice (status 44 is
+`SS$_ABORT`), and then two that it does not wait for:
+
+<!-- example: vax/spawn/Spawn.Mod -->
+```
+MODULE Spawn;
+  IMPORT SYSTEM, Out, Platform, Subprocesses, Timers, LIB_ROUTINES, JPIDEF;
+
+  VAR
+    status, completion: SYSTEM.INT32;
+    result: INTEGER;
+    job: Subprocesses.Subprocess;
+
+  (* waits, at most 10 seconds, until VMS has deleted every subprocess of
+     this process that has ended, so that the next one fits the quota *)
+  PROCEDURE AwaitNone;
+    VAR count, status: SYSTEM.INT32; tries: INTEGER;
+  BEGIN
+    tries := 0;
+    REPEAT
+      count := 0;
+      status := LIB_ROUTINES.LIB$GETJPI(JPIDEF.JPI$_PRCCNT, NIL, NIL, count, NIL, NIL);
+      IF count # 0 THEN status := Timers.Sleep(100); INC(tries) END
+    UNTIL (count = 0) OR (tries = 100)
+  END AwaitNone;
+
+  PROCEDURE Report(what: ARRAY OF CHAR; status, completion: SYSTEM.INT32);
+  BEGIN
+    Out.String(what); Out.String(": ");
+    IF ~ODD(status) THEN Out.String("not started, %X"); Out.Hex(status, 8)
+    ELSIF ODD(completion) THEN Out.String("succeeded")
+    ELSE Out.String("failed, %X"); Out.Hex(completion, 8)
+    END;
+    Out.Ln
+  END Report;
+
+  PROCEDURE YesNo(what: ARRAY OF CHAR; answer: BOOLEAN);
+  BEGIN
+    Out.String(what); Out.String(": ");
+    IF answer THEN Out.String("yes") ELSE Out.String("no") END;
+    Out.Ln
+  END YesNo;
+
+BEGIN
+  status := Subprocesses.Run('WRITE SYS$OUTPUT "from a subprocess"', "", "", {}, completion);
+  Report("WRITE", status, completion);
+
+  AwaitNone;
+  status := Subprocesses.Run("EXIT 44", "", "", {}, completion);
+  Report("EXIT 44", status, completion);
+
+  AwaitNone;
+  result := Platform.System("EXIT 44");
+  Out.String("Platform.System: "); Out.Int(result, 0); Out.Ln;
+
+  AwaitNone;
+  status := Subprocesses.Start("WAIT 00:00:01", "", "", {}, job);
+  YesNo("ended at once", Subprocesses.Done(job));
+  completion := Subprocesses.Wait(job);
+  YesNo("ended after Wait", Subprocesses.Done(job));
+  Report("WAIT 00:00:01", status, completion);
+
+  AwaitNone;
+  status := Subprocesses.Start("WAIT 00:01:00", "", "", {}, job);
+  status := Subprocesses.Stop(job);
+  Report("WAIT 00:01:00, stopped", status, Subprocesses.Wait(job))
+END Spawn.
+```
+
+<!-- vax-session: spawn -->
+
+    $ RUN SPAWN
+    from a subprocess
+    WRITE: succeeded
+    %SYSTEM-F-ABORT, abort
+    EXIT 44: failed, %X0000002C
+    %SYSTEM-F-ABORT, abort
+    Platform.System: 44
+    ended at once: no
+    ended after Wait: yes
+    WAIT 00:00:01: succeeded
+    WAIT 00:01:00, stopped: succeeded
+
+The program's output and its subprocesses' go to the same place in the
+order they were written. `Out` writes a line when it ends, so a line
+started before a spawn appears after what the subprocess wrote.
+
+### `Start`, `Done`, `Wait` and `Stop`
+
+`Subprocesses.Start` takes the same arguments as `Run`, less
+`completion`, and gives back a `Subprocesses.Subprocess` instead of
+waiting. The program goes on while the command runs. Then:
+
+- **`Done(s)`** tells whether it has ended, without waiting.
+- **`Wait(s)`** waits until it has ended, and returns its final status.
+  It can be called again, and returns the same.
+- **`Stop(s)`** deletes it at once (`$DELPRC`). `Wait` then returns
+  `SS$_NORMAL`, as the example shows.
+- **`Id(s)`** is its process identification, for `$GETJPI` and the like.
+
+VMS writes the final status of a subprocess not waited for into the
+program's memory when it ends, so `Subprocesses` keeps each `Subprocess`
+from `Start` until `Wait` has seen it end, and the collector cannot free
+it meanwhile. A program may drop one it does not care about, but each
+that is not waited for keeps one of the process's local event flags
+(`EventFlags`, chapter 8) for as long as the program runs.
+
+### Quotas
+
+A process may have only as many subprocesses at once as its `PRCLM`
+quota allows, often a small number: 2 on the development system that
+checks this guide. Past it, `LIB$SPAWN` fails with `SS$_EXQUOTA`. A
+subprocess that has ended still counts until VMS has deleted it, which
+happens a little later, so a program that spawns one right after another
+has ended can still be refused. `AwaitNone` in the example waits for the
+count to reach 0, by asking `LIB$GETJPI` for `JPI$_PRCCNT`, the number of
+subprocesses the process has. `SHOW PROCESS/QUOTAS` shows how many more it may have.
+
+### ASTs and subprocesses
+
+`Run`, `Platform.System` and every other `LIB$SPAWN` that waits
+hibernate in supervisor mode. The program's ASTs (chapter 14) are
+user-mode ones, and wait until the subprocess has ended: a
+`Timers.After` that expires meanwhile is delivered after `Run` returns.
+
+A program that wants an AST when a subprocess ends calls `LIB$SPAWN`
+itself, from `LIB_ROUTINES`, with `CLI$M_NOWAIT`, a routine and its
+parameter. The final status goes to an address the program gives, which
+must stay valid until the subprocess has ended: a global variable.
+
+    VAR finalStatus: SYSTEM.INT32; ...
+    status := LIB_ROUTINES.LIB$SPAWN('WRITE SYS$OUTPUT "for the AST"', NIL, "SPAWN.OUT",
+      CLIDEF.CLI$M_NOWAIT, NIL, NIL, SYSTEM.ADR(finalStatus), NIL, Completed, 7,
+      NIL, NIL, NIL)
+
+`Completed(parameter)` is called with 7 at AST level when the subprocess
+has ended, under chapter 14's rules.
+
+### When `LIB$SPAWN` fails
+
+The usual failures are these:
+
+- **`SS$_EXQUOTA`**: too many subprocesses, above.
+- **`LIB$_NOCLI`**: the program has no DCL. It was run as a subprocess
+  or detached process by `RUN/DETACH` or `$CREPRC` directly, not by a
+  command, so it has no DCL to copy.
+- **`SS$_DUPLNAM`** and **`SS$_IVLOGNAM`**: a process name given to
+  `LIB$SPAWN` is already in use in the group, or is longer than 15
+  characters. `Subprocesses` gives none, and VMS makes one up.
+
+### Running another image instead
+
+Two `LIB$` routines end the program and have DCL go on with something
+else. Both end it by `$EXIT`, so its exit handlers run, poc's among
+them, which writes `Out`'s last line and runs the finalizers (chapter 13):
+
+- **`LIB$RUN_PROGRAM(name)`** runs another image in the same process,
+  as the `RUN` command would.
+- **`LIB$DO_COMMAND(command)`** has DCL run one command next. In a
+  command procedure, the procedure then goes on with its next line.
+
+`LIB$PUT_COMMON` and `LIB$GET_COMMON` pass a string of up to 252
+characters to the next image in the process. The `LIB$` manual calls
+that "not recommended", and a foreign command's arguments (chapter 6) or
+a logical name (chapter 8) do as well. `LIB$ATTACH` moves the terminal
+to another process of the job, as DCL's `ATTACH` does.
+
+## 16. When a program fails on VMS
+
+*For the Unix reader: what VMS prints when a program fails, and how to
+find the line at fault. For the VMS reader: what poc's programs add to
+the traceback you know.*
+
+A program fails in one of three ways. One of poc's checks finds an
+error, and **traps**. The hardware or a VMS routine signals a condition
+that no handler deals with, a **fault** such as a division by zero.
+Or the program **does not start** at all, because an image it needs
+cannot be activated, as chapter 4 shows. This chapter takes the first
+two in turn, then the debugger, for a program that runs but does the
+wrong thing.
+
+### A trap
+
+A trap writes poc's message to `SYS$ERROR` and ends the program with a
+status that names the trap, as chapter 5's table shows. Its exit
+handlers still run, poc's among them, which writes `Out`'s last line
+and runs the finalizers. Built with `-trap-location`, the message also
+says where, by file, line and column, and in which procedure:
+
+<!-- example: vax/fail/Fail.Mod -->
+```
+MODULE Fail;
+  IMPORT Out;
+
+  VAR counts: ARRAY 10 OF INTEGER;
+
+  PROCEDURE Count(digit: INTEGER);
+  BEGIN
+    INC(counts[digit])
+  END Count;
+
+BEGIN
+  Count(3); Count(10);
+  Out.String("not reached"); Out.Ln
+END Fail.
+```
+
+<!-- vax-session: fail -->
+
+    $ RUN FAIL
+    Fail.Mod:8:16: index out of range (in Fail.Count)
+    $ SHOW SYMBOL $STATUS
+      $STATUS == "%X10000012"
+
+The file is named as it was given to poc. DCL prints no message of its
+own for the status, since poc's has said what happened. A command
+procedure tests the status as any other: `.NOT. $STATUS` is true after a
+trap, and `($STATUS .AND. %XFFF8) / 8` is the trap's code, 2 here.
+
+### A fault and its traceback
+
+A fault is a condition, and with no handler of the program's (chapter
+13) VMS's last one prints its message and a **traceback**, the calls
+that led to it, newest first, and ends the program with the condition
+as its status:
+
+<!-- example: vax/fault/Fault.Mod -->
+```
+MODULE Fault;
+  IMPORT Out;
+
+  VAR none: INTEGER;
+
+  PROCEDURE Average(total, count: INTEGER): INTEGER;
+  BEGIN
+    RETURN total DIV count
+  END Average;
+
+BEGIN
+  Out.Int(Average(10, 2), 0); Out.Ln;
+  Out.Int(Average(10, none), 0); Out.Ln
+END Fault.
+```
+
+<!-- vax-session: fault -->
+
+    $ RUN FAULT
+    5
+    %SYSTEM-F-INTDIV, arithmetic trap, integer divide by zero at PC=00002032, PSL=03C00004
+    %TRACE-F-TRACEBACK, symbolic stack dump follows
+    module name     routine name                     line       rel PC    abs PC
+
+    FAULT           FAULT_AVERAGE_5CV3RD9U                     00000006  00002032
+    FAULT           FAULT_INIT                                 00000043  0000206F
+    FAULT           FAULT_MAIN                                 00000017  00002097
+
+Each line is a call: the module, the routine, and the PC, relative to
+the routine's start and absolute. The routines are poc's VAX symbols
+(chapter 5): a module's body is `<MODULE>_INIT`, and the program's start,
+which calls it, `<MODULE>_MAIN`. A procedure is its module and name,
+uppercased and cut to 22 characters, with `_` and eight characters of a
+hash after it, so `FAULT_AVERAGE_5CV3RD9U` is `Fault.Average`.
+
+Two things VMS does make a traceback harder to read:
+
+- **The line column is empty.** It holds a line only for a module
+  assembled with `/DEBUG`, below.
+- **Far into a long routine, the routine is not named.** For a PC more
+  than about a kilobyte past a routine's start, the traceback names the
+  program section `POC_CODE` instead, with the PC relative to the
+  section. The next line down, the routine's caller, is still right.
+
+### Line numbers in a traceback
+
+poc writes each module as MACRO-32, `<MODULE>.MAR`, with a comment
+`; line n` before the code of line *n* of the Oberon source. Assembled
+with `/DEBUG`, a module's routines get line numbers, those of its `.MAR`
+file, and the traceback shows them. To find the line of a fault,
+assemble that module so, link the program again as its build procedure
+does, and run it:
+
+<!-- vax-session: faultdebug -->
+
+    $ MACRO/DEBUG/OBJECT FAULT.MAR
+    $ LINK/EXECUTABLE=FAULT.EXE FAULT.OPT/OPTIONS, POCRTL.OBJ
+    $ RUN FAULT
+    5
+    %SYSTEM-F-INTDIV, arithmetic trap, integer divide by zero at PC=00002032, PSL=03C00004
+    %TRACE-F-TRACEBACK, symbolic stack dump follows
+    module name     routine name                     line       rel PC    abs PC
+
+    FAULT           FAULT_AVERAGE_5CV3RD9U               38    00000006  00002032
+    FAULT           FAULT_INIT                           82    00000043  0000206F
+    FAULT           FAULT_MAIN                           98    00000017  00002097
+
+Line 38 of `FAULT.MAR` is the `DIVW3` instruction, and the comment above
+it is `; line 8`, the `RETURN` of `Average`. Line 82 is the call in the
+body, after `; line 13`, and line 98 the call of the body. The build procedure, `FAULT.COM`, links with
+`POC$RTL:POCRTL.OBJ` when that logical name is defined (chapter 2), and an
+import's module can be assembled
+`/DEBUG` in the same way.
+
+### The debugger
+
+For a program that runs but does the wrong thing, the VMS debugger
+works on poc's programs as on any MACRO-32 program. Assemble the
+modules to be looked at with `/DEBUG`, link with `LINK/DEBUG`, and `RUN`
+the program: the debugger starts before the program does. Its source
+is the `.MAR` files, so `SET BREAK`, `STEP`, `EXAMINE` and `DEPOSIT` work
+with the VAX symbols and the `.MAR` lines, and the `; line n` comments
+lead back to the Oberon source. `SET MODULE/ALL` makes every module's
+symbols known, and `SET RADIX DECIMAL` shows numbers as Oberon writes
+them. A global variable is a symbol like a procedure's,
+`FAULT_NONE_<hash>` for `Fault.none`; a local one is an offset from
+`FP` in its procedure's code.
+
+### Other failures
+
+- **`%SYSTEM-F-ACCVIO`**, an access violation. poc's checks catch a NIL
+  pointer and an index out of range, so in a poc program an access
+  violation comes from `SYSTEM.GET`, `PUT` or `MOVE`, or from a VMS
+  routine declared with the wrong arguments (chapter 7).
+- **`%SYSTEM-F-FLTOVF_F`** and **`%SYSTEM-F-FLTDIV_F`**: a real overflow
+  or a division by zero, which a VAX has no infinity for (chapter 5).
+- **`%SYSTEM-F-EXQUOTA`**: a process quota is used up, as a
+  subprocess's (chapter 15) or a timer's (chapter 14) can be. `SHOW
+  PROCESS/QUOTAS` shows what is left.
+- **A file that cannot be created or written** stops the program with
+  `Files`' message and `HALT(99)` (chapter 6).
+- **A status from a VMS routine** that a program prints as a number is
+  turned into its message by `Conditions.Message` (chapter 8), or in
+  DCL by `F$MESSAGE`: `WRITE SYS$OUTPUT F$MESSAGE(%X0000002C)` prints
+  `%SYSTEM-F-ABORT, abort`.
+
+<!-- Chapter 17 is to be written. -->
+
+## Appendix A. The kits' contents
+
+Each kit unpacks into the directory it is run in, which the base kit
+needs empty. These are the directories and files they make, and what
+`@BUILD` (chapter 1) adds.
+
+### The base kit, `POC-<version>.COM`
+
+| Where | What |
+|---|---|
+| `README.TXT` | How to install and use poc, as chapter 1 says |
+| `BUILD.COM` | Builds `POC.EXE` and every library that is unpacked and not yet built; each step's time goes to `BUILD.LOG` |
+| `SETUP.COM` | Defines the command `POC` and the logical names of one size model's libraries, `-O2`'s or, with `@SETUP OC`, `-OC`'s |
+| `VERSION.TXT` | One line, the version and the commit it was made from; the STARLET kit checks it |
+| `LICENSE.TXT` | poc's license |
+| `[.BIN]` | Empty; `@BUILD` puts `POC.EXE` here |
+| `[.KIT]` | poc's own MACRO-32, as poc on Unix writes it for poc's source: a `.MAR` for each module, the procedure that assembles and links them, and the runtime's `POCRTL.MAR`. `@BUILD BOTH CLEAN` deletes it once `POC.EXE` is built |
+| `[.LIB.POC.VAX-DEC-VMS.O2]`, `[.OC]` | The library `POCRTL`, poc's runtime, for each size model, as `poc -library` writes it (chapter 4): its manifest, `POCRTL_BUILD.COM` and `POCRTL_SETUP.COM`, and each module's `.MAR`, `.SYM` and `.OWNER` (the name of the library the module belongs to). `@BUILD` adds `POCRTL.OLB` and `POCRTL.EXE` |
+| `[.SRC...]` | The Oberon source `POC.EXE` is compiled from: the front end, the VAX back end, the driver, and the runtime's modules (chapter 17) |
+
+### The STARLET kit, `POC-VMS-<version>.COM`
+
+It refuses to unpack anywhere but in the top of a base kit of its own
+version, and only once.
+
+| Where | What |
+|---|---|
+| `README-VMS.TXT` | What the kit holds, and how to build and use it |
+| `[.LIB.POC.VAX-DEC-VMS.O2]`, `[.OC]` | The libraries `VMSDEF` (chapter 9) and `VMSLIB` (chapter 8), as `POCRTL` is: each its manifest, its two procedures and its modules' files. `@BUILD` adds each one's `.OLB` and `.EXE` |
+| `[.SRC.RTL.VMS]` | `VMSDEF`'s source: the modules generated from `SYS$LIBRARY:STARLETSD.TLB`, one for each of its modules |
+| `[.SRC.RTL.VMSLIB]` | `VMSLIB`'s source: its twelve modules |
+
+The STARLET kit is about half the base kit's size but has most of the
+files, about 1,700, since `VMSDEF` has a module for each of STARLET's.
+
+## Appendix B. What is left out, and why
+
+poc reaches most of VMS 5.5-2 through `VMSDEF`, and chapter 9 lists what
+has been tried. Some things are left out, each for a reason. Any of them
+can come later if a program needs it.
+
+### From the language
+
+- **`SYSTEM.CC`, `GETREG` and `PUTREG`**, as on Unix.
+- **D_floating, H_floating and complex numbers.** `LONGREAL` is
+  G_floating (chapter 5), and poc has no type for the others, so the
+  routines of `MTH$` and `OTS$` that take or return them are declared,
+  with their values as 8 or 16 bytes, but nothing computes with them.
+- **voc's library modules** (the *User's Guide*, chapter 11), which poc
+  for Unix does not have either.
+
+### From VMSDEF
+
+Generated, but not tried and not described here:
+
+- **The privileged services**, those that need a privilege a user
+  account does not normally have: `$CMKRNL`, `$CMEXEC`, the rights
+  database's writers, `$SETUAI`, `$SETIME`, `$LCKPAG`, `$ULKPAG`,
+  `$SETSWM`, `$SNDERR`, `$GRANTID` and `$REVOKID`; and `$ADJSTK`, which
+  the VMS manual reserves to the system.
+- **`NCS$`**, national character sets, which an ASCII Oberon program has
+  no use for yet.
+
+Not declared at all, each with a comment in its module (chapter 9):
+
+- **Routines with a variable number of arguments**, such as `SYS$FAO`,
+  `LIB$SIGNAL`, `LIB$STOP` and `STR$CONCAT`. `Conditions` signals and
+  stops (chapter 13), `SYS$FAOL` takes its arguments as an array, and a
+  declaration of your own with a fixed number of arguments serves too
+  (chapter 7).
+- **DECthreads** (`CMA`), which is for C alone in 5.5. Threads would
+  also interrupt the collector in a way it is not made for.
+
+### Facilities
+
+- **The vector services and `MTH$`'s vector routines.** A VAX without a
+  vector unit, such as the MicroVAX 3900 these were tried on, cannot use
+  them.
+- **DECdtm** (`$START_TRANS` and the rest), which needs a transaction log
+  on the node, and **DECdns** (`$DNS`), which needs a name server.
+- **`PPL$`**, parallel processing, which shares memory between
+  processes: the collector's heap would need sharing too.
+- **`DTK$`**, the DECtalk speech device.
+- **Dynamic string descriptors** (`CLASS_D`). A routine's output is
+  written into a fixed `CLASS_S` buffer with its length instead, which
+  serves every routine but the few that only allocate and free dynamic
+  strings, a job the collector does.
+- **JSB entry points.** Every routine that has one has a CALL entry too,
+  which poc uses.
+- **`LIB$TPARSE`**, whose state tables are built by MACRO macros, and
+  **`LIB$CRF_`**, cross-reference listings for a language processor.
+- **`EDT$` and `TPU$`**, whose callbacks are bound procedure values,
+  with an environment in a register, which Oberon's procedure values are
+  not.
+- **`PSM$` and `SMB$`**, print symbionts, which run in the queue
+  manager's context.
+- **`CLI$DISPATCH`**, since a program dispatches on the verb itself
+  (chapter 10).
+
+### Known behaviours a program must allow for
+
+What VMS does here is left to the program:
+
+- a `$EXIT` from an exit handler skips the handlers declared before it,
+  poc's own among them (chapter 13);
+- two RMS streams on one file in one process can lock each other out
+  (chapter 11);
+- a `SMG$` menu is chosen only on a terminal (chapter 12);
+- `SortMerge`'s `noDuplicates` keeps one record of each key, but which
+  one is SORT's choice, not necessarily the first: a program that cares
+  calls `SOR_ROUTINES.SOR$BEGIN_SORT` itself, with a `user_equal`
+  routine of its own.
+
+## Appendix C. Further reading
+
+### Oberon
+
+- *The Programming Language Oberon-2*, H. Mössenböck and N. Wirth, in
+  its later revision (`Oberon2.pdf`): the language poc compiles.
+- The *Peaseblossom User's Guide* (`doc/users-guide.md`) and *Reference
+  Guide* (`doc/reference-guide.md`): poc itself, its extensions to the
+  language, and the runtime's modules, which this guide assumes.
+
+### VMS
+
+The manuals of the VMS 5.5 documentation set, or of the latest 5.x
+release whose set has them, are the ones that describe the system poc
+targets. Later OpenVMS manuals differ in details that matter. Most can
+be found at bitsavers.org, under `pdf/dec/vax/vms/` and a directory
+for each release. By their order
+numbers:
+
+| Subject | Manual | Order number |
+|---|---|---|
+| What changed in 5.5 | *VMS Version 5.5 Release Notes*, *New Features Manual* | `AA-LB22D`, `AA-LA97D` |
+| Which manual covers what | *Overview of VMS Documentation*, *Programming Master Index* | `AA-LA95D`, `AA-LA56C` |
+| System services | *Introduction to VMS System Services* and *VMS System Services Reference Manual* (5.5) | `AA-LA68B`, `AA-LA69B` |
+| The calling standard, condition handling | *Introduction to VMS System Routines* (5.4) | `AA-LA66B` |
+| The run-time library | *Introduction to the VMS Run-Time Library*; the `LIB$`, `STR$`, `MTH$`, `OTS$` and `SMG$` manuals | `AA-LA70A`; `AA-LA76A`, `AA-LA75A`, `AA-LA72B`, `AA-LA73A`, `AA-LA77A` |
+| RMS | *VMS Record Management Services Manual*, *Guide to VMS File Applications*, *Guide to VMS Files and Devices* | `AA-LA83A`, `AA-LA78A`, `AA-LA06A` |
+| `$QIO` and devices | *VMS I/O User's Reference Manual*, parts 1 and 2 | `AA-LA84B`, `AA-LA85A` |
+| Callable utilities (`CLI$`, `SOR$`, `LBR$` ...) | *VMS Utility Routines Manual* (5.4) | `AA-LA67B` |
+| Command tables | *VMS Command Definition Utility Manual* | `AA-LA60A` |
+| Linking, shareable images | *VMS Linker Utility Manual*, *VMS Librarian Utility Manual*, *VMS Install Utility Manual* | `AA-LA62A`, `AA-LA61A`, `AA-LA29A` |
+| MACRO-32 | *VAX MACRO and Instruction Set Reference Manual* (5.4) | `AA-LA89B` |
+| DCL | *VMS DCL Dictionary* (5.4), *Guide to Using VMS Command Procedures* | `AA-PBK5A`, `AA-PBK6A`; `AA-LA11A` |
+| Messages | *VMS Message Utility Manual* | `AA-LA63A` |
+| The debugger | *VMS Debugger Manual* | `AA-LA59D` |
+| Writing procedures to the standard | *Guide to Creating VMS Modular Procedures* | `AA-LA58A` |
+
+### poc's VAX back end
+
+For the curious, `doc/developer/` in poc's source describes how the VAX
+back end works: `vax-macro32-backend.md` (code generation, the runtime,
+libraries, ASTs and conditions), `vms-sdl-interfaces.md` (how `VMSDEF`
+and `VMSLIB` are made) and, in `doc/research/`,
+`vms-native-library-inventory.md` (what of VMS was chosen, and why).

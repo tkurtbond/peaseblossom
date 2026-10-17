@@ -12,3 +12,10 @@ VAX build Shell exit 0
 VAX build Warnings exit 0
 VAX build Probe exit 0
 VAX build Goodbye exit 0
+VAX build Ticks exit 0
+VAX build Mailbox exit 0
+VAX build Spawn exit 0
+VAX build Fail exit 0
+VAX build Fault exit 0
+VAX build Parts exit 0
+VAX build Panel exit 0

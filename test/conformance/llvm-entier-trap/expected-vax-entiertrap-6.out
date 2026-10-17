@@ -12,7 +12,8 @@
 ;;   and traceback are in its standard output as well as its standard
 ;;   error: a guest test (2026-10-10) showed them in a SYS$OUTPUT file
 ;;   the program had not opened, and not in one it had written to first.
-;; - The same under -O2 and -OC.
+;; - For every build; expected-vax-entiertrap-OC-6.out overrides it
+;;   under -OC (since 2026-10-16, when the initializer had grown).
 %SYSTEM-F-FLTOVF_F, arithmetic fault, floating overflow at PC=xxxxxxxx, PSL=xxxxxxxx
 %TRACE-F-TRACEBACK, symbolic stack dump follows
 module name     routine name                     line       rel PC    abs PC

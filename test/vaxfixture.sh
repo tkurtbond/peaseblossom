@@ -110,7 +110,11 @@ vax_runs() {
 # P1, and one that honours it (make test-vax-asts' fixtures) builds its
 # programs once and runs them n times, printing the first run's output and
 # only where a later one differs from it, so <expected> still holds; the
-# run may then take 600 seconds and 120 more a run.
+# run may then take 600 seconds and 120 more a run. With vax_mask=yes,
+# the code addresses in VMS's fault messages and tracebacks (PC=, PSL=, a
+# traceback line's last two columns), which any change to the code moves,
+# are masked as xxxxxxxx in both before they are compared, as
+# tools/vax-suite masks them.
 vax_do() {
   vax_tools=../../../tools
   vax_proc=$1; vax_expected=$2; shift 2
@@ -131,7 +135,15 @@ vax_do() {
       cat vax-do/out >>result
     else
       sed '$d' vax-do/out >vax-do/printed
-      if ! diff "$vax_expected" vax-do/printed >vax-do/diff 2>&1; then
+      cp "$vax_expected" vax-do/expected
+      if [ "${vax_mask:-}" = yes ]; then
+        for vax_file in vax-do/printed vax-do/expected; do
+          sed -e 's/PC=[0-9A-F]\{8\}/PC=xxxxxxxx/g' -e 's/PSL=[0-9A-F]\{8\}/PSL=xxxxxxxx/g' \
+              -e 's/ [0-9A-F]\{8\}  [0-9A-F]\{8\}$/ xxxxxxxx  xxxxxxxx/' "$vax_file" >"$vax_file.masked"
+          mv "$vax_file.masked" "$vax_file"
+        done
+      fi
+      if ! diff vax-do/expected vax-do/printed >vax-do/diff 2>&1; then
         echo "$vax_proc's output on the VAX differs from $vax_expected:" >>result
         cat vax-do/diff >>result
       fi

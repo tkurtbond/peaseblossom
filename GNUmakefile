@@ -360,8 +360,8 @@ check-seed: seed $(STAGE1_BIN)
 	exit $$status
 
 # The documents as HTML and PDF, in build/doc/html and build/doc/pdf: the
-# User's Guide, the Reference Guide, poc(1), and doc/developer's in
-# developer/. pandoc makes the Markdown ones from GitHub's Markdown, so they
+# User's Guide, the Reference Guide, the VAX/VMS Guide, poc(1), and
+# doc/developer's in developer/. pandoc makes the Markdown ones from GitHub's Markdown, so they
 # read as GitHub shows them; mandoc makes poc(1)'s HTML and groff its PDF.
 # pandoc's HTML takes tools/doc/html-header.html's styles over its own.
 # Each PDF is US Letter with 1-inch margins; pandoc's go through xelatex
@@ -370,7 +370,8 @@ check-seed: seed $(STAGE1_BIN)
 # and doc/pdf, so that a package needs none of these tools. install
 # installs only the user's ones, DOC_INSTALL_NAMES (the guides and poc(1);
 # the developer documents stay in the tarball, decided with the user
-# 2026-10-05), from build/doc, else from doc/, else says there are none.
+# 2026-10-05; the VAX/VMS Guide does too, until the peaseblossom-vax
+# package installs it), from build/doc, else from doc/, else says there are none.
 PANDOC ?= pandoc
 MANDOC ?= mandoc
 GROFF ?= groff
@@ -378,7 +379,7 @@ DOC_PDF_ENGINE ?= xelatex
 DOC_MAIN_FONT ?= DejaVu Serif
 DOC_MONO_FONT ?= DejaVu Sans Mono
 DOC_DIR := $(BUILD_DIR)/doc
-DOC_MARKDOWN := doc/users-guide.md doc/reference-guide.md $(sort $(wildcard doc/developer/*.md))
+DOC_MARKDOWN := doc/users-guide.md doc/reference-guide.md doc/vax-vms-guide.md $(sort $(wildcard doc/developer/*.md))
 DOC_NAMES := $(patsubst doc/%.md,%,$(DOC_MARKDOWN)) poc.1
 DOC_INSTALL_NAMES := users-guide reference-guide poc.1
 DOC_HTML := $(DOC_NAMES:%=$(DOC_DIR)/html/%.html)
