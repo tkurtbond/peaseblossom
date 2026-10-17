@@ -17,6 +17,10 @@ here=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$work" && cd "$work" || exit 1
 PATH=$(dirname "$poc"):/usr/bin:/bin
 export PATH
+# ls sorts as expected-vax does whatever the locale (rpmbuild's %check
+# runs in C, a user's shell often in en_US).
+LC_ALL=C
+export LC_ALL
 unset POC_IMPORT_PATH POC_LIBRARY_PATH LD_LIBRARY_PATH
 prefix=$(dirname "$(dirname "$poc")")
 kits=${4:-$prefix/share/peaseblossom/vax}
@@ -31,7 +35,7 @@ for model in O2 OC; do
     options=; [ $model = OC ] && options=-shared-libraries
     (cd "$model-$program" &&
      poc -$model -target vax-dec-vms $options -build $program.Mod &&
-     ls && grep 'POC\$LIB_\|^\$ LINK' $program.com)
+     ls && grep -e 'POC\$LIB_' -e '^\$ LINK' $program.com)
   done
 done
 echo "== a missing module, with POCRTL installed: no note that the runtime is not"

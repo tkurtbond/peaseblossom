@@ -15,6 +15,7 @@ MASTER_SITES=	${MASTER_SITE_GITHUB:=tkurtbond/}
 GITHUB_PROJECT=	peaseblossom
 GITHUB_RELEASE=	v${PKGVERSION_NOREV}
 DISTINFO_FILE=	${.CURDIR}/../../lang/peaseblossom/distinfo
+PATCHDIR=	${.CURDIR}/../../lang/peaseblossom/patches
 
 MAINTAINER=	tkurtbond@gmail.com
 HOMEPAGE=	https://github.com/tkurtbond/peaseblossom
@@ -24,10 +25,10 @@ LICENSE=	modified-bsd
 # poc, which builds the libraries, has run on amd64 and i386
 ONLY_FOR_PLATFORM=	NetBSD-*-x86_64 NetBSD-*-i386
 
-# poc refuses a library another version of poc wrote
-DEPENDS+=	peaseblossom-${PKGVERSION_NOREV}{,nb[0-9]*}:../../lang/peaseblossom
 # poc is built with clang, and runs it
 TOOL_DEPENDS+=	clang-[0-9]*:../../lang/clang
+# poc refuses a library another version of poc wrote
+DEPENDS+=	peaseblossom-${PKGVERSION_NOREV}{,nb[0-9]*}:../../lang/peaseblossom
 
 USE_TOOLS+=		gmake
 MAKE_FILE=		GNUmakefile

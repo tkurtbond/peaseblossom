@@ -9,6 +9,8 @@ lib/poc/${POC_TRIPLE}/O2-g/CardinalTypes.owner
 lib/poc/${POC_TRIPLE}/O2-g/CardinalTypes.sym
 lib/poc/${POC_TRIPLE}/O2-g/Console.owner
 lib/poc/${POC_TRIPLE}/O2-g/Console.sym
+lib/poc/${POC_TRIPLE}/O2-g/Directories.owner
+lib/poc/${POC_TRIPLE}/O2-g/Directories.sym
 lib/poc/${POC_TRIPLE}/O2-g/Err.owner
 lib/poc/${POC_TRIPLE}/O2-g/Err.sym
 lib/poc/${POC_TRIPLE}/O2-g/FileDescriptorOutput.owner
@@ -62,6 +64,8 @@ lib/poc/${POC_TRIPLE}/O2/CardinalTypes.owner
 lib/poc/${POC_TRIPLE}/O2/CardinalTypes.sym
 lib/poc/${POC_TRIPLE}/O2/Console.owner
 lib/poc/${POC_TRIPLE}/O2/Console.sym
+lib/poc/${POC_TRIPLE}/O2/Directories.owner
+lib/poc/${POC_TRIPLE}/O2/Directories.sym
 lib/poc/${POC_TRIPLE}/O2/Err.owner
 lib/poc/${POC_TRIPLE}/O2/Err.sym
 lib/poc/${POC_TRIPLE}/O2/FileDescriptorOutput.owner
@@ -117,6 +121,8 @@ lib/poc/${POC_TRIPLE}/OC-g/CardinalTypes.owner
 lib/poc/${POC_TRIPLE}/OC-g/CardinalTypes.sym
 lib/poc/${POC_TRIPLE}/OC-g/Console.owner
 lib/poc/${POC_TRIPLE}/OC-g/Console.sym
+lib/poc/${POC_TRIPLE}/OC-g/Directories.owner
+lib/poc/${POC_TRIPLE}/OC-g/Directories.sym
 lib/poc/${POC_TRIPLE}/OC-g/Err.owner
 lib/poc/${POC_TRIPLE}/OC-g/Err.sym
 lib/poc/${POC_TRIPLE}/OC-g/FileDescriptorOutput.owner
@@ -170,6 +176,8 @@ lib/poc/${POC_TRIPLE}/OC/CardinalTypes.owner
 lib/poc/${POC_TRIPLE}/OC/CardinalTypes.sym
 lib/poc/${POC_TRIPLE}/OC/Console.owner
 lib/poc/${POC_TRIPLE}/OC/Console.sym
+lib/poc/${POC_TRIPLE}/OC/Directories.owner
+lib/poc/${POC_TRIPLE}/OC/Directories.sym
 lib/poc/${POC_TRIPLE}/OC/Err.owner
 lib/poc/${POC_TRIPLE}/OC/Err.sym
 lib/poc/${POC_TRIPLE}/OC/FileDescriptorOutput.owner
