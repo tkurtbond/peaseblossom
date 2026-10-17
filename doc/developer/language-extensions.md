@@ -1597,7 +1597,7 @@ integer type, and `-strict`.
 ## Unsigned integer types (decided 2026-10-08, implemented 2026-10-14; Phase 19, candidate 5)
 
 **Adopted by the user 2026-10-08, implemented 2026-10-14** for the LLVM
-backend, and on the `vax` branch for the VAX backend (Phase 17;
+backend, and for the VAX backend (Phase 17;
 `vax-macro32-backend.md`, section 20). The FLTK binding (`~/Repos/Oberon/pofltk`)
 declares C's unsigned types as the signed `SYSTEM.INTn` of the same width,
 which pass the bits but compare, divide and widen as signed: `Fl.RGB`

@@ -150,8 +150,8 @@ them (`INSTALL.md`, section 6):
 - this guide, as HTML, PDF and text, with the other documents (in
   `/usr/local/share/doc/peaseblossom`).
 
-<!-- TODO with the packaging work, after vax is merged: the
-peaseblossom-vax package, which installs the same. -->
+<!-- TODO with the packaging work: the peaseblossom-vax package, which
+installs the same. -->
 
 ## 2. A first program
 

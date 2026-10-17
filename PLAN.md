@@ -903,8 +903,8 @@ found and what was decided with the user, and is marked `[done]` once it
 is committed with its fixtures, `make check` passes on Linux and the
 three BSDs, and the User's and Reference Guides and poc(1) say what it
 does; a done item stays until the next phase's close-out, which moves it
-to that phase's record. Made on `main`, and merged into the `vax` branch
-at a convenient point.
+to that phase's record. Made on `main` (and, for the VAX, on the `vax`
+branch until it was merged into `main`, 2026-10-17).
 
 Those done while Phase 15 was current, 1-4, are in
 `doc/history/phases/phase-15.md`.
@@ -923,7 +923,8 @@ Those done while Phase 15 was current, 1-4, are in
     installs both into a scratch directory and builds programs for the
     VAX with that poc alone (`test/install/check-vax.sh`). The
     `peaseblossom-vax` packages, and poc saying the VAX runtime is not
-    installed, come with the packaging work after the merge.
+    installed, come with the packaging work, now that `vax` is merged
+    (2026-10-17).
 
 ## Open design questions
 

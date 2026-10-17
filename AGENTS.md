@@ -432,7 +432,7 @@ minus is allowed, `ABS` is the identity; comparison, `DIV` and `MOD` are
 unsigned, and `ASH` and `LSH` shift in zeros. `Out`, `Err` and `OutStr` have
 `Card` and `CardHex`, `In` and `InStr` `Card`; `Err`'s name their type
 through `CardinalTypes`, whose `rtl/voc` twin Stage 0 compiles. `-strict`
-rejects them. The VAX backend has them too, on the `vax` branch (Phase 17;
+rejects them. The VAX backend has them too (Phase 17;
 `vax-macro32-backend.md`, section 20).
 
 ## Project state
@@ -479,8 +479,11 @@ STARLET) and `VMSLIB` (twelve modules over VMS's own libraries, ASTs
 among them) - and the kits that install poc on a VMS site (closed
 2026-10-16, on the `vax` branch; `doc/history/phases/phase-17.md`).
 Phase 18, VAX object files written directly, is next; 15-18 are the
-VAX/VMS work, 19 further extensions, 20 voc's library modules. Merging
-`vax` into `main` is the user's call. Bugs found by using
+VAX/VMS work, 19 further extensions, 20 voc's library modules. `vax`
+was merged into `main` on 2026-10-17 (a fast-forward, at `7ec6468`), and
+all new work, the VAX's included, goes on `main`; the `peaseblossom-vax`
+packages come next with the packaging (`PLAN.md`, "Ongoing implementation
+enhancements" 5). Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
 fixing"), and the runtime-library additions and language extensions it
 shows are wanted are made the same way (`PLAN.md`, "Ongoing library
