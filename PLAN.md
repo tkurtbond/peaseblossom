@@ -844,6 +844,17 @@ Those fixed while Phase 15 was current, 1-6, are in
 Those fixed while Phase 16 was current, 7, are in
 `doc/history/phases/phase-16.md`.
 
+8.  **[fixed] An option after the file was ignored.** Found closing
+    Phase 17 (2026-10-16): `doc-vax-guide` built `Fail` with `-build
+    Fail.Mod -trap-location`, and the trap had no location; among
+    `-compile`'s or `-library`'s files an option was read as a file. The
+    user, 2026-10-17: poc applies options that come after a file. `Run`
+    now applies every option in a first pass, wherever it is, and takes
+    the options out before running the command, so a file list holds
+    only files; `-help`, the guides and poc(1) say so. Fixture
+    `poc-options-after-file`. Fixed on `vax`; it reaches `main` with the
+    merge, or by itself if the user wants it there sooner.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other

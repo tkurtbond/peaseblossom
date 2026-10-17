@@ -139,7 +139,8 @@ check-stage1:
 # default elsewhere. The suite with every fixture's build optimized (a poc
 # wrapper that adds -opt 2), then Stage 1 and Stage 2 built optimized in
 # build/opt2 and compared, then the suite under that Stage 1.
-# poc-exit-status, poc-output-streams, poc-opt-level and poc-usage test
+# poc-exit-status, poc-output-streams, poc-opt-level, poc-usage and
+# poc-options-after-file test
 # poc's command line, which the wrapper changes, so they are left out. So
 # are the fixtures whose exact real results x87 arithmetic changes when
 # optimized (the reason for the -O0 default): llvm-out-extra and llvm-math-extra on a
@@ -152,7 +153,7 @@ check-stage1:
 OPT2_DIR := $(abspath $(BUILD_DIR)/opt2)
 OPT2_HOST_X87 := $(filter i386 i486 i586 i686,$(shell uname -m))
 OPT2_HOST_BSD := $(filter-out Linux,$(shell uname -s))
-OPT2_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-usage \
+OPT2_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-usage poc-options-after-file \
   $(if $(OPT2_HOST_X87),llvm-out-extra llvm-math-extra) \
   $(if $(OPT2_HOST_X87)$(OPT2_HOST_BSD),llvm-i686-runtime)
 OPT2_TESTS := $(filter-out $(OPT2_SKIP),$(ALL_TESTS))
@@ -191,7 +192,7 @@ check-opt2: build
 # and llvm-gc-compiled-roots (its .sym and .o pair would be bitcode).
 LTO_DIR := $(abspath $(BUILD_DIR)/lto)
 LTO_SKIP := poc-exit-status poc-output-streams poc-opt-level poc-link-flags \
-  poc-usage llvm-libraries llvm-using-modules llvm-debug-info llvm-libraries-i686 \
+  poc-usage poc-options-after-file llvm-libraries llvm-using-modules llvm-debug-info llvm-libraries-i686 \
   llvm-lto llvm-object-reuse llvm-gc-compiled-roots
 LTO_TESTS := $(filter-out $(LTO_SKIP),$(ALL_TESTS))
 check-lto: build

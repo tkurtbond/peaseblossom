@@ -124,6 +124,8 @@ MODULE Poc;
        wildcards expanded (ReadArguments) *)
     ArgumentText = POINTER TO ARRAY OF CHAR;
     ArgumentList = POINTER TO ARRAY OF ArgumentText;
+    (* which of the arguments are options or their parameters (Run) *)
+    ArgumentMarks = POINTER TO ARRAY OF BOOLEAN;
 
     (* Phase 17 step 1: a hand-written MACRO-32 file poc -library puts in a
        library for vax-dec-vms beside its modules, as PocRtl.mar is put in
@@ -2942,7 +2944,7 @@ MODULE Poc;
     HelpLine("  -version                   print poc's version, the target and clang's");
     HelpLine("  -help, -h, --help          print this");
     HelpLine("");
-    HelpLine("options, before the command (the last one counts, except those that add):");
+    HelpLine("options, before or after the command (the last one counts, except those that add):");
     HelpLine("  -o <exe>                   the executable (default: the module's name)");
     HelpLine("  -output-dir <dir>          write .sym, .ll, .o files and libraries in <dir>");
     HelpLine("  -import-path <dir>         add <dir> to the import path");
@@ -3098,12 +3100,43 @@ MODULE Poc;
     END
   END RunCommand;
 
+  (* Whether arg is a command or a file, which Run runs once every option
+     is applied, wherever the options are (the user, 2026-10-17: an option
+     after the file applies too); with how many parameters of its own
+     follow it, -library's name or -build's file *)
+  PROCEDURE IsCommand(arg: ARRAY OF CHAR; VAR parameters: INTEGER): BOOLEAN;
+  BEGIN
+    parameters := 0;
+    IF IsFileCommand(arg) OR (arg = "-library") OR (arg = "-install-library") THEN
+      parameters := 1; RETURN TRUE
+    END;
+    RETURN (arg[0] # "-") OR (arg = "-compile")
+      OR (arg = "-print-import-path") OR (arg = "-print-library-path") OR (arg = "-version")
+      OR (arg = "-help") OR (arg = "--help") OR (arg = "-h")
+  END IsCommand;
+
+  (* Takes out of the arguments those isOption marks, and moves command,
+     an argument's index, with the one it was *)
+  PROCEDURE RemoveOptions(isOption: ArgumentMarks; VAR command: INTEGER);
+    VAR i, kept: INTEGER;
+  BEGIN
+    kept := 1;
+    FOR i := 1 TO argumentCount - 1 DO
+      IF ~isOption[i] THEN
+        IF i = command THEN command := kept END;
+        argumentList[kept] := argumentList[i]; INC(kept)
+      END
+    END;
+    argumentCount := kept
+  END RemoveOptions;
+
   PROCEDURE Run;
     VAR
-      i: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR;
+      i, start, k, command, parameters: INTEGER; arg, param: ARRAY 256 OF CHAR; outputDir: ARRAY 256 OF CHAR;
       targetTriple: ARRAY tripleLength OF CHAR;
       exePath: ARRAY 256 OF CHAR;
-      done, onVms, ok: BOOLEAN;
+      done, onVms, ok, optionsOnly, isCommand, finished: BOOLEAN;
+      isOption: ArgumentMarks;
   BEGIN
     InitImportPathFromEnvironment;
     ModuleInterface.libraryLookup := LibraryInterfaceDir;
@@ -3120,248 +3153,275 @@ MODULE Poc;
       ConstantEvaluator.vaxHost := onVms; (* its LONGREAL is G_floating *)
       exePath[0] := 0X;
       done := FALSE;
-      WHILE (i < argumentCount) & ~done DO
-        GetArgument(i, arg);
-        IF onVms & (arg[0] = "-") THEN OptionOnVms(arg) END;
-        IF IsLLVMOption(arg) & ~LLVMBackEnd.Available() THEN
-          failed := TRUE; Err.String("poc: "); Err.String(arg);
-          Err.String(" is not available on VAX/VMS, where poc has no LLVM back end"); Err.Ln;
-          done := TRUE
-        ELSIF arg = "-import-path" THEN
-          IF i + 1 < argumentCount THEN
-            GetArgument(i + 1, param);
-            ModuleInterface.AddSearchPathDir(param);
-            INC(i, 2)
-          ELSE
-            failed := TRUE; Err.String("poc: -import-path requires a directory"); Err.Ln;
+      (* two passes: the first applies every option and marks it and its
+         parameter, passing over the command or file (the first one) and
+         the files after it; the second, with the options taken out, runs
+         the command, so that its files are only files *)
+      NEW(isOption, argumentCount);
+      FOR k := 0 TO argumentCount - 1 DO isOption[k] := FALSE END;
+      optionsOnly := TRUE; command := -1;
+      REPEAT
+        WHILE (i < argumentCount) & ~done DO
+          GetArgument(i, arg); start := i; isCommand := FALSE;
+          IF onVms & (arg[0] = "-") THEN OptionOnVms(arg) END;
+          IF IsLLVMOption(arg) & ~LLVMBackEnd.Available() THEN
+            failed := TRUE; Err.String("poc: "); Err.String(arg);
+            Err.String(" is not available on VAX/VMS, where poc has no LLVM back end"); Err.Ln;
             done := TRUE
-          END
-        ELSIF arg = "-clear-import-path" THEN
-          ModuleInterface.ClearSearchPath;
-          INC(i)
-        ELSIF arg = "-print-import-path" THEN
-          PrintImportPath;
-          INC(i); done := TRUE
-        (* Phase 12 step 2c: the library path, and linking libraries *)
-        ELSIF arg = "-library-path" THEN
-          IF i + 1 < argumentCount THEN
-            GetArgument(i + 1, param);
-            Libraries.AddPathDir(param);
-            INC(i, 2)
-          ELSE
-            failed := TRUE; Err.String("poc: -library-path requires a directory"); Err.Ln;
-            done := TRUE
-          END
-        ELSIF arg = "-clear-library-path" THEN
-          Libraries.ClearPath; libraryPathCleared := TRUE;
-          INC(i)
-        ELSIF arg = "-print-library-path" THEN
-          PrintLibraryPath;
-          INC(i); done := TRUE
-        ELSIF arg = "-version" THEN
-          PrintVersion(targetTriple);
-          INC(i); done := TRUE
-        ELSIF (arg = "-help") OR (arg = "--help") OR (arg = "-h") THEN
-          Help;
-          INC(i); done := TRUE
-        ELSIF arg = "-shared-libraries" THEN
-          sharedLibraries := TRUE;
-          INC(i)
-        ELSIF arg = "-compile" THEN
-          IF i + 1 < argumentCount THEN
-            CompileOnly(i + 1, outputDir, targetTriple)
-          ELSE
-            failed := TRUE; Err.String("poc: -compile requires at least one file"); Err.Ln
-          END;
-          done := TRUE
-        ELSIF arg = "-install-library" THEN
-          IF i + 1 < argumentCount THEN
-            GetArgument(i + 1, param);
-            InstallLibrary(param, outputDir, targetTriple)
-          ELSE
-            failed := TRUE; Err.String("poc: -install-library requires a name"); Err.Ln
-          END;
-          done := TRUE
-        ELSIF arg = "-library" THEN
-          IF i + 2 < argumentCount THEN
-            GetArgument(i + 1, param);
-            BuildLibrary(param, i + 2, outputDir, targetTriple)
-          ELSE
-            failed := TRUE; Err.String("poc: -library requires a name and at least one file"); Err.Ln
-          END;
-          done := TRUE
-        (* 000-todo.org's "output directory for build artifacts" item:
-           -emit-interface's .sym file and -emit-llvm-ir's .ll file (PLAN.md
-           Phase 8 step 2) both use this, overriding ModuleInterface.Write*/
-           LLVMToolchainDriver.EmitIR*'s default of the current directory;
-           a later flag wins if given more than once. It has no env-var
-           seed (unlike -import-path) since the request that prompted this
-           was CLI-only. *)
-        ELSIF arg = "-output-dir" THEN
-          IF i + 1 < argumentCount THEN
-            GetArgument(i + 1, outputDir);
-            (* made if it is not there (Phase 13 step 6: only -library and
-               -install-library made it, and a build said "cannot write
-               <dir>/<M>.sym") *)
-            IF ~Directories.MakeDirectory(outputDir) THEN
-              failed := TRUE; Err.String("poc: cannot make the directory "); Err.String(outputDir); Err.Ln;
-              done := TRUE
-            END;
-            INC(i, 2)
-          ELSE
-            failed := TRUE; Err.String("poc: -output-dir requires a directory"); Err.Ln;
-            done := TRUE
-          END
-        (* PLAN.md's "Open design questions" - MAX(LONGINT)-in-CONST:
-           selects the elementary-type size model ConstantEvaluator.Mod
-           folds MAX(T)/MIN(T)/SIZE(T) and integer literals against (see
-           ConstantEvaluator.SetSizeModel*'s own comment) - a later flag
-           wins if given more than once, matching -output-dir above. *)
-        ELSIF arg = "-O2" THEN
-          ConstantEvaluator.SetSizeModel(MemoryLayout.sizeModelO2);
-          INC(i)
-        ELSIF arg = "-OC" THEN
-          ConstantEvaluator.SetSizeModel(MemoryLayout.sizeModelOC);
-          INC(i)
-        ELSIF arg = "-strict" THEN
-          (* Phase 11 B2: the module named on the command line may use only
-             Oberon2.pdf; its imports are exempt (Diagnostics.strict) *)
-          Diagnostics.strict := TRUE;
-          INC(i)
-        ELSIF arg = "-trap-location" THEN
-          (* Phase 11 C7: every trap message names its file, line, column and procedure *)
-          LLVMBackEnd.SetTrapLocation; VaxCodeGenerator.trapLocation := TRUE;
-          INC(i)
-        ELSIF arg = "-g" THEN
-          (* Phase 11 A16: debug information for gdb and lldb *)
-          LLVMBackEnd.SetDebugInfo;
-          Libraries.SetDebug(TRUE);
-          INC(i)
-        ELSIF arg = "-opt" THEN
-          (* Phase 11 D13: the optimization level -build passes clang *)
-          IF i + 1 < argumentCount THEN
-            GetArgument(i + 1, param);
-            IF ~LLVMBackEnd.SetOptimizationLevel(param) THEN
-              failed := TRUE;
-              Err.String("poc: -opt takes 0, 1, 2, 3, s, z or g, not "); Err.String(param); Err.Ln;
-              done := TRUE
-            END;
-            INC(i, 2)
-          ELSE
-            failed := TRUE; Err.String("poc: -opt requires a level"); Err.Ln;
-            done := TRUE
-          END
-        ELSIF arg = "-range-checks" THEN
-          (* Phase 12 step 1: voc's -r *)
-          LLVMBackEnd.SetRangeChecks; VaxCodeGenerator.rangeChecks := TRUE;
-          INC(i)
-        ELSIF arg = "-static" THEN
-          (* Phase 12 step 1: voc's -M *)
-          LLVMBackEnd.SetStaticLink;
-          INC(i)
-        ELSIF arg = "-lto" THEN
-          (* Phase 12 step 2g: whole-program optimization *)
-          LLVMBackEnd.SetLto;
-          INC(i)
-        ELSIF arg = "-rebuild" THEN
-          (* Ongoing implementation enhancements, item 3: no object reused *)
-          LLVMBackEnd.SetRebuild;
-          INC(i)
-        ELSIF arg = "-verbose" THEN
-          (* Phase 12 step 1: voc's -V, as far as it shows the C compiler's command *)
-          LLVMBackEnd.SetVerbose;
-          INC(i)
-        ELSIF arg = "-c-flag" THEN
-          (* Phase 13 step 2: flags for clang when it compiles a module's C part *)
-          IF i + 1 < argumentCount THEN
-            GetArgument(i + 1, param);
-            IF ~LLVMBackEnd.AddCFlag(param) THEN
-              failed := TRUE; Err.String("poc: too many -c-flag arguments"); Err.Ln;
-              done := TRUE
-            END;
-            INC(i, 2)
-          ELSE
-            failed := TRUE; Err.String("poc: -c-flag requires an argument"); Err.Ln;
-            done := TRUE
-          END
-        ELSIF arg = "-link" THEN
-          (* Phase 12 step 1: voc's LDFLAGS/LDLIBS *)
-          IF i + 1 < argumentCount THEN
-            GetArgument(i + 1, param);
-            IF ~LLVMBackEnd.AddLinkArgument(param) THEN
-              failed := TRUE; Err.String("poc: too many -link arguments"); Err.Ln;
-              done := TRUE
-            ELSIF HasLineBreak(param) THEN
-              (* a library's manifest records it on a line of its own *)
-              failed := TRUE; Err.String("poc: a -link argument cannot hold a line break"); Err.Ln;
-              done := TRUE
-            END;
-            Libraries.AddLinkArgument(linkArguments, param);
-            INC(i, 2)
-          ELSE
-            failed := TRUE; Err.String("poc: -link requires an argument"); Err.Ln;
-            done := TRUE
-          END
-        ELSIF arg = "-trap-heap-exhausted" THEN
-          (* Phase 11 A13: a NEW the heap cannot satisfy stops the program *)
-          LLVMBackEnd.SetTrapHeapExhausted; VaxCodeGenerator.trapHeapExhausted := TRUE;
-          INC(i)
-        (* PLAN.md Phase 8 step 2: -target/-o are flags, not commands,
-           consumed by -emit-llvm-ir/-build the same way -output-dir is -
-           see RunCommand/ResolveTriple. A later flag wins if given more
-           than once, matching every other flag above. *)
-        ELSIF arg = "-target" THEN
-          IF i + 1 < argumentCount THEN
-            GetArgument(i + 1, targetTriple);
-            (* a triple, not a name, so matched as an option is *)
-            IF onVms THEN LowerCase(targetTriple) END;
-            IF onVms & (targetTriple # BuildInfo.defaultTarget) THEN
-              (* on VAX/VMS poc runs no clang, so it has no other target *)
-              failed := TRUE; Err.String("poc: -target "); Err.String(targetTriple);
-              Err.String(" is not available on VAX/VMS"); Err.Ln;
-              done := TRUE
-            END;
-            INC(i, 2)
-          ELSE
-            failed := TRUE; Err.String("poc: -target requires a triple"); Err.Ln;
-            done := TRUE
-          END
-        ELSIF arg = "-o" THEN
-          IF i + 1 < argumentCount THEN
-            GetArgument(i + 1, exePath);
-            INC(i, 2)
-          ELSE
-            failed := TRUE; Err.String("poc: -o requires a path"); Err.Ln;
-            done := TRUE
-          END
-        ELSIF arg[0] # "-" THEN
-          (* Phase 13 step 2: a file and no command builds a program, as
-             -build does, its command tables after it *)
-          CollectCommandTables(i + 1, ok);
-          IF ok THEN Build(arg, outputDir, targetTriple, exePath) END;
-          done := TRUE
-        ELSE
-          IF i + 1 < argumentCount THEN
-            GetArgument(i + 1, param);
-            CollectCommandTables(i + 2, ok);
-            IF ~ok THEN
-              (* reported *)
-            ELSIF (commandTables # NIL) & (arg # "-build") THEN
-              NotForCommandTables
-            ELSE
-              RunCommand(arg, param, outputDir, targetTriple, exePath)
+          ELSIF optionsOnly & IsCommand(arg, parameters) THEN
+            isCommand := TRUE;
+            IF command < 0 THEN command := i END;
+            INC(i);
+            WHILE (parameters > 0) & (i < argumentCount) & (argumentList[i][0] # "-") DO
+              INC(i); DEC(parameters)
             END
-          ELSIF IsFileCommand(arg) THEN
-            BadUsage(arg, " requires a file")
+          ELSIF arg = "-import-path" THEN
+            IF i + 1 < argumentCount THEN
+              GetArgument(i + 1, param);
+              ModuleInterface.AddSearchPathDir(param);
+              INC(i, 2)
+            ELSE
+              failed := TRUE; Err.String("poc: -import-path requires a directory"); Err.Ln;
+              done := TRUE
+            END
+          ELSIF arg = "-clear-import-path" THEN
+            ModuleInterface.ClearSearchPath;
+            INC(i)
+          ELSIF arg = "-print-import-path" THEN
+            PrintImportPath;
+            INC(i); done := TRUE
+          (* Phase 12 step 2c: the library path, and linking libraries *)
+          ELSIF arg = "-library-path" THEN
+            IF i + 1 < argumentCount THEN
+              GetArgument(i + 1, param);
+              Libraries.AddPathDir(param);
+              INC(i, 2)
+            ELSE
+              failed := TRUE; Err.String("poc: -library-path requires a directory"); Err.Ln;
+              done := TRUE
+            END
+          ELSIF arg = "-clear-library-path" THEN
+            Libraries.ClearPath; libraryPathCleared := TRUE;
+            INC(i)
+          ELSIF arg = "-print-library-path" THEN
+            PrintLibraryPath;
+            INC(i); done := TRUE
+          ELSIF arg = "-version" THEN
+            PrintVersion(targetTriple);
+            INC(i); done := TRUE
+          ELSIF (arg = "-help") OR (arg = "--help") OR (arg = "-h") THEN
+            Help;
+            INC(i); done := TRUE
+          ELSIF arg = "-shared-libraries" THEN
+            sharedLibraries := TRUE;
+            INC(i)
+          ELSIF arg = "-compile" THEN
+            IF i + 1 < argumentCount THEN
+              CompileOnly(i + 1, outputDir, targetTriple)
+            ELSE
+              failed := TRUE; Err.String("poc: -compile requires at least one file"); Err.Ln
+            END;
+            done := TRUE
+          ELSIF arg = "-install-library" THEN
+            IF i + 1 < argumentCount THEN
+              GetArgument(i + 1, param);
+              InstallLibrary(param, outputDir, targetTriple)
+            ELSE
+              failed := TRUE; Err.String("poc: -install-library requires a name"); Err.Ln
+            END;
+            done := TRUE
+          ELSIF arg = "-library" THEN
+            IF i + 2 < argumentCount THEN
+              GetArgument(i + 1, param);
+              BuildLibrary(param, i + 2, outputDir, targetTriple)
+            ELSE
+              failed := TRUE; Err.String("poc: -library requires a name and at least one file"); Err.Ln
+            END;
+            done := TRUE
+          (* 000-todo.org's "output directory for build artifacts" item:
+             -emit-interface's .sym file and -emit-llvm-ir's .ll file (PLAN.md
+             Phase 8 step 2) both use this, overriding ModuleInterface.Write*/
+             LLVMToolchainDriver.EmitIR*'s default of the current directory;
+             a later flag wins if given more than once. It has no env-var
+             seed (unlike -import-path) since the request that prompted this
+             was CLI-only. *)
+          ELSIF arg = "-output-dir" THEN
+            IF i + 1 < argumentCount THEN
+              GetArgument(i + 1, outputDir);
+              (* made if it is not there (Phase 13 step 6: only -library and
+                 -install-library made it, and a build said "cannot write
+                 <dir>/<M>.sym") *)
+              IF ~Directories.MakeDirectory(outputDir) THEN
+                failed := TRUE; Err.String("poc: cannot make the directory "); Err.String(outputDir); Err.Ln;
+                done := TRUE
+              END;
+              INC(i, 2)
+            ELSE
+              failed := TRUE; Err.String("poc: -output-dir requires a directory"); Err.Ln;
+              done := TRUE
+            END
+          (* PLAN.md's "Open design questions" - MAX(LONGINT)-in-CONST:
+             selects the elementary-type size model ConstantEvaluator.Mod
+             folds MAX(T)/MIN(T)/SIZE(T) and integer literals against (see
+             ConstantEvaluator.SetSizeModel*'s own comment) - a later flag
+             wins if given more than once, matching -output-dir above. *)
+          ELSIF arg = "-O2" THEN
+            ConstantEvaluator.SetSizeModel(MemoryLayout.sizeModelO2);
+            INC(i)
+          ELSIF arg = "-OC" THEN
+            ConstantEvaluator.SetSizeModel(MemoryLayout.sizeModelOC);
+            INC(i)
+          ELSIF arg = "-strict" THEN
+            (* Phase 11 B2: the module named on the command line may use only
+               Oberon2.pdf; its imports are exempt (Diagnostics.strict) *)
+            Diagnostics.strict := TRUE;
+            INC(i)
+          ELSIF arg = "-trap-location" THEN
+            (* Phase 11 C7: every trap message names its file, line, column and procedure *)
+            LLVMBackEnd.SetTrapLocation; VaxCodeGenerator.trapLocation := TRUE;
+            INC(i)
+          ELSIF arg = "-g" THEN
+            (* Phase 11 A16: debug information for gdb and lldb *)
+            LLVMBackEnd.SetDebugInfo;
+            Libraries.SetDebug(TRUE);
+            INC(i)
+          ELSIF arg = "-opt" THEN
+            (* Phase 11 D13: the optimization level -build passes clang *)
+            IF i + 1 < argumentCount THEN
+              GetArgument(i + 1, param);
+              IF ~LLVMBackEnd.SetOptimizationLevel(param) THEN
+                failed := TRUE;
+                Err.String("poc: -opt takes 0, 1, 2, 3, s, z or g, not "); Err.String(param); Err.Ln;
+                done := TRUE
+              END;
+              INC(i, 2)
+            ELSE
+              failed := TRUE; Err.String("poc: -opt requires a level"); Err.Ln;
+              done := TRUE
+            END
+          ELSIF arg = "-range-checks" THEN
+            (* Phase 12 step 1: voc's -r *)
+            LLVMBackEnd.SetRangeChecks; VaxCodeGenerator.rangeChecks := TRUE;
+            INC(i)
+          ELSIF arg = "-static" THEN
+            (* Phase 12 step 1: voc's -M *)
+            LLVMBackEnd.SetStaticLink;
+            INC(i)
+          ELSIF arg = "-lto" THEN
+            (* Phase 12 step 2g: whole-program optimization *)
+            LLVMBackEnd.SetLto;
+            INC(i)
+          ELSIF arg = "-rebuild" THEN
+            (* Ongoing implementation enhancements, item 3: no object reused *)
+            LLVMBackEnd.SetRebuild;
+            INC(i)
+          ELSIF arg = "-verbose" THEN
+            (* Phase 12 step 1: voc's -V, as far as it shows the C compiler's command *)
+            LLVMBackEnd.SetVerbose;
+            INC(i)
+          ELSIF arg = "-c-flag" THEN
+            (* Phase 13 step 2: flags for clang when it compiles a module's C part *)
+            IF i + 1 < argumentCount THEN
+              GetArgument(i + 1, param);
+              IF ~LLVMBackEnd.AddCFlag(param) THEN
+                failed := TRUE; Err.String("poc: too many -c-flag arguments"); Err.Ln;
+                done := TRUE
+              END;
+              INC(i, 2)
+            ELSE
+              failed := TRUE; Err.String("poc: -c-flag requires an argument"); Err.Ln;
+              done := TRUE
+            END
+          ELSIF arg = "-link" THEN
+            (* Phase 12 step 1: voc's LDFLAGS/LDLIBS *)
+            IF i + 1 < argumentCount THEN
+              GetArgument(i + 1, param);
+              IF ~LLVMBackEnd.AddLinkArgument(param) THEN
+                failed := TRUE; Err.String("poc: too many -link arguments"); Err.Ln;
+                done := TRUE
+              ELSIF HasLineBreak(param) THEN
+                (* a library's manifest records it on a line of its own *)
+                failed := TRUE; Err.String("poc: a -link argument cannot hold a line break"); Err.Ln;
+                done := TRUE
+              END;
+              Libraries.AddLinkArgument(linkArguments, param);
+              INC(i, 2)
+            ELSE
+              failed := TRUE; Err.String("poc: -link requires an argument"); Err.Ln;
+              done := TRUE
+            END
+          ELSIF arg = "-trap-heap-exhausted" THEN
+            (* Phase 11 A13: a NEW the heap cannot satisfy stops the program *)
+            LLVMBackEnd.SetTrapHeapExhausted; VaxCodeGenerator.trapHeapExhausted := TRUE;
+            INC(i)
+          (* PLAN.md Phase 8 step 2: -target/-o are flags, not commands,
+             consumed by -emit-llvm-ir/-build the same way -output-dir is -
+             see RunCommand/ResolveTriple. A later flag wins if given more
+             than once, matching every other flag above. *)
+          ELSIF arg = "-target" THEN
+            IF i + 1 < argumentCount THEN
+              GetArgument(i + 1, targetTriple);
+              (* a triple, not a name, so matched as an option is *)
+              IF onVms THEN LowerCase(targetTriple) END;
+              IF onVms & (targetTriple # BuildInfo.defaultTarget) THEN
+                (* on VAX/VMS poc runs no clang, so it has no other target *)
+                failed := TRUE; Err.String("poc: -target "); Err.String(targetTriple);
+                Err.String(" is not available on VAX/VMS"); Err.Ln;
+                done := TRUE
+              END;
+              INC(i, 2)
+            ELSE
+              failed := TRUE; Err.String("poc: -target requires a triple"); Err.Ln;
+              done := TRUE
+            END
+          ELSIF arg = "-o" THEN
+            IF i + 1 < argumentCount THEN
+              GetArgument(i + 1, exePath);
+              INC(i, 2)
+            ELSE
+              failed := TRUE; Err.String("poc: -o requires a path"); Err.Ln;
+              done := TRUE
+            END
+          ELSIF arg[0] # "-" THEN
+            (* Phase 13 step 2: a file and no command builds a program, as
+               -build does, its command tables after it *)
+            CollectCommandTables(i + 1, ok);
+            IF ok THEN Build(arg, outputDir, targetTriple, exePath) END;
+            done := TRUE
           ELSE
-            BadUsage("unknown option ", arg)
+            IF i + 1 < argumentCount THEN
+              GetArgument(i + 1, param);
+              CollectCommandTables(i + 2, ok);
+              IF ~ok THEN
+                (* reported *)
+              ELSIF (commandTables # NIL) & (arg # "-build") THEN
+                NotForCommandTables
+              ELSE
+                RunCommand(arg, param, outputDir, targetTriple, exePath)
+              END
+            ELSIF IsFileCommand(arg) THEN
+              BadUsage(arg, " requires a file")
+            ELSE
+              BadUsage("unknown option ", arg)
+            END;
+            done := TRUE
           END;
-          done := TRUE
+          IF optionsOnly & ~isCommand THEN
+            FOR k := start TO i - 1 DO
+              IF k < argumentCount THEN isOption[k] := TRUE END
+            END
+          END
+        END;
+        IF ~optionsOnly OR done THEN
+          finished := TRUE
+        ELSIF command < 0 THEN
+          (* options and no command (Phase 12 step 1): say so, not succeed
+             having done nothing *)
+          BadUsage("no file or command among the options", ""); finished := TRUE
+        ELSE
+          RemoveOptions(isOption, command); i := command; optionsOnly := FALSE; finished := FALSE
         END
-      END;
-      (* flags and no command after them (Phase 12 step 1): say so, not
-         succeed having done nothing *)
-      IF ~done THEN BadUsage("no file or command after the options", "") END
+      UNTIL finished
     END
   END Run;
 

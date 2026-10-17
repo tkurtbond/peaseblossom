@@ -20,7 +20,7 @@ commands:
   -version                   print poc's version, the target and clang's
   -help, -h, --help          print this
 
-options, before the command (the last one counts, except those that add):
+options, before or after the command (the last one counts, except those that add):
   -o <exe>                   the executable (default: the module's name)
   -output-dir <dir>          write .sym, .ll, .o files and libraries in <dir>
   -import-path <dir>         add <dir> to the import path
@@ -75,6 +75,6 @@ poc: -check requires a file
 run poc -help for the commands and options
 exit=1
 == poc -O2 -static
-poc: no file or command after the options
+poc: no file or command among the options
 run poc -help for the commands and options
 exit=1

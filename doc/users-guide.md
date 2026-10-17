@@ -185,7 +185,8 @@ LONGINT: 8 bytes, MAX 9223372036854775807
 - `-range-checks`, `-trap-location`, `-trap-heap-exhausted`: section 7. `-g`:
   section 8.
 
-Options come before the file.
+Options may come before the file or after it, and apply to the whole
+build either way.
 
 ## 4. Modules and where poc finds them
 

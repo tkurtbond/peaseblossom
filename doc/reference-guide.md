@@ -642,7 +642,8 @@ reports.
     poc [option]... -version
     poc -help
 
-Options come before the command. `-import-path`, `-library-path`, `-link`
+Options may come before the command or after it, among its files too, and
+apply to the whole command either way. `-import-path`, `-library-path`, `-link`
 and `-c-flag` add to what came before; of any other option given twice, the
 later one wins.
 `<file>` is a module's source; its name need not match the module's. poc
@@ -665,11 +666,11 @@ number, on the standard error stream.
 | `-emit-macro32 <file>` | Writes the module's VAX MACRO-32, `<Module>.mar`, and that of each module it imports compiled from source, for VAX/VMS; the module named is the program's main module, whose `.mar` has the program's start. Implies `-target vax-dec-vms`; takes `-O2` (the default) or `-OC`, under which `LONGINT` is a quadword. The VAX backend is being written: so far it writes a module's layout, its variables, assignments of integer, `REAL`, `LONGREAL`, `CHAR`, `BOOLEAN`, `SET` and `SYSTEM.SET64` expressions, fixed arrays, records and their extensions, open-array parameters, `SYSTEM.BYTE` parameters, pointers to arrays and to records and `NIL`, `IS`, type guards, strings, the statements `IF`, `CASE`, `WHILE`, `REPEAT`, `FOR`, `LOOP`, `EXIT`, `RETURN` and `WITH`, procedures and calls of them, type-bound procedures and calls of them, procedure values and calls through them, nested procedures, external `"VMS"` procedures, and the predeclared procedures `ABS`, `ODD`, `CHR`, `ORD`, `CAP`, `LEN`, `INC`, `DEC`, `INCL`, `EXCL`, `SHORT`, `LONG`, `ASH`, `ENTIER`, `COPY`, `NEW`, `HALT` and `ASSERT`, and imported variables and procedures, and reports anything more as a construct it cannot lower yet. |
 | `-version` | Prints poc's version and the commit it was built from, the target and size model, and clang's version. |
 | `-help`, `-h`, `--help` | Every command and option, on the standard output, with the commands for testing poc itself in a section of their own at the end. |
-| `-print-import-path`, `-print-library-path` | Prints the import path or the library path, as the options before it leave it, one directory a line. |
+| `-print-import-path`, `-print-library-path` | Prints the import path or the library path, as the options leave it, one directory a line. |
 
 `poc` with no arguments prints the same list on the standard error, and
 fails. A command line poc cannot use - an unknown option, a command
-without its file, or options with no file or command after them - gets
+without its file, or options with no file or command among them - gets
 one line saying what is wrong, and a pointer to `-help`:
 
     $ poc -x

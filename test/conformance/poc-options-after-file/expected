@@ -1,0 +1,32 @@
+== poc After.mod -o after-main
+exit 0
+After runs
+== poc -check Strict.mod -strict
+Strict.mod:2:12: error: "_" in an identifier is not in the Oberon-2 report (-strict)
+Strict.mod:4:8: error: "_" in an identifier is not in the Oberon-2 report (-strict)
+2 error(s)
+exit 1
+== poc -emit-llvm-ir After.mod -output-dir ir
+semantic OK, wrote ir/After.ll
+exit 0
+After.ll
+After.sym
+== poc -compile After.mod -O2 Second.mod -output-dir objs
+exit 0
+After.ll
+After.o
+After.sym
+Second.ll
+Second.o
+Second.sym
+== poc -emit-macro32 Trap.mod -target vax-dec-vms -trap-location
+semantic OK, wrote Trap.mar
+exit 0
+1
+== poc -print-import-path -clear-import-path -import-path nowhere
+nowhere
+exit 0
+== poc After.mod -frobnicate
+poc: unknown option -frobnicate
+run poc -help for the commands and options
+exit 1

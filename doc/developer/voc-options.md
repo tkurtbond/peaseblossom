@@ -11,8 +11,9 @@ voc's command line is `voc options {files {options}}`: options before the first
 file apply to every file, options after a file only to it, and repeating an
 option toggles it. poc compiles one program per run, whole (every import is
 compiled from source for the target and size model of the run: Phase 9 step
-4a), so it has no per-file options; its flags do not toggle, and a later one
-wins.
+4a), so it has no per-file options: an option anywhere on the command line, after
+the file too (2026-10-17), applies to the whole run; its flags do not
+toggle, and a later one wins.
 
 ## The table
 

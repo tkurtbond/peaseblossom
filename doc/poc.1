@@ -84,7 +84,8 @@ of an argument that is not an option itself, as a Unix shell does, to
 the files that match, in the order RMS finds them; one that matches
 nothing is an error.
 .Pp
-Options come before the command.
+Options may come before the command or after it, among its files too,
+and apply to the whole command either way.
 .Fl import-path ,
 .Fl library-path ,
 .Fl link
@@ -248,8 +249,7 @@ and
 and imported variables and procedures,
 and reports anything more as a construct it cannot lower yet.
 .It Fl print-import-path , Fl print-library-path
-Print the import path or the library path as the options before it leave
-it.
+Print the import path or the library path as the options leave it.
 .It Fl version
 Print the version of
 .Nm
@@ -268,7 +268,7 @@ with no arguments prints the same list on the standard error, and fails.
 A command line
 .Nm
 cannot use \(em an unknown option, a command without its file, or
-options with no file or command after them \(em gets one line saying what
+options with no file or command among them \(em gets one line saying what
 is wrong, and a pointer to
 .Fl help .
 The commands for testing

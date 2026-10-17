@@ -266,6 +266,10 @@ test/conformance/vax-vmslib-shareable/work/
 # poc-response-files builds a program and a library (Phase 17 step 1)
 test/conformance/poc-response-files/resp-main
 test/conformance/poc-response-files/libs/
+# poc-options-after-file builds a program and writes into two directories
+test/conformance/poc-options-after-file/after-main
+test/conformance/poc-options-after-file/ir/
+test/conformance/poc-options-after-file/objs/
 test/conformance/llvm-cardinal/llvm-cardinal
 test/conformance/llvm-cardinal-import/llvm-cardinal-import
 test/conformance/llvm-cardinal-traps/*.exe

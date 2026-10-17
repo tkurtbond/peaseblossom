@@ -5,7 +5,7 @@
 # command line poc cannot use gets one line saying what is wrong, and a
 # pointer to -help, not the whole list in which the mistake would be lost:
 # an unknown option, before a file and alone; a command without its file;
-# and flags with no command after them (until Phase 12 step 1 poc exited
+# and flags with no command among them (until Phase 12 step 1 poc exited
 # with status 0, having done nothing).
 poc >result 2>&1
 printf 'exit=%d\n' "$?" >>result
