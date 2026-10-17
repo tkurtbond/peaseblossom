@@ -29,6 +29,10 @@ for model in O2 OC; do
      ls && grep 'POC\$LIB_\|^\$ LINK' $program.com)
   done
 done
+echo "== a missing module, with POCRTL installed: no note that the runtime is not"
+mkdir missing
+printf 'MODULE Lonely;\n  IMPORT Out, Missing;\nEND Lonely.\n' > missing/Lonely.Mod
+(cd missing && poc -target vax-dec-vms -build Lonely.Mod 2>&1 | grep -c 'runtime is not installed')
 echo "== the libraries"
 for model in O2 OC; do
   ls "$prefix/lib/poc/vax-dec-vms/$model" | grep '\.library$'

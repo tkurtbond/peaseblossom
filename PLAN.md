@@ -922,9 +922,18 @@ Those done while Phase 15 was current, 1-4, are in
     by the libraries' manifests; `make check-install-vax` (no guest)
     installs both into a scratch directory and builds programs for the
     VAX with that poc alone (`test/install/check-vax.sh`). The
-    `peaseblossom-vax` packages, and poc saying the VAX runtime is not
-    installed, come with the packaging work, now that `vax` is merged
-    (2026-10-17).
+    `peaseblossom-vax` packages come with the packaging work, now that
+    `vax` is merged (2026-10-17).
+
+6.  **[done] poc says when the VAX runtime is not installed.** The user,
+    2026-10-17, the first of the packaging work. For `-target
+    vax-dec-vms`, a module missing when the library path has no `POCRTL`
+    for the target and size model, and the import path no `Out.Mod`,
+    gets two notes, once a run: that the VAX runtime is not installed,
+    and that the `peaseblossom-vax` package or `make install-vax`
+    installs it, or `rtl/vax`'s source with `-import-path` (poc on VMS:
+    the kit's `@BUILD`). Fixture `poc-vax-runtime-missing`;
+    `check-install-vax` checks that an installed `POCRTL` gives no note.
 
 ## Open design questions
 

@@ -1,0 +1,25 @@
+== poc -target vax-dec-vms -clear-library-path -build Hello.mod
+Hello.mod:2:10: error: unknown imported module: Out
+Hello.mod:2:10: note: no Out.Mod, Out.mod or Out.sym in the current directory (the import path is empty)
+Hello.mod:2:10: note: the library path is empty
+Hello.mod:2:10: note: the VAX runtime is not installed: no library POCRTL for vax-dec-vms -O2 on the library path, and no Out.Mod on the import path
+Hello.mod:2:10: note: the peaseblossom-vax package installs it, as does make install-vax in poc's source; or give poc's rtl/vax with -import-path
+1 error(s)
+exit 1
+== poc -target vax-dec-vms -clear-library-path -build Lonely.mod
+Lonely.mod:2:10: error: unknown imported module: Out
+Lonely.mod:2:10: note: no Out.Mod, Out.mod or Out.sym in the current directory (the import path is empty)
+Lonely.mod:2:10: note: the library path is empty
+Lonely.mod:2:10: note: the VAX runtime is not installed: no library POCRTL for vax-dec-vms -O2 on the library path, and no Out.Mod on the import path
+Lonely.mod:2:10: note: the peaseblossom-vax package installs it, as does make install-vax in poc's source; or give poc's rtl/vax with -import-path
+Lonely.mod:2:15: error: unknown imported module: Missing
+Lonely.mod:2:15: note: no Missing.Mod, Missing.mod or Missing.sym in the current directory (the import path is empty)
+Lonely.mod:2:15: note: the library path is empty
+2 error(s)
+exit 1
+== poc -target vax-dec-vms -clear-library-path -import-path ../../../rtl/vax -build Lonely.mod
+Lonely.mod:2:15: error: unknown imported module: Missing
+Lonely.mod:2:15: note: no Missing.Mod, Missing.mod or Missing.sym in the current directory or on the import path (../../../rtl/vax)
+Lonely.mod:2:15: note: the library path is empty
+1 error(s)
+exit 1

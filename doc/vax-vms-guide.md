@@ -150,6 +150,17 @@ them (`INSTALL.md`, section 6):
 - this guide, as HTML, PDF and text, with the other documents (in
   `/usr/local/share/doc/peaseblossom`).
 
+Without them, and without `rtl/vax` on the import path, poc says so when
+a program imports a runtime module:
+
+    $ poc -target vax-dec-vms -build Hello.Mod
+    Hello.Mod:2:10: error: unknown imported module: Out
+    ...
+    Hello.Mod:2:10: note: the VAX runtime is not installed: no library POCRTL for vax-dec-vms -O2 on the library path, and no Out.Mod on the import path
+    Hello.Mod:2:10: note: the peaseblossom-vax package installs it, as does make install-vax in poc's source; or give poc's rtl/vax with -import-path
+
+poc on VMS says instead that the kit's `@BUILD` builds it.
+
 <!-- TODO with the packaging work: the peaseblossom-vax package, which
 installs the same. -->
 

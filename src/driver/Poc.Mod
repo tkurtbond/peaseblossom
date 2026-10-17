@@ -104,6 +104,8 @@ MODULE Poc;
     (* -check, -emit-interface and -show-interface: imports come only from
        .sym files, a library's included, never compiled from source *)
     importsFromSymOnly: BOOLEAN;
+    (* ExplainVaxRuntime has said the VAX runtime is missing, once a run *)
+    vaxRuntimeExplained: BOOLEAN;
     (* The program is for vax-dec-vms (SetVaxTarget): NEW calls rtl/vax's
        GarbageCollectedHeap, which -build adds to the program alone,
        without ModuleTable (AddRuntimeModules) *)
@@ -525,6 +527,35 @@ MODULE Poc;
     END
   END PrintVersion;
 
+  (* For a module missing for vax-dec-vms, at most once a run: when the
+     library path has no POCRTL for the target and size model, and the
+     import path no Out.Mod, poc has no VAX runtime, and the notes say where
+     one comes from: on Unix the peaseblossom-vax package or make
+     install-vax (the user, 2026-10-17), or rtl/vax's source; on VMS the
+     kit's @BUILD *)
+  PROCEDURE ExplainVaxRuntime(model: ARRAY OF CHAR; line, column: INTEGER);
+    VAR
+      text: ARRAY 512 OF CHAR; runtimeModule: SyntaxTree.Ident;
+      buffer: Lexer.CharBuffer; length: LONGINT; found: BOOLEAN;
+  BEGIN
+    IF vaxRuntimeExplained OR (Libraries.FindLibrary("POCRTL") # NIL) THEN RETURN END;
+    runtimeModule := "Out";
+    ModuleInterface.ReadSource(runtimeModule, buffer, length, found);
+    IF found THEN RETURN END;
+    vaxRuntimeExplained := TRUE;
+    COPY("the VAX runtime is not installed: no library POCRTL for ", text);
+    Strcat(text, VaxToolchainDriver.triple); Strcat(text, " -"); Strcat(text, model);
+    Strcat(text, " on the library path, and no Out.Mod on the import path");
+    Diagnostics.Note(line, column, text);
+    IF BuildInfo.defaultTarget # "" THEN
+      Diagnostics.Note(line, column,
+        "poc's kit builds it: @BUILD in the directory the kit was unpacked in, then @SETUP (README.TXT)")
+    ELSE
+      Diagnostics.Note(line, column,
+        "the peaseblossom-vax package installs it, as does make install-vax in poc's source; or give poc's rtl/vax with -import-path")
+    END
+  END ExplainVaxRuntime;
+
   (* ModuleInterface.explainMissingModule (Phase 12 step 2e): notes on the
      import of name by importer that found neither source nor .sym - where
      they were looked for, a library that has name for the other size
@@ -627,7 +658,8 @@ MODULE Poc;
         END;
         need := need.next
       END
-    END
+    END;
+    IF VaxToolchainDriver.IsVaxTriple(triple) THEN ExplainVaxRuntime(model, line, column) END
   END ExplainMissingModule;
 
   (* The libraries the program modules (from DiscoverModule) needs, checked
@@ -3426,7 +3458,7 @@ MODULE Poc;
   END Run;
 
 BEGIN
-  failed := FALSE; forVax := FALSE; helpToErr := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; libraryPathCleared := FALSE;
+  failed := FALSE; forVax := FALSE; helpToErr := FALSE; vaxRuntimeExplained := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; libraryPathCleared := FALSE;
   Run;
   IF failed OR (Diagnostics.errorCount > 0) OR (LLVMBackEnd.UnsupportedCount() > 0) THEN
     Platform.Exit(1)
