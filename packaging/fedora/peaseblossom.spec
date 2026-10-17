@@ -8,6 +8,12 @@
 # The runtime library, poc-rtl, is installed where poc looks for it,
 # beside its own directory: %%{_prefix}/lib/poc/<triple>/<O2|OC>[-g]/, as
 # gcc keeps its target files under %%{_prefix}/lib/gcc (not %%{_libdir}).
+#
+# The subpackage peaseblossom-vax has what poc -target vax-dec-vms needs
+# besides (make install-vax): the libraries POCRTL, VMSDEF and VMSLIB in
+# %%{_prefix}/lib/poc/vax-dec-vms/, the kits of poc for VAX/VMS, and the
+# VAX/VMS Guide. It is all text, so noarch, and needs poc of its own
+# version, which refuses a library another version wrote.
 
 # poc-rtl's -g copies keep their debugging information; poc itself has
 # none to split off, and is stripped in %%install.
@@ -48,13 +54,28 @@ clang compiles and links. It comes with its runtime library, poc-rtl
 (Oakwood's and Vishap Oberon's library modules), for both of its size
 models, -O2 and -OC, and the User's Guide and Reference Guide.
 
+%package        vax
+Summary:        VAX/VMS target for poc: runtime libraries, VMS kits and guide
+BuildArch:      noarch
+Requires:       %{name} = %{version}-%{release}
+
+%description    vax
+What poc -target vax-dec-vms needs besides poc itself, which has the VAX
+back end built in: the VAX runtime library POCRTL and the libraries of
+VMS's own interfaces, VMSDEF (generated from STARLET) and VMSLIB, under
+both size models, so that poc finds them as it finds poc-rtl; the two
+kits that install poc on a VAX/VMS 5.5-2 system, which a program built
+against these libraries needs there; and the Peaseblossom VAX/VMS Guide.
+
 %prep
 %autosetup
 
 %build
 # poc runs clang itself with its own options (doc/developer/llvm-toolchain.md), so
-# the distribution's CFLAGS and LDFLAGS do not reach it
-make installable
+# the distribution's CFLAGS and LDFLAGS do not reach it. The tarball has
+# the VAX kits and the VAX/VMS Guide as text already: installable-vax
+# builds only the libraries.
+make installable installable-vax
 
 %install
 make install DESTDIR=%{buildroot} PREFIX=%{_prefix} BINDIR=%{_bindir} \
@@ -62,18 +83,31 @@ make install DESTDIR=%{buildroot} PREFIX=%{_prefix} BINDIR=%{_bindir} \
 # LICENSE goes in %%{_licensedir} (%%license below), not with the docs too
 rm %{buildroot}%{_pkgdocdir}/LICENSE
 %{__strip} %{buildroot}%{_bindir}/poc
+make install-vax DESTDIR=%{buildroot} PREFIX=%{_prefix} BINDIR=%{_bindir} \
+  LIBDIR=%{_prefix}/lib DATADIR=%{_datadir} \
+  VAXKITDIR=%{_datadir}/%{name}/vax VAXDOCDIR=%{_docdir}/%{name}-vax
 
 %check
 # what a user does with the installed poc: programs at both size models,
 # -g, shared poc-rtl, a library of one's own, poc(1)
 test/install/check.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install
+# programs for the VAX built with it and the VAX libraries alone
+test/install/check-vax.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install-vax \
+  tools/bootstrap/vax-kit/check %{buildroot}%{_datadir}/%{name}/vax %{buildroot}%{_docdir}/%{name}-vax
 
 %files
 %license LICENSE
 %{_bindir}/poc
 %{_prefix}/lib/poc/
+%exclude %{_prefix}/lib/poc/vax-dec-vms/
 %{_mandir}/man1/poc.1*
 %{_pkgdocdir}/
+
+%files vax
+%license LICENSE
+%{_prefix}/lib/poc/vax-dec-vms/
+%{_datadir}/%{name}/
+%{_docdir}/%{name}-vax/
 
 %changelog
 * Wed Oct 14 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.6.0-1

@@ -126,14 +126,15 @@ Check the installation with `POC -VERSION`:
 
 ### On Unix
 
-poc for Unix has the VAX back end built in: `poc -target vax-dec-vms`
-needs nothing more than an installed poc (the *User's Guide*, chapter 1).
-What it needs besides is the VAX runtime, the modules of `rtl/vax` in
+poc for Unix has the VAX back end built in, so `poc -target vax-dec-vms`
+needs no other compiler or tool (the *User's Guide*, chapter 1 installs
+poc). What it needs besides poc is the VAX runtime, the modules of `rtl/vax` in
 poc's source tree, as source or made into the library `POCRTL` (chapter
 3). The STARLET kit's modules are `rtl/vax/vms` and `rtl/vax/vmslib`.
 
-Built from source, `make install-vax`, after `make install`, installs
-them (`INSTALL.md`, section 6):
+The package `peaseblossom-vax`, installed after `peaseblossom`, has
+them, as does `make install-vax`, after `make install`, from poc's
+source (`INSTALL.md`, section 6):
 
 - the libraries `POCRTL`, `VMSDEF` and `VMSLIB` for `vax-dec-vms`, under
   both size models, beside `poc-rtl` (in `/usr/local/lib/poc` by
@@ -147,8 +148,8 @@ them (`INSTALL.md`, section 6):
 - the two kits (in `/usr/local/share/peaseblossom/vax`), since a program
   built against these libraries needs a VMS installation from the kit
   of the same version;
-- this guide, as HTML, PDF and text, with the other documents (in
-  `/usr/local/share/doc/peaseblossom`).
+- this guide, as HTML, PDF and text (in
+  `/usr/local/share/doc/peaseblossom-vax`).
 
 Without them, and without `rtl/vax` on the import path, poc says so when
 a program imports a runtime module:
@@ -161,8 +162,6 @@ a program imports a runtime module:
 
 poc on VMS says instead that the kit's `@BUILD` builds it.
 
-<!-- TODO with the packaging work: the peaseblossom-vax package, which
-installs the same. -->
 
 ## 2. A first program
 

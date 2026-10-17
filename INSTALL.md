@@ -214,6 +214,8 @@ dependency on Fedora and NetBSD.
 | OpenBSD | `packaging/openbsd/lang/peaseblossom` | the ports tree (`mystuff/`) |
 | NetBSD | `packaging/pkgsrc/lang/peaseblossom` | pkgsrc |
 
+Each has `peaseblossom-vax` too, for `poc -target vax-dec-vms` (section 6).
+
 None of them is in its system's own collection yet, so each is installed
 from a release (below) or built locally; `doc/developer/DEVELOPER.md`,
 "Building the packages", has the commands for building one.
@@ -270,7 +272,18 @@ installs what that target needs besides: the libraries `POCRTL`,
 `$(LIBDIR)/poc`, where poc finds them with no `-import-path`; the two
 kits, in `$(DATADIR)/peaseblossom/vax` (`DATADIR` is `$(PREFIX)/share`),
 since a program built against those libraries needs the same version's
-kit on VMS; and the VAX/VMS Guide, in `$(DOCDIR)`. It needs pandoc, for
-the guide as text. `make uninstall-vax` removes them, and `make
-check-install-vax` installs into a scratch directory and builds programs
-for the VAX with the installed poc alone.
+kit on VMS; and the VAX/VMS Guide, in `$(VAXDOCDIR)`
+(`$(PREFIX)/share/doc/peaseblossom-vax`). From a release tarball, which
+has the kits and the guide as text, it builds only the libraries; from a
+git checkout it also makes the kits, and needs pandoc for the guide as
+text. `make uninstall-vax` removes them, and `make check-install-vax`
+installs into a scratch directory and builds programs for the VAX with
+the installed poc alone.
+
+The package `peaseblossom-vax` installs the same, for each system of
+section 5: a subpackage of the Fedora spec and of the OpenBSD port
+(`-vax`), and a port of its own for FreeBSD and pkgsrc,
+`lang/peaseblossom-vax`. It needs the `peaseblossom` package of its own
+version, since poc refuses a library another version wrote. A release
+from 0.7.0 on carries it beside `peaseblossom`, installed the same way
+(section 5) after it.

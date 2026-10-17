@@ -473,8 +473,9 @@ the names, and the variables that give them to the tools, are yours.
 1. **The version.** `make set-version VERSION=<x.y.z>` (`tools/set-version`)
    sets `number` in `src/driver/Version.Mod`, and the same version in each
    package: `Version` in the spec (with `Release` back to 1),
-   `DISTVERSION` in the FreeBSD port, `V` in the OpenBSD port and
-   `DISTNAME` in pkgsrc's, and in `INSTALL.md`'s example and the
+   `DISTVERSION` in the FreeBSD ports, `V` in the OpenBSD port and
+   `DISTNAME` in pkgsrc's packages (`peaseblossom-vax` is a port of its
+   own for FreeBSD and pkgsrc, a subpackage for Fedora and OpenBSD), and in `INSTALL.md`'s example and the
    Reference Guide's "describes poc <major.minor>". It removes any
    `PORTREVISION`, `REVISION` or `PKGREVISION`, and adds a `%changelog` entry that says only "Update to
    <x.y.z>.", for you to fill in. A library records the version that
@@ -496,7 +497,7 @@ the names, and the variables that give them to the tools, are yours.
        make stage2               # the seed is written by a Stage 2 built from HEAD
        make distcheck            # make dist (build/dist/peaseblossom-<version>.tar.gz
                                  # and .sha256), then builds it without voc and
-                                 # runs check-install
+                                 # runs check-install and check-install-vax
        make dist-sign            # .asc, with gpg's default key (GPG_KEY=... for another)
 
    `make dist` refuses a tree that differs from HEAD, or a Stage 2 built
@@ -505,8 +506,9 @@ the names, and the variables that give them to the tools, are yours.
    version's periods made hyphens; `tools/bootstrap/make-vax-kit`,
    `vax-macro32-backend.md` section 21), and puts copies in the tarball as
    `vax/`. It runs `make doc` (section 2), and puts the HTML
-   and PDF documents in the tarball, as `doc/html` and `doc/pdf`, so that
-   a package needs no document tools. Each `make dist` writes a new tarball (tar and
+   and PDF documents in the tarball, as `doc/html` and `doc/pdf`, and the
+   VAX/VMS Guide as text, as `doc/text`, so that a package needs no
+   document tools: `install-vax` takes the kits and the guide from there. Each `make dist` writes a new tarball (tar and
    gzip record times), so run it once, through `make distcheck`, and sign
    and publish that one. A release is signed: the tarball, the tag, the RPM
    and the list of sums, each with the maintainer's key (each asks for its
@@ -534,9 +536,11 @@ the names, and the variables that give them to the tools, are yours.
    `dnf install ./<rpm>`, `pkg add ./<pkg>` or `pkg_add ./<tgz>`; and for
    OpenBSD, whose `pkg_add` takes a package only under its own name,
    `peaseblossom-<version>.tgz`, the download under that name with
-   `ftp -o` and `pkg_add -D unsigned`. For VAX/VMS they point to the
-   User's Guide, section 12: the kits copied in ASCII mode, the
-   STARLET kit unpacked over the base kit, `@BUILD`, `@SETUP`.
+   `ftp -o` and `pkg_add -D unsigned`. `peaseblossom-vax`, for `poc
+   -target vax-dec-vms`, installs the same way, after `peaseblossom`. For
+   VAX/VMS itself they point to the VAX/VMS Guide, chapter 1: the kits
+   copied in ASCII mode, the STARLET kit unpacked over the base kit,
+   `@BUILD`, `@SETUP`.
 7. **The packages.** Each package's checksums (`distinfo`) are of the
    published tarball, so they come after it: make them on each system
    (section 6), with the packing lists if what is installed changed;
@@ -550,10 +554,23 @@ the names, and the variables that give them to the tools, are yours.
    for, with a list of every file's SHA-256 sum, signed:
 
        peaseblossom-<version>-1.fc44.x86_64.rpm, peaseblossom-<version>-1.fc44.src.rpm
+       peaseblossom-vax-<version>-1.fc44.noarch.rpm
        peaseblossom-<version>-freebsd15.1-amd64.pkg, peaseblossom-<version>-freebsd15.1-arm64.pkg
+       peaseblossom-vax-<version>-freebsd15.1.pkg
        peaseblossom-<version>-openbsd7.9-i386.tgz, peaseblossom-<version>-openbsd7.9-amd64.tgz
+       peaseblossom-vax-<version>-openbsd7.9.tgz
        peaseblossom-<version>-netbsd11.0-amd64.tgz, peaseblossom-<version>-netbsd11.0-i386.tgz
+       peaseblossom-vax-<version>-netbsd11.0-amd64.tgz, peaseblossom-vax-<version>-netbsd11.0-i386.tgz
        SHA256SUMS, SHA256SUMS.asc   # sha256sum of every file; gpg --armor --detach-sign
+
+   `peaseblossom-vax` is all text: one package for FreeBSD (`NO_ARCH`)
+   and for OpenBSD (`PKG_ARCH = *`), but one for each NetBSD
+   architecture, since pkgsrc's packages are each for a machine. It is
+   built as `peaseblossom` is: Fedora's and OpenBSD's from the same spec
+   or port, FreeBSD's and pkgsrc's from `lang/peaseblossom-vax`, which
+   shares `lang/peaseblossom`'s `distinfo` and builds poc from the seed
+   again. OpenBSD's and pkgsrc's packing lists (`PLIST-vax`, `PLIST`)
+   name the kits by `${KIT_V}`, the version with hyphens.
 
    `make release-files` (`tools/release-files`) gathers them in
    `build/release/<version>/`:

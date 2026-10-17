@@ -3,19 +3,24 @@
 # install-vax does to build for VAX/VMS on Unix, with only that poc: no
 # voc, no source tree, no POC_IMPORT_PATH or POC_LIBRARY_PATH, and no -import-path.
 # Usage: check-vax.sh <installed poc> <scratch directory> <kit program
-# directory>. It builds tools/bootstrap/vax-kit/check's two programs, one
+# directory> [<kit directory> <guide directory>], the last two where
+# install-vax put the kits and the guide (by default
+# <prefix>/share/peaseblossom/vax and <prefix>/share/doc/peaseblossom-vax;
+# a package's own). It builds tools/bootstrap/vax-kit/check's two programs, one
 # against POCRTL, the other against VMSLIB and VMSDEF too, under -O2 and
 # -OC (from the shareable images), and shows what each writes: only the
 # program's own MACRO-32, and a .com that links the installed libraries.
 # Nothing here uses the guest. Compares what it prints with expected-vax,
 # beside it.
-poc=$1; work=$2; programs=$3
+poc=$1; work=$2; programs=$(cd "$3" && pwd) || exit 1
 here=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$work" && cd "$work" || exit 1
 PATH=$(dirname "$poc"):/usr/bin:/bin
 export PATH
 unset POC_IMPORT_PATH POC_LIBRARY_PATH LD_LIBRARY_PATH
 prefix=$(dirname "$(dirname "$poc")")
+kits=${4:-$prefix/share/peaseblossom/vax}
+guide=${5:-$prefix/share/doc/peaseblossom-vax}
 
 {
 for model in O2 OC; do
@@ -38,12 +43,9 @@ for model in O2 OC; do
   ls "$prefix/lib/poc/vax-dec-vms/$model" | grep '\.library$'
 done
 echo "== the kits"
-ls "$prefix/share/peaseblossom/vax" | sed 's/[0-9][0-9]*-[0-9][0-9]*-[0-9][0-9]*/<version>/'
-echo "== the guide"
-ls "$prefix/share/doc/peaseblossom" | grep vax-vms-guide
-for kind in html pdf; do
-  ls "$prefix/share/doc/peaseblossom/$kind" | grep vax-vms-guide
-done
+ls "$kits" | sed 's/[0-9][0-9]*-[0-9][0-9]*-[0-9][0-9]*/<version>/'
+echo "== the guide as text (as HTML and PDF too, when make doc made them)"
+ls "$guide" | grep 'vax-vms-guide\.txt'
 } > result 2>&1
 
 if cmp -s "$here/expected-vax" result; then

@@ -4,9 +4,13 @@
 # and .asc, and the two kits of poc for VAX/VMS, POC-<version>.COM and
 # POC-VMS-<version>.COM, from
 # build/dist (make distcheck and make dist-sign); the RPMs,
-# binary and source, from ~/rpmbuild (RPM_DIR); and each BSD package, by
-# scp from the host that built it (section 6), renamed for its system as
-# uname there says, e.g. peaseblossom-<version>-freebsd15.1-amd64.pkg. Then
+# binary and source, from ~/rpmbuild (RPM_DIR), with peaseblossom-vax's,
+# noarch; and each BSD package, by scp from the host that built it
+# (section 6), renamed for its system as uname there says, e.g.
+# peaseblossom-<version>-freebsd15.1-amd64.pkg. peaseblossom-vax, all text,
+# is one package for FreeBSD and for OpenBSD, taken from the first host
+# (peaseblossom-vax-<version>-openbsd7.9.tgz), and one for each NetBSD
+# architecture, since pkgsrc's packages are each for a machine. Then
 # it writes SHA256SUMS, the SHA-256 sum of every one of them, and signs
 # that with gpg's default key (GPG_KEY names another) as SHA256SUMS.asc.
 #
@@ -55,25 +59,37 @@ take_one() {
 }
 take_one "$rpm_dir/RPMS/*/$name-*.rpm"
 take_one "$rpm_dir/SRPMS/$name-*.src.rpm"
+take_one "$rpm_dir/RPMS/noarch/peaseblossom-vax-$version-*.noarch.rpm"
 
-# fetch HOST SYSTEM REMOTE-PATH EXTENSION: the package HOST built, as
-# <name>-<system><release>-<arch>.<extension>
+# fetch HOST SYSTEM REMOTE-PATH EXTENSION [PACKAGE [any]]: the package HOST
+# built, PACKAGE (default peaseblossom-<version>), as
+# <package>-<system><release>-<arch>.<extension>, or with "any",
+# <package>-<system><release>.<extension>, for a package of no architecture
 fetch() {
+  package=${5:-$name}
   release=$(ssh "$1" 'uname -r' | sed 's/-.*//')
-  arch=$(ssh "$1" 'uname -m')
-  target=$out/$name-$2$release-$arch.$4
+  if [ "${6:-}" = any ]; then suffix=; else suffix=-$(ssh "$1" 'uname -m'); fi
+  target=$out/$package-$2$release$suffix.$4
   if [ ! -f "$target" ]; then
     scp -q "$1:$3" "$target" || die "could not fetch $3 from $1"
   fi
 }
+vax=peaseblossom-vax-$version
+first=
 for host in ${FREEBSD_HOSTS:-alerik rackhir}; do
   fetch "$host" freebsd "ports-work/packages/All/$name.pkg" pkg
+  [ -n "$first" ] || fetch "$host" freebsd "ports-work/packages/All/$vax.pkg" pkg "$vax" any
+  first=$host
 done
+first=
 for host in ${OPENBSD_HOSTS:-cymoril jherek}; do
   fetch "$host" openbsd "ports-work/openbsd/ports/packages/*/all/$name.tgz" tgz
+  [ -n "$first" ] || fetch "$host" openbsd "ports-work/openbsd/ports/packages/*/all/$vax.tgz" tgz "$vax" any
+  first=$host
 done
 for host in ${NETBSD_HOSTS:-artos yishana}; do
   fetch "$host" netbsd "pkgsrc-work/pkgsrc/packages/All/$name.tgz" tgz
+  fetch "$host" netbsd "pkgsrc-work/pkgsrc/packages/All/$vax.tgz" tgz "$vax"
 done
 
 unsigned=

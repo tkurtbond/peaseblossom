@@ -50,7 +50,5 @@ VMSLIB.library
 == the kits
 POC-<version>.COM
 POC-VMS-<version>.COM
-== the guide
+== the guide as text (as HTML and PDF too, when make doc made them)
 vax-vms-guide.txt
-vax-vms-guide.html
-vax-vms-guide.pdf

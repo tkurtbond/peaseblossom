@@ -7,13 +7,15 @@
 # is one line however long. The one letter outside ASCII the guides use,
 # the o-umlaut of Mössenböck, is written "oe"; any other is an error, as
 # is a line over 255 characters, which the kit's DCL CREATE does not take.
+# PANDOC names another pandoc, as for make doc.
 set -e
 if [ $# -ne 2 ]; then echo "usage: tools/doc/plain-text <guide.md> <output.txt>" >&2; exit 2; fi
-command -v pandoc >/dev/null 2>&1 || {
-  echo "plain-text: pandoc is needed to write $2 (as for make doc)" >&2
+pandoc=${PANDOC:-pandoc}
+command -v "$pandoc" >/dev/null 2>&1 || {
+  echo "plain-text: pandoc ($pandoc) is needed to write $2 (as for make doc)" >&2
   exit 1
 }
-pandoc -f gfm -t plain-simple_tables-pipe_tables-multiline_tables --columns=72 "$1" |
+"$pandoc" -f gfm -t plain-simple_tables-pipe_tables-multiline_tables --columns=72 "$1" |
   sed 's/ö/oe/g' >"$2.tmp"
 if LC_ALL=C grep -n '[^ -~]' "$2.tmp" >&2; then
   echo "plain-text: $1 has a character outside ASCII (above)" >&2

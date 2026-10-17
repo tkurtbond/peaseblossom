@@ -2,9 +2,11 @@
 # Sets poc's version, the first step of a release (doc/developer/DEVELOPER.md,
 # section 7): Version.number in src/driver/Version.Mod, and the same version
 # in each package - Version in the Fedora spec, with Release back to 1 and a
-# %changelog entry for it, DISTVERSION in the FreeBSD port, V in the OpenBSD
-# port and DISTNAME in pkgsrc's - removing any PORTREVISION, REVISION or
-# PKGREVISION; and where the documents name it, INSTALL.md's examples of
+# %changelog entry for it, DISTVERSION in the FreeBSD ports, V in the OpenBSD
+# port and DISTNAME in pkgsrc's packages - lang/peaseblossom's and
+# lang/peaseblossom-vax's for FreeBSD and pkgsrc, whose peaseblossom-vax is
+# a port of its own (OpenBSD's is a subpackage, and Fedora's) - removing any
+# PORTREVISION, REVISION (REVISION-main, REVISION-vax) or PKGREVISION; and where the documents name it, INSTALL.md's examples of
 # unpacking the tarball and installing a release's packages (their file
 # names and download URLs) and the Reference Guide's "describes poc
 # <major.minor>". The %changelog entry says only "Update to <version>.", for
@@ -45,8 +47,10 @@ must packaging/fedora/peaseblossom.spec '^Version: '
 must packaging/fedora/peaseblossom.spec '^Release: '
 must packaging/fedora/peaseblossom.spec '^%changelog$'
 must packaging/freebsd/lang/peaseblossom/Makefile '^DISTVERSION='
+must packaging/freebsd/lang/peaseblossom-vax/Makefile '^DISTVERSION='
 must packaging/openbsd/lang/peaseblossom/Makefile '^V ='
 must packaging/pkgsrc/lang/peaseblossom/Makefile '^DISTNAME='
+must packaging/pkgsrc/lang/peaseblossom-vax/Makefile '^DISTNAME='
 must INSTALL.md 'peaseblossom-[0-9]+\.[0-9]+\.[0-9]+'
 must doc/reference-guide.md 'describes poc [0-9]+\.[0-9]+ '
 
@@ -66,12 +70,14 @@ if ! grep -q "^\* .* - $version-1\$" "$ROOT/$spec"; then
   note="; fill in the %changelog entry in $spec"
 fi
 
-edit packaging/freebsd/lang/peaseblossom/Makefile \
-  "s/^\(DISTVERSION=[[:space:]]*\).*/\1$version/; /^PORTREVISION=/d"
+for port in peaseblossom peaseblossom-vax; do
+  edit packaging/freebsd/lang/$port/Makefile \
+    "s/^\(DISTVERSION=[[:space:]]*\).*/\1$version/; /^PORTREVISION=/d"
+  edit packaging/pkgsrc/lang/$port/Makefile \
+    "s/^\(DISTNAME=[[:space:]]*peaseblossom-\).*/\1$version/; /^PKGREVISION=/d"
+done
 edit packaging/openbsd/lang/peaseblossom/Makefile \
-  "s/^\(V =[[:space:]]*\).*/\1$version/; /^REVISION[[:space:]]*=/d"
-edit packaging/pkgsrc/lang/peaseblossom/Makefile \
-  "s/^\(DISTNAME=[[:space:]]*peaseblossom-\).*/\1$version/; /^PKGREVISION=/d"
+  "s/^\(V =[[:space:]]*\).*/\1$version/; /^REVISION\(-[a-z]*\)\{0,1\}[[:space:]]*=/d"
 
 edit INSTALL.md "s/peaseblossom-[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/peaseblossom-$version/g; s|/download/v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/|/download/v$version/|g"
 edit doc/reference-guide.md \

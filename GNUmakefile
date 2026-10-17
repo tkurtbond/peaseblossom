@@ -449,7 +449,8 @@ $(DOC_OTHER_DIR)/pdf/%.pdf: doc/%.md tools/doc/pdf.lua tools/doc/pdf-header.tex
 # seed was built from them (its -version names HEAD, not -dirty), so the
 # seed is the source's. make distcheck unpacks the tarball in a scratch
 # directory and, with voc out of reach, builds poc from its seed and runs
-# make check-install there.
+# make check-install there, then make check-install-vax, which takes the
+# kits and the guide as text from the tarball (pandoc out of reach too).
 VERSION := $(shell sed -n 's/^ *number\* *= *"\(.*\)";.*/\1/p' src/driver/Version.Mod)
 DIST_NAME := peaseblossom-$(VERSION)
 DIST_DIR := $(BUILD_DIR)/dist
@@ -470,8 +471,10 @@ dist: $(STAGE2_BIN) doc
 	git archive --prefix=$(DIST_NAME)/ HEAD | tar -xf - -C $(DIST_DIR)
 	git rev-parse --short HEAD > $(DIST_DIR)/$(DIST_NAME)/COMMIT
 	cp -R $(DOC_DIR)/html $(DOC_DIR)/pdf $(DIST_DIR)/$(DIST_NAME)/doc/
+	mkdir -p $(DIST_DIR)/$(DIST_NAME)/doc/text
+	PANDOC=$(PANDOC) tools/doc/plain-text doc/vax-vms-guide.md $(DIST_DIR)/$(DIST_NAME)/doc/text/vax-vms-guide.txt
 	SEED_DIR=$(abspath $(DIST_DIR)/$(DIST_NAME)/seed) tools/bootstrap/make-seed
-	POC_BIN_DIR=$(abspath $(dir $(STAGE2_BIN))) VAX_KIT_DIR=$(abspath $(DIST_DIR)/vax-kit) \
+	PANDOC=$(PANDOC) POC_BIN_DIR=$(abspath $(dir $(STAGE2_BIN))) VAX_KIT_DIR=$(abspath $(DIST_DIR)/vax-kit) \
 	  tools/bootstrap/make-vax-kit >/dev/null
 	mkdir -p $(DIST_DIR)/$(DIST_NAME)/vax
 	cd $(DIST_DIR)/vax-kit && cp $(VAX_KIT_NAMES) ../$(DIST_NAME)/vax/ && mv $(VAX_KIT_NAMES) ..
@@ -495,7 +498,8 @@ distcheck: dist
 	gzip -dc $(DIST_TARBALL) | tar -xf - -C $$scratch || status=1; \
 	if [ $$status = 0 ]; then \
 	  (cd $$scratch/$(DIST_NAME) && unset POC_IMPORT_PATH POC_LIBRARY_PATH && \
-	   $(MAKE) --no-print-directory VOC_BIN_DIR=/nonexistent check-install) \
+	   $(MAKE) --no-print-directory VOC_BIN_DIR=/nonexistent check-install && \
+	   PANDOC=/nonexistent $(MAKE) --no-print-directory VOC_BIN_DIR=/nonexistent check-install-vax) \
 	    || status=1; \
 	  ver=$$($$scratch/$(DIST_NAME)/build/bin/poc -version 2>/dev/null | sed -n 1p); \
 	  echo "distcheck: the tarball's poc says: $$ver"; \
@@ -511,7 +515,7 @@ distcheck: dist
 # poc-rtl in LIBDIR/poc, where poc -target vax-dec-vms finds them with no
 # -import-path; the two kits of poc for VAX/VMS (make vax-kit) in
 # VAXKITDIR, since a program built against those libraries needs the
-# same version's kit on VMS; and the VAX/VMS Guide in DOCDIR, as text
+# same version's kit on VMS; and the VAX/VMS Guide in VAXDOCDIR, as text
 # (tools/doc/plain-text, as the kit has it) and, when make doc has made
 # them, as HTML and PDF. rtl/vax's source is not installed: the libraries
 # hold each module's .mar and .sym, and the kit the source. The libraries
@@ -524,6 +528,9 @@ distcheck: dist
 # left. None of these uses the guest.
 DATADIR ?= $(PREFIX)/share
 VAXKITDIR ?= $(DATADIR)/peaseblossom/vax
+# the VAX/VMS Guide's own directory, apart from install's DOCDIR, as the
+# peaseblossom-vax package keeps it
+VAXDOCDIR ?= $(PREFIX)/share/doc/peaseblossom-vax
 VAX_LIB := $(STAGE2_LIB)/vax-dec-vms
 VAX_LIBRARIES := POCRTL VMSDEF VMSLIB
 VAX_RTL_SRCS := $(sort $(wildcard rtl/vax/*.Mod)) rtl/vax/PocRtl.mar
@@ -533,6 +540,12 @@ INSTALL_VAX_LIBS := $(foreach m,O2 OC,$(foreach l,$(VAX_LIBRARIES),$(VAX_LIB)/$(
 VAX_KIT_DIR := $(BUILD_DIR)/stage2/vax-kit
 VAX_KITS := $(VAX_KIT_NAMES:%=$(VAX_KIT_DIR)/%)
 VAX_GUIDE_TEXT := $(DOC_DIR)/vax-vms-guide.txt
+# in the release tarball, made by make dist, the kits (vax/) and the guide
+# as text (doc/text/) are there already: installed from there, as install
+# takes the tarball's doc/html, so that a package builds only the
+# libraries, needing neither pandoc nor the VAX cross-compile of poc
+VAX_KIT_SOURCES := $(if $(wildcard $(VAX_KIT_NAMES:%=vax/%)),$(VAX_KIT_NAMES:%=vax/%),$(VAX_KITS))
+VAX_GUIDE_TEXT_SOURCE := $(or $(wildcard doc/text/vax-vms-guide.txt),$(VAX_GUIDE_TEXT))
 
 $(VAX_LIB)/%/POCRTL.library: $(STAGE2_BIN) $(VAX_RTL_SRCS)
 	@echo "POCRTL for vax-dec-vms -$*"
@@ -553,32 +566,32 @@ $(VAX_LIB)/%/VMSLIB.library: $(VAX_LIB)/%/VMSDEF.library $(VMSLIB_SRCS)
 # changes (poc's, the runtime's, the templates or the guide)
 $(VAX_KITS) &: $(STAGE2_BIN) $(VAX_RTL_SRCS) $(VMSDEF_SRCS) $(VMSLIB_SRCS) doc/vax-vms-guide.md \
     tools/bootstrap/make-vax-kit tools/doc/plain-text $(wildcard tools/bootstrap/vax-kit/*)
-	POC_BIN_DIR=$(abspath $(dir $(STAGE2_BIN))) VAX_KIT_DIR=$(abspath $(VAX_KIT_DIR)) \
+	PANDOC=$(PANDOC) POC_BIN_DIR=$(abspath $(dir $(STAGE2_BIN))) VAX_KIT_DIR=$(abspath $(VAX_KIT_DIR)) \
 	  tools/bootstrap/make-vax-kit >/dev/null
 
 $(VAX_GUIDE_TEXT): doc/vax-vms-guide.md tools/doc/plain-text
 	@mkdir -p $(@D)
-	tools/doc/plain-text $< $@
+	PANDOC=$(PANDOC) tools/doc/plain-text $< $@
 
-installable-vax: $(INSTALL_VAX_LIBS) $(VAX_KITS) $(VAX_GUIDE_TEXT)
+installable-vax: $(INSTALL_VAX_LIBS) $(VAX_KIT_SOURCES) $(VAX_GUIDE_TEXT_SOURCE)
 
-install-vax: $(INSTALL_VAX_LIBS) $(VAX_KITS) $(VAX_GUIDE_TEXT)
-	install -d $(DESTDIR)$(LIBDIR)/poc $(DESTDIR)$(VAXKITDIR) $(DESTDIR)$(DOCDIR)
+install-vax: $(INSTALL_VAX_LIBS) $(VAX_KIT_SOURCES) $(VAX_GUIDE_TEXT_SOURCE)
+	install -d $(DESTDIR)$(LIBDIR)/poc $(DESTDIR)$(VAXKITDIR) $(DESTDIR)$(VAXDOCDIR)
 	for model in O2 OC; do \
 	  for library in $(VAX_LIBRARIES); do \
 	    $(STAGE2_BIN) -$$model -target vax-dec-vms -clear-library-path -library-path $(STAGE2_LIB) \
 	      -output-dir $(DESTDIR)$(LIBDIR)/poc -install-library $$library >/dev/null || exit 1; \
 	  done; \
 	done
-	install -m 644 $(VAX_KITS) $(DESTDIR)$(VAXKITDIR)
-	install -m 644 $(VAX_GUIDE_TEXT) $(DESTDIR)$(DOCDIR)
+	install -m 644 $(VAX_KIT_SOURCES) $(DESTDIR)$(VAXKITDIR)
+	install -m 644 $(VAX_GUIDE_TEXT_SOURCE) $(DESTDIR)$(VAXDOCDIR)/vax-vms-guide.txt
 	@for kind in html pdf; do \
 	  if [ -f $(DOC_DIR)/$$kind/vax-vms-guide.$$kind ]; then from=$(DOC_DIR)/$$kind; \
 	  elif [ -f doc/$$kind/vax-vms-guide.$$kind ]; then from=doc/$$kind; \
 	  else echo "note: no $$kind VAX/VMS Guide to install (make doc makes it)"; continue; fi; \
-	  echo "install the $$kind VAX/VMS Guide from $$from in $(DESTDIR)$(DOCDIR)/$$kind"; \
-	  install -d $(DESTDIR)$(DOCDIR)/$$kind || exit 1; \
-	  install -m 644 $$from/vax-vms-guide.$$kind $(DESTDIR)$(DOCDIR)/$$kind/ || exit 1; \
+	  echo "install the $$kind VAX/VMS Guide from $$from in $(DESTDIR)$(VAXDOCDIR)/$$kind"; \
+	  install -d $(DESTDIR)$(VAXDOCDIR)/$$kind || exit 1; \
+	  install -m 644 $$from/vax-vms-guide.$$kind $(DESTDIR)$(VAXDOCDIR)/$$kind/ || exit 1; \
 	done
 
 uninstall-vax:
@@ -602,26 +615,28 @@ uninstall-vax:
 	rmdir $(DESTDIR)$(LIBDIR)/poc/vax-dec-vms $(DESTDIR)$(LIBDIR)/poc 2>/dev/null || true
 	cd $(DESTDIR)$(VAXKITDIR) 2>/dev/null && rm -f $(VAX_KIT_NAMES) || true
 	rmdir $(DESTDIR)$(VAXKITDIR) $(DESTDIR)$(DATADIR)/peaseblossom 2>/dev/null || true
-	cd $(DESTDIR)$(DOCDIR) 2>/dev/null && rm -f vax-vms-guide.txt || true
-	cd $(DESTDIR)$(DOCDIR) 2>/dev/null && for kind in html pdf; do \
+	cd $(DESTDIR)$(VAXDOCDIR) 2>/dev/null && rm -f vax-vms-guide.txt || true
+	cd $(DESTDIR)$(VAXDOCDIR) 2>/dev/null && for kind in html pdf; do \
 	  rm -f $$kind/vax-vms-guide.$$kind; rmdir $$kind 2>/dev/null; \
 	done || true
-	rmdir $(DESTDIR)$(DOCDIR) 2>/dev/null || true
+	rmdir $(DESTDIR)$(VAXDOCDIR) 2>/dev/null || true
 
-check-install-vax: $(STAGE2_BIN) $(INSTALL_RTL) $(INSTALL_VAX_LIBS) $(VAX_KITS) $(VAX_GUIDE_TEXT) \
-    $(DOC_DIR)/html/vax-vms-guide.html $(DOC_DIR)/pdf/vax-vms-guide.pdf
+check-install-vax: $(STAGE2_BIN) $(INSTALL_RTL) $(INSTALL_VAX_LIBS) $(VAX_KIT_SOURCES) $(VAX_GUIDE_TEXT_SOURCE)
 	@scratch=$$(mktemp -d "$${TMPDIR:-/tmp}/poc-check-install-vax.XXXXXX") || exit 1; \
 	status=0; \
 	for target in install install-vax; do \
 	  $(MAKE) --no-print-directory $$target DESTDIR=$$scratch/root $(CHECK_INSTALL_DIRS) \
-	    DATADIR=/usr/local/share VAXKITDIR=/usr/local/share/peaseblossom/vax >/dev/null || status=1; \
+	    DATADIR=/usr/local/share VAXKITDIR=/usr/local/share/peaseblossom/vax \
+	    VAXDOCDIR=/usr/local/share/doc/peaseblossom-vax >/dev/null || status=1; \
 	done; \
 	if [ $$status = 0 ]; then \
 	  test/install/check-vax.sh $$scratch/root/usr/local/bin/poc $$scratch/work \
-	    $(abspath tools/bootstrap/vax-kit/check) || status=1; \
+	    $(abspath tools/bootstrap/vax-kit/check) $$scratch/root/usr/local/share/peaseblossom/vax \
+	    $$scratch/root/usr/local/share/doc/peaseblossom-vax || status=1; \
 	  for target in uninstall-vax uninstall; do \
 	    $(MAKE) --no-print-directory $$target DESTDIR=$$scratch/root $(CHECK_INSTALL_DIRS) \
-	      DATADIR=/usr/local/share VAXKITDIR=/usr/local/share/peaseblossom/vax >/dev/null || status=1; \
+	      DATADIR=/usr/local/share VAXKITDIR=/usr/local/share/peaseblossom/vax \
+	    VAXDOCDIR=/usr/local/share/doc/peaseblossom-vax >/dev/null || status=1; \
 	  done; \
 	  left=$$(cd $$scratch/root && find . -type f); \
 	  if [ -n "$$left" ]; then echo "check-install-vax: uninstall left $$left"; status=1; \
@@ -723,7 +738,7 @@ vax-stages: build
 # the fixed point there). Not part of make check: check-vax-kit holds the
 # guest for an hour or more.
 vax-kit: build
-	tools/bootstrap/make-vax-kit
+	PANDOC=$(PANDOC) tools/bootstrap/make-vax-kit
 
 check-vax-kit: build
 	tools/bootstrap/check-vax-kit $(CHECK_VAX_KIT_FLAGS)

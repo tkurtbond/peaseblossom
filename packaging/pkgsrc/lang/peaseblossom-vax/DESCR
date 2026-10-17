@@ -1,0 +1,6 @@
+What poc -target vax-dec-vms needs besides poc itself, which has the VAX
+back end built in: the VAX runtime library POCRTL and the libraries of
+VMS's own interfaces, VMSDEF (generated from STARLET) and VMSLIB, under
+both size models, where poc finds them as it finds poc-rtl; the two kits
+that install poc on a VAX/VMS 5.5-2 system, which a program built against
+these libraries needs there; and the Peaseblossom VAX/VMS Guide.

@@ -935,6 +935,22 @@ Those done while Phase 15 was current, 1-4, are in
     the kit's `@BUILD`). Fixture `poc-vax-runtime-missing`;
     `check-install-vax` checks that an installed `POCRTL` gives no note.
 
+7.  **[done] The `peaseblossom-vax` packages.** Decided with the user
+    2026-10-17: a subpackage of the Fedora spec (`noarch`) and of the
+    OpenBSD port (`-vax`, `PKG_ARCH = *`), and a port of its own,
+    `lang/peaseblossom-vax`, for FreeBSD (`NO_ARCH`) and pkgsrc, which
+    shares `lang/peaseblossom`'s `distinfo` and builds poc from the seed
+    again. Each needs `peaseblossom` of its own version, and installs
+    what `make install-vax` does, its guide in
+    `share/doc/peaseblossom-vax` (`VAXDOCDIR`). `make dist` puts the
+    guide as text in the tarball (`doc/text`), and `install-vax` takes
+    it and the kits from the tarball when they are there, so a package
+    builds only the libraries (`installable-vax`), with no pandoc;
+    `distcheck` runs `check-install-vax` in the tarball, pandoc out of
+    reach. `set-version` and `release-files` know the new packages
+    (`DEVELOPER.md`, section 7). Built and checked on each system with
+    the first release that has them.
+
 ## Open design questions
 
 - **The lowest 32-bit x86 CPU** (deferred from Phase 11 to Phase 12 on
