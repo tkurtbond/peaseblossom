@@ -22,7 +22,7 @@ machines".
 | `src/back/llvm/` | the LLVM back end and `LLVMToolchainDriver`, which runs clang |
 | `src/back/vax/` | the VAX/VMS back end, to come (Phases 15-18) |
 | `src/driver/` | `Poc.Mod` (the command), `Libraries.Mod`, `Version.Mod` |
-| `rtl/llvm/` | the runtime, the library `poc-rtl`; `Platform.c` is its part in C |
+| `rtl/llvm/` | the runtime, the library `poc-rtl`; `Platform.c` and `Directories.c` are its parts in C |
 | `test/conformance/` | the fixtures, one directory each |
 | `test/install/` | `check.sh`, what `make check-install` runs on an installed poc, and `check-vax.sh`, what `make check-install-vax` runs |
 | `tools/bootstrap/` | the stages: `stage0` (voc, `BOOTSTRAP_POC` or the seed), `stage1`, `stage2`, `make-seed` |

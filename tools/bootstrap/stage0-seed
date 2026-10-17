@@ -3,7 +3,8 @@
 # the seed's IR for the host, seed/64 or seed/32 by the word size, with the
 # seed's triple replaced by the host's and its datalayout left to clang
 # (tools/bootstrap/make-seed says why that is enough), and links it with
-# rtl/llvm/Platform.c, as poc links a program: the result, build/bin/poc, is
+# the part in C of each module the seed has, rtl/llvm/<M>.c (Platform.c,
+# Directories.c), as poc links a program: the result, build/bin/poc, is
 # a poc that needs no voc. A host whose IR would differ in more is refused:
 # one with another word size, or a 32-bit x86 other than OpenBSD's and
 # NetBSD's (theirs have the stack realignment of LLVMTypes.
@@ -32,6 +33,10 @@ for f in "$SEED/$bits"/*.ll; do
   sed -e "s/$from/$triple/g" -e '/^target datalayout = /d' "$f" > "$obj/$name.ll"
   clang -c --target="$triple" -O$level -fPIC "$obj/$name.ll" -o "$obj/$name.o"
 done
-clang -c --target="$triple" -O$level -fPIC "$ROOT/rtl/llvm/Platform.c" -o "$obj/Platform.c.o"
+for c in "$ROOT"/rtl/llvm/*.c; do
+  name=$(basename "$c" .c)
+  [ -f "$SEED/$bits/$name.ll" ] || continue
+  clang -c --target="$triple" -O$level -fPIC "$c" -o "$obj/$name.c.o"
+done
 clang --target="$triple" -O$level "$obj"/*.o -o "$BUILD/bin/poc" -lm
 echo "Stage 0: built $BUILD/bin/poc from the seed ($(cat "$SEED/VERSION"))"
