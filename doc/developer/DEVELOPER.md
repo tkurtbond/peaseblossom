@@ -64,6 +64,18 @@ gives a wide table's columns widths, breaks code lines longer than a line
 (after a `↪`), and lets long names and paths in code break. Section 7 puts
 them all in the tarball; `make install`, and so each package, installs only
 the guides' and poc(1)'s, when they are there.
+
+The rule (the user, 2026-10-17): anything made with pandoc is made on
+atla by `make dist` and put in the tarball, and a build from the tarball
+never needs pandoc, which some of the systems poc runs on, the 32-bit
+ones especially, do not have. The tarball has the documents as HTML and
+PDF (`doc/html`, `doc/pdf`), the VAX/VMS Guide as text (`doc/text`) and
+the VAX kits that hold it (`vax/`); `install`, `install-vax` and the
+packages take them from there, and `distcheck` builds the tarball with
+pandoc out of reach. A new file written with pandoc goes in the tarball
+the same way. Only a git checkout needs pandoc, and only for these
+files; on a host without it, `make check-install-vax` leaves the guide
+out and says so.
 voc is
 found as `INSTALL.md` says (`VOC_BIN_DIR`). poc is built with voc's `-OC`
 and stays at `-OC` in every stage, because it needs an 8-byte `LONGINT`.
@@ -96,7 +108,7 @@ writes `build/gen/BuildInfo.Mod` with the commit on every build, so `poc
 | `make check-opt2` | everything built at `-opt 2` |
 | `make check-lto` | the fixtures with `-lto` (not a gate) |
 | `make check-install` | installs into a scratch directory and runs `test/install/check.sh` with only that poc and clang |
-| `make check-install-vax` | installs poc and `make install-vax`'s libraries, kits and guide into a scratch directory and runs `test/install/check-vax.sh`, which builds programs for the VAX with that poc alone (no guest) |
+| `make check-install-vax` | installs poc and `make install-vax`'s libraries, kits and guide into a scratch directory and runs `test/install/check-vax.sh`, which builds programs for the VAX with that poc alone (no guest); from a git checkout without pandoc, it leaves the guide out (`VAX_GUIDE=no`) and says so |
 | `make check-seed` | poc built from the seed builds the same Stage 1 as poc built by voc |
 | `make distcheck` | the release tarball builds without voc and passes `check-install` |
 

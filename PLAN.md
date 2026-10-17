@@ -947,7 +947,10 @@ Those done while Phase 15 was current, 1-4, are in
     it and the kits from the tarball when they are there, so a package
     builds only the libraries (`installable-vax`), with no pandoc;
     `distcheck` runs `check-install-vax` in the tarball, pandoc out of
-    reach. `set-version` and `release-files` know the new packages
+    reach. From a git checkout without pandoc (the BSD hosts),
+    `check-install-vax` leaves the guide out of the kits and the install
+    (`VAX_GUIDE=no`, kits in `build/stage2/vax-kit-without-guide`) and
+    says so (2026-10-17). `set-version` and `release-files` know the new packages
     (`DEVELOPER.md`, section 7). Built and checked on each system with
     the first release that has them.
 

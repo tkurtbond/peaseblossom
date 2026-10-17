@@ -39,7 +39,9 @@
 # tools/bootstrap/check-vax-kit does. The host's poc is POC_BIN_DIR's
 # (default build/bin), as vax-v1's; the kits go in VAX_KIT_DIR (default
 # build/vax-kit), and their paths are the last two lines printed, the base
-# kit's first. Run with no arguments from anywhere.
+# kit's first. VAX_KIT_GUIDE=no leaves VAX-VMS-GUIDE.TXT out, for make
+# check-install-vax on a host without pandoc; such a kit is not for VMS.
+# Run with no arguments from anywhere.
 set -e
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -136,7 +138,9 @@ fill() { # fill <template> <target>
 }
 fill README.TXT "$KIT/base/README.TXT"
 fill README-VMS.TXT "$KIT/vms/README-VMS.TXT"
-"$ROOT/tools/doc/plain-text" "$ROOT/doc/vax-vms-guide.md" "$KIT/base/VAX-VMS-GUIDE.TXT"
+if [ "${VAX_KIT_GUIDE:-yes}" != no ]; then
+  "$ROOT/tools/doc/plain-text" "$ROOT/doc/vax-vms-guide.md" "$KIT/base/VAX-VMS-GUIDE.TXT"
+fi
 
 # each a VMS name: a name and a type of at most 39 characters of A-Z, 0-9,
 # $, _ and - (Guide to VMS Files and Devices 5.0); copy has checked that

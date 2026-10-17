@@ -278,7 +278,8 @@ has the kits and the guide as text, it builds only the libraries; from a
 git checkout it also makes the kits, and needs pandoc for the guide as
 text. `make uninstall-vax` removes them, and `make check-install-vax`
 installs into a scratch directory and builds programs for the VAX with
-the installed poc alone.
+the installed poc alone; without pandoc, it leaves the guide out and
+says so.
 
 The package `peaseblossom-vax` installs the same, for each system of
 section 5: a subpackage of the Fedora spec and of the OpenBSD port

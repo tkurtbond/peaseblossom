@@ -11,7 +11,8 @@
 # -OC (from the shareable images), and shows what each writes: only the
 # program's own MACRO-32, and a .com that links the installed libraries.
 # Nothing here uses the guest. Compares what it prints with expected-vax,
-# beside it.
+# beside it. VAX_GUIDE=no (make check-install-vax without pandoc, which
+# installed no guide as text) leaves the guide out of both.
 poc=$1; work=$2; programs=$(cd "$3" && pwd) || exit 1
 here=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$work" && cd "$work" || exit 1
@@ -48,13 +49,21 @@ for model in O2 OC; do
 done
 echo "== the kits"
 ls "$kits" | sed 's/[0-9][0-9]*-[0-9][0-9]*-[0-9][0-9]*/<version>/'
-echo "== the guide as text (as HTML and PDF too, when make doc made them)"
-ls "$guide" | grep 'vax-vms-guide\.txt'
+if [ "${VAX_GUIDE:-yes}" != no ]; then
+  echo "== the guide as text (as HTML and PDF too, when make doc made them)"
+  ls "$guide" | grep 'vax-vms-guide\.txt'
+fi
 } > result 2>&1
 
-if cmp -s "$here/expected-vax" result; then
-  echo "check-install-vax: passed"
+# the guide's section is the last
+if [ "${VAX_GUIDE:-yes}" = no ]; then
+  sed '/^== the guide as text/,$d' "$here/expected-vax"; unchecked=", the guide not checked"
 else
-  echo "check-install-vax: FAILED"; diff "$here/expected-vax" result
+  cat "$here/expected-vax"; unchecked=
+fi > expected
+if cmp -s expected result; then
+  echo "check-install-vax: passed$unchecked"
+else
+  echo "check-install-vax: FAILED"; diff expected result
   exit 1
 fi
