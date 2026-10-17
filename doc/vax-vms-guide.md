@@ -1944,7 +1944,7 @@ END Parts.
 <!-- vax-session: parts -->
 
     $ RUN PARTS
-    P200: %RMS-E-DUP, duplicate key detected (DUP not set)
+    P200: %RMS-F-DUP, duplicate key detected (DUP not set)
     by number
       P100  SHELF-A bolt
       P200  SHELF-B nut
@@ -3025,7 +3025,7 @@ hash after it, so `FAULT_AVERAGE_5CV3RD9U` is `Fault.Average`.
 Two things VMS does make a traceback harder to read:
 
 - **The line column is empty.** It holds a line only for a module
-  assembled with `/DEBUG`, below.
+  assembled with `/DEBUG` in a program linked `/DEBUG`, below.
 - **Far into a long routine, the routine is not named.** For a PC more
   than about a kilobyte past a routine's start, the traceback names the
   program section `POC_CODE` instead, with the PC relative to the
@@ -3036,23 +3036,24 @@ Two things VMS does make a traceback harder to read:
 poc writes each module as MACRO-32, `<MODULE>.MAR`, with a comment
 `; line n` before the code of line *n* of the Oberon source. Assembled
 with `/DEBUG`, a module's routines get line numbers, those of its `.MAR`
-file, and the traceback shows them. To find the line of a fault,
-assemble that module so, link the program again as its build procedure
-does, and run it:
+file, and in a program linked `/DEBUG` the traceback shows them. To find
+the line of a fault, assemble that module so, link the program again as
+its build procedure does but with `/DEBUG`, and run it with `/NODEBUG`,
+so that the debugger does not start:
 
 <!-- vax-session: faultdebug -->
 
     $ MACRO/DEBUG/OBJECT FAULT.MAR
-    $ LINK/EXECUTABLE=FAULT.EXE FAULT.OPT/OPTIONS, POCRTL.OBJ
-    $ RUN FAULT
+    $ LINK/DEBUG/EXECUTABLE=FAULT.EXE FAULT.OPT/OPTIONS, POCRTL.OBJ
+    $ RUN/NODEBUG FAULT
     5
     %SYSTEM-F-INTDIV, arithmetic trap, integer divide by zero at PC=00002032, PSL=03C00004
     %TRACE-F-TRACEBACK, symbolic stack dump follows
     module name     routine name                     line       rel PC    abs PC
 
-    FAULT           FAULT_AVERAGE_5CV3RD9U               38    00000006  00002032
-    FAULT           FAULT_INIT                           82    00000043  0000206F
-    FAULT           FAULT_MAIN                           98    00000017  00002097
+    FAULT           FAULT_AVERAGE_5CV3RD9U             38      00000006  00002032
+    FAULT           FAULT_INIT                         82      00000043  0000206F
+    FAULT           FAULT_MAIN                         98      00000017  00002097
 
 Line 38 of `FAULT.MAR` is the `DIVW3` instruction, and the comment above
 it is `; line 8`, the `RETURN` of `Average`. Line 82 is the call in the
@@ -3093,7 +3094,123 @@ them. A global variable is a symbol like a procedure's,
   DCL by `F$MESSAGE`: `WRITE SYS$OUTPUT F$MESSAGE(%X0000002C)` prints
   `%SYSTEM-F-ABORT, abort`.
 
-<!-- Chapter 17 is to be written. -->
+## 17. poc on VMS itself
+
+*For the VMS reader, and for whoever looks after poc on a VMS system.*
+
+### What `POC.EXE` is
+
+`POC.EXE` is poc, compiled for the VAX by poc itself on Unix. The base
+kit carries the MACRO-32 that compilation wrote, in `[.KIT]`, and
+`@BUILD` assembles and links it on VMS with MACRO and LINK alone
+(chapter 1). It has the same front end and VAX back end as poc on Unix,
+so it accepts the same language and writes the same MACRO-32 for the
+same source. It has no LLVM back end, and refuses the options that only
+that back end has (chapter 3).
+
+`SETUP.COM` defines `POC` as a foreign command, `POC :== $<image>`, so
+poc takes its arguments as on Unix, options starting with `-`, rather
+than as DCL qualifiers. DCL makes an argument uppercase unless it is
+quoted, and poc takes options in any case, as file names on VMS are.
+`POC -HELP` lists them all. An argument `@<file>` stands for the
+arguments in the file, one a line, for a command longer than DCL takes
+(chapter 3).
+
+### What poc needs to run
+
+**Privileges and products:** none. poc, `@BUILD` and the programs they
+build need only the base system's MACRO, LIBRARY and LINK.
+
+**Memory:** poc keeps a whole program's modules in memory while it
+compiles them, and its heap grows as it needs. A program of a few
+modules needs little. The most it has needed is to compile itself,
+about 32,000 lines: a peak of about 90 MB of virtual memory. On the development system that does so, the process has
+`PGFLQUOTA` 300,000 pages (150 MB), `WSQUOTA` 8,192 and `WSEXTENT`
+16,384, and the system `VIRTUALPAGECNT` 350,000 pages and a paging file
+of 350,000 blocks, on a VAX with 256 MB of memory. A process with less
+can still compile the programs that fit it. The quotas are set with
+`AUTHORIZE`, and the system's parameters with `SYSGEN`, by the system
+manager.
+
+**Time:** on the emulated MicroVAX 3900 that poc was developed on,
+`@BUILD` of the base kit takes about a minute: `POC.EXE` half of it,
+then `POCRTL` under each size model. The STARLET kit adds about another
+minute, nearly all of it `VMSDEF`. poc compiling itself has taken from
+a quarter of an hour to three quarters of one there, as the
+emulator's speed varies. A real MicroVAX is likely
+to be slower than its emulation on a modern computer.
+
+### poc for several users
+
+poc is installed once, in a directory its users can read. Each user
+runs its `SETUP.COM`, from `LOGIN.COM` for instance, which defines the
+command `POC` and the libraries' logical names in the user's process.
+The installation's directories and files must allow the users read and
+execute access, which DCL's `SET FILE/PROTECTION` gives. A user's own
+libraries are made and set up as chapter 4 says, in the user's own
+directories.
+
+### Building poc from its source on VMS
+
+`[.SRC]` holds poc's own source, as much of it as poc for VMS is built
+from, with the runtime's. poc can compile itself from it, under `-OC`,
+since poc needs a 64-bit `LONGINT`, and from source alone, without the
+installed libraries. The command is longer than DCL takes, so its
+arguments go in a file, one a line, here `FULL.ARGS` in a new directory
+beside `[.SRC]`:
+
+    -OC
+    -clear-library-path
+    -import-path
+    [-.SRC.FRONT]
+    -import-path
+    [-.SRC.BACK.VAX]
+    -import-path
+    [-.SRC.DRIVER]
+    -import-path
+    [-.SRC.DRIVER.NO-LLVM]
+    -import-path
+    [-.SRC.RTL]
+    -import-path
+    [-.SRC.GEN]
+    -build
+    [-.SRC.DRIVER]POC.MOD
+
+`[.SRC.DRIVER.NO-LLVM]` stands in for the LLVM back end, which poc for
+VMS leaves out. Then:
+
+    $ POC @FULL.ARGS
+    $ @POC
+
+The first writes poc's MACRO-32, one `.MAR` for each module, and
+`POC.COM`. The second assembles them and links a new `POC.EXE`, with
+`POCRTL.OBJ` assembled from `[.SRC.RTL]POCRTL.MAR`, as `[.KIT]`'s
+procedure does.
+
+poc is a **fixed point**: compiled by itself, it writes the same
+MACRO-32 as the poc that compiled it. The `.MAR` files written here are
+the same as `[.KIT]`'s, line for line, which `DIFFERENCES` can show for
+each one. poc's developers check that on the development system, and a
+third generation too: the `POC.EXE` linked here, compiling the same
+source again, writes the same files once more.
+
+### A new version
+
+Each version of poc is a kit of its own, unpacked into a new, empty
+directory: the STARLET kit refuses to unpack over another version's base
+kit. Once it is built and set up, the new version is used by running its
+`SETUP.COM` in place of the old one's.
+
+Libraries do not move between versions. poc refuses a library another
+version wrote, since nothing promises that two versions' code links
+together, so a user's own libraries are made again with the new poc,
+from their source. A program linked from object libraries carries what
+it uses and goes on running. A program linked with `-shared-libraries`
+needs the images it was linked against, so it is linked again when they
+change (chapter 4 shows the messages otherwise).
+
+To remove a version, delete its directory tree, and the lines in
+`LOGIN.COM` that run its `SETUP.COM`.
 
 ## Appendix A. The kits' contents
 

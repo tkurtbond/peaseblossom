@@ -24,19 +24,22 @@ echo "listings exit $?" >>result
 mkdir -p work/build
 cp $root/doc/examples/vax/*/*.Mod $root/doc/examples/vax/*/*.cld work/build/
 for program in Hello Versions WhereLogin WhereLogin2 Dates Factorial Words SystemInfo Greet Shell Warnings Probe Goodbye Ticks Mailbox Spawn Fail Fault Parts Panel; do
-  extra=
+  extra= flags=
   [ $program = Shell ] && extra=ShellCommands.cld
-  [ $program = Fail ] && extra=-trap-location
-  (cd work/build && poc -target vax-dec-vms -import-path ../../$rtl -import-path ../../$rtl/vms \
+  [ $program = Fail ] && flags=-trap-location
+  (cd work/build && poc -target vax-dec-vms $flags -import-path ../../$rtl -import-path ../../$rtl/vms \
     -import-path ../../$rtl/vmslib -build $program.Mod $extra) >>result 2>&1
   echo "VAX build $program exit $?" >>result
 done
 # the sessions' output, as the guide shows it
 awk '
-  /^<!-- vax-session: / { name = $3; print "== " name; inblock = 0; want = 1; next }
-  want && /^$/ && !inblock { next }
-  want && /^    / { inblock = 1; line = substr($0, 5); if (line !~ /^\$ /) print line; next }
-  { want = 0; inblock = 0 }
+  /^<!-- vax-session: / { name = $3; print "== " name; inblock = 0; want = 1; blanks = 0; next }
+  want && /^$/ { if (inblock) blanks++; next }
+  want && /^    / {
+    inblock = 1; for (; blanks > 0; blanks--) print ""
+    line = substr($0, 5); if (line !~ /^\$ /) print line; next
+  }
+  { want = 0; inblock = 0; blanks = 0 }
 ' $guide >work/sessions.expected
 vax_mask=yes
 vax_do guest-run.com work/sessions.expected work/build/*.mar work/build/*.com work/build/*.cld \
