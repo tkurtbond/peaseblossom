@@ -25,7 +25,7 @@
 %global __provides_exclude_from ^%{_prefix}/lib/poc/.*$
 
 Name:           peaseblossom
-Version:        0.6.0
+Version:        0.7.0
 Release:        1%{?dist}
 Summary:        Oberon-2 compiler (poc) using LLVM
 
@@ -110,6 +110,19 @@ test/install/check-vax.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install-
 %{_docdir}/%{name}-vax/
 
 %changelog
+* Sat Oct 17 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.7.0-1
+- Update to 0.7.0: a back end for VAX/VMS 5.5-2 (poc -target
+  vax-dec-vms), which writes MACRO-32 and a DCL procedure that assembles
+  and links it, with the runtime library POCRTL and VMS's interfaces,
+  VMSDEF (generated from STARLET) and VMSLIB, as object libraries and
+  shareable images, ["VMS"] external procedures, and two kits that
+  install poc itself on VAX/VMS; the new subpackage peaseblossom-vax,
+  which installs those libraries, the kits and the VAX/VMS Guide (make
+  install-vax); options after the file name are applied;
+  SYSTEM.VAL(SYSTEM.ADDRESS, E) is an external procedure's address; the
+  runtime module Directories; and a note when a missing module is the
+  VAX runtime's, not installed.
+
 * Wed Oct 14 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.6.0-1
 - Update to 0.6.0: the unsigned integer types SYSTEM.CARD8, CARD16,
   CARD32, CARD64 and SYSTEM.CARD, with Card and CardHex in Out, Err and

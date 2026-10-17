@@ -12,7 +12,7 @@ MULTI_PACKAGES =	-main -vax
 COMMENT-main =		Oberon-2 compiler (poc) using LLVM
 COMMENT-vax =		VAX/VMS target for poc: runtime libraries, kits, guide
 
-V =			0.6.0
+V =			0.7.0
 DISTNAME =		peaseblossom-${V}
 CATEGORIES =		lang
 # poc names it libpoc-rtl.so.0.0 itself (LLVMToolchainDriver.Mod)

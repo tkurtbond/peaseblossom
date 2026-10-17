@@ -8,7 +8,7 @@
 # from the seed again, and builds the libraries; the tarball has the kits
 # and the guide as text already.
 
-DISTNAME=	peaseblossom-0.6.0
+DISTNAME=	peaseblossom-0.7.0
 PKGNAME=	${DISTNAME:S/peaseblossom/peaseblossom-vax/}
 CATEGORIES=	lang
 MASTER_SITES=	${MASTER_SITE_GITHUB:=tkurtbond/}
