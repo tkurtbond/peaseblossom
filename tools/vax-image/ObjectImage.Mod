@@ -1,0 +1,544 @@
+MODULE ObjectImage;
+
+  (* vax-image <object> <image>: the image of a VAX object module, as
+     VaxImage prints it (doc/developer/vax-object-language.md, sections 9
+     and 14.5), from <object>, which is either
+
+     - the output of DUMP/RECORD on the object, as text, which is how an
+       object MACRO wrote on the guest comes back without a binary copy:
+       each record's "Record number n (...), length (...) bytes" line,
+       then lines of up to 32 bytes, as eight longwords in hexadecimal
+       read right to left, the text, and the offset of the first byte; or
+     - the records themselves, each a 2-byte count, least significant
+       byte first, the bytes, and a pad byte when the count is odd: the
+       form a variable-length file has on disk (section 10).
+
+     It does what the linker does with the module: reads the GSD records
+     for the sections and symbols, then runs the TIR records' commands
+     against a stack and a location counter (manual 7.4), writing each
+     section's bytes and noting the relocations, under the rules in
+     VaxImage's header. Only the commands section 6 lists, and those
+     MACRO writes beside them, are known; any other stops it with a
+     message, as does anything it cannot make sense of, so that nothing
+     is compared that was not understood. The header, TBT and DBG
+     records are not part of the image (section 9), but the module's name
+     and ident are.
+
+     Built with poc (make vax-image, build/bin/vax-image). *)
+
+  IMPORT Args, Files, Err, VaxImage;
+
+  CONST
+    maxRecord = 2048; (* OBJ$C_MAXRECSIZ *)
+    maxSections = 256;
+    maxStack = 64;
+    lineLength = 256;
+
+    (* record types *)
+    headerRecord = 0; gsdRecord = 1; tirRecord = 2; eomRecord = 3; dbgRecord = 4; tbtRecord = 5;
+    (* GSD subrecord types *)
+    sectionDefinition = 0; symbolSubrecord = 1; entryPoint = 2;
+    (* SDF$W_FLAGS *)
+    definedFlag = 1; relocatableFlag = 3;
+
+    (* TIR commands (manual 7.4), the ones read *)
+    stackGlobal = 0; stackSignedByte = 1; stackSignedWord = 2; stackLongword = 3;
+    stackSectionByte = 4; stackSectionWord = 5; stackSectionLongword = 6;
+    stackUnsignedByte = 7; stackUnsignedWord = 8;
+    storeSignedByte = 20; storeSignedWord = 21; storeLongword = 22;
+    storeLongwordDisplaced = 25; storeDataReference = 27; storeCodeReference = 28;
+    storeRepeatedSignedByte = 29; storeRepeatedSignedWord = 30;
+    storeByte = 37; storeWord = 38; storeRepeatedByte = 39; storeRepeatedWord = 40;
+    operatorNone = 50; operatorAdd = 51; operatorSubtract = 52; operatorMultiply = 53;
+    operatorNegate = 58;
+    setLocation = 80; augmentLocation = 81;
+
+  TYPE
+    Record = POINTER TO RecordDesc;
+    RecordDesc = RECORD
+      bytes: ARRAY maxRecord OF CHAR;
+      length: LONGINT;
+      next: Record
+    END;
+
+    (* a value on the stack: a constant (section NIL, symbol ""), a place
+       in a section, or an external symbol plus value *)
+    Value = RECORD
+      section: VaxImage.Section;
+      symbol: VaxImage.Name;
+      value: LONGINT
+    END;
+
+  VAR
+    objectName: ARRAY 256 OF CHAR;
+    first, last: Record;
+    module: VaxImage.Module;
+    sections: ARRAY maxSections OF VaxImage.Section;
+    sectionCount: INTEGER;
+    stack: ARRAY maxStack OF Value;
+    depth: INTEGER;
+    current: VaxImage.Section; (* the location counter's section *)
+    location: LONGINT;
+    recordNumber: LONGINT;
+
+  PROCEDURE Fail(message: ARRAY OF CHAR);
+  BEGIN
+    Err.String("vax-image: "); Err.String(objectName);
+    IF recordNumber > 0 THEN Err.String(", record "); Err.Int(recordNumber, 0) END;
+    Err.String(": "); Err.String(message); Err.Ln;
+    HALT(1)
+  END Fail;
+
+  PROCEDURE AddRecord(): Record;
+    VAR r: Record;
+  BEGIN
+    NEW(r); r.length := 0; r.next := NIL;
+    IF last = NIL THEN first := r ELSE last.next := r END;
+    last := r;
+    RETURN r
+  END AddRecord;
+
+  (* Reading the object *)
+
+  PROCEDURE ReadLine(VAR rider: Files.Rider; VAR line: ARRAY OF CHAR): BOOLEAN;
+    VAR ch: CHAR; i: INTEGER;
+  BEGIN
+    i := 0; Files.Read(rider, ch);
+    IF rider.eof THEN RETURN FALSE END;
+    WHILE ~rider.eof & (ch # 0AX) DO
+      IF (ch # 0DX) & (i < LEN(line) - 1) THEN line[i] := ch; INC(i) END;
+      Files.Read(rider, ch)
+    END;
+    line[i] := 0X;
+    RETURN TRUE
+  END ReadLine;
+
+  PROCEDURE Length(VAR s: ARRAY OF CHAR): INTEGER;
+    VAR n: INTEGER;
+  BEGIN
+    n := 0;
+    WHILE (n < LEN(s)) & (s[n] # 0X) DO INC(n) END;
+    RETURN n
+  END Length;
+
+  PROCEDURE HexDigit(ch: CHAR): INTEGER;
+  BEGIN
+    IF (ch >= "0") & (ch <= "9") THEN RETURN ORD(ch) - ORD("0")
+    ELSIF (ch >= "A") & (ch <= "F") THEN RETURN ORD(ch) - ORD("A") + 10
+    ELSE RETURN -1
+    END
+  END HexDigit;
+
+  PROCEDURE StartsWith(VAR s: ARRAY OF CHAR; prefix: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (prefix[i] # 0X) & (s[i] = prefix[i]) DO INC(i) END;
+    RETURN prefix[i] = 0X
+  END StartsWith;
+
+  (* The decimal number in s after position i, the record's length in
+     "Record number n (...), length (...) bytes" *)
+  PROCEDURE RecordLength(VAR s: ARRAY OF CHAR): LONGINT;
+    VAR i: INTEGER; n: LONGINT;
+  BEGIN
+    i := 0;
+    WHILE (s[i] # 0X) & (s[i] # ",") DO INC(i) END;
+    IF s[i] = "," THEN INC(i) END;
+    WHILE s[i] = " " DO INC(i) END;
+    n := 0;
+    WHILE (s[i] >= "0") & (s[i] <= "9") DO n := n * 10 + ORD(s[i]) - ORD("0"); INC(i) END;
+    RETURN n
+  END RecordLength;
+
+  (* A data line's bytes into r: columns 0-71 hold up to eight longwords,
+     the byte at the line's offset rightmost; the offset is the last six
+     characters *)
+  PROCEDURE DataLine(VAR line: ARRAY OF CHAR; r: Record);
+    VAR n, i, offset, high, low: INTEGER; hex: ARRAY 80 OF CHAR; count: INTEGER;
+  BEGIN
+    n := Length(line);
+    offset := 0;
+    FOR i := n - 6 TO n - 1 DO
+      IF HexDigit(line[i]) < 0 THEN Fail("a line of DUMP's that is not understood") END;
+      offset := offset * 16 + HexDigit(line[i])
+    END;
+    count := 0;
+    FOR i := 0 TO 71 DO
+      IF line[i] # " " THEN
+        IF HexDigit(line[i]) < 0 THEN Fail("a line of DUMP's that is not understood") END;
+        hex[count] := line[i]; INC(count)
+      END
+    END;
+    IF ODD(count) OR (offset # r.length) OR (offset + count DIV 2 > maxRecord) THEN
+      Fail("a line of DUMP's that is not understood")
+    END;
+    i := count;
+    WHILE i > 0 DO
+      high := HexDigit(hex[i - 2]); low := HexDigit(hex[i - 1]);
+      r.bytes[r.length] := CHR(high * 16 + low); INC(r.length);
+      DEC(i, 2)
+    END
+  END DataLine;
+
+  PROCEDURE ReadDump(VAR rider: Files.Rider);
+    VAR line: ARRAY lineLength OF CHAR; r: Record; expected: LONGINT; n: INTEGER;
+  BEGIN
+    r := NIL; expected := 0;
+    WHILE ReadLine(rider, line) DO
+      n := Length(line);
+      IF StartsWith(line, "Record number ") THEN
+        IF (r # NIL) & (r.length # expected) THEN Fail("a record shorter than DUMP says") END;
+        r := AddRecord(); expected := RecordLength(line); INC(recordNumber)
+      ELSIF (r # NIL) & (n >= 80) & (line[0] = " ") & (line[72] = " ") THEN
+        DataLine(line, r)
+      END
+    END;
+    IF (r # NIL) & (r.length # expected) THEN Fail("a record shorter than DUMP says") END;
+    recordNumber := 0
+  END ReadDump;
+
+  PROCEDURE ReadCounted(VAR rider: Files.Rider);
+    VAR low, high: CHAR; r: Record; count, i: LONGINT; pad: CHAR;
+  BEGIN
+    Files.Read(rider, low);
+    WHILE ~rider.eof DO
+      Files.Read(rider, high);
+      count := ORD(low) + 256 * ORD(high);
+      IF rider.eof OR (count > maxRecord) THEN Fail("not an object: a record's count is wrong") END;
+      r := AddRecord();
+      FOR i := 0 TO count - 1 DO Files.Read(rider, r.bytes[i]) END;
+      IF rider.eof THEN Fail("not an object: the file ends inside a record") END;
+      r.length := count;
+      IF ODD(count) THEN Files.Read(rider, pad) END;
+      Files.Read(rider, low)
+    END
+  END ReadCounted;
+
+  PROCEDURE ReadObject;
+    VAR f: Files.File; rider: Files.Rider; line: ARRAY lineLength OF CHAR; dump: BOOLEAN;
+  BEGIN
+    f := Files.Old(objectName);
+    IF f = NIL THEN Fail("cannot open it") END;
+    Files.Set(rider, f, 0);
+    dump := FALSE;
+    WHILE ~dump & ReadLine(rider, line) & (Files.Pos(rider) < 1024) DO
+      IF StartsWith(line, "Dump of file ") THEN dump := TRUE END
+    END;
+    Files.Set(rider, f, 0);
+    IF dump THEN ReadDump(rider) ELSE ReadCounted(rider) END;
+    Files.Close(f)
+  END ReadObject;
+
+  (* Fields of a record *)
+
+  PROCEDURE Byte(r: Record; VAR at: LONGINT): LONGINT;
+  BEGIN
+    IF at >= r.length THEN Fail("a record ends inside a field") END;
+    INC(at);
+    RETURN ORD(r.bytes[at - 1])
+  END Byte;
+
+  PROCEDURE Unsigned(r: Record; VAR at: LONGINT; n: INTEGER): LONGINT;
+    VAR value, scale: LONGINT; i: INTEGER;
+  BEGIN
+    value := 0; scale := 1;
+    FOR i := 1 TO n DO value := value + Byte(r, at) * scale; scale := scale * 256 END;
+    RETURN value
+  END Unsigned;
+
+  PROCEDURE Signed(r: Record; VAR at: LONGINT; n: INTEGER): LONGINT;
+    VAR value, range: LONGINT; i: INTEGER;
+  BEGIN
+    value := Unsigned(r, at, n);
+    range := 1; FOR i := 1 TO n DO range := range * 256 END;
+    IF value >= range DIV 2 THEN value := value - range END;
+    RETURN value
+  END Signed;
+
+  PROCEDURE CountedName(r: Record; VAR at: LONGINT; VAR name: ARRAY OF CHAR);
+    VAR n, i: LONGINT;
+  BEGIN
+    n := Byte(r, at);
+    IF n >= LEN(name) THEN Fail("a name too long") END;
+    FOR i := 0 TO n - 1 DO name[i] := CHR(Byte(r, at)) END;
+    name[n] := 0X
+  END CountedName;
+
+  PROCEDURE SectionOf(index: LONGINT): VaxImage.Section;
+  BEGIN
+    IF (index < 0) OR (index >= sectionCount) THEN Fail("a section index that is not defined") END;
+    RETURN sections[index]
+  END SectionOf;
+
+  (* The first pass: the header's name and ident, the GSD, the transfer address *)
+
+  PROCEDURE Header(r: Record);
+    VAR at: LONGINT;
+  BEGIN
+    IF (r.length > 1) & (r.bytes[1] = 0X) THEN (* MHD$C_MHD *)
+      at := 5; (* type, subtype, structure level, record size *)
+      CountedName(r, at, module.name); CountedName(r, at, module.ident)
+    END
+  END Header;
+
+  (* r's section definitions, if sectionsOnly, else its symbols: a
+     symbol may name a section defined in a later record (MACRO defines
+     the module's key in ".  ABS  ." before it defines that section) *)
+  PROCEDURE Gsd(r: Record; sectionsOnly: BOOLEAN);
+    VAR at, flags, alignment, size, value, mask, index: LONGINT; type: LONGINT; name: VaxImage.Name;
+      s: VaxImage.Section; y: VaxImage.Symbol; bits: SET; i: INTEGER;
+  BEGIN
+    at := 1;
+    WHILE at < r.length DO
+      type := Byte(r, at);
+      IF type = sectionDefinition THEN
+        alignment := Byte(r, at); flags := Unsigned(r, at, 2); size := Unsigned(r, at, 4);
+        CountedName(r, at, name);
+        IF sectionsOnly THEN
+          IF sectionCount = maxSections THEN Fail("too many sections") END;
+          bits := {};
+          FOR i := 0 TO 15 DO IF ODD(flags) THEN INCL(bits, i) END; flags := flags DIV 2 END;
+          s := VaxImage.AddSection(module, name, SHORT(alignment), bits);
+          VaxImage.Extend(s, size);
+          sections[sectionCount] := s; INC(sectionCount)
+        END
+      ELSIF (type = symbolSubrecord) OR (type = entryPoint) THEN
+        at := at + 1; (* data type *)
+        flags := Unsigned(r, at, 2);
+        IF ODD(flags DIV 2) OR (type = entryPoint) THEN (* a definition *)
+          index := Byte(r, at); value := Signed(r, at, 4);
+          IF type = entryPoint THEN mask := Unsigned(r, at, 2) END;
+          CountedName(r, at, name);
+          IF ~sectionsOnly THEN
+            IF ODD(flags DIV 8) THEN s := SectionOf(index) ELSE s := NIL END; (* not relocatable: absolute *)
+            IF type = entryPoint THEN VaxImage.AddEntry(module, name, s, value, mask)
+            ELSE y := VaxImage.AddSymbol(module, name, s, value)
+            END
+          END
+        ELSE
+          CountedName(r, at, name);
+          IF ~sectionsOnly THEN VaxImage.AddReference(module, name) END
+        END
+      ELSE
+        Fail("a GSD subrecord that is not known")
+      END
+    END
+  END Gsd;
+
+  PROCEDURE EndOfModule(r: Record);
+    VAR at: LONGINT; s: VaxImage.Section;
+  BEGIN
+    IF r.length >= 7 THEN
+      at := 2; s := SectionOf(Byte(r, at));
+      VaxImage.SetTransfer(module, s, Signed(r, at, 4))
+    END
+  END EndOfModule;
+
+  (* The second pass: the TIR commands *)
+
+  PROCEDURE Push(section: VaxImage.Section; symbol: ARRAY OF CHAR; value: LONGINT);
+  BEGIN
+    IF depth = maxStack THEN Fail("the stack is too deep") END;
+    stack[depth].section := section; COPY(symbol, stack[depth].symbol); stack[depth].value := value;
+    INC(depth)
+  END Push;
+
+  PROCEDURE Pop(VAR v: Value);
+  BEGIN
+    IF depth = 0 THEN Fail("the stack is empty") END;
+    DEC(depth); v := stack[depth]
+  END Pop;
+
+  PROCEDURE IsConstant(VAR v: Value): BOOLEAN;
+  BEGIN
+    RETURN (v.section = NIL) & (v.symbol = "")
+  END IsConstant;
+
+  (* An external symbol's value: its place, if the module defines it *)
+  PROCEDURE PushGlobal(name: ARRAY OF CHAR);
+    VAR y: VaxImage.Symbol;
+  BEGIN
+    y := VaxImage.FindSymbol(module, name);
+    IF y = NIL THEN Push(NIL, name, 0)
+    ELSIF y.section = NIL THEN Push(NIL, "", y.value)
+    ELSE Push(y.section, "", y.value)
+    END
+  END PushGlobal;
+
+  PROCEDURE PutConstant(VAR v: Value; n: INTEGER);
+  BEGIN
+    IF ~IsConstant(v) THEN Fail("a relocatable value stored as a byte or word") END;
+    VaxImage.PutBytes(current, location, v.value, n); location := location + n
+  END PutConstant;
+
+  (* A longword displacement at the location counter to v *)
+  PROCEDURE PutDisplacement(VAR v: Value);
+  BEGIN
+    IF v.section = current THEN
+      VaxImage.PutBytes(current, location, v.value - (location + 4), 4)
+    ELSIF v.section # NIL THEN
+      VaxImage.PutBytes(current, location, 0, 4);
+      VaxImage.RelocateToSection(current, location, VaxImage.displacement, v.section, v.value)
+    ELSIF v.symbol # "" THEN
+      VaxImage.PutBytes(current, location, 0, 4);
+      VaxImage.RelocateToSymbol(current, location, VaxImage.displacement, v.symbol, v.value)
+    ELSE
+      Fail("a displacement to an absolute address")
+    END;
+    location := location + 4
+  END PutDisplacement;
+
+  (* An address at the location counter, of kind *)
+  PROCEDURE PutAddress(VAR v: Value; kind: INTEGER);
+  BEGIN
+    VaxImage.PutBytes(current, location, 0, 4);
+    IF IsConstant(v) THEN VaxImage.PutBytes(current, location, v.value, 4)
+    ELSIF v.section # NIL THEN VaxImage.RelocateToSection(current, location, kind, v.section, v.value)
+    ELSE VaxImage.RelocateToSymbol(current, location, kind, v.symbol, v.value)
+    END;
+    location := location + 4
+  END PutAddress;
+
+  PROCEDURE PutRepeated(n: INTEGER);
+    VAR count, data: Value; i: LONGINT;
+  BEGIN
+    Pop(count); Pop(data);
+    IF ~IsConstant(count) OR ~IsConstant(data) THEN Fail("a relocatable value repeated") END;
+    FOR i := 1 TO count.value DO VaxImage.PutBytes(current, location, data.value, n); location := location + n END
+  END PutRepeated;
+
+  PROCEDURE Operate(command: LONGINT);
+    VAR a, b: Value;
+  BEGIN
+    IF command = operatorNone THEN RETURN END;
+    IF command = operatorNegate THEN
+      Pop(a); IF ~IsConstant(a) THEN Fail("a relocatable value negated") END;
+      Push(NIL, "", -a.value); RETURN
+    END;
+    Pop(b); Pop(a);
+    IF command = operatorAdd THEN
+      IF IsConstant(a) THEN Push(b.section, b.symbol, a.value + b.value)
+      ELSIF IsConstant(b) THEN Push(a.section, a.symbol, a.value + b.value)
+      ELSE Fail("two relocatable values added")
+      END
+    ELSIF command = operatorSubtract THEN
+      IF IsConstant(b) THEN Push(a.section, a.symbol, a.value - b.value)
+      ELSIF (a.section # NIL) & (a.section = b.section) THEN Push(NIL, "", a.value - b.value)
+      ELSE Fail("a difference of values in different sections")
+      END
+    ELSIF command = operatorMultiply THEN
+      IF ~IsConstant(a) OR ~IsConstant(b) THEN Fail("a relocatable value multiplied") END;
+      Push(NIL, "", a.value * b.value)
+    END
+  END Operate;
+
+  PROCEDURE Tir(r: Record);
+    VAR at, command, n, i: LONGINT; name: VaxImage.Name; v: Value; s: VaxImage.Section;
+  BEGIN
+    at := 1;
+    WHILE at < r.length DO
+      command := Signed(r, at, 1);
+      IF command < 0 THEN (* Store Immediate *)
+        n := -command;
+        IF current = NIL THEN Fail("bytes stored before the location is set") END;
+        FOR i := 1 TO n DO VaxImage.PutByte(current, location, Byte(r, at)); INC(location) END
+      ELSE
+        CASE command OF
+          stackGlobal: CountedName(r, at, name); PushGlobal(name)
+        | stackSignedByte: Push(NIL, "", Signed(r, at, 1))
+        | stackSignedWord: Push(NIL, "", Signed(r, at, 2))
+        | stackLongword: Push(NIL, "", Signed(r, at, 4))
+        | stackSectionByte: s := SectionOf(Byte(r, at)); Push(s, "", Signed(r, at, 1))
+        | stackSectionWord: s := SectionOf(Byte(r, at)); Push(s, "", Signed(r, at, 2))
+        | stackSectionLongword: s := SectionOf(Byte(r, at)); Push(s, "", Signed(r, at, 4))
+        | stackUnsignedByte: Push(NIL, "", Unsigned(r, at, 1))
+        | stackUnsignedWord: Push(NIL, "", Unsigned(r, at, 2))
+        | storeSignedByte, storeByte: Pop(v); PutConstant(v, 1)
+        | storeSignedWord, storeWord: Pop(v); PutConstant(v, 2)
+        | storeLongword: Pop(v); PutAddress(v, VaxImage.longword)
+        | storeLongwordDisplaced: Pop(v); PutDisplacement(v)
+        | storeDataReference: Pop(v); PutAddress(v, VaxImage.dataReference)
+        | storeCodeReference:
+            Pop(v);
+            IF IsConstant(v) THEN
+              VaxImage.PutByte(current, location, 9FH); INC(location);
+              VaxImage.PutBytes(current, location, v.value, 4); location := location + 4
+            ELSIF v.section # NIL THEN
+              VaxImage.PutByte(current, location, 0EFH); INC(location); PutDisplacement(v)
+            ELSE
+              VaxImage.PutBytes(current, location, 0, 5);
+              VaxImage.RelocateToSymbol(current, location, VaxImage.codeReference, v.symbol, v.value);
+              location := location + 5
+            END
+        | storeRepeatedSignedByte, storeRepeatedByte: PutRepeated(1)
+        | storeRepeatedSignedWord, storeRepeatedWord: PutRepeated(2)
+        | operatorNone .. operatorMultiply, operatorNegate: Operate(command)
+        | setLocation:
+            Pop(v);
+            IF v.section = NIL THEN Fail("the location set to an absolute address") END;
+            current := v.section; location := v.value
+        | augmentLocation:
+            IF current = NIL THEN Fail("the location moved before it is set") END;
+            location := location + Signed(r, at, 4)
+        ELSE
+          Fail("a TIR command that is not known")
+        END
+      END;
+      IF (current # NIL) & (location > current.size) THEN Fail("bytes stored past a section's end") END
+    END
+  END Tir;
+
+  PROCEDURE Run;
+    VAR r: Record; type: INTEGER;
+  BEGIN
+    recordNumber := 0; r := first;
+    WHILE r # NIL DO
+      INC(recordNumber);
+      IF r.length = 0 THEN Fail("an empty record") END;
+      type := ORD(r.bytes[0]);
+      IF type = headerRecord THEN Header(r)
+      ELSIF type = gsdRecord THEN Gsd(r, TRUE)
+      ELSIF type = eomRecord THEN EndOfModule(r)
+      ELSIF (type # tirRecord) & (type # dbgRecord) & (type # tbtRecord) THEN Fail("a record type that is not known")
+      END;
+      r := r.next
+    END;
+    recordNumber := 0; r := first;
+    WHILE r # NIL DO
+      INC(recordNumber);
+      IF ORD(r.bytes[0]) = gsdRecord THEN Gsd(r, FALSE) END;
+      r := r.next
+    END;
+    recordNumber := 0; r := first;
+    WHILE r # NIL DO
+      INC(recordNumber);
+      IF ORD(r.bytes[0]) = tirRecord THEN Tir(r) END;
+      r := r.next
+    END;
+    IF depth # 0 THEN Fail("the stack is not empty at the end") END;
+    recordNumber := 0
+  END Run;
+
+  PROCEDURE Main;
+    VAR imageName: ARRAY 256 OF CHAR; f: Files.File; w: Files.Rider;
+  BEGIN
+    IF Args.argc # 3 THEN
+      Err.String("usage: vax-image <object> <image>"); Err.Ln; HALT(2)
+    END;
+    Args.Get(1, objectName); Args.Get(2, imageName);
+    first := NIL; last := NIL; sectionCount := 0; depth := 0; current := NIL; location := 0;
+    recordNumber := 0;
+    module := VaxImage.NewModule();
+    ReadObject;
+    Run;
+    f := Files.New(imageName);
+    IF f = NIL THEN Fail("cannot write the image") END;
+    Files.Set(w, f, 0);
+    VaxImage.Print(w, module);
+    Files.Register(f); Files.Close(f)
+  END Main;
+
+BEGIN
+  Main
+END ObjectImage.

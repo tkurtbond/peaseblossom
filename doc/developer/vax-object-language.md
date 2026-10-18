@@ -433,7 +433,8 @@ step 2's instruction representation should hold from the start.
    records of the guest's compilers. To do: read it and write here the
    subset poc needs.
 2. **`#0.0`** in `MOVF`/`MOVG`, the one real literal not yet seen
-   (section 6.3).
+   (section 6.3): **answered** 2026-10-18 (section 14.7), immediate
+   mode and zeros, as long as the operand.
 3. **The module-begin record's language** (`DST$L_MODBEG_LANGUAGE`, 4
    bytes) is 0 (MACRO) in MACRO's objects. `DSTRECRDS.REQ` defines the
    codes, among them `DST$K_PASCAL` = 6, `DST$K_C` = 7, `DST$K_ADA` = 9
@@ -622,9 +623,10 @@ section:
   - `#v`: a short literal when MACRO's rule allows (section 6.3: an
     integer 0-63, or a real that is one of the 64), otherwise `8F` and
     the value in as many bytes as the operand's data type has (8 for a
-    quadword or `G`). An integer literal in a real operand is taken as
-    its bits, not converted, as MACRO does (MACRO 5.4, section 5.2.4,
-    note 3, for a symbol; to be checked for a number, section 14.6);
+    quadword or `G`). A number in a real operand, an integer too, is
+    converted to the operand's type first (MACRO 5.4, section 5.2.4,
+    note 3, "Numeric values are converted"; observed, section 14.7):
+    `MULG2 #10, R0` is the short literal `22`, 10.0, never 10's bits;
   - a relative operand (a bare symbol, `L^`): section 6.2's rule. A
     symbol already defined, earlier in the same section, gets the
     shortest displacement from the end of the specifier (`AF`, `CF`,
@@ -661,7 +663,7 @@ offset, and the lists only fill in values.
 | `.ASCII`, `.ASCIZ`, `.ASCIC` | the text; with a final `0`, or a leading count byte |
 | `.ASCID` | the descriptor (length word, `14`, `1`), its address `PIDR` to the text that follows, the text |
 | `.BLKB/W/L/Q/F/G n` | `n` times the size, zeros (step 4 skips them, section 6.1) |
-| `.ALIGN LONG`, `.ALIGN WORD` | zeros to the boundary (MACRO's fill to be checked, section 14.6) |
+| `.ALIGN LONG`, `.ALIGN WORD` | zeros to the boundary (poc writes it only in data sections, section 14.7) |
 | `.F_FLOATING`, `.G_FLOATING` | the reals' bits |
 | `sym == value` | an absolute symbol |
 | `.END [sym]` | the transfer address |
@@ -675,9 +677,8 @@ exponent `e + 24 + 128` in 8 bits and the 23 fraction bits below the
 hidden one, `G` the sign, `e + 53 + 1024` in 11 bits and 52 fraction
 bits; the 16-bit words go most significant first, each little-endian.
 The value is a **short literal** when it is `(8 + f)/16 * 2^x` with `x`
-and `f` each 0-7 (0.5 to 120): the literal byte is `x * 8 + f`. `#0.0` is not one of them (literal 0 is 0.5):
-section 12, question 2, answered by MACRO's object for the corpus,
-which has `CVTFG #0.0, ...` twice (section 14.6).
+and `f` each 0-7 (0.5 to 120): the literal byte is `x * 8 + f`. `#0.0` is not one of them (literal 0 is 0.5), so it is
+immediate mode and zeros (section 14.7).
 
 ### 14.5 Testing: the image, compared with MACRO's
 
@@ -692,13 +693,16 @@ MACRO's object gives the same text through a host-side program, the
 section 9 tool: it reads `DUMP/RECORD`'s output for an object (as text,
 so nothing binary comes back from the guest), runs the TIR commands into
 section bytes and relocations, and prints them the same way. It is
-written in Oberon and built with poc, in `tools/vax-image/`, so that
-step 4 can reuse its reader for poc's own objects (it reads a binary
-object too).
+written in Oberon and built with poc, `tools/vax-image/ObjectImage.Mod`
+(`make vax-image` builds `build/bin/vax-image`), so that step 4 can
+reuse its reader for poc's own objects (it reads a binary object too).
+The image and its printer are a module of their own,
+`src/back/vax/VaxImage.Mod`, which the encoder fills as the tool
+does, so the two images are printed by the same code.
 
 - **Fixtures.** Each VAX fixture with an `expected-vax.mar` gets an
   `expected-vax.image`, made once from MACRO's object for that `.mar` on
-  the guest (`tools/vax-image update <fixture>`, through `vax-do`),
+  the guest (`tools/vax-macro-image`, through `vax-do`),
   reviewed the way the `.mar` was, and committed. Its `test.sh` then
   compares `poc -emit-vax-image` with it, with no guest needed, so `make
   check` covers the encoder on every host. When a fixture's `.mar`
@@ -737,3 +741,41 @@ Each piece leaves `make check` passing, the `.mar` output unchanged:
 - **3e**: the `expected-vax.image` files in every fixture's `test.sh`,
   the coverage fixture, and the corpus compared, every difference
   explained; the step's record in `PLAN.md`.
+
+### 14.7 What 3a found (2026-10-18)
+
+`build/bin/vax-image` reads the objects of the step 1 sets, the 62
+fixtures with an `expected-vax.mar` and the 35 modules of poc's own
+source for the VAX, as `tools/vax-macro-image` brings them back from
+MACRO on the guest: every record and TIR command in them is one it
+knows, so the image of each is complete. The images of the nine
+objects of section 1 that have MACRO's listing were checked against it:
+every byte the listing shows (9,608) is the image's, and every field it
+marks as relocated (965) is a relocation of the image to the same place,
+or, a displacement or label difference in the same section, the value
+the image computed. The fixture `vax-image-reader` keeps four of those
+dumps and their images, and the second set's records also in the
+counted form of section 10, so that `make check` tests the reader on
+every host.
+
+The four questions of section 14.6:
+
+1. **`#0.0`** (section 12, question 2): immediate mode and zeros, four
+   for an `F` operand, eight for a `G` one (`CVTFG #0.0, R0` is `99FD
+   8F 00000000 50`). An integer `#0` in a real operand is the same,
+   being converted to 0.0 first, never the short literal 0, which is 0.5.
+   MACRO writes `#-0.0` as an `F` with only the sign bit set, a reserved
+   operand on the VAX; poc never writes it.
+2. **`.ALIGN`** is written only in `POC_DATA`, `POC_CONST` and
+   `POC_ADDR`, never in `POC_CODE`, so what fills a gap in code does
+   not arise: a gap is zeros.
+3. **An integer literal in a real operand** is written by poc, 33 times,
+   all in `vax-reals` (`MOVG #1, -8(FP)`, `MULG2 #10, R0`, `SUBF3 #3,
+   ...`; none in the corpus),
+   and MACRO converts it: `#10` is the short literal `22` (10.0),
+   `#100` immediate mode and G 100.0 (`4079 0000 0000 0000`), `#-1` in
+   `MOVF` F -1.0 (`C080 0000`), `#64` the short literal `38`, `#128`
+   immediate (`4400 0000`). Section 14.3 says so.
+4. **`G^` of a symbol the module defines**: never written, in the
+   fixtures or the corpus. The encoder treats one as an error.
+

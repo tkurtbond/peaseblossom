@@ -1,0 +1,77 @@
+#!/bin/sh
+# The image of the object MACRO makes from each MACRO-32 file, for
+# comparing with poc's encoder (PLAN.md Phase 18 step 3;
+# doc/developer/vax-object-language.md, sections 9 and 14.5). The files go
+# to the VAX/VMS development system with tools/vax-do, in one run; there
+# each is assembled by MACRO/OBJECT/NOLIST and its object dumped by
+# DUMP/RECORD, which comes back as text; and build/bin/vax-image (make
+# vax-image) runs the dump's records into <name>.image, in the output
+# directory, beside <name>.dmp.
+#
+#   tools/vax-macro-image [-o <dir>] <file.mar>...
+#
+# -o is the directory for the dumps and images (default .). Exits 0 only if
+# every file assembled with a success or informational status and gave an
+# image; a warning is a failure, as in tools/vax-assemble. A large set of
+# files may need more than tools/vax-do's VAX_DO_TIMEOUT of 600 seconds.
+set -e
+
+here=$(cd "$(dirname "$0")" && pwd)
+image=${VAX_IMAGE:-$here/../build/bin/vax-image}
+
+usage() { echo "usage: tools/vax-macro-image [-o <dir>] <file.mar>..." >&2; exit 2; }
+
+outdir=.
+while [ $# -gt 0 ]; do
+  case $1 in
+    -o) [ $# -ge 2 ] || usage; outdir=$2; shift 2 ;;
+    -*) usage ;;
+    *) break ;;
+  esac
+done
+[ $# -gt 0 ] || usage
+[ -x "$image" ] || { echo "vax-macro-image: no $image (make vax-image)" >&2; exit 2; }
+[ -d "$outdir" ] || { echo "vax-macro-image: $outdir is not a directory" >&2; exit 2; }
+
+# one directory on the guest: no two files of one name
+dups=$(for f; do basename "$f" | tr a-z A-Z; done | sort | uniq -d)
+[ -z "$dups" ] || { echo "vax-macro-image: more than one file named $(echo $dups)" >&2; exit 2; }
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/vax-macro-image.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+
+# the procedure: each file assembled and dumped, its object deleted; the
+# first failure ends it with MACRO's status
+proc=$work/macroimg.com
+{
+  echo '$ SET NOON'
+  for f; do
+    case $f in *.mar|*.MAR) ;; *) echo "vax-macro-image: $f is not a .mar file" >&2; exit 2 ;; esac
+    n=$(basename "$f" | sed 's/\.[mM][aA][rR]$//' | tr a-z A-Z)
+    echo "\$ MACRO/OBJECT=$n.OBJ/NOLIST $n.MAR"
+    echo '$ STATUS = $STATUS'
+    echo "\$ IF .NOT. STATUS THEN EXIT STATUS"
+    echo "\$ IF (STATUS .AND. 7) .EQ. 0 THEN EXIT STATUS"
+    echo "\$ DUMP/RECORD/OUTPUT=$n.DMP $n.OBJ"
+    echo "\$ DELETE $n.OBJ;*"
+  done
+  echo '$ EXIT 1'
+} >"$proc"
+
+gets=
+for f; do
+  n=$(basename "$f" | sed 's/\.[mM][aA][rR]$//' | tr a-z A-Z)
+  gets="$gets -get $n.DMP"
+done
+
+# shellcheck disable=SC2086
+"$here/vax-do" -o "$work" $gets "$proc" "$@"
+
+status=0
+for f; do
+  n=$(basename "$f" | sed 's/\.[mM][aA][rR]$//')
+  u=$(echo "$n" | tr a-z A-Z)
+  cp "$work/$u.DMP" "$outdir/$n.dmp"
+  "$image" "$outdir/$n.dmp" "$outdir/$n.image" || status=1
+done
+exit $status

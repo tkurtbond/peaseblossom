@@ -105,6 +105,8 @@ test/conformance/llvm-modules-extra/llvm-modules-extra
 test/conformance/llvm-out/llvm-out
 test/conformance/llvm-out-extra/llvm-out-extra
 test/conformance/vax-extension/vax-extension
+test/conformance/vax-image-reader/vax-image-reader
+test/conformance/vax-image-reader/*.image
 test/conformance/vax-out/vax-out
 test/conformance/vax-pointers/vax-pointers
 test/conformance/vax-type-bound/vax-type-bound

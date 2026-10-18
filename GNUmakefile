@@ -69,7 +69,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install installable-vax install-vax uninstall-vax check-install-vax check-install-vax-run seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-vax test-vax-asts test-vax-guest-poc vax-v1 vax-stages vax-kit check-vax-kit test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install installable-vax install-vax uninstall-vax check-install-vax check-install-vax-run seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-vax test-vax-asts test-vax-guest-poc vax-v1 vax-stages vax-kit check-vax-kit vax-image test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -742,6 +742,18 @@ test-vax-asts: build
 
 vax-stages: build
 	tools/bootstrap/vax-stages
+
+# PLAN.md Phase 18 step 3: build/bin/vax-image, which runs a VAX object's
+# records (MACRO's, as DUMP/RECORD's text, or poc's) into the image
+# VaxImage prints (tools/vax-image/ObjectImage.Mod; tools/vax-macro-image;
+# doc/developer/vax-object-language.md, section 14.5). Built with the poc
+# of this tree.
+VAX_IMAGE_BIN = $(BUILD_DIR)/bin/vax-image
+
+vax-image: $(VAX_IMAGE_BIN)
+
+$(VAX_IMAGE_BIN): $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)) tools/vax-image/ObjectImage.Mod src/back/vax/VaxImage.Mod
+	$(BIN) -OC -import-path src/back/vax -output-dir $(BUILD_DIR)/vax-image -o $@ tools/vax-image/ObjectImage.Mod
 
 # PLAN.md Phase 17 step 7: poc for VAX/VMS as two text files, each a DCL
 # procedure that unpacks itself on VMS (doc/developer/vax-macro32-backend.md,

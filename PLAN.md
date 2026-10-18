@@ -637,6 +637,12 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    the failure this step exists to catch - with the differences that are
    legitimate (an assembler's choice between equivalent encodings) listed
    and explained, not waved through.
+   **3a done 2026-10-18** (`vax-object-language.md` section 14.7):
+   `src/back/vax/VaxImage.Mod`, the image and its printer;
+   `build/bin/vax-image` (`make vax-image`) and `tools/vax-macro-image`,
+   MACRO's images of the 62 fixtures and of poc's own 35 modules, the
+   reader checked against MACRO's listings; the four open questions
+   answered; the fixture `vax-image-reader`.
 
 4. **The object writer, `VaxObjectWriter.Mod`.** From the encoded
    program sections write the records step 1 specified: the header, one
