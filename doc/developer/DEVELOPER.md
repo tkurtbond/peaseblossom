@@ -394,7 +394,11 @@ it to `.prerelease`), so that `makesum` fetches the published one and
 records its sums. Each is then built, installed, checked against the
 installed poc with `test/install/check.sh <installed poc> <scratch dir>`,
 and removed, and nothing may be left. Installing and removing need root;
-the rest does not.
+the rest does not. FreeBSD's and pkgsrc's `lang/peaseblossom-vax` depend on
+`peaseblossom` of the same version, and neither will stage or package
+until it is installed (FreeBSD's looks for its origin in `/usr/ports`,
+pkgsrc's tries to become root to install it): build `lang/peaseblossom`
+first, install its package, then build `lang/peaseblossom-vax`.
 
 ### Fedora (`packaging/fedora/peaseblossom.spec`)
 
