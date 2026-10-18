@@ -395,7 +395,8 @@ What is known so far:
   linker only copies them, with `/DEBUG`, so their content is between
   poc and the debugger.
 - The DST record format is not in the Linker manual or any 5.x manual we
-  have. The guest has part of it: `SYS$LIBRARY:STARLET.MLB` holds
+  have; it is in the debugger's source, `DSTRECRDS.REQ` (section 12,
+  question 1). The guest has part of it: `SYS$LIBRARY:STARLET.MLB` holds
   `$DSTDEF`, and `SYS$LIBRARY:DSTDEF.H` its C form, but both define
   only the DST location-expression commands (`DST$K_STA_R00`..
   `DST$K_OPR_STOP`: stack a register, an immediate, add, fetch, stop),
@@ -411,8 +412,8 @@ What is known so far:
   guest (`DEBUG.EXE`, `DEBUGSHR.EXE`) shows whether poc's are read the
   same way.
 
-**Proposal for step 5**: find the DST record definitions (the manuals
-list, section 12), then dump those compilers' DBG records for programs
+**Proposal for step 5**: from the DST record definitions (section 12,
+question 1), and from dumps of those compilers' DBG records for programs
 that cover what poc needs, write down here the subset poc writes, and
 test each piece in the debugger on the guest: first module, routine and
 line numbers (breakpoints and `STEP` by Oberon line), then variables of
@@ -423,18 +424,22 @@ step 2's instruction representation should hold from the start.
 
 ## 12. Open questions
 
-1. **The DST record definitions** for section 11. Candidates: a VAX/VMS
-   debugger manual or the internals manuals of the 5.x set
-   (`vax-vms-manuals-to-get.md` to be updated); `SYS$LIBRARY:LIB.MLB`
-   and `STARLETSD.TLB` on the guest (`$DSTDEF` is not in `LIB.MLB`;
-   the others are not yet searched); failing those, the records the
-   guest's compilers write, read field by field. Later descriptions of
-   the same format (the Alpha and I64 VMS debuggers kept the DST) are
-   context only, by the release rule.
+1. **The DST record definitions** for section 11: **found**
+   2026-10-18, `DSTRECRDS.REQ` (V04-000, 1984), the debugger's own
+   definition file for the DST the VAX compilers write, from the VMS 4.0
+   source listings on bitsavers (`vax-vms-manuals-to-get.md`, "Still to
+   find"). It is 4.0's, not 5.5-2's, so each record poc writes is
+   checked against the 5.5-2 debugger on the guest and against the DBG
+   records of the guest's compilers. To do: read it and write here the
+   subset poc needs.
 2. **`#0.0`** in `MOVF`/`MOVG`, the one real literal not yet seen
    (section 6.3).
-3. **The TBT records' `language` field** (4 bytes) is 0 for MACRO, and
-   poc has no DST language code of its own. **Proposal**: keep 0
-   ("MACRO") unless the DST definitions give one the debugger and
-   traceback accept for an unknown language; this matters for
-   section 11, since the debugger chooses its expression syntax by it.
+3. **The module-begin record's language** (`DST$L_MODBEG_LANGUAGE`, 4
+   bytes) is 0 (MACRO) in MACRO's objects. `DSTRECRDS.REQ` defines the
+   codes, among them `DST$K_PASCAL` = 6, `DST$K_C` = 7, `DST$K_ADA` = 9
+   and `DST$K_UNKNOWN` = 16, "an escape" for a language the debugger does
+   not support, which then gets whatever support DEBUG gives an unknown
+   language. The debugger chooses its expression syntax and how it
+   shows values by this code. To decide in step 5, by trying both on the
+   guest: `DST$K_UNKNOWN`, or `DST$K_PASCAL`, whose syntax (`r.f`,
+   `p^`, `a[i]`, `:=`) is nearly Oberon's.
