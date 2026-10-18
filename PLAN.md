@@ -622,7 +622,8 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    bits (correctly rounded, half to even, as MACRO does; short literals
    where the value fits), and the data directives the generator emits
    (`.LONG`, `.WORD`, `.BYTE`, `.ASCIC`/`.ASCII`, `.BLKx`, `.ALIGN`).
-   Displacement sizes follow MACRO's one-pass rule, not relaxation to a
+   The design is `vax-object-language.md` section 14 (decided with
+   the user 2026-10-18). Displacement sizes follow MACRO's one-pass rule, not relaxation to a
    fixpoint (decided with the user 2026-10-18; `vax-object-language.md`,
    section 6.2): a backward reference in the same program section gets
    the shortest displacement that reaches, every other reference a

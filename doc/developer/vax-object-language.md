@@ -557,3 +557,183 @@ fixture's `.mar` but the hand-written ones (2026-10-18).
    entry and exit), and every line it appends takes them, so step 5 has
    a position for every instruction without a second change of every
    call site.
+
+## 14. Step 3: the instruction encoder (decided 2026-10-18)
+
+### 14.1 What it takes and what it gives
+
+The encoder reads the module's line list (section 13.3), unchanged, and
+gives the module as the linker would see it, before any record is
+written:
+
+- the program sections, in the order of their first `.PSECT`, each with
+  its name, attributes and alignment, its size, and its bytes;
+- for each section, a list of **relocations**: the offset, the kind (the
+  four of section 9: `LD`, a longword displacement; `PICR`, a `G^`
+  operand, its specifier byte included; `PIDR`, an `.ADDRESS`; `LW`, a
+  `.LONG` of a symbol), and the target, a section and offset or an
+  external symbol and an addend;
+- the symbols: each label with its section and offset, which of them
+  are global (`::` and `.ENTRY`), the direct assignments (`POC_K1_... ==
+  0`, absolute), and the external symbols referenced;
+- the entry points (`.ENTRY`) with their register masks, the title and
+  ident, and the transfer address (`.END <sym>`).
+
+Step 4 writes that as records; step 3's test compares it (section 14.5).
+Nothing else in poc changes: `-emit-mar` and the build through MACRO
+stay as they are until step 6.
+
+### 14.2 Modules
+
+- **`src/back/vax/VaxOpcodes.Mod`**: the opcode table. For each mnemonic
+  the encoder accepts, its opcode (one byte, or two: the `G_floating`
+  instructions are `FD` and a byte, `MOVG` is `50FD`) and its operands,
+  each an access type (read, modify, write, address, field base, branch)
+  and a data type (`B W L Q F G`), which give an immediate's size and a
+  branch displacement's. The entries are the 138 mnemonics of section
+  13.2 and any other the generator can compose from a stem and a size
+  letter (found by reading the generator, not only its output), taken
+  from VAX MACRO 5.4's Appendix D (the 5.4 MACRO manual, already the
+  source of section 6.2) and Chapter 9. A mnemonic outside the table is
+  a compile-time error, never a guessed byte.
+- **`src/back/vax/VaxEncoder.Mod`**: the encoder, and a printer of its
+  result as text (section 14.5).
+- **`src/front/DecimalToDouble.Mod`** gets one new exported procedure,
+  `Rounded`'s result as the integer `m` and binary exponent `e` (`m *
+  2^e`) instead of a `LONGREAL`, so that `F` and `G` bits are built from
+  integers, exactly, whatever the host's floating point (section 14.4).
+  `Rounded` already takes the precision and the exponent range as
+  parameters, so the rounding is the code the front end uses today.
+
+### 14.3 Layout, in one pass
+
+The encoder walks the lines once, keeping a location counter for each
+section:
+
+- A **label** takes the current section and offset. A label defined
+  twice is an error.
+- An **instruction** is its opcode, then each operand's specifier, in
+  order, with an index register's `4x` byte first. Every length is
+  known as the specifier is written:
+  - a register, `(Rn)`, `-(Rn)`: one byte;
+  - `d(Rn)`, `@d(Rn)`: the shortest displacement that holds `d` (`A`/`C`/`E`
+    and their deferred forms `B`/`D`/`F`), as MACRO picks for a known
+    value (MACRO 5.4, section 5.2: "the smallest number of bytes");
+  - `#v`: a short literal when MACRO's rule allows (section 6.3: an
+    integer 0-63, or a real that is one of the 64), otherwise `8F` and
+    the value in as many bytes as the operand's data type has (8 for a
+    quadword or `G`). An integer literal in a real operand is taken as
+    its bits, not converted, as MACRO does (MACRO 5.4, section 5.2.4,
+    note 3, for a symbol; to be checked for a number, section 14.6);
+  - a relative operand (a bare symbol, `L^`): section 6.2's rule. A
+    symbol already defined, earlier in the same section, gets the
+    shortest displacement from the end of the specifier (`AF`, `CF`,
+    `EF`); every other one, and every `L^`, gets `EF` and a longword;
+  - `G^sym`: five bytes, a `PICR` relocation (the linker writes the
+    specifier byte itself, section 6);
+  - a branch operand: the displacement the opcode fixes (a byte for
+    `Bxx`/`BRB`/`BLBx`/`BBC`, a word for none poc writes today), from
+    the end of the instruction.
+- A **forward reference** in the same section (an `EF` longword, a
+  branch, a `CASE` table's `.WORD L_a-L_b`) is kept on a list and
+  filled in when the section ends, as the constant it then is (section
+  6.1's first simplification). A reference into another section is an
+  `LD` relocation with section and offset. A branch that does not reach,
+  or a difference of two labels in different sections, is an error in
+  poc (a generator bug), not a wrong byte.
+
+Because a length never depends on a later label, one pass fixes every
+offset, and the lists only fill in values.
+
+### 14.4 Directives, data and reals
+
+| Line | Encoded as |
+|---|---|
+| `.TITLE`, `.IDENT` | kept for the header (step 4); no bytes |
+| `.PSECT name[, attributes]` | the section is created (attributes, alignment) or resumed at its counter |
+| `.EXTERNAL sym, ...` | the symbols, as references |
+| `.ENTRY name, ^M<...>` | a global symbol and an entry point; the 2-byte mask (bits 0-11 the registers) as data |
+| `.WORD ^M<...>` | the 2-byte mask |
+| `.BYTE`, `.WORD`, `.LONG` of numbers (`v[n]` repeated), hex | the bytes, little-endian |
+| `.LONG sym[+n]` | four zero bytes and an `LW` relocation |
+| `.WORD L_a-L_b` | the difference, in the same section (filled in later when forward) |
+| `.ADDRESS sym[+n]` | four zero bytes and a `PIDR` relocation |
+| `.ASCII`, `.ASCIZ`, `.ASCIC` | the text; with a final `0`, or a leading count byte |
+| `.ASCID` | the descriptor (length word, `14`, `1`), its address `PIDR` to the text that follows, the text |
+| `.BLKB/W/L/Q/F/G n` | `n` times the size, zeros (step 4 skips them, section 6.1) |
+| `.ALIGN LONG`, `.ALIGN WORD` | zeros to the boundary (MACRO's fill to be checked, section 14.6) |
+| `.F_FLOATING`, `.G_FLOATING` | the reals' bits |
+| `sym == value` | an absolute symbol |
+| `.END [sym]` | the transfer address |
+
+**Reals.** A real literal's text, as poc wrote it, is rounded by
+`DecimalToDouble` to 24 bits (`F`) or 53 (`G`), half to even, giving
+`m` and `e` with the value `m * 2^e`. No VAX real is subnormal, so
+the exponent range is the format's normal range; a value outside it is
+an error. The bits are those of section 6.3: `F` is the sign, the
+exponent `e + 24 + 128` in 8 bits and the 23 fraction bits below the
+hidden one, `G` the sign, `e + 53 + 1024` in 11 bits and 52 fraction
+bits; the 16-bit words go most significant first, each little-endian.
+The value is a **short literal** when it is `(8 + f)/16 * 2^x` with `x`
+and `f` each 0-7 (0.5 to 120): the literal byte is `x * 8 + f`. `#0.0` is not one of them (literal 0 is 0.5):
+section 12, question 2, answered by MACRO's object for the corpus,
+which has `CVTFG #0.0, ...` twice (section 14.6).
+
+### 14.5 Testing: the image, compared with MACRO's
+
+The encoder's result is printed as text by a new option, `poc
+-emit-vax-image` (beside `-emit-mar`, for the fixtures and debugging):
+for each section its attributes, its bytes in hex with offsets, and its
+relocations, then the symbols, entry points and transfer address, each
+in a fixed order. A section's zero bytes print as such; step 4's skipping
+of them is not visible here.
+
+MACRO's object gives the same text through a host-side program, the
+section 9 tool: it reads `DUMP/RECORD`'s output for an object (as text,
+so nothing binary comes back from the guest), runs the TIR commands into
+section bytes and relocations, and prints them the same way. It is
+written in Oberon and built with poc, in `tools/vax-image/`, so that
+step 4 can reuse its reader for poc's own objects (it reads a binary
+object too).
+
+- **Fixtures.** Each VAX fixture with an `expected-vax.mar` gets an
+  `expected-vax.image`, made once from MACRO's object for that `.mar` on
+  the guest (`tools/vax-image update <fixture>`, through `vax-do`),
+  reviewed the way the `.mar` was, and committed. Its `test.sh` then
+  compares `poc -emit-vax-image` with it, with no guest needed, so `make
+  check` covers the encoder on every host. When a fixture's `.mar`
+  changes, its image is made again from MACRO, never from poc.
+- **The corpus.** poc's own source for the VAX, the 35 modules of
+  section 13.2, is assembled by MACRO on the guest, dumped, and compared
+  module by module with poc's images, once at the end of the step and
+  again whenever the encoder changes. It reaches far more of the
+  generator than the fixtures do.
+- **Coverage.** Every mnemonic in the opcode table and every form of
+  section 13.2 occurs in what is compared, or a hand-written fixture
+  adds it (`vax-encoder-forms`, its `.mar` assembled by MACRO the same
+  way).
+
+Differences that are legitimate disappear in the image, since both
+sides are run to bytes: a forward difference poc computes and MACRO
+leaves to the linker, an offset written as `STA_PB` or `STA_PW`, and
+the way records are split. Anything left is a bug in one of the two
+programs, and is fixed or listed here with the reason.
+
+### 14.6 Pieces
+
+Each piece leaves `make check` passing, the `.mar` output unchanged:
+
+- **3a**: `tools/vax-image` and MACRO's images for the fixtures and the
+  corpus, with what they show of the four things still unknown: `#0.0`;
+  what `.ALIGN` fills with in `POC_CODE`; an integer literal in an `F`
+  or `G` operand, if poc writes one; and `G^` of a symbol the same
+  module defines. Each answer is written into this section.
+- **3b**: `VaxOpcodes`, checked against Appendix D entry by entry and
+  against every mnemonic the generator can compose.
+- **3c**: the encoder for instructions and labels, `POC_CODE`, and
+  `-emit-vax-image`, compared for the code sections.
+- **3d**: directives and data, and the reals (`DecimalToDouble`'s new
+  procedure), compared for every section.
+- **3e**: the `expected-vax.image` files in every fixture's `test.sh`,
+  the coverage fixture, and the corpus compared, every difference
+  explained; the step's record in `PLAN.md`.
