@@ -85,7 +85,7 @@ Rules for poc's own source (`AGENTS.md` has the reasons):
 - It is strict `Oberon2.pdf`: `make check-strict` compiles all of `src/`
   with `poc -strict`, which rejects every extension.
 - It must also type-check under `-O2`: no literal or constant wider than
-  32 bits.
+  32 bits. `make check-o2` checks it.
 - Names are descriptive (`GarbageCollectedHeap`, not voc's terse style).
 - voc 2.1.0 has bugs that bite poc's source; `doc/developer/bootstrapping-with-voc.md`
   lists them with their workarounds. Check there before puzzling over an
@@ -103,7 +103,7 @@ writes `build/gen/BuildInfo.Mod` with the commit on every build, so `poc
 | `make test` | every fixture, under Stage 0: the quick loop |
 | `test/run-tests.sh [-j <n>] <name>...` | the fixtures named, as many at once as the host has processors (or `-j`, or `TEST_JOBS`) |
 | `make test-llvm` (and `-lexer`, `-parser`, `-semantic`, `-modules`, `-layout`, `-misc`) | one group |
-| `make check` | `make test`, every fixture under Stage 1, `make stage2` (the fixed point) and `make check-strict`; reports every failure |
+| `make check` | `make test`, every fixture under Stage 1, `make stage2` (the fixed point), `make check-strict` and `make check-o2`; reports every failure |
 | `make check-stage1` | `make check` without `make test`: what the hosts other than atla run |
 | `make check-opt2` | everything built at `-opt 2` |
 | `make check-lto` | the fixtures with `-lto` (not a gate) |

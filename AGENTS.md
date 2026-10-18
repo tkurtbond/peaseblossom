@@ -106,8 +106,9 @@ programs it compiles (`-O2`/`-OC` flags, default `-O2`; `MemoryLayout.Mod`).
 `-OC`, and Stage 1/2 stay at `-OC`: poc needs an 8-byte `LONGINT`
 (`Types.Value.intVal`, the constant folder, `DecimalToDouble`). poc's own
 source stays strict `Oberon2.pdf` (`make check-strict`, part of `make
-check`) and must also type-check under `-O2` (`doc/history/project-history.md`,
-"poc's own source under `-O2`"). Without voc, Stage 0 is built by
+check`) and must also type-check under `-O2` (`make check-o2`, part of
+`make check` too; `doc/history/project-history.md`, "poc's own source under
+`-O2`"). Without voc, Stage 0 is built by
 `BOOTSTRAP_POC` or from a release tarball's `seed/` (`doc/history/phases/phase-13.md`,
 steps 4-5: `make seed`, `check-seed`, `dist`, `distcheck`).
 

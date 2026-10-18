@@ -909,6 +909,20 @@ Those fixed while Phase 16 was current, 7, are in
     `poc-options-after-file`. Fixed on `vax`; it reaches `main` with the
     merge, or by itself if the user wants it there sooner.
 
+9.  **[fixed] poc's own source no longer type-checked under `-O2`.**
+    Found 2026-10-18 during Phase 18 step 2a, checking the new
+    `VaxInstructions` under `-O2`: `ConstantEvaluator`'s `twoTo32 =
+    4294967296`, added with the unsigned integer types (`ff457c2`,
+    0.6.0), is wider than a 32-bit `LONGINT`, so under `-O2` every
+    expression with it was a `HUGEINT` (12 errors). poc built and worked,
+    since every stage builds it under `-OC`, and nothing checked the rule
+    (`DEVELOPER.md`, "Rules for poc's own source"), which Phase 15 had
+    broken the same way (`phase-16.md`). `twoTo32` is now a variable set
+    in the module body, and `make check-o2`, run by `make check` and
+    `make check-stage1`, compiles `Poc.Mod` and its imports under `-O2`
+    and checks every module of `src/` against them; that check, not a
+    fixture, keeps it fixed.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other

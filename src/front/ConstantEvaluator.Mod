@@ -70,7 +70,6 @@ MODULE ConstantEvaluator;
                                       needs to be written down. *)
 
     maxAshCount = 62; (* voc's maxExp: see EvaluateAsh *)
-    twoTo32 = 4294967296; (* 2^32: unsigned constant arithmetic, see WrappingSum *)
 
   VAR
     (* MemoryLayout.sizeModelO2/OC currently in effect for this
@@ -123,6 +122,12 @@ MODULE ConstantEvaluator;
        range traps there (a floating overflow), and a rounding tie may
        fold differently in its last bit. *)
     vaxHost*: BOOLEAN;
+
+    (* 2^32, for unsigned constant arithmetic (see WrappingSum): set in
+       the module body, since a constant that large is wider than LONGINT
+       under -O2, under which poc's own source must also type-check
+       (doc/developer/DEVELOPER.md) *)
+    twoTo32: LONGINT;
 
   PROCEDURE ^ EvaluateExpr(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): Types.Value;
   PROCEDURE ^ IsConstant(expr: SyntaxTree.ExprNode; scope: SymbolTable.Scope): BOOLEAN;
@@ -2473,5 +2478,6 @@ MODULE ConstantEvaluator;
 BEGIN
   SetSizeModel(MemoryLayout.sizeModelO2);
   SetWordSize(MemoryLayout.wordSize32);
-  vaxHost := FALSE
+  vaxHost := FALSE;
+  twoTo32 := 65536; twoTo32 := twoTo32 * 65536
 END ConstantEvaluator.

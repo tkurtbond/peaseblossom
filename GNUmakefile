@@ -69,7 +69,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install installable-vax install-vax uninstall-vax check-install-vax check-install-vax-run seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-opt2 check-lto test test-vax test-vax-asts test-vax-guest-poc vax-v1 vax-stages vax-kit check-vax-kit test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install installable-vax install-vax uninstall-vax check-install-vax check-install-vax-run seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-o2 check-opt2 check-lto test test-vax test-vax-asts test-vax-guest-poc vax-v1 vax-stages vax-kit check-vax-kit test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -121,6 +121,7 @@ check:
 	$(MAKE) test-stage1 || status=1; \
 	$(MAKE) stage2 || status=1; \
 	$(MAKE) check-strict || status=1; \
+	$(MAKE) check-o2 || status=1; \
 	exit $$status
 
 # check without the suite under the voc-built poc: what tools/check-hosts
@@ -131,6 +132,7 @@ check-stage1:
 	$(MAKE) test-stage1 || status=1; \
 	$(MAKE) stage2 || status=1; \
 	$(MAKE) check-strict || status=1; \
+	$(MAKE) check-o2 || status=1; \
 	exit $$status
 
 # Phase 11 D13: everything built with poc -opt 2 (clang -O2), including
@@ -223,6 +225,33 @@ check-strict: $(STAGE1_BIN)
 	  fi; \
 	done; \
 	if [ $$status = 0 ]; then echo "check-strict: poc's own source is strict Oberon2.pdf"; fi; \
+	exit $$status
+
+# poc's own source also type-checks under -O2 (doc/developer/DEVELOPER.md):
+# no constant wider than 32 bits, though poc is built under -OC. Twice broken
+# unnoticed (Phase 15's constants in VaxCodeGenerator, the unsigned types'
+# in ConstantEvaluator), so checked here: Poc.Mod and all it imports
+# compiled to LLVM IR under -O2 by the Stage 1 poc, in a directory of
+# their own, then every module of src/ checked against the .sym files that
+# leaves.
+CHECK_O2_DIR := $(BUILD_DIR)/check-o2
+check-o2: $(STAGE1_BIN) $(BUILD_INFO)
+	@rm -rf $(CHECK_O2_DIR); mkdir -p $(CHECK_O2_DIR); \
+	status=0; \
+	out=$$(cd $(CHECK_O2_DIR) && $(abspath $(STAGE1_BIN)) -O2 -clear-library-path \
+	  -import-path $(abspath src/front) -import-path $(abspath src/back/llvm) \
+	  -import-path $(abspath src/back/vax) -import-path $(abspath rtl/llvm) \
+	  -import-path $(abspath src/driver) -import-path $(abspath src/driver/llvm) \
+	  -import-path $(abspath $(BUILD_DIR)/gen) -emit-llvm-ir $(abspath src/driver/Poc.Mod) 2>&1) || status=1; \
+	if [ $$status != 0 ]; then echo "$$out"; fi; \
+	if [ $$status = 0 ]; then \
+	  for f in $(SRCS) $(NO_LLVM_SRCS); do \
+	    out=$$($(STAGE1_BIN) -O2 -import-path $(CHECK_O2_DIR) -check $$f 2>&1); \
+	    if [ "$$out" != "semantic OK" ]; then echo "$$out"; status=1; fi; \
+	  done; \
+	fi; \
+	if [ $$status = 0 ]; then echo "check-o2: poc's own source type-checks under -O2"; \
+	else echo "check-o2: poc's own source does not type-check under -O2"; fi; \
 	exit $$status
 
 # Phase 13 step 3: make install and make uninstall, GNU make (gmake on the
