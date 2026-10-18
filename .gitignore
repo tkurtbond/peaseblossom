@@ -42,6 +42,8 @@ test/conformance/**/*.mar
 test/conformance/**/*.com
 !test/conformance/**/expected-*.com
 !test/conformance/**/guest-*.com
+# vax-vmsdef's procedure for the guest, which assembles its listings
+!test/conformance/vax-vmsdef/mlb-listings.com
 test/conformance/**/result
 # vax-files-riders' copies of llvm-files-riders' sources, and what it expects
 test/conformance/vax-files-riders/*.mod

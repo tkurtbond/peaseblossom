@@ -923,6 +923,14 @@ Those fixed while Phase 16 was current, 7, are in
     and checks every module of `src/` against them; that check, not a
     fixture, keeps it fixed.
 
+10. **[fixed] `vax-vmsdef` failed in a fresh checkout.** Found
+    2026-10-18 gating item 9 in a new checkout of `main`: the fixture
+    sends `mlb-listings.com` to the VAX, but `.gitignore`'s
+    `test/conformance/**/*.com` (a build procedure poc writes) hid it, so
+    it was never committed with Phase 17 step 5 and existed only in the
+    checkout every gate had run in. The file is committed now, with an
+    exception in `.gitignore`; `vax-vmsdef` passes in the new checkout.
+
 ## Ongoing library enhancements
 
 Additions to the runtime library (`rtl/llvm`) that using poc on other
