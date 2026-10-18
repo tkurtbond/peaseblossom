@@ -146,8 +146,6 @@ MODULE VaxCodeGenerator;
     collectorModule = "GarbageCollectedHeap"; (* rtl/vax's, which NEW allocates from *)
 
   TYPE
-    OperandText = ARRAY 48 OF CHAR;
-
     Operand = POINTER TO OperandDesc;
     OperandDesc = RECORD
       kind: INTEGER;
@@ -300,6 +298,7 @@ MODULE VaxCodeGenerator;
        or a comment (VaxInstructions) *)
     Instruction = VaxInstructions.Line;
     OperandSpecifier = VaxInstructions.Specifier;
+    DirectiveItem = VaxInstructions.Item;
 
   VAR
     unsupportedCount*: INTEGER;
@@ -466,21 +465,6 @@ MODULE VaxCodeGenerator;
     WHILE i > 0 DO DEC(i); AppendChar(s, digits[i]) END
   END AppendInt;
 
-  (* "^X" and the eight hexadecimal digits of a SET's longword *)
-  PROCEDURE AppendSetHex(VAR s: ARRAY OF CHAR; bits: SET);
-    VAR digits: ARRAY 9 OF CHAR; i, b, d: INTEGER;
-  BEGIN
-    FOR i := 0 TO 7 DO
-      d := 0;
-      FOR b := 3 TO 0 BY -1 DO
-        d := d * 2;
-        IF 4 * i + b IN bits THEN INC(d) END
-      END;
-      IF d < 10 THEN digits[7 - i] := CHR(ORD("0") + d) ELSE digits[7 - i] := CHR(ORD("A") + d - 10) END
-    END;
-    digits[8] := 0X;
-    Append(s, "^X"); Append(s, digits)
-  END AppendSetHex;
 
   (* " (Phase 16)" when a type outside the slice comes then, for the
      message saying it cannot be lowered yet (section 1): an array's by its
@@ -702,13 +686,6 @@ MODULE VaxCodeGenerator;
     RETURN HalfSpecifier(x, 0)
   END Specifier;
 
-  (* The operand's text, or, for a quadword, its low (half 0) or high
-     (half 1) longword's *)
-  PROCEDURE HalfText(x: Operand; half: INTEGER; VAR text: ARRAY OF CHAR);
-  BEGIN
-    VaxInstructions.SpecifierToText(HalfSpecifier(x, half), text)
-  END HalfText;
-
   PROCEDURE IsImmediateValue(x: Operand; value: LONGINT): BOOLEAN;
   BEGIN
     RETURN (x.kind = immediate) & ~Types.IsSet(x.type) & ~IsReal(x.type) & (x.value = value)
@@ -911,6 +888,62 @@ MODULE VaxCodeGenerator;
     l := VaxInstructions.Operation(op); VaxInstructions.AddSpecifier(l, a); VaxInstructions.AddSpecifier(l, b);
     AppendOut(l)
   END PutInstruction2;
+
+  (* A directive at the end of the module's lines, its items given by
+     VaxInstructions.AddItem, or the ones here *)
+  PROCEDURE PutDirective(op: ARRAY OF CHAR): Instruction;
+    VAR l: Instruction;
+  BEGIN
+    l := VaxInstructions.Directive(op); AppendOut(l);
+    RETURN l
+  END PutDirective;
+
+  PROCEDURE PutDirective1(op: ARRAY OF CHAR; a: DirectiveItem);
+  BEGIN
+    VaxInstructions.AddItem(PutDirective(op), a)
+  END PutDirective1;
+
+  PROCEDURE PutDirective2(op: ARRAY OF CHAR; a, b: DirectiveItem);
+    VAR l: Instruction;
+  BEGIN
+    l := PutDirective(op); VaxInstructions.AddItem(l, a); VaxInstructions.AddItem(l, b)
+  END PutDirective2;
+
+  (* .PSECT name, then attributes, MACRO's, separated by commas, if any *)
+  PROCEDURE Psect(name, attributes: ARRAY OF CHAR);
+    VAR l: Instruction; i, j: INTEGER; attribute: ARRAY 16 OF CHAR;
+  BEGIN
+    l := PutDirective(".PSECT"); VaxInstructions.AddItem(l, VaxInstructions.Keyword(name));
+    i := 0;
+    WHILE attributes[i] # 0X DO
+      j := 0;
+      WHILE (attributes[i] # 0X) & (attributes[i] # ",") DO attribute[j] := attributes[i]; INC(i); INC(j) END;
+      attribute[j] := 0X;
+      VaxInstructions.AddItem(l, VaxInstructions.Keyword(attribute));
+      IF attributes[i] = "," THEN INC(i) END
+    END
+  END Psect;
+
+  (* The label name, global ("name::") or not *)
+  PROCEDURE PutSymbolLabel(name: ARRAY OF CHAR; global: BOOLEAN);
+  BEGIN
+    IF global THEN AppendOut(VaxInstructions.GlobalLabel(name)) ELSE AppendOut(VaxInstructions.Label(name)) END
+  END PutSymbolLabel;
+
+  (* A directive in the list being generated, with one item *)
+  PROCEDURE EmitDirective1(op: ARRAY OF CHAR; a: DirectiveItem);
+    VAR l: Instruction;
+  BEGIN
+    l := VaxInstructions.Directive(op); VaxInstructions.AddItem(l, a);
+    Add(l)
+  END EmitDirective1;
+
+  PROCEDURE EmitDirective2(op: ARRAY OF CHAR; a, b: DirectiveItem);
+    VAR l: Instruction;
+  BEGIN
+    l := VaxInstructions.Directive(op); VaxInstructions.AddItem(l, a); VaxInstructions.AddItem(l, b);
+    Add(l)
+  END EmitDirective2;
 
   (* ---- Registers and the frame ---- *)
 
@@ -1925,20 +1958,13 @@ MODULE VaxCodeGenerator;
     RETURN x
   END ListEntry;
 
-  (* Append to target name, a symbol outside the module, in general mode:
-     G^name (section 7) *)
-  PROCEDURE AppendExternal(VAR target: ARRAY OF CHAR; name: ARRAY OF CHAR);
-  BEGIN
-    Append(target, "G^"); Append(target, name)
-  END AppendExternal;
-
-  (* The operand text of rec's type descriptor: a record named at a
-     module's level by the symbol of <Module>.<Type> (section 5), its own
-     module's written by CollectDescriptors, another module's in general
-     mode, G^; any other record - declared in a procedure, or written
-     inline - by a label of this module, L_TD_<n>, its descriptor written
-     because it is needed, as on LLVM *)
-  (* The symbol of rec's descriptor, outside if it is another module's *)
+  (* The symbol of rec's type descriptor, outside if it is another
+     module's: a record named at a module's level by the symbol of
+     <Module>.<Type> (section 5), its own module's written by
+     CollectDescriptors, another module's named in general mode, G^; any
+     other record - declared in a procedure, or written inline - by a
+     label of this module, L_TD_<n>, its descriptor written because it is
+     needed, as on LLVM *)
   PROCEDURE RecordTagSymbol(rec: Types.RecordType; VAR symbol: VaxTypes.Symbol; VAR outside: BOOLEAN);
     VAR full: ARRAY 2 * 256 + 2 OF CHAR; d: TypeDescriptor;
   BEGIN
@@ -1957,14 +1983,6 @@ MODULE VaxCodeGenerator;
       COPY(d.label, symbol)
     END
   END RecordTagSymbol;
-
-  PROCEDURE RecordTag(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
-    VAR symbol: VaxTypes.Symbol; outside: BOOLEAN;
-  BEGIN
-    RecordTagSymbol(rec, symbol, outside);
-    text[0] := 0X;
-    IF outside THEN AppendExternal(text, symbol) ELSE COPY(symbol, text) END
-  END RecordTag;
 
   (* rec's descriptor, as an operand: its address *)
   PROCEDURE RecordTagRef(rec: Types.RecordType): OperandSpecifier;
@@ -4666,7 +4684,7 @@ MODULE VaxCodeGenerator;
      block's address past its tag, or 0 when there is no memory, which
      leaves p NIL, as on LLVM (with -trap-heap-exhausted, a trap:
      HeapCheck), is stored in p. tag is the record's type descriptor
-     (RecordTag), or for an array its element type's when that holds
+     (RecordTagRef), or for an array its element type's when that holds
      pointers, else 0 (ArrayTag). An
      open array's lengths come first, as on LLVM, each kept in the frame
      and checked to be positive, then the block's size from them, the
@@ -5692,7 +5710,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE CaseStatement(s: SyntaxTree.CaseStatementNode);
     VAR sel: Operand; c: SyntaxTree.CaseNode; l: SyntaxTree.CaseLabelNode;
         arms, i, index: INTEGER; low, high, min, max, value: LONGINT;
-        noLabel, end, table, stub: ARRAY 16 OF CHAR; text: ARRAY 64 OF CHAR; op: ARRAY 8 OF CHAR;
+        noLabel, end, table, stub, text: ARRAY 16 OF CHAR; op: ARRAY 8 OF CHAR;
   BEGIN
     sel := Hold(Expression(s.selector, NIL), FALSE);
     NewLabel(noLabel); NewLabel(end);
@@ -5709,8 +5727,7 @@ MODULE VaxCodeGenerator;
         IF ArmOf(s, value, index) = NIL THEN COPY(noLabel, stub)
         ELSE ArmLabel(i, index, stub); Append(stub, "S")
         END;
-        COPY(stub, text); Append(text, "-"); Append(text, table);
-        Emit(".WORD", text)
+        EmitDirective1(".WORD", VaxInstructions.Difference(stub, table))
       END;
       Jump(noLabel);
       FOR index := 0 TO arms - 1 DO
@@ -6025,18 +6042,10 @@ MODULE VaxCodeGenerator;
 
   (* "^M<R2,R3>", the registers R2..R5 the body writes, which the calling
      standard says a procedure saves (the design's section 7) *)
-  PROCEDURE EntryMask(VAR mask: ARRAY OF CHAR);
-    VAR r: INTEGER; first: BOOLEAN;
+  PROCEDURE EntryRegisters(): SET;
   BEGIN
-    COPY("^M<", mask); first := TRUE;
-    FOR r := 2 TO lastScratch DO
-      IF r IN used THEN
-        IF ~first THEN AppendChar(mask, ",") END;
-        AppendChar(mask, "R"); AppendInt(mask, r); first := FALSE
-      END
-    END;
-    AppendChar(mask, ">")
-  END EntryMask;
+    RETURN used * {2 .. lastScratch}
+  END EntryRegisters;
 
   (* The entry's copy of l, an open-array value parameter (section 14):
      its size, the product of its lengths and its base's size, in R0; that
@@ -6145,7 +6154,7 @@ MODULE VaxCodeGenerator;
     VAR p: Types.Param; section: SyntaxTree.FPSectionNode;
         id: SyntaxTree.IdentDefNode; vd: SyntaxTree.VarDeclNode; pobj: SymbolTable.Object; l: Local;
         bodyFirst, bodyLast: Instruction; i: INTEGER; off: LONGINT;
-        text: ARRAY 600 OF CHAR; mask: ARRAY 40 OF CHAR; op: ARRAY 8 OF CHAR;
+        text: ARRAY 600 OF CHAR; op: ARRAY 8 OF CHAR;
         before: INTEGER;
   BEGIN
     before := unsupportedCount;
@@ -6245,11 +6254,10 @@ MODULE VaxCodeGenerator;
       IF (l.copyFrom # 0) & ~IsSliceScalar(l.obj.type) THEN used := used + {2 .. 5} END; (* MOVC3 *)
       l := l.next
     END;
-    EntryMask(mask);
     IF global THEN
-      COPY(symbol, text); Append(text, ", "); Append(text, mask); Emit(".ENTRY", text)
+      EmitDirective2(".ENTRY", VaxInstructions.Symbol(symbol, 0), VaxInstructions.Mask(EntryRegisters()))
     ELSE
-      EmitLabel(symbol); Emit(".WORD", mask)
+      EmitLabel(symbol); EmitDirective1(".WORD", VaxInstructions.Mask(EntryRegisters()))
     END;
     IF localSize + 4 * frameSlots > 0 THEN
       Instruction2("SUBL2", Literal(localSize + 4 * frameSlots), Reg(VaxInstructions.sp))
@@ -6549,7 +6557,7 @@ MODULE VaxCodeGenerator;
      make, a local label for one only this module can (-anon<n>) *)
   PROCEDURE InitProcedure(e: InitRecord);
     VAR rec: Types.RecordType; f: Types.Field; r, target: Operand; symbol: VaxTypes.Symbol;
-        bodyFirst, bodyLast: Instruction; mask: ARRAY 40 OF CHAR; text: ARRAY 600 OF CHAR;
+        bodyFirst, bodyLast: Instruction; text: ARRAY 600 OF CHAR;
         outside: BOOLEAN;
   BEGIN
     rec := e.rec;
@@ -6582,11 +6590,10 @@ MODULE VaxCodeGenerator;
     bodyFirst := first; bodyLast := last; first := NIL; last := NIL;
     COPY("; the field initializers of ", text); Append(text, rec.moduleName); Append(text, ".");
     Append(text, rec.initPath); EmitComment(text);
-    EntryMask(mask);
     IF rec.initPath[0] # "-" THEN
-      COPY(symbol, text); Append(text, ", "); Append(text, mask); Emit(".ENTRY", text)
+      EmitDirective2(".ENTRY", VaxInstructions.Symbol(symbol, 0), VaxInstructions.Mask(EntryRegisters()))
     ELSE
-      EmitLabel(symbol); Emit(".WORD", mask)
+      EmitLabel(symbol); EmitDirective1(".WORD", VaxInstructions.Mask(EntryRegisters()))
     END;
     IF 4 * frameSlots > 0 THEN
       Instruction2("SUBL2", Literal(4 * frameSlots), Reg(VaxInstructions.sp))
@@ -6653,26 +6660,23 @@ MODULE VaxCodeGenerator;
           IF obj.exported THEN EnterGlobal(full, nm.line, nm.column) END;
           IF ~header THEN
             EndLine; PutText("; the module's variables"); EndLine;
-            PutLine(".PSECT", "POC_DATA"); header := TRUE
+            Psect("POC_DATA", ""); header := TRUE
           END;
           PutText("; "); PutText(nm.name); PutText(": ");
           text[0] := 0X; Types.Describe(obj.type, text); PutText(text);
           IF obj.exported THEN PutText(", exported") END;
           EndLine;
           align := VaxTypes.Align(obj.type);
-          IF align = 2 THEN PutLine(".ALIGN", "WORD")
-          ELSIF align = 4 THEN PutLine(".ALIGN", "LONG")
-          ELSIF align = 8 THEN PutLine(".ALIGN", "QUAD")
+          IF align = 2 THEN PutDirective1(".ALIGN", VaxInstructions.Keyword("WORD"))
+          ELSIF align = 4 THEN PutDirective1(".ALIGN", VaxInstructions.Keyword("LONG"))
+          ELSIF align = 8 THEN PutDirective1(".ALIGN", VaxInstructions.Keyword("QUAD"))
           END;
-          PutText(symbol);
-          IF obj.exported THEN PutText("::") ELSE PutText(":") END;
-          EndLine;
+          PutSymbolLabel(symbol, obj.exported);
           IF IsSliceScalar(obj.type) THEN
             Op(".BLK", Suffix(obj.type), "", directive);
-            PutLine(directive, "1")
+            PutDirective1(directive, VaxInstructions.Number(1))
           ELSE
-            text[0] := 0X; AppendInt(text, VaxTypes.Size(obj.type));
-            PutLine(".BLKB", text)
+            PutDirective1(".BLKB", VaxInstructions.Number(VaxTypes.Size(obj.type)))
           END
         END;
         nm := nm.next
@@ -6690,14 +6694,13 @@ MODULE VaxCodeGenerator;
      nothing written, if they hold none *)
   PROCEDURE WriteRoots(): BOOLEAN;
     VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
-        total: LONGINT; count: INTEGER; symbol: VaxTypes.Symbol; text: ARRAY 600 OF CHAR;
+        total: LONGINT; count: INTEGER; symbol: VaxTypes.Symbol; list: Instruction;
 
     PROCEDURE Put(at: LONGINT);
     BEGIN
-      IF count = 4 THEN PutLine(".ADDRESS", text); count := 0 END;
-      IF count = 0 THEN text[0] := 0X ELSE Append(text, ", ") END;
-      Append(text, symbol);
-      IF at # 0 THEN Append(text, "+"); AppendInt(text, at) END;
+      IF count = 4 THEN count := 0 END;
+      IF count = 0 THEN list := PutDirective(".ADDRESS") END;
+      VaxInstructions.AddItem(list, VaxInstructions.Symbol(symbol, at));
       INC(count)
     END Put;
 
@@ -6734,11 +6737,11 @@ MODULE VaxCodeGenerator;
     EndLine;
     PutText("; its root table, for the collector: the next table, the count,"); EndLine;
     PutText("; and the address of each pointer its variables hold"); EndLine;
-    PutLine(".PSECT", "POC_DATA");
-    PutLine(".ALIGN", "LONG");
+    Psect("POC_DATA", "");
+    PutDirective1(".ALIGN", VaxInstructions.Keyword("LONG"));
     PutLabel("L_ROOTS");
-    PutLine(".LONG", "0");
-    text[0] := 0X; AppendInt(text, total); PutLine(".LONG", text);
+    PutDirective1(".LONG", VaxInstructions.Number(0));
+    PutDirective1(".LONG", VaxInstructions.Number(total));
     count := 0;
     vd := module.declarations.varDecls;
     WHILE vd # NIL DO
@@ -6750,7 +6753,6 @@ MODULE VaxCodeGenerator;
       END;
       vd := vd.next
     END;
-    IF count > 0 THEN PutLine(".ADDRESS", text) END;
     RETURN TRUE
   END WriteRoots;
 
@@ -6758,7 +6760,7 @@ MODULE VaxCodeGenerator;
      by a character not in it (MACRO 6, .ASCII: not a space, "=", ";" or
      "<"), any other byte, or a run with every delimiter in it, by .BYTE *)
   PROCEDURE WriteBytes(VAR s: ARRAY OF CHAR; n: LONGINT);
-    VAR i, j, k: LONGINT; d: INTEGER; run: ARRAY 64 OF CHAR; text: ARRAY 128 OF CHAR;
+    VAR i, j, k: LONGINT; d: INTEGER; run: ARRAY 64 OF CHAR; list: Instruction;
         delimiters: ARRAY 16 OF CHAR; found: BOOLEAN;
   BEGIN
     COPY('/"|!#%&*+?@~', delimiters);
@@ -6776,8 +6778,7 @@ MODULE VaxCodeGenerator;
         IF ~found THEN INC(d) END
       END;
       IF found THEN
-        text[0] := 0X; AppendChar(text, delimiters[d]); Append(text, run); AppendChar(text, delimiters[d]);
-        PutLine(".ASCII", text);
+        PutDirective1(".ASCII", VaxInstructions.String(run, delimiters[d]));
         i := i + j
       ELSE
         (* the bytes up to the next printing one, or the run *)
@@ -6785,12 +6786,10 @@ MODULE VaxCodeGenerator;
           WHILE (i + j < n) & ((s[i + j] < " ") OR (s[i + j] > "~")) DO INC(j) END
         END;
         WHILE j > 0 DO
-          text[0] := 0X; k := 0;
+          list := PutDirective(".BYTE"); k := 0;
           WHILE (k < j) & (k < 16) DO
-            IF k > 0 THEN Append(text, ", ") END;
-            AppendInt(text, ORD(s[i + k])); INC(k)
+            VaxInstructions.AddItem(list, VaxInstructions.Number(ORD(s[i + k]))); INC(k)
           END;
-          PutLine(".BYTE", text);
           i := i + k; j := j - k
         END
       END
@@ -6799,36 +6798,33 @@ MODULE VaxCodeGenerator;
 
   (* c's bytes (WriteBytes), then .BYTE 0[n] to its size *)
   PROCEDURE WriteString(c: StringConstant);
-    VAR n: LONGINT; text: ARRAY 32 OF CHAR;
+    VAR n: LONGINT;
   BEGIN
     PutLabel(c.label);
     n := 0; WHILE (n < LEN(c.text^)) & (c.text[n] # 0X) DO INC(n) END;
     WriteBytes(c.text^, n);
-    text[0] := 0X; AppendInt(text, 0);
-    IF c.size - n > 1 THEN AppendChar(text, "["); AppendInt(text, c.size - n); AppendChar(text, "]") END;
-    PutLine(".BYTE", text)
+    PutDirective1(".BYTE", VaxInstructions.Repeated(0, c.size - n))
   END WriteString;
 
   (* Zero bytes from at up to to, at left at to *)
   PROCEDURE PadTo(to: LONGINT; VAR at: LONGINT);
-    VAR text: ARRAY 32 OF CHAR;
   BEGIN
     IF to > at THEN
-      text[0] := 0X; AppendInt(text, 0);
-      IF to - at > 1 THEN AppendChar(text, "["); AppendInt(text, to - at); AppendChar(text, "]") END;
-      PutLine(".BYTE", text);
+      PutDirective1(".BYTE", VaxInstructions.Repeated(0, to - at));
       at := to
     END
   END PadTo;
 
-  (* An immediate's text without its "#", as a directive's operand *)
-  PROCEDURE DropHash(VAR text: ARRAY OF CHAR);
-    VAR i: INTEGER;
+
+  (* s, an integer literal, as a directive's item: its value, without "#" *)
+  PROCEDURE LiteralItem(s: OperandSpecifier): DirectiveItem;
+    VAR item: DirectiveItem;
   BEGIN
-    IF text[0] = "#" THEN
-      i := 0; WHILE text[i] # 0X DO text[i] := text[i + 1]; INC(i) END
-    END
-  END DropHash;
+    IF s.form = VaxInstructions.hexadecimal THEN item := VaxInstructions.Hex(s.bits)
+    ELSE item := VaxInstructions.Number(s.value)
+    END;
+    RETURN item
+  END LiteralItem;
 
   (* v, a constant of the scalar type t (AssignedValue made it one of t,
      but an integer may stand for a real), as data: .BYTE, .WORD or .LONG,
@@ -6836,7 +6832,7 @@ MODULE VaxCodeGenerator;
      a real as .F_FLOATING or .G_FLOATING of RealConstant's text, which
      MACRO rounds as it does an immediate; NIL as 0 *)
   PROCEDURE WriteScalar(t: Types.Type; v: Types.Value);
-    VAR x: Operand; r: Types.Value; size, value: LONGINT; text: OperandText; directive: ARRAY 16 OF CHAR;
+    VAR x: Operand; r: Types.Value; size, value: LONGINT; directive: ARRAY 16 OF CHAR;
   BEGIN
     size := VaxTypes.Size(t);
     IF IsReal(t) THEN
@@ -6844,10 +6840,10 @@ MODULE VaxCodeGenerator;
       IF v.kind = Types.intValue THEN r.kind := Types.realValue; r.realVal := v.intVal; r.realText[0] := 0X END;
       x := RealConstant(r, 0, 0);
       IF t = Types.Real THEN COPY(".F_FLOATING", directive) ELSE COPY(".G_FLOATING", directive) END;
-      PutLine(directive, x.realText)
+      PutDirective1(directive, VaxInstructions.RealNumeral(x.realText))
     ELSIF Types.IsSet(t) THEN
-      text[0] := 0X; AppendSetHex(text, v.setLow); PutLine(".LONG", text);
-      IF size = 8 THEN text[0] := 0X; AppendSetHex(text, v.setHigh); PutLine(".LONG", text) END
+      PutDirective1(".LONG", VaxInstructions.Hex(v.setLow));
+      IF size = 8 THEN PutDirective1(".LONG", VaxInstructions.Hex(v.setHigh)) END
     ELSE
       IF v.kind = Types.boolValue THEN IF v.boolVal THEN value := 1 ELSE value := 0 END
       ELSIF v.kind = Types.charValue THEN value := ORD(v.charVal)
@@ -6857,11 +6853,12 @@ MODULE VaxCodeGenerator;
       END;
       IF size = 8 THEN x := Immediate(Types.HugeInt, value) ELSE x := Immediate(longword, value) END;
       IF (size = 4) OR (size = 8) THEN
-        HalfText(x, 0, text); DropHash(text); PutLine(".LONG", text);
-        IF size = 8 THEN HalfText(x, 1, text); DropHash(text); PutLine(".LONG", text) END
+        PutDirective1(".LONG", LiteralItem(HalfSpecifier(x, 0)));
+        IF size = 8 THEN PutDirective1(".LONG", LiteralItem(HalfSpecifier(x, 1))) END
       ELSE
-        text[0] := 0X; AppendInt(text, value);
-        IF size = 1 THEN PutLine(".BYTE", text) ELSE PutLine(".WORD", text) END
+        IF size = 1 THEN PutDirective1(".BYTE", VaxInstructions.Number(value))
+        ELSE PutDirective1(".WORD", VaxInstructions.Number(value))
+        END
       END
     END
   END WriteScalar;
@@ -6922,7 +6919,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE WriteStructured(c: StructuredConstant);
     VAR at: LONGINT;
   BEGIN
-    PutLine(".ALIGN", "QUAD");
+    PutDirective1(".ALIGN", VaxInstructions.Keyword("QUAD"));
     PutLabel(c.label);
     at := 0;
     WriteData(c.type, c.value, 0, at);
@@ -6932,11 +6929,11 @@ MODULE VaxCodeGenerator;
   (* s, at most its first 255 characters, as a counted string at label: a
      .BYTE of its length, then its bytes (WriteBytes) *)
   PROCEDURE WriteCounted(label, s: ARRAY OF CHAR);
-    VAR n: LONGINT; text: ARRAY 8 OF CHAR;
+    VAR n: LONGINT;
   BEGIN
     n := 0; WHILE (n < LEN(s)) & (n < 255) & (s[n] # 0X) DO INC(n) END;
     PutLabel(label);
-    text[0] := 0X; AppendInt(text, n); PutLine(".BYTE", text);
+    PutDirective1(".BYTE", VaxInstructions.Number(n));
     WriteBytes(s, n)
   END WriteCounted;
 
@@ -6951,18 +6948,18 @@ MODULE VaxCodeGenerator;
      pointers' offsets, from the start of the record or of one element,
      flattened through records and fixed arrays. *)
   (* Before anything is written: the descriptors of every descriptor's base
-     types made (RecordTag), so that a local one is listed, and the symbols
+     types made (RecordTagSymbol), so that a local one is listed, and the symbols
      of its ProcTab's procedures (MethodSymbol), so that another module's
      symbol is declared .EXTERNAL *)
   PROCEDURE ResolveAncestors;
     VAR d: TypeDescriptor; r: Types.Type; owner: Types.RecordType; m: Types.Method; i: INTEGER;
-        text: ARRAY 160 OF CHAR; symbol: VaxTypes.Symbol;
+        symbol: VaxTypes.Symbol; outside: BOOLEAN;
   BEGIN
     d := descriptors;
     WHILE d # NIL DO
       IF d.rec # NIL THEN
         r := d.rec.baseType;
-        WHILE r # NIL DO RecordTag(r(Types.RecordType), text); r := r(Types.RecordType).baseType END;
+        WHILE r # NIL DO RecordTagSymbol(r(Types.RecordType), symbol, outside); r := r(Types.RecordType).baseType END;
         FOR i := 0 TO MethodSlots.MethodSlotCount(d.rec) - 1 DO
           m := MethodSlots.SlotMethod(d.rec, i, owner);
           IF MethodSymbol(owner, m.name, symbol) THEN END
@@ -6973,28 +6970,25 @@ MODULE VaxCodeGenerator;
   END ResolveAncestors;
 
   PROCEDURE WriteDescriptors;
-    VAR d: TypeDescriptor; t: Types.Type; text: ARRAY 160 OF CHAR; count: INTEGER;
+    VAR d: TypeDescriptor; t: Types.Type; text: ARRAY 160 OF CHAR; count: INTEGER; list: Instruction;
 
     (* offset, a pointer's, to the .LONG line being made, eight to a line *)
     PROCEDURE Put(offset: LONGINT);
     BEGIN
-      IF count = 8 THEN PutLine(".LONG", text); count := 0 END;
-      IF count = 0 THEN text[0] := 0X ELSE Append(text, ", ") END;
-      AppendInt(text, offset); INC(count)
+      IF count = 8 THEN count := 0 END;
+      IF count = 0 THEN list := PutDirective(".LONG") END;
+      VaxInstructions.AddItem(list, VaxInstructions.Number(offset)); INC(count)
     END Put;
 
     (* BaseTypes: the descriptors of rec's base types, the root first, then
        its own (section 14, item 4); another module's by its symbol, which
        ResolveAncestors declared .EXTERNAL *)
     PROCEDURE BaseTypes(rec: Types.RecordType);
-      VAR label: ARRAY 160 OF CHAR; i: INTEGER;
+      VAR symbol: VaxTypes.Symbol; outside: BOOLEAN;
     BEGIN
       IF rec.baseType # NIL THEN BaseTypes(rec.baseType(Types.RecordType)) END;
-      RecordTag(rec, label);
-      IF (label[0] = "G") & (label[1] = "^") THEN
-        i := 2; WHILE label[i - 1] # 0X DO label[i - 2] := label[i]; INC(i) END
-      END;
-      PutLine(".ADDRESS", label)
+      RecordTagSymbol(rec, symbol, outside);
+      PutDirective1(".ADDRESS", VaxInstructions.Symbol(symbol, 0))
     END BaseTypes;
 
     (* rec's ProcTab, the last slot first, each procedure by its symbol,
@@ -7008,7 +7002,7 @@ MODULE VaxCodeGenerator;
       FOR i := MethodSlots.MethodSlotCount(rec) - 1 TO 0 BY -1 DO
         m := MethodSlots.SlotMethod(rec, i, owner);
         IF MethodSymbol(owner, m.name, symbol) THEN END;
-        PutLine(".ADDRESS", symbol)
+        PutDirective1(".ADDRESS", VaxInstructions.Symbol(symbol, 0))
       END
     END ProcTab;
 
@@ -7033,7 +7027,7 @@ MODULE VaxCodeGenerator;
     EndLine;
     PutText("; its type descriptors (section 14, item 4): size, extension level,"); EndLine;
     PutText("; pointer count, base types, pointer offsets"); EndLine;
-    PutLine(".PSECT", "POC_ADDR,  PIC,NOSHR,NOWRT,NOEXE,LONG");
+    Psect("POC_ADDR", "PIC,NOSHR,NOWRT,NOEXE,LONG");
     d := descriptors;
     WHILE d # NIL DO
       IF d.rec # NIL THEN
@@ -7048,21 +7042,18 @@ MODULE VaxCodeGenerator;
         COPY("; an array's elements, ", text); Types.Describe(t, text)
       END;
       PutText(text); EndLine;
-      PutLine(".ALIGN", "LONG");
+      PutDirective1(".ALIGN", VaxInstructions.Keyword("LONG"));
       IF d.rec # NIL THEN ProcTab(d.rec) END;
-      PutText(d.label);
-      IF d.global THEN PutText("::") ELSE PutText(":") END;
-      EndLine;
-      text[0] := 0X; AppendInt(text, VaxTypes.Size(t)); PutLine(".LONG", text);
+      PutSymbolLabel(d.label, d.global);
+      PutDirective1(".LONG", VaxInstructions.Number(VaxTypes.Size(t)));
       IF d.rec # NIL THEN
-        text[0] := 0X; AppendInt(text, ExtensionLevel(d.rec)); PutLine(".LONG", text)
+        PutDirective1(".LONG", VaxInstructions.Number(ExtensionLevel(d.rec)))
       ELSE
-        PutLine(".LONG", "0")
+        PutDirective1(".LONG", VaxInstructions.Number(0))
       END;
-      text[0] := 0X; AppendInt(text, PointerCount(t)); PutLine(".LONG", text);
-      IF d.rec # NIL THEN BaseTypes(d.rec) ELSE PutLine(".ADDRESS", d.label) END;
+      PutDirective1(".LONG", VaxInstructions.Number(PointerCount(t)));
+      IF d.rec # NIL THEN BaseTypes(d.rec) ELSE PutDirective1(".ADDRESS", VaxInstructions.Symbol(d.label, 0)) END;
       count := 0; Offsets(t, 0);
-      IF count > 0 THEN PutLine(".LONG", text) END;
       d := d.next
     END
   END WriteDescriptors;
@@ -7120,13 +7111,12 @@ MODULE VaxCodeGenerator;
      POC_CONST. *)
   PROCEDURE WriteModuleDescriptor;
     VAR import: SyntaxTree.ImportNode; pd: SyntaxTree.ProcDeclNode; imports, commands: INTEGER;
-        text: ARRAY 300 OF CHAR; label: ARRAY 32 OF CHAR; full: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol;
+        label: ARRAY 32 OF CHAR; full: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol;
 
     PROCEDURE Name(label, name: ARRAY OF CHAR);
     BEGIN
       PutLabel(label);
-      COPY("/", text); Append(text, name); Append(text, "/");
-      PutLine(".ASCIZ", text)
+      PutDirective1(".ASCIZ", VaxInstructions.String(name, "/"))
     END Name;
 
     PROCEDURE Numbered(prefix: ARRAY OF CHAR; n: INTEGER);
@@ -7139,7 +7129,7 @@ MODULE VaxCodeGenerator;
     PutText("; its descriptor, for Modules (section 19.5): the next descriptor, the"); EndLine;
     PutText("; name, the numbers of imports and of commands, the imports' names, and"); EndLine;
     PutText("; each command's name and procedure"); EndLine;
-    PutLine(".PSECT", "POC_CONST");
+    Psect("POC_CONST", "");
     Name("L_MD_NAME", module.name);
     imports := 0; import := module.imports;
     WHILE import # NIL DO
@@ -7154,16 +7144,16 @@ MODULE VaxCodeGenerator;
         pd := pd.next
       END
     END;
-    PutLine(".PSECT", "POC_DATA");
-    PutLine(".ALIGN", "LONG");
+    Psect("POC_DATA", "");
+    PutDirective1(".ALIGN", VaxInstructions.Keyword("LONG"));
     PutLabel("L_MODULE_DESCRIPTOR");
-    PutLine(".LONG", "0");
-    PutLine(".ADDRESS", "L_MD_NAME");
-    text[0] := 0X; AppendInt(text, imports); PutLine(".LONG", text);
-    text[0] := 0X; AppendInt(text, commands); PutLine(".LONG", text);
+    PutDirective1(".LONG", VaxInstructions.Number(0));
+    PutDirective1(".ADDRESS", VaxInstructions.Symbol("L_MD_NAME", 0));
+    PutDirective1(".LONG", VaxInstructions.Number(imports));
+    PutDirective1(".LONG", VaxInstructions.Number(commands));
     imports := 0; import := module.imports;
     WHILE import # NIL DO
-      IF HasCode(import) THEN INC(imports); Numbered("L_MD_IMPORT_", imports); PutLine(".ADDRESS", label) END;
+      IF HasCode(import) THEN INC(imports); Numbered("L_MD_IMPORT_", imports); PutDirective1(".ADDRESS", VaxInstructions.Symbol(label, 0)) END;
       import := import.next
     END;
     commands := 0;
@@ -7174,8 +7164,7 @@ MODULE VaxCodeGenerator;
           INC(commands); Numbered("L_MD_COMMAND_", commands);
           COPY(module.name, full); Append(full, "."); Append(full, pd.name.name);
           VaxTypes.MakeSymbol(full, symbol);
-          COPY(label, text); Append(text, ", "); Append(text, symbol);
-          PutLine(".ADDRESS", text)
+          PutDirective2(".ADDRESS", VaxInstructions.Symbol(label, 0), VaxInstructions.Symbol(symbol, 0))
         END;
         pd := pd.next
       END
@@ -7208,7 +7197,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE GenerateModule*(m: SyntaxTree.ModuleNode; s: SymbolTable.Scope; key: ARRAY OF CHAR; isMain: BOOLEAN;
                             VAR w: Files.Rider): BOOLEAN;
     VAR init, main, symbol: VaxTypes.Symbol; title: ARRAY VaxTypes.symbolLength + 1 OF CHAR;
-        ident: ARRAY 40 OF CHAR; entry: ARRAY 64 OF CHAR; mask: ARRAY 40 OF CHAR;
+        ident: ARRAY 40 OF CHAR;
         before, errorsBefore: INTEGER; ok, hasRoots: BOOLEAN; e: External; sc: StringConstant; st: StructuredConstant; where: Where;
         heapInit, stackBase: VaxTypes.Symbol;
   BEGIN
@@ -7227,21 +7216,19 @@ MODULE VaxCodeGenerator;
     END;
     ok := VaxTypes.MakeMainSymbol(module.name, main);
     Uppercase(module.name, title);
-    COPY("/", ident);
-    IF key[0] = 0X THEN Append(ident, "0000000000000000") ELSE Append(ident, key) END;
-    Append(ident, "/");
+    IF key[0] = 0X THEN COPY("0000000000000000", ident) ELSE COPY(key, ident) END;
     PutText("; "); PutText(module.name);
     PutText(", written by poc (doc/developer/vax-macro32-backend.md)"); EndLine;
-    PutLine(".TITLE", title);
-    PutLine(".IDENT", ident);
-    PutLine(".PSECT", "POC_CODE,  PIC,SHR,NOWRT,EXE,LONG");
-    PutLine(".PSECT", "POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD");
-    PutLine(".PSECT", "POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD");
+    PutDirective1(".TITLE", VaxInstructions.Keyword(title));
+    PutDirective1(".IDENT", VaxInstructions.String(ident, "/"));
+    Psect("POC_CODE", "PIC,SHR,NOWRT,EXE,LONG");
+    Psect("POC_CONST", "PIC,SHR,NOWRT,NOEXE,QUAD");
+    Psect("POC_DATA", "NOPIC,NOSHR,WRT,NOEXE,QUAD");
     EndLine;
     PutText("; set once the module has been initialised"); EndLine;
-    PutLine(".PSECT", "POC_DATA");
+    Psect("POC_DATA", "");
     PutLabel("L_INITIALISED");
-    PutLine(".BLKB", "1");
+    PutDirective1(".BLKB", VaxInstructions.Number(1));
     ok := WriteVariables();
     hasRoots := ok & WriteRoots();
     IF hasRoots THEN AddExternal("POC_ROOTS") END;
@@ -7263,16 +7250,15 @@ MODULE VaxCodeGenerator;
       EndLine;
       PutText("; the symbols it uses of other modules"); EndLine;
       e := externals;
-      WHILE e # NIL DO PutLine(".EXTERNAL", e.name); e := e.next END
+      WHILE e # NIL DO PutDirective1(".EXTERNAL", VaxInstructions.Symbol(e.name, 0)); e := e.next END
     END;
     IF usesTrap THEN
       EndLine;
       PutText("; for traps: poc's runtime routine (Phase 16), and the module's name"); EndLine;
-      PutLine(".EXTERNAL", "POC_TRAP");
-      PutLine(".PSECT", "POC_CONST");
+      PutDirective1(".EXTERNAL", VaxInstructions.Symbol("POC_TRAP", 0));
+      Psect("POC_CONST", "");
       PutLabel("L_MODULE_NAME");
-      COPY("/", ident); Append(ident, module.name); Append(ident, "/");
-      PutLine(".ASCIC", ident);
+      PutDirective1(".ASCIC", VaxInstructions.String(module.name, "/"));
       IF trapLocation THEN
         PutText("; -trap-location's: the module's file, and each procedure that traps"); EndLine;
         WriteCounted("L_FILE_NAME", Diagnostics.fileName);
@@ -7283,14 +7269,14 @@ MODULE VaxCodeGenerator;
     IF strings # NIL THEN
       EndLine;
       PutText("; its string constants"); EndLine;
-      PutLine(".PSECT", "POC_CONST");
+      Psect("POC_CONST", "");
       sc := strings;
       WHILE sc # NIL DO WriteString(sc); sc := sc.next END
     END;
     IF structureds # NIL THEN
       EndLine;
       PutText("; its structured constants"); EndLine;
-      PutLine(".PSECT", "POC_CONST");
+      Psect("POC_CONST", "");
       st := structureds;
       WHILE st # NIL DO WriteStructured(st); st := st.next END
     END;
@@ -7299,15 +7285,13 @@ MODULE VaxCodeGenerator;
     IF code # NIL THEN
       EndLine;
       PutText("; the module's procedures"); EndLine;
-      PutLine(".PSECT", "POC_CODE");
+      Psect("POC_CODE", "");
       PutLines(code)
     END;
     EndLine;
     PutText("; the module's initializer: once only"); EndLine;
-    PutLine(".PSECT", "POC_CODE");
-    EntryMask(mask);
-    COPY(init, entry); Append(entry, ", "); Append(entry, mask);
-    PutLine(".ENTRY", entry);
+    Psect("POC_CODE", "");
+    PutDirective2(".ENTRY", VaxInstructions.Symbol(init, 0), VaxInstructions.Mask(EntryRegisters()));
     IF (first = NIL) & (module.imports = NIL) & ~hasRoots & ~withModules THEN
       (* no body: a byte branch over the fixed 7 bytes to RET *)
       PutInstruction2("BLBS", LabelRef("L_INITIALISED"), LabelRef("L_DONE"));
@@ -7342,7 +7326,7 @@ MODULE VaxCodeGenerator;
       EndLine;
       PutText("; the module's key, which its importers refer to"); EndLine;
       VaxTypes.MakeKeySymbol(key, symbol);
-      PutText(symbol); PutText(" == 0"); EndLine
+      AppendOut(VaxInstructions.Assignment(symbol, VaxInstructions.Number(0)))
     END;
     IF isMain THEN
       EndLine;
@@ -7350,8 +7334,7 @@ MODULE VaxCodeGenerator;
       IF withCollector THEN
         PutText("; (first the collector's, and the stack's base, its frame's: section 15)"); EndLine
       END;
-      COPY(main, entry); Append(entry, ", ^M<>");
-      PutLine(".ENTRY", entry);
+      PutDirective2(".ENTRY", VaxInstructions.Symbol(main, 0), VaxInstructions.Mask({}));
       IF withCollector THEN
         PutInstruction2("CALLS", Literal(0), ExternalRef(heapInit));
         PutInstruction1("PUSHL", Reg(VaxInstructions.fp));
@@ -7361,10 +7344,10 @@ MODULE VaxCodeGenerator;
       PutInstruction2("MOVL", Literal(1), Reg(0));
       PutInstruction0("RET");
       EndLine;
-      PutLine(".END", main)
+      PutDirective1(".END", VaxInstructions.Symbol(main, 0))
     ELSE
       EndLine;
-      PutLine(".END", "")
+      AppendOut(VaxInstructions.Directive(".END"))
     END;
     VaxInstructions.PrintAll(w, out);
     RETURN TRUE

@@ -7,14 +7,16 @@ MODULE VaxInstructions;
      byte, and the encoder and object writer of steps 3 and 4 will read
      the same lists.
 
-     A line is an instruction or directive (its mnemonic and operands), a
-     label, or a verbatim line (a comment, a blank line, a direct
-     assignment). An instruction's operands are operand specifiers (step
-     2b): a register, (Rn), -(Rn), d(Rn), @d(Rn), a literal #v, or a
-     symbol and offset, relative, with the prefix G^ or L^ or none; each
-     with an index register or none. Until the later pieces of step 2
-     replace them, an instruction's operands can still be text, and so can
-     a specifier.
+     A line is an instruction (its mnemonic and operands), a directive
+     (its name and items), a label, local or global, a direct assignment,
+     or a verbatim line (a comment or a blank line). An instruction's
+     operands are operand specifiers (step 2b): a register, (Rn), -(Rn),
+     d(Rn), @d(Rn), a literal #v, or a symbol and offset, relative, with
+     the prefix G^ or L^ or none; each with an index register or none. A
+     directive's items (step 2d) are numbers, hexadecimal longwords,
+     symbols with offsets, differences of two symbols, strings, entry
+     masks, keywords and real numerals. Until step 2e removes it, a line
+     can still hold its operands as text, and a specifier can be text.
 
      Each line has the source position of the statement being generated
      when it was made (SetPosition), 0 when there is none; the printer
@@ -27,7 +29,9 @@ MODULE VaxInstructions;
     (* LineDesc.kind *)
     verbatim* = 0; (* text, written as it is *)
     instruction* = 1; (* "<tab><op>", with "<tab><operands>" unless there are none *)
-    label* = 2; (* "<name>:" *)
+    label* = 2; (* "<name>:", or "<name>::" when global *)
+    directive* = 3; (* "<tab><directive>", with "<tab><items>" unless there are none *)
+    assignment* = 4; (* "<symbol> == <value>", a direct assignment *)
 
     (* SpecifierDesc.mode *)
     registerMode* = 0; (* Rn *)
@@ -47,6 +51,16 @@ MODULE VaxInstructions;
     (* registers with names of their own *)
     ap* = 12; fp* = 13; sp* = 14; pc* = 15;
     noRegister* = -1;
+
+    (* ItemDesc.kind, a directive's item *)
+    numberItem* = 0; (* value in decimal, then "[repeat]" when repeat > 1 *)
+    hexItem* = 1; (* ^X and the low digits hexadecimal digits of bits *)
+    symbolItem* = 2; (* symbol+offset, the offset written when it is not 0 *)
+    differenceItem* = 3; (* symbol-other *)
+    stringItem* = 4; (* text between two delimiters *)
+    maskItem* = 5; (* an entry mask, ^M<R2,...> of registers *)
+    keywordItem* = 6; (* text: a name MACRO knows (LONG, PIC), a psect's, a module's title *)
+    realItem* = 7; (* text, a real numeral *)
 
     maxSpecifiers* = 6;
     (* room for one specifier as text: a 31-character symbol, a prefix, an
@@ -70,6 +84,17 @@ MODULE VaxInstructions;
       text*: Text (* a specifierText's *)
     END;
 
+    Item* = POINTER TO ItemDesc;
+    ItemDesc* = RECORD
+      kind*: INTEGER;
+      value*, repeat*: LONGINT; (* a numberItem's *)
+      bits*: SET; digits*: INTEGER; (* a hexItem's *)
+      symbol*, other*: Text; offset*: LONGINT; (* a symbolItem's or a differenceItem's *)
+      text*: Text; delimiter*: CHAR; (* a stringItem's, a keywordItem's or a realItem's text *)
+      registers*: SET; (* a maskItem's *)
+      next*: Item
+    END;
+
     Line* = POINTER TO LineDesc;
     LineDesc* = RECORD
       kind*: INTEGER;
@@ -77,6 +102,8 @@ MODULE VaxInstructions;
       operands*: Text; (* an instruction's operands as text, possibly empty, or NIL *)
       specifiers*: ARRAY maxSpecifiers OF Specifier; (* an instruction's, when operands is NIL *)
       specifierCount*: INTEGER;
+      items*, lastItem*: Item; (* a directive's, an assignment's value *)
+      global*: BOOLEAN; (* a label's *)
       line*, column*: INTEGER; (* the source position, 0 for none *)
       next*: Line
     END;
@@ -117,6 +144,7 @@ MODULE VaxInstructions;
     VAR l: Line;
   BEGIN
     NEW(l); l.kind := kind; l.op := NIL; l.operands := NIL; l.specifierCount := 0;
+    l.items := NIL; l.lastItem := NIL; l.global := FALSE;
     l.line := currentLine; l.column := currentColumn; l.next := NIL;
     RETURN l
   END NewLine;
@@ -151,13 +179,125 @@ MODULE VaxInstructions;
     l.specifiers[l.specifierCount] := s; INC(l.specifierCount)
   END AddSpecifier;
 
-  (* The label name, "name:" (a global one, "name::", is still verbatim) *)
+  (* The label name, "name:" *)
   PROCEDURE Label*(name: ARRAY OF CHAR): Line;
     VAR l: Line;
   BEGIN
     l := NewLine(label); l.op := NewText(name);
     RETURN l
   END Label;
+
+  (* The global label name, "name::" *)
+  PROCEDURE GlobalLabel*(name: ARRAY OF CHAR): Line;
+    VAR l: Line;
+  BEGIN
+    l := Label(name); l.global := TRUE;
+    RETURN l
+  END GlobalLabel;
+
+  (* A directive, op, whose items AddItem gives *)
+  PROCEDURE Directive*(op: ARRAY OF CHAR): Line;
+    VAR l: Line;
+  BEGIN
+    l := NewLine(directive); l.op := NewText(op);
+    RETURN l
+  END Directive;
+
+  (* i, after the items l, a Directive's or an Assignment's, has *)
+  PROCEDURE AddItem*(l: Line; i: Item);
+  BEGIN
+    IF l.lastItem = NIL THEN l.items := i ELSE l.lastItem.next := i END;
+    l.lastItem := i
+  END AddItem;
+
+  (* symbol == value *)
+  PROCEDURE Assignment*(symbol: ARRAY OF CHAR; value: Item): Line;
+    VAR l: Line;
+  BEGIN
+    l := NewLine(assignment); l.op := NewText(symbol); AddItem(l, value);
+    RETURN l
+  END Assignment;
+
+  (* ---- Directives' items ---- *)
+
+  PROCEDURE NewItem(kind: INTEGER): Item;
+    VAR i: Item;
+  BEGIN
+    NEW(i); i.kind := kind; i.value := 0; i.repeat := 1; i.bits := {}; i.digits := 8;
+    i.symbol := NIL; i.other := NIL; i.offset := 0; i.text := NIL; i.delimiter := 0X; i.registers := {};
+    i.next := NIL;
+    RETURN i
+  END NewItem;
+
+  (* value *)
+  PROCEDURE Number*(value: LONGINT): Item;
+    VAR i: Item;
+  BEGIN
+    i := NewItem(numberItem); i.value := value;
+    RETURN i
+  END Number;
+
+  (* value[repeat], repeat bytes, words or longwords of value *)
+  PROCEDURE Repeated*(value, repeat: LONGINT): Item;
+    VAR i: Item;
+  BEGIN
+    i := Number(value); i.repeat := repeat;
+    RETURN i
+  END Repeated;
+
+  (* ^X and the eight hexadecimal digits of a longword's bits *)
+  PROCEDURE Hex*(bits: SET): Item;
+    VAR i: Item;
+  BEGIN
+    i := NewItem(hexItem); i.bits := bits;
+    RETURN i
+  END Hex;
+
+  (* symbol+offset *)
+  PROCEDURE Symbol*(symbol: ARRAY OF CHAR; offset: LONGINT): Item;
+    VAR i: Item;
+  BEGIN
+    i := NewItem(symbolItem); i.symbol := NewText(symbol); i.offset := offset;
+    RETURN i
+  END Symbol;
+
+  (* symbol-other, the distance from other to symbol *)
+  PROCEDURE Difference*(symbol, other: ARRAY OF CHAR): Item;
+    VAR i: Item;
+  BEGIN
+    i := NewItem(differenceItem); i.symbol := NewText(symbol); i.other := NewText(other);
+    RETURN i
+  END Difference;
+
+  (* text between delimiters, a character not in it *)
+  PROCEDURE String*(text: ARRAY OF CHAR; delimiter: CHAR): Item;
+    VAR i: Item;
+  BEGIN
+    i := NewItem(stringItem); i.text := NewText(text); i.delimiter := delimiter;
+    RETURN i
+  END String;
+
+  (* the entry mask of registers *)
+  PROCEDURE Mask*(registers: SET): Item;
+    VAR i: Item;
+  BEGIN
+    i := NewItem(maskItem); i.registers := registers;
+    RETURN i
+  END Mask;
+
+  PROCEDURE Keyword*(text: ARRAY OF CHAR): Item;
+    VAR i: Item;
+  BEGIN
+    i := NewItem(keywordItem); i.text := NewText(text);
+    RETURN i
+  END Keyword;
+
+  PROCEDURE RealNumeral*(text: ARRAY OF CHAR): Item;
+    VAR i: Item;
+  BEGIN
+    i := NewItem(realItem); i.text := NewText(text);
+    RETURN i
+  END RealNumeral;
 
   (* ---- Operand specifiers ---- *)
 
@@ -358,6 +498,59 @@ MODULE VaxInstructions;
     WHILE (i < LEN(s)) & (s[i] # 0X) DO Files.Write(w, s[i]); INC(i) END
   END WriteString;
 
+  (* i as MACRO-32 text *)
+  PROCEDURE WriteItem(VAR w: Files.Rider; i: Item);
+    VAR text: ARRAY specifierLength OF CHAR; r: INTEGER; first: BOOLEAN;
+  BEGIN
+    text[0] := 0X;
+    CASE i.kind OF
+      numberItem:
+        AppendInt(text, i.value);
+        IF i.repeat > 1 THEN AppendChar(text, "["); AppendInt(text, i.repeat); AppendChar(text, "]") END;
+        WriteString(w, text)
+    | hexItem: AppendHex(text, i.bits, i.digits); WriteString(w, text)
+    | symbolItem:
+        WriteText(w, i.symbol);
+        IF i.offset # 0 THEN AppendChar(text, "+"); AppendInt(text, i.offset); WriteString(w, text) END
+    | differenceItem: WriteText(w, i.symbol); Files.Write(w, "-"); WriteText(w, i.other)
+    | stringItem: Files.Write(w, i.delimiter); WriteText(w, i.text); Files.Write(w, i.delimiter)
+    | maskItem:
+        Append(text, "^M<"); first := TRUE;
+        FOR r := 0 TO 11 DO
+          IF r IN i.registers THEN
+            IF ~first THEN AppendChar(text, ",") END;
+            AppendRegister(text, r); first := FALSE
+          END
+        END;
+        AppendChar(text, ">"); WriteString(w, text)
+    | keywordItem, realItem: WriteText(w, i.text)
+    END
+  END WriteItem;
+
+  (* l's items, ", " between them; a .PSECT's name, then its attributes
+     after a comma padded to column 11, "," between them *)
+  PROCEDURE WriteItems(VAR w: Files.Rider; l: Line);
+    VAR i: Item; n: LONGINT;
+  BEGIN
+    i := l.items;
+    IF l.op^ = ".PSECT" THEN
+      WriteItem(w, i); i := i.next;
+      IF i # NIL THEN
+        Files.Write(w, ","); n := Length(l.items.text^) + 1;
+        REPEAT Files.Write(w, " "); INC(n) UNTIL n >= 11;
+        WHILE i # NIL DO
+          WriteItem(w, i); i := i.next;
+          IF i # NIL THEN Files.Write(w, ",") END
+        END
+      END
+    ELSE
+      WHILE i # NIL DO
+        WriteItem(w, i); i := i.next;
+        IF i # NIL THEN Files.Write(w, ","); Files.Write(w, " ") END
+      END
+    END
+  END WriteItems;
+
   (* l as MACRO-32 text, its line feed included *)
   PROCEDURE Print*(VAR w: Files.Rider; l: Line);
     VAR i: INTEGER; text: ARRAY specifierLength OF CHAR;
@@ -375,7 +568,12 @@ MODULE VaxInstructions;
             text[0] := 0X; AppendSpecifier(text, l.specifiers[i]); WriteString(w, text)
           END
         END
-    | label: WriteText(w, l.op); Files.Write(w, ":")
+    | label: WriteText(w, l.op); Files.Write(w, ":"); IF l.global THEN Files.Write(w, ":") END
+    | directive:
+        Files.Write(w, tab); WriteText(w, l.op);
+        IF l.items # NIL THEN Files.Write(w, tab); WriteItems(w, l) END
+    | assignment: WriteText(w, l.op); Files.Write(w, " "); Files.Write(w, "="); Files.Write(w, "="); Files.Write(w, " ");
+        WriteItem(w, l.items)
     END;
     Files.Write(w, 0AX)
   END Print;
