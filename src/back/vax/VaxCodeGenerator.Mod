@@ -648,18 +648,30 @@ MODULE VaxCodeGenerator;
     Unsupported(line, column, text)
   END CannotLower;
 
-  (* The operand's text, or, for a quadword, its low (half 0) or high
-     (half 1) longword's *)
-  PROCEDURE HalfText(x: Operand; half: INTEGER; VAR text: ARRAY OF CHAR);
-    VAR v, hi: LONGINT;
+  (* The low 32 bits of v *)
+  PROCEDURE LongwordBits(v: LONGINT): SET;
+    VAR bits: SET; i: INTEGER;
   BEGIN
-    text[0] := 0X;
+    bits := {};
+    FOR i := 0 TO 31 DO
+      IF ODD(v) THEN INCL(bits, i) END;
+      v := v DIV 2
+    END;
+    RETURN bits
+  END LongwordBits;
+
+  (* The operand's specifier, or, for a quadword, its low (half 0) or high
+     (half 1) longword's *)
+  PROCEDURE HalfSpecifier(x: Operand; half: INTEGER): VaxInstructions.Specifier;
+    VAR v, hi: LONGINT; spec: VaxInstructions.Specifier; prefix: INTEGER;
+  BEGIN
     IF x.kind = immediate THEN
-      AppendChar(text, "#");
       IF Types.IsSet(x.type) THEN
-        IF half = 0 THEN AppendSetHex(text, x.bits) ELSE AppendSetHex(text, x.bitsHigh) END
-      ELSIF IsReal(x.type) THEN
-        Append(text, x.realText)
+        IF half = 0 THEN spec := VaxInstructions.Hexadecimal(x.bits)
+        ELSE spec := VaxInstructions.Hexadecimal(x.bitsHigh)
+        END
+      ELSIF x.type = Types.Real THEN spec := VaxInstructions.Real(x.realText, "F")
+      ELSIF x.type = Types.LongReal THEN spec := VaxInstructions.Real(x.realText, "G")
       ELSIF IsQuad(x) THEN
         (* ASH, not DIV two32: voc's DIV is wrong for a dividend near
            MIN(LONGINT) (vishap-bugs 07), so that the voc-built poc wrote
@@ -669,32 +681,43 @@ MODULE VaxCodeGenerator;
         ELSIF hi < 0 THEN v := hi + two32
         ELSE v := hi
         END;
-        AppendHex(text, v)
+        spec := VaxInstructions.Hexadecimal(LongwordBits(v))
       ELSIF x.value = -2147483647 - 1 THEN
-        AppendHex(text, two31)
+        spec := VaxInstructions.Hexadecimal(LongwordBits(two31))
       ELSIF IsCardinal(x.type) & (x.value > 2147483647) & (x.value < two32) THEN
         (* a CARD32 above LONGINT's range, by its bits (section 20, proposal 7) *)
-        AppendHex(text, x.value)
+        spec := VaxInstructions.Hexadecimal(LongwordBits(x.value))
       ELSE
-        AppendInt(text, x.value)
+        spec := VaxInstructions.Decimal(x.value)
       END
     ELSIF x.kind = memory THEN
       IF x.symbol[0] # 0X THEN
-        IF x.outside THEN Append(text, "G^") END;
-        Append(text, x.symbol);
-        IF x.offset + 4 * half # 0 THEN AppendChar(text, "+"); AppendInt(text, x.offset + 4 * half) END
+        IF x.outside THEN prefix := VaxInstructions.general ELSE prefix := VaxInstructions.noPrefix END;
+        spec := VaxInstructions.Relative(x.symbol, x.offset + 4 * half, prefix)
       ELSIF x.baseOp # NIL THEN
-        IF x.offset + 4 * half # 0 THEN AppendInt(text, x.offset + 4 * half) END;
-        Append(text, "(R"); AppendInt(text, x.baseOp.reg); AppendChar(text, ")")
-      ELSE
-        IF x.deferred THEN AppendChar(text, "@") END;
-        AppendInt(text, x.offset + 4 * half);
-        IF x.onAP THEN Append(text, "(AP)") ELSE Append(text, "(FP)") END
+        IF x.offset + 4 * half # 0 THEN spec := VaxInstructions.Displacement(x.offset + 4 * half, x.baseOp.reg, FALSE)
+        ELSE spec := VaxInstructions.RegisterDeferred(x.baseOp.reg)
+        END
+      ELSIF x.onAP THEN spec := VaxInstructions.Displacement(x.offset + 4 * half, VaxInstructions.ap, x.deferred)
+      ELSE spec := VaxInstructions.Displacement(x.offset + 4 * half, VaxInstructions.fp, x.deferred)
       END;
-      IF x.index # NIL THEN Append(text, "[R"); AppendInt(text, x.index.reg); AppendChar(text, "]") END
+      IF x.index # NIL THEN spec := VaxInstructions.Indexed(spec, x.index.reg) END
     ELSE
-      AppendChar(text, "R"); AppendInt(text, x.reg + half)
-    END
+      spec := VaxInstructions.Register(x.reg + half)
+    END;
+    RETURN spec
+  END HalfSpecifier;
+
+  PROCEDURE Specifier(x: Operand): VaxInstructions.Specifier;
+  BEGIN
+    RETURN HalfSpecifier(x, 0)
+  END Specifier;
+
+  (* The operand's text, or, for a quadword, its low (half 0) or high
+     (half 1) longword's *)
+  PROCEDURE HalfText(x: Operand; half: INTEGER; VAR text: ARRAY OF CHAR);
+  BEGIN
+    VaxInstructions.SpecifierToText(HalfSpecifier(x, half), text)
   END HalfText;
 
   PROCEDURE Text(x: Operand; VAR text: ARRAY OF CHAR);
@@ -741,35 +764,46 @@ MODULE VaxCodeGenerator;
   END Operands;
 
   PROCEDURE Emit1(op: ARRAY OF CHAR; a: Operand);
-    VAR ta: OperandText;
+    VAR l: Instruction;
   BEGIN
-    Text(a, ta); Emit(op, ta)
+    l := VaxInstructions.Operation(op); VaxInstructions.AddSpecifier(l, Specifier(a));
+    Add(l)
   END Emit1;
 
   PROCEDURE Emit2(op: ARRAY OF CHAR; a, b: Operand);
-    VAR ta, tb: OperandText; operands: ARRAY 160 OF CHAR;
+    VAR l: Instruction;
   BEGIN
-    Text(a, ta); Text(b, tb); Operands(ta, tb, "", operands); Emit(op, operands)
+    l := VaxInstructions.Operation(op);
+    VaxInstructions.AddSpecifier(l, Specifier(a)); VaxInstructions.AddSpecifier(l, Specifier(b));
+    Add(l)
   END Emit2;
 
   PROCEDURE Emit3(op: ARRAY OF CHAR; a, b, c: Operand);
-    VAR ta, tb, tc: OperandText; operands: ARRAY 160 OF CHAR;
+    VAR l: Instruction;
   BEGIN
-    Text(a, ta); Text(b, tb); Text(c, tc); Operands(ta, tb, tc, operands); Emit(op, operands)
+    l := VaxInstructions.Operation(op);
+    VaxInstructions.AddSpecifier(l, Specifier(a)); VaxInstructions.AddSpecifier(l, Specifier(b));
+    VaxInstructions.AddSpecifier(l, Specifier(c));
+    Add(l)
   END Emit3;
 
   (* op text, b: "MOVL R2, -4(FP)" *)
   PROCEDURE EmitTo(op, text: ARRAY OF CHAR; b: Operand);
-    VAR tb: OperandText; operands: ARRAY 160 OF CHAR;
+    VAR l: Instruction;
   BEGIN
-    Text(b, tb); Operands(text, tb, "", operands); Emit(op, operands)
+    l := VaxInstructions.Operation(op);
+    VaxInstructions.AddSpecifier(l, VaxInstructions.SpecifierText(text)); VaxInstructions.AddSpecifier(l, Specifier(b));
+    Add(l)
   END EmitTo;
 
   (* op a, label: "BLBC R0, L_3" *)
   PROCEDURE EmitBranch(op: ARRAY OF CHAR; a: Operand; label: ARRAY OF CHAR);
-    VAR ta: OperandText; operands: ARRAY 160 OF CHAR;
+    VAR l: Instruction;
   BEGIN
-    Text(a, ta); Operands(ta, label, "", operands); Emit(op, operands)
+    l := VaxInstructions.Operation(op);
+    VaxInstructions.AddSpecifier(l, Specifier(a));
+    VaxInstructions.AddSpecifier(l, VaxInstructions.Relative(label, 0, VaxInstructions.noPrefix));
+    Add(l)
   END EmitBranch;
 
   (* ---- Registers and the frame ---- *)
@@ -5715,6 +5749,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE Statement(s: SyntaxTree.StatementNode);
     VAR comment: ARRAY 32 OF CHAR;
   BEGIN
+    VaxInstructions.SetPosition(s.line, s.column);
     COPY("; line ", comment); AppendInt(comment, s.line);
     EmitComment(comment);
     WITH
@@ -7130,6 +7165,7 @@ MODULE VaxCodeGenerator;
     nestedRoot := NIL; nestedSyms := NIL;
     descriptors := NIL; descriptorCount := 0;
     out := NIL; outLast := NIL; NEW(pending, 256); pending[0] := 0X; pendingLength := 0;
+    VaxInstructions.SetPosition(0, 0);
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
       Diagnostics.Error(module.line, module.column,
         "a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol");
