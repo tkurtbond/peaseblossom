@@ -443,3 +443,117 @@ step 2's instruction representation should hold from the start.
    shows values by this code. To decide in step 5, by trying both on the
    guest: `DST$K_UNKNOWN`, or `DST$K_PASCAL`, whose syntax (`r.f`,
    `p^`, `a[i]`, `:=`) is nearly Oberon's.
+
+## 13. Step 2: the instruction representation (decided 2026-10-18)
+
+`PLAN.md` step 2: before anything is encoded, `VaxCodeGenerator` builds
+what it writes as data, and a printer turns the data into exactly the
+`.mar` it writes today. Nothing about the emitted assembly may change.
+
+### 13.1 What the generator does today
+
+- A procedure's body is already built as a list before it is written,
+  so that the entry mask and the frame's size are known first: one
+  `Instruction` per line, a label, a comment or an instruction, but each
+  holding its mnemonic and operands **as text** (`op: ARRAY 32 OF CHAR;
+  operands: ARRAY 160 OF CHAR`), and `WriteBody` prints them.
+- Operands are already structured until the last moment: an `Operand`
+  is an immediate (integer, set, or a real's text), a register (or a
+  pair), or memory (a symbol and offset, or an offset from FP, AP or a
+  base register, deferred or not, with an index register), and `Text`
+  and `HalfText` flatten it. 27 `Emit1`, 105 `Emit2`, 31 `Emit3`, 44
+  `EmitTo` and 5 `EmitBranch` calls go through them.
+- 235 `Emit` calls build their operand text by hand
+  (`COPY("#", text); AppendInt(text, n); Append(text, ", R0")`), and two
+  places look at text to decide (`from = "#^X00000000"`, `text[0] =
+  "#"`).
+- Outside the bodies, 83 `Line(w, ...)`, 11 `Label(w, ...)` and 35
+  `WriteStr(w, ...)` calls write the module's layout and data straight
+  to the file: the title, the psects, the variables, the string and
+  structured constants, the type descriptors, the module descriptor,
+  the initializer and the program's start.
+
+### 13.2 The subset of MACRO-32 poc writes
+
+Taken from 490,902 lines: poc's own source with `rtl/vax`, compiled for
+the VAX (`tools/bootstrap/vax-v1`, 35 modules, 241,646 lines), and every
+fixture's `.mar` but the hand-written ones (2026-10-18).
+
+- **Instructions** (138): `MOVL PUSHL JMP CALLS CALLG PUSHAB BNEQ MOVAB
+  CMPL RET CLRL SUBL2 MOVB TSTL CLRQ BLEQU MOVAQ MOVQ CLRB BLBS BEQL
+  ADDL2 BLSS CVTWL BGTR SUBL3 BLSSU ADDL3 MULL2 BLBC INCL MOVZBL MULL3
+  MOVC3 BGEQ MOVW ADWC DECL BGEQU MOVC5 CMPB SBWC ASHL BICL2 BLEQ CMPW
+  MOVG TSTB DIVL3 LOCC TSTW XORL2 INCW SUBW3 CLRW MOVF BICB3 MNEGL CMPG
+  CVTLB DECW BGTRU ADDW2 MULW3 ASHQ BRB MOVZBW PUSHAL ADDW3 CVTLW XORL3
+  DIVW3 CVTWB TSTG BISL2 MULW2 CMPF MULG2 SUBW2 XORW2 CVTLG CVTFG MNEGG
+  CVTGL BBC TSTF XORB3 MULG3 MOVZWL CVTBL BVC MNEGW EMUL ADDG2 SUBG3
+  MULF3 MNEGF CLRG XORB2 ADDG3 DIVG3 ADDF2 MCOML CVTLF SUBG2 CLRF CVTBW
+  CVTFL DIVG2 DIVF3 CASEL SUBF3 MULF2 INCB CVTGF BICL3 ADDF3 SUBB2 CVTWG
+  CVTWF ADDB2 SUBF2 SUBB3 ROTL MOVAW DIVF2 DECB BISL3 MULB2 MNEGB ADDB3
+  CASEW PUSHAQ CASEB`. Several mnemonics are composed from a stem and a
+  size letter, so the set is checked against the generator's source as
+  well when the encoder's opcode table is written (step 3): a mnemonic
+  outside the table is an error at compile time, not a wrong byte.
+- **Operand forms** (with their counts): `-n(Rn)` 172,648, `#n`
+  140,206, `Rn` 105,475, a bare symbol (a label, branch target or local
+  variable: relative mode) 91,389, `G^sym` or `L^sym` 49,454, `n(Rn)`
+  32,476, `(Rn)` 9,439, `#^X<hex>` 5,652, `@n(Rn)` 3,927, `@n(Rn)[Rx]`
+  1,669, `sym[Rx]` 1,659, `#-n` 1,272, `-n(Rn)[Rx]` 1,028, `@-n(Rn)` 863,
+  `sym+n` 717, `@-n(Rn)[Rx]` 428, `n(Rn)[Rx]` 387, `#<real>` 330,
+  `-(SP)` 289, `#-<real>` 151, `(Rn)[Rx]` 54, `sym+n[Rx]` 8,
+  `G^sym[Rx]` 2, `G^sym+n` 2. No autoincrement, no `S^`/`I^`, no `B^`
+  or `W^`, no deferred relative.
+- **Directives**: `.TITLE .IDENT .PSECT .ENTRY .EXTERNAL .WORD .LONG
+  .BYTE .ADDRESS .ASCII .ASCIZ .ASCIC .ASCID .BLKB .BLKW .BLKL .BLKQ
+  .BLKF .BLKG .ALIGN .F_FLOATING .G_FLOATING .END`, a direct assignment
+  `sym == value`, labels `sym:` and `sym::`, and a `.WORD` entry mask
+  `^M<...>` for a private procedure.
+
+### 13.3 Decided (the user, 2026-10-18)
+
+1. **A module of its own, `src/back/vax/VaxInstructions.Mod`**, holding
+   the data and the printer, so that the encoder (step 3) and the object
+   writer (step 4) use it without `VaxCodeGenerator`:
+   - `Specifier`: a register; `(Rn)`; `-(Rn)`; `d(Rn)` and `@d(Rn)`; a
+     literal or immediate `#v` (an integer, printed decimal or as
+     `^X` and eight hex digits as written today, or a real, kept as the
+     text poc writes with its type, `F` or `G`, for step 3's conversion);
+     relative `sym+n`, with the prefix `G^` or `L^` or none; any of the
+     memory forms with an index register `[Rx]`.
+   - `Line`: an instruction (mnemonic, up to six specifiers, or a label
+     as a branch's last), a label (local `:` or global `::`), a directive
+     with its items (numbers, symbols, symbol differences, strings, the
+     mask), a direct assignment, or a comment; each with the **source
+     line and column** of the statement it came from (0 for none), which
+     the printer ignores and step 5 needs.
+   - `Print(VAR w: Files.Rider; line: Line)`, writing the text as
+     `Line`, `Label` and `WriteBody` do now.
+2. **One list per module.** The bodies' lists and the 83 direct `Line(w,
+   ...)` calls both become lines appended to a module-wide list, in the
+   order written today, and the file is printed from it at the end. The
+   encoder will read the same list.
+3. **Incremental, with the output unchanged after each piece.** A line
+   may hold legacy text while the conversion goes on, printed as now:
+   - 2a: `VaxInstructions`, the printer, and the generator's list made of
+     its lines, every line still text.
+   - 2b: `Text`/`HalfText` become a `Specifier` builder, and the `EmitN`
+     calls structured.
+   - 2c: the 235 hand-built `Emit` calls, in batches by area (moves and
+     arithmetic, calls and argument lists, traps and checks, strings and
+     block moves, sets and shifts, reals, procedures and entry), with
+     the two text tests rewritten as tests of the specifier.
+   - 2d: the module's layout and data, from `Line(w, ...)` to directive
+     lines.
+   - 2e: the legacy text form removed, so that nothing can go round the
+     representation again.
+4. **The safety net for each piece**: `make check` (every VAX fixture
+   compares its output with the reviewed `expected-vax.mar` and its
+   imports'), and the whole V1 corpus above: `tools/bootstrap/vax-v1` run
+   before the step and after each piece, the 35 `.mar` files compared with
+   `cmp`. The corpus, poc's own source, reaches far more of the generator
+   than the fixtures do. Any difference stops the piece.
+5. **The source position.** The generator sets the current statement's
+   line and column as it starts each statement (and each procedure's
+   entry and exit), and every line it appends takes them, so step 5 has
+   a position for every instruction without a second change of every
+   call site.
