@@ -481,9 +481,12 @@ among them) - and the kits that install poc on a VMS site (closed
 Phase 18, VAX object files written directly, is next; 15-18 are the
 VAX/VMS work, 19 further extensions, 20 voc's library modules. `vax`
 was merged into `main` on 2026-10-17 (a fast-forward, at `7ec6468`), and
-all new work, the VAX's included, goes on `main`; the `peaseblossom-vax`
-packages come next with the packaging (`PLAN.md`, "Ongoing implementation
-enhancements" 5). Bugs found by using
+all new work, the VAX's included, goes on `main`. The VAX/VMS back end
+(Phases 15-17), `make install-vax` and the `peaseblossom-vax` packages,
+options after the file name, `SYSTEM.VAL(SYSTEM.ADDRESS, E)` of an
+external procedure and the runtime module `Directories` were released as
+**Peaseblossom 0.7.0 on 2026-10-17** (tag `v0.7.0`, with the two VAX/VMS
+kits; the record is in `PLAN.md`, "Peaseblossom 0.7.0"). Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
 fixing"), and the runtime-library additions and language extensions it
 shows are wanted are made the same way (`PLAN.md`, "Ongoing library

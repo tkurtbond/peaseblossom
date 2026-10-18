@@ -826,6 +826,60 @@ RPM's `%changelog` lists them. It was made as
   `tools/release-files` and attached to the release; every file was
   downloaded again and checked against `SHA256SUMS` and the signatures.
 
+## Peaseblossom 0.7.0
+
+What `main` had gained since 0.6.0 was released as **Peaseblossom 0.7.0**
+on 2026-10-17: the back end for VAX/VMS 5.5-2 (Phases 15-17, merged from
+`vax` at `7ec6468`), with `POCRTL`, `VMSDEF` and `VMSLIB`, the two kits
+and the VAX/VMS Guide; `make install-vax` (`7ec6468`) and the
+`peaseblossom-vax` packages (`f8acc71`); options after the file name
+applied (`1549429`); `SYSTEM.VAL(SYSTEM.ADDRESS, E)` of an external
+procedure (`ef4056a`, `f09bcb4` for the VAX); the runtime module
+`Directories` (`7e25bbb`); and a note when a missing module is the VAX
+runtime's (`153ce20`). The RPM's `%changelog` lists them. It was made as
+`doc/developer/DEVELOPER.md` section 7 says:
+
+- **Before the version**, every package was built from a `make dist`
+  tarball repacked as 0.6.0 and never published, on all seven systems.
+  That found the fixes in `a447a9a` (the seed links each module's part in
+  C), `67aa737` (`check-vax.sh` in the C locale and without GNU grep's
+  `\|`; `Directories` in the OpenBSD and pkgsrc packing lists; pkgsrc's
+  `peaseblossom-vax` patches) and `833c792` (`check-install-vax` leaves
+  the guide out on a host without pandoc). With the user, the rule was
+  set that anything made with pandoc is made on atla by `make dist` and
+  put in the tarball (DEVELOPER.md, section 2).
+- **The version** was set in `fa7b7b2` by `make set-version`, after
+  `tools/check-hosts -t check-install -t check-seed -t check-install-vax`
+  passed on atla, cymoril, artos and alerik (477 fixtures at each stage;
+  on the BSDs, which have no pandoc, "the guide not checked"). rackhir
+  passed `fa7b7b2` (49 minutes), and `make check-vax-kit
+  CHECK_VAX_KIT_FLAGS=-full` passed on the guest (33 minutes).
+- **The tarball** came from `make distcheck` (SHA-256 `3d674c0d...`,
+  11176549 bytes). It is signed, with the signed tag `v0.7.0`, and
+  published as a GitHub release with the kits `POC-0-7-0.COM` and
+  `POC-VMS-0-7-0.COM`.
+- **Each package** was made from the published tarball (`makesum`; the
+  `distinfo` files committed after the release, `8c744ce`), then built
+  and checked on its system: FreeBSD amd64 (alerik) and arm64 (rackhir),
+  OpenBSD i386 (cymoril) and amd64 (jherek), NetBSD amd64 (artos) and
+  i386 (yishana); `check.sh` and `check-vax.sh` on the stage,
+  check-plist, portcheck and pkglint clean, packing lists unchanged.
+  Each was installed as root over the 0.6.0-named test packages, checked
+  with `check.sh` and `check-vax.sh` against the installed poc from a
+  fresh unpack of the tarball, removed with nothing of its packing list
+  left, and installed again. `mock` built and checked the RPMs, and on
+  atla 0.7.0 replaces 0.6.0, with `peaseblossom-vax`.
+- **`peaseblossom-vax` after `peaseblossom`.** FreeBSD's and pkgsrc's
+  `lang/peaseblossom-vax` would not stage until `peaseblossom-0.7.0` was
+  installed: FreeBSD's looked for its origin in `/usr/ports`, pkgsrc's
+  tried to become root. Each main package was installed first, then the
+  vax port built; DEVELOPER.md, section 6, says so (`8c744ce`).
+- **The RPMs and `SHA256SUMS`** were signed, gathered by
+  `tools/release-files` (20 files) and attached to the release; every
+  file was downloaded again, compared with the local copy and checked
+  against `SHA256SUMS` and the signatures, the RPMs' with the key in a
+  scratch rpm database.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -
@@ -952,7 +1006,7 @@ Those done while Phase 15 was current, 1-4, are in
     (`VAX_GUIDE=no`, kits in `build/stage2/vax-kit-without-guide`) and
     says so (2026-10-17). `set-version` and `release-files` know the new packages
     (`DEVELOPER.md`, section 7). Built and checked on each system with
-    the first release that has them.
+    the first release that has them, 0.7.0 ("Peaseblossom 0.7.0").
 
 ## Open design questions
 
