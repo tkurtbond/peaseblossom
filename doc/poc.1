@@ -279,9 +279,14 @@ itself are
 .Fl dump-layout ,
 .Fl dump-llvm-types ,
 .Fl dump-nested ,
-.Fl dump-vax-types
+.Fl dump-vax-types ,
+.Fl dump-vax-names
 and
-.Fl dump-vax-names .
+.Fl emit-vax-image ,
+which writes what
+.Fl emit-macro32
+does and each module's object as the VAX encoder makes it,
+.Ar Module Ns .image .
 .Ss Options
 .Bl -tag -width Ds
 .It Fl o Ar exe

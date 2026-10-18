@@ -645,6 +645,10 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    answered; the fixture `vax-image-reader`.
    **3b done 2026-10-18** (section 14.8): `src/back/vax/VaxOpcodes.Mod`,
    164 instructions, checked against MACRO, Appendix D and Chapter 9.
+   **3c and 3d done 2026-10-18** (section 14.9):
+   `src/back/vax/VaxEncoder.Mod` and `poc -emit-vax-image`; the images of
+   all 62 fixtures and all 35 of poc's own modules are MACRO's, byte for
+   byte.
 
 4. **The object writer, `VaxObjectWriter.Mod`.** From the encoded
    program sections write the records step 1 specified: the header, one

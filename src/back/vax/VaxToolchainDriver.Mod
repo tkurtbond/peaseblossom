@@ -12,7 +12,7 @@ MODULE VaxToolchainDriver;
      the triple "vax-dec-vms" (decided with the user 2026-10-06): -target vax-dec-vms
      selects it, and -emit-macro32 implies it. *)
 
-  IMPORT Files, Platform, Directories, SyntaxTree, SymbolTable, VaxCodeGenerator;
+  IMPORT Files, Platform, Directories, SyntaxTree, SymbolTable, VaxCodeGenerator, VaxImage, VaxEncoder;
 
   CONST
     triple* = "vax-dec-vms";
@@ -28,6 +28,11 @@ MODULE VaxToolchainDriver;
       name*: ARRAY 64 OF CHAR;
       next*: Unit
     END;
+
+  VAR
+    (* whether EmitModule also writes the module's encoded image, beside
+       its .mar (poc -emit-vax-image) *)
+    writeImage*: BOOLEAN;
 
   PROCEDURE IsVaxTriple*(t: ARRAY OF CHAR): BOOLEAN;
   BEGIN
@@ -63,6 +68,26 @@ MODULE VaxToolchainDriver;
     Directories.MakePath(outputDir, name, path)
   END ModuleFilePath;
 
+  (* PLAN.md Phase 18 step 3 (doc/developer/vax-object-language.md,
+     section 14.5): the module GenerateModule wrote last, encoded, as
+     VaxImage prints it, to <outputDir>/<Module>.image: FALSE if the
+     encoder reported an error or the file could not be written, when no
+     file is left behind *)
+  PROCEDURE WriteImage(moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR image: VaxImage.Module; name: ARRAY 72 OF CHAR; path: ARRAY pathBufferLength OF CHAR; f: Files.File; w: Files.Rider;
+  BEGIN
+    image := VaxEncoder.Encode(VaxCodeGenerator.ModuleLines());
+    IF image = NIL THEN RETURN FALSE END;
+    COPY(moduleName, name); Append(name, ".image");
+    Directories.MakePath(outputDir, name, path);
+    f := Files.New(path);
+    IF f = NIL THEN RETURN FALSE END;
+    Files.Set(w, f, 0);
+    VaxImage.Print(w, image);
+    Files.Register(f); Files.Close(f);
+    RETURN TRUE
+  END WriteImage;
+
   (* module's MACRO-32 to <outputDir>/<Module>.mar (path), with the
      program's start when it is the main module, isMain: FALSE if it could
      not be written, or if the generator reported an error or a construct
@@ -78,6 +103,7 @@ MODULE VaxToolchainDriver;
     Files.Set(w, f, 0);
     ok := VaxCodeGenerator.GenerateModule(module, scope, key, isMain, w);
     Files.Register(f); Files.Close(f);
+    IF ok & writeImage THEN ok := WriteImage(module.name, outputDir) END;
     IF ~ok THEN
       deleteResult := Platform.Unlink(path) (* not Files.Delete: voc's renames to a temp name *)
     END;
@@ -473,4 +499,6 @@ MODULE VaxToolchainDriver;
     RETURN TRUE
   END WriteLibraryProcedures;
 
+BEGIN
+  writeImage := FALSE
 END VaxToolchainDriver.

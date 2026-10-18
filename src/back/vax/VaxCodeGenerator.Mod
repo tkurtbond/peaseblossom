@@ -7342,6 +7342,13 @@ MODULE VaxCodeGenerator;
     RETURN TRUE
   END GenerateModule;
 
+  (* The lines of the module GenerateModule wrote last, for the encoder
+     (PLAN.md Phase 18 step 3) *)
+  PROCEDURE ModuleLines*(): VaxInstructions.Line;
+  BEGIN
+    RETURN out
+  END ModuleLines;
+
 BEGIN
   unsupportedCount := 0; programNames := NIL;
   two31 := 2147483647; INC(two31); two32 := two31 * 2

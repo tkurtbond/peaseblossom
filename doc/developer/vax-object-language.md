@@ -737,7 +737,9 @@ Each piece leaves `make check` passing, the `.mar` output unchanged:
 - **3c**: the encoder for instructions and labels, `POC_CODE`, and
   `-emit-vax-image`, compared for the code sections.
 - **3d**: directives and data, and the reals (`DecimalToDouble`'s new
-  procedure), compared for every section.
+  procedure), compared for every section. Done with 3c (section 14.9):
+  the code's relocations name offsets in the data sections, so the code
+  cannot be compared before the data is laid out.
 - **3e**: the `expected-vax.image` files in every fixture's `test.sh`,
   the coverage fixture, and the corpus compared, every difference
   explained; the step's record in `PLAN.md`.
@@ -806,4 +808,44 @@ composes (`Op`, `Extension`, `CVT` and `MOVZ` with two data types), over
   branch) is the one in the instruction's summary line
   (`ADD{B,W,L}3 add1.rx, add2.rx, sum.wx`, `MOVC5 srclen.rw,
   srcaddr.ab, fill.rb, dstlen.rw, dstaddr.ab`, `B{cond} displ.bb`).
+- **Against VSI's text of the manual**
+  (`VSI/vsi-openvms-vax-macro-and-instruction-set-reference-manual.pdf`,
+  much later than 5.5-2, but a born-digital PDF with no OCR errors;
+  checked 2026-10-18): 162 of the 164 opcodes are its alphabetic table's
+  exactly, and all 164 its numeric table's and Chapter 9's, and every
+  access type is its Chapter 9's. The two others are typos in the
+  alphabetic table D-1 itself, there in 5.4 and still in VSI's, not OCR
+  errors: `CLRF` as `DF` and `MOVZBL` as `0A`, where table D-2,
+  Chapter 9 and MACRO all give `D4` and `9A`. (Its Chapter 9 also prints
+  `MOV{B,W,L,Q}` as `OV{B,W,L,Q}`, as the 5.4 text does.)
+- **Against the architecture books** (`DEC_VAX_Architecture_Handbook.pdf`,
+  1986, EB-26115-46, Appendices B and C; and
+  `EY-3459E-DP_VAX_Architecture_Reference_Manual_1987.pdf`, Appendix A,
+  read by its binary column, which OCR leaves whole; checked
+  2026-10-18): all 164 opcodes agree, and both give `CLRF` as `D4` and
+  `MOVZBL` as `9A`, so D-1's typos are the MACRO manual's alone. Every
+  other difference in their text was OCR, checked on the page images.
+  (The Handbook prints `CASEB`'s row as `CASE`, "BCase byte".) The
+  architecture books are the authority for the encoding, which no VMS
+  release changes; the MACRO manual is the authority for what MACRO
+  accepts and which forms it picks, which the architecture books do
+  not describe.
+
+### 14.9 What 3c found (2026-10-18)
+
+`src/back/vax/VaxEncoder.Mod` encodes a module's lines into a `VaxImage`,
+the directives, data and reals included (3d's part, section 14.6), and
+`poc -emit-vax-image` writes it, as `<Module>.image`, beside the `.mar`
+that `-emit-macro32` writes (`VaxToolchainDriver.WriteImage`).
+`DecimalToDouble.RoundedParts` gives the encoder a numeral rounded to 24
+or 53 bits as an integer and an exponent, from which it builds the `F`
+or `G` bits; `Rounded`, which the front end uses, is now built on it.
+
+Every image is MACRO's, byte for byte, with no difference to explain:
+the 62 fixtures with an `expected-vax.mar` (`vax-reals`, with its real
+literals, integer literals in real operands and 271 relocations,
+included), and all 35 modules of poc's own source for the VAX (32 from
+the corpus of section 14.7, and `BuildInfo`, `Libraries` and `Poc`,
+whose source carries the build's commit, assembled again by MACRO from
+the same tree). Encoding the 35 modules takes about a second here.
 
