@@ -480,7 +480,7 @@ Taken from 490,902 lines: poc's own source with `rtl/vax`, compiled for
 the VAX (`tools/bootstrap/vax-v1`, 35 modules, 241,646 lines), and every
 fixture's `.mar` but the hand-written ones (2026-10-18).
 
-- **Instructions** (138): `MOVL PUSHL JMP CALLS CALLG PUSHAB BNEQ MOVAB
+- **Instructions** (134): `MOVL PUSHL JMP CALLS CALLG PUSHAB BNEQ MOVAB
   CMPL RET CLRL SUBL2 MOVB TSTL CLRQ BLEQU MOVAQ MOVQ CLRB BLBS BEQL
   ADDL2 BLSS CVTWL BGTR SUBL3 BLSSU ADDL3 MULL2 BLBC INCL MOVZBL MULL3
   MOVC3 BGEQ MOVW ADWC DECL BGEQU MOVC5 CMPB SBWC ASHL BICL2 BLEQ CMPW
@@ -778,4 +778,32 @@ The four questions of section 14.6:
    immediate (`4400 0000`). Section 14.3 says so.
 4. **`G^` of a symbol the module defines**: never written, in the
    fixtures or the corpus. The encoder treats one as an error.
+
+### 14.8 What 3b found (2026-10-18)
+
+`src/back/vax/VaxOpcodes.Mod` holds 164 instructions: the 134 of
+section 13.2 (every mnemonic in the 62 fixtures' and the 35 modules'
+`.mar` is among them) and the rest of each family the generator
+composes (`Op`, `Extension`, `CVT` and `MOVZ` with two data types), over
+`B W L Q F G`. Each is checked three ways:
+
+- **Against MACRO.** A `.mar` with every one of the 164, each read
+  operand `#100` (too large for a short literal), each branch to its own
+  label, assembles without a message, and decoding its listing with
+  nothing but the table finds every opcode, every operand's specifier,
+  every immediate's length and value (100, or 100.0 as an `F` or `G` for
+  a real operand: `43C8 0000`, `4079 0000 0000 0000`), every branch
+  displacement's length and every instruction's length as MACRO wrote
+  them. That settles the opcodes where the OCR'd text of Appendix D is
+  unreadable or missing (`D`/`0`, `8`/`B`/`S`; five lines lost): `CLRF`
+  is `D4`, as Chapter 9's `CLR{L=F,Q=D=G,O=H}` says, not the `DF` the
+  text shows.
+- **Against Appendix D**, the OCR'd text: 158 of the 164 opcodes agree,
+  24 of them only up to the confusions above; the other six are the
+  lost lines and `CLRF`.
+- **Against Chapter 9**, for the access types, which MACRO does not
+  check: every operand's access (read, modify, write, address, field,
+  branch) is the one in the instruction's summary line
+  (`ADD{B,W,L}3 add1.rx, add2.rx, sum.wx`, `MOVC5 srclen.rw,
+  srcaddr.ab, fill.rb, dstlen.rw, dstaddr.ab`, `B{cond} displ.bb`).
 
