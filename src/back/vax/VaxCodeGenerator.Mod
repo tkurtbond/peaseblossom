@@ -299,6 +299,7 @@ MODULE VaxCodeGenerator;
     (* One line of what is written: a label, an instruction or directive,
        or a comment (VaxInstructions) *)
     Instruction = VaxInstructions.Line;
+    OperandSpecifier = VaxInstructions.Specifier;
 
   VAR
     unsupportedCount*: INTEGER;
@@ -464,18 +465,6 @@ MODULE VaxCodeGenerator;
     REPEAT digits[i] := CHR(ORD("0") + x MOD 10); x := x DIV 10; INC(i) UNTIL x = 0;
     WHILE i > 0 DO DEC(i); AppendChar(s, digits[i]) END
   END AppendInt;
-
-  (* "^X" and eight hexadecimal digits of x, 0 <= x < 2^32 *)
-  PROCEDURE AppendHex(VAR s: ARRAY OF CHAR; x: LONGINT);
-    VAR digits: ARRAY 9 OF CHAR; i: INTEGER; d: LONGINT;
-  BEGIN
-    FOR i := 7 TO 0 BY -1 DO
-      d := x MOD 16; x := x DIV 16;
-      IF d < 10 THEN digits[i] := CHR(ORD("0") + d) ELSE digits[i] := CHR(ORD("A") + d - 10) END
-    END;
-    digits[8] := 0X;
-    Append(s, "^X"); Append(s, digits)
-  END AppendHex;
 
   (* "^X" and the eight hexadecimal digits of a SET's longword *)
   PROCEDURE AppendSetHex(VAR s: ARRAY OF CHAR; bits: SET);
@@ -720,11 +709,6 @@ MODULE VaxCodeGenerator;
     VaxInstructions.SpecifierToText(HalfSpecifier(x, half), text)
   END HalfText;
 
-  PROCEDURE Text(x: Operand; VAR text: ARRAY OF CHAR);
-  BEGIN
-    HalfText(x, 0, text)
-  END Text;
-
   PROCEDURE IsImmediateValue(x: Operand; value: LONGINT): BOOLEAN;
   BEGIN
     RETURN (x.kind = immediate) & ~Types.IsSet(x.type) & ~IsReal(x.type) & (x.value = value)
@@ -755,13 +739,6 @@ MODULE VaxCodeGenerator;
     END
   END Same;
 
-  (* Three operands, "a, b, c", or two when c is empty *)
-  PROCEDURE Operands(a, b, c: ARRAY OF CHAR; VAR text: ARRAY OF CHAR);
-  BEGIN
-    COPY(a, text);
-    IF b[0] # 0X THEN Append(text, ", "); Append(text, b) END;
-    IF c[0] # 0X THEN Append(text, ", "); Append(text, c) END
-  END Operands;
 
   PROCEDURE Emit1(op: ARRAY OF CHAR; a: Operand);
     VAR l: Instruction;
@@ -787,14 +764,6 @@ MODULE VaxCodeGenerator;
     Add(l)
   END Emit3;
 
-  (* op text, b: "MOVL R2, -4(FP)" *)
-  PROCEDURE EmitTo(op, text: ARRAY OF CHAR; b: Operand);
-    VAR l: Instruction;
-  BEGIN
-    l := VaxInstructions.Operation(op);
-    VaxInstructions.AddSpecifier(l, VaxInstructions.SpecifierText(text)); VaxInstructions.AddSpecifier(l, Specifier(b));
-    Add(l)
-  END EmitTo;
 
   (* op a, label: "BLBC R0, L_3" *)
   PROCEDURE EmitBranch(op: ARRAY OF CHAR; a: Operand; label: ARRAY OF CHAR);
@@ -805,6 +774,143 @@ MODULE VaxCodeGenerator;
     VaxInstructions.AddSpecifier(l, VaxInstructions.Relative(label, 0, VaxInstructions.noPrefix));
     Add(l)
   END EmitBranch;
+
+  (* ---- Instructions of operand specifiers ---- *)
+
+  PROCEDURE Reg(n: INTEGER): OperandSpecifier;
+  BEGIN
+    RETURN VaxInstructions.Register(n)
+  END Reg;
+
+  (* #v *)
+  PROCEDURE Literal(v: LONGINT): OperandSpecifier;
+  BEGIN
+    RETURN VaxInstructions.Decimal(v)
+  END Literal;
+
+  (* #^X and the eight hexadecimal digits of v's low longword *)
+  PROCEDURE HexLiteral(v: LONGINT): OperandSpecifier;
+  BEGIN
+    RETURN VaxInstructions.Hexadecimal(LongwordBits(v))
+  END HexLiteral;
+
+  (* label, a local symbol: relative, or a branch's destination *)
+  PROCEDURE LabelRef(label: ARRAY OF CHAR): OperandSpecifier;
+  BEGIN
+    RETURN VaxInstructions.Relative(label, 0, VaxInstructions.noPrefix)
+  END LabelRef;
+
+  (* L^label *)
+  PROCEDURE LongRef(label: ARRAY OF CHAR): OperandSpecifier;
+  BEGIN
+    RETURN VaxInstructions.Relative(label, 0, VaxInstructions.longRelative)
+  END LongRef;
+
+  (* G^name, a symbol of another module (section 7) *)
+  PROCEDURE ExternalRef(name: ARRAY OF CHAR): OperandSpecifier;
+  BEGIN
+    RETURN VaxInstructions.Relative(name, 0, VaxInstructions.general)
+  END ExternalRef;
+
+  (* (Rn) *)
+  PROCEDURE DeferredReg(n: INTEGER): OperandSpecifier;
+  BEGIN
+    RETURN VaxInstructions.RegisterDeferred(n)
+  END DeferredReg;
+
+  (* d(Rn) *)
+  PROCEDURE Displaced(d: LONGINT; n: INTEGER): OperandSpecifier;
+  BEGIN
+    RETURN VaxInstructions.Displacement(d, n, FALSE)
+  END Displaced;
+
+  (* The longword whose address is in x, a register or a longword of the
+     frame: (Rn) or @d(Rn) *)
+  PROCEDURE DeferredThrough(x: Operand): OperandSpecifier;
+    VAR spec: OperandSpecifier;
+  BEGIN
+    spec := Specifier(x);
+    IF spec.mode = VaxInstructions.registerMode THEN spec := VaxInstructions.RegisterDeferred(spec.register)
+    ELSE spec.mode := VaxInstructions.displacementDeferred
+    END;
+    RETURN spec
+  END DeferredThrough;
+
+  (* -(SP) *)
+  PROCEDURE Pushed(): OperandSpecifier;
+  BEGIN
+    RETURN VaxInstructions.Autodecrement(VaxInstructions.sp)
+  END Pushed;
+
+  (* Whether s is the literal #^X00000000 *)
+  PROCEDURE IsHexZero(s: OperandSpecifier): BOOLEAN;
+  BEGIN
+    RETURN (s.mode = VaxInstructions.literal) & (s.form = VaxInstructions.hexadecimal) & (s.bits = {})
+      & (s.index = VaxInstructions.noRegister)
+  END IsHexZero;
+
+  PROCEDURE Instruction0(op: ARRAY OF CHAR);
+  BEGIN
+    Add(VaxInstructions.Operation(op))
+  END Instruction0;
+
+  PROCEDURE Instruction1(op: ARRAY OF CHAR; a: OperandSpecifier);
+    VAR l: Instruction;
+  BEGIN
+    l := VaxInstructions.Operation(op); VaxInstructions.AddSpecifier(l, a);
+    Add(l)
+  END Instruction1;
+
+  PROCEDURE Instruction2(op: ARRAY OF CHAR; a, b: OperandSpecifier);
+    VAR l: Instruction;
+  BEGIN
+    l := VaxInstructions.Operation(op); VaxInstructions.AddSpecifier(l, a); VaxInstructions.AddSpecifier(l, b);
+    Add(l)
+  END Instruction2;
+
+  PROCEDURE Instruction3(op: ARRAY OF CHAR; a, b, c: OperandSpecifier);
+    VAR l: Instruction;
+  BEGIN
+    l := VaxInstructions.Operation(op); VaxInstructions.AddSpecifier(l, a); VaxInstructions.AddSpecifier(l, b);
+    VaxInstructions.AddSpecifier(l, c);
+    Add(l)
+  END Instruction3;
+
+  PROCEDURE Instruction4(op: ARRAY OF CHAR; a, b, c, d: OperandSpecifier);
+    VAR l: Instruction;
+  BEGIN
+    l := VaxInstructions.Operation(op); VaxInstructions.AddSpecifier(l, a); VaxInstructions.AddSpecifier(l, b);
+    VaxInstructions.AddSpecifier(l, c); VaxInstructions.AddSpecifier(l, d);
+    Add(l)
+  END Instruction4;
+
+  PROCEDURE Instruction5(op: ARRAY OF CHAR; a, b, c, d, e: OperandSpecifier);
+    VAR l: Instruction;
+  BEGIN
+    l := VaxInstructions.Operation(op); VaxInstructions.AddSpecifier(l, a); VaxInstructions.AddSpecifier(l, b);
+    VaxInstructions.AddSpecifier(l, c); VaxInstructions.AddSpecifier(l, d); VaxInstructions.AddSpecifier(l, e);
+    Add(l)
+  END Instruction5;
+
+  (* Instructions at the end of the module's lines, outside a procedure *)
+  PROCEDURE PutInstruction0(op: ARRAY OF CHAR);
+  BEGIN
+    AppendOut(VaxInstructions.Operation(op))
+  END PutInstruction0;
+
+  PROCEDURE PutInstruction1(op: ARRAY OF CHAR; a: OperandSpecifier);
+    VAR l: Instruction;
+  BEGIN
+    l := VaxInstructions.Operation(op); VaxInstructions.AddSpecifier(l, a);
+    AppendOut(l)
+  END PutInstruction1;
+
+  PROCEDURE PutInstruction2(op: ARRAY OF CHAR; a, b: OperandSpecifier);
+    VAR l: Instruction;
+  BEGIN
+    l := VaxInstructions.Operation(op); VaxInstructions.AddSpecifier(l, a); VaxInstructions.AddSpecifier(l, b);
+    AppendOut(l)
+  END PutInstruction2;
 
   (* ---- Registers and the frame ---- *)
 
@@ -873,18 +979,18 @@ MODULE VaxCodeGenerator;
 
   (* Moves the register x to the frame; FALSE if the frame is full *)
   PROCEDURE Spill(x: Operand): BOOLEAN;
-    VAR n, s: INTEGER; from: OperandText; op: ARRAY 8 OF CHAR;
+    VAR n, s: INTEGER; from: OperandSpecifier; op: ARRAY 8 OF CHAR;
   BEGIN
     IF IsWide(x.type) THEN n := 2 ELSE n := 1 END;
     s := AllocateSlots(n);
     IF s < 0 THEN RETURN FALSE END;
-    Text(x, from);
+    from := Specifier(x);
     Op("MOV", Suffix(x.type), "", op);
     INCL(free, x.reg);
     IF n = 2 THEN INCL(free, x.reg + 1) END;
     Unlive(x);
     x.kind := memory; x.symbol[0] := 0X; x.offset := SlotOffset(s, n); x.slot := s; x.slots := n; x.reg := -1;
-    EmitTo(op, from, x);
+    Instruction2(op, from, Specifier(x));
     RETURN TRUE
   END Spill;
 
@@ -946,7 +1052,7 @@ MODULE VaxCodeGenerator;
   (* The values in R0 and R1 moved up to R2-R5, or to the frame; an & or
      OR's left side too unless keepJoining *)
   PROCEDURE MoveOutOfR0R1(keepJoining: BOOLEAN; line, column: INTEGER);
-    VAR x, next: Operand; r: INTEGER; from, to: OperandText; op: ARRAY 8 OF CHAR; operands: ARRAY 160 OF CHAR;
+    VAR x, next: Operand; r: INTEGER; from: OperandSpecifier; op: ARRAY 8 OF CHAR;
   BEGIN
     x := live;
     WHILE x # NIL DO
@@ -954,11 +1060,11 @@ MODULE VaxCodeGenerator;
       IF (x.reg <= 1) & ~(keepJoining & x.joining) THEN
         r := FreeRegister(x.type, 2);
         IF r >= 0 THEN
-          Text(x, from);
+          from := Specifier(x);
           INCL(free, x.reg); IF IsWide(x.type) THEN INCL(free, x.reg + 1) END;
           EXCL(free, r); INCL(used, r); IF IsWide(x.type) THEN EXCL(free, r + 1); INCL(used, r + 1) END;
-          x.reg := r; Text(x, to);
-          Op("MOV", Suffix(x.type), "", op); Operands(from, to, "", operands); Emit(op, operands)
+          x.reg := r;
+          Op("MOV", Suffix(x.type), "", op); Instruction2(op, from, Specifier(x))
         ELSIF x.pinned OR ~Spill(x) THEN
           (* a pinned register is an operand's base or index, which a slot
              of the frame cannot be *)
@@ -1024,11 +1130,11 @@ MODULE VaxCodeGenerator;
 
   (* One longword of a quadword immediate into dst's: CLRL for zero *)
   PROCEDURE MoveHalf(imm, dst: Operand; half: INTEGER);
-    VAR from, to: OperandText; operands: ARRAY 160 OF CHAR;
+    VAR from, to: OperandSpecifier;
   BEGIN
-    HalfText(imm, half, from); HalfText(dst, half, to);
-    IF from = "#^X00000000" THEN Emit("CLRL", to)
-    ELSE Operands(from, to, "", operands); Emit("MOVL", operands)
+    from := HalfSpecifier(imm, half); to := HalfSpecifier(dst, half);
+    IF IsHexZero(from) THEN Instruction1("CLRL", to)
+    ELSE Instruction2("MOVL", from, to)
     END
   END MoveHalf;
 
@@ -1040,7 +1146,7 @@ MODULE VaxCodeGenerator;
      for SHORT, by CVTGF. A quadword into a real takes poc's runtime
      (AsReal), first. *)
   PROCEDURE MoveInto(src, dst: Operand);
-    VAR s, d: CHAR; op: ARRAY 8 OF CHAR; lo, hi, from: OperandText; operands: ARRAY 160 OF CHAR;
+    VAR s, d: CHAR; op: ARRAY 8 OF CHAR; lo, hi: OperandSpecifier;
         imm: Operand;
   BEGIN
     s := Suffix(src.type); d := Suffix(dst.type);
@@ -1050,12 +1156,12 @@ MODULE VaxCodeGenerator;
          high longword, the sign or 0. A quadword into a real takes
          AsReal first, so never comes here. *)
       IF (d = "Q") & (s # "Q") & ~IsReal(src.type) THEN
-        HalfText(dst, 0, lo); HalfText(dst, 1, hi);
-        IF src.type = Types.Set THEN Emit("CLRL", hi)
+        lo := HalfSpecifier(dst, 0); hi := HalfSpecifier(dst, 1);
+        IF src.type = Types.Set THEN Instruction1("CLRL", hi)
         ELSE
-          IF s # "L" THEN Extension(src.type, s, "L", op); Operands(lo, lo, "", operands); Emit(op, operands) END;
-          IF IsCardinal(src.type) THEN Emit("CLRL", hi)
-          ELSE Operands("#-31", lo, hi, operands); Emit("ASHL", operands)
+          IF s # "L" THEN Extension(src.type, s, "L", op); Instruction2(op, lo, lo) END;
+          IF IsCardinal(src.type) THEN Instruction1("CLRL", hi)
+          ELSE Instruction3("ASHL", Literal(-31), lo, hi)
           END
         END
       ELSIF IsReal(dst.type) & (s # d) & (s # "Q") & ((s = "F") OR ~IsReal(src.type)) THEN
@@ -1086,14 +1192,14 @@ MODULE VaxCodeGenerator;
     ELSIF s = d THEN
       Op("MOV", d, "", op); Emit2(op, src, dst)
     ELSIF (d = "Q") & (src.type = Types.Set) THEN (* a SET into a SYSTEM.SET64: zero-extended *)
-      Text(src, from); HalfText(dst, 0, lo); HalfText(dst, 1, hi);
-      Operands(from, lo, "", operands); Emit("MOVL", operands); Emit("CLRL", hi)
+      lo := HalfSpecifier(dst, 0); hi := HalfSpecifier(dst, 1);
+      Instruction2("MOVL", Specifier(src), lo); Instruction1("CLRL", hi)
     ELSIF d = "Q" THEN
-      Text(src, from); HalfText(dst, 0, lo); HalfText(dst, 1, hi);
+      lo := HalfSpecifier(dst, 0); hi := HalfSpecifier(dst, 1);
       IF s = "L" THEN COPY("MOVL", op) ELSE Extension(src.type, s, "L", op) END;
-      Operands(from, lo, "", operands); Emit(op, operands);
-      IF IsCardinal(src.type) THEN Emit("CLRL", hi)
-      ELSE Operands("#-31", lo, hi, operands); Emit("ASHL", operands)
+      Instruction2(op, Specifier(src), lo);
+      IF IsCardinal(src.type) THEN Instruction1("CLRL", hi)
+      ELSE Instruction3("ASHL", Literal(-31), lo, hi)
       END
     ELSIF IsCardinal(src.type) & ~IsReal(dst.type) & (VaxTypes.Size(src.type) < VaxTypes.Size(dst.type)) THEN
       Extension(src.type, s, d, op);
@@ -1356,7 +1462,7 @@ MODULE VaxCodeGenerator;
   END TypeOf;
 
   PROCEDURE Variable(obj: SymbolTable.Object; line, column: INTEGER): Operand;
-    VAR x, r: Operand; l: Local; from: ARRAY 24 OF CHAR;
+    VAR x, r: Operand; l: Local;
   BEGIN
     x := NewOperand(memory, TypeOf(obj));
     l := FindLocal(obj);
@@ -1379,8 +1485,7 @@ MODULE VaxCodeGenerator;
         x.deferred := TRUE;
         IF IsQuad(x) THEN
           r := NewRegisterFrom(longword, 2, line, column);
-          from[0] := 0X; AppendInt(from, l.offset); Append(from, "(AP)");
-          EmitTo("MOVL", from, r);
+          Instruction2("MOVL", Displaced(l.offset, VaxInstructions.ap), Specifier(r));
           r.pinned := TRUE;
           x.onAP := FALSE; x.deferred := FALSE; x.offset := 0; x.baseOp := r; x.ownsBase := TRUE
         END
@@ -1398,12 +1503,11 @@ MODULE VaxCodeGenerator;
      moved to a register: a displacement from it, as a field's or an
      element's, cannot be named on AP *)
   PROCEDURE Rebase(x: Operand; line, column: INTEGER);
-    VAR r: Operand; from: ARRAY 24 OF CHAR;
+    VAR r: Operand; base: INTEGER;
   BEGIN
     r := NewRegister(longword, line, column);
-    from[0] := 0X; AppendInt(from, x.offset);
-    IF x.onAP THEN Append(from, "(AP)") ELSE Append(from, "(FP)") END;
-    EmitTo("MOVL", from, r);
+    IF x.onAP THEN base := VaxInstructions.ap ELSE base := VaxInstructions.fp END;
+    Instruction2("MOVL", Displaced(x.offset, base), Specifier(r));
     r.pinned := TRUE;
     x.onAP := FALSE; x.deferred := FALSE; x.offset := 0; x.baseOp := r; x.ownsBase := TRUE
   END Rebase;
@@ -1427,7 +1531,7 @@ MODULE VaxCodeGenerator;
      longword in memory, CMPL Rx, lenOp and BLSSU. A HUGEINT index fails
      unless its high longword is zero. *)
   PROCEDURE CheckedIndex(e: SyntaxTree.ExprNode; length: LONGINT; lenOp: Operand): Operand;
-    VAR i, q: Operand; ok, bad: ARRAY 16 OF CHAR; hi: OperandText; operands: ARRAY 160 OF CHAR;
+    VAR i, q: Operand; ok, bad: ARRAY 16 OF CHAR;
   BEGIN
     i := Expression(e, NIL);
     NewLabel(ok); bad[0] := 0X;
@@ -1436,8 +1540,8 @@ MODULE VaxCodeGenerator;
       i := NewRegister(longword, e.line, e.column);
       q.pinned := FALSE;
       NewLabel(bad);
-      HalfText(q, 1, hi); Emit("TSTL", hi); Emit("BNEQ", bad);
-      HalfText(q, 0, hi); EmitTo("MOVL", hi, i);
+      Instruction1("TSTL", HalfSpecifier(q, 1)); Instruction1("BNEQ", LabelRef(bad));
+      Instruction2("MOVL", HalfSpecifier(q, 0), Specifier(i));
       Release(q)
     ELSE
       i := InRegister(Widen(i, longword, e.line, e.column), e.line, e.column)
@@ -1445,11 +1549,10 @@ MODULE VaxCodeGenerator;
     i.type := longword;
     IF lenOp # NIL THEN
       Emit2("CMPL", i, lenOp);
-      Emit("BLSSU", ok)
+      Instruction1("BLSSU", LabelRef(ok))
     ELSE
-      Text(i, hi); Operands(hi, "", "", operands); Append(operands, ", #"); AppendInt(operands, length - 1);
-      Emit("CMPL", operands);
-      Emit("BLEQU", ok)
+      Instruction2("CMPL", Specifier(i), Literal(length - 1));
+      Instruction1("BLEQU", LabelRef(ok))
     END;
     IF bad[0] # 0X THEN EmitLabel(bad) END;
     Trap(2, e.line, e.column);
@@ -1467,7 +1570,6 @@ MODULE VaxCodeGenerator;
      section 8). *)
   PROCEDURE Index(x: Operand; e: SyntaxTree.ExprNode);
     VAR arr: Types.ArrayType; size: LONGINT; v: Types.Value; i, old: Operand; s: CHAR;
-        text: ARRAY 24 OF CHAR;
   BEGIN
     arr := x.type(Types.ArrayType);
     size := VaxTypes.Size(arr.elementType);
@@ -1480,7 +1582,7 @@ MODULE VaxCodeGenerator;
       IF (s = "B") OR (s = "W") OR (s = "L") THEN
         x.index := i; x.ownsIndex := TRUE
       ELSE
-        IF size # 1 THEN COPY("#", text); AppendInt(text, size); EmitTo("MULL2", text, i) END;
+        IF size # 1 THEN Instruction2("MULL2", Literal(size), Specifier(i)) END;
         x.index := i;
         Emit2("MOVAB", x, i);
         x.index := NIL;
@@ -1501,7 +1603,7 @@ MODULE VaxCodeGenerator;
      the next dimension's length first. *)
   PROCEDURE IndexOpen(x: Operand; e: SyntaxTree.ExprNode);
     VAR arr: Types.ArrayType; i, old, lens: Operand; s: CHAR; size: LONGINT; d, dims: INTEGER;
-        text: ARRAY 24 OF CHAR; keep: BOOLEAN;
+        keep: BOOLEAN;
   BEGIN
     keep := FALSE;
     arr := x.type(Types.ArrayType);
@@ -1514,7 +1616,7 @@ MODULE VaxCodeGenerator;
       x.index := i; x.ownsIndex := TRUE
     ELSE
       FOR d := 1 TO dims DO Emit2("MULL2", LengthOf(x, d), i) END;
-      IF size # 1 THEN COPY("#", text); AppendInt(text, size); EmitTo("MULL2", text, i) END;
+      IF size # 1 THEN Instruction2("MULL2", Literal(size), Specifier(i)) END;
       x.index := i;
       Emit2("MOVAB", x, i);
       x.index := NIL;
@@ -1562,7 +1664,7 @@ MODULE VaxCodeGenerator;
       Release(x)
     END;
     r.type := longword; r.pinned := TRUE;
-    NewLabel(ok); Emit("BNEQ", ok); Trap(4, line, column); EmitLabel(ok);
+    NewLabel(ok); Instruction1("BNEQ", LabelRef(ok)); Trap(4, line, column); EmitLabel(ok);
     y := NewOperand(memory, base); y.baseOp := r; y.ownsBase := TRUE;
     IF Types.IsOpenArray(base) THEN
       y.lens := NewOperand(memory, longword); y.lens.baseOp := r;
@@ -1632,19 +1734,19 @@ MODULE VaxCodeGenerator;
       IF ~keep THEN Release(x) END
     END;
     r.type := longword; r.pinned := TRUE;
-    NewLabel(ok); Emit("BNEQ", ok); Trap(4, line, column); EmitLabel(ok);
+    NewLabel(ok); Instruction1("BNEQ", LabelRef(ok)); Trap(4, line, column); EmitLabel(ok);
     tag := NewOperand(memory, longword); tag.baseOp := r; tag.ownsBase := TRUE; tag.offset := -4;
     RETURN tag
   END PointerTag;
 
-  PROCEDURE ^ RecordTag(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
+  PROCEDURE ^ RecordTagRef(rec: Types.RecordType): OperandSpecifier;
 
   (* Whether the record whose tag is tag is rec or an extension of it, as
      a BOOLEAN in a register: its descriptor's extension level at least
      rec's, L, and its BaseTypes[L] rec's descriptor, as on LLVM
      (EmitTagTestOnTag); L = 0 needs no level test. tag released *)
   PROCEDURE TagTest(tag: Operand; rec: Types.RecordType; line, column: INTEGER): Operand;
-    VAR r, f, a, m: Operand; level: INTEGER; done: ARRAY 16 OF CHAR; text: ARRAY 160 OF CHAR;
+    VAR r, f, a, m: Operand; level: INTEGER; done: ARRAY 16 OF CHAR;
   BEGIN
     IF (tag.kind = memory) & tag.ownsBase & ~tag.ownsIndex & (tag.index = NIL) THEN
       r := tag.baseOp; tag.ownsBase := FALSE; Emit2("MOVL", tag, r)
@@ -1656,12 +1758,12 @@ MODULE VaxCodeGenerator;
     level := ExtensionLevel(rec); NewLabel(done);
     m := NewOperand(memory, longword); m.baseOp := r;
     IF level > 0 THEN
-      m.offset := 4; Emit2("CMPL", m, Immediate(longword, level)); Emit("BLSS", done)
+      m.offset := 4; Emit2("CMPL", m, Immediate(longword, level)); Instruction1("BLSS", LabelRef(done))
     END;
     a := NewRegisterBeside(longword, r, f, line, column);
-    RecordTag(rec, text); EmitTo("MOVAB", text, a);
-    m.offset := 12 + 4 * level; Emit2("CMPL", m, a); Emit("BNEQ", done);
-    EmitTo("MOVB", "#1", f);
+    Instruction2("MOVAB", RecordTagRef(rec), Specifier(a));
+    m.offset := 12 + 4 * level; Emit2("CMPL", m, a); Instruction1("BNEQ", LabelRef(done));
+    Instruction2("MOVB", Literal(1), Specifier(f));
     EmitLabel(done);
     Release(a); r.pinned := FALSE; Release(r);
     RETURN f
@@ -1836,15 +1938,15 @@ MODULE VaxCodeGenerator;
      mode, G^; any other record - declared in a procedure, or written
      inline - by a label of this module, L_TD_<n>, its descriptor written
      because it is needed, as on LLVM *)
-  PROCEDURE RecordTag(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
-    VAR full: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol; d: TypeDescriptor;
+  (* The symbol of rec's descriptor, outside if it is another module's *)
+  PROCEDURE RecordTagSymbol(rec: Types.RecordType; VAR symbol: VaxTypes.Symbol; VAR outside: BOOLEAN);
+    VAR full: ARRAY 2 * 256 + 2 OF CHAR; d: TypeDescriptor;
   BEGIN
+    outside := FALSE;
     IF rec.name[0] # 0X THEN
       COPY(rec.moduleName, full); Append(full, "."); Append(full, rec.name);
       VaxTypes.MakeSymbol(full, symbol);
-      IF rec.moduleName = module.name THEN COPY(symbol, text)
-      ELSE AddExternal(symbol); text[0] := 0X; AppendExternal(text, symbol)
-      END
+      IF rec.moduleName # module.name THEN AddExternal(symbol); outside := TRUE END
     ELSE
       d := descriptors;
       WHILE (d # NIL) & (d.rec # rec) DO d := d.next END;
@@ -1852,9 +1954,25 @@ MODULE VaxCodeGenerator;
         d := NewDescriptor(rec, NIL);
         INC(descriptorCount); COPY("L_TD_", d.label); AppendInt(d.label, descriptorCount)
       END;
-      COPY(d.label, text)
+      COPY(d.label, symbol)
     END
+  END RecordTagSymbol;
+
+  PROCEDURE RecordTag(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
+    VAR symbol: VaxTypes.Symbol; outside: BOOLEAN;
+  BEGIN
+    RecordTagSymbol(rec, symbol, outside);
+    text[0] := 0X;
+    IF outside THEN AppendExternal(text, symbol) ELSE COPY(symbol, text) END
   END RecordTag;
+
+  (* rec's descriptor, as an operand: its address *)
+  PROCEDURE RecordTagRef(rec: Types.RecordType): OperandSpecifier;
+    VAR symbol: VaxTypes.Symbol; outside: BOOLEAN;
+  BEGIN
+    RecordTagSymbol(rec, symbol, outside);
+    IF outside THEN RETURN ExternalRef(symbol) ELSE RETURN LabelRef(symbol) END
+  END RecordTagRef;
 
   (* The symbol of the procedure P bound to owner, a module-level record:
      that of <Module>.<Type>.<P> (section 5), as on LLVM; TRUE, and the
@@ -1890,6 +2008,15 @@ MODULE VaxCodeGenerator;
     COPY(d.label, text)
   END ArrayTag;
 
+  (* The tag NEW gives an array of elem, as an operand: NIL for 0 *)
+  PROCEDURE ArrayTagRef(elem: Types.Type): OperandSpecifier;
+    VAR label: ARRAY 64 OF CHAR; spec: OperandSpecifier;
+  BEGIN
+    ArrayTag(elem, label);
+    IF label[0] = 0X THEN spec := NIL ELSE spec := LabelRef(label) END;
+    RETURN spec
+  END ArrayTagRef;
+
   (* The symbol a call of obj, a procedure, names: an external one's
      linkage name, verbatim (section 5), else VaxTypes' of "Module.name" *)
   PROCEDURE ProcedureSymbol(obj: SymbolTable.Object; VAR symbol: VaxTypes.Symbol);
@@ -1904,12 +2031,12 @@ MODULE VaxCodeGenerator;
   (* The address of x, a location, into dst: MOVAx, x's size the scale of
      an index (section 8), or MOVL n(AP) for @n(AP) *)
   PROCEDURE AddressOf(x, dst: Operand);
-    VAR from: ARRAY 64 OF CHAR; op: ARRAY 8 OF CHAR;
+    VAR op: ARRAY 8 OF CHAR;
   BEGIN
     IF x.deferred & (x.index = NIL) THEN
-      from[0] := 0X; AppendInt(from, x.offset);
-      IF x.onAP THEN Append(from, "(AP)") ELSE Append(from, "(FP)") END;
-      EmitTo("MOVL", from, dst)
+      IF x.onAP THEN Instruction2("MOVL", Displaced(x.offset, VaxInstructions.ap), Specifier(dst))
+      ELSE Instruction2("MOVL", Displaced(x.offset, VaxInstructions.fp), Specifier(dst))
+      END
     ELSE
       IF (x.index # NIL) & (Suffix(x.type) # 0X) THEN Op("MOVA", Suffix(x.type), "", op) ELSE COPY("MOVAB", op) END;
       Emit2(op, x, dst)
@@ -1921,7 +2048,6 @@ MODULE VaxCodeGenerator;
      address *)
   PROCEDURE AddressInto(e: SyntaxTree.ExprNode; dst: Operand): BOOLEAN;
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; l: Local; x: Operand;
-        from: ARRAY 64 OF CHAR;
   BEGIN
     IF ~(e IS SyntaxTree.DesignatorExprNode) THEN RETURN FALSE END;
     de := e(SyntaxTree.DesignatorExprNode);
@@ -1935,8 +2061,7 @@ MODULE VaxCodeGenerator;
       AddressOf(x, dst);
       Release(x)
     ELSIF (l # NIL) & (l.where = byReference) & (de.designator.selectors = NIL) THEN
-      from[0] := 0X; AppendInt(from, l.offset); Append(from, "(AP)");
-      EmitTo("MOVL", from, dst)
+      Instruction2("MOVL", Displaced(l.offset, VaxInstructions.ap), Specifier(dst))
     ELSE
       x := Locate(de.designator, obj, e.line, e.column);
       AddressOf(x, dst);
@@ -2043,7 +2168,7 @@ MODULE VaxCodeGenerator;
      actual's size in bytes, as on LLVM: its type's, or an open array's
      lengths multiplied by its element's size *)
   PROCEDURE OpenArgument(a: SyntaxTree.ExprNode; t: Types.Type; list, n, i: INTEGER);
-    VAR v, entry: Operand; at: Types.Type; d, dims: INTEGER; text: ARRAY 24 OF CHAR;
+    VAR v, entry: Operand; at: Types.Type; d, dims: INTEGER;
   BEGIN
     IF ConstantEvaluator.IsConstantExpr(a, scope) THEN v := StringArgument(a, 0)
     ELSE v := Expression(a, NIL)
@@ -2054,12 +2179,12 @@ MODULE VaxCodeGenerator;
     IF (dims = 1) & (OpenBase(t) = Types.Byte) THEN
       entry := ListEntry(list, n, i + 1);
       IF OpenDims(at) = 0 THEN
-        COPY("#", text); AppendInt(text, VaxTypes.Size(at)); EmitTo("MOVL", text, entry)
+        Instruction2("MOVL", Literal(VaxTypes.Size(at)), Specifier(entry))
       ELSE
         Emit2("MOVL", LengthOf(v, 0), entry);
         FOR d := 1 TO OpenDims(at) - 1 DO Emit2("MULL2", LengthOf(v, d), entry) END;
         IF VaxTypes.Size(OpenBase(at)) # 1 THEN
-          COPY("#", text); AppendInt(text, VaxTypes.Size(OpenBase(at))); EmitTo("MULL2", text, entry)
+          Instruction2("MULL2", Literal(VaxTypes.Size(OpenBase(at))), Specifier(entry))
         END
       END;
       Release(v);
@@ -2069,8 +2194,7 @@ MODULE VaxCodeGenerator;
       IF (at IS Types.ArrayType) & at(Types.ArrayType).isOpen THEN
         Emit2("MOVL", LengthOf(v, d), ListEntry(list, n, i + 1 + d))
       ELSIF at IS Types.ArrayType THEN
-        COPY("#", text); AppendInt(text, at(Types.ArrayType).length);
-        EmitTo("MOVL", text, ListEntry(list, n, i + 1 + d))
+        Instruction2("MOVL", Literal(at(Types.ArrayType).length), Specifier(ListEntry(list, n, i + 1 + d)))
       END;
       IF at IS Types.ArrayType THEN at := at(Types.ArrayType).elementType END
     END;
@@ -2108,7 +2232,7 @@ MODULE VaxCodeGenerator;
      after the call. *)
   PROCEDURE StringDescriptor(a: SyntaxTree.ExprNode; p: Types.Param; entry: Operand): Operand;
     VAR desc, length, kind, address, v: Operand; c: Types.Value; n: LONGINT;
-        text, locc: ARRAY 64 OF CHAR; label: ARRAY 16 OF CHAR; constant: BOOLEAN;
+        label: ARRAY 16 OF CHAR; constant: BOOLEAN;
   BEGIN
     desc := FrameTemporary(Types.Int64, a.line, a.column); (* two slots *)
     IF desc = NIL THEN RETURN NIL END;
@@ -2133,26 +2257,24 @@ MODULE VaxCodeGenerator;
     END;
     IF n >= 0 THEN
       IF n > 65535 THEN n := 65535 END;
-      COPY("#", text); AppendInt(text, n); EmitTo("MOVW", text, desc)
+      Instruction2("MOVW", Literal(n), Specifier(desc))
     ELSE
       (* an open array's length, its high word overwritten next *)
       Emit2("MOVL", LengthOf(v, 0), length);
       Emit2("CMPL", length, Immediate(longword, 65535));
-      NewLabel(label); Emit("BLEQU", label);
-      EmitTo("MOVW", "#65535", desc);
+      NewLabel(label); Instruction1("BLEQU", LabelRef(label));
+      Instruction2("MOVW", Literal(65535), Specifier(desc));
       EmitLabel(label)
     END;
-    EmitTo("MOVW", "#^X010E", kind); (* DSC$K_CLASS_S, 1, and DSC$K_DTYPE_T, 14 *)
+    Instruction2("MOVW", VaxInstructions.HexadecimalDigits(LongwordBits(010EH), 4), Specifier(kind)); (* DSC$K_CLASS_S, 1, and DSC$K_DTYPE_T, 14 *)
     AddressOf(v, address);
     Release(v);
     IF ~constant & ~p.isVar THEN
       (* up to the first 0X: LOCC leaves in R0 the bytes from it to the end,
          0 if there is none *)
       FreeR0R1(a.line, a.column);
-      COPY("#0, ", locc); Text(desc, text); Append(locc, text);
-      Append(locc, ", @"); Text(address, text); Append(locc, text);
-      Emit("LOCC", locc);
-      EmitTo("SUBW2", "R0", desc)
+      Instruction3("LOCC", Literal(0), Specifier(desc), DeferredThrough(address));
+      Instruction2("SUBW2", Reg(0), Specifier(desc))
     END;
     Emit2("MOVAQ", desc, entry);
     RETURN desc
@@ -2245,7 +2367,7 @@ MODULE VaxCodeGenerator;
      EmitDynamicTag) *)
   PROCEDURE ArgumentTag(a: SyntaxTree.ExprNode; addr, dst: Operand);
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; l: Local; sel: SyntaxTree.Selector;
-        t: Types.Type; rec: Types.RecordType; from: ARRAY 64 OF CHAR; text: ARRAY 160 OF CHAR;
+        t: Types.Type; rec: Types.RecordType;
   BEGIN
     de := a(SyntaxTree.DesignatorExprNode);
     obj := Resolve(de.designator.qualifier, de.designator.name, a.line, a.column);
@@ -2254,12 +2376,10 @@ MODULE VaxCodeGenerator;
     sel := de.designator.selectors;
     WHILE (sel # NIL) & (sel.next # NIL) DO sel := sel.next END;
     IF (sel = NIL) & (l # NIL) & (l.tagOffset # 0) THEN
-      from[0] := 0X; AppendInt(from, l.tagOffset); Append(from, "(AP)");
-      EmitTo("MOVL", from, dst)
+      Instruction2("MOVL", Displaced(l.tagOffset, VaxInstructions.ap), Specifier(dst))
     ELSIF (sel # NIL) & (sel IS SyntaxTree.DereferenceSelector) THEN
       Emit3("SUBL3", Immediate(Types.LongInt, 4), addr, dst);
-      Text(dst, from); text := "@"; Append(text, from); Append(text, ", "); Append(text, from);
-      Emit("MOVL", text)
+      Instruction2("MOVL", DeferredThrough(dst), Specifier(dst))
     ELSE
       t := StaticType(de.designator, obj);
       IF (t # NIL) & (t IS Types.RecordType) THEN
@@ -2267,7 +2387,7 @@ MODULE VaxCodeGenerator;
         IF (rec.name[0] = 0X) & (rec.moduleName[0] # 0X) & (rec.moduleName # module.name) THEN
           Emit1("CLRL", dst)
         ELSE
-          RecordTag(rec, text); EmitTo("MOVAB", text, dst)
+          Instruction2("MOVAB", RecordTagRef(rec), Specifier(dst))
         END
       END
     END
@@ -2357,7 +2477,7 @@ MODULE VaxCodeGenerator;
      own, the block's, the longword before it, or the static type's
      descriptor *)
   PROCEDURE ReceiverInto(m: MethodTarget; entry, tagEntry: Operand; line, column: INTEGER);
-    VAR prev: SyntaxTree.Selector; x, r: Operand; ok: ARRAY 16 OF CHAR; text: ARRAY 160 OF CHAR;
+    VAR prev: SyntaxTree.Selector; x, r: Operand; ok: ARRAY 16 OF CHAR;
   BEGIN
     CutSelectors(m.d, m.stop, prev);
     x := Locate(m.d, m.obj, line, column);
@@ -2365,7 +2485,7 @@ MODULE VaxCodeGenerator;
     IF x.standIn THEN RETURN END;
     IF m.pointer THEN
       r := NewRegisterBeside(longword, x, NIL, line, column); Emit2("MOVL", x, r); Release(x);
-      NewLabel(ok); Emit("BNEQ", ok); Trap(4, line, column); EmitLabel(ok);
+      NewLabel(ok); Instruction1("BNEQ", LabelRef(ok)); Trap(4, line, column); EmitLabel(ok);
       Emit2("MOVL", r, entry);
       IF m.called.receiverIsVar THEN
         x := NewOperand(memory, longword); x.baseOp := r; x.ownsBase := TRUE; x.offset := -4;
@@ -2378,10 +2498,8 @@ MODULE VaxCodeGenerator;
         IF m.fromParam THEN Emit2("MOVL", ParamTag(m.obj), tagEntry)
         ELSIF m.fromBlock THEN
           Emit3("SUBL3", Immediate(Types.LongInt, 4), entry, tagEntry);
-          Text(tagEntry, text); COPY(text, ok);
-          text := "@"; Append(text, ok); Append(text, ", "); Append(text, ok);
-          Emit("MOVL", text)
-        ELSE RecordTag(m.rec, text); EmitTo("MOVAB", text, tagEntry)
+          Instruction2("MOVL", DeferredThrough(tagEntry), Specifier(tagEntry))
+        ELSE Instruction2("MOVAB", RecordTagRef(m.rec), Specifier(tagEntry))
         END
       END
     END
@@ -2404,23 +2522,24 @@ MODULE VaxCodeGenerator;
     IF s # NIL THEN symbol := s.symbol ELSE symbol[0] := 0X END
   END NestedSymbol;
 
-  (* The procedure a call through a value calls, appended to target:
-     (Rn) when callee is in a register, @n(FP) when it was spilled *)
-  PROCEDURE CalleeText(callee: Operand; VAR target: ARRAY OF CHAR);
-    VAR text: OperandText;
+  (* The procedure a call calls: through a value, (Rn) when callee is in a
+     register, @n(FP) when it was spilled; else symbol, G^ when outside *)
+  PROCEDURE CalledRef(callee: Operand; symbol: ARRAY OF CHAR; outside: BOOLEAN): OperandSpecifier;
+    VAR spec: OperandSpecifier;
   BEGIN
-    Text(callee, text);
-    IF callee.kind = register THEN AppendChar(target, "("); Append(target, text); AppendChar(target, ")")
-    ELSE AppendChar(target, "@"); Append(target, text)
-    END
-  END CalleeText;
+    IF callee # NIL THEN spec := DeferredThrough(callee)
+    ELSIF outside THEN spec := ExternalRef(symbol)
+    ELSE spec := LabelRef(symbol)
+    END;
+    RETURN spec
+  END CalledRef;
 
   PROCEDURE Call(d: SyntaxTree.Designator; args: SyntaxTree.ExprNode; line, column: INTEGER): Operand;
     CONST maxCopies = 16;
     VAR obj: SymbolTable.Object; pt: Types.ProcedureType; p: Types.Param; a: SyntaxTree.ExprNode;
         v, entry, callee: Operand; copy: ARRAY maxCopies OF Operand; n, i, list, copies, first: INTEGER;
-        symbol: VaxTypes.Symbol; text: ARRAY 160 OF CHAR; target: ARRAY 200 OF CHAR; external, outside: BOOLEAN;
-        m: MethodTarget; a1, ok: ARRAY 24 OF CHAR; t: Types.Type;
+        symbol: VaxTypes.Symbol; text: ARRAY 160 OF CHAR; external, outside: BOOLEAN;
+        m: MethodTarget; ok: ARRAY 24 OF CHAR; t: Types.Type;
         nested: NestedProcedures.NestedProc; need: NestedProcedures.Need; dim: INTEGER;
   BEGIN
     obj := Resolve(d.qualifier, d.name, line, column);
@@ -2498,7 +2617,7 @@ MODULE VaxCodeGenerator;
       v := Locate(d, obj, line, column);
       callee := NewRegisterFrom(t, 2, line, column);
       MoveInto(v, callee); Release(v);
-      NewLabel(ok); Emit("BNEQ", ok); Trap(4, line, column); EmitLabel(ok)
+      NewLabel(ok); Instruction1("BNEQ", LabelRef(ok)); Trap(4, line, column); EmitLabel(ok)
     ELSIF m # NIL THEN
       outside := ~m.indirect & MethodSymbol(m.owner, m.called.name, symbol)
     ELSIF nested # NIL THEN
@@ -2510,16 +2629,11 @@ MODULE VaxCodeGenerator;
     END;
     IF n = 0 THEN
       FreeR0R1(line, column);
-      COPY("#0, ", target);
-      IF callee # NIL THEN CalleeText(callee, target)
-      ELSIF outside THEN AppendExternal(target, symbol)
-      ELSE Append(target, symbol)
-      END;
-      Emit("CALLS", target)
+      Instruction2("CALLS", Literal(0), CalledRef(callee, symbol, outside))
     ELSE
       list := AllocateSlots(n + 1);
       IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN NIL END;
-      COPY("#", text); AppendInt(text, n); EmitTo("MOVL", text, ListEntry(list, n, 0));
+      Instruction2("MOVL", Literal(n), Specifier(ListEntry(list, n, 0)));
       IF m # NIL THEN
         IF first = 2 THEN ReceiverInto(m, ListEntry(list, n, 1), ListEntry(list, n, 2), line, column)
         ELSE ReceiverInto(m, ListEntry(list, n, 1), NIL, line, column)
@@ -2591,22 +2705,20 @@ MODULE VaxCodeGenerator;
         END
       END;
       FreeR0R1(line, column);
-      Text(ListEntry(list, n, 0), target); Append(target, ", ");
       IF (m # NIL) & m.indirect THEN
         (* through the ProcTab, slot i at -4(i+1) from the tag: a VAR
            receiver's tag is its second argument, a pointer's the longword
            before the block *)
-        IF first = 2 THEN Text(ListEntry(list, n, 2), a1); COPY(a1, text); Append(text, ", R1"); Emit("MOVL", text)
+        IF first = 2 THEN Instruction2("MOVL", Specifier(ListEntry(list, n, 2)), Reg(1))
         ELSE
-          Text(ListEntry(list, n, 1), a1); COPY(a1, text); Append(text, ", R1"); Emit("MOVL", text);
-          Emit("MOVL", "-4(R1), R1")
+          Instruction2("MOVL", Specifier(ListEntry(list, n, 1)), Reg(1));
+          Instruction2("MOVL", Displaced(-4, 1), Reg(1))
         END;
-        AppendChar(target, "@"); AppendInt(target, -4 * (m.slot + 1)); Append(target, "(R1)")
-      ELSIF callee # NIL THEN CalleeText(callee, target)
-      ELSIF outside THEN AppendExternal(target, symbol)
-      ELSE Append(target, symbol)
+        Instruction2("CALLG", Specifier(ListEntry(list, n, 0)),
+          VaxInstructions.Displacement(-4 * (m.slot + 1), 1, TRUE))
+      ELSE
+        Instruction2("CALLG", Specifier(ListEntry(list, n, 0)), CalledRef(callee, symbol, outside))
       END;
-      Emit("CALLG", target);
       ReleaseSlots(list, n + 1);
       FOR i := 0 TO copies - 1 DO Release(copy[i]) END
     END;
@@ -2624,15 +2736,14 @@ MODULE VaxCodeGenerator;
   (* The length of x, an array, its first dimension's, into dst: a fixed
      array's as an immediate, an open array's from where it has it *)
   PROCEDURE ArrayLength(x, dst: Operand);
-    VAR text: ARRAY 24 OF CHAR;
   BEGIN
     IF x.lens # NIL THEN Emit2("MOVL", LengthOf(x, 0), dst)
-    ELSE COPY("#", text); AppendInt(text, x.type(Types.ArrayType).length); EmitTo("MOVL", text, dst)
+    ELSE Instruction2("MOVL", Literal(x.type(Types.ArrayType).length), Specifier(dst))
     END
   END ArrayLength;
 
   PROCEDURE StringCompare(a, b: Operand; line, column: INTEGER): Operand;
-    VAR list: INTEGER; text: ARRAY 24 OF CHAR; target: ARRAY 64 OF CHAR;
+    VAR list: INTEGER;
   BEGIN
     a := AsString(a); b := AsString(b);
     IF ~(a.type IS Types.ArrayType) OR ~(b.type IS Types.ArrayType) THEN
@@ -2640,15 +2751,14 @@ MODULE VaxCodeGenerator;
     END;
     list := AllocateSlots(5);
     IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN Dummy() END;
-    EmitTo("MOVL", "#4", ListEntry(list, 4, 0));
+    Instruction2("MOVL", Literal(4), Specifier(ListEntry(list, 4, 0)));
     AddressOf(a, ListEntry(list, 4, 1));
     ArrayLength(a, ListEntry(list, 4, 2));
     AddressOf(b, ListEntry(list, 4, 3));
     ArrayLength(b, ListEntry(list, 4, 4));
     Release(a); Release(b);
     FreeR0R1(line, column);
-    Text(ListEntry(list, 4, 0), target); Append(target, ", "); AppendExternal(target, "POC_STRCMP");
-    Emit("CALLG", target);
+    Instruction2("CALLG", Specifier(ListEntry(list, 4, 0)), ExternalRef("POC_STRCMP"));
     AddExternal("POC_STRCMP");
     ReleaseSlots(list, 5);
     RETURN CallResult(longword)
@@ -2859,8 +2969,7 @@ MODULE VaxCodeGenerator;
      two longwords; into dest only when a is there already or dest can be
      written before b is read (WritableBefore) *)
   PROCEDURE QuadAddSub(add: BOOLEAN; t: Types.Type; a, b, dest: Operand; line, column: INTEGER): Operand;
-    VAR result, swap: Operand; low, high: ARRAY 8 OF CHAR; from, to: OperandText;
-        operands: ARRAY 160 OF CHAR;
+    VAR result, swap: Operand; low, high: ARRAY 8 OF CHAR;
   BEGIN
     IF add & ~Same(a, dest) & (Same(b, dest) OR (b.kind = register) & (a.kind # register)) THEN
       swap := a; a := b; b := swap
@@ -2873,8 +2982,8 @@ MODULE VaxCodeGenerator;
     result.type := t;
     MoveInto(a, result);
     IF add THEN COPY("ADDL2", low); COPY("ADWC", high) ELSE COPY("SUBL2", low); COPY("SBWC", high) END;
-    HalfText(b, 0, from); HalfText(result, 0, to); Operands(from, to, "", operands); Emit(low, operands);
-    HalfText(b, 1, from); HalfText(result, 1, to); Operands(from, to, "", operands); Emit(high, operands);
+    Instruction2(low, HalfSpecifier(b, 0), HalfSpecifier(result, 0));
+    Instruction2(high, HalfSpecifier(b, 1), HalfSpecifier(result, 1));
     Done(a, result); Done(b, result);
     RETURN result
   END QuadAddSub;
@@ -2896,8 +3005,7 @@ MODULE VaxCodeGenerator;
   (* a <op> b on two SYSTEM.SET64s, base BIS, BIC or XOR on each of the
      result's longwords, as QuadAddSub *)
   PROCEDURE QuadSet(base: ARRAY OF CHAR; commutes: BOOLEAN; a, b, dest: Operand; line, column: INTEGER): Operand;
-    VAR result, swap: Operand; op: ARRAY 8 OF CHAR; from, to: OperandText; operands: ARRAY 160 OF CHAR;
-        half: INTEGER;
+    VAR result, swap: Operand; op: ARRAY 8 OF CHAR; from: OperandSpecifier; half: INTEGER;
   BEGIN
     IF commutes & ~Same(a, dest) & (Same(b, dest) OR (b.kind = register) & (a.kind # register)) THEN
       swap := a; a := b; b := swap
@@ -2911,8 +3019,8 @@ MODULE VaxCodeGenerator;
     MoveInto(a, result);
     COPY(base, op); Append(op, "L2");
     FOR half := 0 TO 1 DO
-      HalfText(b, half, from); HalfText(result, half, to);
-      IF from # "#^X00000000" THEN Operands(from, to, "", operands); Emit(op, operands) END
+      from := HalfSpecifier(b, half);
+      IF ~IsHexZero(from) THEN Instruction2(op, from, HalfSpecifier(result, half)) END
     END;
     Done(a, result); Done(b, result);
     RETURN result
@@ -2921,12 +3029,12 @@ MODULE VaxCodeGenerator;
   (* NOT x, x a SYSTEM.SET64: a constant's bits, or MCOML of each longword
      into a register pair *)
   PROCEDURE Complement64(x: Operand; line, column: INTEGER): Operand;
-    VAR r: Operand; from, to: OperandText; operands: ARRAY 160 OF CHAR; half: INTEGER;
+    VAR r: Operand; half: INTEGER;
   BEGIN
     IF x.kind = immediate THEN x.bits := -x.bits; x.bitsHigh := -x.bitsHigh; RETURN x END;
     IF x.kind = register THEN r := x ELSE r := NewRegisterBeside(Types.Set64, x, NIL, line, column) END;
     FOR half := 0 TO 1 DO
-      HalfText(x, half, from); HalfText(r, half, to); Operands(from, to, "", operands); Emit("MCOML", operands)
+      Instruction2("MCOML", HalfSpecifier(x, half), HalfSpecifier(r, half))
     END;
     Done(x, r); r.type := Types.Set64;
     RETURN r
@@ -2947,14 +3055,14 @@ MODULE VaxCodeGenerator;
     Op("DIV", s, "3", op); Emit3(op, b, a, q);
     Op("MUL", s, "3", op); Emit3(op, q, b, r);
     Op("SUB", s, "3", op); Emit3(op, r, a, r);
-    Emit("BEQL", done);
+    Instruction1("BEQL", LabelRef(done));
     IF isDiv THEN
       Op("XOR", s, "2", op); Emit2(op, b, r);
-      Emit("BGEQ", done);
+      Instruction1("BGEQ", LabelRef(done));
       Op("DEC", s, "", op); Emit1(op, q)
     ELSE
       Op("XOR", s, "3", op); Emit3(op, b, r, q);
-      Emit("BGEQ", done);
+      Instruction1("BGEQ", LabelRef(done));
       Op("ADD", s, "2", op); Emit2(op, b, r)
     END;
     EmitLabel(done);
@@ -2979,17 +3087,16 @@ MODULE VaxCodeGenerator;
      7), name(a, b), each by reference (InMemory), its result in R0 and
      R1 *)
   PROCEDURE QuadRuntime(name: ARRAY OF CHAR; t: Types.Type; a, b: Operand; line, column: INTEGER): Operand;
-    VAR list: INTEGER; x: Operand; target: ARRAY 64 OF CHAR;
+    VAR list: INTEGER; x: Operand;
   BEGIN
     InMemory(a); InMemory(b);
     list := AllocateSlots(3);
     IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN Dummy() END;
-    EmitTo("MOVL", "#2", ListEntry(list, 2, 0));
+    Instruction2("MOVL", Literal(2), Specifier(ListEntry(list, 2, 0)));
     Emit2("MOVAQ", a, ListEntry(list, 2, 1));
     Emit2("MOVAQ", b, ListEntry(list, 2, 2));
     FreeR0R1(line, column);
-    Text(ListEntry(list, 2, 0), target); Append(target, ", "); AppendExternal(target, name);
-    Emit("CALLG", target);
+    Instruction2("CALLG", Specifier(ListEntry(list, 2, 0)), ExternalRef(name));
     AddExternal(name);
     ReleaseSlots(list, 3); Release(a); Release(b);
     x := CallResult(t);
@@ -2999,16 +3106,15 @@ MODULE VaxCodeGenerator;
   (* name(x), a call of poc's runtime with x, a quadword or a LONGREAL, by
      reference (InMemory): its result, of type t, in R0, or R0 and R1 *)
   PROCEDURE RuntimeOf(name: ARRAY OF CHAR; x: Operand; t: Types.Type; line, column: INTEGER): Operand;
-    VAR list: INTEGER; target: ARRAY 64 OF CHAR;
+    VAR list: INTEGER;
   BEGIN
     InMemory(x);
     list := AllocateSlots(2);
     IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN Dummy() END;
-    EmitTo("MOVL", "#1", ListEntry(list, 1, 0));
+    Instruction2("MOVL", Literal(1), Specifier(ListEntry(list, 1, 0)));
     Emit2("MOVAQ", x, ListEntry(list, 1, 1));
     FreeR0R1(line, column);
-    Text(ListEntry(list, 1, 0), target); Append(target, ", "); AppendExternal(target, name);
-    Emit("CALLG", target);
+    Instruction2("CALLG", Specifier(ListEntry(list, 1, 0)), ExternalRef(name));
     AddExternal(name);
     ReleaseSlots(list, 2); Release(x);
     RETURN CallResult(t)
@@ -3096,7 +3202,7 @@ MODULE VaxCodeGenerator;
       r := NewRegisterBeside(Types.LongReal, x, NIL, line, column);
       Emit2("CVTLG", x, r);
       NewLabel(done);
-      Emit("BGEQ", done);
+      Instruction1("BGEQ", LabelRef(done));
       Emit2("ADDG2", RealImmediate(Types.LongReal, "4294967296.0"), r);
       EmitLabel(done);
       Release(x); x := r;
@@ -3156,16 +3262,15 @@ MODULE VaxCodeGenerator;
 
   PROCEDURE SetFlag(d: Operand; label: ARRAY OF CHAR);
   BEGIN
-    EmitTo("MOVB", "#1", d);
+    Instruction2("MOVB", Literal(1), Specifier(d));
     EmitLabel(label)
   END SetFlag;
 
   (* CMPL a, b, or TSTL a when b is zero *)
-  PROCEDURE Compare(a, b: ARRAY OF CHAR; bIsZero: BOOLEAN);
-    VAR operands: ARRAY 160 OF CHAR;
+  PROCEDURE Compare(a, b: OperandSpecifier; bIsZero: BOOLEAN);
   BEGIN
-    IF bIsZero THEN Emit("TSTL", a)
-    ELSE Operands(a, b, "", operands); Emit("CMPL", operands)
+    IF bIsZero THEN Instruction1("TSTL", a)
+    ELSE Instruction2("CMPL", a, b)
     END
   END Compare;
 
@@ -3173,25 +3278,23 @@ MODULE VaxCodeGenerator;
      equal, the low ones unsigned; a CARD64's high longwords unsigned too
      (section 20, proposal 2) *)
   PROCEDURE QuadRelation(op: INTEGER; a, b: Operand; line, column: INTEGER): Operand;
-    VAR d: Operand; isTrue, isFalse: ARRAY 16 OF CHAR; ahi, bhi, alo, blo: OperandText;
-        low: ARRAY 8 OF CHAR;
+    VAR d: Operand; isTrue, isFalse: ARRAY 16 OF CHAR; low: ARRAY 8 OF CHAR;
   BEGIN
     d := NewFlag(a, b, line, column);
     IF op # Lexer.equal THEN NewLabel(isTrue) END;
     NewLabel(isFalse);
-    HalfText(a, 1, ahi); HalfText(b, 1, bhi); HalfText(a, 0, alo); HalfText(b, 0, blo);
-    Compare(ahi, bhi, IsZero(b));
-    IF op = Lexer.equal THEN Emit("BNEQ", isFalse)
-    ELSIF op = Lexer.notEqual THEN Emit("BNEQ", isTrue)
+    Compare(HalfSpecifier(a, 1), HalfSpecifier(b, 1), IsZero(b));
+    IF op = Lexer.equal THEN Instruction1("BNEQ", LabelRef(isFalse))
+    ELSIF op = Lexer.notEqual THEN Instruction1("BNEQ", LabelRef(isTrue))
     ELSIF IsCardinal(a.type) & ((op = Lexer.less) OR (op = Lexer.lessEqual)) THEN
-      Emit("BLSSU", isTrue); Emit("BGTRU", isFalse)
-    ELSIF IsCardinal(a.type) THEN Emit("BGTRU", isTrue); Emit("BLSSU", isFalse)
-    ELSIF (op = Lexer.less) OR (op = Lexer.lessEqual) THEN Emit("BLSS", isTrue); Emit("BGTR", isFalse)
-    ELSE Emit("BGTR", isTrue); Emit("BLSS", isFalse)
+      Instruction1("BLSSU", LabelRef(isTrue)); Instruction1("BGTRU", LabelRef(isFalse))
+    ELSIF IsCardinal(a.type) THEN Instruction1("BGTRU", LabelRef(isTrue)); Instruction1("BLSSU", LabelRef(isFalse))
+    ELSIF (op = Lexer.less) OR (op = Lexer.lessEqual) THEN Instruction1("BLSS", LabelRef(isTrue)); Instruction1("BGTR", LabelRef(isFalse))
+    ELSE Instruction1("BGTR", LabelRef(isTrue)); Instruction1("BLSS", LabelRef(isFalse))
     END;
-    Compare(alo, blo, IsZero(b));
+    Compare(HalfSpecifier(a, 0), HalfSpecifier(b, 0), IsZero(b));
     FalseBranch(op, TRUE, low);
-    Emit(low, isFalse);
+    Instruction1(low, LabelRef(isFalse));
     IF op # Lexer.equal THEN EmitLabel(isTrue) END;
     SetFlag(d, isFalse);
     Release(a); Release(b);
@@ -3256,7 +3359,7 @@ MODULE VaxCodeGenerator;
     NewLabel(isFalse);
     CompareOperands(a, b);
     FalseBranch(op, IsUnsigned(a.type), branch);
-    Emit(branch, isFalse);
+    Instruction1(branch, LabelRef(isFalse));
     SetFlag(d, isFalse);
     Release(a); Release(b);
     RETURN d
@@ -3269,20 +3372,18 @@ MODULE VaxCodeGenerator;
      tested, or, for a constant x, the bit is taken from the register
      holding it *)
   PROCEDURE In64(x, s: Operand; line, column: INTEGER): Operand;
-    VAR d, r: Operand; isFalse: ARRAY 16 OF CHAR; operands: ARRAY 160 OF CHAR; pos, base: OperandText;
+    VAR d, r: Operand; isFalse: ARRAY 16 OF CHAR;
   BEGIN
     IF s.kind = immediate THEN s := InRegister(s, line, column) END;
     IF x.kind = immediate THEN
       d := NewFlag(x, s, line, column);
       IF (x.value >= 0) & (x.value <= 63) THEN
         NewLabel(isFalse);
-        COPY("#", pos);
         IF s.kind = register THEN
-          AppendInt(pos, x.value MOD 32); HalfText(s, SHORT(x.value DIV 32), base)
+          Instruction3("BBC", Literal(x.value MOD 32), HalfSpecifier(s, SHORT(x.value DIV 32)), LabelRef(isFalse))
         ELSE
-          AppendInt(pos, x.value); Text(s, base)
+          Instruction3("BBC", Literal(x.value), Specifier(s), LabelRef(isFalse))
         END;
-        Operands(pos, base, isFalse, operands); Emit("BBC", operands);
         SetFlag(d, isFalse)
       END;
       Release(x); Release(s);
@@ -3291,18 +3392,17 @@ MODULE VaxCodeGenerator;
     IF ~IsQuad(x) THEN x := Widen(x, longword, line, column) END;
     IF s.kind = register THEN
       r := NewRegisterBeside(longword, x, s, line, column);
-      HalfText(x, 0, pos); Text(r, base); Operands(pos, base, "", operands); Emit("MNEGL", operands);
+      Instruction2("MNEGL", HalfSpecifier(x, 0), Specifier(r));
       Emit3("ASHQ", r, s, s);
       Release(r)
     END;
     d := NewFlag(x, s, line, column);
     NewLabel(isFalse);
-    IF IsQuad(x) THEN HalfText(x, 1, pos); Emit("TSTL", pos); Emit("BNEQ", isFalse) END;
-    HalfText(x, 0, pos); Operands(pos, "#63", "", operands); Emit("CMPL", operands);
-    Emit("BGTRU", isFalse);
-    Text(s, base);
-    IF s.kind = register THEN Operands(base, isFalse, "", operands); Emit("BLBC", operands)
-    ELSE Operands(pos, base, isFalse, operands); Emit("BBC", operands)
+    IF IsQuad(x) THEN Instruction1("TSTL", HalfSpecifier(x, 1)); Instruction1("BNEQ", LabelRef(isFalse)) END;
+    Instruction2("CMPL", HalfSpecifier(x, 0), Literal(63));
+    Instruction1("BGTRU", LabelRef(isFalse));
+    IF s.kind = register THEN Instruction2("BLBC", Specifier(s), LabelRef(isFalse))
+    ELSE Instruction3("BBC", HalfSpecifier(x, 0), Specifier(s), LabelRef(isFalse))
     END;
     SetFlag(d, isFalse);
     Release(x); Release(s);
@@ -3311,7 +3411,7 @@ MODULE VaxCodeGenerator;
 
   (* x IN s: bit x of s, FALSE when x is not 0..31 *)
   PROCEDURE In(x, s: Operand; line, column: INTEGER): Operand;
-    VAR d: Operand; isFalse: ARRAY 16 OF CHAR; operands: ARRAY 160 OF CHAR; pos, base: OperandText;
+    VAR d: Operand; isFalse: ARRAY 16 OF CHAR;
   BEGIN
     IF s.type = Types.Set64 THEN RETURN In64(x, s, line, column) END;
     IF s.kind = immediate THEN s := InRegister(s, line, column) END;
@@ -3326,12 +3426,11 @@ MODULE VaxCodeGenerator;
         Release(x); Release(s); EmitLabel(isFalse); RETURN d
       END
     ELSE
-      IF IsQuad(x) THEN HalfText(x, 1, pos); Emit("TSTL", pos); Emit("BNEQ", isFalse) END;
-      HalfText(x, 0, pos); Operands(pos, "#31", "", operands); Emit("CMPL", operands);
-      Emit("BGTRU", isFalse)
+      IF IsQuad(x) THEN Instruction1("TSTL", HalfSpecifier(x, 1)); Instruction1("BNEQ", LabelRef(isFalse)) END;
+      Instruction2("CMPL", HalfSpecifier(x, 0), Literal(31));
+      Instruction1("BGTRU", LabelRef(isFalse))
     END;
-    HalfText(x, 0, pos); Text(s, base);
-    Operands(pos, base, isFalse, operands); Emit("BBC", operands);
+    Instruction3("BBC", HalfSpecifier(x, 0), Specifier(s), LabelRef(isFalse));
     SetFlag(d, isFalse);
     Release(x); Release(s);
     RETURN d
@@ -3355,7 +3454,7 @@ MODULE VaxCodeGenerator;
      other path only. An enclosing & or OR's left side stays: it is
      brought back at that one's join, as a's is at this one's. *)
   PROCEDURE ShortCircuit(e: SyntaxTree.BinaryExprNode): Operand;
-    VAR a, b, d, back: Operand; reg: INTEGER; skip, rhs: ARRAY 16 OF CHAR; jump: ARRAY 24 OF CHAR;
+    VAR a, b, d, back: Operand; reg: INTEGER; skip, rhs: ARRAY 16 OF CHAR;
   BEGIN
     SpillAll;
     MoveOutOfR0R1(TRUE, e.line, e.column);
@@ -3369,7 +3468,7 @@ MODULE VaxCodeGenerator;
     ELSE
       NewLabel(rhs); NewLabel(skip);
       IF e.op = Lexer.ampersand THEN EmitBranch("BLBS", d, rhs) ELSE EmitBranch("BLBC", d, rhs) END;
-      COPY("L^", jump); Append(jump, skip); Emit("JMP", jump);
+      Instruction1("JMP", LongRef(skip));
       EmitLabel(rhs)
     END;
     b := Expression(e.right, NIL);
@@ -3488,7 +3587,7 @@ MODULE VaxCodeGenerator;
   END Binary;
 
   PROCEDURE Unary(e: SyntaxTree.UnaryExprNode; dest: Operand): Operand;
-    VAR v, result: Operand; op: ARRAY 8 OF CHAR; from, to: OperandText; operands: ARRAY 160 OF CHAR;
+    VAR v, result: Operand; op: ARRAY 8 OF CHAR;
   BEGIN
     v := Expression(e.operand, NIL);
     IF e.op = Lexer.plus THEN RETURN v
@@ -3504,9 +3603,9 @@ MODULE VaxCodeGenerator;
       result := Target(v.type, v, NIL, dest, e.line, e.column);
       result.type := v.type;
       IF IsQuad(v) THEN (* -(hi:lo): -hi, -lo, then the borrow from the high longword *)
-        HalfText(v, 1, from); HalfText(result, 1, to); Operands(from, to, "", operands); Emit("MNEGL", operands);
-        HalfText(v, 0, from); HalfText(result, 0, to); Operands(from, to, "", operands); Emit("MNEGL", operands);
-        HalfText(result, 1, to); Operands("#0", to, "", operands); Emit("SBWC", operands)
+        Instruction2("MNEGL", HalfSpecifier(v, 1), HalfSpecifier(result, 1));
+        Instruction2("MNEGL", HalfSpecifier(v, 0), HalfSpecifier(result, 0));
+        Instruction2("SBWC", Literal(0), HalfSpecifier(result, 1))
       ELSE
         IF v.type = Types.Set THEN COPY("MCOML", op) ELSE Op("MNEG", Suffix(v.type), "", op) END;
         Emit2(op, v, result)
@@ -3549,34 +3648,32 @@ MODULE VaxCodeGenerator;
      shifted hi places, each built by MNEGL on both longwords, a quadword
      constant other than a short literal (0..63) being avoided *)
   PROCEDURE ElementMask64(el: SyntaxTree.SetElementNode): Operand;
-    VAR lo, hi, above, mask: Operand; count, to: OperandText; operands: ARRAY 160 OF CHAR;
-      half: INTEGER;
+    VAR lo, hi, above, mask: Operand; half: INTEGER;
 
-    PROCEDURE MinusOnes(pair: Operand; low: ARRAY OF CHAR);
+    PROCEDURE MinusOnes(pair: Operand; low: LONGINT);
     BEGIN
-      HalfText(pair, 0, to); Operands(low, to, "", operands); Emit("MNEGL", operands);
-      HalfText(pair, 1, to); Operands("#1", to, "", operands); Emit("MNEGL", operands)
+      Instruction2("MNEGL", Literal(low), HalfSpecifier(pair, 0));
+      Instruction2("MNEGL", Literal(1), HalfSpecifier(pair, 1))
     END MinusOnes;
 
   BEGIN
     lo := Fit(Expression(el.low, NIL), 1, el.line, el.column);
     IF el.high = NIL THEN
       mask := NewRegisterBeside(Types.Set64, lo, NIL, el.line, el.column);
-      Text(lo, count); Text(mask, to); Operands(count, "#1", to, operands); Emit("ASHQ", operands);
+      Instruction3("ASHQ", Specifier(lo), Literal(1), Specifier(mask));
       Release(lo)
     ELSE
       hi := Fit(Expression(el.high, NIL), 1, el.line, el.column);
       above := NewRegisterBeside(Types.Set64, lo, hi, el.line, el.column);
-      MinusOnes(above, "#2");
-      Text(hi, count); Text(above, to); Operands(count, to, to, operands); Emit("ASHQ", operands);
+      MinusOnes(above, 2);
+      Instruction3("ASHQ", Specifier(hi), Specifier(above), Specifier(above));
       Release(hi);
       mask := NewRegisterBeside(Types.Set64, lo, above, el.line, el.column);
-      MinusOnes(mask, "#1");
-      Text(lo, count); Text(mask, to); Operands(count, to, to, operands); Emit("ASHQ", operands);
+      MinusOnes(mask, 1);
+      Instruction3("ASHQ", Specifier(lo), Specifier(mask), Specifier(mask));
       Release(lo);
       FOR half := 0 TO 1 DO
-        HalfText(above, half, count); HalfText(mask, half, to); Operands(count, to, "", operands);
-        Emit("BICL2", operands)
+        Instruction2("BICL2", HalfSpecifier(above, half), HalfSpecifier(mask, half))
       END;
       Release(above)
     END;
@@ -3613,8 +3710,7 @@ MODULE VaxCodeGenerator;
 
   PROCEDURE SetConstructor(e: SyntaxTree.SetExprNode; dest: Operand): Operand;
     VAR el: SyntaxTree.SetElementNode; acc, mask, constant: Operand; bits, bitsHigh: SET; lo, hi, i: LONGINT;
-        v: Types.Value; wide: BOOLEAN; t: Types.Type; from, to: OperandText; operands: ARRAY 160 OF CHAR;
-        half: INTEGER;
+        v: Types.Value; wide: BOOLEAN; t: Types.Type; from: OperandSpecifier; half: INTEGER;
   BEGIN
     bits := {}; bitsHigh := {}; acc := NIL;
     wide := IsWideConstructor(e);
@@ -3636,8 +3732,7 @@ MODULE VaxCodeGenerator;
         IF acc = NIL THEN acc := mask
         ELSE
           FOR half := 0 TO 1 DO
-            HalfText(mask, half, from); HalfText(acc, half, to); Operands(from, to, "", operands);
-            Emit("BISL2", operands)
+            Instruction2("BISL2", HalfSpecifier(mask, half), HalfSpecifier(acc, half))
           END;
           Release(mask)
         END
@@ -3654,8 +3749,8 @@ MODULE VaxCodeGenerator;
     acc.type := t;
     IF wide THEN
       FOR half := 0 TO 1 DO
-        HalfText(constant, half, from); HalfText(acc, half, to);
-        IF from # "#^X00000000" THEN Operands(from, to, "", operands); Emit("BISL2", operands) END
+        from := HalfSpecifier(constant, half);
+        IF ~IsHexZero(from) THEN Instruction2("BISL2", from, HalfSpecifier(acc, half)) END
       END
     ELSIF bits # {} THEN
       Emit2("BISL2", constant, acc)
@@ -3677,8 +3772,7 @@ MODULE VaxCodeGenerator;
      division and reals"); a HUGEINT tests its high longword and is negated
      as -x is (Unary) *)
   PROCEDURE Abs(v, dest: Operand; line, column: INTEGER): Operand;
-    VAR result: Operand; s: CHAR; op: ARRAY 8 OF CHAR; done: ARRAY 16 OF CHAR; from, to: OperandText;
-        operands: ARRAY 160 OF CHAR;
+    VAR result: Operand; s: CHAR; op: ARRAY 8 OF CHAR; done: ARRAY 16 OF CHAR;
   BEGIN
     IF ~Types.IsNumeric(v.type) THEN RETURN Dummy()
     ELSIF IsCardinal(v.type) THEN RETURN v (* section 20, proposal 6 *)
@@ -3689,17 +3783,17 @@ MODULE VaxCodeGenerator;
     NewLabel(done);
     IF s = "Q" THEN
       MoveInto(v, result);
-      HalfText(result, 1, to); Emit("TSTL", to);
-      Emit("BGEQ", done);
-      HalfText(result, 1, to); Operands(to, to, "", operands); Emit("MNEGL", operands);
-      HalfText(result, 0, to); Operands(to, to, "", operands); Emit("MNEGL", operands);
-      HalfText(result, 1, to); Operands("#0", to, "", operands); Emit("SBWC", operands)
+      Instruction1("TSTL", HalfSpecifier(result, 1));
+      Instruction1("BGEQ", LabelRef(done));
+      Instruction2("MNEGL", HalfSpecifier(result, 1), HalfSpecifier(result, 1));
+      Instruction2("MNEGL", HalfSpecifier(result, 0), HalfSpecifier(result, 0));
+      Instruction2("SBWC", Literal(0), HalfSpecifier(result, 1))
     ELSE
       IF Same(v, result) THEN Op("TST", s, "", op); Emit1(op, result)
       ELSE MoveInto(v, result) (* MOVx sets N as x is negative *)
       END;
-      Emit("BGEQ", done);
-      Op("MNEG", s, "", op); Text(result, from); Operands(from, from, "", operands); Emit(op, operands)
+      Instruction1("BGEQ", LabelRef(done));
+      Op("MNEG", s, "", op); Instruction2(op, Specifier(result), Specifier(result))
     END;
     EmitLabel(done);
     Done(v, result);
@@ -3732,7 +3826,7 @@ MODULE VaxCodeGenerator;
      SHORTINT when negative, a wider integer by an unsigned compare with
      255, a HUGEINT also when its high longword is not zero *)
   PROCEDURE Chr(v, dest: Operand; line, column: INTEGER): Operand;
-    VAR result, low: Operand; s: CHAR; op: ARRAY 8 OF CHAR; ok, trap: ARRAY 16 OF CHAR; hi: OperandText;
+    VAR result, low: Operand; s: CHAR; op: ARRAY 8 OF CHAR; ok, trap: ARRAY 16 OF CHAR;
   BEGIN
     s := Suffix(v.type);
     IF rangeChecks THEN
@@ -3740,14 +3834,14 @@ MODULE VaxCodeGenerator;
       IF (s = "B") & IsCardinal(v.type) THEN
         (* a CARD8 always fits (section 20, proposal 6) *)
       ELSIF s = "B" THEN
-        Emit1("TSTB", v); Emit("BGEQ", ok)
+        Emit1("TSTB", v); Instruction1("BGEQ", LabelRef(ok))
       ELSIF s = "Q" THEN
         NewLabel(trap);
-        HalfText(v, 1, hi); Emit("TSTL", hi); Emit("BNEQ", trap);
-        Emit2("CMPL", LowHalf(v), Immediate(longword, 255)); Emit("BLEQU", ok);
+        Instruction1("TSTL", HalfSpecifier(v, 1)); Instruction1("BNEQ", LabelRef(trap));
+        Emit2("CMPL", LowHalf(v), Immediate(longword, 255)); Instruction1("BLEQU", LabelRef(ok));
         EmitLabel(trap)
       ELSE
-        Op("CMP", s, "", op); Emit2(op, v, Immediate(v.type, 255)); Emit("BLEQU", ok)
+        Op("CMP", s, "", op); Emit2(op, v, Immediate(v.type, 255)); Instruction1("BLEQU", LabelRef(ok))
       END;
       IF ~((s = "B") & IsCardinal(v.type)) THEN Trap(14 + messageWord, line, column) END;
       EmitLabel(ok)
@@ -3797,8 +3891,8 @@ MODULE VaxCodeGenerator;
     result.type := Types.Char;
     MoveInto(v, result);
     NewLabel(done);
-    Emit2("CMPB", result, Immediate(Types.Char, 97)); Emit("BLSSU", done);
-    Emit2("CMPB", result, Immediate(Types.Char, 122)); Emit("BGTRU", done);
+    Emit2("CMPB", result, Immediate(Types.Char, 97)); Instruction1("BLSSU", LabelRef(done));
+    Emit2("CMPB", result, Immediate(Types.Char, 122)); Instruction1("BGTRU", LabelRef(done));
     Emit2("SUBB2", Immediate(Types.Char, 32), result);
     EmitLabel(done);
     Done(v, result);
@@ -3857,7 +3951,7 @@ MODULE VaxCodeGenerator;
     Release(target)
   END IncDec;
 
-  PROCEDURE ^ CopyBytes(size: LONGINT; src, dst: ARRAY OF CHAR);
+  PROCEDURE ^ CopyBytes(size: LONGINT; src, dst: OperandSpecifier);
   PROCEDURE ^ JumpOn(e: SyntaxTree.ExprNode; label: ARRAY OF CHAR; sense: BOOLEAN);
 
   (* COPY from the array at from into the one at to, either longer than
@@ -3866,39 +3960,39 @@ MODULE VaxCodeGenerator;
      where the next piece starts; then its n characters moved by MOVC3 in
      pieces, the bytes left to move on the stack, as MOVC3 overwrites
      R0-R5; then 0X where the last piece left R3 *)
-  PROCEDURE CopyLong(from, to, m: ARRAY OF CHAR);
-    VAR text: ARRAY 160 OF CHAR; search, piece, found, move, part: ARRAY 16 OF CHAR;
+  PROCEDURE CopyLong(from, to, m: OperandSpecifier);
+    VAR search, piece, found, move, part: ARRAY 16 OF CHAR;
   BEGIN
     NewLabel(search); NewLabel(piece); NewLabel(found); NewLabel(move); NewLabel(part);
-    COPY(from, text); Append(text, ", R1"); Emit("MOVAB", text);
-    COPY(m, text); Append(text, ", R2"); Emit("MOVL", text);
+    Instruction2("MOVAB", from, Reg(1));
+    Instruction2("MOVL", m, Reg(2));
     EmitLabel(search);
-    Emit("MOVL", "R2, R3");
-    COPY("R3, #", text); AppendInt(text, maxMove); Emit("CMPL", text);
-    Emit("BLEQU", piece);
-    COPY("#", text); AppendInt(text, maxMove); Append(text, ", R3"); Emit("MOVL", text);
+    Instruction2("MOVL", Reg(2), Reg(3));
+    Instruction2("CMPL", Reg(3), Literal(maxMove));
+    Instruction1("BLEQU", LabelRef(piece));
+    Instruction2("MOVL", Literal(maxMove), Reg(3));
     EmitLabel(piece);
-    Emit("LOCC", "#0, R3, (R1)");
-    Emit("BNEQ", found);
-    Emit("SUBL2", "R3, R2");
-    Emit("BNEQ", search);
+    Instruction3("LOCC", Literal(0), Reg(3), DeferredReg(1));
+    Instruction1("BNEQ", LabelRef(found));
+    Instruction2("SUBL2", Reg(3), Reg(2));
+    Instruction1("BNEQ", LabelRef(search));
     EmitLabel(found);
-    COPY(from, text); Append(text, ", R0"); Emit("MOVAB", text);
-    Emit("SUBL3", "R0, R1, -(SP)");
-    COPY(from, text); Append(text, ", R1"); Emit("MOVAB", text);
-    COPY(to, text); Append(text, ", R3"); Emit("MOVAB", text);
+    Instruction2("MOVAB", from, Reg(0));
+    Instruction3("SUBL3", Reg(0), Reg(1), Pushed());
+    Instruction2("MOVAB", from, Reg(1));
+    Instruction2("MOVAB", to, Reg(3));
     EmitLabel(move);
-    Emit("MOVL", "(SP), R0");
-    COPY("R0, #", text); AppendInt(text, maxMove); Emit("CMPL", text);
-    Emit("BLEQU", part);
-    COPY("#", text); AppendInt(text, maxMove); Append(text, ", R0"); Emit("MOVL", text);
+    Instruction2("MOVL", DeferredReg(VaxInstructions.sp), Reg(0));
+    Instruction2("CMPL", Reg(0), Literal(maxMove));
+    Instruction1("BLEQU", LabelRef(part));
+    Instruction2("MOVL", Literal(maxMove), Reg(0));
     EmitLabel(part);
-    Emit("SUBL2", "R0, (SP)");
-    Emit("MOVC3", "R0, (R1), (R3)");
-    Emit("TSTL", "(SP)");
-    Emit("BNEQ", move);
-    Emit("ADDL2", "#4, SP");
-    Emit("CLRB", "(R3)");
+    Instruction2("SUBL2", Reg(0), DeferredReg(VaxInstructions.sp));
+    Instruction3("MOVC3", Reg(0), DeferredReg(1), DeferredReg(3));
+    Instruction1("TSTL", DeferredReg(VaxInstructions.sp));
+    Instruction1("BNEQ", LabelRef(move));
+    Instruction2("ADDL2", Literal(4), Reg(VaxInstructions.sp));
+    Instruction1("CLRB", DeferredReg(3));
     used := used + {2 .. 5}
   END CopyLong;
 
@@ -3906,24 +4000,24 @@ MODULE VaxCodeGenerator;
      the address at src to the one at dst (operands' texts holding the
      addresses), by MOVC3 in pieces of at most maxMove bytes, the bytes
      left on the stack, since MOVC3 overwrites R0-R5 (section 14) *)
-  PROCEDURE MoveCounted(count, src, dst: ARRAY OF CHAR);
-    VAR text: ARRAY 160 OF CHAR; move, part: ARRAY 16 OF CHAR;
+  PROCEDURE MoveCounted(count, src, dst: OperandSpecifier);
+    VAR move, part: ARRAY 16 OF CHAR;
   BEGIN
     NewLabel(move); NewLabel(part);
-    Emit("PUSHL", count);
-    COPY(src, text); Append(text, ", R1"); Emit("MOVL", text);
-    COPY(dst, text); Append(text, ", R3"); Emit("MOVL", text);
+    Instruction1("PUSHL", count);
+    Instruction2("MOVL", src, Reg(1));
+    Instruction2("MOVL", dst, Reg(3));
     EmitLabel(move);
-    Emit("MOVL", "(SP), R0");
-    COPY("R0, #", text); AppendInt(text, maxMove); Emit("CMPL", text);
-    Emit("BLEQU", part);
-    COPY("#", text); AppendInt(text, maxMove); Append(text, ", R0"); Emit("MOVL", text);
+    Instruction2("MOVL", DeferredReg(VaxInstructions.sp), Reg(0));
+    Instruction2("CMPL", Reg(0), Literal(maxMove));
+    Instruction1("BLEQU", LabelRef(part));
+    Instruction2("MOVL", Literal(maxMove), Reg(0));
     EmitLabel(part);
-    Emit("SUBL2", "R0, (SP)");
-    Emit("MOVC3", "R0, (R1), (R3)");
-    Emit("TSTL", "(SP)");
-    Emit("BNEQ", move);
-    Emit("ADDL2", "#4, SP");
+    Instruction2("SUBL2", Reg(0), DeferredReg(VaxInstructions.sp));
+    Instruction3("MOVC3", Reg(0), DeferredReg(1), DeferredReg(3));
+    Instruction1("TSTL", DeferredReg(VaxInstructions.sp));
+    Instruction1("BNEQ", LabelRef(move));
+    Instruction2("ADDL2", Literal(4), Reg(VaxInstructions.sp));
     used := used + {2 .. 5}
   END MoveCounted;
 
@@ -3941,7 +4035,7 @@ MODULE VaxCodeGenerator;
      user 2026-10-08). *)
   PROCEDURE Copy(args: SyntaxTree.ExprNode; line, column: INTEGER);
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; x, v: Operand; lenX, lenV, n: LONGINT;
-        text: ARRAY 160 OF CHAR; from, to: OperandText; limit: ARRAY 16 OF CHAR;
+        limit: ARRAY 16 OF CHAR;
 
     (* x where MOVC5 can name it after registers change: its address in a
        slot of the frame, deferred, when it is reached through a register *)
@@ -3965,27 +4059,22 @@ MODULE VaxCodeGenerator;
        it may copy, the smaller of LEN(x) and LEN(v) - 1, found at run time
        into a slot of the frame, then CopyLong, whatever the lengths *)
     PROCEDURE CopyOpen(x, v: Operand);
-      VAR m: Operand; s: INTEGER; mt: OperandText; lenText: OperandText; text: ARRAY 160 OF CHAR;
+      VAR m: Operand; s: INTEGER;
     BEGIN
       x := Settled(x); v := Settled(v);
       SpillAll;
       s := AllocateSlots(1);
       m := NewOperand(memory, longword); m.offset := SlotOffset(s, 1); m.slot := s; m.slots := 1;
       ArrayLength(x, m);
-      IF v.lens # NIL THEN
-        Text(LengthOf(v, 0), lenText);
-        COPY("#1, ", text); Append(text, lenText); Append(text, ", R1"); Emit("SUBL3", text)
-      ELSE
-        COPY("#", text); AppendInt(text, v.type(Types.ArrayType).length - 1); Append(text, ", R1");
-        Emit("MOVL", text)
+      IF v.lens # NIL THEN Instruction3("SUBL3", Literal(1), Specifier(LengthOf(v, 0)), Reg(1))
+      ELSE Instruction2("MOVL", Literal(v.type(Types.ArrayType).length - 1), Reg(1))
       END;
       NewLabel(limit);
-      Text(m, mt); COPY(mt, text); Append(text, ", R1"); Emit("CMPL", text);
-      Emit("BLEQU", limit);
-      COPY("R1, ", text); Append(text, mt); Emit("MOVL", text);
+      Instruction2("CMPL", Specifier(m), Reg(1));
+      Instruction1("BLEQU", LabelRef(limit));
+      Instruction2("MOVL", Reg(1), Specifier(m));
       EmitLabel(limit);
-      Text(x, from); Text(v, to);
-      CopyLong(from, to, mt);
+      CopyLong(Specifier(x), Specifier(v), Specifier(m));
       Release(m); Release(x); Release(v)
     END CopyOpen;
 
@@ -4008,13 +4097,10 @@ MODULE VaxCodeGenerator;
       n := x.type(Types.ArrayType).length - 1;
       IF n > lenV - 1 THEN n := lenV - 1 END;
       SpillAll;
-      Text(x, from); Text(v, to);
       IF n + 1 > maxMove THEN (* the n characters in pieces, then 0X where the last left R3 *)
-        CopyBytes(n, from, to); Emit("CLRB", "(R3)")
+        CopyBytes(n, Specifier(x), Specifier(v)); Instruction1("CLRB", DeferredReg(3))
       ELSE
-        COPY("#", text); AppendInt(text, n); Append(text, ", "); Append(text, from);
-        Append(text, ", #0, #"); AppendInt(text, n + 1); Append(text, ", "); Append(text, to);
-        Emit("MOVC5", text)
+        Instruction5("MOVC5", Literal(n), Specifier(x), Literal(0), Literal(n + 1), Specifier(v))
       END
     ELSE
       x := Expression(args, NIL);
@@ -4024,25 +4110,21 @@ MODULE VaxCodeGenerator;
       x := Settled(x); v := Settled(v);
       SpillAll;
       IF (lenX > maxMove) OR (lenV > maxMove) THEN
-        Text(x, from); Text(v, to);
-        COPY("#", limit);
-        IF lenX < lenV - 1 THEN AppendInt(limit, lenX) ELSE AppendInt(limit, lenV - 1) END;
-        CopyLong(from, to, limit);
+        IF lenX < lenV - 1 THEN CopyLong(Specifier(x), Specifier(v), Literal(lenX))
+        ELSE CopyLong(Specifier(x), Specifier(v), Literal(lenV - 1))
+        END;
         Release(x); Release(v);
         RETURN
       END;
       NewLabel(limit);
-      Text(x, from);
-      COPY("#0, #", text); AppendInt(text, lenX); Append(text, ", "); Append(text, from); Emit("LOCC", text);
-      COPY("R0, #", text); AppendInt(text, lenX); Append(text, ", R0"); Emit("SUBL3", text);
-      COPY("R0, #", text); AppendInt(text, lenV - 1); Emit("CMPL", text);
-      Emit("BLEQU", limit);
-      COPY("#", text); AppendInt(text, lenV - 1); Append(text, ", R0"); Emit("MOVL", text);
+      Instruction3("LOCC", Literal(0), Literal(lenX), Specifier(x));
+      Instruction3("SUBL3", Reg(0), Literal(lenX), Reg(0));
+      Instruction2("CMPL", Reg(0), Literal(lenV - 1));
+      Instruction1("BLEQU", LabelRef(limit));
+      Instruction2("MOVL", Literal(lenV - 1), Reg(0));
       EmitLabel(limit);
-      Emit("ADDL3", "#1, R0, R1");
-      Text(v, to);
-      COPY("R0, ", text); Append(text, from); Append(text, ", #0, R1, "); Append(text, to);
-      Emit("MOVC5", text)
+      Instruction3("ADDL3", Literal(1), Reg(0), Reg(1));
+      Instruction5("MOVC5", Reg(0), Specifier(x), Literal(0), Reg(1), Specifier(v))
     END;
     used := used + {2 .. 5};
     Release(x); Release(v)
@@ -4068,11 +4150,11 @@ MODULE VaxCodeGenerator;
      with n as its status (the routine, and what VMS sees, are Phase 16's,
      as POC_TRAP's are, section 9) *)
   PROCEDURE Halt(args: SyntaxTree.ExprNode);
-    VAR v: Types.Value; text: ARRAY 16 OF CHAR;
+    VAR v: Types.Value;
   BEGIN
     v := ConstantEvaluator.Evaluate(args, scope);
-    COPY("#", text); AppendInt(text, v.intVal); Emit("PUSHL", text);
-    Emit("CALLS", "#1, G^POC_HALT");
+    Instruction1("PUSHL", Literal(v.intVal));
+    Instruction2("CALLS", Literal(1), ExternalRef("POC_HALT"));
     AddExternal("POC_HALT")
   END Halt;
 
@@ -4083,24 +4165,22 @@ MODULE VaxCodeGenerator;
      (InclExcl64) takes BISL2 or BICL2 of a constant's bit on the longword
      holding it, or of ASHQ x, #1 on each longword *)
   PROCEDURE InclExcl64(include: BOOLEAN; target: Operand; e: SyntaxTree.ExprNode; line, column: INTEGER);
-    VAR x, mask: Operand; v: Types.Value; op: ARRAY 8 OF CHAR; from, to: OperandText;
-        operands: ARRAY 160 OF CHAR; half: INTEGER;
+    VAR x, mask: Operand; v: Types.Value; op: ARRAY 8 OF CHAR; half: INTEGER;
   BEGIN
     IF include THEN COPY("BISL2", op) ELSE COPY("BICL2", op) END;
     IF ConstantEvaluator.IsConstantExpr(e, scope) THEN
       v := ConstantEvaluator.Evaluate(e, scope);
       IF (v.intVal >= 0) & (v.intVal <= 63) THEN
         mask := Immediate(Types.Set, 0); mask.bits := {SHORT(v.intVal MOD 32)};
-        Text(mask, from); HalfText(target, SHORT(v.intVal DIV 32), to);
-        Operands(from, to, "", operands); Emit(op, operands)
+        Instruction2(op, Specifier(mask), HalfSpecifier(target, SHORT(v.intVal DIV 32)))
       END
     ELSE
       x := Fit(Expression(e, NIL), 1, line, column);
       mask := NewRegisterBeside(Types.Set64, x, target, line, column);
-      Text(x, from); Text(mask, to); Operands(from, "#1", to, operands); Emit("ASHQ", operands);
+      Instruction3("ASHQ", Specifier(x), Literal(1), Specifier(mask));
       Release(x);
       FOR half := 0 TO 1 DO
-        HalfText(mask, half, from); HalfText(target, half, to); Operands(from, to, "", operands); Emit(op, operands)
+        Instruction2(op, HalfSpecifier(mask, half), HalfSpecifier(target, half))
       END;
       Release(mask)
     END;
@@ -4161,7 +4241,7 @@ MODULE VaxCodeGenerator;
      longword is 0 (section 20, proposal 6) *)
   PROCEDURE Short(v, dest: Operand; line, column: INTEGER): Operand;
     VAR t: Types.Type; result: Operand; d: CHAR; op: ARRAY 8 OF CHAR; ok, negative, bad: ARRAY 16 OF CHAR;
-        hi: OperandText; operands: ARRAY 160 OF CHAR;
+        hi: OperandSpecifier;
   BEGIN
     IF v.type = Types.LongReal THEN
       result := Target(Types.Real, v, NIL, dest, line, column);
@@ -4178,8 +4258,8 @@ MODULE VaxCodeGenerator;
     IF IsQuad(v) & IsCardinal(v.type) THEN
       IF rangeChecks THEN
         NewLabel(ok);
-        HalfText(v, 1, hi);
-        Emit("TSTL", hi); Emit("BEQL", ok);
+        hi := HalfSpecifier(v, 1);
+        Instruction1("TSTL", hi); Instruction1("BEQL", LabelRef(ok));
         Trap(14, line, column);
         EmitLabel(ok)
       END;
@@ -4191,11 +4271,11 @@ MODULE VaxCodeGenerator;
     ELSIF IsQuad(v) THEN
       IF rangeChecks THEN
         NewLabel(ok); NewLabel(negative); NewLabel(bad);
-        HalfText(v, 1, hi);
-        Emit1("TSTL", LowHalf(v)); Emit("BLSS", negative);
-        Emit("TSTL", hi); Emit("BEQL", ok); Emit("BRB", bad);
+        hi := HalfSpecifier(v, 1);
+        Emit1("TSTL", LowHalf(v)); Instruction1("BLSS", LabelRef(negative));
+        Instruction1("TSTL", hi); Instruction1("BEQL", LabelRef(ok)); Instruction1("BRB", LabelRef(bad));
         EmitLabel(negative);
-        Operands(hi, "#-1", "", operands); Emit("CMPL", operands); Emit("BEQL", ok);
+        Instruction2("CMPL", hi, Literal(-1)); Instruction1("BEQL", LabelRef(ok));
         EmitLabel(bad);
         Trap(14, line, column);
         EmitLabel(ok)
@@ -4220,7 +4300,7 @@ MODULE VaxCodeGenerator;
         NewLabel(ok);
         Op("CMP", Suffix(v.type), "", op);
         IF d = "B" THEN Emit2(op, v, Immediate(v.type, 255)) ELSE Emit2(op, v, Immediate(v.type, 65535)) END;
-        Emit("BLEQU", ok);
+        Instruction1("BLEQU", LabelRef(ok));
         Trap(14, line, column);
         EmitLabel(ok)
       END;
@@ -4234,7 +4314,7 @@ MODULE VaxCodeGenerator;
       Emit2(op, v, result);
       IF rangeChecks THEN
         NewLabel(ok);
-        Emit("BVC", ok);
+        Instruction1("BVC", LabelRef(ok));
         Trap(14, line, column);
         EmitLabel(ok)
       END;
@@ -4252,7 +4332,7 @@ MODULE VaxCodeGenerator;
      proposal 5): zero-extended, and limited to 64 by unsigned compares *)
   PROCEDURE ShiftCount(n, x: Operand; line, column: INTEGER): Operand;
     VAR count: Operand; c: LONGINT; big, small, positive, done: ARRAY 16 OF CHAR;
-        hi, cnt: OperandText; operands: ARRAY 160 OF CHAR;
+        hi, cnt: OperandSpecifier;
   BEGIN
     IF n.kind = immediate THEN
       c := n.value;
@@ -4265,38 +4345,38 @@ MODULE VaxCodeGenerator;
       count := n
     ELSE
       count := NewRegisterBeside(longword, n, x, line, column);
-      Text(count, cnt);
+      cnt := Specifier(count);
       NewLabel(big); NewLabel(small); NewLabel(done);
       IF IsCardinal(n.type) THEN
         IF IsQuad(n) THEN
-          HalfText(n, 1, hi);
+          hi := HalfSpecifier(n, 1);
           Emit2("MOVL", LowHalf(n), count);
-          Emit("TSTL", hi); Emit("BNEQ", big)
+          Instruction1("TSTL", hi); Instruction1("BNEQ", LabelRef(big))
         ELSE
           MoveInto(n, count)
         END;
-        Operands(cnt, "#64", "", operands); Emit("CMPL", operands); Emit("BLEQU", done);
-        Emit("BRB", big)
+        Instruction2("CMPL", cnt, Literal(64)); Instruction1("BLEQU", LabelRef(done));
+        Instruction1("BRB", LabelRef(big))
       ELSIF IsQuad(n) THEN
         NewLabel(positive);
-        HalfText(n, 1, hi);
+        hi := HalfSpecifier(n, 1);
         Emit2("MOVL", LowHalf(n), count);
-        Emit("TSTL", hi); Emit("BEQL", positive); Emit("BGTR", big);
-        Operands(hi, "#-1", "", operands); Emit("CMPL", operands); Emit("BNEQ", small);
-        Operands(cnt, "#-64", "", operands); Emit("CMPL", operands); Emit("BGEQU", done);
-        Emit("BRB", small);
+        Instruction1("TSTL", hi); Instruction1("BEQL", LabelRef(positive)); Instruction1("BGTR", LabelRef(big));
+        Instruction2("CMPL", hi, Literal(-1)); Instruction1("BNEQ", LabelRef(small));
+        Instruction2("CMPL", cnt, Literal(-64)); Instruction1("BGEQU", LabelRef(done));
+        Instruction1("BRB", LabelRef(small));
         EmitLabel(positive);
-        Operands(cnt, "#64", "", operands); Emit("CMPL", operands); Emit("BLEQU", done);
-        Emit("BRB", big)
+        Instruction2("CMPL", cnt, Literal(64)); Instruction1("BLEQU", LabelRef(done));
+        Instruction1("BRB", LabelRef(big))
       ELSE
         MoveInto(n, count);
-        Operands(cnt, "#64", "", operands); Emit("CMPL", operands); Emit("BGTR", big);
-        Operands(cnt, "#-64", "", operands); Emit("CMPL", operands); Emit("BGEQ", done)
+        Instruction2("CMPL", cnt, Literal(64)); Instruction1("BGTR", LabelRef(big));
+        Instruction2("CMPL", cnt, Literal(-64)); Instruction1("BGEQ", LabelRef(done))
       END;
       EmitLabel(small);
-      Operands("#-64", cnt, "", operands); Emit("MOVL", operands); Emit("BRB", done);
+      Instruction2("MOVL", Literal(-64), cnt); Instruction1("BRB", LabelRef(done));
       EmitLabel(big);
-      Operands("#64", cnt, "", operands); Emit("MOVL", operands);
+      Instruction2("MOVL", Literal(64), cnt);
       EmitLabel(done);
       Release(n)
     END;
@@ -4367,20 +4447,19 @@ MODULE VaxCodeGenerator;
      is an arithmetic one of 1 bit, the sign bit cleared, then one of
      k - 1 bits more *)
   PROCEDURE LogicalShift(x, n: Operand; line, column: INTEGER): Operand;
-    VAR t: Types.Type; count, r: Operand; op: ARRAY 8 OF CHAR; signBit: OperandText;
-        right, done: ARRAY 16 OF CHAR; operands: ARRAY 160 OF CHAR;
+    VAR t: Types.Type; count, r: Operand; op: ARRAY 8 OF CHAR; signBit: OperandSpecifier;
+        right, done: ARRAY 16 OF CHAR;
   BEGIN
     t := x.type;
     r := ZeroExtended(x, line, column);
     count := ShiftCount(n, r, line, column);
-    IF IsQuad(r) THEN COPY("ASHQ", op); HalfText(r, 1, signBit) ELSE COPY("ASHL", op); Text(r, signBit) END;
-    Operands("#^X80000000", signBit, "", operands);
+    IF IsQuad(r) THEN COPY("ASHQ", op); signBit := HalfSpecifier(r, 1) ELSE COPY("ASHL", op); signBit := Specifier(r) END;
     IF count.kind = immediate THEN
       IF count.value >= 0 THEN
         IF count.value # 0 THEN Emit3(op, count, r, r) END
       ELSE
         Emit3(op, Immediate(Types.ShortInt, -1), r, r);
-        Emit("BICL2", operands);
+        Instruction2("BICL2", VaxInstructions.Hexadecimal({31}), signBit);
         IF count.value # -1 THEN Emit3(op, Immediate(Types.ShortInt, count.value + 1), r, r) END
       END
     ELSE
@@ -4393,11 +4472,11 @@ MODULE VaxCodeGenerator;
       END;
       count.type := longword;
       NewLabel(right); NewLabel(done);
-      Emit1("TSTL", count); Emit("BLSS", right);
-      Emit3(op, count, r, r); Emit("BRB", done);
+      Emit1("TSTL", count); Instruction1("BLSS", LabelRef(right));
+      Emit3(op, count, r, r); Instruction1("BRB", LabelRef(done));
       EmitLabel(right);
       Emit3(op, Immediate(Types.ShortInt, -1), r, r);
-      Emit("BICL2", operands);
+      Instruction2("BICL2", VaxInstructions.Hexadecimal({31}), signBit);
       Emit1("INCL", count);
       Emit3(op, count, r, r);
       EmitLabel(done);
@@ -4468,8 +4547,7 @@ MODULE VaxCodeGenerator;
      A quadword n is split: the byte n DIV 8 (ASHQ) added to the base, and
      n MOD 8 its position *)
   PROCEDURE Bit(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
-    VAR a, n, base, pos, q, r: Operand; posText, baseText: OperandText; zero: ARRAY 16 OF CHAR;
-        operands: ARRAY 160 OF CHAR;
+    VAR a, n, base, pos, q, r: Operand; zero: ARRAY 16 OF CHAR;
   BEGIN
     a := Expression(args, NIL);
     n := Expression(args.next, NIL);
@@ -4488,11 +4566,9 @@ MODULE VaxCodeGenerator;
       pos := Widen(n, longword, line, column)
     END;
     r := NewRegisterBeside(Types.Boolean, base, pos, line, column);
-    baseText := "("; Text(base, posText); Append(baseText, posText); AppendChar(baseText, ")");
-    Text(pos, posText);
     NewLabel(zero);
     Emit1("CLRB", r);
-    Operands(posText, baseText, zero, operands); Emit("BBC", operands);
+    Instruction3("BBC", Specifier(pos), DeferredThrough(base), LabelRef(zero));
     Emit1("INCB", r);
     EmitLabel(zero);
     Release(base); IF pos.kind # immediate THEN Release(pos) END;
@@ -4504,7 +4580,7 @@ MODULE VaxCodeGenerator;
      open array (a fixed one's is folded): its length, a LONGINT - under
      -OC a quadword, its high longword zero (section 14) *)
   PROCEDURE Len(args: SyntaxTree.ExprNode; line, column: INTEGER): Operand;
-    VAR x, r: Operand; v: Types.Value; dim: INTEGER; hi: OperandText;
+    VAR x, r: Operand; v: Types.Value; dim: INTEGER;
   BEGIN
     x := Expression(args, NIL);
     IF x.standIn THEN RETURN x END;
@@ -4516,7 +4592,7 @@ MODULE VaxCodeGenerator;
     r := NewRegister(Types.LongInt, line, column);
     IF IsQuad(r) THEN
       Emit2("MOVL", LengthOf(x, dim), LowHalf(r));
-      HalfText(r, 1, hi); Emit("CLRL", hi)
+      Instruction1("CLRL", HalfSpecifier(r, 1))
     ELSE
       Emit2("MOVL", LengthOf(x, dim), r)
     END;
@@ -4529,7 +4605,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE TrapUnless(branch: ARRAY OF CHAR; code, line, column: INTEGER);
     VAR ok: ARRAY 16 OF CHAR;
   BEGIN
-    NewLabel(ok); Emit(branch, ok); Trap(code, line, column); EmitLabel(ok)
+    NewLabel(ok); Instruction1(branch, LabelRef(ok)); Trap(code, line, column); EmitLabel(ok)
   END TrapUnless;
 
   (* After Allocate's CALLG, with -trap-heap-exhausted: R0 0, no block,
@@ -4537,7 +4613,7 @@ MODULE VaxCodeGenerator;
      without it, nothing, and p is left NIL *)
   PROCEDURE HeapCheck(line, column: INTEGER);
   BEGIN
-    IF trapHeapExhausted THEN Emit("TSTL", "R0"); TrapUnless("BNEQ", 11, line, column) END
+    IF trapHeapExhausted THEN Instruction1("TSTL", Reg(0)); TrapUnless("BNEQ", 11, line, column) END
   END HeapCheck;
 
   (* ENTIER(x), x a real: the largest LONGINT not greater than x (section
@@ -4550,18 +4626,20 @@ MODULE VaxCodeGenerator;
      no VAX instruction converts to: POC_ENTIERQ, with x by reference as a
      G_floating (a REAL widened first, exactly), its result in R0 and R1 *)
   PROCEDURE Entier(v: Operand; line, column: INTEGER): Operand;
-    VAR s: CHAR; n, back, g: Operand; op: ARRAY 8 OF CHAR; low, high: ARRAY 32 OF CHAR;
-        bad, done: ARRAY 16 OF CHAR; tv: OperandText; operands: ARRAY 160 OF CHAR;
+    VAR s: CHAR; n, back, g: Operand; op: ARRAY 8 OF CHAR; low, high: OperandSpecifier;
+        bad, done: ARRAY 16 OF CHAR;
   BEGIN
     IF ~IsReal(v.type) THEN RETURN Dummy() END;
     s := Suffix(v.type);
-    IF Suffix(Types.LongInt) = "L" THEN COPY("#-2147483648.0", low); COPY("#2147483648.0", high)
-    ELSE COPY("#-9223372036854775808.0", low); COPY("#9223372036854775808.0", high)
+    IF Suffix(Types.LongInt) = "L" THEN
+      low := VaxInstructions.Real("-2147483648.0", s); high := VaxInstructions.Real("2147483648.0", s)
+    ELSE
+      low := VaxInstructions.Real("-9223372036854775808.0", s); high := VaxInstructions.Real("9223372036854775808.0", s)
     END;
     NewLabel(bad); NewLabel(done);
-    Op("CMP", s, "", op); Text(v, tv);
-    Operands(tv, low, "", operands); Emit(op, operands); Emit("BLSS", bad);
-    Operands(tv, high, "", operands); Emit(op, operands); Emit("BLSS", done);
+    Op("CMP", s, "", op);
+    Instruction2(op, Specifier(v), low); Instruction1("BLSS", LabelRef(bad));
+    Instruction2(op, Specifier(v), high); Instruction1("BLSS", LabelRef(done));
     EmitLabel(bad); Trap(8, line, column); EmitLabel(done);
     IF Suffix(Types.LongInt) = "L" THEN
       n := NewRegisterBeside(Types.LongInt, v, NIL, line, column);
@@ -4569,7 +4647,7 @@ MODULE VaxCodeGenerator;
       back := NewRegisterBeside(v.type, v, n, line, column);
       COPY("CVTL", op); AppendChar(op, s); Emit2(op, n, back);
       NewLabel(done);
-      Op("CMP", s, "", op); Emit2(op, back, v); Emit("BLEQ", done);
+      Op("CMP", s, "", op); Emit2(op, back, v); Instruction1("BLEQ", LabelRef(done));
       Emit1("DECL", n);
       EmitLabel(done);
       Release(back); Release(v);
@@ -4637,13 +4715,12 @@ MODULE VaxCodeGenerator;
   (* rec's initialization procedure called with addr, a register holding
      the address of a record of type rec: CALLS #1, the address pushed *)
   PROCEDURE InitRecordAt(addr: Operand; rec: Types.RecordType; line, column: INTEGER);
-    VAR symbol: VaxTypes.Symbol; target: ARRAY 64 OF CHAR;
+    VAR symbol: VaxTypes.Symbol; called: OperandSpecifier;
   BEGIN
-    COPY("#1, ", target);
-    IF InitSymbol(rec, symbol, line, column) THEN AppendExternal(target, symbol) ELSE Append(target, symbol) END;
+    IF InitSymbol(rec, symbol, line, column) THEN called := ExternalRef(symbol) ELSE called := LabelRef(symbol) END;
     Emit1("PUSHL", addr);
     FreeR0R1(line, column);
-    Emit("CALLS", target)
+    Instruction2("CALLS", Literal(1), called)
   END InitRecordAt;
 
   (* count records of the type element's innermost element type (a fixed
@@ -4651,7 +4728,7 @@ MODULE VaxCodeGenerator;
      initialized: a loop over them, its registers from R2, which a call
      keeps, pinned. count an operand of a longword, at least 1 *)
   PROCEDURE InitElements(addr: Operand; element: Types.Type; count: Operand; line, column: INTEGER);
-    VAR p, c: Operand; size, n: LONGINT; loop, done: ARRAY 16 OF CHAR; target: ARRAY 24 OF CHAR;
+    VAR p, c: Operand; size, n: LONGINT; loop, done: ARRAY 16 OF CHAR;
   BEGIN
     p := NewRegisterFrom(longword, 2, line, column); Emit2("MOVL", addr, p); p.pinned := TRUE;
     c := NewRegisterFrom(longword, 2, line, column); c.pinned := TRUE;
@@ -4674,8 +4751,8 @@ MODULE VaxCodeGenerator;
     InitRecordAt(p, element(Types.RecordType), line, column);
     Emit2("ADDL2", Immediate(longword, size), p);
     Emit1("DECL", c);
-    Emit("BLEQ", done);
-    COPY("L^", target); Append(target, loop); Emit("JMP", target);
+    Instruction1("BLEQ", LabelRef(done));
+    Instruction1("JMP", LongRef(loop));
     EmitLabel(done);
     Release(p); Release(c)
   END InitElements;
@@ -4694,7 +4771,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE New(args: SyntaxTree.ExprNode; line, column: INTEGER);
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object; t, base, elem: Types.Type;
         target, v, q, total: Operand; e: SyntaxTree.ExprNode; dims, j, s, list: INTEGER;
-        size, offset: LONGINT; tag: ARRAY 64 OF CHAR; text: ARRAY 160 OF CHAR; hi, lo, at: OperandText;
+        size, offset: LONGINT; tag: OperandSpecifier; text: ARRAY 160 OF CHAR;
         skip, over: ARRAY 16 OF CHAR; allocate: VaxTypes.Symbol;
 
     (* the lengths' slot j *)
@@ -4705,16 +4782,14 @@ MODULE VaxCodeGenerator;
       RETURN x
     END Length;
 
-    (* total := total * factor, a longword operand's text, checked *)
-    PROCEDURE Multiply(factor: ARRAY OF CHAR);
+    (* total := total * factor, a longword, checked *)
+    PROCEDURE Multiply(factor: OperandSpecifier);
     BEGIN
       q := NewRegister(Types.HugeInt, line, column);
-      Text(total, at); Text(q, lo);
-      COPY(factor, text); Append(text, ", "); Append(text, at); Append(text, ", #0, "); Append(text, lo);
-      Emit("EMUL", text);
-      HalfText(q, 1, hi); Emit("TSTL", hi); TrapUnless("BEQL", 7, line, column);
-      HalfText(q, 0, lo); Emit("TSTL", lo); TrapUnless("BGEQ", 7, line, column);
-      EmitTo("MOVL", lo, total);
+      Instruction4("EMUL", factor, Specifier(total), Literal(0), Specifier(q));
+      Instruction1("TSTL", HalfSpecifier(q, 1)); TrapUnless("BEQL", 7, line, column);
+      Instruction1("TSTL", HalfSpecifier(q, 0)); TrapUnless("BGEQ", 7, line, column);
+      Instruction2("MOVL", HalfSpecifier(q, 0), Specifier(total));
       Release(q)
     END Multiply;
 
@@ -4741,8 +4816,8 @@ MODULE VaxCodeGenerator;
       FOR j := 0 TO dims - 1 DO
         v := Expression(e, NIL);
         IF IsQuad(v) THEN
-          HalfText(v, 1, hi); Emit("TSTL", hi); TrapUnless("BEQL", 7, line, column);
-          HalfText(v, 0, lo); EmitTo("MOVL", lo, Length(j))
+          Instruction1("TSTL", HalfSpecifier(v, 1)); TrapUnless("BEQL", 7, line, column);
+          Instruction2("MOVL", HalfSpecifier(v, 0), Specifier(Length(j)))
         ELSE
           MoveInto(v, Length(j))
         END;
@@ -4751,34 +4826,35 @@ MODULE VaxCodeGenerator;
         e := e.next
       END;
       Emit2("MOVL", Length(0), total);
-      FOR j := 1 TO dims - 1 DO Text(Length(j), at); Multiply(at) END;
+      FOR j := 1 TO dims - 1 DO Multiply(Specifier(Length(j))) END;
       elem := OpenBase(base);
       size := VaxTypes.Size(elem);
-      IF size # 1 THEN COPY("#", at); AppendInt(at, size); Multiply(at) END;
+      IF size # 1 THEN Multiply(Literal(size)) END;
       offset := DataOffset(base);
       IF offset # 0 THEN
-        COPY("#", text); AppendInt(text, offset); EmitTo("ADDL2", text, total);
+        Instruction2("ADDL2", Literal(offset), Specifier(total));
         TrapUnless("BVC", 7, line, column)
       END;
-      ArrayTag(elem, tag)
+      tag := ArrayTagRef(elem)
     ELSIF base IS Types.RecordType THEN
-      RecordTag(base(Types.RecordType), tag)
+      tag := RecordTagRef(base(Types.RecordType))
     ELSE
-      ArrayTag(base(Types.ArrayType).elementType, tag)
+      tag := ArrayTagRef(base(Types.ArrayType).elementType)
     END;
     target := Locate(de.designator, obj, de.line, de.column);
     list := AllocateSlots(3);
     IF list < 0 THEN Unsupported(line, column, "NEW when the frame is full"); RETURN END;
-    EmitTo("MOVL", "#2", ListEntry(list, 2, 0));
+    Instruction2("MOVL", Literal(2), Specifier(ListEntry(list, 2, 0)));
     IF total # NIL THEN Emit2("MOVL", total, ListEntry(list, 2, 1))
-    ELSE COPY("#", text); AppendInt(text, VaxTypes.Size(base)); EmitTo("MOVL", text, ListEntry(list, 2, 1))
+    ELSE Instruction2("MOVL", Literal(VaxTypes.Size(base)), Specifier(ListEntry(list, 2, 1)))
     END;
-    IF tag[0] = 0X THEN Emit1("CLRL", ListEntry(list, 2, 2)) ELSE EmitTo("MOVAB", tag, ListEntry(list, 2, 2)) END;
+    IF tag = NIL THEN Emit1("CLRL", ListEntry(list, 2, 2))
+    ELSE Instruction2("MOVAB", tag, Specifier(ListEntry(list, 2, 2)))
+    END;
     FreeR0R1(line, column);
     VaxTypes.MakeSymbol("GarbageCollectedHeap.Allocate", allocate);
     AddExternal(allocate);
-    Text(ListEntry(list, 2, 0), text); Append(text, ", "); AppendExternal(text, allocate);
-    Emit("CALLG", text);
+    Instruction2("CALLG", Specifier(ListEntry(list, 2, 0)), ExternalRef(allocate));
     HeapCheck(line, column);
     ReleaseSlots(list, 3);
     IF dims > 0 THEN
@@ -4787,31 +4863,30 @@ MODULE VaxCodeGenerator;
          byte branch, which reaches 127, skips 11; past that a byte branch
          goes over a JMP L^ that does *)
       NewLabel(skip);
-      Emit("TSTL", "R0");
-      IF dims <= 11 THEN Emit("BEQL", skip)
+      Instruction1("TSTL", Reg(0));
+      IF dims <= 11 THEN Instruction1("BEQL", LabelRef(skip))
       ELSE
-        NewLabel(over); Emit("BNEQ", over);
-        COPY("L^", text); Append(text, skip); Emit("JMP", text);
+        NewLabel(over); Instruction1("BNEQ", LabelRef(over));
+        Instruction1("JMP", LongRef(skip));
         EmitLabel(over)
       END;
       FOR j := 0 TO dims - 1 DO
-        Text(Length(j), at); COPY(at, text); Append(text, ", ");
-        IF j > 0 THEN AppendInt(text, 4 * j) END;
-        Append(text, "(R0)");
-        Emit("MOVL", text)
+        IF j > 0 THEN Instruction2("MOVL", Specifier(Length(j)), Displaced(4 * j, 0))
+        ELSE Instruction2("MOVL", Specifier(Length(j)), DeferredReg(0))
+        END
       END;
       EmitLabel(skip)
     END;
-    EmitTo("MOVL", "R0", target);
+    Instruction2("MOVL", Reg(0), Specifier(target));
     Release(target);
     IF Types.NeedsInit(base) THEN
       (* the defaults, once p holds the block, and not if there is none *)
       v := NewRegisterFrom(longword, 2, line, column); v.pinned := TRUE;
-      EmitTo("MOVL", "R0", v);
+      Instruction2("MOVL", Reg(0), Specifier(v));
       NewLabel(skip); NewLabel(over);
-      Emit("BNEQ", over); COPY("L^", text); Append(text, skip); Emit("JMP", text); EmitLabel(over);
+      Instruction1("BNEQ", LabelRef(over)); Instruction1("JMP", LongRef(skip)); EmitLabel(over);
       IF dims > 0 THEN
-        COPY("#", text); AppendInt(text, DataOffset(base)); EmitTo("ADDL2", text, v);
+        Instruction2("ADDL2", Literal(DataOffset(base)), Specifier(v));
         total := NewRegisterFrom(longword, 2, line, column); Emit2("MOVL", Length(0), total);
         FOR j := 1 TO dims - 1 DO Emit2("MULL2", Length(j), total) END;
         InitElements(v, OpenBase(base), total, line, column); Release(total)
@@ -4835,7 +4910,7 @@ MODULE VaxCodeGenerator;
      LLVM. *)
   PROCEDURE SystemNew(args: SyntaxTree.ExprNode; line, column: INTEGER);
     VAR de: SyntaxTree.DesignatorExprNode; obj: SymbolTable.Object;
-        target, v, n: Operand; list: INTEGER; text: ARRAY 160 OF CHAR; hi, lo: OperandText;
+        target, v, n: Operand; list: INTEGER;
         allocate: VaxTypes.Symbol;
   BEGIN
     IF (args = NIL) OR ~(args IS SyntaxTree.DesignatorExprNode) OR (args.next = NIL) THEN RETURN END;
@@ -4844,9 +4919,9 @@ MODULE VaxCodeGenerator;
     IF (obj = NIL) OR (obj.class # SymbolTable.varClass) THEN RETURN END;
     v := Expression(args.next, NIL);
     IF IsQuad(v) THEN
-      HalfText(v, 1, hi); Emit("TSTL", hi); TrapUnless("BEQL", 7, line, column);
+      Instruction1("TSTL", HalfSpecifier(v, 1)); TrapUnless("BEQL", 7, line, column);
       n := NewRegisterBeside(Types.Address, v, NIL, line, column);
-      HalfText(v, 0, lo); EmitTo("MOVL", lo, n);
+      Instruction2("MOVL", HalfSpecifier(v, 0), Specifier(n));
       Release(v)
     ELSE
       n := Widen(InRegister(v, line, column), Types.Address, line, column)
@@ -4854,19 +4929,18 @@ MODULE VaxCodeGenerator;
     Emit1("TSTL", n); TrapUnless("BGTR", 7, line, column);
     list := AllocateSlots(3);
     IF list < 0 THEN Unsupported(line, column, "SYSTEM.NEW when the frame is full"); RETURN END;
-    EmitTo("MOVL", "#2", ListEntry(list, 2, 0));
+    Instruction2("MOVL", Literal(2), Specifier(ListEntry(list, 2, 0)));
     Emit2("MOVL", n, ListEntry(list, 2, 1));
     Release(n);
     Emit1("CLRL", ListEntry(list, 2, 2));
     FreeR0R1(line, column);
     VaxTypes.MakeSymbol("GarbageCollectedHeap.Allocate", allocate);
     AddExternal(allocate);
-    Text(ListEntry(list, 2, 0), text); Append(text, ", "); AppendExternal(text, allocate);
-    Emit("CALLG", text);
+    Instruction2("CALLG", Specifier(ListEntry(list, 2, 0)), ExternalRef(allocate));
     HeapCheck(line, column);
     ReleaseSlots(list, 3);
     target := Locate(de.designator, obj, de.line, de.column);
-    EmitTo("MOVL", "R0", target);
+    Instruction2("MOVL", Reg(0), Specifier(target));
     Release(target)
   END SystemNew;
 
@@ -4941,11 +5015,11 @@ MODULE VaxCodeGenerator;
      a 32-bit target), which moves as LLVM's memmove: blocks that overlap
      as through a copy, nothing when n <= 0 *)
   PROCEDURE Move(args: SyntaxTree.ExprNode; line, column: INTEGER);
-    VAR list, i: INTEGER; e: SyntaxTree.ExprNode; x, entry: Operand; target: ARRAY 64 OF CHAR;
+    VAR list, i: INTEGER; e: SyntaxTree.ExprNode; x, entry: Operand;
   BEGIN
     list := AllocateSlots(4);
     IF list < 0 THEN Unsupported(line, column, "a call when the frame is full"); RETURN END;
-    EmitTo("MOVL", "#3", ListEntry(list, 3, 0));
+    Instruction2("MOVL", Literal(3), Specifier(ListEntry(list, 3, 0)));
     e := args;
     FOR i := 1 TO 3 DO
       x := Expression(e, NIL); entry := ListEntry(list, 3, i);
@@ -4953,8 +5027,7 @@ MODULE VaxCodeGenerator;
       Release(x); e := e.next
     END;
     FreeR0R1(line, column);
-    Text(ListEntry(list, 3, 0), target); Append(target, ", "); AppendExternal(target, "POC_MOVE");
-    Emit("CALLG", target);
+    Instruction2("CALLG", Specifier(ListEntry(list, 3, 0)), ExternalRef("POC_MOVE"));
     AddExternal("POC_MOVE");
     ReleaseSlots(list, 4)
   END Move;
@@ -4966,7 +5039,6 @@ MODULE VaxCodeGenerator;
      A real is converted to nothing, only retyped. *)
   PROCEDURE Val(args: SyntaxTree.ExprNode; dest: Operand; line, column: INTEGER): Operand;
     VAR target: Types.Type; x, r: Operand; ts, xs: LONGINT; op: ARRAY 8 OF CHAR; text: ARRAY 160 OF CHAR;
-        lo, hi, from: OperandText;
   BEGIN
     target := NIL;
     IF args IS SyntaxTree.DesignatorExprNode THEN
@@ -5005,16 +5077,16 @@ MODULE VaxCodeGenerator;
          sign (ASHL #-31) for a signed integer, else 0 (a CARD, CHAR or
          BYTE), as LLVM's sext and zext *)
       r := NewRegisterBeside(target, x, NIL, line, column);
-      HalfText(r, 0, lo); HalfText(r, 1, hi); Text(x, from);
       IF xs = 4 THEN COPY("MOVL", op)
       ELSIF Types.IsInteger(x.type) & ~IsCardinal(x.type) THEN
         COPY("CVT", op); AppendChar(op, Suffix(x.type)); AppendChar(op, "L")
       ELSE COPY("MOVZ", op); AppendChar(op, Suffix(x.type)); AppendChar(op, "L")
       END;
-      Operands(from, lo, "", text); Emit(op, text);
+      Instruction2(op, Specifier(x), HalfSpecifier(r, 0));
       Release(x);
-      IF Types.IsInteger(x.type) & ~IsCardinal(x.type) THEN Operands("#-31", lo, hi, text); Emit("ASHL", text)
-      ELSE Emit("CLRL", hi)
+      IF Types.IsInteger(x.type) & ~IsCardinal(x.type) THEN
+        Instruction3("ASHL", Literal(-31), HalfSpecifier(r, 0), HalfSpecifier(r, 1))
+      ELSE Instruction1("CLRL", HalfSpecifier(r, 1))
       END;
       RETURN r
     END;
@@ -5111,17 +5183,16 @@ MODULE VaxCodeGenerator;
      of at most maxMove bytes, each next one from where the last left R1
      and R3. MOVC3 overwrites R0-R5 (MACRO), so the procedure saves R2-R5
      (section 7). *)
-  PROCEDURE CopyBytes(size: LONGINT; src, dst: ARRAY OF CHAR);
-    VAR n: LONGINT; text: ARRAY 160 OF CHAR;
+  PROCEDURE CopyBytes(size: LONGINT; src, dst: OperandSpecifier);
+    VAR n: LONGINT;
   BEGIN
     IF size <= 0 THEN RETURN END;
     n := Piece(size);
-    COPY("#", text); AppendInt(text, n); Append(text, ", "); Append(text, src); Append(text, ", "); Append(text, dst);
-    Emit("MOVC3", text);
+    Instruction3("MOVC3", Literal(n), src, dst);
     size := size - n;
     WHILE size > 0 DO
       n := Piece(size);
-      COPY("#", text); AppendInt(text, n); Append(text, ", (R1), (R3)"); Emit("MOVC3", text);
+      Instruction3("MOVC3", Literal(n), DeferredReg(1), DeferredReg(3));
       size := size - n
     END;
     used := used + {2 .. 5}
@@ -5130,18 +5201,16 @@ MODULE VaxCodeGenerator;
   (* MOVC5 #length, src, #0, #size, dst: the length bytes at src, then
      zeros, size bytes in all, in pieces as CopyBytes', each next one
      zeros from where the last left R3 *)
-  PROCEDURE FillBytes(length: LONGINT; src: ARRAY OF CHAR; size: LONGINT; dst: ARRAY OF CHAR);
-    VAR n: LONGINT; text: ARRAY 160 OF CHAR;
+  PROCEDURE FillBytes(length: LONGINT; src: OperandSpecifier; size: LONGINT; dst: OperandSpecifier);
+    VAR n: LONGINT;
   BEGIN
     IF size <= 0 THEN RETURN END;
     n := Piece(size);
-    COPY("#", text); AppendInt(text, length); Append(text, ", "); Append(text, src);
-    Append(text, ", #0, #"); AppendInt(text, n); Append(text, ", "); Append(text, dst);
-    Emit("MOVC5", text);
+    Instruction5("MOVC5", Literal(length), src, Literal(0), Literal(n), dst);
     size := size - n;
     WHILE size > 0 DO
       n := Piece(size);
-      COPY("#0, (SP), #0, #", text); AppendInt(text, n); Append(text, ", (R3)"); Emit("MOVC5", text);
+      Instruction5("MOVC5", Literal(0), DeferredReg(VaxInstructions.sp), Literal(0), Literal(n), DeferredReg(3));
       size := size - n
     END;
     used := used + {2 .. 5}
@@ -5154,8 +5223,7 @@ MODULE VaxCodeGenerator;
      and both addresses are kept in slots of the frame, since MoveCounted
      overwrites R0-R5. *)
   PROCEDURE AssignOpen(v, target: Operand; line, column: INTEGER);
-    VAR d: INTEGER; size: LONGINT; ok: ARRAY 16 OF CHAR; text: ARRAY 160 OF CHAR;
-        len, src, dst, n: OperandText; s: INTEGER; count, srcAt, dstAt: Operand;
+    VAR d: INTEGER; size: LONGINT; ok: ARRAY 16 OF CHAR; s: INTEGER; count, srcAt, dstAt: Operand;
   BEGIN
     SpillAll;
     s := AllocateSlots(3);
@@ -5163,18 +5231,16 @@ MODULE VaxCodeGenerator;
     srcAt := NewOperand(memory, longword); srcAt.offset := SlotOffset(s, 2);
     dstAt := NewOperand(memory, longword); dstAt.offset := SlotOffset(s, 3);
     AddressOf(v, srcAt); AddressOf(target, dstAt);
-    Text(LengthOf(v, 0), len);
     NewLabel(ok);
-    COPY(len, text); Append(text, ", #"); AppendInt(text, target.type(Types.ArrayType).length); Emit("CMPL", text);
-    Emit("BLEQU", ok);
+    Instruction2("CMPL", Specifier(LengthOf(v, 0)), Literal(target.type(Types.ArrayType).length));
+    Instruction1("BLEQU", LabelRef(ok));
     Trap(9, line, column);
     EmitLabel(ok);
     Emit2("MOVL", LengthOf(v, 0), count);
     FOR d := 1 TO OpenDims(v.type) - 1 DO Emit2("MULL2", LengthOf(v, d), count) END;
     size := VaxTypes.Size(OpenBase(v.type));
-    IF size # 1 THEN COPY("#", text); AppendInt(text, size); EmitTo("MULL2", text, count) END;
-    Text(count, n); Text(srcAt, src); Text(dstAt, dst);
-    MoveCounted(n, src, dst);
+    IF size # 1 THEN Instruction2("MULL2", Literal(size), Specifier(count)) END;
+    MoveCounted(Specifier(count), Specifier(srcAt), Specifier(dstAt));
     ReleaseSlots(s, 3)
   END AssignOpen;
 
@@ -5194,8 +5260,7 @@ MODULE VaxCodeGenerator;
      LLVM (EmitRecordAssignmentGuard); a record of no name of its own
      cannot be extended, so it is not checked *)
   PROCEDURE RecordAssignmentCheck(s: SyntaxTree.AssignStatementNode; obj: SymbolTable.Object; target: Operand);
-    VAR sel, last: SyntaxTree.Selector; tag, a: Operand; rec: Types.RecordType; text: ARRAY 160 OF CHAR;
-        ok: ARRAY 16 OF CHAR;
+    VAR sel, last: SyntaxTree.Selector; tag, a: Operand; rec: Types.RecordType; ok: ARRAY 16 OF CHAR;
   BEGIN
     IF ~(target.type IS Types.RecordType) THEN RETURN END;
     rec := target.type(Types.RecordType);
@@ -5216,9 +5281,9 @@ MODULE VaxCodeGenerator;
     target.pinned := TRUE;
     a := NewRegisterBeside(longword, target, NIL, s.line, s.column);
     target.pinned := FALSE;
-    RecordTag(rec, text); EmitTo("MOVAB", text, a);
+    Instruction2("MOVAB", RecordTagRef(rec), Specifier(a));
     Emit2("CMPL", tag, a); Release(a);
-    NewLabel(ok); Emit("BEQL", ok); Trap(13, s.line, s.column); EmitLabel(ok)
+    NewLabel(ok); Instruction1("BEQL", LabelRef(ok)); Trap(13, s.line, s.column); EmitLabel(ok)
   END RecordAssignmentCheck;
 
   PROCEDURE ^ AssignTo(target: Operand; value: SyntaxTree.ExprNode; line, column: INTEGER);
@@ -5242,7 +5307,7 @@ MODULE VaxCodeGenerator;
      long for target traps at line:column, the statement's, as the LLVM
      backend's does (until 2026-10-11 the value's) *)
   PROCEDURE AssignTo(target: Operand; value: SyntaxTree.ExprNode; line, column: INTEGER);
-    VAR v: Operand; from, to: OperandText;
+    VAR v: Operand;
   BEGIN
     IF target.standIn OR (target.lens # NIL) THEN (* reported, or an open array, which the checker refuses *)
       Release(target); RETURN
@@ -5257,8 +5322,8 @@ MODULE VaxCodeGenerator;
       (* a string; a structured constant is copied as a variable is, below *)
       v := StringArgument(value, 0);
       IF v.type IS Types.ArrayType THEN
-        SpillAll; Text(v, from); Text(target, to);
-        FillBytes(v.type(Types.ArrayType).length - 1, from, VaxTypes.Size(target.type), to)
+        SpillAll;
+        FillBytes(v.type(Types.ArrayType).length - 1, Specifier(v), VaxTypes.Size(target.type), Specifier(target))
       END
     ELSE
       v := Expression(value, NIL);
@@ -5269,9 +5334,9 @@ MODULE VaxCodeGenerator;
            one of its base type gives only the base's fields; an array,
            the source's, which may be shorter (language-extensions.md,
            "Array assignment") *)
-        SpillAll; Text(v, from); Text(target, to);
-        IF target.type IS Types.RecordType THEN CopyBytes(VaxTypes.Size(target.type), from, to)
-        ELSE CopyBytes(VaxTypes.Size(v.type), from, to)
+        SpillAll;
+        IF target.type IS Types.RecordType THEN CopyBytes(VaxTypes.Size(target.type), Specifier(v), Specifier(target))
+        ELSE CopyBytes(VaxTypes.Size(v.type), Specifier(v), Specifier(target))
         END
       END
     END;
@@ -5286,16 +5351,15 @@ MODULE VaxCodeGenerator;
      L_n:", Bxx the branch for not jumping. *)
 
   PROCEDURE Jump(label: ARRAY OF CHAR);
-    VAR target: ARRAY 24 OF CHAR;
   BEGIN
-    COPY("L^", target); Append(target, label); Emit("JMP", target)
+    Instruction1("JMP", LongRef(label))
   END Jump;
 
   (* JMP L^label unless the branch stay is taken *)
   PROCEDURE JumpUnless(stay, label: ARRAY OF CHAR);
     VAR over: ARRAY 16 OF CHAR;
   BEGIN
-    NewLabel(over); Emit(stay, over); Jump(label); EmitLabel(over)
+    NewLabel(over); Instruction1(stay, LabelRef(over)); Jump(label); EmitLabel(over)
   END JumpUnless;
 
   (* The relation that is true when a <op> b is false *)
@@ -5386,7 +5450,7 @@ MODULE VaxCodeGenerator;
      procedure, L_WHERE_<n>, one for each procedure that traps (section
      14, item 10). *)
   PROCEDURE Trap(code: LONGINT; line, column: INTEGER);
-    VAR text: ARRAY 16 OF CHAR; where: Where;
+    VAR where: Where;
   BEGIN
     usesTrap := TRUE;
     IF trapLocation THEN
@@ -5401,16 +5465,17 @@ MODULE VaxCodeGenerator;
         wheresLast := where;
         COPY(where.label, whereLabel)
       END;
-      Emit("PUSHAB", whereLabel);
-      Emit("PUSHAB", "L_FILE_NAME")
+      Instruction1("PUSHAB", LabelRef(whereLabel));
+      Instruction1("PUSHAB", LabelRef("L_FILE_NAME"))
     END;
-    COPY("#", text); AppendInt(text, column); Emit("PUSHL", text);
-    COPY("#", text); AppendInt(text, line); Emit("PUSHL", text);
-    Emit("PUSHAB", "L_MODULE_NAME");
+    Instruction1("PUSHL", Literal(column));
+    Instruction1("PUSHL", Literal(line));
+    Instruction1("PUSHAB", LabelRef("L_MODULE_NAME"));
     (* a code with a message of its own in hexadecimal, ^X0001000E *)
-    COPY("#", text); IF code >= messageWord THEN AppendHex(text, code) ELSE AppendInt(text, code) END;
-    Emit("PUSHL", text);
-    IF trapLocation THEN Emit("CALLS", "#6, G^POC_TRAP") ELSE Emit("CALLS", "#4, G^POC_TRAP") END
+    IF code >= messageWord THEN Instruction1("PUSHL", HexLiteral(code)) ELSE Instruction1("PUSHL", Literal(code)) END;
+    IF trapLocation THEN Instruction2("CALLS", Literal(6), ExternalRef("POC_TRAP"))
+    ELSE Instruction2("CALLS", Literal(4), ExternalRef("POC_TRAP"))
+    END
   END Trap;
 
   (* ---- Statements ---- *)
@@ -5638,9 +5703,7 @@ MODULE VaxCodeGenerator;
     IF IsDense(s, sel, min, max) THEN
       NewLabel(table);
       Op("CASE", Suffix(sel.type), "", op);
-      Text(Use(sel), text); Append(text, ", #"); AppendInt(text, min);
-      Append(text, ", #"); AppendInt(text, max - min);
-      Emit(op, text);
+      Instruction3(op, Specifier(Use(sel)), Literal(min), Literal(max - min));
       EmitLabel(table);
       FOR value := min TO max DO
         IF ArmOf(s, value, index) = NIL THEN COPY(noLabel, stub)
@@ -5702,7 +5765,7 @@ MODULE VaxCodeGenerator;
       IF IsWide(resultType) OR IsReal(resultType) THEN MoveInto(v, r0) ELSE MoveLong(v, r0) END;
       Release(v)
     END;
-    Emit("RET", "")
+    Instruction0("RET")
   END ReturnStatement;
 
   PROCEDURE CallStatement(s: SyntaxTree.CallStatementNode);
@@ -5975,32 +6038,25 @@ MODULE VaxCodeGenerator;
     AppendChar(mask, ">")
   END EntryMask;
 
-  (* "<n>(<base>)" *)
-  PROCEDURE Based(n: LONGINT; base: ARRAY OF CHAR; VAR text: ARRAY OF CHAR);
-  BEGIN
-    text[0] := 0X; AppendInt(text, n); AppendChar(text, "("); Append(text, base); AppendChar(text, ")")
-  END Based;
-
   (* The entry's copy of l, an open-array value parameter (section 14):
      its size, the product of its lengths and its base's size, in R0; that
      rounded up to longwords taken from SP, the copy's address kept in the
      frame at l's offset, and the bytes moved there (MoveCounted). A
      parameter's copy lasts until RET, which gives SP back. *)
   PROCEDURE CopyOpenParameter(l: Local);
-    VAR d: INTEGER; size: LONGINT; text: ARRAY 64 OF CHAR; a, b: ARRAY 24 OF CHAR;
+    VAR d: INTEGER; size: LONGINT;
   BEGIN
-    Based(l.lenOffset, "AP", a); COPY(a, text); Append(text, ", R0"); Emit("MOVL", text);
+    Instruction2("MOVL", Displaced(l.lenOffset, VaxInstructions.ap), Reg(0));
     FOR d := 1 TO OpenDims(l.obj.type) - 1 DO
-      Based(l.lenOffset + 4 * d, "AP", a); COPY(a, text); Append(text, ", R0"); Emit("MULL2", text)
+      Instruction2("MULL2", Displaced(l.lenOffset + 4 * d, VaxInstructions.ap), Reg(0))
     END;
     size := VaxTypes.Size(OpenBase(l.obj.type));
-    IF size # 1 THEN COPY("#", text); AppendInt(text, size); Append(text, ", R0"); Emit("MULL2", text) END;
-    Emit("ADDL3", "#3, R0, R1");
-    Emit("BICL2", "#3, R1");
-    Emit("SUBL2", "R1, SP");
-    Based(l.offset, "FP", b); COPY("SP, ", text); Append(text, b); Emit("MOVL", text);
-    Based(l.copyFrom, "AP", a);
-    MoveCounted("R0", a, b)
+    IF size # 1 THEN Instruction2("MULL2", Literal(size), Reg(0)) END;
+    Instruction3("ADDL3", Literal(3), Reg(0), Reg(1));
+    Instruction2("BICL2", Literal(3), Reg(1));
+    Instruction2("SUBL2", Reg(1), Reg(VaxInstructions.sp));
+    Instruction2("MOVL", Reg(VaxInstructions.sp), Displaced(l.offset, VaxInstructions.fp));
+    MoveCounted(Reg(0), Displaced(l.copyFrom, VaxInstructions.ap), Displaced(l.offset, VaxInstructions.fp))
   END CopyOpenParameter;
 
   (* Whether a procedure nested in the one being generated needs obj, a
@@ -6089,7 +6145,7 @@ MODULE VaxCodeGenerator;
     VAR p: Types.Param; section: SyntaxTree.FPSectionNode;
         id: SyntaxTree.IdentDefNode; vd: SyntaxTree.VarDeclNode; pobj: SymbolTable.Object; l: Local;
         bodyFirst, bodyLast: Instruction; i: INTEGER; off: LONGINT;
-        text: ARRAY 600 OF CHAR; mask: ARRAY 40 OF CHAR; a, b: ARRAY 24 OF CHAR; op: ARRAY 8 OF CHAR;
+        text: ARRAY 600 OF CHAR; mask: ARRAY 40 OF CHAR; op: ARRAY 8 OF CHAR;
         before: INTEGER;
   BEGIN
     before := unsupportedCount;
@@ -6175,7 +6231,7 @@ MODULE VaxCodeGenerator;
     END;
     localSize := (localSize + 3) DIV 4 * 4;
     StatementSeq(DeclarationInits(pd.declarations, pd.statements));
-    IF resultType # NIL THEN Trap(12, pd.endLine, pd.endColumn) ELSE Emit("RET", "") END;
+    IF resultType # NIL THEN Trap(12, pd.endLine, pd.endColumn) ELSE Instruction0("RET") END;
     scope := moduleScope;
     IF unsupportedCount > before THEN RETURN END;
     (* the entry, before the body *)
@@ -6196,31 +6252,30 @@ MODULE VaxCodeGenerator;
       EmitLabel(symbol); Emit(".WORD", mask)
     END;
     IF localSize + 4 * frameSlots > 0 THEN
-      COPY("#", text); AppendInt(text, localSize + 4 * frameSlots); Append(text, ", SP");
-      Emit("SUBL2", text)
+      Instruction2("SUBL2", Literal(localSize + 4 * frameSlots), Reg(VaxInstructions.sp))
     END;
     IF localSize > clearByCLR THEN
-      Based(-localSize, "FP", a);
-      FillBytes(0, "(SP)", localSize, a)
+      FillBytes(0, DeferredReg(VaxInstructions.sp), localSize, Displaced(-localSize, VaxInstructions.fp))
     ELSE
       off := -localSize;
-      WHILE off <= -8 DO Based(off, "FP", a); Emit("CLRQ", a); off := off + 8 END;
-      IF off < 0 THEN Based(off, "FP", a); Emit("CLRL", a) END
+      WHILE off <= -8 DO Instruction1("CLRQ", Displaced(off, VaxInstructions.fp)); off := off + 8 END;
+      IF off < 0 THEN Instruction1("CLRL", Displaced(off, VaxInstructions.fp)) END
     END;
     l := locals;
     WHILE l # NIL DO
       IF l.where = inFrameAddress THEN
         CopyOpenParameter(l)
       ELSIF (l.copyFrom # 0) & ~IsSliceScalar(l.obj.type) THEN
-        text := "@"; Based(l.copyFrom, "AP", a); Append(text, a); Based(l.offset, "FP", b);
-        CopyBytes(VaxTypes.Size(l.obj.type), text, b)
+        CopyBytes(VaxTypes.Size(l.obj.type), VaxInstructions.Displacement(l.copyFrom, VaxInstructions.ap, TRUE),
+          Displaced(l.offset, VaxInstructions.fp))
       ELSIF l.copyFrom # 0 THEN
-        Based(l.copyFrom, "AP", a); Based(l.offset, "FP", b);
-        IF IsWide(l.obj.type) THEN COPY("MOVQ", op); text := "@"; Append(text, a)
-        ELSE Op("MOV", Suffix(l.obj.type), "", op); COPY(a, text)
-        END;
-        Append(text, ", "); Append(text, b);
-        Emit(op, text)
+        IF IsWide(l.obj.type) THEN
+          Instruction2("MOVQ", VaxInstructions.Displacement(l.copyFrom, VaxInstructions.ap, TRUE),
+            Displaced(l.offset, VaxInstructions.fp))
+        ELSE
+          Op("MOV", Suffix(l.obj.type), "", op);
+          Instruction2(op, Displaced(l.copyFrom, VaxInstructions.ap), Displaced(l.offset, VaxInstructions.fp))
+        END
       END;
       l := l.next
     END;
@@ -6503,14 +6558,14 @@ MODULE VaxCodeGenerator;
     scope := rec.declScope(SymbolTable.Scope);
     COPY(rec.moduleName, procedureName); Append(procedureName, "."); Append(procedureName, rec.initPath);
     IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) & rec.baseType(Types.RecordType).needsInit THEN
-      r := NewRegisterFrom(longword, 2, 0, 0); r.pinned := TRUE; EmitTo("MOVL", "4(AP)", r);
+      r := NewRegisterFrom(longword, 2, 0, 0); r.pinned := TRUE; Instruction2("MOVL", Displaced(4, VaxInstructions.ap), Specifier(r));
       InitRecordAt(r, rec.baseType(Types.RecordType), 0, 0); Release(r)
     END;
     f := rec.fields;
     WHILE f # NIL DO
       IF (f.initializer # NIL) OR Types.NeedsInit(f.type) THEN
         IF f.initializer # NIL THEN COPY("; line ", text); AppendInt(text, f.initializer.line); EmitComment(text) END;
-        r := NewRegisterFrom(longword, 2, 0, 0); r.pinned := TRUE; EmitTo("MOVL", "4(AP)", r);
+        r := NewRegisterFrom(longword, 2, 0, 0); r.pinned := TRUE; Instruction2("MOVL", Displaced(4, VaxInstructions.ap), Specifier(r));
         IF f.initializer # NIL THEN
           target := NewOperand(memory, f.type); target.baseOp := r; target.ownsBase := TRUE;
           target.offset := VaxTypes.FieldOffset(rec, f);
@@ -6522,7 +6577,7 @@ MODULE VaxCodeGenerator;
       END;
       f := f.next
     END;
-    Emit("RET", "");
+    Instruction0("RET");
     scope := moduleScope; procedureName[0] := 0X;
     bodyFirst := first; bodyLast := last; first := NIL; last := NIL;
     COPY("; the field initializers of ", text); Append(text, rec.moduleName); Append(text, ".");
@@ -6534,7 +6589,7 @@ MODULE VaxCodeGenerator;
       EmitLabel(symbol); Emit(".WORD", mask)
     END;
     IF 4 * frameSlots > 0 THEN
-      COPY("#", text); AppendInt(text, 4 * frameSlots); Append(text, ", SP"); Emit("SUBL2", text)
+      Instruction2("SUBL2", Literal(4 * frameSlots), Reg(VaxInstructions.sp))
     END;
     IF bodyFirst # NIL THEN last.next := bodyFirst; last := bodyLast END;
     IF code = NIL THEN code := first ELSE codeLast.next := first END;
@@ -7130,13 +7185,12 @@ MODULE VaxCodeGenerator;
   (* CALLS #0 of each import's initializer, in the order of the IMPORT list,
      as on LLVM *)
   PROCEDURE CallImports;
-    VAR import: SyntaxTree.ImportNode; symbol: VaxTypes.Symbol; target: ARRAY 48 OF CHAR;
+    VAR import: SyntaxTree.ImportNode; symbol: VaxTypes.Symbol;
   BEGIN
     import := module.imports;
     WHILE import # NIL DO
       IF HasCode(import) & VaxTypes.MakeInitSymbol(import.moduleName, symbol) THEN
-        COPY("#0, ", target); AppendExternal(target, symbol);
-        PutLine("CALLS", target)
+        PutInstruction2("CALLS", Literal(0), ExternalRef(symbol))
       END;
       import := import.next
     END
@@ -7154,7 +7208,7 @@ MODULE VaxCodeGenerator;
   PROCEDURE GenerateModule*(m: SyntaxTree.ModuleNode; s: SymbolTable.Scope; key: ARRAY OF CHAR; isMain: BOOLEAN;
                             VAR w: Files.Rider): BOOLEAN;
     VAR init, main, symbol: VaxTypes.Symbol; title: ARRAY VaxTypes.symbolLength + 1 OF CHAR;
-        ident: ARRAY 40 OF CHAR; entry: ARRAY 64 OF CHAR; mask: ARRAY 40 OF CHAR; frame: ARRAY 24 OF CHAR;
+        ident: ARRAY 40 OF CHAR; entry: ARRAY 64 OF CHAR; mask: ARRAY 40 OF CHAR;
         before, errorsBefore: INTEGER; ok, hasRoots: BOOLEAN; e: External; sc: StringConstant; st: StructuredConstant; where: Where;
         heapInit, stackBase: VaxTypes.Symbol;
   BEGIN
@@ -7256,35 +7310,34 @@ MODULE VaxCodeGenerator;
     PutLine(".ENTRY", entry);
     IF (first = NIL) & (module.imports = NIL) & ~hasRoots & ~withModules THEN
       (* no body: a byte branch over the fixed 7 bytes to RET *)
-      PutLine("BLBS", "L_INITIALISED, L_DONE");
-      PutLine("MOVB", "#1, L_INITIALISED");
+      PutInstruction2("BLBS", LabelRef("L_INITIALISED"), LabelRef("L_DONE"));
+      PutInstruction2("MOVB", Literal(1), LabelRef("L_INITIALISED"));
       PutLabel("L_DONE")
     ELSE
       (* the imports' initializers and the body are any length, so the
          branch is over RET instead *)
-      PutLine("BLBC", "L_INITIALISED, L_BODY");
-      PutLine("RET", "");
+      PutInstruction2("BLBC", LabelRef("L_INITIALISED"), LabelRef("L_BODY"));
+      PutInstruction0("RET");
       PutLabel("L_BODY");
-      PutLine("MOVB", "#1, L_INITIALISED");
+      PutInstruction2("MOVB", Literal(1), LabelRef("L_INITIALISED"));
       IF hasRoots THEN
-        PutLine("PUSHAL", "L_ROOTS");
-        COPY("#1, ", entry); AppendExternal(entry, "POC_ROOTS"); PutLine("CALLS", entry)
+        PutInstruction1("PUSHAL", LabelRef("L_ROOTS"));
+        PutInstruction2("CALLS", Literal(1), ExternalRef("POC_ROOTS"))
       END;
       CallImports;
       IF withModules THEN
         (* listed once its initialization has started, as on LLVM *)
-        PutLine("PUSHAL", "L_MODULE_DESCRIPTOR");
-        COPY("#1, ", entry); AppendExternal(entry, "POC_MODULE"); PutLine("CALLS", entry)
+        PutInstruction1("PUSHAL", LabelRef("L_MODULE_DESCRIPTOR"));
+        PutInstruction2("CALLS", Literal(1), ExternalRef("POC_MODULE"))
       END;
       IF first # NIL THEN
         IF frameSlots > 0 THEN
-          COPY("#", frame); AppendInt(frame, 4 * frameSlots); Append(frame, ", SP");
-          PutLine("SUBL2", frame)
+          PutInstruction2("SUBL2", Literal(4 * frameSlots), Reg(VaxInstructions.sp))
         END;
         PutLines(first)
       END
     END;
-    PutLine("RET", "");
+    PutInstruction0("RET");
     IF key[0] # 0X THEN
       EndLine;
       PutText("; the module's key, which its importers refer to"); EndLine;
@@ -7300,14 +7353,13 @@ MODULE VaxCodeGenerator;
       COPY(main, entry); Append(entry, ", ^M<>");
       PutLine(".ENTRY", entry);
       IF withCollector THEN
-        COPY("#0, ", entry); AppendExternal(entry, heapInit); PutLine("CALLS", entry);
-        PutLine("PUSHL", "FP");
-        COPY("#1, ", entry); AppendExternal(entry, stackBase); PutLine("CALLS", entry)
+        PutInstruction2("CALLS", Literal(0), ExternalRef(heapInit));
+        PutInstruction1("PUSHL", Reg(VaxInstructions.fp));
+        PutInstruction2("CALLS", Literal(1), ExternalRef(stackBase))
       END;
-      COPY("#0, ", entry); Append(entry, init);
-      PutLine("CALLS", entry);
-      PutLine("MOVL", "#1, R0");
-      PutLine("RET", "");
+      PutInstruction2("CALLS", Literal(0), LabelRef(init));
+      PutInstruction2("MOVL", Literal(1), Reg(0));
+      PutInstruction0("RET");
       EndLine;
       PutLine(".END", main)
     ELSE

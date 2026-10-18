@@ -40,7 +40,7 @@ MODULE VaxInstructions;
     specifierText* = 7; (* the specifier as text, until step 2c *)
     (* SpecifierDesc.form, a literal's *)
     decimal* = 0; (* #v *)
-    hexadecimal* = 1; (* #^X and the eight hexadecimal digits of bits *)
+    hexadecimal* = 1; (* #^X and the low digits hexadecimal digits of bits *)
     real* = 2; (* #realText, an F_floating (realType "F") or G_floating ("G") *)
     (* SpecifierDesc.prefix, a relative specifier's *)
     noPrefix* = 0; general* = 1; (* G^ *) longRelative* = 2; (* L^ *)
@@ -63,7 +63,7 @@ MODULE VaxInstructions;
       displacement*: LONGINT; (* d of displacementMode and displacementDeferred *)
       form*: INTEGER; (* a literal's *)
       value*: LONGINT; (* a decimal literal's *)
-      bits*: SET; (* a hexadecimal literal's *)
+      bits*: SET; digits*: INTEGER; (* a hexadecimal literal's *)
       realText*: Text; realType*: CHAR; (* a real literal's *)
       symbol*: Text; offset*: LONGINT; prefix*: INTEGER; (* a relative specifier's *)
       index*: INTEGER; (* the index register, [Rx], or noRegister *)
@@ -165,7 +165,7 @@ MODULE VaxInstructions;
     VAR s: Specifier;
   BEGIN
     NEW(s); s.mode := mode; s.register := noRegister; s.displacement := 0;
-    s.form := decimal; s.value := 0; s.bits := {}; s.realText := NIL; s.realType := 0X;
+    s.form := decimal; s.value := 0; s.bits := {}; s.digits := 8; s.realText := NIL; s.realType := 0X;
     s.symbol := NIL; s.offset := 0; s.prefix := noPrefix; s.index := noRegister; s.text := NIL;
     RETURN s
   END NewSpecifier;
@@ -218,6 +218,14 @@ MODULE VaxInstructions;
     s := NewSpecifier(literal); s.form := hexadecimal; s.bits := bits;
     RETURN s
   END Hexadecimal;
+
+  (* #^X and the low digits hexadecimal digits of bits (1 to 8) *)
+  PROCEDURE HexadecimalDigits*(bits: SET; digits: INTEGER): Specifier;
+    VAR s: Specifier;
+  BEGIN
+    s := Hexadecimal(bits); s.digits := digits;
+    RETURN s
+  END HexadecimalDigits;
 
   (* #text, a real of type "F" (F_floating) or "G" (G_floating) *)
   PROCEDURE Real*(text: ARRAY OF CHAR; type: CHAR): Specifier;
@@ -278,19 +286,19 @@ MODULE VaxInstructions;
     WHILE i > 0 DO DEC(i); AppendChar(s, digits[i]) END
   END AppendInt;
 
-  (* "^X" and the eight hexadecimal digits of a longword's bits *)
-  PROCEDURE AppendHex(VAR s: ARRAY OF CHAR; bits: SET);
+  (* "^X" and the low n hexadecimal digits of a longword's bits *)
+  PROCEDURE AppendHex(VAR s: ARRAY OF CHAR; bits: SET; n: INTEGER);
     VAR digits: ARRAY 9 OF CHAR; i, b, d: INTEGER;
   BEGIN
-    FOR i := 0 TO 7 DO
+    FOR i := 0 TO n - 1 DO
       d := 0;
       FOR b := 3 TO 0 BY -1 DO
         d := d * 2;
         IF 4 * i + b IN bits THEN INC(d) END
       END;
-      IF d < 10 THEN digits[7 - i] := CHR(ORD("0") + d) ELSE digits[7 - i] := CHR(ORD("A") + d - 10) END
+      IF d < 10 THEN digits[n - 1 - i] := CHR(ORD("0") + d) ELSE digits[n - 1 - i] := CHR(ORD("A") + d - 10) END
     END;
-    digits[8] := 0X;
+    digits[n] := 0X;
     Append(s, "^X"); Append(s, digits)
   END AppendHex;
 
@@ -318,7 +326,7 @@ MODULE VaxInstructions;
     | literal:
         AppendChar(text, "#");
         IF s.form = decimal THEN AppendInt(text, s.value)
-        ELSIF s.form = hexadecimal THEN AppendHex(text, s.bits)
+        ELSIF s.form = hexadecimal THEN AppendHex(text, s.bits, s.digits)
         ELSE Append(text, s.realText^)
         END
     | relative:
