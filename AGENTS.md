@@ -478,10 +478,11 @@ shareable images - `POCRTL` (the runtime), `VMSDEF` (generated from
 STARLET) and `VMSLIB` (twelve modules over VMS's own libraries, ASTs
 among them) - and the kits that install poc on a VMS site (closed
 2026-10-16, on the `vax` branch; `doc/history/phases/phase-17.md`).
-Phase 18, VAX object files written directly, is next; 15-18 are the
+Phase 18, VAX object files written directly, is current, on the
+`vax-obj` branch (from `main` at `10598f0`, 2026-10-18); 15-18 are the
 VAX/VMS work, 19 further extensions, 20 voc's library modules. `vax`
 was merged into `main` on 2026-10-17 (a fast-forward, at `7ec6468`), and
-all new work, the VAX's included, goes on `main`. The VAX/VMS back end
+all other new work goes on `main`. The VAX/VMS back end
 (Phases 15-17), `make install-vax` and the `peaseblossom-vax` packages,
 options after the file name, `SYSTEM.VAL(SYSTEM.ADDRESS, E)` of an
 external procedure and the runtime module `Directories` were released as
