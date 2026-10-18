@@ -588,7 +588,9 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    is what lets poc write records directly). Read real objects first: what
    `MACRO` produces for each of the Phase 15 fixtures, dumped with
    `ANALYZE/OBJECT` and in hex, is the ground truth the specification is
-   checked against.
+   checked against. The specification is `doc/developer/vax-object-language.md`
+   (a draft since 2026-10-18, from chapter 7 of `AA-LA62A` and eight
+   fixtures' objects; its section 10 holds what is still open).
 
 2. **An instruction-level representation under the code generator.**
    `VaxCodeGenerator.Mod` today writes MACRO-32 text as it walks the tree.
@@ -605,15 +607,21 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
 
 3. **The instruction encoder.** VAX instructions are an opcode (one or
    two bytes) followed by operand specifiers, each a mode nibble and a
-   register with any immediate, displacement or index bytes after it;
-   branches and `JMP`/`JSB` targets are the difficulty, because the
-   displacement size (byte, word, longword) depends on the distance and
-   the distance depends on the sizes chosen - the assembler's job that poc
-   now does itself: label and program-section layout, branch-displacement
-   selection with relaxation to a fixpoint, PC-relative references,
-   `.ENTRY` masks, and the data directives the generator emits (`.LONG`,
-   `.WORD`, `.BYTE`, `.ASCIC`/`.ASCII`, `.BLKx`, `.ALIGN`, floating
-   constants in the format Phase 16 step 3 chose). **Testing**: byte-for-
+   register with any immediate, displacement or index bytes after it -
+   the assembler's job that poc now does itself: label and
+   program-section layout, displacement sizes, PC-relative references,
+   `.ENTRY` masks, real literals converted to `F_floating`/`G_floating`
+   bits (correctly rounded, half to even, as MACRO does; short literals
+   where the value fits), and the data directives the generator emits
+   (`.LONG`, `.WORD`, `.BYTE`, `.ASCIC`/`.ASCII`, `.BLKx`, `.ALIGN`).
+   Displacement sizes follow MACRO's one-pass rule, not relaxation to a
+   fixpoint (decided with the user 2026-10-18; `vax-object-language.md`,
+   section 6.2): a backward reference in the same program section gets
+   the shortest displacement that reaches, every other reference a
+   longword; poc writes branch instructions only over short, fixed
+   distances already. Relaxing forward references for shorter code is a
+   possible later optimization, which would end the byte-for-byte
+   comparison. **Testing**: byte-for-
    byte comparison of the encoded text of every fixture module against the
    text `MACRO` produces from the same `.mar` on the guest - not merely
    "the linked program runs", since a wrong encoding that happens to run is
@@ -634,15 +642,20 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    on `MACRO`'s for the same source, compared; and the decisive test, `LINK`
    accepts it and the program runs.
 
-5. **Debug and traceback information.** Decide how much: at least the
-   traceback records (`TBT`) that let an unhandled condition print a
-   routine-and-line traceback, since a poc program that traps otherwise dies
-   with no context; and, if worth it, debug symbol records so `DEBUG` can
-   show Oberon source lines and variables - which needs the source-position
-   information the front end already carries (every node has a line and
-   column) threaded down to the encoder, and Oberon type descriptions in
-   the debugger's terms. Decided here from what the 5.5-2 debugger can
-   consume, and recorded, including what is left out.
+5. **Debug and traceback information.** The traceback records (`TBT`)
+   that let an unhandled condition print a routine traceback, as MACRO's
+   objects have them today, and **full debugger support** (decided with
+   the user 2026-10-18): a program poc builds can be debugged in the
+   VMS 5.5-2 debugger by Oberon source line - breakpoints, stepping,
+   routine names, and variables with their types (basic types, records,
+   arrays, pointers, procedure types). That needs the source position the
+   front end already carries (every node has a line and column) threaded
+   down to the encoder, which step 2's representation holds from the
+   start, and Oberon's types in the debugger's DST records. The DST
+   format is not in the 5.x manuals we have; finding it, and reading the
+   DBG records of the guest's VAX C, FORTRAN, BASIC and Ada compilers,
+   is the step's first part (`vax-object-language.md`, section 11).
+   Whatever cannot be shown is recorded with the reason.
 
 6. **Wiring it in.** A new mode (`-emit-obj`, and the default on VMS,
    with `-emit-mar` keeping the Phase 15 behavior) writes `<module>.OBJ`;
