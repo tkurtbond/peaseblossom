@@ -125,7 +125,7 @@ MODULE VaxCodeGenerator;
      and SHORT of one that does not fit, trap. *)
 
   IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
-    ModuleInterface, MethodSlots, VaxTypes, NestedProcedures;
+    ModuleInterface, MethodSlots, VaxTypes, VaxInstructions, NestedProcedures;
 
   CONST
     tab = 9X;
@@ -296,14 +296,9 @@ MODULE VaxCodeGenerator;
       next: TypeDescriptor
     END;
 
-    (* One line of the body: a label, or an instruction or comment *)
-    Instruction = POINTER TO InstructionDesc;
-    InstructionDesc = RECORD
-      isLabel, isComment: BOOLEAN;
-      op: ARRAY 32 OF CHAR;
-      operands: ARRAY 160 OF CHAR;
-      next: Instruction
-    END;
+    (* One line of what is written: a label, an instruction or directive,
+       or a comment (VaxInstructions) *)
+    Instruction = VaxInstructions.Line;
 
   VAR
     unsupportedCount*: INTEGER;
@@ -346,6 +341,10 @@ MODULE VaxCodeGenerator;
        item 11's extension step), as LLVM's Codegen.narrowings *)
     narrowings: Narrowing;
     first, last: Instruction;
+    (* the module's lines, from the first; and the line being written,
+       pendingLength characters of pending (PutText) *)
+    out, outLast: Instruction;
+    pending: VaxInstructions.Text; pendingLength: LONGINT;
     nextLabel: INTEGER;
     free, used: SET; (* registers free now; registers written *)
     live: Operand; (* registers in use, oldest first *)
@@ -380,30 +379,54 @@ MODULE VaxCodeGenerator;
     localSize: LONGINT; (* bytes of locals below FP, a multiple of 4; the slots are below them *)
     resultType: Types.Type; (* a function's, else NIL *)
 
-  PROCEDURE WriteStr(VAR w: Files.Rider; s: ARRAY OF CHAR);
-    VAR i: INTEGER;
+  (* ---- The module's lines, printed when it is done ---- *)
+
+  (* l, at the end of the module's lines *)
+  PROCEDURE AppendOut(l: Instruction);
+  BEGIN
+    IF outLast = NIL THEN out := l ELSE outLast.next := l END;
+    outLast := l
+  END AppendOut;
+
+  (* s, at the end of the line being written *)
+  PROCEDURE PutText(s: ARRAY OF CHAR);
+    VAR i, j: LONGINT; longer: VaxInstructions.Text;
   BEGIN
     i := 0;
-    WHILE (i < LEN(s)) & (s[i] # 0X) DO Files.Write(w, s[i]); INC(i) END
-  END WriteStr;
+    WHILE (i < LEN(s)) & (s[i] # 0X) DO
+      IF pendingLength + 1 >= LEN(pending^) THEN
+        NEW(longer, 2 * LEN(pending^));
+        j := 0; WHILE j < pendingLength DO longer[j] := pending[j]; INC(j) END;
+        pending := longer
+      END;
+      pending[pendingLength] := s[i]; INC(pendingLength); INC(i)
+    END;
+    pending[pendingLength] := 0X
+  END PutText;
 
-  PROCEDURE WriteLn(VAR w: Files.Rider);
+  (* The line being written, ended *)
+  PROCEDURE EndLine;
   BEGIN
-    Files.Write(w, 0AX)
-  END WriteLn;
+    AppendOut(VaxInstructions.Verbatim(pending^));
+    pendingLength := 0; pending[0] := 0X
+  END EndLine;
 
   (* A line "<tab><directive or instruction><tab><operands>" *)
-  PROCEDURE Line(VAR w: Files.Rider; op, operands: ARRAY OF CHAR);
+  PROCEDURE PutLine(op, operands: ARRAY OF CHAR);
   BEGIN
-    Files.Write(w, tab); WriteStr(w, op);
-    IF operands[0] # 0X THEN Files.Write(w, tab); WriteStr(w, operands) END;
-    WriteLn(w)
-  END Line;
+    AppendOut(VaxInstructions.Instruction(op, operands))
+  END PutLine;
 
-  PROCEDURE Label(VAR w: Files.Rider; label: ARRAY OF CHAR);
+  PROCEDURE PutLabel(label: ARRAY OF CHAR);
   BEGIN
-    WriteStr(w, label); WriteStr(w, ":"); WriteLn(w)
-  END Label;
+    AppendOut(VaxInstructions.Label(label))
+  END PutLabel;
+
+  (* The list from first on, at the end of the module's lines *)
+  PROCEDURE PutLines(first: Instruction);
+  BEGIN
+    WHILE first # NIL DO AppendOut(first); first := first.next END
+  END PutLines;
 
   PROCEDURE Uppercase(s: ARRAY OF CHAR; VAR u: ARRAY OF CHAR);
     VAR i: INTEGER; ch: CHAR;
@@ -500,28 +523,25 @@ MODULE VaxCodeGenerator;
 
   (* ---- The body, as a list ---- *)
 
-  PROCEDURE Add(isLabel, isComment: BOOLEAN; op, operands: ARRAY OF CHAR);
-    VAR i: Instruction;
+  PROCEDURE Add(i: Instruction);
   BEGIN
-    NEW(i); i.isLabel := isLabel; i.isComment := isComment;
-    COPY(op, i.op); COPY(operands, i.operands); i.next := NIL;
     IF last = NIL THEN first := i ELSE last.next := i END;
     last := i
   END Add;
 
   PROCEDURE Emit(op, operands: ARRAY OF CHAR);
   BEGIN
-    Add(FALSE, FALSE, op, operands)
+    Add(VaxInstructions.Instruction(op, operands))
   END Emit;
 
   PROCEDURE EmitLabel(label: ARRAY OF CHAR);
   BEGIN
-    Add(TRUE, FALSE, label, "")
+    Add(VaxInstructions.Label(label))
   END EmitLabel;
 
   PROCEDURE EmitComment(text: ARRAY OF CHAR);
   BEGIN
-    Add(FALSE, TRUE, "", text) (* in operands, which are long enough for a procedure's name *)
+    Add(VaxInstructions.Verbatim(text))
   END EmitComment;
 
   PROCEDURE NewLabel(VAR label: ARRAY OF CHAR);
@@ -6518,7 +6538,7 @@ MODULE VaxCodeGenerator;
   (* The module's variables in POC_DATA, each aligned as MemoryLayout
      says, an exported one a global symbol: FALSE, reported, if one is
      outside the slice or two have one symbol *)
-  PROCEDURE WriteVariables(VAR w: Files.Rider): BOOLEAN;
+  PROCEDURE WriteVariables(): BOOLEAN;
     VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
         full, clash: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol; text: ARRAY 600 OF CHAR;
         directive: ARRAY 8 OF CHAR; align: LONGINT; ok, header: BOOLEAN;
@@ -6542,27 +6562,27 @@ MODULE VaxCodeGenerator;
         ELSIF ok THEN
           IF obj.exported THEN EnterGlobal(full, nm.line, nm.column) END;
           IF ~header THEN
-            WriteLn(w); WriteStr(w, "; the module's variables"); WriteLn(w);
-            Line(w, ".PSECT", "POC_DATA"); header := TRUE
+            EndLine; PutText("; the module's variables"); EndLine;
+            PutLine(".PSECT", "POC_DATA"); header := TRUE
           END;
-          WriteStr(w, "; "); WriteStr(w, nm.name); WriteStr(w, ": ");
-          text[0] := 0X; Types.Describe(obj.type, text); WriteStr(w, text);
-          IF obj.exported THEN WriteStr(w, ", exported") END;
-          WriteLn(w);
+          PutText("; "); PutText(nm.name); PutText(": ");
+          text[0] := 0X; Types.Describe(obj.type, text); PutText(text);
+          IF obj.exported THEN PutText(", exported") END;
+          EndLine;
           align := VaxTypes.Align(obj.type);
-          IF align = 2 THEN Line(w, ".ALIGN", "WORD")
-          ELSIF align = 4 THEN Line(w, ".ALIGN", "LONG")
-          ELSIF align = 8 THEN Line(w, ".ALIGN", "QUAD")
+          IF align = 2 THEN PutLine(".ALIGN", "WORD")
+          ELSIF align = 4 THEN PutLine(".ALIGN", "LONG")
+          ELSIF align = 8 THEN PutLine(".ALIGN", "QUAD")
           END;
-          WriteStr(w, symbol);
-          IF obj.exported THEN WriteStr(w, "::") ELSE WriteStr(w, ":") END;
-          WriteLn(w);
+          PutText(symbol);
+          IF obj.exported THEN PutText("::") ELSE PutText(":") END;
+          EndLine;
           IF IsSliceScalar(obj.type) THEN
             Op(".BLK", Suffix(obj.type), "", directive);
-            Line(w, directive, "1")
+            PutLine(directive, "1")
           ELSE
             text[0] := 0X; AppendInt(text, VaxTypes.Size(obj.type));
-            Line(w, ".BLKB", text)
+            PutLine(".BLKB", text)
           END
         END;
         nm := nm.next
@@ -6578,13 +6598,13 @@ MODULE VaxCodeGenerator;
      of each pointer, flattened through records and arrays as a type
      descriptor's offsets are, as on LLVM (EmitRootTable); FALSE, and
      nothing written, if they hold none *)
-  PROCEDURE WriteRoots(VAR w: Files.Rider): BOOLEAN;
+  PROCEDURE WriteRoots(): BOOLEAN;
     VAR vd: SyntaxTree.VarDeclNode; nm: SyntaxTree.IdentDefNode; obj: SymbolTable.Object;
         total: LONGINT; count: INTEGER; symbol: VaxTypes.Symbol; text: ARRAY 600 OF CHAR;
 
     PROCEDURE Put(at: LONGINT);
     BEGIN
-      IF count = 4 THEN Line(w, ".ADDRESS", text); count := 0 END;
+      IF count = 4 THEN PutLine(".ADDRESS", text); count := 0 END;
       IF count = 0 THEN text[0] := 0X ELSE Append(text, ", ") END;
       Append(text, symbol);
       IF at # 0 THEN Append(text, "+"); AppendInt(text, at) END;
@@ -6621,14 +6641,14 @@ MODULE VaxCodeGenerator;
       vd := vd.next
     END;
     IF total = 0 THEN RETURN FALSE END;
-    WriteLn(w);
-    WriteStr(w, "; its root table, for the collector: the next table, the count,"); WriteLn(w);
-    WriteStr(w, "; and the address of each pointer its variables hold"); WriteLn(w);
-    Line(w, ".PSECT", "POC_DATA");
-    Line(w, ".ALIGN", "LONG");
-    Label(w, "L_ROOTS");
-    Line(w, ".LONG", "0");
-    text[0] := 0X; AppendInt(text, total); Line(w, ".LONG", text);
+    EndLine;
+    PutText("; its root table, for the collector: the next table, the count,"); EndLine;
+    PutText("; and the address of each pointer its variables hold"); EndLine;
+    PutLine(".PSECT", "POC_DATA");
+    PutLine(".ALIGN", "LONG");
+    PutLabel("L_ROOTS");
+    PutLine(".LONG", "0");
+    text[0] := 0X; AppendInt(text, total); PutLine(".LONG", text);
     count := 0;
     vd := module.declarations.varDecls;
     WHILE vd # NIL DO
@@ -6640,14 +6660,14 @@ MODULE VaxCodeGenerator;
       END;
       vd := vd.next
     END;
-    IF count > 0 THEN Line(w, ".ADDRESS", text) END;
+    IF count > 0 THEN PutLine(".ADDRESS", text) END;
     RETURN TRUE
   END WriteRoots;
 
   (* The n bytes of s: each run of printing characters .ASCII, delimited
      by a character not in it (MACRO 6, .ASCII: not a space, "=", ";" or
      "<"), any other byte, or a run with every delimiter in it, by .BYTE *)
-  PROCEDURE WriteBytes(VAR w: Files.Rider; VAR s: ARRAY OF CHAR; n: LONGINT);
+  PROCEDURE WriteBytes(VAR s: ARRAY OF CHAR; n: LONGINT);
     VAR i, j, k: LONGINT; d: INTEGER; run: ARRAY 64 OF CHAR; text: ARRAY 128 OF CHAR;
         delimiters: ARRAY 16 OF CHAR; found: BOOLEAN;
   BEGIN
@@ -6667,7 +6687,7 @@ MODULE VaxCodeGenerator;
       END;
       IF found THEN
         text[0] := 0X; AppendChar(text, delimiters[d]); Append(text, run); AppendChar(text, delimiters[d]);
-        Line(w, ".ASCII", text);
+        PutLine(".ASCII", text);
         i := i + j
       ELSE
         (* the bytes up to the next printing one, or the run *)
@@ -6680,7 +6700,7 @@ MODULE VaxCodeGenerator;
             IF k > 0 THEN Append(text, ", ") END;
             AppendInt(text, ORD(s[i + k])); INC(k)
           END;
-          Line(w, ".BYTE", text);
+          PutLine(".BYTE", text);
           i := i + k; j := j - k
         END
       END
@@ -6688,25 +6708,25 @@ MODULE VaxCodeGenerator;
   END WriteBytes;
 
   (* c's bytes (WriteBytes), then .BYTE 0[n] to its size *)
-  PROCEDURE WriteString(VAR w: Files.Rider; c: StringConstant);
+  PROCEDURE WriteString(c: StringConstant);
     VAR n: LONGINT; text: ARRAY 32 OF CHAR;
   BEGIN
-    Label(w, c.label);
+    PutLabel(c.label);
     n := 0; WHILE (n < LEN(c.text^)) & (c.text[n] # 0X) DO INC(n) END;
-    WriteBytes(w, c.text^, n);
+    WriteBytes(c.text^, n);
     text[0] := 0X; AppendInt(text, 0);
     IF c.size - n > 1 THEN AppendChar(text, "["); AppendInt(text, c.size - n); AppendChar(text, "]") END;
-    Line(w, ".BYTE", text)
+    PutLine(".BYTE", text)
   END WriteString;
 
   (* Zero bytes from at up to to, at left at to *)
-  PROCEDURE PadTo(VAR w: Files.Rider; to: LONGINT; VAR at: LONGINT);
+  PROCEDURE PadTo(to: LONGINT; VAR at: LONGINT);
     VAR text: ARRAY 32 OF CHAR;
   BEGIN
     IF to > at THEN
       text[0] := 0X; AppendInt(text, 0);
       IF to - at > 1 THEN AppendChar(text, "["); AppendInt(text, to - at); AppendChar(text, "]") END;
-      Line(w, ".BYTE", text);
+      PutLine(".BYTE", text);
       at := to
     END
   END PadTo;
@@ -6725,7 +6745,7 @@ MODULE VaxCodeGenerator;
      a quadword as two .LONGs, low first, as HalfText writes an immediate;
      a real as .F_FLOATING or .G_FLOATING of RealConstant's text, which
      MACRO rounds as it does an immediate; NIL as 0 *)
-  PROCEDURE WriteScalar(VAR w: Files.Rider; t: Types.Type; v: Types.Value);
+  PROCEDURE WriteScalar(t: Types.Type; v: Types.Value);
     VAR x: Operand; r: Types.Value; size, value: LONGINT; text: OperandText; directive: ARRAY 16 OF CHAR;
   BEGIN
     size := VaxTypes.Size(t);
@@ -6734,10 +6754,10 @@ MODULE VaxCodeGenerator;
       IF v.kind = Types.intValue THEN r.kind := Types.realValue; r.realVal := v.intVal; r.realText[0] := 0X END;
       x := RealConstant(r, 0, 0);
       IF t = Types.Real THEN COPY(".F_FLOATING", directive) ELSE COPY(".G_FLOATING", directive) END;
-      Line(w, directive, x.realText)
+      PutLine(directive, x.realText)
     ELSIF Types.IsSet(t) THEN
-      text[0] := 0X; AppendSetHex(text, v.setLow); Line(w, ".LONG", text);
-      IF size = 8 THEN text[0] := 0X; AppendSetHex(text, v.setHigh); Line(w, ".LONG", text) END
+      text[0] := 0X; AppendSetHex(text, v.setLow); PutLine(".LONG", text);
+      IF size = 8 THEN text[0] := 0X; AppendSetHex(text, v.setHigh); PutLine(".LONG", text) END
     ELSE
       IF v.kind = Types.boolValue THEN IF v.boolVal THEN value := 1 ELSE value := 0 END
       ELSIF v.kind = Types.charValue THEN value := ORD(v.charVal)
@@ -6747,32 +6767,32 @@ MODULE VaxCodeGenerator;
       END;
       IF size = 8 THEN x := Immediate(Types.HugeInt, value) ELSE x := Immediate(longword, value) END;
       IF (size = 4) OR (size = 8) THEN
-        HalfText(x, 0, text); DropHash(text); Line(w, ".LONG", text);
-        IF size = 8 THEN HalfText(x, 1, text); DropHash(text); Line(w, ".LONG", text) END
+        HalfText(x, 0, text); DropHash(text); PutLine(".LONG", text);
+        IF size = 8 THEN HalfText(x, 1, text); DropHash(text); PutLine(".LONG", text) END
       ELSE
         text[0] := 0X; AppendInt(text, value);
-        IF size = 1 THEN Line(w, ".BYTE", text) ELSE Line(w, ".WORD", text) END
+        IF size = 1 THEN PutLine(".BYTE", text) ELSE PutLine(".WORD", text) END
       END
     END
   END WriteScalar;
 
-  PROCEDURE ^ WriteData(VAR w: Files.Rider; t: Types.Type; v: Types.Value; start: LONGINT; VAR at: LONGINT);
+  PROCEDURE ^ WriteData(t: Types.Type; v: Types.Value; start: LONGINT; VAR at: LONGINT);
 
   (* rec's part of a record constant whose field values, its bases' first,
      start at fields, the record at start: each field at its offset;
      fields is left after them *)
-  PROCEDURE WriteRecord(VAR w: Files.Rider; rec, whole: Types.RecordType; VAR fields: Types.Value;
+  PROCEDURE WriteRecord(rec, whole: Types.RecordType; VAR fields: Types.Value;
                         start: LONGINT; VAR at: LONGINT);
     VAR f: Types.Field; v: Types.Value;
   BEGIN
     IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) THEN
-      WriteRecord(w, rec.baseType(Types.RecordType), whole, fields, start, at)
+      WriteRecord(rec.baseType(Types.RecordType), whole, fields, start, at)
     END;
     f := rec.fields;
     WHILE f # NIL DO
       v := fields;
       IF fields # NIL THEN fields := fields.next END;
-      WriteData(w, f.type, v, start + VaxTypes.FieldOffset(whole, f), at);
+      WriteData(f.type, v, start + VaxTypes.FieldOffset(whole, f), at);
       f := f.next
     END
   END WriteRecord;
@@ -6780,54 +6800,54 @@ MODULE VaxCodeGenerator;
   (* v, a constant of type t, as data from start, the bytes before it from
      at, where the last one ended, zero; NIL, or nothing written, is zero
      too, which the next one or the end fills in *)
-  PROCEDURE WriteData(VAR w: Files.Rider; t: Types.Type; v: Types.Value; start: LONGINT; VAR at: LONGINT);
+  PROCEDURE WriteData(t: Types.Type; v: Types.Value; start: LONGINT; VAR at: LONGINT);
     VAR e: Types.Value; arr: Types.ArrayType; i, n, size: LONGINT;
   BEGIN
     IF v = NIL THEN RETURN END;
     IF t IS Types.RecordType THEN
       e := v.elements;
-      WriteRecord(w, t(Types.RecordType), t(Types.RecordType), e, start, at)
+      WriteRecord(t(Types.RecordType), t(Types.RecordType), e, start, at)
     ELSIF t IS Types.ArrayType THEN
       arr := t(Types.ArrayType); size := VaxTypes.Size(arr.elementType);
       IF v.kind = Types.stringValue THEN
-        PadTo(w, start, at);
+        PadTo(start, at);
         n := 0; WHILE (n < LEN(v.stringVal^)) & (v.stringVal[n] # 0X) DO INC(n) END;
-        WriteBytes(w, v.stringVal^, n); at := start + n
+        WriteBytes(v.stringVal^, n); at := start + n
       ELSE
         e := v.elements; i := 0;
-        WHILE e # NIL DO WriteData(w, arr.elementType, e, start + i * size, at); e := e.next; INC(i) END;
+        WHILE e # NIL DO WriteData(arr.elementType, e, start + i * size, at); e := e.next; INC(i) END;
         IF v.fill # NIL THEN
-          WHILE i < arr.length DO WriteData(w, arr.elementType, v.fill, start + i * size, at); INC(i) END
+          WHILE i < arr.length DO WriteData(arr.elementType, v.fill, start + i * size, at); INC(i) END
         END
       END
     ELSE
-      PadTo(w, start, at);
-      WriteScalar(w, t, v);
+      PadTo(start, at);
+      WriteScalar(t, v);
       at := start + VaxTypes.Size(t)
     END
   END WriteData;
 
   (* The structured constant c at its label, every byte of its type,
      aligned as a variable of it (.ALIGN QUAD, 8 the most any type needs) *)
-  PROCEDURE WriteStructured(VAR w: Files.Rider; c: StructuredConstant);
+  PROCEDURE WriteStructured(c: StructuredConstant);
     VAR at: LONGINT;
   BEGIN
-    Line(w, ".ALIGN", "QUAD");
-    Label(w, c.label);
+    PutLine(".ALIGN", "QUAD");
+    PutLabel(c.label);
     at := 0;
-    WriteData(w, c.type, c.value, 0, at);
-    PadTo(w, VaxTypes.Size(c.type), at)
+    WriteData(c.type, c.value, 0, at);
+    PadTo(VaxTypes.Size(c.type), at)
   END WriteStructured;
 
   (* s, at most its first 255 characters, as a counted string at label: a
      .BYTE of its length, then its bytes (WriteBytes) *)
-  PROCEDURE WriteCounted(VAR w: Files.Rider; label, s: ARRAY OF CHAR);
+  PROCEDURE WriteCounted(label, s: ARRAY OF CHAR);
     VAR n: LONGINT; text: ARRAY 8 OF CHAR;
   BEGIN
     n := 0; WHILE (n < LEN(s)) & (n < 255) & (s[n] # 0X) DO INC(n) END;
-    Label(w, label);
-    text[0] := 0X; AppendInt(text, n); Line(w, ".BYTE", text);
-    WriteBytes(w, s, n)
+    PutLabel(label);
+    text[0] := 0X; AppendInt(text, n); PutLine(".BYTE", text);
+    WriteBytes(s, n)
   END WriteCounted;
 
   (* The type descriptors in POC_ADDR, the section of the constants that
@@ -6862,13 +6882,13 @@ MODULE VaxCodeGenerator;
     END
   END ResolveAncestors;
 
-  PROCEDURE WriteDescriptors(VAR w: Files.Rider);
+  PROCEDURE WriteDescriptors;
     VAR d: TypeDescriptor; t: Types.Type; text: ARRAY 160 OF CHAR; count: INTEGER;
 
     (* offset, a pointer's, to the .LONG line being made, eight to a line *)
     PROCEDURE Put(offset: LONGINT);
     BEGIN
-      IF count = 8 THEN Line(w, ".LONG", text); count := 0 END;
+      IF count = 8 THEN PutLine(".LONG", text); count := 0 END;
       IF count = 0 THEN text[0] := 0X ELSE Append(text, ", ") END;
       AppendInt(text, offset); INC(count)
     END Put;
@@ -6884,7 +6904,7 @@ MODULE VaxCodeGenerator;
       IF (label[0] = "G") & (label[1] = "^") THEN
         i := 2; WHILE label[i - 1] # 0X DO label[i - 2] := label[i]; INC(i) END
       END;
-      Line(w, ".ADDRESS", label)
+      PutLine(".ADDRESS", label)
     END BaseTypes;
 
     (* rec's ProcTab, the last slot first, each procedure by its symbol,
@@ -6893,12 +6913,12 @@ MODULE VaxCodeGenerator;
       VAR symbol: VaxTypes.Symbol; i: INTEGER; owner: Types.RecordType; m: Types.Method;
     BEGIN
       IF MethodSlots.MethodSlotCount(rec) > 0 THEN
-        WriteStr(w, "; its ProcTab, the last slot first (section 14, item 6)"); WriteLn(w)
+        PutText("; its ProcTab, the last slot first (section 14, item 6)"); EndLine
       END;
       FOR i := MethodSlots.MethodSlotCount(rec) - 1 TO 0 BY -1 DO
         m := MethodSlots.SlotMethod(rec, i, owner);
         IF MethodSymbol(owner, m.name, symbol) THEN END;
-        Line(w, ".ADDRESS", symbol)
+        PutLine(".ADDRESS", symbol)
       END
     END ProcTab;
 
@@ -6920,10 +6940,10 @@ MODULE VaxCodeGenerator;
 
   BEGIN
     IF descriptors = NIL THEN RETURN END;
-    WriteLn(w);
-    WriteStr(w, "; its type descriptors (section 14, item 4): size, extension level,"); WriteLn(w);
-    WriteStr(w, "; pointer count, base types, pointer offsets"); WriteLn(w);
-    Line(w, ".PSECT", "POC_ADDR,  PIC,NOSHR,NOWRT,NOEXE,LONG");
+    EndLine;
+    PutText("; its type descriptors (section 14, item 4): size, extension level,"); EndLine;
+    PutText("; pointer count, base types, pointer offsets"); EndLine;
+    PutLine(".PSECT", "POC_ADDR,  PIC,NOSHR,NOWRT,NOEXE,LONG");
     d := descriptors;
     WHILE d # NIL DO
       IF d.rec # NIL THEN
@@ -6937,36 +6957,25 @@ MODULE VaxCodeGenerator;
         t := d.elem;
         COPY("; an array's elements, ", text); Types.Describe(t, text)
       END;
-      WriteStr(w, text); WriteLn(w);
-      Line(w, ".ALIGN", "LONG");
+      PutText(text); EndLine;
+      PutLine(".ALIGN", "LONG");
       IF d.rec # NIL THEN ProcTab(d.rec) END;
-      WriteStr(w, d.label);
-      IF d.global THEN WriteStr(w, "::") ELSE WriteStr(w, ":") END;
-      WriteLn(w);
-      text[0] := 0X; AppendInt(text, VaxTypes.Size(t)); Line(w, ".LONG", text);
+      PutText(d.label);
+      IF d.global THEN PutText("::") ELSE PutText(":") END;
+      EndLine;
+      text[0] := 0X; AppendInt(text, VaxTypes.Size(t)); PutLine(".LONG", text);
       IF d.rec # NIL THEN
-        text[0] := 0X; AppendInt(text, ExtensionLevel(d.rec)); Line(w, ".LONG", text)
+        text[0] := 0X; AppendInt(text, ExtensionLevel(d.rec)); PutLine(".LONG", text)
       ELSE
-        Line(w, ".LONG", "0")
+        PutLine(".LONG", "0")
       END;
-      text[0] := 0X; AppendInt(text, PointerCount(t)); Line(w, ".LONG", text);
-      IF d.rec # NIL THEN BaseTypes(d.rec) ELSE Line(w, ".ADDRESS", d.label) END;
+      text[0] := 0X; AppendInt(text, PointerCount(t)); PutLine(".LONG", text);
+      IF d.rec # NIL THEN BaseTypes(d.rec) ELSE PutLine(".ADDRESS", d.label) END;
       count := 0; Offsets(t, 0);
-      IF count > 0 THEN Line(w, ".LONG", text) END;
+      IF count > 0 THEN PutLine(".LONG", text) END;
       d := d.next
     END
   END WriteDescriptors;
-
-  PROCEDURE WriteBody(VAR w: Files.Rider; i: Instruction);
-  BEGIN
-    WHILE i # NIL DO
-      IF i.isLabel THEN Label(w, i.op)
-      ELSIF i.isComment THEN WriteStr(w, i.operands); WriteLn(w)
-      ELSE Line(w, i.op, i.operands)
-      END;
-      i := i.next
-    END
-  END WriteBody;
 
   (* Whether import names a module with code, an initializer to call:
      every one but SYSTEM *)
@@ -7019,15 +7028,15 @@ MODULE VaxCodeGenerator;
      of imports, I, and of commands, C; the I imports' names; C pairs of
      a command's name and its procedure. The names are .ASCIZ in
      POC_CONST. *)
-  PROCEDURE WriteModuleDescriptor(VAR w: Files.Rider);
+  PROCEDURE WriteModuleDescriptor;
     VAR import: SyntaxTree.ImportNode; pd: SyntaxTree.ProcDeclNode; imports, commands: INTEGER;
         text: ARRAY 300 OF CHAR; label: ARRAY 32 OF CHAR; full: ARRAY 2 * 256 + 2 OF CHAR; symbol: VaxTypes.Symbol;
 
     PROCEDURE Name(label, name: ARRAY OF CHAR);
     BEGIN
-      Label(w, label);
+      PutLabel(label);
       COPY("/", text); Append(text, name); Append(text, "/");
-      Line(w, ".ASCIZ", text)
+      PutLine(".ASCIZ", text)
     END Name;
 
     PROCEDURE Numbered(prefix: ARRAY OF CHAR; n: INTEGER);
@@ -7036,11 +7045,11 @@ MODULE VaxCodeGenerator;
     END Numbered;
 
   BEGIN
-    WriteLn(w);
-    WriteStr(w, "; its descriptor, for Modules (section 19.5): the next descriptor, the"); WriteLn(w);
-    WriteStr(w, "; name, the numbers of imports and of commands, the imports' names, and"); WriteLn(w);
-    WriteStr(w, "; each command's name and procedure"); WriteLn(w);
-    Line(w, ".PSECT", "POC_CONST");
+    EndLine;
+    PutText("; its descriptor, for Modules (section 19.5): the next descriptor, the"); EndLine;
+    PutText("; name, the numbers of imports and of commands, the imports' names, and"); EndLine;
+    PutText("; each command's name and procedure"); EndLine;
+    PutLine(".PSECT", "POC_CONST");
     Name("L_MD_NAME", module.name);
     imports := 0; import := module.imports;
     WHILE import # NIL DO
@@ -7055,16 +7064,16 @@ MODULE VaxCodeGenerator;
         pd := pd.next
       END
     END;
-    Line(w, ".PSECT", "POC_DATA");
-    Line(w, ".ALIGN", "LONG");
-    Label(w, "L_MODULE_DESCRIPTOR");
-    Line(w, ".LONG", "0");
-    Line(w, ".ADDRESS", "L_MD_NAME");
-    text[0] := 0X; AppendInt(text, imports); Line(w, ".LONG", text);
-    text[0] := 0X; AppendInt(text, commands); Line(w, ".LONG", text);
+    PutLine(".PSECT", "POC_DATA");
+    PutLine(".ALIGN", "LONG");
+    PutLabel("L_MODULE_DESCRIPTOR");
+    PutLine(".LONG", "0");
+    PutLine(".ADDRESS", "L_MD_NAME");
+    text[0] := 0X; AppendInt(text, imports); PutLine(".LONG", text);
+    text[0] := 0X; AppendInt(text, commands); PutLine(".LONG", text);
     imports := 0; import := module.imports;
     WHILE import # NIL DO
-      IF HasCode(import) THEN INC(imports); Numbered("L_MD_IMPORT_", imports); Line(w, ".ADDRESS", label) END;
+      IF HasCode(import) THEN INC(imports); Numbered("L_MD_IMPORT_", imports); PutLine(".ADDRESS", label) END;
       import := import.next
     END;
     commands := 0;
@@ -7076,7 +7085,7 @@ MODULE VaxCodeGenerator;
           COPY(module.name, full); Append(full, "."); Append(full, pd.name.name);
           VaxTypes.MakeSymbol(full, symbol);
           COPY(label, text); Append(text, ", "); Append(text, symbol);
-          Line(w, ".ADDRESS", text)
+          PutLine(".ADDRESS", text)
         END;
         pd := pd.next
       END
@@ -7085,14 +7094,14 @@ MODULE VaxCodeGenerator;
 
   (* CALLS #0 of each import's initializer, in the order of the IMPORT list,
      as on LLVM *)
-  PROCEDURE CallImports(VAR w: Files.Rider);
+  PROCEDURE CallImports;
     VAR import: SyntaxTree.ImportNode; symbol: VaxTypes.Symbol; target: ARRAY 48 OF CHAR;
   BEGIN
     import := module.imports;
     WHILE import # NIL DO
       IF HasCode(import) & VaxTypes.MakeInitSymbol(import.moduleName, symbol) THEN
         COPY("#0, ", target); AppendExternal(target, symbol);
-        Line(w, "CALLS", target)
+        PutLine("CALLS", target)
       END;
       import := import.next
     END
@@ -7120,6 +7129,7 @@ MODULE VaxCodeGenerator;
     nextLabel := 0; usesTrap := FALSE; procedureName[0] := 0X; wheres := NIL; whereCount := 0; externals := NIL; homes := NIL; strings := NIL; structureds := NIL; initRecords := NIL; anonymousInits := 0; code := NIL; codeLast := NIL;
     nestedRoot := NIL; nestedSyms := NIL;
     descriptors := NIL; descriptorCount := 0;
+    out := NIL; outLast := NIL; NEW(pending, 256); pending[0] := 0X; pendingLength := 0;
     IF ~VaxTypes.MakeInitSymbol(module.name, init) THEN
       Diagnostics.Error(module.line, module.column,
         "a VAX module's name is at most 26 characters, for its <MODULE>_INIT symbol");
@@ -7130,20 +7140,20 @@ MODULE VaxCodeGenerator;
     COPY("/", ident);
     IF key[0] = 0X THEN Append(ident, "0000000000000000") ELSE Append(ident, key) END;
     Append(ident, "/");
-    WriteStr(w, "; "); WriteStr(w, module.name);
-    WriteStr(w, ", written by poc (doc/developer/vax-macro32-backend.md)"); WriteLn(w);
-    Line(w, ".TITLE", title);
-    Line(w, ".IDENT", ident);
-    Line(w, ".PSECT", "POC_CODE,  PIC,SHR,NOWRT,EXE,LONG");
-    Line(w, ".PSECT", "POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD");
-    Line(w, ".PSECT", "POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD");
-    WriteLn(w);
-    WriteStr(w, "; set once the module has been initialised"); WriteLn(w);
-    Line(w, ".PSECT", "POC_DATA");
-    Label(w, "L_INITIALISED");
-    Line(w, ".BLKB", "1");
-    ok := WriteVariables(w);
-    hasRoots := ok & WriteRoots(w);
+    PutText("; "); PutText(module.name);
+    PutText(", written by poc (doc/developer/vax-macro32-backend.md)"); EndLine;
+    PutLine(".TITLE", title);
+    PutLine(".IDENT", ident);
+    PutLine(".PSECT", "POC_CODE,  PIC,SHR,NOWRT,EXE,LONG");
+    PutLine(".PSECT", "POC_CONST, PIC,SHR,NOWRT,NOEXE,QUAD");
+    PutLine(".PSECT", "POC_DATA,  NOPIC,NOSHR,WRT,NOEXE,QUAD");
+    EndLine;
+    PutText("; set once the module has been initialised"); EndLine;
+    PutLine(".PSECT", "POC_DATA");
+    PutLabel("L_INITIALISED");
+    PutLine(".BLKB", "1");
+    ok := WriteVariables();
+    hasRoots := ok & WriteRoots();
     IF hasRoots THEN AddExternal("POC_ROOTS") END;
     IF withModules THEN AddExternal("POC_MODULE") END;
     CollectDescriptors;
@@ -7160,114 +7170,115 @@ MODULE VaxCodeGenerator;
     END;
     IF ~ok OR (unsupportedCount > before) OR (Diagnostics.errorCount > errorsBefore) THEN RETURN FALSE END;
     IF externals # NIL THEN
-      WriteLn(w);
-      WriteStr(w, "; the symbols it uses of other modules"); WriteLn(w);
+      EndLine;
+      PutText("; the symbols it uses of other modules"); EndLine;
       e := externals;
-      WHILE e # NIL DO Line(w, ".EXTERNAL", e.name); e := e.next END
+      WHILE e # NIL DO PutLine(".EXTERNAL", e.name); e := e.next END
     END;
     IF usesTrap THEN
-      WriteLn(w);
-      WriteStr(w, "; for traps: poc's runtime routine (Phase 16), and the module's name"); WriteLn(w);
-      Line(w, ".EXTERNAL", "POC_TRAP");
-      Line(w, ".PSECT", "POC_CONST");
-      Label(w, "L_MODULE_NAME");
+      EndLine;
+      PutText("; for traps: poc's runtime routine (Phase 16), and the module's name"); EndLine;
+      PutLine(".EXTERNAL", "POC_TRAP");
+      PutLine(".PSECT", "POC_CONST");
+      PutLabel("L_MODULE_NAME");
       COPY("/", ident); Append(ident, module.name); Append(ident, "/");
-      Line(w, ".ASCIC", ident);
+      PutLine(".ASCIC", ident);
       IF trapLocation THEN
-        WriteStr(w, "; -trap-location's: the module's file, and each procedure that traps"); WriteLn(w);
-        WriteCounted(w, "L_FILE_NAME", Diagnostics.fileName);
+        PutText("; -trap-location's: the module's file, and each procedure that traps"); EndLine;
+        WriteCounted("L_FILE_NAME", Diagnostics.fileName);
         where := wheres;
-        WHILE where # NIL DO WriteCounted(w, where.label, where.text); where := where.next END
+        WHILE where # NIL DO WriteCounted(where.label, where.text); where := where.next END
       END
     END;
     IF strings # NIL THEN
-      WriteLn(w);
-      WriteStr(w, "; its string constants"); WriteLn(w);
-      Line(w, ".PSECT", "POC_CONST");
+      EndLine;
+      PutText("; its string constants"); EndLine;
+      PutLine(".PSECT", "POC_CONST");
       sc := strings;
-      WHILE sc # NIL DO WriteString(w, sc); sc := sc.next END
+      WHILE sc # NIL DO WriteString(sc); sc := sc.next END
     END;
     IF structureds # NIL THEN
-      WriteLn(w);
-      WriteStr(w, "; its structured constants"); WriteLn(w);
-      Line(w, ".PSECT", "POC_CONST");
+      EndLine;
+      PutText("; its structured constants"); EndLine;
+      PutLine(".PSECT", "POC_CONST");
       st := structureds;
-      WHILE st # NIL DO WriteStructured(w, st); st := st.next END
+      WHILE st # NIL DO WriteStructured(st); st := st.next END
     END;
-    WriteDescriptors(w);
-    IF withModules THEN WriteModuleDescriptor(w) END;
+    WriteDescriptors;
+    IF withModules THEN WriteModuleDescriptor END;
     IF code # NIL THEN
-      WriteLn(w);
-      WriteStr(w, "; the module's procedures"); WriteLn(w);
-      Line(w, ".PSECT", "POC_CODE");
-      WriteBody(w, code)
+      EndLine;
+      PutText("; the module's procedures"); EndLine;
+      PutLine(".PSECT", "POC_CODE");
+      PutLines(code)
     END;
-    WriteLn(w);
-    WriteStr(w, "; the module's initializer: once only"); WriteLn(w);
-    Line(w, ".PSECT", "POC_CODE");
+    EndLine;
+    PutText("; the module's initializer: once only"); EndLine;
+    PutLine(".PSECT", "POC_CODE");
     EntryMask(mask);
     COPY(init, entry); Append(entry, ", "); Append(entry, mask);
-    Line(w, ".ENTRY", entry);
+    PutLine(".ENTRY", entry);
     IF (first = NIL) & (module.imports = NIL) & ~hasRoots & ~withModules THEN
       (* no body: a byte branch over the fixed 7 bytes to RET *)
-      Line(w, "BLBS", "L_INITIALISED, L_DONE");
-      Line(w, "MOVB", "#1, L_INITIALISED");
-      Label(w, "L_DONE")
+      PutLine("BLBS", "L_INITIALISED, L_DONE");
+      PutLine("MOVB", "#1, L_INITIALISED");
+      PutLabel("L_DONE")
     ELSE
       (* the imports' initializers and the body are any length, so the
          branch is over RET instead *)
-      Line(w, "BLBC", "L_INITIALISED, L_BODY");
-      Line(w, "RET", "");
-      Label(w, "L_BODY");
-      Line(w, "MOVB", "#1, L_INITIALISED");
+      PutLine("BLBC", "L_INITIALISED, L_BODY");
+      PutLine("RET", "");
+      PutLabel("L_BODY");
+      PutLine("MOVB", "#1, L_INITIALISED");
       IF hasRoots THEN
-        Line(w, "PUSHAL", "L_ROOTS");
-        COPY("#1, ", entry); AppendExternal(entry, "POC_ROOTS"); Line(w, "CALLS", entry)
+        PutLine("PUSHAL", "L_ROOTS");
+        COPY("#1, ", entry); AppendExternal(entry, "POC_ROOTS"); PutLine("CALLS", entry)
       END;
-      CallImports(w);
+      CallImports;
       IF withModules THEN
         (* listed once its initialization has started, as on LLVM *)
-        Line(w, "PUSHAL", "L_MODULE_DESCRIPTOR");
-        COPY("#1, ", entry); AppendExternal(entry, "POC_MODULE"); Line(w, "CALLS", entry)
+        PutLine("PUSHAL", "L_MODULE_DESCRIPTOR");
+        COPY("#1, ", entry); AppendExternal(entry, "POC_MODULE"); PutLine("CALLS", entry)
       END;
       IF first # NIL THEN
         IF frameSlots > 0 THEN
           COPY("#", frame); AppendInt(frame, 4 * frameSlots); Append(frame, ", SP");
-          Line(w, "SUBL2", frame)
+          PutLine("SUBL2", frame)
         END;
-        WriteBody(w, first)
+        PutLines(first)
       END
     END;
-    Line(w, "RET", "");
+    PutLine("RET", "");
     IF key[0] # 0X THEN
-      WriteLn(w);
-      WriteStr(w, "; the module's key, which its importers refer to"); WriteLn(w);
+      EndLine;
+      PutText("; the module's key, which its importers refer to"); EndLine;
       VaxTypes.MakeKeySymbol(key, symbol);
-      WriteStr(w, symbol); WriteStr(w, " == 0"); WriteLn(w)
+      PutText(symbol); PutText(" == 0"); EndLine
     END;
     IF isMain THEN
-      WriteLn(w);
-      WriteStr(w, "; the program's start: the module's initializer, then SS$_NORMAL"); WriteLn(w);
+      EndLine;
+      PutText("; the program's start: the module's initializer, then SS$_NORMAL"); EndLine;
       IF withCollector THEN
-        WriteStr(w, "; (first the collector's, and the stack's base, its frame's: section 15)"); WriteLn(w)
+        PutText("; (first the collector's, and the stack's base, its frame's: section 15)"); EndLine
       END;
       COPY(main, entry); Append(entry, ", ^M<>");
-      Line(w, ".ENTRY", entry);
+      PutLine(".ENTRY", entry);
       IF withCollector THEN
-        COPY("#0, ", entry); AppendExternal(entry, heapInit); Line(w, "CALLS", entry);
-        Line(w, "PUSHL", "FP");
-        COPY("#1, ", entry); AppendExternal(entry, stackBase); Line(w, "CALLS", entry)
+        COPY("#0, ", entry); AppendExternal(entry, heapInit); PutLine("CALLS", entry);
+        PutLine("PUSHL", "FP");
+        COPY("#1, ", entry); AppendExternal(entry, stackBase); PutLine("CALLS", entry)
       END;
       COPY("#0, ", entry); Append(entry, init);
-      Line(w, "CALLS", entry);
-      Line(w, "MOVL", "#1, R0");
-      Line(w, "RET", "");
-      WriteLn(w);
-      Line(w, ".END", main)
+      PutLine("CALLS", entry);
+      PutLine("MOVL", "#1, R0");
+      PutLine("RET", "");
+      EndLine;
+      PutLine(".END", main)
     ELSE
-      WriteLn(w);
-      Line(w, ".END", "")
+      EndLine;
+      PutLine(".END", "")
     END;
+    VaxInstructions.PrintAll(w, out);
     RETURN TRUE
   END GenerateModule;
 
