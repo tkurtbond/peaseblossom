@@ -411,12 +411,6 @@ MODULE VaxCodeGenerator;
     pendingLength := 0; pending[0] := 0X
   END EndLine;
 
-  (* A line "<tab><directive or instruction><tab><operands>" *)
-  PROCEDURE PutLine(op, operands: ARRAY OF CHAR);
-  BEGIN
-    AppendOut(VaxInstructions.Instruction(op, operands))
-  END PutLine;
-
   PROCEDURE PutLabel(label: ARRAY OF CHAR);
   BEGIN
     AppendOut(VaxInstructions.Label(label))
@@ -501,11 +495,6 @@ MODULE VaxCodeGenerator;
     IF last = NIL THEN first := i ELSE last.next := i END;
     last := i
   END Add;
-
-  PROCEDURE Emit(op, operands: ARRAY OF CHAR);
-  BEGIN
-    Add(VaxInstructions.Instruction(op, operands))
-  END Emit;
 
   PROCEDURE EmitLabel(label: ARRAY OF CHAR);
   BEGIN

@@ -604,6 +604,14 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    safety net: nothing about the emitted assembly may change. The subset of
    MACRO-32 poc's generator uses is written down here, since it is what
    the encoder must cover and not a line more.
+   **Done 2026-10-18**, in five pieces (2a-2e; the design and the subset
+   are `doc/developer/vax-object-language.md` section 13):
+   `src/back/vax/VaxInstructions.Mod` holds a module as one list of
+   lines - instructions with operand specifiers, directives with items,
+   labels, direct assignments, and comments, the only text - each with
+   its statement's source position. After every piece the 110 VAX
+   fixtures passed and poc's own source compiled for the VAX (35
+   modules) was byte for byte what it had been.
 
 3. **The instruction encoder.** VAX instructions are an opcode (one or
    two bytes) followed by operand specifiers, each a mode nibble and a

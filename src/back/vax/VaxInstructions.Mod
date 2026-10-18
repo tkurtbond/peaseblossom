@@ -15,8 +15,9 @@ MODULE VaxInstructions;
      the prefix G^ or L^ or none; each with an index register or none. A
      directive's items (step 2d) are numbers, hexadecimal longwords,
      symbols with offsets, differences of two symbols, strings, entry
-     masks, keywords and real numerals. Until step 2e removes it, a line
-     can still hold its operands as text, and a specifier can be text.
+     masks, keywords and real numerals. Nothing is held as text but a
+     verbatim line (step 2e), so that the encoder and object writer see
+     everything the printer writes.
 
      Each line has the source position of the statement being generated
      when it was made (SetPosition), 0 when there is none; the printer
@@ -27,7 +28,7 @@ MODULE VaxInstructions;
   CONST
     tab = 9X;
     (* LineDesc.kind *)
-    verbatim* = 0; (* text, written as it is *)
+    verbatim* = 0; (* a comment or a blank line, written as it is *)
     instruction* = 1; (* "<tab><op>", with "<tab><operands>" unless there are none *)
     label* = 2; (* "<name>:", or "<name>::" when global *)
     directive* = 3; (* "<tab><directive>", with "<tab><items>" unless there are none *)
@@ -41,7 +42,6 @@ MODULE VaxInstructions;
     displacementDeferred* = 4; (* @d(Rn) *)
     literal* = 5; (* #v *)
     relative* = 6; (* symbol+offset, the offset written when it is not 0 *)
-    specifierText* = 7; (* the specifier as text, until step 2c *)
     (* SpecifierDesc.form, a literal's *)
     decimal* = 0; (* #v *)
     hexadecimal* = 1; (* #^X and the low digits hexadecimal digits of bits *)
@@ -63,9 +63,10 @@ MODULE VaxInstructions;
     realItem* = 7; (* text, a real numeral *)
 
     maxSpecifiers* = 6;
-    (* room for one specifier as text: a 31-character symbol, a prefix, an
-       offset and an index register, or a real's text *)
-    specifierLength* = 128;
+    (* room for one specifier or item as the printer writes it: a
+       31-character symbol, a prefix, an offset and an index register, or
+       a real's text *)
+    specifierLength = 128;
 
   TYPE
     Text* = POINTER TO ARRAY OF CHAR;
@@ -80,8 +81,7 @@ MODULE VaxInstructions;
       bits*: SET; digits*: INTEGER; (* a hexadecimal literal's *)
       realText*: Text; realType*: CHAR; (* a real literal's *)
       symbol*: Text; offset*: LONGINT; prefix*: INTEGER; (* a relative specifier's *)
-      index*: INTEGER; (* the index register, [Rx], or noRegister *)
-      text*: Text (* a specifierText's *)
+      index*: INTEGER (* the index register, [Rx], or noRegister *)
     END;
 
     Item* = POINTER TO ItemDesc;
@@ -98,9 +98,8 @@ MODULE VaxInstructions;
     Line* = POINTER TO LineDesc;
     LineDesc* = RECORD
       kind*: INTEGER;
-      op*: Text; (* an instruction's mnemonic or a directive; a label's name; a verbatim line's text *)
-      operands*: Text; (* an instruction's operands as text, possibly empty, or NIL *)
-      specifiers*: ARRAY maxSpecifiers OF Specifier; (* an instruction's, when operands is NIL *)
+      op*: Text; (* an instruction's mnemonic, a directive's name, a label's or an assignment's symbol, a verbatim line's text *)
+      specifiers*: ARRAY maxSpecifiers OF Specifier; (* an instruction's operands *)
       specifierCount*: INTEGER;
       items*, lastItem*: Item; (* a directive's, an assignment's value *)
       global*: BOOLEAN; (* a label's *)
@@ -143,13 +142,13 @@ MODULE VaxInstructions;
   PROCEDURE NewLine(kind: INTEGER): Line;
     VAR l: Line;
   BEGIN
-    NEW(l); l.kind := kind; l.op := NIL; l.operands := NIL; l.specifierCount := 0;
+    NEW(l); l.kind := kind; l.op := NIL; l.specifierCount := 0;
     l.items := NIL; l.lastItem := NIL; l.global := FALSE;
     l.line := currentLine; l.column := currentColumn; l.next := NIL;
     RETURN l
   END NewLine;
 
-  (* A line written as text is *)
+  (* A comment or a blank line, text written as it is *)
   PROCEDURE Verbatim*(text: ARRAY OF CHAR): Line;
     VAR l: Line;
   BEGIN
@@ -157,15 +156,7 @@ MODULE VaxInstructions;
     RETURN l
   END Verbatim;
 
-  (* An instruction or directive, op, with its operands (empty for none) *)
-  PROCEDURE Instruction*(op, operands: ARRAY OF CHAR): Line;
-    VAR l: Line;
-  BEGIN
-    l := NewLine(instruction); l.op := NewText(op); l.operands := NewText(operands);
-    RETURN l
-  END Instruction;
-
-  (* An instruction or directive, op, whose operands AddSpecifier gives *)
+  (* An instruction, op, whose operands AddSpecifier gives *)
   PROCEDURE Operation*(op: ARRAY OF CHAR): Line;
     VAR l: Line;
   BEGIN
@@ -306,7 +297,7 @@ MODULE VaxInstructions;
   BEGIN
     NEW(s); s.mode := mode; s.register := noRegister; s.displacement := 0;
     s.form := decimal; s.value := 0; s.bits := {}; s.digits := 8; s.realText := NIL; s.realType := 0X;
-    s.symbol := NIL; s.offset := 0; s.prefix := noPrefix; s.index := noRegister; s.text := NIL;
+    s.symbol := NIL; s.offset := 0; s.prefix := noPrefix; s.index := noRegister;
     RETURN s
   END NewSpecifier;
 
@@ -382,14 +373,6 @@ MODULE VaxInstructions;
     s := NewSpecifier(relative); s.symbol := NewText(symbol); s.offset := offset; s.prefix := prefix;
     RETURN s
   END Relative;
-
-  (* A specifier still written as text *)
-  PROCEDURE SpecifierText*(text: ARRAY OF CHAR): Specifier;
-    VAR s: Specifier;
-  BEGIN
-    s := NewSpecifier(specifierText); s.text := NewText(text);
-    RETURN s
-  END SpecifierText;
 
   (* s, indexed by Rx: s[Rx] *)
   PROCEDURE Indexed*(s: Specifier; x: INTEGER): Specifier;
@@ -473,16 +456,9 @@ MODULE VaxInstructions;
         IF s.prefix = general THEN Append(text, "G^") ELSIF s.prefix = longRelative THEN Append(text, "L^") END;
         Append(text, s.symbol^);
         IF s.offset # 0 THEN AppendChar(text, "+"); AppendInt(text, s.offset) END
-    | specifierText: Append(text, s.text^)
     END;
     IF s.index # noRegister THEN AppendChar(text, "["); AppendRegister(text, s.index); AppendChar(text, "]") END
   END AppendSpecifier;
-
-  (* s as MACRO-32 text *)
-  PROCEDURE SpecifierToText*(s: Specifier; VAR text: ARRAY OF CHAR);
-  BEGIN
-    text[0] := 0X; AppendSpecifier(text, s)
-  END SpecifierToText;
 
   PROCEDURE WriteText(VAR w: Files.Rider; t: Text);
     VAR i: LONGINT;
@@ -559,9 +535,7 @@ MODULE VaxInstructions;
       verbatim: WriteText(w, l.op)
     | instruction:
         Files.Write(w, tab); WriteText(w, l.op);
-        IF l.operands # NIL THEN
-          IF l.operands[0] # 0X THEN Files.Write(w, tab); WriteText(w, l.operands) END
-        ELSIF l.specifierCount > 0 THEN
+        IF l.specifierCount > 0 THEN
           Files.Write(w, tab);
           FOR i := 0 TO l.specifierCount - 1 DO
             IF i > 0 THEN Files.Write(w, ","); Files.Write(w, " ") END;
