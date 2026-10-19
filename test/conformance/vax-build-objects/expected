@@ -50,6 +50,3 @@ written: VaxBuildSums.image
 poc: -emit-macro32, -emit-vax-object and -emit-vax-image are commands, not options to -build
 run poc -help for the commands and options
 exit 1
-== poc -target vax-dec-vms -vax-objects -library Sums VaxBuildSums.mod
-poc: a library for vax-dec-vms is built from MACRO-32 so far, not with -vax-objects
-exit 1

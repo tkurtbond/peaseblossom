@@ -490,6 +490,15 @@ MODULE VaxImage;
     RETURN m.symbols
   END FirstSymbol;
 
+  (* The symbols m defines, the last one defined first, NextSymbol going
+     back toward the first: before FirstSymbol or Print has sorted them
+     by name. A VAX library lists them so, in the order of the module's
+     MACRO-32, for UNIVERSAL= (step 6; section 17, proposal 6). *)
+  PROCEDURE LastDefinedSymbol*(m: Module): Symbol;
+  BEGIN
+    RETURN m.symbols
+  END LastDefinedSymbol;
+
   PROCEDURE NextSymbol*(y: Symbol): Symbol;
   BEGIN
     RETURN y.next

@@ -2109,7 +2109,9 @@ MODULE Poc;
      for the VAX, made as on LLVM (BuildLibrary) from its modules, each
      compiled from source, and any hand-written .mar files named
      (vaxParts), in <outputDir>/vax-dec-vms/<O2|OC>/: each module's .sym
-     and .mar, each part copied there, the manifest and the .owner files,
+     and .mar - or with objects, its .obj (PLAN.md Phase 18 step 6;
+     doc/developer/vax-object-language.md, section 17, proposal 6) - each
+     part copied there, the manifest and the .owner files,
      and the DCL procedures VaxToolchainDriver.WriteLibraryProcedures
      writes, <name>_build.com, which makes <NAME>.OLB and <NAME>.EXE on
      VMS, and <name>_setup.com. Silent on success. *)
@@ -2123,15 +2125,7 @@ MODULE Poc;
       path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
   BEGIN
     IF ~SetVaxTarget("-library", VaxToolchainDriver.triple) THEN RETURN END;
-    (* a library is built from MACRO-32 until step 6b gives it objects
-       (section 17, proposal 6) *)
-    IF vaxWayGiven & vaxObjects THEN
-      failed := TRUE; Err.String("poc: a library for "); Err.String(VaxToolchainDriver.triple);
-      Err.String(" is built from MACRO-32 so far, not with -vax-objects"); Err.Ln;
-      RETURN
-    END;
-    VaxToolchainDriver.writeMacro := TRUE; VaxToolchainDriver.writeObject := FALSE;
-    VaxToolchainDriver.writeImage := FALSE;
+    SetVaxWay;
     IF ~VaxToolchainDriver.IsLibraryName(name) THEN
       failed := TRUE; Err.String("poc: "); Err.String(name);
       Err.String(" cannot name a library for "); Err.String(VaxToolchainDriver.triple);
@@ -2154,7 +2148,9 @@ MODULE Poc;
       WHILE part # NIL DO
         IF VaxToolchainDriver.IsSameVmsName(part.name, member.name) THEN
           failed := TRUE; Err.String("poc: "); Err.String(part.path); Err.String(" has the file name of module ");
-          Err.String(member.name); Err.String("'s .mar"); Err.Ln;
+          Err.String(member.name);
+          IF vaxObjects THEN Err.String("'s .obj") ELSE Err.String("'s .mar") END;
+          Err.Ln;
           RETURN
         END;
         part := part.next
@@ -2208,8 +2204,8 @@ MODULE Poc;
     units := VaxUnits(modules, TRUE); symbols := NIL;
     u := units;
     WHILE u # NIL DO
-      VaxToolchainDriver.ModuleFilePath(dir, u.name, path);
-      IF ~VaxToolchainDriver.ReadGlobalSymbols(path, symbols) THEN
+      IF ~VaxToolchainDriver.GlobalSymbols(dir, u.name, vaxObjects, symbols) THEN
+        VaxToolchainDriver.ModuleFilePath(dir, u.name, path);
         failed := TRUE; Err.String("poc: cannot read "); Err.String(path); Err.Ln; RETURN
       END;
       u := u.next
@@ -2229,13 +2225,13 @@ MODULE Poc;
       needsTail := u;
       owner := owner.linkNext
     END;
-    IF ~VaxToolchainDriver.WriteLibraryProcedures(dir, name, units, parts, needs, symbols) THEN
+    IF ~VaxToolchainDriver.WriteLibraryProcedures(dir, name, units, parts, needs, symbols, vaxObjects) THEN
       failed := TRUE; Err.String("poc: cannot write library "); Err.String(name); Err.String("'s procedures in ");
       Err.String(dir); Err.Ln;
       RETURN
     END;
     (* the manifest, as on LLVM *)
-    lib := Libraries.NewLibrary(name, dir);
+    lib := Libraries.NewLibrary(name, dir); lib.objects := vaxObjects;
     m := modules;
     WHILE m # NIL DO
       IF ~m.inLibrary THEN
@@ -2770,6 +2766,20 @@ MODULE Poc;
     RETURN TRUE
   END CopyInto;
 
+  (* The object name copied from the directory from to the directory to,
+     whole: FALSE, reported, if it could not be *)
+  PROCEDURE CopyObjectInto(from, to, name: ARRAY OF CHAR): BOOLEAN;
+    VAR source, target: Libraries.Path;
+  BEGIN
+    Directories.MakePath(from, name, source); Directories.MakePath(to, name, target);
+    IF ~VaxToolchainDriver.CopyObject(source, target) THEN
+      failed := TRUE; Err.String("poc: cannot copy "); Err.String(source); Err.String(" to ");
+      Err.String(to); Err.Ln;
+      RETURN FALSE
+    END;
+    RETURN TRUE
+  END CopyObjectInto;
+
   (* Whether the directories a and b, both there, are one: a file made in a
      is looked for in b. With no shell, as poc on VMS has none to ask. *)
   PROCEDURE IsSameDirectory(a, b, name: ARRAY OF CHAR): BOOLEAN;
@@ -2791,7 +2801,10 @@ MODULE Poc;
      InstallLibrary for LLVM, but the files the host has of a VAX library
      (section 18): its manifest, each module's .sym, .owner and .mar, its
      parts' .mar and its two DCL procedures, copied as text, by Files, so
-     that poc on VMS can do it too. Its .OLB and .EXE are made where it is
+     that poc on VMS can do it too; a library of objects has each module's
+     .obj in place of its .mar, copied whole (VaxToolchainDriver.CopyObject;
+     PLAN.md Phase 18 step 6, doc/developer/vax-object-language.md,
+     section 17, proposal 6). Its .OLB and .EXE are made where it is
      installed, by its build procedure there, which its setup procedure
      then names. *)
   PROCEDURE InstallLibraryVax(name, outputDir: ARRAY OF CHAR);
@@ -2849,6 +2862,7 @@ MODULE Poc;
           COPY(m.name, file); Strcat(file, ".sym"); DeleteIn(dir, file);
           COPY(m.name, file); Strcat(file, ".owner"); DeleteIn(dir, file);
           COPY(m.name, file); Strcat(file, ".mar"); DeleteIn(dir, file);
+          COPY(m.name, file); Strcat(file, ".obj"); DeleteIn(dir, file);
           m := m.next
         END;
         n := old.parts;
@@ -2862,8 +2876,13 @@ MODULE Poc;
       IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
       COPY(m.name, file); Strcat(file, ".owner");
       IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
-      COPY(m.name, file); Strcat(file, ".mar");
-      IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
+      IF lib.objects THEN
+        COPY(m.name, file); Strcat(file, ".obj");
+        IF ~CopyObjectInto(lib.dir, dir, file) THEN RETURN END
+      ELSE
+        COPY(m.name, file); Strcat(file, ".mar");
+        IF ~CopyInto(lib.dir, dir, file) THEN RETURN END
+      END;
       m := m.next
     END;
     n := lib.parts;

@@ -138,6 +138,46 @@ inst/vax-dec-vms/O2 has the files of libs/vax-dec-vms/O2
 == poc -target vax-dec-vms -library-path inst -output-dir main2 -o useinst -build VaxLibUse.mod
 exit 0
 useinst-renamed.com matches useolb.com
+== poc -target vax-dec-vms -vax-objects -output-dir objects/libs -library POCRTL ../../../rtl/vax/Args.Mod ../../../rtl/vax/AsynchronousTraps.Mod ../../../rtl/vax/CardinalTypes.Mod ../../../rtl/vax/Console.Mod ../../../rtl/vax/DecimalToReal.Mod ../../../rtl/vax/Directories.Mod ../../../rtl/vax/Err.Mod ../../../rtl/vax/Files.Mod ../../../rtl/vax/FormattedInput.Mod ../../../rtl/vax/FormattedOutput.Mod ../../../rtl/vax/FormattedText.Mod ../../../rtl/vax/GarbageCollectedHeap.Mod ../../../rtl/vax/In.Mod ../../../rtl/vax/InStr.Mod ../../../rtl/vax/LineOutput.Mod ../../../rtl/vax/Math.Mod ../../../rtl/vax/MathL.Mod ../../../rtl/vax/Modules.Mod ../../../rtl/vax/Oberon.Mod ../../../rtl/vax/Out.Mod ../../../rtl/vax/OutStr.Mod ../../../rtl/vax/Platform.Mod ../../../rtl/vax/RealDigits.Mod ../../../rtl/vax/Reals.Mod ../../../rtl/vax/RecordFiles.Mod ../../../rtl/vax/Strings.Mod ../../../rtl/vax/Texts.Mod ../../../rtl/vax/VT100.Mod ../../../rtl/vax/VmsArguments.Mod ../../../rtl/vax/PocRtl.mar
+exit 0
+== poc -target vax-dec-vms -vax-objects -output-dir objects/libs -library-path objects/libs -library VAXLIB VaxLibBase.mod VaxLibShapes.mod VaxLibSums.mod
+exit 0
+objects/libs/vax-dec-vms/O2/VAXLIB_build.com matches expected-VAXLIB_build-objects.com
+objects/libs/vax-dec-vms/O2/VAXLIB_setup.com matches expected-VAXLIB_setup.com
+manifest matches expected-VAXLIB-objects.library
+POCRTL's UNIVERSAL= lines are the same from objects
+in the objects library directory: Args.obj
+in the objects library directory: Args.owner
+in the objects library directory: Args.sym
+in the objects library directory: PocRtl.mar
+in the objects library directory: VAXLIB.library
+in the objects library directory: VAXLIB_build.com
+in the objects library directory: VAXLIB_setup.com
+in the objects library directory: VaxLibBase.obj
+in the objects library directory: VaxLibBase.owner
+in the objects library directory: VaxLibBase.sym
+in the objects library directory: VaxLibShapes.obj
+in the objects library directory: VaxLibShapes.owner
+in the objects library directory: VaxLibShapes.sym
+in the objects library directory: VaxLibSums.obj
+in the objects library directory: VaxLibSums.owner
+in the objects library directory: VaxLibSums.sym
+== poc -target vax-dec-vms -library-path objects/libs -output-dir objects/main-macro32 -o useolb -build VaxLibUse.mod
+exit 0
+useolb.com matches expected-useolb.com
+== poc -target vax-dec-vms -vax-objects -library-path objects/libs -shared-libraries -output-dir objects/main-objects -o useshr -build VaxLibUse.mod
+exit 0
+useshr.com matches expected-useshr-objects.com
+== poc -target vax-dec-vms -library-path objects/libs -output-dir objects/inst -install-library POCRTL
+installed library POCRTL in objects/inst/vax-dec-vms/O2
+exit 0
+== poc -target vax-dec-vms -library-path objects/libs -output-dir objects/inst -install-library VAXLIB
+installed library VAXLIB in objects/inst/vax-dec-vms/O2
+exit 0
+== poc -target vax-dec-vms -library-path objects/libs -output-dir objects/inst -install-library VAXLIB
+installed library VAXLIB in objects/inst/vax-dec-vms/O2
+exit 0
+objects/inst/vax-dec-vms/O2 has the files of objects/libs/vax-dec-vms/O2
 == poc -target vax-dec-vms -library-path libs -output-dir libs -install-library VAXLIB
 poc: library VAXLIB is in libs/vax-dec-vms/O2 already
 exit 1

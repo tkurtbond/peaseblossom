@@ -219,8 +219,9 @@ check-lto: build
 # needs no LD_LIBRARY_PATH on the BSDs). rtl/llvm is the runtime, which needs
 # SYSTEM.ADDRESS and external procedures, and is not checked. The modules of
 # src/back/vax/vms, for poc built for VMS, are checked for the VAX, against
-# rtl/vax's RecordFiles, compiled for it into build/strict-vms (PLAN.md
-# Phase 18 step 4c).
+# rtl/vax's RecordFiles, LineOutput and Platform, compiled for it into
+# build/strict-vms (PLAN.md Phase 18 steps 4c and 6b), not against an
+# installed POCRTL, which a host need not have.
 check-strict: $(STAGE1_BIN)
 	@status=0; \
 	for f in $(SRCS) $(NO_LLVM_SRCS); do \
@@ -232,6 +233,10 @@ check-strict: $(STAGE1_BIN)
 	mkdir -p $(BUILD_DIR)/strict-vms; \
 	$(STAGE1_BIN) -OC -target vax-dec-vms -import-path rtl/vax -output-dir $(BUILD_DIR)/strict-vms \
 	  -emit-macro32 rtl/vax/RecordFiles.Mod >/dev/null || status=1; \
+	for m in LineOutput Platform; do \
+	  $(STAGE1_BIN) -OC -target vax-dec-vms -import-path $(BUILD_DIR)/strict-vms -import-path rtl/vax \
+	    -output-dir $(BUILD_DIR)/strict-vms -emit-macro32 rtl/vax/$$m.Mod >/dev/null || status=1; \
+	done; \
 	for f in $(VAX_VMS_SRCS); do \
 	  out=$$($(STAGE1_BIN) -OC -strict -target vax-dec-vms -import-path $(BUILD_DIR)/strict-vms -check $$f 2>&1); \
 	  if [ "$$out" != "semantic OK" ]; then \

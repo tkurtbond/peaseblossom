@@ -1868,7 +1868,7 @@ as amended then (one option for each kind of output).
   and `debugging` (`LINK/DEBUG`, and `MACRO/DEBUG/OBJECT` from
   MACRO-32); `-compile` with objects writes no procedure. `-library`
   refuses `-vax-objects` until 6b and is built from MACRO-32 whatever
-  the default.
+  the default (6b lifts both: section 17.4).
 - **poc on VMS now builds from objects by default.** The tools that run
   poc on the guest and compare its MACRO-32 pass `-vax-macro32`:
   `vax-stages`' compile of each stage and `vax-guest-poc`'s builds,
@@ -1877,3 +1877,40 @@ as amended then (one option for each kind of output).
   `-g`, lists what each command writes, and on the guest links and runs
   the program from the objects `-vax-objects -build` wrote with the
   procedure it wrote: `%X3735`, as `vax-build`'s from MACRO-32.
+
+### 17.4 Piece 6b: libraries of objects (done 2026-10-19)
+
+- **`-library` takes the way** (`Poc.SetVaxWay`, as `-build` does): with
+  objects the library directory holds each module's `.obj` in place of
+  its `.mar`; the parts (`PocRtl.mar`) stay MACRO-32 and are copied as
+  before. poc on VMS now builds its libraries from objects by default.
+- **`UNIVERSAL=` from the image**, not from the `.mar`'s text: after a
+  module is encoded, `VaxToolchainDriver.RememberSymbols` keeps the
+  global symbols it defines, in the order defined
+  (`VaxImage.LastDefinedSymbol`; the object writer sorts the list by
+  name afterwards), which is the `.mar`'s order, so the two ways give
+  the same lines (`vax-library` compares `POCRTL`'s).
+  `VaxToolchainDriver.GlobalSymbols` takes the way: the remembered
+  symbols, or `ReadGlobalSymbols` on the `.mar`. A part's symbols are
+  still read from its `.mar`.
+- **`<name>_build.com`** (`WriteLibraryProcedures`, `objects`) inserts
+  the modules' objects with no `MACRO` line for them, still assembling
+  each part; its header says where the `.OBJ` files, or the `.OBJ` and
+  `.MAR` files, are.
+- **The manifest** has the line `objects` (`Libraries.LibraryDesc.
+  objects`), which `-install-library` reads: it copies each module's
+  `.obj` whole (`VaxToolchainDriver.CopyObject`: on the host
+  `ObjectRecords.Copy`, byte for byte; on VMS, where the object is a file
+  of variable-length records that `Files` would read as lines, DCL's
+  `COPY` through `Platform.System`), and deletes both the `.mar` and the
+  `.obj` of the copy it replaces.
+- **A program built either way links a library built either way**: the
+  program's procedure names only the library's `.OLB` or `.EXE`, so it is
+  the same text whichever way the library was built.
+- `vax-library` builds `POCRTL` and `VAXLIB` from objects too, compares
+  `VAXLIB`'s procedure (`expected-VAXLIB_build-objects.com`) and
+  manifest, builds `VAXLIBUSE` against them from MACRO-32 (`useolb.com`,
+  unchanged) and from its object (`expected-useshr-objects.com`), builds
+  and runs all of it on the guest (`guest-objects.com`), and installs
+  the objects libraries. `vax-build-objects` no longer has the refusal.
+  The other library fixtures run both ways in 6d.

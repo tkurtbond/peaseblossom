@@ -30,6 +30,15 @@ MODULE VaxToolchainDriver;
       next*: Unit
     END;
 
+    (* a module encoded in this run, and the global symbols it defines, in
+       the order it defines them (GlobalSymbols) *)
+    Encoded = POINTER TO EncodedDesc;
+    EncodedDesc = RECORD
+      name: ARRAY 64 OF CHAR;
+      symbols: Unit;
+      next: Encoded
+    END;
+
   VAR
     (* which of a module's files EmitModule writes: its MACRO-32
        (-emit-macro32, and a build with -vax-macro32), its encoded image
@@ -42,6 +51,7 @@ MODULE VaxToolchainDriver;
     (* the compiler, as an object's language processor header names it:
        "Peaseblossom poc <version>", which Poc.Mod sets *)
     processor*: ARRAY 64 OF CHAR;
+    encoded: Encoded;
 
   PROCEDURE IsVaxTriple*(t: ARRAY OF CHAR): BOOLEAN;
   BEGIN
@@ -166,6 +176,20 @@ MODULE VaxToolchainDriver;
     RETURN TRUE
   END WriteObject;
 
+  (* The global symbols image defines remembered under moduleName, for
+     GlobalSymbols, in the order they are defined *)
+  PROCEDURE RememberSymbols(image: VaxImage.Module; moduleName: ARRAY OF CHAR);
+    VAR e: Encoded; y: VaxImage.Symbol; u: Unit;
+  BEGIN
+    NEW(e); COPY(moduleName, e.name); e.symbols := NIL;
+    y := VaxImage.LastDefinedSymbol(image);
+    WHILE y # NIL DO
+      NEW(u); COPY(y.name, u.name); u.next := e.symbols; e.symbols := u;
+      y := VaxImage.NextSymbol(y)
+    END;
+    e.next := encoded; encoded := e
+  END RememberSymbols;
+
   (* The module GenerateModule wrote last, encoded, and written as its
      image, its object or both, as writeImage and writeObject say: FALSE if
      the encoder reported an error or a file could not be written *)
@@ -173,6 +197,7 @@ MODULE VaxToolchainDriver;
     VAR image: VaxImage.Module;
   BEGIN
     image := VaxEncoder.Encode(VaxCodeGenerator.ModuleLines());
+    IF image # NIL THEN RememberSymbols(image, moduleName) END;
     RETURN (image # NIL) & (~writeImage OR WriteImage(image, moduleName, outputDir))
       & (~writeObject OR WriteObject(image, moduleName, outputDir))
   END WriteEncoded;
@@ -454,6 +479,38 @@ MODULE VaxToolchainDriver;
     RETURN TRUE
   END ReadGlobalSymbols;
 
+  (* The global symbols module moduleName defines, appended to symbols:
+     with objects, those of its image, as it was encoded in this run (PLAN.md
+     Phase 18 step 6; doc/developer/vax-object-language.md, section 17,
+     proposal 6), else those of its MACRO-32 in outputDir
+     (ReadGlobalSymbols), in the order the module defines them either way,
+     so that a library's procedure lists one module's alike whichever way
+     it is built. FALSE if neither is there. *)
+  PROCEDURE GlobalSymbols*(outputDir, moduleName: ARRAY OF CHAR; objects: BOOLEAN; VAR symbols: Unit): BOOLEAN;
+    VAR e: Encoded; u, v, last: Unit; path: ARRAY pathBufferLength OF CHAR;
+  BEGIN
+    IF ~objects THEN ModuleFilePath(outputDir, moduleName, path); RETURN ReadGlobalSymbols(path, symbols) END;
+    e := encoded;
+    WHILE (e # NIL) & (e.name # moduleName) DO e := e.next END;
+    IF e = NIL THEN RETURN FALSE END;
+    last := symbols;
+    IF last # NIL THEN WHILE last.next # NIL DO last := last.next END END;
+    u := e.symbols;
+    WHILE u # NIL DO
+      NEW(v); v.name := u.name; v.next := NIL;
+      IF last = NIL THEN symbols := v ELSE last.next := v END;
+      last := v; u := u.next
+    END;
+    RETURN TRUE
+  END GlobalSymbols;
+
+  (* The object poc wrote at from copied to to (ObjectRecords.Copy): a
+     library's installed (section 17, proposal 6). FALSE if it could not be. *)
+  PROCEDURE CopyObject*(from, to: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN ObjectRecords.Copy(from, to)
+  END CopyObject;
+
   (* The text file from copied to the file to, a line at a time, as
      poc on VMS can as well as on Unix (no cp there): a hand-written .mar
      put in a library (section 18). FALSE if either cannot be opened, or a
@@ -495,7 +552,10 @@ MODULE VaxToolchainDriver;
      order MACRO takes them, parts its hand-written .MAR files, needs the
      libraries it needs, in link order, and symbols the global symbols of
      them all. <name>_build.com, run on VMS in the directory that holds the
-     library's files, assembles them, makes the object library <NAME>.OLB,
+     library's files, assembles them - with objects, the modules are each
+     <UNIT>.OBJ poc wrote, and only the parts are assembled (PLAN.md Phase
+     18 step 6; doc/developer/vax-object-language.md, section 17, proposal
+     6) - makes the object library <NAME>.OLB,
      one module at a time (LIBRARY/INSERT refuses a global symbol the
      library has already, section 18.1), and links the shareable image
      <NAME>.EXE from them and the needed libraries' images - the modules
@@ -513,7 +573,8 @@ MODULE VaxToolchainDriver;
      RMS takes a file specification without punctuation as a logical name
      (found on the development system, 2026-10-12). FALSE if a file could
      not be written. *)
-  PROCEDURE WriteLibraryProcedures*(dir, name: ARRAY OF CHAR; units, parts, needs, symbols: Unit): BOOLEAN;
+  PROCEDURE WriteLibraryProcedures*(dir, name: ARRAY OF CHAR; units, parts, needs, symbols: Unit;
+                                    objects: BOOLEAN): BOOLEAN;
     VAR f: Files.File; w: Files.Rider; u: Unit; libName, unitName: ARRAY 64 OF CHAR;
         line: ARRAY 300 OF CHAR; label: ARRAY 16 OF CHAR; file: ARRAY 64 OF CHAR;
         path: ARRAY pathBufferLength OF CHAR; count: INTEGER;
@@ -528,7 +589,13 @@ MODULE VaxToolchainDriver;
     Append(line, libName); Append(line, ".OLB and ");
     Append(line, libName); Append(line, ".EXE"); WriteLine(w, line);
     WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 18). Run it where");
-    WriteLine(w, "$ ! the library's .MAR files are, once the setup procedure of each");
+    IF ~objects THEN
+      WriteLine(w, "$ ! the library's .MAR files are, once the setup procedure of each")
+    ELSIF parts # NIL THEN
+      WriteLine(w, "$ ! the library's .OBJ and .MAR files are, once the setup procedure of each")
+    ELSE
+      WriteLine(w, "$ ! the library's .OBJ files are, once the setup procedure of each")
+    END;
     WriteLine(w, "$ ! library it needs has been run.");
     WriteLine(w, "$ ON WARNING THEN EXIT $STATUS");
     count := 0; u := needs;
@@ -539,7 +606,7 @@ MODULE VaxToolchainDriver;
       WriteNeedCheck(w, line, unitName, label);
       u := u.next
     END;
-    u := units;
+    IF objects THEN u := NIL ELSE u := units END;
     WHILE u # NIL DO
       Upper(u.name, unitName);
       COPY("$ MACRO/OBJECT ", line); Append(line, unitName); Append(line, ".MAR"); WriteLine(w, line);
@@ -612,5 +679,6 @@ MODULE VaxToolchainDriver;
   END WriteLibraryProcedures;
 
 BEGIN
-  writeMacro := TRUE; writeImage := FALSE; writeObject := FALSE; debug := FALSE; processor := "Peaseblossom poc"
+  writeMacro := TRUE; writeImage := FALSE; writeObject := FALSE; debug := FALSE; processor := "Peaseblossom poc";
+  encoded := NIL
 END VaxToolchainDriver.

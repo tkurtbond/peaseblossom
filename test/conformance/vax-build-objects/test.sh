@@ -13,8 +13,7 @@
 # what vax-build's does. Then -emit-macro32, -emit-vax-object and
 # -emit-vax-image, given together, write each file they name from one
 # compile, each alone only its own; and what is refused: an -emit- command
-# as an option to another command, and a library with -vax-objects (step
-# 6b's).
+# as an option to another command. (A library of objects is vax-library's.)
 . ../../vaxfixture.sh
 rm -rf work
 mkdir work
@@ -63,8 +62,6 @@ written
 run -emit-vax-image VaxBuild.mod
 written
 run -target vax-dec-vms -build VaxBuild.mod -emit-macro32
-written
-run -target vax-dec-vms -vax-objects -library Sums VaxBuildSums.mod
 written
 vax_do guest-build.com guest-build.expected work/guest/VaxBuild.com work/guest/VaxBuild.obj \
   work/guest/VaxBuildSums.obj ../../../rtl/vax/PocRtl.mar

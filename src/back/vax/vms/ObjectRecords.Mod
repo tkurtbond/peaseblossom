@@ -7,7 +7,7 @@ MODULE ObjectRecords;
      this directory on its import path, and src/back/vax/host has the same
      interface for poc built elsewhere. *)
 
-  IMPORT RecordFiles;
+  IMPORT RecordFiles, Platform;
 
   TYPE
     File* = RecordFiles.File;
@@ -29,6 +29,25 @@ MODULE ObjectRecords;
   BEGIN
     RecordFiles.Close(f)
   END Close;
+
+  (* The object at from copied to to, its records and attributes whole, by
+     DCL's COPY (a library's installed: PLAN.md Phase 18 step 6;
+     doc/developer/vax-object-language.md, section 17.4): FALSE if it
+     could not be *)
+  PROCEDURE Copy*(from, to: ARRAY OF CHAR): BOOLEAN;
+    VAR command: ARRAY 2 * 1024 + 8 OF CHAR; i: INTEGER;
+
+    PROCEDURE Add(s: ARRAY OF CHAR);
+      VAR k: INTEGER;
+    BEGIN
+      k := 0;
+      WHILE (k < LEN(s)) & (s[k] # 0X) & (i < LEN(command) - 1) DO command[i] := s[k]; INC(i); INC(k) END
+    END Add;
+
+  BEGIN
+    i := 0; Add("COPY "); Add(from); Add(" "); Add(to); command[i] := 0X;
+    RETURN Platform.System(command) = 0
+  END Copy;
 
   (* The source file name, for the debugger records (poc -g;
      doc/developer/vax-object-language.md, section 16.6): its name and its

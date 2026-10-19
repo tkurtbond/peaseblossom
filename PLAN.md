@@ -742,7 +742,10 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    `-emit-vax-object` and `-emit-vax-image` each write their own file and
    combine; `-vax-objects` and `-vax-macro32`, objects the default on
    VMS; `-build` and `-compile` with objects, no MACRO; `-g` links
-   `/DEBUG` (`vax-build-objects`). Every earlier phase's
+   `/DEBUG` (`vax-build-objects`). **6b done** (section 17.4):
+   `-library` with objects, each module's `.obj` in the library,
+   `UNIVERSAL=` from the encoded image, the manifest's `objects`,
+   `-install-library` copying objects whole (`vax-library`). Every earlier phase's
    VAX fixtures run in both modes - built through `.mar` and `MACRO`, and
    built directly - and give the same output; Phase 17's object libraries
    (`LIBRARY/CREATE` of poc's `.OBJ` files) and shareable images

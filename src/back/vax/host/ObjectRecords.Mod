@@ -45,6 +45,25 @@ MODULE ObjectRecords;
     Files.Register(f.file); Files.Close(f.file)
   END Close;
 
+  (* The file at from, written by Put, copied byte for byte to to (a
+     library's installed: PLAN.md Phase 18 step 6;
+     doc/developer/vax-object-language.md, section 17.4): FALSE if either
+     cannot be opened *)
+  PROCEDURE Copy*(from, to: ARRAY OF CHAR): BOOLEAN;
+    VAR f, g: Files.File; r, w: Files.Rider; ch: CHAR;
+  BEGIN
+    f := Files.Old(from);
+    IF f = NIL THEN RETURN FALSE END;
+    g := Files.New(to);
+    IF g = NIL THEN Files.Close(f); RETURN FALSE END;
+    Files.Set(r, f, 0); Files.Set(w, g, 0);
+    Files.Read(r, ch);
+    WHILE ~r.eof DO Files.Write(w, ch); Files.Read(r, ch) END;
+    Files.Close(f);
+    Files.Register(g); Files.Close(g);
+    RETURN TRUE
+  END Copy;
+
   (* The source file name, for the debugger records (poc -g;
      doc/developer/vax-object-language.md, section 16.6): its name for VMS,
      its last part, since a path of this system's means nothing there, and
