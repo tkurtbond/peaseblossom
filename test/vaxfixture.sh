@@ -3,8 +3,9 @@
 #
 #   vax_mar <Module> [<poc option>...]
 #
-# which runs poc <poc option>... -emit-vax-object <Module>.mod, appends what
-# poc prints and its exit status to result, then compares the <Module>.mar
+# which runs poc <poc option>... -emit-macro32 -emit-vax-object <Module>.mod
+# (both files from one compile), appends what poc prints and its exit
+# status to result, then compares the <Module>.mar
 # written with expected-vax.mar, and each other module's of the program,
 # <Import>.mar, with expected-vax-<Import>.mar, leaving out the reviewer's
 # comment at the top (the lines starting ";;", which say why the output is
@@ -75,7 +76,7 @@ vax_mar() {
   for vax_file in *.obj *.image; do
     case $vax_file in expected-vax.image|expected-vax-*.image) ;; *) rm -f "$vax_file" ;; esac
   done
-  poc "$@" -emit-vax-object "$vax_module.mod" >>result 2>&1
+  poc "$@" -emit-macro32 -emit-vax-object "$vax_module.mod" >>result 2>&1
   echo "exit $?" >>result
   set -- "$vax_module"
   vax_compare "$1.mar" expected-vax.mar

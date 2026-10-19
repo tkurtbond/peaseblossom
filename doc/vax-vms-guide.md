@@ -186,10 +186,10 @@ END Hello.
     Hello, world
 
 `POC` compiles `HELLO.MOD`, and every module it imports that does not
-come from a library, to MACRO-32, one `.MAR` file each, and writes
+come from a library, to a VAX object, one `.OBJ` file each, and writes
 `HELLO.COM`. Like poc on Unix it says nothing when it succeeds. `@HELLO`
-assembles the program's modules and links `HELLO.EXE` against `POCRTL`.
-`RUN HELLO` runs it.
+links `HELLO.EXE` from the program's objects against `POCRTL`. `RUN
+HELLO` runs it.
 
 DCL turns what you type into capitals, unless it is quoted, so poc on VMS
 takes its options in any case: `POC -O HI HELLO.MOD` writes `HI.COM`,
@@ -197,8 +197,11 @@ which links `HI.EXE`.
 
 ### On Unix, then VMS
 
-Cross-compiling writes the same files on Unix. The runtime's modules come
-from `rtl/vax` in poc's source tree, here given as the import path:
+Cross-compiling writes the program's MACRO-32 instead, one `.mar` file
+for each module, which any file transfer carries as text, and a
+procedure that assembles them (chapter 3, "From objects or from
+MACRO-32"). The runtime's modules come from `rtl/vax` in poc's source
+tree, here given as the import path:
 
     $ poc -target vax-dec-vms -import-path ~/src/peaseblossom/rtl/vax -build Hello.Mod
 
@@ -233,9 +236,10 @@ compiled against.
 
 poc compiles the program's main module and every module it imports that
 does not come from a library. It writes `<Module>.sym`, the module's
-interface, and `<Module>.mar`, its MACRO-32, in the current directory or
-in the directory `-output-dir` names. Then it writes a DCL procedure,
-`<Main>.com`, or `-o`'s path with `.com`, which:
+interface, and either `<Module>.obj`, its VAX object, or `<Module>.mar`,
+its MACRO-32 (below), in the current directory or in the directory
+`-output-dir` names. Then it writes a DCL procedure, `<Main>.com`, or
+`-o`'s path with `.com`, which:
 
 1. checks, for each library the program uses, that the library's setup
    procedure has defined its logical names. If one has not, it stops
@@ -243,7 +247,7 @@ in the directory `-output-dir` names. Then it writes a DCL procedure,
 
        program HELLO needs library POCRTL: run its POCRTL_SETUP.COM first
 
-2. assembles each module, `MACRO/OBJECT`, imports first;
+2. from MACRO-32, assembles each module, `MACRO/OBJECT`, imports first;
 3. writes a linker options file, `<IMAGE>.OPT`, listing the objects (the
    main module's first) and each library;
 4. links `<IMAGE>.EXE`.
@@ -251,11 +255,28 @@ in the directory `-output-dir` names. Then it writes a DCL procedure,
 A warning stops the procedure: it starts with `ON WARNING THEN EXIT
 $STATUS`, so a MACRO warning or `%LINK-W-MULDEF` ends it with that step's
 status. Otherwise it exits with LINK's. The procedure is run where the
-`.mar` files are. `-o`'s last part, without `.exe`, must be a name VMS
-takes: 1 to 39 letters, digits, `_`, `$` and `-`.
+`.obj` or `.mar` files are. `-o`'s last part, without `.exe`, must be a
+name VMS takes: 1 to 39 letters, digits, `_`, `$` and `-`. With `-g` it
+links `/DEBUG`, and from MACRO-32 assembles `/DEBUG` too (chapter 16).
 
-`-compile <file>...` writes the named modules' `.mar` files and a
-procedure that only assembles them, with no program's start.
+`-compile <file>...` writes the named modules' objects, or their `.mar`
+files and a procedure that only assembles them, with no program's start.
+
+### From objects or from MACRO-32
+
+poc builds a program in one of two ways. With `-vax-objects` it writes
+each module's object itself, and the procedure only links them. With
+`-vax-macro32` it writes each module's MACRO-32, and the procedure
+assembles them first, with MACRO, which every VAX/VMS system has. Both
+give the same code. poc's own objects also name each procedure and
+source line in a traceback, and with `-g` carry what the debugger needs
+to show the Oberon source and variables (chapter 16).
+
+poc on VMS builds from objects unless given `-vax-macro32`. poc on Unix
+builds from MACRO-32 unless given `-vax-objects`: a `.mar` file is text,
+which any transfer carries, while the objects poc writes on Unix are
+records that VMS takes only after converting them, which so far only
+poc's own tests do.
 
 ### Size models
 
@@ -315,8 +336,7 @@ poc on VMS has no LLVM back end. It compiles for VAX/VMS only, and refuses
 the options that only the LLVM back end has: `-lto`, `-opt`,
 `-static`, `-link`, `-c-flag`, `-rebuild`, `-verbose`, `-emit-llvm-ir` and
 `-dump-llvm-types`. On Unix, `-target vax-dec-vms` refuses them too. `-g`
-gives the VMS debugger's records to the objects poc writes itself, which
-for now only `-emit-vax-object` does.
+gives the VMS debugger's records to the objects poc writes itself.
 
 ## 4. Libraries
 
@@ -3113,14 +3133,13 @@ them. A global variable is a symbol like a procedure's,
 
 ### poc's own objects
 
-poc can also write each module's object itself, with no MACRO-32 in
-between: given `-emit-vax-object`, it writes `<MODULE>.OBJ` beside each
-`<MODULE>.MAR`. poc on VMS writes them as object files ready to link. On
-Linux and the BSDs poc writes the same records in a form that VMS takes
-only after converting them, which so far only poc's own tests do. They
-link with the objects MACRO makes, so any module's can take the place of
-the one assembled from its `.MAR`, and the program is linked as its
-build procedure links it.
+A program built from poc's own objects (chapter 3, "From objects or
+from MACRO-32"), as poc on VMS builds by default, is debugged by its
+Oberon source. On Linux and the BSDs poc writes the same objects in a
+form that VMS takes only after converting them, which so far only poc's
+own tests do. They link with the objects MACRO makes, so any module's
+can take the place of the one assembled from its `.MAR`, and the
+program is linked as its build procedure links it.
 
 Every object poc writes names its module, routines and lines in
 Oberon's terms, so a traceback shows them with no `/DEBUG` anywhere.
@@ -3330,15 +3349,15 @@ end that only poc on VMS has. Then:
     $ POC @FULL.ARGS
     $ @POC
 
-The first writes poc's MACRO-32, one `.MAR` for each module, and
-`POC.COM`. The second assembles them and links a new `POC.EXE`, with
+The first writes poc's objects, one `.OBJ` for each module, and
+`POC.COM`. The second links a new `POC.EXE` from them, with
 `POCRTL.OBJ` assembled from `[.SRC.RTL]POCRTL.MAR`, as `[.KIT]`'s
 procedure does.
 
 poc is a **fixed point**: compiled by itself, it writes the same
-MACRO-32 as the poc that compiled it. The `.MAR` files written here are
-the same as `[.KIT]`'s, line for line, which `DIFFERENCES` can show for
-each one. poc's developers check that on the development system, and a
+MACRO-32 as the poc that compiled it. Given `-vax-macro32`, `POC
+@FULL.ARGS` writes `.MAR` files, the same as `[.KIT]`'s, line for line,
+which `DIFFERENCES` can show for each one. poc's developers check that on the development system, and a
 third generation too: the `POC.EXE` linked here, compiling the same
 source again, writes the same files once more.
 

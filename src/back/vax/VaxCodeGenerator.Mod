@@ -124,7 +124,7 @@ MODULE VaxCodeGenerator;
      11). With -range-checks (rangeChecks) CHR of a value outside 0..255,
      and SHORT of one that does not fit, trap. *)
 
-  IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
+  IMPORT Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
     ModuleInterface, MethodSlots, VaxTypes, VaxImage, VaxInstructions, NestedProcedures;
 
   CONST
@@ -7379,17 +7379,17 @@ MODULE VaxCodeGenerator;
     END
   END CallImports;
 
-  (* module as MACRO-32 to w; scope is its scope after checking, key its
+  (* module as MACRO-32 lines, ModuleLines' (which VaxInstructions.PrintAll
+     prints and VaxEncoder encodes); scope is its scope after checking, key its
      .sym's (ModuleInterface.KeyOf), or empty, carried in .IDENT so that a
      map or ANALYZE/OBJECT shows which .sym the object was built from, and
      in the symbol its importers refer to (section 5.1). The main module,
      isMain, also has the program's start, <MODULE>_MAIN, which .END
-     names (section 6). FALSE, with nothing to rely on in w, if the module
+     names (section 6). FALSE, with nothing to rely on in the lines, if the module
      needs what the backend cannot lower yet or its name, or an import's,
      is too long for <MODULE>_INIT, or two of its names, or one of its
      and one it uses of an import, have one symbol (all reported). *)
-  PROCEDURE GenerateModule*(m: SyntaxTree.ModuleNode; s: SymbolTable.Scope; key: ARRAY OF CHAR; isMain: BOOLEAN;
-                            VAR w: Files.Rider): BOOLEAN;
+  PROCEDURE GenerateModule*(m: SyntaxTree.ModuleNode; s: SymbolTable.Scope; key: ARRAY OF CHAR; isMain: BOOLEAN): BOOLEAN;
     VAR init, main, symbol: VaxTypes.Symbol; title: ARRAY VaxTypes.symbolLength + 1 OF CHAR;
         ident: ARRAY 40 OF CHAR;
         before, errorsBefore: INTEGER; ok, hasRoots: BOOLEAN; e: External; sc: StringConstant; st: StructuredConstant; where: Where;
@@ -7557,7 +7557,6 @@ MODULE VaxCodeGenerator;
       EndLine;
       AppendOut(VaxInstructions.Directive(".END"))
     END;
-    VaxInstructions.PrintAll(w, out);
     RETURN TRUE
   END GenerateModule;
 

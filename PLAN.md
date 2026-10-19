@@ -736,7 +736,13 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
 
 6. **Wiring it in.** A new mode (`-emit-obj`, and the default on VMS,
    with `-emit-mar` keeping the Phase 15 behavior) writes `<module>.OBJ`;
-   `VaxToolchainDriver.Mod` stops invoking `MACRO`. Every earlier phase's
+   `VaxToolchainDriver.Mod` stops invoking `MACRO`. The design, proposed
+   2026-10-19 and approved, is `vax-object-language.md` section 17
+   (pieces 6a-6e). **6a done** (section 17.3): `-emit-macro32`,
+   `-emit-vax-object` and `-emit-vax-image` each write their own file and
+   combine; `-vax-objects` and `-vax-macro32`, objects the default on
+   VMS; `-build` and `-compile` with objects, no MACRO; `-g` links
+   `/DEBUG` (`vax-build-objects`). Every earlier phase's
    VAX fixtures run in both modes - built through `.mar` and `MACRO`, and
    built directly - and give the same output; Phase 17's object libraries
    (`LIBRARY/CREATE` of poc's `.OBJ` files) and shareable images

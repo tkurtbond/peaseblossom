@@ -170,7 +170,9 @@ $ WRITE SYS$OUTPUT STAGE, ": compiling poc with ", IMAGE_DIR, "POC.EXE"
 $ T0 = F$TIME()
 $ C0 = F$GETJPI("", "CPUTIM")
 $ DEFINE/USER_MODE SYS$ERROR POC.ERR
-$ POC -OC -TARGET VAX-DEC-VMS -BUILD POC.MOD
+$ ! its MACRO-32, compared with V1's (PLAN.md Phase 18 step 6 made objects
+$ ! poc on VMS's default; step 7 compares those)
+$ POC -OC -TARGET VAX-DEC-VMS -VAX-MACRO32 -BUILD POC.MOD
 $ S = $STATUS
 $ CPU = (F$GETJPI("", "CPUTIM") - C0) / 100
 $ DELETE/SYMBOL/GLOBAL POC

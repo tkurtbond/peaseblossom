@@ -679,11 +679,12 @@ one line saying what is wrong, and a pointer to `-help`:
 
 The commands for testing poc itself are `-dump-tokens`, `-check-syntax`,
 `-dump-layout`, `-dump-llvm-types`, `-dump-nested`, `-dump-vax-types`,
-`-dump-vax-names`, `-emit-vax-image`, which writes what `-emit-macro32`
-does and each module's object as the VAX encoder makes it,
-`<Module>.image`, and `-emit-vax-object`, which writes what
-`-emit-macro32` does and each module's VAX object, its records counted
-as VMS keeps them on disk, `<Module>.obj`.
+`-dump-vax-names`, `-emit-vax-image`, which writes each module's object
+as the VAX encoder makes it, `<Module>.image`, and `-emit-vax-object`,
+which writes each module's VAX object, `<Module>.obj`, an object file on
+VMS and elsewhere its records counted as VMS keeps them on disk.
+`-emit-macro32`, `-emit-vax-image` and `-emit-vax-object` may be given
+together, and one compile writes each file they name.
 
 ### Options
 
@@ -705,6 +706,8 @@ as VMS keeps them on disk, `<Module>.obj`.
 | `-strict` | The module named may use only `Oberon2.pdf`'s language (section 3). |
 | `-static` | Links a fully static executable. |
 | `-shared-libraries` | Links the libraries' shared objects, not their archives. |
+| `-vax-objects` | For `vax-dec-vms`, builds from poc's own objects: `-build` and `-compile` write each module's `.obj`, not its `.mar`, and the build procedure assembles nothing; `-compile` writes no procedure. The default for poc on VMS. |
+| `-vax-macro32` | For `vax-dec-vms`, builds from MACRO-32: `-build` and `-compile` write each module's `.mar` and a procedure that assembles them. The default for poc elsewhere. |
 | `-link <arg>` | Passes `<arg>` to the link (`-lz`, `-L<dir>`); repeatable. With `-library`, also recorded in the manifest, for every program that links the library. |
 | `-c-flag <arg>` | Passes `<arg>` to clang when it compiles a module's C part, `<Module>.c` beside `<Module>.Mod`, or clang++ its C++ part, `<Module>.cpp` (`-I<dir>`, `-D<name>`); repeatable. |
 | `-lto` | Compiles to LLVM bitcode and optimizes the whole program when it is linked. On NetBSD it needs lld (pkgsrc's `lld`). Ignored for 32-bit x86 NetBSD unless poc runs on 32-bit x86 NetBSD. |

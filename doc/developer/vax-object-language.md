@@ -1701,3 +1701,179 @@ fixture with a run needed the debugger.
   known there; poc on VMS writes them, and its objects get none.
 - **The program's start** (`<MODULE>_MAIN`) has no source, so no line;
   the module's body and start keep their VAX names.
+
+## 17. Step 6: wiring it in (decided 2026-10-19)
+
+Steps 2-5 made poc's objects, each one's image MACRO's byte for byte,
+with traceback and debugger records MACRO's lack, but only
+`-emit-vax-object`, a command for testing poc, writes them. Step 6
+(`PLAN.md`) makes them what poc builds with. This section is the
+design; the user approved its proposals on 2026-10-19, and proposal 8
+as amended then (one option for each kind of output).
+
+### 17.1 Where MACRO is used today
+
+- **`-build` and `-compile`** (`Poc.BuildVax`, `CompileVax`) write each
+  module's `.mar` and a procedure (`VaxToolchainDriver.
+  WriteBuildProcedure`) that runs `MACRO/OBJECT` on each and links.
+  Nothing sets `writeObject` for them.
+- **`-library`** (`Poc.BuildLibraryVax`) writes each module's `.mar`,
+  copies the hand-written parts (`PocRtl.mar` for `POCRTL`), reads every
+  global symbol from the `.mar` files (`ReadGlobalSymbols`) for the
+  shareable image's `UNIVERSAL=` lines, and writes `<name>_build.com`,
+  which assembles units and parts, makes the `.OLB` and links the
+  `.EXE`. `-install-library` copies the `.mar` files.
+- **The kits** (`tools/bootstrap/make-vax-kit`) carry text only: V1's
+  `.mar` files and `Poc.com`, `PocRtl.mar`, and each library's `.mar`
+  files and procedures, which `BUILD.COM` assembles on VMS ("MACRO,
+  LIBRARY and LINK alone").
+- **`vax-stages`** links each stage with `MACRO/OBJECT POCRTL.MAR` and
+  `@POC`, which assembles every module; V2 and V3 compile with
+  `-build`, writing `.mar` files, which are compared.
+- **The tests**: 60 fixtures run `vax_mar`, whose guest part assembles
+  the expected `.mar` and checks poc's objects with `ANALYZE/OBJECT`;
+  40 of them also run `run-*.dbg` under the debugger (`tools/vax-run`)
+  from the expected `.mar`, linked with a stub; 65 run a procedure
+  `poc -build` or `-library` wrote (`vax_do`), 18 of them building
+  libraries; 5 link poc's objects (`vax-cardinal`, `vax-for-loop-end`,
+  `vax-traceback`, `vax-debug-records`, `doc-vax-guide`); `make
+  test-vax` builds 182 programs with `-build`; `vax-poc` and `make
+  test-vax-guest-poc` build and run poc on the guest. Every one runs
+  `MACRO/OBJECT POCRTL.MAR`.
+
+### 17.2 Proposals
+
+1. **Two ways to build, named by options.** `-vax-objects` builds from
+   poc's own objects: `-build`, `-compile` and `-library` write each
+   module's `<module>.obj` and no `.mar`, and their procedures run no
+   `MACRO` for them. `-vax-macro32` builds as Phase 15-17 did, from
+   `.mar` files that the procedure assembles. Repeating one, or giving
+   the other, sets the way. `-emit-macro32`, `-emit-vax-image` and
+   `-emit-vax-object` stay as they are: commands that write files for
+   testing poc, not ways to build. (`PLAN.md`'s `-emit-obj` and
+   `-emit-mar` are renamed: poc's `-emit-` options are commands, these
+   modify `-build`.)
+2. **The default is objects on VMS and MACRO-32 elsewhere.** poc on VMS
+   writes an object file ready to link (`RecordFiles`), so a build there
+   needs nothing else. On Linux and the BSDs an object is a counted file
+   that must be sent in binary and converted on VMS (section 10), where
+   a `.mar` file is text that any transfer carries; the kits are built
+   there and carry only text. So a cross-build stays `.mar` unless
+   `-vax-objects` is given, which a program that wants the debugger's
+   Oberon view (`-g`) needs. (The alternative: objects everywhere, every
+   cross-build sent in two modes and converted.)
+3. **A cross-built object converts itself.** With `-vax-objects` on
+   Linux and the BSDs, the procedure converts each object that arrived
+   as fixed-length records - `IF F$FILE_ATTRIBUTES("<M>.OBJ","RFM") .EQS.
+   "FIX" THEN OBJCONVERT <M>.OBJ <M>.OBJ`, a new version, the old one
+   deleted - so an object sent in binary under its own name just works,
+   and one already converted (as `tools/vax-do` does) is left alone. The
+   base kit builds `OBJCONVERT.EXE` beside `POC.EXE` in `[.BIN]` and its
+   setup defines the symbol `OBJCONVERT`; the kit carries the
+   converter's MACRO-32, cross-built from `tools/objconvert` as V1's
+   is, so it is now a program users get, not only a tool of the tests. The
+   guide's chapter on building tells how to send objects (binary) and
+   procedures (ASCII). (To check on the guest: `F$FILE_ATTRIBUTES`' `RFM`
+   item in 5.5-2's DCL.)
+4. **`-build` with objects**: the procedure checks the needed libraries'
+   setups as now, compiles each `.cld` (`SET COMMAND/OBJECT`), writes
+   `<IMAGE>.OPT` and links as now. **`-compile`** with objects writes
+   the objects, and a procedure only when there is something to do on
+   VMS (conversion, a cross-build); on VMS it writes none.
+5. **`-g`** makes a procedure link `/DEBUG`, in either way, and with
+   `-vax-macro32` assemble `/DEBUG` too, as chapter 16's manual route
+   does; with objects, the objects carry the DBG records (step 5).
+   Without `-g` nothing changes: every object poc writes has its
+   traceback records.
+6. **Libraries with objects**: the tuple directory holds each module's
+   `.obj` in place of its `.mar`; the global symbols for `UNIVERSAL=`
+   come from the encoded image's GSD (what the object defines), not
+   from scraping `.mar` text; `<name>_build.com` inserts the modules'
+   objects and assembles only the hand-written parts; `-install-library`
+   copies `.obj` files. A library's manifest records the way it was
+   built. A program built either way links a library built either way:
+   by then both are an `.OLB` and an `.EXE`.
+7. **`PocRtl.mar` stays MACRO-32**, assembled by MACRO, which every
+   VAX/VMS system has: it is hand-written, and poc has no assembler.
+   It is built once, where the kit is installed (`POC$RTL`), or by
+   `POCRTL`'s library procedure. Step 7's "no MACRO" means none for
+   the modules poc compiles: a stage links with the installed
+   `POCRTL.OBJ`, or one assembled once beforehand.
+8. **One option for each kind of output** (the user, 2026-10-19).
+   `-emit-macro32` writes each module's `.mar` and nothing else, as now;
+   `-emit-vax-object` writes each module's `.obj` and nothing else, where
+   today it writes the `.mar` too; `-emit-vax-image` writes the `.image`
+   alone. Given together they write each of the files they name from one
+   compile, which is what `vax_mar` and the fixtures that compare both
+   pass (`-emit-macro32 -emit-vax-object`). Likewise a build with
+   objects writes no `.mar`: the code generator's lines go to the
+   encoder only, which on VMS saves the time and a file per module.
+9. **Testing both ways.**
+   - The 65 `vax_do` fixtures that build with `-build` or `-library`
+     build the program both ways and run each procedure, which must
+     print the same expected output; a helper in `vaxfixture.sh`
+     (`vax_build`) does both, with `VAX_WAYS=objects` or `macro32` to
+     run one while working. Their procedures' text, written on every
+     host, is compared both ways (`vax-build` and the library fixtures
+     have expected `.com` files).
+   - The 40 `run-*.dbg` fixtures stay MACRO's: their commands use MACRO's
+     symbols, which poc's objects do not define for the debugger, and
+     the image comparison already shows poc's object is MACRO's code.
+   - `make test-vax` (`tools/vax-suite`) gains `-vax-objects`, run both
+     ways.
+   - poc on VMS: `vax-poc` and `make test-vax-guest-poc` build poc with
+     MACRO (V1 is cross-built) and then have poc on the guest build a
+     program with its default, objects, written through `RecordFiles`,
+     which so far only the converter has used.
+   - The guest time the doubled runs cost is measured in 6d; if it is
+     too much, the user decides what runs in `make check`.
+10. **Documentation**: poc(1), `-help`, the Reference Guide's `-target`
+    row and options, the VAX/VMS Guide's chapters on building (each
+    way, sending objects, `OBJCONVERT`), libraries, poc on VMS (its
+    default), and chapter 16's "poc's own objects", which becomes the
+    usual way rather than a preview.
+11. **Pieces**, each leaving `make check` passing:
+    - **6a**: the options and `-build`/`-compile` with objects (no
+      `.mar`, the procedure without MACRO, `-g`'s `/DEBUG`); fixtures
+      `vax-build` and a new one comparing the procedures; a program
+      built both ways on the guest.
+    - **6b**: libraries with objects (symbols from the image, the build
+      procedure, the manifest, `-install-library`); the library
+      fixtures both ways.
+    - **6c**: cross-built objects converting themselves: `OBJCONVERT`
+      shipped in the base kit, the procedures' conversion lines, `make
+      check-vax-kit`.
+    - **6d**: every `vax_do` fixture and `make test-vax` both ways; the
+      guest time measured.
+    - **6e**: poc on VMS building with objects (`vax-poc`,
+      `test-vax-guest-poc`), the documentation, and the step's record.
+
+### 17.3 Piece 6a: the options, `-build` and `-compile` with objects (done 2026-10-19)
+
+- **The `-emit-` commands** each write their own kind of file
+  (`VaxToolchainDriver.writeMacro`, `writeObject`, `writeImage`), and any
+  of them given after the first is an option to it (`Poc.SetVaxEmit`), so
+  `-emit-macro32 -emit-vax-object` writes both from one compile, as
+  `vax_mar` now asks; given with another command they are refused. The
+  code generator no longer prints: `GenerateModule` makes the lines, and
+  the driver prints them (`.mar`), encodes them (`.obj`, `.image`) or
+  both. "semantic OK, wrote" names the first file written, `.mar`,
+  `.obj` or `.image`, so the fixtures that ask for `.mar` print as before
+  and those that ask only for an object now name it (`vax-traceback`,
+  `vax-debug-records`, `doc-vax-guide`).
+- **`-vax-objects` and `-vax-macro32`** (`Poc.vaxObjects`, set to
+  `runningOnVms` at the start): `-build` and `-compile` write each
+  module's `.obj` or its `.mar` (`Poc.SetVaxWay`); `WriteBuildProcedure`
+  takes `objects` (no `MACRO` lines, the header says it links objects)
+  and `debugging` (`LINK/DEBUG`, and `MACRO/DEBUG/OBJECT` from
+  MACRO-32); `-compile` with objects writes no procedure. `-library`
+  refuses `-vax-objects` until 6b and is built from MACRO-32 whatever
+  the default.
+- **poc on VMS now builds from objects by default.** The tools that run
+  poc on the guest and compare its MACRO-32 pass `-vax-macro32`:
+  `vax-stages`' compile of each stage and `vax-guest-poc`'s builds,
+  until 6e and step 7 compare objects.
+- `vax-build-objects` (new) compares the procedures both ways and with
+  `-g`, lists what each command writes, and on the guest links and runs
+  the program from the objects `-vax-objects -build` wrote with the
+  procedure it wrote: `%X3735`, as `vax-build`'s from MACRO-32.

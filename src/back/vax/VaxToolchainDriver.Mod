@@ -12,8 +12,8 @@ MODULE VaxToolchainDriver;
      the triple "vax-dec-vms" (decided with the user 2026-10-06): -target vax-dec-vms
      selects it, and -emit-macro32 implies it. *)
 
-  IMPORT Files, Platform, Directories, Diagnostics, SyntaxTree, SymbolTable, VaxCodeGenerator, VaxImage, VaxEncoder,
-    ObjectRecords, VaxObjectWriter;
+  IMPORT Files, Platform, Directories, Diagnostics, SyntaxTree, SymbolTable, VaxCodeGenerator, VaxInstructions,
+    VaxImage, VaxEncoder, ObjectRecords, VaxObjectWriter;
 
   CONST
     triple* = "vax-dec-vms";
@@ -31,9 +31,12 @@ MODULE VaxToolchainDriver;
     END;
 
   VAR
-    (* whether EmitModule also writes the module's encoded image, beside
-       its .mar (poc -emit-vax-image), and its object (-emit-vax-object) *)
-    writeImage*, writeObject*: BOOLEAN;
+    (* which of a module's files EmitModule writes: its MACRO-32
+       (-emit-macro32, and a build with -vax-macro32), its encoded image
+       (-emit-vax-image) and its object (-emit-vax-object, and a build with
+       -vax-objects), any of them (PLAN.md Phase 18 step 6; doc/developer/
+       vax-object-language.md, section 17, proposal 8) *)
+    writeMacro*, writeImage*, writeObject*: BOOLEAN;
     (* whether an object has the debugger records (poc -g) *)
     debug*: BOOLEAN;
     (* the compiler, as an object's language processor header names it:
@@ -74,14 +77,41 @@ MODULE VaxToolchainDriver;
     Directories.MakePath(outputDir, name, path)
   END ModuleFilePath;
 
+  (* <outputDir>/<moduleName><extension> *)
+  PROCEDURE ModuleFile(outputDir, moduleName, extension: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
+    VAR name: ARRAY 72 OF CHAR;
+  BEGIN
+    COPY(moduleName, name); Append(name, extension);
+    Directories.MakePath(outputDir, name, path)
+  END ModuleFile;
+
+  (* The first of the module's files EmitModule writes, in the order .mar,
+     .obj, .image, to name it once *)
+  PROCEDURE ModuleOutputPath*(outputDir, moduleName: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
+  BEGIN
+    IF writeMacro THEN ModuleFile(outputDir, moduleName, ".mar", path)
+    ELSIF writeObject THEN ModuleFile(outputDir, moduleName, ".obj", path)
+    ELSE ModuleFile(outputDir, moduleName, ".image", path)
+    END
+  END ModuleOutputPath;
+
+  (* The module's files EmitModule writes deleted, those there are *)
+  PROCEDURE RemoveModuleFiles*(outputDir, moduleName: ARRAY OF CHAR);
+    VAR path: ARRAY pathBufferLength OF CHAR; result: INTEGER;
+  BEGIN
+    (* not Files.Delete: voc's renames to a temp name *)
+    IF writeMacro THEN ModuleFile(outputDir, moduleName, ".mar", path); result := Platform.Unlink(path) END;
+    IF writeObject THEN ModuleFile(outputDir, moduleName, ".obj", path); result := Platform.Unlink(path) END;
+    IF writeImage THEN ModuleFile(outputDir, moduleName, ".image", path); result := Platform.Unlink(path) END
+  END RemoveModuleFiles;
+
   (* PLAN.md Phase 18 step 3 (doc/developer/vax-object-language.md,
      section 14.5): image as VaxImage prints it, to
      <outputDir>/<Module>.image: FALSE if the file could not be written *)
   PROCEDURE WriteImage(image: VaxImage.Module; moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
-    VAR name: ARRAY 72 OF CHAR; path: ARRAY pathBufferLength OF CHAR; f: Files.File; w: Files.Rider;
+    VAR path: ARRAY pathBufferLength OF CHAR; f: Files.File; w: Files.Rider;
   BEGIN
-    COPY(moduleName, name); Append(name, ".image");
-    Directories.MakePath(outputDir, name, path);
+    ModuleFile(outputDir, moduleName, ".image", path);
     f := Files.New(path);
     IF f = NIL THEN RETURN FALSE END;
     Files.Set(w, f, 0);
@@ -124,11 +154,10 @@ MODULE VaxToolchainDriver;
      the debugger records under -g (step 5): FALSE if the file could not
      be made *)
   PROCEDURE WriteObject(image: VaxImage.Module; moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
-    VAR name: ARRAY 72 OF CHAR; path: ARRAY pathBufferLength OF CHAR; f: ObjectRecords.File;
+    VAR path: ARRAY pathBufferLength OF CHAR; f: ObjectRecords.File;
         source: VaxObjectWriter.SourceFile;
   BEGIN
-    COPY(moduleName, name); Append(name, ".obj");
-    Directories.MakePath(outputDir, name, path);
+    ModuleFile(outputDir, moduleName, ".obj", path);
     f := ObjectRecords.Open(path, VaxObjectWriter.recordSize);
     IF f = NIL THEN RETURN FALSE END;
     IF debug THEN source := DebugSource() ELSE source := NIL END;
@@ -148,25 +177,35 @@ MODULE VaxToolchainDriver;
       & (~writeObject OR WriteObject(image, moduleName, outputDir))
   END WriteEncoded;
 
-  (* module's MACRO-32 to <outputDir>/<Module>.mar (path), with the
-     program's start when it is the main module, isMain: FALSE if it could
-     not be written, or if the generator reported an error or a construct
-     it cannot lower yet (VaxCodeGenerator.unsupportedCount), when no file
-     is left behind. *)
-  PROCEDURE EmitModule*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; key, outputDir: ARRAY OF CHAR;
-                        isMain: BOOLEAN; VAR path: ARRAY OF CHAR): BOOLEAN;
-    VAR f: Files.File; w: Files.Rider; ok: BOOLEAN; deleteResult: INTEGER;
+  (* The module GenerateModule wrote last as MACRO-32, to
+     <outputDir>/<Module>.mar: FALSE if the file could not be made *)
+  PROCEDURE WriteMacro32(moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR path: ARRAY pathBufferLength OF CHAR; f: Files.File; w: Files.Rider;
   BEGIN
-    ModuleFilePath(outputDir, module.name, path);
+    ModuleFile(outputDir, moduleName, ".mar", path);
     f := Files.New(path);
     IF f = NIL THEN RETURN FALSE END;
     Files.Set(w, f, 0);
-    ok := VaxCodeGenerator.GenerateModule(module, scope, key, isMain, w);
+    VaxInstructions.PrintAll(w, VaxCodeGenerator.ModuleLines());
     Files.Register(f); Files.Close(f);
-    IF ok & (writeImage OR writeObject) THEN ok := WriteEncoded(module.name, outputDir) END;
-    IF ~ok THEN
-      deleteResult := Platform.Unlink(path) (* not Files.Delete: voc's renames to a temp name *)
-    END;
+    RETURN TRUE
+  END WriteMacro32;
+
+  (* module generated, with the program's start when it is the main
+     module, isMain, and written as writeMacro, writeObject and writeImage
+     say, in outputDir; path the first of its files (ModuleOutputPath):
+     FALSE if one could not be written, or if the generator reported an
+     error or a construct it cannot lower yet
+     (VaxCodeGenerator.unsupportedCount), when none is left behind. *)
+  PROCEDURE EmitModule*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; key, outputDir: ARRAY OF CHAR;
+                        isMain: BOOLEAN; VAR path: ARRAY OF CHAR): BOOLEAN;
+    VAR ok: BOOLEAN;
+  BEGIN
+    ModuleOutputPath(outputDir, module.name, path);
+    ok := VaxCodeGenerator.GenerateModule(module, scope, key, isMain)
+      & (~writeMacro OR WriteMacro32(module.name, outputDir))
+      & (~(writeImage OR writeObject) OR WriteEncoded(module.name, outputDir));
+    IF ~ok THEN RemoveModuleFiles(outputDir, module.name) END;
     RETURN ok
   END EmitModule;
 
@@ -236,7 +275,9 @@ MODULE VaxToolchainDriver;
   END WriteNeedCheck;
 
   (* The DCL procedure at path that assembles units, each <UNIT>.MAR in the
-     directory it runs in, and, when image is not empty, links them with
+     directory it runs in - or with objects, each <UNIT>.OBJ poc wrote
+     there, assembles nothing (PLAN.md Phase 18 step 6; doc/developer/
+     vax-object-language.md, section 17) - and, when image is not empty, links them with
      poc's runtime into <IMAGE>.EXE, units the program's modules with the
      main one last; source names the file poc was given, for its comment.
      Each MACRO and the LINK stop it at a warning, so that %LINK-W-MULDEF,
@@ -254,9 +295,11 @@ MODULE VaxToolchainDriver;
      them, the runtime is its, and POCRTL.OBJ is not linked. With tables,
      command tables (Phase 17 step 5, section 23), each <TABLE>.CLD is
      compiled by SET COMMAND/OBJECT into <TABLE>.OBJ, listed after the
-     modules. FALSE if the file could not be written. *)
+     modules. With debugging (poc -g) it links /DEBUG, and assembles
+     /DEBUG too (section 17, proposal 5). FALSE if the file could not be
+     written. *)
   PROCEDURE WriteBuildProcedure*(path, source, image: ARRAY OF CHAR; units, libraries, tables: Unit;
-                                 shared: BOOLEAN): BOOLEAN;
+                                 shared, objects, debugging: BOOLEAN): BOOLEAN;
     VAR f: Files.File; w: Files.Rider; u, main: Unit; name, imageName: ARRAY 64 OF CHAR;
         line: ARRAY 200 OF CHAR; label: ARRAY 16 OF CHAR; count: INTEGER; rtlLibrary: BOOLEAN;
   BEGIN
@@ -270,13 +313,20 @@ MODULE VaxToolchainDriver;
     Files.Set(w, f, 0);
     Upper(image, imageName);
     COPY("$ ! Written by poc for ", line); Append(line, source);
-    IF image[0] # 0X THEN Append(line, ": assembles its modules and links ");
-      Append(line, imageName); Append(line, ".EXE")
-    ELSE Append(line, ": assembles its modules")
+    IF objects THEN Append(line, ": links its modules' objects into ");
+      Append(line, imageName); Append(line, ".EXE");
+      WriteLine(w, line);
+      WriteLine(w, "$ ! (doc/developer/vax-object-language.md, section 17). Run it where");
+      WriteLine(w, "$ ! the modules' .OBJ files are.")
+    ELSE
+      IF image[0] # 0X THEN Append(line, ": assembles its modules and links ");
+        Append(line, imageName); Append(line, ".EXE")
+      ELSE Append(line, ": assembles its modules")
+      END;
+      WriteLine(w, line);
+      WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 13). Run it where");
+      WriteLine(w, "$ ! the modules' .MAR files are.")
     END;
-    WriteLine(w, line);
-    WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 13). Run it where");
-    WriteLine(w, "$ ! the modules' .MAR files are.");
     IF (image[0] # 0X) & ~rtlLibrary THEN
       WriteLine(w, "$ ! poc's runtime, POCRTL.OBJ, is taken from POC$RTL: when that");
       WriteLine(w, "$ ! logical name is defined, else from the current directory.")
@@ -296,9 +346,12 @@ MODULE VaxToolchainDriver;
     END;
     u := units; main := NIL;
     WHILE u # NIL DO
-      Upper(u.name, name);
-      COPY("$ MACRO/OBJECT ", line); Append(line, name); Append(line, ".MAR");
-      WriteLine(w, line);
+      IF ~objects THEN
+        Upper(u.name, name);
+        IF debugging THEN COPY("$ MACRO/DEBUG/OBJECT ", line) ELSE COPY("$ MACRO/OBJECT ", line) END;
+        Append(line, name); Append(line, ".MAR");
+        WriteLine(w, line)
+      END;
       main := u; u := u.next
     END;
     u := tables;
@@ -330,15 +383,14 @@ MODULE VaxToolchainDriver;
         WriteLine(w, line);
         u := u.next
       END;
-      IF rtlLibrary THEN
-        COPY("$ LINK/EXECUTABLE=", line); Append(line, imageName); Append(line, ".EXE ");
-        Append(line, imageName); Append(line, ".OPT/OPTIONS")
-      ELSE
+      IF ~rtlLibrary THEN
         WriteLine(w, '$ RTL = "POCRTL.OBJ"');
-        WriteLine(w, '$ IF F$TRNLNM("POC$RTL") .NES. "" THEN RTL = "POC$RTL:POCRTL.OBJ"');
-        COPY("$ LINK/EXECUTABLE=", line); Append(line, imageName); Append(line, ".EXE ");
-        Append(line, imageName); Append(line, ".OPT/OPTIONS, 'RTL'")
+        WriteLine(w, '$ IF F$TRNLNM("POC$RTL") .NES. "" THEN RTL = "POC$RTL:POCRTL.OBJ"')
       END;
+      IF debugging THEN COPY("$ LINK/DEBUG/EXECUTABLE=", line) ELSE COPY("$ LINK/EXECUTABLE=", line) END;
+      Append(line, imageName); Append(line, ".EXE ");
+      Append(line, imageName); Append(line, ".OPT/OPTIONS");
+      IF ~rtlLibrary THEN Append(line, ", 'RTL'") END;
       WriteLine(w, line)
     END;
     WriteLine(w, "$ EXIT $STATUS");
@@ -560,5 +612,5 @@ MODULE VaxToolchainDriver;
   END WriteLibraryProcedures;
 
 BEGIN
-  writeImage := FALSE; writeObject := FALSE; debug := FALSE; processor := "Peaseblossom poc"
+  writeMacro := TRUE; writeImage := FALSE; writeObject := FALSE; debug := FALSE; processor := "Peaseblossom poc"
 END VaxToolchainDriver.

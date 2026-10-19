@@ -12,7 +12,8 @@
 # be (tools/bootstrap/vax-stages checks that). It compiles three groups:
 #
 #   A  each program of test/vax-suite.list, with its options, -target
-#      vax-dec-vms and -build
+#      vax-dec-vms, -vax-macro32 (MACRO-32, which poc on the guest builds
+#      from only when told since PLAN.md Phase 18 step 6) and -build
 #   B  each VAX fixture's vax_mar line: -emit-macro32 with its options
 #   C  each fixture whose test.sh runs only poc [-strict] [-O2|-OC] -check
 #      <file>, those commands in order, each with -target vax-dec-vms
@@ -82,7 +83,7 @@ grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/test/vax-suite.list" | sed 's/ : .*//' >"
 while read -r fixture main options; do
   echo "$fixture" | grep -q -- "$only" || continue
   case $main in */*) subdir=${main%/*}; main=${main##*/} ;; *) subdir=. ;; esac
-  echo "$options -target vax-dec-vms -build $main" >"$work/cmds"
+  echo "$options -target vax-dec-vms -vax-macro32 -build $main" >"$work/cmds"
   tag=$(echo "$options" | sed 's/^-//; s/ -/-/g; s/ /-/g')
   add_item A "$fixture" "$subdir" "${main%.[Mm]od}-$tag"
 done <"$work/list"

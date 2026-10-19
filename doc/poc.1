@@ -282,17 +282,19 @@ itself are
 .Fl dump-vax-types ,
 .Fl dump-vax-names ,
 .Fl emit-vax-image ,
-which writes what
-.Fl emit-macro32
-does and each module's object as the VAX encoder makes it,
+which writes each module's object as the VAX encoder makes it,
 .Ar Module Ns .image ,
 and
 .Fl emit-vax-object ,
-which writes what
-.Fl emit-macro32
-does and each module's VAX object, its records counted as VMS keeps
-them on disk,
-.Ar Module Ns .obj .
+which writes each module's VAX object,
+.Ar Module Ns .obj ,
+an object file on VMS and elsewhere its records counted as VMS keeps
+them on disk.
+.Fl emit-macro32 ,
+.Fl emit-vax-image
+and
+.Fl emit-vax-object
+may be given together, and one compile writes each file they name.
 .Ss Options
 .Bl -tag -width Ds
 .It Fl o Ar exe
@@ -478,6 +480,28 @@ The modules it imports are not checked.
 Link a fully static executable.
 .It Fl shared-libraries
 Link the libraries' shared objects instead of their archives.
+.It Fl vax-objects
+For vax-dec-vms, build from poc's own objects:
+.Fl build
+and
+.Fl compile
+write each module's
+.Pa .obj ,
+not its
+.Pa .mar ;
+the build procedure assembles nothing, and
+.Fl compile
+writes none.
+The default for poc on VMS.
+.It Fl vax-macro32
+For vax-dec-vms, build from MACRO-32:
+.Fl build
+and
+.Fl compile
+write each module's
+.Pa .mar
+and a procedure that assembles them.
+The default for poc elsewhere.
 .It Fl link Ar arg
 Pass
 .Ar arg

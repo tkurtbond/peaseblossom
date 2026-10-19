@@ -38,6 +38,8 @@ options, before or after the command (the last one counts, except those that add
   -range-checks              SHORT and CHR of a value that does not fit trap
   -static                    link a fully static executable
   -shared-libraries          link libraries dynamically
+  -vax-objects               for vax-dec-vms: build from poc's objects (on VMS)
+  -vax-macro32               for vax-dec-vms: build from MACRO-32 (elsewhere)
   -link <arg>                add <arg> to the link (-lz, -L<dir>)
   -c-flag <arg>              add <arg> to clang's flags for a module's C part
   -target <triple>           compile for another target (vax-dec-vms: the VAX)
@@ -57,8 +59,8 @@ for testing poc itself:
   -dump-nested <file>        print what its nested procedures need
   -dump-vax-types <file>     print the VAX size and suffix of each of its types
   -dump-vax-names <file>     print the VAX symbol of each of its names
-  -emit-vax-image <file>     -emit-macro32, and each module encoded, <Module>.image
-  -emit-vax-object <file>    -emit-macro32, and each module's object, <Module>.obj
+  -emit-vax-image <file>     write each module encoded, <Module>.image
+  -emit-vax-object <file>    write each module's VAX object, <Module>.obj
 
 poc(1) explains each of them.
 exit=1
