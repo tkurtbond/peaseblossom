@@ -728,6 +728,11 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    variables, sets, fixed arrays and open array parameters (a stack
    machine routine building the descriptor), all shown and deposited
    into on the guest (`vax-debug-records`); UNKNOWN confirmed.
+   **5e done** (section 16.9): what the debugger cannot show, each with
+   its reason; the VAX/VMS Guide's chapter 16 has "poc's own objects",
+   a traceback by Oberon line and a debugger session, both run on the
+   guest by `doc-vax-guide`; poc(1) and the Reference Guide's `-g`.
+   **Step 5 done** (2026-10-19).
 
 6. **Wiring it in.** A new mode (`-emit-obj`, and the default on VMS,
    with `-emit-mar` keeping the Phase 15 behavior) writes `<module>.OBJ`;

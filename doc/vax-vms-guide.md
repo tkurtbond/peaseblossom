@@ -3059,7 +3059,8 @@ hash after it, so `FAULT_AVERAGE_5CV3RD9U` is `Fault.Average`.
 Two things VMS does make a traceback harder to read:
 
 - **The line column is empty.** It holds a line only for a module
-  assembled with `/DEBUG` in a program linked `/DEBUG`, below.
+  assembled with `/DEBUG` in a program linked `/DEBUG`, below, or for
+  an object poc wrote itself ("poc's own objects", below).
 - **Far into a long routine, the routine is not named.** For a PC more
   than about a kilobyte past a routine's start, the traceback names the
   program section `POC_CODE` instead, with the PC relative to the
@@ -3109,6 +3110,116 @@ symbols known, and `SET RADIX DECIMAL` shows numbers as Oberon writes
 them. A global variable is a symbol like a procedure's,
 `FAULT_NONE_<hash>` for `Fault.none`; a local one is an offset from
 `FP` in its procedure's code.
+
+### poc's own objects
+
+poc can also write each module's object itself, with no MACRO-32 in
+between: given `-emit-vax-object`, it writes `<MODULE>.OBJ` beside each
+`<MODULE>.MAR`. poc on VMS writes them as object files ready to link. On
+Linux and the BSDs poc writes the same records in a form that VMS takes
+only after converting them, which so far only poc's own tests do. They
+link with the objects MACRO makes, so any module's can take the place of
+the one assembled from its `.MAR`, and the program is linked as its
+build procedure links it.
+
+Every object poc writes names its module, routines and lines in
+Oberon's terms, so a traceback shows them with no `/DEBUG` anywhere.
+Here `FAULT.OBJ` is poc's, and the other modules' are MACRO's:
+
+<!-- vax-session: faultobject -->
+
+    $ LINK/EXECUTABLE=FAULT.EXE FAULT.OPT/OPTIONS, POCRTL.OBJ
+    $ RUN FAULT
+    5
+    %SYSTEM-F-INTDIV, arithmetic trap, integer divide by zero at PC=00002008, PSL=03C00002
+    %TRACE-F-TRACEBACK, symbolic stack dump follows
+    module name     routine name                     line       rel PC    abs PC
+
+    FAULT           AVERAGE                             8      00000008  00002008
+    FAULT           FAULT_INIT                         13      00000071  000020A4
+    FAULT           FAULT_MAIN                                 00000007  000020D3
+
+A procedure is its Oberon name in capitals, and the lines are the
+source's: line 8 is the `RETURN` of `Average`, line 13 the second call.
+The module's body and the program's start keep their VAX names, and the
+start, which has no source, has no line.
+
+With `-g`, poc's objects carry the debugger's records as well: the
+source file, where each routine's code begins, and each variable and
+constant with its type. Link such a program `/DEBUG` and the debugger
+works by the Oberon source. Here `FAULT.OBJ` was written with `-g`,
+and the debugger's commands are shown after `DBG>`:
+
+<!-- vax-session: faultsource -->
+
+    $ LINK/DEBUG/EXECUTABLE=FAULT.EXE FAULT.OPT/OPTIONS, POCRTL.OBJ
+    $ RUN FAULT
+
+             VAX DEBUG Version V5.5-023
+
+    %DEBUG-I-INITIAL, language is UNKNOWN, module set to FAULT
+    DBG> SET BREAK AVERAGE
+    DBG> GO
+    break at routine FAULT\AVERAGE
+    %DEBUG-I-NOTORIGSRC, original version of source file not found 
+    	file used is DUA1:[USERS.POC]FAULT.MOD;1
+         8:     RETURN total DIV count
+    DBG> EXAMINE TOTAL, COUNT
+    FAULT\AVERAGE\TOTAL:    10
+    FAULT\AVERAGE\COUNT:    2
+    DBG> GO
+    5
+    break at routine FAULT\AVERAGE
+         8:     RETURN total DIV count
+    DBG> EXAMINE COUNT, NONE
+    FAULT\AVERAGE\COUNT:    0
+    FAULT\NONE:     0
+    DBG> SHOW CALLS
+     module name     routine name                     line       rel PC    abs PC
+    *FAULT           AVERAGE                             8      00000002  00002002
+    *FAULT           FAULT_INIT                         13      00000071  000020A4
+    *FAULT           FAULT_MAIN                                 00000007  000020D3
+    DBG> DEPOSIT COUNT = 5
+    DBG> GO
+    2
+    %DEBUG-I-EXITSTATUS, is '%SYSTEM-S-NORMAL, normal successful completion'
+    DBG> EXIT
+
+What the debugger does with such a program:
+
+- **Breakpoints and steps go by routine and source line.** `SET BREAK
+  AVERAGE` stops after the routine's entry, at its first statement,
+  with its parameters in place. `SET BREAK %LINE 13` stops at a line,
+  and `STEP` goes a line at a time. A nested procedure is named after
+  the one it is in, `OUTER\INNER`.
+- **The source is the `.Mod` file.** The debugger opens the file the
+  object names, in the default directory, or where `SET SOURCE` says.
+  For an object written on another system it notes once, as above,
+  that the file may not be the one compiled, and then uses it. poc on
+  VMS records the file's own name and attributes, so its objects get no
+  such note.
+- **Names are in capitals,** since the debugger turns what it is given
+  into capitals. A procedure's variable is `ROUTINE\NAME` and a
+  module's is `MODULE\NAME`, either found by its name alone where it
+  is visible. From a nested procedure, an enclosing procedure's
+  variable is found in that procedure's frame.
+- **`EXAMINE` shows each variable as its type is declared.** It shows
+  an integer of any size, a real, a `CHAR` as `'A'` and a `BOOLEAN` as
+  `True`. A record is shown field by field, an extension with its base
+  type's fields, as is a set (`[0, 3, 31]`) and an array element by
+  element. An `ARRAY OF CHAR` is shown as a string, each `0X` as a
+  period. `P.X`, `V[2]` (or `V(2)`), `G[1,2]` and `HEAD^.NEXT^.KEY`
+  select a part, and an open array parameter is shown whole or by
+  element. A pointer or a procedure variable shows the address it
+  holds, in decimal.
+- **`DEPOSIT` changes any of them,** a field, an element, or a variable
+  through a pointer or a `VAR` parameter included, and `EVALUATE`
+  computes with variables and constants (`EVALUATE N * STEP`).
+  `EXAMINE` of a constant is refused, as in any language.
+- **The language is UNKNOWN.** No VMS language is Oberon, and with
+  UNKNOWN the debugger lets every variable be changed, which with
+  Pascal's it does not; it shows subscripts in parentheses, and wants
+  all of them for an array of arrays.
 
 ### Other failures
 

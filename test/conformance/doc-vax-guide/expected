@@ -19,3 +19,10 @@ VAX build Fail exit 0
 VAX build Fault exit 0
 VAX build Parts exit 0
 VAX build Panel exit 0
+semantic OK, wrote LineOutput.mar
+semantic OK, wrote RealDigits.mar
+semantic OK, wrote FormattedText.mar
+semantic OK, wrote FormattedOutput.mar
+semantic OK, wrote Out.mar
+semantic OK, wrote Fault.mar
+VAX object Fault exit 0

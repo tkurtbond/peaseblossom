@@ -1,7 +1,10 @@
 $ ! doc-vax-guide: the VAX/VMS Guide's example programs built by the
 $ ! procedures poc -build wrote, against POCRTL.OBJ, and each run as the
 $ ! guide's session of its name runs it, under "== <name>". A build's
-$ ! log is shown only if it fails. Everything made is deleted.
+$ ! log is shown only if it fails. FAULTG.OBJ, the object poc -g wrote
+$ ! for Fault, takes the place of MACRO's FAULT.OBJ for the sessions of
+$ ! poc's own objects, the second under the debugger with FAULT.DBG's
+$ ! commands. Everything made is deleted.
 $ SET NOON
 $ MACRO/OBJECT POCRTL.MAR
 $ PROGRAMS = "HELLO,VERSIONS,WHERELOGIN,WHERELOGIN2,DATES,FACTORIAL,WORDS,SYSTEMINFO,GREET,SHELL,WARNINGS,PROBE,GOODBYE,TICKS,MAILBOX,SPAWN,FAIL,FAULT,PARTS,PANEL"
@@ -76,6 +79,14 @@ $ WRITE SYS$OUTPUT "== faultdebug"
 $ MACRO/DEBUG/OBJECT FAULT.MAR
 $ LINK/DEBUG/EXECUTABLE=FAULT.EXE FAULT.OPT/OPTIONS, POCRTL.OBJ
 $ RUN/NODEBUG FAULT
+$ WRITE SYS$OUTPUT "== faultobject"
+$ COPY FAULTG.OBJ FAULT.OBJ
+$ LINK/EXECUTABLE=FAULT.EXE FAULT.OPT/OPTIONS, POCRTL.OBJ
+$ RUN FAULT
+$ WRITE SYS$OUTPUT "== faultsource"
+$ LINK/DEBUG/EXECUTABLE=FAULT.EXE FAULT.OPT/OPTIONS, POCRTL.OBJ
+$ DEFINE/USER_MODE DBG$INPUT FAULT.DBG
+$ RUN FAULT
 $ IF F$SEARCH("NOTES.TXT") .NES. "" THEN DELETE/NOLOG NOTES.TXT;*
 $ DELETE/NOLOG *.OBJ;*, *.EXE;*, *.OPT;*
 $ EXIT 1

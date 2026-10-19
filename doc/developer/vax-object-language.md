@@ -1215,7 +1215,7 @@ run so far; poc itself compiling on the guest to objects is step 6's
 and step 7's. Not yet in poc's objects: the traceback (`TBT`) and
 debugger (`DBG`) records MACRO's have, which are step 5.
 
-## 16. Step 5: traceback and debugger records (decided 2026-10-18)
+## 16. Step 5: traceback and debugger records (decided 2026-10-18, done 2026-10-19)
 
 Section 11 made full debugger support a requirement. This section is
 the design, its nine proposals (16.3) approved by the user on
@@ -1640,3 +1640,64 @@ What the guest showed (`VaxDebugTypes`, with both languages):
   are left zero for data on the stack as for static data, the
   variable's place giving the address. A `HUGEINT` or `LONGREAL` in a
   register pair does not arise: poc keeps no variable in registers.
+
+### 16.9 Piece 5e: what step 5 gives, and what it leaves out (done 2026-10-19)
+
+**What a program gets.** Every object poc writes has the TBT records,
+so a fault's traceback names each Oberon procedure and its source line
+with no `/DEBUG` anywhere, linked with MACRO's objects or poc's. With
+`-g`, linked `/DEBUG`, the 5.5-2 debugger works by the Oberon source:
+breakpoints by routine and line, steps, the source shown at each stop,
+`SHOW CALLS`, and every variable and parameter shown, changed and used
+in expressions as its type is declared. The VAX/VMS Guide's chapter 16
+has a section on it, "poc's own objects", whose two sessions
+`doc-vax-guide` runs on the guest: Fault linked with the object `poc -g
+-emit-vax-object` wrote for it (sent as `FaultG.obj`), its traceback
+run as it is, and a debugger session whose commands are the guide's
+`DBG>` lines, which the test takes out of the output and gives the
+debugger as `FAULT.DBG`. poc(1) and the Reference Guide's `-g` row say
+what the records are.
+
+**Testing** went by `vax_do` and a fixture's own procedure
+(`vax-traceback`, `vax-debug-records`, `doc-vax-guide`), not by
+`tools/vax-run`'s `run-<name>.dbg` (proposal 8): the debugger reads its
+commands from `DBG$INPUT`, which a fixture's procedure defines, and no
+fixture with a run needed the debugger.
+
+**What the debugger cannot show, and why:**
+
+- **A pointer or a procedure variable's value** is the address it
+  holds, in decimal: the language UNKNOWN has no notation for either.
+  `^` follows a pointer to its target.
+- **A pointer to an open array** is only the address it holds (`LU`):
+  its lengths are in voc's block layout, ahead of the elements, where
+  no type specification reaches.
+- **A record's dynamic type.** A record is shown as its static type,
+  with its base types' fields flattened into it: the DST has no
+  extension and no type tag.
+- **Hidden parameters**: a nested procedure's pointers to its enclosing
+  procedures' variables, a `VAR` record parameter's type tag, an open
+  array's lengths (which the descriptor uses) are not described. The
+  variables they reach are, where they are declared.
+- **Constants other than an integer, a `CHAR`, a `BOOLEAN` or a `REAL`
+  of at most a longword, or a string of one character,** are not
+  described: a literal data record holds a longword, so a `HUGEINT`, a
+  `LONGREAL`, a longer string or a structured constant has no place
+  there; a set, which is not an atom, and a hexadecimal pattern are
+  left out as well, not tried. `EXAMINE` of any constant is
+  refused, as in every language; `EVALUATE` shows one.
+- **Type-bound procedures** are routines of their plain name, so two
+  types' procedures of one name are two routines of that name in the
+  module, which `SET BREAK` cannot tell apart; the traceback is
+  unaffected.
+- **The language UNKNOWN** shows subscripts in parentheses and needs
+  every subscript of an array of arrays; it does not convert a
+  `CARD32` above `MAX(LONGINT)` for `DEPOSIT` (`%DEBUG-W-UNACVT`).
+  Pascal's, the alternative, refused `DEPOSIT` into most variables.
+- **A type specification longer than one DST record** is written as
+  `LU`, an address; none of `rtl/vax`'s or the fixtures' types is.
+- **An object written on another system** gets the debugger's note
+  `%DEBUG-I-NOTORIGSRC` once, since the source's attributes are not
+  known there; poc on VMS writes them, and its objects get none.
+- **The program's start** (`<MODULE>_MAIN`) has no source, so no line;
+  the module's body and start keep their VAX names.

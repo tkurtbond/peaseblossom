@@ -452,8 +452,9 @@ or
 .Fl opt Cm g .
 For vax-dec-vms, give the objects
 .Fl emit-vax-object
-writes the VMS debugger's source file and prolog records too; every
-object has its routines and lines.
+writes the VMS debugger's records too: the source file, where each
+routine's code begins, and each variable and constant with its type.
+Every object has its routines and lines, for a traceback.
 .It Fl trap-location
 Begin each trap's message with the file, line and column of the trap, and
 end it with the procedure's name.
