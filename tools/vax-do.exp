@@ -51,9 +51,9 @@ exit -onexit {
 set objects {}
 foreach {file remote} $puts {
   if {[string match *.obj $file]} {
-    set name [file rootname $remote]
-    if {[catch {objconvert_put $file $name} message]} { fail "cannot copy $file there: $message" }
-    lappend objects $name
+    set object [file rootname $remote]
+    if {[catch {objconvert_put $file $object} message]} { fail "cannot copy $file there: $message" }
+    lappend objects $object
   } elseif {[catch {ftp_put $file $remote} message]} {
     fail "cannot copy $file there: $message"
   }

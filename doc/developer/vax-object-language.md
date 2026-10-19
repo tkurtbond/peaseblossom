@@ -1187,3 +1187,30 @@ converted, on the guest), `ftp_put_binary`, and `vax-do`, `vax-run` and
   `RecordFiles`.
 - `vax-library`'s `POCRTL` has `RecordFiles` and 578 universal symbols,
   8 more; the packages' lists name its library files.
+
+### 15.11 What 4d found, and step 4's record (2026-10-18)
+
+`vax-cardinal` and `vax-for-loop-end` each run their program on the
+guest twice: as before, built by the procedure `poc -build` writes from
+its MACRO-32, and now from the objects poc wrote, which `tools/vax-do`
+sends and converts, linked by `guest-link.com` with `POCRTL.OBJ`
+assembled by MACRO from `rtl/vax/PocRtl.mar`, the one source poc does
+not compile. Both print `guest-run.expected`, `vax-cardinal`'s line on
+`SYS$ERROR` included: twelve modules and six, the main module's
+transfer address, every relocation kind the two programs have, and
+calls between modules, all as LINK takes them.
+
+One bug of 4c's was found here: `vax-do.exp` named the object it sent
+in the variable that held the procedure's name, so with objects it ran
+`@<the last object>`; no fixture sent `vax-do` an object before 4d.
+
+**Step 4 is done.** poc writes each module's object
+(`-emit-vax-object`) on every host, the image of each fixture's object
+is MACRO's byte for byte, the records are compared
+(`vax-object-records`), every fixture's objects pass `ANALYZE/OBJECT` on
+the guest, and programs linked from them run as MACRO's do. On VMS, poc
+writes its objects through `RecordFiles`, which only the converter has
+run so far; poc itself compiling on the guest to objects is step 6's
+and step 7's. Not yet in poc's objects: the traceback (`TBT`) and
+debugger (`DBG`) records MACRO's have, which are step 5.
+

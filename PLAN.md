@@ -684,6 +684,12 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    `RecordFiles`, the VMS `ObjectRecords`, `OBJCONVERT`, binary FTP; every
    VAX fixture's objects converted on the guest and checked by
    `ANALYZE/OBJECT`.
+   **4d done 2026-10-18** (section 15.11): `vax-cardinal` and
+   `vax-for-loop-end` link their programs from poc's objects, with only
+   `PocRtl` from MACRO, and they print what the MACRO-built ones print.
+   `ANALYZE/OBJECT` checks poc's objects alone; MACRO's are compared
+   through their images, byte for byte, which says more. **Step 4
+   done.**
 
 5. **Debug and traceback information.** The traceback records (`TBT`)
    that let an unhandled condition print a routine traceback, as MACRO's
