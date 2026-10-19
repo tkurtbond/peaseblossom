@@ -37,6 +37,12 @@ test/conformance/**/*.mar
 !test/conformance/**/expected-vax-*.mar
 # a hand-written MACRO-32 source (PLAN.md Phase 16 step 2)
 !test/conformance/**/hand-*.mar
+# an object's image (poc -emit-vax-image, tools/vax-image), but not a VAX
+# fixture's expected ones, made by MACRO (doc/developer/vax-object-language.md,
+# section 14.5)
+test/conformance/**/*.image
+!test/conformance/**/expected-vax.image
+!test/conformance/**/expected-vax-*.image
 # a build procedure poc writes for the VAX, but not the expected ones or a
 # fixture's own procedures for the guest (Phase 16 step 2)
 test/conformance/**/*.com
@@ -106,7 +112,7 @@ test/conformance/llvm-out/llvm-out
 test/conformance/llvm-out-extra/llvm-out-extra
 test/conformance/vax-extension/vax-extension
 test/conformance/vax-image-reader/vax-image-reader
-test/conformance/vax-image-reader/*.image
+test/conformance/vax-encoder-forms/vax-encoder-forms
 test/conformance/vax-out/vax-out
 test/conformance/vax-pointers/vax-pointers
 test/conformance/vax-type-bound/vax-type-bound

@@ -7,6 +7,10 @@ PlatformUse.mar matches expected-vax.mar
 Directories.mar matches expected-vax-Directories.mar
 LineOutput.mar matches expected-vax-LineOutput.mar
 Platform.mar matches expected-vax-Platform.mar
+PlatformUse.image matches expected-vax.image
+Directories.image matches expected-vax-Directories.image
+LineOutput.image matches expected-vax-LineOutput.image
+Platform.image matches expected-vax-Platform.image
 LLVM build -O2 exit 0
 VAX build -O2 exit 0
 LLVM build -OC exit 0

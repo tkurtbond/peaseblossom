@@ -742,7 +742,7 @@ Each piece leaves `make check` passing, the `.mar` output unchanged:
   cannot be compared before the data is laid out.
 - **3e**: the `expected-vax.image` files in every fixture's `test.sh`,
   the coverage fixture, and the corpus compared, every difference
-  explained; the step's record in `PLAN.md`.
+  explained; the step's record in `PLAN.md`. Done (section 14.10).
 
 ### 14.7 What 3a found (2026-10-18)
 
@@ -849,3 +849,59 @@ the corpus of section 14.7, and `BuildInfo`, `Libraries` and `Poc`,
 whose source carries the build's commit, assembled again by MACRO from
 the same tree). Encoding the 35 modules takes about a second here.
 
+### 14.10 What 3e found (2026-10-18)
+
+Every VAX fixture with an `expected-vax.mar` now has an
+`expected-vax.image`, and each of its imports an
+`expected-vax-<Import>.image`, 101 images in all, each made by MACRO on
+the guest from the committed `.mar` (`tools/vax-macro-image`).
+`vax_mar` (`test/vaxfixture.sh`) runs `poc -emit-vax-image`, which writes
+the `.mar` as before and each module's image beside it, and compares
+every image with its expected one, with no guest needed, so `make check`
+tests the encoder on every host; `vax-cardinal` and `vax-for-loop-end`,
+which build with `-build`, run `-emit-vax-image` for their main module
+and compare it the same way. An expected image changed by one byte makes
+its fixture fail.
+
+The fixtures reach 130 of the opcode table's 164 instructions and most of
+section 13.2's forms, but not every displacement size in every mode,
+nor quadword or narrow hexadecimal immediates. The coverage fixture
+`vax-encoder-forms` adds the rest: `EncoderForms.Mod`, built with poc
+from `src/back/vax` and `src/front`, makes the lines of a module with
+every instruction of the table, each with an operand of each of its
+operand types chosen in turn from the forms that type allows (25
+specifier forms, literals of each kind for read operands, and branches
+back and forward), then the displacements and literals at the edges of
+each size, reals and integers in real operands for F and G, references
+backward over a byte, a word and a longword, forward, to another
+section, external, `G^` and `L^`, with offsets and index registers,
+branches and a CASE table, a private procedure, and every directive and
+kind of item. It writes them as MACRO-32 and as poc's image; the
+fixture compares the first with its `expected-vax.mar` and the second
+with the image of MACRO's object for it. With the fixtures, every
+mnemonic of the table, every form of section 13.2 and every directive is
+compared.
+
+It found two choices of MACRO's that no fixture or corpus module had
+reached, and the encoder now makes both:
+
+- **`0(Rn)` is `(Rn)`.** MACRO assembles a displacement of 0 as register
+  deferred, one byte shorter, indexed too (`0(R3)[R7]` is `(R3)[R7]`),
+  but keeps the byte displacement of `@0(Rn)`, which has no shorter
+  form.
+- **A quadword immediate is a longword, zero-extended.** MACRO's
+  expressions are 32 bits: `MOVQ #-77, R0` stores `FFFFFFB3 00000000`,
+  not -77 sign-extended. poc writes no negative literal in a quadword
+  operand (`ASHQ`'s count is a byte), so no program poc made was wrong.
+
+And one the encoder did not report: a literal or a `.BYTE` or `.WORD`
+item too wide for its operand or directive is MACRO's "data truncation"
+warning, which `tools/vax-assemble` counts as a failure; the encoder now
+refuses one with an error (`the VAX encoder found a literal too wide for
+its operand`), where it stored the low bytes. Its messages also lost a
+stray space before the ": " that `Diagnostics.ErrorAbout` adds.
+
+The corpus, poc's own source for the VAX, is now 39 modules
+(`VaxInstructions`, `VaxImage`, `VaxOpcodes` and `VaxEncoder` have joined
+the 35 of section 14.7): MACRO assembled all 39 from the tree of this step, and
+all 39 images are poc's, byte for byte. No difference is left to explain.

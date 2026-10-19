@@ -1,3 +1,4 @@
 semantic OK, wrote VaxBooleanChar.mar
 exit 0
 VaxBooleanChar.mar matches expected-vax.mar
+VaxBooleanChar.image matches expected-vax.image

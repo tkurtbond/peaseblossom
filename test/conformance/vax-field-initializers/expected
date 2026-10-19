@@ -3,4 +3,6 @@ semantic OK, wrote VaxFieldsUse.mar
 exit 0
 VaxFieldsUse.mar matches expected-vax.mar
 VaxFields.mar matches expected-vax-VaxFields.mar
+VaxFieldsUse.image matches expected-vax.image
+VaxFields.image matches expected-vax-VaxFields.image
 LLVM build exit 0

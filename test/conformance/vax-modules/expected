@@ -5,3 +5,6 @@ exit 0
 VaxModules.mar matches expected-vax.mar
 VaxModBase.mar matches expected-vax-VaxModBase.mar
 VaxModLib.mar matches expected-vax-VaxModLib.mar
+VaxModules.image matches expected-vax.image
+VaxModBase.image matches expected-vax-VaxModBase.image
+VaxModLib.image matches expected-vax-VaxModLib.image

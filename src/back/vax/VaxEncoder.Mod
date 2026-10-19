@@ -113,8 +113,8 @@ MODULE VaxEncoder;
     VAR l: Label;
   BEGIN
     l := Find(name);
-    IF l.defined THEN Error("the VAX encoder found a label defined twice: ", name)
-    ELSIF current = NIL THEN Error("the VAX encoder found a label outside a program section: ", name)
+    IF l.defined THEN Error("the VAX encoder found a label defined twice", name)
+    ELSIF current = NIL THEN Error("the VAX encoder found a label outside a program section", name)
     ELSE l.defined := TRUE; l.section := current; l.offset := current.size
     END;
     RETURN l
@@ -146,6 +146,17 @@ MODULE VaxEncoder;
     ELSE RETURN (value >= -32768) & (value <= 32767)
     END
   END Fits;
+
+  (* Whether value can be stored in an integer of size bytes, signed or
+     not, as MACRO takes it, a quadword's only as a longword; one that
+     cannot is MACRO's "data truncation" warning *)
+  PROCEDURE Holds(value: LONGINT; size: INTEGER): BOOLEAN;
+  BEGIN
+    IF size = 1 THEN RETURN (value >= -128) & (value <= 255)
+    ELSIF size = 2 THEN RETURN (value >= -32768) & (value <= 65535)
+    ELSE RETURN (value >= -2147483647 - 1) & (value <= 0FFFFFFFFH)
+    END
+  END Holds;
 
   (* The unsigned value of a hexadecimal literal's or item's bits *)
   PROCEDURE BitsValue(bits: SET): LONGINT;
@@ -219,7 +230,7 @@ MODULE VaxEncoder;
     VAR bytes: ARRAY 8 OF INTEGER; shortLiteral, k: INTEGER;
   BEGIN
     IF ~RealBits(text, size, bytes, shortLiteral) THEN
-      Error("the VAX encoder found a real literal beyond its type's range: ", text)
+      Error("the VAX encoder found a real literal beyond its type's range", text)
     ELSIF shortLiteral >= 0 THEN
       PutByte(shortLiteral)
     ELSE
@@ -248,18 +259,26 @@ MODULE VaxEncoder;
         IntegerText(value, text); PutReal(text, t.size)
       ELSIF (value >= 0) & (value <= 63) THEN
         PutByte(value)
+      ELSIF ~Holds(value, t.size) THEN
+        IntegerText(value, text); Error("the VAX encoder found a literal too wide for its operand", text)
       ELSE
-        PutByte(immediate); PutValue(value, t.size)
+        PutByte(immediate);
+        IF t.size = 8 THEN (* MACRO's value is a longword, zero-extended (section 14.10) *)
+          PutValue(value, 4); PutValue(0, 4)
+        ELSE PutValue(value, t.size)
+        END
       END
     END
   END PutLiteral;
 
-  (* d(Rn) or @d(Rn), d in the fewest bytes that hold it *)
+  (* d(Rn) or @d(Rn), d in the fewest bytes that hold it; 0(Rn) is (Rn),
+     as MACRO makes it, but @0(Rn) keeps its byte (section 14.10) *)
   PROCEDURE PutDisplacement(d: LONGINT; register: INTEGER; deferred: BOOLEAN);
     VAR mode: INTEGER;
   BEGIN
     IF deferred THEN mode := deferredDisplacement ELSE mode := 0 END;
-    IF Fits(d, 1) THEN PutByte(byteDisplacement + mode + register); PutValue(d, 1)
+    IF (d = 0) & ~deferred THEN PutByte(deferredByte + register)
+    ELSIF Fits(d, 1) THEN PutByte(byteDisplacement + mode + register); PutValue(d, 1)
     ELSIF Fits(d, 2) THEN PutByte(wordDisplacement + mode + register); PutValue(d, 2)
     ELSE PutByte(longDisplacement + mode + register); PutValue(d, 4)
     END
@@ -271,10 +290,10 @@ MODULE VaxEncoder;
   BEGIN
     l := Find(s.symbol^);
     IF s.prefix = VaxInstructions.general THEN
-      IF l.defined THEN Error("the VAX encoder found G^ of a symbol the module defines: ", l.name) END;
+      IF l.defined THEN Error("the VAX encoder found G^ of a symbol the module defines", l.name) END;
       AddFixup(codeReferenceFixup, 5, l, NIL, s.offset); PutValue(0, 5)
     ELSIF l.absolute THEN
-      Error("the VAX encoder found an absolute symbol as an address: ", l.name)
+      Error("the VAX encoder found an absolute symbol as an address", l.name)
     ELSIF l.defined & (l.section = current) & (s.prefix # VaxInstructions.longRelative) THEN
       (* backward, in this section: the shortest displacement from the specifier's end *)
       target := l.offset + s.offset;
@@ -317,7 +336,7 @@ MODULE VaxEncoder;
       IF l.defined THEN
         d := l.offset + s.offset - (current.size + size);
         IF (l.section # current) OR ~Fits(d, size) THEN
-          Error("the VAX encoder found a branch that does not reach ", l.name)
+          Error("the VAX encoder found a branch that does not reach", l.name)
         END;
         PutValue(d, size)
       ELSE
@@ -330,8 +349,8 @@ MODULE VaxEncoder;
     VAR o: VaxOpcodes.Opcode; i: INTEGER;
   BEGIN
     o := VaxOpcodes.Find(l.op^);
-    IF o = NIL THEN Error("the VAX encoder does not know the instruction ", l.op^)
-    ELSIF o.operandCount # l.specifierCount THEN Error("the VAX encoder found the wrong number of operands for ", l.op^)
+    IF o = NIL THEN Error("the VAX encoder does not know the instruction", l.op^)
+    ELSIF o.operandCount # l.specifierCount THEN Error("the VAX encoder found the wrong number of operands for", l.op^)
     ELSIF current = NIL THEN Error("the VAX encoder found an instruction outside a program section", "")
     ELSE
       PutValue(o.code, VaxOpcodes.Length(o));
@@ -369,7 +388,7 @@ MODULE VaxEncoder;
         ELSIF i.text^ = "LONG" THEN alignment := 2
         ELSIF i.text^ = "QUAD" THEN alignment := 3
         ELSIF i.text^ = "PAGE" THEN alignment := 9
-        ELSE Error("the VAX encoder does not know the program section attribute ", i.text^)
+        ELSE Error("the VAX encoder does not know the program section attribute", i.text^)
         END;
         i := i.next
       END;
@@ -385,8 +404,11 @@ MODULE VaxEncoder;
     CASE i.kind OF
       VaxInstructions.numberItem:
         n := i.repeat; IF n < 1 THEN n := 1 END;
+        IF ~Holds(i.value, size) THEN Error("the VAX encoder found an item too wide for its directive", "") END;
         WHILE n > 0 DO PutValue(i.value, size); DEC(n) END
-    | VaxInstructions.hexItem: PutValue(BitsValue(i.bits), size)
+    | VaxInstructions.hexItem:
+        IF ~Holds(BitsValue(i.bits), size) THEN Error("the VAX encoder found an item too wide for its directive", "") END;
+        PutValue(BitsValue(i.bits), size)
     | VaxInstructions.maskItem:
         mask := 0; FOR r := 11 TO 0 BY -1 DO mask := mask * 2; IF r IN i.registers THEN INC(mask) END END;
         PutValue(mask, size)
@@ -394,13 +416,13 @@ MODULE VaxEncoder;
         target := Find(i.symbol^);
         IF target.absolute THEN PutValue(target.offset + i.offset, size)
         ELSIF size = 4 THEN AddFixup(longwordFixup, 4, target, NIL, i.offset); PutValue(0, 4)
-        ELSE Error("the VAX encoder found an address in a byte or word: ", i.symbol^)
+        ELSE Error("the VAX encoder found an address in a byte or word", i.symbol^)
         END
     | VaxInstructions.differenceItem:
         target := Find(i.symbol^); other := Find(i.other^);
         AddFixup(differenceFixup, size, target, other, 0); PutValue(0, size)
     ELSE
-      Error("the VAX encoder found an item it cannot store in ", "a .BYTE, .WORD or .LONG")
+      Error("the VAX encoder found an item it cannot store in a .BYTE, .WORD or .LONG", "")
     END
   END PutDataItem;
 
@@ -412,7 +434,7 @@ MODULE VaxEncoder;
     ELSE Error("the VAX encoder found a real directive's item that is not a number", ""); RETURN
     END;
     IF ~RealBits(text, size, bytes, shortLiteral) THEN
-      Error("the VAX encoder found a real beyond its type's range: ", text)
+      Error("the VAX encoder found a real beyond its type's range", text)
     END;
     FOR k := 0 TO size - 1 DO PutByte(bytes[k]) END
   END PutRealItem;
@@ -460,7 +482,7 @@ MODULE VaxEncoder;
     ELSIF op = ".END" THEN
       IF i # NIL THEN transfer := Find(i.symbol^) END
     ELSIF current = NIL THEN
-      Error("the VAX encoder found data outside a program section: ", op)
+      Error("the VAX encoder found data outside a program section", op)
     ELSIF op = ".ENTRY" THEN
       label := Define(i.symbol^);
       mask := 0; FOR r := 11 TO 0 BY -1 DO mask := mask * 2; IF r IN i.next.registers THEN INC(mask) END END;
@@ -488,14 +510,14 @@ MODULE VaxEncoder;
       VaxImage.Extend(current, current.size + n)
     ELSIF op = ".ALIGN" THEN
       IF i.text^ = "WORD" THEN size := 2 ELSIF i.text^ = "LONG" THEN size := 4 ELSIF i.text^ = "QUAD" THEN size := 8
-      ELSE Error("the VAX encoder does not know the alignment ", i.text^); size := 1
+      ELSE Error("the VAX encoder does not know the alignment", i.text^); size := 1
       END;
       WHILE current.size MOD size # 0 DO PutByte(0) END
     ELSIF (op = ".F_FLOATING") OR (op = ".G_FLOATING") THEN
       size := UnitSize(op[1]);
       WHILE i # NIL DO PutRealItem(i, size); i := i.next END
     ELSE
-      Error("the VAX encoder does not know the directive ", op)
+      Error("the VAX encoder does not know the directive", op)
     END
   END EncodeDirective;
 
@@ -503,8 +525,8 @@ MODULE VaxEncoder;
     VAR label: Label;
   BEGIN
     label := Find(l.op^);
-    IF label.defined THEN Error("the VAX encoder found a symbol defined twice: ", l.op^)
-    ELSIF l.items.kind # VaxInstructions.numberItem THEN Error("the VAX encoder found an assignment of something not a number: ", l.op^)
+    IF label.defined THEN Error("the VAX encoder found a symbol defined twice", l.op^)
+    ELSIF l.items.kind # VaxInstructions.numberItem THEN Error("the VAX encoder found an assignment of something not a number", l.op^)
     ELSE
       label.defined := TRUE; label.absolute := TRUE; label.offset := l.items.value;
       label.section := VaxImage.FindSection(module, absoluteSection);
@@ -519,22 +541,22 @@ MODULE VaxEncoder;
   BEGIN
     line := f.line; column := f.column; t := f.target;
     IF (f.kind = codeReferenceFixup) & t.defined THEN
-      Error("the VAX encoder found G^ of a symbol the module defines: ", t.name)
+      Error("the VAX encoder found G^ of a symbol the module defines", t.name)
     ELSIF f.kind = codeReferenceFixup THEN
       VaxImage.RelocateToSymbol(f.section, f.at, VaxImage.codeReference, t.name, f.addend);
       VaxImage.AddReference(module, t.name)
     ELSIF f.kind = differenceFixup THEN
       IF ~t.defined OR ~f.other.defined OR t.absolute OR f.other.absolute OR (t.section # f.other.section) THEN
-        Error("the VAX encoder found a difference of labels not in one section: ", t.name)
+        Error("the VAX encoder found a difference of labels not in one section", t.name)
       ELSE
         value := t.offset - f.other.offset;
-        IF (f.size < 4) & ~Fits(value, f.size) THEN Error("the VAX encoder found a label difference too large for its field: ", t.name) END;
+        IF (f.size < 4) & ~Fits(value, f.size) THEN Error("the VAX encoder found a label difference too large for its field", t.name) END;
         VaxImage.PutBytes(f.section, f.at, value, f.size)
       END
     ELSIF f.kind = branchFixup THEN
       value := t.offset + f.addend - (f.at + f.size);
       IF ~t.defined OR (t.section # f.section) OR ~Fits(value, f.size) THEN
-        Error("the VAX encoder found a branch that does not reach ", t.name)
+        Error("the VAX encoder found a branch that does not reach", t.name)
       ELSE
         VaxImage.PutBytes(f.section, f.at, value, f.size)
       END
@@ -546,7 +568,7 @@ MODULE VaxEncoder;
       VaxImage.RelocateToSymbol(f.section, f.at, kind, t.name, f.addend);
       VaxImage.AddReference(module, t.name)
     ELSIF t.absolute THEN
-      IF f.kind = displacementFixup THEN Error("the VAX encoder found an absolute symbol as an address: ", t.name)
+      IF f.kind = displacementFixup THEN Error("the VAX encoder found an absolute symbol as an address", t.name)
       ELSE VaxImage.PutBytes(f.section, f.at, t.offset + f.addend, 4)
       END
     ELSIF f.kind = displacementFixup THEN
@@ -591,7 +613,7 @@ MODULE VaxEncoder;
     WHILE f # NIL DO Resolve(f); f := f.next END;
     IF transfer # NIL THEN
       IF transfer.defined & ~transfer.absolute THEN VaxImage.SetTransfer(module, transfer.section, transfer.offset)
-      ELSE Error("the VAX encoder found a transfer address that is not a label: ", transfer.name)
+      ELSE Error("the VAX encoder found a transfer address that is not a label", transfer.name)
       END
     END;
     IF errors > 0 THEN RETURN NIL END;

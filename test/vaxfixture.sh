@@ -3,13 +3,17 @@
 #
 #   vax_mar <Module> [<poc option>...]
 #
-# which runs poc <poc option>... -emit-macro32 <Module>.mod, appends what
+# which runs poc <poc option>... -emit-vax-image <Module>.mod, appends what
 # poc prints and its exit status to result, then compares the <Module>.mar
 # written with expected-vax.mar, and each other module's of the program,
 # <Import>.mar, with expected-vax-<Import>.mar, leaving out the reviewer's
 # comment at the top (the lines starting ";;", which say why the output is
 # right): "<Module>.mar matches expected-vax.mar", or the differences, and
-# so for each import. Where the VAX development system can be used
+# so for each import. Each module's image, which poc's encoder made
+# (<Module>.image), is compared the same way with expected-vax.image or
+# expected-vax-<Import>.image, the image of the object MACRO made from the
+# expected .mar (tools/vax-macro-image; doc/developer/vax-object-language.md,
+# section 14.5), so that the encoder is checked on every host. Where the VAX development system can be used
 # (tools/vax-assemble -available), every expected .mar is also assembled
 # there with MACRO/OBJECT, and a failure, with MACRO's messages, is added to
 # result; and when the fixture has runs, run-<name>.dbg, each a run of the
@@ -35,9 +39,24 @@ vax_compare() {
   rm -f expected-vax.stripped vax-diff
 }
 
+# "<written>.image matches <expected>", or the differences, to result
+vax_image_compare() {
+  if [ ! -f "$2" ]; then
+    echo "there is no $2" >>result
+  elif [ ! -f "$1" ]; then
+    echo "$1 was not written" >>result
+  elif diff "$1" "$2" >vax-diff 2>&1; then
+    echo "$1 matches $2" >>result
+  else
+    echo "$1 differs from $2:" >>result
+    cat vax-diff >>result
+  fi
+  rm -f vax-diff
+}
+
 vax_mar() {
   vax_module=$1; shift
-  poc "$@" -emit-macro32 "$vax_module.mod" >>result 2>&1
+  poc "$@" -emit-vax-image "$vax_module.mod" >>result 2>&1
   echo "exit $?" >>result
   set -- "$vax_module"
   vax_compare "$1.mar" expected-vax.mar
@@ -54,6 +73,10 @@ vax_mar() {
   done
   for vax_import in $vax_imports; do
     vax_compare "$vax_import.mar" "expected-vax-$vax_import.mar"
+  done
+  vax_image_compare "$1.image" expected-vax.image
+  for vax_import in $vax_imports; do
+    vax_image_compare "$vax_import.image" "expected-vax-$vax_import.image"
   done
   vax_tools=../../../tools
   if [ "${VAX_GUEST:-}" = skip ]; then

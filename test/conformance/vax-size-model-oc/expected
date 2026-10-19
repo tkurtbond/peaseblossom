@@ -1,4 +1,5 @@
 semantic OK, wrote VaxSizeModel.mar
 exit 0
 VaxSizeModel.mar matches expected-vax.mar
+VaxSizeModel.image matches expected-vax.image
 build exit 0

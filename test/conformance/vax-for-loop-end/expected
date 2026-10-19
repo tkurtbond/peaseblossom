@@ -1,2 +1,4 @@
 VAX build forend exit 0
 forend.mar matches expected-vax.mar
+VAX image forend exit 0
+forend.image matches expected-vax.image

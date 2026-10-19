@@ -1,3 +1,4 @@
 semantic OK, wrote VaxPredeclared.mar
 exit 0
 VaxPredeclared.mar matches expected-vax.mar
+VaxPredeclared.image matches expected-vax.image

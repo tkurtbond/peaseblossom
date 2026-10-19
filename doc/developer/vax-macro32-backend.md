@@ -833,6 +833,13 @@ arguments `-trap-location` adds.
   harness diffs the output against it without those lines
   (`test/vaxfixture.sh`, `vax_mar`). `test/testenv.sh` deletes a fixture's
   `*.mar` before each run, except `expected-vax.mar`.
+- Since Phase 18 step 3e (2026-10-18) each fixture with an
+  `expected-vax.mar` also has an `expected-vax.image`, and each import an
+  `expected-vax-<Import>.image`: the image of the object MACRO made from
+  that `.mar` on the guest (`tools/vax-macro-image`), which `vax_mar`
+  compares with the image poc's encoder makes (`poc -emit-vax-image`), on
+  every host (`vax-object-language.md`, section 14.5). When an expected
+  `.mar` changes, its image is made again from MACRO, never from poc.
 - **Decided: every `expected-vax.mar` is also assembled**, with
   `MACRO/OBJECT` on the development system - no `LINK`, no `RUN` - so the
   assembler, not only a reviewer, checks the syntax, the symbols and every

@@ -1,3 +1,4 @@
 semantic OK, wrote VaxIndexRegisters.mar
 exit 0
 VaxIndexRegisters.mar matches expected-vax.mar
+VaxIndexRegisters.image matches expected-vax.image

@@ -9,6 +9,11 @@ Files.mar matches expected-vax-Files.mar
 GarbageCollectedHeap.mar matches expected-vax-GarbageCollectedHeap.mar
 LineOutput.mar matches expected-vax-LineOutput.mar
 Platform.mar matches expected-vax-Platform.mar
+FilesUse.image matches expected-vax.image
+Files.image matches expected-vax-Files.image
+GarbageCollectedHeap.image matches expected-vax-GarbageCollectedHeap.image
+LineOutput.image matches expected-vax-LineOutput.image
+Platform.image matches expected-vax-Platform.image
 LLVM build -O2 exit 0
 VAX build -O2 exit 0
 LLVM build -OC exit 0

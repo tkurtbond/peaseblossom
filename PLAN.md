@@ -649,6 +649,13 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    `src/back/vax/VaxEncoder.Mod` and `poc -emit-vax-image`; the images of
    all 62 fixtures and all 35 of poc's own modules are MACRO's, byte for
    byte.
+   **3e done 2026-10-18** (section 14.10): every VAX fixture compares
+   poc's image of each module with MACRO's (`expected-vax.image`, 101
+   images), on every host; the coverage fixture `vax-encoder-forms` adds
+   every instruction and form the fixtures miss, and found two MACRO
+   choices the encoder now makes (`0(Rn)` as `(Rn)`, a quadword immediate
+   zero-extended) and a truncation it now refuses; poc's own 39 modules
+   for the VAX are MACRO's, byte for byte. **Step 3 done.**
 
 4. **The object writer, `VaxObjectWriter.Mod`.** From the encoded
    program sections write the records step 1 specified: the header, one
