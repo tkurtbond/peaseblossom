@@ -5544,6 +5544,7 @@ MODULE VaxCodeGenerator;
     EmitLabel(head);
     JumpOn(s.condition, end, FALSE);
     StatementSeq(s.body);
+    VaxInstructions.SetPosition(s.line, s.column); (* the loop's, not its body's last line *)
     Jump(head);
     EmitLabel(end)
   END WhileStatement;
@@ -5554,6 +5555,7 @@ MODULE VaxCodeGenerator;
     NewLabel(head);
     EmitLabel(head);
     StatementSeq(s.body);
+    VaxInstructions.SetPosition(s.condition.line, s.condition.column);
     JumpOn(s.condition, head, FALSE)
   END RepeatStatement;
 
@@ -5607,6 +5609,7 @@ MODULE VaxCodeGenerator;
     EmitLabel(head);
     JumpOnRelation(op, Use(v), Use(limit), end, TRUE, s.line, s.column);
     StatementSeq(s.body);
+    VaxInstructions.SetPosition(s.line, s.column); (* the step is the loop's line *)
     IF IsQuad(v) THEN
       IF amount > 0 THEN distance := QuadAddSub(FALSE, unsigned, Use(limit), Use(v), NIL, s.line, s.column)
       ELSE distance := QuadAddSub(FALSE, unsigned, Use(v), Use(limit), NIL, s.line, s.column)
@@ -6139,7 +6142,7 @@ MODULE VaxCodeGenerator;
 
   PROCEDURE Body(pd: SyntaxTree.ProcDeclNode; bodyScope: SymbolTable.Scope; pt: Types.ProcedureType;
                  needs: NestedProcedures.Need; symbol: VaxTypes.Symbol; global: BOOLEAN;
-                 title: ARRAY OF CHAR);
+                 title, path: ARRAY OF CHAR);
     VAR p: Types.Param; section: SyntaxTree.FPSectionNode;
         id: SyntaxTree.IdentDefNode; vd: SyntaxTree.VarDeclNode; pobj: SymbolTable.Object; l: Local;
         bodyFirst, bodyLast: Instruction; i: INTEGER; off: LONGINT;
@@ -6229,6 +6232,7 @@ MODULE VaxCodeGenerator;
     END;
     localSize := (localSize + 3) DIV 4 * 4;
     StatementSeq(DeclarationInits(pd.declarations, pd.statements));
+    VaxInstructions.SetPosition(pd.endLine, pd.endColumn);
     IF resultType # NIL THEN Trap(12, pd.endLine, pd.endColumn) ELSE Instruction0("RET") END;
     scope := moduleScope;
     IF unsupportedCount > before THEN RETURN END;
@@ -6237,6 +6241,9 @@ MODULE VaxCodeGenerator;
     COPY("; PROCEDURE ", text);
     IF pd.receiver # NIL THEN Append(text, "("); Append(text, pd.receiver.typeName); Append(text, ") ") END;
     Append(text, title); EmitComment(text);
+    (* the entry is the declaration's line, for the traceback (step 5) *)
+    VaxInstructions.SetPosition(pd.line, pd.column);
+    Add(VaxInstructions.RoutineBegin(path));
     IF localSize > clearByCLR THEN used := used + {2 .. 5} END; (* MOVC5 *)
     l := locals;
     WHILE l # NIL DO
@@ -6277,6 +6284,7 @@ MODULE VaxCodeGenerator;
       l := l.next
     END;
     IF bodyFirst # NIL THEN last.next := bodyFirst; last := bodyLast END;
+    Add(VaxInstructions.RoutineEnd());
     IF code = NIL THEN code := first ELSE codeLast.next := first END;
     codeLast := last
   END Body;
@@ -6285,7 +6293,10 @@ MODULE VaxCodeGenerator;
      14, item 8): NestedProcedures.Analyze's tree of them, what each needs
      of the procedures enclosing it, each one's symbol, the root's full
      name and its path below the root, entered in the module's names, then
-     each generated before the root, parents before their children *)
+     the root generated, and after it each nested one, parents before
+     their children, so that every procedure's code follows its parent's,
+     as the traceback needs of the routines its records nest
+     (doc/developer/vax-object-language.md, section 16.5) *)
   PROCEDURE ProcedureDecl(pd: SyntaxTree.ProcDeclNode);
     VAR obj: SymbolTable.Object; pt: Types.ProcedureType; symbol: VaxTypes.Symbol;
         typeObj: SymbolTable.Object; owner: Types.RecordType; method: Types.Method; global: BOOLEAN;
@@ -6331,19 +6342,22 @@ MODULE VaxCodeGenerator;
       END;
       np := np.following
     END;
+    COPY(rootFull, procedureName);
+    Body(pd, rootScope, pt, NIL, symbol, global, pd.name.name, pd.name.name);
     np := nestedRoot.following;
     WHILE np # NIL DO
       NestedSymbol(np, symbol);
       ns := nestedSyms; WHILE ns.np # np DO ns := ns.next END;
       COPY(ns.full, procedureName);
-      Body(np.decl, np.scope, np.procType, np.needs, symbol, FALSE, np.pathName);
+      (* its path for the traceback: a type-bound root's without the type *)
+      k := 0; WHILE nestedRoot.pathName[k] # 0X DO INC(k) END;
+      j := 0; WHILE pd.name.name[j] # 0X DO INC(j) END;
+      k := k - j; j := 0;
+      WHILE np.pathName[k] # 0X DO text[j] := np.pathName[k]; INC(j); INC(k) END;
+      text[j] := 0X;
+      Body(np.decl, np.scope, np.procType, np.needs, symbol, FALSE, np.pathName, text);
       np := np.following
     END;
-    IF pd.receiver # NIL THEN IF MethodSymbol(owner, method.name, symbol) THEN END
-    ELSE VariableSymbol(obj, symbol)
-    END;
-    COPY(rootFull, procedureName);
-    Body(pd, rootScope, pt, NIL, symbol, global, pd.name.name);
     nestedRoot := NIL; nestedSyms := NIL; procedureName[0] := 0X;
     scope := moduleScope
   END ProcedureDecl;
@@ -6551,6 +6565,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     rec := e.rec;
     outside := InitSymbol(rec, symbol, 0, 0);
+    VaxInstructions.SetPosition(0, 0); (* each initializer's line, for the traceback *)
     BeginBody;
     scope := rec.declScope(SymbolTable.Scope);
     COPY(rec.moduleName, procedureName); Append(procedureName, "."); Append(procedureName, rec.initPath);
@@ -6561,7 +6576,10 @@ MODULE VaxCodeGenerator;
     f := rec.fields;
     WHILE f # NIL DO
       IF (f.initializer # NIL) OR Types.NeedsInit(f.type) THEN
-        IF f.initializer # NIL THEN COPY("; line ", text); AppendInt(text, f.initializer.line); EmitComment(text) END;
+        IF f.initializer # NIL THEN
+          COPY("; line ", text); AppendInt(text, f.initializer.line); EmitComment(text);
+          VaxInstructions.SetPosition(f.initializer.line, f.initializer.column)
+        END;
         r := NewRegisterFrom(longword, 2, 0, 0); r.pinned := TRUE; Instruction2("MOVL", Displaced(4, VaxInstructions.ap), Specifier(r));
         IF f.initializer # NIL THEN
           target := NewOperand(memory, f.type); target.baseOp := r; target.ownsBase := TRUE;
@@ -6574,11 +6592,13 @@ MODULE VaxCodeGenerator;
       END;
       f := f.next
     END;
+    VaxInstructions.SetPosition(0, 0);
     Instruction0("RET");
     scope := moduleScope; procedureName[0] := 0X;
     bodyFirst := first; bodyLast := last; first := NIL; last := NIL;
     COPY("; the field initializers of ", text); Append(text, rec.moduleName); Append(text, ".");
     Append(text, rec.initPath); EmitComment(text);
+    Add(VaxInstructions.RoutineBegin(symbol));
     IF rec.initPath[0] # "-" THEN
       EmitDirective2(".ENTRY", VaxInstructions.Symbol(symbol, 0), VaxInstructions.Mask(EntryRegisters()))
     ELSE
@@ -6588,6 +6608,7 @@ MODULE VaxCodeGenerator;
       Instruction2("SUBL2", Literal(4 * frameSlots), Reg(VaxInstructions.sp))
     END;
     IF bodyFirst # NIL THEN last.next := bodyFirst; last := bodyLast END;
+    Add(VaxInstructions.RoutineEnd());
     IF code = NIL THEN code := first ELSE codeLast.next := first END;
     codeLast := last
   END InitProcedure;
@@ -7280,6 +7301,9 @@ MODULE VaxCodeGenerator;
     EndLine;
     PutText("; the module's initializer: once only"); EndLine;
     Psect("POC_CODE", "");
+    (* its entry is the module's line, its last RET none, for the traceback *)
+    VaxInstructions.SetPosition(module.line, module.column);
+    AppendOut(VaxInstructions.RoutineBegin(init));
     PutDirective2(".ENTRY", VaxInstructions.Symbol(init, 0), VaxInstructions.Mask(EntryRegisters()));
     IF (first = NIL) & (module.imports = NIL) & ~hasRoots & ~withModules THEN
       (* no body: a byte branch over the fixed 7 bytes to RET *)
@@ -7310,7 +7334,9 @@ MODULE VaxCodeGenerator;
         PutLines(first)
       END
     END;
+    VaxInstructions.SetPosition(0, 0);
     PutInstruction0("RET");
+    AppendOut(VaxInstructions.RoutineEnd());
     IF key[0] # 0X THEN
       EndLine;
       PutText("; the module's key, which its importers refer to"); EndLine;
@@ -7323,6 +7349,7 @@ MODULE VaxCodeGenerator;
       IF withCollector THEN
         PutText("; (first the collector's, and the stack's base, its frame's: section 15)"); EndLine
       END;
+      AppendOut(VaxInstructions.RoutineBegin(main));
       PutDirective2(".ENTRY", VaxInstructions.Symbol(main, 0), VaxInstructions.Mask({}));
       IF withCollector THEN
         PutInstruction2("CALLS", Literal(0), ExternalRef(heapInit));
@@ -7332,6 +7359,7 @@ MODULE VaxCodeGenerator;
       PutInstruction2("CALLS", Literal(0), LabelRef(init));
       PutInstruction2("MOVL", Literal(1), Reg(0));
       PutInstruction0("RET");
+      AppendOut(VaxInstructions.RoutineEnd());
       EndLine;
       PutDirective1(".END", VaxInstructions.Symbol(main, 0))
     ELSE

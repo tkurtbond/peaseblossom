@@ -4,7 +4,9 @@ MODULE ObjectImage;
      VaxImage prints it (doc/developer/vax-object-language.md, sections 9
      and 14.5), from <object>; vax-image -records <object>: its records,
      one line for each, then one for each subrecord or command in it, which
-     the image does not show (section 15.4). <object> is either
+     the image does not show (section 15.4), or, in a traceback or debugger
+     record, for each DST record its commands store (section 16). <object>
+     is either
 
      - the output of DUMP/RECORD on the object, as text, which is how an
        object MACRO wrote on the guest comes back without a binary copy:
@@ -55,6 +57,11 @@ MODULE ObjectImage;
     operatorNegate = 58;
     setLocation = 80; augmentLocation = 81;
 
+    (* DST records (doc/developer/vax-dst-records.md), the ones read *)
+    maxAddresses = 64;
+    dstLineNumbers = 0B9H; dstModuleBegin = 0BCH; dstModuleEnd = 0BDH;
+    dstRoutineBegin = 0BEH; dstRoutineEnd = 0BFH;
+
   TYPE
     Record = POINTER TO RecordDesc;
     RecordDesc = RECORD
@@ -82,6 +89,15 @@ MODULE ObjectImage;
     current: VaxImage.Section; (* the location counter's section *)
     location: LONGINT;
     recordNumber: LONGINT;
+    (* the DST records a TBT or DBG record stores: their bytes, and each
+       address in them, at addressAt, in the section addressSection, at
+       addressOffset *)
+    dst: Record;
+    addressAt, addressSection, addressOffset: ARRAY maxAddresses OF LONGINT;
+    addressCount: INTEGER;
+    (* the line number state (section 4.1): the PC as a section and
+       offset, and the line *)
+    pcSection, pc, lineNumber: LONGINT;
 
   PROCEDURE Fail(message: ARRAY OF CHAR);
   BEGIN
@@ -649,6 +665,124 @@ MODULE ObjectImage;
     END
   END PrintCommands;
 
+  (* The DST records r stores, in dst: its Store Immediates' bytes, and an
+     address for each section's place it stores with STO_PIDR *)
+  PROCEDURE RunDst(r: Record);
+    VAR at, command, n, i, index, offset: LONGINT; stacked: BOOLEAN;
+  BEGIN
+    dst.length := 0; addressCount := 0; stacked := FALSE; index := 0; offset := 0;
+    at := 1;
+    WHILE at < r.length DO
+      command := Signed(r, at, 1);
+      IF command < 0 THEN
+        n := -command;
+        FOR i := 1 TO n DO dst.bytes[dst.length] := CHR(Byte(r, at)); INC(dst.length) END
+      ELSIF (command = stackSectionByte) OR (command = stackSectionWord) OR (command = stackSectionLongword) THEN
+        IF stacked THEN Fail("two places stacked in a DST record") END;
+        index := Byte(r, at);
+        IF command = stackSectionByte THEN offset := Signed(r, at, 1)
+        ELSIF command = stackSectionWord THEN offset := Signed(r, at, 2)
+        ELSE offset := Signed(r, at, 4)
+        END;
+        stacked := TRUE
+      ELSIF command = storeDataReference THEN
+        IF ~stacked THEN Fail("STO_PIDR with no place stacked") END;
+        IF addressCount = maxAddresses THEN Fail("too many addresses in a DST record") END;
+        addressAt[addressCount] := dst.length; addressSection[addressCount] := index;
+        addressOffset[addressCount] := offset; INC(addressCount);
+        FOR i := 1 TO 4 DO dst.bytes[dst.length] := 0X; INC(dst.length) END;
+        stacked := FALSE
+      ELSE
+        Fail("a TIR command in a DST record that is not known")
+      END
+    END;
+    IF stacked THEN Fail("a place stacked and not stored") END
+  END RunDst;
+
+  (* The address stored at at in dst, as "<section>+<offset>", and at past it *)
+  PROCEDURE PrintAddress(VAR at: LONGINT; VAR section, offset: LONGINT);
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (i < addressCount) & (addressAt[i] # at) DO INC(i) END;
+    IF i = addressCount THEN Fail("a DST record has no address where one belongs") END;
+    section := addressSection[i]; offset := addressOffset[i];
+    Out.Int(section, 0); Out.Char("+"); PrintHex(offset, 8);
+    at := at + 4
+  END PrintAddress;
+
+  PROCEDURE PrintPC;
+  BEGIN
+    Out.Int(pcSection, 0); Out.Char("+"); PrintHex(pc, 8)
+  END PrintPC;
+
+  PROCEDURE PrintLine;
+  BEGIN
+    INC(lineNumber);
+    Out.String("    line "); Out.Int(lineNumber, 0); Out.String(" at "); PrintPC; Out.Ln
+  END PrintLine;
+
+  (* A Line Number PC-Correlation record's commands, from at up to to:
+     each line, where its code starts, and where the last line ends *)
+  PROCEDURE PrintLines(VAR at: LONGINT; to: LONGINT);
+    VAR command: LONGINT;
+  BEGIN
+    WHILE at < to DO
+      command := Signed(dst, at, 1);
+      IF command <= 0 THEN pc := pc - command; PrintLine
+      ELSIF command = 1 THEN pc := pc + Unsigned(dst, at, 2); PrintLine
+      ELSIF command = 17 THEN pc := pc + Signed(dst, at, 4); PrintLine
+      ELSIF command = 2 THEN lineNumber := lineNumber + Unsigned(dst, at, 1)
+      ELSIF command = 3 THEN lineNumber := lineNumber + Unsigned(dst, at, 2)
+      ELSIF command = 18 THEN lineNumber := lineNumber + Signed(dst, at, 4)
+      ELSIF command = 19 THEN lineNumber := Unsigned(dst, at, 1)
+      ELSIF command = 9 THEN lineNumber := Unsigned(dst, at, 2)
+      ELSIF command = 20 THEN lineNumber := Signed(dst, at, 4)
+      ELSIF command = 16 THEN
+        Out.String("    PC "); PrintAddress(at, pcSection, pc); Out.Ln
+      ELSIF (command = 14) OR (command = 15) OR (command = 21) THEN
+        IF command = 14 THEN pc := pc + Unsigned(dst, at, 1)
+        ELSIF command = 15 THEN pc := pc + Unsigned(dst, at, 2)
+        ELSE pc := pc + Signed(dst, at, 4)
+        END;
+        Out.String("    end at "); PrintPC; Out.Ln
+      ELSE
+        Fail("a PC-correlation command that is not known")
+      END
+    END
+  END PrintLines;
+
+  (* The DST records in dst, one line each, its fields named; a Line
+     Number record's lines below it *)
+  PROCEDURE PrintDst;
+    VAR at, end, type, section, offset: LONGINT; name: ARRAY 256 OF CHAR;
+  BEGIN
+    at := 0;
+    WHILE at < dst.length DO
+      end := at + 1 + Byte(dst, at);
+      IF end > dst.length THEN Fail("a DST record split between records") END;
+      type := Byte(dst, at);
+      Out.String("  DST ");
+      IF type = dstModuleBegin THEN
+        at := at + 1; Out.String("module begin language "); Out.Int(Unsigned(dst, at, 4), 0);
+        CountedName(dst, at, name); Out.String(" name "); Out.String(name)
+      ELSIF type = dstModuleEnd THEN
+        Out.String("module end")
+      ELSIF type = dstRoutineBegin THEN
+        at := at + 1; Out.String("routine begin at "); PrintAddress(at, section, offset);
+        CountedName(dst, at, name); Out.String(" name "); Out.String(name)
+      ELSIF type = dstRoutineEnd THEN
+        at := at + 1; Out.String("routine end size "); PrintHex(Unsigned(dst, at, 4), 8)
+      ELSIF type = dstLineNumbers THEN
+        Out.String("line numbers"); Out.Ln; PrintLines(at, end)
+      ELSE
+        Out.String("of type "); PrintHex(type, 2); at := end
+      END;
+      IF type # dstLineNumbers THEN Out.Ln END;
+      IF at # end THEN Fail("a DST record's fields do not fill it") END
+    END
+  END PrintDst;
+
   PROCEDURE PrintEnd(r: Record);
     VAR at, index: LONGINT;
   BEGIN
@@ -665,6 +799,7 @@ MODULE ObjectImage;
     VAR r: Record; type: INTEGER;
   BEGIN
     recordNumber := 0; r := first;
+    NEW(dst); pcSection := 0; pc := 0; lineNumber := 0;
     WHILE r # NIL DO
       INC(recordNumber);
       IF r.length = 0 THEN Fail("an empty record") END;
@@ -684,6 +819,7 @@ MODULE ObjectImage;
       ELSIF type = gsdRecord THEN PrintDirectory(r)
       ELSIF type = tirRecord THEN PrintCommands(r)
       ELSIF type = eomRecord THEN PrintEnd(r)
+      ELSIF (type = dbgRecord) OR (type = tbtRecord) THEN RunDst(r); PrintDst
       END;
       r := r.next
     END;

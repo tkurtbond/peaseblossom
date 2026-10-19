@@ -909,5 +909,101 @@ record 19 TIR, 9 bytes
   STO_PIDR
   STA_PB 4 124
   STO_PIDR
-record 20 EOM, 7 bytes
+record 20 TBT, 478 bytes
+  DST module begin language 6 name VAXMETHODS
+  DST routine begin at 1+00000000 name AREA
+  DST routine end size 00000080
+  DST routine begin at 1+00000080 name ADD
+  DST routine end size 0000002C
+  DST routine begin at 1+000000AC name SUM
+  DST routine end size 000000C9
+  DST routine begin at 1+00000175 name BUMP
+  DST routine end size 0000005A
+  DST routine begin at 1+000001CF name USE
+  DST routine end size 00000046
+  DST routine begin at 1+00000215 name GUARDED
+  DST routine end size 000000A4
+  DST routine begin at 1+000002B9 name LOCAL
+  DST routine end size 0000007B
+  DST routine begin at 1+00000334 name NARROW
+  DST routine end size 000000FC
+  DST routine begin at 1+00000430 name VAXMETHODS_INIT
+  DST routine end size 000009EA
+  DST routine begin at 1+00000E1A name VAXMETHODS_MAIN
+  DST routine end size 0000001B
+  DST line numbers
+    PC 1+00000000
+    line 28 at 1+00000000
+    line 29 at 1+00000005
+    line 30 at 1+0000006D
+    end at 1+00000080
+  DST line numbers
+    PC 1+00000080
+    line 32 at 1+00000080
+    line 33 at 1+00000085
+    line 34 at 1+000000AB
+    end at 1+000000AC
+  DST line numbers
+    PC 1+000000AC
+    line 36 at 1+000000AC
+    line 38 at 1+000000B1
+    line 39 at 1+00000162
+    end at 1+00000175
+  DST line numbers
+    PC 1+00000175
+    line 41 at 1+00000175
+    line 43 at 1+00000182
+    line 44 at 1+000001CE
+    end at 1+000001CF
+  DST line numbers
+    PC 1+000001CF
+    line 46 at 1+000001CF
+    line 47 at 1+000001DC
+    line 48 at 1+00000214
+    end at 1+00000215
+  DST line numbers
+    PC 1+00000215
+    line 50 at 1+00000215
+    line 51 at 1+0000021A
+    line 52 at 1+000002A6
+    end at 1+000002B9
+  DST line numbers
+    PC 1+000002B9
+    line 54 at 1+000002B9
+    line 58 at 1+000002C1
+    line 59 at 1+00000321
+    end at 1+00000334
+  DST line numbers
+    PC 1+00000334
+    line 61 at 1+00000334
+    line 63 at 1+00000339
+    line 64 at 1+00000419
+    end at 1+00000430
+  DST line numbers
+    PC 1+00000430
+    line 1 at 1+00000430
+    line 67 at 1+00000458
+    line 68 at 1+00000592
+    line 69 at 1+00000646
+    line 70 at 1+0000068D
+    line 71 at 1+000006F4
+    line 72 at 1+00000767
+    line 73 at 1+0000076D
+    line 74 at 1+0000081B
+    line 75 at 1+00000922
+    line 76 at 1+00000A5B
+    line 77 at 1+00000A81
+    line 78 at 1+00000B34
+    line 79 at 1+00000BB5
+    line 80 at 1+00000BE0
+    line 81 at 1+00000BEC
+    line 82 at 1+00000C1B
+    line 83 at 1+00000C9A
+    line 84 at 1+00000D02
+    line 85 at 1+00000D3D
+    line 86 at 1+00000DA3
+    line 87 at 1+00000DD9
+    end at 1+00000E1A
+  DST module end
+record 21 EOM, 7 bytes
   severity 0 transfer section 1 offset 00000E1A

@@ -229,5 +229,48 @@ record 8 TIR, 188 bytes
   STA_PB 4 16
   STO_PIDR
   store immediate 4
-record 9 EOM, 7 bytes
+record 9 TBT, 250 bytes
+  DST module begin language 6 name VAXVARRECORDS
+  DST routine begin at 1+00000000 name MOVE
+  DST routine end size 00000017
+  DST routine begin at 1+00000017 name TWICE
+  DST routine end size 0000001E
+  DST routine begin at 1+00000035 name GROW
+  DST routine end size 0000009F
+  DST routine begin at 1+000000D4 name VAXVARRECORDS_INIT
+  DST routine end size 0000020D
+  DST routine begin at 1+000002E1 name VAXVARRECORDS_MAIN
+  DST routine end size 0000001B
+  DST line numbers
+    PC 1+00000000
+    line 17 at 1+00000000
+    line 19 at 1+00000002
+    line 20 at 1+00000016
+    end at 1+00000017
+  DST line numbers
+    PC 1+00000017
+    line 23 at 1+00000017
+    line 25 at 1+0000001C
+    line 26 at 1+00000034
+    end at 1+00000035
+  DST line numbers
+    PC 1+00000035
+    line 28 at 1+00000035
+    line 30 at 1+0000003A
+    line 31 at 1+00000077
+    line 32 at 1+000000BB
+    line 33 at 1+000000D3
+    end at 1+000000D4
+  DST line numbers
+    PC 1+000000D4
+    line 1 at 1+000000D4
+    line 36 at 1+000000FC
+    line 37 at 1+00000134
+    line 38 at 1+00000162
+    line 39 at 1+000001EF
+    line 40 at 1+000002A0
+    line 41 at 1+000002BD
+    end at 1+000002E1
+  DST module end
+record 10 EOM, 7 bytes
   severity 0 transfer section 1 offset 000002E1

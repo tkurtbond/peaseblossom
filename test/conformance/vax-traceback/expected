@@ -1,0 +1,3 @@
+semantic OK, wrote VaxTrace.mar
+exit 0
+VaxTrace.records matches expected-VaxTrace.records

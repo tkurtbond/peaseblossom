@@ -438,12 +438,13 @@ step 2's instruction representation should hold from the start.
 3. **The module-begin record's language** (`DST$L_MODBEG_LANGUAGE`, 4
    bytes) is 0 (MACRO) in MACRO's objects. `DSTRECRDS.REQ` defines the
    codes, among them `DST$K_PASCAL` = 6, `DST$K_C` = 7, `DST$K_ADA` = 9
-   and `DST$K_UNKNOWN` = 16, "an escape" for a language the debugger does
+   and `DST$K_UNKNOWN` = 10 (the OCR reads 16; the scan shows 10, which
+   is also `DST$K_MAX_LANGUAGE`), "an escape" for a language the debugger does
    not support, which then gets whatever support DEBUG gives an unknown
    language. The debugger chooses its expression syntax and how it
    shows values by this code. To decide in step 5, by trying both on the
    guest: `DST$K_UNKNOWN`, or `DST$K_PASCAL`, whose syntax (`r.f`,
-   `p^`, `a[i]`, `:=`) is nearly Oberon's.
+   `p^`, `a[i]`, `:=`) is nearly Oberon's. Section 16.3, proposal 2.
 
 ## 13. Step 2: the instruction representation (decided 2026-10-18)
 
@@ -1214,3 +1215,245 @@ run so far; poc itself compiling on the guest to objects is step 6's
 and step 7's. Not yet in poc's objects: the traceback (`TBT`) and
 debugger (`DBG`) records MACRO's have, which are step 5.
 
+## 16. Step 5: traceback and debugger records (decided 2026-10-18)
+
+Section 11 made full debugger support a requirement. This section is
+the design, its nine proposals (16.3) approved by the user on
+2026-10-18: what poc writes,
+where it comes from, and how each piece is tested. The facts come from
+`DSTRECRDS.REQ` (V04-000, 1984; section 12, question 1), digested in
+`doc/developer/vax-dst-records.md` (every record and code poc may need,
+with its layout), and from the DBG and TBT records VAX C and VAX
+FORTRAN write with `/DEBUG/NOOPTIMIZE` on the guest (16.2), which
+settled several things the 1984 file leaves open. The 5.5-2 debugger on
+the guest is the judge of each record.
+
+### 16.1 The DST in brief
+
+A module's debugger information is a stream of DST records, each a
+length byte (not counting itself), a type byte and its fields, carried
+by TBT (`05`) and DBG (`04`) object records, which are TIR command
+streams run against the linker's DST location counter: fixed bytes as
+Store Immediate, each address as `STA_Px psect, offset; STO_PIDR`, as
+MACRO's TBT records already do (section 7). A plain `LINK` keeps the TBT
+records, `LINK/DEBUG` both; the debugger reads one stream.
+
+- **Scopes**: Module Begin (`BC`: language longword, name) ... Module
+  End (`BD`); inside, Routine Begin (`BE`: address, name) ... Routine
+  End (`BF`: size in bytes), which every language but MACRO must write,
+  nested for nested procedures.
+- **Line numbers** (`B9`): one command stream for the module mapping
+  PCs to lines (set PC, set line, Delta-PC, terminate).
+- **Source file** (`9B`): declares the source file (its full name,
+  creation time, end-of-file block, first free byte, record format) and
+  maps line numbers to its records.
+- **Data symbols**: a Standard Data record (type = the VAX dtype, value
+  flags, value, name) says where a variable is - a static address, an
+  offset from FP or AP, through a pointer there (a `VAR` parameter), in
+  a register - and its basic type; Boolean has its own record type
+  (`9E`). A variable of another type is a Separate Type Spec record
+  (`A3`, the same location fields) followed at once by its type: a Type
+  Spec record (`AF`: array, pointer, set, ...) or a Record Begin (`AB`,
+  size in bits) ... Record End (`AC`) whose components are data records
+  at bit offsets. A type used again is referred to by an Indirect type
+  spec, a pointer into the DST, which the linker's `CTL_DFLOC` (82),
+  `CTL_STLOC` (83) and `CTL_STKDL` (84) fill in.
+- **Prolog** (`A2`): where `SET BREAK <routine>` stops, after the
+  entry sequence, so that locals are valid there.
+
+### 16.2 What the guest's compilers write
+
+VAX C (`DBGC.C`: structs, a pointer to a struct, arrays, globals,
+locals, a register variable, parameters by value and by reference, a
+procedure pointer) and VAX FORTRAN (a structure, arrays, COMMON, a
+function with reference arguments), with `/DEBUG/NOOPTIMIZE`, read by
+`ANALYZE/OBJECT`:
+
+- The line numbers are in the **TBT** records, with Module Begin and
+  the Routine Begin and End records; data, types and the source file
+  in DBG records. A traceback without `/DEBUG` therefore has lines.
+- C's Module Begin gives language 7 (C), FORTRAN's 1.
+- A local: `0C 08 D9 F8 FF FF FF 05 "local"`: a longword (`08`) at
+  -8(FP) (`D9` = FP, displacement, address). A value parameter: `C9`
+  (AP); a reference one `CD`, through the pointer at n(AP) (FORTRAN's
+  `A` and `N` at 4(AP) and 8(AP)); a global: `01` and the relocated
+  address. FORTRAN writes a Prolog record (`A2`) in DBG for each
+  routine.
+- Record components are at **bit** offsets (value flags `FF`): `x` at 0,
+  `y` at 32, `c` at 48; a record type's Record Begin has value flags
+  `80` (a type, no value) and its size in bits.
+- A **DST pointer** (an Indirect type spec in a `POINTER TO` spec) is
+  written as a hole of four bytes, its place saved with `STA_UW n;
+  CTL_DFLOC`, the target record's place saved the same way when it is
+  written, and the hole filled afterwards with `STA_UW hole;
+  CTL_STLOC; STA_UW target; CTL_STKDL; STO_LW; STA_UW resume;
+  CTL_STLOC` - a plain longword, no relocation: the linker gives the
+  DST pointer itself.
+- Arrays with constant bounds are described by a Type Spec of kind
+  descriptor holding a class A descriptor.
+- The Source File record names the file as the compiler opened it
+  (`DUA1:[USERS.POC]DBGC.C;1`) with its RMS creation time and size.
+
+These records were made by compilers of the 5.5-2 system and read by
+its own `ANALYZE`, so where they and the 1984 file differ, they win.
+
+### 16.3 Proposals
+
+1. **Always TBT, DBG with `-g`.** Every object poc writes has TBT
+   records: Module Begin and End, Routine Begin and End for each
+   procedure (the module body as `<MODULE>_INIT`, the program's start as
+   `<MODULE>_MAIN`, as their global names), and the line numbers, so
+   that a trap's traceback names Oberon procedures and lines, as
+   MACRO's objects give it MACRO lines today. `poc -g`, which already
+   asks the LLVM backend for debug information, adds the DBG records:
+   the source file, Prolog records, and the data symbols and types.
+   Without `-g` an object is as small as it can be; the records MACRO
+   writes today (its psect records `B8` and its own labels) are not
+   copied.
+2. **The language code**: decided on the guest in 5a, by trying both:
+   `DST$K_PASCAL` (6), whose expression syntax (`r.f`, `p^`, `a[i]`,
+   `:=`) is nearly Oberon's and whose values the debugger shows as
+   Pascal's (`TRUE`, records, sets), or `DST$K_UNKNOWN` (10, not the 16
+   section 12 had from the OCR), which the file calls "not officially
+   supported". The test: `EXAMINE` of each kind of variable, `DEPOSIT`,
+   and an expression with a field, an element and a dereference.
+3. **Names** are Oberon's, as written in the source (the debugger folds
+   case; written in capitals, 5a found, 16.5), not the mangled 31-character global names: `SET BREAK
+   Insert` in module `List`, `EXAMINE list.count` - the debugger finds a
+   routine by its module and name. The module body is a routine named
+   after the module's init symbol, as the traceback shows it today.
+4. **Line numbers come from the instructions' source positions**
+   (step 2: every `VaxInstructions` line has the line and column of the
+   statement generated), encoded per routine as `SET_PC`, `SET_LINUM`,
+   Delta-PC and `TERM` (16.1), a new entry each time the line changes.
+   A line whose code is split (a `WHILE`'s test after the body, a `FOR`
+   loop's end) gets an entry for each range; how the debugger treats a
+   line seen twice is tested in 5a and recorded.
+5. **The source file** is the Oberon source as poc read it: on VMS its
+   resultant name and RMS attributes; on Linux and the BSDs, where the
+   object is built for a guest that has its own copy, the name poc was
+   given (the debugger's `SET SOURCE` points at the directory) and zeros
+   for the attributes - if the debugger refuses a file whose attributes
+   do not match, a host-built object is debugged with `SET SOURCE` and
+   `TYPE` may not show lines, which 5b records.
+6. **Types** (DBG, `-g`): the basic types by their dtypes - `SHORTINT`,
+   `INTEGER`, `LONGINT`, `HUGEINT` by size model as `B`, `W`, `L`, `Q`;
+   the CARDs as `BU`..`QU`; `REAL` `F`, `LONGREAL` `G`; `CHAR` `T` of
+   length 1; `BOOLEAN` the Boolean record; `SET` a set type spec of 32
+   bits (64 for `SET64`); `SYSTEM.ADDRESS` and `SYSTEM.PTR` `LU`. A record
+   type: Record Begin, its fields (a base type's first, flattened, since
+   the DST has no extension), Record End, written once per module where
+   first used and referred to by Indirect specs afterwards. A pointer: a
+   typed pointer spec to its base type. A fixed array: an array type
+   spec with a constant class A descriptor and its element's type spec.
+   An open array parameter: an array spec whose descriptor a DST stack
+   machine routine builds from the address and the length poc passes
+   (`ARRAY OF T` is address + dope vector). A procedure variable and a
+   pointer to an open array (voc's block layout): `LU`, with their
+   addresses shown, until the debugger shows a way to do better.
+   A named constant: a literal data record (wider ones left out).
+7. **Locations**: globals by relocated address in their psect; locals
+   by their FP offset; parameters by their AP offset, through it for a
+   `VAR` or by-reference one; a variable of an enclosing procedure is
+   described where it is declared, which the debugger reaches by walking
+   the stack (the hidden pointer parameters are not described). A value
+   kept only in a register for a statement is not a variable and is not
+   described.
+8. **Testing**:
+   - On every host, `vax-image -records` decodes the DST records inside
+     TBT and DBG records (one line per DST record, its fields named), so
+     a fixture compares them as `vax-object-records` does today: a new
+     fixture `vax-debug-records` with a module of each kind of variable
+     and type, built with and without `-g`.
+   - The image comparison with MACRO (every fixture) is unchanged: TBT
+     and DBG records are not part of the image (section 9).
+   - On the guest: `tools/vax-run`, given poc's objects (4c), links them
+     `/DEBUG` and runs each `run-<name>.dbg`, whose debugger output is
+     compared with `run-<name>.log`: breakpoints by line and routine,
+     `STEP`, `EXAMINE` of each variable, `SHOW CALLS`, and a trap's
+     traceback without `/DEBUG`. The fixtures with runs today
+     (`vax-type-bound`, `vax-var-records`, ...) run from MACRO's
+     objects; a few gain runs from poc's objects.
+9. **Pieces**, each leaving `make check` passing:
+   - **5a**: the TBT records (Module, Routine Begin/End, line numbers)
+     always; `vax-image -records` decodes them; the language decided
+     (proposal 2); a traceback with Oberon lines and `SET BREAK %LINE`,
+     `STEP` on the guest.
+   - **5b**: `-g`: the source file record, Prolog records; `TYPE` and
+     the screen mode's source display on the guest.
+   - **5c**: data symbols of the basic types, globals, locals and
+     parameters; `EXAMINE` and `DEPOSIT` on the guest.
+   - **5d**: records, arrays, open arrays, pointers, sets, procedure
+     variables; `EXAMINE` of each on the guest.
+   - **5e**: what was found written here, the guide's chapter on
+     debugging (`doc/vax-vms-guide.md`), and the step's record.
+
+### 16.4 Open, to be answered by 5a-5d on the guest
+
+The questions the 1984 file leaves and the dumps did not settle: what
+the 5.5-2 debugger does with a line in several PC ranges; whether it
+checks the source file's attributes; `CHAR` as `DTYPE_T` without a
+length; the atomic code for `BOOLEAN` inside a type spec (an array of
+BOOLEAN); a class A descriptor's `POINTER` and `A0` for an array on the
+stack; `HUGEINT` and `LONGREAL` in a register pair. Each answer is
+written here when found. The first is answered in 16.5: the debugger
+stops at each range.
+
+### 16.5 Piece 5a: the traceback records (done 2026-10-18)
+
+Every object poc writes ends with TBT records, before its end of module
+record (`VaxObjectWriter.WriteTraceback`): Module Begin, with language 6
+(`DST$K_PASCAL`) and the module's name; a Routine Begin and End for each
+procedure, the field initializers of a record type, the module's
+initializer (`<MODULE>_INIT`) and the program's start (`<MODULE>_MAIN`),
+each address relocated (`STA_Px`, `STO_PIDR`), nested as the procedures
+are; then each routine's line numbers in one Line Number record or more:
+`SET_ABS_PC` to its first line's address, relocated, then for each line
+`SET_LINUM` (unless it is one more than the line before) and a Delta-PC,
+and `TERM` with the last line's length; and Module End. Each DST record
+is kept whole in one TBT record. The code generator marks each routine's
+start and end in its lines (`VaxInstructions.RoutineBegin` and
+`RoutineEnd`, which print nothing, so every `.mar` is as it was); the
+encoder notes, in the image, each routine and where each line's code
+starts (`VaxImage.AddRoutine`, `AddLine`). A routine's entry is its
+declaration's line; the code a loop runs after its body (a `FOR` loop's
+step, a `WHILE` loop's jump back, a `REPEAT` loop's test) has the loop's
+line, or the condition's, not the body's last line. `vax-image -records`
+prints the DST records a TBT or DBG record stores, one line each, and a
+Line Number record's lines below it (`vax-object-records`,
+`vax-traceback`).
+
+What the guest showed (`vax-traceback`, with `VaxTrace`'s divide by zero
+three calls deep, through a nested procedure, and two loops):
+
+- **The traceback** of an object linked without `/DEBUG` names each
+  procedure and its line, `DIVIDE 13`, `INNER 20`, `OUTER 23`,
+  `VAXTRACE_INIT 43`, as `SHOW CALLS` in the debugger does.
+- **The routines must be in order of address.** With each nested
+  procedure written before its root, as Phase 16 did, the traceback
+  handler failed with an access violation, and printed a register dump
+  in place of the traceback, whenever the routines nested and had line
+  numbers; flat routines, or nested ones without line numbers, were
+  shown. So a nested procedure is now written after its root, parents
+  before children (`VaxCodeGenerator.ProcedureDecl`, the source order
+  `NestedProcedures` keeps), and the routines' records are in order of
+  address; a root's Routine End gives its own size, not counting the
+  procedures nested in it, which the debugger accepts. The `.mar` of the
+  two fixtures with nested procedures changed by that order alone
+  (`vax-nested`, `vax-traps`), and MACRO's objects of them give poc's
+  images.
+- **Names are in capitals.** `SET BREAK Divide` found no `DIVIDE` with
+  the name as written: the debugger folds what it is given to capitals
+  and looks for the name as the record has it. Proposal 3 stands
+  otherwise: a routine is named by its Oberon name, in capitals, and a
+  nested one is found as `OUTER\INNER`. A type-bound procedure has its
+  plain name, so two types' procedures of one name are two routines of
+  that name in the module; the traceback is unaffected.
+- **Breakpoints and steps by line** work: `SET BREAK %LINE n`, `STEP`,
+  `STEP/INTO` into a nested procedure, `SET BREAK OUTER\INNER`. A line
+  with two ranges of code (a `WHILE` or `FOR` loop's) gets a stop at
+  each, and a jump into the middle of a line shows as `%LINE 34+9`.
+- **The language** is left at Pascal's until 5c: what it decides is how
+  the debugger shows and takes values, and 5a has no variables to try
+  it on. With Pascal's the debugger starts with "language is PASCAL" and
+  does everything above.

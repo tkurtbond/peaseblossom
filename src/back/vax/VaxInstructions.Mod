@@ -33,6 +33,8 @@ MODULE VaxInstructions;
     label* = 2; (* "<name>:", or "<name>::" when global *)
     directive* = 3; (* "<tab><directive>", with "<tab><items>" unless there are none *)
     assignment* = 4; (* "<symbol> == <value>", a direct assignment *)
+    routineBegin* = 5; (* not printed: where a routine starts, op its name, for the traceback (Phase 18 step 5) *)
+    routineEnd* = 6; (* not printed: where the routine begun last ends *)
 
     (* SpecifierDesc.mode *)
     registerMode* = 0; (* Rn *)
@@ -208,6 +210,22 @@ MODULE VaxInstructions;
     l := NewLine(assignment); l.op := NewText(symbol); AddItem(l, value);
     RETURN l
   END Assignment;
+
+  (* Where the routine name, its Oberon path ("Outer.Inner" for a nested
+     procedure), starts, for the traceback and debugger records; the line
+     is its declaration's *)
+  PROCEDURE RoutineBegin*(name: ARRAY OF CHAR): Line;
+    VAR l: Line;
+  BEGIN
+    l := NewLine(routineBegin); l.op := NewText(name);
+    RETURN l
+  END RoutineBegin;
+
+  (* Where the routine RoutineBegin began last ends *)
+  PROCEDURE RoutineEnd*(): Line;
+  BEGIN
+    RETURN NewLine(routineEnd)
+  END RoutineEnd;
 
   (* ---- Directives' items ---- *)
 
@@ -527,10 +545,12 @@ MODULE VaxInstructions;
     END
   END WriteItems;
 
-  (* l as MACRO-32 text, its line feed included *)
+  (* l as MACRO-32 text, its line feed included; nothing for a routine's
+     beginning or end *)
   PROCEDURE Print*(VAR w: Files.Rider; l: Line);
     VAR i: INTEGER; text: ARRAY specifierLength OF CHAR;
   BEGIN
+    IF (l.kind = routineBegin) OR (l.kind = routineEnd) THEN RETURN END;
     CASE l.kind OF
       verbatim: WriteText(w, l.op)
     | instruction:

@@ -6,8 +6,10 @@ MODULE VaxObjectWriter;
      header and the source header; the global symbol directory, every
      section's definition, then the symbols, entry points and external
      references; each section's text and relocations, as TIR commands; and
-     the end of module record, with the transfer address of a main module.
-     No traceback or debugger records yet (step 5).
+     the traceback records (step 5, section 16): a module's routines and
+     the lines of source their code comes from, as debug symbol table
+     (DST) records; and the end of module record, with the transfer
+     address of a main module.
 
      What the linker makes of the records is the image itself, as
      tools/vax-image/ObjectImage.Mod reads them: every byte of a section in
@@ -30,7 +32,7 @@ MODULE VaxObjectWriter;
     absoluteSection = ".  ABS  .";
 
     (* record types, and the header's subtypes *)
-    headerRecord = 0; gsdRecord = 1; tirRecord = 2; eomRecord = 3;
+    headerRecord = 0; gsdRecord = 1; tirRecord = 2; eomRecord = 3; tbtRecord = 5;
     mainHeader = 0; processorHeader = 1; sourceHeader = 2;
     (* GSD subrecords, and SDF$W_FLAGS's bits as values *)
     sectionDefinition = 0; symbolSubrecord = 1; entryPoint = 2;
@@ -42,11 +44,25 @@ MODULE VaxObjectWriter;
     storeLongword = 22; storeLongwordDisplaced = 25; storeDataReference = 27; storeCodeReference = 28;
     operatorAdd = 51; setLocation = 80; augmentLocation = 81;
 
+    (* DST records (doc/developer/vax-dst-records.md) and the language
+       Module Begin gives *)
+    dstLineNumbers = 0B9H; dstModuleBegin = 0BCH; dstModuleEnd = 0BDH;
+    dstRoutineBegin = 0BEH; dstRoutineEnd = 0BFH;
+    language = 6; (* DST$K_PASCAL *)
+    dstLength = 256; (* the longest DST record, its length byte included *)
+    (* PC-correlation commands (section 4.1) *)
+    deltaPCWord = 1; deltaPCLongword = 17; setLineByte = 19; setLineWord = 9; setLineLongword = 20;
+    setAbsolutePC = 16; terminateByte = 14; terminateWord = 15; terminateLongword = 21;
+
   VAR
     out: ObjectRecords.File;
     record: ARRAY recordSize OF CHAR;
     length: INTEGER; (* of record, 0 when none is begun *)
     recordType: INTEGER; (* of the record begun *)
+    dst: ARRAY dstLength OF CHAR; (* the DST record being made, its length byte first *)
+    dstEnd: INTEGER; (* its length so far *)
+    dstAt: INTEGER; (* where the address in it is, -1 when it has none *)
+    dstSection: VaxImage.Section; dstOffset: LONGINT; (* the address *)
 
   (* Records *)
 
@@ -333,6 +349,174 @@ MODULE VaxObjectWriter;
     END
   END WriteText;
 
+  (* The traceback records: a module's DST records, each made in dst and
+     stored by Dst whole in one record, its address, if it has one, stored
+     as STO_PIDR stores an address in data. MACRO's TBT records have the
+     module, its routines and its psects (section 7); poc's give the
+     routines nested as the procedures are, and the lines, as VAX C's do
+     (16.2). *)
+
+  PROCEDURE DstBegin(type: INTEGER);
+  BEGIN
+    dst[0] := 0X; dst[1] := CHR(type); dstEnd := 2; dstAt := -1
+  END DstBegin;
+
+  PROCEDURE DstByte(b: LONGINT);
+  BEGIN
+    dst[dstEnd] := CHR(b MOD 256); INC(dstEnd)
+  END DstByte;
+
+  PROCEDURE DstBytes(value: LONGINT; n: INTEGER);
+    VAR i: INTEGER;
+  BEGIN
+    FOR i := 1 TO n DO DstByte(value); value := value DIV 256 END
+  END DstBytes;
+
+  (* The address offset of s, a longword the linker fills in *)
+  PROCEDURE DstAddress(s: VaxImage.Section; offset: LONGINT);
+  BEGIN
+    dstAt := dstEnd; dstSection := s; dstOffset := offset; DstBytes(0, 4)
+  END DstAddress;
+
+  (* The bytes of dst from from up to to, in Store Immediates *)
+  PROCEDURE DstImmediate(from, to: INTEGER);
+    VAR n, i: INTEGER;
+  BEGIN
+    WHILE from < to DO
+      n := to - from; IF n > maxImmediate THEN n := maxImmediate END;
+      Byte(-n);
+      FOR i := from TO from + n - 1 DO Byte(ORD(dst[i])) END;
+      from := from + n
+    END
+  END DstImmediate;
+
+  (* The DST record made in dst, its length byte set, in a TBT record *)
+  PROCEDURE Dst(m: VaxImage.Module);
+  BEGIN
+    dst[0] := CHR(dstEnd - 1);
+    Room(tbtRecord, dstEnd + dstEnd DIV maxImmediate + 2 + 7);
+    IF dstAt < 0 THEN
+      DstImmediate(0, dstEnd)
+    ELSE
+      DstImmediate(0, dstAt);
+      StackPlace(SectionIndex(m, dstSection), dstOffset); Byte(storeDataReference);
+      DstImmediate(dstAt + 4, dstEnd)
+    END
+  END Dst;
+
+  (* The name of path's last part, after its last ".", as a counted string,
+     in capitals: the debugger looks a name up as it is in the record,
+     having folded what it is given to capitals (16.5) *)
+  PROCEDURE DstName(VAR path: ARRAY OF CHAR);
+    VAR from, to, i: INTEGER; ch: CHAR;
+  BEGIN
+    from := 0; to := 0;
+    WHILE (to < LEN(path)) & (path[to] # 0X) DO
+      IF path[to] = "." THEN from := to + 1 END;
+      INC(to)
+    END;
+    IF to - from > VaxImage.nameLength - 1 THEN to := from + VaxImage.nameLength - 1 END;
+    DstByte(to - from);
+    FOR i := from TO to - 1 DO
+      ch := path[i];
+      IF (ch >= "a") & (ch <= "z") THEN ch := CHR(ORD(ch) - ORD("a") + ORD("A")) END;
+      DstByte(ORD(ch))
+    END
+  END DstName;
+
+  (* Whether path is parent's followed by "." and one more name *)
+  PROCEDURE IsChild(VAR path, parent: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (parent[i] # 0X) & (path[i] = parent[i]) DO INC(i) END;
+    IF (parent[i] # 0X) OR (path[i] # ".") THEN RETURN FALSE END;
+    INC(i);
+    WHILE (path[i] # 0X) & (path[i] # ".") DO INC(i) END;
+    RETURN path[i] = 0X
+  END IsChild;
+
+  PROCEDURE IsNested(VAR path: ARRAY OF CHAR): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (path[i] # 0X) & (path[i] # ".") DO INC(i) END;
+    RETURN path[i] = "."
+  END IsNested;
+
+  (* r's Routine Begin, then those of the routines from first up to next
+     that are nested in it, each with its own, then its Routine End *)
+  PROCEDURE WriteRoutine(m: VaxImage.Module; r, first, next: VaxImage.Routine);
+    VAR c: VaxImage.Routine;
+  BEGIN
+    DstBegin(dstRoutineBegin); DstByte(0); DstAddress(r.section, r.offset); DstName(r.path); Dst(m);
+    c := first;
+    WHILE c # next DO
+      IF IsChild(c.path, r.path) THEN WriteRoutine(m, c, first, next) END;
+      c := VaxImage.NextRoutine(c)
+    END;
+    DstBegin(dstRoutineEnd); DstByte(0); DstBytes(r.size, 4); Dst(m)
+  END WriteRoutine;
+
+  (* The command code with the parameter value: the byte form, code, if
+     value fits a byte, else the word form or the longword form *)
+  PROCEDURE DstCommand(code, wordCode, longwordCode: INTEGER; value: LONGINT);
+  BEGIN
+    IF (value >= 0) & (value <= 255) THEN DstByte(code); DstByte(value)
+    ELSIF (value >= 0) & (value <= 65535) THEN DstByte(wordCode); DstBytes(value, 2)
+    ELSE DstByte(longwordCode); DstBytes(value, 4)
+    END
+  END DstCommand;
+
+  (* The PC-correlation commands of r's lines (section 4.1): its first
+     line's PC set, then each line's number set unless it is one more
+     than the line before, and its PC advanced from that line's, and the
+     last line's length; a record written before it would be too long
+     for the next command *)
+  PROCEDURE WriteLines(m: VaxImage.Module; r: VaxImage.Routine);
+    VAR k, before: VaxImage.LineMark; delta: LONGINT;
+  BEGIN
+    k := VaxImage.FirstLine(r);
+    IF k # NIL THEN
+      DstBegin(dstLineNumbers); DstByte(setAbsolutePC); DstAddress(r.section, k.offset);
+      before := NIL;
+      WHILE k # NIL DO
+        IF dstEnd > dstLength - 16 THEN Dst(m); DstBegin(dstLineNumbers) END;
+        IF (before = NIL) OR (k.line # before.line + 1) THEN
+          DstCommand(setLineByte, setLineWord, setLineLongword, k.line - 1)
+        END;
+        IF before = NIL THEN delta := 0 ELSE delta := k.offset - before.offset END;
+        IF delta <= 128 THEN DstByte(-delta)
+        ELSIF delta <= 65535 THEN DstByte(deltaPCWord); DstBytes(delta, 2)
+        ELSE DstByte(deltaPCLongword); DstBytes(delta, 4)
+        END;
+        before := k; k := VaxImage.NextLine(k)
+      END;
+      DstCommand(terminateByte, terminateWord, terminateLongword, r.offset + r.size - before.offset);
+      Dst(m)
+    END
+  END WriteLines;
+
+  (* Module Begin, each routine that is not nested with those nested in
+     it, which follow it (VaxCodeGenerator.ProcedureDecl), the lines of
+     each routine, and Module End. The routines are in order of address,
+     each nested one after its parent, which the traceback needs (16.5) *)
+  PROCEDURE WriteTraceback(m: VaxImage.Module);
+    VAR r, next: VaxImage.Routine;
+  BEGIN
+    DstBegin(dstModuleBegin); DstByte(0); DstBytes(language, 4); DstName(m.name); Dst(m);
+    r := VaxImage.FirstRoutine(m);
+    WHILE r # NIL DO
+      next := VaxImage.NextRoutine(r);
+      WHILE (next # NIL) & IsNested(next.path) DO next := VaxImage.NextRoutine(next) END;
+      WriteRoutine(m, r, VaxImage.NextRoutine(r), next);
+      r := next
+    END;
+    r := VaxImage.FirstRoutine(m);
+    WHILE r # NIL DO WriteLines(m, r); r := VaxImage.NextRoutine(r) END;
+    DstBegin(dstModuleEnd); Dst(m)
+  END WriteTraceback;
+
   PROCEDURE WriteEnd(m: VaxImage.Module);
   BEGIN
     Room(eomRecord, 6);
@@ -351,6 +535,7 @@ MODULE VaxObjectWriter;
     WriteDirectory(m);
     s := VaxImage.FirstSection(m);
     WHILE s # NIL DO WriteText(m, s); s := VaxImage.NextSection(s) END;
+    WriteTraceback(m);
     WriteEnd(m);
     out := NIL
   END Write;

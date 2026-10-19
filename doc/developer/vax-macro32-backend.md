@@ -1430,7 +1430,9 @@ as on LLVM, which gives each nested procedure, in source order, the
 variables of the enclosing procedures it needs: those it names, those a
 procedure nested in it needs, and those a nested procedure it calls needs,
 less what it declares itself. Each nested procedure is lifted to a
-procedure of its own, written before its root, parents first, as a local
+procedure of its own, written after its root, parents first (before its
+root until Phase 18 step 5a, which needs each routine after the one it is
+nested in: `vax-object-language.md`, section 16.5), as a local
 label and `.WORD` of its mask, since only its enclosing procedures can
 call it and it is never a procedure value. Its symbol is made from its
 root's full name and its path below it, `VaxNested.Deep.Middle.Inner`, or

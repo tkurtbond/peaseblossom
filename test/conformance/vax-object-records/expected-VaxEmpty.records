@@ -23,5 +23,16 @@ record 5 TIR, 35 bytes
   STA_PB 3 0
   STO_LD
   store immediate 11
-record 6 EOM, 7 bytes
+record 6 TBT, 97 bytes
+  DST module begin language 6 name VAXEMPTY
+  DST routine begin at 1+00000000 name VAXEMPTY_INIT
+  DST routine end size 00000011
+  DST routine begin at 1+00000011 name VAXEMPTY_MAIN
+  DST routine end size 0000000A
+  DST line numbers
+    PC 1+00000000
+    line 1 at 1+00000000
+    end at 1+00000011
+  DST module end
+record 7 EOM, 7 bytes
   severity 0 transfer section 1 offset 00000011

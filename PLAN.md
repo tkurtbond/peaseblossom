@@ -705,6 +705,15 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    DBG records of the guest's VAX C, FORTRAN, BASIC and Ada compilers,
    is the step's first part (`vax-object-language.md`, section 11).
    Whatever cannot be shown is recorded with the reason.
+   The design is `vax-object-language.md` section 16 (decided with the
+   user 2026-10-18): TBT records (modules, routines, line numbers) in
+   every object, DBG records (source file, prologs, variables and their
+   types) with `-g`, Oberon's names, the language chosen on the guest;
+   pieces 5a-5e. **5a done** (section 16.5): TBT records in every
+   object - modules, routines nested, line numbers - and a traceback and
+   breakpoints and steps by line on the guest (`vax-traceback`); nested
+   procedures now follow their root, which the traceback needs; names in
+   capitals; the language left to 5c.
 
 6. **Wiring it in.** A new mode (`-emit-obj`, and the default on VMS,
    with `-emit-mar` keeping the Phase 15 behavior) writes `<module>.OBJ`;

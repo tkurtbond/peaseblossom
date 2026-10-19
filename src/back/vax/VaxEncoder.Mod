@@ -76,6 +76,7 @@ MODULE VaxEncoder;
     transfer: Label;
     errors: INTEGER;
     line, column: INTEGER; (* the source position of the line being encoded *)
+    routine: VaxImage.Routine; (* the routine being encoded, NIL outside one *)
 
   PROCEDURE Error(message, detail: ARRAY OF CHAR);
   BEGIN
@@ -589,7 +590,7 @@ MODULE VaxEncoder;
   PROCEDURE Encode*(first: VaxInstructions.Line): VaxImage.Module;
     VAR l: VaxInstructions.Line; b: INTEGER; f: Fixup; s: VaxImage.Section;
   BEGIN
-    module := VaxImage.NewModule(); current := NIL; fixups := NIL; transfer := NIL; errors := 0;
+    module := VaxImage.NewModule(); current := NIL; fixups := NIL; transfer := NIL; errors := 0; routine := NIL;
     FOR b := 0 TO buckets - 1 DO labels[b] := NIL END;
     s := VaxImage.AddSection(module, absoluteSection, 0, {}); (* MACRO's, for the symbols of "==" *)
     l := first;
@@ -597,7 +598,9 @@ MODULE VaxEncoder;
       line := l.line; column := l.column;
       CASE l.kind OF
         VaxInstructions.verbatim:
-      | VaxInstructions.instruction: EncodeInstruction(l)
+      | VaxInstructions.instruction:
+          IF (routine # NIL) & (line > 0) THEN VaxImage.AddLine(routine, current.size, line) END;
+          EncodeInstruction(l)
       | VaxInstructions.label:
           IF Define(l.op^) # NIL THEN
             IF l.global THEN
@@ -606,6 +609,15 @@ MODULE VaxEncoder;
           END
       | VaxInstructions.directive: EncodeDirective(l)
       | VaxInstructions.assignment: EncodeAssignment(l)
+      | VaxInstructions.routineBegin:
+          IF current = NIL THEN Error("the VAX encoder found a routine outside any program section", l.op^)
+          ELSE
+            routine := VaxImage.AddRoutine(module, l.op^, current, current.size);
+            IF line > 0 THEN VaxImage.AddLine(routine, current.size, line) END
+          END
+      | VaxInstructions.routineEnd:
+          IF (routine # NIL) & (routine.section = current) THEN routine.size := current.size - routine.offset END;
+          routine := NIL
       END;
       l := l.next
     END;

@@ -10,6 +10,11 @@ MODULE VaxImage;
      by running its records; Print writes either as the same text, which
      is how step 3's test compares them.
 
+     The encoder also notes each routine, where it is and the lines of
+     source its code comes from, for the traceback and debugger records
+     (step 5). Print leaves them out, and an object's image has none, since
+     they are not part of what the linker builds.
+
      The two must agree on what is a byte and what is a relocation, so
      both follow these rules, which make the image depend only on what the
      linker would build and not on how an object asks for it:
@@ -45,6 +50,7 @@ MODULE VaxImage;
     executable* = 6; readable* = 7; writable* = 8;
 
     nameLength* = 32; (* 31 characters and 0X *)
+    pathLength* = 256; (* a routine's Oberon path and 0X *)
     bytesPerLine = 16;
 
   TYPE
@@ -88,10 +94,27 @@ MODULE VaxImage;
       next: Reference
     END;
 
+    LineMark* = POINTER TO LineMarkDesc;
+    LineMarkDesc* = RECORD
+      offset*: LONGINT; (* where the code of line starts, in its routine's section *)
+      line*: LONGINT;
+      next: LineMark
+    END;
+
+    Routine* = POINTER TO RoutineDesc;
+    RoutineDesc* = RECORD
+      path*: ARRAY pathLength OF CHAR; (* its Oberon name, "Outer.Inner" for a nested procedure *)
+      section*: Section;
+      offset*, size*: LONGINT;
+      lines, lastLine: LineMark;
+      next: Routine
+    END;
+
     Module* = POINTER TO ModuleDesc;
     ModuleDesc* = RECORD
       name*, ident*: Name;
       sections, lastSection: Section;
+      routines, lastRoutine: Routine;
       symbols: Symbol;
       references: Reference;
       transferSection*: Section; (* NIL when the module has no transfer address *)
@@ -102,6 +125,7 @@ MODULE VaxImage;
     VAR m: Module;
   BEGIN
     NEW(m); m.name := ""; m.ident := ""; m.sections := NIL; m.lastSection := NIL;
+    m.routines := NIL; m.lastRoutine := NIL;
     m.symbols := NIL; m.references := NIL; m.transferSection := NIL; m.transferOffset := 0;
     RETURN m
   END NewModule;
@@ -220,6 +244,33 @@ MODULE VaxImage;
     m.transferSection := section; m.transferOffset := offset
   END SetTransfer;
 
+  (* A routine of m, path, starting at offset of section, after the others;
+     its size is set when its end is found *)
+  PROCEDURE AddRoutine*(m: Module; path: ARRAY OF CHAR; section: Section; offset: LONGINT): Routine;
+    VAR r: Routine;
+  BEGIN
+    NEW(r); COPY(path, r.path); r.section := section; r.offset := offset; r.size := 0;
+    r.lines := NIL; r.lastLine := NIL; r.next := NIL;
+    IF m.lastRoutine = NIL THEN m.routines := r ELSE m.lastRoutine.next := r END;
+    m.lastRoutine := r;
+    RETURN r
+  END AddRoutine;
+
+  (* The code of line starts at offset of r's section: a new mark when line
+     is not the line of the mark before, which is replaced when it is at
+     the same offset, covering no code *)
+  PROCEDURE AddLine*(r: Routine; offset, line: LONGINT);
+    VAR k: LineMark;
+  BEGIN
+    IF (r.lastLine # NIL) & (r.lastLine.offset = offset) THEN
+      r.lastLine.line := line
+    ELSIF (r.lastLine = NIL) OR (r.lastLine.line # line) THEN
+      NEW(k); k.offset := offset; k.line := line; k.next := NIL;
+      IF r.lastLine = NIL THEN r.lines := k ELSE r.lastLine.next := k END;
+      r.lastLine := k
+    END
+  END AddLine;
+
   (* Sorting the lists for printing, by insertion: they are short, and
      their order as made differs between the encoder and an object *)
 
@@ -320,6 +371,28 @@ MODULE VaxImage;
   BEGIN
     RETURN r.next
   END NextReference;
+
+  (* m's routines in the order they were added *)
+  PROCEDURE FirstRoutine*(m: Module): Routine;
+  BEGIN
+    RETURN m.routines
+  END FirstRoutine;
+
+  PROCEDURE NextRoutine*(r: Routine): Routine;
+  BEGIN
+    RETURN r.next
+  END NextRoutine;
+
+  (* r's line marks in order of offset *)
+  PROCEDURE FirstLine*(r: Routine): LineMark;
+  BEGIN
+    RETURN r.lines
+  END FirstLine;
+
+  PROCEDURE NextLine*(k: LineMark): LineMark;
+  BEGIN
+    RETURN k.next
+  END NextLine;
 
   (* Printing *)
 
