@@ -905,3 +905,134 @@ The corpus, poc's own source for the VAX, is now 39 modules
 (`VaxInstructions`, `VaxImage`, `VaxOpcodes` and `VaxEncoder` have joined
 the 35 of section 14.7): MACRO assembled all 39 from the tree of this step, and
 all 39 images are poc's, byte for byte. No difference is left to explain.
+
+## 15. Step 4: the object writer (decided 2026-10-18)
+
+### 15.1 What it takes and what it gives
+
+`VaxObjectWriter` takes the `VaxImage.Module` the encoder makes and
+writes the module's object, its records in the order of section 3:
+MHD, LNM and SRC; the GSD; each section's TIR; the EOM. It reads
+nothing else: everything a record needs is in the image (sections with
+their flags, sizes, bytes and relocations; symbols, entry masks and
+references; the transfer address), and the image is already MACRO's,
+byte for byte (section 14.10). No TBT or DBG records yet: they are
+step 5's, and until step 6 makes direct objects the default, MACRO's
+objects, with their traceback, are still the ones programs are built
+from.
+
+### 15.2 The records
+
+- **Headers** (section 4): MHD with `MHD$W_RECSIZ` 512, the image's
+  name and ident, the creation time from `Platform.GetClock` (in every
+  `Platform` poc is built with: voc's, `rtl/llvm`'s and `rtl/vax`'s) as
+  `dd-mmm-yyyy hh:mm`, or, when the environment variable
+  `SOURCE_DATE_EPOCH` is set, that time (seconds since 1970, UTC), as
+  reproducible builds elsewhere take it, and 17 spaces for the last patch; LNM
+  `Peaseblossom poc <version>` (`Version.Mod`); SRC the source file's
+  name as given to poc.
+- **GSD** (section 5): one PSC per section, in the image's order, which
+  is MACRO's (`.  ABS  .` first); then a SYM definition for each symbol
+  that is not an entry point (REL unless absolute), an EPM for each
+  entry point with its mask, and a SYM reference for each external. A
+  record is closed before a subrecord would take it past 512 bytes.
+- **TIR** (section 6), one section at a time, after `STA_Px` section, 0
+  and `CTL_SETRB`: the bytes as Store Immediates of up to 128; a run of
+  16 zeros or more skipped with `CTL_AUGRB` (shorter runs stored), so
+  that `.BLKx` space stays demand-zero; and at each relocation, the
+  commands of section 6.1 for its kind: for `LD` and `LW`, the target
+  (`STA_GBL`, or `STA_PB`/`PW`/`PL` with the addend folded into the
+  offset) and, for a global with an addend, `STA_LW` and `OPR_ADD`,
+  then `STO_LD` or `STO_LW`; for `PIDR`, the same and `STO_PIDR`; for
+  `PICR`, the same and `STO_PICR`, which writes the specifier byte
+  itself, so the Store Immediate before it stops short of that byte.
+  Each relocation's commands stay in one record, and a record is closed
+  before it would pass 512 bytes. The entry mask is in the section's
+  bytes already, so it is a Store Immediate (section 5.3).
+- **EOM** (section 8): severity 0, and the transfer address's section
+  and offset in the main module.
+
+What poc writes differs from MACRO's object only as section 9 allows,
+so the image read back from poc's object must equal MACRO's image.
+
+### 15.3 Where the records go (section 10)
+
+The writer hands each record to `ObjectRecords` (`Open(name)`,
+`Put(bytes, length)`, `Close`), which has two implementations, chosen
+by the import path as `src/driver/no-llvm` chooses its modules:
+
+- `src/back/vax/host/ObjectRecords.Mod`, for poc built for Linux and
+  the BSDs (and Stage 0 under voc): through `Files`, the counted form
+  of section 10, a 2-byte little-endian count, the bytes, and a pad
+  byte when the count is odd.
+- `src/back/vax/vms/ObjectRecords.Mod`, for poc built for VMS: through
+  a new runtime module `rtl/vax/RecordFiles.Mod`, `Create(name, maximum)`,
+  `Put(VAR bytes, length)`, `Close`, over routines in `PocRtl.mar` that
+  create a sequential file of variable-length records with no record
+  attributes and `$PUT` each record. It is VAX-only (no `rtl/llvm`
+  twin) and is the only new interface programs can see.
+
+Its file is `<module>.obj` on Linux and the BSDs, `<MODULE>.OBJ` on
+VMS.
+
+**On the guest**, a counted file sent by FTP in binary mode becomes
+fixed 512-byte records, padded with zeros. `tools/objconvert/
+ObjectConvert.Mod`, a VMS program built with poc, reads it with `Files`
+as bytes, record by record until a count of 0 or the end, and writes
+`<MODULE>.OBJ` with `RecordFiles`. `tools/vax-ftp.tcl` gains binary
+transfers (`TYPE I`); `tools/vax-do` and `tools/vax-run` send each
+`.obj` that way and run the converter on it before the procedure. The
+converter is built on the guest, through MACRO like any program today,
+into each account's `[.BIN]`, the first time a run needs it and again
+when its module key changes.
+
+### 15.4 Testing
+
+- **Every host, every fixture.** A testing command,
+  `poc -emit-vax-object <file>` (like `-emit-vax-image`; step 6 adds
+  the real mode), writes the `.mar` and each module's object in the
+  counted form. `vax_mar` reads each object back with `build/bin/
+  vax-image` (whose reader is its own, not the writer's: section 14.5)
+  and compares the image with `expected-vax.image`, MACRO's, in place
+  of the encoder's printed image; so every fixture tests the encoder and
+  the writer together, with no guest. `make test` and `test-stage1`
+  build `vax-image` first. `-emit-vax-image` stays, for finding which of
+  the two a difference is in.
+- **The records themselves**, which the image does not show (their
+  order, their split at 512 bytes, the headers): a fixture,
+  `vax-object-records`, prints a few objects' records as `vax-image`
+  sees them (`vax-image -records`), compared with what is expected.
+- **On the guest** (where it can be used, as `vax_mar` assembles today):
+  each fixture's objects, converted, pass `ANALYZE/OBJECT` with no
+  errors or warnings.
+- **`LINK` and run.** `vax-cardinal` and `vax-for-loop-end`, which build
+  and run a whole program on the guest (twelve and six modules with the
+  runtime's), also build it from poc's objects, with `PocRtl` from
+  MACRO, and their output must be the same. Phase 17's libraries and
+  shareable images from direct objects are step 6's test, as `PLAN.md`
+  says; their psect attributes are MACRO's already (the images agree).
+
+### 15.5 Pieces
+
+Each leaves `make check` passing:
+
+- **4a**: `VaxObjectWriter`, the host `ObjectRecords`,
+  `-emit-vax-object`, and `vax_mar` comparing the object's image, on
+  every host; Stage 0, Stage 1 and `vax-v1` given the host or VMS
+  directory.
+- **4b**: `vax-image -records` and the fixture `vax-object-records`.
+- **4c**: `RecordFiles` and its `PocRtl` routines, the VMS
+  `ObjectRecords`, `ObjectConvert`, binary FTP and the conversion in
+  `vax-do` and `vax-run`; `ANALYZE/OBJECT` of every fixture's objects.
+- **4d**: the two programs linked from poc's objects and run; what was
+  found written here (15.6 on), and the step's record in `PLAN.md`.
+
+### 15.6 Decided (the user, 2026-10-18)
+
+1. The names as proposed: `VaxObjectWriter`, `ObjectRecords` in
+   `src/back/vax/host` and `src/back/vax/vms`, `RecordFiles` in
+   `rtl/vax`, `ObjectConvert`, and the testing command
+   `-emit-vax-object`.
+2. The creation time is the clock's, or `SOURCE_DATE_EPOCH`'s when it is
+   set (section 15.2); step 7's comparison skips it otherwise.
+3. Zeros are skipped from 16 in a row, as proposed.

@@ -668,7 +668,13 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    image needs, universal (exported) symbols, and entry points a transfer
    vector can name. **Testing**: `ANALYZE/OBJECT` on poc's output and
    on `MACRO`'s for the same source, compared; and the decisive test, `LINK`
-   accepts it and the program runs.
+   accepts it and the program runs. The design is
+   `vax-object-language.md` section 15 (decided with the user
+   2026-10-18): the records from the encoder's image, through
+   `ObjectRecords` (counted on Linux and the BSDs, RMS records on VMS),
+   converted on the guest by `ObjectConvert`; every fixture's object read
+   back and compared with MACRO's image on every host; `ANALYZE/OBJECT`,
+   and two programs linked from poc's objects and run, on the guest.
 
 5. **Debug and traceback information.** The traceback records (`TBT`)
    that let an unhandled condition print a routine traceback, as MACRO's
