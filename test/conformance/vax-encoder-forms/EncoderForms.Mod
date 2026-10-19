@@ -6,9 +6,11 @@ MODULE EncoderForms;
      (doc/developer/vax-object-language.md, section 14.5, "Coverage").
      Writes them as MACRO-32, forms.mar, as VaxCodeGenerator's would be
      printed, and as the image of the object VaxEncoder makes of them,
-     forms.image. The fixture compares the first with expected-vax.mar
-     and the second with expected-vax.image, the image of the object
-     MACRO made from expected-vax.mar (tools/vax-macro-image).
+     forms.image, and as that object, forms.obj, written by
+     VaxObjectWriter. The fixture compares the first with expected-vax.mar,
+     and the second, and the image vax-image reads back from the third,
+     with expected-vax.image, the image of the object MACRO made from
+     expected-vax.mar (tools/vax-macro-image).
 
      Each instruction of the table comes once, with an operand of each of
      its operand types chosen in turn from the forms that type allows,
@@ -19,7 +21,7 @@ MODULE EncoderForms;
      procedure, and the directives with each kind of item. Not a program
      to run: MACRO only has to assemble it. *)
 
-  IMPORT Files, Out, VaxInstructions, VaxOpcodes, VaxEncoder, VaxImage;
+  IMPORT Files, Out, VaxInstructions, VaxOpcodes, VaxEncoder, VaxImage, ObjectRecords, VaxObjectWriter;
 
   CONST
     (* the part of the code before BACK, so that FAR is more than a word's
@@ -481,7 +483,7 @@ MODULE EncoderForms;
   END Lines;
 
   PROCEDURE Main;
-    VAR f: Files.File; w: Files.Rider; m: VaxImage.Module;
+    VAR f: Files.File; w: Files.Rider; m: VaxImage.Module; o: ObjectRecords.File;
   BEGIN
     Lines;
     f := Files.New("forms.mar"); Files.Set(w, f, 0);
@@ -492,7 +494,10 @@ MODULE EncoderForms;
     ELSE
       f := Files.New("forms.image"); Files.Set(w, f, 0);
       VaxImage.Print(w, m);
-      Files.Register(f); Files.Close(f)
+      Files.Register(f); Files.Close(f);
+      o := ObjectRecords.Open("forms.obj", VaxObjectWriter.recordSize);
+      VaxObjectWriter.Write(m, "EncoderForms.Mod", "EncoderForms", o);
+      ObjectRecords.Close(o)
     END
   END Main;
 

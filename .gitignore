@@ -47,6 +47,8 @@ test/conformance/**/*.image
 # is MACRO's records in the counted form
 test/conformance/**/*.obj
 !test/conformance/vax-image-reader/objset2.obj
+# vax-object-records's printed records, but not the expected ones
+test/conformance/vax-object-records/Vax*.records
 # a build procedure poc writes for the VAX, but not the expected ones or a
 # fixture's own procedures for the guest (Phase 16 step 2)
 test/conformance/**/*.com

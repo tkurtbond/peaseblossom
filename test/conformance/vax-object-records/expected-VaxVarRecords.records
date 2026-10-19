@@ -1,0 +1,233 @@
+record 1 HDR, 70 bytes
+  MHD level 0 record size 512 name VAXVARRECORDS ident D9797D37DC8FE6C6
+  created "18-OCT-2026 00:00" patched "                 "
+record 2 HDR, 24 bytes
+  LNM "Peaseblossom poc"
+record 3 HDR, 38 bytes
+  SRC "../vax-var-records/VaxVarRecords.mod"
+record 4 GSD, 492 bytes
+  PSC .  ABS  . align 0 flags 0000 size 000000
+  PSC POC_CODE align 2 flags 00E9 size 0002FC
+  PSC POC_CONST align 3 flags 00A9 size 00000E
+  PSC POC_DATA align 3 flags 0188 size 000064
+  PSC POC_ADDR align 2 flags 0089 size 000024
+  SYM POC_K1_D9797D37DC8FE6C6 flags 0002 section 0 value 00000000
+  SYM VAXVARRECORDS_BOX_20NDH2E2 flags 000A section 4 value 00000010
+  EPM VAXVARRECORDS_INIT flags 000A section 1 value 000000D4 mask 003C
+  EPM VAXVARRECORDS_MAIN flags 000A section 1 value 000002E1 mask 0000
+  SYM VAXVARRECORDS_POINT_TUGNB7V1 flags 000A section 4 value 00000000
+  SYM GARBAGECOLLECTEDHEAP_A_A8NV38EI flags 0000 reference
+  SYM GARBAGECOLLECTEDHEAP_INIT flags 0000 reference
+  SYM GARBAGECOLLECTEDHEAP_S_EA118OLO flags 0000 reference
+  SYM POC_K1_E6C7C3444E50227B flags 0000 reference
+  SYM POC_ROOTS flags 0000 reference
+  SYM POC_TRAP flags 0000 reference
+  SYM VAXRECLIB_COUNT_44VCVTIG flags 0000 reference
+  SYM VAXRECLIB_INIT flags 0000 reference
+  SYM VAXRECLIB_NODEDESC_BIFELNCS flags 0000 reference
+record 5 GSD, 29 bytes
+  SYM VAXRECLIB_PAIR_DJFN0SFL flags 0000 reference
+record 6 TIR, 485 bytes
+  STA_PB 1 0
+  CTL_SETRB
+  store immediate 69
+  STA_PB 4 0
+  STO_LD
+  store immediate 30
+  STA_PB 4 0
+  STO_LD
+  store immediate 25
+  STA_GBL VAXRECLIB_NODEDESC_BIFELNCS
+  STO_PICR
+  store immediate 8
+  STA_GBL GARBAGECOLLECTEDHEAP_A_A8NV38EI
+  STO_PICR
+  store immediate 20
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 33
+  STA_PB 3 0
+  STO_LD
+  store immediate 5
+  STA_PB 3 0
+  STO_LD
+  store immediate 2
+  STA_PB 3 68
+  STO_LD
+  store immediate 2
+  STA_GBL POC_ROOTS
+  STO_PICR
+  store immediate 2
+  STA_GBL VAXRECLIB_INIT
+  STO_PICR
+  store immediate 9
+  STA_PB 3 2
+  STO_LD
+  store immediate 4
+  STA_PB 4 0
+  STO_LD
+  store immediate 18
+  STA_PB 3 2
+  STO_LD
+  store immediate 4
+  STA_PB 4 0
+  STO_LD
+  store immediate 18
+  STA_PB 3 12
+  STO_LD
+  store immediate 4
+  STA_PB 4 16
+  STO_LD
+  store immediate 4
+  STA_PB 3 2
+  STO_LD
+  store immediate 4
+  STA_PB 4 0
+  STO_LD
+  store immediate 11
+  STA_PB 3 64
+  STO_LD
+  store immediate 2
+  STA_PB 3 64
+  STO_LD
+  store immediate 12
+record 7 TIR, 488 bytes
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 6
+  STA_PB 3 24
+  STO_LD
+  store immediate 4
+  STA_PB 3 12
+  STO_LD
+  store immediate 11
+  STA_PB 3 64
+  STO_LD
+  store immediate 12
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 6
+  STA_PB 3 24
+  STO_LD
+  store immediate 7
+  STA_PB 4 16
+  STO_LD
+  store immediate 4
+  STA_PB 3 28
+  STO_LD
+  store immediate 4
+  STA_PB 4 0
+  STO_LD
+  store immediate 18
+  STA_PB 4 0
+  STO_LD
+  store immediate 5
+  STA_GBL GARBAGECOLLECTEDHEAP_A_A8NV38EI
+  STO_PICR
+  store immediate 3
+  STA_PB 3 48
+  STO_LD
+  store immediate 6
+  STA_PB 3 48
+  STO_LD
+  store immediate 9
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 31
+  STA_PB 3 48
+  STO_LD
+  store immediate 9
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 23
+  STA_PB 3 48
+  STO_LD
+  store immediate 9
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 4
+  STA_PB 3 6
+  STO_LD
+  store immediate 2
+  STA_PB 3 20
+  STO_LD
+  store immediate 1
+  STA_PB 3 52
+  STO_LD
+  store immediate 2
+  STA_PB 3 44
+  STO_LD
+  store immediate 1
+  STA_PB 3 56
+  STO_LD
+  store immediate 3
+  STA_PB 3 60
+  STO_LD
+  store immediate 6
+  STA_PB 3 52
+  STO_LD
+  store immediate 3
+  STA_GBL VAXRECLIB_PAIR_DJFN0SFL
+  STO_PICR
+  store immediate 5
+  STA_GBL VAXRECLIB_COUNT_44VCVTIG
+  STO_PICR
+  store immediate 3
+record 8 TIR, 188 bytes
+  STA_PB 3 66
+  STO_LD
+  store immediate 5
+  STA_GBL GARBAGECOLLECTEDHEAP_INIT
+  STO_PICR
+  store immediate 4
+  STA_GBL GARBAGECOLLECTEDHEAP_S_EA118OLO
+  STO_PICR
+  store immediate 9
+  STA_PB 2 0
+  CTL_SETRB
+  store immediate 14
+  STA_PB 3 0
+  CTL_SETRB
+  CTL_AUGRB 72
+  store immediate 4
+  STA_PB 3 20
+  STO_PIDR
+  STA_PB 3 32
+  STO_PIDR
+  STA_PB 3 44
+  STO_PIDR
+  STA_PB 3 48
+  STO_PIDR
+  STA_PB 3 52
+  STO_PIDR
+  STA_PB 3 56
+  STO_PIDR
+  STA_PB 4 0
+  CTL_SETRB
+  store immediate 12
+  STA_PB 4 0
+  STO_PIDR
+  store immediate 12
+  STA_PB 4 16
+  STO_PIDR
+  store immediate 4
+record 9 EOM, 7 bytes
+  severity 0 transfer section 1 offset 000002E1

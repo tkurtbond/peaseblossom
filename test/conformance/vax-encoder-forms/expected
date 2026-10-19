@@ -1,2 +1,3 @@
 forms.mar matches expected-vax.mar
 forms.image matches expected-vax.image
+forms-object.image matches expected-vax.image

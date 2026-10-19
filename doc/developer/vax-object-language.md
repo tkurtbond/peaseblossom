@@ -1063,3 +1063,20 @@ the host's body; `tools/bootstrap/vax-v1`, `vax-stages`, `make-vax-kit`,
 `check-vax-kit`, the kit's `README.TXT`, `doc/vax-vms-guide.md` and the
 fixture `vax-poc` name its directory already, so 4c changes only the
 file. `check-strict` checks it as it does `src/driver/no-llvm`.
+
+### 15.8 What 4b found (2026-10-18)
+
+`vax-image -records <object>` prints an object's records, a line for
+each (its type and length), then one for each header field, GSD
+subrecord, TIR command and EOM field, which the image does not show:
+store immediates by their length, relocations by their commands. The
+fixture `vax-object-records` prints so the objects poc writes for
+`VaxEmpty`, `VaxVarRecords` and `VaxMethods` (the last 13 TIR records,
+the longest 511 bytes) under a fixed `SOURCE_DATE_EPOCH`, with poc's
+version left out of the `LNM` record, and compares them with
+`expected-<Module>.records`, which were checked by eye against sections
+6 and 15.2. `EncoderForms` in `vax-encoder-forms` also writes its object,
+`forms.obj`, which `vax-image` reads back into `forms-object.image`,
+compared with MACRO's `expected-vax.image`: that object has the commands
+the fixtures' modules do not reach, `STO_LW`, `OPR_ADD`, `STA_SB` and
+`STA_PL` among them. Nothing poc wrote needed changing.

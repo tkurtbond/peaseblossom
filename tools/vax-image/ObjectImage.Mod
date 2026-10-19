@@ -2,7 +2,9 @@ MODULE ObjectImage;
 
   (* vax-image <object> <image>: the image of a VAX object module, as
      VaxImage prints it (doc/developer/vax-object-language.md, sections 9
-     and 14.5), from <object>, which is either
+     and 14.5), from <object>; vax-image -records <object>: its records,
+     one line for each, then one for each subrecord or command in it, which
+     the image does not show (section 15.4). <object> is either
 
      - the output of DUMP/RECORD on the object, as text, which is how an
        object MACRO wrote on the guest comes back without a binary copy:
@@ -26,7 +28,7 @@ MODULE ObjectImage;
 
      Built with poc (make vax-image, build/bin/vax-image). *)
 
-  IMPORT Args, Files, Err, VaxImage;
+  IMPORT Args, Files, Out, Err, VaxImage;
 
   CONST
     maxRecord = 2048; (* OBJ$C_MAXRECSIZ *)
@@ -520,16 +522,188 @@ MODULE ObjectImage;
     recordNumber := 0
   END Run;
 
+  (* The records, as they are (vax-image -records) *)
+
+  PROCEDURE PrintHex(x: LONGINT; n: INTEGER);
+    VAR digits: ARRAY 16 OF CHAR; i, d: INTEGER;
+  BEGIN
+    FOR i := n - 1 TO 0 BY -1 DO
+      d := SHORT(x MOD 16); x := x DIV 16;
+      IF d < 10 THEN digits[i] := CHR(ORD("0") + d) ELSE digits[i] := CHR(ORD("A") + d - 10) END
+    END;
+    FOR i := 0 TO n - 1 DO Out.Char(digits[i]) END
+  END PrintHex;
+
+  (* The rest of r from at, as text in quotes *)
+  PROCEDURE PrintText(r: Record; at: LONGINT);
+  BEGIN
+    Out.Char('"');
+    WHILE at < r.length DO Out.Char(r.bytes[at]); INC(at) END;
+    Out.Char('"')
+  END PrintText;
+
+  (* n characters of r from at, as text in quotes *)
+  PROCEDURE PrintField(r: Record; VAR at: LONGINT; n: INTEGER);
+    VAR i: INTEGER;
+  BEGIN
+    Out.Char('"');
+    FOR i := 1 TO n DO Out.Char(CHR(Byte(r, at))) END;
+    Out.Char('"')
+  END PrintField;
+
+  PROCEDURE PrintHeader(r: Record);
+    VAR at, level, size: LONGINT; name: VaxImage.Name;
+  BEGIN
+    at := 1;
+    CASE Byte(r, at) OF
+      0: level := Byte(r, at); size := Unsigned(r, at, 2);
+         Out.String("  MHD level "); Out.Int(level, 0); Out.String(" record size "); Out.Int(size, 0);
+         CountedName(r, at, name); Out.String(" name "); Out.String(name);
+         CountedName(r, at, name); Out.String(" ident "); Out.String(name); Out.Ln;
+         Out.String("  created "); PrintField(r, at, 17); Out.String(" patched "); PrintField(r, at, 17)
+    | 1: Out.String("  LNM "); PrintText(r, at)
+    | 2: Out.String("  SRC "); PrintText(r, at)
+    | 3: Out.String("  TTL "); PrintText(r, at)
+    ELSE Out.String("  header of subtype "); Out.Int(ORD(r.bytes[1]), 0)
+    END;
+    Out.Ln
+  END PrintHeader;
+
+  PROCEDURE PrintDirectory(r: Record);
+    VAR at, type, flags, alignment, size, index, value, mask: LONGINT; name: VaxImage.Name;
+  BEGIN
+    at := 1;
+    WHILE at < r.length DO
+      type := Byte(r, at);
+      IF type = sectionDefinition THEN
+        alignment := Byte(r, at); flags := Unsigned(r, at, 2); size := Unsigned(r, at, 4); CountedName(r, at, name);
+        Out.String("  PSC "); Out.String(name); Out.String(" align "); Out.Int(alignment, 0);
+        Out.String(" flags "); PrintHex(flags, 4); Out.String(" size "); PrintHex(size, 6)
+      ELSIF (type = symbolSubrecord) OR (type = entryPoint) THEN
+        at := at + 1; flags := Unsigned(r, at, 2);
+        IF ODD(flags DIV 2) OR (type = entryPoint) THEN
+          index := Byte(r, at); value := Signed(r, at, 4);
+          IF type = entryPoint THEN mask := Unsigned(r, at, 2) END;
+          CountedName(r, at, name);
+          IF type = entryPoint THEN Out.String("  EPM ") ELSE Out.String("  SYM ") END;
+          Out.String(name); Out.String(" flags "); PrintHex(flags, 4);
+          Out.String(" section "); Out.Int(index, 0); Out.String(" value "); PrintHex(value, 8);
+          IF type = entryPoint THEN Out.String(" mask "); PrintHex(mask, 4) END
+        ELSE
+          CountedName(r, at, name);
+          Out.String("  SYM "); Out.String(name); Out.String(" flags "); PrintHex(flags, 4); Out.String(" reference")
+        END
+      ELSE
+        Fail("a GSD subrecord that is not known")
+      END;
+      Out.Ln
+    END
+  END PrintDirectory;
+
+  PROCEDURE PrintCommands(r: Record);
+    VAR at, command, n, index: LONGINT; name: VaxImage.Name;
+  BEGIN
+    at := 1;
+    WHILE at < r.length DO
+      command := Signed(r, at, 1);
+      Out.String("  ");
+      IF command < 0 THEN
+        n := -command; at := at + n;
+        IF at > r.length THEN Fail("a record ends inside a field") END;
+        Out.String("store immediate "); Out.Int(n, 0)
+      ELSE
+        CASE command OF
+          stackGlobal: CountedName(r, at, name); Out.String("STA_GBL "); Out.String(name)
+        | stackSignedByte: Out.String("STA_SB "); Out.Int(Signed(r, at, 1), 0)
+        | stackSignedWord: Out.String("STA_SW "); Out.Int(Signed(r, at, 2), 0)
+        | stackLongword: Out.String("STA_LW "); Out.Int(Signed(r, at, 4), 0)
+        | stackSectionByte: index := Byte(r, at); Out.String("STA_PB "); Out.Int(index, 0); Out.Char(" "); Out.Int(Signed(r, at, 1), 0)
+        | stackSectionWord: index := Byte(r, at); Out.String("STA_PW "); Out.Int(index, 0); Out.Char(" "); Out.Int(Signed(r, at, 2), 0)
+        | stackSectionLongword: index := Byte(r, at); Out.String("STA_PL "); Out.Int(index, 0); Out.Char(" "); Out.Int(Signed(r, at, 4), 0)
+        | stackUnsignedByte: Out.String("STA_UB "); Out.Int(Unsigned(r, at, 1), 0)
+        | stackUnsignedWord: Out.String("STA_UW "); Out.Int(Unsigned(r, at, 2), 0)
+        | storeSignedByte: Out.String("STO_SB")
+        | storeSignedWord: Out.String("STO_SW")
+        | storeLongword: Out.String("STO_LW")
+        | storeLongwordDisplaced: Out.String("STO_LD")
+        | storeDataReference: Out.String("STO_PIDR")
+        | storeCodeReference: Out.String("STO_PICR")
+        | storeRepeatedSignedByte: Out.String("STO_RSB")
+        | storeRepeatedSignedWord: Out.String("STO_RSW")
+        | storeByte: Out.String("STO_B")
+        | storeWord: Out.String("STO_W")
+        | storeRepeatedByte: Out.String("STO_RB")
+        | storeRepeatedWord: Out.String("STO_RW")
+        | operatorNone: Out.String("OPR_NOP")
+        | operatorAdd: Out.String("OPR_ADD")
+        | operatorSubtract: Out.String("OPR_SUB")
+        | operatorMultiply: Out.String("OPR_MUL")
+        | operatorNegate: Out.String("OPR_NEG")
+        | setLocation: Out.String("CTL_SETRB")
+        | augmentLocation: Out.String("CTL_AUGRB "); Out.Int(Signed(r, at, 4), 0)
+        ELSE
+          Fail("a TIR command that is not known")
+        END
+      END;
+      Out.Ln
+    END
+  END PrintCommands;
+
+  PROCEDURE PrintEnd(r: Record);
+    VAR at, index: LONGINT;
+  BEGIN
+    at := 1;
+    Out.String("  severity "); Out.Int(Byte(r, at), 0);
+    IF r.length >= 7 THEN
+      index := Byte(r, at); Out.String(" transfer section "); Out.Int(index, 0);
+      Out.String(" offset "); PrintHex(Signed(r, at, 4), 8)
+    END;
+    Out.Ln
+  END PrintEnd;
+
+  PROCEDURE PrintRecords;
+    VAR r: Record; type: INTEGER;
+  BEGIN
+    recordNumber := 0; r := first;
+    WHILE r # NIL DO
+      INC(recordNumber);
+      IF r.length = 0 THEN Fail("an empty record") END;
+      type := ORD(r.bytes[0]);
+      Out.String("record "); Out.Int(recordNumber, 0); Out.Char(" ");
+      CASE type OF
+        headerRecord: Out.String("HDR")
+      | gsdRecord: Out.String("GSD")
+      | tirRecord: Out.String("TIR")
+      | eomRecord: Out.String("EOM")
+      | dbgRecord: Out.String("DBG")
+      | tbtRecord: Out.String("TBT")
+      ELSE Fail("a record type that is not known")
+      END;
+      Out.String(", "); Out.Int(r.length, 0); Out.String(" bytes"); Out.Ln;
+      IF type = headerRecord THEN PrintHeader(r)
+      ELSIF type = gsdRecord THEN PrintDirectory(r)
+      ELSIF type = tirRecord THEN PrintCommands(r)
+      ELSIF type = eomRecord THEN PrintEnd(r)
+      END;
+      r := r.next
+    END;
+    recordNumber := 0
+  END PrintRecords;
+
   PROCEDURE Main;
     VAR imageName: ARRAY 256 OF CHAR; f: Files.File; w: Files.Rider;
   BEGIN
+    IF Args.argc = 3 THEN Args.Get(1, imageName) ELSE imageName := "" END;
     IF Args.argc # 3 THEN
-      Err.String("usage: vax-image <object> <image>"); Err.Ln; HALT(2)
+      Err.String("usage: vax-image <object> <image>, or vax-image -records <object>"); Err.Ln; HALT(2)
     END;
-    Args.Get(1, objectName); Args.Get(2, imageName);
     first := NIL; last := NIL; sectionCount := 0; depth := 0; current := NIL; location := 0;
     recordNumber := 0;
     module := VaxImage.NewModule();
+    IF imageName = "-records" THEN
+      Args.Get(2, objectName); ReadObject; PrintRecords; RETURN
+    END;
+    Args.Get(1, objectName); Args.Get(2, imageName);
     ReadObject;
     Run;
     f := Files.New(imageName);
