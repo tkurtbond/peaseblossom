@@ -13,7 +13,7 @@ debug build status: %X10000001
 
          VAX DEBUG Version V5.5-023
 
-%DEBUG-I-INITIAL, language is PASCAL, module set to VAXTRACE
+%DEBUG-I-INITIAL, language is UNKNOWN, module set to VAXTRACE
 break at VAXTRACE\LOOP\%LINE 30
 stepped to VAXTRACE\LOOP\%LINE 31
 stepped to VAXTRACE\LOOP\%LINE 32
@@ -53,7 +53,7 @@ debug run status: %X10000484
 
          VAX DEBUG Version V5.5-023
 
-%DEBUG-I-INITIAL, language is PASCAL, module set to VAXTRACE
+%DEBUG-I-INITIAL, language is UNKNOWN, module set to VAXTRACE
 module VAXTRACE
 %DEBUG-I-NOTORIGSRC, original version of source file not found 
 	file used is DUA1:[USERS.POC]VAXTRACE.MOD;1

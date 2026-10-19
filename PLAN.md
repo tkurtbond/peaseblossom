@@ -718,6 +718,11 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    `TYPE` and the source at each break on the guest; on VMS the source's
    resultant name and RMS attributes (`RecordFiles.Describe`,
    `POC_RECORD_ATTRIBUTES`), which spare the debugger's NOTORIGSRC note.
+   **5c done** (section 16.7): `-g` describes each variable and constant
+   of a basic type - module variables, parameters, locals - which the
+   debugger examines, deposits and evaluates on the guest
+   (`vax-debug-records`); the language is `DST$K_UNKNOWN`, since
+   Pascal's refuses to deposit into any integer but a longword.
 
 6. **Wiring it in.** A new mode (`-emit-obj`, and the default on VMS,
    with `-emit-mar` keeping the Phase 15 behavior) writes `<module>.OBJ`;

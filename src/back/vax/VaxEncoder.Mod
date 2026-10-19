@@ -585,6 +585,33 @@ MODULE VaxEncoder;
     END
   END Resolve;
 
+  (* The variable or constant l, a VaxInstructions.DataSymbol, of the
+     routine being encoded, or of the module: a module variable (flags 1,
+     an address) at the place l is at; a real constant by its F_floating
+     bits, and left out if it has none *)
+  PROCEDURE AddDataSymbol(l: VaxInstructions.Line);
+    VAR type, flags: INTEGER; i: VaxInstructions.Item; value: LONGINT; bytes: ARRAY 8 OF INTEGER;
+        shortLiteral, k: INTEGER;
+  BEGIN
+    i := l.items; type := SHORT(i.value); i := i.next; flags := SHORT(i.value); i := i.next;
+    IF i.kind = VaxInstructions.realItem THEN
+      IF ~RealBits(i.text^, 4, bytes, shortLiteral) THEN RETURN END;
+      value := bytes[3]; IF value >= 128 THEN value := value - 256 END;
+      FOR k := 2 TO 0 BY -1 DO value := value * 256 + bytes[k] END
+    ELSE
+      value := i.value
+    END;
+    IF routine # NIL THEN
+      VaxImage.AddVariable(module, routine, l.op^, type, flags, NIL, value)
+    ELSIF flags = 1 THEN
+      IF current = NIL THEN Error("the VAX encoder found a variable outside any program section", l.op^)
+      ELSE VaxImage.AddVariable(module, NIL, l.op^, type, flags, current, current.size)
+      END
+    ELSE
+      VaxImage.AddVariable(module, NIL, l.op^, type, flags, NIL, value)
+    END
+  END AddDataSymbol;
+
   (* The object module the lines from first on make; NIL, with an error
      reported, if they cannot be encoded *)
   PROCEDURE Encode*(first: VaxInstructions.Line): VaxImage.Module;
@@ -620,6 +647,7 @@ MODULE VaxEncoder;
       | VaxInstructions.routineEnd:
           IF (routine # NIL) & (routine.section = current) THEN routine.size := current.size - routine.offset END;
           routine := NIL
+      | VaxInstructions.dataSymbol: AddDataSymbol(l)
       END;
       l := l.next
     END;

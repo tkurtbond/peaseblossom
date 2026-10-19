@@ -51,6 +51,8 @@ test/conformance/**/*.obj
 test/conformance/vax-object-records/Vax*.records
 test/conformance/vax-traceback/VaxTrace.records
 test/conformance/vax-traceback/VaxTrace-g.records
+test/conformance/vax-debug-records/VaxDebug.records
+test/conformance/vax-debug-records/VaxDebug-g.records
 # a build procedure poc writes for the VAX, but not the expected ones or a
 # fixture's own procedures for the guest (Phase 16 step 2)
 test/conformance/**/*.com

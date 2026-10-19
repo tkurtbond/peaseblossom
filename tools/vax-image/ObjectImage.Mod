@@ -61,6 +61,7 @@ MODULE ObjectImage;
     maxAddresses = 64;
     dstLineNumbers = 0B9H; dstModuleBegin = 0BCH; dstModuleEnd = 0BDH;
     dstRoutineBegin = 0BEH; dstRoutineEnd = 0BFH; dstProlog = 0A2H; dstSource = 9BH;
+    dstBoolean = 9EH; highestDataType = 37;
 
   TYPE
     Record = POINTER TO RecordDesc;
@@ -711,6 +712,15 @@ MODULE ObjectImage;
     at := at + 4
   END PrintAddress;
 
+  (* Whether an address is stored at at in dst *)
+  PROCEDURE IsAddress(at: LONGINT): BOOLEAN;
+    VAR i: INTEGER;
+  BEGIN
+    i := 0;
+    WHILE (i < addressCount) & (addressAt[i] # at) DO INC(i) END;
+    RETURN i < addressCount
+  END IsAddress;
+
   PROCEDURE PrintPC;
   BEGIN
     Out.Int(pcSection, 0); Out.Char("+"); PrintHex(pc, 8)
@@ -812,6 +822,11 @@ MODULE ObjectImage;
         Out.String("prolog at "); PrintAddress(at, section, offset)
       ELSIF type = dstSource THEN
         Out.String("source file"); Out.Ln; PrintSource(at, end)
+      ELSIF (type >= 1) & (type <= highestDataType) OR (type = dstBoolean) THEN
+        Out.String("data type "); Out.Int(type, 0);
+        Out.String(" flags "); PrintHex(Byte(dst, at), 2); Out.String(" value ");
+        IF IsAddress(at) THEN PrintAddress(at, section, offset) ELSE PrintHex(Unsigned(dst, at, 4), 8) END;
+        CountedName(dst, at, name); Out.String(" name "); Out.String(name)
       ELSE
         Out.String("of type "); PrintHex(type, 2); at := end
       END;

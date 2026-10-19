@@ -910,7 +910,7 @@ record 19 TIR, 9 bytes
   STA_PB 4 124
   STO_PIDR
 record 20 TBT, 478 bytes
-  DST module begin language 6 name VAXMETHODS
+  DST module begin language 10 name VAXMETHODS
   DST routine begin at 1+00000000 name AREA
   DST routine end size 00000080
   DST routine begin at 1+00000080 name ADD

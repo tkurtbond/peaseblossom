@@ -924,12 +924,17 @@ Unresolved by this file:
 3. The atomic type code for BOOLEAN inside a type spec (158 assumed).
 4. Record components by byte offset (VALKIND_ADDR) or bit offset (255).
 5. CHAR as `DTYPE_T` in a Standard Data record (length 1 assumed).
+   Answered on the guest: one character (`vax-object-language.md`
+   16.7).
 6. `DSC$A_POINTER`/`DSC$A_A0` in a TS_ARRAY descriptor for stack data.
 7. Whether the source file's CDT/EBK/FFB must match for DEBUG to show it.
+   Answered: no, a mismatch is only noted, NOTORIGSRC (16.6).
 8. Line numbers out of PC order, or one line in several PC ranges.
+   Answered: a line gets a stop at each range (16.5).
 9. Which language code: 10 (UNKNOWN, officially unsupported) or 6
    (PASCAL); codes > 10 known to the 5.5-2 debugger are not in this
-   file.
+   file. Answered: 10, since with 6 the debugger refuses to deposit into
+   any integer but a longword (16.7).
 10. Everything here is V4.0 (1984); VMS 5.5-2's DEBUG may have added
     records (codes below 153, since new codes are allocated by decrementing
     `DST$K_LOWEST`) and type spec kinds (above 18). The stack machine

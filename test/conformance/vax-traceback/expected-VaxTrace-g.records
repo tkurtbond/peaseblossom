@@ -72,32 +72,44 @@ record 5 TIR, 451 bytes
   STA_PB 2 0
   CTL_SETRB
   store immediate 9
-record 6 TBT, 34 bytes
-  DST module begin language 6 name VAXTRACE
+record 6 TBT, 18 bytes
+  DST module begin language 10 name VAXTRACE
+record 7 DBG, 41 bytes
+  DST data type 7 flags 01 value 3+00000002 name ZERO
+  DST data type 7 flags 01 value 3+00000004 name R
+  DST data type 7 flags 01 value 3+00000006 name TOTAL
+record 8 TBT, 17 bytes
   DST routine begin at 1+00000000 name DIVIDE
-record 7 DBG, 8 bytes
+record 9 DBG, 28 bytes
   DST prolog at 1+00000008
-record 8 TBT, 24 bytes
+  DST data type 7 flags C9 value 00000004 name A
+  DST data type 7 flags D9 value FFFFFFFE name Q
+record 10 TBT, 24 bytes
   DST routine end size 0000004D
   DST routine begin at 1+0000004D name OUTER
-record 9 DBG, 8 bytes
+record 11 DBG, 18 bytes
   DST prolog at 1+0000005A
-record 10 TBT, 17 bytes
+  DST data type 7 flags D9 value FFFFFFFE name N
+record 12 TBT, 17 bytes
   DST routine begin at 1+0000008B name INNER
-record 11 DBG, 9 bytes
+record 13 DBG, 19 bytes
   DST prolog at 1+00000090
-record 12 TBT, 32 bytes
+  DST data type 7 flags C9 value 00000004 name K
+record 14 TBT, 32 bytes
   DST routine end size 00000030
   DST routine end size 0000003E
   DST routine begin at 1+000000BB name LOOP
-record 13 DBG, 9 bytes
+record 15 DBG, 39 bytes
   DST prolog at 1+000000C3
-record 14 TBT, 33 bytes
+  DST data type 7 flags C9 value 00000004 name N
+  DST data type 7 flags D9 value FFFFFFFE name I
+  DST data type 7 flags D9 value FFFFFFFC name S
+record 16 TBT, 33 bytes
   DST routine end size 00000076
   DST routine begin at 1+00000131 name VAXTRACE_INIT
-record 15 DBG, 9 bytes
+record 17 DBG, 9 bytes
   DST prolog at 1+00000145
-record 16 TBT, 154 bytes
+record 18 TBT, 154 bytes
   DST routine end size 0000004B
   DST routine begin at 1+0000017C name VAXTRACE_MAIN
   DST routine end size 0000000A
@@ -143,7 +155,7 @@ record 16 TBT, 154 bytes
     line 43 at 1+00000160
     line 44 at 1+00000175
     end at 1+0000017C
-record 17 DBG, 53 bytes
+record 19 DBG, 53 bytes
   DST source file
     form feeds counted
     declare file 1 created 0000000000000000 end block 0 first free byte 0 format 0 name VaxTrace.mod module 
@@ -151,7 +163,7 @@ record 17 DBG, 53 bytes
     set file 1
     set record 1
     define lines 45
-record 18 TBT, 4 bytes
+record 20 TBT, 4 bytes
   DST module end
-record 19 EOM, 7 bytes
+record 21 EOM, 7 bytes
   severity 0 transfer section 1 offset 0000017C

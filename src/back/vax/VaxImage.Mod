@@ -11,7 +11,8 @@ MODULE VaxImage;
      is how step 3's test compares them.
 
      The encoder also notes each routine, where it is and the lines of
-     source its code comes from, for the traceback and debugger records
+     source its code comes from, and the variables and constants of each
+     routine and of the module, for the traceback and debugger records
      (step 5). Print leaves them out, and an object's image has none, since
      they are not part of what the linker builds.
 
@@ -101,6 +102,19 @@ MODULE VaxImage;
       next: LineMark
     END;
 
+    (* A variable or constant for the debugger, as a Standard Data record
+       has it (doc/developer/vax-dst-records.md, section 5.1): its DST
+       record type, its value flags and its value, or, a module variable,
+       the address offset value of section *)
+    Variable* = POINTER TO VariableDesc;
+    VariableDesc* = RECORD
+      name*: ARRAY pathLength OF CHAR;
+      type*, flags*: INTEGER;
+      section*: Section; (* NIL unless value is an offset in it *)
+      value*: LONGINT;
+      next: Variable
+    END;
+
     Routine* = POINTER TO RoutineDesc;
     RoutineDesc* = RECORD
       path*: ARRAY pathLength OF CHAR; (* its Oberon name, "Outer.Inner" for a nested procedure *)
@@ -108,6 +122,7 @@ MODULE VaxImage;
       offset*, size*: LONGINT;
       prolog*: LONGINT; (* where its entry sequence ends, -1 if that is not known *)
       lines, lastLine: LineMark;
+      variables, lastVariable: Variable;
       next: Routine
     END;
 
@@ -116,6 +131,7 @@ MODULE VaxImage;
       name*, ident*: Name;
       sections, lastSection: Section;
       routines, lastRoutine: Routine;
+      variables, lastVariable: Variable; (* the module's own, outside any routine *)
       symbols: Symbol;
       references: Reference;
       transferSection*: Section; (* NIL when the module has no transfer address *)
@@ -126,7 +142,7 @@ MODULE VaxImage;
     VAR m: Module;
   BEGIN
     NEW(m); m.name := ""; m.ident := ""; m.sections := NIL; m.lastSection := NIL;
-    m.routines := NIL; m.lastRoutine := NIL;
+    m.routines := NIL; m.lastRoutine := NIL; m.variables := NIL; m.lastVariable := NIL;
     m.symbols := NIL; m.references := NIL; m.transferSection := NIL; m.transferOffset := 0;
     RETURN m
   END NewModule;
@@ -251,7 +267,7 @@ MODULE VaxImage;
     VAR r: Routine;
   BEGIN
     NEW(r); COPY(path, r.path); r.section := section; r.offset := offset; r.size := 0; r.prolog := -1;
-    r.lines := NIL; r.lastLine := NIL; r.next := NIL;
+    r.lines := NIL; r.lastLine := NIL; r.variables := NIL; r.lastVariable := NIL; r.next := NIL;
     IF m.lastRoutine = NIL THEN m.routines := r ELSE m.lastRoutine.next := r END;
     m.lastRoutine := r;
     RETURN r
@@ -271,6 +287,22 @@ MODULE VaxImage;
       r.lastLine := k
     END
   END AddLine;
+
+  (* A variable or constant of r, or of m when r is NIL, after the others *)
+  PROCEDURE AddVariable*(m: Module; r: Routine; name: ARRAY OF CHAR; type, flags: INTEGER;
+                         section: Section; value: LONGINT);
+    VAR v: Variable;
+  BEGIN
+    NEW(v); COPY(name, v.name); v.type := type; v.flags := flags; v.section := section; v.value := value;
+    v.next := NIL;
+    IF r = NIL THEN
+      IF m.lastVariable = NIL THEN m.variables := v ELSE m.lastVariable.next := v END;
+      m.lastVariable := v
+    ELSE
+      IF r.lastVariable = NIL THEN r.variables := v ELSE r.lastVariable.next := v END;
+      r.lastVariable := v
+    END
+  END AddVariable;
 
   (* Sorting the lists for printing, by insertion: they are short, and
      their order as made differs between the encoder and an object *)
@@ -394,6 +426,18 @@ MODULE VaxImage;
   BEGIN
     RETURN k.next
   END NextLine;
+
+  (* The variables and constants of r, or of m when r is NIL, in the order
+     they were added *)
+  PROCEDURE FirstVariable*(m: Module; r: Routine): Variable;
+  BEGIN
+    IF r = NIL THEN RETURN m.variables ELSE RETURN r.variables END
+  END FirstVariable;
+
+  PROCEDURE NextVariable*(v: Variable): Variable;
+  BEGIN
+    RETURN v.next
+  END NextVariable;
 
   (* Printing *)
 

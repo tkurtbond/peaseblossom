@@ -36,6 +36,7 @@ MODULE VaxInstructions;
     routineBegin* = 5; (* not printed: where a routine starts, op its name, for the traceback (Phase 18 step 5) *)
     routineEnd* = 6; (* not printed: where the routine begun last ends *)
     routineProlog* = 7; (* not printed: where its entry sequence ends, for the debugger *)
+    dataSymbol* = 8; (* not printed: a variable or constant for the debugger, op its name *)
 
     (* SpecifierDesc.mode *)
     registerMode* = 0; (* Rn *)
@@ -316,6 +317,22 @@ MODULE VaxInstructions;
     i := NewItem(realItem); i.text := NewText(text);
     RETURN i
   END RealNumeral;
+
+  (* A variable or constant name for the debugger, of the routine
+     RoutineBegin began last, or of the module outside any routine: its
+     DST record type, a VAX data type or DST$K_BOOL (type), its value
+     flags (flags) and its value (value, a number or a real numeral), as
+     a Standard Data record has them (doc/developer/vax-dst-records.md,
+     section 5.1). Flags 1, an address and nothing else, outside a
+     routine, is a module variable at the place the line is at, which
+     the encoder takes as its value *)
+  PROCEDURE DataSymbol*(name: ARRAY OF CHAR; type, flags: LONGINT; value: Item): Line;
+    VAR l: Line;
+  BEGIN
+    l := NewLine(dataSymbol); l.op := NewText(name);
+    AddItem(l, Number(type)); AddItem(l, Number(flags)); AddItem(l, value);
+    RETURN l
+  END DataSymbol;
 
   (* ---- Operand specifiers ---- *)
 

@@ -144,6 +144,13 @@ MODULE VaxCodeGenerator;
        "assertion failed (n)" (section 14, items 10 and 11) *)
     messageWord = 65536;
     collectorModule = "GarbageCollectedHeap"; (* rtl/vax's, which NEW allocates from *)
+    (* a variable's or constant's DST record type, its VAX data type
+       (doc/developer/vax-dst-records.md, section 6.1), or DST$K_BOOL *)
+    dtypeBU = 2; dtypeWU = 3; dtypeLU = 4; dtypeQU = 5; dtypeB = 6; dtypeW = 7; dtypeL = 8; dtypeQ = 9;
+    dtypeF = 10; dtypeT = 14; dtypeG = 27; dstBoolean = 158;
+    (* its value flags (section 5.1): a literal; at an address; at a
+       displacement from FP, from AP, or through the address there *)
+    literalValue = 0; staticAddress = 1; onFP = 0D9H; onAP = 0C9H; throughAP = 0CDH;
 
   TYPE
     Operand = POINTER TO OperandDesc;
@@ -6000,6 +6007,88 @@ MODULE VaxCodeGenerator;
     RETURN changes
   END Changes;
 
+  (* The DST record type of a variable of type t for the debugger
+     (doc/developer/vax-object-language.md, section 16.7): a VAX data type
+     by its size, DST$K_BOOL for a BOOLEAN; -1 for a type that is not
+     described *)
+  PROCEDURE DstType(t: Types.Type): INTEGER;
+    VAR size: LONGINT;
+  BEGIN
+    size := VaxTypes.Size(t);
+    IF t = Types.Boolean THEN RETURN dstBoolean
+    ELSIF t = Types.Char THEN RETURN dtypeT
+    ELSIF t = Types.Byte THEN RETURN dtypeBU
+    ELSIF (t = Types.Address) OR (t = Types.Ptr) OR (t = Types.Card) THEN RETURN dtypeLU
+    ELSIF t = Types.Real THEN RETURN dtypeF
+    ELSIF t = Types.LongReal THEN RETURN dtypeG
+    ELSIF IsCardinal(t) & (size = 1) THEN RETURN dtypeBU
+    ELSIF IsCardinal(t) & (size = 2) THEN RETURN dtypeWU
+    ELSIF IsCardinal(t) & (size = 4) THEN RETURN dtypeLU
+    ELSIF IsCardinal(t) & (size = 8) THEN RETURN dtypeQU
+    ELSIF Types.IsInteger(t) & (size = 1) THEN RETURN dtypeB
+    ELSIF Types.IsInteger(t) & (size = 2) THEN RETURN dtypeW
+    ELSIF Types.IsInteger(t) & (size = 4) THEN RETURN dtypeL
+    ELSIF Types.IsInteger(t) & (size = 8) THEN RETURN dtypeQ
+    ELSE RETURN -1
+    END
+  END DstType;
+
+  (* l, a parameter or local variable, for the debugger: where it is, by
+     FP or AP, at the end of the list from first to last *)
+  PROCEDURE DescribeLocal(l: Local; VAR first, last: Instruction);
+    VAR type: INTEGER; flags: LONGINT; d: Instruction;
+  BEGIN
+    type := DstType(l.obj.type);
+    IF (type < 0) OR (l.where = inFrameAddress) THEN RETURN END;
+    IF l.where = inFrame THEN flags := onFP
+    ELSIF l.where = byValue THEN flags := onAP
+    ELSE flags := throughAP
+    END;
+    d := VaxInstructions.DataSymbol(l.obj.name, type, flags, VaxInstructions.Number(l.offset));
+    IF last = NIL THEN first := d ELSE last.next := d END;
+    last := d
+  END DescribeLocal;
+
+  (* The constants declared from c on, for the debugger, each of at most
+     a longword, at the end of the list from first to last: a string of
+     one character as a CHAR, a REAL by its numeral, as RealConstant
+     chooses it *)
+  PROCEDURE DescribeConstants(c: SyntaxTree.ConstDeclNode; VAR first, last: Instruction);
+    VAR obj: SymbolTable.Object; v: Types.Value; type: INTEGER; value: VaxInstructions.Item;
+        d: Instruction; text: ARRAY 64 OF CHAR; ok: BOOLEAN; i: INTEGER;
+  BEGIN
+    WHILE c # NIL DO
+      obj := SymbolTable.FindLocal(scope, c.name.name);
+      value := NIL;
+      IF (obj # NIL) & (obj.class = SymbolTable.constClass) & (obj.value # NIL) THEN
+        v := obj.value; type := DstType(obj.type);
+        IF (v.kind = Types.stringValue) & (v.stringVal[0] # 0X) & (v.stringVal[1] = 0X) THEN
+          (* a string of one character, which is also a CHAR *)
+          type := dtypeT; value := VaxInstructions.Number(ORD(v.stringVal[0]))
+        ELSIF (type < 0) OR (VaxTypes.Size(obj.type) > 4) THEN
+        ELSIF (v.kind = Types.intValue) & ~v.pattern THEN value := VaxInstructions.Number(v.intVal)
+        ELSIF v.kind = Types.charValue THEN value := VaxInstructions.Number(ORD(v.charVal))
+        ELSIF v.kind = Types.boolValue THEN
+          IF v.boolVal THEN value := VaxInstructions.Number(1) ELSE value := VaxInstructions.Number(0) END
+        ELSIF v.kind = Types.realValue THEN
+          i := 0; WHILE v.realText[i] # 0X DO INC(i) END;
+          IF (i > 0) & (i < realTextLength) THEN COPY(v.realText, text)
+          ELSE ModuleInterface.FormatReal(v.realVal, FALSE, text, ok)
+          END;
+          i := 0;
+          WHILE text[i] # 0X DO IF text[i] = "D" THEN text[i] := "E" END; INC(i) END;
+          value := VaxInstructions.RealNumeral(text)
+        END
+      END;
+      IF value # NIL THEN
+        d := VaxInstructions.DataSymbol(obj.name, type, literalValue, value);
+        IF last = NIL THEN first := d ELSE last.next := d END;
+        last := d
+      END;
+      c := c.next
+    END
+  END DescribeConstants;
+
   (* size bytes of the frame for a local, aligned as MemoryLayout says, at
      most a longword (section 4): its offset from FP *)
   PROCEDURE NewLocal(obj: SymbolTable.Object; where: INTEGER; offset: LONGINT): Local;
@@ -6145,12 +6234,13 @@ MODULE VaxCodeGenerator;
                  title, path: ARRAY OF CHAR);
     VAR p: Types.Param; section: SyntaxTree.FPSectionNode;
         id: SyntaxTree.IdentDefNode; vd: SyntaxTree.VarDeclNode; pobj: SymbolTable.Object; l: Local;
-        bodyFirst, bodyLast: Instruction; i: INTEGER; off: LONGINT;
+        bodyFirst, bodyLast, symbolsFirst, symbolsLast: Instruction; i: INTEGER; off: LONGINT;
         text: ARRAY 600 OF CHAR; op: ARRAY 8 OF CHAR;
         before: INTEGER;
   BEGIN
     before := unsupportedCount;
     BeginBody;
+    symbolsFirst := NIL; symbolsLast := NIL;
     scope := bodyScope;
     resultType := pt.resultType;
     IF (resultType # NIL) & ~IsSliceScalar(resultType) THEN
@@ -6167,13 +6257,14 @@ MODULE VaxCodeGenerator;
       ELSIF Changes(pd.statements, pd.receiver.name) OR Needed(pobj) THEN
         l := NewLocal(pobj, inFrame, 0); l.copyFrom := 4; i := 2
       ELSE l := NewLocal(pobj, byValue, 4); i := 2
-      END
+      END;
+      DescribeLocal(l, symbolsFirst, symbolsLast)
     END;
     IF pd.formals # NIL THEN section := pd.formals.sections ELSE section := NIL END;
     WHILE section # NIL DO
       id := section.names;
       WHILE id # NIL DO
-        pobj := SymbolTable.FindLocal(scope, id.name);
+        pobj := SymbolTable.FindLocal(scope, id.name); l := NIL;
         IF ~IsParamType(p.type) THEN
           COPY("a parameter of type ", text); Types.Describe(p.type, text); AppendWhen(p.type, text);
           Unsupported(id.line, id.column, text)
@@ -6194,6 +6285,7 @@ MODULE VaxCodeGenerator;
         ELSE
           l := NewLocal(pobj, byValue, 4 * i)
         END;
+        IF l # NIL THEN DescribeLocal(l, symbolsFirst, symbolsLast) END;
         p := p.next; INC(i); id := id.next
       END;
       section := section.next
@@ -6223,12 +6315,14 @@ MODULE VaxCodeGenerator;
             IF pobj # NIL THEN Types.Describe(pobj.type, text); AppendWhen(pobj.type, text) END;
             Unsupported(id.line, id.column, text)
           ELSE
-            l := NewLocal(pobj, inFrame, 0)
+            l := NewLocal(pobj, inFrame, 0);
+            DescribeLocal(l, symbolsFirst, symbolsLast)
           END;
           id := id.next
         END;
         vd := vd.next
-      END
+      END;
+      DescribeConstants(pd.declarations.constDecls, symbolsFirst, symbolsLast)
     END;
     localSize := (localSize + 3) DIV 4 * 4;
     StatementSeq(DeclarationInits(pd.declarations, pd.statements));
@@ -6244,6 +6338,7 @@ MODULE VaxCodeGenerator;
     (* the entry is the declaration's line, for the traceback (step 5) *)
     VaxInstructions.SetPosition(pd.line, pd.column);
     Add(VaxInstructions.RoutineBegin(path));
+    IF symbolsFirst # NIL THEN last.next := symbolsFirst; last := symbolsLast END;
     IF localSize > clearByCLR THEN used := used + {2 .. 5} END; (* MOVC5 *)
     l := locals;
     WHILE l # NIL DO
@@ -6684,6 +6779,9 @@ MODULE VaxCodeGenerator;
           ELSIF align = 8 THEN PutDirective1(".ALIGN", VaxInstructions.Keyword("QUAD"))
           END;
           PutSymbolLabel(symbol, obj.exported);
+          IF DstType(obj.type) >= 0 THEN
+            AppendOut(VaxInstructions.DataSymbol(nm.name, DstType(obj.type), staticAddress, VaxInstructions.Number(0)))
+          END;
           IF IsSliceScalar(obj.type) THEN
             Op(".BLK", Suffix(obj.type), "", directive);
             PutDirective1(directive, VaxInstructions.Number(1))
@@ -7211,7 +7309,7 @@ MODULE VaxCodeGenerator;
     VAR init, main, symbol: VaxTypes.Symbol; title: ARRAY VaxTypes.symbolLength + 1 OF CHAR;
         ident: ARRAY 40 OF CHAR;
         before, errorsBefore: INTEGER; ok, hasRoots: BOOLEAN; e: External; sc: StringConstant; st: StructuredConstant; where: Where;
-        heapInit, stackBase: VaxTypes.Symbol;
+        heapInit, stackBase: VaxTypes.Symbol; symbolsFirst, symbolsLast: Instruction;
   BEGIN
     module := m; scope := s; moduleScope := s; before := unsupportedCount;
     errorsBefore := Diagnostics.errorCount;
@@ -7242,6 +7340,11 @@ MODULE VaxCodeGenerator;
     PutLabel("L_INITIALISED");
     PutDirective1(".BLKB", VaxInstructions.Number(1));
     ok := WriteVariables();
+    IF module.declarations # NIL THEN
+      symbolsFirst := NIL; symbolsLast := NIL;
+      DescribeConstants(module.declarations.constDecls, symbolsFirst, symbolsLast);
+      PutLines(symbolsFirst)
+    END;
     hasRoots := ok & WriteRoots();
     IF hasRoots THEN AddExternal("POC_ROOTS") END;
     IF withModules THEN AddExternal("POC_MODULE") END;

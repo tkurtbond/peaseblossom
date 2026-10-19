@@ -1,0 +1,6 @@
+semantic OK, wrote VaxDebug.mar
+exit 0
+VaxDebug.records matches expected-VaxDebug.records
+semantic OK, wrote debug/VaxDebug.mar
+-g exit 0
+VaxDebug-g.records matches expected-VaxDebug-g.records

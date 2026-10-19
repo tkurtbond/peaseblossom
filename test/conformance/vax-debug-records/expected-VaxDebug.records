@@ -1,0 +1,150 @@
+record 1 HDR, 65 bytes
+  MHD level 0 record size 512 name VAXDEBUG ident DD3FC2B73BE01C06
+  created "18-OCT-2026 00:00" patched "                 "
+record 2 HDR, 24 bytes
+  LNM "Peaseblossom poc"
+record 3 HDR, 14 bytes
+  SRC "VaxDebug.mod"
+record 4 GSD, 167 bytes
+  PSC .  ABS  . align 0 flags 0000 size 000000
+  PSC POC_CODE align 2 flags 00E9 size 0001C7
+  PSC POC_CONST align 3 flags 00A9 size 000009
+  PSC POC_DATA align 3 flags 0188 size 000034
+  SYM POC_K1_DD3FC2B73BE01C06 flags 0002 section 0 value 00000000
+  EPM VAXDEBUG_INIT flags 000A section 1 value 000000A7 mask 0000
+  EPM VAXDEBUG_MAIN flags 000A section 1 value 000001BC mask 0000
+  SYM POC_TRAP flags 0000 reference
+record 5 TIR, 481 bytes
+  STA_PB 1 0
+  CTL_SETRB
+  store immediate 128
+  store immediate 26
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 4
+  STA_PB 3 0
+  STO_LD
+  store immediate 5
+  STA_PB 3 0
+  STO_LD
+  store immediate 7
+  STA_PB 3 1
+  STO_LD
+  store immediate 5
+  STA_PB 3 2
+  STO_LD
+  store immediate 7
+  STA_PB 3 4
+  STO_LD
+  store immediate 7
+  STA_PB 3 8
+  STO_LD
+  store immediate 3
+  STA_PB 3 12
+  STO_LD
+  store immediate 4
+  STA_PB 3 16
+  STO_LD
+  store immediate 5
+  STA_PB 3 18
+  STO_LD
+  store immediate 7
+  STA_PB 3 20
+  STO_LD
+  store immediate 3
+  STA_PB 3 24
+  STO_LD
+  store immediate 2
+  STA_PB 3 28
+  STO_LD
+  store immediate 3
+  STA_PB 3 32
+  STO_LD
+  store immediate 8
+  STA_PB 3 36
+  STO_LD
+  store immediate 4
+  STA_PB 3 44
+  STO_LD
+  store immediate 3
+  STA_PB 3 45
+  STO_LD
+  store immediate 3
+  STA_PB 3 46
+  STO_LD
+  store immediate 7
+  STA_PB 3 48
+  STO_LD
+  store immediate 10
+  STA_PB 3 4
+  STO_LD
+  store immediate 4
+  STA_PB 3 45
+  STO_LD
+  store immediate 4
+  STA_PB 3 32
+  STO_LD
+  store immediate 4
+  STA_PB 3 8
+  STO_LD
+  store immediate 16
+  STA_PB 3 2
+  STO_LD
+  store immediate 5
+  STA_PB 3 2
+  STO_LD
+  store immediate 12
+  STA_PB 3 2
+  STO_LD
+  store immediate 8
+  STA_PB 3 36
+  STO_LD
+  store immediate 7
+  STA_PB 3 8
+  STO_LD
+  store immediate 7
+record 6 TIR, 32 bytes
+  STA_PB 3 12
+  STO_LD
+  store immediate 12
+  STA_PB 2 0
+  CTL_SETRB
+  store immediate 9
+record 7 TBT, 155 bytes
+  DST module begin language 10 name VAXDEBUG
+  DST routine begin at 1+00000000 name SUM
+  DST routine end size 000000A7
+  DST routine begin at 1+000000A7 name VAXDEBUG_INIT
+  DST routine end size 00000115
+  DST routine begin at 1+000001BC name VAXDEBUG_MAIN
+  DST routine end size 0000000B
+  DST line numbers
+    PC 1+00000000
+    line 18 at 1+00000000
+    line 22 at 1+0000001B
+    line 23 at 1+00000027
+    line 24 at 1+00000060
+    line 25 at 1+0000006D
+    line 26 at 1+00000072
+    line 27 at 1+00000083
+    line 28 at 1+00000087
+    line 29 at 1+0000008A
+    line 30 at 1+00000094
+    end at 1+000000A7
+  DST line numbers
+    PC 1+000000A7
+    line 1 at 1+000000A7
+    line 33 at 1+000000BB
+    line 34 at 1+000000E9
+    line 35 at 1+00000112
+    line 36 at 1+00000146
+    line 37 at 1+00000180
+    line 38 at 1+00000199
+    line 39 at 1+000001A5
+    end at 1+000001BC
+  DST module end
+record 8 EOM, 7 bytes
+  severity 0 transfer section 1 offset 000001BC

@@ -1317,6 +1317,7 @@ its own `ANALYZE`, so where they and the 1984 file differ, they win.
    section 12 had from the OCR), which the file calls "not officially
    supported". The test: `EXAMINE` of each kind of variable, `DEPOSIT`,
    and an expression with a field, an element and a dereference.
+   (Moved to 5c, and UNKNOWN chosen there, 16.7.)
 3. **Names** are Oberon's, as written in the source (the debugger folds
    case; written in capitals, 5a found, 16.5), not the mangled 31-character global names: `SET BREAK
    Insert` in module `List`, `EXAMINE list.count` - the debugger finds a
@@ -1397,7 +1398,8 @@ length; the atomic code for `BOOLEAN` inside a type spec (an array of
 BOOLEAN); a class A descriptor's `POINTER` and `A0` for an array on the
 stack; `HUGEINT` and `LONGREAL` in a register pair. Each answer is
 written here when found. The first is answered in 16.5: the debugger
-stops at each range.
+stops at each range; the second in 16.6: it notes a mismatch and goes
+on; the third in 16.7: one character.
 
 ### 16.5 Piece 5a: the traceback records (done 2026-10-18)
 
@@ -1502,3 +1504,56 @@ What the guest showed:
   sequence: `SET BREAK LOOP` stops at its first statement, line 29, rel
   PC 8, where without them `OUTER`'s stopped at rel PC 2, inside the
   entry sequence.
+
+### 16.7 Piece 5c: variables and constants of the basic types (done 2026-10-19)
+
+With `-g` each variable and constant of a basic type is a **Standard
+Data** record (`vax-dst-records.md`, section 5.1) in the DBG stream:
+the module's after Module Begin, a routine's after its Prolog record.
+Its type is the VAX data type by size (proposal 6): `SHORTINT`,
+`INTEGER`, `LONGINT`, `HUGEINT` and the `SYSTEM.INT`s `B`, `W`, `L`,
+`Q`; the CARDs `BU`..`QU`; `SYSTEM.BYTE` `BU`; `SYSTEM.ADDRESS`,
+`SYSTEM.CARD` and `SYSTEM.PTR` `LU`; `REAL` `F`, `LONGREAL` `G`; `CHAR`
+`T`; `BOOLEAN` the record type `DST$K_BOOL` (158). Its place
+(proposal 7): a module variable by its address, relocated (value flags
+`01`); a local, or a parameter copied to the frame (one the procedure
+changes, one a nested procedure uses, a `HUGEINT` or `LONGREAL`), by
+its offset from FP (`D9`); any other value parameter by its offset from
+AP (`C9`); a `VAR` or read-only parameter through the address there
+(`CD`). A constant of at most a longword is a literal (`00`): an
+integer, a `CHAR` (a string of one character too), a `BOOLEAN`, a
+`REAL` by its F_floating bits; a wider one, a set or a string is left
+out. The code generator marks each in its lines
+(`VaxInstructions.DataSymbol`, which prints nothing: a module
+variable's mark at its label, so the encoder takes its place), and the
+image keeps them with the routine or the module (`VaxImage.Variable`).
+`vax-image -records` prints them, and `vax-debug-records` compares a
+module's records with and without `-g` and runs it under the debugger
+on the guest.
+
+What the guest showed (`vax-debug-records`, `VaxDebug`):
+
+- **Every variable shows its value**, in both languages: `EXAMINE`
+  of each module variable, parameter and local of each basic type, a
+  `CHAR` as `'A'` (so `DTYPE_T` without a length is one character,
+  16.4), a `BOOLEAN` as `True` or `False`, a `HUGEINT` and a
+  `CARD32` whole; a `VAR` parameter shows the actual's value, and
+  `DEPOSIT` into it changes the actual. At `SET BREAK SUM`, the
+  Prolog's place, the parameters already have their values, the copied
+  ones included.
+- **Constants** are shown by `EVALUATE`, as the debugger shows any
+  literal; `EXAMINE` of one is refused (an illegal constant in an
+  address expression), as for any language. Expressions of variables
+  and constants evaluate (`EVALUATE ACC + N * STEP`).
+- **The language is `DST$K_UNKNOWN` (10)** (proposal 2): with
+  Pascal's, `DEPOSIT` into any integer but a longword - a `SHORTINT`,
+  an `INTEGER` (a word under `-O2`), a `HUGEINT`, a `CARD8`, a
+  `SYSTEM.BYTE` - was refused ("operator 'DEPOSIT' not allowed on given
+  data types"); with UNKNOWN every `DEPOSIT` works, and everything else
+  is the same. 5d tries a field, an element and a dereference in both
+  before the choice is final. Neither converts 4294967295 for a
+  `CARD32` (`%DEBUG-W-UNACVT`).
+- **A variable of an enclosing procedure** is found from a nested one
+  (proposal 7): stopped in `OUTER\INNER`, `EXAMINE N` shows `OUTER\N`,
+  in `OUTER`'s frame, the debugger walking the stack; the hidden
+  parameter that carries its address is not described.

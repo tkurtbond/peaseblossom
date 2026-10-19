@@ -230,7 +230,7 @@ record 8 TIR, 188 bytes
   STO_PIDR
   store immediate 4
 record 9 TBT, 250 bytes
-  DST module begin language 6 name VAXVARRECORDS
+  DST module begin language 10 name VAXVARRECORDS
   DST routine begin at 1+00000000 name MOVE
   DST routine end size 00000017
   DST routine begin at 1+00000017 name TWICE

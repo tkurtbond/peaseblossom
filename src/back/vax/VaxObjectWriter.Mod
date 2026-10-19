@@ -49,7 +49,10 @@ MODULE VaxObjectWriter;
        Module Begin gives *)
     dstLineNumbers = 0B9H; dstModuleBegin = 0BCH; dstModuleEnd = 0BDH;
     dstRoutineBegin = 0BEH; dstRoutineEnd = 0BFH; dstProlog = 0A2H; dstSource = 9BH;
-    language = 6; (* DST$K_PASCAL *)
+    (* DST$K_UNKNOWN: Pascal's, DST$K_PASCAL (6), refuses to DEPOSIT into
+       any integer but a longword (doc/developer/vax-object-language.md,
+       section 16.7) *)
+    language = 10;
     dstLength = 256; (* the longest DST record, its length byte included *)
     (* PC-correlation commands (section 4.1) *)
     deltaPCWord = 1; deltaPCLongword = 17; setLineByte = 19; setLineWord = 9; setLineLongword = 20;
@@ -472,7 +475,23 @@ MODULE VaxObjectWriter;
     RETURN path[i] = "."
   END IsNested;
 
-  (* r's Routine Begin, with -g its Prolog, then those of the routines
+  (* The variables and constants of r, or of m when r is NIL, each a
+     Standard Data record (5.1 of doc/developer/vax-dst-records.md), a
+     module variable's address relocated *)
+  PROCEDURE WriteVariables(m: VaxImage.Module; r: VaxImage.Routine);
+    VAR v: VaxImage.Variable;
+  BEGIN
+    v := VaxImage.FirstVariable(m, r);
+    WHILE v # NIL DO
+      DbgBegin(v.type); DstByte(v.flags);
+      IF v.section # NIL THEN DstAddress(v.section, v.value) ELSE DstBytes(v.value, 4) END;
+      DstName(v.name); Dst(m);
+      v := VaxImage.NextVariable(v)
+    END
+  END WriteVariables;
+
+  (* r's Routine Begin, with -g its Prolog and its variables and
+     constants, then those of the routines
      from first up to next that are nested in it, each with its own, then
      its Routine End *)
   PROCEDURE WriteRoutine(m: VaxImage.Module; r, first, next: VaxImage.Routine);
@@ -480,6 +499,7 @@ MODULE VaxObjectWriter;
   BEGIN
     DstBegin(dstRoutineBegin); DstByte(0); DstAddress(r.section, r.offset); DstName(r.path); Dst(m);
     IF (source # NIL) & (r.prolog >= 0) THEN DbgBegin(dstProlog); DstAddress(r.section, r.prolog); Dst(m) END;
+    IF source # NIL THEN WriteVariables(m, r) END;
     c := first;
     WHILE c # next DO
       IF IsChild(c.path, r.path) THEN WriteRoutine(m, c, first, next) END;
@@ -554,14 +574,16 @@ MODULE VaxObjectWriter;
     Dst(m)
   END WriteSource;
 
-  (* Module Begin, each routine that is not nested with those nested in
-     it, which follow it (VaxCodeGenerator.ProcedureDecl), the lines of
-     each routine, and Module End. The routines are in order of address,
+  (* Module Begin, with -g the module's variables and constants, each
+     routine that is not nested with those nested in it, which follow it
+     (VaxCodeGenerator.ProcedureDecl), the lines of each routine, and
+     Module End. The routines are in order of address,
      each nested one after its parent, which the traceback needs (16.5) *)
   PROCEDURE WriteTraceback(m: VaxImage.Module);
     VAR r, next: VaxImage.Routine;
   BEGIN
     DstBegin(dstModuleBegin); DstByte(0); DstBytes(language, 4); DstName(m.name); Dst(m);
+    IF source # NIL THEN WriteVariables(m, NIL) END;
     r := VaxImage.FirstRoutine(m);
     WHILE r # NIL DO
       next := VaxImage.NextRoutine(r);

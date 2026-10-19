@@ -73,7 +73,7 @@ record 5 TIR, 451 bytes
   CTL_SETRB
   store immediate 9
 record 6 TBT, 292 bytes
-  DST module begin language 6 name VAXTRACE
+  DST module begin language 10 name VAXTRACE
   DST routine begin at 1+00000000 name DIVIDE
   DST routine end size 0000004D
   DST routine begin at 1+0000004D name OUTER
