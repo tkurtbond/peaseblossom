@@ -58,16 +58,22 @@ MODULE ObjectImage;
     setLocation = 80; augmentLocation = 81;
 
     (* DST records (doc/developer/vax-dst-records.md), the ones read *)
-    maxAddresses = 64;
+    maxAddresses = 4096; maxLocations = 4096;
+    placeValue = 0; constantValue = 1; (* a value stacked in a DST record *)
+    defineLocation = 82; restoreLocation = 83; stackLocation = 84;
     dstLineNumbers = 0B9H; dstModuleBegin = 0BCH; dstModuleEnd = 0BDH;
     dstRoutineBegin = 0BEH; dstRoutineEnd = 0BFH; dstProlog = 0A2H; dstSource = 9BH;
     dstBoolean = 9EH; highestDataType = 37;
+    dstSeparateType = 0A3H; dstTypeSpec = 0AFH; dstRecordBegin = 0ABH; dstRecordEnd = 0ACH;
+    descriptorValue = 0FAH; valueFollows = 0FDH;
 
   TYPE
+    Bytes = POINTER TO ARRAY OF CHAR;
     Record = POINTER TO RecordDesc;
     RecordDesc = RECORD
-      bytes: ARRAY maxRecord OF CHAR;
+      bytes: Bytes;
       length: LONGINT;
+      dstFrom, dstTo: LONGINT; (* a TBT or DBG record's DST records, in dst *)
       next: Record
     END;
 
@@ -90,10 +96,16 @@ MODULE ObjectImage;
     current: VaxImage.Section; (* the location counter's section *)
     location: LONGINT;
     recordNumber: LONGINT;
-    (* the DST records a TBT or DBG record stores: their bytes, and each
-       address in them, at addressAt, in the section addressSection, at
-       addressOffset *)
+    (* the DST records the TBT and DBG records store: their bytes, the DST
+       location, each address in them, at addressAt, in the section
+       addressSection, at addressOffset, the DST locations saved, and the
+       values stacked *)
     dst: Record;
+    dstLocation: LONGINT;
+    saved: ARRAY maxLocations OF LONGINT;
+    dstKind: ARRAY maxStack OF INTEGER;
+    dstIndex, dstValue: ARRAY maxStack OF LONGINT;
+    dstDepth: INTEGER;
     addressAt, addressSection, addressOffset: ARRAY maxAddresses OF LONGINT;
     addressCount: INTEGER;
     (* the line number state (section 4.1): the PC as a section and
@@ -111,7 +123,7 @@ MODULE ObjectImage;
   PROCEDURE AddRecord(): Record;
     VAR r: Record;
   BEGIN
-    NEW(r); r.length := 0; r.next := NIL;
+    NEW(r); NEW(r.bytes, maxRecord); r.length := 0; r.dstFrom := 0; r.dstTo := 0; r.next := NIL;
     IF last = NIL THEN first := r ELSE last.next := r END;
     last := r;
     RETURN r
@@ -666,38 +678,82 @@ MODULE ObjectImage;
     END
   END PrintCommands;
 
-  (* The DST records r stores, in dst: its Store Immediates' bytes, and an
-     address for each section's place it stores with STO_PIDR *)
-  PROCEDURE RunDst(r: Record);
-    VAR at, command, n, i, index, offset: LONGINT; stacked: BOOLEAN;
+  (* b at the DST location, which then moves past it *)
+  PROCEDURE PutDst(b: LONGINT);
+    VAR bigger: Bytes; i: LONGINT;
   BEGIN
-    dst.length := 0; addressCount := 0; stacked := FALSE; index := 0; offset := 0;
+    IF dstLocation >= LEN(dst.bytes^) THEN
+      NEW(bigger, 2 * LEN(dst.bytes^));
+      FOR i := 0 TO dst.length - 1 DO bigger[i] := dst.bytes[i] END;
+      dst.bytes := bigger
+    END;
+    dst.bytes[dstLocation] := CHR(b MOD 256); INC(dstLocation);
+    IF dstLocation > dst.length THEN dst.length := dstLocation END
+  END PutDst;
+
+  PROCEDURE PushDst(kind: INTEGER; index, value: LONGINT);
+  BEGIN
+    IF dstDepth = maxStack THEN Fail("too many values stacked in a DST record") END;
+    dstKind[dstDepth] := kind; dstIndex[dstDepth] := index; dstValue[dstDepth] := value; INC(dstDepth)
+  END PushDst;
+
+  (* The value on top, of kind *)
+  PROCEDURE PopDst(kind: INTEGER; VAR index, value: LONGINT);
+  BEGIN
+    IF dstDepth = 0 THEN Fail("a DST command with nothing stacked") END;
+    DEC(dstDepth);
+    IF dstKind[dstDepth] # kind THEN Fail("a DST command given a value of the wrong kind") END;
+    index := dstIndex[dstDepth]; value := dstValue[dstDepth]
+  END PopDst;
+
+  (* The DST records r stores, at the DST location, which runs on through
+     the module's TBT and DBG records (manual 7.7, 7.8): its Store
+     Immediates' bytes; an address for each section's place it stores with
+     STO_PIDR; a DST location saved, set, or stacked and stored with
+     STO_LW, as a DST pointer is (doc/developer/vax-dst-records.md,
+     section 3.5). Where its own records begin and end *)
+  PROCEDURE RunDst(r: Record);
+    VAR at, command, n, i, index, value: LONGINT;
+  BEGIN
+    r.dstFrom := dstLocation; dstDepth := 0;
     at := 1;
     WHILE at < r.length DO
       command := Signed(r, at, 1);
       IF command < 0 THEN
         n := -command;
-        FOR i := 1 TO n DO dst.bytes[dst.length] := CHR(Byte(r, at)); INC(dst.length) END
+        FOR i := 1 TO n DO PutDst(Byte(r, at)) END
       ELSIF (command = stackSectionByte) OR (command = stackSectionWord) OR (command = stackSectionLongword) THEN
-        IF stacked THEN Fail("two places stacked in a DST record") END;
         index := Byte(r, at);
-        IF command = stackSectionByte THEN offset := Signed(r, at, 1)
-        ELSIF command = stackSectionWord THEN offset := Signed(r, at, 2)
-        ELSE offset := Signed(r, at, 4)
+        IF command = stackSectionByte THEN value := Signed(r, at, 1)
+        ELSIF command = stackSectionWord THEN value := Signed(r, at, 2)
+        ELSE value := Signed(r, at, 4)
         END;
-        stacked := TRUE
+        PushDst(placeValue, index, value)
+      ELSIF command = stackUnsignedWord THEN PushDst(constantValue, 0, Unsigned(r, at, 2))
+      ELSIF command = stackLongword THEN PushDst(constantValue, 0, Signed(r, at, 4))
       ELSIF command = storeDataReference THEN
-        IF ~stacked THEN Fail("STO_PIDR with no place stacked") END;
-        IF addressCount = maxAddresses THEN Fail("too many addresses in a DST record") END;
-        addressAt[addressCount] := dst.length; addressSection[addressCount] := index;
-        addressOffset[addressCount] := offset; INC(addressCount);
-        FOR i := 1 TO 4 DO dst.bytes[dst.length] := 0X; INC(dst.length) END;
-        stacked := FALSE
+        PopDst(placeValue, index, value);
+        IF addressCount = maxAddresses THEN Fail("too many addresses in DST records") END;
+        addressAt[addressCount] := dstLocation; addressSection[addressCount] := index;
+        addressOffset[addressCount] := value; INC(addressCount);
+        FOR i := 1 TO 4 DO PutDst(0) END
+      ELSIF (command = defineLocation) OR (command = restoreLocation) OR (command = stackLocation) THEN
+        PopDst(constantValue, index, value);
+        IF (value < 0) OR (value >= maxLocations) THEN Fail("a DST location that is out of range") END;
+        IF command = defineLocation THEN saved[value] := dstLocation
+        ELSIF saved[value] < 0 THEN Fail("a DST location used before it is saved")
+        ELSIF command = restoreLocation THEN dstLocation := saved[value]
+        ELSE PushDst(constantValue, 0, saved[value])
+        END
+      ELSIF command = storeLongword THEN
+        PopDst(constantValue, index, value);
+        FOR i := 1 TO 4 DO PutDst(value); value := value DIV 256 END
       ELSE
         Fail("a TIR command in a DST record that is not known")
       END
     END;
-    IF stacked THEN Fail("a place stacked and not stored") END
+    IF dstDepth # 0 THEN Fail("a value stacked and not stored") END;
+    r.dstTo := dstLocation
   END RunDst;
 
   (* The address stored at at in dst, as "<section>+<offset>", and at past it *)
@@ -795,17 +851,85 @@ MODULE ObjectImage;
     END
   END PrintSource;
 
-  (* The DST records in dst, one line each, its fields named; a Line
-     Number or Source File Correlation record's commands below it *)
-  PROCEDURE PrintDst;
-    VAR at, end, type, section, offset: LONGINT; name: ARRAY 256 OF CHAR;
+  (* A class A descriptor at at in dst, and at past it *)
+  PROCEDURE PrintDescriptor(VAR at: LONGINT);
+    VAR length, dtype, class, dimensions, i: LONGINT;
   BEGIN
-    at := 0;
-    WHILE at < dst.length DO
+    length := Unsigned(dst, at, 2); dtype := Byte(dst, at); class := Byte(dst, at);
+    Out.String("descriptor class "); Out.Int(class, 0); Out.String(" type "); Out.Int(dtype, 0);
+    Out.String(" length "); Out.Int(length, 0);
+    Out.String(" pointer "); PrintHex(Unsigned(dst, at, 4), 8);
+    at := at + 2; Out.String(" flags "); PrintHex(Byte(dst, at), 2);
+    dimensions := Byte(dst, at);
+    Out.String(" size "); Out.Int(Unsigned(dst, at, 4), 0); Out.String(" a0 "); PrintHex(Unsigned(dst, at, 4), 8);
+    Out.String(" multipliers");
+    FOR i := 1 TO dimensions DO Out.Char(" "); Out.Int(Signed(dst, at, 4), 0) END;
+    Out.String(" bounds");
+    FOR i := 1 TO dimensions DO
+      Out.Char(" "); Out.Int(Signed(dst, at, 4), 0); Out.String(".."); Out.Int(Signed(dst, at, 4), 0)
+    END
+  END PrintDescriptor;
+
+  (* A value specification at at in dst (section 5.5), and at past it: a
+     descriptor in the record, or a stack machine routine's bytes *)
+  PROCEDURE PrintValueSpec(VAR at: LONGINT);
+    VAR flags, offset, n, i, base: LONGINT;
+  BEGIN
+    flags := Byte(dst, at);
+    IF flags = descriptorValue THEN
+      offset := Signed(dst, at, 4); base := at + offset; PrintDescriptor(base)
+    ELSIF flags = valueFollows THEN
+      n := Unsigned(dst, at, 2); Out.String("routine");
+      FOR i := 1 TO n DO Out.Char(" "); PrintHex(Byte(dst, at), 2) END
+    ELSE
+      Out.String("value flags "); PrintHex(flags, 2); Out.String(" value "); PrintHex(Unsigned(dst, at, 4), 8)
+    END
+  END PrintValueSpec;
+
+  (* A type specification at at in dst (section 6.4), and at past it *)
+  PROCEDURE PrintTypeSpec(VAR at: LONGINT);
+    VAR length, end, kind, dimensions, flagBytes, offset, offsetAt, base: LONGINT;
+  BEGIN
+    length := Unsigned(dst, at, 2); end := at + length; kind := Byte(dst, at);
+    IF kind = 1 THEN Out.String("atom "); Out.Int(Byte(dst, at), 0)
+    ELSIF kind = 2 THEN Out.String("("); PrintValueSpec(at); Out.String(")"); at := end
+    ELSIF kind = 3 THEN Out.String("indirect dst "); PrintHex(Unsigned(dst, at, 4), 8)
+    ELSIF kind = 4 THEN Out.String("pointer to "); PrintTypeSpec(at)
+    ELSIF kind = 5 THEN Out.String("pointer")
+    ELSIF kind = 7 THEN
+      dimensions := Byte(dst, at); flagBytes := (dimensions + 8) DIV 8;
+      Out.String("array of "); Out.Int(dimensions, 0); Out.String(" flags "); PrintHex(Byte(dst, at), 2);
+      at := at + flagBytes - 1;
+      Out.String(" (");
+      IF ORD(dst.bytes[at]) = descriptorValue THEN
+        offsetAt := at + 1; at := at + 5; base := at;
+        PrintTypeSpec(at); Out.String(") (");
+        offset := Signed(dst, offsetAt, 4); base := base + offset; PrintDescriptor(base)
+      ELSE
+        PrintValueSpec(at); Out.String(") ("); PrintTypeSpec(at)
+      END;
+      Out.String(")"); at := end
+    ELSIF kind = 8 THEN
+      Out.String("set of "); Out.Int(Unsigned(dst, at, 4), 0); Out.String(" bits, "); PrintTypeSpec(at)
+    ELSE
+      Out.String("of kind "); Out.Int(kind, 0); at := end
+    END;
+    IF at # end THEN Fail("a type specification's fields do not fill it") END
+  END PrintTypeSpec;
+
+  (* The DST records in dst from from up to to, one line each, its fields
+     named; a Line Number or Source File Correlation record's commands
+     below it; a Record Begin's place in dst, which a DST pointer gives *)
+  PROCEDURE PrintDst(from, to: LONGINT);
+    VAR at, end, type, section, offset, flags: LONGINT; name: ARRAY 256 OF CHAR;
+  BEGIN
+    at := from;
+    WHILE at < to DO
       end := at + 1 + Byte(dst, at);
-      IF end > dst.length THEN Fail("a DST record split between records") END;
-      type := Byte(dst, at);
+      IF end > to THEN Fail("a DST record split between records") END;
       Out.String("  DST ");
+      IF ORD(dst.bytes[at]) = dstRecordBegin THEN Out.String("at "); PrintHex(at - 1, 8); Out.Char(" ") END;
+      type := Byte(dst, at);
       IF type = dstModuleBegin THEN
         at := at + 1; Out.String("module begin language "); Out.Int(Unsigned(dst, at, 4), 0);
         CountedName(dst, at, name); Out.String(" name "); Out.String(name)
@@ -822,11 +946,21 @@ MODULE ObjectImage;
         Out.String("prolog at "); PrintAddress(at, section, offset)
       ELSIF type = dstSource THEN
         Out.String("source file"); Out.Ln; PrintSource(at, end)
-      ELSIF (type >= 1) & (type <= highestDataType) OR (type = dstBoolean) THEN
-        Out.String("data type "); Out.Int(type, 0);
-        Out.String(" flags "); PrintHex(Byte(dst, at), 2); Out.String(" value ");
+      ELSIF (type >= 1) & (type <= highestDataType) OR (type = dstBoolean) OR (type = dstSeparateType)
+            OR (type = dstRecordBegin) THEN
+        IF type = dstSeparateType THEN Out.String("separate type")
+        ELSIF type = dstRecordBegin THEN Out.String("record begin")
+        ELSE Out.String("data type "); Out.Int(type, 0)
+        END;
+        flags := Byte(dst, at);
+        Out.String(" flags "); PrintHex(flags, 2); Out.String(" value ");
         IF IsAddress(at) THEN PrintAddress(at, section, offset) ELSE PrintHex(Unsigned(dst, at, 4), 8) END;
-        CountedName(dst, at, name); Out.String(" name "); Out.String(name)
+        CountedName(dst, at, name); Out.String(" name "); Out.String(name);
+        IF type = dstRecordBegin THEN Out.String(" bits "); Out.Int(Unsigned(dst, at, 4), 0) END
+      ELSIF type = dstRecordEnd THEN
+        Out.String("record end")
+      ELSIF type = dstTypeSpec THEN
+        CountedName(dst, at, name); Out.String("type spec "); Out.String(name); Out.String(": "); PrintTypeSpec(at)
       ELSE
         Out.String("of type "); PrintHex(type, 2); at := end
       END;
@@ -848,10 +982,19 @@ MODULE ObjectImage;
   END PrintEnd;
 
   PROCEDURE PrintRecords;
-    VAR r: Record; type: INTEGER;
+    VAR r: Record; type, i: INTEGER;
   BEGIN
+    (* the DST records first, whose holes later ones fill *)
+    NEW(dst); NEW(dst.bytes, 4096); dst.length := 0; dstLocation := 0; addressCount := 0;
+    FOR i := 0 TO maxLocations - 1 DO saved[i] := -1 END;
     recordNumber := 0; r := first;
-    NEW(dst); pcSection := 0; pc := 0; lineNumber := 0;
+    WHILE r # NIL DO
+      INC(recordNumber);
+      IF (r.length > 0) & ((ORD(r.bytes[0]) = dbgRecord) OR (ORD(r.bytes[0]) = tbtRecord)) THEN RunDst(r) END;
+      r := r.next
+    END;
+    recordNumber := 0; r := first;
+    pcSection := 0; pc := 0; lineNumber := 0;
     WHILE r # NIL DO
       INC(recordNumber);
       IF r.length = 0 THEN Fail("an empty record") END;
@@ -871,7 +1014,7 @@ MODULE ObjectImage;
       ELSIF type = gsdRecord THEN PrintDirectory(r)
       ELSIF type = tirRecord THEN PrintCommands(r)
       ELSIF type = eomRecord THEN PrintEnd(r)
-      ELSIF (type = dbgRecord) OR (type = tbtRecord) THEN RunDst(r); PrintDst
+      ELSIF (type = dbgRecord) OR (type = tbtRecord) THEN PrintDst(r.dstFrom, r.dstTo)
       END;
       r := r.next
     END;

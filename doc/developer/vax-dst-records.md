@@ -920,13 +920,17 @@ Unresolved by this file:
 2. How a DST pointer ("offset from the start of the whole DST") is built
    with the linker's `CTL_DFLOC`/`CTL_STKDL` (section 3.5). Needed for
    Indirect type specs, i.e. for any type used twice and every pointer to
-   a record.
+   a record. Answered: as VAX C does, the compiler adds nothing
+   (`vax-object-language.md` 16.2, 16.8).
 3. The atomic type code for BOOLEAN inside a type spec (158 assumed).
+   Answered: 158 works (16.8).
 4. Record components by byte offset (VALKIND_ADDR) or bit offset (255).
+   Answered: bit offsets, as VAX C's (16.2, 16.8).
 5. CHAR as `DTYPE_T` in a Standard Data record (length 1 assumed).
    Answered on the guest: one character (`vax-object-language.md`
    16.7).
 6. `DSC$A_POINTER`/`DSC$A_A0` in a TS_ARRAY descriptor for stack data.
+   Answered: zero, the variable's place giving the address (16.8).
 7. Whether the source file's CDT/EBK/FFB must match for DEBUG to show it.
    Answered: no, a mismatch is only noted, NOTORIGSRC (16.6).
 8. Line numbers out of PC order, or one line in several PC ranges.

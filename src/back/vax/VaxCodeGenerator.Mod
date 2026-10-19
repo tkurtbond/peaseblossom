@@ -125,7 +125,7 @@ MODULE VaxCodeGenerator;
      and SHORT of one that does not fit, trap. *)
 
   IMPORT Files, Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
-    ModuleInterface, MethodSlots, VaxTypes, VaxInstructions, NestedProcedures;
+    ModuleInterface, MethodSlots, VaxTypes, VaxImage, VaxInstructions, NestedProcedures;
 
   CONST
     tab = 9X;
@@ -149,8 +149,8 @@ MODULE VaxCodeGenerator;
     dtypeBU = 2; dtypeWU = 3; dtypeLU = 4; dtypeQU = 5; dtypeB = 6; dtypeW = 7; dtypeL = 8; dtypeQ = 9;
     dtypeF = 10; dtypeT = 14; dtypeG = 27; dstBoolean = 158;
     (* its value flags (section 5.1): a literal; at an address; at a
-       displacement from FP, from AP, or through the address there *)
-    literalValue = 0; staticAddress = 1; onFP = 0D9H; onAP = 0C9H; throughAP = 0CDH;
+       displacement from FP, from AP, or through the address at either *)
+    literalValue = 0; staticAddress = 1; onFP = 0D9H; onAP = 0C9H; throughAP = 0CDH; throughFP = 0DDH;
 
   TYPE
     Operand = POINTER TO OperandDesc;
@@ -220,6 +220,14 @@ MODULE VaxCodeGenerator;
       label: ARRAY 16 OF CHAR;
       text: ARRAY 3 * 256 + 16 OF CHAR;
       next: Where
+    END;
+
+    (* A record type and its type for the debugger, made once a module *)
+    DebugRecord = POINTER TO DebugRecordDesc;
+    DebugRecordDesc = RECORD
+      rec: Types.RecordType;
+      spec: VaxImage.TypeSpec;
+      next: DebugRecord
     END;
 
     Narrowing = POINTER TO NarrowingDesc;
@@ -347,6 +355,7 @@ MODULE VaxCodeGenerator;
     (* the variables a WITH arm narrows, innermost first (section 14,
        item 11's extension step), as LLVM's Codegen.narrowings *)
     narrowings: Narrowing;
+    debugRecords: DebugRecord; (* the module's record types described for the debugger *)
     first, last: Instruction;
     (* the module's lines, from the first; and the line being written,
        pendingLength characters of pending (PutText) *)
@@ -6033,14 +6042,89 @@ MODULE VaxCodeGenerator;
     END
   END DstType;
 
-  (* l, a parameter or local variable, for the debugger: where it is, by
-     FP or AP, at the end of the list from first to last *)
-  PROCEDURE DescribeLocal(l: Local; VAR first, last: Instruction);
-    VAR type: INTEGER; flags: LONGINT; d: Instruction;
+  PROCEDURE ^ DebugType(t: Types.Type): VaxImage.TypeSpec;
+
+  (* The fields of rec, its base type's first, at the end of the record
+     spec's for the debugger, their offsets whole's; a field of a type it
+     does not describe left out *)
+  PROCEDURE DebugFields(spec: VaxImage.TypeSpec; rec, whole: Types.RecordType);
+    VAR f: Types.Field; type: VaxImage.TypeSpec;
   BEGIN
-    type := DstType(l.obj.type);
-    IF (type < 0) OR (l.where = inFrameAddress) THEN RETURN END;
+    IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) THEN
+      DebugFields(spec, rec.baseType(Types.RecordType), whole)
+    END;
+    f := rec.fields;
+    WHILE f # NIL DO
+      type := DebugType(f.type);
+      IF (type # NIL) & (f.name # "") THEN VaxImage.AddField(spec, f.name, VaxTypes.FieldOffset(whole, f), type) END;
+      f := f.next
+    END
+  END DebugFields;
+
+  (* The record rec for the debugger, the one the module's descriptions
+     share, made the first time: named as declared, "P" for P's
+     "P.base", nameless if it has no name of its own *)
+  PROCEDURE DebugRecordOf(rec: Types.RecordType): VaxImage.TypeSpec;
+    VAR d: DebugRecord; name: ARRAY 256 OF CHAR; i: INTEGER;
+  BEGIN
+    d := debugRecords;
+    WHILE (d # NIL) & (d.rec # rec) DO d := d.next END;
+    IF d = NIL THEN
+      COPY(rec.name, name);
+      i := 0; WHILE (name[i] # 0X) & (name[i] # ".") DO INC(i) END;
+      name[i] := 0X;
+      NEW(d); d.rec := rec; d.spec := VaxImage.Record(name, VaxTypes.Size(rec)); d.next := debugRecords;
+      debugRecords := d;
+      DebugFields(d.spec, rec, rec)
+    END;
+    RETURN d.spec
+  END DebugRecordOf;
+
+  (* t for the debugger (section 16.8): a basic type as an atom, a SET or
+     SET64 as a set, its parent a longword or a quadword, a record, a
+     pointer to a record or a fixed array, a procedure, a fixed array; a
+     pointer to an open array, which voc's block layout puts out of the
+     debugger's reach, as the address it is; NIL for any other *)
+  PROCEDURE DebugType(t: Types.Type): VaxImage.TypeSpec;
+    VAR base: Types.Type; element: VaxImage.TypeSpec; a: Types.ArrayType;
+  BEGIN
+    IF DstType(t) >= 0 THEN RETURN VaxImage.Atom(DstType(t))
+    ELSIF t = Types.Set THEN RETURN VaxImage.Set(32, dtypeL)
+    ELSIF t = Types.Set64 THEN RETURN VaxImage.Set(64, dtypeQ)
+    ELSIF IsProcedureType(t) THEN RETURN VaxImage.Procedure()
+    ELSIF t IS Types.RecordType THEN RETURN DebugRecordOf(t(Types.RecordType))
+    ELSIF t IS Types.PointerType THEN
+      base := t(Types.PointerType).base;
+      IF (base IS Types.ArrayType) & base(Types.ArrayType).isOpen THEN RETURN VaxImage.Atom(dtypeLU) END;
+      element := DebugType(base);
+      IF element = NIL THEN RETURN NIL END;
+      RETURN VaxImage.Pointer(element)
+    ELSIF (t IS Types.ArrayType) & ~t(Types.ArrayType).isOpen THEN
+      a := t(Types.ArrayType);
+      element := DebugType(a.elementType);
+      IF element = NIL THEN RETURN NIL END;
+      RETURN VaxImage.Array(element, a.length, VaxTypes.Size(a.elementType))
+    ELSE RETURN NIL
+    END
+  END DebugType;
+
+  (* l, a parameter or local variable, for the debugger: where it is, by
+     FP or AP, at the end of the list from first to last; an open array
+     its elements, through the address at FP or AP, and its lengths, at
+     AP *)
+  PROCEDURE DescribeLocal(l: Local; VAR first, last: Instruction);
+    VAR type, element: VaxImage.TypeSpec; flags: LONGINT; d: Instruction;
+  BEGIN
+    IF OpenDims(l.obj.type) > 0 THEN
+      element := DebugType(OpenBase(l.obj.type));
+      IF element = NIL THEN RETURN END;
+      type := VaxImage.OpenArray(element, OpenDims(l.obj.type), l.lenOffset, VaxTypes.Size(OpenBase(l.obj.type)))
+    ELSE
+      type := DebugType(l.obj.type);
+      IF type = NIL THEN RETURN END
+    END;
     IF l.where = inFrame THEN flags := onFP
+    ELSIF l.where = inFrameAddress THEN flags := throughFP
     ELSIF l.where = byValue THEN flags := onAP
     ELSE flags := throughAP
     END;
@@ -6081,7 +6165,7 @@ MODULE VaxCodeGenerator;
         END
       END;
       IF value # NIL THEN
-        d := VaxInstructions.DataSymbol(obj.name, type, literalValue, value);
+        d := VaxInstructions.DataSymbol(obj.name, VaxImage.Atom(type), literalValue, value);
         IF last = NIL THEN first := d ELSE last.next := d END;
         last := d
       END;
@@ -6779,8 +6863,8 @@ MODULE VaxCodeGenerator;
           ELSIF align = 8 THEN PutDirective1(".ALIGN", VaxInstructions.Keyword("QUAD"))
           END;
           PutSymbolLabel(symbol, obj.exported);
-          IF DstType(obj.type) >= 0 THEN
-            AppendOut(VaxInstructions.DataSymbol(nm.name, DstType(obj.type), staticAddress, VaxInstructions.Number(0)))
+          IF DebugType(obj.type) # NIL THEN
+            AppendOut(VaxInstructions.DataSymbol(nm.name, DebugType(obj.type), staticAddress, VaxInstructions.Number(0)))
           END;
           IF IsSliceScalar(obj.type) THEN
             Op(".BLK", Suffix(obj.type), "", directive);
@@ -7314,6 +7398,7 @@ MODULE VaxCodeGenerator;
     module := m; scope := s; moduleScope := s; before := unsupportedCount;
     errorsBefore := Diagnostics.errorCount;
     names := VaxTypes.NewNameTable(); longword := VaxTypes.Longword(); narrowings := NIL;
+    debugRecords := NIL;
     nextLabel := 0; usesTrap := FALSE; procedureName[0] := 0X; wheres := NIL; whereCount := 0; externals := NIL; homes := NIL; strings := NIL; structureds := NIL; initRecords := NIL; anonymousInits := 0; code := NIL; codeLast := NIL;
     nestedRoot := NIL; nestedSyms := NIL;
     descriptors := NIL; descriptorCount := 0;

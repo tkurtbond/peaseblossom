@@ -723,6 +723,11 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    debugger examines, deposits and evaluates on the guest
    (`vax-debug-records`); the language is `DST$K_UNKNOWN`, since
    Pascal's refuses to deposit into any integer but a longword.
+   **5d done** (section 16.8): records (each once, by Indirect
+   specifications, holes for forward references), pointers, procedure
+   variables, sets, fixed arrays and open array parameters (a stack
+   machine routine building the descriptor), all shown and deposited
+   into on the guest (`vax-debug-records`); UNKNOWN confirmed.
 
 6. **Wiring it in.** A new mode (`-emit-obj`, and the default on VMS,
    with `-emit-mar` keeping the Phase 15 behavior) writes `<module>.OBJ`;

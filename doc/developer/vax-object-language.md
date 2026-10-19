@@ -1317,7 +1317,7 @@ its own `ANALYZE`, so where they and the 1984 file differ, they win.
    section 12 had from the OCR), which the file calls "not officially
    supported". The test: `EXAMINE` of each kind of variable, `DEPOSIT`,
    and an expression with a field, an element and a dereference.
-   (Moved to 5c, and UNKNOWN chosen there, 16.7.)
+   (Moved to 5c, and UNKNOWN chosen there, 16.7; confirmed in 5d, 16.8.)
 3. **Names** are Oberon's, as written in the source (the debugger folds
    case; written in capitals, 5a found, 16.5), not the mangled 31-character global names: `SET BREAK
    Insert` in module `List`, `EXAMINE list.count` - the debugger finds a
@@ -1399,7 +1399,8 @@ BOOLEAN); a class A descriptor's `POINTER` and `A0` for an array on the
 stack; `HUGEINT` and `LONGREAL` in a register pair. Each answer is
 written here when found. The first is answered in 16.5: the debugger
 stops at each range; the second in 16.6: it notes a mismatch and goes
-on; the third in 16.7: one character.
+on; the third in 16.7: one character; the fourth and fifth in 16.8:
+158, and zeros; the last does not arise (16.8).
 
 ### 16.5 Piece 5a: the traceback records (done 2026-10-18)
 
@@ -1557,3 +1558,85 @@ What the guest showed (`vax-debug-records`, `VaxDebug`):
   (proposal 7): stopped in `OUTER\INNER`, `EXAMINE N` shows `OUTER\N`,
   in `OUTER`'s frame, the debugger walking the stack; the hidden
   parameter that carries its address is not described.
+
+### 16.8 Piece 5d: records, arrays, pointers, sets, procedure variables (done 2026-10-19)
+
+With `-g` a variable or parameter of any other type is a **Separate
+Type Specification** record, located as 16.7 says, followed by a
+**Type Specification** record giving its type (`vax-dst-records.md`,
+6.2-6.4), as VAX C writes them (16.2):
+
+- **A record type** is written once, at the module's level after Module
+  Begin and before anything that refers to it: a Record Begin with no
+  value, its size in bits, a record for each field at its bit offset
+  (value flags `FF`) - a base type's fields first, flattened, since the
+  DST has no extension - and a Record End. Anything that refers to it,
+  a variable, a field, a pointer or an array element, does so by an
+  **Indirect** type specification, a DST pointer: the linker saves the
+  record's place under a DST location (`STA_UW n; CTL_DFLOC`) and
+  stores it where it is wanted (`STA_UW n; CTL_STKDL; STO_LW`). A field
+  that refers to a record type written after its own leaves a hole,
+  its place saved under a location of its own, and the hole is filled
+  when that type is written (`CTL_STLOC` to the hole, the pointer
+  stored, `CTL_STLOC` back), as VAX C does for a forward reference. A
+  record type is named as declared, `P` for `P`'s anonymous base.
+- **A pointer** is a typed pointer specification to its base's; a
+  pointer to an open array, whose bounds voc's block layout keeps where
+  no type specification reaches, is the address it holds (`LU`).
+- **A procedure variable** is a pointer to an entry mask (`ZEM`), as VAX
+  C's function pointer.
+- **A set** is a set specification of 32 bits, parent `L`, or 64 for a
+  `SET64`, parent `Q`.
+- **A fixed array** whose innermost element is an atom other than a
+  `BOOLEAN` is a descriptor specification holding a class A descriptor
+  of all its dimensions, its POINTER and A0 zero (as VAX C's; the
+  variable's place gives the address); any other, an array
+  specification of one dimension with its element's specification and
+  the descriptor after it.
+- **An open array parameter** is located through the address at FP (a
+  value parameter's copy, `DD`) or AP (`CD`), and its descriptor is
+  built at run time by a **DST stack machine** routine (5.6) from the
+  lengths poc passes after the address: each upper bound its length
+  less one, the multipliers, the size, then the descriptor's first
+  longwords, the first on top; an array specification with it when the
+  element is not an atom.
+
+The code generator gives each type as a tree (`VaxImage.TypeSpec`,
+made by `VaxCodeGenerator.DebugType`, one per record type a module),
+which a data symbol's line carries; the writer collects the record
+types the module's variables reach, writes them, and keeps a DST
+record's addresses, DST pointers and holes as fix-ups it stores in
+order. A type specification too long for one DST record is written as
+`LU`. `vax-image -records` now runs a module's TBT and DBG records
+together before printing them, since a hole is filled in a later
+record, prints a Record Begin's place, which an Indirect specification
+gives, and decodes each type specification, descriptor and stack
+machine routine. `vax-debug-records` has `VaxDebugTypes`, with each of
+these types, compared on every host and run under the debugger on the
+guest; `-g` objects of every `rtl/vax` module decode.
+
+What the guest showed (`VaxDebugTypes`, with both languages):
+
+- **Every type shows its value**: a record field by field, nested ones
+  indented, an extended record with its base type's fields; `P.X`,
+  `SEG.B.Y`, `PTS[1].Y`; a pointer's target by `^`, chained
+  (`HEAD^.NEXT^.KEY`, `RA^.TOB^.TOA^.V` through the hole); an array
+  element by `V[2]` or `V(2)`, two dimensions as `G[1,2]`; a set as
+  `[0, 3, 31]`; a `BOOLEAN` array as `True` and `False`; an `ARRAY OF
+  CHAR` as a string, `'segment.'`, each 0X a period; an open array
+  parameter whole and by element, `A(2)`, `M(1,2)`, so the descriptor
+  the stack machine builds is right; a `VAR` record parameter. A
+  pointer or a procedure variable shows as the address it holds, in
+  decimal.
+- **`DEPOSIT`** into a field, an element, through a pointer and into a
+  `VAR` parameter's field works with UNKNOWN, and changes the actual:
+  `DEPOSIT Q.Y = 21` makes `P.Y` 21. With Pascal's language it is
+  refused for a field and an element too, so **`DST$K_UNKNOWN` stays**
+  (proposal 2): UNKNOWN shows subscripts in parentheses and takes them
+  in either, and needs every subscript of an array of arrays, where
+  Pascal's shows brackets and takes one.
+- The 16.4 questions this piece answers: a `BOOLEAN` element is atom
+  158 in a type specification; a class A descriptor's POINTER and A0
+  are left zero for data on the stack as for static data, the
+  variable's place giving the address. A `HUGEINT` or `LONGREAL` in a
+  register pair does not arise: poc keeps no variable in registers.

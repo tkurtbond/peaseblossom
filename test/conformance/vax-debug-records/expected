@@ -4,3 +4,6 @@ VaxDebug.records matches expected-VaxDebug.records
 semantic OK, wrote debug/VaxDebug.mar
 -g exit 0
 VaxDebug-g.records matches expected-VaxDebug-g.records
+semantic OK, wrote debug/VaxDebugTypes.mar
+types -g exit 0
+VaxDebugTypes-g.records matches expected-VaxDebugTypes-g.records

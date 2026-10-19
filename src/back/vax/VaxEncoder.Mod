@@ -590,10 +590,10 @@ MODULE VaxEncoder;
      an address) at the place l is at; a real constant by its F_floating
      bits, and left out if it has none *)
   PROCEDURE AddDataSymbol(l: VaxInstructions.Line);
-    VAR type, flags: INTEGER; i: VaxInstructions.Item; value: LONGINT; bytes: ARRAY 8 OF INTEGER;
+    VAR flags: INTEGER; i: VaxInstructions.Item; value: LONGINT; bytes: ARRAY 8 OF INTEGER;
         shortLiteral, k: INTEGER;
   BEGIN
-    i := l.items; type := SHORT(i.value); i := i.next; flags := SHORT(i.value); i := i.next;
+    i := l.items; flags := SHORT(i.value); i := i.next;
     IF i.kind = VaxInstructions.realItem THEN
       IF ~RealBits(i.text^, 4, bytes, shortLiteral) THEN RETURN END;
       value := bytes[3]; IF value >= 128 THEN value := value - 256 END;
@@ -602,13 +602,13 @@ MODULE VaxEncoder;
       value := i.value
     END;
     IF routine # NIL THEN
-      VaxImage.AddVariable(module, routine, l.op^, type, flags, NIL, value)
+      VaxImage.AddVariable(module, routine, l.op^, l.type, flags, NIL, value)
     ELSIF flags = 1 THEN
       IF current = NIL THEN Error("the VAX encoder found a variable outside any program section", l.op^)
-      ELSE VaxImage.AddVariable(module, NIL, l.op^, type, flags, current, current.size)
+      ELSE VaxImage.AddVariable(module, NIL, l.op^, l.type, flags, current, current.size)
       END
     ELSE
-      VaxImage.AddVariable(module, NIL, l.op^, type, flags, NIL, value)
+      VaxImage.AddVariable(module, NIL, l.op^, l.type, flags, NIL, value)
     END
   END AddDataSymbol;
 

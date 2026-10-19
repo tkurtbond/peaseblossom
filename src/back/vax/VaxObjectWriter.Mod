@@ -44,11 +44,28 @@ MODULE VaxObjectWriter;
     stackSectionByte = 4; stackSectionWord = 5; stackSectionLongword = 6;
     storeLongword = 22; storeLongwordDisplaced = 25; storeDataReference = 27; storeCodeReference = 28;
     operatorAdd = 51; setLocation = 80; augmentLocation = 81;
+    stackUnsignedWord = 8; (* and the linker's DST locations (manual 7.4): *)
+    defineLocation = 82; restoreLocation = 83; stackLocation = 84;
 
     (* DST records (doc/developer/vax-dst-records.md) and the language
        Module Begin gives *)
     dstLineNumbers = 0B9H; dstModuleBegin = 0BCH; dstModuleEnd = 0BDH;
     dstRoutineBegin = 0BEH; dstRoutineEnd = 0BFH; dstProlog = 0A2H; dstSource = 9BH;
+    dstSeparateType = 0A3H; dstTypeSpec = 0AFH; dstRecordBegin = 0ABH; dstRecordEnd = 0ACH;
+    noValue = 80H; bitOffset = 0FFH; (* value flags *)
+    (* DST type specifications (section 6.4), value specifications (5.5)
+       and stack machine codes (5.6) *)
+    atomSpec = 1; descriptorSpec = 2; indirectSpec = 3; pointerSpec = 4; arraySpec = 7; setSpec = 8;
+    descriptorValue = 0FAH; valueFollows = 0FDH; dynamicValue = 2; descriptorKind = 6; stackMachine = 2;
+    pushAP = 12; pushByte = 16; pushWord = 17; pushLongword = 18; add = 19; pushIndirect = 22;
+    stop = 23; subtract = 29; multiply = 30;
+    dtypeL = 8; dtypeLU = 4; dtypeZEM = 23; dstBoolean = 158; arrayClass = 4;
+    boundsAndMultipliers = 0C0H; (* DSC$B_AFLAGS: DSC$V_FL_BOUNDS and DSC$V_FL_COEFF *)
+    maxFixups = 16; (* addresses and DST pointers in one DST record *)
+    maxRecords = 1000; (* record types in one module *)
+    maxHoles = 1000; (* DST pointers stored before their record *)
+    maxDimensions = 32;
+    addressFixup = 0; pointerFixup = 1; holeFixup = 2; (* fixupKind *)
     (* DST$K_UNKNOWN: Pascal's, DST$K_PASCAL (6), refuses to DEPOSIT into
        any integer but a longword (doc/developer/vax-object-language.md,
        section 16.7) *)
@@ -83,8 +100,25 @@ MODULE VaxObjectWriter;
     dst: ARRAY dstLength OF CHAR; (* the DST record being made, its length byte first *)
     dstRecord: INTEGER; (* the record type that carries it, TBT or DBG *)
     dstEnd: INTEGER; (* its length so far *)
-    dstAt: INTEGER; (* where the address in it is, -1 when it has none *)
-    dstSection: VaxImage.Section; dstOffset: LONGINT; (* the address *)
+    (* what the linker fills in, in order: at fixupAt, an address (a
+       section's place, fixupSection's fixupValue), a DST pointer (the DST
+       location saved under fixupValue), or a hole for one, its place
+       saved under fixupValue *)
+    fixupAt, fixupKind: ARRAY maxFixups OF INTEGER;
+    fixupSection: ARRAY maxFixups OF VaxImage.Section;
+    fixupValue: ARRAY maxFixups OF LONGINT;
+    fixupCount: INTEGER;
+    overflow: BOOLEAN; (* the DST record being made did not fit *)
+    defined: VaxImage.TypeSpec; (* the record type whose place it is, NIL if none *)
+    (* the record types of the module, in the order they are written, and
+       the DST locations: the next one free, and each hole, a DST pointer
+       stored before its record, the place it is saved under and the record *)
+    records: ARRAY maxRecords OF VaxImage.TypeSpec;
+    recordCount: INTEGER;
+    nextLocation: INTEGER;
+    holeLocation: ARRAY maxHoles OF INTEGER;
+    holeTarget: ARRAY maxHoles OF VaxImage.TypeSpec;
+    holeCount: INTEGER;
 
   (* Records *)
 
@@ -381,7 +415,8 @@ MODULE VaxObjectWriter;
   (* A DST record of type begun, for a TBT record *)
   PROCEDURE DstBegin(type: INTEGER);
   BEGIN
-    dst[0] := 0X; dst[1] := CHR(type); dstEnd := 2; dstAt := -1; dstRecord := tbtRecord
+    dst[0] := 0X; dst[1] := CHR(type); dstEnd := 2; dstRecord := tbtRecord;
+    fixupCount := 0; overflow := FALSE; defined := NIL
   END DstBegin;
 
   (* A DST record of type begun, for a DBG record: what only the debugger
@@ -391,9 +426,10 @@ MODULE VaxObjectWriter;
     DstBegin(type); dstRecord := dbgRecord
   END DbgBegin;
 
+  (* b, unless the record is full, which overflow then says *)
   PROCEDURE DstByte(b: LONGINT);
   BEGIN
-    dst[dstEnd] := CHR(b MOD 256); INC(dstEnd)
+    IF dstEnd < dstLength THEN dst[dstEnd] := CHR(b MOD 256); INC(dstEnd) ELSE overflow := TRUE END
   END DstByte;
 
   PROCEDURE DstBytes(value: LONGINT; n: INTEGER);
@@ -402,11 +438,46 @@ MODULE VaxObjectWriter;
     FOR i := 1 TO n DO DstByte(value); value := value DIV 256 END
   END DstBytes;
 
-  (* The address offset of s, a longword the linker fills in *)
+  (* value as the n bytes at at, which are there already *)
+  PROCEDURE DstPatch(at: INTEGER; value: LONGINT; n: INTEGER);
+    VAR i: INTEGER;
+  BEGIN
+    FOR i := 0 TO n - 1 DO
+      IF at + i < dstEnd THEN dst[at + i] := CHR(value MOD 256) END;
+      value := value DIV 256
+    END
+  END DstPatch;
+
+  (* A longword the linker fills in, of kind, with section and value *)
+  PROCEDURE DstFixup(kind: INTEGER; section: VaxImage.Section; value: LONGINT);
+  BEGIN
+    IF fixupCount = maxFixups THEN overflow := TRUE
+    ELSE
+      fixupAt[fixupCount] := dstEnd; fixupKind[fixupCount] := kind; fixupSection[fixupCount] := section;
+      fixupValue[fixupCount] := value; INC(fixupCount)
+    END;
+    DstBytes(0, 4)
+  END DstFixup;
+
+  (* The address offset of s *)
   PROCEDURE DstAddress(s: VaxImage.Section; offset: LONGINT);
   BEGIN
-    dstAt := dstEnd; dstSection := s; dstOffset := offset; DstBytes(0, 4)
+    DstFixup(addressFixup, s, offset)
   END DstAddress;
+
+  (* A DST pointer to the record type r (16.2): its place's, when it has
+     been written, or else a hole, filled when it is *)
+  PROCEDURE DstPointer(r: VaxImage.TypeSpec);
+  BEGIN
+    IF r.index > 0 THEN
+      DstFixup(pointerFixup, NIL, r.index)
+    ELSIF holeCount = maxHoles THEN
+      overflow := TRUE
+    ELSE
+      holeLocation[holeCount] := nextLocation; holeTarget[holeCount] := r; INC(holeCount);
+      DstFixup(holeFixup, NIL, nextLocation); INC(nextLocation)
+    END
+  END DstPointer;
 
   (* The bytes of dst from from up to to, in Store Immediates *)
   PROCEDURE DstImmediate(from, to: INTEGER);
@@ -420,19 +491,54 @@ MODULE VaxObjectWriter;
     END
   END DstImmediate;
 
+  PROCEDURE StackLocation(n: LONGINT);
+  BEGIN
+    Byte(stackUnsignedWord); Bytes(n, 2)
+  END StackLocation;
+
+  (* The DST location of r, the record type about to be written, saved;
+     then each hole for it filled with it, and the location set back *)
+  PROCEDURE DefineRecord(r: VaxImage.TypeSpec);
+    VAR i: INTEGER; filled: BOOLEAN;
+  BEGIN
+    Room(dstRecord, 4); StackLocation(r.index); Byte(defineLocation);
+    filled := FALSE;
+    FOR i := 0 TO holeCount - 1 DO
+      IF holeTarget[i] = r THEN
+        Room(dstRecord, 9);
+        StackLocation(holeLocation[i]); Byte(restoreLocation);
+        StackLocation(r.index); Byte(stackLocation); Byte(storeLongword);
+        holeTarget[i] := NIL; filled := TRUE
+      END
+    END;
+    IF filled THEN Room(dstRecord, 4); StackLocation(r.index); Byte(restoreLocation) END
+  END DefineRecord;
+
   (* The DST record made in dst, its length byte set, in a TBT or DBG
-     record as it was begun *)
+     record as it was begun, whole; before it, if it is a record type's
+     Record Begin, its place saved *)
   PROCEDURE Dst(m: VaxImage.Module);
+    VAR i, from: INTEGER;
   BEGIN
     dst[0] := CHR(dstEnd - 1);
-    Room(dstRecord, dstEnd + dstEnd DIV maxImmediate + 2 + 7);
-    IF dstAt < 0 THEN
-      DstImmediate(0, dstEnd)
-    ELSE
-      DstImmediate(0, dstAt);
-      StackPlace(SectionIndex(m, dstSection), dstOffset); Byte(storeDataReference);
-      DstImmediate(dstAt + 4, dstEnd)
-    END
+    IF defined # NIL THEN DefineRecord(defined) END;
+    Room(dstRecord, dstEnd + dstEnd DIV maxImmediate + 2 + 7 * fixupCount);
+    from := 0;
+    FOR i := 0 TO fixupCount - 1 DO
+      DstImmediate(from, fixupAt[i]);
+      IF fixupKind[i] = addressFixup THEN
+        StackPlace(SectionIndex(m, fixupSection[i]), fixupValue[i]); Byte(storeDataReference);
+        from := fixupAt[i] + 4
+      ELSIF fixupKind[i] = pointerFixup THEN
+        StackLocation(fixupValue[i]); Byte(stackLocation); Byte(storeLongword);
+        from := fixupAt[i] + 4
+      ELSE
+        (* the zeros of a hole stored, its place saved first *)
+        StackLocation(fixupValue[i]); Byte(defineLocation);
+        from := fixupAt[i]
+      END
+    END;
+    DstImmediate(from, dstEnd)
   END Dst;
 
   (* The name of path's last part, after its last ".", as a counted string,
@@ -475,20 +581,198 @@ MODULE VaxObjectWriter;
     RETURN path[i] = "."
   END IsNested;
 
-  (* The variables and constants of r, or of m when r is NIL, each a
-     Standard Data record (5.1 of doc/developer/vax-dst-records.md), a
-     module variable's address relocated *)
+  (* Types (section 16.8): a type specification, in a Type Specification
+     record after a Separate Type Specification record that locates its
+     variable, or a record type's field; each record type in a Record
+     Begin record, its fields, and a Record End record, once a module,
+     before anything that refers to it *)
+
+  (* A stack machine code (5.6) pushing value, in the fewest bytes *)
+  PROCEDURE PushImmediate(value: LONGINT);
+  BEGIN
+    IF (value >= -128) & (value <= 127) THEN DstByte(pushByte); DstBytes(value, 1)
+    ELSIF (value >= -32768) & (value <= 32767) THEN DstByte(pushWord); DstBytes(value, 2)
+    ELSE DstByte(pushLongword); DstBytes(value, 4)
+    END
+  END PushImmediate;
+
+  (* Codes pushing the length of the open array t's dimension k, from 0,
+     a longword in the argument list *)
+  PROCEDURE PushLength(t: VaxImage.TypeSpec; k: INTEGER);
+  BEGIN
+    DstByte(pushAP); PushImmediate(t.length + 4 * k); DstByte(add); DstByte(pushIndirect)
+  END PushLength;
+
+  (* The leaf of t, a fixed array: the first element type that is not a
+     fixed array, and how many arrays lead to it *)
+  PROCEDURE Leaf(t: VaxImage.TypeSpec; VAR dimensions: INTEGER): VaxImage.TypeSpec;
+  BEGIN
+    dimensions := 0;
+    WHILE t.kind = VaxImage.arrayType DO INC(dimensions); t := t.base END;
+    RETURN t
+  END Leaf;
+
+  (* A class A descriptor (6.1) of the first dimensions arrays from t on,
+     elements of size bytes of data type code; its POINTER and A0 zero,
+     as VAX C leaves them, the variable's place giving the address *)
+  PROCEDURE ArrayDescriptor(t: VaxImage.TypeSpec; code: INTEGER; size: LONGINT; dimensions: INTEGER);
+    VAR lengths: ARRAY maxDimensions OF LONGINT; total: LONGINT; i: INTEGER;
+  BEGIN
+    total := size;
+    FOR i := 0 TO dimensions - 1 DO lengths[i] := t.length; total := total * t.length; t := t.base END;
+    DstBytes(size, 2); DstByte(code); DstByte(arrayClass); DstBytes(0, 4);
+    DstByte(0); DstByte(0); DstByte(boundsAndMultipliers); DstByte(dimensions);
+    DstBytes(total, 4); DstBytes(0, 4);
+    FOR i := 0 TO dimensions - 1 DO DstBytes(lengths[i], 4) END;
+    FOR i := 0 TO dimensions - 1 DO DstBytes(0, 4); DstBytes(lengths[i] - 1, 4) END
+  END ArrayDescriptor;
+
+  (* A value specification for the open array t, of data type code: a
+     stack machine routine building its class A descriptor from its
+     lengths, the last longword pushed first, so that the first is on
+     top (5.6) *)
+  PROCEDURE OpenDescriptor(t: VaxImage.TypeSpec; code: INTEGER);
+    VAR at, k: INTEGER;
+  BEGIN
+    DstByte(valueFollows); at := dstEnd; DstBytes(0, 2);
+    DstByte(dynamicValue); DstByte(descriptorKind); DstByte(stackMachine); DstByte(0);
+    FOR k := t.dimensions - 1 TO 0 BY -1 DO
+      PushImmediate(1); PushLength(t, k); DstByte(subtract); (* the upper bound, its length - 1 *)
+      PushImmediate(0) (* the lower bound *)
+    END;
+    FOR k := t.dimensions - 1 TO 0 BY -1 DO PushLength(t, k) END; (* the multipliers *)
+    PushImmediate(0); (* A0 *)
+    PushLength(t, 0);
+    FOR k := 1 TO t.dimensions - 1 DO PushLength(t, k); DstByte(multiply) END;
+    PushImmediate(t.size); DstByte(multiply); (* DSC$L_ARSIZE *)
+    PushImmediate(t.dimensions * 1000000H + boundsAndMultipliers * 10000H); (* DIMCT, AFLAGS, DIGITS, SCALE *)
+    PushImmediate(0); (* POINTER *)
+    PushImmediate(arrayClass * 1000000H + code * 10000H + t.size); (* CLASS, DTYPE, LENGTH *)
+    DstByte(stop);
+    DstPatch(at, dstEnd - at - 2, 2)
+  END OpenDescriptor;
+
+  (* The type specification of t (6.4): an atom; a record by an Indirect
+     specification of its Record Begin; a pointer; a procedure, a pointer
+     to an entry mask, as VAX C's; a set; a fixed array whose leaf is an
+     atom other than BOOLEAN by a descriptor specification, as VAX C's,
+     else an array specification of one dimension with its element's; an
+     open array likewise, its descriptor built *)
+  PROCEDURE TypeSpec(t: VaxImage.TypeSpec);
+    VAR start, offsetAt, elementAt, dimensions: INTEGER; leaf, inner: VaxImage.TypeSpec;
+  BEGIN
+    start := dstEnd; DstBytes(0, 2);
+    CASE t.kind OF
+      VaxImage.atomType: DstByte(atomSpec); DstByte(t.code)
+    | VaxImage.recordType: DstByte(indirectSpec); DstPointer(t)
+    | VaxImage.pointerType: DstByte(pointerSpec); TypeSpec(t.base)
+    | VaxImage.procedureType: DstByte(pointerSpec); DstBytes(2, 2); DstByte(atomSpec); DstByte(dtypeZEM)
+    | VaxImage.setType:
+        DstByte(setSpec); DstBytes(t.size, 4); DstBytes(2, 2); DstByte(atomSpec); DstByte(t.code)
+    | VaxImage.arrayType:
+        leaf := Leaf(t, dimensions);
+        IF (leaf.kind = VaxImage.atomType) & (leaf.code # dstBoolean) & (dimensions <= maxDimensions) THEN
+          inner := t; WHILE inner.base.kind = VaxImage.arrayType DO inner := inner.base END;
+          DstByte(descriptorSpec); DstByte(descriptorValue); DstBytes(0, 4);
+          ArrayDescriptor(t, leaf.code, inner.size, dimensions)
+        ELSE
+          DstByte(arraySpec); DstByte(1); DstByte(1); DstByte(descriptorValue); offsetAt := dstEnd; DstBytes(0, 4);
+          elementAt := dstEnd; TypeSpec(t.base); DstPatch(offsetAt, dstEnd - elementAt, 4);
+          ArrayDescriptor(t, 0, t.size, 1)
+        END
+    | VaxImage.openArrayType:
+        leaf := t.base;
+        IF (leaf.kind = VaxImage.atomType) & (leaf.code # dstBoolean) THEN
+          DstByte(descriptorSpec); OpenDescriptor(t, leaf.code)
+        ELSE
+          DstByte(arraySpec); DstByte(t.dimensions); DstByte(1);
+          FOR dimensions := 1 TO t.dimensions DIV 8 DO DstByte(0) END;
+          OpenDescriptor(t, 0); TypeSpec(t.base)
+        END
+    END;
+    DstPatch(start, dstEnd - start - 2, 2)
+  END TypeSpec;
+
+  (* name, of type t, where flags and value, or the address value of
+     section, say: an atom in a Standard Data record (5.1), or else a
+     Separate Type Specification record and a Type Specification record
+     (6.2, 6.3) - which, if t's does not fit, gives a longword logical *)
+  PROCEDURE WriteSymbol(m: VaxImage.Module; VAR name: ARRAY OF CHAR; t: VaxImage.TypeSpec; flags: INTEGER;
+                        section: VaxImage.Section; value: LONGINT);
+    VAR holes, location: INTEGER;
+  BEGIN
+    IF t.kind = VaxImage.atomType THEN DbgBegin(t.code) ELSE DbgBegin(dstSeparateType) END;
+    DstByte(flags);
+    IF section # NIL THEN DstAddress(section, value) ELSE DstBytes(value, 4) END;
+    DstName(name); Dst(m);
+    IF t.kind # VaxImage.atomType THEN
+      holes := holeCount; location := nextLocation;
+      DbgBegin(dstTypeSpec); DstByte(0); TypeSpec(t);
+      IF overflow THEN
+        holeCount := holes; nextLocation := location;
+        DbgBegin(dstTypeSpec); DstByte(0); DstBytes(2, 2); DstByte(atomSpec); DstByte(dtypeLU)
+      END;
+      Dst(m)
+    END
+  END WriteSymbol;
+
+  (* The variables and constants of r, or of m when r is NIL, a module
+     variable's address relocated *)
   PROCEDURE WriteVariables(m: VaxImage.Module; r: VaxImage.Routine);
     VAR v: VaxImage.Variable;
   BEGIN
     v := VaxImage.FirstVariable(m, r);
     WHILE v # NIL DO
-      DbgBegin(v.type); DstByte(v.flags);
-      IF v.section # NIL THEN DstAddress(v.section, v.value) ELSE DstBytes(v.value, 4) END;
-      DstName(v.name); Dst(m);
+      WriteSymbol(m, v.name, v.type, v.flags, v.section, v.value);
       v := VaxImage.NextVariable(v)
     END
   END WriteVariables;
+
+  (* The record types t refers to, added to records, each once *)
+  PROCEDURE Collect(t: VaxImage.TypeSpec);
+    VAR f: VaxImage.FieldSpec;
+  BEGIN
+    IF (t.kind = VaxImage.recordType) & (t.index = 0) & (recordCount < maxRecords) THEN
+      t.index := -1; records[recordCount] := t; INC(recordCount);
+      f := t.fields;
+      WHILE f # NIL DO Collect(f.type); f := f.next END
+    ELSIF (t.kind = VaxImage.pointerType) OR (t.kind = VaxImage.arrayType) OR (t.kind = VaxImage.openArrayType) THEN
+      Collect(t.base)
+    END
+  END Collect;
+
+  PROCEDURE CollectVariables(m: VaxImage.Module; r: VaxImage.Routine);
+    VAR v: VaxImage.Variable;
+  BEGIN
+    v := VaxImage.FirstVariable(m, r);
+    WHILE v # NIL DO Collect(v.type); v := VaxImage.NextVariable(v) END
+  END CollectVariables;
+
+  (* Every record type the module's variables refer to (6.5): its place
+     saved, a Record Begin with no value, its size in bits, each field at
+     its bit offset, and a Record End; each one's place a DST location,
+     from 1, and a field's type that refers to one not written yet a hole
+     (16.2) *)
+  PROCEDURE WriteRecords(m: VaxImage.Module);
+    VAR r: VaxImage.Routine; i: INTEGER; t: VaxImage.TypeSpec; f: VaxImage.FieldSpec;
+  BEGIN
+    recordCount := 0; holeCount := 0;
+    CollectVariables(m, NIL);
+    r := VaxImage.FirstRoutine(m);
+    WHILE r # NIL DO CollectVariables(m, r); r := VaxImage.NextRoutine(r) END;
+    (* record type i's place is DST location i + 1, the holes' after
+       them; until it is written its index is that, negated *)
+    FOR i := 0 TO recordCount - 1 DO records[i].index := -(i + 1) END;
+    nextLocation := recordCount + 1;
+    FOR i := 0 TO recordCount - 1 DO
+      t := records[i];
+      DbgBegin(dstRecordBegin); DstByte(noValue); DstBytes(0, 4); DstName(t.name); DstBytes(8 * t.size, 4);
+      t.index := i + 1; defined := t; Dst(m);
+      f := t.fields;
+      WHILE f # NIL DO WriteSymbol(m, f.name, f.type, bitOffset, NIL, 8 * f.offset); f := f.next END;
+      DbgBegin(dstRecordEnd); Dst(m)
+    END
+  END WriteRecords;
 
   (* r's Routine Begin, with -g its Prolog and its variables and
      constants, then those of the routines
@@ -574,16 +858,16 @@ MODULE VaxObjectWriter;
     Dst(m)
   END WriteSource;
 
-  (* Module Begin, with -g the module's variables and constants, each
-     routine that is not nested with those nested in it, which follow it
-     (VaxCodeGenerator.ProcedureDecl), the lines of each routine, and
-     Module End. The routines are in order of address,
+  (* Module Begin, with -g the record types and the module's variables
+     and constants, each routine that is not nested with those nested in
+     it, which follow it (VaxCodeGenerator.ProcedureDecl), the lines of
+     each routine, and Module End. The routines are in order of address,
      each nested one after its parent, which the traceback needs (16.5) *)
   PROCEDURE WriteTraceback(m: VaxImage.Module);
     VAR r, next: VaxImage.Routine;
   BEGIN
     DstBegin(dstModuleBegin); DstByte(0); DstBytes(language, 4); DstName(m.name); Dst(m);
-    IF source # NIL THEN WriteVariables(m, NIL) END;
+    IF source # NIL THEN WriteRecords(m); WriteVariables(m, NIL) END;
     r := VaxImage.FirstRoutine(m);
     WHILE r # NIL DO
       next := VaxImage.NextRoutine(r);

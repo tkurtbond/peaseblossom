@@ -50,6 +50,10 @@ MODULE VaxImage;
     pic* = 0; overlaid* = 2; relocatable* = 3; global* = 4; shareable* = 5;
     executable* = 6; readable* = 7; writable* = 8;
 
+    (* TypeSpecDesc.kind *)
+    atomType* = 0; recordType* = 1; pointerType* = 2; procedureType* = 3; setType* = 4;
+    arrayType* = 5; openArrayType* = 6;
+
     nameLength* = 32; (* 31 characters and 0X *)
     pathLength* = 256; (* a routine's Oberon path and 0X *)
     bytesPerLine = 16;
@@ -102,14 +106,43 @@ MODULE VaxImage;
       next: LineMark
     END;
 
+    (* A type for the debugger (doc/developer/vax-object-language.md,
+       section 16.8): an atom, a VAX data type or DST$K_BOOL (code); a
+       record, its name, its size in bytes and its fields, its base type's
+       first; a pointer to base; a procedure; a set of size bits, its parent
+       atom code; a fixed array of length elements base, each of size bytes;
+       an open array of dimensions dimensions, the first one's length at
+       length(AP), the next ones' in the longwords after it, its elements
+       base, each of size bytes. index is the object writer's: the DST
+       location it saves a record's place under, 0 before it has one *)
+    TypeSpec* = POINTER TO TypeSpecDesc;
+    FieldSpec* = POINTER TO FieldSpecDesc;
+    TypeSpecDesc* = RECORD
+      kind*, code*: INTEGER;
+      name*: ARRAY pathLength OF CHAR;
+      size*, length*: LONGINT;
+      dimensions*: INTEGER;
+      base*: TypeSpec;
+      fields*, lastField: FieldSpec;
+      index*: INTEGER
+    END;
+    FieldSpecDesc* = RECORD
+      name*: ARRAY pathLength OF CHAR;
+      offset*: LONGINT; (* in bytes *)
+      type*: TypeSpec;
+      next*: FieldSpec
+    END;
+
     (* A variable or constant for the debugger, as a Standard Data record
-       has it (doc/developer/vax-dst-records.md, section 5.1): its DST
-       record type, its value flags and its value, or, a module variable,
-       the address offset value of section *)
+       has it (doc/developer/vax-dst-records.md, section 5.1), or a
+       Separate Type Specification record and its type: its type, its
+       value flags and its value, or, a module variable, the address
+       offset value of section *)
     Variable* = POINTER TO VariableDesc;
     VariableDesc* = RECORD
       name*: ARRAY pathLength OF CHAR;
-      type*, flags*: INTEGER;
+      type*: TypeSpec;
+      flags*: INTEGER;
       section*: Section; (* NIL unless value is an offset in it *)
       value*: LONGINT;
       next: Variable
@@ -288,8 +321,76 @@ MODULE VaxImage;
     END
   END AddLine;
 
+  (* Types for the debugger *)
+
+  PROCEDURE NewType(kind: INTEGER): TypeSpec;
+    VAR t: TypeSpec;
+  BEGIN
+    NEW(t); t.kind := kind; t.code := 0; t.name := ""; t.size := 0; t.length := 0; t.dimensions := 0;
+    t.base := NIL; t.fields := NIL; t.lastField := NIL; t.index := 0;
+    RETURN t
+  END NewType;
+
+  PROCEDURE Atom*(code: INTEGER): TypeSpec;
+    VAR t: TypeSpec;
+  BEGIN
+    t := NewType(atomType); t.code := code;
+    RETURN t
+  END Atom;
+
+  (* A record with no fields yet *)
+  PROCEDURE Record*(name: ARRAY OF CHAR; size: LONGINT): TypeSpec;
+    VAR t: TypeSpec;
+  BEGIN
+    t := NewType(recordType); COPY(name, t.name); t.size := size;
+    RETURN t
+  END Record;
+
+  (* A field of the record r, after the others *)
+  PROCEDURE AddField*(r: TypeSpec; name: ARRAY OF CHAR; offset: LONGINT; type: TypeSpec);
+    VAR f: FieldSpec;
+  BEGIN
+    NEW(f); COPY(name, f.name); f.offset := offset; f.type := type; f.next := NIL;
+    IF r.lastField = NIL THEN r.fields := f ELSE r.lastField.next := f END;
+    r.lastField := f
+  END AddField;
+
+  PROCEDURE Pointer*(base: TypeSpec): TypeSpec;
+    VAR t: TypeSpec;
+  BEGIN
+    t := NewType(pointerType); t.base := base;
+    RETURN t
+  END Pointer;
+
+  PROCEDURE Procedure*(): TypeSpec;
+  BEGIN
+    RETURN NewType(procedureType)
+  END Procedure;
+
+  PROCEDURE Set*(bits: LONGINT; code: INTEGER): TypeSpec;
+    VAR t: TypeSpec;
+  BEGIN
+    t := NewType(setType); t.size := bits; t.code := code;
+    RETURN t
+  END Set;
+
+  PROCEDURE Array*(base: TypeSpec; length, size: LONGINT): TypeSpec;
+    VAR t: TypeSpec;
+  BEGIN
+    t := NewType(arrayType); t.base := base; t.length := length; t.size := size;
+    RETURN t
+  END Array;
+
+  PROCEDURE OpenArray*(base: TypeSpec; dimensions: INTEGER; lengthAt, size: LONGINT): TypeSpec;
+    VAR t: TypeSpec;
+  BEGIN
+    t := NewType(openArrayType); t.base := base; t.dimensions := dimensions; t.length := lengthAt;
+    t.size := size;
+    RETURN t
+  END OpenArray;
+
   (* A variable or constant of r, or of m when r is NIL, after the others *)
-  PROCEDURE AddVariable*(m: Module; r: Routine; name: ARRAY OF CHAR; type, flags: INTEGER;
+  PROCEDURE AddVariable*(m: Module; r: Routine; name: ARRAY OF CHAR; type: TypeSpec; flags: INTEGER;
                          section: Section; value: LONGINT);
     VAR v: Variable;
   BEGIN

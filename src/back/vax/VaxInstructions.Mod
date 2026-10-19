@@ -23,7 +23,7 @@ MODULE VaxInstructions;
      when it was made (SetPosition), 0 when there is none; the printer
      ignores it, and step 5's debugger information needs it. *)
 
-  IMPORT Files;
+  IMPORT Files, VaxImage;
 
   CONST
     tab = 9X;
@@ -108,6 +108,7 @@ MODULE VaxInstructions;
       items*, lastItem*: Item; (* a directive's, an assignment's value *)
       global*: BOOLEAN; (* a label's *)
       line*, column*: INTEGER; (* the source position, 0 for none *)
+      type*: VaxImage.TypeSpec; (* a dataSymbol's *)
       next*: Line
     END;
 
@@ -148,7 +149,7 @@ MODULE VaxInstructions;
   BEGIN
     NEW(l); l.kind := kind; l.op := NIL; l.specifierCount := 0;
     l.items := NIL; l.lastItem := NIL; l.global := FALSE;
-    l.line := currentLine; l.column := currentColumn; l.next := NIL;
+    l.line := currentLine; l.column := currentColumn; l.type := NIL; l.next := NIL;
     RETURN l
   END NewLine;
 
@@ -320,17 +321,16 @@ MODULE VaxInstructions;
 
   (* A variable or constant name for the debugger, of the routine
      RoutineBegin began last, or of the module outside any routine: its
-     DST record type, a VAX data type or DST$K_BOOL (type), its value
-     flags (flags) and its value (value, a number or a real numeral), as
-     a Standard Data record has them (doc/developer/vax-dst-records.md,
-     section 5.1). Flags 1, an address and nothing else, outside a
-     routine, is a module variable at the place the line is at, which
-     the encoder takes as its value *)
-  PROCEDURE DataSymbol*(name: ARRAY OF CHAR; type, flags: LONGINT; value: Item): Line;
+     type, its value flags (flags) and its value (value, a number or a
+     real numeral), as a Standard Data record has them
+     (doc/developer/vax-dst-records.md, section 5.1). Flags 1, an address
+     and nothing else, outside a routine, is a module variable at the
+     place the line is at, which the encoder takes as its value *)
+  PROCEDURE DataSymbol*(name: ARRAY OF CHAR; type: VaxImage.TypeSpec; flags: LONGINT; value: Item): Line;
     VAR l: Line;
   BEGIN
-    l := NewLine(dataSymbol); l.op := NewText(name);
-    AddItem(l, Number(type)); AddItem(l, Number(flags)); AddItem(l, value);
+    l := NewLine(dataSymbol); l.op := NewText(name); l.type := type;
+    AddItem(l, Number(flags)); AddItem(l, value);
     RETURN l
   END DataSymbol;
 
