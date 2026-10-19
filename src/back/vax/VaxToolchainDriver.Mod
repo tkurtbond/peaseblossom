@@ -12,7 +12,8 @@ MODULE VaxToolchainDriver;
      the triple "vax-dec-vms" (decided with the user 2026-10-06): -target vax-dec-vms
      selects it, and -emit-macro32 implies it. *)
 
-  IMPORT Files, Platform, Directories, SyntaxTree, SymbolTable, VaxCodeGenerator, VaxImage, VaxEncoder;
+  IMPORT Files, Platform, Directories, Diagnostics, SyntaxTree, SymbolTable, VaxCodeGenerator, VaxImage, VaxEncoder,
+    ObjectRecords, VaxObjectWriter;
 
   CONST
     triple* = "vax-dec-vms";
@@ -31,8 +32,11 @@ MODULE VaxToolchainDriver;
 
   VAR
     (* whether EmitModule also writes the module's encoded image, beside
-       its .mar (poc -emit-vax-image) *)
-    writeImage*: BOOLEAN;
+       its .mar (poc -emit-vax-image), and its object (-emit-vax-object) *)
+    writeImage*, writeObject*: BOOLEAN;
+    (* the compiler, as an object's language processor header names it:
+       "Peaseblossom poc <version>", which Poc.Mod sets *)
+    processor*: ARRAY 64 OF CHAR;
 
   PROCEDURE IsVaxTriple*(t: ARRAY OF CHAR): BOOLEAN;
   BEGIN
@@ -69,15 +73,11 @@ MODULE VaxToolchainDriver;
   END ModuleFilePath;
 
   (* PLAN.md Phase 18 step 3 (doc/developer/vax-object-language.md,
-     section 14.5): the module GenerateModule wrote last, encoded, as
-     VaxImage prints it, to <outputDir>/<Module>.image: FALSE if the
-     encoder reported an error or the file could not be written, when no
-     file is left behind *)
-  PROCEDURE WriteImage(moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
-    VAR image: VaxImage.Module; name: ARRAY 72 OF CHAR; path: ARRAY pathBufferLength OF CHAR; f: Files.File; w: Files.Rider;
+     section 14.5): image as VaxImage prints it, to
+     <outputDir>/<Module>.image: FALSE if the file could not be written *)
+  PROCEDURE WriteImage(image: VaxImage.Module; moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR name: ARRAY 72 OF CHAR; path: ARRAY pathBufferLength OF CHAR; f: Files.File; w: Files.Rider;
   BEGIN
-    image := VaxEncoder.Encode(VaxCodeGenerator.ModuleLines());
-    IF image = NIL THEN RETURN FALSE END;
     COPY(moduleName, name); Append(name, ".image");
     Directories.MakePath(outputDir, name, path);
     f := Files.New(path);
@@ -87,6 +87,32 @@ MODULE VaxToolchainDriver;
     Files.Register(f); Files.Close(f);
     RETURN TRUE
   END WriteImage;
+
+  (* PLAN.md Phase 18 step 4 (section 15): image's object, to
+     <outputDir>/<Module>.obj, its source the file being compiled: FALSE
+     if the file could not be made *)
+  PROCEDURE WriteObject(image: VaxImage.Module; moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR name: ARRAY 72 OF CHAR; path: ARRAY pathBufferLength OF CHAR; f: ObjectRecords.File;
+  BEGIN
+    COPY(moduleName, name); Append(name, ".obj");
+    Directories.MakePath(outputDir, name, path);
+    f := ObjectRecords.Open(path, VaxObjectWriter.recordSize);
+    IF f = NIL THEN RETURN FALSE END;
+    VaxObjectWriter.Write(image, Diagnostics.fileName, processor, f);
+    ObjectRecords.Close(f);
+    RETURN TRUE
+  END WriteObject;
+
+  (* The module GenerateModule wrote last, encoded, and written as its
+     image, its object or both, as writeImage and writeObject say: FALSE if
+     the encoder reported an error or a file could not be written *)
+  PROCEDURE WriteEncoded(moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR image: VaxImage.Module;
+  BEGIN
+    image := VaxEncoder.Encode(VaxCodeGenerator.ModuleLines());
+    RETURN (image # NIL) & (~writeImage OR WriteImage(image, moduleName, outputDir))
+      & (~writeObject OR WriteObject(image, moduleName, outputDir))
+  END WriteEncoded;
 
   (* module's MACRO-32 to <outputDir>/<Module>.mar (path), with the
      program's start when it is the main module, isMain: FALSE if it could
@@ -103,7 +129,7 @@ MODULE VaxToolchainDriver;
     Files.Set(w, f, 0);
     ok := VaxCodeGenerator.GenerateModule(module, scope, key, isMain, w);
     Files.Register(f); Files.Close(f);
-    IF ok & writeImage THEN ok := WriteImage(module.name, outputDir) END;
+    IF ok & (writeImage OR writeObject) THEN ok := WriteEncoded(module.name, outputDir) END;
     IF ~ok THEN
       deleteResult := Platform.Unlink(path) (* not Files.Delete: voc's renames to a temp name *)
     END;
@@ -500,5 +526,5 @@ MODULE VaxToolchainDriver;
   END WriteLibraryProcedures;
 
 BEGIN
-  writeImage := FALSE
+  writeImage := FALSE; writeObject := FALSE; processor := "Peaseblossom poc"
 END VaxToolchainDriver.

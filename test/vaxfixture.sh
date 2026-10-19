@@ -3,17 +3,20 @@
 #
 #   vax_mar <Module> [<poc option>...]
 #
-# which runs poc <poc option>... -emit-vax-image <Module>.mod, appends what
+# which runs poc <poc option>... -emit-vax-object <Module>.mod, appends what
 # poc prints and its exit status to result, then compares the <Module>.mar
 # written with expected-vax.mar, and each other module's of the program,
 # <Import>.mar, with expected-vax-<Import>.mar, leaving out the reviewer's
 # comment at the top (the lines starting ";;", which say why the output is
 # right): "<Module>.mar matches expected-vax.mar", or the differences, and
-# so for each import. Each module's image, which poc's encoder made
-# (<Module>.image), is compared the same way with expected-vax.image or
+# so for each import. Each module's object, which poc's encoder and object
+# writer made (<Module>.obj), is read back by build/bin/vax-image (make
+# vax-image), whose reader is not the writer, and its image, <Module>.image,
+# is compared the same way with expected-vax.image or
 # expected-vax-<Import>.image, the image of the object MACRO made from the
 # expected .mar (tools/vax-macro-image; doc/developer/vax-object-language.md,
-# section 14.5), so that the encoder is checked on every host. Where the VAX development system can be used
+# sections 14.5 and 15.4), so that both are checked on every host. Where the
+# VAX development system can be used
 # (tools/vax-assemble -available), every expected .mar is also assembled
 # there with MACRO/OBJECT, and a failure, with MACRO's messages, is added to
 # result; and when the fixture has runs, run-<name>.dbg, each a run of the
@@ -39,6 +42,15 @@ vax_compare() {
   rm -f expected-vax.stripped vax-diff
 }
 
+# The image of the object <Module>.obj, <Module>.image, by vax-image, whose
+# complaint, if it has one, goes to result
+vax_object_image() {
+  vax_image=${VAX_IMAGE:-../../../build/bin/vax-image}
+  [ -f "$1.obj" ] || return 0
+  rm -f "$1.image"
+  "$vax_image" "$1.obj" "$1.image" >>result 2>&1
+}
+
 # "<written>.image matches <expected>", or the differences, to result
 vax_image_compare() {
   if [ ! -f "$2" ]; then
@@ -56,7 +68,11 @@ vax_image_compare() {
 
 vax_mar() {
   vax_module=$1; shift
-  poc "$@" -emit-vax-image "$vax_module.mod" >>result 2>&1
+  # no object or image of an earlier run, which would hide one not written
+  for vax_file in *.obj *.image; do
+    case $vax_file in expected-vax.image|expected-vax-*.image) ;; *) rm -f "$vax_file" ;; esac
+  done
+  poc "$@" -emit-vax-object "$vax_module.mod" >>result 2>&1
   echo "exit $?" >>result
   set -- "$vax_module"
   vax_compare "$1.mar" expected-vax.mar
@@ -74,8 +90,10 @@ vax_mar() {
   for vax_import in $vax_imports; do
     vax_compare "$vax_import.mar" "expected-vax-$vax_import.mar"
   done
+  vax_object_image "$1"
   vax_image_compare "$1.image" expected-vax.image
   for vax_import in $vax_imports; do
+    vax_object_image "$vax_import"
     vax_image_compare "$vax_import.image" "expected-vax-$vax_import.image"
   done
   vax_tools=../../../tools

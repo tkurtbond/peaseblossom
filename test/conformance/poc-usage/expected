@@ -58,6 +58,7 @@ for testing poc itself:
   -dump-vax-types <file>     print the VAX size and suffix of each of its types
   -dump-vax-names <file>     print the VAX symbol of each of its names
   -emit-vax-image <file>     -emit-macro32, and each module encoded, <Module>.image
+  -emit-vax-object <file>    -emit-macro32, and each module's object, <Module>.obj
 
 poc(1) explains each of them.
 exit=1

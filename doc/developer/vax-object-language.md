@@ -1036,3 +1036,30 @@ Each leaves `make check` passing:
 2. The creation time is the clock's, or `SOURCE_DATE_EPOCH`'s when it is
    set (section 15.2); step 7's comparison skips it otherwise.
 3. Zeros are skipped from 16 in a row, as proposed.
+
+### 15.7 What 4a found (2026-10-18)
+
+`src/back/vax/VaxObjectWriter.Mod` writes a module's object from its
+image, and `poc -emit-vax-object` writes it, as `<Module>.obj`, beside
+the `.mar` (`VaxToolchainDriver.WriteObject`), through
+`src/back/vax/host/ObjectRecords.Mod`. `VaxImage` exports a way to walk
+its sections, relocations, symbols and references for it.
+
+`vax_mar` now runs `-emit-vax-object` and reads each object back with
+`build/bin/vax-image`, which `make test` and `test-stage1` build first,
+into the `<Module>.image` it compares with the expected one, so the
+fixtures' results read as before. Every fixture's object gives MACRO's
+image, the 101 of section 14.10 and `vax-encoder-forms`'s; so do all 41
+modules of poc's own source for the VAX (`ObjectRecords` and
+`VaxObjectWriter` have joined them), 2,714 records, the longest 512
+bytes, compared with the encoder's own image of each. `SOURCE_DATE_EPOCH`
+gives the dates it should, 29 February 2000 included, and a value that
+is not a number is ignored for the clock's.
+
+One change from section 15.5: the VMS build of poc compiles
+`VaxToolchainDriver`, so it needs an `ObjectRecords` now, not in 4c.
+`src/back/vax/vms/ObjectRecords.Mod` has the interface, and until 4c
+the host's body; `tools/bootstrap/vax-v1`, `vax-stages`, `make-vax-kit`,
+`check-vax-kit`, the kit's `README.TXT`, `doc/vax-vms-guide.md` and the
+fixture `vax-poc` name its directory already, so 4c changes only the
+file. `check-strict` checks it as it does `src/driver/no-llvm`.

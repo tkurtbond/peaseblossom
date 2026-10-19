@@ -20,9 +20,10 @@ rm -f *.sym $written forend.com
 poc -target vax-dec-vms -import-path $rtl -build forend.mod >>result 2>&1
 echo "VAX build forend exit $?" >>result
 vax_compare forend.mar expected-vax.mar
-poc -target vax-dec-vms -import-path $rtl -emit-vax-image forend.mod >/dev/null 2>>result
+poc -target vax-dec-vms -import-path $rtl -emit-vax-object forend.mod >/dev/null 2>>result
 echo "VAX image forend exit $?" >>result
+vax_object_image forend
 vax_image_compare forend.image expected-vax.image
 vax_do guest-run.com guest-run.expected forend.com $written $rtl/PocRtl.mar
-rm -f *.sym $written $(echo "$written" | sed 's/\.mar/.image/g') forend.com forend.mod guest-run.expected
+rm -f *.sym $written $(echo "$written" | sed 's/\.mar/.image/g') $(echo "$written" | sed 's/\.mar/.obj/g') forend.com forend.mod guest-run.expected
 . ../../testresult.sh

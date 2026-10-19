@@ -22,9 +22,10 @@ rm -f *.sym $written cardinal.com
 poc -target vax-dec-vms -import-path $rtl -build cardinal.mod >>result 2>&1
 echo "VAX build cardinal exit $?" >>result
 vax_compare cardinal.mar expected-vax.mar
-poc -target vax-dec-vms -import-path $rtl -emit-vax-image cardinal.mod >/dev/null 2>>result
+poc -target vax-dec-vms -import-path $rtl -emit-vax-object cardinal.mod >/dev/null 2>>result
 echo "VAX image cardinal exit $?" >>result
+vax_object_image cardinal
 vax_image_compare cardinal.image expected-vax.image
 vax_do guest-run.com guest-run.expected cardinal.com $written $rtl/PocRtl.mar
-rm -f *.sym $written $(echo "$written" | sed 's/\.mar/.image/g') cardinal.com cardinal.mod guest-run.expected
+rm -f *.sym $written $(echo "$written" | sed 's/\.mar/.image/g') $(echo "$written" | sed 's/\.mar/.obj/g') cardinal.com cardinal.mod guest-run.expected
 . ../../testresult.sh

@@ -11,7 +11,8 @@
 # Without the LLVM back end (Phase 17 step 7;
 # doc/developer/vax-macro32-backend.md, section 21, proposal 8):
 # src/driver/no-llvm's LLVMBackEnd, and neither src/driver/llvm nor
-# src/back/llvm, are on the import path.
+# src/back/llvm, are on the import path; and src/back/vax/vms's
+# ObjectRecords, not src/back/vax/host's (Phase 18 step 4).
 # Run with no arguments from anywhere.
 set -e
 
@@ -25,7 +26,7 @@ mkdir -p "$BUILD/v1" "$BUILD/gen"
 "$ROOT/tools/build-info" "$BUILD/gen" vax-dec-vms
 cd "$BUILD/v1"
 "$POC_BIN_DIR/poc" -OC -target vax-dec-vms \
-  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/vax" \
+  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/vax" -import-path "$ROOT/src/back/vax/vms" \
   -import-path "$ROOT/rtl/vax" -import-path "$ROOT/src/driver" -import-path "$ROOT/src/driver/no-llvm" \
   -import-path "$BUILD/gen" \
   -build "$ROOT/src/driver/Poc.Mod"

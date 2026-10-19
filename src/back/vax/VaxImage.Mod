@@ -82,9 +82,9 @@ MODULE VaxImage;
       next: Symbol
     END;
 
-    Reference = POINTER TO ReferenceDesc;
-    ReferenceDesc = RECORD
-      name: Name;
+    Reference* = POINTER TO ReferenceDesc;
+    ReferenceDesc* = RECORD
+      name*: Name;
       next: Reference
     END;
 
@@ -273,6 +273,53 @@ MODULE VaxImage;
     END;
     RETURN sorted
   END SortReferences;
+
+  (* Walking a module's lists, as the object writer does (step 4): its
+     sections in order, each section's relocations in order of offset,
+     its symbols and its external references by name *)
+
+  PROCEDURE FirstSection*(m: Module): Section;
+  BEGIN
+    RETURN m.sections
+  END FirstSection;
+
+  PROCEDURE NextSection*(s: Section): Section;
+  BEGIN
+    RETURN s.next
+  END NextSection;
+
+  PROCEDURE FirstRelocation*(s: Section): Relocation;
+  BEGIN
+    s.relocations := SortRelocations(s.relocations);
+    RETURN s.relocations
+  END FirstRelocation;
+
+  PROCEDURE NextRelocation*(r: Relocation): Relocation;
+  BEGIN
+    RETURN r.next
+  END NextRelocation;
+
+  PROCEDURE FirstSymbol*(m: Module): Symbol;
+  BEGIN
+    m.symbols := SortSymbols(m.symbols);
+    RETURN m.symbols
+  END FirstSymbol;
+
+  PROCEDURE NextSymbol*(y: Symbol): Symbol;
+  BEGIN
+    RETURN y.next
+  END NextSymbol;
+
+  PROCEDURE FirstReference*(m: Module): Reference;
+  BEGIN
+    m.references := SortReferences(m.references);
+    RETURN m.references
+  END FirstReference;
+
+  PROCEDURE NextReference*(r: Reference): Reference;
+  BEGIN
+    RETURN r.next
+  END NextReference;
 
   (* Printing *)
 

@@ -20,7 +20,7 @@ rm -rf gen obj
 "$root/tools/build-info" gen vax-dec-vms >>result 2>&1
 mkdir obj
 (cd obj && poc -OC -target vax-dec-vms -import-path ../$root/src/front \
-  -import-path ../$root/src/back/vax -import-path ../$root/rtl/vax -import-path ../$root/src/driver \
+  -import-path ../$root/src/back/vax -import-path ../$root/src/back/vax/vms -import-path ../$root/rtl/vax -import-path ../$root/src/driver \
   -import-path ../$root/src/driver/no-llvm -import-path ../gen -build ../$root/src/driver/Poc.Mod) >>result 2>&1
 echo "VAX build exit $?" >>result
 # what POC.EXE must print, from this poc and the BuildInfo just written

@@ -3193,6 +3193,8 @@ beside `[.SRC]`:
     -import-path
     [-.SRC.BACK.VAX]
     -import-path
+    [-.SRC.BACK.VAX.VMS]
+    -import-path
     [-.SRC.DRIVER]
     -import-path
     [-.SRC.DRIVER.NO-LLVM]
@@ -3204,7 +3206,8 @@ beside `[.SRC]`:
     [-.SRC.DRIVER]POC.MOD
 
 `[.SRC.DRIVER.NO-LLVM]` stands in for the LLVM back end, which poc for
-VMS leaves out. Then:
+VMS leaves out, and `[.SRC.BACK.VAX.VMS]` holds the part of the VAX back
+end that only poc on VMS has. Then:
 
     $ POC @FULL.ARGS
     $ @POC

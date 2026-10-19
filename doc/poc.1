@@ -280,13 +280,19 @@ itself are
 .Fl dump-llvm-types ,
 .Fl dump-nested ,
 .Fl dump-vax-types ,
-.Fl dump-vax-names
-and
+.Fl dump-vax-names ,
 .Fl emit-vax-image ,
 which writes what
 .Fl emit-macro32
 does and each module's object as the VAX encoder makes it,
-.Ar Module Ns .image .
+.Ar Module Ns .image ,
+and
+.Fl emit-vax-object ,
+which writes what
+.Fl emit-macro32
+does and each module's VAX object, its records counted as VMS keeps
+them on disk,
+.Ar Module Ns .obj .
 .Ss Options
 .Bl -tag -width Ds
 .It Fl o Ar exe

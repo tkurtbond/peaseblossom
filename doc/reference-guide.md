@@ -679,9 +679,11 @@ one line saying what is wrong, and a pointer to `-help`:
 
 The commands for testing poc itself are `-dump-tokens`, `-check-syntax`,
 `-dump-layout`, `-dump-llvm-types`, `-dump-nested`, `-dump-vax-types`,
-`-dump-vax-names` and `-emit-vax-image`, which writes what `-emit-macro32`
+`-dump-vax-names`, `-emit-vax-image`, which writes what `-emit-macro32`
 does and each module's object as the VAX encoder makes it,
-`<Module>.image`.
+`<Module>.image`, and `-emit-vax-object`, which writes what
+`-emit-macro32` does and each module's VAX object, its records counted
+as VMS keeps them on disk, `<Module>.obj`.
 
 ### Options
 

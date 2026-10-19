@@ -106,6 +106,8 @@ argument @<file> stands for them):
     -import-path
     [-.SRC.BACK.VAX]
     -import-path
+    [-.SRC.BACK.VAX.VMS]
+    -import-path
     [-.SRC.DRIVER]
     -import-path
     [-.SRC.DRIVER.NO-LLVM]

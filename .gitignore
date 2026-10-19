@@ -43,6 +43,10 @@ test/conformance/**/*.mar
 test/conformance/**/*.image
 !test/conformance/**/expected-vax.image
 !test/conformance/**/expected-vax-*.image
+# an object poc writes (-emit-vax-object), but not vax-image-reader's, which
+# is MACRO's records in the counted form
+test/conformance/**/*.obj
+!test/conformance/vax-image-reader/objset2.obj
 # a build procedure poc writes for the VAX, but not the expected ones or a
 # fixture's own procedures for the guest (Phase 16 step 2)
 test/conformance/**/*.com

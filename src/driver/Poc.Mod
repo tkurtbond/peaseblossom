@@ -3014,6 +3014,7 @@ MODULE Poc;
     HelpLine("  -dump-vax-types <file>     print the VAX size and suffix of each of its types");
     HelpLine("  -dump-vax-names <file>     print the VAX symbol of each of its names");
     HelpLine("  -emit-vax-image <file>     -emit-macro32, and each module encoded, <Module>.image");
+    HelpLine("  -emit-vax-object <file>    -emit-macro32, and each module's object, <Module>.obj");
     HelpLine("");
     HelpLine("poc(1) explains each of them.")
   END Help;
@@ -3096,7 +3097,7 @@ MODULE Poc;
       OR (option = "-dump-layout") OR (option = "-dump-llvm-types") OR (option = "-dump-nested")
       OR (option = "-dump-vax-types") OR (option = "-dump-vax-names")
       OR (option = "-emit-interface") OR (option = "-show-interface") OR (option = "-emit-llvm-ir")
-      OR (option = "-emit-macro32") OR (option = "-emit-vax-image")
+      OR (option = "-emit-macro32") OR (option = "-emit-vax-image") OR (option = "-emit-vax-object")
       OR (option = "-build")
   END IsFileCommand;
 
@@ -3128,6 +3129,10 @@ MODULE Poc;
       EmitMacro32(fileName, outputDir, targetTriple)
     ELSIF option = "-emit-vax-image" THEN
       VaxToolchainDriver.writeImage := TRUE;
+      EmitMacro32(fileName, outputDir, targetTriple)
+    ELSIF option = "-emit-vax-object" THEN
+      VaxToolchainDriver.writeObject := TRUE;
+      COPY("Peaseblossom poc ", VaxToolchainDriver.processor); Strcat(VaxToolchainDriver.processor, Version.number);
       EmitMacro32(fileName, outputDir, targetTriple)
     ELSIF option = "-build" THEN
       Build(fileName, outputDir, targetTriple, exePath)

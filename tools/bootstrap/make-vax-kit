@@ -122,6 +122,7 @@ done
 
 copy base SRC/FRONT "$ROOT"/src/front/*.Mod
 copy base SRC/BACK/VAX "$ROOT"/src/back/vax/*.Mod
+copy base SRC/BACK/VAX/VMS "$ROOT"/src/back/vax/vms/*.Mod
 copy base SRC/DRIVER "$ROOT"/src/driver/*.Mod
 copy base SRC/DRIVER/NO-LLVM "$ROOT"/src/driver/no-llvm/*.Mod
 copy base SRC/RTL "$ROOT"/rtl/vax/*.Mod "$ROOT/rtl/vax/PocRtl.mar"

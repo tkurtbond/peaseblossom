@@ -14,13 +14,16 @@ CONFORMANCE_DIR := test/conformance
 
 FRONT_SRCS := $(wildcard src/front/*.Mod)
 BACK_LLVM_SRCS := $(wildcard src/back/llvm/*.Mod)
-BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod)
+BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod) $(wildcard src/back/vax/host/*.Mod)
 DRIVER_SRCS := src/driver/Version.Mod src/driver/Libraries.Mod src/driver/llvm/LLVMBackEnd.Mod \
   src/driver/Poc.Mod
 # Phase 17 step 7: the LLVMBackEnd of a poc without the LLVM back end, which
 # poc for VAX/VMS is built with (tools/bootstrap/vax-v1); checked by
 # check-strict, not part of poc here
 NO_LLVM_SRCS := src/driver/no-llvm/LLVMBackEnd.Mod
+# Phase 18 step 4: where poc for VAX/VMS writes an object's records,
+# src/back/vax/host's twin; checked by check-strict, not part of poc here
+VAX_VMS_SRCS := $(wildcard src/back/vax/vms/*.Mod)
 # Phase 13 step 1: the commit `poc -version` names, written by tools/build-info
 # on every make (it rewrites the file only when the commit or the tree's state
 # changed, so only then is poc rebuilt)
@@ -34,6 +37,7 @@ STAGE0_RTL_SRCS := rtl/voc/FileDescriptorOutput.Mod rtl/llvm/RealDigits.Mod \
   rtl/llvm/FormattedText.Mod rtl/llvm/FormattedOutput.Mod rtl/llvm/Err.Mod \
   rtl/voc/Directories.Mod
 STAGE1_BIN := $(BUILD_DIR)/stage1/bin/poc
+VAX_IMAGE_BIN := $(BUILD_DIR)/bin/vax-image
 # Phase 12 step 2d: rtl/llvm as the library poc-rtl, for this host's triple
 # and both size models, where each poc's default library path finds it
 # (<its bin>/../lib/poc): so a program links the runtime already compiled.
@@ -109,7 +113,7 @@ stage2: $(STAGE1_BIN)
 # bootstrap root and the comparison oracle. This suite, check-opt2's and
 # check-lto's leave the VAX guest alone (VAX_GUEST=skip, test/vaxfixture.sh):
 # it sees only each fixture's expected-vax.mar, which make test's run checks.
-test-stage1: $(STAGE1_BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)/stage1)
+test-stage1: $(STAGE1_BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)/stage1) $(VAX_IMAGE_BIN)
 	POC_BIN_DIR=$(abspath $(BUILD_DIR)/stage1/bin) VAX_GUEST=skip test/run-tests.sh $(ALL_TESTS)
 
 # Both compilers and the fixed point: the suite under the voc-built poc, the
@@ -216,7 +220,7 @@ check-lto: build
 # SYSTEM.ADDRESS and external procedures, and is not checked.
 check-strict: $(STAGE1_BIN)
 	@status=0; \
-	for f in $(SRCS) $(NO_LLVM_SRCS); do \
+	for f in $(SRCS) $(NO_LLVM_SRCS) $(VAX_VMS_SRCS); do \
 	  out=$$($(STAGE1_BIN) -OC -strict -import-path $(BUILD_DIR)/stage1/obj -check $$f 2>&1); \
 	  if [ "$$out" != "semantic OK" ]; then \
 	    echo "$$out"; echo "check-strict: $$f uses more than Oberon2.pdf"; status=1; \
@@ -680,7 +684,7 @@ release-files:
 # make prerequisites) so one "make test" always reports the full picture,
 # rather than GNU Make's normal fail-fast stopping at the first failing
 # prerequisite target.
-test: build
+test: build $(VAX_IMAGE_BIN)
 	test/run-tests.sh $(ALL_TESTS)
 
 test-lexer: build
@@ -701,7 +705,7 @@ test-layout: build
 test-llvm: build
 	test/run-tests.sh $(LLVM_TESTS)
 
-test-misc: build
+test-misc: build $(VAX_IMAGE_BIN)
 	test/run-tests.sh $(MISC_TESTS)
 
 # PLAN.md Phase 16 step 5: the programs test/vax-suite.list names, built
@@ -747,13 +751,13 @@ vax-stages: build
 # records (MACRO's, as DUMP/RECORD's text, or poc's) into the image
 # VaxImage prints (tools/vax-image/ObjectImage.Mod; tools/vax-macro-image;
 # doc/developer/vax-object-language.md, section 14.5). Built with the poc
-# of this tree.
-VAX_IMAGE_BIN = $(BUILD_DIR)/bin/vax-image
+# of this tree; VAX_IMAGE_BIN is defined near the top, since the test
+# targets need it (every VAX fixture reads poc's objects back with it).
 
 vax-image: $(VAX_IMAGE_BIN)
 
 $(VAX_IMAGE_BIN): $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)) tools/vax-image/ObjectImage.Mod src/back/vax/VaxImage.Mod
-	$(BIN) -OC -import-path src/back/vax -output-dir $(BUILD_DIR)/vax-image -o $@ tools/vax-image/ObjectImage.Mod
+	$(STAGE0_ENV) $(BIN) -OC -import-path src/back/vax -output-dir $(BUILD_DIR)/vax-image -o $@ tools/vax-image/ObjectImage.Mod
 
 # PLAN.md Phase 17 step 7: poc for VAX/VMS as two text files, each a DCL
 # procedure that unpacks itself on VMS (doc/developer/vax-macro32-backend.md,

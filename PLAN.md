@@ -675,6 +675,9 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    converted on the guest by `ObjectConvert`; every fixture's object read
    back and compared with MACRO's image on every host; `ANALYZE/OBJECT`,
    and two programs linked from poc's objects and run, on the guest.
+   **4a done 2026-10-18** (section 15.7): `VaxObjectWriter.Mod`, the
+   host `ObjectRecords`, `-emit-vax-object`; every fixture's object, and
+   poc's own 41 modules', read back by `vax-image` give MACRO's image.
 
 5. **Debug and traceback information.** The traceback records (`TBT`)
    that let an unhandled condition print a routine traceback, as MACRO's
