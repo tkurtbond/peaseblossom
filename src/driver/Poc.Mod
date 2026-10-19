@@ -2985,7 +2985,7 @@ MODULE Poc;
     HelpLine("  -clear-library-path        forget the library path so far, poc's own too");
     HelpLine("  -O2 | -OC                  size model: INTEGER 16/32 bits, LONGINT 32/64");
     HelpLine("  -strict                    only the Oberon-2 report: no extensions");
-    LLVMHelpLine("  -g                         debug information for gdb and lldb");
+    HelpLine("  -g                         debug information: gdb, lldb, the VMS debugger");
     LLVMHelpLine("  -opt <level>               clang's -O: 0-3 s z g (default 2, 0 on 32-bit x86)");
     LLVMHelpLine("  -lto                       optimize the whole program when it is linked");
     LLVMHelpLine("  -rebuild                   compile every module, reusing no object");
@@ -3085,7 +3085,7 @@ MODULE Poc;
      doc/developer/vax-macro32-backend.md, section 21, proposal 8) *)
   PROCEDURE IsLLVMOption(option: ARRAY OF CHAR): BOOLEAN;
   BEGIN
-    RETURN (option = "-emit-llvm-ir") OR (option = "-dump-llvm-types") OR (option = "-g")
+    RETURN (option = "-emit-llvm-ir") OR (option = "-dump-llvm-types")
       OR (option = "-opt") OR (option = "-lto") OR (option = "-rebuild") OR (option = "-static")
       OR (option = "-link") OR (option = "-c-flag") OR (option = "-verbose")
   END IsLLVMOption;
@@ -3325,6 +3325,7 @@ MODULE Poc;
             (* Phase 11 A16: debug information for gdb and lldb *)
             LLVMBackEnd.SetDebugInfo;
             Libraries.SetDebug(TRUE);
+            VaxToolchainDriver.debug := TRUE; (* and for the VMS debugger (Phase 18 step 5b) *)
             INC(i)
           ELSIF arg = "-opt" THEN
             (* Phase 11 D13: the optimization level -build passes clang *)

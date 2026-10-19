@@ -163,7 +163,8 @@ vax_runs() {
 # the code addresses in VMS's fault messages and tracebacks (PC=, PSL=, a
 # traceback line's last two columns), which any change to the code moves,
 # are masked as xxxxxxxx in both before they are compared, as
-# tools/vax-suite masks them.
+# tools/vax-suite masks them, and POC2's home directory is written as
+# POC's, which the debugger names when it opens a source file.
 vax_do() {
   vax_tools=../../../tools
   vax_proc=$1; vax_expected=$2; shift 2
@@ -187,8 +188,11 @@ vax_do() {
       cp "$vax_expected" vax-do/expected
       if [ "${vax_mask:-}" = yes ]; then
         for vax_file in vax-do/printed vax-do/expected; do
+          # and the account's directory, POC2's when POC's lock was taken
+          # (tools/vax-lock.sh)
           sed -e 's/PC=[0-9A-F]\{8\}/PC=xxxxxxxx/g' -e 's/PSL=[0-9A-F]\{8\}/PSL=xxxxxxxx/g' \
-              -e 's/ [0-9A-F]\{8\}  [0-9A-F]\{8\}$/ xxxxxxxx  xxxxxxxx/' "$vax_file" >"$vax_file.masked"
+              -e 's/ [0-9A-F]\{8\}  [0-9A-F]\{8\}$/ xxxxxxxx  xxxxxxxx/' \
+              -e 's/\[USERS\.POC2\]/[USERS.POC]/g' "$vax_file" >"$vax_file.masked"
           mv "$vax_file.masked" "$vax_file"
         done
       fi

@@ -45,4 +45,27 @@ MODULE ObjectRecords;
     Files.Register(f.file); Files.Close(f.file)
   END Close;
 
+  (* The source file name, for the debugger records (poc -g;
+     doc/developer/vax-object-language.md, section 16.6): its name for VMS,
+     its last part, since a path of this system's means nothing there, and
+     its RMS attributes, the creation time (8 bytes), end-of-file block,
+     first free byte and record format, zeros, since it has none here *)
+  PROCEDURE SourceAttributes*(name: ARRAY OF CHAR; VAR vmsName, created: ARRAY OF CHAR;
+                              VAR endBlock, firstFree, format: LONGINT);
+    VAR i, from: INTEGER;
+  BEGIN
+    i := 0; from := 0;
+    WHILE (i < LEN(name)) & (name[i] # 0X) DO
+      IF name[i] = "/" THEN from := i + 1 END;
+      INC(i)
+    END;
+    i := 0;
+    WHILE (from < LEN(name)) & (name[from] # 0X) & (i < LEN(vmsName) - 1) DO
+      vmsName[i] := name[from]; INC(i); INC(from)
+    END;
+    vmsName[i] := 0X;
+    FOR i := 0 TO 7 DO created[i] := 0X END;
+    endBlock := 0; firstFree := 0; format := 0
+  END SourceAttributes;
+
 END ObjectRecords.

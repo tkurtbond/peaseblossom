@@ -34,6 +34,8 @@ MODULE VaxToolchainDriver;
     (* whether EmitModule also writes the module's encoded image, beside
        its .mar (poc -emit-vax-image), and its object (-emit-vax-object) *)
     writeImage*, writeObject*: BOOLEAN;
+    (* whether an object has the debugger records (poc -g) *)
+    debug*: BOOLEAN;
     (* the compiler, as an object's language processor header names it:
        "Peaseblossom poc <version>", which Poc.Mod sets *)
     processor*: ARRAY 64 OF CHAR;
@@ -88,17 +90,49 @@ MODULE VaxToolchainDriver;
     RETURN TRUE
   END WriteImage;
 
+  (* The number of lines of the file name: its line feeds, and one more
+     if its last line has none; 0 if it cannot be read *)
+  PROCEDURE CountLines(name: ARRAY OF CHAR): LONGINT;
+    VAR f: Files.File; r: Files.Rider; ch, last: CHAR; n: LONGINT;
+  BEGIN
+    f := Files.Old(name);
+    IF f = NIL THEN RETURN 0 END;
+    Files.Set(r, f, 0); n := 0; last := 0AX;
+    Files.Read(r, ch);
+    WHILE ~r.eof DO
+      IF ch = 0AX THEN INC(n) END;
+      last := ch; Files.Read(r, ch)
+    END;
+    Files.Close(f);
+    IF last # 0AX THEN INC(n) END;
+    RETURN n
+  END CountLines;
+
+  (* The source file being compiled, for the debugger records (poc -g;
+     section 16.6) *)
+  PROCEDURE DebugSource(): VaxObjectWriter.SourceFile;
+    VAR s: VaxObjectWriter.SourceFile;
+  BEGIN
+    NEW(s);
+    ObjectRecords.SourceAttributes(Diagnostics.fileName, s.name, s.created, s.endBlock, s.firstFree, s.format);
+    s.lines := CountLines(Diagnostics.fileName);
+    RETURN s
+  END DebugSource;
+
   (* PLAN.md Phase 18 step 4 (section 15): image's object, to
-     <outputDir>/<Module>.obj, its source the file being compiled: FALSE
-     if the file could not be made *)
+     <outputDir>/<Module>.obj, its source the file being compiled, with
+     the debugger records under -g (step 5): FALSE if the file could not
+     be made *)
   PROCEDURE WriteObject(image: VaxImage.Module; moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
     VAR name: ARRAY 72 OF CHAR; path: ARRAY pathBufferLength OF CHAR; f: ObjectRecords.File;
+        source: VaxObjectWriter.SourceFile;
   BEGIN
     COPY(moduleName, name); Append(name, ".obj");
     Directories.MakePath(outputDir, name, path);
     f := ObjectRecords.Open(path, VaxObjectWriter.recordSize);
     IF f = NIL THEN RETURN FALSE END;
-    VaxObjectWriter.Write(image, Diagnostics.fileName, processor, f);
+    IF debug THEN source := DebugSource() ELSE source := NIL END;
+    VaxObjectWriter.Write(image, Diagnostics.fileName, processor, source, f);
     ObjectRecords.Close(f);
     RETURN TRUE
   END WriteObject;
@@ -526,5 +560,5 @@ MODULE VaxToolchainDriver;
   END WriteLibraryProcedures;
 
 BEGIN
-  writeImage := FALSE; writeObject := FALSE; processor := "Peaseblossom poc"
+  writeImage := FALSE; writeObject := FALSE; debug := FALSE; processor := "Peaseblossom poc"
 END VaxToolchainDriver.

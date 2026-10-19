@@ -6283,6 +6283,7 @@ MODULE VaxCodeGenerator;
       END;
       l := l.next
     END;
+    Add(VaxInstructions.RoutineProlog());
     IF bodyFirst # NIL THEN last.next := bodyFirst; last := bodyLast END;
     Add(VaxInstructions.RoutineEnd());
     IF code = NIL THEN code := first ELSE codeLast.next := first END;
@@ -6607,6 +6608,7 @@ MODULE VaxCodeGenerator;
     IF 4 * frameSlots > 0 THEN
       Instruction2("SUBL2", Literal(4 * frameSlots), Reg(VaxInstructions.sp))
     END;
+    Add(VaxInstructions.RoutineProlog());
     IF bodyFirst # NIL THEN last.next := bodyFirst; last := bodyLast END;
     Add(VaxInstructions.RoutineEnd());
     IF code = NIL THEN code := first ELSE codeLast.next := first END;
@@ -7331,6 +7333,7 @@ MODULE VaxCodeGenerator;
         IF frameSlots > 0 THEN
           PutInstruction2("SUBL2", Literal(4 * frameSlots), Reg(VaxInstructions.sp))
         END;
+        AppendOut(VaxInstructions.RoutineProlog());
         PutLines(first)
       END
     END;

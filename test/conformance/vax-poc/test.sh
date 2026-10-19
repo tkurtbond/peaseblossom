@@ -26,7 +26,7 @@ echo "VAX build exit $?" >>result
 # what POC.EXE must print, from this poc and the BuildInfo just written
 commit=$(sed -n 's/^ *commit\* *= *"\(.*\)";.*/\1/p' gen/BuildInfo.Mod)
 version=$(poc -version | sed -n '1s/^poc \([^ ]*\).*/\1/p')
-poc -help 2>&1 | grep -Ev '^  -(emit-llvm-ir|dump-llvm-types|g|opt|lto|rebuild|static|link|c-flag|verbose) ' \
+poc -help 2>&1 | grep -Ev '^  -(emit-llvm-ir|dump-llvm-types|opt|lto|rebuild|static|link|c-flag|verbose) ' \
   >help.expected
 {
   echo "build status: %X10000001"

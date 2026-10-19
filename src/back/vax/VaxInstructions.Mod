@@ -35,6 +35,7 @@ MODULE VaxInstructions;
     assignment* = 4; (* "<symbol> == <value>", a direct assignment *)
     routineBegin* = 5; (* not printed: where a routine starts, op its name, for the traceback (Phase 18 step 5) *)
     routineEnd* = 6; (* not printed: where the routine begun last ends *)
+    routineProlog* = 7; (* not printed: where its entry sequence ends, for the debugger *)
 
     (* SpecifierDesc.mode *)
     registerMode* = 0; (* Rn *)
@@ -220,6 +221,14 @@ MODULE VaxInstructions;
     l := NewLine(routineBegin); l.op := NewText(name);
     RETURN l
   END RoutineBegin;
+
+  (* Where the entry sequence of the routine RoutineBegin began last ends:
+     where a breakpoint on the routine goes, its parameters and variables
+     in place *)
+  PROCEDURE RoutineProlog*(): Line;
+  BEGIN
+    RETURN NewLine(routineProlog)
+  END RoutineProlog;
 
   (* Where the routine RoutineBegin began last ends *)
   PROCEDURE RoutineEnd*(): Line;
@@ -546,11 +555,11 @@ MODULE VaxInstructions;
   END WriteItems;
 
   (* l as MACRO-32 text, its line feed included; nothing for a routine's
-     beginning or end *)
+     beginning, end or prolog *)
   PROCEDURE Print*(VAR w: Files.Rider; l: Line);
     VAR i: INTEGER; text: ARRAY specifierLength OF CHAR;
   BEGIN
-    IF (l.kind = routineBegin) OR (l.kind = routineEnd) THEN RETURN END;
+    IF l.kind >= routineBegin THEN RETURN END;
     CASE l.kind OF
       verbatim: WriteText(w, l.op)
     | instruction:

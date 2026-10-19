@@ -60,7 +60,7 @@ MODULE ObjectImage;
     (* DST records (doc/developer/vax-dst-records.md), the ones read *)
     maxAddresses = 64;
     dstLineNumbers = 0B9H; dstModuleBegin = 0BCH; dstModuleEnd = 0BDH;
-    dstRoutineBegin = 0BEH; dstRoutineEnd = 0BFH;
+    dstRoutineBegin = 0BEH; dstRoutineEnd = 0BFH; dstProlog = 0A2H; dstSource = 9BH;
 
   TYPE
     Record = POINTER TO RecordDesc;
@@ -752,8 +752,41 @@ MODULE ObjectImage;
     END
   END PrintLines;
 
+  (* A Source File Correlation record's commands, from at up to to, a line
+     each *)
+  PROCEDURE PrintSource(VAR at: LONGINT; to: LONGINT);
+    VAR command, i, n: LONGINT; name: ARRAY 256 OF CHAR;
+  BEGIN
+    WHILE at < to DO
+      command := Byte(dst, at);
+      Out.String("    ");
+      IF command = 1 THEN
+        n := Byte(dst, at); n := n + at;
+        at := at + 1; Out.String("declare file "); Out.Int(Unsigned(dst, at, 2), 0);
+        Out.String(" created ");
+        FOR i := 1 TO 8 DO PrintHex(Byte(dst, at), 2) END;
+        Out.String(" end block "); Out.Int(Unsigned(dst, at, 4), 0);
+        Out.String(" first free byte "); Out.Int(Unsigned(dst, at, 2), 0);
+        Out.String(" format "); Out.Int(Byte(dst, at), 0);
+        CountedName(dst, at, name); Out.String(" name "); Out.String(name);
+        CountedName(dst, at, name); Out.String(" module "); Out.String(name);
+        IF at # n THEN Fail("a declare file command's fields do not fill it") END
+      ELSIF command = 2 THEN Out.String("set file "); Out.Int(Unsigned(dst, at, 2), 0)
+      ELSIF command = 3 THEN Out.String("set record "); Out.Int(Unsigned(dst, at, 4), 0)
+      ELSIF command = 4 THEN Out.String("set record "); Out.Int(Unsigned(dst, at, 2), 0)
+      ELSIF command = 5 THEN Out.String("set line "); Out.Int(Unsigned(dst, at, 4), 0)
+      ELSIF command = 6 THEN Out.String("set line "); Out.Int(Unsigned(dst, at, 2), 0)
+      ELSIF command = 10 THEN Out.String("define lines "); Out.Int(Unsigned(dst, at, 2), 0)
+      ELSIF command = 11 THEN Out.String("define lines "); Out.Int(Unsigned(dst, at, 1), 0)
+      ELSIF command = 16 THEN Out.String("form feeds counted")
+      ELSE Fail("a source file correlation command that is not known")
+      END;
+      Out.Ln
+    END
+  END PrintSource;
+
   (* The DST records in dst, one line each, its fields named; a Line
-     Number record's lines below it *)
+     Number or Source File Correlation record's commands below it *)
   PROCEDURE PrintDst;
     VAR at, end, type, section, offset: LONGINT; name: ARRAY 256 OF CHAR;
   BEGIN
@@ -775,10 +808,14 @@ MODULE ObjectImage;
         at := at + 1; Out.String("routine end size "); PrintHex(Unsigned(dst, at, 4), 8)
       ELSIF type = dstLineNumbers THEN
         Out.String("line numbers"); Out.Ln; PrintLines(at, end)
+      ELSIF type = dstProlog THEN
+        Out.String("prolog at "); PrintAddress(at, section, offset)
+      ELSIF type = dstSource THEN
+        Out.String("source file"); Out.Ln; PrintSource(at, end)
       ELSE
         Out.String("of type "); PrintHex(type, 2); at := end
       END;
-      IF type # dstLineNumbers THEN Out.Ln END;
+      IF (type # dstLineNumbers) & (type # dstSource) THEN Out.Ln END;
       IF at # end THEN Fail("a DST record's fields do not fill it") END
     END
   END PrintDst;

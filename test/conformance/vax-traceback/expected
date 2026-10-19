@@ -1,3 +1,7 @@
 semantic OK, wrote VaxTrace.mar
 exit 0
 VaxTrace.records matches expected-VaxTrace.records
+semantic OK, wrote debug/VaxTrace.mar
+-g exit 0
+VaxTrace-g.records matches expected-VaxTrace-g.records
+VAX build VaxDescribe exit 0

@@ -106,6 +106,7 @@ MODULE VaxImage;
       path*: ARRAY pathLength OF CHAR; (* its Oberon name, "Outer.Inner" for a nested procedure *)
       section*: Section;
       offset*, size*: LONGINT;
+      prolog*: LONGINT; (* where its entry sequence ends, -1 if that is not known *)
       lines, lastLine: LineMark;
       next: Routine
     END;
@@ -249,7 +250,7 @@ MODULE VaxImage;
   PROCEDURE AddRoutine*(m: Module; path: ARRAY OF CHAR; section: Section; offset: LONGINT): Routine;
     VAR r: Routine;
   BEGIN
-    NEW(r); COPY(path, r.path); r.section := section; r.offset := offset; r.size := 0;
+    NEW(r); COPY(path, r.path); r.section := section; r.offset := offset; r.size := 0; r.prolog := -1;
     r.lines := NIL; r.lastLine := NIL; r.next := NIL;
     IF m.lastRoutine = NIL THEN m.routines := r ELSE m.lastRoutine.next := r END;
     m.lastRoutine := r;

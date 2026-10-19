@@ -1457,3 +1457,48 @@ three calls deep, through a nested procedure, and two loops):
   the debugger shows and takes values, and 5a has no variables to try
   it on. With Pascal's the debugger starts with "language is PASCAL" and
   does everything above.
+
+### 16.6 Piece 5b: the source file and prologs (done 2026-10-19)
+
+`poc -g`, which was the LLVM back end's alone, now gives the objects poc
+writes for the VAX the debugger's records too, in DBG records among the
+TBT ones (one stream, as VAX C's are): a **Prolog** record (`A2`, its
+address relocated) right after each routine's Routine Begin, where a
+breakpoint on the routine goes, after its entry sequence (the code
+generator marks the place, `VaxInstructions.RoutineProlog`; the
+program's start has none); and before Module End the **Source File
+Correlation** records (`9B`): form feeds counted, as poc's lexer counts
+every line; the file declared as file 1, with its name, creation time,
+end-of-file block, first free byte and record format; then file 1 set,
+record 1, and as many lines defined as the file has (`DEFLINES_W`, line
+*n* record *n*). `vax-image -records` prints both, and `vax-traceback`
+compares a `-g` object's records and runs it on the guest. Until step 6
+only `-emit-vax-object` writes such objects; poc on VMS takes `-g` now.
+
+**The source file's name and attributes** (proposal 5): poc for Linux
+and the BSDs gives the file's last name, `VaxTrace.mod` for
+`../x/VaxTrace.mod`, since a path there means nothing on VMS, and zeros
+for the attributes (`src/back/vax/host/ObjectRecords.SourceAttributes`).
+poc for VMS gives its resultant name and its own attributes
+(`src/back/vax/vms/ObjectRecords.SourceAttributes`), which
+`RecordFiles.Describe` reads with `$OPEN` and a NAM block, an XABDAT and
+an XABFHC (`POC_RECORD_ATTRIBUTES` in `PocRtl.mar`), or the name as given
+and zeros if the file cannot be opened. `vax-traceback`'s `VaxDescribe`
+checks `Describe` on the guest against what `DUMP/HEADER` shows.
+
+What the guest showed:
+
+- **`TYPE`, and the source line at every break and step**, work: the
+  debugger opens the file by the name the record gives, in the default
+  directory when it has none, or where `SET SOURCE` says.
+- **It checks the attributes, but only to say so.** With zeros, or any
+  that are not the file's, it says once `%DEBUG-I-NOTORIGSRC, original
+  version of source file not found`, names the file it used, and goes on
+  using it. With the file's own resultant name and attributes it says
+  nothing (an object with them written in, on the guest). So an object
+  built on Linux or the BSDs shows its source with one informational
+  message, and one built on VMS without it.
+- **Prolog records** move a routine's breakpoint past the entry
+  sequence: `SET BREAK LOOP` stops at its first statement, line 29, rel
+  PC 8, where without them `OUTER`'s stopped at rel PC 2, inside the
+  entry sequence.

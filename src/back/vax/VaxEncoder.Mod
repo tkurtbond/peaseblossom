@@ -615,6 +615,8 @@ MODULE VaxEncoder;
             routine := VaxImage.AddRoutine(module, l.op^, current, current.size);
             IF line > 0 THEN VaxImage.AddLine(routine, current.size, line) END
           END
+      | VaxInstructions.routineProlog:
+          IF (routine # NIL) & (routine.section = current) THEN routine.prolog := current.size END
       | VaxInstructions.routineEnd:
           IF (routine # NIL) & (routine.section = current) THEN routine.size := current.size - routine.offset END;
           routine := NIL

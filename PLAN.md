@@ -713,7 +713,11 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    object - modules, routines nested, line numbers - and a traceback and
    breakpoints and steps by line on the guest (`vax-traceback`); nested
    procedures now follow their root, which the traceback needs; names in
-   capitals; the language left to 5c.
+   capitals; the language left to 5c. **5b done** (section 16.6): `-g`
+   gives the VAX objects the Source File Correlation and Prolog records;
+   `TYPE` and the source at each break on the guest; on VMS the source's
+   resultant name and RMS attributes (`RecordFiles.Describe`,
+   `POC_RECORD_ATTRIBUTES`), which spare the debugger's NOTORIGSRC note.
 
 6. **Wiring it in.** A new mode (`-emit-obj`, and the default on VMS,
    with `-emit-mar` keeping the Phase 15 behavior) writes `<module>.OBJ`;

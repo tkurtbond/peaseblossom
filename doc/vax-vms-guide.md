@@ -312,9 +312,11 @@ wildcards, `*` and `%`, itself, since DCL does not.
 ### What poc on VMS does not have
 
 poc on VMS has no LLVM back end. It compiles for VAX/VMS only, and refuses
-the options that only the LLVM back end has: `-lto`, `-g`, `-opt`,
+the options that only the LLVM back end has: `-lto`, `-opt`,
 `-static`, `-link`, `-c-flag`, `-rebuild`, `-verbose`, `-emit-llvm-ir` and
-`-dump-llvm-types`. On Unix, `-target vax-dec-vms` refuses them too.
+`-dump-llvm-types`. On Unix, `-target vax-dec-vms` refuses them too. `-g`
+gives the VMS debugger's records to the objects poc writes itself, which
+for now only `-emit-vax-object` does.
 
 ## 4. Libraries
 

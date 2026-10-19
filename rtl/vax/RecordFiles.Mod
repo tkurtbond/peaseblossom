@@ -17,7 +17,11 @@ MODULE RecordFiles;
      program with a message naming the file and HALT(99), as Files does
      for an error it cannot report. A File is not registered for
      finalization: one never closed is closed by RMS when the image exits,
-     its records kept. *)
+     its records kept.
+
+     Describe gives a file's resultant name and the RMS attributes the
+     debugger's source file record holds (Phase 18 step 5b, section
+     16.6), for poc -g. *)
 
   IMPORT SYSTEM;
 
@@ -31,6 +35,9 @@ MODULE RecordFiles;
     (* the file's FAB, RAB, NAM block, XABFHC and XABDAT, and its
        resultant name, laid out as Files' *)
     Control = ARRAY controlSize OF CHAR;
+    (* what POC_RECORD_ATTRIBUTES gives: 16 bytes of attributes, then the
+       resultant name as a counted string *)
+    Attributes = ARRAY 16 + nameLength OF CHAR;
     File* = POINTER TO FileDesc;
     FileDesc = RECORD
       control: Control;
@@ -44,6 +51,8 @@ MODULE RecordFiles;
   PROCEDURE ["VMS"] POC_RECORD_PUT(VAR control: Control; VAR record: ARRAY OF SYSTEM.BYTE;
                                    length: SYSTEM.INT32): INTEGER;
   PROCEDURE ["VMS"] POC_FILE_CLOSE(VAR control: Control): INTEGER;
+  PROCEDURE ["VMS"] POC_RECORD_ATTRIBUTES(VAR control: Control; VAR name: Name; length: SYSTEM.INT32;
+                                          VAR attributes: Attributes): INTEGER;
   PROCEDURE ["VMS"] POC_FILE_FAIL(VAR message: Name; messageLength: SYSTEM.INT32;
                                   VAR name: Name; nameLength: SYSTEM.INT32);
 
@@ -89,6 +98,37 @@ MODULE RecordFiles;
     END;
     IF ~ODD(POC_RECORD_PUT(f.control, bytes, length)) THEN Fail("record not written", f) END
   END Put;
+
+  (* The n bytes of a from at, least significant first, as a number *)
+  PROCEDURE Unsigned(VAR a: Attributes; at, n: INTEGER): LONGINT;
+    VAR value: LONGINT;
+  BEGIN
+    value := 0;
+    WHILE n > 0 DO DEC(n); value := value * 256 + ORD(a[at + n]) END;
+    RETURN value
+  END Unsigned;
+
+  (* The file name's resultant name, its creation time (XAB$Q_CDT, the 8
+     bytes of created, least significant first), end-of-file block
+     (XAB$L_EBK), first free byte (XAB$W_FFB) and record format and
+     organization (XAB$B_RFO): FALSE if it cannot be opened, or a name
+     does not fit *)
+  PROCEDURE Describe*(name: ARRAY OF CHAR; VAR resultant, created: ARRAY OF CHAR;
+                      VAR endBlock, firstFree, format: LONGINT): BOOLEAN;
+    VAR control: Control; given: Name; a: Attributes; n, i: INTEGER;
+  BEGIN
+    n := Length0X(name);
+    IF (n = 0) OR (n >= nameLength) OR (LEN(created) < 8) THEN RETURN FALSE END;
+    COPY(name, given);
+    IF ~ODD(POC_RECORD_ATTRIBUTES(control, given, n, a)) THEN RETURN FALSE END;
+    n := ORD(a[16]);
+    IF n >= LEN(resultant) THEN RETURN FALSE END;
+    FOR i := 0 TO n - 1 DO resultant[i] := a[17 + i] END;
+    resultant[n] := 0X;
+    FOR i := 0 TO 7 DO created[i] := a[i] END;
+    endBlock := Unsigned(a, 8, 4); firstFree := Unsigned(a, 12, 2); format := ORD(a[14]);
+    RETURN TRUE
+  END Describe;
 
   PROCEDURE Close*(f: File);
   BEGIN

@@ -8,8 +8,9 @@ MODULE VaxObjectWriter;
      references; each section's text and relocations, as TIR commands; and
      the traceback records (step 5, section 16): a module's routines and
      the lines of source their code comes from, as debug symbol table
-     (DST) records; and the end of module record, with the transfer
-     address of a main module.
+     (DST) records, with poc -g the debugger records among them, each
+     routine's prolog and the source file; and the end of module record,
+     with the transfer address of a main module.
 
      What the linker makes of the records is the image itself, as
      tools/vax-image/ObjectImage.Mod reads them: every byte of a section in
@@ -32,7 +33,7 @@ MODULE VaxObjectWriter;
     absoluteSection = ".  ABS  .";
 
     (* record types, and the header's subtypes *)
-    headerRecord = 0; gsdRecord = 1; tirRecord = 2; eomRecord = 3; tbtRecord = 5;
+    headerRecord = 0; gsdRecord = 1; tirRecord = 2; eomRecord = 3; dbgRecord = 4; tbtRecord = 5;
     mainHeader = 0; processorHeader = 1; sourceHeader = 2;
     (* GSD subrecords, and SDF$W_FLAGS's bits as values *)
     sectionDefinition = 0; symbolSubrecord = 1; entryPoint = 2;
@@ -47,19 +48,37 @@ MODULE VaxObjectWriter;
     (* DST records (doc/developer/vax-dst-records.md) and the language
        Module Begin gives *)
     dstLineNumbers = 0B9H; dstModuleBegin = 0BCH; dstModuleEnd = 0BDH;
-    dstRoutineBegin = 0BEH; dstRoutineEnd = 0BFH;
+    dstRoutineBegin = 0BEH; dstRoutineEnd = 0BFH; dstProlog = 0A2H; dstSource = 9BH;
     language = 6; (* DST$K_PASCAL *)
     dstLength = 256; (* the longest DST record, its length byte included *)
     (* PC-correlation commands (section 4.1) *)
     deltaPCWord = 1; deltaPCLongword = 17; setLineByte = 19; setLineWord = 9; setLineLongword = 20;
     setAbsolutePC = 16; terminateByte = 14; terminateWord = 15; terminateLongword = 21;
+    (* source file correlation commands (section 4.2) *)
+    declareFile = 1; setFile = 2; setRecordLongword = 3; defineLinesWord = 10; formFeeds = 16;
+    sourceNameLength = 200; (* the most of a source file's name written, which fits a DST record *)
+
+  TYPE
+    (* the source file, for the debugger (poc -g): its name as the
+       debugger is to open it, its RMS creation time (XAB$Q_CDT, least
+       significant byte first), end-of-file block (XAB$L_EBK), first free
+       byte (XAB$W_FFB) and record format and organization (XAB$B_RFO),
+       zeros when they are not known, and its number of lines *)
+    SourceFile* = POINTER TO SourceFileDesc;
+    SourceFileDesc* = RECORD
+      name*: ARRAY 256 OF CHAR;
+      created*: ARRAY 8 OF CHAR;
+      endBlock*, firstFree*, format*, lines*: LONGINT
+    END;
 
   VAR
     out: ObjectRecords.File;
     record: ARRAY recordSize OF CHAR;
     length: INTEGER; (* of record, 0 when none is begun *)
     recordType: INTEGER; (* of the record begun *)
+    source: SourceFile; (* -g's, NIL without it *)
     dst: ARRAY dstLength OF CHAR; (* the DST record being made, its length byte first *)
+    dstRecord: INTEGER; (* the record type that carries it, TBT or DBG *)
     dstEnd: INTEGER; (* its length so far *)
     dstAt: INTEGER; (* where the address in it is, -1 when it has none *)
     dstSection: VaxImage.Section; dstOffset: LONGINT; (* the address *)
@@ -356,10 +375,18 @@ MODULE VaxObjectWriter;
      routines nested as the procedures are, and the lines, as VAX C's do
      (16.2). *)
 
+  (* A DST record of type begun, for a TBT record *)
   PROCEDURE DstBegin(type: INTEGER);
   BEGIN
-    dst[0] := 0X; dst[1] := CHR(type); dstEnd := 2; dstAt := -1
+    dst[0] := 0X; dst[1] := CHR(type); dstEnd := 2; dstAt := -1; dstRecord := tbtRecord
   END DstBegin;
+
+  (* A DST record of type begun, for a DBG record: what only the debugger
+     needs, which LINK leaves out without /DEBUG *)
+  PROCEDURE DbgBegin(type: INTEGER);
+  BEGIN
+    DstBegin(type); dstRecord := dbgRecord
+  END DbgBegin;
 
   PROCEDURE DstByte(b: LONGINT);
   BEGIN
@@ -390,11 +417,12 @@ MODULE VaxObjectWriter;
     END
   END DstImmediate;
 
-  (* The DST record made in dst, its length byte set, in a TBT record *)
+  (* The DST record made in dst, its length byte set, in a TBT or DBG
+     record as it was begun *)
   PROCEDURE Dst(m: VaxImage.Module);
   BEGIN
     dst[0] := CHR(dstEnd - 1);
-    Room(tbtRecord, dstEnd + dstEnd DIV maxImmediate + 2 + 7);
+    Room(dstRecord, dstEnd + dstEnd DIV maxImmediate + 2 + 7);
     IF dstAt < 0 THEN
       DstImmediate(0, dstEnd)
     ELSE
@@ -444,12 +472,14 @@ MODULE VaxObjectWriter;
     RETURN path[i] = "."
   END IsNested;
 
-  (* r's Routine Begin, then those of the routines from first up to next
-     that are nested in it, each with its own, then its Routine End *)
+  (* r's Routine Begin, with -g its Prolog, then those of the routines
+     from first up to next that are nested in it, each with its own, then
+     its Routine End *)
   PROCEDURE WriteRoutine(m: VaxImage.Module; r, first, next: VaxImage.Routine);
     VAR c: VaxImage.Routine;
   BEGIN
     DstBegin(dstRoutineBegin); DstByte(0); DstAddress(r.section, r.offset); DstName(r.path); Dst(m);
+    IF (source # NIL) & (r.prolog >= 0) THEN DbgBegin(dstProlog); DstAddress(r.section, r.prolog); Dst(m) END;
     c := first;
     WHILE c # next DO
       IF IsChild(c.path, r.path) THEN WriteRoutine(m, c, first, next) END;
@@ -497,6 +527,33 @@ MODULE VaxObjectWriter;
     END
   END WriteLines;
 
+  (* The source file's Source File Correlation records (section 4.2): the
+     file declared, as file 1, and each of its lines the record of that
+     number, form feeds counted as poc's lexer counts them *)
+  PROCEDURE WriteSource(m: VaxImage.Module);
+    VAR n, i: INTEGER; lines, count: LONGINT;
+  BEGIN
+    n := 0;
+    WHILE (n < sourceNameLength) & (source.name[n] # 0X) DO INC(n) END;
+    DbgBegin(dstSource);
+    DstByte(formFeeds);
+    DstByte(declareFile); DstByte(20 + n); (* the bytes after this one *) DstByte(0); DstBytes(1, 2);
+    FOR i := 0 TO 7 DO DstByte(ORD(source.created[i])) END;
+    DstBytes(source.endBlock, 4); DstBytes(source.firstFree, 2); DstByte(source.format);
+    DstByte(n); FOR i := 0 TO n - 1 DO DstByte(ORD(source.name[i])) END;
+    DstByte(0); (* no library module *)
+    Dst(m);
+    DbgBegin(dstSource);
+    DstByte(setFile); DstBytes(1, 2); DstByte(setRecordLongword); DstBytes(1, 4);
+    lines := source.lines;
+    WHILE lines > 0 DO
+      IF dstEnd > dstLength - 3 THEN Dst(m); DbgBegin(dstSource) END;
+      IF lines > 65535 THEN count := 65535 ELSE count := lines END;
+      DstByte(defineLinesWord); DstBytes(count, 2); lines := lines - count
+    END;
+    Dst(m)
+  END WriteSource;
+
   (* Module Begin, each routine that is not nested with those nested in
      it, which follow it (VaxCodeGenerator.ProcedureDecl), the lines of
      each routine, and Module End. The routines are in order of address,
@@ -514,6 +571,7 @@ MODULE VaxObjectWriter;
     END;
     r := VaxImage.FirstRoutine(m);
     WHILE r # NIL DO WriteLines(m, r); r := VaxImage.NextRoutine(r) END;
+    IF source # NIL THEN WriteSource(m) END;
     DstBegin(dstModuleEnd); Dst(m)
   END WriteTraceback;
 
@@ -525,19 +583,21 @@ MODULE VaxObjectWriter;
     Flush
   END WriteEnd;
 
-  (* m's object, to f: source is the name of its source file, processor
-     the compiler's name and version, for the headers *)
-  PROCEDURE Write*(m: VaxImage.Module; source, processor: ARRAY OF CHAR; f: ObjectRecords.File);
+  (* m's object, to f: sourceName is the name of its source file,
+     processor the compiler's name and version, for the headers; debug the
+     source file for the debugger records (poc -g), or NIL for none *)
+  PROCEDURE Write*(m: VaxImage.Module; sourceName, processor: ARRAY OF CHAR; debug: SourceFile;
+                   f: ObjectRecords.File);
     VAR s: VaxImage.Section;
   BEGIN
-    out := f; length := 0;
-    WriteHeaders(m, source, processor);
+    out := f; length := 0; source := debug;
+    WriteHeaders(m, sourceName, processor);
     WriteDirectory(m);
     s := VaxImage.FirstSection(m);
     WHILE s # NIL DO WriteText(m, s); s := VaxImage.NextSection(s) END;
     WriteTraceback(m);
     WriteEnd(m);
-    out := NIL
+    out := NIL; source := NIL
   END Write;
 
 END VaxObjectWriter.
