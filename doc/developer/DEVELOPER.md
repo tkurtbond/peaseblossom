@@ -182,7 +182,7 @@ archive`) instead of the tree, as rackhir's check wants, and can't be used
 on this host. Through make, the same are `CHECK_TARGETS`, `CHECK_COMMIT`
 and `CHECK_HOSTS`. By hand, a host's check is:
 
-    git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - \
+    git ls-files -z --cached --others --exclude-standard | tar -cf - --null -T - \
       | ssh cymoril 'mkdir -p ~/poc-bsd && tar -xf - -C ~/poc-bsd'
     ssh cymoril 'cd ~/poc-bsd && gmake check-stage1'
 
