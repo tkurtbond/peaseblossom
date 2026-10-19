@@ -226,7 +226,9 @@ it the same way.
 each file by FTP, runs `MACRO/OBJECT/LIST` by telnet (expect, reading the
 password from that file itself), brings the `.LIS` back beside the
 source, deletes its files on the guest, and exits 0 only if every file
-assembled without a warning or an error. `VAX_HOST` names another guest.
+assembled without a warning or an error. An object poc wrote,
+`<file>.obj`, among the files is converted there and checked by
+`ANALYZE/OBJECT` instead (below). `VAX_HOST` names another guest.
 `tools/vax-assemble -available` says whether the guest can be used; the
 VAX fixtures assemble their `expected-vax.mar` only where it can, and skip
 that part elsewhere. Copies are retried, since the guest's FTP server now
@@ -241,8 +243,26 @@ down: UCX 3.1's INETACP failed in kernel mode (bugcheck SSRVEXCEPT, an
 access violation at offset 0xAF of a NIL pointer; 2026-10-12 and
 2026-10-13).
 
-The guest sees only the expected `.mar` files, the same whichever poc runs the
-suite, so only `make test`'s run uses it: `test-stage1`, `check-opt2` and
+**poc's objects on the guest** (PLAN.md Phase 18 step 4c;
+`doc/developer/vax-object-language.md`, section 15.9). `vax-assemble`,
+`vax-do` and `vax-run` take poc's objects, `<name>.obj`, which on Linux
+and the BSDs hold the records counted, as VMS keeps them on disk. Each is
+copied in binary mode (TYPE I) as `<NAME>.CNT`, which the guest stores as
+fixed 512-byte records, and `OBJCONVERT` (`tools/objconvert/
+ObjectConvert.Mod`) writes it as `<NAME>.OBJ`, a variable-length record
+each, before anything else runs. The converter is built in the account's
+`[.OBJCONVERT]` and kept as `[.BIN]OBJCONVERT.EXE`, with
+`[.BIN]OBJCONVERT.KEY`, a checksum of the MACRO-32 poc wrote for it,
+which `tools/vax-objconvert` writes into `build/objconvert`: a run builds
+it again when the key differs, the first run after a change to it or to
+`rtl/vax` taking some minutes more. `vax_mar` (`test/vaxfixture.sh`)
+gives `vax-assemble` the fixture's objects with the expected `.mar`
+files, so every object a VAX fixture's poc wrote is checked by
+`ANALYZE/OBJECT` on the guest, whose status is judged as MACRO's is.
+
+The guest sees the expected `.mar` files, the same whichever poc runs the
+suite, and poc's objects, the same from every stage of poc, so only `make
+test`'s run uses it: `test-stage1`, `check-opt2` and
 `check-lto` set `VAX_GUEST=skip`, which skips that part of every VAX
 fixture, as on a host without the guest.
 
@@ -253,7 +273,8 @@ the procedure and the files in, as their names uppercased, runs
 back into `-o`'s directory (default `.`), and deletes its copies on the
 guest. A procedure writes what it has to say to files or to its output,
 never to a terminal for the tool to read; it exits with the status
-`vax-do` reports. Text only, in ASCII mode.
+`vax-do` reports. Files go in ASCII mode, but for poc's objects, which
+are converted as above.
 
 A fixture runs a DCL procedure of its own on the guest with `vax_do
 <proc.com> <expected> [<file>...]` (`test/vaxfixture.sh`). It runs the
@@ -278,7 +299,8 @@ breaks `vax-do`'s `/OUTPUT`. `make test-vax-asts` runs `vax-asts`,
 
 `tools/vax-run <main.mar> [<import.mar>...] <run.dbg>...` runs a program
 there under the debugger: it assembles its modules, each named on the
-guest by its `.TITLE`, and `tools/vax-runtime-stub.mar` (stand-ins for
+guest by its `.TITLE` (a module given as poc's object, `<module>.obj`,
+is converted as above and linked as it is), and `tools/vax-runtime-stub.mar` (stand-ins for
 poc's runtime routines, until Phase 16 writes them), links them `/DEBUG`,
 the main module first, so the image starts at the program's start, its
 `<MODULE>_MAIN`, and runs the image once for each `<run>.dbg`, debugger commands that typically `DEPOSIT` the inputs,

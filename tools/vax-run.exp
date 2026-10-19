@@ -2,7 +2,10 @@
 # development system for tools/vax-run, which runs this: in one FTP
 # session (tools/vax-ftp.tcl), copies each <file> to POC's home directory
 # as <NAME.EXT>; then, by telnet, keeping the FTP session alive, assembles
-# each <MODULE>.MAR and POCSTUB.MAR /DEBUG and links them /DEBUG as
+# each <MODULE>.MAR and POCSTUB.MAR /DEBUG (a <file> that is poc's object,
+# <NAME.EXT> <MODULE>.OBJ, copied in binary mode as <MODULE>.CNT and
+# converted to <MODULE>.OBJ instead: tools/vax-objconvert.tcl) and links
+# them /DEBUG as
 # POCRUN.EXE, the main module, the first, first, so that its start is the
 # image's, and runs it once for each R<n>.DBG, the debugger reading its
 # commands from it (DBG$INPUT) and writing to R<n>.OUT (DBG$OUTPUT); then
@@ -26,6 +29,7 @@ log_user 0
 
 source [file join [file dirname [info script]] vax-login.tcl]
 source [file join [file dirname [info script]] vax-ftp.tcl]
+source [file join [file dirname [info script]] vax-objconvert.tcl]
 
 if {[catch {ftp_open $host} message]} {
   puts stderr "vax-run: the VAX guest $host is not available ($message)"
@@ -33,18 +37,26 @@ if {[catch {ftp_open $host} message]} {
 }
 # from here on, whatever happens, every file of this run is deleted there
 set made POCRUN.EXE
-foreach name [concat $modules POCSTUB] { lappend made $name.MAR $name.OBJ }
+foreach name [concat $modules POCSTUB] { lappend made $name.MAR $name.OBJ $name.CNT }
 for {set i 1} {$i <= $runs} {incr i} { lappend made R$i.DBG R$i.OUT }
 exit -onexit {
   foreach remote $::made { catch {ftp_delete $remote} }
   ftp_close
 }
 
+set objects {}
 foreach {file remote} $puts {
-  if {[catch {ftp_put $file $remote} message]} { fail "cannot copy $file there: $message" }
+  if {[string match *.OBJ $remote]} {
+    set name [file rootname $remote]
+    if {[catch {objconvert_put $file $name} message]} { fail "cannot copy $file there: $message" }
+    lappend objects $name
+  } elseif {[catch {ftp_put $file $remote} message]} {
+    fail "cannot copy $file there: $message"
+  }
 }
 
 vax_login $host
+objconvert_each $objects
 
 # command, then its output and "VAXRUN-STATUS <step> <$STATUS>"
 proc step {name command} {
@@ -72,7 +84,7 @@ proc step {name command} {
 }
 
 foreach name [concat $modules POCSTUB] {
-  step $name "MACRO/DEBUG/OBJECT/NOLIST $name"
+  if {$name ni $objects} { step $name "MACRO/DEBUG/OBJECT/NOLIST $name" }
 }
 step LINK "LINK/DEBUG/NOMAP/EXECUTABLE=POCRUN [join [concat $modules POCSTUB] ,]"
 for {set i 1} {$i <= $runs} {incr i} {

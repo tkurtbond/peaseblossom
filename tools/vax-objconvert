@@ -1,0 +1,55 @@
+#!/bin/sh
+# The guest's object converter, OBJCONVERT (tools/objconvert/
+# ObjectConvert.Mod), as MACRO-32 to build it from, for tools/vax-do,
+# tools/vax-run and tools/vax-assemble, which send poc's objects to the
+# VAX/VMS development system (PLAN.md Phase 18 step 4c; doc/developer/
+# vax-object-language.md, section 15.9, proposals 7 and 8). Writes, when
+# they are missing or older than poc or the sources, the converter's
+# modules' .mar, rtl/vax's PocRtl.mar, and the procedure poc -build
+# writes, into <dir> (default build/objconvert), and prints a key, a
+# checksum of them all: the guest builds the converter into the
+# account's [.BIN] again whenever the key it keeps there differs
+# (tools/vax-objconvert.tcl).
+#
+#   tools/vax-objconvert [<dir>]
+#
+# POC names the poc to use (default build/bin/poc). Runs at once share
+# <dir>, so each holds a lock, the directory <dir>.lock, while it writes.
+set -e
+
+here=$(cd "$(dirname "$0")" && pwd)
+root=$(dirname "$here")
+dir=${1:-$root/build/objconvert}
+poc=${POC:-$root/build/bin/poc}
+[ -x "$poc" ] || { echo "vax-objconvert: no poc at $poc" >&2; exit 2; }
+
+# the key of the files in dir
+key() {
+  (cd "$1" && cat $(ls | LC_ALL=C sort) | cksum | awk '{ print $1 }')
+}
+
+# dir is up to date when its KEY is newer than poc and every source
+fresh() {
+  [ -f "$dir.key" ] || return 1
+  [ -z "$(find "$poc" "$root/tools/objconvert" "$root/rtl/vax" -maxdepth 1 -newer "$dir.key" \( -name '*.Mod' -o -name '*.mar' -o -name poc \) 2>/dev/null)" ]
+}
+
+if ! fresh; then
+  until mkdir "$dir.lock" 2>/dev/null; do sleep 1; done
+  trap 'rmdir "$dir.lock"' EXIT
+  if ! fresh; then
+    new=$(mktemp -d "$dir.XXXXXX")
+    # compiled as a copy, so that the procedure poc writes names no
+    # directory of this host, and the key is the same from every checkout
+    cp "$root/tools/objconvert/ObjectConvert.Mod" "$new/"
+    (cd "$new" && "$poc" -target vax-dec-vms -import-path "$root/rtl/vax" -build ObjectConvert.Mod >log 2>&1) || {
+      cat "$new/log" >&2; rm -rf "$new"; echo "vax-objconvert: the converter did not compile" >&2; exit 2
+    }
+    rm -f "$new"/*.sym "$new/log" "$new/ObjectConvert.Mod"
+    cp "$root/rtl/vax/PocRtl.mar" "$new/PocRtl.mar"
+    rm -rf "$dir"
+    mv "$new" "$dir"
+    key "$dir" >"$dir.key"
+  fi
+fi
+cat "$dir.key"

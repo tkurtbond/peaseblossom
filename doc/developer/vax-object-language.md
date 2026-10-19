@@ -1080,3 +1080,110 @@ version left out of the `LNM` record, and compares them with
 compared with MACRO's `expected-vax.image`: that object has the commands
 the fixtures' modules do not reach, `STO_LW`, `OPR_ADD`, `STA_SB` and
 `STA_PL` among them. Nothing poc wrote needed changing.
+
+### 15.9 4c: proposals (approved by the user, 2026-10-18)
+
+Section 15.3 decided where the records go; these are the details it left
+open, for the user's approval before 4c is written. Facts about RMS are
+from the VMS 5.0 RMS manual (`AA-LA83A`, which 5.5's set still carries).
+
+1. **`rtl/vax/RecordFiles.Mod`**, VAX only (no `rtl/llvm` twin), the one
+   new interface programs can see:
+
+   ```
+   TYPE File* = POINTER TO FileDesc;
+   PROCEDURE Create*(name: ARRAY OF CHAR; maximum: INTEGER): File;
+   PROCEDURE Put*(f: File; VAR bytes: ARRAY OF SYSTEM.BYTE; length: INTEGER);
+   PROCEDURE Close*(f: File);
+   ```
+
+   `Create` makes a sequential file (`FAB$C_SEQ`) of variable-length
+   records (`FAB$C_VAR`) of at most `maximum` bytes (`FAB$W_MRS`, 1 to
+   32,765; RMS refuses a longer record, RMS 5.22), with no record
+   attributes (`FAB$B_RAT` 0, RMS 5.25: not text, as MACRO's objects
+   are not), under `name` as given, which RMS makes a new version when
+   the file exists: NIL if it cannot be made (no such directory, no
+   privilege). It is written directly, not under a name of its own
+   until registered as `Files.New` is, since the writer makes the object
+   only once the module has encoded without error.
+2. `Put` writes the first `length` bytes of `bytes` as one record
+   (`$PUT`); `Close` closes the file, and a second `Close` does nothing.
+   A `Put` or `Close` that fails, or a `length` outside 0 to `maximum`,
+   stops the program with a message naming the file, and `HALT(99)`, as
+   `Files` does for an error it cannot report.
+3. A `File` is not registered for finalization: one never closed is
+   closed by RMS when the image exits (`$RMSRUNDWN`), its records kept.
+   That costs a program that does not use it nothing.
+4. **`PocRtl.mar`** gains `POC_RECORD_CREATE(control, name, length,
+   maximum)` and `POC_RECORD_PUT(control, record, length)`, each giving
+   RMS's status, over a control laid out as `Files`' (`POC_FILE_INIT`;
+   `RecordFiles` keeps one of `Files.Control`'s 768 bytes), opened for
+   `$PUT` only, not shared, connected for record I/O; `Close` uses
+   `POC_FILE_CLOSE`.
+5. **`src/back/vax/vms/ObjectRecords.Mod`** becomes `RecordFiles` under
+   the host one's interface, unchanged.
+6. **`tools/objconvert/ObjectConvert.Mod`**, a VMS program:
+   `OBJCONVERT <counted file> <object>`. It reads the counted file with
+   `Files` (which reads a fixed-length file as its bytes), and writes
+   each record with `RecordFiles` (maximum 512) until a count of 0 (the
+   zeros FTP pads the last block with) or the file's end; a count over
+   512 or past the end stops it with a message, `HALT(2)`, and the
+   object it began deleted. It prints nothing when it succeeds.
+7. **Transfer.** `tools/vax-ftp.tcl` gains `ftp_put_binary` (`TYPE I`
+   for the one `STOR`, then `TYPE A` again). `tools/vax-do` and
+   `tools/vax-run` send each `<module>.obj` they are given that way as
+   `<MODULE>.CNT`, run `OBJCONVERT <MODULE>.CNT <MODULE>.OBJ` for each in
+   the telnet session before the procedure (a conversion that fails
+   fails the run, its message shown), and delete both files afterwards
+   with the rest.
+8. **The converter on the guest.** Built through MACRO like any program
+   today (`poc -target vax-dec-vms -build`, its MACRO kept on the host
+   in `build/objconvert`), into the account's `[.BIN]OBJCONVERT.EXE`,
+   beside `[.BIN]OBJCONVERT.KEY`, a checksum of that MACRO. A run that
+   sends an object reads the key in its telnet session first, and when
+   it is missing or different, sends the MACRO and builds the converter
+   before anything else, so each of `POC` and `POC2` builds it once and
+   again only when poc's output for it changes.
+9. **`ANALYZE/OBJECT`.** `tools/vax-assemble`, which `vax_mar` already
+   runs on the guest for `expected-vax.mar` and its imports' expected
+   MACRO, takes the fixture's poc objects too, converts them as 7 says,
+   and runs `ANALYZE/OBJECT/OUTPUT=` on each in the same session: the
+   fixture fails if ANALYZE's status is not a success or its output
+   reports an error or a warning. No other guest session is added per
+   fixture.
+
+### 15.10 What 4c found (2026-10-18)
+
+The nine proposals are as written: `rtl/vax/RecordFiles.Mod` and its
+`POC_RECORD_CREATE` and `POC_RECORD_PUT` in `PocRtl.mar`, the VMS
+`ObjectRecords` over it, `tools/objconvert/ObjectConvert.Mod`,
+`tools/vax-objconvert` (the converter's MACRO-32 and key, on the host)
+and `tools/vax-objconvert.tcl` (the converter built, and each object
+converted, on the guest), `ftp_put_binary`, and `vax-do`, `vax-run` and
+`vax-assemble` taking `.obj` files, which `vax_mar` gives `vax-assemble`.
+
+- **UCX's FTP server ends a binary `STOR` with two replies**, "250
+  transferred 0 bytes." and then "226 Transfer complete.", the file
+  whole; a client that reads one is a reply behind from then on.
+  `vax-ftp.tcl` reads the second.
+- **A file sent in binary mode** is fixed 512-byte records, the last
+  padded with zeros, as section 10 expected; `Files` reads it as its
+  bytes, the padding included, so the converter stops at the count of 0
+  it finds there.
+- **`ANALYZE/OBJECT`** says `%ANALYZE-I-ERRORS, <file> 0 errors` of a
+  good object, with the status `%X10B18033` (informational), and an
+  error status when it finds one (`%X10B186D2` for a made-up TIR record
+  of commands it does not know); it is judged by its status, as MACRO is.
+- **`DIRECTORY/FULL`** shows an object's longest record as its maximum,
+  MACRO's (46 bytes for a small module) and poc's (154 for `VaxEmpty`)
+  alike, not the `FAB$W_MRS` of 512 poc's `Create` gives.
+- **The converter's key** would have named the checkout's directory,
+  which `poc -build` writes into its procedure's first line, so two
+  checkouts would each rebuild the other's converter; `vax-objconvert`
+  compiles a copy of the source by its name alone.
+- **`check-strict`** checks `src/back/vax/vms` for the VAX now, against
+  `RecordFiles` compiled into `build/strict-vms`, since Stage 1's
+  `.sym` files, which the rest is checked against, have no
+  `RecordFiles`.
+- `vax-library`'s `POCRTL` has `RecordFiles` and 578 universal symbols,
+  8 more; the packages' lists name its library files.

@@ -217,11 +217,23 @@ check-lto: build
 # against the .sym files Stage 1 leaves in build/stage1/obj, under -OC, the
 # size model poc is built with, by the Stage 1 poc (which, unlike voc's build,
 # needs no LD_LIBRARY_PATH on the BSDs). rtl/llvm is the runtime, which needs
-# SYSTEM.ADDRESS and external procedures, and is not checked.
+# SYSTEM.ADDRESS and external procedures, and is not checked. The modules of
+# src/back/vax/vms, for poc built for VMS, are checked for the VAX, against
+# rtl/vax's RecordFiles, compiled for it into build/strict-vms (PLAN.md
+# Phase 18 step 4c).
 check-strict: $(STAGE1_BIN)
 	@status=0; \
-	for f in $(SRCS) $(NO_LLVM_SRCS) $(VAX_VMS_SRCS); do \
+	for f in $(SRCS) $(NO_LLVM_SRCS); do \
 	  out=$$($(STAGE1_BIN) -OC -strict -import-path $(BUILD_DIR)/stage1/obj -check $$f 2>&1); \
+	  if [ "$$out" != "semantic OK" ]; then \
+	    echo "$$out"; echo "check-strict: $$f uses more than Oberon2.pdf"; status=1; \
+	  fi; \
+	done; \
+	mkdir -p $(BUILD_DIR)/strict-vms; \
+	$(STAGE1_BIN) -OC -target vax-dec-vms -import-path rtl/vax -output-dir $(BUILD_DIR)/strict-vms \
+	  -emit-macro32 rtl/vax/RecordFiles.Mod >/dev/null || status=1; \
+	for f in $(VAX_VMS_SRCS); do \
+	  out=$$($(STAGE1_BIN) -OC -strict -target vax-dec-vms -import-path $(BUILD_DIR)/strict-vms -check $$f 2>&1); \
 	  if [ "$$out" != "semantic OK" ]; then \
 	    echo "$$out"; echo "check-strict: $$f uses more than Oberon2.pdf"; status=1; \
 	  fi; \

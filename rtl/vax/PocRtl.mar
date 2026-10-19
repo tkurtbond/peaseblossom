@@ -1380,6 +1380,43 @@ POC_PROMPT:
 	CALLS	#1, POC_HALT
 	RET
 
+; RecordFiles' services (rtl/vax/RecordFiles.Mod; Phase 18 step 4c,
+; vax-object-language.md section 15.9, proposal 4). A File's control is
+; laid out as Files', above, and closed by POC_FILE_CLOSE.
+
+	.PSECT	POC_CODE
+; POC_RECORD_CREATE(control, name, length, maximum): a new sequential
+; file of variable-length records of at most maximum bytes, with no
+; record attributes, called name, a new version if there is one already,
+; to be written a record at a time and not shared; R0 the status
+	.ENTRY	POC_RECORD_CREATE, ^M<R2,R3,R4,R5,R6>
+	MOVL	4(AP), R6
+	JSB	POC_FILE_INIT
+	MOVL	8(AP), POC_F_FAB+FAB$L_FNA(R6)
+	MOVB	12(AP), POC_F_FAB+FAB$B_FNS(R6)
+	MOVB	#FAB$M_PUT, POC_F_FAB+FAB$B_FAC(R6)
+	CLRB	POC_F_FAB+FAB$B_SHR(R6)
+	MOVB	#FAB$C_VAR, POC_F_FAB+FAB$B_RFM(R6)
+	CLRB	POC_F_FAB+FAB$B_RAT(R6)
+	MOVW	16(AP), POC_F_FAB+FAB$W_MRS(R6)
+	CLRQ	-(SP)
+	PUSHAB	POC_F_FAB(R6)
+	CALLS	#3, G^SYS$CREATE
+	CLRL	R1
+	JSB	POC_FILE_CONNECT
+	RET
+
+; POC_RECORD_PUT(control, record, length): the first length bytes of
+; record written as the file's next record; R0 the status
+	.ENTRY	POC_RECORD_PUT, ^M<R6>
+	MOVL	4(AP), R6
+	MOVL	8(AP), POC_F_RAB+RAB$L_RBF(R6)
+	MOVW	12(AP), POC_F_RAB+RAB$W_RSZ(R6)
+	CLRQ	-(SP)
+	PUSHAB	POC_F_RAB(R6)
+	CALLS	#3, G^SYS$PUT
+	RET
+
 ; Platform's files by handle, time, commands, directories and statuses
 ; (rtl/vax/Platform.Mod; design section 19.1, Phase 17 step 3). A
 ; handle's control is laid out as a File's, above.

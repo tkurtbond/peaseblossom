@@ -16,8 +16,12 @@
 #
 # -o is the directory the files come back to (default .); -get names a file
 # the procedure leaves in POC's directory, repeated for each; -p gives the
-# procedure its P1, letters, digits and underscores only. Text only:
-# files cross in ASCII mode, as RMS variable-length records on the guest.
+# procedure its P1, letters, digits and underscores only. Files cross in
+# ASCII mode, as RMS variable-length records on the guest, all but poc's
+# objects, <name>.obj (PLAN.md Phase 18 step 4c; doc/developer/
+# vax-object-language.md, section 15.9, proposal 7): each is copied in
+# binary mode as <NAME>.CNT and converted there to <NAME>.OBJ by
+# OBJCONVERT, before the procedure runs (tools/vax-objconvert.tcl).
 # VAX_DO_TIMEOUT is how long the procedure may run, in seconds (default
 # 600). Exits 0 if the procedure's $STATUS is a success or informational
 # one and every file came back, 1 if not, 2 if the guest could not be used.
@@ -68,6 +72,16 @@ for f; do [ -r "$f" ] || { echo "vax-do: cannot read $f" >&2; exit 2; }; done
 procfile=$1
 proc=$(guest_name "$1")
 for f; do guest_name "$f" >/dev/null || exit 2; done
+# poc's objects: the converter's MACRO and its key (tools/vax-objconvert)
+for f; do
+  case $f in
+    *.obj)
+      VAX_OBJCONVERT_DIR=${VAX_OBJCONVERT_DIR:-$(dirname "$here")/build/objconvert}
+      VAX_OBJCONVERT_KEY=$("$here/vax-objconvert" "$VAX_OBJCONVERT_DIR") || exit 2
+      export VAX_OBJCONVERT_DIR VAX_OBJCONVERT_KEY
+      break ;;
+  esac
+done
 
 out=$(mktemp "${TMPDIR:-/tmp}/vax-do.XXXXXX")
 # only once this run has the lock may it touch the guest

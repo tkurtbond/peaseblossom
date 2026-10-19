@@ -757,7 +757,7 @@ In a program that imports `AsynchronousTraps`, the heap disables ASTs
 while it allocates or collects, so `NEW` is safe at AST level (chapter
 14).
 
-### Two modules VMS alone has
+### Three modules VMS alone has
 
 - **`VmsArguments`** has the structures a program builds to call VMS: a
   string descriptor, item lists, an I/O status block and a lock status
@@ -765,6 +765,11 @@ while it allocates or collects, so `NEW` is safe at AST level (chapter
 - **`AsynchronousTraps`** makes an Oberon procedure an AST routine, and
   lets the main program disable and restore AST delivery around data
   that it shares with one (chapter 14).
+- **`RecordFiles`** writes a file of variable-length records, one RMS
+  record at a time, with no record attributes: `Create(name, maximum)`
+  (NIL if the file cannot be made), `Put(f, bytes, length)` and
+  `Close(f)`. poc writes its objects with it; a failure stops the
+  program with a message, as `Files`' does.
 
 ## 7. Calling VMS
 

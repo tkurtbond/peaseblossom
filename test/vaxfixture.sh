@@ -18,15 +18,18 @@
 # sections 14.5 and 15.4), so that both are checked on every host. Where the
 # VAX development system can be used
 # (tools/vax-assemble -available), every expected .mar is also assembled
-# there with MACRO/OBJECT, and a failure, with MACRO's messages, is added to
-# result; and when the fixture has runs, run-<name>.dbg, each a run of the
+# there with MACRO/OBJECT, and every object poc wrote converted there and
+# checked by ANALYZE/OBJECT (PLAN.md Phase 18 step 4c), and a failure, with
+# MACRO's or ANALYZE's messages, is added to result; and when the fixture
+# has runs, run-<name>.dbg, each a run of the
 # program under the debugger (tools/vax-run), whose output is compared with
 # run-<name>.log, a failure or a difference is added to result too.
 # Elsewhere those parts are skipped, saying so on the output but not in
 # result, so that result is the same on every host when all is well. They
 # are skipped too when VAX_GUEST is "skip", as it is in the suite runs after
-# make test's (GNUmakefile): the guest sees only the expected .mar files,
-# the same whichever poc runs the suite, so one run's check is enough.
+# make test's (GNUmakefile): the guest sees the expected .mar files, the
+# same whichever poc runs the suite, and poc's objects, the same from every
+# stage of poc (the fixed point), so one run's check is enough.
 
 # "<written>.mar matches <expected>", or the differences, to result
 vax_compare() {
@@ -105,8 +108,13 @@ vax_mar() {
     for vax_import in $vax_imports; do
       [ -f "expected-vax-$vax_import.mar" ] && cp "expected-vax-$vax_import.mar" "vax-assemble/$vax_import.mar"
     done
-    if ! "$vax_tools/vax-assemble" vax-assemble/*.mar >vax-assemble/out 2>&1; then
-      echo "expected-vax.mar does not assemble:" >>result
+    # and the objects poc wrote, each checked by ANALYZE/OBJECT there
+    # (PLAN.md Phase 18 step 4c)
+    for vax_file in "$1" $vax_imports; do
+      [ -f "$vax_file.obj" ] && cp "$vax_file.obj" vax-assemble/
+    done
+    if ! "$vax_tools/vax-assemble" vax-assemble/*.mar $(ls vax-assemble/*.obj 2>/dev/null) >vax-assemble/out 2>&1; then
+      echo "expected-vax.mar does not assemble, or an object poc wrote does not pass ANALYZE/OBJECT:" >>result
       cat vax-assemble/out >>result
     fi
     rm -rf vax-assemble

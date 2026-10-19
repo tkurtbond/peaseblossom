@@ -680,6 +680,10 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    poc's own 41 modules', read back by `vax-image` give MACRO's image.
    **4b done 2026-10-18** (section 15.8): `vax-image -records`, the
    fixture `vax-object-records`, and `vax-encoder-forms`'s object.
+   **4c done 2026-10-18** (sections 15.9, approved, and 15.10):
+   `RecordFiles`, the VMS `ObjectRecords`, `OBJCONVERT`, binary FTP; every
+   VAX fixture's objects converted on the guest and checked by
+   `ANALYZE/OBJECT`.
 
 5. **Debug and traceback information.** The traceback records (`TBT`)
    that let an unhandled condition print a routine traceback, as MACRO's
