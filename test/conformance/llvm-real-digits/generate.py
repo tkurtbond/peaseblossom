@@ -83,8 +83,11 @@ print(len(exp), 'lines')
 # F_floating there (section 14, item 9): no -0, no subnormals, and other
 # ranges. The values above that are normal in both formats keep their
 # oracle, %e of the same double: 2^-1022 to just under 2^1023 for a
-# LONGREAL, 2^-126 to just under 2^127 for a REAL, and 0, but for MACRO's
-# rounding of a numeral exactly halfway, away from zero. The values only
+# LONGREAL, 2^-126 to just under 2^127 for a REAL, and 0: poc spells a
+# numeral that MACRO would round away from zero, exactly halfway, so that
+# MACRO makes the front end's value of it, rounded to even (Phase 18 step
+# 6d, doc/developer/vax-object-language.md, section 17.6), and poc's
+# objects make that value too. The values only
 # the VAX has - its smallest and largest of each type, and a few between
 # the smallest and IEEE's smallest normal - get their digits from exact
 # fractions, rounded to nearest, ties to even, as RealDigits rounds, and
@@ -93,23 +96,24 @@ print(len(exp), 'lines')
 # whole, so each line keeps the blanks that fill its field.
 from fractions import Fraction as Q
 
-def vax_round(x, p, away=False):
-    # x rounded to p significant bits, ties to even or away from zero
+def vax_round(x, p):
+    # x rounded to p significant bits, ties to even
     e = x.numerator.bit_length() - x.denominator.bit_length() - p
     while x / Q(2) ** e >= 2 ** p: e += 1
     while x / Q(2) ** e < 2 ** (p - 1): e -= 1
     q = x / Q(2) ** e; n = int(q); r = q - n
-    if r > Q(1, 2) or (r == Q(1, 2) and (away or n % 2)): n += 1
+    if r > Q(1, 2) or (r == Q(1, 2) and n % 2): n += 1
     return Q(n) * Q(2) ** e
 
-def macro_value(numeral, p):
-    # what MACRO makes of a numeral: the nearest value, ties away from zero
-    # (MACRO 9.2.8.3), so that 1.0D23 and 8.41D21, exactly halfway between
-    # two doubles, are the upper one, where IEEE's are the lower
+def vax_value(numeral, p):
+    # what poc makes of a numeral on the VAX: the nearest value, ties to
+    # even, so that 1.0D23 and 8.41D21, exactly halfway between two
+    # doubles, are the lower one, as IEEE's are (MACRO itself rounds ties
+    # away from zero, MACRO 9.2.8.3, and poc spells those two otherwise)
     x = Q(numeral.replace('D', 'E'))
     if x == 0: return x
     sign = -1 if x < 0 else 1
-    return sign * vax_round(abs(x), p, True)
+    return sign * vax_round(abs(x), p)
 
 def decimal_digits(x, d):
     # the d significant digits of x > 0, rounded to nearest, ties to even,
@@ -161,7 +165,7 @@ for v in longs:
     if normal_in_both(v, 2.0 ** -1022, 2.0 ** 1023):
         for n in widths_long:
             vout.append('  L(%s, %d);' % (literal(v), n))
-            vexp.append(fmt_exact(macro_value(literal(v), 53), n, True).rjust(n))
+            vexp.append(fmt_exact(vax_value(literal(v), 53), n, True).rjust(n))
 vax_longs = [Q(2) ** -1024, (1 + Q(2) ** -52) * Q(2) ** -1024, Q(3, 2) * Q(2) ** -1023,
              Q(2 ** 53 - 1) * Q(2) ** -1075, Q(2 ** 53 - 1) * Q(2) ** 970]
 for x in vax_longs:
@@ -172,7 +176,7 @@ for v in singles:
     if normal_in_both(vs, 2.0 ** -126, 2.0 ** 127):
         for n in widths_short:
             vout.append('  S(%s, %d);' % (literal(vs, True), n))
-            vexp.append(fmt_exact(macro_value(literal(vs, True), 24), n, False).rjust(n))
+            vexp.append(fmt_exact(vax_value(literal(vs, True), 24), n, False).rjust(n))
 vax_singles = [Q(2) ** -128, Q(3, 2) * Q(2) ** -128, Q(2 ** 24 - 1) * Q(2) ** -151,
                Q(2 ** 24 - 1) * Q(2) ** 103]
 for x in vax_singles:

@@ -1,6 +1,6 @@
 -O2: 243 modules compiled
 -OC: 243 modules compiled
 VMSDEF exit 0
-VMSDEF modules assembled: 243
+VMSDEF modules: 243
 VAX build VmsDefLayout exit 0
 VAX build VmsDefCalls exit 0

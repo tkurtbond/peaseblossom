@@ -30,7 +30,7 @@ run() {
   while [ "$1" != -- ]; do options="$options $1"; shift; done
   shift
   : >output
-  rm -f AssertMode*.mar
+  rm -f AssertMode*.mar AssertMode*.obj
   for n; do
     printf 'MODULE AssertMode;\n  VAR mode*: INTEGER;\nBEGIN\n  mode := %s\nEND AssertMode.\n' "$n" >AssertMode.mod
     rm -f *.sym
@@ -39,14 +39,18 @@ run() {
     st=$?
     { echo "== case $n, build status: %X10000001"; cat run.out; status $st; cat run.err; } >>output
     rm -f *.sym
-    poc -O2 $options -target vax-dec-vms -import-path $rtl -build Asserts.mod >>result 2>&1 \
+    poc -O2 $options -target vax-dec-vms $vax_way_option -import-path $rtl -build Asserts.mod >>result 2>&1 \
       || echo "VAX build of case $n failed" >>result
-    mv AssertMode.mar "AssertMode$n.mar"
+    for x in mar obj; do [ ! -f AssertMode.$x ] || mv AssertMode.$x "AssertMode$n.$x"; done
   done
   cmp -s output "$expected" || { echo "the LLVM backend's output,$options:" >>result; diff "$expected" output >>result; }
-  vax_do guest-run.com "$expected" Asserts.com Asserts.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar AssertMode*.mar
-  rm -f AssertMode*.mar AssertMode.mod Asserts.com Asserts.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar *.sym run.out run.err output
+  vax_do guest-run.com "$expected" Asserts.com Asserts.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar AssertMode*.mar AssertMode*.obj
+  rm -f AssertMode*.mar AssertMode.mod Asserts.com Asserts.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar *.sym *.obj run.out run.err output
 }
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 run output.expected -trap-location -- 1 2 3 4
 run plain.expected -- 3
+}
+vax_build builds
 . ../../testresult.sh

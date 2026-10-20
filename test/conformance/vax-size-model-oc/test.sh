@@ -10,7 +10,12 @@
 rm -f VaxSizeModel.com
 : >result
 vax_mar VaxSizeModel -OC
-poc -OC -target vax-dec-vms -build VaxSizeModel.mod >>result 2>&1
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
+poc -OC -target vax-dec-vms $vax_way_option -build VaxSizeModel.mod >>result 2>&1
 echo "build exit $?" >>result
 vax_do guest-run.com guest-run.expected VaxSizeModel.com VaxSizeModel.mar ../../../rtl/vax/PocRtl.mar
+}
+vax_build builds
+rm -f *.obj
 . ../../testresult.sh

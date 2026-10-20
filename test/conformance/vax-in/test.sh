@@ -13,11 +13,15 @@ written="intest.mar prompt.mar In.mar FormattedInput.mar DecimalToReal.mar Platf
 cp ../llvm-in/intest.mod ../llvm-in/input.txt .
 rm -f intest.com prompt.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 rm -f *.sym $written
 for program in intest prompt; do
-  poc -target vax-dec-vms -import-path $rtl -build $program.mod >>result 2>&1
+  poc -target vax-dec-vms $vax_way_option -import-path $rtl -build $program.mod >>result 2>&1
   echo "VAX build $program exit $?" >>result
 done
 vax_do guest-run.com guest-run.expected intest.com prompt.com input.txt prompt.txt $written $rtl/PocRtl.mar
-rm -f *.sym $written intest.com prompt.com intest.mod input.txt
+}
+vax_build builds
+rm -f *.sym $written intest.com prompt.com intest.mod input.txt *.obj
 . ../../testresult.sh

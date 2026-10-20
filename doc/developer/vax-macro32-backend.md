@@ -2067,6 +2067,13 @@ run as it is.
    step ends when every listed program runs and matches, or differs
    only as an `expected-vax-<program>` file says, and the list holds
    every fixture of the 122 that `rtl/vax` and the backend can run.
+9. **Both ways** (Phase 18 step 6d, `vax-object-language.md` section
+   17.6): the suite builds every program twice, from this backend's
+   MACRO-32 and from poc's own objects (`-vax-objects`), and checks
+   both against the host's build; `VAX_WAYS=macro32` or `objects` runs
+   one. A difference only objects have, a traceback naming each
+   routine and line from its debugger records, is in
+   `expected-vax-objects-<program>` files, looked for first.
 
 **Done: the suite and its list (proposals 1-4), 2026-10-10.**
 `tools/vax-suite`, run by `make test-vax`, and `test/vax-suite.list`,

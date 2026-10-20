@@ -12,22 +12,26 @@
 . ../../vaxfixture.sh
 vms=../../../rtl/vax/vms
 rtl=../../../rtl/vax
+: >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 rm -rf work
 mkdir work
-: >result
 generated="SMGDEF SMGMSG SMG_ROUTINES SSDEF"
-(cd work && poc -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls ../$rtl/*.Mod) ../$rtl/PocRtl.mar) >work/out 2>&1 \
+(cd work && poc -target vax-dec-vms $vax_way_option -output-dir libs -library POCRTL $(LC_ALL=C ls ../$rtl/*.Mod) ../$rtl/PocRtl.mar) >work/out 2>&1 \
   || cat work/out >>result
-(cd work && poc -target vax-dec-vms -output-dir libs -library-path libs -library VMSDEF \
+(cd work && poc -target vax-dec-vms $vax_way_option -output-dir libs -library-path libs -library VMSDEF \
   $(for m in $generated; do echo ../$vms/$m.Mod; done)) >>result 2>&1
 echo "VMSDEF exit $?" >>result
 cp SmgFile.mod SmgScreen.mod work/
-(cd work && poc -target vax-dec-vms -library-path libs -build SmgFile.mod) >>result 2>&1
+(cd work && poc -target vax-dec-vms $vax_way_option -library-path libs -build SmgFile.mod) >>result 2>&1
 echo "VAX build SmgFile exit $?" >>result
-(cd work && poc -target vax-dec-vms -library-path libs -build SmgScreen.mod) >>result 2>&1
+(cd work && poc -target vax-dec-vms $vax_way_option -library-path libs -build SmgScreen.mod) >>result 2>&1
 echo "VAX build SmgScreen exit $?" >>result
 lib=work/libs/vax-dec-vms/O2
-vax_do guest-run.com guest-run.expected $lib/*.mar $lib/*_build.com $lib/*_setup.com \
+vax_do guest-run.com guest-run.expected $lib/*.mar $lib/*.obj $lib/*_build.com $lib/*_setup.com \
   work/SmgFile.mar work/SmgFile.com
+}
+vax_build builds
 rm -rf work
 . ../../testresult.sh

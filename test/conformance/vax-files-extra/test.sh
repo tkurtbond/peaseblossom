@@ -11,12 +11,16 @@
 rtl=../../../rtl/vax
 rm -f FilesExtra.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym *.mar
-  poc $model -target vax-dec-vms -import-path $rtl -build FilesExtra.mod >>result 2>&1
+  poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build FilesExtra.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
   vax_do guest-run.com guest-run.expected FilesExtra.com FilesExtra.mar Files.mar Platform.mar \
     GarbageCollectedHeap.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 done
-rm -f *.sym *.mar FilesExtra.com
+}
+vax_build builds
+rm -f *.sym *.mar FilesExtra.com *.obj
 . ../../testresult.sh

@@ -17,9 +17,13 @@ cp ../llvm-in-extra/inextra.mod .
 tr -d '\r' <../llvm-in-extra/input.txt >input.txt
 rm -f inextra.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 rm -f *.sym $written
-poc -target vax-dec-vms -import-path $rtl -build inextra.mod >>result 2>&1
+poc -target vax-dec-vms $vax_way_option -import-path $rtl -build inextra.mod >>result 2>&1
 echo "VAX build inextra exit $?" >>result
 vax_do guest-run.com guest-run.expected inextra.com input.txt $written $rtl/PocRtl.mar
-rm -f *.sym $written inextra.com inextra.mod input.txt
+}
+vax_build builds
+rm -f *.sym $written inextra.com inextra.mod input.txt *.obj
 . ../../testresult.sh

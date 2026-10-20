@@ -310,8 +310,8 @@ MODULE DecimalToDouble;
      highest. Phase 18 (doc/developer/vax-object-language.md, section
      14.4): the VAX encoder builds F_floating and G_floating bits from m
      and e. *)
-  PROCEDURE RoundedParts*(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER;
-                          VAR mantissa: LONGINT; VAR exponent: INTEGER): BOOLEAN;
+  PROCEDURE Round(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER;
+                  VAR mantissa: LONGINT; VAR exponent: INTEGER; VAR halfway: BOOLEAN): BOOLEAN;
     VAR
       digits, left, factor, product, twice: Big;
       i, kept, exponent10, magnitude, estimate, e, bits: INTEGER;
@@ -319,6 +319,7 @@ MODULE DecimalToDouble;
       inFraction, sticky, negativeExponent: BOOLEAN;
       cmp: INTEGER;
   BEGIN
+    halfway := FALSE;
     digits.n := 0; kept := 0; exponent10 := 0; sticky := FALSE;
     i := 0; inFraction := FALSE;
     WHILE ((lexeme[i] >= "0") & (lexeme[i] <= "9")) OR ((lexeme[i] = ".") & ~inFraction) DO
@@ -386,6 +387,7 @@ MODULE DecimalToDouble;
     Copy(left, twice); MulAdd(twice, 2, 0);
     MulLong(factor, 2 * q + 1, product);
     cmp := Compare(twice, product);
+    halfway := cmp = 0;
     IF (cmp > 0) OR ((cmp = 0) & ODD(q)) THEN m := q + 1 ELSE m := q END;
     IF BitLength(m) > precision THEN (* rounded up: exactly 2^(precision - 1) * 2^(e + 1) *)
       m := m DIV 2; INC(e)
@@ -393,7 +395,26 @@ MODULE DecimalToDouble;
     IF e > highest THEN RETURN FALSE END;
     mantissa := m; exponent := e;
     RETURN TRUE
+  END Round;
+
+  PROCEDURE RoundedParts*(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER;
+                          VAR mantissa: LONGINT; VAR exponent: INTEGER): BOOLEAN;
+    VAR halfway: BOOLEAN;
+  BEGIN
+    RETURN Round(lexeme, precision, lowest, highest, mantissa, exponent, halfway)
   END RoundedParts;
+
+  (* Whether the numeral lexeme, as RoundedParts reads it, lies exactly
+     halfway between two numbers of precision bits, where rounding ties
+     away from zero, as MACRO-32 does (MACRO 9.2.8.3), can give another
+     number than RoundedParts's ties to even. Phase 18 step 6d
+     (doc/developer/vax-object-language.md, section 17.6): the VAX
+     backend's MACRO-32 spells such a constant otherwise. *)
+  PROCEDURE Halfway*(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER): BOOLEAN;
+    VAR m: LONGINT; e: INTEGER; halfway: BOOLEAN;
+  BEGIN
+    RETURN Round(lexeme, precision, lowest, highest, m, e, halfway) & halfway
+  END Halfway;
 
   (* The value of the numeral lexeme rounded to precision bits, its last
      bit's binary exponent at least lowest, into value; FALSE, value

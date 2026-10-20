@@ -13,14 +13,18 @@ rtl=../../../rtl/vax
 programs="bigindex openindex shortrange chrrange"
 written="Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar GarbageCollectedHeap.mar"
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for name in $programs; do
   cp ../llvm-cardinal-traps/$name.mod .
   rm -f *.sym $name.com
-  poc -range-checks -target vax-dec-vms -import-path $rtl -build $name.mod >>result 2>&1
+  poc -range-checks -target vax-dec-vms $vax_way_option -import-path $rtl -build $name.mod >>result 2>&1
   echo "VAX build $name exit $?" >>result
 done
 vax_do guest-run.com guest-run.expected bigindex.com openindex.com shortrange.com chrrange.com \
   bigindex.mar openindex.mar shortrange.mar chrrange.mar $written $rtl/PocRtl.mar
+}
+vax_build builds
 for name in $programs; do rm -f $name.mod $name.mar $name.com; done
-rm -f *.sym $written
+rm -f *.sym $written *.obj
 . ../../testresult.sh

@@ -18,10 +18,12 @@ sed -e 's/"nowhere; riders\.sub ;\."/"nowhere, [.RIDERSSUB] ,[]"/' \
 cp $src/signed.mod signed.mod
 rm -f riders.com signed.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym *.mar
   for program in riders signed; do
-    poc $model -target vax-dec-vms -import-path $rtl -build $program.mod >>result 2>&1
+    poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build $program.mod >>result 2>&1
     echo "VAX build $program $model exit $?" >>result
   done
   # llvm-files-riders' expected for this model, without its headings
@@ -32,5 +34,7 @@ for model in -O2 -OC; do
   vax_do guest-run.com guest.expected riders.com riders.mar signed.com signed.mar Files.mar Platform.mar \
     GarbageCollectedHeap.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 done
-rm -f *.sym *.mar riders.com signed.com riders.mod signed.mod guest.expected
+}
+vax_build builds
+rm -f *.sym *.mar riders.com signed.com riders.mod signed.mod guest.expected *.obj
 . ../../testresult.sh

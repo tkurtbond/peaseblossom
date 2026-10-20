@@ -1955,3 +1955,57 @@ as amended then (one option for each kind of output).
 - The VAX/VMS Guide's chapter 3 ("From objects or from MACRO-32") tells
   how to send objects (binary) and procedures (ASCII); chapter 1,
   Appendix A and the kit's `README.TXT` list `OBJCONVERT`.
+
+### 17.6 Piece 6d: every VAX fixture both ways (done 2026-10-20)
+
+- **`vax_build`** (`test/vaxfixture.sh`) calls a fixture's function of
+  its builds once for each way of `VAX_WAYS` (both, `macro32` first, by
+  default), with `$vax_way_option` set to `-vax-macro32` or
+  `-vax-objects`, and compares what the second way added to `result`
+  with what the first did: one `expected` serves both, and a difference
+  is reported as which way printed otherwise. In the objects way
+  `vax_files` sends each `<Module>.obj` the way wrote in place of its
+  `.mar`, except `PocRtl.mar` and a hand-written `hand-<name>.mar`,
+  which are MACRO's in both. 58 fixtures were converted. A guest
+  procedure that names its files (`vax-assert`, `vax-traps`,
+  `vax-cardinal-traps`) looks for the `.MAR` and uses the `.OBJ` when
+  there is none, and deletes only what it made.
+- **Left as they are**: `vax-library`, `vax-build` and
+  `vax-build-objects` (6a and 6b test both ways already);
+  `vax-hello` (hand-written MACRO); `vax-debug-records` (objects
+  only); `vax-cardinal` and `vax-for-loop-end` (their `guest-link.com`
+  links objects already); `vax-traceback` (MACRO's traceback, by
+  design); `vax-poc` and `doc-vax-guide` (6e). The `run-*.dbg`
+  fixtures stay MACRO's (17.2, item 9).
+- **`make test-vax`** (`tools/vax-suite`) builds each program both
+  ways, `P<n>` from MACRO-32 and `O<n>` from objects, sent as
+  `O<n>_<module>.obj` with the procedure's names changed to match, and
+  checks both against the host's build. A traceback from poc's objects
+  names each routine and its line from the debugger records (section
+  16), where MACRO's says `POC_CODE`: such a difference is in the
+  fixture's `expected-vax-objects-<program>...` files, read first in
+  the objects way (12 so far, in `llvm-entier-trap`,
+  `llvm-no-trap-behavior`, `llvm-overflow-wrap` and
+  `llvm-range-checks`; `-O2` and `-OC` print the same).
+- **A real numeral exactly halfway** between two numbers of the VAX
+  format, such as `1.0D23` and `8.41D21` for a G_floating, MACRO rounds
+  away from zero (MACRO 9.2.8.3), where the front end, the encoder and
+  the LLVM backend round to even, so that the two ways printed
+  different last digits (`vax-real-digits`). Decided with the user
+  (2026-10-20): the MACRO-32 writer spells such a constant as the
+  front end's value in 9 (F) or 17 (G) significant digits, never
+  halfway (`VaxCodeGenerator.NotHalfway`, `DecimalToDouble.Halfway`):
+  `#9.9999999999999992E22`. Any other numeral is written as before.
+  `vax-real-digits`' expected output is now IEEE's.
+- **`vax-vmsdef`** checks that the library holds all 243 modules.
+- **The guest time**, measured on atla:
+
+  | Run | Time |
+  |---|---|
+  | `make test-vax`, both ways | 51.5 minutes (the host's part about 1) |
+  | the 58 fixtures, both ways, `-j 2` | 44.8 minutes |
+  | the 58 fixtures, MACRO-32 only | 25.5 minutes |
+
+  Both ways add about 19 minutes to `make check`. Decided by the user
+  (2026-10-20): `make check` runs both; `VAX_WAYS` narrows it while
+  working.

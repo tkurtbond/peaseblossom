@@ -728,8 +728,10 @@ test-misc: build $(VAX_IMAGE_BIN)
 # PLAN.md Phase 16 step 5: the programs test/vax-suite.list names, built
 # for the VAX and run on the VAX/VMS development system, each compared with
 # the same program built by the LLVM backend and run here (tools/vax-suite;
-# doc/developer/vax-macro32-backend.md, section 16). Not part of make test:
-# it needs the guest, and holds it for the whole run.
+# doc/developer/vax-macro32-backend.md, section 16), each built both ways,
+# from MACRO-32 and from poc's objects (VAX_WAYS=macro32 or objects for one;
+# Phase 18 step 6d). Not part of make test: it needs the guest, and holds it
+# for the whole run.
 test-vax: build
 	tools/vax-suite
 

@@ -23,16 +23,20 @@ cp $src/Greeter.Mod Greeter.Mod
 rm -f commands.com haltcode.com halt.com assertcode.com assertzero.com
 : >result
 vax_mar commands -import-path $rtl
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym $written
   for p in $programs; do
-    poc $model -target vax-dec-vms -import-path $rtl -build $p.mod >>result 2>&1
+    poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build $p.mod >>result 2>&1
     echo "VAX build $p $model exit $?" >>result
   done
   vax_do guest-run.com guest-run.expected commands.com haltcode.com halt.com assertcode.com assertzero.com \
     commands.mar haltcode.mar halt.mar assertcode.mar assertzero.mar Greeter.mar Modules.mar Out.mar \
     LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar Platform.mar GarbageCollectedHeap.mar $rtl/PocRtl.mar
 done
+}
+vax_build builds
 rm -f *.sym $written commands.com haltcode.com halt.com assertcode.com assertzero.com
-rm -f commands.mod haltcode.mod halt.mod assertcode.mod assertzero.mod Greeter.Mod
+rm -f commands.mod haltcode.mod halt.mod assertcode.mod assertzero.mod Greeter.Mod *.obj
 . ../../testresult.sh

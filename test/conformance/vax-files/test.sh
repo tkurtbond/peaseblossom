@@ -16,6 +16,8 @@ made="FILESOUT.TXT FILESOUT.BIN FILESOUT.STR FILESOUT.EMP FILESVAR.TXT FILESVFC.
 rm -f FilesOut.com $made
 : >result
 vax_mar FilesUse -import-path $rtl
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym
   poc $model -o vax-files -build FilesOut.mod >>result 2>&1
@@ -27,10 +29,12 @@ for model in -O2 -OC; do
   rm -f $made
   cmp -s output output.expected || { echo "the LLVM backend's output, $model:" >>result; diff output.expected output >>result; }
   rm -f *.sym
-  poc $model -target vax-dec-vms -import-path $rtl -build FilesOut.mod >>result 2>&1
+  poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build FilesOut.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
   vax_do guest-run.com guest-run.expected FilesOut.com FilesOut.mar Files.mar Platform.mar GarbageCollectedHeap.mar \
     Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 done
-rm -f output
+}
+vax_build builds
+rm -f output *.obj
 . ../../testresult.sh

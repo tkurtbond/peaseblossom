@@ -125,7 +125,7 @@ MODULE VaxCodeGenerator;
      and SHORT of one that does not fit, trap. *)
 
   IMPORT Diagnostics, Lexer, SyntaxTree, SymbolTable, Types, ConstantEvaluator, SemanticActions,
-    ModuleInterface, MethodSlots, VaxTypes, VaxImage, VaxInstructions, NestedProcedures;
+    ModuleInterface, DecimalToDouble, MethodSlots, VaxTypes, VaxImage, VaxInstructions, NestedProcedures;
 
   CONST
     tab = 9X;
@@ -2794,7 +2794,8 @@ MODULE VaxCodeGenerator;
      (MACRO 9.2.8.3): the numeral as written when the value is one
      (Types.ValueDesc.realText, its "D" made "E"), else the shortest text
      that reads back to the value (ModuleInterface.FormatReal), as for a
-     .sym file. Zero is "0.0": the VAX has no -0.0, and MACRO writes the
+     .sym file, spelt otherwise when MACRO would round it away from the
+     front end's value (NotHalfway). Zero is "0.0": the VAX has no -0.0, and MACRO writes the
      sign of #-0.0, which makes it a reserved operand. MAX and MIN of the
      type, IEEE 754's largest values as the front end folds them, are the
      VAX format's largest instead, half as much (when poc runs on the VAX
@@ -2803,6 +2804,42 @@ MODULE VaxCodeGenerator;
      those is an error, as it is to MACRO. A value too small for the
      format is 0, as MACRO and the hardware make it (checked on the
      development system). *)
+  (* text, a real numeral for MACRO-32 of the type t, unchanged unless it
+     lies exactly halfway between two numbers of t's VAX format
+     (DecimalToDouble.Halfway), where MACRO rounds away from zero (MACRO
+     9.2.8.3, which 1.0E23 meets for a G_floating) and the front end, the
+     encoder of poc's objects and the LLVM backend round to even: then
+     the number they round to, in 9 significant digits for an F_floating
+     or 17 for a G_floating, which are never halfway (10^-8 < 2^-24 and
+     10^-16 < 2^-53 make the digits' spacing below half the format's).
+     Phase 18 step 6d (doc/developer/vax-object-language.md, section
+     17.6). *)
+  PROCEDURE NotHalfway(t: Types.Type; VAR text: ARRAY OF CHAR);
+    VAR numeral, digits: ARRAY 64 OF CHAR; value: LONGREAL; i, j, precision, exponent10: INTEGER; halfway: BOOLEAN;
+  BEGIN
+    i := 0; IF (text[0] = "-") OR (text[0] = "+") THEN i := 1 END;
+    j := 0;
+    WHILE (text[i] # 0X) & (j < LEN(numeral) - 1) DO numeral[j] := text[i]; INC(i); INC(j) END;
+    numeral[j] := 0X;
+    IF t = Types.Real THEN
+      halfway := DecimalToDouble.Halfway(numeral, 24, -151, 103);
+      precision := 9
+    ELSE
+      halfway := DecimalToDouble.Halfway(numeral, 53, -1076, 970);
+      precision := 17
+    END;
+    IF halfway THEN
+      IF t = Types.Real THEN value := DecimalToDouble.ParseSingle(numeral)
+      ELSE value := DecimalToDouble.Parse(numeral)
+      END;
+      DecimalToDouble.Digits(value, precision, digits, exponent10);
+      IF text[0] = "-" THEN COPY("-", text) ELSE text[0] := 0X END;
+      AppendChar(text, digits[0]); AppendChar(text, ".");
+      i := 1; WHILE i < precision DO AppendChar(text, digits[i]); INC(i) END;
+      AppendChar(text, "E"); AppendInt(text, exponent10)
+    END
+  END NotHalfway;
+
   PROCEDURE RealConstant(v: Types.Value; line, column: INTEGER): Operand;
     VAR bound: Types.Value; magnitude, largest: LONGREAL; text: ARRAY 64 OF CHAR; ok: BOOLEAN; i: INTEGER;
         message: ARRAY 256 OF CHAR;
@@ -2830,6 +2867,7 @@ MODULE VaxCodeGenerator;
     END;
     i := 0;
     WHILE text[i] # 0X DO IF text[i] = "D" THEN text[i] := "E" END; INC(i) END;
+    NotHalfway(v.type, text);
     RETURN RealImmediate(v.type, text)
   END RealConstant;
 
@@ -6161,6 +6199,7 @@ MODULE VaxCodeGenerator;
           END;
           i := 0;
           WHILE text[i] # 0X DO IF text[i] = "D" THEN text[i] := "E" END; INC(i) END;
+          NotHalfway(obj.type, text);
           value := VaxInstructions.RealNumeral(text)
         END
       END;

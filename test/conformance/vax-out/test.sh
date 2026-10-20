@@ -16,6 +16,8 @@ rtl=../../../rtl/vax
 rm -f OutBasics.com OutUnfinished.com
 : >result
 vax_mar OutBasics -import-path $rtl
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym
   poc $model -o vax-out -build OutBasics.mod >>result 2>&1
@@ -23,14 +25,16 @@ for model in -O2 -OC; do
   ./vax-out >output 2>&1
   cmp -s output output$model.expected || { echo "the LLVM backend's output, $model:" >>result; diff output$model.expected output >>result; }
   rm -f *.sym
-  poc $model -target vax-dec-vms -import-path $rtl -build OutBasics.mod >>result 2>&1
+  poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build OutBasics.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
   { echo "build status: %X10000001"; cat output$model.expected; echo "run status: %X00000001"; } >guest-run.expected
   vax_do guest-run.com guest-run.expected OutBasics.com OutBasics.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 done
 rm -f *.sym
-poc -target vax-dec-vms -import-path $rtl -build OutUnfinished.mod >>result 2>&1
+poc -target vax-dec-vms $vax_way_option -import-path $rtl -build OutUnfinished.mod >>result 2>&1
 echo "VAX build OutUnfinished exit $?" >>result
 vax_do guest-unfinished.com guest-unfinished.expected OutUnfinished.com OutUnfinished.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
-rm -f output guest-run.expected
+}
+vax_build builds
+rm -f output guest-run.expected *.obj
 . ../../testresult.sh

@@ -11,9 +11,14 @@
 rm -f VaxOpenArrays.com
 : >result
 vax_mar VaxOpenArrays
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
-  poc $model -target vax-dec-vms -build VaxOpenArrays.mod >>result 2>&1
+  poc $model -target vax-dec-vms $vax_way_option -build VaxOpenArrays.mod >>result 2>&1
   echo "build $model exit $?" >>result
   vax_do guest-run.com guest-run.expected VaxOpenArrays.com VaxOpenArrays.mar ../../../rtl/vax/PocRtl.mar
 done
+}
+vax_build builds
+rm -f *.obj
 . ../../testresult.sh

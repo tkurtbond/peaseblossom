@@ -33,11 +33,15 @@ echo "host build and run exit $?" >>result
   echo 'run status: %X00000001'
 } >texts.expected
 rm -rf host
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 rm -f *.sym $written TextsUse.com FileBytes.com
 for p in TextsUse FileBytes; do
-  poc -target vax-dec-vms -import-path $rtl -build $p.mod >>result 2>&1
+  poc -target vax-dec-vms $vax_way_option -import-path $rtl -build $p.mod >>result 2>&1
   echo "VAX build $p exit $?" >>result
 done
 vax_do guest-run.com texts.expected TextsUse.com FileBytes.com $written $rtl/PocRtl.mar
-rm -f *.sym $written TextsUse.com FileBytes.com TextsUse.mod texts.expected
+}
+vax_build builds
+rm -f *.sym $written TextsUse.com FileBytes.com TextsUse.mod texts.expected *.obj
 . ../../testresult.sh

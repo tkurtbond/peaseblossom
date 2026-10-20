@@ -14,6 +14,8 @@ rtl=../../../rtl/vax
 rm -f NestedOut.com
 : >result
 vax_mar VaxNested
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym
   poc $model -o vax-nested -build NestedOut.mod >>result 2>&1
@@ -21,10 +23,12 @@ for model in -O2 -OC; do
   ./vax-nested >output 2>&1
   cmp -s output output.expected || { echo "the LLVM backend's output, $model:" >>result; diff output.expected output >>result; }
   rm -f *.sym
-  poc $model -target vax-dec-vms -import-path $rtl -build NestedOut.mod >>result 2>&1
+  poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build NestedOut.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
   { echo "build status: %X10000001"; cat output.expected; echo "run status: %X00000001"; } >guest-run.expected
   vax_do guest-run.com guest-run.expected NestedOut.com NestedOut.mar GarbageCollectedHeap.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar
 done
-rm -f output guest-run.expected
+}
+vax_build builds
+rm -f output guest-run.expected *.obj
 . ../../testresult.sh

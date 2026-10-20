@@ -165,10 +165,14 @@ vax_runs() {
 # traceback line's last two columns), which any change to the code moves,
 # are masked as xxxxxxxx in both before they are compared, as
 # tools/vax-suite masks them, and POC2's home directory is written as
-# POC's, which the debugger names when it opens a source file.
+# POC's, which the debugger names when it opens a source file. A file
+# pattern that matched nothing is left out; in vax_build's objects way,
+# each <Module>.mar is sent as the <Module>.obj beside it (vax_files).
 vax_do() {
   vax_tools=../../../tools
   vax_proc=$1; vax_expected=$2; shift 2
+  vax_files "$@"
+  eval "set -- $vax_files"
   vax_repeat=
   case ${VAX_REPEAT:-} in
     ""|*[!0-9]*|0|1) ;;
@@ -206,4 +210,72 @@ vax_do() {
   else
     echo "SKIPPED: running $vax_proc on the VAX (no VAX development system here)"
   fi
+}
+
+# vax_build <function> [<argument>...]: the program built and run both ways
+# (doc/developer/vax-object-language.md, section 17.2, proposal 9):
+# <function> <argument>... is called once for each way of $VAX_WAYS
+# (default "macro32 objects"; one alone while working), with vax_way the
+# way and vax_way_option poc's option for it, -vax-macro32 or
+# -vax-objects, which the function gives each of its poc commands that
+# build for vax-dec-vms. What a later way adds to result must be what the
+# first added - the same poc messages and exit statuses, the same guest
+# output - and is then left out, so that result is the first way's alone;
+# otherwise the difference is added in its place.
+vax_build() {
+  vax_build_first=
+  for vax_way in ${VAX_WAYS:-macro32 objects}; do
+    case $vax_way in macro32|objects) ;; *) echo "VAX_WAYS: no way $vax_way" >>result; continue ;; esac
+    vax_way_option=-vax-$vax_way
+    touch vax-way.stamp
+    vax_build_lines=$(wc -l <result)
+    "$@"
+    if [ -z "$vax_build_first" ]; then
+      vax_build_first=$vax_way
+      tail -n +$((vax_build_lines + 1)) result >vax-way.first
+    else
+      tail -n +$((vax_build_lines + 1)) result >vax-way.this
+      head -n "$vax_build_lines" result >vax-way.result
+      if ! diff vax-way.first vax-way.this >vax-way.diff; then
+        echo "built $vax_way, $1 printed otherwise than built $vax_build_first:" >>vax-way.result
+        cat vax-way.diff >>vax-way.result
+      fi
+      mv vax-way.result result
+    fi
+  done
+  rm -f vax-way.stamp vax-way.first vax-way.this vax-way.diff
+  unset vax_way vax_way_option
+}
+
+# vax_files <file>...: vax_do's files, quoted for eval in vax_files: a
+# pattern that matched nothing (still holding a "*") left out, and in
+# vax_build's objects way each <Module>.mar replaced by the <Module>.obj
+# the way wrote beside it, once, but PocRtl.mar and a hand-written
+# hand-<name>.mar, which are MACRO's in both ways; a .mar with no such
+# object goes to result, since the way must have written every module's.
+vax_files=
+vax_files() {
+  vax_files=
+  for vax_file; do
+    case $vax_file in *'*'*) [ -e "$vax_file" ] || continue ;; esac
+    if [ "${vax_way:-}" = objects ]; then
+      case $vax_file in
+        */PocRtl.mar|PocRtl.mar|*/hand-*.mar|hand-*.mar) ;;
+        *.mar)
+          vax_object=${vax_file%.mar}.obj
+          if [ -f "$vax_object" ] && ! [ vax-way.stamp -nt "$vax_object" ]; then
+            vax_file=$vax_object
+          else
+            echo "built objects, $vax_file has no object" >>result
+          fi ;;
+        *.obj)
+          # one named with its .mar, or of the other way
+          [ -f vax-way.stamp ] && [ vax-way.stamp -nt "$vax_file" ] && continue ;;
+      esac
+      case " $vax_files " in *" '$vax_file' "*) continue ;; esac
+    elif [ "${vax_way:-}" = macro32 ]; then
+      case $vax_file in *.obj) [ -f vax-way.stamp ] && [ vax-way.stamp -nt "$vax_file" ] && continue ;; esac
+    fi
+    vax_files="$vax_files '$vax_file'"
+  done
 }
