@@ -2058,3 +2058,128 @@ object converts itself on VMS; every VAX fixture and `make test-vax`
 run both ways, with the same output; and poc on VMS builds from
 objects, the same objects poc elsewhere writes with `-vax-objects`.
 Step 7, the bootstrap over objects, is next.
+
+## 18. Step 7: the bootstrap over objects, and the exit gate (decided 2026-10-20)
+
+Step 6 made poc's objects what poc builds with, on VMS by default, and
+showed that poc on VMS writes the objects poc elsewhere writes. Step 7
+(`PLAN.md`) is the phase's gate: poc for VAX/VMS rebuilt from its own
+objects on the guest, the V1/V2/V3 fixed point of Phase 16 step 6 over
+`.OBJ` files, with no `MACRO` for the modules poc compiles, and every
+VAX suite passing. This section is the design, approved by the user as
+proposed on 2026-10-20.
+
+### 18.1 How poc for VMS is built today
+
+- **`tools/bootstrap/vax-v1`** cross-compiles poc's source here with
+  `-build` and poc's default off VMS, MACRO-32: 42 `.mar` files (4.7 MB)
+  and `Poc.com`. Four tools use it: `vax-stages`, `make-vax-kit` (and so
+  `check-vax-kit`), `vax-guest-poc` and the fixture `vax-poc`, all of
+  which link V1 on the guest by `MACRO/OBJECT POCRTL.MAR` and `@POC`,
+  which assembles every module.
+- **`vax-stages`** compiles V2 and V3 on the guest with `-vax-macro32`
+  (since 6a, which made objects the default on VMS) and brings their
+  `.mar` files back, which must equal V1's byte for byte; `POC.COM` is
+  compared after its first line. Each stage's link assembles poc's 42
+  modules again.
+- **The kits** carry V1's `.mar` and are built on the site by `MACRO`,
+  `LIBRARY` and `LINK` (section 17.2, proposal 2: a kit is text).
+- **Found while writing this**: `check-vax-kit -full` has the kit's poc
+  compile `[.SRC]` with no way given, so since 6a it writes objects,
+  and the comparison with `[.KIT]`'s `.mar` files would find none. It
+  has not been run since 6a.
+
+### 18.2 Proposals
+
+1. **`vax-v1` takes the way**: `vax-v1 [-vax-objects | -vax-macro32]`,
+   passed to the host's poc; the default stays MACRO-32, poc's own
+   default off VMS. With objects it writes each module's `.obj` (the
+   counted form, section 10) and a `Poc.com` with the conversion lines
+   (section 17.5), and no `.mar`. `make-vax-kit` asks for
+   `-vax-macro32` by name. V1 is written under one
+   `SOURCE_DATE_EPOCH` (below), in either way.
+2. **`vax-stages` builds over objects by default**: `vax-stages [-way
+   objects|macro32] [-to v1|v2|v3] [-install] [-keep]`. With objects:
+   - V1's objects go to the guest in binary and are converted on
+     arrival (`tools/vax-do`'s default); its `Poc.com`'s own conversion
+     lines then leave them alone.
+   - V2 and V3 compile with poc's default on VMS, objects (no
+     `-vax-macro32`), and their `POC.COM` links them with no `MACRO`.
+   - Every stage, V1's cross-compile included, runs under one
+     `SOURCE_DATE_EPOCH` (an environment variable here, a logical name
+     in `VAXBOOT.COM`), so that every module header's time is the same
+     and the objects can be compared whole, nothing masked but the
+     source file record (proposal 3).
+   - `-way macro32` runs the bootstrap as Phase 16 did (`vax-v1
+     -vax-macro32`, V2 and V3 with `-vax-macro32`, `.mar` compared), so
+     that the way the kits build stays testable on its own.
+   - `-install` copies the last stage's image to `[.BIN]POC.EXE` as now;
+     with objects it is the image linked from poc's own objects.
+3. **The comparison** uses 6e's: on the guest each stage's objects are
+   dumped (`DUMP/RECORDS`, one `.DMP` text per module) and come back by
+   FTP in ASCII; here each is read back into records and compared,
+   record by record, with V1's counted object read the same way. The
+   functions that do this (`counted_records`, `dumped_records`,
+   `src_record`, `without_conversions` in `tools/vax-guest-poc`) move to
+   a file both tools source, `tools/vax-objects.sh`. Compared:
+   - every record whole, but the source file record (the header's
+     `SRC`, subtype 2), which holds the file as found - a Unix path for
+     V1, a VMS file specification for V2 and V3 - and is compared by
+     the file's name alone, lowercased. This is the "creation
+     attributes" `PLAN.md` allows for: the file's RMS attributes are not
+     records and are not compared;
+   - `POC.COM` after its first line and less V1's conversion lines;
+   - the number of objects each stage writes, which must be V1's, and
+     the number of `.MAR` files, which must be none.
+   V2 and V3 are compared with V1, so V3 = V2 follows. The dumps are
+   larger than the objects (hexadecimal text); their transfer is measured in 7b
+   (an alternative, if it is slow: V3 compared with V2 on the guest by
+   `DIFFERENCES`, and only V2 brought back).
+4. **"No `MACRO`"** means none for the modules poc compiles (section
+   17.2, proposal 7): `PocRtl.mar`, hand-written, is assembled once,
+   at the start of `VAXBOOT.COM` and before V1's link, and each stage
+   links with that `POCRTL.OBJ`. The run shows it: `VAXBOOT.COM` runs
+   `MACRO` once, and the script checks that it does (counting the
+   lines that run it in the procedure it writes) and that no stage's
+   `POC.COM` has a `MACRO` line.
+5. **The kits stay MACRO-32.** A kit is text so that any transfer
+   carries it and a site needs nothing but VMS (section 17.2, proposal
+   2); carrying objects would need them encoded as text and a decoder
+   built on the site, which would itself be MACRO-32 or a program poc
+   built - the problem the kit solves. A site that has built the kit
+   rebuilds poc from objects with the kit's poc, whose default on VMS
+   is objects. `check-vax-kit -full` passes `-vax-macro32` to the kit's
+   poc (the fix for 18.1's finding), so its fixed point stays the kit's
+   `.mar`.
+6. **poc on the guest in the tests links from objects too**:
+   `vax-guest-poc` and `vax-poc` link V1 from `vax-v1 -vax-objects`, so
+   the only `MACRO` in either run is `PocRtl.mar`'s and every run that
+   uses poc on the guest also runs the largest program poc's objects
+   make. `vax-guest-poc` sends V1's objects in binary, as `vax-do` does,
+   beside its ASCII uploads. (The alternative: they keep linking from
+   MACRO-32, which `-way macro32` and the kits still test.)
+7. **The exit gate**, after the pieces below, on one tree:
+   - `make check` on atla, cymoril, artos and alerik (every VAX fixture
+     both ways, section 17.6);
+   - `make vax-stages` (objects): V1 = V2 = V3, with each stage's time
+     beside Phase 16's;
+   - `make check-vax-kit CHECK_VAX_KIT_FLAGS=-full`: the kits and their
+     MACRO-32 fixed point;
+   - `make test-vax` (both ways), `make test-vax-asts` (Phase 17's AST
+     fixtures, repeated) and a full `make test-vax-guest-poc`;
+   - rackhir (FreeBSD arm64) on the pushed closing commit, as at each
+     phase's close-out.
+8. **Closing the phase**: `doc/history/phases/phase-18.md` (the record,
+   from `PLAN.md`'s Phase 18 text and this document's step records),
+   `PLAN.md` trimmed to a summary, `AGENTS.md`'s project state, and
+   `tools/bootstrap/README.md`'s V1-V3 paragraph. Merging `vax-obj`
+   into `main`, and whether a release follows, are the user's to decide.
+9. **Pieces**, each leaving `make check` passing:
+   - **7a**: `vax-v1`'s way, `tools/vax-objects.sh` (from
+     `vax-guest-poc`, which then sources it), `make-vax-kit`'s
+     `-vax-macro32`, and `check-vax-kit -full`'s fix.
+   - **7b**: `vax-stages` over objects and `-way macro32`; one run of
+     each, the objects one with the times.
+   - **7c**: `vax-guest-poc` and `vax-poc` linking V1 from objects
+     (proposal 6, if approved).
+   - **7d**: the exit gate and the phase's close-out.

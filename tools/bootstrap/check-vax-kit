@@ -19,8 +19,10 @@
 #   tools/bootstrap/check-vax-kit [-full]
 #
 # -full also has the kit's poc compile [.SRC], poc's own source, under -OC
-# from source alone (-clear-library-path), as vax-stages' V2 does, and
-# compares each .mar it writes with the kit's own [.KIT]: the fixed point,
+# from source alone (-clear-library-path), as vax-stages' V2 does, as
+# MACRO-32 (-vax-macro32: poc's default on VMS is objects; PLAN.md Phase 18
+# step 7, doc/developer/vax-object-language.md, section 18), and compares
+# each .mar it writes with the kit's own [.KIT]: the fixed point,
 # about 45 minutes more. What the guest prints is compared, but for the
 # times and the unpacking's, with what this host expects; BUILD.COM's log
 # comes back as build/vax-kit/KITBUILD.LOG. [.KITCHECK] is deleted at the
@@ -180,7 +182,8 @@ DCL
   if [ "$full" -eq 1 ]; then
     cat <<'DCL'
 $ ! poc's own source, compiled by the kit's poc from source alone, in
-$ ! [.FULL], each .mar copied home as F<NAME>.MAR
+$ ! [.FULL], as MACRO-32 (on VMS poc writes objects unless told), each
+$ ! .mar copied home as F<NAME>.MAR, to be the kit's
 $ CREATE/DIRECTORY [.FULL]
 $ SET DEFAULT [.FULL]
 $ T0 = F$TIME()
@@ -188,6 +191,7 @@ $ ! the arguments in a response file, one a line, the command being
 $ ! longer than DCL's
 $ CREATE FULL.ARGS
 -OC
+-vax-macro32
 -clear-library-path
 -import-path
 [-.SRC.FRONT]

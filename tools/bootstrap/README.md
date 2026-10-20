@@ -27,9 +27,11 @@ The bootstrap on VAX/VMS (`PLAN.md` Phase 16 step 6;
 `doc/developer/vax-macro32-backend.md`, section 17) has stages of its own,
 named V1-V3, run on the VAX/VMS development system:
 
-- **V1** (`vax-v1`): the host's poc cross-compiles poc's own source, with
-  `rtl/vax` and a `BuildInfo` for a poc that runs on VMS, to `.mar` files
-  and `Poc.com` in `build/vax-bootstrap/v1`. It does not use the guest.
+- **V1** (`vax-v1 [-vax-macro32 | -vax-objects]`): the host's poc
+  cross-compiles poc's own source, with `rtl/vax` and a `BuildInfo` for a
+  poc that runs on VMS, to `.mar` files (the default, which the kits
+  carry) or objects (`-vax-objects`, Phase 18 step 7) and `Poc.com` in
+  `build/vax-bootstrap/v1`. It does not use the guest.
   poc for VMS has no LLVM back end (Phase 17 step 7): V1 is built with
   `src/driver/no-llvm`'s `LLVMBackEnd` on the import path, and neither
   `src/driver/llvm` nor `src/back/llvm`.
