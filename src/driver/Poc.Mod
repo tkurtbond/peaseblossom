@@ -1876,8 +1876,8 @@ MODULE Poc;
     END;
     ProgramTopName(modules, topName);
     IF (exePath[0] = 0X) & ~VaxImagePaths(topName, comPath, image) THEN RETURN END;
-    (* each command table copied beside the modules' .mar files; its
-       object must not be a module's *)
+    (* each command table copied beside the modules' .mar or .obj files;
+       its object must not be a module's *)
     units := VaxUnits(modules, FALSE);
     tables := NIL; tablesTail := NIL; table := commandTables;
     WHILE table # NIL DO
@@ -1885,7 +1885,9 @@ MODULE Poc;
       WHILE (u # NIL) & ~VaxToolchainDriver.IsSameVmsName(u.name, table.name) DO u := u.next END;
       IF u # NIL THEN
         failed := TRUE; Err.String("poc: "); Err.String(table.path); Err.String(" has the file name of module ");
-        Err.String(u.name); Err.String("'s .mar"); Err.Ln;
+        Err.String(u.name);
+        IF vaxObjects THEN Err.String("'s .obj") ELSE Err.String("'s .mar") END;
+        Err.Ln;
         RETURN
       END;
       Directories.MakePath(outputDir, table.name, path); Strcat(path, ".cld");

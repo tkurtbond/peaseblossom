@@ -1702,7 +1702,7 @@ fixture with a run needed the debugger.
 - **The program's start** (`<MODULE>_MAIN`) has no source, so no line;
   the module's body and start keep their VAX names.
 
-## 17. Step 6: wiring it in (decided 2026-10-19)
+## 17. Step 6: wiring it in (decided 2026-10-19, done 2026-10-20)
 
 Steps 2-5 made poc's objects, each one's image MACRO's byte for byte,
 with traceback and debugger records MACRO's lack, but only
@@ -2009,3 +2009,52 @@ as amended then (one option for each kind of output).
   Both ways add about 19 minutes to `make check`. Decided by the user
   (2026-10-20): `make check` runs both; `VAX_WAYS` narrows it while
   working.
+
+### 17.7 Piece 6e: poc on VMS builds with objects (done 2026-10-20)
+
+- **`make test-vax-guest-poc`** (`tools/vax-guest-poc`): group A builds
+  each program on the guest with poc's default there, objects written
+  through `RecordFiles`, and here with `-vax-objects`, both with the
+  same `SOURCE_DATE_EPOCH` (a logical name on the guest, which
+  `Platform.getEnv` reads), so that the module headers' times match.
+  The guest `DUMP/RECORDS` each object it wrote and the dumps come back
+  as text, since an object sent in binary loses its record boundaries;
+  here each dump is read back into records (a dump line's longwords,
+  byte-reversed, are the record's bytes in order) and compared record
+  by record with the host's object read the same way. The source file
+  record (`SRC`, the debugger's) is compared by the file's name alone,
+  in lowercase: it holds the file as found, a Unix path here and a VMS
+  file specification there. The procedures are compared less the
+  host's conversion lines (section 17.5). Programs built with
+  `-trap-location` stay MACRO-32 on both sides (`-vax-macro32`), whose
+  `.mar` files the group compares as before, and so do those whose
+  fixture has an `expected-vax-guest-<key>.diff`: the one difference
+  the user accepted (`llvm-real-constant-folding`'s check 9, a halfway
+  case the VAX's arithmetic rounds away from zero; 2026-10-11) was
+  reviewed as a line of MACRO-32, and in objects it moves every later
+  offset. The full run on 2026-10-20 (114 minutes, with `make check`
+  sharing the guest) passed 346 of 348 and failed only those two,
+  which pass built that way.
+- **`vax-poc`**: after `POC.EXE`'s option checks, the guest builds
+  `Sums.mod`, a program that imports nothing, with `POC -BUILD` and its
+  default, objects; its procedure must be the one this poc writes with
+  `-vax-objects`, less the conversion lines and with the source named
+  as DCL passes it, in capitals; `@SUMS` links it (status
+  `%X10000001`, a procedure's) and `SUMS.EXE` prints its sums.
+- **The VAX/VMS Guide**: chapter 16 starts from poc's own objects, a
+  traceback by Oberon names and lines and the debugger by the source,
+  and then tells what is different for a program built from MACRO-32
+  (hashed names, no lines without `/DEBUG`, the kilobyte limit, the
+  debugger on `.MAR` files); `doc-vax-guide` builds Fault with
+  `-vax-objects` and with `-g -vax-objects` and runs the sessions from
+  those procedures. Chapter 4 says a library is built from objects by
+  default on VMS and how to send one from Unix. poc(1) and the
+  Reference Guide's `-target` row and `-g` name the objects way; a
+  command table that clashes with a module names its `.obj` in that way.
+
+**Step 6 done** (2026-10-20). poc builds a program or a library either
+way, objects by default on VMS and MACRO-32 elsewhere; a cross-built
+object converts itself on VMS; every VAX fixture and `make test-vax`
+run both ways, with the same output; and poc on VMS builds from
+objects, the same objects poc elsewhere writes with `-vax-objects`.
+Step 7, the bootstrap over objects, is next.

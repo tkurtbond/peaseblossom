@@ -2408,7 +2408,10 @@ MB. These are privileged changes the user makes on the guest.
 **Done: the guest's limits raised (the user, 2026-10-11).** The VAX
 has 256 MB again (524,288 pages), `VIRTUALPAGECNT` is 350,000,
 `PAGEFILE.SYS` 350,000 blocks, and `POC`'s `PGFLQUOTA` 300,000 pages,
-`WSQUOTA` 8,192 and `WSEXTENT` 16,384.
+`WSQUOTA` 8,192 and `WSEXTENT` 16,384. (Raised since: on 2026-10-20
+`AUTHORIZE` showed `WSQUOTA` 32,768 and `WSEXTENT` 200,000, and
+`SYSGEN` `VIRTUALPAGECNT` 600,000; `POC2` has the same quotas as `POC`
+since 2026-10-19.)
 
 **Real constants when poc runs on the VAX.** All of poc then got as far
 as its 15th module and stopped on a floating overflow: every real

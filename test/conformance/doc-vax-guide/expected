@@ -19,10 +19,5 @@ VAX build Fail exit 0
 VAX build Fault exit 0
 VAX build Parts exit 0
 VAX build Panel exit 0
-semantic OK, wrote LineOutput.obj
-semantic OK, wrote RealDigits.obj
-semantic OK, wrote FormattedText.obj
-semantic OK, wrote FormattedOutput.obj
-semantic OK, wrote Out.obj
-semantic OK, wrote Fault.obj
-VAX object Fault exit 0
+VAX build Fault objects exit 0
+VAX build Fault debug exit 0

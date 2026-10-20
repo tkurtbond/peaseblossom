@@ -751,7 +751,13 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    defines `OBJCONVERT` (`check-vax-kit`). **6d done** (section 17.6):
    58 VAX fixtures and `make test-vax` build and run both ways, and
    `make check` runs both; a real numeral exactly halfway is spelt so
-   that MACRO rounds it as the front end does. Every earlier phase's
+   that MACRO rounds it as the front end does. **6e done** (section
+   17.7): poc on VMS builds from objects in `make test-vax-guest-poc`
+   (each object compared, by its `DUMP/RECORDS`, with the one
+   `-vax-objects` writes here) and `vax-poc` (`Sums`); chapter 16 of
+   the VAX/VMS Guide starts from poc's objects (`doc-vax-guide`), and
+   the libraries chapter, poc(1) and the Reference Guide name the
+   objects way. **Step 6 done** (2026-10-20). Every earlier phase's
    VAX fixtures run in both modes - built through `.mar` and `MACRO`, and
    built directly - and give the same output; Phase 17's object libraries
    (`LIBRARY/CREATE` of poc's `.OBJ` files) and shareable images
