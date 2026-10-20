@@ -6,6 +6,8 @@ written: VaxBuild.obj
 written: VaxBuildSums.obj
 == poc -target vax-dec-vms -vax-objects -compile VaxBuildSums.mod
 exit 0
+VaxBuildSums.com matches expected-VaxBuildSums.com
+written: VaxBuildSums.com
 written: VaxBuildSums.obj
 == poc -target vax-dec-vms -vax-objects -g -o VaxBuildDebug -build VaxBuild.mod
 exit 0

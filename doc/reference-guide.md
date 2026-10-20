@@ -706,7 +706,7 @@ together, and one compile writes each file they name.
 | `-strict` | The module named may use only `Oberon2.pdf`'s language (section 3). |
 | `-static` | Links a fully static executable. |
 | `-shared-libraries` | Links the libraries' shared objects, not their archives. |
-| `-vax-objects` | For `vax-dec-vms`, builds from poc's own objects: `-build` and `-compile` write each module's `.obj`, not its `.mar`, and the build procedure assembles nothing; `-compile` writes no procedure. The default for poc on VMS. |
+| `-vax-objects` | For `vax-dec-vms`, builds from poc's own objects: `-build` and `-compile` write each module's `.obj`, not its `.mar`, and the build procedure assembles nothing. On Linux and the BSDs the procedure first converts each object sent to VMS in binary, with the kit's `OBJCONVERT`, and `-compile` writes one that only converts; on VMS `-compile` writes none. The default for poc on VMS. |
 | `-vax-macro32` | For `vax-dec-vms`, builds from MACRO-32: `-build` and `-compile` write each module's `.mar` and a procedure that assembles them. The default for poc elsewhere. |
 | `-link <arg>` | Passes `<arg>` to the link (`-lz`, `-L<dir>`); repeatable. With `-library`, also recorded in the manifest, for every program that links the library. |
 | `-c-flag <arg>` | Passes `<arg>` to clang when it compiles a module's C part, `<Module>.c` beside `<Module>.Mod`, or clang++ its C++ part, `<Module>.cpp` (`-I<dir>`, `-D<name>`); repeatable. |

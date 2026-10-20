@@ -489,7 +489,13 @@ write each module's
 .Pa .obj ,
 not its
 .Pa .mar ;
-the build procedure assembles nothing, and
+the build procedure assembles nothing.
+On Linux and the BSDs the procedure first converts each object sent to VMS
+in binary, with the kit's
+.Ic OBJCONVERT ,
+and
+.Fl compile
+writes one that only converts; on VMS
 .Fl compile
 writes none.
 The default for poc on VMS.

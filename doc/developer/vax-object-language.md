@@ -1914,3 +1914,44 @@ as amended then (one option for each kind of output).
   and runs all of it on the guest (`guest-objects.com`), and installs
   the objects libraries. `vax-build-objects` no longer has the refusal.
   The other library fixtures run both ways in 6d.
+
+### 17.5 Piece 6c: cross-built objects convert themselves (done 2026-10-19)
+
+- **The conversion lines.** poc on Linux and the BSDs, with objects
+  (`VaxToolchainDriver.convertObjects`, set by `Poc.SetVaxWay` to
+  `vaxObjects & ~runningOnVms`), writes for each of the procedure's
+  modules, before anything else is done with them
+  (`WriteConversions`):
+
+      $ IF F$FILE_ATTRIBUTES("<M>.OBJ", "RFM") .NES. "FIX" THEN GOTO CONVERTED_n
+      $ OBJCONVERT <M>.OBJ <M>.OBJ
+      $ DELETE/NOLOG <M>.OBJ;-1
+      $CONVERTED_n:
+
+  in a program's procedure and in a library's `<name>_build.com`, with
+  a comment saying why. Checked on the guest: an object FTP put in
+  binary has `RFM` `FIX`, the converted one `VAR`; `OBJCONVERT` writing
+  over its input makes a new version, and `;-1` is the old one; a
+  second run leaves the object alone. poc on VMS writes none.
+- **`-compile`** with objects writes a procedure on Linux and the BSDs
+  that only converts (`vax-build-objects`' `VaxBuildSums.com`), and on
+  VMS still none.
+- **The base kit ships `OBJCONVERT`**: `make-vax-kit` cross-builds
+  `tools/objconvert` (`tools/vax-objconvert`) into `[.KIT.OBJCONVERT]`,
+  leaving out its copy of `PocRtl.mar`; `BUILD.COM` assembles
+  `[.KIT]POCRTL.MAR` there, runs the converter's procedure and puts
+  `OBJCONVERT.EXE` in `[.BIN]`, after `POC.EXE` (`CLEAN` empties
+  `[.KIT.OBJCONVERT]` too); `SETUP.COM` defines the global symbol
+  `OBJCONVERT`.
+- **`tools/vax-do`'s `VAX_DO_CONVERT=no`** sends each `.obj` in binary
+  under its own name and converts nothing, defining no local
+  `OBJCONVERT` that would hide `SETUP.COM`'s, so the procedure's own
+  lines do the work.
+- **`make check-vax-kit`** cross-builds `KITHELLO` with `-vax-objects`
+  against an `-O2` `POCRTL` it builds itself, sends it that way, and on
+  the guest, after the kit is built and set up, checks that the object
+  arrived as `FIX`, that `@KITHELLO` converts it (`VAR`, one version
+  left) and links, and runs it.
+- The VAX/VMS Guide's chapter 3 ("From objects or from MACRO-32") tells
+  how to send objects (binary) and procedures (ASCII); chapter 1,
+  Appendix A and the kit's `README.TXT` list `OBJCONVERT`.

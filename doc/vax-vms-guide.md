@@ -89,7 +89,8 @@ run in, and everything in it is text.
        $ @[-]POC-0-7-0
        $ @[-]POC-VMS-0-7-0
 
-   The base kit makes `[.BIN]`, `[.KIT]` (poc's own MACRO-32),
+   The base kit makes `[.BIN]`, `[.KIT]` (poc's own MACRO-32, and in
+   `[.KIT.OBJCONVERT]` that of `OBJCONVERT`, below),
    `[.LIB.POC.VAX-DEC-VMS.O2]` and `[.OC]` (the libraries), `[.SRC]` (the
    source poc for VMS is built from), `BUILD.COM`, `SETUP.COM`,
    `README.TXT`, `VAX-VMS-GUIDE.TXT` (this guide, as text, for `TYPE/PAGE
@@ -100,7 +101,9 @@ run in, and everything in it is text.
 
        $ @BUILD
 
-   This assembles and links `POC.EXE` into `[.BIN]`, then builds every
+   This assembles and links `POC.EXE` into `[.BIN]`, and with it
+   `OBJCONVERT.EXE`, which converts objects poc wrote on Unix (chapter 3,
+   "From objects or from MACRO-32"), then builds every
    library that is there, under both size models (chapter 3). It takes a
    while; `BUILD.LOG` has each step's time. `@BUILD` builds only what is
    not built yet, so after the STARLET kit is unpacked into a built
@@ -113,10 +116,10 @@ run in, and everything in it is text.
 
        $ @dev:[dir.POC]SETUP
 
-   `SETUP.COM` defines the command `POC` and the logical names of the
-   `-O2` libraries that are built. `@SETUP OC` defines the `-OC` ones
-   instead: a process builds against one size model's libraries at a
-   time.
+   `SETUP.COM` defines the commands `POC` and `OBJCONVERT` and the
+   logical names of the `-O2` libraries that are built. `@SETUP OC`
+   defines the `-OC` ones instead: a process builds against one size
+   model's libraries at a time.
 
 Check the installation with `POC -VERSION`:
 
@@ -261,6 +264,8 @@ links `/DEBUG`, and from MACRO-32 assembles `/DEBUG` too (chapter 16).
 
 `-compile <file>...` writes the named modules' objects, or their `.mar`
 files and a procedure that only assembles them, with no program's start.
+Objects written on Unix come with a procedure that only converts them
+(below); on VMS they need none.
 
 ### From objects or from MACRO-32
 
@@ -274,9 +279,16 @@ to show the Oberon source and variables (chapter 16).
 
 poc on VMS builds from objects unless given `-vax-macro32`. poc on Unix
 builds from MACRO-32 unless given `-vax-objects`: a `.mar` file is text,
-which any transfer carries, while the objects poc writes on Unix are
-records that VMS takes only after converting them, which so far only
-poc's own tests do.
+which any transfer carries, while an object is a file of variable-length
+records, which a transfer does not keep. To build from objects made on
+Unix, copy the `.obj` files to VMS in **binary** mode (FTP's `binary`
+before `put`) and the `.com` file in ASCII mode. VMS stores each object
+as fixed 512-byte records, and the procedure converts each such object
+first, with the command `OBJCONVERT`, which the kit's `SETUP.COM`
+defines (chapter 2): it writes a new version of the object with the
+records it started as, and deletes the old one. An object already
+converted, or written on VMS, is left alone, so the procedure can be run
+again.
 
 ### Size models
 
@@ -3136,8 +3148,8 @@ them. A global variable is a symbol like a procedure's,
 A program built from poc's own objects (chapter 3, "From objects or
 from MACRO-32"), as poc on VMS builds by default, is debugged by its
 Oberon source. On Linux and the BSDs poc writes the same objects in a
-form that VMS takes only after converting them, which so far only poc's
-own tests do. They link with the objects MACRO makes, so any module's
+form that VMS takes only after converting them, which the procedure
+poc writes with them does. They link with the objects MACRO makes, so any module's
 can take the place of the one assembled from its `.MAR`, and the
 program is linked as its build procedure links it.
 
@@ -3390,12 +3402,13 @@ needs empty. These are the directories and files they make, and what
 | Where | What |
 |---|---|
 | `README.TXT` | How to install and use poc, as chapter 1 says |
-| `BUILD.COM` | Builds `POC.EXE` and every library that is unpacked and not yet built; each step's time goes to `BUILD.LOG` |
-| `SETUP.COM` | Defines the command `POC` and the logical names of one size model's libraries, `-O2`'s or, with `@SETUP OC`, `-OC`'s |
+| `BUILD.COM` | Builds `POC.EXE`, `OBJCONVERT.EXE` and every library that is unpacked and not yet built; each step's time goes to `BUILD.LOG` |
+| `SETUP.COM` | Defines the commands `POC` and `OBJCONVERT` and the logical names of one size model's libraries, `-O2`'s or, with `@SETUP OC`, `-OC`'s |
 | `VERSION.TXT` | One line, the version and the commit it was made from; the STARLET kit checks it |
 | `LICENSE.TXT` | poc's license |
-| `[.BIN]` | Empty; `@BUILD` puts `POC.EXE` here |
+| `[.BIN]` | Empty; `@BUILD` puts `POC.EXE` and `OBJCONVERT.EXE` here |
 | `[.KIT]` | poc's own MACRO-32, as poc on Unix writes it for poc's source: a `.MAR` for each module, the procedure that assembles and links them, and the runtime's `POCRTL.MAR`. `@BUILD BOTH CLEAN` deletes it once `POC.EXE` is built |
+| `[.KIT.OBJCONVERT]` | `OBJCONVERT`'s MACRO-32, a `.MAR` for each of its modules, and the procedure that assembles and links them with `[.KIT]POCRTL.MAR`. `@BUILD BOTH CLEAN` empties it too |
 | `[.LIB.POC.VAX-DEC-VMS.O2]`, `[.OC]` | The library `POCRTL`, poc's runtime, for each size model, as `poc -library` writes it (chapter 4): its manifest, `POCRTL_BUILD.COM` and `POCRTL_SETUP.COM`, and each module's `.MAR`, `.SYM` and `.OWNER` (the name of the library the module belongs to). `@BUILD` adds `POCRTL.OLB` and `POCRTL.EXE` |
 | `[.SRC...]` | The Oberon source `POC.EXE` is compiled from: the front end, the VAX back end, the driver, and the runtime's modules (chapter 17) |
 

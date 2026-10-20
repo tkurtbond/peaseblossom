@@ -2,7 +2,9 @@ $ ! SETUP.COM - makes Peaseblossom's poc usable in this process, once
 $ ! BUILD.COM has built it (README.TXT): defines the command POC, and runs
 $ ! the setup procedures of the libraries of one size model that are built,
 $ ! POCRTL's, and VMSDEF's and VMSLIB's once the STARLET kit is. Run it once
-$ ! a session, or from LOGIN.COM. Written by tools/bootstrap/make-vax-kit
+$ ! a session, or from LOGIN.COM. It defines OBJCONVERT too, which
+$ ! converts an object poc wrote on Linux or a BSD and FTP sent in binary;
+$ ! the procedures poc writes there run it. Written by tools/bootstrap/make-vax-kit
 $ ! (doc/developer/vax-macro32-backend.md, section 21, proposals 4 and 10).
 $ !
 $ !   @SETUP [O2|OC]
@@ -33,6 +35,7 @@ $ WRITE SYS$ERROR "SETUP: the -", MODEL, " libraries are not built; @", TOP, "BU
 $ EXIT %X10000014
 $LIBRARIES_BUILT:
 $ POC :== $'IMAGE'
+$ OBJCONVERT :== $'TOP_OPEN'.BIN'CLOSE_BRACKET'OBJCONVERT.EXE
 $ I = 0
 $NEXT_LIBRARY:
 $ LIBRARY_NAME = F$ELEMENT(I, " ", "POCRTL VMSDEF VMSLIB")

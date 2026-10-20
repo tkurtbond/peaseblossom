@@ -1807,7 +1807,10 @@ MODULE Poc;
   PROCEDURE SetVaxWay;
   BEGIN
     VaxToolchainDriver.writeMacro := ~vaxObjects; VaxToolchainDriver.writeObject := vaxObjects;
-    VaxToolchainDriver.writeImage := FALSE
+    VaxToolchainDriver.writeImage := FALSE;
+    (* an object written here but on VMS is sent there in binary (section
+       17, proposal 3) *)
+    VaxToolchainDriver.convertObjects := vaxObjects & ~runningOnVms
   END SetVaxWay;
 
   (* The units of modules, in their order, for a build procedure *)
@@ -2024,7 +2027,11 @@ MODULE Poc;
      files named written as <Module>.mar and their .sym, in outputDir, with
      no program's start, and the DCL procedure that assembles them,
      <outputDir>/<First>.com, the first file's module; their imports are
-     checked, not written. Silent on success. *)
+     checked, not written. With objects (-vax-objects) each module's .obj
+     in place of its .mar, and the procedure only when they are written
+     but on VMS, to convert them there (doc/developer/
+     vax-object-language.md, section 17, proposals 3 and 4). Silent on
+     success. *)
   PROCEDURE CompileVax(firstFile: INTEGER; outputDir: ARRAY OF CHAR);
     VAR
       member: LibraryMember; modules, modulesTail: ModuleLists.ModuleList;
@@ -2047,11 +2054,11 @@ MODULE Poc;
     i := 0; WHILE comPath[i] # 0X DO INC(i) END;
     comPath[i - 4] := 0X; Strcat(comPath, ".com"); (* <First>.mar's .com *)
     SetVaxWay;
-    (* with objects there is nothing to assemble, so no procedure (section
-       17, proposal 4) *)
-    IF WriteVaxModules(modules, outputDir, TRUE, FALSE) & ~vaxObjects
+    (* with objects there is nothing to assemble, so a procedure only to
+       convert them (section 17, proposals 3 and 4) *)
+    IF WriteVaxModules(modules, outputDir, TRUE, FALSE) & (~vaxObjects OR VaxToolchainDriver.convertObjects)
        & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE), NIL, NIL, FALSE,
-                                                 FALSE, VaxToolchainDriver.debug) THEN
+                                                 vaxObjects, VaxToolchainDriver.debug) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
   END CompileVax;

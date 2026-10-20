@@ -3,8 +3,10 @@
 # PLAN.md Phase 18 step 6a (doc/developer/vax-object-language.md, section
 # 17): the two ways to build for vax-dec-vms. vax-build's VaxBuild and
 # VaxBuildSums built with -vax-objects: -build writes each module's .obj,
-# no .mar, and a procedure that assembles nothing and links them;
-# -compile writes the objects and no procedure; with -g the procedure
+# no .mar, and a procedure that assembles nothing and links them, having
+# converted each object FTP's binary mode made fixed-length records (step
+# 6c, proposal 3; tools/bootstrap/check-vax-kit runs that on the guest);
+# -compile writes the objects and a procedure only to convert them; with -g the procedure
 # links /DEBUG, and from MACRO-32 assembles /DEBUG too; the last of
 # -vax-objects and -vax-macro32 counts. Each procedure is compared with
 # expected-<name>.com, and where the VAX development system can be used
@@ -46,6 +48,7 @@ mkdir work/guest
 cp work/VaxBuild.com work/VaxBuild.obj work/VaxBuildSums.obj work/guest/
 written
 run -target vax-dec-vms -vax-objects -compile VaxBuildSums.mod
+compare VaxBuildSums.com
 written
 run -target vax-dec-vms -vax-objects -g -o VaxBuildDebug -build VaxBuild.mod
 compare VaxBuildDebug.com

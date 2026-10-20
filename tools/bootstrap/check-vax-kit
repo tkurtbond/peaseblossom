@@ -6,7 +6,11 @@
 # POC's home, both carried by ASCII FTP. The STARLET kit is run there
 # first and must refuse, there being no poc; then the base kit is run,
 # @BUILD and @SETUP, poc -version, and a program against POCRTL alone is
-# built with the kit's poc and run under -O2. Then the STARLET kit is run,
+# built with the kit's poc and run under -O2; the same program, built on
+# this host with -vax-objects against the kit's POCRTL and its object sent
+# in binary under its own name (VAX_DO_CONVERT=no), is converted by its
+# procedure with the kit's OBJCONVERT, linked and run (doc/developer/
+# vax-object-language.md, section 17, proposal 3). Then the STARLET kit is run,
 # and run again, which must refuse; @BUILD, which must leave POC.EXE and
 # POCRTL.OLB as they are, and @SETUP; and that program and one against
 # VMSLIB and VMSDEF are built and run, under -O2 linked from the object
@@ -51,8 +55,20 @@ modules=$(cd "$BUILD/vax-bootstrap/v1" && ls *.mar | sed 's/\.mar$//' | tr a-z A
 
 work=$KIT/check
 rm -rf "$work"
-mkdir -p "$work/back"
+mkdir -p "$work/back" "$work/cross/libs"
 cp "$ROOT/tools/bootstrap/vax-kit/check/KitHello.Mod" "$work/KITHELLO.MOD"
+# the cross-built program, against an -O2 POCRTL built here (make-vax-kit
+# removes its own)
+poc=${POC_BIN_DIR:-$ROOT/build/bin}/poc
+(cd "$work/cross" &&
+ "$poc" -target vax-dec-vms -clear-library-path -output-dir libs -library POCRTL \
+   $(LC_ALL=C ls "$ROOT"/rtl/vax/*.Mod) "$ROOT/rtl/vax/PocRtl.mar" >libs.log 2>&1 &&
+ cp ../KITHELLO.MOD KitHello.Mod &&
+ "$poc" -target vax-dec-vms -vax-objects -clear-library-path -library-path libs \
+   -build KitHello.Mod && rm -r KitHello.Mod KitHello.sym libs libs.log) || {
+  echo "check-vax-kit: the cross-built program did not compile" >&2
+  exit 1
+}
 cp "$ROOT/tools/bootstrap/vax-kit/check/KitVmsLib.Mod" "$work/KITVMSLIB.MOD"
 proc=$work/CHECKKIT.COM
 
@@ -97,6 +113,26 @@ proc=$work/CHECKKIT.COM
 \$ PROGRAM = "KITHELLO"
 \$ GOSUB PROGRAM
 \$ DELETE/NOLOG *.*;*
+\$ SET DEFAULT [-]
+\$ !
+\$ ! the program cross-built with objects, as FTP in binary left them
+\$ CREATE/DIRECTORY [.CROSS]
+\$ SET DEFAULT [.CROSS]
+\$ COPY/NOLOG 'HOME'KITHELLO.OBJ, 'HOME'KITHELLO.COM []
+\$ S = F\$FILE_ATTRIBUTES("KITHELLO.OBJ", "RFM") .EQS. "FIX"
+\$ STEP = "cross-built KITHELLO: fixed-length records"
+\$ GOSUB REPORT
+\$ @KITHELLO
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "cross-built KITHELLO: converted and linked"
+\$ GOSUB REPORT
+\$ S = F\$FILE_ATTRIBUTES("KITHELLO.OBJ", "RFM") .EQS. "VAR" .AND. F\$SEARCH("KITHELLO.OBJ;1") .EQS. ""
+\$ STEP = "cross-built KITHELLO: one object, converted"
+\$ GOSUB REPORT
+\$ RUN KITHELLO
+\$ S = F\$INTEGER(\$STATUS)
+\$ STEP = "cross-built KITHELLO: run"
+\$ GOSUB REPORT
 \$ SET DEFAULT [-]
 \$ !
 \$ ! the STARLET kit, over the base
@@ -258,6 +294,11 @@ if [ -n "$commit" ]; then versionLine="poc $version ($commit)"; else versionLine
   echo "check: -O2 KITHELLO: linked: ok"
   echo "program: hello from the kit, INTEGER has 16 bits"
   echo "check: -O2 KITHELLO: run: ok"
+  echo "check: cross-built KITHELLO: fixed-length records: ok"
+  echo "check: cross-built KITHELLO: converted and linked: ok"
+  echo "check: cross-built KITHELLO: one object, converted: ok"
+  echo "program: hello from the kit, INTEGER has 16 bits"
+  echo "check: cross-built KITHELLO: run: ok"
   echo "check: unpack STARLET kit: ok"
   echo "check: STARLET kit again: refused"
   echo "check: build with the STARLET kit: ok"
@@ -293,7 +334,8 @@ LINES
 
 cd "$work"
 # shellcheck disable=SC2086
-"$ROOT/tools/vax-do" -o back $gets CHECKKIT.COM "$basePath" "$vmsPath" KITHELLO.MOD KITVMSLIB.MOD >guest.log 2>&1
+VAX_DO_CONVERT=no "$ROOT/tools/vax-do" -o back $gets CHECKKIT.COM "$basePath" "$vmsPath" KITHELLO.MOD KITVMSLIB.MOD \
+  cross/KitHello.obj cross/KitHello.com >guest.log 2>&1
 status=$?
 if [ "$status" -eq 2 ]; then
   cat guest.log

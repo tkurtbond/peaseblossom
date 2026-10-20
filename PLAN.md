@@ -745,7 +745,10 @@ MACRO-32 - only the subset poc itself emits has to be encoded.
    `/DEBUG` (`vax-build-objects`). **6b done** (section 17.4):
    `-library` with objects, each module's `.obj` in the library,
    `UNIVERSAL=` from the encoded image, the manifest's `objects`,
-   `-install-library` copying objects whole (`vax-library`). Every earlier phase's
+   `-install-library` copying objects whole (`vax-library`). **6c done**
+   (section 17.5): a cross-built object converts itself in its
+   procedure; the base kit builds `OBJCONVERT.EXE` and `SETUP.COM`
+   defines `OBJCONVERT` (`check-vax-kit`). Every earlier phase's
    VAX fixtures run in both modes - built through `.mar` and `MACRO`, and
    built directly - and give the same output; Phase 17's object libraries
    (`LIBRARY/CREATE` of poc's `.OBJ` files) and shareable images

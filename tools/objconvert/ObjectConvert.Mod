@@ -15,7 +15,9 @@ MODULE ObjectConvert;
 
      A VMS program, built with poc for the guest's tools (tools/vax-do,
      tools/vax-run, tools/vax-assemble) into the account's
-     [.BIN]OBJCONVERT.EXE. *)
+     [.BIN]OBJCONVERT.EXE, and by the base kit's BUILD.COM into its
+     [.BIN]OBJCONVERT.EXE, which SETUP.COM makes the command OBJCONVERT
+     (step 6c). *)
 
   IMPORT Args, Files, Err, RecordFiles;
 

@@ -46,6 +46,11 @@ MODULE VaxToolchainDriver;
        -vax-objects), any of them (PLAN.md Phase 18 step 6; doc/developer/
        vax-object-language.md, section 17, proposal 8) *)
     writeMacro*, writeImage*, writeObject*: BOOLEAN;
+    (* whether the procedures poc writes for objects first convert each
+       one that arrived as fixed-length records, as an object written on
+       Linux or a BSD and sent to VMS in binary does (section 17, proposal
+       3): poc's procedures on any host but VMS *)
+    convertObjects*: BOOLEAN;
     (* whether an object has the debugger records (poc -g) *)
     debug*: BOOLEAN;
     (* the compiler, as an object's language processor header names it:
@@ -299,10 +304,43 @@ MODULE VaxToolchainDriver;
     COPY("$", line); Append(line, label); Append(line, ":"); WriteLine(w, line)
   END WriteNeedCheck;
 
+  (* Lines of a procedure that convert each of units' <UNIT>.OBJ that has
+     fixed-length records - poc's counted records, sent from Linux or a BSD
+     in binary - with OBJCONVERT (tools/objconvert), the kit's SETUP.COM's
+     symbol, into a new version, and delete the old one; an object already
+     converted is left alone (section 17, proposal 3) *)
+  PROCEDURE WriteConversions(VAR w: Files.Rider; units: Unit);
+    VAR u: Unit; name: ARRAY 64 OF CHAR; line: ARRAY 200 OF CHAR; label: ARRAY 24 OF CHAR; count: INTEGER;
+  BEGIN
+    count := 0; u := units;
+    WHILE u # NIL DO
+      Upper(u.name, name); INC(count);
+      COPY("CONVERTED_", label); line[0] := 0X; AppendInt(line, count); Append(label, line);
+      COPY('$ IF F$FILE_ATTRIBUTES("', line); Append(line, name);
+      Append(line, '.OBJ", "RFM") .NES. "FIX" THEN GOTO '); Append(line, label); WriteLine(w, line);
+      COPY("$ OBJCONVERT ", line); Append(line, name); Append(line, ".OBJ "); Append(line, name);
+      Append(line, ".OBJ"); WriteLine(w, line);
+      COPY("$ DELETE/NOLOG ", line); Append(line, name); Append(line, ".OBJ;-1"); WriteLine(w, line);
+      COPY("$", line); Append(line, label); Append(line, ":"); WriteLine(w, line);
+      u := u.next
+    END
+  END WriteConversions;
+
+  (* Lines of a procedure's opening comment that say it converts objects,
+     when it does *)
+  PROCEDURE WriteConversionComment(VAR w: Files.Rider);
+  BEGIN
+    IF convertObjects THEN
+      WriteLine(w, "$ ! An object sent in binary from Linux or a BSD, fixed-length records,");
+      WriteLine(w, "$ ! is converted first, by OBJCONVERT, which poc's SETUP.COM defines.")
+    END
+  END WriteConversionComment;
+
   (* The DCL procedure at path that assembles units, each <UNIT>.MAR in the
      directory it runs in - or with objects, each <UNIT>.OBJ poc wrote
      there, assembles nothing (PLAN.md Phase 18 step 6; doc/developer/
-     vax-object-language.md, section 17) - and, when image is not empty, links them with
+     vax-object-language.md, section 17), converting each first when
+     convertObjects - and, when image is not empty, links them with
      poc's runtime into <IMAGE>.EXE, units the program's modules with the
      main one last; source names the file poc was given, for its comment.
      Each MACRO and the LINK stop it at a warning, so that %LINK-W-MULDEF,
@@ -338,11 +376,15 @@ MODULE VaxToolchainDriver;
     Files.Set(w, f, 0);
     Upper(image, imageName);
     COPY("$ ! Written by poc for ", line); Append(line, source);
-    IF objects THEN Append(line, ": links its modules' objects into ");
-      Append(line, imageName); Append(line, ".EXE");
+    IF objects THEN
+      IF image[0] # 0X THEN Append(line, ": links its modules' objects into ");
+        Append(line, imageName); Append(line, ".EXE")
+      ELSE Append(line, ": converts its modules' objects")
+      END;
       WriteLine(w, line);
       WriteLine(w, "$ ! (doc/developer/vax-object-language.md, section 17). Run it where");
-      WriteLine(w, "$ ! the modules' .OBJ files are.")
+      WriteLine(w, "$ ! the modules' .OBJ files are.");
+      WriteConversionComment(w)
     ELSE
       IF image[0] # 0X THEN Append(line, ": assembles its modules and links ");
         Append(line, imageName); Append(line, ".EXE")
@@ -369,6 +411,7 @@ MODULE VaxToolchainDriver;
       WriteNeedCheck(w, line, name, label);
       u := u.next
     END;
+    IF objects & convertObjects THEN WriteConversions(w, units) END;
     u := units; main := NIL;
     WHILE u # NIL DO
       IF ~objects THEN
@@ -553,9 +596,9 @@ MODULE VaxToolchainDriver;
      libraries it needs, in link order, and symbols the global symbols of
      them all. <name>_build.com, run on VMS in the directory that holds the
      library's files, assembles them - with objects, the modules are each
-     <UNIT>.OBJ poc wrote, and only the parts are assembled (PLAN.md Phase
-     18 step 6; doc/developer/vax-object-language.md, section 17, proposal
-     6) - makes the object library <NAME>.OLB,
+     <UNIT>.OBJ poc wrote, converted first when convertObjects, and only
+     the parts are assembled (PLAN.md Phase 18 step 6; doc/developer/
+     vax-object-language.md, section 17, proposals 3 and 6) - makes the object library <NAME>.OLB,
      one module at a time (LIBRARY/INSERT refuses a global symbol the
      library has already, section 18.1), and links the shareable image
      <NAME>.EXE from them and the needed libraries' images - the modules
@@ -597,6 +640,7 @@ MODULE VaxToolchainDriver;
       WriteLine(w, "$ ! the library's .OBJ files are, once the setup procedure of each")
     END;
     WriteLine(w, "$ ! library it needs has been run.");
+    IF objects THEN WriteConversionComment(w) END;
     WriteLine(w, "$ ON WARNING THEN EXIT $STATUS");
     count := 0; u := needs;
     WHILE u # NIL DO
@@ -606,6 +650,7 @@ MODULE VaxToolchainDriver;
       WriteNeedCheck(w, line, unitName, label);
       u := u.next
     END;
+    IF objects & convertObjects THEN WriteConversions(w, units) END;
     IF objects THEN u := NIL ELSE u := units END;
     WHILE u # NIL DO
       Upper(u.name, unitName);
@@ -679,6 +724,6 @@ MODULE VaxToolchainDriver;
   END WriteLibraryProcedures;
 
 BEGIN
-  writeMacro := TRUE; writeImage := FALSE; writeObject := FALSE; debug := FALSE; processor := "Peaseblossom poc";
+  writeMacro := TRUE; writeImage := FALSE; writeObject := FALSE; convertObjects := FALSE; debug := FALSE; processor := "Peaseblossom poc";
   encoded := NIL
 END VaxToolchainDriver.
