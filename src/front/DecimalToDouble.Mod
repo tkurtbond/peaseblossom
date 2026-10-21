@@ -304,10 +304,14 @@ MODULE DecimalToDouble;
      LONGREAL's (53, -1074, 971), or a REAL's (24, -149, 104), returned in
      a LONGREAL, which holds it exactly. *)
   (* The value of the numeral lexeme rounded to precision bits, its last
-     bit's binary exponent at least lowest, into value; FALSE, value
-     untouched, when that exponent is beyond highest, a value the host's
-     LONGREAL may not hold, so that nothing out of range is computed. *)
-  PROCEDURE Rounded(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER; VAR value: LONGREAL): BOOLEAN;
+     bit's binary exponent at least lowest, as m * 2^e, m below
+     2^precision (and at least 2^(precision - 1) unless e is lowest; 0, e
+     0, for zero); FALSE, m and e untouched, when that exponent is beyond
+     highest. Phase 18 (doc/developer/vax-object-language.md, section
+     14.4): the VAX encoder builds F_floating and G_floating bits from m
+     and e. *)
+  PROCEDURE Round(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER;
+                  VAR mantissa: LONGINT; VAR exponent: INTEGER; VAR halfway: BOOLEAN): BOOLEAN;
     VAR
       digits, left, factor, product, twice: Big;
       i, kept, exponent10, magnitude, estimate, e, bits: INTEGER;
@@ -315,6 +319,7 @@ MODULE DecimalToDouble;
       inFraction, sticky, negativeExponent: BOOLEAN;
       cmp: INTEGER;
   BEGIN
+    halfway := FALSE;
     digits.n := 0; kept := 0; exponent10 := 0; sticky := FALSE;
     i := 0; inFraction := FALSE;
     WHILE ((lexeme[i] >= "0") & (lexeme[i] <= "9")) OR ((lexeme[i] = ".") & ~inFraction) DO
@@ -348,14 +353,14 @@ MODULE DecimalToDouble;
       END;
       IF negativeExponent THEN exponent10 := exponent10 - e ELSE exponent10 := exponent10 + e END
     END;
-    IF digits.n = 0 THEN value := 0.0D0; RETURN TRUE END;
+    IF digits.n = 0 THEN mantissa := 0; exponent := 0; RETURN TRUE END;
     IF sticky THEN MulAdd(digits, 10, 1); INC(kept); DEC(exponent10) END;
     (* the value is in [10^(magnitude - 1), 10^magnitude) *)
     magnitude := kept + exponent10;
     IF magnitude > 310 THEN
       RETURN FALSE
     ELSIF magnitude < -330 THEN
-      value := 0.0D0; RETURN TRUE
+      mantissa := 0; exponent := 0; RETURN TRUE
     END;
 
     (* a lower bound of the binary exponent e for which V / 2^e has
@@ -382,12 +387,44 @@ MODULE DecimalToDouble;
     Copy(left, twice); MulAdd(twice, 2, 0);
     MulLong(factor, 2 * q + 1, product);
     cmp := Compare(twice, product);
+    halfway := cmp = 0;
     IF (cmp > 0) OR ((cmp = 0) & ODD(q)) THEN m := q + 1 ELSE m := q END;
     IF BitLength(m) > precision THEN (* rounded up: exactly 2^(precision - 1) * 2^(e + 1) *)
       m := m DIV 2; INC(e)
     END;
     IF e > highest THEN RETURN FALSE END;
-    value := ScaleByPowerOfTwo(m, e);
+    mantissa := m; exponent := e;
+    RETURN TRUE
+  END Round;
+
+  PROCEDURE RoundedParts*(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER;
+                          VAR mantissa: LONGINT; VAR exponent: INTEGER): BOOLEAN;
+    VAR halfway: BOOLEAN;
+  BEGIN
+    RETURN Round(lexeme, precision, lowest, highest, mantissa, exponent, halfway)
+  END RoundedParts;
+
+  (* Whether the numeral lexeme, as RoundedParts reads it, lies exactly
+     halfway between two numbers of precision bits, where rounding ties
+     away from zero, as MACRO-32 does (MACRO 9.2.8.3), can give another
+     number than RoundedParts's ties to even. Phase 18 step 6d
+     (doc/developer/vax-object-language.md, section 17.6): the VAX
+     backend's MACRO-32 spells such a constant otherwise. *)
+  PROCEDURE Halfway*(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER): BOOLEAN;
+    VAR m: LONGINT; e: INTEGER; halfway: BOOLEAN;
+  BEGIN
+    RETURN Round(lexeme, precision, lowest, highest, m, e, halfway) & halfway
+  END Halfway;
+
+  (* The value of the numeral lexeme rounded to precision bits, its last
+     bit's binary exponent at least lowest, into value; FALSE, value
+     untouched, when that exponent is beyond highest, a value the host's
+     LONGREAL may not hold, so that nothing out of range is computed. *)
+  PROCEDURE Rounded(lexeme: ARRAY OF CHAR; precision, lowest, highest: INTEGER; VAR value: LONGREAL): BOOLEAN;
+    VAR m: LONGINT; e: INTEGER;
+  BEGIN
+    IF ~RoundedParts(lexeme, precision, lowest, highest, m, e) THEN RETURN FALSE END;
+    IF m = 0 THEN value := 0.0D0 ELSE value := ScaleByPowerOfTwo(m, e) END;
     RETURN TRUE
   END Rounded;
 

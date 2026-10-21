@@ -1,5 +1,6 @@
 semantic OK, wrote VaxOpenArrays.mar
 exit 0
 VaxOpenArrays.mar matches expected-vax.mar
+VaxOpenArrays.image matches expected-vax.image
 build -O2 exit 0
 build -OC exit 0

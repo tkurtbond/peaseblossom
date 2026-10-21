@@ -19,3 +19,5 @@ VAX build Fail exit 0
 VAX build Fault exit 0
 VAX build Parts exit 0
 VAX build Panel exit 0
+VAX build Fault objects exit 0
+VAX build Fault debug exit 0

@@ -1,0 +1,6 @@
+VaxEmpty exit 0
+VaxEmpty.records matches expected-VaxEmpty.records
+VaxVarRecords exit 0
+VaxVarRecords.records matches expected-VaxVarRecords.records
+VaxMethods exit 0
+VaxMethods.records matches expected-VaxMethods.records

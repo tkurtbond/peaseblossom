@@ -1,6 +1,16 @@
-;; Reviewed 2026-10-10 by the user (written by Claude, from the design,
-;; the MACRO manual, the RMS and System Services manuals, LLVM's code
-;; generator and the guest runs). Why this is right:
+;; Written by Claude, 2026-10-18, for Phase 18 step 5a
+;; (doc/developer/vax-object-language.md, section 16.5); reviewed by the
+;; user, 2026-10-18.
+;; It replaces the file the user reviewed on 2026-10-10. Why this is right:
+;; - Outer.Inner now comes after Outer, where it came before it: the
+;;   traceback records list a module's routines nested as its procedures
+;;   are, and VMS's traceback needs them in order of address (16.5). So
+;;   Outer's first trap is made first, and its name is L_WHERE_2 and
+;;   Inner's L_WHERE_3, where they were the other way round; otherwise
+;;   both are as they were.
+;; The rest is as the user reviewed it on 2026-10-10 (written by Claude,
+;; from the design, the MACRO manual, the RMS and System Services manuals,
+;; LLVM's code generator and the guest runs):
 ;; - Phase 16 step 3 (section 14, item 10), under -trap-location: each
 ;;   trap calls POC_TRAP with six arguments, by CALLS #6: as before the
 ;;   code, L_MODULE_NAME, the line and the column, then L_FILE_NAME, the
@@ -91,11 +101,11 @@ L_WHERE_1:
 	.BYTE	21
 	.ASCII	/VaxTraps.NodeDesc.Sum/
 L_WHERE_2:
-	.BYTE	20
-	.ASCII	/VaxTraps.Outer.Inner/
-L_WHERE_3:
 	.BYTE	14
 	.ASCII	/VaxTraps.Outer/
+L_WHERE_3:
+	.BYTE	20
+	.ASCII	/VaxTraps.Outer.Inner/
 L_WHERE_4:
 	.BYTE	21
 	.ASCII	/VaxTraps, module body/
@@ -159,30 +169,6 @@ L_3:
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#6, G^POC_TRAP
-; PROCEDURE Outer.Inner
-VAXTRAPS_OUTER_INNER_053HO337:
-	.WORD	^M<>
-; line 22
-	CVTWL	@4(AP), R0
-	CMPL	R0, #3
-	BLEQU	L_4
-	PUSHAB	L_WHERE_2
-	PUSHAB	L_FILE_NAME
-	PUSHL	#16
-	PUSHL	#22
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#2
-	CALLS	#6, G^POC_TRAP
-L_4:
-	CVTWL	VAXTRAPS_A_CMK1L77H[R0], R0
-	RET
-	PUSHAB	L_WHERE_2
-	PUSHAB	L_FILE_NAME
-	PUSHL	#5
-	PUSHL	#23
-	PUSHAB	L_MODULE_NAME
-	PUSHL	#12
-	CALLS	#6, G^POC_TRAP
 ; PROCEDURE Outer
 VAXTRAPS_OUTER_HQJV9JR9:
 	.WORD	^M<>
@@ -196,22 +182,46 @@ VAXTRAPS_OUTER_HQJV9JR9:
 	ADDW3	#1, -2(FP), R1
 	CVTWL	R1, R1
 	CMPL	R1, #3
-	BLEQU	L_5
-	PUSHAB	L_WHERE_3
+	BLEQU	L_4
+	PUSHAB	L_WHERE_2
 	PUSHAB	L_FILE_NAME
 	PUSHL	#26
 	PUSHL	#25
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#2
 	CALLS	#6, G^POC_TRAP
-L_5:
+L_4:
 	ADDW2	VAXTRAPS_A_CMK1L77H[R1], R0
 	CVTWL	R0, R0
 	RET
-	PUSHAB	L_WHERE_3
+	PUSHAB	L_WHERE_2
 	PUSHAB	L_FILE_NAME
 	PUSHL	#3
 	PUSHL	#26
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#12
+	CALLS	#6, G^POC_TRAP
+; PROCEDURE Outer.Inner
+VAXTRAPS_OUTER_INNER_053HO337:
+	.WORD	^M<>
+; line 22
+	CVTWL	@4(AP), R0
+	CMPL	R0, #3
+	BLEQU	L_5
+	PUSHAB	L_WHERE_3
+	PUSHAB	L_FILE_NAME
+	PUSHL	#16
+	PUSHL	#22
+	PUSHAB	L_MODULE_NAME
+	PUSHL	#2
+	CALLS	#6, G^POC_TRAP
+L_5:
+	CVTWL	VAXTRAPS_A_CMK1L77H[R0], R0
+	RET
+	PUSHAB	L_WHERE_3
+	PUSHAB	L_FILE_NAME
+	PUSHL	#5
+	PUSHL	#23
 	PUSHAB	L_MODULE_NAME
 	PUSHL	#12
 	CALLS	#6, G^POC_TRAP

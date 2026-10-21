@@ -31,7 +31,7 @@ run() {
   while [ "$1" != -- ]; do options="$options $1"; shift; done
   shift
   : >output
-  rm -f TrapMode*.mar
+  rm -f TrapMode*.mar TrapMode*.obj
   for n; do
     printf 'MODULE TrapMode;\n  VAR mode*: INTEGER;\nBEGIN\n  mode := %s\nEND TrapMode.\n' "$n" >TrapMode.mod
     rm -f *.sym
@@ -40,14 +40,18 @@ run() {
     st=$?
     { echo "== case $n, build status: %X10000001"; cat run.out; status $st; cat run.err; } >>output
     rm -f *.sym
-    poc -O2 $options -target vax-dec-vms -import-path $rtl -build Traps.mod >>result 2>&1 \
+    poc -O2 $options -target vax-dec-vms $vax_way_option -import-path $rtl -build Traps.mod >>result 2>&1 \
       || echo "VAX build of case $n failed" >>result
-    mv TrapMode.mar "TrapMode$n.mar"
+    for x in mar obj; do [ ! -f TrapMode.$x ] || mv TrapMode.$x "TrapMode$n.$x"; done
   done
   cmp -s output "$expected" || { echo "the LLVM backend's output, $options:" >>result; diff "$expected" output >>result; }
-  vax_do guest-run.com "$expected" Traps.com Traps.mar TrapLib.mar GarbageCollectedHeap.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar TrapMode*.mar
-  rm -f TrapMode*.mar TrapMode.mod Traps.com Traps.mar TrapLib.mar GarbageCollectedHeap.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar *.sym run.out run.err output
+  vax_do guest-run.com "$expected" Traps.com Traps.mar TrapLib.mar GarbageCollectedHeap.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar $rtl/PocRtl.mar TrapMode*.mar TrapMode*.obj
+  rm -f TrapMode*.mar TrapMode.mod Traps.com Traps.mar TrapLib.mar GarbageCollectedHeap.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar *.sym *.obj run.out run.err output
 }
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 run output.expected -trap-location -range-checks -- 1 2 3 4 5 6 7 8 9
 run plain.expected -range-checks -- 4 6
+}
+vax_build builds
 . ../../testresult.sh

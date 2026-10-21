@@ -11,8 +11,15 @@
 # Exits 0 only if every file assembled with a success or informational status;
 # a warning, such as %MACRO-W-ILLSYMLEN, is a failure.
 #
-#   tools/vax-assemble [-q] <file.mar>...
+#   tools/vax-assemble [-q] <file.mar|file.obj>...
 #   tools/vax-assemble -available
+#
+# An object poc wrote, <file>.obj (PLAN.md Phase 18 step 4c; doc/developer/
+# vax-object-language.md, section 15.9, proposals 7 to 9), is copied in
+# binary mode, converted there by OBJCONVERT (tools/vax-objconvert.tcl),
+# and checked by ANALYZE/OBJECT in place of MACRO, its status judged as
+# MACRO's is, before any file is assembled, since MACRO's object of a
+# .mar of the same name would be a newer version of it.
 #
 # -q prints only the status lines. -available exits 0 if the guest can be
 # used - telnet's port answers and $VAX_NETRC has its machine - and 1 otherwise,
@@ -57,7 +64,7 @@ fi
 
 quiet=
 if [ "$1" = "-q" ]; then quiet=1; shift; fi
-[ $# -gt 0 ] || { echo "usage: tools/vax-assemble [-q] <file.mar>... | -available" >&2; exit 2; }
+[ $# -gt 0 ] || { echo "usage: tools/vax-assemble [-q] <file.mar|file.obj>... | -available" >&2; exit 2; }
 usable || { echo "vax-assemble: the VAX guest $host is not available" >&2; exit 2; }
 
 out=$(mktemp "${TMPDIR:-/tmp}/vax-assemble.XXXXXX")
@@ -71,10 +78,12 @@ guest_name() {
   echo "${b%.*}" | tr a-z A-Z
 }
 
+objects=
 for f in "$@"; do
   case $f in
     *.mar|*.MAR) ;;
-    *) echo "vax-assemble: $f is not a .mar file" >&2; exit 2 ;;
+    *.obj) objects=1 ;;
+    *) echo "vax-assemble: $f is not a .mar or .obj file" >&2; exit 2 ;;
   esac
   [ -r "$f" ] || { echo "vax-assemble: cannot read $f" >&2; exit 2; }
   name=$(guest_name "$f")
@@ -83,11 +92,22 @@ for f in "$@"; do
   esac
 done
 
-# each file, its name there, and its listing's file, beside it
+# poc's objects: the converter's MACRO and its key (tools/vax-objconvert)
+if [ -n "$objects" ]; then
+  VAX_OBJCONVERT_DIR=${VAX_OBJCONVERT_DIR:-$(dirname "$here")/build/objconvert}
+  VAX_OBJCONVERT_KEY=$("$here/vax-objconvert" "$VAX_OBJCONVERT_DIR") || exit 2
+  export VAX_OBJCONVERT_DIR VAX_OBJCONVERT_KEY
+fi
+
+# each file, its name there, and its listing's file, beside it (- for an
+# object)
 set -- "$@" --
 while [ "$1" != -- ]; do
   b=$(basename "$1")
-  set -- "$@" "$1" "$(guest_name "$1")" "$(dirname "$1")/${b%.*}.lis"
+  case $1 in
+    *.obj) set -- "$@" "$1" "$(guest_name "$1")" - ;;
+    *) set -- "$@" "$1" "$(guest_name "$1")" "$(dirname "$1")/${b%.*}.lis" ;;
+  esac
   shift
 done
 shift
@@ -102,10 +122,12 @@ while [ $# -gt 0 ]; do files="$files $1"; shift 3; done
 set -- $files
 for f in "$@"; do
   name=$(guest_name "$f")
-  # the assembler's messages for this file, then its status line
-  hex=$(sed -n "s/^VAXASM-STATUS $name\\.MAR \\([0-9A-F]*\\)\$/\\1/p" "$out")
+  case $f in *.obj) name=$name.OBJ ;; *) name=$name.MAR ;; esac
+  # the assembler's messages for this file, or ANALYZE's, then its status
+  # line
+  hex=$(sed -n "s/^VAXASM-STATUS $name \\([0-9A-F]*\\)\$/\\1/p" "$out")
   if [ -z "$quiet" ]; then
-    awk -v n="$name.MAR" '
+    awk -v n="$name" '
       /^VAXASM-STATUS / { if ($2 == n) exit; buf = ""; next }
       { buf = buf $0 "\n" }
       END { printf "%s", buf }' "$out"

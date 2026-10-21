@@ -1,9 +1,24 @@
 $ ! doc-vax-guide: the VAX/VMS Guide's example programs built by the
 $ ! procedures poc -build wrote, against POCRTL.OBJ, and each run as the
 $ ! guide's session of its name runs it, under "== <name>". A build's
-$ ! log is shown only if it fails. Everything made is deleted.
+$ ! log is shown only if it fails. First Fault is linked from poc's own
+$ ! objects by FAULTO.COM, as FAULTO.EXE, and with FAULTG.OBJ, its object
+$ ! written with -g, by FAULTG.COM, as FAULTG.EXE, which runs under the
+$ ! debugger with FAULT.DBG's commands; then those objects are deleted,
+$ ! and the MACRO-32 is assembled. Everything made is deleted.
 $ SET NOON
 $ MACRO/OBJECT POCRTL.MAR
+$ @FAULTO/OUTPUT=BUILD.LOG
+$ IF .NOT. $STATUS THEN WRITE SYS$OUTPUT "build FAULTO failed: ", $STATUS
+$ IF .NOT. $STATUS THEN TYPE BUILD.LOG
+$ RENAME FAULT.EXE FAULTO.EXE
+$ COPY FAULTG.OBJ FAULT.OBJ
+$ @FAULTG/OUTPUT=BUILD.LOG
+$ IF .NOT. $STATUS THEN WRITE SYS$OUTPUT "build FAULTG failed: ", $STATUS
+$ IF .NOT. $STATUS THEN TYPE BUILD.LOG
+$ RENAME FAULT.EXE FAULTG.EXE
+$ DELETE/NOLOG BUILD.LOG;*
+$ DELETE/NOLOG/EXCLUDE=POCRTL.OBJ *.OBJ;*
 $ PROGRAMS = "HELLO,VERSIONS,WHERELOGIN,WHERELOGIN2,DATES,FACTORIAL,WORDS,SYSTEMINFO,GREET,SHELL,WARNINGS,PROBE,GOODBYE,TICKS,MAILBOX,SPAWN,FAIL,FAULT,PARTS,PANEL"
 $ I = 0
 $NEXT_BUILD:
@@ -71,11 +86,16 @@ $ DEFINE/USER_MODE SYS$ERROR SYS$OUTPUT
 $ RUN FAIL
 $ SHOW SYMBOL $STATUS
 $ WRITE SYS$OUTPUT "== fault"
+$ RUN FAULTO
+$ WRITE SYS$OUTPUT "== faultmacro"
 $ RUN FAULT
 $ WRITE SYS$OUTPUT "== faultdebug"
 $ MACRO/DEBUG/OBJECT FAULT.MAR
 $ LINK/DEBUG/EXECUTABLE=FAULT.EXE FAULT.OPT/OPTIONS, POCRTL.OBJ
 $ RUN/NODEBUG FAULT
+$ WRITE SYS$OUTPUT "== faultsource"
+$ DEFINE/USER_MODE DBG$INPUT FAULT.DBG
+$ RUN FAULTG
 $ IF F$SEARCH("NOTES.TXT") .NES. "" THEN DELETE/NOLOG NOTES.TXT;*
 $ DELETE/NOLOG *.OBJ;*, *.EXE;*, *.OPT;*
 $ EXIT 1

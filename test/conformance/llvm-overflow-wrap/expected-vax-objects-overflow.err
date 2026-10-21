@@ -1,0 +1,21 @@
+;; Written 2026-10-19 by Claude, from the guest runs (Phase 18 step 6d),
+;; for the user's review. Why this is right:
+;; - The program built from poc's objects (tools/vax-suite's O<n>
+;;   builds). Its fault and its place are those of expected-vax-
+;;   overflow-O2.err (and -OC), which says why; only the traceback
+;;   differs, since poc's objects carry traceback and debugger records
+;;   (vax-object-language.md, section 16) and MACRO's carry none: each
+;;   routine in poc's code has its line, 65 in Reals, the division, and
+;;   86 in the module's body, Reals' call.
+;; - Reals is named as its debugger record names it, REALS, the
+;;   procedure's own name in capitals, not by its global symbol
+;;   OVERFLOW_REALS_N2UHIOIO.
+;; - The module's start (_MAIN) is poc's own code, with no source line.
+;; - The same under -O2 and -OC, so for every build.
+%SYSTEM-F-FLTDIV_F, arithmetic fault, floating divide by zero at PC=xxxxxxxx, PSL=xxxxxxxx
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+OVERFLOW        REALS                              65      xxxxxxxx  xxxxxxxx
+OVERFLOW        OVERFLOW_INIT                      86      xxxxxxxx  xxxxxxxx
+OVERFLOW        OVERFLOW_MAIN                              xxxxxxxx  xxxxxxxx

@@ -3,6 +3,8 @@ semantic OK, wrote VaxMethods.mar
 exit 0
 VaxMethods.mar matches expected-vax.mar
 VaxMethLib.mar matches expected-vax-VaxMethLib.mar
+VaxMethods.image matches expected-vax.image
+VaxMethLib.image matches expected-vax-VaxMethLib.image
 LLVM build -O2 exit 0
 VAX build -O2 exit 0
 LLVM build -OC exit 0

@@ -29,6 +29,13 @@
 # in two files, and types both into its log with its status, which comes
 # back through tools/vax-do.
 #
+# Each program is built for the VAX both ways (Phase 18 step 6d;
+# doc/developer/vax-object-language.md, section 17.2, item 9): from
+# MACRO-32 as P001, and from poc's objects (-vax-objects) as O001, whose
+# objects go as O001_<module>.obj, which tools/vax-do converts, with
+# every <MODULE>.OBJ in its procedure renamed to match. VAX_WAYS=macro32
+# or VAX_WAYS=objects builds one way only, as in test/vaxfixture.sh.
+#
 # The guest's output must be the host's, and its status the host's exit
 # status: SS$_NORMAL is 0, %X10000000 + 8 * n + 2 is n (section 14, item
 # 10). A record has no "no line end", so a host output whose last line has
@@ -39,7 +46,10 @@
 # O2-trap-heap-exhausted), and <run> the run's number from 1 on a line
 # with ":"; without -<build>, expected-vax-<module>[-<run>] is for every
 # build that has none of its own. Its lines starting ";;", which say why,
-# are not compared. In the guest's standard output and standard error
+# are not compared. Built from objects, whose tracebacks name each
+# routine as its DST record does, with its line (section 16), the
+# fixture's expected-vax-objects-<module>... files, named the same way,
+# come first. In the guest's standard output and standard error
 # (VMS writes its own messages to both, $PUTMSG) the code addresses in
 # its fault messages and tracebacks (PC=, PSL=, a traceback line's last
 # two columns) are masked as xxxxxxxx first, since any change moves them.
@@ -60,6 +70,16 @@ unset POC_IMPORT_PATH
 
 [ -f "$list" ] || { echo "vax-suite: no list $list" >&2; exit 2; }
 "$ROOT/tools/vax-assemble" -available || { echo "vax-suite: the VAX guest is not available" >&2; exit 2; }
+
+# the ways each program is built (VAX_WAYS, as test/vaxfixture.sh's)
+ways=${VAX_WAYS:-macro32 objects}
+for way in $ways; do
+  case $way in macro32|objects) ;; *) echo "vax-suite: VAX_WAYS: no way $way" >&2; exit 2 ;; esac
+done
+# a build's name: the line's P<n> from MACRO-32, O<n> from poc's objects
+way_id() {
+  case $2 in macro32) echo "$1" ;; objects) echo "O${1#P}" ;; esac
+}
 
 work=$ROOT/build/vax-suite
 rm -rf "$work"
@@ -118,62 +138,95 @@ while read -r id line; do
       echo "host build failed" >"$work/$id.$k.host.status"
     fi
   done <"$work/$id.runs"
-  # the VAX's build, renamed for the guest
-  cp -R "$ROOT/test/conformance/$fixture" "$work/vax/$id"
-  v=$work/vax/$id$subdir
-  top=$(sed -n 's/^[[:space:]]*MODULE[[:space:]]*\([A-Za-z0-9_]*\).*/\1/p' "$v/$main" | head -1)
-  # shellcheck disable=SC2086
-  if ! (cd "$v" && poc $options -target vax-dec-vms -import-path "$ROOT/rtl/vax" -build "$main") >"$work/vax/$id.build" 2>&1 \
-     || [ ! -f "$v/$top.com" ]; then
-    echo "VAX build failed" >"$work/$id.vax.failed"
-    continue
-  fi
-  objects=
-  for m in $(sed -n 's/^\$ MACRO\/OBJECT \(.*\)\.MAR$/\1/p' "$v/$top.com"); do
-    file=$(cd "$v" && ls | awk -v m="$m" 'toupper($0) == m ".MAR"')
-    cp "$v/$file" "$work/guest/${id}_$m.MAR"
-    objects="$objects ${id}_$m.OBJ"
-  done
-  upper=$(echo "$top" | tr a-z A-Z)
-  sed -e "s/^\\\$ MACRO\\/OBJECT \\(.*\\)\\.MAR\$/\$ MACRO\\/OBJECT ${id}_\\1.MAR/" \
-      -e "s/^\\([A-Z0-9_\$]*\\)\\.OBJ\$/${id}_\\1.OBJ/" \
-      -e "s/^\\\$ CREATE $upper\\.OPT\$/\$ CREATE $id.OPT/" \
-      -e "s/^\\\$ LINK\\/EXECUTABLE=$upper\\.EXE $upper\\.OPT/\$ LINK\\/EXECUTABLE=$id.EXE $id.OPT/" \
-      "$v/$top.com" >"$work/guest/$id.COM"
-  {
-    echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite build $id\""
-    echo "\$ @$id"
-    echo "\$ S = \$STATUS"
-    echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite build-status $id \", S"
-    echo "\$ IF .NOT. S THEN GOTO END_$id"
-    echo "\$ $id :== \$'DEF'$id.EXE"
-  } >>"$suite"
-  k=0
-  outputs=
-  while IFS= read -r args; do
-    k=$((k + 1)); r=${id}R$k
-    quoted=$(eval "set -- $args"; for a; do printf ' "%s"' "$(printf '%s' "$a" | sed 's/"/""/g')"; done)
+  # the VAX's builds, one for each way, renamed for the guest
+  for way in $ways; do
+    vid=$(way_id "$id" "$way")
+    cp -R "$ROOT/test/conformance/$fixture" "$work/vax/$vid"
+    v=$work/vax/$vid$subdir
+    top=$(sed -n 's/^[[:space:]]*MODULE[[:space:]]*\([A-Za-z0-9_]*\).*/\1/p' "$v/$main" | head -1)
+    # shellcheck disable=SC2086
+    if ! (cd "$v" && poc $options -target vax-dec-vms -vax-$way -import-path "$ROOT/rtl/vax" -build "$main") >"$work/vax/$vid.build" 2>&1 \
+       || [ ! -f "$v/$top.com" ]; then
+      echo "VAX build failed" >"$work/$vid.vax.failed"
+      continue
+    fi
+    objects=
+    upper=$(echo "$top" | tr a-z A-Z)
+    if [ "$way" = macro32 ]; then
+      for m in $(sed -n 's/^\$ MACRO\/OBJECT \(.*\)\.MAR$/\1/p' "$v/$top.com"); do
+        file=$(cd "$v" && ls | awk -v m="$m" 'toupper($0) == m ".MAR"')
+        cp "$v/$file" "$work/guest/${vid}_$m.MAR"
+        objects="$objects ${vid}_$m.OBJ"
+      done
+      sed -e "s/^\\\$ MACRO\\/OBJECT \\(.*\\)\\.MAR\$/\$ MACRO\\/OBJECT ${vid}_\\1.MAR/" \
+          -e "s/^\\([A-Z0-9_\$]*\\)\\.OBJ\$/${vid}_\\1.OBJ/" \
+          -e "s/^\\\$ CREATE $upper\\.OPT\$/\$ CREATE $vid.OPT/" \
+          -e "s/^\\\$ LINK\\/EXECUTABLE=$upper\\.EXE $upper\\.OPT/\$ LINK\\/EXECUTABLE=$vid.EXE $vid.OPT/" \
+          "$v/$top.com" >"$work/guest/$vid.COM"
+    else
+      # the objects, each sent as <vid>_<M>.obj, which tools/vax-do
+      # converts, and every <M>.OBJ in the procedure, its conversion's
+      # lines and its options file's, renamed; POCRTL.OBJ is the suite's
+      modules=$(sed -n 's/^\([A-Z0-9_$]*\)\.OBJ$/\1/p' "$v/$top.com")
+      for m in $modules; do
+        file=$(cd "$v" && ls | awk -v m="$m" 'toupper($0) == m ".OBJ"')
+        cp "$v/$file" "$work/guest/${vid}_$m.obj"
+        objects="$objects ${vid}_$m.OBJ"
+      done
+      awk -v id="$vid" -v modules="$modules" '
+        BEGIN { n = split(modules, name, " ") }
+        {
+          for (i = 1; i <= n; i++) {
+            t = name[i] ".OBJ"; done = ""; rest = $0
+            while ((p = index(rest, t)) > 0) {
+              before = p > 1 ? substr(rest, p - 1, 1) : ""
+              if (before ~ /[A-Z0-9_$]/) done = done substr(rest, 1, p + length(t) - 1)
+              else done = done substr(rest, 1, p - 1) id "_" t
+              rest = substr(rest, p + length(t))
+            }
+            $0 = done rest
+          }
+          print
+        }' "$v/$top.com" \
+      | sed -e "s/^\\\$ CREATE $upper\\.OPT\$/\$ CREATE $vid.OPT/" \
+            -e "s/^\\\$ LINK\\/EXECUTABLE=$upper\\.EXE $upper\\.OPT/\$ LINK\\/EXECUTABLE=$vid.EXE $vid.OPT/" \
+            >"$work/guest/$vid.COM"
+    fi
     {
-      echo "\$ DEFINE/USER_MODE SYS\$OUTPUT $r.OUT"
-      echo "\$ DEFINE/USER_MODE SYS\$ERROR $r.ERR"
-      echo "\$ $id$quoted"
-      echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite status $id.$k \", \$STATUS"
-      echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite out $id.$k\""
-      echo "\$ IF F\$SEARCH(\"$r.OUT\") .NES. \"\" THEN TYPE $r.OUT"
-      echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite err $id.$k\""
-      echo "\$ IF F\$SEARCH(\"$r.ERR\") .NES. \"\" THEN TYPE $r.ERR"
-      echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite end $id.$k\""
+      echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite build $vid\""
+      echo "\$ @$vid"
+      echo "\$ S = \$STATUS"
+      echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite build-status $vid \", S"
+      echo "\$ IF .NOT. S THEN GOTO END_$vid"
+      echo "\$ $vid :== \$'DEF'$vid.EXE"
     } >>"$suite"
-    outputs="$outputs $r.OUT $r.ERR"
-  done <"$work/$id.runs"
-  {
-    echo "\$ DELETE/SYMBOL/GLOBAL $id"
-    echo "\$ END_$id:"
-    echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite end $id\""
-    for f in $objects $id.OPT $id.EXE $outputs; do
-      echo "\$ IF F\$SEARCH(\"$f\") .NES. \"\" THEN DELETE/NOLOG $f;*"
-    done
-  } >>"$suite"
+    k=0
+    outputs=
+    while IFS= read -r args; do
+      k=$((k + 1)); r=${vid}R$k
+      quoted=$(eval "set -- $args"; for a; do printf ' "%s"' "$(printf '%s' "$a" | sed 's/"/""/g')"; done)
+      {
+        echo "\$ DEFINE/USER_MODE SYS\$OUTPUT $r.OUT"
+        echo "\$ DEFINE/USER_MODE SYS\$ERROR $r.ERR"
+        echo "\$ $vid$quoted"
+        echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite status $vid.$k \", \$STATUS"
+        echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite out $vid.$k\""
+        echo "\$ IF F\$SEARCH(\"$r.OUT\") .NES. \"\" THEN TYPE $r.OUT"
+        echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite err $vid.$k\""
+        echo "\$ IF F\$SEARCH(\"$r.ERR\") .NES. \"\" THEN TYPE $r.ERR"
+        echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite end $vid.$k\""
+      } >>"$suite"
+      outputs="$outputs $r.OUT $r.ERR"
+    done <"$work/$id.runs"
+    {
+      echo "\$ DELETE/SYMBOL/GLOBAL $vid"
+      echo "\$ END_$vid:"
+      echo "\$ WRITE SYS\$OUTPUT \"%%vax-suite end $vid\""
+      for f in $objects $vid.OPT $vid.EXE $outputs; do
+        echo "\$ IF F\$SEARCH(\"$f\") .NES. \"\" THEN DELETE/NOLOG $f;*"
+      done
+    } >>"$suite"
+  done
 done <"$entries"
 {
   echo "\$ DELETE/NOLOG POCRTL.OBJ;*"
@@ -207,13 +260,17 @@ exit_status() {
   esac
 }
 
-# what the guest's <kind> must be for run k: the fixture's expected-vax
-# file for this build, else its file for every build, else the host's,
-# ending with a line end
+# what the guest's <kind> must be for run k: built from objects, the
+# fixture's expected-vax-objects file for this build, else its file for
+# every build; then its expected-vax file for this build, else its file
+# for every build; else the host's, ending with a line end
 want() {
   run=; [ "$numbered" = yes ] && run=-$k
+  objects=$ROOT/test/conformance/$fixture/expected-vax-objects-$base
   over=$ROOT/test/conformance/$fixture/expected-vax-$base
-  if [ -f "$over-$tag$run.$1" ]; then grep -v '^;;' "$over-$tag$run.$1"
+  if [ "$way" = objects ] && [ -f "$objects-$tag$run.$1" ]; then grep -v '^;;' "$objects-$tag$run.$1"
+  elif [ "$way" = objects ] && [ -f "$objects$run.$1" ]; then grep -v '^;;' "$objects$run.$1"
+  elif [ -f "$over-$tag$run.$1" ]; then grep -v '^;;' "$over-$tag$run.$1"
   elif [ -f "$over$run.$1" ]; then grep -v '^;;' "$over$run.$1"
   elif [ -s "$work/$id.$k.host.$1" ]; then sed '$a\' "$work/$id.$k.host.$1"
   fi
@@ -231,33 +288,36 @@ while read -r id line; do
   parse "$line"
   k=0
   while IFS= read -r args; do
-    k=$((k + 1)); r=$id.$k
-    name="$build${args:+ : $args}"
-    : >"$work/$r.diff"
-    if [ -f "$work/$id.vax.failed" ]; then
-      echo "the VAX build failed:" >>"$work/$r.diff"; cat "$work/vax/$id.build" >>"$work/$r.diff"
-    elif [ ! -f "$work/$id.vax.build-status" ] || [ "$(cat "$work/$id.vax.build-status")" != %X10000001 ]; then
-      echo "the guest's build failed:" >>"$work/$r.diff"; cat "$work/$id.vax.build-log" 2>/dev/null >>"$work/$r.diff"
-    else
-      for kind in out err; do
-        want "$kind" >"$work/$r.want.$kind"
-        [ -f "$work/$r.vax.$kind" ] || : >"$work/$r.vax.$kind"
-        masked "$work/$r.vax.$kind"
-        if ! diff "$work/$r.want.$kind" "$work/$r.vax.$kind" >"$work/$r.d" 2>&1; then
-          case $kind in out) echo "standard output differs (< wanted, > the VAX's):" ;;
-                        err) echo "standard error differs (< wanted, > the VAX's):" ;; esac >>"$work/$r.diff"
-          cat "$work/$r.d" >>"$work/$r.diff"
-        fi
-      done
-      got=$(exit_status "$(cat "$work/$r.vax.status" 2>/dev/null)")
-      wanted=$(want status)
-      [ "$got" = "$wanted" ] || echo "exit status: wanted $wanted, the VAX's $got" >>"$work/$r.diff"
-    fi
-    if [ -s "$work/$r.diff" ]; then
-      failed=$((failed + 1)); echo "FAILED: $r $name"; sed 's/^/  /' "$work/$r.diff"
-    else
-      passed=$((passed + 1)); echo "PASSED: $r $name"
-    fi
+    k=$((k + 1))
+    for way in $ways; do
+      vid=$(way_id "$id" "$way"); r=$vid.$k
+      name="$build${args:+ : $args}"
+      : >"$work/$r.diff"
+      if [ -f "$work/$vid.vax.failed" ]; then
+        echo "the VAX build failed:" >>"$work/$r.diff"; cat "$work/vax/$vid.build" >>"$work/$r.diff"
+      elif [ ! -f "$work/$vid.vax.build-status" ] || [ "$(cat "$work/$vid.vax.build-status")" != %X10000001 ]; then
+        echo "the guest's build failed:" >>"$work/$r.diff"; cat "$work/$vid.vax.build-log" 2>/dev/null >>"$work/$r.diff"
+      else
+        for kind in out err; do
+          want "$kind" >"$work/$r.want.$kind"
+          [ -f "$work/$r.vax.$kind" ] || : >"$work/$r.vax.$kind"
+          masked "$work/$r.vax.$kind"
+          if ! diff "$work/$r.want.$kind" "$work/$r.vax.$kind" >"$work/$r.d" 2>&1; then
+            case $kind in out) echo "standard output differs (< wanted, > the VAX's):" ;;
+                          err) echo "standard error differs (< wanted, > the VAX's):" ;; esac >>"$work/$r.diff"
+            cat "$work/$r.d" >>"$work/$r.diff"
+          fi
+        done
+        got=$(exit_status "$(cat "$work/$r.vax.status" 2>/dev/null)")
+        wanted=$(want status)
+        [ "$got" = "$wanted" ] || echo "exit status: wanted $wanted, the VAX's $got" >>"$work/$r.diff"
+      fi
+      if [ -s "$work/$r.diff" ]; then
+        failed=$((failed + 1)); echo "FAILED: $r ($way) $name"; sed 's/^/  /' "$work/$r.diff"
+      else
+        passed=$((passed + 1)); echo "PASSED: $r ($way) $name"
+      fi
+    done
   done <"$work/$id.runs"
 done <"$entries"
 echo

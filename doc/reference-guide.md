@@ -663,7 +663,7 @@ number, on the standard error stream.
 | `-emit-interface <file>` | Writes the module's interface, `<Module>.sym`. |
 | `-show-interface <file>` | Prints the module's interface on the standard output. |
 | `-emit-llvm-ir <file>` | Writes the module's LLVM IR, `<Module>.ll`. |
-| `-emit-macro32 <file>` | Writes the module's VAX MACRO-32, `<Module>.mar`, and that of each module it imports compiled from source, for VAX/VMS; the module named is the program's main module, whose `.mar` has the program's start. Implies `-target vax-dec-vms`; takes `-O2` (the default) or `-OC`, under which `LONGINT` is a quadword. The VAX backend is being written: so far it writes a module's layout, its variables, assignments of integer, `REAL`, `LONGREAL`, `CHAR`, `BOOLEAN`, `SET` and `SYSTEM.SET64` expressions, fixed arrays, records and their extensions, open-array parameters, `SYSTEM.BYTE` parameters, pointers to arrays and to records and `NIL`, `IS`, type guards, strings, the statements `IF`, `CASE`, `WHILE`, `REPEAT`, `FOR`, `LOOP`, `EXIT`, `RETURN` and `WITH`, procedures and calls of them, type-bound procedures and calls of them, procedure values and calls through them, nested procedures, external `"VMS"` procedures, and the predeclared procedures `ABS`, `ODD`, `CHR`, `ORD`, `CAP`, `LEN`, `INC`, `DEC`, `INCL`, `EXCL`, `SHORT`, `LONG`, `ASH`, `ENTIER`, `COPY`, `NEW`, `HALT` and `ASSERT`, and imported variables and procedures, and reports anything more as a construct it cannot lower yet. |
+| `-emit-macro32 <file>` | Writes the module's VAX MACRO-32, `<Module>.mar`, and that of each module it imports compiled from source, for VAX/VMS; the module named is the program's main module, whose `.mar` has the program's start. Implies `-target vax-dec-vms`; takes `-O2` (the default) or `-OC`, under which `LONGINT` is a quadword. |
 | `-version` | Prints poc's version and the commit it was built from, the target and size model, and clang's version. |
 | `-help`, `-h`, `--help` | Every command and option, on the standard output, with the commands for testing poc itself in a section of their own at the end. |
 | `-print-import-path`, `-print-library-path` | Prints the import path or the library path, as the options leave it, one directory a line. |
@@ -678,8 +678,13 @@ one line saying what is wrong, and a pointer to `-help`:
     run poc -help for the commands and options
 
 The commands for testing poc itself are `-dump-tokens`, `-check-syntax`,
-`-dump-layout`, `-dump-llvm-types`, `-dump-nested`, `-dump-vax-types` and
-`-dump-vax-names`.
+`-dump-layout`, `-dump-llvm-types`, `-dump-nested`, `-dump-vax-types`,
+`-dump-vax-names`, `-emit-vax-image`, which writes each module's object
+as the VAX encoder makes it, `<Module>.image`, and `-emit-vax-object`,
+which writes each module's VAX object, `<Module>.obj`, an object file on
+VMS and elsewhere its records counted as VMS keeps them on disk.
+`-emit-macro32`, `-emit-vax-image` and `-emit-vax-object` may be given
+together, and one compile writes each file they name.
 
 ### Options
 
@@ -692,15 +697,17 @@ The commands for testing poc itself are `-dump-tokens`, `-check-syntax`,
 | `-library-path <dir>` | Adds `<dir>` to the directories searched for libraries, before `POC_LIBRARY_PATH`'s; repeatable. |
 | `-clear-library-path` | Leaves out every library directory, `POC_LIBRARY_PATH`'s and poc's own included. |
 | `-output-dir <dir>` | Writes `.sym`, `.ll` and `.o` files, and libraries, in `<dir>`, which is made if it is not there. |
-| `-target <triple>` | Compiles for that LLVM target triple, as far as clang can (linking needs its C library). With `-emit-interface` or `-show-interface`, folds `SIZE`, `MAX` and `MIN` for its word size. `vax-dec-vms` is the VAX/VMS target, which takes `-emit-macro32`, `-check`, `-emit-interface`, `-show-interface`, `-build` and `-compile` so far. For it, `-build` writes every module's `.mar` and a DCL procedure, `<name>.com` (the main module's name, or `-o`'s without `.exe`), that assembles them on VMS and links them with poc's runtime, `POCRTL.OBJ` (assembled from `rtl/vax/PocRtl.mar`; taken from `POC$RTL:` when that logical name is defined), into `<NAME>.EXE`; every module must be compiled from source, including the runtime's `Out` (`-import-path rtl/vax`). A `.cld` file after the program's file, in any case, is a command table: it is copied beside the `.mar` files, and the procedure compiles it by `SET COMMAND/OBJECT` and links its object (`CommandLanguage` in `VMSLIB` parses with it); for any other command or target a `.cld` is an error. `-compile` writes the named modules' `.mar` and a procedure, `<First>.com`, that assembles them. poc runs nothing on VMS itself: copy the files there and run the procedure (`@<NAME>`). |
+| `-target <triple>` | Compiles for that LLVM target triple, as far as clang can (linking needs its C library). With `-emit-interface` or `-show-interface`, folds `SIZE`, `MAX` and `MIN` for its word size. `vax-dec-vms` is the VAX/VMS target, which takes `-emit-macro32`, `-emit-vax-object`, `-emit-vax-image`, `-check`, `-emit-interface`, `-show-interface`, `-build`, `-compile`, `-library` and `-install-library`. For it, `-build` writes every module's `.mar` (or with `-vax-objects`, the default on VMS, its `.obj`) and a DCL procedure, `<name>.com` (the main module's name, or `-o`'s without `.exe`), that assembles them on VMS and links them with poc's runtime, `POCRTL.OBJ` (assembled from `rtl/vax/PocRtl.mar`; taken from `POC$RTL:` when that logical name is defined), into `<NAME>.EXE`; every module must be compiled from source, including the runtime's `Out` (`-import-path rtl/vax`). A `.cld` file after the program's file, in any case, is a command table: it is copied beside the modules' files, and the procedure compiles it by `SET COMMAND/OBJECT` and links its object (`CommandLanguage` in `VMSLIB` parses with it); for any other command or target a `.cld` is an error. `-compile` writes the named modules' `.mar` and a procedure, `<First>.com`, that assembles them (with `-vax-objects`, their `.obj`). poc on Unix runs nothing on VMS itself: copy the files there and run the procedure (`@<NAME>`). |
 | `-opt <level>` | clang's optimization level: `0`, `1`, `2`, `3`, `s`, `z` or `g`. The default is 2, and 0 for 32-bit x86. |
-| `-g` | Debug information for gdb and lldb: procedures, lines, parameters, variables, records, arrays, pointers. Libraries are looked for first in their `-g` copies (section 8). Best with `-opt 0` or `-opt g`. |
+| `-g` | Debug information for gdb and lldb: procedures, lines, parameters, variables, records, arrays, pointers. Libraries are looked for first in their `-g` copies (section 8). Best with `-opt 0` or `-opt g`. For `vax-dec-vms`, the objects poc writes (`-vax-objects`, `-emit-vax-object`) get the VMS debugger's records too: the source file, where each routine's code begins, and each variable and constant with its type (the *Peaseblossom VAX/VMS Guide*, chapter 16); and the build procedure links `/DEBUG`, and from MACRO-32 assembles `/DEBUG` too. Every object has its routines and lines, for a traceback. |
 | `-trap-location` | A trap's message names its file, line, column and procedure (section 6). |
 | `-trap-heap-exhausted` | A `NEW` the heap cannot satisfy is trap 11, not a `NIL` pointer. |
 | `-range-checks` | `SHORT` of an integer and `CHR` of a value that does not fit are trap 14. |
 | `-strict` | The module named may use only `Oberon2.pdf`'s language (section 3). |
 | `-static` | Links a fully static executable. |
 | `-shared-libraries` | Links the libraries' shared objects, not their archives. |
+| `-vax-objects` | For `vax-dec-vms`, builds from poc's own objects: `-build` and `-compile` write each module's `.obj`, not its `.mar`, and the build procedure assembles nothing. On Linux and the BSDs the procedure first converts each object sent to VMS in binary, with the kit's `OBJCONVERT`, and `-compile` writes one that only converts; on VMS `-compile` writes none. The default for poc on VMS. |
+| `-vax-macro32` | For `vax-dec-vms`, builds from MACRO-32: `-build` and `-compile` write each module's `.mar` and a procedure that assembles them. The default for poc elsewhere. |
 | `-link <arg>` | Passes `<arg>` to the link (`-lz`, `-L<dir>`); repeatable. With `-library`, also recorded in the manifest, for every program that links the library. |
 | `-c-flag <arg>` | Passes `<arg>` to clang when it compiles a module's C part, `<Module>.c` beside `<Module>.Mod`, or clang++ its C++ part, `<Module>.cpp` (`-I<dir>`, `-D<name>`); repeatable. |
 | `-lto` | Compiles to LLVM bitcode and optimizes the whole program when it is linked. On NetBSD it needs lld (pkgsrc's `lld`). Ignored for 32-bit x86 NetBSD unless poc runs on 32-bit x86 NetBSD. |

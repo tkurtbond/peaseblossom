@@ -1,0 +1,196 @@
+record 1 HDR, 65 bytes
+  MHD level 0 record size 512 name VAXDEBUG ident DD3FC2B73BE01C06
+  created "18-OCT-2026 00:00" patched "                 "
+record 2 HDR, 24 bytes
+  LNM "Peaseblossom poc"
+record 3 HDR, 14 bytes
+  SRC "VaxDebug.mod"
+record 4 GSD, 167 bytes
+  PSC .  ABS  . align 0 flags 0000 size 000000
+  PSC POC_CODE align 2 flags 00E9 size 0001C7
+  PSC POC_CONST align 3 flags 00A9 size 000009
+  PSC POC_DATA align 3 flags 0188 size 000034
+  SYM POC_K1_DD3FC2B73BE01C06 flags 0002 section 0 value 00000000
+  EPM VAXDEBUG_INIT flags 000A section 1 value 000000A7 mask 0000
+  EPM VAXDEBUG_MAIN flags 000A section 1 value 000001BC mask 0000
+  SYM POC_TRAP flags 0000 reference
+record 5 TIR, 481 bytes
+  STA_PB 1 0
+  CTL_SETRB
+  store immediate 128
+  store immediate 26
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 4
+  STA_PB 3 0
+  STO_LD
+  store immediate 5
+  STA_PB 3 0
+  STO_LD
+  store immediate 7
+  STA_PB 3 1
+  STO_LD
+  store immediate 5
+  STA_PB 3 2
+  STO_LD
+  store immediate 7
+  STA_PB 3 4
+  STO_LD
+  store immediate 7
+  STA_PB 3 8
+  STO_LD
+  store immediate 3
+  STA_PB 3 12
+  STO_LD
+  store immediate 4
+  STA_PB 3 16
+  STO_LD
+  store immediate 5
+  STA_PB 3 18
+  STO_LD
+  store immediate 7
+  STA_PB 3 20
+  STO_LD
+  store immediate 3
+  STA_PB 3 24
+  STO_LD
+  store immediate 2
+  STA_PB 3 28
+  STO_LD
+  store immediate 3
+  STA_PB 3 32
+  STO_LD
+  store immediate 8
+  STA_PB 3 36
+  STO_LD
+  store immediate 4
+  STA_PB 3 44
+  STO_LD
+  store immediate 3
+  STA_PB 3 45
+  STO_LD
+  store immediate 3
+  STA_PB 3 46
+  STO_LD
+  store immediate 7
+  STA_PB 3 48
+  STO_LD
+  store immediate 10
+  STA_PB 3 4
+  STO_LD
+  store immediate 4
+  STA_PB 3 45
+  STO_LD
+  store immediate 4
+  STA_PB 3 32
+  STO_LD
+  store immediate 4
+  STA_PB 3 8
+  STO_LD
+  store immediate 16
+  STA_PB 3 2
+  STO_LD
+  store immediate 5
+  STA_PB 3 2
+  STO_LD
+  store immediate 12
+  STA_PB 3 2
+  STO_LD
+  store immediate 8
+  STA_PB 3 36
+  STO_LD
+  store immediate 7
+  STA_PB 3 8
+  STO_LD
+  store immediate 7
+record 6 TIR, 32 bytes
+  STA_PB 3 12
+  STO_LD
+  store immediate 12
+  STA_PB 2 0
+  CTL_SETRB
+  store immediate 9
+record 7 TBT, 18 bytes
+  DST module begin language 10 name VAXDEBUG
+record 8 DBG, 233 bytes
+  DST data type 6 flags 01 value 3+00000001 name S
+  DST data type 7 flags 01 value 3+00000002 name I
+  DST data type 8 flags 01 value 3+00000004 name L
+  DST data type 9 flags 01 value 3+00000008 name H
+  DST data type 2 flags 01 value 3+00000010 name C8
+  DST data type 3 flags 01 value 3+00000012 name C16
+  DST data type 4 flags 01 value 3+00000014 name C32
+  DST data type 5 flags 01 value 3+00000018 name C64
+  DST data type 10 flags 01 value 3+00000020 name X
+  DST data type 27 flags 01 value 3+00000024 name Y
+  DST data type 14 flags 01 value 3+0000002C name CH
+  DST data type 158 flags 01 value 3+0000002D name B
+  DST data type 2 flags 01 value 3+0000002E name BY
+  DST data type 4 flags 01 value 3+00000030 name A
+  DST data type 7 flags 00 value 000003E8 name LIMIT
+  DST data type 6 flags 00 value FFFFFFFB name SMALL
+  DST data type 14 flags 00 value 00000051 name LETTER
+  DST data type 158 flags 00 value 00000001 name YES
+  DST data type 10 flags 00 value 000040C0 name RATIO
+record 9 TBT, 14 bytes
+  DST routine begin at 1+00000000 name SUM
+record 10 DBG, 132 bytes
+  DST prolog at 1+0000001B
+  DST data type 7 flags D9 value FFFFFFFE name N
+  DST data type 8 flags CD value 00000008 name TOTAL
+  DST data type 158 flags CD value 0000000C name FLAG
+  DST data type 10 flags C9 value 00000010 name SCALE
+  DST data type 9 flags D9 value FFFFFFF4 name BIG
+  DST data type 7 flags D9 value FFFFFFF2 name K
+  DST data type 7 flags D9 value FFFFFFF0 name ACC
+  DST data type 27 flags D9 value FFFFFFE8 name PART
+  DST data type 14 flags D9 value FFFFFFE7 name LAST
+  DST data type 6 flags 00 value 00000002 name STEP
+record 11 TBT, 33 bytes
+  DST routine end size 000000A7
+  DST routine begin at 1+000000A7 name VAXDEBUG_INIT
+record 12 DBG, 9 bytes
+  DST prolog at 1+000000BB
+record 13 TBT, 90 bytes
+  DST routine end size 00000115
+  DST routine begin at 1+000001BC name VAXDEBUG_MAIN
+  DST routine end size 0000000B
+  DST line numbers
+    PC 1+00000000
+    line 18 at 1+00000000
+    line 22 at 1+0000001B
+    line 23 at 1+00000027
+    line 24 at 1+00000060
+    line 25 at 1+0000006D
+    line 26 at 1+00000072
+    line 27 at 1+00000083
+    line 28 at 1+00000087
+    line 29 at 1+0000008A
+    line 30 at 1+00000094
+    end at 1+000000A7
+  DST line numbers
+    PC 1+000000A7
+    line 1 at 1+000000A7
+    line 33 at 1+000000BB
+    line 34 at 1+000000E9
+    line 35 at 1+00000112
+    line 36 at 1+00000146
+    line 37 at 1+00000180
+    line 38 at 1+00000199
+    line 39 at 1+000001A5
+    end at 1+000001BC
+record 14 DBG, 53 bytes
+  DST source file
+    form feeds counted
+    declare file 1 created 0000000000000000 end block 0 first free byte 0 format 0 name VaxDebug.mod module 
+  DST source file
+    set file 1
+    set record 1
+    define lines 40
+record 15 TBT, 4 bytes
+  DST module end
+record 16 EOM, 7 bytes
+  severity 0 transfer section 1 offset 000001BC

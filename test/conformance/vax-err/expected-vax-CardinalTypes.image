@@ -1,0 +1,12 @@
+module CARDINALTYPES ident 140EB5589368DA71
+section .  ABS  . align 0 flags - size 000000
+section POC_CODE align 2 flags PIC,REL,SHR,EXE,RD size 000012
+  000000 00 00 E9 EF 00 00 00 00 01 04 90 01 EF 00 00 00
+  000010 00 04
+  relocation 000004 LD POC_DATA+000000
+  relocation 00000D LD POC_DATA+000000
+section POC_CONST align 3 flags PIC,REL,SHR,RD size 000000
+section POC_DATA align 3 flags REL,RD,WRT size 000001
+  000000 zeros to 000001
+entry CARDINALTYPES_INIT POC_CODE+000000 mask 0000
+symbol POC_K1_140EB5589368DA71 absolute 0

@@ -15,11 +15,15 @@ written="stringstest.mar stringsextra.mar Strings.mar DecimalToReal.mar Out.mar 
 cp ../llvm-strings/stringstest.mod ../llvm-strings-extra/stringsextra.mod .
 rm -f stringstest.com stringsextra.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 rm -f *.sym $written
 for program in stringstest stringsextra; do
-  poc -target vax-dec-vms -import-path $rtl -build $program.mod >>result 2>&1
+  poc -target vax-dec-vms $vax_way_option -import-path $rtl -build $program.mod >>result 2>&1
   echo "VAX build $program exit $?" >>result
 done
 vax_do guest-run.com guest-run.expected stringstest.com stringsextra.com $written $rtl/PocRtl.mar
-rm -f *.sym $written stringstest.com stringsextra.com stringstest.mod stringsextra.mod
+}
+vax_build builds
+rm -f *.sym $written stringstest.com stringsextra.com stringstest.mod stringsextra.mod *.obj
 . ../../testresult.sh

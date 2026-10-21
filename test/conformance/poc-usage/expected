@@ -29,7 +29,7 @@ options, before or after the command (the last one counts, except those that add
   -clear-library-path        forget the library path so far, poc's own too
   -O2 | -OC                  size model: INTEGER 16/32 bits, LONGINT 32/64
   -strict                    only the Oberon-2 report: no extensions
-  -g                         debug information for gdb and lldb
+  -g                         debug information: gdb, lldb, the VMS debugger
   -opt <level>               clang's -O: 0-3 s z g (default 2, 0 on 32-bit x86)
   -lto                       optimize the whole program when it is linked
   -rebuild                   compile every module, reusing no object
@@ -38,6 +38,8 @@ options, before or after the command (the last one counts, except those that add
   -range-checks              SHORT and CHR of a value that does not fit trap
   -static                    link a fully static executable
   -shared-libraries          link libraries dynamically
+  -vax-objects               for vax-dec-vms: build from poc's objects (on VMS)
+  -vax-macro32               for vax-dec-vms: build from MACRO-32 (elsewhere)
   -link <arg>                add <arg> to the link (-lz, -L<dir>)
   -c-flag <arg>              add <arg> to clang's flags for a module's C part
   -target <triple>           compile for another target (vax-dec-vms: the VAX)
@@ -57,6 +59,8 @@ for testing poc itself:
   -dump-nested <file>        print what its nested procedures need
   -dump-vax-types <file>     print the VAX size and suffix of each of its types
   -dump-vax-names <file>     print the VAX symbol of each of its names
+  -emit-vax-image <file>     write each module encoded, <Module>.image
+  -emit-vax-object <file>    write each module's VAX object, <Module>.obj
 
 poc(1) explains each of them.
 exit=1

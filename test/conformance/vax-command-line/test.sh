@@ -19,6 +19,8 @@ rtl=../../../rtl/vax
 rm -f ArgsOut.com
 : >result
 vax_mar CommandLine -import-path $rtl
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym
   poc $model -o vax-command-line -build ArgsOut.mod >>result 2>&1
@@ -26,10 +28,12 @@ for model in -O2 -OC; do
   ./vax-command-line -o Hello mixedCase 'a"b"c' 'x"y' '' 'two  spaces' tab >output 2>&1
   cmp -s output output.expected || { echo "the LLVM backend's output, $model:" >>result; diff output.expected output >>result; }
   rm -f *.sym
-  poc $model -target vax-dec-vms -import-path $rtl -build ArgsOut.mod >>result 2>&1
+  poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build ArgsOut.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
   vax_do guest-run.com guest-run.expected ArgsOut.com ArgsOut.mar Modules.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar Platform.mar \
     GarbageCollectedHeap.mar $rtl/PocRtl.mar
 done
-rm -f output
+}
+vax_build builds
+rm -f output *.obj
 . ../../testresult.sh

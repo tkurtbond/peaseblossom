@@ -89,7 +89,8 @@ run in, and everything in it is text.
        $ @[-]POC-0-7-0
        $ @[-]POC-VMS-0-7-0
 
-   The base kit makes `[.BIN]`, `[.KIT]` (poc's own MACRO-32),
+   The base kit makes `[.BIN]`, `[.KIT]` (poc's own MACRO-32, and in
+   `[.KIT.OBJCONVERT]` that of `OBJCONVERT`, below),
    `[.LIB.POC.VAX-DEC-VMS.O2]` and `[.OC]` (the libraries), `[.SRC]` (the
    source poc for VMS is built from), `BUILD.COM`, `SETUP.COM`,
    `README.TXT`, `VAX-VMS-GUIDE.TXT` (this guide, as text, for `TYPE/PAGE
@@ -100,7 +101,9 @@ run in, and everything in it is text.
 
        $ @BUILD
 
-   This assembles and links `POC.EXE` into `[.BIN]`, then builds every
+   This assembles and links `POC.EXE` into `[.BIN]`, and with it
+   `OBJCONVERT.EXE`, which converts objects poc wrote on Unix (chapter 3,
+   "From objects or from MACRO-32"), then builds every
    library that is there, under both size models (chapter 3). It takes a
    while; `BUILD.LOG` has each step's time. `@BUILD` builds only what is
    not built yet, so after the STARLET kit is unpacked into a built
@@ -113,10 +116,10 @@ run in, and everything in it is text.
 
        $ @dev:[dir.POC]SETUP
 
-   `SETUP.COM` defines the command `POC` and the logical names of the
-   `-O2` libraries that are built. `@SETUP OC` defines the `-OC` ones
-   instead: a process builds against one size model's libraries at a
-   time.
+   `SETUP.COM` defines the commands `POC` and `OBJCONVERT` and the
+   logical names of the `-O2` libraries that are built. `@SETUP OC`
+   defines the `-OC` ones instead: a process builds against one size
+   model's libraries at a time.
 
 Check the installation with `POC -VERSION`:
 
@@ -186,10 +189,10 @@ END Hello.
     Hello, world
 
 `POC` compiles `HELLO.MOD`, and every module it imports that does not
-come from a library, to MACRO-32, one `.MAR` file each, and writes
+come from a library, to a VAX object, one `.OBJ` file each, and writes
 `HELLO.COM`. Like poc on Unix it says nothing when it succeeds. `@HELLO`
-assembles the program's modules and links `HELLO.EXE` against `POCRTL`.
-`RUN HELLO` runs it.
+links `HELLO.EXE` from the program's objects against `POCRTL`. `RUN
+HELLO` runs it.
 
 DCL turns what you type into capitals, unless it is quoted, so poc on VMS
 takes its options in any case: `POC -O HI HELLO.MOD` writes `HI.COM`,
@@ -197,8 +200,11 @@ which links `HI.EXE`.
 
 ### On Unix, then VMS
 
-Cross-compiling writes the same files on Unix. The runtime's modules come
-from `rtl/vax` in poc's source tree, here given as the import path:
+Cross-compiling writes the program's MACRO-32 instead, one `.mar` file
+for each module, which any file transfer carries as text, and a
+procedure that assembles them (chapter 3, "From objects or from
+MACRO-32"). The runtime's modules come from `rtl/vax` in poc's source
+tree, here given as the import path:
 
     $ poc -target vax-dec-vms -import-path ~/src/peaseblossom/rtl/vax -build Hello.Mod
 
@@ -233,9 +239,10 @@ compiled against.
 
 poc compiles the program's main module and every module it imports that
 does not come from a library. It writes `<Module>.sym`, the module's
-interface, and `<Module>.mar`, its MACRO-32, in the current directory or
-in the directory `-output-dir` names. Then it writes a DCL procedure,
-`<Main>.com`, or `-o`'s path with `.com`, which:
+interface, and either `<Module>.obj`, its VAX object, or `<Module>.mar`,
+its MACRO-32 (below), in the current directory or in the directory
+`-output-dir` names. Then it writes a DCL procedure, `<Main>.com`, or
+`-o`'s path with `.com`, which:
 
 1. checks, for each library the program uses, that the library's setup
    procedure has defined its logical names. If one has not, it stops
@@ -243,7 +250,7 @@ in the directory `-output-dir` names. Then it writes a DCL procedure,
 
        program HELLO needs library POCRTL: run its POCRTL_SETUP.COM first
 
-2. assembles each module, `MACRO/OBJECT`, imports first;
+2. from MACRO-32, assembles each module, `MACRO/OBJECT`, imports first;
 3. writes a linker options file, `<IMAGE>.OPT`, listing the objects (the
    main module's first) and each library;
 4. links `<IMAGE>.EXE`.
@@ -251,11 +258,37 @@ in the directory `-output-dir` names. Then it writes a DCL procedure,
 A warning stops the procedure: it starts with `ON WARNING THEN EXIT
 $STATUS`, so a MACRO warning or `%LINK-W-MULDEF` ends it with that step's
 status. Otherwise it exits with LINK's. The procedure is run where the
-`.mar` files are. `-o`'s last part, without `.exe`, must be a name VMS
-takes: 1 to 39 letters, digits, `_`, `$` and `-`.
+`.obj` or `.mar` files are. `-o`'s last part, without `.exe`, must be a
+name VMS takes: 1 to 39 letters, digits, `_`, `$` and `-`. With `-g` it
+links `/DEBUG`, and from MACRO-32 assembles `/DEBUG` too (chapter 16).
 
-`-compile <file>...` writes the named modules' `.mar` files and a
-procedure that only assembles them, with no program's start.
+`-compile <file>...` writes the named modules' objects, or their `.mar`
+files and a procedure that only assembles them, with no program's start.
+Objects written on Unix come with a procedure that only converts them
+(below); on VMS they need none.
+
+### From objects or from MACRO-32
+
+poc builds a program in one of two ways. With `-vax-objects` it writes
+each module's object itself, and the procedure only links them. With
+`-vax-macro32` it writes each module's MACRO-32, and the procedure
+assembles them first, with MACRO, which every VAX/VMS system has. Both
+give the same code. poc's own objects also name each procedure and
+source line in a traceback, and with `-g` carry what the debugger needs
+to show the Oberon source and variables (chapter 16).
+
+poc on VMS builds from objects unless given `-vax-macro32`. poc on Unix
+builds from MACRO-32 unless given `-vax-objects`: a `.mar` file is text,
+which any transfer carries, while an object is a file of variable-length
+records, which a transfer does not keep. To build from objects made on
+Unix, copy the `.obj` files to VMS in **binary** mode (FTP's `binary`
+before `put`) and the `.com` file in ASCII mode. VMS stores each object
+as fixed 512-byte records, and the procedure converts each such object
+first, with the command `OBJCONVERT`, which the kit's `SETUP.COM`
+defines (chapter 2): it writes a new version of the object with the
+records it started as, and deletes the old one. An object already
+converted, or written on VMS, is left alone, so the procedure can be run
+again.
 
 ### Size models
 
@@ -312,9 +345,10 @@ wildcards, `*` and `%`, itself, since DCL does not.
 ### What poc on VMS does not have
 
 poc on VMS has no LLVM back end. It compiles for VAX/VMS only, and refuses
-the options that only the LLVM back end has: `-lto`, `-g`, `-opt`,
+the options that only the LLVM back end has: `-lto`, `-opt`,
 `-static`, `-link`, `-c-flag`, `-rebuild`, `-verbose`, `-emit-llvm-ir` and
-`-dump-llvm-types`. On Unix, `-target vax-dec-vms` refuses them too.
+`-dump-llvm-types`. On Unix, `-target vax-dec-vms` refuses them too. `-g`
+gives the VMS debugger's records to the objects poc writes itself.
 
 ## 4. Libraries
 
@@ -332,13 +366,14 @@ DCL procedures build.
 `-library <name> <file>...` compiles the modules from source into the
 library's directory, `[<output-dir>.VAX-DEC-VMS.<O2|OC>]` (by default
 under the current directory). There it writes each module's `.sym` and
-`.mar`, the library's manifest, and two procedures:
+its object, `.obj` (or with `-vax-macro32`, its `.mar`), the library's
+manifest, and two procedures:
 
 - `<NAME>_SETUP.COM` defines the library's logical names:
   `POC$LIB_<NAME>`, its directory, and `<NAME>`, its shareable image. Run
   it in each process that builds or runs a program against the library.
-- `<NAME>_BUILD.COM` assembles the modules, makes `<NAME>.OLB` with
-  LIBRARY, and links `<NAME>.EXE` shareable, every global symbol of the
+- `<NAME>_BUILD.COM` makes `<NAME>.OLB` of the modules' objects with
+  LIBRARY (assembling them first if they are MACRO-32), and links `<NAME>.EXE` shareable, every global symbol of the
   library made universal. First it checks that each library this one
   needs has been set up.
 
@@ -352,16 +387,19 @@ procedure links against it.
 A `.mar` file named among the modules is a part of the library, assembled
 with them: `POCRTL` is made from `rtl/vax`'s modules and `PocRtl.mar`.
 
-On Unix, `poc -target vax-dec-vms -library` writes the same files.
-Copy the whole directory to VMS and run the two procedures there.
+On Unix, `poc -target vax-dec-vms -library` writes the same files, from
+MACRO-32 unless given `-vax-objects`. Copy the whole directory to VMS,
+the `.obj` files in binary (chapter 3, "From objects or from MACRO-32"),
+and run the two procedures there; the build procedure converts the
+objects first.
 
 ### Installing one
 
     $ POC -INSTALL-LIBRARY SHAPES -OUTPUT-DIR DISK$USER:[ME.LIB]
 
 `-install-library <name>` copies what the library path has of the
-library into `[<output-dir>.VAX-DEC-VMS.<O2|OC>]`, as text: the `.sym`,
-`.mar` and manifest, and the two procedures. Run its build procedure
+library into `[<output-dir>.VAX-DEC-VMS.<O2|OC>]`: the `.sym`, the
+`.obj` or `.mar`, the manifest, and the two procedures. Run its build procedure
 there, which makes the `.OLB` and `.EXE` in place and whose setup
 procedure then names that directory. An installation in the directory a
 copy is in already, or that would hold a module of another library, is
@@ -757,7 +795,7 @@ In a program that imports `AsynchronousTraps`, the heap disables ASTs
 while it allocates or collects, so `NEW` is safe at AST level (chapter
 14).
 
-### Two modules VMS alone has
+### Three modules VMS alone has
 
 - **`VmsArguments`** has the structures a program builds to call VMS: a
   string descriptor, item lists, an I/O status block and a lock status
@@ -765,6 +803,11 @@ while it allocates or collects, so `NEW` is safe at AST level (chapter
 - **`AsynchronousTraps`** makes an Oberon procedure an AST routine, and
   lets the main program disable and restore AST delivery around data
   that it shares with one (chapter 14).
+- **`RecordFiles`** writes a file of variable-length records, one RMS
+  record at a time, with no record attributes: `Create(name, maximum)`
+  (NIL if the file cannot be made), `Put(f, bytes, length)` and
+  `Close(f)`. poc writes its objects with it; a failure stops the
+  program with a message, as `Files`' does.
 
 ## 7. Calling VMS
 
@@ -3030,7 +3073,38 @@ BEGIN
 END Fault.
 ```
 
+Built as poc on VMS builds it, from poc's own objects (chapter 3,
+"From objects or from MACRO-32"), with `POC -BUILD FAULT.MOD` and
+`@FAULT`, or on Unix with `-vax-objects`:
+
 <!-- vax-session: fault -->
+
+    $ RUN FAULT
+    5
+    %SYSTEM-F-INTDIV, arithmetic trap, integer divide by zero at PC=00002008, PSL=03C00002
+    %TRACE-F-TRACEBACK, symbolic stack dump follows
+    module name     routine name                     line       rel PC    abs PC
+
+    FAULT           AVERAGE                             8      00000008  00002008
+    FAULT           FAULT_INIT                         13      00000071  000020A4
+    FAULT           FAULT_MAIN                                 00000007  000020D3
+
+Each line is a call: the module, the routine, the line of the Oberon
+source, and the PC, relative to the routine's start and absolute. Every
+object poc writes names its module, routines and lines in Oberon's
+terms, so a traceback shows them with no `/DEBUG` anywhere. A procedure
+is its Oberon name in capitals: line 8 is the `RETURN` of `Average`,
+line 13 the second call. The module's body is `<MODULE>_INIT`, and the
+program's start, which calls it and has no source, `<MODULE>_MAIN`,
+with no line.
+
+### A traceback of a program built from MACRO-32
+
+Built from MACRO-32, poc's default on Linux and the BSDs, the same
+program's traceback names poc's VAX symbols (chapter 5), and its line
+column is empty:
+
+<!-- vax-session: faultmacro -->
 
     $ RUN FAULT
     5
@@ -3042,14 +3116,10 @@ END Fault.
     FAULT           FAULT_INIT                                 00000043  0000206F
     FAULT           FAULT_MAIN                                 00000017  00002097
 
-Each line is a call: the module, the routine, and the PC, relative to
-the routine's start and absolute. The routines are poc's VAX symbols
-(chapter 5): a module's body is `<MODULE>_INIT`, and the program's start,
-which calls it, `<MODULE>_MAIN`. A procedure is its module and name,
-uppercased and cut to 22 characters, with `_` and eight characters of a
-hash after it, so `FAULT_AVERAGE_5CV3RD9U` is `Fault.Average`.
-
-Two things VMS does make a traceback harder to read:
+A procedure is its module and name, uppercased and cut to 22
+characters, with `_` and eight characters of a hash after it, so
+`FAULT_AVERAGE_5CV3RD9U` is `Fault.Average`. Two things VMS does make
+such a traceback harder to read:
 
 - **The line column is empty.** It holds a line only for a module
   assembled with `/DEBUG` in a program linked `/DEBUG`, below.
@@ -3057,16 +3127,15 @@ Two things VMS does make a traceback harder to read:
   than about a kilobyte past a routine's start, the traceback names the
   program section `POC_CODE` instead, with the PC relative to the
   section. The next line down, the routine's caller, is still right.
+  MACRO's objects do not give a routine's length, which poc's do, so
+  this happens only to a program built from MACRO-32.
 
-### Line numbers in a traceback
-
-poc writes each module as MACRO-32, `<MODULE>.MAR`, with a comment
-`; line n` before the code of line *n* of the Oberon source. Assembled
-with `/DEBUG`, a module's routines get line numbers, those of its `.MAR`
-file, and in a program linked `/DEBUG` the traceback shows them. To find
-the line of a fault, assemble that module so, link the program again as
-its build procedure does but with `/DEBUG`, and run it with `/NODEBUG`,
-so that the debugger does not start:
+To find the line of a fault in such a program, build it again with
+`-vax-objects`. Or assemble the module at fault with `/DEBUG`: its
+routines get line numbers, those of its `.MAR` file, where a comment
+`; line n` comes before the code of line *n* of the Oberon source. Link
+the program again as its build procedure does but with `/DEBUG`, and run
+it with `/NODEBUG`, so that the debugger does not start:
 
 <!-- vax-session: faultdebug -->
 
@@ -3084,24 +3153,108 @@ so that the debugger does not start:
 
 Line 38 of `FAULT.MAR` is the `DIVW3` instruction, and the comment above
 it is `; line 8`, the `RETURN` of `Average`. Line 82 is the call in the
-body, after `; line 13`, and line 98 the call of the body. The build procedure, `FAULT.COM`, links with
-`POC$RTL:POCRTL.OBJ` when that logical name is defined (chapter 2), and an
-import's module can be assembled
-`/DEBUG` in the same way.
+body, after `; line 13`, and line 98 the call of the body. The build
+procedure, `FAULT.COM`, links with `POC$RTL:POCRTL.OBJ` when that
+logical name is defined (chapter 2), and an import's module can be
+assembled `/DEBUG` in the same way.
+
+poc's objects and MACRO's link together, so a program can mix them: any
+module's object written by poc can take the place of the one assembled
+from its `.MAR`, and the program is linked as its build procedure links
+it.
 
 ### The debugger
 
-For a program that runs but does the wrong thing, the VMS debugger
-works on poc's programs as on any MACRO-32 program. Assemble the
-modules to be looked at with `/DEBUG`, link with `LINK/DEBUG`, and `RUN`
-the program: the debugger starts before the program does. Its source
-is the `.MAR` files, so `SET BREAK`, `STEP`, `EXAMINE` and `DEPOSIT` work
-with the VAX symbols and the `.MAR` lines, and the `; line n` comments
-lead back to the Oberon source. `SET MODULE/ALL` makes every module's
-symbols known, and `SET RADIX DECIMAL` shows numbers as Oberon writes
-them. A global variable is a symbol like a procedure's,
-`FAULT_NONE_<hash>` for `Fault.none`; a local one is an offset from
-`FP` in its procedure's code.
+For a program that runs but does the wrong thing, build it with `-g`.
+poc's objects then carry the debugger's records as well: the source
+file, where each routine's code begins, and each variable and constant
+with its type. The build procedure links the program `/DEBUG`, and
+`RUN` starts the debugger before the program, which works by the Oberon
+source. Here Fault was built on Linux, with `poc -g -target vax-dec-vms
+-vax-objects -build Fault.Mod`, and its files sent to VMS, where its
+procedure converts the objects and links them. The debugger's commands
+are shown after `DBG>`:
+
+<!-- vax-session: faultsource -->
+
+    $ @FAULT
+    $ RUN FAULT
+
+             VAX DEBUG Version V5.5-023
+
+    %DEBUG-I-INITIAL, language is UNKNOWN, module set to FAULT
+    DBG> SET BREAK AVERAGE
+    DBG> GO
+    break at routine FAULT\AVERAGE
+    %DEBUG-I-NOTORIGSRC, original version of source file not found 
+    	file used is DUA1:[USERS.POC]FAULT.MOD;1
+         8:     RETURN total DIV count
+    DBG> EXAMINE TOTAL, COUNT
+    FAULT\AVERAGE\TOTAL:    10
+    FAULT\AVERAGE\COUNT:    2
+    DBG> GO
+    5
+    break at routine FAULT\AVERAGE
+         8:     RETURN total DIV count
+    DBG> EXAMINE COUNT, NONE
+    FAULT\AVERAGE\COUNT:    0
+    FAULT\NONE:     0
+    DBG> SHOW CALLS
+     module name     routine name                     line       rel PC    abs PC
+    *FAULT           AVERAGE                             8      00000002  00002002
+    *FAULT           FAULT_INIT                         13      00000071  000020A4
+    *FAULT           FAULT_MAIN                                 00000007  000020D3
+    DBG> DEPOSIT COUNT = 5
+    DBG> GO
+    2
+    %DEBUG-I-EXITSTATUS, is '%SYSTEM-S-NORMAL, normal successful completion'
+    DBG> EXIT
+
+What the debugger does with such a program:
+
+- **Breakpoints and steps go by routine and source line.** `SET BREAK
+  AVERAGE` stops after the routine's entry, at its first statement,
+  with its parameters in place. `SET BREAK %LINE 13` stops at a line,
+  and `STEP` goes a line at a time. A nested procedure is named after
+  the one it is in, `OUTER\INNER`.
+- **The source is the `.Mod` file.** The debugger opens the file the
+  object names, in the default directory, or where `SET SOURCE` says.
+  For an object written on another system it notes once, as above,
+  that the file may not be the one compiled, and then uses it. poc on
+  VMS records the file's own name and attributes, so its objects get no
+  such note.
+- **Names are in capitals,** since the debugger turns what it is given
+  into capitals. A procedure's variable is `ROUTINE\NAME` and a
+  module's is `MODULE\NAME`, either found by its name alone where it
+  is visible. From a nested procedure, an enclosing procedure's
+  variable is found in that procedure's frame.
+- **`EXAMINE` shows each variable as its type is declared.** It shows
+  an integer of any size, a real, a `CHAR` as `'A'` and a `BOOLEAN` as
+  `True`. A record is shown field by field, an extension with its base
+  type's fields, as is a set (`[0, 3, 31]`) and an array element by
+  element. An `ARRAY OF CHAR` is shown as a string, each `0X` as a
+  period. `P.X`, `V[2]` (or `V(2)`), `G[1,2]` and `HEAD^.NEXT^.KEY`
+  select a part, and an open array parameter is shown whole or by
+  element. A pointer or a procedure variable shows the address it
+  holds, in decimal.
+- **`DEPOSIT` changes any of them,** a field, an element, or a variable
+  through a pointer or a `VAR` parameter included, and `EVALUATE`
+  computes with variables and constants (`EVALUATE N * STEP`).
+  `EXAMINE` of a constant is refused, as in any language.
+- **The language is UNKNOWN.** No VMS language is Oberon, and with
+  UNKNOWN the debugger lets every variable be changed, which with
+  Pascal's it does not; it shows subscripts in parentheses, and wants
+  all of them for an array of arrays.
+
+A program built from MACRO-32 is debugged as any MACRO-32 program.
+Built with `-g`, its procedure assembles each module `/DEBUG` and links
+`/DEBUG`. The debugger's source is then the `.MAR` files, so `SET
+BREAK`, `STEP`, `EXAMINE` and `DEPOSIT` work with the VAX symbols and
+the `.MAR` lines, and the `; line n` comments lead back to the Oberon
+source. `SET MODULE/ALL` makes every module's symbols known, and `SET
+RADIX DECIMAL` shows numbers as Oberon writes them. A global variable
+is a symbol like a procedure's, `FAULT_NONE_<hash>` for `Fault.none`;
+a local one is an offset from `FP` in its procedure's code.
 
 ### Other failures
 
@@ -3152,9 +3305,9 @@ build need only the base system's MACRO, LIBRARY and LINK.
 compiles them, and its heap grows as it needs. A program of a few
 modules needs little. The most it has needed is to compile itself,
 about 32,000 lines: a peak of about 90 MB of virtual memory. On the development system that does so, the process has
-`PGFLQUOTA` 300,000 pages (150 MB), `WSQUOTA` 8,192 and `WSEXTENT`
-16,384, and the system `VIRTUALPAGECNT` 350,000 pages and a paging file
-of 350,000 blocks, on a VAX with 256 MB of memory. A process with less
+`PGFLQUOTA` 300,000 pages (150 MB), `WSQUOTA` 32,768 and `WSEXTENT`
+200,000, and the system `VIRTUALPAGECNT` 600,000 pages and a paging file
+of 350,000 pages, on a VAX with 256 MB of memory. A process with less
 can still compile the programs that fit it. The quotas are set with
 `AUTHORIZE`, and the system's parameters with `SYSGEN`, by the system
 manager.
@@ -3193,6 +3346,8 @@ beside `[.SRC]`:
     -import-path
     [-.SRC.BACK.VAX]
     -import-path
+    [-.SRC.BACK.VAX.VMS]
+    -import-path
     [-.SRC.DRIVER]
     -import-path
     [-.SRC.DRIVER.NO-LLVM]
@@ -3204,20 +3359,21 @@ beside `[.SRC]`:
     [-.SRC.DRIVER]POC.MOD
 
 `[.SRC.DRIVER.NO-LLVM]` stands in for the LLVM back end, which poc for
-VMS leaves out. Then:
+VMS leaves out, and `[.SRC.BACK.VAX.VMS]` holds the part of the VAX back
+end that only poc on VMS has. Then:
 
     $ POC @FULL.ARGS
     $ @POC
 
-The first writes poc's MACRO-32, one `.MAR` for each module, and
-`POC.COM`. The second assembles them and links a new `POC.EXE`, with
+The first writes poc's objects, one `.OBJ` for each module, and
+`POC.COM`. The second links a new `POC.EXE` from them, with
 `POCRTL.OBJ` assembled from `[.SRC.RTL]POCRTL.MAR`, as `[.KIT]`'s
 procedure does.
 
 poc is a **fixed point**: compiled by itself, it writes the same
-MACRO-32 as the poc that compiled it. The `.MAR` files written here are
-the same as `[.KIT]`'s, line for line, which `DIFFERENCES` can show for
-each one. poc's developers check that on the development system, and a
+MACRO-32 as the poc that compiled it. Given `-vax-macro32`, `POC
+@FULL.ARGS` writes `.MAR` files, the same as `[.KIT]`'s, line for line,
+which `DIFFERENCES` can show for each one. poc's developers check that on the development system, and a
 third generation too: the `POC.EXE` linked here, compiling the same
 source again, writes the same files once more.
 
@@ -3250,12 +3406,13 @@ needs empty. These are the directories and files they make, and what
 | Where | What |
 |---|---|
 | `README.TXT` | How to install and use poc, as chapter 1 says |
-| `BUILD.COM` | Builds `POC.EXE` and every library that is unpacked and not yet built; each step's time goes to `BUILD.LOG` |
-| `SETUP.COM` | Defines the command `POC` and the logical names of one size model's libraries, `-O2`'s or, with `@SETUP OC`, `-OC`'s |
+| `BUILD.COM` | Builds `POC.EXE`, `OBJCONVERT.EXE` and every library that is unpacked and not yet built; each step's time goes to `BUILD.LOG` |
+| `SETUP.COM` | Defines the commands `POC` and `OBJCONVERT` and the logical names of one size model's libraries, `-O2`'s or, with `@SETUP OC`, `-OC`'s |
 | `VERSION.TXT` | One line, the version and the commit it was made from; the STARLET kit checks it |
 | `LICENSE.TXT` | poc's license |
-| `[.BIN]` | Empty; `@BUILD` puts `POC.EXE` here |
+| `[.BIN]` | Empty; `@BUILD` puts `POC.EXE` and `OBJCONVERT.EXE` here |
 | `[.KIT]` | poc's own MACRO-32, as poc on Unix writes it for poc's source: a `.MAR` for each module, the procedure that assembles and links them, and the runtime's `POCRTL.MAR`. `@BUILD BOTH CLEAN` deletes it once `POC.EXE` is built |
+| `[.KIT.OBJCONVERT]` | `OBJCONVERT`'s MACRO-32, a `.MAR` for each of its modules, and the procedure that assembles and links them with `[.KIT]POCRTL.MAR`. `@BUILD BOTH CLEAN` empties it too |
 | `[.LIB.POC.VAX-DEC-VMS.O2]`, `[.OC]` | The library `POCRTL`, poc's runtime, for each size model, as `poc -library` writes it (chapter 4): its manifest, `POCRTL_BUILD.COM` and `POCRTL_SETUP.COM`, and each module's `.MAR`, `.SYM` and `.OWNER` (the name of the library the module belongs to). `@BUILD` adds `POCRTL.OLB` and `POCRTL.EXE` |
 | `[.SRC...]` | The Oberon source `POC.EXE` is compiled from: the front end, the VAX back end, the driver, and the runtime's modules (chapter 17) |
 

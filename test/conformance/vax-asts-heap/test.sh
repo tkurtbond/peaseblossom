@@ -13,11 +13,15 @@ rtl=../../../rtl/vax
 written="AstHeap.mar AstNoImport.mar AsynchronousTraps.mar GarbageCollectedHeap.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar"
 rm -f AstHeap.com AstNoImport.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 rm -f *.sym $written
-poc -target vax-dec-vms -import-path $rtl -build AstHeap.mod >>result 2>&1
+poc -target vax-dec-vms $vax_way_option -import-path $rtl -build AstHeap.mod >>result 2>&1
 echo "VAX build AstHeap exit $?" >>result
-poc -target vax-dec-vms -import-path $rtl -build AstNoImport.mod >>result 2>&1
+poc -target vax-dec-vms $vax_way_option -import-path $rtl -build AstNoImport.mod >>result 2>&1
 echo "VAX build AstNoImport exit $?" >>result
 vax_do guest-run.com guest-run.expected AstHeap.com AstNoImport.com $written $rtl/PocRtl.mar
-rm -f *.sym $written AstHeap.com AstNoImport.com
+}
+vax_build builds
+rm -f *.sym $written AstHeap.com AstNoImport.com *.obj
 . ../../testresult.sh

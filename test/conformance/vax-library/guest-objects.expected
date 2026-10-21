@@ -1,0 +1,10 @@
+POCRTL_BUILD: %X10000001
+VAXLIB_BUILD: %X10000001
+USESHR.COM, from objects, against the shareable images: %X10000001
+total 25
+count 12
+run: %X00000001
+USEOLB.COM, from MACRO-32, against the object libraries: %X10000001
+total 25
+count 12
+run: %X00000001

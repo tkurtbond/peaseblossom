@@ -5,15 +5,34 @@
 # vax-dec-vms, with rtl/vax and a BuildInfo for a poc that runs there
 # (tools/build-info <dir> vax-dec-vms), under -OC as poc itself needs. It
 # writes build/vax-bootstrap/v1: a .mar for each module and Poc.com, which
-# assembles and links them on the guest into POC.EXE; and
+# assembles and links them on the guest into POC.EXE; or, with -vax-objects
+# (PLAN.md Phase 18 step 7; doc/developer/vax-object-language.md, section
+# 18), an object for each module, in poc's counted form, and a Poc.com that
+# converts them on the guest when they were sent in binary and links them;
+# and
 # build/vax-bootstrap/gen/BuildInfo.Mod, which the later stages compile on
 # the guest. Nothing here uses the guest: tools/bootstrap/vax-stages does.
 # Without the LLVM back end (Phase 17 step 7;
 # doc/developer/vax-macro32-backend.md, section 21, proposal 8):
 # src/driver/no-llvm's LLVMBackEnd, and neither src/driver/llvm nor
-# src/back/llvm, are on the import path.
-# Run with no arguments from anywhere.
+# src/back/llvm, are on the import path; and src/back/vax/vms's
+# ObjectRecords, not src/back/vax/host's (Phase 18 step 4).
+# Run from anywhere:
+#
+#   tools/bootstrap/vax-v1 [-vax-macro32 | -vax-objects]
+#
+# -vax-macro32, poc's default off VMS, is the default here too: the kits
+# (make-vax-kit) carry V1 as text. The objects take their creation time
+# from SOURCE_DATE_EPOCH, as poc's always do.
 set -e
+
+way=-vax-macro32
+case $# in
+  0) ;;
+  1) case $1 in -vax-macro32|-vax-objects) way=$1 ;; *) way= ;; esac ;;
+  *) way= ;;
+esac
+[ -n "$way" ] || { echo "usage: tools/bootstrap/vax-v1 [-vax-macro32 | -vax-objects]" >&2; exit 2; }
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BUILD=${BOOTSTRAP_BUILD_DIR:-$ROOT/build}/vax-bootstrap
@@ -24,8 +43,8 @@ rm -rf "$BUILD/v1"
 mkdir -p "$BUILD/v1" "$BUILD/gen"
 "$ROOT/tools/build-info" "$BUILD/gen" vax-dec-vms
 cd "$BUILD/v1"
-"$POC_BIN_DIR/poc" -OC -target vax-dec-vms \
-  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/vax" \
+"$POC_BIN_DIR/poc" -OC -target vax-dec-vms $way \
+  -import-path "$ROOT/src/front" -import-path "$ROOT/src/back/vax" -import-path "$ROOT/src/back/vax/vms" \
   -import-path "$ROOT/rtl/vax" -import-path "$ROOT/src/driver" -import-path "$ROOT/src/driver/no-llvm" \
   -import-path "$BUILD/gen" \
   -build "$ROOT/src/driver/Poc.Mod"
@@ -33,4 +52,5 @@ cd "$BUILD/v1"
 # path, which is this host's, becomes src/driver/Poc.Mod, since the kit
 # (make-vax-kit) carries the file to other systems
 sed "1s|$ROOT/||" Poc.com >Poc.com.new && mv Poc.com.new Poc.com
-echo "V1: wrote $(ls *.mar | wc -l | tr -d ' ') .mar files and Poc.com in $BUILD/v1"
+case $way in -vax-objects) kind=.obj ;; *) kind=.mar ;; esac
+echo "V1: wrote $(ls *$kind | wc -l | tr -d ' ') $kind files and Poc.com in $BUILD/v1"

@@ -1,0 +1,19 @@
+;; Written 2026-10-19 by Claude, from the guest runs (Phase 18 step 6d),
+;; for the user's review. Why this is right:
+;; - The program built from poc's objects (tools/vax-suite's O<n>
+;;   builds). Its fault and its place are those of expected-vax-
+;;   rangechecks-1.err, which says why; only the traceback differs,
+;;   since poc's objects carry traceback and debugger records (vax-
+;;   object-language.md, section 16) and MACRO's carry none: each
+;;   routine in poc's code has its line, 33, SHORT(1.0D300)'s
+;;   statement, which faults.
+;; - Under -OC -range-checks too, which in the MACRO-built program has
+;;   its own file; built from objects its traceback is the same.
+;; - The module's start (_MAIN) is poc's own code, with no source line.
+;; - The same under -O2 and -OC, so for every build.
+%SYSTEM-F-FLTOVF_F, arithmetic fault, floating overflow at PC=xxxxxxxx, PSL=xxxxxxxx
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+RANGECHECKS     RANGECHECKS_INIT                   33      xxxxxxxx  xxxxxxxx
+RANGECHECKS     RANGECHECKS_MAIN                           xxxxxxxx  xxxxxxxx

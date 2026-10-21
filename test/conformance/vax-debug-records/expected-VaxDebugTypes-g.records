@@ -1,0 +1,557 @@
+record 1 HDR, 70 bytes
+  MHD level 0 record size 512 name VAXDEBUGTYPES ident E30D3A820D09CEDC
+  created "18-OCT-2026 00:00" patched "                 "
+record 2 HDR, 24 bytes
+  LNM "Peaseblossom poc"
+record 3 HDR, 19 bytes
+  SRC "VaxDebugTypes.mod"
+record 4 GSD, 434 bytes
+  PSC .  ABS  . align 0 flags 0000 size 000000
+  PSC POC_CODE align 2 flags 00E9 size 0005EC
+  PSC POC_CONST align 3 flags 00A9 size 00001E
+  PSC POC_DATA align 3 flags 0188 size 0000C8
+  PSC POC_ADDR align 2 flags 0089 size 000070
+  SYM POC_K1_E30D3A820D09CEDC flags 0002 section 0 value 00000000
+  SYM VAXDEBUGTYPES_A_V1ACQOID flags 000A section 4 value 00000048
+  SYM VAXDEBUGTYPES_B_V1ACQN9K flags 000A section 4 value 0000005C
+  EPM VAXDEBUGTYPES_INIT flags 000A section 1 value 00000542 mask 000C
+  EPM VAXDEBUGTYPES_MAIN flags 000A section 1 value 000005E1 mask 0000
+  SYM VAXDEBUGTYPES_NODEDESC_2UCIHSGB flags 000A section 4 value 00000024
+  SYM VAXDEBUGTYPES_POINT3_IQ29820P flags 000A section 4 value 00000010
+  SYM VAXDEBUGTYPES_POINT_OETDOS9G flags 000A section 4 value 00000000
+  SYM VAXDEBUGTYPES_SEGMENT_35MRVHN7 flags 000A section 4 value 00000038
+  SYM POC_ROOTS flags 0000 reference
+  SYM POC_TRAP flags 0000 reference
+record 5 TIR, 494 bytes
+  STA_PB 1 0
+  CTL_SETRB
+  store immediate 17
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 128
+  store immediate 69
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 65
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 57
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 23
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 23
+record 6 TIR, 512 bytes
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 11
+  STA_PB 3 2
+  STO_LD
+  store immediate 3
+  STA_PB 3 4
+  STO_LD
+  store immediate 4
+  STA_PB 3 6
+  STO_LD
+  store immediate 3
+  STA_PB 3 8
+  STO_LD
+  store immediate 3
+  STA_PB 3 10
+  STO_LD
+  store immediate 3
+  STA_PB 3 12
+  STO_LD
+  store immediate 7
+  STA_PB 3 16
+  STO_LD
+  store immediate 2
+  STA_PB 3 120
+  STO_LD
+  store immediate 4
+  STA_PB 3 20
+  STO_LD
+  store immediate 2
+  STA_PB 3 20
+  STO_LD
+  store immediate 9
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 5
+  STA_PB 3 20
+  STO_LD
+  store immediate 9
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 2
+  STA_PW 3 128
+  STO_LD
+  store immediate 7
+  STA_PB 3 20
+  STO_LD
+  store immediate 9
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 12
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 33
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 10
+  STA_PB 3 24
+  STO_LD
+  store immediate 70
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 6
+  STA_PB 3 34
+  STO_LD
+  store immediate 16
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 37
+record 7 TIR, 476 bytes
+  store immediate 31
+  STA_PB 3 48
+  STO_LD
+  store immediate 7
+  STA_PB 3 52
+  STO_LD
+  store immediate 3
+  STA_PB 3 56
+  STO_LD
+  store immediate 7
+  STA_PB 3 60
+  STO_LD
+  store immediate 3
+  STA_PB 3 64
+  STO_LD
+  store immediate 2
+  STA_PB 3 65
+  STO_LD
+  store immediate 3
+  STA_PB 3 66
+  STO_LD
+  store immediate 3
+  STA_PB 3 2
+  STO_LD
+  store immediate 1
+  STA_PB 3 68
+  STO_LD
+  store immediate 3
+  STA_PB 3 74
+  STO_LD
+  store immediate 3
+  STA_PB 3 76
+  STO_LD
+  store immediate 4
+  STA_PB 3 78
+  STO_LD
+  store immediate 3
+  STA_PB 2 14
+  STO_LD
+  store immediate 3
+  STA_PB 3 80
+  STO_LD
+  store immediate 3
+  STA_PB 3 2
+  STO_LD
+  store immediate 1
+  STA_PB 3 88
+  STO_LD
+  store immediate 3
+  STA_PB 3 94
+  STO_LD
+  store immediate 3
+  STA_PB 3 96
+  STO_LD
+  store immediate 4
+  STA_PB 3 98
+  STO_LD
+  store immediate 2
+  STA_PW 3 136
+  STO_LD
+  store immediate 4
+  STA_PB 3 100
+  STO_LD
+  store immediate 2
+  STA_PB 3 100
+  STO_LD
+  store immediate 9
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 2
+  STA_PW 3 144
+  STO_LD
+  store immediate 6
+  STA_PB 3 100
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 6
+  STA_PB 3 100
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 15
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 6
+  STA_PB 3 100
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 15
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 2
+  STA_PB 3 100
+  STO_LD
+  store immediate 3
+  STA_PW 3 152
+  STO_LD
+  store immediate 4
+record 8 TIR, 480 bytes
+  STA_PB 3 104
+  STO_LD
+  store immediate 2
+  STA_PB 3 104
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 3
+  STA_PB 3 24
+  STO_LD
+  store immediate 4
+  STA_PB 2 22
+  STO_LD
+  store immediate 3
+  STA_PB 3 108
+  STO_LD
+  store immediate 3
+  STA_PB 2 26
+  STO_LD
+  store immediate 3
+  STA_PB 3 112
+  STO_LD
+  store immediate 5
+  STA_PB 3 0
+  STO_LD
+  store immediate 5
+  STA_PB 3 0
+  STO_LD
+  store immediate 2
+  STA_PW 3 164
+  STO_LD
+  store immediate 2
+  STA_GBL POC_ROOTS
+  STO_PICR
+  store immediate 14
+  STA_PB 3 24
+  STO_LD
+  store immediate 4
+  STA_PB 3 24
+  STO_LD
+  store immediate 8
+  STA_PB 3 2
+  STO_LD
+  store immediate 4
+  STA_PB 4 0
+  STO_LD
+  store immediate 4
+  STA_PB 3 108
+  STO_LD
+  store immediate 18
+  STA_PB 3 48
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 22
+  STA_PB 3 116
+  STO_LD
+  store immediate 12
+  STA_PB 2 0
+  CTL_SETRB
+  store immediate 30
+  STA_PB 3 0
+  CTL_SETRB
+  CTL_AUGRB 168
+  store immediate 4
+  STA_PB 3 20
+  STO_PIDR
+  STA_PB 3 100
+  STO_PIDR
+  STA_PB 3 104
+  STO_PIDR
+  STA_PB 3 124
+  STO_PIDR
+  STA_PW 3 132
+  STO_PIDR
+  STA_PW 3 136
+  STO_PIDR
+  STA_PW 3 144
+  STO_PIDR
+  STA_PB 4 0
+  CTL_SETRB
+  store immediate 12
+  STA_PB 4 0
+  STO_PIDR
+  store immediate 12
+  STA_PB 4 0
+  STO_PIDR
+  STA_PB 4 16
+  STO_PIDR
+  store immediate 12
+  STA_PB 4 36
+  STO_PIDR
+  store immediate 16
+  STA_PB 4 56
+  STO_PIDR
+  store immediate 12
+  STA_PB 4 72
+  STO_PIDR
+  store immediate 16
+record 9 TIR, 10 bytes
+  STA_PB 4 92
+  STO_PIDR
+  store immediate 4
+record 10 TBT, 23 bytes
+  DST module begin language 10 name VAXDEBUGTYPES
+record 11 DBG, 497 bytes
+  DST at 00000015 record begin flags 80 value 00000000 name POINT bits 48
+  DST data type 7 flags FF value 00000000 name X
+  DST data type 7 flags FF value 00000010 name Y
+  DST data type 14 flags FF value 00000020 name C
+  DST record end
+  DST at 00000043 record begin flags 80 value 00000000 name POINT3 bits 96
+  DST data type 7 flags FF value 00000000 name X
+  DST data type 7 flags FF value 00000010 name Y
+  DST data type 14 flags FF value 00000020 name C
+  DST data type 8 flags FF value 00000040 name Z
+  DST record end
+  DST at 0000007B record begin flags 80 value 00000000 name NODEDESC bits 64
+  DST data type 7 flags FF value 00000000 name KEY
+  DST separate type flags FF value 00000020 name NEXT
+  DST type spec : pointer to indirect dst 0000007B
+  DST record end
+  DST at 000000B5 record begin flags 80 value 00000000 name SEGMENT bits 160
+  DST separate type flags FF value 00000000 name A
+  DST type spec : indirect dst 00000015
+  DST separate type flags FF value 00000030 name B
+  DST type spec : indirect dst 00000015
+  DST separate type flags FF value 00000060 name TAG
+  DST type spec : (descriptor class 4 type 14 length 1 pointer 00000000 flags C0 size 8 a0 00000000 multipliers 8 bounds 0..7)
+  DST record end
+  DST at 00000126 record begin flags 80 value 00000000 name A bits 64
+  DST separate type flags FF value 00000000 name TOB
+  DST type spec : pointer to indirect dst 00000156
+  DST data type 7 flags FF value 00000020 name V
+  DST record end
+  DST at 00000156 record begin flags 80 value 00000000 name B bits 64
+  DST separate type flags FF value 00000000 name TOA
+  DST type spec : pointer to indirect dst 00000126
+  DST data type 7 flags FF value 00000020 name W
+  DST record end
+  DST separate type flags 01 value 3+00000002 name P
+  DST type spec : indirect dst 00000015
+  DST separate type flags 01 value 3+00000008 name P3
+  DST type spec : indirect dst 00000043
+record 12 DBG, 485 bytes
+  DST separate type flags 01 value 3+00000014 name HEAD
+  DST type spec : pointer to indirect dst 0000007B
+  DST separate type flags 01 value 3+00000018 name V
+  DST type spec : (descriptor class 4 type 7 length 2 pointer 00000000 flags C0 size 10 a0 00000000 multipliers 5 bounds 0..4)
+  DST separate type flags 01 value 3+00000022 name G
+  DST type spec : (descriptor class 4 type 6 length 1 pointer 00000000 flags C0 size 12 a0 00000000 multipliers 3 4 bounds 0..2 0..3)
+  DST separate type flags 01 value 3+00000030 name ACT
+  DST type spec : pointer to atom 23
+  DST separate type flags 01 value 3+00000034 name S
+  DST type spec : set of 32 bits, atom 8
+  DST separate type flags 01 value 3+00000038 name S64
+  DST type spec : set of 64 bits, atom 9
+  DST separate type flags 01 value 3+00000040 name F
+  DST type spec : array of 1 flags 01 (atom 158) (descriptor class 4 type 0 length 1 pointer 00000000 flags C0 size 3 a0 00000000 multipliers 3 bounds 0..2)
+  DST separate type flags 01 value 3+00000044 name SEG
+  DST type spec : indirect dst 000000B5
+  DST separate type flags 01 value 3+00000058 name PTS
+  DST type spec : array of 1 flags 01 (indirect dst 00000015) (descriptor class 4 type 0 length 6 pointer 00000000 flags C0 size 12 a0 00000000 multipliers 2 bounds 0..1)
+  DST separate type flags 01 value 3+00000064 name RA
+  DST type spec : pointer to indirect dst 00000126
+  DST separate type flags 01 value 3+00000068 name PV
+  DST type spec : pointer to (descriptor class 4 type 7 length 2 pointer 00000000 flags C0 size 10 a0 00000000 multipliers 5 bounds 0..4)
+  DST separate type flags 01 value 3+0000006C name NAMES
+record 13 DBG, 226 bytes
+  DST type spec : (descriptor class 4 type 14 length 1 pointer 00000000 flags C0 size 8 a0 00000000 multipliers 2 4 bounds 0..1 0..3)
+  DST data type 8 flags 01 value 3+00000074 name SUM
+  DST separate type flags 01 value 3+00000078 name N1
+  DST type spec : indirect dst 0000007B
+  DST separate type flags 01 value 3+00000080 name N2
+  DST type spec : indirect dst 0000007B
+  DST separate type flags 01 value 3+00000088 name A1
+  DST type spec : indirect dst 00000126
+  DST separate type flags 01 value 3+00000090 name B1
+  DST type spec : indirect dst 00000156
+  DST separate type flags 01 value 3+00000098 name V1
+  DST type spec : (descriptor class 4 type 7 length 2 pointer 00000000 flags C0 size 10 a0 00000000 multipliers 5 bounds 0..4)
+record 14 TBT, 16 bytes
+  DST routine begin at 1+00000000 name TWICE
+record 15 DBG, 18 bytes
+  DST prolog at 1+00000002
+  DST data type 7 flags C9 value 00000004 name X
+record 16 TBT, 24 bytes
+  DST routine end size 0000001E
+  DST routine begin at 1+0000001E name TOTAL
+record 17 DBG, 276 bytes
+  DST prolog at 1+000000AD
+  DST separate type flags CD value 00000004 name W
+  DST type spec : (descriptor class 4 type 7 length 2 pointer 00000000 flags C0 size 10 a0 00000000 multipliers 5 bounds 0..4)
+  DST separate type flags DD value FFFFFFFC name A
+  DST type spec : (routine 02 06 02 00 10 01 0C 10 0C 13 16 1D 10 00 0C 10 0C 13 16 10 00 0C 10 0C 13 16 10 02 1E 12 00 00 C0 01 10 00 12 02 00 07 04 17)
+  DST separate type flags CD value 00000010 name Q
+  DST type spec : indirect dst 00000015
+  DST separate type flags DD value FFFFFFF8 name M
+  DST type spec : (routine 02 06 02 00 10 01 0C 10 20 13 16 1D 10 00 10 01 0C 10 1C 13 16 1D 10 00 0C 10 20 13 16 0C 10 1C 13 16 10 00 0C 10 1C 13 16 0C 10 20 13 16 1E 10 01 1E 12 00 00 C0 02 10 00 12 01 00 0E 04 17)
+  DST separate type flags D9 value FFFFFFF2 name LOCAL
+  DST type spec : indirect dst 00000015
+  DST data type 7 flags D9 value FFFFFFF0 name I
+  DST data type 8 flags D9 value FFFFFFEC name T
+record 18 TBT, 24 bytes
+  DST routine end size 000001AE
+  DST routine begin at 1+000001CC name FILL
+record 19 DBG, 29 bytes
+  DST prolog at 1+000001D4
+  DST data type 7 flags D9 value FFFFFFFE name I
+  DST data type 7 flags D9 value FFFFFFFC name J
+record 20 TBT, 38 bytes
+  DST routine end size 00000376
+  DST routine begin at 1+00000542 name VAXDEBUGTYPES_INIT
+record 21 DBG, 9 bytes
+  DST prolog at 1+00000563
+record 22 TBT, 144 bytes
+  DST routine end size 0000009F
+  DST routine begin at 1+000005E1 name VAXDEBUGTYPES_MAIN
+  DST routine end size 0000000B
+  DST line numbers
+    PC 1+00000000
+    line 34 at 1+00000000
+    line 36 at 1+00000002
+    line 37 at 1+0000000B
+    end at 1+0000001E
+  DST line numbers
+    PC 1+0000001E
+    line 39 at 1+0000001E
+    line 42 at 1+000000AD
+    line 43 at 1+000000B6
+    line 44 at 1+00000113
+    line 45 at 1+00000160
+    line 46 at 1+000001B4
+    line 47 at 1+000001B9
+    end at 1+000001CC
+  DST line numbers
+    PC 1+000001CC
+    line 49 at 1+000001CC
+    line 52 at 1+000001D4
+    line 53 at 1+000001EA
+    line 54 at 1+0000020A
+    line 55 at 1+00000237
+    line 56 at 1+00000296
+    line 57 at 1+000002E8
+    line 58 at 1+00000388
+    line 59 at 1+00000391
+    line 60 at 1+000003AE
+    line 61 at 1+000003C2
+    line 62 at 1+000003F2
+    line 63 at 1+00000414
+    line 64 at 1+00000448
+    line 65 at 1+000004EF
+    line 66 at 1+00000525
+    line 67 at 1+00000541
+    end at 1+00000542
+  DST line numbers
+    PC 1+00000542
+    line 1 at 1+00000542
+    line 70 at 1+00000563
+    line 71 at 1+00000568
+    end at 1+000005E1
+record 23 DBG, 58 bytes
+  DST source file
+    form feeds counted
+    declare file 1 created 0000000000000000 end block 0 first free byte 0 format 0 name VaxDebugTypes.mod module 
+  DST source file
+    set file 1
+    set record 1
+    define lines 72
+record 24 TBT, 4 bytes
+  DST module end
+record 25 EOM, 7 bytes
+  severity 0 transfer section 1 offset 000005E1

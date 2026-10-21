@@ -1,0 +1,38 @@
+record 1 HDR, 65 bytes
+  MHD level 0 record size 512 name VAXEMPTY ident 51674813EEE7E6AD
+  created "18-OCT-2026 00:00" patched "                 "
+record 2 HDR, 24 bytes
+  LNM "Peaseblossom poc"
+record 3 HDR, 34 bytes
+  SRC "../vax-empty-module/VaxEmpty.mod"
+record 4 GSD, 154 bytes
+  PSC .  ABS  . align 0 flags 0000 size 000000
+  PSC POC_CODE align 2 flags 00E9 size 00001B
+  PSC POC_CONST align 3 flags 00A9 size 000000
+  PSC POC_DATA align 3 flags 0188 size 000001
+  SYM POC_K1_51674813EEE7E6AD flags 0002 section 0 value 00000000
+  EPM VAXEMPTY_INIT flags 000A section 1 value 00000000 mask 0000
+  EPM VAXEMPTY_MAIN flags 000A section 1 value 00000011 mask 0000
+record 5 TIR, 35 bytes
+  STA_PB 1 0
+  CTL_SETRB
+  store immediate 4
+  STA_PB 3 0
+  STO_LD
+  store immediate 4
+  STA_PB 3 0
+  STO_LD
+  store immediate 11
+record 6 TBT, 97 bytes
+  DST module begin language 10 name VAXEMPTY
+  DST routine begin at 1+00000000 name VAXEMPTY_INIT
+  DST routine end size 00000011
+  DST routine begin at 1+00000011 name VAXEMPTY_MAIN
+  DST routine end size 0000000A
+  DST line numbers
+    PC 1+00000000
+    line 1 at 1+00000000
+    end at 1+00000011
+  DST module end
+record 7 EOM, 7 bytes
+  severity 0 transfer section 1 offset 00000011

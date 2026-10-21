@@ -5,7 +5,10 @@
 # cardinal.mod, built for the VAX under -O2: its MACRO-32 must be the
 # reviewed expected-vax.mar, and run on the guest (vax_do,
 # guest-run.com) it must print llvm-cardinal's expected, Err's line
-# included, which SYS$ERROR writes to the same terminal.
+# included, which SYS$ERROR writes to the same terminal. Phase 18 step
+# 4d: and so must the program linked from the objects poc wrote, sent
+# and converted by tools/vax-do, with poc's runtime from MACRO
+# (guest-link.com).
 . ../../vaxfixture.sh
 rtl=../../../rtl/vax
 written="cardinal.mar CardinalTypes.mar DecimalToReal.mar Err.mar FormattedInput.mar FormattedOutput.mar FormattedText.mar InStr.mar LineOutput.mar Out.mar OutStr.mar RealDigits.mar"
@@ -22,6 +25,13 @@ rm -f *.sym $written cardinal.com
 poc -target vax-dec-vms -import-path $rtl -build cardinal.mod >>result 2>&1
 echo "VAX build cardinal exit $?" >>result
 vax_compare cardinal.mar expected-vax.mar
+poc -target vax-dec-vms -import-path $rtl -emit-vax-object cardinal.mod >/dev/null 2>>result
+echo "VAX image cardinal exit $?" >>result
+vax_object_image cardinal
+vax_image_compare cardinal.image expected-vax.image
 vax_do guest-run.com guest-run.expected cardinal.com $written $rtl/PocRtl.mar
-rm -f *.sym $written cardinal.com cardinal.mod guest-run.expected
+# Phase 18 step 4d: the same program linked from the objects poc wrote,
+# with only poc's runtime assembled by MACRO, must print the same
+vax_do guest-link.com guest-run.expected $(echo "$written" | sed 's/\.mar/.obj/g') $rtl/PocRtl.mar
+rm -f *.sym $written $(echo "$written" | sed 's/\.mar/.image/g') $(echo "$written" | sed 's/\.mar/.obj/g') cardinal.com cardinal.mod guest-run.expected
 . ../../testresult.sh

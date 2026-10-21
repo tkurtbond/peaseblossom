@@ -20,7 +20,7 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   the modules below call: writing records to `SYS$OUTPUT` and
   `SYS$ERROR`, logical names, DCL symbols, `$ERASE`, `$PARSE`,
   `LIB$CREATE_DIR`, `$SETDDIR`, `$GETJPI`, `LIB$GET_FOREIGN`, RMS file
-  access for `Files`, and memory, saved registers, an exit handler and the paging
+  access for `Files` and `RecordFiles`, and memory, saved registers, an exit handler and the paging
   file quota for the collector.
 - `Out.Mod` and `Err.Mod`, `rtl/llvm`'s whole interface, write to
   `SYS$OUTPUT` and `SYS$ERROR` through `FormattedOutput.Mod` and
@@ -141,6 +141,13 @@ come, and what each needs, is in `doc/research/vms-module-inventory.md`.
   registered (section 19.20); the search path is VMS
   directories; the typed riders write IEEE reals, converted from
   F_floating and G_floating; every File is finalized.
+- `RecordFiles.Mod` (`Create`, `Put`, `Close`), VAX only: a file of
+  variable-length records with no record attributes, written a record
+  at a time, as poc on VMS writes an object (`src/back/vax/vms/
+  ObjectRecords.Mod`) and `tools/objconvert`'s converter writes one
+  (`doc/developer/vax-object-language.md`, section 15.9; Phase 18 step
+  4c). A failure stops the program, as `Files`' does; a File is not
+  finalized, RMS closing it when the image exits.
 - `GarbageCollectedHeap.Mod` (`Allocate`, `Collect`, `SetStackBase`,
   `SetHeapLimit`, `SetChunkSize`, `SetMarkStackCapacity`,
   `CollectionCount`, `HeapBytes`, `LiveBytes`, `IsAllocated`,

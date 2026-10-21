@@ -1,0 +1,18 @@
+;; Written 2026-10-19 by Claude, from the guest runs (Phase 18 step 6d),
+;; for the user's review. Why this is right:
+;; - The program built from poc's objects (tools/vax-suite's O<n>
+;;   builds). Its fault and its place are those of expected-vax-
+;;   notrap-10.err, which says why; only the traceback differs, since
+;;   poc's objects carry traceback and debugger records (vax-object-
+;;   language.md, section 16) and MACRO's carry none: each routine in
+;;   poc's code has its line, 74, case 9's statement, which faults.
+;; - The module's code is named NOTRAP_INIT, its routine's own name,
+;;   where MACRO's objects have only the label POC_CODE before it.
+;; - The module's start (_MAIN) is poc's own code, with no source line.
+;; - The same under -O2 and -OC, so for every build.
+%SYSTEM-F-FLTDIV_F, arithmetic fault, floating divide by zero at PC=xxxxxxxx, PSL=xxxxxxxx
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+NOTRAP          NOTRAP_INIT                        74      xxxxxxxx  xxxxxxxx
+NOTRAP          NOTRAP_MAIN                                xxxxxxxx  xxxxxxxx

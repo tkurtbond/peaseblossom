@@ -16,6 +16,8 @@
 rtl=../../../rtl/vax
 written="OutStrUse.mar Out.mar OutStr.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar"
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 grep -v '^  (\* rtl/vax: a copy of rtl/llvm/OutStr.Mod' $rtl/OutStr.Mod >OutStr.copy
 cmp -s OutStr.copy ../../../rtl/llvm/OutStr.Mod || echo "rtl/vax/OutStr.Mod is not rtl/llvm's" >>result
 rm -f OutStr.copy
@@ -28,9 +30,11 @@ awk '/\|$/ { if (n % 2 == 0) first = $0; else if ($0 != first) print "differs: "
 rm -f OutStrUse.com
 for model in -O2 -OC; do
   rm -f *.sym $written
-  poc $model -target vax-dec-vms -import-path $rtl -build OutStrUse.mod >>result 2>&1
+  poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build OutStrUse.mod >>result 2>&1
   echo "VAX build OutStrUse $model exit $?" >>result
   vax_do guest-run.com guest-run.expected OutStrUse.com $written $rtl/PocRtl.mar
 done
-rm -f *.sym $written OutStrUse.com OutStrUse.mod
+}
+vax_build builds
+rm -f *.sym $written OutStrUse.com OutStrUse.mod *.obj
 . ../../testresult.sh

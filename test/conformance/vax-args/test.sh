@@ -14,9 +14,13 @@ written="argstest.mar Args.mar Modules.mar Platform.mar GarbageCollectedHeap.mar
 cp ../llvm-args/argstest.mod .
 rm -f argstest.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 rm -f *.sym $written
-poc -target vax-dec-vms -import-path $rtl -build argstest.mod >>result 2>&1
+poc -target vax-dec-vms $vax_way_option -import-path $rtl -build argstest.mod >>result 2>&1
 echo "VAX build argstest exit $?" >>result
 vax_do guest-run.com guest-run.expected argstest.com $written $rtl/PocRtl.mar
-rm -f *.sym $written argstest.com argstest.mod
+}
+vax_build builds
+rm -f *.sym $written argstest.com argstest.mod *.obj
 . ../../testresult.sh

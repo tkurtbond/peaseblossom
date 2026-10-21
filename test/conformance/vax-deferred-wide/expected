@@ -1,4 +1,5 @@
 semantic OK, wrote VaxDeferredWide.mar
 exit 0
 VaxDeferredWide.mar matches expected-vax.mar
+VaxDeferredWide.image matches expected-vax.image
 LLVM build exit 0

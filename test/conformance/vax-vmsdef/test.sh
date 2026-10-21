@@ -34,20 +34,6 @@ for model in O2 OC; do
   done
   echo "-$model: $count modules compiled" >>result
 done
-(cd work && poc -target vax-dec-vms -output-dir libs -library POCRTL $(LC_ALL=C ls ../$rtl/*.Mod) ../$rtl/PocRtl.mar) >work/out 2>&1 \
-  || cat work/out >>result
-(cd work && poc -target vax-dec-vms -output-dir libs -library-path libs -library VMSDEF $(for m in $modules; do echo ../$vms/$m; done)) \
-  >>result 2>&1
-echo "VMSDEF exit $?" >>result
-lib=work/libs/vax-dec-vms/O2
-grep -c '^\$ MACRO/OBJECT' $lib/VMSDEF_build.com | sed 's/^/VMSDEF modules assembled: /' >>result
-awk -f layout-check.awk $(for m in $modules; do echo $vms/$m; done) >work/VmsDefLayout.mod
-cp VmsDefCalls.mod work/
-for p in VmsDefLayout VmsDefCalls; do
-  (cd work && poc -target vax-dec-vms -library-path libs -o $p -build $p.mod) >>result 2>&1
-  echo "VAX build $p exit $?" >>result
-done
-
 # the $xxxDEF modules against STARLET.MLB
 if [ "${VAX_GUEST:-}" = skip ]; then
   echo "SKIPPED: comparing with STARLET.MLB on the VAX (VAX_GUEST=skip)"
@@ -75,9 +61,26 @@ elif "$tools/vax-assemble" -available; then
 else
   echo "SKIPPED: comparing with STARLET.MLB (no VAX development system here)"
 fi
-
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
+rm -rf work/libs
+(cd work && poc -target vax-dec-vms $vax_way_option -output-dir libs -library POCRTL $(LC_ALL=C ls ../$rtl/*.Mod) ../$rtl/PocRtl.mar) >work/out 2>&1 \
+  || cat work/out >>result
+(cd work && poc -target vax-dec-vms $vax_way_option -output-dir libs -library-path libs -library VMSDEF $(for m in $modules; do echo ../$vms/$m; done)) \
+  >>result 2>&1
+echo "VMSDEF exit $?" >>result
+lib=work/libs/vax-dec-vms/O2
+grep -c '^\$ LIBRARY/INSERT VMSDEF' $lib/VMSDEF_build.com | sed 's/^/VMSDEF modules: /' >>result
+awk -f layout-check.awk $(for m in $modules; do echo $vms/$m; done) >work/VmsDefLayout.mod
+cp VmsDefCalls.mod work/
+for p in VmsDefLayout VmsDefCalls; do
+  (cd work && poc -target vax-dec-vms $vax_way_option -library-path libs -o $p -build $p.mod) >>result 2>&1
+  echo "VAX build $p exit $?" >>result
+done
 # the libraries built on the VAX, and the programs against them
-vax_do guest-run.com guest-run.expected $lib/*.mar $lib/*_build.com $lib/*_setup.com \
+vax_do guest-run.com guest-run.expected $lib/*.mar $lib/*.obj $lib/*_build.com $lib/*_setup.com \
   work/VmsDefLayout.mar work/VmsDefLayout.com work/VmsDefCalls.mar work/VmsDefCalls.com
+}
+vax_build builds
 rm -rf work
 . ../../testresult.sh

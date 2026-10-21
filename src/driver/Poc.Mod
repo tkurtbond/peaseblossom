@@ -155,6 +155,16 @@ MODULE Poc;
     membersOnly: BOOLEAN;
     (* poc -shared-libraries: link the libraries dynamically *)
     sharedLibraries: BOOLEAN;
+    (* how a VAX program is built (PLAN.md Phase 18 step 6; doc/developer/
+       vax-object-language.md, section 17, proposals 1 and 2): from poc's
+       own objects (-vax-objects) or from MACRO-32 (-vax-macro32), and
+       whether either was given; poc on VMS builds from objects unless
+       told otherwise, poc elsewhere from MACRO-32 *)
+    vaxObjects, vaxWayGiven, runningOnVms: BOOLEAN;
+    (* the files -emit-macro32, -emit-vax-object and -emit-vax-image, each
+       a command and an option, ask for: one compile writes each kind
+       named (proposal 8) *)
+    emitMacro, emitObject, emitImage: BOOLEAN;
     (* -clear-library-path given: POC_LIBRARY_PATH and poc's own lib/poc are
        left out of the library path too *)
     libraryPathCleared: BOOLEAN;
@@ -1560,18 +1570,19 @@ MODULE Poc;
     RETURN ~m.inLibrary & ~m.compiled & (m.irPath[0] = 0X) & (~onlyMembers OR (FindMember(m.module.name) # NIL))
   END IsVaxUnit;
 
-  (* Each unit of modules written as <Module>.mar, VaxToolchainDriver's, in
-     outputDir, the program's start in the main module, the last, unless
+  (* Each unit of modules written in outputDir as VaxToolchainDriver's
+     writeMacro, writeObject and writeImage say, <Module>.mar, .obj or
+     .image, the program's start in the main module, the last, unless
      onlyMembers (-compile, which has no main); with announce, "semantic
      OK, wrote" for each. Their exported symbols go in one table, so that
      two modules with one symbol are an error (section 5.1, layer 2), with
      those of the modules not written, from libraries or .sym files,
      entered first (Phase 17 step 1, section 18, proposal 7); and two
      modules whose names differ only in case, whose files and initializers
-     would be one on VMS, are refused. As for IR: every module's .mar, or
-     none, when one could not be made, is left. FALSE, reported, if not
+     would be one on VMS, are refused. As for IR: every module's files, or
+     none, when one could not be made, are left. FALSE, reported, if not
      written. *)
-  PROCEDURE WriteMacro32(modules: ModuleLists.ModuleList; outputDir: ARRAY OF CHAR;
+  PROCEDURE WriteVaxModules(modules: ModuleLists.ModuleList; outputDir: ARRAY OF CHAR;
                          onlyMembers, announce: BOOLEAN): BOOLEAN;
     VAR
       m, n: ModuleLists.ModuleList;
@@ -1580,7 +1591,7 @@ MODULE Poc;
       path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
       a, b: VaxTypes.Symbol;
       full, clash: ARRAY 3 * 256 + 3 OF CHAR;
-      errorsBefore, unlinkResult: INTEGER;
+      errorsBefore: INTEGER;
       savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
   BEGIN
     m := modules;
@@ -1643,11 +1654,11 @@ MODULE Poc;
     m := modules;
     WHILE m # NIL DO
       IF IsVaxUnit(m, onlyMembers) THEN
-        VaxToolchainDriver.ModuleFilePath(outputDir, m.module.name, path);
         IF written & (Diagnostics.errorCount = errorsBefore) THEN
+          VaxToolchainDriver.ModuleOutputPath(outputDir, m.module.name, path);
           IF announce THEN Out.String("semantic OK, wrote "); Out.String(path); Out.Ln END
         ELSE
-          unlinkResult := Platform.Unlink(path)
+          VaxToolchainDriver.RemoveModuleFiles(outputDir, m.module.name)
         END
       END;
       m := m.next
@@ -1660,25 +1671,29 @@ MODULE Poc;
     ELSIF Diagnostics.errorCount > errorsBefore THEN
       ReportGenerationErrors; RETURN FALSE
     ELSIF ~written THEN
-      failed := TRUE; Err.String("poc: cannot write the .mar files"); Err.Ln;
+      failed := TRUE; Err.String("poc: cannot write the modules' files"); Err.Ln;
       RETURN FALSE
     END;
     RETURN TRUE
-  END WriteMacro32;
+  END WriteVaxModules;
 
   (* PLAN.md Phase 15 (doc/developer/vax-macro32-backend.md, sections 10
      and 12): -emit-macro32 writes each module of the program compiled from
      source as <Module>.mar, for the VAX target, which it implies. The
      modules are checked and their .sym files written as for any other
      target. *)
-  PROCEDURE EmitMacro32(name, outputDir, explicitTriple: ARRAY OF CHAR);
+  PROCEDURE EmitVax(command, name, outputDir, explicitTriple: ARRAY OF CHAR);
     VAR modules: ModuleLists.ModuleList; ok: BOOLEAN;
   BEGIN
-    IF SetVaxTarget("-emit-macro32", explicitTriple) THEN
+    (* Phase 18 step 6 (section 17, proposal 8): the files the -emit-
+       commands given ask for, each written alone *)
+    VaxToolchainDriver.writeMacro := emitMacro; VaxToolchainDriver.writeObject := emitObject;
+    VaxToolchainDriver.writeImage := emitImage;
+    IF SetVaxTarget(command, explicitTriple) THEN
       CheckAndDiscoverProgram(name, outputDir, modules, ok);
-      IF ok & WriteMacro32(modules, outputDir, FALSE, TRUE) THEN END
+      IF ok & WriteVaxModules(modules, outputDir, FALSE, TRUE) THEN END
     END
-  END EmitMacro32;
+  END EmitVax;
 
   (* Whether file's name ends in extension, a period and three lower-case
      letters, in any case *)
@@ -1786,6 +1801,18 @@ MODULE Poc;
     RETURN TRUE
   END VaxImagePaths;
 
+  (* The files a build writes for each module, as vaxObjects says (PLAN.md
+     Phase 18 step 6; doc/developer/vax-object-language.md, section 17):
+     its object, or its MACRO-32 *)
+  PROCEDURE SetVaxWay;
+  BEGIN
+    VaxToolchainDriver.writeMacro := ~vaxObjects; VaxToolchainDriver.writeObject := vaxObjects;
+    VaxToolchainDriver.writeImage := FALSE;
+    (* an object written here but on VMS is sent there in binary (section
+       17, proposal 3) *)
+    VaxToolchainDriver.convertObjects := vaxObjects & ~runningOnVms
+  END SetVaxWay;
+
   (* The units of modules, in their order, for a build procedure *)
   PROCEDURE VaxUnits(modules: ModuleLists.ModuleList; onlyMembers: BOOLEAN): VaxToolchainDriver.Unit;
     VAR m: ModuleLists.ModuleList; first, last, u: VaxToolchainDriver.Unit;
@@ -1849,8 +1876,8 @@ MODULE Poc;
     END;
     ProgramTopName(modules, topName);
     IF (exePath[0] = 0X) & ~VaxImagePaths(topName, comPath, image) THEN RETURN END;
-    (* each command table copied beside the modules' .mar files; its
-       object must not be a module's *)
+    (* each command table copied beside the modules' .mar or .obj files;
+       its object must not be a module's *)
     units := VaxUnits(modules, FALSE);
     tables := NIL; tablesTail := NIL; table := commandTables;
     WHILE table # NIL DO
@@ -1858,7 +1885,9 @@ MODULE Poc;
       WHILE (u # NIL) & ~VaxToolchainDriver.IsSameVmsName(u.name, table.name) DO u := u.next END;
       IF u # NIL THEN
         failed := TRUE; Err.String("poc: "); Err.String(table.path); Err.String(" has the file name of module ");
-        Err.String(u.name); Err.String("'s .mar"); Err.Ln;
+        Err.String(u.name);
+        IF vaxObjects THEN Err.String("'s .obj") ELSE Err.String("'s .mar") END;
+        Err.Ln;
         RETURN
       END;
       Directories.MakePath(outputDir, table.name, path); Strcat(path, ".cld");
@@ -1872,9 +1901,10 @@ MODULE Poc;
       tablesTail := u;
       table := table.next
     END;
-    IF WriteMacro32(modules, outputDir, FALSE, FALSE)
+    SetVaxWay;
+    IF WriteVaxModules(modules, outputDir, FALSE, FALSE)
        & ~VaxToolchainDriver.WriteBuildProcedure(comPath, name, image, units, libraries, tables,
-                                                 sharedLibraries) THEN
+                                                 sharedLibraries, vaxObjects, VaxToolchainDriver.debug) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
   END BuildVax;
@@ -1999,7 +2029,11 @@ MODULE Poc;
      files named written as <Module>.mar and their .sym, in outputDir, with
      no program's start, and the DCL procedure that assembles them,
      <outputDir>/<First>.com, the first file's module; their imports are
-     checked, not written. Silent on success. *)
+     checked, not written. With objects (-vax-objects) each module's .obj
+     in place of its .mar, and the procedure only when they are written
+     but on VMS, to convert them there (doc/developer/
+     vax-object-language.md, section 17, proposals 3 and 4). Silent on
+     success. *)
   PROCEDURE CompileVax(firstFile: INTEGER; outputDir: ARRAY OF CHAR);
     VAR
       member: LibraryMember; modules, modulesTail: ModuleLists.ModuleList;
@@ -2021,8 +2055,12 @@ MODULE Poc;
     VaxToolchainDriver.ModuleFilePath(outputDir, members.name, comPath);
     i := 0; WHILE comPath[i] # 0X DO INC(i) END;
     comPath[i - 4] := 0X; Strcat(comPath, ".com"); (* <First>.mar's .com *)
-    IF WriteMacro32(modules, outputDir, TRUE, FALSE)
-       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE), NIL, NIL, FALSE) THEN
+    SetVaxWay;
+    (* with objects there is nothing to assemble, so a procedure only to
+       convert them (section 17, proposals 3 and 4) *)
+    IF WriteVaxModules(modules, outputDir, TRUE, FALSE) & (~vaxObjects OR VaxToolchainDriver.convertObjects)
+       & ~VaxToolchainDriver.WriteBuildProcedure(comPath, members.path, "", VaxUnits(modules, TRUE), NIL, NIL, FALSE,
+                                                 vaxObjects, VaxToolchainDriver.debug) THEN
       failed := TRUE; Err.String("poc: cannot write "); Err.String(comPath); Err.Ln
     END
   END CompileVax;
@@ -2080,7 +2118,9 @@ MODULE Poc;
      for the VAX, made as on LLVM (BuildLibrary) from its modules, each
      compiled from source, and any hand-written .mar files named
      (vaxParts), in <outputDir>/vax-dec-vms/<O2|OC>/: each module's .sym
-     and .mar, each part copied there, the manifest and the .owner files,
+     and .mar - or with objects, its .obj (PLAN.md Phase 18 step 6;
+     doc/developer/vax-object-language.md, section 17, proposal 6) - each
+     part copied there, the manifest and the .owner files,
      and the DCL procedures VaxToolchainDriver.WriteLibraryProcedures
      writes, <name>_build.com, which makes <NAME>.OLB and <NAME>.EXE on
      VMS, and <name>_setup.com. Silent on success. *)
@@ -2094,6 +2134,7 @@ MODULE Poc;
       path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
   BEGIN
     IF ~SetVaxTarget("-library", VaxToolchainDriver.triple) THEN RETURN END;
+    SetVaxWay;
     IF ~VaxToolchainDriver.IsLibraryName(name) THEN
       failed := TRUE; Err.String("poc: "); Err.String(name);
       Err.String(" cannot name a library for "); Err.String(VaxToolchainDriver.triple);
@@ -2116,7 +2157,9 @@ MODULE Poc;
       WHILE part # NIL DO
         IF VaxToolchainDriver.IsSameVmsName(part.name, member.name) THEN
           failed := TRUE; Err.String("poc: "); Err.String(part.path); Err.String(" has the file name of module ");
-          Err.String(member.name); Err.String("'s .mar"); Err.Ln;
+          Err.String(member.name);
+          IF vaxObjects THEN Err.String("'s .obj") ELSE Err.String("'s .mar") END;
+          Err.Ln;
           RETURN
         END;
         part := part.next
@@ -2165,13 +2208,13 @@ MODULE Poc;
       END;
       Libraries.Use(lib)
     END;
-    IF ~CheckLibraries(modules) OR ~WriteMacro32(modules, dir, TRUE, FALSE) THEN RETURN END;
+    IF ~CheckLibraries(modules) OR ~WriteVaxModules(modules, dir, TRUE, FALSE) THEN RETURN END;
     (* every global symbol of its modules and parts, for UNIVERSAL= *)
     units := VaxUnits(modules, TRUE); symbols := NIL;
     u := units;
     WHILE u # NIL DO
-      VaxToolchainDriver.ModuleFilePath(dir, u.name, path);
-      IF ~VaxToolchainDriver.ReadGlobalSymbols(path, symbols) THEN
+      IF ~VaxToolchainDriver.GlobalSymbols(dir, u.name, vaxObjects, symbols) THEN
+        VaxToolchainDriver.ModuleFilePath(dir, u.name, path);
         failed := TRUE; Err.String("poc: cannot read "); Err.String(path); Err.Ln; RETURN
       END;
       u := u.next
@@ -2191,13 +2234,13 @@ MODULE Poc;
       needsTail := u;
       owner := owner.linkNext
     END;
-    IF ~VaxToolchainDriver.WriteLibraryProcedures(dir, name, units, parts, needs, symbols) THEN
+    IF ~VaxToolchainDriver.WriteLibraryProcedures(dir, name, units, parts, needs, symbols, vaxObjects) THEN
       failed := TRUE; Err.String("poc: cannot write library "); Err.String(name); Err.String("'s procedures in ");
       Err.String(dir); Err.Ln;
       RETURN
     END;
     (* the manifest, as on LLVM *)
-    lib := Libraries.NewLibrary(name, dir);
+    lib := Libraries.NewLibrary(name, dir); lib.objects := vaxObjects;
     m := modules;
     WHILE m # NIL DO
       IF ~m.inLibrary THEN
@@ -2732,6 +2775,20 @@ MODULE Poc;
     RETURN TRUE
   END CopyInto;
 
+  (* The object name copied from the directory from to the directory to,
+     whole: FALSE, reported, if it could not be *)
+  PROCEDURE CopyObjectInto(from, to, name: ARRAY OF CHAR): BOOLEAN;
+    VAR source, target: Libraries.Path;
+  BEGIN
+    Directories.MakePath(from, name, source); Directories.MakePath(to, name, target);
+    IF ~VaxToolchainDriver.CopyObject(source, target) THEN
+      failed := TRUE; Err.String("poc: cannot copy "); Err.String(source); Err.String(" to ");
+      Err.String(to); Err.Ln;
+      RETURN FALSE
+    END;
+    RETURN TRUE
+  END CopyObjectInto;
+
   (* Whether the directories a and b, both there, are one: a file made in a
      is looked for in b. With no shell, as poc on VMS has none to ask. *)
   PROCEDURE IsSameDirectory(a, b, name: ARRAY OF CHAR): BOOLEAN;
@@ -2753,7 +2810,10 @@ MODULE Poc;
      InstallLibrary for LLVM, but the files the host has of a VAX library
      (section 18): its manifest, each module's .sym, .owner and .mar, its
      parts' .mar and its two DCL procedures, copied as text, by Files, so
-     that poc on VMS can do it too. Its .OLB and .EXE are made where it is
+     that poc on VMS can do it too; a library of objects has each module's
+     .obj in place of its .mar, copied whole (VaxToolchainDriver.CopyObject;
+     PLAN.md Phase 18 step 6, doc/developer/vax-object-language.md,
+     section 17, proposal 6). Its .OLB and .EXE are made where it is
      installed, by its build procedure there, which its setup procedure
      then names. *)
   PROCEDURE InstallLibraryVax(name, outputDir: ARRAY OF CHAR);
@@ -2811,6 +2871,7 @@ MODULE Poc;
           COPY(m.name, file); Strcat(file, ".sym"); DeleteIn(dir, file);
           COPY(m.name, file); Strcat(file, ".owner"); DeleteIn(dir, file);
           COPY(m.name, file); Strcat(file, ".mar"); DeleteIn(dir, file);
+          COPY(m.name, file); Strcat(file, ".obj"); DeleteIn(dir, file);
           m := m.next
         END;
         n := old.parts;
@@ -2824,8 +2885,13 @@ MODULE Poc;
       IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
       COPY(m.name, file); Strcat(file, ".owner");
       IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
-      COPY(m.name, file); Strcat(file, ".mar");
-      IF ~CopyInto(lib.dir, dir, file) THEN RETURN END;
+      IF lib.objects THEN
+        COPY(m.name, file); Strcat(file, ".obj");
+        IF ~CopyObjectInto(lib.dir, dir, file) THEN RETURN END
+      ELSE
+        COPY(m.name, file); Strcat(file, ".mar");
+        IF ~CopyInto(lib.dir, dir, file) THEN RETURN END
+      END;
       m := m.next
     END;
     n := lib.parts;
@@ -2985,7 +3051,7 @@ MODULE Poc;
     HelpLine("  -clear-library-path        forget the library path so far, poc's own too");
     HelpLine("  -O2 | -OC                  size model: INTEGER 16/32 bits, LONGINT 32/64");
     HelpLine("  -strict                    only the Oberon-2 report: no extensions");
-    LLVMHelpLine("  -g                         debug information for gdb and lldb");
+    HelpLine("  -g                         debug information: gdb, lldb, the VMS debugger");
     LLVMHelpLine("  -opt <level>               clang's -O: 0-3 s z g (default 2, 0 on 32-bit x86)");
     LLVMHelpLine("  -lto                       optimize the whole program when it is linked");
     LLVMHelpLine("  -rebuild                   compile every module, reusing no object");
@@ -2994,6 +3060,8 @@ MODULE Poc;
     HelpLine("  -range-checks              SHORT and CHR of a value that does not fit trap");
     LLVMHelpLine("  -static                    link a fully static executable");
     HelpLine("  -shared-libraries          link libraries dynamically");
+    HelpLine("  -vax-objects               for vax-dec-vms: build from poc's objects (on VMS)");
+    HelpLine("  -vax-macro32               for vax-dec-vms: build from MACRO-32 (elsewhere)");
     LLVMHelpLine("  -link <arg>                add <arg> to the link (-lz, -L<dir>)");
     LLVMHelpLine("  -c-flag <arg>              add <arg> to clang's flags for a module's C part");
     HelpLine("  -target <triple>           compile for another target (vax-dec-vms: the VAX)");
@@ -3013,6 +3081,8 @@ MODULE Poc;
     HelpLine("  -dump-nested <file>        print what its nested procedures need");
     HelpLine("  -dump-vax-types <file>     print the VAX size and suffix of each of its types");
     HelpLine("  -dump-vax-names <file>     print the VAX symbol of each of its names");
+    HelpLine("  -emit-vax-image <file>     write each module encoded, <Module>.image");
+    HelpLine("  -emit-vax-object <file>    write each module's VAX object, <Module>.obj");
     HelpLine("");
     HelpLine("poc(1) explains each of them.")
   END Help;
@@ -3083,10 +3153,36 @@ MODULE Poc;
      doc/developer/vax-macro32-backend.md, section 21, proposal 8) *)
   PROCEDURE IsLLVMOption(option: ARRAY OF CHAR): BOOLEAN;
   BEGIN
-    RETURN (option = "-emit-llvm-ir") OR (option = "-dump-llvm-types") OR (option = "-g")
+    RETURN (option = "-emit-llvm-ir") OR (option = "-dump-llvm-types")
       OR (option = "-opt") OR (option = "-lto") OR (option = "-rebuild") OR (option = "-static")
       OR (option = "-link") OR (option = "-c-flag") OR (option = "-verbose")
   END IsLLVMOption;
+
+  (* whether option is one of the commands that write a VAX module's files,
+     which may be given together (section 17, proposal 8) *)
+  PROCEDURE IsVaxEmit(option: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN (option = "-emit-macro32") OR (option = "-emit-vax-image") OR (option = "-emit-vax-object")
+  END IsVaxEmit;
+
+  (* Whether argument n is a command IsVaxEmit accepts, as written on
+     VMS when onVms *)
+  PROCEDURE IsVaxEmitArgument(n: INTEGER; onVms: BOOLEAN): BOOLEAN;
+    VAR arg: ARRAY 256 OF CHAR;
+  BEGIN
+    GetArgument(n, arg);
+    IF onVms & (arg[0] = "-") THEN OptionOnVms(arg) END;
+    RETURN IsVaxEmit(arg)
+  END IsVaxEmitArgument;
+
+  (* The kind of file option, one IsVaxEmit accepts, asks for, asked for *)
+  PROCEDURE SetVaxEmit(option: ARRAY OF CHAR);
+  BEGIN
+    IF option = "-emit-macro32" THEN emitMacro := TRUE
+    ELSIF option = "-emit-vax-object" THEN emitObject := TRUE
+    ELSE emitImage := TRUE
+    END
+  END SetVaxEmit;
 
   (* whether option is a command RunCommand runs on a file *)
   PROCEDURE IsFileCommand(option: ARRAY OF CHAR): BOOLEAN;
@@ -3095,7 +3191,7 @@ MODULE Poc;
       OR (option = "-dump-layout") OR (option = "-dump-llvm-types") OR (option = "-dump-nested")
       OR (option = "-dump-vax-types") OR (option = "-dump-vax-names")
       OR (option = "-emit-interface") OR (option = "-show-interface") OR (option = "-emit-llvm-ir")
-      OR (option = "-emit-macro32")
+      OR (option = "-emit-macro32") OR (option = "-emit-vax-image") OR (option = "-emit-vax-object")
       OR (option = "-build")
   END IsFileCommand;
 
@@ -3123,8 +3219,8 @@ MODULE Poc;
       EmitInterface(fileName, outputDir, targetTriple, TRUE)
     ELSIF option = "-emit-llvm-ir" THEN
       EmitLLVMIR(fileName, outputDir, targetTriple)
-    ELSIF option = "-emit-macro32" THEN
-      EmitMacro32(fileName, outputDir, targetTriple)
+    ELSIF IsVaxEmit(option) THEN
+      EmitVax(option, fileName, outputDir, targetTriple)
     ELSIF option = "-build" THEN
       Build(fileName, outputDir, targetTriple, exePath)
     ELSE
@@ -3183,6 +3279,8 @@ MODULE Poc;
       (* "" but in a poc built to run on VAX/VMS (section 15, proposal 7) *)
       COPY(BuildInfo.defaultTarget, targetTriple); onVms := targetTriple[0] # 0X;
       ConstantEvaluator.vaxHost := onVms; (* its LONGREAL is G_floating *)
+      runningOnVms := onVms; vaxObjects := onVms; (* section 17, proposal 2 *)
+      COPY("Peaseblossom poc ", VaxToolchainDriver.processor); Strcat(VaxToolchainDriver.processor, Version.number);
       exePath[0] := 0X;
       done := FALSE;
       (* two passes: the first applies every option and marks it and its
@@ -3200,8 +3298,13 @@ MODULE Poc;
             failed := TRUE; Err.String("poc: "); Err.String(arg);
             Err.String(" is not available on VAX/VMS, where poc has no LLVM back end"); Err.Ln;
             done := TRUE
+          ELSIF optionsOnly & IsVaxEmit(arg) & (command >= 0) THEN
+            (* another of them, given with the first: an option to it *)
+            SetVaxEmit(arg);
+            INC(i)
           ELSIF optionsOnly & IsCommand(arg, parameters) THEN
             isCommand := TRUE;
+            IF IsVaxEmit(arg) THEN SetVaxEmit(arg) END;
             IF command < 0 THEN command := i END;
             INC(i);
             WHILE (parameters > 0) & (i < argumentCount) & (argumentList[i][0] # "-") DO
@@ -3246,6 +3349,10 @@ MODULE Poc;
             INC(i); done := TRUE
           ELSIF arg = "-shared-libraries" THEN
             sharedLibraries := TRUE;
+            INC(i)
+          ELSIF (arg = "-vax-objects") OR (arg = "-vax-macro32") THEN
+            (* PLAN.md Phase 18 step 6: how a VAX program is built *)
+            vaxObjects := arg = "-vax-objects"; vaxWayGiven := TRUE;
             INC(i)
           ELSIF arg = "-compile" THEN
             IF i + 1 < argumentCount THEN
@@ -3316,6 +3423,7 @@ MODULE Poc;
             (* Phase 11 A16: debug information for gdb and lldb *)
             LLVMBackEnd.SetDebugInfo;
             Libraries.SetDebug(TRUE);
+            VaxToolchainDriver.debug := TRUE; (* and for the VMS debugger (Phase 18 step 5b) *)
             INC(i)
           ELSIF arg = "-opt" THEN
             (* Phase 11 D13: the optimization level -build passes clang *)
@@ -3450,6 +3558,10 @@ MODULE Poc;
           (* options and no command (Phase 12 step 1): say so, not succeed
              having done nothing *)
           BadUsage("no file or command among the options", ""); finished := TRUE
+        ELSIF (emitMacro OR emitObject OR emitImage) & ~IsVaxEmitArgument(command, onVms) THEN
+          GetArgument(command, arg);
+          BadUsage("-emit-macro32, -emit-vax-object and -emit-vax-image are commands, not options to ", arg);
+          finished := TRUE
         ELSE
           RemoveOptions(isOption, command); i := command; optionsOnly := FALSE; finished := FALSE
         END
@@ -3458,6 +3570,8 @@ MODULE Poc;
   END Run;
 
 BEGIN
+  vaxObjects := FALSE; vaxWayGiven := FALSE; runningOnVms := FALSE;
+  emitMacro := FALSE; emitObject := FALSE; emitImage := FALSE;
   failed := FALSE; forVax := FALSE; helpToErr := FALSE; vaxRuntimeExplained := FALSE; members := NIL; membersOnly := FALSE; sharedLibraries := FALSE; libraryPathCleared := FALSE;
   Run;
   IF failed OR (Diagnostics.errorCount > 0) OR (LLVMBackEnd.UnsupportedCount() > 0) THEN

@@ -20,7 +20,11 @@
 #   tools/vax-run <main.mar> [<import.mar>...] <run.dbg>...
 #
 # Each module's .TITLE names its file on the guest, so a .mar may be a
-# fixture's expected-vax.mar.
+# fixture's expected-vax.mar. A module may also be poc's object,
+# <module>.obj, named by its file (PLAN.md Phase 18 step 4c; doc/developer/
+# vax-object-language.md, section 15.9, proposal 7): it is copied in
+# binary mode, converted there by OBJCONVERT (tools/vax-objconvert.tcl)
+# and linked as it is, not assembled.
 #
 # Runs share POC's home directory with each other and with
 # tools/vax-assemble, so each holds this host's lock while it uses the
@@ -36,15 +40,19 @@ VAX_NETRC=${VAX_NETRC:-$HOME/.netrc-poc-vax}
 export VAX_NETRC
 . "$here/vax-lock.sh"
 
-usage() { echo "usage: tools/vax-run <main.mar> [<import.mar>...] <run.dbg>..." >&2; exit 2; }
+usage() { echo "usage: tools/vax-run <main.mar|main.obj> [<import.mar|import.obj>...] <run.dbg>..." >&2; exit 2; }
 
 # the modules, each as "<file> <MODULE>", the main one first; then the runs
-mars=; modules=
+mars=; modules=; objects=
 while [ $# -gt 0 ]; do
-  case $1 in *.mar|*.MAR) ;; *) break ;; esac
+  case $1 in *.mar|*.MAR|*.obj) ;; *) break ;; esac
   [ -r "$1" ] || { echo "vax-run: cannot read $1" >&2; exit 2; }
-  # a module's name, its .TITLE, is its file's name on the guest
-  module=$(sed -n 's/^	\.TITLE	\([A-Z0-9_$]*\)$/\1/p' "$1")
+  # a module's name, its .TITLE, is its file's name on the guest; an
+  # object's is its file's
+  case $1 in
+    *.obj) module=$(basename "$1" .obj | tr a-z A-Z); objects=1 ;;
+    *) module=$(sed -n 's/^	\.TITLE	\([A-Z0-9_$]*\)$/\1/p' "$1") ;;
+  esac
   case $module in
     *[!A-Z0-9_\$]*|""|POCSTUB) echo "vax-run: no .TITLE it can use in $1" >&2; exit 2 ;;
   esac
@@ -53,7 +61,16 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$modules" ] && [ $# -gt 0 ] || usage
 main=${mars# }; main=${main%% *}
-grep -q '^	\.END	[A-Z0-9_$]*_MAIN$' "$main" || { echo "vax-run: no program's start (.END <MODULE>_MAIN) in $main" >&2; exit 2; }
+case $main in
+  *.obj) ;;
+  *) grep -q '^	\.END	[A-Z0-9_$]*_MAIN$' "$main" || { echo "vax-run: no program's start (.END <MODULE>_MAIN) in $main" >&2; exit 2; } ;;
+esac
+# poc's objects: the converter's MACRO and its key (tools/vax-objconvert)
+if [ -n "$objects" ]; then
+  VAX_OBJCONVERT_DIR=${VAX_OBJCONVERT_DIR:-$(dirname "$here")/build/objconvert}
+  VAX_OBJCONVERT_KEY=$("$here/vax-objconvert" "$VAX_OBJCONVERT_DIR") || exit 2
+  export VAX_OBJCONVERT_DIR VAX_OBJCONVERT_KEY
+fi
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/vax-run.XXXXXX")
 runs=$#
@@ -73,7 +90,7 @@ set -- "$here/vax-runtime-stub.mar" POCSTUB.MAR
 ms=$modules
 for f in $mars; do
   m=${ms# }; m=${m%% *}; ms=${ms# }; ms=${ms#"$m"}
-  set -- "$@" "$f" "$m.MAR"
+  case $f in *.obj) set -- "$@" "$f" "$m.OBJ" ;; *) set -- "$@" "$f" "$m.MAR" ;; esac
 done
 i=1
 while [ $i -le "$runs" ]; do

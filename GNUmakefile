@@ -14,13 +14,16 @@ CONFORMANCE_DIR := test/conformance
 
 FRONT_SRCS := $(wildcard src/front/*.Mod)
 BACK_LLVM_SRCS := $(wildcard src/back/llvm/*.Mod)
-BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod)
+BACK_VAX_SRCS := $(wildcard src/back/vax/*.Mod) $(wildcard src/back/vax/host/*.Mod)
 DRIVER_SRCS := src/driver/Version.Mod src/driver/Libraries.Mod src/driver/llvm/LLVMBackEnd.Mod \
   src/driver/Poc.Mod
 # Phase 17 step 7: the LLVMBackEnd of a poc without the LLVM back end, which
 # poc for VAX/VMS is built with (tools/bootstrap/vax-v1); checked by
 # check-strict, not part of poc here
 NO_LLVM_SRCS := src/driver/no-llvm/LLVMBackEnd.Mod
+# Phase 18 step 4: where poc for VAX/VMS writes an object's records,
+# src/back/vax/host's twin; checked by check-strict, not part of poc here
+VAX_VMS_SRCS := $(wildcard src/back/vax/vms/*.Mod)
 # Phase 13 step 1: the commit `poc -version` names, written by tools/build-info
 # on every make (it rewrites the file only when the commit or the tree's state
 # changed, so only then is poc rebuilt)
@@ -34,6 +37,7 @@ STAGE0_RTL_SRCS := rtl/voc/FileDescriptorOutput.Mod rtl/llvm/RealDigits.Mod \
   rtl/llvm/FormattedText.Mod rtl/llvm/FormattedOutput.Mod rtl/llvm/Err.Mod \
   rtl/voc/Directories.Mod
 STAGE1_BIN := $(BUILD_DIR)/stage1/bin/poc
+VAX_IMAGE_BIN := $(BUILD_DIR)/bin/vax-image
 # Phase 12 step 2d: rtl/llvm as the library poc-rtl, for this host's triple
 # and both size models, where each poc's default library path finds it
 # (<its bin>/../lib/poc): so a program links the runtime already compiled.
@@ -69,7 +73,7 @@ CATEGORIZED_TESTS := $(LEXER_TESTS) $(PARSER_TESTS) $(SEMANTIC_TESTS) $(MODULE_T
 # targetable by a single part of the compiler.
 MISC_TESTS := $(filter-out $(CATEGORIZED_TESTS),$(ALL_TESTS))
 
-.PHONY: FORCE all build installable install uninstall check-install installable-vax install-vax uninstall-vax check-install-vax check-install-vax-run seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-o2 check-opt2 check-lto test test-vax test-vax-asts test-vax-guest-poc vax-v1 vax-stages vax-kit check-vax-kit test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
+.PHONY: FORCE all build installable install uninstall check-install installable-vax install-vax uninstall-vax check-install-vax check-install-vax-run seed check-seed doc doc-html doc-pdf doc-all doc-other-html doc-other-pdf dist dist-sign distcheck set-version check-hosts release-files stage1 stage2 test-stage1 check check-stage1 check-strict check-o2 check-opt2 check-lto test test-vax test-vax-asts test-vax-guest-poc vax-v1 vax-stages vax-kit check-vax-kit vax-image test-lexer test-parser test-semantic test-modules test-layout test-llvm test-misc clean clean-build clean-tests
 
 build: $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR))
 
@@ -109,7 +113,7 @@ stage2: $(STAGE1_BIN)
 # bootstrap root and the comparison oracle. This suite, check-opt2's and
 # check-lto's leave the VAX guest alone (VAX_GUEST=skip, test/vaxfixture.sh):
 # it sees only each fixture's expected-vax.mar, which make test's run checks.
-test-stage1: $(STAGE1_BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)/stage1)
+test-stage1: $(STAGE1_BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)/stage1) $(VAX_IMAGE_BIN)
 	POC_BIN_DIR=$(abspath $(BUILD_DIR)/stage1/bin) VAX_GUEST=skip test/run-tests.sh $(ALL_TESTS)
 
 # Both compilers and the fixed point: the suite under the voc-built poc, the
@@ -215,11 +219,28 @@ check-lto: build
 # against the .sym files Stage 1 leaves in build/stage1/obj, under -OC, the
 # size model poc is built with, by the Stage 1 poc (which, unlike voc's build,
 # needs no LD_LIBRARY_PATH on the BSDs). rtl/llvm is the runtime, which needs
-# SYSTEM.ADDRESS and external procedures, and is not checked.
+# SYSTEM.ADDRESS and external procedures, and is not checked. The modules of
+# src/back/vax/vms, for poc built for VMS, are checked for the VAX, against
+# rtl/vax's RecordFiles, LineOutput and Platform, compiled for it into
+# build/strict-vms (PLAN.md Phase 18 steps 4c and 6b), not against an
+# installed POCRTL, which a host need not have.
 check-strict: $(STAGE1_BIN)
 	@status=0; \
 	for f in $(SRCS) $(NO_LLVM_SRCS); do \
 	  out=$$($(STAGE1_BIN) -OC -strict -import-path $(BUILD_DIR)/stage1/obj -check $$f 2>&1); \
+	  if [ "$$out" != "semantic OK" ]; then \
+	    echo "$$out"; echo "check-strict: $$f uses more than Oberon2.pdf"; status=1; \
+	  fi; \
+	done; \
+	mkdir -p $(BUILD_DIR)/strict-vms; \
+	$(STAGE1_BIN) -OC -target vax-dec-vms -import-path rtl/vax -output-dir $(BUILD_DIR)/strict-vms \
+	  -emit-macro32 rtl/vax/RecordFiles.Mod >/dev/null || status=1; \
+	for m in LineOutput Platform; do \
+	  $(STAGE1_BIN) -OC -target vax-dec-vms -import-path $(BUILD_DIR)/strict-vms -import-path rtl/vax \
+	    -output-dir $(BUILD_DIR)/strict-vms -emit-macro32 rtl/vax/$$m.Mod >/dev/null || status=1; \
+	done; \
+	for f in $(VAX_VMS_SRCS); do \
+	  out=$$($(STAGE1_BIN) -OC -strict -target vax-dec-vms -import-path $(BUILD_DIR)/strict-vms -check $$f 2>&1); \
 	  if [ "$$out" != "semantic OK" ]; then \
 	    echo "$$out"; echo "check-strict: $$f uses more than Oberon2.pdf"; status=1; \
 	  fi; \
@@ -240,7 +261,7 @@ check-o2: $(STAGE1_BIN) $(BUILD_INFO)
 	status=0; \
 	out=$$(cd $(CHECK_O2_DIR) && $(abspath $(STAGE1_BIN)) -O2 -clear-library-path \
 	  -import-path $(abspath src/front) -import-path $(abspath src/back/llvm) \
-	  -import-path $(abspath src/back/vax) -import-path $(abspath rtl/llvm) \
+	  -import-path $(abspath src/back/vax) -import-path $(abspath src/back/vax/host) -import-path $(abspath rtl/llvm) \
 	  -import-path $(abspath src/driver) -import-path $(abspath src/driver/llvm) \
 	  -import-path $(abspath $(BUILD_DIR)/gen) -emit-llvm-ir $(abspath src/driver/Poc.Mod) 2>&1) || status=1; \
 	if [ $$status != 0 ]; then echo "$$out"; fi; \
@@ -709,7 +730,7 @@ release-files:
 # make prerequisites) so one "make test" always reports the full picture,
 # rather than GNU Make's normal fail-fast stopping at the first failing
 # prerequisite target.
-test: build
+test: build $(VAX_IMAGE_BIN)
 	test/run-tests.sh $(ALL_TESTS)
 
 test-lexer: build
@@ -730,23 +751,26 @@ test-layout: build
 test-llvm: build
 	test/run-tests.sh $(LLVM_TESTS)
 
-test-misc: build
+test-misc: build $(VAX_IMAGE_BIN)
 	test/run-tests.sh $(MISC_TESTS)
 
 # PLAN.md Phase 16 step 5: the programs test/vax-suite.list names, built
 # for the VAX and run on the VAX/VMS development system, each compared with
 # the same program built by the LLVM backend and run here (tools/vax-suite;
-# doc/developer/vax-macro32-backend.md, section 16). Not part of make test:
-# it needs the guest, and holds it for the whole run.
+# doc/developer/vax-macro32-backend.md, section 16), each built both ways,
+# from MACRO-32 and from poc's objects (VAX_WAYS=macro32 or objects for one;
+# Phase 18 step 6d). Not part of make test: it needs the guest, and holds it
+# for the whole run.
 test-vax: build
 	tools/vax-suite
 
 # PLAN.md Phase 16 step 6: the bootstrap on VAX/VMS (doc/developer/
 # vax-macro32-backend.md, section 17). vax-v1 cross-compiles poc's own
 # source for the VAX here; vax-stages links it on the guest, compiles poc
-# there with it (V2) and with V2's image (V3), and compares their .mar
-# with V1's. Not part of make check: vax-stages holds the guest for about
-# an hour and a half.
+# there with it (V2) and with V2's image (V3), and compares their output
+# with V1's: objects, or .mar with VAX_STAGES_FLAGS=-way macro32 (PLAN.md
+# Phase 18 step 7). Not part of make check: vax-stages holds the guest for
+# about an hour and a half.
 vax-v1: build
 	tools/bootstrap/vax-v1
 
@@ -769,8 +793,22 @@ VAX_AST_TESTS = vax-asts vax-asts-heap vax-conditions-handlers vax-subprocesses
 test-vax-asts: build
 	VAX_REPEAT=$(VAX_ASTS_REPEAT) test/run-tests.sh -j 2 $(VAX_AST_TESTS)
 
+VAX_STAGES_FLAGS ?=
+
 vax-stages: build
-	tools/bootstrap/vax-stages
+	tools/bootstrap/vax-stages $(VAX_STAGES_FLAGS)
+
+# PLAN.md Phase 18 step 3: build/bin/vax-image, which runs a VAX object's
+# records (MACRO's, as DUMP/RECORD's text, or poc's) into the image
+# VaxImage prints (tools/vax-image/ObjectImage.Mod; tools/vax-macro-image;
+# doc/developer/vax-object-language.md, section 14.5). Built with the poc
+# of this tree; VAX_IMAGE_BIN is defined near the top, since the test
+# targets need it (every VAX fixture reads poc's objects back with it).
+
+vax-image: $(VAX_IMAGE_BIN)
+
+$(VAX_IMAGE_BIN): $(BIN) $(call RTL_LIBRARIES,$(BUILD_DIR)) tools/vax-image/ObjectImage.Mod src/back/vax/VaxImage.Mod
+	$(STAGE0_ENV) $(BIN) -OC -import-path src/back/vax -output-dir $(BUILD_DIR)/vax-image -o $@ tools/vax-image/ObjectImage.Mod
 
 # PLAN.md Phase 17 step 7: poc for VAX/VMS as two text files, each a DCL
 # procedure that unpacks itself on VMS (doc/developer/vax-macro32-backend.md,

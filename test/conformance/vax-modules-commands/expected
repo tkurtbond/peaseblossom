@@ -17,6 +17,15 @@ Modules.mar matches expected-vax-Modules.mar
 Out.mar matches expected-vax-Out.mar
 Platform.mar matches expected-vax-Platform.mar
 RealDigits.mar matches expected-vax-RealDigits.mar
+commands.image matches expected-vax.image
+FormattedOutput.image matches expected-vax-FormattedOutput.image
+FormattedText.image matches expected-vax-FormattedText.image
+Greeter.image matches expected-vax-Greeter.image
+LineOutput.image matches expected-vax-LineOutput.image
+Modules.image matches expected-vax-Modules.image
+Out.image matches expected-vax-Out.image
+Platform.image matches expected-vax-Platform.image
+RealDigits.image matches expected-vax-RealDigits.image
 VAX build commands -O2 exit 0
 VAX build haltcode -O2 exit 0
 VAX build halt -O2 exit 0

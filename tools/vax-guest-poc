@@ -7,12 +7,23 @@
 #
 #   tools/vax-guest-poc [-only <regex>]
 #
-# The poc on the guest is V1's (tools/bootstrap/vax-v1), linked there at the
-# start of the run: V2's .mar are V1's, so its image is the one V2's would
-# be (tools/bootstrap/vax-stages checks that). It compiles three groups:
+# The poc on the guest is V1's (tools/bootstrap/vax-v1 -vax-objects), linked
+# there at the start of the run from poc's own objects, sent in binary and
+# converted by tools/vax-do, with no MACRO but PocRtl.mar's (PLAN.md Phase 18
+# step 7c; doc/developer/vax-object-language.md, section 18.2, proposal 6):
+# V2's objects are V1's, so its image is the one V2's would be
+# (tools/bootstrap/vax-stages checks that). It compiles three groups:
 #
 #   A  each program of test/vax-suite.list, with its options, -target
-#      vax-dec-vms and -build
+#      vax-dec-vms and -build: on the guest with poc's default there,
+#      objects, written through RecordFiles, and here with -vax-objects
+#      (PLAN.md Phase 18 step 6e; doc/developer/vax-object-language.md,
+#      section 17.7). A program built with -trap-location is built with
+#      -vax-macro32 on both: its objects hold each module's source file's
+#      name, which differs by system, as text with its length, where in a
+#      .mar it is a line that is masked. So is a program whose fixture has
+#      an expected-vax-guest-<key>.diff: the difference it allows, reviewed
+#      as MACRO-32, is a line of the .mar.
 #   B  each VAX fixture's vax_mar line: -emit-macro32 with its options
 #   C  each fixture whose test.sh runs only poc [-strict] [-O2|-OC] -check
 #      <file>, those commands in order, each with -target vax-dec-vms
@@ -32,7 +43,12 @@
 # tools/vax-suite), and for each item the files written must be the host's,
 # by name (without regard to case) and content. One procedure, GUESTPOC.COM,
 # does it all on the guest (tools/vax-do), appending each output and each
-# file written to RESULTS.TXT, which comes back. Prints PASSED or FAILED for
+# file written to RESULTS.TXT, which comes back: an object as DUMP/RECORDS
+# prints it, compared with the host's counted object a record at a time,
+# its source file record (SRC) by the file's name alone. Both sides take
+# the objects' creation time from SOURCE_DATE_EPOCH, a logical name on the
+# guest. A procedure's conversion lines, which poc writes only off VMS,
+# are left out of the comparison. Prints PASSED or FAILED for
 # each item, with the differences, then the counts. Exits 0 if all passed,
 # 1 if not, 2 if the guest could not be used (VAX_DO_TIMEOUT, default here
 # 14400 seconds, bounds the guest's run).
@@ -53,8 +69,10 @@ case ${1:-} in
   *) echo "usage: tools/vax-guest-poc [-only <regex>]" >&2; exit 2 ;;
 esac
 
+. "$ROOT/tools/vax-objects.sh"
+
 "$ROOT/tools/vax-assemble" -available || { echo "vax-guest-poc: the VAX guest is not available" >&2; exit 2; }
-"$ROOT/tools/bootstrap/vax-v1" >/dev/null || { echo "vax-guest-poc: V1 did not build" >&2; exit 1; }
+"$ROOT/tools/bootstrap/vax-v1" -vax-objects >/dev/null || { echo "vax-guest-poc: V1 did not build" >&2; exit 1; }
 V1=$ROOT/build/vax-bootstrap/v1
 
 work=$ROOT/build/vax-guest-poc
@@ -82,9 +100,13 @@ grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/test/vax-suite.list" | sed 's/ : .*//' >"
 while read -r fixture main options; do
   echo "$fixture" | grep -q -- "$only" || continue
   case $main in */*) subdir=${main%/*}; main=${main##*/} ;; *) subdir=. ;; esac
-  echo "$options -target vax-dec-vms -build $main" >"$work/cmds"
   tag=$(echo "$options" | sed 's/^-//; s/ -/-/g; s/ /-/g')
-  add_item A "$fixture" "$subdir" "${main%.[Mm]od}-$tag"
+  key=${main%.[Mm]od}-$tag
+  way=
+  case " $options " in *" -trap-location "*) way=" -vax-macro32" ;; esac
+  [ -f "$conformance/$fixture/expected-vax-guest-$key.diff" ] && way=" -vax-macro32"
+  echo "$options -target vax-dec-vms$way -build $main" >"$work/cmds"
+  add_item A "$fixture" "$subdir" "$key"
 done <"$work/list"
 # B: vax_mar lines, the -import-path of rtl/vax left to the import path's
 # logical name or environment variable
@@ -150,16 +172,20 @@ dcl_args() {
 # ---- the host's runs, and what goes to the guest
 upper() { echo "$1" | tr a-z A-Z; }
 uploads=$work/up
-k=0
-for f in "$V1"/*.mar "$V1/Poc.com"; do
-  cp "$f" "$uploads/V1F$k.TXT"; echo "V1F$k.TXT $(upper "$(basename "$f")")" >>"$work/v1.moves"; k=$((k + 1))
+# V1's objects under their own names, which tools/vax-do sends in binary and
+# converts; its text files as V1F<k>.TXT, in ASCII
+for f in "$V1"/*.obj; do
+  cp "$f" "$uploads/"; echo "$(upper "$(basename "$f")") $(upper "$(basename "$f")")" >>"$work/v1.moves"
 done
-cp "$ROOT/rtl/vax/PocRtl.mar" "$uploads/V1F$k.TXT"; echo "V1F$k.TXT POCRTL.MAR" >>"$work/v1.moves"
+cp "$V1/Poc.com" "$uploads/V1F0.TXT"; echo "V1F0.TXT POC.COM" >>"$work/v1.moves"
+cp "$ROOT/rtl/vax/PocRtl.mar" "$uploads/V1F1.TXT"; echo "V1F1.TXT POCRTL.MAR" >>"$work/v1.moves"
 k=0
 for f in "$ROOT"/rtl/vax/*.Mod; do
   cp "$f" "$uploads/RTLF$k.TXT"; echo "RTLF$k.TXT $(upper "$(basename "$f")")" >>"$work/rtl.moves"; k=$((k + 1))
 done
 
+# the objects' creation time, on both sides
+epoch=1000000000
 skipped=
 while read -r id fixture subdir key; do
   h=$work/host/$id
@@ -188,7 +214,10 @@ while read -r id fixture subdir key; do
   c=0
   while IFS= read -r cmd; do
     c=$((c + 1))
-    (cd "$h/$subdir" && eval "set -- $cmd" && POC_IMPORT_PATH=$ROOT/rtl/vax timeout 120 poc "$@" \
+    # group A builds as poc on VMS does by default, from objects
+    way=; case $id in A*) way=-vax-objects ;; esac
+    (cd "$h/$subdir" && eval "set -- $cmd" && POC_IMPORT_PATH=$ROOT/rtl/vax SOURCE_DATE_EPOCH=$epoch \
+      timeout 120 poc $way "$@" \
       >"$work/items/$id.$c.host.out" 2>"$work/items/$id.$c.host.err"; echo "$?" >"$work/items/$id.$c.host.status")
   done <"$work/items/$id.cmds"
   (cd "$h" && find . -type f | sed 's|^\./||' | sort) | comm -13 "$work/items/$id.before" - >"$work/items/$id.written"
@@ -215,6 +244,7 @@ $ SET DEFAULT [.GUESTPOC]
 $ GP = F$ENVIRONMENT("DEFAULT")
 $ SET DEFAULT [.RTL]
 $ DEFINE/NOLOG POC$IMPORT 'F$ENVIRONMENT("DEFAULT")'
+$ DEFINE/NOLOG SOURCE_DATE_EPOCH "EPOCH"
 $ SET DEFAULT [-.POC]
 $ MACRO/OBJECT POCRTL.MAR
 $ S = $STATUS
@@ -280,7 +310,8 @@ $ GOSUB REMOVE_TREE
 $ EXIT 44
 $ !
 $ ! each file in ITEM's directory but its sources (*.MOD), the highest
-$ ! version, appended to RESULTS.TXT after a line naming it
+$ ! version, appended to RESULTS.TXT after a line naming it; an object,
+$ ! binary, as DUMP/RECORDS prints it
 $ FILES_WRITTEN:
 $ F = F$SEARCH("[.GUESTPOC.''ITEM'...]*.*")
 $ IF F .EQS. "" THEN RETURN
@@ -289,6 +320,12 @@ $ IF FTYPE .EQS. ".MOD" .OR. FTYPE .EQS. ".DIR" THEN GOTO FILES_WRITTEN
 $ OPEN/APPEND R 'RES'
 $ WRITE R "%%vgp file ", ITEM, " ", F
 $ CLOSE R
+$ IF FTYPE .NES. ".OBJ" THEN GOTO APPEND_FILE
+$ DUMP/RECORDS/OUTPUT='GP'DUMP.TXT 'F'
+$ S = $STATUS
+$ IF .NOT. S THEN WRITE SYS$OUTPUT "%%vgp append-failed ", ITEM, " ", F, " ", S
+$ F = GP + "DUMP.TXT"
+$ APPEND_FILE:
 $ ! poc's files and RESULTS.TXT have other record attributes, which APPEND
 $ ! warns of (APPEND-W-INCOMPAT) but copies the records: no message, and
 $ ! only an error or worse is reported
@@ -297,6 +334,7 @@ $ APPEND 'F' 'RES'
 $ S = $STATUS
 $ SET MESSAGE/FACILITY/SEVERITY/IDENTIFICATION/TEXT
 $ IF (S .AND. 7) .EQ. 2 .OR. (S .AND. 7) .EQ. 4 THEN WRITE SYS$OUTPUT "%%vgp append-failed ", ITEM, " ", F, " ", S
+$ IF FTYPE .EQS. ".OBJ" THEN DELETE/NOLOG 'GP'DUMP.TXT;*
 $ GOTO FILES_WRITTEN
 $ !
 $ ! [.GUESTPOC] and everything in it: each pass deletes the files and the
@@ -317,7 +355,7 @@ $ SET PROTECTION=(O:RWED) GUESTPOC.DIR;
 $ DELETE/NOLOG GUESTPOC.DIR;
 $ RETURN
 DCL
-} >"$proc"
+} | sed "s/^\$ DEFINE\/NOLOG SOURCE_DATE_EPOCH \"EPOCH\"\$/\$ DEFINE\/NOLOG SOURCE_DATE_EPOCH \"$epoch\"/" >"$proc"
 
 (cd "$uploads" && "$ROOT/tools/vax-do" -o "$work/back" -get RESULTS.TXT GUESTPOC.COM $(ls | grep -v '^GUESTPOC\.COM$')) \
   >"$work/guest.log" 2>&1
@@ -425,6 +463,8 @@ while read -r id fixture subdir key; do
       [ -f "$work/guest/$id/$F" ] || continue
       case $f in
         *.mar) mask_paths <"$work/host/$id/$f" >"$work/items/$id.fh"; mask_paths <"$work/guest/$id/$F" >"$work/items/$id.fg" ;;
+        *.obj) counted_records "$work/host/$id/$f" >"$work/items/$id.fh"; dumped_records "$work/guest/$id/$F" >"$work/items/$id.fg" ;;
+        *.com) without_conversions <"$work/host/$id/$f" >"$work/items/$id.fh"; cp "$work/guest/$id/$F" "$work/items/$id.fg" ;;
         *) cp "$work/host/$id/$f" "$work/items/$id.fh"; cp "$work/guest/$id/$F" "$work/items/$id.fg" ;;
       esac
       if ! diff "$work/items/$id.fh" "$work/items/$id.fg" >"$work/items/$id.fd" 2>&1; then

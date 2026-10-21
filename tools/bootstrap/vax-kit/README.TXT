@@ -2,7 +2,7 @@ Peaseblossom for VAX/VMS
 ========================
 
 poc, the Peaseblossom Oberon compiler, for VAX/VMS 5.5-2: it compiles
-Oberon-2 modules to VAX MACRO-32, and assembles and links them, with the
+Oberon-2 modules to VAX objects or MACRO-32, and links them, with the
 VMS base system's MACRO, LIBRARY and LINK, into images and libraries.
 This kit is poc @VERSION@@COMMIT@, all of it text: poc's own MACRO-32,
 which BUILD.COM assembles and links here, with its runtime library. It
@@ -32,7 +32,7 @@ Installing
        $ @BUILD
 
    This assembles and links POC.EXE into [.BIN] from [.KIT]'s MACRO-32,
-   then builds the library POCRTL, poc's runtime, under both size models.
+   and OBJCONVERT.EXE from [.KIT.OBJCONVERT]'s (below), then builds the library POCRTL, poc's runtime, under both size models.
    It takes a while: each step's time is added to BUILD.LOG. "@BUILD O2"
    or "@BUILD OC" builds only one size model's libraries; "@BUILD BOTH
    CLEAN" deletes [.KIT] once POC.EXE is built. @BUILD builds only what
@@ -43,7 +43,8 @@ Installing
 
        $ @dev:[dir]SETUP
 
-   SETUP.COM defines the command POC and the logical names of the -O2
+   SETUP.COM defines the commands POC and OBJCONVERT and the logical
+   names of the -O2
    libraries. "@SETUP OC" chooses the -OC libraries instead: a process
    builds against one size model's at a time.
 
@@ -76,9 +77,10 @@ Using poc
     $ @HELLO
     $ RUN HELLO
 
-POC compiles HELLO.MOD and the modules it imports to MACRO-32 and writes
-HELLO.COM, which assembles them and links HELLO.EXE against the
-libraries.
+POC compiles HELLO.MOD and the modules it imports to VAX objects and
+writes HELLO.COM, which links HELLO.EXE against the libraries. With
+-vax-macro32 it writes their MACRO-32 instead, and HELLO.COM assembles
+them first.
 
 "POC -HELP" lists poc's commands and options; options may be typed in any
 case. "POC -OC ..." compiles for the -OC size model (INTEGER 32 bits,
@@ -90,6 +92,12 @@ defines. "POC -VERSION" prints poc's version and target.
 poc finds a module's interface on its import path, the logical name
 POC$IMPORT, and libraries in [.LIB.POC] beside its [.BIN], then on the
 search list POC$LIBRARY.
+
+poc on Linux or a BSD also compiles for VAX/VMS. Its "-vax-objects"
+writes each module's object, which must be copied to VMS in binary mode,
+with the .COM file in ASCII mode. VMS stores such an object as fixed
+512-byte records, and the .COM file converts it first, with the command
+OBJCONVERT, which SETUP.COM defines.
 
 poc for VAX/VMS has no LLVM back end: it compiles for VAX/VMS only, and
 refuses the options that only the LLVM back end has (-lto, -g and so on).
@@ -105,6 +113,8 @@ argument @<file> stands for them):
     [-.SRC.FRONT]
     -import-path
     [-.SRC.BACK.VAX]
+    -import-path
+    [-.SRC.BACK.VAX.VMS]
     -import-path
     [-.SRC.DRIVER]
     -import-path

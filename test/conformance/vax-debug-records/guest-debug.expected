@@ -1,0 +1,186 @@
+debug build status: %X10000001
+
+         VAX DEBUG Version V5.5-023
+
+%DEBUG-I-INITIAL, language is UNKNOWN, module set to VAXDEBUG
+break at routine VAXDEBUG\SUM
+%DEBUG-I-NOTORIGSRC, original version of source file not found 
+	file used is DUA1:[USERS.POC]VAXDEBUG.MOD;1
+    22:     acc := 0; part := 0.0;
+VAXDEBUG\SUM\N: 4
+VAXDEBUG\SUM\TOTAL:     70000
+VAXDEBUG\SUM\FLAG:      True
+VAXDEBUG\SUM\SCALE:     2.500000
+VAXDEBUG\SUM\BIG:       5000000000
+break at VAXDEBUG\SUM\%LINE 29
+    29:     RETURN acc + n
+VAXDEBUG\SUM\N: 5
+VAXDEBUG\SUM\TOTAL:     705102724
+VAXDEBUG\SUM\FLAG:      False
+VAXDEBUG\SUM\SCALE:     2.500000
+VAXDEBUG\SUM\BIG:       5000000000
+VAXDEBUG\SUM\K: 4
+VAXDEBUG\SUM\ACC:       20
+VAXDEBUG\SUM\PART:      50.0000000000000
+VAXDEBUG\SUM\LAST:      'z'
+VAXDEBUG\S:     -3
+VAXDEBUG\I:     300
+VAXDEBUG\L:     705102724
+VAXDEBUG\H:     5000000000
+VAXDEBUG\C8:    200
+VAXDEBUG\C16:   60000
+VAXDEBUG\C32:   4000000000
+VAXDEBUG\C64:   9
+VAXDEBUG\X:     2.500000
+VAXDEBUG\Y:     0.125000000000000
+VAXDEBUG\CH:    'A'
+VAXDEBUG\B:     False
+VAXDEBUG\BY:    7
+VAXDEBUG\A:     4096
+VAXDEBUG\C32:   0EE6B2800
+2
+1000
+-5
+'Q'
+True
+1.500000
+30
+5.000000
+True
+VAXDEBUG\SUM\ACC:       7
+VAXDEBUG\SUM\N: 41
+VAXDEBUG\SUM\TOTAL:     99
+VAXDEBUG\L:     99
+VAXDEBUG\SUM\FLAG:      True
+VAXDEBUG\B:     True
+VAXDEBUG\SUM\BIG:       5
+VAXDEBUG\SUM\LAST:      'q'
+VAXDEBUG\S:     -100
+VAXDEBUG\C8:    255
+VAXDEBUG\H:     7
+VAXDEBUG\Y:     0.750000000000000
+48
+%DEBUG-I-EXITSTATUS, is '%SYSTEM-S-NORMAL, normal successful completion'
+debug run status: %X10000001
+types build status: %X10000001
+
+         VAX DEBUG Version V5.5-023
+
+%DEBUG-I-INITIAL, language is UNKNOWN, module set to VAXDEBUGTYPES
+break at VAXDEBUGTYPES\TOTAL\%LINE 46
+%DEBUG-I-NOTORIGSRC, original version of source file not found 
+	file used is DUA1:[USERS.POC]VAXDEBUGTYPES.MOD;1
+    46:     RETURN t
+VAXDEBUGTYPES\P
+    X:  1
+    Y:  2
+    C:  'p'
+VAXDEBUGTYPES\P.X:      1
+VAXDEBUGTYPES\P3
+    X:  3
+    Y:  4
+    C:  '3'
+    Z:  100000
+VAXDEBUGTYPES\P3.Z:     100000
+VAXDEBUGTYPES\HEAD^.KEY:        7
+VAXDEBUGTYPES\HEAD^.NEXT^.KEY:  8
+VAXDEBUGTYPES\V
+    (0):        10
+    (1):        20
+    (2):        30
+    (3):        40
+    (4):        50
+VAXDEBUGTYPES\V(2):     30
+VAXDEBUGTYPES\G
+    (0,0):      0
+    (0,1):      1
+    (0,2):      2
+    (0,3):      3
+    (1,0):      10
+    (1,1):      11
+    (1,2):      12
+    (1,3):      13
+    (2,0):      20
+    (2,1):      21
+    (2,2):      22
+    (2,3):      23
+VAXDEBUGTYPES\G(1,2):   12
+VAXDEBUGTYPES\S:        [0, 3, 31]
+VAXDEBUGTYPES\S64:      [1, 40]
+VAXDEBUGTYPES\F
+    (0):        True
+    (1):        False
+    (2):        True
+VAXDEBUGTYPES\F(2):     True
+VAXDEBUGTYPES\SEG
+    A
+        X:      1
+        Y:      2
+        C:      'p'
+    B
+        X:      5
+        Y:      6
+        C:      'b'
+    TAG(0:7):   'segment.'
+VAXDEBUGTYPES\SEG.B.Y:  6
+VAXDEBUGTYPES\SEG.TAG(0:7):     'segment.'
+VAXDEBUGTYPES\PTS
+    (0)
+        X:      1
+        Y:      2
+        C:      'p'
+    (1)
+        X:      9
+        Y:      10
+        C:      'z'
+VAXDEBUGTYPES\PTS(1).Y: 10
+VAXDEBUGTYPES\RA^.TOB^.W:       12
+VAXDEBUGTYPES\RA^.TOB^.TOA^.V:  11
+VAXDEBUGTYPES\PV^
+    (0):        10
+    (1):        20
+    (2):        30
+    (3):        40
+    (4):        50
+VAXDEBUGTYPES\PV^(3):   40
+VAXDEBUGTYPES\NAMES
+    (0)(0:3):   'abc.'
+    (1)(0:3):   'xyz.'
+VAXDEBUGTYPES\TOTAL\W
+    (0):        10
+    (1):        20
+    (2):        30
+    (3):        40
+    (4):        50
+VAXDEBUGTYPES\TOTAL\W(1):       20
+VAXDEBUGTYPES\TOTAL\A
+    (0):        10
+    (1):        20
+    (2):        30
+    (3):        40
+    (4):        50
+VAXDEBUGTYPES\TOTAL\A(2):       30
+VAXDEBUGTYPES\TOTAL\Q
+    X:  1
+    Y:  2
+    C:  'p'
+VAXDEBUGTYPES\TOTAL\Q.Y:        2
+VAXDEBUGTYPES\TOTAL\M
+    (0)(0:3):   'abc.'
+    (1)(0:3):   'xyz.'
+VAXDEBUGTYPES\TOTAL\M(1,2):     'z'
+VAXDEBUGTYPES\TOTAL\LOCAL
+    X:  1
+    Y:  2
+    C:  'p'
+VAXDEBUGTYPES\TOTAL\T:  421
+VAXDEBUGTYPES\P.X:      55
+VAXDEBUGTYPES\V(1):     99
+VAXDEBUGTYPES\HEAD^.KEY:        70
+VAXDEBUGTYPES\TOTAL\A(0):       5
+VAXDEBUGTYPES\TOTAL\Q.Y:        21
+VAXDEBUGTYPES\P.Y:      21
+154
+140
+%DEBUG-I-EXITSTATUS, is '%SYSTEM-S-NORMAL, normal successful completion'
+types run status: %X10000001

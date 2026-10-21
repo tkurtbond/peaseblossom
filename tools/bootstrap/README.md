@@ -23,25 +23,35 @@ poc, the suite under the poc-built one, and the Stage 2 comparison - both
 compilers and the fixed point in one command. `make test` stays Stage 0 only:
 it is the fast loop, and voc is still the only way to bootstrap.
 
-The bootstrap on VAX/VMS (`PLAN.md` Phase 16 step 6;
-`doc/developer/vax-macro32-backend.md`, section 17) has stages of its own,
+The bootstrap on VAX/VMS (`PLAN.md` Phase 16 step 6, over MACRO-32,
+and Phase 18 step 7, over objects; `doc/developer/vax-macro32-backend.md`,
+section 17, and `doc/developer/vax-object-language.md`, section 18) has
+stages of its own,
 named V1-V3, run on the VAX/VMS development system:
 
-- **V1** (`vax-v1`): the host's poc cross-compiles poc's own source, with
-  `rtl/vax` and a `BuildInfo` for a poc that runs on VMS, to `.mar` files
-  and `Poc.com` in `build/vax-bootstrap/v1`. It does not use the guest.
+- **V1** (`vax-v1 [-vax-macro32 | -vax-objects]`): the host's poc
+  cross-compiles poc's own source, with `rtl/vax` and a `BuildInfo` for a
+  poc that runs on VMS, to `.mar` files (the default, which the kits
+  carry) or objects (`-vax-objects`, Phase 18 step 7) and `Poc.com` in
+  `build/vax-bootstrap/v1`. It does not use the guest.
   poc for VMS has no LLVM back end (Phase 17 step 7): V1 is built with
   `src/driver/no-llvm`'s `LLVMBackEnd` on the import path, and neither
   `src/driver/llvm` nor `src/back/llvm`.
-- **V2 and V3** (`vax-stages [-to v1|v2|v3] [-install] [-keep]`): runs
-  `vax-v1`, then sends what it wrote and poc's sources to the guest, where
-  one procedure links V1's `POC.EXE`, compiles poc with it (V2), links
-  V2's `.mar` and compiles poc again with that image (V3). Each stage
-  works in its own directory under `[.BOOTSTRAP]`. V2's and V3's `.mar`
-  files come back to `build/vax-bootstrap/v2` and `v3`, and the script
-  compares them with V1's. `-install` links the last stage's image and
-  copies it to `POC`'s `[.BIN]POC.EXE`. Each compilation of poc takes
-  about 45 minutes on the SIMH VAX.
+- **V2 and V3** (`vax-stages [-way objects|macro32] [-to v1|v2|v3]
+  [-install] [-keep]`): runs `vax-v1` in the way asked for (objects by
+  default, Phase 18 step 7), then sends what it wrote and poc's sources
+  to the guest, where one procedure assembles `PocRtl.mar` (the run's
+  only `MACRO` with objects), links V1's `POC.EXE`, compiles poc with it
+  (V2), links V2's output and compiles poc again with that image (V3),
+  all under one `SOURCE_DATE_EPOCH`. Each stage works in its own
+  directory under `[.BOOTSTRAP]`. V2's and V3's objects come back as
+  `DUMP/RECORDS` prints them, compared with V1's a record at a time
+  (`tools/vax-objects.sh`), or their `.mar` files byte for byte, to
+  `build/vax-bootstrap/v2` and `v3`. `-install` links the last stage's
+  image and copies it to `POC`'s `[.BIN]POC.EXE`. Each compilation of
+  poc takes about 50 minutes on the SIMH VAX writing objects, 43
+  writing MACRO-32, and each link with objects seconds (Phase 18,
+  `doc/developer/vax-object-language.md`, section 18.3).
 
 `make vax-v1` and `make vax-stages` run them. Neither is part of
 `make check`.

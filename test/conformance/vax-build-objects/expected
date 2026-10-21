@@ -1,0 +1,54 @@
+== poc -target vax-dec-vms -vax-objects -build VaxBuild.mod
+exit 0
+VaxBuild.com matches expected-VaxBuild.com
+written: VaxBuild.com
+written: VaxBuild.obj
+written: VaxBuildSums.obj
+== poc -target vax-dec-vms -vax-objects -compile VaxBuildSums.mod
+exit 0
+VaxBuildSums.com matches expected-VaxBuildSums.com
+written: VaxBuildSums.com
+written: VaxBuildSums.obj
+== poc -target vax-dec-vms -vax-objects -g -o VaxBuildDebug -build VaxBuild.mod
+exit 0
+VaxBuildDebug.com matches expected-VaxBuildDebug.com
+written: VaxBuild.obj
+written: VaxBuildDebug.com
+written: VaxBuildSums.obj
+== poc -target vax-dec-vms -g -o VaxBuildMacroDebug -build VaxBuild.mod
+exit 0
+VaxBuildMacroDebug.com matches expected-VaxBuildMacroDebug.com
+written: VaxBuild.mar
+written: VaxBuildMacroDebug.com
+written: VaxBuildSums.mar
+== poc -target vax-dec-vms -vax-objects -vax-macro32 -o VaxBuildLast -build VaxBuild.mod
+exit 0
+written: VaxBuild.mar
+written: VaxBuildLast.com
+written: VaxBuildSums.mar
+== poc -emit-macro32 -emit-vax-object VaxBuild.mod
+semantic OK, wrote VaxBuildSums.mar
+semantic OK, wrote VaxBuild.mar
+exit 0
+written: VaxBuild.mar
+written: VaxBuild.obj
+written: VaxBuildSums.mar
+written: VaxBuildSums.obj
+== poc -emit-vax-object VaxBuild.mod -emit-vax-image
+semantic OK, wrote VaxBuildSums.obj
+semantic OK, wrote VaxBuild.obj
+exit 0
+written: VaxBuild.image
+written: VaxBuild.obj
+written: VaxBuildSums.image
+written: VaxBuildSums.obj
+== poc -emit-vax-image VaxBuild.mod
+semantic OK, wrote VaxBuildSums.image
+semantic OK, wrote VaxBuild.image
+exit 0
+written: VaxBuild.image
+written: VaxBuildSums.image
+== poc -target vax-dec-vms -build VaxBuild.mod -emit-macro32
+poc: -emit-macro32, -emit-vax-object and -emit-vax-image are commands, not options to -build
+run poc -help for the commands and options
+exit 1

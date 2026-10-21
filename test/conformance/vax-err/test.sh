@@ -23,6 +23,8 @@ status() {
   else printf 'status: %%X%08X\n' $((0x10000000 + 8 * $1 + 2))
   fi
 }
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   : >output
   for program in ErrBasics ErrTrap; do
@@ -33,12 +35,14 @@ for model in -O2 -OC; do
     { echo "== $program, build status: %X10000001"; cat run.out; status $st; cat run.err
       [ -z "$(tail -c 1 run.err)" ] || echo; } >>output
     rm -f *.sym
-    poc $model -target vax-dec-vms -import-path $rtl -build $program.mod >>result 2>&1 \
+    poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build $program.mod >>result 2>&1 \
       || echo "VAX build of $program $model failed" >>result
   done
   cmp -s output errors.expected || { echo "the LLVM backend's output, $model:" >>result; diff errors.expected output >>result; }
   vax_do guest-run.com errors.expected ErrBasics.com ErrBasics.mar ErrTrap.com ErrTrap.mar Err.mar CardinalTypes.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar \
     $rtl/PocRtl.mar
 done
-rm -f output run.out run.err
+}
+vax_build builds
+rm -f output run.out run.err *.obj
 . ../../testresult.sh

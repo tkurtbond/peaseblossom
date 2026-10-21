@@ -1,0 +1,94 @@
+build status: %X10000001
+%SYSTEM-F-INTDIV, arithmetic trap, integer divide by zero at PC=00001817, PSL=03C00002
+%TRACE-F-TRACEBACK, symbolic stack dump follows
+module name     routine name                     line       rel PC    abs PC
+
+VAXTRACE        DIVIDE                             13      00000017  00001817
+VAXTRACE        INNER                              20      00000019  000018A4
+VAXTRACE        OUTER                              23      00000027  00001874
+VAXTRACE        VAXTRACE_INIT                      43      0000003D  0000196E
+VAXTRACE        VAXTRACE_MAIN                              00000006  00001982
+run status: %X10000484
+debug build status: %X10000001
+
+         VAX DEBUG Version V5.5-023
+
+%DEBUG-I-INITIAL, language is UNKNOWN, module set to VAXTRACE
+break at VAXTRACE\LOOP\%LINE 30
+stepped to VAXTRACE\LOOP\%LINE 31
+stepped to VAXTRACE\LOOP\%LINE 32
+stepped to VAXTRACE\LOOP\%LINE 30
+stepped to VAXTRACE\LOOP\%LINE 30
+break at VAXTRACE\LOOP\%LINE 30
+stepped to VAXTRACE\LOOP\%LINE 31
+stepped to VAXTRACE\LOOP\%LINE 32
+break at VAXTRACE\LOOP\%LINE 34
+stepped to VAXTRACE\LOOP\%LINE 35
+stepped to VAXTRACE\LOOP\%LINE 34
+stepped to VAXTRACE\LOOP\%LINE 34+9
+stepped to VAXTRACE\LOOP\%LINE 35
+break at routine VAXTRACE\OUTER
+ module name     routine name                     line       rel PC    abs PC
+*VAXTRACE        OUTER                              17      00000002  0000184F
+*VAXTRACE        VAXTRACE_INIT                      43      0000003D  0000196E
+*VAXTRACE        VAXTRACE_MAIN                              00000006  00001982
+break at routine VAXTRACE\OUTER\INNER
+ module name     routine name                     line       rel PC    abs PC
+*VAXTRACE        INNER                              18      00000002  0000188D
+*VAXTRACE        OUTER                              23      00000027  00001874
+*VAXTRACE        VAXTRACE_INIT                      43      0000003D  0000196E
+*VAXTRACE        VAXTRACE_MAIN                              00000006  00001982
+stepped to VAXTRACE\OUTER\INNER\%LINE 20
+stepped to routine VAXTRACE\DIVIDE
+%SYSTEM-F-INTDIV, arithmetic trap, integer divide by zero at PC=00001817, PSL=03C00002
+break on unhandled exception preceding VAXTRACE\DIVIDE\%LINE 13+9
+ module name     routine name                     line       rel PC    abs PC
+*VAXTRACE        DIVIDE                             13      00000017  00001817
+*VAXTRACE        INNER                              20      00000019  000018A4
+*VAXTRACE        OUTER                              23      00000027  00001874
+*VAXTRACE        VAXTRACE_INIT                      43      0000003D  0000196E
+*VAXTRACE        VAXTRACE_MAIN                              00000006  00001982
+debug run status: %X10000484
+-g build status: %X10000001
+
+         VAX DEBUG Version V5.5-023
+
+%DEBUG-I-INITIAL, language is UNKNOWN, module set to VAXTRACE
+module VAXTRACE
+%DEBUG-I-NOTORIGSRC, original version of source file not found 
+	file used is DUA1:[USERS.POC]VAXTRACE.MOD;1
+    29:     s := 0; i := 0;
+    30:     WHILE i < n DO
+    31:       s := s + i;
+    32:       INC(i)
+    33:     END;
+break at routine VAXTRACE\LOOP
+    29:     s := 0; i := 0;
+ module name     routine name                     line       rel PC    abs PC
+*VAXTRACE        LOOP                               29      00000008  000018C3
+*VAXTRACE        VAXTRACE_INIT                      42      00000028  00001959
+*VAXTRACE        VAXTRACE_MAIN                              00000006  00001982
+stepped to VAXTRACE\LOOP\%LINE 30
+    30:     WHILE i < n DO
+stepped to VAXTRACE\LOOP\%LINE 31
+    31:       s := s + i;
+break at VAXTRACE\LOOP\%LINE 34
+    34:     FOR i := 1 TO n DO
+stepped to VAXTRACE\LOOP\%LINE 35
+    35:       s := s + i
+break at routine VAXTRACE\OUTER
+    23:     RETURN Inner(n * 2)
+ module name     routine name                     line       rel PC    abs PC
+*VAXTRACE        OUTER                              23      0000000D  0000185A
+*VAXTRACE        VAXTRACE_INIT                      43      0000003D  0000196E
+*VAXTRACE        VAXTRACE_MAIN                              00000006  00001982
+module VAXTRACE
+    23:     RETURN Inner(n * 2)
+%SYSTEM-F-INTDIV, arithmetic trap, integer divide by zero at PC=00001817, PSL=03C00002
+break on unhandled exception preceding VAXTRACE\DIVIDE\%LINE 13+9
+    13:     q := q DIV zero;
+-g run status: %X10000484
+describe build status: %X10000001
+VAXTRACE.MOD;1 created 3 62 2
+cannot describe NOSUCH.FILE
+describe run status: %X00000001

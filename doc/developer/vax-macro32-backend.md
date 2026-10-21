@@ -833,6 +833,13 @@ arguments `-trap-location` adds.
   harness diffs the output against it without those lines
   (`test/vaxfixture.sh`, `vax_mar`). `test/testenv.sh` deletes a fixture's
   `*.mar` before each run, except `expected-vax.mar`.
+- Since Phase 18 step 3e (2026-10-18) each fixture with an
+  `expected-vax.mar` also has an `expected-vax.image`, and each import an
+  `expected-vax-<Import>.image`: the image of the object MACRO made from
+  that `.mar` on the guest (`tools/vax-macro-image`), which `vax_mar`
+  compares with the image poc's encoder makes (`poc -emit-vax-image`), on
+  every host (`vax-object-language.md`, section 14.5). When an expected
+  `.mar` changes, its image is made again from MACRO, never from poc.
 - **Decided: every `expected-vax.mar` is also assembled**, with
   `MACRO/OBJECT` on the development system - no `LINK`, no `RUN` - so the
   assembler, not only a reviewer, checks the syntax, the symbols and every
@@ -1423,7 +1430,9 @@ as on LLVM, which gives each nested procedure, in source order, the
 variables of the enclosing procedures it needs: those it names, those a
 procedure nested in it needs, and those a nested procedure it calls needs,
 less what it declares itself. Each nested procedure is lifted to a
-procedure of its own, written before its root, parents first, as a local
+procedure of its own, written after its root, parents first (before its
+root until Phase 18 step 5a, which needs each routine after the one it is
+nested in: `vax-object-language.md`, section 16.5), as a local
 label and `.WORD` of its mask, since only its enclosing procedures can
 call it and it is never a procedure value. Its symbol is made from its
 root's full name and its path below it, `VaxNested.Deep.Middle.Inner`, or
@@ -2058,6 +2067,13 @@ run as it is.
    step ends when every listed program runs and matches, or differs
    only as an `expected-vax-<program>` file says, and the list holds
    every fixture of the 122 that `rtl/vax` and the backend can run.
+9. **Both ways** (Phase 18 step 6d, `vax-object-language.md` section
+   17.6): the suite builds every program twice, from this backend's
+   MACRO-32 and from poc's own objects (`-vax-objects`), and checks
+   both against the host's build; `VAX_WAYS=macro32` or `objects` runs
+   one. A difference only objects have, a traceback naming each
+   routine and line from its debugger records, is in
+   `expected-vax-objects-<program>` files, looked for first.
 
 **Done: the suite and its list (proposals 1-4), 2026-10-10.**
 `tools/vax-suite`, run by `make test-vax`, and `test/vax-suite.list`,
@@ -2392,7 +2408,10 @@ MB. These are privileged changes the user makes on the guest.
 **Done: the guest's limits raised (the user, 2026-10-11).** The VAX
 has 256 MB again (524,288 pages), `VIRTUALPAGECNT` is 350,000,
 `PAGEFILE.SYS` 350,000 blocks, and `POC`'s `PGFLQUOTA` 300,000 pages,
-`WSQUOTA` 8,192 and `WSEXTENT` 16,384.
+`WSQUOTA` 8,192 and `WSEXTENT` 16,384. (Raised since: on 2026-10-20
+`AUTHORIZE` showed `WSQUOTA` 32,768 and `WSEXTENT` 200,000, and
+`SYSGEN` `VIRTUALPAGECNT` 600,000; `POC2` has the same quotas as `POC`
+since 2026-10-19.)
 
 **Real constants when poc runs on the VAX.** All of poc then got as far
 as its 15th module and stopped on a floating overflow: every real

@@ -16,10 +16,12 @@ cp ../llvm-vt100/vt100same.mod ../llvm-vt100/vt100diff.mod .
 rm -f vt100same.com vt100diff.com
 esc=$(printf '\033'); syn=$(printf '\026')
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym $written
   for p in $programs; do
-    poc $model -target vax-dec-vms -import-path $rtl -build $p.mod >>result 2>&1
+    poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build $p.mod >>result 2>&1
     echo "VAX build $p $model exit $?" >>result
   done
   # llvm-vt100's lines for the model, as the guest prints them
@@ -30,5 +32,7 @@ for model in -O2 -OC; do
   { echo 'build status: %X10000001'; cat vt100-printed; echo 'run status: %X00000001'; } >vt100.expected
   vax_do guest-run.com vt100.expected vt100same.com vt100diff.com $written $rtl/PocRtl.mar
 done
-rm -f *.sym $written vt100same.com vt100diff.com vt100same.mod vt100diff.mod vt100-printed vt100.expected
+}
+vax_build builds
+rm -f *.sym $written vt100same.com vt100diff.com vt100same.mod vt100diff.mod vt100-printed vt100.expected *.obj
 . ../../testresult.sh

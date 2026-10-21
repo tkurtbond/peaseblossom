@@ -12,7 +12,8 @@ MODULE VaxToolchainDriver;
      the triple "vax-dec-vms" (decided with the user 2026-10-06): -target vax-dec-vms
      selects it, and -emit-macro32 implies it. *)
 
-  IMPORT Files, Platform, Directories, SyntaxTree, SymbolTable, VaxCodeGenerator;
+  IMPORT Files, Platform, Directories, Diagnostics, SyntaxTree, SymbolTable, VaxCodeGenerator, VaxInstructions,
+    VaxImage, VaxEncoder, ObjectRecords, VaxObjectWriter;
 
   CONST
     triple* = "vax-dec-vms";
@@ -28,6 +29,34 @@ MODULE VaxToolchainDriver;
       name*: ARRAY 64 OF CHAR;
       next*: Unit
     END;
+
+    (* a module encoded in this run, and the global symbols it defines, in
+       the order it defines them (GlobalSymbols) *)
+    Encoded = POINTER TO EncodedDesc;
+    EncodedDesc = RECORD
+      name: ARRAY 64 OF CHAR;
+      symbols: Unit;
+      next: Encoded
+    END;
+
+  VAR
+    (* which of a module's files EmitModule writes: its MACRO-32
+       (-emit-macro32, and a build with -vax-macro32), its encoded image
+       (-emit-vax-image) and its object (-emit-vax-object, and a build with
+       -vax-objects), any of them (PLAN.md Phase 18 step 6; doc/developer/
+       vax-object-language.md, section 17, proposal 8) *)
+    writeMacro*, writeImage*, writeObject*: BOOLEAN;
+    (* whether the procedures poc writes for objects first convert each
+       one that arrived as fixed-length records, as an object written on
+       Linux or a BSD and sent to VMS in binary does (section 17, proposal
+       3): poc's procedures on any host but VMS *)
+    convertObjects*: BOOLEAN;
+    (* whether an object has the debugger records (poc -g) *)
+    debug*: BOOLEAN;
+    (* the compiler, as an object's language processor header names it:
+       "Peaseblossom poc <version>", which Poc.Mod sets *)
+    processor*: ARRAY 64 OF CHAR;
+    encoded: Encoded;
 
   PROCEDURE IsVaxTriple*(t: ARRAY OF CHAR): BOOLEAN;
   BEGIN
@@ -63,24 +92,150 @@ MODULE VaxToolchainDriver;
     Directories.MakePath(outputDir, name, path)
   END ModuleFilePath;
 
-  (* module's MACRO-32 to <outputDir>/<Module>.mar (path), with the
-     program's start when it is the main module, isMain: FALSE if it could
-     not be written, or if the generator reported an error or a construct
-     it cannot lower yet (VaxCodeGenerator.unsupportedCount), when no file
-     is left behind. *)
-  PROCEDURE EmitModule*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; key, outputDir: ARRAY OF CHAR;
-                        isMain: BOOLEAN; VAR path: ARRAY OF CHAR): BOOLEAN;
-    VAR f: Files.File; w: Files.Rider; ok: BOOLEAN; deleteResult: INTEGER;
+  (* <outputDir>/<moduleName><extension> *)
+  PROCEDURE ModuleFile(outputDir, moduleName, extension: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
+    VAR name: ARRAY 72 OF CHAR;
   BEGIN
-    ModuleFilePath(outputDir, module.name, path);
+    COPY(moduleName, name); Append(name, extension);
+    Directories.MakePath(outputDir, name, path)
+  END ModuleFile;
+
+  (* The first of the module's files EmitModule writes, in the order .mar,
+     .obj, .image, to name it once *)
+  PROCEDURE ModuleOutputPath*(outputDir, moduleName: ARRAY OF CHAR; VAR path: ARRAY OF CHAR);
+  BEGIN
+    IF writeMacro THEN ModuleFile(outputDir, moduleName, ".mar", path)
+    ELSIF writeObject THEN ModuleFile(outputDir, moduleName, ".obj", path)
+    ELSE ModuleFile(outputDir, moduleName, ".image", path)
+    END
+  END ModuleOutputPath;
+
+  (* The module's files EmitModule writes deleted, those there are *)
+  PROCEDURE RemoveModuleFiles*(outputDir, moduleName: ARRAY OF CHAR);
+    VAR path: ARRAY pathBufferLength OF CHAR; result: INTEGER;
+  BEGIN
+    (* not Files.Delete: voc's renames to a temp name *)
+    IF writeMacro THEN ModuleFile(outputDir, moduleName, ".mar", path); result := Platform.Unlink(path) END;
+    IF writeObject THEN ModuleFile(outputDir, moduleName, ".obj", path); result := Platform.Unlink(path) END;
+    IF writeImage THEN ModuleFile(outputDir, moduleName, ".image", path); result := Platform.Unlink(path) END
+  END RemoveModuleFiles;
+
+  (* PLAN.md Phase 18 step 3 (doc/developer/vax-object-language.md,
+     section 14.5): image as VaxImage prints it, to
+     <outputDir>/<Module>.image: FALSE if the file could not be written *)
+  PROCEDURE WriteImage(image: VaxImage.Module; moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR path: ARRAY pathBufferLength OF CHAR; f: Files.File; w: Files.Rider;
+  BEGIN
+    ModuleFile(outputDir, moduleName, ".image", path);
     f := Files.New(path);
     IF f = NIL THEN RETURN FALSE END;
     Files.Set(w, f, 0);
-    ok := VaxCodeGenerator.GenerateModule(module, scope, key, isMain, w);
+    VaxImage.Print(w, image);
     Files.Register(f); Files.Close(f);
-    IF ~ok THEN
-      deleteResult := Platform.Unlink(path) (* not Files.Delete: voc's renames to a temp name *)
+    RETURN TRUE
+  END WriteImage;
+
+  (* The number of lines of the file name: its line feeds, and one more
+     if its last line has none; 0 if it cannot be read *)
+  PROCEDURE CountLines(name: ARRAY OF CHAR): LONGINT;
+    VAR f: Files.File; r: Files.Rider; ch, last: CHAR; n: LONGINT;
+  BEGIN
+    f := Files.Old(name);
+    IF f = NIL THEN RETURN 0 END;
+    Files.Set(r, f, 0); n := 0; last := 0AX;
+    Files.Read(r, ch);
+    WHILE ~r.eof DO
+      IF ch = 0AX THEN INC(n) END;
+      last := ch; Files.Read(r, ch)
     END;
+    Files.Close(f);
+    IF last # 0AX THEN INC(n) END;
+    RETURN n
+  END CountLines;
+
+  (* The source file being compiled, for the debugger records (poc -g;
+     section 16.6) *)
+  PROCEDURE DebugSource(): VaxObjectWriter.SourceFile;
+    VAR s: VaxObjectWriter.SourceFile;
+  BEGIN
+    NEW(s);
+    ObjectRecords.SourceAttributes(Diagnostics.fileName, s.name, s.created, s.endBlock, s.firstFree, s.format);
+    s.lines := CountLines(Diagnostics.fileName);
+    RETURN s
+  END DebugSource;
+
+  (* PLAN.md Phase 18 step 4 (section 15): image's object, to
+     <outputDir>/<Module>.obj, its source the file being compiled, with
+     the debugger records under -g (step 5): FALSE if the file could not
+     be made *)
+  PROCEDURE WriteObject(image: VaxImage.Module; moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR path: ARRAY pathBufferLength OF CHAR; f: ObjectRecords.File;
+        source: VaxObjectWriter.SourceFile;
+  BEGIN
+    ModuleFile(outputDir, moduleName, ".obj", path);
+    f := ObjectRecords.Open(path, VaxObjectWriter.recordSize);
+    IF f = NIL THEN RETURN FALSE END;
+    IF debug THEN source := DebugSource() ELSE source := NIL END;
+    VaxObjectWriter.Write(image, Diagnostics.fileName, processor, source, f);
+    ObjectRecords.Close(f);
+    RETURN TRUE
+  END WriteObject;
+
+  (* The global symbols image defines remembered under moduleName, for
+     GlobalSymbols, in the order they are defined *)
+  PROCEDURE RememberSymbols(image: VaxImage.Module; moduleName: ARRAY OF CHAR);
+    VAR e: Encoded; y: VaxImage.Symbol; u: Unit;
+  BEGIN
+    NEW(e); COPY(moduleName, e.name); e.symbols := NIL;
+    y := VaxImage.LastDefinedSymbol(image);
+    WHILE y # NIL DO
+      NEW(u); COPY(y.name, u.name); u.next := e.symbols; e.symbols := u;
+      y := VaxImage.NextSymbol(y)
+    END;
+    e.next := encoded; encoded := e
+  END RememberSymbols;
+
+  (* The module GenerateModule wrote last, encoded, and written as its
+     image, its object or both, as writeImage and writeObject say: FALSE if
+     the encoder reported an error or a file could not be written *)
+  PROCEDURE WriteEncoded(moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR image: VaxImage.Module;
+  BEGIN
+    image := VaxEncoder.Encode(VaxCodeGenerator.ModuleLines());
+    IF image # NIL THEN RememberSymbols(image, moduleName) END;
+    RETURN (image # NIL) & (~writeImage OR WriteImage(image, moduleName, outputDir))
+      & (~writeObject OR WriteObject(image, moduleName, outputDir))
+  END WriteEncoded;
+
+  (* The module GenerateModule wrote last as MACRO-32, to
+     <outputDir>/<Module>.mar: FALSE if the file could not be made *)
+  PROCEDURE WriteMacro32(moduleName, outputDir: ARRAY OF CHAR): BOOLEAN;
+    VAR path: ARRAY pathBufferLength OF CHAR; f: Files.File; w: Files.Rider;
+  BEGIN
+    ModuleFile(outputDir, moduleName, ".mar", path);
+    f := Files.New(path);
+    IF f = NIL THEN RETURN FALSE END;
+    Files.Set(w, f, 0);
+    VaxInstructions.PrintAll(w, VaxCodeGenerator.ModuleLines());
+    Files.Register(f); Files.Close(f);
+    RETURN TRUE
+  END WriteMacro32;
+
+  (* module generated, with the program's start when it is the main
+     module, isMain, and written as writeMacro, writeObject and writeImage
+     say, in outputDir; path the first of its files (ModuleOutputPath):
+     FALSE if one could not be written, or if the generator reported an
+     error or a construct it cannot lower yet
+     (VaxCodeGenerator.unsupportedCount), when none is left behind. *)
+  PROCEDURE EmitModule*(module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope; key, outputDir: ARRAY OF CHAR;
+                        isMain: BOOLEAN; VAR path: ARRAY OF CHAR): BOOLEAN;
+    VAR ok: BOOLEAN;
+  BEGIN
+    ModuleOutputPath(outputDir, module.name, path);
+    ok := VaxCodeGenerator.GenerateModule(module, scope, key, isMain)
+      & (~writeMacro OR WriteMacro32(module.name, outputDir))
+      & (~(writeImage OR writeObject) OR WriteEncoded(module.name, outputDir));
+    IF ~ok THEN RemoveModuleFiles(outputDir, module.name) END;
     RETURN ok
   END EmitModule;
 
@@ -149,8 +304,43 @@ MODULE VaxToolchainDriver;
     COPY("$", line); Append(line, label); Append(line, ":"); WriteLine(w, line)
   END WriteNeedCheck;
 
+  (* Lines of a procedure that convert each of units' <UNIT>.OBJ that has
+     fixed-length records - poc's counted records, sent from Linux or a BSD
+     in binary - with OBJCONVERT (tools/objconvert), the kit's SETUP.COM's
+     symbol, into a new version, and delete the old one; an object already
+     converted is left alone (section 17, proposal 3) *)
+  PROCEDURE WriteConversions(VAR w: Files.Rider; units: Unit);
+    VAR u: Unit; name: ARRAY 64 OF CHAR; line: ARRAY 200 OF CHAR; label: ARRAY 24 OF CHAR; count: INTEGER;
+  BEGIN
+    count := 0; u := units;
+    WHILE u # NIL DO
+      Upper(u.name, name); INC(count);
+      COPY("CONVERTED_", label); line[0] := 0X; AppendInt(line, count); Append(label, line);
+      COPY('$ IF F$FILE_ATTRIBUTES("', line); Append(line, name);
+      Append(line, '.OBJ", "RFM") .NES. "FIX" THEN GOTO '); Append(line, label); WriteLine(w, line);
+      COPY("$ OBJCONVERT ", line); Append(line, name); Append(line, ".OBJ "); Append(line, name);
+      Append(line, ".OBJ"); WriteLine(w, line);
+      COPY("$ DELETE/NOLOG ", line); Append(line, name); Append(line, ".OBJ;-1"); WriteLine(w, line);
+      COPY("$", line); Append(line, label); Append(line, ":"); WriteLine(w, line);
+      u := u.next
+    END
+  END WriteConversions;
+
+  (* Lines of a procedure's opening comment that say it converts objects,
+     when it does *)
+  PROCEDURE WriteConversionComment(VAR w: Files.Rider);
+  BEGIN
+    IF convertObjects THEN
+      WriteLine(w, "$ ! An object sent in binary from Linux or a BSD, fixed-length records,");
+      WriteLine(w, "$ ! is converted first, by OBJCONVERT, which poc's SETUP.COM defines.")
+    END
+  END WriteConversionComment;
+
   (* The DCL procedure at path that assembles units, each <UNIT>.MAR in the
-     directory it runs in, and, when image is not empty, links them with
+     directory it runs in - or with objects, each <UNIT>.OBJ poc wrote
+     there, assembles nothing (PLAN.md Phase 18 step 6; doc/developer/
+     vax-object-language.md, section 17), converting each first when
+     convertObjects - and, when image is not empty, links them with
      poc's runtime into <IMAGE>.EXE, units the program's modules with the
      main one last; source names the file poc was given, for its comment.
      Each MACRO and the LINK stop it at a warning, so that %LINK-W-MULDEF,
@@ -168,9 +358,11 @@ MODULE VaxToolchainDriver;
      them, the runtime is its, and POCRTL.OBJ is not linked. With tables,
      command tables (Phase 17 step 5, section 23), each <TABLE>.CLD is
      compiled by SET COMMAND/OBJECT into <TABLE>.OBJ, listed after the
-     modules. FALSE if the file could not be written. *)
+     modules. With debugging (poc -g) it links /DEBUG, and assembles
+     /DEBUG too (section 17, proposal 5). FALSE if the file could not be
+     written. *)
   PROCEDURE WriteBuildProcedure*(path, source, image: ARRAY OF CHAR; units, libraries, tables: Unit;
-                                 shared: BOOLEAN): BOOLEAN;
+                                 shared, objects, debugging: BOOLEAN): BOOLEAN;
     VAR f: Files.File; w: Files.Rider; u, main: Unit; name, imageName: ARRAY 64 OF CHAR;
         line: ARRAY 200 OF CHAR; label: ARRAY 16 OF CHAR; count: INTEGER; rtlLibrary: BOOLEAN;
   BEGIN
@@ -184,13 +376,24 @@ MODULE VaxToolchainDriver;
     Files.Set(w, f, 0);
     Upper(image, imageName);
     COPY("$ ! Written by poc for ", line); Append(line, source);
-    IF image[0] # 0X THEN Append(line, ": assembles its modules and links ");
-      Append(line, imageName); Append(line, ".EXE")
-    ELSE Append(line, ": assembles its modules")
+    IF objects THEN
+      IF image[0] # 0X THEN Append(line, ": links its modules' objects into ");
+        Append(line, imageName); Append(line, ".EXE")
+      ELSE Append(line, ": converts its modules' objects")
+      END;
+      WriteLine(w, line);
+      WriteLine(w, "$ ! (doc/developer/vax-object-language.md, section 17). Run it where");
+      WriteLine(w, "$ ! the modules' .OBJ files are.");
+      WriteConversionComment(w)
+    ELSE
+      IF image[0] # 0X THEN Append(line, ": assembles its modules and links ");
+        Append(line, imageName); Append(line, ".EXE")
+      ELSE Append(line, ": assembles its modules")
+      END;
+      WriteLine(w, line);
+      WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 13). Run it where");
+      WriteLine(w, "$ ! the modules' .MAR files are.")
     END;
-    WriteLine(w, line);
-    WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 13). Run it where");
-    WriteLine(w, "$ ! the modules' .MAR files are.");
     IF (image[0] # 0X) & ~rtlLibrary THEN
       WriteLine(w, "$ ! poc's runtime, POCRTL.OBJ, is taken from POC$RTL: when that");
       WriteLine(w, "$ ! logical name is defined, else from the current directory.")
@@ -208,11 +411,15 @@ MODULE VaxToolchainDriver;
       WriteNeedCheck(w, line, name, label);
       u := u.next
     END;
+    IF objects & convertObjects THEN WriteConversions(w, units) END;
     u := units; main := NIL;
     WHILE u # NIL DO
-      Upper(u.name, name);
-      COPY("$ MACRO/OBJECT ", line); Append(line, name); Append(line, ".MAR");
-      WriteLine(w, line);
+      IF ~objects THEN
+        Upper(u.name, name);
+        IF debugging THEN COPY("$ MACRO/DEBUG/OBJECT ", line) ELSE COPY("$ MACRO/OBJECT ", line) END;
+        Append(line, name); Append(line, ".MAR");
+        WriteLine(w, line)
+      END;
       main := u; u := u.next
     END;
     u := tables;
@@ -244,15 +451,14 @@ MODULE VaxToolchainDriver;
         WriteLine(w, line);
         u := u.next
       END;
-      IF rtlLibrary THEN
-        COPY("$ LINK/EXECUTABLE=", line); Append(line, imageName); Append(line, ".EXE ");
-        Append(line, imageName); Append(line, ".OPT/OPTIONS")
-      ELSE
+      IF ~rtlLibrary THEN
         WriteLine(w, '$ RTL = "POCRTL.OBJ"');
-        WriteLine(w, '$ IF F$TRNLNM("POC$RTL") .NES. "" THEN RTL = "POC$RTL:POCRTL.OBJ"');
-        COPY("$ LINK/EXECUTABLE=", line); Append(line, imageName); Append(line, ".EXE ");
-        Append(line, imageName); Append(line, ".OPT/OPTIONS, 'RTL'")
+        WriteLine(w, '$ IF F$TRNLNM("POC$RTL") .NES. "" THEN RTL = "POC$RTL:POCRTL.OBJ"')
       END;
+      IF debugging THEN COPY("$ LINK/DEBUG/EXECUTABLE=", line) ELSE COPY("$ LINK/EXECUTABLE=", line) END;
+      Append(line, imageName); Append(line, ".EXE ");
+      Append(line, imageName); Append(line, ".OPT/OPTIONS");
+      IF ~rtlLibrary THEN Append(line, ", 'RTL'") END;
       WriteLine(w, line)
     END;
     WriteLine(w, "$ EXIT $STATUS");
@@ -316,6 +522,38 @@ MODULE VaxToolchainDriver;
     RETURN TRUE
   END ReadGlobalSymbols;
 
+  (* The global symbols module moduleName defines, appended to symbols:
+     with objects, those of its image, as it was encoded in this run (PLAN.md
+     Phase 18 step 6; doc/developer/vax-object-language.md, section 17,
+     proposal 6), else those of its MACRO-32 in outputDir
+     (ReadGlobalSymbols), in the order the module defines them either way,
+     so that a library's procedure lists one module's alike whichever way
+     it is built. FALSE if neither is there. *)
+  PROCEDURE GlobalSymbols*(outputDir, moduleName: ARRAY OF CHAR; objects: BOOLEAN; VAR symbols: Unit): BOOLEAN;
+    VAR e: Encoded; u, v, last: Unit; path: ARRAY pathBufferLength OF CHAR;
+  BEGIN
+    IF ~objects THEN ModuleFilePath(outputDir, moduleName, path); RETURN ReadGlobalSymbols(path, symbols) END;
+    e := encoded;
+    WHILE (e # NIL) & (e.name # moduleName) DO e := e.next END;
+    IF e = NIL THEN RETURN FALSE END;
+    last := symbols;
+    IF last # NIL THEN WHILE last.next # NIL DO last := last.next END END;
+    u := e.symbols;
+    WHILE u # NIL DO
+      NEW(v); v.name := u.name; v.next := NIL;
+      IF last = NIL THEN symbols := v ELSE last.next := v END;
+      last := v; u := u.next
+    END;
+    RETURN TRUE
+  END GlobalSymbols;
+
+  (* The object poc wrote at from copied to to (ObjectRecords.Copy): a
+     library's installed (section 17, proposal 6). FALSE if it could not be. *)
+  PROCEDURE CopyObject*(from, to: ARRAY OF CHAR): BOOLEAN;
+  BEGIN
+    RETURN ObjectRecords.Copy(from, to)
+  END CopyObject;
+
   (* The text file from copied to the file to, a line at a time, as
      poc on VMS can as well as on Unix (no cp there): a hand-written .mar
      put in a library (section 18). FALSE if either cannot be opened, or a
@@ -357,7 +595,10 @@ MODULE VaxToolchainDriver;
      order MACRO takes them, parts its hand-written .MAR files, needs the
      libraries it needs, in link order, and symbols the global symbols of
      them all. <name>_build.com, run on VMS in the directory that holds the
-     library's files, assembles them, makes the object library <NAME>.OLB,
+     library's files, assembles them - with objects, the modules are each
+     <UNIT>.OBJ poc wrote, converted first when convertObjects, and only
+     the parts are assembled (PLAN.md Phase 18 step 6; doc/developer/
+     vax-object-language.md, section 17, proposals 3 and 6) - makes the object library <NAME>.OLB,
      one module at a time (LIBRARY/INSERT refuses a global symbol the
      library has already, section 18.1), and links the shareable image
      <NAME>.EXE from them and the needed libraries' images - the modules
@@ -375,7 +616,8 @@ MODULE VaxToolchainDriver;
      RMS takes a file specification without punctuation as a logical name
      (found on the development system, 2026-10-12). FALSE if a file could
      not be written. *)
-  PROCEDURE WriteLibraryProcedures*(dir, name: ARRAY OF CHAR; units, parts, needs, symbols: Unit): BOOLEAN;
+  PROCEDURE WriteLibraryProcedures*(dir, name: ARRAY OF CHAR; units, parts, needs, symbols: Unit;
+                                    objects: BOOLEAN): BOOLEAN;
     VAR f: Files.File; w: Files.Rider; u: Unit; libName, unitName: ARRAY 64 OF CHAR;
         line: ARRAY 300 OF CHAR; label: ARRAY 16 OF CHAR; file: ARRAY 64 OF CHAR;
         path: ARRAY pathBufferLength OF CHAR; count: INTEGER;
@@ -390,8 +632,15 @@ MODULE VaxToolchainDriver;
     Append(line, libName); Append(line, ".OLB and ");
     Append(line, libName); Append(line, ".EXE"); WriteLine(w, line);
     WriteLine(w, "$ ! (doc/developer/vax-macro32-backend.md, section 18). Run it where");
-    WriteLine(w, "$ ! the library's .MAR files are, once the setup procedure of each");
+    IF ~objects THEN
+      WriteLine(w, "$ ! the library's .MAR files are, once the setup procedure of each")
+    ELSIF parts # NIL THEN
+      WriteLine(w, "$ ! the library's .OBJ and .MAR files are, once the setup procedure of each")
+    ELSE
+      WriteLine(w, "$ ! the library's .OBJ files are, once the setup procedure of each")
+    END;
     WriteLine(w, "$ ! library it needs has been run.");
+    IF objects THEN WriteConversionComment(w) END;
     WriteLine(w, "$ ON WARNING THEN EXIT $STATUS");
     count := 0; u := needs;
     WHILE u # NIL DO
@@ -401,7 +650,8 @@ MODULE VaxToolchainDriver;
       WriteNeedCheck(w, line, unitName, label);
       u := u.next
     END;
-    u := units;
+    IF objects & convertObjects THEN WriteConversions(w, units) END;
+    IF objects THEN u := NIL ELSE u := units END;
     WHILE u # NIL DO
       Upper(u.name, unitName);
       COPY("$ MACRO/OBJECT ", line); Append(line, unitName); Append(line, ".MAR"); WriteLine(w, line);
@@ -473,4 +723,7 @@ MODULE VaxToolchainDriver;
     RETURN TRUE
   END WriteLibraryProcedures;
 
+BEGIN
+  writeMacro := TRUE; writeImage := FALSE; writeObject := FALSE; convertObjects := FALSE; debug := FALSE; processor := "Peaseblossom poc";
+  encoded := NIL
 END VaxToolchainDriver.

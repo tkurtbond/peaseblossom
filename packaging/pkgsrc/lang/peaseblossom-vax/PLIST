@@ -636,6 +636,9 @@ lib/poc/vax-dec-vms/O2/RealDigits.sym
 lib/poc/vax-dec-vms/O2/Reals.mar
 lib/poc/vax-dec-vms/O2/Reals.owner
 lib/poc/vax-dec-vms/O2/Reals.sym
+lib/poc/vax-dec-vms/O2/RecordFiles.mar
+lib/poc/vax-dec-vms/O2/RecordFiles.owner
+lib/poc/vax-dec-vms/O2/RecordFiles.sym
 lib/poc/vax-dec-vms/O2/SBKDEF.mar
 lib/poc/vax-dec-vms/O2/SBKDEF.owner
 lib/poc/vax-dec-vms/O2/SBKDEF.sym
@@ -1495,6 +1498,9 @@ lib/poc/vax-dec-vms/OC/RealDigits.sym
 lib/poc/vax-dec-vms/OC/Reals.mar
 lib/poc/vax-dec-vms/OC/Reals.owner
 lib/poc/vax-dec-vms/OC/Reals.sym
+lib/poc/vax-dec-vms/OC/RecordFiles.mar
+lib/poc/vax-dec-vms/OC/RecordFiles.owner
+lib/poc/vax-dec-vms/OC/RecordFiles.sym
 lib/poc/vax-dec-vms/OC/SBKDEF.mar
 lib/poc/vax-dec-vms/OC/SBKDEF.owner
 lib/poc/vax-dec-vms/OC/SBKDEF.sym

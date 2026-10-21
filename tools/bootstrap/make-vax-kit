@@ -8,9 +8,12 @@
 #
 # POC-<version>.COM (the version's periods made hyphens), the base kit:
 #
-#   [.BIN]                     empty, for POC.EXE
+#   [.BIN]                     empty, for POC.EXE and OBJCONVERT.EXE
 #   [.KIT]                     poc's V1 stage (tools/bootstrap/vax-v1): its
 #                              .mar files, Poc.com and PocRtl.mar
+#   [.KIT.OBJCONVERT]          the object converter (tools/objconvert), as
+#                              tools/vax-objconvert writes it: its .mar
+#                              files and ObjectConvert.com
 #   [.LIB.POC.VAX-DEC-VMS.O2]  the library POCRTL (rtl/vax), as poc -library
 #   [.LIB.POC.VAX-DEC-VMS.OC]  writes it for each model
 #   [.SRC...]                  the source poc for VMS is built from, and the
@@ -53,7 +56,7 @@ TEMPLATES=$ROOT/tools/bootstrap/vax-kit
 MARKER='$_POC_KIT_EOF'
 unset POC_IMPORT_PATH POC_LIBRARY_PATH
 
-"$ROOT/tools/bootstrap/vax-v1" >/dev/null
+"$ROOT/tools/bootstrap/vax-v1" -vax-macro32 >/dev/null
 V1=$BUILD/vax-bootstrap/v1
 GEN=$BUILD/vax-bootstrap/gen
 
@@ -80,9 +83,15 @@ copy() {
   done
 }
 
-# [.BIN], where BUILD.COM puts POC.EXE, made empty by the base kit
+# [.BIN], where BUILD.COM puts POC.EXE and OBJCONVERT.EXE, made empty by
+# the base kit
 mkdir "$KIT/base/BIN"
 copy base KIT "$V1"/*.mar "$V1/Poc.com" "$ROOT/rtl/vax/PocRtl.mar"
+# the converter of objects sent in binary (doc/developer/
+# vax-object-language.md, section 17, proposal 3), assembled with [.KIT]'s
+# PocRtl.mar
+POC=$POC_BIN_DIR/poc "$ROOT/tools/vax-objconvert" "$KIT/objconvert" >/dev/null
+copy base KIT/OBJCONVERT $(ls "$KIT"/objconvert/* | grep -v '/PocRtl\.mar$')
 
 # the libraries, each after the ones it needs, and each library's files
 # into its kit's stage
@@ -122,6 +131,7 @@ done
 
 copy base SRC/FRONT "$ROOT"/src/front/*.Mod
 copy base SRC/BACK/VAX "$ROOT"/src/back/vax/*.Mod
+copy base SRC/BACK/VAX/VMS "$ROOT"/src/back/vax/vms/*.Mod
 copy base SRC/DRIVER "$ROOT"/src/driver/*.Mod
 copy base SRC/DRIVER/NO-LLVM "$ROOT"/src/driver/no-llvm/*.Mod
 copy base SRC/RTL "$ROOT"/rtl/vax/*.Mod "$ROOT/rtl/vax/PocRtl.mar"

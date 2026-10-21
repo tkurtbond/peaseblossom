@@ -1,0 +1,9 @@
+semantic OK, wrote VaxDebug.obj
+exit 0
+VaxDebug.records matches expected-VaxDebug.records
+semantic OK, wrote debug/VaxDebug.obj
+-g exit 0
+VaxDebug-g.records matches expected-VaxDebug-g.records
+semantic OK, wrote debug/VaxDebugTypes.obj
+types -g exit 0
+VaxDebugTypes-g.records matches expected-VaxDebugTypes-g.records

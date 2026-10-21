@@ -16,13 +16,17 @@ sed -e 's/^MODULE reals;/MODULE RealsUse;/' -e 's/^END reals\./END RealsUse./' .
 cp ../llvm-reals-module/beyond.mod .
 rm -f RealsUse.com beyond.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym $written
   for program in RealsUse beyond; do
-    poc $model -target vax-dec-vms -import-path $rtl -build $program.mod >>result 2>&1
+    poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build $program.mod >>result 2>&1
     echo "VAX build $program $model exit $?" >>result
   done
   vax_do guest-run.com guest-run.expected RealsUse.com beyond.com $written $rtl/PocRtl.mar
 done
-rm -f *.sym $written RealsUse.com beyond.com RealsUse.mod beyond.mod
+}
+vax_build builds
+rm -f *.sym $written RealsUse.com beyond.com RealsUse.mod beyond.mod *.obj
 . ../../testresult.sh

@@ -19,9 +19,13 @@ rtl=../../../rtl/vax
 written="VmsCalls.mar VmsArguments.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar"
 rm -f VmsCalls.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 rm -f *.sym $written
-poc -target vax-dec-vms -import-path $rtl -build VmsCalls.mod >>result 2>&1
+poc -target vax-dec-vms $vax_way_option -import-path $rtl -build VmsCalls.mod >>result 2>&1
 echo "VAX build VmsCalls exit $?" >>result
 vax_do guest-run.com guest-run.expected VmsCalls.com $written $rtl/PocRtl.mar
-rm -f *.sym $written VmsCalls.com
+}
+vax_build builds
+rm -f *.sym $written VmsCalls.com *.obj
 . ../../testresult.sh

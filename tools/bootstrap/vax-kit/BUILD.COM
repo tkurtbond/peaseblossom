@@ -1,6 +1,7 @@
 $ ! BUILD.COM - builds Peaseblossom's poc for VAX/VMS where its kits were
 $ ! unpacked (README.TXT): POC.EXE in [.BIN], assembled and linked from
-$ ! the MACRO-32 in [.KIT], and the libraries in [.LIB.POC.VAX-DEC-VMS.O2]
+$ ! the MACRO-32 in [.KIT], OBJCONVERT.EXE beside it from [.KIT.OBJCONVERT]'s
+$ ! (doc/developer/vax-object-language.md, section 17), and the libraries in [.LIB.POC.VAX-DEC-VMS.O2]
 $ ! and [.LIB.POC.VAX-DEC-VMS.OC], each by its own build procedure: POCRTL,
 $ ! and VMSDEF and VMSLIB once the STARLET kit is unpacked here. It uses
 $ ! MACRO, LIBRARY and LINK alone. Written by tools/bootstrap/make-vax-kit
@@ -8,7 +9,8 @@ $ ! (doc/developer/vax-macro32-backend.md, section 21, proposals 3 and 10).
 $ !
 $ !   @BUILD [O2|OC|BOTH] [CLEAN]
 $ !
-$ ! It builds what is not built yet: POC.EXE unless [.BIN] has one, and
+$ ! It builds what is not built yet: POC.EXE and OBJCONVERT.EXE unless
+$ ! [.BIN] has them, and
 $ ! each library whose build procedure is here and whose .OLB is not; to
 $ ! build one again, delete it first. P1 is the size models whose
 $ ! libraries are built, BOTH by default. P2 CLEAN deletes [.KIT] once
@@ -65,6 +67,27 @@ $ DELETE/NOLOG *.OBJ;*, POC.OPT;*
 $ GOSUB END_STEP
 $POC_BUILT:
 $ !
+$ STEP = "OBJCONVERT.EXE"
+$ IF F$SEARCH(TOP_OPEN + ".BIN" + CLOSE_BRACKET + "OBJCONVERT.EXE") .EQS. "" THEN GOTO BUILD_OBJCONVERT
+$ LINE = F$TIME() + " " + STEP + ": built already"
+$ GOSUB SAY
+$ GOTO OBJCONVERT_BUILT
+$BUILD_OBJCONVERT:
+$ GOSUB START_STEP
+$ SET DEFAULT 'TOP_OPEN'.KIT.OBJCONVERT'CLOSE_BRACKET'
+$ MACRO/OBJECT=POCRTL.OBJ 'TOP_OPEN'.KIT'CLOSE_BRACKET'POCRTL.MAR
+$ STATUS = F$INTEGER($STATUS)
+$ IF .NOT. STATUS THEN GOTO FAILED
+$ @'TOP_OPEN'.KIT.OBJCONVERT'CLOSE_BRACKET'OBJECTCONVERT.COM
+$ STATUS = F$INTEGER($STATUS)
+$ IF .NOT. STATUS THEN GOTO FAILED
+$ RENAME/NOLOG OBJECTCONVERT.EXE 'TOP_OPEN'.BIN'CLOSE_BRACKET'OBJCONVERT.EXE
+$ STATUS = F$INTEGER($STATUS)
+$ IF .NOT. STATUS THEN GOTO FAILED
+$ DELETE/NOLOG *.OBJ;*, OBJECTCONVERT.OPT;*
+$ GOSUB END_STEP
+$OBJCONVERT_BUILT:
+$ !
 $ IF MODELS .NES. "OC" THEN MODEL = "O2"
 $ IF MODELS .NES. "OC" THEN GOSUB BUILD_MODEL
 $ IF .NOT. STATUS THEN GOTO FAILED
@@ -78,6 +101,10 @@ $ SET DEFAULT 'TOP'
 $ IF F$SEARCH("KIT.DIR") .EQS. "" THEN GOTO FINISHED
 $ STEP = "deleting [.KIT]"
 $ GOSUB START_STEP
+$ IF F$SEARCH("[.KIT]OBJCONVERT.DIR") .EQS. "" THEN GOTO KIT_EMPTIED
+$ DELETE/NOLOG [.KIT.OBJCONVERT]*.*;*
+$ SET PROTECTION=O:RWED [.KIT]OBJCONVERT.DIR
+$KIT_EMPTIED:
 $ DELETE/NOLOG [.KIT]*.*;*
 $ SET PROTECTION=O:RWED KIT.DIR
 $ DELETE/NOLOG KIT.DIR;*

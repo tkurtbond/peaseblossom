@@ -11,6 +11,12 @@ FormattedText.mar matches expected-vax-FormattedText.mar
 LineOutput.mar matches expected-vax-LineOutput.mar
 Out.mar matches expected-vax-Out.mar
 RealDigits.mar matches expected-vax-RealDigits.mar
+OutBasics.image matches expected-vax.image
+FormattedOutput.image matches expected-vax-FormattedOutput.image
+FormattedText.image matches expected-vax-FormattedText.image
+LineOutput.image matches expected-vax-LineOutput.image
+Out.image matches expected-vax-Out.image
+RealDigits.image matches expected-vax-RealDigits.image
 LLVM build -O2 exit 0
 VAX build -O2 exit 0
 LLVM build -OC exit 0

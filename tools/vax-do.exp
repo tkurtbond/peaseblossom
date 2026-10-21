@@ -3,7 +3,12 @@
 # copies the procedure and the files to POC's home directory, then, by
 # telnet, runs @<NAME>/OUTPUT=VAXDO.LOG [<P1>], keeping the FTP session alive,
 # then copies VAXDO.LOG and each <GET> back into <dir>, and deletes every
-# version of all of them on the guest, whatever happened. Prints one line
+# version of all of them on the guest, whatever happened. A <file> that is
+# poc's object, <NAME.EXT> <NAME>.OBJ, is copied in binary mode as
+# <NAME>.CNT and converted to <NAME>.OBJ before the procedure runs
+# (tools/vax-objconvert.tcl); with $VAX_DO_CONVERT "no", it is copied in
+# binary mode as <NAME>.OBJ and left for the procedure to convert, with an
+# OBJCONVERT of its own (the kit's SETUP.COM's). Prints one line
 # "VAXDO-STATUS <hex $STATUS>". Exits 0, 1 if a file did not come back
 # (its error on the standard error), 2 if the guest could not be used.
 #
@@ -27,6 +32,7 @@ log_user 0
 
 source [file join [file dirname [info script]] vax-login.tcl]
 source [file join [file dirname [info script]] vax-ftp.tcl]
+source [file join [file dirname [info script]] vax-objconvert.tcl]
 
 if {[catch {ftp_open $host} message]} {
   puts stderr "vax-do: the VAX guest $host is not available ($message)"
@@ -34,18 +40,34 @@ if {[catch {ftp_open $host} message]} {
 }
 # from here on, whatever happens, every file of this run is deleted there
 set made {}
-foreach {file remote} $puts { lappend made $remote }
+foreach {file remote} $puts {
+  lappend made $remote
+  if {[string match *.obj $file]} { lappend made [file rootname $remote].CNT }
+}
 lappend made VAXDO.LOG {*}$gets
 exit -onexit {
   foreach remote $::made { catch {ftp_delete $remote} }
   ftp_close
 }
 
+set convert [expr {!([info exists ::env(VAX_DO_CONVERT)] && $::env(VAX_DO_CONVERT) eq "no")}]
+set objects {}
 foreach {file remote} $puts {
-  if {[catch {ftp_put $file $remote} message]} { fail "cannot copy $file there: $message" }
+  if {[string match *.obj $file]} {
+    set object [file rootname $remote]
+    if {$convert} {
+      if {[catch {objconvert_put $file $object} message]} { fail "cannot copy $file there: $message" }
+    } elseif {[catch {ftp_put_binary $file $remote} message]} {
+      fail "cannot copy $file there: $message"
+    }
+    lappend objects $object
+  } elseif {[catch {ftp_put $file $remote} message]} {
+    fail "cannot copy $file there: $message"
+  }
 }
 
 vax_login $host
+if {$convert} { objconvert_each $objects }
 set parameter ""
 if {[info exists ::env(VAX_DO_PARAMETER)] && $::env(VAX_DO_PARAMETER) ne ""} { set parameter " $::env(VAX_DO_PARAMETER)" }
 send "@$name/OUTPUT=VAXDO.LOG$parameter\r"

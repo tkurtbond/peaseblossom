@@ -16,10 +16,12 @@ sed -e 's/^MODULE oberon;/MODULE OberonUse;/' -e 's/^END oberon\./END OberonUse.
 cp ../llvm-oberon/beyond.mod .
 rm -f OberonUse.com beyond.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym $written
   for p in OberonUse beyond; do
-    poc $model -target vax-dec-vms -import-path $rtl -build $p.mod >>result 2>&1
+    poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build $p.mod >>result 2>&1
     echo "VAX build $p $model exit $?" >>result
   done
   # llvm-oberon's lines for the model, as the guest prints them
@@ -35,5 +37,7 @@ for model in -O2 -OC; do
   } >oberon.expected
   vax_do guest-run.com oberon.expected OberonUse.com beyond.com $written $rtl/PocRtl.mar
 done
-rm -f *.sym $written OberonUse.com beyond.com OberonUse.mod beyond.mod oberon.expected
+}
+vax_build builds
+rm -f *.sym $written OberonUse.com beyond.com OberonUse.mod beyond.mod oberon.expected *.obj
 . ../../testresult.sh

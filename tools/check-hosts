@@ -51,7 +51,9 @@ copy() {
   if [ -n "$commit" ]; then
     git -C "$ROOT" archive "$commit" | ssh "$1" 'tar -xf - -C ~/poc-bsd'
   else
-    (cd "$ROOT" && git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf -) \
+    # one tar for every name: xargs would split a long list among several,
+    # whose archives, run together, the far end reads only the first of
+    (cd "$ROOT" && git ls-files -z --cached --others --exclude-standard | tar -cf - --null -T -) \
       | ssh "$1" 'tar -xf - -C ~/poc-bsd'
   fi
 }

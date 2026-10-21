@@ -1,8 +1,12 @@
 $ ! PLAN.md Phase 16 step 4's end: POC.COM, which poc -build wrote for
-$ ! poc's own source, run after poc's runtime is assembled; then POC.EXE,
+$ ! poc's own source, run after poc's runtime is assembled, links poc's
+$ ! own objects, converted on arrival (Phase 18 step 7c); then POC.EXE,
 $ ! as a foreign command, with options DCL uppercases, its SYS$ERROR a
 $ ! file, printed after its status. -lto is refused, poc on VMS having
-$ ! no LLVM back end (Phase 17 step 7).
+$ ! no LLVM back end (Phase 17 step 7). Then POC.EXE builds SUMS.MOD with
+$ ! its default on VMS, poc's own objects (PLAN.md Phase 18 step 6e): the
+$ ! procedure it writes, typed here, links SUMS.OBJ with no MACRO and no
+$ ! OBJCONVERT, and SUMS.EXE runs.
 $ SET NOON
 $ MACRO/OBJECT POCRTL.MAR
 $ S = $STATUS
@@ -27,6 +31,18 @@ $ IF F$SEARCH("POC.ERR") .NES. "" THEN DELETE/NOLOG POC.ERR;*
 $ I = I + 1
 $ GOTO RUN_ONE
 $ DONE:
+$ WRITE SYS$OUTPUT "== POC -BUILD SUMS.MOD"
+$ DEFINE/USER_MODE SYS$ERROR POC.ERR
+$ POC -BUILD SUMS.MOD
+$ WRITE SYS$OUTPUT "run status: ", $STATUS
+$ IF F$SEARCH("POC.ERR") .NES. "" THEN TYPE POC.ERR
+$ IF F$SEARCH("POC.ERR") .NES. "" THEN DELETE/NOLOG POC.ERR;*
+$ IF F$SEARCH("SUMS.COM") .EQS. "" THEN GOTO NO_SUMS
+$ TYPE SUMS.COM
+$ @SUMS
+$ WRITE SYS$OUTPUT "link status: ", $STATUS
+$ IF F$SEARCH("SUMS.EXE") .NES. "" THEN RUN SUMS
+$ NO_SUMS:
 $ DELETE/SYMBOL/GLOBAL POC
 $ CLEAN:
 $ ! the objects POC.COM made, as POC.OPT lists them, then the rest
@@ -39,6 +55,7 @@ $ GOTO NEXT_OBJECT
 $ OBJECTS_DONE:
 $ CLOSE OPT
 $ LAST:
+$ IF F$SEARCH("SUMS.*") .NES. "" THEN DELETE/NOLOG SUMS.*;*
 $ IF F$SEARCH("POCRTL.OBJ") .NES. "" THEN DELETE/NOLOG POCRTL.OBJ;*
 $ IF F$SEARCH("POC.OPT") .NES. "" THEN DELETE/NOLOG POC.OPT;*
 $ IF F$SEARCH("POC.EXE") .NES. "" THEN DELETE/NOLOG POC.EXE;*

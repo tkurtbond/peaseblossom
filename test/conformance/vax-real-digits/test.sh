@@ -12,11 +12,15 @@ rtl=../../../rtl/vax
 written="digits.mar Out.mar LineOutput.mar FormattedOutput.mar FormattedText.mar RealDigits.mar"
 rm -f digits.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym $written
-  poc $model -target vax-dec-vms -import-path $rtl -build digits.mod >>result 2>&1
+  poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build digits.mod >>result 2>&1
   echo "VAX build $model exit $?" >>result
   vax_do guest-run.com guest-run.expected digits.com $written $rtl/PocRtl.mar
 done
-rm -f *.sym $written digits.com
+}
+vax_build builds
+rm -f *.sym $written digits.com *.obj
 . ../../testresult.sh

@@ -4,6 +4,7 @@
 #
 #   ftp_open $host           log in (the netrc file's login and password)
 #   ftp_put <file> <NAME>    copy a file there
+#   ftp_put_binary <file> <NAME>  copy a file there in binary mode
 #   ftp_get <NAME> <file>    copy one back
 #   ftp_delete <NAME>        delete every version of it, if there is one
 #   ftp_noop                 keep the session alive
@@ -19,7 +20,9 @@
 #
 # The server works only in active mode (PORT, the guest connecting back
 # to a port opened here), and text goes in ASCII mode (TYPE A), or VMS
-# stores it as fixed-length 512-byte records. The bytes are those curl
+# stores it as fixed-length 512-byte records - which is what
+# ftp_put_binary wants (TYPE I, for that one copy): the bytes as they
+# are, the last record padded with zeros. The bytes are those curl
 # --use-ascii sent and kept: each LF of a file goes as CR LF, which UCX
 # makes the end of a variable-length record, and each CR LF coming back
 # becomes LF.
@@ -156,9 +159,9 @@ proc ftp_noop {} {
 # answers it with 425, or now and then with "550 Failed to open data
 # connection", and once it has refused one, it can go on refusing them in
 # that session
-proc ftp::transfer {verb name copier} {
+proc ftp::transfer {verb name copier {type A}} {
   for {set try 1} {1} {incr try} {
-    set reply [ftp::retrying [list ftp::transfer_once $verb $name $copier]]
+    set reply [ftp::retrying [list ftp::transfer_once $verb $name $copier $type]]
     if {![regexp {^425|^550 Failed to open data connection} $reply] || $try == 3} break
     drop
     after 2000
@@ -167,9 +170,25 @@ proc ftp::transfer {verb name copier} {
   expect_reply $reply 2 "$verb $name"
 }
 
-proc ftp::transfer_once {verb name copier} {
+# type is the copy's TYPE, A or I; the session is in ASCII mode again
+# after it
+proc ftp::transfer_once {verb name copier type} {
   variable control
   variable data ""
+  if {$type ne "A"} {
+    set reply [command "TYPE $type"]
+    if {[string index $reply 0] ne "2"} { return $reply }
+  }
+  try {
+    return [transfer_typed $verb $name $copier]
+  } finally {
+    if {$type ne "A"} { catch {command "TYPE A"} }
+  }
+}
+
+proc ftp::transfer_typed {verb name copier} {
+  variable control
+  variable data
   set address [lindex [fconfigure $control -sockname] 0]
   set server [socket -server ftp::accept -myaddr $address 0]
   set port [lindex [fconfigure $server -sockname] 2]
@@ -191,7 +210,12 @@ proc ftp::transfer_once {verb name copier} {
     close $data
     set data ""
   }
-  return [reply]
+  set reply [reply]
+  # a copy in binary mode ends with two replies, "250 transferred 0 bytes."
+  # and then "226 Transfer complete." (UCX 3.1, 2026-10-18), its bytes
+  # all there
+  if {[regexp {^250 transferred} $reply]} { set reply [reply] }
+  return $reply
 }
 
 proc ftp::accept {channel address port} {
@@ -215,6 +239,13 @@ proc ftp_put {file name} {
   # record only at CR LF
   set bytes [string map {"\n" "\r\n"} [string map {"\r\n" "\n"} $bytes]]
   ftp::transfer STOR $name [list ftp::put_bytes $bytes]
+}
+
+proc ftp_put_binary {file name} {
+  set in [open $file rb]
+  set bytes [read $in]
+  close $in
+  ftp::transfer STOR $name [list ftp::put_bytes $bytes] I
 }
 
 proc ftp::put_bytes {bytes data} {

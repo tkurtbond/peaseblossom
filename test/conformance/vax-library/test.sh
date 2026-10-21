@@ -19,12 +19,21 @@
 # can meet (proposal 8): its shareable image not found, the image
 # relinked under a program linked against it before, and a program
 # compiled against another interface of a module linked with the
-# library, each stopped with VMS's message.
+# library, each stopped with VMS's message. Then both libraries built
+# from poc's own objects (-vax-objects; PLAN.md Phase 18 step 6,
+# doc/developer/vax-object-language.md, section 17, proposal 6), in
+# objects/: each module's .obj in place of its .mar, VAXLIB's procedure
+# inserting them, assembling nothing, compared with
+# expected-VAXLIB_build-objects.com, the manifest saying "objects", and
+# POCRTL's UNIVERSAL= lines the same as from MACRO-32; a program built
+# from MACRO-32 against them (useolb.com, the same as before) and one
+# from its object (useshr.com, expected-useshr-objects.com), both built
+# and run on the guest; and -install-library copies the objects whole.
 . ../../vaxfixture.sh
 # what the guest prints names POC's account (its user name or home), so
 # this runs under POC's alone, not POC2's (tools/vax-lock.sh)
 VAX_USER=poc; export VAX_USER
-rm -rf libs main inst
+rm -rf libs main inst objects
 rm -f useolb.com useshr.com
 run() {
   echo "== poc $*" >>result
@@ -93,6 +102,42 @@ run -target vax-dec-vms -library-path inst -output-dir main2 -o useinst -build V
 sed 's/USEINST/USEOLB/g' useinst.com >useinst-renamed.com
 compare useolb.com useinst-renamed.com
 rm -rf main2 useinst.com useinst-renamed.com
+# the same libraries from poc's objects (step 6b)
+olib=objects/libs/vax-dec-vms/O2
+run -target vax-dec-vms -vax-objects -output-dir objects/libs -library POCRTL $(LC_ALL=C ls $rtl/*.Mod) $rtl/PocRtl.mar
+run -target vax-dec-vms -vax-objects -output-dir objects/libs -library-path objects/libs -library VAXLIB \
+  VaxLibBase.mod VaxLibShapes.mod VaxLibSums.mod
+compare expected-VAXLIB_build-objects.com $olib/VAXLIB_build.com
+compare expected-VAXLIB_setup.com $olib/VAXLIB_setup.com
+grep -v '^poc ' $olib/VAXLIB.library >manifest
+compare expected-VAXLIB-objects.library manifest
+rm -f manifest
+grep '^UNIVERSAL=' $lib/POCRTL_build.com >universal.mar
+grep '^UNIVERSAL=' $olib/POCRTL_build.com >universal.obj
+cmp -s universal.mar universal.obj && echo "POCRTL's UNIVERSAL= lines are the same from objects" >>result
+rm -f universal.mar universal.obj
+# VAXLIB's files and POCRTL's hand-written part: each module's .obj, no .mar
+(cd $olib && LC_ALL=C ls) | grep -E '^(VaxLib|VAXLIB|PocRtl|Args\.)' |
+  sed 's/^/in the objects library directory: /' >>result
+rm -f useolb.com useshr.com
+mkdir objects/main-macro32 objects/main-objects
+run -target vax-dec-vms -library-path objects/libs -output-dir objects/main-macro32 -o useolb -build VaxLibUse.mod
+compare expected-useolb.com useolb.com
+run -target vax-dec-vms -vax-objects -library-path objects/libs -shared-libraries -output-dir objects/main-objects \
+  -o useshr -build VaxLibUse.mod
+compare expected-useshr-objects.com useshr.com
+vax_do guest-objects.com guest-objects.expected $olib/*.obj $olib/*.mar $olib/*_build.com $olib/*_setup.com \
+  objects/main-macro32/VaxLibUse.mar objects/main-objects/VaxLibUse.obj useolb.com useshr.com
+run -target vax-dec-vms -library-path objects/libs -output-dir objects/inst -install-library POCRTL
+run -target vax-dec-vms -library-path objects/libs -output-dir objects/inst -install-library VAXLIB
+run -target vax-dec-vms -library-path objects/libs -output-dir objects/inst -install-library VAXLIB
+for f in $olib/*; do
+  cmp -s $f objects/inst/vax-dec-vms/O2/${f##*/} || echo "${f##*/} is not installed whole from objects" >>result
+done
+(cd $olib && LC_ALL=C ls) >files.libs; (cd objects/inst/vax-dec-vms/O2 && LC_ALL=C ls) >files.inst
+cmp -s files.libs files.inst && echo "objects/inst/vax-dec-vms/O2 has the files of $olib" >>result
+rm -f files.libs files.inst
+rm -rf objects
 run -target vax-dec-vms -library-path libs -output-dir libs -install-library VAXLIB
 run -target vax-dec-vms -library-path libs -output-dir inst -install-library NONE
 run -target vax-dec-vms -library-path libs -output-dir inst2 -install-library POCRTL

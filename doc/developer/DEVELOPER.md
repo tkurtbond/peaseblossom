@@ -182,7 +182,7 @@ archive`) instead of the tree, as rackhir's check wants, and can't be used
 on this host. Through make, the same are `CHECK_TARGETS`, `CHECK_COMMIT`
 and `CHECK_HOSTS`. By hand, a host's check is:
 
-    git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - \
+    git ls-files -z --cached --others --exclude-standard | tar -cf - --null -T - \
       | ssh cymoril 'mkdir -p ~/poc-bsd && tar -xf - -C ~/poc-bsd'
     ssh cymoril 'cd ~/poc-bsd && gmake check-stage1'
 
@@ -226,7 +226,9 @@ it the same way.
 each file by FTP, runs `MACRO/OBJECT/LIST` by telnet (expect, reading the
 password from that file itself), brings the `.LIS` back beside the
 source, deletes its files on the guest, and exits 0 only if every file
-assembled without a warning or an error. `VAX_HOST` names another guest.
+assembled without a warning or an error. An object poc wrote,
+`<file>.obj`, among the files is converted there and checked by
+`ANALYZE/OBJECT` instead (below). `VAX_HOST` names another guest.
 `tools/vax-assemble -available` says whether the guest can be used; the
 VAX fixtures assemble their `expected-vax.mar` only where it can, and skip
 that part elsewhere. Copies are retried, since the guest's FTP server now
@@ -241,8 +243,26 @@ down: UCX 3.1's INETACP failed in kernel mode (bugcheck SSRVEXCEPT, an
 access violation at offset 0xAF of a NIL pointer; 2026-10-12 and
 2026-10-13).
 
-The guest sees only the expected `.mar` files, the same whichever poc runs the
-suite, so only `make test`'s run uses it: `test-stage1`, `check-opt2` and
+**poc's objects on the guest** (PLAN.md Phase 18 step 4c;
+`doc/developer/vax-object-language.md`, section 15.9). `vax-assemble`,
+`vax-do` and `vax-run` take poc's objects, `<name>.obj`, which on Linux
+and the BSDs hold the records counted, as VMS keeps them on disk. Each is
+copied in binary mode (TYPE I) as `<NAME>.CNT`, which the guest stores as
+fixed 512-byte records, and `OBJCONVERT` (`tools/objconvert/
+ObjectConvert.Mod`) writes it as `<NAME>.OBJ`, a variable-length record
+each, before anything else runs. The converter is built in the account's
+`[.OBJCONVERT]` and kept as `[.BIN]OBJCONVERT.EXE`, with
+`[.BIN]OBJCONVERT.KEY`, a checksum of the MACRO-32 poc wrote for it,
+which `tools/vax-objconvert` writes into `build/objconvert`: a run builds
+it again when the key differs, the first run after a change to it or to
+`rtl/vax` taking some minutes more. `vax_mar` (`test/vaxfixture.sh`)
+gives `vax-assemble` the fixture's objects with the expected `.mar`
+files, so every object a VAX fixture's poc wrote is checked by
+`ANALYZE/OBJECT` on the guest, whose status is judged as MACRO's is.
+
+The guest sees the expected `.mar` files, the same whichever poc runs the
+suite, and poc's objects, the same from every stage of poc, so only `make
+test`'s run uses it: `test-stage1`, `check-opt2` and
 `check-lto` set `VAX_GUEST=skip`, which skips that part of every VAX
 fixture, as on a host without the guest.
 
@@ -253,7 +273,8 @@ the procedure and the files in, as their names uppercased, runs
 back into `-o`'s directory (default `.`), and deletes its copies on the
 guest. A procedure writes what it has to say to files or to its output,
 never to a terminal for the tool to read; it exits with the status
-`vax-do` reports. Text only, in ASCII mode.
+`vax-do` reports. Files go in ASCII mode, but for poc's objects, which
+are converted as above.
 
 A fixture runs a DCL procedure of its own on the guest with `vax_do
 <proc.com> <expected> [<file>...]` (`test/vaxfixture.sh`). It runs the
@@ -278,7 +299,8 @@ breaks `vax-do`'s `/OUTPUT`. `make test-vax-asts` runs `vax-asts`,
 
 `tools/vax-run <main.mar> [<import.mar>...] <run.dbg>...` runs a program
 there under the debugger: it assembles its modules, each named on the
-guest by its `.TITLE`, and `tools/vax-runtime-stub.mar` (stand-ins for
+guest by its `.TITLE` (a module given as poc's object, `<module>.obj`,
+is converted as above and linked as it is), and `tools/vax-runtime-stub.mar` (stand-ins for
 poc's runtime routines, until Phase 16 writes them), links them `/DEBUG`,
 the main module first, so the image starts at the program's start, its
 `<MODULE>_MAIN`, and runs the image once for each `<run>.dbg`, debugger commands that typically `DEPOSIT` the inputs,
@@ -313,12 +335,14 @@ run that finds one left by a run that was killed stops and names it, to
 be removed by hand: taking such a lock over raced, and once let two runs
 share an account (2026-10-16).
 
-`make vax-stages` (`tools/bootstrap/vax-stages [-to v1|v2|v3] [-install]
-[-keep]`) is the bootstrap on VMS (`PLAN.md` Phase 16 step 6;
-`tools/bootstrap/README.md`). `make vax-v1` cross-compiles poc for the VAX
-here, into `build/vax-bootstrap/v1`. `vax-stages` then links that on the
-guest, compiles poc there with it (V2) and with V2's image (V3), and
-compares their `.mar` with V1's. It holds the guest's lock for about an
+`make vax-stages` (`tools/bootstrap/vax-stages [-way objects|macro32]
+[-to v1|v2|v3] [-install] [-keep]`) is the bootstrap on VMS (`PLAN.md`
+Phase 16 step 6 and Phase 18 step 7; `tools/bootstrap/README.md`). `make
+vax-v1` cross-compiles poc for the VAX here, into
+`build/vax-bootstrap/v1`. `vax-stages` then links that on the guest,
+compiles poc there with it (V2) and with V2's image (V3), and compares
+their objects, or with `-way macro32` (`make vax-stages
+VAX_STAGES_FLAGS='-way macro32'`) their `.mar`, with V1's. It holds the guest's lock for about an
 hour and a half, so a VAX fixture run meanwhile waits. `-install` makes
 the last stage's image `POC`'s `[.BIN]POC.EXE`. `make vax-kit` writes
 the kits a release carries, poc for VAX/VMS as two DCL procedures,
@@ -336,7 +360,7 @@ uninstall-vax` removes them, and `make check-install-vax` checks both.
 
 `make test-vax-guest-poc` (`tools/vax-guest-poc [-only <regex>]`) runs
 the fixtures' compilations under poc on the guest: V1's image, linked
-there at the start. The compilations are the programs of
+there at the start from V1's objects (`vax-v1 -vax-objects`). The compilations are the programs of
 `test/vax-suite.list`, the `vax_mar` lines, and the fixtures that only
 run `poc -check`. It compares what poc prints, its status and the files
 it writes with the host's poc doing the same for the VAX. `-only` keeps

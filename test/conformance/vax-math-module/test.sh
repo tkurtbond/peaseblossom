@@ -17,11 +17,15 @@ sed -e 's/MathL.expoMax, 1023)/MathL.expoMax, 1022)/' -e 's/MathL.expoMin, -1022
   ../llvm-mathl/mathltest.mod >mathltest.mod
 rm -f mathtest.com mathltest.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 rm -f *.sym $written
 for program in mathtest mathltest; do
-  poc -target vax-dec-vms -import-path $rtl -build $program.mod >>result 2>&1
+  poc -target vax-dec-vms $vax_way_option -import-path $rtl -build $program.mod >>result 2>&1
   echo "VAX build $program exit $?" >>result
 done
 vax_do guest-run.com guest-run.expected mathtest.com mathltest.com $written $rtl/PocRtl.mar
-rm -f *.sym $written mathtest.com mathltest.com mathtest.mod mathltest.mod
+}
+vax_build builds
+rm -f *.sym $written mathtest.com mathltest.com mathtest.mod mathltest.mod *.obj
 . ../../testresult.sh

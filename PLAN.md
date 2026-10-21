@@ -547,126 +547,33 @@ what was found, the exit review, what is left open) is in
 
 **Goal**: `poc` writes VAX/VMS object modules (`.OBJ`) itself, so a
 compile is Oberon source to object file and `LINK` is the only VMS tool
-left in the build - the assembler (`MACRO`) drops out. Phases 15-17 emit
-MACRO-32 text and hand it to the assembler; that stays as `-emit-mar`, the
-human-readable form the earlier phases reviewed and a debugging aid (and
-the oracle this phase tests against), but it stops being the path a normal
-build takes. Reasons to do it, to be checked and not assumed: the
-assembler is one less tool that has to be present and fast on the guest
-(Phase 16 step 1 confirms from the 5.5-2 SPD what the base kit contains);
-a compile that produces its object directly does one pass over the code
-instead of two; and poc controls exactly what goes into the object, the
-debug and traceback information included.
+left in the build - the assembler (`MACRO`) drops out, and MACRO-32
+stays as `-vax-macro32`, the readable form and the oracle.
 
-**Explicit non-goals**: writing executable *images* (`LINK` stays - it
-also builds shareable images, applies the option file, and is what
-Phase 17's libraries rely on); writing object *libraries* (`LIBRARY`
-stays); any object format other than VAX/VMS's (no ELF, no COFF), and any
-VMS release but 5.5-2; a MACRO-compatible assembler for hand-written
-MACRO-32 - only the subset poc itself emits has to be encoded.
+**Done** (closed 2026-10-21, on the `vax-obj` branch): poc encodes
+VAX instructions and writes VMS object modules itself
+(`VaxInstructions`, `VaxEncoder`, `VaxObjectWriter`), each module's
+image MACRO's byte for byte, for every VAX fixture and poc's own 42
+modules. Every object has traceback records, and with `-g` the 5.5-2
+debugger works by Oberon source line, variables and their types
+included. Objects are poc's default on VMS (`-vax-objects`,
+`-vax-macro32`); `-build`, `-compile` and `-library` take either, and
+the VAX fixtures and `make test-vax` run both ways. poc rebuilds itself
+on the guest from its own objects to a fixed point (V1 = V2 = V3 over
+`.OBJ` files, `make vax-stages`), with `MACRO` run only for
+`PocRtl.mar`; the kits stay MACRO-32. The VAX fixtures went from 110
+to 116. The specification and every decision are in
+`doc/developer/vax-object-language.md`; the full account (every step,
+the exit review, what is left open) is in
+`doc/history/phases/phase-18.md`:
 
-1. **The object language, from the 5.5-2 documentation.** The VAX/VMS
-   object module is a sequence of variable-length records of a few kinds -
-   the module header (`HDR`), the global symbol directory (`GSD`: program
-   sections, global symbol definitions and references, entry points), the
-   text-information-and-relocation records (`TIR`: the code and data
-   bytes, and relocation expressed as a small stack language), debug and
-   traceback records (`DBG`/`TBT`), and the end of module (`EOM`) - as the
-   linker and the object-language documentation describe them, all to be
-   confirmed against the manuals for this release (`vax-vms-manuals-to-get.md`
-   lists what is still to be found, the object-language reference among
-   it). Write a specification, in this plan or a file it names, of exactly
-   the subset poc needs: each record kind and field, the program-section
-   attributes it uses, how a global symbol and an entry point with its
-   register-save mask are expressed, how relocation against another
-   module's symbol or a program-section base is written, the limits (the
-   31-character symbol length again - Phase 15's mangling is unchanged),
-   and the on-disk form (an object file is a record-oriented RMS file, so a
-   file merely copied from another system's byte stream is *not* an object
-   the linker accepts until its record attributes are set; `FDL` and
-   `CONVERT` are the guest-side tools, and `Files` on VMS (Phase 16 step 4)
-   is what lets poc write records directly). Read real objects first: what
-   `MACRO` produces for each of the Phase 15 fixtures, dumped with
-   `ANALYZE/OBJECT` and in hex, is the ground truth the specification is
-   checked against.
-
-2. **An instruction-level representation under the code generator.**
-   `VaxCodeGenerator.Mod` today writes MACRO-32 text as it walks the tree.
-   To write bytes the same decisions must be available as data: a
-   `VaxInstruction` representation (opcode, operand specifiers with
-   addressing mode, register, displacement and symbol, labels, directives)
-   built once, and two consumers of it - the existing text printer, which
-   must produce exactly the `.mar` the Phase 15 fixtures already hold, and
-   the new encoder. The refactor is done first and on its own, with the
-   `expected-vax.mar` fixtures (and the runnable Phase 16 ones) as the
-   safety net: nothing about the emitted assembly may change. The subset of
-   MACRO-32 poc's generator uses is written down here, since it is what
-   the encoder must cover and not a line more.
-
-3. **The instruction encoder.** VAX instructions are an opcode (one or
-   two bytes) followed by operand specifiers, each a mode nibble and a
-   register with any immediate, displacement or index bytes after it;
-   branches and `JMP`/`JSB` targets are the difficulty, because the
-   displacement size (byte, word, longword) depends on the distance and
-   the distance depends on the sizes chosen - the assembler's job that poc
-   now does itself: label and program-section layout, branch-displacement
-   selection with relaxation to a fixpoint, PC-relative references,
-   `.ENTRY` masks, and the data directives the generator emits (`.LONG`,
-   `.WORD`, `.BYTE`, `.ASCIC`/`.ASCII`, `.BLKx`, `.ALIGN`, floating
-   constants in the format Phase 16 step 3 chose). **Testing**: byte-for-
-   byte comparison of the encoded text of every fixture module against the
-   text `MACRO` produces from the same `.mar` on the guest - not merely
-   "the linked program runs", since a wrong encoding that happens to run is
-   the failure this step exists to catch - with the differences that are
-   legitimate (an assembler's choice between equivalent encodings) listed
-   and explained, not waved through.
-
-4. **The object writer, `VaxObjectWriter.Mod`.** From the encoded
-   program sections write the records step 1 specified: the header, one
-   `GSD` entry per program section and global symbol, the code and data as
-   `TIR` with relocation for every symbolic reference the encoder could not
-   resolve within the module (calls to other modules' procedures, the
-   type-descriptor and string-constant symbols, external `["VMS"]`
-   routines), and the end record. Phase 17's requirements ride on it:
-   position-independent code and the program-section attributes a shareable
-   image needs, universal (exported) symbols, and entry points a transfer
-   vector can name. **Testing**: `ANALYZE/OBJECT` on poc's output and
-   on `MACRO`'s for the same source, compared; and the decisive test, `LINK`
-   accepts it and the program runs.
-
-5. **Debug and traceback information.** Decide how much: at least the
-   traceback records (`TBT`) that let an unhandled condition print a
-   routine-and-line traceback, since a poc program that traps otherwise dies
-   with no context; and, if worth it, debug symbol records so `DEBUG` can
-   show Oberon source lines and variables - which needs the source-position
-   information the front end already carries (every node has a line and
-   column) threaded down to the encoder, and Oberon type descriptions in
-   the debugger's terms. Decided here from what the 5.5-2 debugger can
-   consume, and recorded, including what is left out.
-
-6. **Wiring it in.** A new mode (`-emit-obj`, and the default on VMS,
-   with `-emit-mar` keeping the Phase 15 behavior) writes `<module>.OBJ`;
-   `VaxToolchainDriver.Mod` stops invoking `MACRO`. Every earlier phase's
-   VAX fixtures run in both modes - built through `.mar` and `MACRO`, and
-   built directly - and give the same output; Phase 17's object libraries
-   (`LIBRARY/CREATE` of poc's `.OBJ` files) and shareable images
-   (`LINK/SHAREABLE`) work with the direct objects unchanged, and are tested
-   that way.
-
-7. **Bootstrap again, and the exit gate.** Rebuild poc for VAX/VMS with
-   the direct writer, on the guest: the V1/V2/V3 fixed point of Phase 16
-   step 6, now over `.OBJ` files - an object compiled by the poc built from
-   the previous stage must be byte-identical to the one the stage before
-   produced from the same source (modulo the module header's timestamp
-   and the file's creation attributes, which the specification lists). The
-   whole VAX conformance suite passes with objects written directly, and
-   the whole Phase 17 suite, ASTs included; the run that builds poc must
-   involve no `MACRO`.
-
-**Testing summary**: steps 2 and 3 are byte-level comparisons against the
-existing text path and against the assembler; steps 4 and 6 are
-`ANALYZE/OBJECT` comparisons plus link-and-run; step 7's fixed point
-over object files is the gate.
+- **1.** The object language, from the 5.5-2 documentation.
+- **2.** An instruction-level representation under the code generator.
+- **3.** The instruction encoder.
+- **4.** The object writer, `VaxObjectWriter.Mod`.
+- **5.** Debug and traceback information.
+- **6.** Wiring it in: `-vax-objects` and `-vax-macro32`.
+- **7.** Bootstrap again over objects, and the exit gate.
 
 ### Phase 19 — Further extensions to Oberon-2
 
@@ -898,38 +805,8 @@ Those fixed while Phase 15 was current, 1-6, are in
 Those fixed while Phase 16 was current, 7, are in
 `doc/history/phases/phase-16.md`.
 
-8.  **[fixed] An option after the file was ignored.** Found closing
-    Phase 17 (2026-10-16): `doc-vax-guide` built `Fail` with `-build
-    Fail.Mod -trap-location`, and the trap had no location; among
-    `-compile`'s or `-library`'s files an option was read as a file. The
-    user, 2026-10-17: poc applies options that come after a file. `Run`
-    now applies every option in a first pass, wherever it is, and takes
-    the options out before running the command, so a file list holds
-    only files; `-help`, the guides and poc(1) say so. Fixture
-    `poc-options-after-file`. Fixed on `vax`; it reaches `main` with the
-    merge, or by itself if the user wants it there sooner.
-
-9.  **[fixed] poc's own source no longer type-checked under `-O2`.**
-    Found 2026-10-18 during Phase 18 step 2a, checking the new
-    `VaxInstructions` under `-O2`: `ConstantEvaluator`'s `twoTo32 =
-    4294967296`, added with the unsigned integer types (`ff457c2`,
-    0.6.0), is wider than a 32-bit `LONGINT`, so under `-O2` every
-    expression with it was a `HUGEINT` (12 errors). poc built and worked,
-    since every stage builds it under `-OC`, and nothing checked the rule
-    (`DEVELOPER.md`, "Rules for poc's own source"), which Phase 15 had
-    broken the same way (`phase-16.md`). `twoTo32` is now a variable set
-    in the module body, and `make check-o2`, run by `make check` and
-    `make check-stage1`, compiles `Poc.Mod` and its imports under `-O2`
-    and checks every module of `src/` against them; that check, not a
-    fixture, keeps it fixed.
-
-10. **[fixed] `vax-vmsdef` failed in a fresh checkout.** Found
-    2026-10-18 gating item 9 in a new checkout of `main`: the fixture
-    sends `mlb-listings.com` to the VAX, but `.gitignore`'s
-    `test/conformance/**/*.com` (a build procedure poc writes) hid it, so
-    it was never committed with Phase 17 step 5 and existed only in the
-    checkout every gate had run in. The file is committed now, with an
-    exception in `.gitignore`; `vax-vmsdef` passes in the new checkout.
+Those fixed while Phase 18 was current, 8-10, are in
+`doc/history/phases/phase-18.md`.
 
 ## Ongoing library enhancements
 
@@ -985,50 +862,8 @@ branch until it was merged into `main`, 2026-10-17).
 Those done while Phase 15 was current, 1-4, are in
 `doc/history/phases/phase-15.md`.
 
-5.  **[done] The VAX/VMS Guide in the kit, and `make install-vax`.** Left
-    open by Phase 17's exit review; decided with the user 2026-10-17.
-    Made on `vax`, since only it has the VAX target. The base kit holds
-    the guide as text, `VAX-VMS-GUIDE.TXT` (`tools/doc/plain-text`:
-    pandoc, grid tables, ASCII), and `check-vax-kit` checks it unpacked.
-    `make install-vax` installs `POCRTL`, `VMSDEF` and `VMSLIB` for
-    `vax-dec-vms` under `-O2` and `-OC` beside `poc-rtl`, where poc
-    finds them with no `-import-path`, the two kits in
-    `DATADIR/peaseblossom/vax`, and the guide as text, HTML and PDF in
-    `DOCDIR`; not `rtl/vax`'s source. `make uninstall-vax` removes them
-    by the libraries' manifests; `make check-install-vax` (no guest)
-    installs both into a scratch directory and builds programs for the
-    VAX with that poc alone (`test/install/check-vax.sh`). The
-    `peaseblossom-vax` packages come with the packaging work, now that
-    `vax` is merged (2026-10-17).
-
-6.  **[done] poc says when the VAX runtime is not installed.** The user,
-    2026-10-17, the first of the packaging work. For `-target
-    vax-dec-vms`, a module missing when the library path has no `POCRTL`
-    for the target and size model, and the import path no `Out.Mod`,
-    gets two notes, once a run: that the VAX runtime is not installed,
-    and that the `peaseblossom-vax` package or `make install-vax`
-    installs it, or `rtl/vax`'s source with `-import-path` (poc on VMS:
-    the kit's `@BUILD`). Fixture `poc-vax-runtime-missing`;
-    `check-install-vax` checks that an installed `POCRTL` gives no note.
-
-7.  **[done] The `peaseblossom-vax` packages.** Decided with the user
-    2026-10-17: a subpackage of the Fedora spec (`noarch`) and of the
-    OpenBSD port (`-vax`, `PKG_ARCH = *`), and a port of its own,
-    `lang/peaseblossom-vax`, for FreeBSD (`NO_ARCH`) and pkgsrc, which
-    shares `lang/peaseblossom`'s `distinfo` and builds poc from the seed
-    again. Each needs `peaseblossom` of its own version, and installs
-    what `make install-vax` does, its guide in
-    `share/doc/peaseblossom-vax` (`VAXDOCDIR`). `make dist` puts the
-    guide as text in the tarball (`doc/text`), and `install-vax` takes
-    it and the kits from the tarball when they are there, so a package
-    builds only the libraries (`installable-vax`), with no pandoc;
-    `distcheck` runs `check-install-vax` in the tarball, pandoc out of
-    reach. From a git checkout without pandoc (the BSD hosts),
-    `check-install-vax` leaves the guide out of the kits and the install
-    (`VAX_GUIDE=no`, kits in `build/stage2/vax-kit-without-guide`) and
-    says so (2026-10-17). `set-version` and `release-files` know the new packages
-    (`DEVELOPER.md`, section 7). Built and checked on each system with
-    the first release that has them, 0.7.0 ("Peaseblossom 0.7.0").
+Those done while Phase 18 was current, 5-7, are in
+`doc/history/phases/phase-18.md`.
 
 ## Open design questions
 

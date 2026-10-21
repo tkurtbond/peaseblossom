@@ -1,0 +1,1009 @@
+record 1 HDR, 67 bytes
+  MHD level 0 record size 512 name VAXMETHODS ident 515ECC777B945ED6
+  created "18-OCT-2026 00:00" patched "                 "
+record 2 HDR, 24 bytes
+  LNM "Peaseblossom poc"
+record 3 HDR, 34 bytes
+  SRC "../vax-type-bound/VaxMethods.mod"
+record 4 GSD, 491 bytes
+  PSC .  ABS  . align 0 flags 0000 size 000000
+  PSC POC_CODE align 2 flags 00E9 size 000E35
+  PSC POC_CONST align 3 flags 00A9 size 00000B
+  PSC POC_DATA align 3 flags 0188 size 000078
+  PSC POC_ADDR align 2 flags 0089 size 000094
+  SYM POC_K1_515ECC777B945ED6 flags 0002 section 0 value 00000000
+  SYM VAXMETHODS_BOX_EOC690I1 flags 000A section 4 value 00000060
+  EPM VAXMETHODS_INIT flags 000A section 1 value 00000430 mask 0004
+  EPM VAXMETHODS_MAIN flags 000A section 1 value 00000E1A mask 0000
+  SYM VAXMETHODS_NODEDESC_3O51512L flags 000A section 4 value 0000004C
+  EPM VAXMETHODS_NODEDESC_BU_GFERSNP1 flags 000A section 1 value 00000175 mask 0000
+  EPM VAXMETHODS_NODEDESC_SU_J6D1417S flags 000A section 1 value 000000AC mask 0004
+  SYM VAXMETHODS_SQUAREDESC_QB76VOHI flags 000A section 4 value 0000000C
+  EPM VAXMETHODS_SQUAREDESC__KBM74JA5 flags 000A section 1 value 00000000 mask 0004
+  SYM VAXMETHODS_TWICE_3F3IRP94 flags 000A section 4 value 00000030
+  EPM VAXMETHODS_TWICE_ADD_O8C3AR7T flags 000A section 1 value 00000080 mask 0000
+record 5 GSD, 495 bytes
+  SYM GARBAGECOLLECTEDHEAP_A_A8NV38EI flags 0000 reference
+  SYM GARBAGECOLLECTEDHEAP_INIT flags 0000 reference
+  SYM GARBAGECOLLECTEDHEAP_S_EA118OLO flags 0000 reference
+  SYM POC_K1_8E88986B97DF9A36 flags 0000 reference
+  SYM POC_ROOTS flags 0000 reference
+  SYM POC_TRAP flags 0000 reference
+  SYM VAXMETHLIB_CIRCLEDESC_A7TRHOH4 flags 0000 reference
+  SYM VAXMETHLIB_CIRCLEDESC__1142R1PM flags 0000 reference
+  SYM VAXMETHLIB_CIRCLEDESC__UI0DG5VR flags 0000 reference
+  SYM VAXMETHLIB_COUNTER_ADD_P0U2MKVI flags 0000 reference
+  SYM VAXMETHLIB_COUNTER_ADD_RA0D4V89 flags 0000 reference
+  SYM VAXMETHLIB_COUNTER_GET_P0FNEJAH flags 0000 reference
+  SYM VAXMETHLIB_COUNTER_S164SKHJ flags 0000 reference
+  SYM VAXMETHLIB_INIT flags 0000 reference
+  SYM VAXMETHLIB_SHAPEDESC_C_2AHLLTL2 flags 0000 reference
+  SYM VAXMETHLIB_SHAPEDESC_TV366EBN flags 0000 reference
+record 6 GSD, 62 bytes
+  SYM VAXMETHLIB_SHARED_1O3DAG14 flags 0000 reference
+  SYM VAXMETHLIB_TOTAL_THE2UUID flags 0000 reference
+record 7 TIR, 498 bytes
+  STA_PB 1 0
+  CTL_SETRB
+  store immediate 17
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 12
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 22
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 7
+  STA_GBL VAXMETHLIB_CIRCLEDESC__UI0DG5VR
+  STO_PICR
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 31
+  STA_GBL VAXMETHLIB_COUNTER_ADD_P0U2MKVI
+  STO_PICR
+  store immediate 25
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 23
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 22
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 16
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 12
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 33
+record 8 TIR, 479 bytes
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 36
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 16
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 105
+  STA_PB 4 48
+  STO_LD
+  store immediate 19
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 41
+  STA_PB 4 48
+  STO_LD
+  store immediate 19
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 15
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 25
+  STA_PB 4 124
+  STO_LD
+  store immediate 23
+  STA_PB 4 124
+  STO_LD
+  store immediate 23
+  STA_PB 4 124
+  STO_LD
+  store immediate 5
+record 9 TIR, 509 bytes
+  STA_GBL VAXMETHLIB_COUNTER_GET_P0FNEJAH
+  STO_PICR
+  store immediate 17
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 17
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 14
+  STA_PB 4 12
+  STO_LD
+  store immediate 35
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 38
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 10
+  STA_GBL VAXMETHLIB_CIRCLEDESC__UI0DG5VR
+  STO_PICR
+  store immediate 33
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 31
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 4
+  STA_PB 3 0
+  STO_LD
+  store immediate 5
+  STA_PB 3 0
+  STO_LD
+  store immediate 2
+  STA_PB 3 88
+  STO_LD
+  store immediate 2
+  STA_GBL POC_ROOTS
+  STO_PICR
+  store immediate 2
+  STA_GBL VAXMETHLIB_INIT
+  STO_PICR
+  store immediate 12
+  STA_GBL VAXMETHLIB_SHAPEDESC_TV366EBN
+  STO_PICR
+  store immediate 5
+record 10 TIR, 479 bytes
+  STA_GBL GARBAGECOLLECTEDHEAP_A_A8NV38EI
+  STO_PICR
+  store immediate 3
+  STA_PB 3 4
+  STO_LD
+  store immediate 2
+  STA_PB 3 4
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 12
+  STA_GBL VAXMETHLIB_CIRCLEDESC_A7TRHOH4
+  STO_PICR
+  store immediate 5
+  STA_GBL GARBAGECOLLECTEDHEAP_A_A8NV38EI
+  STO_PICR
+  store immediate 3
+  STA_PB 3 8
+  STO_LD
+  store immediate 2
+  STA_PB 3 8
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 5
+  STA_PB 3 8
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 14
+  STA_PB 4 12
+  STO_LD
+  store immediate 5
+  STA_GBL GARBAGECOLLECTEDHEAP_A_A8NV38EI
+  STO_PICR
+  store immediate 3
+  STA_PB 3 12
+  STO_LD
+  store immediate 2
+  STA_PB 3 12
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 5
+  STA_PB 3 12
+  STO_LD
+  store immediate 17
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 6
+  STA_PB 3 12
+  STO_LD
+  store immediate 17
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 10
+record 11 TIR, 491 bytes
+  STA_PB 3 4
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 20
+  STA_PB 3 54
+  STO_LD
+  store immediate 6
+  STA_PB 3 8
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 20
+  STA_PB 3 56
+  STO_LD
+  store immediate 6
+  STA_PB 3 12
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 20
+  STA_PB 3 58
+  STO_LD
+  store immediate 2
+  STA_PB 3 12
+  STO_LD
+  store immediate 1
+  STA_PB 3 4
+  STO_LD
+  store immediate 6
+  STA_PB 3 4
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 20
+  STA_PB 3 60
+  STO_LD
+  store immediate 2
+  STA_PB 3 28
+  STO_LD
+  store immediate 6
+  STA_PB 3 28
+  STO_LD
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 9
+  STA_GBL VAXMETHLIB_COUNTER_ADD_P0U2MKVI
+  STO_PICR
+  store immediate 6
+  STA_PB 3 28
+  STO_LD
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 18
+  STA_PB 3 28
+  STO_LD
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 5
+record 12 TIR, 503 bytes
+  STA_GBL VAXMETHLIB_COUNTER_GET_P0FNEJAH
+  STO_PICR
+  store immediate 3
+  STA_PB 3 62
+  STO_LD
+  store immediate 2
+  STA_PB 3 30
+  STO_LD
+  store immediate 2
+  STA_PB 3 32
+  STO_LD
+  store immediate 6
+  STA_PB 3 30
+  STO_LD
+  store immediate 4
+  STA_PB 4 48
+  STO_LD
+  store immediate 18
+  STA_PB 3 30
+  STO_LD
+  store immediate 4
+  STA_PB 4 48
+  STO_LD
+  store immediate 18
+  STA_PB 3 30
+  STO_LD
+  store immediate 4
+  STA_PB 4 48
+  STO_LD
+  store immediate 5
+  STA_GBL VAXMETHLIB_COUNTER_GET_P0FNEJAH
+  STO_PICR
+  store immediate 5
+  STA_PB 3 32
+  STO_LD
+  store immediate 2
+  STA_PB 3 64
+  STO_LD
+  store immediate 2
+  STA_PB 3 16
+  STO_LD
+  store immediate 3
+  STA_PB 3 50
+  STO_LD
+  store immediate 2
+  STA_PB 3 50
+  STO_LD
+  store immediate 19
+  STA_PB 4 76
+  STO_LD
+  store immediate 5
+  STA_GBL GARBAGECOLLECTEDHEAP_A_A8NV38EI
+  STO_PICR
+  store immediate 3
+  STA_PB 3 20
+  STO_LD
+  store immediate 2
+  STA_PB 3 20
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 2
+  STA_PB 3 50
+  STO_LD
+  store immediate 3
+  STA_PB 3 20
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 2
+  STA_PB 3 16
+  STO_LD
+  store immediate 4
+  STA_PB 3 20
+  STO_LD
+  store immediate 1
+  STA_PB 3 16
+  STO_LD
+  store immediate 2
+  STA_PB 3 50
+  STO_LD
+  store immediate 15
+  STA_PB 3 50
+  STO_LD
+  store immediate 12
+  STA_PB 3 16
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 20
+record 13 TIR, 473 bytes
+  STA_PB 3 66
+  STO_LD
+  store immediate 6
+  STA_PB 3 16
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 27
+  STA_PB 3 16
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 16
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 27
+  STA_PB 3 16
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 20
+  STA_PB 3 68
+  STO_LD
+  store immediate 9
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 5
+  STA_GBL GARBAGECOLLECTEDHEAP_A_A8NV38EI
+  STO_PICR
+  store immediate 3
+  STA_PB 3 24
+  STO_LD
+  store immediate 2
+  STA_PB 3 24
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 8
+  STA_PB 3 24
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 34
+  STA_PB 3 24
+  STO_LD
+  store immediate 13
+record 14 TIR, 477 bytes
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 28
+  STA_PB 3 24
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 31
+  STA_PB 3 24
+  STO_LD
+  store immediate 17
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 21
+  STA_PB 3 70
+  STO_LD
+  store immediate 2
+  STA_PB 3 34
+  STO_LD
+  store immediate 6
+  STA_PB 3 34
+  STO_LD
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 9
+  STA_GBL VAXMETHLIB_COUNTER_ADD_P0U2MKVI
+  STO_PICR
+  store immediate 2
+  STA_PB 3 50
+  STO_LD
+  store immediate 2
+  STA_PB 3 50
+  STO_LD
+  store immediate 11
+  STA_PB 3 50
+  STO_LD
+  store immediate 16
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 6
+  STA_PB 3 36
+  STO_LD
+  store immediate 3
+  STA_PB 3 50
+  STO_LD
+  store immediate 7
+  STA_PB 3 50
+  STO_LD
+  store immediate 16
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 6
+  STA_PB 3 36
+  STO_LD
+  store immediate 6
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 9
+record 15 TIR, 482 bytes
+  STA_GBL VAXMETHLIB_COUNTER_ADD_P0U2MKVI
+  STO_PICR
+  store immediate 2
+  STA_PB 3 50
+  STO_LD
+  store immediate 15
+  STA_PB 3 50
+  STO_LD
+  store immediate 12
+  STA_PB 3 34
+  STO_LD
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 5
+  STA_GBL VAXMETHLIB_COUNTER_GET_P0FNEJAH
+  STO_PICR
+  store immediate 6
+  STA_PB 3 36
+  STO_LD
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 8
+  STA_GBL VAXMETHLIB_COUNTER_GET_P0FNEJAH
+  STO_PICR
+  store immediate 9
+  STA_PB 3 38
+  STO_LD
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 5
+  STA_GBL VAXMETHLIB_COUNTER_GET_P0FNEJAH
+  STO_PICR
+  store immediate 9
+  STA_PB 3 40
+  STO_LD
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 5
+  STA_GBL VAXMETHLIB_COUNTER_GET_P0FNEJAH
+  STO_PICR
+  store immediate 4
+  STA_PB 3 72
+  STO_LD
+  store immediate 6
+  STA_PB 3 30
+  STO_LD
+  store immediate 4
+  STA_PB 4 48
+  STO_LD
+  store immediate 15
+  STA_PB 3 30
+  STO_LD
+  store immediate 2
+  STA_PB 3 74
+  STO_LD
+  store immediate 8
+record 16 TIR, 487 bytes
+  STA_PB 3 76
+  STO_LD
+  store immediate 6
+  STA_PB 3 12
+  STO_LD
+  store immediate 14
+  STA_PB 3 8
+  STO_LD
+  store immediate 15
+  STA_PB 3 78
+  STO_LD
+  store immediate 5
+  STA_GBL VAXMETHLIB_SHARED_1O3DAG14
+  STO_PICR
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 20
+  STA_PB 3 80
+  STO_LD
+  store immediate 5
+  STA_GBL VAXMETHLIB_TOTAL_THE2UUID
+  STO_PICR
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 9
+  STA_GBL VAXMETHLIB_COUNTER_ADD_P0U2MKVI
+  STO_PICR
+  store immediate 5
+  STA_GBL VAXMETHLIB_TOTAL_THE2UUID
+  STO_PICR
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 5
+  STA_GBL VAXMETHLIB_COUNTER_GET_P0FNEJAH
+  STO_PICR
+  store immediate 3
+  STA_PB 3 82
+  STO_LD
+  store immediate 2
+  STA_PB 3 50
+  STO_LD
+  store immediate 2
+  STA_PB 3 50
+  STO_LD
+  store immediate 11
+  STA_PB 3 50
+  STO_LD
+  store immediate 16
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 2
+  STA_PB 3 50
+  STO_LD
+  store immediate 1
+  STA_PB 3 50
+  STO_LD
+  store immediate 2
+  STA_PB 3 42
+  STO_LD
+  store immediate 2
+  STA_PB 3 50
+  STO_LD
+  store immediate 15
+record 17 TIR, 511 bytes
+  STA_PB 3 50
+  STO_LD
+  store immediate 12
+  STA_PB 3 28
+  STO_LD
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 4
+  STA_PB 3 42
+  STO_LD
+  store immediate 8
+  STA_PB 3 86
+  STO_LD
+  store immediate 5
+  STA_GBL VAXMETHLIB_COUNTER_ADD_RA0D4V89
+  STO_PICR
+  store immediate 2
+  STA_PB 3 28
+  STO_LD
+  store immediate 1
+  STA_PB 3 84
+  STO_LD
+  store immediate 2
+  STA_PB 3 52
+  STO_LD
+  store immediate 11
+  STA_PB 3 4
+  STO_LD
+  store immediate 6
+  STA_PB 3 4
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 20
+  STA_PB 3 50
+  STO_LD
+  store immediate 8
+  STA_PB 3 52
+  STO_LD
+  store immediate 15
+  STA_PB 3 28
+  STO_LD
+  store immediate 3
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PICR
+  store immediate 11
+  STA_PB 3 50
+  STO_LD
+  store immediate 8
+  STA_PB 3 52
+  STO_LD
+  store immediate 11
+  STA_PB 3 24
+  STO_LD
+  store immediate 6
+  STA_PB 3 24
+  STO_LD
+  store immediate 13
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 27
+  STA_GBL GARBAGECOLLECTEDHEAP_INIT
+  STO_PICR
+  store immediate 4
+  STA_GBL GARBAGECOLLECTEDHEAP_S_EA118OLO
+  STO_PICR
+  store immediate 9
+  STA_PB 2 0
+  CTL_SETRB
+  store immediate 11
+  STA_PB 3 0
+  CTL_SETRB
+  CTL_AUGRB 92
+record 18 TIR, 472 bytes
+  store immediate 4
+  STA_PB 3 4
+  STO_PIDR
+  STA_PB 3 8
+  STO_PIDR
+  STA_PB 3 12
+  STO_PIDR
+  STA_PB 3 16
+  STO_PIDR
+  STA_PB 3 20
+  STO_PIDR
+  STA_PB 3 24
+  STO_PIDR
+  STA_PB 4 0
+  CTL_SETRB
+  STA_GBL VAXMETHLIB_SHAPEDESC_C_2AHLLTL2
+  STO_PIDR
+  STA_GBL VAXMETHLIB_CIRCLEDESC__1142R1PM
+  STO_PIDR
+  STA_PB 1 0
+  STO_PIDR
+  store immediate 12
+  STA_GBL VAXMETHLIB_SHAPEDESC_TV366EBN
+  STO_PIDR
+  STA_GBL VAXMETHLIB_CIRCLEDESC_A7TRHOH4
+  STO_PIDR
+  STA_PB 4 12
+  STO_PIDR
+  STA_GBL VAXMETHLIB_COUNTER_ADD_RA0D4V89
+  STO_PIDR
+  STA_GBL VAXMETHLIB_COUNTER_GET_P0FNEJAH
+  STO_PIDR
+  STA_PW 1 128
+  STO_PIDR
+  store immediate 12
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PIDR
+  STA_PB 4 48
+  STO_PIDR
+  STA_PW 1 373
+  STO_PIDR
+  STA_PW 1 172
+  STO_PIDR
+  store immediate 12
+  STA_PB 4 76
+  STO_PIDR
+  store immediate 16
+  STA_PB 4 96
+  STO_PIDR
+  STA_GBL VAXMETHLIB_COUNTER_ADD_RA0D4V89
+  STO_PIDR
+  STA_GBL VAXMETHLIB_COUNTER_GET_P0FNEJAH
+  STO_PIDR
+  STA_PW 1 128
+  STO_PIDR
+  store immediate 12
+  STA_GBL VAXMETHLIB_COUNTER_S164SKHJ
+  STO_PIDR
+record 19 TIR, 9 bytes
+  STA_PB 4 48
+  STO_PIDR
+  STA_PB 4 124
+  STO_PIDR
+record 20 TBT, 478 bytes
+  DST module begin language 10 name VAXMETHODS
+  DST routine begin at 1+00000000 name AREA
+  DST routine end size 00000080
+  DST routine begin at 1+00000080 name ADD
+  DST routine end size 0000002C
+  DST routine begin at 1+000000AC name SUM
+  DST routine end size 000000C9
+  DST routine begin at 1+00000175 name BUMP
+  DST routine end size 0000005A
+  DST routine begin at 1+000001CF name USE
+  DST routine end size 00000046
+  DST routine begin at 1+00000215 name GUARDED
+  DST routine end size 000000A4
+  DST routine begin at 1+000002B9 name LOCAL
+  DST routine end size 0000007B
+  DST routine begin at 1+00000334 name NARROW
+  DST routine end size 000000FC
+  DST routine begin at 1+00000430 name VAXMETHODS_INIT
+  DST routine end size 000009EA
+  DST routine begin at 1+00000E1A name VAXMETHODS_MAIN
+  DST routine end size 0000001B
+  DST line numbers
+    PC 1+00000000
+    line 28 at 1+00000000
+    line 29 at 1+00000005
+    line 30 at 1+0000006D
+    end at 1+00000080
+  DST line numbers
+    PC 1+00000080
+    line 32 at 1+00000080
+    line 33 at 1+00000085
+    line 34 at 1+000000AB
+    end at 1+000000AC
+  DST line numbers
+    PC 1+000000AC
+    line 36 at 1+000000AC
+    line 38 at 1+000000B1
+    line 39 at 1+00000162
+    end at 1+00000175
+  DST line numbers
+    PC 1+00000175
+    line 41 at 1+00000175
+    line 43 at 1+00000182
+    line 44 at 1+000001CE
+    end at 1+000001CF
+  DST line numbers
+    PC 1+000001CF
+    line 46 at 1+000001CF
+    line 47 at 1+000001DC
+    line 48 at 1+00000214
+    end at 1+00000215
+  DST line numbers
+    PC 1+00000215
+    line 50 at 1+00000215
+    line 51 at 1+0000021A
+    line 52 at 1+000002A6
+    end at 1+000002B9
+  DST line numbers
+    PC 1+000002B9
+    line 54 at 1+000002B9
+    line 58 at 1+000002C1
+    line 59 at 1+00000321
+    end at 1+00000334
+  DST line numbers
+    PC 1+00000334
+    line 61 at 1+00000334
+    line 63 at 1+00000339
+    line 64 at 1+00000419
+    end at 1+00000430
+  DST line numbers
+    PC 1+00000430
+    line 1 at 1+00000430
+    line 67 at 1+00000458
+    line 68 at 1+00000592
+    line 69 at 1+00000646
+    line 70 at 1+0000068D
+    line 71 at 1+000006F4
+    line 72 at 1+00000767
+    line 73 at 1+0000076D
+    line 74 at 1+0000081B
+    line 75 at 1+00000922
+    line 76 at 1+00000A5B
+    line 77 at 1+00000A81
+    line 78 at 1+00000B34
+    line 79 at 1+00000BB5
+    line 80 at 1+00000BE0
+    line 81 at 1+00000BEC
+    line 82 at 1+00000C1B
+    line 83 at 1+00000C9A
+    line 84 at 1+00000D02
+    line 85 at 1+00000D3D
+    line 86 at 1+00000DA3
+    line 87 at 1+00000DD9
+    end at 1+00000E1A
+  DST module end
+record 21 EOM, 7 bytes
+  severity 0 transfer section 1 offset 00000E1A

@@ -17,13 +17,17 @@ cp ../llvm-out-extra/outextra.mod ../llvm-err/errtest.mod .
 sed -e '/infinity and not a number/,/Out.LongReal(y, 0); Out.Ln;/d' ../llvm-out/outtest.mod >outtest.mod
 rm -f outextra.com errtest.com outtest.com
 : >result
+# Built and run both ways, from MACRO-32 and from poc's objects (vax_build).
+builds() {
 for model in -O2 -OC; do
   rm -f *.sym $written
   for program in outextra errtest outtest; do
-    poc $model -target vax-dec-vms -import-path $rtl -build $program.mod >>result 2>&1
+    poc $model -target vax-dec-vms $vax_way_option -import-path $rtl -build $program.mod >>result 2>&1
     echo "VAX build $program $model exit $?" >>result
   done
   vax_do guest-run.com guest-run$model.expected outextra.com errtest.com outtest.com $written $rtl/PocRtl.mar
 done
-rm -f *.sym $written outextra.com errtest.com outtest.com outextra.mod errtest.mod outtest.mod
+}
+vax_build builds
+rm -f *.sym $written outextra.com errtest.com outtest.com outextra.mod errtest.mod outtest.mod *.obj
 . ../../testresult.sh

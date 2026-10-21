@@ -1,0 +1,169 @@
+record 1 HDR, 65 bytes
+  MHD level 0 record size 512 name VAXTRACE ident E389D474A8D672DD
+  created "18-OCT-2026 00:00" patched "                 "
+record 2 HDR, 24 bytes
+  LNM "Peaseblossom poc"
+record 3 HDR, 14 bytes
+  SRC "VaxTrace.mod"
+record 4 GSD, 167 bytes
+  PSC .  ABS  . align 0 flags 0000 size 000000
+  PSC POC_CODE align 2 flags 00E9 size 000186
+  PSC POC_CONST align 3 flags 00A9 size 000009
+  PSC POC_DATA align 3 flags 0188 size 000008
+  SYM POC_K1_E389D474A8D672DD flags 0002 section 0 value 00000000
+  EPM VAXTRACE_INIT flags 000A section 1 value 00000131 mask 0000
+  EPM VAXTRACE_MAIN flags 000A section 1 value 0000017C mask 0000
+  SYM POC_TRAP flags 0000 reference
+record 5 TIR, 451 bytes
+  STA_PB 1 0
+  CTL_SETRB
+  store immediate 16
+  STA_PB 3 2
+  STO_LD
+  store immediate 6
+  STA_PB 3 2
+  STO_LD
+  store immediate 10
+  STA_PB 3 2
+  STO_LD
+  store immediate 20
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 49
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 35
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 105
+  STA_PB 2 0
+  STO_LD
+  store immediate 4
+  STA_GBL POC_TRAP
+  STO_PICR
+  store immediate 4
+  STA_PB 3 0
+  STO_LD
+  store immediate 5
+  STA_PB 3 0
+  STO_LD
+  store immediate 5
+  STA_PB 3 2
+  STO_LD
+  store immediate 17
+  STA_PB 3 6
+  STO_LD
+  store immediate 17
+  STA_PB 3 4
+  STO_LD
+  store immediate 2
+  STA_PB 3 4
+  STO_LD
+  store immediate 11
+  STA_PB 2 0
+  CTL_SETRB
+  store immediate 9
+record 6 TBT, 18 bytes
+  DST module begin language 10 name VAXTRACE
+record 7 DBG, 41 bytes
+  DST data type 7 flags 01 value 3+00000002 name ZERO
+  DST data type 7 flags 01 value 3+00000004 name R
+  DST data type 7 flags 01 value 3+00000006 name TOTAL
+record 8 TBT, 17 bytes
+  DST routine begin at 1+00000000 name DIVIDE
+record 9 DBG, 28 bytes
+  DST prolog at 1+00000008
+  DST data type 7 flags C9 value 00000004 name A
+  DST data type 7 flags D9 value FFFFFFFE name Q
+record 10 TBT, 24 bytes
+  DST routine end size 0000004D
+  DST routine begin at 1+0000004D name OUTER
+record 11 DBG, 18 bytes
+  DST prolog at 1+0000005A
+  DST data type 7 flags D9 value FFFFFFFE name N
+record 12 TBT, 17 bytes
+  DST routine begin at 1+0000008B name INNER
+record 13 DBG, 19 bytes
+  DST prolog at 1+00000090
+  DST data type 7 flags C9 value 00000004 name K
+record 14 TBT, 32 bytes
+  DST routine end size 00000030
+  DST routine end size 0000003E
+  DST routine begin at 1+000000BB name LOOP
+record 15 DBG, 39 bytes
+  DST prolog at 1+000000C3
+  DST data type 7 flags C9 value 00000004 name N
+  DST data type 7 flags D9 value FFFFFFFE name I
+  DST data type 7 flags D9 value FFFFFFFC name S
+record 16 TBT, 33 bytes
+  DST routine end size 00000076
+  DST routine begin at 1+00000131 name VAXTRACE_INIT
+record 17 DBG, 9 bytes
+  DST prolog at 1+00000145
+record 18 TBT, 154 bytes
+  DST routine end size 0000004B
+  DST routine begin at 1+0000017C name VAXTRACE_MAIN
+  DST routine end size 0000000A
+  DST line numbers
+    PC 1+00000000
+    line 9 at 1+00000000
+    line 12 at 1+00000008
+    line 13 at 1+0000000E
+    line 14 at 1+00000035
+    line 15 at 1+0000003A
+    end at 1+0000004D
+  DST line numbers
+    PC 1+0000004D
+    line 17 at 1+0000004D
+    line 23 at 1+0000005A
+    line 24 at 1+00000078
+    end at 1+0000008B
+  DST line numbers
+    PC 1+0000008B
+    line 18 at 1+0000008B
+    line 20 at 1+00000090
+    line 21 at 1+000000A8
+    end at 1+000000BB
+  DST line numbers
+    PC 1+000000BB
+    line 26 at 1+000000BB
+    line 29 at 1+000000C3
+    line 30 at 1+000000C9
+    line 31 at 1+000000D6
+    line 32 at 1+000000DB
+    line 30 at 1+000000DE
+    line 34 at 1+000000E4
+    line 35 at 1+000000FA
+    line 34 at 1+000000FF
+    line 37 at 1+00000119
+    line 38 at 1+0000011E
+    end at 1+00000131
+  DST line numbers
+    PC 1+00000131
+    line 1 at 1+00000131
+    line 41 at 1+00000145
+    line 42 at 1+0000014B
+    line 43 at 1+00000160
+    line 44 at 1+00000175
+    end at 1+0000017C
+record 19 DBG, 53 bytes
+  DST source file
+    form feeds counted
+    declare file 1 created 0000000000000000 end block 0 first free byte 0 format 0 name VaxTrace.mod module 
+  DST source file
+    set file 1
+    set record 1
+    define lines 45
+record 20 TBT, 4 bytes
+  DST module end
+record 21 EOM, 7 bytes
+  severity 0 transfer section 1 offset 0000017C

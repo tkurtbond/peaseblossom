@@ -196,58 +196,6 @@ the default, or
 under which
 .Vt LONGINT
 is a quadword.
-The VAX backend is being written: so far it writes a module's layout,
-its variables, assignments of integer,
-.Vt REAL ,
-.Vt LONGREAL ,
-.Vt CHAR ,
-.Vt BOOLEAN ,
-.Vt SET
-and
-.Vt SYSTEM.SET64
-expressions, fixed arrays, records and their extensions,
-open-array parameters,
-.Vt SYSTEM.BYTE
-parameters, pointers to arrays and to records and NIL,
-.Ic IS ,
-type guards,
-strings,
-and the statements
-.Ic IF ,
-.Ic CASE ,
-.Ic WHILE ,
-.Ic REPEAT ,
-.Ic FOR ,
-.Ic LOOP ,
-.Ic EXIT ,
-.Ic RETURN
-and
-.Ic WITH ,
-procedures and calls of them, type-bound procedures and calls of them,
-procedure values and calls through them, nested procedures, external
-.Qq VMS
-procedures, and the predeclared procedures
-.Fn ABS ,
-.Fn ODD ,
-.Fn CHR ,
-.Fn ORD ,
-.Fn CAP ,
-.Fn LEN ,
-.Fn INC ,
-.Fn DEC ,
-.Fn INCL ,
-.Fn EXCL ,
-.Fn SHORT ,
-.Fn LONG ,
-.Fn ASH ,
-.Fn ENTIER ,
-.Fn COPY ,
-.Fn NEW ,
-.Fn HALT
-and
-.Fn ASSERT ,
-and imported variables and procedures,
-and reports anything more as a construct it cannot lower yet.
 .It Fl print-import-path , Fl print-library-path
 Print the import path or the library path as the options leave it.
 .It Fl version
@@ -279,9 +227,22 @@ itself are
 .Fl dump-layout ,
 .Fl dump-llvm-types ,
 .Fl dump-nested ,
-.Fl dump-vax-types
+.Fl dump-vax-types ,
+.Fl dump-vax-names ,
+.Fl emit-vax-image ,
+which writes each module's object as the VAX encoder makes it,
+.Ar Module Ns .image ,
 and
-.Fl dump-vax-names .
+.Fl emit-vax-object ,
+which writes each module's VAX object,
+.Ar Module Ns .obj ,
+an object file on VMS and elsewhere its records counted as VMS keeps
+them on disk.
+.Fl emit-macro32 ,
+.Fl emit-vax-image
+and
+.Fl emit-vax-object
+may be given together, and one compile writes each file they name.
 .Ss Options
 .Bl -tag -width Ds
 .It Fl o Ar exe
@@ -352,6 +313,8 @@ what is not quoted.
 .Cm vax-dec-vms
 is the VAX/VMS target, which takes
 .Fl emit-macro32 ,
+.Fl emit-vax-object ,
+.Fl emit-vax-image ,
 .Fl check ,
 .Fl emit-interface ,
 .Fl show-interface ,
@@ -359,12 +322,15 @@ is the VAX/VMS target, which takes
 .Fl compile ,
 .Fl library
 and
-.Fl install-library
-so far.
+.Fl install-library .
 For it,
 .Fl build
 writes every module's
-.Pa .mar
+.Pa .mar ,
+or with
+.Fl vax-objects ,
+the default on VMS, its
+.Pa .obj ,
 and a DCL procedure,
 .Pa name.com ,
 that assembles them on VMS and links them with poc's runtime,
@@ -380,12 +346,14 @@ and links with them;
 .Fl compile
 writes the named modules'
 .Pa .mar
+.Pq or Pa .obj
 and a procedure that assembles them;
 .Fl library
 writes the library's modules'
 .Pa .sym
 and
-.Pa .mar ,
+.Pa .mar
+.Pq or Pa .obj ,
 any
 .Pa .mar
 file named copied beside them, its manifest, and two DCL procedures:
@@ -439,6 +407,18 @@ Best with
 .Fl opt Cm 0
 or
 .Fl opt Cm g .
+For vax-dec-vms, give the objects
+.Nm
+writes
+.Pq Fl vax-objects , Fl emit-vax-object
+the VMS debugger's records too: the source file, where each
+routine's code begins, and each variable and constant with its type;
+and make the build procedure link
+.Li /DEBUG ,
+and from MACRO-32 assemble
+.Li /DEBUG
+too.
+Every object has its routines and lines, for a traceback.
 .It Fl trap-location
 Begin each trap's message with the file, line and column of the trap, and
 end it with the procedure's name.
@@ -462,6 +442,34 @@ The modules it imports are not checked.
 Link a fully static executable.
 .It Fl shared-libraries
 Link the libraries' shared objects instead of their archives.
+.It Fl vax-objects
+For vax-dec-vms, build from poc's own objects:
+.Fl build
+and
+.Fl compile
+write each module's
+.Pa .obj ,
+not its
+.Pa .mar ;
+the build procedure assembles nothing.
+On Linux and the BSDs the procedure first converts each object sent to VMS
+in binary, with the kit's
+.Ic OBJCONVERT ,
+and
+.Fl compile
+writes one that only converts; on VMS
+.Fl compile
+writes none.
+The default for poc on VMS.
+.It Fl vax-macro32
+For vax-dec-vms, build from MACRO-32:
+.Fl build
+and
+.Fl compile
+write each module's
+.Pa .mar
+and a procedure that assembles them.
+The default for poc elsewhere.
 .It Fl link Ar arg
 Pass
 .Ar arg
