@@ -25,7 +25,7 @@
 %global __provides_exclude_from ^%{_prefix}/lib/poc/.*$
 
 Name:           peaseblossom
-Version:        0.7.0
+Version:        0.8.0
 Release:        1%{?dist}
 Summary:        Oberon-2 compiler (poc) using LLVM
 
@@ -110,6 +110,16 @@ test/install/check-vax.sh %{buildroot}%{_bindir}/poc %{_builddir}/check-install-
 %{_docdir}/%{name}-vax/
 
 %changelog
+* Wed Oct 21 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.8.0-1
+- Update to 0.8.0: for VAX/VMS, poc writes each module's object file
+  itself (-vax-objects, -emit-vax-object), with traceback records and,
+  with -g, records for the VMS debugger; poc on VMS builds from objects
+  and needs MACRO only for the runtime's PocRtl.mar, and poc on Unix
+  builds from MACRO-32 unless given -vax-objects (-vax-macro32 keeps
+  the old way); -emit-macro32, -emit-vax-object and -emit-vax-image may
+  be given together; and poc's own source type-checks under -O2 again
+  (make check-o2).
+
 * Sat Oct 17 2026 T. Kurt Bond <tkurtbond@gmail.com> - 0.7.0-1
 - Update to 0.7.0: a back end for VAX/VMS 5.5-2 (poc -target
   vax-dec-vms), which writes MACRO-32 and a DCL procedure that assembles
