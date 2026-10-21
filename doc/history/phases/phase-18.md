@@ -343,7 +343,9 @@ artos and alerik before each commit, with the VAX fixtures against the
 guest on atla, both ways since 6d; on the closing tree (`912289a`)
 `make vax-stages`, `make check-vax-kit CHECK_VAX_KIT_FLAGS=-full`,
 `make test-vax`, `make test-vax-asts` and `make test-vax-guest-poc` on
-the guest, as above; rackhir at the close-out, on TODO-RACKHIR.
+the guest, as above; rackhir at the close-out, on `2f58055`: 483
+fixtures passed, Stage 1 and Stage 2 identical, `check-strict`
+(2026-10-21).
 
 ## Ongoing bug fixing, during Phase 18
 
