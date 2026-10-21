@@ -738,9 +738,10 @@ test-vax: build
 # PLAN.md Phase 16 step 6: the bootstrap on VAX/VMS (doc/developer/
 # vax-macro32-backend.md, section 17). vax-v1 cross-compiles poc's own
 # source for the VAX here; vax-stages links it on the guest, compiles poc
-# there with it (V2) and with V2's image (V3), and compares their .mar
-# with V1's. Not part of make check: vax-stages holds the guest for about
-# an hour and a half.
+# there with it (V2) and with V2's image (V3), and compares their output
+# with V1's: objects, or .mar with VAX_STAGES_FLAGS=-way macro32 (PLAN.md
+# Phase 18 step 7). Not part of make check: vax-stages holds the guest for
+# about an hour and a half.
 vax-v1: build
 	tools/bootstrap/vax-v1
 
@@ -763,8 +764,10 @@ VAX_AST_TESTS = vax-asts vax-asts-heap vax-conditions-handlers vax-subprocesses
 test-vax-asts: build
 	VAX_REPEAT=$(VAX_ASTS_REPEAT) test/run-tests.sh -j 2 $(VAX_AST_TESTS)
 
+VAX_STAGES_FLAGS ?=
+
 vax-stages: build
-	tools/bootstrap/vax-stages
+	tools/bootstrap/vax-stages $(VAX_STAGES_FLAGS)
 
 # PLAN.md Phase 18 step 3: build/bin/vax-image, which runs a VAX object's
 # records (MACRO's, as DUMP/RECORD's text, or poc's) into the image

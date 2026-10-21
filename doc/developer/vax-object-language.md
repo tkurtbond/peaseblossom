@@ -2183,3 +2183,39 @@ proposed on 2026-10-20.
    - **7c**: `vax-guest-poc` and `vax-poc` linking V1 from objects
      (proposal 6, if approved).
    - **7d**: the exit gate and the phase's close-out.
+
+### 18.3 The pieces done
+
+**7a** (2026-10-20, `b10c1c5`): `vax-v1 [-vax-macro32 | -vax-objects]`,
+`tools/vax-objects.sh`, `make-vax-kit`'s `-vax-macro32`, and
+`check-vax-kit -full` passing `-vax-macro32` to the kit's poc (passed,
+58 minutes).
+
+**7b** (2026-10-20): `vax-stages [-way objects|macro32]`, objects by
+default (`make vax-stages VAX_STAGES_FLAGS='-way macro32'` for the
+other), as proposals 2-4 say. `VAXBOOT.COM` defines `SOURCE_DATE_EPOCH`
+(the tree's commit time, which V1 is compiled under too) and assembles
+`PocRtl.mar` once, in V1's directory; each later stage copies
+`POCRTL.OBJ`. The script refuses a procedure that runs `MACRO` more
+than once, fails a stage whose `POC.COM` runs it (with objects), and
+counts each stage's `.OBJ` and `.MAR` files: 42 of its way, none of the
+other. One run of each way, on one tree, both fixed points (V1 = V2 =
+V3):
+
+| | objects | MACRO-32 |
+|---|---|---|
+| V1's link (`@POC`) | 1 s | 30 s |
+| V2's compile | 50.4 min, 3002 s of CPU | 42.9 min, 2470 s |
+| V2's link (`@POC`) | 16 s | 4.3 min |
+| V3's compile | 50.2 min, 2992 s | 42.7 min, 2462 s |
+| peak virtual memory | 204483 pages | 196689 pages |
+| the guest's run, transfers included | 109 min | 96 min |
+
+A compilation that writes objects takes about a fifth more CPU than one
+that writes MACRO-32, and a link with no `MACRO` takes seconds instead
+of minutes, so a stage (compile and link) takes about 7% longer over
+objects (50.7 minutes against 47.2). The dumps are 5.3 MB a stage; on the
+guest they take about 4 minutes, and their transfer a few, so the
+alternative of proposal 3 (V3 compared with V2 by `DIFFERENCES` on the
+guest) is not needed. (Phase 16's 45.7 and 46.0 minutes were for 31
+modules; poc has 42 now.)

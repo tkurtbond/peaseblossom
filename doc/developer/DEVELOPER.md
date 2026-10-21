@@ -335,12 +335,14 @@ run that finds one left by a run that was killed stops and names it, to
 be removed by hand: taking such a lock over raced, and once let two runs
 share an account (2026-10-16).
 
-`make vax-stages` (`tools/bootstrap/vax-stages [-to v1|v2|v3] [-install]
-[-keep]`) is the bootstrap on VMS (`PLAN.md` Phase 16 step 6;
-`tools/bootstrap/README.md`). `make vax-v1` cross-compiles poc for the VAX
-here, into `build/vax-bootstrap/v1`. `vax-stages` then links that on the
-guest, compiles poc there with it (V2) and with V2's image (V3), and
-compares their `.mar` with V1's. It holds the guest's lock for about an
+`make vax-stages` (`tools/bootstrap/vax-stages [-way objects|macro32]
+[-to v1|v2|v3] [-install] [-keep]`) is the bootstrap on VMS (`PLAN.md`
+Phase 16 step 6 and Phase 18 step 7; `tools/bootstrap/README.md`). `make
+vax-v1` cross-compiles poc for the VAX here, into
+`build/vax-bootstrap/v1`. `vax-stages` then links that on the guest,
+compiles poc there with it (V2) and with V2's image (V3), and compares
+their objects, or with `-way macro32` (`make vax-stages
+VAX_STAGES_FLAGS='-way macro32'`) their `.mar`, with V1's. It holds the guest's lock for about an
 hour and a half, so a VAX fixture run meanwhile waits. `-install` makes
 the last stage's image `POC`'s `[.BIN]POC.EXE`. `make vax-kit` writes
 the kits a release carries, poc for VAX/VMS as two DCL procedures,
