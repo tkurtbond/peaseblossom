@@ -7,9 +7,12 @@
 #
 #   tools/vax-guest-poc [-only <regex>]
 #
-# The poc on the guest is V1's (tools/bootstrap/vax-v1), linked there at the
-# start of the run: V2's .mar are V1's, so its image is the one V2's would
-# be (tools/bootstrap/vax-stages checks that). It compiles three groups:
+# The poc on the guest is V1's (tools/bootstrap/vax-v1 -vax-objects), linked
+# there at the start of the run from poc's own objects, sent in binary and
+# converted by tools/vax-do, with no MACRO but PocRtl.mar's (PLAN.md Phase 18
+# step 7c; doc/developer/vax-object-language.md, section 18.2, proposal 6):
+# V2's objects are V1's, so its image is the one V2's would be
+# (tools/bootstrap/vax-stages checks that). It compiles three groups:
 #
 #   A  each program of test/vax-suite.list, with its options, -target
 #      vax-dec-vms and -build: on the guest with poc's default there,
@@ -69,7 +72,7 @@ esac
 . "$ROOT/tools/vax-objects.sh"
 
 "$ROOT/tools/vax-assemble" -available || { echo "vax-guest-poc: the VAX guest is not available" >&2; exit 2; }
-"$ROOT/tools/bootstrap/vax-v1" >/dev/null || { echo "vax-guest-poc: V1 did not build" >&2; exit 1; }
+"$ROOT/tools/bootstrap/vax-v1" -vax-objects >/dev/null || { echo "vax-guest-poc: V1 did not build" >&2; exit 1; }
 V1=$ROOT/build/vax-bootstrap/v1
 
 work=$ROOT/build/vax-guest-poc
@@ -169,11 +172,13 @@ dcl_args() {
 # ---- the host's runs, and what goes to the guest
 upper() { echo "$1" | tr a-z A-Z; }
 uploads=$work/up
-k=0
-for f in "$V1"/*.mar "$V1/Poc.com"; do
-  cp "$f" "$uploads/V1F$k.TXT"; echo "V1F$k.TXT $(upper "$(basename "$f")")" >>"$work/v1.moves"; k=$((k + 1))
+# V1's objects under their own names, which tools/vax-do sends in binary and
+# converts; its text files as V1F<k>.TXT, in ASCII
+for f in "$V1"/*.obj; do
+  cp "$f" "$uploads/"; echo "$(upper "$(basename "$f")") $(upper "$(basename "$f")")" >>"$work/v1.moves"
 done
-cp "$ROOT/rtl/vax/PocRtl.mar" "$uploads/V1F$k.TXT"; echo "V1F$k.TXT POCRTL.MAR" >>"$work/v1.moves"
+cp "$V1/Poc.com" "$uploads/V1F0.TXT"; echo "V1F0.TXT POC.COM" >>"$work/v1.moves"
+cp "$ROOT/rtl/vax/PocRtl.mar" "$uploads/V1F1.TXT"; echo "V1F1.TXT POCRTL.MAR" >>"$work/v1.moves"
 k=0
 for f in "$ROOT"/rtl/vax/*.Mod; do
   cp "$f" "$uploads/RTLF$k.TXT"; echo "RTLF$k.TXT $(upper "$(basename "$f")")" >>"$work/rtl.moves"; k=$((k + 1))

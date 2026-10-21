@@ -360,7 +360,7 @@ uninstall-vax` removes them, and `make check-install-vax` checks both.
 
 `make test-vax-guest-poc` (`tools/vax-guest-poc [-only <regex>]`) runs
 the fixtures' compilations under poc on the guest: V1's image, linked
-there at the start. The compilations are the programs of
+there at the start from V1's objects (`vax-v1 -vax-objects`). The compilations are the programs of
 `test/vax-suite.list`, the `vax_mar` lines, and the fixtures that only
 run `poc -check`. It compares what poc prints, its status and the files
 it writes with the host's poc doing the same for the VAX. `-only` keeps

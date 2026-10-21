@@ -1,5 +1,6 @@
 $ ! PLAN.md Phase 16 step 4's end: POC.COM, which poc -build wrote for
-$ ! poc's own source, run after poc's runtime is assembled; then POC.EXE,
+$ ! poc's own source, run after poc's runtime is assembled, links poc's
+$ ! own objects, converted on arrival (Phase 18 step 7c); then POC.EXE,
 $ ! as a foreign command, with options DCL uppercases, its SYS$ERROR a
 $ ! file, printed after its status. -lto is refused, poc on VMS having
 $ ! no LLVM back end (Phase 17 step 7). Then POC.EXE builds SUMS.MOD with

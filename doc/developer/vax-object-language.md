@@ -2219,3 +2219,14 @@ guest they take about 4 minutes, and their transfer a few, so the
 alternative of proposal 3 (V3 compared with V2 by `DIFFERENCES` on the
 guest) is not needed. (Phase 16's 45.7 and 46.0 minutes were for 31
 modules; poc has 42 now.)
+
+**7c** (2026-10-20): proposal 6. `tools/vax-guest-poc` builds V1 with
+`vax-v1 -vax-objects` and sends its 42 objects under their own names,
+which `tools/vax-do` sends in binary and converts, beside its ASCII
+uploads (`Poc.com` and `PocRtl.mar` among them); `GUESTPOC.COM` runs
+`MACRO` only for `PocRtl.mar`. The fixture `vax-poc` builds poc's source
+with `-vax-objects` and sends `obj/*.obj`. Both link V1 on the guest in
+seconds: `vax-poc` now takes 27 seconds in all, and `vax-guest-poc` on
+seven items of its three groups (objects, MACRO-32 with
+`-trap-location`, a `vax_mar` line and a `-check`) 3.5 minutes, as long
+as three took when V1 was linked from MACRO-32.

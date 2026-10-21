@@ -3,9 +3,12 @@
 # PLAN.md Phase 16 step 4's end (doc/developer/vax-macro32-backend.md,
 # section 15, proposal 10): poc's own source, with rtl/vax and a BuildInfo
 # for a poc that runs on VAX/VMS (tools/build-info gen vax-dec-vms), built
-# with -build for the VAX, under -OC as poc itself needs; then, where the
-# VAX development system can be used, assembled and linked there into
-# POC.EXE, which runs as a foreign command (guest-run.com). Its options
+# with -build for the VAX, under -OC as poc itself needs, writing poc's
+# own objects (PLAN.md Phase 18 step 7c; doc/developer/
+# vax-object-language.md, section 18.2, proposal 6); then, where the VAX
+# development system can be used, sent there in binary, converted by
+# tools/vax-do and linked into POC.EXE with no MACRO but PocRtl.mar's,
+# which runs as a foreign command (guest-run.com). Its options
 # are given unquoted, so DCL uppercases them, and poc on VMS matches them
 # without regard to case (section 10; section 15, proposal 6): -HELP
 # prints what this poc's -help does, -VERSION names vax-dec-vms and no
@@ -26,7 +29,7 @@ rm -rf gen obj sums
 : >result
 "$root/tools/build-info" gen vax-dec-vms >>result 2>&1
 mkdir obj
-(cd obj && poc -OC -target vax-dec-vms -import-path ../$root/src/front \
+(cd obj && poc -OC -target vax-dec-vms -vax-objects -import-path ../$root/src/front \
   -import-path ../$root/src/back/vax -import-path ../$root/src/back/vax/vms -import-path ../$root/rtl/vax -import-path ../$root/src/driver \
   -import-path ../$root/src/driver/no-llvm -import-path ../gen -build ../$root/src/driver/Poc.Mod) >>result 2>&1
 echo "VAX build exit $?" >>result
@@ -70,6 +73,6 @@ poc -help 2>&1 | grep -Ev '^  -(emit-llvm-ir|dump-llvm-types|opt|lto|rebuild|sta
   echo "sum of 1 to 100 is 5050"
   echo "sum of 50 to 60 is 605"
 } >guest-run.expected
-vax_do guest-run.com guest-run.expected obj/Poc.com obj/*.mar $root/rtl/vax/PocRtl.mar Sums.mod
+vax_do guest-run.com guest-run.expected obj/Poc.com obj/*.obj $root/rtl/vax/PocRtl.mar Sums.mod
 rm -rf gen obj sums help.expected guest-run.expected
 . ../../testresult.sh
