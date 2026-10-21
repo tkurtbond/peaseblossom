@@ -23,8 +23,10 @@ poc, the suite under the poc-built one, and the Stage 2 comparison - both
 compilers and the fixed point in one command. `make test` stays Stage 0 only:
 it is the fast loop, and voc is still the only way to bootstrap.
 
-The bootstrap on VAX/VMS (`PLAN.md` Phase 16 step 6;
-`doc/developer/vax-macro32-backend.md`, section 17) has stages of its own,
+The bootstrap on VAX/VMS (`PLAN.md` Phase 16 step 6, over MACRO-32,
+and Phase 18 step 7, over objects; `doc/developer/vax-macro32-backend.md`,
+section 17, and `doc/developer/vax-object-language.md`, section 18) has
+stages of its own,
 named V1-V3, run on the VAX/VMS development system:
 
 - **V1** (`vax-v1 [-vax-macro32 | -vax-objects]`): the host's poc
@@ -47,7 +49,9 @@ named V1-V3, run on the VAX/VMS development system:
   (`tools/vax-objects.sh`), or their `.mar` files byte for byte, to
   `build/vax-bootstrap/v2` and `v3`. `-install` links the last stage's
   image and copies it to `POC`'s `[.BIN]POC.EXE`. Each compilation of
-  poc takes about 45 minutes on the SIMH VAX.
+  poc takes about 50 minutes on the SIMH VAX writing objects, 43
+  writing MACRO-32, and each link with objects seconds (Phase 18,
+  `doc/developer/vax-object-language.md`, section 18.3).
 
 `make vax-v1` and `make vax-stages` run them. Neither is part of
 `make check`.

@@ -2230,3 +2230,22 @@ seconds: `vax-poc` now takes 27 seconds in all, and `vax-guest-poc` on
 seven items of its three groups (objects, MACRO-32 with
 `-trap-location`, a `vax_mar` line and a `-check`) 3.5 minutes, as long
 as three took when V1 was linked from MACRO-32.
+
+**7d** (2026-10-21): the exit gate of proposal 7, on `912289a`, and
+the phase's close-out (proposal 8, `doc/history/phases/phase-18.md`).
+The guest's runs, two at a time on the two accounts:
+
+| | result | time |
+|---|---|---|
+| `make vax-stages` (objects) | V1 = V2 = V3; 42 `.OBJ`, no `.MAR` a stage | 139 min |
+| V1's link / V2's / V3's compile | | 3 s / 54.8 min (2991 s CPU) / 77 min (2972 s CPU) |
+| `make check-vax-kit CHECK_VAX_KIT_FLAGS=-full` | passed | 117 min |
+| `make test-vax` (both ways) | 664 passed, 0 failed | 107.5 min |
+| `make test-vax-asts` | 4 passed, each program 20 times both ways | 16.6 min |
+| `make test-vax-guest-poc` (V1 from objects) | 348 passed, 0 failed | 102 min |
+
+Every time is with another run on the guest's other account for at
+least part of it; V3's compile took 2972 seconds of CPU against V2's
+2991, so its 77 minutes are the sharing's. `make check` on atla,
+cymoril, artos and alerik passed on the close-out's tree, and rackhir
+runs on the pushed closing commit.
