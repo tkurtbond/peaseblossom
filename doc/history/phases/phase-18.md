@@ -347,6 +347,11 @@ the guest, as above; rackhir at the close-out, on `2f58055`: 483
 fixtures passed, Stage 1 and Stage 2 identical, `check-strict`
 (2026-10-21).
 
+**Merged into `main`** on 2026-10-21 as `f859581`, with `check-o2` given
+`src/back/vax/host` on its import path: checked by `tools/check-hosts`
+on atla, cymoril, artos, alerik, yishana and jherek, and rackhir passed
+`f859581` (483 fixtures, Stage 1 and Stage 2 identical, `check-strict`).
+
 ## Ongoing bug fixing, during Phase 18
 
 `PLAN.md`'s "Ongoing bug fixing": fixed after Phase 17 closed and
