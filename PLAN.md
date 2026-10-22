@@ -787,6 +787,42 @@ runtime's (`153ce20`). The RPM's `%changelog` lists them. It was made as
   against `SHA256SUMS` and the signatures, the RPMs' with the key in a
   scratch rpm database.
 
+## Peaseblossom 0.8.0
+
+What `main` had gained since 0.7.0 was released as **Peaseblossom 0.8.0**
+on 2026-10-21: Phase 18, poc writing VAX/VMS object files itself, with
+traceback records and, with `-g`, the VMS debugger's (merged from
+`vax-obj` at `f859581`); `-emit-macro32`, `-emit-vax-object` and
+`-emit-vax-image` together; and poc's own source type-checking under
+`-O2` again (`make check-o2`, `0f91909`). The RPM's `%changelog` lists
+them. It was made as `doc/developer/DEVELOPER.md` section 7 says:
+
+- **The version** was set in `3f9b19d` by `make set-version`, after the
+  gate passed on atla, cymoril, artos and alerik (483 fixtures at each
+  stage, and the fixed point), with `check-install` and `check-seed` on
+  atla. rackhir passed `3f9b19d` (56 minutes), and `make check-vax-kit
+  CHECK_VAX_KIT_FLAGS=-full` passed on the guest (117 minutes).
+- **The tarball** came from `make distcheck` (SHA-256 `40b5f798...`,
+  12724566 bytes). It is signed, with the signed tag `v0.8.0`, and
+  published as a GitHub release with the kits `POC-0-8-0.COM` and
+  `POC-VMS-0-8-0.COM`.
+- **Each package** was made from the published tarball (`makesum`; only
+  the `distinfo` files changed), then built and checked on its system:
+  FreeBSD amd64 (alerik) and arm64 (rackhir), OpenBSD i386 (cymoril) and
+  amd64 (jherek), NetBSD amd64 (artos) and i386 (yishana); `check.sh` and
+  `check-vax.sh` on the stage, check-plist, portcheck and pkglint clean
+  (rackhir has no `portlint`; alerik linted the same port), packing
+  lists unchanged. Each replaced 0.7.0, installed as root, `peaseblossom`
+  before the FreeBSD and pkgsrc `peaseblossom-vax` ports were built, and
+  was checked with `check.sh` and `check-vax.sh` against the installed
+  poc from a fresh unpack of the tarball. `mock` built and checked the
+  RPMs, and on atla 0.8.0 replaces 0.7.0, with `peaseblossom-vax`.
+- **The RPMs and `SHA256SUMS`** were signed, gathered by
+  `tools/release-files` (20 files) and attached to the release; every
+  file was downloaded again, compared with the local copy and checked
+  against `SHA256SUMS` and the signatures, the RPMs' with the key in a
+  scratch rpm database.
+
 ## Ongoing bug fixing
 
 Bugs found outside a phase's own work - by using poc on other programs -

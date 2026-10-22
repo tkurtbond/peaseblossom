@@ -485,7 +485,7 @@ VMS and MACRO-32 kept as `-vax-macro32`, and poc rebuilt on the guest
 from its own objects to a fixed point with no `MACRO` but `PocRtl.mar`'s
 (closed 2026-10-21, on the `vax-obj` branch, from `main` at `10598f0`;
 `doc/history/phases/phase-18.md`), and merged into `main` on 2026-10-21
-(`f859581`); any release is the user's to decide. 15-18 are the VAX/VMS
+(`f859581`). 15-18 are the VAX/VMS
 work, 19 further extensions, 20 voc's library modules. `vax`
 was merged into `main` on 2026-10-17 (a fast-forward, at `7ec6468`), and
 new work goes on `main`. The VAX/VMS back end
@@ -493,7 +493,10 @@ new work goes on `main`. The VAX/VMS back end
 options after the file name, `SYSTEM.VAL(SYSTEM.ADDRESS, E)` of an
 external procedure and the runtime module `Directories` were released as
 **Peaseblossom 0.7.0 on 2026-10-17** (tag `v0.7.0`, with the two VAX/VMS
-kits; the record is in `PLAN.md`, "Peaseblossom 0.7.0"). Bugs found by using
+kits; the record is in `PLAN.md`, "Peaseblossom 0.7.0"). Phase 18, the
+`-emit-` options given together and `make check-o2` were released as
+**Peaseblossom 0.8.0 on 2026-10-21** (tag `v0.8.0`, with the kits; the
+record is in `PLAN.md`, "Peaseblossom 0.8.0"). Bugs found by using
 poc on other programs are fixed as they come (`PLAN.md`, "Ongoing bug
 fixing"), and the runtime-library additions and language extensions it
 shows are wanted are made the same way (`PLAN.md`, "Ongoing library
