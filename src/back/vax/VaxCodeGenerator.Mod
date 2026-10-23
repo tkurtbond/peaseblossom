@@ -1856,7 +1856,7 @@ MODULE VaxCodeGenerator;
       IF (t IS Types.PointerType) & ~(sel IS SyntaxTree.GuardSelector) THEN t := t(Types.PointerType).base END;
       IF sel IS SyntaxTree.FieldSelector THEN
         IF t IS Types.RecordType THEN
-          f := Types.FindField(t(Types.RecordType), sel(SyntaxTree.FieldSelector).name^);
+          f := Types.FindField(t(Types.RecordType), sel(SyntaxTree.FieldSelector).name);
           IF f = NIL THEN t := NIL ELSE t := f.type END
         ELSE t := NIL
         END
@@ -1898,7 +1898,7 @@ MODULE VaxCodeGenerator;
         (* done above *)
       ELSIF (sel IS SyntaxTree.FieldSelector) & (x.type IS Types.RecordType) THEN
         rec := x.type(Types.RecordType);
-        f := Types.FindField(rec, sel(SyntaxTree.FieldSelector).name^);
+        f := Types.FindField(rec, sel(SyntaxTree.FieldSelector).name);
         IF f = NIL THEN RETURN x END;
         Displace(x, VaxTypes.FieldOffset(rec, f), f.type, sel.line, sel.column);
         x.type := f.type
@@ -1974,10 +1974,10 @@ MODULE VaxCodeGenerator;
     VAR full: ARRAY 2 * 256 + 2 OF CHAR; d: TypeDescriptor;
   BEGIN
     outside := FALSE;
-    IF rec.name[0] # 0X THEN
-      COPY(rec.moduleName, full); Append(full, "."); Append(full, rec.name);
+    IF rec.name # NIL THEN
+      COPY(rec.moduleName^, full); Append(full, "."); Append(full, rec.name^);
       VaxTypes.MakeSymbol(full, symbol);
-      IF rec.moduleName # module.name^ THEN AddExternal(symbol); outside := TRUE END
+      IF ~Names.Equals(rec.moduleName, module.name^) THEN AddExternal(symbol); outside := TRUE END
     ELSE
       d := descriptors;
       WHILE (d # NIL) & (d.rec # rec) DO d := d.next END;
@@ -2005,10 +2005,10 @@ MODULE VaxCodeGenerator;
   PROCEDURE MethodSymbol(owner: Types.RecordType; name: ARRAY OF CHAR; VAR symbol: VaxTypes.Symbol): BOOLEAN;
     VAR full: ARRAY 3 * 256 + 3 OF CHAR;
   BEGIN
-    COPY(owner.moduleName, full); Append(full, "."); Append(full, owner.name); Append(full, ".");
+    COPY(owner.moduleName^, full); Append(full, "."); Append(full, owner.name^); Append(full, ".");
     Append(full, name);
     VaxTypes.MakeSymbol(full, symbol);
-    IF owner.moduleName = module.name^ THEN RETURN FALSE END;
+    IF Names.Equals(owner.moduleName, module.name^) THEN RETURN FALSE END;
     AddExternal(symbol); RETURN TRUE
   END MethodSymbol;
 
@@ -2407,7 +2407,7 @@ MODULE VaxCodeGenerator;
       t := StaticType(de.designator, obj);
       IF (t # NIL) & (t IS Types.RecordType) THEN
         rec := t(Types.RecordType);
-        IF (rec.name[0] = 0X) & (rec.moduleName[0] # 0X) & (rec.moduleName # module.name^) THEN
+        IF (rec.name = NIL) & (rec.moduleName # NIL) & ~Names.Equals(rec.moduleName, module.name^) THEN
           Emit1("CLRL", dst)
         ELSE
           Instruction2("MOVAB", RecordTagRef(rec), Specifier(dst))
@@ -2443,7 +2443,7 @@ MODULE VaxCodeGenerator;
      behind the receiver; anything else is refused, as on LLVM. *)
   PROCEDURE MethodCallTarget(d: SyntaxTree.Designator; obj: SymbolTable.Object; line, column: INTEGER): MethodTarget;
     VAR sel, last, beforeLast, prev, real: SyntaxTree.Selector; t: Types.Type; rec, base: Types.RecordType;
-        m: MethodTarget; name: SyntaxTree.Ident; method: Types.Method; baseCall: BOOLEAN;
+        m: MethodTarget; name: Names.Name; method: Types.Method; baseCall: BOOLEAN;
   BEGIN
     sel := d.selectors; last := NIL; beforeLast := NIL;
     WHILE sel # NIL DO beforeLast := last; last := sel; sel := sel.next END;
@@ -2454,7 +2454,7 @@ MODULE VaxCodeGenerator;
       m.stop := beforeLast; baseCall := TRUE
     ELSE RETURN NIL
     END;
-    COPY(m.stop(SyntaxTree.FieldSelector).name^, name);
+    name := m.stop(SyntaxTree.FieldSelector).name;
     CutSelectors(d, m.stop, prev);
     t := StaticType(d, obj);
     (* the last selector of the receiver but a guard, which keeps where the
@@ -2642,7 +2642,7 @@ MODULE VaxCodeGenerator;
       MoveInto(v, callee); Release(v);
       NewLabel(ok); Instruction1("BNEQ", LabelRef(ok)); Trap(4, line, column); EmitLabel(ok)
     ELSIF m # NIL THEN
-      outside := ~m.indirect & MethodSymbol(m.owner, m.called.name, symbol)
+      outside := ~m.indirect & MethodSymbol(m.owner, m.called.name^, symbol)
     ELSIF nested # NIL THEN
       NestedSymbol(nested, symbol); outside := FALSE
     ELSE
@@ -4759,17 +4759,17 @@ MODULE VaxCodeGenerator;
   PROCEDURE InitSymbol(rec: Types.RecordType; VAR symbol: VaxTypes.Symbol; line, column: INTEGER): BOOLEAN;
     VAR e: InitRecord; full: ARRAY 2 * 256 + 8 OF CHAR;
   BEGIN
-    IF rec.moduleName[0] = 0X THEN COPY(module.name^, rec.moduleName) END;
-    IF (rec.initPath[0] = 0X) & (rec.moduleName = module.name^) THEN
+    IF rec.moduleName = NIL THEN rec.moduleName := Names.Intern(module.name^) END;
+    IF (rec.initPath[0] = 0X) & Names.Equals(rec.moduleName, module.name^) THEN
       INC(anonymousInits);
       COPY("-anon", rec.initPath); AppendInt(rec.initPath, anonymousInits);
       e := InitRecordOf(rec); e.wanted := TRUE
     ELSIF rec.initPath[0] = 0X THEN
       Unsupported(line, column, "a record of another module's whose field initializers cannot be reached from here")
     END;
-    COPY(rec.moduleName, full); Append(full, "."); Append(full, rec.initPath); Append(full, ".-init");
+    COPY(rec.moduleName^, full); Append(full, "."); Append(full, rec.initPath); Append(full, ".-init");
     VaxTypes.MakeSymbol(full, symbol);
-    IF rec.moduleName # module.name^ THEN AddExternal(symbol); RETURN TRUE END;
+    IF ~Names.Equals(rec.moduleName, module.name^) THEN AddExternal(symbol); RETURN TRUE END;
     RETURN FALSE
   END InitSymbol;
 
@@ -5325,7 +5325,7 @@ MODULE VaxCodeGenerator;
   BEGIN
     IF ~(target.type IS Types.RecordType) THEN RETURN END;
     rec := target.type(Types.RecordType);
-    IF rec.name[0] = 0X THEN RETURN END;
+    IF rec.name = NIL THEN RETURN END;
     (* the last selector but a guard, which keeps the dynamic type's
        source: d(T) := x is checked as d := x is *)
     sel := NIL; last := s.target.selectors;
@@ -6094,7 +6094,7 @@ MODULE VaxCodeGenerator;
     f := rec.fields;
     WHILE f # NIL DO
       type := DebugType(f.type);
-      IF (type # NIL) & (f.name # "") THEN VaxImage.AddField(spec, f.name, VaxTypes.FieldOffset(whole, f), type) END;
+      IF (type # NIL) & (f.name # NIL) THEN VaxImage.AddField(spec, f.name^, VaxTypes.FieldOffset(whole, f), type) END;
       f := f.next
     END
   END DebugFields;
@@ -6108,7 +6108,7 @@ MODULE VaxCodeGenerator;
     d := debugRecords;
     WHILE (d # NIL) & (d.rec # rec) DO d := d.next END;
     IF d = NIL THEN
-      COPY(rec.name, name);
+      Names.GetText(rec.name, name);
       i := 0; WHILE (name[i] # 0X) & (name[i] # ".") DO INC(i) END;
       name[i] := 0X;
       NEW(d); d.rec := rec; d.spec := VaxImage.Record(name, VaxTypes.Size(rec)); d.next := debugRecords;
@@ -6529,10 +6529,10 @@ MODULE VaxCodeGenerator;
       IF typeObj = NIL THEN RETURN END;
       owner := TargetRecord(typeObj.type);
       IF owner = NIL THEN RETURN END;
-      method := Types.FindOwnMethod(owner, pd.name.name^);
+      method := Types.FindOwnMethod(owner, pd.name.name);
       IF method = NIL THEN RETURN END;
-      pt := method.procType; IF MethodSymbol(owner, method.name, symbol) THEN END; global := TRUE;
-      COPY(module.name^, rootFull); Append(rootFull, "."); Append(rootFull, owner.name); Append(rootFull, ".");
+      pt := method.procType; IF MethodSymbol(owner, method.name^, symbol) THEN END; global := TRUE;
+      COPY(module.name^, rootFull); Append(rootFull, "."); Append(rootFull, owner.name^); Append(rootFull, ".");
       Append(rootFull, pd.name.name^);
       rootScope := SemanticActions.OpenProcedureBodyScope(pd, moduleScope, typeObj.type, pt)
     ELSE
@@ -6638,7 +6638,7 @@ MODULE VaxCodeGenerator;
         base := obj.type(Types.PointerType).base;
         IF (base # NIL) & (base IS Types.RecordType) THEN rec := base(Types.RecordType); Append(name, ".base") END
       END;
-      IF (rec # NIL) & (rec.name = name) & (rec.moduleName = mod.name^) THEN
+      IF (rec # NIL) & Names.Equals(rec.name, name) & Names.Equals(rec.moduleName, mod.name^) THEN
         COPY(mod.name^, full); Append(full, "."); Append(full, name);
         IF ~VaxTypes.Enter(programNames, full, symbol, clash) THEN RETURN FALSE END
       END;
@@ -6651,7 +6651,7 @@ MODULE VaxCodeGenerator;
         IF p.receiver # NIL THEN
           obj := SymbolTable.FindLocal(modScope, p.receiver.typeName); rec := NIL;
           IF obj # NIL THEN rec := TargetRecord(obj.type) END;
-          IF rec # NIL THEN Append(full, rec.name) ELSE Append(full, p.receiver.typeName^) END;
+          IF rec # NIL THEN Append(full, rec.name^) ELSE Append(full, p.receiver.typeName^) END;
           Append(full, ".")
         END;
         Append(full, p.name.name^);
@@ -6684,7 +6684,7 @@ MODULE VaxCodeGenerator;
         base := obj.type(Types.PointerType).base;
         IF (base # NIL) & (base IS Types.RecordType) THEN rec := base(Types.RecordType); Append(name, ".base") END
       END;
-      IF (rec # NIL) & (rec.name = name) & (rec.moduleName = module.name^) THEN
+      IF (rec # NIL) & Names.Equals(rec.name, name) & Names.Equals(rec.moduleName, module.name^) THEN
         COPY(module.name^, full); Append(full, "."); Append(full, name);
         IF ~VaxTypes.Enter(names, full, symbol, clash) THEN
           COPY(full, text); Append(text, " and "); Append(text, clash);
@@ -6730,7 +6730,7 @@ MODULE VaxCodeGenerator;
           (* the record's name, as MethodSymbol, a pointer receiver's too *)
           typeObj := SymbolTable.FindLocal(moduleScope, p.receiver.typeName); owner := NIL;
           IF typeObj # NIL THEN owner := TargetRecord(typeObj.type) END;
-          IF owner # NIL THEN Append(full, owner.name) ELSE Append(full, p.receiver.typeName^) END;
+          IF owner # NIL THEN Append(full, owner.name^) ELSE Append(full, p.receiver.typeName^) END;
           Append(full, ".")
         END;
         Append(full, p.name.name^);
@@ -6757,7 +6757,7 @@ MODULE VaxCodeGenerator;
     IF t = NIL THEN RETURN END;
     IF t IS Types.RecordType THEN
       rec := t(Types.RecordType);
-      IF (rec.moduleName # module.name^) OR (rec.initPath[0] = 0X) THEN RETURN END;
+      IF ~Names.Equals(rec.moduleName, module.name^) OR (rec.initPath[0] = 0X) THEN RETURN END;
       e := initRecords;
       WHILE (e # NIL) & (e.rec # rec) DO e := e.next END;
       IF e # NIL THEN RETURN END;
@@ -6788,7 +6788,7 @@ MODULE VaxCodeGenerator;
     VaxInstructions.SetPosition(0, 0); (* each initializer's line, for the traceback *)
     BeginBody;
     scope := rec.declScope(SymbolTable.Scope);
-    COPY(rec.moduleName, procedureName); Append(procedureName, "."); Append(procedureName, rec.initPath);
+    COPY(rec.moduleName^, procedureName); Append(procedureName, "."); Append(procedureName, rec.initPath);
     IF (rec.baseType # NIL) & (rec.baseType IS Types.RecordType) & rec.baseType(Types.RecordType).needsInit THEN
       r := NewRegisterFrom(longword, 2, 0, 0); r.pinned := TRUE; Instruction2("MOVL", Displaced(4, VaxInstructions.ap), Specifier(r));
       InitRecordAt(r, rec.baseType(Types.RecordType), 0, 0); Release(r)
@@ -6816,7 +6816,7 @@ MODULE VaxCodeGenerator;
     Instruction0("RET");
     scope := moduleScope; procedureName[0] := 0X;
     bodyFirst := first; bodyLast := last; first := NIL; last := NIL;
-    COPY("; the field initializers of ", text); Append(text, rec.moduleName); Append(text, ".");
+    COPY("; the field initializers of ", text); Append(text, rec.moduleName^); Append(text, ".");
     Append(text, rec.initPath); EmitComment(text);
     Add(VaxInstructions.RoutineBegin(symbol));
     IF rec.initPath[0] # "-" THEN
@@ -7196,7 +7196,7 @@ MODULE VaxCodeGenerator;
         WHILE r # NIL DO RecordTagSymbol(r(Types.RecordType), symbol, outside); r := r(Types.RecordType).baseType END;
         FOR i := 0 TO MethodSlots.MethodSlotCount(d.rec) - 1 DO
           m := MethodSlots.SlotMethod(d.rec, i, owner);
-          IF MethodSymbol(owner, m.name, symbol) THEN END
+          IF MethodSymbol(owner, m.name^, symbol) THEN END
         END
       END;
       d := d.next
@@ -7235,7 +7235,7 @@ MODULE VaxCodeGenerator;
       END;
       FOR i := MethodSlots.MethodSlotCount(rec) - 1 TO 0 BY -1 DO
         m := MethodSlots.SlotMethod(rec, i, owner);
-        IF MethodSymbol(owner, m.name, symbol) THEN END;
+        IF MethodSymbol(owner, m.name^, symbol) THEN END;
         PutDirective1(".ADDRESS", VaxInstructions.Symbol(symbol, 0))
       END
     END ProcTab;
@@ -7266,8 +7266,8 @@ MODULE VaxCodeGenerator;
     WHILE d # NIL DO
       IF d.rec # NIL THEN
         t := d.rec;
-        IF d.rec.name[0] # 0X THEN
-          COPY("; ", text); Append(text, d.rec.moduleName); Append(text, "."); Append(text, d.rec.name)
+        IF d.rec.name # NIL THEN
+          COPY("; ", text); Append(text, d.rec.moduleName^); Append(text, "."); Append(text, d.rec.name^)
         ELSE
           COPY("; ", text); Types.Describe(t, text); Append(text, ", declared in a procedure or inline")
         END

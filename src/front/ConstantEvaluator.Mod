@@ -966,7 +966,7 @@ MODULE ConstantEvaluator;
         sel: SyntaxTree.FieldSelector DO
           IF t IS Types.PointerType THEN t := t(Types.PointerType).base END;
           IF (t # NIL) & (t IS Types.RecordType) THEN
-            field := Types.FindField(t(Types.RecordType), sel.name^);
+            field := Types.FindField(t(Types.RecordType), sel.name);
             IF field = NIL THEN t := NIL ELSE t := field.type END
           ELSE
             t := NIL
@@ -1997,7 +1997,7 @@ MODULE ConstantEvaluator;
   PROCEDURE ReportMissingDefault(line, column: INTEGER; f: Types.Field);
   BEGIN
     Diagnostics.ErrorAbout(line, column,
-      "the default of this field is not constant, so a constant literal must give it", f.name)
+      "the default of this field is not constant, so a constant literal must give it", f.name^)
   END ReportMissingDefault;
 
   (* the element of lit that names field, NIL if none does *)
@@ -2005,7 +2005,7 @@ MODULE ConstantEvaluator;
     VAR el: SyntaxTree.LiteralElementNode;
   BEGIN
     el := lit.elements;
-    WHILE (el # NIL) & (~Names.Equals(el.field, f.name)) DO el := el.next END;
+    WHILE (el # NIL) & (el.field # f.name) DO el := el.next END;
     RETURN el
   END NamedElement;
 
@@ -2182,7 +2182,7 @@ MODULE ConstantEvaluator;
       el := lit.elements;
       WHILE el # NIL DO
         (* a name that is no field: the checker says so *)
-        IF (el.field = NIL) OR (Types.FindField(t(Types.RecordType), el.field^) = NIL) THEN RETURN FALSE END;
+        IF (el.field = NIL) OR (Types.FindField(t(Types.RecordType), el.field) = NIL) THEN RETURN FALSE END;
         el := el.next
       END;
       RETURN FieldsConstant(lit, t(Types.RecordType), scope)
@@ -2208,7 +2208,7 @@ MODULE ConstantEvaluator;
   (* ---- selecting from a record or array constant: origin.x, table[3] ---- *)
 
   (* the field of a structured value v of record type rec named name *)
-  PROCEDURE FieldValue(v: Types.Value; rec: Types.RecordType; name: ARRAY OF CHAR): Types.Value;
+  PROCEDURE FieldValue(v: Types.Value; rec: Types.RecordType; name: Names.Name): Types.Value;
     VAR levels: ARRAY 64 OF Types.RecordType; n, i: INTEGER; r: Types.RecordType;
         f: Types.Field; e: Types.Value;
   BEGIN
@@ -2282,7 +2282,7 @@ MODULE ConstantEvaluator;
         Diagnostics.Error(sel.line, sel.column, "not a constant expression");
         RETURN UndefinedValue()
       ELSIF sel IS SyntaxTree.FieldSelector THEN
-        e := FieldValue(v, v.type(Types.RecordType), sel(SyntaxTree.FieldSelector).name^);
+        e := FieldValue(v, v.type(Types.RecordType), sel(SyntaxTree.FieldSelector).name);
         IF e = NIL THEN RETURN UndefinedValue() END;
         v := e
       ELSE

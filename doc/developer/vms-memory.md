@@ -375,3 +375,45 @@ The census (cymoril, all of poc): `SyntaxTree.Designator` is 1.67 MB for
 `Types.Param` (4.2 MB, 14,594), `SyntaxTree.LiteralExprNode` (2.7 MB,
 9,533; its lexeme, for 4d), `Types.Field` (1.75 MB) and
 `Types.RecordType` (1.19 MB), for 4c.
+
+### Step 4c: `Types`' names interned (2026-10-23)
+
+`Types`' name fields as `Names.Name`: a field's, a parameter's, a
+method's and its receiver type's, a record type's own and its module's,
+and `messageModule`. The adders and lookups (`AddField`, `FindField`,
+`AddMethod`, `FindMethod`, `FindOwnMethod`, `FindOverridable`,
+`AddParam`) take a `Names.Name` and compare pointers, so the checker and
+both back ends pass the syntax tree's names straight through.
+`MethodSlots.MethodSlot` and `ConstantEvaluator`'s field lookup do the
+same. The code generators keep the module's own name as an `Ident`. They
+compare a record's module with it by `Names.Equals`, and they intern a
+name when they give one to an anonymous record (`-anon`*n*) or to a
+record's module. A test for an empty name is now `= NIL`, found by a grep
+for `[0]` on these fields, since `name[0] = 0X` still compiles on a
+pointer. No writes into a name's text were found. `make check` on atla
+(the fixed point, `check-strict` and `check-o2` included) and `gmake
+check-stage1` on cymoril, artos and alerik passed, with the VAX objects
+unchanged. `vax-in` failed once on atla with an extra
+`%DELETE-W-SEARCHFAIL` from the guest and passed when run again. Peak
+resident size in MB, as for 4b:
+
+| run                          | cymoril, 4b | cymoril, 4c | atla, 4b | atla, 4c |
+|------------------------------|------------:|------------:|---------:|---------:|
+| all of poc, one program      |  67.8       |  45.1       |  87.5    |  68.4    |
+| `Poc` alone                  |  37.8       |  29.7       |  46.3    |  37.5    |
+| `VaxCodeGenerator` alone     |  43.7       |  40.2       |  54.3    |  50.1    |
+| `VaxToolchainDriver` alone   |  23.5       |  17.5       |  28.2    |  24.5    |
+| `SemanticActions` alone      |  22.1       |  19.8       |  28.3    |  26.0    |
+| `Parser` alone               |  16.6       |  12.6       |  19.3    |  16.3    |
+| `NestedProcedures` alone     |  14.2       |  11.0       |  17.2    |  14.2    |
+| `ModuleInterface` alone      |  13.1       |  11.9       |  15.0    |  13.9    |
+
+The census (cymoril, all of poc): `Types.Param` is 0.47 MB for 14,594
+(4.2 MB before), `Types.Field` 0.28 MB for 5,757 (1.75) and
+`Types.RecordType` 0.45 MB for 1,484 (1.19). When the front end has
+checked every module, 13.6 MB live (19.6) and a heap of 24.0 MB (34.6);
+at `VaxCodeGenerator`, 35.5 MB live (41.4) in a heap of 65.3 MB (58.7:
+the heap's growth depends on when the collector runs). There the largest
+are now the back end's `VaxInstructions.Specifier` (7.2 MB, 90,503) and
+`VaxInstructions.Line` (6.2 MB, 77,021), the plan's item 3, and then
+`SyntaxTree.LiteralExprNode` (2.7 MB, 9,506; its lexeme, for 4d).

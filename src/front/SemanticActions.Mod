@@ -139,7 +139,7 @@ MODULE SemanticActions;
        currently checking, for NameRecordType. Saved/restored around
        CheckModuleBody's own body, since ResolveImport recurses into it
        for each imported module's .sym file. *)
-    currentModuleName: SyntaxTree.Ident;
+    currentModuleName: Names.Name;
     (* PLAN.md Phase 9 step 4a: set by every FindQualified call - TRUE when
        it already reported why it returned NIL ("not an imported module",
        "not exported"), so a caller's own generic "undeclared identifier"
@@ -1038,9 +1038,9 @@ MODULE SemanticActions;
      which no consumer needs yet (Phase 9 step 1 emits type descriptors
      for module-level records only; see LLVMCodeGenerator.Mod's own
      EmitTypeDescriptors). *)
-  PROCEDURE NameRecordType(rec: Types.RecordType; name: ARRAY OF CHAR);
+  PROCEDURE NameRecordType(rec: Types.RecordType; name: Names.Name);
   BEGIN
-    COPY(currentModuleName, rec.moduleName); COPY(name, rec.name)
+    rec.moduleName := currentModuleName; rec.name := name
   END NameRecordType;
 
   (* PLAN.md Phase 9 step 4a: whether rec was declared by the module
@@ -1098,7 +1098,7 @@ MODULE SemanticActions;
            (Appendix A/the Trees example's Node.name-) - unlike
            CheckExportMark's callers (CONST/TYPE names), so this does not
            call CheckExportMark. *)
-        addedField := Types.AddField(rec, idents.name^, fieldType,
+        addedField := Types.AddField(rec, idents.name, fieldType,
                                       idents.exportMark # SyntaxTree.exportNone,
                                       idents.exportMark = SyntaxTree.exportReadOnly,
                                       idents.line, idents.column);
@@ -1153,8 +1153,8 @@ MODULE SemanticActions;
     node := obj.pendingTypeNode(SyntaxTree.RecordTypeNode);
     baseType := ResolveRecordBaseType(scope, node);
     rec := Types.NewRecordType(baseType);
-    COPY(currentModuleName, rec.moduleName);
-    IF scope.outer = SymbolTable.Universe THEN NameRecordType(rec, obj.name^); COPY(obj.name^, rec.initPath) END;
+    rec.moduleName := currentModuleName;
+    IF scope.outer = SymbolTable.Universe THEN NameRecordType(rec, obj.name); COPY(obj.name^, rec.initPath) END;
     obj.type := rec; obj.pendingTypeNode := NIL;
     PopulateRecordFields(rec, node, scope);
     NoteExtension(rec);
@@ -1181,9 +1181,9 @@ MODULE SemanticActions;
       ptr.base := CheckPointerBase(base, ptrNode.line, ptrNode.column);
       IF (scope.outer = SymbolTable.Universe) & (base IS Types.RecordType) THEN
         anonBase := base(Types.RecordType);
-        IF anonBase.name[0] = 0X THEN
+        IF anonBase.name = NIL THEN
           COPY(obj.name^, baseName); AppendBaseSuffix(baseName);
-          NameRecordType(anonBase, baseName); COPY(baseName, anonBase.initPath)
+          NameRecordType(anonBase, Names.Intern(baseName)); COPY(baseName, anonBase.initPath)
         END
       END;
       obj.resolving := FALSE;
@@ -1345,7 +1345,7 @@ MODULE SemanticActions;
   BEGIN
     baseType := ResolveRecordBaseType(scope, node);
     rec := Types.NewRecordType(baseType);
-    COPY(currentModuleName, rec.moduleName);
+    rec.moduleName := currentModuleName;
     PopulateRecordFields(rec, node, scope);
     NoteExtension(rec);
     RETURN rec
@@ -1385,7 +1385,7 @@ MODULE SemanticActions;
         paramType := ResolveType(scope, section.type, FALSE);
         idents := section.names;
         WHILE idents # NIL DO
-          Types.AddParam(pt, idents.name^, paramType, section.isVar,
+          Types.AddParam(pt, idents.name, paramType, section.isVar,
                          idents.exportMark = SyntaxTree.exportReadOnly);
           idents := idents.next
         END;
@@ -1532,7 +1532,7 @@ MODULE SemanticActions;
       IF rec.initPath = path THEN
         f := rec.fields;
         WHILE f # NIL DO
-          IF Extend(f.name) THEN NameInitPaths(f.type, inner) END;
+          IF Extend(f.name^) THEN NameInitPaths(f.type, inner) END;
           f := f.next
         END
       END
@@ -1939,7 +1939,7 @@ MODULE SemanticActions;
             t := Types.Undefined
           ELSE
             rec := t(Types.RecordType);
-            field := Types.FindField(rec, sel.name^);
+            field := Types.FindField(rec, sel.name);
             IF field # NIL THEN
               (* Judged against the record that *declared* the field, not
                  the (possibly local extension) record it was reached
@@ -1954,7 +1954,7 @@ MODULE SemanticActions;
                 readOnly := readOnly OR (field.readOnly & ~IsLocalRecord(fieldOwner))
               END
             ELSE
-              method := Types.FindMethod(rec, sel.name^);
+              method := Types.FindMethod(rec, sel.name);
               IF method = NIL THEN
                 (* one of rec's bases did not resolve, and was reported:
                    the name may be that base's *)
@@ -2012,7 +2012,7 @@ MODULE SemanticActions;
           IF methodOwner # NIL THEN
             method := NIL;
             IF (methodOwner.baseType # NIL) & (methodOwner.baseType IS Types.RecordType) THEN
-              method := Types.FindMethod(methodOwner.baseType(Types.RecordType), methodName^)
+              method := Types.FindMethod(methodOwner.baseType(Types.RecordType), methodName)
             END;
             IF method = NIL THEN
               Diagnostics.Error(sel.line, sel.column,
@@ -2781,7 +2781,7 @@ MODULE SemanticActions;
   BEGIN
     (* no module is being checked: a backend reopening a procedure's scope
        (OpenProcedureBodyScope) of a module the checker has accepted *)
-    IF currentModuleName[0] = 0X THEN RETURN END;
+    IF currentModuleName = NIL THEN RETURN END;
     r := rec;
     WHILE r # NIL DO
       IF ~IsLocalRecord(r) THEN
@@ -2789,11 +2789,11 @@ MODULE SemanticActions;
         WHILE f # NIL DO
           IF ~f.exported THEN
             Diagnostics.ErrorAbout(line, column,
-              "no literal of this type can be written here; this field is not exported by its module", f.name);
+              "no literal of this type can be written here; this field is not exported by its module", f.name^);
             RETURN
           ELSIF f.readOnly THEN
             Diagnostics.ErrorAbout(line, column,
-              "no literal of this type can be written here; this field is read-only outside its module", f.name);
+              "no literal of this type can be written here; this field is read-only outside its module", f.name^);
             RETURN
           END;
           f := f.next
@@ -2935,7 +2935,7 @@ MODULE SemanticActions;
           Diagnostics.Error(el.line, el.column, "a record literal names its fields: field := value");
           CheckLiteralElement(scope, el, Types.Undefined)
         ELSE
-          field := Types.FindField(rec, el.field^);
+          field := Types.FindField(rec, el.field);
           earlier := lit.elements;
           WHILE (earlier # el) & (earlier.field # el.field) DO earlier := earlier.next END;
           IF field = NIL THEN
@@ -3611,7 +3611,7 @@ MODULE SemanticActions;
      P' must be exported too" - at least as exported as the original.
      TRUE if this is a legal override, or there is no inherited method of
      this name at all (not an override). *)
-  PROCEDURE CheckOverride(owner: Types.RecordType; name: ARRAY OF CHAR;
+  PROCEDURE CheckOverride(owner: Types.RecordType; name: Names.Name;
                           procType: Types.ProcedureType; receiverIsVar, exported: BOOLEAN;
                           line, column: INTEGER): BOOLEAN;
     VAR inherited: Types.Method;
@@ -3662,7 +3662,7 @@ MODULE SemanticActions;
   BEGIN
     q := pt.params;
     WHILE q # NIL DO
-      COPY(name, text); AppendText(text, ", its parameter "); AppendText(text, q.name);
+      COPY(name, text); AppendText(text, ", its parameter "); AppendText(text, q.name^);
       IF q.isReadOnly THEN
         Diagnostics.ErrorAbout(line, column,
           'a procedure VMS calls cannot have a read-only parameter; declare it VAR or a value', text)
@@ -3693,10 +3693,10 @@ MODULE SemanticActions;
     WHILE p # NIL DO
       IF ~p.isVar & ~p.isReadOnly & ~IsOpenCharArray(p.type) & ~FitsLongword(p.type) THEN
         Diagnostics.ErrorAbout(line, column,
-          'a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR', p.name)
+          'a value parameter of a ["VMS"] procedure must fit a longword; declare it x- or VAR', p.name^)
       END;
       IF (p.type # NIL) & (p.type IS Types.ProcedureType) THEN
-        CheckVmsCallbackType(p.type(Types.ProcedureType), p.name, line, column)
+        CheckVmsCallbackType(p.type(Types.ProcedureType), p.name^, line, column)
       END;
       p := p.next
     END
@@ -3867,9 +3867,9 @@ MODULE SemanticActions;
         pt := ResolveFormalPars(scope, d.formals);
         IF owner # NIL THEN
           IF d.isForward THEN
-            unused := CheckOverride(owner, d.name.name^, pt, d.receiver.isVar, exported, d.line, d.column);
-            method := Types.AddMethod(owner, d.name.name^, pt, d.receiver.isVar, exported, TRUE,
-                                       d.receiver.typeName^, d.line, d.column)
+            unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
+            method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, TRUE,
+                                       d.receiver.typeName, d.line, d.column)
           ELSE
             (* owner's *own* list only: FindMethod's walk up the base
                chain would find an *imported* base's forward-declared
@@ -3878,7 +3878,7 @@ MODULE SemanticActions;
                mutating the base's method instead of recording an
                override on owner. Latent until PLAN.md Phase 9 step 4a's
                fixtures first overrode an imported procedure. *)
-            method := Types.FindOwnMethod(owner, d.name.name^);
+            method := Types.FindOwnMethod(owner, d.name.name);
             IF (method # NIL) & method.pending THEN
               IF ~Types.ProcedureTypesMatch(pt, method.procType) OR (method.receiverIsVar # d.receiver.isVar) THEN
                 Diagnostics.Error(d.line, d.column,
@@ -3886,9 +3886,9 @@ MODULE SemanticActions;
               END;
               method.pending := FALSE; method.procType := pt
             ELSE
-              unused := CheckOverride(owner, d.name.name^, pt, d.receiver.isVar, exported, d.line, d.column);
-              method := Types.AddMethod(owner, d.name.name^, pt, d.receiver.isVar, exported, FALSE,
-                                         d.receiver.typeName^, d.line, d.column)
+              unused := CheckOverride(owner, d.name.name, pt, d.receiver.isVar, exported, d.line, d.column);
+              method := Types.AddMethod(owner, d.name.name, pt, d.receiver.isVar, exported, FALSE,
+                                         d.receiver.typeName, d.line, d.column)
             END;
             CheckProcedureBody(d, scope, receiverType, pt)
           END
@@ -4016,9 +4016,9 @@ MODULE SemanticActions;
           (* a hidden field of another module's record is not declared as
              far as this module is concerned (Types, "hidden members") *)
           IF (inherited # NIL) & (inherited.exported OR (base.moduleName = currentModuleName)) THEN
-            COPY("field ", text); AppendText(text, f.name);
-            IF base.name[0] # 0X THEN
-              AppendText(text, " is already a field of the base type "); AppendText(text, base.name)
+            COPY("field ", text); AppendText(text, f.name^);
+            IF base.name # NIL THEN
+              AppendText(text, " is already a field of the base type "); AppendText(text, base.name^)
             ELSE AppendText(text, " is already a field of a base type")
             END;
             Diagnostics.Error(f.line, f.column, text)
@@ -4348,10 +4348,10 @@ MODULE SemanticActions;
   PROCEDURE CheckModuleBody(module: SyntaxTree.ModuleNode; parseModule: ParseModuleProc;
                             resolving: ImportChain; VAR cache: LoadedModule): SymbolTable.Scope;
     VAR
-      scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode; savedModuleName: SyntaxTree.Ident;
+      scope: SymbolTable.Scope; imp: SyntaxTree.ImportNode; savedModuleName: Names.Name;
   BEGIN
-    COPY(currentModuleName, savedModuleName); COPY(module.name^, currentModuleName);
-    COPY(currentModuleName, Types.messageModule);
+    savedModuleName := currentModuleName; currentModuleName := module.name;
+    Types.messageModule := currentModuleName;
     scope := SymbolTable.OpenScope(SymbolTable.Universe);
     imp := module.imports;
     WHILE imp # NIL DO
@@ -4360,7 +4360,7 @@ MODULE SemanticActions;
     END;
     IF module.declarations # NIL THEN CheckDeclarations(module.declarations, scope) END;
     CheckStatementSeq(scope, module.statements, 0, NIL);
-    COPY(savedModuleName, currentModuleName); COPY(currentModuleName, Types.messageModule);
+    currentModuleName := savedModuleName; Types.messageModule := currentModuleName;
     RETURN scope
   END CheckModuleBody;
 

@@ -979,7 +979,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     IF (a IS Types.RecordType) & (b IS Types.RecordType) THEN
       ra := a(Types.RecordType); rb := b(Types.RecordType);
-      RETURN (ra.name # "") & (ra.moduleName # "") & (ra.name = rb.name) & (ra.moduleName = rb.moduleName)
+      RETURN (ra.name # NIL) & (ra.moduleName # NIL) & (ra.name = rb.name) & (ra.moduleName = rb.moduleName)
     END;
     RETURN FALSE
   END SameNamedRecord;
@@ -1040,7 +1040,7 @@ MODULE LLVMCodeGenerator;
       IF typeId >= 0 THEN
         IF ~first THEN WriteRaw(w, ", ") END;
         first := FALSE;
-        WriteRaw(w, "!DIDerivedType(tag: DW_TAG_member, name: "); WriteMetadataString(w, f.name);
+        WriteRaw(w, "!DIDerivedType(tag: DW_TAG_member, name: "); WriteMetadataString(w, f.name^);
         WriteRaw(w, ", baseType: !"); WriteNatural(w, typeId);
         WriteRaw(w, ", size: "); WriteNatural(w, 8 * MemoryLayout.Size(f.type, ConstantEvaluator.wordSize, debugSizeModel));
         WriteRaw(w, ", offset: ");
@@ -1058,8 +1058,8 @@ MODULE LLVMCodeGenerator;
     VAR n: INTEGER;
   BEGIN
     name[0] := 0X;
-    IF (rec.moduleName # "") & (rec.name # "") THEN
-      COPY(rec.moduleName, name); Strcat(name, "."); Strcat(name, rec.name);
+    IF (rec.moduleName # NIL) & (rec.name # NIL) THEN
+      COPY(rec.moduleName^, name); Strcat(name, "."); Strcat(name, rec.name^);
       n := 0; WHILE name[n] # 0X DO INC(n) END;
       IF (n > 5) & (name[n - 5] = ".") & (name[n - 4] = "b") & (name[n - 3] = "a") & (name[n - 2] = "s")
          & (name[n - 1] = "e") THEN
@@ -1636,7 +1636,7 @@ MODULE LLVMCodeGenerator;
      that belongs to it (.tdesc, .tag, and its type-bound procedures). *)
   PROCEDURE RecordSymbolBase(rec: Types.RecordType; VAR text: ARRAY OF CHAR);
   BEGIN
-    COPY("@", text); Strcat(text, rec.moduleName); Strcat(text, "."); Strcat(text, rec.name)
+    COPY("@", text); Strcat(text, rec.moduleName^); Strcat(text, "."); Strcat(text, rec.name^)
   END RecordSymbolBase;
 
   (* The one thing the rest of Phase 9 (NEW, IS, guards, dispatch) needs
@@ -2289,15 +2289,16 @@ MODULE LLVMCodeGenerator;
      for an unnamed record of some other module, which this module has no
      way to name. *)
   PROCEDURE EnsureTypeTag(VAR cg: Codegen; rec: Types.RecordType): BOOLEAN;
-    VAR entry, tail: TypeDescEntry;
+    VAR entry, tail: TypeDescEntry; anonymousName: SyntaxTree.Ident;
   BEGIN
     IF rec = NIL THEN RETURN FALSE END;
-    IF rec.name[0] # 0X THEN RETURN rec.moduleName[0] # 0X END;
-    IF (rec.moduleName[0] # 0X) & (rec.moduleName # cg.moduleName) THEN RETURN FALSE END;
+    IF rec.name # NIL THEN RETURN rec.moduleName # NIL END;
+    IF (rec.moduleName # NIL) & ~Names.Equals(rec.moduleName, cg.moduleName) THEN RETURN FALSE END;
     IF (rec.baseType # NIL) & ~EnsureTypeTag(cg, rec.baseType(Types.RecordType)) THEN RETURN FALSE END;
     INC(cg.anonymousRecordCount);
-    COPY(cg.moduleName, rec.moduleName);
-    COPY("-anon", rec.name); AppendLongInt(rec.name, cg.anonymousRecordCount);
+    rec.moduleName := Names.Intern(cg.moduleName);
+    COPY("-anon", anonymousName); AppendLongInt(anonymousName, cg.anonymousRecordCount);
+    rec.name := Names.Intern(anonymousName);
     NEW(entry); entry.rec := rec; entry.next := NIL;
     IF cg.lateRecords = NIL THEN cg.lateRecords := entry
     ELSE
@@ -2955,7 +2956,7 @@ MODULE LLVMCodeGenerator;
           END;
           IF (t = NIL) OR ~(t IS Types.RecordType) THEN RETURN NIL END;
           rec := t(Types.RecordType);
-          field := Types.FindField(rec, sel.name^);
+          field := Types.FindField(rec, sel.name);
           IF field = NIL THEN RETURN NIL END;
           t := field.type
       | sel: SyntaxTree.IndexSelector DO
@@ -3513,7 +3514,7 @@ MODULE LLVMCodeGenerator;
      a base. FALSE if the name is not a data field (a type-bound
      procedure is called through GenerateMethodCall, never addressed). *)
   PROCEDURE GenerateFieldAddress(VAR w: Files.Rider; VAR cg: Codegen; VAR addrText: ValueText;
-                                 VAR addrType: Types.Type; name: ARRAY OF CHAR): BOOLEAN;
+                                 VAR addrType: Types.Type; name: Names.Name): BOOLEAN;
     VAR rec, owner, current: Types.RecordType; field: Types.Field; pointeeType: LongText; idxText: ValueText;
         position: INTEGER;
   BEGIN
@@ -3597,7 +3598,7 @@ MODULE LLVMCodeGenerator;
           wasPointer := (addrType # NIL) & (addrType IS Types.PointerType);
           IF ~AutoDereference(w, cg, addrText, addrType, dyn.dope) THEN RETURN FALSE END;
           IF wasPointer THEN dyn.kind := dynBlock; COPY(addrText, dyn.text) END;
-          IF ~GenerateFieldAddress(w, cg, addrText, addrType, sel.name^) THEN RETURN FALSE END;
+          IF ~GenerateFieldAddress(w, cg, addrText, addrType, sel.name) THEN RETURN FALSE END;
           dyn.kind := dynStatic; ClearDope(dyn.dope)
       | sel: SyntaxTree.IndexSelector DO
           idx := sel.indices;
@@ -4670,8 +4671,8 @@ MODULE LLVMCodeGenerator;
     IF (t # NIL) & (t IS Types.PointerType) THEN ptr := t(Types.PointerType); t := ptr.base END;
     IF (t = NIL) OR ~(t IS Types.RecordType) THEN RETURN FALSE END;
     rec := t(Types.RecordType);
-    IF Types.FindField(rec, nameNode.name^) # NIL THEN RETURN FALSE END;
-    method := Types.FindMethod(rec, nameNode.name^);
+    IF Types.FindField(rec, nameNode.name) # NIL THEN RETURN FALSE END;
+    method := Types.FindMethod(rec, nameNode.name);
     RETURN method # NIL
   END FindMethodTarget;
 
@@ -4727,7 +4728,7 @@ MODULE LLVMCodeGenerator;
       called := NIL;
       IF rec.baseType # NIL THEN
         baseRec := rec.baseType(Types.RecordType);
-        called := Types.FindMethod(baseRec, nameNode.name^);
+        called := Types.FindMethod(baseRec, nameNode.name);
         IF called # NIL THEN owner := Types.MethodOwner(baseRec, called) END
       END;
       IF called = NIL THEN
@@ -4763,7 +4764,7 @@ MODULE LLVMCodeGenerator;
       EmitByteGEP(w, cg, tag, "i32", slotBytes, slotAddr);
       EmitLoad(w, cg, "ptr", slotAddr, callee)
     ELSE
-      MethodSymbol(owner, called.name, symbol);
+      MethodSymbol(owner, called.name^, symbol);
       COPY(symbol, callee)
     END;
     GenerateCallArgList(w, cg, called.procType.params, args, TRUE, argsText);
@@ -5645,8 +5646,8 @@ MODULE LLVMCodeGenerator;
   PROCEDURE InitSymbol(VAR cg: Codegen; rec: Types.RecordType; VAR text: ARRAY OF CHAR);
     VAR entry: InitRecordEntry;
   BEGIN
-    IF rec.moduleName[0] = 0X THEN COPY(cg.moduleName, rec.moduleName) END; (* see EnsureTypeTag *)
-    IF (rec.initPath[0] = 0X) & (rec.moduleName = cg.moduleName) THEN
+    IF rec.moduleName = NIL THEN rec.moduleName := Names.Intern(cg.moduleName) END; (* see EnsureTypeTag *)
+    IF (rec.initPath[0] = 0X) & Names.Equals(rec.moduleName, cg.moduleName) THEN
       INC(cg.anonymousInitCount);
       COPY("-anon", rec.initPath); AppendLongInt(rec.initPath, cg.anonymousInitCount);
       entry := InitRecordEntryOf(cg, rec); entry.wanted := TRUE
@@ -5656,7 +5657,7 @@ MODULE LLVMCodeGenerator;
       ReportUnsupported(cg, cg.currentLine, cg.currentColumn,
         "a record of another module's whose field initializers cannot be reached from here")
     END;
-    COPY("@", text); Strcat(text, rec.moduleName); Strcat(text, "."); Strcat(text, rec.initPath);
+    COPY("@", text); Strcat(text, rec.moduleName^); Strcat(text, "."); Strcat(text, rec.initPath);
     Strcat(text, ".-init")
   END InitSymbol;
 
@@ -5817,7 +5818,7 @@ MODULE LLVMCodeGenerator;
       IF el.line > 0 THEN cg.currentLine := el.line; cg.currentColumn := el.column END;
       COPY(addrText, elementAddr); elementType := t;
       IF t IS Types.RecordType THEN
-        IF GenerateFieldAddress(w, cg, elementAddr, elementType, el.field^) THEN
+        IF GenerateFieldAddress(w, cg, elementAddr, elementType, el.field) THEN
           StoreLiteralElement(w, cg, elementAddr, elementType, el)
         ELSE
           WriteStr(w, "  ; unsupported: a field this backend cannot address"); WriteLn(w)
@@ -6325,7 +6326,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     IF (t # NIL) & (t IS Types.RecordType) & (dyn.kind # dynStatic) THEN
       rec := t(Types.RecordType);
-      IF (rec.name[0] # 0X) & (rec.name[0] # "-") & EnsureTypeTag(cg, rec) THEN
+      IF (rec.name # NIL) & (rec.name[0] # "-") & EnsureTypeTag(cg, rec) THEN
         cg.needRecordAssignTrap := TRUE;
         EmitDynamicTag(w, cg, dyn, rec, tag);
         TagSymbol(rec, target);
@@ -7101,7 +7102,7 @@ MODULE LLVMCodeGenerator;
   PROCEDURE CollectFromRecord(VAR cg: Codegen; rec: Types.RecordType);
     VAR f: Types.Field;
   BEGIN
-    IF (rec.name[0] = 0X) OR (rec.moduleName # cg.moduleName) OR IsRegistered(cg, rec) THEN RETURN END;
+    IF (rec.name = NIL) OR ~Names.Equals(rec.moduleName, cg.moduleName) OR IsRegistered(cg, rec) THEN RETURN END;
     Register(cg, rec);
     IF rec.baseType # NIL THEN CollectRecordTypes(cg, rec.baseType) END;
     f := rec.fields;
@@ -7208,7 +7209,7 @@ MODULE LLVMCodeGenerator;
   BEGIN
     FOR i := slotCount - 1 TO 0 BY -1 DO
       m := MethodSlots.SlotMethod(rec, i, owner);
-      MethodSymbol(owner, m.name, sym);
+      MethodSymbol(owner, m.name^, sym);
       WriteStr(w, "ptr "); WriteStr(w, sym);
       IF i > 0 THEN WriteStr(w, ", ") END
     END
@@ -7659,7 +7660,7 @@ MODULE LLVMCodeGenerator;
       IF ~first THEN WriteStr(w, ", ") END;
       first := FALSE;
       ParamLLVMType(cg, p, paramType);
-      ParamName(p.name, argName);
+      ParamName(p.name^, argName);
       WriteStr(w, paramType); WriteStr(w, " "); WriteStr(w, argName);
       IF NeedsHiddenTag(p) THEN WriteStr(w, ", ptr "); WriteStr(w, argName); WriteStr(w, ".tag") END;
       FOR dim := 0 TO OpenDimCount(p.type) - 1 DO
@@ -7771,8 +7772,8 @@ MODULE LLVMCodeGenerator;
   BEGIN
     p := pt.params; position := firstPosition;
     WHILE p # NIL DO
-      obj := SymbolTable.FindLocal(bodyScope, Names.Intern(p.name));
-      ParamName(p.name, argName);
+      obj := SymbolTable.FindLocal(bodyScope, p.name);
+      ParamName(p.name^, argName);
       IF IsOpenArrayType(p.type) THEN
         (* the hidden lengths follow the pointer (EmitProcSignature) *)
         SetParamDope(dope, argName, OpenDimCount(p.type));
@@ -7995,8 +7996,8 @@ MODULE LLVMCodeGenerator;
   BEGIN
     typeObj := SymbolTable.FindLocal(moduleScope, pd.receiver.typeName);
     owner := TargetRecord(typeObj.type);
-    method := Types.FindOwnMethod(owner, pd.name.name^);
-    MethodSymbol(owner, method.name, sym);
+    method := Types.FindOwnMethod(owner, pd.name.name);
+    MethodSymbol(owner, method.name^, sym);
     GenerateProcedureBody(w, cg, SemanticActions.OpenProcedureBodyScope(pd, moduleScope, typeObj.type, method.procType),
                           pd, method.procType, sym)
   END GenerateMethodDecl;
@@ -8295,7 +8296,7 @@ MODULE LLVMCodeGenerator;
     IF t = NIL THEN RETURN END;
     IF t IS Types.RecordType THEN
       rec := t(Types.RecordType);
-      IF (rec.moduleName # cg.moduleName) OR (rec.initPath[0] = 0X) THEN RETURN END;
+      IF ~Names.Equals(rec.moduleName, cg.moduleName) OR (rec.initPath[0] = 0X) THEN RETURN END;
       entry := cg.initRecords;
       WHILE (entry # NIL) & (entry.rec # rec) DO entry := entry.next END;
       IF entry # NIL THEN RETURN END;
@@ -8322,11 +8323,11 @@ MODULE LLVMCodeGenerator;
       addrText: ValueText; addrType: Types.Type;
   BEGIN
     rec := wanted.rec;
-    COPY(rec.moduleName, cg.moduleName); cg.scope := rec.declScope(SymbolTable.Scope);
+    COPY(rec.moduleName^, cg.moduleName); cg.scope := rec.declScope(SymbolTable.Scope);
     COPY(wanted.fileName, cg.currentFile);
     cg.locals := NIL; cg.nestedRoot := NIL; cg.currentProcResultType := NIL;
     InitSymbol(cg, rec, symbol);
-    COPY(rec.moduleName, cg.currentProc); Strcat(cg.currentProc, "."); Strcat(cg.currentProc, rec.initPath);
+    COPY(rec.moduleName^, cg.currentProc); Strcat(cg.currentProc, "."); Strcat(cg.currentProc, rec.initPath);
     (* one for a record the front end could not name is this module's alone,
        as its descriptor (EmitDescriptor) *)
     IF rec.initPath[0] = "-" THEN WriteStr(w, "define internal void ") ELSE WriteStr(w, "define void ") END;
@@ -8443,12 +8444,12 @@ MODULE LLVMCodeGenerator;
     END
   END EmitDataDeclaration;
 
-  PROCEDURE ^ DeclareTypeSymbols(VAR w: Files.Rider; VAR cg: Codegen; t: Types.Type; home: ARRAY OF CHAR);
+  PROCEDURE ^ DeclareTypeSymbols(VAR w: Files.Rider; VAR cg: Codegen; t: Types.Type; home: Names.Name);
 
   (* rec's symbols, when rec is a record of the module home: its tag and
      type-bound procedures if it is named, its initialization procedure if
      it has one, and those of the records its fields hold *)
-  PROCEDURE DeclareRecordSymbols(VAR w: Files.Rider; VAR cg: Codegen; rec: Types.RecordType; home: ARRAY OF CHAR);
+  PROCEDURE DeclareRecordSymbols(VAR w: Files.Rider; VAR cg: Codegen; rec: Types.RecordType; home: Names.Name);
     VAR d: DeclaredRecord; m: Types.Method; f: Types.Field; symbol: LongText;
   BEGIN
     IF rec.moduleName # home THEN RETURN END; (* declared with its own module's *)
@@ -8456,17 +8457,17 @@ MODULE LLVMCodeGenerator;
     WHILE (d # NIL) & (d.rec # rec) DO d := d.next END;
     IF d # NIL THEN RETURN END;
     NEW(d); d.rec := rec; d.next := cg.declaredRecords; cg.declaredRecords := d;
-    IF rec.name[0] # 0X THEN
+    IF rec.name # NIL THEN
       TagSymbol(rec, symbol); EmitDataDeclaration(w, cg, symbol);
       m := rec.methods;
       WHILE m # NIL DO
-        MethodSymbol(rec, m.name, symbol);
+        MethodSymbol(rec, m.name^, symbol);
         EmitProcDeclaration(w, cg, m.procType, symbol, TRUE, m.receiverIsVar);
         m := m.next
       END
     END;
     IF rec.needsInit & (rec.initPath[0] # 0X) THEN
-      COPY("@", symbol); Strcat(symbol, rec.moduleName); Strcat(symbol, "."); Strcat(symbol, rec.initPath);
+      COPY("@", symbol); Strcat(symbol, rec.moduleName^); Strcat(symbol, "."); Strcat(symbol, rec.initPath);
       Strcat(symbol, ".-init");
       IF ~HasDeclaredExternal(cg, symbol) THEN
         MarkDeclaredExternal(cg, symbol);
@@ -8477,7 +8478,7 @@ MODULE LLVMCodeGenerator;
     WHILE f # NIL DO DeclareTypeSymbols(w, cg, f.type, home); f := f.next END
   END DeclareRecordSymbols;
 
-  PROCEDURE DeclareTypeSymbols(VAR w: Files.Rider; VAR cg: Codegen; t: Types.Type; home: ARRAY OF CHAR);
+  PROCEDURE DeclareTypeSymbols(VAR w: Files.Rider; VAR cg: Codegen; t: Types.Type; home: Names.Name);
   BEGIN
     IF t = NIL THEN RETURN END;
     IF t IS Types.RecordType THEN DeclareRecordSymbols(w, cg, t(Types.RecordType), home)
@@ -8494,11 +8495,11 @@ MODULE LLVMCodeGenerator;
     WHILE obj # NIL DO
       IF obj.class = SymbolTable.varClass THEN
         QualifiedName(x.module.name^, obj.name^, symbol); EmitDataDeclaration(w, cg, symbol);
-        DeclareTypeSymbols(w, cg, obj.type, x.module.name^)
+        DeclareTypeSymbols(w, cg, obj.type, x.module.name)
       ELSIF obj.class = SymbolTable.procClass THEN
         pt := obj.type(Types.ProcedureType);
         p := pt.params;
-        WHILE p # NIL DO DeclareTypeSymbols(w, cg, p.type, x.module.name^); p := p.next END;
+        WHILE p # NIL DO DeclareTypeSymbols(w, cg, p.type, x.module.name); p := p.next END;
         IF obj.externalConvention = NIL THEN
           QualifiedName(x.module.name^, obj.name^, symbol);
           EmitProcDeclaration(w, cg, pt, symbol, FALSE, FALSE)
@@ -8506,7 +8507,7 @@ MODULE LLVMCodeGenerator;
           EmitExternalDeclare(w, cg, obj)
         END
       ELSIF obj.class = SymbolTable.typeClass THEN
-        DeclareTypeSymbols(w, cg, obj.type, x.module.name^)
+        DeclareTypeSymbols(w, cg, obj.type, x.module.name)
       END;
       obj := obj.next
     END

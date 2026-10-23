@@ -1126,7 +1126,7 @@ MODULE ModuleInterface;
       WHILE f # NIL DO
         IF f.exported OR ~exportedView THEN
           IF ~first THEN WriteSeparator(w, ";") END;
-          WriteStr(w, f.name);
+          WriteStr(w, f.name^);
           IF f.exported THEN
             IF f.readOnly THEN WriteStr(w, "-") ELSE WriteStr(w, "*") END
           END;
@@ -1151,7 +1151,7 @@ MODULE ModuleInterface;
         WHILE p # NIL DO
           IF ~first THEN WriteSeparator(w, ";") END;
           IF p.isVar THEN WriteStr(w, "VAR ") END;
-          WriteStr(w, p.name); IF p.isReadOnly THEN WriteStr(w, "-") END;
+          WriteStr(w, p.name^); IF p.isReadOnly THEN WriteStr(w, "-") END;
           WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
           first := FALSE;
           p := p.next
@@ -1215,7 +1215,7 @@ MODULE ModuleInterface;
     f := rec.fields;
     WHILE (f # NIL) & (e # NIL) DO
       IF ~first THEN WriteSeparator(w, ",") END;
-      WriteStr(w, f.name); WriteStr(w, " := ");
+      WriteStr(w, f.name^); WriteStr(w, " := ");
       PrintElementValue(w, scope, e, line, column);
       first := FALSE;
       e := e.next; f := f.next
@@ -1379,12 +1379,12 @@ MODULE ModuleInterface;
     (* The receiver clause names m.receiverTypeName verbatim, so that
        declaration must exist in the file - print it too if it is not
        exported. *)
-    recvObj := SymbolTable.FindLocal(scope, Names.Intern(m.receiverTypeName));
+    recvObj := SymbolTable.FindLocal(scope, m.receiverTypeName);
     IF recvObj # NIL THEN NeedType(recvObj) END;
     IF exportedView THEN WriteStr(w, "  PROCEDURE (") ELSE WriteStr(w, "  PROCEDURE^ (") END;
     IF m.receiverIsVar THEN WriteStr(w, "VAR ") END;
-    WriteStr(w, "self: "); WriteStr(w, m.receiverTypeName);
-    WriteStr(w, ") "); WriteStr(w, m.name);
+    WriteStr(w, "self: "); WriteStr(w, m.receiverTypeName^);
+    WriteStr(w, ") "); WriteStr(w, m.name^);
     IF m.exported THEN WriteStr(w, "*") END;
     WriteStr(w, "(");
     first := TRUE;
@@ -1392,7 +1392,7 @@ MODULE ModuleInterface;
     WHILE p # NIL DO
       IF ~first THEN WriteSeparator(w, ";") END;
       IF p.isVar THEN WriteStr(w, "VAR ") END;
-      WriteStr(w, p.name); IF p.isReadOnly THEN WriteStr(w, "-") END;
+      WriteStr(w, p.name^); IF p.isReadOnly THEN WriteStr(w, "-") END;
       WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
       first := FALSE;
       p := p.next
@@ -1500,7 +1500,7 @@ MODULE ModuleInterface;
           WHILE p # NIL DO
             IF ~first THEN WriteSeparator(w, ";") END;
             IF p.isVar THEN WriteStr(w, "VAR ") END;
-            WriteStr(w, p.name); IF p.isReadOnly THEN WriteStr(w, "-") END;
+            WriteStr(w, p.name^); IF p.isReadOnly THEN WriteStr(w, "-") END;
             WriteStr(w, ": "); PrintTypeRef(w, scope, p.type);
             first := FALSE;
             p := p.next

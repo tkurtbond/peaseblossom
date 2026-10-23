@@ -23,7 +23,7 @@ MODULE MethodSlots;
      procedure table index of every type-bound procedure is known at
      compile time". *)
 
-  IMPORT SyntaxTree, Types;
+  IMPORT Names, Types;
 
   (* Total number of ProcTab slots for rec: every inherited slot plus each
      of rec's own type-bound procedures that does not override an inherited
@@ -93,7 +93,7 @@ MODULE MethodSlots;
      or -1 if none. Ambiguous when hidden members give two slots the same
      name (see above) - a caller with a resolved Types.Method in hand
      (step 6's dispatch) must match by Method identity instead. *)
-  PROCEDURE MethodSlot*(rec: Types.RecordType; name: SyntaxTree.Ident): INTEGER;
+  PROCEDURE MethodSlot*(rec: Types.RecordType; name: Names.Name): INTEGER;
     VAR i, count: INTEGER; owner: Types.RecordType; m: Types.Method;
   BEGIN
     count := MethodSlotCount(rec);

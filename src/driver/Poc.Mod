@@ -2388,7 +2388,7 @@ MODULE Poc;
   BEGIN
     f := rec.fields;
     WHILE f # NIL DO
-      Out.String("  ."); Out.String(f.name);
+      Out.String("  ."); Out.String(f.name^);
       Out.String(": offsetO2_32="); Out.Int(MemoryLayout.FieldOffset(rec, f, MemoryLayout.wordSize32, MemoryLayout.sizeModelO2), 0);
       Out.String(" offsetO2_64="); Out.Int(MemoryLayout.FieldOffset(rec, f, MemoryLayout.wordSize64, MemoryLayout.sizeModelO2), 0);
       Out.String(" offsetOC_32="); Out.Int(MemoryLayout.FieldOffset(rec, f, MemoryLayout.wordSize32, MemoryLayout.sizeModelOC), 0);
@@ -2515,7 +2515,7 @@ MODULE Poc;
       bodyScope := SemanticActions.OpenProcedureBodyScope(pd, scope, NIL, pt)
     ELSE
       typeObj := SymbolTable.FindLocal(scope, pd.receiver.typeName);
-      method := Types.FindOwnMethod(ReceiverRecord(typeObj.type), pd.name.name^);
+      method := Types.FindOwnMethod(ReceiverRecord(typeObj.type), pd.name.name);
       bodyScope := SemanticActions.OpenProcedureBodyScope(pd, scope, typeObj.type, method.procType)
     END;
     root := NestedProcedures.Analyze(pd, bodyScope);
@@ -2586,7 +2586,7 @@ MODULE Poc;
       rec := t(Types.RecordType);
       f := rec.fields;
       WHILE f # NIL DO
-        Out.String("  ."); Out.String(f.name);
+        Out.String("  ."); Out.String(f.name^);
         Out.String(": offset="); Out.Int(VaxTypes.FieldOffset(rec, f), 0);
         Out.Ln;
         f := f.next
@@ -2739,7 +2739,7 @@ MODULE Poc;
               IF p.receiver # NIL THEN
                 typeObj := SymbolTable.FindLocal(scope, p.receiver.typeName); rec := NIL;
                 IF typeObj # NIL THEN rec := ReceiverRecord(typeObj.type) END;
-                IF rec # NIL THEN Strcat(full, rec.name) ELSE Strcat(full, p.receiver.typeName^) END;
+                IF rec # NIL THEN Strcat(full, rec.name^) ELSE Strcat(full, p.receiver.typeName^) END;
                 Strcat(full, ".")
               END;
               Strcat(full, p.name.name^);

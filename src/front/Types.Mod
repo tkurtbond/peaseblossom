@@ -78,7 +78,7 @@ MODULE Types;
      NEW, etc.), dispatched on by name in the new PredeclaredProcedures.Mod
      rather than by distinct Type values. *)
 
-  IMPORT SYSTEM, Lexer, SyntaxTree, Diagnostics;
+  IMPORT SYSTEM, Lexer, SyntaxTree, Diagnostics, Names;
 
   CONST
     (* BasicType*.rank; wider absorbs narrower per Appendix A *)
@@ -145,7 +145,7 @@ MODULE Types;
 
     Field* = POINTER TO FieldDesc;
     FieldDesc* = RECORD
-      name*: SyntaxTree.Ident;
+      name*: Names.Name;
       type*: Type;
       exported*, readOnly*: BOOLEAN;
       (* Phase 11 D17: the field has an initializer ("f: T := e"), whose
@@ -161,7 +161,7 @@ MODULE Types;
 
     Param* = POINTER TO ParamDesc;
     ParamDesc* = RECORD
-      name*: SyntaxTree.Ident; (* PLAN.md Phase 7: the declared parameter's
+      name*: Names.Name; (* PLAN.md Phase 7: the declared parameter's
         own spelling, meaningless to Appendix A's "matching formal
         parameter lists" (never compared) but kept so ModuleInterface.Mod
         can print a real, human-readable name in a .sym file instead of a
@@ -199,10 +199,10 @@ MODULE Types;
        SymbolTable.ObjectDesc.isForwardProc for the non-bound case. *)
     Method* = POINTER TO MethodDesc;
     MethodDesc* = RECORD
-      name*: SyntaxTree.Ident;
+      name*: Names.Name;
       procType*: ProcedureType;
       receiverIsVar*, exported*, pending*: BOOLEAN;
-      receiverTypeName*: SyntaxTree.Ident; (* PLAN.md Phase 7: the receiver's
+      receiverTypeName*: Names.Name; (* PLAN.md Phase 7: the receiver's
         declared type identifier verbatim (SyntaxTree.ReceiverNode.typeName),
         not just the resolved RecordType it dereferences to - the same
         name could be a POINTER TO alias distinct from the record's own
@@ -231,7 +231,7 @@ MODULE Types;
          than that module's own compilation built, so pointer identity
          cannot connect the two - but the (moduleName, name) pair, being
          derived from the declaring source text both times, can. *)
-      moduleName*, name*: SyntaxTree.Ident;
+      moduleName*, name*: Names.Name; (* NIL when empty *)
       (* A backend's own number for the record, 0 until the backend first
          meets it; nothing in the front end reads it. The LLVM backend
          numbers the named struct types it emits with it (LLVMTypes.
@@ -302,7 +302,7 @@ MODULE Types;
     (* the module being checked, whose own records Describe names without
        their module; SemanticActions.CheckModuleBody keeps it (Phase 13
        step 2) *)
-    messageModule*: SyntaxTree.Ident;
+    messageModule*: Names.Name;
     Boolean*, Char*, ShortInt*, Integer*, LongInt*, Address*, HugeInt*, Real*, LongReal*,
       Set*, Set64*, String*, Undefined*, NilType*: Type;
     (* PLAN.md Phase 10 step 7: SYSTEM.BYTE, a one-byte value CHAR and
@@ -418,7 +418,7 @@ MODULE Types;
     VAR t: RecordType;
   BEGIN
     NEW(t); t.baseType := baseType; t.fields := NIL; t.methods := NIL;
-    t.moduleName[0] := 0X; t.name[0] := 0X; t.backendIndex := 0;
+    t.moduleName := NIL; t.name := NIL; t.backendIndex := 0;
     t.needsInit := FALSE; t.initPath[0] := 0X; t.declScope := NIL;
     RETURN t
   END NewRecordType;
@@ -441,16 +441,16 @@ MODULE Types;
      still be gaining fields when an extension of it is built (a chain of
      pointers resolved early), so SemanticActions.CheckExtensions does that
      once a declaration sequence is resolved (Oberon2.pdf 6.3). *)
-  PROCEDURE AddField*(rec: RecordType; name: ARRAY OF CHAR; type: Type;
+  PROCEDURE AddField*(rec: RecordType; name: Names.Name; type: Type;
                       exported, readOnly: BOOLEAN; line, column: INTEGER): Field;
     VAR f, existing: Field;
   BEGIN
     existing := rec.fields;
     WHILE (existing # NIL) & (existing.name # name) DO existing := existing.next END;
     IF existing # NIL THEN
-      Diagnostics.ErrorAbout(line, column, "field already declared in this record", name)
+      Diagnostics.ErrorAbout(line, column, "field already declared in this record", name^)
     END;
-    NEW(f); COPY(name, f.name); f.type := type; f.exported := exported;
+    NEW(f); f.name := name; f.type := type; f.exported := exported;
     f.readOnly := readOnly; f.next := NIL;
     f.hasInitializer := FALSE; f.initializer := NIL; f.fieldList := NIL;
     f.line := line; f.column := column;
@@ -492,7 +492,7 @@ MODULE Types;
     RETURN FALSE
   END HasUnresolvedBase;
 
-  PROCEDURE FindField*(rec: RecordType; name: ARRAY OF CHAR): Field;
+  PROCEDURE FindField*(rec: RecordType; name: Names.Name): Field;
     VAR f: Field;
   BEGIN
     IF rec = NIL THEN RETURN NIL END;
@@ -515,9 +515,9 @@ MODULE Types;
      Appendix A's "matching formal parameter lists" plus the export-mark
      rule before ever calling this), mirroring how AddField* likewise
      never checks inherited-field collisions. *)
-  PROCEDURE AddMethod*(rec: RecordType; name: ARRAY OF CHAR; procType: ProcedureType;
+  PROCEDURE AddMethod*(rec: RecordType; name: Names.Name; procType: ProcedureType;
                        receiverIsVar, exported, pending: BOOLEAN;
-                       receiverTypeName: ARRAY OF CHAR;
+                       receiverTypeName: Names.Name;
                        line, column: INTEGER): Method;
     VAR m, existing: Method; f: Field;
   BEGIN
@@ -526,10 +526,10 @@ MODULE Types;
     f := rec.fields;
     WHILE (f # NIL) & (f.name # name) DO f := f.next END;
     IF (existing # NIL) OR (f # NIL) THEN
-      Diagnostics.ErrorAbout(line, column, "name already declared in this record", name)
+      Diagnostics.ErrorAbout(line, column, "name already declared in this record", name^)
     END;
-    NEW(m); COPY(name, m.name); m.procType := procType; m.receiverIsVar := receiverIsVar;
-    m.exported := exported; m.pending := pending; COPY(receiverTypeName, m.receiverTypeName);
+    NEW(m); m.name := name; m.procType := procType; m.receiverIsVar := receiverIsVar;
+    m.exported := exported; m.pending := pending; m.receiverTypeName := receiverTypeName;
     m.next := NIL;
     IF rec.methods = NIL THEN
       rec.methods := m
@@ -545,7 +545,7 @@ MODULE Types;
      own header comment explains why override-checking lives in
      SemanticActions.Mod rather than here. NIL if name is not a
      type-bound procedure of rec or any of its bases. *)
-  PROCEDURE FindMethod*(rec: RecordType; name: ARRAY OF CHAR): Method;
+  PROCEDURE FindMethod*(rec: RecordType; name: Names.Name): Method;
     VAR m: Method;
   BEGIN
     IF rec = NIL THEN RETURN NIL END;
@@ -571,7 +571,7 @@ MODULE Types;
      module M itself. *)
 
   (* rec's own method list only - unlike FindMethod*, never its bases. *)
-  PROCEDURE FindOwnMethod*(rec: RecordType; name: ARRAY OF CHAR): Method;
+  PROCEDURE FindOwnMethod*(rec: RecordType; name: Names.Name): Method;
     VAR m: Method;
   BEGIN
     IF rec = NIL THEN RETURN NIL END;
@@ -583,7 +583,7 @@ MODULE Types;
   (* The nearest type-bound procedure named name at or above rec that a
      declaration in module fromModule could override: exported, or
      declared by a record belonging to fromModule itself. NIL if none. *)
-  PROCEDURE FindOverridable*(rec: RecordType; name, fromModule: ARRAY OF CHAR): Method;
+  PROCEDURE FindOverridable*(rec: RecordType; name, fromModule: Names.Name): Method;
     VAR m: Method; r: RecordType;
   BEGIN
     r := rec;
@@ -637,10 +637,10 @@ MODULE Types;
 
   (* Appends a parameter to pt's own list, in declaration order (needed by
      ParamListsMatch/Appendix A's "matching formal parameter lists"). *)
-  PROCEDURE AddParam*(pt: ProcedureType; name: ARRAY OF CHAR; type: Type; isVar, isReadOnly: BOOLEAN);
+  PROCEDURE AddParam*(pt: ProcedureType; name: Names.Name; type: Type; isVar, isReadOnly: BOOLEAN);
     VAR p, tail: Param;
   BEGIN
-    NEW(p); COPY(name, p.name); p.type := type; p.isVar := isVar; p.isReadOnly := isReadOnly; p.next := NIL;
+    NEW(p); p.name := name; p.type := type; p.isVar := isVar; p.isReadOnly := isReadOnly; p.next := NIL;
     IF pt.params = NIL THEN
       pt.params := p
     ELSE
@@ -1229,14 +1229,16 @@ MODULE Types;
       Diagnostics.AppendText(text, "OF "); Describe(arr.elementType, text)
     ELSIF (t # NIL) & (t IS RecordType) THEN
       rec := t(RecordType);
-      i := 0; anonymous := rec.name[0] = 0X;
-      WHILE rec.name[i] # 0X DO IF rec.name[i] = "." THEN anonymous := TRUE END; INC(i) END;
+      i := 0; anonymous := rec.name = NIL;
+      IF ~anonymous THEN
+        WHILE rec.name[i] # 0X DO IF rec.name[i] = "." THEN anonymous := TRUE END; INC(i) END
+      END;
       IF anonymous THEN Diagnostics.AppendText(text, "RECORD")
       ELSE
-        IF (rec.moduleName[0] # 0X) & (rec.moduleName # messageModule) THEN
-          Diagnostics.AppendText(text, rec.moduleName); Diagnostics.AppendText(text, ".")
+        IF (rec.moduleName # NIL) & (rec.moduleName # messageModule) THEN
+          Diagnostics.AppendText(text, rec.moduleName^); Diagnostics.AppendText(text, ".")
         END;
-        Diagnostics.AppendText(text, rec.name)
+        Diagnostics.AppendText(text, rec.name^)
       END
     ELSIF (t # NIL) & (t IS ProcedureType) THEN Diagnostics.AppendText(text, "PROCEDURE")
     ELSE TypeName(t, name); Diagnostics.AppendText(text, name)

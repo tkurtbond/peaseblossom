@@ -255,8 +255,8 @@ MODULE LLVMTypes;
     VAR name: StructName; i: INTEGER; larger: StructTable;
   BEGIN
     IF rec.backendIndex # 0 THEN RETURN rec.backendIndex END;
-    IF (rec.name[0] # 0X) & (rec.moduleName[0] # 0X) THEN
-      COPY(rec.moduleName, name); Strcat(name, "."); Strcat(name, rec.name);
+    IF (rec.name # NIL) & (rec.moduleName # NIL) THEN
+      COPY(rec.moduleName^, name); Strcat(name, "."); Strcat(name, rec.name^);
       i := 1;
       WHILE (i <= structCount) & (structs[i].name # name) DO INC(i) END;
       IF i <= structCount THEN rec.backendIndex := i; RETURN i END
