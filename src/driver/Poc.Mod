@@ -1152,9 +1152,16 @@ MODULE Poc;
     savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE; (* -strict is for the command line's module *)
     errorCountBefore := Diagnostics.errorCount;
     Parser.InitParser(parser, buffer, length);
-    module := Parser.ParseModule(parser);
-    IF Diagnostics.errorCount = errorCountBefore THEN
-      scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+    IF forVax THEN
+      (* doc/developer/vms-memory.md, step 5: a VAX program's module is
+         kept as its header, and checked whole when it is written
+         (CheckVaxModule); RegenerateInterfaces has checked it already *)
+      module := Parser.ParseModuleHeader(parser); scope := NIL
+    ELSE
+      module := Parser.ParseModule(parser);
+      IF Diagnostics.errorCount = errorCountBefore THEN
+        scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+      END
     END;
     IF Diagnostics.errorCount > errorCountBefore THEN
       Err.Int(Diagnostics.errorCount - errorCountBefore, 0);
@@ -1409,7 +1416,15 @@ MODULE Poc;
       imp := imp.next
     END;
     IF ok THEN
-      NEW(entry); entry.module := topModule; entry.scope := topScope; entry.next := NIL; entry.inLibrary := FALSE;
+      NEW(entry); entry.next := NIL; entry.inLibrary := FALSE;
+      IF forVax THEN
+        (* as DiscoverModule keeps the others (vms-memory.md, step 5) *)
+        entry.module := SemanticActions.NewModule(topModule.name, topModule.imports, NIL, NIL, NIL,
+                                                  topModule.line, topModule.column);
+        entry.scope := NIL
+      ELSE
+        entry.module := topModule; entry.scope := topScope
+      END;
       COPY(Diagnostics.fileName, entry.fileName); (* the file named on the command line *)
       IF tail = NIL THEN modules := entry ELSE tail.next := entry END
     END;
@@ -1586,11 +1601,50 @@ MODULE Poc;
      would be one on VMS, are refused. As for IR: every module's files, or
      none, when one could not be made, are left. FALSE, reported, if not
      written. *)
+  (* doc/developer/vms-memory.md, step 5: module and scope for m, which
+     DiscoverModule kept as its header when it came from source: parsed and
+     checked again from its file, against the .sym files written already,
+     for the caller to drop when it is done with them. Not under -strict:
+     the command line's module was checked under it before its .sym was
+     written. FALSE, reported, if it cannot be. *)
+  PROCEDURE CheckVaxModule(m: ModuleLists.ModuleList; VAR module: SyntaxTree.ModuleNode;
+                           VAR scope: SymbolTable.Scope): BOOLEAN;
+    VAR
+      buffer: Lexer.CharBuffer;
+      length: LONGINT;
+      parser: Parser.Parser;
+      savedFileName: ARRAY Diagnostics.fileNameLength + 1 OF CHAR;
+      errorCountBefore: INTEGER; savedStrict: BOOLEAN;
+  BEGIN
+    module := m.module; scope := m.scope;
+    IF scope # NIL THEN RETURN TRUE END;
+    IF ~ReadSource(m.fileName, buffer, length) THEN
+      failed := TRUE; Err.String("poc: cannot open "); Err.String(m.fileName); Err.Ln;
+      RETURN FALSE
+    END;
+    COPY(Diagnostics.fileName, savedFileName); COPY(m.fileName, Diagnostics.fileName);
+    savedStrict := Diagnostics.strict; Diagnostics.strict := FALSE;
+    errorCountBefore := Diagnostics.errorCount;
+    Parser.InitParser(parser, buffer, length);
+    module := Parser.ParseModule(parser);
+    IF Diagnostics.errorCount = errorCountBefore THEN
+      scope := SemanticActions.CheckModule(module, ParseModuleAdapter)
+    END;
+    COPY(savedFileName, Diagnostics.fileName); Diagnostics.strict := savedStrict;
+    IF Diagnostics.errorCount > errorCountBefore THEN
+      Err.Int(Diagnostics.errorCount - errorCountBefore, 0);
+      Err.String(" error(s) in module "); Err.String(m.module.name^); Err.Ln;
+      RETURN FALSE
+    END;
+    RETURN TRUE
+  END CheckVaxModule;
+
   PROCEDURE WriteVaxModules(modules: ModuleLists.ModuleList; outputDir: ARRAY OF CHAR;
                          onlyMembers, announce: BOOLEAN): BOOLEAN;
     VAR
       m, n: ModuleLists.ModuleList;
       written: BOOLEAN;
+      module: SyntaxTree.ModuleNode; scope: SymbolTable.Scope;
       key: ARRAY 32 OF CHAR;
       path: ARRAY VaxToolchainDriver.pathBufferLength OF CHAR;
       a, b: VaxTypes.Symbol;
@@ -1628,8 +1682,13 @@ MODULE Poc;
        module's clash with one is an error at its own declaration *)
     m := modules;
     WHILE m # NIL DO
-      IF ~IsVaxUnit(m, onlyMembers)
-         & ~VaxCodeGenerator.EnterInterface(m.module, m.scope, full, clash, a) THEN
+      (* one from source, an import -compile does not write, is checked
+         again for its symbols (step 5) *)
+      IF ~IsVaxUnit(m, onlyMembers) & ~CheckVaxModule(m, module, scope) THEN
+        VaxCodeGenerator.programNames := NIL;
+        RETURN FALSE
+      ELSIF ~IsVaxUnit(m, onlyMembers)
+         & ~VaxCodeGenerator.EnterInterface(module, scope, full, clash, a) THEN
         failed := TRUE;
         Err.String("poc: "); Err.String(full); Err.String(" and "); Err.String(clash);
         Err.String(" have the same VAX symbol, "); Err.String(a);
@@ -1639,6 +1698,7 @@ MODULE Poc;
       END;
       m := m.next
     END;
+    module := NIL; scope := NIL;
     m := modules; written := TRUE;
     COPY(Diagnostics.fileName, savedFileName);
     (* doc/developer/vms-memory.md, step 1b: nothing unless asked for *)
@@ -1648,10 +1708,13 @@ MODULE Poc;
         IF ~ModuleInterface.KeyOf(m.module.name^, key) THEN key[0] := 0X END;
         (* what the generator reports is in the module's own file *)
         COPY(m.fileName, Diagnostics.fileName);
-        (* the program's main module is the last, as on LLVM *)
-        IF ~VaxToolchainDriver.EmitModule(m.module, m.scope, key, outputDir, ~onlyMembers & (m.next = NIL), path) THEN
+        (* the program's main module is the last, as on LLVM; each module's
+           tree and scope dropped once it is written (step 5) *)
+        IF ~CheckVaxModule(m, module, scope)
+           OR ~VaxToolchainDriver.EmitModule(module, scope, key, outputDir, ~onlyMembers & (m.next = NIL), path) THEN
           written := FALSE
         END;
+        module := NIL; scope := NIL;
         MemoryCensus.Take(m.module.name^)
       END;
       m := m.next

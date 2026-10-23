@@ -97,10 +97,9 @@ step 1's figures, and recorded here.
    dropped (2026-10-22; "Results").
 4. **Identifiers interned** (item 1): `Ident` a pointer to one shared
    copy of each name, from a name table; names compared by pointer.
-5. **Each module written as soon as it is checked**, its tree then
-   dropped (item 2); the VAX symbol clash check (`EnterInterface`) made
-   as each module is entered. And a DCL build that compiles module by
-   module with `-compile`, which bounds a process by its largest module.
+5. **Each module checked as it is written**, its tree then dropped (item
+   2). The DCL build that would compile module by module with `-compile`
+   is dropped ("Step 5's design").
 6. **Each routine's lines encoded and dropped** (item 3), if the object
    writer allows it (`vax-object-language.md`, the one-pass displacement
    rule).
@@ -262,6 +261,75 @@ hands to `VaxEncoder.Encode` with the rest.
    MACRO's and run both ways), Stage 2's fixed point, and no expected
    `.mar` changed. Measured on cymoril and atla as before, and on the guest
    with `vax-stages -to v2`.
+
+## Step 5's design: each module checked as it is written (decided, 2026-10-23)
+
+After step 6 the census of all of poc (cymoril) has 11.5 MB live when the
+front end has checked every module, in a heap of 24.8 MB, and writing any
+one module adds at most 3.2 MB (`VaxCodeGenerator`, 14.7 MB live in 34.0
+MB). The 11.5 MB is the 44 modules' syntax trees and scopes, held by the
+`ModuleLists` entries from `DiscoverModule` to the end of
+`WriteVaxModules`. A scope holds the scopes of the module's imports, read
+from their `.sym` files by its own check (`SemanticActions`' cache is per
+`CheckModule`), so each module's view of `Types` and `SymbolTable` is
+counted once per importer.
+
+1. **How a VAX program is checked now.** Every command that writes VAX
+   modules (`-build`, `-compile`, `-emit-`, `-library`) first runs
+   `RegenerateInterfaces` over the program, which parses and checks each
+   source module, writes its `.sym` and keeps nothing. Then
+   `DiscoverModule` parses and checks each source module again against
+   those `.sym` files, keeps its tree and scope in the list, and the
+   command's checks run on the list (`BuildVax`: modules compiled already,
+   `CheckLibraries`, command tables against module names, the image's
+   paths) before `WriteVaxModules` writes every module or none.
+2. **The proposal: discovery keeps only each module's header, writing
+   checks it.** For the VAX, `DiscoverModule` parses only a source
+   module's header (a new `Parser.ParseModuleHeader`: `MODULE` name and
+   import list, then stop), and its entry holds that `ModuleNode`, with no
+   declarations or body, and no scope. The command line's module, checked
+   by `CheckAndDiscoverProgram`, is entered the same way once its `.sym`
+   is written. `WriteVaxModules`, for each module it writes, reads its
+   source again (the entry's `fileName`), parses it, checks it with
+   `SemanticActions.CheckModule` against the `.sym` files, as
+   `DiscoverModule` does now, hands tree and scope to `EmitModule`, and
+   keeps neither. Modules from a library or a `.sym` keep their trees and
+   scopes as now: they are small, and `EnterInterface` needs them.
+3. **What has to be known about the whole program first, and is.**
+   Every check `WriteVaxModules` and its callers make goes by the list's
+   names, which the headers give: two module names differing in case,
+   `withModules` (whether `Modules` is in the program), the command
+   tables, the units. `EnterInterface` enters the modules not written
+   before any written one, as now, so a clash is reported where it is
+   now. `withCollector` (any `NEW` in the program) is set by checking,
+   which `RegenerateInterfaces` has done for every module, and only the
+   main module, written last, uses it. Every module's files or none are
+   left, as now.
+4. **What it costs.** Each source module is still checked twice
+   (`RegenerateInterfaces` and writing, where it was `RegenerateInterfaces`
+   and `DiscoverModule`), the command line's module once more than now;
+   discovery's parse is of headers only. The second check of a module
+   cannot find an error the first did not (the same source against the
+   same `.sym` files), so nothing is reported twice. The LLVM back end
+   keeps the whole list as now: it has hosts' memory, and its generator
+   reads the list.
+5. **What it should save.** The peak becomes about the largest module's
+   own check and generation plus the list of headers: from step 6's
+   census, a few MB live where it was 14.7, so a heap of perhaps 10 MB
+   where it was 34.
+6. **The risk, and how it is checked.** A module is now checked after
+   the modules before it are written, not before any is. If the checker
+   or the generator keeps state from one module to the next that the
+   order changes (a counter, a table), an object changes. As in steps 4
+   and 6 the output must not change: `make check`'s objects and `.mar`
+   files byte for byte, Stage 2's fixed point, and `vax-stages -to v2` on
+   the guest, measured there as before.
+7. **The DCL build module by module: dropped.** With item 2, one process
+   is bounded by its largest module already, which is what compiling
+   module by module would buy. And on VMS each `-compile` run would
+   regenerate the `.sym` files of the module's whole import closure from
+   source, checking them again: for poc's 44 modules, many times the CPU
+   of one `-build`.
 
 ## Results
 
@@ -583,3 +651,49 @@ Peak virtual memory falls by 43% and the working set by 42%, to about
 35 MB; page faults by 55%, CPU by 12%. Against the start of the work
 (before step 4), poc on VMS now needs 35% of the virtual memory, a third
 of the working set and a tenth of the page faults, and 56% of the CPU.
+
+### Step 5: each module checked as it is written (2026-10-23)
+
+Step 5's change, on `20b79b5`, measured as before. Its VAX output, all
+of poc both ways and `-compile` of `Parser` and `Poc`, is step 6's byte
+for byte (the objects but for their timestamps and the temporary
+directory `BuildInfo.Mod` is written in). On hosts, peak resident size
+in MB of a Stage 2 poc (`tools/bench/poc-memory.sh`), against step 6's:
+
+| run                          | cymoril, 6 | cymoril, 5 | atla, 6 | atla, 5 |
+|------------------------------|-----------:|-----------:|--------:|--------:|
+| all of poc, one program      |  34.3      |  17.9      |  45.5   |  21.0   |
+| `Poc` alone                  |  25.8      |  11.9      |  32.9   |  13.8   |
+| `VaxCodeGenerator` alone     |  25.9      |  16.8      |  33.0   |  19.9   |
+| `VaxToolchainDriver` alone   |  16.8      |  11.5      |  23.3   |  14.0   |
+| `SemanticActions` alone      |  14.6      |   9.4      |  19.3   |  10.3   |
+| `Parser` alone               |  12.5      |   8.2      |  15.7   |   8.0   |
+| `NestedProcedures` alone     |  10.6      |   8.2      |  13.0   |   9.0   |
+| `ModuleInterface` alone      |  10.3      |   6.4      |  12.5   |   6.8   |
+
+All of poc falls by about half, and a module alone by a third to a half:
+`-compile` of one module no longer holds the trees of its source
+imports either, only their headers. atla's census for all of poc has
+0.79 MB live in a 10.4 MB heap when every module's header is read (the
+census point "every module checked", now before any module is), and its
+largest point is while `VaxCodeGenerator` is written: 7.76 MB live in a
+19.2 MB heap, where step 6 had 11.5 MB live in 24.8 MB on cymoril.
+
+On the guest, `tools/bootstrap/vax-stages -to v2`, against step 6. V2
+wrote the same 44 objects as V1: the fixed point holds.
+
+| measure                          | after step 6      | after step 5      |
+|----------------------------------|------------------:|------------------:|
+| compilation, elapsed             | 14.2 min          | 14.0 min          |
+| CPU                              | 844 s             | 832 s             |
+| page faults                      | 174,605           | 62,303            |
+| peak virtual memory (pages)      | 74,128            | 35,412            |
+| peak working set (pages)         | 69,566            | 30,275            |
+| the guest's run, transfers too   | 15 min            | 15 min            |
+
+Peak virtual memory falls by 52%, to about 18 MB, the working set by 56%
+and page faults by 64%; CPU hardly moves, since each module is still
+parsed and checked twice, once for its interface and once to be written.
+Against the start of the work (before step 4), poc on VMS now needs 17%
+of the virtual memory, 15% of the working set, 3.5% of the page faults
+and 55% of the CPU.

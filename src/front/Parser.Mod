@@ -1293,4 +1293,22 @@ MODULE Parser;
     RETURN SemanticActions.NewModule(name, imports, declarations, statements, endName, line, column)
   END ParseModule;
 
+  (* A module's name and import list, and nothing after them: what poc keeps
+     of a VAX program's module until it writes it, when it is parsed and
+     checked whole again (doc/developer/vms-memory.md, step 5) *)
+  PROCEDURE ParseModuleHeader*(VAR p: Parser): SyntaxTree.ModuleNode;
+    VAR
+      name: Names.Name;
+      imports: SyntaxTree.ImportNode;
+      line, column: INTEGER;
+  BEGIN
+    line := p.current.line; column := p.current.column;
+    ExpectToken(p, Lexer.moduleKeyword, "expected 'MODULE'");
+    ExpectIdent(p, name);
+    ExpectToken(p, Lexer.semicolon, "expected ';'");
+    imports := NIL;
+    IF p.current.kind = Lexer.importKeyword THEN imports := ParseImportList(p) END;
+    RETURN SemanticActions.NewModule(name, imports, NIL, NIL, NIL, line, column)
+  END ParseModuleHeader;
+
 END Parser.
